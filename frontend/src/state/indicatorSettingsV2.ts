@@ -61,7 +61,9 @@ export const INDICATOR_SETTING_KEYS = Object.freeze(
   Object.keys(FACTORY_INDICATOR_SETTINGS),
 ) as readonly (keyof IndicatorSettings)[];
 
-function deepEqual(a: unknown, b: unknown): boolean {
+/** JSON 직렬화 동등성(키 순서 민감) — 이 모듈의 값은 전부 JSON 왕복 가능하고
+ *  같은 코드 경로가 만든 객체라 키 순서가 안정적이므로 충분하다. */
+function jsonEqual(a: unknown, b: unknown): boolean {
   return a === b || JSON.stringify(a) === JSON.stringify(b);
 }
 
@@ -71,7 +73,7 @@ export function diffIndicatorSettingsFromFactory(
 ): Partial<IndicatorSettings> {
   const diff: Partial<IndicatorSettings> = {};
   for (const key of INDICATOR_SETTING_KEYS) {
-    if (!deepEqual(settings[key], FACTORY_INDICATOR_SETTINGS[key])) {
+    if (!jsonEqual(settings[key], FACTORY_INDICATOR_SETTINGS[key])) {
       (diff as Record<string, unknown>)[key] = settings[key];
     }
   }
@@ -85,16 +87,31 @@ export function diffIndicatorSettingsFromFactory(
 function sanitizeSettingsPatch(raw: unknown): Partial<IndicatorSettings> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const partial = raw as Record<string, unknown>;
+  // 1단계 — 런타임 타입이 공장값과 다른 엔트리를 먼저 버린다. 코어서의 boolean
+  // 폴백은 v1 기본값(예: quoteTotalsEnabled → true)이라 새 공장값(false)과 다를
+  // 수 있어, 타입 불일치 쓰레기가 영구 오버라이드로 승격되는 것을 여기서 막는다.
+  const typed: Record<string, unknown> = {};
+  for (const key of INDICATOR_SETTING_KEYS) {
+    if (!(key in partial)) continue;
+    const factoryValue = FACTORY_INDICATOR_SETTINGS[key];
+    const value = partial[key];
+    const typeMatches = Array.isArray(factoryValue)
+      ? Array.isArray(value)
+      : typeof value === typeof factoryValue;
+    if (typeMatches) typed[key] = value;
+  }
+  // 2단계 — 도메인 검증(hex·범위·enum)은 v1 코어서 재사용: 공장값 위에 얹어
+  // full-shape 을 만들고 통과시킨 뒤, 건드린 키만 뽑아 공장값과 diff 한다.
   const candidate = {
     ...FACTORY_INDICATOR_SETTINGS,
-    ...partial,
+    ...typed,
     panePrefsByTimeframe: {},
     paneOrder: [],
   };
   const validated = stripContainers(mergeLiveIndicatorPrefs(candidate));
   const touched: IndicatorSettings = { ...FACTORY_INDICATOR_SETTINGS };
   for (const key of INDICATOR_SETTING_KEYS) {
-    if (key in partial) {
+    if (key in typed) {
       (touched as Record<string, unknown>)[key] = validated[key];
     }
   }
@@ -148,16 +165,12 @@ export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
   };
 }
 
-function persistV2(state: PersistedIndicatorsV2): void {
+export function persistIndicatorsV2(state: PersistedIndicatorsV2): void {
   try {
     localStorage.setItem(INDICATORS_V2_STORAGE_KEY, JSON.stringify(state));
   } catch {
     // localStorage unavailable — silent fallback.
   }
-}
-
-export function persistIndicatorsV2(state: PersistedIndicatorsV2): void {
-  persistV2(state);
 }
 
 /** v2 로드. v2 부재 && v1 존재 시 1회 시드 후 즉시 영속(다음 로드부터 v1 미참조).
@@ -169,7 +182,7 @@ export function loadIndicatorsV2Storage(): PersistedIndicatorsV2 {
     const rawV1 = localStorage.getItem(V1_STORAGE_KEY);
     if (rawV1) {
       const seeded = seedV2FromV1(JSON.parse(rawV1));
-      persistV2(seeded);
+      persistIndicatorsV2(seeded);
       return seeded;
     }
     return normalizeIndicatorsV2(undefined);

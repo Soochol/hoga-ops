@@ -9,13 +9,11 @@ import {
 } from '../../state/liveLayout';
 import { normalizeKeyOrder } from '../../state/keyOrder';
 import { normalizePaneOrder } from '../../chart/paneOrder';
-import { mergeLiveIndicatorPrefs } from '../../state/liveIndicatorsPersistence';
+import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
 import {
   INDICATOR_PANE_PREF_KEYS,
   normalizePanePrefsByTimeframe,
 } from '../indicators/indicatorPaneProfiles';
-
-const PANE_PREF_SLICE_KEYS = INDICATOR_PANE_PREF_KEYS;
 import type { LiveLayoutPresetPayload } from '../../api/liveLayoutPresets';
 import {
   PRESET_INDICATOR_FLAG_KEYS,
@@ -61,10 +59,13 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
   // PR-A(#699) 이후 per-timeframe 원본은 indicatorsByTimeframe(4버킷 sparse)다.
   // PR-D(payload v2) 전 브리지: 구 payload 형식 유지를 위해 각 버킷에서 pane 토글
   // 7종 오버라이드만 슬라이스해 pane_prefs_by_timeframe 로 캡처한다.
+  // 알려진 브리지 한계: 오버레이 enable(flags)은 현재 봉 투영에서 읽어 적용 시
+  // 4버킷 전부에 퍼지므로, D에서 캡처→적용하면 다른 봉의 오버레이 enable이 D 값으로
+  // 덮인다(캡처→적용 비항등). PR-D의 payload v2(4버킷 enable 맵)가 해소한다.
   const panePrefsByTimeframe = Object.fromEntries(
     Object.entries(page.indicatorsByTimeframe).flatMap(([profileKey, bucket]) => {
       const slice = Object.fromEntries(
-        PANE_PREF_SLICE_KEYS.flatMap((key) => (
+        INDICATOR_PANE_PREF_KEYS.flatMap((key) => (
           typeof bucket?.[key] === 'boolean' ? [[key, bucket[key]]] : []
         )),
       );
@@ -115,15 +116,17 @@ export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: s
   useLiveLayoutStore.getState().applyLayoutPreset(layoutInput);
 }
 
-/** 기본 레이아웃(코드 기본값) payload — "기본으로 초기화"에 사용. */
+/** 기본 레이아웃(코드 기본값) payload — "기본으로 초기화"에 사용.
+ *  지표 플래그의 기준은 v1 코어서 기본값이 아니라 **새 공장 기본값**(#697 —
+ *  거래량+MA만 on)이다. v1 기본값을 쓰면 초기화가 호가 pane·POC 등 6종을
+ *  전 버킷에 켜 새 베이스라인과 모순된다(코드 리뷰). */
 export function defaultPresetPayload(): LiveLayoutPresetPayload {
-  const prefs = mergeLiveIndicatorPrefs(undefined);
   const flags: Record<string, boolean> = {};
   for (const key of PRESET_INDICATOR_FLAG_KEYS) {
-    flags[key] = Boolean((prefs as unknown as Record<string, unknown>)[key]);
+    flags[key] = Boolean(FACTORY_INDICATOR_SETTINGS[key]);
   }
   return {
-    pane_order: [...prefs.paneOrder],
+    pane_order: normalizePaneOrder(undefined),
     pane_prefs_by_timeframe: {},
     indicator_flags: flags,
     right_panel_width_px: DEFAULT_RIGHT_PANEL_WIDTH_PX,

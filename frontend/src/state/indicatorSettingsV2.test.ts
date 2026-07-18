@@ -117,6 +117,17 @@ describe('normalizeIndicatorsV2', () => {
     // candle은 항상 index 0으로 정규화(ADR-0114 §3).
     expect(v2.paneOrder[0]).toBe('candle');
   });
+
+  it('drops type-mismatched garbage instead of promoting it to a v1-default override', () => {
+    // 코어서의 boolean 폴백(quoteTotalsEnabled → v1 기본 true)이 새 공장값(false)과
+    // 달라도, 타입 불일치 쓰레기는 오버라이드로 승격되지 않아야 한다(코드 리뷰).
+    const v2 = normalizeIndicatorsV2({
+      byTimeframe: {
+        D: { quoteTotalsEnabled: 'garbage', fillStrengthEnabled: 1 },
+      },
+    });
+    expect(v2.byTimeframe).toEqual({});
+  });
 });
 
 describe('seedV2FromV1', () => {
