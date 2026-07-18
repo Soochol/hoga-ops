@@ -377,7 +377,7 @@ describe('LivePage shell', () => {
       candleTimeframe: 'D',
       foreignNetEnabled: false,
       institutionNetEnabled: false,
-      panePrefsByTimeframe: {
+      indicatorsByTimeframe: {
         D: { foreignNetEnabled: true },
       },
     });
@@ -597,7 +597,7 @@ describe('LivePage shell', () => {
       historicalFromDate: '20260619',
       foreignNetEnabled: false,
       institutionNetEnabled: false,
-      panePrefsByTimeframe: {
+      indicatorsByTimeframe: {
         D: { foreignNetEnabled: true },
       },
     });

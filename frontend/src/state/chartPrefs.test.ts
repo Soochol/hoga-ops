@@ -30,19 +30,33 @@ describe('useChartPrefsStore', () => {
   });
 });
 
-import { mergePrefs, CHART_PREFS_KEY } from './chartPrefsPersistence';
+import {
+  mergePrefs,
+  mergeIndicatorModalByTimeframe,
+  CHART_PREFS_KEY,
+} from './chartPrefsPersistence';
+import { resolveIndicatorModalPrefs } from './chartPrefs';
+
+/** 구 flat 블롭이 hydrate 를 거친 뒤 분봉 뷰에서 보이는 유효값(PR-B) —
+ *  indicator-modal 키는 minute 버킷 시드 ⊕ 기본값 투영으로 읽힌다. */
+const hydratedMinuteView = (raw: object): typeof DEFAULT_PREFS => ({
+  ...mergePrefs(raw),
+  ...resolveIndicatorModalPrefs(mergeIndicatorModalByTimeframe(raw), '1m'),
+} as typeof DEFAULT_PREFS);
 
 describe('chartPrefsPersistence', () => {
   it('mergePrefs ignores invalid types and falls back to DEFAULT_PREFS', () => {
-    const merged = mergePrefs({ auctionWindowMask: 'not-a-bool', ratioOutlierThreshold: 999_999 });
+    const merged = hydratedMinuteView({ auctionWindowMask: 'not-a-bool', ratioOutlierThreshold: 999_999 });
     expect(merged.auctionWindowMask).toBe(DEFAULT_PREFS.auctionWindowMask);
     expect(merged.ratioOutlierThreshold).toBe(DEFAULT_PREFS.ratioOutlierThreshold);
   });
 
-  it('mergePrefs accepts valid values', () => {
+  it('mergePrefs accepts valid chart-wide values; IM 키는 minute 시드로 읽힌다', () => {
     const merged = mergePrefs({ auctionWindowMask: false, ratioOutlierThreshold: 50 });
     expect(merged.auctionWindowMask).toBe(false);
-    expect(merged.ratioOutlierThreshold).toBe(50);
+    // indicator-modal 키는 flat 에서 더 이상 읽지 않는다(PR-B) — 시드 경로로만.
+    expect(merged.ratioOutlierThreshold).toBe(DEFAULT_PREFS.ratioOutlierThreshold);
+    expect(hydratedMinuteView({ ratioOutlierThreshold: 50 }).ratioOutlierThreshold).toBe(50);
   });
 
   it('uses the new key, not replay.tabs.*', () => {
@@ -84,9 +98,9 @@ describe('거래량 체결강도 누적 토글', () => {
   });
 
   it('mergePrefs는 false를 보존한다', () => {
-    expect(mergePrefs({ volumeFillStrengthCumulative: false }).volumeFillStrengthCumulative).toBe(false);
-    expect(mergePrefs({ volumeFillStrengthCumulative: true }).volumeFillStrengthCumulative).toBe(true);
-    expect(mergePrefs({ volumeFillStrengthCumulative: 'true' as never }).volumeFillStrengthCumulative)
+    expect(hydratedMinuteView({ volumeFillStrengthCumulative: false }).volumeFillStrengthCumulative).toBe(false);
+    expect(hydratedMinuteView({ volumeFillStrengthCumulative: true }).volumeFillStrengthCumulative).toBe(true);
+    expect(hydratedMinuteView({ volumeFillStrengthCumulative: 'true' as never }).volumeFillStrengthCumulative)
       .toBe(DEFAULT_PREFS.volumeFillStrengthCumulative);
   });
 });
@@ -123,12 +137,12 @@ describe('총잔량 급증 설정', () => {
   });
 
   it('persist 된 surge 값 보존 + 범위 밖은 폴백', () => {
-    expect(mergePrefs({ surgeMarkerEnabled: false }).surgeMarkerEnabled).toBe(false);
-    expect(mergePrefs({ surgeApproachPct: 90 }).surgeApproachPct).toBe(90);
-    expect(mergePrefs({ surgeApproachPct: 999 }).surgeApproachPct).toBe(DEFAULT_PREFS.surgeApproachPct);
-    expect(mergePrefs({ surgeRearmPct: 70 }).surgeRearmPct).toBe(70);
-    expect(mergePrefs({ surgeStartHHMM: 930 }).surgeStartHHMM).toBe(930);
-    expect(mergePrefs({ surgeStartHHMM: 800 }).surgeStartHHMM).toBe(DEFAULT_PREFS.surgeStartHHMM);
+    expect(hydratedMinuteView({ surgeMarkerEnabled: false }).surgeMarkerEnabled).toBe(false);
+    expect(hydratedMinuteView({ surgeApproachPct: 90 }).surgeApproachPct).toBe(90);
+    expect(hydratedMinuteView({ surgeApproachPct: 999 }).surgeApproachPct).toBe(DEFAULT_PREFS.surgeApproachPct);
+    expect(hydratedMinuteView({ surgeRearmPct: 70 }).surgeRearmPct).toBe(70);
+    expect(hydratedMinuteView({ surgeStartHHMM: 930 }).surgeStartHHMM).toBe(930);
+    expect(hydratedMinuteView({ surgeStartHHMM: 800 }).surgeStartHHMM).toBe(DEFAULT_PREFS.surgeStartHHMM);
   });
 });
 
@@ -209,7 +223,7 @@ describe('ask peak all-price toggle', () => {
   });
 
   it('mergePrefs preserves persisted false', () => {
-    expect(mergePrefs({ askPeakShowAllPrices: false }).askPeakShowAllPrices).toBe(false);
+    expect(hydratedMinuteView({ askPeakShowAllPrices: false }).askPeakShowAllPrices).toBe(false);
   });
 
   it('label display toggles default on and persist false', () => {
@@ -222,14 +236,14 @@ describe('ask peak all-price toggle', () => {
     expect(bid?.label).toBe('최대벽 라벨 표시');
     expect(categoryOf(ask!)).toBe('indicator-modal');
     expect(categoryOf(bid!)).toBe('indicator-modal');
-    expect(mergePrefs({ askPeakLabelEnabled: false }).askPeakLabelEnabled).toBe(false);
-    expect(mergePrefs({ bidPeakLabelEnabled: false }).bidPeakLabelEnabled).toBe(false);
+    expect(hydratedMinuteView({ askPeakLabelEnabled: false }).askPeakLabelEnabled).toBe(false);
+    expect(hydratedMinuteView({ bidPeakLabelEnabled: false }).bidPeakLabelEnabled).toBe(false);
   });
 
   it('rank limit defaults to 1 and persists valid 1..3 values', () => {
     expect(DEFAULT_PREFS.askPeakAllPriceRankLimit).toBe(1);
-    expect(mergePrefs({ askPeakAllPriceRankLimit: 2 }).askPeakAllPriceRankLimit).toBe(2);
-    expect(mergePrefs({ askPeakAllPriceRankLimit: 4 }).askPeakAllPriceRankLimit)
+    expect(hydratedMinuteView({ askPeakAllPriceRankLimit: 2 }).askPeakAllPriceRankLimit).toBe(2);
+    expect(hydratedMinuteView({ askPeakAllPriceRankLimit: 4 }).askPeakAllPriceRankLimit)
       .toBe(DEFAULT_PREFS.askPeakAllPriceRankLimit);
   });
 
@@ -237,9 +251,9 @@ describe('ask peak all-price toggle', () => {
     expect(DEFAULT_PREFS.askPeakVisibleMaxRankLimit).toBe(1);
     expect(CHART_NUMERIC_PREFS.find((p) => p.key === 'askPeakVisibleMaxRankLimit')?.label)
       .toBe('보이는 영역 최대벽 표시 개수');
-    expect(mergePrefs({ askPeakVisibleMaxRankLimit: 0 }).askPeakVisibleMaxRankLimit).toBe(0);
-    expect(mergePrefs({ askPeakVisibleMaxRankLimit: 3 }).askPeakVisibleMaxRankLimit).toBe(3);
-    expect(mergePrefs({ askPeakVisibleMaxRankLimit: 4 }).askPeakVisibleMaxRankLimit)
+    expect(hydratedMinuteView({ askPeakVisibleMaxRankLimit: 0 }).askPeakVisibleMaxRankLimit).toBe(0);
+    expect(hydratedMinuteView({ askPeakVisibleMaxRankLimit: 3 }).askPeakVisibleMaxRankLimit).toBe(3);
+    expect(hydratedMinuteView({ askPeakVisibleMaxRankLimit: 4 }).askPeakVisibleMaxRankLimit)
       .toBe(DEFAULT_PREFS.askPeakVisibleMaxRankLimit);
   });
 
@@ -248,12 +262,12 @@ describe('ask peak all-price toggle', () => {
     expect(DEFAULT_PREFS.bidPeakVisibleMaxRankLimit).toBe(1);
     expect(CHART_NUMERIC_PREFS.find((p) => p.key === 'bidPeakVisibleMaxRankLimit')?.label)
       .toBe('보이는 영역 최대벽 표시 개수');
-    expect(mergePrefs({ bidPeakAllPriceRankLimit: 2 }).bidPeakAllPriceRankLimit).toBe(2);
-    expect(mergePrefs({ bidPeakVisibleMaxRankLimit: 0 }).bidPeakVisibleMaxRankLimit).toBe(0);
-    expect(mergePrefs({ bidPeakVisibleMaxRankLimit: 3 }).bidPeakVisibleMaxRankLimit).toBe(3);
-    expect(mergePrefs({ bidPeakAllPriceRankLimit: 4 }).bidPeakAllPriceRankLimit)
+    expect(hydratedMinuteView({ bidPeakAllPriceRankLimit: 2 }).bidPeakAllPriceRankLimit).toBe(2);
+    expect(hydratedMinuteView({ bidPeakVisibleMaxRankLimit: 0 }).bidPeakVisibleMaxRankLimit).toBe(0);
+    expect(hydratedMinuteView({ bidPeakVisibleMaxRankLimit: 3 }).bidPeakVisibleMaxRankLimit).toBe(3);
+    expect(hydratedMinuteView({ bidPeakAllPriceRankLimit: 4 }).bidPeakAllPriceRankLimit)
       .toBe(DEFAULT_PREFS.bidPeakAllPriceRankLimit);
-    expect(mergePrefs({ bidPeakVisibleMaxRankLimit: 4 }).bidPeakVisibleMaxRankLimit)
+    expect(hydratedMinuteView({ bidPeakVisibleMaxRankLimit: 4 }).bidPeakVisibleMaxRankLimit)
       .toBe(DEFAULT_PREFS.bidPeakVisibleMaxRankLimit);
   });
 
@@ -265,26 +279,26 @@ describe('ask peak all-price toggle', () => {
   });
 
   it('persists valid ask/bid untraded rank limits 1..3', () => {
-    expect(mergePrefs({ askPeakUntradedRankLimit: 1 }).askPeakUntradedRankLimit).toBe(1);
-    expect(mergePrefs({ askPeakUntradedRankLimit: 2 }).askPeakUntradedRankLimit).toBe(2);
-    expect(mergePrefs({ askPeakUntradedRankLimit: 3 }).askPeakUntradedRankLimit).toBe(3);
-    expect(mergePrefs({ bidPeakUntradedRankLimit: 1 }).bidPeakUntradedRankLimit).toBe(1);
-    expect(mergePrefs({ bidPeakUntradedRankLimit: 2 }).bidPeakUntradedRankLimit).toBe(2);
-    expect(mergePrefs({ bidPeakUntradedRankLimit: 3 }).bidPeakUntradedRankLimit).toBe(3);
+    expect(hydratedMinuteView({ askPeakUntradedRankLimit: 1 }).askPeakUntradedRankLimit).toBe(1);
+    expect(hydratedMinuteView({ askPeakUntradedRankLimit: 2 }).askPeakUntradedRankLimit).toBe(2);
+    expect(hydratedMinuteView({ askPeakUntradedRankLimit: 3 }).askPeakUntradedRankLimit).toBe(3);
+    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: 1 }).bidPeakUntradedRankLimit).toBe(1);
+    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: 2 }).bidPeakUntradedRankLimit).toBe(2);
+    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: 3 }).bidPeakUntradedRankLimit).toBe(3);
   });
 
   it('falls back to defaults for invalid untraded rank limit values', () => {
-    expect(mergePrefs({ askPeakUntradedRankLimit: 0 }).askPeakUntradedRankLimit)
+    expect(hydratedMinuteView({ askPeakUntradedRankLimit: 0 }).askPeakUntradedRankLimit)
       .toBe(DEFAULT_PREFS.askPeakUntradedRankLimit);
-    expect(mergePrefs({ askPeakUntradedRankLimit: 4 }).askPeakUntradedRankLimit)
+    expect(hydratedMinuteView({ askPeakUntradedRankLimit: 4 }).askPeakUntradedRankLimit)
       .toBe(DEFAULT_PREFS.askPeakUntradedRankLimit);
-    expect(mergePrefs({ askPeakUntradedRankLimit: '2' as never }).askPeakUntradedRankLimit)
+    expect(hydratedMinuteView({ askPeakUntradedRankLimit: '2' as never }).askPeakUntradedRankLimit)
       .toBe(DEFAULT_PREFS.askPeakUntradedRankLimit);
-    expect(mergePrefs({ bidPeakUntradedRankLimit: 0 }).bidPeakUntradedRankLimit)
+    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: 0 }).bidPeakUntradedRankLimit)
       .toBe(DEFAULT_PREFS.bidPeakUntradedRankLimit);
-    expect(mergePrefs({ bidPeakUntradedRankLimit: 4 }).bidPeakUntradedRankLimit)
+    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: 4 }).bidPeakUntradedRankLimit)
       .toBe(DEFAULT_PREFS.bidPeakUntradedRankLimit);
-    expect(mergePrefs({ bidPeakUntradedRankLimit: '2' as never }).bidPeakUntradedRankLimit)
+    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: '2' as never }).bidPeakUntradedRankLimit)
       .toBe(DEFAULT_PREFS.bidPeakUntradedRankLimit);
   });
 
@@ -339,11 +353,11 @@ describe('peak wall visible-time cutoff toggles', () => {
   });
 
   it('persists ask and bid cutoff toggles independently', () => {
-    const askOnly = mergePrefs({ askPeakVisibleTimeCutoff: true });
+    const askOnly = hydratedMinuteView({ askPeakVisibleTimeCutoff: true });
     expect(askOnly.askPeakVisibleTimeCutoff).toBe(true);
     expect(askOnly.bidPeakVisibleTimeCutoff).toBe(false);
 
-    const bidOnly = mergePrefs({ bidPeakVisibleTimeCutoff: true });
+    const bidOnly = hydratedMinuteView({ bidPeakVisibleTimeCutoff: true });
     expect(bidOnly.askPeakVisibleTimeCutoff).toBe(false);
     expect(bidOnly.bidPeakVisibleTimeCutoff).toBe(true);
   });
@@ -359,5 +373,93 @@ describe('bid peak toggles', () => {
     expect(allPrices?.default).toBe(true);
     expect(allPrices?.label).toBe('미체결 최대 매수벽 표시');
     expect(categoryOf(allPrices!)).toBe('indicator-modal');
+  });
+});
+
+describe('indicator-modal per-timeframe 버킷 (PR-B #699)', () => {
+  beforeEach(() => {
+    useChartPrefsStore.setState({
+      ...DEFAULT_PREFS,
+      indicatorModalByTimeframe: {},
+      indicatorModalTimeframe: '1m',
+    });
+  });
+
+  it('IM 키 쓰기는 ambient 봉 버킷에 기록되고 투영도 갱신된다', () => {
+    useChartPrefsStore.getState().setNumericPref('askPeakVisibleMaxRankLimit', 3);
+    useChartPrefsStore.getState().setToggle('askPeakIntraMax', true);
+    const s = useChartPrefsStore.getState();
+    expect(s.indicatorModalByTimeframe.minute).toMatchObject({
+      askPeakVisibleMaxRankLimit: 3,
+      askPeakIntraMax: true,
+    });
+    expect(s.askPeakVisibleMaxRankLimit).toBe(3);
+    expect(s.askPeakIntraMax).toBe(true);
+  });
+
+  it('차트 전반 키 쓰기는 flat 그대로 (버킷 미기록)', () => {
+    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false);
+    const s = useChartPrefsStore.getState();
+    expect(s.candleTooltipEnabled).toBe(false);
+    expect(s.indicatorModalByTimeframe.minute).toBeUndefined();
+  });
+
+  it('봉 전환 시 해당 버킷으로 재투영된다 (1m~30m은 minute 공유)', () => {
+    useChartPrefsStore.getState().setToggle('askPeakIntraMax', true); // minute
+    useChartPrefsStore.getState().setIndicatorModalTimeframe('D');
+    expect(useChartPrefsStore.getState().askPeakIntraMax).toBe(false); // D = 기본값
+    useChartPrefsStore.getState().setNumericPref('bidPeakUntradedRankLimit', 3); // D 버킷
+    useChartPrefsStore.getState().setIndicatorModalTimeframe('30m');
+    const s = useChartPrefsStore.getState();
+    expect(s.askPeakIntraMax).toBe(true);                 // minute 복원
+    expect(s.bidPeakUntradedRankLimit).toBe(1);           // D 오버라이드는 minute 에 없음
+    expect(s.indicatorModalByTimeframe.D?.bidPeakUntradedRankLimit).toBe(3);
+  });
+
+  it('resetIndicatorModalBucket 은 현재 봉 버킷만 비우고 차트 전반 flat 은 보존한다', () => {
+    useChartPrefsStore.getState().setToggle('askPeakIntraMax', true); // minute IM
+    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false); // 차트 전반 flat
+    useChartPrefsStore.getState().setIndicatorModalTimeframe('D');
+    useChartPrefsStore.getState().setToggle('bidPeakIntraMax', true); // D IM
+    useChartPrefsStore.getState().resetIndicatorModalBucket();        // D IM 버킷만
+    const s = useChartPrefsStore.getState();
+    expect(s.indicatorModalByTimeframe.D).toBeUndefined();
+    expect(s.indicatorModalByTimeframe.minute?.askPeakIntraMax).toBe(true);
+    expect(s.bidPeakIntraMax).toBe(false);          // D 투영 = 기본값
+    expect(s.candleTooltipEnabled).toBe(false);     // 차트 전반 flat 무손상
+  });
+
+  it('resetToDefaults 는 차트 전반 flat + 전 봉 버킷을 전부 비운다', () => {
+    useChartPrefsStore.getState().setToggle('askPeakIntraMax', true); // minute IM
+    useChartPrefsStore.getState().setIndicatorModalTimeframe('D');
+    useChartPrefsStore.getState().setToggle('bidPeakIntraMax', true); // D IM
+    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false); // 차트 전반
+    useChartPrefsStore.getState().resetToDefaults();
+    const s = useChartPrefsStore.getState();
+    expect(s.indicatorModalByTimeframe).toEqual({});
+    expect(s.candleTooltipEnabled).toBe(true);
+  });
+
+  it('저장 블롭에 indicatorModalByTimeframe 가 있으면 flat IM 값을 무시한다', () => {
+    const byTimeframe = mergeIndicatorModalByTimeframe({
+      askPeakIntraMax: true,                       // 구 flat — 무시돼야 함
+      indicatorModalByTimeframe: {
+        D: { bidPeakIntraMax: true, askPeakVisibleMaxRankLimit: 0 },
+        bogus: { askPeakIntraMax: true },          // unknown profile → drop
+      },
+    });
+    expect(byTimeframe).toEqual({
+      D: { bidPeakIntraMax: true, askPeakVisibleMaxRankLimit: 0 },
+    });
+  });
+
+  it('시드는 기본값과 다른 유효값만 minute 버킷에 남긴다', () => {
+    const byTimeframe = mergeIndicatorModalByTimeframe({
+      askPeakIntraMax: true,          // 기본 false 와 다름 → 시드
+      askPeakShowAllPrices: true,     // 기본 true 와 동일 → 탈락
+      surgeApproachPct: 999,          // 범위 밖 → 탈락
+      candleTooltipEnabled: false,    // IM 키 아님 → 무시
+    });
+    expect(byTimeframe).toEqual({ minute: { askPeakIntraMax: true } });
   });
 });

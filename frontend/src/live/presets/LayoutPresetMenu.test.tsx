@@ -27,13 +27,12 @@ vi.mock('./layoutPresetSnapshot', () => ({
 }));
 
 const preset = (id: string, name: string): LiveLayoutPreset => ({
-  schema_version: 1,
+  schema_version: 2,
   id,
   name,
   payload: {
     pane_order: [],
-    pane_prefs_by_timeframe: {},
-    indicator_flags: {},
+    by_timeframe_enable: {},
     right_panel_width_px: 400,
     right_card_order: [],
     right_card_hidden: {},

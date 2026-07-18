@@ -12,7 +12,7 @@ import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { STUDY_DETAIL_PANEL_RAIL_WIDTH_PX, useStudyLayoutStore } from '../state/studyLayout';
-import { isMinuteTimeframe, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
+import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { DoubleChevronIcon } from '../ui/ChevronIcon';
 import { StudyMemoPanel } from './StudyMemoPanel';
 import { StudyRepairedBadge } from './StudyRepairedBadge';
@@ -201,6 +201,12 @@ export function StudyPage() {
   const indicatorPanelTimeframe = activeViewModel.status === 'ready'
     ? activeViewModel.save.timeframe
     : activeTab?.timeframe ?? selectedTimeframe ?? '1m';
+  // /study 의 ambient 지표 봉 동기화(PR-A #699) — 활성 뷰의 timeframe 이 지표
+  // 설정의 조회 키다. 렌더 중인 차트와 지표 드로어가 같은 값을 쓰므로 이 하나로 충분.
+  const setIndicatorTimeframe = useLivePageStore((s) => s.setIndicatorTimeframe);
+  useEffect(() => {
+    setIndicatorTimeframe(indicatorPanelTimeframe);
+  }, [setIndicatorTimeframe, indicatorPanelTimeframe]);
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
   const overStudy = useEntryDragStore((s) => s.overStudy);
