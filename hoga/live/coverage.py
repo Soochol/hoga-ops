@@ -37,8 +37,6 @@ def partition_kiwoom(codes: list[str], n: int) -> list[list[str]]:
 def plan_storage_targets(
     capture_candidates: list[str],
     *,
-    n_configured: int = 0,
-    per_account_max: int | None = None,
     heatmap_candidates: tuple[str, ...] = (),
     kiwoom_capacity: int = 0,
 ) -> LiveStorageTargets:
@@ -53,9 +51,6 @@ def plan_storage_targets(
 
     **자격증명 부재**(capacity 0): 저장셋이 비어 아무것도 수집하지 않는다
     (fix-forward — KIS REST/WS 폴백 없음).
-
-    ``n_configured``/``per_account_max``는 삭제된 KIS WS 슬롯 산식의 잔재라 더는 쓰이지
-    않는다(호출부 호환을 위해 시그니처만 유지).
     """
     candidates = tuple(capture_candidates)
     candidate_set = set(candidates)

@@ -15,7 +15,6 @@ from typing import Protocol
 
 log = logging.getLogger(__name__)
 
-from . import kis_runtime
 from .coverage import (
     KIWOOM_PER_ACCOUNT_MAX,
     _compute_capture_candidates,
@@ -111,18 +110,14 @@ async def sync_storage_runtime(
     buffer: LiveBuffer,
     date_fn: Callable[[], str],
     now_ms_fn: Callable[[], int],
-    n_configured: int | None = None,
 ) -> StorageRuntimeSnapshot:
     """Load settings, plan targets, and sync the WS capture runtimes."""
     settings = load_live_settings(data_dir)
     bypass = settings.kis_rest_bypass_enabled
-    if n_configured is None:
-        n_configured = len(kis_runtime.configured_account_ids(data_dir))
     from . import kiwoom_runtime  # noqa: PLC0415
     n_kiwoom = len(kiwoom_runtime.configured_account_ids(data_dir))
     targets = plan_storage_targets(
         _compute_capture_candidates(data_dir),
-        n_configured=n_configured,
         heatmap_candidates=_compute_heatmap_codes(data_dir),
         kiwoom_capacity=KIWOOM_PER_ACCOUNT_MAX * n_kiwoom,
     )
