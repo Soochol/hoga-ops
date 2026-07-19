@@ -11,6 +11,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { WindowFrame } from './WindowFrame';
 import { ChartWindow } from './ChartWindow';
+import { DataWindow } from './DataWindow';
 import {
   computeMove,
   computeResize,
@@ -29,7 +30,6 @@ import {
   useWorkspaceStore,
   activeGroupOf,
   type GroupId,
-  type WindowKind,
   type WorkspaceWindow,
 } from '../../state/workspace';
 
@@ -51,16 +51,6 @@ interface DragState {
 }
 
 const PURE_EDGES: readonly Edge[] = ['e', 'w', 'n', 's'];
-
-function DummyBody({ kind, label }: { kind: WindowKind; label: string }) {
-  return (
-    <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dimmer">
-      <span className="font-mono">
-        {kind} · {label}
-      </span>
-    </div>
-  );
-}
 
 export function WorkspaceCanvas() {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -279,7 +269,7 @@ export function WorkspaceCanvas() {
             {w.kind === 'chart' ? (
               <ChartWindow win={w} symbol={symbol} />
             ) : (
-              <DummyBody kind={w.kind} label={symbol?.name ?? `그룹 ${w.group}`} />
+              <DataWindow win={w} symbol={symbol} />
             )}
           </WindowFrame>
         );

@@ -154,7 +154,14 @@ PR-C 는 실제 `/live` UX 를 바꾸는 대규모 작업이라 증분으로 착
   한계**: LiveChartRoot 의 pane 렌더(어느 지표 pane·paneOrder)와 드로잉 `activeTool`(전역)은 아직
   전역 스토어 직독(#709 cut #7 부류, 후속 PR) — 데이터 페치는 창별이나 pane 표시·활성 도구는 전역
   공유. code-review 결함 0(Provider 경계·prop 매핑·훅 안전·다중 인스턴스·investorNet 5축 통과).
-- **C2c — `/live` 플립 (예정)**: `LiveWorkarea` → 워크스페이스, 상세 패널 폐지, `paneIndicators`
+- **C2c-1 — 데이터 창 실 콘텐츠 (✅)**: `frontend/src/live/workspace/DataWindow.tsx` — 비차트 창에
+  실제 사이드바 카드를 **LATEST 모드**로 렌더. kind 별 하위 컴포넌트(조건부 훅 회피): `BookWindow`
+  (useLiveSeries→OrderbookTable+TotalQtyBar)·`BrokerWindow`(useLiveSeries→BrokerTrajectoryTable)·
+  `InvestorWindow`(useLiveInvestorTrendEstimate→InvestorTrendEstimateCard). 크로스윈도우 커서(hover
+  스팟)는 PR-D. 프로그램·매물대는 번들(timeframe) 종속이라 차트 창 연동(PR-D) 후 — C2c-1 은 안내 카드.
+  검증: `/workspace-preview` 도그푸딩 — 호가/거래원 실 카드(빈 백엔드라 빈 상태 우아 처리)·잠정투자자
+  실 데이터 렌더, 크래시 0·전체 3902 green.
+- **C2c-2 — `/live` 플립 (예정)**: `LiveWorkarea` → 워크스페이스, 상세 패널 폐지, `paneIndicators`
   → `useWindowIndicators` 이관, cut #7(LiveChartRoot pane 렌더 창별화), LivePage 를 얇은 셸로.
 
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
