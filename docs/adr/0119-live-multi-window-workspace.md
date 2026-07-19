@@ -93,7 +93,7 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 |---|---|---|
 | **A** | 스냅 엔진 + `WorkspaceCanvas`/`WindowFrame` + `live.workspace.v1` 스토어(더미 콘텐츠) + 본 ADR | ✅ 착지 |
 | **B** | `WindowViewContext` 신설, 데이터 페치 경로 전역 직독 교체(기능 무변경). context 기본값 = 기존 전역 동작 → `/study` 무변경 보장 | ✅ 착지 |
-| **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | 예정 |
+| **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | 🚧 증분 진행 (C1 마이그레이션 시드 ✅ · 렌더 컷오버 예정) |
 | **D** | 링크 그룹 — groupSymbols·뱃지 팔레트·드래그&드롭·크로스헤어 버스·활성 그룹 전역 배선·WS venue 전송 | 예정 |
 | **E** | 프리셋 v3 + 성능 마감(비포커스 창 스로틀·스냅존·Tidy·단축키) | 예정 |
 
@@ -122,6 +122,23 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
   원본(`livePage.ts` indicatorTimeframe) 교체는 모델 변경이라 #712/PR-C · 저장뷰 소스는 PR-C/D.
 - 검증: windowView 훅 단위 테스트(Provider→창값 · 폴백→전역) · useLiveBundle 기존 테스트
   전량 green(무변경 확인) · 전체 3891 green · `/live`·`/study` 도그푸딩 무변경.
+
+### PR-C 착지 범위 (증분)
+
+PR-C 는 실제 `/live` UX 를 바꾸는 대규모 작업이라 증분으로 착지한다.
+
+- **C1 — 마이그레이션 시드 (✅)**: `frontend/src/state/workspaceMigration.ts` — 레거시 키
+  (`live.page.v1`·`live.indicators.v2`·`live.layout.v1`)에서 초기 `live.workspace.v1` 을 1회
+  시드하는 **순수 함수**(`buildWorkspaceSeed`) + 얇은 localStorage 래퍼. `workspace.ts` 하이드
+  레이션이 `live.workspace.v1` 부재 시 호출(없으면 공장 기본). 매핑: page.candleTimeframe →
+  첫 차트 창 봉 · activeInstrument(주식) → 그룹 1 종목 · indicators.v2 → 첫 차트 창 지표 ·
+  layout 카드 순서·숨김 → 데이터 창(숨김 제외, 순서 보존). 워크스페이스 스토어는
+  `/workspace-preview`(DEV lazy)에서만 로드되므로 `/live`·`/study` 영향 0. 순수 시드 9케이스 +
+  스토어 통합 2케이스 TDD, `/browse` 도그푸딩(레거시 시드 → 창·종목·순서·숨김 확인).
+- **C2 — 렌더 컷오버 (예정)**: `LiveWorkarea` → 워크스페이스로 교체. `ChartWindow` 추출
+  (창별 useLiveSeries/useLiveBundle + `WindowViewContext.Provider`), 데이터 창 실 콘텐츠,
+  상세 패널 폐지, `paneIndicators`(LivePage) → `useWindowIndicators` 이관, instrument 를
+  group→종목으로 운반. 여기서 시맨틱이 처음 활성화된다.
 
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
 포함(#710) — 드래그 중 라이브 리사이즈가 프레임 저하 없이 동작(프로토타입 12창·6인스턴스 확인).

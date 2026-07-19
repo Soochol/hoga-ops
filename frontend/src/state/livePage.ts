@@ -109,6 +109,8 @@ export function bucketSeconds(tf: LiveTimeframe): number | null {
 }
 
 const STORAGE_KEY = 'live.page.v1';
+/** 공개 키 상수 — 워크스페이스 마이그레이션(ADR-0119 PR-C)이 레거시 시드로 읽는다. */
+export const LIVE_PAGE_STORAGE_KEY = STORAGE_KEY;
 
 type Persisted = {
   activeInstrument: LiveInstrument | null;

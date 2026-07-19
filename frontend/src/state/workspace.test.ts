@@ -197,3 +197,40 @@ describe('손상된 저장값 방어(관대한 per-entry 검증)', () => {
     expect(s.windows[0].kind).toBe('chart');
   });
 });
+
+describe('레거시 마이그레이션 하이드레이션(#713, PR-C)', () => {
+  it('live.workspace.v1 부재 + 레거시 키 존재 → 마이그레이션 시드로 하이드레이션한다', async () => {
+    localStorage.clear();
+    // live.workspace.v1 는 없고, 레거시 단일 뷰 상태만 존재.
+    localStorage.setItem(
+      'live.page.v1',
+      JSON.stringify({ candleTimeframe: 'D', activeInstrument: { kind: 'stock', code: '000660', label: 'SK하이닉스' }, activeCode: '000660' }),
+    );
+    localStorage.setItem(
+      'live.layout.v1',
+      JSON.stringify({
+        rightCardOrder: ['brokers', 'orderbook'],
+        // 나머지 3종은 숨김 → 순서 보존 + 숨김 제외를 함께 검증.
+        rightCardHidden: { volumeDistribution: true, program: true, investor: true },
+      }),
+    );
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const s = mod.useWorkspaceStore.getState();
+    const chart = s.windows.find((w) => w.kind === 'chart')!;
+    expect(chart.chart?.timeframe).toBe('D'); // 레거시 봉 계승
+    expect(s.groupSymbols[1]).toEqual({ code: '000660', name: 'SK하이닉스' });
+    // 레거시 카드 순서 보존 → brokers(broker), orderbook(book); 나머지 숨김 → 제외
+    const dataKinds = s.windows.filter((w) => w.kind !== 'chart').map((w) => w.kind);
+    expect(dataKinds).toEqual(['broker', 'book']);
+  });
+
+  it('레거시 키도 없으면 공장 기본 레이아웃', async () => {
+    localStorage.clear();
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const s = mod.useWorkspaceStore.getState();
+    expect(s.windows.length).toBe(3); // defaultWindows
+    expect(s.groupSymbols[1]).toBeUndefined();
+  });
+});

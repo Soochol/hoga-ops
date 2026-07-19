@@ -4,6 +4,7 @@ import { normalizeIndicatorsV2, type PersistedIndicatorsV2 } from './indicatorSe
 import { LIVE_TIMEFRAMES, type LiveTimeframe } from './livePage';
 import { tidyLayout } from '../live/workspace/tidy';
 import { MIN_W, MIN_H, type Canvas, type Rect } from '../live/workspace/snapEngine';
+import { readLegacyWorkspaceSeed } from './workspaceMigration';
 
 /**
  * `/live` 멀티창 워크스페이스 상태 (ADR-0119, 스펙 #715).
@@ -172,6 +173,10 @@ function readStorage(): Persisted {
   const parsed = readJsonObject(WORKSPACE_STORAGE_KEY);
   const rawWindows = Array.isArray(parsed.windows) ? parsed.windows : null;
   if (!rawWindows) {
+    // live.workspace.v1 없음 → 레거시 키(live.page/indicators/layout.v1)에서 1회 시드
+    // (ADR-0119 PR-C, #713). 마이그레이션할 상태도 없으면 공장 기본 레이아웃.
+    const seeded = readLegacyWorkspaceSeed(newWindowId);
+    if (seeded) return seeded;
     const windows = defaultWindows();
     return { windows, zOrder: windows.map((w) => w.id), groupSymbols: {} };
   }
