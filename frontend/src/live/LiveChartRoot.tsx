@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   createChartEx,
   TickMarkType,
@@ -27,6 +27,7 @@ import {
   isCalendarTimeframe,
 } from '../state/livePage';
 import {
+  WindowViewContext,
   useHistoricalRangeActions,
   useIndicatorActions,
   useWindowIndicator,
@@ -50,7 +51,7 @@ import {
   type TabViewport,
 } from './viewportAnchor';
 import { useWheelInteractions } from './useWheelInteractions';
-import { useLiveCursorStore } from './useLiveCursorStore';
+import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
 import {
   alignSidebarCursorMs,
   shouldPublishSidebarCursor,
@@ -514,6 +515,20 @@ export function LiveChartRoot({
   candleMsRef.current = candleMs;
   const bucketMsRef = useRef<number>(cb?.bucket_ms ?? 0);
   bucketMsRef.current = cb?.bucket_ms ?? 0;
+  // 크로스헤어 버스 origin (ADR-0119 PR-D) — 이 차트의 (창 id·그룹·code·봉)을
+  // sidebarCursorMs 와 함께 발행해 같은 그룹 데이터 창만 스팟 모드로 전환한다.
+  // Provider 밖(/study·단일 뷰)은 windowId/group null. ref 는 effect 에서 갱신 —
+  // 호버(발행)는 paint 이후의 사용자 이벤트라 effect 타이밍으로 충분히 신선하고,
+  // publish 콜백(useCallback [])이 호출 시점 최신 값을 읽는다.
+  const winCtx = useContext(WindowViewContext);
+  const winCtxWindowId = winCtx?.windowId ?? null;
+  const winCtxGroup = winCtx?.group ?? null;
+  const cursorOriginRef = useRef<SidebarCursorOrigin>({
+    windowId: winCtxWindowId, group: winCtxGroup, code, timeframe,
+  });
+  useEffect(() => {
+    cursorOriginRef.current = { windowId: winCtxWindowId, group: winCtxGroup, code, timeframe };
+  }, [winCtxWindowId, winCtxGroup, code, timeframe]);
   const publishedCursorMsRef = useRef<number | null>(null);
   const publishedBasisDateRef = useRef<string | null>(null);
   const publishedCursorActiveRef = useRef<boolean | null>(null);
@@ -550,7 +565,7 @@ export function LiveChartRoot({
       const current = useLiveCursorStore.getState().sidebarCursorMs;
       if (shouldPublishSidebarCursor(current, next)) {
         sidebarCursorLastPublishAtRef.current = performance.now();
-        useLiveCursorStore.getState().setSidebarCursor(next);
+        useLiveCursorStore.getState().setSidebarCursor(next, cursorOriginRef.current);
       }
     };
     const delay = sidebarCursorPublishDelayMs(

@@ -94,7 +94,7 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 | **A** | 스냅 엔진 + `WorkspaceCanvas`/`WindowFrame` + `live.workspace.v1` 스토어(더미 콘텐츠) + 본 ADR | ✅ 착지 |
 | **B** | `WindowViewContext` 신설, 데이터 페치 경로 전역 직독 교체(기능 무변경). context 기본값 = 기존 전역 동작 → `/study` 무변경 보장 | ✅ 착지 |
 | **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | ✅ 착지 (C1~C2c-2e — `/live` 플립 완료) |
-| **D** | 링크 그룹 — groupSymbols·뱃지 팔레트·드래그&드롭·크로스헤어 버스·활성 그룹 전역 배선·WS venue 전송 | 예정 |
+| **D** | 링크 그룹 — groupSymbols·뱃지 팔레트·드래그&드롭·크로스헤어 버스·활성 그룹 전역 배선·WS venue 전송 | 부분 착지 (D1 — 크로스헤어 버스·데이터 창 차트 연동) |
 | **E** | 프리셋 v3 + 성능 마감(비포커스 창 스로틀·스냅존·Tidy·단축키) | 예정 |
 
 ### PR-A 착지 범위
@@ -176,6 +176,39 @@ PR-C 는 실제 `/live` UX 를 바꾸는 대규모 작업이라 증분으로 착
   추적, Shift+숫자=포커스 창, 프리셋 v2=포커스 창 적용, 시드 즉시 persist, `/workspace-preview`
   제거. **2e** — 상세패널 계열 데드코드 삭제(별도 커밋). 설정 드로어·chartPrefs·venue 는 전역
   유지.
+
+### PR-D1 착지 범위 — 크로스헤어 버스 + 데이터 창 차트 연동 (2026-07-20)
+
+플립 직후 데이터 창 4종(10호가·거래원·매물대·프로그램)이 빈 화면이던 공백의 해소.
+(장 마감 + 백엔드 재시작 = 인메모리 버퍼 빈 상태에서 LATEST 모드만으로는 아무것도
+보이지 않았다 — 레거시 사이드바의 hover 스팟·번들 카드 동등성 복원.)
+
+- **크로스헤어 버스**: `useLiveCursorStore` 에 `sidebarCursorOrigin`(발행 차트의
+  창 id·그룹·code·봉) 추가 — `sidebarCursorMs` 와 원자적으로 발행/해제.
+  LiveChartRoot 가 Provider 컨텍스트(`WindowViewContext`)에서 origin 을 읽어 태깅
+  발행한다(Provider 밖 `/study` 는 group null → 기존 소비자 무변경). 데이터 창은
+  **origin.group === 자기 그룹**일 때만 스팟 모드로 전환.
+- **그룹 차트 링크 채널**(`groupChartLinkSource.ts`, liveWindowStatusSource 패턴의
+  per-group 판): 그룹의 대상 차트 창(`groupTargetChartWindow` = 그룹 내 z-최상위
+  차트)이 (bundle·timeframe·todayKst·매물대 설정)을 발행, 같은 그룹 데이터 창이
+  구독. 발행 구독은 데이터 창 리프에 격리(#706 함정 — 셸 구독=재렌더 루프).
+- **sidecar 수요 주입**: 매물대·프로그램 데이터 창이 열려 있으면 링크 발행 차트
+  창의 `useLiveBundle` 이 `sidecarDemands` 옵션으로 해당 sidecar(fetch)를 지표
+  토글과 무관하게 켠다 — **pane 표시는 지표 토글만 따르고 fetch 만 확장**(공장
+  기본 OFF 인 매물대/프로그램 지표 때문에 데이터 창이 영구 빈 상태가 되는 결함
+  차단). 수요는 발행 창만 실어 중복 fetch 가 없다.
+- **DataWindow 실 콘텐츠**: `VdistWindow`(레거시 LiveSidebar 매물대 조합 이식 —
+  활성 날짜 선정·오늘 증분 fold·호버 컷오프·종가 라인) · `ProgramWindow`
+  (`bundle.program_trade`) 신설. `BookWindow`/`BrokerWindow` 에 그룹 게이트 스팟
+  모드(파케이 스팟 훅 + WS 버퍼 폴백 + "다음 가용" 힌트) — 장 마감 중에도 분봉
+  캔들 호버로 해당 버킷 호가·거래원 표시. 링크 부재 시 연동 대기 카드.
+- 검증: tsc 클린 · vitest 3896 green(신규 15: 링크 채널 3·selector 2·커서 origin
+  3·DataWindow 7) · build 클린 · `/browse` 도그푸딩(스팟 fetch 발화·카드 실데이터·
+  커서 이탈 latest 복귀·`/study` 콘솔 에러 0).
+
+**PR-D 잔여**: 관심종목/스크리너 → 창 드래그&드롭 종목 교체 · 같은 그룹 차트 창 간
+크로스헤어 시간 미러(lwc `setCrosshairPosition`) · WS venue 전송 · 매물대 스팟
+동시호가 마스크(`useAuctionMaskActive` — 데이터 창은 현재 maskRatio=false 고정).
 
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
 포함(#710) — 드래그 중 라이브 리사이즈가 프레임 저하 없이 동작(프로토타입 12창·6인스턴스 확인).

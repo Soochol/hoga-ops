@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   useWorkspaceStore,
   activeGroupOf,
+  groupTargetChartWindow,
   WORKSPACE_STORAGE_KEY,
   type WorkspaceWindow,
 } from './workspace';
@@ -30,6 +31,20 @@ describe('activeGroupOf', () => {
   });
   it('창이 없으면 그룹 1', () => {
     expect(activeGroupOf({ windows: [], zOrder: [] })).toBe(1);
+  });
+});
+
+describe('groupTargetChartWindow (ADR-0119 PR-D 그룹 링크 발행자 선정)', () => {
+  it('그룹의 z-최상위 차트 창을 반환한다 — 다른 그룹·데이터 창은 건너뛴다', () => {
+    const windows = [chart('a', 1), chart('b', 2), chart('c', 1), book('d', 1)];
+    // z순서: a < b < c < d — 그룹 1 의 최상위 차트는 c (d 는 데이터 창).
+    expect(groupTargetChartWindow(windows, ['a', 'b', 'c', 'd'], 1)?.id).toBe('c');
+    expect(groupTargetChartWindow(windows, ['a', 'b', 'c', 'd'], 2)?.id).toBe('b');
+  });
+  it('그룹에 차트 창이 없으면 null', () => {
+    const windows = [chart('a', 1), book('d', 2)];
+    expect(groupTargetChartWindow(windows, ['a', 'd'], 2)).toBeNull();
+    expect(groupTargetChartWindow([], [], 1)).toBeNull();
   });
 });
 
