@@ -263,7 +263,13 @@ export function WorkspaceCanvas() {
             onHandleDown={onHandleDown}
             onFocus={focusWindow}
             onClose={closeWindow}
-            onTogglePalette={(id) => setPalette((p) => (p === id ? null : id))}
+            onTogglePalette={(id) => {
+              // 팔레트를 여는 창을 최상단으로 올린다 — 각 창이 contain:paint 로 자체
+              // 스택 컨텍스트라, 창을 raise 하지 않으면 겹친 상위 창이 팔레트를 가린다.
+              // (뱃지 onPointerDown stopPropagation 이 루트 onFocus 를 막으므로 여기서 명시.)
+              focusWindow(id);
+              setPalette((p) => (p === id ? null : id));
+            }}
             onPickGroup={(id, g) => {
               setWindowGroup(id, g);
               setPalette(null);

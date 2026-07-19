@@ -241,10 +241,11 @@ export const useWorkspaceStore = create<Store>((set) => ({
         rect: { x: off, y: off, ...size },
       };
       if (kind === 'chart') {
-        // 포커스 차트 창 복제(#712) — 없으면 공장 기본.
+        // 포커스 차트 창 복제(#712) — 없으면 공장 기본. indicators 는 normalize 로
+        // 신선한 사본을 만든다(참조 공유 금지 — 창은 설정을 독립 소유, PR-C 편집 누출 방지).
         const src = focusedChart(state);
         win.chart = src?.chart
-          ? { timeframe: src.chart.timeframe, indicators: src.chart.indicators }
+          ? { timeframe: src.chart.timeframe, indicators: normalizeIndicatorsV2(src.chart.indicators) }
           : { timeframe: '1m', indicators: normalizeIndicatorsV2({}) };
       }
       const next = { windows: [...state.windows, win], zOrder: [...state.zOrder, id] };

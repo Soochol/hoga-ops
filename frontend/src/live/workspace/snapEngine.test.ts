@@ -98,6 +98,22 @@ describe('computeMove', () => {
     expect(r.x).toBe(305);
     expect(r.guides.v).toBeNull();
   });
+
+  it('Y축: 이웃 아랫변에 윗변을 인접 흡착한다(guides.h)', () => {
+    // x=400 은 이웃 후보에서 먼 곳 → X축 흡착 없음, Y축만 검증
+    const others: RectWin[] = [{ id: 'o', rect: { x: 0, y: 0, w: 200, h: 300 } }]; // 아랫변 y=300
+    const r = computeMove({
+      origin: { x: 400, y: 305, w: 150, h: 150 },
+      dx: 0,
+      dy: 0,
+      others,
+      canvas: CANVAS,
+      alt: false,
+    });
+    expect(r.y).toBe(300);
+    expect(r.guides.h).toBe(300);
+    expect(r.guides.v).toBeNull();
+  });
 });
 
 describe('detectFollowers', () => {
@@ -117,9 +133,111 @@ describe('detectFollowers', () => {
     expect(detectFollowers(dragged, 's', others)).toEqual(['south']);
   });
 
+  it('왼변(w)에 맞닿는 이웃(오른변이 dragged 왼변에 닿음)을 잡는다', () => {
+    const others: RectWin[] = [
+      { id: 'west', rect: { x: 0, y: 120, w: 100, h: 100 } }, // 오른변 x=100 = dragged 왼변
+      { id: 'noOverlap', rect: { x: 0, y: 500, w: 100, h: 40 } }, // 맞닿지만 세로 안 겹침
+    ];
+    expect(detectFollowers(dragged, 'w', others)).toEqual(['west']);
+  });
+
+  it('윗변(n)에 맞닿는 이웃(아랫변이 dragged 윗변에 닿음)을 잡는다', () => {
+    const others: RectWin[] = [{ id: 'north', rect: { x: 120, y: 0, w: 100, h: 100 } }]; // 아랫변 y=100 = dragged 윗변
+    expect(detectFollowers(dragged, 'n', others)).toEqual(['north']);
+  });
+
   it('맞닿지 않으면 빈 배열', () => {
     const others: RectWin[] = [{ id: 'gap', rect: { x: 310, y: 120, w: 100, h: 100 } }];
     expect(detectFollowers(dragged, 'e', others)).toEqual([]);
+  });
+});
+
+describe('computeResize — w/s/n 스플리터 승격 대칭', () => {
+  it('왼변(w) 드래그: 서쪽 이웃 오른변이 함께 이동', () => {
+    const origin: Rect = { x: 300, y: 100, w: 200, h: 200 }; // 왼변 x=300
+    const west: RectWin = { id: 'west', rect: { x: 0, y: 100, w: 300, h: 200 } }; // 오른변 x=300
+    const r = computeResize({
+      origin,
+      mode: 'w',
+      dx: -60, // 왼변을 왼쪽으로 → origin 넓어지고 west 줄어듦
+      dy: 0,
+      others: [west],
+      followers: [west],
+      canvas: CANVAS,
+      alt: true,
+    });
+    expect(r.rect.x).toBe(240);
+    expect(r.rect.w).toBe(260); // 500 - 240
+    expect(r.followers[0].rect.x).toBe(0);
+    expect(r.followers[0].rect.w).toBe(240); // 새 경계(240) - 0
+  });
+
+  it('아랫변(s) 드래그: 남쪽 이웃 윗변이 함께 이동', () => {
+    const origin: Rect = { x: 100, y: 100, w: 200, h: 200 }; // 아랫변 y=300
+    const south: RectWin = { id: 'south', rect: { x: 100, y: 300, w: 200, h: 300 } }; // 윗변 y=300
+    const r = computeResize({
+      origin,
+      mode: 's',
+      dx: 0,
+      dy: 60,
+      others: [south],
+      followers: [south],
+      canvas: CANVAS,
+      alt: true,
+    });
+    expect(r.rect.h).toBe(260);
+    expect(r.followers[0].rect.y).toBe(360);
+    expect(r.followers[0].rect.h).toBe(240); // 600 - 360
+  });
+
+  it('윗변(n) 드래그: 북쪽 이웃 아랫변이 함께 이동', () => {
+    const origin: Rect = { x: 100, y: 300, w: 200, h: 200 }; // 윗변 y=300
+    const north: RectWin = { id: 'north', rect: { x: 100, y: 0, w: 200, h: 300 } }; // 아랫변 y=300
+    const r = computeResize({
+      origin,
+      mode: 'n',
+      dx: 0,
+      dy: -60,
+      others: [north],
+      followers: [north],
+      canvas: CANVAS,
+      alt: true,
+    });
+    expect(r.rect.y).toBe(240);
+    expect(r.rect.h).toBe(260);
+    expect(r.followers[0].rect.h).toBe(240); // 새 경계(240) - 0
+  });
+
+  it('윗변(n) 단독 리사이즈는 MIN_H 아래로 안 내려간다', () => {
+    const origin: Rect = { x: 100, y: 300, w: 200, h: 200 };
+    const r = computeResize({
+      origin,
+      mode: 'n',
+      dx: 0,
+      dy: 1000, // 윗변을 아래로 과하게 → 높이 MIN_H 에서 멈춤
+      others: [],
+      followers: [],
+      canvas: CANVAS,
+      alt: true,
+    });
+    expect(r.rect.h).toBe(MIN_H);
+    expect(r.rect.y).toBe(origin.y + origin.h - MIN_H); // 아랫변 고정(500)
+  });
+
+  it('sub-MIN follower 는 드래그 창을 MIN 아래로 밀지 못한다(드래그 MIN 우선)', () => {
+    const origin: Rect = { x: 100, y: 100, w: 200, h: 200 }; // 오른변 300
+    const tiny: RectWin = { id: 'east', rect: { x: 300, y: 100, w: 100, h: 200 } }; // 폭 100 < MIN_W
+    const r = computeResize({
+      origin,
+      mode: 'e',
+      dx: -1000, // origin 을 최소로 줄이려 함
+      dy: 0,
+      others: [tiny],
+      followers: [tiny],
+      canvas: CANVAS,
+      alt: true,
+    });
+    expect(r.rect.w).toBe(MIN_W); // 밴드 역전 가드로 드래그 창은 MIN 유지
   });
 });
 

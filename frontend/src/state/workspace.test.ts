@@ -134,4 +134,66 @@ describe('손상된 저장값 방어(관대한 per-entry 검증)', () => {
     expect(s.groupSymbols[2]).toEqual({ code: '005930', name: '삼성전자' });
     expect(s.groupSymbols[99]).toBeUndefined(); // 범위 밖 그룹 드롭
   });
+
+  it('차트 창 하이드레이션: 손상 timeframe→1m, 지표 누락→정규화 사본', async () => {
+    localStorage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        windows: [{ id: 'c', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: 500, h: 400 }, chart: { timeframe: 'ZZZ' } }],
+        zOrder: ['c'],
+        groupSymbols: {},
+      }),
+    );
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const win = mod.useWorkspaceStore.getState().windows[0];
+    expect(win.chart?.timeframe).toBe('1m'); // 손상값 폴백
+    // 지표 누락 → normalizeIndicatorsV2 로 유효 구조 복원
+    expect(win.chart?.indicators).toBeTruthy();
+    expect(Array.isArray(win.chart?.indicators.paneOrder)).toBe(true);
+    expect(typeof win.chart?.indicators.byTimeframe).toBe('object');
+  });
+
+  it('readRect: 부분/비유한 rect 는 드롭, 미달 크기는 MIN 으로 클램프', async () => {
+    localStorage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        windows: [
+          { id: 'tiny', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 50, h: 30 } }, // MIN 미달 → 클램프
+          { id: 'partial', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 300 } }, // h 누락 → 드롭
+          { id: 'nonfinite', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 'x', h: 200 } }, // 비유한 → 드롭
+        ],
+        zOrder: ['tiny', 'partial', 'nonfinite'],
+        groupSymbols: {},
+      }),
+    );
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const s = mod.useWorkspaceStore.getState();
+    expect(s.windows.map((w) => w.id)).toEqual(['tiny']); // partial·nonfinite 드롭
+    expect(s.windows[0].rect.w).toBe(160); // MIN_W 클램프
+    expect(s.windows[0].rect.h).toBe(120); // MIN_H 클램프
+  });
+
+  it('모든 창이 손상되면 기본 레이아웃으로 폴백한다', async () => {
+    localStorage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({ windows: [{ bad: 1 }, { kind: 'nope' }], zOrder: [], groupSymbols: {} }),
+    );
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const s = mod.useWorkspaceStore.getState();
+    expect(s.windows.length).toBe(3); // defaultWindows: chart + book + broker
+    expect(s.windows[0].kind).toBe('chart');
+    expect(s.zOrder.length).toBe(3);
+  });
+
+  it('windows 가 배열이 아니면 기본 레이아웃으로 폴백한다', async () => {
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({ windows: 'foo', zOrder: [], groupSymbols: {} }));
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const s = mod.useWorkspaceStore.getState();
+    expect(s.windows.length).toBe(3);
+    expect(s.windows[0].kind).toBe('chart');
+  });
 });

@@ -113,6 +113,14 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
 포함(#710) — 드래그 중 라이브 리사이즈가 프레임 저하 없이 동작(프로토타입 12창·6인스턴스 확인).
 
+**리뷰 반영(2차, adversarial 13건 확정)**: tidyLayout MIN 플로어 + 열 수 폭-캡(정리가
+sub-MIN 겹침 타일을 영속화하는 결함 수정) · computeResize 밴드 역전 가드(sub-MIN follower 가
+드래그 창을 자기 MIN 아래로 밀지 못함) · 링크 팔레트 외부클릭/Escape 닫기(`useDismissablePopover`)
++ 팔레트 열 때 창 raise(contain:paint 스택 컨텍스트 occlusion 해소) · 프리뷰 라우트 lazy+DEV
+게이트(프로덕션 번들에서 워크스페이스 트리셰이크 확인) · 차트 창 복제 시 indicators 신선 사본
+(참조 공유 금지) · w/s/n follower·detectFollowers w/n·mode n·Y축 흡착·차트 하이드레이션 등
+커버리지 공백 테스트 보강(39→53 케이스).
+
 ## Consequences
 
 - 되돌리기 비용: PR-A는 순수 additive(기존 배선 무변경, 전체 테스트 그린) — 스캐폴딩이라

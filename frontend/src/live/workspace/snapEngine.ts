@@ -242,11 +242,15 @@ export function computeResize(args: {
     return { val, guide: val === s.val ? s.guide : null };
   };
 
+  // 밴드[lo,hi]가 역전되면(sub-MIN follower 가 드래그 변을 드래그 창 자신의 MIN
+  // 아래로 밀려는 경우) 드래그 창 MIN 을 우선한다 — follower 는 이미 MIN 위반 상태라
+  // 더 짜부되더라도 드래그 창은 hard MIN 을 지킨다.
   if (hasE) {
     let hi = canvas.w;
     const cap = reduce((f) => f.x + f.w - MIN_W, 'min');
     if (cap !== null) hi = Math.min(hi, cap);
     const lo = origin.x + MIN_W;
+    hi = Math.max(hi, lo);
     const s = snapClamped(Math.max(lo, Math.min(origin.x + origin.w + dx, hi)), xCands, lo, hi);
     w = s.val - x;
     gv = s.guide;
@@ -257,6 +261,7 @@ export function computeResize(args: {
     const cap = reduce((f) => f.x + MIN_W, 'max');
     if (cap !== null) lo = Math.max(lo, cap);
     const hi = origin.x + origin.w - MIN_W;
+    lo = Math.min(lo, hi);
     const s = snapClamped(Math.min(hi, Math.max(origin.x + dx, lo)), xCands, lo, hi);
     w = origin.x + origin.w - s.val;
     x = s.val;
@@ -268,6 +273,7 @@ export function computeResize(args: {
     const cap = reduce((f) => f.y + f.h - MIN_H, 'min');
     if (cap !== null) hi = Math.min(hi, cap);
     const lo = origin.y + MIN_H;
+    hi = Math.max(hi, lo);
     const s = snapClamped(Math.max(lo, Math.min(origin.y + origin.h + dy, hi)), yCands, lo, hi);
     h = s.val - y;
     gh = s.guide;
@@ -278,6 +284,7 @@ export function computeResize(args: {
     const cap = reduce((f) => f.y + MIN_H, 'max');
     if (cap !== null) lo = Math.max(lo, cap);
     const hi = origin.y + origin.h - MIN_H;
+    lo = Math.min(lo, hi);
     const s = snapClamped(Math.min(hi, Math.max(origin.y + dy, lo)), yCands, lo, hi);
     h = origin.y + origin.h - s.val;
     y = s.val;

@@ -5,9 +5,10 @@
  * 링크 그룹 팔레트를 렌더한다. 포인터 로직은 `WorkspaceCanvas` 가 소유하고, 이
  * 컴포넌트는 `onHandleDown(mode)` 로 위임하는 프레젠테이션 껍데기다.
  */
-import { memo } from 'react';
+import { memo, useRef } from 'react';
 import type { ResizeMode } from './snapEngine';
 import { MIN_GROUP, MAX_GROUP, type GroupId, type WindowKind } from '../../state/workspace';
+import { useDismissablePopover } from '../../util/useDismissablePopover';
 
 const KIND_LABEL: Record<WindowKind, string> = {
   chart: '차트',
@@ -78,6 +79,12 @@ function WindowFrameImpl(props: WindowFrameProps) {
 
   const title = symbolLabel ?? `그룹 ${group}`;
 
+  // 팔레트 트리거(뱃지)+본체를 한 앵커로 감싸 외부 클릭·Escape 로 닫는다(DESIGN
+  // 팝오버 계약, hand-rolled useEffect 금지). 앵커 내부(뱃지·팔레트) 클릭은 무시돼
+  // 그룹 선택·토글이 dismiss 와 경합하지 않는다.
+  const paletteAnchorRef = useRef<HTMLDivElement>(null);
+  useDismissablePopover(paletteOpen, paletteAnchorRef, () => onTogglePalette(id));
+
   return (
     <div
       data-win={id}
@@ -100,14 +107,36 @@ function WindowFrameImpl(props: WindowFrameProps) {
         onPointerDown={(e) => onHandleDown(e, id, 'move')}
       >
         <span className="select-none text-[11px] leading-none text-fg-dimmer">⠿</span>
-        <button
-          className="inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-sm bg-tint-selection font-mono text-[10px] font-semibold text-accent hover:brightness-125"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => onTogglePalette(id)}
-          title="링크 그룹 변경"
-        >
-          {group}
-        </button>
+        <div ref={paletteAnchorRef} className="relative shrink-0">
+          <button
+            className="inline-flex h-[16px] w-[16px] items-center justify-center rounded-sm bg-tint-selection font-mono text-[10px] font-semibold text-accent hover:brightness-125"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => onTogglePalette(id)}
+            title="링크 그룹 변경"
+          >
+            {group}
+          </button>
+          {paletteOpen && (
+            <div
+              className="absolute left-0 top-[20px] z-50 grid grid-cols-5 gap-0.5 rounded-md border border-border bg-bg-subtle p-1 shadow-overlay"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {GROUP_IDS.map((g) => (
+                <button
+                  key={g}
+                  className={`h-[20px] w-[20px] rounded-sm font-mono text-[10px] font-semibold ${
+                    g === group
+                      ? 'bg-accent text-accent-fg'
+                      : 'bg-bg-input text-fg-dim hover:bg-tint-selection hover:text-accent'
+                  }`}
+                  onClick={() => onPickGroup(id, g)}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <span className="truncate text-[12px] font-medium text-fg">
           {kind === 'chart' ? title : `${KIND_LABEL[kind]} · ${title}`}
         </span>
@@ -121,27 +150,6 @@ function WindowFrameImpl(props: WindowFrameProps) {
           ×
         </button>
       </div>
-
-      {paletteOpen && (
-        <div
-          className="absolute left-5 top-[26px] z-50 grid grid-cols-5 gap-0.5 rounded-md border border-border bg-bg-subtle p-1 shadow-overlay"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          {GROUP_IDS.map((g) => (
-            <button
-              key={g}
-              className={`h-[20px] w-[20px] rounded-sm font-mono text-[10px] font-semibold ${
-                g === group
-                  ? 'bg-accent text-accent-fg'
-                  : 'bg-bg-input text-fg-dim hover:bg-tint-selection hover:text-accent'
-              }`}
-              onClick={() => onPickGroup(id, g)}
-            >
-              {g}
-            </button>
-          ))}
-        </div>
-      )}
 
       <div className="min-h-0 flex-1 overflow-hidden rounded-b-lg">{children}</div>
 
