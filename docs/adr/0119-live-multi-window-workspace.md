@@ -151,8 +151,9 @@ PR-C 는 실제 `/live` UX 를 바꾸는 대규모 작업이라 증분으로 착
   창에 배선(데이터 창은 아직 더미). 검증: `/workspace-preview` 도그푸딩 — 실 삼성전자 차트(캔들·MA·
   거래량·드로잉 레일·peaks) 렌더, **차트 창 2개 = LiveChartRoot 2인스턴스·24 캔버스 독립 공존**
   (다중 인스턴스 핵심 미지수 해소), JS 에러 0(hook·infinite-loop 없음)·전체 3902 green. **알려진
-  한계**: LiveChartRoot 의 pane 렌더(어느 지표 pane·paneOrder)는 아직 전역 스토어 직독(#709 cut #7,
-  후속 PR) — 데이터 페치는 창별이나 pane 표시는 전역 공유.
+  한계**: LiveChartRoot 의 pane 렌더(어느 지표 pane·paneOrder)와 드로잉 `activeTool`(전역)은 아직
+  전역 스토어 직독(#709 cut #7 부류, 후속 PR) — 데이터 페치는 창별이나 pane 표시·활성 도구는 전역
+  공유. code-review 결함 0(Provider 경계·prop 매핑·훅 안전·다중 인스턴스·investorNet 5축 통과).
 - **C2c — `/live` 플립 (예정)**: `LiveWorkarea` → 워크스페이스, 상세 패널 폐지, `paneIndicators`
   → `useWindowIndicators` 이관, cut #7(LiveChartRoot pane 렌더 창별화), LivePage 를 얇은 셸로.
 
