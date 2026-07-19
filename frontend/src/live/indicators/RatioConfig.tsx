@@ -2,17 +2,17 @@ import SignColorLegend from './SignColorLegend';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import ToggleRow from '../settings/ToggleRow';
 import MAStylePicker from './MAStylePicker';
-import { useLivePageStore } from '../../state/livePage';
+import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 /** 호가비 상세 — 매수/매도 우위 범례 + 현재값 수평선 + 극단값 필터 설정.
  *  값이 양수면 매도 우위(파랑), 음수면 매수 우위(빨강)이나 범례는 색→의미로 표기. */
 export default function RatioConfig() {
-  const levelEnabled = useLivePageStore((s) => s.ratioLevelLineEnabled);
-  const setLevelEnabled = useLivePageStore((s) => s.setRatioLevelLineEnabled);
-  const color = useLivePageStore((s) => s.ratioLevelColor);
-  const width = useLivePageStore((s) => s.ratioLevelWidth);
-  const style = useLivePageStore((s) => s.ratioLevelStyle);
-  const setStyle = useLivePageStore((s) => s.setRatioLevelStyle);
+  const levelEnabled = useWindowIndicator((s) => s.ratioLevelLineEnabled);
+  const setLevelEnabled = useIndicatorActions().setRatioLevelLineEnabled;
+  const color = useWindowIndicator((s) => s.ratioLevelColor);
+  const width = useWindowIndicator((s) => s.ratioLevelWidth);
+  const style = useWindowIndicator((s) => s.ratioLevelStyle);
+  const setStyle = useIndicatorActions().setRatioLevelStyle;
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">

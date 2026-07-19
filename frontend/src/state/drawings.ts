@@ -76,7 +76,10 @@ type State = {
   loadedCodes: Set<string>;
   activeCode: string | null;
   activeTool: DrawingTool;
-  selectedId: DrawingId | null;
+  /** 선택된 드로잉 — 종목(code)별(ADR-0119 C2c-2b 후속). 드로잉은 종목 귀속
+   *  (#712)이라 선택도 종목별이어야 다른 종목 창끼리 선택이 경합하지 않는다
+   *  (같은 종목 창끼리는 선택 공유 = 드로잉 공유와 정합). */
+  selectedByCode: Map<string, DrawingId | null>;
   defaults: DrawingDefaults;
   clearToast: ClearToast;
 };
@@ -84,22 +87,28 @@ type State = {
 type Actions = {
   setActiveCode(code: string | null): void;
   setActiveTool(tool: DrawingTool): void;
-  setSelected(id: DrawingId | null): void;
+  setSelected(code: string, id: DrawingId | null): void;
+  /** 종목의 현재 선택 — 비반응형 조회(소비자 렌더는 selectedByCode selector 직독). */
+  selectedFor(code: string): DrawingId | null;
   drawingsFor(code: string): Drawing[];
-  add(d: Drawing): void;
-  update(id: DrawingId, patch: Partial<Drawing>): void;
-  remove(id: DrawingId): void;
-  clearAll(): void;
+  // 변이 op 는 호출자가 code 를 명시한다(ADR-0119 C2c-2b) — 멀티창에서 전역
+  // activeCode(마지막 마운트 창이 이김)를 경유하면 다른 종목 창의 드로잉이
+  // 엉뚱한 종목에 귀속된다. add 류는 "이 차트(=이 code)에 그린다"가 항상
+  // 호출부 문맥에 있으므로 인자로 받는 편이 원천적으로 안전하다.
+  add(code: string, d: Drawing): void;
+  update(code: string, id: DrawingId, patch: Partial<Drawing>): void;
+  remove(code: string, id: DrawingId): void;
+  clearAll(code: string): void;
   /** Replace the drawing list for `code` with `items` as a normal, undoable
    *  mutation. Used by the clearAll undo-toast (restores the pre-clear
    *  snapshot) and by import. */
   restore(code: string, items: Drawing[]): void;
-  /** Append imported drawings to the active Code with fresh ids, as a single
+  /** Append imported drawings to `code` with fresh ids, as a single
    *  undoable step. Returns the number appended. */
-  importDrawings(items: Drawing[]): number;
+  importDrawings(code: string, items: Drawing[]): number;
   dismissClearToast(): void;
-  undo(): void;
-  redo(): void;
+  undo(code: string): void;
+  redo(code: string): void;
   setDefaults(patch: Partial<DrawingDefaults>): void;
   flushPending(): void;
   __resetForTests(): void;
@@ -138,13 +147,13 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     loadedCodes: new Set(),
     activeCode: null,
     activeTool: 'select',
-    selectedId: null,
+    selectedByCode: new Map(),
     defaults: loadDefaults(),
     clearToast: null,
 
     setActiveCode(code) {
       if (code === get().activeCode) return;
-      set({ activeCode: code, selectedId: null });
+      set({ activeCode: code });
       if (code != null && !get().loadedCodes.has(code)) {
         const items = loadDrawings(code);
         const byCode = new Map(get().byCode);
@@ -159,17 +168,21 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       set({ activeTool: tool });
     },
 
-    setSelected(id) {
-      set({ selectedId: id });
+    setSelected(code, id) {
+      const selectedByCode = new Map(get().selectedByCode);
+      selectedByCode.set(code, id);
+      set({ selectedByCode });
+    },
+
+    selectedFor(code) {
+      return get().selectedByCode.get(code) ?? null;
     },
 
     drawingsFor(code) {
       return get().byCode.get(code) ?? [];
     },
 
-    add(d) {
-      const code = get().activeCode;
-      if (code == null) return;
+    add(code, d) {
       const current = get().byCode.get(code) ?? [];
       recordHistory(code, current, 'add', d.id);
       const byCode = new Map(get().byCode);
@@ -178,9 +191,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       queuePersist(code);
     },
 
-    update(id, patch) {
-      const code = get().activeCode;
-      if (code == null) return;
+    update(code, id, patch) {
       const current = get().byCode.get(code) ?? [];
       recordHistory(code, current, 'update', id);
       const next = current.map((d) => (d.id === id ? ({ ...d, ...patch } as Drawing) : d));
@@ -206,23 +217,22 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       queuePersistDefaults();
     },
 
-    remove(id) {
-      const code = get().activeCode;
-      if (code == null) return;
+    remove(code, id) {
       const current = get().byCode.get(code) ?? [];
       if (!current.some((d) => d.id === id)) return;
       recordHistory(code, current, 'remove', id);
       const next = current.filter((d) => d.id !== id);
       const byCode = new Map(get().byCode);
       byCode.set(code, next);
-      const selectedId = get().selectedId === id ? null : get().selectedId;
-      set({ byCode, selectedId });
+      const patch: Partial<State> = { byCode };
+      if (get().selectedByCode.get(code) === id) {
+        patch.selectedByCode = new Map(get().selectedByCode).set(code, null);
+      }
+      set(patch);
       queuePersist(code);
     },
 
-    clearAll() {
-      const code = get().activeCode;
-      if (code == null) return;
+    clearAll(code) {
       const current = get().byCode.get(code) ?? [];
       if (current.length === 0) return; // nothing to clear → no history, no toast
       recordHistory(code, current, 'clearAll');
@@ -230,7 +240,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       byCode.set(code, []);
       set({
         byCode,
-        selectedId: null,
+        selectedByCode: new Map(get().selectedByCode).set(code, null),
         clearToast: { code, count: current.length, snapshot: current },
       });
       queuePersist(code);
@@ -241,17 +251,13 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       recordHistory(code, current, 'restore');
       const byCode = new Map(get().byCode);
       byCode.set(code, items);
-      // Only touch selection when restoring the active code; a toast may fire
-      // for a code the user has since navigated away from.
-      const patch: Partial<State> = { byCode };
-      if (code === get().activeCode) patch.selectedId = null;
-      set(patch);
+      // 선택은 종목별이라 복원 대상 code 의 선택만 리셋(다른 종목 무영향).
+      set({ byCode, selectedByCode: new Map(get().selectedByCode).set(code, null) });
       queuePersist(code);
     },
 
-    importDrawings(items) {
-      const code = get().activeCode;
-      if (code == null || items.length === 0) return 0;
+    importDrawings(code, items) {
+      if (items.length === 0) return 0;
       const current = get().byCode.get(code) ?? [];
       recordHistory(code, current, 'import');
       const reassigned = items.map((d) => ({ ...d, id: nanoid(8) }));
@@ -266,9 +272,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       if (get().clearToast != null) set({ clearToast: null });
     },
 
-    undo() {
-      const code = get().activeCode;
-      if (code == null) return;
+    undo(code) {
       const h = histories.get(code);
       if (h == null || h.undo.length === 0) return;
       const cur = get().byCode.get(code) ?? [];
@@ -276,17 +280,16 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       h.redo.push({ items: cur, op: entry.op, targetId: entry.targetId, at: nowMs() });
       const byCode = new Map(get().byCode);
       byCode.set(code, entry.items);
-      const selectedId =
-        get().selectedId != null && entry.items.some((d) => d.id === get().selectedId)
-          ? get().selectedId
-          : null;
-      set({ byCode, selectedId });
+      const sel = get().selectedByCode.get(code) ?? null;
+      const stillPresent = sel != null && entry.items.some((d) => d.id === sel);
+      const selectedByCode = stillPresent
+        ? get().selectedByCode
+        : new Map(get().selectedByCode).set(code, null);
+      set({ byCode, selectedByCode });
       queuePersist(code);
     },
 
-    redo() {
-      const code = get().activeCode;
-      if (code == null) return;
+    redo(code) {
       const h = histories.get(code);
       if (h == null || h.redo.length === 0) return;
       const cur = get().byCode.get(code) ?? [];
@@ -294,11 +297,12 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       h.undo.push({ items: cur, op: entry.op, targetId: entry.targetId, at: nowMs() });
       const byCode = new Map(get().byCode);
       byCode.set(code, entry.items);
-      const selectedId =
-        get().selectedId != null && entry.items.some((d) => d.id === get().selectedId)
-          ? get().selectedId
-          : null;
-      set({ byCode, selectedId });
+      const sel = get().selectedByCode.get(code) ?? null;
+      const stillPresent = sel != null && entry.items.some((d) => d.id === sel);
+      const selectedByCode = stillPresent
+        ? get().selectedByCode
+        : new Map(get().selectedByCode).set(code, null);
+      set({ byCode, selectedByCode });
       queuePersist(code);
     },
 
@@ -330,7 +334,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         loadedCodes: new Set(),
         activeCode: null,
         activeTool: 'select',
-        selectedId: null,
+        selectedByCode: new Map(),
         defaults: INITIAL_DEFAULTS,
         clearToast: null,
       });

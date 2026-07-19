@@ -74,6 +74,7 @@ describe('DrawingOverlay context menu', () => {
       <DrawingOverlay
         chart={chart as never}
         axis={{ segments: [] } as never}
+        code="005930"
         paneSeries={new Map()}
       />,
     );
@@ -121,6 +122,7 @@ describe('DrawingOverlay text editor — pointer isolation', () => {
     return render(
       <DrawingOverlay
         chart={chart as never}
+        code="005930"
         axis={axis as never}
         paneSeries={new Map([['candle', fakeSeries]]) as never}
       />,
@@ -193,6 +195,7 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
       <DrawingOverlay
         chart={chart as never}
         axis={{ segments: [] } as never}
+        code="005930"
         paneSeries={new Map()}
       />,
     );
@@ -201,7 +204,7 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
   it('Ctrl+Z undoes and Ctrl+Shift+Z redoes the last mutation', () => {
     const s = () => useDrawingsStore.getState();
     s().setActiveCode('005930');
-    s().add({ id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
+    s().add('005930', { id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
     mountOverlay();
     expect(s().drawingsFor('005930')).toHaveLength(1);
 
@@ -215,7 +218,7 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
   it('Meta+Z (macOS) also undoes', () => {
     const s = () => useDrawingsStore.getState();
     s().setActiveCode('005930');
-    s().add({ id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
+    s().add('005930', { id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
     mountOverlay();
     fireEvent.keyDown(window, { key: 'z', metaKey: true });
     expect(s().drawingsFor('005930')).toHaveLength(0);

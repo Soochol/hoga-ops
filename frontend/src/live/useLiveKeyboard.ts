@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { useRightRailStore } from '../state/rightRail';
-import { useLiveLayoutStore } from '../state/liveLayout';
 import { shouldIgnoreEvent } from '../util/keyboard';
 
 export type LiveTimeframeShortcutSlot = 'minute' | 'D' | 'W' | 'M';
@@ -56,10 +55,6 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
           break;
         case 'w':
           useRightRailStore.getState().togglePanel('watchlist');
-          e.preventDefault();
-          break;
-        case 'd':
-          useLiveLayoutStore.getState().toggleDetailPanelCollapsed();
           e.preventDefault();
           break;
         default:

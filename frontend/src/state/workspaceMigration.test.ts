@@ -53,12 +53,20 @@ describe('buildWorkspaceSeed', () => {
     expect(dataKinds).toEqual(['program', 'book', 'broker']);
   });
 
-  it('지수(activeInstrument index)는 그룹1 종목을 만들지 않는다', () => {
+  it('지수(activeInstrument index)는 kind=index 로 그룹1 종목을 시드한다(C2c-2c)', () => {
     const seed = buildWorkspaceSeed(
       { page: { candleTimeframe: '1m', activeInstrument: { kind: 'index', id: 'KOSPI', label: '코스피' }, activeCode: null } },
       counter(),
     );
-    expect(seed!.groupSymbols[1]).toBeUndefined();
+    expect(seed!.groupSymbols[1]).toEqual({ code: 'KOSPI', name: '코스피', kind: 'index' });
+  });
+
+  it('분봉 페이지는 lastMinuteTimeframe 을 함께 시드한다', () => {
+    const seed = buildWorkspaceSeed(
+      { page: { candleTimeframe: '5m', activeCode: '005930' } },
+      counter(),
+    );
+    expect(seed!.windows[0].chart?.lastMinuteTimeframe).toBe('5m');
   });
 
   it('indicators 만 있어도 시드한다(page/layout 없음)', () => {

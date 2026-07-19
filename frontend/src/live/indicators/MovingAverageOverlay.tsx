@@ -2,10 +2,10 @@ import { memo, useEffect, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
-import { useLivePageStore } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { computeSMA, selectSource } from '../../chart/projectors/movingAverage';
 import { useMaSeriesRegistry } from './maSeriesRegistry';
+import { useWindowIndicator } from '../workspace/windowView';
 
 type Props = {
   chart: IChartApi;
@@ -27,9 +27,9 @@ const priceFormat = {
  *  configs 변경 시 add/remove/applyOptions를 reconcile한다. period/source
  *  같은 데이터 patch는 setData만 호출 — series identity churn 없음. */
 function MovingAverageOverlay({ chart, bundle, axis }: Props) {
-  const configs = useLivePageStore((s) => s.movingAverages);
-  const masterEnabled = useLivePageStore((s) => s.movingAverageEnabled);
-  const hidden = useLivePageStore((s) => s.movingAverageHidden);
+  const configs = useWindowIndicator((s) => s.movingAverages);
+  const masterEnabled = useWindowIndicator((s) => s.movingAverageEnabled);
+  const hidden = useWindowIndicator((s) => s.movingAverageHidden);
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
 

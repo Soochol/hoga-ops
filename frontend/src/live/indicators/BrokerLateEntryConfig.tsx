@@ -1,6 +1,7 @@
-import { useLivePageStore, type BrokerLateEntrySideMode } from '../../state/livePage';
+import { type BrokerLateEntrySideMode } from '../../state/livePage';
 import ColorSwatchPicker from './ColorSwatchPicker';
 import TimeOfDayInput from '../settings/TimeOfDayInput';
+import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 const SIDE_OPTIONS: Array<{ value: BrokerLateEntrySideMode; label: string }> = [
   { value: 'both', label: '둘다' },
@@ -26,13 +27,13 @@ function ColorRow({
 }
 
 export default function BrokerLateEntryConfig() {
-  const start = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
-  const sideMode = useLivePageStore((s) => s.brokerLateEntrySideMode);
-  const buyColor = useLivePageStore((s) => s.brokerLateEntryBuyColor);
-  const sellColor = useLivePageStore((s) => s.brokerLateEntrySellColor);
-  const setStart = useLivePageStore((s) => s.setBrokerLateEntryStartHHMM);
-  const setSideMode = useLivePageStore((s) => s.setBrokerLateEntrySideMode);
-  const setStyle = useLivePageStore((s) => s.setBrokerLateEntryStyle);
+  const start = useWindowIndicator((s) => s.brokerLateEntryStartHHMM);
+  const sideMode = useWindowIndicator((s) => s.brokerLateEntrySideMode);
+  const buyColor = useWindowIndicator((s) => s.brokerLateEntryBuyColor);
+  const sellColor = useWindowIndicator((s) => s.brokerLateEntrySellColor);
+  const setStart = useIndicatorActions().setBrokerLateEntryStartHHMM;
+  const setSideMode = useIndicatorActions().setBrokerLateEntrySideMode;
+  const setStyle = useIndicatorActions().setBrokerLateEntryStyle;
 
   return (
     <div>

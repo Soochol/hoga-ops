@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useLivePageStore } from '../../state/livePage';
 import ToggleRow from '../settings/ToggleRow';
 import AskPeakConfig from './AskPeakConfig';
 import BidPeakConfig from './BidPeakConfig';
+import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 type Side = 'ask' | 'bid';
 
@@ -17,10 +17,10 @@ const SIDE_TABS: ReadonlyArray<{ value: Side; label: string }> = [
  *  달라 "복사"는 두지 않는다. */
 export default function PeakWallsConfig() {
   const [side, setSide] = useState<Side>('ask');
-  const askEnabled = useLivePageStore((s) => s.askPeakEnabled);
-  const bidEnabled = useLivePageStore((s) => s.bidPeakEnabled);
-  const setAskEnabled = useLivePageStore((s) => s.setAskPeakEnabled);
-  const setBidEnabled = useLivePageStore((s) => s.setBidPeakEnabled);
+  const askEnabled = useWindowIndicator((s) => s.askPeakEnabled);
+  const bidEnabled = useWindowIndicator((s) => s.bidPeakEnabled);
+  const setAskEnabled = useIndicatorActions().setAskPeakEnabled;
+  const setBidEnabled = useIndicatorActions().setBidPeakEnabled;
 
   const isAsk = side === 'ask';
   const enabled = isAsk ? askEnabled : bidEnabled;

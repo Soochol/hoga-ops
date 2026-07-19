@@ -62,14 +62,6 @@ describe('useLiveKeyboard', () => {
     expect(useRightRailStore.getState().activePanel).toBeNull();
   });
 
-  it('d toggles the detail panel collapse flag', () => {
-    render(<Harness />);
-    expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(false);
-    fireEvent.keyDown(window, { key: 'd' });
-    expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(true);
-    fireEvent.keyDown(window, { key: 'd' });
-    expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(false);
-  });
 
   it('ignores d when typing in an input or with modifiers', () => {
     const { getByTestId } = render(<HarnessWithInput />);

@@ -9,7 +9,7 @@ import {
 import { useMemo } from 'react';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import type { BrokerLateEntrySideMode } from '../../state/liveIndicatorsPersistence';
-import { useLivePageStore } from '../../state/livePage';
+import { useWindowIndicator } from '../../live/workspace/windowView';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 import { quoteImbalance } from '../../util/imbalance';
@@ -162,14 +162,22 @@ const useRatioContext = (): RatioPaneContext => {
       intraMax: p.ratioIntraMax,
     })),
   );
-  const brokerPrefs = useLivePageStore(
-    useShallow((s) => ({
-      brokerLateEntryEnabled: s.brokerLateEntryEnabled,
-      brokerLateEntryHidden: s.brokerLateEntryHidden,
-      brokerLateEntrySideMode: s.brokerLateEntrySideMode,
-      brokerLateEntryBuyColor: s.brokerLateEntryBuyColor,
-      brokerLateEntrySellColor: s.brokerLateEntrySellColor,
-    })),
+  // 창-스코프 절단(ADR-0119 C2c-2a) — 필드별 구독으로 전역 폴백 입도 보존.
+  const brokerLateEntryEnabled = useWindowIndicator((s) => s.brokerLateEntryEnabled);
+  const brokerLateEntryHidden = useWindowIndicator((s) => s.brokerLateEntryHidden);
+  const brokerLateEntrySideMode = useWindowIndicator((s) => s.brokerLateEntrySideMode);
+  const brokerLateEntryBuyColor = useWindowIndicator((s) => s.brokerLateEntryBuyColor);
+  const brokerLateEntrySellColor = useWindowIndicator((s) => s.brokerLateEntrySellColor);
+  const brokerPrefs = useMemo(
+    () => ({
+      brokerLateEntryEnabled,
+      brokerLateEntryHidden,
+      brokerLateEntrySideMode,
+      brokerLateEntryBuyColor,
+      brokerLateEntrySellColor,
+    }),
+    [brokerLateEntryEnabled, brokerLateEntryHidden, brokerLateEntrySideMode,
+      brokerLateEntryBuyColor, brokerLateEntrySellColor],
   );
 
   return useMemo(

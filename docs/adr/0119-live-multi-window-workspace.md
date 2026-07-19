@@ -93,7 +93,7 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 |---|---|---|
 | **A** | 스냅 엔진 + `WorkspaceCanvas`/`WindowFrame` + `live.workspace.v1` 스토어(더미 콘텐츠) + 본 ADR | ✅ 착지 |
 | **B** | `WindowViewContext` 신설, 데이터 페치 경로 전역 직독 교체(기능 무변경). context 기본값 = 기존 전역 동작 → `/study` 무변경 보장 | ✅ 착지 |
-| **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | 🚧 증분 진행 (C1 마이그레이션 시드 ✅ · 렌더 컷오버 예정) |
+| **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | ✅ 착지 (C1~C2c-2e — `/live` 플립 완료) |
 | **D** | 링크 그룹 — groupSymbols·뱃지 팔레트·드래그&드롭·크로스헤어 버스·활성 그룹 전역 배선·WS venue 전송 | 예정 |
 | **E** | 프리셋 v3 + 성능 마감(비포커스 창 스로틀·스냅존·Tidy·단축키) | 예정 |
 
@@ -161,8 +161,21 @@ PR-C 는 실제 `/live` UX 를 바꾸는 대규모 작업이라 증분으로 착
   스팟)는 PR-D. 프로그램·매물대는 번들(timeframe) 종속이라 차트 창 연동(PR-D) 후 — C2c-1 은 안내 카드.
   검증: `/workspace-preview` 도그푸딩 — 호가/거래원 실 카드(빈 백엔드라 빈 상태 우아 처리)·잠정투자자
   실 데이터 렌더, 크래시 0·전체 3902 green.
-- **C2c-2 — `/live` 플립 (예정)**: `LiveWorkarea` → 워크스페이스, 상세 패널 폐지, `paneIndicators`
-  → `useWindowIndicators` 이관, cut #7(LiveChartRoot pane 렌더 창별화), LivePage 를 얇은 셸로.
+- **C2c-2 — `/live` 플립 (✅ 착지 2026-07-20, 스펙 [#715 코멘트](https://github.com/Soochol/hoga-ops/issues/715#issuecomment-5016017318))**:
+  grilling 으로 확정한 5증분(2a~2e). **2a 지표 쓰기 경로** — 워크스페이스 스토어에 창별 지표
+  setter(`patchChartIndicators`·`setChartTimeframe`·`setChartPaneOrder`·`setChartPaneStretch`·
+  `resetChartIndicators`·`applyChartIndicatorPreset`, sparse=공장값 diff 재사용) + windowView
+  컨텍스트 쓰기 경로 + `useIndicatorActions()`(이름 setter 표면 재구성, Provider 밖=전역 폴백
+  → `/study` 무변경) + MA 슬롯 도메인 로직 순수 함수 공유 + **cut #7 지표 읽기 절단 동봉**
+  (LiveChartRoot 지표/paneOrder/paneStretch·MA/일봉MA 오버레이 — 드로어 쓰기와 한 몸).
+  **2b 드로잉** — 변이 op code-명시 리팩터(전역 activeCode 경유 오귀속 결함 차단), activeTool
+  전역 유지. **2c 크롬 부품** — 상태바=포커스 차트 창 발행(studySaveSource 패턴), 봉 컨트롤
+  창 내부 이동, 고정 통합 툴바(창 추가·정리·지표·설정·수집·저장뷰·프리셋), `GroupSymbol.kind:
+  'stock'|'index'`(지수 정식 지원). **2d 플립** — LivePage 셸 교체, liveNavigate→활성 그룹
+  `setGroupSymbol` + livePage 미러링(레거시 읽기 15곳 호환층), 드로어=포커스 차트 창 실시간
+  추적, Shift+숫자=포커스 창, 프리셋 v2=포커스 창 적용, 시드 즉시 persist, `/workspace-preview`
+  제거. **2e** — 상세패널 계열 데드코드 삭제(별도 커밋). 설정 드로어·chartPrefs·venue 는 전역
+  유지.
 
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
 포함(#710) — 드래그 중 라이브 리사이즈가 프레임 저하 없이 동작(프로토타입 12창·6인스턴스 확인).

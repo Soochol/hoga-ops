@@ -18,7 +18,13 @@
 
 import { memo, useEffect, useReducer, useRef, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
-import { useLivePageStore, isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import {
+  useIndicatorActions,
+  useWindowIndicator,
+  useWindowPaneOrder,
+  type IndicatorActions,
+} from './workspace/windowView';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
@@ -223,7 +229,7 @@ function PaneMoveControls({
   downNeighbor: PaneId | null;
   paneOrder: readonly PaneId[];
 }) {
-  const setPaneOrder = useLivePageStore((s) => s.setPaneOrder);
+  const setPaneOrder = useIndicatorActions().setPaneOrder;
   // idx 1 의 위 이웃은 candle(고정) → 위로 이동 불가. 마지막 마운트 pane → 아래 불가.
   const canUp = idx > 1 && upNeighbor !== null && upNeighbor !== 'candle';
   const canDown = idx < mountedCount - 1 && downNeighbor !== null;
@@ -277,27 +283,28 @@ function EyeGlyph({ hidden }: { hidden: boolean }) {
   );
 }
 
-/** ✕ dispatch for flag rows — id → store master toggle off. */
-const FLAG_TURN_OFF: Record<LegendFlagId, () => void> = {
-  'ask-peak': () => useLivePageStore.getState().setAskPeakEnabled(false),
-  'bid-peak': () => useLivePageStore.getState().setBidPeakEnabled(false),
-  'trade-volume-poc': () => useLivePageStore.getState().setTradeVolumePocEnabled(false),
-  'depth-heatmap': () => useLivePageStore.getState().setDepthHeatmapEnabled(false),
-  'broker-late-entry': () => useLivePageStore.getState().setBrokerLateEntryEnabled(false),
+/** ✕ dispatch for flag rows — id → master toggle off. 창-스코프 절단으로
+ *  actions 를 인자로 받는다(컴포넌트가 useIndicatorActions 로 공급). */
+const FLAG_TURN_OFF: Record<LegendFlagId, (a: IndicatorActions) => void> = {
+  'ask-peak': (a) => a.setAskPeakEnabled(false),
+  'bid-peak': (a) => a.setBidPeakEnabled(false),
+  'trade-volume-poc': (a) => a.setTradeVolumePocEnabled(false),
+  'depth-heatmap': (a) => a.setDepthHeatmapEnabled(false),
+  'broker-late-entry': (a) => a.setBrokerLateEntryEnabled(false),
 };
 
-/** 눈(숨김) dispatch — id → store hidden setter. */
-const FLAG_SET_HIDDEN: Record<LegendFlagId, (hidden: boolean) => void> = {
-  'ask-peak': (h) => useLivePageStore.getState().setAskPeakHidden(h),
-  'bid-peak': (h) => useLivePageStore.getState().setBidPeakHidden(h),
-  'trade-volume-poc': (h) => useLivePageStore.getState().setTradeVolumePocHidden(h),
-  'depth-heatmap': (h) => useLivePageStore.getState().setDepthHeatmapHidden(h),
-  'broker-late-entry': (h) => useLivePageStore.getState().setBrokerLateEntryHidden(h),
+/** 눈(숨김) dispatch — id → hidden setter. */
+const FLAG_SET_HIDDEN: Record<LegendFlagId, (a: IndicatorActions, hidden: boolean) => void> = {
+  'ask-peak': (a, h) => a.setAskPeakHidden(h),
+  'bid-peak': (a, h) => a.setBidPeakHidden(h),
+  'trade-volume-poc': (a, h) => a.setTradeVolumePocHidden(h),
+  'depth-heatmap': (a, h) => a.setDepthHeatmapHidden(h),
+  'broker-late-entry': (a, h) => a.setBrokerLateEntryHidden(h),
 };
 
 function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
-  const setHidden = useLivePageStore((s) => s.setMovingAverageHidden);
-  const setEnabled = useLivePageStore((s) => s.setMovingAverageEnabled);
+  const setHidden = useIndicatorActions().setMovingAverageHidden;
+  const setEnabled = useIndicatorActions().setMovingAverageEnabled;
   return (
     <>
       <span style={{ color: 'var(--fg-dim)' }}>이동평균선</span>
@@ -326,8 +333,8 @@ function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
 }
 
 function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' }> }) {
-  const setHidden = useLivePageStore((s) => s.setDailyMovingAverageHidden);
-  const setEnabled = useLivePageStore((s) => s.setDailyMovingAverageEnabled);
+  const setHidden = useIndicatorActions().setDailyMovingAverageHidden;
+  const setEnabled = useIndicatorActions().setDailyMovingAverageEnabled;
   return (
     <>
       <span style={{ color: 'var(--fg-dim)' }}>일봉 이동평균선</span>
@@ -356,6 +363,7 @@ function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' 
 }
 
 function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
+  const indicatorActions = useIndicatorActions();
   // 색 있는 값 셀(히트맵 매수/매도, 거래원 매수/매도)이 있으면 행 스와치는 중복 —
   // 셀 스와치만 남긴다. 무색 셀(벽 가격, POC)은 행 스와치가 지표 색을 대표.
   const showRowSwatches = !row.cells.some((c) => c.color);
@@ -380,14 +388,14 @@ function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
       <HoverIcon
         label={`${row.label} 표시 숨김/표시`}
         restColor={row.hidden ? 'var(--fg-dim)' : 'var(--fg-dimmer)'}
-        onClick={() => FLAG_SET_HIDDEN[row.id](!row.hidden)}
+        onClick={() => FLAG_SET_HIDDEN[row.id](indicatorActions, !row.hidden)}
       >
         <EyeGlyph hidden={row.hidden} />
       </HoverIcon>
       <HoverIcon
         label={`${row.label} 지표 끄기`}
         restColor="var(--fg-dimmer)"
-        onClick={FLAG_TURN_OFF[row.id]}
+        onClick={() => FLAG_TURN_OFF[row.id](indicatorActions)}
       >
         <CloseGlyph />
       </HoverIcon>
@@ -402,7 +410,7 @@ function CellsLegendRow({
   row: Extract<LegendRow, { kind: 'cells' }>;
   timeframe: LiveTimeframe;
 }) {
-  const setPanePrefForTimeframe = useLivePageStore((s) => s.setPanePrefForTimeframe);
+  const setPanePrefForTimeframe = useIndicatorActions().setPanePrefForTimeframe;
   const toggleKey = row.toggleKey;
   const turnOff = toggleKey
     ? () => setPanePrefForTimeframe(timeframe, toggleKey, false)
@@ -439,32 +447,32 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
   const [, tick] = useReducer((n: number) => n + 1, 0);
 
   // 사용자 소유 pane 순서 — 내부 구독이라 memo(props)를 우회해 재정렬 즉시 반영.
-  const paneOrder = useLivePageStore((s) => s.paneOrder);
-  const movingAverages = useLivePageStore((s) => s.movingAverages);
-  const movingAverageEnabled = useLivePageStore((s) => s.movingAverageEnabled);
-  const movingAverageHidden = useLivePageStore((s) => s.movingAverageHidden);
-  const dailyMovingAverages = useLivePageStore((s) => s.dailyMovingAverages);
-  const dailyMovingAverageEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
-  const dailyMovingAverageHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
+  const paneOrder = useWindowPaneOrder();
+  const movingAverages = useWindowIndicator((s) => s.movingAverages);
+  const movingAverageEnabled = useWindowIndicator((s) => s.movingAverageEnabled);
+  const movingAverageHidden = useWindowIndicator((s) => s.movingAverageHidden);
+  const dailyMovingAverages = useWindowIndicator((s) => s.dailyMovingAverages);
+  const dailyMovingAverageEnabled = useWindowIndicator((s) => s.dailyMovingAverageEnabled);
+  const dailyMovingAverageHidden = useWindowIndicator((s) => s.dailyMovingAverageHidden);
   // Candle-pane flag indicators — enabled/hidden flags + swatch colors (설정 변경 즉시 반영).
-  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
-  const askPeakHidden = useLivePageStore((s) => s.askPeakHidden);
-  const askPeakColor = useLivePageStore((s) => s.askPeakColor);
-  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
-  const bidPeakHidden = useLivePageStore((s) => s.bidPeakHidden);
-  const bidPeakColor = useLivePageStore((s) => s.bidPeakColor);
-  const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
-  const tradeVolumePocHidden = useLivePageStore((s) => s.tradeVolumePocHidden);
-  const tradeVolumePocColor = useLivePageStore((s) => s.tradeVolumePocColor);
-  const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
-  const depthHeatmapHidden = useLivePageStore((s) => s.depthHeatmapHidden);
-  const depthHeatmapBidColor = useLivePageStore((s) => s.depthHeatmapBidColor);
-  const depthHeatmapAskColor = useLivePageStore((s) => s.depthHeatmapAskColor);
-  const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
-  const brokerLateEntryHidden = useLivePageStore((s) => s.brokerLateEntryHidden);
-  const brokerLateEntrySideMode = useLivePageStore((s) => s.brokerLateEntrySideMode);
-  const brokerLateEntryBuyColor = useLivePageStore((s) => s.brokerLateEntryBuyColor);
-  const brokerLateEntrySellColor = useLivePageStore((s) => s.brokerLateEntrySellColor);
+  const askPeakEnabled = useWindowIndicator((s) => s.askPeakEnabled);
+  const askPeakHidden = useWindowIndicator((s) => s.askPeakHidden);
+  const askPeakColor = useWindowIndicator((s) => s.askPeakColor);
+  const bidPeakEnabled = useWindowIndicator((s) => s.bidPeakEnabled);
+  const bidPeakHidden = useWindowIndicator((s) => s.bidPeakHidden);
+  const bidPeakColor = useWindowIndicator((s) => s.bidPeakColor);
+  const tradeVolumePocEnabled = useWindowIndicator((s) => s.tradeVolumePocEnabled);
+  const tradeVolumePocHidden = useWindowIndicator((s) => s.tradeVolumePocHidden);
+  const tradeVolumePocColor = useWindowIndicator((s) => s.tradeVolumePocColor);
+  const depthHeatmapEnabled = useWindowIndicator((s) => s.depthHeatmapEnabled);
+  const depthHeatmapHidden = useWindowIndicator((s) => s.depthHeatmapHidden);
+  const depthHeatmapBidColor = useWindowIndicator((s) => s.depthHeatmapBidColor);
+  const depthHeatmapAskColor = useWindowIndicator((s) => s.depthHeatmapAskColor);
+  const brokerLateEntryEnabled = useWindowIndicator((s) => s.brokerLateEntryEnabled);
+  const brokerLateEntryHidden = useWindowIndicator((s) => s.brokerLateEntryHidden);
+  const brokerLateEntrySideMode = useWindowIndicator((s) => s.brokerLateEntrySideMode);
+  const brokerLateEntryBuyColor = useWindowIndicator((s) => s.brokerLateEntryBuyColor);
+  const brokerLateEntrySellColor = useWindowIndicator((s) => s.brokerLateEntrySellColor);
   const maSeries = useMaSeriesRegistry((s) => s.series);
   const dailyMaSeries = useDailyMaSeriesRegistry((s) => s.series);
   // Registry subscription: re-renders on pane (un)mount so a toggled-on pane's

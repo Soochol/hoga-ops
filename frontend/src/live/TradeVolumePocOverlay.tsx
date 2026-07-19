@@ -4,7 +4,6 @@ import type { Candle, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { useLivePageStore } from '../state/livePage';
 import {
   TradeVolumePocPrimitive,
   type TradeVolumePocSegment,
@@ -16,6 +15,7 @@ import {
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty, legendCursorDate } from './peakLegendValues';
+import { useWindowIndicator } from './workspace/windowView';
 
 function hexToRgba(hex: string, opacity: number): string {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -82,10 +82,10 @@ export function buildTradeVolumePocSegments(
 
 function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, todayKst, override, behindSeries = false }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
-  const storeEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
-  const hidden = useLivePageStore((s) => s.tradeVolumePocHidden);
-  const storeColor = useLivePageStore((s) => s.tradeVolumePocColor);
-  const storeOpacity = useLivePageStore((s) => s.tradeVolumePocOpacity);
+  const storeEnabled = useWindowIndicator((s) => s.tradeVolumePocEnabled);
+  const hidden = useWindowIndicator((s) => s.tradeVolumePocHidden);
+  const storeColor = useWindowIndicator((s) => s.tradeVolumePocColor);
+  const storeOpacity = useWindowIndicator((s) => s.tradeVolumePocOpacity);
   const enabled = override?.enabled ?? storeEnabled;
   const color = override?.color ?? storeColor;
   const opacity = override?.opacity ?? storeOpacity;

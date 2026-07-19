@@ -8,8 +8,10 @@
  *
  * PR-A 는 스캐폴딩 — 창 본문은 더미다. 실제 차트/데이터 배선은 PR-C.
  */
-import { useCallback, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { WindowFrame } from './WindowFrame';
+import { registerWorkspaceTidy } from './workspaceCanvasControls';
+import { useEntryDragStore } from '../../state/entryDrag';
 import { ChartWindow } from './ChartWindow';
 import { DataWindow } from './DataWindow';
 import {
@@ -28,8 +30,8 @@ import {
 } from './snapEngine';
 import {
   useWorkspaceStore,
-  activeGroupOf,
   type GroupId,
+  type GroupSymbol,
   type WorkspaceWindow,
 } from '../../state/workspace';
 
@@ -59,7 +61,6 @@ export function WorkspaceCanvas() {
   const windows = useWorkspaceStore((s) => s.windows);
   const zOrder = useWorkspaceStore((s) => s.zOrder);
   const groupSymbols = useWorkspaceStore((s) => s.groupSymbols);
-  const addWindow = useWorkspaceStore((s) => s.addWindow);
   const closeWindow = useWorkspaceStore((s) => s.closeWindow);
   const focusWindow = useWorkspaceStore((s) => s.focusWindow);
   const setWindowRects = useWorkspaceStore((s) => s.setWindowRects);
@@ -73,7 +74,6 @@ export function WorkspaceCanvas() {
   const [palette, setPalette] = useState<string | null>(null);
 
   const focusedId = zOrder[zOrder.length - 1];
-  const activeGroup = activeGroupOf({ windows, zOrder });
 
   const rectOf = (w: WorkspaceWindow): Rect => preview?.get(w.id) ?? w.rect;
 
@@ -188,6 +188,42 @@ export function WorkspaceCanvas() {
     if (box) tidyAll({ w: box.width, h: box.height });
   }, [tidyAll]);
 
+  // 창 항목 memo(F6)를 위한 안정 콜백 — id 를 인자로 받으므로 창별 클로저 불필요.
+  const onTogglePalette = useCallback((id: string) => {
+    // 팔레트를 여는 창을 최상단으로 올린다 — 각 창이 contain:paint 로 자체 스택
+    // 컨텍스트라, raise 하지 않으면 겹친 상위 창이 팔레트를 가린다.
+    focusWindow(id);
+    setPalette((p) => (p === id ? null : id));
+  }, [focusWindow]);
+  const onPickGroup = useCallback((id: string, g: GroupId) => {
+    setWindowGroup(id, g);
+    setPalette(null);
+  }, [setWindowGroup]);
+
+  // 정리(Tidy) 트리거는 고정 툴바(WorkspaceLiveToolbar)에 있다 — 캔버스 실측이
+  // 필요한 실행기를 명령 채널에 등록(C2c-2c, 임시 플로팅 툴바 대체).
+  useEffect(() => registerWorkspaceTidy(onTidy), [onTidy]);
+
+  // 관심종목/스크리너 행 드래그의 차트 드롭 타깃(entryDrag seam) — 구 LiveWorkarea 의
+  // 등록을 캔버스가 승계한다(C2c-2e 회귀 복구). 드롭=활성 그룹 종목 교체(onPick 경로);
+  // 창별 정밀 드롭(#711 창 위 드롭 → 그 창 그룹 교체)은 PR-D.
+  const registerChartTarget = useEntryDragStore((s) => s.registerChartTarget);
+  const clearChartTarget = useEntryDragStore((s) => s.clearChartTarget);
+  // 드롭 어포던스(리뷰 F1 복구): 행 드래그 고스트는 패널 overflow 에서 잘리므로
+  // 캔버스 자체가 유일한 드롭 표시다 — 구 LiveWorkarea ChartDropOverlay 이관.
+  const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
+  const overChart = useEntryDragStore((s) => s.overChart);
+  useEffect(() => {
+    const hitTest = (clientX: number, clientY: number): boolean => {
+      const rect = boxRef.current?.getBoundingClientRect();
+      if (!rect) return false;
+      return clientX >= rect.left && clientX <= rect.right
+        && clientY >= rect.top && clientY <= rect.bottom;
+    };
+    registerChartTarget(hitTest);
+    return () => clearChartTarget(hitTest);
+  }, [registerChartTarget, clearChartTarget]);
+
   const symbolFor = (group: GroupId) => groupSymbols[group] ?? null;
 
   return (
@@ -199,6 +235,33 @@ export function WorkspaceCanvas() {
       onPointerCancel={endDrag}
       onLostPointerCapture={commit}
     >
+      {/* 관심종목/스크리너 행 드래그 시 드롭 어포던스 — 드롭=활성 그룹 종목 교체(#711). */}
+      {draggingEntry && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center"
+          style={{
+            background: overChart ? 'var(--tint-selection)' : 'transparent',
+            border: '2px dashed var(--accent)',
+            opacity: overChart ? 1 : 0.7,
+            transition: 'opacity 150ms ease, background 150ms ease',
+          }}
+        >
+          <span
+            className="rounded-md font-ui text-sm font-semibold"
+            style={{
+              padding: 'var(--space-sm) var(--space-md)',
+              background: 'var(--accent)',
+              color: 'var(--accent-fg)',
+              boxShadow: 'var(--shadow-overlay)',
+              transform: overChart ? 'scale(1)' : 'scale(0.97)',
+              transition: 'transform 150ms ease',
+            }}
+          >
+            여기에 놓아 활성 그룹 종목 변경
+          </span>
+        </div>
+      )}
       {/* 반분할 스냅존 미리보기 */}
       {zone && (
         <div
@@ -214,66 +277,88 @@ export function WorkspaceCanvas() {
         <div className="pointer-events-none absolute inset-x-0 z-40 h-px bg-accent" style={{ top: guides.h }} />
       )}
 
-      {/* 툴바 */}
-      <div className="absolute right-2 top-2 z-50 flex items-center gap-1.5 rounded-md border border-border bg-bg-subtle px-2 py-1 text-[11px] text-fg-dim shadow-overlay">
-        <span className="font-mono">{windows.length}창</span>
-        <span>· 활성 그룹</span>
-        <span className="font-mono text-accent">{activeGroup}</span>
-        <span className="mx-1 h-[12px] w-px bg-border-strong" />
-        <button className="rounded bg-bg-input px-1.5 py-0.5 hover:text-fg" onClick={() => addWindow('chart')}>
-          +차트
-        </button>
-        <button className="rounded bg-bg-input px-1.5 py-0.5 hover:text-fg" onClick={() => addWindow('book')}>
-          +호가
-        </button>
-        <button className="rounded bg-bg-input px-1.5 py-0.5 hover:text-fg" onClick={() => addWindow('broker')}>
-          +거래원
-        </button>
-        <button
-          className="rounded bg-tint-selection px-2 py-0.5 font-medium text-accent hover:brightness-110"
-          onClick={onTidy}
-        >
-          정리
-        </button>
-      </div>
-
-      {windows.map((w) => {
-        const symbol = symbolFor(w.group);
-        return (
-          <WindowFrame
-            key={w.id}
-            id={w.id}
-            kind={w.kind}
-            group={w.group}
-            rect={rectOf(w)}
-            zIndex={Math.max(0, zOrder.indexOf(w.id))}
-            focused={w.id === focusedId}
-            symbolLabel={symbol?.name ?? null}
-            symbolCode={symbol?.code ?? null}
-            paletteOpen={palette === w.id}
-            onHandleDown={onHandleDown}
-            onFocus={focusWindow}
-            onClose={closeWindow}
-            onTogglePalette={(id) => {
-              // 팔레트를 여는 창을 최상단으로 올린다 — 각 창이 contain:paint 로 자체
-              // 스택 컨텍스트라, 창을 raise 하지 않으면 겹친 상위 창이 팔레트를 가린다.
-              // (뱃지 onPointerDown stopPropagation 이 루트 onFocus 를 막으므로 여기서 명시.)
-              focusWindow(id);
-              setPalette((p) => (p === id ? null : id));
-            }}
-            onPickGroup={(id, g) => {
-              setWindowGroup(id, g);
-              setPalette(null);
-            }}
-          >
-            {w.kind === 'chart' ? (
-              <ChartWindow win={w} symbol={symbol} />
-            ) : (
-              <DataWindow win={w} symbol={symbol} />
-            )}
-          </WindowFrame>
-        );
-      })}
+      {windows.length === 0 && (
+        <div className="flex h-full w-full items-center justify-center">
+          <div className="rounded-lg bg-bg-card px-6 py-5 text-center text-sm text-fg-dim shadow-panel">
+            <p className="mb-2 font-medium text-fg">창이 없습니다</p>
+            <p className="mb-3">상단 툴바의 +차트 로 차트 창을 추가하세요.</p>
+            <button
+              type="button"
+              data-testid="workspace-empty-add-chart"
+              className="rounded bg-tint-selection px-3 py-1 font-medium text-accent hover:brightness-110"
+              onClick={() => useWorkspaceStore.getState().addWindow('chart')}
+            >
+              +차트 창 추가
+            </button>
+          </div>
+        </div>
+      )}
+      {windows.map((w) => (
+        <WorkspaceWindowItem
+          key={w.id}
+          win={w}
+          symbol={symbolFor(w.group)}
+          rect={rectOf(w)}
+          zIndex={Math.max(0, zOrder.indexOf(w.id))}
+          focused={w.id === focusedId}
+          paletteOpen={palette === w.id}
+          onHandleDown={onHandleDown}
+          onFocus={focusWindow}
+          onClose={closeWindow}
+          onTogglePalette={onTogglePalette}
+          onPickGroup={onPickGroup}
+        />
+      ))}
     </div>
   );
 }
+
+/**
+ * 창 하나 = memo 경계 (리뷰 F6). WorkspaceCanvas 는 드래그 프리뷰 setState 로
+ * pointermove 마다 재렌더되는데, map 안에서 children JSX·콜백을 인라인으로
+ * 넘기면 WindowFrame 의 memo 가 매번 bail out 실패해 **모든** 차트 창 서브트리
+ * (useLiveChartData+LiveChartRoot)가 60fps 로 재렌더된다. 항목을 memo 컴포넌트로
+ * 끊고 원시/안정 참조 props 만 넘기면 드래그 중엔 rect 가 바뀐 창(드래그+follower)만
+ * 재렌더된다 — win 객체는 스토어 배열 원소라 드래그 중(로컬 프리뷰) 안정.
+ */
+const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
+  win, symbol, rect, zIndex, focused, paletteOpen,
+  onHandleDown, onFocus, onClose, onTogglePalette, onPickGroup,
+}: {
+  win: WorkspaceWindow;
+  symbol: GroupSymbol | null;
+  rect: Rect;
+  zIndex: number;
+  focused: boolean;
+  paletteOpen: boolean;
+  onHandleDown: (e: React.PointerEvent, id: string, mode: Mode) => void;
+  onFocus: (id: string) => void;
+  onClose: (id: string) => void;
+  onTogglePalette: (id: string) => void;
+  onPickGroup: (id: string, group: GroupId) => void;
+}) {
+  return (
+    <WindowFrame
+      id={win.id}
+      kind={win.kind}
+      group={win.group}
+      rect={rect}
+      zIndex={zIndex}
+      focused={focused}
+      symbolLabel={symbol?.name ?? null}
+      symbolCode={symbol?.code ?? null}
+      paletteOpen={paletteOpen}
+      onHandleDown={onHandleDown}
+      onFocus={onFocus}
+      onClose={onClose}
+      onTogglePalette={onTogglePalette}
+      onPickGroup={onPickGroup}
+    >
+      {win.kind === 'chart' ? (
+        <ChartWindow win={win} symbol={symbol} />
+      ) : (
+        <DataWindow win={win} symbol={symbol} />
+      )}
+    </WindowFrame>
+  );
+});

@@ -13,7 +13,13 @@
  */
 import { readJsonObject } from './persist';
 import { normalizeIndicatorsV2, INDICATORS_V2_STORAGE_KEY } from './indicatorSettingsV2';
-import { LIVE_TIMEFRAMES, LIVE_PAGE_STORAGE_KEY, type LiveTimeframe } from './livePage';
+import {
+  LIVE_TIMEFRAMES,
+  LIVE_PAGE_STORAGE_KEY,
+  MINUTE_TIMEFRAMES,
+  type LiveTimeframe,
+  type MinuteTimeframe,
+} from './livePage';
 import { LIVE_CARD_KEYS, LIVE_LAYOUT_STORAGE_KEY, type LiveCardKey } from './liveLayout';
 import { isLiveInstrument } from '../live/liveInstrument';
 import type { WorkspaceWindow, GroupSymbol, WindowKind } from './workspace';
@@ -66,11 +72,14 @@ function visibleCardsInOrder(layout: Record<string, unknown>): LiveCardKey[] {
   return ordered.filter((key) => hidden[key] !== true);
 }
 
-/** 그룹 1 종목 — 활성 instrument 가 주식이면 {code,name}, 그 외(지수·없음)면 없음. */
+/** 그룹 1 종목 — 주식={code,name}, 지수={code:id, kind:'index'}(C2c-2c 정식 지원). */
 function groupOneSymbol(page: Record<string, unknown>): GroupSymbol | null {
   const inst = page.activeInstrument;
   if (isLiveInstrument(inst) && inst.kind === 'stock') {
     return { code: inst.code, name: inst.label };
+  }
+  if (isLiveInstrument(inst) && inst.kind === 'index') {
+    return { code: inst.id, name: inst.label, kind: 'index' };
   }
   if (typeof page.activeCode === 'string' && page.activeCode) {
     return { code: page.activeCode, name: page.activeCode };
@@ -82,6 +91,11 @@ function groupOneSymbol(page: Record<string, unknown>): GroupSymbol | null {
  * 레거시 파싱 객체들에서 초기 워크스페이스 시드를 만든다. 순수 함수.
  * 세 키가 모두 비어(마이그레이션할 상태 없음) 있으면 null → 호출측이 공장 기본을 쓴다.
  */
+
+function isMinuteFrameValue(value: unknown): value is MinuteTimeframe {
+  return typeof value === 'string' && (MINUTE_TIMEFRAMES as readonly string[]).includes(value);
+}
+
 export function buildWorkspaceSeed(
   legacy: { page?: unknown; indicators?: unknown; layout?: unknown },
   makeId: () => string,
@@ -94,6 +108,12 @@ export function buildWorkspaceSeed(
   if (!hasPage && !hasLayout && !hasIndicators) return null;
 
   const timeframe = isLiveTimeframe(page.candleTimeframe) ? page.candleTimeframe : '1m';
+  // 분봉 기억 시드 — 레거시 저장값 우선, 없으면 현재 분봉에서 파생(livePage 미러).
+  const lastMinuteTimeframe = isMinuteFrameValue(page.lastMinuteTimeframe)
+    ? page.lastMinuteTimeframe
+    : isMinuteFrameValue(timeframe)
+      ? timeframe
+      : undefined;
   const indicators = normalizeIndicatorsV2(legacy.indicators);
 
   const dataCards = hasLayout ? visibleCardsInOrder(layout) : [...LIVE_CARD_KEYS];
@@ -109,7 +129,11 @@ export function buildWorkspaceSeed(
     kind: 'chart',
     group: 1,
     rect: { x: PAD, y: PAD, w: chartW, h: TOTAL_H },
-    chart: { timeframe, indicators },
+    chart: {
+      timeframe,
+      indicators,
+      ...(lastMinuteTimeframe ? { lastMinuteTimeframe } : {}),
+    },
   });
   zOrder.push(chartId);
 

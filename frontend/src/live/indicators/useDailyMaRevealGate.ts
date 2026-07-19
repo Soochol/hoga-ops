@@ -1,7 +1,8 @@
-import { useLivePageStore, isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
+import { isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
 import type { LiveVenueOption } from '../../state/liveVenue';
 import { dailyMaFetchWindow } from './dailyMaProjection';
 import { useResolvedDailyCandles } from './useResolvedDailyCandles';
+import { useWindowIndicator } from '../workspace/windowView';
 
 /** 일봉 MA 오버레이의 초기 fetch가 pending인지 LiveChartRoot의 reveal 게이트에서 쓸 수
  * 있게 노출한다(개선안 1-B). DailyMovingAverageOverlay가 오버레이 내부에서 fetch하므로
@@ -19,8 +20,8 @@ export function useDailyMaRevealGate(args: {
   venue: LiveVenueOption;
   todayKst: string;
 }): boolean {
-  const masterEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
-  const configs = useLivePageStore((s) => s.dailyMovingAverages);
+  const masterEnabled = useWindowIndicator((s) => s.dailyMovingAverageEnabled);
+  const configs = useWindowIndicator((s) => s.dailyMovingAverages);
   const enabled = masterEnabled && isMinuteTimeframe(args.timeframe) && !!args.code && !!args.todayKst;
   const fetchWindow = enabled ? dailyMaFetchWindow(args.todayKst, configs) : null;
   const dailyQuery = useResolvedDailyCandles({

@@ -20,8 +20,19 @@
 import { createContext, useContext, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
-import { INDICATOR_SETTING_KEYS, type IndicatorSettings } from '../../state/indicatorSettingsV2';
-import type { GroupId } from '../../state/workspace';
+import {
+  FACTORY_INDICATOR_SETTINGS,
+  INDICATOR_SETTING_KEYS,
+  resolveIndicatorSettings,
+  type IndicatorSettings,
+  type PersistedIndicatorsV2,
+} from '../../state/indicatorSettingsV2';
+import { INDICATOR_OPS, bindIndicatorOps, type BoundIndicatorOps } from '../../state/indicatorOps';
+import { useWorkspaceStore, type GroupId } from '../../state/workspace';
+import type { PaneId } from '../../chart/drawing/types';
+import { normalizePaneOrder, type PaneStretchMap } from '../../chart/paneOrder';
+import type { PanePrefKey } from '../indicators/indicatorPaneProfiles';
+import type { PresetEnableByTimeframe } from '../presets/presetFlags';
 
 export interface WindowView {
   /** null = 전역(창 없음, Provider 밖). */
@@ -37,6 +48,9 @@ export interface WindowViewValue extends WindowView {
   indicators: IndicatorSettings;
 }
 
+// 불변식: 한 컴포넌트 인스턴스의 windowId 는 수명 동안 바뀌지 않는다(창=컴포넌트
+// 1:1, WorkspaceCanvas 가 key=win.id 로 마운트). useMemo([windowId]) 캐시·effect
+// deps 생략이 이 불변식에 기댄다 — 창 재사용(id 교체) 최적화 금지.
 export const WindowViewContext = createContext<WindowViewValue | null>(null);
 
 /**
@@ -45,9 +59,13 @@ export const WindowViewContext = createContext<WindowViewValue | null>(null);
  */
 export function useWindowView(): WindowView {
   const ctx = useContext(WindowViewContext);
-  const code = useLivePageStore((s) => s.activeCode);
-  const timeframe = useLivePageStore((s) => s.candleTimeframe);
-  const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
+  // 형제 훅(useWindowIndicator·useWindowPaneOrder)과 같은 규율: Provider 안에서는
+  // 상수 selector 로 전역 구독을 무력화한다(리뷰 F7). 안 그러면 미러 effect 의
+  // livePage 쓰기(포커스/봉 전환 시)가 무관한 모든 차트 창의 useWindowView 구독을
+  // 깨워 LiveChartRoot 서브트리를 한 패스 더 재렌더한다.
+  const code = useLivePageStore((s) => (ctx ? null : s.activeCode));
+  const timeframe = useLivePageStore((s) => (ctx ? '1m' : s.candleTimeframe));
+  const historicalFromDate = useLivePageStore((s) => (ctx ? null : s.historicalFromDate));
   return useMemo(
     () => ctx ?? { windowId: null, group: null, code, timeframe, historicalFromDate },
     [ctx, code, timeframe, historicalFromDate],
@@ -71,4 +89,200 @@ export function useWindowIndicators(): IndicatorSettings {
     }),
   );
   return ctx ? ctx.indicators : global;
+}
+
+/**
+ * 지표 설정 단일-값 selector — 오버레이/차트 소비자의 세밀 구독용.
+ * Provider 안 = 창의 resolve 된 설정에서 select(창 값 변경은 어차피 서브트리
+ * 재렌더). 밖 = 전역 스토어에 selector 구독을 그대로 위임해 **필드 단위 재렌더
+ * 입도를 보존**한다(ctx 가 있으면 상수 selector 로 전역 구독을 무력화).
+ */
+export function useWindowIndicator<T>(select: (s: IndicatorSettings) => T): T {
+  const ctx = useContext(WindowViewContext);
+  const global = useLivePageStore(
+    (s) => (ctx ? undefined : select(s as unknown as IndicatorSettings)),
+  );
+  return ctx ? select(ctx.indicators) : (global as T);
+}
+
+/**
+ * 이 서브트리의 창이 포커스(zOrder 최상단)인가 — Provider 밖(단일 차트)에서는
+ * 항상 true. 창마다 붙는 전역 키 리스너(드로잉 undo/도구 단축키 등)가 N 개
+ * 중복 발화하지 않도록 포커스 창 하나만 처리하게 게이트한다(C2c-2b).
+ */
+export function useIsFocusedWindow(): boolean {
+  const ctx = useContext(WindowViewContext);
+  const windowId = ctx?.windowId ?? null;
+  const focused = useWorkspaceStore((s) =>
+    windowId ? s.zOrder[s.zOrder.length - 1] === windowId : true,
+  );
+  return windowId ? focused : true;
+}
+
+const DEFAULT_PANE_ORDER: PaneId[] = normalizePaneOrder([]);
+const EMPTY_PANE_STRETCH: PaneStretchMap = {};
+
+/**
+ * 레이아웃 슬라이스(IndicatorSettings 밖: paneOrder·paneStretch) 창-스코프 읽기.
+ * 창=chart.indicators 의 슬라이스, 밖=전역 스토어 슬라이스. 비활성 분기는 상수
+ * selector 로 구독을 무력화한다(재렌더 입도 보존). paneOrder/paneStretch 가
+ * 같은 이중-소스+폴백 idiom 을 공유하므로 한 헬퍼로 묶는다(Duplicated Code 제거).
+ */
+function useWindowLayoutSlice<T>(
+  pickWindow: (indicators: PersistedIndicatorsV2) => T,
+  pickGlobal: (s: ReturnType<typeof useLivePageStore.getState>) => T,
+  fallback: T,
+): T {
+  const ctx = useContext(WindowViewContext);
+  const windowId = ctx?.windowId ?? null;
+  const fromWindow = useWorkspaceStore((s) => {
+    if (!windowId) return undefined;
+    const chart = s.windows.find((w) => w.id === windowId)?.chart;
+    return chart ? pickWindow(chart.indicators) : undefined;
+  });
+  const fromGlobal = useLivePageStore((s) => (windowId ? undefined : pickGlobal(s)));
+  return fromWindow ?? fromGlobal ?? fallback;
+}
+
+/** pane 순서 — 창=chart.indicators.paneOrder, 밖=전역 paneOrder. */
+export function useWindowPaneOrder(): PaneId[] {
+  return useWindowLayoutSlice((ind) => ind.paneOrder, (s) => s.paneOrder, DEFAULT_PANE_ORDER);
+}
+
+/** pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스 규율. */
+export function useWindowPaneStretch(): PaneStretchMap {
+  return useWindowLayoutSlice((ind) => ind.paneStretch, (s) => s.paneStretch, EMPTY_PANE_STRETCH);
+}
+
+// ── 쓰기 경로 (ADR-0119 C2c-2a) ──────────────────────────────────────────────
+
+/**
+ * 지표 편집 표면 — indicatorOps 45종 + 레이아웃/버킷 관리 5종. 드로어·pane
+ * 레전드·차트 내 조작이 전부 이 표면만 호출한다. Provider 안=대상 창의 봉
+ * 버킷(#712 창 소유 설정), 밖=전역 `useLivePageStore`(기존 단일 뷰·`/study`).
+ */
+export type IndicatorActions = BoundIndicatorOps & {
+  setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
+  setPaneOrder: (order: PaneId[]) => void;
+  setPaneStretch: (patch: PaneStretchMap) => void;
+  resetIndicators: () => void;
+  applyIndicatorPreset: (preset: {
+    paneOrder: PaneId[];
+    byTimeframeEnable: PresetEnableByTimeframe;
+    paneStretch: PaneStretchMap;
+  }) => void;
+};
+
+function buildGlobalIndicatorActions(): IndicatorActions {
+  // zustand setter 는 스토어 생성 시 1회 만들어지는 안정 참조 — 1회 pick 으로 충분.
+  const s = useLivePageStore.getState();
+  const out: Record<string, unknown> = {};
+  for (const name of Object.keys(INDICATOR_OPS)) {
+    out[name] = (s as unknown as Record<string, unknown>)[name];
+  }
+  out.setPanePrefForTimeframe = s.setPanePrefForTimeframe;
+  out.setPaneOrder = s.setPaneOrder;
+  out.setPaneStretch = s.setPaneStretch;
+  out.resetIndicators = s.resetIndicators;
+  out.applyIndicatorPreset = s.applyIndicatorPreset;
+  return out as unknown as IndicatorActions;
+}
+
+function buildWindowIndicatorActions(windowId: string): IndicatorActions {
+  // 모든 읽기/쓰기를 호출 시점 getState() 로 — 렌더 시점 설정을 클로저에 가두면
+  // 연속 편집(색상 드래그 등)에서 stale read 로 직전 값이 덮인다.
+  const ws = () => useWorkspaceStore.getState();
+  const readSettings = (): IndicatorSettings => {
+    const win = ws().windows.find((w) => w.id === windowId);
+    return win?.chart
+      ? resolveIndicatorSettings(win.chart.indicators.byTimeframe, win.chart.timeframe)
+      : FACTORY_INDICATOR_SETTINGS;
+  };
+  return {
+    ...bindIndicatorOps(readSettings, (patch) => ws().patchChartIndicators(windowId, patch)),
+    // 전역 시맨틱 미러: 호출자가 넘긴 tf 의 버킷에 기록한다(전역 구현과 동일).
+    // 정상 경로에선 창의 tf 와 같지만, 드로어 재타깃/stale 렌더에서 어긋나도
+    // 조용히 다른 버킷을 오염시키지 않는다(리뷰 권고 반영).
+    setPanePrefForTimeframe: (timeframe, key, enabled) =>
+      ws().patchChartIndicatorsAt(windowId, timeframe, { [key]: enabled }),
+    setPaneOrder: (order) => ws().setChartPaneOrder(windowId, order),
+    setPaneStretch: (patch) => ws().setChartPaneStretch(windowId, patch),
+    resetIndicators: () => ws().resetChartIndicators(windowId),
+    applyIndicatorPreset: (preset) => ws().applyChartIndicatorPreset(windowId, preset),
+  };
+}
+
+/** 지표 편집 액션 — Provider 안=창 백엔드, 밖=전역 폴백(`/study` 무변경 계약). */
+export function useIndicatorActions(): IndicatorActions {
+  const ctx = useContext(WindowViewContext);
+  const windowId = ctx?.windowId ?? null;
+  return useMemo(
+    () => (windowId ? buildWindowIndicatorActions(windowId) : buildGlobalIndicatorActions()),
+    [windowId],
+  );
+}
+
+/**
+ * 발화 시점 fresh 뷰 가드 — 디바운스/타이머 콜백이 "이 차트의 (code, timeframe)이
+ * 아직 활성인가"를 검사할 때 쓴다. 렌더 클로저가 아니라 **호출 시점 getState** 라
+ * 스토어 변경 직후 React 재렌더 전에 발화해도 stale 하지 않다(전역 getState 가드의
+ * 창별 대응물).
+ */
+type ViewGuard = () => { code: string | null; timeframe: LiveTimeframe };
+
+function buildWindowViewGuard(windowId: string): ViewGuard {
+  return () => {
+    const s = useWorkspaceStore.getState();
+    const win = s.windows.find((w) => w.id === windowId);
+    return {
+      code: win ? s.groupSymbols[win.group]?.code ?? null : null,
+      timeframe: win?.chart?.timeframe ?? '1m',
+    };
+  };
+}
+
+const GLOBAL_VIEW_GUARD: ViewGuard = () => {
+  const s = useLivePageStore.getState();
+  return { code: s.activeCode, timeframe: s.candleTimeframe };
+};
+
+export function useWindowViewGuard(): ViewGuard {
+  const ctx = useContext(WindowViewContext);
+  const windowId = ctx?.windowId ?? null;
+  return useMemo(
+    () => (windowId ? buildWindowViewGuard(windowId) : GLOBAL_VIEW_GUARD),
+    [windowId],
+  );
+}
+
+/** 좌측 팬 딥 백필의 창별 from-date 액션 + imperative 스냅샷(effect/콜백용). */
+export interface HistoricalRangeActions {
+  extend: (date: string) => void;
+  reset: () => void;
+  snapshot: () => { historicalFromDate: string | null; lastMinuteHistoricalFromDate: string | null };
+}
+
+export function useHistoricalRangeActions(): HistoricalRangeActions {
+  const ctx = useContext(WindowViewContext);
+  const windowId = ctx?.windowId ?? null;
+  return useMemo(() => {
+    if (windowId) {
+      const ws = () => useWorkspaceStore.getState();
+      return {
+        extend: (date: string) => ws().extendChartHistoricalRange(windowId, date),
+        reset: () => ws().resetChartHistoricalRange(windowId),
+        snapshot: () => ws().chartRuntime[windowId]
+          ?? { historicalFromDate: null, lastMinuteHistoricalFromDate: null },
+      };
+    }
+    const ps = () => useLivePageStore.getState();
+    return {
+      extend: (date: string) => ps().extendHistoricalRange(date),
+      reset: () => ps().resetHistoricalRange(),
+      snapshot: () => ({
+        historicalFromDate: ps().historicalFromDate,
+        lastMinuteHistoricalFromDate: ps().lastMinuteHistoricalFromDate,
+      }),
+    };
+  }, [windowId]);
 }

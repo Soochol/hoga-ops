@@ -1,18 +1,19 @@
-import { useLivePageStore, MA_SLOT_LIMIT } from '../../state/livePage';
+import { MA_SLOT_LIMIT } from '../../state/livePage';
 import MovingAverageRow from './MovingAverageRow';
 import ToggleRow from '../settings/ToggleRow';
+import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 /** 일봉 이동평균선 설정 페이지. 현재봉 MovingAverageConfig를 미러링하되 daily
  *  슬라이스를 쓴다. MovingAverageRow(prop-driven)를 그대로 재사용. ADR-0073. */
 export default function DailyMovingAverageConfig() {
-  const configs = useLivePageStore((s) => s.dailyMovingAverages);
-  const enabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
-  const hidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
-  const setEnabled = useLivePageStore((s) => s.setDailyMovingAverageEnabled);
-  const setHidden = useLivePageStore((s) => s.setDailyMovingAverageHidden);
-  const setMA = useLivePageStore((s) => s.setDailyMovingAverage);
-  const addMA = useLivePageStore((s) => s.addDailyMovingAverage);
-  const removeMA = useLivePageStore((s) => s.removeDailyMovingAverage);
+  const configs = useWindowIndicator((s) => s.dailyMovingAverages);
+  const enabled = useWindowIndicator((s) => s.dailyMovingAverageEnabled);
+  const hidden = useWindowIndicator((s) => s.dailyMovingAverageHidden);
+  const setEnabled = useIndicatorActions().setDailyMovingAverageEnabled;
+  const setHidden = useIndicatorActions().setDailyMovingAverageHidden;
+  const setMA = useIndicatorActions().setDailyMovingAverage;
+  const addMA = useIndicatorActions().addDailyMovingAverage;
+  const removeMA = useIndicatorActions().removeDailyMovingAverage;
   const atLimit = configs.length >= MA_SLOT_LIMIT;
   const canRemove = configs.length > 1;
 

@@ -1,6 +1,5 @@
 import { useMemo, useRef } from 'react';
 import type { Candle, RangeSegment, TradeVolumePocWire } from '../api/types';
-import { useLivePageStore } from '../state/livePage';
 import { firstTrailingSinglePriceBookMs } from './continuousTradeVolumeDistribution';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import {
@@ -11,6 +10,7 @@ import {
   type TradeVolumePoc,
 } from './tradeVolumePoc';
 import { tradeVolumePocFromWire } from './tradeVolumePocWire';
+import { useWindowIndicator } from './workspace/windowView';
 
 const LEGACY_TRADE_VOLUME_POC_BAND_PCT = 0.005;
 
@@ -46,7 +46,7 @@ export function useTradeVolumePocs(
   segments: readonly RangeSegment[] = [],
   orderbooks: readonly ObSnapshot[] = [],
 ): TradeVolumePoc[] {
-  const rangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
+  const rangeCount = useWindowIndicator((s) => s.volumeDistributionRangeCount);
   // 당일 distribution POC 증분 누적기 — 훅 수명 동안 인스턴스 고정(useDayAskPeaks 선례).
   const todayPocRef = useRef<IncrementalTradeVolumePoc | null>(null);
   if (todayPocRef.current === null) todayPocRef.current = new IncrementalTradeVolumePoc();

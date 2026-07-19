@@ -2,13 +2,14 @@ import { memo, useEffect, useMemo, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
-import { useLivePageStore, isMinuteTimeframe, type LiveMAConfig, type LiveTimeframe } from '../../state/livePage';
+import { isMinuteTimeframe, type LiveMAConfig, type LiveTimeframe } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import type { LiveVenueOption } from '../../state/liveVenue';
 import { computeDailyMaByDate } from '../../chart/projectors/dailyMovingAverage';
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
 import { useResolvedDailyCandles } from './useResolvedDailyCandles';
 import { useDailyMaSeriesRegistry } from './dailyMaSeriesRegistry';
+import { useWindowIndicator } from '../workspace/windowView';
 
 type Props = {
   chart: IChartApi;
@@ -41,9 +42,9 @@ const priceFormat = {
  *  일봉 데이터를 useLiveBundle 밖 독립 훅으로 fetch한다(번들 split 비침투). 분봉
  *  전용: D/W/M에선 미렌더. 레전드 값은 dailyMaSeriesRegistry 등록으로 노출. */
 function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst, dailyCandleKisEnabled = true, override }: Props) {
-  const storeConfigs = useLivePageStore((s) => s.dailyMovingAverages);
-  const storeMasterEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
-  const storeHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
+  const storeConfigs = useWindowIndicator((s) => s.dailyMovingAverages);
+  const storeMasterEnabled = useWindowIndicator((s) => s.dailyMovingAverageEnabled);
+  const storeHidden = useWindowIndicator((s) => s.dailyMovingAverageHidden);
   const configs = override?.configs ?? storeConfigs;
   const masterEnabled = override?.masterEnabled ?? storeMasterEnabled;
   const hidden = override?.hidden ?? storeHidden;

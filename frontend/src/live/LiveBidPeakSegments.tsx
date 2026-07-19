@@ -4,7 +4,6 @@ import type { AskPeakCandidate, BidPeak, Candle, RangeSegment } from '../api/typ
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
@@ -19,6 +18,7 @@ import {
   inlinePeakWallSegmentsForDocking,
   type AskPeakSegment,
 } from '../chart/AskPeakSegmentsPrimitive';
+import { useWindowIndicator } from './workspace/windowView';
 
 /** peak 시각(ms)을 그 시각이 속한 캔들(버킷)의 ts_ms로 스냅. 캔들은 버킷 시작에 놓이는데
  *  (downsample_candles: ts_ms = floor(ts_ms/bucket)*bucket), peak.t_ms는 그 버킷의 마지막
@@ -394,12 +394,12 @@ type Props = {
  *  형제: LiveCurrentPriceLine(현재가 풀-너비 점선). */
 function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPeak = null, segments, candles, todayKst, untradedRankLimit = 1, visibleTimeCutoff = null }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
-  const enabled = useLivePageStore((s) => s.bidPeakEnabled);
-  const hidden = useLivePageStore((s) => s.bidPeakHidden);
-  const color = useLivePageStore((s) => s.bidPeakColor);
-  const lineWidth = useLivePageStore((s) => s.bidPeakLineWidth);
-  const allPriceColor = useLivePageStore((s) => s.bidPeakAllPriceColor);
-  const allPriceLineWidth = useLivePageStore((s) => s.bidPeakAllPriceLineWidth);
+  const enabled = useWindowIndicator((s) => s.bidPeakEnabled);
+  const hidden = useWindowIndicator((s) => s.bidPeakHidden);
+  const color = useWindowIndicator((s) => s.bidPeakColor);
+  const lineWidth = useWindowIndicator((s) => s.bidPeakLineWidth);
+  const allPriceColor = useWindowIndicator((s) => s.bidPeakAllPriceColor);
+  const allPriceLineWidth = useWindowIndicator((s) => s.bidPeakAllPriceLineWidth);
   const intraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const showAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
   const allPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);

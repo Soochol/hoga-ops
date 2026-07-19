@@ -2,10 +2,10 @@ import { memo } from 'react';
 import type { RangeBundle } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
-import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import SeriesLevelLine from './SeriesLevelLine';
 import { deriveQuoteTotalsLevels, deriveRatioLevel } from './deriveQuoteLevelLines';
+import { useWindowIndicator } from './workspace/windowView';
 
 type Props = {
   paneSeries: PaneSeriesMap;
@@ -27,18 +27,18 @@ function QuoteLevelLines({ paneSeries, bundle }: Props) {
   const quoteTotalsSeries = paneSeries.get('quote-totals' as PaneId);
   const ratioSeries = paneSeries.get('ratio' as PaneId);
 
-  const qtEnabled = useLivePageStore((s) => s.quoteTotalsLevelLineEnabled);
-  const qtBidColor = useLivePageStore((s) => s.quoteTotalsBidLevelColor);
-  const qtBidWidth = useLivePageStore((s) => s.quoteTotalsBidLevelWidth);
-  const qtBidStyle = useLivePageStore((s) => s.quoteTotalsBidLevelStyle);
-  const qtAskColor = useLivePageStore((s) => s.quoteTotalsAskLevelColor);
-  const qtAskWidth = useLivePageStore((s) => s.quoteTotalsAskLevelWidth);
-  const qtAskStyle = useLivePageStore((s) => s.quoteTotalsAskLevelStyle);
+  const qtEnabled = useWindowIndicator((s) => s.quoteTotalsLevelLineEnabled);
+  const qtBidColor = useWindowIndicator((s) => s.quoteTotalsBidLevelColor);
+  const qtBidWidth = useWindowIndicator((s) => s.quoteTotalsBidLevelWidth);
+  const qtBidStyle = useWindowIndicator((s) => s.quoteTotalsBidLevelStyle);
+  const qtAskColor = useWindowIndicator((s) => s.quoteTotalsAskLevelColor);
+  const qtAskWidth = useWindowIndicator((s) => s.quoteTotalsAskLevelWidth);
+  const qtAskStyle = useWindowIndicator((s) => s.quoteTotalsAskLevelStyle);
 
-  const ratioEnabled = useLivePageStore((s) => s.ratioLevelLineEnabled);
-  const ratioColor = useLivePageStore((s) => s.ratioLevelColor);
-  const ratioWidth = useLivePageStore((s) => s.ratioLevelWidth);
-  const ratioStyle = useLivePageStore((s) => s.ratioLevelStyle);
+  const ratioEnabled = useWindowIndicator((s) => s.ratioLevelLineEnabled);
+  const ratioColor = useWindowIndicator((s) => s.ratioLevelColor);
+  const ratioWidth = useWindowIndicator((s) => s.ratioLevelWidth);
+  const ratioStyle = useWindowIndicator((s) => s.ratioLevelStyle);
 
   const qtIntraMax = useActivePrefs((p) => p.quoteTotalsIntraMax);
   const ratioIntraMax = useActivePrefs((p) => p.ratioIntraMax);

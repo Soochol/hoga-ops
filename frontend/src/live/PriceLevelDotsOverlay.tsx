@@ -5,7 +5,7 @@ import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { PaneId } from '../chart/drawing/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
-import { useLivePageStore } from '../state/livePage';
+import { useWindowIndicator } from './workspace/windowView';
 
 type Props = {
   chart: IChartApi;
@@ -55,8 +55,8 @@ function ariaLabel(hit: PriceLevelHit): string {
 
 function PriceLevelDotsOverlay({ chart, bundle, axis, paneSeries }: Props) {
   const enabled = useActivePrefs((p) => p.viLimitPriceDotsEnabled);
-  const color = useLivePageStore((s) => s.viLimitPriceLineColor);
-  const lineWidth = useLivePageStore((s) => s.viLimitPriceLineWidth);
+  const color = useWindowIndicator((s) => s.viLimitPriceLineColor);
+  const lineWidth = useWindowIndicator((s) => s.viLimitPriceLineWidth);
   const containerRef = useRef<HTMLDivElement>(null);
   const [, tick] = useReducer((n: number) => n + 1, 0);
 

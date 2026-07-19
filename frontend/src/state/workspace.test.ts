@@ -135,6 +135,25 @@ describe('손상된 저장값 방어(관대한 per-entry 검증)', () => {
     expect(s.groupSymbols[99]).toBeUndefined(); // 범위 밖 그룹 드롭
   });
 
+  it('그룹 심볼 kind=index 는 code 가 실제 LiveIndexId 일 때만 보존한다(리뷰 #2)', async () => {
+    localStorage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        windows: [{ id: 'c', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: 500, h: 400 }, chart: { timeframe: '1m' } }],
+        zOrder: ['c'],
+        groupSymbols: {
+          1: { code: 'KOSPI', name: '코스피', kind: 'index' },   // 유효 → 보존
+          2: { code: 'FOO', name: '가짜', kind: 'index' },        // 무효 code → kind 강등
+        },
+      }),
+    );
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const gs = mod.useWorkspaceStore.getState().groupSymbols;
+    expect(gs[1]).toEqual({ code: 'KOSPI', name: '코스피', kind: 'index' });
+    expect(gs[2]).toEqual({ code: 'FOO', name: '가짜' }); // kind 없음(stock 기본)
+  });
+
   it('차트 창 하이드레이션: 손상 timeframe→1m, 지표 누락→정규화 사본', async () => {
     localStorage.setItem(
       WORKSPACE_STORAGE_KEY,

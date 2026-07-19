@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import LiveDrawingRail from './LiveDrawingRail';
 import { DRAWABLE_TOOLS_ORDER, TOOLS } from '../chart/drawing/tools';
+import { useLivePageStore } from '../state/livePage';
 import { useDrawingsStore } from '../state/drawings';
 import type { Drawing, DrawingTool } from '../chart/drawing/types';
 
@@ -50,8 +51,9 @@ describe('LiveDrawingRail', () => {
       lineStyle: 'solid',
       paneId: 'candle',
     };
-    useDrawingsStore.getState().setActiveCode('005930');
-    useDrawingsStore.getState().add(drawing);
+    // 레일의 code 는 windowView 폴백 = livePage 활성 종목(C2c-2b).
+    useLivePageStore.setState({ activeCode: '005930' });
+    useDrawingsStore.getState().add('005930', drawing);
     expect(useDrawingsStore.getState().drawingsFor('005930')).toHaveLength(1);
 
     render(<LiveDrawingRail />);

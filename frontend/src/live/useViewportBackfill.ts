@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { IChartApi, Time } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { RangeBundle } from '../api/types';
-import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
+import { type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
+import { useHistoricalRangeActions, useWindowViewGuard } from './workspace/windowView';
 import {
   nextHistoricalFrom,
   nextCoverageFrom,
@@ -125,6 +126,12 @@ export function useViewportBackfill({
   indicatorCoverageFromDate = null,
   rangeWindowFromDate = null,
 }: ViewportBackfillArgs): void {
+  // 창-스코프 절단(ADR-0119 C2c-2a): from-date 읽기/확장은 창 런타임(Provider
+  // 안) 또는 전역 스토어(밖)로 — getState 병행 경로의 창별 대응물.
+  const historicalRange = useHistoricalRangeActions();
+  // 디바운스 발화 시점의 fresh 뷰 가드 — 호출 시점 getState(스토어 직독).
+  const viewGuard = useWindowViewGuard();
+
   // Pre-swap snapshot: the view as of the CURRENT commit's layout phase, with
   // the right edge resolved to real ms through the axis the chart was actually
   // drawn with (prevAxisRef). prevEarliestTsMsRef detects a genuine prepend.
@@ -241,7 +248,7 @@ export function useViewportBackfill({
     }
     const prevEarliest = prevEarliestTsMsRef.current;
     prevEarliestTsMsRef.current = newEarliest;
-    if (useLivePageStore.getState().historicalFromDate === null) return;
+    if (historicalRange.snapshot().historicalFromDate === null) return;
     if (prevEarliest === null || newEarliest === null) return;
     if (newEarliest >= prevEarliest) return;
     const snap = preSwapRef.current;
@@ -273,7 +280,7 @@ export function useViewportBackfill({
       // runs. Surface in dev so it isn't a silent no-op read as "still broken".
       if (import.meta.env.DEV) console.warn('[live] viewport reposition threw', e);
     }
-  }, [chart, bundle, axis]);
+  }, [chart, bundle, axis, historicalRange]);
 
   // 3a. 진행 루프(스텝 2..N): 한 스텝 settle(isExtending true→false)마다 활성
   // fill의 예산을 소진하며 다음 스텝을 자가 dispatch한다. 뷰포트는 읽지 않는다
@@ -294,7 +301,7 @@ export function useViewportBackfill({
     };
     // 초기 캔들 미로드(빈 차트)면 백필 폭주 금지 — candleCountRef 주석 참조.
     if (candleCountRef.current === 0) return;
-    const cur = useLivePageStore.getState().historicalFromDate;
+    const cur = historicalRange.snapshot().historicalFromDate;
     if (cur === null || axis.segments.length === 0) {
       endFill();
       return;
@@ -334,8 +341,8 @@ export function useViewportBackfill({
       budget: fillBudgetRef.current,
       candleCount: candleCountRef.current,
     });
-    useLivePageStore.getState().extendHistoricalRange(plan.nextFrom);
-  }, [chart, axis, timeframe, isExtending, canTriggerBackfill]);
+    historicalRange.extend(plan.nextFrom);
+  }, [chart, axis, timeframe, isExtending, canTriggerBackfill, historicalRange]);
 
   // 3b. Lazy fetch trigger — extend historicalFromDate when user scrolls past
   // the leftmost loaded candle.
@@ -388,7 +395,7 @@ export function useViewportBackfill({
       //     커버리지보다 과거면, 캔들은 병합 캐시로 복원됐는데 지표만 뒤처진 구간이다.
       //     window-base nextCoverageFrom으로 range 창만 확장(axis-base 금지 — 복원된
       //     캔들로 폭발). 목표 = 트리거 순간의 viewport 좌단 날짜(동결).
-      const cur = useLivePageStore.getState().historicalFromDate;
+      const cur = historicalRange.snapshot().historicalFromDate;
       let trigger: 'left_pan' | 'coverage_gap';
       let nextFrom: string;
       let budget: number;
@@ -413,9 +420,9 @@ export function useViewportBackfill({
       // debounce, store dispatch.
       if (timeoutId !== null) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
-        const state = useLivePageStore.getState();
-        if (state.candleTimeframe !== timeframe) return;
-        if (state.activeCode && state.activeCode !== code) return;
+        const view = viewGuard();
+        if (view.timeframe !== timeframe) return;
+        if (view.code && view.code !== code) return;
         // Re-check at fire time: a fill may have started during the debounce
         // window. Skip — its budget owns the pipeline until it completes.
         if (isExtendingRef.current || fillKindRef.current !== null) {
@@ -445,7 +452,7 @@ export function useViewportBackfill({
           budget,
           candleCount: candleCountRef.current,
         });
-        useLivePageStore.getState().extendHistoricalRange(nextFrom);
+        historicalRange.extend(nextFrom);
       }, 150);
     };
     ts.subscribeVisibleLogicalRangeChange(handler);
@@ -453,7 +460,7 @@ export function useViewportBackfill({
       if (timeoutId !== null) clearTimeout(timeoutId);
       ts.unsubscribeVisibleLogicalRangeChange(handler);
     };
-  }, [chart, axis, timeframe, canTriggerBackfill]);
+  }, [chart, axis, timeframe, canTriggerBackfill, historicalRange, viewGuard]);
 
   // 3c. 초기 표시 coverage_gap 판정(1회). 3b는 subscribeVisibleLogicalRangeChange
   // 이벤트에만 발화하므로, 저장 뷰포트가 처음부터 지표 커버리지 밖 과거를 보고 있으면
@@ -478,7 +485,7 @@ export function useViewportBackfill({
     if (indicatorCoverageFromDate === null || rangeWindowFromDate === null) return;
     if (isExtendingRef.current || fillKindRef.current !== null) return;
     initialCoverageCheckedRef.current = true;
-    const cur = useLivePageStore.getState().historicalFromDate;
+    const cur = historicalRange.snapshot().historicalFromDate;
     const covPlan = planCoverageGapFill(
       chart, axis, timeframe, cur, indicatorCoverageFromDate, rangeWindowFromDate,
     );
@@ -497,6 +504,6 @@ export function useViewportBackfill({
       budget: fillBudgetRef.current,
       candleCount: bundle.candles.length,
     });
-    useLivePageStore.getState().extendHistoricalRange(covPlan.nextFrom);
-  }, [chart, bundle, axis, timeframe, canTriggerBackfill, indicatorCoverageFromDate, rangeWindowFromDate, code]);
+    historicalRange.extend(covPlan.nextFrom);
+  }, [chart, bundle, axis, timeframe, canTriggerBackfill, indicatorCoverageFromDate, rangeWindowFromDate, code, historicalRange]);
 }

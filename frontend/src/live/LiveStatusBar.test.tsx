@@ -37,7 +37,7 @@ const EMPTY_BUNDLE: RangeBundle = {
 };
 
 function renderBar(
-  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null; venue?: LiveVenueOption; hogaGapDates?: readonly string[]; liveTradePrice?: number | null; isExtending?: boolean },
+  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null; venue?: LiveVenueOption; hogaGapDates?: readonly string[]; liveTradePrice?: number | null; isExtending?: boolean; historicalFromDate?: string | null },
   watchlistCodes: string[] = [],
   quote?: { price: number; change_pct: number | null; change_won: number | null; stale?: boolean },
   liveSet: string[] = [],
@@ -76,6 +76,7 @@ function renderBar(
         hogaGapDates={props.hogaGapDates}
         liveTradePrice={props.liveTradePrice}
         isExtending={props.isExtending}
+        historicalFromDate={props.historicalFromDate}
       />
     </QueryClientProvider>,
   );
@@ -338,6 +339,27 @@ describe('LiveStatusBar', () => {
     renderBar({
       activeCode: '005930', captureHealthy: true, captureReason: 'healthy',
       bundle: EMPTY_BUNDLE, isExtending: true,
+    });
+    expect(screen.queryByTestId('past-backfill-progress-chip')).toBeNull();
+  });
+
+  it('플립: historicalFromDate prop(창 발행)이 전역 null 을 이겨 칩을 띄운다(리뷰 #1)', () => {
+    // 플립 후 전역 historicalFromDate 는 항상 null(미러가 null 투영)이지만, 창
+    // 발행 채널이 prop 으로 창의 from-date 를 공급하면 칩이 떠야 한다.
+    useLivePageStore.setState({ historicalFromDate: null });
+    renderBar({
+      activeCode: '005930', captureHealthy: true, captureReason: 'healthy',
+      bundle: EMPTY_BUNDLE, isExtending: true, historicalFromDate: '20260101',
+    });
+    expect(screen.getByTestId('past-backfill-progress-chip')).toBeInTheDocument();
+  });
+
+  it('플립: historicalFromDate prop=null 은 전역 값과 무관하게 칩을 막는다', () => {
+    // prop 이 명시되면(플립 경로) 전역 폴백을 쓰지 않는다 — fresh 창은 null 발행.
+    useLivePageStore.setState({ historicalFromDate: '20260101' });
+    renderBar({
+      activeCode: '005930', captureHealthy: true, captureReason: 'healthy',
+      bundle: EMPTY_BUNDLE, isExtending: true, historicalFromDate: null,
     });
     expect(screen.queryByTestId('past-backfill-progress-chip')).toBeNull();
   });

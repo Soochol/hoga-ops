@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { useShallow } from 'zustand/react/shallow';
 import {
   createChartEx,
   TickMarkType,
@@ -22,12 +21,19 @@ import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import {
-  useLivePageStore,
   type LiveMAConfig,
   type LiveTimeframe,
   isMinuteTimeframe,
   isCalendarTimeframe,
 } from '../state/livePage';
+import {
+  useHistoricalRangeActions,
+  useIndicatorActions,
+  useWindowIndicator,
+  useWindowPaneOrder,
+  useWindowPaneStretch,
+  useWindowViewGuard,
+} from './workspace/windowView';
 import { useActivePrefs, useChartPrefsStore, type ChartViewPrefs } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
@@ -644,9 +650,13 @@ export function LiveChartRoot({
   // transition doesn't leave the chart zoomed on the early window with the
   // latest data off the right edge.
   const lastAppliedCountRef = useRef<number | null>(null);
+  // 창-스코프 절단(ADR-0119 C2c-2a): historicalFromDate 의 imperative 읽기/확장은
+  // 창 런타임(Provider 안) 또는 전역 스토어(밖) — getState 병행 경로의 대응물.
+  const historicalRange = useHistoricalRangeActions();
+  const viewGuard = useWindowViewGuard();
   const canTriggerBackfill = useCallback(
-    () => lastAppliedCountRef.current !== null || useLivePageStore.getState().historicalFromDate !== null,
-    [],
+    () => lastAppliedCountRef.current !== null || historicalRange.snapshot().historicalFromDate !== null,
+    [historicalRange],
   );
   // Cold-load reveal gate. On a cold (code, timeframe) load the hoga panes
   // (/api/range) resolve up to ~2.5s before the candles (/api/live/past-candles
@@ -922,7 +932,7 @@ export function LiveChartRoot({
       revealWhenSettled();
       return;
     }
-    const historicalFromDate = useLivePageStore.getState().historicalFromDate;
+    const historicalFromDate = historicalRange.snapshot().historicalFromDate;
     if (timeframe === 'D') {
       const shouldPreserveScrolledBackDaily =
         historicalFromDate !== null &&
@@ -984,13 +994,14 @@ export function LiveChartRoot({
         // activeCode 엄격 동등: /live는 activeCode truthy일 때만 이 차트를
         // 마운트하므로 항상 일치한다. 느슨한 truthy-게이트였다면 StudyPage 등
         // 다른 마운트의 분봉 배치가 live store를 extend하는 월경이 가능하다.
-        const pageState = useLivePageStore.getState();
+        const remembered = historicalRange.snapshot().lastMinuteHistoricalFromDate;
+        const view = viewGuard();
         if (
-          pageState.lastMinuteHistoricalFromDate !== null &&
-          pageState.candleTimeframe === timeframe &&
-          pageState.activeCode === code
+          remembered !== null &&
+          view.timeframe === timeframe &&
+          view.code === code
         ) {
-          pageState.extendHistoricalRange(pageState.lastMinuteHistoricalFromDate);
+          historicalRange.extend(remembered);
         }
       } else if (isCalendarTimeframe(timeframe)) {
         // Calendar frames avoid fitContent's multi-step internal range settle.
@@ -1150,33 +1161,48 @@ export function LiveChartRoot({
     });
   }, [chart, horizontalGridLinesEnabled, verticalGridLinesEnabled]);
 
-  const indicatorPrefs = useLivePageStore(
-    useShallow((s) => ({
-      movingAverages: s.movingAverages,
-      movingAverageEnabled: s.movingAverageEnabled,
-      movingAverageHidden: s.movingAverageHidden,
-      volumeEnabled: s.volumeEnabled,
-      quoteTotalsEnabled: s.quoteTotalsEnabled,
-      ratioEnabled: s.ratioEnabled,
-      fillStrengthEnabled: s.fillStrengthEnabled,
-      programTradeEnabled: s.programTradeEnabled,
-      foreignNetEnabled: s.foreignNetEnabled,
-      institutionNetEnabled: s.institutionNetEnabled,
-    })),
+  // 창-스코프 절단 — 필드별 구독으로 전역 폴백의 재렌더 입도 보존.
+  const prefMovingAverages = useWindowIndicator((s) => s.movingAverages);
+  const prefMovingAverageEnabled = useWindowIndicator((s) => s.movingAverageEnabled);
+  const prefMovingAverageHidden = useWindowIndicator((s) => s.movingAverageHidden);
+  const prefVolumeEnabled = useWindowIndicator((s) => s.volumeEnabled);
+  const prefQuoteTotalsEnabled = useWindowIndicator((s) => s.quoteTotalsEnabled);
+  const prefRatioEnabled = useWindowIndicator((s) => s.ratioEnabled);
+  const prefFillStrengthEnabled = useWindowIndicator((s) => s.fillStrengthEnabled);
+  const prefProgramTradeEnabled = useWindowIndicator((s) => s.programTradeEnabled);
+  const prefForeignNetEnabled = useWindowIndicator((s) => s.foreignNetEnabled);
+  const prefInstitutionNetEnabled = useWindowIndicator((s) => s.institutionNetEnabled);
+  const indicatorPrefs = useMemo(
+    () => ({
+      movingAverages: prefMovingAverages,
+      movingAverageEnabled: prefMovingAverageEnabled,
+      movingAverageHidden: prefMovingAverageHidden,
+      volumeEnabled: prefVolumeEnabled,
+      quoteTotalsEnabled: prefQuoteTotalsEnabled,
+      ratioEnabled: prefRatioEnabled,
+      fillStrengthEnabled: prefFillStrengthEnabled,
+      programTradeEnabled: prefProgramTradeEnabled,
+      foreignNetEnabled: prefForeignNetEnabled,
+      institutionNetEnabled: prefInstitutionNetEnabled,
+    }),
+    [prefMovingAverages, prefMovingAverageEnabled, prefMovingAverageHidden,
+      prefVolumeEnabled, prefQuoteTotalsEnabled, prefRatioEnabled,
+      prefFillStrengthEnabled, prefProgramTradeEnabled, prefForeignNetEnabled,
+      prefInstitutionNetEnabled],
   );
   // 사용자 소유 pane 순서(ADR-0114 §3) — paneSpecsForTimeframe 의 3번째 인자로 전달.
-  const paneOrder = useLivePageStore((s) => s.paneOrder);
+  const paneOrder = useWindowPaneOrder();
   // 사용자 소유 Pane 크기 가중치(#703) — separator 드래그 결과의 SSOT.
-  const paneStretch = useLivePageStore((s) => s.paneStretch);
-  const setPaneStretch = useLivePageStore((s) => s.setPaneStretch);
+  const paneStretch = useWindowPaneStretch();
+  const setPaneStretch = useIndicatorActions().setPaneStretch;
   // separator 드래그 진행 중 여부 — stretch 재적용 effect 의 가드.
   const paneDragRef = useRef(false);
   // 드래그 종료 시 pane index → PaneId 매핑에 쓰는 최신 spec 목록.
   const paneSpecsRef = useRef<readonly BoundPaneSpec[]>([]);
-  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
-  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
-  const askPeakWallHidden = useLivePageStore((s) => s.askPeakHidden);
-  const bidPeakWallHidden = useLivePageStore((s) => s.bidPeakHidden);
+  const askPeakEnabled = useWindowIndicator((s) => s.askPeakEnabled);
+  const bidPeakEnabled = useWindowIndicator((s) => s.bidPeakEnabled);
+  const askPeakWallHidden = useWindowIndicator((s) => s.askPeakHidden);
+  const bidPeakWallHidden = useWindowIndicator((s) => s.bidPeakHidden);
   const askPeakLabelEnabled = useActivePrefs((s) => s.askPeakLabelEnabled);
   const bidPeakLabelEnabled = useActivePrefs((s) => s.bidPeakLabelEnabled);
   const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
@@ -1810,7 +1836,7 @@ export function LiveChartRoot({
     tradeVolumePocs.length,
   );
   const depthHeatmapPoints = useMemo(() => depthHeatmapFromWire(depthHeatmap), [depthHeatmap]);
-  const depthHeatmapEnabledStore = useLivePageStore((s) => s.depthHeatmapEnabled);
+  const depthHeatmapEnabledStore = useWindowIndicator((s) => s.depthHeatmapEnabled);
   const showDepthHeatmapOverlay = shouldShowDepthHeatmapOverlay(
     timeframe,
     depthHeatmapEnabledStore,
@@ -1940,6 +1966,7 @@ export function LiveChartRoot({
           <DrawingOverlay
             chart={chart}
             axis={axis}
+            code={code}
             paneSeries={paneSeries}
             onChartHoverPassthrough={handleDrawingOverlayHover}
             bucketMs={cb?.bucket_ms ?? undefined}
@@ -1971,7 +1998,7 @@ export function LiveChartRoot({
           {isMinuteTimeframe(timeframe) && hogaBundle && (
             <PriceLevelDotsOverlay chart={chart} bundle={hogaBundle} axis={axis} paneSeries={paneSeries} />
           )}
-          <DrawingPropertyPanel />
+          <DrawingPropertyPanel code={code} />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a
               per-day vertical line collapses onto each candle. */}

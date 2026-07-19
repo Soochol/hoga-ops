@@ -1,4 +1,6 @@
 import { useLivePageStore } from '../../state/livePage';
+import { useWorkspaceStore } from '../../state/workspace';
+import { targetChartWindow } from '../workspace/WorkspaceIndicatorDrawer';
 import {
   DEFAULT_CARD_WEIGHTS,
   DEFAULT_RIGHT_PANEL_WIDTH_PX,
@@ -41,16 +43,41 @@ function numberMap(raw: unknown): Record<string, number> {
   return out;
 }
 
+/** 프리셋 v2 의 지표 소스 — 멀티창(ADR-0119 C2c-2d)에선 포커스 차트 창의
+ *  설정(창 소유 #712), 차트 창이 없으면 전역 스토어(기존 단일 뷰 동작). */
+function indicatorSource(): {
+  byTimeframe: Record<string, Partial<Record<string, unknown>>>;
+  paneOrder: readonly string[];
+  paneStretch: Record<string, number>;
+} {
+  const ws = useWorkspaceStore.getState();
+  const target = targetChartWindow(ws.windows, ws.zOrder);
+  if (target?.chart) {
+    const ind = target.chart.indicators;
+    return {
+      byTimeframe: ind.byTimeframe as Record<string, Partial<Record<string, unknown>>>,
+      paneOrder: ind.paneOrder,
+      paneStretch: ind.paneStretch as Record<string, number>,
+    };
+  }
+  const page = useLivePageStore.getState();
+  return {
+    byTimeframe: page.indicatorsByTimeframe as Record<string, Partial<Record<string, unknown>>>,
+    paneOrder: page.paneOrder,
+    paneStretch: page.paneStretch as Record<string, number>,
+  };
+}
+
 /** 현재 /live 화면 구성을 프리셋 payload 로 캡처한다. */
 export function capturePresetPayload(): LiveLayoutPresetPayload {
-  const page = useLivePageStore.getState();
+  const source = indicatorSource();
   const layout = useLiveLayoutStore.getState();
 
   // 프리셋 = 4버킷 전체의 지표 on/off 스냅샷(#698·#699 PR-D). indicatorsByTimeframe
   // 는 이미 공장값 diff sparse 이므로, 각 버킷에서 enable 15키만 슬라이스하면 된다.
   // 현재 봉 투영이 아니라 버킷 원본을 읽으므로 캡처가 timeframe-무관 = 캡처→적용 항등.
   const byTimeframeEnable = Object.fromEntries(
-    Object.entries(page.indicatorsByTimeframe).flatMap(([profileKey, bucket]) => {
+    Object.entries(source.byTimeframe).flatMap(([profileKey, bucket]) => {
       const slice = Object.fromEntries(
         PRESET_INDICATOR_FLAG_KEYS.flatMap((key) => (
           typeof bucket?.[key] === 'boolean' ? [[key, bucket[key]]] : []
@@ -61,9 +88,9 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
   );
 
   return {
-    pane_order: [...page.paneOrder],
+    pane_order: [...source.paneOrder] as LiveLayoutPresetPayload['pane_order'],
     by_timeframe_enable: byTimeframeEnable,
-    pane_stretch: { ...page.paneStretch },
+    pane_stretch: { ...source.paneStretch },
     right_panel_width_px: layout.rightPanelWidthPx,
     right_card_order: [...layout.rightCardOrder],
     right_card_hidden: { ...layout.rightCardHidden },
@@ -78,12 +105,20 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
  * 각 봉 버킷의 enable 오버라이드를 프리셋 값으로 통째 교체해 결정론 확보(#699 §5).
  */
 export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: string | null): void {
-  useLivePageStore.getState().applyIndicatorPreset({
+  const preset = {
     paneOrder: normalizePaneOrder(payload.pane_order),
     byTimeframeEnable: normalizePresetEnableByTimeframe(payload.by_timeframe_enable),
     // 구버전 프리셋(필드 부재)은 {} 로 정규화 → 스펙 기본 크기로 적용된다.
     paneStretch: normalizePaneStretch(payload.pane_stretch),
-  });
+  };
+  // 멀티창: 지표 프리셋은 포커스 차트 창에 적용(스펙 §2 — v3 전체 스냅샷은 PR-E).
+  const ws = useWorkspaceStore.getState();
+  const target = targetChartWindow(ws.windows, ws.zOrder);
+  if (target?.chart) {
+    ws.applyChartIndicatorPreset(target.id, preset);
+  } else {
+    useLivePageStore.getState().applyIndicatorPreset(preset);
+  }
 
   const layoutInput: LiveLayoutPresetInput = {
     rightPanelWidthPx: payload.right_panel_width_px,
