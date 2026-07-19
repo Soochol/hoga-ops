@@ -334,6 +334,18 @@ const EMPTY_RUNTIME: ChartWindowRuntime = {
   lastMinuteHistoricalFromDate: null,
 };
 
+/** fresh-view 규칙(#711): 종목이 바뀌는(창 닫힘·그룹 이동·그룹 종목 교체) 창들의
+ *  비영속 런타임(팬 백필 from-date·분봉 기억)을 걷는다 — 이전 종목의 딥 백필
+ *  창이 새 종목으로 새지 않게. 삭제 규칙의 단일 지점(Shotgun Surgery 방지). */
+function clearedChartRuntime(
+  runtime: Record<string, ChartWindowRuntime>,
+  ids: Iterable<string>,
+): Record<string, ChartWindowRuntime> {
+  const next = { ...runtime };
+  for (const id of ids) delete next[id];
+  return next;
+}
+
 export const useWorkspaceStore = create<Store>((set, get) => ({
   ...hydrated,
   chartRuntime: {},
@@ -374,12 +386,10 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
 
   closeWindow: (id) => {
     set((state) => {
-      const chartRuntime = { ...state.chartRuntime };
-      delete chartRuntime[id];
       const next = {
         windows: state.windows.filter((w) => w.id !== id),
         zOrder: state.zOrder.filter((i) => i !== id),
-        chartRuntime,
+        chartRuntime: clearedChartRuntime(state.chartRuntime, [id]),
       };
       persistFromState({ ...state, ...next });
       return next;
@@ -423,12 +433,9 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       const prev = state.windows.find((w) => w.id === id);
       if (!prev || prev.group === group) return {};
       const windows = state.windows.map((w) => (w.id === id ? { ...w, group } : w));
-      // 그룹 이동 = 이 창의 표시 종목 교체(그룹=종목 SSOT #711) — fresh view
-      // 규율(livePage setActiveCode 미러)로 팬 백필·분봉 기억 런타임을 리셋한다.
-      const chartRuntime = { ...state.chartRuntime };
-      delete chartRuntime[id];
+      // 그룹 이동 = 이 창의 표시 종목 교체(그룹=종목 SSOT #711) — fresh-view 런타임 리셋.
       persistFromState({ ...state, windows });
-      return { windows, chartRuntime };
+      return { windows, chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
     });
   },
 
@@ -436,14 +443,10 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     if (!isGroupId(group)) return;
     set((state) => {
       const groupSymbols = { ...state.groupSymbols, [group]: symbol };
-      // 종목 교체 = fresh view(livePage setActiveCode 미러) — 그 그룹 창들의
-      // 팬 백필·분봉 기억 런타임을 초기화한다.
-      const chartRuntime = { ...state.chartRuntime };
-      for (const w of state.windows) {
-        if (w.group === group) delete chartRuntime[w.id];
-      }
+      // 종목 교체 = fresh-view — 그 그룹 창들의 백필·분봉 기억 런타임 리셋.
+      const affected = state.windows.filter((w) => w.group === group).map((w) => w.id);
       persistFromState({ ...state, groupSymbols });
-      return { groupSymbols, chartRuntime };
+      return { groupSymbols, chartRuntime: clearedChartRuntime(state.chartRuntime, affected) };
     });
   },
 
@@ -593,9 +596,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   resetChartHistoricalRange: (id) => {
     set((state) => {
       if (!(id in state.chartRuntime)) return {};
-      const chartRuntime = { ...state.chartRuntime };
-      delete chartRuntime[id];
-      return { chartRuntime };
+      return { chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
     });
   },
 }));

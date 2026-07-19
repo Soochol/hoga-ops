@@ -25,6 +25,7 @@ import {
   INDICATOR_SETTING_KEYS,
   resolveIndicatorSettings,
   type IndicatorSettings,
+  type PersistedIndicatorsV2,
 } from '../../state/indicatorSettingsV2';
 import { INDICATOR_OPS, bindIndicatorOps, type BoundIndicatorOps } from '../../state/indicatorOps';
 import { useWorkspaceStore, type GroupId } from '../../state/workspace';
@@ -119,30 +120,38 @@ export function useIsFocusedWindow(): boolean {
 }
 
 const DEFAULT_PANE_ORDER: PaneId[] = normalizePaneOrder([]);
+const EMPTY_PANE_STRETCH: PaneStretchMap = {};
 
-/** pane 순서 — 레이아웃 슬라이스(IndicatorSettings 밖). 창=chart.indicators.paneOrder,
- *  밖=전역 paneOrder. 두 구독 모두 비활성 분기에서 상수 selector 로 무력화. */
-export function useWindowPaneOrder(): PaneId[] {
+/**
+ * 레이아웃 슬라이스(IndicatorSettings 밖: paneOrder·paneStretch) 창-스코프 읽기.
+ * 창=chart.indicators 의 슬라이스, 밖=전역 스토어 슬라이스. 비활성 분기는 상수
+ * selector 로 구독을 무력화한다(재렌더 입도 보존). paneOrder/paneStretch 가
+ * 같은 이중-소스+폴백 idiom 을 공유하므로 한 헬퍼로 묶는다(Duplicated Code 제거).
+ */
+function useWindowLayoutSlice<T>(
+  pickWindow: (indicators: PersistedIndicatorsV2) => T,
+  pickGlobal: (s: ReturnType<typeof useLivePageStore.getState>) => T,
+  fallback: T,
+): T {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
-  const fromWindow = useWorkspaceStore((s) =>
-    windowId ? s.windows.find((w) => w.id === windowId)?.chart?.indicators.paneOrder : undefined,
-  );
-  const fromGlobal = useLivePageStore((s) => (windowId ? undefined : s.paneOrder));
-  return fromWindow ?? fromGlobal ?? DEFAULT_PANE_ORDER;
+  const fromWindow = useWorkspaceStore((s) => {
+    if (!windowId) return undefined;
+    const chart = s.windows.find((w) => w.id === windowId)?.chart;
+    return chart ? pickWindow(chart.indicators) : undefined;
+  });
+  const fromGlobal = useLivePageStore((s) => (windowId ? undefined : pickGlobal(s)));
+  return fromWindow ?? fromGlobal ?? fallback;
 }
 
-const EMPTY_PANE_STRETCH: PaneStretchMap = {};
+/** pane 순서 — 창=chart.indicators.paneOrder, 밖=전역 paneOrder. */
+export function useWindowPaneOrder(): PaneId[] {
+  return useWindowLayoutSlice((ind) => ind.paneOrder, (s) => s.paneOrder, DEFAULT_PANE_ORDER);
+}
 
 /** pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스 규율. */
 export function useWindowPaneStretch(): PaneStretchMap {
-  const ctx = useContext(WindowViewContext);
-  const windowId = ctx?.windowId ?? null;
-  const fromWindow = useWorkspaceStore((s) =>
-    windowId ? s.windows.find((w) => w.id === windowId)?.chart?.indicators.paneStretch : undefined,
-  );
-  const fromGlobal = useLivePageStore((s) => (windowId ? undefined : s.paneStretch));
-  return fromWindow ?? fromGlobal ?? EMPTY_PANE_STRETCH;
+  return useWindowLayoutSlice((ind) => ind.paneStretch, (s) => s.paneStretch, EMPTY_PANE_STRETCH);
 }
 
 // ── 쓰기 경로 (ADR-0119 C2c-2a) ──────────────────────────────────────────────

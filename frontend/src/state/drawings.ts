@@ -76,7 +76,10 @@ type State = {
   loadedCodes: Set<string>;
   activeCode: string | null;
   activeTool: DrawingTool;
-  selectedId: DrawingId | null;
+  /** 선택된 드로잉 — 종목(code)별(ADR-0119 C2c-2b 후속). 드로잉은 종목 귀속
+   *  (#712)이라 선택도 종목별이어야 다른 종목 창끼리 선택이 경합하지 않는다
+   *  (같은 종목 창끼리는 선택 공유 = 드로잉 공유와 정합). */
+  selectedByCode: Map<string, DrawingId | null>;
   defaults: DrawingDefaults;
   clearToast: ClearToast;
 };
@@ -84,7 +87,9 @@ type State = {
 type Actions = {
   setActiveCode(code: string | null): void;
   setActiveTool(tool: DrawingTool): void;
-  setSelected(id: DrawingId | null): void;
+  setSelected(code: string, id: DrawingId | null): void;
+  /** 종목의 현재 선택 — 비반응형 조회(소비자 렌더는 selectedByCode selector 직독). */
+  selectedFor(code: string): DrawingId | null;
   drawingsFor(code: string): Drawing[];
   // 변이 op 는 호출자가 code 를 명시한다(ADR-0119 C2c-2b) — 멀티창에서 전역
   // activeCode(마지막 마운트 창이 이김)를 경유하면 다른 종목 창의 드로잉이
@@ -142,13 +147,13 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     loadedCodes: new Set(),
     activeCode: null,
     activeTool: 'select',
-    selectedId: null,
+    selectedByCode: new Map(),
     defaults: loadDefaults(),
     clearToast: null,
 
     setActiveCode(code) {
       if (code === get().activeCode) return;
-      set({ activeCode: code, selectedId: null });
+      set({ activeCode: code });
       if (code != null && !get().loadedCodes.has(code)) {
         const items = loadDrawings(code);
         const byCode = new Map(get().byCode);
@@ -163,8 +168,14 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       set({ activeTool: tool });
     },
 
-    setSelected(id) {
-      set({ selectedId: id });
+    setSelected(code, id) {
+      const selectedByCode = new Map(get().selectedByCode);
+      selectedByCode.set(code, id);
+      set({ selectedByCode });
+    },
+
+    selectedFor(code) {
+      return get().selectedByCode.get(code) ?? null;
     },
 
     drawingsFor(code) {
@@ -213,8 +224,11 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       const next = current.filter((d) => d.id !== id);
       const byCode = new Map(get().byCode);
       byCode.set(code, next);
-      const selectedId = get().selectedId === id ? null : get().selectedId;
-      set({ byCode, selectedId });
+      const patch: Partial<State> = { byCode };
+      if (get().selectedByCode.get(code) === id) {
+        patch.selectedByCode = new Map(get().selectedByCode).set(code, null);
+      }
+      set(patch);
       queuePersist(code);
     },
 
@@ -226,7 +240,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       byCode.set(code, []);
       set({
         byCode,
-        selectedId: null,
+        selectedByCode: new Map(get().selectedByCode).set(code, null),
         clearToast: { code, count: current.length, snapshot: current },
       });
       queuePersist(code);
@@ -237,11 +251,8 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       recordHistory(code, current, 'restore');
       const byCode = new Map(get().byCode);
       byCode.set(code, items);
-      // Only touch selection when restoring the active code; a toast may fire
-      // for a code the user has since navigated away from.
-      const patch: Partial<State> = { byCode };
-      if (code === get().activeCode) patch.selectedId = null;
-      set(patch);
+      // 선택은 종목별이라 복원 대상 code 의 선택만 리셋(다른 종목 무영향).
+      set({ byCode, selectedByCode: new Map(get().selectedByCode).set(code, null) });
       queuePersist(code);
     },
 
@@ -269,11 +280,12 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       h.redo.push({ items: cur, op: entry.op, targetId: entry.targetId, at: nowMs() });
       const byCode = new Map(get().byCode);
       byCode.set(code, entry.items);
-      const selectedId =
-        get().selectedId != null && entry.items.some((d) => d.id === get().selectedId)
-          ? get().selectedId
-          : null;
-      set({ byCode, selectedId });
+      const sel = get().selectedByCode.get(code) ?? null;
+      const stillPresent = sel != null && entry.items.some((d) => d.id === sel);
+      const selectedByCode = stillPresent
+        ? get().selectedByCode
+        : new Map(get().selectedByCode).set(code, null);
+      set({ byCode, selectedByCode });
       queuePersist(code);
     },
 
@@ -285,11 +297,12 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       h.undo.push({ items: cur, op: entry.op, targetId: entry.targetId, at: nowMs() });
       const byCode = new Map(get().byCode);
       byCode.set(code, entry.items);
-      const selectedId =
-        get().selectedId != null && entry.items.some((d) => d.id === get().selectedId)
-          ? get().selectedId
-          : null;
-      set({ byCode, selectedId });
+      const sel = get().selectedByCode.get(code) ?? null;
+      const stillPresent = sel != null && entry.items.some((d) => d.id === sel);
+      const selectedByCode = stillPresent
+        ? get().selectedByCode
+        : new Map(get().selectedByCode).set(code, null);
+      set({ byCode, selectedByCode });
       queuePersist(code);
     },
 
@@ -321,7 +334,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         loadedCodes: new Set(),
         activeCode: null,
         activeTool: 'select',
-        selectedId: null,
+        selectedByCode: new Map(),
         defaults: INITIAL_DEFAULTS,
         clearToast: null,
       });

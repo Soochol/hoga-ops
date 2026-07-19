@@ -23,7 +23,7 @@ describe('DrawingPropertyPanel — visibility gate', () => {
 
   it('does not render when activeTool is not select', () => {
     useDrawingsStore.getState().add('005930', HLINE);
-    useDrawingsStore.getState().setSelected('h1');
+    useDrawingsStore.getState().setSelected('005930', 'h1');
     useDrawingsStore.getState().setActiveTool('hline');
     const { container } = render(<DrawingPropertyPanel code="005930" />);
     expect(container.querySelector('[data-drawing-property-panel]')).toBeNull();
@@ -31,7 +31,7 @@ describe('DrawingPropertyPanel — visibility gate', () => {
 
   it('renders when activeTool=select AND a drawing is selected', () => {
     useDrawingsStore.getState().add('005930', HLINE);
-    useDrawingsStore.getState().setSelected('h1');
+    useDrawingsStore.getState().setSelected('005930', 'h1');
     // activeTool defaults to 'select'
     const { container } = render(<DrawingPropertyPanel code="005930" />);
     expect(container.querySelector('[data-drawing-property-panel]')).not.toBeNull();
@@ -43,7 +43,7 @@ describe('DrawingPropertyPanel — thickness', () => {
     useDrawingsStore.getState().__resetForTests();
     useDrawingsStore.getState().setActiveCode('005930');
     useDrawingsStore.getState().add('005930', HLINE);
-    useDrawingsStore.getState().setSelected('h1');
+    useDrawingsStore.getState().setSelected('005930', 'h1');
   });
 
   it('thickness trigger shows current width', () => {
@@ -82,7 +82,7 @@ describe('DrawingPropertyPanel — color', () => {
     useDrawingsStore.getState().__resetForTests();
     useDrawingsStore.getState().setActiveCode('005930');
     useDrawingsStore.getState().add('005930', HLINE);
-    useDrawingsStore.getState().setSelected('h1');
+    useDrawingsStore.getState().setSelected('005930', 'h1');
   });
 
   it('color trigger renders the drawing colour as the bar fill', () => {
@@ -128,7 +128,7 @@ describe('DrawingPropertyPanel — line style', () => {
     useDrawingsStore.getState().__resetForTests();
     useDrawingsStore.getState().setActiveCode('005930');
     useDrawingsStore.getState().add('005930', HLINE);
-    useDrawingsStore.getState().setSelected('h1');
+    useDrawingsStore.getState().setSelected('005930', 'h1');
   });
 
   it('line-style trigger renders a preview of current style', () => {
@@ -159,14 +159,14 @@ describe('DrawingPropertyPanel — delete', () => {
     useDrawingsStore.getState().__resetForTests();
     useDrawingsStore.getState().setActiveCode('005930');
     useDrawingsStore.getState().add('005930', HLINE);
-    useDrawingsStore.getState().setSelected('h1');
+    useDrawingsStore.getState().setSelected('005930', 'h1');
   });
 
   it('clicking delete removes the drawing and hides the panel', () => {
     const { container } = render(<DrawingPropertyPanel code="005930" />);
     fireEvent.click(screen.getByTestId('drawing-delete'));
     expect(useDrawingsStore.getState().byCode.get('005930')).toEqual([]);
-    expect(useDrawingsStore.getState().selectedId).toBeNull();
+    expect(useDrawingsStore.getState().selectedFor('005930')).toBeNull();
     expect(container.querySelector('[data-drawing-property-panel]')).toBeNull();
   });
 });
@@ -184,7 +184,7 @@ describe('DrawingPropertyPanel — top-center dock (fixed toolbar)', () => {
 
   it('is fixed at top:8px, left:50%, translateX(-50%) — a top-center toolbar', () => {
     useDrawingsStore.getState().add('005930', HLINE);
-    useDrawingsStore.getState().setSelected('h1');
+    useDrawingsStore.getState().setSelected('005930', 'h1');
     render(<DrawingPropertyPanel code="005930" />);
     const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
     expect(panel.style.top).toBe('8px');
@@ -199,7 +199,7 @@ describe('DrawingPropertyPanel — top-center dock (fixed toolbar)', () => {
       color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
     };
     useDrawingsStore.getState().add('005930', TREND);
-    useDrawingsStore.getState().setSelected('t1');
+    useDrawingsStore.getState().setSelected('005930', 't1');
     render(<DrawingPropertyPanel code="005930" />);
     const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
     expect(panel.style.top).toBe('8px');
@@ -209,12 +209,12 @@ describe('DrawingPropertyPanel — top-center dock (fixed toolbar)', () => {
   it('stays docked when the selection changes to another drawing', () => {
     useDrawingsStore.getState().add('005930', HLINE); // h1
     useDrawingsStore.getState().add('005930', HLINE2); // h2
-    useDrawingsStore.getState().setSelected('h1');
+    useDrawingsStore.getState().setSelected('005930', 'h1');
     render(<DrawingPropertyPanel code="005930" />);
     const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
     expect(panel.style.left).toBe('50%');
     act(() => {
-      useDrawingsStore.getState().setSelected('h2');
+      useDrawingsStore.getState().setSelected('005930', 'h2');
     });
     expect(panel.style.top).toBe('8px');
     expect(panel.style.left).toBe('50%');
@@ -222,7 +222,7 @@ describe('DrawingPropertyPanel — top-center dock (fixed toolbar)', () => {
 
   it('no drag grip (the toolbar is fixed, not draggable)', () => {
     useDrawingsStore.getState().add('005930', HLINE);
-    useDrawingsStore.getState().setSelected('h1');
+    useDrawingsStore.getState().setSelected('005930', 'h1');
     render(<DrawingPropertyPanel code="005930" />);
     expect(screen.queryByTestId('drawing-panel-grip')).toBeNull();
   });

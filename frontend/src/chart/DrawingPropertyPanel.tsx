@@ -43,10 +43,11 @@ const TOP_DOCK_Y = 8;
 
 export default function DrawingPropertyPanel({ code }: Props) {
   const activeTool = useDrawingsStore((s) => s.activeTool);
-  const selectedId = useDrawingsStore((s) => s.selectedId);
+  const selectedId = useDrawingsStore((s) => (code ? s.selectedByCode.get(code) ?? null : null));
   const drawing = useDrawingsStore((s) => {
-    if (code == null || s.selectedId == null) return null;
-    return s.byCode.get(code)?.find((d) => d.id === s.selectedId) ?? null;
+    if (code == null) return null;
+    const sel = s.selectedByCode.get(code) ?? null;
+    return sel == null ? null : s.byCode.get(code)?.find((d) => d.id === sel) ?? null;
   });
 
   const hiddenAll = useDrawingsStore((s) => s.defaults.hiddenAll);

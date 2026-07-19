@@ -128,7 +128,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
   isFocusedRef.current = isFocusedWindow;
   const codeRef = useRef(code);
   codeRef.current = code;
-  const selectedId = useDrawingsStore((s) => s.selectedId);
+  const selectedId = useDrawingsStore((s) => (code ? s.selectedByCode.get(code) ?? null : null));
   const defaults = useDrawingsStore((s) => s.defaults);
 
   const trendlineDraft = useRef<TrendlineDraft | null>(null);
@@ -168,7 +168,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
   // call setSelected(id) directly; Escape is the explicit return to select mode.
   const revertToSelectMode = useCallback((newId: string) => {
     useDrawingsStore.getState().setActiveTool('select');
-    useDrawingsStore.getState().setSelected(newId);
+    if (codeRef.current != null) useDrawingsStore.getState().setSelected(codeRef.current, newId);
   }, []);
 
   // ── redraw loop ────────────────────────────────────────────────────────
@@ -419,13 +419,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
         return;
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        const id = useDrawingsStore.getState().selectedId;
+        const id = useDrawingsStore.getState().selectedByCode.get(keyCode) ?? null;
         if (id) {
           useDrawingsStore.getState().remove(keyCode, id);
           e.preventDefault();
         }
       } else if (e.key === 'Escape') {
-        useDrawingsStore.getState().setSelected(null);
+        useDrawingsStore.getState().setSelected(keyCode, null);
         useDrawingsStore.getState().setActiveTool('select');
         trendlineDraft.current = null;
         pencilDraft.current = null;
@@ -530,7 +530,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
         // take the `edit.id != null` branch above and keep their own size.)
         fontSize: store.defaults.fontSize,
       });
-      store.setSelected(id);
+      store.setSelected(code, id);
     }
     setTextEdit(null);
     setTextValue('');
@@ -595,7 +595,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
       add: (d) => { if (code != null) useDrawingsStore.getState().add(code, d); },
       update: (id, patch) => { if (code != null) useDrawingsStore.getState().update(code, id, patch); },
       remove: (id) => { if (code != null) useDrawingsStore.getState().remove(code, id); },
-      setSelected: (id) => useDrawingsStore.getState().setSelected(id),
+      setSelected: (id) => { if (code != null) useDrawingsStore.getState().setSelected(code, id); },
       revertToSelectMode,
     };
   };
@@ -741,8 +741,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
       const rect = container.getBoundingClientRect();
       const click = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       const hasHit = !!hitTestAt(click.x, click.y);
-      if (shouldDeselectOnClick(click, rect, hasHit, isOnPropertyPanel)) {
-        useDrawingsStore.getState().setSelected(null);
+      if (shouldDeselectOnClick(click, rect, hasHit, isOnPropertyPanel) && code != null) {
+        useDrawingsStore.getState().setSelected(code, null);
       }
     };
     window.addEventListener('mousedown', onWindowMouseDown);
@@ -775,8 +775,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
   // panes/timeframes). Reassigned each render; called from the keydown effect.
   duplicateSelectedRef.current = () => {
     const store = useDrawingsStore.getState();
-    const id = store.selectedId;
-    if (id == null || code == null) return;
+    if (code == null) return;
+    const id = store.selectedByCode.get(code) ?? null;
+    if (id == null) return;
     const d = store.byCode.get(code)?.find((x) => x.id === id);
     if (d == null) return;
     const OFFSET_PX = 14;
@@ -807,7 +808,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
     }
     const clone = cloneWithOffset(d, shiftMs, dPrice);
     store.add(code, clone);
-    store.setSelected(clone.id);
+    store.setSelected(code, clone.id);
   };
 
   // Screen position of the open text editor. Re-projects the anchor so the box

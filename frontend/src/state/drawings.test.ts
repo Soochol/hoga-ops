@@ -22,7 +22,7 @@ describe('useDrawingsStore — Code partitioning', () => {
     const s = useDrawingsStore.getState();
     expect(s.activeCode).toBeNull();
     expect(s.activeTool).toBe('select');
-    expect(s.selectedId).toBeNull();
+    expect(s.selectedFor(A)).toBeNull();
     expect(s.drawingsFor(A)).toEqual([]);
   });
 
@@ -39,17 +39,33 @@ describe('useDrawingsStore — Code partitioning', () => {
     expect(useDrawingsStore.getState().drawingsFor(B)).toHaveLength(1);
   });
 
-  it('setActiveCode resets selectedId', () => {
+  it('selection is per-code — switching activeCode does not touch a code\'s selection', () => {
     useDrawingsStore.getState().setActiveCode(A);
     useDrawingsStore.getState().add(A, mkHline('h1', 100));
-    useDrawingsStore.getState().setSelected('h1');
-    expect(useDrawingsStore.getState().selectedId).toBe('h1');
+    useDrawingsStore.getState().setSelected(A, 'h1');
+    expect(useDrawingsStore.getState().selectedFor(A)).toBe('h1');
+    // 종목별이라 다른 종목으로 전환해도 A 의 선택은 유지된다(창별 독립 선택).
     useDrawingsStore.getState().setActiveCode(B);
-    expect(useDrawingsStore.getState().selectedId).toBeNull();
+    expect(useDrawingsStore.getState().selectedFor(A)).toBe('h1');
+    expect(useDrawingsStore.getState().selectedFor(B)).toBeNull();
   });
 });
 
 describe('useDrawingsStore — mutations', () => {
+  it('selection is independent across codes (멀티창 C2c-2 후속)', () => {
+    // 다른 종목 창 2개: A 선택이 B 선택에 영향 없음(전역 selectedId 경합 제거).
+    useDrawingsStore.getState().add(A, mkHline('a1', 1));
+    useDrawingsStore.getState().add(B, mkHline('b1', 2));
+    useDrawingsStore.getState().setSelected(A, 'a1');
+    useDrawingsStore.getState().setSelected(B, 'b1');
+    expect(useDrawingsStore.getState().selectedFor(A)).toBe('a1');
+    expect(useDrawingsStore.getState().selectedFor(B)).toBe('b1');
+    // A 의 드로잉 제거 → A 선택만 해제, B 유지.
+    useDrawingsStore.getState().remove(A, 'a1');
+    expect(useDrawingsStore.getState().selectedFor(A)).toBeNull();
+    expect(useDrawingsStore.getState().selectedFor(B)).toBe('b1');
+  });
+
   it('mutations target the explicit code regardless of activeCode (멀티창, C2c-2b)', () => {
     // 다른 종목 창 2개: 마지막 마운트 창이 activeCode 를 이겨도(B), A 창의
     // 그리기는 A 로 귀속돼야 한다 — 오귀속 결함의 회귀 가드.
@@ -74,10 +90,10 @@ describe('useDrawingsStore — mutations', () => {
 
   it('remove deletes by id and clears selection if it matched', () => {
     useDrawingsStore.getState().add(A, mkHline('h1', 100));
-    useDrawingsStore.getState().setSelected('h1');
+    useDrawingsStore.getState().setSelected(A, 'h1');
     useDrawingsStore.getState().remove(A, 'h1');
     expect(useDrawingsStore.getState().drawingsFor(A)).toHaveLength(0);
-    expect(useDrawingsStore.getState().selectedId).toBeNull();
+    expect(useDrawingsStore.getState().selectedFor(A)).toBeNull();
   });
 
   it('clearAll empties the active Code list only', () => {
@@ -189,9 +205,9 @@ describe('useDrawingsStore — undo/redo (ADR-0107)', () => {
   it('undo clears selection when the selected id disappears', () => {
     const s = () => useDrawingsStore.getState();
     s().add(A, mkHline('h1', 100));
-    s().setSelected('h1');
+    s().setSelected(A, 'h1');
     s().undo(A); // h1 removed by undo → selection must clear
-    expect(s().selectedId).toBeNull();
+    expect(s().selectedFor(A)).toBeNull();
   });
 
   it('undo/redo persist to localStorage', () => {
