@@ -10,6 +10,9 @@ import Settings from './pages/Settings';
 import { Heatmap } from './pages/Heatmap';
 import { StudyPage } from './studyViews/StudyPage';
 import { initStudyTabsSync } from './state/studyTabs';
+// ADR-0119 멀티창 워크스페이스 — PR-A 스캐폴딩. dev 전용 프리뷰 라우트(아래).
+// PR-C 가 `/live` 본체로 배선하면 이 프리뷰 라우트는 제거된다.
+import { WorkspaceCanvas } from './live/workspace/WorkspaceCanvas';
 import './styles/global.css';
 
 const _disposeStudyTabsSync = initStudyTabsSync();
@@ -65,6 +68,9 @@ createRoot(document.getElementById('root')!).render(
           <Route path="screener" element={<Screener />} />
           <Route path="capture" element={<Capture />} />
           <Route path="settings" element={<Settings />} />
+          {import.meta.env.DEV && (
+            <Route path="workspace-preview" element={<WorkspaceCanvas />} />
+          )}
         </Route>
       </Routes>
     </BrowserRouter>
