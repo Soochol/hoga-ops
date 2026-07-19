@@ -19,29 +19,28 @@ import {
 } from '../../state/indicatorSettingsV2';
 import { WindowViewContext, type WindowViewValue } from './windowView';
 import {
+  targetChartWindow,
   useWorkspaceStore,
   type GroupSymbol,
   type WorkspaceWindow,
 } from '../../state/workspace';
 
-/** 대상 차트 창 = 포커스 창이 차트면 그 창, 아니면 z순서 최상위 차트 창. */
-export function targetChartWindow(
-  windows: readonly WorkspaceWindow[],
-  zOrder: readonly string[],
-): WorkspaceWindow | null {
-  for (let i = zOrder.length - 1; i >= 0; i--) {
-    const w = windows.find((win) => win.id === zOrder[i]);
-    if (w?.kind === 'chart') return w;
-  }
-  return null;
-}
+export { targetChartWindow };
+
 
 /** 지표 버튼 활성 여부 — 차트 창이 하나라도 있어야 드로어를 열 수 있다. */
 export function useCanOpenIndicatorDrawer(): boolean {
   return useWorkspaceStore((s) => s.windows.some((w) => w.kind === 'chart'));
 }
 
-export function WorkspaceIndicatorDrawer({ onClose }: { onClose: () => void }) {
+/** 포커스 차트 창의 (WindowViewValue·창·심볼·instrument) — 드로어와 설정 모달이
+ *  같은 대상 규칙(#712 실시간 추적)을 공유한다. 차트 창이 없으면 null. */
+export function useFocusedChartWindowView(): {
+  view: WindowViewValue;
+  target: WorkspaceWindow;
+  symbol: GroupSymbol | null;
+  instrument: ReturnType<typeof stockInstrument> | null;
+} | null {
   const windows = useWorkspaceStore((s) => s.windows);
   const zOrder = useWorkspaceStore((s) => s.zOrder);
   const groupSymbols = useWorkspaceStore((s) => s.groupSymbols);
@@ -64,26 +63,31 @@ export function WorkspaceIndicatorDrawer({ onClose }: { onClose: () => void }) {
     return stockInstrument(symbol.code, symbol.name);
   }, [symbol]);
 
-  const view: WindowViewValue | null = useMemo(() => {
+  return useMemo(() => {
     if (!target) return null;
-    return {
+    const view: WindowViewValue = {
       windowId: target.id,
       group: target.group,
       code: isIndex ? null : symbol?.code ?? null,
       timeframe,
-      historicalFromDate: null, // 드로어는 페치를 돌리지 않는다 — 뷰 식별용 아님
+      historicalFromDate: null, // 드로어/설정은 페치를 돌리지 않는다 — 뷰 식별용 아님
       indicators,
     };
-  }, [target, isIndex, symbol?.code, timeframe, indicators]);
+    return { view, target, symbol, instrument };
+  }, [target, isIndex, symbol, timeframe, indicators, instrument]);
+}
 
-  if (!target || !view) return null;
+export function WorkspaceIndicatorDrawer({ onClose }: { onClose: () => void }) {
+  const focusedView = useFocusedChartWindowView();
+  if (!focusedView) return null;
+  const { view, target, symbol, instrument } = focusedView;
 
   return (
     <WindowViewContext.Provider value={view}>
       <IndicatorPanel
         onClose={onClose}
         capabilities={capabilitiesForInstrument(instrument)}
-        timeframe={timeframe}
+        timeframe={view.timeframe}
         targetLabel={symbol?.name ?? `그룹 ${target.group}`}
       />
     </WindowViewContext.Provider>

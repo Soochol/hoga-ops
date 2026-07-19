@@ -6,7 +6,8 @@ import {
   useChartPrefsStore,
   type ChartToggleCategory,
 } from '../state/chartPrefs';
-import { MINUTE_TIMEFRAMES, useLivePageStore, type MinuteTimeframe } from '../state/livePage';
+import { MINUTE_TIMEFRAMES, type MinuteTimeframe } from '../state/livePage';
+import { useIndicatorActions, useWindowIndicator } from './workspace/windowView';
 import { useStudyViewOpenPrefsStore, type StudyViewOpenTimeframe } from '../state/studyViewOpenPrefs';
 import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
@@ -79,9 +80,11 @@ function DayBoundaryStyleRow() {
 }
 
 function ViLimitPriceLineStyleRow() {
-  const color = useLivePageStore((s) => s.viLimitPriceLineColor);
-  const lineWidth = useLivePageStore((s) => s.viLimitPriceLineWidth);
-  const setStyle = useLivePageStore((s) => s.setViLimitPriceLineStyle);
+  // 지표 필드는 창 소유(#712) — /live 설정 모달은 포커스 차트 창 Provider 로
+  // 감싸여 그 창을 편집하고, /study 등 Provider 밖에서는 전역 폴백(C2c-2d).
+  const color = useWindowIndicator((s) => s.viLimitPriceLineColor);
+  const lineWidth = useWindowIndicator((s) => s.viLimitPriceLineWidth);
+  const setStyle = useIndicatorActions().setViLimitPriceLineStyle;
 
   return (
     <SettingsRow

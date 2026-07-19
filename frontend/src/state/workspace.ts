@@ -243,10 +243,15 @@ function readStorage(): Persisted {
   if (!rawWindows) {
     // live.workspace.v1 없음 → 레거시 키(live.page/indicators/layout.v1)에서 1회 시드
     // (ADR-0119 PR-C, #713). 마이그레이션할 상태도 없으면 공장 기본 레이아웃.
+    // 시드/기본 레이아웃은 **즉시 persist** — 첫 mutation 전 새로고침마다 재시드돼
+    // 창 id 가 흔들리는 것을 막는다(C2c-2d, 스펙 ⑤-①).
     const seeded = readLegacyWorkspaceSeed(newWindowId);
-    if (seeded) return seeded;
-    const windows = defaultWindows();
-    return { windows, zOrder: windows.map((w) => w.id), groupSymbols: {} };
+    const fresh = seeded ?? (() => {
+      const windows = defaultWindows();
+      return { windows, zOrder: windows.map((w) => w.id), groupSymbols: {} };
+    })();
+    persistFromState(fresh);
+    return fresh;
   }
   const windows = rawWindows.map(readWindow).filter((w): w is WorkspaceWindow => w !== null);
   // 저장값이 전부 손상돼 창이 하나도 없으면 기본 레이아웃으로 폴백.
@@ -268,6 +273,19 @@ function persistFromState(state: Persisted): void {
     zOrder: state.zOrder,
     groupSymbols: state.groupSymbols,
   });
+}
+
+/** 대상 차트 창 = 포커스 창이 차트면 그 창, 아니면 z순서 최상위 차트 창 —
+ *  드로어(#712)·상태바/저장뷰 발행·프리셋이 공유하는 대상 선정 규칙. */
+export function targetChartWindow(
+  windows: readonly WorkspaceWindow[],
+  zOrder: readonly string[],
+): WorkspaceWindow | null {
+  for (let i = zOrder.length - 1; i >= 0; i--) {
+    const w = windows.find((win) => win.id === zOrder[i]);
+    if (w?.kind === 'chart') return w;
+  }
+  return null;
 }
 
 /** 포커스 창(zOrder 마지막)의 그룹 = 활성 그룹(#711). 창이 없으면 그룹 1. */

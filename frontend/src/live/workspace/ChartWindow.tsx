@@ -15,7 +15,7 @@
  * (view.code=null·instrument=index, 파이프라인의 activeIndexId 분기 재사용).
  * 창 내 봉 컨트롤(TimeframeControl→setChartTimeframe) + 포커스 창의 상태바 발행.
  */
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { LiveChartRoot } from '../LiveChartRoot';
 import { ChartDrawingShell } from '../ChartDrawingShell';
 import ChartErrorBoundary from '../../chart/ChartErrorBoundary';
@@ -24,7 +24,6 @@ import {
   WindowViewContext,
   useWindowView,
   useWindowIndicators,
-  useIsFocusedWindow,
   type WindowViewValue,
 } from './windowView';
 import {
@@ -33,9 +32,24 @@ import {
 } from '../../state/indicatorSettingsV2';
 import { indexInstrument, isLiveIndexId, stockInstrument } from '../liveInstrument';
 import { useLiveVenueStore } from '../../state/liveVenue';
-import { useWorkspaceStore, type GroupSymbol, type WorkspaceWindow } from '../../state/workspace';
+import {
+  targetChartWindow,
+  useWorkspaceStore,
+  type GroupSymbol,
+  type WorkspaceWindow,
+} from '../../state/workspace';
 import { TimeframeControl } from '../TimeframeControl';
-import { publishLiveWindowStatus, clearLiveWindowStatus } from './liveWindowStatusSource';
+import {
+  publishLiveWindowStatus,
+  clearLiveWindowStatus,
+  type LiveWindowStatus,
+} from './liveWindowStatusSource';
+import {
+  clearCurrentStudySaveSource,
+  setCurrentStudySaveSource,
+  type LiveStudySaveSource,
+} from '../../studyViews/studySaveSource';
+import type { TabViewport } from '../viewportAnchor';
 
 export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const timeframe = win.chart?.timeframe ?? '1m';
@@ -75,7 +89,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const view = useWindowView(); // 창의 값(Provider 안)
   const ind = useWindowIndicators();
   const venue = useLiveVenueStore((s) => s.venue);
-  const focused = useIsFocusedWindow();
+  // 발행 게이트 = "대상 차트 창"(포커스가 데이터 창이면 z-최상위 차트) — 드로어와
+  // 같은 규칙. 엄격 포커스로 걸면 데이터 창 포커스 동안 상태바/저장뷰가 빈다.
+  const isTargetChart = useWorkspaceStore(
+    (s) => targetChartWindow(s.windows, s.zOrder)?.id === win.id,
+  );
   const setChartTimeframe = useWorkspaceStore((s) => s.setChartTimeframe);
   const rememberedMinute = useWorkspaceStore(
     (s) => s.windows.find((w) => w.id === win.id)?.chart?.lastMinuteTimeframe ?? '1m',
@@ -97,22 +115,71 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     investorNetEnabled,
   });
 
-  // 포커스 차트 창 = 상태바 발행자(C2c-2c). blur/언마운트 시 자기 발행만 걷는다.
+  // 저장뷰 캡처용 뷰포트 ref — LiveChartRoot 가 마운트 시 캡처 함수를 공급한다.
+  const viewportCaptureRef = useRef<() => TabViewport | null>(() => null);
+  const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
+    viewportCaptureRef.current = capture;
+  }, []);
+
+  // 포커스 차트 창 = 상태바 발행자(C2c-2c). 파이프라인 산출물 일부(경고·갭 배열)는
+  // 렌더마다 새 identity 일 수 있어 deps 로 걸면 발행→구독 재렌더→재발행 루프가
+  // 된다 — deps 없는 effect + 값 동등성 가드로 변경시에만 발행한다.
   const { workareaCode, workareaBundle, liveTradePrice, isExtending, indexExtending,
     activeIndexId, hogaCoverageGapDates } = d;
+  const lastPublishedRef = useRef<LiveWindowStatus | null>(null);
   useEffect(() => {
-    if (!focused) return undefined;
-    publishLiveWindowStatus({
+    if (!isTargetChart) return;
+    const next: LiveWindowStatus = {
       windowId: win.id,
       workareaCode,
       bundle: workareaBundle,
       liveTradePrice: liveTradePrice ?? null,
       isExtending: activeIndexId ? indexExtending : isExtending,
-      hogaGapDates: activeIndexId ? [] : hogaCoverageGapDates,
-    });
-    return () => clearLiveWindowStatus(win.id);
-  }, [focused, win.id, workareaCode, workareaBundle, liveTradePrice, isExtending,
-    indexExtending, activeIndexId, hogaCoverageGapDates]);
+      hogaGapDates: activeIndexId ? [] : hogaCoverageGapDates ?? [],
+    };
+    const prev = lastPublishedRef.current;
+    const same = prev !== null
+      && prev.windowId === next.windowId
+      && prev.workareaCode === next.workareaCode
+      && prev.bundle === next.bundle
+      && prev.liveTradePrice === next.liveTradePrice
+      && prev.isExtending === next.isExtending
+      && prev.hogaGapDates.length === next.hogaGapDates.length
+      && prev.hogaGapDates.every((v, i) => v === next.hogaGapDates[i]);
+    if (!same) {
+      lastPublishedRef.current = next;
+      publishLiveWindowStatus(next);
+    }
+  });
+  // 발행 철회는 대상 이탈/언마운트에서만 — 자기 발행일 때만 걷는다(교체 경합 무해).
+  useEffect(() => {
+    if (!isTargetChart) return undefined;
+    return () => {
+      lastPublishedRef.current = null;
+      clearLiveWindowStatus(win.id);
+    };
+  }, [isTargetChart, win.id]);
+
+  // 저장뷰 save source — 포커스 차트 창만 발행(전역 1슬롯, 스펙 §2). LivePage 의
+  // 기존 발행 effect 를 창으로 이관 — clear 는 자기 source 일 때만(계약 동일).
+  const { liveSaveBundle, activeLabel, capabilities } = d;
+  useEffect(() => {
+    if (!isTargetChart || !view.code || !liveSaveBundle || !capabilities.studySave) {
+      return undefined;
+    }
+    const source: LiveStudySaveSource = {
+      origin: 'live',
+      code: view.code,
+      label: activeLabel || view.code,
+      timeframe: view.timeframe,
+      bundle: liveSaveBundle,
+      captureViewport: () => viewportCaptureRef.current(),
+    };
+    setCurrentStudySaveSource(source);
+    return () => {
+      clearCurrentStudySaveSource(source);
+    };
+  }, [isTargetChart, view.code, view.timeframe, liveSaveBundle, activeLabel, capabilities.studySave]);
 
   if (!instrument) {
     return (
@@ -162,6 +229,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               todayKst={d.today}
               tradeVolumePocs={d.tradeVolumePocs}
               depthHeatmap={(d.workareaChartBundle ?? d.workareaBundle)?.depth_heatmap}
+              onViewportCaptureReady={handleViewportCaptureReady}
               paneTogglesOverride={{ hogaPanes: d.capabilities.hogaPanes }}
             />
           </ChartDrawingShell>

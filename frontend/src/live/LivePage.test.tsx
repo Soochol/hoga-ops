@@ -5,7 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LivePage } from './LivePage';
 import type { RangeBundle } from '../api/types';
 import { useLivePageStore } from '../state/livePage';
-import { stockInstrument } from './liveInstrument';
+import { useWorkspaceStore } from '../state/workspace';
+import type { IndicatorSettingsByTimeframe } from '../state/indicatorSettingsV2';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { DEFAULT_CARD_WEIGHTS, DEFAULT_RIGHT_PANEL_WIDTH_PX, useLiveLayoutStore } from '../state/liveLayout';
 import * as liveStatus from '../api/liveStatus';
@@ -191,6 +192,8 @@ vi.mock('./useLiveBundle', () => ({
       error: null,
       clampEngaged: false,
       isPastCandlesLoading: false,
+      pastDataWarnings: [],
+      hogaCoverageGapDates: [],
     };
   },
 }));
@@ -260,6 +263,27 @@ function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
   };
 }
 
+// 멀티창 플립(ADR-0119 C2c-2d): 파이프라인은 차트 창 안에서 돈다. 셸 테스트는
+// 단일 차트 창(TEST_WIN)을 시드하고, 봉/지표는 창의 chart 설정으로 주입한다.
+const TEST_WIN = 'w-test';
+function seedWorkspace(
+  timeframe: LiveTimeframe = '1m',
+  byTimeframe: IndicatorSettingsByTimeframe = {},
+) {
+  useWorkspaceStore.setState({
+    windows: [{
+      id: TEST_WIN,
+      kind: 'chart',
+      group: 1,
+      rect: { x: 0, y: 0, w: 800, h: 600 },
+      chart: { timeframe, indicators: { paneOrder: [], paneStretch: {}, byTimeframe } },
+    }],
+    zOrder: [TEST_WIN],
+    groupSymbols: {},
+    chartRuntime: {},
+  });
+}
+
 function renderWithRouter(initial = '/live') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -306,6 +330,7 @@ describe('LivePage shell', () => {
       candleTimeframe: '1m',
       historicalFromDate: null,
     });
+    seedWorkspace('1m');
     useLiveVenueStore.setState({ venue: 'KRX' });
     useLiveLayoutStore.setState({
       rightPanelWidthPx: DEFAULT_RIGHT_PANEL_WIDTH_PX,
@@ -331,12 +356,12 @@ describe('LivePage shell', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders the page chrome and places the toolbar inside the workarea', () => {
+  it('renders the flip chrome: status bar + workspace toolbar + canvas window', () => {
     renderWithRouter('/live?code=000660');
     expect(screen.getByTestId('live-status-bar')).toBeInTheDocument();
-    expect(screen.getByTestId('live-toolbar')).toBeInTheDocument();
-    expect(screen.getByTestId('live-workarea')).toBeInTheDocument();
-    expect(screen.getByTestId('live-chart-panel')).toContainElement(screen.getByTestId('live-toolbar'));
+    expect(screen.getByTestId('workspace-live-toolbar')).toBeInTheDocument();
+    // 봉 컨트롤은 창 소유(#708) — 차트 창 상단에 렌더된다.
+    expect(screen.getByRole('button', { name: '분봉 선택 열기: 1분' })).toBeInTheDocument();
   });
 
   it('shows the collect button for a stock code and opens the collect dialog with the symbol name', async () => {
@@ -356,12 +381,12 @@ describe('LivePage shell', () => {
     renderWithRouter('/live?index=KOSPI');
 
     await waitFor(() => expect(useLivePageStore.getState().activeInstrument?.kind).toBe('index'));
-    expect(screen.getByTestId('live-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('workspace-live-toolbar')).toBeInTheDocument();
     expect(screen.queryByTestId('live-collect-button')).toBeNull();
   });
 
-  it('passes the active live timeframe into IndicatorPanel', async () => {
-    useLivePageStore.setState({ candleTimeframe: 'D' });
+  it('passes the focused chart window timeframe into IndicatorPanel', async () => {
+    seedWorkspace('D');
 
     renderWithRouter('/live?code=000660');
     act(() => {
@@ -372,15 +397,8 @@ describe('LivePage shell', () => {
     expect(screen.getByRole('dialog', { name: '지표' })).toBeInTheDocument();
   });
 
-  it('enables stock investor net fetches from the active D pane profile even when legacy flat flags stay false', async () => {
-    useLivePageStore.setState({
-      candleTimeframe: 'D',
-      foreignNetEnabled: false,
-      institutionNetEnabled: false,
-      indicatorsByTimeframe: {
-        D: { foreignNetEnabled: true },
-      },
-    });
+  it('enables stock investor net fetches from the window D bucket', async () => {
+    seedWorkspace('D', { D: { foreignNetEnabled: true } });
 
     renderWithRouter('/live?code=000660');
 
@@ -424,7 +442,7 @@ describe('LivePage shell', () => {
       ],
       data_warnings: [],
     };
-    useLivePageStore.setState({ candleTimeframe: 'D' });
+    seedWorkspace('D');
 
     renderWithRouter('/live?index=KOSPI');
 
@@ -457,7 +475,7 @@ describe('LivePage shell', () => {
       ],
       data_warnings: [],
     };
-    useLivePageStore.setState({ candleTimeframe: '1m' });
+    seedWorkspace('1m');
 
     renderWithRouter('/live?index=KOSPI');
 
@@ -477,7 +495,7 @@ describe('LivePage shell', () => {
   it.each(['1m', 'D', 'W', 'M'] as const)(
     'fetches index %s candles from the same initial history window as stock charts',
     async (timeframe: LiveTimeframe) => {
-      useLivePageStore.setState({ candleTimeframe: timeframe });
+      seedWorkspace(timeframe);
 
       renderWithRouter('/live?index=KOSPI');
 
@@ -513,13 +531,11 @@ describe('LivePage shell', () => {
       data_warnings: [],
     };
     livePageMocks.indexCandlesResult.isFetching = true;
-    useLivePageStore.setState({
-      candleTimeframe: 'W',
-    });
+    seedWorkspace('W');
 
     renderWithRouter('/live?index=KOSPI');
     act(() => {
-      useLivePageStore.getState().extendHistoricalRange('20200101');
+      useWorkspaceStore.getState().extendChartHistoricalRange(TEST_WIN, '20200101');
     });
 
     await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
@@ -549,9 +565,9 @@ describe('LivePage shell', () => {
         { batch: '20260601__20260622', date: '20260622', reason: 'index_minute_depth_limited', msg: 'limited' },
       ],
     };
-    useLivePageStore.setState({
-      candleTimeframe: '1m',
-      historicalFromDate: '20260601',
+    seedWorkspace('1m');
+    useWorkspaceStore.setState({
+      chartRuntime: { [TEST_WIN]: { historicalFromDate: '20260601', lastMinuteHistoricalFromDate: null } },
     });
 
     renderWithRouter('/live?index=KOSPI');
@@ -592,14 +608,9 @@ describe('LivePage shell', () => {
       ],
       data_warnings: [],
     };
-    useLivePageStore.setState({
-      candleTimeframe: 'D',
-      historicalFromDate: '20260619',
-      foreignNetEnabled: false,
-      institutionNetEnabled: false,
-      indicatorsByTimeframe: {
-        D: { foreignNetEnabled: true },
-      },
+    seedWorkspace('D', { D: { foreignNetEnabled: true } });
+    useWorkspaceStore.setState({
+      chartRuntime: { [TEST_WIN]: { historicalFromDate: '20260619', lastMinuteHistoricalFromDate: null } },
     });
 
     renderWithRouter('/live?index=KOSPI');
@@ -624,10 +635,9 @@ describe('LivePage shell', () => {
       candles: [],
       data_warnings: [],
     };
-    useLivePageStore.setState({
-      candleTimeframe: 'D',
-      historicalFromDate: '20260619',
-      foreignNetEnabled: true,
+    seedWorkspace('D', { D: { foreignNetEnabled: true } });
+    useWorkspaceStore.setState({
+      chartRuntime: { [TEST_WIN]: { historicalFromDate: '20260619', lastMinuteHistoricalFromDate: null } },
     });
 
     renderWithRouter('/live?index=KOSPI200');
@@ -643,22 +653,15 @@ describe('LivePage shell', () => {
     await waitFor(() => expect(document.title).toBe('005930'));
   });
 
-  it('falls back to the restored active instrument when no query param', () => {
-    // 단일 뷰 모델(ADR-0113): 복원된 activeInstrument가 page.activeCode의 단일 SoT.
-    // 마운트 시드가 activateLiveInstrument로 fresh view를 재투영한다.
-    useLivePageStore.setState({
-      activeInstrument: stockInstrument('035720', '035720'),
-      activeCode: '035720',
-    });
+  it('falls back to the restored workspace group symbol when no query param', () => {
+    // 플립 후 종목 SSOT = live.workspace.v1 의 groupSymbols(활성 그룹) 복원.
+    useWorkspaceStore.setState({ groupSymbols: { 1: { code: '035720', name: '035720' } } });
     renderWithRouter();
     expect(screen.getByTestId('live-status-bar').textContent).toContain('035720');
   });
 
-  it('passes activeCode:venue as chart view identity (single-view)', () => {
-    useLivePageStore.setState({
-      activeInstrument: stockInstrument('005930', '삼성전자'),
-      activeCode: '005930',
-    });
+  it('passes activeCode:venue as chart view identity (창별)', () => {
+    useWorkspaceStore.setState({ groupSymbols: { 1: { code: '005930', name: '삼성전자' } } });
 
     renderWithRouter();
 
@@ -666,7 +669,6 @@ describe('LivePage shell', () => {
       code: '005930',
       timeframe: '1m',
       viewIdentity: '005930:KRX',
-      restoreViewport: null,
     });
   });
 
@@ -690,15 +692,13 @@ describe('LivePage shell', () => {
     });
 
     await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)?.timeframe).toBe('3m'));
-    expect(livePageMocks.liveChartRootProps.at(-1)?.restoreViewport).toBeNull();
+    // 창 tf 가 스토어에도 커밋됐는지(창 소유) — 뷰포트는 비저장(#713)이라 prop 없음.
+    expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('3m');
   });
 
   it('includes the selected venue in bundle options, status text, and chart identity', () => {
     useLiveVenueStore.setState({ venue: 'UN' });
-    useLivePageStore.setState({
-      activeInstrument: stockInstrument('005930', '삼성전자'),
-      activeCode: '005930',
-    });
+    useWorkspaceStore.setState({ groupSymbols: { 1: { code: '005930', name: '삼성전자' } } });
 
     renderWithRouter();
 
@@ -707,27 +707,32 @@ describe('LivePage shell', () => {
     expect(livePageMocks.liveChartRootProps.at(-1)?.viewIdentity).toBe('005930:UN');
   });
 
-  it('shows empty-state placeholder when no activeCode anywhere', () => {
+  it('shows the per-window placeholder when the active group has no symbol', () => {
     renderWithRouter();
-    // Empty state placeholder in workarea
-    expect(screen.getByTestId('live-workarea').textContent).toMatch(/검색하세요/);
+    expect(screen.getByText(/종목 없음/)).toBeInTheDocument();
   });
 
-  it('store write (search/♥ select) wins over a ?code= deep link — store is the single SoT', async () => {
-    // Mount at /live?code=005930 → the deep-link code seeds the store once.
+  it('shows the canvas-level empty state when there are no windows', () => {
+    useWorkspaceStore.setState({ windows: [], zOrder: [], chartRuntime: {} });
+    renderWithRouter();
+    expect(screen.getByTestId('workspace-empty-add-chart')).toBeInTheDocument();
+  });
+
+  it('search write wins over a ?code= deep link — workspace 활성 그룹이 단일 SoT', async () => {
     renderWithRouter('/live?code=005930');
-    // After the mount-seed effect, the active code is 005930.
+    // 딥링크 1회 시드 → 활성 그룹 종목 + 레거시 미러.
     await waitFor(() => expect(useLivePageStore.getState().activeCode).toBe('005930'));
-    // Now simulate a search / ♥ selection writing a DIFFERENT code to the store.
-    act(() => useLivePageStore.getState().setActiveCode('000660'));
-    // It must STICK — the URL must not revert it back to 005930.
-    expect(useLivePageStore.getState().activeCode).toBe('000660');
-    // And it must not flip back across a re-render.
+    // 검색/♥ 선택이 다른 종목을 활성 그룹에 쓴다.
+    act(() => {
+      useWorkspaceStore.getState().setGroupSymbol(1, { code: '000660', name: 'SK하이닉스' });
+    });
+    expect(useWorkspaceStore.getState().groupSymbols[1]?.code).toBe('000660');
+    // URL 이 되돌리지 않고, 미러도 000660 으로 수렴한다.
     await waitFor(() => expect(useLivePageStore.getState().activeCode).toBe('000660'));
   });
 
   it('passes live orderbook snapshots to ask-peak ratchet on minute timeframes', () => {
-    useLivePageStore.setState({ candleTimeframe: '1m' });
+    seedWorkspace('1m');
     renderWithRouter('/live?code=005930');
     expect(livePageMocks.dayAskPeakObArgs.at(-1)).toBe(livePageMocks.liveOb);
     expect(livePageMocks.dayAskPeakTradeArgs.at(-1)).toBe(livePageMocks.liveTrade);
@@ -735,7 +740,7 @@ describe('LivePage shell', () => {
   });
 
   it('does not feed live orderbook snapshots into ask-peak ratchet on calendar timeframes', () => {
-    useLivePageStore.setState({ candleTimeframe: 'D' });
+    seedWorkspace('D');
     renderWithRouter('/live?code=005930');
     const ob = livePageMocks.dayAskPeakObArgs.at(-1);
     const trade = livePageMocks.dayAskPeakTradeArgs.at(-1);
@@ -823,16 +828,18 @@ describe('LivePage shell', () => {
       t_ms: 1_000,
       bandPct: 0.0025,
     }];
-    useLivePageStore.setState({
-      dailyMovingAverageEnabled: true,
-      dailyMovingAverageHidden: true,
-      dailyMovingAverages: [
-        { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
-      ],
-      tradeVolumePocEnabled: true,
-      tradeVolumePocBandPct: 0.0025,
-      tradeVolumePocColor: '#22C55E',
-      tradeVolumePocOpacity: 0.28,
+    seedWorkspace('1m', {
+      minute: {
+        dailyMovingAverageEnabled: true,
+        dailyMovingAverageHidden: true,
+        dailyMovingAverages: [
+          { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
+        ],
+        tradeVolumePocEnabled: true,
+        tradeVolumePocBandPct: 0.0025,
+        tradeVolumePocColor: '#22C55E',
+        tradeVolumePocOpacity: 0.28,
+      },
     });
 
     renderWithRouter('/live?code=005930');

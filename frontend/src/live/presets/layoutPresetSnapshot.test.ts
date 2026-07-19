@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useWorkspaceStore } from '../../state/workspace';
 import { useLivePageStore } from '../../state/livePage';
 import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
 import { useLiveLayoutStore, DEFAULT_CARD_WEIGHTS, LIVE_CARD_KEYS } from '../../state/liveLayout';
@@ -26,6 +27,10 @@ beforeEach(() => {
     detailPanelCollapsed: false,
     lastAppliedPresetId: null,
   });
+  // 멀티창 플립(C2c-2d): 차트 창이 있으면 캡처/적용이 포커스 창을 향한다.
+  // 이 스위트의 기존 케이스는 전역 폴백 계약을 검증하므로 창을 비운다(차트 창
+  // 없음 → 전역). 포커스 창 계약은 아래 전용 케이스가 검증한다.
+  useWorkspaceStore.setState({ windows: [], zOrder: [], groupSymbols: {}, chartRuntime: {} });
   // 공장 상태에서 시작 — 투영·버킷·ambient 봉 일관(빈 버킷 ⊕ 공장값 = 투영).
   useLivePageStore.setState({
     ...FACTORY_INDICATOR_SETTINGS,
@@ -175,5 +180,41 @@ describe('defaultPresetPayload', () => {
     expect(payload.right_card_weights).toEqual(DEFAULT_CARD_WEIGHTS);
     expect(payload.by_timeframe_enable).toEqual({});
     expect(payload.pane_stretch).toEqual({});
+  });
+});
+
+
+describe('멀티창(C2c-2d) — 포커스 차트 창 스코프', () => {
+  const WIN = 'preset-win';
+  beforeEach(() => {
+    useWorkspaceStore.setState({
+      windows: [{
+        id: WIN,
+        kind: 'chart',
+        group: 1,
+        rect: { x: 0, y: 0, w: 600, h: 400 },
+        chart: {
+          timeframe: '1m',
+          indicators: { paneOrder: [], paneStretch: {}, byTimeframe: { minute: { ratioEnabled: true } } },
+        },
+      }],
+      zOrder: [WIN],
+      groupSymbols: {},
+      chartRuntime: {},
+    });
+  });
+
+  it('capture 는 포커스 창의 버킷을, apply 는 포커스 창에 쓴다 — 전역 불침', () => {
+    const captured = capturePresetPayload();
+    expect(captured.by_timeframe_enable).toMatchObject({ minute: { ratioEnabled: true } });
+
+    applyPresetPayload({
+      ...defaultPresetPayload(),
+      by_timeframe_enable: { minute: { volumeEnabled: false } },
+    }, null);
+    const win = useWorkspaceStore.getState().windows[0];
+    expect(win.chart?.indicators.byTimeframe.minute?.volumeEnabled).toBe(false);
+    // 전역 스토어 버킷은 건드리지 않는다(#712 창 소유).
+    expect(useLivePageStore.getState().indicatorsByTimeframe).toEqual({});
   });
 });

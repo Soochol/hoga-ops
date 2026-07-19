@@ -8,21 +8,10 @@ import { Screener } from './pages/Screener';
 import Capture from './pages/Capture';
 import Settings from './pages/Settings';
 import { Heatmap } from './pages/Heatmap';
-import { lazy, Suspense } from 'react';
 import { StudyPage } from './studyViews/StudyPage';
 import { initStudyTabsSync } from './state/studyTabs';
 import './styles/global.css';
 
-// ADR-0119 멀티창 워크스페이스 — PR-A 스캐폴딩. dev 전용 프리뷰 라우트(아래).
-// **lazy + DEV 게이트**: 정적 import 면 워크스페이스 스토어(모듈 로드 시 readStorage
-// 부수효과)·snapEngine·tidy 가 프로덕션 번들에 남는다. import.meta.env.DEV 가 false 인
-// 프로덕션에선 아래 삼항이 통째로 트리셰이크돼 동적 import 가 사라진다. PR-C 가
-// `/live` 본체로 배선하면 이 프리뷰 라우트 자체를 제거한다.
-const WorkspacePreview = import.meta.env.DEV
-  ? lazy(() =>
-      import('./live/workspace/WorkspacePreviewPage').then((m) => ({ default: m.WorkspacePreviewPage })),
-    )
-  : null;
 
 const _disposeStudyTabsSync = initStudyTabsSync();
 if (import.meta.hot) {
@@ -77,16 +66,6 @@ createRoot(document.getElementById('root')!).render(
           <Route path="screener" element={<Screener />} />
           <Route path="capture" element={<Capture />} />
           <Route path="settings" element={<Settings />} />
-          {import.meta.env.DEV && WorkspacePreview && (
-            <Route
-              path="workspace-preview"
-              element={
-                <Suspense fallback={null}>
-                  <WorkspacePreview />
-                </Suspense>
-              }
-            />
-          )}
         </Route>
       </Routes>
     </BrowserRouter>

@@ -216,6 +216,22 @@ export function WorkspaceCanvas() {
         <div className="pointer-events-none absolute inset-x-0 z-40 h-px bg-accent" style={{ top: guides.h }} />
       )}
 
+      {windows.length === 0 && (
+        <div className="flex h-full w-full items-center justify-center">
+          <div className="rounded-lg border border-border bg-bg-card px-6 py-5 text-center text-[12px] text-fg-dim shadow-panel">
+            <p className="mb-2 font-medium text-fg">창이 없습니다</p>
+            <p className="mb-3">상단 툴바의 +차트 로 차트 창을 추가하세요.</p>
+            <button
+              type="button"
+              data-testid="workspace-empty-add-chart"
+              className="rounded bg-tint-selection px-3 py-1 font-medium text-accent hover:brightness-110"
+              onClick={() => useWorkspaceStore.getState().addWindow('chart')}
+            >
+              +차트 창 추가
+            </button>
+          </div>
+        </div>
+      )}
       {windows.map((w) => {
         const symbol = symbolFor(w.group);
         return (
