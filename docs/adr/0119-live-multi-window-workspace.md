@@ -93,7 +93,7 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 |---|---|---|
 | **A** | 스냅 엔진 + `WorkspaceCanvas`/`WindowFrame` + `live.workspace.v1` 스토어(더미 콘텐츠) + 본 ADR | ✅ 착지 |
 | **B** | `WindowViewContext` 신설, 데이터 페치 경로 전역 직독 교체(기능 무변경). context 기본값 = 기존 전역 동작 → `/study` 무변경 보장 | ✅ 착지 |
-| **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | 예정 |
+| **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | 🚧 증분 진행 (C1 마이그레이션 시드 ✅ · 렌더 컷오버 예정) |
 | **D** | 링크 그룹 — groupSymbols·뱃지 팔레트·드래그&드롭·크로스헤어 버스·활성 그룹 전역 배선·WS venue 전송 | 예정 |
 | **E** | 프리셋 v3 + 성능 마감(비포커스 창 스로틀·스냅존·Tidy·단축키) | 예정 |
 
@@ -122,6 +122,47 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
   원본(`livePage.ts` indicatorTimeframe) 교체는 모델 변경이라 #712/PR-C · 저장뷰 소스는 PR-C/D.
 - 검증: windowView 훅 단위 테스트(Provider→창값 · 폴백→전역) · useLiveBundle 기존 테스트
   전량 green(무변경 확인) · 전체 3891 green · `/live`·`/study` 도그푸딩 무변경.
+
+### PR-C 착지 범위 (증분)
+
+PR-C 는 실제 `/live` UX 를 바꾸는 대규모 작업이라 증분으로 착지한다.
+
+- **C1 — 마이그레이션 시드 (✅)**: `frontend/src/state/workspaceMigration.ts` — 레거시 키
+  (`live.page.v1`·`live.indicators.v2`·`live.layout.v1`)에서 초기 `live.workspace.v1` 을 1회
+  시드하는 **순수 함수**(`buildWorkspaceSeed`) + 얇은 localStorage 래퍼. `workspace.ts` 하이드
+  레이션이 `live.workspace.v1` 부재 시 호출(없으면 공장 기본). 매핑: page.candleTimeframe →
+  첫 차트 창 봉 · activeInstrument(주식) → 그룹 1 종목 · indicators.v2 → 첫 차트 창 지표 ·
+  layout 카드 순서·숨김 → 데이터 창(숨김 제외, 순서 보존). 워크스페이스 스토어는
+  `/workspace-preview`(DEV lazy)에서만 로드되므로 `/live`·`/study` 영향 0. 순수 시드 9케이스 +
+  스토어 통합 2케이스 TDD, `/browse` 도그푸딩(레거시 시드 → 창·종목·순서·숨김 확인).
+- **C2a — 파이프라인 훅 추출 (✅)**: `frontend/src/live/useLiveChartData.ts` — LivePage 의
+  인라인 ~130줄 데이터 파이프라인(useLiveSeries + useLiveBundle + 지수 번들 + ask/bid peaks +
+  trade-volume POC + liveSaveBundle + workarea 파생)을 **창별 재사용 가능한 훅**으로 추출.
+  LivePage 는 활성 뷰로 호출해 **기능 무변경**(behavior-preserving refactor), ChartWindow(C2b)가
+  창의 값으로 같은 훅을 호출 — 두 번째 소비자를 만들되 로직 중복 없음. 검증: 전체 3902 green
+  (테스트 수 불변=순수 이동)·LiveWorkarea/useLiveBundle/LivePage 테스트 green·eslint debt 순증
+  0(impure `Date.now`·setState-in-effect 는 LivePage 기존 debt 의 relocation)·`/live` 도그푸딩
+  무변경("Rendered fewer/more hooks" 없음=훅 순서 보존).
+- **C2b — 차트 창 실 콘텐츠·시맨틱 활성화 (✅)**: `frontend/src/live/workspace/ChartWindow.tsx` —
+  창의 (group→종목, timeframe, indicators)로 `useLiveChartData` 창별 파이프라인을 돌리고 실제
+  `LiveChartRoot` 를 렌더. **Provider 경계 처리**: 바깥 `ChartWindow`(Provider 설정) + 안쪽
+  `ChartWindowInner`(Provider 자식에서 훅 호출) 2-컴포넌트 — 안쪽 useWindowView/useWindowIndicators
+  와 nested useLiveBundle 이 창의 값을 본다(**시맨틱 첫 활성화**). WorkspaceCanvas 가 chart-kind
+  창에 배선(데이터 창은 아직 더미). 검증: `/workspace-preview` 도그푸딩 — 실 삼성전자 차트(캔들·MA·
+  거래량·드로잉 레일·peaks) 렌더, **차트 창 2개 = LiveChartRoot 2인스턴스·24 캔버스 독립 공존**
+  (다중 인스턴스 핵심 미지수 해소), JS 에러 0(hook·infinite-loop 없음)·전체 3902 green. **알려진
+  한계**: LiveChartRoot 의 pane 렌더(어느 지표 pane·paneOrder)와 드로잉 `activeTool`(전역)은 아직
+  전역 스토어 직독(#709 cut #7 부류, 후속 PR) — 데이터 페치는 창별이나 pane 표시·활성 도구는 전역
+  공유. code-review 결함 0(Provider 경계·prop 매핑·훅 안전·다중 인스턴스·investorNet 5축 통과).
+- **C2c-1 — 데이터 창 실 콘텐츠 (✅)**: `frontend/src/live/workspace/DataWindow.tsx` — 비차트 창에
+  실제 사이드바 카드를 **LATEST 모드**로 렌더. kind 별 하위 컴포넌트(조건부 훅 회피): `BookWindow`
+  (useLiveSeries→OrderbookTable+TotalQtyBar)·`BrokerWindow`(useLiveSeries→BrokerTrajectoryTable)·
+  `InvestorWindow`(useLiveInvestorTrendEstimate→InvestorTrendEstimateCard). 크로스윈도우 커서(hover
+  스팟)는 PR-D. 프로그램·매물대는 번들(timeframe) 종속이라 차트 창 연동(PR-D) 후 — C2c-1 은 안내 카드.
+  검증: `/workspace-preview` 도그푸딩 — 호가/거래원 실 카드(빈 백엔드라 빈 상태 우아 처리)·잠정투자자
+  실 데이터 렌더, 크래시 0·전체 3902 green.
+- **C2c-2 — `/live` 플립 (예정)**: `LiveWorkarea` → 워크스페이스, 상세 패널 폐지, `paneIndicators`
+  → `useWindowIndicators` 이관, cut #7(LiveChartRoot pane 렌더 창별화), LivePage 를 얇은 셸로.
 
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
 포함(#710) — 드래그 중 라이브 리사이즈가 프레임 저하 없이 동작(프로토타입 12창·6인스턴스 확인).
