@@ -54,10 +54,13 @@ export function mirrorActiveGroupToLivePage(
       : stockInstrument(symbol.code, symbol.name)
     : null;
   const code = instrumentToActiveCode(instrument);
+  // projectActiveView 는 종목 없음(instrument=null)일 때 activeCode 를 '' 로 쓴다
+  // (livePage.ts). 가드도 같은 정규화(`?? ''`)로 비교하지 않으면 null↔'' 비대칭에
+  // 걸려 종목 없는 활성 그룹에서 매 전환마다 재투영·persist 가 반복된다(리뷰 #1).
   if (
-    page.activeCode === code &&
-    page.activeInstrument?.label === instrument?.label &&
-    page.activeInstrument?.kind === instrument?.kind &&
+    (page.activeCode ?? '') === (code ?? '') &&
+    (page.activeInstrument?.label ?? null) === (instrument?.label ?? null) &&
+    (page.activeInstrument?.kind ?? null) === (instrument?.kind ?? null) &&
     page.candleTimeframe === focusedTimeframe
   ) {
     return; // 변화 없음 — persist 낭비·재렌더 회피

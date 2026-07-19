@@ -20,6 +20,7 @@ import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
 import { tidyLayout } from '../live/workspace/tidy';
 import { MIN_W, MIN_H, type Canvas, type Rect } from '../live/workspace/snapEngine';
 import { readLegacyWorkspaceSeed } from './workspaceMigration';
+import { isLiveIndexId } from '../live/liveInstrument';
 
 /**
  * `/live` 멀티창 워크스페이스 상태 (ADR-0119, 스펙 #715).
@@ -192,12 +193,10 @@ function readGroupSymbols(raw: unknown): Partial<Record<GroupId, GroupSymbol>> {
     if (!isGroupId(group) || !val || typeof val !== 'object') continue;
     const s = val as Record<string, unknown>;
     if (typeof s.code === 'string' && typeof s.name === 'string') {
-      out[group] = {
-        code: s.code,
-        name: s.name,
-        // 'index' 만 의미 보존 — 그 외 값은 stock 기본으로 정규화(생략).
-        ...(s.kind === 'index' ? { kind: 'index' as const } : {}),
-      };
+      // kind='index' 는 code 가 실제 LiveIndexId 일 때만 보존 — 손상/외래 값이
+      // 상태바 폴백(`index:FOO`)·드로어 capabilities 로 새는 것을 입구에서 차단(리뷰 #2).
+      const isIndex = s.kind === 'index' && isLiveIndexId(s.code);
+      out[group] = { code: s.code, name: s.name, ...(isIndex ? { kind: 'index' as const } : {}) };
     }
   }
   return out;
@@ -254,10 +253,13 @@ function readStorage(): Persisted {
     return fresh;
   }
   const windows = rawWindows.map(readWindow).filter((w): w is WorkspaceWindow => w !== null);
-  // 저장값이 전부 손상돼 창이 하나도 없으면 기본 레이아웃으로 폴백.
+  // 저장값이 전부 손상돼 창이 하나도 없으면 기본 레이아웃으로 폴백 — 즉시 persist
+  // 로 창 id 를 고정한다(시드/공장 경로와 동일 규율, 리뷰 #5).
   if (windows.length === 0) {
-    const fresh = defaultWindows();
-    return { windows: fresh, zOrder: fresh.map((w) => w.id), groupSymbols: {} };
+    const fresh = { windows: defaultWindows(), zOrder: [] as string[], groupSymbols: {} };
+    fresh.zOrder = fresh.windows.map((w) => w.id);
+    persistFromState(fresh);
+    return fresh;
   }
   return {
     windows,

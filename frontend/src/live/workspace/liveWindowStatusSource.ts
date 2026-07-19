@@ -16,6 +16,10 @@ export type LiveWindowStatus = {
   bundle: RangeBundle | null;
   liveTradePrice: number | null;
   isExtending: boolean;
+  /** 좌측 팬 딥 백필의 창 from-date — 상태바 "과거 로딩 중" 칩 게이트(리뷰 #1).
+   *  전역 historicalFromDate 는 플립 후 항상 null 이라(미러가 null 투영), 창의
+   *  런타임 값을 발행해야 칩이 뜬다. null = fresh 뷰(칩 미표시). */
+  historicalFromDate: string | null;
   hogaGapDates: readonly string[];
 };
 

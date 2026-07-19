@@ -84,7 +84,10 @@ export function WorkspaceIndicatorDrawer({ onClose }: { onClose: () => void }) {
 
   return (
     <WindowViewContext.Provider value={view}>
+      {/* key=대상 창 id — 실시간 재타깃 시 드로어 로컬 상태(2-단계 리셋 확인·
+          HH:MM draft)가 이전 창에서 새 창으로 새지 않게 재마운트(리뷰 #4). */}
       <IndicatorPanel
+        key={view.windowId}
         onClose={onClose}
         capabilities={capabilitiesForInstrument(instrument)}
         timeframe={view.timeframe}

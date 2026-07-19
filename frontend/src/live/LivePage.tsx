@@ -61,6 +61,7 @@ function WorkspaceStatusBar({ fallbackCode, captureHealth, venue }: {
       hogaGapDates={windowStatus?.hogaGapDates}
       liveTradePrice={windowStatus?.liveTradePrice}
       isExtending={windowStatus?.isExtending ?? false}
+      historicalFromDate={windowStatus?.historicalFromDate ?? null}
     />
   );
 }
@@ -142,6 +143,13 @@ export function LivePage() {
   // 드로어와 같은 창을 향하게(#712). 차트 창이 없으면 전역 폴백 그대로.
   const focusedView = useFocusedChartWindowView();
 
+  // 드로어 latch 방지(리뷰 #3): 열린 채 마지막 차트 창이 닫히면 드로어는 null
+  // 렌더로 사라지지만 open 플래그가 남아 이후 +차트 시 유령 재등장한다 — 대상이
+  // 사라지면 플래그도 정리한다.
+  useEffect(() => {
+    if (indicatorPanelOpen && !focusedView) setIndicatorPanelOpen(false);
+  }, [indicatorPanelOpen, focusedView]);
+
   return (
     <div
       className="h-full grid"
@@ -173,7 +181,9 @@ export function LivePage() {
       {settingsOpen && (
         focusedView ? (
           <WindowViewContext.Provider value={focusedView.view}>
-            <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+            {/* key=대상 창 id — 재타깃 시 모달 로컬 상태(리셋 확인·입력 draft)가
+                창 경계를 넘지 않게 재마운트(리뷰 #4). */}
+            <LiveSettingsModal key={focusedView.view.windowId} onClose={() => setSettingsOpen(false)} />
           </WindowViewContext.Provider>
         ) : (
           <LiveSettingsModal onClose={() => setSettingsOpen(false)} />

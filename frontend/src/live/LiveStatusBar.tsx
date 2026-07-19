@@ -37,9 +37,12 @@ interface Props {
    * (KIS rate-limit·무거운 사이드카)에서 딥 워크백은 수십 초 무반응처럼 보이므로,
    * "과거 로딩 중 · N까지 로드됨" 진행 칩으로 '고장'이 아니라 '진행 중'임을 알린다. */
   isExtending?: boolean;
+  /** 좌측 팬 딥 백필의 from-date — 플립 후 창 발행 채널이 공급(리뷰 #1).
+   *  undefined 면 전역 스토어 폴백(플립 전·/study 경로). */
+  historicalFromDate?: string | null;
 }
 
-export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGapDates = [], liveTradePrice, isExtending = false }: Props) {
+export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGapDates = [], liveTradePrice, isExtending = false, historicalFromDate: historicalFromDateProp }: Props) {
   // Threshold MUST exceed the 30s server ping so a connected-but-idle
   // socket (e.g. market closed) stays realtime; only a real disconnect
   // (no frame for >35s) flips it to disconnected. (plan-review cross-task flag)
@@ -48,7 +51,10 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
   // 과거 확장 진행 칩 게이트. historicalFromDate != null 은 "좌측 팬 확장 중"을
   // 뜻한다(초기 로드/종목·타임프레임 전환은 null). isExtending 과 AND 로 걸어
   // 확장이 아닌 최초 콜드 로드를 진행 칩으로 오인하지 않는다.
-  const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
+  const globalHistoricalFromDate = useLivePageStore((s) => s.historicalFromDate);
+  const historicalFromDate = historicalFromDateProp !== undefined
+    ? historicalFromDateProp
+    : globalHistoricalFromDate;
   const { data: symbolsData } = useSymbols();
   const symbolName = activeCode
     ? symbolsData?.symbols.find((s) => s.code === activeCode)?.name

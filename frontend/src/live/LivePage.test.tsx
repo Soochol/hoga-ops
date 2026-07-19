@@ -712,6 +712,17 @@ describe('LivePage shell', () => {
     expect(screen.getByText(/종목 없음/)).toBeInTheDocument();
   });
 
+  it('closes the indicator drawer when the last chart window disappears (리뷰 #3 latch)', async () => {
+    renderWithRouter('/live?code=005930');
+    act(() => { screen.getByTestId('live-indicators-button').click(); });
+    // IndicatorPanel 은 이 스위트에서 role=dialog "지표" 로 목킹된다.
+    await screen.findByRole('dialog', { name: '지표' });
+    // 유일한 차트 창을 제거 → 드로어 null 렌더 + latch effect 로 open 플래그 정리.
+    act(() => { useWorkspaceStore.setState({ windows: [], zOrder: [], chartRuntime: {} }); });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '지표' })).toBeNull());
+  });
+
+
   it('shows the canvas-level empty state when there are no windows', () => {
     useWorkspaceStore.setState({ windows: [], zOrder: [], chartRuntime: {} });
     renderWithRouter();

@@ -13,6 +13,7 @@ function status(windowId: string) {
     bundle: null,
     liveTradePrice: 1000,
     isExtending: false,
+    historicalFromDate: null,
     hogaGapDates: [] as const,
   };
 }

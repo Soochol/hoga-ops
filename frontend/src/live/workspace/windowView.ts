@@ -58,9 +58,13 @@ export const WindowViewContext = createContext<WindowViewValue | null>(null);
  */
 export function useWindowView(): WindowView {
   const ctx = useContext(WindowViewContext);
-  const code = useLivePageStore((s) => s.activeCode);
-  const timeframe = useLivePageStore((s) => s.candleTimeframe);
-  const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
+  // 형제 훅(useWindowIndicator·useWindowPaneOrder)과 같은 규율: Provider 안에서는
+  // 상수 selector 로 전역 구독을 무력화한다(리뷰 F7). 안 그러면 미러 effect 의
+  // livePage 쓰기(포커스/봉 전환 시)가 무관한 모든 차트 창의 useWindowView 구독을
+  // 깨워 LiveChartRoot 서브트리를 한 패스 더 재렌더한다.
+  const code = useLivePageStore((s) => (ctx ? null : s.activeCode));
+  const timeframe = useLivePageStore((s) => (ctx ? '1m' : s.candleTimeframe));
+  const historicalFromDate = useLivePageStore((s) => (ctx ? null : s.historicalFromDate));
   return useMemo(
     () => ctx ?? { windowId: null, group: null, code, timeframe, historicalFromDate },
     [ctx, code, timeframe, historicalFromDate],

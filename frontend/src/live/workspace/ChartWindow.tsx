@@ -135,6 +135,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       bundle: workareaBundle,
       liveTradePrice: liveTradePrice ?? null,
       isExtending: activeIndexId ? indexExtending : isExtending,
+      historicalFromDate: view.historicalFromDate,
       hogaGapDates: activeIndexId ? [] : hogaCoverageGapDates ?? [],
     };
     const prev = lastPublishedRef.current;
@@ -144,6 +145,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       && prev.bundle === next.bundle
       && prev.liveTradePrice === next.liveTradePrice
       && prev.isExtending === next.isExtending
+      && prev.historicalFromDate === next.historicalFromDate
       && prev.hogaGapDates.length === next.hogaGapDates.length
       && prev.hogaGapDates.every((v, i) => v === next.hogaGapDates[i]);
     if (!same) {
