@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { WindowFrame } from './WindowFrame';
 import { registerWorkspaceTidy } from './workspaceCanvasControls';
+import { useEntryDragStore } from '../../state/entryDrag';
 import { ChartWindow } from './ChartWindow';
 import { DataWindow } from './DataWindow';
 import {
@@ -189,6 +190,22 @@ export function WorkspaceCanvas() {
   // 정리(Tidy) 트리거는 고정 툴바(WorkspaceLiveToolbar)에 있다 — 캔버스 실측이
   // 필요한 실행기를 명령 채널에 등록(C2c-2c, 임시 플로팅 툴바 대체).
   useEffect(() => registerWorkspaceTidy(onTidy), [onTidy]);
+
+  // 관심종목/스크리너 행 드래그의 차트 드롭 타깃(entryDrag seam) — 구 LiveWorkarea 의
+  // 등록을 캔버스가 승계한다(C2c-2e 회귀 복구). 드롭=활성 그룹 종목 교체(onPick 경로);
+  // 창별 정밀 드롭(#711 창 위 드롭 → 그 창 그룹 교체)은 PR-D.
+  const registerChartTarget = useEntryDragStore((s) => s.registerChartTarget);
+  const clearChartTarget = useEntryDragStore((s) => s.clearChartTarget);
+  useEffect(() => {
+    const hitTest = (clientX: number, clientY: number): boolean => {
+      const rect = boxRef.current?.getBoundingClientRect();
+      if (!rect) return false;
+      return clientX >= rect.left && clientX <= rect.right
+        && clientY >= rect.top && clientY <= rect.bottom;
+    };
+    registerChartTarget(hitTest);
+    return () => clearChartTarget(hitTest);
+  }, [registerChartTarget, clearChartTarget]);
 
   const symbolFor = (group: GroupId) => groupSymbols[group] ?? null;
 
