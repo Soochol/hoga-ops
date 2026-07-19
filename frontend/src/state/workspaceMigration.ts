@@ -12,14 +12,9 @@
  * 구 키는 이후 사용하지 않는다(1회 시드 관례 — `live.indicators.v1→v2` 계승).
  */
 import { readJsonObject } from './persist';
-import { normalizeIndicatorsV2 } from './indicatorSettingsV2';
+import { normalizeIndicatorsV2, INDICATORS_V2_STORAGE_KEY } from './indicatorSettingsV2';
 import { LIVE_TIMEFRAMES, LIVE_PAGE_STORAGE_KEY, type LiveTimeframe } from './livePage';
-import {
-  LIVE_CARD_KEYS,
-  LIVE_LAYOUT_STORAGE_KEY,
-  type LiveCardKey,
-} from './liveLayout';
-import { INDICATORS_V2_STORAGE_KEY } from './indicatorSettingsV2';
+import { LIVE_CARD_KEYS, LIVE_LAYOUT_STORAGE_KEY, type LiveCardKey } from './liveLayout';
 import { isLiveInstrument } from '../live/liveInstrument';
 import type { WorkspaceWindow, GroupSymbol, WindowKind } from './workspace';
 
