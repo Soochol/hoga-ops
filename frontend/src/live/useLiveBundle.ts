@@ -6,7 +6,8 @@ import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
 import { useRange, useRangeHogaDelta, useRangeSidecarDelta } from '../api/range';
-import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
+import { type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
+import { useWindowView, useWindowIndicators } from './workspace/windowView';
 import type { LiveVenueOption } from '../state/liveVenue';
 import {
   kisRestWarningIndicatesUnavailable,
@@ -393,16 +394,19 @@ export function useLiveBundle(
   live: LiveSeriesData,
   options: UseLiveBundleOptions = {},
 ): UseLiveBundleResult {
-  const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
-  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
-  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
-  const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
-  const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
-  const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
-  const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
-  const programTradeEnabled = useLivePageStore((s) => s.programTradeEnabled);
-  const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
-  const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
+  // 창-스코프 뷰(ADR-0119 PR-B) — Provider 밖에서는 전역 스토어로 폴백(기능 무변경).
+  const { historicalFromDate } = useWindowView();
+  const {
+    askPeakEnabled,
+    bidPeakEnabled,
+    tradeVolumePocEnabled,
+    depthHeatmapEnabled,
+    brokerLateEntryEnabled,
+    brokerLateEntryStartHHMM,
+    programTradeEnabled,
+    volumeDistributionEnabled,
+    volumeDistributionRangeCount,
+  } = useWindowIndicators();
   const { data: liveSettings } = useLiveSettings();
   // 캔들 소스의 유일한 분기 축(4옵션 우선순위-병합 모델 폐기). 우회 OFF=KIS만,
   // 우회 ON=디스크만(분봉 hogaplay / D·W·M 스크리너). 모드당 소스 1개라 병합 없음.

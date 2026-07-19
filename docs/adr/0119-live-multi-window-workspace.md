@@ -92,7 +92,7 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 | PR | 내용 | 상태 |
 |---|---|---|
 | **A** | 스냅 엔진 + `WorkspaceCanvas`/`WindowFrame` + `live.workspace.v1` 스토어(더미 콘텐츠) + 본 ADR | ✅ 착지 |
-| **B** | `WindowContext` 신설, 전역 스토어 직독 10건 교체(기능 무변경, 최고 위험). context 기본값 = 기존 전역 동작 → `/study` 무변경 보장 | 예정 |
+| **B** | `WindowViewContext` 신설, 데이터 페치 경로 전역 직독 교체(기능 무변경). context 기본값 = 기존 전역 동작 → `/study` 무변경 보장 | ✅ 착지 |
 | **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | 예정 |
 | **D** | 링크 그룹 — groupSymbols·뱃지 팔레트·드래그&드롭·크로스헤어 버스·활성 그룹 전역 배선·WS venue 전송 | 예정 |
 | **E** | 프리셋 v3 + 성능 마감(비포커스 창 스로틀·스냅존·Tidy·단축키) | 예정 |
@@ -109,6 +109,19 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 - `frontend/src/state/workspace.ts` — `live.workspace.v1` 스토어(관대한 per-entry 검증,
   `persistFromState` 단일 깔때기).
 - dev 전용 프리뷰 라우트 `/workspace-preview`(PR-C 가 `/live` 배선 시 제거).
+
+### PR-B 착지 범위
+
+- `frontend/src/live/workspace/windowView.ts` — `WindowViewContext` + `useWindowView()`
+  (code·timeframe·historicalFromDate·group) + `useWindowIndicators()`(resolve 된
+  IndicatorSettings). **Provider 밖에서는 전역 `useLivePageStore` 로 폴백** → 절단 자체가
+  기능 무변경(아직 Provider 없음, PR-C 가 창별로 붙인다).
+- 소비자 절단: `LivePage`(code·timeframe·historicalFromDate) · `useLiveBundle`(historicalFromDate
+  + 지표 토글 9건, 전역 직독 10건 제거). 두 소비자가 데이터 페치 경로 전체를 창-파라미터화한다.
+- 범위 밖(의도): venue 는 전역 유지(#715) · 크로스헤어/축 동기화는 PR-D · ambient 투영
+  원본(`livePage.ts` indicatorTimeframe) 교체는 모델 변경이라 #712/PR-C · 저장뷰 소스는 PR-C/D.
+- 검증: windowView 훅 단위 테스트(Provider→창값 · 폴백→전역) · useLiveBundle 기존 테스트
+  전량 green(무변경 확인) · 전체 3891 green · `/live`·`/study` 도그푸딩 무변경.
 
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
 포함(#710) — 드래그 중 라이브 리사이즈가 프레임 저하 없이 동작(프로토타입 12창·6인스턴스 확인).

@@ -10,6 +10,7 @@ import { activateLiveCode, activateLiveInstrument } from './liveNavigate';
 import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
+import { useWindowView } from './workspace/windowView';
 import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
@@ -117,10 +118,10 @@ export function LivePage() {
   const liveStatus = useLiveStatusProjection(status);
   const banner = liveStatus.banner;
 
-  const activeCode = useLivePageStore((s) => s.activeCode);
+  // 창-스코프 뷰(ADR-0119 PR-B) — Provider 밖에서는 전역 스토어로 폴백하므로 기능
+  // 무변경. PR-C 가 창별 Provider 를 붙이면 이 페이지 서브트리가 창의 값을 본다.
+  const { code: activeCode, timeframe, historicalFromDate } = useWindowView();
   const activeInstrument = useLivePageStore((s) => s.activeInstrument);
-  const timeframe = useLivePageStore((s) => s.candleTimeframe);
-  const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
   const liveVenue = useLiveVenueStore((s) => s.venue);
   const paneIndicators = useLivePageStore((s): PanePrefsIndicatorSource => ({
     volumeEnabled: s.volumeEnabled,
