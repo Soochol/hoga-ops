@@ -9,6 +9,8 @@ import Capture from './pages/Capture';
 import Settings from './pages/Settings';
 import { Heatmap } from './pages/Heatmap';
 import { StudyPage } from './studyViews/StudyPage';
+// PROTOTYPE — throwaway route (wayfinder #706 · #707 레이아웃 패러다임 검증용)
+import { PrototypeWorkspacePage } from './live/prototypeWorkspace/PrototypeWorkspacePage';
 import { initStudyTabsSync } from './state/studyTabs';
 import './styles/global.css';
 
@@ -60,6 +62,8 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/" element={<Navigate to="/live" replace />} />
           <Route path="live" element={<LivePage />} />
           <Route path="study" element={<StudyPage />} />
+          {/* PROTOTYPE — throwaway */}
+          <Route path="prototype-workspace" element={<PrototypeWorkspacePage />} />
           <Route path="heatmap" element={<Heatmap />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="screener" element={<Screener />} />
