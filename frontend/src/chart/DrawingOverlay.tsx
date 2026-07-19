@@ -9,6 +9,7 @@ import { nanoid } from 'nanoid';
 import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { shouldIgnoreEvent } from '../util/keyboard';
+import { useIsFocusedWindow } from '../live/workspace/windowView';
 import { useDrawingsStore } from '../state/drawings';
 import {
   renderDrawing,
@@ -86,6 +87,9 @@ type Props = {
   chart: IChartApi;
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
+  /** 이 오버레이가 그리는 차트의 종목 — 드로잉 렌더·변이의 귀속 대상
+   *  (ADR-0119 C2c-2b: 전역 activeCode 경유 금지). */
+  code: string | null;
   onChartHoverPassthrough?: (point: { x: number; y: number }) => void;
   /** Active timeframe bucket (ms) — forwarded to the measure tool's readout. */
   bucketMs?: number;
@@ -108,15 +112,22 @@ type TextEdit = {
   py: number;
 };
 
-export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPassthrough, bucketMs, candles }: Props) {
+const EMPTY_DRAWINGS: Drawing[] = [];
+
+export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartHoverPassthrough, bucketMs, candles }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const activeTool = useDrawingsStore((s) => s.activeTool);
-  const activeCode = useDrawingsStore((s) => s.activeCode);
   const drawings = useDrawingsStore((s) =>
-    s.activeCode == null ? [] : (s.byCode.get(s.activeCode) ?? []),
+    code == null ? EMPTY_DRAWINGS : (s.byCode.get(code) ?? EMPTY_DRAWINGS),
   );
+  // 멀티창 게이트: 전역 키 리스너는 포커스 창의 오버레이만 처리한다(N중복 방지).
+  const isFocusedWindow = useIsFocusedWindow();
+  const isFocusedRef = useRef(isFocusedWindow);
+  isFocusedRef.current = isFocusedWindow;
+  const codeRef = useRef(code);
+  codeRef.current = code;
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const defaults = useDrawingsStore((s) => s.defaults);
 
@@ -358,12 +369,17 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       ts.unsubscribeVisibleLogicalRangeChange(schedule);
       ro?.disconnect();
     };
-  }, [chart, axis, paneSeries, drawings, selectedId, activeCode, defaults, bucketMs, lastRealMs, activeTool]);
+  }, [chart, axis, paneSeries, drawings, selectedId, code, defaults, bucketMs, lastRealMs, activeTool]);
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (shouldIgnoreEvent(e.target)) return;
+      // 포커스 창의 오버레이만 전역 키를 처리 — 창마다 리스너가 붙으므로
+      // 게이트가 없으면 Ctrl+Z 한 번에 창 수만큼 undo 가 발화한다.
+      if (!isFocusedRef.current) return;
+      const keyCode = codeRef.current;
+      if (keyCode == null) return;
       if (
         dragRef.current ||
         trendlineDraft.current ||
@@ -379,13 +395,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       if ((e.ctrlKey || e.metaKey) && !e.altKey) {
         const key = e.key.toLowerCase();
         if (key === 'z') {
-          if (e.shiftKey) useDrawingsStore.getState().redo();
-          else useDrawingsStore.getState().undo();
+          if (e.shiftKey) useDrawingsStore.getState().redo(keyCode);
+          else useDrawingsStore.getState().undo(keyCode);
           e.preventDefault();
           return;
         }
         if (key === 'y') {
-          useDrawingsStore.getState().redo();
+          useDrawingsStore.getState().redo(keyCode);
           e.preventDefault();
           return;
         }
@@ -405,7 +421,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const id = useDrawingsStore.getState().selectedId;
         if (id) {
-          useDrawingsStore.getState().remove(id);
+          useDrawingsStore.getState().remove(keyCode, id);
           e.preventDefault();
         }
       } else if (e.key === 'Escape') {
@@ -494,13 +510,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
     textEditRef.current = null;
     const trimmed = value.trim();
     const store = useDrawingsStore.getState();
+    if (code == null) return;
     if (trimmed.length === 0) {
-      if (edit.id != null) store.remove(edit.id);
+      if (edit.id != null) store.remove(code, edit.id);
     } else if (edit.id != null) {
-      store.update(edit.id, { text: trimmed } as Partial<Drawing>);
+      store.update(code, edit.id, { text: trimmed } as Partial<Drawing>);
     } else {
       const id = nanoid(8);
-      store.add({
+      store.add(code, {
         id,
         kind: 'text',
         at: edit.at,
@@ -575,9 +592,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       dragRef,
       beginTextEdit,
       requestRedraw: () => scheduleRef.current(),
-      add: (d) => useDrawingsStore.getState().add(d),
-      update: (id, patch) => useDrawingsStore.getState().update(id, patch),
-      remove: (id) => useDrawingsStore.getState().remove(id),
+      add: (d) => { if (code != null) useDrawingsStore.getState().add(code, d); },
+      update: (id, patch) => { if (code != null) useDrawingsStore.getState().update(code, id, patch); },
+      remove: (id) => { if (code != null) useDrawingsStore.getState().remove(code, id); },
       setSelected: (id) => useDrawingsStore.getState().setSelected(id),
       revertToSelectMode,
     };
@@ -759,7 +776,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   duplicateSelectedRef.current = () => {
     const store = useDrawingsStore.getState();
     const id = store.selectedId;
-    const code = store.activeCode;
     if (id == null || code == null) return;
     const d = store.byCode.get(code)?.find((x) => x.id === id);
     if (d == null) return;
@@ -790,7 +806,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       }
     }
     const clone = cloneWithOffset(d, shiftMs, dPrice);
-    store.add(clone);
+    store.add(code, clone);
     store.setSelected(clone.id);
   };
 

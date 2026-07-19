@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useWorkspaceStore, WORKSPACE_STORAGE_KEY, type WorkspaceWindow } from './workspace';
 import { FACTORY_INDICATOR_SETTINGS, resolveIndicatorSettings } from './indicatorSettingsV2';
 
@@ -170,6 +170,16 @@ describe('창별 런타임(historicalFromDate)', () => {
     expect(useWorkspaceStore.getState().chartRuntime.c1).toBeUndefined();
   });
 
+  it('그룹 이동(setWindowGroup)도 그 창의 런타임을 리셋한다 — 종목 교체와 동격', () => {
+    useWorkspaceStore.getState().extendChartHistoricalRange('c1', '20260601');
+    useWorkspaceStore.getState().setWindowGroup('c1', 2); // 그룹 이동 = 표시 종목 교체
+    expect(useWorkspaceStore.getState().chartRuntime.c1).toBeUndefined();
+    // 같은 그룹 재지정(no-op)은 런타임을 건드리지 않는다.
+    useWorkspaceStore.getState().extendChartHistoricalRange('c1', '20260601');
+    useWorkspaceStore.getState().setWindowGroup('c1', 2);
+    expect(useWorkspaceStore.getState().chartRuntime.c1?.historicalFromDate).toBe('20260601');
+  });
+
   it('창 닫힘·그룹 종목 교체가 런타임을 정리한다', () => {
     seed([chartWindow('c1'), chartWindow('c2', { group: 2 })]);
     useWorkspaceStore.getState().extendChartHistoricalRange('c1', '20260701');
@@ -203,5 +213,26 @@ describe('창 복제·하이드레이션의 lastMinuteTimeframe', () => {
     expect(chartOf('c1').lastMinuteTimeframe).toBeUndefined();
     expect(resolveIndicatorSettings(chartOf('c1').indicators.byTimeframe, '1m'))
       .toEqual(FACTORY_INDICATOR_SETTINGS);
+  });
+
+  it('저장값 없는 분봉 창은 하이드레이션에서 분봉 기억을 파생한다(livePage 미러)', async () => {
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({
+      windows: [{
+        id: 'h5m', kind: 'chart', group: 1,
+        rect: { x: 0, y: 0, w: 400, h: 300 },
+        chart: { timeframe: '5m', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } },
+      }, {
+        id: 'hD', kind: 'chart', group: 1,
+        rect: { x: 0, y: 0, w: 400, h: 300 },
+        chart: { timeframe: 'D', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } },
+      }],
+      zOrder: ['h5m', 'hD'],
+      groupSymbols: {},
+    }));
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const wins = mod.useWorkspaceStore.getState().windows;
+    expect(wins.find((w) => w.id === 'h5m')?.chart?.lastMinuteTimeframe).toBe('5m'); // 분봉→파생
+    expect(wins.find((w) => w.id === 'hD')?.chart?.lastMinuteTimeframe).toBeUndefined(); // 비분봉→없음
   });
 });

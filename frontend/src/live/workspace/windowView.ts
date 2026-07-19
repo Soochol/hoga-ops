@@ -47,6 +47,9 @@ export interface WindowViewValue extends WindowView {
   indicators: IndicatorSettings;
 }
 
+// 불변식: 한 컴포넌트 인스턴스의 windowId 는 수명 동안 바뀌지 않는다(창=컴포넌트
+// 1:1, WorkspaceCanvas 가 key=win.id 로 마운트). useMemo([windowId]) 캐시·effect
+// deps 생략이 이 불변식에 기댄다 — 창 재사용(id 교체) 최적화 금지.
 export const WindowViewContext = createContext<WindowViewValue | null>(null);
 
 /**
@@ -95,6 +98,20 @@ export function useWindowIndicator<T>(select: (s: IndicatorSettings) => T): T {
     (s) => (ctx ? undefined : select(s as unknown as IndicatorSettings)),
   );
   return ctx ? select(ctx.indicators) : (global as T);
+}
+
+/**
+ * 이 서브트리의 창이 포커스(zOrder 최상단)인가 — Provider 밖(단일 차트)에서는
+ * 항상 true. 창마다 붙는 전역 키 리스너(드로잉 undo/도구 단축키 등)가 N 개
+ * 중복 발화하지 않도록 포커스 창 하나만 처리하게 게이트한다(C2c-2b).
+ */
+export function useIsFocusedWindow(): boolean {
+  const ctx = useContext(WindowViewContext);
+  const windowId = ctx?.windowId ?? null;
+  const focused = useWorkspaceStore((s) =>
+    windowId ? s.zOrder[s.zOrder.length - 1] === windowId : true,
+  );
+  return windowId ? focused : true;
 }
 
 const DEFAULT_PANE_ORDER: PaneId[] = normalizePaneOrder([]);
@@ -170,10 +187,11 @@ function buildWindowIndicatorActions(windowId: string): IndicatorActions {
   };
   return {
     ...bindIndicatorOps(readSettings, (patch) => ws().patchChartIndicators(windowId, patch)),
-    // 창 모드의 "현재 봉" = 창의 timeframe. 호출자가 넘긴 tf 는 구성상 항상 그와
-    // 같다(드로어·pane 닫기 모두 대상 창의 tf 를 넘긴다) — 창의 tf 를 쓴다.
-    setPanePrefForTimeframe: (_timeframe, key, enabled) =>
-      ws().patchChartIndicators(windowId, { [key]: enabled }),
+    // 전역 시맨틱 미러: 호출자가 넘긴 tf 의 버킷에 기록한다(전역 구현과 동일).
+    // 정상 경로에선 창의 tf 와 같지만, 드로어 재타깃/stale 렌더에서 어긋나도
+    // 조용히 다른 버킷을 오염시키지 않는다(리뷰 권고 반영).
+    setPanePrefForTimeframe: (timeframe, key, enabled) =>
+      ws().patchChartIndicatorsAt(windowId, timeframe, { [key]: enabled }),
     setPaneOrder: (order) => ws().setChartPaneOrder(windowId, order),
     setPaneStretch: (patch) => ws().setChartPaneStretch(windowId, patch),
     resetIndicators: () => ws().resetChartIndicators(windowId),

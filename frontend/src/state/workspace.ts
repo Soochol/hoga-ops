@@ -103,6 +103,9 @@ type Store = Persisted & {
   /** 대상 창의 "현재 봉" 버킷에 patch 를 누적한다(livePage patchIndicators 미러 —
    *  sparse 정리는 로드 시 normalize 가 담당). 차트 창이 아니면 no-op. */
   patchChartIndicators: (id: string, patch: Partial<IndicatorSettings>) => void;
+  /** 명시한 봉 버킷에 patch — pane 토글(setPanePrefForTimeframe)의 전역 시맨틱
+   *  미러(전역은 인자 tf 버킷에 기록). 창 tf 와 같으면 patchChartIndicators 동치. */
+  patchChartIndicatorsAt: (id: string, timeframe: LiveTimeframe, patch: Partial<IndicatorSettings>) => void;
   /** 봉 전환 — livePage setCandleTimeframe 의 창별 미러(분봉 기억·백필 리셋 포함). */
   setChartTimeframe: (id: string, tf: LiveTimeframe) => void;
   setChartPaneOrder: (id: string, order: PaneId[]) => void;
@@ -169,6 +172,10 @@ function readWindow(raw: unknown): WorkspaceWindow | null {
     };
     if (isMinuteFrameValue(cfg.lastMinuteTimeframe)) {
       win.chart.lastMinuteTimeframe = cfg.lastMinuteTimeframe;
+    } else if (isMinuteFrameValue(win.chart.timeframe)) {
+      // 저장값이 없거나 무효면 현재 분봉에서 파생(livePage 하이드레이션 미러) —
+      // 분봉 슬롯 복귀가 '1m' 폴백으로 퇴행하지 않게.
+      win.chart.lastMinuteTimeframe = win.chart.timeframe;
     }
   }
   return win;
@@ -385,9 +392,15 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   setWindowGroup: (id, group) => {
     if (!isGroupId(group)) return;
     set((state) => {
+      const prev = state.windows.find((w) => w.id === id);
+      if (!prev || prev.group === group) return {};
       const windows = state.windows.map((w) => (w.id === id ? { ...w, group } : w));
+      // 그룹 이동 = 이 창의 표시 종목 교체(그룹=종목 SSOT #711) — fresh view
+      // 규율(livePage setActiveCode 미러)로 팬 백필·분봉 기억 런타임을 리셋한다.
+      const chartRuntime = { ...state.chartRuntime };
+      delete chartRuntime[id];
       persistFromState({ ...state, windows });
-      return { windows };
+      return { windows, chartRuntime };
     });
   },
 
@@ -422,9 +435,17 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   },
 
   patchChartIndicators: (id, patch) => {
+    get().patchChartIndicatorsAt(
+      id,
+      get().windows.find((w) => w.id === id)?.chart?.timeframe ?? '1m',
+      patch,
+    );
+  },
+
+  patchChartIndicatorsAt: (id, timeframe, patch) => {
     set((state) => {
       const windows = withChart(state, id, (chart) => {
-        const profileKey = profileKeyForTimeframe(chart.timeframe);
+        const profileKey = profileKeyForTimeframe(timeframe);
         const bucket = { ...(chart.indicators.byTimeframe[profileKey] ?? {}), ...patch };
         return {
           ...chart,

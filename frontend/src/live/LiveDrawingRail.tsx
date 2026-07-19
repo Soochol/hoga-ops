@@ -3,6 +3,7 @@ import type { DrawingTool } from '../chart/drawing/types';
 import { DRAWABLE_TOOLS_ORDER, TOOLS } from '../chart/drawing/tools';
 import { normalizeItems } from '../chart/drawing/persistence';
 import { useDrawingsStore } from '../state/drawings';
+import { useWindowView } from './workspace/windowView';
 
 const TOOL_ORDER: readonly DrawingTool[] = ['select', ...DRAWABLE_TOOLS_ORDER];
 
@@ -22,6 +23,8 @@ function tooltipFor(tool: DrawingTool): string {
 }
 
 export default function LiveDrawingRail() {
+  // 이 레일이 속한 차트 창의 종목(ADR-0119 C2c-2b) — Provider 밖=전역 활성 종목.
+  const { code } = useWindowView();
   const activeTool = useDrawingsStore((state) => state.activeTool);
   const setActiveTool = useDrawingsStore((state) => state.setActiveTool);
   const clearAll = useDrawingsStore((state) => state.clearAll);
@@ -32,7 +35,6 @@ export default function LiveDrawingRail() {
 
   const handleExport = () => {
     const store = useDrawingsStore.getState();
-    const code = store.activeCode;
     if (code == null) return;
     const items = store.drawingsFor(code);
     if (items.length === 0) return;
@@ -51,7 +53,7 @@ export default function LiveDrawingRail() {
       const text = await file.text();
       const parsed = JSON.parse(text) as { items?: unknown };
       const items = normalizeItems(parsed.items);
-      if (items.length > 0) useDrawingsStore.getState().importDrawings(items);
+      if (items.length > 0 && code != null) useDrawingsStore.getState().importDrawings(code, items);
     } catch {
       // Malformed file — ignore silently (nothing imported).
     }
@@ -145,7 +147,7 @@ export default function LiveDrawingRail() {
         aria-label="모두 지우기"
         title="모두 지우기"
         className={buttonClass(false)}
-        onClick={clearAll}
+        onClick={() => { if (code != null) clearAll(code); }}
       >
         <span aria-hidden="true">✕</span>
       </button>

@@ -1966,6 +1966,7 @@ export function LiveChartRoot({
           <DrawingOverlay
             chart={chart}
             axis={axis}
+            code={code}
             paneSeries={paneSeries}
             onChartHoverPassthrough={handleDrawingOverlayHover}
             bucketMs={cb?.bucket_ms ?? undefined}
@@ -1997,7 +1998,7 @@ export function LiveChartRoot({
           {isMinuteTimeframe(timeframe) && hogaBundle && (
             <PriceLevelDotsOverlay chart={chart} bundle={hogaBundle} axis={axis} paneSeries={paneSeries} />
           )}
-          <DrawingPropertyPanel />
+          <DrawingPropertyPanel code={code} />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a
               per-day vertical line collapses onto each candle. */}

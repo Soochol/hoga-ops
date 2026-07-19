@@ -86,20 +86,24 @@ type Actions = {
   setActiveTool(tool: DrawingTool): void;
   setSelected(id: DrawingId | null): void;
   drawingsFor(code: string): Drawing[];
-  add(d: Drawing): void;
-  update(id: DrawingId, patch: Partial<Drawing>): void;
-  remove(id: DrawingId): void;
-  clearAll(): void;
+  // 변이 op 는 호출자가 code 를 명시한다(ADR-0119 C2c-2b) — 멀티창에서 전역
+  // activeCode(마지막 마운트 창이 이김)를 경유하면 다른 종목 창의 드로잉이
+  // 엉뚱한 종목에 귀속된다. add 류는 "이 차트(=이 code)에 그린다"가 항상
+  // 호출부 문맥에 있으므로 인자로 받는 편이 원천적으로 안전하다.
+  add(code: string, d: Drawing): void;
+  update(code: string, id: DrawingId, patch: Partial<Drawing>): void;
+  remove(code: string, id: DrawingId): void;
+  clearAll(code: string): void;
   /** Replace the drawing list for `code` with `items` as a normal, undoable
    *  mutation. Used by the clearAll undo-toast (restores the pre-clear
    *  snapshot) and by import. */
   restore(code: string, items: Drawing[]): void;
-  /** Append imported drawings to the active Code with fresh ids, as a single
+  /** Append imported drawings to `code` with fresh ids, as a single
    *  undoable step. Returns the number appended. */
-  importDrawings(items: Drawing[]): number;
+  importDrawings(code: string, items: Drawing[]): number;
   dismissClearToast(): void;
-  undo(): void;
-  redo(): void;
+  undo(code: string): void;
+  redo(code: string): void;
   setDefaults(patch: Partial<DrawingDefaults>): void;
   flushPending(): void;
   __resetForTests(): void;
@@ -167,9 +171,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       return get().byCode.get(code) ?? [];
     },
 
-    add(d) {
-      const code = get().activeCode;
-      if (code == null) return;
+    add(code, d) {
       const current = get().byCode.get(code) ?? [];
       recordHistory(code, current, 'add', d.id);
       const byCode = new Map(get().byCode);
@@ -178,9 +180,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       queuePersist(code);
     },
 
-    update(id, patch) {
-      const code = get().activeCode;
-      if (code == null) return;
+    update(code, id, patch) {
       const current = get().byCode.get(code) ?? [];
       recordHistory(code, current, 'update', id);
       const next = current.map((d) => (d.id === id ? ({ ...d, ...patch } as Drawing) : d));
@@ -206,9 +206,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       queuePersistDefaults();
     },
 
-    remove(id) {
-      const code = get().activeCode;
-      if (code == null) return;
+    remove(code, id) {
       const current = get().byCode.get(code) ?? [];
       if (!current.some((d) => d.id === id)) return;
       recordHistory(code, current, 'remove', id);
@@ -220,9 +218,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       queuePersist(code);
     },
 
-    clearAll() {
-      const code = get().activeCode;
-      if (code == null) return;
+    clearAll(code) {
       const current = get().byCode.get(code) ?? [];
       if (current.length === 0) return; // nothing to clear → no history, no toast
       recordHistory(code, current, 'clearAll');
@@ -249,9 +245,8 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       queuePersist(code);
     },
 
-    importDrawings(items) {
-      const code = get().activeCode;
-      if (code == null || items.length === 0) return 0;
+    importDrawings(code, items) {
+      if (items.length === 0) return 0;
       const current = get().byCode.get(code) ?? [];
       recordHistory(code, current, 'import');
       const reassigned = items.map((d) => ({ ...d, id: nanoid(8) }));
@@ -266,9 +261,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       if (get().clearToast != null) set({ clearToast: null });
     },
 
-    undo() {
-      const code = get().activeCode;
-      if (code == null) return;
+    undo(code) {
       const h = histories.get(code);
       if (h == null || h.undo.length === 0) return;
       const cur = get().byCode.get(code) ?? [];
@@ -284,9 +277,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       queuePersist(code);
     },
 
-    redo() {
-      const code = get().activeCode;
-      if (code == null) return;
+    redo(code) {
       const h = histories.get(code);
       if (h == null || h.redo.length === 0) return;
       const cur = get().byCode.get(code) ?? [];
