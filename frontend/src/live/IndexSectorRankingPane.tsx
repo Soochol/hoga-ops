@@ -21,6 +21,13 @@ interface Props {
   error: unknown;
   onClearDatePin: () => void;
   onOpenStock: (code: string, name: string) => void;
+  /**
+   * 레이아웃 변형.
+   * - `docked`(기본): 차트 하단 도킹 — 자체 높이 상태 + 상단 리사이즈 핸들(구 LiveWorkarea).
+   * - `fill`: 워크스페이스 데이터 창 채우기 — WindowFrame 이 크기를 소유하므로
+   *   자체 높이/핸들 없이 100% 채운다(ADR-0119 PR-D 섹터랭킹 창).
+   */
+  variant?: 'docked' | 'fill';
 }
 
 const DEFAULT_PANE_HEIGHT = 220;
@@ -156,6 +163,7 @@ export function IndexSectorRankingPane({
   error,
   onClearDatePin,
   onOpenStock,
+  variant = 'docked',
 }: Props) {
   const [state, dispatch] = useReducer(
     reduceIndexSectorRankingState,
@@ -240,65 +248,71 @@ export function IndexSectorRankingPane({
     );
   }
 
+  const fill = variant === 'fill';
+
   return (
     <section
       data-testid="index-sector-ranking-pane"
       className="flex min-h-0 flex-col"
       style={{
-        height,
-        borderTop: '1px solid var(--border)',
+        // fill: WindowFrame 이 크기를 소유 → 100% 채움. docked: 자체 높이 상태.
+        height: fill ? '100%' : height,
+        // fill 은 창 자체 테두리가 있어 상단 구분선 불필요.
+        borderTop: fill ? undefined : '1px solid var(--border)',
         background: 'var(--bg)',
       }}
     >
-      <div
-        role="separator"
-        aria-label="섹터 랭킹 높이 조절"
-        aria-orientation="horizontal"
-        aria-valuemin={MIN_PANE_HEIGHT}
-        aria-valuemax={MAX_PANE_HEIGHT}
-        aria-valuenow={height}
-        tabIndex={0}
-        onMouseDown={(event) => {
-          event.preventDefault();
-          startResize(event.clientY);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowUp') {
-            setHeight((current) => {
-              const next = clampPaneHeight(current + 20);
-              writeStoredPaneHeight(next);
-              return next;
-            });
+      {!fill && (
+        <div
+          role="separator"
+          aria-label="섹터 랭킹 높이 조절"
+          aria-orientation="horizontal"
+          aria-valuemin={MIN_PANE_HEIGHT}
+          aria-valuemax={MAX_PANE_HEIGHT}
+          aria-valuenow={height}
+          tabIndex={0}
+          onMouseDown={(event) => {
             event.preventDefault();
-          } else if (event.key === 'ArrowDown') {
-            setHeight((current) => {
-              const next = clampPaneHeight(current - 20);
-              writeStoredPaneHeight(next);
-              return next;
-            });
-            event.preventDefault();
-          }
-        }}
-        style={{
-          height: 8,
-          cursor: 'ns-resize',
-          display: 'grid',
-          placeItems: 'center',
-          color: 'var(--fg-dimmer)',
-          background: 'var(--bg)',
-          flexShrink: 0,
-        }}
-      >
-        <span
-          aria-hidden
-          style={{
-            width: 36,
-            height: 3,
-            borderTop: '1px solid var(--border-strong)',
-            borderBottom: '1px solid var(--border-strong)',
+            startResize(event.clientY);
           }}
-        />
-      </div>
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowUp') {
+              setHeight((current) => {
+                const next = clampPaneHeight(current + 20);
+                writeStoredPaneHeight(next);
+                return next;
+              });
+              event.preventDefault();
+            } else if (event.key === 'ArrowDown') {
+              setHeight((current) => {
+                const next = clampPaneHeight(current - 20);
+                writeStoredPaneHeight(next);
+                return next;
+              });
+              event.preventDefault();
+            }
+          }}
+          style={{
+            height: 8,
+            cursor: 'ns-resize',
+            display: 'grid',
+            placeItems: 'center',
+            color: 'var(--fg-dimmer)',
+            background: 'var(--bg)',
+            flexShrink: 0,
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 36,
+              height: 3,
+              borderTop: '1px solid var(--border-strong)',
+              borderBottom: '1px solid var(--border-strong)',
+            }}
+          />
+        </div>
+      )}
       <div
         className="flex items-center gap-sm"
         style={{
@@ -308,7 +322,7 @@ export function IndexSectorRankingPane({
         }}
       >
         <span className="font-ui text-sm" style={{ color: 'var(--fg)' }}>
-          {formatDate(basisDate)} 기준 · {basisMode === 'pinned' ? '날짜 고정' : basisMode}
+          {formatDate(basisDate)} 기준 · {basisMode === 'pinned' ? '날짜 고정' : basisMode === 'latest' ? '최신' : basisMode}
         </span>
         {basisMode === 'pinned' && (
           <button

@@ -26,6 +26,7 @@ const ADD_BUTTONS: ReadonlyArray<{ kind: WindowKind; label: string }> = [
   { kind: 'program', label: '+프로그램' },
   { kind: 'investor', label: '+투자자' },
   { kind: 'vdist', label: '+매물대' },
+  { kind: 'sector-ranking', label: '+섹터랭킹' },
 ];
 
 type Props = {

@@ -24,6 +24,8 @@ import { useLiveInvestorTrendEstimate } from '../../api/liveInvestorTrendEstimat
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { aggregateBrokerSeries, latestOrderbookSnapshot } from '../liveSidebarAdapters';
+import { SectorRankingWindow } from './SectorRankingWindow';
+import { isLiveIndexId } from '../liveInstrument';
 import type { GroupSymbol, WorkspaceWindow, WindowKind } from '../../state/workspace';
 
 const KIND_LABEL: Record<WindowKind, string> = {
@@ -33,9 +35,26 @@ const KIND_LABEL: Record<WindowKind, string> = {
   vdist: '매물대',
   program: '프로그램',
   investor: '잠정투자자',
+  'sector-ranking': '섹터 랭킹',
 };
 
 export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
+  // 섹터 랭킹은 지수 그룹 전용 데이터 창(PR-D) — 일반 지수 게이트보다 먼저 처리한다
+  // (지수에서 유일하게 허용되는 kind). 주식·미지정 그룹에는 안내 카드.
+  if (win.kind === 'sector-ranking') {
+    if (symbol?.kind === 'index' && isLiveIndexId(symbol.code)) {
+      return <SectorRankingWindow indexId={symbol.code} />;
+    }
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
+        <span className="font-mono">
+          {KIND_LABEL[win.kind]} · 지수 그룹 전용
+          <br />
+          {symbol ? `${symbol.name} 은 지수가 아닙니다` : `종목 없음 (그룹 ${win.group})`}
+        </span>
+      </div>
+    );
+  }
   // 지수는 호가/거래원/투자자 데이터가 없다 — 구독 오염 대신 안내 카드(C2c-2c).
   if (symbol?.kind === 'index') {
     return (
