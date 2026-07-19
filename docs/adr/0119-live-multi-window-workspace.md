@@ -94,7 +94,7 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 | **A** | 스냅 엔진 + `WorkspaceCanvas`/`WindowFrame` + `live.workspace.v1` 스토어(더미 콘텐츠) + 본 ADR | ✅ 착지 |
 | **B** | `WindowViewContext` 신설, 데이터 페치 경로 전역 직독 교체(기능 무변경). context 기본값 = 기존 전역 동작 → `/study` 무변경 보장 | ✅ 착지 |
 | **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | ✅ 착지 (C1~C2c-2e — `/live` 플립 완료) |
-| **D** | 링크 그룹 — groupSymbols·뱃지 팔레트·드래그&드롭·크로스헤어 버스·활성 그룹 전역 배선·WS venue 전송 | 부분 착지 (D1 — 크로스헤어 버스·데이터 창 차트 연동) |
+| **D** | 링크 그룹 — groupSymbols·뱃지 팔레트·드래그&드롭·크로스헤어 버스·활성 그룹 전역 배선·WS venue 전송 | 부분 착지 (D1 — 크로스헤어 버스·데이터 창 차트 연동; D2 — 창별 정밀 드롭·크로스헤어 미러·동시호가 마스크). 남은 것: WS venue 전송(#715 기확정 "venue 전역 유지"라 실질 보류) |
 | **E** | 프리셋 v3 + 성능 마감(비포커스 창 스로틀·스냅존·Tidy·단축키) | 예정 |
 
 ### PR-A 착지 범위
@@ -206,9 +206,42 @@ PR-C 는 실제 `/live` UX 를 바꾸는 대규모 작업이라 증분으로 착
   3·DataWindow 7) · build 클린 · `/browse` 도그푸딩(스팟 fetch 발화·카드 실데이터·
   커서 이탈 latest 복귀·`/study` 콘솔 에러 0).
 
-**PR-D 잔여**: 관심종목/스크리너 → 창 드래그&드롭 종목 교체 · 같은 그룹 차트 창 간
-크로스헤어 시간 미러(lwc `setCrosshairPosition`) · WS venue 전송 · 매물대 스팟
-동시호가 마스크(`useAuctionMaskActive` — 데이터 창은 현재 maskRatio=false 고정).
+### PR-D2 착지 범위 — 창별 정밀 드롭 + 크로스헤어 미러 + 동시호가 마스크 (2026-07-20)
+
+D1 잔여 UX 3종. WS venue 전송은 #715 기확정("venue 전역 유지")에 따라 제외.
+
+- **창별 정밀 드롭(#711)**: 관심종목/스크리너 행을 **특정 창 위에** 드롭하면
+  포커스 무관하게 **그 창의 그룹** 종목을 교체한다(창 밖 여백 드롭은 기존대로
+  활성 그룹 교체). `entryDrag.ts` 에 드롭 리졸버 seam(`registerChartDropResolver`·
+  `resolveDropOnChart`) + 드래그 좌표 발행(`setDragPoint`) 추가. WorkspaceCanvas 가
+  좌표 아래 z-최상위 창을 찾아 `setGroupSymbol(win.group, …)`(활성 그룹이면 LivePage
+  미러 effect 가 livePage 반영 전담 — 이중쓰기 불요). 패널(Watchlist/Screener)
+  onDragEnd 는 `resolveDropOnChart() || onPick()` — 리졸버가 처리하면 종료, 창을 못
+  찾으면 활성 그룹 폴백. 드래그 중 호버 창에 하이라이트 링 + "그룹 N 종목 교체" 배지
+  (rAF 지연 측정 — 렌더 중 ref 접근·effect 내 동기 setState 회피).
+- **크로스헤어 미러(#708)**: 같은 링크 그룹의 다른 차트 창이 호버 중이면 그 커서
+  시각을 내 축으로 변환해 수직선을 동기(팬/줌은 창별 독립). D1 의 origin 을 즉시
+  커서(`cursorOrigin`, setCursor 동반)로 확장 — 스로틀 sidebarCursorOrigin(스팟용)과
+  독립 필드라 결합 낮음. LiveChartRoot 가 **imperative 스토어 구독**(재렌더 0)으로
+  판정(`shouldMirrorCursor` 순수 함수)→`setCrosshairPosition(그 봉 close, vt, 캔들
+  시리즈)`. **재발행 루프 차단**: lwc 는 프로그램적 set/clearCrosshairPosition 에도
+  crosshair 핸들러를 **동기** 재발화하므로, `applyingMirrorRef` 를 호출 구간에 세워
+  핸들러 진입부에서 즉시 return(도그푸딩으로 동기 발화·루프 부재 확인). Provider 밖
+  (windowId null=/study·단일 뷰)은 게이트에서 불참 → 무변경.
+- **동시호가 마스크**: 데이터 창 10호가의 `TotalQtyBar maskRatio` 를 스팟 커서가
+  종가 동시호가 구간(마감 10분)이고 전역 `auctionWindowMask` 토글이 켜졌을 때 true.
+  판정은 그룹 링크 번들의 세션 세그먼트로 `isClosingAuction`(단일 도메인 소스, axis
+  의 `inClosingAuctionWindow` 위임 대상과 동치) — 전역 `useLiveAxisStore` 는 멀티창
+  last-writer-wins 라 미사용.
+- 검증: tsc 클린 · vitest 3922 green(신규 26: 드롭 리졸버 6+3·미러 9+커서 origin 4·
+  마스크 4) · build 클린 · 변경 파일 eslint 순증 0 · `/browse` 도그푸딩 — 같은 그룹
+  차트 2창에서 A 호버→B 미러 크로스헤어·A 만 툴팁(발행자 유일·루프 없음)·이탈 시
+  양쪽 소멸·`/study` 콘솔 에러 0. (정밀 드롭은 dnd-kit PointerSensor 가 합성 이벤트에
+  활성화되지 않아 헤드리스 드래그 재현 불가 — 리졸버 z-순서·폴백·name 폴백을 유닛
+  테스트로 고정, 패널 onDragEnd 배선은 기존 패널 테스트 전량 green 으로 회귀 방지.)
+
+**PR-D 잔여**: WS venue 전송(#715 기확정 "venue 전역 유지"라 실질 보류) → PR-E
+(프리셋 v3 + 성능 마감).
 
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
 포함(#710) — 드래그 중 라이브 리사이즈가 프레임 저하 없이 동작(프로토타입 12창·6인스턴스 확인).

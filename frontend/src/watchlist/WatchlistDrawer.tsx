@@ -37,7 +37,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import type { WatchlistEntry } from '../api/watchlist';
 import { resolveDrag, resolveFolderDrag, entrySortableId, parseEntrySortableId } from './dragHandlers';
-import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
+import { useEntryDragStore, isPointOnChart, dropPoint, resolveDropOnChart } from '../state/entryDrag';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
 
 // v1는 기존 전역 정렬 값 마이그레이션 입력으로만 유지.
@@ -470,9 +470,10 @@ export function WatchlistDrawer() {
   const reorderEntriesM = useReorderEntries();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  // "차트로 드롭" 공유 상태 — LiveWorkarea가 구독해 드롭 타깃 오버레이를 띄운다.
+  // "차트로 드롭" 공유 상태 — WorkspaceCanvas가 구독해 드롭 타깃 오버레이를 띄운다.
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverChart = useEntryDragStore((s) => s.setOverChart);
+  const setDragPoint = useEntryDragStore((s) => s.setDragPoint);
   const endEntryDrag = useEntryDragStore((s) => s.endDrag);
 
   const onDragStart = (ev: DragStartEvent) => {
@@ -480,7 +481,9 @@ export function WatchlistDrawer() {
   };
   const onDragMove = (ev: DragMoveEvent) => {
     if (ev.active.data.current?.type !== 'entry') return;
-    setOverChart(isPointOnChart(dropPoint(ev)));
+    const point = dropPoint(ev);
+    setOverChart(isPointOnChart(point));
+    setDragPoint(point); // 창별 어포던스: 캔버스가 좌표로 호버 창을 계산한다.
   };
   const onDragCancel = () => endEntryDrag();
 
@@ -488,11 +491,13 @@ export function WatchlistDrawer() {
     const wasEntry = ev.active.data.current?.type === 'entry';
     endEntryDrag();
     if (wasEntry && getFolderSortMode(parseEntrySortableId(String(ev.active.id)).folderId) !== 'default') return;
-    // 종목 행을 차트 위에 드롭 → 현재 탭 종목 교체(재정렬 대신). 클릭과 같은 onPick 경로를
-    // 재사용한다(/live 위라 navigate는 no-op). 차트 밖 드롭이면 아래 재정렬로 폴백.
+    // 종목 행을 차트 위에 드롭 → 종목 교체(재정렬 대신). 창 위 드롭이면 그 창 그룹 교체
+    // (정밀 드롭, #711), 창 밖(캔버스 여백)이면 활성 그룹 교체(onPick, /live 위라 navigate no-op).
     if (wasEntry && isPointOnChart(dropPoint(ev))) {
       const d = ev.active.data.current as { code?: string; name?: string } | undefined;
-      onPick(d?.code ?? parseEntrySortableId(String(ev.active.id)).code, d?.name);
+      const code = d?.code ?? parseEntrySortableId(String(ev.active.id)).code;
+      if (resolveDropOnChart(dropPoint(ev), { code, name: d?.name })) return;
+      onPick(code, d?.name);
       return;
     }
     if (!ev.over) return;

@@ -122,3 +122,50 @@ describe('useLiveCursorStore — sidebarCursorOrigin (ADR-0119 PR-D 크로스헤
     expect(useLiveCursorStore.getState().sidebarCursorOrigin).toBeNull();
   });
 });
+
+describe('useLiveCursorStore — cursorOrigin (즉시 커서, 크로스헤어 미러 PR-D2)', () => {
+  const origin = (group: number | null) => ({
+    windowId: group === null ? null : `w${group}`,
+    group,
+    code: '005930',
+    timeframe: '1m' as const,
+  });
+
+  beforeEach(() => {
+    useLiveCursorStore.getState().resetCursor();
+  });
+
+  it('setCursor 는 cursorOrigin 을 함께 저장한다(생략 시 null)', () => {
+    useLiveCursorStore.getState().setCursor(123, origin(1));
+    expect(useLiveCursorStore.getState().cursorOrigin?.group).toBe(1);
+    useLiveCursorStore.getState().setCursor(456);
+    expect(useLiveCursorStore.getState().cursorOrigin).toBeNull();
+  });
+
+  it('sidebarCursorOrigin(스로틀)과 독립적으로 관리된다', () => {
+    useLiveCursorStore.getState().setCursor(123, origin(1));
+    useLiveCursorStore.getState().setSidebarCursor(120, origin(2));
+    expect(useLiveCursorStore.getState().cursorOrigin?.group).toBe(1);
+    expect(useLiveCursorStore.getState().sidebarCursorOrigin?.group).toBe(2);
+  });
+
+  it('같은 ms + 같은 origin 은 no-op, 다른 origin 이면 갱신', () => {
+    useLiveCursorStore.getState().setCursor(123, origin(1));
+    let calls = 0;
+    const unsub = useLiveCursorStore.subscribe(() => { calls += 1; });
+    useLiveCursorStore.getState().setCursor(123, origin(1)); // no-op
+    expect(calls).toBe(0);
+    useLiveCursorStore.getState().setCursor(123, origin(2)); // origin 교체
+    unsub();
+    expect(calls).toBe(1);
+  });
+
+  it('clearCursor / resetCursor 는 cursorOrigin 도 걷는다', () => {
+    useLiveCursorStore.getState().setCursor(123, origin(1));
+    useLiveCursorStore.getState().clearCursor();
+    expect(useLiveCursorStore.getState().cursorOrigin).toBeNull();
+    useLiveCursorStore.getState().setCursor(123, origin(1));
+    useLiveCursorStore.getState().resetCursor();
+    expect(useLiveCursorStore.getState().cursorOrigin).toBeNull();
+  });
+});

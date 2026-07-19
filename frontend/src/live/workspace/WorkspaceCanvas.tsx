@@ -200,19 +200,37 @@ export function WorkspaceCanvas() {
     setPalette(null);
   }, [setWindowGroup]);
 
+  // 로컬 좌표 아래 z-최상위 창(겹친 창 = 위 창 승리). 스토어 getState 로 최신 창
+  // 배열·rect 를 읽어 정밀 드롭 리졸버(effect)와 어포던스(render)가 공유한다.
+  const windowAtPoint = useCallback((localX: number, localY: number): WorkspaceWindow | null => {
+    const state = useWorkspaceStore.getState();
+    for (let i = state.zOrder.length - 1; i >= 0; i--) {
+      const win = state.windows.find((w) => w.id === state.zOrder[i]);
+      if (!win) continue;
+      const r = win.rect;
+      if (localX >= r.x && localX <= r.x + r.w && localY >= r.y && localY <= r.y + r.h) {
+        return win;
+      }
+    }
+    return null;
+  }, []);
+
   // 정리(Tidy) 트리거는 고정 툴바(WorkspaceLiveToolbar)에 있다 — 캔버스 실측이
   // 필요한 실행기를 명령 채널에 등록(C2c-2c, 임시 플로팅 툴바 대체).
   useEffect(() => registerWorkspaceTidy(onTidy), [onTidy]);
 
   // 관심종목/스크리너 행 드래그의 차트 드롭 타깃(entryDrag seam) — 구 LiveWorkarea 의
-  // 등록을 캔버스가 승계한다(C2c-2e 회귀 복구). 드롭=활성 그룹 종목 교체(onPick 경로);
-  // 창별 정밀 드롭(#711 창 위 드롭 → 그 창 그룹 교체)은 PR-D.
+  // 등록을 캔버스가 승계한다(C2c-2e 회귀 복구). 창 밖(여백) 드롭=활성 그룹 종목
+  // 교체(onPick 폴백), 창 위 드롭=그 창 그룹 종목 교체(정밀 드롭, PR-D2 #711).
   const registerChartTarget = useEntryDragStore((s) => s.registerChartTarget);
   const clearChartTarget = useEntryDragStore((s) => s.clearChartTarget);
+  const registerChartDropResolver = useEntryDragStore((s) => s.registerChartDropResolver);
+  const clearChartDropResolver = useEntryDragStore((s) => s.clearChartDropResolver);
   // 드롭 어포던스(리뷰 F1 복구): 행 드래그 고스트는 패널 overflow 에서 잘리므로
   // 캔버스 자체가 유일한 드롭 표시다 — 구 LiveWorkarea ChartDropOverlay 이관.
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
   const overChart = useEntryDragStore((s) => s.overChart);
+  const dragPoint = useEntryDragStore((s) => s.dragPoint);
   useEffect(() => {
     const hitTest = (clientX: number, clientY: number): boolean => {
       const rect = boxRef.current?.getBoundingClientRect();
@@ -224,7 +242,49 @@ export function WorkspaceCanvas() {
     return () => clearChartTarget(hitTest);
   }, [registerChartTarget, clearChartTarget]);
 
+  // 창별 정밀 드롭 리졸버 — 좌표 아래 z-최상위 창을 찾아 그 창의 그룹 종목을 교체
+  // 한다(포커스 무관, #711). 창을 못 찾으면(캔버스 여백) false → 패널이 활성 그룹
+  // 교체로 폴백. 스토어 getState 로 최신 창 배열/rect 를 읽는다(effect deps 없이 안정).
+  useEffect(() => {
+    const resolver = (
+      point: { x: number; y: number },
+      entry: { code: string; name?: string },
+    ): boolean => {
+      const rect = boxRef.current?.getBoundingClientRect();
+      if (!rect) return false;
+      const win = windowAtPoint(point.x - rect.left, point.y - rect.top);
+      if (!win) return false;
+      useWorkspaceStore.getState().setGroupSymbol(win.group, {
+        code: entry.code,
+        name: entry.name ?? entry.code,
+      });
+      return true;
+    };
+    registerChartDropResolver(resolver);
+    return () => clearChartDropResolver(resolver);
+  }, [registerChartDropResolver, clearChartDropResolver, windowAtPoint]);
+
   const symbolFor = (group: GroupId) => groupSymbols[group] ?? null;
+
+  // 드래그 중 호버 창(어포던스용) — dragPoint 아래 z-최상위 창. DOM 측정
+  // (getBoundingClientRect)은 effect 에서만(렌더 중 ref 접근 금지 규율). dragPoint 는
+  // 패널이 프레임당 throttle 해 발행하므로 재계산 빈도가 낮다. 창 밖이면 null →
+  // 캔버스 전면 오버레이(활성 그룹 교체)로 폴백.
+  const [hoverDropWin, setHoverDropWin] = useState<WorkspaceWindow | null>(null);
+  useEffect(() => {
+    // rAF 로 측정+setState 를 커밋 이후로 미룬다 — 렌더 중 ref 접근·effect 내 동기
+    // setState 를 둘 다 피한다(react-compiler 규율). 드래그는 저빈도라 무해.
+    const raf = requestAnimationFrame(() => {
+      if (!draggingEntry || !dragPoint) {
+        setHoverDropWin((prev) => (prev === null ? prev : null));
+        return;
+      }
+      const rect = boxRef.current?.getBoundingClientRect();
+      const next = rect ? windowAtPoint(dragPoint.x - rect.left, dragPoint.y - rect.top) : null;
+      setHoverDropWin((prev) => (prev?.id === next?.id ? prev : next));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [draggingEntry, dragPoint, windowAtPoint]);
 
   return (
     <div
@@ -235,8 +295,37 @@ export function WorkspaceCanvas() {
       onPointerCancel={endDrag}
       onLostPointerCapture={commit}
     >
-      {/* 관심종목/스크리너 행 드래그 시 드롭 어포던스 — 드롭=활성 그룹 종목 교체(#711). */}
-      {draggingEntry && (
+      {/* 행 드래그 드롭 어포던스. 창 위 = 그 창 하이라이트(정밀 드롭, 그룹 N 교체),
+          창 밖 = 캔버스 전면(활성 그룹 교체). #711 PR-D2. */}
+      {draggingEntry && hoverDropWin && (
+        <div
+          aria-hidden
+          data-testid="workspace-drop-window-highlight"
+          className="pointer-events-none absolute z-40 flex items-center justify-center rounded-md"
+          style={{
+            left: hoverDropWin.rect.x,
+            top: hoverDropWin.rect.y,
+            width: hoverDropWin.rect.w,
+            height: hoverDropWin.rect.h,
+            background: 'var(--tint-selection)',
+            border: '2px solid var(--accent)',
+            transition: 'left 100ms ease, top 100ms ease, width 100ms ease, height 100ms ease',
+          }}
+        >
+          <span
+            className="rounded-md font-ui text-sm font-semibold"
+            style={{
+              padding: 'var(--space-sm) var(--space-md)',
+              background: 'var(--accent)',
+              color: 'var(--accent-fg)',
+              boxShadow: 'var(--shadow-overlay)',
+            }}
+          >
+            그룹 {hoverDropWin.group} 종목 교체
+          </span>
+        </div>
+      )}
+      {draggingEntry && !hoverDropWin && (
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center"

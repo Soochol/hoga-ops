@@ -20,9 +20,13 @@ export interface SidebarCursorOrigin {
 interface State {
   cursorMs: number | null;
   lastCursorMs: number | null;
+  /** 즉시(무스로틀) 커서의 발행 출처 — 크로스헤어 미러가 cursorMs 와 짝으로 읽는다
+   *  (ADR-0119 PR-D2). 스로틀 스팟용 sidebarCursorOrigin 과 값은 같은 차트지만,
+   *  각자의 커서(cursorMs/sidebarCursorMs)와 원자적으로 set/clear 돼 결합이 낮다. */
+  cursorOrigin: SidebarCursorOrigin | null;
   sidebarCursorMs: number | null;
   sidebarCursorOrigin: SidebarCursorOrigin | null;
-  setCursor: (t: number) => void;
+  setCursor: (t: number, origin?: SidebarCursorOrigin | null) => void;
   setSidebarCursor: (t: number, origin?: SidebarCursorOrigin | null) => void;
   clearCursor: () => void;
   clearSidebarCursor: () => void;
@@ -53,12 +57,14 @@ function sameOrigin(a: SidebarCursorOrigin | null, b: SidebarCursorOrigin | null
 export const useLiveCursorStore = create<State>((set, get) => ({
   cursorMs: null,
   lastCursorMs: null,
+  cursorOrigin: null,
   sidebarCursorMs: null,
   sidebarCursorOrigin: null,
-  setCursor: (t) => {
-    const { cursorMs, lastCursorMs } = get();
-    if (cursorMs === t && lastCursorMs === t) return; // identity-stable, no-op rerender
-    set({ cursorMs: t, lastCursorMs: t });
+  setCursor: (t, origin = null) => {
+    const { cursorMs, lastCursorMs, cursorOrigin } = get();
+    // identity-stable, no-op rerender — origin 도 같을 때만 skip.
+    if (cursorMs === t && lastCursorMs === t && sameOrigin(cursorOrigin, origin)) return;
+    set({ cursorMs: t, lastCursorMs: t, cursorOrigin: origin });
   },
   setSidebarCursor: (t, origin = null) => {
     const { sidebarCursorMs, sidebarCursorOrigin } = get();
@@ -66,8 +72,9 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     set({ sidebarCursorMs: t, sidebarCursorOrigin: origin });
   },
   clearCursor: () => {
-    if (get().cursorMs === null) return;
-    set({ cursorMs: null });
+    const { cursorMs, cursorOrigin } = get();
+    if (cursorMs === null && cursorOrigin === null) return;
+    set({ cursorMs: null, cursorOrigin: null });
   },
   clearSidebarCursor: () => {
     const { sidebarCursorMs, sidebarCursorOrigin } = get();
@@ -80,8 +87,9 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     set({ cursorMs: lastCursorMs });
   },
   resetCursor: () => {
-    const { cursorMs, lastCursorMs, sidebarCursorMs, sidebarCursorOrigin } = get();
-    if (cursorMs === null && lastCursorMs === null && sidebarCursorMs === null && sidebarCursorOrigin === null) return;
-    set({ cursorMs: null, lastCursorMs: null, sidebarCursorMs: null, sidebarCursorOrigin: null });
+    const s = get();
+    if (s.cursorMs === null && s.lastCursorMs === null && s.cursorOrigin === null
+      && s.sidebarCursorMs === null && s.sidebarCursorOrigin === null) return;
+    set({ cursorMs: null, lastCursorMs: null, cursorOrigin: null, sidebarCursorMs: null, sidebarCursorOrigin: null });
   },
 }));
