@@ -93,7 +93,7 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 |---|---|---|
 | **A** | 스냅 엔진 + `WorkspaceCanvas`/`WindowFrame` + `live.workspace.v1` 스토어(더미 콘텐츠) + 본 ADR | ✅ 착지 |
 | **B** | `WindowViewContext` 신설, 데이터 페치 경로 전역 직독 교체(기능 무변경). context 기본값 = 기존 전역 동작 → `/study` 무변경 보장 | ✅ 착지 |
-| **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | 🚧 증분 진행 (C1 마이그레이션 시드 ✅ · 렌더 컷오버 예정) |
+| **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | ✅ 착지 (C1~C2c-2e — `/live` 플립 완료) |
 | **D** | 링크 그룹 — groupSymbols·뱃지 팔레트·드래그&드롭·크로스헤어 버스·활성 그룹 전역 배선·WS venue 전송 | 예정 |
 | **E** | 프리셋 v3 + 성능 마감(비포커스 창 스로틀·스냅존·Tidy·단축키) | 예정 |
 
@@ -161,7 +161,7 @@ PR-C 는 실제 `/live` UX 를 바꾸는 대규모 작업이라 증분으로 착
   스팟)는 PR-D. 프로그램·매물대는 번들(timeframe) 종속이라 차트 창 연동(PR-D) 후 — C2c-1 은 안내 카드.
   검증: `/workspace-preview` 도그푸딩 — 호가/거래원 실 카드(빈 백엔드라 빈 상태 우아 처리)·잠정투자자
   실 데이터 렌더, 크래시 0·전체 3902 green.
-- **C2c-2 — `/live` 플립 (스펙 확정 2026-07-19, [#715 코멘트](https://github.com/Soochol/hoga-ops/issues/715#issuecomment-5016017318))**:
+- **C2c-2 — `/live` 플립 (✅ 착지 2026-07-20, 스펙 [#715 코멘트](https://github.com/Soochol/hoga-ops/issues/715#issuecomment-5016017318))**:
   grilling 으로 확정한 5증분(2a~2e). **2a 지표 쓰기 경로** — 워크스페이스 스토어에 창별 지표
   setter(`patchChartIndicators`·`setChartTimeframe`·`setChartPaneOrder`·`setChartPaneStretch`·
   `resetChartIndicators`·`applyChartIndicatorPreset`, sparse=공장값 diff 재사용) + windowView
