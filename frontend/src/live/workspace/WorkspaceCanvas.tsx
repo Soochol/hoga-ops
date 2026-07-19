@@ -10,6 +10,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import { WindowFrame } from './WindowFrame';
+import { ChartWindow } from './ChartWindow';
 import {
   computeMove,
   computeResize,
@@ -275,7 +276,11 @@ export function WorkspaceCanvas() {
               setPalette(null);
             }}
           >
-            <DummyBody kind={w.kind} label={symbol?.name ?? `그룹 ${w.group}`} />
+            {w.kind === 'chart' ? (
+              <ChartWindow win={w} symbol={symbol} />
+            ) : (
+              <DummyBody kind={w.kind} label={symbol?.name ?? `그룹 ${w.group}`} />
+            )}
           </WindowFrame>
         );
       })}

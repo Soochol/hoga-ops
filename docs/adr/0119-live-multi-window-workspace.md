@@ -143,10 +143,18 @@ PR-C 는 실제 `/live` UX 를 바꾸는 대규모 작업이라 증분으로 착
   (테스트 수 불변=순수 이동)·LiveWorkarea/useLiveBundle/LivePage 테스트 green·eslint debt 순증
   0(impure `Date.now`·setState-in-effect 는 LivePage 기존 debt 의 relocation)·`/live` 도그푸딩
   무변경("Rendered fewer/more hooks" 없음=훅 순서 보존).
-- **C2b — 렌더 컷오버 (예정)**: `ChartWindow` 컴포넌트(useLiveChartData + `WindowViewContext.Provider`
-  + LiveChartRoot 렌더)를 `/workspace-preview` 에 실 콘텐츠로 배선(시맨틱 첫 활성화). 데이터 창
-  실 콘텐츠, `paneIndicators`(LivePage) → `useWindowIndicators` 이관, instrument 를 group→종목 운반.
-- **C2c — `/live` 플립 (예정)**: `LiveWorkarea` → 워크스페이스, 상세 패널 폐지, LivePage 를 얇은 셸로.
+- **C2b — 차트 창 실 콘텐츠·시맨틱 활성화 (✅)**: `frontend/src/live/workspace/ChartWindow.tsx` —
+  창의 (group→종목, timeframe, indicators)로 `useLiveChartData` 창별 파이프라인을 돌리고 실제
+  `LiveChartRoot` 를 렌더. **Provider 경계 처리**: 바깥 `ChartWindow`(Provider 설정) + 안쪽
+  `ChartWindowInner`(Provider 자식에서 훅 호출) 2-컴포넌트 — 안쪽 useWindowView/useWindowIndicators
+  와 nested useLiveBundle 이 창의 값을 본다(**시맨틱 첫 활성화**). WorkspaceCanvas 가 chart-kind
+  창에 배선(데이터 창은 아직 더미). 검증: `/workspace-preview` 도그푸딩 — 실 삼성전자 차트(캔들·MA·
+  거래량·드로잉 레일·peaks) 렌더, **차트 창 2개 = LiveChartRoot 2인스턴스·24 캔버스 독립 공존**
+  (다중 인스턴스 핵심 미지수 해소), JS 에러 0(hook·infinite-loop 없음)·전체 3902 green. **알려진
+  한계**: LiveChartRoot 의 pane 렌더(어느 지표 pane·paneOrder)는 아직 전역 스토어 직독(#709 cut #7,
+  후속 PR) — 데이터 페치는 창별이나 pane 표시는 전역 공유.
+- **C2c — `/live` 플립 (예정)**: `LiveWorkarea` → 워크스페이스, 상세 패널 폐지, `paneIndicators`
+  → `useWindowIndicators` 이관, cut #7(LiveChartRoot pane 렌더 창별화), LivePage 를 얇은 셸로.
 
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
 포함(#710) — 드래그 중 라이브 리사이즈가 프레임 저하 없이 동작(프로토타입 12창·6인스턴스 확인).
