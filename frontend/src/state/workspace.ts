@@ -74,8 +74,11 @@ export interface WorkspaceWindow {
 }
 
 export interface GroupSymbol {
+  /** 주식=6자리 코드, 지수=LiveIndexId('KOSPI' 등). */
   code: string;
   name: string;
+  /** 생략 = 'stock'(하위호환 — 기존 저장값·검색 경로 대부분). */
+  kind?: 'stock' | 'index';
 }
 
 type Persisted = {
@@ -189,7 +192,12 @@ function readGroupSymbols(raw: unknown): Partial<Record<GroupId, GroupSymbol>> {
     if (!isGroupId(group) || !val || typeof val !== 'object') continue;
     const s = val as Record<string, unknown>;
     if (typeof s.code === 'string' && typeof s.name === 'string') {
-      out[group] = { code: s.code, name: s.name };
+      out[group] = {
+        code: s.code,
+        name: s.name,
+        // 'index' 만 의미 보존 — 그 외 값은 stock 기본으로 정규화(생략).
+        ...(s.kind === 'index' ? { kind: 'index' as const } : {}),
+      };
     }
   }
   return out;

@@ -36,6 +36,18 @@ const KIND_LABEL: Record<WindowKind, string> = {
 };
 
 export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
+  // 지수는 호가/거래원/투자자 데이터가 없다 — 구독 오염 대신 안내 카드(C2c-2c).
+  if (symbol?.kind === 'index') {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
+        <span className="font-mono">
+          {KIND_LABEL[win.kind]} · {symbol.name}
+          <br />
+          지수는 지원하지 않습니다
+        </span>
+      </div>
+    );
+  }
   const code = symbol?.code ?? null;
   if (!code) {
     return (

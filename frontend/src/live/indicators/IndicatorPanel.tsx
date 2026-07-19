@@ -92,9 +92,11 @@ type Props = {
   onClose: () => void;
   capabilities?: LiveInstrumentCapabilities;
   timeframe: LiveTimeframe;
+  /** 멀티창 대상 창 표시(#712) — "종목명" 등. 없으면 기존 단일 뷰 헤더. */
+  targetLabel?: string;
 };
 
-export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILITIES, timeframe }: Props) {
+export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILITIES, timeframe, targetLabel }: Props) {
   // 창-스코프 절단(ADR-0119 C2c-2a): 읽기=대상 창의 resolve 된 설정, 쓰기=창 봉
   // 버킷. Provider 밖(/study·플립 전 /live)에서는 둘 다 전역 스토어로 폴백.
   const ind = useWindowIndicators();
@@ -321,10 +323,13 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
               {/* 모든 지표 설정은 현재 보는 봉 버킷에 저장된다(#699). 읽기전용 배지
                   하나로 스코프를 알린다 — 봉 전환 시 timeframe prop 으로 자동 갱신. */}
               <span
-                title="지표 설정은 현재 보는 봉(분·일·주·월)마다 따로 저장됩니다."
+                title={targetLabel
+                  ? '이 드로어는 포커스된 차트 창의 지표 설정을 편집합니다. 지표 설정은 창×봉마다 따로 저장됩니다.'
+                  : '지표 설정은 현재 보는 봉(분·일·주·월)마다 따로 저장됩니다.'}
                 className="rounded-full border border-border px-2 py-0.5 text-[11px] text-fg-dim"
+                data-testid="indicator-panel-scope-badge"
               >
-                현재: {currentTimeframeLabel}
+                {targetLabel ? `${targetLabel} · ${currentTimeframeLabel}` : `현재: ${currentTimeframeLabel}`}
               </span>
               {selectedToggle && (
                 <div className="flex items-center gap-2">

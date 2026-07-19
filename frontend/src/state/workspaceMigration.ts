@@ -72,11 +72,14 @@ function visibleCardsInOrder(layout: Record<string, unknown>): LiveCardKey[] {
   return ordered.filter((key) => hidden[key] !== true);
 }
 
-/** 그룹 1 종목 — 활성 instrument 가 주식이면 {code,name}, 그 외(지수·없음)면 없음. */
+/** 그룹 1 종목 — 주식={code,name}, 지수={code:id, kind:'index'}(C2c-2c 정식 지원). */
 function groupOneSymbol(page: Record<string, unknown>): GroupSymbol | null {
   const inst = page.activeInstrument;
   if (isLiveInstrument(inst) && inst.kind === 'stock') {
     return { code: inst.code, name: inst.label };
+  }
+  if (isLiveInstrument(inst) && inst.kind === 'index') {
+    return { code: inst.id, name: inst.label, kind: 'index' };
   }
   if (typeof page.activeCode === 'string' && page.activeCode) {
     return { code: page.activeCode, name: page.activeCode };

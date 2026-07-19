@@ -8,8 +8,9 @@
  *
  * PR-A 는 스캐폴딩 — 창 본문은 더미다. 실제 차트/데이터 배선은 PR-C.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { WindowFrame } from './WindowFrame';
+import { registerWorkspaceTidy } from './workspaceCanvasControls';
 import { ChartWindow } from './ChartWindow';
 import { DataWindow } from './DataWindow';
 import {
@@ -28,7 +29,6 @@ import {
 } from './snapEngine';
 import {
   useWorkspaceStore,
-  activeGroupOf,
   type GroupId,
   type WorkspaceWindow,
 } from '../../state/workspace';
@@ -59,7 +59,6 @@ export function WorkspaceCanvas() {
   const windows = useWorkspaceStore((s) => s.windows);
   const zOrder = useWorkspaceStore((s) => s.zOrder);
   const groupSymbols = useWorkspaceStore((s) => s.groupSymbols);
-  const addWindow = useWorkspaceStore((s) => s.addWindow);
   const closeWindow = useWorkspaceStore((s) => s.closeWindow);
   const focusWindow = useWorkspaceStore((s) => s.focusWindow);
   const setWindowRects = useWorkspaceStore((s) => s.setWindowRects);
@@ -73,7 +72,6 @@ export function WorkspaceCanvas() {
   const [palette, setPalette] = useState<string | null>(null);
 
   const focusedId = zOrder[zOrder.length - 1];
-  const activeGroup = activeGroupOf({ windows, zOrder });
 
   const rectOf = (w: WorkspaceWindow): Rect => preview?.get(w.id) ?? w.rect;
 
@@ -188,6 +186,10 @@ export function WorkspaceCanvas() {
     if (box) tidyAll({ w: box.width, h: box.height });
   }, [tidyAll]);
 
+  // 정리(Tidy) 트리거는 고정 툴바(WorkspaceLiveToolbar)에 있다 — 캔버스 실측이
+  // 필요한 실행기를 명령 채널에 등록(C2c-2c, 임시 플로팅 툴바 대체).
+  useEffect(() => registerWorkspaceTidy(onTidy), [onTidy]);
+
   const symbolFor = (group: GroupId) => groupSymbols[group] ?? null;
 
   return (
@@ -213,29 +215,6 @@ export function WorkspaceCanvas() {
       {guides.h !== null && (
         <div className="pointer-events-none absolute inset-x-0 z-40 h-px bg-accent" style={{ top: guides.h }} />
       )}
-
-      {/* 툴바 */}
-      <div className="absolute right-2 top-2 z-50 flex items-center gap-1.5 rounded-md border border-border bg-bg-subtle px-2 py-1 text-[11px] text-fg-dim shadow-overlay">
-        <span className="font-mono">{windows.length}창</span>
-        <span>· 활성 그룹</span>
-        <span className="font-mono text-accent">{activeGroup}</span>
-        <span className="mx-1 h-[12px] w-px bg-border-strong" />
-        <button className="rounded bg-bg-input px-1.5 py-0.5 hover:text-fg" onClick={() => addWindow('chart')}>
-          +차트
-        </button>
-        <button className="rounded bg-bg-input px-1.5 py-0.5 hover:text-fg" onClick={() => addWindow('book')}>
-          +호가
-        </button>
-        <button className="rounded bg-bg-input px-1.5 py-0.5 hover:text-fg" onClick={() => addWindow('broker')}>
-          +거래원
-        </button>
-        <button
-          className="rounded bg-tint-selection px-2 py-0.5 font-medium text-accent hover:brightness-110"
-          onClick={onTidy}
-        >
-          정리
-        </button>
-      </div>
 
       {windows.map((w) => {
         const symbol = symbolFor(w.group);

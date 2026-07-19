@@ -20,7 +20,7 @@ import './styles/global.css';
 // `/live` 본체로 배선하면 이 프리뷰 라우트 자체를 제거한다.
 const WorkspacePreview = import.meta.env.DEV
   ? lazy(() =>
-      import('./live/workspace/WorkspaceCanvas').then((m) => ({ default: m.WorkspaceCanvas })),
+      import('./live/workspace/WorkspacePreviewPage').then((m) => ({ default: m.WorkspacePreviewPage })),
     )
   : null;
 
