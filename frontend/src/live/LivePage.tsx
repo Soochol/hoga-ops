@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
+import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveStatusBar } from './LiveStatusBar';
@@ -9,18 +9,10 @@ import { LiveStateBanner } from './LiveStateBanner';
 import { activateLiveCode, activateLiveInstrument } from './liveNavigate';
 import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
-import { useLiveBundle } from './useLiveBundle';
 import { useWindowView } from './workspace/windowView';
-import { useLiveSeries } from '../api/liveSeries';
-import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
-import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
-import { useTradeVolumePocs } from './useTradeVolumePoc';
-import type { AskPeak, BidPeak, Candle, RangeBundle, TradeVolumePocWire } from '../api/types';
-import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
+import { useLiveChartData } from './useLiveChartData';
 import type { TabViewport } from './viewportAnchor';
-import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
 import { useLiveVenueStore } from '../state/liveVenue';
-import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import {
   clearCurrentStudySaveSource,
   setCurrentStudySaveSource,
@@ -29,54 +21,12 @@ import {
 import { LiveStudyViewSaveButton } from '../studyViews/LiveStudyViewSaveButton';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import { pickPanePrefs, type PanePrefsIndicatorSource } from './indicators/indicatorPaneProfiles';
-import { useDailyMaRevealGate } from './indicators/useDailyMaRevealGate';
 import LiveSettingsModal from './LiveSettingsModal';
 import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
 import { useSymbols } from '../capture/useSymbols';
 import { useDocumentTitle } from '../util/useDocumentTitle';
-import { indexInstrument, instrumentLabel, isLiveIndexId } from './liveInstrument';
-import { useLiveIndexCandles, useLiveIndexInvestorNet } from '../api/liveIndices';
-import { buildIndexBundle } from './buildIndexBundle';
-import { capabilitiesForInstrument } from './liveInstrumentCapabilities';
+import { indexInstrument, isLiveIndexId } from './liveInstrument';
 
-/** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
-const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
-const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
-const EMPTY_CANDLES: readonly Candle[] = [];
-const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
-const EMPTY_TRADE_SNAPSHOTS: readonly TradeSnapshot[] = [];
-
-const INDEX_BUCKET_MS = {
-  '1m': 60_000,
-  '3m': 180_000,
-  '5m': 300_000,
-  '10m': 600_000,
-  '15m': 900_000,
-  '30m': 1_800_000,
-  D: 86_400_000,
-  W: 7 * 86_400_000,
-  M: 31 * 86_400_000,
-} as const;
-
-function tradeVolumePocsToWire(pocs: readonly {
-  date: string;
-  centerPrice: number;
-  lowPrice: number;
-  highPrice: number;
-  qty: number;
-  t_ms: number;
-  bandPct: number;
-}[]): TradeVolumePocWire[] {
-  return pocs.map((poc) => ({
-    date: poc.date,
-    center_price: poc.centerPrice,
-    low_price: poc.lowPrice,
-    high_price: poc.highPrice,
-    qty: poc.qty,
-    t_ms: poc.t_ms,
-    band_pct: poc.bandPct,
-  }));
-}
 
 /**
  * /live page — KIS-based real-time indicator chart.
@@ -178,138 +128,47 @@ export function LivePage() {
     },
   });
 
-  // Single live source for the page: useLiveSeries owns the SSE connection
-  // and ring buffer; useLiveBundle composes it with KIS past-candles for the
-  // chart; LiveSidebar reads ob/broker from the same buffer for LATEST mode.
-  // Two independent useLiveSeries calls would open two SSE connections and
-  // two buffers — HMR re-mounts cleared one but not the other, leaving the
-  // sidebar's LATEST mode stuck on the empty-buffer state.
-  const today = todayKstYyyymmdd();
-  const live = useLiveSeries(activeCode ?? '');
-  const { bundle, chartBundle, hogaBundle, clampEngaged, isPastCandlesLoading, isHogaLoading, isExtending, isSidecarLoading, pastDataWarnings, hogaCoverageGapDates, indicatorCoverageFromDate, rangeWindowFromDate } = useLiveBundle(
-    activeCode,
-    timeframe,
+  // 차트 데이터 파이프라인(useLiveSeries+useLiveBundle+지수+peaks+POC+저장번들+workarea
+  // 파생)은 useLiveChartData 훅으로 추출(ADR-0119 PR-C2a) — LivePage 는 활성 뷰로 호출해
+  // 기능 무변경, ChartWindow(C2b)가 창별로 재사용한다. 단일 useLiveSeries 불변식(SSE 1개·
+  // 링버퍼 1개; 두 개면 HMR 재마운트가 한쪽만 비워 LATEST 모드가 빈 버퍼에 갇힘)은 훅 내부로.
+  const {
     today,
     live,
-    { investorNetEnabled, venue: liveVenue },
-  );
-  const liveInitial = live.initial?.code === activeCode ? live.initial : undefined;
-  const stockBundle = activeCode && bundle?.code === activeCode ? bundle : null;
-  const stockChartBundle = activeCode && chartBundle?.code === activeCode ? chartBundle : null;
-  const stockHogaBundle = activeCode && hogaBundle?.code === activeCode ? hogaBundle : null;
-  const activeIndexId = activeInstrument?.kind === 'index' ? activeInstrument.id : null;
-  // 일봉 MA 오버레이 초기 fetch도 reveal 게이트에 편입(개선안 1-B) — 오버레이와 동일
-  // 쿼리키라 react-query가 공유(네트워크 중복 없음). isSidecarLoading에 OR해 같은 캡으로 묶는다.
-  const isDailyMaLoading = useDailyMaRevealGate({ code: activeCode, timeframe, venue: liveVenue, todayKst: today });
-  const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
-  const indexFrom = historicalFromDate ?? subtractDaysKst(today, initialHistoricalDaysFor(timeframe));
-  const indexCandles = useLiveIndexCandles(
+    liveInitial,
+    liveTradePrice,
     activeIndexId,
+    activeLabel,
+    capabilities,
+    clampEngaged,
+    isHogaLoading,
+    isSidecarLoading,
+    isExtending,
+    indexExtending,
+    isDailyMaLoading,
+    indicatorCoverageFromDate,
+    rangeWindowFromDate,
+    hogaCoverageGapDates,
+    dayAskPeaks,
+    todayAllPriceAskPeak,
+    dayBidPeaks,
+    todayAllPriceBidPeak,
+    tradeVolumePocs,
+    liveSaveBundle,
+    workareaCode,
+    workareaBundle,
+    workareaChartBundle,
+    workareaHogaBundle,
+    workareaLoading,
+    workareaDataWarnings,
+  } = useLiveChartData({
+    activeCode,
+    activeInstrument,
     timeframe,
-    indexFrom,
-    today,
-  );
-  const indexInvestorFrom = indexCandles.data?.from ?? indexFrom;
-  const indexInvestorTo = indexCandles.data?.to ?? today;
-  const indexInvestorNet = useLiveIndexInvestorNet(
-    activeIndexId && timeframe === 'D' && capabilities.investorNet === 'market' ? activeIndexId : null,
-    indexInvestorFrom,
-    indexInvestorTo,
-    timeframe === 'D' && capabilities.investorNet === 'market' && investorNetEnabled,
-  );
-  const indexBundle = useMemo<RangeBundle | null>(() => {
-    if (!activeIndexId || !indexCandles.data) return null;
-    return buildIndexBundle({
-      indexId: activeIndexId,
-      from: indexCandles.data.from,
-      to: indexCandles.data.to,
-      bucketMs: INDEX_BUCKET_MS[timeframe],
-      candles: indexCandles.data.candles,
-      investorPoints: indexInvestorNet.data?.points ?? [],
-    });
-  }, [activeIndexId, timeframe, indexCandles.data, indexInvestorNet.data?.points]);
-  const activeLabel = activeInstrument ? instrumentLabel(activeInstrument) : activeCode;
-  // 상태바 현재가용 fresh 체결가 — 타임프레임 무관(live.trade 는 code 단위 구독).
-  // D/W/M 에서도 라인/상태바가 실시간 체결을 반영하게 하는 하드닝. LiveChartRoot 도
-  // 같은 순수함수를 별도 계산하지만 값이 동일해 "라인=상태바" invariant 를 유지한다.
-  const liveTradePrice = freshLiveTradePrice(live.trade, liveVenue, Date.now());
-  const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
-  const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
-  const askPeakSeeds = (stockChartBundle ?? stockBundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
-  const askPeakCandles = isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
-  const dayAskPeaks = useDayAskPeaks(
-    askPeakOb,
-    askPeakTrade,
-    askPeakSeeds,
-    today,
-    activeCode,
-    liveInitial?.ask_peak_today ?? null,
-    askPeakCandles,
-  );
-  const todayAllPriceAskPeak = useTodayAllPriceAskPeak(
-    askPeakOb,
-    askPeakSeeds,
-    today,
-    activeCode,
-    liveInitial?.ask_peak_today ?? null,
-  );
-  const bidPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
-  const bidPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
-  const bidPeakSeeds = (stockChartBundle ?? stockBundle)?.bid_peaks ?? EMPTY_BID_PEAKS;
-  const bidPeakCandles = isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
-  const dayBidPeaks = useDayBidPeaks(
-    bidPeakOb,
-    bidPeakTrade,
-    bidPeakSeeds,
-    today,
-    activeCode,
-    liveInitial?.bid_peak_today ?? null,
-    bidPeakCandles,
-  );
-  const todayAllPriceBidPeak = useTodayAllPriceBidPeak(
-    bidPeakOb,
-    bidPeakSeeds,
-    today,
-    activeCode,
-    liveInitial?.bid_peak_today ?? null,
-  );
-  const tradeVolumePocs = useTradeVolumePocs(
-    isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS,
-    (stockChartBundle ?? stockBundle)?.trade_volume_pocs ?? [],
-    today,
-    activeCode,
-    isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES,
-    isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.segments ?? []) : [],
-    isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS,
-  );
-  const liveSaveBundle = useMemo<RangeBundle | null>(() => {
-    if (!stockBundle) return null;
-    const base = stockChartBundle ?? stockBundle;
-    return {
-      ...stockBundle,
-      from_date: base.from_date,
-      to_date: base.to_date,
-      bucket_ms: base.bucket_ms,
-      segments: base.segments,
-      candles: base.candles,
-      volume_profile_range: base.volume_profile_range,
-      volume_profile_by_day: base.volume_profile_by_day,
-      volume_distributions: base.volume_distributions ?? [],
-      investorPoints: base.investorPoints,
-      ask_peaks: dayAskPeaks,
-      bid_peaks: dayBidPeaks,
-      broker_late_entries: base.broker_late_entries ?? [],
-      trade_volume_pocs: tradeVolumePocsToWire(tradeVolumePocs),
-      depth_heatmap: base.depth_heatmap ?? [],
-    };
-  }, [stockBundle, stockChartBundle, dayAskPeaks, dayBidPeaks, tradeVolumePocs]);
-  const workareaCode = activeCode ?? (activeIndexId ? `index:${activeIndexId}` : null);
-  const workareaBundle = activeIndexId ? indexBundle : stockBundle;
-  const workareaChartBundle = activeIndexId ? indexBundle : stockChartBundle;
-  const workareaHogaBundle = activeIndexId ? indexBundle : stockHogaBundle;
-  const workareaLoading = activeIndexId ? indexCandles.isLoading : isPastCandlesLoading;
-  const indexExtending = activeIndexId ? historicalFromDate !== null && indexCandles.isFetching : false;
-  const workareaDataWarnings = activeIndexId ? indexCandles.data?.data_warnings ?? [] : pastDataWarnings;
+    historicalFromDate,
+    venue: liveVenue,
+    investorNetEnabled,
+  });
 
   useEffect(() => {
     if (!activeCode || !liveSaveBundle) {

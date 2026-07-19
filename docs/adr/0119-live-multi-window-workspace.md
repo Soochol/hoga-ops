@@ -135,10 +135,18 @@ PR-C 는 실제 `/live` UX 를 바꾸는 대규모 작업이라 증분으로 착
   layout 카드 순서·숨김 → 데이터 창(숨김 제외, 순서 보존). 워크스페이스 스토어는
   `/workspace-preview`(DEV lazy)에서만 로드되므로 `/live`·`/study` 영향 0. 순수 시드 9케이스 +
   스토어 통합 2케이스 TDD, `/browse` 도그푸딩(레거시 시드 → 창·종목·순서·숨김 확인).
-- **C2 — 렌더 컷오버 (예정)**: `LiveWorkarea` → 워크스페이스로 교체. `ChartWindow` 추출
-  (창별 useLiveSeries/useLiveBundle + `WindowViewContext.Provider`), 데이터 창 실 콘텐츠,
-  상세 패널 폐지, `paneIndicators`(LivePage) → `useWindowIndicators` 이관, instrument 를
-  group→종목으로 운반. 여기서 시맨틱이 처음 활성화된다.
+- **C2a — 파이프라인 훅 추출 (✅)**: `frontend/src/live/useLiveChartData.ts` — LivePage 의
+  인라인 ~130줄 데이터 파이프라인(useLiveSeries + useLiveBundle + 지수 번들 + ask/bid peaks +
+  trade-volume POC + liveSaveBundle + workarea 파생)을 **창별 재사용 가능한 훅**으로 추출.
+  LivePage 는 활성 뷰로 호출해 **기능 무변경**(behavior-preserving refactor), ChartWindow(C2b)가
+  창의 값으로 같은 훅을 호출 — 두 번째 소비자를 만들되 로직 중복 없음. 검증: 전체 3902 green
+  (테스트 수 불변=순수 이동)·LiveWorkarea/useLiveBundle/LivePage 테스트 green·eslint debt 순증
+  0(impure `Date.now`·setState-in-effect 는 LivePage 기존 debt 의 relocation)·`/live` 도그푸딩
+  무변경("Rendered fewer/more hooks" 없음=훅 순서 보존).
+- **C2b — 렌더 컷오버 (예정)**: `ChartWindow` 컴포넌트(useLiveChartData + `WindowViewContext.Provider`
+  + LiveChartRoot 렌더)를 `/workspace-preview` 에 실 콘텐츠로 배선(시맨틱 첫 활성화). 데이터 창
+  실 콘텐츠, `paneIndicators`(LivePage) → `useWindowIndicators` 이관, instrument 를 group→종목 운반.
+- **C2c — `/live` 플립 (예정)**: `LiveWorkarea` → 워크스페이스, 상세 패널 폐지, LivePage 를 얇은 셸로.
 
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
 포함(#710) — 드래그 중 라이브 리사이즈가 프레임 저하 없이 동작(프로토타입 12창·6인스턴스 확인).
