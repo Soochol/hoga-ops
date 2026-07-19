@@ -279,7 +279,7 @@ export function WorkspaceCanvas() {
 
       {windows.length === 0 && (
         <div className="flex h-full w-full items-center justify-center">
-          <div className="rounded-lg border border-border bg-bg-card px-6 py-5 text-center text-[12px] text-fg-dim shadow-panel">
+          <div className="rounded-lg bg-bg-card px-6 py-5 text-center text-sm text-fg-dim shadow-panel">
             <p className="mb-2 font-medium text-fg">창이 없습니다</p>
             <p className="mb-3">상단 툴바의 +차트 로 차트 창을 추가하세요.</p>
             <button

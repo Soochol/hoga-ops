@@ -185,7 +185,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
 
   if (!instrument) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dimmer">
+      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-xs text-fg-dimmer">
         <span className="font-mono">종목 없음 · 그룹 {view.group}</span>
       </div>
     );

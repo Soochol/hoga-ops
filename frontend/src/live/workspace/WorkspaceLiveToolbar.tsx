@@ -50,7 +50,7 @@ export function WorkspaceLiveToolbar({
   return (
     <WorkspaceToolbar testId="workspace-live-toolbar" className="flex-nowrap">
       <span
-        className="flex items-center gap-1 text-[11px] text-fg-dim"
+        className="flex items-center gap-1 text-xs text-fg-dim"
         title="활성 그룹 — 검색·관심종목 클릭이 이 그룹의 종목을 교체합니다"
       >
         <span className="font-mono">{windowCount}창</span>
@@ -63,7 +63,7 @@ export function WorkspaceLiveToolbar({
           key={kind}
           type="button"
           data-testid={`workspace-add-${kind}`}
-          className="shrink-0 rounded bg-bg-input px-1.5 py-0.5 text-[11px] text-fg-dim hover:text-fg"
+          className="shrink-0 rounded bg-bg-input px-1.5 py-0.5 text-xs text-fg-dim hover:text-fg"
           onClick={() => addWindow(kind)}
         >
           {label}
@@ -72,7 +72,7 @@ export function WorkspaceLiveToolbar({
       <button
         type="button"
         data-testid="workspace-tidy"
-        className="shrink-0 rounded bg-tint-selection px-2 py-0.5 text-[11px] font-medium text-accent hover:brightness-110"
+        className="shrink-0 rounded bg-tint-selection px-2 py-0.5 text-xs font-medium text-accent hover:brightness-110"
         onClick={requestWorkspaceTidy}
       >
         정리
