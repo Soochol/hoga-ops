@@ -249,4 +249,25 @@ describe('IndexSectorRankingPane', () => {
 
     expect(screen.getByTestId('index-sector-ranking-pane')).toHaveStyle({ height: '330px' });
   });
+
+  it('fill 변형은 자체 높이/리사이즈 핸들 없이 창을 100% 채운다', () => {
+    render(
+      <IndexSectorRankingPane
+        variant="fill"
+        basisDate="20260619"
+        basisMode="latest"
+        ranking={ranking}
+        isLoading={false}
+        error={null}
+        onClearDatePin={() => {}}
+        onOpenStock={() => {}}
+      />,
+    );
+
+    // WindowFrame 이 크기를 소유 → pane 은 100% 채움, 자체 높이 리사이즈 핸들 없음.
+    expect(screen.getByTestId('index-sector-ranking-pane')).toHaveStyle({ height: '100%' });
+    expect(screen.queryByRole('separator', { name: '섹터 랭킹 높이 조절' })).not.toBeInTheDocument();
+    // latest 모드 헤더는 한국어 라벨.
+    expect(screen.getByText('2026/06/19 기준 · 최신')).toBeInTheDocument();
+  });
 });

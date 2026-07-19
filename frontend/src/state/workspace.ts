@@ -33,8 +33,9 @@ import { isLiveIndexId } from '../live/liveInstrument';
 
 export const WORKSPACE_STORAGE_KEY = 'live.workspace.v1';
 
-/** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708). */
-export const WINDOW_KINDS = ['chart', 'book', 'broker', 'vdist', 'program', 'investor'] as const;
+/** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
+ *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D). */
+export const WINDOW_KINDS = ['chart', 'book', 'broker', 'vdist', 'program', 'investor', 'sector-ranking'] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
 export const MIN_GROUP = 1;
@@ -313,6 +314,7 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   vdist: { w: 300, h: 240 },
   program: { w: 260, h: 200 },
   investor: { w: 280, h: 220 },
+  'sector-ranking': { w: 360, h: 320 },
 };
 
 const hydrated = readStorage();
