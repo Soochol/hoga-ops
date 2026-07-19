@@ -2,14 +2,15 @@
  * PROTOTYPE — throwaway. 지우기 전제의 코드. 프로덕션 아님.
  *
  * 질문: "차트+10호가 세트를 N개(여기선 3개) 놓은 워크스페이스는 어떤 모습이어야 하나"
- * (wayfinder 지도 #706 · 티켓 #707 레이아웃 패러다임 grilling 보조 자료)
+ * (wayfinder 지도 #706 · 티켓 #707 레이아웃 패러다임 grilling → #714 프로토타입)
  *
- * /prototype-workspace 라우트에서 ?variant=A|B|C 로 3개 변형 전환:
- *   A — 균등 3열 · 호가 우측 세로 레일 (토스식 컬럼 도킹)
- *   B — 主副 포커스 · 큰 세트 1 + 작은 세트 2 (위계형)
- *   C — 2×2 그리드 · 호가 하단 가로 스트립 · 빈 슬롯(+ 세트 추가)
+ * /prototype-workspace 라우트에서 ?variant=A|B|C|D 로 전환:
+ *   A — 균등 3열 · 호가 우측 세로 레일 (토스식 컬럼 도킹) [기각]
+ *   B — 主副 포커스 · 큰 세트 1 + 작은 세트 2 (위계형) [기각]
+ *   C — 2×2 그리드 · 호가 하단 가로 스트립 · 빈 슬롯 [기각]
+ *   D — 스마트 자석 플로팅 (인터랙티브) [#707 채택 · #714 확장]
  *
- * 데이터는 전부 시드 더미. 드래그/리사이즈는 비기능(모양 판단용).
+ * 데이터는 전부 시드 더미.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -229,13 +230,17 @@ function OrderbookHorizontal({ book }: { book: Book }) {
   );
 }
 
-// ── 세트 카드 공통 크롬 ─────────────────────────────────────────────────────
+// ── 세트 카드 공통 크롬 (A/B/C 정지화면용) ──────────────────────────────────
 
-function LinkBadge({ n }: { n: number }) {
+function LinkBadge({ n, onClick }: { n: number; onClick?: () => void }) {
   return (
-    <span className="inline-flex h-[16px] w-[16px] items-center justify-center rounded-sm bg-tint-selection font-mono text-[10px] font-semibold text-accent">
+    <button
+      className="inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-sm bg-tint-selection font-mono text-[10px] font-semibold text-accent hover:brightness-125"
+      onClick={onClick}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       {n}
-    </span>
+    </button>
   );
 }
 
@@ -356,19 +361,20 @@ function VariantC() {
   );
 }
 
-// ── Variant D — 스마트 자석 플로팅 (인터랙티브) ─────────────────────────────
+// ── Variant D — 스마트 자석 플로팅 (인터랙티브, #714 확장판) ────────────────
 //
-// 영웅문식 자유 플로팅 + 현대화 6종 중 4종을 간이 구현:
-//   · 드래그/리사이즈 자석(이웃 가장자리·정렬·화면 경계, 임계 12px) + accent 가이드
-//   · Alt = 자석 해제
-//   · 붙은 경계는 스플리터로 승격 — E/S 변 드래그 시 인접 창이 함께 조절
-//   · 화면 좌/우 스냅존(반분할 미리보기) · 원클릭 Tidy 정렬 · 포커스 z-order
+// #707 채택 규칙 + #714 잔여 범위 구현:
+//   · 8방향 리사이즈 핸들(E/W/N/S + 4모서리), 전부 자석
+//   · 순수 변(E/W/N/S) 드래그 시 붙은 이웃 동시 조절(스플리터 승격)
+//   · 링크 뱃지 클릭 → 1~10 그룹 팔레트 (그룹=종목, #711 의미론)
+//   · 창 추가(+차트/+호가/+거래원, 활성 그룹 상속)·닫기·12창 스트레스
+//   · Alt=자석 해제 · 좌/우 벽 반분할 스냅존 · Tidy 일반화 · 포커스 z-order
 
 type WinKind = 'chart' | 'book' | 'broker';
 type Win = {
   id: string;
   kind: WinKind;
-  spec: SetSpec;
+  group: number; // 링크 그룹 1~10 (그룹 = 종목)
   x: number;
   y: number;
   w: number;
@@ -378,6 +384,21 @@ type Win = {
 const SNAP = 12;
 const MIN_W = 160;
 const MIN_H = 120;
+
+// 그룹 1~10 → 더미 종목 (#711: 그룹이 종목의 SSOT)
+const GROUP_SPECS: SetSpec[] = [
+  ...SETS,
+  { link: 4, name: 'NAVER', code: '035420', base: 189700, tick: 100, seed: 44 },
+  { link: 5, name: '현대차', code: '005380', base: 421500, tick: 500, seed: 55 },
+  { link: 6, name: 'KB금융', code: '105560', base: 132800, tick: 100, seed: 66 },
+  { link: 7, name: 'POSCO홀딩스', code: '005490', base: 312000, tick: 500, seed: 77 },
+  { link: 8, name: '카카오', code: '035720', base: 41250, tick: 50, seed: 88 },
+  { link: 9, name: 'LG에너지솔루션', code: '373220', base: 338500, tick: 500, seed: 99 },
+  { link: 10, name: '두산에너빌리티', code: '034020', base: 64300, tick: 100, seed: 110 },
+];
+const specForGroup = (g: number) => GROUP_SPECS[(g - 1 + GROUP_SPECS.length) % GROUP_SPECS.length];
+
+const KIND_LABEL: Record<WinKind, string> = { chart: '차트', book: '10호가', broker: '거래원' };
 
 function BrokerPanel({ spec }: { spec: SetSpec }) {
   const rows = useMemo(() => {
@@ -400,12 +421,6 @@ function BrokerPanel({ spec }: { spec: SetSpec }) {
   );
 }
 
-const WIN_TITLE: Record<WinKind, (s: SetSpec) => string> = {
-  chart: (s) => s.name,
-  book: () => '10호가',
-  broker: () => '거래원',
-};
-
 type Cand = { val: number; guide: number };
 
 function snapAxis(raw: number, cands: Cand[], alt: boolean): { val: number; guide: number | null } {
@@ -419,61 +434,89 @@ function snapAxis(raw: number, cands: Cand[], alt: boolean): { val: number; guid
   return best ? { val: best.val, guide: best.guide } : { val: raw, guide: null };
 }
 
+type Mode = 'move' | 'e' | 'w' | 'n' | 's' | 'ne' | 'nw' | 'se' | 'sw';
+type Follower = { id: string; x0: number; y0: number; w0: number; h0: number };
 type DragState = {
-  mode: 'move' | 'e' | 's' | 'se';
+  mode: Mode;
   id: string;
   px: number;
   py: number;
   orig: Win;
-  attachedE: { id: string; x0: number; w0: number }[];
-  attachedS: { id: string; y0: number; h0: number }[];
+  // 순수 변 드래그에서만 채워짐 — 붙은 이웃(스플리터 승격 대상)
+  followers: Follower[];
 };
+
+const HANDLES: { mode: Mode; cls: string }[] = [
+  { mode: 'e', cls: 'absolute inset-y-[12px] right-0 w-[6px] cursor-ew-resize' },
+  { mode: 'w', cls: 'absolute inset-y-[12px] left-0 w-[6px] cursor-ew-resize' },
+  { mode: 's', cls: 'absolute inset-x-[12px] bottom-0 h-[6px] cursor-ns-resize' },
+  { mode: 'n', cls: 'absolute inset-x-[12px] top-0 h-[6px] cursor-ns-resize' },
+  { mode: 'se', cls: 'absolute bottom-0 right-0 h-[12px] w-[12px] cursor-nwse-resize' },
+  { mode: 'nw', cls: 'absolute left-0 top-0 h-[12px] w-[12px] cursor-nwse-resize' },
+  { mode: 'ne', cls: 'absolute right-0 top-0 h-[12px] w-[12px] cursor-nesw-resize' },
+  { mode: 'sw', cls: 'absolute bottom-0 left-0 h-[12px] w-[12px] cursor-nesw-resize' },
+];
+
+const INITIAL_WINS: Win[] = [
+  { id: 'c1', kind: 'chart', group: 1, x: 24, y: 16, w: 540, h: 350 },
+  { id: 'c2', kind: 'chart', group: 2, x: 220, y: 140, w: 540, h: 350 },
+  { id: 'b1', kind: 'book', group: 1, x: 800, y: 30, w: 200, h: 430 },
+  { id: 'k1', kind: 'broker', group: 1, x: 850, y: 330, w: 240, h: 200 },
+];
+
+const STRESS_WINS: Omit<Win, 'x' | 'y'>[] = [
+  { id: 's-c3', kind: 'chart', group: 3, w: 420, h: 300 },
+  { id: 's-c4', kind: 'chart', group: 4, w: 420, h: 300 },
+  { id: 's-c5', kind: 'chart', group: 5, w: 420, h: 300 },
+  { id: 's-c6', kind: 'chart', group: 6, w: 420, h: 300 },
+  { id: 's-b2', kind: 'book', group: 2, w: 190, h: 360 },
+  { id: 's-b3', kind: 'book', group: 3, w: 190, h: 360 },
+  { id: 's-k2', kind: 'broker', group: 2, w: 230, h: 190 },
+  { id: 's-k4', kind: 'broker', group: 4, w: 230, h: 190 },
+];
 
 function VariantD() {
   const boxRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
-  const [wins, setWins] = useState<Win[]>(() => [
-    { id: 'c1', kind: 'chart', spec: SETS[0], x: 24, y: 16, w: 540, h: 350 },
-    { id: 'c2', kind: 'chart', spec: SETS[1], x: 220, y: 140, w: 540, h: 350 },
-    { id: 'b1', kind: 'book', spec: SETS[0], x: 800, y: 30, w: 200, h: 430 },
-    { id: 'k1', kind: 'broker', spec: SETS[0], x: 850, y: 330, w: 240, h: 200 },
-  ]);
-  const [order, setOrder] = useState<string[]>(['c1', 'c2', 'b1', 'k1']);
+  const idRef = useRef(0);
+  const [wins, setWins] = useState<Win[]>(INITIAL_WINS);
+  const [order, setOrder] = useState<string[]>(INITIAL_WINS.map((w) => w.id));
   const [guides, setGuides] = useState<{ v: number | null; h: number | null }>({ v: null, h: null });
   const [zone, setZone] = useState<'left' | 'right' | null>(null);
+  const [palette, setPalette] = useState<string | null>(null);
 
   const front = (id: string) => setOrder((o) => [...o.filter((i) => i !== id), id]);
+  const focusedId = order[order.length - 1];
+  // 활성 그룹 = 포커스 창의 그룹 (#711)
+  const activeGroup = wins.find((w) => w.id === focusedId)?.group ?? 1;
 
-  const beginDrag = (e: React.PointerEvent, id: string, mode: DragState['mode']) => {
+  const beginDrag = (e: React.PointerEvent, id: string, mode: Mode) => {
     const win = wins.find((w) => w.id === id);
     if (!win) return;
     e.preventDefault();
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     } catch {
-      // 합성(비신뢰) 이벤트는 활성 포인터가 없어 캡처가 실패할 수 있음 — 드래그는 컨테이너 onPointerMove로 지속
+      // 합성(비신뢰) 이벤트는 활성 포인터가 없어 캡처가 실패할 수 있음 — 컨테이너 onPointerMove로 지속
     }
-    // 붙은 경계 탐지 — E/S 변 리사이즈를 스플리터로 승격
-    const attachedE = wins
-      .filter(
-        (o) =>
-          o.id !== id &&
-          Math.abs(o.x - (win.x + win.w)) <= 2 &&
-          o.y < win.y + win.h &&
-          o.y + o.h > win.y,
-      )
-      .map((o) => ({ id: o.id, x0: o.x, w0: o.w }));
-    const attachedS = wins
-      .filter(
-        (o) =>
-          o.id !== id &&
-          Math.abs(o.y - (win.y + win.h)) <= 2 &&
-          o.x < win.x + win.w &&
-          o.x + o.w > win.x,
-      )
-      .map((o) => ({ id: o.id, y0: o.y, h0: o.h }));
-    dragRef.current = { mode, id, px: e.clientX, py: e.clientY, orig: { ...win }, attachedE, attachedS };
+    // 순수 변 드래그만 스플리터 승격: 해당 변에 붙은(±2px + 구간 겹침) 이웃 수집
+    let followers: Follower[] = [];
+    if (mode === 'e' || mode === 'w' || mode === 'n' || mode === 's') {
+      followers = wins
+        .filter((o) => {
+          if (o.id === id) return false;
+          const hOverlap = o.y < win.y + win.h && o.y + o.h > win.y;
+          const vOverlap = o.x < win.x + win.w && o.x + o.w > win.x;
+          if (mode === 'e') return Math.abs(o.x - (win.x + win.w)) <= 2 && hOverlap;
+          if (mode === 'w') return Math.abs(o.x + o.w - win.x) <= 2 && hOverlap;
+          if (mode === 's') return Math.abs(o.y - (win.y + win.h)) <= 2 && vOverlap;
+          return Math.abs(o.y + o.h - win.y) <= 2 && vOverlap; // 'n'
+        })
+        .map((o) => ({ id: o.id, x0: o.x, y0: o.y, w0: o.w, h0: o.h }));
+    }
+    dragRef.current = { mode, id, px: e.clientX, py: e.clientY, orig: { ...win }, followers };
     front(id);
+    setPalette(null);
   };
 
   const onMove = (e: React.PointerEvent) => {
@@ -499,10 +542,10 @@ function VariantD() {
       ];
       for (const o of others) {
         cx.push(
-          { val: o.x + o.w, guide: o.x + o.w }, // 내 왼변 ↔ 상대 오른변 (인접)
-          { val: o.x - w, guide: o.x }, // 내 오른변 ↔ 상대 왼변 (인접)
-          { val: o.x, guide: o.x }, // 왼변 정렬
-          { val: o.x + o.w - w, guide: o.x + o.w }, // 오른변 정렬
+          { val: o.x + o.w, guide: o.x + o.w },
+          { val: o.x - w, guide: o.x },
+          { val: o.x, guide: o.x },
+          { val: o.x + o.w - w, guide: o.x + o.w },
         );
         cy.push(
           { val: o.y + o.h, guide: o.y + o.h },
@@ -514,60 +557,120 @@ function VariantD() {
       const sx = snapAxis(Math.min(Math.max(d.orig.x + dx, 0), W - w), cx, alt);
       const sy = snapAxis(Math.min(Math.max(d.orig.y + dy, 0), H - h), cy, alt);
       setGuides({ v: sx.guide, h: sy.guide });
-      // 화면 좌/우 스냅존 (반분할)
       const px = e.clientX - box.left;
       setZone(alt ? null : px < 28 ? 'left' : px > W - 28 ? 'right' : null);
       setWins((ws) => ws.map((w0) => (w0.id === d.id ? { ...w0, x: sx.val, y: sy.val } : w0)));
       return;
     }
 
-    setWins((ws) => {
-      let next = ws;
-      const me = ws.find((w) => w.id === d.id);
-      if (!me) return ws;
-      if (d.mode === 'e' || d.mode === 'se') {
-        const cands: Cand[] = [{ val: W, guide: W }];
-        for (const o of others) {
-          cands.push({ val: o.x, guide: o.x }, { val: o.x + o.w, guide: o.x + o.w });
-        }
-        const raw = Math.max(d.orig.x + MIN_W, Math.min(d.orig.x + d.orig.w + dx, W));
-        const sr = snapAxis(raw, cands, alt);
-        const newW = sr.val - d.orig.x;
-        setGuides((g) => ({ ...g, v: sr.guide }));
-        next = next.map((w0) => {
-          if (w0.id === d.id) return { ...w0, w: newW };
-          const a = d.attachedE.find((t) => t.id === w0.id);
-          if (a && d.mode === 'e') {
-            // 붙은 경계 = 스플리터: 이웃의 왼변을 함께 이동
-            const nx = d.orig.x + newW;
-            const nw = a.x0 + a.w0 - nx;
-            if (nw >= MIN_W) return { ...w0, x: nx, w: nw };
-          }
-          return w0;
-        });
+    // 리사이즈: mode 문자에 포함된 변마다 해당 가장자리를 이동
+    const hasE = d.mode.includes('e');
+    const hasW = d.mode.includes('w');
+    const hasN = d.mode.includes('n');
+    const hasS = d.mode.includes('s');
+    const pure = d.mode.length === 1;
+
+    const vertCands: Cand[] = [
+      { val: 0, guide: 0 },
+      { val: W, guide: W },
+    ];
+    const horzCands: Cand[] = [
+      { val: 0, guide: 0 },
+      { val: H, guide: H },
+    ];
+    for (const o of others) {
+      vertCands.push({ val: o.x, guide: o.x }, { val: o.x + o.w, guide: o.x + o.w });
+      horzCands.push({ val: o.y, guide: o.y }, { val: o.y + o.h, guide: o.y + o.h });
+    }
+
+    let { x, y, w, h } = d.orig;
+    let gv: number | null = null;
+    let gh: number | null = null;
+    let edgeV = 0; // 스플리터 승격에 쓰는 새 변 좌표
+    let edgeH = 0;
+
+    // 스플리터 승격 중에는 팔로워의 최소 크기에서도 함께 멈춤 (파고들어 겹침 방지)
+    const fMin = (sel: (f: Follower) => number, pick: 'min' | 'max') =>
+      d.followers.length === 0
+        ? null
+        : d.followers.map(sel).reduce((a, b) => (pick === 'min' ? Math.min(a, b) : Math.max(a, b)));
+
+    if (hasE) {
+      let hi = W;
+      if (pure) {
+        const cap = fMin((f) => f.x0 + f.w0 - MIN_W, 'min');
+        if (cap !== null) hi = Math.min(hi, cap);
       }
-      if (d.mode === 's' || d.mode === 'se') {
-        const cands: Cand[] = [{ val: H, guide: H }];
-        for (const o of others) {
-          cands.push({ val: o.y, guide: o.y }, { val: o.y + o.h, guide: o.y + o.h });
-        }
-        const raw = Math.max(d.orig.y + MIN_H, Math.min(d.orig.y + d.orig.h + dy, H));
-        const sb = snapAxis(raw, cands, alt);
-        const newH = sb.val - d.orig.y;
-        setGuides((g) => ({ ...g, h: sb.guide }));
-        next = next.map((w0) => {
-          if (w0.id === d.id) return { ...w0, h: newH };
-          const a = d.attachedS.find((t) => t.id === w0.id);
-          if (a && d.mode === 's') {
-            const ny = d.orig.y + newH;
-            const nh = a.y0 + a.h0 - ny;
-            if (nh >= MIN_H) return { ...w0, y: ny, h: nh };
-          }
-          return w0;
-        });
+      const raw = Math.max(d.orig.x + MIN_W, Math.min(d.orig.x + d.orig.w + dx, hi));
+      const s = snapAxis(raw, vertCands, alt);
+      w = s.val - x;
+      gv = s.guide;
+      edgeV = s.val;
+    }
+    if (hasW) {
+      let lo = 0;
+      if (pure) {
+        const cap = fMin((f) => f.x0 + MIN_W, 'max');
+        if (cap !== null) lo = Math.max(lo, cap);
       }
-      return next;
-    });
+      const raw = Math.min(d.orig.x + d.orig.w - MIN_W, Math.max(d.orig.x + dx, lo));
+      const s = snapAxis(raw, vertCands, alt);
+      w = d.orig.x + d.orig.w - s.val;
+      x = s.val;
+      gv = s.guide;
+      edgeV = s.val;
+    }
+    if (hasS) {
+      let hi = H;
+      if (pure) {
+        const cap = fMin((f) => f.y0 + f.h0 - MIN_H, 'min');
+        if (cap !== null) hi = Math.min(hi, cap);
+      }
+      const raw = Math.max(d.orig.y + MIN_H, Math.min(d.orig.y + d.orig.h + dy, hi));
+      const s = snapAxis(raw, horzCands, alt);
+      h = s.val - y;
+      gh = s.guide;
+      edgeH = s.val;
+    }
+    if (hasN) {
+      let lo = 0;
+      if (pure) {
+        const cap = fMin((f) => f.y0 + MIN_H, 'max');
+        if (cap !== null) lo = Math.max(lo, cap);
+      }
+      const raw = Math.min(d.orig.y + d.orig.h - MIN_H, Math.max(d.orig.y + dy, lo));
+      const s = snapAxis(raw, horzCands, alt);
+      h = d.orig.y + d.orig.h - s.val;
+      y = s.val;
+      gh = s.guide;
+      edgeH = s.val;
+    }
+    setGuides({ v: gv, h: gh });
+
+    setWins((ws) =>
+      ws.map((w0) => {
+        if (w0.id === d.id) return { ...w0, x, y, w, h };
+        if (!pure) return w0;
+        const f = d.followers.find((t) => t.id === w0.id);
+        if (!f) return w0;
+        // 스플리터 승격: 내 변을 따라 이웃의 맞닿은 변도 이동
+        if (d.mode === 'e') {
+          const nw = f.x0 + f.w0 - edgeV;
+          return nw >= MIN_W ? { ...w0, x: edgeV, w: nw } : w0;
+        }
+        if (d.mode === 'w') {
+          const nw = edgeV - f.x0;
+          return nw >= MIN_W ? { ...w0, w: nw } : w0;
+        }
+        if (d.mode === 's') {
+          const nh = f.y0 + f.h0 - edgeH;
+          return nh >= MIN_H ? { ...w0, y: edgeH, h: nh } : w0;
+        }
+        // 'n'
+        const nh = edgeH - f.y0;
+        return nh >= MIN_H ? { ...w0, h: nh } : w0;
+      }),
+    );
   };
 
   const onUp = () => {
@@ -588,21 +691,59 @@ function VariantD() {
     setZone(null);
   };
 
+  // Tidy 일반화: 차트 창은 좌측 영역 그리드(열 최대 3), 데이터 창은 우측 열 스택
   const tidy = () => {
     const box = boxRef.current?.getBoundingClientRect();
     if (!box) return;
     const W = Math.round(box.width);
     const H = Math.round(box.height);
-    const cw = Math.round(W * 0.36);
-    const rw = W - cw * 2;
-    setWins((ws) =>
-      ws.map((w0) => {
-        if (w0.id === 'c1') return { ...w0, x: 0, y: 0, w: cw, h: H };
-        if (w0.id === 'c2') return { ...w0, x: cw, y: 0, w: cw, h: H };
-        if (w0.id === 'b1') return { ...w0, x: cw * 2, y: 0, w: rw, h: Math.round(H * 0.62) };
-        return { ...w0, x: cw * 2, y: Math.round(H * 0.62), w: rw, h: H - Math.round(H * 0.62) };
-      }),
-    );
+    const charts = wins.filter((w0) => w0.kind === 'chart');
+    const datas = wins.filter((w0) => w0.kind !== 'chart');
+    const chartW = datas.length ? Math.round(W * 0.72) : W;
+    const dataW = W - chartW;
+    const cols = Math.min(3, Math.max(1, charts.length));
+    const rows = Math.max(1, Math.ceil(charts.length / cols));
+    const cw = Math.round(chartW / cols);
+    const ch = Math.round(H / rows);
+    const dh = datas.length ? Math.round(H / datas.length) : H;
+    const pos = new Map<string, Partial<Win>>();
+    charts.forEach((w0, i) => {
+      const r = Math.floor(i / cols);
+      const c = i % cols;
+      pos.set(w0.id, { x: c * cw, y: r * ch, w: cw, h: ch });
+    });
+    datas.forEach((w0, i) => {
+      pos.set(w0.id, { x: chartW, y: i * dh, w: dataW, h: dh });
+    });
+    setWins((ws) => ws.map((w0) => ({ ...w0, ...pos.get(w0.id) })));
+  };
+
+  const addWin = (kind: WinKind) => {
+    const n = ++idRef.current;
+    const id = `n${n}`;
+    const off = 30 + ((n * 24) % 180);
+    const size = kind === 'chart' ? { w: 480, h: 320 } : kind === 'book' ? { w: 200, h: 400 } : { w: 230, h: 190 };
+    // 새 창 = 활성 그룹 상속 (#711)
+    setWins((ws) => [...ws, { id, kind, group: activeGroup, x: off, y: off, ...size }]);
+    setOrder((o) => [...o, id]);
+  };
+
+  const closeWin = (id: string) => {
+    setWins((ws) => ws.filter((w0) => w0.id !== id));
+    setOrder((o) => o.filter((i) => i !== id));
+  };
+
+  const stress = () => {
+    setWins((ws) => {
+      const have = new Set(ws.map((w0) => w0.id));
+      const add = STRESS_WINS.filter((s) => !have.has(s.id)).map((s, i) => ({
+        ...s,
+        x: 40 + ((i * 56) % 480),
+        y: 30 + ((i * 44) % 320),
+      }));
+      setOrder((o) => [...o, ...add.map((a) => a.id)]);
+      return [...ws, ...add];
+    });
   };
 
   return (
@@ -622,55 +763,99 @@ function VariantD() {
         <div className="pointer-events-none absolute inset-x-0 z-40 h-px bg-accent" style={{ top: guides.h }} />
       )}
       {/* 툴바 */}
-      <div className="absolute right-2 top-2 z-50 flex items-center gap-2 rounded-md border border-border bg-bg-subtle px-2 py-1 text-[11px] text-fg-dim shadow-overlay">
-        <span>드래그·리사이즈=자석 · Alt=해제 · 붙은 경계=동시 조절 · 좌/우 벽=반분할</span>
+      <div className="absolute right-2 top-2 z-50 flex items-center gap-1.5 rounded-md border border-border bg-bg-subtle px-2 py-1 text-[11px] text-fg-dim shadow-overlay">
+        <span className="font-mono">{wins.length}창</span>
+        <span>· 활성 그룹</span>
+        <span className="font-mono text-accent">{activeGroup}</span>
+        <span className="mx-1 h-[12px] w-px bg-border-strong" />
+        <button className="rounded bg-bg-input px-1.5 py-0.5 hover:text-fg" onClick={() => addWin('chart')}>
+          +차트
+        </button>
+        <button className="rounded bg-bg-input px-1.5 py-0.5 hover:text-fg" onClick={() => addWin('book')}>
+          +호가
+        </button>
+        <button className="rounded bg-bg-input px-1.5 py-0.5 hover:text-fg" onClick={() => addWin('broker')}>
+          +거래원
+        </button>
+        <button className="rounded bg-bg-input px-1.5 py-0.5 hover:text-fg" onClick={stress}>
+          12창 스트레스
+        </button>
         <button className="rounded bg-tint-selection px-2 py-0.5 font-medium text-accent hover:brightness-110" onClick={tidy}>
           정리
         </button>
       </div>
       {wins.map((w0) => {
         const z = order.indexOf(w0.id);
-        const focused = z === order.length - 1;
+        const focused = w0.id === focusedId;
+        const spec = specForGroup(w0.group);
         return (
           <div
             key={w0.id}
             data-win={w0.id}
-            className={`absolute flex flex-col overflow-hidden rounded-lg bg-bg-card ${focused ? 'shadow-modal' : 'shadow-panel'}`}
+            className={`absolute flex flex-col rounded-lg bg-bg-card ${focused ? 'shadow-modal' : 'shadow-panel'}`}
             style={{ left: w0.x, top: w0.y, width: w0.w, height: w0.h, zIndex: z }}
-            onPointerDown={() => front(w0.id)}
+            onPointerDown={() => {
+              front(w0.id);
+              setPalette((p) => (p === w0.id ? p : null));
+            }}
           >
             <div
               data-handle="move"
-              className="flex h-[26px] shrink-0 cursor-grab items-center gap-1.5 border-b border-border px-1.5 active:cursor-grabbing"
+              className="flex h-[26px] shrink-0 cursor-grab items-center gap-1.5 rounded-t-lg border-b border-border px-1.5 active:cursor-grabbing"
               onPointerDown={(e) => beginDrag(e, w0.id, 'move')}
             >
               <span className="select-none text-[11px] leading-none text-fg-dimmer">⠿</span>
-              <LinkBadge n={w0.spec.link} />
-              <span className="truncate text-[12px] font-medium text-fg">{WIN_TITLE[w0.kind](w0.spec)}</span>
-              <span className="font-mono text-[10px] text-fg-dimmer">{w0.spec.code}</span>
-              <button className="ml-auto px-0.5 text-[12px] leading-none text-fg-dimmer hover:text-fg">×</button>
+              <LinkBadge n={w0.group} onClick={() => setPalette((p) => (p === w0.id ? null : w0.id))} />
+              <span className="truncate text-[12px] font-medium text-fg">
+                {w0.kind === 'chart' ? spec.name : `${KIND_LABEL[w0.kind]} · ${spec.name}`}
+              </span>
+              <span className="font-mono text-[10px] text-fg-dimmer">{spec.code}</span>
+              {w0.kind === 'chart' && (
+                <span className="ml-auto font-mono text-[11px] text-fg-dim [font-variant-numeric:tabular-nums]">
+                  {fmt(spec.base)}
+                </span>
+              )}
+              <button
+                className={`${w0.kind === 'chart' ? '' : 'ml-auto '}px-0.5 text-[12px] leading-none text-fg-dimmer hover:text-fg`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => closeWin(w0.id)}
+              >
+                ×
+              </button>
             </div>
-            <div className="min-h-0 flex-1">
-              {w0.kind === 'chart' && <MiniChart spec={w0.spec} />}
-              {w0.kind === 'book' && <OrderbookVertical book={makeBook(w0.spec, w0.spec.base)} />}
-              {w0.kind === 'broker' && <BrokerPanel spec={w0.spec} />}
+            {/* 링크 그룹 팔레트 (#711: 뱃지 클릭 → 1~10) */}
+            {palette === w0.id && (
+              <div
+                className="absolute left-5 top-[26px] z-50 grid grid-cols-5 gap-0.5 rounded-md border border-border bg-bg-subtle p-1 shadow-overlay"
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                {GROUP_SPECS.map((g) => (
+                  <button
+                    key={g.link}
+                    title={g.name}
+                    className={`h-[20px] w-[20px] rounded-sm font-mono text-[10px] font-semibold ${
+                      g.link === w0.group
+                        ? 'bg-accent text-accent-fg'
+                        : 'bg-bg-input text-fg-dim hover:bg-tint-selection hover:text-accent'
+                    }`}
+                    onClick={() => {
+                      setWins((ws) => ws.map((t) => (t.id === w0.id ? { ...t, group: g.link } : t)));
+                      setPalette(null);
+                    }}
+                  >
+                    {g.link}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="min-h-0 flex-1 overflow-hidden rounded-b-lg">
+              {w0.kind === 'chart' && <MiniChart spec={spec} />}
+              {w0.kind === 'book' && <OrderbookVertical book={makeBook(spec, spec.base)} dense={w0.h < 480} />}
+              {w0.kind === 'broker' && <BrokerPanel spec={spec} />}
             </div>
-            {/* 리사이즈 핸들: E / S / SE */}
-            <div
-              data-handle="e"
-              className="absolute inset-y-0 right-0 w-[6px] cursor-ew-resize"
-              onPointerDown={(e) => beginDrag(e, w0.id, 'e')}
-            />
-            <div
-              data-handle="s"
-              className="absolute inset-x-0 bottom-0 h-[6px] cursor-ns-resize"
-              onPointerDown={(e) => beginDrag(e, w0.id, 's')}
-            />
-            <div
-              data-handle="se"
-              className="absolute bottom-0 right-0 h-[12px] w-[12px] cursor-nwse-resize"
-              onPointerDown={(e) => beginDrag(e, w0.id, 'se')}
-            />
+            {HANDLES.map((hd) => (
+              <div key={hd.mode} data-handle={hd.mode} className={hd.cls} onPointerDown={(e) => beginDrag(e, w0.id, hd.mode)} />
+            ))}
           </div>
         );
       })}
@@ -684,7 +869,7 @@ const VARIANTS = [
   { key: 'A', label: '균등 3열 · 호가 우측', el: <VariantA /> },
   { key: 'B', label: '主副 포커스 · 1大 2小', el: <VariantB /> },
   { key: 'C', label: '2×2 그리드 · 호가 하단 · 빈 슬롯', el: <VariantC /> },
-  { key: 'D', label: '스마트 자석 플로팅 · 드래그 가능', el: <VariantD /> },
+  { key: 'D', label: '스마트 자석 플로팅 · 풀 인터랙션', el: <VariantD /> },
 ];
 
 function PrototypeSwitcher({ current, go }: { current: number; go: (d: number) => void }) {
