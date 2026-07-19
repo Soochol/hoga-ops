@@ -1,5 +1,5 @@
-import { useLivePageStore } from '../../state/livePage';
 import ColorSwatchPicker from './ColorSwatchPicker';
+import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 function hexToRgba(hex: string, opacity: number): string {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -13,10 +13,10 @@ function hexToRgba(hex: string, opacity: number): string {
 }
 
 export default function TradeVolumePocConfig() {
-  const color = useLivePageStore((s) => s.tradeVolumePocColor);
-  const opacity = useLivePageStore((s) => s.tradeVolumePocOpacity);
-  const rangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
-  const setStyle = useLivePageStore((s) => s.setTradeVolumePocStyle);
+  const color = useWindowIndicator((s) => s.tradeVolumePocColor);
+  const opacity = useWindowIndicator((s) => s.tradeVolumePocOpacity);
+  const rangeCount = useWindowIndicator((s) => s.volumeDistributionRangeCount);
+  const setStyle = useIndicatorActions().setTradeVolumePocStyle;
   const opacityPct = Math.round(opacity * 100);
 
   return (

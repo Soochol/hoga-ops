@@ -2,10 +2,7 @@ import { create } from 'zustand';
 import type { MASource } from '../chart/projectors/movingAverage';
 import type { LineStyle, PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
-import {
-  PRESET_INDICATOR_FLAG_KEYS,
-  type PresetEnableByTimeframe,
-} from '../live/presets/presetFlags';
+import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
 import {
   DEFAULT_LIVE_MAS,
   DEFAULT_DAILY_MAS,
@@ -15,7 +12,6 @@ import {
   TRADE_VOLUME_POC_DEFAULT_BAND_PCT,
   TRADE_VOLUME_POC_DEFAULT_COLOR,
   TRADE_VOLUME_POC_DEFAULT_OPACITY,
-  BROKER_LATE_ENTRY_DEFAULT_START_HHMM,
   type LiveMAConfig,
   type BrokerLateEntrySideMode,
 } from './liveIndicatorsPersistence';
@@ -27,9 +23,10 @@ import {
   type IndicatorSettings,
   type IndicatorSettingsByTimeframe,
 } from './indicatorSettingsV2';
+import { bindIndicatorOps, MA_PALETTE } from './indicatorOps';
+import { applyPresetEnableByTimeframe } from './indicatorPresetOps';
 import { syncIndicatorModalTimeframe } from './chartPrefs';
 import {
-  INDICATOR_PANE_PROFILE_KEYS,
   profileKeyForTimeframe,
   type PanePrefKey,
 } from '../live/indicators/indicatorPaneProfiles';
@@ -57,6 +54,8 @@ export {
   TRADE_VOLUME_POC_DEFAULT_OPACITY,
 };
 export type { BrokerLateEntrySideMode, LiveMAConfig, IndicatorSettings };
+// 슬롯 색 palette 는 indicatorOps 로 이관 — 기존 임포트 호환 재수출.
+export { MA_PALETTE };
 
 /** Timeframes the live page supports.
  *
@@ -312,48 +311,6 @@ function readStorage(): Partial<Persisted> {
   }
 }
 
-function clamp(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, n));
-}
-
-function normalizeBrokerLateEntryStartHHMM(value: number): number {
-  const next = Math.trunc(value);
-  const hh = Math.floor(next / 100);
-  const mm = next % 100;
-  return hh < 9 || hh > 15 || mm < 0 || mm > 59 || (hh === 15 && mm > 20)
-    ? BROKER_LATE_ENTRY_DEFAULT_START_HHMM
-    : next;
-}
-
-function nextSlotId(existing: readonly LiveMAConfig[], prefix = 'ma'): string {
-  const used = new Set(existing.map((m) => m.id));
-  // Try fast path: <prefix>-N for N up to MA_SLOT_LIMIT * 2.
-  for (let i = 1; i <= MA_SLOT_LIMIT * 2; i++) {
-    const id = `${prefix}-${i}`;
-    if (!used.has(id)) return id;
-  }
-  // Fallback (should never hit given MA_SLOT_LIMIT cap).
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-}
-
-/** 8색 hex palette — tokens.css의 --ma-1..--ma-8과 매칭. canvas는 CSS
- *  var를 직접 받지 못해 hex로 정적 deflate. 신규 슬롯의 색 자동 배정
- *  (`nextSlotColor`)에 사용한다. 사용자가 직접 색을 고르는 32색 grid
- *  (8 hue × 4 shade)는 `MAStylePicker`에 별도로 정의되어 있다. */
-export const MA_PALETTE: readonly string[] = [
-  '#EC4899', '#3B82F6', '#F97316', '#22C55E',
-  '#F8FAFC', '#06B6D4', '#EAB308', '#94A3B8',
-];
-
-function nextSlotColor(existing: readonly LiveMAConfig[]): string {
-  const used = new Set(existing.map((m) => m.color.toLowerCase()));
-  const free = MA_PALETTE.find((c) => !used.has(c.toLowerCase()));
-  return free ?? MA_PALETTE[existing.length % MA_PALETTE.length];
-}
-
-/** 프리셋이 봉별로 교체하는 enable 키 집합 — 이 키만 프리셋으로 덮이고
- *  나머지(파라미터)는 보존된다(applyIndicatorPreset, #699 PR-D). */
-const PRESET_ENABLE_KEY_SET = new Set<string>(PRESET_INDICATOR_FLAG_KEYS);
 
 const initialIndicatorsV2 = loadIndicatorsV2Storage();
 const initialPage = { ...DEFAULTS, ...readStorage() };
@@ -391,63 +348,15 @@ export const useLivePageStore = create<Store>((set, get) => {
     activeViewport: null,
     lastMinuteHistoricalFromDate: null,
 
+    // 지표 도메인 변이 setter 45종 — 시맨틱 SSOT 는 indicatorOps.ts (ADR-0119
+    // C2c-2a). 전역 백엔드 = 호출 시점 fresh get() + ambient 봉 버킷 patch.
+    ...bindIndicatorOps(() => get(), patchIndicators),
+
     setIndicatorTimeframe: (tf) => {
       // 같은 봉이어도 무조건 재투영 — 호출은 봉 전환·페이지 마운트 시뿐이라 싸고,
       // (테스트 등에서) 버킷이 setState 로 직접 주입된 경우의 투영 표류를 없앤다.
       if (!isLiveTimeframe(tf)) return;
       set(projectIndicatorsFor(tf));
-    },
-
-    setMovingAverage: (id, patch) => {
-      const current = get().movingAverages;
-      const idx = current.findIndex((m) => m.id === id);
-      if (idx === -1) return;
-      const cur = current[idx];
-      const next: LiveMAConfig = { ...cur, ...patch };
-      if (patch.period !== undefined) {
-        const p = Number(patch.period);
-        if (!Number.isFinite(p)) return;
-        next.period = clamp(Math.floor(p), MA_PERIOD_MIN, MA_PERIOD_MAX);
-      }
-      const nextArr = current.slice();
-      nextArr[idx] = next;
-      patchIndicators({ movingAverages: nextArr });
-    },
-
-    addMovingAverage: () => {
-      const current = get().movingAverages;
-      if (current.length >= MA_SLOT_LIMIT) return;
-      const last = current[current.length - 1];
-      const period = last ? clamp(last.period * 2, MA_PERIOD_MIN, MA_PERIOD_MAX) : 20;
-      const next: LiveMAConfig = {
-        id: nextSlotId(current),
-        enabled: true,
-        period,
-        color: nextSlotColor(current),
-        lineWidth: 1,
-        source: 'close',
-      };
-      patchIndicators({ movingAverages: [...current, next] });
-    },
-
-    removeMovingAverage: (id) => {
-      const current = get().movingAverages;
-      if (current.length <= 1) return;
-      const nextArr = current.filter((m) => m.id !== id);
-      if (nextArr.length === current.length) return; // unknown id
-      patchIndicators({ movingAverages: nextArr });
-    },
-
-    setMovingAverageEnabled: (enabled) => {
-      patchIndicators({ movingAverageEnabled: enabled });
-    },
-
-    setForeignNetEnabled: (enabled) => {
-      patchIndicators({ foreignNetEnabled: enabled });
-    },
-
-    setInstitutionNetEnabled: (enabled) => {
-      patchIndicators({ institutionNetEnabled: enabled });
     },
 
     setPanePrefForTimeframe: (timeframe, key, enabled) => {
@@ -477,20 +386,8 @@ export const useLivePageStore = create<Store>((set, get) => {
 
     applyIndicatorPreset: ({ paneOrder, byTimeframeEnable, paneStretch }) => {
       const s = get();
-      const byTimeframe: IndicatorSettingsByTimeframe = {};
-      for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
-        const existing = s.indicatorsByTimeframe[profileKey] ?? {};
-        // 파라미터(색·기간 등 enable 이 아닌 오버라이드)는 보존, enable 15키는
-        // 프리셋 값으로 통째 교체(#699 §5 — 결정론: 미포함 enable 은 공장값 복귀).
-        const params: Partial<IndicatorSettings> = {};
-        for (const [key, value] of Object.entries(existing)) {
-          if (!PRESET_ENABLE_KEY_SET.has(key)) {
-            (params as Record<string, unknown>)[key] = value;
-          }
-        }
-        const merged = { ...params, ...(byTimeframeEnable[profileKey] ?? {}) };
-        if (Object.keys(merged).length > 0) byTimeframe[profileKey] = merged;
-      }
+      // enable 15키 봉별 교체·파라미터 보존 — 순수 로직은 indicatorPresetOps 공유.
+      const byTimeframe = applyPresetEnableByTimeframe(s.indicatorsByTimeframe, byTimeframeEnable);
       const nextPaneOrder = normalizePaneOrder(paneOrder);
       const nextPaneStretch = normalizePaneStretch(paneStretch);
       set({
@@ -511,282 +408,6 @@ export const useLivePageStore = create<Store>((set, get) => {
       delete byTimeframe[profileKey];
       set({ ...FACTORY_INDICATOR_SETTINGS, indicatorsByTimeframe: byTimeframe });
       persistIndicatorsV2({ paneOrder: s.paneOrder, paneStretch: s.paneStretch, byTimeframe });
-    },
-
-    setVolumeEnabled: (enabled) => {
-      patchIndicators({ volumeEnabled: enabled });
-    },
-
-    setMovingAverageHidden: (hidden) => {
-      patchIndicators({ movingAverageHidden: hidden });
-    },
-
-    setAskPeakEnabled: (enabled) => {
-      // MA 마스터 규칙 미러: 켤 때 hidden 초기화(꺼진 채 켜지는 혼란 방지).
-      patchIndicators(enabled
-        ? { askPeakEnabled: true, askPeakHidden: false }
-        : { askPeakEnabled: false });
-    },
-
-    setAskPeakHidden: (hidden) => {
-      patchIndicators({ askPeakHidden: hidden });
-    },
-
-    setAskPeakStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        askPeakColor: patch.color ?? s.askPeakColor,
-        askPeakLineWidth: patch.lineWidth ?? s.askPeakLineWidth,
-      });
-    },
-
-    setAskPeakAllPriceStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        askPeakAllPriceColor: patch.color ?? s.askPeakAllPriceColor,
-        askPeakAllPriceLineWidth: patch.lineWidth ?? s.askPeakAllPriceLineWidth,
-      });
-    },
-
-    setAskPeakVisibleMaxStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        askPeakVisibleMaxColor: patch.color ?? s.askPeakVisibleMaxColor,
-        askPeakVisibleMaxLineWidth: patch.lineWidth ?? s.askPeakVisibleMaxLineWidth,
-      });
-    },
-
-    setViLimitPriceLineStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        viLimitPriceLineColor: patch.color ?? s.viLimitPriceLineColor,
-        viLimitPriceLineWidth: patch.lineWidth ?? s.viLimitPriceLineWidth,
-      });
-    },
-
-    setBidPeakEnabled: (enabled) => {
-      patchIndicators(enabled
-        ? { bidPeakEnabled: true, bidPeakHidden: false }
-        : { bidPeakEnabled: false });
-    },
-
-    setBidPeakHidden: (hidden) => {
-      patchIndicators({ bidPeakHidden: hidden });
-    },
-
-    setBidPeakStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        bidPeakColor: patch.color ?? s.bidPeakColor,
-        bidPeakLineWidth: patch.lineWidth ?? s.bidPeakLineWidth,
-      });
-    },
-
-    setBidPeakAllPriceStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        bidPeakAllPriceColor: patch.color ?? s.bidPeakAllPriceColor,
-        bidPeakAllPriceLineWidth: patch.lineWidth ?? s.bidPeakAllPriceLineWidth,
-      });
-    },
-
-    setTradeVolumePocEnabled: (enabled) => {
-      patchIndicators(enabled
-        ? { tradeVolumePocEnabled: true, tradeVolumePocHidden: false }
-        : { tradeVolumePocEnabled: false });
-    },
-
-    setTradeVolumePocHidden: (hidden) => {
-      patchIndicators({ tradeVolumePocHidden: hidden });
-    },
-
-    setTradeVolumePocBandPct: (bandPct) => {
-      if (bandPct !== 0.0025 && bandPct !== 0.005 && bandPct !== 0.01) return;
-      patchIndicators({ tradeVolumePocBandPct: bandPct });
-    },
-
-    setTradeVolumePocStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        tradeVolumePocColor: patch.color ?? s.tradeVolumePocColor,
-        tradeVolumePocOpacity: patch.opacity === undefined
-          ? s.tradeVolumePocOpacity
-          : clamp(patch.opacity, 0, 1),
-      });
-    },
-
-    setDepthHeatmapEnabled: (enabled) => {
-      patchIndicators(enabled
-        ? { depthHeatmapEnabled: true, depthHeatmapHidden: false }
-        : { depthHeatmapEnabled: false });
-    },
-
-    setDepthHeatmapHidden: (hidden) => {
-      patchIndicators({ depthHeatmapHidden: hidden });
-    },
-
-    setDepthHeatmapStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        depthHeatmapBidColor: patch.bidColor ?? s.depthHeatmapBidColor,
-        depthHeatmapAskColor: patch.askColor ?? s.depthHeatmapAskColor,
-        depthHeatmapMaxOpacity: patch.maxOpacity === undefined
-          ? s.depthHeatmapMaxOpacity
-          : clamp(patch.maxOpacity, 0.2, 1),
-      });
-    },
-
-    setVolumeDistributionEnabled: (enabled) => {
-      patchIndicators({ volumeDistributionEnabled: enabled });
-    },
-
-    setVolumeDistributionHoverCutoffEnabled: (enabled) => {
-      patchIndicators({ volumeDistributionHoverCutoffEnabled: enabled });
-    },
-
-    setVolumeDistributionRangeCount: (count) => {
-      if (!Number.isFinite(count)) return;
-      patchIndicators({ volumeDistributionRangeCount: clamp(Math.trunc(count), 5, 30) });
-    },
-
-    setVolumeDistributionStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        volumeDistributionColor: patch.color ?? s.volumeDistributionColor,
-        volumeDistributionMaxColor: patch.maxColor ?? s.volumeDistributionMaxColor,
-      });
-    },
-
-    setQuoteTotalsEnabled: (enabled) => {
-      patchIndicators({ quoteTotalsEnabled: enabled });
-    },
-
-    setQuoteTotalsLevelLineEnabled: (enabled) => {
-      patchIndicators({ quoteTotalsLevelLineEnabled: enabled });
-    },
-
-    setQuoteTotalsBidLevelStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        quoteTotalsBidLevelColor: patch.color ?? s.quoteTotalsBidLevelColor,
-        quoteTotalsBidLevelWidth: patch.lineWidth ?? s.quoteTotalsBidLevelWidth,
-        quoteTotalsBidLevelStyle: patch.lineStyle ?? s.quoteTotalsBidLevelStyle,
-      });
-    },
-
-    setQuoteTotalsAskLevelStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        quoteTotalsAskLevelColor: patch.color ?? s.quoteTotalsAskLevelColor,
-        quoteTotalsAskLevelWidth: patch.lineWidth ?? s.quoteTotalsAskLevelWidth,
-        quoteTotalsAskLevelStyle: patch.lineStyle ?? s.quoteTotalsAskLevelStyle,
-      });
-    },
-
-    setRatioEnabled: (enabled) => {
-      patchIndicators({ ratioEnabled: enabled });
-    },
-
-    setRatioLevelLineEnabled: (enabled) => {
-      patchIndicators({ ratioLevelLineEnabled: enabled });
-    },
-
-    setRatioLevelStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        ratioLevelColor: patch.color ?? s.ratioLevelColor,
-        ratioLevelWidth: patch.lineWidth ?? s.ratioLevelWidth,
-        ratioLevelStyle: patch.lineStyle ?? s.ratioLevelStyle,
-      });
-    },
-
-    setFillStrengthEnabled: (enabled) => {
-      patchIndicators({ fillStrengthEnabled: enabled });
-    },
-
-    setProgramTradeEnabled: (enabled) => {
-      patchIndicators({ programTradeEnabled: enabled });
-    },
-
-    setBrokerLateEntryEnabled: (enabled) => {
-      patchIndicators(enabled
-        ? { brokerLateEntryEnabled: true, brokerLateEntryHidden: false }
-        : { brokerLateEntryEnabled: false });
-    },
-
-    setBrokerLateEntryHidden: (hidden) => {
-      patchIndicators({ brokerLateEntryHidden: hidden });
-    },
-
-    setBrokerLateEntryStartHHMM: (value) => {
-      if (!Number.isFinite(value)) {
-        patchIndicators({ brokerLateEntryStartHHMM: BROKER_LATE_ENTRY_DEFAULT_START_HHMM });
-        return;
-      }
-      patchIndicators({ brokerLateEntryStartHHMM: normalizeBrokerLateEntryStartHHMM(value) });
-    },
-
-    setBrokerLateEntrySideMode: (mode) => {
-      if (mode !== 'both' && mode !== 'buy' && mode !== 'sell') return;
-      patchIndicators({ brokerLateEntrySideMode: mode });
-    },
-
-    setBrokerLateEntryStyle: (patch) => {
-      const s = get();
-      patchIndicators({
-        brokerLateEntryBuyColor: patch.buyColor ?? s.brokerLateEntryBuyColor,
-        brokerLateEntrySellColor: patch.sellColor ?? s.brokerLateEntrySellColor,
-      });
-    },
-
-    setDailyMovingAverage: (id, patch) => {
-      const current = get().dailyMovingAverages;
-      const idx = current.findIndex((m) => m.id === id);
-      if (idx === -1) return;
-      const cur = current[idx];
-      const next: LiveMAConfig = { ...cur, ...patch };
-      if (patch.period !== undefined) {
-        const p = Number(patch.period);
-        if (!Number.isFinite(p)) return;
-        next.period = clamp(Math.floor(p), MA_PERIOD_MIN, MA_PERIOD_MAX);
-      }
-      const nextArr = current.slice();
-      nextArr[idx] = next;
-      patchIndicators({ dailyMovingAverages: nextArr });
-    },
-
-    addDailyMovingAverage: () => {
-      const current = get().dailyMovingAverages;
-      if (current.length >= MA_SLOT_LIMIT) return;
-      const last = current[current.length - 1];
-      const period = last ? clamp(last.period * 2, MA_PERIOD_MIN, MA_PERIOD_MAX) : 20;
-      const next: LiveMAConfig = {
-        id: nextSlotId(current, 'dma'),
-        enabled: true,
-        period,
-        color: nextSlotColor(current),
-        lineWidth: 2,
-        source: 'close',
-      };
-      patchIndicators({ dailyMovingAverages: [...current, next] });
-    },
-
-    removeDailyMovingAverage: (id) => {
-      const current = get().dailyMovingAverages;
-      if (current.length <= 1) return;
-      const nextArr = current.filter((m) => m.id !== id);
-      if (nextArr.length === current.length) return;
-      patchIndicators({ dailyMovingAverages: nextArr });
-    },
-
-    setDailyMovingAverageEnabled: (enabled) => {
-      patchIndicators(enabled
-        ? { dailyMovingAverageEnabled: true, dailyMovingAverageHidden: false }
-        : { dailyMovingAverageEnabled: false });
-    },
-
-    setDailyMovingAverageHidden: (hidden) => {
-      patchIndicators({ dailyMovingAverageHidden: hidden });
     },
 
     projectActiveView: ({ instrument, code, timeframe, historicalFromDate, lastMinuteHistoricalFromDate, viewport }) => {

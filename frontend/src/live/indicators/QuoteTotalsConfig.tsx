@@ -2,21 +2,21 @@ import SignColorLegend from './SignColorLegend';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import ToggleRow from '../settings/ToggleRow';
 import MAStylePicker from './MAStylePicker';
-import { useLivePageStore } from '../../state/livePage';
+import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 /** 총잔량 상세 — 매수/매도 호가 총잔량 라인 범례 + 현재값 수평선 + 급증 마커 설정.
  *  동작설정(급증 마커·문턱)은 chartPrefs에 저장(렌더 위치만 ⚙️→지표 모달 이동). */
 export default function QuoteTotalsConfig() {
-  const levelEnabled = useLivePageStore((s) => s.quoteTotalsLevelLineEnabled);
-  const setLevelEnabled = useLivePageStore((s) => s.setQuoteTotalsLevelLineEnabled);
-  const bidColor = useLivePageStore((s) => s.quoteTotalsBidLevelColor);
-  const bidWidth = useLivePageStore((s) => s.quoteTotalsBidLevelWidth);
-  const bidStyle = useLivePageStore((s) => s.quoteTotalsBidLevelStyle);
-  const setBidStyle = useLivePageStore((s) => s.setQuoteTotalsBidLevelStyle);
-  const askColor = useLivePageStore((s) => s.quoteTotalsAskLevelColor);
-  const askWidth = useLivePageStore((s) => s.quoteTotalsAskLevelWidth);
-  const askStyle = useLivePageStore((s) => s.quoteTotalsAskLevelStyle);
-  const setAskStyle = useLivePageStore((s) => s.setQuoteTotalsAskLevelStyle);
+  const levelEnabled = useWindowIndicator((s) => s.quoteTotalsLevelLineEnabled);
+  const setLevelEnabled = useIndicatorActions().setQuoteTotalsLevelLineEnabled;
+  const bidColor = useWindowIndicator((s) => s.quoteTotalsBidLevelColor);
+  const bidWidth = useWindowIndicator((s) => s.quoteTotalsBidLevelWidth);
+  const bidStyle = useWindowIndicator((s) => s.quoteTotalsBidLevelStyle);
+  const setBidStyle = useIndicatorActions().setQuoteTotalsBidLevelStyle;
+  const askColor = useWindowIndicator((s) => s.quoteTotalsAskLevelColor);
+  const askWidth = useWindowIndicator((s) => s.quoteTotalsAskLevelWidth);
+  const askStyle = useWindowIndicator((s) => s.quoteTotalsAskLevelStyle);
+  const setAskStyle = useIndicatorActions().setQuoteTotalsAskLevelStyle;
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">

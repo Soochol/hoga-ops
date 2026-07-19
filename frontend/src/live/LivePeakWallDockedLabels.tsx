@@ -6,11 +6,11 @@ import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { livePeakWallDockedLabelsFromSegments } from '../chart/AskPeakSegmentsPrimitive';
 import { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
-import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs, type ChartViewPrefs } from '../state/chartPrefs';
 import { buildAskPeakOverlaySegments, styleVisibleMaxAskPeakSegments } from './LiveAskPeakSegments';
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
+import { useWindowIndicator } from './workspace/windowView';
 
 type VisibleMaxRankLimit = 0 | 1 | 2 | 3;
 
@@ -63,18 +63,18 @@ function LivePeakWallDockedLabels({
 }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   // 눈(hidden)은 세그먼트와 도킹 라벨을 함께 숨긴다 — 시각 요소 일괄.
-  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled && !s.askPeakHidden);
-  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled && !s.bidPeakHidden);
-  const askColor = useLivePageStore((s) => s.askPeakColor);
-  const askLineWidth = useLivePageStore((s) => s.askPeakLineWidth);
-  const askAllPriceColor = useLivePageStore((s) => s.askPeakAllPriceColor);
-  const askAllPriceLineWidth = useLivePageStore((s) => s.askPeakAllPriceLineWidth);
-  const askVisibleMaxColor = useLivePageStore((s) => s.askPeakVisibleMaxColor);
-  const askVisibleMaxLineWidth = useLivePageStore((s) => s.askPeakVisibleMaxLineWidth);
-  const bidColor = useLivePageStore((s) => s.bidPeakColor);
-  const bidLineWidth = useLivePageStore((s) => s.bidPeakLineWidth);
-  const bidAllPriceColor = useLivePageStore((s) => s.bidPeakAllPriceColor);
-  const bidAllPriceLineWidth = useLivePageStore((s) => s.bidPeakAllPriceLineWidth);
+  const askPeakEnabled = useWindowIndicator((s) => s.askPeakEnabled && !s.askPeakHidden);
+  const bidPeakEnabled = useWindowIndicator((s) => s.bidPeakEnabled && !s.bidPeakHidden);
+  const askColor = useWindowIndicator((s) => s.askPeakColor);
+  const askLineWidth = useWindowIndicator((s) => s.askPeakLineWidth);
+  const askAllPriceColor = useWindowIndicator((s) => s.askPeakAllPriceColor);
+  const askAllPriceLineWidth = useWindowIndicator((s) => s.askPeakAllPriceLineWidth);
+  const askVisibleMaxColor = useWindowIndicator((s) => s.askPeakVisibleMaxColor);
+  const askVisibleMaxLineWidth = useWindowIndicator((s) => s.askPeakVisibleMaxLineWidth);
+  const bidColor = useWindowIndicator((s) => s.bidPeakColor);
+  const bidLineWidth = useWindowIndicator((s) => s.bidPeakLineWidth);
+  const bidAllPriceColor = useWindowIndicator((s) => s.bidPeakAllPriceColor);
+  const bidAllPriceLineWidth = useWindowIndicator((s) => s.bidPeakAllPriceLineWidth);
   const askIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const askShowAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
   const askLabelEnabled = useActivePrefs((s) => s.askPeakLabelEnabled);

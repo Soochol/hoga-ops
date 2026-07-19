@@ -1,13 +1,13 @@
-import { useLivePageStore } from '../../state/livePage';
 import MAStylePicker from './MAStylePicker';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
+import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 /** 호가 잔량 히트맵 상세 설정 — 매수/매도 색(MAStylePicker) + 최대 불투명도. */
 export default function DepthHeatmapConfig() {
-  const bidColor = useLivePageStore((s) => s.depthHeatmapBidColor);
-  const askColor = useLivePageStore((s) => s.depthHeatmapAskColor);
-  const maxOpacity = useLivePageStore((s) => s.depthHeatmapMaxOpacity);
-  const setStyle = useLivePageStore((s) => s.setDepthHeatmapStyle);
+  const bidColor = useWindowIndicator((s) => s.depthHeatmapBidColor);
+  const askColor = useWindowIndicator((s) => s.depthHeatmapAskColor);
+  const maxOpacity = useWindowIndicator((s) => s.depthHeatmapMaxOpacity);
+  const setStyle = useIndicatorActions().setDepthHeatmapStyle;
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">

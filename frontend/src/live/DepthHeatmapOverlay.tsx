@@ -3,7 +3,6 @@ import type { IChartApi, ISeriesApi, ITimeScaleApi, SeriesType, Time } from 'lig
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { DepthHeatmapPrimitive, type DepthHeatmapCell } from '../chart/DepthHeatmapPrimitive';
 import type { DepthHeatmapPoint } from './depthHeatmapWire';
@@ -14,6 +13,7 @@ import {
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty } from './peakLegendValues';
+import { useWindowIndicator } from './workspace/windowView';
 
 /** 가시 시간범위(가상초 {from,to}). 초기 마운트엔 null, 차트 teardown 중엔 throw → null.
  *  HighLowAnnotationOverlay.readVisibleRange 와 동일 관용구. */
@@ -132,11 +132,11 @@ type Props = {
 
 function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
-  const enabled = useLivePageStore((s) => s.depthHeatmapEnabled);
-  const hidden = useLivePageStore((s) => s.depthHeatmapHidden);
-  const bidColor = useLivePageStore((s) => s.depthHeatmapBidColor);
-  const askColor = useLivePageStore((s) => s.depthHeatmapAskColor);
-  const maxOpacity = useLivePageStore((s) => s.depthHeatmapMaxOpacity);
+  const enabled = useWindowIndicator((s) => s.depthHeatmapEnabled);
+  const hidden = useWindowIndicator((s) => s.depthHeatmapHidden);
+  const bidColor = useWindowIndicator((s) => s.depthHeatmapBidColor);
+  const askColor = useWindowIndicator((s) => s.depthHeatmapAskColor);
+  const maxOpacity = useWindowIndicator((s) => s.depthHeatmapMaxOpacity);
   const intraMax = useActivePrefs((p) => p.depthHeatmapIntraMax);
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
   // 강도 정규화 기준 = 현재 보이는 시간범위. 팬/줌 시 재정규화(HighLowAnnotationOverlay 선례).

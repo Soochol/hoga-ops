@@ -1,7 +1,7 @@
-import { useLivePageStore } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import MAStylePicker from './MAStylePicker';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
+import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 const RANK_OPTIONS = [
   { value: 1, label: '1' },
@@ -17,15 +17,15 @@ const VISIBLE_MAX_RANK_OPTIONS = [
 /** 당일 매도 최대벽 상세 설정 — 선 색·두께(MAStylePicker 재활용).
  *  `embedded` — 병합된 「당일 최대벽」 서브탭 안에서 제목·설명을 숨긴다(BidPeakConfig와 동일). */
 export default function AskPeakConfig({ embedded = false }: { embedded?: boolean } = {}) {
-  const color = useLivePageStore((s) => s.askPeakColor);
-  const lineWidth = useLivePageStore((s) => s.askPeakLineWidth);
-  const allPriceColor = useLivePageStore((s) => s.askPeakAllPriceColor);
-  const allPriceLineWidth = useLivePageStore((s) => s.askPeakAllPriceLineWidth);
-  const visibleMaxColor = useLivePageStore((s) => s.askPeakVisibleMaxColor);
-  const visibleMaxLineWidth = useLivePageStore((s) => s.askPeakVisibleMaxLineWidth);
-  const setStyle = useLivePageStore((s) => s.setAskPeakStyle);
-  const setAllPriceStyle = useLivePageStore((s) => s.setAskPeakAllPriceStyle);
-  const setVisibleMaxStyle = useLivePageStore((s) => s.setAskPeakVisibleMaxStyle);
+  const color = useWindowIndicator((s) => s.askPeakColor);
+  const lineWidth = useWindowIndicator((s) => s.askPeakLineWidth);
+  const allPriceColor = useWindowIndicator((s) => s.askPeakAllPriceColor);
+  const allPriceLineWidth = useWindowIndicator((s) => s.askPeakAllPriceLineWidth);
+  const visibleMaxColor = useWindowIndicator((s) => s.askPeakVisibleMaxColor);
+  const visibleMaxLineWidth = useWindowIndicator((s) => s.askPeakVisibleMaxLineWidth);
+  const setStyle = useIndicatorActions().setAskPeakStyle;
+  const setAllPriceStyle = useIndicatorActions().setAskPeakAllPriceStyle;
+  const setVisibleMaxStyle = useIndicatorActions().setAskPeakVisibleMaxStyle;
   const postTouchRankLimit = useChartPrefsStore((s) => s.askPeakAllPriceRankLimit);
   const untradedRankLimit = useChartPrefsStore((s) => s.askPeakUntradedRankLimit);
   const visibleMaxRankLimit = useChartPrefsStore((s) => s.askPeakVisibleMaxRankLimit);

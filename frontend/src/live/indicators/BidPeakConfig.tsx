@@ -1,7 +1,7 @@
-import { useLivePageStore } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import MAStylePicker from './MAStylePicker';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
+import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 const RANK_OPTIONS = [
   { value: 1, label: '1' },
@@ -17,12 +17,12 @@ const VISIBLE_MAX_RANK_OPTIONS = [
 /** `embedded` — 병합된 「당일 최대벽」 페이지의 서브탭 안에서 렌더될 때 제목·설명을
  *  숨긴다(상위가 이미 표시). 단독 카테고리로 쓰이던 시절과의 호환을 위해 기본 false. */
 export default function BidPeakConfig({ embedded = false }: { embedded?: boolean } = {}) {
-  const color = useLivePageStore((s) => s.bidPeakColor);
-  const lineWidth = useLivePageStore((s) => s.bidPeakLineWidth);
-  const allPriceColor = useLivePageStore((s) => s.bidPeakAllPriceColor);
-  const allPriceLineWidth = useLivePageStore((s) => s.bidPeakAllPriceLineWidth);
-  const setStyle = useLivePageStore((s) => s.setBidPeakStyle);
-  const setAllPriceStyle = useLivePageStore((s) => s.setBidPeakAllPriceStyle);
+  const color = useWindowIndicator((s) => s.bidPeakColor);
+  const lineWidth = useWindowIndicator((s) => s.bidPeakLineWidth);
+  const allPriceColor = useWindowIndicator((s) => s.bidPeakAllPriceColor);
+  const allPriceLineWidth = useWindowIndicator((s) => s.bidPeakAllPriceLineWidth);
+  const setStyle = useIndicatorActions().setBidPeakStyle;
+  const setAllPriceStyle = useIndicatorActions().setBidPeakAllPriceStyle;
   const postTouchRankLimit = useChartPrefsStore((s) => s.bidPeakAllPriceRankLimit);
   const untradedRankLimit = useChartPrefsStore((s) => s.bidPeakUntradedRankLimit);
   const visibleMaxRankLimit = useChartPrefsStore((s) => s.bidPeakVisibleMaxRankLimit);

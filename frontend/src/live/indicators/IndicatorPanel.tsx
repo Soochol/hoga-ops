@@ -1,6 +1,6 @@
 import { useState, Fragment } from 'react';
-import { useLivePageStore } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
+import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
 import MovingAverageConfig from './MovingAverageConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
@@ -95,41 +95,47 @@ type Props = {
 };
 
 export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILITIES, timeframe }: Props) {
-  const maEnabled = useLivePageStore((s) => s.movingAverageEnabled);
-  const setMaEnabled = useLivePageStore((s) => s.setMovingAverageEnabled);
-  const dailyMaEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
-  const setDailyMaEnabled = useLivePageStore((s) => s.setDailyMovingAverageEnabled);
-  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
-  const setAskPeakEnabled = useLivePageStore((s) => s.setAskPeakEnabled);
-  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
-  const setBidPeakEnabled = useLivePageStore((s) => s.setBidPeakEnabled);
-  const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
-  const setTradeVolumePocEnabled = useLivePageStore((s) => s.setTradeVolumePocEnabled);
-  const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
-  const setVolumeDistributionEnabled = useLivePageStore((s) => s.setVolumeDistributionEnabled);
-  const volumeDistributionHoverCutoffEnabled = useLivePageStore((s) => s.volumeDistributionHoverCutoffEnabled);
-  const setVolumeDistributionHoverCutoffEnabled = useLivePageStore((s) => s.setVolumeDistributionHoverCutoffEnabled);
-  const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
-  const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
-  const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
-  const setVolumeDistributionRangeCount = useLivePageStore((s) => s.setVolumeDistributionRangeCount);
-  const setVolumeDistributionStyle = useLivePageStore((s) => s.setVolumeDistributionStyle);
-  const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
-  const setBrokerLateEntryEnabled = useLivePageStore((s) => s.setBrokerLateEntryEnabled);
-  const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
-  const setDepthHeatmapEnabled = useLivePageStore((s) => s.setDepthHeatmapEnabled);
-  const paneIndicators = useLivePageStore((s): PanePrefsIndicatorSource => ({
-    volumeEnabled: s.volumeEnabled,
-    quoteTotalsEnabled: s.quoteTotalsEnabled,
-    ratioEnabled: s.ratioEnabled,
-    fillStrengthEnabled: s.fillStrengthEnabled,
-    programTradeEnabled: s.programTradeEnabled,
-    foreignNetEnabled: s.foreignNetEnabled,
-    institutionNetEnabled: s.institutionNetEnabled,
-  }));
-  const setPanePrefForTimeframe = useLivePageStore((s) => s.setPanePrefForTimeframe);
+  // 창-스코프 절단(ADR-0119 C2c-2a): 읽기=대상 창의 resolve 된 설정, 쓰기=창 봉
+  // 버킷. Provider 밖(/study·플립 전 /live)에서는 둘 다 전역 스토어로 폴백.
+  const ind = useWindowIndicators();
+  const actions = useIndicatorActions();
+  const maEnabled = ind.movingAverageEnabled;
+  const setMaEnabled = actions.setMovingAverageEnabled;
+  const dailyMaEnabled = ind.dailyMovingAverageEnabled;
+  const setDailyMaEnabled = actions.setDailyMovingAverageEnabled;
+  const askPeakEnabled = ind.askPeakEnabled;
+  const setAskPeakEnabled = actions.setAskPeakEnabled;
+  const bidPeakEnabled = ind.bidPeakEnabled;
+  const setBidPeakEnabled = actions.setBidPeakEnabled;
+  const tradeVolumePocEnabled = ind.tradeVolumePocEnabled;
+  const setTradeVolumePocEnabled = actions.setTradeVolumePocEnabled;
+  const volumeDistributionEnabled = ind.volumeDistributionEnabled;
+  const setVolumeDistributionEnabled = actions.setVolumeDistributionEnabled;
+  const volumeDistributionHoverCutoffEnabled = ind.volumeDistributionHoverCutoffEnabled;
+  const setVolumeDistributionHoverCutoffEnabled = actions.setVolumeDistributionHoverCutoffEnabled;
+  const volumeDistributionRangeCount = ind.volumeDistributionRangeCount;
+  const volumeDistributionColor = ind.volumeDistributionColor;
+  const volumeDistributionMaxColor = ind.volumeDistributionMaxColor;
+  const setVolumeDistributionRangeCount = actions.setVolumeDistributionRangeCount;
+  const setVolumeDistributionStyle = actions.setVolumeDistributionStyle;
+  const brokerLateEntryEnabled = ind.brokerLateEntryEnabled;
+  const setBrokerLateEntryEnabled = actions.setBrokerLateEntryEnabled;
+  const depthHeatmapEnabled = ind.depthHeatmapEnabled;
+  const setDepthHeatmapEnabled = actions.setDepthHeatmapEnabled;
+  const paneIndicators: PanePrefsIndicatorSource = {
+    volumeEnabled: ind.volumeEnabled,
+    quoteTotalsEnabled: ind.quoteTotalsEnabled,
+    ratioEnabled: ind.ratioEnabled,
+    fillStrengthEnabled: ind.fillStrengthEnabled,
+    programTradeEnabled: ind.programTradeEnabled,
+    foreignNetEnabled: ind.foreignNetEnabled,
+    institutionNetEnabled: ind.institutionNetEnabled,
+  };
+  const setPanePrefForTimeframe = actions.setPanePrefForTimeframe;
 
-  const resetIndicators = useLivePageStore((s) => s.resetIndicators);
+  const resetIndicators = actions.resetIndicators;
+  // chartPrefs 는 전역 유지(#712 — 창 소유는 지표만). 창 대상 리셋과의 비대칭은
+  // 문서화된 수용(스펙 ⑤): 지표는 대상 창만, indicator-modal chartPrefs 는 전역.
   const resetChartPrefsBucket = useChartPrefsStore((s) => s.resetIndicatorModalBucket);
 
   // Which category's detail pane shows on the right. Clicking a category label

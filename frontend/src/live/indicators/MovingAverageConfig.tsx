@@ -1,11 +1,12 @@
-import { useLivePageStore, MA_SLOT_LIMIT } from '../../state/livePage';
+import { MA_SLOT_LIMIT } from '../../state/livePage';
 import MovingAverageRow from './MovingAverageRow';
+import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 export default function MovingAverageConfig() {
-  const configs = useLivePageStore((s) => s.movingAverages);
-  const setMA = useLivePageStore((s) => s.setMovingAverage);
-  const addMA = useLivePageStore((s) => s.addMovingAverage);
-  const removeMA = useLivePageStore((s) => s.removeMovingAverage);
+  const configs = useWindowIndicator((s) => s.movingAverages);
+  const setMA = useIndicatorActions().setMovingAverage;
+  const addMA = useIndicatorActions().addMovingAverage;
+  const removeMA = useIndicatorActions().removeMovingAverage;
   const atLimit = configs.length >= MA_SLOT_LIMIT;
   const canRemove = configs.length > 1;
 

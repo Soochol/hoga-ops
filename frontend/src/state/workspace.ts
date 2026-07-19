@@ -1,7 +1,22 @@
 import { create } from 'zustand';
 import { persistJson, readJsonObject } from './persist';
-import { normalizeIndicatorsV2, type PersistedIndicatorsV2 } from './indicatorSettingsV2';
-import { LIVE_TIMEFRAMES, type LiveTimeframe } from './livePage';
+import {
+  normalizeIndicatorsV2,
+  type IndicatorSettings,
+  type PersistedIndicatorsV2,
+} from './indicatorSettingsV2';
+import {
+  LIVE_TIMEFRAMES,
+  MINUTE_TIMEFRAMES,
+  isMinuteTimeframe,
+  type LiveTimeframe,
+  type MinuteTimeframe,
+} from './livePage';
+import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
+import type { PaneId } from '../chart/drawing/types';
+import { profileKeyForTimeframe } from '../live/indicators/indicatorPaneProfiles';
+import { applyPresetEnableByTimeframe } from './indicatorPresetOps';
+import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
 import { tidyLayout } from '../live/workspace/tidy';
 import { MIN_W, MIN_H, type Canvas, type Rect } from '../live/workspace/snapEngine';
 import { readLegacyWorkspaceSeed } from './workspaceMigration';
@@ -37,6 +52,16 @@ export interface WorkspaceRect {
 export interface ChartWindowConfig {
   timeframe: LiveTimeframe;
   indicators: PersistedIndicatorsV2;
+  /** 마지막 분봉 기억(창별) — 봉 컨트롤의 분봉 슬롯 복귀·Shift+m 용. 없으면 '1m'. */
+  lastMinuteTimeframe?: MinuteTimeframe;
+}
+
+/** 창별 비영속 런타임 뷰 상태 (#713 뷰포트 비저장과 정합 — 세션 한정).
+ *  좌측 팬 딥 백필의 창별 from-date 와 분봉 창 기억(livePage 의
+ *  historicalFromDate/lastMinuteHistoricalFromDate 시맨틱을 창으로 절단). */
+export interface ChartWindowRuntime {
+  historicalFromDate: string | null;
+  lastMinuteHistoricalFromDate: string | null;
 }
 
 export interface WorkspaceWindow {
@@ -61,6 +86,8 @@ type Persisted = {
 };
 
 type Store = Persisted & {
+  /** 창별 비영속 런타임(팬 백필 from-date 등). 창 닫힘·종목 교체 시 정리. */
+  chartRuntime: Record<string, ChartWindowRuntime>;
   addWindow: (kind: WindowKind) => string;
   closeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
@@ -71,6 +98,25 @@ type Store = Persisted & {
   setWindowGroup: (id: string, group: GroupId) => void;
   setGroupSymbol: (group: GroupId, symbol: GroupSymbol) => void;
   tidyAll: (canvas: Canvas) => void;
+
+  // ── 차트 창 지표 쓰기 경로 (ADR-0119 C2c-2a, #712 창 소유 설정) ──
+  /** 대상 창의 "현재 봉" 버킷에 patch 를 누적한다(livePage patchIndicators 미러 —
+   *  sparse 정리는 로드 시 normalize 가 담당). 차트 창이 아니면 no-op. */
+  patchChartIndicators: (id: string, patch: Partial<IndicatorSettings>) => void;
+  /** 봉 전환 — livePage setCandleTimeframe 의 창별 미러(분봉 기억·백필 리셋 포함). */
+  setChartTimeframe: (id: string, tf: LiveTimeframe) => void;
+  setChartPaneOrder: (id: string, order: PaneId[]) => void;
+  setChartPaneStretch: (id: string, patch: PaneStretchMap) => void;
+  /** 현재 봉 버킷만 공장값으로(#697 미러). 레이아웃은 보존. */
+  resetChartIndicators: (id: string) => void;
+  applyChartIndicatorPreset: (id: string, preset: {
+    paneOrder: PaneId[];
+    byTimeframeEnable: PresetEnableByTimeframe;
+    paneStretch: PaneStretchMap;
+  }) => void;
+  /** 좌측 팬 딥 백필의 창별 from-date 확장 — 단조 감소 가드(livePage 미러). */
+  extendChartHistoricalRange: (id: string, date: string) => void;
+  resetChartHistoricalRange: (id: string) => void;
 };
 
 let idCounter = 0;
@@ -95,6 +141,10 @@ function isLiveTimeframe(value: unknown): value is LiveTimeframe {
   return typeof value === 'string' && (LIVE_TIMEFRAMES as readonly string[]).includes(value);
 }
 
+function isMinuteFrameValue(value: unknown): value is MinuteTimeframe {
+  return typeof value === 'string' && (MINUTE_TIMEFRAMES as readonly string[]).includes(value);
+}
+
 function readRect(raw: unknown): WorkspaceRect | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -117,6 +167,9 @@ function readWindow(raw: unknown): WorkspaceWindow | null {
       timeframe: isLiveTimeframe(cfg.timeframe) ? cfg.timeframe : '1m',
       indicators: normalizeIndicatorsV2(cfg.indicators),
     };
+    if (isMinuteFrameValue(cfg.lastMinuteTimeframe)) {
+      win.chart.lastMinuteTimeframe = cfg.lastMinuteTimeframe;
+    }
   }
   return win;
 }
@@ -229,8 +282,26 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
 
 const hydrated = readStorage();
 
-export const useWorkspaceStore = create<Store>((set) => ({
+/** 차트 창 설정 변경 공통 경로 — 대상이 차트 창일 때만 fn 으로 chart 를 교체한다. */
+function withChart(
+  state: Pick<Persisted, 'windows'>,
+  id: string,
+  fn: (chart: ChartWindowConfig) => ChartWindowConfig,
+): WorkspaceWindow[] | null {
+  const win = state.windows.find((w) => w.id === id);
+  if (!win?.chart) return null;
+  const chart = fn(win.chart);
+  return state.windows.map((w) => (w.id === id ? { ...w, chart } : w));
+}
+
+const EMPTY_RUNTIME: ChartWindowRuntime = {
+  historicalFromDate: null,
+  lastMinuteHistoricalFromDate: null,
+};
+
+export const useWorkspaceStore = create<Store>((set, get) => ({
   ...hydrated,
+  chartRuntime: {},
 
   addWindow: (kind) => {
     const id = newWindowId();
@@ -250,7 +321,13 @@ export const useWorkspaceStore = create<Store>((set) => ({
         // 신선한 사본을 만든다(참조 공유 금지 — 창은 설정을 독립 소유, PR-C 편집 누출 방지).
         const src = focusedChart(state);
         win.chart = src?.chart
-          ? { timeframe: src.chart.timeframe, indicators: normalizeIndicatorsV2(src.chart.indicators) }
+          ? {
+              timeframe: src.chart.timeframe,
+              indicators: normalizeIndicatorsV2(src.chart.indicators),
+              ...(src.chart.lastMinuteTimeframe
+                ? { lastMinuteTimeframe: src.chart.lastMinuteTimeframe }
+                : {}),
+            }
           : { timeframe: '1m', indicators: normalizeIndicatorsV2({}) };
       }
       const next = { windows: [...state.windows, win], zOrder: [...state.zOrder, id] };
@@ -262,9 +339,12 @@ export const useWorkspaceStore = create<Store>((set) => ({
 
   closeWindow: (id) => {
     set((state) => {
+      const chartRuntime = { ...state.chartRuntime };
+      delete chartRuntime[id];
       const next = {
         windows: state.windows.filter((w) => w.id !== id),
         zOrder: state.zOrder.filter((i) => i !== id),
+        chartRuntime,
       };
       persistFromState({ ...state, ...next });
       return next;
@@ -315,8 +395,14 @@ export const useWorkspaceStore = create<Store>((set) => ({
     if (!isGroupId(group)) return;
     set((state) => {
       const groupSymbols = { ...state.groupSymbols, [group]: symbol };
+      // 종목 교체 = fresh view(livePage setActiveCode 미러) — 그 그룹 창들의
+      // 팬 백필·분봉 기억 런타임을 초기화한다.
+      const chartRuntime = { ...state.chartRuntime };
+      for (const w of state.windows) {
+        if (w.group === group) delete chartRuntime[w.id];
+      }
       persistFromState({ ...state, groupSymbols });
-      return { groupSymbols };
+      return { groupSymbols, chartRuntime };
     });
   },
 
@@ -332,6 +418,135 @@ export const useWorkspaceStore = create<Store>((set) => ({
       });
       persistFromState({ ...state, windows });
       return { windows };
+    });
+  },
+
+  patchChartIndicators: (id, patch) => {
+    set((state) => {
+      const windows = withChart(state, id, (chart) => {
+        const profileKey = profileKeyForTimeframe(chart.timeframe);
+        const bucket = { ...(chart.indicators.byTimeframe[profileKey] ?? {}), ...patch };
+        return {
+          ...chart,
+          indicators: {
+            ...chart.indicators,
+            byTimeframe: { ...chart.indicators.byTimeframe, [profileKey]: bucket },
+          },
+        };
+      });
+      if (!windows) return {};
+      persistFromState({ ...state, windows });
+      return { windows };
+    });
+  },
+
+  setChartTimeframe: (id, tf) => {
+    if (!isLiveTimeframe(tf)) return;
+    set((state) => {
+      const prev = state.windows.find((w) => w.id === id)?.chart;
+      if (!prev) return {};
+      const windows = withChart(state, id, (chart) => ({
+        ...chart,
+        timeframe: tf,
+        ...(isMinuteTimeframe(tf) ? { lastMinuteTimeframe: tf } : {}),
+      }));
+      if (!windows) return {};
+      // 분봉을 떠나는 순간의 pan 창 기억 + 백필 리셋(livePage setCandleTimeframe
+      // 미러 — `??` 폴백 의미는 livePage 주석 참조).
+      const rt = state.chartRuntime[id] ?? EMPTY_RUNTIME;
+      const chartRuntime = {
+        ...state.chartRuntime,
+        [id]: {
+          historicalFromDate: null,
+          lastMinuteHistoricalFromDate: isMinuteTimeframe(prev.timeframe)
+            ? rt.historicalFromDate ?? rt.lastMinuteHistoricalFromDate
+            : rt.lastMinuteHistoricalFromDate,
+        },
+      };
+      persistFromState({ ...state, windows });
+      return { windows, chartRuntime };
+    });
+  },
+
+  setChartPaneOrder: (id, order) => {
+    set((state) => {
+      const windows = withChart(state, id, (chart) => ({
+        ...chart,
+        indicators: { ...chart.indicators, paneOrder: normalizePaneOrder(order) },
+      }));
+      if (!windows) return {};
+      persistFromState({ ...state, windows });
+      return { windows };
+    });
+  },
+
+  setChartPaneStretch: (id, patch) => {
+    set((state) => {
+      const windows = withChart(state, id, (chart) => ({
+        ...chart,
+        indicators: {
+          ...chart.indicators,
+          paneStretch: normalizePaneStretch({ ...chart.indicators.paneStretch, ...patch }),
+        },
+      }));
+      if (!windows) return {};
+      persistFromState({ ...state, windows });
+      return { windows };
+    });
+  },
+
+  resetChartIndicators: (id) => {
+    set((state) => {
+      const windows = withChart(state, id, (chart) => {
+        const profileKey = profileKeyForTimeframe(chart.timeframe);
+        const byTimeframe = { ...chart.indicators.byTimeframe };
+        delete byTimeframe[profileKey];
+        return { ...chart, indicators: { ...chart.indicators, byTimeframe } };
+      });
+      if (!windows) return {};
+      persistFromState({ ...state, windows });
+      return { windows };
+    });
+  },
+
+  applyChartIndicatorPreset: (id, preset) => {
+    set((state) => {
+      const windows = withChart(state, id, (chart) => ({
+        ...chart,
+        indicators: {
+          paneOrder: normalizePaneOrder(preset.paneOrder),
+          paneStretch: normalizePaneStretch(preset.paneStretch),
+          byTimeframe: applyPresetEnableByTimeframe(
+            chart.indicators.byTimeframe,
+            preset.byTimeframeEnable,
+          ),
+        },
+      }));
+      if (!windows) return {};
+      persistFromState({ ...state, windows });
+      return { windows };
+    });
+  },
+
+  extendChartHistoricalRange: (id, date) => {
+    const state = get();
+    if (!state.windows.some((w) => w.id === id && w.chart)) return;
+    const rt = state.chartRuntime[id] ?? EMPTY_RUNTIME;
+    if (rt.historicalFromDate !== null && rt.historicalFromDate <= date) return; // 단조 감소 가드
+    set({
+      chartRuntime: {
+        ...state.chartRuntime,
+        [id]: { ...rt, historicalFromDate: date },
+      },
+    });
+  },
+
+  resetChartHistoricalRange: (id) => {
+    set((state) => {
+      if (!(id in state.chartRuntime)) return {};
+      const chartRuntime = { ...state.chartRuntime };
+      delete chartRuntime[id];
+      return { chartRuntime };
     });
   },
 }));

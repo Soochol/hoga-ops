@@ -4,7 +4,6 @@ import type { AskPeak, AskPeakCandidate, Candle, RangeSegment } from '../api/typ
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import {
@@ -19,6 +18,7 @@ import {
   inlinePeakWallSegmentsForDocking,
   type AskPeakSegment,
 } from '../chart/AskPeakSegmentsPrimitive';
+import { useWindowIndicator } from './workspace/windowView';
 
 /** peak 시각(ms)을 그 시각이 속한 캔들(버킷)의 ts_ms로 스냅. 캔들은 버킷 시작에 놓이는데
  *  (downsample_candles: ts_ms = floor(ts_ms/bucket)*bucket), peak.t_ms는 그 버킷의 마지막
@@ -453,14 +453,14 @@ type Props = {
  *  형제: LiveCurrentPriceLine(현재가 풀-너비 점선). */
 function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPeak = null, segments, candles, todayKst, untradedRankLimit = 1, visibleTimeCutoff = null }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
-  const enabled = useLivePageStore((s) => s.askPeakEnabled);
-  const hidden = useLivePageStore((s) => s.askPeakHidden);
-  const color = useLivePageStore((s) => s.askPeakColor);
-  const lineWidth = useLivePageStore((s) => s.askPeakLineWidth);
-  const allPriceColor = useLivePageStore((s) => s.askPeakAllPriceColor);
-  const allPriceLineWidth = useLivePageStore((s) => s.askPeakAllPriceLineWidth);
-  const visibleMaxColor = useLivePageStore((s) => s.askPeakVisibleMaxColor);
-  const visibleMaxLineWidth = useLivePageStore((s) => s.askPeakVisibleMaxLineWidth);
+  const enabled = useWindowIndicator((s) => s.askPeakEnabled);
+  const hidden = useWindowIndicator((s) => s.askPeakHidden);
+  const color = useWindowIndicator((s) => s.askPeakColor);
+  const lineWidth = useWindowIndicator((s) => s.askPeakLineWidth);
+  const allPriceColor = useWindowIndicator((s) => s.askPeakAllPriceColor);
+  const allPriceLineWidth = useWindowIndicator((s) => s.askPeakAllPriceLineWidth);
+  const visibleMaxColor = useWindowIndicator((s) => s.askPeakVisibleMaxColor);
+  const visibleMaxLineWidth = useWindowIndicator((s) => s.askPeakVisibleMaxLineWidth);
   const intraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const showAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
   const allPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);

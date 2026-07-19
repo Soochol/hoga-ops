@@ -31,7 +31,7 @@ import {
 } from '../../state/indicatorSettingsV2';
 import { stockInstrument } from '../liveInstrument';
 import { useLiveVenueStore } from '../../state/liveVenue';
-import type { GroupSymbol, WorkspaceWindow } from '../../state/workspace';
+import { useWorkspaceStore, type GroupSymbol, type WorkspaceWindow } from '../../state/workspace';
 
 export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const timeframe = win.chart?.timeframe ?? '1m';
@@ -40,16 +40,21 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
     () => (byTimeframe ? resolveIndicatorSettings(byTimeframe, timeframe) : FACTORY_INDICATOR_SETTINGS),
     [byTimeframe, timeframe],
   );
+  // 창별 팬 백필 from-date — 비영속 런타임(#713 뷰포트 비저장, 세션 한정).
+  // 좌측 팬이 useHistoricalRangeActions 로 확장하면 이 값이 창의 페치를 re-key 한다.
+  const historicalFromDate = useWorkspaceStore(
+    (s) => s.chartRuntime[win.id]?.historicalFromDate ?? null,
+  );
   const view: WindowViewValue = useMemo(
     () => ({
       windowId: win.id,
       group: win.group,
       code: symbol?.code ?? null,
       timeframe,
-      historicalFromDate: null, // 창별 pan 은 비저장(#713) — fresh 뷰로 시작
+      historicalFromDate,
       indicators: resolved,
     }),
-    [win.id, win.group, symbol?.code, timeframe, resolved],
+    [win.id, win.group, symbol?.code, timeframe, historicalFromDate, resolved],
   );
 
   return (
