@@ -39,6 +39,7 @@ export interface WindowFrameProps {
   group: GroupId;
   rect: WindowRectPx;
   zIndex: number;
+  /** 최상단(포커스) 창 여부 — 헤더 밴드 틴트로만 표현한다. */
   focused: boolean;
   /** 그룹→종목명. 없으면 "그룹 N" 로 표시(PR-A 스캐폴딩). */
   symbolLabel: string | null;
@@ -82,9 +83,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
   return (
     <div
       data-win={id}
-      className={`absolute flex flex-col rounded-lg bg-bg-card ${
-        focused ? 'shadow-modal' : 'shadow-panel'
-      }`}
+      className="absolute flex flex-col rounded-lg bg-bg-card shadow-panel"
       style={{
         left: rect.x,
         top: rect.y,
@@ -97,7 +96,10 @@ function WindowFrameImpl(props: WindowFrameProps) {
     >
       <div
         data-handle="move"
-        className="flex h-[26px] shrink-0 cursor-grab items-center gap-1.5 rounded-t-lg border-b border-border px-1.5 active:cursor-grabbing"
+        data-focused={focused ? '' : undefined}
+        className={`flex h-[26px] shrink-0 cursor-grab items-center gap-1.5 rounded-t-lg border-b border-border px-1.5 active:cursor-grabbing ${
+          focused ? 'bg-tint-selection' : ''
+        }`}
         onPointerDown={(e) => onHandleDown(e, id, 'move')}
       >
         <span className="select-none text-[11px] leading-none text-fg-dimmer">⠿</span>
