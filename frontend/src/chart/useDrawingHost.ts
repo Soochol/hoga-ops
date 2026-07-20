@@ -31,7 +31,7 @@ const EMPTY_PANE_SERIES = new Map<PaneId, ISeriesApi<'Line'>>();
 
 /**
  * Drawing-host concerns extracted from LiveChartRoot: paneSeries registry,
- * activeCode binding to useDrawingsStore, and the panel-anchor computation.
+ * activeScope binding to useDrawingsStore, and the panel-anchor computation.
  *
  * paneSeries is `useState<Map>` (not a ref): DrawingOverlay's redraw effect
  * has `paneSeries` in its dep array, so identity must change on each
@@ -40,7 +40,7 @@ const EMPTY_PANE_SERIES = new Map<PaneId, ISeriesApi<'Line'>>();
 export function useDrawingHost(
   chart: IChartApi | null,
   axis: VirtualAxis,
-  code: string | null,
+  scope: string | null,
   containerRef: RefObject<HTMLDivElement | null>,
 ): DrawingHost {
   const [paneSeriesState, setPaneSeriesState] = useState<PaneSeriesState>(
@@ -71,8 +71,8 @@ export function useDrawingHost(
   }, [chart]);
 
   useEffect(() => {
-    useDrawingsStore.getState().setActiveCode(code);
-  }, [code]);
+    useDrawingsStore.getState().setActiveScope(scope);
+  }, [scope]);
 
   const computeAnchor = useCallback(
     (d: Drawing): { x: number; y: number } | null => {

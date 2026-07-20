@@ -100,6 +100,7 @@ import type { PaneId } from '../chart/drawing/types';
 import type { PaneStretchMap } from '../chart/paneOrder';
 import type { BoundPaneSpec } from '../chart/paneSpecs';
 import { useDrawingHost } from '../chart/useDrawingHost';
+import { drawingScopeFor } from '../state/drawings';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 
 const TOKEN_SPEC = {
@@ -454,11 +455,16 @@ export function LiveChartRoot({
     );
   }, [cb?.segments, timeframe]);
 
-  // Drawing-host concerns (paneSeries registry, activeCode binding,
+  // 드로잉 귀속 단위 = (종목, 봉 슬롯). 분봉(1m~30m)은 한 슬롯을 공유하고
+  // D/W/M 은 각자 슬롯을 갖는다 — 같은 종목이라도 분봉에 그린 도형이 일봉에
+  // 나타나지 않는다. code 가 없으면(종목 미선택) scope 도 없다.
+  const drawingScope = useMemo(() => drawingScopeFor(code, timeframe), [code, timeframe]);
+
+  // Drawing-host concerns (paneSeries registry, activeScope binding,
   // panel-anchor computation) live in their own hook so this file stays
   // focused on chart bootstrap, viewport policy, and overlay mounts.
   const { paneSeries, registerPaneSeries, unregisterPaneSeries } =
-    useDrawingHost(chart, axis, code, containerRef);
+    useDrawingHost(chart, axis, drawingScope, containerRef);
   // Stable per-(un)register callbacks so RangeSeriesPane's React.memo (Phase B)
   // can skip candle/volume panes on an SSE tick. RangeSeriesPane passes the
   // pane name back, so one callback serves all panes (vs a per-pane closure that
@@ -2111,7 +2117,7 @@ export function LiveChartRoot({
           <DrawingOverlay
             chart={chart}
             axis={axis}
-            code={code}
+            scope={drawingScope}
             paneSeries={paneSeries}
             onChartHoverPassthrough={handleDrawingOverlayHover}
             bucketMs={cb?.bucket_ms ?? undefined}
@@ -2145,7 +2151,7 @@ export function LiveChartRoot({
           {isMinuteTimeframe(timeframe) && hogaBundle && (
             <PriceLevelDotsOverlay chart={chart} bundle={hogaBundle} axis={axis} paneSeries={paneSeries} />
           )}
-          <DrawingPropertyPanel code={code} />
+          <DrawingPropertyPanel scope={drawingScope} />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a
               per-day vertical line collapses onto each candle. */}

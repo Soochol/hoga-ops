@@ -5,7 +5,7 @@ import { ChartDrawingShell } from './ChartDrawingShell';
 describe('ChartDrawingShell', () => {
   it('renders the drawing rail beside the chart body in the shared 44px layout', () => {
     render(
-      <ChartDrawingShell>
+      <ChartDrawingShell code="005930" timeframe="1m">
         <div data-testid="chart-body">chart</div>
       </ChartDrawingShell>,
     );
@@ -21,7 +21,7 @@ describe('ChartDrawingShell', () => {
   // jsdom 은 그리드 레이아웃을 계산하지 않으므로 클래스 불변식으로 잠근다.
   it('constrains both grid axes to minmax(0,1fr) so the chart can shrink, not just grow', () => {
     render(
-      <ChartDrawingShell>
+      <ChartDrawingShell code="005930" timeframe="1m">
         <div data-testid="chart-body">chart</div>
       </ChartDrawingShell>,
     );

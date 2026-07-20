@@ -571,7 +571,10 @@ export function StudyPage() {
                   학습뷰 불러오는 중...
                 </div>
               ) : activeViewModel.status === 'ready' ? (
-                <ChartDrawingShell>
+                <ChartDrawingShell
+                  code={activeViewModel.save.code}
+                  timeframe={activeViewModel.save.timeframe}
+                >
                   <LiveChartRoot
                     code={activeViewModel.save.code}
                     timeframe={activeViewModel.save.timeframe}
