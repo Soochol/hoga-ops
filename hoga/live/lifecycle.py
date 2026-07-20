@@ -116,7 +116,7 @@ _today_promote_last_ms: dict[str, int] = {}
 
 
 def record_today_promote_success(code: str, t_ms: int) -> None:
-    """Called by promote_today on success; surfaced via LiveStatus (ADR-0043)."""
+    """Called by promote_kiwoom_today on success; surfaced via LiveStatus (ADR-0043)."""
     _today_promote_last_ms[code] = t_ms
 
 
@@ -159,7 +159,7 @@ def get_today_ask_peak(code: str) -> dict | None:
     session = _state.kiwoom_session
     if session is None:
         return None
-    for stream in session.broker_dispatch_streams():
+    for stream in session.capture_streams():
         snapshot = getattr(stream, "ask_peak_snapshot", None)
         if snapshot is None:
             continue
@@ -174,7 +174,7 @@ def get_today_bid_peak(code: str) -> dict | None:
     session = _state.kiwoom_session
     if session is None:
         return None
-    for stream in session.broker_dispatch_streams():
+    for stream in session.capture_streams():
         snapshot = getattr(stream, "bid_peak_snapshot", None)
         if snapshot is None:
             continue

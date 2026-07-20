@@ -12,6 +12,8 @@
 
 **Amends:** ADR-0111 (거래원 WS→REST) — REST 공급은 과도기 유지하되 주입처가 키움
 스트림으로 바뀌고, 최종적으로 키움 0F push로 교체된다(검증 전제).
+**갱신(2026-07-20):** 과도기 종료 — 정규장 스모크 통과 후 PR-F2 로 BrokerRestPoller
+삭제(ADR-0111 superseded), PR-F4 로 프로그램매매도 키움 0w push 전환 완료.
 
 **Unchanged:** ADR-0115 (per-source 완결성·hogaplay 게이트), ADR-0062 (동시호가 배제),
 ADR-0038 (hot-path JSONL), ADR-0043 (Today Promotion).
@@ -36,7 +38,7 @@ KIS WS는 연결당 41등록(종목당 2 TR → 계좌당 19종목)이라 관심
 | 역할 | 담당 |
 |---|---|
 | 실시간 WS (호가·체결, 관심종목+히트맵+온디맨드) | **키움 전담** |
-| 거래원·프로그램 실시간 | 목표 = **키움 0F/0w push** (정규장 스모크 검증 전제); 과도기 = KIS REST 폴링 유지 |
+| 거래원·프로그램 실시간 | **키움 0F/0w push** (2026-07-20 PR-F2/F4 컷오버 완료 — 과도기 KIS REST 폴링은 삭제됨) |
 | 장중 폴링 REST (캔들·지수·투자자·백필) | **KIS 전담** (기존 capacity scheduler 체계 존속) |
 | 딥 배치 (분봉 백필) | 키움 우선(900봉/콜) → KIS 폴백 |
 | KIS WS 계층 | **완전 삭제** (휴면 아님) |
@@ -69,9 +71,9 @@ NXT·온디맨드 틱은 어느 조합이든 저장되지 않는다. 성역 가�
 `kiwoom_live` 인접 배치가 혼재를 자동 처리(기배선, 무변경).
 
 거래원(BROKER) 행은 키움 스트림에 주입돼 `kiwoom_live/brokers.parquet`으로
-승격된다 — 과도기 공급자는 KIS REST(BrokerRestPoller), 최종은 키움 0F. 어느
-쪽이든 착지·소비자 무변경(ADR-0111의 합성 틱 원칙 승계). cntr_tm 라벨 가정은
-정규장 스모크 확정에 위임(런타임 가드 없음).
+승격된다 — 공급자는 키움 0F(_parse_member). 과도기 공급자였던 KIS
+REST(BrokerRestPoller)는 PR-F2 로 삭제됐고, shape-compat 원칙(ADR-0111 합성 틱
+승계) 덕에 컷오버 전후 착지·소비자 무변경이었다.
 
 ### 4. 표시 — 시분할 폐지, 3옵션 직결 (#681 v2)
 

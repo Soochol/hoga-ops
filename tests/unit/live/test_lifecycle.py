@@ -46,7 +46,7 @@ def test_get_today_ask_peak_returns_matching_stream_snapshot() -> None:
             return {"date": "20260616", "code": code, "all_qty": 9000}
 
     class _FakeKiwoom:
-        def broker_dispatch_streams(self):
+        def capture_streams(self):
             return [_FakeStream()]
 
     lifecycle._state = _State(kiwoom_session=_FakeKiwoom())
@@ -74,7 +74,7 @@ def test_get_today_ask_peak_skips_non_matching_or_legacy_streams() -> None:
             return {"date": "20260616", "code": code, "all_qty": 9000}
 
     class _FakeKiwoom:
-        def broker_dispatch_streams(self):
+        def capture_streams(self):
             # object()는 ask_peak_snapshot 없음(레거시/미지원 스트림 — getattr None → skip)
             return [object(), _OwningStream({"000660"})]
 
@@ -109,7 +109,7 @@ def test_get_today_bid_peak_returns_matching_stream_snapshot() -> None:
             return {"date": "20260619", "code": code, "all_qty": 12_000}
 
     class _FakeKiwoom:
-        def broker_dispatch_streams(self):
+        def capture_streams(self):
             return [_FakeStream()]
 
     lifecycle._state = _State(kiwoom_session=_FakeKiwoom())

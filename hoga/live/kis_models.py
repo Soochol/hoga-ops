@@ -10,6 +10,13 @@ from pydantic import BaseModel
 
 
 class KisCandle(BaseModel):
+    """브로커 중립 캔들 포트 — 이름의 "Kis" 는 역사적이다.
+
+    KIS REST 캔들 파서와 키움 REST 딥백필(kiwoom_client)이 **둘 다** 이 shape 로
+    생산하고, 캔들 캐시·백필 사다리가 소스 무관으로 소비한다. 리네임은 22개
+    사용처 파급이라 보류(2026-07-20 감사) — 이 주석이 실체를 말한다.
+    """
+
     t_ms: int   # epoch ms (UTC) — start of bar
     open: int
     high: int
@@ -48,23 +55,5 @@ class InvestorTrendEstimateRow(BaseModel):
     sum_qty: int | None
 
 
-class ProgramTradeByStockRow(BaseModel):
-    """One KIS stock-level program-trade row.
-
-    `bsop_hour` is the KIS intraday HHMMSS key. The endpoint reports cumulative
-    net-buy quantity/amount, so each observed point is independently meaningful
-    even when the rolling response window skips intermediate rows.
-    """
-
-    code: str
-    bsop_hour: str
-    t_ms: int
-    price: int | None
-    net_qty: int | None
-    net_amount: int | None
-    buy_qty: int | None
-    sell_qty: int | None
-    buy_amount: int | None
-    sell_amount: int | None
-    delta_qty: int | None
-    delta_amount: int | None
+# ProgramTradeByStockRow 는 program_trade_store.py 로 이사(2026-07-20 감사) —
+# 공급원이 KIS REST 에서 키움 0w 로 바뀌어(PR-F4) KIS 모델이 아니게 됐다.

@@ -96,6 +96,9 @@ class TickDownsampler:
                         "price": price,
                         "qty": qty,
                         "side": side,
+                        # 동결 라벨: 실소스는 키움 WS(ADR-0118)이지만 값을 바꾸면
+                        # 기존 parquet 과 라벨 2종이 공존한다. 값 의존 소비처 0
+                        # 확인(2026-07-20 감사) — 의미는 "WS 체결의 10초 집계".
                         "side_source": "kis_ws_10s",
                     }
                     for (price, side), qty in sorted(st.trade_qty_by_price_side.items())

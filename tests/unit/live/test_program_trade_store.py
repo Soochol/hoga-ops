@@ -5,7 +5,7 @@ from hoga.live.kis_client import KIS_KST
 
 
 def row(bsop_hour: str, net_amount: int):
-    from hoga.live.kis_models import ProgramTradeByStockRow
+    from hoga.live.program_trade_store import ProgramTradeByStockRow
 
     return ProgramTradeByStockRow(
         code="005930",
