@@ -5,6 +5,7 @@ import IndicatorPanel from '../live/indicators/IndicatorPanel';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import LiveSettingsModal from '../live/LiveSettingsModal';
 import { ChartDrawingShell } from '../live/ChartDrawingShell';
+import { DrawingMenu } from '../live/DrawingMenu';
 import { TimeframeControl } from '../live/TimeframeControl';
 import { LiveChartActionButtons } from '../live/LiveToolbar';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
@@ -545,6 +546,14 @@ export function StudyPage() {
                   onChange={changeTimeframe}
                 />
               )}
+              {/* 레일 폐기(#760)로 그리기가 툴바에 합류. /study 는 창 개념이
+                  없어 봉·액션이 원래 한 툴바에 있었으므로 겉보기는 그대로다. */}
+              {headerTimeframe && activeViewModel.status === 'ready' && (
+                <DrawingMenu
+                  code={activeViewModel.save.code}
+                  timeframe={activeViewModel.save.timeframe}
+                />
+              )}
               <LiveChartActionButtons
                 onOpenIndicators={() => setIndicatorPanelOpen(true)}
                 onOpenSettings={() => setSettingsOpen(true)}
@@ -571,10 +580,7 @@ export function StudyPage() {
                   학습뷰 불러오는 중...
                 </div>
               ) : activeViewModel.status === 'ready' ? (
-                <ChartDrawingShell
-                  code={activeViewModel.save.code}
-                  timeframe={activeViewModel.save.timeframe}
-                >
+                <ChartDrawingShell>
                   <LiveChartRoot
                     code={activeViewModel.save.code}
                     timeframe={activeViewModel.save.timeframe}

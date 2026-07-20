@@ -1,6 +1,4 @@
 import type { ReactNode } from 'react';
-import LiveDrawingRail from './LiveDrawingRail';
-import type { LiveTimeframe } from '../state/livePage';
 
 /**
  * 행 트랙 `minmax(0,1fr)` 은 필수다 — 생략하면 `grid-auto-rows: auto` 가 되고, auto 트랙은
@@ -17,23 +15,18 @@ import type { LiveTimeframe } from '../state/livePage';
  * 전부 `overflow-hidden` 에 잘려나간다(창 120px 에서 562px 잘림). `1fr` 로 상한을 컨테이너에
  * 묶으면 되쓰기가 트랙을 부풀리지 못하고, RO 가 줄어든 셀을 재서 차트가 따라 줄어든다.
  */
-/** `code`/`timeframe` 은 레일이 조작할 드로잉 scope 를 정한다 — 셸을 마운트하는
- *  쪽(`/live` 창 · `/study`)이 이미 둘 다 들고 있으므로 그대로 내려준다. */
-export function ChartDrawingShell({
-  children,
-  code,
-  timeframe,
-}: {
-  children: ReactNode;
-  code: string | null;
-  timeframe: LiveTimeframe;
-}) {
+/**
+ * 그리기 레일(44px 컬럼)은 #760 으로 폐기되고 헤더의 `DrawingMenu` 가 대신한다.
+ * 셸이 남은 이유는 위 주석의 **행 트랙 규율** 하나뿐이다 — 레일이 사라졌다고
+ * 이 래퍼까지 걷어내면 `LiveChartRoot` 가 `grid-auto-rows: auto` 트랙 아래로
+ * 돌아가 그 래칫이 되살아난다. 컬럼은 단일 트랙으로 접었다.
+ */
+export function ChartDrawingShell({ children }: { children: ReactNode }) {
   return (
     <div
       data-testid="chart-drawing-shell"
-      className="grid h-full min-h-0 min-w-0 grid-cols-[44px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden"
+      className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden"
     >
-      <LiveDrawingRail code={code} timeframe={timeframe} />
       <div className="min-h-0 min-w-0 overflow-hidden">
         {children}
       </div>

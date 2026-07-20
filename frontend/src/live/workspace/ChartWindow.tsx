@@ -45,6 +45,7 @@ import {
   type GroupChartLink,
 } from './groupChartLinkSource';
 import { TimeframeControl } from '../TimeframeControl';
+import { DrawingMenu } from '../DrawingMenu';
 import {
   publishLiveWindowStatus,
   clearLiveWindowStatus,
@@ -272,17 +273,22 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
 
   return (
     <div className="flex h-full w-full flex-col">
-      {/* 창별 봉 컨트롤(C2c-2c) — timeframe 은 창 소유(#708), 전역 툴바에서 이전. */}
-      <div className="flex shrink-0 items-center border-b border-border bg-bg-card/60 px-1 py-0.5">
+      {/* 창 헤더 — 이 창의 차트 조작 진입로를 모두 소유한다(#758).
+          봉은 창 소유(#708)였고, 여기에 그리기(레일 폐기분)와 보조지표가
+          합류했다. 설정(⚙)은 편집 값이 앱 전역이라 전역 툴바에 남는다(#759). */}
+      <div className="flex shrink-0 items-center gap-1 overflow-hidden border-b border-border bg-bg-card/60 px-1 py-0.5">
         <TimeframeControl
           timeframe={view.timeframe}
           rememberedMinute={rememberedMinute}
           onChange={(tf) => setChartTimeframe(win.id, tf)}
         />
+        <div className="ml-auto flex items-center gap-0.5">
+          <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} />
+        </div>
       </div>
       <div className="min-h-0 flex-1">
         <ChartErrorBoundary>
-          <ChartDrawingShell code={d.workareaCode} timeframe={view.timeframe}>
+          <ChartDrawingShell>
             <LiveChartRoot
               code={d.workareaCode}
               timeframe={view.timeframe}
