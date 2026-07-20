@@ -46,6 +46,10 @@ type Props = {
   chart: IChartApi;
   timeframe: LiveTimeframe;
   paneToggles: PaneToggles;
+  /** 단별 잔량 증감 데이터 유무. 이 지표는 오늘 SSE 에서만 나오므로 /study 나 과거일
+   *  전용 뷰에서는 켜져 있어도 그릴 것이 없다 — 그때 값 없는 빈 레전드 행이 남지 않도록
+   *  `applicable` 을 데이터 유무까지 좁힌다(오버레이 마운트 게이트와 일치시키는 규약). */
+  hasDepthDelta?: boolean;
   /** P1: latest-값 신선화 토큰(캔들 경로 chartBundle ref). /live가 SSE 호가 틱마다
    *  부모(LiveChartRoot)를 재렌더하지만 memo + 이 prop이 그 재렌더를 차단하고, 캔들
    *  갱신(chartBundle 식별자 변경) 때만 latest 값을 신선화한다. 본문에서 읽지 않고
@@ -290,6 +294,7 @@ const FLAG_TURN_OFF: Record<LegendFlagId, (a: IndicatorActions) => void> = {
   'bid-peak': (a) => a.setBidPeakEnabled(false),
   'trade-volume-poc': (a) => a.setTradeVolumePocEnabled(false),
   'depth-heatmap': (a) => a.setDepthHeatmapEnabled(false),
+  'depth-delta': (a) => a.setDepthDeltaEnabled(false),
   'broker-late-entry': (a) => a.setBrokerLateEntryEnabled(false),
 };
 
@@ -299,6 +304,7 @@ const FLAG_SET_HIDDEN: Record<LegendFlagId, (a: IndicatorActions, hidden: boolea
   'bid-peak': (a, h) => a.setBidPeakHidden(h),
   'trade-volume-poc': (a, h) => a.setTradeVolumePocHidden(h),
   'depth-heatmap': (a, h) => a.setDepthHeatmapHidden(h),
+  'depth-delta': (a, h) => a.setDepthDeltaHidden(h),
   'broker-late-entry': (a, h) => a.setBrokerLateEntryHidden(h),
 };
 
@@ -438,7 +444,7 @@ function CellsLegendRow({
   );
 }
 
-function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
+function PaneLegendOverlay({ chart, timeframe, paneToggles, hasDepthDelta = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Last crosshair param (null = cursor away → latest-fallback). Mutated by the
   // subscription, read during render; a tick (below) re-renders after each
@@ -468,6 +474,10 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
   const depthHeatmapHidden = useWindowIndicator((s) => s.depthHeatmapHidden);
   const depthHeatmapBidColor = useWindowIndicator((s) => s.depthHeatmapBidColor);
   const depthHeatmapAskColor = useWindowIndicator((s) => s.depthHeatmapAskColor);
+  const depthDeltaEnabled = useWindowIndicator((s) => s.depthDeltaEnabled);
+  const depthDeltaHidden = useWindowIndicator((s) => s.depthDeltaHidden);
+  const depthDeltaInColor = useWindowIndicator((s) => s.depthDeltaInColor);
+  const depthDeltaOutColor = useWindowIndicator((s) => s.depthDeltaOutColor);
   const brokerLateEntryEnabled = useWindowIndicator((s) => s.brokerLateEntryEnabled);
   const brokerLateEntryHidden = useWindowIndicator((s) => s.brokerLateEntryHidden);
   const brokerLateEntrySideMode = useWindowIndicator((s) => s.brokerLateEntrySideMode);
@@ -592,6 +602,20 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       hidden: depthHeatmapHidden,
       swatches: [depthHeatmapBidColor, depthHeatmapAskColor],
       cells: readFlagLegendValues('depth-heatmap', cursorTimeSec),
+    },
+    {
+      id: 'depth-delta',
+      paneId: 'candle',
+      label: '단별 잔량 증감',
+      enabled: depthDeltaEnabled,
+      // applicable 은 오버레이 마운트 게이트(shouldShowDepthDeltaOverlay)와 **같은
+      // 3조건**이어야 한다 — 어긋나면 그려지지 않는 지표의 빈 행이 레전드에 남는다.
+      // 이 지표만 데이터 유무까지 보는 이유: 오늘 SSE 가 유일한 소스라 /study·과거일
+      // 전용 뷰에서는 켜져 있어도 그릴 것이 없다(히트맵은 과거일 소스가 있어 무관).
+      applicable: isMinute && hasDepthDelta,
+      hidden: depthDeltaHidden,
+      swatches: [depthDeltaInColor, depthDeltaOutColor],
+      cells: readFlagLegendValues('depth-delta', cursorTimeSec),
     },
     {
       id: 'broker-late-entry',

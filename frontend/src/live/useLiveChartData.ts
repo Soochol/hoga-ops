@@ -91,6 +91,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     bundle,
     chartBundle,
     hogaBundle,
+    depthDeltaToday,
     clampEngaged,
     isPastCandlesLoading,
     isHogaLoading,
@@ -233,6 +234,8 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     todayAllPriceBidPeak,
     tradeVolumePocs,
     liveSaveBundle,
+    // 지수(index) 워크에어리어는 호가장이 없어 증감 소스도 없다 — 종목일 때만 흘린다.
+    depthDeltaToday: activeIndexId ? [] : depthDeltaToday,
     workareaCode,
     workareaBundle,
     workareaChartBundle,
