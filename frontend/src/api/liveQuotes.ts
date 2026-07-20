@@ -115,6 +115,17 @@ function referenceClose(q: LiveQuote): number | null {
  *  셋 다 실패하면 폴링값을 그대로 둔다 — 기준가 없이 등락률을 지어내지 않는다. */
 function withTickPrice(quote: LiveQuote, tick: LiveTickSample | undefined): LiveQuote {
   if (tick === undefined) return quote;
+  // 가격이 폴링값과 같고 OHLC 도 새 정보가 없으면 재계산 없이 폴링 quote 를
+  // 신뢰한다. 같은 입력이라도 등락률 반올림 규칙이 갈리기 때문이다 — 백엔드
+  // round()는 banker's(half-to-even), 여기 Math.round 는 half-up 이라 .xx5
+  // 경계에서 끝자리가 다르고, 폴·틱 프레임이 번갈아 오면 표시가 깜빡인다.
+  // 두 소스가 같은 사실을 말할 땐 한쪽(백엔드)의 표기를 단일 진실로 쓴다.
+  if (tick.price === quote.price
+    && (tick.dayHigh ?? quote.high) === quote.high
+    && (tick.dayLow ?? quote.low) === quote.low
+    && (tick.dayOpen ?? quote.open) === quote.open) {
+    return quote;
+  }
   const ref = tick.prevClose ?? referenceClose(quote);
   // 기준가를 못 구하면 등락률도 OHLC 도 덮지 않는다. 이 상태의 종목은 폴링값
   // 전체를 일관되게 보여주는 편이, 일부만 실시간이라 서로 어긋나는 것보다 낫다.

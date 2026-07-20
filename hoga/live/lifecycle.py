@@ -1,9 +1,9 @@
 """Live Capture lifecycle singleton.
 
-실시간 호가·체결 수집은 **키움 WS 전담**이다(ADR-0118 PR-G — KIS WebSocket 계층 삭제).
-lifecycle은 키움 세션(storage_runtime 소유)·거래원 REST 폴러(ADR-0111)·프로그램매매
-사이드카·Today Promotion을 오케스트레이션하고, API 계층에 안정적인 `get_status()`를
-노출한다.
+실시간 호가·체결·거래원·프로그램매매 수집은 **키움 WS 전담**이다(ADR-0118 —
+KIS WS 계층은 PR-G, 거래원 REST 폴러는 PR-F2, 프로그램 REST 는 PR-F4 에서 삭제).
+lifecycle은 키움 세션(storage_runtime 소유)·프로그램매매 사이드카(0w latch drain)·
+Today Promotion을 오케스트레이션하고, API 계층에 안정적인 `get_status()`를 노출한다.
 
 Lifecycle: ``start_live_stream`` / ``stop_live_stream`` / ``refresh_live_stream``.
 
