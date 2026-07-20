@@ -320,7 +320,7 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     ) {
       return { min: activeProfile.price_min, max: activeProfile.price_max };
     }
-    return candlePriceRange(activeCandles);
+    return candleRangeUnbounded(activeCandles);
   }, [activeProfile, activeCandles]);
   const cutoffProfile = useVolumeDistributionCutoffProfile({
     enabled: linked && vdistSettings.hoverCutoffEnabled && isSpot,
@@ -387,7 +387,10 @@ function formatKstClock(tsMs: number): string {
   });
 }
 
-function candlePriceRange(
+// 세션 경계 없이 캔들 low/high 만으로 가격 범위 산출(매물대 가격축 폴백). 이름을
+// useLiveBundle 의 candlePriceRange(세션 경계 3-arg)와 구분 — 같은 이름·다른 arity
+// 혼동 방지(리뷰 지적).
+function candleRangeUnbounded(
   candles: readonly { low: number; high: number }[],
 ): { min: number; max: number } | null {
   let min = Number.POSITIVE_INFINITY;
