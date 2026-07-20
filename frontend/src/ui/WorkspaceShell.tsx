@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import type { ButtonHTMLAttributes, RefObject, ReactNode } from 'react';
 
 export function WorkspaceRoot({
@@ -59,17 +60,16 @@ export function WorkspaceToolbar({
   );
 }
 
-export function IconToolbarButton({
-  children,
-  icon,
-  className = '',
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
-  icon?: ReactNode;
-}) {
+/** ref 를 전달받는다 — 드롭다운 트리거가 메뉴를 닫은 뒤 포커스를 되돌리는 데 쓴다
+ *  (WindowAddMenu). React 18 이라 함수 컴포넌트는 forwardRef 가 있어야 ref 를 받는다. */
+export const IconToolbarButton = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement> & { icon?: ReactNode }
+>(function IconToolbarButton({ children, icon, className = '', ...props }, ref) {
   return (
     <button
       type="button"
+      ref={ref}
       {...props}
       // 테두리 없는 ghost 버튼(2026-07-15) — 라이트에서 bg-input=툴바 bg라 보더 없이 채우면
       // 안 보이므로 투명 배경 + hover 시 배경으로 어포던스. 분리는 hover 상태가 담당.
@@ -79,7 +79,7 @@ export function IconToolbarButton({
       {children}
     </button>
   );
-}
+});
 
 export function DropOverlay({ children }: { children: ReactNode }) {
   return (
