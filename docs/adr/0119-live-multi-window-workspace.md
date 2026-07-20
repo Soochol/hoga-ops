@@ -85,7 +85,8 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 - 신규 키 `live.workspace.v1` = { windows[] (id·kind·group·rect·chart?), zOrder[], groupSymbols }.
   뷰포트는 비저장(현행 관례 — 낡은 뷰포트 복원 버그 회피).
 - 구 키 1회 시드 후 미사용: `live.page.v1`·`live.indicators.v2`·`live.layout.v1` → 창 시드.
-  공장 레이아웃 = 현행 화면 재현. 프리셋 v3(schema 2→3, 종목 포함 전체 스냅샷, v2 자동 이관).
+  공장 레이아웃 = 현행 화면 재현. 프리셋 v3(schema 2→3, 종목 포함 전체 스냅샷; v2 는
+  자동 이관 대상이나 저장 0개라 폐기=무손실로 귀결, PR-E 참조).
 
 ## Implementation — PR 분할
 
@@ -95,7 +96,7 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
 | **B** | `WindowViewContext` 신설, 데이터 페치 경로 전역 직독 교체(기능 무변경). context 기본값 = 기존 전역 동작 → `/study` 무변경 보장 | ✅ 착지 |
 | **C** | 차트 창 N개 + 데이터 창 이주 + 상세 패널 폐지 + 마이그레이션 시드 | ✅ 착지 (C1~C2c-2e — `/live` 플립 완료) |
 | **D** | 링크 그룹 — groupSymbols·뱃지 팔레트·드래그&드롭·크로스헤어 버스·활성 그룹 전역 배선·WS venue 전송 | 부분 착지 (D1 — 크로스헤어 버스·데이터 창 차트 연동; D2 — 창별 정밀 드롭·크로스헤어 미러·동시호가 마스크). 남은 것: WS venue 전송(#715 기확정 "venue 전역 유지"라 실질 보류) |
-| **E** | 프리셋 v3 + 성능 마감(비포커스 창 스로틀·스냅존·Tidy·단축키) | 예정 |
+| **E** | 프리셋 v3 + 성능 마감(비포커스 창 스로틀·스냅존·Tidy·단축키) | 부분 착지 (E1 프리셋 v3 + E2b 단축키; 스냅존·Tidy 는 PR-A 기착지). 남은 것: E2a 비포커스 SSE 스로틀(실사용 관찰 후 판단) |
 
 ### PR-A 착지 범위
 
@@ -242,6 +243,41 @@ D1 잔여 UX 3종. WS venue 전송은 #715 기확정("venue 전역 유지")에 �
 
 **PR-D 잔여**: WS venue 전송(#715 기확정 "venue 전역 유지"라 실질 보류) → PR-E
 (프리셋 v3 + 성능 마감).
+
+### PR-E 착지 범위 — 프리셋 v3 + 창 관리 단축키 (2026-07-20)
+
+#713 §5 확정("프리셋 = 워크스페이스 전체 스냅샷, 종목 포함")의 구현. **v2 이관 참고**:
+#713 은 "v2 자동 이관"을 명시했으나, 저장 프리셋이 0개라 **폐기=무손실**로 귀결 —
+구현은 변환 대신 기존 버전-범프 폐기 경로를 재사용한다(변환 로직 불요). 스냅존·Tidy
+는 PR-A 기착지 → 남은 성능 항목은 단축키(E2b) + 비포커스 스로틀(E2a, 실사용 관찰 후로 보류).
+
+- **E1 프리셋 v3**: payload = **워크스페이스 전체 스냅샷**(`{windows, zOrder,
+  groupSymbols}` = Persisted 3필드, 뷰포트·런타임 제외 §6). 종목을 포함한다
+  (TradingView 레이아웃 관례). 백엔드 `LiveLayoutPresetPayload` 를 프론트-네이티브
+  camelCase 스냅샷을 담는 **얕은 컨테이너**로 재정의(windows 원소·groupSymbols 값은
+  자유 구조 — 검증·정규화는 프론트 apply 가 `readWindow` 로), `_CURRENT_VERSION`
+  2→3(빈 v2 파일은 기존 폐기 경로로 자연 소멸, **저장 프리셋 0개라 손실 없음**).
+  프론트: `snapshotWorkspace()`(deep copy 캡처)·`applyWorkspaceSnapshot()`(창·종목·
+  배치 통째 교체 + chartRuntime 전체 리셋 fresh-view + persist; 유효 창 0이면 공장
+  기본 폴백). `layoutPresetSnapshot` 캡처/적용을 워크스페이스 통째로 전환, 죽은
+  우측-패널(right_card_*) 경로 제거. 프리셋 적용 시 창·종목이 통째 바뀐다.
+- **E2b 창 관리 단축키**(`useLiveKeyboard` 확장, 평문 키): `n`=활성 그룹 차트 창
+  추가 · `t`=Tidy(정리) · `[`/`]`=포커스 창 목록 순환. **드로잉 무충돌**: 드로잉
+  도구 단축키는 전부 Alt+key 라 useLiveKeyboard 의 altKey early-return 이 격리하고,
+  파괴적 창 닫기는 드로잉 Delete/Backspace 리스너와 겹치므로 키보드에 싣지 않음
+  (창 헤더 × 로만). 입력 필드 억제 규율 유지.
+- 검증: 백엔드 pytest 8 green(v3 payload 왕복·구 v2 폐기·얕은 검증) · 프론트
+  vitest 3926 green(프리셋 왕복·손상 드롭·공장 폴백·chartRuntime 리셋·deep copy;
+  단축키 n/t/[/]·입력 억제·Alt 무충돌) · tsc·build 클린 · 변경 파일 eslint 순증 0 ·
+  `/browse` 풀스택 도그푸딩(워크트리 백엔드 :8001 + 프록시): 창 5개+그룹 종목
+  구성 → 프리셋 v3 저장(백엔드에 windows·groupSymbols 그대로) → 종목 하이닉스로
+  흐뜨림 → 프리셋 적용 → 삼성전자 5창 구성 복원 · n=차트 추가·t=정리·]=포커스
+  순환 · `/study` 무회귀.
+
+**PR-E 잔여**: E2a 비포커스 창 SSE 재렌더 스로틀(`useLiveSeries` flushMs 차등) —
+SSE 핫패스 인접이라 성급한 변경 회피, 스냅존·Tidy 로 성능 항목 대부분 충족한 뒤
+실사용 관찰로 필요성 판단(#709 완화책). **이로써 PR-D venue 전송(실질 보류)과
+E2a 만 남아 ADR-0119 는 실질 완결.**
 
 **성능 실증**: lightweight-charts `^5.2.0`에 autoSize/ResizeObserver 리사이즈 지터 수정이
 포함(#710) — 드래그 중 라이브 리사이즈가 프레임 저하 없이 동작(프로토타입 12창·6인스턴스 확인).

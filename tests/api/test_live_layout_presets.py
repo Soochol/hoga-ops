@@ -14,20 +14,25 @@ from hoga.api.live_layout_preset_routes import build_router
 
 
 def _preset_req(**overrides):
+    # v3(PR-E, #713 §5): payload = 워크스페이스 전체 스냅샷(창·z순서·그룹→종목).
     base = {
         "name": "단타용",
         "payload": {
-            "pane_order": ["candle", "volume", "ratio", "quote-totals"],
-            # 프리셋 = 4버킷 전체의 지표 on/off 스냅샷(#699 PR-D).
-            "by_timeframe_enable": {
-                "minute": {"ratioEnabled": False},
-                "D": {"volumeEnabled": False, "movingAverageEnabled": True},
-            },
-            "right_panel_width_px": 420,
-            "right_card_order": ["orderbook", "brokers"],
-            "right_card_hidden": {"program": True},
-            "right_card_collapsed": {"investor": True},
-            "right_card_weights": {"orderbook": 34.0, "brokers": 22.0},
+            "windows": [
+                {
+                    "id": "w1",
+                    "kind": "chart",
+                    "group": 1,
+                    "rect": {"x": 0, "y": 0, "w": 442, "h": 531},
+                    "chart": {
+                        "timeframe": "1m",
+                        "indicators": {"paneOrder": [], "paneStretch": {}, "byTimeframe": {}},
+                    },
+                },
+                {"id": "w2", "kind": "book", "group": 1, "rect": {"x": 442, "y": 0, "w": 236, "h": 440}},
+            ],
+            "zOrder": ["w1", "w2"],
+            "groupSymbols": {"1": {"code": "005930", "name": "삼성전자"}},
         },
     }
     base.update(overrides)
@@ -46,10 +51,11 @@ def test_preset_routes_crud(preset_client):
     assert create.status_code == 201
     created = create.json()
     pid = created["id"]
-    assert created["schema_version"] == 2
+    assert created["schema_version"] == 3
     assert created["name"] == "단타용"
-    assert created["payload"]["right_panel_width_px"] == 420
-    assert created["payload"]["pane_order"] == ["candle", "volume", "ratio", "quote-totals"]
+    assert created["payload"]["zOrder"] == ["w1", "w2"]
+    assert created["payload"]["groupSymbols"]["1"]["code"] == "005930"
+    assert created["payload"]["windows"][0]["chart"]["timeframe"] == "1m"
 
     listed = preset_client.get("/api/live-layout-presets").json()["presets"]
     assert [row["id"] for row in listed] == [pid]
@@ -86,35 +92,41 @@ def test_preset_write_request_rejects_blank_name():
 
 
 def test_preset_payload_accepts_unknown_keys_shallowly():
-    # 서버는 키셋을 강제하지 않는다 — 프론트가 적용 시 canonical 정규화하므로,
-    # 미지의 pane/카드 키가 payload 에 있어도 저장을 거부하지 않는다(ADR-0114 §4).
+    # 서버는 키셋을 강제하지 않는다 — 프론트가 적용 시 canonical 정규화(readWindow)
+    # 하므로, 미지의 창 kind·지표 필드가 payload 에 있어도 저장을 거부하지 않는다.
     req = LiveLayoutPresetWriteRequest.model_validate(
         _preset_req(payload={
-            "pane_order": ["candle", "brand-new-pane"],
-            "by_timeframe_enable": {"minute": {"someFutureFlag": True}},
-            "right_card_order": ["orderbook", "future-card"],
+            "windows": [{
+                "id": "w9", "kind": "brand-new-kind", "group": 2,
+                "rect": {"x": 0, "y": 0, "w": 100, "h": 100},
+                "chart": {"timeframe": "5m", "someFutureField": 42},
+            }],
+            "zOrder": ["w9"],
+            "groupSymbols": {"2": {"code": "000660", "name": "하이닉스", "extra": True}},
         })
     )
-    assert "brand-new-pane" in req.payload.pane_order
-    assert req.payload.by_timeframe_enable["minute"]["someFutureFlag"] is True
+    assert req.payload.windows[0]["kind"] == "brand-new-kind"
+    assert req.payload.windows[0]["chart"]["someFutureField"] == 42
+    assert req.payload.groupSymbols["2"]["extra"] is True
 
 
-def test_stale_v1_preset_file_is_discarded(tmp_path):
-    # 구 v1 프리셋(pane_prefs_by_timeframe + indicator_flags, per-preset
-    # schema_version=1)은 폐기된다 — 변환 없이 빈 목록으로 재시작(#699 PR-D).
+def test_stale_v2_preset_file_is_discarded(tmp_path):
+    # 구 v2 프리셋(pane_order + by_timeframe_enable + right_card_*, 파일
+    # schema_version=2)은 폐기된다 — 변환 없이 빈 목록으로 재시작(PR-E, #713 §5).
+    # 저장 프리셋 0개라 실질 손실 없음.
     manifest = llp._manifest_path(tmp_path)
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(
         json.dumps({
-            "schema_version": 1,
+            "schema_version": 2,
             "presets": [{
-                "schema_version": 1,
-                "id": "old-1",
+                "schema_version": 2,
+                "id": "old-2",
                 "name": "구버전",
                 "payload": {
                     "pane_order": ["candle"],
-                    "pane_prefs_by_timeframe": {"minute": {"ratioEnabled": False}},
-                    "indicator_flags": {"movingAverageEnabled": True},
+                    "by_timeframe_enable": {"minute": {"ratioEnabled": False}},
+                    "right_card_order": ["orderbook"],
                 },
                 "created_at_ms": 1,
                 "updated_at_ms": 1,
@@ -143,8 +155,8 @@ def test_presets_sorted_by_updated_at_desc_and_persist_across_reload(tmp_path):
 
 
 def test_preset_default_payload_fields():
-    # 부분 payload 도 기본값으로 채워진다(얕은 검증).
+    # 부분 payload 도 기본값(빈 스냅샷)으로 채워진다(얕은 검증).
     req = LiveLayoutPresetWriteRequest.model_validate({"name": "빈 프리셋", "payload": {}})
-    assert req.payload.right_panel_width_px == 400
-    assert req.payload.pane_order == []
-    assert req.payload.right_card_weights == {}
+    assert req.payload.windows == []
+    assert req.payload.zOrder == []
+    assert req.payload.groupSymbols == {}

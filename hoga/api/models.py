@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
-from typing import Annotated, Literal, Union
+from typing import Annotated, Any, Literal, Union
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -1594,21 +1594,17 @@ class StudyViewsFile(BaseModel):
     saves: list[StudyViewListRow] = Field(default_factory=list)
 
 
-# ── Live layout presets (ADR-0114 §4) ────────────────────────────────────
-# 화면 구성(pane 순서·지표 토글·우측 패널 배치)만 담는 프리셋. 종목·타임프레임·
-# 뷰포트는 포함하지 않는다(그건 study-views 의 역할). 서버는 **얕은 구조 검증만**
-# 하고 키셋은 강제하지 않는다 — 적용 시 프론트가 canonical 재정규화하므로 새 pane/
-# 카드/지표 추가에 백엔드 변경이 필요 없다.
+# ── Live layout presets (ADR-0114 §4 → ADR-0119 PR-E) ─────────────────────
+# v3(PR-E, #713 §5): 프리셋 = **워크스페이스 전체 스냅샷**(창 목록·z순서·그룹→종목).
+# 종목을 포함한다(TradingView 레이아웃 관례). 뷰포트·비영속 런타임은 담지 않는다(§6).
+# 서버는 **얕은 구조 검증만** 하고 키셋을 강제하지 않는다 — 적용 시 프론트가 canonical
+# 재정규화(readWindow 재사용)하므로 새 창 kind/지표 필드 추가에 백엔드 변경이 없다.
+# payload 는 프론트-네이티브 camelCase 스냅샷을 그대로 담는 얕은 컨테이너다.
 class LiveLayoutPresetPayload(BaseModel):
-    pane_order: list[str] = Field(default_factory=list)
-    # 프리셋 = 4버킷(분/일/주/월) 전체의 지표 on/off 스냅샷(#698·#699 PR-D).
-    # 구 payload 의 pane_prefs_by_timeframe + indicator_flags 를 이 하나로 통합.
-    by_timeframe_enable: dict[str, dict[str, bool]] = Field(default_factory=dict)
-    right_panel_width_px: int = 400
-    right_card_order: list[str] = Field(default_factory=list)
-    right_card_hidden: dict[str, bool] = Field(default_factory=dict)
-    right_card_collapsed: dict[str, bool] = Field(default_factory=dict)
-    right_card_weights: dict[str, float] = Field(default_factory=dict)
+    # windows 원소·groupSymbols 값은 자유 구조(창 kind별 chart 설정 등) → dict 통과.
+    windows: list[dict[str, Any]] = Field(default_factory=list)
+    zOrder: list[str] = Field(default_factory=list)
+    groupSymbols: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class LiveLayoutPresetWriteRequest(BaseModel):
@@ -1622,10 +1618,10 @@ class LiveLayoutPresetWriteRequest(BaseModel):
 
 
 class LiveLayoutPreset(BaseModel):
-    # v2 (#699 PR-D): payload 가 by_timeframe_enable 로 바뀜. 폐기는 파일 레벨
+    # v3 (PR-E, #713 §5): payload 가 워크스페이스 스냅샷으로 바뀜. 폐기는 파일 레벨
     # 버전(LiveLayoutPresetsFile.schema_version)이 단일 기준 — load_presets 참조.
-    # 여긴 정보용 int(구 v1 preset 도 관용 로드시켜 파일 레벨 가드가 폐기하게 둔다).
-    schema_version: int = 2
+    # 여긴 정보용 int(구 preset 도 관용 로드시켜 파일 레벨 가드가 폐기하게 둔다).
+    schema_version: int = 3
     id: str
     name: str
     payload: LiveLayoutPresetPayload
@@ -1642,5 +1638,5 @@ LiveLayoutPresetListRow = LiveLayoutPreset
 
 
 class LiveLayoutPresetsFile(BaseModel):
-    schema_version: int = 2
+    schema_version: int = 3
     presets: list[LiveLayoutPreset] = Field(default_factory=list)

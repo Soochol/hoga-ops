@@ -12,8 +12,11 @@ import {
 } from './layoutPresetSnapshot';
 
 /**
- * /live 레이아웃 프리셋 드롭다운 (ADR-0114 §4). LiveToolbar 전용(StudyPage 는
+ * /live 레이아웃 프리셋 드롭다운 (ADR-0119 PR-E, v3). LiveToolbar 전용(StudyPage 는
  * LiveChartActionButtons 만 import 하므로 자동으로 /live 스코프).
+ *
+ * v3 프리셋 = **워크스페이스 전체 스냅샷**(창·배치·그룹→종목). 적용 시 현재 창과
+ * 종목이 통째 교체된다(TradingView 레이아웃 관례, #713 §5) — 문구·안내가 이를 알린다.
  */
 export function LayoutPresetMenu() {
   const [open, setOpen] = useState(false);
@@ -100,14 +103,19 @@ export function LayoutPresetMenu() {
           {error}
         </div>
       )}
-      {presets.length === 0 && (
+      {presets.length === 0 ? (
         <div className="px-3 py-1.5 text-xs text-fg-dimmer">저장된 프리셋이 없습니다</div>
+      ) : (
+        <div className="px-3 pb-1 pt-0.5 text-[10px] text-fg-dimmer">
+          적용 시 현재 창·종목이 통째 교체됩니다
+        </div>
       )}
       {presets.map((preset) => (
         <div key={preset.id} className="flex items-center gap-1 px-1">
           <button
             type="button"
             role="menuitem"
+            title="이 워크스페이스로 교체 — 현재 창·종목이 대체됩니다"
             data-testid={`layout-preset-apply-${preset.id}`}
             onClick={() => apply(preset.id)}
             className={`flex-1 truncate rounded px-2 py-1.5 text-left text-xs hover:bg-bg-input-hover ${
@@ -155,7 +163,7 @@ export function LayoutPresetMenu() {
         disabled={!activePreset}
         className="block w-full px-3 py-1.5 text-left text-xs text-fg-dim hover:bg-bg-input-hover disabled:opacity-40 disabled:hover:bg-transparent"
       >
-        현재 레이아웃 저장
+        현재 워크스페이스 저장
       </button>
 
       {saveAsName === null ? (
@@ -197,7 +205,7 @@ export function LayoutPresetMenu() {
         onClick={resetDefault}
         className="block w-full px-3 py-1.5 text-left text-xs text-fg-dim hover:bg-bg-input-hover"
       >
-        기본 레이아웃으로 초기화
+        기본 워크스페이스로 초기화
       </button>
     </div>
   ) : null;

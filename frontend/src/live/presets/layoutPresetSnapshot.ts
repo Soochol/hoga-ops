@@ -1,150 +1,33 @@
-import { useLivePageStore } from '../../state/livePage';
-import { useWorkspaceStore } from '../../state/workspace';
-import { targetChartWindow } from '../workspace/WorkspaceIndicatorDrawer';
-import {
-  DEFAULT_CARD_WEIGHTS,
-  DEFAULT_RIGHT_PANEL_WIDTH_PX,
-  LIVE_CARD_KEYS,
-  type LiveCardKey,
-  type LiveLayoutPresetInput,
-  useLiveLayoutStore,
-} from '../../state/liveLayout';
-import { normalizeKeyOrder } from '../../state/keyOrder';
-import { normalizePaneOrder, normalizePaneStretch } from '../../chart/paneOrder';
+import { snapshotWorkspace, useWorkspaceStore } from '../../state/workspace';
+import { useLiveLayoutStore } from '../../state/liveLayout';
 import type { LiveLayoutPresetPayload } from '../../api/liveLayoutPresets';
-import {
-  PRESET_INDICATOR_FLAG_KEYS,
-  normalizePresetEnableByTimeframe,
-} from './presetFlags';
 
 /**
- * 레이아웃 프리셋의 캡처·적용 (ADR-0114 §4). 화면 구성(pane 순서·지표 토글·우측 패널
- * 배치)만 담고 종목·타임프레임·뷰포트는 담지 않는다.
+ * 레이아웃 프리셋의 캡처·적용 (ADR-0119 PR-E, #713 §5).
+ *
+ * v3: 프리셋 = **워크스페이스 전체 스냅샷**(창 목록·z순서·그룹→종목). 종목을 포함
+ * 한다(TradingView 레이아웃 관례). 뷰포트·비영속 런타임은 담지 않는다(§6). 적용은
+ * `applyWorkspaceSnapshot` 이 raw payload 를 canonical 재정규화(readWindow 재사용)
+ * 하므로 새 창 kind/지표 필드 추가에 이 파일 변경이 없다.
  */
 
-const isLiveCardKey = (v: string): v is LiveCardKey =>
-  (LIVE_CARD_KEYS as readonly string[]).includes(v);
-
-function boolMap(raw: unknown): Record<string, boolean> {
-  const out: Record<string, boolean> = {};
-  if (!raw || typeof raw !== 'object') return out;
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === 'boolean') out[k] = v;
-  }
-  return out;
-}
-
-function numberMap(raw: unknown): Record<string, number> {
-  const out: Record<string, number> = {};
-  if (!raw || typeof raw !== 'object') return out;
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
-  }
-  return out;
-}
-
-/** 프리셋 v2 의 지표 소스 — 멀티창(ADR-0119 C2c-2d)에선 포커스 차트 창의
- *  설정(창 소유 #712), 차트 창이 없으면 전역 스토어(기존 단일 뷰 동작). */
-function indicatorSource(): {
-  byTimeframe: Record<string, Partial<Record<string, unknown>>>;
-  paneOrder: readonly string[];
-  paneStretch: Record<string, number>;
-} {
-  const ws = useWorkspaceStore.getState();
-  const target = targetChartWindow(ws.windows, ws.zOrder);
-  if (target?.chart) {
-    const ind = target.chart.indicators;
-    return {
-      byTimeframe: ind.byTimeframe as Record<string, Partial<Record<string, unknown>>>,
-      paneOrder: ind.paneOrder,
-      paneStretch: ind.paneStretch as Record<string, number>,
-    };
-  }
-  const page = useLivePageStore.getState();
-  return {
-    byTimeframe: page.indicatorsByTimeframe as Record<string, Partial<Record<string, unknown>>>,
-    paneOrder: page.paneOrder,
-    paneStretch: page.paneStretch as Record<string, number>,
-  };
-}
-
-/** 현재 /live 화면 구성을 프리셋 payload 로 캡처한다. */
+/** 현재 워크스페이스를 프리셋 payload 로 캡처한다(v3 = 전체 스냅샷).
+ *  WorkspaceSnapshot(구조화 타입) → payload(얕은 컨테이너)는 구조적 대입 가능 —
+ *  단일 `satisfies` 대신 반환 위치 대입으로 타입 검사를 유지한다. */
 export function capturePresetPayload(): LiveLayoutPresetPayload {
-  const source = indicatorSource();
-  const layout = useLiveLayoutStore.getState();
-
-  // 프리셋 = 4버킷 전체의 지표 on/off 스냅샷(#698·#699 PR-D). indicatorsByTimeframe
-  // 는 이미 공장값 diff sparse 이므로, 각 버킷에서 enable 15키만 슬라이스하면 된다.
-  // 현재 봉 투영이 아니라 버킷 원본을 읽으므로 캡처가 timeframe-무관 = 캡처→적용 항등.
-  const byTimeframeEnable = Object.fromEntries(
-    Object.entries(source.byTimeframe).flatMap(([profileKey, bucket]) => {
-      const slice = Object.fromEntries(
-        PRESET_INDICATOR_FLAG_KEYS.flatMap((key) => (
-          typeof bucket?.[key] === 'boolean' ? [[key, bucket[key]]] : []
-        )),
-      );
-      return Object.keys(slice).length > 0 ? [[profileKey, slice]] : [];
-    }),
-  );
-
-  return {
-    pane_order: [...source.paneOrder] as LiveLayoutPresetPayload['pane_order'],
-    by_timeframe_enable: byTimeframeEnable,
-    pane_stretch: { ...source.paneStretch },
-    right_panel_width_px: layout.rightPanelWidthPx,
-    right_card_order: [...layout.rightCardOrder],
-    right_card_hidden: { ...layout.rightCardHidden },
-    right_card_collapsed: { ...layout.rightCardCollapsed },
-    right_card_weights: { ...layout.rightCardWeights },
-  };
+  const snapshot = snapshotWorkspace();
+  return { windows: snapshot.windows, zOrder: snapshot.zOrder, groupSymbols: snapshot.groupSymbols };
 }
 
-/**
- * 프리셋 payload 를 현재 화면에 적용한다. 모든 필드를 클라이언트에서 canonical
- * 재정규화한 뒤, 스토어별 벌크 액션으로 각각 단일 set + 단일 persist 를 수행한다.
- * 각 봉 버킷의 enable 오버라이드를 프리셋 값으로 통째 교체해 결정론 확보(#699 §5).
- */
+/** 프리셋 payload(워크스페이스 스냅샷)를 적용 — 창·종목·배치를 통째 복원한다.
+ *  presetId 는 "마지막 적용" 기록용(우측 패널 배치는 창으로 이주해 프리셋 밖). */
 export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: string | null): void {
-  const preset = {
-    paneOrder: normalizePaneOrder(payload.pane_order),
-    byTimeframeEnable: normalizePresetEnableByTimeframe(payload.by_timeframe_enable),
-    // 구버전 프리셋(필드 부재)은 {} 로 정규화 → 스펙 기본 크기로 적용된다.
-    paneStretch: normalizePaneStretch(payload.pane_stretch),
-  };
-  // 멀티창: 지표 프리셋은 포커스 차트 창에 적용(스펙 §2 — v3 전체 스냅샷은 PR-E).
-  const ws = useWorkspaceStore.getState();
-  const target = targetChartWindow(ws.windows, ws.zOrder);
-  if (target?.chart) {
-    ws.applyChartIndicatorPreset(target.id, preset);
-  } else {
-    useLivePageStore.getState().applyIndicatorPreset(preset);
-  }
-
-  const layoutInput: LiveLayoutPresetInput = {
-    rightPanelWidthPx: payload.right_panel_width_px,
-    rightCardOrder: normalizeKeyOrder(payload.right_card_order, LIVE_CARD_KEYS, isLiveCardKey),
-    rightCardHidden: boolMap(payload.right_card_hidden) as Partial<Record<LiveCardKey, boolean>>,
-    rightCardCollapsed: boolMap(payload.right_card_collapsed) as Partial<Record<LiveCardKey, boolean>>,
-    rightCardWeights: numberMap(payload.right_card_weights) as Record<LiveCardKey, number>,
-    // "마지막 적용" 기록을 배치 입력에 포함 — applyLayoutPreset 이 단일 persist 로 함께
-    // 쓴다(별도 setLastAppliedPresetId 호출 = 두 번째 persist 제거, 코드 리뷰).
-    lastAppliedPresetId: presetId,
-  };
-  useLiveLayoutStore.getState().applyLayoutPreset(layoutInput);
+  useWorkspaceStore.getState().applyWorkspaceSnapshot(payload);
+  useLiveLayoutStore.getState().setLastAppliedPresetId(presetId);
 }
 
-/** 기본 레이아웃(코드 기본값) payload — "기본으로 초기화"에 사용.
- *  by_timeframe_enable 를 비우면 적용 시 전 봉이 공장 기본값(#697 — 거래량+MA만
- *  on)으로 리셋된다 — 별도 플래그 나열 없이 sparse 모델이 공장값을 그대로 태운다. */
+/** 기본 레이아웃 payload — "기본으로 초기화"에 사용. 빈 스냅샷을 넘기면 apply 가
+ *  공장 기본 워크스페이스(defaultWindows)로 폴백한다(별도 공장값 나열 불요). */
 export function defaultPresetPayload(): LiveLayoutPresetPayload {
-  return {
-    pane_order: normalizePaneOrder(undefined),
-    by_timeframe_enable: {},
-    pane_stretch: {},
-    right_panel_width_px: DEFAULT_RIGHT_PANEL_WIDTH_PX,
-    right_card_order: [...LIVE_CARD_KEYS],
-    right_card_hidden: {},
-    right_card_collapsed: {},
-    right_card_weights: { ...DEFAULT_CARD_WEIGHTS },
-  };
+  return { windows: [], zOrder: [], groupSymbols: {} };
 }
