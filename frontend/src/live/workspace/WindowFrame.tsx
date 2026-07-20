@@ -119,7 +119,10 @@ function WindowFrameImpl(props: WindowFrameProps) {
           </button>
           {paletteOpen && (
             <div
-              className="absolute left-0 top-[20px] z-50 grid grid-cols-5 gap-0.5 rounded-md border border-border bg-bg-subtle p-1 shadow-overlay"
+              // w-max 필수: 앵커(16px 뱃지)가 containing block 이라 shrink-to-fit 이
+              // 팔레트를 16px 로 눌러 grid-cols-5 의 minmax(0,1fr) 열이 0 폭으로
+              // 붕괴하고 20px 버튼 5개가 겹친다(행마다 마지막 숫자만 보임).
+              className="absolute left-0 top-[20px] z-50 grid w-max grid-cols-5 gap-0.5 rounded-md border border-border bg-bg-subtle p-1 shadow-overlay"
               onPointerDown={(e) => e.stopPropagation()}
             >
               {GROUP_IDS.map((g) => (
