@@ -401,6 +401,17 @@ def _today_kst_yyyymmdd() -> str:
     return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
 
 
+def _record_today_promote_success(code: str) -> None:
+    """design-review B2 — /api/live/status.today_promote_last_ms에 코드별 마지막
+    실승격 시각(epoch ms)을 남긴다. KIS(promote_today)·키움(promote_kiwoom_today)
+    공용 — ADR-0118 컷오버 후 KIS live/ 수집이 없어 키움 경로가 사실상 유일한
+    기록원이다. 지연 import: lifecycle이 이 모듈을 모듈 레벨에서 import하므로
+    순환을 피해 호출 시점에 바인딩한다."""
+    from hoga.live import lifecycle
+
+    lifecycle.record_today_promote_success(code, int(time.time() * 1000))
+
+
 async def promote_today(data_dir: Path, *, code: str) -> str | None:
     """ADR-0043 Today Promotion — overwrite, no archive move.
 
@@ -473,16 +484,7 @@ async def promote_today(data_dir: Path, *, code: str) -> str | None:
         code, today, meta["row_counts"], elapsed,
     )
 
-    # design-review B2 — 사용자가 /api/live/status에서 마지막 promote 시각 확인 가능
-    # Task 5에서 lifecycle.record_today_promote_success가 추가되면 작동.
-    # 그 전엔 ImportError fallback으로 noop.
-    try:
-        from hoga.live import lifecycle
-        record_fn = getattr(lifecycle, "record_today_promote_success", None)
-        if record_fn is not None:
-            record_fn(code, int(time.time() * 1000))
-    except ImportError:
-        pass
+    _record_today_promote_success(code)
 
     return today
 
@@ -522,6 +524,8 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
         atomic_write_json(target / "meta.json", meta, indent=2)
 
     await asyncio.to_thread(_sync_parse_and_write)
+    # skip(None)은 위 early-return에서 걸러졌으므로 여기 도달 = 실승격.
+    _record_today_promote_success(code)
     return today
 
 
