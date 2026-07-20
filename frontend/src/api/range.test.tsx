@@ -122,6 +122,7 @@ describe('buildRangeBundleRequest', () => {
       null,
       null,
       null,
+      null,
     ]);
   });
 
@@ -175,6 +176,7 @@ describe('buildRangeBundleRequest', () => {
         programTradeEnabled: false,
         tradeVolumePocEnabled: false,
         depthHeatmapEnabled: false,
+        depthDeltaEnabled: false,
       },
     });
 
@@ -183,7 +185,8 @@ describe('buildRangeBundleRequest', () => {
     expect(request.url).toContain('&program_trade_enabled=false');
     expect(request.url).toContain('&trade_volume_poc_enabled=false');
     expect(request.url).toContain('&depth_heatmap_enabled=false');
-    expect(request.queryKey.slice(-5)).toEqual([false, false, false, false, false]);
+    expect(request.url).toContain('&depth_delta_enabled=false');
+    expect(request.queryKey.slice(-6)).toEqual([false, false, false, false, false, false]);
   });
 
   it('adds mode=candles for lightweight candle requests', () => {
@@ -262,6 +265,7 @@ describe('buildRangeBundleRequest', () => {
       undefined,
       null,
       'hogaplay_first',
+      null,
       null,
       null,
       null,
@@ -868,6 +872,7 @@ describe('rangeBundleQueryOptions', () => {
       12,
       'hogaplay_first',
       'full',
+      null,
       null,
       null,
       null,
@@ -1769,6 +1774,7 @@ describe('rangePlaceholderData', () => {
     null,
     null,
     null,
+    null,
   ];
 
   it('keeps previous same-code data for date extension when option-sensitive fields are unchanged', () => {
@@ -1788,6 +1794,7 @@ describe('rangePlaceholderData', () => {
       null,
       'hogaplay_first',
       'full',
+      null,
       null,
       null,
       null,
@@ -1822,6 +1829,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
+      null,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
@@ -1850,6 +1858,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
+      null,
     ];
     const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
       'range',
@@ -1867,6 +1876,7 @@ describe('rangePlaceholderData', () => {
       null,
       'hogaplay_first',
       'sidecar',
+      null,
       null,
       null,
       null,

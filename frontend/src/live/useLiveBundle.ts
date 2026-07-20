@@ -23,7 +23,11 @@ import {
 } from '../api/types';
 import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
 import type { DepthDeltaPoint } from './depthDelta';
-import { mergeDepthDeltaSession } from './depthDeltaSession';
+import {
+  combineDepthDeltaBackendLive,
+  depthDeltaFromWire,
+  mergeDepthDeltaSession,
+} from './depthDeltaSession';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
 import { aggregateCandles, aggregateCalendar, calendarBucketKey } from './aggregateCandles';
@@ -343,6 +347,7 @@ export type LiveRangeRequestPlan = {
     programTradeEnabled: boolean;
     tradeVolumePocEnabled: boolean;
     depthHeatmapEnabled: boolean;
+    depthDeltaEnabled: boolean;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
     volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -358,6 +363,7 @@ export function planLiveRangeRequest(args: {
   bidPeakEnabled: boolean;
   tradeVolumePocEnabled: boolean;
   depthHeatmapEnabled: boolean;
+  depthDeltaEnabled: boolean;
   brokerLateEntryEnabled: boolean;
   brokerLateEntryStartHHMM: number;
   programTradeEnabled: boolean;
@@ -384,6 +390,7 @@ export function planLiveRangeRequest(args: {
       programTradeEnabled: enableMinute && args.programTradeEnabled,
       tradeVolumePocEnabled: enableMinute && args.tradeVolumePocEnabled,
       depthHeatmapEnabled: enableMinute && args.depthHeatmapEnabled,
+      depthDeltaEnabled: enableMinute && args.depthDeltaEnabled,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
@@ -413,6 +420,7 @@ export function useLiveBundle(
     bidPeakEnabled,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
+    depthDeltaEnabled,
     brokerLateEntryEnabled,
     brokerLateEntryStartHHMM,
     programTradeEnabled,
@@ -598,6 +606,7 @@ export function useLiveBundle(
     bidPeakEnabled,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
+    depthDeltaEnabled,
     brokerLateEntryEnabled,
     brokerLateEntryStartHHMM,
     programTradeEnabled: effProgramTradeEnabled,
@@ -640,6 +649,7 @@ export function useLiveBundle(
       rangePlan.options.programTradeEnabled ||
       rangePlan.options.tradeVolumePocEnabled ||
       rangePlan.options.depthHeatmapEnabled ||
+      rangePlan.options.depthDeltaEnabled ||
       rangePlan.options.volumeDistributionBins != null
     )
   );
@@ -732,6 +742,7 @@ export function useLiveBundle(
       built.broker_late_entries = sidecarSource.broker_late_entries ?? [];
       built.trade_volume_pocs = sidecarSource.trade_volume_pocs ?? [];
       built.depth_heatmap = sidecarSource.depth_heatmap ?? [];
+      built.depth_delta = sidecarSource.depth_delta ?? [];
       built.volume_distributions = sidecarSource.volume_distributions ?? [];
       built.program_trade = filterProgramTradeForCandles(sidecarSource.program_trade, liveCandles);
     }
@@ -883,7 +894,18 @@ export function useLiveBundle(
     deltaSessionRef.current.points,
     committedHogaSeries.depth_delta_today,
   );
-  const depthDeltaToday = deltaSessionRef.current.points;
+  const liveDeltaPoints = deltaSessionRef.current.points;
+  // 백엔드 슬라이스(캡처 스냅샷 ~10s 표본의 diff — 과거일 + 오늘의 페이지 열기 이전
+  // 구간)와 라이브 세션 누적을 결합한다. 이게 "켜자마자 빈 화면" 문제의 해소 지점:
+  // 종전에는 라이브 누적(페이지 로드 이후)만 있어 커버리지가 세션 시작부터였다.
+  const backendDeltaPoints = useMemo(
+    () => depthDeltaFromWire(chartBundle?.depth_delta),
+    [chartBundle?.depth_delta],
+  );
+  const depthDeltaToday = useMemo(
+    () => combineDepthDeltaBackendLive(backendDeltaPoints, liveDeltaPoints),
+    [backendDeltaPoints, liveDeltaPoints],
+  );
 
   // Full bundle = stable chart side + live hoga overlay. Spreading chartBundle
   // shares its segments/candles refs, so the VirtualAxis stays single-build and

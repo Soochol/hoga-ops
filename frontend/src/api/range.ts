@@ -445,6 +445,11 @@ export function mergeRangeBundles(previous: RangeBundle, next: RangeBundle): Ran
       (p) => String(p.t_ms),
       (a, b) => a.t_ms - b.t_ms,
     ),
+    depth_delta: uniqueBy(
+      [...(previous.depth_delta ?? []), ...(next.depth_delta ?? [])],
+      (p) => String(p.t_ms),
+      (a, b) => a.t_ms - b.t_ms,
+    ),
     volume_distributions: uniqueBy(
       [...outsideCoveredDates(previous.volume_distributions, nextDates), ...next.volume_distributions],
       (p) => p.date,

@@ -2406,3 +2406,184 @@ def test_query_day_ask_bid_peak_dual_perf_guardrail(tmp_path: Path) -> None:
     elapsed = time.monotonic() - started
     assert ask is not None
     assert elapsed < 5.0, f"peak dual query took {elapsed:.1f}s"
+
+
+# === query_bucketed_depth_delta =============================================
+
+
+def _ob_at(
+    *, ts_ms: int, seq: int,
+    ask: tuple[tuple[int, int], ...], bid: tuple[tuple[int, int], ...],
+) -> Orderbook:
+    """가격까지 제어하는 Orderbook 빌더 — 증감 diff 테스트는 가격 교집합이 본질이라
+    _ob(가격 고정)로는 못 쓴다. ask/bid = ((price, qty), ...) 10단 미만이면 0 패딩.
+    기본 10단 전부 qty>0 로 채우면 deep book(유효 술어 통과)이 된다."""
+    def _pad(t: tuple[tuple[int, int], ...]) -> tuple[tuple[int, int], ...]:
+        return (tuple(t) + ((0, 0),) * 10)[:10]
+
+    a, b = _pad(ask), _pad(bid)
+    return Orderbook(
+        ts_ms=ts_ms, seq=seq,
+        ask_p=tuple(p for p, _ in a), ask_q=tuple(q for _, q in a), ask_d=(0,) * 10,
+        bid_p=tuple(p for p, _ in b), bid_q=tuple(q for _, q in b), bid_d=(0,) * 10,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+
+
+def _ladder(base: int, step: int, qty: int, n: int = 10) -> tuple[tuple[int, int], ...]:
+    return tuple((base + i * step, qty) for i in range(n))
+
+
+def test_depth_delta_same_price_diff_aggregates_in_out(tmp_path: Path) -> None:
+    """같은 버킷 내 연속 스냅샷의 공통 가격 diff 가 유입(in)/유출(out)로 나뉘어
+    합산되고, tick 은 사다리 간격에서 나온다."""
+    from hoga.tables.snapshots import query_bucketed_depth_delta
+
+    ask0 = _ladder(1000, 10, 100)
+    bid0 = _ladder(990, -10, 100)
+    # 두 번째 스냅샷: 매도 1000 이 +50, 매수 990 이 -30.
+    ask1 = ((1000, 150),) + ask0[1:]
+    bid1 = ((990, 70),) + bid0[1:]
+    obs = [
+        _ob_at(ts_ms=90_000_100, seq=1, ask=ask0, bid=bid0),
+        _ob_at(ts_ms=90_010_100, seq=2, ask=ask1, bid=bid1),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r.bucket_intra_ms == 32_400_000
+    assert r.ask == ((1000, 50, 0),)
+    assert r.bid == ((990, 0, -30),)
+    assert r.ask_tick == 10 and r.bid_tick == 10
+
+
+def test_depth_delta_price_intersection_excludes_window_shift(tmp_path: Path) -> None:
+    """사다리가 한 단 미끄러지면(관측창 이동) 교집합에 없는 가격은 증감이 아니다 —
+    창에 새로 들어온 최상단/빠져나간 최하단 가격에서 유령 유입/유출이 없어야 한다."""
+    from hoga.tables.snapshots import query_bucketed_depth_delta
+
+    ask0 = _ladder(1000, 10, 100)          # 1000..1090
+    ask1 = _ladder(1010, 10, 100)          # 1010..1100 — 창이 위로 한 단
+    obs = [
+        _ob_at(ts_ms=90_000_100, seq=1, ask=ask0, bid=_ladder(990, -10, 100)),
+        _ob_at(ts_ms=90_010_100, seq=2, ask=ask1, bid=_ladder(990, -10, 100)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000)
+    # 교집합(1010..1090)의 qty 는 전부 100→100 무변화, 창 밖(1000·1100)은 배제 → 빈 결과.
+    assert rows == []
+
+
+def test_depth_delta_gap_over_threshold_breaks_chain(tmp_path: Path) -> None:
+    """인접 유효 스냅샷의 간격이 max_gap_ms 를 넘으면 diff 하지 않는다(체인 차단) —
+    캡처 공백·VI 건너뛰기·venue 스왑 경계의 관측창 대이동 아티팩트 방지."""
+    from hoga.tables.snapshots import query_bucketed_depth_delta
+
+    ask0 = _ladder(1000, 10, 100)
+    ask1 = ((1000, 900),) + ask0[1:]
+    obs = [
+        _ob_at(ts_ms=90_000_100, seq=1, ask=ask0, bid=_ladder(990, -10, 100)),
+        # 10분 뒤 — 60s 기본 임계 초과.
+        _ob_at(ts_ms=91_000_100, seq=2, ask=ask1, bid=_ladder(990, -10, 100)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    assert query_bucketed_depth_delta(con, path=out, bucket_ms=60_000) == []
+    # 임계를 넉넉히 주면 같은 데이터가 diff 된다(대조군).
+    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000, max_gap_ms=3_600_000)
+    assert len(rows) == 1 and rows[0].ask == ((1000, 800, 0),)
+
+
+def test_depth_delta_sides_do_not_cross(tmp_path: Path) -> None:
+    """현재가 이동으로 같은 가격이 매도단→매수단으로 넘어가면 무관한 주문이다 —
+    side 를 넘는 diff 가 없어야 한다."""
+    from hoga.tables.snapshots import query_bucketed_depth_delta
+
+    obs = [
+        # 1000 이 매도 최우선.
+        _ob_at(ts_ms=90_000_100, seq=1, ask=_ladder(1000, 10, 500), bid=_ladder(990, -10, 100)),
+        # 한 틱 상승 — 1000 이 이제 매수 최우선. 매도 사다리는 1010부터.
+        _ob_at(ts_ms=90_010_100, seq=2, ask=_ladder(1010, 10, 500), bid=_ladder(1000, -10, 300)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000)
+    # ask 교집합(1010..1090): 500→500 무변화. bid 교집합(990..900): 100→300 유입만.
+    assert len(rows) == 1
+    r = rows[0]
+    assert r.ask == ()
+    assert all(in_q == 200 and out_q == 0 for _, in_q, out_q in r.bid)
+    # 1000(ask→bid 로 넘어간 가격)은 bid 결과에 없어야 한다 — prev bid 에 없던 가격.
+    assert 1000 not in {p for p, _, _ in r.bid}
+
+
+def test_depth_delta_auction_rows_excluded_by_shared_predicate(tmp_path: Path) -> None:
+    """세션 경계를 넘기면 공용 술어(ADR-0062 v3)가 3호가 붕괴책을 배제하고, 그
+    스냅샷을 가로지르는 diff 도 (간격 임계 안이라면) 유효쌍끼리만 남는다."""
+    from hoga.tables.snapshots import query_bucketed_depth_delta
+
+    deep0 = _ob_at(ts_ms=90_000_100, seq=1, ask=_ladder(1000, 10, 100), bid=_ladder(990, -10, 100))
+    # VI: 3호가 붕괴(레벨 4~10 = 0) — 술어가 배제.
+    shallow = _ob_at(
+        ts_ms=90_010_100, seq=2,
+        ask=tuple((1000 + i * 10, 999) for i in range(3)),
+        bid=tuple((990 - i * 10, 999) for i in range(3)),
+    )
+    deep1 = _ob_at(ts_ms=90_020_100, seq=3, ask=((1000, 400),) + _ladder(1000, 10, 100)[1:], bid=_ladder(990, -10, 100))
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([deep0, shallow, deep1], out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_delta(
+        con, path=out, bucket_ms=60_000,
+        session_open_ms=90_000_000, session_close_ms=153_000_000,
+    )
+    # shallow 가 WHERE 로 빠지고 deep0↔deep1 이 인접 유효쌍(간격 20s < 60s)으로 diff.
+    assert len(rows) == 1
+    assert rows[0].ask == ((1000, 300, 0),)
+
+
+def test_depth_delta_bucket_attribution_is_cur_side(tmp_path: Path) -> None:
+    """버킷 경계에 걸친 쌍(prev 는 이전 분, cur 는 이번 분)의 증감은 cur 버킷에
+    귀속된다 — 변화가 관측된 시각."""
+    from hoga.tables.snapshots import query_bucketed_depth_delta
+
+    ask0 = _ladder(1000, 10, 100)
+    obs = [
+        _ob_at(ts_ms=90_059_900, seq=1, ask=ask0, bid=_ladder(990, -10, 100)),
+        _ob_at(ts_ms=90_100_200, seq=2, ask=((1000, 130),) + ask0[1:], bid=_ladder(990, -10, 100)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000)
+    assert len(rows) == 1
+    assert rows[0].bucket_intra_ms == 32_460_000  # 09:01 버킷(cur)
+    assert rows[0].ask == ((1000, 30, 0),)
+
+
+def test_depth_delta_tick_uses_median_gap_across_band_boundary(tmp_path: Path) -> None:
+    """호가단위 경계를 걸친 사다리(50원 1칸 + 100원 다수)에서 tick 은 최솟값이 아니라
+    중앙값 — 넓은 쪽 셀이 절반 높이가 되는 줄무늬를 막는다(프론트 ladderTick 동치)."""
+    from hoga.tables.snapshots import query_bucketed_depth_delta
+
+    prices = (49_900, 49_950, 50_000, 50_100, 50_200, 50_300, 50_400, 50_500, 50_600, 50_700)
+    ask0 = tuple((p, 100) for p in prices)
+    ask1 = ((49_900, 160),) + ask0[1:]
+    obs = [
+        _ob_at(ts_ms=90_000_100, seq=1, ask=ask0, bid=_ladder(49_850, -50, 100)),
+        _ob_at(ts_ms=90_010_100, seq=2, ask=ask1, bid=_ladder(49_850, -50, 100)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000)
+    assert len(rows) == 1
+    assert rows[0].ask_tick == 100  # 다수 간격(100)이 이긴다
+    assert rows[0].bid_tick == 50

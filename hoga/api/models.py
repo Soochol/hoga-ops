@@ -749,6 +749,24 @@ class DepthHeatmapPoint(BaseModel):
     bids_max: list[list[int]] = Field(default_factory=list)
 
 
+class DepthDeltaPoint(BaseModel):
+    """한 분봉 버킷의 단별 잔량 증감 (연속 스냅샷 diff 의 버킷 합).
+
+    ``t_ms``는 버킷 시작 unix ms. ``asks``/``bids``는 ``[price, in_qty, out_qty]``
+    (in ≥ 0 유입 합, out ≤ 0 유출 합, 증감 0 가격은 미포함). ``ask_tick``/``bid_tick``
+    은 셀 높이용 호가단위(관측 불가 시 0) — 증감 레벨은 변한 가격만 남은 희소
+    집합이라 프론트가 역산할 수 없어 서버가 사다리에서 구해 싣는다.
+
+    캡처 주기(~10s) 제약으로 유입/유출 gross 는 하한선, net 은 정확(텔레스코핑).
+    """
+
+    t_ms: int
+    asks: list[list[int]] = Field(default_factory=list)
+    bids: list[list[int]] = Field(default_factory=list)
+    ask_tick: int = 0
+    bid_tick: int = 0
+
+
 class VolumeDistributionBin(BaseModel):
     price_low: int
     price_high: int
@@ -800,6 +818,7 @@ class RangeBundle(BaseModel):
     bid_peaks: list["BidPeak"] = Field(default_factory=list)
     # 분봉 버킷별 대표 스냅샷 10호가 잔량 분포(호가 잔량 히트맵). 기본 []라 기존 클라 무영향.
     depth_heatmap: list["DepthHeatmapPoint"] = Field(default_factory=list)
+    depth_delta: list["DepthDeltaPoint"] = Field(default_factory=list)
     broker_late_entries: list["BrokerLateEntryEvent"] = Field(default_factory=list)
     price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)

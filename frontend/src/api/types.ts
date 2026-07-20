@@ -641,6 +641,17 @@ export type DepthHeatmapPointWire = {
   bids_max?: [number, number][];
 };
 
+/** 한 분봉 버킷의 단별 잔량 증감(백엔드 DepthDeltaPoint). asks/bids =
+ *  [price, in_qty, out_qty] (in ≥ 0, out ≤ 0, 증감 0 가격 미포함).
+ *  ask_tick/bid_tick = 셀 높이용 호가단위(관측 불가 0). */
+export type DepthDeltaPointWire = {
+  t_ms: number;
+  asks: [number, number, number][];
+  bids: [number, number, number][];
+  ask_tick: number;
+  bid_tick: number;
+};
+
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -677,6 +688,7 @@ export type RangeBundle = {
   /** 버킷별 10호가 잔량 스냅샷(호가 잔량 히트맵). 각 포인트는 t_ms 버킷 하나의
    *  매도/매수 [price, qty] 최대 10단계. 멀티데이 병합은 t_ms 단위 latest-wins. */
   depth_heatmap?: DepthHeatmapPointWire[];
+  depth_delta?: DepthDeltaPointWire[];
   broker_late_entries: BrokerLateEntryEvent[];
   /** hogaplay 캡처 공백을 KIS 분봉으로 복구한 거래일(YYYYMMDD). 승리 소스가 kis_api +
    *  meta.created_from == 'kis_minute_repair'인 날. /study가 "KIS 보충 캔들" 배지를 띄운다.
