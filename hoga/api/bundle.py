@@ -32,6 +32,7 @@ from hoga.api.models import (
     BrokerLateEntryEvent,
     DateWarning,
     DayVolumeDistribution,
+    DepthDeltaPoint,
     DepthHeatmapPoint,
     ExcludedDate,
     FillStrength,
@@ -1097,6 +1098,73 @@ def build_depth_heatmap_slice(
     return out
 
 
+def build_depth_delta_slice(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    bucket_ms: int,
+    source: str = "hogaplay",
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
+    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
+) -> list[DepthDeltaPoint]:
+    """연속 스냅샷 diff 의 버킷 합(단별 잔량 증감)을 DepthDeltaPoint 리스트로.
+
+    build_depth_heatmap_slice 와 완전 대칭 — 같은 캐시 게이트(완료 과거일 =
+    PastIndicatorsCache, 오늘 = short-TTL + coalescer), 같은 세션 경계 전달, 같은
+    unix 변환. diff 규칙(공통 가격 교집합·side 분리·체인 차단)은
+    query_bucketed_depth_delta 참조. 오늘자는 프로모션이 진행 중이라 페이지를 연
+    시점 이전 구간을 이 슬라이스가 채우고, 이후는 프론트 라이브 diff 가 잇는다.
+    """
+    cache = _resolve_cache(engine, cache)
+    today_kst = _resolve_today_kst(today_kst)
+    try:
+        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    except (FileNotFoundError, StockDateNotFound):
+        return []
+    if not path_obj.exists():
+        return []
+    cacheable = _indicator_cacheable(cache, today_kst, date, bucket_ms)
+    if cacheable:
+        cached = cache.get_depth_delta(code, date, source, bucket_ms)  # type: ignore[union-attr]
+        if cached is not CACHE_MISS:
+            return cached  # type: ignore[return-value]
+    is_today = today_kst is not None and date == today_kst
+    delta_key = ("depth_delta", code, date, source, bucket_ms)
+    if is_today:
+        hit, cached = TODAY_TTL.lookup(delta_key)
+        if hit:
+            return cached
+    rows = SLICE_COALESCER.run(
+        delta_key,
+        lambda: snapshots_tbl.query_bucketed_depth_delta(
+            engine.conn,
+            path=path_obj,
+            bucket_ms=bucket_ms,
+            session_open_ms=session_open_ms,
+            session_close_ms=session_close_ms,
+        ),
+    )
+    out: list[DepthDeltaPoint] = []
+    for r in rows:
+        out.append(
+            DepthDeltaPoint(
+                t_ms=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
+                asks=[[p, i, o] for p, i, o in r.ask],
+                bids=[[p, i, o] for p, i, o in r.bid],
+                ask_tick=r.ask_tick,
+                bid_tick=r.bid_tick,
+            )
+        )
+    if cacheable:
+        cache.store_depth_delta(code, date, source, bucket_ms, out)  # type: ignore[union-attr]
+    elif is_today:
+        TODAY_TTL.put(delta_key, out)
+    return out
+
+
 def _first_trailing_single_price_book_hhmmssms(
     engine: QueryEngine,
     *,
@@ -1266,6 +1334,7 @@ def build_range_bundle(
     program_trade_enabled: bool = True,
     trade_volume_poc_enabled: bool = True,
     depth_heatmap_enabled: bool = True,
+    depth_delta_enabled: bool = True,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -1305,6 +1374,7 @@ def build_range_bundle(
     include_bid_peaks = include_optional_sidecar_slices and bid_peaks_enabled
     include_trade_volume_pocs = include_optional_sidecar_slices and trade_volume_poc_enabled
     include_depth_heatmap = include_optional_sidecar_slices and depth_heatmap_enabled
+    include_depth_delta = include_optional_sidecar_slices and depth_delta_enabled
     include_program_trade = program_trade_enabled and sidecar_only
 
     dates = engine.list_stock_dates_in_range(
@@ -1335,6 +1405,7 @@ def build_range_bundle(
     broker_late_entries: list[BrokerLateEntryEvent] = []
     trade_volume_pocs: list[TradeVolumePoc] = []
     depth_heatmap: list[DepthHeatmapPoint] = []
+    depth_delta: list[DepthDeltaPoint] = []
     included_dates: list[str] = []
     repaired_candle_dates: list[str] = []
 
@@ -1558,6 +1629,18 @@ def build_range_bundle(
                     session_close_ms=meta["regular_session_close_ms"],
                 )
             )
+        if include_depth_delta and orderflow_ok:
+            depth_delta.extend(
+                build_depth_delta_slice(
+                    engine,
+                    code=code,
+                    date=d,
+                    bucket_ms=bucket_ms,
+                    source=source,
+                    session_open_ms=norm_meta["regular_session_open_ms"],
+                    session_close_ms=meta["regular_session_close_ms"],
+                )
+            )
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf range_date status=ok code=%s date=%s source=%s mode=%s "
@@ -1602,6 +1685,7 @@ def build_range_bundle(
         price_level_hits=[],
         trade_volume_pocs=trade_volume_pocs,
         depth_heatmap=depth_heatmap,
+        depth_delta=depth_delta,
         volume_distributions=volume_distributions,
         program_trade=(
             build_program_trade_series(engine, code=code, dates=included_dates)

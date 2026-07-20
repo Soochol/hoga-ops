@@ -1,3 +1,4 @@
+import type { DepthDeltaPointWire } from '../api/types';
 import type { DepthDeltaPoint } from './depthDelta';
 
 /** 세션 누적: 15분 슬라이딩 버퍼가 버린 과거 버킷을 살려 둔다.
@@ -51,5 +52,55 @@ export function mergeDepthDeltaSession(
   }
   if (!changed) return prev;
 
+  return [...byT.values()].sort((a, b) => a.tMs - b.tMs);
+}
+
+// wire→domain 변환 캐시 — 백엔드 point 는 chartBundle 갱신 시에만 새 참조가 되므로
+// (SSE 틱 무관), 미변경 wire point 의 도메인 객체를 재할당하지 않는다
+// (depthHeatmapWire 의 _domainCache 관용구).
+const _domainCache = new WeakMap<DepthDeltaPointWire, DepthDeltaPoint>();
+
+/** 백엔드 DepthDeltaPointWire[] → 도메인. [price, in, out] 트리플을 레벨 객체로. */
+export function depthDeltaFromWire(
+  points: readonly DepthDeltaPointWire[] | null | undefined,
+): DepthDeltaPoint[] {
+  return (points ?? []).map((p) => {
+    const cached = _domainCache.get(p);
+    if (cached) return cached;
+    const domain: DepthDeltaPoint = {
+      tMs: p.t_ms,
+      askDelta: p.asks.map(([price, inQty, outQty]) => ({ price, inQty, outQty })),
+      bidDelta: p.bids.map(([price, inQty, outQty]) => ({ price, inQty, outQty })),
+      askTick: p.ask_tick,
+      bidTick: p.bid_tick,
+    };
+    _domainCache.set(p, domain);
+    return domain;
+  });
+}
+
+/** 백엔드(캡처 ~10s 샘플) 버킷 위에 라이브 세션 누적(WS 틱 정밀)을 얹는다.
+ *
+ * 겹치는 버킷은 **라이브가 이긴다** — 단, 라이브의 첫 버킷만 예외다. 페이지를 연
+ * 시점이 버킷 중간이면 라이브 첫 버킷은 앞부분 틱을 놓친 부분값인데, 백엔드는 그
+ * 버킷 전체를 (성긴 표본으로나마) 커버한다. "부분 정밀값 vs 전체 성긴값" 중
+ * 전체 쪽이 사용자 기대(그 분의 증감)에 가깝다. 둘째 버킷부터는 라이브가 완전하고
+ * 더 정밀하므로 라이브가 덮는다.
+ *
+ * 참조 안정: 입력이 안 바뀌면(useMemo 대상) 호출부가 재호출하지 않으므로 여기서는
+ * 병합 결과만 새로 만든다 — 미변경 point 참조는 양쪽 입력의 것이 그대로 흐른다. */
+export function combineDepthDeltaBackendLive(
+  backend: readonly DepthDeltaPoint[],
+  live: readonly DepthDeltaPoint[],
+): DepthDeltaPoint[] {
+  if (live.length === 0) return [...backend];
+  if (backend.length === 0) return [...live];
+  const liveFirstT = live[0].tMs;
+  const byT = new Map<number, DepthDeltaPoint>();
+  for (const p of backend) byT.set(p.tMs, p);
+  for (const p of live) {
+    if (p.tMs === liveFirstT && byT.has(p.tMs)) continue; // 라이브 첫(부분) 버킷은 백엔드 유지
+    byT.set(p.tMs, p);
+  }
   return [...byT.values()].sort((a, b) => a.tMs - b.tMs);
 }

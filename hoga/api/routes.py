@@ -351,6 +351,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         program_trade_enabled: bool = Query(True),
         trade_volume_poc_enabled: bool = Query(True),
         depth_heatmap_enabled: bool = Query(True),
+        depth_delta_enabled: bool = Query(True),
         mode: str = Query(..., pattern="^(hoga|sidecar|candles)$"),
     ) -> RangeBundle:
         try:
@@ -406,6 +407,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
                 program_trade_enabled=program_trade_enabled,
                 trade_volume_poc_enabled=trade_volume_poc_enabled,
                 depth_heatmap_enabled=depth_heatmap_enabled,
+                depth_delta_enabled=depth_delta_enabled,
                 mode=mode,
             )
         except Exception:

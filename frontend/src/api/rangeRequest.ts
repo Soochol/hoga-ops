@@ -12,6 +12,7 @@ export type RangeRequestOptions = {
   programTradeEnabled?: boolean | null;
   tradeVolumePocEnabled?: boolean | null;
   depthHeatmapEnabled?: boolean | null;
+  depthDeltaEnabled?: boolean | null;
   volumeDistributionBins?: number | null;
   tradeVolumePocBins?: number | null;
   volumeDistributionPriceRange?: { min: number; max: number } | null;
@@ -52,6 +53,7 @@ export type RangeQueryKey = readonly [
   boolean | null,
   boolean | null,
   boolean | null,
+  boolean | null,
 ];
 
 export const RANGE_QUERY_KEY_FROM_DATE_INDEX = 2;
@@ -87,6 +89,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   const programTradeEnabled = options.programTradeEnabled ?? null;
   const tradeVolumePocEnabled = options.tradeVolumePocEnabled ?? null;
   const depthHeatmapEnabled = options.depthHeatmapEnabled ?? null;
+  const depthDeltaEnabled = options.depthDeltaEnabled ?? null;
   const volumeDistributionBins = options.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options.tradeVolumePocBins ?? null;
   const volumeDistributionPriceRange = options.volumeDistributionPriceRange ?? null;
@@ -116,6 +119,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     programTradeEnabled,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
+    depthDeltaEnabled,
   ];
 
   const params = new URLSearchParams();
@@ -131,6 +135,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addBoolParam(params, 'program_trade_enabled', programTradeEnabled);
   addBoolParam(params, 'trade_volume_poc_enabled', tradeVolumePocEnabled);
   addBoolParam(params, 'depth_heatmap_enabled', depthHeatmapEnabled);
+  addBoolParam(params, 'depth_delta_enabled', depthDeltaEnabled);
   addParam(params, 'broker_late_entry_start_hhmm', brokerLateEntryStartHHMM);
   addParam(params, 'volume_distribution_bins', volumeDistributionBins);
   addParam(params, 'volume_distribution_price_min', volumeDistributionPriceRange?.min);

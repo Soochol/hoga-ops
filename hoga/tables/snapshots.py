@@ -1176,6 +1176,180 @@ def query_bucketed_depth_heatmap(
     return out
 
 
+@dataclass(frozen=True)
+class DepthDeltaBucket:
+    """한 분봉 버킷의 단별 잔량 증감 + 그 버킷에서 관측된 호가단위.
+
+    ``ask``/``bid``는 (price, in_qty, out_qty) — in ≥ 0(유입 합), out ≤ 0(유출 합).
+    증감 0 가격은 담지 않는다. ``*_tick``은 셀 높이용 호가단위(관측 불가 시 0) —
+    프론트 DepthDeltaPoint.askTick/bidTick 계약과 동일.
+    """
+
+    bucket_intra_ms: int
+    ask: tuple[tuple[int, int, int], ...]
+    bid: tuple[tuple[int, int, int], ...]
+    ask_tick: int
+    bid_tick: int
+
+
+# 증감 diff 체인의 시간 상한. 연속된 두 유효 스냅샷의 간격이 이보다 크면 diff 하지
+# 않는다(체인 차단). 캡처 주기 실측 중앙값 ~10s 의 6배 — (a) 장중 VI/동시호가로
+# WHERE 가 걸러낸 구간을 건너뛰는 diff(관측창 대이동 아티팩트), (b) UN 캡처의
+# KRX→NXT venue 스왑 경계(15:20 마감동시호가 ~ 15:30+, 항상 수분 갭), (c) 캡처
+# 중단 구간(실측 최대 67분)을 전부 하나의 규칙으로 차단한다. 프론트 라이브 빌더의
+# "ineligible/venue 전환 시 prev=null" 리셋과 의미상 동일한 역할(스냅샷에 venue
+# 컬럼이 없어 시간 갭이 유일한 프록시다).
+DEPTH_DELTA_MAX_GAP_MS = 60_000
+
+
+def query_bucketed_depth_delta(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    bucket_ms: int,
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+    max_gap_ms: int = DEPTH_DELTA_MAX_GAP_MS,
+) -> list[DepthDeltaBucket]:
+    """연속 스냅샷 diff → 버킷별 가격별 유입/유출 합 (단별 잔량 증감 지표의 과거 소스).
+
+    프론트 라이브 빌더(bucketDepthDelta)와 같은 규칙의 서버판:
+      * **매도는 매도끼리, 매수는 매수끼리** diff — side 를 합치면 현재가 이동 시
+        같은 가격이 매도단→매수단으로 넘어간 것(무관한 주문)을 연속으로 오인한다.
+      * **두 스냅샷 공통 가격만** diff (INNER JOIN ON price) — 10단 관측창이 현재가를
+        따라 미끄러질 때 창에 드나드는 가격의 잔량은 주문 변화가 아니라 관측창 이동
+        아티팩트다. price=0(빈 슬롯)도 자연 배제.
+      * **체인 차단**: 유효 스냅샷(공용 술어 ``_book_indicator_eligible_sql``, ADR-0062
+        v3)만 diff 하고, 인접 유효 쌍의 간격이 ``max_gap_ms`` 를 넘으면 제외
+        (``DEPTH_DELTA_MAX_GAP_MS`` 주석 참조).
+
+    ⚠️ 저장된 ``ask_d*``/``bid_d*`` 컬럼을 쓰지 않는 이유: kiwoom_live 프로모션이
+    전부 0 으로 채우는 hogaplay 시절 스키마 잔재이고(promote.py `_ZERO_LEVELS`),
+    소스가 채우더라도 "송신 스냅샷의 직전 1스텝"이라 절사된 push 사이의 전환을
+    누적하지 않는다 — 합산해도 실제 변화가 안 나온다(2026-07-20 0D FID 실채록,
+    docs/research/2026-07-20-kiwoom-0d-delta-fid-semantics.md). 잔량 절대값의 연속
+    diff 는 텔레스코핑으로 net 이 정확하다.
+
+    캡처 주기(~10s)로 인해 유입/유출 gross 는 **하한선**이다 — 10초 안에 생겼다
+    사라진 벽은 보이지 않는다. net 은 표본 간격과 무관하게 정확하다.
+
+    ``*_tick`` 은 버킷 내 유효 스냅샷들의 사다리 가격 합집합에서 인접 간격의
+    중앙값 — 호가단위 경계를 걸친 사다리에서 최솟값을 쓰면 넓은 쪽 셀이 절반
+    높이가 되는 것을 피한다(프론트 ladderTick 과 같은 선택).
+    """
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    last_continuous_ms = (
+        _last_continuous_intra_ms(con, path=path, session_close_ms=session_close_ms)
+        if session_close_ms is not None
+        else None
+    )
+    if last_continuous_ms is None:
+        where_pred = "TRUE"
+    else:
+        where_pred = _book_indicator_eligible_sql(
+            intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        )
+
+    level_cols = ", ".join(
+        f"ask_p{i}, ask_q{i}, bid_p{i}, bid_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1)
+    )
+    pair_cols = ", ".join(
+        f"cur.{c} AS c_{c}, prev.{c} AS p_{c}"
+        for i in range(1, ORDERBOOK_LEVELS + 1)
+        for c in (f"ask_p{i}", f"ask_q{i}", f"bid_p{i}", f"bid_q{i}")
+    )
+    cur_arms = " UNION ALL ".join(
+        f"SELECT n, bucket, '{side}' AS side, c_{side}_p{i} AS price, c_{side}_q{i} AS qty FROM pairs"
+        for i in range(1, ORDERBOOK_LEVELS + 1)
+        for side in ("ask", "bid")
+    )
+    prev_arms = " UNION ALL ".join(
+        f"SELECT n, '{side}' AS side, p_{side}_p{i} AS price, p_{side}_q{i} AS qty FROM pairs"
+        for i in range(1, ORDERBOOK_LEVELS + 1)
+        for side in ("ask", "bid")
+    )
+    eligible_cte = f"""
+        eligible AS (
+          SELECT ({intra_ms_expr}) AS t,
+                 row_number() OVER (ORDER BY ({intra_ms_expr}), seq) AS n,
+                 {level_cols}
+          FROM read_parquet(?)
+          WHERE {where_pred}
+        )
+    """
+
+    delta_rows = con.execute(
+        f"""
+        WITH {eligible_cte},
+        pairs AS (
+          SELECT cur.n AS n, (cur.t // {bucket_ms}) AS bucket, {pair_cols}
+          FROM eligible cur JOIN eligible prev ON prev.n = cur.n - 1
+          WHERE cur.t - prev.t <= {max_gap_ms}
+        ),
+        cur_lv AS ({cur_arms}),
+        prev_lv AS ({prev_arms}),
+        joined AS (
+          SELECT c.bucket, c.side, c.price, (c.qty - p.qty) AS d
+          FROM cur_lv c
+          JOIN prev_lv p ON p.n = c.n AND p.side = c.side AND p.price = c.price
+          WHERE c.price > 0 AND (c.qty - p.qty) != 0
+        )
+        SELECT bucket * {bucket_ms} AS bucket_intra_ms, side, price,
+               sum(CASE WHEN d > 0 THEN d ELSE 0 END) AS in_qty,
+               sum(CASE WHEN d < 0 THEN d ELSE 0 END) AS out_qty
+        FROM joined
+        GROUP BY 1, 2, 3
+        ORDER BY 1, 2, 3
+        """,
+        [str(path)],
+    ).fetchall()
+    if not delta_rows:
+        return []
+
+    # 버킷×side 별 호가단위 — 유효 스냅샷 전체(diff 쌍 아님)의 사다리 합집합 기준.
+    tick_arms = " UNION ALL ".join(
+        f"SELECT (t // {bucket_ms}) AS bucket, '{side}' AS side, {side}_p{i} AS price FROM eligible"
+        for i in range(1, ORDERBOOK_LEVELS + 1)
+        for side in ("ask", "bid")
+    )
+    tick_rows = con.execute(
+        f"""
+        WITH {eligible_cte},
+        lv AS ({tick_arms}),
+        uniq AS (SELECT DISTINCT bucket, side, price FROM lv WHERE price > 0),
+        gaps AS (
+          SELECT bucket, side,
+                 price - lag(price) OVER (PARTITION BY bucket, side ORDER BY price) AS g
+          FROM uniq
+        )
+        SELECT bucket * {bucket_ms} AS bucket_intra_ms, side,
+               CAST(median(g) AS BIGINT) AS tick
+        FROM gaps
+        WHERE g IS NOT NULL AND g > 0
+        GROUP BY 1, 2
+        """,
+        [str(path)],
+    ).fetchall()
+    ticks: dict[tuple[int, str], int] = {
+        (int(b), str(side)): int(t) for b, side, t in tick_rows
+    }
+
+    grouped: OrderedDict[int, dict[str, list[tuple[int, int, int]]]] = OrderedDict()
+    for b, side, price, in_q, out_q in delta_rows:
+        entry = grouped.setdefault(int(b), {"ask": [], "bid": []})
+        entry[str(side)].append((int(price), int(in_q), int(out_q)))
+    return [
+        DepthDeltaBucket(
+            bucket_intra_ms=b,
+            ask=tuple(sides["ask"]),
+            bid=tuple(sides["bid"]),
+            ask_tick=ticks.get((b, "ask"), 0),
+            bid_tick=ticks.get((b, "bid"), 0),
+        )
+        for b, sides in grouped.items()
+    ]
+
+
 def query_bucket_representative(
     con: duckdb.DuckDBPyConnection,
     *,

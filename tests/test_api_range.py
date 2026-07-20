@@ -26,6 +26,7 @@ def _build_range_bundle_stub(
     program_trade_enabled=True,
     trade_volume_poc_enabled=True,
     depth_heatmap_enabled=True,
+    depth_delta_enabled=True,
     mode="sidecar",
 ):
     """Return a minimal valid RangeBundle for happy-path tests."""
@@ -395,6 +396,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
         program_trade_enabled=True,
         trade_volume_poc_enabled=True,
         depth_heatmap_enabled=True,
+        depth_delta_enabled=True,
         mode="sidecar",
     ):
         captured.append(source_pref)
@@ -445,6 +447,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
         program_trade_enabled=True,
         trade_volume_poc_enabled=True,
         depth_heatmap_enabled=True,
+        depth_delta_enabled=True,
         mode="sidecar",
     ):
         captured.append(source_pref)

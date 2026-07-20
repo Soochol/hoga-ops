@@ -40,6 +40,7 @@ from hoga.api.models import (
     BidPeak,
     BrokerLateEntryEvent,
     DayVolumeDistribution,
+    DepthDeltaPoint,
     DepthHeatmapPoint,
     TradeVolumePoc,
 )
@@ -70,6 +71,7 @@ KIND_VERSIONS: dict[str, int] = {
     "bid_peak": 6,
     "poc": 6,
     "depth": 6,
+    "depth_delta": 1,
     "vdist": 6,
     "broker_late": 6,
     "continuous_before": 6,
@@ -120,6 +122,11 @@ class PastIndicatorsCache:
         self._mem_depth: OrderedDict[
             tuple[str, str, str, int], list[DepthHeatmapPoint]
         ] = OrderedDict()
+        # depth_delta 는 증감 있는 가격만 담아 depth 보다 훨씬 작다(희소).
+        # 공용 512 LRU 편승 — depth 처럼 전용 상한 불필요.
+        self._mem_depth_delta: OrderedDict[
+            tuple[str, str, str, int], list[DepthDeltaPoint]
+        ] = OrderedDict()
         # 체결 분포(단일 모델|None)·거래원 지각진입(리스트)·연속거래 상한(스칼라).
         # 전부 소형이라 공용 512 LRU 편승(depth 처럼 전용 상한 불필요).
         self._mem_vdist: OrderedDict[
@@ -137,7 +144,7 @@ class PastIndicatorsCache:
         self._stats: dict[str, CacheStats] = {
             kind: CacheStats()
             for kind in (
-                "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth",
+                "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth", "depth_delta",
                 "vdist", "broker_late", "continuous_before",
             )
         }
@@ -150,6 +157,7 @@ class PastIndicatorsCache:
             "bid_peak": len(self._mem_bid_peak),
             "poc": len(self._mem_trade_volume_poc),
             "depth": len(self._mem_depth),
+            "depth_delta": len(self._mem_depth_delta),
             "vdist": len(self._mem_vdist),
             "broker_late": len(self._mem_broker_late),
             "continuous_before": len(self._mem_continuous_before),
@@ -507,6 +515,80 @@ class PastIndicatorsCache:
             _log.warning(
                 "past_indicators_cache.write_failed path=%s",
                 self._depth_path(code, date, source, bucket_ms),
+                exc_info=True,
+            )
+
+    # ── depth_delta (단별 잔량 증감) ─────────────────────────────────────────────
+
+    def _depth_delta_path(self, code: str, date: str, source: str, bucket_ms: int) -> Path:
+        return self._model_path(code, date, source, f"depth_delta.{bucket_ms}")
+
+    def get_depth_delta(
+        self, code: str, date: str, source: str, bucket_ms: int
+    ) -> list[DepthDeltaPoint] | object:
+        """완료 과거일의 단별 잔량 증감 포인트, 또는 ``_CACHE_MISS``.
+
+        get_depth 와 완전 대칭 — 빈 리스트도 유효 결과(무데이터 일자)라 센티넬로
+        미스를 구분한다."""
+        key = (code, date, source, bucket_ms)
+        stats = self._stats["depth_delta"]
+        hit = self._mem_depth_delta.get(key)
+        if hit is not None:
+            self._mem_depth_delta.move_to_end(key)
+            stats.record_hit()
+            return hit
+        path = self._depth_delta_path(code, date, source, bucket_ms)
+        if not path.exists():
+            stats.record_miss()
+            return _CACHE_MISS
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
+            stats.record_miss()
+            return _CACHE_MISS
+        if body.get("version") != KIND_VERSIONS["depth_delta"]:
+            stats.record_miss()
+            return _CACHE_MISS
+        raw = body.get("points")
+        if not isinstance(raw, list):
+            stats.record_miss()
+            return _CACHE_MISS
+        try:
+            points = [DepthDeltaPoint.model_validate(v) for v in raw]
+        except ValueError:
+            _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
+            stats.record_miss()
+            return _CACHE_MISS
+        stats.record_disk_hit()
+        self._mem_depth_delta[key] = points
+        self._mem_depth_delta.move_to_end(key)
+        while len(self._mem_depth_delta) > DEFAULT_MEM_MAX_ENTRIES:
+            self._mem_depth_delta.popitem(last=False)
+            stats.record_eviction()
+        return points
+
+    def store_depth_delta(
+        self, code: str, date: str, source: str, bucket_ms: int, points: list[DepthDeltaPoint]
+    ) -> None:
+        stats = self._stats["depth_delta"]
+        stats.record_store()
+        self._mem_depth_delta[(code, date, source, bucket_ms)] = points
+        self._mem_depth_delta.move_to_end((code, date, source, bucket_ms))
+        while len(self._mem_depth_delta) > DEFAULT_MEM_MAX_ENTRIES:
+            self._mem_depth_delta.popitem(last=False)
+            stats.record_eviction()
+        payload = {
+            "version": KIND_VERSIONS["depth_delta"],
+            "points": [p.model_dump(mode="json") for p in points],
+            "fetched_at_ms": int(time.time() * 1000),
+        }
+        try:
+            atomic_write_json(self._depth_delta_path(code, date, source, bucket_ms), payload)
+        except OSError:
+            _log.warning(
+                "past_indicators_cache.write_failed path=%s",
+                self._depth_delta_path(code, date, source, bucket_ms),
                 exc_info=True,
             )
 

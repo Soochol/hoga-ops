@@ -61,3 +61,52 @@ describe('mergeDepthDeltaSession', () => {
     expect(b.map((p) => p.tMs)).toEqual([0, 60_000, 120_000]);
   });
 });
+
+describe('depthDeltaFromWire', () => {
+  it('converts triples and caches by wire identity', async () => {
+    const { depthDeltaFromWire } = await import('./depthDeltaSession');
+    const wire = [{
+      t_ms: 60000,
+      asks: [[1000, 50, 0]] as [number, number, number][],
+      bids: [[990, 0, -30]] as [number, number, number][],
+      ask_tick: 10,
+      bid_tick: 10,
+    }];
+    const a = depthDeltaFromWire(wire);
+    expect(a).toEqual([{
+      tMs: 60000,
+      askDelta: [{ price: 1000, inQty: 50, outQty: 0 }],
+      bidDelta: [{ price: 990, inQty: 0, outQty: -30 }],
+      askTick: 10,
+      bidTick: 10,
+    }]);
+    // 같은 wire 객체 → 같은 도메인 참조 (WeakMap 캐시).
+    expect(depthDeltaFromWire(wire)[0]).toBe(a[0]);
+  });
+});
+
+describe('combineDepthDeltaBackendLive', () => {
+  it('backend fills history, live wins overlapping buckets (except its first partial one)', async () => {
+    const { combineDepthDeltaBackendLive } = await import('./depthDeltaSession');
+    const backend = [pt(0, 100), pt(60_000, 200), pt(120_000, 300)];
+    // 라이브는 60s 버킷 중간에 시작 — 첫 버킷(60s)은 부분값, 둘째(120s)는 완전.
+    const live = [pt(60_000, 5), pt(120_000, 999)];
+    const out = combineDepthDeltaBackendLive(backend, live);
+    expect(out.map((p) => p.tMs)).toEqual([0, 60_000, 120_000]);
+    expect(out[0].askDelta[0].inQty).toBe(100);  // 백엔드 전용 구간
+    expect(out[1].askDelta[0].inQty).toBe(200);  // 라이브 첫(부분) 버킷 → 백엔드 유지
+    expect(out[2].askDelta[0].inQty).toBe(999);  // 이후 → 라이브 승
+  });
+
+  it('live-first bucket stands alone when backend lacks it', async () => {
+    const { combineDepthDeltaBackendLive } = await import('./depthDeltaSession');
+    const out = combineDepthDeltaBackendLive([pt(0, 100)], [pt(60_000, 5)]);
+    expect(out.map((p) => [p.tMs, p.askDelta[0].inQty])).toEqual([[0, 100], [60_000, 5]]);
+  });
+
+  it('empty sides pass through', async () => {
+    const { combineDepthDeltaBackendLive } = await import('./depthDeltaSession');
+    expect(combineDepthDeltaBackendLive([], [pt(0, 1)]).length).toBe(1);
+    expect(combineDepthDeltaBackendLive([pt(0, 1)], []).length).toBe(1);
+  });
+});
