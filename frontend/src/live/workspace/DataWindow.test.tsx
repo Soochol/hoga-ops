@@ -95,6 +95,26 @@ describe('DataWindow — sector-ranking 라우팅', () => {
   });
 });
 
+describe('DataWindow — 체결창 라우팅', () => {
+  // 표시 로직(4열·색·정렬)은 TradeTickTable.test 소관 — 여기선 kind 라우팅과
+  // 공통 게이트만. 위 mock 이 빈 버퍼를 고정하므로 빈 상태 문구로 마운트를 관측한다.
+  it('주식 그룹이면 체결 테이블을 마운트한다', () => {
+    renderWithQuery(<DataWindow win={dataWin('trade')} symbol={{ code: '005930', name: '삼성전자' }} />);
+    expect(screen.getByText('체결 데이터 없음')).toBeInTheDocument();
+  });
+
+  it('지수 그룹이면 지원하지 않음 안내 (체결 데이터가 없는 심볼)', () => {
+    render(<DataWindow win={dataWin('trade')} symbol={{ code: 'KOSPI', name: '코스피', kind: 'index' }} />);
+    expect(screen.getByText(/지수는 지원하지 않습니다/)).toBeInTheDocument();
+    expect(screen.queryByText('체결 데이터 없음')).not.toBeInTheDocument();
+  });
+
+  it('종목 미지정이면 창 이름과 그룹 번호를 안내한다', () => {
+    render(<DataWindow win={dataWin('trade', 4)} symbol={null} />);
+    expect(screen.getByText(/체결 · 종목 없음 \(그룹 4\)/)).toBeInTheDocument();
+  });
+});
+
 describe('DataWindow — 매물대·프로그램 그룹 차트 링크 (ADR-0119 PR-D)', () => {
   const symbol = { code: '005930', name: '삼성전자' };
 
