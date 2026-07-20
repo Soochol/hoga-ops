@@ -11,9 +11,12 @@ import type { LiveLayoutPresetPayload } from '../../api/liveLayoutPresets';
  * 하므로 새 창 kind/지표 필드 추가에 이 파일 변경이 없다.
  */
 
-/** 현재 워크스페이스를 프리셋 payload 로 캡처한다(v3 = 전체 스냅샷). */
+/** 현재 워크스페이스를 프리셋 payload 로 캡처한다(v3 = 전체 스냅샷).
+ *  WorkspaceSnapshot(구조화 타입) → payload(얕은 컨테이너)는 구조적 대입 가능 —
+ *  단일 `satisfies` 대신 반환 위치 대입으로 타입 검사를 유지한다. */
 export function capturePresetPayload(): LiveLayoutPresetPayload {
-  return snapshotWorkspace() as unknown as LiveLayoutPresetPayload;
+  const snapshot = snapshotWorkspace();
+  return { windows: snapshot.windows, zOrder: snapshot.zOrder, groupSymbols: snapshot.groupSymbols };
 }
 
 /** 프리셋 payload(워크스페이스 스냅샷)를 적용 — 창·종목·배치를 통째 복원한다.
@@ -26,5 +29,5 @@ export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: s
 /** 기본 레이아웃 payload — "기본으로 초기화"에 사용. 빈 스냅샷을 넘기면 apply 가
  *  공장 기본 워크스페이스(defaultWindows)로 폴백한다(별도 공장값 나열 불요). */
 export function defaultPresetPayload(): LiveLayoutPresetPayload {
-  return { windows: [], zOrder: [], groupSymbols: {} } as unknown as LiveLayoutPresetPayload;
+  return { windows: [], zOrder: [], groupSymbols: {} };
 }

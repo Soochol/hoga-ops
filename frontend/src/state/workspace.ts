@@ -638,9 +638,14 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
 }));
 
 /** 현재 워크스페이스를 프리셋 v3 스냅샷으로 캡처한다(뷰포트·런타임 제외).
- *  JSON 왕복 가능한 deep copy — 프리셋 저장·비교가 스토어 내부 참조를 잡지 않게. */
+ *  스토어 내부 참조를 잡지 않도록 창·rect·chart(indicators normalize)·groupSymbols
+ *  값까지 새 객체로 복제한다 — 프리셋 저장·비교가 나중의 스토어 변이에 오염되지 않게. */
 export function snapshotWorkspace(): WorkspaceSnapshot {
   const s = useWorkspaceStore.getState();
+  const groupSymbols: Partial<Record<GroupId, GroupSymbol>> = {};
+  for (const [g, sym] of Object.entries(s.groupSymbols)) {
+    if (sym) groupSymbols[Number(g) as GroupId] = { ...sym };
+  }
   return {
     windows: s.windows.map((w) => ({
       ...w,
@@ -648,7 +653,7 @@ export function snapshotWorkspace(): WorkspaceSnapshot {
       ...(w.chart ? { chart: { ...w.chart, indicators: normalizeIndicatorsV2(w.chart.indicators) } } : {}),
     })),
     zOrder: [...s.zOrder],
-    groupSymbols: { ...s.groupSymbols },
+    groupSymbols,
   };
 }
 

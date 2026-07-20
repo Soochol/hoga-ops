@@ -40,10 +40,12 @@ describe('capturePresetPayload (v3 = 워크스페이스 전체 스냅샷, ADR-01
     expect((payload.windows as WorkspaceWindow[])[0].chart?.timeframe).toBe('1m');
   });
 
-  it('deep copy — 캡처 payload 를 변형해도 스토어가 안 바뀐다', () => {
+  it('deep copy — 캡처 payload 를 변형해도 스토어가 안 바뀐다(창·groupSymbols 둘 다)', () => {
     const payload = capturePresetPayload();
     (payload.windows as WorkspaceWindow[])[0].group = 9;
+    (payload.groupSymbols as Record<string, { code: string }>)['1'].code = '000000';
     expect(useWorkspaceStore.getState().windows[0].group).toBe(1);
+    expect(useWorkspaceStore.getState().groupSymbols[1]?.code).toBe('005930');
   });
 });
 
