@@ -1,0 +1,61 @@
+# 프론트엔드 타입 체크 — 이 레포의 첫 CI.
+#
+# 왜 tsc 인가: vitest 는 **타입을 검사하지 않는다**. PR #731(단별 잔량 증감)과
+# #733(flag 레전드 provider 창 스코프화)이 병렬로 진행돼 각자 브랜치에서는 둘 다
+# 초록이었고, 서로 다른 줄을 건드려 git 도 CLEAN 으로 머지했지만, 합쳐진 main 은
+# `Expected 3 arguments, but got 2` 3건으로 빌드 불가였다. 그 상태에서도 테스트
+# 3994건은 전부 통과했다 — 잡을 수 있는 건 tsc 뿐이다(#734).
+#
+# 범위는 의도적으로 최소다(타입 체크만). 테스트·린트·백엔드는 넣지 않았다 —
+# 실행이 길어지고 벽시계 의존 테스트가 간헐 실패로 머지를 막을 수 있어서,
+# 먼저 이 한 겹만 확실히 세운다. 넓히려면 아래 steps 에 추가하면 된다.
+
+name: Frontend typecheck
+
+on:
+  # PR 트리거가 핵심이다. GitHub 은 PR 브랜치가 아니라 **base 와 합친 머지 커밋**을
+  # 체크아웃하므로, 위 사고처럼 "각자는 초록인데 합치면 깨지는" 교차 PR 충돌이
+  # 머지 전에 드러난다. 이게 로컬 검증으로는 구조적으로 볼 수 없던 바로 그 지점.
+  pull_request:
+  # main 이 어떤 경로로든(직접 푸시·핫픽스) 깨지면 알 수 있게 하는 안전망.
+  push:
+    branches: [main]
+
+# 같은 PR 에 연속 푸시하면 이전 실행을 취소한다 — 마지막 커밋 결과만 의미 있다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 최소 권한: 소스만 읽으면 된다.
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    # 의존성 설치가 대부분이라 넉넉히 잡되, 매달리지 않게 상한을 둔다.
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      # v5 = Node 24 런타임. v4 는 Node 20 기반이라 러너가 강제로 24 로 올리며
+      # deprecation 경고를 남긴다(2025-09 GitHub 공지) — 미리 맞춰둔다.
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # 로컬 개발 환경(v24)과 major 를 맞춘다 — CI 에서만 재현되는 런타임 차이로
+          # 디버깅 시간을 쓰지 않기 위해서다. package.json 에 engines 가 없어 여기가
+          # 사실상 Node 버전의 유일한 선언 지점이다.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci = package-lock.json 그대로 설치(락 무시하는 npm install 과 다르다).
+      - run: npm ci
+
+      # 로컬에서 돌리는 것과 **같은 명령**이어야 한다. `npm run build` 는
+      # `tsc -b && vite build` 라 vite 번들링까지 하므로, 타입만 볼 땐 이쪽이 빠르다.
+      - run: npx tsc -b
