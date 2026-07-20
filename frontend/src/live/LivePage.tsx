@@ -172,6 +172,13 @@ export function LivePage() {
         // minmax(0, 1fr) on the canvas row prevents chart canvases' intrinsic
         // size from pushing the row past viewport height.
         gridTemplateRows: 'auto var(--h-pricestrip) auto minmax(0, 1fr)',
+        // 열 축도 같은 이유로 명시해야 한다. 비워두면 grid-auto-columns:auto 가 되고,
+        // 그 트랙은 가장 넓은 자식의 min-content 폭에서 바닥을 친다. WorkspaceLiveToolbar 와
+        // WorkspaceCanvas 는 각자 overflow 로 빠져나가지만 LiveStatusBar 는 그런 탈출구가
+        // 없어 트랙을 고정시킨다. 그러면 캔버스가 컨테이너보다 넓게 늘어난 채 App 의
+        // <main overflow-hidden> 에 잘린다 — 좁힐수록 차트가 줄지 않고 우측이 사라진다
+        // (관심 드로어 연 상태에서 viewport ~815px 부터, 700px 에서 129px 잘림).
+        gridTemplateColumns: 'minmax(0, 1fr)',
       }}
     >
       <LiveStateBanner
