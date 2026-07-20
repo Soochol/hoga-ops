@@ -30,6 +30,7 @@ import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
+import type { BoundPaneSpec } from '../chart/paneSpecs';
 import type { PaneId } from '../chart/drawing/types';
 import { movePaneBeside } from '../chart/paneOrder';
 import {
@@ -51,6 +52,10 @@ type Props = {
    *  전용 뷰에서는 켜져 있어도 그릴 것이 없다 — 그때 값 없는 빈 레전드 행이 남지 않도록
    *  `applicable` 을 데이터 유무까지 좁힌다(오버레이 마운트 게이트와 일치시키는 규약). */
   hasDepthDelta?: boolean;
+  /** 접기(`paneFolding.ts`) 적용 후 실제로 마운트된 pane 목록. 주면 이걸 쓰고,
+   *  없으면 게이트 결과를 그대로 계산한다. 접힌 pane 이 섞이면 pane 이동 컨트롤의
+   *  "아래로" 가 보이지 않는 pane 을 가리켜 클릭해도 아무 일도 안 하는 것처럼 보인다. */
+  visibleSpecs?: readonly BoundPaneSpec[];
   /** P1: latest-값 신선화 토큰(캔들 경로 chartBundle ref). /live가 SSE 호가 틱마다
    *  부모(LiveChartRoot)를 재렌더하지만 memo + 이 prop이 그 재렌더를 차단하고, 캔들
    *  갱신(chartBundle 식별자 변경) 때만 latest 값을 신선화한다. 본문에서 읽지 않고
@@ -445,7 +450,13 @@ function CellsLegendRow({
   );
 }
 
-function PaneLegendOverlay({ chart, timeframe, paneToggles, hasDepthDelta = false }: Props) {
+function PaneLegendOverlay({
+  chart,
+  timeframe,
+  paneToggles,
+  hasDepthDelta = false,
+  visibleSpecs,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Last crosshair param (null = cursor away → latest-fallback). Mutated by the
   // subscription, read during render; a tick (below) re-renders after each
@@ -525,7 +536,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles, hasDepthDelta = fals
   }, [chart]);
 
   // ── runtime pane order (spec) — drives both cell metadata and Y placement ──
-  const specs = paneSpecsForTimeframe(timeframe, paneToggles, paneOrder);
+  const specs = visibleSpecs ?? paneSpecsForTimeframe(timeframe, paneToggles, paneOrder);
   const specByPaneId = new Map<string, (typeof specs)[number]>();
   specs.forEach((s) => {
     specByPaneId.set(s.name, s);
@@ -661,11 +672,14 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles, hasDepthDelta = fals
     panes = []; // chart tearing down
   }
   const paneTops: number[] = [];
+  const paneHeights: number[] = [];
   {
     let acc = 0;
     for (const p of panes) {
+      const h = p.getHeight();
       paneTops.push(acc);
-      acc += p.getHeight();
+      paneHeights.push(h);
+      acc += h;
     }
   }
 
@@ -709,6 +723,13 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles, hasDepthDelta = fals
               alignItems: 'flex-start',
               gap: 'var(--space-2xs)',
               pointerEvents: 'none',
+              // 자기 pane 안으로 가둔다. 캔들 pane 은 행이 6줄까지(MA·일봉MA·최대벽
+              // 2종·매물대·히트맵) 쌓이는데, 창이 작아지면 그 높이가 pane 을 넘어
+              // 차트 밖으로 흘러나가 잘렸다. 클램프하면 들어가는 행은 그대로 보이고
+              // 넘치는 행만 자기 pane 경계에서 끊긴다 — 레전드는 원래 캔들 위에
+              // 겹쳐 그리는 물건이라 pane 안에서의 클리핑은 계약 위반이 아니다.
+              maxHeight: `calc(${paneHeights[idx]}px - ${LEGEND_INSET})`,
+              overflow: 'hidden',
             }}
           >
             {showMoveControls && (

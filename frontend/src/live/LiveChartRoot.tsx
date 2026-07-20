@@ -18,6 +18,8 @@ import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import RangeSeriesPane, { type SeriesLegendMeta } from '../chart/RangeSeriesPane';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
+import { usePaneFolding } from './usePaneFolding';
+import { FoldedPaneNotice } from './FoldedPaneNotice';
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import {
@@ -1454,9 +1456,31 @@ export function LiveChartRoot({
   );
   const volumeFillStrengthCumulative = useActivePrefs((p) => p.volumeFillStrengthCumulative);
 
+  // 게이트를 통과한 pane 목록(= 사용자가 켜 둔 것). 접기 이전 상태다.
+  const gatedPaneSpecs = useMemo(
+    () => paneSpecsForTimeframe(timeframe, activePaneToggles, paneOrder),
+    [timeframe, activePaneToggles, paneOrder],
+  );
+  // 접기(점진적 degradation) 적용 후 실제로 마운트할 목록. stretch 재적용 effect 와
+  // 렌더 JSX 가 **반드시 같은 목록**을 봐야 pane index → PaneId 매핑이 어긋나지 않는다.
+  // 접기는 렌더 시점 파생값이며 저장 설정에는 쓰지 않는다(`paneFolding.ts` 참조).
+  const {
+    specs: visiblePaneSpecs,
+    foldedCount: foldedPaneCount,
+    timeAxisVisible,
+  } = usePaneFolding(gatedPaneSpecs, containerRef, paneStretch);
+
+  // 글랜스 티어 — 보조 pane 이 전부 접히고도 캔들이 좁으면 시간축(28px)까지 숨겨
+  // 캔들에 돌려준다. 이 크기에서 28px 는 전체의 20% 가 넘는 사치이고, 절대 시각은
+  // 크로스헤어 툴팁이 대신한다. 시간 척도 자체는 그대로라 좌표 변환에 영향이 없다.
+  useEffect(() => {
+    if (!chart) return;
+    chart.applyOptions({ timeScale: { visible: timeAxisVisible } });
+  }, [chart, timeAxisVisible]);
+
   useEffect(() => {
     if (!chart || !cb) return;
-    const specs = paneSpecsForTimeframe(timeframe, activePaneToggles, paneOrder);
+    const specs = visiblePaneSpecs;
     paneSpecsRef.current = specs;
     let cancelled = false;
     const apply = () => {
@@ -1488,7 +1512,7 @@ export function LiveChartRoot({
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, activePaneToggles, cb, timeframe, paneOrder, paneStretch]);
+  }, [chart, cb, visiblePaneSpecs, paneStretch]);
 
   // separator 드래그 캡처 — lwc(검증: 5.2.0)는 pane resize 종료 이벤트를 공개
   // API 로 제공하지 않는다. 핸들은 inline `cursor: row-resize` 를 가진 유일한
@@ -1964,6 +1988,9 @@ export function LiveChartRoot({
         className="live-chart-canvas"
         style={{ width: '100%', height: '100%', background: 'var(--bg-card)' }}
       />
+      {/* 접힌 지표 알림 — 설정이 꺼진 것으로 오해하지 않도록. 차트 마운트 여부와
+          무관하게 접힘이 있으면 띄운다. */}
+      <FoldedPaneNotice count={foldedPaneCount} timeAxisVisible={timeAxisVisible} />
       {chart && cb && axis.segments.length > 0 && (
         <>
           {candleAlwaysOnTop && (
@@ -1972,7 +1999,7 @@ export function LiveChartRoot({
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} override={dailyMovingAverageOverride} />
             </>
           )}
-          {paneSpecsForTimeframe(timeframe, activePaneToggles, paneOrder).map((spec, i) => (
+          {visiblePaneSpecs.map((spec, i) => (
             <RangeSeriesPane
               key={spec.name}
               chart={chart}
@@ -2100,6 +2127,7 @@ export function LiveChartRoot({
             chart={chart}
             timeframe={timeframe}
             paneToggles={activePaneToggles}
+            visibleSpecs={visiblePaneSpecs}
             dataEpoch={cb}
             hasDepthDelta={depthDeltaToday.length > 0}
           />
