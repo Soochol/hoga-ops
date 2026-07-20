@@ -82,9 +82,11 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     set({ sidebarCursorMs: null, sidebarCursorOrigin: null });
   },
   restoreCursor: () => {
-    const { cursorMs, lastCursorMs } = get();
-    if (cursorMs === lastCursorMs) return;
-    set({ cursorMs: lastCursorMs });
+    const { cursorMs, lastCursorMs, cursorOrigin } = get();
+    if (cursorMs === lastCursorMs && cursorOrigin === null) return;
+    // cursorMs 를 되살릴 때 origin 은 걷는다(발행 창을 모르는 복원) — 다른 mutator 의
+    // pair-atomicity 유지. origin null = 미러 게이트 실패 = stale 창 오미러 방지(리뷰).
+    set({ cursorMs: lastCursorMs, cursorOrigin: null });
   },
   resetCursor: () => {
     const s = get();

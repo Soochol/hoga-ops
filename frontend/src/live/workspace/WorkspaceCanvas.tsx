@@ -309,7 +309,7 @@ export function WorkspaceCanvas() {
             height: hoverDropWin.rect.h,
             background: 'var(--tint-selection)',
             border: '2px solid var(--accent)',
-            transition: 'left 100ms ease, top 100ms ease, width 100ms ease, height 100ms ease',
+            transition: 'left 150ms ease-in-out, top 150ms ease-in-out, width 150ms ease-in-out, height 150ms ease-in-out',
           }}
         >
           <span
