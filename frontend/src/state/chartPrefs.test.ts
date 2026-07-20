@@ -92,6 +92,38 @@ describe('캔들 기준 Y축 토글', () => {
   });
 });
 
+describe('체결창 대량 체결 강조 (trade-window 카테고리)', () => {
+  it('기본값 — 토글 ON · 5,000만원 · 노랑 (#EAB308)', () => {
+    expect(DEFAULT_PREFS.tradeHighlightEnabled).toBe(true);
+    expect(DEFAULT_PREFS.tradeHighlightThresholdManwon).toBe(5000);
+    expect(DEFAULT_PREFS.tradeHighlightColor).toBe('#EAB308');
+  });
+
+  it('trade-window 는 indicator-modal 이 아니다 — flat(전역) 저장·병합 경로를 탄다', () => {
+    // per-timeframe 버킷 대상으로 오분류되면 flat 에서 안 읽혀 설정이 증발한다.
+    const merged = mergePrefs({ tradeHighlightEnabled: false, tradeHighlightThresholdManwon: 10_000 });
+    expect(merged.tradeHighlightEnabled).toBe(false);
+    expect(merged.tradeHighlightThresholdManwon).toBe(10_000);
+  });
+
+  it('mergePrefs 색상 — 유효 hex 는 대문자 정규화, 무효는 기본값 폴백', () => {
+    expect(mergePrefs({ tradeHighlightColor: '#ef4444' }).tradeHighlightColor).toBe('#EF4444');
+    expect(mergePrefs({ tradeHighlightColor: 'red' }).tradeHighlightColor)
+      .toBe(DEFAULT_PREFS.tradeHighlightColor);
+    expect(mergePrefs({ tradeHighlightColor: '#EAB30859' }).tradeHighlightColor)
+      .toBe(DEFAULT_PREFS.tradeHighlightColor); // 8자리(알파 포함)는 거부 — 알파는 렌더 시 얹는다
+  });
+
+  it('mergePrefs 임계값 — 범위 밖·비정수는 기본값 폴백', () => {
+    expect(mergePrefs({ tradeHighlightThresholdManwon: 50 }).tradeHighlightThresholdManwon)
+      .toBe(DEFAULT_PREFS.tradeHighlightThresholdManwon); // min 100 미만
+    expect(mergePrefs({ tradeHighlightThresholdManwon: 2_000_000 }).tradeHighlightThresholdManwon)
+      .toBe(DEFAULT_PREFS.tradeHighlightThresholdManwon); // max 초과
+    expect(mergePrefs({ tradeHighlightThresholdManwon: 500.5 }).tradeHighlightThresholdManwon)
+      .toBe(DEFAULT_PREFS.tradeHighlightThresholdManwon); // 정수 아님
+  });
+});
+
 describe('거래량 체결강도 누적 토글', () => {
   it('기본값은 false', () => {
     expect(DEFAULT_PREFS.volumeFillStrengthCumulative).toBe(false);

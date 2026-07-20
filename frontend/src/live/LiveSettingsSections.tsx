@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import {
   CHART_TOGGLES,
   DAY_BOUNDARY_COLOR_DEFAULT,
+  TRADE_HIGHLIGHT_COLOR_DEFAULT,
   categoryOf,
   useChartPrefsStore,
   type ChartToggleCategory,
@@ -10,6 +11,7 @@ import { MINUTE_TIMEFRAMES, type MinuteTimeframe } from '../state/livePage';
 import { useIndicatorActions, useWindowIndicator } from './workspace/windowView';
 import { useStudyViewOpenPrefsStore, type StudyViewOpenTimeframe } from '../state/studyViewOpenPrefs';
 import MAStylePicker from './indicators/MAStylePicker';
+import ColorSwatchPicker from './indicators/ColorSwatchPicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import { SettingsRow } from './settings/SettingsRow';
 import { DataSourceDetail } from './settings/DataSourceDetail';
@@ -26,10 +28,11 @@ import { WORKSPACE_DRAWER_SHELL_CLASS } from './workspaceDrawer';
  */
 type NavId = ChartToggleCategory | 'data-source' | 'study-views' | 'alerts';
 
-const CATEGORY_ORDER: ChartToggleCategory[] = ['chart'];
+const CATEGORY_ORDER: ChartToggleCategory[] = ['chart', 'trade-window'];
 const LABEL: Record<NavId, string> = {
   chart: '차트',
   'indicator-modal': '지표', // never rendered — not in CATEGORY_ORDER; kept for Record<NavId> exhaustiveness
+  'trade-window': '체결창',
   'data-source': '데이터소스',
   'study-views': '저장뷰',
   alerts: '알림',
@@ -40,7 +43,7 @@ function CategoryDetail({ category }: { category: ChartToggleCategory }) {
     .filter((t) => categoryOf(t) === category)
     .map((t) => t.key);
 
-  if (category !== 'chart') {
+  if (category === 'indicator-modal') {
     return <IndicatorPrefRows toggleKeys={keys} />;
   }
 
@@ -52,6 +55,7 @@ function CategoryDetail({ category }: { category: ChartToggleCategory }) {
           <IndicatorPrefRows toggleKeys={[key]} />
           {key === 'dayBoundaryEnabled' && <DayBoundaryStyleRow />}
           {key === 'viLimitPriceDotsEnabled' && <ViLimitPriceLineStyleRow />}
+          {key === 'tradeHighlightEnabled' && <TradeHighlightColorRow />}
         </Fragment>
       ))}
     </>
@@ -76,6 +80,29 @@ function DayBoundaryStyleRow() {
         extraColors={[DAY_BOUNDARY_COLOR_DEFAULT]}
       />
     </SettingsRow>
+  );
+}
+
+function TradeHighlightColorRow() {
+  const color = useChartPrefsStore((s) => s.tradeHighlightColor);
+  const enabled = useChartPrefsStore((s) => s.tradeHighlightEnabled);
+  const setColor = useChartPrefsStore((s) => s.setTradeHighlightColor);
+
+  // 기준 금액(NumericPrefRow)과 같은 enabledBy 게이트 시맨틱 — 토글 OFF 면 dim.
+  return (
+    <div className={`ml-4 ${enabled ? '' : 'pointer-events-none opacity-40'}`}>
+      <SettingsRow
+        label="강조 배경색"
+        description="대량 체결의 체결량 칸에 칠할 배경색입니다."
+      >
+        <ColorSwatchPicker
+          label="대량 체결 강조 배경색"
+          color={color}
+          onChange={setColor}
+          extraColors={[TRADE_HIGHLIGHT_COLOR_DEFAULT]}
+        />
+      </SettingsRow>
+    </div>
   );
 }
 
@@ -151,7 +178,9 @@ function StudyViewsDetail() {
 
 export default function LiveSettingsSections({ variant = 'live', onClose }: { variant?: 'live' | 'study'; onClose?: () => void }) {
   const navIds: NavId[] = [
-    ...CATEGORY_ORDER.filter((c) => CHART_TOGGLES.some((t) => categoryOf(t) === c)),
+    // 체결창은 /live 워크스페이스 전용 데이터 창 — 복기뷰(study) 설정에는 숨긴다.
+    ...CATEGORY_ORDER.filter((c) => (variant === 'live' || c !== 'trade-window')
+      && CHART_TOGGLES.some((t) => categoryOf(t) === c)),
     // 'data-source'는 라이브 워크스페이스에선 메인 Settings(「데이터 소스」)로 이동했다.
     // 복기뷰(study)는 캔들 디스크-온리 등 전용 안내가 있어 이 모달에 유지한다.
     ...(variant === 'study' ? (['data-source'] as const) : []),

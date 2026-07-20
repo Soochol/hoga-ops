@@ -62,6 +62,9 @@ export function mergePrefs(raw: unknown): ChartViewPrefs {
   if (isDayBoundaryLineWidth(obj.dayBoundaryLineWidth)) {
     out.dayBoundaryLineWidth = obj.dayBoundaryLineWidth;
   }
+  if (typeof obj.tradeHighlightColor === 'string' && HEX_COLOR_RE.test(obj.tradeHighlightColor)) {
+    out.tradeHighlightColor = obj.tradeHighlightColor.toUpperCase();
+  }
   return out;
 }
 

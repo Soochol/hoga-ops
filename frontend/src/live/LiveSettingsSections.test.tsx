@@ -36,6 +36,19 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getByTestId('settings-nav-data-source')).toBeTruthy();
   });
 
+  it('라이브 모달에 체결창 nav — 토글·기준 금액·배경색 피커가 상세에 보인다', () => {
+    render(<LiveSettingsSections />);
+    fireEvent.click(screen.getByTestId('settings-nav-trade-window'));
+    expect(screen.getByTestId('settings-toggle-tradeHighlightEnabled')).toBeTruthy();
+    expect(screen.getByText('기준 금액 (만원)')).toBeTruthy();
+    expect(screen.getByLabelText('대량 체결 강조 배경색 선택')).toBeTruthy();
+  });
+
+  it('체결창은 /live 전용 데이터 창 — 복기뷰(study) 설정에는 nav 가 없다', () => {
+    render(<LiveSettingsSections variant="study" />);
+    expect(screen.queryByTestId('settings-nav-trade-window')).toBeNull();
+  });
+
   it('기본 선택은 차트 — 동시호가 마스킹 토글이 상세에 보인다', () => {
     render(<LiveSettingsSections />);
     expect(screen.getByTestId('settings-toggle-auctionWindowMask')).toBeTruthy();
