@@ -40,9 +40,11 @@ jobs:
         working-directory: frontend
 
     steps:
-      - uses: actions/checkout@v4
+      # v5 = Node 24 런타임. v4 는 Node 20 기반이라 러너가 강제로 24 로 올리며
+      # deprecation 경고를 남긴다(2025-09 GitHub 공지) — 미리 맞춰둔다.
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           # 로컬 개발 환경(v24)과 major 를 맞춘다 — CI 에서만 재현되는 런타임 차이로
           # 디버깅 시간을 쓰지 않기 위해서다. package.json 에 engines 가 없어 여기가
