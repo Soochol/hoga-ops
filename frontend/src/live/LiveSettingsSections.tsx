@@ -8,7 +8,6 @@ import {
   type ChartToggleCategory,
 } from '../state/chartPrefs';
 import { MINUTE_TIMEFRAMES, type MinuteTimeframe } from '../state/livePage';
-import { useIndicatorActions, useWindowIndicator } from './workspace/windowView';
 import { useStudyViewOpenPrefsStore, type StudyViewOpenTimeframe } from '../state/studyViewOpenPrefs';
 import MAStylePicker from './indicators/MAStylePicker';
 import ColorSwatchPicker from './indicators/ColorSwatchPicker';
@@ -107,11 +106,12 @@ function TradeHighlightColorRow() {
 }
 
 function ViLimitPriceLineStyleRow() {
-  // 지표 필드는 창 소유(#712) — /live 설정 모달은 포커스 차트 창 Provider 로
-  // 감싸여 그 창을 편집하고, /study 등 Provider 밖에서는 전역 폴백(C2c-2d).
-  const color = useWindowIndicator((s) => s.viLimitPriceLineColor);
-  const lineWidth = useWindowIndicator((s) => s.viLimitPriceLineWidth);
-  const setStyle = useIndicatorActions().setViLimitPriceLineStyle;
+  // 자기 토글(viLimitPriceDotsEnabled)과 같은 전역 스토어 — 원래는 스타일만
+  // 지표 버킷(창×봉)에 있어 한 기능이 두 저장소로 쪼개져 있었다(#759 구현 중
+  // 발견). 이 행이 전역이 되면서 설정 모달에 창 소유 필드가 하나도 남지 않는다.
+  const color = useChartPrefsStore((s) => s.viLimitPriceLineColor);
+  const lineWidth = useChartPrefsStore((s) => s.viLimitPriceLineWidth);
+  const setStyle = useChartPrefsStore((s) => s.setViLimitPriceLineStyle);
 
   return (
     <SettingsRow

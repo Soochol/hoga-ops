@@ -366,6 +366,9 @@ export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];
 export const DAY_BOUNDARY_COLOR_DEFAULT = '#64748B';
 export const DAY_BOUNDARY_LINE_WIDTH_DEFAULT: 1 | 2 | 3 | 4 = 1;
 export type DayBoundaryLineWidth = 1 | 2 | 3 | 4;
+export type ViLimitPriceLineWidth = 1 | 2 | 3 | 4;
+export const VI_LIMIT_PRICE_LINE_DEFAULT_COLOR = '#EAB308';
+export const VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH: ViLimitPriceLineWidth = 3;
 
 /** 체결창 대량 체결 강조 배경색 기본값 — 매물대 당일 최대(maxColor)와 같은 노랑 계열
  *  ("눈에 띄는 물량" 시맨틱 공유). 렌더 시 알파를 얹으므로 6자리 hex 로 저장한다. */
@@ -382,6 +385,12 @@ export type ChartViewPrefs =
     dayBoundaryColor: string;
     dayBoundaryLineWidth: DayBoundaryLineWidth;
     tradeHighlightColor: string;
+    // VI/상하한가 선 스타일 — 원래 지표 버킷(창×봉)에 있었는데, 정작 자기
+    // 토글(`viLimitPriceDotsEnabled`)은 여기 전역이라 한 기능이 두 저장소로
+    // 쪼개져 있었다. 형제 스타일(날짜 구분선·체결 강조)도 전부 전역이라
+    // VI 만 예외였다 — 토글 옆으로 합친다(#759 구현 중 발견).
+    viLimitPriceLineColor: string;
+    viLimitPriceLineWidth: ViLimitPriceLineWidth;
   };
 
 const TOGGLE_DEFAULTS = Object.fromEntries(
@@ -398,6 +407,8 @@ export const DEFAULT_PREFS: ChartViewPrefs = {
   dayBoundaryColor: DAY_BOUNDARY_COLOR_DEFAULT,
   dayBoundaryLineWidth: DAY_BOUNDARY_LINE_WIDTH_DEFAULT,
   tradeHighlightColor: TRADE_HIGHLIGHT_COLOR_DEFAULT,
+  viLimitPriceLineColor: VI_LIMIT_PRICE_LINE_DEFAULT_COLOR,
+  viLimitPriceLineWidth: VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH,
 };
 
 /**
@@ -466,6 +477,7 @@ type ChartPrefsStore = ChartViewPrefs & {
   setNumericPref: (key: NumericPrefKey, value: number) => void;
   setDayBoundaryStyle: (patch: { color?: string; lineWidth?: DayBoundaryLineWidth }) => void;
   setTradeHighlightColor: (color: string) => void;
+  setViLimitPriceLineStyle: (patch: { color?: string; lineWidth?: ViLimitPriceLineWidth }) => void;
   /** 지표 드로어 "현재 봉 초기화"(PR-C #699): indicator-modal 의 **현재 봉 버킷만**
    *  비우고 재투영한다. 차트 전반 flat(그리드·툴팁 등 ⚙️ 설정 항목)은 드로어 밖이라
    *  건드리지 않는다. */
@@ -515,6 +527,12 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
       })),
 
     setTradeHighlightColor: (color) => set({ tradeHighlightColor: color }),
+
+    setViLimitPriceLineStyle: (patch) =>
+      set((s) => ({
+        viLimitPriceLineColor: patch.color ?? s.viLimitPriceLineColor,
+        viLimitPriceLineWidth: patch.lineWidth ?? s.viLimitPriceLineWidth,
+      })),
 
     resetIndicatorModalBucket: () => {
       const s = get();

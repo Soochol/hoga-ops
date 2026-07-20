@@ -21,10 +21,8 @@ import { WorkspaceLiveToolbar } from './workspace/WorkspaceLiveToolbar';
 import {
   WorkspaceIndicatorDrawer,
   targetChartWindow,
-  useFocusedChartWindowView,
 } from './workspace/WorkspaceIndicatorDrawer';
 import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';
-import { WindowViewContext } from './workspace/windowView';
 import { useLiveWindowStatus } from './workspace/liveWindowStatusSource';
 
 /**
@@ -158,10 +156,6 @@ export function LivePage() {
     },
   });
 
-  // 설정 모달도 포커스 차트 창 스코프로 감싼다 — viLimit 등 지표 필드 편집이
-  // 드로어와 같은 창을 향하게(#712). 차트 창이 없으면 전역 폴백 그대로.
-  const focusedView = useFocusedChartWindowView();
-
   // 드로어 latch 방지(#712 리뷰 #3): 열린 채 대상 창이 닫히면 드로어는 null
   // 렌더로 사라지지만 대상 id 가 남아 이후 유령 재등장한다 — 대상이 사라지면
   // id 도 정리한다. 게이트가 "차트 창 0개" 에서 "내 대상 창이 없어짐" 으로
@@ -212,17 +206,10 @@ export function LivePage() {
           onClose={() => setIndicatorTargetId(null)}
         />
       )}
-      {settingsOpen && (
-        focusedView ? (
-          <WindowViewContext.Provider value={focusedView.view}>
-            {/* key=대상 창 id — 재타깃 시 모달 로컬 상태(리셋 확인·입력 draft)가
-                창 경계를 넘지 않게 재마운트(리뷰 #4). */}
-            <LiveSettingsModal key={focusedView.view.windowId} onClose={() => setSettingsOpen(false)} />
-          </WindowViewContext.Provider>
-        ) : (
-          <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
-        )
-      )}
+      {/* 설정 모달은 순수 전역 — 창 Provider 래핑도 key 재마운트도 필요 없다.
+          유일한 창 소유 필드였던 VI 선 스타일이 자기 토글 옆(전역 chartPrefs)
+          으로 옮겨가면서 이 모달은 앱 설정만 편집한다(#759). */}
+      {settingsOpen && <LiveSettingsModal onClose={() => setSettingsOpen(false)} />}
       {collectOpen && activeStockCode && (
         <SingleCodeCollectDialog
           // 다이얼로그가 열린 채 종목이 바뀌면 remount 로 미리보기·기간 상태를 초기화한다.

@@ -5,7 +5,6 @@ import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { PaneId } from '../chart/drawing/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
-import { useWindowIndicator } from './workspace/windowView';
 
 type Props = {
   chart: IChartApi;
@@ -54,9 +53,11 @@ function ariaLabel(hit: PriceLevelHit): string {
 }
 
 function PriceLevelDotsOverlay({ chart, bundle, axis, paneSeries }: Props) {
+  // 토글과 스타일이 같은 전역 스토어 — 한 기능이 두 저장소로 쪼개져 있던 것을
+  // 합쳤다(#759 구현 중 발견, 형제 스타일인 날짜 구분선·체결 강조와 동일 소속).
   const enabled = useActivePrefs((p) => p.viLimitPriceDotsEnabled);
-  const color = useWindowIndicator((s) => s.viLimitPriceLineColor);
-  const lineWidth = useWindowIndicator((s) => s.viLimitPriceLineWidth);
+  const color = useActivePrefs((p) => p.viLimitPriceLineColor);
+  const lineWidth = useActivePrefs((p) => p.viLimitPriceLineWidth);
   const containerRef = useRef<HTMLDivElement>(null);
   const [, tick] = useReducer((n: number) => n + 1, 0);
 
