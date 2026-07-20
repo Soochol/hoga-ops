@@ -73,6 +73,17 @@ export function useWindowView(): WindowView {
 }
 
 /**
+ * 이 서브트리의 창 식별자만(null = Provider 밖 = 전역). **전역 스토어를 구독하지
+ * 않는다** — 비반응형 모듈 레지스트리(`flagLegendValueRegistry`)의 스코프 키처럼
+ * "어느 창인가"만 필요한 소비자용. `useWindowView().windowId` 와 값은 같지만,
+ * 그쪽은 Provider 밖에서 livePage 구독 3개를 만들어 무관한 활성 종목/봉 변경에도
+ * 오버레이를 재렌더시킨다(`/study`·단일 차트에서 순손해).
+ */
+export function useWindowScopeId(): string | null {
+  return useContext(WindowViewContext)?.windowId ?? null;
+}
+
+/**
  * 창의 resolve 된 IndicatorSettings. Provider 밖에서는 전역 스토어의 ambient 투영
  * (=현재 봉으로 resolve 된 최상위 IndicatorSettings 필드)으로 폴백. `useShallow` 로
  * 필드 단위 얕은 비교 → 무관한 스토어 변경에 재렌더하지 않는다.
