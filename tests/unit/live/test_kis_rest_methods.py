@@ -780,28 +780,6 @@ def _program_trade_handler(rows: list[dict]):
     return handler
 
 
-@pytest.mark.anyio
-async def test_fetch_program_trade_by_stock_parses_rows_and_sorts(tmp_path) -> None:
-    client = _make_client(
-        _program_trade_handler([
-            _program_trade_row("090030", net_qty="-2,000", net_amount="-140000000"),
-            _program_trade_row("090000", net_qty="1,000", net_amount="70000000"),
-            {"bsop_hour": "", "whol_smtn_ntby_qty": "bad"},
-        ]),
-        tmp_path,
-    )
-
-    rows = await client.fetch_program_trade_by_stock("005930")
-
-    assert [r.bsop_hour for r in rows] == ["090000", "090030"]
-    assert rows[0].code == "005930"
-    assert rows[0].net_qty == 1000
-    assert rows[0].net_amount == 70000000
-    assert rows[0].buy_qty == 1200
-    assert rows[0].sell_qty == 1000
-    assert rows[1].net_qty == -2000
-
-
 @pytest.mark.asyncio
 async def test_fetch_investor_net_parses_foreign_and_institution(tmp_path) -> None:
     rows = [

@@ -78,6 +78,8 @@ def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | N
             return _parse_trade(code, values, date=date, venue=venue)
         if typ == K.TYPE_MEMBER:
             return _parse_member(code, values, now_ms=now_ms, venue=venue)
+        if typ == K.TYPE_PROGRAM:
+            return _parse_program(code, values, now_ms=now_ms, venue=venue)
     except (ValueError, KeyError):
         # 숫자 불량/필드 부재는 프레임 1건 손실로 격리 — recv 루프까지 전파 금지.
         _log.warning("live.kiwoom.bad_field type=%s code=%s", typ, code)
@@ -198,6 +200,46 @@ def _member_top(
             continue
         top.append({"name": name, "qty": _qty(values, qty_fid)})
     return top
+
+
+_MILLION = 1_000_000
+
+
+def _parse_program(
+    code: str, values: dict[str, str], *, now_ms: int, venue: str
+) -> WsTick:
+    """0w 종목프로그램매매 → SnapshotKind.PROGRAM.
+
+    payload 키는 ProgramTradeByStockRow(KIS wire 모델) 필드명과 동일 — 프로그램
+    latch → collector drain 이 이 dict 로 Row 를 만들어 store.merge_response 에
+    넘기므로, 저장·이상탐지·/api/range 소비·프론트가 전부 무변경 재사용된다.
+
+    금액(204/208/212)은 키움이 **백만원** 단위로 준다 — 저장·프론트는 KIS REST 의
+    원 단위를 쓰므로 여기서 ×1e6 정규화한다(F3 실측: REST 399,887,415,500원 ↔
+    0w 397,701백만원, 비율 정확히 1e-6). 211/213(증감)은 재전송 취약이라 미소비 —
+    delta 는 collector 가 flush 간 누적 diff 로 파생한다(F3 권고).
+
+    시각 FID 가 없어 t_ms=now_ms(0F 와 동일 규약). bsop_hour(store 병합 키)는
+    collector 가 t_ms 에서 합성한다.
+    """
+    payload = {
+        "code": code,
+        "t_ms": now_ms,
+        "sell_qty": _qty(values, K.PRG_SELL_QTY),
+        "sell_amount": _qty(values, K.PRG_SELL_AMT) * _MILLION,
+        "buy_qty": _qty(values, K.PRG_BUY_QTY),
+        "buy_amount": _qty(values, K.PRG_BUY_AMT) * _MILLION,
+        # 순매수는 부호 유의미(abs 금지) — F3 검산에서 210=206−202 가 205/205
+        # 성립했으므로 재계산 대신 수신값을 신뢰한다.
+        "net_qty": _signed_opt(values, K.PRG_NET_QTY),
+        "net_amount": (
+            v * _MILLION if (v := _signed_opt(values, K.PRG_NET_AMT)) is not None else None
+        ),
+        "price": _price(values, K.CNT_PRICE),
+    }
+    return WsTick(
+        code=code, t_ms=now_ms, kind=SnapshotKind.PROGRAM, payload=payload, venue=venue,
+    )
 
 
 def _prev_close(price: int, delta: int | None) -> int | None:

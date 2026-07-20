@@ -19,6 +19,7 @@ from .ask_peak_state import TodayAskPeakState, TodayBidPeakState
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
 from .lifecycle import get_signal_alert_monitor
+from . import program_trade_latch
 from .session_gate import market_phase, ws_capture_window_async
 from .snapshot import LiveSnapshot, SnapshotKind
 from .ticks import WsTick
@@ -310,6 +311,13 @@ class LiveStream:
         # parquet으로 영구화한다. 표시 ring(buffer)도 drop_codes_except 후
         # 재생성되므로 표시·저장 모두 입구에서 드롭.
         if self._active_codes is not None and tick.code not in self._active_codes:
+            return
+        # 프로그램매매(0w, PR-F4)는 표시 버퍼·JSONL 저장을 타지 않는다 — 최신값
+        # latch 에만 남기고 종료(ProgramTradeCollector 가 30초 주기로 drain →
+        # program_trade_store 병합). KRX 한정: 프로그램 수급은 KRX 집계 데이터다.
+        if tick.kind is SnapshotKind.PROGRAM:
+            if tick.venue == "KRX":
+                program_trade_latch.update(tick.code, dict(tick.payload))
             return
         # phase 이중 스탬프(M1): 여기 phase는 **표시 스냅샷 전용** — 수신 벽시계
         # 기준 위상을 buffer 스냅에 박는다(tick.t_ms 거래소 시각이 아니라 도착

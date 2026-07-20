@@ -75,6 +75,40 @@ async def test_prev_close_reaches_display_but_not_storage(tmp_path):
     assert "prev_close" not in jsonl                    # 저장: 미유출
 
 
+async def test_program_tick_routes_to_latch_not_buffer_or_storage(tmp_path):
+    """PROGRAM(0w) 틱은 표시 버퍼·JSONL 저장을 타지 않고 latch 로만 간다(PR-F4).
+
+    NXT venue 는 latch 에도 안 남는다 — 프로그램 수급은 KRX 집계 데이터.
+    """
+    from hoga.live import program_trade_latch
+    program_trade_latch.reset_for_tests()
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    now = int(time.time() * 1000)
+    tick = WsTick(code="005930", t_ms=now, kind=SnapshotKind.PROGRAM, payload={
+        "code": "005930", "t_ms": now, "net_qty": 50, "net_amount": 2_500_000,
+        "sell_qty": 100, "sell_amount": 5_000_000, "buy_qty": 150,
+        "buy_amount": 7_500_000, "price": 50_000,
+    })
+    await stream.on_tick(tick)
+    nxt = WsTick(code="000660", t_ms=now, kind=SnapshotKind.PROGRAM, venue="NXT",
+                 payload={"code": "000660", "t_ms": now, "net_qty": 1})
+    await stream.on_tick(nxt)
+
+    latched = program_trade_latch.drain()
+    assert set(latched) == {"005930"}          # KRX 만 latch
+    assert latched["005930"]["net_qty"] == 50
+    series = await buf.get_series("005930")
+    assert series["trades"] == [] and series["snapshots"] == []  # 버퍼 미진입
+    await stream.flush_once(now_ms=now + 10_000)
+    assert not (tmp_path / "live" / "20260605" / "005930.jsonl").exists()  # 저장 미진입
+    program_trade_latch.reset_for_tests()
+
+
 async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_path):
     """게이트 False면 표시(buffer)는 들어가고 저장(다운샘플러)은 비어야 한다
     (리뷰 C1 벡터 1 — 15:30 이후 잔여 틱의 저장 누적 차단)."""
