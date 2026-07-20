@@ -20,6 +20,7 @@
  */
 import { useMemo } from 'react';
 import OrderbookTable from '../../sidebar/OrderbookTable';
+import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import TotalQtyBar from '../../sidebar/TotalQtyBar';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
 import TradeTickTable from '../../sidebar/TradeTickTable';
@@ -165,6 +166,9 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     timeframe: spotTimeframe,
   });
   const latestSnapshot = useMemo(() => latestOrderbookSnapshot(live.ob), [live.ob]);
+  // HTS식 순간 증감 뱃지 — 라이브 latest 표시일 때만. 스팟 커서 중에는 비활성
+  // (과거 시점 위에 "방금 변화" 뱃지는 거짓 정보) + 상태도 비워 복귀 시 낡은 뱃지 방지.
+  const deltaBadges = useOrderbookDeltaBadges(live.ob, !isSpot);
   const spotSnap = spotOrderbook === undefined ? undefined : spotOrderbook.snapshot;
   // 파케이 스팟이 비었을 때 WS 버퍼로 그 버킷의 실제 호가를 복원(ADR-0044 개정 —
   // 승격 지연 ~2-5분 커버). 레거시 LiveSidebar 폴백과 동일 조성.
@@ -210,7 +214,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           다음 가용: {formatKstClock(availableFrom)}
         </div>
       )}
-      <OrderbookTable snapshot={snapshot} baselinePrice={baselinePrice} />
+      <OrderbookTable snapshot={snapshot} baselinePrice={baselinePrice} deltaBadges={isSpot ? null : deltaBadges} />
       <TotalQtyBar snapshot={snapshot} maskRatio={maskRatio} />
     </div>
   );

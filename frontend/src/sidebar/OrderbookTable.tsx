@@ -1,5 +1,10 @@
 import type { OrderbookSnapshot } from '../api/types';
+import {
+  DEPTH_DELTA_DEFAULT_IN_COLOR,
+  DEPTH_DELTA_DEFAULT_OUT_COLOR,
+} from '../state/liveIndicatorsPersistence';
 import { priceDirClass } from '../ui/priceDir';
+import type { OrderbookDeltaBadges } from './orderbookDeltaBadges';
 import { SidebarState } from './SidebarSurface';
 
 type Props = {
@@ -8,9 +13,13 @@ type Props = {
    *  (>전일종가=빨강 / <=파랑 / ==회색). null(신규상장·미체결 등 예외)이면 매도/매수
    *  구분 색으로 폴백. replay 경로(StudyReferenceDetailPanel)는 미전달 → 폴백. */
   baselinePrice?: number | null;
+  /** HTS식 순간 증감 뱃지(직전 스냅샷 대비, useOrderbookDeltaBadges 산출).
+   *  라이브 latest 표시일 때만 전달 — 스팟 커서·replay 는 null/미전달(과거 시점에
+   *  "방금 변화" 뱃지는 거짓이 된다). 색은 차트 증감 지표와 같은 유입/유출 어휘. */
+  deltaBadges?: OrderbookDeltaBadges | null;
 };
 
-export default function OrderbookTable({ snapshot, baselinePrice = null }: Props) {
+export default function OrderbookTable({ snapshot, baselinePrice = null, deltaBadges = null }: Props) {
   if (snapshot === undefined) {
     return (
       <SidebarState>
@@ -46,12 +55,28 @@ export default function OrderbookTable({ snapshot, baselinePrice = null }: Props
       {displayedAsks.map((l, i) => (
         // i counts top→bottom across displayedAsks; reverse it for stable
         // keys tied to rank (best = 1).
-        <Row key={`a-${asks.length - i}`} side="ask" price={l.price} qty={l.qty} maxQty={maxQty} baselinePrice={baselinePrice} />
+        <Row
+          key={`a-${asks.length - i}`}
+          side="ask"
+          price={l.price}
+          qty={l.qty}
+          maxQty={maxQty}
+          baselinePrice={baselinePrice}
+          badge={deltaBadges?.get(`a:${l.price}`) ?? null}
+        />
       ))}
       {/* Divider marking the ask/bid boundary (best ask above, best bid below). */}
       <div role="separator" className="border-t border-border" />
       {bids.map((l, i) => (
-        <Row key={`b-${i + 1}`} side="bid" price={l.price} qty={l.qty} maxQty={maxQty} baselinePrice={baselinePrice} />
+        <Row
+          key={`b-${i + 1}`}
+          side="bid"
+          price={l.price}
+          qty={l.qty}
+          maxQty={maxQty}
+          baselinePrice={baselinePrice}
+          badge={deltaBadges?.get(`b:${l.price}`) ?? null}
+        />
       ))}
     </div>
   );
@@ -63,12 +88,14 @@ function Row({
   qty,
   maxQty,
   baselinePrice,
+  badge,
 }: {
   side: 'ask' | 'bid';
   price: number;
   qty: number;
   maxQty: number;
   baselinePrice: number | null;
+  badge: { delta: number; atMs: number } | null;
 }) {
   const widthPct = maxQty > 0 ? (qty / maxQty) * 100 : 0;
   const barBg     = side === 'ask' ? 'var(--bar-ask)' : 'var(--bar-bid)';
@@ -88,7 +115,24 @@ function Row({
         style={{ width: `${widthPct}%`, background: barBg }}
       />
       <span className={`relative text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
-      <span className="relative text-right text-fg-dim">{qty.toLocaleString('ko-KR')}</span>
+      {/* 잔량 셀 — 증감 뱃지는 같은 셀 왼쪽에 flex 로 두어 좁은 카드에서도 가격과
+          겹치지 않는다(#746 절대배치 겹침 교훈). key=atMs 로 매 갱신마다 페이드
+          애니메이션이 재시작된다. */}
+      <span className="relative flex items-baseline justify-end gap-1.5">
+        {badge !== null && (
+          <span
+            key={badge.atMs}
+            className="book-delta-flash text-[10px]"
+            style={{
+              color: badge.delta > 0 ? DEPTH_DELTA_DEFAULT_IN_COLOR : DEPTH_DELTA_DEFAULT_OUT_COLOR,
+            }}
+          >
+            {badge.delta > 0 ? '+' : '−'}
+            {Math.abs(badge.delta).toLocaleString('ko-KR')}
+          </span>
+        )}
+        <span className="text-right text-fg-dim">{qty.toLocaleString('ko-KR')}</span>
+      </span>
     </div>
   );
 }
