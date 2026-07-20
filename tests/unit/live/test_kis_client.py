@@ -1317,60 +1317,6 @@ async def test_fetch_past_minute_candles_skips_nonnumeric_field() -> None:
     assert [c.close for c in candles] == [104]
 
 
-@pytest.mark.asyncio
-async def test_fetch_orderbook_missing_output1_raises_typed_api_error() -> None:
-    """output1 결측(구조 이상) → KeyError가 아니라 KisApiError로 승격."""
-    def handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"rt_cd": "0"})  # output1 없음
-
-    client = KisClient(
-        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
-        token_provider=FakeTokenProvider(),
-        _transport=httpx.MockTransport(handler),
-    )
-    try:
-        with pytest.raises(KisApiError):
-            await client.fetch_orderbook("005930")
-    finally:
-        await client.aclose()
-
-
-@pytest.mark.asyncio
-async def test_fetch_trades_missing_output2_raises_typed_api_error() -> None:
-    """output2 결측 → KisApiError로 승격(iteration 전 가드)."""
-    def handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"rt_cd": "0"})  # output2 없음
-
-    client = KisClient(
-        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
-        token_provider=FakeTokenProvider(),
-        _transport=httpx.MockTransport(handler),
-    )
-    try:
-        with pytest.raises(KisApiError):
-            await client.fetch_trades("005930")
-    finally:
-        await client.aclose()
-
-
-@pytest.mark.asyncio
-async def test_fetch_brokers_empty_output_raises_typed_api_error() -> None:
-    """output 빈 리스트 → IndexError가 아니라 KisApiError로 승격."""
-    def handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"rt_cd": "0", "output": []})  # 빈 리스트
-
-    client = KisClient(
-        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
-        token_provider=FakeTokenProvider(),
-        _transport=httpx.MockTransport(handler),
-    )
-    try:
-        with pytest.raises(KisApiError):
-            await client.fetch_brokers("005930")
-    finally:
-        await client.aclose()
-
-
 # ------------------------------------------------------------------------
 # EGW00201 바운스 카운터 + 로그 레벨 (2026-07-13, 제안 A)
 # 설계된 정상 손실률(~9-12%)을 개별 WARN 로그가 아닌 율로 집계하기 위한 관측 채널.

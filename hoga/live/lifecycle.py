@@ -22,18 +22,11 @@ import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .broker_rest_poller import BrokerRestPoller
-    from .ticks import WsTick
 
 from pydantic import BaseModel, Field
 
 from . import kis_runtime
 from .buffer import LiveBuffer
-from .kis_capacity_runtime import ensure_kis_capacity_scheduler
-from .live_rest_capture_access import ScheduledLiveRestCaptureClient
 from .promote import promote_kiwoom_today, promote_today
 from .settings import load_live_settings
 from .signal_alert_monitor import SignalAlertMonitor
@@ -70,13 +63,8 @@ class LiveStatus(BaseModel):
     capture_reason: str = "offline"
     # 구독 유실로 실시간 미수집 중인 종목(additive; 키움 표적 재구독이 처리 → 항상 []).
     capture_missing_codes: list[str] = Field(default_factory=list)
-    # 거래원 REST 폴러(ADR-0111) — additive; 프론트 미소비(관측 전용).
-    broker_poll_running: bool = False
-    broker_poll_last_cycle_ms: int | None = None
-    broker_poll_target_count: int = 0
-    broker_poll_degraded: bool = False
-    broker_poll_last_error: str | None = None
-    broker_poll_rate_limit_bounces: int | None = None
+    # broker_poll_* 필드는 제거됨 — 거래원이 키움 0F push 로 전환(PR-F2, ADR-0111 폐지).
+    # 프론트 미소비(관측 전용)였음을 확인하고 additive 원칙대로 조용히 내렸다.
     kis_capacity_scheduler: dict[str, object] | None = None
     # Per-cache hit/miss/eviction observability (PR-1). Assembled in the status route.
     cache_stats: dict[str, object] | None = None
@@ -95,15 +83,14 @@ class _State:
     """In-process live state. Mutated only via this module.
 
     실시간 캡처는 키움 세션(storage_runtime 소유)이 담당하므로 KIS WS conn 상태
-    (streams·live_set)는 없다. lifecycle은 거래원/프로그램 REST 사이드카와 키움 세션의
-    핸들만 소유한다."""
+    (streams·live_set)는 없다. lifecycle은 프로그램 REST 사이드카와 키움 세션의
+    핸들만 소유한다. 거래원 REST 폴러(ADR-0111)는 키움 0F push 전환으로 삭제(PR-F2)."""
 
     def __init__(
         self,
         *,
         started_at_ms: int | None = None,
         watchlist_codes: tuple[str, ...] = (),
-        broker_poller: BrokerRestPoller | None = None,
         program_trade_collector=None,
         kiwoom_session=None,
         kis_rest_bypass_enabled: bool = False,
@@ -112,9 +99,6 @@ class _State:
         # get_active_codes(→ KIS Today Promotion)의 스냅샷 소스. 신규 flow는 채우지 않으나
         # 필드는 유지(호출부·테스트 호환) — KIS live/ 는 더는 수집되지 않아 실질 no-op.
         self.watchlist_codes = tuple(watchlist_codes)
-        # 거래원(회원사) REST 폴러 — WS member TR(H0STMBC0) 대체(ADR-0111). 합성 BROKER 틱을
-        # 키움 스트림 on_tick에 주입한다(ADR-0118 PR-D — 기존 저장 경로 재사용).
-        self.broker_poller = broker_poller
         self.program_trade_collector = program_trade_collector
         # 키움 WS 세션 매니저(ADR-0116) — storage_runtime이 소유·정합화. 실시간 캡처 SSOT.
         self.kiwoom_session = kiwoom_session
@@ -243,7 +227,7 @@ def get_status() -> LiveStatus:
     """Read the current live status. Always safe to call.
 
     status 필드는 키움 세션(``kiwoom_session.status()``)에서 유도한다(ADR-0118 PR-G).
-    kiwoom off/미배선이면 offline. broker_poll_*·kis_rest_bypass만 lifecycle 소유."""
+    kiwoom off/미배선이면 offline. kis_rest_bypass만 lifecycle 소유."""
     now_ms = _now_ms()
     k = _state.kiwoom_session.status() if _state.kiwoom_session is not None else None
 
@@ -265,12 +249,6 @@ def get_status() -> LiveStatus:
         cap_healthy = True
         cap_reason = "healthy"
 
-    broker_poll_status = (
-        _state.broker_poller.status()
-        if _state.broker_poller is not None
-        else None
-    )
-
     return LiveStatus(
         running=running,
         started_at_ms=_state.started_at_ms,
@@ -287,20 +265,6 @@ def get_status() -> LiveStatus:
         capture_healthy=cap_healthy,
         capture_reason=cap_reason,
         capture_missing_codes=[],
-        broker_poll_running=bool(broker_poll_status and broker_poll_status.running),
-        broker_poll_last_cycle_ms=(
-            broker_poll_status.last_cycle_ms if broker_poll_status else None
-        ),
-        broker_poll_target_count=(
-            broker_poll_status.target_count if broker_poll_status else 0
-        ),
-        broker_poll_degraded=bool(broker_poll_status and broker_poll_status.degraded),
-        broker_poll_last_error=(
-            broker_poll_status.last_error if broker_poll_status else None
-        ),
-        broker_poll_rate_limit_bounces=(
-            broker_poll_status.rate_limit_bounces if broker_poll_status else None
-        ),
         kis_rest_bypass_enabled=_state.kis_rest_bypass_enabled,
         kiwoom=k,
     )
@@ -311,10 +275,6 @@ def reset_for_tests() -> None:
     global _state, _buffer  # noqa: PLW0603
     collector = _state.program_trade_collector
     task = getattr(collector, "_task", None)
-    if task is not None and not task.done():
-        task.cancel()
-    broker_poller = _state.broker_poller
-    task = getattr(broker_poller, "_task", None)
     if task is not None and not task.done():
         task.cancel()
     _state = _State()
@@ -414,59 +374,12 @@ async def stop_today_promoter(task: asyncio.Task | None) -> None:
 # ── Start / refresh / stop ──────────────────────────────────────────────────────
 
 async def start_live_stream(*, data_dir: Path) -> bool:
-    """Live Capture 기동 — KIS creds 가드 통과 시 거래원 폴러 + 키움 세션 정합화.
+    """Live Capture 기동 — KIS creds 가드 통과 시 키움 세션 정합화.
 
-    KIS 자격증명(account 0)이 없으면 False(오프라인). 실시간 호가·체결은 키움 세션이
-    담당하고(storage_runtime.sync), 거래원·프로그램 REST 사이드카는 KIS 계정을 쓴다."""
+    KIS 자격증명(account 0)이 없으면 False(오프라인). 실시간 호가·체결·거래원(0F)은
+    키움 세션이 담당하고(storage_runtime.sync), 프로그램 REST 사이드카는 KIS 계정을 쓴다."""
     async with _lifecycle_lock:
         return await _start_live_stream_locked(data_dir=data_dir)
-
-
-async def _dispatch_broker_tick(tick: WsTick) -> None:
-    """거래원 폴러가 만든 합성 BROKER 틱(ADR-0111 승계)을 **키움 매니저**의 관심종목 소유
-    스트림에 브로드캐스트한다(ADR-0118 PR-D — 착지 위치를 kiwoom_live/brokers로 통일).
-
-    각 스트림의 on_tick이 활성집합 밖 코드를 입구에서 드롭하므로(stream.py 활성집합 필터),
-    멤버십은 스트림 활성 셋이 흡수 → 정확히 소유 스트림 1개만 실제 수집한다. 호출 시점에
-    kiwoom_session을 읽어 sync/재빌드 후에도 현재 스트림 집합에 디스패치한다. 키움
-    미배선(off)이면 no-op(폴백 없음 — 관심종목 키움 이관 전제)."""
-    session = _state.kiwoom_session
-    if session is None:
-        return
-    for stream in session.broker_dispatch_streams():
-        on_tick = getattr(stream, "on_tick", None)
-        if on_tick is not None:
-            await on_tick(tick)
-
-
-def _ensure_broker_poller(data_dir: Path) -> BrokerRestPoller | None:
-    """broker_poller를 1회 생성·재사용. creds(account 0) 없으면 None.
-    이미 있으면 그대로 반환 → 타깃 보존."""
-    from .broker_rest_poller import BrokerRestPoller  # noqa: PLC0415
-
-    if _state.broker_poller is not None:
-        return _state.broker_poller
-    if kis_runtime.ensure_kis_client_from_env(data_dir) is None:  # account 0
-        return None
-    # KisClient 고정 참조가 아니라 scheduler-backed proxy를 준다. 거래원 fetch는 background
-    # 우선순위라 user-visible 호가/캔들에 양보한다(ADR-0100).
-    capture_client = ScheduledLiveRestCaptureClient(
-        data_dir=data_dir,
-        scheduler=ensure_kis_capacity_scheduler(data_dir),
-        source="live-broker-poller",
-    )
-    poller = BrokerRestPoller(
-        kis_resolver=lambda: capture_client,
-        dispatch_fn=_dispatch_broker_tick,
-    )
-    poller.start()
-    return poller
-
-
-def _sync_broker_poller_targets(codes: tuple[str, ...]) -> None:
-    """거래원 폴러 타깃을 저장 중인 관심종목과 동기화. start/refresh가 스토리지 계획 직후 호출."""
-    if _state.broker_poller is not None:
-        _state.broker_poller.set_targets(set(codes))
 
 
 def _signal_alert_target_names(data_dir: Path, codes: set[str]) -> dict[str, str]:
@@ -481,13 +394,6 @@ def _storage_set(snapshot: StorageRuntimeSnapshot) -> tuple[str, ...]:
     보존(drop_codes_except)의 SSOT — 컷오버 후 저장은 kiwoom_targets에만 있다(ws_targets는
     항상 빈 튜플). ws_targets 항은 하위호환용 no-op(항상 ())."""
     return tuple(dict.fromkeys(snapshot.ws_targets + snapshot.kiwoom_targets))
-
-
-def _captured_watchlist(snapshot: StorageRuntimeSnapshot) -> tuple[str, ...]:
-    """거래원 폴러 타깃 = 저장 중인 관심종목(capture_candidates ∩ 저장셋). 컷오버 후
-    관심종목은 kiwoom_targets에 있으므로 저장셋에서 소싱한다(ADR-0118 PR-E)."""
-    storage = set(_storage_set(snapshot))  # 저장셋 SSOT 재사용(union 재구현 금지)
-    return tuple(code for code in snapshot.capture_candidates if code in storage)
 
 
 async def _sync_storage_targets(data_dir: Path) -> StorageRuntimeSnapshot:
@@ -507,30 +413,18 @@ async def _sync_storage_targets(data_dir: Path) -> StorageRuntimeSnapshot:
 
 
 async def _start_live_stream_locked(*, data_dir: Path) -> bool:
-    """start의 본체(락 보유 중) — 거래원 폴러 + 키움 세션 정합화.
+    """start의 본체(락 보유 중) — 키움 세션 정합화.
 
-    KIS creds(account 0)가 없으면 오프라인(False). 실시간 캡처는 키움 세션이 담당하며
-    (_sync_storage_targets → storage_runtime.sync), 거래원 폴러 타깃은 저장 중인 관심종목."""
+    KIS creds(account 0)가 없으면 오프라인(False). 실시간 캡처(호가·체결·거래원 0F)는
+    키움 세션이 담당한다(_sync_storage_targets → storage_runtime.sync)."""
     refresh_status_from_settings(data_dir)
-    # bypass: KIS REST 전면 우회 → 거래원 폴러(REST 기반)도 정지.
-    if _state.kis_rest_bypass_enabled and _state.broker_poller is not None:
-        await _state.broker_poller.stop()
-        _state.broker_poller = None
 
-    # KIS creds 게이트(account 0). 거래원·프로그램 REST 사이드카의 전제.
+    # KIS creds 게이트(account 0). 프로그램 REST 사이드카·캔들 백필의 전제.
     if len(kis_runtime.configured_account_ids(data_dir)) == 0:
         return False
 
-    if not _state.kis_rest_bypass_enabled:
-        broker_poller = _ensure_broker_poller(data_dir)
-        if broker_poller is None:
-            return False  # account 0 creds 사라짐(레이스) — 오프라인
-        _state.broker_poller = broker_poller
-
     # Storage targets 산출: 실시간 캡처는 키움 세션이 흡수(storage_runtime.sync).
     snapshot = await _sync_storage_targets(data_dir)
-    # 거래원 폴러 타깃 = 저장 중인 관심종목(kiwoom_targets에서 재소싱).
-    _sync_broker_poller_targets(_captured_watchlist(snapshot))
     # 저장셋 밖 표시 링만 해제.
     await _buffer.drop_codes_except(set(_storage_set(snapshot)))
     _state.started_at_ms = _now_ms()
@@ -538,12 +432,9 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
 
 
 async def _stop_live_stream_locked() -> None:
-    """완전 정지 — 거래원 폴러 + 키움 세션/프로그램 사이드카 stop + _state 리셋."""
+    """완전 정지 — 키움 세션/프로그램 사이드카 stop + _state 리셋."""
     global _state  # noqa: PLW0603
-    broker_poller = _state.broker_poller
     await stop_storage_runtime(_state)
-    if broker_poller is not None:
-        await broker_poller.stop()
     _state = _State()
 
 
@@ -591,25 +482,17 @@ async def on_view_unsubscribe(
 
 
 async def refresh_live_stream(*, data_dir: Path) -> None:
-    """watchlist/히트맵 변경 후크 — 저장 타깃 재계획 + 키움/거래원 정합화.
+    """watchlist/히트맵 변경 후크 — 저장 타깃 재계획 + 키움 정합화.
 
     한 번도 start 안 됐으면(started_at_ms None) start로 위임(creds 가드 수행)."""
     async with _lifecycle_lock:
         refresh_status_from_settings(data_dir)
-        if _state.kis_rest_bypass_enabled and _state.broker_poller is not None:
-            await _state.broker_poller.stop()
-            _state.broker_poller = None
         if _state.started_at_ms is None:
             # 한 번도 시작 안 됨 → start가 가드(creds) 수행.
             await _start_live_stream_locked(data_dir=data_dir)
             return
 
-        # 거래원 폴러 보장(부팅 후 최초 refresh에서 생성될 수도).
-        if not _state.kis_rest_bypass_enabled and _state.broker_poller is None:
-            _state.broker_poller = _ensure_broker_poller(data_dir)
-
         snapshot = await _sync_storage_targets(data_dir)
-        _sync_broker_poller_targets(_captured_watchlist(snapshot))
         # 저장셋(ws∪kiwoom) 밖 링만 해제 — 컷오버 후 ws_targets 빈값이어도 키움 표시 링 보존.
         await _buffer.drop_codes_except(set(_storage_set(snapshot)))
 

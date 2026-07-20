@@ -163,12 +163,13 @@ def _parse_member(
 ) -> WsTick:
     """0F 주식당일거래원 → SnapshotKind.BROKER.
 
-    payload 는 ADR-0111 REST 합성 경로(rest_buffer_build.brokers_to_snapshot)와
-    shape-compat: {code, t_ms, sell_top[{name,qty}], buy_top[{name,qty}]}.
+    payload 는 삭제된 ADR-0111 REST 합성 경로(brokers_to_snapshot — PR-F2 로 은퇴)가
+    쓰던 shape 그대로: {code, t_ms, sell_top[{name,qty}], buy_top[{name,qty}]}.
+    하위 소비자(버퍼·거래원 카드)가 이 shape 를 계속 기대한다.
     phase/venue 는 stream.on_tick 이 덧붙이므로 파서는 싣지 않는다(0B/0D 와 동일).
 
-    0F 프레임에는 시각 FID 가 없어 t_ms=now_ms(수신 시각) — REST 합성 경로가
-    KisBrokers 에 t_ms 가 없어 수신 시각을 쓰던 것과 같은 규약이다.
+    0F 프레임에는 시각 FID 가 없어 t_ms=now_ms(수신 시각) — REST 합성 경로와
+    같은 규약이다.
     """
     payload = {
         "code": code,

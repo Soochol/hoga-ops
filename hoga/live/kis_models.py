@@ -1,46 +1,12 @@
 """KIS REST 응답 정규화 (pydantic). Quote/candle/investor wire models.
 
-REST 시세 모델(KisOrderbook/KisTrade/KisBrokers):
-  Task 13(f9a93b2)에서 poller 은퇴 시 삭제됐으나, ADR-0067 보는종목 REST 표시폴러(Part B)를 위해 복원.
+호가/체결/거래원 시세 모델(KisOrderbook/KisTrade/KisBrokers)은 두 번 삭제됐다:
+Task 13(f9a93b2) poller 은퇴 → ADR-0067 표시폴러로 복원 → PR-F2(2026-07-20)에서
+거래원까지 키움 0F push 로 넘어가며 최종 삭제(소비자 0).
 """
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel
-
-
-class OrderbookLevel(BaseModel):
-    price: int
-    qty: int
-
-
-class KisOrderbook(BaseModel):
-    code: str
-    asks: list[OrderbookLevel]  # asks[0] = best ask (lowest)
-    bids: list[OrderbookLevel]  # bids[0] = best bid (highest)
-    total_ask_qty: int
-    total_bid_qty: int
-    t_ms: int  # client-side epoch ms (UTC)
-
-
-class KisTrade(BaseModel):
-    price: int
-    qty: int
-    side: Literal[-1, 0, 1, 2]  # -1=sell, 0=mid, 1=buy, 2=auction
-    side_source: Literal["inferred", "auction"]
-    t_ms: int  # epoch ms (UTC)
-
-
-class KisBrokerEntry(BaseModel):
-    name: str
-    qty: int
-
-
-class KisBrokers(BaseModel):
-    code: str
-    buy_top: list[KisBrokerEntry]   # top-5 buy brokers
-    sell_top: list[KisBrokerEntry]  # top-5 sell brokers
 
 
 class KisCandle(BaseModel):

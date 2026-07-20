@@ -45,7 +45,7 @@ _HOT_PATH_MODULES = (
     "hoga/live/lifecycle.py",
     "hoga/live/kis_client.py",
     "hoga/live/kis_models.py",
-    "hoga/live/broker_rest_poller.py",  # ADR-0111 — 거래원 REST 폴러도 핫패스(틱 주입)
+    "hoga/live/kiwoom_frames.py",  # PR-F2 — 거래원 0F 파서가 REST 폴러를 대체(핫패스)
 )
 
 
@@ -123,12 +123,10 @@ def test_live_package_imports_cleanly_with_single_worker() -> None:
 def test_wstick_single_source_of_truth() -> None:
     """PR-A/PR-G (ADR-0118): WsTick lives in hoga.live.ticks — 단일 SSOT.
 
-    KIS ws_frames(파서) 삭제 후에도 키움/거래원 합성 틱이 이 한 타입만 쓰도록 고정한다.
-    kiwoom_frames·broker_rest_poller가 같은 클래스 객체를 참조해야 isinstance/frozen-
-    dataclass 계약이 어긋나지 않는다."""
+    KIS ws_frames(파서)·거래원 REST 폴러(PR-F2) 삭제 후 남은 유일한 틱 생산자
+    kiwoom_frames 가 이 한 타입만 쓰도록 고정한다 — 같은 클래스 객체를 참조해야
+    isinstance/frozen-dataclass 계약이 어긋나지 않는다."""
     from hoga.live import ticks
-    from hoga.live.broker_rest_poller import WsTick as BrokerWsTick
     from hoga.live.kiwoom_frames import WsTick as KiwoomWsTick
 
-    assert BrokerWsTick is ticks.WsTick
     assert KiwoomWsTick is ticks.WsTick
