@@ -23,6 +23,7 @@ import {
   targetChartWindow,
   useFocusedChartWindowView,
 } from './workspace/WorkspaceIndicatorDrawer';
+import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';
 import { WindowViewContext } from './workspace/windowView';
 import { useLiveWindowStatus } from './workspace/liveWindowStatusSource';
 
@@ -114,7 +115,10 @@ export function LivePage() {
     ? (activeSymbol.kind === 'index' ? `index:${activeSymbol.code}` : activeSymbol.code)
     : null;
 
-  const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
+  // 지표 드로어 = 전역 1개 + **대상 창 id**(#759 결정 3). boolean 이던 시절엔
+  // 대상을 z-최상위로 추론했는데, 트리거가 창 헤더로 내려오며 추론이 불필요해졌다.
+  const [indicatorTargetId, setIndicatorTargetId] = useState<string | null>(null);
+  useEffect(() => registerIndicatorDrawerOpener(setIndicatorTargetId), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 활성 그룹 종목 지난 N일 hogaplay 수집(히트맵 CollectDialog 재사용) — 주식 한정.
   const [collectOpen, setCollectOpen] = useState(false);
@@ -158,12 +162,18 @@ export function LivePage() {
   // 드로어와 같은 창을 향하게(#712). 차트 창이 없으면 전역 폴백 그대로.
   const focusedView = useFocusedChartWindowView();
 
-  // 드로어 latch 방지(리뷰 #3): 열린 채 마지막 차트 창이 닫히면 드로어는 null
-  // 렌더로 사라지지만 open 플래그가 남아 이후 +차트 시 유령 재등장한다 — 대상이
-  // 사라지면 플래그도 정리한다.
+  // 드로어 latch 방지(#712 리뷰 #3): 열린 채 대상 창이 닫히면 드로어는 null
+  // 렌더로 사라지지만 대상 id 가 남아 이후 유령 재등장한다 — 대상이 사라지면
+  // id 도 정리한다. 게이트가 "차트 창 0개" 에서 "내 대상 창이 없어짐" 으로
+  // 좁아졌다(#759 결정 5) — 다른 창은 남아 있어도 내 대상이 닫혔으면 닫는다.
+  const indicatorTargetAlive = useWorkspaceStore(
+    (s) => indicatorTargetId != null && s.windows.some(
+      (w) => w.id === indicatorTargetId && w.kind === 'chart',
+    ),
+  );
   useEffect(() => {
-    if (indicatorPanelOpen && !focusedView) setIndicatorPanelOpen(false);
-  }, [indicatorPanelOpen, focusedView]);
+    if (indicatorTargetId != null && !indicatorTargetAlive) setIndicatorTargetId(null);
+  }, [indicatorTargetId, indicatorTargetAlive]);
 
   return (
     <div
@@ -191,14 +201,16 @@ export function LivePage() {
         venue={liveVenue}
       />
       <WorkspaceLiveToolbar
-        onOpenIndicators={() => setIndicatorPanelOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenCollect={activeStockCode ? () => setCollectOpen(true) : undefined}
         studySaveControl={<LiveStudyViewSaveButton />}
       />
       <WorkspaceCanvas />
-      {indicatorPanelOpen && (
-        <WorkspaceIndicatorDrawer onClose={() => setIndicatorPanelOpen(false)} />
+      {indicatorTargetId != null && (
+        <WorkspaceIndicatorDrawer
+          windowId={indicatorTargetId}
+          onClose={() => setIndicatorTargetId(null)}
+        />
       )}
       {settingsOpen && (
         focusedView ? (

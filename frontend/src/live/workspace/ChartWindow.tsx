@@ -46,6 +46,8 @@ import {
 } from './groupChartLinkSource';
 import { TimeframeControl } from '../TimeframeControl';
 import { DrawingMenu } from '../DrawingMenu';
+import { IndicatorsButton } from '../LiveToolbar';
+import { requestIndicatorDrawer } from './indicatorDrawerControls';
 import {
   publishLiveWindowStatus,
   clearLiveWindowStatus,
@@ -284,6 +286,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         />
         <div className="ml-auto flex items-center gap-0.5">
           <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} />
+          <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} />
         </div>
       </div>
       <div className="min-h-0 flex-1">

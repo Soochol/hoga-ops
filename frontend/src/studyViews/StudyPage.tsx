@@ -7,7 +7,7 @@ import LiveSettingsModal from '../live/LiveSettingsModal';
 import { ChartDrawingShell } from '../live/ChartDrawingShell';
 import { DrawingMenu } from '../live/DrawingMenu';
 import { TimeframeControl } from '../live/TimeframeControl';
-import { LiveChartActionButtons } from '../live/LiveToolbar';
+import { IndicatorsButton, SettingsButton } from '../live/LiveToolbar';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
@@ -554,10 +554,10 @@ export function StudyPage() {
                   timeframe={activeViewModel.save.timeframe}
                 />
               )}
-              <LiveChartActionButtons
-                onOpenIndicators={() => setIndicatorPanelOpen(true)}
-                onOpenSettings={() => setSettingsOpen(true)}
-              />
+              {/* 묶음 해체(#759 결정 7) 후 낱개 재조립 — /study 는 창 개념이
+                  없어 둘 다 여기에 있고, 화면은 이전과 동일하다. */}
+              <IndicatorsButton onClick={() => setIndicatorPanelOpen(true)} />
+              <SettingsButton onClick={() => setSettingsOpen(true)} />
               <IconToolbarButton onClick={openMemo} className="shrink-0">
                 메모
               </IconToolbarButton>
