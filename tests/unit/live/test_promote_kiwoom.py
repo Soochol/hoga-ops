@@ -1,9 +1,11 @@
 """promote_kiwoom_today 골든 — live_kiwoom JSONL → kiwoom_live parquet (ADR-0116)."""
 import json
+import time
 
 import polars as pl
 
 from hoga.api.timeenc import hhmmssms_to_unix_ms
+from hoga.live import lifecycle
 from hoga.live.promote import _today_kst_yyyymmdd, promote_kiwoom_today
 
 
@@ -50,6 +52,36 @@ async def test_promote_kiwoom_today_writes_kiwoom_live_parquet(tmp_path):
     snaps = pl.read_parquet(target / "snapshots.parquet")
     assert snaps.height == 2
     assert "ask_p1" in snaps.columns and "tot_ask" in snaps.columns
+
+
+async def test_promote_kiwoom_today_records_promote_success_in_lifecycle(tmp_path):
+    """실승격이 lifecycle.today_promote_last_ms에 남는다(design-review B2).
+
+    ADR-0118 컷오버 후 KIS live/ 수집이 삭제돼 promote_today가 매 사이클 skip —
+    키움 승격이 이 status 표면의 유일한 기록원이다. 여기서 기록하지 않으면
+    /api/live/status.today_promote_last_ms가 영구 빈 dict(관측성 갭)로 고착된다.
+    """
+    today = _today_kst_yyyymmdd()
+    jsonl_path = tmp_path / "live_kiwoom" / today / "005930.jsonl"
+    jsonl_path.parent.mkdir(parents=True)
+    t = hhmmssms_to_unix_ms(today, 90000000)  # 09:00:00.000 KST
+    jsonl_path.write_text(json.dumps({"t_ms": t, "kind": "ob", "payload": {
+        "code": "005930", "t_ms": t, "asks": [], "bids": [],
+        "total_ask_qty": 0, "total_bid_qty": 0, "phase": "regular",
+    }}) + "\n")
+
+    before_ms = int(time.time() * 1000)
+    assert await promote_kiwoom_today(tmp_path, code="005930") == today
+
+    recorded = lifecycle.get_today_promote_last_ms()
+    assert "005930" in recorded
+    assert recorded["005930"] >= before_ms
+
+
+async def test_promote_kiwoom_today_skip_does_not_record(tmp_path):
+    """jsonl 부재 skip(None)은 기록하지 않는다 — '마지막 실승격 시각'의 의미 보존."""
+    assert await promote_kiwoom_today(tmp_path, code="005930") is None
+    assert lifecycle.get_today_promote_last_ms() == {}
 
 
 async def test_promote_kiwoom_today_noop_when_no_jsonl(tmp_path):
