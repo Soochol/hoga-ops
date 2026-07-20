@@ -62,17 +62,8 @@ import {
 import { realMsToYyyymmdd } from '../liveDateTime';
 import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId } from '../liveInstrument';
+import { WINDOW_KIND_LABEL } from './windowKindLabels';
 import type { GroupId, GroupSymbol, WorkspaceWindow, WindowKind } from '../../state/workspace';
-
-const KIND_LABEL: Record<WindowKind, string> = {
-  chart: '차트',
-  book: '10호가',
-  broker: '거래원',
-  vdist: '매물대',
-  program: '프로그램',
-  investor: '잠정투자자',
-  'sector-ranking': '섹터 랭킹',
-};
 
 export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   // 섹터 랭킹은 지수 그룹 전용 데이터 창(PR-D) — 일반 지수 게이트보다 먼저 처리한다
@@ -84,7 +75,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
     return (
       <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
         <span className="font-mono">
-          {KIND_LABEL[win.kind]} · 지수 그룹 전용
+          {WINDOW_KIND_LABEL[win.kind]} · 지수 그룹 전용
           <br />
           {symbol ? `${symbol.name} 은 지수가 아닙니다` : `종목 없음 (그룹 ${win.group})`}
         </span>
@@ -96,7 +87,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
     return (
       <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
         <span className="font-mono">
-          {KIND_LABEL[win.kind]} · {symbol.name}
+          {WINDOW_KIND_LABEL[win.kind]} · {symbol.name}
           <br />
           지수는 지원하지 않습니다
         </span>
@@ -108,7 +99,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
     return (
       <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dimmer">
         <span className="font-mono">
-          {KIND_LABEL[win.kind]} · 종목 없음 (그룹 {win.group})
+          {WINDOW_KIND_LABEL[win.kind]} · 종목 없음 (그룹 {win.group})
         </span>
       </div>
     );
@@ -148,7 +139,7 @@ function LinkPendingCard({ kind, group }: { kind: WindowKind; group: GroupId }) 
   return (
     <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
       <span className="font-mono">
-        {KIND_LABEL[kind]} · 차트 창 연동 대기
+        {WINDOW_KIND_LABEL[kind]} · 차트 창 연동 대기
         <br />
         그룹 {group}에 차트 창을 추가하면 표시됩니다
       </span>

@@ -241,8 +241,12 @@ describe('WorkspaceLiveToolbar 액션 버튼', () => {
   it('renders the layout preset menu button and window-add / tidy controls', () => {
     renderToolbar();
     expect(screen.getByTestId('layout-preset-button')).toBeInTheDocument();
-    expect(screen.getByTestId('workspace-add-chart')).toBeInTheDocument();
     expect(screen.getByTestId('workspace-tidy')).toBeInTheDocument();
+
+    // 창 추가는 종류별 버튼에서 단일 드롭다운으로 접혔다 — 열어야 종류가 보인다.
+    expect(screen.queryByTestId('workspace-add-chart')).toBeNull();
+    fireEvent.click(screen.getByTestId('workspace-add-menu-button'));
+    expect(screen.getByTestId('workspace-add-chart')).toBeInTheDocument();
   });
 
   it('renders collect button only when onOpenCollect is provided and calls it on click', () => {
