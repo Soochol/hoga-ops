@@ -221,6 +221,35 @@ def test_member_skips_empty_slots():
     assert len(t.payload["buy_top"]) == 5  # 매수 쪽은 영향 없음
 
 
+# ── 0w 종목프로그램매매 → PROGRAM latch payload (PR-F4) ──
+
+
+def test_program_parses_t2_golden_frame():
+    """실채록 0w — 수급 필드 파싱 + 금액 ×1e6 정규화(백만원 → 원, F3 단위 확정)."""
+    frame = next(f for f in _t2_frames("0w") if f["item"] == "000660")
+    t = parse_real_row(frame, date="20260720", now_ms=1784521985000)
+    assert t is not None
+    assert t.kind is SnapshotKind.PROGRAM
+    assert t.code == "000660"
+    assert t.t_ms == 1784521985000
+    v = frame["values"]
+    assert t.payload["sell_qty"] == abs(int(v["202"]))
+    assert t.payload["sell_amount"] == abs(int(v["204"])) * 1_000_000
+    assert t.payload["buy_qty"] == abs(int(v["206"]))
+    assert t.payload["buy_amount"] == abs(int(v["208"])) * 1_000_000
+    # 순매수는 부호 유지 — F3 산식(210=206−202)이 파싱값에서도 성립해야 한다.
+    assert t.payload["net_qty"] == t.payload["buy_qty"] - t.payload["sell_qty"]
+    assert t.payload["net_amount"] == int(str(v["212"]).replace("+", "")) * 1_000_000
+    assert t.payload["price"] > 0
+
+
+def test_program_all_t2_frames_parse():
+    for frame in _t2_frames("0w"):
+        t = parse_real_row(frame, date="20260720", now_ms=1)
+        assert t is not None, frame["item"]
+        assert t.kind is SnapshotKind.PROGRAM
+
+
 # ── FID 11(전일대비) → 전일종가 유도 ──
 
 

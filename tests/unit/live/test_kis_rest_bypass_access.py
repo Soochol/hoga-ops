@@ -49,7 +49,7 @@ async def test_run_with_capacity_blocks_before_scheduler_when_bypass_on(tmp_path
         kis_access.KisRestEndpoint.PAST_DAILY,
         kis_access.KisRestEndpoint.QUOTES,
         kis_access.KisRestEndpoint.INVESTOR_NET,
-        kis_access.KisRestEndpoint.PROGRAM_TRADE,
+        kis_access.KisRestEndpoint.INDEX_PRICE,
     ],
 )
 @pytest.mark.asyncio

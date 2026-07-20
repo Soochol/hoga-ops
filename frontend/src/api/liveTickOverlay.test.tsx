@@ -305,6 +305,40 @@ describe('WS 틱 등락률 오버레이', () => {
     expect(result.current.quoteByCode.get('005930')?.change_pct).toBe(-2.35);
   });
 
+  it('가격이 폴링과 같으면 등락률을 재계산하지 않는다 — 반올림 규칙 차이 깜빡임 방지', async () => {
+    // 백엔드 round()=banker's, 프론트 Math.round=half-up. .xx5 경계(여기선
+    // 249,000/240,000-1 = 3.75%가 아니라 인위적 경계값 사용)에서 같은 사실이
+    // 두 표기로 갈리면 폴·틱 프레임이 번갈아 올 때 끝자리가 깜빡인다.
+    // 가격 동일 → 폴 표기를 단일 진실로.
+    mockQuotes([{ code: '005930', price: 241200, change_pct: 0.5, change_won: 1200 }]);
+    const { result } = await renderOverlay(['005930']);
+    const before = result.current.quoteByCode.get('005930');
+
+    // 같은 가격 + 키움 기준가(다를 수도 있는 소스)라도 재계산하지 않는다.
+    pushTrade('005930', 241200, 240000);
+
+    expect(result.current.quoteByCode.get('005930')).toBe(before);
+    expect(result.current.quoteByCode.get('005930')?.change_pct).toBe(0.5);
+  });
+
+  it('가격이 같아도 OHLC 가 새로우면 반영한다', async () => {
+    mockQuotes([{
+      code: '005930', price: 241200, change_pct: 0.5, change_won: 1200,
+      open: 240000, high: 241000, low: 239000,
+    }]);
+    const { result } = await renderOverlay(['005930']);
+
+    act(() => {
+      handlers.get('005930')?.({
+        t_ms: 1, kind: 'trade', trades: [{ price: 241200 }],
+        prev_close: 240000, day_high: 242000, // 고가만 갱신
+      });
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(result.current.quoteByCode.get('005930')?.high).toBe(242000);
+  });
+
   it('틱 결과가 폴링값과 같으면 quote 객체 identity 를 유지한다', async () => {
     // 무의미한 재렌더 churn 방지 — 소비자 memo 가 identity 로 판정한다.
     mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);

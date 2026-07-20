@@ -304,11 +304,12 @@ async def test_storage_runtime_stops_program_trade_collector_when_disabled(
 
 
 @pytest.mark.asyncio
-async def test_storage_runtime_bypass_stops_program_trade_collector(
+async def test_storage_runtime_bypass_no_longer_stops_program_trade_collector(
     tmp_path, monkeypatch,
 ) -> None:
-    """kis_rest_bypass는 KIS REST 전면 우회 토글 — 프로그램매매 사이드카(REST 기반)도
-    함께 끈다. program_trade_storage_enabled=True여도 bypass가 이긴다."""
+    """PR-F4 계약 반전: 프로그램매매 소스가 키움 0w latch 가 되어 KIS REST 를 안
+    쓰므로, kis_rest_bypass 가 켜져도 사이드카는 계속 돈다 — 설정 게이트
+    (program_trade_storage_enabled)만 남는다."""
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
     existing = FakeProgramTradeCollector()
@@ -329,6 +330,7 @@ async def test_storage_runtime_bypass_stops_program_trade_collector(
         now_ms_fn=lambda: 0,
     )
 
-    assert existing.stopped is True
+    assert existing.started is True
+    assert existing.stopped is False
     # KIS WS 삭제 → ws_targets는 항상 ()(bypass 무관).
     assert snapshot.ws_targets == ()

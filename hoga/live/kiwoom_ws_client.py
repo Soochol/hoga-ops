@@ -40,10 +40,11 @@ class _WsLike(Protocol):
     async def close(self) -> None: ...
 
 WS_URL_REAL = "wss://api.kiwoom.com:10000/api/dostk/websocket"
-# 체결 + 호가(히트맵 요건) + 당일거래원(PR-F1, ADR-0111 REST 폴러 대체).
+# 체결 + 호가(히트맵 요건) + 당일거래원(PR-F1) + 프로그램매매(PR-F4) — 뒤 둘은
+# KIS REST 폴러(ADR-0111·프로그램 수집기)를 대체한다.
 # 타입 추가는 슬롯 무료 — 키움 한도는 종목 단위(연결당 200종목, 타입무관,
-# 2026-07-16 실측)이고 REG 는 타입 리스트를 1회에 실어 유량(5/s)도 불변.
-DEFAULT_TYPES = ("0B", "0D", "0F")
+# 2026-07-16 실측 + PR-F1 게이트 재확인)이고 REG 는 타입 리스트 1회라 유량(5/s)도 불변.
+DEFAULT_TYPES = ("0B", "0D", "0F", "0w")
 _REG_BATCH = 50  # item/REG (실측: 배치로 유량 5/s 회피)
 _REG_PACING_S = 0.35  # ~3 REG/s 페이싱 (5/s 상한 여유)
 _BACKOFF_S = (1, 2, 4, 8, 16, 32, 60)

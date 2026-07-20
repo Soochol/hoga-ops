@@ -43,7 +43,7 @@ class KisRestEndpoint(StrEnum):
     INVESTOR_TREND_ESTIMATE = "investor-trend-estimate"
     PAST_DAILY = "past-daily"
     PAST_MINUTE = "past-minute"
-    PROGRAM_TRADE = "program-trade"
+    # PROGRAM_TRADE 는 제거됨 — 프로그램매매도 키움 0w push 전환(PR-F4).
     QUOTES = "quotes"
     SCREENER_DAILY = "screener-daily"
 

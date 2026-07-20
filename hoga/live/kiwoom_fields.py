@@ -14,7 +14,7 @@ from __future__ import annotations
 TYPE_TRADE = "0B"  # 주식체결 → SnapshotKind.TRADE
 TYPE_ORDERBOOK = "0D"  # 주식호가잔량 → SnapshotKind.OB
 TYPE_MEMBER = "0F"  # 주식당일거래원 → SnapshotKind.BROKER
-TYPE_PROGRAM = "0w"  # 종목프로그램매매 (수급 FID 확정 후 — 플랜 2026-07-20 §PR-F3)
+TYPE_PROGRAM = "0w"  # 종목프로그램매매 → 프로그램 사이드카 latch (PR-F4)
 
 # --- 0D 주식호가잔량 FID ---
 # 실측 확인(2026-07-16): 41-50 매도호가 오름차순(best=41), 51-60 매수호가 내림차순(best=51),
@@ -62,6 +62,21 @@ MEM_SELL_NAME = [str(f) for f in range(141, 146)]  # 매도 거래원 이름 1~5
 MEM_BUY_NAME = [str(f) for f in range(151, 156)]  # 매수 거래원 이름 1~5위
 MEM_SELL_QTY = [str(f) for f in range(161, 166)]  # 매도 누적수량 1~5위
 MEM_BUY_QTY = [str(f) for f in range(171, 176)]  # 매수 누적수량 1~5위
+
+# --- 0w 종목프로그램매매 FID ---
+# 실측 확정(2026-07-20 F3 검산 — 원본 205건 시계열, research 문서 §0w 표 참조):
+# 순매수 산식 210=206−202·212=208−204 각 205/205 성립, 수량×주가≈금액 교차검증.
+# **금액(204/208/212)은 백만원 단위** — KIS REST(원 단위)와 스케일이 달라 소비 전
+# ×1,000,000 정규화 필수(EOD 실측: REST 399,887,415,500원 vs 0w 397,701백만원).
+# 211/213(순매수 증감, 이벤트분)은 재전송·유실에 취약해 미소비 — 증감이 필요하면
+# 누적 필드의 flush 간 diff 로 파생한다(F3 권고).
+# 시각 FID 없음 → 수신 시각 사용(0F 와 동일 규약).
+PRG_SELL_QTY = "202"  # 프로그램 매도수량 (누적, 주)
+PRG_SELL_AMT = "204"  # 프로그램 매도금액 (누적, 백만원)
+PRG_BUY_QTY = "206"  # 프로그램 매수수량 (누적, 주)
+PRG_BUY_AMT = "208"  # 프로그램 매수금액 (누적, 백만원)
+PRG_NET_QTY = "210"  # 순매수수량 (= 206-202)
+PRG_NET_AMT = "212"  # 순매수금액 (= 208-204, 백만원)
 
 # 구독 코드 venue 접미 → venue 태그. 키움은 0D payload에 거래소 필드가 없어(0B엔 9081
 # 있음) 호가 venue를 **구독한 코드 접미**로 부여한다(실측 2026-07-16). _NX=NXT 확정.

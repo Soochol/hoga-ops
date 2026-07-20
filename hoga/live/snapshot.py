@@ -27,6 +27,10 @@ class SnapshotKind(str, Enum):
     TRADE = "trade"
     BROKER = "broker"
     FILL = "fill"
+    # 종목프로그램매매(키움 0w, PR-F4). 표시 버퍼·JSONL 저장을 타지 않는 유일한
+    # kind — stream.on_tick 이 입구에서 프로그램 latch 로 라우팅하고 return 한다
+    # (소비는 program_trade_store 사이드카 → /api/range 번들).
+    PROGRAM = "program"
 
 
 @dataclass(frozen=True)

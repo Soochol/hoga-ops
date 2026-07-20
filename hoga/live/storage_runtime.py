@@ -22,7 +22,6 @@ from .coverage import (
     plan_storage_targets,
 )
 from .buffer import LiveBuffer
-from .kis_capacity_runtime import ensure_kis_capacity_scheduler
 from .settings import load_live_settings
 
 
@@ -97,7 +96,6 @@ def _ensure_program_trade_collector(
         data_dir=data_dir,
         date_fn=date_fn,
         now_ms_fn=now_ms_fn,
-        scheduler=ensure_kis_capacity_scheduler(data_dir),
     )
     state.program_trade_collector = collector
     return collector
@@ -113,7 +111,6 @@ async def sync_storage_runtime(
 ) -> StorageRuntimeSnapshot:
     """Load settings, plan targets, and sync the WS capture runtimes."""
     settings = load_live_settings(data_dir)
-    bypass = settings.kis_rest_bypass_enabled
     from . import kiwoom_runtime  # noqa: PLC0415
     n_kiwoom = len(kiwoom_runtime.configured_account_ids(data_dir))
     targets = plan_storage_targets(
@@ -122,9 +119,10 @@ async def sync_storage_runtime(
         kiwoom_capacity=KIWOOM_PER_ACCOUNT_MAX * n_kiwoom,
     )
 
-    # 프로그램매매 사이드카(호가 아님 — 별도 데이터 계열). bypass는 KIS REST 전면
-    # 우회 토글이라 함께 끈다.
-    program_trade_allowed = settings.program_trade_storage_enabled and not bypass
+    # 프로그램매매 사이드카(호가 아님 — 별도 데이터 계열). PR-F4 로 소스가 키움
+    # 0w latch 가 되어 KIS REST 를 안 쓰므로 bypass 토글과 무관해졌다 — 설정
+    # 게이트(program_trade_storage_enabled)만 남는다.
+    program_trade_allowed = settings.program_trade_storage_enabled
     program_collector = (
         _ensure_program_trade_collector(
             state,
