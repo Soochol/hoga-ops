@@ -12,7 +12,7 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { useJumpToLive } from '../live/useJumpToLive';
-import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
+import { useEntryDragStore, isPointOnChart, dropPoint, resolveDropOnChart } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
 import { useScreenerPanelStore, useExpireScreenerScan, MONITOR_PERIOD_CHOICES_MS } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
@@ -301,6 +301,7 @@ export function ScreenerDrawer() {
   const sensors = useSensors(useSensor(PointerSensor, SCREENER_DRAG_SENSOR_OPTIONS));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverChart = useEntryDragStore((s) => s.setOverChart);
+  const setDragPoint = useEntryDragStore((s) => s.setDragPoint);
   const endEntryDrag = useEntryDragStore((s) => s.endDrag);
 
   const onDragStart = (ev: DragStartEvent) => {
@@ -311,7 +312,9 @@ export function ScreenerDrawer() {
 
   const onDragMove = (ev: DragMoveEvent) => {
     if (ev.active.data.current?.type !== SCREENER_ENTRY_TYPE) return;
-    setOverChart(isPointOnChart(dropPoint(ev)));
+    const point = dropPoint(ev);
+    setOverChart(isPointOnChart(point));
+    setDragPoint(point); // 창별 어포던스: 캔버스가 좌표로 호버 창을 계산한다.
   };
 
   const onDragCancel = () => {
@@ -323,7 +326,10 @@ export function ScreenerDrawer() {
     endEntryDrag();
     if (!wasScreenerEntry || !isPointOnChart(dropPoint(ev))) return;
     const d = ev.active.data.current as { code?: string; name?: string } | undefined;
-    if (d?.code) openLive(d.code, d.name);
+    if (!d?.code) return;
+    // 창 위 드롭 = 그 창 그룹 종목 교체(정밀 드롭, #711), 창 밖 = 활성 그룹 교체(openLive).
+    if (resolveDropOnChart(dropPoint(ev), { code: d.code, name: d.name })) return;
+    openLive(d.code, d.name);
   };
 
   return (

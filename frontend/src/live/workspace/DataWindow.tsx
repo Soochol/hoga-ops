@@ -38,8 +38,10 @@ import {
   useLiveBrokersAtCursor,
 } from '../../api/useLiveCursor';
 import { useLiveVenueStore } from '../../state/liveVenue';
+import { useChartPrefsStore } from '../../state/chartPrefs';
 import { isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
-import { TIMEFRAME_TO_MS, type Timeframe } from '../../api/types';
+import { TIMEFRAME_TO_MS, type RangeSegment, type Timeframe } from '../../api/types';
+import { isClosingAuction, type SessionSegment } from '../../util/sessionTime';
 import {
   aggregateBrokerSeries,
   latestOrderbookSnapshot,
@@ -158,6 +160,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const live = useLiveSeries(code);
   const venue = useLiveVenueStore((s) => s.venue);
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
+  const link = useGroupChartLink(win.group);
   // 스팟 진입은 분봉 호버만(ADR-0044) — D/W/M 호버는 latest 유지.
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const isSpot = scope.kind === 'minute-cursor';
@@ -185,6 +188,19 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   });
   const quote = useQuoteByCode([code], venue).get(code);
   const baselinePrice = quote?.baseline_price ?? null;
+  // 동시호가 마스크(PR-D2): 스팟 커서가 종가 동시호가 구간(마감 10분)에 있고 전역
+  // auctionWindowMask 토글이 켜져 있으면 매수/매도 비율을 마스킹한다. 판정은 링크
+  // 차트 창 번들의 세션 세그먼트로 — 전역 axis store 는 멀티창 last-writer-wins 라
+  // 부정확. 링크 부재/비스팟이면 마스크 없음(latest 는 레거시도 비활성).
+  const auctionWindowMask = useChartPrefsStore((s) => s.auctionWindowMask);
+  const maskRatio = !!(
+    auctionWindowMask &&
+    isSpot &&
+    scope.cursorMs !== null &&
+    link !== null &&
+    link.bundle !== null &&
+    isClosingAuction(toSessionSegments(link.bundle.segments), scope.cursorMs)
+  );
   // T14b: 스팟 슬롯이 비었고 버퍼도 못 채우는 진짜 공백이면 "다음 가용" 힌트.
   const availableFrom = spotOrderbook?.available_from ?? null;
   const showAvailableHint =
@@ -200,7 +216,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         </div>
       )}
       <OrderbookTable snapshot={snapshot} baselinePrice={baselinePrice} />
-      <TotalQtyBar snapshot={snapshot} maskRatio={false} />
+      <TotalQtyBar snapshot={snapshot} maskRatio={maskRatio} />
     </div>
   );
 }
@@ -373,6 +389,13 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       />
     </div>
   );
+}
+
+// 번들 세그먼트(snake_case) → sessionTime.isClosingAuction 입력형(camelCase).
+// VolumeDistributionCard 의 동일 사상과 같은 어댑터 — 도메인 판정은 단일 소스
+// (sessionTime)를 재사용해 axis 와 동치 유지(virtualAxis.inClosingAuctionWindow 위임 대상).
+function toSessionSegments(segments: readonly RangeSegment[]): SessionSegment[] {
+  return segments.map((s) => ({ sessionOpenMs: s.session_open_ms, sessionCloseMs: s.session_close_ms }));
 }
 
 // KST 표기 — 사이드바 카드들(OrderbookTable 등)과 동일하게 toLocaleTimeString.

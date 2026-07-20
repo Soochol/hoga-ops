@@ -12,6 +12,8 @@ import {
 } from './groupChartLinkSource';
 import { useLiveCursorStore } from '../useLiveCursorStore';
 import { useLiveOrderbookAtCursor } from '../../api/useLiveCursor';
+import { useChartPrefsStore } from '../../state/chartPrefs';
+import type { RangeBundle } from '../../api/types';
 
 // sector-ranking 라우팅 가드만 검증한다 — 지수 happy-path 는 SectorRankingWindow 를
 // 스텁으로 대체(자체 데이터 훅은 SectorRankingWindow.test 가 커버).
@@ -35,6 +37,11 @@ vi.mock('../../api/liveSeries', () => ({
 vi.mock('../../api/useLiveCursor', () => ({
   useLiveOrderbookAtCursor: vi.fn(() => undefined),
   useLiveBrokersAtCursor: vi.fn(() => undefined),
+}));
+
+// TotalQtyBar 는 maskRatio prop 만 관측한다(동시호가 마스크 검증).
+vi.mock('../../sidebar/TotalQtyBar', () => ({
+  default: ({ maskRatio }: { maskRatio: boolean }) => <div>mask:{String(maskRatio)}</div>,
 }));
 
 function renderWithQuery(ui: ReactNode) {
@@ -167,5 +174,62 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
       code: null,
       timeframe: null,
     });
+  });
+});
+
+describe('DataWindow — 10호가 동시호가 마스크 (ADR-0119 PR-D2)', () => {
+  const symbol = { code: '005930', name: '삼성전자' };
+  // 2026-07-20 09:00 KST 개장, 15:30 마감 → 동시호가 창 = 15:20~15:30.
+  const OPEN_MS = 1784505600000;
+  const CLOSE_MS = OPEN_MS + 6.5 * 3600 * 1000; // 15:30
+  const AUCTION_MS = CLOSE_MS - 5 * 60 * 1000;   // 15:25 (동시호가 구간)
+  const REGULAR_MS = OPEN_MS + 2 * 3600 * 1000;  // 11:00 (정규장)
+
+  function bundleWithSession(): RangeBundle {
+    return {
+      code: '005930', from_date: '20260720', to_date: '20260720', bucket_ms: 60000,
+      segments: [{ date: '20260720', session_open_ms: OPEN_MS, session_close_ms: CLOSE_MS }],
+      candles: [], investorPoints: [],
+    } as unknown as RangeBundle;
+  }
+
+  function setup(cursorMs: number, toggle: boolean) {
+    __resetGroupChartLinksForTests();
+    useLiveCursorStore.getState().resetCursor();
+    useChartPrefsStore.getState().setToggle('auctionWindowMask', toggle);
+    publishGroupChartLink(chartLink({ bundle: bundleWithSession() }));
+    useLiveCursorStore.getState().setSidebarCursor(cursorMs, {
+      windowId: 'cw1', group: 1, code: '005930', timeframe: '1m',
+    });
+  }
+
+  beforeEach(() => {
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(undefined);
+  });
+
+  it('동시호가 구간 커서 + 토글 ON → 마스킹', () => {
+    setup(AUCTION_MS, true);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('mask:true')).toBeInTheDocument();
+  });
+
+  it('토글 OFF → 마스킹 안 함', () => {
+    setup(AUCTION_MS, false);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('mask:false')).toBeInTheDocument();
+  });
+
+  it('정규장 커서 → 마스킹 안 함', () => {
+    setup(REGULAR_MS, true);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('mask:false')).toBeInTheDocument();
+  });
+
+  it('링크 부재(latest 모드) → 마스킹 안 함', () => {
+    __resetGroupChartLinksForTests();
+    useLiveCursorStore.getState().resetCursor();
+    useChartPrefsStore.getState().setToggle('auctionWindowMask', true);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('mask:false')).toBeInTheDocument();
   });
 });

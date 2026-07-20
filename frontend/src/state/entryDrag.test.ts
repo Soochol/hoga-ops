@@ -9,6 +9,8 @@ function resetEntryDragState() {
     hitTestChart: null,
     overStudy: false,
     hitTestStudy: null,
+    dragPoint: null,
+    chartDropResolver: null,
     targets: {},
   });
 }
@@ -70,5 +72,57 @@ describe('entryDrag study drop-target seam', () => {
     expect((entryDrag as typeof entryDrag & {
       isPointOnStudy: (point: { x: number; y: number } | null) => boolean;
     }).isPointOnStudy({ x: 300, y: 400 })).toBe(false);
+  });
+});
+
+describe('entryDrag 창별 정밀 드롭 리졸버 (ADR-0119 PR-D2)', () => {
+  beforeEach(() => {
+    resetEntryDragState();
+  });
+
+  it('리졸버 미등록이면 resolveDropOnChart 는 false(활성 그룹 폴백)', () => {
+    expect(entryDrag.resolveDropOnChart({ x: 10, y: 20 }, { code: '005930' })).toBe(false);
+  });
+
+  it('null 좌표면 false', () => {
+    useEntryDragStore.getState().registerChartDropResolver(() => true);
+    expect(entryDrag.resolveDropOnChart(null, { code: '005930' })).toBe(false);
+  });
+
+  it('리졸버가 처리하면 true, entry 를 그대로 전달한다', () => {
+    let received: { point: { x: number; y: number }; entry: entryDrag.ChartDropEntry } | null = null;
+    useEntryDragStore.getState().registerChartDropResolver((point, entry) => {
+      received = { point, entry };
+      return true;
+    });
+    expect(entryDrag.resolveDropOnChart({ x: 42, y: 7 }, { code: '000660', name: '하이닉스' })).toBe(true);
+    expect(received).toEqual({ point: { x: 42, y: 7 }, entry: { code: '000660', name: '하이닉스' } });
+  });
+
+  it('리졸버가 창을 못 찾으면(false 반환) resolveDropOnChart 도 false', () => {
+    useEntryDragStore.getState().registerChartDropResolver(() => false);
+    expect(entryDrag.resolveDropOnChart({ x: 1, y: 1 }, { code: '005930' })).toBe(false);
+  });
+
+  it('clearChartDropResolver 는 자기 fn 일 때만 해제(remount 안전)', () => {
+    const a = () => true;
+    const b = () => true;
+    useEntryDragStore.getState().registerChartDropResolver(a);
+    useEntryDragStore.getState().registerChartDropResolver(b); // b 가 덮음
+    useEntryDragStore.getState().clearChartDropResolver(a); // 늦은 a cleanup — 무해
+    expect(useEntryDragStore.getState().chartDropResolver).toBe(b);
+    useEntryDragStore.getState().clearChartDropResolver(b);
+    expect(useEntryDragStore.getState().chartDropResolver).toBeNull();
+  });
+
+  it('setDragPoint 는 같은 좌표면 no-op(프레임당 호출 방지)', () => {
+    useEntryDragStore.getState().setDragPoint({ x: 5, y: 5 });
+    let calls = 0;
+    const unsub = useEntryDragStore.subscribe(() => { calls += 1; });
+    useEntryDragStore.getState().setDragPoint({ x: 5, y: 5 }); // 같은 값
+    expect(calls).toBe(0);
+    useEntryDragStore.getState().setDragPoint({ x: 6, y: 5 }); // 다른 값
+    unsub();
+    expect(calls).toBe(1);
   });
 });

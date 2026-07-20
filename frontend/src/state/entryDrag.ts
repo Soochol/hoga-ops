@@ -22,6 +22,13 @@ type DropTargetMap = Partial<Record<DropTargetKind, ChartHitTest>>;
 
 type DropPointEvent = { activatorEvent: Event | null; delta: { x: number; y: number } };
 
+/** 드롭 좌표 아래의 **특정 창**에 종목을 귀속시키는 리졸버(ADR-0119 PR-D2, #711
+ *  "창 위에 드롭 → 그 창의 그룹 종목 교체, 포커스 무관"). WorkspaceCanvas 가
+ *  등록한다. 반환값 = 처리 여부: 창을 찾아 교체했으면 true(패널은 여기서 종료),
+ *  좌표 아래 창이 없으면(캔버스 여백) false → 패널이 활성 그룹 교체(onPick)로 폴백. */
+export type ChartDropEntry = { code: string; name?: string };
+type ChartDropResolver = (point: { x: number; y: number }, entry: ChartDropEntry) => boolean;
+
 type EntryDragStore = {
   /** 드래그 중인 종목 코드. null이면 (entry) 드래그 중이 아니다. */
   draggingCode: string | null;
@@ -29,15 +36,21 @@ type EntryDragStore = {
   overChart: boolean;
   /** 커서가 현재 학습뷰 워크에어리어 위에 있는가(후속 task의 드롭 동선용). */
   overStudy: boolean;
+  /** 드래그 중 최종 포인터 좌표(client px) — 창별 드롭 어포던스가 호버 창을 계산
+   *  하려면 좌표가 필요하다(overChart boolean 만으론 어느 창인지 모른다). null=유휴. */
+  dragPoint: { x: number; y: number } | null;
   /** 등록된 드롭 타깃 술어 맵. */
   targets: DropTargetMap;
   /** LiveWorkarea가 등록한 "이 좌표가 차트 위인가" 술어. 미등록(/live 밖)이면 null. */
   hitTestChart: ChartHitTest | null;
   /** StudyPage가 등록한 "이 좌표가 학습뷰 위인가" 술어. 미등록(/study 밖)이면 null. */
   hitTestStudy: ChartHitTest | null;
+  /** WorkspaceCanvas 가 등록한 창별 드롭 리졸버. 미등록이면 null(정밀 드롭 없음). */
+  chartDropResolver: ChartDropResolver | null;
   startDrag: (code: string) => void;
   setOverChart: (v: boolean) => void;
   setOverStudy: (v: boolean) => void;
+  setDragPoint: (point: { x: number; y: number } | null) => void;
   endDrag: () => void;
   /** LiveWorkarea가 mount 시 자신의 히트테스트를 등록한다. */
   registerChartTarget: (hitTest: ChartHitTest) => void;
@@ -47,6 +60,9 @@ type EntryDragStore = {
   registerStudyTarget: (hitTest: ChartHitTest) => void;
   /** unmount 시 해제. 다른 인스턴스가 이미 덮어쓴 뒤면 해제하지 않는다(remount 안전). */
   clearStudyTarget: (hitTest: ChartHitTest) => void;
+  /** WorkspaceCanvas 가 mount 시 창별 드롭 리졸버를 등록한다. remount 안전(같은 규율). */
+  registerChartDropResolver: (fn: ChartDropResolver) => void;
+  clearChartDropResolver: (fn: ChartDropResolver) => void;
 };
 
 function clearTarget(targets: DropTargetMap, kind: DropTargetKind): DropTargetMap {
@@ -63,15 +79,22 @@ export const useEntryDragStore = create<EntryDragStore>((set, get) => ({
   draggingCode: null,
   overChart: false,
   overStudy: false,
+  dragPoint: null,
   targets: {},
   hitTestChart: null,
   hitTestStudy: null,
-  startDrag: (code) => set({ draggingCode: code, overChart: false, overStudy: false }),
+  chartDropResolver: null,
+  startDrag: (code) => set({ draggingCode: code, overChart: false, overStudy: false, dragPoint: null }),
   // 같은 값이면 set을 건너뛴다 — onDragMove가 프레임마다 호출되므로 불필요한 리렌더 방지.
   setOverChart: (v) => set((s) => (s.overChart === v ? s : { overChart: v })),
   setOverStudy: (v) => set((s) => (s.overStudy === v ? s : { overStudy: v })),
+  setDragPoint: (point) => set((s) => {
+    const p = s.dragPoint;
+    if (p === point || (p && point && p.x === point.x && p.y === point.y)) return s;
+    return { dragPoint: point };
+  }),
   // 드롭 타깃 등록은 드래그 라이프사이클과 별개(워크에어리어 mount 동안 유지) — 여기선 안 건드린다.
-  endDrag: () => set({ draggingCode: null, overChart: false, overStudy: false }),
+  endDrag: () => set({ draggingCode: null, overChart: false, overStudy: false, dragPoint: null }),
   registerChartTarget: (hitTest) => set((s) => ({
     targets: { ...s.targets, liveChart: hitTest },
     hitTestChart: hitTest,
@@ -96,7 +119,24 @@ export const useEntryDragStore = create<EntryDragStore>((set, get) => ({
       }));
     }
   },
+  registerChartDropResolver: (fn) => set({ chartDropResolver: fn }),
+  clearChartDropResolver: (fn) => {
+    // 다른 인스턴스가 이미 덮어쓴 뒤면 해제하지 않는다(remount 안전, 타깃 등록과 동일 규율).
+    if (get().chartDropResolver === fn) set({ chartDropResolver: null });
+  },
 }));
+
+/** 드롭 좌표 아래 특정 창에 종목을 귀속시킨다(창별 정밀 드롭, ADR-0119 PR-D2).
+ *  리졸버 미등록(/live 밖)이거나 좌표 아래 창이 없으면 false → 패널이 활성 그룹
+ *  교체(onPick)로 폴백. 처리했으면 true. */
+export function resolveDropOnChart(
+  point: { x: number; y: number } | null,
+  entry: ChartDropEntry,
+): boolean {
+  if (!point) return false;
+  const resolver = useEntryDragStore.getState().chartDropResolver;
+  return resolver ? resolver(point, entry) : false;
+}
 
 /** 드롭 좌표가 등록된 차트 드롭 타깃 위인가. 워크에어리어 미등록(/live 밖)이면 false →
  *  재정렬 경로 유지. 패널 핸들러가 DOM·rect를 모른 채 seam에 질의하는 단일 진입점. */
