@@ -70,13 +70,26 @@ describe('Capture page', () => {
     expect(screen.getByTestId('queue-empty').closest('.bg-bg-card')).not.toBeNull();
   });
 
-  it('lets the queue section shrink inside the fixed capture viewport', async () => {
+  // 두 패널 모두 줄어들 수 있어야 한다. 예전에는 큐 쪽에만 min-h-0 이 있어, 폼의
+  // overflow-y-auto 스크롤러가 콘텐츠 높이에서 줄지 않은 채 패널의 overflow-hidden 이
+  // 폼 하단을 조용히 먹었다(자체 스크롤바도 안 뜸).
+  it('lets both sections shrink inside the fixed capture viewport', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<Capture />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
 
-    const queueSection = screen.getByRole('region', { name: '캡처 대기열' });
-    expect(queueSection).toHaveClass('min-h-0');
+    expect(screen.getByRole('region', { name: '캡처 대기열' })).toHaveClass('min-h-0');
+    expect(screen.getByRole('region', { name: '캡처 요청' })).toHaveClass('min-h-0');
+  });
+
+  // 행 트랙을 비워두면 grid-auto-rows:auto 가 되고 콘텐츠 높이가 바닥이 된다 — 창을
+  // 줄여도 두 패널이 짧아지지 않고 뷰포트 밖으로 잘렸다(#730 과 같은 축 비대칭).
+  it('constrains the splitter grid row track so the panes can shorten', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(<Capture />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(container.firstElementChild).toHaveClass('grid-rows-[minmax(0,1fr)]');
   });
 
   it('prefills the symbol from the active live stock when capture has no code query', async () => {
