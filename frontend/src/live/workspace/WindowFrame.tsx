@@ -9,16 +9,9 @@ import { memo, useRef } from 'react';
 import type { ResizeMode } from './snapEngine';
 import { MIN_GROUP, MAX_GROUP, type GroupId, type WindowKind } from '../../state/workspace';
 import { useDismissablePopover } from '../../util/useDismissablePopover';
-
-const KIND_LABEL: Record<WindowKind, string> = {
-  chart: '차트',
-  book: '10호가',
-  broker: '거래원',
-  vdist: '매물대',
-  program: '프로그램',
-  investor: '잠정투자자',
-  'sector-ranking': '섹터 랭킹',
-};
+// 창 제목은 창 추가 메뉴와 같은 문자열이어야 "고른 것 = 생긴 것" 이 맞는다
+// (windowKindLabels 의 SSOT 취지). 여기에 사본을 두면 그 약속이 조용히 깨진다.
+import { WINDOW_KIND_LABEL as KIND_LABEL } from './windowKindLabels';
 
 const HANDLES: { mode: ResizeMode; cls: string }[] = [
   { mode: 'e', cls: 'inset-y-[12px] right-0 w-[6px] cursor-ew-resize' },

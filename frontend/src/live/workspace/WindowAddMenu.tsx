@@ -75,6 +75,16 @@ const ADD_ITEMS: readonly AddItem[] = [
     ),
   },
   {
+    kind: 'trade',
+    desc: '실시간 체결 틱 흐름',
+    icon: svg(
+      <>
+        <path d="M7.5 4v16M7.5 20l-3-3M7.5 20l3-3" />
+        <path d="M16.5 20V4M16.5 4l-3 3M16.5 4l3 3" />
+      </>,
+    ),
+  },
+  {
     kind: 'broker',
     desc: '증권사별 매수·매도 상위',
     icon: svg(

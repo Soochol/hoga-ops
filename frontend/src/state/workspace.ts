@@ -35,7 +35,7 @@ export const WORKSPACE_STORAGE_KEY = 'live.workspace.v1';
 
 /** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
  *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D). */
-export const WINDOW_KINDS = ['chart', 'book', 'broker', 'vdist', 'program', 'investor', 'sector-ranking'] as const;
+export const WINDOW_KINDS = ['chart', 'book', 'broker', 'trade', 'vdist', 'program', 'investor', 'sector-ranking'] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
 export const MIN_GROUP = 1;
@@ -342,6 +342,10 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   // broker = 헤더 27 + 시점 상한 10행(매수5+매도5) 23.25×10 + divide 9 ≈ 269 → 280.
   // (하루 누적 유니온은 10행을 넘을 수 있고 그때는 스크롤이 정상.)
   broker: { w: 236, h: 280 },
+  // trade = 헤더 27 + 컬럼헤더 22 + 행 23.25×12 ≈ 328 → 330. 체결은 장중 무한히
+  // 흐르는 리스트라 "전부 보이는 높이"가 없다 — 시점 상한(12행)까지 보이고 나머지는
+  // 스크롤(broker 와 같은 부류). 폭은 4열(시각·체결가·체결량·구분)이라 book 보다 넓다.
+  trade: { w: 268, h: 330 },
   vdist: { w: 300, h: 240 },
   program: { w: 260, h: 200 },
   // investor = 헤더 27 + 카드(헤더 36 + thead 32.25 + KIS 가집계 최대 5차 32.25×5 + 푸터 35) ≈ 303 → 310.

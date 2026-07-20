@@ -22,6 +22,7 @@ import { useMemo } from 'react';
 import OrderbookTable from '../../sidebar/OrderbookTable';
 import TotalQtyBar from '../../sidebar/TotalQtyBar';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
+import TradeTickTable from '../../sidebar/TradeTickTable';
 import ProgramTradeSummaryCard from '../../sidebar/ProgramTradeSummaryCard';
 import { VolumeDistributionCard } from '../../sidebar/VolumeDistributionCard';
 import { InvestorTrendEstimateCard } from '../../sidebar/InvestorTrendEstimateCard';
@@ -60,6 +61,7 @@ import {
   volumeDistributionClosePointsFromCandles,
 } from '../continuousTradeVolumeDistribution';
 import { realMsToYyyymmdd } from '../liveDateTime';
+import { buildTradeTickView } from '../tradeTicks';
 import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId } from '../liveInstrument';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
@@ -109,6 +111,8 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
       return <BookWindow win={win} code={code} />;
     case 'broker':
       return <BrokerWindow win={win} code={code} />;
+    case 'trade':
+      return <TradeWindow code={code} />;
     case 'investor':
       return <InvestorWindow code={code} />;
     case 'vdist':
@@ -235,6 +239,29 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   return (
     <div className="h-full overflow-auto">
       <BrokerTrajectoryTable series={card.series} cursorMs={card.cursorMs} />
+    </div>
+  );
+}
+
+/** 체결창 표시 상한 — 15분 버퍼에 수천 건이 쌓여도 렌더는 최근 이만큼만.
+ *  스크롤로 과거를 훑는 창이 아니라 "지금 흐르는 체결"을 보는 창이다. */
+const TRADE_TICK_LIMIT = 200;
+
+/**
+ * 체결창 — LATEST 전용(스팟 모드 없음).
+ *
+ * book·broker 와 달리 커서 스팟으로 전환하지 않는다. 파케이에 체결 틱 원본이
+ * 남지 않아(저장 경로는 10초 (price,side) 집계) 과거 시점의 체결 목록을 복원할
+ * 소스가 없고, WS 버퍼(15분)로만 잘라 보여주면 그 밖을 호버할 때 빈 창이 떠
+ * 고장처럼 읽힌다. 체결 흐름의 과거 조회가 필요해지면 백엔드에 per-tick 보존
+ * 경로를 먼저 만들어야 한다.
+ */
+function TradeWindow({ code }: { code: string }) {
+  const live = useLiveSeries(code);
+  const view = useMemo(() => buildTradeTickView(live.trade, TRADE_TICK_LIMIT), [live.trade]);
+  return (
+    <div className="h-full overflow-auto">
+      <TradeTickTable view={view} />
     </div>
   );
 }

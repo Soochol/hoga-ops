@@ -12,6 +12,7 @@ export const WINDOW_KIND_LABEL: Record<WindowKind, string> = {
   chart: '차트',
   book: '10호가',
   broker: '거래원',
+  trade: '체결',
   vdist: '매물대',
   program: '프로그램',
   investor: '잠정투자자',

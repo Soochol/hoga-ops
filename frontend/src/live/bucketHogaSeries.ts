@@ -24,6 +24,10 @@ export interface TradeEvent {
   price?: number;
   side: number; // KIS enum: -1 sell, 0 mid, 1 buy, 2 auction
   qty: number;
+  /** 분류 출처 라벨. 표시 경로(WS raw)는 'kiwoom_ws'(키움 0B 원본 체결),
+   *  저장 경로에서 되읽은 값은 'kis_ws_10s'(10초 집계, 동결 라벨). 소비자는
+   *  값에 의존하지 않는다 — 계약을 타입에 드러내 둘 뿐이다. */
+  side_source?: string;
 }
 
 export interface TradeSnapshot {
