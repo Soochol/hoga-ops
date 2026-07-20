@@ -23,6 +23,7 @@ import {
   useIndicatorActions,
   useWindowIndicator,
   useWindowPaneOrder,
+  useWindowScopeId,
   type IndicatorActions,
 } from './workspace/windowView';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
@@ -448,6 +449,9 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
 
   // 사용자 소유 pane 순서 — 내부 구독이라 memo(props)를 우회해 재정렬 즉시 반영.
   const paneOrder = useWindowPaneOrder();
+  // 플래그 값 provider 의 창 스코프 — 등록(각 오버레이)과 **같은 키**로 읽어야 한다.
+  // 한쪽만 스코프하면 값이 통째로 사라지거나 옆 창 값을 그대로 보게 된다.
+  const windowId = useWindowScopeId();
   const movingAverages = useWindowIndicator((s) => s.movingAverages);
   const movingAverageEnabled = useWindowIndicator((s) => s.movingAverageEnabled);
   const movingAverageHidden = useWindowIndicator((s) => s.movingAverageHidden);
@@ -561,7 +565,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       applicable: isMinute,
       hidden: askPeakHidden,
       swatches: [askPeakColor],
-      cells: readFlagLegendValues('ask-peak', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'ask-peak', cursorTimeSec),
     },
     {
       id: 'bid-peak',
@@ -571,7 +575,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       applicable: isMinute,
       hidden: bidPeakHidden,
       swatches: [bidPeakColor],
-      cells: readFlagLegendValues('bid-peak', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'bid-peak', cursorTimeSec),
     },
     {
       id: 'trade-volume-poc',
@@ -581,7 +585,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       applicable: isMinute,
       hidden: tradeVolumePocHidden,
       swatches: [tradeVolumePocColor],
-      cells: readFlagLegendValues('trade-volume-poc', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'trade-volume-poc', cursorTimeSec),
     },
     {
       id: 'depth-heatmap',
@@ -591,7 +595,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       applicable: isMinute,
       hidden: depthHeatmapHidden,
       swatches: [depthHeatmapBidColor, depthHeatmapAskColor],
-      cells: readFlagLegendValues('depth-heatmap', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'depth-heatmap', cursorTimeSec),
     },
     {
       id: 'broker-late-entry',
@@ -607,7 +611,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
           : brokerLateEntrySideMode === 'sell'
             ? [brokerLateEntrySellColor]
             : [brokerLateEntryBuyColor, brokerLateEntrySellColor],
-      cells: readFlagLegendValues('broker-late-entry', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'broker-late-entry', cursorTimeSec),
     },
   ];
 

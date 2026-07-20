@@ -1,11 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
+import { WindowViewContext, type WindowViewValue } from './workspace/windowView';
+import { FACTORY_INDICATOR_SETTINGS, type IndicatorSettings } from '../state/indicatorSettingsV2';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import {
+  clearWindowFlagLegendValues,
   registerFlagLegendValues,
   unregisterFlagLegendValues,
   type FlagLegendValueProvider,
@@ -236,12 +240,12 @@ describe('PaneLegendOverlay — candle-pane indicator rows', () => {
     useLivePageStore.setState({ askPeakEnabled: true });
     const provider: FlagLegendValueProvider = (cursorTimeSec) =>
       cursorTimeSec === null ? [{ key: 'ask-peak', value: '300,000, 12.3만' }] : [];
-    registerFlagLegendValues('ask-peak', provider);
+    registerFlagLegendValues(null, 'ask-peak', provider);
     try {
       render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
       expect(screen.getByText('300,000, 12.3만')).toBeInTheDocument();
     } finally {
-      unregisterFlagLegendValues('ask-peak', provider);
+      unregisterFlagLegendValues(null, 'ask-peak', provider);
     }
   });
 
@@ -251,7 +255,7 @@ describe('PaneLegendOverlay — candle-pane indicator rows', () => {
       { key: 'dh-bid', label: '매수', color: '#F04452', value: '299,000, 30만' },
       { key: 'dh-ask', label: '매도', color: '#3485FA', value: '300,000, 12만' },
     ];
-    registerFlagLegendValues('depth-heatmap', provider);
+    registerFlagLegendValues(null, 'depth-heatmap', provider);
     try {
       render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
       expect(screen.getByText('호가 잔량 히트맵')).toBeInTheDocument();
@@ -260,7 +264,7 @@ describe('PaneLegendOverlay — candle-pane indicator rows', () => {
       expect(screen.getByText('매수')).toBeInTheDocument();
       expect(screen.getByText('매도')).toBeInTheDocument();
     } finally {
-      unregisterFlagLegendValues('depth-heatmap', provider);
+      unregisterFlagLegendValues(null, 'depth-heatmap', provider);
     }
   });
 
@@ -295,6 +299,90 @@ describe('PaneLegendOverlay — candle-pane indicator rows', () => {
     useLivePageStore.setState({ movingAverageEnabled: false, brokerLateEntryEnabled: true });
     renderOverlay({ timeframe: 'D', chart: makeChart([120, 60]) });
     expect(screen.queryByText('신규 거래원 등장')).toBeNull();
+  });
+});
+
+describe('PaneLegendOverlay — 멀티창 flag 값 스코프(#706)', () => {
+  beforeEach(resetStore);
+  afterEach(cleanup);
+
+  const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
+  const minutePanes = () => makeChart([120, 60, 60]);
+
+  function windowValue(windowId: string, indicators: Partial<IndicatorSettings>): WindowViewValue {
+    return {
+      windowId,
+      group: 1,
+      code: null,
+      timeframe: '1m',
+      historicalFromDate: null,
+      indicators: { ...FACTORY_INDICATOR_SETTINGS, ...indicators },
+    };
+  }
+
+  function renderWindow(value: WindowViewValue) {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <WindowViewContext.Provider value={value}>{children}</WindowViewContext.Provider>
+    );
+    return render(
+      <PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />,
+      { wrapper },
+    );
+  }
+
+  it('두 창이 같은 지표를 켜도 각자 자기 provider 값을 읽는다', () => {
+    // 회귀 대상: 레지스트리가 LegendFlagId 단일 키였을 때 나중에 마운트된 창(B)의
+    // provider 가 A 의 것을 덮어써, 두 창이 모두 B 의 값(다른 종목 가격대)을 보였다.
+    const a: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '70,000, 1.1만' }];
+    const b: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '300,000, 9.9만' }];
+    registerFlagLegendValues('win-a', 'ask-peak', a);
+    registerFlagLegendValues('win-b', 'ask-peak', b); // 나중 등록 — A를 덮어써선 안 된다
+    try {
+      const winA = renderWindow(windowValue('win-a', { askPeakEnabled: true }));
+      const winB = renderWindow(windowValue('win-b', { askPeakEnabled: true }));
+
+      expect(within(winA.container).getByText('70,000, 1.1만')).toBeInTheDocument();
+      expect(within(winB.container).getByText('300,000, 9.9만')).toBeInTheDocument();
+      // 서로의 값이 새어 들어오지 않는다(버그 재현 시 A가 B 값을 표시했다).
+      expect(within(winA.container).queryByText('300,000, 9.9만')).toBeNull();
+      expect(within(winB.container).queryByText('70,000, 1.1만')).toBeNull();
+    } finally {
+      unregisterFlagLegendValues('win-a', 'ask-peak', a);
+      unregisterFlagLegendValues('win-b', 'ask-peak', b);
+    }
+  });
+
+  it('한 창을 닫아도 남은 창의 값은 그대로다', () => {
+    const a: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '70,000, 1.1만' }];
+    const b: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '300,000, 9.9만' }];
+    registerFlagLegendValues('win-a', 'ask-peak', a);
+    registerFlagLegendValues('win-b', 'ask-peak', b);
+    try {
+      const winA = renderWindow(windowValue('win-a', { askPeakEnabled: true }));
+      renderWindow(windowValue('win-b', { askPeakEnabled: true }));
+
+      // B 창 닫힘 = 그 창의 provider 정리. A 는 자기 값을 계속 읽는다(버그 시절엔
+      // 이 시점에 남은 창이 갑자기 "자기 값으로 고쳐지는" 것처럼 보였다).
+      clearWindowFlagLegendValues('win-b');
+      winA.rerender(
+        <PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />,
+      );
+      expect(within(winA.container).getByText('70,000, 1.1만')).toBeInTheDocument();
+    } finally {
+      unregisterFlagLegendValues('win-a', 'ask-peak', a);
+    }
+  });
+
+  it('전역(Provider 밖) 등록은 창 스코프 읽기에 보이지 않는다', () => {
+    const global: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '전역값' }];
+    registerFlagLegendValues(null, 'ask-peak', global);
+    try {
+      const winA = renderWindow(windowValue('win-a', { askPeakEnabled: true }));
+      expect(within(winA.container).getByText('당일 매도 최대벽')).toBeInTheDocument();
+      expect(within(winA.container).queryByText('전역값')).toBeNull();
+    } finally {
+      unregisterFlagLegendValues(null, 'ask-peak', global);
+    }
   });
 });
 

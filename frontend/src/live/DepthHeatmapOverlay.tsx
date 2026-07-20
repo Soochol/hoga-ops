@@ -13,7 +13,7 @@ import {
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty } from './peakLegendValues';
-import { useWindowIndicator } from './workspace/windowView';
+import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
 
 /** 가시 시간범위(가상초 {from,to}). 초기 마운트엔 null, 차트 teardown 중엔 throw → null.
  *  HighLowAnnotationOverlay.readVisibleRange 와 동일 관용구. */
@@ -139,6 +139,8 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   const maxOpacity = useWindowIndicator((s) => s.depthHeatmapMaxOpacity);
   const intraMax = useActivePrefs((p) => p.depthHeatmapIntraMax);
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
+  // 레전드 값 provider 의 창 스코프(멀티창).
+  const windowId = useWindowScopeId();
   // 강도 정규화 기준 = 현재 보이는 시간범위. 팬/줌 시 재정규화(HighLowAnnotationOverlay 선례).
   const [visibleRange, setVisibleRange] = useState<{ from: number; to: number } | null>(null);
 
@@ -208,9 +210,9 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
       if (maxAsk) out.push({ key: 'dh-ask', label: '매도', color: askColor, value: formatPriceQty(maxAsk.price, maxAsk.qty) });
       return out;
     };
-    registerFlagLegendValues('depth-heatmap', provider);
-    return () => unregisterFlagLegendValues('depth-heatmap', provider);
-  }, [points, axis, intraMax, bidColor, askColor]);
+    registerFlagLegendValues(windowId, 'depth-heatmap', provider);
+    return () => unregisterFlagLegendValues(windowId, 'depth-heatmap', provider);
+  }, [windowId, points, axis, intraMax, bidColor, askColor]);
 
   return null;
 }

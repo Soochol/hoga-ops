@@ -18,7 +18,7 @@ import {
   inlinePeakWallSegmentsForDocking,
   type AskPeakSegment,
 } from '../chart/AskPeakSegmentsPrimitive';
-import { useWindowIndicator } from './workspace/windowView';
+import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
 
 /** peak 시각(ms)을 그 시각이 속한 캔들(버킷)의 ts_ms로 스냅. 캔들은 버킷 시작에 놓이는데
  *  (downsample_candles: ts_ms = floor(ts_ms/bucket)*bucket), peak.t_ms는 그 버킷의 마지막
@@ -405,6 +405,8 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
   const allPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
   const visibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
+  // 레전드 값 provider 의 창 스코프(멀티창) — ask 쪽과 동일 규칙.
+  const windowId = useWindowScopeId();
 
   // 생성: series 핸들당 1회(LiveCurrentPriceLine과 동일 — tf·종목 전환에도 핸들 유지).
   useEffect(() => {
@@ -426,9 +428,9 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
   useEffect(() => {
     const provider: FlagLegendValueProvider = (cursorTimeSec) =>
       peakLegendCells(dayBidPeaks, axis, intraMax, cursorTimeSec, 'bid-peak');
-    registerFlagLegendValues('bid-peak', provider);
-    return () => unregisterFlagLegendValues('bid-peak', provider);
-  }, [dayBidPeaks, axis, intraMax]);
+    registerFlagLegendValues(windowId, 'bid-peak', provider);
+    return () => unregisterFlagLegendValues(windowId, 'bid-peak', provider);
+  }, [windowId, dayBidPeaks, axis, intraMax]);
 
   // 갱신: dayBidPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.
   useEffect(() => {

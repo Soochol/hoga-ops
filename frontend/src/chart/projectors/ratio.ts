@@ -9,7 +9,7 @@ import {
 import { useMemo } from 'react';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import type { BrokerLateEntrySideMode } from '../../state/liveIndicatorsPersistence';
-import { useWindowIndicator } from '../../live/workspace/windowView';
+import { useWindowIndicator, useWindowScopeId } from '../../live/workspace/windowView';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 import { quoteImbalance } from '../../util/imbalance';
@@ -20,7 +20,10 @@ import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { isAuctionHidden, isExcludedQuoteBucket, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
-import { registerFlagLegendValues } from '../../live/indicators/flagLegendValueRegistry';
+import {
+  registerFlagLegendValues,
+  type FlagLegendValueCell,
+} from '../../live/indicators/flagLegendValueRegistry';
 import { legendCursorDate } from '../../live/peakLegendValues';
 import type { BrokerLateEntryMarkerPoint } from './brokerLateEntryMarkers';
 import { makeCachedBrokerLateEntryProjector } from './brokerLateEntryMarkers';
@@ -84,6 +87,10 @@ export type RatioPaneContext = {
   brokerLateEntrySideMode: BrokerLateEntrySideMode;
   brokerLateEntryBuyColor: string;
   brokerLateEntrySellColor: string;
+  /** 이 pane 을 그리는 차트 창(멀티창 #706). 레전드 값 provider 등록 스코프로만
+   *  쓰이고 투영 자체에는 관여하지 않는다 — 그래서 optional(순수 투영 테스트/`/study`
+   *  는 생략 = 전역 스코프). */
+  windowId?: string | null;
 };
 
 export function projectRatio(
@@ -168,6 +175,9 @@ const useRatioContext = (): RatioPaneContext => {
   const brokerLateEntrySideMode = useWindowIndicator((s) => s.brokerLateEntrySideMode);
   const brokerLateEntryBuyColor = useWindowIndicator((s) => s.brokerLateEntryBuyColor);
   const brokerLateEntrySellColor = useWindowIndicator((s) => s.brokerLateEntrySellColor);
+  // 레전드 값 provider 등록 스코프(멀티창) — 창 수명 동안 불변이라 ctx identity 를
+  // 흔들지 않는다. 컨텍스트만 읽으므로 전역 스토어 구독도 늘지 않는다.
+  const windowId = useWindowScopeId();
   const brokerPrefs = useMemo(
     () => ({
       brokerLateEntryEnabled,
@@ -175,9 +185,10 @@ const useRatioContext = (): RatioPaneContext => {
       brokerLateEntrySideMode,
       brokerLateEntryBuyColor,
       brokerLateEntrySellColor,
+      windowId,
     }),
     [brokerLateEntryEnabled, brokerLateEntryHidden, brokerLateEntrySideMode,
-      brokerLateEntryBuyColor, brokerLateEntrySellColor],
+      brokerLateEntryBuyColor, brokerLateEntrySellColor, windowId],
   );
 
   return useMemo(
@@ -195,6 +206,7 @@ const useRatioContext = (): RatioPaneContext => {
       brokerPrefs.brokerLateEntrySideMode,
       brokerPrefs.brokerLateEntryBuyColor,
       brokerPrefs.brokerLateEntrySellColor,
+      brokerPrefs.windowId,
     ],
   );
 };
@@ -211,22 +223,23 @@ const ratioCachedData = makePastCachedProjector(projectRatioPoints, (b) => b.quo
 // 매번 전체 ratio points 에 sentinel 정렬(O(n log n))을 재지불했다. 모듈 레벨 1개 인스턴스.
 const brokerLateEntryMarkersCached = makeCachedBrokerLateEntryProjector();
 
-// 신규 거래원 등장 레전드 값 — labelMarkers가 계산한 마커를 비반응형으로 보관하고
-// (SSE 틱마다 갱신되므로 반응형이면 레전드 P1 재렌더 차단이 무너진다), 커서 거래일의
-// 매수/매도 마커 수를 provider로 노출. 등록은 모듈 로드 시 1회(모듈 캐시들과 동일 수명).
-let brokerLegendSnapshot: { points: readonly BrokerLateEntryMarkerPoint[]; axis: VirtualAxis } | null = null;
-registerFlagLegendValues('broker-late-entry', (cursorTimeSec) => {
-  const snap = brokerLegendSnapshot;
-  if (!snap || snap.points.length === 0) return [];
-  const date = legendCursorDate(snap.axis, cursorTimeSec);
+// 신규 거래원 등장 레전드 값 — 커서 거래일의 매수/매도 마커 수. labelMarkers 가
+// 계산한 마커를 그대로 세므로 그리기와 값이 어긋날 수 없다.
+function brokerLegendCells(
+  points: readonly BrokerLateEntryMarkerPoint[],
+  axis: VirtualAxis,
+  cursorTimeSec: number | null,
+): FlagLegendValueCell[] {
+  if (points.length === 0) return [];
+  const date = legendCursorDate(axis, cursorTimeSec);
   if (date === null) return [];
   let buyCount = 0;
   let sellCount = 0;
   let buyColor: string | undefined;
   let sellColor: string | undefined;
-  for (const p of snap.points) {
-    const idx = snap.axis.findByVirtual((p.time as unknown as number) * 1000);
-    if (idx < 0 || snap.axis.segments[idx]?.date !== date) continue;
+  for (const p of points) {
+    const idx = axis.findByVirtual((p.time as unknown as number) * 1000);
+    if (idx < 0 || axis.segments[idx]?.date !== date) continue;
     if (p.side === 'buy') {
       buyCount += 1;
       buyColor = p.color;
@@ -235,11 +248,11 @@ registerFlagLegendValues('broker-late-entry', (cursorTimeSec) => {
       sellColor = p.color;
     }
   }
-  const cells = [];
+  const cells: FlagLegendValueCell[] = [];
   if (buyCount > 0) cells.push({ key: 'ble-buy', label: '매수', color: buyColor, value: `${buyCount}건` });
   if (sellCount > 0) cells.push({ key: 'ble-sell', label: '매도', color: sellColor, value: `${sellCount}건` });
   return cells;
-});
+}
 
 export const RATIO_SPEC = {
   name: 'ratio' as const,
@@ -302,7 +315,13 @@ export const RATIO_SPEC = {
               sellColor: ctx.brokerLateEntrySellColor,
             })
           : [];
-        brokerLegendSnapshot = { points, axis };
+        // 레전드 값 provider 를 이 창 스코프에 재등록 — points/axis 를 클로저에 담아
+        // 모듈 전역 스냅샷을 없앴다(멀티창에서 마지막 창이 전역 값을 덮어쓰던 원인).
+        // 비반응형 Map 이라 이 갱신은 레전드 재렌더를 유발하지 않는다(P1 유지);
+        // 레전드는 크로스헤어/dataEpoch 시점에 최신 provider 를 lazy 하게 읽는다.
+        registerFlagLegendValues(ctx.windowId ?? null, 'broker-late-entry', (cursorTimeSec) =>
+          brokerLegendCells(points, axis, cursorTimeSec),
+        );
         return ctx.brokerLateEntryHidden ? [] : points;
       },
       afterAdd: (series) => {

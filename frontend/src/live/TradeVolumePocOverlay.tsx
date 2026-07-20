@@ -15,7 +15,7 @@ import {
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty, legendCursorDate } from './peakLegendValues';
-import { useWindowIndicator } from './workspace/windowView';
+import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
 
 function hexToRgba(hex: string, opacity: number): string {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -90,6 +90,8 @@ function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, toda
   const color = override?.color ?? storeColor;
   const opacity = override?.opacity ?? storeOpacity;
   const primitiveRef = useRef<TradeVolumePocPrimitive | null>(null);
+  // 레전드 값 provider 의 창 스코프(멀티창).
+  const windowId = useWindowScopeId();
   const fillColor = useMemo(() => hexToRgba(color, opacity), [color, opacity]);
   const segment = useMemo(
     () => buildTradeVolumePocSegments(pocs, segments, candles, axis, todayKst, fillColor),
@@ -125,9 +127,9 @@ function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, toda
       if (!poc) return [];
       return [{ key: 'trade-volume-poc', value: formatPriceQty(poc.centerPrice, poc.qty) }];
     };
-    registerFlagLegendValues('trade-volume-poc', provider);
-    return () => unregisterFlagLegendValues('trade-volume-poc', provider);
-  }, [pocs, axis]);
+    registerFlagLegendValues(windowId, 'trade-volume-poc', provider);
+    return () => unregisterFlagLegendValues(windowId, 'trade-volume-poc', provider);
+  }, [windowId, pocs, axis]);
 
   return null;
 }

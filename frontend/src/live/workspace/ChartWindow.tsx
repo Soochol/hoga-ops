@@ -55,6 +55,7 @@ import {
   setCurrentStudySaveSource,
   type LiveStudySaveSource,
 } from '../../studyViews/studySaveSource';
+import { clearWindowFlagLegendValues } from '../indicators/flagLegendValueRegistry';
 import type { TabViewport } from '../viewportAnchor';
 
 export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
@@ -83,6 +84,12 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
     }),
     [win.id, win.group, isIndex, symbol?.code, timeframe, historicalFromDate, resolved],
   );
+
+  // 창 닫힘 시 이 창의 flag 레전드 provider 정리(비반응형 모듈 Map — 누수 방지).
+  // 오버레이 4종은 자기 effect cleanup 으로도 해제하지만, ratio 의 broker late-entry
+  // 는 projector 경로라 언마운트 훅이 없다. 언마운트 cleanup 은 자식 → 부모 순이라
+  // 이 정리는 항상 자식들의 해제 뒤에 돌고, 재마운트 시엔 자식 등록이 먼저다.
+  useEffect(() => () => clearWindowFlagLegendValues(win.id), [win.id]);
 
   return (
     <WindowViewContext.Provider value={view}>
