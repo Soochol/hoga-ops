@@ -197,11 +197,36 @@ export function initialHistoricalDaysFor(tf: LiveTimeframe): number {
   return candleTargetToCalendarDays(initialCandleTargetFor(tf), tf);
 }
 
-/** base 날짜에서 타임프레임의 한 스텝(`STEP_TRADING_DAYS`거래일)만큼 과거의
- * YYYYMMDD. 전 타임프레임이 주말 스킵 단일 경로를 쓴다(`STEP_TRADING_DAYS` 주석).
- * 결과는 항상 base보다 strict 과거 — 두 kernel의 단조성 계약의 근거. */
-function stepBackFrom(baseYyyymmdd: string, tf: LiveTimeframe): string {
-  return subtractWeekdaysKst(baseYyyymmdd, STEP_TRADING_DAYS[tf]);
+/** base 날짜에서 타임프레임의 `steps`스텝(스텝당 `STEP_TRADING_DAYS`거래일)만큼
+ * 과거의 YYYYMMDD. 전 타임프레임이 주말 스킵 단일 경로를 쓴다(`STEP_TRADING_DAYS`
+ * 주석). 결과는 항상 base보다 strict 과거 — 두 kernel의 단조성 계약의 근거. */
+function stepBackFrom(baseYyyymmdd: string, tf: LiveTimeframe, steps = 1): string {
+  return subtractWeekdaysKst(baseYyyymmdd, STEP_TRADING_DAYS[tf] * Math.max(1, steps));
+}
+
+/** 한 번의 dispatch가 묶을 수 있는 최대 스텝 수 — 분봉 좌측 팬 전용(ADR-0120).
+ *
+ * 백필 스텝은 프론트에서 완전 직렬이다(3a settle-loop는 한 스텝이 착지해야 다음을
+ * 낸다). 그래서 딥 팬의 총시간 = Σ스텝 왕복인데, 백엔드는 미캐시 날짜를 계정 슬롯에
+ * 병렬 분산하므로 한 요청의 날짜 수를 늘려도 벽시계가 거의 안 는다 — 5일 단일요청과
+ * 5×1일 순차의 실측 차가 3.2~5.7배였다(2026-07-11). 즉 스텝을 묶으면 같은 KIS
+ * 쿼터로 왕복 횟수만 절반이 된다. prepend 커밋도 절반이라 render 측 비용도 준다.
+ *
+ * 상한이 2인 이유(세 상수가 맞물린 불변식 — 하나라도 바뀌면 여기를 재계산):
+ *   2스텝 = 10평일 = **14캘린더일** ≤ `PAST_CHUNK_CALENDAR_DAYS`(15) → 요청이 항상
+ *   청크 1개로 나가고, 10거래일 ≤ 백엔드 `max_fresh_dates_per_collect`(12) →
+ *   fetch_budget_exhausted 경고 없이 한 collect에서 완결된다. 3스텝(15평일=21캘린더일)
+ *   은 두 제약을 동시에 깨서 청크 분할 + 예산 유예로 오히려 느려진다.
+ *
+ * coverage_gap fill은 제외한다(항상 1스텝): 종료 조건이 예산이 아니라 날짜 수렴이라,
+ * 묶으면 viewport가 보지도 않는 과거까지 지표 창을 넓혀 #582(wide-range) 재발이다. */
+export const MAX_BATCH_STEPS_PER_DISPATCH = 2;
+
+/** 이번 dispatch가 묶을 스텝 수. 남은 예산과 타임프레임 상한 중 작은 쪽.
+ * 분봉 외(D/W/M)는 한 스텝이 이미 캔들 50개라 묶지 않는다. */
+export function dispatchStepsFor(tf: LiveTimeframe, remainingBudget: number): number {
+  const cap = isMinuteTimeframe(tf) ? MAX_BATCH_STEPS_PER_DISPATCH : 1;
+  return Math.max(1, Math.min(cap, remainingBudget));
 }
 
 /** /live infinite-scroll backfill policy (SR-3), extracted pure from
@@ -224,13 +249,14 @@ export function nextHistoricalFrom(
   axisEarliestMs: number,
   historicalFromDate: string | null,
   tf: LiveTimeframe,
+  steps = 1,
 ): string {
   const axisEarliestDate = realMsToYyyymmdd(axisEarliestMs);
   const baseDate =
     historicalFromDate !== null && historicalFromDate < axisEarliestDate
       ? historicalFromDate
       : axisEarliestDate;
-  return stepBackFrom(baseDate, tf);
+  return stepBackFrom(baseDate, tf, steps);
 }
 
 /** Coverage-gap 백필(A안)의 다음 from. `nextHistoricalFrom`과 달리 axis earliest를
@@ -301,10 +327,14 @@ export interface FillStepArgs {
  * 종료: (a) 예산 소진(stepCount ≥ budget) (b) optional 하한(클램프) 도달
  * (c) coverage_gap은 요청 창이 동결된 목표 날짜에 도달했을 때.
  * 연휴 스텝(거래일 0개)도 예산 1을 소모한다 — 그만큼 덜 채워진 빈공간은
- * 다음 트리거의 예산으로 회수된다(자가 치유). */
+ * 다음 트리거의 예산으로 회수된다(자가 치유).
+ *
+ * `steps`는 이번 dispatch가 소모하는 예산 단위 수다(분봉 left_pan은 최대
+ * `MAX_BATCH_STEPS_PER_DISPATCH`개 묶음, 그 외 1). 호출자는 stepCount에 이 값을
+ * 더해야 한다 — 1씩 더하면 묶은 만큼 예산이 과다 집행돼 fill이 목표를 넘어간다. */
 export function planFillStep(
   args: FillStepArgs,
-): { action: 'stop' } | { action: 'fetch'; nextFrom: string } {
+): { action: 'stop' } | { action: 'fetch'; nextFrom: string; steps: number } {
   const {
     kind, historicalFromDate, axisEarliestMs, earliestAllowedDate,
     timeframe, stepCount, budget,
@@ -315,9 +345,11 @@ export function planFillStep(
     return { action: 'stop' };
   }
   if (kind === 'left_pan') {
+    const steps = dispatchStepsFor(timeframe, budget - stepCount);
     return {
       action: 'fetch',
-      nextFrom: nextHistoricalFrom(axisEarliestMs, historicalFromDate, timeframe),
+      nextFrom: nextHistoricalFrom(axisEarliestMs, historicalFromDate, timeframe, steps),
+      steps,
     };
   }
   // coverage_gap: 요청 창이 동결된 목표(트리거 순간 viewport 좌단)에 닿으면 종료.
@@ -327,5 +359,6 @@ export function planFillStep(
   return {
     action: 'fetch',
     nextFrom: nextCoverageFrom(historicalFromDate, rangeWindowFromDate, timeframe),
+    steps: 1, // 날짜 수렴이 종료 조건 — 묶으면 목표를 지나쳐 과다 요청(#582)
   };
 }

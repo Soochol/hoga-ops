@@ -12,9 +12,9 @@ from pydantic import BaseModel
 class KisCandle(BaseModel):
     """브로커 중립 캔들 포트 — 이름의 "Kis" 는 역사적이다.
 
-    KIS REST 캔들 파서와 키움 REST 딥백필(kiwoom_client)이 **둘 다** 이 shape 로
-    생산하고, 캔들 캐시·백필 사다리가 소스 무관으로 소비한다. 리네임은 22개
-    사용처 파급이라 보류(2026-07-20 감사) — 이 주석이 실체를 말한다.
+    현재 생산자는 KIS REST 캔들 파서뿐이지만(키움 분봉 딥백필은 ADR-0120으로 제거),
+    캔들 캐시·백필 사다리는 소스 무관으로 소비한다. 리네임은 22개 사용처 파급이라
+    보류(2026-07-20 감사) — 이 주석이 실체를 말한다.
     """
 
     t_ms: int   # epoch ms (UTC) — start of bar

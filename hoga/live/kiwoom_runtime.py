@@ -5,7 +5,8 @@ KIS(kis_runtime) 브로커-대칭. env 관례를 복제한다: account 0 = KIWOO
 provider 싱글톤 1개(디스크 캐시는 kiwoom-token[-k].json). kis_* 는 import하지 않는다
 (ADR-0116 규율 1).
 
-REST 데이터 클라이언트(분봉 백필 ka10080)는 PR-5에서 추가한다 — 이 모듈은 인증·env만.
+이 모듈은 인증·env만 다룬다. 키움 REST 데이터 클라이언트(분봉 백필 ka10080)는
+ADR-0120으로 제거됐다 — 키움 소비자는 WS(kiwoom_session)뿐이다.
 """
 from __future__ import annotations
 
@@ -85,40 +86,8 @@ def ensure_token_provider_for_account(
     )
 
 
-_minute_client = None  # KiwoomClient 싱글톤(account 0) — 분봉 딥 백필 전용(PR-5b)
-
-
-def ensure_minute_client(data_dir: Path):
-    """account-0 KiwoomClient 싱글톤(분봉 ka10080). 키움 자격증명 없으면 None.
-
-    분봉 백필 resolver가 매 range 요청 시 호출 — 한 번만 생성해 토큰 provider를
-    공유한다(발급 캐시 재사용, 실측 지정단말기 락 회피에 필수). 자격증명 부재 시
-    None 반환이 곧 게이트다(활성화 스위치는 폐지, ADR-0118).
-    """
-    global _minute_client  # noqa: PLW0603 — 모듈 싱글톤 지연 생성(토큰 provider 공유)
-    if _minute_client is not None:
-        return _minute_client
-    prov = ensure_token_provider_for_account(0, data_dir)
-    if prov is None:
-        return None
-    import asyncio  # noqa: PLC0415
-
-    from .kiwoom_client import KiwoomClient  # noqa: PLC0415
-
-    async def token_fn() -> str:
-        return await asyncio.to_thread(prov.get_token)
-
-    _minute_client = KiwoomClient(token_fn=token_fn)
-    return _minute_client
-
-
 def close_all() -> None:
-    """모든 계정 토큰 provider 종료 — 프로세스 종료 시에만.
-
-    분봉 클라이언트(httpx.AsyncClient)는 참조만 드롭(aclose는 루프 필요라 shutdown
-    시점에 불안정 — 소켓 정리는 GC/프로세스 종료에 위임, best-effort)."""
-    global _minute_client  # noqa: PLW0603 — 모듈 싱글톤 리셋(프로세스 종료 시)
-    _minute_client = None
+    """모든 계정 토큰 provider 종료 — 프로세스 종료 시에만."""
     for prov in list(_token_providers.values()):
         with contextlib.suppress(Exception):
             prov.close()

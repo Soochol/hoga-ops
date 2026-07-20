@@ -1932,15 +1932,6 @@ def build_router(
         PastCandlesCache(data_dir=data_dir) if data_dir is not None else None
     )
 
-    def _resolve_kiwoom_minute_fetcher(dd):
-        """키움 분봉 클라이언트(싱글톤), 자격증명 없으면 None. 매 range 요청 시 호출.
-        활성화 스위치는 폐지(ADR-0118) — ensure_minute_client가 앱키 부재 시 None을
-        반환하므로 그것이 곧 게이트다(백필은 전량 KIS로 동작 불변)."""
-        if dd is None:
-            return None
-        from .kiwoom_runtime import ensure_minute_client  # noqa: PLC0415
-
-        return ensure_minute_client(dd)
     minute_backfill: LiveMinuteCandleBackfill | None = (
         LiveMinuteCandleBackfill(
             data_dir=data_dir,
@@ -1948,7 +1939,6 @@ def build_router(
             scheduler=_kis_scheduler,
             concurrency=_past_candles_concurrency(data_dir),
             rate_limit_cooldown_s=_PAST_CANDLES_RATE_LIMIT_COOLDOWN_S,
-            kiwoom_source=lambda: _resolve_kiwoom_minute_fetcher(data_dir),
         )
         if data_dir is not None and cache_instance is not None and _kis_scheduler is not None
         else None

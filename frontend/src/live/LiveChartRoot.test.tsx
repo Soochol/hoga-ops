@@ -2830,22 +2830,51 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
     const { rerender } = render(props(false), { wrapper });
-    // 트리거: 빈공간 3000바 (1m 스텝당 1,950봉) → 예산 ceil(3000/1950)=2, 스텝 1.
+    // 트리거: 빈공간 3000바 (1m 스텝당 1,950봉) → 예산 ceil(3000/1950)=2.
     act(() => {
       handlers.forEach((h) => h({ from: -3000, to: 100 }));
       vi.advanceTimersByTime(200);
     });
-    // 스텝 1: '20260521'(목) − 5거래일 → '20260514'(목).
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260514');
-
-    act(() => { rerender(props(true)); });
-    act(() => { rerender(props(false)); }); // falling edge → 스텝 2(예산 소진)
-    // 스텝 2: '20260514'(목) − 5거래일 → '20260507'(목).
+    // 배치 dispatch(ADR-0120): 예산 2를 한 번에 묶어 10평일 전진 —
+    // '20260521'(목) − 10거래일 → '20260507'(목). 왕복 2회 → 1회.
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260507');
 
     act(() => { rerender(props(true)); });
-    act(() => { rerender(props(false)); }); // 예산 0 → stop (빈공간 남아도 무시)
+    act(() => { rerender(props(false)); }); // falling edge → 예산 소진, stop
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260507');
+  });
+
+  it('batches at most MAX_BATCH_STEPS_PER_DISPATCH, leaving the remainder as a single step', () => {
+    // 큰 예산(5스텝)의 dispatch 시퀀스는 2,2,1이어야 한다 — 배치는 남은 예산을
+    // 넘지 않고, 총 전진량은 배치 도입 전(1스텝×5)과 정확히 같다(예산 의미론 불변).
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -9000, to: 100 }));
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const props = (ext: boolean) => (
+      <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
+    );
+    const { rerender } = render(props(false), { wrapper });
+    act(() => {
+      handlers.forEach((h) => h({ from: -9000, to: 100 })); // 예산 ceil(9000/1950)=5
+      vi.advanceTimersByTime(200);
+    });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260507'); // 2스텝
+
+    act(() => { rerender(props(true)); });
+    act(() => { rerender(props(false)); });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260423'); // +2스텝
+
+    act(() => { rerender(props(true)); });
+    act(() => { rerender(props(false)); });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260416'); // +1(잔여)
+
+    act(() => { rerender(props(true)); });
+    act(() => { rerender(props(false)); }); // 예산 소진 → stop
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260416');
   });
 
   it('does NOT dispatch a fill step before candles load, even with historicalFromDate set', () => {
