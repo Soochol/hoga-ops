@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { WindowFrame } from './WindowFrame';
 import { MAX_GROUP, MIN_GROUP } from '../../state/workspace';
 
-function renderFrame(paletteOpen: boolean) {
+function renderFrame(paletteOpen: boolean, focused = false) {
   return render(
     <WindowFrame
       id="w1"
@@ -11,7 +11,7 @@ function renderFrame(paletteOpen: boolean) {
       group={1}
       rect={{ x: 0, y: 0, w: 320, h: 240 }}
       zIndex={1}
-      focused={false}
+      focused={focused}
       symbolLabel="삼성에스디에스"
       symbolCode="018260"
       paletteOpen={paletteOpen}
@@ -61,5 +61,34 @@ describe('WindowFrame 링크 그룹 팔레트', () => {
     renderFrame(false);
 
     expect(screen.queryByRole('button', { name: '10' })).not.toBeInTheDocument();
+  });
+});
+
+describe('WindowFrame 포커스 표시', () => {
+  /** 헤더 밴드 — 드래그 핸들이 곧 포커스 틴트를 입는 요소다. */
+  function headerOf(container: HTMLElement) {
+    const header = container.querySelector('[data-handle="move"]');
+    if (!header) throw new Error('header not found');
+    return header as HTMLElement;
+  }
+
+  it('포커스된 창은 헤더 밴드에 선택 틴트를 입힌다', () => {
+    const { container } = renderFrame(false, true);
+
+    expect(headerOf(container)).toHaveClass('bg-tint-selection');
+  });
+
+  it('비포커스 창은 헤더 틴트 없이 카드 배경을 그대로 쓴다', () => {
+    const { container } = renderFrame(false, false);
+
+    expect(headerOf(container)).not.toHaveClass('bg-tint-selection');
+  });
+
+  it('포커스는 그림자 티어를 바꾸지 않는다 (전 창 shadow-panel 고정)', () => {
+    // 이전엔 포커스가 shadow-modal 로 승격됐으나 헤더 틴트로 대체됐다.
+    const focusedFrame = renderFrame(false, true).container.querySelector('[data-win="w1"]');
+
+    expect(focusedFrame).toHaveClass('shadow-panel');
+    expect(focusedFrame).not.toHaveClass('shadow-modal');
   });
 });

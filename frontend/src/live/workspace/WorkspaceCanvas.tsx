@@ -73,6 +73,7 @@ export function WorkspaceCanvas() {
   const [zone, setZone] = useState<SnapZone>(null);
   const [palette, setPalette] = useState<string | null>(null);
 
+  // zOrder 의 마지막 = 최상단 창. 헤더 틴트의 유일한 소비처.
   const focusedId = zOrder[zOrder.length - 1];
 
   const rectOf = (w: WorkspaceWindow): Rect => preview?.get(w.id) ?? w.rect;
