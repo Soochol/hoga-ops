@@ -11,11 +11,14 @@ import {
   STEP_TRADING_DAYS,
   stepCandlesEstimate,
   fillBudgetSteps,
+  dispatchStepsFor,
+  MAX_BATCH_STEPS_PER_DISPATCH,
   planFillStep,
   isKrxRegularSessionNow,
   initialCandleTargetFor,
   initialHistoricalDaysFor,
 } from './liveDateTime';
+import { PAST_CHUNK_CALENDAR_DAYS } from '../api/livePastCandles';
 import { unixMsToKSTDate } from '../util/time';
 
 /** SR-1/SR-3: the /live infinite-scroll backfill policy was fused inside
@@ -228,10 +231,20 @@ describe('planFillStep — 제스처 예산 모델', () => {
     budget: 3,
   };
 
-  it('fetches the next step while budget remains', () => {
+  it('fetches the next step while budget remains, batching up to the cap', () => {
+    // budget 3 − stepCount 1 = 남은 2 → 분봉은 2스텝 묶음(ADR-0120).
     expect(planFillStep(base)).toEqual({
       action: 'fetch',
-      nextFrom: subtractWeekdaysKst('20260521', STEP_TRADING_DAYS['1m']), // '20260514' (목→목)
+      nextFrom: subtractWeekdaysKst('20260521', STEP_TRADING_DAYS['1m'] * 2), // 10평일
+      steps: 2,
+    });
+  });
+
+  it('never batches past the remaining budget (last step is a single)', () => {
+    expect(planFillStep({ ...base, stepCount: 2 })).toEqual({
+      action: 'fetch',
+      nextFrom: subtractWeekdaysKst('20260521', STEP_TRADING_DAYS['1m']),
+      steps: 1,
     });
   });
 
@@ -258,9 +271,12 @@ describe('planFillStep — 제스처 예산 모델', () => {
     };
 
     it('fetches a window-base step while the window is behind the frozen target', () => {
+      // coverage_gap 은 절대 묶지 않는다(steps=1) — 종료가 날짜 수렴이라 묶으면
+      // viewport 가 보지도 않는 과거까지 지표 창이 넓어진다(#582 재발).
       expect(planFillStep(cov)).toEqual({
         action: 'fetch',
         nextFrom: subtractWeekdaysKst('20260521', STEP_TRADING_DAYS['1m']),
+        steps: 1,
       });
     });
 
@@ -294,6 +310,45 @@ describe('planFillStep — 제스처 예산 모델', () => {
     it('budget backstop applies to coverage fills too', () => {
       expect(planFillStep({ ...cov, stepCount: 60 })).toEqual({ action: 'stop' });
     });
+  });
+});
+
+describe('배치 dispatch — MAX_BATCH_STEPS_PER_DISPATCH (ADR-0120)', () => {
+  it('분봉은 남은 예산이 충분하면 상한까지 묶는다', () => {
+    expect(dispatchStepsFor('1m', 10)).toBe(MAX_BATCH_STEPS_PER_DISPATCH);
+    expect(dispatchStepsFor('30m', 10)).toBe(MAX_BATCH_STEPS_PER_DISPATCH);
+  });
+
+  it('D/W/M은 묶지 않는다 — 한 스텝이 이미 캔들 50개', () => {
+    expect(dispatchStepsFor('D', 10)).toBe(1);
+    expect(dispatchStepsFor('W', 10)).toBe(1);
+    expect(dispatchStepsFor('M', 10)).toBe(1);
+  });
+
+  it('남은 예산보다 크게 묶지 않는다', () => {
+    expect(dispatchStepsFor('1m', 1)).toBe(1);
+    expect(dispatchStepsFor('1m', 0)).toBe(1); // 하한 1(호출 전 예산 가드가 별도)
+  });
+
+  // 이 배치 폭은 프론트 청크 캡과 백엔드 신선예산에 동시에 물려 있다. 셋 중 하나가
+  // 바뀌면 여기서 깨져야 한다 — 안 그러면 조용히 청크 분할(요청 2개) 또는
+  // fetch_budget_exhausted 유예(60s 주기 전진)로 퇴화한다.
+  it('배치 폭 ≤ 청크 캡(15캘린더일)이라 요청은 항상 청크 1개', () => {
+    const maxWeekdays = STEP_TRADING_DAYS['1m'] * MAX_BATCH_STEPS_PER_DISPATCH;
+    const from = subtractWeekdaysKst('20260605', maxWeekdays); // 금요일 기준
+    const spanDays =
+      (Date.parse('2026-06-05') - Date.parse(
+        `${from.slice(0, 4)}-${from.slice(4, 6)}-${from.slice(6, 8)}`,
+      )) / 86_400_000;
+    expect(spanDays).toBe(14); // 10평일 = 정확히 2주
+    expect(spanDays + 1).toBeLessThanOrEqual(PAST_CHUNK_CALENDAR_DAYS);
+  });
+
+  it('배치 거래일 수 ≤ 백엔드 max_fresh_dates_per_collect(12)', () => {
+    const BACKEND_FRESH_BUDGET = 12; // live_candle_backfill.max_fresh_dates_per_collect
+    expect(STEP_TRADING_DAYS['1m'] * MAX_BATCH_STEPS_PER_DISPATCH).toBeLessThanOrEqual(
+      BACKEND_FRESH_BUDGET,
+    );
   });
 });
 

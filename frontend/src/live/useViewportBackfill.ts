@@ -9,6 +9,7 @@ import {
   nextCoverageFrom,
   planFillStep,
   fillBudgetSteps,
+  dispatchStepsFor,
   earliestAllowedMinuteDate,
   todayKstYyyymmdd,
   realMsToYyyymmdd,
@@ -329,7 +330,7 @@ export function useViewportBackfill({
       endFill();
       return;
     }
-    fillStepCountRef.current += 1;
+    fillStepCountRef.current += plan.steps;
     livePerfLog('viewport_backfill_extend', {
       code,
       timeframe,
@@ -337,6 +338,7 @@ export function useViewportBackfill({
       kind: fillKindRef.current,
       from: cur,
       nextFrom: plan.nextFrom,
+      steps: plan.steps,
       stepCount: fillStepCountRef.current,
       budget: fillBudgetRef.current,
       candleCount: candleCountRef.current,
@@ -355,11 +357,14 @@ export function useViewportBackfill({
   // freely go negative past the leftmost bar (-50.3 etc.), which is the
   // signal we actually need.
   //
-  // Each step prepends one STEP_TRADING_DAYS chunk (weekend-skipped): minute =
-  // 5 trading days (~1,950 bars at 1m → one backend date-parallel batch, ADR-0105),
+  // Each step is STEP_TRADING_DAYS wide (weekend-skipped): minute = 5 trading
+  // days (~1,950 bars at 1m → one backend date-parallel batch, ADR-0105),
   // D/W/M = 50/250/1050 trading days (~50 candles). A minute step is sized to
   // one parallel backend batch, not one bar-count — deep pans commit every 5
-  // trading days instead of every single day.
+  // trading days instead of every single day. A single dispatch may BATCH up to
+  // MAX_BATCH_STEPS_PER_DISPATCH steps (ADR-0120) — the settle-loop is serial, so
+  // batching halves the round-trips at the same backend cost (그 상한이 왜 2인지는
+  // liveDateTime.MAX_BATCH_STEPS_PER_DISPATCH 주석의 3-상수 불변식 참조).
   // The 150ms trailing debounce coalesces rapid wheel / drag events into one
   // fetch; the store's extendHistoricalRange is monotonically decreasing, so
   // repeated negative ranges within one chunk are no-ops.
@@ -399,11 +404,15 @@ export function useViewportBackfill({
       let trigger: 'left_pan' | 'coverage_gap';
       let nextFrom: string;
       let budget: number;
+      let steps = 1;
       let coverageTarget: string | null = null;
       if (r.from < 0) {
         trigger = 'left_pan';
-        nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe);
         budget = Math.min(fillBudgetSteps(-r.from, timeframe), MAX_FILL_STEPS);
+        // 첫 dispatch도 3a와 같은 배치 폭을 쓴다(ADR-0120) — 여기만 1스텝이면
+        // 딥 팬의 첫 왕복이 나머지보다 좁아 계단이 생긴다.
+        steps = dispatchStepsFor(timeframe, budget);
+        nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps);
       } else {
         const covPlan = planCoverageGapFill(
           chart, axis, timeframe, cur, coverageFromRef.current, rangeWindowFromRef.current,
@@ -440,7 +449,7 @@ export function useViewportBackfill({
         fillKindRef.current = trigger;
         fillBudgetRef.current = budget;
         fillCoverageTargetRef.current = coverageTarget;
-        fillStepCountRef.current = 1; // 이 dispatch가 스텝 1
+        fillStepCountRef.current = steps; // 이 dispatch가 소모한 예산 단위
         livePerfLog('viewport_backfill_extend', {
           code,
           timeframe,
@@ -448,6 +457,7 @@ export function useViewportBackfill({
           logicalFrom: r.from,
           from: cur,
           nextFrom,
+          steps,
           stepCount: fillStepCountRef.current,
           budget,
           candleCount: candleCountRef.current,
