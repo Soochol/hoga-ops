@@ -44,7 +44,12 @@ import {
   clearGroupChartLink,
   type GroupChartLink,
 } from './groupChartLinkSource';
-import { TimeframeControl } from '../TimeframeControl';
+import {
+  HEADER_VARIANTS,
+  PrototypeChartWindowHeader,
+  variantIsFloating,
+} from './ChartWindowHeader.prototype';
+import { usePrototypeVariant } from '../../ui/PrototypeSwitcher';
 import {
   publishLiveWindowStatus,
   clearLiveWindowStatus,
@@ -101,6 +106,7 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
 function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const view = useWindowView(); // 창의 값(Provider 안)
   const ind = useWindowIndicators();
+  const headerVariant = usePrototypeVariant(HEADER_VARIANTS); // PROTOTYPE #762
   const venue = useLiveVenueStore((s) => s.venue);
   // 발행 게이트 = "대상 차트 창"(포커스가 데이터 창이면 z-최상위 차트) — 드로어와
   // 같은 규칙. 엄격 포커스로 걸면 데이터 창 포커스 동안 상태바/저장뷰가 빈다.
@@ -272,17 +278,32 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
 
   return (
     <div className="flex h-full w-full flex-col">
-      {/* 창별 봉 컨트롤(C2c-2c) — timeframe 은 창 소유(#708), 전역 툴바에서 이전. */}
-      <div className="flex shrink-0 items-center border-b border-border bg-bg-card/60 px-1 py-0.5">
-        <TimeframeControl
+      {/* PROTOTYPE (#762) — 헤더 3변형 스왑. 폐기 전제, main 머지 금지.
+          C(플로팅)는 헤더 행을 차지하지 않고 차트 영역 위에 얹힌다. */}
+      {!variantIsFloating(headerVariant) && (
+        <PrototypeChartWindowHeader
+          variant={headerVariant}
+          windowId={win.id}
+          code={d.workareaCode}
           timeframe={view.timeframe}
           rememberedMinute={rememberedMinute}
-          onChange={(tf) => setChartTimeframe(win.id, tf)}
+          onTimeframeChange={(tf) => setChartTimeframe(win.id, tf)}
         />
-      </div>
-      <div className="min-h-0 flex-1">
+      )}
+      <div className="relative min-h-0 flex-1">
+        {variantIsFloating(headerVariant) && (
+          <PrototypeChartWindowHeader
+            variant={headerVariant}
+            windowId={win.id}
+            code={d.workareaCode}
+            timeframe={view.timeframe}
+            rememberedMinute={rememberedMinute}
+            onTimeframeChange={(tf) => setChartTimeframe(win.id, tf)}
+          />
+        )}
         <ChartErrorBoundary>
-          <ChartDrawingShell code={d.workareaCode} timeframe={view.timeframe}>
+          {/* PROTOTYPE (#762) — 레일 폐기 후 모습을 보기 위해 숨긴다. */}
+          <ChartDrawingShell code={d.workareaCode} timeframe={view.timeframe} hideRail>
             <LiveChartRoot
               code={d.workareaCode}
               timeframe={view.timeframe}

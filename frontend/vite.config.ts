@@ -30,5 +30,15 @@ export default defineConfig({
     setupFiles: ['./tests/setup.ts'],
     exclude: ['node_modules', 'dist', 'tests/e2e/**'],
   },
-  server: { port: 5173 },
+  // PROTOTYPE (#762) — 워크트리 도그푸딩용. 백엔드 CORS 가 :5173 만 허용해서
+  // 다른 포트로 띄우면 API 가 전부 막힌다. 동일 출처로 프록시해 우회한다.
+  // 폐기 전제 — 프로토타입 브랜치와 함께 버린다.
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/ws': { target: 'ws://127.0.0.1:8000', ws: true, changeOrigin: true },
+      '/health': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+    },
+  },
 })

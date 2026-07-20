@@ -12,6 +12,12 @@ import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { LiveStudyViewSaveButton } from '../studyViews/LiveStudyViewSaveButton';
 import LiveSettingsModal from './LiveSettingsModal';
+import { PrototypeSwitcher } from '../ui/PrototypeSwitcher';
+import {
+  HEADER_VARIANTS,
+  HEADER_VARIANT_LABELS,
+  registerPrototypeIndicatorOpen,
+} from './workspace/ChartWindowHeader.prototype';
 import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
 import { useSymbols } from '../capture/useSymbols';
 import { useDocumentTitle } from '../util/useDocumentTitle';
@@ -116,6 +122,8 @@ export function LivePage() {
 
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // PROTOTYPE (#762) — 창 헤더의 +보조지표 버튼이 여는 채널. 폐기 전제.
+  useEffect(() => registerPrototypeIndicatorOpen(() => setIndicatorPanelOpen(true)), []);
   // 활성 그룹 종목 지난 N일 hogaplay 수집(히트맵 CollectDialog 재사용) — 주식 한정.
   const [collectOpen, setCollectOpen] = useState(false);
   useEffect(() => {
@@ -220,6 +228,8 @@ export function LivePage() {
           onClose={() => setCollectOpen(false)}
         />
       )}
+      {/* PROTOTYPE (#762) — 헤더 변형 스위처. 폐기 전제, main 머지 금지. */}
+      <PrototypeSwitcher variants={HEADER_VARIANTS} labels={HEADER_VARIANT_LABELS} />
     </div>
   );
 }

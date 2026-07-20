@@ -23,17 +23,22 @@ export function ChartDrawingShell({
   children,
   code,
   timeframe,
+  hideRail = false,
 }: {
   children: ReactNode;
   code: string | null;
   timeframe: LiveTimeframe;
+  /** PROTOTYPE (#762) — 레일 폐기 후 모습을 보기 위한 임시 스위치. 폐기 전제. */
+  hideRail?: boolean;
 }) {
   return (
     <div
       data-testid="chart-drawing-shell"
-      className="grid h-full min-h-0 min-w-0 grid-cols-[44px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden"
+      className={`grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] overflow-hidden ${
+        hideRail ? 'grid-cols-[minmax(0,1fr)]' : 'grid-cols-[44px_minmax(0,1fr)]'
+      }`}
     >
-      <LiveDrawingRail code={code} timeframe={timeframe} />
+      {!hideRail && <LiveDrawingRail code={code} timeframe={timeframe} />}
       <div className="min-h-0 min-w-0 overflow-hidden">
         {children}
       </div>
