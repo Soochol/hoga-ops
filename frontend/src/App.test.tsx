@@ -125,7 +125,11 @@ describe('App shell layout', () => {
     expect(screen.getByRole('navigation', { name: '주요 메뉴' })).toBeInTheDocument();
     // 열 기반 셸: 우측 패널(레일)이 full-height 열, 왼쪽 스택이 1fr — 헤더는 우측 패널 위를 양보.
     expect(shell.style.gridTemplateColumns).toBe('1fr var(--rail-w)');
-    expect(shell.style.gridTemplateRows).toBe('');
+    // 행도 명시해야 한다. 예전에는 이 단언이 `''`(미지정)이었는데, 그러면
+    // `grid-auto-rows: auto` 가 되고 auto 트랙은 콘텐츠가 원하는 만큼 커진다 —
+    // h-screen 보다 낮은 뷰포트에서 셸이 화면 밖으로 밀렸다(뷰포트 260px 에서 트랙
+    // 341px). 아이템의 min-h-0 은 *트랙* 최소값을 풀지 못한다.
+    expect(shell.style.gridTemplateRows).toBe('minmax(0, 1fr)');
     // 왼쪽 스택: top nav / 페이지 / 하단 바(auto — 바 null 이면 0 으로 접힘) 3행.
     expect(mainStack.style.gridTemplateRows).toBe('var(--h-top-nav) minmax(0, 1fr) auto');
   });

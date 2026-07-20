@@ -67,6 +67,11 @@ export default function App() {
         // 열로 서고, 왼쪽 스택(TopNav/페이지/하단 시장지표 바)이 나머지 1fr 을 세로로 채운다.
         // 상단 헤더는 우측 패널 위 코너를 양보한다(우측 패널이 화면 맨 위까지 올라옴).
         gridTemplateColumns: contentCols,
+        // 행도 반드시 명시한다. 비워두면 `grid-auto-rows: auto` 가 되고 그 트랙은 콘텐츠가
+        // 원하는 만큼 커져서, `h-screen` 보다 낮은 뷰포트에서 셸이 화면 밖으로 밀린다
+        // (뷰포트 260px 에서 트랙 341px). 아이템의 min-h-0 은 *트랙* 최소값을 못 푼다 —
+        // 바로 아래 app-main-stack 이 같은 이유로 이미 행을 명시하고 있다(#730 과 동형).
+        gridTemplateRows: 'minmax(0, 1fr)',
       }}
     >
       {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
