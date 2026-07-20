@@ -1852,6 +1852,18 @@ export function LiveChartRoot({
   // 차트만 — 이 effect 는 수신 전용이고, 핸들러의 applyingMirror 가드가 재발행을 막는다.
   useEffect(() => {
     if (!chart) return;
+    // 프로그램적 set/clearCrosshairPosition 은 자기 crosshair 핸들러를 동기 재발화
+    // 하므로, 호출 구간에 applyingMirror 플래그를 세워 핸들러가 즉시 return 하게 한다
+    // (재발행 루프·leave-clear 오발화 차단). 3곳의 try/finally 를 이 헬퍼로 단일화.
+    const withMirrorGuard = (fn: () => void) => {
+      applyingMirrorRef.current = true;
+      try { fn(); } finally { applyingMirrorRef.current = false; }
+    };
+    const clearMirror = () => {
+      if (!mirrorDrawnRef.current) return;
+      withMirrorGuard(() => chart.clearCrosshairPosition());
+      mirrorDrawnRef.current = false;
+    };
     const applyMirror = () => {
       const s = useLiveCursorStore.getState();
       const cursorMs = s.cursorMs;
@@ -1867,32 +1879,17 @@ export function LiveChartRoot({
         const price = mirrorCandleClose(mirrorCandlesRef.current, cursorMs);
         if (price === null) return;
         const vt = realMsToVirtualSeconds(axisRef.current, cursorMs) as Time;
-        applyingMirrorRef.current = true;
-        try {
-          chart.setCrosshairPosition(price, vt, series);
-        } finally {
-          applyingMirrorRef.current = false;
-        }
+        withMirrorGuard(() => chart.setCrosshairPosition(price, vt, series));
         mirrorDrawnRef.current = true;
-      } else if (mirrorDrawnRef.current) {
-        applyingMirrorRef.current = true;
-        try {
-          chart.clearCrosshairPosition();
-        } finally {
-          applyingMirrorRef.current = false;
-        }
-        mirrorDrawnRef.current = false;
+      } else {
+        clearMirror();
       }
     };
     const unsub = useLiveCursorStore.subscribe(applyMirror);
     applyMirror(); // 초기 동기(구독 시점 이미 다른 창이 호버 중일 수 있다).
     return () => {
       unsub();
-      if (mirrorDrawnRef.current) {
-        applyingMirrorRef.current = true;
-        try { chart.clearCrosshairPosition(); } finally { applyingMirrorRef.current = false; }
-        mirrorDrawnRef.current = false;
-      }
+      clearMirror();
     };
   }, [chart]);
 

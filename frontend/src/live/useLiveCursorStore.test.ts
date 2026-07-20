@@ -34,6 +34,17 @@ describe('useLiveCursorStore', () => {
     expect(useLiveCursorStore.getState().lastCursorMs).toBe(1748400000000);
   });
 
+  it('restoreCursor 는 cursorOrigin 을 null 로 걷는다 (pair-atomicity, 리뷰)', () => {
+    // 이전 창 origin 이 남은 채 cursorMs 만 되살아나면 stale 창 오미러 → origin 리셋.
+    useLiveCursorStore.getState().setCursor(1748400000000, {
+      windowId: 'wA', group: 1, code: '005930', timeframe: '1m',
+    });
+    useLiveCursorStore.getState().clearCursor();
+    useLiveCursorStore.getState().restoreCursor();
+    expect(useLiveCursorStore.getState().cursorMs).toBe(1748400000000);
+    expect(useLiveCursorStore.getState().cursorOrigin).toBeNull();
+  });
+
   it('resetCursor clears cursorMs and lastCursorMs', () => {
     useLiveCursorStore.getState().setCursor(1748400000000);
     useLiveCursorStore.getState().setSidebarCursor(1748400000000);
