@@ -198,18 +198,28 @@ function PriceCell({
     baselinePrice !== null && baselinePrice > 0
       ? ((price - baselinePrice) / baselinePrice) * 100
       : null;
+  // 가격과 등락률은 **한 덩어리**로 읽혀야 한다 — justify-between 으로 컬럼 양 끝에
+  // 밀어놓으면 폭이 넓을수록 시선이 끊긴다. 가운데 모아 붙이고, 등락률에 최소폭을
+  // 줘서 값 길이(-0.19% ↔ +30.00%)가 달라져도 가격 우측 끝이 흔들리지 않게 한다.
+  // 위계는 크기로 준다: 가격 base(13px) vs 등락률 badge(8.5px) — 보조 정보라
+  // 뚜렷하게 작아야 가격이 먼저 읽힌다(이전 sm/xs 는 1px 차라 위계가 없었다).
   return (
     <div
-      className={`flex items-center justify-between gap-2 px-2 ${
-        boxed ? 'rounded border border-fg-dim' : ''
+      className={`flex items-baseline justify-center gap-1.5 px-2 ${
+        boxed ? 'rounded-md border border-fg-dim' : ''
       }`}
       style={{ height: ROW_H }}
     >
-      <span className={`font-mono text-sm tabular-nums ${color}`}>
+      <span className={`font-mono text-base tabular-nums ${color}`}>
         {price > 0 ? price.toLocaleString('ko-KR') : ''}
       </span>
       {pct !== null && price > 0 && (
-        <span className={`font-mono text-xs tabular-nums opacity-80 ${color}`}>
+        <span
+          className={`font-mono text-badge tabular-nums text-left opacity-70 ${color}`}
+          // 7ch = "+30.00%"(최장). 좌측정렬 + 최장 기준 고정폭이라야 부호 없는
+          // 보합행("0.00%")만 중앙정렬이 흔들려 오른쪽으로 밀리는 일이 없다.
+          style={{ minWidth: '7ch' }}
+        >
           {pct > 0 ? '+' : ''}
           {pct.toFixed(2)}%
         </span>
@@ -242,13 +252,16 @@ function QtyBar({
           붙여 잔량 숫자가 항상 가격 쪽에 남게 한다. */}
       <span
         className={`relative flex w-full items-baseline gap-1.5 px-2 font-mono text-sm tabular-nums ${
-          isAsk ? 'justify-end' : 'flex-row-reverse justify-end'
+          isAsk ? '' : 'flex-row-reverse'
         }`}
       >
+        {/* 뱃지는 막대 **바깥쪽 끝**(가격축 반대편)에 붙인다 — 잔량 쪽에 두면 긴 막대가
+            뱃지를 덮어 읽을 수 없다. 잔량은 flex-1 로 남은 폭을 먹고 가격축 쪽으로
+            정렬하므로 뱃지가 없어도 위치가 흔들리지 않는다. */}
         {badge !== null && (
           <span
             key={badge.atMs}
-            className="book-delta-flash text-[10px]"
+            className="book-delta-flash shrink-0 text-[10px]"
             style={{
               color: badge.delta > 0 ? DEPTH_DELTA_DEFAULT_IN_COLOR : DEPTH_DELTA_DEFAULT_OUT_COLOR,
             }}
@@ -257,7 +270,9 @@ function QtyBar({
             {Math.abs(badge.delta).toLocaleString('ko-KR')}
           </span>
         )}
-        <span className="text-fg-dim">{qty > 0 ? qty.toLocaleString('ko-KR') : ''}</span>
+        <span className={`flex-1 text-fg-dim ${isAsk ? 'text-right' : 'text-left'}`}>
+          {qty > 0 ? qty.toLocaleString('ko-KR') : ''}
+        </span>
       </span>
     </div>
   );
