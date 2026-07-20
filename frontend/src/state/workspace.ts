@@ -291,6 +291,21 @@ export function targetChartWindow(
   return null;
 }
 
+/** 그룹의 대상 차트 창 = 그 그룹에서 z-최상위 차트 창 (ADR-0119 PR-D) —
+ *  그룹 차트 링크(매물대·프로그램 번들·스팟 timeframe) 발행자 선정 규칙.
+ *  targetChartWindow(전역 드로어/상태바 대상)와 같은 순회를 그룹으로 좁힌 것. */
+export function groupTargetChartWindow(
+  windows: readonly WorkspaceWindow[],
+  zOrder: readonly string[],
+  group: GroupId,
+): WorkspaceWindow | null {
+  for (let i = zOrder.length - 1; i >= 0; i--) {
+    const w = windows.find((win) => win.id === zOrder[i]);
+    if (w?.kind === 'chart' && w.group === group) return w;
+  }
+  return null;
+}
+
 /** 포커스 창(zOrder 마지막)의 그룹 = 활성 그룹(#711). 창이 없으면 그룹 1. */
 export function activeGroupOf(state: Pick<Persisted, 'windows' | 'zOrder'>): GroupId {
   const focusedId = state.zOrder[state.zOrder.length - 1];

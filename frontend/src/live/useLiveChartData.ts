@@ -14,7 +14,7 @@
  */
 import { useMemo } from 'react';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
-import { useLiveBundle } from './useLiveBundle';
+import { useLiveBundle, type SidecarDemands } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
@@ -77,10 +77,13 @@ export interface UseLiveChartDataArgs {
   venue: LiveVenueOption;
   /** 활성 지표에서 파생한 투자자 순매수 게이트(호출측이 공급 — 전역/창별). */
   investorNetEnabled: boolean;
+  /** 같은 그룹 데이터 창의 sidecar 강제 fetch 수요(ADR-0119 PR-D) — 그룹 링크
+   *  발행 차트 창만 공급. useLiveBundle 로 그대로 전달된다. */
+  sidecarDemands?: SidecarDemands;
 }
 
 export function useLiveChartData(args: UseLiveChartDataArgs) {
-  const { activeCode, activeInstrument, timeframe, historicalFromDate, venue, investorNetEnabled } = args;
+  const { activeCode, activeInstrument, timeframe, historicalFromDate, venue, investorNetEnabled, sidecarDemands } = args;
 
   const today = todayKstYyyymmdd();
   const live = useLiveSeries(activeCode ?? '');
@@ -97,7 +100,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     hogaCoverageGapDates,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
-  } = useLiveBundle(activeCode, timeframe, today, live, { investorNetEnabled, venue });
+  } = useLiveBundle(activeCode, timeframe, today, live, { investorNetEnabled, venue, sidecarDemands });
   const liveInitial = live.initial?.code === activeCode ? live.initial : undefined;
   const stockBundle = activeCode && bundle?.code === activeCode ? bundle : null;
   const stockChartBundle = activeCode && chartBundle?.code === activeCode ? chartBundle : null;

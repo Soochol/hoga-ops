@@ -312,9 +312,16 @@ export interface UseLiveBundleResult {
   rangeWindowFromDate: string | null;
 }
 
+/** 같은 그룹의 데이터 창(매물대·프로그램)이 요구하는 sidecar 강제 fetch
+ *  (ADR-0119 PR-D). 창의 지표 토글과 OR — pane 표시는 지표 토글만 따르고
+ *  (LiveChartRoot 는 useWindowIndicator 직독) fetch 범위만 확장된다. 그룹의
+ *  링크 발행 차트 창(groupTargetChartWindow)만 이 옵션을 켠다. */
+export type SidecarDemands = { programTrade?: boolean; volumeDistribution?: boolean };
+
 type UseLiveBundleOptions = {
   investorNetEnabled?: boolean;
   venue?: LiveVenueOption;
+  sidecarDemands?: SidecarDemands;
 };
 
 export type LiveRangeRequestPlan = {
@@ -407,6 +414,11 @@ export function useLiveBundle(
     volumeDistributionEnabled,
     volumeDistributionRangeCount,
   } = useWindowIndicators();
+  // 데이터 창 수요와 OR 한 유효 fetch 게이트(ADR-0119 PR-D). 아래 fetch 경로는
+  // 전부 eff* 를 쓰고, pane 표시 게이트는 이 훅 밖(useWindowIndicator)이라 불변.
+  const effProgramTradeEnabled = programTradeEnabled || !!options.sidecarDemands?.programTrade;
+  const effVolumeDistributionEnabled =
+    volumeDistributionEnabled || !!options.sidecarDemands?.volumeDistribution;
   const { data: liveSettings } = useLiveSettings();
   // 캔들 소스의 유일한 분기 축(4옵션 우선순위-병합 모델 폐기). 우회 OFF=KIS만,
   // 우회 ON=디스크만(분봉 hogaplay / D·W·M 스크리너). 모드당 소스 1개라 병합 없음.
@@ -559,14 +571,14 @@ export function useLiveBundle(
   }, [kisRestBypassEnabled, isMinute, minuteDiskCandles.data, screenerDailyCandlesQuery.data]);
   const volumeDistributionPriceRange = useMemo(
     () =>
-      isMinute && volumeDistributionEnabled
+      isMinute && effVolumeDistributionEnabled
         ? candlePriceRange(kisCandles, regularSessionOpenMs(todayKstYyyymmdd), regularSessionCloseMs(todayKstYyyymmdd))
         : null,
-    [isMinute, volumeDistributionEnabled, kisCandles, todayKstYyyymmdd],
+    [isMinute, effVolumeDistributionEnabled, kisCandles, todayKstYyyymmdd],
   );
   const sidecarWaitingForCandlePriceRange = !!(
     isMinute &&
-    volumeDistributionEnabled &&
+    effVolumeDistributionEnabled &&
     volumeDistributionPriceRange == null &&
     (kisRestBypassEnabled
       ? (minuteDiskCandles.isLoading || minuteDiskCandles.isFetching)
@@ -583,8 +595,8 @@ export function useLiveBundle(
     depthHeatmapEnabled,
     brokerLateEntryEnabled,
     brokerLateEntryStartHHMM,
-    programTradeEnabled,
-    volumeDistributionEnabled,
+    programTradeEnabled: effProgramTradeEnabled,
+    volumeDistributionEnabled: effVolumeDistributionEnabled,
     volumeDistributionRangeCount,
     volumeDistributionPriceRange,
   });

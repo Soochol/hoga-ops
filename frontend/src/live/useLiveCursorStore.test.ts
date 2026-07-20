@@ -81,3 +81,44 @@ describe('useLiveCursorStore', () => {
     expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
   });
 });
+
+describe('useLiveCursorStore — sidebarCursorOrigin (ADR-0119 PR-D 크로스헤어 버스)', () => {
+  const origin = (group: number | null) => ({
+    windowId: group === null ? null : `w${group}`,
+    group,
+    code: '005930',
+    timeframe: '1m' as const,
+  });
+
+  beforeEach(() => {
+    useLiveCursorStore.getState().resetCursor();
+  });
+
+  it('setSidebarCursor 는 origin 을 함께 저장한다 (생략 시 null)', () => {
+    useLiveCursorStore.getState().setSidebarCursor(123, origin(1));
+    expect(useLiveCursorStore.getState().sidebarCursorOrigin?.group).toBe(1);
+    useLiveCursorStore.getState().setSidebarCursor(456);
+    expect(useLiveCursorStore.getState().sidebarCursorOrigin).toBeNull();
+  });
+
+  it('같은 ms + 같은 origin 은 no-op — 다른 origin 이면 갱신한다', () => {
+    useLiveCursorStore.getState().setSidebarCursor(123, origin(1));
+    let calls = 0;
+    const unsub = useLiveCursorStore.subscribe(() => { calls += 1; });
+    useLiveCursorStore.getState().setSidebarCursor(123, origin(1)); // no-op
+    expect(calls).toBe(0);
+    useLiveCursorStore.getState().setSidebarCursor(123, origin(2)); // origin 교체
+    unsub();
+    expect(calls).toBe(1);
+    expect(useLiveCursorStore.getState().sidebarCursorOrigin?.group).toBe(2);
+  });
+
+  it('clearSidebarCursor / resetCursor 는 origin 도 함께 걷는다', () => {
+    useLiveCursorStore.getState().setSidebarCursor(123, origin(1));
+    useLiveCursorStore.getState().clearSidebarCursor();
+    expect(useLiveCursorStore.getState().sidebarCursorOrigin).toBeNull();
+    useLiveCursorStore.getState().setSidebarCursor(123, origin(1));
+    useLiveCursorStore.getState().resetCursor();
+    expect(useLiveCursorStore.getState().sidebarCursorOrigin).toBeNull();
+  });
+});

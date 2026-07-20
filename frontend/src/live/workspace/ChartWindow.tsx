@@ -33,11 +33,17 @@ import {
 import { indexInstrument, isLiveIndexId, stockInstrument } from '../liveInstrument';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import {
+  groupTargetChartWindow,
   targetChartWindow,
   useWorkspaceStore,
   type GroupSymbol,
   type WorkspaceWindow,
 } from '../../state/workspace';
+import {
+  publishGroupChartLink,
+  clearGroupChartLink,
+  type GroupChartLink,
+} from './groupChartLinkSource';
 import { TimeframeControl } from '../TimeframeControl';
 import {
   publishLiveWindowStatus,
@@ -94,6 +100,24 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const isTargetChart = useWorkspaceStore(
     (s) => targetChartWindow(s.windows, s.zOrder)?.id === win.id,
   );
+  // 그룹 차트 링크 발행자 게이트(ADR-0119 PR-D) — 그룹당 하나(z-최상위 차트 창).
+  const isGroupLink = useWorkspaceStore(
+    (s) => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id,
+  );
+  // 같은 그룹 데이터 창의 sidecar 수요 — 발행 창만 fetch 를 확장한다(중복 fetch 방지).
+  const groupNeedsVdist = useWorkspaceStore(
+    (s) => s.windows.some((w) => w.group === win.group && w.kind === 'vdist'),
+  );
+  const groupNeedsProgram = useWorkspaceStore(
+    (s) => s.windows.some((w) => w.group === win.group && w.kind === 'program'),
+  );
+  const sidecarDemands = useMemo(
+    () =>
+      isGroupLink && (groupNeedsVdist || groupNeedsProgram)
+        ? { programTrade: groupNeedsProgram, volumeDistribution: groupNeedsVdist }
+        : undefined,
+    [isGroupLink, groupNeedsVdist, groupNeedsProgram],
+  );
   const setChartTimeframe = useWorkspaceStore((s) => s.setChartTimeframe);
   const rememberedMinute = useWorkspaceStore(
     (s) => s.windows.find((w) => w.id === win.id)?.chart?.lastMinuteTimeframe ?? '1m',
@@ -113,6 +137,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     historicalFromDate: view.historicalFromDate,
     venue,
     investorNetEnabled,
+    sidecarDemands,
   });
 
   // 저장뷰 캡처용 뷰포트 ref — LiveChartRoot 가 마운트 시 캡처 함수를 공급한다.
@@ -161,6 +186,53 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       clearLiveWindowStatus(win.id);
     };
   }, [isTargetChart, win.id]);
+
+  // 그룹 차트 링크 발행(ADR-0119 PR-D) — 같은 그룹 데이터 창(매물대·프로그램 실
+  // 콘텐츠, 10호가·거래원 스팟 모드)이 소비한다. 상태바 발행과 같은 규율: deps 없는
+  // effect + 값 동등성 가드(bundle 은 참조 동등성)로 변경시에만 발행 — 발행 구독은
+  // 데이터 창 리프에 격리돼 있어 재렌더 루프가 없다(#706 함정).
+  const lastLinkRef = useRef<GroupChartLink | null>(null);
+  useEffect(() => {
+    if (!isGroupLink) return;
+    const next: GroupChartLink = {
+      windowId: win.id,
+      group: win.group,
+      code: view.code,
+      timeframe: view.timeframe,
+      bundle: d.workareaChartBundle ?? d.workareaBundle,
+      todayKst: d.today,
+      vdist: {
+        rangeCount: ind.volumeDistributionRangeCount,
+        color: ind.volumeDistributionColor,
+        maxColor: ind.volumeDistributionMaxColor,
+        hoverCutoffEnabled: ind.volumeDistributionHoverCutoffEnabled,
+      },
+    };
+    const prev = lastLinkRef.current;
+    const same = prev !== null
+      && prev.windowId === next.windowId
+      && prev.group === next.group
+      && prev.code === next.code
+      && prev.timeframe === next.timeframe
+      && prev.bundle === next.bundle
+      && prev.todayKst === next.todayKst
+      && prev.vdist.rangeCount === next.vdist.rangeCount
+      && prev.vdist.color === next.vdist.color
+      && prev.vdist.maxColor === next.vdist.maxColor
+      && prev.vdist.hoverCutoffEnabled === next.vdist.hoverCutoffEnabled;
+    if (!same) {
+      lastLinkRef.current = next;
+      publishGroupChartLink(next);
+    }
+  });
+  // 링크 철회 — 게이트 이탈·그룹 이동·언마운트 시 자기 발행만 걷는다.
+  useEffect(() => {
+    if (!isGroupLink) return undefined;
+    return () => {
+      lastLinkRef.current = null;
+      clearGroupChartLink(win.group, win.id);
+    };
+  }, [isGroupLink, win.group, win.id]);
 
   // 저장뷰 save source — 포커스 차트 창만 발행(전역 1슬롯, 스펙 §2). LivePage 의
   // 기존 발행 effect 를 창으로 이관 — clear 는 자기 source 일 때만(계약 동일).
