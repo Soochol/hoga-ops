@@ -312,7 +312,8 @@ describe('StudyPage', () => {
     expect(screen.getByTestId('study-chart-card')).toHaveClass('shadow-panel');
     expect(screen.getByTestId('study-chart-card')).toHaveClass('bg-bg-card');
     expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
-    expect(screen.getByTestId('live-drawing-rail')).toBeInTheDocument();
+    // 44px 그리기 레일은 #760 으로 폐기 — 그리기는 헤더의 DrawingMenu 가 연다.
+    expect(screen.queryByTestId('live-drawing-rail')).not.toBeInTheDocument();
     expect(useStudyReferenceBundleMock).toHaveBeenCalledWith(expect.objectContaining(referenceSave));
     const props = liveChartRootMock.mock.calls[0][0];
     expect(props.code).toBe('005930');
@@ -483,7 +484,9 @@ describe('StudyPage', () => {
 
     expect(screen.getByTestId('live-indicators-button')).toBeTruthy();
     expect(screen.getByTestId('live-settings-button')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '그리기' })).toBeNull();
+    // 레일 폐기(#760) 이후 /study 도 헤더에서 그리기를 연다 — 이 단언은 레일이
+    // 있던 시절 "그리기는 헤더에 없다" 를 못박고 있었고, 이번에 의도적으로 뒤집혔다.
+    expect(screen.getByTestId('drawing-menu-trigger')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('live-indicators-button'));
     expect(screen.getByRole('dialog', { name: '보조지표' })).toBeTruthy();

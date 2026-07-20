@@ -28,24 +28,25 @@ import {
 export { targetChartWindow };
 
 
-/** 지표 버튼 활성 여부 — 차트 창이 하나라도 있어야 드로어를 열 수 있다. */
-export function useCanOpenIndicatorDrawer(): boolean {
-  return useWorkspaceStore((s) => s.windows.some((w) => w.kind === 'chart'));
-}
-
-/** 포커스 차트 창의 (WindowViewValue·창·심볼·instrument) — 드로어와 설정 모달이
- *  같은 대상 규칙(#712 실시간 추적)을 공유한다. 차트 창이 없으면 null. */
-export function useFocusedChartWindowView(): {
+type ChartWindowView = {
   view: WindowViewValue;
   target: WorkspaceWindow;
   symbol: GroupSymbol | null;
   instrument: ReturnType<typeof stockInstrument> | null;
-} | null {
+};
+
+/** 지정한 차트 창의 (WindowViewValue·창·심볼·instrument). 그 창이 없으면 null.
+ *
+ *  드로어는 이제 z-최상위를 **추론하지 않고** 헤더 버튼이 지정한 창을 편집한다
+ *  (#759 결정 3·4) — 트리거가 창 안에 있으므로 대상이 자명하고, 열린 뒤 다른
+ *  창을 클릭해도 따라가지 않는다(명시적으로 연 것은 명시적으로 바꿀 때까지 유지). */
+export function useChartWindowView(windowId: string | null): ChartWindowView | null {
   const windows = useWorkspaceStore((s) => s.windows);
-  const zOrder = useWorkspaceStore((s) => s.zOrder);
   const groupSymbols = useWorkspaceStore((s) => s.groupSymbols);
 
-  const target = targetChartWindow(windows, zOrder);
+  const target = windowId
+    ? windows.find((w) => w.id === windowId && w.kind === 'chart') ?? null
+    : null;
   const symbol: GroupSymbol | null = target ? groupSymbols[target.group] ?? null : null;
   const timeframe = target?.chart?.timeframe ?? '1m';
   const byTimeframe = target?.chart?.indicators.byTimeframe;
@@ -77,15 +78,30 @@ export function useFocusedChartWindowView(): {
   }, [target, isIndex, symbol, timeframe, indicators, instrument]);
 }
 
-export function WorkspaceIndicatorDrawer({ onClose }: { onClose: () => void }) {
-  const focusedView = useFocusedChartWindowView();
-  if (!focusedView) return null;
-  const { view, target, symbol, instrument } = focusedView;
+/** 포커스 차트 창 기준 — 설정 모달이 아직 쓰는 경로(#712 호환). */
+export function useFocusedChartWindowView(): ChartWindowView | null {
+  const windows = useWorkspaceStore((s) => s.windows);
+  const zOrder = useWorkspaceStore((s) => s.zOrder);
+  return useChartWindowView(targetChartWindow(windows, zOrder)?.id ?? null);
+}
+
+export function WorkspaceIndicatorDrawer({
+  windowId,
+  onClose,
+}: {
+  /** 헤더 버튼이 지정한 대상 창 — 추론하지 않는다(#759). */
+  windowId: string;
+  onClose: () => void;
+}) {
+  const targetView = useChartWindowView(windowId);
+  if (!targetView) return null;
+  const { view, target, symbol, instrument } = targetView;
 
   return (
     <WindowViewContext.Provider value={view}>
-      {/* key=대상 창 id — 실시간 재타깃 시 드로어 로컬 상태(2-단계 리셋 확인·
-          HH:MM draft)가 이전 창에서 새 창으로 새지 않게 재마운트(리뷰 #4). */}
+      {/* key=대상 창 id — 다른 창의 헤더 버튼으로 대상이 교체될 때 드로어 로컬
+          상태(2-단계 리셋 확인·HH:MM draft)가 창 경계를 넘지 않게 재마운트
+          (#712 리뷰 #4 의 규율은 대상 교체 경로가 바뀌어도 그대로 유효). */}
       <IndicatorPanel
         key={view.windowId}
         onClose={onClose}

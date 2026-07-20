@@ -9,15 +9,13 @@
  */
 import type { ReactNode } from 'react';
 import { IconToolbarButton, WorkspaceToolbar } from '../../ui/WorkspaceShell';
-import { LiveChartActionButtons } from '../LiveToolbar';
+import { SettingsButton } from '../LiveToolbar';
 import { LayoutPresetMenu } from '../presets/LayoutPresetMenu';
 import { requestWorkspaceTidy } from './workspaceCanvasControls';
-import { useCanOpenIndicatorDrawer } from './WorkspaceIndicatorDrawer';
 import { WindowAddMenu } from './WindowAddMenu';
 import { useWorkspaceStore, activeGroupOf } from '../../state/workspace';
 
 type Props = {
-  onOpenIndicators: () => void;
   onOpenSettings: () => void;
   /** 활성 그룹 종목이 주식일 때만 전달(지수 미지원) — LiveToolbar 계약 동일. */
   onOpenCollect?: () => void;
@@ -25,14 +23,12 @@ type Props = {
 };
 
 export function WorkspaceLiveToolbar({
-  onOpenIndicators,
   onOpenSettings,
   onOpenCollect,
   studySaveControl,
 }: Props) {
   const windowCount = useWorkspaceStore((s) => s.windows.length);
   const activeGroup = useWorkspaceStore((s) => activeGroupOf(s));
-  const canOpenIndicators = useCanOpenIndicatorDrawer();
 
   return (
     <WorkspaceToolbar testId="workspace-live-toolbar" className="flex-nowrap">
@@ -65,12 +61,13 @@ export function WorkspaceLiveToolbar({
         <span>정리</span>
       </IconToolbarButton>
       <span className="mx-1 h-[14px] w-px shrink-0 bg-border-strong" />
-      {/* 차트 창 0개면 지표 드로어는 대상이 없다(#712) — 열기를 no-op 으로 가드. */}
-      <LiveChartActionButtons
-        onOpenIndicators={canOpenIndicators ? onOpenIndicators : () => {}}
-        onOpenSettings={onOpenSettings}
-        studySaveControl={studySaveControl}
-      />
+      {/* 보조지표는 차트 창 헤더로 이관됐다(#758) — 창의 것이라 창이 연다.
+          설정은 편집 값이 앱 전역(chartPrefs·저장뷰·알림·데이터소스)이라 여기
+          남는다: 창 헤더에 두면 "이 창의 설정" 으로 읽히는데 실제론 앱 전체를
+          바꾼다(#759 결정 1). 차트 창 0개 가드도 함께 사라졌다 — 헤더 버튼은
+          차트 창에만 있으므로 "차트 창이 있어야 연다" 가 자명하게 참이다. */}
+      <SettingsButton onClick={onOpenSettings} />
+      {studySaveControl}
       {onOpenCollect && (
         <IconToolbarButton
           data-testid="live-collect-button"

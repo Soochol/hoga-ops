@@ -191,7 +191,7 @@ function renderToolbar(props: Partial<Parameters<typeof WorkspaceLiveToolbar>[0]
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <WorkspaceLiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} {...props} />
+      <WorkspaceLiveToolbar onOpenSettings={() => {}} {...props} />
     </QueryClientProvider>,
   );
 }
@@ -212,20 +212,13 @@ describe('WorkspaceLiveToolbar 액션 버튼', () => {
     expect(onOpenSettings).toHaveBeenCalledOnce();
   });
 
-  it('renders indicators button and calls onOpenIndicators on click', () => {
-    const onOpenIndicators = vi.fn();
-    renderToolbar({ onOpenIndicators });
-    const btn = screen.getByTestId('live-indicators-button');
-    fireEvent.click(btn);
-    expect(onOpenIndicators).toHaveBeenCalledOnce();
-  });
-
-  it('does not open the indicator drawer when there is no chart window (#712)', () => {
-    useWorkspaceStore.setState({ windows: [], zOrder: [], chartRuntime: {} });
-    const onOpenIndicators = vi.fn();
-    renderToolbar({ onOpenIndicators });
-    fireEvent.click(screen.getByTestId('live-indicators-button'));
-    expect(onOpenIndicators).not.toHaveBeenCalled();
+  // 보조지표는 차트 창 헤더로 이관됐다(#758·#759) — 창의 것이라 창이 연다.
+  // 여기 남아 있으면 "어느 창을 편집하나" 를 다시 추론해야 하므로 부재가 계약이다.
+  // #712 의 "차트 창 0개면 no-op" 가드도 함께 사라졌다: 헤더 버튼은 차트 창에만
+  // 존재하므로 그 전제가 자명하게 참이다.
+  it('does not render the indicators button — it moved to the chart window header', () => {
+    renderToolbar();
+    expect(screen.queryByTestId('live-indicators-button')).toBeNull();
   });
 
   it('renders current-view save after chart action buttons without the old drawing menu', () => {

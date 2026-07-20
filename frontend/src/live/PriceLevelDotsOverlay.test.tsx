@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import PriceLevelDotsOverlay from './PriceLevelDotsOverlay';
 import { useChartPrefsStore } from '../state/chartPrefs';
-import { useLivePageStore } from '../state/livePage';
 import { createVirtualAxis } from '../util/virtualAxis';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { PaneId } from '../chart/drawing/types';
@@ -58,8 +57,13 @@ function renderOverlay(opts?: {
 
 describe('PriceLevelDotsOverlay', () => {
   beforeEach(() => {
-    useChartPrefsStore.setState({ viLimitPriceDotsEnabled: true });
-    useLivePageStore.setState({ viLimitPriceLineColor: '#A855F7', viLimitPriceLineWidth: 4 });
+    // 토글과 스타일이 같은 스토어 — 스타일이 지표 버킷/livePage 폴백에서
+    // chartPrefs 로 합쳐졌다(#759 구현 중 발견).
+    useChartPrefsStore.setState({
+      viLimitPriceDotsEnabled: true,
+      viLimitPriceLineColor: '#A855F7',
+      viLimitPriceLineWidth: 4,
+    });
   });
   afterEach(() => cleanup());
 
