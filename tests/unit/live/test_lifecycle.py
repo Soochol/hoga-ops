@@ -33,25 +33,6 @@ def test_reset_for_tests_is_idempotent() -> None:
     assert lifecycle.get_status().running is False
 
 
-def test_get_active_codes_empty_when_stream_not_started() -> None:
-    from hoga.live import lifecycle
-    lifecycle.reset_for_tests()
-    assert lifecycle.get_active_codes() == []
-
-
-def test_get_active_codes_returns_watchlist_codes() -> None:
-    """get_active_codes accessor returns _state.watchlist_codes snapshot."""
-    from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
-
-    lifecycle.reset_for_tests()
-    lifecycle._state = _State(
-        started_at_ms=1,
-        watchlist_codes=("003490", "058610"),
-    )
-    assert lifecycle.get_active_codes() == ["003490", "058610"]
-
-
 # ── 오늘 피크 스냅샷 (키움 스트림 소싱, ADR-0118 PR-G) ──────────────────────────
 
 def test_get_today_ask_peak_returns_matching_stream_snapshot() -> None:

@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from . import kis_runtime
 from .buffer import LiveBuffer
-from .promote import promote_kiwoom_today, promote_today
+from .promote import promote_kiwoom_today
 from .settings import load_live_settings
 from .signal_alert_monitor import SignalAlertMonitor
 from .storage_runtime import StorageRuntimeSnapshot, stop_storage_runtime, sync_storage_runtime
@@ -90,15 +90,11 @@ class _State:
         self,
         *,
         started_at_ms: int | None = None,
-        watchlist_codes: tuple[str, ...] = (),
         program_trade_collector=None,
         kiwoom_session=None,
         kis_rest_bypass_enabled: bool = False,
     ) -> None:
         self.started_at_ms = started_at_ms
-        # get_active_codes(→ KIS Today Promotion)의 스냅샷 소스. 신규 flow는 채우지 않으나
-        # 필드는 유지(호출부·테스트 호환) — KIS live/ 는 더는 수집되지 않아 실질 no-op.
-        self.watchlist_codes = tuple(watchlist_codes)
         self.program_trade_collector = program_trade_collector
         # 키움 WS 세션 매니저(ADR-0116) — storage_runtime이 소유·정합화. 실시간 캡처 SSOT.
         self.kiwoom_session = kiwoom_session
@@ -129,19 +125,11 @@ def get_today_promote_last_ms() -> dict[str, int]:
     return dict(_today_promote_last_ms)
 
 
-def get_active_codes() -> list[str]:
-    """Return the KIS Today-Promotion snapshot codes (watchlist_codes).
-
-    KIS live/ 수집은 삭제됐으므로 신규 flow는 이 집합을 채우지 않는다 — promote_today
-    루프는 KIS live/ 디스크가 비어 사실상 no-op이다. 계약(호출 시점 스냅샷)은 유지."""
-    return list(_state.watchlist_codes)
-
-
 def get_kiwoom_capture_codes() -> list[str]:
     """키움 WS 수집 중인 종목(ADR-0116) — 승격 루프(promote_kiwoom_today)가 읽는다.
 
-    kiwoom_session이 None(off/미배선)이면 []. get_active_codes와 동일 계약(호출 시점
-    스냅샷). storage_runtime.sync가 매 사이클 kiwoom_session.sync로 갱신한다."""
+    kiwoom_session이 None(off/미배선)이면 []. 호출 시점 스냅샷 계약.
+    storage_runtime.sync가 매 사이클 kiwoom_session.sync로 갱신한다."""
     session = _state.kiwoom_session
     if session is None:
         return []
@@ -293,21 +281,23 @@ def refresh_status_from_settings(data_dir: Path) -> None:
 async def start_today_promoter(
     *,
     data_dir: Path,
-    get_active_codes: Callable[[], list[str]],
     get_kiwoom_capture_codes: Callable[[], list[str]] | None = None,
     interval_s: float = 300.0,
     on_promoted: Callable[[dict], object] | None = None,
 ) -> asyncio.Task:
-    """Start the ADR-0043 Today Promotion loop.
+    """Start the ADR-0043 Today Promotion loop (키움 전담).
 
-    Polls `get_active_codes()` each `interval_s` seconds and calls
-    `promote_today(data_dir, code=...)` for each (KIS live/). Per-code exceptions
+    Polls `get_kiwoom_capture_codes()` each `interval_s` seconds and calls
+    `promote_kiwoom_today(data_dir, code=...)` for each — live_kiwoom JSONL →
+    kiwoom_live parquet(히트맵·관심종목 영속화, ADR-0116). Per-code exceptions
     are caught and logged so one bad code doesn't break the cycle.
+    (KIS 팔이었던 get_active_codes/promote_today 는 KIS live/ 수집 소멸로 상시
+    no-op 이 되어 제거됨 — 2026-07-20 감사.)
 
     `on_promoted` (typically `EventBus.publish`, injected in app.py via
     functools.partial) receives a `{type, code, date}` dict after each *real*
-    promotion (promote_today returned a date, not None). This lets the frontend
-    refetch the today range the moment its disk data advances.
+    promotion (promote_kiwoom_today returned a date, not None) — 이 발행이
+    프론트 today 갱신의 유일한 소스다. skip(None)은 스퓨리어스 리페치를 막는다.
 
     Returns the created asyncio.Task; caller (lifespan) is responsible
     for cancelling on shutdown via `stop_today_promoter`.
@@ -315,8 +305,6 @@ async def start_today_promoter(
     log = logging.getLogger(__name__)
 
     def _publish_promotion(code: str, promoted_date: str | None) -> None:
-        """실승격(date)에만 promotion_completed 발행 — skip(None)은 스퓨리어스 프론트
-        리페치를 막는다. KIS·키움 두 경로가 이벤트 wire-shape를 한 곳에서 공유한다."""
         if promoted_date is not None and on_promoted is not None:
             on_promoted({
                 "type": "promotion_completed",
@@ -327,20 +315,7 @@ async def start_today_promoter(
     async def loop() -> None:
         while True:
             try:
-                ws_codes = get_active_codes()
-                for code in ws_codes:
-                    try:
-                        _publish_promotion(
-                            code, await promote_today(data_dir, code=code),
-                        )
-                    except Exception:
-                        log.exception(
-                            "live.today_promote.code_failed code=%s", code,
-                        )
-                # 키움 WS 승격(ADR-0116) — live_kiwoom → kiwoom_live parquet. 미배선/off면
-                # 콜백이 [] 반환이라 루프 no-op. 히트맵·관심종목이 여기서 kiwoom_live로 영속화.
-                # KIS 경로와 대칭으로 실승격(date)에만 promotion_completed 발행 — PR-E 컷오버
-                # 이후 관심종목이 키움 전담이라 이 발행이 프론트 today 갱신의 유일한 소스다.
+                # 미배선/off면 콜백이 [] 반환이라 루프 no-op.
                 kiwoom_codes = (
                     get_kiwoom_capture_codes() if get_kiwoom_capture_codes else []
                 )

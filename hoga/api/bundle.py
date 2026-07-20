@@ -337,8 +337,8 @@ def build_quote_ratio_slice(
     # date-agnostic, so it cannot).
     path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
     if not path_obj.exists():
-        # ADR-0043: promote_today writes empty records as unlink → missing file
-        # is the valid "no data" state, not an error.
+        # ADR-0043: today promotion (promote_kiwoom_today) writes empty records
+        # as unlink → missing file is the valid "no data" state, not an error.
         return QuoteRatio(bucket_ms=bucket_ms, points=[])
     if _indicator_cacheable(cache, today_kst, date, bucket_ms):
         # Past day + minute bucket: cache the 1-minute representatives once and

@@ -42,7 +42,6 @@ class StartupRuntimeDeps:
     stop_live_stream: Callable[[], Awaitable[None]]
     aclose_kis_capacity_scheduler: Callable[[], Awaitable[None]]
     aclose_kis_client: Callable[[], Awaitable[None]]
-    get_active_codes: Callable[[], Sequence[str]]
     load_symbol_disk_state: Callable[..., None]
     needs_symbol_boot_refresh: Callable[[], bool]
     refresh_symbols: Callable[..., Awaitable[None]]
@@ -128,7 +127,6 @@ async def start_app_runtime(
         if today_promoter_enabled_from_env(deps.env):
             runtime.today_promoter_task = await deps.start_today_promoter(
                 data_dir=data_dir,
-                get_active_codes=deps.get_active_codes,
                 get_kiwoom_capture_codes=deps.get_kiwoom_capture_codes,
                 interval_s=today_promoter_interval_from_env(deps.env),
             )
