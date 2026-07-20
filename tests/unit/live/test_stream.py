@@ -49,6 +49,32 @@ async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path):
     assert '"price": 100' in jsonl
 
 
+async def test_prev_close_reaches_display_but_not_storage(tmp_path):
+    """키움 additive 확장(prev_close)은 표시 스냅샷까지 살아 가되 저장 스키마는 안 건드린다.
+
+    표시 경로는 on_tick 이 payload 를 스프레드하므로 확장 키가 그대로 실리고
+    (프론트가 등락률 기준가로 쓴다), 저장 경로는 downsampler 가 payload 를
+    재구성하므로 parquet 스키마가 불변이다 — 이 분리가 깨지면 여기서 잡힌다.
+    """
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    now = int(time.time() * 1000)
+    tick = _trade_tick(now, qty=5, side=1)
+    tick.payload["prev_close"] = 96000
+    await stream.on_tick(tick)
+
+    series = await buf.get_series("005930")
+    assert series["trades"][0]["prev_close"] == 96000   # 표시: 보존
+
+    await stream.flush_once(now_ms=now + 10_000)
+    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    assert "prev_close" not in jsonl                    # 저장: 미유출
+
+
 async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_path):
     """게이트 False면 표시(buffer)는 들어가고 저장(다운샘플러)은 비어야 한다
     (리뷰 C1 벡터 1 — 15:30 이후 잔여 틱의 저장 누적 차단)."""

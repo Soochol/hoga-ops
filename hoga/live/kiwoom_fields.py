@@ -3,7 +3,8 @@
 KIS(위치기반 ^구분)와 달리 키움 REAL 프레임은 이름표(FID) dict다:
   {"trnm":"REAL","data":[{"type":"0D","item":"005930","values":{"41":"+6500",...}}]}
 FID 인덱스가 키움 쪽에서 바뀌면 여기 한 곳만 고친다. 파서(kiwoom_frames)는
-이 상수로 KIS ws_frames와 **byte 동일한** WsTick payload를 만든다(포트 계약).
+이 상수로 WsTick payload를 만든다 — KIS ws_frames 계약 키를 **전부 보존**하되,
+키움만 주는 필드는 additive 로 덧붙인다(포트 계약; kiwoom_frames 헤더 참조).
 
 거래원(0F)·프로그램매매(0w)는 PR-4에서 추가(정규장 스모크로 payload 확정 후).
 """
@@ -34,6 +35,20 @@ OB_TOTAL_BID_QTY = "125"
 CNT_TIME = "20"  # 체결시간 HHMMSS
 CNT_PRICE = "10"  # 현재가(체결가), 부호=등락방향
 CNT_QTY = "15"  # 체결량, 부호=체결방향(+매수/-매도)
+# 전일대비(부호 유의미 — abs 금지). 전일종가 = abs(CNT_PRICE) - CNT_DELTA 로 유도해
+# 리스트 등락률의 기준가를 키움만으로 얻는다(KIS 폴링 의존 제거). 실측 검증:
+# 2026-07-20 정규장 0B 6,880프레임 전건에 존재했고, 역산 전일종가가 KIS
+# previous_close 와 5종목 전부 일치했다(tests/fixtures/kiwoom_t2/).
+# FID 12(등락률)는 키움이 소수 2자리로 이미 반올림한 문자열이라 쓰지 않는다 —
+# 10/11 에서 직접 계산해야 정밀도·반올림 규칙을 우리가 통제한다.
+CNT_DELTA = "11"  # 전일대비(원), 부호=등락방향
+# 당일 시가/고가/저가. 부호는 등락방향이라 _price 로 abs 만 취한다(CNT_PRICE 와 동형).
+# 폴링(KIS 멀티시세 inter2_oprc/hgpr/lwpr)이 주던 값과 같은 의미 — 히트맵 행이 쓴다.
+# 실측(2026-07-20 000660): 시가 1,745,000 · 고가 1,892,000 · 저가 1,735,000 로
+# 저가 ≤ 현재가 ≤ 고가 관계가 성립했다.
+CNT_OPEN = "16"
+CNT_HIGH = "17"
+CNT_LOW = "18"
 
 # 구독 코드 venue 접미 → venue 태그. 키움은 0D payload에 거래소 필드가 없어(0B엔 9081
 # 있음) 호가 venue를 **구독한 코드 접미**로 부여한다(실측 2026-07-16). _NX=NXT 확정.
