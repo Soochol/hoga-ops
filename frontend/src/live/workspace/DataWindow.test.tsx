@@ -39,8 +39,9 @@ vi.mock('../../api/useLiveCursor', () => ({
   useLiveBrokersAtCursor: vi.fn(() => undefined),
 }));
 
-// TotalQtyBar 는 maskRatio prop 만 관측한다(동시호가 마스크 검증).
-vi.mock('../../sidebar/TotalQtyBar', () => ({
+// BookPanel 은 maskRatio prop 만 관측한다(동시호가 마스크 검증). 실제 패널은
+// snapshot 이 null 이면 빈 상태를 그리므로 목킹하지 않으면 mask 를 관측할 수 없다.
+vi.mock('./BookPanel', () => ({
   default: ({ maskRatio }: { maskRatio: boolean }) => <div>mask:{String(maskRatio)}</div>,
 }));
 

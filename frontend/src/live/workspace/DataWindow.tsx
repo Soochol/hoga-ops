@@ -19,9 +19,8 @@
  * 훅 호출 금지 — 각 하위 컴포넌트가 자기 훅만 무조건 호출).
  */
 import { useMemo } from 'react';
-import OrderbookTable from '../../sidebar/OrderbookTable';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
-import TotalQtyBar from '../../sidebar/TotalQtyBar';
+import BookPanel, { type BookTrade } from './BookPanel';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
 import TradeTickTable from '../../sidebar/TradeTickTable';
 import ProgramTradeSummaryCard from '../../sidebar/ProgramTradeSummaryCard';
@@ -45,8 +44,10 @@ import { isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { TIMEFRAME_TO_MS, type RangeSegment, type Timeframe } from '../../api/types';
 import { isClosingAuction, type SessionSegment } from '../../util/sessionTime';
 import {
+  EMPTY_TRADE_SUMMARY,
   aggregateBrokerSeries,
   latestOrderbookSnapshot,
+  latestTradeSummary,
   orderbookSnapshotAtCursor,
 } from '../liveSidebarAdapters';
 import { useLiveCursorStore } from '../useLiveCursorStore';
@@ -204,8 +205,34 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const availableFrom = spotOrderbook?.available_from ?? null;
   const showAvailableHint =
     isSpot && spotOrderbook !== undefined && spotSnap === null && bufferSnap === null && availableFrom !== null;
+  // 종목 요약 지표(체결강도·거래량·어제보다·VWAP·당일 OHLC)는 **latest 전용**이다.
+  // 0B 가 실어 오는 값은 "지금 이 순간의 누적"이라 과거 커서(스팟) 시점의 값이
+  // 아니다 — 스팟에서 latest 를 그대로 보여주면 호가는 과거인데 요약만 현재인
+  // 시점 불일치가 생긴다. 그래서 스팟이면 비운다(패널이 "−" 로 렌더).
+  const summary = useMemo(
+    () => (isSpot ? EMPTY_TRADE_SUMMARY : latestTradeSummary(live.trade)),
+    [isSpot, live.trade],
+  );
+  // 체결 리스트: 버퍼 엔트리 1건에 체결 여러 개가 실린다. 최신이 위로 오도록
+  // 뒤에서부터 펼치고, 표시분(11행)보다 넉넉히 잡아 자른다.
+  const recentTrades = useMemo(() => {
+    if (isSpot) return [];
+    const out: BookTrade[] = [];
+    for (let i = live.trade.length - 1; i >= 0 && out.length < 24; i--) {
+      const rows = live.trade[i].trades;
+      if (!Array.isArray(rows)) continue;
+      for (let j = rows.length - 1; j >= 0 && out.length < 24; j--) {
+        const r = rows[j] as { price?: unknown; qty?: unknown; side?: unknown };
+        if (typeof r?.price === 'number' && typeof r.qty === 'number') {
+          out.push({ price: r.price, qty: r.qty, side: typeof r.side === 'number' ? r.side : 0 });
+        }
+      }
+    }
+    return out;
+  }, [isSpot, live.trade]);
+  const lastPrice = recentTrades.length > 0 ? recentTrades[0].price : null;
   return (
-    <div className="h-full overflow-auto">
+    <div className="flex h-full flex-col">
       {showAvailableHint && (
         <div
           data-testid="orderbook-available-hint"
@@ -214,8 +241,17 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           다음 가용: {formatKstClock(availableFrom)}
         </div>
       )}
-      <OrderbookTable snapshot={snapshot} baselinePrice={baselinePrice} deltaBadges={isSpot ? null : deltaBadges} />
-      <TotalQtyBar snapshot={snapshot} maskRatio={maskRatio} />
+      <div className="min-h-0 flex-1">
+        <BookPanel
+          snapshot={snapshot}
+          baselinePrice={baselinePrice}
+          summary={summary}
+          trades={recentTrades}
+          maskRatio={maskRatio}
+          lastPrice={lastPrice}
+          deltaBadges={isSpot ? null : deltaBadges}
+        />
+      </div>
     </div>
   );
 }

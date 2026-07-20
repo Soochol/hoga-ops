@@ -242,10 +242,10 @@ function defaultWindows(): WorkspaceWindow[] {
       rect: { x: 16, y: 16, w: 720, h: 760 },
       chart: { timeframe: '1m', indicators: normalizeIndicatorsV2({}) },
     },
-    // book 높이는 DEFAULT_SIZE.book 과 같은 이유(10호가 20단계+총잔량바 완전 표시)로 530;
-    // broker 는 차트 하단(y 776)에 정렬되도록 나머지를 갖는다(누적 유니온 리스트라 스크롤 정상).
-    { id: newWindowId(), kind: 'book', group: 1, rect: { x: 748, y: 16, w: 236, h: 530 } },
-    { id: newWindowId(), kind: 'broker', group: 1, rect: { x: 748, y: 558, w: 236, h: 218 } },
+    // book 은 십자 배치(BookPanel)라 2열 시절의 236px 로는 못 담는다 — DEFAULT_SIZE.book
+    // 과 같은 근거로 680×560. broker 는 그 아래에 붙어 차트 하단(y 776)에 정렬된다.
+    { id: newWindowId(), kind: 'book', group: 1, rect: { x: 748, y: 16, w: 680, h: 560 } },
+    { id: newWindowId(), kind: 'broker', group: 1, rect: { x: 748, y: 588, w: 680, h: 188 } },
   ];
 }
 
@@ -337,8 +337,10 @@ function focusedChart(state: Persisted): WorkspaceWindow | undefined {
 const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   chart: { w: 520, h: 360 },
   // 고정 조성 카드는 첫 표시부터 전부 보이는 높이로 (실데이터 실측 기준):
-  // book = 헤더 27(26+보더 1) + 행 23.25×20 + 구분선 1 + 총잔량바 28.75 ≈ 522 → 여유 포함 530.
-  book: { w: 236, h: 530 },
+  // book = 십자 배치(BookPanel). 헤더 27 + 행 22×22(상한 여백 1 + 매도 10 + 매수 10 +
+  // 하단 여백 1) + 총잔량바 ~34 ≈ 545 → 560. 폭은 BookPanel 의 min-w 560 에
+  // 창 크롬을 더해 680 — 이보다 좁히면 패널이 가로 스크롤된다(깨지진 않는다).
+  book: { w: 680, h: 560 },
   // broker = 헤더 27 + 시점 상한 10행(매수5+매도5) 23.25×10 + divide 9 ≈ 269 → 280.
   // (하루 누적 유니온은 10행을 넘을 수 있고 그때는 스크롤이 정상.)
   broker: { w: 236, h: 280 },

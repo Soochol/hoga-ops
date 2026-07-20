@@ -46,6 +46,63 @@ export function latestOrderbookSnapshot(ob: readonly RawSnapshot[]): OrderbookSn
   };
 }
 
+/** 종목 요약 지표 — 0B 프레임 payload 최상위에 실려 오는 값들(kiwoom_frames._parse_trade).
+ *  체결 레코드가 아니라 종목 단위 값이라 trades[] 안이 아니라 payload 루트에 있다. */
+export type LiveTradeSummary = {
+  fillStrengthPct: number | null; // FID 228
+  vsPrevVolumePct: number | null; // FID 30 — 오늘 누적 ÷ 전일 전량 × 100
+  cumVolume: number | null;       // FID 13
+  vwap: number | null;            // FID 620
+  dayOpen: number | null;         // FID 16
+  dayHigh: number | null;         // FID 17
+  dayLow: number | null;          // FID 18
+  prevClose: number | null;       // FID 10 − 11 로 유도
+};
+
+export const EMPTY_TRADE_SUMMARY: LiveTradeSummary = {
+  fillStrengthPct: null, vsPrevVolumePct: null, cumVolume: null, vwap: null,
+  dayOpen: null, dayHigh: null, dayLow: null, prevClose: null,
+};
+
+function positive(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+}
+
+/**
+ * 라이브 체결 버퍼에서 종목 요약 지표를 뽑는다.
+ *
+ * **최신 1건이 아니라 뒤에서부터 훑는 이유**: 파서는 미수신/0 인 필드의 키를 아예
+ * 싣지 않는다(day_open 과 동일 규약 — "미수신"과 "진짜 0"을 소비자가 구분하지
+ * 않아도 되게). 그래서 가장 최근 프레임에 특정 키가 없을 수 있고, 그때는 직전
+ * 프레임의 값이 여전히 유효하다. 키별로 독립적으로 "가장 최근에 관측된 값"을 잡는다.
+ *
+ * 전 필드를 채웠으면 조기 종료한다 — 버퍼는 수천 건까지 자랄 수 있다.
+ */
+export function latestTradeSummary(trade: readonly RawSnapshot[]): LiveTradeSummary {
+  if (trade.length === 0) return EMPTY_TRADE_SUMMARY;
+  const out: LiveTradeSummary = { ...EMPTY_TRADE_SUMMARY };
+  const fields: [keyof LiveTradeSummary, string][] = [
+    ['fillStrengthPct', 'fill_strength_pct'],
+    ['vsPrevVolumePct', 'vs_prev_volume_pct'],
+    ['cumVolume', 'cum_volume'],
+    ['vwap', 'vwap'],
+    ['dayOpen', 'day_open'],
+    ['dayHigh', 'day_high'],
+    ['dayLow', 'day_low'],
+    ['prevClose', 'prev_close'],
+  ];
+  let remaining = fields.length;
+  for (let i = trade.length - 1; i >= 0 && remaining > 0; i--) {
+    const entry = trade[i];
+    for (const [key, wire] of fields) {
+      if (out[key] !== null) continue;
+      const v = positive(entry[wire]);
+      if (v !== null) { out[key] = v; remaining--; }
+    }
+  }
+  return out;
+}
+
 /**
  * ADR-0044 amendment (2026-06-11) — derive the bucket-representative orderbook
  * snapshot for `cursorMs` from the in-memory SSE buffer (`live.ob`), CLIENT-SIDE.
