@@ -242,8 +242,10 @@ function defaultWindows(): WorkspaceWindow[] {
       rect: { x: 16, y: 16, w: 720, h: 760 },
       chart: { timeframe: '1m', indicators: normalizeIndicatorsV2({}) },
     },
-    { id: newWindowId(), kind: 'book', group: 1, rect: { x: 748, y: 16, w: 236, h: 470 } },
-    { id: newWindowId(), kind: 'broker', group: 1, rect: { x: 748, y: 498, w: 236, h: 278 } },
+    // book 높이는 DEFAULT_SIZE.book 과 같은 이유(10호가 20단계+총잔량바 완전 표시)로 530;
+    // broker 는 차트 하단(y 776)에 정렬되도록 나머지를 갖는다(누적 유니온 리스트라 스크롤 정상).
+    { id: newWindowId(), kind: 'book', group: 1, rect: { x: 748, y: 16, w: 236, h: 530 } },
+    { id: newWindowId(), kind: 'broker', group: 1, rect: { x: 748, y: 558, w: 236, h: 218 } },
   ];
 }
 
@@ -334,11 +336,16 @@ function focusedChart(state: Persisted): WorkspaceWindow | undefined {
 
 const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   chart: { w: 520, h: 360 },
-  book: { w: 236, h: 440 },
-  broker: { w: 236, h: 220 },
+  // 고정 조성 카드는 첫 표시부터 전부 보이는 높이로 (실데이터 실측 기준):
+  // book = 헤더 27(26+보더 1) + 행 23.25×20 + 구분선 1 + 총잔량바 28.75 ≈ 522 → 여유 포함 530.
+  book: { w: 236, h: 530 },
+  // broker = 헤더 27 + 시점 상한 10행(매수5+매도5) 23.25×10 + divide 9 ≈ 269 → 280.
+  // (하루 누적 유니온은 10행을 넘을 수 있고 그때는 스크롤이 정상.)
+  broker: { w: 236, h: 280 },
   vdist: { w: 300, h: 240 },
   program: { w: 260, h: 200 },
-  investor: { w: 280, h: 220 },
+  // investor = 헤더 27 + 카드(헤더 36 + thead 32.25 + KIS 가집계 최대 5차 32.25×5 + 푸터 35) ≈ 303 → 310.
+  investor: { w: 280, h: 310 },
   'sector-ranking': { w: 360, h: 320 },
 };
 
