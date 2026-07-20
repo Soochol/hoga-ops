@@ -23,8 +23,9 @@ export type ComputeAnchorFn = (d: Drawing) => DrawingAnchor | null;
 // The panel now docks to the chart's top-center (see the re-dock effect) rather
 // than anchoring to each drawing, so it takes no positioning props.
 type Props = {
-  /** 이 패널이 붙은 차트의 종목 — 선택 드로잉 조회·변이의 귀속 대상(C2c-2b). */
-  code: string | null;
+  /** 이 패널이 붙은 차트의 (종목, 봉 슬롯) scope — 선택 드로잉 조회·변이의
+   *  귀속 대상(C2c-2b). */
+  scope: string | null;
 };
 
 const LINE_STYLE_LABELS: Record<LineStyle, string> = {
@@ -41,13 +42,13 @@ type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | n
 /** Top-center dock offset from the chart's top edge (candle pane top). */
 const TOP_DOCK_Y = 8;
 
-export default function DrawingPropertyPanel({ code }: Props) {
+export default function DrawingPropertyPanel({ scope }: Props) {
   const activeTool = useDrawingsStore((s) => s.activeTool);
-  const selectedId = useDrawingsStore((s) => (code ? s.selectedByCode.get(code) ?? null : null));
+  const selectedId = useDrawingsStore((s) => (scope ? s.selectedByScope.get(scope) ?? null : null));
   const drawing = useDrawingsStore((s) => {
-    if (code == null) return null;
-    const sel = s.selectedByCode.get(code) ?? null;
-    return sel == null ? null : s.byCode.get(code)?.find((d) => d.id === sel) ?? null;
+    if (scope == null) return null;
+    const sel = s.selectedByScope.get(scope) ?? null;
+    return sel == null ? null : s.byScope.get(scope)?.find((d) => d.id === sel) ?? null;
   });
 
   const hiddenAll = useDrawingsStore((s) => s.defaults.hiddenAll);
@@ -64,32 +65,32 @@ export default function DrawingPropertyPanel({ code }: Props) {
 
   // Visibility gate. The hiddenAll clause keeps the editor off a hidden layer —
   // there's no shape on screen to point at.
-  if (activeTool !== 'select' || selectedId == null || drawing == null || hiddenAll || code == null) return null;
+  if (activeTool !== 'select' || selectedId == null || drawing == null || hiddenAll || scope == null) return null;
 
   const id = selectedId;
 
   const pickColor = (color: string) => {
-    useDrawingsStore.getState().update(code, id, { color });
+    useDrawingsStore.getState().update(scope, id, { color });
     setOpenPopover(null);
   };
 
   const pickWidth = (width: number) => {
-    useDrawingsStore.getState().update(code, id, { width });
+    useDrawingsStore.getState().update(scope, id, { width });
     setOpenPopover(null);
   };
 
   const pickLineStyle = (lineStyle: LineStyle) => {
-    useDrawingsStore.getState().update(code, id, { lineStyle });
+    useDrawingsStore.getState().update(scope, id, { lineStyle });
     setOpenPopover(null);
   };
 
   const pickFillOpacity = (fillOpacity: number) => {
-    useDrawingsStore.getState().update(code, id, { fillOpacity } as Partial<Drawing>);
+    useDrawingsStore.getState().update(scope, id, { fillOpacity } as Partial<Drawing>);
     setOpenPopover(null);
   };
 
   const pickFontSize = (fontSize: number) => {
-    useDrawingsStore.getState().update(code, id, { fontSize } as Partial<Drawing>);
+    useDrawingsStore.getState().update(scope, id, { fontSize } as Partial<Drawing>);
     setOpenPopover(null);
   };
 
@@ -317,7 +318,7 @@ export default function DrawingPropertyPanel({ code }: Props) {
         type="button"
         data-testid="drawing-delete"
         aria-label="삭제"
-        onClick={() => useDrawingsStore.getState().remove(code, id)}
+        onClick={() => useDrawingsStore.getState().remove(scope, id)}
         className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-bg-input-hover text-[#F43F5E]"
       >
         🗑

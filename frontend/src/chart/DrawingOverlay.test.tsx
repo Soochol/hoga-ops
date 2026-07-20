@@ -74,7 +74,7 @@ describe('DrawingOverlay context menu', () => {
       <DrawingOverlay
         chart={chart as never}
         axis={{ segments: [] } as never}
-        code="005930"
+        scope="005930|minute"
         paneSeries={new Map()}
       />,
     );
@@ -122,7 +122,7 @@ describe('DrawingOverlay text editor — pointer isolation', () => {
     return render(
       <DrawingOverlay
         chart={chart as never}
-        code="005930"
+        scope="005930|minute"
         axis={axis as never}
         paneSeries={new Map([['candle', fakeSeries]]) as never}
       />,
@@ -135,7 +135,7 @@ describe('DrawingOverlay text editor — pointer isolation', () => {
   // tool dispatch → beginTextEdit saw an open edit → committed the empty value
   // → the box vanished the instant it was touched.
   it('clicking inside the open text input does NOT close it', () => {
-    useDrawingsStore.getState().setActiveCode('005930');
+    useDrawingsStore.getState().setActiveScope('005930|minute');
     useDrawingsStore.getState().setActiveTool('text');
     const { container } = mountWithCandlePane();
     const overlay = container.querySelector('[data-drawing-overlay]')!;
@@ -161,7 +161,7 @@ describe('DrawingOverlay text editor — pointer isolation', () => {
   // actions, so we pin the guard itself: defaultPrevented must be true for the
   // text tool and stay false for others (their gestures rely on defaults).
   it('text-tool pointerdown is defaultPrevented (focus-steal guard); select is not', () => {
-    useDrawingsStore.getState().setActiveCode('005930');
+    useDrawingsStore.getState().setActiveScope('005930|minute');
     useDrawingsStore.getState().setActiveTool('text');
     const { container } = mountWithCandlePane();
     const overlay = container.querySelector('[data-drawing-overlay]')!;
@@ -195,7 +195,7 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
       <DrawingOverlay
         chart={chart as never}
         axis={{ segments: [] } as never}
-        code="005930"
+        scope="005930|minute"
         paneSeries={new Map()}
       />,
     );
@@ -203,24 +203,24 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
 
   it('Ctrl+Z undoes and Ctrl+Shift+Z redoes the last mutation', () => {
     const s = () => useDrawingsStore.getState();
-    s().setActiveCode('005930');
-    s().add('005930', { id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
+    s().setActiveScope('005930|minute');
+    s().add('005930|minute', { id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
     mountOverlay();
-    expect(s().drawingsFor('005930')).toHaveLength(1);
+    expect(s().drawingsFor('005930|minute')).toHaveLength(1);
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
-    expect(s().drawingsFor('005930')).toHaveLength(0);
+    expect(s().drawingsFor('005930|minute')).toHaveLength(0);
 
     fireEvent.keyDown(window, { key: 'Z', ctrlKey: true, shiftKey: true });
-    expect(s().drawingsFor('005930')).toHaveLength(1);
+    expect(s().drawingsFor('005930|minute')).toHaveLength(1);
   });
 
   it('Meta+Z (macOS) also undoes', () => {
     const s = () => useDrawingsStore.getState();
-    s().setActiveCode('005930');
-    s().add('005930', { id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
+    s().setActiveScope('005930|minute');
+    s().add('005930|minute', { id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
     mountOverlay();
     fireEvent.keyDown(window, { key: 'z', metaKey: true });
-    expect(s().drawingsFor('005930')).toHaveLength(0);
+    expect(s().drawingsFor('005930|minute')).toHaveLength(0);
   });
 });

@@ -6,9 +6,24 @@ import { INITIAL_DEFAULTS } from '../chart/drawing/types';
 import {
   loadDrawings, saveDrawings,
   loadDefaults, saveDefaults,
+  drawingScope, type DrawingSlot,
 } from '../chart/drawing/persistence';
+import { isMinuteTimeframe, type LiveTimeframe } from './livePage';
 
 const PERSIST_DEBOUNCE_MS = 250;
+
+/** Timeframe → slot. Minute frames collapse to one slot; D/W/M pass through.
+ *  Lives here rather than in `chart/drawing/` so the drawing layer stays free
+ *  of the /live timeframe vocabulary — it only ever sees an opaque scope. */
+export function slotForTimeframe(tf: LiveTimeframe): DrawingSlot {
+  return isMinuteTimeframe(tf) ? 'minute' : tf;
+}
+
+/** The store/persistence key for a chart showing `code` at `tf`. Null code
+ *  (no symbol selected) has no scope — consumers gate on it. */
+export function drawingScopeFor(code: string | null, tf: LiveTimeframe): string | null {
+  return code == null ? null : drawingScope(code, slotForTimeframe(tf));
+}
 
 // ── Undo/Redo (ADR-0107) ─────────────────────────────────────────────────
 // Snapshot history is module-level non-reactive state (mirrors pendingTimers):
@@ -19,9 +34,9 @@ const PERSIST_DEBOUNCE_MS = 250;
 // a durable past state (never mutated in place).
 type HistoryOp = 'add' | 'update' | 'remove' | 'clearAll' | 'restore' | 'import';
 type HistoryEntry = { items: Drawing[]; op: HistoryOp; targetId?: string; at: number };
-type CodeHistory = { undo: HistoryEntry[]; redo: HistoryEntry[] };
+type ScopeHistory = { undo: HistoryEntry[]; redo: HistoryEntry[] };
 
-const histories: Map<string, CodeHistory> = new Map();
+const histories: Map<string, ScopeHistory> = new Map();
 const HISTORY_CAP = 50;
 /** Consecutive `update`s to the same drawing within this window collapse into
  *  one undo step — so a select-drag (many onPointerMove updates) is a single
@@ -31,11 +46,11 @@ const UPDATE_MERGE_MS = 500;
 
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : 0);
 
-function historyFor(code: string): CodeHistory {
-  let h = histories.get(code);
+function historyFor(scope: string): ScopeHistory {
+  let h = histories.get(scope);
   if (h == null) {
     h = { undo: [], redo: [] };
-    histories.set(code, h);
+    histories.set(scope, h);
   }
   return h;
 }
@@ -43,12 +58,12 @@ function historyFor(code: string): CodeHistory {
 /** Record a forward mutation: push `preState` onto the undo stack (with
  *  same-target update merging) and clear redo. */
 function recordHistory(
-  code: string,
+  scope: string,
   preState: Drawing[],
   op: HistoryOp,
   targetId?: string,
 ): void {
-  const h = historyFor(code);
+  const h = historyFor(scope);
   const last = h.undo[h.undo.length - 1];
   const t = nowMs();
   if (
@@ -69,68 +84,72 @@ function recordHistory(
 /** Pending undo-toast after `clearAll`. Reactive so DrawingClearToastHost can
  *  subscribe. `snapshot` is the pre-clear array (a frozen reference — the
  *  array was immutably replaced by clearAll), restored verbatim on 실행취소. */
-export type ClearToast = { code: string; count: number; snapshot: Drawing[] } | null;
+export type ClearToast = { scope: string; count: number; snapshot: Drawing[] } | null;
 
+// 키는 전부 `scope` = `${code}|${slot}` (drawingScope). 종목뿐 아니라 타임프레임
+// 슬롯(분/일/주/월)까지 가르므로, 같은 종목이라도 분봉에 그린 도형은 일봉에
+// 나타나지 않는다. 스토어 자료구조는 키를 해석하지 않는다 — 불투명 문자열.
 type State = {
-  byCode: Map<string, Drawing[]>;
-  loadedCodes: Set<string>;
-  activeCode: string | null;
+  byScope: Map<string, Drawing[]>;
+  loadedScopes: Set<string>;
+  activeScope: string | null;
   activeTool: DrawingTool;
-  /** 선택된 드로잉 — 종목(code)별(ADR-0119 C2c-2b 후속). 드로잉은 종목 귀속
-   *  (#712)이라 선택도 종목별이어야 다른 종목 창끼리 선택이 경합하지 않는다
-   *  (같은 종목 창끼리는 선택 공유 = 드로잉 공유와 정합). */
-  selectedByCode: Map<string, DrawingId | null>;
+  /** 선택된 드로잉 — scope 별(ADR-0119 C2c-2b 후속). 드로잉이 (종목, 슬롯)
+   *  귀속이라 선택도 같은 단위여야 다른 종목·다른 봉 창끼리 선택이 경합하지
+   *  않는다 (같은 scope 창끼리는 선택 공유 = 드로잉 공유와 정합). */
+  selectedByScope: Map<string, DrawingId | null>;
   defaults: DrawingDefaults;
   clearToast: ClearToast;
 };
 
 type Actions = {
-  setActiveCode(code: string | null): void;
+  setActiveScope(scope: string | null): void;
   setActiveTool(tool: DrawingTool): void;
-  setSelected(code: string, id: DrawingId | null): void;
-  /** 종목의 현재 선택 — 비반응형 조회(소비자 렌더는 selectedByCode selector 직독). */
-  selectedFor(code: string): DrawingId | null;
-  drawingsFor(code: string): Drawing[];
-  // 변이 op 는 호출자가 code 를 명시한다(ADR-0119 C2c-2b) — 멀티창에서 전역
-  // activeCode(마지막 마운트 창이 이김)를 경유하면 다른 종목 창의 드로잉이
-  // 엉뚱한 종목에 귀속된다. add 류는 "이 차트(=이 code)에 그린다"가 항상
-  // 호출부 문맥에 있으므로 인자로 받는 편이 원천적으로 안전하다.
-  add(code: string, d: Drawing): void;
-  update(code: string, id: DrawingId, patch: Partial<Drawing>): void;
-  remove(code: string, id: DrawingId): void;
-  clearAll(code: string): void;
-  /** Replace the drawing list for `code` with `items` as a normal, undoable
+  setSelected(scope: string, id: DrawingId | null): void;
+  /** scope 의 현재 선택 — 비반응형 조회(소비자 렌더는 selectedByScope selector 직독). */
+  selectedFor(scope: string): DrawingId | null;
+  drawingsFor(scope: string): Drawing[];
+  // 변이 op 는 호출자가 scope 를 명시한다(ADR-0119 C2c-2b) — 멀티창에서 전역
+  // activeScope(마지막 마운트 창이 이김)를 경유하면 다른 창의 드로잉이 엉뚱한
+  // 종목·봉에 귀속된다. add 류는 "이 차트(=이 scope)에 그린다"가 항상 호출부
+  // 문맥에 있으므로 인자로 받는 편이 원천적으로 안전하다.
+  add(scope: string, d: Drawing): void;
+  update(scope: string, id: DrawingId, patch: Partial<Drawing>): void;
+  remove(scope: string, id: DrawingId): void;
+  clearAll(scope: string): void;
+  /** Replace the drawing list for `scope` with `items` as a normal, undoable
    *  mutation. Used by the clearAll undo-toast (restores the pre-clear
    *  snapshot) and by import. */
-  restore(code: string, items: Drawing[]): void;
-  /** Append imported drawings to `code` with fresh ids, as a single
+  restore(scope: string, items: Drawing[]): void;
+  /** Append imported drawings to `scope` with fresh ids, as a single
    *  undoable step. Returns the number appended. */
-  importDrawings(code: string, items: Drawing[]): number;
+  importDrawings(scope: string, items: Drawing[]): number;
   dismissClearToast(): void;
-  undo(code: string): void;
-  redo(code: string): void;
+  undo(scope: string): void;
+  redo(scope: string): void;
   setDefaults(patch: Partial<DrawingDefaults>): void;
   flushPending(): void;
   __resetForTests(): void;
 };
 
-// Per-code timer map: a single shared timer would cancel an in-flight save
-// for code A the moment the user switches to code B and edits within the
+// Per-scope timer map: a single shared timer would cancel an in-flight save
+// for scope A the moment the user switches to scope B and edits within the
 // debounce window — A's mutation never reaches localStorage and is silently
-// lost on reload. Map<code, Timer> isolates the cancel surface to "same
-// code re-arms the debounce; different codes coexist".
+// lost on reload. Map<scope, Timer> isolates the cancel surface to "same
+// scope re-arms the debounce; different scopes coexist". This covers
+// timeframe switches as well as symbol switches, since both change the scope.
 const pendingTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 let defaultsTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useDrawingsStore = create<State & Actions>((set, get) => {
-  const queuePersist = (code: string | null) => {
-    if (code == null) return;
-    const existing = pendingTimers.get(code);
+  const queuePersist = (scope: string | null) => {
+    if (scope == null) return;
+    const existing = pendingTimers.get(scope);
     if (existing != null) clearTimeout(existing);
-    pendingTimers.set(code, setTimeout(() => {
-      const items = get().byCode.get(code) ?? [];
-      saveDrawings(code, items);
-      pendingTimers.delete(code);
+    pendingTimers.set(scope, setTimeout(() => {
+      const items = get().byScope.get(scope) ?? [];
+      saveDrawings(scope, items);
+      pendingTimers.delete(scope);
     }, PERSIST_DEBOUNCE_MS));
   };
 
@@ -143,24 +162,24 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
   };
 
   return {
-    byCode: new Map(),
-    loadedCodes: new Set(),
-    activeCode: null,
+    byScope: new Map(),
+    loadedScopes: new Set(),
+    activeScope: null,
     activeTool: 'select',
-    selectedByCode: new Map(),
+    selectedByScope: new Map(),
     defaults: loadDefaults(),
     clearToast: null,
 
-    setActiveCode(code) {
-      if (code === get().activeCode) return;
-      set({ activeCode: code });
-      if (code != null && !get().loadedCodes.has(code)) {
-        const items = loadDrawings(code);
-        const byCode = new Map(get().byCode);
-        byCode.set(code, items);
-        const loadedCodes = new Set(get().loadedCodes);
-        loadedCodes.add(code);
-        set({ byCode, loadedCodes });
+    setActiveScope(scope) {
+      if (scope === get().activeScope) return;
+      set({ activeScope: scope });
+      if (scope != null && !get().loadedScopes.has(scope)) {
+        const items = loadDrawings(scope);
+        const byScope = new Map(get().byScope);
+        byScope.set(scope, items);
+        const loadedScopes = new Set(get().loadedScopes);
+        loadedScopes.add(scope);
+        set({ byScope, loadedScopes });
       }
     },
 
@@ -168,37 +187,37 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       set({ activeTool: tool });
     },
 
-    setSelected(code, id) {
-      const selectedByCode = new Map(get().selectedByCode);
-      selectedByCode.set(code, id);
-      set({ selectedByCode });
+    setSelected(scope, id) {
+      const selectedByScope = new Map(get().selectedByScope);
+      selectedByScope.set(scope, id);
+      set({ selectedByScope });
     },
 
-    selectedFor(code) {
-      return get().selectedByCode.get(code) ?? null;
+    selectedFor(scope) {
+      return get().selectedByScope.get(scope) ?? null;
     },
 
-    drawingsFor(code) {
-      return get().byCode.get(code) ?? [];
+    drawingsFor(scope) {
+      return get().byScope.get(scope) ?? [];
     },
 
-    add(code, d) {
-      const current = get().byCode.get(code) ?? [];
-      recordHistory(code, current, 'add', d.id);
-      const byCode = new Map(get().byCode);
-      byCode.set(code, [...current, d]);
-      set({ byCode });
-      queuePersist(code);
+    add(scope, d) {
+      const current = get().byScope.get(scope) ?? [];
+      recordHistory(scope, current, 'add', d.id);
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, [...current, d]);
+      set({ byScope });
+      queuePersist(scope);
     },
 
-    update(code, id, patch) {
-      const current = get().byCode.get(code) ?? [];
-      recordHistory(code, current, 'update', id);
+    update(scope, id, patch) {
+      const current = get().byScope.get(scope) ?? [];
+      recordHistory(scope, current, 'update', id);
       const next = current.map((d) => (d.id === id ? ({ ...d, ...patch } as Drawing) : d));
-      const byCode = new Map(get().byCode);
-      byCode.set(code, next);
-      set({ byCode });
-      queuePersist(code);
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, next);
+      set({ byScope });
+      queuePersist(scope);
 
       // Drawing Defaults sync — only style fields propagate, so the last-picked
       // color / width / lineStyle / fontSize seeds the next new drawing.
@@ -217,54 +236,54 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       queuePersistDefaults();
     },
 
-    remove(code, id) {
-      const current = get().byCode.get(code) ?? [];
+    remove(scope, id) {
+      const current = get().byScope.get(scope) ?? [];
       if (!current.some((d) => d.id === id)) return;
-      recordHistory(code, current, 'remove', id);
+      recordHistory(scope, current, 'remove', id);
       const next = current.filter((d) => d.id !== id);
-      const byCode = new Map(get().byCode);
-      byCode.set(code, next);
-      const patch: Partial<State> = { byCode };
-      if (get().selectedByCode.get(code) === id) {
-        patch.selectedByCode = new Map(get().selectedByCode).set(code, null);
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, next);
+      const patch: Partial<State> = { byScope };
+      if (get().selectedByScope.get(scope) === id) {
+        patch.selectedByScope = new Map(get().selectedByScope).set(scope, null);
       }
       set(patch);
-      queuePersist(code);
+      queuePersist(scope);
     },
 
-    clearAll(code) {
-      const current = get().byCode.get(code) ?? [];
+    clearAll(scope) {
+      const current = get().byScope.get(scope) ?? [];
       if (current.length === 0) return; // nothing to clear → no history, no toast
-      recordHistory(code, current, 'clearAll');
-      const byCode = new Map(get().byCode);
-      byCode.set(code, []);
+      recordHistory(scope, current, 'clearAll');
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, []);
       set({
-        byCode,
-        selectedByCode: new Map(get().selectedByCode).set(code, null),
-        clearToast: { code, count: current.length, snapshot: current },
+        byScope,
+        selectedByScope: new Map(get().selectedByScope).set(scope, null),
+        clearToast: { scope, count: current.length, snapshot: current },
       });
-      queuePersist(code);
+      queuePersist(scope);
     },
 
-    restore(code, items) {
-      const current = get().byCode.get(code) ?? [];
-      recordHistory(code, current, 'restore');
-      const byCode = new Map(get().byCode);
-      byCode.set(code, items);
-      // 선택은 종목별이라 복원 대상 code 의 선택만 리셋(다른 종목 무영향).
-      set({ byCode, selectedByCode: new Map(get().selectedByCode).set(code, null) });
-      queuePersist(code);
+    restore(scope, items) {
+      const current = get().byScope.get(scope) ?? [];
+      recordHistory(scope, current, 'restore');
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, items);
+      // 선택은 scope 별이라 복원 대상 scope 의 선택만 리셋(다른 scope 무영향).
+      set({ byScope, selectedByScope: new Map(get().selectedByScope).set(scope, null) });
+      queuePersist(scope);
     },
 
-    importDrawings(code, items) {
+    importDrawings(scope, items) {
       if (items.length === 0) return 0;
-      const current = get().byCode.get(code) ?? [];
-      recordHistory(code, current, 'import');
+      const current = get().byScope.get(scope) ?? [];
+      recordHistory(scope, current, 'import');
       const reassigned = items.map((d) => ({ ...d, id: nanoid(8) }));
-      const byCode = new Map(get().byCode);
-      byCode.set(code, [...current, ...reassigned]);
-      set({ byCode });
-      queuePersist(code);
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, [...current, ...reassigned]);
+      set({ byScope });
+      queuePersist(scope);
       return reassigned.length;
     },
 
@@ -272,46 +291,46 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       if (get().clearToast != null) set({ clearToast: null });
     },
 
-    undo(code) {
-      const h = histories.get(code);
+    undo(scope) {
+      const h = histories.get(scope);
       if (h == null || h.undo.length === 0) return;
-      const cur = get().byCode.get(code) ?? [];
+      const cur = get().byScope.get(scope) ?? [];
       const entry = h.undo.pop()!;
       h.redo.push({ items: cur, op: entry.op, targetId: entry.targetId, at: nowMs() });
-      const byCode = new Map(get().byCode);
-      byCode.set(code, entry.items);
-      const sel = get().selectedByCode.get(code) ?? null;
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, entry.items);
+      const sel = get().selectedByScope.get(scope) ?? null;
       const stillPresent = sel != null && entry.items.some((d) => d.id === sel);
-      const selectedByCode = stillPresent
-        ? get().selectedByCode
-        : new Map(get().selectedByCode).set(code, null);
-      set({ byCode, selectedByCode });
-      queuePersist(code);
+      const selectedByScope = stillPresent
+        ? get().selectedByScope
+        : new Map(get().selectedByScope).set(scope, null);
+      set({ byScope, selectedByScope });
+      queuePersist(scope);
     },
 
-    redo(code) {
-      const h = histories.get(code);
+    redo(scope) {
+      const h = histories.get(scope);
       if (h == null || h.redo.length === 0) return;
-      const cur = get().byCode.get(code) ?? [];
+      const cur = get().byScope.get(scope) ?? [];
       const entry = h.redo.pop()!;
       h.undo.push({ items: cur, op: entry.op, targetId: entry.targetId, at: nowMs() });
-      const byCode = new Map(get().byCode);
-      byCode.set(code, entry.items);
-      const sel = get().selectedByCode.get(code) ?? null;
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, entry.items);
+      const sel = get().selectedByScope.get(scope) ?? null;
       const stillPresent = sel != null && entry.items.some((d) => d.id === sel);
-      const selectedByCode = stillPresent
-        ? get().selectedByCode
-        : new Map(get().selectedByCode).set(code, null);
-      set({ byCode, selectedByCode });
-      queuePersist(code);
+      const selectedByScope = stillPresent
+        ? get().selectedByScope
+        : new Map(get().selectedByScope).set(scope, null);
+      set({ byScope, selectedByScope });
+      queuePersist(scope);
     },
 
     flushPending() {
-      // Flush ALL pending codes, not just the most recent one — see queuePersist.
-      for (const [code, timer] of pendingTimers) {
+      // Flush ALL pending scopes, not just the most recent one — see queuePersist.
+      for (const [scope, timer] of pendingTimers) {
         clearTimeout(timer);
-        const items = get().byCode.get(code) ?? [];
-        saveDrawings(code, items);
+        const items = get().byScope.get(scope) ?? [];
+        saveDrawings(scope, items);
       }
       pendingTimers.clear();
       if (defaultsTimer != null) {
@@ -330,11 +349,11 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         defaultsTimer = null;
       }
       set({
-        byCode: new Map(),
-        loadedCodes: new Set(),
-        activeCode: null,
+        byScope: new Map(),
+        loadedScopes: new Set(),
+        activeScope: null,
         activeTool: 'select',
-        selectedByCode: new Map(),
+        selectedByScope: new Map(),
         defaults: INITIAL_DEFAULTS,
         clearToast: null,
       });

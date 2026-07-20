@@ -2,8 +2,8 @@ import { useRef } from 'react';
 import type { DrawingTool } from '../chart/drawing/types';
 import { DRAWABLE_TOOLS_ORDER, TOOLS } from '../chart/drawing/tools';
 import { normalizeItems } from '../chart/drawing/persistence';
-import { useDrawingsStore } from '../state/drawings';
-import { useWindowView } from './workspace/windowView';
+import { useDrawingsStore, drawingScopeFor, slotForTimeframe } from '../state/drawings';
+import type { LiveTimeframe } from '../state/livePage';
 
 const TOOL_ORDER: readonly DrawingTool[] = ['select', ...DRAWABLE_TOOLS_ORDER];
 
@@ -22,9 +22,17 @@ function tooltipFor(tool: DrawingTool): string {
   return `${spec.label}${shortcut}`;
 }
 
-export default function LiveDrawingRail() {
-  // 이 레일이 속한 차트 창의 종목(ADR-0119 C2c-2b) — Provider 밖=전역 활성 종목.
-  const { code } = useWindowView();
+type Props = {
+  /** 이 레일이 붙은 차트의 (종목, 봉) — scope 산출 입력. 셸이 props 로 내린다:
+   *  이전엔 `useWindowView()` 로 읽었는데 `/study` 는 Provider 밖이라 전역 활성
+   *  종목·1m 으로 폴백했고, 열람 중인 종목과 다르면 지우기·내보내기가 엉뚱한
+   *  대상에 걸렸다. */
+  code: string | null;
+  timeframe: LiveTimeframe;
+};
+
+export default function LiveDrawingRail({ code, timeframe }: Props) {
+  const scope = drawingScopeFor(code, timeframe);
   const activeTool = useDrawingsStore((state) => state.activeTool);
   const setActiveTool = useDrawingsStore((state) => state.setActiveTool);
   const clearAll = useDrawingsStore((state) => state.clearAll);
@@ -35,25 +43,29 @@ export default function LiveDrawingRail() {
 
   const handleExport = () => {
     const store = useDrawingsStore.getState();
-    if (code == null) return;
-    const items = store.drawingsFor(code);
+    if (code == null || scope == null) return;
+    const items = store.drawingsFor(scope);
     if (items.length === 0) return;
-    const payload = JSON.stringify({ v: 1, code, items }, null, 2);
+    const slot = slotForTimeframe(timeframe);
+    const payload = JSON.stringify({ v: 1, code, slot, items }, null, 2);
     const blob = new Blob([payload], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `drawings-${code}.json`;
+    a.download = `drawings-${code}-${slot}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  // 가져오기는 파일의 code/slot 과 무관하게 **현재 scope** 에 귀속한다 — 기존
+  // "현재 종목에 귀속" 의 자연 확장이자, 슬롯 간 복사(분봉에서 내보내 일봉에서
+  // 가져오기)의 유일한 경로다.
   const handleImportFile = async (file: File) => {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text) as { items?: unknown };
       const items = normalizeItems(parsed.items);
-      if (items.length > 0 && code != null) useDrawingsStore.getState().importDrawings(code, items);
+      if (items.length > 0 && scope != null) useDrawingsStore.getState().importDrawings(scope, items);
     } catch {
       // Malformed file — ignore silently (nothing imported).
     }
@@ -147,7 +159,7 @@ export default function LiveDrawingRail() {
         aria-label="모두 지우기"
         title="모두 지우기"
         className={buttonClass(false)}
-        onClick={() => { if (code != null) clearAll(code); }}
+        onClick={() => { if (scope != null) clearAll(scope); }}
       >
         <span aria-hidden="true">✕</span>
       </button>

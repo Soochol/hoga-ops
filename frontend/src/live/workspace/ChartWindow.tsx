@@ -282,7 +282,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       </div>
       <div className="min-h-0 flex-1">
         <ChartErrorBoundary>
-          <ChartDrawingShell>
+          <ChartDrawingShell code={d.workareaCode} timeframe={view.timeframe}>
             <LiveChartRoot
               code={d.workareaCode}
               timeframe={view.timeframe}

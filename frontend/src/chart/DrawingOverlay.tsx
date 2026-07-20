@@ -87,9 +87,9 @@ type Props = {
   chart: IChartApi;
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
-  /** 이 오버레이가 그리는 차트의 종목 — 드로잉 렌더·변이의 귀속 대상
-   *  (ADR-0119 C2c-2b: 전역 activeCode 경유 금지). */
-  code: string | null;
+  /** 이 오버레이가 그리는 차트의 (종목, 봉 슬롯) scope — 드로잉 렌더·변이의
+   *  귀속 대상 (ADR-0119 C2c-2b: 전역 activeScope 경유 금지). */
+  scope: string | null;
   onChartHoverPassthrough?: (point: { x: number; y: number }) => void;
   /** Active timeframe bucket (ms) — forwarded to the measure tool's readout. */
   bucketMs?: number;
@@ -114,21 +114,23 @@ type TextEdit = {
 
 const EMPTY_DRAWINGS: Drawing[] = [];
 
-export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartHoverPassthrough, bucketMs, candles }: Props) {
+export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChartHoverPassthrough, bucketMs, candles }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const drawings = useDrawingsStore((s) =>
-    code == null ? EMPTY_DRAWINGS : (s.byCode.get(code) ?? EMPTY_DRAWINGS),
+    scope == null ? EMPTY_DRAWINGS : (s.byScope.get(scope) ?? EMPTY_DRAWINGS),
   );
   // 멀티창 게이트: 전역 키 리스너는 포커스 창의 오버레이만 처리한다(N중복 방지).
   const isFocusedWindow = useIsFocusedWindow();
   const isFocusedRef = useRef(isFocusedWindow);
   isFocusedRef.current = isFocusedWindow;
-  const codeRef = useRef(code);
-  codeRef.current = code;
-  const selectedId = useDrawingsStore((s) => (code ? s.selectedByCode.get(code) ?? null : null));
+  // 키다운 클로저(undo/redo/삭제/복제)는 재바인딩되지 않으므로 ref 경유로 최신
+  // scope 를 읽는다 — 봉 전환 직후 stale scope 로 다른 슬롯을 변이하면 안 된다.
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const selectedId = useDrawingsStore((s) => (scope ? s.selectedByScope.get(scope) ?? null : null));
   const defaults = useDrawingsStore((s) => s.defaults);
 
   const trendlineDraft = useRef<TrendlineDraft | null>(null);
@@ -168,7 +170,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
   // call setSelected(id) directly; Escape is the explicit return to select mode.
   const revertToSelectMode = useCallback((newId: string) => {
     useDrawingsStore.getState().setActiveTool('select');
-    if (codeRef.current != null) useDrawingsStore.getState().setSelected(codeRef.current, newId);
+    if (scopeRef.current != null) useDrawingsStore.getState().setSelected(scopeRef.current, newId);
   }, []);
 
   // ── redraw loop ────────────────────────────────────────────────────────
@@ -369,7 +371,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
       ts.unsubscribeVisibleLogicalRangeChange(schedule);
       ro?.disconnect();
     };
-  }, [chart, axis, paneSeries, drawings, selectedId, code, defaults, bucketMs, lastRealMs, activeTool]);
+  }, [chart, axis, paneSeries, drawings, selectedId, scope, defaults, bucketMs, lastRealMs, activeTool]);
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
@@ -378,8 +380,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
       // 포커스 창의 오버레이만 전역 키를 처리 — 창마다 리스너가 붙으므로
       // 게이트가 없으면 Ctrl+Z 한 번에 창 수만큼 undo 가 발화한다.
       if (!isFocusedRef.current) return;
-      const keyCode = codeRef.current;
-      if (keyCode == null) return;
+      const keyScope = scopeRef.current;
+      if (keyScope == null) return;
       if (
         dragRef.current ||
         trendlineDraft.current ||
@@ -395,13 +397,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
       if ((e.ctrlKey || e.metaKey) && !e.altKey) {
         const key = e.key.toLowerCase();
         if (key === 'z') {
-          if (e.shiftKey) useDrawingsStore.getState().redo(keyCode);
-          else useDrawingsStore.getState().undo(keyCode);
+          if (e.shiftKey) useDrawingsStore.getState().redo(keyScope);
+          else useDrawingsStore.getState().undo(keyScope);
           e.preventDefault();
           return;
         }
         if (key === 'y') {
-          useDrawingsStore.getState().redo(keyCode);
+          useDrawingsStore.getState().redo(keyScope);
           e.preventDefault();
           return;
         }
@@ -419,13 +421,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
         return;
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        const id = useDrawingsStore.getState().selectedByCode.get(keyCode) ?? null;
+        const id = useDrawingsStore.getState().selectedByScope.get(keyScope) ?? null;
         if (id) {
-          useDrawingsStore.getState().remove(keyCode, id);
+          useDrawingsStore.getState().remove(keyScope, id);
           e.preventDefault();
         }
       } else if (e.key === 'Escape') {
-        useDrawingsStore.getState().setSelected(keyCode, null);
+        useDrawingsStore.getState().setSelected(keyScope, null);
         useDrawingsStore.getState().setActiveTool('select');
         trendlineDraft.current = null;
         pencilDraft.current = null;
@@ -510,14 +512,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
     textEditRef.current = null;
     const trimmed = value.trim();
     const store = useDrawingsStore.getState();
-    if (code == null) return;
+    if (scope == null) return;
     if (trimmed.length === 0) {
-      if (edit.id != null) store.remove(code, edit.id);
+      if (edit.id != null) store.remove(scope, edit.id);
     } else if (edit.id != null) {
-      store.update(code, edit.id, { text: trimmed } as Partial<Drawing>);
+      store.update(scope, edit.id, { text: trimmed } as Partial<Drawing>);
     } else {
       const id = nanoid(8);
-      store.add(code, {
+      store.add(scope, {
         id,
         kind: 'text',
         at: edit.at,
@@ -530,7 +532,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
         // take the `edit.id != null` branch above and keep their own size.)
         fontSize: store.defaults.fontSize,
       });
-      store.setSelected(code, id);
+      store.setSelected(scope, id);
     }
     setTextEdit(null);
     setTextValue('');
@@ -592,10 +594,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
       dragRef,
       beginTextEdit,
       requestRedraw: () => scheduleRef.current(),
-      add: (d) => { if (code != null) useDrawingsStore.getState().add(code, d); },
-      update: (id, patch) => { if (code != null) useDrawingsStore.getState().update(code, id, patch); },
-      remove: (id) => { if (code != null) useDrawingsStore.getState().remove(code, id); },
-      setSelected: (id) => { if (code != null) useDrawingsStore.getState().setSelected(code, id); },
+      add: (d) => { if (scope != null) useDrawingsStore.getState().add(scope, d); },
+      update: (id, patch) => { if (scope != null) useDrawingsStore.getState().update(scope, id, patch); },
+      remove: (id) => { if (scope != null) useDrawingsStore.getState().remove(scope, id); },
+      setSelected: (id) => { if (scope != null) useDrawingsStore.getState().setSelected(scope, id); },
       revertToSelectMode,
     };
   };
@@ -741,8 +743,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
       const rect = container.getBoundingClientRect();
       const click = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       const hasHit = !!hitTestAt(click.x, click.y);
-      if (shouldDeselectOnClick(click, rect, hasHit, isOnPropertyPanel) && code != null) {
-        useDrawingsStore.getState().setSelected(code, null);
+      if (shouldDeselectOnClick(click, rect, hasHit, isOnPropertyPanel) && scope != null) {
+        useDrawingsStore.getState().setSelected(scope, null);
       }
     };
     window.addEventListener('mousedown', onWindowMouseDown);
@@ -775,10 +777,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
   // panes/timeframes). Reassigned each render; called from the keydown effect.
   duplicateSelectedRef.current = () => {
     const store = useDrawingsStore.getState();
-    if (code == null) return;
-    const id = store.selectedByCode.get(code) ?? null;
+    if (scope == null) return;
+    const id = store.selectedByScope.get(scope) ?? null;
     if (id == null) return;
-    const d = store.byCode.get(code)?.find((x) => x.id === id);
+    const d = store.byScope.get(scope)?.find((x) => x.id === id);
     if (d == null) return;
     const OFFSET_PX = 14;
     const ref = refCoords(d);
@@ -807,8 +809,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, code, onChartH
       }
     }
     const clone = cloneWithOffset(d, shiftMs, dPrice);
-    store.add(code, clone);
-    store.setSelected(code, clone.id);
+    store.add(scope, clone);
+    store.setSelected(scope, clone.id);
   };
 
   // Screen position of the open text editor. Re-projects the anchor so the box

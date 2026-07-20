@@ -2,11 +2,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Drawing } from '../chart/drawing/types';
 import { INITIAL_DEFAULTS } from '../chart/drawing/types';
-import { DEFAULTS_KEY } from '../chart/drawing/persistence';
-import { useDrawingsStore } from './drawings';
+import { DEFAULTS_KEY, drawingScope } from '../chart/drawing/persistence';
+import { useDrawingsStore, drawingScopeFor, slotForTimeframe } from './drawings';
 
-const A = '005930';
-const B = '003490';
+// 스토어 키는 (종목, 봉 슬롯) scope. A/B 는 서로 다른 종목의 분봉 슬롯이고,
+// A_DAILY 는 A 와 같은 종목의 일봉 슬롯 — 슬롯 격리 검증용.
+const CODE_A = '005930';
+const CODE_B = '003490';
+const A = drawingScope(CODE_A, 'minute');
+const B = drawingScope(CODE_B, 'minute');
+const A_DAILY = drawingScope(CODE_A, 'D');
 
 function mkHline(id: string, price: number): Drawing {
   return { id, kind: 'hline', price, color: '#FFD60A', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
@@ -18,9 +23,9 @@ beforeEach(() => {
 });
 
 describe('useDrawingsStore — Code partitioning', () => {
-  it('starts empty with no activeCode', () => {
+  it('starts empty with no activeScope', () => {
     const s = useDrawingsStore.getState();
-    expect(s.activeCode).toBeNull();
+    expect(s.activeScope).toBeNull();
     expect(s.activeTool).toBe('select');
     expect(s.selectedFor(A)).toBeNull();
     expect(s.drawingsFor(A)).toEqual([]);
@@ -32,22 +37,88 @@ describe('useDrawingsStore — Code partitioning', () => {
     expect(useDrawingsStore.getState().drawingsFor(B)).toHaveLength(0);
   });
 
-  it('switching activeCode does not move drawings', () => {
+  it('switching activeScope does not move drawings', () => {
     useDrawingsStore.getState().add(A, mkHline('h1', 100));
     useDrawingsStore.getState().add(B, mkHline('h2', 200));
     expect(useDrawingsStore.getState().drawingsFor(A)).toHaveLength(1);
     expect(useDrawingsStore.getState().drawingsFor(B)).toHaveLength(1);
   });
 
-  it('selection is per-code — switching activeCode does not touch a code\'s selection', () => {
-    useDrawingsStore.getState().setActiveCode(A);
+  it('selection is per-code — switching activeScope does not touch a code\'s selection', () => {
+    useDrawingsStore.getState().setActiveScope(A);
     useDrawingsStore.getState().add(A, mkHline('h1', 100));
     useDrawingsStore.getState().setSelected(A, 'h1');
     expect(useDrawingsStore.getState().selectedFor(A)).toBe('h1');
     // 종목별이라 다른 종목으로 전환해도 A 의 선택은 유지된다(창별 독립 선택).
-    useDrawingsStore.getState().setActiveCode(B);
+    useDrawingsStore.getState().setActiveScope(B);
     expect(useDrawingsStore.getState().selectedFor(A)).toBe('h1');
     expect(useDrawingsStore.getState().selectedFor(B)).toBeNull();
+  });
+});
+
+describe('slotForTimeframe / drawingScopeFor', () => {
+  it('collapses every minute frame onto one slot and keeps D/W/M separate', () => {
+    for (const tf of ['1m', '3m', '5m', '10m', '15m', '30m'] as const) {
+      expect(slotForTimeframe(tf)).toBe('minute');
+    }
+    expect(slotForTimeframe('D')).toBe('D');
+    expect(slotForTimeframe('W')).toBe('W');
+    expect(slotForTimeframe('M')).toBe('M');
+  });
+
+  it('builds a scope per (code, slot) and yields null without a code', () => {
+    expect(drawingScopeFor(CODE_A, '5m')).toBe(drawingScopeFor(CODE_A, '30m'));
+    expect(drawingScopeFor(CODE_A, '5m')).not.toBe(drawingScopeFor(CODE_A, 'D'));
+    expect(drawingScopeFor(CODE_A, 'D')).not.toBe(drawingScopeFor(CODE_B, 'D'));
+    expect(drawingScopeFor(null, '1m')).toBeNull();
+  });
+});
+
+describe('useDrawingsStore — timeframe slot partitioning', () => {
+  it('drawings on the minute slot do not appear on the same symbol\'s daily slot', () => {
+    const s = () => useDrawingsStore.getState();
+    s().add(A, mkHline('m1', 100));
+    s().add(A_DAILY, mkHline('d1', 200));
+    expect(s().drawingsFor(A).map((d) => d.id)).toEqual(['m1']);
+    expect(s().drawingsFor(A_DAILY).map((d) => d.id)).toEqual(['d1']);
+  });
+
+  it('clearAll on one slot leaves the other slot of the same symbol intact', () => {
+    const s = () => useDrawingsStore.getState();
+    s().add(A, mkHline('m1', 100));
+    s().add(A_DAILY, mkHline('d1', 200));
+    s().clearAll(A_DAILY);
+    expect(s().drawingsFor(A)).toHaveLength(1);
+    expect(s().drawingsFor(A_DAILY)).toHaveLength(0);
+  });
+
+  it('undo history is per-slot — Ctrl+Z on minute does not rewind daily', () => {
+    const s = () => useDrawingsStore.getState();
+    s().add(A_DAILY, mkHline('d1', 200));
+    s().add(A, mkHline('m1', 100));
+    s().undo(A);
+    expect(s().drawingsFor(A)).toHaveLength(0);
+    expect(s().drawingsFor(A_DAILY)).toHaveLength(1); // 일봉 히스토리는 무사
+  });
+
+  it('selection is per-slot', () => {
+    const s = () => useDrawingsStore.getState();
+    s().add(A, mkHline('m1', 100));
+    s().add(A_DAILY, mkHline('d1', 200));
+    s().setSelected(A, 'm1');
+    expect(s().selectedFor(A)).toBe('m1');
+    expect(s().selectedFor(A_DAILY)).toBeNull();
+  });
+
+  it('each slot persists under its own key', () => {
+    const s = () => useDrawingsStore.getState();
+    s().add(A, mkHline('m1', 100));
+    s().add(A_DAILY, mkHline('d1', 200));
+    s().flushPending();
+    expect(JSON.parse(localStorage.getItem('replay.drawings.v2.005930|minute') as string))
+      .toEqual({ v: 1, items: [mkHline('m1', 100)] });
+    expect(JSON.parse(localStorage.getItem('replay.drawings.v2.005930|D') as string))
+      .toEqual({ v: 1, items: [mkHline('d1', 200)] });
   });
 });
 
@@ -66,10 +137,10 @@ describe('useDrawingsStore — mutations', () => {
     expect(useDrawingsStore.getState().selectedFor(B)).toBe('b1');
   });
 
-  it('mutations target the explicit code regardless of activeCode (멀티창, C2c-2b)', () => {
-    // 다른 종목 창 2개: 마지막 마운트 창이 activeCode 를 이겨도(B), A 창의
+  it('mutations target the explicit code regardless of activeScope (멀티창, C2c-2b)', () => {
+    // 다른 종목 창 2개: 마지막 마운트 창이 activeScope 를 이겨도(B), A 창의
     // 그리기는 A 로 귀속돼야 한다 — 오귀속 결함의 회귀 가드.
-    useDrawingsStore.getState().setActiveCode(B);
+    useDrawingsStore.getState().setActiveScope(B);
     useDrawingsStore.getState().add(A, mkHline('h1', 100));
     expect(useDrawingsStore.getState().drawingsFor(A)).toHaveLength(1);
     expect(useDrawingsStore.getState().drawingsFor(B)).toHaveLength(0);
@@ -78,7 +149,7 @@ describe('useDrawingsStore — mutations', () => {
   });
 
   beforeEach(() => {
-    useDrawingsStore.getState().setActiveCode(A);
+    useDrawingsStore.getState().setActiveScope(A);
   });
 
   it('update patches a drawing by id', () => {
@@ -106,19 +177,19 @@ describe('useDrawingsStore — mutations', () => {
 });
 
 describe('useDrawingsStore — persistence integration', () => {
-  it('setActiveCode hydrates from localStorage', () => {
+  it('setActiveScope hydrates from localStorage', () => {
     localStorage.setItem(
-      'replay.drawings.v1.005930',
+      'replay.drawings.v2.005930|minute',
       JSON.stringify({ v: 1, items: [mkHline('h1', 100)] }),
     );
-    useDrawingsStore.getState().setActiveCode(A);
+    useDrawingsStore.getState().setActiveScope(A);
     expect(useDrawingsStore.getState().drawingsFor(A)).toHaveLength(1);
   });
 
   it('flushPending writes the active Code to localStorage', () => {
     useDrawingsStore.getState().add(A, mkHline('h1', 100));
     useDrawingsStore.getState().flushPending();
-    const raw = localStorage.getItem('replay.drawings.v1.005930');
+    const raw = localStorage.getItem('replay.drawings.v2.005930|minute');
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw as string)).toEqual({ v: 1, items: [mkHline('h1', 100)] });
   });
@@ -132,16 +203,16 @@ describe('useDrawingsStore — persistence integration', () => {
     // Edit B while A's debounce timer is still armed.
     useDrawingsStore.getState().add(B, mkHline('b1', 222));
     useDrawingsStore.getState().flushPending();
-    expect(JSON.parse(localStorage.getItem('replay.drawings.v1.005930') as string))
+    expect(JSON.parse(localStorage.getItem('replay.drawings.v2.005930|minute') as string))
       .toEqual({ v: 1, items: [mkHline('a1', 111)] });
-    expect(JSON.parse(localStorage.getItem('replay.drawings.v1.003490') as string))
+    expect(JSON.parse(localStorage.getItem('replay.drawings.v2.003490|minute') as string))
       .toEqual({ v: 1, items: [mkHline('b1', 222)] });
   });
 });
 
 describe('useDrawingsStore — undo/redo (ADR-0107)', () => {
   beforeEach(() => {
-    useDrawingsStore.getState().setActiveCode(A);
+    useDrawingsStore.getState().setActiveScope(A);
   });
 
   it('undo reverts add; redo re-applies it', () => {
@@ -215,14 +286,14 @@ describe('useDrawingsStore — undo/redo (ADR-0107)', () => {
     s().add(A, mkHline('h1', 100));
     s().undo(A);
     s().flushPending();
-    expect(JSON.parse(localStorage.getItem('replay.drawings.v1.005930') as string))
+    expect(JSON.parse(localStorage.getItem('replay.drawings.v2.005930|minute') as string))
       .toEqual({ v: 1, items: [] });
   });
 });
 
 describe('useDrawingsStore — clearAll undo-toast', () => {
   beforeEach(() => {
-    useDrawingsStore.getState().setActiveCode(A);
+    useDrawingsStore.getState().setActiveScope(A);
   });
 
   it('clearAll on an empty list is a no-op and shows no toast', () => {
@@ -236,7 +307,7 @@ describe('useDrawingsStore — clearAll undo-toast', () => {
     s().add(A, mkHline('h1', 100));
     s().add(A, mkHline('h2', 200));
     s().clearAll(A);
-    expect(s().clearToast).toMatchObject({ code: A, count: 2 });
+    expect(s().clearToast).toMatchObject({ scope: A, count: 2 });
     expect(s().clearToast?.snapshot).toHaveLength(2);
   });
 
@@ -256,7 +327,7 @@ describe('useDrawingsStore — clearAll undo-toast', () => {
     s().add(A, mkHline('h1', 100));
     s().clearAll(A);
     const snap = s().clearToast!.snapshot;
-    s().setActiveCode(B); // user navigates away while the toast is up
+    s().setActiveScope(B); // user navigates away while the toast is up
     s().restore(A, snap);
     expect(s().drawingsFor(A)).toHaveLength(1);
   });
@@ -272,7 +343,7 @@ describe('useDrawingsStore — clearAll undo-toast', () => {
 
 describe('useDrawingsStore — importDrawings', () => {
   beforeEach(() => {
-    useDrawingsStore.getState().setActiveCode(A);
+    useDrawingsStore.getState().setActiveScope(A);
   });
 
   it('appends imported items with fresh ids as one undoable step', () => {
@@ -316,13 +387,13 @@ describe('useDrawingsStore — defaults', () => {
 
   it('update(id, patch) syncs color/width/lineStyle into defaults', () => {
     const s = useDrawingsStore.getState();
-    s.setActiveCode('005930');
+    s.setActiveScope(A);
     const d: Drawing = {
       id: 'a', kind: 'hline', price: 1000,
       color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
     };
-    s.add('005930', d);
-    s.update('005930', 'a', { color: '#10B981', width: 3, lineStyle: 'dashed' });
+    s.add(A, d);
+    s.update(A, 'a', { color: '#10B981', width: 3, lineStyle: 'dashed' });
     expect(useDrawingsStore.getState().defaults).toMatchObject({
       color: '#10B981', width: 3, lineStyle: 'dashed',
     });
@@ -330,22 +401,22 @@ describe('useDrawingsStore — defaults', () => {
 
   it('update(id, {fontSize}) syncs the text size into defaults (sticky)', () => {
     const s = useDrawingsStore.getState();
-    s.setActiveCode('005930');
-    s.add('005930', {
+    s.setActiveScope(A);
+    s.add(A, {
       id: 't', kind: 'text', at: { realMs: 1_700_000_000_000, price: 1000 },
       text: 'hi', fontSize: 13, color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
     });
-    s.update('005930', 't', { fontSize: 20 } as Partial<Drawing>);
+    s.update(A, 't', { fontSize: 20 } as Partial<Drawing>);
     expect(useDrawingsStore.getState().defaults.fontSize).toBe(20);
   });
 
   it('update with no style fields does not touch defaults', () => {
     const s = useDrawingsStore.getState();
-    s.setActiveCode('005930');
-    s.add('005930', { id: 'a', kind: 'hline', price: 1000,
+    s.setActiveScope(A);
+    s.add(A, { id: 'a', kind: 'hline', price: 1000,
             color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle' });
     const before = { ...useDrawingsStore.getState().defaults };
-    s.update('005930', 'a', { price: 1500 });
+    s.update(A, 'a', { price: 1500 });
     expect(useDrawingsStore.getState().defaults).toEqual(before);
   });
 });
