@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { CaptureQueue, computeHeaderSummary } from './CaptureQueue';
+import { CaptureQueue } from './CaptureQueue';
+import { computeHeaderSummary } from './queueSummary';
 import type { QueueItem, QueueSnapshot } from '../api/types';
 import type { ReactNode } from 'react';
 
@@ -209,7 +210,7 @@ describe('CaptureQueue Retry Failed (ADR-0031)', () => {
 
 describe('CaptureQueue dedupe banner', () => {
   it('summarizeDedupeReasons groups counts in display order', async () => {
-    const { summarizeDedupeReasons } = await import('./CaptureQueue');
+    const { summarizeDedupeReasons } = await import('./queueSummary');
     expect(summarizeDedupeReasons([
       { code: '005930', date: '20260518', reason: 'already_complete' },
       { code: '005930', date: '20260519', reason: 'already_complete' },
@@ -218,7 +219,7 @@ describe('CaptureQueue dedupe banner', () => {
   });
 
   it('summarizeDedupeReasons omits reasons with zero count', async () => {
-    const { summarizeDedupeReasons } = await import('./CaptureQueue');
+    const { summarizeDedupeReasons } = await import('./queueSummary');
     expect(summarizeDedupeReasons([
       { code: '005930', date: '20260518', reason: 'already_skipped' },
     ])).toBe('1 already skipped');
