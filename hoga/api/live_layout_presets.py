@@ -14,9 +14,10 @@ from hoga.api.versioned_json_file import load_versioned_json_file
 
 # 화면 구성 프리셋 저장소 — study_views 와 동일한 versioned-JSON-manifest 패턴
 # (asyncio.Lock + load_versioned_json_file + atomic_write_json). ADR-0114 §4.
-# v2 (#699 PR-D): payload 가 by_timeframe_enable 로 통합됨. 구 v1 프리셋은
-# 폐기(변환 없음) — 아래 load_presets 가 stale 버전 파일을 빈 목록으로 대체한다.
-_CURRENT_VERSION = 2
+# v3 (PR-E, #713 §5): payload 가 워크스페이스 전체 스냅샷으로 바뀜(창·그룹·종목).
+# 구 v1/v2 프리셋은 폐기(변환 없음) — 아래 load_presets 가 stale 버전 파일을 빈
+# 목록으로 대체한다(저장 프리셋 0개라 실질 손실 없음).
+_CURRENT_VERSION = 3
 _lock = asyncio.Lock()
 
 

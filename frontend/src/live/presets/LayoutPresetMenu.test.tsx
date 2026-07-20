@@ -22,23 +22,15 @@ vi.mock('./useLiveLayoutPresets', () => ({
 const applyMock = vi.fn();
 vi.mock('./layoutPresetSnapshot', () => ({
   applyPresetPayload: (...args: unknown[]) => applyMock(...args),
-  capturePresetPayload: () => ({ pane_order: ['candle'] }),
-  defaultPresetPayload: () => ({ pane_order: ['candle'], _default: true }),
+  capturePresetPayload: () => ({ windows: [], zOrder: [], groupSymbols: {} }),
+  defaultPresetPayload: () => ({ windows: [], zOrder: [], groupSymbols: {}, _default: true }),
 }));
 
 const preset = (id: string, name: string): LiveLayoutPreset => ({
-  schema_version: 2,
+  schema_version: 3,
   id,
   name,
-  payload: {
-    pane_order: [],
-    by_timeframe_enable: {},
-    right_panel_width_px: 400,
-    right_card_order: [],
-    right_card_hidden: {},
-    right_card_collapsed: {},
-    right_card_weights: {},
-  },
+  payload: { windows: [], zOrder: [], groupSymbols: {} },
   created_at_ms: 1,
   updated_at_ms: 1,
 });

@@ -2,28 +2,21 @@ import { apiAction, apiCall } from './client';
 import type { LineStyle } from '../chart/drawing/types';
 
 /**
- * 레이아웃 프리셋 API 클라이언트 (ADR-0114 §4). study-views 클론.
- * payload 는 snake_case(백엔드 pydantic 미러). 종목·타임프레임·뷰포트는 미포함.
+ * 레이아웃 프리셋 API 클라이언트 (ADR-0119 PR-E, #713 §5). study-views 클론.
+ *
+ * v3: payload = **워크스페이스 전체 스냅샷**(창 목록·z순서·그룹→종목). 프론트-네이티브
+ * camelCase 를 그대로 담는 얕은 컨테이너 — 백엔드는 저장/반환만, 검증·정규화는 프론트가
+ * apply 시점에 한다(`applyWorkspaceSnapshot`→`readWindow`). windows 원소·groupSymbols
+ * 값은 자유 구조(창 kind별 chart 설정 등). 뷰포트·비영속 런타임은 미포함(§6).
  */
 export type LiveLayoutPresetPayload = {
-  pane_order: string[];
-  /** 프리셋 = 4버킷(분/일/주/월) 전체의 지표 on/off 스냅샷(#698·#699 PR-D).
-   *  각 버킷은 공장값과 다른 enable 키만 담는 sparse 맵. 파라미터(색·기간)는
-   *  프리셋 범위 밖이라 담지 않는다. 구 payload 의 pane_prefs_by_timeframe +
-   *  indicator_flags 를 이 하나로 통합. */
-  by_timeframe_enable: Record<string, Record<string, boolean>>;
-  /** Pane 크기 가중치(PaneId → stretch). 필드 도입 전에 저장된 프리셋에는 없다 —
-   *  부재 = 스펙 기본 크기로 적용. */
-  pane_stretch?: Record<string, number>;
-  right_panel_width_px: number;
-  right_card_order: string[];
-  right_card_hidden: Record<string, boolean>;
-  right_card_collapsed: Record<string, boolean>;
-  right_card_weights: Record<string, number>;
+  windows: unknown[];
+  zOrder: string[];
+  groupSymbols: Record<string, unknown>;
 };
 
 export type LiveLayoutPreset = {
-  schema_version: 2;
+  schema_version: 3;
   id: string;
   name: string;
   payload: LiveLayoutPresetPayload;

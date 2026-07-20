@@ -8,15 +8,24 @@ function Harness({
   onNextCode,
   onPrevCode,
   onSelectTimeframeShortcut,
+  onAddChartWindow,
+  onTidy,
+  onCycleFocus,
 }: {
   onNextCode?: () => void;
   onPrevCode?: () => void;
   onSelectTimeframeShortcut?: (slot: 'minute' | 'D' | 'W' | 'M') => void;
+  onAddChartWindow?: () => void;
+  onTidy?: () => void;
+  onCycleFocus?: (dir: 1 | -1) => void;
 }) {
   useLiveKeyboard({
     onNextCode,
     onPrevCode,
     onSelectTimeframeShortcut,
+    onAddChartWindow,
+    onTidy,
+    onCycleFocus,
   });
   return <div data-testid="harness" tabIndex={0} />;
 }
@@ -24,11 +33,17 @@ function Harness({
 function HarnessWithInput({
   onNextCode,
   onSelectTimeframeShortcut,
+  onAddChartWindow,
+  onTidy,
+  onCycleFocus,
 }: {
   onNextCode?: () => void;
   onSelectTimeframeShortcut?: (slot: 'minute' | 'D' | 'W' | 'M') => void;
+  onAddChartWindow?: () => void;
+  onTidy?: () => void;
+  onCycleFocus?: (dir: 1 | -1) => void;
 }) {
-  useLiveKeyboard({ onNextCode, onSelectTimeframeShortcut });
+  useLiveKeyboard({ onNextCode, onSelectTimeframeShortcut, onAddChartWindow, onTidy, onCycleFocus });
   return <input data-testid="input" />;
 }
 
@@ -155,5 +170,52 @@ describe('useLiveKeyboard', () => {
 
     // 평범한 숫자는 더 이상 아무 단축키도 트리거하지 않는다(타임프레임은 Shift+숫자만).
     expect(onSelectTimeframeShortcut).not.toHaveBeenCalled();
+  });
+
+  describe('창 관리 단축키 (ADR-0119 PR-E)', () => {
+    it('n triggers onAddChartWindow', () => {
+      const add = vi.fn();
+      render(<Harness onAddChartWindow={add} />);
+      fireEvent.keyDown(window, { key: 'n' });
+      expect(add).toHaveBeenCalledOnce();
+    });
+
+    it('t triggers onTidy', () => {
+      const tidy = vi.fn();
+      render(<Harness onTidy={tidy} />);
+      fireEvent.keyDown(window, { key: 't' });
+      expect(tidy).toHaveBeenCalledOnce();
+    });
+
+    it('] cycles focus forward, [ backward', () => {
+      const cycle = vi.fn();
+      render(<Harness onCycleFocus={cycle} />);
+      fireEvent.keyDown(window, { key: ']' });
+      fireEvent.keyDown(window, { key: '[' });
+      expect(cycle).toHaveBeenNthCalledWith(1, 1);
+      expect(cycle).toHaveBeenNthCalledWith(2, -1);
+    });
+
+    it('창 관리 키는 입력 필드에선 억제된다', () => {
+      const add = vi.fn(); const tidy = vi.fn(); const cycle = vi.fn();
+      const { getByTestId } = render(
+        <HarnessWithInput onAddChartWindow={add} onTidy={tidy} onCycleFocus={cycle} />,
+      );
+      const input = getByTestId('input');
+      fireEvent.keyDown(input, { key: 'n' });
+      fireEvent.keyDown(input, { key: 't' });
+      fireEvent.keyDown(input, { key: ']' });
+      expect(add).not.toHaveBeenCalled();
+      expect(tidy).not.toHaveBeenCalled();
+      expect(cycle).not.toHaveBeenCalled();
+    });
+
+    it('Alt 조합(드로잉 도구 단축키)에선 창 관리 키가 발화하지 않는다', () => {
+      const tidy = vi.fn();
+      render(<Harness onTidy={tidy} />);
+      // 드로잉 도구는 Alt+t — useLiveKeyboard 는 altKey early-return 이라 무충돌.
+      fireEvent.keyDown(window, { key: 't', altKey: true });
+      expect(tidy).not.toHaveBeenCalled();
+    });
   });
 });

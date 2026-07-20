@@ -90,6 +90,10 @@ type Persisted = {
   groupSymbols: Partial<Record<GroupId, GroupSymbol>>;
 };
 
+/** 레이아웃 프리셋 v3 스냅샷(ADR-0119 PR-E, #713 §5) = Persisted 3필드.
+ *  뷰포트·chartRuntime 은 비저장(§6). 프리셋이 이 스냅샷을 통째로 저장/복원한다. */
+export type WorkspaceSnapshot = Persisted;
+
 type Store = Persisted & {
   /** 창별 비영속 런타임(팬 백필 from-date 등). 창 닫힘·종목 교체 시 정리. */
   chartRuntime: Record<string, ChartWindowRuntime>;
@@ -125,6 +129,12 @@ type Store = Persisted & {
   /** 좌측 팬 딥 백필의 창별 from-date 확장 — 단조 감소 가드(livePage 미러). */
   extendChartHistoricalRange: (id: string, date: string) => void;
   resetChartHistoricalRange: (id: string) => void;
+
+  /** 프리셋 v3 적용 — 워크스페이스 통째 교체(ADR-0119 PR-E). raw 스냅샷을
+   *  readWindow/readGroupSymbols 로 canonical 재정규화 후 windows·zOrder·
+   *  groupSymbols 교체 + chartRuntime 전체 리셋(fresh-view) + persist. 유효 창이
+   *  하나도 없으면 공장 기본으로 폴백(readStorage 폴백과 동일 규율). */
+  applyWorkspaceSnapshot: (snapshot: unknown) => void;
 };
 
 let idCounter = 0;
@@ -616,4 +626,46 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       return { chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
     });
   },
+
+  applyWorkspaceSnapshot: (snapshot) => {
+    const next = normalizeWorkspaceSnapshot(snapshot);
+    set(() => {
+      persistFromState(next);
+      // 프리셋 적용 = 창·종목 전면 교체 → 모든 비영속 런타임을 걷는다(fresh-view).
+      return { ...next, chartRuntime: {} };
+    });
+  },
 }));
+
+/** 현재 워크스페이스를 프리셋 v3 스냅샷으로 캡처한다(뷰포트·런타임 제외).
+ *  JSON 왕복 가능한 deep copy — 프리셋 저장·비교가 스토어 내부 참조를 잡지 않게. */
+export function snapshotWorkspace(): WorkspaceSnapshot {
+  const s = useWorkspaceStore.getState();
+  return {
+    windows: s.windows.map((w) => ({
+      ...w,
+      rect: { ...w.rect },
+      ...(w.chart ? { chart: { ...w.chart, indicators: normalizeIndicatorsV2(w.chart.indicators) } } : {}),
+    })),
+    zOrder: [...s.zOrder],
+    groupSymbols: { ...s.groupSymbols },
+  };
+}
+
+/** raw 스냅샷(프리셋 payload)을 canonical Persisted 로 재정규화한다 — readStorage 와
+ *  같은 검증 경로(readWindow/readGroupSymbols/normalizeZOrder) 재사용. 유효 창이
+ *  없으면 공장 기본으로 폴백(빈 워크스페이스로 덮어써 창을 잃지 않게). */
+function normalizeWorkspaceSnapshot(raw: unknown): Persisted {
+  const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const rawWindows = Array.isArray(obj.windows) ? obj.windows : [];
+  const windows = rawWindows.map(readWindow).filter((w): w is WorkspaceWindow => w !== null);
+  if (windows.length === 0) {
+    const fallback = defaultWindows();
+    return { windows: fallback, zOrder: fallback.map((w) => w.id), groupSymbols: {} };
+  }
+  return {
+    windows,
+    zOrder: normalizeZOrder(obj.zOrder, windows),
+    groupSymbols: readGroupSymbols(obj.groupSymbols),
+  };
+}
