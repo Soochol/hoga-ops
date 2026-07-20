@@ -125,8 +125,11 @@ export default function DrawingPropertyPanel({ code }: Props) {
         />
       </button>
 
+      {/* min-w-max: containing block 인 툴바가 좁아지면 shrink-to-fit 으로 눌려
+          grid-cols-4 의 minmax(0,1fr) 열이 붕괴하고 스와치가 겹친다(형제 메뉴들의
+          min-w-[7rem] 과 달리 여기는 고정폭 자식 격자라 max-content 가 기준). */}
       {openPopover === 'color' && (
-        <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-2 shadow-xl">
+        <div className="absolute top-full left-0 mt-1 min-w-max bg-bg-card border border-border rounded-md p-2 shadow-xl">
           <div className="grid grid-cols-4 gap-1.5">
             {COLOR_PALETTE.map((hex) => {
               const isSelected = hex === drawing.color;
