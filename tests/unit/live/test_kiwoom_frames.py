@@ -33,7 +33,10 @@ _KIS_TRADE_RECORD_KEYS = {"t_ms", "price", "qty", "side", "side_source"}
 _KIS_TRADE_PAYLOAD_KEYS = {"trades"}
 # 키움만 주는 additive 확장(계약 개정 2026-07-20 — kiwoom_frames 헤더 참조).
 # 여기 없는 키가 payload 에 생기면 parity 테스트가 실패한다 = 계약 변경은 의도적으로만.
-_KIWOOM_TRADE_EXTRA_KEYS = {"prev_close", "day_open", "day_high", "day_low"}
+_KIWOOM_TRADE_EXTRA_KEYS = {
+    "prev_close", "day_open", "day_high", "day_low",
+    "fill_strength_pct", "vs_prev_volume_pct", "cum_volume", "vwap",
+}
 
 # 실측 0D(주식호가잔량, 000020) — 10호가 전 단계 채움, KRX 장중.
 REAL_0D_KRX = {
@@ -316,3 +319,61 @@ def test_trade_prev_close_rejects_nonpositive():
     )
     assert t is not None
     assert "prev_close" not in t.payload
+
+
+# ── 종목 요약 지표(228 체결강도 · 30 어제보다 · 13 거래량 · 620 VWAP) ──
+# 이 4개는 0B 43개 FID 중 그동안 버리던 값이다. 아래 테스트가 "파서와 같은 상수로
+# 만든 동어반복"이 아닌 이유: 골든 프레임은 실채록이고, 파서가 뽑은 값을 **같은
+# 프레임의 다른 FID로 재계산**해 대조한다(프레임이 스스로를 검증한다).
+
+
+def test_trade_summary_metrics_cross_check_against_golden_frames():
+    """실채록 3종목 전건에서 요약 지표가 원본 FID 산술과 일치해야 한다.
+
+    228 = 1031/1030×100 (매수체결량 ÷ 매도체결량)
+    30  = 13/(13−26)×100 (오늘 누적 ÷ 전일 전량)
+    620 = 14×1e6/13      (거래대금 ÷ 거래량 — 14 가 백만원 단위임을 함께 증명)
+    """
+    frames = _t2_frames("0B")
+    assert len(frames) == 3, "골든 0B 프레임 3종목 기대"
+    for frame in frames:
+        v = frame["values"]
+        t = parse_real_row(frame, date=DATE, now_ms=0)
+        assert t is not None, frame["item"]
+
+        sell = int(v["1030"])
+        buy = int(v["1031"])
+        assert t.payload["fill_strength_pct"] == round(buy / sell * 100, 2)
+
+        cum = int(v["13"])
+        prev_vol = cum - int(v["26"])
+        assert t.payload["vs_prev_volume_pct"] == round(cum / prev_vol * 100, 2)
+
+        assert t.payload["cum_volume"] == cum
+        # 14 는 백만원. 원 단위로 환산해 거래량으로 나누면 620(당일거래평균가)이다.
+        assert abs(int(v["14"]) * 1_000_000 / cum - t.payload["vwap"]) < 1
+
+
+def test_trade_summary_metrics_absent_when_not_received():
+    """미수신 FID 는 키를 싣지 않는다 — day_ohlc 와 같은 규약."""
+    t = parse_real_row(REAL_0B, date=DATE, now_ms=0)
+    assert t is not None
+    for key in ("fill_strength_pct", "vs_prev_volume_pct", "vwap"):
+        assert key not in t.payload
+    # REAL_0B 에는 13(누적거래량)이 있으므로 이건 실린다.
+    assert t.payload["cum_volume"] == 98232
+
+
+def test_trade_ratio_takes_magnitude_and_survives_malformed():
+    """비율 FID 의 부호는 증감방향이라 크기만 취하고, 불량값은 틱을 죽이지 않는다."""
+    values = {**REAL_0B["values"], "30": "-43.85", "228": "100.61"}
+    t = parse_real_row({**REAL_0B, "values": values}, date=DATE, now_ms=0)
+    assert t is not None
+    assert t.payload["vs_prev_volume_pct"] == 43.85  # abs
+    assert t.payload["fill_strength_pct"] == 100.61
+
+    bad = {**REAL_0B["values"], "30": "abc", "228": ""}
+    t2 = parse_real_row({**REAL_0B, "values": bad}, date=DATE, now_ms=0)
+    assert t2 is not None, "선택 필드 불량이 체결 틱 전체를 버리면 안 된다"
+    assert "vs_prev_volume_pct" not in t2.payload
+    assert t2.payload["trades"][0]["price"] == 686000

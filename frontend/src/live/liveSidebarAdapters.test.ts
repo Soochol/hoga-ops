@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   latestOrderbookSnapshot,
   aggregateBrokerSeries,
+  latestTradeSummary,
   orderbookSnapshotAtCursor,
 } from './liveSidebarAdapters';
 import type { ObSnapshot } from './bucketHogaSeries';
@@ -201,5 +202,41 @@ describe('orderbookSnapshotAtCursor (ADR-0044 amendment — SSE buffer fallback)
       { t_ms: 80_000, asks: deepBook(), bids: deepBook(), total_ask_qty: 5, total_bid_qty: 5 },
     ];
     expect(orderbookSnapshotAtCursor(ob, 95_000, 60_000)!.ts_ms).toBe(80_000);
+  });
+});
+
+
+describe('latestTradeSummary', () => {
+  it('빈 버퍼면 전 필드가 null 이다', () => {
+    expect(latestTradeSummary([])).toEqual({
+      fillStrengthPct: null, vsPrevVolumePct: null, cumVolume: null, vwap: null,
+      dayOpen: null, dayHigh: null, dayLow: null, prevClose: null,
+    });
+  });
+
+  it('키별로 가장 최근에 관측된 값을 잡는다 (최신 1건만 보지 않는다)', () => {
+    // 파서는 미수신/0 인 필드의 키를 아예 싣지 않는다. 최신 프레임에 체결강도가
+    // 없어도 직전 프레임의 값은 여전히 유효하다.
+    const trade = [
+      { t_ms: 1, fill_strength_pct: 94.4, cum_volume: 100, day_open: 250_000 },
+      { t_ms: 2, cum_volume: 250 },
+      { t_ms: 3, cum_volume: 300, vwap: 251_000 },
+    ];
+    const s = latestTradeSummary(trade);
+    expect(s.cumVolume).toBe(300);        // 최신
+    expect(s.fillStrengthPct).toBe(94.4); // 첫 프레임에만 있음
+    expect(s.dayOpen).toBe(250_000);
+    expect(s.vwap).toBe(251_000);
+    expect(s.dayHigh).toBeNull();         // 어느 프레임에도 없음
+  });
+
+  it('0·음수·비수는 미수신으로 접는다', () => {
+    const s = latestTradeSummary([
+      { t_ms: 1, cum_volume: 0, vwap: -1, fill_strength_pct: 'x', day_low: 240_000 },
+    ]);
+    expect(s.cumVolume).toBeNull();
+    expect(s.vwap).toBeNull();
+    expect(s.fillStrengthPct).toBeNull();
+    expect(s.dayLow).toBe(240_000);
   });
 });

@@ -59,6 +59,22 @@ def _signed_opt(values: dict[str, str], fid: str) -> int | None:
         return None
 
 
+def _ratio(values: dict[str, str], fid: str) -> float | None:
+    """비율 FID(%, 소수 2자리) → 크기. 부호는 증감방향이라 abs.
+
+    _signed_opt 와 같은 이유로 예외를 던지지 않는다 — 선택 필드 하나가 불량이라고
+    체결 틱 전체를 버리면 안 된다. 0.0 도 None 으로 접는다(미수신과 동일 취급).
+    """
+    raw = values.get(fid, "").strip()
+    if not raw:
+        return None
+    try:
+        v = abs(float(raw))
+    except ValueError:
+        return None
+    return v if v > 0 else None
+
+
 def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | None:
     """REAL 메시지의 data[] 원소 1개 → WsTick. 미지원 type·불량 프레임은 None.
 
@@ -153,6 +169,18 @@ def _parse_trade(
     for key, fid in (("day_open", K.CNT_OPEN), ("day_high", K.CNT_HIGH),
                      ("day_low", K.CNT_LOW)):
         v = _price(values, fid)
+        if v > 0:
+            payload[key] = v
+    # 종목 요약 지표(체결강도·어제보다·거래량·VWAP). OHLC 와 같은 규약 —
+    # 0/불량은 키를 싣지 않아 소비자가 "미수신"과 "진짜 0"을 구분하지 않아도 되게 한다.
+    # 비율 FID 는 부호가 증감방향이라 크기만 취한다(가격 FID 와 동형).
+    for key, fid in (("fill_strength_pct", K.CNT_FILL_STRENGTH),
+                     ("vs_prev_volume_pct", K.CNT_VS_PREV_VOL_PCT)):
+        r = _ratio(values, fid)
+        if r is not None:
+            payload[key] = r
+    for key, fid in (("cum_volume", K.CNT_CUM_VOLUME), ("vwap", K.CNT_VWAP)):
+        v = _qty(values, fid)
         if v > 0:
             payload[key] = v
     return WsTick(
