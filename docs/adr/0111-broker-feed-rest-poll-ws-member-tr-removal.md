@@ -1,6 +1,13 @@
 # 0111 — 거래원(회원사) 피드 WS→REST 전환: WS 등록 여유로 계좌당 13→19종목
 
-**Status:** accepted (2026-07-15)
+**Status:** superseded (2026-07-20) — ADR-0118 PR-F2 로 폐지. 거래원은 키움 WS 0F
+push 가 담당한다(`kiwoom_frames._parse_member` → BROKER, REST 폴러와 동일 payload
+shape 라 하위 소비자 무변경). BrokerRestPoller·live_rest_capture_access·KIS
+fetch_orderbook/fetch_trades/fetch_brokers 삭제. 계좌당 19종목 제한도 함께 소멸 —
+커버리지가 키움 저장셋 전 종목으로 확대됐고, KIS REST 유량은 캔들·지수로 환원.
+플랜: docs/plans/2026-07-20-kiwoom-0f-0w-realtime.md.
+
+~~**Status:** accepted (2026-07-15)~~
 
 **Related:**
 - ADR-0101 (WS 등록 상한 41 + venue 스왑 순서) — 이 결정이 바꾸는 산식의 전제. 연결당 등록 상한 41(실측)·예산 39가 종목당 TR 수에 나뉘어 계좌당 종목 수가 나온다.

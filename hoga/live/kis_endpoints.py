@@ -20,12 +20,7 @@ from hoga.live.kis_models import (
     IndexCandlePoint,
     InvestorNetPoint,
     InvestorTrendEstimateRow,
-    KisBrokerEntry,
-    KisBrokers,
     KisCandle,
-    KisOrderbook,
-    KisTrade,
-    OrderbookLevel,
     ProgramTradeByStockRow,
 )
 from hoga.live.kis_venue import (
@@ -41,28 +36,6 @@ log = logging.getLogger(__name__)
 # pass an explicit venue value and include it in cache/query keys.
 _DEFAULT_KIS_VENUE: KisVenue = "KRX"
 _STOCK_MRKT_DIV = kis_venue_div(_DEFAULT_KIS_VENUE)
-
-def classify_side(
-    t_ms: int, prpr: int, askp: int, bidp: int
-) -> tuple[Literal[-1, 0, 1, 2], Literal["inferred", "auction"]]:
-    """Lee-Ready trade direction inference + auction window guard.
-
-    Returns (side, side_source). See Deep Sample Audit §B (Audit-2) and §H (Audit-5).
-    side: -1=sell, 0=mid, 1=buy, 2=auction
-    side_source: "inferred" | "auction"
-    """
-    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
-    h, m = kst.hour, kst.minute
-    in_open_auction = (h == 8 and m >= 50) or (h == 9 and m == 0)
-    in_close_auction = h == 15 and 20 <= m < 30
-    if in_open_auction or in_close_auction:
-        return 2, "auction"
-    if prpr >= askp:
-        return 1, "inferred"
-    if prpr <= bidp:
-        return -1, "inferred"
-    return 0, "inferred"
-
 
 @dataclass(frozen=True)
 class DailyInvariantViolation:
@@ -1081,151 +1054,6 @@ class KisEndpointsMixin:
         rows.sort(key=lambda row: row.bsop_hour)
         return rows
 
-    # ------------------------------------------------------------------
-    # fetch_orderbook (FHKST01010200, inquire-asking-price-exp-ccn)
-    # ------------------------------------------------------------------
-
-    async def fetch_orderbook(
-        self, code: str, *, venue: KisVenue = _DEFAULT_KIS_VENUE
-    ) -> KisOrderbook:
-        """Fetch 10-level real-time orderbook for *code* (e.g. '005930').
-
-        ADR-0067 보는종목 표시폴러용. _get_with_rate_retry·토큰버킷 재사용.
-        venue는 시분할 표시폴러용(ADR-0099) — 기본 KRX("J"), 장전/장후 NXT("NX").
-        FHKST01010200은 J/NX/UN div 3종 모두 수용(2026-07-11 실측).
-        """
-        body = await self._get(
-            path="/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
-            tr_id="FHKST01010200",
-            params={
-                "fid_cond_mrkt_div_code": kis_venue_div(venue),
-                "fid_input_iscd": code,
-            },
-        )
-        # 구조 이상(output1 결측·필드 결측·비숫자)은 KeyError/ValueError가 아니라
-        # typed KisApiError로 승격 — error_policy가 'unexpected'(ERROR+traceback)가
-        # 아닌 'kis_api'(WARNING+degraded)로 분류한다 (2026-07-08 KIS audit Fix B).
-        try:
-            out1 = body["output1"]
-            asks = [
-                OrderbookLevel(price=int(out1[f"askp{i}"]), qty=int(out1[f"askp_rsqn{i}"]))
-                for i in range(1, 11)
-            ]
-            bids = [
-                OrderbookLevel(price=int(out1[f"bidp{i}"]), qty=int(out1[f"bidp_rsqn{i}"]))
-                for i in range(1, 11)
-            ]
-            return KisOrderbook(
-                code=code,
-                asks=asks,
-                bids=bids,
-                total_ask_qty=int(out1["total_askp_rsqn"]),
-                total_bid_qty=int(out1["total_bidp_rsqn"]),
-                t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
-            )
-        except (KeyError, ValueError, TypeError, IndexError) as e:
-            raise KisApiError(
-                msg_cd="MALFORMED_ORDERBOOK",
-                msg1=f"unexpected orderbook shape for {code}: {e}",
-            ) from e
-
-    # ------------------------------------------------------------------
-    # fetch_trades (FHPST01060000, inquire-time-itemconclusion)
-    # ------------------------------------------------------------------
-
-    async def fetch_trades(self, code: str) -> list[KisTrade]:
-        """Fetch per-trade history via inquire-time-itemconclusion (FHPST01060000).
-
-        ADR-0067 보는종목 표시폴러용. Lee-Ready side 분류 적용.
-        Auction window trades get side=2.
-        """
-        body = await self._get(
-            path="/uapi/domestic-stock/v1/quotations/inquire-time-itemconclusion",
-            tr_id="FHPST01060000",
-            params={
-                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
-                "fid_input_iscd": code,
-                "fid_input_hour_1": "153000",
-            },
-        )
-        today_kst = datetime.now(KIS_KST).date()
-        trades: list[KisTrade] = []
-        # 구조 이상(output2 결측·필드 결측·비숫자)은 typed KisApiError로 승격
-        # (2026-07-08 KIS audit Fix B) — orderbook과 동일한 이유.
-        try:
-            for row in body["output2"]:
-                hhmmss = row["stck_cntg_hour"]
-                hh = int(hhmmss[:2])
-                mm = int(hhmmss[2:4])
-                ss = int(hhmmss[4:6])
-                dt = datetime(
-                    today_kst.year, today_kst.month, today_kst.day,
-                    hh, mm, ss, tzinfo=KIS_KST
-                )
-                t_ms = int(dt.timestamp() * 1000)
-                prpr = int(row["stck_prpr"])
-                askp = int(row.get("askp", "0") or "0")
-                bidp = int(row.get("bidp", "0") or "0")
-                side, side_source = classify_side(t_ms, prpr, askp, bidp)
-                trades.append(KisTrade(
-                    price=prpr,
-                    qty=int(row["cnqn"]),
-                    side=side,
-                    side_source=side_source,
-                    t_ms=t_ms,
-                ))
-        except (KeyError, ValueError, TypeError) as e:
-            raise KisApiError(
-                msg_cd="MALFORMED_TRADES",
-                msg1=f"unexpected trades shape for {code}: {e}",
-            ) from e
-        return trades
-
-    # ------------------------------------------------------------------
-    # fetch_brokers (FHKST01010600, inquire-member)
-    # ------------------------------------------------------------------
-
-    async def fetch_brokers(self, code: str) -> KisBrokers:
-        """Fetch top-5 buy/sell broker breakdown for *code*.
-
-        ADR-0067 보는종목 표시폴러용. Broker names are canonicalized at the
-        boundary so downstream sees the same canonical KRX member-firm name
-        (see ``hoga.broker_names`` and CONTEXT.md).
-        """
-        from hoga.broker_names import canonical
-
-        body = await self._get(
-            path="/uapi/domestic-stock/v1/quotations/inquire-member",
-            tr_id="FHKST01010600",
-            params={
-                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
-                "fid_input_iscd": code,
-            },
-        )
-        # 구조 이상(output 결측·빈 리스트·필드 결측)은 typed KisApiError로 승격
-        # (2026-07-08 KIS audit Fix B) — 빈 리스트의 [0]은 IndexError.
-        try:
-            out = body["output"][0]  # KIS returns a 1-element list (Audit-3)
-            buy_top = [
-                KisBrokerEntry(
-                    name=canonical(out[f"shnu_mbcr_name{i}"]),
-                    qty=int(out[f"total_shnu_qty{i}"]),
-                )
-                for i in range(1, 6)
-            ]
-            sell_top = [
-                KisBrokerEntry(
-                    name=canonical(out[f"seln_mbcr_name{i}"]),
-                    qty=int(out[f"total_seln_qty{i}"]),
-                )
-                for i in range(1, 6)
-            ]
-        except (KeyError, ValueError, TypeError, IndexError) as e:
-            raise KisApiError(
-                msg_cd="MALFORMED_BROKERS",
-                msg1=f"unexpected brokers shape for {code}: {e}",
-            ) from e
-        return KisBrokers(code=code, buy_top=buy_top, sell_top=sell_top)
 
 
 _MULTI_PRICE_CHUNK = 30  # intstock-multprice: 최대 30종목/콜 (FHKST11300006)

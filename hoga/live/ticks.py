@@ -1,9 +1,9 @@
 """Live Tick 도메인 모델 — 브로커 중립 포트 계약 타입.
 
 `WsTick`은 WS 1메시지에서 나온 1개 도메인 이벤트다(CONTEXT.md 'Live Tick').
-KIS·키움 파서(ws_frames·kiwoom_frames)와 REST 합성(broker_rest_poller)이 모두
-같은 shape로 생성하고, stream·downsampler가 소비한다. 파서 모듈(ws_frames)의
-KIS 전용 로직과 수명을 분리해, PR-G에서 KIS WS 계층을 삭제해도 이 모델은 잔존한다
+키움 파서(kiwoom_frames)가 생성하고 stream·downsampler가 소비한다. 과거엔 KIS
+파서(ws_frames — PR-G 삭제)와 거래원 REST 합성(broker_rest_poller — PR-F2 삭제)도
+생산자였다. 파서 모듈과 수명을 분리해 둔 덕에 생산자가 갈려도 이 모델은 잔존한다
 (ADR-0118 브로커 완전 특화).
 
 I/O 없음 — fixture로 완전 테스트 가능.

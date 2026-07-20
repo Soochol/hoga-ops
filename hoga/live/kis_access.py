@@ -37,9 +37,8 @@ class KisRestEndpoint(StrEnum):
     INDEX_INVESTOR_NET = "index-investor-net"
     INDEX_MINUTE = "index-minute"
     INDEX_PRICE = "index-price"
-    LIVE_BROKERS = "live-brokers"
-    LIVE_ORDERBOOK = "live-orderbook"
-    LIVE_TRADES = "live-trades"
+    # LIVE_BROKERS/LIVE_ORDERBOOK/LIVE_TRADES 는 제거됨 — 호가·체결(#678)에 이어
+    # 거래원도 키움 0F push 전환(PR-F2)으로 KIS REST 시세 호출처가 0 이 됐다.
     INVESTOR_NET = "investor-net"
     INVESTOR_TREND_ESTIMATE = "investor-trend-estimate"
     PAST_DAILY = "past-daily"

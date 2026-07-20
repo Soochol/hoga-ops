@@ -47,7 +47,6 @@ from hoga.live.kis_endpoints import (  # noqa: F401
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
     KisQuote,
-    classify_side,
     _build_multi_price_params,
     _fetch_multi_price,
     _parse_index_daily_row,
