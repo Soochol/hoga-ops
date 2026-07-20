@@ -48,6 +48,7 @@ import { TimeframeControl } from '../TimeframeControl';
 import { DrawingMenu } from '../DrawingMenu';
 import { IndicatorsButton } from '../LiveToolbar';
 import { requestIndicatorDrawer } from './indicatorDrawerControls';
+import { useChartHeaderFold } from './useChartHeaderCompact';
 import {
   publishLiveWindowStatus,
   clearLiveWindowStatus,
@@ -149,6 +150,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     investorNetEnabled,
     sidecarDemands,
   });
+
+  // 헤더가 좁아지면 액션 라벨을 접는다(#762) — 관측 대상은 컨테이너 폭이라
+  // 접힘이 관측값을 되바꾸지 않는다(피드백 루프 없음).
+  const headerRef = useRef<HTMLDivElement>(null);
+  const headerFold = useChartHeaderFold(headerRef);
 
   // 저장뷰 캡처용 뷰포트 ref — LiveChartRoot 가 마운트 시 캡처 함수를 공급한다.
   const viewportCaptureRef = useRef<() => TabViewport | null>(() => null);
@@ -278,15 +284,33 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       {/* 창 헤더 — 이 창의 차트 조작 진입로를 모두 소유한다(#758).
           봉은 창 소유(#708)였고, 여기에 그리기(레일 폐기분)와 보조지표가
           합류했다. 설정(⚙)은 편집 값이 앱 전역이라 전역 툴바에 남는다(#759). */}
-      <div className="flex shrink-0 items-center gap-1 overflow-hidden border-b border-border bg-bg-card/60 px-1 py-0.5">
+      <div
+        ref={headerRef}
+        data-testid="chart-window-header"
+        data-compact={headerFold.compactActions ? '' : undefined}
+        data-compact-timeframe={headerFold.compactTimeframe ? '' : undefined}
+        className="flex shrink-0 items-center gap-1 overflow-hidden border-b border-border bg-bg-card/60 px-1 py-0.5"
+      >
+        {/* 2단계 접힘(#762) — 기능 손실 없이 폭만 줄인다.
+            ① 좁아지면 액션 라벨을 접고 아이콘만(요구폭 ~213px)
+            ② 더 좁아지면 일·주·월을 분봉 드롭다운에 합친다(~110px)
+            창은 MIN_W=160px 까지 좁아지므로 ②가 없으면 다시 잘린다. */}
         <TimeframeControl
           timeframe={view.timeframe}
           rememberedMinute={rememberedMinute}
           onChange={(tf) => setChartTimeframe(win.id, tf)}
+          compact={headerFold.compactTimeframe}
         />
         <div className="ml-auto flex items-center gap-0.5">
-          <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} />
-          <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} />
+          <DrawingMenu
+            code={d.workareaCode}
+            timeframe={view.timeframe}
+            showLabel={!headerFold.compactActions}
+          />
+          <IndicatorsButton
+            onClick={() => requestIndicatorDrawer(win.id)}
+            showLabel={!headerFold.compactActions}
+          />
         </div>
       </div>
       <div className="min-h-0 flex-1">
