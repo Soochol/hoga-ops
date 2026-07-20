@@ -207,6 +207,39 @@ describe('PaneLegendOverlay — candle-pane indicator rows', () => {
     expect(screen.getByText('호가 잔량 히트맵')).toBeInTheDocument();
   });
 
+  it('단별 잔량 증감: 데이터가 있을 때만 행이 렌더된다', () => {
+    useLivePageStore.setState({ depthDeltaEnabled: true });
+    // 오늘 SSE 가 유일한 소스 — /study·과거일 전용 뷰에서는 켜져 있어도 그릴 게 없다.
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.queryByText('단별 잔량 증감')).toBeNull();
+
+    render(
+      <PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} hasDepthDelta />,
+    );
+    expect(screen.getAllByText('단별 잔량 증감').length).toBeGreaterThan(0);
+  });
+
+  it('단별 잔량 증감: ✕ 는 끄고, 눈은 숨김만 토글한다', () => {
+    useLivePageStore.setState({ depthDeltaEnabled: true });
+    render(
+      <PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} hasDepthDelta />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '단별 잔량 증감 표시 숨김/표시' }));
+    expect(useLivePageStore.getState().depthDeltaHidden).toBe(true);
+    expect(screen.getByText('단별 잔량 증감')).toBeInTheDocument(); // 숨김은 그리기만
+
+    fireEvent.click(screen.getByRole('button', { name: '단별 잔량 증감 지표 끄기' }));
+    expect(useLivePageStore.getState().depthDeltaEnabled).toBe(false);
+  });
+
+  it('단별 잔량 증감: D 봉에서는 데이터가 있어도 행이 없다', () => {
+    useLivePageStore.setState({ depthDeltaEnabled: true });
+    render(
+      <PaneLegendOverlay chart={minutePanes()} timeframe="D" paneToggles={toggles} hasDepthDelta />,
+    );
+    expect(screen.queryByText('단별 잔량 증감')).toBeNull();
+  });
+
   it('renders no flag rows on D/W/M (minute-only overlays)', () => {
     useLivePageStore.setState({ askPeakEnabled: true, depthHeatmapEnabled: true });
     renderOverlay({ timeframe: 'D' });

@@ -22,6 +22,16 @@ export function formatPriceQty(price: number, qty: number): string {
   return `${Math.round(price).toLocaleString('ko-KR')}, ${formatQtyCompact(qty)}`;
 }
 
+/** "가격, +유입/-유출" — 단별 잔량 증감 레전드. net 이 아니라 gross 두 값을 함께 보인다:
+ *  들어온 만큼 빠진 가격(net 0)이 "아무 일도 없었음"으로 읽히지 않게 하기 위함. */
+export function formatPriceDelta(price: number, inQty: number, outQty: number): string {
+  const parts: string[] = [];
+  if (inQty > 0) parts.push(`+${formatQtyCompact(inQty)}`);
+  if (outQty > 0) parts.push(`-${formatQtyCompact(outQty)}`);
+  const flow = parts.length > 0 ? parts.join(' ') : '0';
+  return `${Math.round(price).toLocaleString('ko-KR')}, ${flow}`;
+}
+
 type DayPeakLike = {
   date: string;
   price: number | null;

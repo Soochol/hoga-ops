@@ -18,7 +18,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
-import { LiveChartRoot, shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay } from './LiveChartRoot';
+import { LiveChartRoot, shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay, shouldShowDepthDeltaOverlay } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { CandlestickSeries, createChartEx, LineSeries, TickMarkType } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
@@ -160,6 +160,17 @@ describe('LiveChartRoot', () => {
     expect(shouldShowDepthHeatmapOverlay('D', true, 5)).toBe(false);
     expect(shouldShowDepthHeatmapOverlay('W', true, 5)).toBe(false);
     expect(shouldShowDepthHeatmapOverlay('M', true, 5)).toBe(false);
+  });
+
+  it('depthDelta 게이트: 분봉 + enabled + 데이터 있을 때만', () => {
+    expect(shouldShowDepthDeltaOverlay('1m', true, 5)).toBe(true);
+    expect(shouldShowDepthDeltaOverlay('30m', true, 5)).toBe(true);
+    expect(shouldShowDepthDeltaOverlay('1m', false, 5)).toBe(false);
+    // 오늘 소스가 없는 뷰(과거일 전용·/study)는 pointCount 0 으로 자연히 닫힌다.
+    expect(shouldShowDepthDeltaOverlay('1m', true, 0)).toBe(false);
+    expect(shouldShowDepthDeltaOverlay('D', true, 5)).toBe(false);
+    expect(shouldShowDepthDeltaOverlay('W', true, 5)).toBe(false);
+    expect(shouldShowDepthDeltaOverlay('M', true, 5)).toBe(false);
   });
 
   it('creates moving-average overlays before candles when candles are always on top', async () => {

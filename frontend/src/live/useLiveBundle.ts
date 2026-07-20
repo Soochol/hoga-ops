@@ -22,6 +22,8 @@ import {
   type SourceName,
 } from '../api/types';
 import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
+import type { DepthDeltaPoint } from './depthDelta';
+import { mergeDepthDeltaSession } from './depthDeltaSession';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
 import { aggregateCandles, aggregateCalendar, calendarBucketKey } from './aggregateCandles';
@@ -266,6 +268,9 @@ export interface UseLiveBundleResult {
    * across the slower full sidecar range so those panes can paint from
    * `mode=hoga` without being re-keyed when volume-distribution sidecars land. */
   hogaBundle: RangeBundle | null;
+  /** 오늘의 단별 잔량 증감 버킷(분봉). 과거일 소스가 없는 **오늘 전용** 지표라
+   * RangeBundle 이 아니라 별도 필드로 나간다 — 자세한 근거는 `HogaSeries.depth_delta_today`. */
+  depthDeltaToday: readonly DepthDeltaPoint[];
   isLoading: boolean;
   error: unknown;
   clampEngaged: boolean;
@@ -856,10 +861,29 @@ export function useLiveBundle(
       quote_ratio: { bucket_ms: bucketMs, points: [] },
       fill_strength: { bucket_ms: bucketMs, points: [] },
       depth_heatmap_today: [],
+      depth_delta_today: [],
     }),
     [bucketMs],
   );
   const committedHogaSeries = holdHogaSeriesForColdCandles ? emptyHogaSeries : hogaSeries;
+
+  // 증감 세션 누적 — live.ob 가 15분 시간창이라 버킷터 출력만 쓰면 커버리지가 "오늘"이
+  // 아니라 "최근 15분"이 된다(depthDeltaSession 주석 참조). 종목·거래일·버킷 크기가
+  // 바뀌면 누적을 버린다. merge 는 멱등하고 무변화 시 같은 참조를 돌려주므로 렌더 중
+  // 호출이 안전하다.
+  const deltaSessionRef = useRef<{ key: string; points: readonly DepthDeltaPoint[] }>({
+    key: '',
+    points: [],
+  });
+  const deltaSessionKey = `${code ?? ''}|${todayKstYyyymmdd}|${bucketMs}`;
+  if (deltaSessionRef.current.key !== deltaSessionKey) {
+    deltaSessionRef.current = { key: deltaSessionKey, points: [] };
+  }
+  deltaSessionRef.current.points = mergeDepthDeltaSession(
+    deltaSessionRef.current.points,
+    committedHogaSeries.depth_delta_today,
+  );
+  const depthDeltaToday = deltaSessionRef.current.points;
 
   // Full bundle = stable chart side + live hoga overlay. Spreading chartBundle
   // shares its segments/candles refs, so the VirtualAxis stays single-build and
@@ -959,6 +983,9 @@ export function useLiveBundle(
     bundle,
     chartBundle,
     hogaBundle,
+    /** 오늘의 단별 잔량 증감 버킷(세션 누적). 과거일 소스가 없어(설계 §5) RangeBundle 에
+     *  싣지 않고 도메인 그대로 내보낸다 — wire 왕복도, 백엔드 플래그도 필요 없다. */
+    depthDeltaToday,
     isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading),
     error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? minuteDiskCandles.error ?? null,
     clampEngaged,

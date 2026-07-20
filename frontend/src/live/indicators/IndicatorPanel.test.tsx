@@ -28,7 +28,7 @@ describe('IndicatorPanel', () => {
     useChartPrefsStore.getState().setIndicatorModalTimeframe('1m');
   });
 
-  it('활성 13개 체크박스(비활성 0), 10호가·프로그램·거래원 지표 포함', () => {
+  it('활성 15개 체크박스(비활성 0), 10호가·프로그램·거래원 지표 포함', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -39,8 +39,8 @@ describe('IndicatorPanel', () => {
     });
     renderPanel();
     const checkboxes = screen.getAllByRole('checkbox');
-    // 상단 3 + 10호가 7(매도/매수 최대벽 병합) + 프로그램 1 + 거래원 3
-    expect(checkboxes).toHaveLength(14);
+    // 상단 3 + 10호가 8(매도/매수 최대벽 병합) + 프로그램 1 + 거래원 3
+    expect(checkboxes).toHaveLength(15);
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;

@@ -61,6 +61,7 @@ export type LegendFlagId =
   | 'bid-peak'
   | 'trade-volume-poc'
   | 'depth-heatmap'
+  | 'depth-delta'
   | 'broker-late-entry';
 
 /** One pre-formatted value cell of a flag row (values come from

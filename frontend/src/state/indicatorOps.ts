@@ -219,6 +219,22 @@ export const INDICATOR_OPS = {
       : clamp(patch.maxOpacity, 0.2, 1),
   }),
 
+  setDepthDeltaEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    (enabled
+      ? { depthDeltaEnabled: true, depthDeltaHidden: false }
+      : { depthDeltaEnabled: false }),
+  setDepthDeltaHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
+    ({ depthDeltaHidden: hidden }),
+  setDepthDeltaStyle: (cur: IndicatorSettings, patch: { inColor?: string; outColor?: string; maxOpacity?: number }): Patch => ({
+    depthDeltaInColor: patch.inColor ?? cur.depthDeltaInColor,
+    depthDeltaOutColor: patch.outColor ?? cur.depthDeltaOutColor,
+    // 코어서(0.2~1)와 슬라이더 min/max 와 **같은 범위**여야 한다 — tradeVolumePoc 의
+    // 0~1 을 복사해 오면 op 가 코어서가 거부하는 값을 만들어 저장 시 되돌아간다.
+    depthDeltaMaxOpacity: patch.maxOpacity === undefined
+      ? cur.depthDeltaMaxOpacity
+      : clamp(patch.maxOpacity, 0.2, 1),
+  }),
+
   setVolumeDistributionEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeDistributionEnabled: enabled }),
   setVolumeDistributionHoverCutoffEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>

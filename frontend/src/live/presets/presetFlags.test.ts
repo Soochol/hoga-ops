@@ -5,9 +5,10 @@ import {
 } from './presetFlags';
 
 describe('PRESET_INDICATOR_FLAG_KEYS', () => {
-  it('covers the 8 overlay enables + 7 pane toggles (15 enable keys)', () => {
-    expect(PRESET_INDICATOR_FLAG_KEYS).toHaveLength(15);
+  it('covers the 9 overlay enables + 7 pane toggles (16 enable keys)', () => {
+    expect(PRESET_INDICATOR_FLAG_KEYS).toHaveLength(16);
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('movingAverageEnabled');
+    expect(PRESET_INDICATOR_FLAG_KEYS).toContain('depthDeltaEnabled');
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('volumeEnabled');
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('foreignNetEnabled');
   });

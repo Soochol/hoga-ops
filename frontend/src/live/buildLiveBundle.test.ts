@@ -528,6 +528,183 @@ describe('createIncrementalHogaSeriesBuilder', () => {
     );
   });
 
+  // --- 단별 잔량 증감(depth_delta_today) ---
+  // 사다리는 고정 가격대(매도 200..209 / 매수 199..190)를 쓴다. 그래야 두 스냅샷의
+  // 가격 교집합이 10단 전부라 "증감"만 남고 창 이동 효과가 섞이지 않는다.
+  const askLadder = (top: number, qtys: readonly number[]) =>
+    qtys.map((qty, i) => ({ price: top + i, qty }));
+  const bidLadder = (top: number, qtys: readonly number[]) =>
+    qtys.map((qty, i) => ({ price: top - i, qty }));
+  const flat = (head: number) => [head, 10, 10, 10, 10, 10, 10, 10, 10, 10];
+  /** 최선호가 잔량만 바꾸는 연속북 틱 — 나머지 9단은 10 으로 고정(증감 0). */
+  const deltaOb = (t: number, askHead: number, bidHead: number, venue?: 'KRX' | 'NXT') => ({
+    t_ms: t,
+    total_ask_qty: askHead + 90,
+    total_bid_qty: bidHead + 90,
+    asks: askLadder(200, flat(askHead)),
+    bids: bidLadder(199, flat(bidHead)),
+    ...(venue ? { venue } : {}),
+  });
+
+  it('matches buildHogaSeries on depth_delta_today at every prefix', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      deltaOb(TODAY_OPEN + 1_000, 500, 400),
+      deltaOb(TODAY_OPEN + 11_000, 800, 300),
+      deltaOb(TODAY_OPEN + 21_000, 650, 300),
+      deltaOb(TODAY_OPEN + 71_000, 650, 900), // 다음 분봉 버킷
+    ];
+    for (let i = 0; i <= ob.length; i++) {
+      const input = { ...baseInput, sseOb: ob.slice(0, i), sseTrade: [] };
+      expect(buildIncremental(input)).toEqual(buildHogaSeries(input));
+    }
+  });
+
+  it('accumulates per-price inflow and outflow within a bucket, attributed to the later tick', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      deltaOb(TODAY_OPEN + 1_000, 500, 400), // baseline — 증감 없음
+      deltaOb(TODAY_OPEN + 11_000, 800, 300), // 매도 +300, 매수 -100
+      deltaOb(TODAY_OPEN + 21_000, 650, 300), // 매도 -150, 매수 0
+    ];
+    let out;
+    for (let i = 1; i <= ob.length; i++) {
+      out = buildIncremental({ ...baseInput, sseOb: ob.slice(0, i), sseTrade: [] });
+    }
+    // 첫 틱은 baseline 이라 기여 0 → 버킷은 하나(TODAY_OPEN), gross 는 상쇄되지 않는다.
+    expect(out!.depth_delta_today).toEqual([
+      {
+        tMs: TODAY_OPEN,
+        askDelta: [{ price: 200, inQty: 300, outQty: 150 }],
+        bidDelta: [{ price: 199, inQty: 0, outQty: 100 }],
+        askTick: 1, bidTick: 1,
+      },
+    ]);
+    expect(out!.depth_delta_today).toEqual(
+      buildHogaSeries({ ...baseInput, sseOb: ob, sseTrade: [] }).depth_delta_today,
+    );
+  });
+
+  it('drops a bucket whose book never changed (빈 컬럼)', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      deltaOb(TODAY_OPEN + 1_000, 500, 400),
+      deltaOb(TODAY_OPEN + 11_000, 500, 400), // 동일 북 → 증감 0
+    ];
+    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
+    expect(buildIncremental(input).depth_delta_today).toEqual([]);
+    expect(buildHogaSeries(input).depth_delta_today).toEqual([]);
+  });
+
+  it('breaks the diff chain across an auction tick instead of diffing over it', () => {
+    // 장중 VI 로 3호가 붕괴(ineligible)가 끼면, 그 앞뒤 연속북을 이어 diff 하지 않는다.
+    // 이어 붙이면 관측되지 않은 구간의 변화가 한 버킷에 통째로 찍힌다.
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      deltaOb(TODAY_OPEN + 1_000, 500, 400),
+      shapedOb(TODAY_OPEN + 11_000, 900, 800, true), // 동시호가/VI → 체인 차단
+      deltaOb(TODAY_OPEN + 21_000, 500_000, 400_000), // 거대한 갭이지만 증감 아님
+    ];
+    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
+    expect(buildIncremental(input).depth_delta_today).toEqual([]);
+    expect(buildHogaSeries(input).depth_delta_today).toEqual([]);
+  });
+
+  it('breaks the diff chain across a totals-only tick (book 관측 상실)', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      deltaOb(TODAY_OPEN + 1_000, 500, 400),
+      { t_ms: TODAY_OPEN + 11_000, total_ask_qty: 590, total_bid_qty: 490 },
+      deltaOb(TODAY_OPEN + 21_000, 500_000, 400_000),
+    ];
+    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
+    expect(buildIncremental(input).depth_delta_today).toEqual([]);
+    expect(buildHogaSeries(input).depth_delta_today).toEqual([]);
+  });
+
+  it('breaks the diff chain when the venue swaps (KRX↔NXT 는 별개 호가장)', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      deltaOb(TODAY_OPEN + 1_000, 500, 400, 'KRX'),
+      deltaOb(TODAY_OPEN + 11_000, 900, 800, 'NXT'), // 교차 diff 금지
+      deltaOb(TODAY_OPEN + 21_000, 950, 800, 'NXT'), // NXT 끼리는 정상 diff
+    ];
+    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
+    expect(buildIncremental(input).depth_delta_today).toEqual([
+      {
+        tMs: TODAY_OPEN,
+        askDelta: [{ price: 200, inQty: 50, outQty: 0 }],
+        bidDelta: [],
+        askTick: 1, bidTick: 1,
+      },
+    ]);
+    expect(buildIncremental(input).depth_delta_today).toEqual(
+      buildHogaSeries(input).depth_delta_today,
+    );
+  });
+
+  it('drops pre-open ticks from depth_delta_today (ADR-0062 v3 개장 하한)', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      deltaOb(TODAY_OPEN - 60_000, 500, 400), // 08:59 — baseline 조차 되지 못한다
+      deltaOb(TODAY_OPEN + 1_000, 900, 800),
+      deltaOb(TODAY_OPEN + 11_000, 950, 800),
+    ];
+    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
+    // 개장 후 두 틱 사이의 +50 만 남는다(개장 전 틱을 baseline 으로 쓰지 않는다).
+    expect(buildIncremental(input).depth_delta_today).toEqual([
+      { tMs: TODAY_OPEN, askDelta: [{ price: 200, inQty: 50, outQty: 0 }], bidDelta: [], askTick: 1, bidTick: 1 },
+    ]);
+    expect(buildIncremental(input).depth_delta_today).toEqual(
+      buildHogaSeries(input).depth_delta_today,
+    );
+  });
+
+  it('matches the oracle after the live buffer slides (baseline must not survive reset)', () => {
+    // reset() 이 prevDeltaBook 을 비우지 않으면, 잘려나간 앞 스냅샷과 diff 해
+    // 오라클이 결코 만들지 않는 유령 증감이 첫 버킷에 찍힌다.
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const full = [
+      deltaOb(TODAY_OPEN + 1_000, 500, 400),
+      deltaOb(TODAY_OPEN + 61_000, 900, 400),
+      deltaOb(TODAY_OPEN + 121_000, 100, 400),
+    ];
+    buildIncremental({ ...baseInput, sseOb: full.slice(0, 2), sseTrade: [] });
+
+    const input = { ...baseInput, sseOb: full.slice(1), sseTrade: [] };
+    expect(buildIncremental(input)).toEqual(buildHogaSeries(input));
+  });
+
+  it('matches the oracle when a later continuous book moves the auction boundary forward', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      deltaOb(TODAY_OPEN + 1_000, 500, 400),
+      shapedOb(TODAY_OPEN + 61_000, 900, 800, true),
+      deltaOb(TODAY_OPEN + 121_000, 700, 400),
+    ];
+    buildIncremental({ ...baseInput, sseOb: ob.slice(0, 2), sseTrade: [] });
+
+    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
+    expect(buildIncremental(input)).toEqual(buildHogaSeries(input));
+  });
+
+  it('preserves delta point identity for unchanged buckets across ticks', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      deltaOb(TODAY_OPEN + 1_000, 500, 400),
+      deltaOb(TODAY_OPEN + 11_000, 600, 400), // bucketA 에 증감 기록
+      deltaOb(TODAY_OPEN + 71_000, 700, 400), // bucketB 생성
+      deltaOb(TODAY_OPEN + 81_000, 900, 400), // bucketB 만 갱신
+    ];
+    const first = buildIncremental({ ...baseInput, sseOb: ob.slice(0, 3), sseTrade: [] });
+    const aBefore = first.depth_delta_today[0];
+    const bBefore = first.depth_delta_today[1];
+
+    const second = buildIncremental({ ...baseInput, sseOb: ob, sseTrade: [] });
+    expect(second.depth_delta_today[0]).toBe(aBefore);
+    expect(second.depth_delta_today[1]).not.toBe(bBefore);
+  });
+
   it('falls back safely when an appended snapshot arrives out of time order', () => {
     const buildIncremental = createIncrementalHogaSeriesBuilder();
     const ob = [

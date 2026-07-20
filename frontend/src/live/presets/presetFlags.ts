@@ -7,7 +7,7 @@ import {
  * 레이아웃 프리셋이 캡처/적용하는 지표 enable 키 화이트리스트 (ADR-0114 §4).
  * store 도 snapshot 도 이 leaf 를 import 한다(순환 회피 — 이 모듈은 store 를 모른다).
  *
- * 오버레이 enable 8종 + pane 토글 7종. PR-D(#699) 이후 프리셋 payload 는 이 15키를
+ * 오버레이 enable 9종 + pane 토글 7종. PR-D(#699) 이후 프리셋 payload 는 이 16키를
  * **봉별(minute/D/W/M) sparse 오버라이드**로 담는다(구 flat indicator_flags +
  * pane_prefs_by_timeframe 통합). flat 병합이 폐지돼(PR-A) 더 이상 flat 레이어를
  * 덮어쓸 필요가 없다 — 적용은 각 버킷의 enable 오버라이드를 통째 교체한다.
@@ -20,6 +20,7 @@ export const PRESET_INDICATOR_FLAG_KEYS = [
   'bidPeakEnabled',
   'tradeVolumePocEnabled',
   'depthHeatmapEnabled',
+  'depthDeltaEnabled',
   'brokerLateEntryEnabled',
   'volumeDistributionEnabled',
   // pane 토글

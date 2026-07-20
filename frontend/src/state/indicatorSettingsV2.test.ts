@@ -31,6 +31,7 @@ describe('FACTORY_INDICATOR_SETTINGS', () => {
     expect(f.askPeakEnabled).toBe(false);
     expect(f.bidPeakEnabled).toBe(false);
     expect(f.depthHeatmapEnabled).toBe(false);
+    expect(f.depthDeltaEnabled).toBe(false);
     expect(f.brokerLateEntryEnabled).toBe(false);
     expect(f.dailyMovingAverageEnabled).toBe(false);
     expect(f.foreignNetEnabled).toBe(false);

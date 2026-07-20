@@ -26,6 +26,14 @@ import {
 } from './liveDateTime';
 import { quoteImbalance } from '../util/imbalance';
 import type { DepthHeatmapPoint } from './depthHeatmapWire';
+import {
+  foldLevelDiff,
+  ladderTick,
+  makeDeltaPoint,
+  sameDeltaChain,
+  type DeltaAcc,
+  type DepthDeltaPoint,
+} from './depthDelta';
 
 /** /live never mounts VolumeProfileOverlay; the bundle ships an empty profile
  * that satisfies the RangeBundle type without claiming any data. */
@@ -79,6 +87,15 @@ export interface HogaSeries {
    * contribute nothing. Past-date depth lives on `RangeBundle.depth_heatmap`;
    * the bundle merge (Task 6) stitches the two. */
   depth_heatmap_today: DepthHeatmapPoint[];
+  /** 오늘의 단별 잔량 증감 버킷 — 연속된 두 호가 스냅샷을 가격 교집합으로 diff 해
+   * 분봉 버킷마다 가격별 유입/유출을 합산한 것. 히트맵이 "얼마나 쌓여 있나"(상태)라면
+   * 이쪽은 "언제 얼마나 들어오고 빠졌나"(흐름)다.
+   *
+   * v1 은 **오늘 전용**이다: 과거일 `RangeBundle.depth_heatmap` 은 분봉당 close/max
+   * 스냅샷만 있어 분 내부 증감이 이미 소실됐고, close-to-close 근사는 오늘과 정밀도가
+   * 달라 같은 지표로 보이면 오독을 부른다. 과거일은 백엔드가 캡처 원본에서 집계해
+   * 서빙하는 후속 작업(설계 §5a)으로 미룬다 — 그래서 wire 왕복도 없다. */
+  depth_delta_today: DepthDeltaPoint[];
 }
 
 interface PastHogaSeries {
@@ -146,6 +163,7 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
     quote_ratio: { bucket_ms: bucketMs, points: [...validPastQR, ...incrementalQR] },
     fill_strength: { bucket_ms: bucketMs, points: [...validPastFS, ...incrementalFS] },
     depth_heatmap_today: bucketDepthHeatmap(sseOb, bucketMs, todaySession.close_ms),
+    depth_delta_today: bucketDepthDelta(sseOb, bucketMs, todaySession.close_ms),
   };
 }
 
@@ -196,6 +214,76 @@ export function bucketDepthHeatmap(
   });
 }
 
+/** One-shot depth-DELTA bucketing — the stateless oracle mirrored by
+ * `IncrementalHogaBucketer`'s per-tick fold. Walks the snapshots in time order
+ * keeping a single `prev` baseline and folds each consecutive pair's per-price
+ * change into the bucket of the LATER tick (변화가 관측된 시각).
+ *
+ * The eligibility gate is byte-identical to `bucketDepthHeatmap`'s, but the
+ * treatment of a rejected tick differs in a load-bearing way: instead of merely
+ * skipping it, a rejected tick **drops the baseline** (`prev = null`). Diffing
+ * across an excluded stretch (개장/종가 동시호가, 장중 VI 붕괴, book 없는
+ * totals-only 틱) would attribute an unbounded, unobserved interval of change to
+ * a single bucket — and the 10단 관측창이 그 사이 크게 미끄러졌을 가능성이 높아
+ * 교집합 규칙만으로는 아티팩트를 막지 못한다. Venue 전환(KRX↔NXT)도 같은 이유로
+ * 체인을 끊는다(별개 호가장).
+ *
+ * 빈 버킷(폴드는 했지만 증감이 전부 0)은 방출하지 않는다 — depth 경로의 "배제 버킷 =
+ * 빈 컬럼" 정책과 같고, 증분 미러도 `makeDeltaPoint` 의 null 로 같은 결정을 내린다. */
+export function bucketDepthDelta(
+  ob: readonly ObSnapshot[],
+  bucketMs: number,
+  sessionCloseMs: number = Number.POSITIVE_INFINITY,
+): DepthDeltaPoint[] {
+  const obSorted = [...ob].sort((a, b) => a.t_ms - b.t_ms);
+  let lastContinuousMs = Number.NEGATIVE_INFINITY;
+  for (const s of obSorted) {
+    if (s.t_ms <= sessionCloseMs && isContinuousBook(s)) lastContinuousMs = s.t_ms;
+  }
+  if (lastContinuousMs === Number.NEGATIVE_INFINITY) lastContinuousMs = Number.POSITIVE_INFINITY;
+
+  const byBucket = new Map<number, { ask: DeltaAcc; bid: DeltaAcc; askTick: number; bidTick: number }>();
+  const order: number[] = [];
+  let prev: ObSnapshot | null = null;
+  for (const s of obSorted) {
+    if (s.t_ms > lastContinuousMs || !isIndicatorEligibleBook(s) || !s.asks || !s.bids) {
+      prev = null;
+      continue;
+    }
+    if (prev?.asks && prev.bids && sameDeltaChain(prev, s)) {
+      const t = bucketStartMs(s.t_ms, bucketMs);
+      let accs = byBucket.get(t);
+      if (!accs) {
+        accs = {
+          ask: new Map(),
+          bid: new Map(),
+          askTick: Number.POSITIVE_INFINITY,
+          bidTick: Number.POSITIVE_INFINITY,
+        };
+        byBucket.set(t, accs);
+        order.push(t);
+      }
+      foldLevelDiff(prev.asks, s.asks, accs.ask);
+      foldLevelDiff(prev.bids, s.bids, accs.bid);
+      // 마지막으로 **관측된** 틱을 쓴다(최솟값 고착 금지). 사다리가 잠시 퇴화해
+      // 틱을 못 구한 틱(Infinity)은 앞서 구한 값을 지운다는 뜻이 아니므로 건너뛴다.
+      const at = ladderTick(s.asks);
+      if (Number.isFinite(at)) accs.askTick = at;
+      const bt = ladderTick(s.bids);
+      if (Number.isFinite(bt)) accs.bidTick = bt;
+    }
+    prev = s;
+  }
+
+  const out: DepthDeltaPoint[] = [];
+  for (const t of order) {
+    const accs = byBucket.get(t)!;
+    const point = makeDeltaPoint(t, accs.ask, accs.bid, accs.askTick, accs.bidTick);
+    if (point) out.push(point);
+  }
+  return out;
+}
+
 function isOrderedByTime<T extends { t_ms: number }>(items: readonly T[]): boolean {
   for (let i = 1; i < items.length; i++) {
     if (items[i - 1].t_ms > items[i].t_ms) return false;
@@ -229,6 +317,15 @@ class IncrementalHogaBucketer {
   // 배열을 in-place mutate 하면 이 불변식이 깨진다 — 항상 새 point 로 교체할 것.
   private depthByBucket = new Map<number, { point: DepthHeatmapPoint; maxTotal: number }>();
   private depthOrder: number[] = [];
+  // 증감(delta) 상태. 누적기(ask/bid)는 point 의 **형제**로 둔다 — point 안에 넣고
+  // in-place 로 더하면 위의 참조 안정 불변식이 깨진다. `point: null` 은 "아직 0 이 아닌
+  // 증감이 없는 버킷"이며 방출에서 제외된다(오라클의 빈 버킷 드롭과 대응).
+  private deltaByBucket = new Map<number, { ask: DeltaAcc; bid: DeltaAcc; askTick: number; bidTick: number; point: DepthDeltaPoint | null }>();
+  private deltaOrder: number[] = [];
+  // 틱 간 baseline. ⚠️ reset() 에서 반드시 null 로 되돌려야 한다 — 안 그러면 슬라이딩
+  // 윈도우가 앞을 잘라낸 뒤 rebuild 할 때, **현재 배열에 없는** 스냅샷과 diff 해서
+  // 오라클이 결코 만들지 않는 유령 증감이 첫 버킷에 찍힌다(패리티 계약 위반).
+  private prevDeltaBook: ObSnapshot | null = null;
 
   update(
     ob: readonly ObSnapshot[],
@@ -239,6 +336,7 @@ class IncrementalHogaBucketer {
     quoteRatioPoints: QuoteRatioPoint[];
     fillStrengthPoints: FillStrengthPoint[];
     depthHeatmapToday: DepthHeatmapPoint[];
+    depthDeltaToday: DepthDeltaPoint[];
   } {
     if (
       this.bucketMs !== bucketMs ||
@@ -297,6 +395,10 @@ class IncrementalHogaBucketer {
     this.fillOrder = [];
     this.depthByBucket = new Map();
     this.depthOrder = [];
+    this.deltaByBucket = new Map();
+    this.deltaOrder = [];
+    // load-bearing: rebuild 은 "현재 배열만" 보고 오라클과 같은 답을 내야 한다.
+    this.prevDeltaBook = null;
   }
 
   private canAppendOb(ob: readonly ObSnapshot[]): boolean {
@@ -364,6 +466,11 @@ class IncrementalHogaBucketer {
       // 공용 술어 isIndicatorEligibleBook(구조 + 개장 09:00 하한)을 요구해 장중 VI
       // 붕괴책과 개장 동시호가를 대표선정에서 배제한다(parity 계약 유지). 배제 버킷은
       // 아래 else의 0-센티넬로 방출. depth 래칫은 이 게이트 안쪽이라 개장전 자동 드롭.
+      const deltaEligible = s.t_ms <= threshold && isIndicatorEligibleBook(s) && !!s.asks && !!s.bids;
+      // 증감 체인 차단 — bucketDepthDelta 의 `prev = null; continue;` 와 **같은 조건**을
+      // 한 곳에 모은다. 배제 구간(동시호가·VI·개장전)이나 book 없는 totals-only 틱을
+      // 가로지르는 diff 는 관측되지 않은 구간의 변화를 한 버킷에 몰아넣기 때문이다.
+      if (!deltaEligible) this.prevDeltaBook = null;
       if (s.t_ms <= threshold && isIndicatorEligibleBook(s)) {
         const prev = this.quoteByBucket.get(t);
         const bid_max = Math.max(prev?.bid_max ?? 0, s.total_bid_qty);
@@ -409,6 +516,9 @@ class IncrementalHogaBucketer {
               bidsMax: keepMax ? prevD.point.bidsMax : s.bids,
             },
           });
+          // 증감 폴드 — bucketDepthDelta 를 미러한다. 직전 eligible book 과의 가격
+          // 교집합 diff 를 이 틱의 버킷에 누적한다.
+          this.foldDelta(t, s);
         }
       } else if (!this.seenPre.has(t) && !this.quoteByBucket.has(t)) {
         this.quoteOrder.push(t);
@@ -425,6 +535,42 @@ class IncrementalHogaBucketer {
       this.maxProcessedObT = this.maxProcessedObT === null ? s.t_ms : Math.max(this.maxProcessedObT, s.t_ms);
     }
     return true;
+  }
+
+  /** 직전 eligible book 대비 증감을 버킷 `t` 에 누적하고 baseline 을 `s` 로 옮긴다.
+   *  호출 전에 `s.asks`/`s.bids` 존재와 eligibility 가 보장돼야 한다(호출부 게이트). */
+  private foldDelta(t: number, s: ObSnapshot) {
+    const prev = this.prevDeltaBook;
+    this.prevDeltaBook = s;
+    // baseline 이 없거나(체인 시작) 거래소가 바뀌었으면 이 틱은 기준만 세우고 끝.
+    if (!prev?.asks || !prev.bids || !sameDeltaChain(prev, s)) return;
+    let entry = this.deltaByBucket.get(t);
+    if (!entry) {
+      entry = {
+        ask: new Map(),
+        bid: new Map(),
+        askTick: Number.POSITIVE_INFINITY,
+        bidTick: Number.POSITIVE_INFINITY,
+        point: null,
+      };
+      this.deltaByBucket.set(t, entry);
+      this.deltaOrder.push(t);
+    }
+    // 두 fold 는 **둘 다** 실행해야 한다 — `||` 로 단축평가하면 매도만 변한 틱에서
+    // 매수 누적이 통째로 유실된다.
+    const askFolded = foldLevelDiff(prev.asks, s.asks!, entry.ask);
+    const bidFolded = foldLevelDiff(prev.bids, s.bids!, entry.bid);
+    const prevAskTick = entry.askTick;
+    const prevBidTick = entry.bidTick;
+    const at = ladderTick(s.asks!);
+    if (Number.isFinite(at)) entry.askTick = at;
+    const bt = ladderTick(s.bids!);
+    if (Number.isFinite(bt)) entry.bidTick = bt;
+    // 내용이 안 바뀌었으면 point 를 재생성하지 않는다 — 참조 안정 불변식.
+    // (틱이 바뀌면 셀 높이가 달라지므로 그때도 재생성해야 오라클과 일치한다.)
+    const tickChanged = entry.askTick !== prevAskTick || entry.bidTick !== prevBidTick;
+    if (!askFolded && !bidFolded && !tickChanged) return;
+    entry.point = makeDeltaPoint(t, entry.ask, entry.bid, entry.askTick, entry.bidTick);
   }
 
   private appendTrade(trades: readonly TradeSnapshot[]) {
@@ -450,6 +596,10 @@ class IncrementalHogaBucketer {
       fillStrengthPoints: this.fillOrder.map((t) => ({ ...this.fillByBucket.get(t)! })),
       // 갱신 안 된 버킷은 저장된 point 를 그대로 반환 → 참조 안정(틱당 재할당 = 변경 버킷뿐).
       depthHeatmapToday: this.depthOrder.map((t) => this.depthByBucket.get(t)!.point),
+      // point===null = 폴드는 했지만 증감이 전부 0 인 버킷 → 오라클과 같이 방출 제외.
+      depthDeltaToday: this.deltaOrder
+        .map((t) => this.deltaByBucket.get(t)!.point)
+        .filter((p): p is DepthDeltaPoint => p !== null),
     };
   }
 }
@@ -483,6 +633,9 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
       quote_ratio: { bucket_ms: bucketMs, points: [...cachedPastQR, ...incrementalQR] },
       fill_strength: { bucket_ms: bucketMs, points: [...cachedPastFS, ...incrementalFS] },
       depth_heatmap_today: sseBuckets.depthHeatmapToday,
+      // depth 와 같이 pastMax 필터를 걸지 않는다 — 증감은 과거일 소스가 없어(오늘 전용)
+      // 겹칠 상대가 아예 없다.
+      depth_delta_today: sseBuckets.depthDeltaToday,
     };
   };
 }
