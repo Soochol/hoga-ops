@@ -76,6 +76,8 @@ def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | N
             return _parse_orderbook(code, values, date=date, venue=venue)
         if typ == K.TYPE_TRADE:
             return _parse_trade(code, values, date=date, venue=venue)
+        if typ == K.TYPE_MEMBER:
+            return _parse_member(code, values, now_ms=now_ms, venue=venue)
     except (ValueError, KeyError):
         # 숫자 불량/필드 부재는 프레임 1건 손실로 격리 — recv 루프까지 전파 금지.
         _log.warning("live.kiwoom.bad_field type=%s code=%s", typ, code)
@@ -154,6 +156,47 @@ def _parse_trade(
     return WsTick(
         code=code, t_ms=t_ms, kind=SnapshotKind.TRADE, payload=payload, venue=venue,
     )
+
+
+def _parse_member(
+    code: str, values: dict[str, str], *, now_ms: int, venue: str
+) -> WsTick:
+    """0F 주식당일거래원 → SnapshotKind.BROKER.
+
+    payload 는 ADR-0111 REST 합성 경로(rest_buffer_build.brokers_to_snapshot)와
+    shape-compat: {code, t_ms, sell_top[{name,qty}], buy_top[{name,qty}]}.
+    phase/venue 는 stream.on_tick 이 덧붙이므로 파서는 싣지 않는다(0B/0D 와 동일).
+
+    0F 프레임에는 시각 FID 가 없어 t_ms=now_ms(수신 시각) — REST 합성 경로가
+    KisBrokers 에 t_ms 가 없어 수신 시각을 쓰던 것과 같은 규약이다.
+    """
+    payload = {
+        "code": code,
+        "t_ms": now_ms,
+        "sell_top": _member_top(values, K.MEM_SELL_NAME, K.MEM_SELL_QTY),
+        "buy_top": _member_top(values, K.MEM_BUY_NAME, K.MEM_BUY_QTY),
+    }
+    return WsTick(
+        code=code, t_ms=now_ms, kind=SnapshotKind.BROKER, payload=payload, venue=venue,
+    )
+
+
+def _member_top(
+    values: dict[str, str], name_fids: list[str], qty_fids: list[str]
+) -> list[dict[str, Any]]:
+    """이름/수량 FID 5쌍 → 상위 거래원 목록. 빈 슬롯(이름 공백)은 건너뛴다.
+
+    이름은 내부 공백이 유의미한 한글 텍스트("삼  성")라 양끝만 strip 한다.
+    KIS REST 의 sell_top/buy_top 도 상위 5 미만이면 자연히 짧은 리스트였으므로,
+    빈 슬롯 스킵이 소비자 관점에서 같은 의미다.
+    """
+    top: list[dict[str, Any]] = []
+    for name_fid, qty_fid in zip(name_fids, qty_fids, strict=True):
+        name = values.get(name_fid, "").strip()
+        if not name:
+            continue
+        top.append({"name": name, "qty": _qty(values, qty_fid)})
+    return top
 
 
 def _prev_close(price: int, delta: int | None) -> int | None:

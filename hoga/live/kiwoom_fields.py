@@ -6,15 +6,15 @@ FID 인덱스가 키움 쪽에서 바뀌면 여기 한 곳만 고친다. 파서(
 이 상수로 WsTick payload를 만든다 — KIS ws_frames 계약 키를 **전부 보존**하되,
 키움만 주는 필드는 additive 로 덧붙인다(포트 계약; kiwoom_frames 헤더 참조).
 
-거래원(0F)·프로그램매매(0w)는 PR-4에서 추가(정규장 스모크로 payload 확정 후).
+프로그램매매(0w)는 수급 FID(202~213) 의미 확정 후 추가(플랜 2026-07-20 §PR-F3).
 """
 from __future__ import annotations
 
 # 실시간 타입 코드 (키움 REAL row의 "type").
 TYPE_TRADE = "0B"  # 주식체결 → SnapshotKind.TRADE
 TYPE_ORDERBOOK = "0D"  # 주식호가잔량 → SnapshotKind.OB
-TYPE_MEMBER = "0F"  # 주식당일거래원 → BROKER (PR-4)
-TYPE_PROGRAM = "0w"  # 종목프로그램매매 (PR-4)
+TYPE_MEMBER = "0F"  # 주식당일거래원 → SnapshotKind.BROKER
+TYPE_PROGRAM = "0w"  # 종목프로그램매매 (수급 FID 확정 후 — 플랜 2026-07-20 §PR-F3)
 
 # --- 0D 주식호가잔량 FID ---
 # 실측 확인(2026-07-16): 41-50 매도호가 오름차순(best=41), 51-60 매수호가 내림차순(best=51),
@@ -49,6 +49,19 @@ CNT_DELTA = "11"  # 전일대비(원), 부호=등락방향
 CNT_OPEN = "16"
 CNT_HIGH = "17"
 CNT_LOW = "18"
+
+# --- 0F 주식당일거래원 FID ---
+# 실측 확정(2026-07-20 T2 채록, docs/research/2026-07-20-kiwoom-0f-0w-t2-capture.md):
+# 5쌍 구조 — 이름 141-145(매도)/151-155(매수), 당일 누적수량 161-165/171-175.
+# 이름은 한글 텍스트로 내부 공백이 유의미하다("삼  성") — 양끝만 strip.
+# 시각 FID 가 없어 t_ms 는 수신 시각(now_ms)을 쓴다(ADR-0111 REST 합성 경로와 동일 규약).
+# 미소비: 146-160(회원사코드)·166-180(증감)·261-268(외국계 합 추정)·271-285(외국계,
+# 국내사는 "!!!!" 센티넬)·337(갱신구분 추정) — 의미 미확정이거나 표시 요구 없음
+# (플랜 2026-07-20 §PR-F1: BROKER 계약 shape-compat 최소만).
+MEM_SELL_NAME = [str(f) for f in range(141, 146)]  # 매도 거래원 이름 1~5위
+MEM_BUY_NAME = [str(f) for f in range(151, 156)]  # 매수 거래원 이름 1~5위
+MEM_SELL_QTY = [str(f) for f in range(161, 166)]  # 매도 누적수량 1~5위
+MEM_BUY_QTY = [str(f) for f in range(171, 176)]  # 매수 누적수량 1~5위
 
 # 구독 코드 venue 접미 → venue 태그. 키움은 0D payload에 거래소 필드가 없어(0B엔 9081
 # 있음) 호가 venue를 **구독한 코드 접미**로 부여한다(실측 2026-07-16). _NX=NXT 확정.

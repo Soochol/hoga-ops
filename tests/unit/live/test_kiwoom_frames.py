@@ -3,10 +3,25 @@
 합성이 아니라 실제 수신 프레임이라 "파서와 같은 상수로 생성한 동어반복"(ws_frames
 테스트의 자인된 약점)이 아니다. 포트 계약(KIS ws_frames와 payload byte 동일)을
 parity 테스트로 고정한다.
+
+0F(주식당일거래원)는 2026-07-20 T2 채록 골든 파일에서 로드한다 — 57 FID 라
+하드코딩 대신 파일 참조(tests/fixtures/kiwoom_t2/).
 """
+import json
+from pathlib import Path
+
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.live.kiwoom_frames import parse_real_message, parse_real_row
 from hoga.live.snapshot import SnapshotKind
+
+_T2_GOLDEN = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures" / "kiwoom_t2" / "golden_frames_20260720.json"
+)
+
+
+def _t2_frames(typ: str) -> list[dict]:
+    return [f for f in json.loads(_T2_GOLDEN.read_text()) if f.get("type") == typ]
 
 DATE = "20260716"
 
@@ -149,6 +164,61 @@ def test_trade_payload_keys_match_kis():
     assert set(kiwoom.payload) - _KIS_TRADE_PAYLOAD_KEYS <= _KIWOOM_TRADE_EXTRA_KEYS
     # 체결 레코드 자체는 KIS 와 완전 동일 — 확장은 payload 최상위에만 붙인다.
     assert set(kiwoom.payload["trades"][0]) == _KIS_TRADE_RECORD_KEYS
+
+
+# ── 0F 주식당일거래원 → BROKER (PR-F1) ──
+
+# ADR-0111 REST 합성 경로(rest_buffer_build.brokers_to_snapshot)의 payload 키.
+# phase/venue 는 stream.on_tick 이 덧붙이므로 파서 출력에는 없어야 한다.
+_BROKER_PAYLOAD_KEYS = {"code", "t_ms", "sell_top", "buy_top"}
+_BROKER_ENTRY_KEYS = {"name", "qty"}
+
+
+def test_member_parses_t2_golden_frame():
+    """실채록 0F(000660) — 5쌍 전부 파싱, 이름 내부 공백 보존, t_ms=now_ms."""
+    frame = next(f for f in _t2_frames("0F") if f["item"] == "000660")
+    t = parse_real_row(frame, date="20260720", now_ms=1784521985000)
+    assert t is not None
+    assert t.kind is SnapshotKind.BROKER
+    assert t.code == "000660"
+    assert t.t_ms == 1784521985000  # 시각 FID 부재 → 수신 시각
+    assert t.payload["t_ms"] == 1784521985000
+    assert len(t.payload["sell_top"]) == 5
+    assert len(t.payload["buy_top"]) == 5
+    assert t.payload["sell_top"][0] == {"name": "KB증권", "qty": 271775}
+    assert t.payload["buy_top"][0] == {"name": "키움증권", "qty": 236731}
+    # 내부 공백은 유의미("삼  성") — 양끝만 strip 됐는지.
+    assert {"name": "삼  성", "qty": 229485} in t.payload["sell_top"]
+
+
+def test_member_all_t2_frames_parse():
+    """채록 0F 5건 전부 — 파싱 실패·빈 top 없이 통과해야 한다."""
+    for frame in _t2_frames("0F"):
+        t = parse_real_row(frame, date="20260720", now_ms=1)
+        assert t is not None, frame["item"]
+        assert t.payload["sell_top"] and t.payload["buy_top"]
+
+
+def test_member_payload_keys_match_rest_synthesis():
+    """포트 계약: REST 합성 경로와 shape-compat — 소비자(버퍼·거래원 카드) 무변경."""
+    frame = _t2_frames("0F")[0]
+    t = parse_real_row(frame, date="20260720", now_ms=1)
+    assert t is not None
+    assert set(t.payload) == _BROKER_PAYLOAD_KEYS
+    for entry in [*t.payload["sell_top"], *t.payload["buy_top"]]:
+        assert set(entry) == _BROKER_ENTRY_KEYS
+
+
+def test_member_skips_empty_slots():
+    """상위 5 미만(이름 공백/부재) 슬롯은 건너뛴다 — KIS 의 짧은 리스트와 동의미."""
+    frame = _t2_frames("0F")[0]
+    values = dict(frame["values"])
+    values["145"] = "  "  # 매도 5위 이름 공백
+    del values["144"]  # 매도 4위 이름 부재
+    t = parse_real_row({**frame, "values": values}, date="20260720", now_ms=1)
+    assert t is not None
+    assert len(t.payload["sell_top"]) == 3
+    assert len(t.payload["buy_top"]) == 5  # 매수 쪽은 영향 없음
 
 
 # ── FID 11(전일대비) → 전일종가 유도 ──
