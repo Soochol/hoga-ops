@@ -643,6 +643,31 @@ describe('createIncrementalHogaSeriesBuilder', () => {
     );
   });
 
+  it('세션 마감 뒤 틱만 있으면 증감을 방출하지 않는다 (KRX 차트 × NXT 애프터마켓)', () => {
+    // 실제 재현(2026-07-20 19:00): KRX 차트(마감 15:30)를 보는데 15분 SSE 버퍼가 통째로
+    // NXT 애프터마켓 틱이면, 히트맵식 +Infinity 폴백은 19:00 버킷을 만들어낸다. 그 버킷은
+    // 차트 가상축에 자리가 없어 그려지지 않는데 레전드에는 값이 찍히는 유령 상태가 된다.
+    const AFTER = TODAY_CLOSE + 3.5 * 3600_000; // 19:00 KST
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [shapedOb(AFTER, 100, 100, false), shapedOb(AFTER + 1000, 600, 100, false)];
+    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
+    expect(buildHogaSeries(input).depth_delta_today).toEqual([]);
+    expect(buildIncremental(input)).toEqual(buildHogaSeries(input)); // 오라클 파리티
+  });
+
+  it('통합(UN) 세션처럼 마감이 늦으면 같은 틱이 살아난다', () => {
+    // 같은 19:00 틱이라도 세션 상한이 20:00 이면(통합 venue) 축에 자리가 있으므로 방출한다.
+    const AFTER = TODAY_CLOSE + 3.5 * 3600_000;
+    const UN_SESSION = { open_ms: TODAY_OPEN, close_ms: TODAY_OPEN + 11 * 3600_000 }; // 20:00
+    const ob = [shapedOb(AFTER, 100, 100, false), shapedOb(AFTER + 1000, 600, 100, false)];
+    const out = buildHogaSeries({
+      ...baseInput, todaySession: UN_SESSION, sseOb: ob, sseTrade: [],
+    }).depth_delta_today;
+    expect(out.length).toBe(1);
+    // contLvls 는 10단 전부 같은 qty → 각 가격이 +500.
+    expect(out[0].askDelta.every((l) => l.inQty === 500 && l.outQty === 0)).toBe(true);
+  });
+
   it('drops pre-open ticks from depth_delta_today (ADR-0062 v3 개장 하한)', () => {
     const buildIncremental = createIncrementalHogaSeriesBuilder();
     const ob = [

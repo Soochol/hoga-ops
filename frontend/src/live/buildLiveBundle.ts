@@ -240,7 +240,14 @@ export function bucketDepthDelta(
   for (const s of obSorted) {
     if (s.t_ms <= sessionCloseMs && isContinuousBook(s)) lastContinuousMs = s.t_ms;
   }
-  if (lastContinuousMs === Number.NEGATIVE_INFINITY) lastContinuousMs = Number.POSITIVE_INFINITY;
+  // 경계를 못 찾았으면 히트맵처럼 +Infinity 로 **열지 않는다**. 버퍼가 통째로 세션 마감
+  // 뒤인 상황(KRX 차트로 NXT 애프터마켓을 보는 경우 — 15분 창이 전부 15:30 이후)이 정확히
+  // 그 경우인데, 열어 주면 19:00 같은 세션 밖 시각에 버킷이 생긴다. 그런 버킷은 차트
+  // 가상축에 자리가 없어 **그려지지 않으면서 레전드에는 값이 찍히는** 유령 상태를 만든다
+  // (증감은 과거일 소스가 없어 이 버퍼가 유일한 입력이라 출력 전체가 유령이 된다).
+  // 세션 상한으로 닫으면 KRX 차트에서는 조용히 비고(레전드 행도 hasDepthDelta 로 사라짐),
+  // 통합(UN) 차트에서는 세션이 20:00 까지라 NXT 시간대가 그대로 살아난다.
+  if (lastContinuousMs === Number.NEGATIVE_INFINITY) lastContinuousMs = sessionCloseMs;
 
   const byBucket = new Map<number, { ask: DeltaAcc; bid: DeltaAcc; askTick: number; bidTick: number }>();
   const order: number[] = [];
@@ -460,13 +467,17 @@ class IncrementalHogaBucketer {
 
     this.continuousBoundaryMs = nextBoundary;
     const threshold = this.continuousBoundaryMs ?? Number.POSITIVE_INFINITY;
+    // 증감 전용 상한 — 히트맵(threshold)과 갈라지는 유일한 지점. 경계를 못 찾았을 때
+    // 히트맵은 +Infinity 로 열지만 증감은 세션 마감으로 닫는다(bucketDepthDelta 의 같은
+    // 분기 주석 참조: 버퍼가 통째로 마감 뒤면 세션 밖 유령 버킷만 나온다).
+    const deltaThreshold = this.continuousBoundaryMs ?? this.sessionCloseMs;
     for (const s of obs) {
       const t = bucketStartMs(s.t_ms, this.bucketMs);
       // ADR-0062 v2/v3 (동시호가 배제 통일): bucketHogaSeries와 동일하게 시간 상한 +
       // 공용 술어 isIndicatorEligibleBook(구조 + 개장 09:00 하한)을 요구해 장중 VI
       // 붕괴책과 개장 동시호가를 대표선정에서 배제한다(parity 계약 유지). 배제 버킷은
       // 아래 else의 0-센티넬로 방출. depth 래칫은 이 게이트 안쪽이라 개장전 자동 드롭.
-      const deltaEligible = s.t_ms <= threshold && isIndicatorEligibleBook(s) && !!s.asks && !!s.bids;
+      const deltaEligible = s.t_ms <= deltaThreshold && isIndicatorEligibleBook(s) && !!s.asks && !!s.bids;
       // 증감 체인 차단 — bucketDepthDelta 의 `prev = null; continue;` 와 **같은 조건**을
       // 한 곳에 모은다. 배제 구간(동시호가·VI·개장전)이나 book 없는 totals-only 틱을
       // 가로지르는 diff 는 관측되지 않은 구간의 변화를 한 버킷에 몰아넣기 때문이다.
