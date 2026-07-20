@@ -164,14 +164,14 @@ async def test_status_empty_when_idle():
     assert st["accounts"] == []
 
 
-async def test_broker_dispatch_streams_excludes_dead_conns():
+async def test_capture_streams_excludes_dead_conns():
     """PR-D: 거래원 합성 틱 브로드캐스트 대상 = 살아있는 conn의 stream(죽은 conn 제외 —
     active_codes 규율과 동일, 유령 저장 방지)."""
     mgr, _ = _fake_manager()
     await mgr.sync(tuple(f"{i:06d}" for i in range(250)), n_accounts=4)  # 계정 0,1
-    assert mgr.broker_dispatch_streams() == [mgr._conns[0].stream, mgr._conns[1].stream]
+    assert mgr.capture_streams() == [mgr._conns[0].stream, mgr._conns[1].stream]
     mgr._conns[1].client.kicked_by_peer = True  # 계정 1 킥 정지
-    assert mgr.broker_dispatch_streams() == [mgr._conns[0].stream]  # 1 제외
+    assert mgr.capture_streams() == [mgr._conns[0].stream]  # 1 제외
     await mgr.stop()
 
 

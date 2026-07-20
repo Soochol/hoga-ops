@@ -380,7 +380,7 @@ async def test_promote_writes_fills_parquet_only_when_fill_lines_exist(tmp_path:
 
 
 @pytest.mark.asyncio
-async def test_promote_today_persists_price_grouped_trades_for_distribution(
+async def test_promote_kiwoom_today_persists_price_grouped_trades_for_distribution(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Today Promotion must preserve price-level trades for today's 매물대.
@@ -388,6 +388,8 @@ async def test_promote_today_persists_price_grouped_trades_for_distribution(
     fills.parquet is enough for FillStrength, but Continuous Trade Volume
     Distribution needs trades.parquet with price/qty/side. This guards the
     live WS path from silently degrading back to "fills only".
+    (원판은 KIS promote_today 대상이었으나 그 경로가 삭제되며 유일한 today
+    promotion 인 promote_kiwoom_today 로 이식 — 같은 _parse_jsonl_records 공유.)
     """
     from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live import promote as promote_mod
@@ -396,7 +398,7 @@ async def test_promote_today_persists_price_grouped_trades_for_distribution(
     code = "005930"
     monkeypatch.setattr(promote_mod, "_today_kst_yyyymmdd", lambda: date)
 
-    jsonl_path = tmp_path / "live" / date / f"{code}.jsonl"
+    jsonl_path = tmp_path / "live_kiwoom" / date / f"{code}.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     base_t = hhmmssms_to_unix_ms(date, 90000000)
     rows = [
@@ -417,9 +419,9 @@ async def test_promote_today_persists_price_grouped_trades_for_distribution(
     ]
     jsonl_path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
-    await promote_mod.promote_today(tmp_path, code=code)
+    await promote_mod.promote_kiwoom_today(tmp_path, code=code)
 
-    target = tmp_path / "parquet" / date / code / "kis_live"
+    target = tmp_path / "parquet" / date / code / "kiwoom_live"
     assert (target / "trades.parquet").exists()
     assert (target / "fills.parquet").exists()
     assert not (target / "candles.parquet").exists()

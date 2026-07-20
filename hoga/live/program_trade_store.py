@@ -1,4 +1,10 @@
-"""Disk sidecar for KIS stock-level program-trade rows."""
+"""Disk sidecar for stock-level program-trade rows (종목프로그램매매).
+
+공급원은 키움 0w push(PR-F4 컷오버)다 — 원래 KIS REST(FHPPG04650101) 폴링이라
+SOURCE/디스크 경로에 "kis" 가 남아 있지만, 이 둘은 저장 데이터·wire
+(api/models.py ProgramTradeSeries.source Literal)와의 호환용 **동결 식별자**라
+바꾸지 않는다(변경 = 데이터 마이그레이션 + 프론트 계약 범프).
+"""
 from __future__ import annotations
 
 import datetime as dt
@@ -8,16 +14,39 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
-from hoga.api.timeenc import hhmmssms_to_unix_ms
+from hoga.api.timeenc import KST, hhmmssms_to_unix_ms
 from hoga.api._atomic_write import atomic_write_json
-from hoga.live.kis_client import KIS_KST
-from hoga.live.kis_models import ProgramTradeByStockRow
 from hoga.util.mtime_cache import MtimeLruCache
 
 log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
-SOURCE = "kis_program_trade"
+SOURCE = "kis_program_trade"  # 동결 — 모듈 docstring 참조
+
+
+class ProgramTradeByStockRow(BaseModel):
+    """One stock-level program-trade row — 프로그램 사이드카의 wire/디스크 행.
+
+    키움 0w latch 를 collector 가 30초 drain 해 만든다(과거엔 KIS REST 응답 행,
+    PR-F4 로 공급원 교체 — shape 은 그대로라 저장·소비 무변경). `bsop_hour`는
+    intraday HHMMSS 병합 키(0w 는 시각 FID 가 없어 수신 시각으로 합성). 누적
+    net-buy 수량·금액이라 rolling 창이 중간 행을 건너뛰어도 각 관측점이 독립적
+    으로 유의미하다. 금액은 원 단위(0w 백만원은 파서가 ×1e6 정규화).
+    """
+
+    code: str
+    bsop_hour: str
+    t_ms: int
+    price: int | None
+    net_qty: int | None
+    net_amount: int | None
+    buy_qty: int | None
+    sell_qty: int | None
+    buy_amount: int | None
+    sell_amount: int | None
+    delta_qty: int | None
+    delta_amount: int | None
+
 
 # 읽기 전용 소비자(build_program_trade_series)용 프로세스-전역 mtime 캐시. 범위 번들이
 # today 포함으로 주기적 refetch 될 때 과거 전 날짜 JSON 을 매번 재파싱하던 것을, 파일이
@@ -181,7 +210,7 @@ def _is_future_sidecar(
     previous_latest: str,
     new_newest: str,
 ) -> bool:
-    observed = dt.datetime.fromtimestamp(observed_at_ms / 1000, tz=KIS_KST)
+    observed = dt.datetime.fromtimestamp(observed_at_ms / 1000, tz=KST)
     if observed.strftime("%Y%m%d") != date:
         return False
     observed_hhmmss = f"{observed.hour:02d}{observed.minute:02d}{observed.second:02d}"

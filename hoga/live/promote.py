@@ -307,9 +307,10 @@ def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
 ) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], dict]:
     """Parse one Live Capture JSONL into typed table records + meta.
 
-    Shared by promote_one (ADR-0038 daily batch) and promote_today
-    (ADR-0043 in-session N-minute overwrite). Torn last lines are skipped
-    with a `live.promote.partial_line` warn log.
+    Shared by promote_one (ADR-0038 daily batch) and the today-promotion path
+    (ADR-0043 in-session N-minute overwrite — 키움판 promote_kiwoom_today;
+    KIS판 promote_today는 KIS live/ 수집 소멸로 상시 no-op이 되어 삭제됨).
+    Torn last lines are skipped with a `live.promote.partial_line` warn log.
 
     Returns canonical dataclasses (Orderbook / Trade / BrokerRow / Fill), not
     dicts — the table writers enforce PARQUET_SCHEMA at construction time,
@@ -403,100 +404,23 @@ def _today_kst_yyyymmdd() -> str:
 
 def _record_today_promote_success(code: str) -> None:
     """design-review B2 — /api/live/status.today_promote_last_ms에 코드별 마지막
-    실승격 시각(epoch ms)을 남긴다. KIS(promote_today)·키움(promote_kiwoom_today)
-    공용 — ADR-0118 컷오버 후 KIS live/ 수집이 없어 키움 경로가 사실상 유일한
-    기록원이다. 지연 import: lifecycle이 이 모듈을 모듈 레벨에서 import하므로
-    순환을 피해 호출 시점에 바인딩한다."""
+    실승격 시각(epoch ms)을 남긴다. 기록원은 promote_kiwoom_today 뿐이다(KIS판
+    promote_today는 KIS live/ 수집 소멸로 삭제됨). 지연 import: lifecycle이 이
+    모듈을 모듈 레벨에서 import하므로 순환을 피해 호출 시점에 바인딩한다."""
     from hoga.live import lifecycle
 
     lifecycle.record_today_promote_success(code, int(time.time() * 1000))
 
 
-async def promote_today(data_dir: Path, *, code: str) -> str | None:
-    """ADR-0043 Today Promotion — overwrite, no archive move.
-
-    Returns the promoted date (YYYYMMDD) on a real promotion, or None when the
-    code had nothing to promote (no jsonl this cycle). The promoter loop uses
-    this to publish a `promotion_completed` event only on a real promotion — a
-    None (skip) must not fire a spurious refetch on the frontend.
-
-    promote_one과 다른 점:
-      - idempotent skip 안 함 (meta.json 있어도 다시 처리)
-      - archive 이동 안 함 (jsonl 계속 polling 중)
-      - parquet 파일들은 atomic_write_parquet으로 원자 교체
-
-    Midnight race protection (eng-review Blocker 1):
-      - today_kst를 함수 진입 시점에 한 번만 evaluate.
-      - 그 시점 이후 자정이 지나도 이 사이클은 "yesterday" jsonl을 처리.
-      - 다음 사이클(5분 후)이 새 today_kst를 picking → 어제는 Daily Promotion 담당.
-
-    Candles invariant (ADR-0040): snapshots/trades/brokers/fills.parquet만 생성.
-    candles는 Live Candle Backfill의 별도 캐시가 담당하므로 절대 생성하지 않는다.
-    """
-    from hoga.api._atomic_write import atomic_write_json
-
-    # CRITICAL: today_kst를 한 번만 evaluate해서 자정 race 회피
-    today = _today_kst_yyyymmdd()
-    jsonl_path = data_dir / "live" / today / f"{code}.jsonl"
-    parquet_root = data_dir / "parquet"
-    target = parquet_root / today / code / "kis_live"
-
-    if not jsonl_path.exists():
-        return None
-
-    start_ms = int(time.time() * 1000)
-    _log.info("live.today_promote.start code=%s date=%s", code, today)
-
-    def _sync_parse_and_write() -> dict:
-        # 증분 파싱(직전 사이클 오프셋 이후만) + parquet 재작성. sync 디스크/CPU
-        # 작업 전체를 스레드로 격리 — 종전엔 이벤트 루프에서 인라인 실행되어
-        # 5분마다 코드당 수백 ms씩 루프를 블로킹했다.
-        try:
-            snapshots, trades, broker_rows, fills, meta = _parse_jsonl_incremental(
-                jsonl_path, code=code, date=today,
-            )
-        except Exception:
-            _log.exception(
-                "live.today_promote.parse_failed code=%s date=%s", code, today,
-            )
-            raise
-
-        target.mkdir(parents=True, exist_ok=True)
-        try:
-            _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
-            _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
-            _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
-            _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
-            atomic_write_json(target / "meta.json", meta, indent=2)
-        except OSError as e:
-            _log.warning(
-                "live.today_promote.write_failed code=%s date=%s reason=%s",
-                code, today, e,
-            )
-            raise
-        return meta
-
-    meta = await asyncio.to_thread(_sync_parse_and_write)
-
-    elapsed = int(time.time() * 1000) - start_ms
-    _log.info(
-        "live.today_promote.done code=%s date=%s row_counts=%s elapsed_ms=%d",
-        code, today, meta["row_counts"], elapsed,
-    )
-
-    _record_today_promote_success(code)
-
-    return today
-
-
 async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
     """키움 WS 승격 (ADR-0116) — live_kiwoom JSONL → parquet/{date}/{code}/kiwoom_live.
 
-    promote_today의 키움판(REST 캡처 승격 promote_api_today는 rest30과 함께 제거됨,
-    2026-07-17). 실시간 WS라 kis_live처럼 sampling 메타 없음(_build_meta의 kis_api
-    분기 밖). 별도 루트(live_kiwoom)라 KIS live JSONL과 무충돌.
+    유일한 today-promotion 경로다 — KIS판 promote_today(상시 no-op)와 REST 캡처
+    승격 promote_api_today는 모두 제거됨. 실시간 WS라 kis_live처럼 sampling 메타
+    없음(_build_meta의 kis_api 분기 밖). 별도 루트(live_kiwoom)라 잔존 KIS live
+    JSONL과 무충돌.
 
-    promote_today와 대칭 계약: 실승격 시 승격 날짜(YYYYMMDD), skip(이번 사이클 jsonl
+    계약: 실승격 시 승격 날짜(YYYYMMDD), skip(이번 사이클 jsonl
     없음) 시 None. 승격 루프가 이 반환으로 promotion_completed 발행을 판단한다
     (PR-E 컷오버로 관심종목이 키움 전담이 되면서 이 경로가 프론트 today 갱신의
     유일한 이벤트 소스가 됨 — None은 스퓨리어스 리페치를 막는다).

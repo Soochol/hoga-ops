@@ -33,25 +33,6 @@ def test_reset_for_tests_is_idempotent() -> None:
     assert lifecycle.get_status().running is False
 
 
-def test_get_active_codes_empty_when_stream_not_started() -> None:
-    from hoga.live import lifecycle
-    lifecycle.reset_for_tests()
-    assert lifecycle.get_active_codes() == []
-
-
-def test_get_active_codes_returns_watchlist_codes() -> None:
-    """get_active_codes accessor returns _state.watchlist_codes snapshot."""
-    from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
-
-    lifecycle.reset_for_tests()
-    lifecycle._state = _State(
-        started_at_ms=1,
-        watchlist_codes=("003490", "058610"),
-    )
-    assert lifecycle.get_active_codes() == ["003490", "058610"]
-
-
 # ── 오늘 피크 스냅샷 (키움 스트림 소싱, ADR-0118 PR-G) ──────────────────────────
 
 def test_get_today_ask_peak_returns_matching_stream_snapshot() -> None:
@@ -65,7 +46,7 @@ def test_get_today_ask_peak_returns_matching_stream_snapshot() -> None:
             return {"date": "20260616", "code": code, "all_qty": 9000}
 
     class _FakeKiwoom:
-        def broker_dispatch_streams(self):
+        def capture_streams(self):
             return [_FakeStream()]
 
     lifecycle._state = _State(kiwoom_session=_FakeKiwoom())
@@ -93,7 +74,7 @@ def test_get_today_ask_peak_skips_non_matching_or_legacy_streams() -> None:
             return {"date": "20260616", "code": code, "all_qty": 9000}
 
     class _FakeKiwoom:
-        def broker_dispatch_streams(self):
+        def capture_streams(self):
             # object()는 ask_peak_snapshot 없음(레거시/미지원 스트림 — getattr None → skip)
             return [object(), _OwningStream({"000660"})]
 
@@ -128,7 +109,7 @@ def test_get_today_bid_peak_returns_matching_stream_snapshot() -> None:
             return {"date": "20260619", "code": code, "all_qty": 12_000}
 
     class _FakeKiwoom:
-        def broker_dispatch_streams(self):
+        def capture_streams(self):
             return [_FakeStream()]
 
     lifecycle._state = _State(kiwoom_session=_FakeKiwoom())

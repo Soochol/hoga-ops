@@ -1,8 +1,8 @@
-"""Apply Live storage targets to the WS capture runtimes (KIS 관심종목 + 키움 히트맵).
+"""Apply Live storage targets to the 키움 WS capture runtime + 프로그램 사이드카.
 
-KIS REST 30s 캡처(ADR-0097 rest30)는 제거됐다(2026-07-17 정책: 호가는 api로 받지
-않는다 — 폴백 없음, 커버리지는 WS+계좌 추가로). 이 모듈은 이제 관심종목 WS 타깃
-계획과 키움 세션·프로그램매매 사이드카의 정합화만 담당한다.
+KIS REST 30s 캡처(ADR-0097 rest30)와 KIS WS 는 제거됐다(#678·ADR-0118 —
+호가·체결·거래원·프로그램 전부 키움 전담). 이 모듈은 저장 타깃 계획과
+키움 세션·프로그램매매 사이드카(0w latch drain)의 정합화를 담당한다.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class KiwoomSessionLike(Protocol):
     async def watchdog_pass(self, now_ms: int) -> None: ...
     async def on_view_subscribe(self, code: str, venues: set[str], *, ref: str) -> bool: ...
     async def on_view_unsubscribe(self, code: str, venues: set[str], *, ref: str) -> None: ...
-    def broker_dispatch_streams(self) -> list[object]: ...
+    def capture_streams(self) -> list[object]: ...
     def active_codes(self) -> list[str]: ...
     def status(self) -> dict: ...
     async def stop(self) -> None: ...
@@ -51,7 +51,8 @@ class StorageRuntimeSnapshot:
     ws_targets: tuple[str, ...]
     # 키움 WS 수집 대상(ADR-0116). lifecycle이 SignalAlertMonitor 타깃 합집합에 쓴다.
     kiwoom_targets: tuple[str, ...] = ()
-    # 관심종목(슬롯/용량 무관 전체). 컷오버 후 거래원 폴러 타깃 재소싱에 쓴다(ADR-0118 PR-E).
+    # 관심종목(슬롯/용량 무관 전체). 거래원 폴러(PR-F2 삭제)의 타깃 소스였고,
+    # 현재 소비처는 watchlist_projection(수집 후보 판정)뿐.
     capture_candidates: tuple[str, ...] = ()
 
 

@@ -15,19 +15,17 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
+
+from hoga.api.timeenc import KST
 
 from . import program_trade_latch
 from .error_policy import classify_live_error, format_live_error
-from .kis_models import ProgramTradeByStockRow
-from .program_trade_store import ProgramTradeStore
+from .program_trade_store import ProgramTradeByStockRow, ProgramTradeStore
 from .session_gate import ws_capture_window
 
 log = logging.getLogger(__name__)
-
-_KST = timezone(timedelta(hours=9))
-
 
 @dataclass(slots=True)
 class ProgramTradeCollectorStatus:
@@ -148,7 +146,7 @@ class ProgramTradeCollector:
         집계시각을 쓰던 자리를 수신 시각이 대신한다(0w 에 시각 FID 없음).
         """
         t_ms = int(payload["t_ms"])
-        bsop_hour = datetime.fromtimestamp(t_ms / 1000, _KST).strftime("%H%M%S")
+        bsop_hour = datetime.fromtimestamp(t_ms / 1000, KST).strftime("%H%M%S")
         net_qty = payload.get("net_qty")
         net_amount = payload.get("net_amount")
         prev_qty, prev_amount = self._last_net.get(code, (None, None))

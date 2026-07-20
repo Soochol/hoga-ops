@@ -405,7 +405,7 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
     from hoga.api.models import VolumeProfile
-    from hoga.live.kis_models import ProgramTradeByStockRow
+    from hoga.live.program_trade_store import ProgramTradeByStockRow
     from hoga.live.program_trade_store import ProgramTradeStore
 
     store = ProgramTradeStore(tmp_path)

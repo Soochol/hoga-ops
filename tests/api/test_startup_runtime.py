@@ -77,7 +77,6 @@ async def test_startup_runtime_starts_safe_default_tasks(tmp_path: Path) -> None
             stop_live_stream=lambda: _record_async(calls, "stop-live", None),
             aclose_kis_capacity_scheduler=lambda: _record_async(calls, "close-kis-capacity", None),
             aclose_kis_client=lambda: _record_async(calls, "close-kis", None),
-            get_active_codes=lambda: ["005930"],
             load_symbol_disk_state=load_symbol_disk_state,
             needs_symbol_boot_refresh=lambda: False,
             refresh_symbols=refresh_symbols,
@@ -142,7 +141,6 @@ async def test_startup_runtime_can_opt_into_live_and_symbol_refresh(tmp_path: Pa
             stop_live_stream=lambda: _record_async(calls, "stop-live", None),
             aclose_kis_capacity_scheduler=lambda: _record_async(calls, "close-kis-capacity", None),
             aclose_kis_client=lambda: _record_async(calls, "close-kis", None),
-            get_active_codes=lambda: [],
             load_symbol_disk_state=load_symbol_disk_state,
             needs_symbol_boot_refresh=lambda: True,
             refresh_symbols=refresh_symbols,
@@ -195,8 +193,7 @@ async def test_startup_runtime_cleans_up_partial_start_on_failure(tmp_path: Path
                 stop_live_stream=lambda: _record_async(calls, "stop-live", None),
                 aclose_kis_capacity_scheduler=lambda: _record_async(calls, "close-kis-capacity", None),
                 aclose_kis_client=lambda: _record_async(calls, "close-kis", None),
-                get_active_codes=lambda: [],
-                load_symbol_disk_state=lambda **_kwargs: None,
+                    load_symbol_disk_state=lambda **_kwargs: None,
                 needs_symbol_boot_refresh=lambda: False,
                 refresh_symbols=lambda **_kwargs: _record_async(calls, "symbols-refresh", None),
                 resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
@@ -237,7 +234,7 @@ async def test_supervised_task_health_reports_alive_sleeping_and_dead(tmp_path: 
         stop_live_stream=None,  # type: ignore[arg-type]
         aclose_kis_capacity_scheduler=None,  # type: ignore[arg-type]
         aclose_kis_client=None,  # type: ignore[arg-type]
-        get_active_codes=lambda: [],
+
         load_symbol_disk_state=lambda **_k: None,
         needs_symbol_boot_refresh=lambda: False,
         refresh_symbols=None,  # type: ignore[arg-type]
@@ -287,7 +284,6 @@ async def test_startup_runtime_spawns_and_stops_kiwoom_watchdog(tmp_path: Path) 
             stop_live_stream=lambda: _record_async(calls, "stop-live", None),
             aclose_kis_capacity_scheduler=lambda: _record_async(calls, "close-cap", None),
             aclose_kis_client=lambda: _record_async(calls, "close-kis", None),
-            get_active_codes=lambda: [],
             load_symbol_disk_state=lambda **_k: None,
             needs_symbol_boot_refresh=lambda: False,
             refresh_symbols=lambda **_k: _record_async(calls, "refresh", None),

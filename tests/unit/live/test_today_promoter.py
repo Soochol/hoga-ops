@@ -1,4 +1,8 @@
-"""Tests for start_today_promoter / stop_today_promoter (ADR-0043)."""
+"""Tests for start_today_promoter / stop_today_promoter (ADR-0043, 키움 전담).
+
+KIS 팔(get_active_codes/promote_today)은 KIS live/ 수집 소멸로 상시 no-op 이라
+제거됐다(2026-07-20 감사) — 루프 계약 테스트를 키움 콜백 기준으로 이식했다.
+"""
 import asyncio
 from pathlib import Path
 
@@ -8,20 +12,20 @@ from hoga.live.lifecycle import start_today_promoter, stop_today_promoter
 
 
 @pytest.mark.asyncio
-async def test_today_promoter_calls_promote_today_per_cycle(
+async def test_today_promoter_calls_promote_kiwoom_per_cycle(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    """task가 sleep 사이에 promote_today를 매 cycle마다 호출."""
+    """task가 sleep 사이에 promote_kiwoom_today를 매 cycle마다 호출."""
     calls: list[tuple[str, str]] = []
 
     async def fake_promote(data_dir, *, code):
         calls.append((str(data_dir), code))
 
-    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
+    monkeypatch.setattr("hoga.live.lifecycle.promote_kiwoom_today", fake_promote)
 
     task = await start_today_promoter(
         data_dir=tmp_path,
-        get_active_codes=lambda: ["003490", "058610"],
+        get_kiwoom_capture_codes=lambda: ["003490", "058610"],
         interval_s=0.05,
     )
     await asyncio.sleep(0.18)  # ~3 cycles
@@ -45,11 +49,11 @@ async def test_today_promoter_survives_code_exception(
         if code == "003490":
             raise RuntimeError("simulated")
 
-    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
+    monkeypatch.setattr("hoga.live.lifecycle.promote_kiwoom_today", fake_promote)
 
     task = await start_today_promoter(
         data_dir=tmp_path,
-        get_active_codes=lambda: ["003490", "058610"],
+        get_kiwoom_capture_codes=lambda: ["003490", "058610"],
         interval_s=0.05,
     )
     await asyncio.sleep(0.15)
@@ -63,7 +67,7 @@ async def test_today_promoter_survives_code_exception(
 async def test_today_promoter_survives_cycle_exception(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    """get_active_codes가 raise해도 다음 cycle 계속."""
+    """get_kiwoom_capture_codes가 raise해도 다음 cycle 계속."""
     cycle_count = 0
 
     def flaky_get_codes():
@@ -74,11 +78,11 @@ async def test_today_promoter_survives_cycle_exception(
         return ["003490"]
 
     async def fake_promote(data_dir, *, code): pass
-    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
+    monkeypatch.setattr("hoga.live.lifecycle.promote_kiwoom_today", fake_promote)
 
     task = await start_today_promoter(
         data_dir=tmp_path,
-        get_active_codes=flaky_get_codes,
+        get_kiwoom_capture_codes=flaky_get_codes,
         interval_s=0.05,
     )
     await asyncio.sleep(0.15)
@@ -88,16 +92,17 @@ async def test_today_promoter_survives_cycle_exception(
 
 
 @pytest.mark.asyncio
-async def test_today_promoter_picks_up_watchlist_mutations_per_cycle(
+async def test_today_promoter_picks_up_target_mutations_per_cycle(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    """eng-review Blocker 2 — get_active_codes는 매 cycle마다 호출돼서 watchlist 변경을 즉시 반영."""
+    """eng-review Blocker 2 계승 — 대상 콜백은 매 cycle마다 호출돼서 저장셋
+    변경(관심종목/히트맵 편집)을 재시작 없이 즉시 반영."""
     calls: list[str] = []
 
     async def fake_promote(data_dir, *, code):
         calls.append(code)
 
-    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
+    monkeypatch.setattr("hoga.live.lifecycle.promote_kiwoom_today", fake_promote)
 
     codes_list = ["003490"]
     def dynamic_codes() -> list[str]:
@@ -105,7 +110,7 @@ async def test_today_promoter_picks_up_watchlist_mutations_per_cycle(
 
     task = await start_today_promoter(
         data_dir=tmp_path,
-        get_active_codes=dynamic_codes,
+        get_kiwoom_capture_codes=dynamic_codes,
         interval_s=0.05,
     )
     await asyncio.sleep(0.07)  # 1+ cycle with original list
@@ -121,17 +126,17 @@ async def test_today_promoter_picks_up_watchlist_mutations_per_cycle(
 async def test_today_promoter_empty_codes_no_promote_calls(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    """watchlist 비어있으면 promote_today 호출 안 함."""
+    """저장셋 비어있으면(키움 미배선/off 포함) promote 호출 안 함."""
     calls: list[str] = []
 
     async def fake_promote(data_dir, *, code):
         calls.append(code)
 
-    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
+    monkeypatch.setattr("hoga.live.lifecycle.promote_kiwoom_today", fake_promote)
 
     task = await start_today_promoter(
         data_dir=tmp_path,
-        get_active_codes=lambda: [],
+        get_kiwoom_capture_codes=lambda: [],
         interval_s=0.05,
     )
     await asyncio.sleep(0.15)
@@ -141,92 +146,42 @@ async def test_today_promoter_empty_codes_no_promote_calls(
 
 
 @pytest.mark.asyncio
+async def test_today_promoter_callback_omitted_is_noop(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """콜백 미주입(테스트/특수 기동)이면 promote 호출 없이 루프만 돈다."""
+    calls: list[str] = []
+
+    async def fake_promote(data_dir, *, code):
+        calls.append(code)
+
+    monkeypatch.setattr("hoga.live.lifecycle.promote_kiwoom_today", fake_promote)
+
+    task = await start_today_promoter(data_dir=tmp_path, interval_s=0.05)
+    await asyncio.sleep(0.12)
+    await stop_today_promoter(task)
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_today_promoter_publishes_only_on_real_promotion(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    """on_promoted fires for a code that actually promoted (promote_today → date),
-    never for a skip (promote_today → None). A spurious event would refetch the
-    frontend's today range for nothing (WS 푸시 승격 무효화)."""
+    """on_promoted fires for a code that actually promoted (→ date), never for a
+    skip (→ None). A spurious event would refetch the frontend's today range for
+    nothing — 이 발행이 프론트 today 갱신(range.ts livePromotion 스탬프)의 유일한
+    소스라 skip 무발행 계약이 특히 중요하다."""
     events: list[dict] = []
 
     async def fake_promote(data_dir, *, code):
-        # 003490 has data to promote; 058610 is a skip (no jsonl this cycle).
-        return "20260708" if code == "003490" else None
-
-    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
-
-    task = await start_today_promoter(
-        data_dir=tmp_path,
-        get_active_codes=lambda: ["003490", "058610"],
-        interval_s=0.05,
-        on_promoted=events.append,
-    )
-    await asyncio.sleep(0.12)
-    await stop_today_promoter(task)
-
-    assert events, "expected at least one promotion_completed event"
-    assert all(e["type"] == "promotion_completed" for e in events)
-    published_codes = {e["code"] for e in events}
-    assert published_codes == {"003490"}  # skip code never published
-    assert all(e["date"] == "20260708" for e in events)
-
-
-@pytest.mark.asyncio
-async def test_today_promoter_promotes_ws_and_kiwoom_targets(
-    tmp_path: Path, monkeypatch,
-) -> None:
-    """KIS WS live JSONL과 키움 WS JSONL(ADR-0116) 둘 다 승격 루프를 탄다."""
-    live_calls: list[str] = []
-    kiwoom_calls: list[str] = []
-
-    async def fake_promote(data_dir, *, code):
-        live_calls.append(code)
-
-    async def fake_promote_kiwoom(data_dir, *, code):
-        kiwoom_calls.append(code)
-
-    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
-    monkeypatch.setattr("hoga.live.lifecycle.promote_kiwoom_today", fake_promote_kiwoom)
-
-    task = await start_today_promoter(
-        data_dir=tmp_path,
-        get_active_codes=lambda: ["005930"],
-        get_kiwoom_capture_codes=lambda: ["000660"],
-        interval_s=0.05,
-    )
-    await asyncio.sleep(0.12)
-    await stop_today_promoter(task)
-
-    assert "005930" in live_calls
-    assert "000660" in kiwoom_calls
-
-
-@pytest.mark.asyncio
-async def test_today_promoter_publishes_on_kiwoom_promotion(
-    tmp_path: Path, monkeypatch,
-) -> None:
-    """키움 승격(ADR-0116)도 실승격 시 promotion_completed를 발행한다.
-
-    PR-E 컷오버로 관심종목이 키움 전담이 되면서 KIS 경로가 사실상 죽었다
-    (kis live/ 부재 → promote_today가 매 사이클 None). 키움 루프가 이 이벤트를
-    발행하지 않으면 프론트 today 집계 자동갱신(range.ts livePromotion 스탬프)이
-    전 종목에서 멈춘다 — KIS 경로와 대칭으로 실승격(date)에만 발행, skip(None)은 무발행.
-    """
-    events: list[dict] = []
-
-    async def fake_promote(data_dir, *, code):  # KIS 분기는 빈 코드리스트라 미호출(방어용)
-        return None
-
-    async def fake_promote_kiwoom(data_dir, *, code):
-        # 000660은 승격할 데이터 있음, 005930은 skip(jsonl 부재 → None).
+        # 000660 has data to promote; 005930 is a skip (no jsonl this cycle).
         return "20260718" if code == "000660" else None
 
-    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
-    monkeypatch.setattr("hoga.live.lifecycle.promote_kiwoom_today", fake_promote_kiwoom)
+    monkeypatch.setattr("hoga.live.lifecycle.promote_kiwoom_today", fake_promote)
 
     task = await start_today_promoter(
         data_dir=tmp_path,
-        get_active_codes=lambda: [],
         get_kiwoom_capture_codes=lambda: ["000660", "005930"],
         interval_s=0.05,
         on_promoted=events.append,
@@ -234,7 +189,7 @@ async def test_today_promoter_publishes_on_kiwoom_promotion(
     await asyncio.sleep(0.12)
     await stop_today_promoter(task)
 
-    assert events, "expected a promotion_completed event from kiwoom promotion"
+    assert events, "expected at least one promotion_completed event"
     assert all(e["type"] == "promotion_completed" for e in events)
     assert {e["code"] for e in events} == {"000660"}  # skip code never published
     assert all(e["date"] == "20260718" for e in events)

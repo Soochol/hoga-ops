@@ -21,7 +21,6 @@ from hoga.live.kis_models import (
     InvestorNetPoint,
     InvestorTrendEstimateRow,
     KisCandle,
-    ProgramTradeByStockRow,
 )
 from hoga.live.kis_venue import (
     KIS_KST,
