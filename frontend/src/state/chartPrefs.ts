@@ -177,14 +177,23 @@ export const CHART_TOGGLES = [
     default: false,
     category: 'indicator-modal',
   },
+  {
+    key: 'tradeHighlightEnabled',
+    label: '대량 체결 강조',
+    description:
+      '체결가 × 체결량이 기준 금액 이상인 체결의 체결량 칸을 배경색으로 강조합니다.',
+    default: true,
+    category: 'trade-window',
+  },
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
 
 /** UI surface a toggle belongs to. 'indicator-modal'은 「지표」 모달의
  *  호가 Config로 이동했음을 뜻하며 ⚙️ 설정 모달에는 렌더되지 않는다
- *  (LiveSettingsSections의 CATEGORY_ORDER가 포함하지 않음). Unset → 'chart'. */
-export type ChartToggleCategory = 'chart' | 'indicator-modal';
+ *  (LiveSettingsSections의 CATEGORY_ORDER가 포함하지 않음).
+ *  'trade-window'는 ⚙️ 설정 모달의 「체결창」 nav 항목. Unset → 'chart'. */
+export type ChartToggleCategory = 'chart' | 'indicator-modal' | 'trade-window';
 
 /** Resolve a CHART_TOGGLES entry's category, defaulting to 'chart' when
  *  the field is absent. Direct `t.category` access on the registry union
@@ -338,6 +347,18 @@ export const CHART_NUMERIC_PREFS = [
     // BidPeakConfig(지표 드로어)가 직접 렌더 — ⚙️ 설정에는 나오지 않는 드로어 항목.
     category: 'indicator-modal',
   },
+  {
+    key: 'tradeHighlightThresholdManwon',
+    label: '기준 금액 (만원)',
+    description:
+      '체결가 × 체결량이 이 금액(만원) 이상이면 대량 체결로 강조합니다. 기본 5,000만원.',
+    default: 5000,
+    // 100만원(소형주 대량 기준)~100억(사실상 비활성 상한). 만원 단위 정수.
+    min: 100,
+    max: 1_000_000,
+    enabledBy: 'tradeHighlightEnabled',
+    category: 'trade-window',
+  },
 ] as const satisfies readonly NumericPrefDef[];
 
 export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];
@@ -345,6 +366,10 @@ export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];
 export const DAY_BOUNDARY_COLOR_DEFAULT = '#64748B';
 export const DAY_BOUNDARY_LINE_WIDTH_DEFAULT: 1 | 2 | 3 | 4 = 1;
 export type DayBoundaryLineWidth = 1 | 2 | 3 | 4;
+
+/** 체결창 대량 체결 강조 배경색 기본값 — 매물대 당일 최대(maxColor)와 같은 노랑 계열
+ *  ("눈에 띄는 물량" 시맨틱 공유). 렌더 시 알파를 얹으므로 6자리 hex 로 저장한다. */
+export const TRADE_HIGHLIGHT_COLOR_DEFAULT = '#EAB308';
 
 /** Per-tab chart view preferences. Stored in a `Map<tabId, ChartViewPrefs>`
  *  on the store for parity with `Tab.bundles` (CQ1). Boolean fields come
@@ -356,6 +381,7 @@ export type ChartViewPrefs =
   & {
     dayBoundaryColor: string;
     dayBoundaryLineWidth: DayBoundaryLineWidth;
+    tradeHighlightColor: string;
   };
 
 const TOGGLE_DEFAULTS = Object.fromEntries(
@@ -371,6 +397,7 @@ export const DEFAULT_PREFS: ChartViewPrefs = {
   ...NUMERIC_DEFAULTS,
   dayBoundaryColor: DAY_BOUNDARY_COLOR_DEFAULT,
   dayBoundaryLineWidth: DAY_BOUNDARY_LINE_WIDTH_DEFAULT,
+  tradeHighlightColor: TRADE_HIGHLIGHT_COLOR_DEFAULT,
 };
 
 /**
@@ -438,6 +465,7 @@ type ChartPrefsStore = ChartViewPrefs & {
   setToggle: (key: ChartToggleKey, value: boolean) => void;
   setNumericPref: (key: NumericPrefKey, value: number) => void;
   setDayBoundaryStyle: (patch: { color?: string; lineWidth?: DayBoundaryLineWidth }) => void;
+  setTradeHighlightColor: (color: string) => void;
   /** 지표 드로어 "현재 봉 초기화"(PR-C #699): indicator-modal 의 **현재 봉 버킷만**
    *  비우고 재투영한다. 차트 전반 flat(그리드·툴팁 등 ⚙️ 설정 항목)은 드로어 밖이라
    *  건드리지 않는다. */
@@ -485,6 +513,8 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
         dayBoundaryColor: patch.color ?? s.dayBoundaryColor,
         dayBoundaryLineWidth: patch.lineWidth ?? s.dayBoundaryLineWidth,
       })),
+
+    setTradeHighlightColor: (color) => set({ tradeHighlightColor: color }),
 
     resetIndicatorModalBucket: () => {
       const s = get();

@@ -263,9 +263,19 @@ const TRADE_TICK_LIMIT = 200;
 function TradeWindow({ code }: { code: string }) {
   const live = useLiveSeries(code);
   const view = useMemo(() => buildTradeTickView(live.trade, TRADE_TICK_LIMIT), [live.trade]);
+  // 대량 체결 강조(⚙️ 설정 「체결창」, 전역 1벌). 설정은 만원 단위 — 원으로 환산해 전달.
+  const highlightEnabled = useChartPrefsStore((s) => s.tradeHighlightEnabled);
+  const thresholdManwon = useChartPrefsStore((s) => s.tradeHighlightThresholdManwon);
+  const highlightColor = useChartPrefsStore((s) => s.tradeHighlightColor);
+  const highlight = useMemo(
+    () => (highlightEnabled
+      ? { thresholdWon: thresholdManwon * 10_000, color: highlightColor }
+      : null),
+    [highlightEnabled, thresholdManwon, highlightColor],
+  );
   return (
     <div className="h-full overflow-auto">
-      <TradeTickTable view={view} />
+      <TradeTickTable view={view} highlight={highlight} />
     </div>
   );
 }
