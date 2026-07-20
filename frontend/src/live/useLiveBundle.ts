@@ -312,14 +312,16 @@ export interface UseLiveBundleResult {
   rangeWindowFromDate: string | null;
 }
 
+/** 같은 그룹의 데이터 창(매물대·프로그램)이 요구하는 sidecar 강제 fetch
+ *  (ADR-0119 PR-D). 창의 지표 토글과 OR — pane 표시는 지표 토글만 따르고
+ *  (LiveChartRoot 는 useWindowIndicator 직독) fetch 범위만 확장된다. 그룹의
+ *  링크 발행 차트 창(groupTargetChartWindow)만 이 옵션을 켠다. */
+export type SidecarDemands = { programTrade?: boolean; volumeDistribution?: boolean };
+
 type UseLiveBundleOptions = {
   investorNetEnabled?: boolean;
   venue?: LiveVenueOption;
-  /** 같은 그룹의 데이터 창(매물대·프로그램)이 요구하는 sidecar 강제 fetch
-   *  (ADR-0119 PR-D). 창의 지표 토글과 OR — pane 표시는 지표 토글만 따르고
-   *  (LiveChartRoot 는 useWindowIndicator 직독) fetch 범위만 확장된다. 그룹의
-   *  링크 발행 차트 창(groupTargetChartWindow)만 이 옵션을 켠다. */
-  sidecarDemands?: { programTrade?: boolean; volumeDistribution?: boolean };
+  sidecarDemands?: SidecarDemands;
 };
 
 export type LiveRangeRequestPlan = {

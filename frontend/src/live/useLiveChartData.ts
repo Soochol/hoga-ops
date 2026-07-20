@@ -14,7 +14,7 @@
  */
 import { useMemo } from 'react';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
-import { useLiveBundle } from './useLiveBundle';
+import { useLiveBundle, type SidecarDemands } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
@@ -79,7 +79,7 @@ export interface UseLiveChartDataArgs {
   investorNetEnabled: boolean;
   /** 같은 그룹 데이터 창의 sidecar 강제 fetch 수요(ADR-0119 PR-D) — 그룹 링크
    *  발행 차트 창만 공급. useLiveBundle 로 그대로 전달된다. */
-  sidecarDemands?: { programTrade?: boolean; volumeDistribution?: boolean };
+  sidecarDemands?: SidecarDemands;
 }
 
 export function useLiveChartData(args: UseLiveChartDataArgs) {
