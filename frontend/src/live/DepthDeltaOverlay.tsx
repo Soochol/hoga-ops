@@ -14,7 +14,7 @@ import {
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceDelta } from './peakLegendValues';
-import { useWindowIndicator } from './workspace/windowView';
+import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
 
 /** 가시 시간범위(가상초). DepthHeatmapOverlay.readVisibleRange 와 동일 관용구. */
 function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number } | null {
@@ -118,6 +118,8 @@ function DepthDeltaOverlay({ chart, paneSeries, axis, points }: Props) {
   const outColor = useWindowIndicator((s) => s.depthDeltaOutColor);
   const maxOpacity = useWindowIndicator((s) => s.depthDeltaMaxOpacity);
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
+  // 레전드 값 provider 의 창 스코프(멀티창 #733) — 다른 종목 창의 값이 섞이지 않게.
+  const windowId = useWindowScopeId();
   const [visibleRange, setVisibleRange] = useState<{ from: number; to: number } | null>(null);
 
   // 프리미티브 부착: deps=[series]만 (bundle 파생값 금지 — 식별자 churn 함정).
@@ -202,9 +204,9 @@ function DepthDeltaOverlay({ chart, paneSeries, axis, points }: Props) {
       }
       return out;
     };
-    registerFlagLegendValues('depth-delta', provider);
-    return () => unregisterFlagLegendValues('depth-delta', provider);
-  }, [points, axis, inColor, outColor]);
+    registerFlagLegendValues(windowId, 'depth-delta', provider);
+    return () => unregisterFlagLegendValues(windowId, 'depth-delta', provider);
+  }, [windowId, points, axis, inColor, outColor]);
 
   return null;
 }
