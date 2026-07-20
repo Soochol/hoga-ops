@@ -364,6 +364,21 @@ describe('LivePage shell', () => {
     expect(screen.getByRole('button', { name: '분봉 선택 열기: 1분' })).toBeInTheDocument();
   });
 
+  // 열 축을 비워두면 grid-auto-columns:auto 가 되고, 그 트랙은 가장 넓은 자식(탈출구가
+  // 없는 LiveStatusBar)의 min-content 폭에서 바닥을 친다. 그러면 캔버스가 컨테이너보다
+  // 넓게 늘어난 채 App 의 <main overflow-hidden> 에 잘려 우측이 사라진다. 행 축은 이미
+  // 같은 이유로 minmax(0,1fr) 을 쓰고 있다 — 두 축을 함께 잠근다.
+  it('constrains both root grid axes so narrowing shrinks the canvas instead of clipping it', () => {
+    renderWithRouter('/live?code=000660');
+
+    let root: HTMLElement | null = screen.getByTestId('live-status-bar');
+    while (root && !root.style.gridTemplateRows) root = root.parentElement;
+
+    expect(root).not.toBeNull();
+    expect(root!.style.gridTemplateRows).toContain('minmax(0, 1fr)');
+    expect(root!.style.gridTemplateColumns).toBe('minmax(0, 1fr)');
+  });
+
   it('shows the collect button for a stock code and opens the collect dialog with the symbol name', async () => {
     renderWithRouter('/live?code=000660');
 
