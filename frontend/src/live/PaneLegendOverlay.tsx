@@ -619,7 +619,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles, hasDepthDelta = fals
       applicable: isMinute && hasDepthDelta,
       hidden: depthDeltaHidden,
       swatches: [depthDeltaInColor, depthDeltaOutColor],
-      cells: readFlagLegendValues('depth-delta', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'depth-delta', cursorTimeSec),
     },
     {
       id: 'broker-late-entry',

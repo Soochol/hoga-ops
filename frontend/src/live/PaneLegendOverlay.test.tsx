@@ -358,7 +358,12 @@ describe('PaneLegendOverlay — 멀티창 flag 값 스코프(#706)', () => {
       <WindowViewContext.Provider value={value}>{children}</WindowViewContext.Provider>
     );
     return render(
-      <PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />,
+      <PaneLegendOverlay
+        chart={minutePanes()}
+        timeframe="1m"
+        paneToggles={toggles}
+        hasDepthDelta
+      />,
       { wrapper },
     );
   }
@@ -382,6 +387,26 @@ describe('PaneLegendOverlay — 멀티창 flag 값 스코프(#706)', () => {
     } finally {
       unregisterFlagLegendValues('win-a', 'ask-peak', a);
       unregisterFlagLegendValues('win-b', 'ask-peak', b);
+    }
+  });
+
+  it('단별 잔량 증감(depth-delta)도 창별로 격리된다', () => {
+    // #731 이 #733 과 병렬로 진행돼 스코프 없이 착지했다(main 에서 tsc 3건 실패).
+    // 읽기 경로가 창 스코프를 쓰는지 지표별로 한 번 더 못박는다.
+    const a: FlagLegendValueProvider = () => [{ key: 'dd-in', label: '유입', value: '70,000, +1만' }];
+    const b: FlagLegendValueProvider = () => [{ key: 'dd-in', label: '유입', value: '300,000, +9만' }];
+    registerFlagLegendValues('win-a', 'depth-delta', a);
+    registerFlagLegendValues('win-b', 'depth-delta', b);
+    try {
+      const winA = renderWindow(windowValue('win-a', { depthDeltaEnabled: true }));
+      const winB = renderWindow(windowValue('win-b', { depthDeltaEnabled: true }));
+
+      expect(within(winA.container).getByText('70,000, +1만')).toBeInTheDocument();
+      expect(within(winB.container).getByText('300,000, +9만')).toBeInTheDocument();
+      expect(within(winA.container).queryByText('300,000, +9만')).toBeNull();
+    } finally {
+      unregisterFlagLegendValues('win-a', 'depth-delta', a);
+      unregisterFlagLegendValues('win-b', 'depth-delta', b);
     }
   });
 
