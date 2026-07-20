@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Capture from './Capture';
@@ -53,7 +53,8 @@ describe('Capture page', () => {
   it('renders both the form panel (left) and the queue panel (right)', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<Capture />, { wrapper: W(qc) });
-    await new Promise((r) => setTimeout(r, 30));
+    // queue-empty 는 큐 쿼리 resolve 후에야 뜬다 — 벽시계 대신 이 등장을 기다린다.
+    await screen.findByTestId('queue-empty');
     // 부유 카드 모델(2026-07-15): borderless — --bg-card + shadow-panel 만으로 분리.
     expect(screen.getByTestId('capture-form-pane')).toHaveClass('bg-bg-card');
     expect(screen.getByTestId('capture-form-pane')).not.toHaveClass('border');
@@ -76,7 +77,7 @@ describe('Capture page', () => {
   it('lets both sections shrink inside the fixed capture viewport', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<Capture />, { wrapper: W(qc) });
-    await new Promise((r) => setTimeout(r, 30));
+    await screen.findByTestId('queue-empty');
 
     expect(screen.getByRole('region', { name: '캡처 대기열' })).toHaveClass('min-h-0');
     expect(screen.getByRole('region', { name: '캡처 요청' })).toHaveClass('min-h-0');
@@ -87,7 +88,7 @@ describe('Capture page', () => {
   it('constrains the splitter grid row track so the panes can shorten', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = render(<Capture />, { wrapper: W(qc) });
-    await new Promise((r) => setTimeout(r, 30));
+    await screen.findByTestId('queue-empty');
 
     expect(container.firstElementChild).toHaveClass('grid-rows-[minmax(0,1fr)]');
   });
@@ -101,7 +102,10 @@ describe('Capture page', () => {
 
     render(<Capture />, { wrapper: W(qc) });
 
-    await new Promise((r) => setTimeout(r, 30));
-    expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
+    // prefill 은 /api/symbols/all resolve 가 게이트(CaptureForm 의 render-adjust 패턴)라
+    // 고정 sleep 대신 값이 반영될 때까지 폴링한다.
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
+    });
   });
 });
