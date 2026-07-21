@@ -88,6 +88,15 @@ export function regularSessionCloseMs(yyyymmdd: string): number {
   return regularSessionOpenMs(yyyymmdd) + 6.5 * 3600 * 1000;
 }
 
+/** 이 KST 달력일이 주말(토/일)인가 — KRX 세션이 존재할 수 없는 날.
+ *
+ *  공휴일은 판정하지 않는다(캘린더 필요). 라이브 캔들 오버레이의 심층 방어용이라
+ *  순수 계산으로 충분하다 — 백엔드 파서가 이미 같은 프레임을 걸러낸다. */
+export function isKstWeekend(yyyymmdd: string): boolean {
+  const wd = kstWeekday(yyyymmdd);
+  return wd === 0 || wd === 6;
+}
+
 /** KST 요일(0=일 … 6=토)을 YYYYMMDD에서 계산. 달력 날짜는 tz 무관이라
  *  Date.UTC 기준 getUTCDay로 안전하게 구한다. */
 function kstWeekday(yyyymmdd: string): number {

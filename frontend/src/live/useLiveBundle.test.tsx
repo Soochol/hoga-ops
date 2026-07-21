@@ -333,6 +333,37 @@ describe('planLiveRangeRequest', () => {
   });
 });
 
+describe('overlayLiveTradesOnCandles — 비거래일 가드', () => {
+  // 회귀: 주말 시각 틱이 오버레이를 통과하면 차트 끝에 주말 캔들이 붙고, 그 상태로
+  // 저장한 학습뷰의 to_date 가 토/일로 박제된다(실측 2건). 백엔드 파서가 1차로
+  // 거르지만 버퍼 잔류 틱까지 덮도록 여기서도 막는다.
+  const fridayClose = Date.UTC(2026, 5, 26, 6, 30); // 2026-06-26(금) 15:30 KST
+  const saturdayTick = Date.UTC(2026, 5, 27, 6, 18); // 2026-06-27(토) 15:18 KST
+  const base = [
+    { ts_ms: fridayClose, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 10, vol_b: 0 },
+  ];
+  const snap = (tMs: number) => ({
+    t_ms: tMs,
+    kind: 'trade' as const,
+    venue: 'KRX' as const,
+    trades: [{ t_ms: tMs, price: 71000, qty: 5, side: 1 as const }],
+  });
+
+  it('주말 틱은 새 캔들을 만들지 못한다', () => {
+    const out = overlayLiveTradesOnCandles(base, [snap(saturdayTick)], 60_000, 'KRX');
+
+    expect(out).toBe(base); // 입력 배열 그대로 = 아무것도 추가 안 됨
+  });
+
+  it('평일 틱은 정상적으로 캔들을 만든다', () => {
+    const mondayTick = Date.UTC(2026, 5, 29, 0, 5); // 2026-06-29(월) 09:05 KST
+    const out = overlayLiveTradesOnCandles(base, [snap(mondayTick)], 60_000, 'KRX');
+
+    expect(out.length).toBe(base.length + 1);
+    expect(out[out.length - 1].close).toBe(71000);
+  });
+});
+
 describe('overlayLiveTradesOnCandles', () => {
   it('reuses the input candle array when trades cannot affect the visible tail', () => {
     const candles = [
