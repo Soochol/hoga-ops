@@ -113,7 +113,10 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
       </DataTableHeader>
       <div className="flex-1 min-h-0">
         {rows.length === 0 ? (
-          <EmptyState className="items-start justify-start p-md text-left">조건에 맞는 종목이 없습니다.</EmptyState>
+          // sticky left-0: 빈 상태는 DataTableShell 의 min-width(640px) 안에 있어서,
+          // 셸이 그보다 좁으면(반응형 바닥 부근) 가로 스크롤 밖으로 밀려 잘렸다.
+          // 컬럼을 지킬 이유가 없는 콘텐츠이므로 스크롤포트 왼쪽에 붙여 항상 보이게 한다.
+          <EmptyState align="start" className="sticky left-0">조건에 맞는 종목이 없습니다.</EmptyState>
         ) : rows.map((r) => {
           const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(r.code, r.name, e); }

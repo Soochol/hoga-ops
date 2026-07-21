@@ -134,6 +134,23 @@ describe('App shell layout', () => {
     expect(mainStack.style.gridTemplateRows).toBe('var(--h-top-nav) minmax(0, 1fr) auto');
   });
 
+  it('holds a responsive floor instead of compressing below it (min-w, not 100vw)', () => {
+    const { container } = wrap(<div>Heatmap</div>, '/heatmap');
+    const shell = container.firstElementChild as HTMLElement;
+
+    // 바닥은 토큰 1개(--app-floor-min-w)가 소유한다. 유효 폭이 바닥보다 좁아지면
+    // 셸이 계속 눌리는 대신 #root 가 가로 스크롤을 얻는다(스크롤 소유자는
+    // global.css). jsdom 은 레이아웃을 안 하므로 여기서는 "정책이 선언돼 있는가"만
+    // 지킨다 — 실제 전환 폭은 /browse 실측(1026px)으로 확인.
+    expect(shell.className).toContain('min-w-app-floor');
+    // 세로 바닥도 대칭으로 있어야 한다 — 없으면 줌인 시 /live 창이 계속 납작해져
+    // 호가 단수가 조용히 잘린다(ADR-0122).
+    expect(shell.className).toContain('min-h-app-floor');
+    // w-screen(100vw) 금지: 100vw 는 세로 스크롤바 폭을 포함해, 바닥 아래에서 셸이
+    // 항상 뷰포트보다 넓어지고 가로 스크롤바가 세로 스크롤바를 부른다.
+    expect(shell.className).not.toContain('w-screen');
+  });
+
   it('adds exactly one right panel column before the fixed rail when a panel is open', () => {
     useRightRailStore.setState({ activePanel: 'watchlist', lastPanel: 'watchlist' });
 

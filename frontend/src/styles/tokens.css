@@ -180,6 +180,8 @@
   --dropdown-min-w: 20rem; /* 360px @ default; 320px base intent — Combobox / search dropdown minimum width */
   --watchlist-panel-w: 17.5rem; /* 315px @ default; 280px base intent — Global Watchlist Panel (Right Rail) width */
   --rail-w: 3rem; /* 54px @ default; 48px base intent — Right Rail icon column width (fixed) */
+  --app-floor-min-w: 57rem; /* 1026px @ default; 912px base intent — App shell responsive floor — below this the shell stops compressing and scrolls horizontally */
+  --app-floor-min-h: 39rem; /* 702px @ default; 624px base intent — App shell vertical floor — /live windows scale with the canvas, so the canvas needs a readable height floor (ADR-0122) */
 /* END AUTO-GENERATED */
 }
 
