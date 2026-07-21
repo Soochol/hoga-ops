@@ -267,4 +267,21 @@ describe('레거시 마이그레이션 하이드레이션(#713, PR-C)', () => {
     expect(s.windows.length).toBe(3); // defaultWindows
     expect(s.groupSymbols[1]).toBeUndefined();
   });
+
+  // BookPanel 은 min-w 560px 가 절대 계약이고, 비율 좌표계는 절대 하한을 표현하지
+  // 못한다(ADR-0122). REF 캔버스(1546)에서 유도한 비율은 실제 캔버스(1280 뷰포트
+  // 실측 1226px)에서 계약을 못 채워 요약 열이 조용히 잘렸다 — 좁은 쪽 실측을
+  // 기준으로 못박아 재발을 막는다.
+  it('기본 10호가 창은 좁은 실측 캔버스에서도 BookPanel min-w 를 만족한다', async () => {
+    localStorage.clear();
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const book = mod.useWorkspaceStore.getState().windows.find((w) => w.kind === 'book');
+    const MEASURED_CANVAS_W = 1226;
+    const BOOK_PANEL_MIN_W = 560;
+    expect(book).toBeDefined();
+    expect(book!.rect.w * MEASURED_CANVAS_W).toBeGreaterThanOrEqual(BOOK_PANEL_MIN_W);
+    // 비율 불변식(ADR-0122) — 넓혀도 캔버스를 넘지 않는다.
+    expect(book!.rect.x + book!.rect.w).toBeLessThanOrEqual(1);
+  });
 });
