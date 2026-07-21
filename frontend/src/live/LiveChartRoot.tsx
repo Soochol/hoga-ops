@@ -54,7 +54,6 @@ import {
 } from './viewportAnchor';
 import { useWheelInteractions } from './useWheelInteractions';
 import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
-import { shouldMirrorCursor, mirrorCandleClose } from './crosshairMirror';
 import {
   alignSidebarCursorMs,
   shouldPublishSidebarCursor,
@@ -162,8 +161,6 @@ function nearestCandleMs(realMs: number, candleMs: readonly number[], bucketMs: 
   const nearest = Math.abs(prev - realMs) <= Math.abs(next - realMs) ? prev : next;
   return Math.abs(nearest - realMs) <= bucketMs / 2 ? nearest : realMs;
 }
-
-const EMPTY_MIRROR_CANDLES: readonly { ts_ms: number; close: number }[] = [];
 
 function optionalRankLimit(
   prefs: ChartViewPrefs,
@@ -558,18 +555,6 @@ export function LiveChartRoot({
   useEffect(() => {
     cursorOriginRef.current = { windowId: winCtxWindowId, group: winCtxGroup, code, timeframe };
   }, [winCtxWindowId, winCtxGroup, code, timeframe]);
-  // 크로스헤어 미러(PR-D2) 상태 — 구독 콜백이 렌더 클로저가 아닌 최신 값을 읽도록 ref.
-  // applyingMirror: 프로그램적 set/clearCrosshairPosition 가 자기 crosshair 핸들러를
-  // 재발화해 미러가 재발행(루프)하는 것을 차단(핸들러 진입부 가드). mirrorDrawn:
-  // 미러를 그린 적이 있을 때만 clear 해 무의미한 clear 재발화를 막는다.
-  const paneSeriesRef = useRef(paneSeries);
-  const mirrorCandlesRef = useRef<readonly { ts_ms: number; close: number }[]>(cb?.candles ?? EMPTY_MIRROR_CANDLES);
-  // 미러 구독 콜백(async hover)이 최신 값을 읽도록 effect 로 미러(렌더 중 ref 쓰기
-  // 금지 규율, cursorOriginRef 와 동일). hover 는 paint 이후라 effect 타이밍 충분.
-  useEffect(() => { paneSeriesRef.current = paneSeries; }, [paneSeries]);
-  useEffect(() => { mirrorCandlesRef.current = cb?.candles ?? EMPTY_MIRROR_CANDLES; }, [cb]);
-  const applyingMirrorRef = useRef(false);
-  const mirrorDrawnRef = useRef(false);
   const publishedCursorMsRef = useRef<number | null>(null);
   const publishedBasisDateRef = useRef<string | null>(null);
   const publishedCursorActiveRef = useRef<boolean | null>(null);
@@ -1685,8 +1670,7 @@ export function LiveChartRoot({
           return;
         }
         publishedCursorMsRef.current = cursorMs;
-        // origin 동반(PR-D2 크로스헤어 미러) — 같은 그룹 다른 창이 이 커서를 미러한다.
-        store.setCursor(cursorMs, cursorOriginRef.current);
+        store.setCursor(cursorMs);
         scheduleSidebarCursor(cursorMs);
       };
       const t = typeof virtualTime === 'number'
@@ -1828,10 +1812,6 @@ export function LiveChartRoot({
       sourceEvent?: { localX?: unknown };
       seriesData?: unknown;
     }) => {
-      // 미러 적용 중(프로그램적 set/clearCrosshairPosition 가 이 핸들러를 재발화)엔
-      // 발행하지 않는다 — 재발행 루프·leave-clear 오발화 차단(PR-D2). lwc 는 이
-      // 이벤트를 setCrosshairPosition 호출 내에서 동기 발화하므로 진입부 플래그로 잡힌다.
-      if (applyingMirrorRef.current) return;
       const separatorX =
         typeof param.sourceEvent?.localX === 'number'
           && Number.isFinite(param.sourceEvent.localX)
@@ -1901,55 +1881,6 @@ export function LiveChartRoot({
     onCandleBasisHover,
     publishCursorHover,
   ]);
-
-  // ── 크로스헤어 미러(ADR-0119 PR-D2) ──────────────────────────────────────────
-  // 같은 링크 그룹의 다른 차트 창이 호버 중이면(cursorOrigin.group === 내 그룹,
-  // windowId ≠ 나), 그 커서 시각을 내 축으로 변환해 수직선을 동기한다(#708 "창 간
-  // 동기화 = 크로스헤어 시간만"). imperative 스토어 구독이라 React 재렌더 0.
-  // Provider 밖(/study·단일 뷰, windowId null)은 미러 불참. 발행은 여전히 자기
-  // 차트만 — 이 effect 는 수신 전용이고, 핸들러의 applyingMirror 가드가 재발행을 막는다.
-  useEffect(() => {
-    if (!chart) return;
-    // 프로그램적 set/clearCrosshairPosition 은 자기 crosshair 핸들러를 동기 재발화
-    // 하므로, 호출 구간에 applyingMirror 플래그를 세워 핸들러가 즉시 return 하게 한다
-    // (재발행 루프·leave-clear 오발화 차단). 3곳의 try/finally 를 이 헬퍼로 단일화.
-    const withMirrorGuard = (fn: () => void) => {
-      applyingMirrorRef.current = true;
-      try { fn(); } finally { applyingMirrorRef.current = false; }
-    };
-    const clearMirror = () => {
-      if (!mirrorDrawnRef.current) return;
-      withMirrorGuard(() => chart.clearCrosshairPosition());
-      mirrorDrawnRef.current = false;
-    };
-    const applyMirror = () => {
-      const s = useLiveCursorStore.getState();
-      const cursorMs = s.cursorMs;
-      const shouldMirror = shouldMirrorCursor({
-        myWindowId: cursorOriginRef.current.windowId,
-        myGroup: cursorOriginRef.current.group,
-        cursorMs,
-        origin: s.cursorOrigin,
-      });
-      if (shouldMirror && cursorMs !== null) {
-        const series = paneSeriesRef.current.get('candle');
-        if (!series) return;
-        const price = mirrorCandleClose(mirrorCandlesRef.current, cursorMs);
-        if (price === null) return;
-        const vt = realMsToVirtualSeconds(axisRef.current, cursorMs) as Time;
-        withMirrorGuard(() => chart.setCrosshairPosition(price, vt, series));
-        mirrorDrawnRef.current = true;
-      } else {
-        clearMirror();
-      }
-    };
-    const unsub = useLiveCursorStore.subscribe(applyMirror);
-    applyMirror(); // 초기 동기(구독 시점 이미 다른 창이 호버 중일 수 있다).
-    return () => {
-      unsub();
-      clearMirror();
-    };
-  }, [chart]);
 
   useEffect(() => {
     if (!chart || !onCandleBasisClick) return;

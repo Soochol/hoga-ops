@@ -59,8 +59,10 @@ wayfinder 지도(티켓 9장)로 정리해 각 결정을 티켓 해소로 확정
   창 간 동기화 무관. **우측 상세 패널(카드 세로 스택)은 폐지**하고 전부 창으로 이주(앱 전역
   레일·관심종목·알림은 크롬으로 존속).
 - 차트 창은 **완전 독립·무제한 중복**(창별 timeframe — 같은 종목 1분봉+일봉 나란히가 1급).
-- **창 간 동기화 = 같은 링크 그룹 차트 창끼리 크로스헤어 시간만**(lwc `subscribeCrosshairMove`
-  → `setCrosshairPosition`). 팬/줌·뷰포트는 창별 독립.
+- ~~**창 간 동기화 = 같은 링크 그룹 차트 창끼리 크로스헤어 시간만**(lwc `subscribeCrosshairMove`
+  → `setCrosshairPosition`). 팬/줌·뷰포트는 창별 독립.~~ → **폐기(2026-07-21)**: PR-D2 로
+  착지했던 크로스헤어 미러를 실사용 판단으로 제거(아래 "크로스헤어 미러 폐기" 참조).
+  **창 간 동기화는 링크 그룹 종목만** 남는다 — 크로스헤어·팬/줌·뷰포트 전부 창별 독립.
 
 ### 3. 링크 그룹 = 종목 SSOT (#711)
 
@@ -240,6 +242,30 @@ D1 잔여 UX 3종. WS venue 전송은 #715 기확정("venue 전역 유지")에 �
   양쪽 소멸·`/study` 콘솔 에러 0. (정밀 드롭은 dnd-kit PointerSensor 가 합성 이벤트에
   활성화되지 않아 헤드리스 드래그 재현 불가 — 리졸버 z-순서·폴백·name 폴백을 유닛
   테스트로 고정, 패널 onDragEnd 배선은 기존 패널 테스트 전량 green 으로 회귀 방지.)
+
+### 크로스헤어 미러 폐기 (2026-07-21)
+
+PR-D2 의 **크로스헤어 미러(#708)를 제거**했다. 사유는 동작 결함이 아니라 **실사용에서
+불필요하고 시야를 방해**한다는 판단 — 창별로 timeframe·종목이 다른 게 1급 사용 패턴이라,
+다른 창의 커서 시각을 내 축에 그린 수직선이 읽을 정보가 되지 못했다. 위 "창 간 동기화"
+설계 항목도 함께 폐기 처리했으니, **재구현 전에 이 결정을 먼저 뒤집어야 한다.**
+
+제거 범위(전부 미러 전용, 다른 소비자 0):
+
+- `frontend/src/live/crosshairMirror.ts` + 테스트 — 파일 삭제.
+- `LiveChartRoot` 의 미러 수신 effect, 전용 ref 4종(`paneSeriesRef`·`mirrorCandlesRef`·
+  `applyingMirrorRef`·`mirrorDrawnRef`), `EMPTY_MIRROR_CANDLES`.
+- crosshair 핸들러 진입부의 `applyingMirror` 가드 — `set/clearCrosshairPosition` 의
+  **유일한 호출자가 미러 effect** 였으므로, 가드가 막던 재발행 루프의 원인 자체가 사라진다.
+- `useLiveCursorStore.cursorOrigin`(즉시 커서 origin) 필드와 `setCursor` 의 origin 인자 —
+  미러가 유일 소비자라 남기면 dead field.
+
+**유지(오해 주의)**: `sidebarCursorOrigin`(스로틀)은 데이터 창 스팟 모드 그룹 게이트
+(`DataWindow`)가 계속 쓴다. 즉시/스로틀 origin 을 독립 필드로 둔 PR-D2 의 설계 덕에
+미러만 도려내도 데이터 창 연동은 무변경 — 이 경계는 스토어 테스트로 고정해 두었다.
+자기 창 크로스헤어(lwc 기본)·캔들 툴팁·pane 레전드·사이드바 스팟도 전부 무관·무변경.
+
+- 검증: tsc 클린 · vitest 4130 green(398 파일) · build 클린 · 변경 파일 eslint 순증 0.
 
 **PR-D 잔여**: WS venue 전송(#715 기확정 "venue 전역 유지"라 실질 보류) → PR-E
 (프리셋 v3 + 성능 마감).
