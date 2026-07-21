@@ -110,30 +110,46 @@ const CARD_TO_KIND: Record<StudyCardKey, StudyWindowKind> = {
 
 /** 차트가 좌측에서 차지하는 가로 비율 — `tidy.ts` 의 CHART_FRACTION 과 같은 값. */
 const SEED_CHART_FRACTION = 0.72;
+/** 10호가(십자 배치 BookPanel)가 보일 때의 차트 비율 — 우측 열이 BookPanel 의
+ *  min-w 560px 계약(기준 캔버스 1546 에서 ≈0.44)을 담을 수 있어야 한다. */
+const SEED_CHART_FRACTION_WITH_BOOK = 0.56;
 
 /**
  * `study.layout.v1` 의 카드 순서/숨김에서 기본 창 배치를 만든다(순수 — 테스트 대상).
- * 차트 창 좌측 + 보이는 카드들을 우측 열에 순서대로 등분 스택. 숨긴 카드는 창을
- * 만들지 않는다(사용자가 치운 것). 메모는 시드에 없다 — 헤더 메모 버튼으로 연다.
- * zOrder 는 데이터 창들 뒤에 차트를 둬 첫 포커스가 차트가 되게 한다.
+ * 차트 창 좌측 + 보이는 카드들을 우측 열에 순서대로 스택. 10호가는 십자 배치라
+ * 다른 카드의 두 배 높이 가중치를 받고, 보이면 우측 열 자체도 넓어진다. 숨긴
+ * 카드는 창을 만들지 않는다(사용자가 치운 것). 메모는 시드에 없다 — 헤더 메모
+ * 버튼으로 연다. zOrder 는 데이터 창들 뒤에 차트를 둬 첫 포커스가 차트가 되게 한다.
  */
 export function buildStudyWorkspaceSeed(layout: {
   cardOrder: readonly StudyCardKey[];
   cardHidden: Partial<Record<StudyCardKey, boolean>>;
 }): Persisted {
   const visible = layout.cardOrder.filter((key) => !layout.cardHidden[key]);
-  const chartW = visible.length > 0 ? SEED_CHART_FRACTION : 1;
+  const hasBook = visible.includes('orderbook');
+  const chartW = visible.length === 0
+    ? 1
+    : hasBook
+      ? SEED_CHART_FRACTION_WITH_BOOK
+      : SEED_CHART_FRACTION;
   const chart: StudyWorkspaceWindow = {
     id: newWindowId(),
     kind: 'chart',
     rect: { x: 0, y: 0, w: chartW, h: 1 },
   };
-  const dataH = visible.length > 0 ? 1 / visible.length : 0;
-  const dataWindows = visible.map((key, i): StudyWorkspaceWindow => ({
-    id: newWindowId(),
-    kind: CARD_TO_KIND[key],
-    rect: { x: chartW, y: i * dataH, w: 1 - chartW, h: dataH },
-  }));
+  const weightOf = (key: StudyCardKey) => (key === 'orderbook' ? 2 : 1);
+  const totalWeight = visible.reduce((acc, key) => acc + weightOf(key), 0);
+  let y = 0;
+  const dataWindows = visible.map((key): StudyWorkspaceWindow => {
+    const h = weightOf(key) / totalWeight;
+    const win: StudyWorkspaceWindow = {
+      id: newWindowId(),
+      kind: CARD_TO_KIND[key],
+      rect: { x: chartW, y, w: 1 - chartW, h },
+    };
+    y += h;
+    return win;
+  });
   const windows = [chart, ...dataWindows];
   return { windows, zOrder: [...dataWindows.map((w) => w.id), chart.id] };
 }

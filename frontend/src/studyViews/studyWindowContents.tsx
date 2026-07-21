@@ -23,10 +23,10 @@ import {
   volumeDistributionClosePointsFromCandles,
 } from '../live/continuousTradeVolumeDistribution';
 import { useVolumeDistributionCutoffProfile } from '../live/useVolumeDistributionCutoffProfile';
-import OrderbookTable from '../sidebar/OrderbookTable';
+import BookPanel from '../live/workspace/BookPanel';
+import { EMPTY_TRADE_SUMMARY, type LiveTradeSummary } from '../live/liveSidebarAdapters';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import ProgramTradeSummaryCard from '../sidebar/ProgramTradeSummaryCard';
-import TotalQtyBar from '../sidebar/TotalQtyBar';
 import {
   resolveBrokerCardProps,
   resolveCursorDetailScope,
@@ -57,8 +57,8 @@ function useStudyCursorScope(save: StudyViewReference) {
   return { cursorScope, detailCursorMs, minuteTimeframe, volumeDistributionDate };
 }
 
-function BookContent({ save }: ContentProps) {
-  const { cursorScope, minuteTimeframe, volumeDistributionDate } = useStudyCursorScope(save);
+function BookContent({ save, bundle }: ContentProps) {
+  const { cursorScope, detailCursorMs, minuteTimeframe, volumeDistributionDate } = useStudyCursorScope(save);
   const spotOrderbook = useLiveOrderbookAtCursor({ code: save.code, timeframe: minuteTimeframe });
   const orderbookSnapshot = resolveOrderbookCardSnapshot({
     scope: cursorScope,
@@ -78,11 +78,48 @@ function BookContent({ save }: ContentProps) {
     () => prevCloseBeforeDate(prevCloseQuery.data?.candles ?? [], volumeDistributionDate),
     [prevCloseQuery.data, volumeDistributionDate],
   );
+  // 십자 배치 BookPanel(/live 와 동일 표면). 요약 지표는 라이브 WS(FID) 대신
+  // 커서 시점까지의 번들에서 파생한다 — 시/고/저·누적량은 그날 캔들 누적,
+  // 체결강도는 fill_strength 누적 비. 재료가 없는 값(거래대금·전일비·상하한·VI·
+  // 체결 리스트·순간 증감)은 null/빈 값 → 패널이 대시/빈 열로 처리한다.
+  const cursorLimitMs = detailCursorMs ?? Number.POSITIVE_INFINITY;
+  const dayCandles = useMemo(
+    () => buildCandleDateIndex(bundle.candles).get(volumeDistributionDate) ?? [],
+    [bundle.candles, volumeDistributionDate],
+  );
+  const { summary, lastPrice } = useMemo((): { summary: LiveTradeSummary; lastPrice: number | null } => {
+    const upTo = dayCandles.filter((c) => c.ts_ms <= cursorLimitMs);
+    if (upTo.length === 0) return { summary: EMPTY_TRADE_SUMMARY, lastPrice: null };
+    const segment = bundle.segments.find((s) => s.date === volumeDistributionDate) ?? null;
+    const fills = segment
+      ? (bundle.fill_strength?.points ?? []).filter(
+          (p) => p.t >= segment.session_open_ms && p.t <= Math.min(cursorLimitMs, segment.session_close_ms),
+        )
+      : [];
+    const buyQty = fills.reduce((acc, p) => acc + p.buy_qty, 0);
+    const sellQty = fills.reduce((acc, p) => acc + p.sell_qty, 0);
+    return {
+      summary: {
+        ...EMPTY_TRADE_SUMMARY,
+        dayOpen: upTo[0].open,
+        dayHigh: Math.max(...upTo.map((c) => c.high)),
+        dayLow: Math.min(...upTo.map((c) => c.low)),
+        cumVolume: upTo.reduce((acc, c) => acc + c.vol_a + c.vol_b, 0),
+        fillStrengthPct: sellQty > 0 ? (buyQty / sellQty) * 100 : null,
+        prevClose: baselinePrice,
+      },
+      lastPrice: upTo[upTo.length - 1].close,
+    };
+  }, [dayCandles, cursorLimitMs, bundle.segments, bundle.fill_strength, volumeDistributionDate, baselinePrice]);
   return (
-    <>
-      <OrderbookTable snapshot={orderbookSnapshot} baselinePrice={baselinePrice} />
-      <TotalQtyBar snapshot={orderbookSnapshot} maskRatio={false} />
-    </>
+    <BookPanel
+      snapshot={orderbookSnapshot}
+      baselinePrice={baselinePrice}
+      summary={summary}
+      trades={[]}
+      maskRatio={false}
+      lastPrice={lastPrice}
+    />
   );
 }
 
