@@ -16,7 +16,6 @@ import { STUDY_DETAIL_PANEL_RAIL_WIDTH_PX, useStudyLayoutStore } from '../state/
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { DoubleChevronIcon } from '../ui/ChevronIcon';
 import { StudyMemoPanel } from './StudyMemoPanel';
-import { StudyRepairedBadge } from './StudyRepairedBadge';
 import { StudyReferenceDetailPanel } from './StudyReferenceDetailPanel';
 import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
@@ -506,9 +505,6 @@ export function StudyPage() {
                 <span className="truncate">
                   {headerCode} · {headerTimeframe ?? '-'} · {headerKindLabel}
                 </span>
-                {activeViewModel.status === 'ready' && (
-                  <StudyRepairedBadge dates={referenceQuery.repairedCandleDates} />
-                )}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
