@@ -11,7 +11,8 @@ type Props = {
   baselinePrice?: number | null;
   /** HTS식 순간 증감 뱃지(직전 스냅샷 대비, useOrderbookDeltaBadges 산출).
    *  라이브 latest 표시일 때만 전달 — 스팟 커서·replay 는 null/미전달(과거 시점에
-   *  "방금 변화" 뱃지는 거짓이 된다). 색은 차트 증감 지표와 같은 유입/유출 어휘. */
+   *  "방금 변화" 뱃지는 거짓이 된다). 색은 KRX 컨벤션(증가 빨강 / 감소 파랑) — 차트
+   *  증감 지표의 유입/유출 색조와 의도적으로 다르다(DESIGN.md 2026-07-21). */
   deltaBadges?: OrderbookDeltaBadges | null;
 };
 
@@ -112,16 +113,12 @@ function Row({
       />
       <span className={`relative text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
       {/* 잔량 셀 — 증감 뱃지는 같은 셀 왼쪽에 flex 로 두어 좁은 카드에서도 가격과
-          겹치지 않는다(#746 절대배치 겹침 교훈). key=atMs 로 매 갱신마다 페이드
-          애니메이션이 재시작된다. */}
+          겹치지 않는다(#746 절대배치 겹침 교훈). */}
       <span className="relative flex items-baseline justify-end gap-1.5">
         {/* 증감 색 = KRX 컨벤션(증가 빨강 / 감소 파랑) — /live 10호가 창 뱃지와
             같은 데이터·같은 의미라 색도 같이 간다(BookPanel 주석 참조). */}
         {badge !== null && (
-          <span
-            key={badge.atMs}
-            className={`book-delta-flash text-[10px] ${priceDirClass(badge.delta)}`}
-          >
+          <span className={`text-[10px] ${priceDirClass(badge.delta)}`}>
             {badge.delta > 0 ? '+' : '−'}
             {Math.abs(badge.delta).toLocaleString('ko-KR')}
           </span>
