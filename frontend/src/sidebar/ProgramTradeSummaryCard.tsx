@@ -102,14 +102,15 @@ function ProgramTradeSparkline({
       kind: seg.kind,
       points: seg.pts.map((p) => `${toX(p.t)},${toY(p.v)}`).join(' '),
     }));
-    return { tFirst, tLast, tSpan, segments, zeroY: toY(0), toY };
+    const zeroY = toY(0);
+    return { tFirst, tLast, tSpan, segments, zeroY, toY, vMin, vMax };
   }, [drawable]);
 
   if (!geometry) {
     return <span className="block min-h-[48px] flex-1 pt-2" />;
   }
 
-  const { tFirst, tLast, tSpan, segments, zeroY, toY } = geometry;
+  const { tFirst, tLast, tSpan, segments, zeroY, toY, vMin, vMax } = geometry;
   const showCursor = cursorMs != null && cursorMs >= tFirst && cursorMs <= tLast;
   const cursorX = showCursor ? ((cursorMs! - tFirst) / tSpan) * W : 0;
   // 커서 교차점 도트: preserveAspectRatio=none 아래 <circle>은 타원으로
@@ -117,65 +118,89 @@ function ProgramTradeSparkline({
   const dotValue = showCursor ? amountOnDrawnLineAt(drawable, cursorMs!) : null;
   const dotTopPct = dotValue != null ? (toY(dotValue) / H) * 100 : null;
 
+  const zeroPct = (zeroY / H) * 100;
+  // 0선 라벨은 도메인 내부(양·음 교차일)일 때만 따로 단다 — 단일 부호 날은
+  // 상·하한 라벨 중 하나가 이미 "0억"이라 중복이다. 상·하한 라벨이 각각
+  // 플롯 높이의 ~20%를 점유하므로 겹치지 않는 중앙대에서만 그린다.
+  const showZeroLabel = vMin < 0 && vMax > 0 && zeroPct > 30 && zeroPct < 70;
+
   return (
-    <span
-      data-testid="program-sparkline"
-      className="relative mt-2 block min-h-[48px] flex-1"
-    >
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
-        className="block h-full w-full"
-      >
-        <line
-          data-testid="zero-baseline"
-          x1={0}
-          x2={W}
-          y1={zeroY}
-          y2={zeroY}
-          stroke="var(--grid)"
-          strokeWidth={1}
-          vectorEffect="non-scaling-stroke"
-        />
-        {segments.map((seg, i) => (
-          <polyline
-            key={`${seg.kind}${i}`}
-            data-testid={seg.kind === 'solid' ? 'sparkline-solid' : 'sparkline-dashed'}
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth={1.5}
-            strokeDasharray={seg.kind === 'dashed' ? '3,3' : undefined}
-            vectorEffect="non-scaling-stroke"
-            points={seg.points}
-          />
-        ))}
-        {showCursor && (
+    <div className="mt-2 flex min-h-[48px] flex-1 gap-1.5">
+      <span data-testid="program-sparkline" className="relative block flex-1">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          className="block h-full w-full"
+        >
           <line
-            data-testid="cursor-marker"
-            x1={cursorX}
-            x2={cursorX}
-            y1={0}
-            y2={H}
-            stroke="var(--accent)"
+            data-testid="zero-baseline"
+            x1={0}
+            x2={W}
+            y1={zeroY}
+            y2={zeroY}
+            stroke="var(--grid)"
             strokeWidth={1}
-            strokeDasharray="2,2"
             vectorEffect="non-scaling-stroke"
+          />
+          {segments.map((seg, i) => (
+            <polyline
+              key={`${seg.kind}${i}`}
+              data-testid={seg.kind === 'solid' ? 'sparkline-solid' : 'sparkline-dashed'}
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth={1.5}
+              strokeDasharray={seg.kind === 'dashed' ? '3,3' : undefined}
+              vectorEffect="non-scaling-stroke"
+              points={seg.points}
+            />
+          ))}
+          {showCursor && (
+            <line
+              data-testid="cursor-marker"
+              x1={cursorX}
+              x2={cursorX}
+              y1={0}
+              y2={H}
+              stroke="var(--accent)"
+              strokeWidth={1}
+              strokeDasharray="2,2"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+        </svg>
+        {dotTopPct != null && (
+          <span
+            data-testid="cursor-value-dot"
+            className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{
+              left: `${(cursorX / W) * 100}%`,
+              top: `${dotTopPct}%`,
+              background: 'var(--accent)',
+              border: '1px solid var(--bg-card)',
+            }}
           />
         )}
-      </svg>
-      {dotTopPct != null && (
-        <span
-          data-testid="cursor-value-dot"
-          className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
-          style={{
-            left: `${(cursorX / W) * 100}%`,
-            top: `${dotTopPct}%`,
-            background: 'var(--accent)',
-            border: '1px solid var(--bg-card)',
-          }}
-        />
-      )}
-    </span>
+      </span>
+      {/* 가격 축은 오른쪽 — 메인 차트(priceScaleId: 'right')와 같은 방향.
+          라벨을 svg 안에 두지 않는 이유는 커서 도트와 같다: preserveAspectRatio
+          =none 아래서는 글자도 가로세로 다른 비율로 늘어난다. */}
+      <div
+        data-testid="program-sparkline-axis"
+        className="relative flex shrink-0 flex-col items-end justify-between font-mono text-badge leading-none text-fg-dimmer tabular-nums"
+      >
+        <span data-testid="axis-label-max">{formatKoreanWonEok(vMax)}</span>
+        {showZeroLabel && (
+          <span
+            data-testid="axis-label-zero"
+            className="absolute right-0 -translate-y-1/2"
+            style={{ top: `${zeroPct}%` }}
+          >
+            {formatKoreanWonEok(0)}
+          </span>
+        )}
+        <span data-testid="axis-label-min">{formatKoreanWonEok(vMin)}</span>
+      </div>
+    </div>
   );
 }
 
