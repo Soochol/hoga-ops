@@ -110,9 +110,23 @@ const CARD_TO_KIND: Record<StudyCardKey, StudyWindowKind> = {
 
 /** 차트가 좌측에서 차지하는 가로 비율 — `tidy.ts` 의 CHART_FRACTION 과 같은 값. */
 const SEED_CHART_FRACTION = 0.72;
-/** 10호가(십자 배치 BookPanel)가 보일 때의 차트 비율 — 우측 열이 BookPanel 의
- *  min-w 560px 계약(기준 캔버스 1546 에서 ≈0.44)을 담을 수 있어야 한다. */
-const SEED_CHART_FRACTION_WITH_BOOK = 0.56;
+/**
+ * 10호가(십자 배치 BookPanel)가 보일 때의 차트 비율.
+ *
+ * BookPanel 은 **min-w 560px** 가 계약이고(그 아래로는 가로 스크롤 = 요약 값 잘림),
+ * /study 캔버스는 탭 바+헤더를 뺀 나머지라 /live 보다 작다(실측 1280 뷰포트에서
+ * 1190×531 vs /live REF 1546×776). 그래서 /live 의 폭 비율(0.44)을 그대로 쓰면
+ * 1190×0.44 = 524px 로 **36px 모자라 잘린다**. 좁은 쪽 실측을 기준으로 잡는다:
+ * 0.50 → 1190 에서 595px 로 계약을 넘긴다.
+ */
+const SEED_CHART_FRACTION_WITH_BOOK = 0.5;
+/**
+ * 10호가의 세로 가중치. 전 10단을 다 보려면 ~462px 가 필요한데(행 22px × 21),
+ * 그건 /study 캔버스 높이(531px)의 87% 라 다른 창과 함께 담을 수 없다. 가장
+ * 많이 주되(가중 3 = 절반) 나머지 카드가 죽지 않는 선에서 타협하고, 전 단을 볼
+ * 때는 사용자가 창을 키우는 것을 전제한다. 넓은 모니터에서는 자연히 해소된다.
+ */
+const SEED_BOOK_HEIGHT_WEIGHT = 3;
 
 /**
  * `study.layout.v1` 의 카드 순서/숨김에서 기본 창 배치를 만든다(순수 — 테스트 대상).
@@ -137,7 +151,7 @@ export function buildStudyWorkspaceSeed(layout: {
     kind: 'chart',
     rect: { x: 0, y: 0, w: chartW, h: 1 },
   };
-  const weightOf = (key: StudyCardKey) => (key === 'orderbook' ? 2 : 1);
+  const weightOf = (key: StudyCardKey) => (key === 'orderbook' ? SEED_BOOK_HEIGHT_WEIGHT : 1);
   const totalWeight = visible.reduce((acc, key) => acc + weightOf(key), 0);
   let y = 0;
   const dataWindows = visible.map((key): StudyWorkspaceWindow => {
