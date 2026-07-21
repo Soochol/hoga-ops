@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type WheelEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { PageContainer } from '../layout/PageContainer';
 import IndicatorPanel from '../live/indicators/IndicatorPanel';
@@ -12,11 +12,10 @@ import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
-import { STUDY_DETAIL_PANEL_RAIL_WIDTH_PX, useStudyLayoutStore } from '../state/studyLayout';
+import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
-import { DoubleChevronIcon } from '../ui/ChevronIcon';
-import { StudyMemoPanel } from './StudyMemoPanel';
-import { StudyReferenceDetailPanel } from './StudyReferenceDetailPanel';
+import { StudyWorkspaceCanvas, StudyWindowAddMenu } from './StudyWorkspaceCanvas';
+import { requestWorkspaceTidy } from '../workspace/workspaceCanvasControls';
 import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
@@ -108,16 +107,14 @@ export function StudyPage() {
   const [activatedStudyTabIds, setActivatedStudyTabIds] = useState<Set<string>>(() => new Set());
   const savesQuery = useStudyViews();
   const mutations = useStudyViewMutations();
-  const [isMemoOpen, setIsMemoOpen] = useState(false);
-  const detailPanelCollapsed = useStudyLayoutStore((s) => s.detailPanelCollapsed);
-  const setDetailPanelCollapsed = useStudyLayoutStore((s) => s.setDetailPanelCollapsed);
-  // 메모는 상세 패널 aside 안에 산다 — 접힌 채로 열면 안 보이므로 열 때 자동 펼침.
-  const openMemo = useCallback(() => {
-    setIsMemoOpen((value) => {
-      if (!value) setDetailPanelCollapsed(false);
-      return !value;
-    });
-  }, [setDetailPanelCollapsed]);
+  // 메모 = 창(ADR-0123) — aside 동거 시절의 "접힘 자동 펼침" 결합이 사라진다.
+  // 버튼은 토글 유지: 메모 창이 있으면 닫고, 없으면 연다.
+  const toggleMemoWindow = useCallback(() => {
+    const workspace = useStudyWorkspaceStore.getState();
+    const memoWindow = workspace.windows.find((w) => w.kind === 'memo');
+    if (memoWindow) workspace.closeWindow(memoWindow.id);
+    else workspace.addWindow('memo');
+  }, []);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [memoError, setMemoError] = useState<string | null>(null);
@@ -135,7 +132,6 @@ export function StudyPage() {
   const handledQueryViewIdRef = useRef(queryViewId);
   const routeSyncPendingRef = useRef(false);
   const studyDropTargetRef = useRef<HTMLDivElement>(null);
-  const detailPanelScrollRef = useRef<HTMLElement>(null);
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? null,
     [activeTabId, tabs],
@@ -235,13 +231,6 @@ export function StudyPage() {
     captureActiveTabViewport();
     openSaveInActiveTab(save);
   }, [captureActiveTabViewport, openSaveInActiveTab]);
-  const handleWheelCapture = useCallback((event: WheelEvent<HTMLDivElement>) => {
-    if (!event.altKey) return;
-    const scroller = detailPanelScrollRef.current;
-    if (!scroller) return;
-    scroller.scrollTop += event.deltaY;
-    event.preventDefault();
-  }, []);
   const commitMemo = useCallback((memo: string) => {
     if (!activeViewId || memo === (selectedSave?.memo ?? '')) return;
     setMemoError(null);
@@ -523,11 +512,17 @@ export function StudyPage() {
                   timeframe={activeViewModel.save.timeframe}
                 />
               )}
-              {/* 묶음 해체(#759 결정 7) 후 낱개 재조립 — /study 는 창 개념이
-                  없어 둘 다 여기에 있고, 화면은 이전과 동일하다. */}
               <IndicatorsButton onClick={() => setIndicatorPanelOpen(true)} />
               <SettingsButton onClick={() => setSettingsOpen(true)} />
-              <IconToolbarButton onClick={openMemo} className="shrink-0">
+              <StudyWindowAddMenu />
+              <IconToolbarButton
+                data-testid="study-tidy"
+                onClick={requestWorkspaceTidy}
+                className="shrink-0"
+              >
+                정리
+              </IconToolbarButton>
+              <IconToolbarButton onClick={toggleMemoWindow} className="shrink-0">
                 메모
               </IconToolbarButton>
             </div>
@@ -535,97 +530,61 @@ export function StudyPage() {
           <div
             ref={studyDropTargetRef}
             data-testid="study-drop-target"
-            className="relative grid min-h-0 gap-1 p-1"
-            style={{
-              gridTemplateColumns: detailPanelCollapsed
-                ? `minmax(0,1fr) ${STUDY_DETAIL_PANEL_RAIL_WIDTH_PX}px`
-                : 'minmax(0,1fr) var(--sidebar-w)',
-            }}
-            onWheelCapture={handleWheelCapture}
+            className="relative min-h-0 p-1"
           >
-            <div data-testid="study-chart-card" className="relative min-h-0 min-w-0 overflow-hidden rounded-lg bg-bg-card shadow-panel">
-              {isStudyPageLoading ? (
-                <div data-testid="study-page-loading" className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
-                  학습뷰 불러오는 중...
-                </div>
-              ) : activeViewModel.status === 'ready' ? (
-                <ChartDrawingShell>
-                  <LiveChartRoot
-                    code={activeViewModel.save.code}
-                    timeframe={activeViewModel.save.timeframe}
-                    venue={referenceQuery.venue}
-                    viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}:${activeViewModel.save.timeframe}` : `${activeViewId}:${activeViewModel.save.timeframe}`}
-                    bundle={activeViewModel.bundle}
-                    chartBundle={activeViewModel.chartBundle}
-                    clampEngaged={false}
-                    isPastCandlesLoading={false}
-                    isExtending={false}
-                    pastDataWarnings={activeViewModel.pastDataWarnings}
-                    restoreViewport={restoreViewport}
-                    dayAskPeaks={activeViewModel.bundle.ask_peaks}
-                    dayBidPeaks={activeViewModel.bundle.bid_peaks}
-                    todayKst={activeViewModel.save.range.to_date}
-                    tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
-                    depthHeatmap={activeViewModel.bundle.depth_heatmap}
-                    forceHogaPanes
-                    dailyCandleKisEnabled={false}
-                    onViewportCaptureReady={handleViewportCaptureReady}
-                  />
-                </ChartDrawingShell>
-              ) : null}
-            </div>
-            <aside
-              ref={detailPanelScrollRef}
-              role="complementary"
-              aria-label="Study Detail Panel"
+            {/* 창 워크스페이스(ADR-0123) — 배치는 studyWorkspace 스토어, 콘텐츠는
+                활성 저장뷰(탭 = 콘텐츠 선택자). 구 2열 grid(차트 카드 + 상세 aside)의
+                후계. */}
+            <div
               data-testid={selectedSave ? studyReferenceDetailPanelTestId(selectedSave) : undefined}
-              className={
-                detailPanelCollapsed
-                  ? 'relative z-10 flex min-h-0 overflow-hidden rounded-lg bg-bg-card shadow-panel'
-                  : 'relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden rounded-lg bg-bg-card shadow-panel'
-              }
-              style={{ scrollbarGutter: 'stable' }}
+              className="h-full min-h-0"
             >
-              {detailPanelCollapsed ? (
-                <button
-                  type="button"
-                  data-testid="study-detail-rail"
-                  aria-label="상세 패널 펼치기"
-                  aria-expanded={false}
-                  onClick={() => setDetailPanelCollapsed(false)}
-                  className="flex w-full flex-col items-center gap-2.5 pt-2 text-fg-dimmer hover:text-fg"
-                >
-                  <DoubleChevronIcon direction="left" />
-                  <span
-                    style={{
-                      writingMode: 'vertical-rl',
-                      fontSize: 'var(--text-xs)',
-                      letterSpacing: '0.15em',
-                    }}
-                  >
-                    상세
-                  </span>
-                </button>
-              ) : (
-                <>
-                  {activeViewModel.status === 'ready' && (
-                    <StudyReferenceDetailPanel
-                      save={activeViewModel.save}
-                      bundle={activeViewModel.bundle}
-                    />
-                  )}
-                  {isMemoOpen && selectedSave && (
-                    <StudyMemoPanel
-                      memo={selectedSave.memo}
-                      isSaving={mutations.updateMetadata.isPending}
-                      errorMessage={memoError}
-                      onClose={() => setIsMemoOpen(false)}
-                      onCommit={commitMemo}
-                    />
-                  )}
-                </>
-              )}
-            </aside>
+              <StudyWorkspaceCanvas
+                save={activeViewModel.status === 'ready' ? activeViewModel.save : null}
+                bundle={activeViewModel.status === 'ready' ? activeViewModel.bundle : null}
+                memo={selectedSave
+                  ? {
+                      memo: selectedSave.memo,
+                      isSaving: mutations.updateMetadata.isPending,
+                      errorMessage: memoError,
+                      onCommit: commitMemo,
+                    }
+                  : null}
+                chartContent={(
+                  <div data-testid="study-chart-card" className="relative h-full min-h-0 min-w-0 overflow-hidden">
+                    {isStudyPageLoading ? (
+                      <div data-testid="study-page-loading" className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
+                        학습뷰 불러오는 중...
+                      </div>
+                    ) : activeViewModel.status === 'ready' ? (
+                      <ChartDrawingShell>
+                        <LiveChartRoot
+                          code={activeViewModel.save.code}
+                          timeframe={activeViewModel.save.timeframe}
+                          venue={referenceQuery.venue}
+                          viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}:${activeViewModel.save.timeframe}` : `${activeViewId}:${activeViewModel.save.timeframe}`}
+                          bundle={activeViewModel.bundle}
+                          chartBundle={activeViewModel.chartBundle}
+                          clampEngaged={false}
+                          isPastCandlesLoading={false}
+                          isExtending={false}
+                          pastDataWarnings={activeViewModel.pastDataWarnings}
+                          restoreViewport={restoreViewport}
+                          dayAskPeaks={activeViewModel.bundle.ask_peaks}
+                          dayBidPeaks={activeViewModel.bundle.bid_peaks}
+                          todayKst={activeViewModel.save.range.to_date}
+                          tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
+                          depthHeatmap={activeViewModel.bundle.depth_heatmap}
+                          forceHogaPanes
+                          dailyCandleKisEnabled={false}
+                          onViewportCaptureReady={handleViewportCaptureReady}
+                        />
+                      </ChartDrawingShell>
+                    ) : null}
+                  </div>
+                )}
+              />
+            </div>
             {draggingEntry && overStudy && <StudyDropOverlay />}
           </div>
           {indicatorPanelOpen && (

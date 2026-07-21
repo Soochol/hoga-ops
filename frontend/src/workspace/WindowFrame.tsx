@@ -36,6 +36,8 @@ export interface WindowFrameCoreProps {
   focused: boolean;
   /** 헤더 내용(⠿ 오른쪽, × 왼쪽) — 제목·뱃지 등 페이지가 구성한다. */
   header: React.ReactNode;
+  /** × 버튼 표시 여부(기본 true) — 닫을 수 없는 창(예: /study 단일 차트)은 숨긴다. */
+  closable?: boolean;
   onHandleDown: (e: React.PointerEvent, id: string, mode: 'move' | ResizeMode) => void;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
@@ -43,7 +45,7 @@ export interface WindowFrameCoreProps {
 }
 
 function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
-  const { id, rect, zIndex, focused, header, onHandleDown, onFocus, onClose, children } = props;
+  const { id, rect, zIndex, focused, header, closable = true, onHandleDown, onFocus, onClose, children } = props;
 
   return (
     <div
@@ -69,14 +71,16 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
       >
         <span className="select-none text-[11px] leading-none text-fg-dimmer">⠿</span>
         {header}
-        <button
-          className="ml-auto px-0.5 text-[12px] leading-none text-fg-dimmer hover:text-fg"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => onClose(id)}
-          title="창 닫기"
-        >
-          ×
-        </button>
+        {closable && (
+          <button
+            className="ml-auto px-0.5 text-[12px] leading-none text-fg-dimmer hover:text-fg"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => onClose(id)}
+            title="창 닫기"
+          >
+            ×
+          </button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden rounded-b-lg">{children}</div>
