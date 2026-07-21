@@ -1,7 +1,8 @@
 // frontend/src/live/settings/NumericPrefRow.tsx
 import { useEffect, useState } from 'react';
 import {
-  useChartPrefsStore,
+  useScopedChartPrefs,
+  useChartPrefActions,
   type NumericPrefDef,
   type NumericPrefKey,
 } from '../../state/chartPrefs';
@@ -10,11 +11,12 @@ import TimeOfDayInput from './TimeOfDayInput';
 import { formatHhmm } from '../../util/tradingTime';
 
 export default function NumericPrefRow({ def }: { def: NumericPrefDef }) {
-  const value = useChartPrefsStore((s) => s[def.key as NumericPrefKey]);
-  const gateEnabled = useChartPrefsStore((s) =>
-    def.enabledBy === undefined ? true : s[def.enabledBy],
-  );
-  const setNumericPref = useChartPrefsStore((s) => s.setNumericPref);
+  // 값·게이트 토글 모두 창 스코프 — 게이트만 전역으로 읽으면 다른 봉의 토글 상태로
+  // 행이 잘못 dim 된다(값은 이 봉, 게이트는 저 봉).
+  const prefs = useScopedChartPrefs();
+  const value = prefs[def.key as NumericPrefKey];
+  const gateEnabled = def.enabledBy === undefined ? true : prefs[def.enabledBy];
+  const { setNumericPref } = useChartPrefActions();
   const [inputValue, setInputValue] = useState<string>(String(value));
 
   useEffect(() => {

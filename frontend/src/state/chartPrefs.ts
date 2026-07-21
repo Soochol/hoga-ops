@@ -460,11 +460,13 @@ export function resolveIndicatorModalPrefs(
   return out as Partial<ChartViewPrefs>;
 }
 
+import { useContext } from 'react';
 import { create } from 'zustand';
 import {
   profileKeyForTimeframe,
   type IndicatorPaneProfileKey,
 } from '../live/indicators/indicatorPaneProfiles';
+import { WindowViewContext } from '../live/workspace/windowViewContext';
 import type { LiveTimeframe } from './livePage';
 
 type ChartPrefsStore = ChartViewPrefs & {
@@ -475,6 +477,12 @@ type ChartPrefsStore = ChartViewPrefs & {
   setIndicatorModalTimeframe: (tf: LiveTimeframe) => void;
   setToggle: (key: ChartToggleKey, value: boolean) => void;
   setNumericPref: (key: NumericPrefKey, value: number) => void;
+  /** 봉을 명시한 쓰기 — indicator-modal 키는 **그 봉의 버킷**에 기록한다.
+   *  차트 전반(flat) 키는 봉과 무관하므로 tf 를 무시한다. 창-스코프 편집 표면
+   *  (`useChartPrefActions`)이 대상 창의 봉을 실어 이 경로로만 쓴다. */
+  setPrefAt: (tf: LiveTimeframe, key: ChartToggleKey | NumericPrefKey, value: boolean | number) => void;
+  /** 지정한 봉의 indicator-modal 버킷만 비운다(드로어 "현재 봉 초기화"). */
+  resetIndicatorModalBucketAt: (tf: LiveTimeframe) => void;
   setDayBoundaryStyle: (patch: { color?: string; lineWidth?: DayBoundaryLineWidth }) => void;
   setTradeHighlightColor: (color: string) => void;
   setViLimitPriceLineStyle: (patch: { color?: string; lineWidth?: ViLimitPriceLineWidth }) => void;
@@ -487,21 +495,32 @@ type ChartPrefsStore = ChartViewPrefs & {
 };
 
 export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
-  /** 키 종류별 단일 쓰기 경로: indicator-modal 키는 ambient 봉 버킷에 기록 +
-   *  최상위 투영 갱신, 차트 전반 키는 flat 그대로. */
-  const writePref = (key: ChartToggleKey | NumericPrefKey, value: boolean | number): void => {
+  /** 키 종류별 단일 쓰기 경로: indicator-modal 키는 `tf` 의 버킷에 기록, 차트 전반
+   *  키는 flat 그대로. 최상위 투영은 **그 버킷이 현재 ambient 봉일 때만** 갱신한다
+   *  — 다른 봉 버킷을 편집하면서 최상위(=ambient 투영)까지 덮으면 Provider 밖
+   *  소비자(`/study`·단일 차트)가 자기 봉이 아닌 값을 보게 된다. */
+  const writePrefAt = (
+    tf: LiveTimeframe,
+    key: ChartToggleKey | NumericPrefKey,
+    value: boolean | number,
+  ): void => {
     if (!isIndicatorModalPrefKey(key)) {
       set({ [key]: value } as Partial<ChartPrefsStore>);
       return;
     }
     const s = get();
-    const profileKey = profileKeyForTimeframe(s.indicatorModalTimeframe);
+    const profileKey = profileKeyForTimeframe(tf);
     const bucket = { ...(s.indicatorModalByTimeframe[profileKey] ?? {}), [key]: value };
-    set({
-      [key]: value,
+    const patch: Record<string, unknown> = {
       indicatorModalByTimeframe: { ...s.indicatorModalByTimeframe, [profileKey]: bucket },
-    } as Partial<ChartPrefsStore>);
+    };
+    if (profileKey === profileKeyForTimeframe(s.indicatorModalTimeframe)) patch[key] = value;
+    set(patch as Partial<ChartPrefsStore>);
   };
+
+  /** ambient 봉 기준 쓰기 — Provider 밖(레거시 단일 뷰·`/study`) 호출자용. */
+  const writePref = (key: ChartToggleKey | NumericPrefKey, value: boolean | number): void =>
+    writePrefAt(get().indicatorModalTimeframe, key, value);
 
   return {
     ...DEFAULT_PREFS,
@@ -520,6 +539,8 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
 
     setNumericPref: (key, value) => writePref(key, value),
 
+    setPrefAt: (tf, key, value) => writePrefAt(tf, key, value),
+
     setDayBoundaryStyle: (patch) =>
       set((s) => ({
         dayBoundaryColor: patch.color ?? s.dayBoundaryColor,
@@ -534,11 +555,15 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
         viLimitPriceLineWidth: patch.lineWidth ?? s.viLimitPriceLineWidth,
       })),
 
-    resetIndicatorModalBucket: () => {
+    resetIndicatorModalBucket: () => get().resetIndicatorModalBucketAt(get().indicatorModalTimeframe),
+
+    resetIndicatorModalBucketAt: (tf) => {
       const s = get();
-      const profileKey = profileKeyForTimeframe(s.indicatorModalTimeframe);
+      const profileKey = profileKeyForTimeframe(tf);
       const byTimeframe = { ...s.indicatorModalByTimeframe };
       delete byTimeframe[profileKey];
+      // 최상위 투영은 ambient 봉으로 다시 계산한다 — 지운 버킷이 ambient 가 아니면
+      // 투영은 그대로 유지되는 게 맞다(writePrefAt 의 게이트와 같은 이유).
       set({
         indicatorModalByTimeframe: byTimeframe,
         ...resolveIndicatorModalPrefs(byTimeframe, s.indicatorModalTimeframe),
@@ -556,18 +581,92 @@ export function syncIndicatorModalTimeframe(tf: LiveTimeframe): void {
 }
 
 /**
- * Subscribe to a slice of the global `ChartViewPrefs`.
+ * 스토어 스냅샷을 **주어진 봉 기준**으로 읽은 `ChartViewPrefs`.
+ *
+ * 최상위 필드는 ambient 봉 투영일 뿐이라, 창마다 봉이 다른 멀티창에서는 그대로
+ * 읽으면 안 된다 — indicator-modal 키는 그 봉의 버킷으로 다시 덮는다.
+ *
+ * 메모: 스냅샷 객체 identity × 봉 프로파일. zustand 는 `set` 마다 새 state 객체를
+ * 만들므로 WeakMap 항목이 자연 무효화된다. selector 가 매 호출 새 객체를 받지
+ * 않게 하는 게 목적 — 안 그러면 useSyncExternalStore 의 스냅샷 안정성이 깨져
+ * 틱마다 무의미한 재렌더가 난다.
+ */
+const prefsByTimeframeCache = new WeakMap<
+  object,
+  Map<IndicatorPaneProfileKey, ChartViewPrefs>
+>();
+
+export function prefsForTimeframe(state: ChartPrefsStore, tf: LiveTimeframe): ChartViewPrefs {
+  const profileKey = profileKeyForTimeframe(tf);
+  let byProfile = prefsByTimeframeCache.get(state);
+  if (!byProfile) {
+    byProfile = new Map();
+    prefsByTimeframeCache.set(state, byProfile);
+  }
+  const hit = byProfile.get(profileKey);
+  if (hit) return hit;
+  const merged = {
+    ...state,
+    ...resolveIndicatorModalPrefs(state.indicatorModalByTimeframe, tf),
+  } as ChartViewPrefs;
+  byProfile.set(profileKey, merged);
+  return merged;
+}
+
+/** 이 서브트리가 속한 창의 봉 — Provider 밖(단일 차트·`/study`)이면 null. */
+function useWindowPrefsTimeframe(): LiveTimeframe | null {
+  return useContext(WindowViewContext)?.timeframe ?? null;
+}
+
+/**
+ * Subscribe to a slice of `ChartViewPrefs`.
  *
  * Fine-grained: re-renders only when the selected slice changes (by
  * Zustand's default `Object.is` equality). Use this in chart components
  * and projectors instead of reading the whole prefs object — RatioPane
  * shouldn't re-render when the user flips `ratioOutlierThreshold`.
  *
- * Thin wrapper over `useChartPrefsStore` preserved so existing chart
- * projectors keep their `useActivePrefs(selector)` call shape.
+ * **창 스코프(멀티창 결함 수정)**: Provider 안에서는 indicator-modal 키를 그 창의
+ * 봉 버킷으로 resolve 해 넘긴다. 종전에는 모든 창이 전역 슬롯
+ * (`indicatorModalTimeframe` — 포커스 전환을 따라다니는 값)의 버킷을 읽어서,
+ * 예컨대 분봉 창에서 끈 「총잔량 급증 마커」가 슬롯이 D 를 가리키는 동안 되살아났다
+ * (그 창을 클릭해 포커스를 주면 슬롯이 재동기화되어 다시 사라짐 — 자기치유형 증상).
+ * Provider 밖에서는 종전대로 ambient 투영을 읽는다(`/study` 무변경 계약).
  */
 export function useActivePrefs<T>(selector: (prefs: ChartViewPrefs) => T): T {
-  return useChartPrefsStore(selector);
+  const tf = useWindowPrefsTimeframe();
+  return useChartPrefsStore((s) => selector(tf ? prefsForTimeframe(s, tf) : s));
+}
+
+/** 창 스코프로 resolve 된 prefs 전체 — 드로어의 설정 행처럼 여러 키를 한꺼번에
+ *  읽는 UI 용(`useActivePrefs` 와 같은 봉 규칙). */
+export function useScopedChartPrefs(): ChartViewPrefs {
+  const tf = useWindowPrefsTimeframe();
+  return useChartPrefsStore((s) => (tf ? prefsForTimeframe(s, tf) : s));
+}
+
+/** 창 스코프 편집 표면 — 대상 창의 봉 버킷에 기록한다(`useIndicatorActions` 의
+ *  chartPrefs 대응물). Provider 밖이면 ambient 봉으로 폴백. */
+export function useChartPrefActions(): {
+  setToggle: (key: ChartToggleKey, value: boolean) => void;
+  setNumericPref: (key: NumericPrefKey, value: number) => void;
+  resetIndicatorModalBucket: () => void;
+} {
+  const tf = useWindowPrefsTimeframe();
+  // 스토어 액션은 생성 시 1회 만들어지는 안정 참조 — 매 렌더 새 클로저를 만들어도
+  // 대상 봉만 다르므로, useMemo 없이도 의미가 흔들리지 않는다. 다만 봉이 바뀌면
+  // 새 클로저가 새 버킷을 향해야 하므로 클로저 캡처는 tf 로 유지한다.
+  const store = useChartPrefsStore;
+  return {
+    setToggle: (key, value) =>
+      tf ? store.getState().setPrefAt(tf, key, value) : store.getState().setToggle(key, value),
+    setNumericPref: (key, value) =>
+      tf ? store.getState().setPrefAt(tf, key, value) : store.getState().setNumericPref(key, value),
+    resetIndicatorModalBucket: () =>
+      tf
+        ? store.getState().resetIndicatorModalBucketAt(tf)
+        : store.getState().resetIndicatorModalBucket(),
+  };
 }
 
 import { hydrateChartPrefs, attachChartPrefsPersistence } from './chartPrefsPersistence';

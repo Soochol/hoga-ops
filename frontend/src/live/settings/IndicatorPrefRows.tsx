@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import {
-  useChartPrefsStore,
+  useScopedChartPrefs,
+  useChartPrefActions,
   CHART_TOGGLES,
   CHART_NUMERIC_PREFS,
   type ChartToggleKey,
@@ -19,8 +20,9 @@ export default function IndicatorPrefRows({
 }: {
   toggleKeys: readonly ChartToggleKey[];
 }) {
-  const prefs = useChartPrefsStore();
-  const setToggle = useChartPrefsStore((s) => s.setToggle);
+  // 읽기·쓰기 모두 이 서브트리의 창 봉 버킷을 향한다(Provider 밖=ambient 폴백).
+  const prefs = useScopedChartPrefs();
+  const { setToggle } = useChartPrefActions();
   const keySet = new Set<string>(toggleKeys);
   const toggles = CHART_TOGGLES.filter((t) => keySet.has(t.key));
   return (
