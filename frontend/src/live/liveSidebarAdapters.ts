@@ -52,7 +52,7 @@ export type LiveTradeSummary = {
   fillStrengthPct: number | null; // FID 228
   vsPrevVolumePct: number | null; // FID 30 — 오늘 누적 ÷ 전일 전량 × 100
   cumVolume: number | null;       // FID 13
-  vwap: number | null;            // FID 620
+  cumValue: number | null;        // FID 14 — 파서가 원 단위로 정규화
   dayOpen: number | null;         // FID 16
   dayHigh: number | null;         // FID 17
   dayLow: number | null;          // FID 18
@@ -60,7 +60,7 @@ export type LiveTradeSummary = {
 };
 
 export const EMPTY_TRADE_SUMMARY: LiveTradeSummary = {
-  fillStrengthPct: null, vsPrevVolumePct: null, cumVolume: null, vwap: null,
+  fillStrengthPct: null, vsPrevVolumePct: null, cumVolume: null, cumValue: null,
   dayOpen: null, dayHigh: null, dayLow: null, prevClose: null,
 };
 
@@ -85,7 +85,7 @@ export function latestTradeSummary(trade: readonly RawSnapshot[]): LiveTradeSumm
     ['fillStrengthPct', 'fill_strength_pct'],
     ['vsPrevVolumePct', 'vs_prev_volume_pct'],
     ['cumVolume', 'cum_volume'],
-    ['vwap', 'vwap'],
+    ['cumValue', 'cum_value'],
     ['dayOpen', 'day_open'],
     ['dayHigh', 'day_high'],
     ['dayLow', 'day_low'],

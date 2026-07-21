@@ -237,6 +237,12 @@ def _parse_trade(
         v = _qty(values, fid)
         if v > 0:
             payload[key] = v
+    # 누적거래대금(14)은 **백만원 단위**라 원으로 정규화해 싣는다 — 같은 프레임에
+    # 금액 단위 3종이 혼재(14=백만원·29=원·1313=천원)하므로 소비자가 키움 단위를
+    # 몰라도 되게 파서가 흡수한다(kiwoom_fields 검산 주석 참조).
+    cum_value_m = _qty(values, K.CNT_CUM_VALUE)
+    if cum_value_m > 0:
+        payload["cum_value"] = cum_value_m * 1_000_000
     return WsTick(
         code=code, t_ms=t_ms, kind=SnapshotKind.TRADE, payload=payload, venue=venue,
     )

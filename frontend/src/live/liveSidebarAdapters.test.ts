@@ -209,7 +209,7 @@ describe('orderbookSnapshotAtCursor (ADR-0044 amendment — SSE buffer fallback)
 describe('latestTradeSummary', () => {
   it('빈 버퍼면 전 필드가 null 이다', () => {
     expect(latestTradeSummary([])).toEqual({
-      fillStrengthPct: null, vsPrevVolumePct: null, cumVolume: null, vwap: null,
+      fillStrengthPct: null, vsPrevVolumePct: null, cumVolume: null, cumValue: null,
       dayOpen: null, dayHigh: null, dayLow: null, prevClose: null,
     });
   });
@@ -220,22 +220,22 @@ describe('latestTradeSummary', () => {
     const trade = [
       { t_ms: 1, fill_strength_pct: 94.4, cum_volume: 100, day_open: 250_000 },
       { t_ms: 2, cum_volume: 250 },
-      { t_ms: 3, cum_volume: 300, vwap: 251_000 },
+      { t_ms: 3, cum_volume: 300, cum_value: 82_400_000_000 },
     ];
     const s = latestTradeSummary(trade);
     expect(s.cumVolume).toBe(300);        // 최신
     expect(s.fillStrengthPct).toBe(94.4); // 첫 프레임에만 있음
     expect(s.dayOpen).toBe(250_000);
-    expect(s.vwap).toBe(251_000);
+    expect(s.cumValue).toBe(82_400_000_000);
     expect(s.dayHigh).toBeNull();         // 어느 프레임에도 없음
   });
 
   it('0·음수·비수는 미수신으로 접는다', () => {
     const s = latestTradeSummary([
-      { t_ms: 1, cum_volume: 0, vwap: -1, fill_strength_pct: 'x', day_low: 240_000 },
+      { t_ms: 1, cum_volume: 0, cum_value: -1, fill_strength_pct: 'x', day_low: 240_000 },
     ]);
     expect(s.cumVolume).toBeNull();
-    expect(s.vwap).toBeNull();
+    expect(s.cumValue).toBeNull();
     expect(s.fillStrengthPct).toBeNull();
     expect(s.dayLow).toBe(240_000);
   });

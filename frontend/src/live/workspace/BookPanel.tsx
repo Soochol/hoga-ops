@@ -175,8 +175,10 @@ export default function BookPanel({
                 value={fmtOr(summary.dayLow)}
                 color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
               />
-              <SummaryRow label="평균가" value={fmtOr(summary.vwap)} />
+              {/* 평균가(VWAP) 행은 사용자 요청으로 거래대금과 교체(2026-07-21) —
+                  620 은 파서·저장에 계속 남아 차트 지표 승격 등으로 복귀 가능. */}
               <SummaryRow label="거래량" value={fmtVolumeKo(summary.cumVolume)} divider />
+              <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
               <SummaryRow
                 label="어제보다"
                 value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
@@ -474,4 +476,20 @@ function fmtVolumeKo(n: number | null): string {
   if (n === null) return '−';
   const man = Math.floor(n / 10_000);
   return man > 0 ? `${man.toLocaleString('ko-KR')}만` : n.toLocaleString('ko-KR');
+}
+
+/** 거래대금(원) → "824억" · "1조 2,345억" (거래량 만 단위 포맷과 대칭인 억/조 절사).
+ *  1억 미만 초저유동성 종목은 만 단위로 강등 — 최장 "1조 2,345억"(8자)이라
+ *  250일 행(15자)보다 짧아 우측 열 폭 예산(#776) 안이다. */
+function fmtAmountKo(won: number | null): string {
+  if (won === null) return '−';
+  const eok = Math.floor(won / 100_000_000);
+  if (eok >= 10_000) {
+    const jo = Math.floor(eok / 10_000);
+    const rest = eok % 10_000;
+    return rest > 0 ? `${jo}조 ${rest.toLocaleString('ko-KR')}억` : `${jo}조`;
+  }
+  if (eok > 0) return `${eok.toLocaleString('ko-KR')}억`;
+  const man = Math.floor(won / 10_000);
+  return man > 0 ? `${man.toLocaleString('ko-KR')}만` : won.toLocaleString('ko-KR');
 }
