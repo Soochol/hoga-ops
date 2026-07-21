@@ -40,7 +40,7 @@ export function RecaptureActionBar({
         </button>
       )}
       {status?.kind === 'success' && (
-        <div className="text-fg-dim font-mono tabular-nums">
+        <div className="text-fg-dim font-data tabular-nums">
           Queued {status.enqueued} capture{status.enqueued === 1 ? '' : 's'}
           {status.skipped > 0 && ` (${status.skipped} skipped)`}
         </div>

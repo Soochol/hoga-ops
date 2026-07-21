@@ -99,10 +99,10 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
             onClick={() => pickTool(tool)}
             className={itemClass(active)}
           >
-            <span aria-hidden="true" className="w-4 text-center font-mono">{spec.glyph}</span>
+            <span aria-hidden="true" className="w-4 text-center font-data">{spec.glyph}</span>
             <span>{spec.label}</span>
             {spec.shortcut && (
-              <span className="ml-auto font-mono text-[10px] text-fg-dimmer">
+              <span className="ml-auto font-data text-[10px] text-fg-dimmer">
                 ⌥{spec.shortcut.key.toUpperCase()}
               </span>
             )}
@@ -180,7 +180,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
           paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE,
         }}
       >
-        <span aria-hidden="true" className="font-mono">{drawing ? activeSpec.glyph : '✎'}</span>
+        <span aria-hidden="true" className="font-data">{drawing ? activeSpec.glyph : '✎'}</span>
         {showLabel && <span>{drawing ? activeSpec.label : '그리기'}</span>}
       </button>
       {menu && createPortal(menu, document.body)}

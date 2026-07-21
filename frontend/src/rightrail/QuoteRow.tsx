@@ -122,10 +122,10 @@ export function QuoteRow({
       {/* 가격은 --fg 중립, 등락%만 방향색 — 패널이 온통 적/청이던 것을 진정시켜 변동 큰
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
-      <span className="flex-none w-[4.75rem] text-right font-mono tabular-nums text-sm text-fg leading-tight">
+      <span className="flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
         {price != null ? price.toLocaleString('ko-KR') : '—'}
       </span>
-      <span className={`flex-none w-[3.5rem] text-right font-mono tabular-nums text-xs leading-tight ${pct === null ? 'text-fg-dimmer' : priceDirClass(pct)}`}>
+      <span className={`flex-none w-[3.5rem] text-right font-data tabular-nums text-xs leading-tight ${pct === null ? 'text-fg-dimmer' : priceDirClass(pct)}`}>
         {pct != null ? formatPct(pct) : ''}
       </span>
       {trailingAction != null && (

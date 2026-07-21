@@ -40,15 +40,23 @@ The design system has a **single density dial** at `:root font-size`.
 
 ## Typography
 
-- **Display / Hero / Brand:** IBM Plex Sans KR 600 — bold but neutral, distinctive without being decorative. Carries Latin + Hangul in one family (no separate Korean fallback needed).
-- **Body / UI labels:** IBM Plex Sans KR 400–500 — same family as Display for visual continuity.
-- **UI / Labels:** Same as body. Small-caps section headers use 10.5px / 600 weight / `0.08em` letter-spacing / uppercase.
-- **Data / Tables / All numbers:** IBM Plex Mono 400–500 — must use `font-variant-numeric: tabular-nums`. Every numeric value in the product is monospace for column alignment.
-- **Code (future, if any):** IBM Plex Mono — same as data, no second mono.
+**One typeface, two figure styles.** Pretendard carries Latin + Hangul, prose and data alike. There is **no monospace face in the system** — column alignment comes from tabular figures (`tnum`), not from a monospaced typeface.
 
-- **Font tokens:** `--font-ui` / `--font-mono` (theme-independent, defined on the base block in `tokens.css`; Tailwind `font-ui`/`font-sans`/`font-mono` resolve to them). Stacks fall back through `Pretendard` → system before generic. **Do not reference a font family by name in a component** — always go through the token.
-- **Loading strategy:** Google Fonts via `<link>` in `index.html` (preconnect + render-blocking stylesheet), `IBM+Plex+Sans+KR` + `IBM+Plex+Mono`. Self-host as v1+1 if network latency becomes annoying on cold start.
-- **History:** v1 speced Geist Sans/Mono but the `--font-ui`/`--font-mono` tokens were never defined, so the app silently rendered in the browser serif default (Times). Fixed 2026-07-08 by defining the tokens and switching to IBM Plex (Hangul coverage + a single vendor for sans+mono).
+- **Display / Hero / Brand:** Pretendard 600–700 — neutral geometric sans, distinctive without being decorative.
+- **Body / UI labels:** Pretendard 400–500 — same family as Display for visual continuity.
+- **UI / Labels:** Same as body. Small-caps section headers use 10.5px / 600 weight / uppercase, **letter-spacing `normal`** — the system does not track type.
+- **Data / Tables / All numbers:** Pretendard 400–600 via the **`font-data`** utility, which carries `font-feature-settings: "tnum"` automatically. Every numeric value uses tabular figures so columns hold their grid.
+- **Code (future, if any):** no face reserved. Introduce one only with an explicit decision — do not reach for `monospace`.
+
+- **Font tokens:** `--font-ui` / `--font-data` (theme-independent, defined on the base block in `tokens.css`; Tailwind `font-ui`/`font-sans` → `--font-ui`, `font-data` → `--font-data`). Both resolve to the *same* stack — they differ only in figure style. **Do not reference a font family by name in a component** — always go through the token.
+  - **Canvas surfaces** (lightweight-charts axis text, chart drawing labels) cannot read CSS custom properties. They go through `CANVAS_FONT_STACK` in `styles/design-tokens.ts` — one literal, mirroring `--font-ui`, consumed by `util/chartScale.ts` and `chart/drawing/render.ts`. Do not add a third literal. Canvas 2D has no `font-feature-settings` equivalent, so canvas digits are proportional; `tnum` reaches DOM surfaces only.
+  - `CHART_LAYOUT_OPTIONS` must be spread **inside** the chart's `layout` option, not at the options root. Spreading it at the root is silently ignored by lightweight-charts — that is how the axis kept the library's default font from v1 until 2026-07-21. Guarded by a nesting assertion in `LiveChartRoot.test.tsx`.
+  - `font-mono` survives in `tailwind.config.ts` as a **deprecated alias** mapped to the same value. Do not use it in new code. It is kept mapped rather than deleted so a stray `font-mono` from an unmerged branch fails safe (deleting the key would hand it Tailwind's default monospace stack, whose digits are *not* guaranteed tabular).
+- **Why tnum instead of a monospace face:** measured 2026-07-21 — Pretendard's digits are proportional by default (`1` is 7px narrower than `4` at 40px) and collapse to a single uniform width under `tnum`. With `tnum` disabled on a live orderbook, 20 nine-digit prices rendered at **18 distinct widths (3.12px spread)**; with it on, **1 width (0px spread)**. Alignment is therefore a property of the feature flag, not the face — which is why `tnum` is bound to the `font-data` utility rather than left to each call site.
+- **Loading strategy:** Pretendard via jsDelivr `<link>` in `index.html` (preconnect + render-blocking stylesheet), `pretendardvariable-dynamic-subset`. Dynamic subset ships per-unicode-range woff2 chunks, so a cold load fetches only the ranges on screen instead of a multi-MB Hangul file. Render-blocking is deliberate: a swap would reflow every number column.
+- **History:**
+  - v1 speced Geist Sans/Mono but the `--font-ui`/`--font-mono` tokens were never defined, so the app silently rendered in the browser serif default (Times). Fixed 2026-07-08 by defining the tokens and switching to IBM Plex.
+  - 2026-07-21: IBM Plex Sans KR + IBM Plex Mono → Pretendard single family; `--font-mono` → `--font-data`; letter-spacing dropped to `normal` throughout. See the decision log.
 
 - **Scale (rem-based, single dial at `:root font-size`):**
 
@@ -57,7 +65,7 @@ The design system has a **single density dial** at `:root font-size`.
 |---|---|---|---|
 | `badge` | 8.5px | 9.563px | Hierarchical badges (e.g., SymbolSearch market tag) |
 | `xs` | 10.5px | 11.813px | Small-caps labels, badges |
-| `sm` | 11.5px | 12.938px | Table rows, secondary mono values |
+| `sm` | 11.5px | 12.938px | Table rows, secondary data values |
 | `base` | 13px | 14.625px | Body / UI default |
 | `md` | 14px | 15.75px | Section / page headings |
 | `lg` | 16px | 18px | Brand text |
@@ -302,7 +310,7 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-05-20 | Single teal accent, strictly separated from up/down semantic | Prevents data-vs-UI color confusion. Teal is "the system speaking"; green/rose is "the market speaking". |
 | 2026-05-20 | Compressed multi-day time axis (no overnight gap) | Screen density over chronological accuracy; matches TradingView's convention for analyzing across sessions. |
 | 2026-05-20 | Tab status pulse dot | Multi-tab async state needs to be visible. One small animation is worth the tradeoff. |
-| 2026-05-20 | Monospace 100% for numbers | Tabular-nums is required for orderbook column alignment. Two-font cost (~50 KB extra) is negligible on localhost. |
+| 2026-05-20 | Monospace 100% for numbers | Tabular-nums is required for orderbook column alignment. Two-font cost (~50 KB extra) is negligible on localhost. **(뒤집힘 — 2026-07-21 참조)** |
 | 2026-05-23 | Adopted KRX market convention (up=red `#DC2626`, down=blue `#2563EB`) | Single-user Korean analyst — Western up=green is counter-intuitive. Renamed `--up`/`--down` → `--success`/`--error` to disambiguate status semantic from price direction; introduced `--price-up`/`--price-down`. Removed `--ratio-ask` (folded into `--price-down`). All chart series now hide both `priceLineVisible` and `lastValueVisible` — analysts read latest values via crosshair. |
 | 2026-05-30 | Global Right Rail (fixed; single 관심 item, heart icon) replaces the `/live` ★ watchlist drawer; the chevron `»`/`«` and the 관심 item both show/hide the Watchlist Panel; chrome state in a dedicated `rightRail` store (ADR-0052) | Watchlist reachable from every page. Rail does not collapse — only the panel opens. Active state = tint bg + neutral text (no triple-teal, matches the app-shell active state). `--rail-w` added via `design-tokens.ts` (ADR-0012). |
 | 2026-06-08 | 관심종목 그룹 헤더 위계: 크기 교환(그룹 sm/600, 종목명 xs) + 개수 인라인 + chevron 좌측 ▼/▶ + sticky | 그룹·종목이 같은 "좌 텍스트 + 우 mono 숫자" 패턴으로 오독되던 문제. 디자인 컴패니언 4안 비교로 색 추가 없는 A안 선택 — 틸 라벨은 색상 규율(UI 상태 전용) 이탈로 기각. |
@@ -324,6 +332,7 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-07-15 | `/screener`·`/inventory`·`/capture` 카드도 borderless (feature-route 전면 통일) | 위 `/heatmap` 통일을 나머지 feature route 로 확장. 이 3페이지는 `/heatmap` 과 달리 기본 `auto` 에서 **Ledger(라이트)** 표면이라, 직전 "Ledger 카드는 `--border` 유지" 규칙과 정면 충돌 — 라이트에서 `--bg`=`--bg-card` + 옅은 shadow 라 테두리를 지우면 카드 경계가 약해진다. **사용자가 라이트 tradeoff 를 명시적으로 수용**하고 `/live`·`/study` 워크스페이스와의 전면 통일을 택함 → 8개 `PanelCard`(screener 3·inventory 3·capture 2) 모두 `borderless`. 이로써 이전 "Ledger 카드 `--border` 유지" 규칙은 폐지되고 `--border` 는 카드 내부 구분선·입력·테이블 전용이 된다. 각 페이지 테스트(`toHaveClass('border')`→`not.toHaveClass`)·DESIGN.md Content framing 규칙 갱신. |
 | 2026-07-16 | `/live` 보조지표·설정을 중앙 모달 → **우측 드로어**(`ModalShell side='right'`, ADR-0116)로 전환 + 크롬 상수화 | 두 패널 모두 즉시 적용(저장 버튼 없음)인데 1040×820 중앙 모달이 차트를 덮어 효과를 볼 수 없던 모순 해소 — 드로어(760px)는 좌측 ~520px 차트를 가벼운 딤(`bg-black/30`) 너머로 남긴다. 보조지표↔설정 전환 시 패널이 흔들리지 않도록 폭·nav(240px 마스터-디테일)를 `frontend/src/live/workspaceDrawer.ts` 상수로 강제(copy-paste 드리프트 방지, PR #670·#671 코드리뷰 후속). Center modal 은 확인 다이얼로그(ConfirmModal) 등 짧은 상호작용 전용으로 존속. |
 | 2026-07-21 | **호가창 잔량 증감 뱃지 = KRX 컨벤션(증가 `--price-up` 빨강 / 감소 `--price-down` 파랑)** — 차트 오버레이의 teal/fuchsia 와 의도적 분기 (사용자 승인) | 잔량 증감 색은 원래 teal/fuchsia 한 쌍을 세 표면(차트 오버레이·`/live` BookPanel·`/study` OrderbookTable)이 공유했다. 그 색조의 근거는 **레이어 겹침** — 차트에선 잔량 증감과 호가 히트맵(빨강·파랑)이 같은 셀에 동시에 켜져 색이 충돌하면 판독 불가다. 호가창 뱃지엔 겹치는 레이어가 없어 그 제약이 성립하지 않고, 증감은 `--price-*` 의 정의("positive delta = red")에 그대로 들어맞는 시장 데이터라 KRX 컨벤션이 더 직관적이다. 뱃지 2곳만 `priceDirClass()` 로 전환하고 차트 오버레이 기본색(`DEPTH_DELTA_DEFAULT_*`)은 불변 — **두 표면의 색이 다른 것은 버그가 아니라 이 결정이다.** 뱃지는 막대 바깥쪽 끝에 붙어 같은 색 막대(ask 파랑 28% / bid 빨강 28%) 위에 얹히는 경우가 생기지만, 막대가 저알파라 솔리드 텍스트가 읽힌다(장중 실화면 확인). |
+| 2026-07-21 | **타이포 전면 전환: IBM Plex Sans KR + IBM Plex Mono → Pretendard 단일 패밀리** — 모노스페이스 폐지, 숫자 정렬은 `tnum` 으로 이관, `--font-mono`→`--font-data` 리네이밍, 자간 전면 `normal` (사용자 승인, 프로토타입 A/B/C 비교) | 토스증권 타이포 시스템 벤치마크에서 출발. 토스는 **한 패밀리로 본문·숫자를 모두 처리하고 정렬은 `tnum` OpenType 피처로 얻는다** — 모노스페이스 두 번째 패밀리(~50KB)가 불필요해진다. Toss Product Sans 자체는 산돌 제작 전용 서체로 공개 배포되지 않아 사용 불가 → 동일 계열 오픈 라이선스(SIL OFL) 대체제 **Pretendard** 채택(기존 폴백 체인 2순위였음). **실측이 결정 근거**: Pretendard 숫자는 기본 프로포셔널(40px 에서 `1`=17.55px vs `4`=24.97px)이나 `tnum` 적용 시 전부 24.58px 로 균일. 실 호가창에서 대조 실험 — `tnum` OFF 시 9자리 가격 20개가 **18종 폭(편차 3.12px)** 으로 흩어지고, ON 시 **1종(편차 0px)**. 즉 정렬의 원인은 서체가 아니라 피처 플래그이므로, 개별 호출부의 `tabular-nums` 선언에 맡기지 않고 **Tailwind `fontFamily` 튜플로 `font-data` 유틸리티 자체에 `font-feature-settings:"tnum"` 를 결속**했다(구조적 안전). 이 결속이 없으면 `font-mono` 만 있고 `tabular-nums` 가 없던 80개 호출부가 타입 에러도 테스트 실패도 없이 조용히 어긋난다. `font-mono` 는 삭제하지 않고 deprecated 별칭으로 남긴다 — 키를 지우면 Tailwind 기본 모노 스택이 승계돼 등폭 보장이 사라지기 때문(fail-safe). **포기한 것**: 2026-05-20 이 세운 "데이터=기계적 텍스트" 시각적 위계. 토스는 위계를 굵기·색으로만 만들고 서체로 만들지 않으며, 사용자가 실데이터 프로토타입 3안(현행/토스식/하이브리드)을 비교한 뒤 토스식을 선택했다. |
 
 ## App-shell & live tokens (ADR-0039, ADR-0052)
 

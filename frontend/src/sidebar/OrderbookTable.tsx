@@ -48,7 +48,7 @@ export default function OrderbookTable({ snapshot, baselinePrice = null, deltaBa
   const displayedAsks = [...asks].reverse();
 
   return (
-    <div className="font-mono text-sm tabular-nums">
+    <div className="font-data text-sm tabular-nums">
       {displayedAsks.map((l, i) => (
         // i counts top→bottom across displayedAsks; reverse it for stable
         // keys tied to rank (best = 1).

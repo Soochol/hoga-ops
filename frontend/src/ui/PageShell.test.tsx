@@ -78,6 +78,6 @@ describe('PageShell primitives', () => {
   it('renders Settings-style definition rows', () => {
     render(<DefinitionRow label="API URL" value="http://test" />);
     expect(screen.getByText('API URL')).toHaveClass('uppercase');
-    expect(screen.getByText('http://test')).toHaveClass('font-mono');
+    expect(screen.getByText('http://test')).toHaveClass('font-data');
   });
 });

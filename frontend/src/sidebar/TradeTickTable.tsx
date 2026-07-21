@@ -51,7 +51,7 @@ export default function TradeTickTable({
     return <SidebarState>체결 데이터 없음</SidebarState>;
   }
   return (
-    <div className="font-mono text-sm tabular-nums">
+    <div className="font-data text-sm tabular-nums">
       <div
         className={`sticky top-0 z-10 grid ${COLS} gap-2 border-b border-border bg-bg-card px-2.5 py-1 text-[10.5px] text-fg-dimmer`}
       >

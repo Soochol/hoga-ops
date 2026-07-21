@@ -20,7 +20,7 @@ const noticeStyle: CSSProperties = {
   background: 'var(--bg-card)',
   borderRadius: 'var(--radius-md)',
   padding: 'var(--space-2xs) var(--space-sm)',
-  fontFamily: 'var(--font-mono)',
+  fontFamily: 'var(--font-data)',
   fontSize: 'var(--text-xs)',
   lineHeight: 1.4,
   color: 'var(--fg-dimmer)',

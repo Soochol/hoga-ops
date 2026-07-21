@@ -58,7 +58,7 @@ export function CaptureQueueRow({
         aria-label={`Capture row ${item.code} ${item.date} ${item.phase}. Press Enter to ${expanded ? 'collapse' : 'expand'} details.`}
         onClick={() => setExpanded((v) => !v)}
         onKeyDown={onKeyDown}
-        className="grid grid-cols-[1rem_2.6rem_4.5rem_7rem_4.5rem_2.5rem_2.5rem_minmax(6rem,1fr)_1.2rem] items-center gap-2 h-capture-row px-sm border-b font-medium text-sm font-mono tabular-nums text-fg cursor-pointer outline-none"
+        className="grid grid-cols-[1rem_2.6rem_4.5rem_7rem_4.5rem_2.5rem_2.5rem_minmax(6rem,1fr)_1.2rem] items-center gap-2 h-capture-row px-sm border-b font-medium text-sm font-data tabular-nums text-fg cursor-pointer outline-none"
       >
         {/* 반응형 폭 배분: 종목명 칼럼은 고정 7rem — 행마다 균일해야 뒤 칼럼들이
             행 간 정렬된다(각 행이 독립 grid 라 max-content 로 두면 이름 길이·배지에

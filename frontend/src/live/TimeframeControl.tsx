@@ -102,7 +102,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
               (selected
                 ? 'bg-bg-input-hover text-accent'
                 : 'text-fg-dim hover:text-fg hover:bg-bg-input-hover') +
-              ' w-full text-left px-3 py-1.5 text-sm font-mono'
+              ' w-full text-left px-3 py-1.5 text-sm font-data'
             }
           >
             {CALENDAR_LABELS[calendar]}
@@ -123,7 +123,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
               (selected
                 ? 'bg-bg-input-hover text-accent'
                 : 'text-fg-dim hover:text-fg hover:bg-bg-input-hover') +
-              ' w-full text-left px-3 py-1.5 text-sm font-mono'
+              ' w-full text-left px-3 py-1.5 text-sm font-data'
             }
           >
             {minuteLabel(minute)}
@@ -143,7 +143,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
           aria-label={minuteButtonLabel}
           aria-haspopup="menu"
           aria-expanded={minuteMenuOpen}
-          className="inline-flex min-h-6 items-center gap-1 rounded-[7px] font-mono text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
+          className="inline-flex min-h-6 items-center gap-1 rounded-[7px] font-data text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
           style={{
             padding: '4px 10px',
             // 테두리 없는 ghost(2026-07-15) — 비활성은 투명, 활성만 tint-selection+accent로 강조.
@@ -165,7 +165,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
             type="button"
             onClick={() => pickCalendar(calendar)}
             aria-pressed={active}
-            className="min-h-6 rounded-[7px] px-2 py-1 font-mono text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
+            className="min-h-6 rounded-[7px] px-2 py-1 font-data text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
             style={{
               // 테두리 없는 ghost(2026-07-15) — 비활성은 투명, 활성만 tint-selection+accent로 강조.
               background: active ? 'var(--tint-selection)' : 'transparent',

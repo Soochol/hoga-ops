@@ -27,7 +27,7 @@ const boxStyle: CSSProperties = {
   border: '1px solid var(--border)',
   borderRadius: 'var(--radius-md)',
   padding: 'var(--space-2xs) var(--space-sm)',
-  fontFamily: 'var(--font-mono)',
+  fontFamily: 'var(--font-data)',
   fontSize: 'var(--text-xs)',
   lineHeight: 1.5,
   fontVariantNumeric: 'tabular-nums',

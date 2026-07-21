@@ -168,13 +168,13 @@ function SignalAlertRow({ group }: { group: SignalAlertGroup }) {
           <span className="shrink-0 tabular-nums text-xs text-fg-dimmer">{formatTime(group.latestTMs)}</span>
           <span className="min-w-0 truncate">{group.name}</span>
           {repeated && (
-            <span className="shrink-0 rounded-sm bg-bg-input px-1 text-badge font-mono tabular-nums text-fg-dim">
+            <span className="shrink-0 rounded-sm bg-bg-input px-1 text-badge font-data tabular-nums text-fg-dim">
               ×{group.count}
             </span>
           )}
         </div>
         {/* 우: 기준 대비 % — 헤드라인 강도(갱신 강도 비례 강조) */}
-        <span className={`shrink-0 font-mono tabular-nums text-sm text-right ${ratioEmphasisClass(group.peakRatioPct)}`}>
+        <span className={`shrink-0 font-data tabular-nums text-sm text-right ${ratioEmphasisClass(group.peakRatioPct)}`}>
           {group.peakRatioPct.toFixed(1)}%
         </span>
         {/* 좌 아래: 매도 총잔량(최신) — 부차 정보 */}

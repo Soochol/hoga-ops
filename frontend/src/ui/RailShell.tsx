@@ -40,7 +40,7 @@ export function RailDrawerHeader({
 }) {
   return (
     <header className={`flex items-center gap-sm border-b border-border px-md py-sm ${className}`.trim()}>
-      <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-fg-dim">{title}</h2>
+      <h2 className="text-xs font-semibold uppercase text-fg-dim">{title}</h2>
       <span className="min-w-0 flex-1" />
       {actions}
     </header>

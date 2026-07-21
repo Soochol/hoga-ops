@@ -89,7 +89,7 @@ export function CaptureQueue() {
   const notOwned = queue.queue_owned === false;
   const notOwnedBanner = notOwned ? (
     <InlineState role="alert" tone="warn" data-testid="queue-not-owned-banner"
-      className="py-sm flex items-center gap-3 font-medium font-mono">
+      className="py-sm flex items-center gap-3 font-medium font-data">
       <span aria-hidden>⚠</span>
       <span className="flex-1">
         다른 서버 인스턴스가 캡처 큐를 소유 중입니다 · 이 인스턴스에서는 캡처를 시작·취소할 수 없습니다
@@ -121,7 +121,7 @@ export function CaptureQueue() {
     <div className="flex min-h-0 h-full flex-col gap-2">
       {notOwnedBanner}
       <div className="flex items-center gap-3 px-sm">
-        <div className="flex-1 font-medium text-sm font-mono text-fg-dim tabular-nums">
+        <div className="flex-1 font-medium text-sm font-data text-fg-dim tabular-nums">
           {summary.done} of {summary.total} done · {summary.failed} failed · {summary.capturing} capturing
         </div>
         <button
@@ -160,7 +160,7 @@ export function CaptureQueue() {
           data-testid="deduped-banner"
           role="status"
           tone="accent"
-          className="py-sm flex items-center gap-3 font-medium font-mono"
+          className="py-sm flex items-center gap-3 font-medium font-data"
         >
           <span aria-hidden>ⓘ</span>
           <span className="flex-1">{summarizeDedupeReasons(lastDedupedRows)}</span>
@@ -174,7 +174,7 @@ export function CaptureQueue() {
       )}
 
       {queue.paused && (
-        <InlineState role="alert" tone="warn" className="py-sm flex items-center gap-3 font-medium font-mono">
+        <InlineState role="alert" tone="warn" className="py-sm flex items-center gap-3 font-medium font-data">
           <span className="flex-1">Cookie expired · refresh .cookie on disk, then resume</span>
           <button type="button" onClick={() => resumeQueue.mutate()} style={ghostButton()}>Refresh &amp; Resume</button>
           <button type="button" onClick={() => cancelAll.mutate()} style={ghostButton()}>Cancel All</button>
@@ -276,8 +276,13 @@ function ghostButton(borderColor = 'var(--border-strong)', fgColor = 'var(--fg-d
     color: fgColor,
     borderRadius: 4,
     padding: '4px 10px',
-    font: '500 var(--text-xs) "Geist Sans", sans-serif',
-    letterSpacing: '0.04em',
+    // Longhand, not the `font` shorthand: the shorthand hardcoded a family
+    // ("Geist Sans" — dead since 2026-07-08) and resets every font-* longhand
+    // it omits, which is how it escaped both font migrations. Family goes
+    // through the token like everywhere else.
+    fontWeight: 500,
+    fontSize: 'var(--text-xs)',
+    fontFamily: 'var(--font-ui)',
     cursor: 'pointer',
   };
 }

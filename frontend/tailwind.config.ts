@@ -52,7 +52,18 @@ export default {
       fontFamily: {
         ui: 'var(--font-ui)',
         sans: 'var(--font-ui)',
-        mono: 'var(--font-mono)',
+        // Data/number surfaces. The tuple's second slot makes Tailwind emit
+        // font-feature-settings alongside font-family, so `font-data` carries
+        // tabular figures *by construction* — a call site can't opt into the
+        // data face and forget the alignment half. This is what replaced the
+        // monospace face on 2026-07-21 (DESIGN.md decision log).
+        data: ['var(--font-data)', { fontFeatureSettings: '"tnum"' }],
+        // DEPRECATED alias — do not use in new code; use `font-data`.
+        // Kept mapped (rather than deleted) on purpose: deleting the key would
+        // let Tailwind's *default* mono stack take over any stray `font-mono`
+        // left in an unmerged branch, silently rendering system monospace with
+        // proportional-width digits. Aliasing fails safe instead.
+        mono: ['var(--font-data)', { fontFeatureSettings: '"tnum"' }],
       },
       borderColor: {
         DEFAULT: 'var(--border)',

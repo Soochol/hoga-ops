@@ -1,6 +1,6 @@
 @import './tokens.css';
-/* IBM Plex Sans KR + IBM Plex Mono load via <link> in index.html (preconnect +
-   render-blocking stylesheet) so the first paint already has the right faces. */
+/* Pretendard loads via <link> in index.html (preconnect + render-blocking
+   stylesheet) so the first paint already has the right face. */
 
 @tailwind base;
 @tailwind components;

@@ -45,7 +45,7 @@ export function SidebarCardHeader({
   return (
     <header className={`flex items-center justify-between gap-2 px-3 py-2 border-b text-xs ${className}`.trim()}>
       <h2 className="font-semibold text-fg">{title}</h2>
-      {meta !== undefined && <span className="font-mono text-fg-dimmer">{meta}</span>}
+      {meta !== undefined && <span className="font-data text-fg-dimmer">{meta}</span>}
     </header>
   );
 }
@@ -62,7 +62,7 @@ export function SidebarCardFooter({
   return (
     <footer className={`flex items-center justify-between gap-2 border-t px-3 py-2 text-[11px] text-fg-dimmer ${className}`.trim()}>
       <span>{left}</span>
-      {right !== undefined && <span className="font-mono">{right}</span>}
+      {right !== undefined && <span className="font-data">{right}</span>}
     </footer>
   );
 }

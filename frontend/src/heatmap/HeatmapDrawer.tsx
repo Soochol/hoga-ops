@@ -198,7 +198,7 @@ function GroupHeader(props: {
       {/* 그룹 평균 등락률(비가중, 시세 도착 종목만; 전부 결측이면 미표시). 방향색만 —
           배경 틴트는 없다(섹터 스트립과 달리 드로어는 숫자만). 정렬키(avgPct)와 동일값. */}
       {props.avg != null && (
-        <span className={`flex-none text-xs font-normal font-mono tabular-nums ${priceDirClass(props.avg)}`}>
+        <span className={`flex-none text-xs font-normal font-data tabular-nums ${priceDirClass(props.avg)}`}>
           {`${props.avg > 0 ? '+' : ''}${props.avg.toFixed(2)}%`}
         </span>
       )}

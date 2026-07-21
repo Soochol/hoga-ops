@@ -82,7 +82,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
     }
     return (
       <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
-        <span className="font-mono">
+        <span className="font-data">
           {WINDOW_KIND_LABEL[win.kind]} · 지수 그룹 전용
           <br />
           {symbol ? `${symbol.name} 은 지수가 아닙니다` : `종목 없음 (그룹 ${win.group})`}
@@ -94,7 +94,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
   if (symbol?.kind === 'index') {
     return (
       <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
-        <span className="font-mono">
+        <span className="font-data">
           {WINDOW_KIND_LABEL[win.kind]} · {symbol.name}
           <br />
           지수는 지원하지 않습니다
@@ -106,7 +106,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
   if (!code) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dimmer">
-        <span className="font-mono">
+        <span className="font-data">
           {WINDOW_KIND_LABEL[win.kind]} · 종목 없음 (그룹 {win.group})
         </span>
       </div>
@@ -148,7 +148,7 @@ function useGroupCursor(group: GroupId): { cursorMs: number | null; timeframe: L
 function LinkPendingCard({ kind, group }: { kind: WindowKind; group: GroupId }) {
   return (
     <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
-      <span className="font-mono">
+      <span className="font-data">
         {WINDOW_KIND_LABEL[kind]} · 차트 창 연동 대기
         <br />
         그룹 {group}에 차트 창을 추가하면 표시됩니다
@@ -244,7 +244,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       {showAvailableHint && (
         <div
           data-testid="orderbook-available-hint"
-          className="px-3 py-1 font-mono text-[11px] text-fg-dimmer"
+          className="px-3 py-1 font-data text-[11px] text-fg-dimmer"
         >
           다음 가용: {formatKstClock(availableFrom)}
         </div>

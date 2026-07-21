@@ -51,7 +51,7 @@ export function CalendarCell({ date, status, selected = false, inRange = false, 
         // Focus ring per DESIGN.md focus state (teal accent border).
         boxShadow: hovered && !disabled && !selected ? '0 0 0 1px var(--accent)' : 'none',
       }}
-      className="relative w-8 h-8 rounded-md border-none p-0 font-medium text-sm font-mono tabular-nums outline-none"
+      className="relative w-8 h-8 rounded-md border-none p-0 font-medium text-sm font-data tabular-nums outline-none"
     >
       {day}
       {descriptor.marker !== null && (

@@ -68,10 +68,10 @@ function MonthGrid({
   }
   return (
     <div>
-      <div className="font-medium text-sm font-mono text-fg-dim mb-1.5">
+      <div className="font-medium text-sm font-data text-fg-dim mb-1.5">
         {`${year}.${String(month).padStart(2, '0')}`}
       </div>
-      <div aria-hidden className="grid grid-cols-[repeat(7,2rem)] gap-0.5 mb-0.5 font-medium text-xs font-mono">
+      <div aria-hidden className="grid grid-cols-[repeat(7,2rem)] gap-0.5 mb-0.5 font-medium text-xs font-data">
         {WEEKDAY_LABELS.map((label, i) => (
           <div
             key={label}
@@ -197,7 +197,7 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
           {bannerCopy}
         </div>
       )}
-      <div data-testid="picker-nav" className="flex items-center gap-1.5 font-medium text-sm font-mono text-fg-dim">
+      <div data-testid="picker-nav" className="flex items-center gap-1.5 font-medium text-sm font-data text-fg-dim">
         <button type="button" aria-label="Previous month" onClick={() => shiftBy(-1)} className={navBtnCls}>‹</button>
         <select
           aria-label="Year"
@@ -233,5 +233,5 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
   );
 }
 
-const navBtnCls = 'bg-transparent border border-border-strong text-fg-dim rounded-md py-[0.1rem] px-xs font-medium text-sm font-mono cursor-pointer leading-none';
-const navSelectCls = 'bg-bg-input border text-fg rounded-md py-[0.1rem] px-xs font-medium text-sm font-mono cursor-pointer';
+const navBtnCls = 'bg-transparent border border-border-strong text-fg-dim rounded-md py-[0.1rem] px-xs font-medium text-sm font-data cursor-pointer leading-none';
+const navSelectCls = 'bg-bg-input border text-fg rounded-md py-[0.1rem] px-xs font-medium text-sm font-data cursor-pointer';

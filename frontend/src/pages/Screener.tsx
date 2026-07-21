@@ -160,7 +160,7 @@ export function Screener() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-fg truncate">{currentTitle}</span>
-                {editor.dirty && <span className="text-[10px] tracking-[0.04em] text-fg-dimmer">수정됨</span>}
+                {editor.dirty && <span className="text-[10px] text-fg-dimmer">수정됨</span>}
                 {resultsStale && <span className="text-[10px]" style={{ color: 'var(--warn)' }}>다시 조회 필요</span>}
               </div>
               {editor.saveError && <div className="text-xs" style={{ color: 'var(--error)' }}>저장 실패: {editor.saveError.message}</div>}
@@ -206,7 +206,7 @@ export function Screener() {
             <div className="min-w-0 flex-1" />
             {basis === 'intraday' && (
               <span
-                className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums text-fg-dim"
+                className="inline-flex items-center gap-1.5 font-data text-xs tabular-nums text-fg-dim"
                 title="조건검색 실행 시 오늘 KIS quote를 일봉 위에 임시 반영합니다"
               >
                 오늘 장중: KIS quote 반영

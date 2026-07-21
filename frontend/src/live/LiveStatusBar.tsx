@@ -123,7 +123,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
     >
       <span className="inline-flex min-h-[1.2rem] items-center gap-1">
         <CollectionDot status={collection.displayStatus} />
-        <span className="font-mono" style={{ color: 'var(--fg)' }}>
+        <span className="font-data" style={{ color: 'var(--fg)' }}>
           {symbolLabel}
         </span>
       </span>
@@ -134,7 +134,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
       {currentPrice !== null ? (
         <span
           data-testid="live-current-price"
-          className="font-mono"
+          className="font-data"
           style={{ color: 'var(--fg)', fontWeight: 600, fontSize: 'var(--text-lg)', letterSpacing: 0 }}
         >
           {currentPrice.toLocaleString('ko-KR')}
@@ -143,7 +143,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
         <span>가격 (대기 중)</span>
       )}
       {quote && (
-        <span className="font-mono whitespace-nowrap shrink-0" data-testid="live-change">
+        <span className="font-data whitespace-nowrap shrink-0" data-testid="live-change">
           {/* 헤더는 등락률(%)만 — 현재가가 이미 옆에 있고 좁은 상태바라
               등락액은 생략(관심·스크리너 패널은 등락액+등락률 둘 다). */}
           <QuoteChange won={null} pct={quote.change_pct} />
@@ -178,7 +178,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
             <span
               data-testid="past-backfill-progress-chip"
               title={`과거 데이터 불러오는 중 — ${md}까지 로드됨`}
-              className="font-mono px-2 py-0.5 rounded whitespace-nowrap shrink-0"
+              className="font-data px-2 py-0.5 rounded whitespace-nowrap shrink-0"
               style={{
                 background: pill.bg, border: pill.border,
                 color: pill.fg, fontSize: 'var(--text-xs)',
@@ -198,7 +198,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
             <span
               data-testid="hoga-coverage-gap-chip"
               title={hogaCoverageGapTitle(hogaGapDates)}
-              className="font-mono px-2 py-0.5 rounded whitespace-nowrap shrink-0"
+              className="font-data px-2 py-0.5 rounded whitespace-nowrap shrink-0"
               style={{
                 background: gapPill.bg, border: gapPill.border,
                 color: gapPill.fg, fontSize: 'var(--text-xs)',
@@ -238,7 +238,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
           <span
             data-testid="capture-health-pill"
             title={captureHealth.title}
-            className="font-mono px-2 py-0.5 rounded"
+            className="font-data px-2 py-0.5 rounded"
             style={{
               background: capPill.bg, border: capPill.border,
               color: capPill.fg, fontSize: 'var(--text-xs)',

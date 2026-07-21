@@ -4,11 +4,14 @@
  * Why this module exists: `lightweight-charts` renders to `<canvas>` and
  * its layout/text options do not inherit from CSS. The CSS single-dial
  * (`:root font-size`, mirrored by RENDERED_ROOT_PX in design-tokens.ts)
- * does not reach the canvas. The constants below derive from
+ * does not reach the canvas. Most constants below derive from
  * RENDERED_ROOT_PX so a dial change propagates here automatically —
  * but charts read them at mount, so density changes still need a chart
  * remount. See DESIGN.md "Scale Factor" for the intentional scope
  * limitation.
+ *
+ * Exception: `CHART_LAYOUT_OPTIONS.fontSize` is pinned, not derived — see the
+ * note on that constant.
  */
 import { CrosshairMode } from 'lightweight-charts';
 import type {
@@ -17,14 +20,31 @@ import type {
   LayoutOptions,
   TimeScaleOptions,
 } from 'lightweight-charts';
-import { RENDERED_ROOT_PX } from '../styles/design-tokens';
+import { CANVAS_FONT_STACK, RENDERED_ROOT_PX } from '../styles/design-tokens';
 
 /** Default density multiplier (18px root / 16px base intent = 1.125). */
 const DENSITY = RENDERED_ROOT_PX / 16;
 
-/** Library default font is 12; scaled by the density dial (12 × 1.125 → 14). */
+/**
+ * Canvas text options for the chart.
+ *
+ * `fontFamily` must be set explicitly — omitting it leaves lightweight-charts on
+ * its own default stack (`-apple-system, …, Roboto, Ubuntu, sans-serif`), which
+ * is how the price/time axis kept rendering in the OS font through two app-wide
+ * font migrations.
+ *
+ * `fontSize` deliberately stays at the library default 12 — NOT the
+ * density-derived `Math.round(12 * DENSITY)` = 14 this module would otherwise
+ * imply. Reason: until 2026-07-21 this whole object was spread at the wrong
+ * nesting level and silently ignored, so 12 is what the product has always
+ * actually shipped. Switching to 14 coarsens the price-axis tick grid
+ * (5,000원 → 10,000원 steps), which is a density decision, not a font one —
+ * deferred to its own A/B rather than smuggled in with a typeface change.
+ * See DESIGN.md "Scale Factor" for why the canvas sits outside the dial.
+ */
 export const CHART_LAYOUT_OPTIONS: DeepPartial<LayoutOptions> = {
-  fontSize: Math.round(12 * DENSITY),
+  fontSize: 12,
+  fontFamily: CANVAS_FONT_STACK,
 };
 
 /**

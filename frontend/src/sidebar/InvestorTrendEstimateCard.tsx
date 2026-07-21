@@ -36,7 +36,7 @@ export function InvestorTrendEstimateCard({ query }: Props) {
 
       {hasRows ? (
         <div className="overflow-hidden">
-          <table className="w-full table-fixed border-collapse font-mono text-sm tabular-nums">
+          <table className="w-full table-fixed border-collapse font-data text-sm tabular-nums">
             <thead className="text-fg-dimmer">
               <tr>
                 <th className="w-[6rem] px-2 py-1.5 text-left font-medium">집계시간</th>

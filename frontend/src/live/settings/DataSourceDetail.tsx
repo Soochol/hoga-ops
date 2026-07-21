@@ -34,7 +34,7 @@ function RoleSourceGroup({
  * 하위 그룹이 시각적으로 더 도드라진다. */
 function MacroGroupLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="text-xs font-semibold tracking-wide text-fg-dimmer">{children}</div>
+    <div className="text-xs font-semibold text-fg-dimmer">{children}</div>
   );
 }
 

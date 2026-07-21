@@ -27,7 +27,7 @@ describe('SidebarSurface primitives', () => {
 
     expect(screen.getByTestId('card')).toHaveClass('bg-bg-card');
     expect(screen.getByText('외인·기관 추정')).toHaveClass('font-semibold');
-    expect(screen.getByText('조회 중')).toHaveClass('font-mono');
+    expect(screen.getByText('조회 중')).toHaveClass('font-data');
     expect(screen.getByText('KIS 장중 가집계').parentElement).toHaveClass('border-t');
   });
 });

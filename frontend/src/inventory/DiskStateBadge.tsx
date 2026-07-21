@@ -43,7 +43,7 @@ export function DiskStateBadge({ state }: { state: DiskStateValue }) {
     <span
       title={p.label}
       aria-label={p.label}
-      className="font-mono text-sm leading-none"
+      className="font-data text-sm leading-none"
       style={{ color: p.color }}
     >
       {p.marker}

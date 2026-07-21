@@ -56,7 +56,7 @@ function SidebarCard({
       data-card={testId.replace(/^card-/, '')}
       className="flex flex-col bg-bg-card border rounded"
     >
-      <header className="px-3 py-2 border-b text-xs font-semibold uppercase tracking-wider text-fg-dimmer">
+      <header className="px-3 py-2 border-b text-xs font-semibold uppercase text-fg-dimmer">
         {label}
       </header>
       <div>{children}</div>

@@ -38,7 +38,7 @@ export function SectorTempStrip({ groups, quoteByCode, onJump }: SectorTempStrip
           aria-label={`${folder.name} 평균 ${avg > 0 ? '+' : ''}${avg.toFixed(1)}% — 카드로 이동`}
         >
           <span className="truncate max-w-[7rem]">{folder.name}</span>
-          <span className="font-mono tabular-nums">{avg > 0 ? '+' : ''}{avg.toFixed(1)}%</span>
+          <span className="font-data tabular-nums">{avg > 0 ? '+' : ''}{avg.toFixed(1)}%</span>
         </button>
       ))}
     </div>

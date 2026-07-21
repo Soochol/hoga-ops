@@ -60,15 +60,15 @@ export function HeatmapRow({
       <span className="truncate text-xs text-fg-dim">{name}</span>
       {/* 당일 캔들 셀 — CandleGlyph 가 null 이어도 이 span 이 칼럼을 점유해 정렬 유지. */}
       <span className="flex items-center justify-center overflow-hidden"><CandleGlyph open={open} high={high} low={low} close={price} /></span>
-      <span className="text-right font-mono tabular-nums text-fg">
+      <span className="text-right font-data tabular-nums text-fg">
         {price === null ? '—' : price.toLocaleString('ko-KR')}
       </span>
       {/* 등락: 방향=priceDirClass 텍스트 색(+적/−청/0 중립) + 부호. 배경 워시·▲▼ 없음
           — 우측 패널 QuoteChange 와 동일 컨벤션(색+부호 2중, 색약 보조). 결측은 '—'. */}
       {pct === null ? (
-        <span className="text-right font-mono tabular-nums text-fg-dim">—</span>
+        <span className="text-right font-data tabular-nums text-fg-dim">—</span>
       ) : (
-        <span className={`text-right font-mono tabular-nums ${priceDirClass(pct)}`}>
+        <span className={`text-right font-data tabular-nums ${priceDirClass(pct)}`}>
           {sign(pct)}{pct.toFixed(2)}
         </span>
       )}

@@ -38,7 +38,7 @@ export function ConditionRow({
           ⋮⋮
         </button>
         <span className="text-sm font-medium">{entry.label}</span>
-        <span className="font-mono text-xs text-fg-dim">{entry.summarize(leaf.params)}</span>
+        <span className="font-data text-xs text-fg-dim">{entry.summarize(leaf.params)}</span>
         <button type="button" aria-label="조건 제거" onClick={onRemove}
           className="ml-auto text-fg-dimmer hover:text-fg bg-transparent border-none cursor-pointer leading-none">×</button>
       </div>

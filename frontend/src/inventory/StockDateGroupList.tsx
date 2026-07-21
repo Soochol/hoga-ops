@@ -20,7 +20,7 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
       data-testid="stock-date-group-list-root"
       className="flex h-full flex-col min-h-0 overflow-hidden"
     >
-      <header className="px-3 py-2 text-xs uppercase tracking-wider text-fg-dimmer font-semibold">
+      <header className="px-3 py-2 text-xs uppercase text-fg-dimmer font-semibold">
         종목 {allGroupsCount}개 · 캡처 {rows.length}건
       </header>
       <div className="p-2 border-b sticky top-0 bg-bg-card z-10">
@@ -29,7 +29,7 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="종목명 또는 코드…"
-            className="bg-bg-input border rounded px-3 py-1.5 font-mono text-sm text-fg w-full pr-7"
+            className="bg-bg-input border rounded px-3 py-1.5 font-data text-sm text-fg w-full pr-7"
           />
           {search && (
             <button
@@ -43,7 +43,7 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
           )}
         </div>
         {isSearching && (
-          <div className="text-xs text-fg-dimmer mt-1 font-mono">{groups.length} matches</div>
+          <div className="text-xs text-fg-dimmer mt-1 font-data">{groups.length} matches</div>
         )}
       </div>
       <div className="flex-1 overflow-y-auto p-1">

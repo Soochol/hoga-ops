@@ -105,7 +105,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
         <span className="select-none text-[11px] leading-none text-fg-dimmer">⠿</span>
         <div ref={paletteAnchorRef} className="relative shrink-0">
           <button
-            className="inline-flex h-[16px] w-[16px] items-center justify-center rounded-sm bg-tint-selection font-mono text-[10px] font-semibold text-accent hover:brightness-125"
+            className="inline-flex h-[16px] w-[16px] items-center justify-center rounded-sm bg-tint-selection font-data text-[10px] font-semibold text-accent hover:brightness-125"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => onTogglePalette(id)}
             title="링크 그룹 변경"
@@ -123,7 +123,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
               {GROUP_IDS.map((g) => (
                 <button
                   key={g}
-                  className={`h-[20px] w-[20px] rounded-sm font-mono text-[10px] font-semibold ${
+                  className={`h-[20px] w-[20px] rounded-sm font-data text-[10px] font-semibold ${
                     g === group
                       ? 'bg-accent text-accent-fg'
                       : 'bg-bg-input text-fg-dim hover:bg-tint-selection hover:text-accent'
@@ -139,7 +139,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
         <span className="truncate text-[12px] font-medium text-fg">
           {kind === 'chart' ? title : `${KIND_LABEL[kind]} · ${title}`}
         </span>
-        {symbolCode && <span className="font-mono text-[10px] text-fg-dimmer">{symbolCode}</span>}
+        {symbolCode && <span className="font-data text-[10px] text-fg-dimmer">{symbolCode}</span>}
         <button
           className="ml-auto px-0.5 text-[12px] leading-none text-fg-dimmer hover:text-fg"
           onPointerDown={(e) => e.stopPropagation()}

@@ -87,11 +87,11 @@ export function StockDateGroupDetail({ group }: Props) {
     >
       <header className="px-4 py-3 border-b flex items-baseline justify-between gap-4">
         <h2 className="text-md font-semibold shrink-0">
-          <span className="text-accent font-mono">{group.code}</span>{' '}
+          <span className="text-accent font-data">{group.code}</span>{' '}
           <span className="text-fg">{group.name}</span>
         </h2>
         <div className="flex flex-col items-end gap-1 min-w-0">
-          <span className="text-xs text-fg-dim font-mono tabular-nums">
+          <span className="text-xs text-fg-dim font-data tabular-nums">
             {group.dates.length} dates · {fmtVolume(totalVolume)} vol · {fmtSize(group.totalSizeBytes)}
           </span>
           <RecaptureActionBar
@@ -103,7 +103,7 @@ export function StockDateGroupDetail({ group }: Props) {
         </div>
       </header>
       <div className="flex-1 overflow-y-auto">
-        <table className="w-full border-collapse font-mono text-sm tabular-nums">
+        <table className="w-full border-collapse font-data text-sm tabular-nums">
           <thead className="bg-bg-subtle sticky top-0">
             <tr>
               <th className="px-2 py-2 border-b w-8" aria-label="re-capture" />
@@ -218,21 +218,21 @@ function GapPanel({
   const confirmed = (identicalCaptureCount ?? 0) >= 2;
 
   if (isLoading) {
-    return <div className="text-xs text-fg-dim font-mono" data-testid="gap-panel-loading">결손 구간 조회 중…</div>;
+    return <div className="text-xs text-fg-dim font-data" data-testid="gap-panel-loading">결손 구간 조회 중…</div>;
   }
   if (isError || data === undefined) {
-    return <div className="text-xs text-[var(--error)] font-mono">결손 구간을 불러오지 못했습니다</div>;
+    return <div className="text-xs text-[var(--error)] font-data">결손 구간을 불러오지 못했습니다</div>;
   }
   if (data.sparse) {
     return (
-      <div className="text-xs text-fg-dim font-mono" data-testid="gap-panel-sparse">
+      <div className="text-xs text-fg-dim font-data" data-testid="gap-panel-sparse">
         세션 내 데이터가 너무 적어 결손 구간을 특정할 수 없습니다.
       </div>
     );
   }
   if (data.gap_ranges.length === 0) {
     return (
-      <div className="text-xs text-fg-dim font-mono" data-testid="gap-panel-empty">
+      <div className="text-xs text-fg-dim font-data" data-testid="gap-panel-empty">
         연속거래 구간에서 감지된 결손이 없습니다.
       </div>
     );
@@ -247,7 +247,7 @@ function GapPanel({
           </span>
         )}
       </div>
-      <ul className="flex flex-col gap-0.5 font-mono text-xs tabular-nums text-fg">
+      <ul className="flex flex-col gap-0.5 font-data text-xs tabular-nums text-fg">
         {data.gap_ranges.map((g) => (
           <li key={g.start_ms}>
             {fmtClock(g.start_ms)} ~ {fmtClock(g.end_ms)}
@@ -380,7 +380,7 @@ function SortableTh({ column, sort, onSort, right, title, children }: SortableTh
   return (
     <th
       aria-sort={ariaSort}
-      className={`px-3 py-2 border-b text-xs uppercase tracking-wider font-semibold ${
+      className={`px-3 py-2 border-b text-xs uppercase font-semibold ${
         right ? 'text-right' : 'text-left'
       }`}
     >
@@ -393,7 +393,7 @@ function SortableTh({ column, sort, onSort, right, title, children }: SortableTh
         }`}
       >
         <span>{children}</span>
-        <span className={`font-mono ${indicatorClass}`} aria-hidden="true">
+        <span className={`font-data ${indicatorClass}`} aria-hidden="true">
           {indicator}
         </span>
       </button>

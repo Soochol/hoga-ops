@@ -39,7 +39,7 @@ export function UniverseFilterModal({ universe, onChange, onClose }: {
     <ModalShell ariaLabel="사전필터" title="사전필터" width="w-[480px]" onClose={onClose}>
       <div className="flex">
         <nav className="w-[160px] py-2 border-r border-border" aria-label="필터 그룹">
-          <div className="text-fg-dimmer text-xs uppercase tracking-wider px-4 pb-2">필터 그룹</div>
+          <div className="text-fg-dimmer text-xs uppercase px-4 pb-2">필터 그룹</div>
           {NAV.map((n) => (
             <button key={n.id} type="button" aria-current={group === n.id} data-active={n.active}
               onClick={() => setGroup(n.id)}
@@ -61,7 +61,7 @@ export function UniverseFilterModal({ universe, onChange, onClose }: {
                   return (
                     <button key={m} type="button" aria-label={m} aria-pressed={active}
                       onClick={() => toggleMarket(m)}
-                      className={`px-2.5 py-[0.15rem] rounded-sm font-mono text-xs transition-colors ${
+                      className={`px-2.5 py-[0.15rem] rounded-sm font-data text-xs transition-colors ${
                         active ? 'bg-accent text-accent-fg' : 'text-fg-dim hover:bg-bg-input-hover'}`}>
                       {m}
                     </button>

@@ -68,7 +68,7 @@ function FolderRow(props: {
         <button type="button" onClick={props.onSelect} onDoubleClick={props.onStartEdit}
           className="flex-1 min-w-0 flex items-center justify-between text-left pr-2 group-hover:pr-12 group-focus-within:pr-12">
           <span className="truncate" title={props.name}>{props.name}</span>
-          <span className="shrink-0 font-mono tabular-nums text-fg-dimmer text-xs">{props.count}</span>
+          <span className="shrink-0 font-data tabular-nums text-fg-dimmer text-xs">{props.count}</span>
         </button>
       )}
       {!props.isEditing && (
@@ -224,7 +224,7 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
         <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0">
           {/* 좌: 폴더 pane — 보조지표 nav 패턴(섹션 헤더 + 행)과 정렬 */}
           <div className="border-r border-border flex flex-col min-h-0">
-            <div className="text-fg-dimmer text-xs uppercase tracking-wider px-3 pt-3 pb-2">관심 그룹</div>
+            <div className="text-fg-dimmer text-xs uppercase px-3 pt-3 pb-2">관심 그룹</div>
             <div className="px-2 pb-2">
               {adding ? (
                 <form data-testid="folder-create-form" onSubmit={submitFolder} className="flex gap-1">
