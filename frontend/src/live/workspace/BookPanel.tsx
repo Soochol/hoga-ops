@@ -177,12 +177,15 @@ export default function BookPanel({
               />
               {/* 평균가(VWAP) 행은 사용자 요청으로 거래대금과 교체(2026-07-21) —
                   620 은 파서·저장에 계속 남아 차트 지표 승격 등으로 복귀 가능. */}
+              {/* 순서 = 거래량 → 어제보다(그 거래량의 전일 대비) → 거래대금
+                  (사용자 지정 2026-07-21) — 어제보다가 거래량 바로 아래 붙어야
+                  수식 관계가 읽힌다. */}
               <SummaryRow label="거래량" value={fmtVolumeKo(summary.cumVolume)} divider />
-              <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
               <SummaryRow
                 label="어제보다"
                 value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
               />
+              <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
               {/* 상한가·하한가·250일 = ka10001(stock-limits). */}
               <SummaryRow
                 label="상한가"
