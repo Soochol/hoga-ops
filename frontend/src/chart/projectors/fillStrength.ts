@@ -321,7 +321,8 @@ export function makeCumulativeCachedProjector(): (
 ) => (LineData<Time> | WhitespaceData<Time>)[] {
   const cache = new WeakMap<
     VirtualAxis,
-    { mask: boolean; pastLen: number; pastLastT: number; pastData: (LineData<Time> | WhitespaceData<Time>)[] }
+    // code: 종목 전환에도 axis가 살아남을 수 있어 필수 — makePastCachedProjector 키 근거 참조.
+    { code: string; mask: boolean; pastLen: number; pastLastT: number; pastData: (LineData<Time> | WhitespaceData<Time>)[] }
   >();
   return (bundle, axis, mask) => {
     if (axis.mode === 'calendar') return [];
@@ -338,13 +339,19 @@ export function makeCumulativeCachedProjector(): (
     const pastLastT = splitIdx > 0 ? pastPoints[splitIdx - 1].t : 0;
 
     let entry = cache.get(axis);
-    if (!entry || entry.mask !== mask || entry.pastLen !== splitIdx || entry.pastLastT !== pastLastT) {
+    if (
+      !entry
+      || entry.code !== bundle.code
+      || entry.mask !== mask
+      || entry.pastLen !== splitIdx
+      || entry.pastLastT !== pastLastT
+    ) {
       const pastData: (LineData<Time> | WhitespaceData<Time>)[] = [];
       for (let i = 0; i < todayIdx; i++) {
         const segOut = projectCumulativeSegment(segs[i], i, pastPoints, axis, mask, bucketMs, false);
         for (const e of segOut) pastData.push(e);
       }
-      entry = { mask, pastLen: splitIdx, pastLastT, pastData };
+      entry = { code: bundle.code, mask, pastLen: splitIdx, pastLastT, pastData };
       cache.set(axis, entry);
     }
     return entry.pastData.concat(

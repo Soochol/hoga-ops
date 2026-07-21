@@ -166,6 +166,58 @@ describe('makePastCachedProjector — 과거/당일 분리 캐시가 풀 투영�
   });
 });
 
+describe('makePastCachedProjector — 종목 전환 시 캐시 무효화 (code 키 회귀)', () => {
+  const getQR = (b: any) => b.quote_ratio.points;
+
+  // 종목 전환 시 useLiveBundle의 segments-identity 안정화 때문에 axis 객체가 살아남을
+  // 수 있고, 풀-커버리지 종목끼리는 과거 버킷 그리드(pastLen/pastLastT)까지 일치한다.
+  // code 키가 없으면 이전 종목의 pastData가 그대로 반환된다 — 그 시나리오를 그대로 재현.
+  function makeOtherSymbolBundle() {
+    const other = makeAxisAndBundle(3);
+    // 같은 t 그리드(pastLen/pastLastT 동일), 값만 전혀 다른 종목.
+    for (const p of other.bundle.quote_ratio.points) {
+      p.bid_total *= 7;
+      p.ask_total *= 3;
+      p.bid_max *= 7;
+      p.ask_max *= 3;
+      p.imb_max_bid *= 7;
+      p.imb_max_ask *= 3;
+    }
+    return other;
+  }
+
+  it('같은 axis + 같은 (ctx, pastLen, pastLastT)에서 code가 바뀌면 새 종목 데이터로 재투영', () => {
+    const cached = makePastCachedProjector(projectRatioPoints, getQR);
+    const first = makeAxisAndBundle(3);
+    first.bundle.code = '005930';
+    cached(first.bundle, first.axis, CTX_MASKED); // 이전 종목으로 캐시 워밍
+
+    const second = makeOtherSymbolBundle();
+    second.bundle.code = '000660';
+    // 종목 전환에도 axis가 유지되는 시나리오: first.axis를 그대로 사용.
+    expect(cached(second.bundle, first.axis, CTX_MASKED)).toEqual(
+      projectRatio(second.bundle, first.axis, CTX_MASKED),
+    );
+  });
+
+  it('makeCumulativeCachedProjector도 code 변경 시 재투영 (누적 체결강도)', () => {
+    const cached = makeCumulativeCachedProjector();
+    const first = makeCumulativeBundle(3);
+    first.bundle.code = '005930';
+    cached(first.bundle, first.axis, true);
+
+    const second = makeCumulativeBundle(3);
+    second.bundle.code = '000660';
+    for (const p of second.bundle.fill_strength.points) {
+      p.buy_qty *= 5;
+      p.sell_qty *= 2;
+    }
+    expect(cached(second.bundle, first.axis, true)).toEqual(
+      projectCumulativeNetFill(second.bundle, first.axis, true),
+    );
+  });
+});
+
 describe('makePastCachedProjector — 총잔량(bid/ask)·체결강도 히스토그램(buy/sell) 동등성', () => {
   const getQR = (b: any) => b.quote_ratio.points;
   const getFS = (b: any) => b.fill_strength.points;

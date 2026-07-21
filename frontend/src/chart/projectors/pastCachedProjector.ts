@@ -19,14 +19,22 @@ import type { VirtualAxis } from '../../util/virtualAxis';
  * 숨김 색으로 패치한다. 누적 체결강도(projectCumulativeNetFill)는 runningSum이
  * 후속 전부에 의존하므로 이 헬퍼로 감싸지 않는다 — 세그먼트 단위 캐시를 따로 쓴다.
  *
- * 캐시 키 = (axis 식별자, ctx 식별자, 과거 점 개수, 과거 마지막 t). axis는 segments에서
- * 파생되어 줌/팬에 안정(LiveChartRoot per-viewKey memo)하고 좌측 팬으로 과거가 늘면 새
- * 객체가 된다. ctx는 useShallow로 안정. 과거 점 개수+마지막 t는 refetch 증분/팬 prepend를
- * 잡는다. (가정: 과거 버킷은 promote 후 불변 — 길이 불변인 채 중간 값만 바뀌는 백필은
- * 이 데이터 모델에 없음. bucketHogaSeries는 append-only 라이브 버퍼에서만 증분.)
+ * 캐시 키 = (axis 식별자, 종목 code, ctx 식별자, 과거 점 개수, 과거 마지막 t). axis는
+ * segments에서 파생되어 줌/팬에 안정(LiveChartRoot per-viewKey memo)하고 좌측 팬으로
+ * 과거가 늘면 새 객체가 된다. ctx는 useShallow로 안정. 과거 점 개수+마지막 t는 refetch
+ * 증분/팬 prepend를 잡는다. (가정: 과거 버킷은 promote 후 불변 — 길이 불변인 채 중간 값만
+ * 바뀌는 백필은 이 데이터 모델에 없음. bucketHogaSeries는 append-only 라이브 버퍼에서만
+ * 증분.)
+ *
+ * code가 키에 필요한 이유: 종목 전환 시 useLiveBundle의 segments-identity 안정화가
+ * (두 종목의 거래일 달력이 같으면) 이전 segments 배열 참조를 재사용하고, 그 위의 axis
+ * memo도 같은 axis 객체를 유지한다. 이때 풀-커버리지 종목끼리는 과거 버킷 그리드가
+ * 일치해 pastLen/pastLastT까지 우연히 같아질 수 있어, code 없이는 이전 종목의 과거
+ * 투영이 그대로 반환된다 (종목 클릭 직후 총잔량·호가비·체결강도 과거 라인 오염).
  */
 
 interface CacheEntry<Ctx, D> {
+  code: string;
   ctx: Ctx;
   pastLen: number;
   pastLastT: number;
@@ -86,7 +94,13 @@ export function makePastCachedProjector<P extends { t: number }, Ctx, D>(
     const pastLastT = pastLen > 0 ? past[pastLen - 1].t : 0;
 
     let entry = cache.get(axis);
-    if (!entry || entry.ctx !== ctx || entry.pastLen !== pastLen || entry.pastLastT !== pastLastT) {
+    if (
+      !entry
+      || entry.code !== bundle.code
+      || entry.ctx !== ctx
+      || entry.pastLen !== pastLen
+      || entry.pastLastT !== pastLastT
+    ) {
       const expandedPast = expandSlice({
         bundle,
         points: past,
@@ -94,7 +108,7 @@ export function makePastCachedProjector<P extends { t: number }, Ctx, D>(
         toT: todayOpen,
         splitT: todayOpen,
       });
-      entry = { ctx, pastLen, pastLastT, pastData: projectPoints(expandedPast, axis, ctx) };
+      entry = { code: bundle.code, ctx, pastLen, pastLastT, pastData: projectPoints(expandedPast, axis, ctx) };
       cache.set(axis, entry);
     }
     const expandedToday = expandSlice({
