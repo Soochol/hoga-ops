@@ -30,11 +30,6 @@ import {
   studyViewKindLabel,
 } from './studyViewVariant';
 import { studyActiveViewModel } from './studyActiveViewModel';
-import {
-  clearCurrentStudySaveSource,
-  setCurrentStudySaveSource,
-  type ReferenceStudySaveSource,
-} from './studySaveSource';
 import { PanelCard } from '../ui/PageShell';
 import { DropOverlay, IconToolbarButton, WorkspaceHeader, WorkspaceRoot, WorkspaceState } from '../ui/WorkspaceShell';
 
@@ -357,28 +352,6 @@ export function StudyPage() {
       handleFocusTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id);
     },
   });
-
-  useEffect(() => {
-    if (!activeViewId) {
-      setCurrentStudySaveSource(null);
-      return undefined;
-    }
-    if (activeViewModel.status === 'ready') {
-      const source: ReferenceStudySaveSource = {
-        origin: 'study-reference',
-        viewId: activeViewId,
-        save: activeViewModel.save,
-        bundle: activeViewModel.bundle,
-        captureViewport: () => captureViewportRef.current(),
-      };
-      setCurrentStudySaveSource(source);
-      return () => {
-        clearCurrentStudySaveSource(source);
-      };
-    }
-    setCurrentStudySaveSource(null);
-    return undefined;
-  }, [activeViewId, activeViewModel, captureViewportRef]);
 
   useEffect(() => {
     const hitTest = (clientX: number, clientY: number): boolean => {

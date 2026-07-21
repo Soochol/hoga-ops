@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
-import type { LiveStudySaveSource, ReferenceStudySaveSource } from './studySaveSource';
+import type { LiveStudySaveSource } from './studySaveCommand';
 import { makeStudySaveCommand, studySaveCommandBody } from './studySaveCommand';
 
 function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
@@ -50,6 +50,25 @@ function savedView(overrides: Partial<StudyViewReference> = {}): StudyViewRefere
 }
 
 describe('makeStudySaveCommand', () => {
+  // 덮어쓰기 대상 id 의 유일한 출처는 `study-reference` 소스의 viewId 였는데,
+  // 그 변종은 독자를 잃은 채(저장뷰 드로어 단순화 164f4952) 쓰기만 남아 있다가
+  // 정리됐다. 지금 프로덕션 호출부는 'create' 뿐이라 무해하지만, 덮어쓰기를
+  // 되살릴 땐 id 출처부터 다시 정해야 한다는 것을 계약으로 못박는다.
+  it('cannot resolve an overwrite id — the only source of one is gone', () => {
+    const source: LiveStudySaveSource = {
+      origin: 'live',
+      code: '005930',
+      label: '삼성전자',
+      timeframe: '5m',
+      bundle: bundle(),
+      captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 1, atLiveEdge: false, rightPaddingBars: 7 }),
+    };
+
+    const command = makeStudySaveCommand({ mode: 'overwrite', source, existingSave: savedView() });
+
+    expect(command?.id).toBeUndefined();
+  });
+
   it('builds a create command from a live source using captured viewport and empty dialog name', () => {
     const source: LiveStudySaveSource = {
       origin: 'live',
@@ -91,40 +110,6 @@ describe('makeStudySaveCommand', () => {
     });
   });
 
-  it('builds an overwrite command from a study reference source carrying existing name and memo', () => {
-    const save = savedView();
-    const source: ReferenceStudySaveSource = {
-      origin: 'study-reference',
-      viewId: 'view1',
-      save,
-      bundle: bundle(),
-      captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 1, atLiveEdge: false, rightPaddingBars: 7 }),
-    };
-
-    const command = makeStudySaveCommand({ mode: 'overwrite', source, existingSave: save });
-
-    expect(command).toMatchObject({
-      mode: 'overwrite',
-      id: 'view1',
-      dialog: {
-        defaultName: '기존 저장뷰',
-        defaultMemo: '기존 메모',
-        rangeLabel: '19700101 ~ 19700101',
-      },
-    });
-    expect(command?.request).toMatchObject({
-      name: '기존 저장뷰',
-      memo: '기존 메모',
-      viewport: { right_edge_ms: 2_000, bar_span: 1, at_live_edge: false, right_padding_bars: 7 },
-      range: {
-        from_ms: 1_000,
-        to_ms: 3_000,
-      },
-    });
-    expect('snapshot' in command!.request).toBe(false);
-    expect('indicator_state' in command!.request).toBe(false);
-    expect('panePrefsByTimeframe' in command!.request).toBe(false);
-  });
 
   it('returns null when no viewport can be captured or inferred', () => {
     const source: LiveStudySaveSource = {

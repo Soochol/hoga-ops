@@ -1,13 +1,15 @@
 import type { StudyViewListRow, StudyViewWriteRequest } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
-import type { CurrentStudySaveSource } from './studySaveSource';
 import {
   defaultStudyViewName,
   fallbackViewport,
   rangeForWindow,
   viewportFromCapture,
   visibleWindow,
+  type LiveStudySaveSource,
 } from './studySaveRequest';
+
+export type { LiveStudySaveSource };
 
 export type StudySaveCommandMode = 'create' | 'overwrite';
 
@@ -27,27 +29,23 @@ export type StudySaveCommand = {
   };
 };
 
-function sourceCode(source: CurrentStudySaveSource): string {
-  if (source.origin === 'study-reference') return source.save.code;
+function sourceCode(source: LiveStudySaveSource): string {
   return source.code;
 }
 
-function sourceLabel(source: CurrentStudySaveSource): string {
-  if (source.origin === 'study-reference') return source.save.label;
+function sourceLabel(source: LiveStudySaveSource): string {
   return source.label;
 }
 
-function sourceTimeframe(source: CurrentStudySaveSource) {
-  if (source.origin === 'study-reference') return source.save.timeframe;
+function sourceTimeframe(source: LiveStudySaveSource) {
   return source.timeframe;
 }
 
-function sourceBundle(source: CurrentStudySaveSource): RangeBundle {
+function sourceBundle(source: LiveStudySaveSource): RangeBundle {
   return source.bundle;
 }
 
-function sourceFallbackViewport(source: CurrentStudySaveSource) {
-  if (source.origin === 'study-reference') return source.save.viewport;
+function sourceFallbackViewport(source: LiveStudySaveSource) {
   return fallbackViewport(source.bundle);
 }
 
@@ -57,7 +55,7 @@ function commandDefaultName({
   requestName,
 }: {
   mode: StudySaveCommandMode;
-  source: CurrentStudySaveSource;
+  source: LiveStudySaveSource;
   requestName: string;
 }): string {
   if (mode === 'create' && source.origin === 'live') return '';
@@ -70,7 +68,7 @@ export function makeStudySaveCommand({
   existingSave,
 }: {
   mode: StudySaveCommandMode;
-  source: CurrentStudySaveSource;
+  source: LiveStudySaveSource;
   existingSave: StudyViewListRow | null | undefined;
 }): StudySaveCommand | null {
   const bundle = sourceBundle(source);
@@ -98,7 +96,10 @@ export function makeStudySaveCommand({
 
   return {
     mode,
-    id: mode === 'overwrite' && source.origin !== 'live' ? source.viewId : undefined,
+    // 덮어쓰기 대상 id 의 유일한 출처는 `study-reference` 소스의 viewId 였는데,
+    // 그 변종이 사라지며 함께 없어졌다. 현재 프로덕션 호출부는 'create' 뿐이라
+    // 무해하지만, 덮어쓰기를 되살릴 땐 id 출처부터 다시 정해야 한다.
+    id: undefined,
     request,
     dialog: {
       defaultName: commandDefaultName({ mode, source, requestName: request.name }),
