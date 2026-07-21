@@ -60,7 +60,7 @@ from hoga.api.timeenc import (
     unix_ms_to_hhmmssms,
 )
 from hoga.live.candle_repair import REPAIR_MARKER
-from hoga.live.program_trade_store import ProgramTradeStore
+from hoga.live.program_trade_store import ProgramTradeStore, is_significant_gap_event
 from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
 from hoga.tables import fills as fills_tbl
@@ -1315,7 +1315,13 @@ def build_program_trade_series(engine: QueryEngine, *, code: str, dates: list[st
     for date in dates:
         # 읽기 전용 — mtime 캐시로 과거일 JSON 재파싱 제거(today 는 mtime 변경 시 재로드).
         day = store.load_cached(code, date)
-        gap_times = {str(ev.get("new_oldest")) for ev in day.gap_events}
+        # 임계 재검증 — 0w drain 초기(PR-F4 직후)에 매 드레인마다 쌓인 30초 간격
+        # 오염 이벤트가 gap_risk 오탐을 만들지 않도록 저장분도 같은 술어로 거른다.
+        gap_times = {
+            str(ev.get("new_oldest"))
+            for ev in day.gap_events
+            if is_significant_gap_event(ev, poll_interval_ms=day.poll_interval_ms)
+        }
         for row in day.rows:
             points.append(
                 ProgramTradePoint(
