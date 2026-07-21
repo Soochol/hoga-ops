@@ -8,7 +8,8 @@
  *
  * PR-A 는 스캐폴딩 — 창 본문은 더미다. 실제 차트/데이터 배선은 PR-C.
  */
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { toFrac, toPx } from './rectSpace';
 import { WindowFrame } from './WindowFrame';
 import { registerWorkspaceTidy } from './workspaceCanvasControls';
 import { useEntryDragStore } from '../../state/entryDrag';
@@ -66,6 +67,8 @@ export function WorkspaceCanvas() {
   const setWindowRects = useWorkspaceStore((s) => s.setWindowRects);
   const setWindowGroup = useWorkspaceStore((s) => s.setWindowGroup);
   const tidyAll = useWorkspaceStore((s) => s.tidyAll);
+  const pendingNormalize = useWorkspaceStore((s) => s.pendingNormalize);
+  const normalizeLegacyRects = useWorkspaceStore((s) => s.normalizeLegacyRects);
 
   // 드래그 중 프리뷰(스토어 미커밋). null = 유휴.
   const [preview, setPreview] = useState<Map<string, Rect> | null>(null);
@@ -76,7 +79,9 @@ export function WorkspaceCanvas() {
   // zOrder 의 마지막 = 최상단 창. 헤더 틴트의 유일한 소비처.
   const focusedId = zOrder[zOrder.length - 1];
 
-  const rectOf = (w: WorkspaceWindow): Rect => preview?.get(w.id) ?? w.rect;
+  // 렌더는 px. 프리뷰(드래그 중)는 이미 px 이고, 그 외에는 스토어의 비율을 현재
+  // 캔버스로 편다 — 캔버스가 줄면 창도 같은 비율로 줄어 배치가 보존된다(ADR-0122).
+  const rectOf = (w: WorkspaceWindow): Rect => preview?.get(w.id) ?? toPx(w.rect, canvasBox);
 
   /** 드래그 종료(커밋 없이) — 상태만 리셋. pointercancel/abort 경로가 공유. */
   const endDrag = useCallback(() => {
@@ -97,7 +102,11 @@ export function WorkspaceCanvas() {
     } else if (d.liveRects) {
       updates = [...d.liveRects.entries()].map(([id, rect]) => ({ id, rect }));
     }
-    if (updates.length > 0) setWindowRects(updates);
+    // 드래그·스냅은 전부 px 로 계산했다(snapEngine 무변경). 스토어 경계에서만
+    // 드래그 당시의 캔버스 기준 비율로 되돌린다 — ADR-0122.
+    if (updates.length > 0) {
+      setWindowRects(updates.map((u) => ({ id: u.id, rect: toFrac(u.rect, d.canvas) })));
+    }
     endDrag();
   }, [setWindowRects, endDrag]);
 
@@ -115,10 +124,15 @@ export function WorkspaceCanvas() {
       focusWindow(id);
       setPalette(null);
 
-      const others: RectWin[] = windows.filter((w) => w.id !== id).map((w) => ({ id: w.id, rect: w.rect }));
+      // 스토어는 비율을 들고 있다 — 드래그에 들어가는 순간 px 로 편다(ADR-0122).
+      const canvas = { w: box.width, h: box.height };
+      const originPx = toPx(win.rect, canvas);
+      const others: RectWin[] = windows
+        .filter((w) => w.id !== id)
+        .map((w) => ({ id: w.id, rect: toPx(w.rect, canvas) }));
       let followers: RectWin[] = [];
       if ((PURE_EDGES as readonly string[]).includes(mode)) {
-        const ids = new Set(detectFollowers(win.rect, mode as Edge, others));
+        const ids = new Set(detectFollowers(originPx, mode as Edge, others));
         followers = others.filter((o) => ids.has(o.id));
       }
       dragRef.current = {
@@ -126,9 +140,9 @@ export function WorkspaceCanvas() {
         id,
         px: e.clientX,
         py: e.clientY,
-        origin: { ...win.rect },
+        origin: originPx,
         followers,
-        canvas: { w: box.width, h: box.height },
+        canvas,
         canvasLeft: box.left,
         liveRects: null,
         liveZone: null,
@@ -149,9 +163,11 @@ export function WorkspaceCanvas() {
       }
       const dx = e.clientX - d.px;
       const dy = e.clientY - d.py;
+      // 이웃도 드래그 당시 캔버스 기준 px 로 편다 — 흡착 임계(12px)가 px 단위라
+      // 비율을 그대로 넘기면 전부 0 근처가 되어 흡착이 죽는다.
       const others: RectWin[] = windows
         .filter((w) => w.id !== d.id)
-        .map((w) => ({ id: w.id, rect: w.rect }));
+        .map((w) => ({ id: w.id, rect: toPx(w.rect, d.canvas) }));
 
       if (d.mode === 'move') {
         const r = computeMove({ origin: d.origin, dx, dy, others, canvas: d.canvas, alt: e.altKey });
@@ -189,6 +205,37 @@ export function WorkspaceCanvas() {
     if (box) tidyAll({ w: box.width, h: box.height });
   }, [tidyAll]);
 
+  // 캔버스 실측 크기 — 비율 rect 를 px 로 펴는 기준(ADR-0122). 캔버스가 줄면 이
+  // 값만 바뀌고 창들은 자동으로 같은 비율을 유지한다.
+  // useLayoutEffect: 첫 페인트 전에 크기를 확보해야 창이 0px 로 한 프레임 깜빡이지
+  // 않는다. 초기값을 동기로 읽는 이유는 ResizeObserver 가 없는 환경(jsdom)에서도
+  // 좌표 변환이 살아 있어야 하기 때문(useChartHeaderCompact 와 같은 가드 패턴).
+  const [canvasBox, setCanvasBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  // 안정 콜백(windowAtPoint 등)이 최신 캔버스를 읽기 위한 미러 — state 를 deps 에
+  // 넣으면 드롭 리졸버 등록이 리사이즈마다 재등록된다.
+  const canvasRef = useRef(canvasBox);
+  canvasRef.current = canvasBox;
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    setCanvasBox({ w: el.clientWidth, h: el.clientHeight });
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0].contentRect;
+      setCanvasBox({ w: Math.round(r.width), h: Math.round(r.height) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // 레거시 px 저장값 → 비율 1회 변환. 캔버스가 자기 크기를 처음 알게 된 이 시점이
+  // 유일하게 올바른 기준이다 — 사용자가 지금 보고 있는 화면으로 나누므로 변환
+  // 직후 배치에 눈에 보이는 변화가 없다(ADR-0122).
+  useLayoutEffect(() => {
+    if (!pendingNormalize || canvasBox.w <= 0 || canvasBox.h <= 0) return;
+    normalizeLegacyRects(canvasBox);
+  }, [pendingNormalize, canvasBox, normalizeLegacyRects]);
+
   // 창 항목 memo(F6)를 위한 안정 콜백 — id 를 인자로 받으므로 창별 클로저 불필요.
   const onTogglePalette = useCallback((id: string) => {
     // 팔레트를 여는 창을 최상단으로 올린다 — 각 창이 contain:paint 로 자체 스택
@@ -208,7 +255,8 @@ export function WorkspaceCanvas() {
     for (let i = state.zOrder.length - 1; i >= 0; i--) {
       const win = state.windows.find((w) => w.id === state.zOrder[i]);
       if (!win) continue;
-      const r = win.rect;
+      // 인자는 캔버스 로컬 px 이므로 비율 rect 를 px 로 펴서 비교한다(ADR-0122).
+      const r = toPx(win.rect, canvasRef.current);
       if (localX >= r.x && localX <= r.x + r.w && localY >= r.y && localY <= r.y + r.h) {
         return win;
       }

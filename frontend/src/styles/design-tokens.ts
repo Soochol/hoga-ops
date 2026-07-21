@@ -114,6 +114,8 @@ export const SIZE_TOKENS = {
   'dropdown-min-w':     { rem: 20,      baseIntentPx: 320, usage: 'Combobox / search dropdown minimum width' },
   'watchlist-panel-w':  { rem: 17.5,    baseIntentPx: 280, usage: 'Global Watchlist Panel (Right Rail) width' },
   'rail-w':             { rem: 3,       baseIntentPx: 48,  usage: 'Right Rail icon column width (fixed)' },
+  'app-floor-min-w':    { rem: 57,      baseIntentPx: 912, usage: 'App shell responsive floor — below this the shell stops compressing and scrolls horizontally' },
+  'app-floor-min-h':    { rem: 39,      baseIntentPx: 624, usage: 'App shell vertical floor — /live windows scale with the canvas, so the canvas needs a readable height floor (ADR-0122)' },
 } as const satisfies Record<string, SizeToken>;
 
 export const FIXED_PX_TOKENS = {

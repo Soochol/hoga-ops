@@ -13,10 +13,25 @@ function chart(id: string, group: number, rect: WorkspaceWindow['rect']): Worksp
   return { id, kind: 'chart', group, rect, chart: { timeframe: '1m', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } } };
 }
 
+/**
+ * 캔버스 크기를 1000×1000 으로 고정한다. rect 는 비율(ADR-0122)이라 캔버스가 0 이면
+ * 모든 창이 0px 로 펴져 히트 테스트가 통째로 죽는다 — jsdom 은 레이아웃을 안 하므로
+ * clientWidth/Height 를 직접 심어야 한다. 1000 을 쓰면 비율 0.2 = 200px 라 이 파일의
+ * px 좌표(50,50 / 300,300)를 그대로 유지할 수 있다.
+ */
+const CANVAS = 1000;
+function stubCanvasSize() {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { value: CANVAS, configurable: true });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { value: CANVAS, configurable: true });
+}
+/** px → 비율(위 캔버스 기준). 테스트 의도를 px 로 읽히게 유지하는 헬퍼. */
+const frac = (px: number) => px / CANVAS;
+
 describe('WorkspaceCanvas — 창별 정밀 드롭 리졸버 (ADR-0119 PR-D2)', () => {
   beforeEach(() => {
     cleanup();
     useEntryDragStore.setState({ chartDropResolver: null });
+    stubCanvasSize();
     // jsdom 의 getBoundingClientRect 는 0 반환 → 캔버스 left/top=0 → 로컬=클라이언트 좌표.
   });
 
@@ -24,8 +39,8 @@ describe('WorkspaceCanvas — 창별 정밀 드롭 리졸버 (ADR-0119 PR-D2)', 
     // a(그룹1)·b(그룹2) 겹침, z순서 a<b → (50,50)에서 b 승리.
     useWorkspaceStore.setState({
       windows: [
-        chart('a', 1, { x: 0, y: 0, w: 200, h: 200 }),
-        chart('b', 2, { x: 0, y: 0, w: 200, h: 200 }),
+        chart('a', 1, { x: 0, y: 0, w: frac(200), h: frac(200) }),
+        chart('b', 2, { x: 0, y: 0, w: frac(200), h: frac(200) }),
       ],
       zOrder: ['a', 'b'],
       groupSymbols: {},
@@ -40,7 +55,7 @@ describe('WorkspaceCanvas — 창별 정밀 드롭 리졸버 (ADR-0119 PR-D2)', 
 
   it('창 밖(여백) 좌표면 false → 활성 그룹 폴백', () => {
     useWorkspaceStore.setState({
-      windows: [chart('a', 1, { x: 0, y: 0, w: 100, h: 100 })],
+      windows: [chart('a', 1, { x: 0, y: 0, w: frac(100), h: frac(100) })],
       zOrder: ['a'],
       groupSymbols: {},
     });
@@ -52,7 +67,7 @@ describe('WorkspaceCanvas — 창별 정밀 드롭 리졸버 (ADR-0119 PR-D2)', 
 
   it('name 부재 시 code 를 name 폴백으로 쓴다(GroupSymbol 계약)', () => {
     useWorkspaceStore.setState({
-      windows: [chart('a', 3, { x: 0, y: 0, w: 100, h: 100 })],
+      windows: [chart('a', 3, { x: 0, y: 0, w: frac(100), h: frac(100) })],
       zOrder: ['a'],
       groupSymbols: {},
     });

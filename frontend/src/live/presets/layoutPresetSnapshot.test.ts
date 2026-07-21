@@ -11,13 +11,13 @@ import {
 function chart(id: string, group: number, timeframe: LiveTimeframe = '1m'): WorkspaceWindow {
   return {
     id, kind: 'chart', group,
-    rect: { x: 0, y: 0, w: 442, h: 531 },
+    rect: { x: 0, y: 0, w: 0.4, h: 0.6 },
     chart: { timeframe, indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } },
   };
 }
 
 function book(id: string, group: number): WorkspaceWindow {
-  return { id, kind: 'book', group, rect: { x: 442, y: 0, w: 236, h: 440 } };
+  return { id, kind: 'book', group, rect: { x: 0.4, y: 0, w: 0.25, h: 0.5 } };
 }
 
 beforeEach(() => {
@@ -70,7 +70,7 @@ describe('applyPresetPayload (v3 = 워크스페이스 통째 교체)', () => {
   it('손상 창(무효 kind·rect 없음)은 드롭하고 유효 창만 복원', () => {
     applyPresetPayload({
       windows: [
-        { id: 'ok', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: 400, h: 300 }, chart: { timeframe: '1m', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } } },
+        { id: 'ok', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: 0.4, h: 0.3 }, chart: { timeframe: '1m', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } } },
         { id: 'bad', kind: 'nope', group: 1 }, // 무효 kind·rect 없음
       ] as unknown[],
       zOrder: ['ok', 'bad'],
