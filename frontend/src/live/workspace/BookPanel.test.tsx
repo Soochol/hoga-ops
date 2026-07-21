@@ -64,6 +64,27 @@ describe('BookPanel', () => {
     expect(summary!.children).toHaveLength(11);
   });
 
+  it('매도/매수 경계선을 3열 모두 같은 y 에 그린다 — 한 줄로 이어져야 한다', () => {
+    // 좌(체결강도 행 상단)·중앙(매수 1호가)·우(매수 1호가 바) 셋 중 하나라도
+    // 빠지면 선이 끊겨 보인다. 톤도 같아야 하므로 border-strong 으로 못박는다.
+    const { container } = renderPanel();
+    // 그리드 안으로 스코프 — 하단 총잔량 스트립도 같은 토큰을 쓴다(톤 일관).
+    const grid = container.querySelector('.grid')!;
+    const dividers = grid.querySelectorAll('.border-t.border-border-strong');
+    expect(dividers).toHaveLength(3);
+  });
+
+  it('경계선이 현재가 박스(boxed)와 같은 요소를 다투지 않는다', () => {
+    // 현재가가 매수 1호가인 흔한 경우 — 박스 윗변만 색이 갈리면 안 된다.
+    const { container } = renderPanel({ lastPrice: 251_000 });
+    const boxed = container.querySelector('.border-fg-dim');
+    expect(boxed).not.toBeNull();
+    expect(boxed!.classList.contains('border-border-strong')).toBe(false);
+    // 박스는 경계선 래퍼 **안쪽**에 있고, 래퍼(1px)+셀(21px) = 22px 계약 유지.
+    expect(boxed!.parentElement!.className).toContain('border-border-strong');
+    expect((boxed as HTMLElement).style.height).toBe('21px');
+  });
+
   it('요약 지표를 표시하고, 미수신 값은 대시로 남긴다', () => {
     renderPanel();
     expect(screen.getByText('99.00%')).toBeInTheDocument();   // 체결강도

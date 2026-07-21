@@ -100,8 +100,11 @@ export default function BookPanel({
                 badge={deltaBadges?.get(`a:${l.price}`) ?? null}
               />
             ))}
+            {/* 매도↔매수 경계선(3열 공통 y). 좌측은 체결강도 행 상단이 그 y라
+                여기에 얹는다 — 중앙 PriceCell·우측 QtyBar 의 topDivider 와 같은
+                `border-strong` 톤이라야 한 줄로 이어져 보인다. */}
             <div
-              className="flex items-center justify-between border-t border-border px-2"
+              className="flex items-center justify-between border-t border-border-strong px-2"
               style={{ height: ROW_H }}
             >
               <span className="text-xs text-fg-dim">체결강도</span>
@@ -153,6 +156,7 @@ export default function BookPanel({
                 price={l.price}
                 baselinePrice={baselinePrice}
                 boxed={lastPrice !== null && l.price === lastPrice}
+                topDivider={i === 0}
               />
             ))}
           </div>
@@ -211,6 +215,7 @@ export default function BookPanel({
                 maxQty={maxQty}
                 side="bid"
                 badge={deltaBadges?.get(`b:${l.price}`) ?? null}
+                topDivider={i === 0}
               />
             ))}
           </div>
@@ -231,10 +236,13 @@ function PriceCell({
   price,
   baselinePrice,
   boxed,
+  topDivider = false,
 }: {
   price: number;
   baselinePrice: number | null;
   boxed: boolean;
+  /** 매수 1호가 행에만 true — 매도/매수 경계선(3열 공통 y). */
+  topDivider?: boolean;
 }) {
   const color = dirClass(price, baselinePrice);
   const pct =
@@ -246,12 +254,12 @@ function PriceCell({
   // 줘서 값 길이(-0.19% ↔ +30.00%)가 달라져도 가격 우측 끝이 흔들리지 않게 한다.
   // 위계는 크기로 준다: 가격 base(13px) vs 등락률 badge(8.5px) — 보조 정보라
   // 뚜렷하게 작아야 가격이 먼저 읽힌다(이전 sm/xs 는 1px 차라 위계가 없었다).
-  return (
+  const cell = (
     <div
       className={`flex items-baseline justify-center gap-1.5 px-2 ${
         boxed ? 'rounded-md border border-fg-dim' : ''
       }`}
-      style={{ height: ROW_H }}
+      style={{ height: topDivider ? ROW_H - 1 : ROW_H }}
     >
       <span className={`font-mono text-base tabular-nums ${color}`}>
         {price > 0 ? price.toLocaleString('ko-KR') : ''}
@@ -269,6 +277,11 @@ function PriceCell({
       )}
     </div>
   );
+  if (!topDivider) return cell;
+  // 경계선을 셀 **바깥** 래퍼에 그린다 — 현재가가 매수 1호가인 흔한 경우 boxed 의
+  // 전체 테두리와 같은 요소를 다투게 되어 박스 윗변만 색이 갈린다. 래퍼(1px) +
+  // 셀(ROW_H-1) = ROW_H 라 21행 정렬 계약은 유지된다.
+  return <div className="border-t border-border-strong">{cell}</div>;
 }
 
 /** 깊이 막대. ask 는 가격축 쪽(우)에서, bid 는 가격축 쪽(좌)에서 자란다. */
@@ -277,16 +290,25 @@ function QtyBar({
   maxQty,
   side,
   badge,
+  topDivider = false,
 }: {
   qty: number;
   maxQty: number;
   side: 'ask' | 'bid';
   badge: OrderbookDeltaBadge | null;
+  /** 매수 1호가 바에만 true — 매도/매수 경계선(3열 공통 y). 여기선 boxed 같은
+   *  경쟁 테두리가 없어 셀에 직접 border-t 를 얹는다(border-box 라 22px 유지). */
+  topDivider?: boolean;
 }) {
   const widthPct = maxQty > 0 ? (qty / maxQty) * 100 : 0;
   const isAsk = side === 'ask';
   return (
-    <div className="relative flex items-center" style={{ height: ROW_H }}>
+    <div
+      className={`relative flex items-center ${
+        topDivider ? 'border-t border-border-strong' : ''
+      }`}
+      style={{ height: ROW_H }}
+    >
       <span
         className={`absolute inset-y-px ${isAsk ? 'right-0' : 'left-0'}`}
         style={{ width: `${widthPct}%`, background: isAsk ? 'var(--bar-ask)' : 'var(--bar-bid)' }}
