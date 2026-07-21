@@ -635,7 +635,7 @@ export function HeatmapDrawer() {
                                 active={entry.code === activeCode}
                                 ariaLabel={[entry.name, entry.code, '차트 열기'].join(' ')}
                                 testId={`heatmap-drawer-row-${entry.code}`}
-                                onClick={() => onPick(entry.code, entry.name)}
+                                onClick={(e) => onPick(entry.code, entry.name, e)}
                                 onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                                 onDelete={() => removeM.mutate(entry.code)}
                                 indented

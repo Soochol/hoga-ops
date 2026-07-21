@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persistJson, readJsonObject } from './persist';
+import { persistJson, readJsonObject, type StorageScope } from './persist';
 import {
   normalizeIndicatorsV2,
   type IndicatorSettings,
@@ -32,6 +32,37 @@ import { isLiveIndexId } from '../live/liveInstrument';
  */
 
 export const WORKSPACE_STORAGE_KEY = 'live.workspace.v1';
+
+/** 딥링크(`/live?code=`·`?index=`)로 열린 탭은 워크스페이스를 sessionStorage 에 둔다.
+ *
+ *  이유: `persistFromState` 는 바뀐 필드가 아니라 **그 탭의 인메모리 스냅샷 전체**를
+ *  쓴다(호출부 20여 곳이 전부 `{...state, 바뀐것}` 패턴). 두 탭이 같은 localStorage
+ *  키를 공유하면, 오래된 탭에서 종목과 무관한 조작 하나(예: 보조지표 토글)만 해도
+ *  다른 탭의 종목·봉·레이아웃이 통째로 되돌아간다. 두 탭 화면은 각자 자기 메모리를
+ *  계속 보여주므로 **조용히** 깨지고, 손실은 다음 새로고침에야 드러난다.
+ *  sessionStorage 는 탭마다 독립이라 이 경합을 구조적으로 없앤다.
+ *
+ *  대가: 딥링크 탭에서 바꾼 레이아웃은 탭을 닫으면 사라진다 — "새 탭 = 곁눈질용
+ *  조회 창" 계약. 메인 탭(쿼리 없는 `/live`)은 종전대로 localStorage 를 쓴다.
+ *
+ *  탭 수명 동안 고정한다(모듈 로드 1회 결정). `readStorage()` 가 모듈 초기화 시점에
+ *  실행되므로 그보다 늦게 정해지면 하이드레이션이 틀린 저장소를 읽는다. SPA 내에서
+ *  `/study` 를 거쳐 `/live` 로 돌아와도 스코프가 흔들리지 않는 것도 같은 이유. */
+function detectWorkspaceScope(): StorageScope {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.has('code') || params.has('index') ? 'tab' : 'shared';
+  } catch {
+    return 'shared';
+  }
+}
+
+let scopeCache: StorageScope | null = null;
+
+function workspaceScope(): StorageScope {
+  scopeCache ??= detectWorkspaceScope();
+  return scopeCache;
+}
 
 /** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
  *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D). */
@@ -249,8 +280,20 @@ function defaultWindows(): WorkspaceWindow[] {
   ];
 }
 
+/** 스코프에 맞는 raw 스냅샷. 딥링크 탭은 자기 sessionStorage 가 비어 있으면 공유
+ *  워크스페이스를 **읽기만 해서** 1회 시드한다 — 사용자가 늘 쓰던 레이아웃 그대로
+ *  열리되, 이후 변경은 그 탭에만 남는다(공유 키는 이 시점에도 쓰지 않는다). */
+function readWorkspaceSnapshot(): Record<string, unknown> {
+  if (workspaceScope() === 'tab') {
+    const own = readJsonObject(WORKSPACE_STORAGE_KEY, 'tab');
+    if (Array.isArray(own.windows)) return own;
+    return readJsonObject(WORKSPACE_STORAGE_KEY, 'shared');
+  }
+  return readJsonObject(WORKSPACE_STORAGE_KEY, 'shared');
+}
+
 function readStorage(): Persisted {
-  const parsed = readJsonObject(WORKSPACE_STORAGE_KEY);
+  const parsed = readWorkspaceSnapshot();
   const rawWindows = Array.isArray(parsed.windows) ? parsed.windows : null;
   if (!rawWindows) {
     // live.workspace.v1 없음 → 레거시 키(live.page/indicators/layout.v1)에서 1회 시드
@@ -281,13 +324,18 @@ function readStorage(): Persisted {
   };
 }
 
-/** 모든 setter 가 공유하는 단일 영속화 지점(liveLayout 패턴). */
+/** 모든 setter 가 공유하는 단일 영속화 지점(liveLayout 패턴).
+ *  스코프가 'tab' 이면 sessionStorage 로만 나가므로 다른 탭을 덮어쓰지 않는다. */
 function persistFromState(state: Persisted): void {
-  persistJson(WORKSPACE_STORAGE_KEY, {
-    windows: state.windows,
-    zOrder: state.zOrder,
-    groupSymbols: state.groupSymbols,
-  });
+  persistJson(
+    WORKSPACE_STORAGE_KEY,
+    {
+      windows: state.windows,
+      zOrder: state.zOrder,
+      groupSymbols: state.groupSymbols,
+    },
+    workspaceScope(),
+  );
 }
 
 /** 대상 차트 창 = 포커스 창이 차트면 그 창, 아니면 z순서 최상위 차트 창 —

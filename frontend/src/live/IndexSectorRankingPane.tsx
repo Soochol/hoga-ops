@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { BasisMode } from './indexSectorRankingState';
+import type { JumpModifiers } from './useJumpToLive';
 import {
   initialIndexSectorRankingUiState,
   reduceIndexSectorRankingState,
@@ -20,7 +21,7 @@ interface Props {
   isLoading: boolean;
   error: unknown;
   onClearDatePin: () => void;
-  onOpenStock: (code: string, name: string) => void;
+  onOpenStock: (code: string, name: string, e?: JumpModifiers) => void;
   /**
    * 레이아웃 변형.
    * - `docked`(기본): 차트 하단 도킹 — 자체 높이 상태 + 상단 리사이즈 핸들(구 LiveWorkarea).
@@ -128,13 +129,13 @@ function StockButton({
 }: {
   stock: IndexSectorRankingStock;
   rank: number;
-  onOpenStock: (code: string, name: string) => void;
+  onOpenStock: (code: string, name: string, e?: JumpModifiers) => void;
 }) {
   return (
     <button
       type="button"
       aria-label={stockButtonLabel(stock)}
-      onClick={() => onOpenStock(stock.code, stock.name)}
+      onClick={(e) => onOpenStock(stock.code, stock.name, e)}
       className="grid w-full items-center text-left"
       style={{
         gridTemplateColumns: '32px minmax(0, 1fr) 72px',

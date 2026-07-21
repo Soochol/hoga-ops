@@ -10,7 +10,9 @@ export interface HeatmapRowProps {
   open?: number | null;
   high?: number | null;
   low?: number | null;
-  onClick: () => void;
+  // QuoteRow 와 동일 계약: 이벤트를 통과시켜 호출부가 ctrl/⌘ 로 새 탭 분기를 할 수
+  // 있게 한다. 선택적이라 인자 없이 부르던 기존 호출부는 그대로 유효하다.
+  onClick: (e?: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>) => void;
   ariaLabel: string;
   testId: string;
   /** 드래그 재정렬(수동 정렬 모드)용 — manual 모드에서만 SortableHeatmapRow가 채운다.
@@ -49,7 +51,7 @@ export function HeatmapRow({
       {...dragListeners}
       onClick={onClick}
       onContextMenu={onContextMenu}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } }}
       style={dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle}
       className={`grid grid-cols-[minmax(4rem,1fr)_2.5rem_3.2rem_4.25rem] gap-1.5 px-2 py-0.5 items-center text-sm border-b border-border outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
     >

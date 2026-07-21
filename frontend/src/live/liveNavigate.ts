@@ -34,6 +34,25 @@ export function activateLiveCode(code: string, label?: string): void {
   activateLiveInstrument(stockInstrument(code, label ?? code));
 }
 
+/** `/live` 딥링크 경로. LivePage 가 마운트 시 `?code=`/`?index=` 를 1회 읽어 활성
+ *  그룹에 시드한다(LivePage.tsx) — 상태→URL 반영은 없으므로 매번 코드로 조립한다. */
+export function liveDeepLinkPath(instrument: LiveInstrument): string {
+  const q =
+    instrument.kind === 'index'
+      ? `index=${encodeURIComponent(instrument.id)}`
+      : `code=${encodeURIComponent(instrument.code)}`;
+  return `/live?${q}`;
+}
+
+/** 종목을 새 브라우저 탭으로 연다(ctrl/⌘+클릭).
+ *
+ *  `noopener` 는 새 탭이 `window.opener` 로 이 창을 조작하지 못하게 하는 표준 방어.
+ *  딥링크로 열린 탭은 워크스페이스를 sessionStorage 에 격리하므로(workspace.ts)
+ *  이 창의 창 배치·종목을 덮어쓰지 않는다. */
+export function openLiveInNewTab(instrument: LiveInstrument): void {
+  window.open(liveDeepLinkPath(instrument), '_blank', 'noopener');
+}
+
 export function toGroupSymbol(instrument: LiveInstrument): GroupSymbol {
   return instrument.kind === 'index'
     ? { code: instrument.id, name: instrument.label, kind: 'index' }

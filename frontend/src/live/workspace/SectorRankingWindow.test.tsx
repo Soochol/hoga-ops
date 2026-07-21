@@ -1,6 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 
 import { SectorRankingWindow } from './SectorRankingWindow';
 import type { LiveIndexCandlesResponse } from '../../api/liveIndices';
@@ -11,6 +12,7 @@ import type { IndexSectorRankingResponse } from '../../api/indexSectorRankings';
 const useLiveIndexCandles = vi.fn();
 const useIndexSectorRankings = vi.fn();
 const activateLiveCode = vi.fn();
+const openLiveInNewTab = vi.fn();
 
 vi.mock('../../api/liveIndices', () => ({
   useLiveIndexCandles: (...args: unknown[]) => useLiveIndexCandles(...args),
@@ -20,7 +22,17 @@ vi.mock('../../api/indexSectorRankings', () => ({
 }));
 vi.mock('../liveNavigate', () => ({
   activateLiveCode: (...args: unknown[]) => activateLiveCode(...args),
+  openLiveInNewTab: (...args: unknown[]) => openLiveInNewTab(...args),
 }));
+
+/** 창은 항상 `/live` 안에 산다 — useJumpToLive 의 navigate 는 no-op 경로. */
+function renderWindow() {
+  return render(
+    <MemoryRouter initialEntries={['/live']}>
+      <SectorRankingWindow indexId="KOSPI" />
+    </MemoryRouter>,
+  );
+}
 
 function candlesResult(candles: LiveIndexCandlesResponse['candles'], isLoading = false) {
   return {
@@ -57,6 +69,7 @@ beforeEach(() => {
   useLiveIndexCandles.mockReset();
   useIndexSectorRankings.mockReset();
   activateLiveCode.mockReset();
+  openLiveInNewTab.mockReset();
   useIndexSectorRankings.mockReturnValue({ data: undefined, isLoading: false, error: null });
 });
 
@@ -70,7 +83,7 @@ describe('SectorRankingWindow', () => {
     );
     useIndexSectorRankings.mockReturnValue({ data: ranking, isLoading: false, error: null });
 
-    render(<SectorRankingWindow indexId="KOSPI" />);
+    renderWindow();
 
     // 랭킹 쿼리는 마지막 봉 날짜 + enabled=true 로 호출된다.
     expect(useIndexSectorRankings).toHaveBeenCalledWith('20260619', true, expect.any(String));
@@ -82,7 +95,7 @@ describe('SectorRankingWindow', () => {
   it('일봉이 아직 없으면 랭킹 조회를 비활성화하고 로딩으로 표시한다', () => {
     useLiveIndexCandles.mockReturnValue(candlesResult([], true));
 
-    render(<SectorRankingWindow indexId="KOSPI" />);
+    renderWindow();
 
     // basis 미확정 → date=null, enabled=false.
     expect(useIndexSectorRankings).toHaveBeenCalledWith(null, false, expect.any(String));
@@ -94,9 +107,23 @@ describe('SectorRankingWindow', () => {
     useLiveIndexCandles.mockReturnValue(candlesResult([{ t_ms: TS_20260619, open: 1, high: 1, low: 1, close: 1, volume: 0 }]));
     useIndexSectorRankings.mockReturnValue({ data: ranking, isLoading: false, error: null });
 
-    render(<SectorRankingWindow indexId="KOSPI" />);
+    renderWindow();
     await user.click(screen.getByRole('button', { name: /삼성전자/ }));
 
     expect(activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
+  });
+
+  it('ctrl+클릭은 새 탭으로 열고 활성 그룹 종목은 그대로 둔다', async () => {
+    const user = userEvent.setup();
+    useLiveIndexCandles.mockReturnValue(candlesResult([{ t_ms: TS_20260619, open: 1, high: 1, low: 1, close: 1, volume: 0 }]));
+    useIndexSectorRankings.mockReturnValue({ data: ranking, isLoading: false, error: null });
+
+    renderWindow();
+    await user.keyboard('{Control>}');
+    await user.click(screen.getByRole('button', { name: /삼성전자/ }));
+    await user.keyboard('{/Control}');
+
+    expect(openLiveInNewTab).toHaveBeenCalledWith({ kind: 'stock', code: '005930', label: '삼성전자' });
+    expect(activateLiveCode).not.toHaveBeenCalled();
   });
 });

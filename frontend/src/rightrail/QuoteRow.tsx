@@ -15,7 +15,10 @@ export interface QuoteRowProps {
   active: boolean;
   ariaLabel: string;
   testId: string;
-  onClick: () => void;
+  // 이벤트를 그대로 넘긴다 — 호출부가 ctrl/⌘ 를 보고 새 탭으로 분기할 수 있어야
+  // 한다(useJumpToLive). 선택적이라 인자 없이 부르는 기존 호출부도 그대로 유효하고,
+  // KeyboardEvent 도 받으므로 ctrl+Enter 가 같은 경로를 탄다.
+  onClick: (e?: React.MouseEvent<HTMLLIElement> | React.KeyboardEvent<HTMLLIElement>) => void;
   trailingAction?: React.ReactNode;
   // --- drag (선택 패널용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
@@ -67,7 +70,7 @@ export function QuoteRow({
       onDelete();
       return;
     }
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); }
     // 화살표 위/아래: 인접 행으로 이동하며 즉시 선택(차트 전환). 스코프는 가장 가까운
     // [data-quote-nav](드로어 스크롤 컨테이너) — 관심종목은 폴더별로 <ul>이 여러 개라
     // 형제 이동만으론 그룹 경계를 못 넘기 때문. 없으면 부모(<ul>)로 폴백.

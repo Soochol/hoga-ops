@@ -8,6 +8,7 @@ import type { LiveQuote } from '../api/liveQuotes';
 import { HeatmapRow } from './HeatmapRow';
 import { sortEntries, avgPct, heatHeaderBg, makePctOf, type SortMode } from './heat';
 import { resolveDrag } from '../watchlist/dragHandlers';
+import type { JumpModifiers } from '../live/useJumpToLive';
 import { FolderAddButton } from './FolderAddButton';
 
 /** 행 우클릭 메뉴 열기 — (이벤트, 코드, 이름, 이 행이 속한 폴더 id). */
@@ -20,7 +21,7 @@ export interface HeatmapFolderProps {
   entries: HeatmapEntry[];
   quoteByCode: Map<string, LiveQuote>;
   sortMode: SortMode;
-  onPick: (code: string, name?: string) => void;
+  onPick: (code: string, name?: string, e?: JumpModifiers) => void;
   /** 그룹 내 드래그 재정렬을 커밋한다(manual 모드 전용).
    *  페이지가 useReorderHeatmapEntries 로 주입 — 컴포넌트는 QueryClient 비의존(순수). */
   onReorder?: (folderId: string, orderedCodes: string[]) => void;
@@ -63,11 +64,11 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
         <SortableHeatmapRow key={e.code} code={e.code} name={e.name}
         price={q?.price ?? null} pct={q?.change_pct ?? null}
         open={q?.open ?? null} high={q?.high ?? null} low={q?.low ?? null}
-        onPick={() => onPick(e.code, e.name)} onContextMenu={ctxFor?.(e.code, e.name)} />
+        onPick={(ev) => onPick(e.code, e.name, ev)} onContextMenu={ctxFor?.(e.code, e.name)} />
     ) : (
       <HeatmapRow key={e.code} name={e.name} price={q?.price ?? null} pct={q?.change_pct ?? null}
         open={q?.open ?? null} high={q?.high ?? null} low={q?.low ?? null}
-        onClick={() => onPick(e.code, e.name)} ariaLabel={`${e.name} ${e.code} 차트 열기`}
+        onClick={(ev) => onPick(e.code, e.name, ev)} ariaLabel={`${e.name} ${e.code} 차트 열기`}
         testId={`heatmap-row-${e.code}`} onContextMenu={ctxFor?.(e.code, e.name)} />
     );
   });
@@ -113,7 +114,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
 function SortableHeatmapRow(props: {
   code: string; name: string; price: number | null; pct: number | null;
   open?: number | null; high?: number | null; low?: number | null;
-  onPick: () => void;
+  onPick: (e?: JumpModifiers) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id: props.code });

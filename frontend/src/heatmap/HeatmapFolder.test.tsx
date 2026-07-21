@@ -34,7 +34,8 @@ it('행 클릭 시 onPick(code, name) — 종목명을 라벨로 전달', () => 
   render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
     sortMode="manual" onPick={onPick} />);
   fireEvent.click(screen.getByTestId('heatmap-row-005930'));
-  expect(onPick).toHaveBeenCalledWith('005930', '삼성전자');
+  // 3번째 인자는 원본 이벤트 — 호출부가 ctrl/⌘ 를 보고 새 탭으로 분기한다.
+  expect(onPick).toHaveBeenCalledWith('005930', '삼성전자', expect.anything());
 });
 
 it('하락 평균도 헤더 밴드에 그대로 반영(파랑 틴트)', () => {

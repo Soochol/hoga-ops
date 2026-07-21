@@ -92,7 +92,9 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
   });
 
-  it('Ctrl/Meta-click도 현재 뷰 종목 교체와 동일(탭 제거 후 새 탭 없음)', async () => {
+  it('Ctrl-click 은 새 브라우저 탭으로 열고 현재 뷰의 종목은 그대로 둔다', async () => {
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     useLivePageStore.setState({
       activeInstrument: { kind: 'stock', code: '000660', label: 'SK하이닉스' },
@@ -105,9 +107,11 @@ describe('WatchlistDrawer', () => {
 
     fireEvent.click(screen.getByText('삼성전자'), { ctrlKey: true });
 
-    // 새 탭을 만들지 않고 현재 뷰의 종목만 교체한다.
-    expect(useLivePageStore.getState().activeCode).toBe('005930');
-    await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
+    expect(open).toHaveBeenCalledWith('/live?code=005930', '_blank', 'noopener');
+    // 현재 뷰는 건드리지 않는다 — 종목도 경로도 그대로.
+    expect(useLivePageStore.getState().activeCode).toBe('000660');
+    expect(screen.getByTestId('pathname').textContent).toBe('/inventory');
+    vi.unstubAllGlobals();
   });
 
   it('shows empty message when no entries and no folders', async () => {
