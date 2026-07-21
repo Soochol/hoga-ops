@@ -19,15 +19,19 @@ import {
   DEPTH_DELTA_DEFAULT_OUT_COLOR,
 } from '../../state/liveIndicatorsPersistence';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
+import type { LiveViEvent } from '../../api/liveViStatus';
 import { priceDirClass } from '../../ui/priceDir';
+import { viExpectedDown, viExpectedUp } from '../krxTick';
 import type { LiveTradeSummary } from '../liveSidebarAdapters';
 
 /** 체결 리스트 한 줄. */
 export type BookTrade = { price: number; qty: number; side: number };
 
-/** 상하한가·250일 최고/최저 — /api/live/stock-limits(키움 ka10001) 부분집합.
- *  당일 고정값이라 스팟 커서에서도 유효하다(요약 지표와 달리 비우지 않는다). */
+/** 상하한가·기준가·250일 최고/최저 — /api/live/stock-limits(키움 ka10001) 부분집합.
+ *  당일 고정값이라 스팟 커서에서도 유효하다(요약 지표와 달리 비우지 않는다).
+ *  base_price 는 VI 예상가의 장전 폴백(시가 형성 전 기준가). */
 export type BookStockLimits = {
+  base_price: number | null;
   upper_limit: number | null;
   lower_limit: number | null;
   high_250: number | null;
@@ -49,6 +53,8 @@ type Props = {
   deltaBadges?: OrderbookDeltaBadges | null;
   /** 상하한가·250일 최고/최저. null = 미로드/미제공 → 대시. */
   limits?: BookStockLimits | null;
+  /** 종목의 최신 VI 이벤트(키움 1h). null = 오늘 이벤트 없음 → 예상가만 표시. */
+  vi?: LiveViEvent | null;
 };
 
 const ROW_H = 22; // DESIGN.md — Orderbook table row 22px
@@ -64,6 +70,7 @@ export default function BookPanel({
   lastPrice,
   deltaBadges = null,
   limits = null,
+  vi = null,
 }: Props) {
   if (snapshot === undefined) return <PanelState>커서 위치 로딩 중…</PanelState>;
   if (snapshot === null) return <PanelState>호가 데이터 없음</PanelState>;
@@ -168,9 +175,7 @@ export default function BookPanel({
                 label="어제보다"
                 value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
               />
-              {/* 상한가·하한가·250일 = ka10001(stock-limits). VI 2행은 1h 타입의
-                  발동방향 코드값 legend 미해독이라 아직 대시 — 자리를 비워두는
-                  편이 행 수가 흔들려 매수 바 정렬이 깨지는 것보다 낫다. */}
+              {/* 상한가·하한가·250일 = ka10001(stock-limits). */}
               <SummaryRow
                 label="상한가"
                 value={fmtOr(limits?.upper_limit ?? null)}
@@ -186,8 +191,8 @@ export default function BookPanel({
                   limits?.lower_limit != null ? dirClass(limits.lower_limit, baselinePrice) : undefined
                 }
               />
-              <SummaryRow label="상승VI" value="−" />
-              <SummaryRow label="하강VI" value="−" />
+              <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} />
+              <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} />
               {/* 키움은 52주가 아니라 250거래일 기준(ka10001 250hgst/250lwst)이라
                   라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 — 11행 계약. */}
               <SummaryRow label="250일" value={fmtHighLow(limits)} />
@@ -309,25 +314,74 @@ function QtyBar({
   );
 }
 
+/** VI 예상가의 정적기준가 — 우선순위: 당일 VI 발동가(해제 단일가 ≈ 발동가 근사)
+ *  → 시가(0B FID 16) → 전일 기준가(ka10001, 장전 폴백). VI 가 한 번 걸리면
+ *  기준가가 시가에서 해제 단일가로 갱신되는데 그 값을 주는 API 가 없어 발동가로
+ *  근사한다(연구 문서 §4 — 다음 이벤트가 오면 자가 보정). */
+function viBase(
+  vi: LiveViEvent | null,
+  summary: LiveTradeSummary,
+  limits: BookStockLimits | null,
+): number | null {
+  return vi?.trigger_price ?? summary.dayOpen ?? limits?.base_price ?? null;
+}
+
+/** 상승/하강 VI 행 — 평시엔 계산한 예상 발동가, 해당 방향 발동 중엔 발동가 강조.
+ *  예상가는 계산값이라 dim 톤(실측 수신값과 시각적으로 구분 — 상한가 행과 대비). */
+function ViRow({
+  dir,
+  vi,
+  base,
+}: {
+  dir: 'up' | 'down';
+  vi: LiveViEvent | null;
+  base: number | null;
+}) {
+  const active = vi?.active === true && vi.direction === dir;
+  const dirColor = dir === 'up' ? 'text-price-up' : 'text-price-down';
+  if (active) {
+    return (
+      <SummaryRow
+        label={dir === 'up' ? '상승VI' : '하강VI'}
+        value={`${fmtOr(vi.trigger_price)} 발동`}
+        color={dirColor}
+        highlight
+      />
+    );
+  }
+  const expected =
+    base !== null ? (dir === 'up' ? viExpectedUp(base) : viExpectedDown(base)) : null;
+  return (
+    <SummaryRow
+      label={dir === 'up' ? '상승VI' : '하강VI'}
+      value={fmtOr(expected)}
+      color={expected !== null ? 'text-fg-dim' : undefined}
+    />
+  );
+}
+
 /** divider=그룹 시작. border-box 라 border-t 가 행 높이를 늘리지 않는다(정렬 유지).
- *  대시(미수신/미제공)는 실데이터와 같은 대비로 찍히면 "깨진 값"처럼 읽혀 dim. */
+ *  대시(미수신/미제공)는 실데이터와 같은 대비로 찍히면 "깨진 값"처럼 읽혀 dim.
+ *  highlight = 상태 행(VI 발동 중) — 배경 틴트로 "지금 벌어지는 일"을 표시. */
 function SummaryRow({
   label,
   value,
   color,
   divider,
+  highlight,
 }: {
   label: string;
   value: string;
   color?: string;
   divider?: boolean;
+  highlight?: boolean;
 }) {
   const empty = value === '−';
   return (
     <div
       className={`flex items-center justify-between gap-3 px-2 ${
         divider ? 'border-t border-border' : ''
-      }`}
+      } ${highlight ? 'bg-bg-subtle' : ''}`}
       style={{ height: ROW_H }}
     >
       <span className="text-xs text-fg-dim">{label}</span>
