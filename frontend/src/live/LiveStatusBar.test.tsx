@@ -205,15 +205,15 @@ describe('LiveStatusBar', () => {
     expect(screen.getByTestId('source-chip-kis_live')).toBeTruthy();
   });
 
-  it('shows candle 통합 with a time-multiplexed hoga badge (KRX in regular session, #523)', () => {
+  it('shows candle 시간대 자동 with a time-multiplexed hoga badge (KRX in regular session, #523)', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 4, 18, 1, 0, 0)); // KST 10:00 정규장
     renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE, venue: 'UN' });
-    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 통합');
+    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 시간대 자동');
     expect(screen.getByTestId('live-venue-ws-note').textContent).toBe('호가 KRX');
     now.mockRestore();
   });
 
-  it('shows a 호가 NXT badge during NXT-only hours for the 통합 venue (#523)', () => {
+  it('shows a 호가 NXT badge during NXT-only hours for the 시간대 자동 venue (#523)', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 4, 18, 8, 0, 0)); // KST 17:00 장후 NXT
     renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE, venue: 'UN' });
     expect(screen.getByTestId('live-venue-ws-note').textContent).toBe('호가 NXT');

@@ -714,7 +714,7 @@ describe('LivePage shell', () => {
     renderWithRouter();
 
     expect(livePageMocks.liveBundleCalls.at(-1)?.options.venue).toBe('UN');
-    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 통합');
+    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 시간대 자동');
     expect(livePageMocks.liveChartRootProps.at(-1)?.viewIdentity).toBe('005930:UN');
   });
 

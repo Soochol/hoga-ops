@@ -17,7 +17,7 @@ describe('useLiveVenueStore', () => {
     expect(localStorage.getItem('live.venue.v1')).toContain('UN');
   });
 
-  it('migrates a persisted NXT venue to 통합(UN) on hydration (#523)', () => {
+  it('migrates a persisted NXT venue to 시간대 자동(UN) on hydration (#523)', () => {
     localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'NXT' }));
     useLiveVenueStore.getState().hydrateFromStorage();
     expect(useLiveVenueStore.getState().venue).toBe('UN');
@@ -57,7 +57,7 @@ describe('useLiveVenueStore', () => {
     expect(useLiveVenueStore.getState().venue).toBe('KRX');
   });
 
-  it('exposes the requested UI labels (NXT 제거 후 KRX/통합)', () => {
-    expect(LIVE_VENUE_OPTIONS.map((v) => LIVE_VENUE_LABELS[v])).toEqual(['KRX', '통합']);
+  it('exposes the requested UI labels (NXT 제거 후 KRX/시간대 자동)', () => {
+    expect(LIVE_VENUE_OPTIONS.map((v) => LIVE_VENUE_LABELS[v])).toEqual(['KRX', '시간대 자동']);
   });
 });

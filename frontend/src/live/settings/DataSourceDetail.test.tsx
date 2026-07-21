@@ -34,10 +34,10 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
 
     expect(screen.getByLabelText('KRX')).toBeChecked();
-    expect(screen.getByLabelText('통합')).toBeInTheDocument();
+    expect(screen.getByLabelText('시간대 자동')).toBeInTheDocument();
     expect(screen.queryByLabelText('NXT')).toBeNull();   // NXT venue 제거(#523)
 
-    fireEvent.click(screen.getByLabelText('통합'));
+    fireEvent.click(screen.getByLabelText('시간대 자동'));
     expect(useLiveVenueStore.getState().venue).toBe('UN');
     expect(localStorage.getItem('live.venue.v1')).toContain('UN');
   });
