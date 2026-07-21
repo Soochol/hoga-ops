@@ -11,7 +11,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { useJumpToLive } from '../live/useJumpToLive';
+import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
 import { useEntryDragStore, isPointOnChart, dropPoint, resolveDropOnChart } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
 import { useScreenerPanelStore, useExpireScreenerScan, MONITOR_PERIOD_CHOICES_MS } from '../state/screenerPanel';
@@ -135,7 +135,7 @@ function DraggableScreenerRow({
   row: ScreenerRowLive;
   active: boolean;
   flash: boolean;
-  onActivate: () => void;
+  onActivate: (e?: JumpModifiers) => void;
 }) {
   const { setNodeRef, listeners, attributes, transform, isDragging } = useDraggable({
     id: screenerDraggableId(row.code),
@@ -484,7 +484,7 @@ export function ScreenerDrawer() {
                       row={r}
                       active={r.code === activeCode}
                       flash={monitoringActive && flashCodes.has(r.code)}
-                      onActivate={() => openLive(r.code, r.name)}
+                      onActivate={(e) => openLive(r.code, r.name, e)}
                     />
                   ))}
                 </ul>

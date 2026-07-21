@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useJumpToLive } from '../live/useJumpToLive';
+import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
 import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
@@ -299,7 +299,7 @@ function SortableQuoteRow(props: {
   entry: WatchlistEntry;
   price: number | null; pct: number | null; changeWon: number | null;
   active: boolean;
-  onPick: () => void;
+  onPick: (e?: JumpModifiers) => void;
   onContextMenu: (e: React.MouseEvent<HTMLLIElement>) => void;
   onDelete: () => void;
   collectionBadge?: React.ReactNode;
@@ -596,7 +596,7 @@ export function WatchlistDrawer() {
                           pct={q?.change_pct ?? null}
                           changeWon={q?.change_won ?? null}
                           active={entry.code === activeCode}
-                          onPick={() => onPick(entry.code, entry.name)}
+                          onPick={(e) => onPick(entry.code, entry.name, e)}
                           onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                           onDelete={() => removeM.mutate(entry.code)}
                           collectionBadge={trailing}

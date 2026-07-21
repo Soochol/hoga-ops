@@ -55,10 +55,14 @@ vi.mock('../state/livePage', () => ({
     sel({ setActiveCode }),
 }));
 // 단일 뷰 모델(ADR-0113): 행 클릭은 useJumpToLive → activateLiveCode(code, label?)로 흐른다.
-const { activateLiveCode } = vi.hoisted(() => ({ activateLiveCode: vi.fn() }));
+const { activateLiveCode, openLiveInNewTab } = vi.hoisted(() => ({
+  activateLiveCode: vi.fn(),
+  openLiveInNewTab: vi.fn(),
+}));
 vi.mock('../live/liveNavigate', () => ({
   activateLiveCode,
   activateLiveInstrument: vi.fn(),
+  openLiveInNewTab,
 }));
 
 import { Screener } from './Screener';
@@ -86,6 +90,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.mocked(useQuoteByCode).mockReturnValue(defaultQuoteMap());
   activateLiveCode.mockClear();
+  openLiveInNewTab.mockClear();
   localStorage.clear();
   // C4 race 테스트가 mockResolvedValue(지속)로 saves 를 갈아끼우므로 기본 구현 복구.
   vi.mocked(listSaves).mockImplementation(() => Promise.resolve(defaultSaves()));
@@ -181,15 +186,15 @@ it('uses shared action styling in the save dialog', async () => {
   expect(within(dialog).getByRole('button', { name: '저장' })).toHaveClass('bg-accent');
 });
 
-it('Ctrl/Meta-click도 현재 뷰 교체와 동일(탭 제거 후 새 탭 없음)', async () => {
+it('Ctrl/Meta-click 은 새 브라우저 탭으로 열고 현재 뷰는 그대로 둔다', async () => {
   await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   await waitFor(() => screen.getByText('삼성전자'));
   fireEvent.click(screen.getByText('삼성전자'), { ctrlKey: true });
   fireEvent.click(screen.getByText('삼성전자'), { metaKey: true });
-  expect(activateLiveCode).toHaveBeenCalledTimes(2);
-  expect(activateLiveCode).toHaveBeenNthCalledWith(1, '005930', '삼성전자');
-  expect(activateLiveCode).toHaveBeenNthCalledWith(2, '005930', '삼성전자');
+  expect(openLiveInNewTab).toHaveBeenCalledTimes(2);
+  expect(openLiveInNewTab).toHaveBeenCalledWith({ kind: 'stock', code: '005930', label: '삼성전자' });
+  expect(activateLiveCode).not.toHaveBeenCalled();
 });
 
 it('row is keyboard-activatable', async () => {

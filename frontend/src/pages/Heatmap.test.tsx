@@ -36,10 +36,14 @@ vi.mock('../api/liveStatus', async (orig) => ({
 }));
 
 // 단일 뷰 모델(ADR-0113): 행 클릭은 useJumpToLive → activateLiveCode(code, label?)로 흐른다.
-const { activateLiveCode } = vi.hoisted(() => ({ activateLiveCode: vi.fn() }));
+const { activateLiveCode, openLiveInNewTab } = vi.hoisted(() => ({
+  activateLiveCode: vi.fn(),
+  openLiveInNewTab: vi.fn(),
+}));
 vi.mock('../live/liveNavigate', () => ({
   activateLiveCode,
   activateLiveInstrument: vi.fn(),
+  openLiveInNewTab,
 }));
 
 import { Heatmap } from './Heatmap';
@@ -53,6 +57,7 @@ function renderPage() {
 
 beforeEach(() => {
   activateLiveCode.mockClear();
+  openLiveInNewTab.mockClear();
   useHeatmapPrefsStore.setState({ sortMode: 'manual', groupSort: 'manual' });   // eng-review D2: 기본 manual
   Element.prototype.scrollIntoView = vi.fn();              // jsdom 미구현 — 스트립 점프 대비
   // 매 테스트 open 기본값으로 리셋 — per-test override가 다음 테스트로 누수되지 않게.
@@ -90,13 +95,13 @@ it('행 클릭 → 현재 뷰로 종목 열기(jump-to-live)', async () => {
   expect(activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
 });
 
-it('Ctrl/Meta-click도 현재 뷰 교체와 동일(탭 제거 후 새 탭 없음)', async () => {
+it('Ctrl/Meta-click 은 새 브라우저 탭으로 열고 현재 뷰는 그대로 둔다', async () => {
   renderPage();
   fireEvent.click(await screen.findByTestId('heatmap-row-005930'), { ctrlKey: true });
   fireEvent.click(await screen.findByTestId('heatmap-row-005930'), { metaKey: true });
-  expect(activateLiveCode).toHaveBeenCalledTimes(2);
-  expect(activateLiveCode).toHaveBeenNthCalledWith(1, '005930', '삼성전자');
-  expect(activateLiveCode).toHaveBeenNthCalledWith(2, '005930', '삼성전자');
+  expect(openLiveInNewTab).toHaveBeenCalledTimes(2);
+  expect(openLiveInNewTab).toHaveBeenCalledWith({ kind: 'stock', code: '005930', label: '삼성전자' });
+  expect(activateLiveCode).not.toHaveBeenCalled();
 });
 
 it('기본 manual=order 순, 종목 정렬 1클릭(manual→desc) 시 등락률 내림차순', async () => {

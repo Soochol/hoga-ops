@@ -156,7 +156,7 @@ describe('IndexSectorRankingPane', () => {
 
     await user.click(screen.getByRole('button', { name: /삼성전자 005930/ }));
 
-    expect(onOpenStock).toHaveBeenCalledWith('005930', '삼성전자');
+    expect(onOpenStock).toHaveBeenCalledWith('005930', '삼성전자', expect.anything());
   });
 
   it('can preview and pin an uncategorized sector', async () => {

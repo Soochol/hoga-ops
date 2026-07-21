@@ -12,14 +12,15 @@
  * 짧은 룩백·캐시)에서 최신 거래일을 도출해 항상 **latest** 모드로 랭킹을 조회한다
  * (마지막 봉 기준 = 비거래일에도 마지막 거래일로 우아하게 degrade, 구 의미론 재현).
  *
- * **종목 클릭**: `activateLiveCode`(활성 그룹 종목 교체 SSOT, #711) — 관심종목·
- * 스크리너 클릭과 동일한 전역 진입점 동작. 이미 `/live` 이므로 navigate 는 불필요.
+ * **종목 클릭**: `useJumpToLive` — 관심종목·스크리너와 같은 공통 진입점. 이미
+ * `/live` 라 내부 navigate 는 no-op 이고, ctrl/⌘+클릭 새 탭 분기를 공짜로 얻는다
+ * (활성 그룹 종목 교체 SSOT 는 그 안의 `activateLiveCode`, #711).
  */
 import { useMemo } from 'react';
 import { IndexSectorRankingPane } from '../IndexSectorRankingPane';
 import { useLiveIndexCandles } from '../../api/liveIndices';
 import { useIndexSectorRankings } from '../../api/indexSectorRankings';
-import { activateLiveCode } from '../liveNavigate';
+import { useJumpToLive } from '../useJumpToLive';
 import { realMsToYyyymmdd, subtractDaysKst, todayKstYyyymmdd } from '../liveDateTime';
 import type { LiveIndexId } from '../liveInstrument';
 
@@ -27,6 +28,7 @@ import type { LiveIndexId } from '../liveInstrument';
 const LATEST_LOOKBACK_DAYS = 15;
 
 export function SectorRankingWindow({ indexId }: { indexId: LiveIndexId }) {
+  const jump = useJumpToLive();
   const today = todayKstYyyymmdd();
   const from = subtractDaysKst(today, LATEST_LOOKBACK_DAYS);
   const candles = useLiveIndexCandles(indexId, 'D', from, today);
@@ -48,7 +50,7 @@ export function SectorRankingWindow({ indexId }: { indexId: LiveIndexId }) {
       isLoading={candles.isLoading || ranking.isLoading}
       error={ranking.error}
       onClearDatePin={() => {}} // latest 전용 — 고정 상태가 없어 no-op.
-      onOpenStock={(code, name) => activateLiveCode(code, name)}
+      onOpenStock={jump}
     />
   );
 }
