@@ -121,7 +121,8 @@ describe('BookPanel', () => {
     const lower = screen.getByText('178,500');
     expect(upper.className).toContain('text-price-up');
     expect(lower.className).toContain('text-price-down');
-    expect(screen.getByText('388,500 / 143,700')).toBeInTheDocument();
+    // 슬래시 양옆 공백 없음 — 6자리 고가 종목의 우측 열 폭 예산(개행 방지).
+    expect(screen.getByText('388,500/143,700')).toBeInTheDocument();
   });
 
   it('250일 이력이 없는 종목(신규상장)은 대시로 남긴다', () => {
@@ -137,6 +138,25 @@ describe('BookPanel', () => {
     for (const dash of screen.getAllByText('−')) {
       expect(dash.className).toContain('text-fg-dimmer');
     }
+  });
+
+  it('요약 라벨·값은 개행되지 않는다 — 행 높이 계약의 CSS 방어선(NAVER 250일 실사례)', () => {
+    renderPanel({
+      limits: { base_price: 255_000, upper_limit: 331_500, lower_limit: 178_500, high_250: 304_000, low_250: 181_100 },
+    });
+    const value = screen.getByText('304,000/181,100');
+    expect(value.className).toContain('whitespace-nowrap');
+    const label = screen.getByText('250일');
+    expect(label.className).toContain('whitespace-nowrap');
+  });
+
+  it('체결 리스트는 9행에서 자른다 — 3열 바닥 정렬(좌 21행 = 중앙 21행)', () => {
+    const trades = Array.from({ length: 12 }, (_, i) => ({
+      price: 251_500, qty: 1_000 + i, side: 1 as const,
+    }));
+    renderPanel({ trades });
+    expect(screen.getByText('1,008')).toBeInTheDocument(); // 9번째(index 8)
+    expect(screen.queryByText('1,009')).toBeNull(); // 10번째부터 렌더 금지
   });
 
   it('요약이 전부 비면 대시만 남고 사다리는 그대로 그린다', () => {
