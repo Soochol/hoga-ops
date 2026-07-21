@@ -297,7 +297,21 @@ function normalizeZOrder(raw: unknown, windows: readonly WorkspaceWindow[]): str
  * 첫 로드 기본 레이아웃 — 비율(ADR-0122). 기존 px 기본값(1546×776 캔버스 기준
  * 차트 720×760 / book 680×560 / broker 680×188)을 그 캔버스로 나눈 값이라
  * 어느 화면 크기에서도 같은 배치로 열린다.
+ *
+ * **단, 우측 열은 REF 유래 비율(0.4398)을 쓰지 않는다.** REF 캔버스(1546)는 실제
+ * 캔버스보다 넓어서(1280 뷰포트 실측 1226×531) 그 비율이 `BookPanel` 의 절대
+ * 계약인 `min-w 560px` 를 못 채운다 — 0.4398 × 1226 = 539px 로 21px 모자라 가로
+ * 스크롤이 생기고 우측 요약 열이 잘린다("시작 58,000" 이 "시작 58" 로 보인다).
+ * 비율 좌표계는 절대 하한을 표현하지 못하므로(ADR-0122), 하한이 있는 창의 비율은
+ * **REF 가 아니라 좁은 쪽 실측에서 역산**해야 한다.
+ *
+ * 우측 여백(기존 0.0764)이 놀고 있었으므로 차트는 그대로 두고 그 여백을 우측 열에
+ * 준다 — 좌측 여백(0.0104)과 대칭이 되고, 1226 캔버스에서 620px 로 계약을 넘긴다.
  */
+const DEFAULT_RIGHT_COL_X = 0.4838;
+/** 우측 열 폭 — 우측 여백을 좌측(0.0104)과 대칭으로 남긴 나머지 전부. */
+const DEFAULT_RIGHT_COL_W = 1 - DEFAULT_RIGHT_COL_X - 0.0104;
+
 function defaultWindows(): WorkspaceWindow[] {
   return [
     {
@@ -308,8 +322,18 @@ function defaultWindows(): WorkspaceWindow[] {
       chart: { timeframe: '1m', indicators: normalizeIndicatorsV2({}) },
     },
     // book 은 십자 배치(BookPanel)라 좁으면 못 담는다 — 차트 오른쪽 절반의 위쪽.
-    { id: newWindowId(), kind: 'book', group: 1, rect: { x: 0.4838, y: 0.0206, w: 0.4398, h: 0.7216 } },
-    { id: newWindowId(), kind: 'broker', group: 1, rect: { x: 0.4838, y: 0.7577, w: 0.4398, h: 0.2423 } },
+    {
+      id: newWindowId(),
+      kind: 'book',
+      group: 1,
+      rect: { x: DEFAULT_RIGHT_COL_X, y: 0.0206, w: DEFAULT_RIGHT_COL_W, h: 0.7216 },
+    },
+    {
+      id: newWindowId(),
+      kind: 'broker',
+      group: 1,
+      rect: { x: DEFAULT_RIGHT_COL_X, y: 0.7577, w: DEFAULT_RIGHT_COL_W, h: 0.2423 },
+    },
   ];
 }
 
