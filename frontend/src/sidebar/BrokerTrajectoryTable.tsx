@@ -180,11 +180,19 @@ function Sparkline({
 
     const toX = (t: number) => ((t - tsFirst) / tSpan) * W;
     const toY = (n: number) => H - ((n - netMin) / nSpan) * H;
-    const segments = buildSegments(pts, gapThresholdMs).map((seg) => ({
-      kind: seg.kind,
-      points: seg.pts.map((p) => `${toX(p.ts_ms)},${toY(p.net)}`).join(' '),
-    }));
-    return { tsFirst, tsLast, tSpan, segments, zeroY: toY(0), toY };
+    const zeroY = toY(0);
+    const segments = buildSegments(pts, gapThresholdMs).map((seg) => {
+      const coords = seg.pts.map((p) => ({ x: toX(p.ts_ms), y: toY(p.net) }));
+      const path = coords.map((c) => `${c.x},${c.y}`).join(' ');
+      // 0선까지 내려 닫은 면적 폴리곤. 실선 구간에만 채운다 — 점선(미관측)
+      // 구간을 칠하면 top-5 밖이라 모르는 값을 안다고 주장하게 된다(ADR-0023).
+      const area =
+        seg.kind === 'solid' && coords.length >= 2
+          ? `${coords[0].x},${zeroY} ${path} ${coords[coords.length - 1].x},${zeroY}`
+          : null;
+      return { kind: seg.kind, points: path, area };
+    });
+    return { tsFirst, tsLast, tSpan, segments, zeroY, toY };
   }, [dayRange, gapThresholdMs, pts]);
 
   if (!geometry) {
@@ -193,6 +201,10 @@ function Sparkline({
 
   const stroke =
     entry.dominant_side === 'buy' ? 'var(--price-up)' : 'var(--price-down)';
+  // 면적은 방향 인지용 — 규모는 우측 숫자·규모 바가 담당한다. Y 도메인이 행별
+  // 정규화라 진한 면적은 소형 거래원을 대형처럼 보이게 하므로 tint(≈10% alpha).
+  const fill =
+    entry.dominant_side === 'buy' ? 'var(--tint-price-up)' : 'var(--tint-price-down)';
 
   // Cursor marker: only visible when cursorMs is inside the day's range.
   const { tsFirst, tsLast, tSpan, segments, zeroY, toY } = geometry;
@@ -222,6 +234,17 @@ function Sparkline({
           strokeWidth={1}
           vectorEffect="non-scaling-stroke"
         />
+        {segments.map((seg, i) =>
+          seg.area ? (
+            <polygon
+              key={`a${i}`}
+              data-testid="trajectory-area"
+              fill={fill}
+              stroke="none"
+              points={seg.area}
+            />
+          ) : null,
+        )}
         {segments.map((seg, i) => {
           if (seg.kind === 'solid') {
             return (
@@ -230,6 +253,9 @@ function Sparkline({
                 fill="none"
                 stroke={stroke}
                 strokeWidth={1.2}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
                 points={seg.points}
               />
             );
@@ -240,7 +266,11 @@ function Sparkline({
               fill="none"
               stroke={stroke}
               strokeWidth={1.2}
-              strokeDasharray="1.5,1.5"
+              // non-scaling-stroke 아래 dash 는 화면 px 로 해석된다. 기존
+              // 1.5 유저단위(≈5px)와 같은 밀도를 유지하려면 값을 키워야 —
+              // 그대로 두면 점선이 실선처럼 뭉쳐 미관측 구간 신호가 죽는다.
+              strokeDasharray="3,3"
+              vectorEffect="non-scaling-stroke"
               points={seg.points}
             />
           );
@@ -253,8 +283,9 @@ function Sparkline({
             y1={0}
             y2={H}
             stroke="var(--accent)"
-            strokeWidth={0.6}
-            strokeDasharray="1,1"
+            strokeWidth={1}
+            strokeDasharray="2,2"
+            vectorEffect="non-scaling-stroke"
           />
         )}
       </svg>
