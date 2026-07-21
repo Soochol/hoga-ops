@@ -220,6 +220,19 @@ describe('BookPanel', () => {
     expect(screen.getByText('−800')).toBeInTheDocument(); // U+2212, 하이픈 아님
   });
 
+  it('증감 뱃지 색 = KRX 컨벤션(증가 빨강 / 감소 파랑)', () => {
+    // 차트 오버레이의 teal/fuchsia 와 의도적으로 다르다(DESIGN.md 2026-07-21) —
+    // 되돌아가면 이 단언이 잡는다.
+    renderPanel({
+      deltaBadges: new Map([
+        ['a:252000', { delta: 1_200, atMs: 1 }],
+        ['b:251000', { delta: -800, atMs: 2 }],
+      ]),
+    });
+    expect(screen.getByText('+1,200').className).toContain('text-price-up');
+    expect(screen.getByText('−800').className).toContain('text-price-down');
+  });
+
   it('뱃지가 없으면(스팟 커서) 아무것도 그리지 않는다', () => {
     renderPanel({ deltaBadges: null });
     expect(screen.queryByText('+1,200')).toBeNull();

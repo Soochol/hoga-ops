@@ -14,10 +14,6 @@
  * 건드리지 않는다. 이 패널은 /live 워크스페이스 전용이다.
  */
 import type { OrderbookSnapshot } from '../../api/types';
-import {
-  DEPTH_DELTA_DEFAULT_IN_COLOR,
-  DEPTH_DELTA_DEFAULT_OUT_COLOR,
-} from '../../state/liveIndicatorsPersistence';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
 import type { LiveViEvent } from '../../api/liveViStatus';
 import { priceDirClass } from '../../ui/priceDir';
@@ -305,13 +301,14 @@ function QtyBar({
         {/* 뱃지는 막대 **바깥쪽 끝**(가격축 반대편)에 붙인다 — 잔량 쪽에 두면 긴 막대가
             뱃지를 덮어 읽을 수 없다. 잔량은 flex-1 로 남은 폭을 먹고 가격축 쪽으로
             정렬하므로 뱃지가 없어도 위치가 흔들리지 않는다. */}
+        {/* 증감 색 = KRX 컨벤션(증가 빨강 / 감소 파랑, priceDirClass SSOT).
+            차트 오버레이(DepthDeltaOverlay)는 계속 teal/fuchsia 다 — 거긴 호가
+            히트맵(빨강·파랑)과 같은 셀에 겹쳐 켜지므로 색이 충돌하면 판독 불가라
+            다른 색조가 필수지만, 이 뱃지는 겹치는 레이어가 없다. */}
         {badge !== null && (
           <span
             key={badge.atMs}
-            className="book-delta-flash shrink-0 text-[10px]"
-            style={{
-              color: badge.delta > 0 ? DEPTH_DELTA_DEFAULT_IN_COLOR : DEPTH_DELTA_DEFAULT_OUT_COLOR,
-            }}
+            className={`book-delta-flash shrink-0 text-[10px] ${priceDirClass(badge.delta)}`}
           >
             {badge.delta > 0 ? '+' : '−'}
             {Math.abs(badge.delta).toLocaleString('ko-KR')}
