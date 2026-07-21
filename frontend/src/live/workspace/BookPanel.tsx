@@ -25,6 +25,15 @@ import type { LiveTradeSummary } from '../liveSidebarAdapters';
 /** 체결 리스트 한 줄. */
 export type BookTrade = { price: number; qty: number; side: number };
 
+/** 상하한가·250일 최고/최저 — /api/live/stock-limits(키움 ka10001) 부분집합.
+ *  당일 고정값이라 스팟 커서에서도 유효하다(요약 지표와 달리 비우지 않는다). */
+export type BookStockLimits = {
+  upper_limit: number | null;
+  lower_limit: number | null;
+  high_250: number | null;
+  low_250: number | null;
+};
+
 type Props = {
   snapshot: OrderbookSnapshot | null | undefined;
   /** 전일종가 — 등락률 분모이자 가격 색 기준. */
@@ -38,6 +47,8 @@ type Props = {
   /** HTS식 순간 증감 뱃지(#750, 직전 스냅샷 대비). 스팟 커서 중에는 null —
    *  과거 시점 위 "방금 변화"는 거짓 정보다. */
   deltaBadges?: OrderbookDeltaBadges | null;
+  /** 상하한가·250일 최고/최저. null = 미로드/미제공 → 대시. */
+  limits?: BookStockLimits | null;
 };
 
 const ROW_H = 22; // DESIGN.md — Orderbook table row 22px
@@ -52,6 +63,7 @@ export default function BookPanel({
   maskRatio,
   lastPrice,
   deltaBadges = null,
+  limits = null,
 }: Props) {
   if (snapshot === undefined) return <PanelState>커서 위치 로딩 중…</PanelState>;
   if (snapshot === null) return <PanelState>호가 데이터 없음</PanelState>;
@@ -87,7 +99,11 @@ export default function BookPanel({
               style={{ height: ROW_H }}
             >
               <span className="text-xs text-fg-dim">체결강도</span>
-              <span className="font-mono text-sm tabular-nums text-fg">
+              <span
+                className={`font-mono text-sm tabular-nums ${
+                  summary.fillStrengthPct === null ? 'text-fg-dimmer' : 'text-fg'
+                }`}
+              >
                 {summary.fillStrengthPct === null
                   ? '−'
                   : `${summary.fillStrengthPct.toFixed(2)}%`}
@@ -152,14 +168,29 @@ export default function BookPanel({
                 label="어제보다"
                 value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
               />
-              {/* 아래 5행은 아직 소스가 없다 — 0g(305/306 상하한가)·1h(VI)·
-                  ka10001(250일 최고/최저) 배선 후 채운다. 자리를 비워두는 편이
-                  행 수가 흔들려 매수 바 정렬이 깨지는 것보다 낫다. */}
-              <SummaryRow label="상한가" value="−" divider />
-              <SummaryRow label="하한가" value="−" />
+              {/* 상한가·하한가·250일 = ka10001(stock-limits). VI 2행은 1h 타입의
+                  발동방향 코드값 legend 미해독이라 아직 대시 — 자리를 비워두는
+                  편이 행 수가 흔들려 매수 바 정렬이 깨지는 것보다 낫다. */}
+              <SummaryRow
+                label="상한가"
+                value={fmtOr(limits?.upper_limit ?? null)}
+                color={
+                  limits?.upper_limit != null ? dirClass(limits.upper_limit, baselinePrice) : undefined
+                }
+                divider
+              />
+              <SummaryRow
+                label="하한가"
+                value={fmtOr(limits?.lower_limit ?? null)}
+                color={
+                  limits?.lower_limit != null ? dirClass(limits.lower_limit, baselinePrice) : undefined
+                }
+              />
               <SummaryRow label="상승VI" value="−" />
               <SummaryRow label="하강VI" value="−" />
-              <SummaryRow label="52주" value="−" />
+              {/* 키움은 52주가 아니라 250거래일 기준(ka10001 250hgst/250lwst)이라
+                  라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 — 11행 계약. */}
+              <SummaryRow label="250일" value={fmtHighLow(limits)} />
             </div>
             {bids.map((l, i) => (
               <QtyBar
@@ -278,7 +309,8 @@ function QtyBar({
   );
 }
 
-/** divider=그룹 시작. border-box 라 border-t 가 행 높이를 늘리지 않는다(정렬 유지). */
+/** divider=그룹 시작. border-box 라 border-t 가 행 높이를 늘리지 않는다(정렬 유지).
+ *  대시(미수신/미제공)는 실데이터와 같은 대비로 찍히면 "깨진 값"처럼 읽혀 dim. */
 function SummaryRow({
   label,
   value,
@@ -290,6 +322,7 @@ function SummaryRow({
   color?: string;
   divider?: boolean;
 }) {
+  const empty = value === '−';
   return (
     <div
       className={`flex items-center justify-between gap-3 px-2 ${
@@ -298,7 +331,11 @@ function SummaryRow({
       style={{ height: ROW_H }}
     >
       <span className="text-xs text-fg-dim">{label}</span>
-      <span className={`font-mono text-sm tabular-nums ${color ?? 'text-fg'}`}>{value}</span>
+      <span
+        className={`font-mono text-sm tabular-nums ${color ?? (empty ? 'text-fg-dimmer' : 'text-fg')}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -355,6 +392,14 @@ function PanelState({ children }: { children: React.ReactNode }) {
 
 function fmtOr(n: number | null): string {
   return n === null ? '−' : n.toLocaleString('ko-KR');
+}
+
+/** 250일 최고/최저 한 행 표기. 둘 다 없으면 대시 하나(dim 판정과 일치). */
+function fmtHighLow(limits: BookStockLimits | null): string {
+  const hi = limits?.high_250 ?? null;
+  const lo = limits?.low_250 ?? null;
+  if (hi === null && lo === null) return '−';
+  return `${fmtOr(hi)} / ${fmtOr(lo)}`;
 }
 
 /** 46,689,105 → "4,668만" (좁은 열에서 줄바꿈되지 않도록 만 단위 절사). */
