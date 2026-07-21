@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import * as client from '../api/client';
@@ -196,6 +196,111 @@ describe('useDocumentTitle', () => {
     const { unmount } = renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
     expect(document.title).toBe('삼성전자');
     unmount();
+    expect(document.title).toBe('hoga-ops');
+  });
+});
+
+describe('useDocumentTitle quote throttle', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // React Query v5 notifyManager 는 setQueryData 구독 알림을 setTimeout(0)으로
+  // 배칭한다 — fake timer 에서는 0ms 를 흘려야 훅이 새 quote 를 보고 렌더된다.
+  // 이 플러시 없이는 "제목이 안 바뀜" 단언이 스로틀이 아니라 알림 미도착을 재는
+  // 거짓 통과가 된다.
+  function flushQueryNotify() {
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+  }
+
+  it('coalesces price-to-price updates and writes only the latest value', () => {
+    const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
+    seedQuote(qc, '005930', { price: 71200, change_pct: 1.23, change_won: 860 });
+    renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
+    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+
+    // 스로틀 창 안의 가격 갱신은 지연된다 — 체결마다 제목이 바뀌면 탭이 깜빡인다.
+    act(() => {
+      seedQuote(qc, '005930', { price: 71300, change_pct: 1.37, change_won: 960 });
+    });
+    flushQueryNotify();
+    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+
+    // 창 안에서 또 갱신되면 이전 대기분은 버려지고 최신값만 남는다(latest wins).
+    act(() => {
+      seedQuote(qc, '005930', { price: 71400, change_pct: 1.51, change_won: 1060 });
+    });
+    flushQueryNotify();
+    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(document.title).toBe('삼성전자 71,400 +1.51%');
+  });
+
+  it('writes immediately when the code changes inside the throttle window', () => {
+    const qc = makeQc({
+      symbols: [
+        ...HITS,
+        {
+          code: '000660',
+          name: 'SK하이닉스',
+          market: 'KOSPI',
+          captured_count: 0,
+          captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
+        },
+      ],
+      status: 'fresh',
+      fetched_at_ms: 1,
+    });
+    seedQuote(qc, '005930', { price: 71200, change_pct: 1.23, change_won: 860 });
+    seedQuote(qc, '000660', { price: 250000, change_pct: 2.5, change_won: 6100 });
+
+    const { rerender } = renderHook(
+      ({ code }: { code: string }) => useDocumentTitle(code),
+      { wrapper: wrap(qc), initialProps: { code: '005930' } },
+    );
+    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+
+    // 종목 전환은 스로틀 창 안이어도 즉시 — 이전 종목명이 남으면 그게 더 어긋난다.
+    rerender({ code: '000660' });
+    expect(document.title).toBe('SK하이닉스 250,000 +2.50%');
+  });
+
+  it('attaches the first quote immediately after a bare-name title', () => {
+    const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
+    renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
+    expect(document.title).toBe('삼성전자');
+
+    // 무시세→시세 부착은 즉시 — 가격이 처음 뜨는 걸 2초 늦출 이유가 없다.
+    act(() => {
+      seedQuote(qc, '005930', { price: 71200, change_pct: 1.23, change_won: 860 });
+    });
+    flushQueryNotify();
+    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+  });
+
+  it('clears the pending throttled write on unmount', () => {
+    const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
+    seedQuote(qc, '005930', { price: 71200, change_pct: 1.23, change_won: 860 });
+    const { unmount } = renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
+    act(() => {
+      seedQuote(qc, '005930', { price: 71300, change_pct: 1.37, change_won: 960 });
+    });
+    flushQueryNotify(); // 대기 쓰기 타이머가 실제로 걸린 상태에서 unmount 해야 의미가 있다
+    unmount();
+    expect(document.title).toBe('hoga-ops');
+
+    // 대기 중이던 쓰기가 unmount 뒤에 발화해 제목을 덮으면 안 된다.
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
     expect(document.title).toBe('hoga-ops');
   });
 });
