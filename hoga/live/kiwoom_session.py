@@ -22,6 +22,7 @@ from .buffer import LiveBuffer
 from .coverage import KIWOOM_PER_ACCOUNT_MAX, partition_kiwoom
 from .kiwoom_fields import apply_venue
 from .kiwoom_vi_capture import KiwoomViCapture
+from .kiwoom_vi_capture import replay_today as replay_vi_today
 from .kiwoom_vi_state import KiwoomViState
 from .kiwoom_ws_client import KiwoomWsClient
 from .snapshot import LiveSnapshot
@@ -94,6 +95,11 @@ class KiwoomSessionManager:
         # 같은 이벤트가 중복). raw 채록(capture)과 표시용 상태(state)로 팬아웃.
         self._vi_capture = KiwoomViCapture(data_dir)
         self._vi_state = KiwoomViState()
+        # 재시작(dev 핫리로드 포함) 시 인메모리 상태가 비면 /api/live/vi-status가 다음
+        # 이벤트까지 null — 당일 채록 파일을 리플레이해 웜스타트(없으면 조용히 0건).
+        replayed = replay_vi_today(data_dir, self._now_fn(), self._vi_state.on_row)
+        if replayed:
+            _log.info("live.kiwoom.vi_state_warm_start rows=%d", replayed)
         self._conns: dict[int, _KiwoomConn] = {}
         # sync(멤버십)·watchdog_pass(venue/재빌드)·stop의 _conns/구독 변이 직렬화 —
         # update_codes의 다중 await(배치 REG 페이싱)가 서로 인터리브하지 않게 한다.

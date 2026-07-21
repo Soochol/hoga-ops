@@ -1,8 +1,11 @@
-"""kiwoom_vi_state — 1h row 파싱(실측 legend)·last-write-wins·해제 재발화.
+"""kiwoom_vi_state — 1h row 파싱(실측 legend)·last-write-wins·해제 재발화·리플레이 웜스타트.
 
 골든 row 는 2026-07-21 실채록(data/research/kiwoom_vi_events)에서 그대로 옮겼다.
 legend 근거: docs/research/2026-07-21-kiwoom-vi-price-sources.md (60건 전건 무모순).
 """
+import json
+
+from hoga.live.kiwoom_vi_capture import capture_path, replay_today
 from hoga.live.kiwoom_vi_state import KiwoomViState, parse_vi_row
 
 # 정적 상승 VI 발동(씨싸이트) — 1224=000000(미해제).
@@ -82,4 +85,36 @@ def test_state_swallows_bad_rows():
     st = KiwoomViState()
     st.on_row({"item": None, "values": "garbage"}, 1000)  # no raise
     st.on_row({}, 1000)
+    assert st.get("109670") is None
+
+
+def test_replay_today_warm_starts_state(tmp_path):
+    """당일 채록 JSONL 리플레이 — 재시작 후에도 최신 1건(해제 재발화 포함)이 복원된다."""
+    now_ms = 1_768_960_000_000  # 임의 고정 시각(KST 날짜 파일명은 capture_path가 결정)
+    path = capture_path(tmp_path, now_ms)
+    path.parent.mkdir(parents=True)
+    lines = [
+        json.dumps({"recv_ms": 1000, "item": t["item"], "values": t["values"]},
+                   ensure_ascii=False)
+        for t in (TRIGGER_STATIC_UP, TRIGGER_DYNAMIC_DOWN, RELEASE_STATIC_UP)
+    ]
+    lines.insert(1, "not-json{")                              # 비-JSON 행 스킵
+    lines.insert(2, json.dumps({"item": "109670"}))           # values 결손 행 스킵
+    lines.append(json.dumps({"recv_ms": "1000", "item": "078860",
+                             "values": TRIGGER_DYNAMIC_DOWN["values"]}))  # recv_ms 비-int 스킵
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    st = KiwoomViState()
+    assert replay_today(tmp_path, now_ms, st.on_row) == 3
+    released = st.get("109670")
+    assert released is not None and released["active"] is False  # 해제 재발화가 최신
+    assert released["released_at"] == "114611"
+    active = st.get("078860")
+    assert active is not None and active["active"] is True
+    assert (active["direction"], active["kind"]) == ("down", "dynamic")
+
+
+def test_replay_today_missing_file_is_inert(tmp_path):
+    st = KiwoomViState()
+    assert replay_today(tmp_path, 1_768_960_000_000, st.on_row) == 0
     assert st.get("109670") is None

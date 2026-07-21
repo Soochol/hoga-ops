@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -24,6 +25,37 @@ from . import kiwoom_fields as K
 _log = logging.getLogger(__name__)
 
 _KST = timezone(timedelta(hours=9))
+
+
+def capture_path(data_dir: Path, now_ms: int) -> Path:
+    """now_ms(KST 날짜)의 채록 파일 경로 — record(쓰기)·replay_today(읽기) 공용."""
+    day = datetime.fromtimestamp(now_ms / 1000, tz=_KST).strftime("%Y%m%d")
+    return data_dir / "research" / "kiwoom_vi_events" / f"{day}.jsonl"
+
+
+def replay_today(data_dir: Path, now_ms: int, on_row: Callable[[dict, int], None]) -> int:
+    """당일 채록 파일을 on_row(row, recv_ms)로 리플레이 — 백엔드 재시작(핫리로드 포함)
+    시 인메모리 VI 상태 웜스타트용. 파일 없음·불량 행(비-JSON, recv_ms/values 결손)은
+    조용히 스킵한다(관측 규율 — 웜스타트 실패가 기동을 못 해치게). 반환 = 주입 행 수."""
+    replayed = 0
+    try:
+        path = capture_path(data_dir, now_ms)
+        if not path.is_file():
+            return 0
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                    recv_ms = rec.get("recv_ms")
+                    if not isinstance(rec.get("values"), dict) or not isinstance(recv_ms, int):
+                        continue
+                    on_row({"item": rec.get("item"), "values": rec["values"]}, recv_ms)
+                    replayed += 1
+                except (json.JSONDecodeError, AttributeError):
+                    continue
+    except Exception:  # noqa: BLE001 — 웜스타트는 best-effort
+        _log.warning("live.kiwoom.vi_replay_failed", exc_info=True)
+    return replayed
 
 
 class KiwoomViCapture:
@@ -38,14 +70,13 @@ class KiwoomViCapture:
 
     def record(self, row: dict, now_ms: int) -> None:
         try:
-            out_dir = self._data_dir / "research" / "kiwoom_vi_events"
-            day = datetime.fromtimestamp(now_ms / 1000, tz=_KST).strftime("%Y%m%d")
-            out_dir.mkdir(parents=True, exist_ok=True)
+            path = capture_path(self._data_dir, now_ms)
+            path.parent.mkdir(parents=True, exist_ok=True)
             line = json.dumps(
                 {"recv_ms": now_ms, "item": row.get("item"), "values": row.get("values")},
                 ensure_ascii=False,
             )
-            with (out_dir / f"{day}.jsonl").open("a", encoding="utf-8") as f:
+            with path.open("a", encoding="utf-8") as f:
                 f.write(line + "\n")
         except Exception:  # noqa: BLE001 — 관측 실패가 recv 루프를 해치면 안 된다
             _log.warning("live.kiwoom.vi_capture_write_failed", exc_info=True)
