@@ -21,6 +21,24 @@ import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 export interface TabViewport {
   /** Real KST ms at the right edge of the visible range (getVisibleRange().to). */
   rightEdgeMs: number;
+  /**
+   * Real KST ms at the LEFT edge (getVisibleRange().from) — the first candle
+   * actually on screen.
+   *
+   * `barSpan` cannot stand in for this: it spans the whole logical range, which
+   * at the live edge includes the `rightOffset` whitespace band after the last
+   * candle (14 bars), while the right anchor sits on real data. Deriving the
+   * left edge as `right - barSpan` therefore overshoots into history by exactly
+   * that padding, and off-by-one in the other direction when panned back where
+   * there is no padding. Anchoring both edges to real data removes the arithmetic.
+   *
+   * Optional because this type serves BOTH directions: a live capture always
+   * fills it, but a viewport rebuilt from a saved view predating the field has
+   * no left anchor to offer. Restore never reads it (`computeRestoreRange` runs
+   * off rightEdgeMs + barSpan), so its absence only sends the save path back to
+   * the old span arithmetic.
+   */
+  leftEdgeMs?: number;
   /** Visible width in bars (getVisibleLogicalRange().to - .from); carries zoom. */
   barSpan: number;
   /** Right-side chart whitespace in logical bars after the latest candle. Runtime-only. */
@@ -45,6 +63,7 @@ interface LogicalRange {
   to: number;
 }
 interface VisibleRange {
+  from: Time | number;
   to: Time | number;
 }
 
@@ -62,6 +81,7 @@ export function viewportFromRanges(
 ): TabViewport | null {
   if (!lr || !vr || axis.segments.length === 0) return null;
   const rightEdgeMs = axis.toReal((vr.to as number) * 1000);
+  const leftEdgeMs = axis.toReal((vr.from as number) * 1000);
   const barSpan = lr.to - lr.from;
   if (!Number.isFinite(rightEdgeMs) || !Number.isFinite(barSpan) || barSpan <= 0) return null;
   // At-live-edge: right edge within ~1s of the last real candle. The 1s
@@ -74,6 +94,10 @@ export function viewportFromRanges(
       : null;
   return {
     rightEdgeMs,
+    // 좌측 앵커는 못 읽어도 캡처를 죽이지 않는다 — 탭 복원은 이 값을 안 쓰고,
+    // 저장은 옛 span 역산으로 폴백한다. left > right 는 백엔드 불변식 위반이라
+    // (저장 자체가 422로 실패한다) 아예 싣지 않는다.
+    ...(Number.isFinite(leftEdgeMs) && leftEdgeMs <= rightEdgeMs ? { leftEdgeMs } : {}),
     barSpan,
     atLiveEdge,
     ...(rightPaddingBars !== null && rightPaddingBars >= 0 ? { rightPaddingBars } : {}),
