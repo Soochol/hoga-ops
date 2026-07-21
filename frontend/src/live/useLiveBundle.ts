@@ -38,6 +38,7 @@ import {
   subtractDaysKst,
   initialHistoricalDaysFor,
   earliestAllowedMinuteDate,
+  isKstWeekend,
 } from './liveDateTime';
 import {
   effectiveSessionBoundsByDate,
@@ -113,6 +114,10 @@ export function overlayLiveTradesOnCandles(
         !Number.isFinite(ev.price) ||
         !Number.isFinite(ev.qty) ||
         ev.qty <= 0 ||
+        // 비거래일 틱은 캔들이 될 수 없다 — 주말 시각 틱이 여기로 새면 차트 끝에
+        // 주말 캔들이 붙고, 저장뷰 to_date 가 토/일로 박제된다. 백엔드 파서가 1차로
+        // 거르지만(kiwoom_frames), 버퍼에 남은 틱까지 덮도록 여기서도 막는다.
+        isKstWeekend(realMsToYyyymmdd(tMs)) ||
         !liveVenueAllowsTradeOverlay(venue, snapshot.venue, tMs)
       ) {
         continue;
@@ -201,6 +206,10 @@ export function overlayLiveTradesOnCalendarCandles(
         ev.price <= 0 ||
         !Number.isFinite(ev.qty) ||
         ev.qty <= 0 ||
+        // 비거래일 틱은 캔들이 될 수 없다 — 주말 시각 틱이 여기로 새면 차트 끝에
+        // 주말 캔들이 붙고, 저장뷰 to_date 가 토/일로 박제된다. 백엔드 파서가 1차로
+        // 거르지만(kiwoom_frames), 버퍼에 남은 틱까지 덮도록 여기서도 막는다.
+        isKstWeekend(realMsToYyyymmdd(tMs)) ||
         !liveVenueAllowsTradeOverlay(venue, snapshot.venue, tMs)
       ) {
         continue;

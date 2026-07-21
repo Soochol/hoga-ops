@@ -16,6 +16,7 @@ KIS ws_frames와 짝을 이루는 브로커-대칭 모듈. 서로 import하지 �
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from hoga.api.timeenc import hhmmssms_to_unix_ms
@@ -26,9 +27,34 @@ from .ticks import WsTick
 
 _log = logging.getLogger(__name__)
 
+# 도착(now_ms)보다 이만큼 넘게 미래인 t_ms 는 **오늘 프레임이 아니다**.
+#
+# 0B/0D 는 프레임에 HHMMSS 만 있고 날짜가 없어 처리 시점의 date 와 합성한다. 그래서
+# 자정을 넘겨 처리된 이전 세션 프레임이 "오늘 날짜 + 어제 장중 시각"으로 스탬프되고,
+# 결과가 미래 시각 캔들이 된다(실측: 토 02:11 처리 시점에 t_ms=토 15:18 — 13시간 미래.
+# 그 캔들이 차트 끝에 붙어 저장뷰 to_date 가 주말이 됐다).
+#
+# 요일·캘린더와 무관한 순수 산술이라 평일 자정 넘김도 같이 막는다(월 00:01 에 도착한
+# 금 15:18 프레임 → 월 15:18). 여유값은 거래소-서버 시계 스큐(실측 수초)를 충분히 덮되
+# 오탐이 안 나는 크기.
+_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000
+
 
 def _hhmmss_to_unix_ms(date: str, hhmmss: str) -> int:
     return hhmmssms_to_unix_ms(date, int(hhmmss) * 1000)
+
+
+def _is_weekend(date: str) -> bool:
+    """YYYYMMDD 가 토/일인가 — 순수 계산이라 hot path 에서 안전(캘린더 API 불요).
+
+    공휴일은 여기서 못 거르지만 상위 연결 게이트(session_gate.ws_connection_window)가
+    새 세션을 막고, 이미 맺힌 소켓으로 새는 프레임은 _MAX_FUTURE_SKEW_MS 가 덮는다.
+    KRX 는 토/일 개장이 없으므로 주말 전면 드롭에 오탐 여지가 없다.
+    """
+    try:
+        return datetime.strptime(date, "%Y%m%d").weekday() >= 5  # noqa: PLR2004 — 5,6=토,일
+    except ValueError:
+        return False
 
 
 def _price(values: dict[str, str], fid: str) -> int:
@@ -75,6 +101,21 @@ def _ratio(values: dict[str, str], fid: str) -> float | None:
     return v if v > 0 else None
 
 
+def _reject_if_not_today(tick: WsTick, *, now_ms: int) -> WsTick | None:
+    """date+HHMMSS 합성 스탬프가 도착 시각보다 미래면 버린다(자정 넘김 방어).
+
+    0F/0w 는 now_ms 를 그대로 쓰므로 이 검사가 필요 없다 — 대상은 0B/0D 뿐이다.
+    """
+    if tick.t_ms > now_ms + _MAX_FUTURE_SKEW_MS:
+        _log.warning(
+            "live.kiwoom.future_tick_dropped code=%s kind=%s t_ms=%d now_ms=%d ahead_s=%d "
+            "— 자정 넘겨 처리된 이전 세션 프레임으로 판단",
+            tick.code, tick.kind, tick.t_ms, now_ms, (tick.t_ms - now_ms) // 1000,
+        )
+        return None
+    return tick
+
+
 def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | None:
     """REAL 메시지의 data[] 원소 1개 → WsTick. 미지원 type·불량 프레임은 None.
 
@@ -89,9 +130,13 @@ def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | N
     code, venue = K.split_venue(item)
     try:
         if typ == K.TYPE_ORDERBOOK:
-            return _parse_orderbook(code, values, date=date, venue=venue)
+            return _reject_if_not_today(
+                _parse_orderbook(code, values, date=date, venue=venue), now_ms=now_ms,
+            )
         if typ == K.TYPE_TRADE:
-            return _parse_trade(code, values, date=date, venue=venue)
+            return _reject_if_not_today(
+                _parse_trade(code, values, date=date, venue=venue), now_ms=now_ms,
+            )
         if typ == K.TYPE_MEMBER:
             return _parse_member(code, values, now_ms=now_ms, venue=venue)
         if typ == K.TYPE_PROGRAM:
@@ -111,6 +156,15 @@ def parse_real_message(msg: dict[str, Any], *, date: str, now_ms: int) -> list[W
     """
     data = msg.get("data")
     if not isinstance(data, list):
+        return []
+    if _is_weekend(date):
+        # 주말엔 KRX 세션이 없다 — 여기 오는 프레임은 금요일에 맺힌 소켓으로 새어든
+        # 것이고, date 합성 스탬프를 거치면 주말 시각 캔들이 된다. 프레임 단위로
+        # 걸러 로그가 틱 수만큼 폭발하지 않게 한다(행 단위 아님).
+        _log.warning(
+            "live.kiwoom.weekend_frame_dropped date=%s rows=%d — 비거래일 프레임 전량 폐기",
+            date, len(data),
+        )
         return []
     ticks: list[WsTick] = []
     for row in data:

@@ -25,6 +25,13 @@ def _t2_frames(typ: str) -> list[dict]:
 
 DATE = "20260716"
 
+# 파서의 미래-틱 가드(kiwoom_frames._MAX_FUTURE_SKEW_MS)는 0B/0D 의 date+HHMMSS 합성
+# 스탬프를 도착 시각과 견준다. 골든 프레임의 HHMMSS 가 DATE 장중이므로 now_ms 도 같은
+# 날 장 마감으로 둔다 — now_ms=0 이면 전 틱이 "미래"로 판정돼 드롭된다(그 동작 자체는
+# test_future_tick_* 가 따로 고정한다).
+NOW_MS = hhmmssms_to_unix_ms(DATE, 153000000)
+T2_NOW_MS = hhmmssms_to_unix_ms("20260720", 153000000)
+
 # 포트 계약(구 KIS ws_frames 파서 출력 — 삭제 후 하드코딩). ws_frames의 _parse_orderbook /
 # _parse_trades가 만들던 payload 키 집합·중첩 구조. 값은 무관(키 셋만 대조).
 _KIS_OB_PAYLOAD_KEYS = {"code", "t_ms", "asks", "bids", "total_ask_qty", "total_bid_qty"}
@@ -80,7 +87,7 @@ REAL_0D_NXT_AFTER = {
 
 
 def test_orderbook_krx_full_depth():
-    t = parse_real_row(REAL_0D_KRX, date=DATE, now_ms=0)
+    t = parse_real_row(REAL_0D_KRX, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert t.code == "000020"
     assert t.kind is SnapshotKind.OB
@@ -96,7 +103,7 @@ def test_orderbook_krx_full_depth():
 
 
 def test_trade_side_from_qty_sign():
-    t = parse_real_row(REAL_0B, date=DATE, now_ms=0)
+    t = parse_real_row(REAL_0B, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert t.code == "000810"
     assert t.kind is SnapshotKind.TRADE
@@ -110,7 +117,7 @@ def test_trade_side_from_qty_sign():
 
 def test_trade_sell_side():
     row = {**REAL_0B, "values": {**REAL_0B["values"], "15": "-7"}}
-    t = parse_real_row(row, date=DATE, now_ms=0)
+    t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
     assert t is not None
     trade = t.payload["trades"][0]
     assert trade["qty"] == 7
@@ -118,7 +125,7 @@ def test_trade_sell_side():
 
 
 def test_orderbook_nxt_venue_and_empty_levels():
-    t = parse_real_row(REAL_0D_NXT_AFTER, date=DATE, now_ms=0)
+    t = parse_real_row(REAL_0D_NXT_AFTER, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert t.code == "005380"  # _NX 접미 분리
     assert t.venue == "NXT"
@@ -131,14 +138,14 @@ def test_orderbook_nxt_venue_and_empty_levels():
 
 def test_parse_real_message_wraps_data_list():
     msg = {"trnm": "REAL", "data": [REAL_0D_KRX, REAL_0B]}
-    ticks = parse_real_message(msg, date=DATE, now_ms=0)
+    ticks = parse_real_message(msg, date=DATE, now_ms=NOW_MS)
     assert [t.kind for t in ticks] == [SnapshotKind.OB, SnapshotKind.TRADE]
 
 
 def test_unsupported_type_and_malformed_dropped():
-    assert parse_real_row({"type": "0J", "item": "001", "values": {}}, date=DATE, now_ms=0) is None
-    assert parse_real_row({"type": "0D", "item": "x"}, date=DATE, now_ms=0) is None  # values 부재
-    assert parse_real_message({"trnm": "REAL"}, date=DATE, now_ms=0) == []
+    assert parse_real_row({"type": "0J", "item": "001", "values": {}}, date=DATE, now_ms=NOW_MS) is None
+    assert parse_real_row({"type": "0D", "item": "x"}, date=DATE, now_ms=NOW_MS) is None  # values 부재
+    assert parse_real_message({"trnm": "REAL"}, date=DATE, now_ms=NOW_MS) == []
 
 
 # ── 포트 계약: 구 KIS ws_frames 파서 payload 구조와 byte 동일(하드코딩 기대값) ──
@@ -146,7 +153,7 @@ def test_unsupported_type_and_malformed_dropped():
 
 def test_orderbook_payload_keys_match_kis():
     """키움 OB payload의 키 집합·중첩 구조가 (삭제된) KIS 파서와 동일 — 포트 계약."""
-    kiwoom = parse_real_row(REAL_0D_KRX, date=DATE, now_ms=0)
+    kiwoom = parse_real_row(REAL_0D_KRX, date=DATE, now_ms=NOW_MS)
     assert set(kiwoom.payload) == _KIS_OB_PAYLOAD_KEYS
     assert set(kiwoom.payload["asks"][0]) == _KIS_LEVEL_KEYS
     assert set(kiwoom.payload["bids"][0]) == _KIS_LEVEL_KEYS
@@ -162,7 +169,7 @@ def test_trade_payload_keys_match_kis():
     exact-equality 를 쓰지 않는 건 계약이 느슨해져서가 아니라, 확장을 **허용목록으로
     고정**하기 때문이다 — 목록 밖 키가 생기면 여기서 실패한다.
     """
-    kiwoom = parse_real_row(REAL_0B, date=DATE, now_ms=0)
+    kiwoom = parse_real_row(REAL_0B, date=DATE, now_ms=NOW_MS)
     assert _KIS_TRADE_PAYLOAD_KEYS <= set(kiwoom.payload)
     assert set(kiwoom.payload) - _KIS_TRADE_PAYLOAD_KEYS <= _KIWOOM_TRADE_EXTRA_KEYS
     # 체결 레코드 자체는 KIS 와 완전 동일 — 확장은 payload 최상위에만 붙인다.
@@ -197,7 +204,7 @@ def test_member_parses_t2_golden_frame():
 def test_member_all_t2_frames_parse():
     """채록 0F 5건 전부 — 파싱 실패·빈 top 없이 통과해야 한다."""
     for frame in _t2_frames("0F"):
-        t = parse_real_row(frame, date="20260720", now_ms=1)
+        t = parse_real_row(frame, date="20260720", now_ms=T2_NOW_MS)
         assert t is not None, frame["item"]
         assert t.payload["sell_top"] and t.payload["buy_top"]
 
@@ -205,7 +212,7 @@ def test_member_all_t2_frames_parse():
 def test_member_payload_keys_match_rest_synthesis():
     """포트 계약: REST 합성 경로와 shape-compat — 소비자(버퍼·거래원 카드) 무변경."""
     frame = _t2_frames("0F")[0]
-    t = parse_real_row(frame, date="20260720", now_ms=1)
+    t = parse_real_row(frame, date="20260720", now_ms=T2_NOW_MS)
     assert t is not None
     assert set(t.payload) == _BROKER_PAYLOAD_KEYS
     for entry in [*t.payload["sell_top"], *t.payload["buy_top"]]:
@@ -218,7 +225,7 @@ def test_member_skips_empty_slots():
     values = dict(frame["values"])
     values["145"] = "  "  # 매도 5위 이름 공백
     del values["144"]  # 매도 4위 이름 부재
-    t = parse_real_row({**frame, "values": values}, date="20260720", now_ms=1)
+    t = parse_real_row({**frame, "values": values}, date="20260720", now_ms=T2_NOW_MS)
     assert t is not None
     assert len(t.payload["sell_top"]) == 3
     assert len(t.payload["buy_top"]) == 5  # 매수 쪽은 영향 없음
@@ -248,7 +255,7 @@ def test_program_parses_t2_golden_frame():
 
 def test_program_all_t2_frames_parse():
     for frame in _t2_frames("0w"):
-        t = parse_real_row(frame, date="20260720", now_ms=1)
+        t = parse_real_row(frame, date="20260720", now_ms=T2_NOW_MS)
         assert t is not None, frame["item"]
         assert t.kind is SnapshotKind.PROGRAM
 
@@ -258,7 +265,7 @@ def test_program_all_t2_frames_parse():
 
 def test_trade_carries_prev_close_derived_from_delta():
     """전일종가 = abs(FID10) - FID11. 실측 fixture: 686000 - 25000 = 661000."""
-    t = parse_real_row(REAL_0B, date=DATE, now_ms=0)
+    t = parse_real_row(REAL_0B, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert t.payload["prev_close"] == 661000
     # 등락률이 이 기준가로 복원되는지 — 키움 FID12 와 같은 값이어야 한다.
@@ -269,7 +276,7 @@ def test_trade_carries_prev_close_derived_from_delta():
 def test_trade_prev_close_absent_when_delta_missing():
     """FID 11 부재(합성·구버전 프레임)면 키 자체를 싣지 않는다 — 소비자는 optional."""
     values = {k: v for k, v in REAL_0B["values"].items() if k != "11"}
-    t = parse_real_row({**REAL_0B, "values": values}, date=DATE, now_ms=0)
+    t = parse_real_row({**REAL_0B, "values": values}, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert "prev_close" not in t.payload
     assert t.payload["trades"][0]["price"] == 686000  # 체결 자체는 살아남는다
@@ -278,7 +285,7 @@ def test_trade_prev_close_absent_when_delta_missing():
 def test_trade_survives_malformed_delta():
     """FID 11 이 불량이어도 프레임을 버리지 않는다 — 선택 필드가 필수 경로를 죽이면 안 된다."""
     t = parse_real_row(
-        {**REAL_0B, "values": {**REAL_0B["values"], "11": "??"}}, date=DATE, now_ms=0
+        {**REAL_0B, "values": {**REAL_0B["values"], "11": "??"}}, date=DATE, now_ms=NOW_MS
     )
     assert t is not None
     assert "prev_close" not in t.payload
@@ -291,7 +298,7 @@ def test_trade_carries_day_ohlc():
     실측 000660 프레임의 값 그대로: 시가 1,745,000 / 고가 1,892,000 / 저가 1,735,000.
     """
     values = {**REAL_0B["values"], "16": "-1745000", "17": "+1892000", "18": "-1735000"}
-    t = parse_real_row({**REAL_0B, "values": values}, date=DATE, now_ms=0)
+    t = parse_real_row({**REAL_0B, "values": values}, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert t.payload["day_open"] == 1745000
     assert t.payload["day_high"] == 1892000
@@ -301,12 +308,12 @@ def test_trade_carries_day_ohlc():
 def test_trade_omits_day_ohlc_when_absent_or_zero():
     """미수신(키 부재)·0 은 싣지 않는다 — 소비자가 폴링값으로 폴백해야 한다."""
     # REAL_0B fixture 에는 16/17/18 이 없다(애프터마켓 채록).
-    t = parse_real_row(REAL_0B, date=DATE, now_ms=0)
+    t = parse_real_row(REAL_0B, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert "day_open" not in t.payload and "day_high" not in t.payload
     # 0 으로 오는 경우도 동일.
     zero = {**REAL_0B["values"], "16": "0", "17": "-0", "18": "+0"}
-    t2 = parse_real_row({**REAL_0B, "values": zero}, date=DATE, now_ms=0)
+    t2 = parse_real_row({**REAL_0B, "values": zero}, date=DATE, now_ms=NOW_MS)
     assert t2 is not None
     assert "day_open" not in t2.payload
     assert "day_low" not in t2.payload
@@ -315,7 +322,7 @@ def test_trade_omits_day_ohlc_when_absent_or_zero():
 def test_trade_prev_close_rejects_nonpositive():
     """전일종가는 등락률 분모라 0 이하면 싣지 않는다(0 나눗셈·부호 반전 방지)."""
     t = parse_real_row(
-        {**REAL_0B, "values": {**REAL_0B["values"], "11": "+686000"}}, date=DATE, now_ms=0
+        {**REAL_0B, "values": {**REAL_0B["values"], "11": "+686000"}}, date=DATE, now_ms=NOW_MS
     )
     assert t is not None
     assert "prev_close" not in t.payload
@@ -338,7 +345,7 @@ def test_trade_summary_metrics_cross_check_against_golden_frames():
     assert len(frames) == 3, "골든 0B 프레임 3종목 기대"
     for frame in frames:
         v = frame["values"]
-        t = parse_real_row(frame, date=DATE, now_ms=0)
+        t = parse_real_row(frame, date=DATE, now_ms=NOW_MS)
         assert t is not None, frame["item"]
 
         sell = int(v["1030"])
@@ -356,7 +363,7 @@ def test_trade_summary_metrics_cross_check_against_golden_frames():
 
 def test_trade_summary_metrics_absent_when_not_received():
     """미수신 FID 는 키를 싣지 않는다 — day_ohlc 와 같은 규약."""
-    t = parse_real_row(REAL_0B, date=DATE, now_ms=0)
+    t = parse_real_row(REAL_0B, date=DATE, now_ms=NOW_MS)
     assert t is not None
     for key in ("fill_strength_pct", "vs_prev_volume_pct", "vwap"):
         assert key not in t.payload
@@ -367,13 +374,61 @@ def test_trade_summary_metrics_absent_when_not_received():
 def test_trade_ratio_takes_magnitude_and_survives_malformed():
     """비율 FID 의 부호는 증감방향이라 크기만 취하고, 불량값은 틱을 죽이지 않는다."""
     values = {**REAL_0B["values"], "30": "-43.85", "228": "100.61"}
-    t = parse_real_row({**REAL_0B, "values": values}, date=DATE, now_ms=0)
+    t = parse_real_row({**REAL_0B, "values": values}, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert t.payload["vs_prev_volume_pct"] == 43.85  # abs
     assert t.payload["fill_strength_pct"] == 100.61
 
     bad = {**REAL_0B["values"], "30": "abc", "228": ""}
-    t2 = parse_real_row({**REAL_0B, "values": bad}, date=DATE, now_ms=0)
+    t2 = parse_real_row({**REAL_0B, "values": bad}, date=DATE, now_ms=NOW_MS)
     assert t2 is not None, "선택 필드 불량이 체결 틱 전체를 버리면 안 된다"
     assert "vs_prev_volume_pct" not in t2.payload
     assert t2.payload["trades"][0]["price"] == 686000
+
+
+# --- 비거래일/자정넘김 스탬프 가드 -----------------------------------------
+#
+# 회귀 배경: 0B/0D 프레임엔 날짜가 없고 HHMMSS 만 있어 처리 시점의 date 와 합성한다.
+# 자정을 넘겨 처리된 이전 세션 프레임이 "오늘 날짜 + 어제 장중 시각"으로 스탬프되면
+# 미래 시각 캔들이 차트 끝에 붙고, 그 상태로 저장한 학습뷰의 to_date 가 주말이 됐다
+# (실측: 009150 저장뷰 — 토 02:11 저장인데 캔들 끝이 같은 토 15:18).
+
+
+def test_future_tick_dropped_when_stamp_precedes_arrival() -> None:
+    """도착보다 미래인 합성 스탬프는 버린다 — 실측 사고 재현(13시간 미래)."""
+    saturday = "20260627"
+    arrival = hhmmssms_to_unix_ms(saturday, 21100000)  # 토 02:11 처리
+    frame = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "21": "151800"}}
+
+    assert parse_real_row(frame, date=saturday, now_ms=arrival) is None
+
+
+def test_future_tick_guard_allows_clock_skew() -> None:
+    """스큐 여유 안(수초 미래)은 정상 틱으로 통과 — 오탐 방지."""
+    t = parse_real_row(REAL_0D_KRX, date=DATE, now_ms=NOW_MS - 3_000)
+
+    assert t is not None
+    assert t.t_ms == hhmmssms_to_unix_ms(DATE, 135622000)
+
+
+def test_past_tick_always_allowed() -> None:
+    """장중 지연 틱(과거 방향)은 제한 없이 통과 — 가드는 미래 방향 전용."""
+    t = parse_real_row(REAL_0D_KRX, date=DATE, now_ms=NOW_MS + 3_600_000)
+
+    assert t is not None
+
+
+def test_weekend_frame_dropped_entirely() -> None:
+    """주말 프레임은 전량 폐기 — KRX 는 토/일 세션이 없다."""
+    msg = {"trnm": "REAL", "data": [REAL_0D_KRX, REAL_0B]}
+
+    for weekend in ("20260627", "20260628"):  # 토, 일
+        arrival = hhmmssms_to_unix_ms(weekend, 153000000)
+        assert parse_real_message(msg, date=weekend, now_ms=arrival) == []
+
+
+def test_weekday_frame_survives_weekend_guard() -> None:
+    """평일은 영향 없음 — 가드가 정상 경로를 막지 않는다."""
+    msg = {"trnm": "REAL", "data": [REAL_0D_KRX]}
+
+    assert len(parse_real_message(msg, date=DATE, now_ms=NOW_MS)) == 1
