@@ -427,6 +427,8 @@ function TotalQtyStrip({
           <div style={{ background: 'var(--price-up)' }} />
         </div>
       )}
+      {/* 중앙 라벨("판매대기 · 구매대기")은 사용자 요청으로 삭제(2026-07-21) —
+          색·좌우 위치가 의미를 이미 전달하고, aria-label 이 접근성을 담당한다. */}
       <div className="flex items-center justify-between px-2 py-1">
         <span
           aria-label={`매도총잔량 ${ask.toLocaleString('ko-KR')}`}
@@ -434,7 +436,6 @@ function TotalQtyStrip({
         >
           {ask.toLocaleString('ko-KR')}
         </span>
-        <span className="text-xs text-fg-dimmer">판매대기 · 구매대기</span>
         <span
           aria-label={`매수총잔량 ${bid.toLocaleString('ko-KR')}`}
           className="font-mono text-sm tabular-nums text-price-up"
