@@ -40,6 +40,24 @@
  */
 export const RENDERED_ROOT_PX = 18;
 
+/**
+ * Font stack for `<canvas>` surfaces — lightweight-charts axis/legend text and
+ * the chart drawing labels. Canvas cannot read CSS custom properties, so the
+ * stack is spelled out here instead of going through `var(--font-ui)`.
+ *
+ * MUST mirror `--font-ui` in tokens.css. One constant, two consumers
+ * (`util/chartScale.ts`, `chart/drawing/render.ts`) so they cannot drift —
+ * before 2026-07-21 they held three different hardcoded stacks between them and
+ * the library default, and none matched the app.
+ *
+ * Caveat: canvas 2D has no `font-feature-settings` equivalent, so canvas digits
+ * are Pretendard's *proportional* figures — `tnum` reaches DOM surfaces only.
+ * Axis labels are right-aligned in their own column, so this costs alignment
+ * between stacked labels, not within a row.
+ */
+export const CANVAS_FONT_STACK =
+  "'Pretendard Variable', Pretendard, ui-sans-serif, system-ui, sans-serif";
+
 export type SizeToken = Readonly<{
   /** rem value emitted into CSS. Single source of truth for size. */
   rem: number;
@@ -62,7 +80,7 @@ export const SIZE_TOKENS = {
   // like the SymbolSearch market tag (KOSPI/KOSDAQ). 8.5px base intent.
   'text-badge': { rem: 0.53125, baseIntentPx: 8.5, usage: 'Hierarchical badges (e.g., SymbolSearch market tag)' },
   'text-xs':    { rem: 0.65625, baseIntentPx: 10.5, usage: 'Small-caps labels, badges' },
-  'text-sm':    { rem: 0.71875, baseIntentPx: 11.5, usage: 'Table rows, secondary mono values' },
+  'text-sm':    { rem: 0.71875, baseIntentPx: 11.5, usage: 'Table rows, secondary data values' },
   'text-base':  { rem: 0.8125,  baseIntentPx: 13,   usage: 'Body / UI default' },
   'text-md':    { rem: 0.875,   baseIntentPx: 14,   usage: 'Section / page headings' },
   'text-lg':    { rem: 1,       baseIntentPx: 16,   usage: 'Brand text' },

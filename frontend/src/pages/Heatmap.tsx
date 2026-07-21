@@ -102,8 +102,8 @@ export function Heatmap() {
             스트립과의 분리는 간격이 담당. */}
         <header className="flex items-center gap-3 px-3 py-2 bg-bg-card flex-none">
           <span className="text-md font-semibold text-fg">히트맵</span>
-          {phase && <span className="text-xs font-mono text-fg-dim">{PHASE_LABEL[phase] ?? phase}</span>}
-          <span className="text-xs font-mono text-fg-dimmer">{updated} 갱신 · {visibleCount}종목</span>
+          {phase && <span className="text-xs font-data text-fg-dim">{PHASE_LABEL[phase] ?? phase}</span>}
+          <span className="text-xs font-data text-fg-dimmer">{updated} 갱신 · {visibleCount}종목</span>
           <div className="flex-1" />
           <ControlBar className="gap-sm">
             <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowNewGroup(true)}>

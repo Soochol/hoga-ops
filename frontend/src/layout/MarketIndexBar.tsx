@@ -43,8 +43,8 @@ function MarketIndexItem({ quote }: { quote: MarketIndexQuote }) {
       className="flex shrink-0 items-baseline gap-1.5 rounded-md px-1.5 hover:bg-bg-input-hover disabled:cursor-default disabled:hover:bg-transparent"
     >
       <span className="font-ui text-xs text-fg-dim">{quote.label}</span>
-      <span className="font-mono text-xs text-fg">{VALUE_FORMAT.format(quote.value)}</span>
-      <span className={`font-mono text-xs ${priceDirClass(quote.change)}`}>
+      <span className="font-data text-xs text-fg">{VALUE_FORMAT.format(quote.value)}</span>
+      <span className={`font-data text-xs ${priceDirClass(quote.change)}`}>
         {formatChange(quote)}
       </span>
     </button>
@@ -68,7 +68,7 @@ function CoverageChip({ leadingDivider }: { leadingDivider: boolean }) {
         title={`KIS WS ${data.live_set.length} + 키움 WS ${k.subscribed_count} (연결 ${k.connected_accounts}/${k.accounts_configured}계정)`}
       >
         <span className="font-ui text-xs text-fg-dim">실시간</span>
-        <span className={`font-mono text-xs ${degraded ? 'text-warn' : 'text-fg'}`}>{total}</span>
+        <span className={`font-data text-xs ${degraded ? 'text-warn' : 'text-fg'}`}>{total}</span>
         <span className="font-ui text-xs text-fg-dim">종목</span>
       </span>
     </div>

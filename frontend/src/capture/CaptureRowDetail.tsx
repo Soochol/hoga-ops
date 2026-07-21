@@ -49,7 +49,7 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
   return (
     <div
       data-testid={`queue-row-detail-${item.item_id}`}
-      className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 py-sm px-md bg-bg-subtle border-b font-normal text-sm font-mono text-fg-dim"
+      className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 py-sm px-md bg-bg-subtle border-b font-normal text-sm font-data text-fg-dim"
     >
       <span>started_at</span>
       <span className="text-fg tabular-nums">

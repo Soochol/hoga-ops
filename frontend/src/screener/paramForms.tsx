@@ -1,7 +1,7 @@
 import type { BreakoutParams, DepthPeakParams, PeriodParams } from '../api/screener';
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-dimmer">{children}</div>;
+  return <div className="text-[10.5px] font-semibold uppercase text-fg-dimmer">{children}</div>;
 }
 export function Num({ value, onChange, label, w = 'w-20' }: {
   value: number | undefined; onChange: (n: number | undefined) => void; label?: string; w?: string;
@@ -11,7 +11,7 @@ export function Num({ value, onChange, label, w = 'w-20' }: {
       {label && <span className="text-[10.5px] text-fg-dimmer">{label}</span>}
       <input type="number" inputMode="numeric" aria-label={label}
         value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
-        className={`${w} bg-bg-input border border-border rounded-md px-2 py-1 font-mono text-sm tabular-nums text-fg`} />
+        className={`${w} bg-bg-input border border-border rounded-md px-2 py-1 font-data text-sm tabular-nums text-fg`} />
     </label>
   );
 }

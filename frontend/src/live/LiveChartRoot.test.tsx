@@ -26,7 +26,7 @@ import { INTER_SEGMENT_GAP_MS } from '../util/time';
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import type { RangeBundle } from '../api/types';
 import { useChartPrefsStore } from '../state/chartPrefs';
-import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
+import { CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 
 /** 일봉 윈도잉 산식은 rightOffset(밀도 파생)을 더한다 — 기대값을 상수에서 유도해
  *  밀도 다이얼 변경 시 테스트가 마법수로 깨지지 않게 한다. */
@@ -1303,6 +1303,37 @@ describe('LiveChartRoot', () => {
 
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
     expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20250712');
+  });
+
+  // Regression guard for the canvas font. CHART_LAYOUT_OPTIONS used to be spread
+  // at the chart-options ROOT rather than under `layout`, so lightweight-charts
+  // ignored it entirely and the axis kept the library's own font stack through
+  // the 2026-07-15 density dial and both font migrations. chartScale.test.ts
+  // passed the whole time — it asserts the constant's value, and the value was
+  // never wrong, it just never arrived. So assert the NESTING here.
+  it('passes canvas font options under layout, not at the chart-options root', () => {
+    const { chart } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    const options = vi.mocked(createChartEx).mock.calls.at(-1)?.[2] as
+      | { layout?: { fontFamily?: string; fontSize?: number }; fontFamily?: string; fontSize?: number }
+      | undefined;
+    expect(options?.layout?.fontFamily).toBe(CHART_LAYOUT_OPTIONS.fontFamily);
+    expect(options?.layout?.fontSize).toBe(CHART_LAYOUT_OPTIONS.fontSize);
+    // Root placement is the bug being guarded — these must stay undefined.
+    expect(options?.fontFamily).toBeUndefined();
+    expect(options?.fontSize).toBeUndefined();
   });
 
   it('1m timeframe: no remembered window → historicalFromDate stays null after placement', () => {

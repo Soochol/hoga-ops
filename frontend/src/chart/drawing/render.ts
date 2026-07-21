@@ -1,5 +1,6 @@
 // frontend/src/chart/drawing/render.ts
 import type { IChartApi } from 'lightweight-charts';
+import { CANVAS_FONT_STACK } from '../../styles/design-tokens';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import type {
   Drawing,
@@ -45,7 +46,10 @@ export type ProjectCtx = {
 /** Canvas font string for a text-label drawing at `sizePx`. Rendering and
  *  hit-test MUST share this so the measured bounding box matches the pixels. */
 export function textFont(sizePx: number): string {
-  return `${sizePx}px ui-sans-serif, "IBM Plex Sans KR", system-ui, sans-serif`;
+  // CANVAS_FONT_STACK, not a local literal: canvas can't read CSS custom
+  // properties, and a second hardcoded stack here would silently drift from the
+  // chart axis (which reads the same constant via chartScale.ts).
+  return `${sizePx}px ${CANVAS_FONT_STACK}`;
 }
 
 // Reused offscreen 2D context for measuring text-label widths in hit-testing —

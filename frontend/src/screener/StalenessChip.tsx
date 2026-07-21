@@ -24,7 +24,7 @@ export function StalenessChip({ status }: Props) {
     <span
       data-testid="staleness-chip"
       title={behind ? '확정 일봉 아카이브가 최신 거래일 확정분을 기다리는 중' : '확정 일봉 아카이브 최신'}
-      className={`inline-flex items-center gap-1.5 font-mono text-xs tabular-nums${
+      className={`inline-flex items-center gap-1.5 font-data text-xs tabular-nums${
         behind ? ' rounded-md px-1.5 py-0.5 font-medium' : ''
       }`}
       style={

@@ -1091,10 +1091,15 @@ export function LiveChartRoot({
       el,
       createKstHorzScaleBehavior(axisRef),
       {
-      ...CHART_LAYOUT_OPTIONS,
       width: el.clientWidth,
       height: el.clientHeight,
       layout: {
+        // CHART_LAYOUT_OPTIONS holds LayoutOptions (fontSize, fontFamily), so it
+        // must spread HERE. It used to spread at the chart-options root, where
+        // lightweight-charts ignored it — which is why the axis kept the library
+        // default font at 12px through the density dial (2026-07-15) and both
+        // font migrations. Spread first so the explicit keys below still win.
+        ...CHART_LAYOUT_OPTIONS,
         background: { color: tokens.bgCard },
         textColor: tokens.fg,
         panes: {

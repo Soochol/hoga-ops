@@ -111,11 +111,11 @@ function SectorButton({
         color: 'var(--fg)',
       }}
     >
-      <span className="font-mono text-xs" style={{ color: 'var(--fg-dimmer)' }}>
+      <span className="font-data text-xs" style={{ color: 'var(--fg-dimmer)' }}>
         {rank}
       </span>
       <span className="truncate font-ui text-sm">{sector.folder_name}</span>
-      <span className="font-mono text-xs text-right" style={{ color: priceColor(sector.change_pct) }}>
+      <span className="font-data text-xs text-right" style={{ color: priceColor(sector.change_pct) }}>
         {formatPct(sector.change_pct)}
       </span>
     </button>
@@ -145,11 +145,11 @@ function StockButton({
         color: 'var(--fg)',
       }}
     >
-      <span className="font-mono text-xs" style={{ color: 'var(--fg-dimmer)' }}>
+      <span className="font-data text-xs" style={{ color: 'var(--fg-dimmer)' }}>
         {rank}
       </span>
       <span className="truncate font-ui text-sm">{stock.name}</span>
-      <span className="font-mono text-xs text-right" style={{ color: priceColor(stock.change_pct) }}>
+      <span className="font-data text-xs text-right" style={{ color: priceColor(stock.change_pct) }}>
         {formatPct(stock.change_pct)}
       </span>
     </button>

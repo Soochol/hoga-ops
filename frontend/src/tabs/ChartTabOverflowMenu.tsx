@@ -103,7 +103,7 @@ export function ChartTabOverflowMenu<T extends MenuTabLike>({
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? 'var(--success)' : 'transparent', border: active ? 'none' : '1px solid var(--fg-dimmer)' }} />
                     <span className="min-w-0 flex-1 truncate" title={displayLabel}>{displayLabel}</span>
                     {t.code && t.code !== t.label && (
-                      <span className="font-mono text-xs shrink-0" style={{ color: 'var(--fg-dimmer)' }}>{t.code}</span>
+                      <span className="font-data text-xs shrink-0" style={{ color: 'var(--fg-dimmer)' }}>{t.code}</span>
                     )}
                   </button>
                   {pinned ? (

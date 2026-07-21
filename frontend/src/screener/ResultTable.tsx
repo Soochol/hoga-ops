@@ -40,7 +40,7 @@ function DepthBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides }) {
     .map((r) => `${r.label} 당일 peak ${fmtQty(r.today)} · 지난 ${r.need}일 peak ${fmtQty(r.past)}`)
     .join(' / ');
   return (
-    <span className="inline-flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-fg-dimmer" title={title}>
+    <span className="inline-flex items-center gap-1.5 font-data text-[10px] tabular-nums text-fg-dimmer" title={title}>
       {rows.map((r) => (
         <span key={r.label} className="inline-flex items-center gap-1">
           {rows.length > 1 && <span className="text-fg-dimmer">{r.label}</span>}
@@ -89,12 +89,12 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
       type="button"
       aria-label={`${sortLabel} 정렬`}
       onClick={() => onSortChange?.(nextScreenerSortMode(sortMode, field))}
-      className={`min-w-0 inline-flex items-center gap-1 bg-transparent border-0 p-0 text-xs font-semibold uppercase tracking-[0.06em] ${
+      className={`min-w-0 inline-flex items-center gap-1 bg-transparent border-0 p-0 text-xs font-semibold uppercase ${
         align === 'right' ? 'justify-end text-right' : 'justify-start text-left'
       } ${active ? 'text-accent' : 'text-fg-dimmer hover:text-fg'}`}
     >
       <span className="truncate">{label}</span>
-      <span className="font-mono text-[10px]" aria-hidden="true">{arrow}</span>
+      <span className="font-data text-[10px]" aria-hidden="true">{arrow}</span>
     </button>
   );
 }
@@ -109,7 +109,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
         {HEADERS.map((header) => (
           <SortHeader key={header.field} {...header} sortMode={sortMode} onSortChange={onSortChange} />
         ))}
-        <span className="text-right text-xs font-semibold uppercase tracking-[0.06em] text-fg-dimmer">액션</span>
+        <span className="text-right text-xs font-semibold uppercase text-fg-dimmer">액션</span>
       </DataTableHeader>
       <div className="flex-1 min-h-0">
         {rows.length === 0 ? (
@@ -123,16 +123,16 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
               onClick={(e) => onActivate(r.code, r.name, e)} onKeyDown={onKeyDown}
               columns={COLS}
               className="cursor-pointer outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
-              <span className="font-mono tabular-nums text-fg-dim">{r.code}</span>
+              <span className="font-data tabular-nums text-fg-dim">{r.code}</span>
               <span className="flex min-w-0 items-center gap-2">
                 <span className="truncate">{r.name}</span>
                 {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
               </span>
-              <span className="font-mono text-xs text-fg-dim">{r.market}</span>
-              <span className={`font-mono tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
+              <span className="font-data text-xs text-fg-dim">{r.market}</span>
+              <span className={`font-data tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
                 {r.price != null ? `${r.price.toLocaleString('ko-KR')} (${formatPct(r.change_pct)})` : '—'}
               </span>
-              <span className="font-mono tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
+              <span className="font-data tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
               <span className="flex items-center justify-end gap-2">
                 <WatchlistHeartButton code={r.code} name={r.name} variant="row" />
               </span>

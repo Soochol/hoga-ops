@@ -248,7 +248,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
             return (
               <Fragment key={c.id}>
                 {showHeader && (
-                  <div className={`px-3 pb-1 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer${i !== 0 ? ' pt-3' : ''}`}>
+                  <div className={`px-3 pb-1 text-xs font-semibold uppercase text-fg-dimmer${i !== 0 ? ' pt-3' : ''}`}>
                     {GROUP_LABEL[c.group]}
                   </div>
                 )}
@@ -322,7 +322,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
               마스터 토글을 우측에 상주시켜 스크롤과 무관하게 켜짐/꺼짐을 읽고 바꾼다. */}
           <header className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
             <div className="min-w-0">
-              <div className="text-xs font-medium uppercase tracking-[0.08em] text-fg-dimmer">
+              <div className="text-xs font-medium uppercase text-fg-dimmer">
                 {GROUP_LABEL[selectedCategory.group]}
               </div>
               <h2 className="truncate text-lg font-semibold text-fg">{selectedCategory.label}</h2>

@@ -14,5 +14,5 @@ export function Countdown({ targetMs }: { targetMs: number }) {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-  return <span className="font-mono tabular-nums">{fmt(targetMs - now)}</span>;
+  return <span className="font-data tabular-nums">{fmt(targetMs - now)}</span>;
 }

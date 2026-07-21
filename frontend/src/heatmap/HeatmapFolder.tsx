@@ -86,7 +86,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
         </span>
         <span className="flex items-center gap-2 flex-none">
           {avg !== null && (
-            <span className="text-xs font-mono tabular-nums text-fg-dim">
+            <span className="text-xs font-data tabular-nums text-fg-dim">
               {avg > 0 ? '+' : ''}{avg.toFixed(1)}%
             </span>
           )}

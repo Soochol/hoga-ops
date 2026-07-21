@@ -116,7 +116,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
   return (
     <div ref={rootRef} className="flex h-full flex-col gap-sm min-h-0 overflow-auto p-md">
       <div className="flex items-center gap-1.5">
-        <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-dimmer">저장한 조건검색</span>
+        <span className="text-[10.5px] font-semibold uppercase text-fg-dimmer">저장한 조건검색</span>
         <button type="button" aria-label="새 조건검색"
           onClick={() => { onNewDraft(); setEditing({ mode: 'create', initial: suggestSaveName(saves.map((s) => s.name)) }); }}
           className="ml-auto w-[22px] h-[22px] rounded-md bg-bg-input border text-fg-dim hover:text-fg">＋</button>
@@ -148,7 +148,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
               ) : (
                 <span className="truncate flex-1">{s.name}</span>
               )}
-              {isAnchor && dirty && !isRenaming && <span className="shrink-0 text-[10px] tracking-[0.04em] text-fg-dimmer">수정됨</span>}
+              {isAnchor && dirty && !isRenaming && <span className="shrink-0 text-[10px] text-fg-dimmer">수정됨</span>}
               {!isRenaming && (
                 <button type="button" aria-label="저장 조건 메뉴" aria-expanded={menu?.id === s.id}
                   onClick={(e) => {

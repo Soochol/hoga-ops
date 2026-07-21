@@ -290,7 +290,7 @@ export function ChartTabBar<T extends ChartTabLike>({
                 <span className="flex min-w-0 max-w-[190px] items-baseline gap-1.5 text-sm" style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>
                   <span className="min-w-0 max-w-36 truncate">{labelParts.primary}</span>
                   {labelParts.detail && (
-                    <span className="shrink-0 whitespace-nowrap font-mono text-xs" style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>
+                    <span className="shrink-0 whitespace-nowrap font-data text-xs" style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>
                       {labelParts.detail}
                     </span>
                   )}
@@ -369,7 +369,7 @@ export function ChartTabBar<T extends ChartTabLike>({
             aria-label={`가려진 탭 ${hiddenCount}개 목록 열기`}
             title={`가려진 탭 ${hiddenCount}개 — 클릭하면 전체 목록`}
             onClick={() => setMenuOpen(true)}
-            className="h-7 px-2 flex items-center rounded-md font-mono text-xs"
+            className="h-7 px-2 flex items-center rounded-md font-data text-xs"
             style={{ color: 'var(--accent)', background: 'var(--tint-selection)', border: '1px solid var(--border)' }}
           >
             +{hiddenCount}
@@ -398,7 +398,7 @@ export function ChartTabBar<T extends ChartTabLike>({
           open={menuOpen}
           onOpenChange={setMenuOpen}
         />
-        <span className="text-xs font-mono whitespace-nowrap" style={{ color: 'var(--fg-dimmer)' }}>
+        <span className="text-xs font-data whitespace-nowrap" style={{ color: 'var(--fg-dimmer)' }}>
           {tabCountLabel(tabs.length)}
         </span>
       </div>

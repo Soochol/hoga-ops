@@ -109,7 +109,7 @@ export default function BookPanel({
             >
               <span className="text-xs text-fg-dim">체결강도</span>
               <span
-                className={`font-mono text-sm tabular-nums ${
+                className={`font-data text-sm tabular-nums ${
                   summary.fillStrengthPct === null ? 'text-fg-dimmer' : 'text-fg'
                 }`}
               >
@@ -124,12 +124,12 @@ export default function BookPanel({
             {trades.slice(0, 9).map((t, i) => (
               <div key={i} className="flex items-center justify-between px-2" style={{ height: ROW_H }}>
                 <span
-                  className={`font-mono text-sm tabular-nums ${dirClass(t.price, baselinePrice)}`}
+                  className={`font-data text-sm tabular-nums ${dirClass(t.price, baselinePrice)}`}
                 >
                   {t.price.toLocaleString('ko-KR')}
                 </span>
                 <span
-                  className={`font-mono text-sm tabular-nums ${
+                  className={`font-data text-sm tabular-nums ${
                     t.side > 0 ? 'text-price-up' : t.side < 0 ? 'text-price-down' : 'text-fg-dim'
                   }`}
                 >
@@ -261,12 +261,12 @@ function PriceCell({
       }`}
       style={{ height: topDivider ? ROW_H - 1 : ROW_H }}
     >
-      <span className={`font-mono text-base tabular-nums ${color}`}>
+      <span className={`font-data text-base tabular-nums ${color}`}>
         {price > 0 ? price.toLocaleString('ko-KR') : ''}
       </span>
       {pct !== null && price > 0 && (
         <span
-          className={`font-mono text-badge tabular-nums text-left opacity-70 ${color}`}
+          className={`font-data text-badge tabular-nums text-left opacity-70 ${color}`}
           // 7ch = "+30.00%"(최장). 좌측정렬 + 최장 기준 고정폭이라야 부호 없는
           // 보합행("0.00%")만 중앙정렬이 흔들려 오른쪽으로 밀리는 일이 없다.
           style={{ minWidth: '7ch' }}
@@ -316,7 +316,7 @@ function QtyBar({
       {/* 뱃지는 잔량과 같은 flex 안에 둔다(#746 절대배치 겹침 교훈). 가격축 반대편에
           붙여 잔량 숫자가 항상 가격 쪽에 남게 한다. */}
       <span
-        className={`relative flex w-full items-baseline gap-1.5 px-2 font-mono text-sm tabular-nums ${
+        className={`relative flex w-full items-baseline gap-1.5 px-2 font-data text-sm tabular-nums ${
           isAsk ? '' : 'flex-row-reverse'
         }`}
       >
@@ -415,7 +415,7 @@ function SummaryRow({
           개행으로 계약을 뚫는 대신 그리드의 가로 스크롤로 전가한다(min-w 철학). */}
       <span className="whitespace-nowrap text-xs text-fg-dim">{label}</span>
       <span
-        className={`whitespace-nowrap font-mono text-sm tabular-nums ${
+        className={`whitespace-nowrap font-data text-sm tabular-nums ${
           color ?? (empty ? 'text-fg-dimmer' : 'text-fg')
         }`}
       >
@@ -453,13 +453,13 @@ function TotalQtyStrip({
       <div className="flex items-center justify-between px-2 py-1">
         <span
           aria-label={`매도총잔량 ${ask.toLocaleString('ko-KR')}`}
-          className="font-mono text-sm tabular-nums text-price-down"
+          className="font-data text-sm tabular-nums text-price-down"
         >
           {ask.toLocaleString('ko-KR')}
         </span>
         <span
           aria-label={`매수총잔량 ${bid.toLocaleString('ko-KR')}`}
-          className="font-mono text-sm tabular-nums text-price-up"
+          className="font-data text-sm tabular-nums text-price-up"
         >
           {bid.toLocaleString('ko-KR')}
         </span>
@@ -471,7 +471,7 @@ function TotalQtyStrip({
 function PanelState({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-full w-full items-center justify-center bg-bg-card text-[11px] text-fg-dimmer">
-      <span className="font-mono">{children}</span>
+      <span className="font-data">{children}</span>
     </div>
   );
 }

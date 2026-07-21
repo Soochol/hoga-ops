@@ -76,7 +76,7 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
       <div className="flex flex-col gap-4 px-4 py-4">
         {/* 기간 프리셋 */}
         <div className="flex flex-col gap-2">
-          <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-dimmer">기간</span>
+          <span className="text-[10.5px] font-semibold uppercase text-fg-dimmer">기간</span>
           <div className="flex items-center gap-2">
             {LOOKBACK_PRESETS.map((n) => (
               <button key={n} type="button" aria-pressed={lookback === n}
@@ -93,7 +93,7 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
                   setLookback(Math.min(120, Math.max(1, Number(e.target.value) || 1)));
                   resetPreview();
                 }}
-                className="w-16 bg-bg-input border border-border rounded-md px-2 py-1 font-mono text-sm tabular-nums text-fg" />
+                className="w-16 bg-bg-input border border-border rounded-md px-2 py-1 font-data text-sm tabular-nums text-fg" />
               일
             </label>
           </div>
@@ -102,7 +102,7 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
         {/* 대상 그룹(멀티선택) — 그룹이 여럿일 때만 */}
         {showFolders && (
           <div className="flex flex-col gap-2">
-            <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-dimmer">대상 그룹</span>
+            <span className="text-[10.5px] font-semibold uppercase text-fg-dimmer">대상 그룹</span>
             <div className="flex flex-wrap gap-1.5 max-h-32 overflow-auto">
               {groups.map((g) => (
                 <button key={g.id} type="button" aria-pressed={selected.has(g.id)} onClick={() => toggleFolder(g.id)}
@@ -115,13 +115,13 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
         )}
 
         <div className="text-xs text-fg-dim">
-          대상 <span className="font-mono tabular-nums text-fg">{codes.length}</span>종목 × 지난 <span className="font-mono tabular-nums text-fg">{lookback}</span>거래일
+          대상 <span className="font-data tabular-nums text-fg">{codes.length}</span>종목 × 지난 <span className="font-data tabular-nums text-fg">{lookback}</span>거래일
         </div>
 
         {/* 미리보기 결과 */}
         {preview && (
           <div className="rounded-md border border-border bg-bg-subtle px-3 py-2.5 text-sm">
-            <div className="grid grid-cols-2 gap-y-1 font-mono tabular-nums">
+            <div className="grid grid-cols-2 gap-y-1 font-data tabular-nums">
               <span className="text-fg-dim">이미 보유</span><span className="text-right text-fg">{preview.have}</span>
               <span className="text-fg-dim">상류 무데이터</span><span className="text-right text-fg-dimmer">{preview.no_upstream}</span>
               <span className="text-fg-dim">수집 예정</span><span className="text-right text-accent">{preview.to_collect}</span>

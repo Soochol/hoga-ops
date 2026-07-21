@@ -190,12 +190,12 @@ function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted:
       className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-sm px-sm cursor-pointer"
     >
       <span className="font-normal text-base text-fg">{hit.name}</span>
-      <span className="font-medium text-sm font-mono text-fg-dim tabular-nums">{hit.code}</span>
-      <span className="border border-border-strong rounded-md px-xs font-semibold text-badge tracking-wider text-fg-dim">{hit.market}</span>
+      <span className="font-medium text-sm font-data text-fg-dim tabular-nums">{hit.code}</span>
+      <span className="border border-border-strong rounded-md px-xs font-semibold text-badge text-fg-dim">{hit.market}</span>
       <span
         title={breakdown}
         style={{ color: hit.captured_count > 0 ? 'var(--accent)' : 'var(--fg-dimmer)' }}
-        className="font-medium text-xs font-mono tabular-nums"
+        className="font-medium text-xs font-data tabular-nums"
       >
         {countText}
       </span>

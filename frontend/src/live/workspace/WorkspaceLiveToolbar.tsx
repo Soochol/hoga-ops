@@ -29,9 +29,9 @@ export function WorkspaceLiveToolbar({ onOpenSettings }: Props) {
         className="flex items-center gap-1 text-xs text-fg-dim"
         title="활성 그룹 — 검색·관심종목 클릭이 이 그룹의 종목을 교체합니다"
       >
-        <span className="font-mono">{windowCount}창</span>
+        <span className="font-data">{windowCount}창</span>
         <span>· 그룹</span>
-        <span className="font-mono text-accent">{activeGroup}</span>
+        <span className="font-data text-accent">{activeGroup}</span>
       </span>
       <span className="mx-1 h-[14px] w-px shrink-0 bg-border-strong" />
       <WindowAddMenu />

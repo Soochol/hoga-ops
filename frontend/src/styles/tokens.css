@@ -15,11 +15,18 @@
   font-size: 18px;
 
   /* ───── Typography · Font families (theme-independent) ─────
-     IBM Plex Sans KR carries Latin + Hangul in one family; IBM Plex Mono
-     carries every number (font-variant-numeric: tabular-nums). Faces load via
-     <link> in index.html. Tailwind font-ui/sans/mono resolve to these. */
-  --font-ui: 'IBM Plex Sans KR', 'Pretendard', ui-sans-serif, system-ui, 'Malgun Gothic', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Menlo', Consolas, monospace;
+     ONE family for prose and data alike — Pretendard carries Latin + Hangul.
+     --font-data is deliberately the same stack as --font-ui: after 2026-07-21
+     the two differ only in *figure style*, not in typeface. Data surfaces get
+     tabular figures via the `font-data` utility (Tailwind attaches
+     font-feature-settings:"tnum" to it — see tailwind.config.ts), so column
+     alignment no longer depends on the face being monospace.
+     Measured 2026-07-21: Pretendard digits run 17.55–24.97px proportional at
+     40px and collapse to a uniform 24.58px under tnum; with tnum off, 20 live
+     orderbook prices rendered at 18 distinct widths (3.12px spread).
+     Faces load via <link> in index.html. */
+  --font-ui: 'Pretendard Variable', Pretendard, ui-sans-serif, system-ui, 'Malgun Gothic', sans-serif;
+  --font-data: 'Pretendard Variable', Pretendard, ui-sans-serif, system-ui, 'Malgun Gothic', sans-serif;
 
   /* ───── Color · Surfaces (Obsidian — warm graphite) ─────
      --bg 를 --bg-card 와 동일 톤(#121216)으로 통일 — "배경 통일"(토스 레퍼런스,

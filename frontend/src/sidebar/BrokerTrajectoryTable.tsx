@@ -68,7 +68,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   const maxAbsNet = nets.reduce<number>((acc, net) => Math.max(acc, Math.abs(net ?? 0)), 0);
 
   return (
-    <div className="font-mono text-sm tabular-nums divide-y divide-border-strong">
+    <div className="font-data text-sm tabular-nums divide-y divide-border-strong">
       {rows.map((entry, rowIndex) => {
         const net = nets[rowIndex];
         return (

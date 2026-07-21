@@ -32,7 +32,7 @@ export default function ProgramTradeSummaryCard({ series, cursorMs = null }: Pro
   const qtyClass = signedClass(point.net_qty);
 
   return (
-    <div className="flex h-full min-h-[96px] flex-col px-3 py-2 font-mono text-xs">
+    <div className="flex h-full min-h-[96px] flex-col px-3 py-2 font-data text-xs">
       <div className="flex items-center justify-between gap-2 text-fg-dimmer">
         <span>누적 순매수</span>
         <span>{formatTime(point.t)}</span>
@@ -186,7 +186,7 @@ function ProgramTradeSparkline({
           =none 아래서는 글자도 가로세로 다른 비율로 늘어난다. */}
       <div
         data-testid="program-sparkline-axis"
-        className="relative flex shrink-0 flex-col items-end justify-between font-mono text-badge leading-none text-fg-dimmer tabular-nums"
+        className="relative flex shrink-0 flex-col items-end justify-between font-data text-badge leading-none text-fg-dimmer tabular-nums"
       >
         <span data-testid="axis-label-max">{formatKoreanWonEok(vMax)}</span>
         {showZeroLabel && (

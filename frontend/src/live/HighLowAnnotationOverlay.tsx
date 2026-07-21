@@ -191,7 +191,7 @@ const labelStyle = (place: ExtremeLabelPlace, color: string): CSSProperties => (
     ? 'translate(-50%, 0)'
     : 'translate(-50%, -100%)',
   color,
-  fontFamily: 'var(--font-mono)',
+  fontFamily: 'var(--font-data)',
   fontSize: 'var(--text-xs)',
   fontWeight: 600,
   lineHeight: 1.2,

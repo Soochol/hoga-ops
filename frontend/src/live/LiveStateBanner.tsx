@@ -74,7 +74,7 @@ function BannerRow({
       {actionTo && actionLabel && (
         <Link
           to={actionTo}
-          className="px-2 py-1 rounded font-mono"
+          className="px-2 py-1 rounded font-data"
           style={{
             background: 'var(--bg-input)',
             color: 'var(--fg)',

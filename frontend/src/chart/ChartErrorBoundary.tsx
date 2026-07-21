@@ -40,7 +40,7 @@ export default class ChartErrorBoundary extends Component<Props, State> {
         <div className="grid place-items-center h-full bg-bg-card text-fg-dim p-6">
           <div className="max-w-md text-center space-y-3">
             <div className="text-fg font-semibold">차트 렌더링에 실패했습니다</div>
-            <div className="text-xs font-mono break-all bg-bg-subtle border rounded p-2">
+            <div className="text-xs font-data break-all bg-bg-subtle border rounded p-2">
               {this.state.error.message}
             </div>
             <button

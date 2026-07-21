@@ -41,7 +41,7 @@ export default function TotalQtyBar({ snapshot, maskRatio }: Props) {
     <div
       role="group"
       aria-label="총잔량"
-      className="grid grid-cols-[auto_1fr_auto] items-center gap-2.5 px-2.5 py-1 font-mono text-sm tabular-nums border-t border-border-strong"
+      className="grid grid-cols-[auto_1fr_auto] items-center gap-2.5 px-2.5 py-1 font-data text-sm tabular-nums border-t border-border-strong"
     >
       <span
         aria-label={`매도총잔량 ${askStr}`}
@@ -55,7 +55,7 @@ export default function TotalQtyBar({ snapshot, maskRatio }: Props) {
         {maskRatio ? (
           <div
             data-testid="total-qty-bar-masked"
-            className="h-full flex items-center justify-center text-fg-dimmer text-[8px] leading-none uppercase tracking-wider"
+            className="h-full flex items-center justify-center text-fg-dimmer text-[8px] leading-none uppercase"
           >
             Auction
           </div>

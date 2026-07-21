@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
  * Bordered status pill — the shared primitive for the project's micro-badges
  * (fail_streak 재시도, full-capture ×N, and the capture-queue force/attempt/
  * inventory tags). Centralizes the badge shell
- * `text-badge rounded-md px-[0.15rem] border … font-mono tabular-nums` that was
+ * `text-badge rounded-md px-[0.15rem] border … font-data tabular-nums` that was
  * previously inlined byte-by-byte across FailStreakCell, FullCaptureCountBadge,
  * and CaptureQueueRow — one place to retune padding / radius / tone so the
  * variants can never silently drift apart again.
@@ -43,7 +43,7 @@ export function StatusBadge({
     <span
       title={title}
       aria-label={ariaLabel}
-      className={`text-badge rounded-md px-[0.15rem] border ${TONE_CLASS[tone]} font-mono tabular-nums ${className}`.trim()}
+      className={`text-badge rounded-md px-[0.15rem] border ${TONE_CLASS[tone]} font-data tabular-nums ${className}`.trim()}
     >
       {children}
     </span>

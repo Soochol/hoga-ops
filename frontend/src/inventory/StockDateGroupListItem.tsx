@@ -22,14 +22,14 @@ export function StockDateGroupListItem({ group, active, onClick }: Props) {
       <div className="flex justify-between items-baseline">
         <span className="flex items-center gap-1.5">
           <DiskStateDot state={aggState} />
-          <span className="text-accent font-mono">{group.code}</span>{' '}
+          <span className="text-accent font-data">{group.code}</span>{' '}
           <span className="text-fg">{group.name}</span>
         </span>
-        <span className="font-mono tabular-nums text-sm">{n} {n === 1 ? 'date' : 'dates'}</span>
+        <span className="font-data tabular-nums text-sm">{n} {n === 1 ? 'date' : 'dates'}</span>
       </div>
       <div className="flex justify-between text-xs text-fg-dim mt-1">
         <span>최근 {last}</span>
-        <span className="font-mono tabular-nums">{fmtSize(group.totalSizeBytes)}</span>
+        <span className="font-data tabular-nums">{fmtSize(group.totalSizeBytes)}</span>
       </div>
     </ListRow>
   );

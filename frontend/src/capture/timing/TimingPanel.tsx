@@ -27,7 +27,7 @@ export function TimingPanel({ id }: Props) {
   return (
     <div className="text-xs">
       <div className="flex items-center gap-2">
-        <span className="font-mono tabular-nums">{formatMs(summary.total_ms)}</span>
+        <span className="font-data tabular-nums">{formatMs(summary.total_ms)}</span>
         <span className="flex-1" />
         <button
           type="button"
@@ -83,7 +83,7 @@ function PhaseSummaryLine({ summary }: { summary: TimingSummary }) {
     .filter((p) => (summary.phase_percentages[p] ?? 0) > 0);
 
   return (
-    <div className="font-mono tabular-nums opacity-80 mt-xs">
+    <div className="font-data tabular-nums opacity-80 mt-xs">
       {top3.map((p, i) => (
         <span key={p}>
           {PHASE_LABEL[p]} {Math.round(summary.phase_percentages[p])}%
@@ -100,7 +100,7 @@ function ExpandedDetail({ summary }: { summary: TimingSummary }) {
   const unaccountedWarn = unaccountedPct > 5;
 
   return (
-    <div className="mt-sm font-mono">
+    <div className="mt-sm font-data">
       <div className="grid grid-cols-[8rem_5rem_4rem] gap-x-md">
         {PHASE_ORDER.map((p) => (
           <PhaseRow key={p} phase={p} summary={summary} />

@@ -8,7 +8,7 @@ export function ScreenerUpdateProgress({ updating }: { updating: ScreenerUpdatin
   return (
     <span
       data-testid="screener-update-progress"
-      className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums text-fg-dim"
+      className="inline-flex items-center gap-1.5 font-data text-xs tabular-nums text-fg-dim"
       title="일봉 아카이브 갱신 진행 중"
     >
       갱신 중 {updating.done.toLocaleString()}/{updating.total.toLocaleString()}

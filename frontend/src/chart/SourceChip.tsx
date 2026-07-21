@@ -33,7 +33,9 @@ export function SourceChip({ source }: Props) {
         background: bgVar,
         borderRadius: 'var(--radius-md)',
         fontSize: 'var(--text-xs)',
-        fontFamily: 'monospace',
+        // Was a literal 'monospace' — the design system has no monospace face
+        // as of 2026-07-21, so that resolved to whatever the OS picked.
+        fontFamily: 'var(--font-data)',
         color: 'var(--fg-dim)',
       }}
     >

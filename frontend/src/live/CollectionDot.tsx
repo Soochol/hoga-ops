@@ -16,7 +16,7 @@ export function CollectionDot({ status }: Props) {
       title={ariaLabel}
       role="img"
       aria-label={ariaLabel}
-      className="inline-flex items-center gap-1 font-mono"
+      className="inline-flex items-center gap-1 font-data"
       style={{ color: colorVar, fontSize: 'var(--text-xs)' }}
     >
       <span

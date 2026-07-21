@@ -189,15 +189,15 @@ export function LiveSymbolSearch() {
                 {item.kind === 'stock' ? (
                   <>
                     <span className="text-sm text-fg">{item.hit.name}</span>
-                    <span className="text-sm font-mono text-fg-dim tabular-nums">{item.hit.code}</span>
-                    <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">{item.hit.market}</span>
+                    <span className="text-sm font-data text-fg-dim tabular-nums">{item.hit.code}</span>
+                    <span className="border border-border-strong rounded px-1 text-badge font-semibold text-fg-dim">{item.hit.market}</span>
                     <WatchlistHeartButton code={item.hit.code} name={item.hit.name} />
                   </>
                 ) : (
                   <>
                     <span className="text-sm text-fg">{item.index.label}</span>
-                    <span className="text-sm font-mono text-fg-dim tabular-nums">{item.index.id}</span>
-                    <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">지수</span>
+                    <span className="text-sm font-data text-fg-dim tabular-nums">{item.index.id}</span>
+                    <span className="border border-border-strong rounded px-1 text-badge font-semibold text-fg-dim">지수</span>
                     <span aria-hidden />
                   </>
                 )}
@@ -226,7 +226,7 @@ export function LiveSymbolSearch() {
         {/* min-w-0 + truncate: 헤더가 좁아지면(드로어 열림 등) 두 줄 줄바꿈 대신 한 줄 말줄임. */}
         <span className="flex-1 min-w-0 truncate text-sm text-fg-dimmer">종목명 또는 코드 검색…</span>
         <span className="ml-auto flex shrink-0 items-center gap-1 text-fg-dimmer text-xs">
-          <kbd className="inline-flex items-center justify-center min-w-[17px] h-[17px] px-1 border border-border-strong rounded bg-bg-input font-mono">/</kbd>
+          <kbd className="inline-flex items-center justify-center min-w-[17px] h-[17px] px-1 border border-border-strong rounded bg-bg-input font-data">/</kbd>
         </span>
       </button>
 
