@@ -42,7 +42,7 @@ _KIS_TRADE_PAYLOAD_KEYS = {"trades"}
 # 여기 없는 키가 payload 에 생기면 parity 테스트가 실패한다 = 계약 변경은 의도적으로만.
 _KIWOOM_TRADE_EXTRA_KEYS = {
     "prev_close", "day_open", "day_high", "day_low",
-    "fill_strength_pct", "vs_prev_volume_pct", "cum_volume", "vwap",
+    "fill_strength_pct", "vs_prev_volume_pct", "cum_volume", "vwap", "cum_value",
 }
 
 # 실측 0D(주식호가잔량, 000020) — 10호가 전 단계 채움, KRX 장중.
@@ -359,13 +359,15 @@ def test_trade_summary_metrics_cross_check_against_golden_frames():
         assert t.payload["cum_volume"] == cum
         # 14 는 백만원. 원 단위로 환산해 거래량으로 나누면 620(당일거래평균가)이다.
         assert abs(int(v["14"]) * 1_000_000 / cum - t.payload["vwap"]) < 1
+        # 누적거래대금(cum_value)은 파서가 원으로 정규화해 싣는다.
+        assert t.payload["cum_value"] == int(v["14"]) * 1_000_000
 
 
 def test_trade_summary_metrics_absent_when_not_received():
     """미수신 FID 는 키를 싣지 않는다 — day_ohlc 와 같은 규약."""
     t = parse_real_row(REAL_0B, date=DATE, now_ms=NOW_MS)
     assert t is not None
-    for key in ("fill_strength_pct", "vs_prev_volume_pct", "vwap"):
+    for key in ("fill_strength_pct", "vs_prev_volume_pct", "vwap", "cum_value"):
         assert key not in t.payload
     # REAL_0B 에는 13(누적거래량)이 있으므로 이건 실린다.
     assert t.payload["cum_volume"] == 98232

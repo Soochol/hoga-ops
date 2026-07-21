@@ -24,7 +24,7 @@ const SUMMARY = {
   fillStrengthPct: 99.0,
   vsPrevVolumePct: 104.42,
   cumVolume: 46_689_105,
-  vwap: 250_449,
+  cumValue: 82_412_000_000, // 824억 절사 표시
   dayOpen: 245_500,
   dayHigh: 257_500,
   dayLow: 238_500,
@@ -69,7 +69,7 @@ describe('BookPanel', () => {
     expect(screen.getByText('99.00%')).toBeInTheDocument();   // 체결강도
     expect(screen.getByText('104.42%')).toBeInTheDocument();  // 어제보다
     expect(screen.getByText('4,668만')).toBeInTheDocument();  // 거래량(만 단위 절사)
-    expect(screen.getByText('250,449')).toBeInTheDocument();  // VWAP
+    expect(screen.getByText('824억')).toBeInTheDocument();    // 거래대금(억 절사)
     // limits 미로드 시 상한가·하한가·250일 3행은 대시(VI 행은 시가 기반 계산값).
     expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(3);
   });
