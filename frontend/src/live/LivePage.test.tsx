@@ -209,20 +209,14 @@ vi.mock('./indicators/IndicatorPanel', () => ({
   },
 }));
 
-vi.mock('../studyViews/studySaveSource', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../studyViews/studySaveSource')>();
-  return {
-    ...actual,
-    setCurrentStudySaveSource: (source: unknown) => {
-      livePageMocks.currentStudySaveSource = source;
-    },
-    clearCurrentStudySaveSource: (source: unknown) => {
-      if (livePageMocks.currentStudySaveSource === source) {
-        livePageMocks.currentStudySaveSource = null;
-      }
-    },
-  };
-});
+// 저장 소스는 더 이상 전역 1슬롯으로 발행되지 않는다 — 창이 자기 소스를 헤더
+// 버튼에 직접 넘긴다. 관측 지점도 "버튼이 실제로 받은 prop" 으로 옮긴다.
+vi.mock('../studyViews/LiveStudyViewSaveButton', () => ({
+  LiveStudyViewSaveButton: ({ source }: { source: unknown }) => {
+    livePageMocks.currentStudySaveSource = source;
+    return <button type="button" data-testid="live-study-save-button" disabled={!source} />;
+  },
+}));
 
 vi.mock('../capture/useSymbols', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../capture/useSymbols')>();
@@ -392,12 +386,14 @@ describe('LivePage shell', () => {
     expect(dialog.textContent).toContain('1');
   });
 
-  it('hides the collect button for index instruments', async () => {
+  // 수집 버튼은 창 헤더로 이관됐고, 게이트도 전역 activeStockCode 에서 창 로컬로
+  // 옮겨졌다 — 지수 창은 수집할 종목 코드가 없으므로 비활성(부재가 아니라).
+  it('disables the collect button on an index chart window', async () => {
     renderWithRouter('/live?index=KOSPI');
 
     await waitFor(() => expect(useLivePageStore.getState().activeInstrument?.kind).toBe('index'));
     expect(screen.getByTestId('workspace-live-toolbar')).toBeInTheDocument();
-    expect(screen.queryByTestId('live-collect-button')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('live-collect-button')).toBeDisabled());
   });
 
   it('passes the focused chart window timeframe into IndicatorPanel', async () => {

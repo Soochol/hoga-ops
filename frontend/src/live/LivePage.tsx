@@ -10,7 +10,6 @@ import { LiveStateBanner } from './LiveStateBanner';
 import { activateLiveCode, activateLiveInstrument, mirrorActiveGroupToLivePage } from './liveNavigate';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveVenueStore } from '../state/liveVenue';
-import { LiveStudyViewSaveButton } from '../studyViews/LiveStudyViewSaveButton';
 import LiveSettingsModal from './LiveSettingsModal';
 import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
 import { useSymbols } from '../capture/useSymbols';
@@ -23,6 +22,7 @@ import {
   targetChartWindow,
 } from './workspace/WorkspaceIndicatorDrawer';
 import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';
+import { registerCollectDialogOpener, type CollectTarget } from './workspace/collectDialogControls';
 import { useLiveWindowStatus } from './workspace/liveWindowStatusSource';
 
 /**
@@ -118,17 +118,19 @@ export function LivePage() {
   const [indicatorTargetId, setIndicatorTargetId] = useState<string | null>(null);
   useEffect(() => registerIndicatorDrawerOpener(setIndicatorTargetId), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // 활성 그룹 종목 지난 N일 hogaplay 수집(히트맵 CollectDialog 재사용) — 주식 한정.
-  const [collectOpen, setCollectOpen] = useState(false);
-  useEffect(() => {
-    if (!activeStockCode) setCollectOpen(false);
-  }, [activeStockCode]);
+  // 지난 N일 hogaplay 수집(히트맵 CollectDialog 재사용) — 대상 종목은 **차트 창
+  // 헤더의 수집 버튼**이 실어 보낸다. 전역 툴바에 있던 시절엔 "활성 그룹의 종목"
+  // 이라 다른 종목을 수집하려면 그 창을 먼저 활성화해야 했다.
+  const [collectTarget, setCollectTarget] = useState<CollectTarget | null>(null);
+  useEffect(() => registerCollectDialogOpener(setCollectTarget), []);
   // 딥링크(?code=) 시드는 name=code 라, 수집 다이얼로그 제목은 상태바와 동일
   // 소스(심볼 마스터)에서 실명을 보강한다.
   const { data: symbolsData } = useSymbols();
   const collectSymbolName = useMemo(
-    () => (activeStockCode ? symbolsData?.symbols.find((s) => s.code === activeStockCode)?.name : undefined),
-    [symbolsData, activeStockCode],
+    () => (collectTarget
+      ? symbolsData?.symbols.find((s) => s.code === collectTarget.code)?.name ?? collectTarget.name
+      : undefined),
+    [symbolsData, collectTarget],
   );
 
   // Shift+숫자 = 포커스 차트 창의 timeframe 슬롯(스펙 §2 — 창별 배선).
@@ -194,11 +196,7 @@ export function LivePage() {
         captureHealth={liveStatus.captureHealth}
         venue={liveVenue}
       />
-      <WorkspaceLiveToolbar
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenCollect={activeStockCode ? () => setCollectOpen(true) : undefined}
-        studySaveControl={<LiveStudyViewSaveButton />}
-      />
+      <WorkspaceLiveToolbar onOpenSettings={() => setSettingsOpen(true)} />
       <WorkspaceCanvas />
       {indicatorTargetId != null && (
         <WorkspaceIndicatorDrawer
@@ -210,13 +208,13 @@ export function LivePage() {
           유일한 창 소유 필드였던 VI 선 스타일이 자기 토글 옆(전역 chartPrefs)
           으로 옮겨가면서 이 모달은 앱 설정만 편집한다(#759). */}
       {settingsOpen && <LiveSettingsModal onClose={() => setSettingsOpen(false)} />}
-      {collectOpen && activeStockCode && (
+      {collectTarget && (
         <SingleCodeCollectDialog
           // 다이얼로그가 열린 채 종목이 바뀌면 remount 로 미리보기·기간 상태를 초기화한다.
-          key={activeStockCode}
-          code={activeStockCode}
-          name={collectSymbolName ?? activeSymbol?.name ?? activeStockCode}
-          onClose={() => setCollectOpen(false)}
+          key={collectTarget.code}
+          code={collectTarget.code}
+          name={collectSymbolName ?? collectTarget.name}
+          onClose={() => setCollectTarget(null)}
         />
       )}
     </div>

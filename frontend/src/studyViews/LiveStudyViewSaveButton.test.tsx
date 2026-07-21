@@ -1,11 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
-import type { CurrentStudySaveSource } from './studySaveSource';
+import type { LiveStudySaveSource } from './studySaveSource';
 import { LiveStudyViewSaveButton } from './LiveStudyViewSaveButton';
 
 const createMutate = vi.fn();
-let saveSource: CurrentStudySaveSource | null = null;
 
 vi.mock('./useStudyViews', () => ({
   useStudyViewMutations: () => ({
@@ -13,10 +12,6 @@ vi.mock('./useStudyViews', () => ({
     update: { mutate: vi.fn() },
     remove: { mutate: vi.fn() },
   }),
-}));
-
-vi.mock('./studySaveSource', () => ({
-  useCurrentStudySaveSource: () => saveSource,
 }));
 
 function rangeBundleFixture() {
@@ -47,17 +42,17 @@ function rangeBundleFixture() {
 
 beforeEach(() => {
   createMutate.mockReset();
-  saveSource = null;
 });
 
+// 창이 아직 저장 가능한 상태가 아니면(번들 미도착·미지원 종목) source=null.
 it('is disabled until a live chart can be saved', () => {
-  render(<LiveStudyViewSaveButton />);
+  render(<LiveStudyViewSaveButton source={null} />);
 
   expect(screen.getByRole('button', { name: '현재 뷰 저장' })).toBeDisabled();
 });
 
 it('opens create dialog and creates from the live source', async () => {
-  saveSource = {
+  const source: LiveStudySaveSource = {
     origin: 'live',
     code: '005930',
     label: '삼성전자',
@@ -65,7 +60,7 @@ it('opens create dialog and creates from the live source', async () => {
     bundle: rangeBundleFixture(),
     captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 2, atLiveEdge: true, rightPaddingBars: 13 }),
   };
-  render(<LiveStudyViewSaveButton />);
+  render(<LiveStudyViewSaveButton source={source} />);
 
   await userEvent.click(screen.getByRole('button', { name: '현재 뷰 저장' }));
   expect(screen.getByRole('dialog', { name: '저장뷰 만들기' })).toBeTruthy();

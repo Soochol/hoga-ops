@@ -54,11 +54,9 @@ import {
   clearLiveWindowStatus,
   type LiveWindowStatus,
 } from './liveWindowStatusSource';
-import {
-  clearCurrentStudySaveSource,
-  setCurrentStudySaveSource,
-  type LiveStudySaveSource,
-} from '../../studyViews/studySaveSource';
+import type { LiveStudySaveSource } from '../../studyViews/studySaveSource';
+import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButton';
+import { CollectButton } from './CollectButton';
 import { clearWindowFlagLegendValues } from '../indicators/flagLegendValueRegistry';
 import type { TabViewport } from '../viewportAnchor';
 
@@ -250,14 +248,13 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     };
   }, [isGroupLink, win.group, win.id]);
 
-  // 저장뷰 save source — 포커스 차트 창만 발행(전역 1슬롯, 스펙 §2). LivePage 의
-  // 기존 발행 effect 를 창으로 이관 — clear 는 자기 source 일 때만(계약 동일).
+  // 저장뷰 소스 — 이 창의 것. 헤더 버튼에 직접 넘긴다(전역 1슬롯 발행 폐지).
+  // 슬롯 시절엔 z-최상위 창만 발행해서 "어느 창을 저장하나" 를 추론해야 했는데,
+  // 버튼이 창 안으로 들어오며 그 추론이 통째로 사라졌다(#759 와 같은 단순화).
   const { liveSaveBundle, activeLabel, capabilities } = d;
-  useEffect(() => {
-    if (!isTargetChart || !view.code || !liveSaveBundle || !capabilities.studySave) {
-      return undefined;
-    }
-    const source: LiveStudySaveSource = {
+  const studySaveSource: LiveStudySaveSource | null = useMemo(() => {
+    if (!view.code || !liveSaveBundle || !capabilities.studySave) return null;
+    return {
       origin: 'live',
       code: view.code,
       label: activeLabel || view.code,
@@ -265,11 +262,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       bundle: liveSaveBundle,
       captureViewport: () => viewportCaptureRef.current(),
     };
-    setCurrentStudySaveSource(source);
-    return () => {
-      clearCurrentStudySaveSource(source);
-    };
-  }, [isTargetChart, view.code, view.timeframe, liveSaveBundle, activeLabel, capabilities.studySave]);
+  }, [view.code, view.timeframe, liveSaveBundle, activeLabel, capabilities.studySave]);
 
   if (!instrument) {
     return (
@@ -309,6 +302,16 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           />
           <IndicatorsButton
             onClick={() => requestIndicatorDrawer(win.id)}
+            showLabel={!headerFold.compactActions}
+          />
+          <LiveStudyViewSaveButton
+            source={studySaveSource}
+            showLabel={!headerFold.compactActions}
+          />
+          {/* 수집 대상은 이 창의 종목 — 지수 창은 코드가 없어 비활성. */}
+          <CollectButton
+            code={symbol?.kind === 'index' ? null : symbol?.code ?? null}
+            name={symbol?.name ?? null}
             showLabel={!headerFold.compactActions}
           />
         </div>
