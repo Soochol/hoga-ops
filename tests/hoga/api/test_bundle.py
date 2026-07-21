@@ -452,6 +452,54 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
     ]
 
 
+def test_build_program_trade_series_filters_legacy_polluted_gap_events(tmp_path):
+    """PR-F4 직후 0w drain 이 매 30초 배치마다 쌓은 오염 gap_events(임계 이하 점프)는
+    읽기 경로에서 걸러 gap_risk 오탐을 만들지 않는다 — 실제 수집 공백(임계 초과)만 남긴다."""
+    import json
+
+    from hoga.api.bundle import build_program_trade_series
+    from hoga.live.program_trade_store import ProgramTradeByStockRow, ProgramTradeStore
+
+    store = ProgramTradeStore(tmp_path)
+    for i, hhmmss in enumerate(["090000", "090030", "090500"]):
+        store.merge_response(
+            code="005930",
+            date="20260721",
+            rows=[
+                ProgramTradeByStockRow(
+                    code="005930",
+                    bsop_hour=hhmmss,
+                    t_ms=0,
+                    price=70000,
+                    net_qty=1000,
+                    net_amount=(i + 1) * 1000,
+                    buy_qty=None,
+                    sell_qty=None,
+                    buy_amount=None,
+                    sell_amount=None,
+                    delta_qty=None,
+                    delta_amount=None,
+                )
+            ],
+            observed_at_ms=i + 1,
+        )
+
+    # 수정 전 코드가 남긴 오염 이벤트를 주입 — 30초 점프(정상 드레인 주기)도 갭으로 기록됐었다.
+    path = tmp_path / "kis-program-trade" / "005930" / "20260721.json"
+    body = json.loads(path.read_text())
+    body["gap_events"].insert(
+        0,
+        {"previous_latest": "090000", "new_oldest": "090030", "new_newest": "090030", "observed_at_ms": 2},
+    )
+    path.write_text(json.dumps(body))
+
+    mock_engine = MagicMock()
+    mock_engine.data_dir = tmp_path
+    series = build_program_trade_series(mock_engine, code="005930", dates=["20260721"])
+
+    assert [p.gap_risk for p in series.points] == [False, False, True]
+
+
 def test_build_range_bundle_hoga_mode_skips_full_sidecars_and_inventory_scan(tmp_path):
     import contextlib
 

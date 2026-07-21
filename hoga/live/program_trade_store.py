@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
@@ -22,6 +23,12 @@ log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 SOURCE = "kis_program_trade"  # 동결 — 모듈 docstring 참조
+
+# 갭 판정 최소 시간 점프(폴 주기 배수). 0w drain 은 30초마다 새 행 1개짜리 배치를
+# 만들므로 "이전 최신 행이 새 배치에 없음"은 정상 상태다 — 시각이 폴 주기를 이만큼
+# 초과해 점프했을 때만 실제 수집 공백으로 본다(30초 주기 기준 임계 90초 = 2사이클
+# 이상 연속 누락). 읽기 경로(bundle)도 같은 술어로 과거 오염 이벤트를 걸러낸다.
+GAP_MIN_JUMP_INTERVALS = 3
 
 
 class ProgramTradeByStockRow(BaseModel):
@@ -160,12 +167,14 @@ class ProgramTradeStore:
             and previous_latest not in incoming_times
             and previous_latest < new_oldest
         ):
-            current.gap_events.append({
+            event: dict[str, int | str] = {
                 "previous_latest": previous_latest,
                 "new_oldest": new_oldest,
                 "new_newest": new_newest,
                 "observed_at_ms": observed_at_ms,
-            })
+            }
+            if is_significant_gap_event(event, poll_interval_ms=self._poll_interval_ms):
+                current.gap_events.append(event)
 
         by_time = {r.bsop_hour: r for r in current.rows}
         for row in incoming:
@@ -195,6 +204,25 @@ class ProgramTradeStore:
             path.rename(backup)
         except OSError:
             log.exception("could not quarantine poisoned program-trade file path=%s", path)
+
+
+def is_significant_gap_event(event: Mapping[str, int | str], *, poll_interval_ms: int) -> bool:
+    """gap 이벤트가 실제 수집 공백인지 — 시간 점프가 폴 주기의 GAP_MIN_JUMP_INTERVALS
+    배를 초과할 때만 참. 쓰기(merge_response)와 읽기(bundle) 양쪽이 같은 술어를 쓰므로
+    임계 이하 간격으로 이미 쌓인 과거 오염 이벤트도 읽기에서 걸러진다. 시각을 파싱할
+    수 없는 이벤트는 보수적으로 갭으로 유지한다."""
+    previous = _hhmmss_to_ms(event.get("previous_latest"))
+    new_oldest = _hhmmss_to_ms(event.get("new_oldest"))
+    if previous is None or new_oldest is None:
+        return True
+    return new_oldest - previous > GAP_MIN_JUMP_INTERVALS * poll_interval_ms
+
+
+def _hhmmss_to_ms(value: int | str | None) -> int | None:
+    text = str(value or "")
+    if len(text) != 6 or not text.isdigit():
+        return None
+    return (int(text[:2]) * 3600 + int(text[2:4]) * 60 + int(text[4:6])) * 1000
 
 
 def _row_time_ms(*, date: str, bsop_hour: str, t_ms: int) -> int:

@@ -91,6 +91,65 @@ def test_program_trade_store_marks_gap_only_when_rolling_window_has_no_overlap(t
     ]
 
 
+def test_program_trade_store_single_row_drain_chain_records_no_gap(tmp_path):
+    """0w latch drain 체제 — 30초마다 새 행 1개짜리 배치가 오면 previous_latest 는
+    절대 incoming 에 없지만, 시간 점프가 폴 주기 수준이므로 갭이 아니다."""
+    from hoga.live.program_trade_store import ProgramTradeStore
+
+    store = ProgramTradeStore(tmp_path)
+    result = None
+    for i, hhmmss in enumerate(["090000", "090030", "090100", "090130", "090200"]):
+        result = store.merge_response(
+            code="005930",
+            date="20260721",
+            rows=[row(hhmmss, (i + 1) * 1000)],
+            observed_at_ms=i + 1,
+        )
+
+    assert result is not None
+    assert result.gap_events == []
+    assert [p.bsop_hour for p in result.rows] == [
+        "090000", "090030", "090100", "090130", "090200",
+    ]
+
+
+def test_program_trade_store_records_gap_after_multi_minute_outage(tmp_path):
+    """단일 행 드레인이라도 시간 점프가 임계(3×폴주기=90초)를 넘으면 실제 수집
+    공백으로 기록한다."""
+    from hoga.live.program_trade_store import ProgramTradeStore
+
+    store = ProgramTradeStore(tmp_path)
+    store.merge_response(
+        code="005930", date="20260721", rows=[row("090000", 1000)], observed_at_ms=1
+    )
+    resumed = store.merge_response(
+        code="005930", date="20260721", rows=[row("090500", 2000)], observed_at_ms=2
+    )
+
+    assert resumed.gap_events == [
+        {
+            "previous_latest": "090000",
+            "new_oldest": "090500",
+            "new_newest": "090500",
+            "observed_at_ms": 2,
+        }
+    ]
+
+
+def test_is_significant_gap_event_threshold_and_unparseable(tmp_path):
+    from hoga.live.program_trade_store import is_significant_gap_event
+
+    below = {"previous_latest": "090000", "new_oldest": "090030"}
+    at_threshold = {"previous_latest": "090000", "new_oldest": "090130"}
+    above = {"previous_latest": "090000", "new_oldest": "090131"}
+    unparseable = {"previous_latest": "??", "new_oldest": "090500"}
+
+    assert not is_significant_gap_event(below, poll_interval_ms=30_000)
+    assert not is_significant_gap_event(at_threshold, poll_interval_ms=30_000)
+    assert is_significant_gap_event(above, poll_interval_ms=30_000)
+    assert is_significant_gap_event(unparseable, poll_interval_ms=30_000)
+
+
 def test_program_trade_store_ignores_stale_response(tmp_path):
     from hoga.live.program_trade_store import ProgramTradeStore
 
