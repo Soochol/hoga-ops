@@ -11,6 +11,7 @@ from hoga.api.disk_state import DiskState
 from hoga.api.sources import (
     SourceName,
     ordered_sources,
+    resolve_candle_source,
     resolve_source,
     resolve_source_result,
 )
@@ -150,3 +151,68 @@ def test_resolve_source_result_preserves_legacy_flat_layout(tmp_path: Path) -> N
 def test_ordered_sources_rejects_unknown_policy(bad: str) -> None:
     with pytest.raises(ValueError, match="unknown source policy"):
         ordered_sources(bad)
+
+
+# --- 캔들 차원 사다리 (ADR-0121) ------------------------------------------
+#
+# 회귀 배경: 호가 승자와 캔들 승자를 한 사다리로 정하면, 캔들을 보유하지 않는
+# 실시간 WS 승격본(kis_live/kiwoom_live)이 이겼을 때 같은 Stock-Date의 실제
+# 캔들(hogaplay 또는 ADR-0109 복구본)이 통째로 가려진다. /study 저장뷰의
+# 마지막 날 분봉이 사라지던 원인.
+
+
+def _seed_candles(tmp_path: Path, date: str, code: str, source: str) -> None:
+    """이미 seed된 Source에 candles.parquet 존재를 표식(내용은 무관 — 존재만 본다)."""
+    (tmp_path / "parquet" / date / code / source / "candles.parquet").write_bytes(b"")
+
+
+def test_resolve_candle_source_skips_candle_less_realtime_winner(tmp_path: Path) -> None:
+    """kiwoom_live가 호가로 이겨도 캔들은 복구본(kis_api)에서 온다."""
+    _seed_invalid_source(tmp_path, "20260720", "042660", "hogaplay")
+    _seed_candles(tmp_path, "20260720", "042660", "hogaplay")
+    _seed_source(tmp_path, "20260720", "042660", "kiwoom_live")   # 캔들 미보유 티어
+    _seed_source(tmp_path, "20260720", "042660", "kis_api")
+    _seed_candles(tmp_path, "20260720", "042660", "kis_api")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_source(engine, "20260720", "042660", "hogaplay_first") == "kiwoom_live"
+    assert resolve_candle_source(engine, "20260720", "042660", "hogaplay_first") == "kis_api"
+
+
+def test_resolve_candle_source_prefers_healthy_hogaplay(tmp_path: Path) -> None:
+    """정상일 회귀 가드 — 호가·캔들 승자가 모두 hogaplay."""
+    _seed_source(tmp_path, "20260716", "042660", "hogaplay")
+    _seed_candles(tmp_path, "20260716", "042660", "hogaplay")
+    _seed_source(tmp_path, "20260716", "042660", "kiwoom_live")
+    _seed_source(tmp_path, "20260716", "042660", "kis_api")
+    _seed_candles(tmp_path, "20260716", "042660", "kis_api")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260716", "042660", "hogaplay_first") == "hogaplay"
+
+
+def test_resolve_candle_source_skips_healthy_source_without_candle_file(tmp_path: Path) -> None:
+    """캔들 없이 끝난 hogaplay 캡처가 healthy로 남아도 복구본을 가리지 않는다."""
+    _seed_source(tmp_path, "20260611", "009540", "hogaplay")       # candles.parquet 없음
+    _seed_source(tmp_path, "20260611", "009540", "kis_api")
+    _seed_candles(tmp_path, "20260611", "009540", "kis_api")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260611", "009540", "hogaplay_first") == "kis_api"
+
+
+def test_resolve_candle_source_none_when_no_candle_bearing_source(tmp_path: Path) -> None:
+    """복구 전 상태는 정직하게 '캔들 없음' — 복구 대상 판정의 근거가 된다."""
+    _seed_invalid_source(tmp_path, "20260527", "009830", "hogaplay")
+    _seed_candles(tmp_path, "20260527", "009830", "hogaplay")
+    _seed_source(tmp_path, "20260527", "009830", "kis_live")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_source(engine, "20260527", "009830", "hogaplay_first") == "kis_live"
+    assert resolve_candle_source(engine, "20260527", "009830", "hogaplay_first") is None
+
+
+def test_resolve_candle_source_none_for_missing_stock_date(tmp_path: Path) -> None:
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260720", "999999", "hogaplay_first") is None

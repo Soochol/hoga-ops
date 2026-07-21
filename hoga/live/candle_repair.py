@@ -5,13 +5,18 @@
 정상 경로). 이 모듈은 저장뷰가 실제로 걸친 구간에 한해, 빈 거래일을 KIS 과거
 분봉으로 한 번 가져와 디스크에 박제한다.
 
-설계 — 기존 소스 우선순위 사다리 재사용.
-    ``resolve_source_result``(:mod:`hoga.api.sources`)는 ``hogaplay_first`` 정책을
-    ``hogaplay → kis_live → kis_api`` 순으로 이미 해석한다. 복구본을
+설계 — 캔들 차원 사다리 재사용.
+    ``resolve_candle_source``(:mod:`hoga.api.sources`)는 ``hogaplay_first`` 정책을
+    캔들 보유 소스로 좁혀 ``hogaplay → kis_api`` 순으로 해석한다. 복구본을
     ``parquet/<date>/<code>/kis_api/candles.parquet``(+ ``meta.json``)으로 쓰면
-    ``/api/range``의 캔들 슬라이스가 **읽기 경로 변경 없이** 자동으로 서빙한다 —
-    hogaplay가 있으면 hogaplay가 이기고, 없는 날만 kis_api가 이긴다. hogaplay가
-    나중에 재캡처되면 정본이 다시 승리하므로 provenance 복원도 공짜다.
+    ``/api/range``의 캔들 슬라이스가 자동으로 서빙한다 — hogaplay가 건강하고 캔들이
+    있으면 hogaplay가 이기고, 그렇지 않은 날만 kis_api가 이긴다. hogaplay가 나중에
+    재캡처되면 정본이 다시 승리하므로 provenance 복원도 공짜다.
+
+    캔들 사다리가 **호가 사다리와 분리돼야** 이 설계가 성립한다(ADR-0121). 분리
+    전에는 같은 Stock-Date의 kis_live/kiwoom_live 파티션이 호가로 이기면서 캔들
+    없이 승리해 복구본을 통째로 가렸다 — 복구는 성공하는데 화면엔 끝까지 안 뜨는
+    상태였다.
 
 경계.
     - ADR-0040 불변식("kis_live 승격은 candles.parquet을 절대 쓰지 않는다")은
@@ -19,8 +24,8 @@
     - ADR-0095("KIS 과거 분봉 캐시는 memory-only")가 거부한 것은 *라이브 스크롤백
       캐시*다. 이 모듈은 캡처 공백의 *정본 복구*라 목적이 다르다 — 저장뷰가 실제로
       가리키는 구간만, 1회, 영구 저장한다.
-    - hogaplay가 부분(SOURCE_PARTIAL)으로라도 존재하는 날은 hogaplay가 계속
-      이긴다. 부분일 병합은 비목표.
+    - hogaplay가 건강하고 캔들을 가진 날은 hogaplay가 계속 이긴다. 부분일 병합은
+      비목표 — 단, hogaplay가 INVALID면 그 캔들은 서빙되지 않으므로 복구 대상이다.
 
 게이트. ``kis_rest_bypass_enabled``(ADR-0083) ON이면 스킵한다. KIS fetch가
 불가(자격증명 없음)하면 스킵한다. (code, date) 단위 in-flight 집합은 **프로세스
@@ -41,9 +46,8 @@ from typing import TYPE_CHECKING
 
 from hoga.api._atomic_write import atomic_write_json
 from hoga.api.calendar import is_trading_day
-from hoga.api.disk_state import DiskState
 from hoga.api.queries import QueryEngine
-from hoga.api.sources import resolve_source_result
+from hoga.api.sources import resolve_candle_source
 from hoga.api.timeenc import KST, unix_ms_to_ms_from_midnight
 from hoga.live import kis_access
 from hoga.live.kis_models import KisCandle
@@ -120,19 +124,17 @@ def _trading_days_in_range(from_date: str, to_date: str, *, today_kst: str) -> l
 def _has_served_candles(engine: QueryEngine, code: str, date_s: str) -> bool:
     """서빙 로직이 이 (code, date)에 캔들을 내는가 — 공백 판정의 SSOT.
 
-    ``build_candles_slice``와 동일하게 ``hogaplay_first``로 승리 소스를 정하고 그
-    ``candles.parquet``을 읽는다. 순환 import(live → api.bundle → live)를 피하려
-    bundle을 import하지 않고 같은 결과를 재현한다. 승리 소스가 INVALID면 서빙이
-    그날을 제외하므로 여기서도 공백으로 본다. 이미 복구된 날(kis_api 승리, 캔들
-    존재)은 자연히 non-empty가 되어 멱등 스킵된다."""
-    res = resolve_source_result(engine, date_s, code, _SOURCE_PREF)
-    if res.path is None or res.classification is None:
+    캔들 차원 사다리(:func:`resolve_candle_source`)를 그대로 쓴다 — 서빙과 같은
+    함수라야 "복구했는데 여전히 공백"(재복구 무한반복)이나 "이미 서빙되는데 또
+    복구"가 생기지 않는다. 순환 import(live → api.bundle → live)를 피하려 bundle을
+    import하지 않지만, 소스 선택은 공유 함수라 재현이 아닌 **동일 코드**다.
+
+    이미 복구된 날(kis_api가 캔들로 승리)은 자연히 non-empty가 되어 멱등 스킵된다.
+    """
+    source = resolve_candle_source(engine, date_s, code, _SOURCE_PREF)
+    if source is None:
         return False
-    if res.classification.state == DiskState.INVALID:
-        return False
-    candles_path = res.path / "candles.parquet"
-    if not candles_path.exists():
-        return False
+    candles_path = engine.parquet_dir(date_s, code, source) / "candles.parquet"
     return len(candles_tbl.query_all(engine.conn, path=candles_path)) > 0
 
 
