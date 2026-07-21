@@ -34,7 +34,7 @@ describe('liveVenuePolicy', () => {
 
   it('owns the user-facing venue labels used by chart chrome', () => {
     expect(liveVenueDisplayLabel('KRX')).toBe('KRX');
-    expect(liveVenueDisplayLabel('UN')).toBe('통합');
+    expect(liveVenueDisplayLabel('UN')).toBe('시간대 자동');
   });
 
   it('uses venue-specific session windows for live refetch freshness', () => {

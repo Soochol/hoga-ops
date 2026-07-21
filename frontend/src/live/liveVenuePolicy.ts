@@ -83,7 +83,7 @@ export function liveVenueRefetchInterval(venue: LiveVenueOption): 60_000 | false
  *
  *  - **KRX venue**: KRX 태그만 수용(태그 부재=KRX 하위호환). NXT 태그는 KRX 캔들에
  *    섞지 않는다.
- *  - **통합(UN) venue**: 태그가 있으면 KRX·NXT 둘 다 수용 — 백엔드가 시분할 구독
+ *  - **자동(UN) venue**: 태그가 있으면 KRX·NXT 둘 다 수용 — 백엔드가 시분할 구독
  *    하므로 시점당 한 시장(정규장=KRX, 그 외=NXT)만 도착한다(#524). 태그가 없으면
  *    (구백엔드) ADR-0096 시간 게이트로 폴백: 정규장 KRX 체결만.
  *  - **그 외**(제거된 NXT 등): 미수용.
