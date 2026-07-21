@@ -9,6 +9,7 @@
  * 조립: /study = 둘 다 · /live 전역 툴바 = 설정만 · 차트 창 헤더 = 보조지표만.
  */
 import { IconToolbarButton } from '../ui/WorkspaceShell';
+import { COMPACT_PADDING_INLINE } from './workspace/chartHeaderCompact';
 
 export function IndicatorsButton({
   onClick,
@@ -27,6 +28,7 @@ export function IndicatorsButton({
       aria-label="보조지표"
       title="보조지표"
       className={className}
+      style={showLabel ? undefined : { paddingInline: COMPACT_PADDING_INLINE }}
       icon={(
         <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <line x1="12" y1="5" x2="12" y2="19" />

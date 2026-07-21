@@ -1,13 +1,13 @@
 /**
  * WorkspaceLiveToolbar — 워크스페이스 상단 고정 툴바 (ADR-0119 C2c-2c).
  *
- * 창 추가(단일 드롭다운 = WindowAddMenu)·정리(Tidy)와 기존 LiveToolbar 의
- * 액션 버튼(보조지표·설정·수집·저장뷰·프리셋)을 한 행으로 통합.
- * 봉 컨트롤은 창별 소유라 여기 없다(각 차트 창 상단). 활성 그룹은 뱃지로 표시.
- * 지표/설정/수집/저장뷰의 열림 상태는 셸(LivePage 또는 프리뷰 페이지)이 소유하고
- * 콜백으로 받는다 — LiveToolbar 와 같은 계약.
+ * **워크스페이스와 앱의 것만 남는다.** 창 추가·정리·레이아웃 프리셋(워크스페이스
+ * 관리)과 설정(앱 전역). 차트 하나에 걸리는 것 — 봉·그리기·보조지표·저장뷰·수집 —
+ * 은 전부 그 차트 창의 헤더로 이관됐다(#758 및 후속). 그 결과 이 툴바에는 "어느
+ * 창/그룹에 걸리나" 를 추론해야 하는 항목이 하나도 남지 않았다.
+ *
+ * 설정의 열림 상태는 셸(LivePage 또는 프리뷰 페이지)이 소유하고 콜백으로 받는다.
  */
-import type { ReactNode } from 'react';
 import { IconToolbarButton, WorkspaceToolbar } from '../../ui/WorkspaceShell';
 import { SettingsButton } from '../LiveToolbar';
 import { LayoutPresetMenu } from '../presets/LayoutPresetMenu';
@@ -17,16 +17,9 @@ import { useWorkspaceStore, activeGroupOf } from '../../state/workspace';
 
 type Props = {
   onOpenSettings: () => void;
-  /** 활성 그룹 종목이 주식일 때만 전달(지수 미지원) — LiveToolbar 계약 동일. */
-  onOpenCollect?: () => void;
-  studySaveControl?: ReactNode;
 };
 
-export function WorkspaceLiveToolbar({
-  onOpenSettings,
-  onOpenCollect,
-  studySaveControl,
-}: Props) {
+export function WorkspaceLiveToolbar({ onOpenSettings }: Props) {
   const windowCount = useWorkspaceStore((s) => s.windows.length);
   const activeGroup = useWorkspaceStore((s) => activeGroupOf(s));
 
@@ -67,23 +60,6 @@ export function WorkspaceLiveToolbar({
           바꾼다(#759 결정 1). 차트 창 0개 가드도 함께 사라졌다 — 헤더 버튼은
           차트 창에만 있으므로 "차트 창이 있어야 연다" 가 자명하게 참이다. */}
       <SettingsButton onClick={onOpenSettings} />
-      {studySaveControl}
-      {onOpenCollect && (
-        <IconToolbarButton
-          data-testid="live-collect-button"
-          onClick={onOpenCollect}
-          aria-label="데이터 수집"
-          icon={(
-            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 3v12" />
-              <path d="m7 11 5 4.5 5-4.5" />
-              <path d="M5 21h14" />
-            </svg>
-          )}
-        >
-          <span>데이터 수집</span>
-        </IconToolbarButton>
-      )}
       <LayoutPresetMenu />
     </WorkspaceToolbar>
   );

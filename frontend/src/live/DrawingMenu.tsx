@@ -28,6 +28,7 @@ import { drawingScopeFor, useDrawingsStore } from '../state/drawings';
 import type { LiveTimeframe } from '../state/livePage';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useDismissablePopover } from '../util/useDismissablePopover';
+import { COMPACT_PADDING_INLINE } from './workspace/chartHeaderCompact';
 
 /** 메뉴 표시 순서 — '선택'(해제)이 먼저, 그 뒤로 실제 그리기 도구들. */
 const MENU_TOOLS: readonly DrawingTool[] = ['select', ...DRAWABLE_TOOLS_ORDER];
@@ -174,6 +175,9 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
           // (봉 컨트롤과 같은 문법, 2026-07-15 결정).
           background: drawing ? 'var(--tint-selection)' : 'transparent',
           color: drawing ? 'var(--accent)' : 'var(--fg-dim)',
+          // 아이콘만 남을 때 좌우 여백은 순수 낭비다 — 좁혀야 완전 접힘이
+          // MIN_W(160px)에 들어간다(#762 후속 실측). 인라인이라 클래스 px-2 를 이긴다.
+          paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE,
         }}
       >
         <span aria-hidden="true" className="font-mono">{drawing ? activeSpec.glyph : '✎'}</span>

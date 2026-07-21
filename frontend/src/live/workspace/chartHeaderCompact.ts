@@ -15,9 +15,21 @@
  * 직접 검증할 수 있게 한다(훅은 관측만 담당).
  */
 
-/** 라벨을 유지할 수 있는 헤더 최소 폭(px). 실측 요구폭 ~326px(1분 기준)에
- *  긴 분봉 라벨("30분")과 테마별 폰트 편차 여유를 얹었다. */
-export const HEADER_LABEL_MIN_WIDTH_PX = 344;
+/**
+ * 아이콘만 남은 액션 버튼의 좌우 여백(px). 기본 `px-2`(8px)는 라벨과 아이콘을
+ * 떼어놓기 위한 값이라 라벨이 없으면 순수 낭비다 — 좁히지 않으면 4버튼 완전
+ * 접힘이 `MIN_W`(160px)에 들어가지 않는다(실측: 여백 유지 시 181px 필요).
+ * 인라인 style 로 적용해야 컴포넌트가 클래스로 들고 있는 `px-2` 를 이긴다.
+ */
+export const COMPACT_PADDING_INLINE = '4px';
+
+/** 라벨을 유지할 수 있는 헤더 최소 폭(px).
+ *
+ *  실측(액션 4버튼): 봉 그룹 150 + 라벨 액션 251 + 패딩·갭 14 = **415px**.
+ *  긴 분봉 라벨("30분")과 테마별 폰트 편차 여유를 얹었다.
+ *  ⚠️ 헤더에 버튼을 더하거나 라벨을 바꾸면 이 값은 **반드시 다시 실측**해야 한다 —
+ *  2버튼 시절 값(344)을 그대로 두었다가 71px 부족으로 무성 잘림이 났다. */
+export const HEADER_LABEL_MIN_WIDTH_PX = 424;
 
 /** 되펴기 임계 — 접힘/펴짐 경계에서 1px 떨림에 깜빡이지 않도록 dead band 를 둔다.
  *  `usePaneFolding` 의 히스테리시스와 같은 취지. */
@@ -29,7 +41,7 @@ export const HEADER_LABEL_RESTORE_WIDTH_PX = HEADER_LABEL_MIN_WIDTH_PX + 24;
  * 버튼이 다시 조용히 잘렸다. 2단계에서는 일·주·월을 분봉 드롭다운 안으로
  * 합쳐(#762 B 변형이 검증한 모양) 필요 폭을 ~110px 로 낮춘다.
  */
-export const HEADER_TIMEFRAME_FOLD_WIDTH_PX = 232;
+export const HEADER_TIMEFRAME_FOLD_WIDTH_PX = 258;
 export const HEADER_TIMEFRAME_RESTORE_WIDTH_PX = HEADER_TIMEFRAME_FOLD_WIDTH_PX + 24;
 
 export type HeaderFold = {

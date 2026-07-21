@@ -221,14 +221,15 @@ describe('WorkspaceLiveToolbar 액션 버튼', () => {
     expect(screen.queryByTestId('live-indicators-button')).toBeNull();
   });
 
-  it('renders current-view save after chart action buttons without the old drawing menu', () => {
-    renderToolbar({ studySaveControl: <button type="button">현재 뷰 저장</button> });
+  // 저장뷰·수집도 차트 창 헤더로 이관됐다 — 저장뷰는 "이 창의 지금 화면",
+  // 수집은 "이 창이 보는 종목" 이라 둘 다 창이 대상을 결정한다. 부재가 계약이다:
+  // 여기 남아 있으면 전역 툴바가 다시 대상을 추론해야 한다.
+  it('renders neither the study-save nor the collect button — both moved to the window header', () => {
+    renderToolbar();
 
+    expect(screen.queryByTestId('live-study-save-button')).toBeNull();
+    expect(screen.queryByTestId('live-collect-button')).toBeNull();
     expect(screen.queryByRole('button', { name: '그리기' })).toBeNull();
-    const settings = screen.getByTestId('live-settings-button');
-    const save = screen.getByRole('button', { name: '현재 뷰 저장' });
-
-    expect(settings.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('renders the layout preset menu button and window-add / tidy controls', () => {
@@ -242,13 +243,14 @@ describe('WorkspaceLiveToolbar 액션 버튼', () => {
     expect(screen.getByTestId('workspace-add-chart')).toBeInTheDocument();
   });
 
-  it('renders collect button only when onOpenCollect is provided and calls it on click', () => {
+  // 남는 것은 워크스페이스 관리(창 추가·정리·프리셋) + 앱 설정뿐 —
+  // "어느 창/그룹에 걸리나" 를 추론해야 하는 항목이 하나도 없다.
+  it('keeps only workspace-management and app-settings controls', () => {
     renderToolbar();
-    expect(screen.queryByTestId('live-collect-button')).toBeNull();
 
-    const onOpenCollect = vi.fn();
-    renderToolbar({ onOpenCollect });
-    fireEvent.click(screen.getByTestId('live-collect-button'));
-    expect(onOpenCollect).toHaveBeenCalledOnce();
+    expect(screen.getByTestId('workspace-add-menu-button')).toBeInTheDocument();
+    expect(screen.getByTestId('workspace-tidy')).toBeInTheDocument();
+    expect(screen.getByTestId('layout-preset-button')).toBeInTheDocument();
+    expect(screen.getByTestId('live-settings-button')).toBeInTheDocument();
   });
 });
