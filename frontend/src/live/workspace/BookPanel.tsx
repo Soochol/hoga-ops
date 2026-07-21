@@ -306,10 +306,7 @@ function QtyBar({
             히트맵(빨강·파랑)과 같은 셀에 겹쳐 켜지므로 색이 충돌하면 판독 불가라
             다른 색조가 필수지만, 이 뱃지는 겹치는 레이어가 없다. */}
         {badge !== null && (
-          <span
-            key={badge.atMs}
-            className={`book-delta-flash shrink-0 text-[10px] ${priceDirClass(badge.delta)}`}
-          >
+          <span className={`shrink-0 text-[10px] ${priceDirClass(badge.delta)}`}>
             {badge.delta > 0 ? '+' : '−'}
             {Math.abs(badge.delta).toLocaleString('ko-KR')}
           </span>
