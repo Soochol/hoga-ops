@@ -54,7 +54,7 @@ import {
   clearLiveWindowStatus,
   type LiveWindowStatus,
 } from './liveWindowStatusSource';
-import type { LiveStudySaveSource } from '../../studyViews/studySaveSource';
+import type { LiveStudySaveSource } from '../../studyViews/studySaveCommand';
 import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButton';
 import { CollectButton } from './CollectButton';
 import { clearWindowFlagLegendValues } from '../indicators/flagLegendValueRegistry';

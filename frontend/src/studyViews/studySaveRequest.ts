@@ -6,8 +6,8 @@ import type {
 import type { RangeBundle } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { chooseSnapshotWindow } from './snapshotWindow';
-import type { LiveStudySaveSource } from './studySaveSource';
 import type { TabViewport } from '../live/viewportAnchor';
+import type { LiveTimeframe } from '../state/livePage';
 
 export function defaultStudyViewName(row: StudyViewListRow | undefined, label: string, timeframe: string): string {
   return row?.name ?? `${label} ${timeframe} 저장뷰`;
@@ -61,6 +61,24 @@ export function rangeForWindow(bundle: RangeBundle, fromIndex: number, toIndex: 
     to_ms: toCandle.ts_ms,
   };
 }
+
+/**
+ * 저장 대상 차트 — 창이 자기 값을 직접 넘긴다.
+ *
+ * 예전에는 `studySaveSource` 전역 1슬롯을 거쳤다: 저장 버튼이 차트에서 멀리
+ * (전역 툴바에) 있어서 "지금 저장할 수 있는 차트가 무엇인가" 를 우편함에 적어
+ * 둬야 했다. 버튼이 차트 창 헤더로 내려오며 그 우편함이 필요 없어졌다(#767).
+ * `/study` 쪽 변종(`study-reference`)은 그보다 앞서 독자를 잃었고(저장뷰 드로어
+ * 단순화 164f4952) 쓰기만 남아 있다가 함께 정리됐다.
+ */
+export type LiveStudySaveSource = {
+  origin: 'live';
+  code: string;
+  label: string;
+  timeframe: LiveTimeframe;
+  bundle: RangeBundle;
+  captureViewport: () => TabViewport | null;
+};
 
 export function buildStudyReferenceSaveRequest(liveSource: LiveStudySaveSource): StudyViewWriteRequest | null {
   const viewport = viewportFromCapture(liveSource.captureViewport, fallbackViewport(liveSource.bundle));

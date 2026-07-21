@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
-import type { LiveStudySaveSource } from './studySaveSource';
+import type { LiveStudySaveSource } from './studySaveCommand';
 import { LiveStudyViewSaveButton } from './LiveStudyViewSaveButton';
 
 const createMutate = vi.fn();

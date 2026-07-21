@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { makeStudySaveCommand, studySaveCommandBody, type StudySaveCommand } from './studySaveCommand';
-import type { LiveStudySaveSource } from './studySaveSource';
+import type { LiveStudySaveSource } from './studySaveCommand';
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
 import { useStudyViewMutations } from './useStudyViews';
 import { COMPACT_PADDING_INLINE } from '../live/workspace/chartHeaderCompact';
