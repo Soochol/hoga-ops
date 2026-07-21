@@ -1054,3 +1054,73 @@ async def test_flush_per_code_isolation_on_append_failure(tmp_path, monkeypatch)
     # B는 commit돼 합이 0으로(다음 윈도 새 합), A는 보존(5)
     assert stream._ds._codes["000660"].buy_qty == 0
     assert stream._ds._codes["005930"].buy_qty == 5   # A 보존 → 다음 윈도 롤
+
+
+def _broker_tick(t_ms, buy_top, sell_top):
+    return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.BROKER, payload={
+        "code": "005930", "t_ms": t_ms, "buy_top": buy_top, "sell_top": sell_top,
+    })
+
+
+async def test_broker_names_canonical_on_display_but_raw_in_storage(tmp_path):
+    """거래원명 정규화는 표시 경로에만 적용되고 저장은 원시 이름 그대로다.
+
+    hoga.broker_names 의 원칙("API 경계에서만 적용, 저장 스키마 불변") 을 고정한다.
+    표시 경로만 정규화되면 프론트가 파케이 조회 결과(이미 canonical)와 WS 스냅샷을
+    한 화면에서 합쳐도 같은 거래원이 갈라지지 않는다.
+    """
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    now = int(time.time() * 1000)
+    # 실측 별칭(2026-07-21 018260): 스트림은 짧은/도시접미 형태를 쓴다.
+    await stream.on_tick(_broker_tick(
+        now,
+        buy_top=[{"name": "미래에셋", "qty": 100}],
+        sell_top=[{"name": "JP모간서울", "qty": 200}],
+    ))
+
+    series = await buf.get_series("005930")
+    assert series["brokers"][0]["buy_top"][0]["name"] == "미래에셋증권"
+    assert series["brokers"][0]["sell_top"][0]["name"] == "JP모간"
+    assert series["brokers"][0]["buy_top"][0]["qty"] == 100   # 수량은 불변
+
+    await stream.flush_once(now_ms=now + 10_000)
+    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    assert "미래에셋증권" not in jsonl      # 저장: 원시 유지
+    assert "미래에셋" in jsonl
+
+
+async def test_broker_unknown_alias_passes_through_unchanged(tmp_path):
+    """미지 별칭은 추측 병합하지 않고 그대로 통과한다(골드만/씨티그룹 교훈)."""
+    buf = LiveBuffer()
+    stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    now = int(time.time() * 1000)
+    await stream.on_tick(_broker_tick(
+        now, buy_top=[{"name": "듣도보도못한증권", "qty": 1}], sell_top=[],
+    ))
+
+    series = await buf.get_series("005930")
+    assert series["brokers"][0]["buy_top"][0]["name"] == "듣도보도못한증권"
+
+
+async def test_broker_malformed_top_entries_do_not_crash_display(tmp_path):
+    """이름 키가 없거나 형태가 어긋난 항목이 표시 경로를 죽이지 않는다."""
+    buf = LiveBuffer()
+    stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    now = int(time.time() * 1000)
+    await stream.on_tick(_broker_tick(
+        now, buy_top=[{"qty": 5}, {"name": None, "qty": 1}, "junk"], sell_top=[],
+    ))
+
+    series = await buf.get_series("005930")
+    assert len(series["brokers"][0]["buy_top"]) == 3

@@ -9,6 +9,7 @@
  * is applied to both the URL `t=` param and the cache key to collapse
  * within-bucket motion to a single request.
  */
+import { useEffect, useState } from 'react';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { SourcePreference } from '../state/sourcePreference';
@@ -122,6 +123,48 @@ export function useLiveBrokersAtCursor(
   const { data } = useSpot<BrokerSeriesEntry[]>(key, () =>
     apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
       `/api/brokers/series?code=${p.code}&date=${date}&source_pref=${sourcePref}`,
+    ).then((r) => r.brokers),
+  );
+  return data;
+}
+
+// ─── latest 모드 당일 궤적 (ADR-0044 amendment 2026-07-21) ────────────────────
+
+/** 리페치 주기. 백엔드 Today Promotion 이 300초마다 brokers.parquet 을 다시 쓰므로
+ *  그보다 잦을 필요는 없지만, 실패/건너뛴 사이클을 스스로 복구하고 15분 WS 버퍼
+ *  이음매에 여유를 남기려 60초로 둔다 — 승격 지연(≤5분10초) + 60초 ≪ 15분. */
+const TODAY_SERIES_REFRESH_MS = 60_000;
+
+/**
+ * 커서 없는 latest 모드에서 쓰는 **당일 전체** 거래원 궤적.
+ *
+ * useLiveBrokersAtCursor 와 같은 파케이 엔드포인트를 읽지만 두 가지가 다르다:
+ * 커서가 아니라 "오늘" 로 키를 잡고, 장중에 계속 자라는 파일이라 주기적으로
+ * 다시 읽는다(useSpot 은 키 단위 영구 캐시라 키에 시각 스탬프를 넣어야 갱신된다 —
+ * 스팟 키를 재활용하면 화면이 첫 로드 시점에 얼어붙는다).
+ *
+ * ADR-0044 불변식 유지: 이 훅은 **parquet-only** 다. 승격 지연(≤약 5분 10초)으로
+ * 비는 꼬리는 호출부가 WS 버퍼로 잇는다(liveSidebarAdapters의
+ * mergeBrokerSeriesWithLiveTail) — orderbookSnapshotAtCursor 와 동일한 구조로,
+ * 하이브리드는 fetcher 가 아니라 합성 레이어에 산다.
+ *
+ * code=null 이면 fetch 하지 않는다 — 스팟 모드일 때 호출부가 이걸로 잠재운다.
+ */
+export function useLiveBrokersToday(code: string | null): BrokerSeriesEntry[] | undefined {
+  const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
+  // 렌더 중 Date.now() 는 impure — 최초 1회 lazy init 후 인터벌로만 진행시킨다.
+  // 스탬프가 날짜 파생의 근거이므로 자정 롤오버도 같이 따라간다.
+  const [stampMs, setStampMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setStampMs(Date.now()), TODAY_SERIES_REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const date = unixMsToKSTDate(stampMs);
+  const key = code ? `live|br-today|${code}|${date}|${sourcePref}|${stampMs}` : null;
+  const { data } = useSpot<BrokerSeriesEntry[]>(key, () =>
+    apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
+      `/api/brokers/series?code=${code}&date=${date}&source_pref=${sourcePref}`,
     ).then((r) => r.brokers),
   );
   return data;

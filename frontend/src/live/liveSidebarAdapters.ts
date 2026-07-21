@@ -168,6 +168,74 @@ export function orderbookSnapshotAtCursor(
  * resulting series has gaps wherever a broker fell off the list — that
  * matches how /replay treats broker data and is intentional per ADR-0023.
  */
+/**
+ * ADR-0044 amendment (2026-07-21) — latest 모드 거래원 궤적을 "승격된 당일
+ * 파케이 + 미승격 WS 꼬리" 로 잇는다. CLIENT-SIDE 합성이며 fetcher 는
+ * parquet-only 그대로다(위 orderbookSnapshotAtCursor 와 동일 구조).
+ *
+ * Why: 2026-07-09 개정이 빈영역 hover 를 latest 로 돌리면서 매물대는 "latest =
+ * 전체 누적" 을 얻었지만 거래원은 못 얻었다. latest 경로가
+ * aggregateBrokerSeries(live.broker) 하나였고 그 버퍼는 15분 슬라이딩이라,
+ * 하루 폭으로 고정된 x축 위에 최근 15분 궤적만 얹혀 그려졌다(사용자 보고:
+ * "당일 누적으로 나와야 하는데 짧은 선만 나옴"). 우측 숫자는 키움 0F 값 자체가
+ * 당일 누적이라 맞고 궤적만 잘려, 숫자와 그림이 어긋나는 비대칭이 생겼다.
+ *
+ * 이음매 = **전역 최대 파케이 ts**(브로커별이 아니라). 프로모터는 전 브로커를
+ * 한 번에 쓰므로 승격 경계는 전역이다. 브로커별 마지막 ts 로 자르면, 그 브로커가
+ * top-5 밖이라 파케이가 정직하게 비워둔 구간을 WS 점으로 메워 "연속 관측" 을
+ * 날조하게 된다(ADR-0023 top-5 절단 정직성).
+ *
+ * 두 소스는 시간대를 공유하지 않는다 — parquet 은 승격된 과거, 버퍼는 미승격
+ * 꼬리. 2026-06-11 개정이 무력화한 "어느 게 진짜?" 반론이 여기서도 그대로 성립.
+ * 밀도가 다르므로(파케이=10초 다운샘플, 버퍼=원시 틱) 겹치는 구간을 양쪽에서
+ * 그리면 안 되고, 이음매 초과분만 이어붙인다.
+ *
+ * 사이징 근거: 프로모터 지연 ≤ 10s(다운샘플 윈도) + 300s(승격 주기) ≈ 5분 10초 <
+ * RETENTION_MS(15분). 리페치 주기를 얹어도 여유가 크다.
+ */
+export function mergeBrokerSeriesWithLiveTail(
+  parquetSeries: readonly BrokerSeriesEntry[] | null | undefined,
+  liveSeries: readonly BrokerSeriesEntry[],
+): BrokerSeriesEntry[] {
+  const parquet = parquetSeries ?? [];
+  if (parquet.length === 0) return liveSeries.map(cloneEntry);
+
+  // 전역 이음매 — 승격된 마지막 관측 시각.
+  let seamMs = -Infinity;
+  for (const e of parquet) {
+    const last = e.points[e.points.length - 1];
+    if (last && last.ts_ms > seamMs) seamMs = last.ts_ms;
+  }
+
+  const byBroker = new Map<string, BrokerSeriesPoint[]>();
+  for (const e of parquet) byBroker.set(e.broker, [...e.points]);
+  for (const e of liveSeries) {
+    const tail = e.points.filter((p) => p.ts_ms > seamMs);
+    if (tail.length === 0 && byBroker.has(e.broker)) continue;
+    const merged = byBroker.get(e.broker) ?? [];
+    merged.push(...tail);
+    byBroker.set(e.broker, merged);
+  }
+
+  const entries: BrokerSeriesEntry[] = [];
+  for (const [broker, points] of byBroker) {
+    points.sort((a, b) => a.ts_ms - b.ts_ms);
+    const finalNet = points.length > 0 ? points[points.length - 1].net : 0;
+    entries.push({
+      broker,
+      final_net: finalNet,
+      dominant_side: finalNet >= 0 ? 'buy' : 'sell',
+      points,
+    });
+  }
+  entries.sort((a, b) => b.final_net - a.final_net);
+  return entries;
+}
+
+function cloneEntry(e: BrokerSeriesEntry): BrokerSeriesEntry {
+  return { ...e, points: [...e.points] };
+}
+
 export function aggregateBrokerSeries(broker: readonly RawSnapshot[]): BrokerSeriesEntry[] {
   const byBroker = new Map<string, BrokerSeriesPoint[]>();
 
