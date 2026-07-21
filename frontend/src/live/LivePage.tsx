@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useLivePageStore } from '../state/livePage';
 import { activeGroupOf, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
-import { requestWorkspaceTidy } from './workspace/workspaceCanvasControls';
+import { requestWorkspaceTidy } from '../workspace/workspaceCanvasControls';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveStatusBar } from './LiveStatusBar';

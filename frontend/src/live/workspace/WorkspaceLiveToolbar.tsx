@@ -11,7 +11,7 @@
 import { IconToolbarButton, WorkspaceToolbar } from '../../ui/WorkspaceShell';
 import { SettingsButton } from '../LiveToolbar';
 import { LayoutPresetMenu } from '../presets/LayoutPresetMenu';
-import { requestWorkspaceTidy } from './workspaceCanvasControls';
+import { requestWorkspaceTidy } from '../../workspace/workspaceCanvasControls';
 import { WindowAddMenu } from './WindowAddMenu';
 import { useWorkspaceStore, activeGroupOf } from '../../state/workspace';
 

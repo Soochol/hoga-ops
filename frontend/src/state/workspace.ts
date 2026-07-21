@@ -17,9 +17,9 @@ import type { PaneId } from '../chart/drawing/types';
 import { profileKeyForTimeframe } from '../live/indicators/indicatorPaneProfiles';
 import { applyPresetEnableByTimeframe } from './indicatorPresetOps';
 import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
-import { tidyLayout } from '../live/workspace/tidy';
-import { MIN_W, MIN_H, type Canvas, type Rect } from '../live/workspace/snapEngine';
-import { isFracRect, toFrac } from '../live/workspace/rectSpace';
+import { tidyLayout } from '../workspace/tidy';
+import { MIN_W, MIN_H, type Canvas, type Rect } from '../workspace/snapEngine';
+import { isFracRect, toFrac } from '../workspace/rectSpace';
 import { readLegacyWorkspaceSeed } from './workspaceMigration';
 import { isLiveIndexId } from '../live/liveInstrument';
 
