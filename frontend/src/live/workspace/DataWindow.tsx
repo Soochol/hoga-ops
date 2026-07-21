@@ -39,6 +39,7 @@ import { useLiveViStatus } from '../../api/liveViStatus';
 import {
   useLiveOrderbookAtCursor,
   useLiveBrokersAtCursor,
+  useLiveBrokersToday,
 } from '../../api/useLiveCursor';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useChartPrefsStore } from '../../state/chartPrefs';
@@ -48,6 +49,7 @@ import { isClosingAuction, type SessionSegment } from '../../util/sessionTime';
 import {
   EMPTY_TRADE_SUMMARY,
   aggregateBrokerSeries,
+  mergeBrokerSeriesWithLiveTail,
   latestOrderbookSnapshot,
   latestTradeSummary,
   orderbookSnapshotAtCursor,
@@ -272,9 +274,28 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     code: scope.kind === 'minute-cursor' ? code : null,
     timeframe: scope.minuteTimeframe,
   });
-  const latestSeries = useMemo(() => aggregateBrokerSeries(live.broker), [live.broker]);
+  // latest 모드는 "당일 전체 누적" 이어야 한다(ADR-0044 2026-07-09 개정이 매물대에
+  // 명시한 의미론 — 거래원에만 빠져 있었다). 승격된 당일 파케이를 본체로 삼고,
+  // 승격 지연(≤약 5분 10초)으로 비는 꼬리만 WS 버퍼(15분)로 잇는다. 스팟 모드일
+  // 때는 code=null 로 잠재워 불필요한 fetch 를 막는다.
+  const todaySeries = useLiveBrokersToday(scope.kind === 'inactive' ? code : null);
+  const liveTail = useMemo(() => aggregateBrokerSeries(live.broker), [live.broker]);
+  const latestSeries = useMemo(
+    () => mergeBrokerSeriesWithLiveTail(todaySeries, liveTail),
+    [todaySeries, liveTail],
+  );
+  // 커서는 병합 시리즈의 마지막 관측 시각 — WS 버퍼가 아니라. 버퍼가 비어도
+  // (장 초반·재접속 직후) 파케이 궤적이 있으면 값을 읽어야 한다. 버퍼만 보면
+  // 그 경우 cursorMs=null 이 돼 궤적은 그려지는데 우측 값이 전부 "—" 가 된다.
   // 비었을 때 fallback 은 null — 시리즈도 비어 표시가 동일하므로 Date.now()(impure) 불필요.
-  const latestTs = live.broker.length > 0 ? (live.broker[live.broker.length - 1].t_ms as number) : null;
+  const latestTs = useMemo(() => {
+    let max = -Infinity;
+    for (const e of latestSeries) {
+      const last = e.points[e.points.length - 1];
+      if (last && last.ts_ms > max) max = last.ts_ms;
+    }
+    return Number.isFinite(max) ? max : null;
+  }, [latestSeries]);
   // latest 모드는 항상 배열을 넘긴다(빈 배열 → "거래원 정보 없음"). 레거시의
   // undefined 폴백은 로딩 상태("커서 위치 로딩 중…")로 표기돼 빈 버퍼가 영구
   // 로딩처럼 보이는 함정 — 데이터 창에서는 빈 상태가 맞다.

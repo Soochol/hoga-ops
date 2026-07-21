@@ -51,6 +51,40 @@ def _has_deep_qty(levels: Sequence[Mapping[str, object]]) -> bool:
     return False
 
 
+def _canonicalize_broker_payload(payload: dict) -> dict:
+    """거래원 표시 스냅샷의 거래원명을 KRX 정식명으로 정규화한다.
+
+    **표시 경로 전용** — 저장(JSONL→parquet)은 원시 이름 그대로 둔다.
+    hoga.broker_names 의 설계 원칙("API 경계에서만 적용, 저장 스키마 불변,
+    매핑이 parquet 마이그레이션 없이 진화") 을 지키기 위해서다. 파케이 조회
+    경로(hoga.tables.brokers)는 이미 같은 맵을 조회 시점에 적용하고 있다.
+
+    Why: 키움 0F 원시명과 파케이 조회 결과가 서로 다른 별칭을 쓴다(실측
+    2026-07-21 018260: 스트림 "미래에셋"·"JP모간서울" vs 조회 "미래에셋증권"·
+    "JP모간"). 프론트가 두 소스를 한 화면에서 합치면(거래원 창 latest 모드의
+    당일 파케이 + WS 꼬리) 같은 거래원이 두 행으로 갈라진다 — broker_names
+    모듈 헤더가 예고한 "split nets, split sparklines" 그대로다. 합치지 않더라도
+    latest 모드와 스팟 모드의 표기가 달라지는 불일치가 남는다.
+
+    미지 별칭은 canonical() 이 그대로 통과시키며 1회 경고한다(추측 병합 금지 —
+    골드만/씨티그룹 교훈).
+    """
+    from hoga.broker_names import canonical
+
+    out = dict(payload)
+    for side in ("buy_top", "sell_top"):
+        entries = out.get(side)
+        if not isinstance(entries, list):
+            continue
+        out[side] = [
+            {**e, "name": canonical(e["name"])}
+            if isinstance(e, dict) and isinstance(e.get("name"), str)
+            else e
+            for e in entries
+        ]
+    return out
+
+
 def _next_window_delay_s(now_s: float, interval_s: float) -> float:
     """다음 벽시계 윈도 경계까지의 지연(초) — 리뷰 #5.
 
@@ -326,8 +360,10 @@ class LiveStream:
         phase = self._phase_fn()
         # venue 태그를 표시 스냅샷에 실어 프론트가 KRX/NXT를 구분(#524). 추가 키라
         # 하위호환(구프론트 무시); 저장 스키마는 아래 KRX 격리로 무영향.
-        snap = LiveSnapshot(t_ms=tick.t_ms, kind=tick.kind,
-                            payload={**tick.payload, "phase": phase, "venue": tick.venue})
+        payload = {**tick.payload, "phase": phase, "venue": tick.venue}
+        if tick.kind is SnapshotKind.BROKER:
+            payload = _canonicalize_broker_payload(payload)
+        snap = LiveSnapshot(t_ms=tick.t_ms, kind=tick.kind, payload=payload)
         # 표시 경로는 §11에 따라 무게이트 — KRX/NXT 모두 항상 publish. 시분할 스왑이
         # KRX를 정규장에만 구독하므로 KRX 틱이 장전에 도착해 유령 캔들을 만들 일은 없다.
         await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
