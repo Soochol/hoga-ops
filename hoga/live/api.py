@@ -13,6 +13,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
 
@@ -39,6 +40,8 @@ from hoga.live.kis_venue import (
     parse_live_venue_policy,
     quote_venue_for_policy,
 )
+from hoga.live import kiwoom_runtime
+from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
@@ -108,6 +111,9 @@ _CODE_RE = re.compile(CODE_PATTERN)
 _KST = timezone(timedelta(hours=9))
 _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
 index_candles_cache_instance: IndexCandlesCache | None = None
+# ka10001 fetcher — 프로세스 싱글톤(httpx.Client 보유). build_router 재호출(테스트)
+# 마다 새 클라이언트가 새지 않도록 index_candles_cache_instance 와 같은 패턴.
+kiwoom_stock_info_fetcher_instance: KiwoomStockInfoFetcher | None = None
 index_minute_candles_cache_instance: IndexMinuteCandlesCache | None = None
 
 # Rate-limit retry policy lives in ``KisClient._get`` (ADR-0050). Handlers
@@ -1267,6 +1273,21 @@ def _preserve_investor_estimate_observed_at(
     return current
 
 
+class StockLimitsResponse(BaseModel):
+    """GET /api/live/stock-limits — 키움 ka10001 부분집합(kiwoom_stock_info)."""
+
+    code: str
+    base_price: int | None
+    upper_limit: int | None
+    lower_limit: int | None
+    high_250: int | None
+    low_250: int | None
+    high_250_date: str | None
+    low_250_date: str | None
+    fetched_at_ms: int
+    source: Literal["kiwoom"] = "kiwoom"
+
+
 def build_router(
     get_status: Callable[[], LiveStatus],
     get_buffer: Callable[[], LiveBuffer] | None = None,
@@ -1959,6 +1980,11 @@ def build_router(
     global index_candles_cache_instance
     if data_dir is not None and index_candles_cache_instance is None:
         index_candles_cache_instance = IndexCandlesCache()
+    global kiwoom_stock_info_fetcher_instance
+    if data_dir is not None and kiwoom_stock_info_fetcher_instance is None:
+        _kiwoom_prov = kiwoom_runtime.ensure_token_provider_for_account(0, data_dir)
+        if _kiwoom_prov is not None:
+            kiwoom_stock_info_fetcher_instance = KiwoomStockInfoFetcher(_kiwoom_prov)
     global index_minute_candles_cache_instance
     if data_dir is not None and index_minute_candles_cache_instance is None:
         index_minute_candles_cache_instance = IndexMinuteCandlesCache()
@@ -2111,6 +2137,36 @@ def build_router(
             frm=frm,
             too=too,
             today_d=today_d,
+        )
+
+    @router.get("/stock-limits", response_model=StockLimitsResponse)
+    async def _get_stock_limits(code: str = Query(...)) -> StockLimitsResponse:
+        """상하한가·기준가·250일 최고/최저 (키움 ka10001, KST 날짜 단위 캐시).
+
+        10호가 요약 패널의 상한가/하한가/52주 행 소스. 키움은 52주가 아니라
+        250거래일 기준을 쓴다 — 프론트 라벨도 그에 맞춘다. 미제공 필드(신규상장
+        등)는 null 로 내려가고 패널이 대시로 렌더한다.
+        """
+        if not _CODE_RE.match(code):
+            raise HTTPException(422, {"code": "invalid_code", "msg": "code must be 6 digits"})
+        if kiwoom_stock_info_fetcher_instance is None:
+            raise HTTPException(503, "kiwoom credentials not configured")
+        try:
+            limits, fetched_at_ms = await kiwoom_stock_info_fetcher_instance.get(code)
+        except KiwoomStockInfoError as e:
+            raise HTTPException(502, {"code": "kiwoom_api_error", "msg": str(e)}) from e
+        except httpx.HTTPError as e:
+            raise HTTPException(502, {"code": "kiwoom_http_error", "msg": str(e)}) from e
+        return StockLimitsResponse(
+            code=limits.code,
+            base_price=limits.base_price,
+            upper_limit=limits.upper_limit,
+            lower_limit=limits.lower_limit,
+            high_250=limits.high_250,
+            low_250=limits.low_250,
+            high_250_date=limits.high_250_date,
+            low_250_date=limits.low_250_date,
+            fetched_at_ms=fetched_at_ms,
         )
 
     return router

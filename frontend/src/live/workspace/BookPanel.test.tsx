@@ -70,8 +70,36 @@ describe('BookPanel', () => {
     expect(screen.getByText('104.42%')).toBeInTheDocument();  // 어제보다
     expect(screen.getByText('4,668만')).toBeInTheDocument();  // 거래량(만 단위 절사)
     expect(screen.getByText('250,449')).toBeInTheDocument();  // VWAP
-    // 아직 소스가 없는 5개(상한가·하한가·상승VI·하강VI·52주)는 대시.
+    // limits 미로드 시 상한가·하한가·상승VI·하강VI·250일 5행은 대시.
     expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('stock-limits 로 상한가·하한가·250일 최고/최저를 채운다', () => {
+    // 골든 값 = 2026-07-21 ka10001 실호출(018260). 방향 색은 기준가 대비 —
+    // 상한가는 항상 위(red), 하한가는 항상 아래(blue).
+    renderPanel({
+      limits: { upper_limit: 331_500, lower_limit: 178_500, high_250: 388_500, low_250: 143_700 },
+    });
+    const upper = screen.getByText('331,500');
+    const lower = screen.getByText('178,500');
+    expect(upper.className).toContain('text-price-up');
+    expect(lower.className).toContain('text-price-down');
+    expect(screen.getByText('388,500 / 143,700')).toBeInTheDocument();
+  });
+
+  it('250일 이력이 없는 종목(신규상장)은 대시로 남긴다', () => {
+    renderPanel({
+      limits: { upper_limit: 331_500, lower_limit: 178_500, high_250: null, low_250: null },
+    });
+    expect(screen.getByText('331,500')).toBeInTheDocument();
+    expect(screen.queryByText(/\//)).toBeNull(); // 반쪽짜리 "− / −" 금지
+  });
+
+  it('미수신 대시는 dim 톤이다 — 실데이터처럼 풀 대비로 찍히지 않는다', () => {
+    renderPanel();
+    for (const dash of screen.getAllByText('−')) {
+      expect(dash.className).toContain('text-fg-dimmer');
+    }
   });
 
   it('요약이 전부 비면 대시만 남고 사다리는 그대로 그린다', () => {

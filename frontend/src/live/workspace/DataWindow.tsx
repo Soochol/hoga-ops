@@ -34,6 +34,7 @@ import {
 import { useLiveSeries } from '../../api/liveSeries';
 import { useLiveInvestorTrendEstimate } from '../../api/liveInvestorTrendEstimate';
 import { useQuoteByCode } from '../../api/liveQuotes';
+import { useLiveStockLimits } from '../../api/liveStockLimits';
 import {
   useLiveOrderbookAtCursor,
   useLiveBrokersAtCursor,
@@ -188,6 +189,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   });
   const quote = useQuoteByCode([code], venue).get(code);
   const baselinePrice = quote?.baseline_price ?? null;
+  // 상하한가·250일 최고/최저(ka10001) — 당일 고정값이라 스팟 커서에서도 유효.
+  const stockLimits = useLiveStockLimits(code);
   // 동시호가 마스크(PR-D2): 스팟 커서가 종가 동시호가 구간(마감 10분)에 있고 전역
   // auctionWindowMask 토글이 켜져 있으면 매수/매도 비율을 마스킹한다. 판정은 링크
   // 차트 창 번들의 세션 세그먼트로 — 전역 axis store 는 멀티창 last-writer-wins 라
@@ -250,6 +253,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           maskRatio={maskRatio}
           lastPrice={lastPrice}
           deltaBadges={isSpot ? null : deltaBadges}
+          limits={stockLimits.data ?? null}
         />
       </div>
     </div>
