@@ -5,7 +5,8 @@ import {
   regularSessionCloseMs,
   regularSessionOpenMs,
 } from '../live/liveDateTime';
-import { brokerDisplayShort } from './brokerDisplayNames';
+import { brokerDisplayShort, isForeignBroker } from './brokerDisplayNames';
+import { priceDirClass } from '../ui/priceDir';
 import { SidebarState } from './SidebarSurface';
 
 /** Gap detection threshold (ms). Consecutive points farther apart are
@@ -66,50 +67,97 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   // 규모 바 분모: 커서 시점 |순매수| 최대값. 행간 상대 규모 비교용(depth bar 문법).
   const nets = rows.map((entry) => netAtCursor(entry, cursorMs));
   const maxAbsNet = nets.reduce<number>((acc, net) => Math.max(acc, Math.abs(net ?? 0)), 0);
+  // 행 순서는 장 마감 기준 final_net 내림차순(어댑터 정렬)이라 위=매수우위·
+  // 아래=매도우위 — 그 경계를 라벨 달린 헤어라인으로 표시한다. 스팟 커서 시점
+  // 값(nets)으로 재정렬하지 않는 이유: 호버 스크럽 중 행이 널뛴다.
+  const sellStart = rows.findIndex((entry) => entry.final_net < 0);
+  const foreignFlags = rows.map((entry) => isForeignBroker(entry.broker));
+  const foreignObserved = foreignFlags.some(Boolean);
+  const foreignSum = rows.reduce<number>(
+    (sum, _entry, i) => (foreignFlags[i] ? sum + (nets[i] ?? 0) : sum),
+    0,
+  );
 
   return (
-    <div className="font-data text-sm tabular-nums divide-y divide-border-strong">
+    <div className="font-data text-sm">
+      <div className="sticky top-0 z-10 grid grid-cols-[78px_1fr_88px] gap-2 border-b border-border bg-bg-card px-2.5 py-1 text-[10.5px] text-fg-dimmer">
+        <span>거래원</span>
+        <span>당일 궤적</span>
+        <span className="text-right">순매수(주)</span>
+      </div>
       {rows.map((entry, rowIndex) => {
         const net = nets[rowIndex];
         return (
-          <div
-            key={entry.broker}
-            data-testid="broker-row"
-            className="grid grid-cols-[60px_1fr_80px] gap-2 px-2.5 py-0.5 items-center"
-          >
-            <span className="truncate" title={entry.broker}>
-              {brokerDisplayShort(entry.broker)}
-            </span>
-            <Sparkline entry={entry} cursorMs={cursorMs} dayRange={dayRange} gapThresholdMs={gapThresholdMs} />
-            {net == null ? (
-              // 커서가 첫 관측 이전(아직 등장 전) — 진짜 0과 구분해 표기한다.
-              <span data-testid="broker-net-preobs" className="text-fg-dimmer text-right">—</span>
-            ) : (
-              <span className="relative block text-right">
-                {maxAbsNet > 0 && net !== 0 && (
-                  <span
-                    aria-hidden
-                    data-testid="broker-net-bar"
-                    className="absolute inset-y-0 right-0 rounded-[1px]"
-                    style={{
-                      width: `${(Math.abs(net) / maxAbsNet) * 100}%`,
-                      background: net > 0 ? 'var(--tint-price-up)' : 'var(--tint-price-down)',
-                    }}
-                  />
-                )}
-                <span
-                  className={`relative ${
-                    net > 0 ? 'text-price-up' : net < 0 ? 'text-price-down' : 'text-fg-dimmer'
-                  }`}
-                >
-                  {net > 0 ? '+' : ''}
-                  {net.toLocaleString('ko-KR')}
-                </span>
-              </span>
+          <div key={entry.broker}>
+            {rowIndex === sellStart && sellStart > 0 && (
+              <div
+                data-testid="broker-sell-divider"
+                aria-hidden
+                className="flex items-center gap-1.5 px-2.5 py-0.5"
+              >
+                <span className="h-px flex-1 bg-grid" />
+                <span className="text-[9px] leading-none text-fg-dimmer">순매도</span>
+                <span className="h-px flex-1 bg-grid" />
+              </div>
             )}
+            <div
+              data-testid="broker-row"
+              className="grid grid-cols-[78px_1fr_88px] gap-2 px-2.5 py-[3px] items-center"
+            >
+              <span className="truncate" title={entry.broker}>
+                {brokerDisplayShort(entry.broker)}
+                {foreignFlags[rowIndex] && (
+                  <span
+                    data-testid="broker-foreign-badge"
+                    className="ml-1 inline-block rounded-sm border border-border px-[3px] align-[1px] text-[9px] leading-[12px] text-fg-dimmer"
+                  >
+                    외
+                  </span>
+                )}
+              </span>
+              <Sparkline entry={entry} cursorMs={cursorMs} dayRange={dayRange} gapThresholdMs={gapThresholdMs} />
+              {net == null ? (
+                // 커서가 첫 관측 이전(아직 등장 전) — 진짜 0과 구분해 표기한다.
+                <span data-testid="broker-net-preobs" className="text-fg-dimmer text-right">—</span>
+              ) : (
+                <span className="block text-right">
+                  <span className={priceDirClass(net)}>
+                    {net > 0 ? '+' : ''}
+                    {net.toLocaleString('ko-KR')}
+                  </span>
+                  {/* 규모 스트립 — 숫자 뒤 배경 바는 긴 값이 열을 채우면 가려져
+                      기능을 잃는다(2026-07-22 검토). 숫자 아래 2px 스트립은 항상
+                      노출되고, 저알파 tint 는 이 두께에서 안 보여 솔리드+감쇠. */}
+                  {maxAbsNet > 0 && net !== 0 && (
+                    <span
+                      aria-hidden
+                      data-testid="broker-net-bar"
+                      className="ml-auto mt-[1px] block h-[2px] rounded-[1px]"
+                      style={{
+                        width: `${(Math.abs(net) / maxAbsNet) * 100}%`,
+                        background: net > 0 ? 'var(--price-up)' : 'var(--price-down)',
+                        opacity: 0.55,
+                      }}
+                    />
+                  )}
+                </span>
+              )}
+            </div>
           </div>
         );
       })}
+      <div className="sticky bottom-0 z-10 flex items-center justify-between border-t border-border bg-bg-card px-2.5 py-1 text-[10.5px]">
+        <span className="text-fg-dimmer">외국계 합계</span>
+        {foreignObserved ? (
+          <span data-testid="broker-foreign-sum" className={priceDirClass(foreignSum)}>
+            {foreignSum > 0 ? '+' : ''}
+            {foreignSum.toLocaleString('ko-KR')}
+          </span>
+        ) : (
+          // 관측된 외국계 창구가 없으면 0 이 아니라 — (0 은 "상쇄"로 오독된다).
+          <span data-testid="broker-foreign-sum" className="text-fg-dimmer">—</span>
+        )}
+      </div>
     </div>
   );
 }

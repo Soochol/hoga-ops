@@ -276,7 +276,7 @@ describe('BrokerTrajectoryTable — 0선·커서 도트·규모 바·관측 전 
     expect(container.querySelectorAll('[data-testid="cursor-value-dot"]')).toHaveLength(2);
   });
 
-  it('renders magnitude bars proportional to |net| across rows', () => {
+  it('renders magnitude strips proportional to |net| across rows', () => {
     const { container } = render(
       <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
     );
@@ -284,8 +284,9 @@ describe('BrokerTrajectoryTable — 0선·커서 도트·규모 바·관측 전 
     expect(bars).toHaveLength(2);   // C는 관측 전이라 바 없음
     expect(bars[0].style.width).toBe('100%');   // A: |100| / max(100)
     expect(bars[1].style.width).toBe('50%');    // B: |-50| / max(100)
-    expect(bars[0].style.background).toContain('--tint-price-up');
-    expect(bars[1].style.background).toContain('--tint-price-down');
+    // 숫자 아래 2px 스트립 — 저알파 tint 가 아닌 솔리드 방향색(+감쇠).
+    expect(bars[0].style.background).toContain('--price-up');
+    expect(bars[1].style.background).toContain('--price-down');
   });
 
   it('shows an em-dash (not 0) when the cursor precedes the first observation', () => {
@@ -293,5 +294,71 @@ describe('BrokerTrajectoryTable — 0선·커서 도트·규모 바·관측 전 
     const preobs = screen.getAllByTestId('broker-net-preobs');
     expect(preobs).toHaveLength(1);
     expect(preobs[0]).toHaveTextContent('—');
+  });
+});
+
+describe('BrokerTrajectoryTable — 표 크롬(헤더·순매도 경계·외국계)', () => {
+  it('renders the column header so the number column is self-describing', () => {
+    render(<BrokerTrajectoryTable series={[entry('A', [{ ts_ms: 1_000, net: 5 }])]} cursorMs={null} />);
+    expect(screen.getByText('당일 궤적')).toBeInTheDocument();
+    expect(screen.getByText('순매수(주)')).toBeInTheDocument();
+  });
+
+  it('marks the 순매수/순매도 boundary once, at the first negative final_net row', () => {
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [{ ts_ms: 1_000, net: 100 }]),
+      entry('B', [{ ts_ms: 1_000, net: 20 }]),
+      entry('C', [{ ts_ms: 1_000, net: -30 }], 'sell'),
+      entry('D', [{ ts_ms: 1_000, net: -90 }], 'sell'),
+    ];
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    expect(screen.getAllByTestId('broker-sell-divider')).toHaveLength(1);
+  });
+
+  it('omits the boundary when every broker is on the buy side', () => {
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [{ ts_ms: 1_000, net: 100 }]),
+      entry('B', [{ ts_ms: 1_000, net: 20 }]),
+    ];
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    expect(screen.queryByTestId('broker-sell-divider')).toBeNull();
+  });
+
+  it('omits the boundary when the top row is already a seller (all-sell day)', () => {
+    // sellStart === 0 — 경계선이 첫 행 위에 떠 헤더와 붙는 것을 막는다.
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [{ ts_ms: 1_000, net: -10 }], 'sell'),
+      entry('B', [{ ts_ms: 1_000, net: -90 }], 'sell'),
+    ];
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    expect(screen.queryByTestId('broker-sell-divider')).toBeNull();
+  });
+
+  it('badges foreign desks and sums only their cursor-time nets', () => {
+    const series: BrokerSeriesEntry[] = [
+      entry('키움증권', [{ ts_ms: 1_000, net: 500 }]),
+      entry('JP모간', [{ ts_ms: 1_000, net: 200 }]),
+      entry('모건스탠리증권', [{ ts_ms: 1_000, net: -50 }], 'sell'),
+    ];
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    expect(screen.getAllByTestId('broker-foreign-badge')).toHaveLength(2);
+    // 국내(키움 +500)는 제외 — 200 + (-50) = 150.
+    expect(screen.getByTestId('broker-foreign-sum')).toHaveTextContent('+150');
+  });
+
+  it('shows an em-dash for the foreign total when no foreign desk is observed', () => {
+    const series: BrokerSeriesEntry[] = [entry('키움증권', [{ ts_ms: 1_000, net: 500 }])];
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    expect(screen.queryByTestId('broker-foreign-badge')).toBeNull();
+    expect(screen.getByTestId('broker-foreign-sum')).toHaveTextContent('—');
+  });
+
+  it('excludes pre-observation rows (—) from the foreign total', () => {
+    const series: BrokerSeriesEntry[] = [
+      entry('JP모간', [{ ts_ms: 1_000, net: 200 }]),
+      entry('골드만', [{ ts_ms: 9_000, net: 999 }]),   // 커서(2_000) 시점엔 등장 전
+    ];
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    expect(screen.getByTestId('broker-foreign-sum')).toHaveTextContent('+200');
   });
 });
