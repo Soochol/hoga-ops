@@ -1493,11 +1493,14 @@ def _strip_nonblank_name(value: str) -> str:
 
 class StudyViewport(BaseModel):
     right_edge_ms: int
+    #: 좌측 끝 실시각. 구 저장뷰에는 없어 optional — 그 경우 프론트가 bar_span
+    #: 역산으로 폴백한다(우측 여백만큼 어긋나는 옛 동작).
+    left_edge_ms: int | None = None
     bar_span: float
     at_live_edge: bool
     right_padding_bars: float | None = None
 
-    @field_validator("right_edge_ms", "bar_span", "right_padding_bars")
+    @field_validator("right_edge_ms", "left_edge_ms", "bar_span", "right_padding_bars")
     @classmethod
     def _finite(cls, v: int | float | None):
         if v is None:
@@ -1510,6 +1513,8 @@ class StudyViewport(BaseModel):
             raise ValueError("bar_span must be positive")
         if self.right_padding_bars is not None and self.right_padding_bars < 0:
             raise ValueError("right_padding_bars must be non-negative")
+        if self.left_edge_ms is not None and self.left_edge_ms > self.right_edge_ms:
+            raise ValueError("left_edge_ms must not exceed right_edge_ms")
         return self
 
 

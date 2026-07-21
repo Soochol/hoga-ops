@@ -1,11 +1,12 @@
 import type { StudyViewListRow, StudyViewWriteRequest } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
+import { todayKstYyyymmdd } from '../live/liveDateTime';
 import {
   defaultStudyViewName,
   fallbackViewport,
   rangeForWindow,
+  saveWindow,
   viewportFromCapture,
-  visibleWindow,
   type LiveStudySaveSource,
 } from './studySaveRequest';
 
@@ -78,7 +79,7 @@ export function makeStudySaveCommand({
   const code = sourceCode(source);
   const label = sourceLabel(source);
   const timeframe = sourceTimeframe(source);
-  const window = visibleWindow(bundle, viewport);
+  const window = saveWindow(bundle, viewport, todayKstYyyymmdd());
   const name = defaultStudyViewName(mode === 'overwrite' ? existingSave ?? undefined : undefined, label, timeframe);
   const memo = mode === 'overwrite' ? existingSave?.memo ?? '' : '';
   const range = rangeForWindow(bundle, window.fromIndex, window.toIndex);

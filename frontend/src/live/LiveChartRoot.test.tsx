@@ -1159,6 +1159,8 @@ describe('LiveChartRoot', () => {
 
     expect(capture()).toEqual({
       rightEdgeMs: last.ts_ms,
+      // 좌측 끝도 실데이터에 앵커된다(위 getVisibleRange mock 의 from).
+      leftEdgeMs: TODAY_OPEN_MS,
       barSpan: 13,
       atLiveEdge: true,
       rightPaddingBars: 5,

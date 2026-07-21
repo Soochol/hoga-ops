@@ -3,6 +3,8 @@ import type { LiveTimeframe } from '../state/livePage';
 
 export type StudyViewport = {
   right_edge_ms: number;
+  /** 좌측 끝 실시각. 없으면 저장 당시 코드가 bar_span 역산을 쓰던 뷰(구 저장뷰). */
+  left_edge_ms?: number | null;
   bar_span: number;
   at_live_edge: boolean;
   right_padding_bars?: number | null;

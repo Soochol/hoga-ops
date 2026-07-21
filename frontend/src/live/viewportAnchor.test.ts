@@ -25,7 +25,7 @@ const emptyAxis = createVirtualAxis([]);
 describe('viewportFromRanges', () => {
   it('builds a TabViewport from logical + visible ranges (mid-session, not live edge)', () => {
     const vrToSec = (OPEN_MS + 2 * 3600_000) / 1000; // 2h past open, virtual==real
-    const vp = viewportFromRanges({ from: 100, to: 400 }, { to: vrToSec }, axis, OPEN_MS + 6 * 3600_000);
+    const vp = viewportFromRanges({ from: 100, to: 400 }, { from: vrToSec, to: vrToSec }, axis, OPEN_MS + 6 * 3600_000);
     expect(vp).not.toBeNull();
     expect(vp!.rightEdgeMs).toBe(OPEN_MS + 2 * 3600_000);
     expect(vp!.barSpan).toBe(300);
@@ -35,7 +35,7 @@ describe('viewportFromRanges', () => {
   it('flags atLiveEdge when the right edge is at/after the last candle (within 1s)', () => {
     const lastMs = OPEN_MS + 2 * 3600_000;
     const vrToSec = lastMs / 1000;
-    const vp = viewportFromRanges({ from: 0, to: 305 }, { to: vrToSec }, axis, lastMs);
+    const vp = viewportFromRanges({ from: 0, to: 305 }, { from: vrToSec, to: vrToSec }, axis, lastMs);
     expect(vp!.atLiveEdge).toBe(true);
   });
 
@@ -43,7 +43,7 @@ describe('viewportFromRanges', () => {
     const lastMs = OPEN_MS + 2 * 3600_000;
     const vp = viewportFromRanges(
       { from: 120, to: 430 },
-      { to: lastMs / 1000 },
+      { from: lastMs / 1000, to: lastMs / 1000 },
       axis,
       lastMs,
       399,
@@ -55,20 +55,47 @@ describe('viewportFromRanges', () => {
     });
   });
 
+  // 좌우 끝을 모두 실데이터에 앵커한다 — barSpan 은 라이브 엣지에서 마지막 캔들
+  // 뒤 여백까지 세므로 좌측 끝을 역산하는 근거가 못 된다(저장뷰 시작일이 여백만큼
+  // 과거로 넘치던 원인).
+  it('captures the left edge from the visible range, independent of barSpan', () => {
+    const leftMs = OPEN_MS + 1 * 3600_000;
+    const rightMs = OPEN_MS + 2 * 3600_000;
+    const vp = viewportFromRanges(
+      // 논리 폭 310 중 30 은 마지막 캔들 뒤 여백 — 좌측 시각은 그와 무관해야 한다.
+      { from: 120, to: 430 },
+      { from: leftMs / 1000, to: rightMs / 1000 },
+      axis,
+      rightMs,
+      399,
+    );
+    expect(vp!.leftEdgeMs).toBe(leftMs);
+    expect(vp!.rightEdgeMs).toBe(rightMs);
+  });
+
+  // 좌측 앵커를 못 읽어도 캡처는 살아야 한다 — 탭 복원이 이 캡처에 얹혀 있고,
+  // 저장만 옛 span 역산으로 폴백하면 된다.
+  it('omits the left edge rather than failing when it cannot be read', () => {
+    const vp = viewportFromRanges({ from: 0, to: 300 }, { from: NaN, to: OPEN_MS / 1000 }, axis, null);
+    expect(vp).not.toBeNull();
+    expect(vp!.leftEdgeMs).toBeUndefined();
+    expect(vp!.rightEdgeMs).toBe(OPEN_MS);
+  });
+
   it('atLiveEdge is false when lastCandleMs is null (no candles)', () => {
-    const vp = viewportFromRanges({ from: 0, to: 300 }, { to: OPEN_MS / 1000 }, axis, null);
+    const vp = viewportFromRanges({ from: 0, to: 300 }, { from: OPEN_MS / 1000, to: OPEN_MS / 1000 }, axis, null);
     expect(vp!.atLiveEdge).toBe(false);
   });
 
   it('returns null on a missing range read or empty axis', () => {
-    expect(viewportFromRanges(null, { to: OPEN_MS / 1000 }, axis, null)).toBeNull();
+    expect(viewportFromRanges(null, { from: OPEN_MS / 1000, to: OPEN_MS / 1000 }, axis, null)).toBeNull();
     expect(viewportFromRanges({ from: 0, to: 300 }, null, axis, null)).toBeNull();
-    expect(viewportFromRanges({ from: 0, to: 300 }, { to: OPEN_MS / 1000 }, emptyAxis, null)).toBeNull();
+    expect(viewportFromRanges({ from: 0, to: 300 }, { from: OPEN_MS / 1000, to: OPEN_MS / 1000 }, emptyAxis, null)).toBeNull();
   });
 
   it('returns null on a non-positive bar span (degenerate / collapsed view)', () => {
-    expect(viewportFromRanges({ from: 400, to: 400 }, { to: OPEN_MS / 1000 }, axis, null)).toBeNull();
-    expect(viewportFromRanges({ from: 400, to: 100 }, { to: OPEN_MS / 1000 }, axis, null)).toBeNull();
+    expect(viewportFromRanges({ from: 400, to: 400 }, { from: OPEN_MS / 1000, to: OPEN_MS / 1000 }, axis, null)).toBeNull();
+    expect(viewportFromRanges({ from: 400, to: 100 }, { from: OPEN_MS / 1000, to: OPEN_MS / 1000 }, axis, null)).toBeNull();
   });
 });
 
@@ -80,8 +107,8 @@ describe('realMsToVirtualSeconds', () => {
 });
 
 describe('computeRestoreRange', () => {
-  const scrolledBack: TabViewport = { rightEdgeMs: OPEN_MS, barSpan: 120, atLiveEdge: false };
-  const liveEdge: TabViewport = { rightEdgeMs: OPEN_MS, barSpan: 50, atLiveEdge: true };
+  const scrolledBack: TabViewport = { rightEdgeMs: OPEN_MS, leftEdgeMs: OPEN_MS, barSpan: 120, atLiveEdge: false };
+  const liveEdge: TabViewport = { rightEdgeMs: OPEN_MS, leftEdgeMs: OPEN_MS, barSpan: 50, atLiveEdge: true };
 
   it('non-live-edge: pins the anchor index as the right edge, span as width', () => {
     expect(computeRestoreRange(scrolledBack, 5000, 1000)).toEqual({ from: 880, to: 1000, scrollToRight: false });
@@ -126,7 +153,7 @@ describe('computeRestoreRange', () => {
   });
 
   it('rounds a fractional saved span', () => {
-    const frac: TabViewport = { rightEdgeMs: OPEN_MS, barSpan: 119.6, atLiveEdge: false };
+    const frac: TabViewport = { rightEdgeMs: OPEN_MS, leftEdgeMs: OPEN_MS, barSpan: 119.6, atLiveEdge: false };
     expect(computeRestoreRange(frac, 5000, 1000)).toEqual({ from: 880, to: 1000, scrollToRight: false });
   });
 });

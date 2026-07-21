@@ -7,10 +7,13 @@
  * 직접 넘긴다(#759 가 보조지표에 대해 한 것과 같은 단순화).
  */
 import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { makeStudySaveCommand, studySaveCommandBody, type StudySaveCommand } from './studySaveCommand';
 import type { LiveStudySaveSource } from './studySaveCommand';
-import { StudyViewSaveDialog } from './StudyViewSaveDialog';
+import { StudyViewSaveDialog, type SaveCoverage } from './StudyViewSaveDialog';
 import { useStudyViewMutations } from './useStudyViews';
+import { bulkItems, coveragePreview } from '../api/captures';
+import { CAPTURE_QUEUE_QUERY_KEY } from '../capture/useCaptureQueue';
 import { COMPACT_PADDING_INLINE } from '../live/workspace/chartHeaderCompact';
 
 export function LiveStudyViewSaveButton({
@@ -23,8 +26,41 @@ export function LiveStudyViewSaveButton({
   showLabel?: boolean;
 }) {
   const mutations = useStudyViewMutations();
+  const queryClient = useQueryClient();
   const [command, setCommand] = useState<StudySaveCommand | null>(null);
   const createError = mutations.create.error instanceof Error ? mutations.create.error.message : null;
+
+  // 저장 구간의 hogaplay 커버리지. 다이얼로그가 열려 있는 동안만 조회한다.
+  // coverage-preview 는 읽기 전용이라 적재를 유발하지 않는다.
+  const range = command?.request.range;
+  const previewQuery = useQuery({
+    queryKey: ['study-save-coverage', command?.request.code, range?.from_date, range?.to_date],
+    queryFn: () => coveragePreview({
+      codes: [command!.request.code],
+      start_date: range!.from_date,
+      end_date: range!.to_date,
+    }),
+    enabled: !!command && !!range,
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  // 수집은 저장의 곁가지 — 실패해도 저장을 되돌리지 않는다. 다만 조용히 삼키지는
+  // 않고 큐를 무효화해 캡처 패널이 실제 상태를 드러내게 한다.
+  const collect = useMutation({
+    mutationFn: bulkItems,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: CAPTURE_QUEUE_QUERY_KEY }),
+  });
+
+  const coverage: SaveCoverage | null = command
+    ? {
+      isLoading: previewQuery.isLoading,
+      isError: previewQuery.isError,
+      have: previewQuery.data?.have ?? 0,
+      toCollect: previewQuery.data?.to_collect ?? 0,
+      estMinutes: previewQuery.data?.est_minutes ?? 0,
+    }
+    : null;
 
   const openDialog = () => {
     if (!source) return;
@@ -53,13 +89,20 @@ export function LiveStudyViewSaveButton({
           defaultName={command.dialog.defaultName}
           defaultMemo={command.dialog.defaultMemo}
           rangeLabel={command.dialog.rangeLabel}
+          coverage={coverage}
           isSubmitting={mutations.create.isPending}
           errorMessage={createError}
           onCancel={() => setCommand(null)}
-          onSubmit={({ name, memo }) => {
+          onSubmit={({ name, memo, capture }) => {
+            const missing = previewQuery.data?.missing ?? [];
             mutations.create.mutate(
               studySaveCommandBody(command, { name, memo }),
-              { onSuccess: () => setCommand(null) },
+              {
+                onSuccess: () => {
+                  if (capture && missing.length > 0) collect.mutate(missing);
+                  setCommand(null);
+                },
+              },
             );
           }}
         />
