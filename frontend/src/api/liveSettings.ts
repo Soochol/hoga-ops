@@ -5,15 +5,15 @@ import { apiCall } from './client';
 // KIS REST로 받지 않는다 — 관심종목=KIS WS, 히트맵=키움 WS).
 // kiwoom_enabled(키움 활성화 스위치)는 폐지됨(ADR-0118) — 실시간=키움 WS 유일 소스라
 // 선택지가 아니고, 활성화는 백엔드에서 자격증명(앱키) 존재만으로 게이트된다.
+// program_trade_storage_enabled(프로그램 순매수 저장)도 폐지됨(2026-07-21) — 키움 0w
+// push 전환으로 수집 비용이 0이 되어 거래원(0F)처럼 항시 저장한다.
 export interface LiveSettings {
   schema_version: number;
-  program_trade_storage_enabled: boolean;
   kis_rest_bypass_enabled: boolean;
   screener_depth_autocollect: boolean;
 }
 
 export type LiveSettingsPatch = {
-  program_trade_storage_enabled?: boolean;
   kis_rest_bypass_enabled?: boolean;
   screener_depth_autocollect?: boolean;
 };

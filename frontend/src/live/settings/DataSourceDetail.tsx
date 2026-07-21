@@ -45,7 +45,6 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
   const { data } = useLiveSettings();
   const patch = usePatchLiveSettings();
   const kisRestBypassEnabled = data?.kis_rest_bypass_enabled ?? false;
-  const programTradeEnabled = data?.program_trade_storage_enabled ?? false;
 
   return (
     <>
@@ -118,19 +117,14 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
           받지 않는다) — 저장 방식 라디오(storage_policy)는 폐기됐다. */}
       <MacroGroupLabel>캡처 저장</MacroGroupLabel>
       <div>
+        {/* 저장 스위치는 폐지(2026-07-21) — 키움 0w push 전환으로 수집 한계비용이 0이
+            되어 거래원(0F)과 동일하게 항시 저장한다. 옛 토글은 KIS REST 폴링 시절
+            쿼터를 아끼려던 잔재였고, 꺼두면 데이터가 조용히 유실됐다. */}
         <RoleSourceGroup
           title="프로그램 순매수 저장"
-          description="캡처 활성 관심그룹 종목의 프로그램 순매수 시계열을 저장합니다."
+          description="캡처 활성 관심그룹 종목의 프로그램 순매수 시계열을 항상 저장합니다. 거래원과 함께 키움 WebSocket으로 수신하며, 별도 켜기가 필요 없습니다."
         >
-          <SettingsRow label="프로그램 순매수 저장" testId="program-trade-storage-row">
-            <ToggleSwitch
-              label="프로그램 순매수 저장"
-              checked={programTradeEnabled}
-              onClick={() => patch.mutate({
-                program_trade_storage_enabled: !programTradeEnabled,
-              })}
-            />
-          </SettingsRow>
+          <div className="text-sm text-fg-dim">항시 저장 중입니다.</div>
         </RoleSourceGroup>
         <RoleSourceGroup
           title="키움 실시간 수집"

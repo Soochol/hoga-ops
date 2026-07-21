@@ -6,6 +6,7 @@ KIS REST 30s 캡처(rest30)·storage_policy는 제거됨(2026-07-17 정책: 호�
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 import pytest
@@ -262,12 +263,12 @@ async def test_storage_runtime_kiwoom_sync_failure_is_isolated(
 
 
 @pytest.mark.asyncio
-async def test_storage_runtime_starts_program_trade_collector_when_enabled(
+async def test_storage_runtime_always_starts_program_trade_collector(
     tmp_path, monkeypatch,
 ) -> None:
+    """저장 스위치 폐지(2026-07-21) — 설정 파일이 없어도 사이드카는 항상 기동한다."""
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
-    save_live_settings(tmp_path, LiveSettings(program_trade_storage_enabled=True))
     state = FakeStorageState()
 
     await sync_storage_runtime(
@@ -283,13 +284,19 @@ async def test_storage_runtime_starts_program_trade_collector_when_enabled(
 
 
 @pytest.mark.asyncio
-async def test_storage_runtime_stops_program_trade_collector_when_disabled(
+async def test_storage_runtime_ignores_legacy_program_trade_off_key(
     tmp_path, monkeypatch,
 ) -> None:
+    """회귀 가드: 옛 live_settings.json 에 program_trade_storage_enabled=false 가
+    남아 있어도 사이드카를 멈추지 않는다 — 폐지된 키는 extra-ignore 로 무시된다.
+    (게이트가 살아 있으면 업그레이드 후에도 데이터가 조용히 유실된다.)"""
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
+    (tmp_path / "live_settings.json").write_text(
+        json.dumps({"schema_version": 1, "program_trade_storage_enabled": False}),
+        encoding="utf-8",
+    )
     existing = FakeProgramTradeCollector()
-    save_live_settings(tmp_path, LiveSettings(program_trade_storage_enabled=False))
     state = FakeStorageState(program_trade_collector=existing)
 
     await sync_storage_runtime(
@@ -300,7 +307,8 @@ async def test_storage_runtime_stops_program_trade_collector_when_disabled(
         now_ms_fn=lambda: 0,
     )
 
-    assert existing.stopped is True
+    assert existing.started is True
+    assert existing.stopped is False
 
 
 @pytest.mark.asyncio
@@ -308,18 +316,12 @@ async def test_storage_runtime_bypass_no_longer_stops_program_trade_collector(
     tmp_path, monkeypatch,
 ) -> None:
     """PR-F4 계약 반전: 프로그램매매 소스가 키움 0w latch 가 되어 KIS REST 를 안
-    쓰므로, kis_rest_bypass 가 켜져도 사이드카는 계속 돈다 — 설정 게이트
-    (program_trade_storage_enabled)만 남는다."""
+    쓰므로, kis_rest_bypass 가 켜져도 사이드카는 계속 돈다. 설정 게이트마저 폐지된
+    지금(2026-07-21) 사이드카는 무조건 돈다."""
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
     existing = FakeProgramTradeCollector()
-    save_live_settings(
-        tmp_path,
-        LiveSettings(
-            program_trade_storage_enabled=True,
-            kis_rest_bypass_enabled=True,
-        ),
-    )
+    save_live_settings(tmp_path, LiveSettings(kis_rest_bypass_enabled=True))
     state = FakeStorageState(program_trade_collector=existing)
 
     snapshot = await sync_storage_runtime(

@@ -17,7 +17,6 @@ function freshQc() {
 
 const SETTINGS = {
   schema_version: 1,
-  program_trade_storage_enabled: false,
   kis_rest_bypass_enabled: false,
   screener_depth_autocollect: false,
 };
@@ -103,32 +102,20 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     await waitFor(() => expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toHaveAttribute('aria-checked', 'true'));
   });
 
-  it('프로그램 순매수 저장 토글은 독립 토글로 PATCH한다 (storage_policy 폐지)', async () => {
+  it('프로그램 순매수 저장은 토글 없이 항시 저장 안내만 보인다 (스위치 폐지 2026-07-21)', async () => {
     const qc = freshQc();
     qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, SETTINGS);
-    // URL 라우팅: KiwoomStatusLine이 항상 /status를 호출하므로(활성화 스위치 폐지)
-    // Once-시퀀싱 대신 URL·method로 분기 — 상태 쿼리가 settings/patch mock을 소비하지
-    // 않게. GET은 초기 false(SETTINGS), PATCH만 true 응답(원 Once 시퀀싱과 동형).
-    const apiCall = vi.spyOn(apiClient, 'apiCall').mockImplementation((url: string, opts?: { method?: string }) =>
+    vi.spyOn(apiClient, 'apiCall').mockImplementation((url: string) =>
       url.includes('/status')
         ? Promise.resolve({ running: false, live_set: [], capture_reason: 'offline', kiwoom: null })
-        : opts?.method === 'PATCH'
-          ? Promise.resolve({ ...SETTINGS, program_trade_storage_enabled: true })
-          : Promise.resolve(SETTINGS),
+        : Promise.resolve(SETTINGS),
     );
 
     render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
-    const toggle = await screen.findByRole('switch', { name: '프로그램 순매수 저장' });
 
-    await waitFor(() => expect(toggle).not.toBeDisabled());
-    fireEvent.click(toggle);
-    await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        program_trade_storage_enabled: true,
-      }),
-    }));
+    expect(await screen.findByText('항시 저장 중입니다.')).toBeInTheDocument();
+    // 키움 0w push 전환으로 수집 비용이 0 — 거래원(0F)처럼 스위치 자체가 없다.
+    expect(screen.queryByRole('switch', { name: '프로그램 순매수 저장' })).toBeNull();
   });
 
   it('키움 상태줄에 연결 계정·수집 종목 수를 보인다 (활성화 스위치 폐지, ADR-0118)', async () => {

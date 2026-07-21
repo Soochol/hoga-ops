@@ -2573,20 +2573,19 @@ def test_live_settings_routes_round_trip(tmp_path):
 
     assert client.get("/api/live/settings").json() == {
         "schema_version": 1,
-        "program_trade_storage_enabled": False,
         "kis_rest_bypass_enabled": False,
         "screener_depth_autocollect": False,
     }
 
     r = client.patch(
         "/api/live/settings",
-        json={"program_trade_storage_enabled": True},
+        json={"screener_depth_autocollect": True},
     )
 
     assert r.status_code == 200
-    assert r.json()["program_trade_storage_enabled"] is True
+    assert r.json()["screener_depth_autocollect"] is True
     assert r.json()["kis_rest_bypass_enabled"] is False
-    assert client.get("/api/live/settings").json()["program_trade_storage_enabled"] is True
+    assert client.get("/api/live/settings").json()["screener_depth_autocollect"] is True
 
 
 def test_live_settings_patch_ignores_legacy_storage_policy_key(tmp_path):
@@ -2607,13 +2606,18 @@ def test_live_settings_patch_ignores_legacy_storage_policy_key(tmp_path):
 
     r = client.patch(
         "/api/live/settings",
-        json={"storage_policy": "rest_only", "program_trade_storage_enabled": True},
+        json={
+            "storage_policy": "rest_only",
+            "program_trade_storage_enabled": True,  # 폐지된 키(2026-07-21)
+            "screener_depth_autocollect": True,
+        },
     )
 
     assert r.status_code == 200
     assert "storage_policy" not in r.json()
     assert "heatmap_capture_enabled" not in r.json()
-    assert r.json()["program_trade_storage_enabled"] is True
+    assert "program_trade_storage_enabled" not in r.json()
+    assert r.json()["screener_depth_autocollect"] is True
 
 
 def test_live_settings_patch_can_set_bypass_alone(tmp_path):
@@ -2638,7 +2642,6 @@ def test_live_settings_patch_can_set_bypass_alone(tmp_path):
     assert r.status_code == 200
     assert r.json() == {
         "schema_version": 1,
-        "program_trade_storage_enabled": False,
         "kis_rest_bypass_enabled": True,
         "screener_depth_autocollect": False,
     }
