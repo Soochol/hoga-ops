@@ -87,6 +87,7 @@ The design system has a **single density dial** at `:root font-size`.
   | `--bg` | `#121216` | `#FDFCF8` | App background — 양 테마 모두 `--bg-card` 와 동일 톤(배경 통일, 2026-07-15 #636 다크 · #637 라이트). 카드 분리=4px gap+`--shadow-panel`(양 테마, borderless — feature-route 카드도 테두리 없음, 2026-07-15 통일; 라이트는 옅은 shadow 로 경계가 다크보다 약함) |
   | `--bg-card` | `#121216` | `#FDFCF8` | Panes, cards, toolbars |
   | `--bg-subtle` | `#0E0E11` | `#F2EFE7` | 우측 패널 크롬(RightRail·드로어 RailShell)·설정/지표 nav, dropdown/sticky headers, recessed rows (`TopNav` 헤더·`/study` 워크스페이스 탭 바·`/live` price strip 은 `--bg` 로 통일 — 여기서 제외; `/live` 멀티 탭은 ADR-0113 으로 제거됨) |
+  | `--bg-legend` | `color-mix(--bg-card 70%, transparent)` | 좌동 (파생) | 차트 위 pane 레전드 전용 반투명 surface — 유일한 반투명 배경 토큰. 차트 배경이 `--bg-card` 라 빈 영역에선 안 보이고, 캔들·거래량 바 위에 겹칠 때만 최소 대비를 남긴다. `--bg-card` 파생이라 테마 전환을 자동 추종 — **테마별 rgba 하드코딩 금지**. 앱 크롬 재사용 금지 |
   | `--bg-input` | `#101014` | `#FDFCF8` | Inputs, comboboxes, default tab |
   | `--bg-input-hover` | `#1A1A20` | `#F0EDE4` | Hover state |
   | `--border` | `#232329` | `#E4E0D3` | Default borders, dividers |

@@ -38,6 +38,11 @@
   --bg: #121216;
   --bg-card: #121216;
   --bg-subtle: #0e0e11;
+  /* 차트 위에 떠 있는 레전드 전용 반투명 surface. 차트 배경이 --bg-card 라 빈
+     영역에선 사실상 안 보이고, 캔들·거래량 바 위에 겹칠 때만 최소 대비를 남긴다
+     (2026-07-21). --bg-card 파생이므로 테마 전환을 자동으로 따라간다 —
+     테마별 rgba 하드코딩 금지. 앱 크롬에는 재사용하지 않는다. */
+  --bg-legend: color-mix(in srgb, var(--bg-card) 70%, transparent);
   --bg-input: #101014;
   --bg-input-hover: #1a1a20;
 
