@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -9,6 +10,17 @@ import Capture from './pages/Capture';
 import Settings from './pages/Settings';
 import { Heatmap } from './pages/Heatmap';
 import { StudyPage } from './studyViews/StudyPage';
+// PROTOTYPE — throwaway. 반응형 바닥 변형 비교용(A~D), 채택은 D.
+// 삼항을 module scope 에 두는 게 핵심이다: Vite 가 prod 에서 import.meta.env.DEV 를
+// false 로 치환하면 죽은 가지째 dynamic import 가 제거돼 청크가 아예 안 생긴다.
+// `lazy()` 를 무조건 호출하고 라우트만 DEV 로 가리면 렌더는 막혀도 청크는 그대로
+// 번들에 실린다(2026-07-21 dist 에서 실제로 확인).
+const ZoomResponsivePrototype = import.meta.env.DEV
+  ? lazy(() => import('./prototype/ZoomResponsivePrototype'))
+  : null;
+const WindowScalingPrototype = import.meta.env.DEV
+  ? lazy(() => import('./prototype/WindowScalingPrototype'))
+  : null;
 import { initStudyTabsSync } from './state/studyTabs';
 import './styles/global.css';
 
@@ -66,6 +78,26 @@ createRoot(document.getElementById('root')!).render(
           <Route path="screener" element={<Screener />} />
           <Route path="capture" element={<Capture />} />
           <Route path="settings" element={<Settings />} />
+          {ZoomResponsivePrototype && (
+            <Route
+              path="prototype/zoom-responsive"
+              element={
+                <Suspense fallback={null}>
+                  <ZoomResponsivePrototype />
+                </Suspense>
+              }
+            />
+          )}
+          {WindowScalingPrototype && (
+            <Route
+              path="prototype/window-scaling"
+              element={
+                <Suspense fallback={null}>
+                  <WindowScalingPrototype />
+                </Suspense>
+              }
+            />
+          )}
         </Route>
       </Routes>
     </BrowserRouter>
