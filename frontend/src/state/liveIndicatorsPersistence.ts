@@ -75,11 +75,15 @@ export const TRADE_VOLUME_POC_DEFAULT_OPACITY = 0.12;
 export const DEPTH_HEATMAP_DEFAULT_BID_COLOR = '#F04452';
 export const DEPTH_HEATMAP_DEFAULT_ASK_COLOR = '#3485FA';
 export const DEPTH_HEATMAP_DEFAULT_MAX_OPACITY = 0.7;
-// 단별 잔량 증감 — 축이 매수/매도가 아니라 **유입/유출**이라 히트맵의 빨강·파랑과 다른
-// 색조를 쓴다. 같은 셀 위에 두 레이어가 동시에 켜질 수 있어 색이 겹치면 판독이 불가능해진다
-// (DESIGN.md: --price-up/--price-down 은 등락 전용이라 재사용도 금지). teal/fuchsia 는
-// 양 테마(#121216 / #FDFCF8) 모두에서 읽히는 중간 명도다. 기본 불투명도는 히트맵(0.7)보다
-// 낮게 잡아 두 레이어가 겹칠 때 아래층이 완전히 묻히지 않게 한다.
+// 단별 잔량 증감 **차트 오버레이 전용** 색. 히트맵의 빨강·파랑과 다른 색조를 쓰는 이유는
+// **레이어 겹침**이다 — 같은 셀 위에 잔량 증감과 호가 히트맵이 동시에 켜질 수 있어 색이
+// 충돌하면 판독이 불가능해진다. teal/fuchsia 는 양 테마(#121216 / #FDFCF8) 모두에서 읽히는
+// 중간 명도다. 기본 불투명도는 히트맵(0.7)보다 낮게 잡아 두 레이어가 겹칠 때 아래층이 완전히
+// 묻히지 않게 한다.
+//
+// ⚠️ 호가창 증감 뱃지(BookPanel · OrderbookTable)는 2026-07-21부터 이 상수를 쓰지 않는다 —
+// 겹치는 레이어가 없어 KRX 컨벤션(증가 빨강 / 감소 파랑, priceDirClass)이 더 직관적이다.
+// 두 표면의 색이 다른 것은 의도된 분기다(DESIGN.md 2026-07-21 changelog).
 export const DEPTH_DELTA_DEFAULT_IN_COLOR = '#0D9488';
 export const DEPTH_DELTA_DEFAULT_OUT_COLOR = '#C026D3';
 export const DEPTH_DELTA_DEFAULT_MAX_OPACITY = 0.55;

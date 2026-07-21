@@ -1,8 +1,4 @@
 import type { OrderbookSnapshot } from '../api/types';
-import {
-  DEPTH_DELTA_DEFAULT_IN_COLOR,
-  DEPTH_DELTA_DEFAULT_OUT_COLOR,
-} from '../state/liveIndicatorsPersistence';
 import { priceDirClass } from '../ui/priceDir';
 import type { OrderbookDeltaBadges } from './orderbookDeltaBadges';
 import { SidebarState } from './SidebarSurface';
@@ -119,13 +115,12 @@ function Row({
           겹치지 않는다(#746 절대배치 겹침 교훈). key=atMs 로 매 갱신마다 페이드
           애니메이션이 재시작된다. */}
       <span className="relative flex items-baseline justify-end gap-1.5">
+        {/* 증감 색 = KRX 컨벤션(증가 빨강 / 감소 파랑) — /live 10호가 창 뱃지와
+            같은 데이터·같은 의미라 색도 같이 간다(BookPanel 주석 참조). */}
         {badge !== null && (
           <span
             key={badge.atMs}
-            className="book-delta-flash text-[10px]"
-            style={{
-              color: badge.delta > 0 ? DEPTH_DELTA_DEFAULT_IN_COLOR : DEPTH_DELTA_DEFAULT_OUT_COLOR,
-            }}
+            className={`book-delta-flash text-[10px] ${priceDirClass(badge.delta)}`}
           >
             {badge.delta > 0 ? '+' : '−'}
             {Math.abs(badge.delta).toLocaleString('ko-KR')}
