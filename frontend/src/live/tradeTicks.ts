@@ -32,11 +32,9 @@ export interface TradeTickView {
   ticks: TradeTick[];
   /** 체결가 색 기준선(전일 종가). 0B payload 최상위 prev_close — 없으면 null. */
   prevClose: number | null;
-  /** 표시 구간 체결량 최댓값 — 깊이 막대 정규화용(0 이면 막대 없음). */
-  maxQty: number;
 }
 
-const EMPTY_VIEW: TradeTickView = { ticks: [], prevClose: null, maxQty: 0 };
+const EMPTY_VIEW: TradeTickView = { ticks: [], prevClose: null };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
@@ -60,7 +58,6 @@ export function buildTradeTickView(
 
   const ticks: TradeTick[] = [];
   let prevClose: number | null = null;
-  let maxQty = 0;
   // 동일 (t_ms, price, qty, side) 체결이 실제로 중복될 수 있어(같은 초·같은 호가·같은
   // 수량) 값만으로는 key 가 충돌한다. 등장 순번을 붙여 유일하게 만든다.
   const dupCount = new Map<string, number>();
@@ -83,12 +80,10 @@ export function buildTradeTickView(
       const base = `${tMs}-${price}-${qty}-${side}`;
       const seq = dupCount.get(base) ?? 0;
       dupCount.set(base, seq + 1);
-      if (qty > maxQty) maxQty = qty;
       ticks.push({ tMs, price, qty, side, key: `${base}-${seq}` });
       if (ticks.length >= limit) break outer;
     }
   }
 
-  if (ticks.length === 0) return { ticks: [], prevClose, maxQty: 0 };
-  return { ticks, prevClose, maxQty };
+  return { ticks, prevClose };
 }

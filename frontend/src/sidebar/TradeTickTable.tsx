@@ -11,10 +11,14 @@
  *
  * 대량 체결 강조(⚙️ 설정 「체결창」): 체결가 × 체결량 ≥ 기준 금액이면 체결량
  * 칸 배경을 사용자 색으로 칠한다. 행 전체가 아니라 체결량 칸만 — 스캔 시선이
- * 머무는 칸이 물량 칸이고, 행 전체 강조는 깊이 막대와 겹쳐 서로 죽인다.
+ * 머무는 칸이 물량 칸이기 때문이다.
  *
- * 깊이 막대는 --tint-price-*(10%)를 쓴다 — 호가창의 --bar-*(28%)가 아니다.
- * 진한 막대는 우측 끝 칸의 텍스트 가독성을 해친다(실데이터 렌더로 발견).
+ * **배경을 칠하는 경로는 이 강조 하나뿐이다.** 초기안에 있던 수량 비율 깊이
+ * 막대(--tint-price-*)는 제거했다: 정규화 기준이 표시 버퍼 내 최댓값이라 새
+ * 체결이 들어올 때마다 같은 수량의 폭이 변해 신뢰할 수 없었고, 방향(매수/매도)은
+ * 이미 체결량 글자색이 표현하며, 설정으로 끌 수 없는 상시 배경이 사용자가 지정한
+ * 강조색과 섞여 서로를 죽였다. 호가창의 잔량 막대와 달리 체결 틱은 시간축
+ * 스트림이라 "화면 안 최대치 대비 비율"에 고정된 의미가 없다.
  */
 import { priceDirClass } from '../ui/priceDir';
 import { unixMsToKSTClock } from '../util/time';
@@ -56,13 +60,7 @@ export default function TradeTickTable({
         <span className="text-right">체결량</span>
       </div>
       {view.ticks.map((t) => (
-        <Row
-          key={t.key}
-          tick={t}
-          prevClose={view.prevClose}
-          maxQty={view.maxQty}
-          highlight={highlight}
-        />
+        <Row key={t.key} tick={t} prevClose={view.prevClose} highlight={highlight} />
       ))}
     </div>
   );
@@ -71,33 +69,25 @@ export default function TradeTickTable({
 function Row({
   tick,
   prevClose,
-  maxQty,
   highlight,
 }: {
   tick: TradeTick;
   prevClose: number | null;
-  maxQty: number;
   highlight: TradeHighlightConfig | null;
 }) {
   const { tMs, price, qty, side } = tick;
-  const widthPct = maxQty > 0 ? (qty / maxQty) * 100 : 0;
-  // side==0 은 동시호가·장전 체결 — 방향이 없으므로 막대도 글자색도 중립.
-  const barBg = side > 0 ? 'var(--tint-price-up)' : side < 0 ? 'var(--tint-price-down)' : 'transparent';
+  // side==0 은 동시호가·장전 체결 — 방향이 없으므로 글자색도 중립.
   const priceColor = prevClose != null && prevClose > 0
     ? priceDirClass(price - prevClose)
     : priceDirClass(side);
   const highlighted = highlight !== null && price * qty >= highlight.thresholdWon;
   return (
-    <div className={`relative grid ${COLS} gap-2 px-2.5 py-0.5`}>
-      <span
-        className="absolute inset-y-0 right-0"
-        style={{ width: `${widthPct}%`, background: barBg }}
-      />
-      <span className="relative text-fg-dimmer">{unixMsToKSTClock(tMs)}</span>
-      <span className={`relative text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
+    <div className={`grid ${COLS} gap-2 px-2.5 py-0.5`}>
+      <span className="text-fg-dimmer">{unixMsToKSTClock(tMs)}</span>
+      <span className={`text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
       <span
         data-testid={highlighted ? 'trade-qty-highlighted' : undefined}
-        className={`relative -mx-1 rounded-sm px-1 text-right ${priceDirClass(side)}`}
+        className={`-mx-1 rounded-sm px-1 text-right ${priceDirClass(side)}`}
         style={highlighted ? { background: `${highlight.color}${HIGHLIGHT_ALPHA_HEX}` } : undefined}
       >
         {qty.toLocaleString('ko-KR')}
