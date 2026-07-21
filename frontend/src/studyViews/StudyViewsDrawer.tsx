@@ -28,6 +28,7 @@ import {
   RailToolbarIconButton,
   RailTreeRow,
 } from '../ui/RailShell';
+import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
 import { SortCycleButton } from '../ui/SortCycleButton';
 import { normalizeStudyViewQuery } from './studyViewTree';
 import {
@@ -60,30 +61,6 @@ export function formatStudyViewMeta(row: { timeframe: string; range: { from_date
   const { from_date, to_date } = row.range;
   const date = from_date === to_date ? shortMonthDay(from_date) : `${shortMonthDay(from_date)}~${shortMonthDay(to_date)}`;
   return `${row.timeframe} · ${date}`;
-}
-
-function CollapseAllIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M7 8h10" />
-      <path d="M9 4h6" />
-      <path d="M9 12h6" />
-      <path d="m8 17 4-4 4 4" />
-      <path d="m8 20 4-4 4 4" />
-    </svg>
-  );
-}
-
-function ExpandAllIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M7 8h10" />
-      <path d="M9 4h6" />
-      <path d="M9 20h6" />
-      <path d="m8 13 4 4 4-4" />
-      <path d="m8 10 4 4 4-4" />
-    </svg>
-  );
 }
 
 function ClearSearchIcon({ className }: { className?: string }) {

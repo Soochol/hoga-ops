@@ -3,6 +3,7 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
 import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
+import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
 import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
@@ -409,6 +410,24 @@ export function WatchlistDrawer() {
   const pctOf = makeChangePctOf(quoteByCode);
   const folderCount = data?.folders.length ?? 0;
   const realFolderIds = groups.filter((g) => g.folder).map((g) => g.folder!.id);
+
+  // 전체 접기/펼치기 — 대상은 **화면에 실제로 렌더되는 그룹**이다(아래 렌더에서 빈 미분류는
+  // 숨기므로 제외). collapsed.size 로 "모두 접힘"을 판정하면 삭제된 그룹의 inert 키(위 persist
+  // 주석 참조 — 메모리 Set 은 다음 마운트까지 정리되지 않는다)에 걸려 거짓 양성이 난다.
+  const visibleGroupKeys = groups
+    .filter((g) => !(g.entries.length === 0 && g.folder === null))
+    .map((g) => g.folder?.id ?? '__uncat__');
+  const allCollapsed =
+    visibleGroupKeys.length > 0 && visibleGroupKeys.every((k) => collapsed.has(k));
+  const toggleAll = () =>
+    setCollapsed((s) => {
+      const n = new Set(s);
+      for (const k of visibleGroupKeys) {
+        if (allCollapsed) n.delete(k);
+        else n.add(k);
+      }
+      return n;
+    });
   const migrationSortMode = readSortModeFromStorage();
   useEffect(() => {
     if (!data) return;
@@ -536,6 +555,16 @@ export function WatchlistDrawer() {
           // (히트맵 보드의 "+ 새 그룹" 과 표면 일치). 남은 편집은 항목 하나뿐이라
           // 메뉴를 없애고 "편집"이 관심 편집 모달을 바로 연다.
           <div className="flex items-center gap-2">
+            {/* 히트맵 드로어는 검색 툴바가 있어 거기에, 여기는 툴바가 없어 헤더에 둔다.
+                두 드로어 모두 "그룹 일괄 접기"라는 같은 문법·같은 aria 문구를 쓴다. */}
+            <button type="button" data-testid="watchlist-toggle-all"
+                    aria-label={allCollapsed ? '전체 펼치기' : '전체 접기'}
+                    title={allCollapsed ? '전체 펼치기' : '전체 접기'}
+                    onClick={toggleAll}
+                    disabled={visibleGroupKeys.length === 0}
+                    className="grid h-5 w-5 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-dim">
+              {allCollapsed ? <ExpandAllIcon className="h-3.5 w-3.5" /> : <CollapseAllIcon className="h-3.5 w-3.5" />}
+            </button>
             <button type="button" aria-label="새 그룹 만들기" title="새 그룹 만들기"
                     onClick={() => setAddGroupOpen(true)}
                     className="grid h-5 w-5 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
