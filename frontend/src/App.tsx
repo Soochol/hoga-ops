@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import TopNav from './nav/TopNav';
 import { MarketIndexBar } from './layout/MarketIndexBar';
+import { useDrawerAutoCollapse } from './layout/useDrawerAutoCollapse';
 import { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './nav/items';
 import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
@@ -40,6 +41,9 @@ export default function App() {
   // Single owner of the screener-update push subscription; surfaces read the
   // shared ['screener-status'] cache + feedback store.
   useScreenerUpdateSync();
+  // 좁은 폭에서 주변부(드로어)가 코어에게 자리를 양보한다 — 셸 바닥은 드로어가
+  // 닫힌 기준이라, 열린 채로 좁아지면 바닥 위에서도 TopNav 가 잘린다.
+  useDrawerAutoCollapse();
   const activePanel = useRightRailStore((s) => s.activePanel);
 
   // The top row is fixed; the content row owns main + optional right panel +
@@ -61,7 +65,13 @@ export default function App() {
   return (
     <div
       data-testid="app-content-grid"
-      className="grid h-screen w-screen overflow-hidden"
+      // 반응형 바닥(--app-floor-min-w): 유효 폭이 바닥 미만이면 셸이 계속 눌리는 대신
+      // #root 가 가로 스크롤을 얻는다(global.css). 바닥을 정하는 건 페이지 콘텐츠가
+      // 아니라 전 라우트가 공유하는 셸 크롬 — TopNav 자연폭 939px + 레일 54px = 993px
+      // 실측(2026-07-21, 기본 밀도). rem 토큰이라 밀도 다이얼을 따라간다.
+      // w-screen(100vw) → h-full+min-w: 100vw 는 세로 스크롤바 폭을 포함해 바닥 아래에서
+      // 셸이 항상 뷰포트보다 넓어진다. 이제 폭은 #root 를 따르고 바닥만 min-width 가 건다.
+      className="grid h-full min-h-app-floor min-w-app-floor overflow-hidden"
       style={{
         // 열 기반 셸(2026-07-15): 우측 패널(드로어+고정 레일)이 화면 상단~하단 full-height
         // 열로 서고, 왼쪽 스택(TopNav/페이지/하단 시장지표 바)이 나머지 1fr 을 세로로 채운다.

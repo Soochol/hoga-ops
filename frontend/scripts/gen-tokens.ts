@@ -47,6 +47,7 @@ const NAME_PREFIX_RULES = [
   { prefix: 'h-',        category: 'layout-h' as const,   tailwindGroup: 'height' as const },
 ];
 const SUFFIX_RULES = [
+  { suffix: '-min-h',    category: 'layout-h' as const,   tailwindGroup: 'minHeight' as const },
   { suffix: '-min-w',    category: 'layout-w' as const,   tailwindGroup: 'minWidth' as const },
   { suffix: '-w',        category: 'layout-w' as const,   tailwindGroup: 'width' as const },
 ];
@@ -111,6 +112,7 @@ function emitTailwindTheme(): string {
     height: {},
     width: {},
     minWidth: {},
+    minHeight: {},
     borderRadius: {},
   };
 
@@ -143,6 +145,7 @@ function emitTailwindTheme(): string {
     `  height: {\n${fmtGroup(groups.height)}\n  },`,
     `  width: {\n${fmtGroup(groups.width)}\n  },`,
     `  minWidth: {\n${fmtGroup(groups.minWidth)}\n  },`,
+    `  minHeight: {\n${fmtGroup(groups.minHeight)}\n  },`,
     `  borderRadius: {\n${fmtGroup(groups.borderRadius)}\n  },`,
     '} as const;',
     '',
@@ -182,7 +185,7 @@ function emitCssBlock(): string {
   lines.push('');
   lines.push(`  /* ───── Layout (rem-based; rendered px @ ${RENDERED_ROOT_PX}px root = default density) ───── */`);
   for (const [name, t] of Object.entries(SIZE_TOKENS)) {
-    if (!(name.startsWith('h-') || name.endsWith('-w') || name.endsWith('-min-w'))) continue;
+    if (!(name.startsWith('h-') || name.endsWith('-w') || name.endsWith('-min-w') || name.endsWith('-min-h'))) continue;
     const renderedPx = renderedPxOf(t.rem);
     lines.push(`  --${name}: ${t.rem}rem; /* ${renderedPx}px @ default; ${t.baseIntentPx}px base intent — ${t.usage} */`);
   }
@@ -262,7 +265,7 @@ function buildLayoutTable(): string {
     '|---|---|---|---|',
   ];
   for (const [name, t] of Object.entries(SIZE_TOKENS)) {
-    if (!(name.startsWith('h-') || name.endsWith('-w') || name.endsWith('-min-w'))) continue;
+    if (!(name.startsWith('h-') || name.endsWith('-w') || name.endsWith('-min-w') || name.endsWith('-min-h'))) continue;
     const renderedPx = renderedPxOf(t.rem);
     rows.push(`| \`--${name}\` | ${t.baseIntentPx}px | ${renderedPx}px | ${t.usage} |`);
   }

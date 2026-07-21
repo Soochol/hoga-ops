@@ -43,6 +43,10 @@ export const TAILWIND_THEME = {
   minWidth: {
     "combobox": "var(--combobox-min-w)",
     "dropdown": "var(--dropdown-min-w)",
+    "app-floor": "var(--app-floor-min-w)",
+  },
+  minHeight: {
+    "app-floor": "var(--app-floor-min-h)",
   },
   borderRadius: {
     "sm": "var(--radius-sm)",

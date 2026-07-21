@@ -19,6 +19,7 @@ import { applyPresetEnableByTimeframe } from './indicatorPresetOps';
 import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
 import { tidyLayout } from '../live/workspace/tidy';
 import { MIN_W, MIN_H, type Canvas, type Rect } from '../live/workspace/snapEngine';
+import { isFracRect, toFrac } from '../live/workspace/rectSpace';
 import { readLegacyWorkspaceSeed } from './workspaceMigration';
 import { isLiveIndexId } from '../live/liveInstrument';
 
@@ -32,6 +33,8 @@ import { isLiveIndexId } from '../live/liveInstrument';
  */
 
 export const WORKSPACE_STORAGE_KEY = 'live.workspace.v1';
+/** 2 = rect 가 캔버스 대비 비율(ADR-0122). 없거나 낮으면 레거시 px 로 읽고 지연 비율화. */
+export const WORKSPACE_SCHEMA_VERSION = 2;
 
 /** 딥링크(`/live?code=`·`?index=`)로 열린 탭은 워크스페이스를 sessionStorage 에 둔다.
  *
@@ -74,6 +77,13 @@ export const MAX_GROUP = 10;
 /** 링크 그룹 = 종목 SSOT (#711). 1..10. */
 export type GroupId = number;
 
+/**
+ * 창 위치·크기 — **캔버스 대비 비율(0~1)**, px 아님 (ADR-0122).
+ *
+ * 캔버스가 줄면(줌인·창 축소) 창도 같은 비율로 줄어 배치가 보존되고 창이 밖으로
+ * 나가지 않는다. px 계산이 필요한 쪽(snapEngine·tidy·드래그)은 `rectSpace` 의
+ * toPx/toFrac 으로 캔버스에서 변환한다 — 스토어는 px 를 모른다.
+ */
 export interface WorkspaceRect {
   x: number;
   y: number;
@@ -128,6 +138,14 @@ export type WorkspaceSnapshot = Persisted;
 type Store = Persisted & {
   /** 창별 비영속 런타임(팬 백필 from-date 등). 창 닫힘·종목 교체 시 정리. */
   chartRuntime: Record<string, ChartWindowRuntime>;
+  /**
+   * 레거시 px rect 를 아직 비율로 못 바꾼 상태 — 런타임 전용(영속 안 함).
+   * 캔버스가 자기 크기를 처음 실측할 때 `normalizeLegacyRects` 로 해소된다.
+   * true 인 동안 rect 값은 **px** 이므로 비율로 해석하면 안 된다(ADR-0122).
+   */
+  pendingNormalize: boolean;
+  /** 레거시 px rect 를 주어진 캔버스 기준 비율로 1회 변환하고 v2 로 영속화. */
+  normalizeLegacyRects: (canvas: Canvas) => void;
   addWindow: (kind: WindowKind) => string;
   closeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
@@ -194,20 +212,32 @@ function isMinuteFrameValue(value: unknown): value is MinuteTimeframe {
   return typeof value === 'string' && (MINUTE_TIMEFRAMES as readonly string[]).includes(value);
 }
 
-function readRect(raw: unknown): WorkspaceRect | null {
+/**
+ * rect 읽기 — v2 는 비율, v1(레거시)은 px 를 **그대로** 통과시킨다.
+ *
+ * v1 px 를 여기서 비율로 바꿀 수 없다: 그 px 가 *어떤 캔버스에서* 만들어졌는지
+ * 모르기 때문이다(고정 기준으로 나누면 넓은 모니터의 레이아웃이 비율 1 을 넘겨
+ * 화면 밖으로 나간다). 변환은 캔버스가 자기 크기를 처음 실측하는 시점으로 미룬다
+ * — `normalizeLegacyRects`, ADR-0122.
+ */
+function readRect(raw: unknown, legacyPx: boolean): WorkspaceRect | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   if (!isFiniteNumber(r.x) || !isFiniteNumber(r.y) || !isFiniteNumber(r.w) || !isFiniteNumber(r.h)) {
     return null;
   }
-  return { x: r.x, y: r.y, w: Math.max(MIN_W, r.w), h: Math.max(MIN_H, r.h) };
+  if (legacyPx) {
+    return { x: r.x, y: r.y, w: Math.max(MIN_W, r.w), h: Math.max(MIN_H, r.h) };
+  }
+  const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
+  return isFracRect(rect) ? rect : null;
 }
 
-function readWindow(raw: unknown): WorkspaceWindow | null {
+function readWindow(raw: unknown, legacyPx: boolean): WorkspaceWindow | null {
   if (!raw || typeof raw !== 'object') return null;
   const w = raw as Record<string, unknown>;
   if (typeof w.id !== 'string' || !isWindowKind(w.kind) || !isGroupId(w.group)) return null;
-  const rect = readRect(w.rect);
+  const rect = readRect(w.rect, legacyPx);
   if (!rect) return null;
   const win: WorkspaceWindow = { id: w.id, kind: w.kind, group: w.group, rect };
   if (w.kind === 'chart') {
@@ -263,20 +293,23 @@ function normalizeZOrder(raw: unknown, windows: readonly WorkspaceWindow[]): str
   return next;
 }
 
-/** 차트 창 하나 — 첫 로드 기본 레이아웃(현행 화면의 최소 재현; PR-C 가 마이그레이션으로 대체). */
+/**
+ * 첫 로드 기본 레이아웃 — 비율(ADR-0122). 기존 px 기본값(1546×776 캔버스 기준
+ * 차트 720×760 / book 680×560 / broker 680×188)을 그 캔버스로 나눈 값이라
+ * 어느 화면 크기에서도 같은 배치로 열린다.
+ */
 function defaultWindows(): WorkspaceWindow[] {
   return [
     {
       id: newWindowId(),
       kind: 'chart',
       group: 1,
-      rect: { x: 16, y: 16, w: 720, h: 760 },
+      rect: { x: 0.0104, y: 0.0206, w: 0.4657, h: 0.9794 },
       chart: { timeframe: '1m', indicators: normalizeIndicatorsV2({}) },
     },
-    // book 은 십자 배치(BookPanel)라 2열 시절의 236px 로는 못 담는다 — DEFAULT_SIZE.book
-    // 과 같은 근거로 680×560. broker 는 그 아래에 붙어 차트 하단(y 776)에 정렬된다.
-    { id: newWindowId(), kind: 'book', group: 1, rect: { x: 748, y: 16, w: 680, h: 560 } },
-    { id: newWindowId(), kind: 'broker', group: 1, rect: { x: 748, y: 588, w: 680, h: 188 } },
+    // book 은 십자 배치(BookPanel)라 좁으면 못 담는다 — 차트 오른쪽 절반의 위쪽.
+    { id: newWindowId(), kind: 'book', group: 1, rect: { x: 0.4838, y: 0.0206, w: 0.4398, h: 0.7216 } },
+    { id: newWindowId(), kind: 'broker', group: 1, rect: { x: 0.4838, y: 0.7577, w: 0.4398, h: 0.2423 } },
   ];
 }
 
@@ -292,35 +325,44 @@ function readWorkspaceSnapshot(): Record<string, unknown> {
   return readJsonObject(WORKSPACE_STORAGE_KEY, 'shared');
 }
 
-function readStorage(): Persisted {
+function readStorage(): Persisted & { pendingNormalize: boolean } {
   const parsed = readWorkspaceSnapshot();
+  // v2 = 비율 rect(ADR-0122). 버전이 없거나 낮으면 레거시 px — 값은 그대로 싣고
+  // pendingNormalize 로 표시해 캔버스 첫 실측 때 비율화한다.
+  const legacyPx = parsed.schema_version !== WORKSPACE_SCHEMA_VERSION;
   const rawWindows = Array.isArray(parsed.windows) ? parsed.windows : null;
   if (!rawWindows) {
     // live.workspace.v1 없음 → 레거시 키(live.page/indicators/layout.v1)에서 1회 시드
     // (ADR-0119 PR-C, #713). 마이그레이션할 상태도 없으면 공장 기본 레이아웃.
     // 시드/기본 레이아웃은 **즉시 persist** — 첫 mutation 전 새로고침마다 재시드돼
     // 창 id 가 흔들리는 것을 막는다(C2c-2d, 스펙 ⑤-①).
+    // 레거시 시드는 px 를 만들어낸다 — 비율화 대기 상태로 넘긴다.
     const seeded = readLegacyWorkspaceSeed(newWindowId);
-    const fresh = seeded ?? (() => {
-      const windows = defaultWindows();
-      return { windows, zOrder: windows.map((w) => w.id), groupSymbols: {} };
-    })();
+    if (seeded) {
+      persistFromState(seeded);
+      return { ...seeded, pendingNormalize: true };
+    }
+    const windows = defaultWindows();
+    const fresh = { windows, zOrder: windows.map((w) => w.id), groupSymbols: {} };
     persistFromState(fresh);
-    return fresh;
+    return { ...fresh, pendingNormalize: false };
   }
-  const windows = rawWindows.map(readWindow).filter((w): w is WorkspaceWindow => w !== null);
+  const windows = rawWindows
+    .map((w) => readWindow(w, legacyPx))
+    .filter((w): w is WorkspaceWindow => w !== null);
   // 저장값이 전부 손상돼 창이 하나도 없으면 기본 레이아웃으로 폴백 — 즉시 persist
   // 로 창 id 를 고정한다(시드/공장 경로와 동일 규율, 리뷰 #5).
   if (windows.length === 0) {
     const fresh = { windows: defaultWindows(), zOrder: [] as string[], groupSymbols: {} };
     fresh.zOrder = fresh.windows.map((w) => w.id);
     persistFromState(fresh);
-    return fresh;
+    return { ...fresh, pendingNormalize: false };
   }
   return {
     windows,
     zOrder: normalizeZOrder(parsed.zOrder, windows),
     groupSymbols: readGroupSymbols(parsed.groupSymbols),
+    pendingNormalize: legacyPx,
   };
 }
 
@@ -330,6 +372,7 @@ function persistFromState(state: Persisted): void {
   persistJson(
     WORKSPACE_STORAGE_KEY,
     {
+      schema_version: WORKSPACE_SCHEMA_VERSION,
       windows: state.windows,
       zOrder: state.zOrder,
       groupSymbols: state.groupSymbols,
@@ -381,6 +424,13 @@ function focusedChart(state: Persisted): WorkspaceWindow | undefined {
   }
   return undefined;
 }
+
+/**
+ * px 로 실측된 기본 크기를 비율로 옮길 때 쓰는 기준 캔버스 (ADR-0122).
+ * 1600×900 뷰포트에서 실측한 캔버스 크기 — DEFAULT_SIZE 주석의 px 근거들이
+ * 이 캔버스를 전제로 잡혀 있다.
+ */
+const REF_CANVAS = { w: 1546, h: 776 };
 
 const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   chart: { w: 520, h: 360 },
@@ -445,14 +495,21 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     const id = newWindowId();
     set((state) => {
       const group = activeGroupOf(state); // 새 창 = 활성 그룹 상속(#711)
+      // DEFAULT_SIZE 는 px 실측값(카드가 전부 보이는 높이) — 기준 캔버스로 나눠
+      // 비율로 옮긴다(ADR-0122). 실제 렌더 크기는 그때의 캔버스에 비례한다.
       const size = DEFAULT_SIZE[kind];
+      const frac = { w: size.w / REF_CANVAS.w, h: size.h / REF_CANVAS.h };
       // 캐스케이드 오프셋 — 새 창이 서로 겹쳐 나지 않도록 창 수에 비례해 밀어낸다.
-      const off = 24 + ((state.windows.length * 28) % 200);
+      const offPx = 24 + ((state.windows.length * 28) % 200);
       const win: WorkspaceWindow = {
         id,
         kind,
         group,
-        rect: { x: off, y: off, ...size },
+        rect: {
+          x: Math.min(offPx / REF_CANVAS.w, 1 - frac.w),
+          y: Math.min(offPx / REF_CANVAS.h, 1 - frac.h),
+          ...frac,
+        },
       };
       if (kind === 'chart') {
         // 포커스 차트 창 복제(#712) — 없으면 공장 기본. indicators 는 normalize 로
@@ -541,15 +598,27 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     });
   },
 
+  normalizeLegacyRects: (canvas) => {
+    set((state) => {
+      if (!state.pendingNormalize) return {};
+      // 레거시 px → 지금 이 캔버스 기준 비율. 사용자가 보고 있는 화면으로 나누므로
+      // 변환 직후 배치는 눈에 보이는 변화가 없다(ADR-0122).
+      const windows = state.windows.map((w) => ({ ...w, rect: toFrac(w.rect as Rect, canvas) }));
+      persistFromState({ ...state, windows });
+      return { windows, pendingNormalize: false };
+    });
+  },
+
   tidyAll: (canvas) => {
     set((state) => {
       const layout = tidyLayout(
         state.windows.map((w) => ({ id: w.id, isChart: w.kind === 'chart' })),
         canvas,
       );
+      // tidyLayout 은 px 로 계산한다(순수 배치 알고리즘 무변경) — 커밋만 비율로.
       const windows = state.windows.map((w) => {
         const rect = layout.get(w.id);
-        return rect ? { ...w, rect: rect as Rect } : w;
+        return rect ? { ...w, rect: toFrac(rect, canvas) } : w;
       });
       persistFromState({ ...state, windows });
       return { windows };
@@ -727,7 +796,12 @@ export function snapshotWorkspace(): WorkspaceSnapshot {
 function normalizeWorkspaceSnapshot(raw: unknown): Persisted {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const rawWindows = Array.isArray(obj.windows) ? obj.windows : [];
-  const windows = rawWindows.map(readWindow).filter((w): w is WorkspaceWindow => w !== null);
+  // 프리셋 payload 는 v2(비율)만 인정한다 — 스키마 v3 로 저장된 구 px 페이로드는
+  // rect 검증에서 떨어져 공장 기본으로 폴백한다(ADR-0122). 프리셋은 이미
+  // 버전 불일치 시 폐기하는 규율이라 조용한 오해석보다 이쪽이 안전하다.
+  const windows = rawWindows
+    .map((w) => readWindow(w, false))
+    .filter((w): w is WorkspaceWindow => w !== null);
   if (windows.length === 0) {
     const fallback = defaultWindows();
     return { windows: fallback, zOrder: fallback.map((w) => w.id), groupSymbols: {} };

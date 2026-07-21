@@ -195,21 +195,35 @@ export function ListRow<T extends ElementType = 'div'>({
   );
 }
 
+/**
+ * 정렬은 **prop 으로만** 바꾼다 — `className` 에 `items-start`/`text-left` 를 얹어도
+ * 안 먹는다. Tailwind 는 클래스 문자열 순서가 아니라 스타일시트 emit 순서로 승자를
+ * 정하고, 그 순서상 `items-center`·`justify-center`·`text-center` 가 `-start`/`-left`
+ * 뒤에 나온다. 세 호출부(ResultTable·SavedScreenerList×2)가 모두 죽은 오버라이드를
+ * 넘기고 있었고(2026-07-21 실측), 넓은 화면에선 가운데 정렬이 시야 안이라 아무도
+ * 눈치채지 못했다 — 바닥 폭에서 테이블 min-width 밖으로 밀려 잘리면서 드러났다.
+ */
 export function EmptyState({
   title,
   children,
   className = '',
   testId,
+  align = 'center',
 }: {
   title?: ReactNode;
   children: ReactNode;
   className?: string;
   testId?: string;
+  align?: 'center' | 'start';
 }) {
+  const alignment =
+    align === 'start'
+      ? 'items-start justify-start text-left'
+      : 'items-center justify-center text-center';
   return (
     <div
       data-testid={testId}
-      className={`h-full flex flex-col items-center justify-center gap-2 p-lg text-fg-dim font-normal text-sm text-center ${className}`.trim()}
+      className={`h-full flex flex-col ${alignment} gap-2 p-lg text-fg-dim font-normal text-sm ${className}`.trim()}
     >
       {title !== undefined && <div className="font-medium text-base text-fg">{title}</div>}
       <div>{children}</div>
