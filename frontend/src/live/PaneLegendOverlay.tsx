@@ -83,11 +83,11 @@ const boxStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 'var(--space-xs)',
-  // Opaque surface — translucent has no DESIGN.md token, and a legend over
-  // saturated candles needs guaranteed contrast (SourceChip precedent). 불투명
-  // bg-card 채움이 캔들 위 가독성을 담당하므로, 외곽선(border) 없이도 텍스트는 읽힌다
-  // (2026-07-15 borderless). 차트 배경=bg-card라 빈 영역에선 자연스럽게 녹아든다.
-  background: 'var(--bg-card)',
+  // 반투명 surface (2026-07-21). 차트 배경=bg-card라 빈 영역에선 원래도 녹아들었고,
+  // 불투명 채움은 캔들 위에 겹칠 때의 대비만 담당했다 — 그 대비를 70%로 낮춰
+  // 아래 캔들이 비치게 하되 텍스트는 여전히 읽히는 선을 잡는다. 외곽선(border)이
+  // 없는 상태(2026-07-15 borderless)는 유지.
+  background: 'var(--bg-legend)',
   borderRadius: 'var(--radius-md)',
   padding: 'var(--space-2xs) var(--space-sm)',
   fontFamily: 'var(--font-data)',
