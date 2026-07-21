@@ -1,4 +1,4 @@
-import { useChartPrefsStore } from '../../state/chartPrefs';
+import { useScopedChartPrefs, useChartPrefActions } from '../../state/chartPrefs';
 import MAStylePicker from './MAStylePicker';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
@@ -23,10 +23,11 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
   const allPriceLineWidth = useWindowIndicator((s) => s.bidPeakAllPriceLineWidth);
   const setStyle = useIndicatorActions().setBidPeakStyle;
   const setAllPriceStyle = useIndicatorActions().setBidPeakAllPriceStyle;
-  const postTouchRankLimit = useChartPrefsStore((s) => s.bidPeakAllPriceRankLimit);
-  const untradedRankLimit = useChartPrefsStore((s) => s.bidPeakUntradedRankLimit);
-  const visibleMaxRankLimit = useChartPrefsStore((s) => s.bidPeakVisibleMaxRankLimit);
-  const setNumericPref = useChartPrefsStore((s) => s.setNumericPref);
+  const prefs = useScopedChartPrefs();
+  const postTouchRankLimit = prefs.bidPeakAllPriceRankLimit;
+  const untradedRankLimit = prefs.bidPeakUntradedRankLimit;
+  const visibleMaxRankLimit = prefs.bidPeakVisibleMaxRankLimit;
+  const { setNumericPref } = useChartPrefActions();
   return (
     <div>
       {!embedded && (

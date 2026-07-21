@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import { useChartPrefsStore } from '../../state/chartPrefs';
+import { useChartPrefActions } from '../../state/chartPrefs';
 import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
 import MovingAverageConfig from './MovingAverageConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
@@ -141,9 +141,10 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   const setPanePrefForTimeframe = actions.setPanePrefForTimeframe;
 
   const resetIndicators = actions.resetIndicators;
-  // chartPrefs 는 전역 유지(#712 — 창 소유는 지표만). 창 대상 리셋과의 비대칭은
-  // 문서화된 수용(스펙 ⑤): 지표는 대상 창만, indicator-modal chartPrefs 는 전역.
-  const resetChartPrefsBucket = useChartPrefsStore((s) => s.resetIndicatorModalBucket);
+  // indicator-modal chartPrefs 도 이제 대상 창의 봉 버킷을 향한다 — #712 에서
+  // "전역 유지"로 수용했던 비대칭은 결함이었다: 버킷은 봉별인데 어느 버킷을 볼지는
+  // 포커스를 따라다니는 전역 슬롯이 정해, 창마다 엉뚱한 봉의 설정이 적용됐다.
+  const { resetIndicatorModalBucket: resetChartPrefsBucket } = useChartPrefActions();
 
   // Which category's detail pane shows on the right. Clicking a category label
   // navigates here; the checkbox icon toggles its master switch separately.

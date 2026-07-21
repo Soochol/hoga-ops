@@ -1,4 +1,4 @@
-import { useChartPrefsStore } from '../../state/chartPrefs';
+import { useScopedChartPrefs, useChartPrefActions } from '../../state/chartPrefs';
 import MAStylePicker from './MAStylePicker';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
@@ -26,10 +26,11 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
   const setStyle = useIndicatorActions().setAskPeakStyle;
   const setAllPriceStyle = useIndicatorActions().setAskPeakAllPriceStyle;
   const setVisibleMaxStyle = useIndicatorActions().setAskPeakVisibleMaxStyle;
-  const postTouchRankLimit = useChartPrefsStore((s) => s.askPeakAllPriceRankLimit);
-  const untradedRankLimit = useChartPrefsStore((s) => s.askPeakUntradedRankLimit);
-  const visibleMaxRankLimit = useChartPrefsStore((s) => s.askPeakVisibleMaxRankLimit);
-  const setNumericPref = useChartPrefsStore((s) => s.setNumericPref);
+  const prefs = useScopedChartPrefs();
+  const postTouchRankLimit = prefs.askPeakAllPriceRankLimit;
+  const untradedRankLimit = prefs.askPeakUntradedRankLimit;
+  const visibleMaxRankLimit = prefs.askPeakVisibleMaxRankLimit;
+  const { setNumericPref } = useChartPrefActions();
   return (
     <div>
       {!embedded && (

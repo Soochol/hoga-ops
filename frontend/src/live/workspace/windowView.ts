@@ -17,7 +17,7 @@
  * PR-C]에서 `<WindowViewContext.Provider>` 로 감싼다. react-refresh 규약상 훅·컨텍스트
  * 와 컴포넌트를 한 파일에 섞지 않는다.)
  */
-import { createContext, useContext, useMemo } from 'react';
+import { useContext, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
 import {
@@ -28,30 +28,17 @@ import {
   type PersistedIndicatorsV2,
 } from '../../state/indicatorSettingsV2';
 import { INDICATOR_OPS, bindIndicatorOps, type BoundIndicatorOps } from '../../state/indicatorOps';
-import { useWorkspaceStore, type GroupId } from '../../state/workspace';
+import { useWorkspaceStore } from '../../state/workspace';
 import type { PaneId } from '../../chart/drawing/types';
 import { normalizePaneOrder, type PaneStretchMap } from '../../chart/paneOrder';
 import type { PanePrefKey } from '../indicators/indicatorPaneProfiles';
 import type { PresetEnableByTimeframe } from '../presets/presetFlags';
+import { WindowViewContext, type WindowView } from './windowViewContext';
 
-export interface WindowView {
-  /** null = 전역(창 없음, Provider 밖). */
-  windowId: string | null;
-  group: GroupId | null;
-  code: string | null;
-  timeframe: LiveTimeframe;
-  historicalFromDate: string | null;
-}
-
-/** 창이 자기 지표(resolve 된 IndicatorSettings)까지 공급하는 완전한 뷰 값. */
-export interface WindowViewValue extends WindowView {
-  indicators: IndicatorSettings;
-}
-
-// 불변식: 한 컴포넌트 인스턴스의 windowId 는 수명 동안 바뀌지 않는다(창=컴포넌트
-// 1:1, WorkspaceCanvas 가 key=win.id 로 마운트). useMemo([windowId]) 캐시·effect
-// deps 생략이 이 불변식에 기댄다 — 창 재사용(id 교체) 최적화 금지.
-export const WindowViewContext = createContext<WindowViewValue | null>(null);
+// 컨텍스트 객체·타입은 `windowViewContext.ts` 가 소유한다(chartPrefs 순환 회피 —
+// 그 파일 상단 주석 참조). 소비자 호환을 위해 여기서 그대로 re-export 한다.
+export { WindowViewContext } from './windowViewContext';
+export type { WindowView, WindowViewValue } from './windowViewContext';
 
 /**
  * 창의 (code, timeframe, historicalFromDate, group). Provider 밖에서는 전역
