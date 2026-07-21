@@ -220,7 +220,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     [isSpot, live.trade],
   );
   // 체결 리스트: 버퍼 엔트리 1건에 체결 여러 개가 실린다. 최신이 위로 오도록
-  // 뒤에서부터 펼치고, 표시분(11행)보다 넉넉히 잡아 자른다.
+  // 뒤에서부터 펼치고, 표시분(9행 — BookPanel 3열 바닥 정렬)보다 넉넉히 잡아 자른다.
   const recentTrades = useMemo(() => {
     if (isSpot) return [];
     const out: BookTrade[] = [];
