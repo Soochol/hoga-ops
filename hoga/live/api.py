@@ -1295,6 +1295,7 @@ def build_router(
     get_today_ask_peak: Callable[[str], dict | None] | None = None,
     get_today_bid_peak: Callable[[str], dict | None] | None = None,
     *,
+    get_vi_status: Callable[[str], dict | None] | None = None,
     data_dir: Path | None = None,
 ) -> APIRouter:
     """Build the /api/live router.
@@ -2138,6 +2139,20 @@ def build_router(
             too=too,
             today_d=today_d,
         )
+
+    @router.get("/vi-status")
+    async def _get_vi_status(code: str = Query(...)) -> dict:
+        """종목의 최신 VI 이벤트 상태(키움 1h). 이벤트 없음/미배선이면 vi=null.
+
+        legend·shape 는 kiwoom_vi_state.parse_vi_row(실측 확정 2026-07-21,
+        docs/research/2026-07-21-kiwoom-vi-price-sources.md). BookPanel 이
+        정규장 중 짧은 주기로 폴링해 발동 강조 + 발동 후 기준가 근사에 쓴다 —
+        VI 는 2분 지속이라 폴링 지연이 실용 범위다.
+        """
+        if not _CODE_RE.match(code):
+            raise HTTPException(422, {"code": "invalid_code", "msg": "code must be 6 digits"})
+        vi = get_vi_status(code) if get_vi_status is not None else None
+        return {"code": code, "vi": vi}
 
     @router.get("/stock-limits", response_model=StockLimitsResponse)
     async def _get_stock_limits(code: str = Query(...)) -> StockLimitsResponse:

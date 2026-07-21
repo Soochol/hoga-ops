@@ -22,6 +22,7 @@ from .buffer import LiveBuffer
 from .coverage import KIWOOM_PER_ACCOUNT_MAX, partition_kiwoom
 from .kiwoom_fields import apply_venue
 from .kiwoom_vi_capture import KiwoomViCapture
+from .kiwoom_vi_state import KiwoomViState
 from .kiwoom_ws_client import KiwoomWsClient
 from .snapshot import LiveSnapshot
 from .ticks import WsTick
@@ -89,9 +90,10 @@ class KiwoomSessionManager:
         # 연결당 등록 상한(실측 200). 슬롯 산술·만석 판정의 SSOT(테스트 주입).
         self._per_account_max = per_account_max or KIWOOM_PER_ACCOUNT_MAX
         self._build = _build_conn or self._default_build_conn
-        # 1h VI 관측 캡처(legend 해독용 raw 채록) — 계정 0 conn 에만 배선한다:
-        # 1h 는 시장 전체 스트림이라 계정마다 받으면 같은 이벤트가 중복 기록된다.
+        # 1h VI — 계정 0 conn 에만 배선한다(시장 전체 스트림이라 계정마다 받으면
+        # 같은 이벤트가 중복). raw 채록(capture)과 표시용 상태(state)로 팬아웃.
         self._vi_capture = KiwoomViCapture(data_dir)
+        self._vi_state = KiwoomViState()
         self._conns: dict[int, _KiwoomConn] = {}
         # sync(멤버십)·watchdog_pass(venue/재빌드)·stop의 _conns/구독 변이 직렬화 —
         # update_codes의 다중 await(배치 REG 페이싱)가 서로 인터리브하지 않게 한다.
@@ -392,6 +394,16 @@ class KiwoomSessionManager:
         )
         await self._buffer.publish(tick.code, [snap], now_ms=now)
 
+    def _on_vi_row(self, row: dict, now_ms: int) -> None:
+        """계정 0 클라이언트의 1h 훅 — raw 채록과 표시용 상태로 팬아웃.
+        양쪽 다 자체적으로 예외를 삼키므로 여기선 순서만 보장한다."""
+        self._vi_capture.record(row, now_ms)
+        self._vi_state.on_row(row, now_ms)
+
+    def vi_status(self, code: str) -> dict | None:
+        """종목의 최신 VI 이벤트 상태(없으면 None) — /api/live/vi-status 소스."""
+        return self._vi_state.get(code)
+
     def active_codes(self) -> list[str]:
         """수집 살아있는 계정의 구독 종목 합집합(승격 루프·화질 도트용). 킥 정지·태스크
         사망 계정은 제외(리뷰: 죽은 계정 종목이 realtime●·'저장 중'으로 오표시됐다).
@@ -515,8 +527,8 @@ class KiwoomSessionManager:
             date_fn=self._date_fn,
             gate_fn=self._gate_fn,
             invalidate_fn=prov.invalidate,  # LOGIN 거부 시 캐시 토큰 무효화(리뷰 Major)
-            # VI 관측은 계정 0 전용(시장 전체 스트림 중복 방지 — __init__ 주석).
-            on_vi_row=self._vi_capture.record if account_id == 0 else None,
+            # VI 는 계정 0 전용(시장 전체 스트림 중복 방지 — __init__ 주석).
+            on_vi_row=self._on_vi_row if account_id == 0 else None,
         )
         # 초기 구독 wire = 저장셋 × 현재 창 venue(파생 집합). 이후 스왑은 watchdog reconcile.
         venue = target_ws_venue(self._now_fn())

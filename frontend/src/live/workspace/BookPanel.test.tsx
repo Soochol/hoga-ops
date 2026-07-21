@@ -70,15 +70,52 @@ describe('BookPanel', () => {
     expect(screen.getByText('104.42%')).toBeInTheDocument();  // 어제보다
     expect(screen.getByText('4,668만')).toBeInTheDocument();  // 거래량(만 단위 절사)
     expect(screen.getByText('250,449')).toBeInTheDocument();  // VWAP
-    // limits 미로드 시 상한가·하한가·상승VI·하강VI·250일 5행은 대시.
-    expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(5);
+    // limits 미로드 시 상한가·하한가·250일 3행은 대시(VI 행은 시가 기반 계산값).
+    expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('VI 예상 발동가를 시가 기준으로 계산해 표시한다', () => {
+    renderPanel(); // dayOpen 245,500 → ±10% 틱 반올림(절사/올림)
+    expect(screen.getByText('270,000')).toBeInTheDocument(); // 270,050 → tick 500 절사
+    expect(screen.getByText('221,000')).toBeInTheDocument(); // 220,950 → tick 500 올림
+  });
+
+  it('시가 없으면(장전) 기준가(base_price)로 예상가를 계산한다', () => {
+    renderPanel({
+      summary: EMPTY_TRADE_SUMMARY,
+      limits: { base_price: 245_500, upper_limit: null, lower_limit: null, high_250: null, low_250: null },
+    });
+    expect(screen.getByText('270,000')).toBeInTheDocument();
+    expect(screen.getByText('221,000')).toBeInTheDocument();
+  });
+
+  const VI_UP_ACTIVE = {
+    code: '005930', direction: 'up' as const, kind: 'static' as const,
+    trigger_price: 251_900, static_base: 229_000, dynamic_base: null,
+    triggered_at: '101512', released_at: null, count: 1, active: true, recv_ms: 1,
+  };
+
+  it('VI 발동 중이면 해당 방향 행을 발동가로 강조한다', () => {
+    renderPanel({ vi: VI_UP_ACTIVE });
+    const active = screen.getByText('251,900 발동');
+    expect(active.className).toContain('text-price-up');
+    // 반대 방향(하강)은 예상가 유지 — 기준가는 발동가 근사(251,900×0.9=226,710→227,000 (tick 500 올림)).
+    expect(screen.getByText('227,000')).toBeInTheDocument();
+  });
+
+  it('VI 해제 후엔 발동가를 기준가 근사로 써서 예상가를 갱신한다', () => {
+    renderPanel({ vi: { ...VI_UP_ACTIVE, released_at: '101750', active: false } });
+    expect(screen.queryByText(/발동/)).toBeNull();
+    // 251,900×1.1=277,090 → tick 500 절사 = 277,000.
+    expect(screen.getByText('277,000')).toBeInTheDocument();
+    expect(screen.getByText('227,000')).toBeInTheDocument();
   });
 
   it('stock-limits 로 상한가·하한가·250일 최고/최저를 채운다', () => {
     // 골든 값 = 2026-07-21 ka10001 실호출(018260). 방향 색은 기준가 대비 —
     // 상한가는 항상 위(red), 하한가는 항상 아래(blue).
     renderPanel({
-      limits: { upper_limit: 331_500, lower_limit: 178_500, high_250: 388_500, low_250: 143_700 },
+      limits: { base_price: 255_000, upper_limit: 331_500, lower_limit: 178_500, high_250: 388_500, low_250: 143_700 },
     });
     const upper = screen.getByText('331,500');
     const lower = screen.getByText('178,500');
@@ -89,7 +126,7 @@ describe('BookPanel', () => {
 
   it('250일 이력이 없는 종목(신규상장)은 대시로 남긴다', () => {
     renderPanel({
-      limits: { upper_limit: 331_500, lower_limit: 178_500, high_250: null, low_250: null },
+      limits: { base_price: 255_000, upper_limit: 331_500, lower_limit: 178_500, high_250: null, low_250: null },
     });
     expect(screen.getByText('331,500')).toBeInTheDocument();
     expect(screen.queryByText(/\//)).toBeNull(); // 반쪽짜리 "− / −" 금지

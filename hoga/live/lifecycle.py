@@ -136,6 +136,16 @@ def get_kiwoom_capture_codes() -> list[str]:
     return session.active_codes()
 
 
+def get_vi_status(code: str) -> dict | None:
+    """종목의 최신 VI 이벤트 상태(키움 1h, 계정 0 수신) — /api/live/vi-status 소스.
+
+    kiwoom_session이 None(off/미배선)이면 None — 프론트는 예상가 계산만 표시."""
+    session = _state.kiwoom_session
+    if session is None:
+        return None
+    return session.vi_status(code)
+
+
 def get_buffer() -> LiveBuffer:
     return _buffer
 
