@@ -24,6 +24,7 @@ class _FakeClient:
         self._codes = list(codes)  # wire 코드(venue 적용본)
         self.kicked_by_peer = False
         self.last_tick_ms = None
+        self.last_recv_ms = None  # PING 포함 전 수신 — 좀비 진단 표면(status)
         self.resubscribed = 0
         self._missing: set[str] = set()
         self._persist_missing = persist_missing

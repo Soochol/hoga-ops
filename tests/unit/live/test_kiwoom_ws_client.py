@@ -322,3 +322,41 @@ async def test_resubscribe_missing_disconnected_is_noop():
     # run 안 함 → 미연결(_ws None). sub_missing 있어도 재구독 no-op.
     client._codes = ["005930"]
     assert await client.resubscribe_missing() == 0
+
+
+async def test_recv_idle_timeout_forces_reconnect(monkeypatch):
+    """상대가 FIN 없이 침묵하면(좀비 세션) 무수신 타임아웃이 끊고 재연결시킨다.
+
+    회귀 방어(2026-07-21 19시 실측): ping_interval=None이라 라이브러리 keepalive가
+    없어 recv가 영구 블록됐고, TCP ESTABLISHED·connected=True·sub_acked 200/200인
+    채로 틱만 2h20m 0건이었다. connected도 sub_acked도 이 상태를 못 보므로 무수신
+    자체가 유일한 신호다.
+    """
+    monkeypatch.setattr(M, "_RECV_IDLE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(M, "_BACKOFF_S", (0,))
+    ws = FakeServer()  # LOGIN/REG ACK만 응답하고 이후 영원히 침묵 = 좀비
+    client = _client(ws)
+    task = await _run_briefly(client, ["005930"], hold=0.3)
+    logins = [s for s in ws.sent if json.loads(s).get("trnm") == "LOGIN"]
+    assert len(logins) >= 2, f"무수신 타임아웃이 재연결을 유발해야 한다 (LOGIN {len(logins)}회)"
+    await _cancel(task)
+
+
+async def test_ping_alone_keeps_session_alive(monkeypatch):
+    """REAL이 없어도 PING만 오면 세션 유지 — 조용한 시간대 오탐 방어.
+
+    타임아웃 신호를 last_tick(데이터)이 아니라 last_recv(PING 포함)로 잡아야 하는
+    이유다. 장외/한산한 종목은 REAL이 드물어도 연결은 멀쩡하다.
+    """
+    monkeypatch.setattr(M, "_RECV_IDLE_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(M, "_BACKOFF_S", (0,))
+    ws = FakeServer()
+    client = _client(ws)
+    task = await _run_briefly(client, ["005930"], hold=0.0)
+    for _ in range(6):  # 타임아웃(0.2)보다 짧은 주기로 PING만 주입
+        ws.push(json.dumps({"trnm": "PING"}))
+        await asyncio.sleep(0.05)
+    logins = [s for s in ws.sent if json.loads(s).get("trnm") == "LOGIN"]
+    assert len(logins) == 1, "PING 수신 중엔 재연결하지 않아야 한다"
+    assert client.connected
+    await _cancel(task)

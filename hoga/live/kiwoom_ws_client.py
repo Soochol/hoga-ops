@@ -50,6 +50,13 @@ _REG_BATCH = 50  # item/REG (실측: 배치로 유량 5/s 회피)
 _REG_PACING_S = 0.35  # ~3 REG/s 페이싱 (5/s 상한 여유)
 _BACKOFF_S = (1, 2, 4, 8, 16, 32, 60)
 _ACK_TIMEOUT_S = 10.0
+# 무수신 상한 — 이 시간 동안 **아무 프레임도**(PING 포함) 안 오면 좀비 세션으로 보고
+# 끊는다. ping_interval=None(아래 _default_connect)이라 라이브러리 keepalive가 없어,
+# 상대가 FIN 없이 사라지면 recv가 영구 블록된다. 실측(2026-07-21 19시): TCP
+# ESTABLISHED·Recv-Q 0·lastrcv 2h20m·틱 0건인데 connected=True·sub_acked 200/200이라
+# 어떤 헬스 판정에도 안 걸렸다. 정상 세션은 REAL(장중 15~20s에 110종목)이나 PING이
+# 계속 오므로 5분 무수신은 사실상 사망 — 오탐해도 비용은 재연결+전량 재등록(~17s)뿐.
+_RECV_IDLE_TIMEOUT_S = 300.0
 
 # REG 응답 return_code (실측)
 _RC_OK = 0
@@ -215,9 +222,20 @@ class KiwoomWsClient:
 
     async def _recv_loop(self, ws: _WsLike) -> None:
         """유일한 recv 소유자 — REAL→on_tick·PING 에코·control ACK→Future 라우팅.
-        연결 종료 시 예외 전파(_session_once가 잡아 재연결)."""
+        연결 종료 시 예외 전파(_session_once가 잡아 재연결).
+
+        무수신 타임아웃도 여기서 판정한다(_RECV_IDLE_TIMEOUT_S). 타임아웃은 **예외**라
+        drain(`await recv_task`)이 풀리고 run()의 기존 백오프 재연결을 그대로 탄다 —
+        좀비 복구를 위한 별도 경로를 만들지 않는 것이 핵심이다."""
         while True:
-            raw = await ws.recv()
+            try:
+                raw = await asyncio.wait_for(ws.recv(), timeout=_RECV_IDLE_TIMEOUT_S)
+            except TimeoutError:
+                _log.warning(
+                    "live.kiwoom.recv_idle_timeout idle=%.0fs last_recv=%s — 좀비 세션 "
+                    "판정, 끊고 재연결", _RECV_IDLE_TIMEOUT_S, self.last_recv_ms,
+                )
+                raise
             await self._dispatch(raw)
 
     async def _login(self, ws: _WsLike, token: str) -> None:

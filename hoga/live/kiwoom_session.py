@@ -442,10 +442,13 @@ class KiwoomSessionManager:
         connected_accounts/subscribed_count을 칩에, accounts를 진단에 쓴다."""
         accounts = []
         last_tick: int | None = None
+        last_recv: int | None = None
         for account_id, conn in sorted(self._conns.items()):
             c = conn.client
             if c.last_tick_ms is not None:
                 last_tick = max(last_tick or 0, c.last_tick_ms)
+            if c.last_recv_ms is not None:
+                last_recv = max(last_recv or 0, c.last_recv_ms)
             accounts.append({
                 "account_id": account_id,
                 "connected": c.connected,
@@ -453,6 +456,10 @@ class KiwoomSessionManager:
                 "sub_acked": c.sub_acked,
                 "kicked_by_peer": c.kicked_by_peer,
                 "last_tick_ms": c.last_tick_ms,
+                # PING 포함 전 수신 — connected/sub_acked가 못 보는 좀비 구간의 유일한
+                # 증거다(2026-07-21: 둘 다 정상인데 last_recv만 2h20m 정체였다).
+                # last_tick과 함께 봐야 "상류 침묵"과 "조용한 시간대"를 구분할 수 있다.
+                "last_recv_ms": c.last_recv_ms,
             })
         codes = self.active_codes()
         return {
@@ -465,6 +472,7 @@ class KiwoomSessionManager:
             # 동급 페이로드라 status 폴링 규모와 정합.
             "subscribed_codes": codes,
             "last_tick_ms": last_tick,
+            "last_recv_ms": last_recv,
             # 08:50–09:00 워밍 창 저장셋 등록 미완 여부(ADR-0118 §5 진단 표면).
             "warmup_incomplete": self._warmup_incomplete,
             # 표시(온디맨드) 등록 수(PR-C 진단·프론트 배지). 저장 커버분 제외한 실등록.
