@@ -982,7 +982,6 @@ class LiveSettingsResponse(BaseModel):
     디스크의 옛 live_settings.json에 남은 키는 pydantic 기본(extra ignore)이 무시."""
 
     schema_version: int = 1
-    program_trade_storage_enabled: bool = False
     kis_rest_bypass_enabled: bool = False
     # 스크리너 총잔량 조건에서 hogaplay 결측 종목을 발견하면 자동으로 지난 N일치 수집을
     # 큐에 적재할지. 기본 False — 스캔은 탐색적으로 반복 실행되므로 묵시적 큐 증가를 막고
@@ -992,10 +991,12 @@ class LiveSettingsResponse(BaseModel):
     # 소스이므로 '쓸지 말지'는 선택지가 아니다 — 활성화는 오직 자격증명 존재(n_kiwoom>0)
     # 로 게이트된다(키 있으면 항상 ON). 옛 live_settings.json의 kiwoom_enabled 키는
     # pydantic extra-ignore로 무시된다(마이그레이션 불필요).
+    # 프로그램 순매수 저장 스위치(program_trade_storage_enabled)도 같은 이유로 폐지
+    # (2026-07-21) — 키움 0w push 로 전환되며 수집 한계비용이 0 이 됐고, 거래원(0F)과
+    # 마찬가지로 항시 저장한다. 옛 키 역시 extra-ignore 로 무시된다.
 
 
 class LiveSettingsUpdate(BaseModel):
-    program_trade_storage_enabled: bool | None = None
     kis_rest_bypass_enabled: bool | None = None
     screener_depth_autocollect: bool | None = None
 

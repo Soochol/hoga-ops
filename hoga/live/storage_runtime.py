@@ -22,7 +22,6 @@ from .coverage import (
     plan_storage_targets,
 )
 from .buffer import LiveBuffer
-from .settings import load_live_settings
 
 
 class ProgramTradeCollectorLike(Protocol):
@@ -110,8 +109,7 @@ async def sync_storage_runtime(
     date_fn: Callable[[], str],
     now_ms_fn: Callable[[], int],
 ) -> StorageRuntimeSnapshot:
-    """Load settings, plan targets, and sync the WS capture runtimes."""
-    settings = load_live_settings(data_dir)
+    """Plan targets and sync the WS capture runtimes."""
     from . import kiwoom_runtime  # noqa: PLC0415
     n_kiwoom = len(kiwoom_runtime.configured_account_ids(data_dir))
     targets = plan_storage_targets(
@@ -120,25 +118,20 @@ async def sync_storage_runtime(
         kiwoom_capacity=KIWOOM_PER_ACCOUNT_MAX * n_kiwoom,
     )
 
-    # 프로그램매매 사이드카(호가 아님 — 별도 데이터 계열). PR-F4 로 소스가 키움
-    # 0w latch 가 되어 KIS REST 를 안 쓰므로 bypass 토글과 무관해졌다 — 설정
-    # 게이트(program_trade_storage_enabled)만 남는다.
-    program_trade_allowed = settings.program_trade_storage_enabled
-    program_collector = (
-        _ensure_program_trade_collector(
-            state,
-            data_dir=data_dir,
-            date_fn=date_fn,
-            now_ms_fn=now_ms_fn,
-        )
-        if program_trade_allowed
-        else state.program_trade_collector
+    # 프로그램매매 사이드카(호가 아님 — 별도 데이터 계열). 설정 스위치는 폐지
+    # (2026-07-21) — PR-F4 로 소스가 키움 0w push 가 되면서 수집 한계비용이 0 이
+    # 됐다(0w 는 DEFAULT_TYPES 라 토글과 무관하게 항상 구독되고, 키움 한도는 종목
+    # 단위·타입 무관이라 슬롯도 무료). 옛 토글은 KIS REST 30s 폴링 시절 쿼터를
+    # 아끼려던 잔재였고, 끄면 latch 만 쌓이고 아무도 drain 하지 않아 데이터가
+    # 조용히 유실됐다 — 거래원(0F)이 스위치 없이 항시 저장되는 것과 같은 규율로
+    # 맞춘다(키움 활성화 스위치 폐지 ADR-0118 과 동형).
+    program_collector = _ensure_program_trade_collector(
+        state,
+        data_dir=data_dir,
+        date_fn=date_fn,
+        now_ms_fn=now_ms_fn,
     )
-    if program_collector is not None:
-        if program_trade_allowed:
-            program_collector.start()
-        else:
-            await program_collector.stop()
+    program_collector.start()
 
     # 키움 WS 세션(ADR-0116) — 실시간(호가·체결)의 유일한 소스. 활성화 스위치는 폐지
     # (ADR-0118) — 자격증명(앱키)만 있으면 항상 활성. 앱키0/타깃 비면 sync가 conn 0으로

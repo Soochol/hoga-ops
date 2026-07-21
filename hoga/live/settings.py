@@ -44,17 +44,11 @@ def save_live_settings(data_dir: Path, settings: LiveSettings) -> None:
 def update_live_settings(
     data_dir: Path,
     *,
-    program_trade_storage_enabled: bool | None = None,
     kis_rest_bypass_enabled: bool | None = None,
     screener_depth_autocollect: bool | None = None,
 ) -> LiveSettings:
     previous = load_live_settings(data_dir)
     settings = LiveSettings(
-        program_trade_storage_enabled=(
-            previous.program_trade_storage_enabled
-            if program_trade_storage_enabled is None
-            else bool(program_trade_storage_enabled)
-        ),
         kis_rest_bypass_enabled=(
             previous.kis_rest_bypass_enabled
             if kis_rest_bypass_enabled is None

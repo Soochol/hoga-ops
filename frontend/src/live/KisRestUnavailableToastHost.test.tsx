@@ -33,13 +33,11 @@ describe('KisRestUnavailableToastHost', () => {
   it('shows a KIS connection toast, enables bypass, and auto-dismisses the toast', async () => {
     const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: true,
       screener_depth_autocollect: false,
     });
     renderWithClient({
       schema_version: 1,
-      program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
@@ -67,7 +65,6 @@ describe('KisRestUnavailableToastHost', () => {
   it('dismisses the toast via the close button without enabling bypass', () => {
     renderWithClient({
       schema_version: 1,
-      program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
@@ -88,7 +85,6 @@ describe('KisRestUnavailableToastHost', () => {
   it('re-shows the toast on a fresh failure after the cooldown, even once dismissed', () => {
     renderWithClient({
       schema_version: 1,
-      program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
@@ -115,7 +111,6 @@ describe('KisRestUnavailableToastHost', () => {
   it('does not render before a failure notification', () => {
     renderWithClient({
       schema_version: 1,
-      program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
@@ -127,7 +122,6 @@ describe('KisRestUnavailableToastHost', () => {
     localStorage.setItem('chart.kisRestMode.v1', JSON.stringify({ kisRestBypassEnabled: true }));
     const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: true,
       screener_depth_autocollect: false,
     });
@@ -135,7 +129,6 @@ describe('KisRestUnavailableToastHost', () => {
 
     renderWithClient({
       schema_version: 1,
-      program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
@@ -155,7 +148,6 @@ describe('KisRestUnavailableToastHost', () => {
 
     renderWithClient({
       schema_version: 1,
-      program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });

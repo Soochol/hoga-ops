@@ -6,7 +6,6 @@ import * as client from './client';
 
 const BASE_SETTINGS = {
   schema_version: 1,
-  program_trade_storage_enabled: false,
   kis_rest_bypass_enabled: false,
   screener_depth_autocollect: false,
 };
@@ -21,7 +20,6 @@ describe('liveSettings api', () => {
     const { getLiveSettings } = await import('./liveSettings');
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      program_trade_storage_enabled: false,
     });
 
     await getLiveSettings();
@@ -29,33 +27,28 @@ describe('liveSettings api', () => {
     expect(client.apiCall).toHaveBeenCalledWith('/api/live/settings');
   });
 
-  it('patches program trade storage', async () => {
+  it('patches screener depth autocollect', async () => {
     const { patchLiveSettings } = await import('./liveSettings');
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      program_trade_storage_enabled: true,
       kis_rest_bypass_enabled: false,
+      screener_depth_autocollect: true,
     });
 
-    const result = await patchLiveSettings({
-      program_trade_storage_enabled: true,
-    });
+    const result = await patchLiveSettings({ screener_depth_autocollect: true });
 
     expect(client.apiCall).toHaveBeenCalledWith('/api/live/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        program_trade_storage_enabled: true,
-      }),
+      body: JSON.stringify({ screener_depth_autocollect: true }),
     });
-    expect(result.program_trade_storage_enabled).toBe(true);
+    expect(result.screener_depth_autocollect).toBe(true);
   });
 
   it('patches only kis_rest_bypass_enabled', async () => {
     const { patchLiveSettings } = await import('./liveSettings');
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: true,
     });
 
@@ -78,14 +71,14 @@ describe('usePatchLiveSettings — optimistic update', () => {
     qc.setQueryData(LIVE_SETTINGS_KEY, BASE_SETTINGS);
 
     const { result } = renderHook(() => usePatchLiveSettings(), { wrapper: makeWrapper(qc) });
-    act(() => { result.current.mutate({ program_trade_storage_enabled: true }); });
+    act(() => { result.current.mutate({ screener_depth_autocollect: true }); });
 
     // Cache reflects the patch while the PATCH is still in flight.
     await waitFor(() => {
-      expect((qc.getQueryData(LIVE_SETTINGS_KEY) as { program_trade_storage_enabled: boolean }).program_trade_storage_enabled)
+      expect((qc.getQueryData(LIVE_SETTINGS_KEY) as { screener_depth_autocollect: boolean }).screener_depth_autocollect)
         .toBe(true);
     });
-    resolve({ ...BASE_SETTINGS, program_trade_storage_enabled: true });
+    resolve({ ...BASE_SETTINGS, screener_depth_autocollect: true });
   });
 
   it('keeps the authoritative server value on success', async () => {
@@ -93,16 +86,15 @@ describe('usePatchLiveSettings — optimistic update', () => {
     // Server may derive fields the patch did not send — server value wins.
     const server = {
       ...BASE_SETTINGS,
-      program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: true,  // 패치가 보내지 않은 서버-유도 필드
     };
     vi.spyOn(client, 'apiCall').mockResolvedValue(server);
     const qc = new QueryClient();
-    qc.setQueryData(LIVE_SETTINGS_KEY, { ...BASE_SETTINGS, program_trade_storage_enabled: true });
+    qc.setQueryData(LIVE_SETTINGS_KEY, { ...BASE_SETTINGS, screener_depth_autocollect: true });
 
     const { result } = renderHook(() => usePatchLiveSettings(), { wrapper: makeWrapper(qc) });
     await act(async () => {
-      await result.current.mutateAsync({ program_trade_storage_enabled: false });
+      await result.current.mutateAsync({ screener_depth_autocollect: false });
     });
 
     expect(qc.getQueryData(LIVE_SETTINGS_KEY)).toEqual(server);
@@ -116,7 +108,7 @@ describe('usePatchLiveSettings — optimistic update', () => {
 
     const { result } = renderHook(() => usePatchLiveSettings(), { wrapper: makeWrapper(qc) });
     await act(async () => {
-      await result.current.mutateAsync({ program_trade_storage_enabled: true }).catch(() => {});
+      await result.current.mutateAsync({ screener_depth_autocollect: true }).catch(() => {});
     });
 
     // Optimistic true was rolled back to the original false.
