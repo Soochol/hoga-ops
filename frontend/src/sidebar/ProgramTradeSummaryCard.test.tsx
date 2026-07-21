@@ -174,6 +174,56 @@ describe('ProgramTradeSummaryCard — sparkline', () => {
     expect(screen.queryByTestId('zero-baseline')).toBeNull();
   });
 
+  it('labels the y-axis with the domain bounds', () => {
+    const series = seriesOf([point(T0, 0), point(T0 + 30_000, 500_000_000_000)]);
+    render(<ProgramTradeSummaryCard series={series} />);
+    // 도메인은 0을 항상 포함 — 전량 양수 날이면 하한 라벨이 0억이 된다.
+    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('5,000억');
+    expect(screen.getByTestId('axis-label-min')).toHaveTextContent('0억');
+  });
+
+  it('labels a negative domain bound with its sign', () => {
+    const series = seriesOf([point(T0, 0), point(T0 + 30_000, -200_000_000_000)]);
+    render(<ProgramTradeSummaryCard series={series} />);
+    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('0억');
+    expect(screen.getByTestId('axis-label-min')).toHaveTextContent('-2,000억');
+  });
+
+  it('adds a zero-line label only when zero sits mid-domain', () => {
+    // 대칭 교차일 — 0선이 정확히 중앙(50%)이라 상·하한 라벨과 안 겹친다.
+    const straddling = seriesOf([
+      point(T0, 100_000_000_000),
+      point(T0 + 30_000, -100_000_000_000),
+    ]);
+    const { rerender } = render(<ProgramTradeSummaryCard series={straddling} />);
+    expect(screen.getByTestId('axis-label-zero')).toHaveTextContent('0억');
+
+    // 단일 부호 날은 하한 라벨이 이미 0억이므로 중복 라벨을 달지 않는다.
+    rerender(
+      <ProgramTradeSummaryCard
+        series={seriesOf([point(T0, 0), point(T0 + 30_000, 100_000_000_000)])}
+      />,
+    );
+    expect(screen.queryByTestId('axis-label-zero')).toBeNull();
+  });
+
+  it('omits the zero-line label when it would collide with a bound label', () => {
+    // 0선이 상단 근처(도메인의 ~9%) — 상한 라벨과 겹치므로 생략한다.
+    const skewed = seriesOf([
+      point(T0, 10_000_000_000),
+      point(T0 + 30_000, -100_000_000_000),
+    ]);
+    render(<ProgramTradeSummaryCard series={skewed} />);
+    expect(screen.queryByTestId('axis-label-zero')).toBeNull();
+  });
+
+  it('renders no axis labels without a drawable series', () => {
+    const series = seriesOf([point(T0, 1), point(T0 + 30_000, null)]);
+    render(<ProgramTradeSummaryCard series={series} />);
+    expect(screen.queryByTestId('program-sparkline-axis')).toBeNull();
+    expect(screen.queryByTestId('axis-label-max')).toBeNull();
+  });
+
   it('shows cursor marker and value dot when the cursor is inside the drawn range', () => {
     const series = seriesOf([point(T0, 1), point(T0 + 60_000, 3)]);
     render(<ProgramTradeSummaryCard series={series} cursorMs={T0 + 30_000} />);
