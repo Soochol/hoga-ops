@@ -22,6 +22,7 @@ from typing import Protocol
 
 import websockets
 
+from . import kiwoom_fields as K
 from .kiwoom_frames import parse_real_message
 from .ticks import WsTick  # 포트 계약 타입(공유)
 
@@ -73,6 +74,7 @@ class KiwoomWsClient:
         gate_fn: Callable[[], bool] | None = None,
         max_consecutive_kicks: int = 5,
         invalidate_fn: Callable[[], None] | None = None,
+        on_vi_row: Callable[[dict, int], None] | None = None,
         _connect: Callable[[str], Awaitable[_WsLike]] | None = None,
     ) -> None:
         self._token_fn = token_fn
@@ -81,6 +83,11 @@ class KiwoomWsClient:
         # 60s 발급 쿨다운은 유지돼 발급 폭주를 막는다(WS 백오프와 함께 ~1분 내 복구).
         self._invalidate_fn = invalidate_fn
         self._on_tick = on_tick
+        # 1h VI 관측 훅(kiwoom_vi_capture.record) — 설정 시 세션마다 시장 전체 VI 를
+        # 추가 REG 하고(_register_vi), REAL 의 1h row 를 raw 로 넘긴다. 1h 는 시장
+        # 전체 스트림이라 **연결 하나에만** 설정해야 중복 기록이 없다(session 이 계정
+        # 0 에만 배선). 훅·REG 실패는 본 캡처를 해치지 않는다(best-effort).
+        self._on_vi_row = on_vi_row
         self._date_fn = date_fn
         self._url = url
         self._types = list(types)
@@ -192,6 +199,7 @@ class KiwoomWsClient:
                 self._attempt = 0
                 self._consecutive_kicks = 0
                 await self._register_all(ws, list(self._codes))
+                await self._register_vi(ws)
             _log.info("live.kiwoom.connected codes=%d acked=%d",
                       len(self._codes), len(self._acked))
             # drain: recv 루프가 연결 종료(예외)로 끝날 때까지 대기 → run()이 재연결.
@@ -237,6 +245,34 @@ class KiwoomWsClient:
             if ok:
                 self._acked.update(chunk)
             await asyncio.sleep(_REG_PACING_S)
+
+    async def _register_vi(self, ws: _WsLike) -> None:
+        """1h VI 시장 전체 구독(on_vi_row 설정 시) — item=[""] 이 공식 규약(종목 슬롯
+        무관). 세션마다 다시 REG 하므로 재연결에도 살아남는다. 관측 전용이라 실패는
+        경고만 남기고 세션을 잇는다 — _acked/sub_rejected(종목 구독 진단)도 오염하지
+        않도록 _reg_batch 를 타지 않는다. 호출자가 _sub_lock 보유(REG ACK 직렬화)."""
+        if self._on_vi_row is None:
+            return
+        msg = json.dumps({
+            "trnm": "REG", "grp_no": "1", "refresh": "1",
+            "data": [{"item": [""], "type": [K.TYPE_VI]}],
+        })
+        try:
+            for attempt in range(3):
+                ack = await self._send_and_wait(ws, msg, "REG")
+                rc = ack.get("return_code")
+                if rc == _RC_OK:
+                    _log.info("live.kiwoom.vi_registered")
+                    return
+                if rc == _RC_RATE_LIMIT:
+                    await asyncio.sleep(1.0 + attempt)
+                    continue
+                _log.warning("live.kiwoom.vi_reg_rejected rc=%s msg=%s",
+                             rc, ack.get("return_msg"))
+                return
+            _log.warning("live.kiwoom.vi_reg_rate_limited_persist")
+        except Exception as e:  # noqa: BLE001 — 관측 실패로 세션을 죽이지 않는다
+            _log.warning("live.kiwoom.vi_reg_failed err=%r", e)
 
     async def _reg_batch(self, ws: _WsLike, chunk: list[str], *, tr: str) -> bool:
         """1배치 REG/REMOVE 송신 + ACK 대기. rc=OK면 True. 유량 rc는 백오프 재시도,
@@ -333,6 +369,7 @@ class KiwoomWsClient:
             await self._echo(raw)
             return
         if trnm == "REAL":
+            self._capture_vi_rows(msg, now_ms)
             date = self._date_fn()
             for tick in parse_real_message(msg, date=date, now_ms=now_ms):
                 self.last_tick_ms = now_ms
@@ -343,6 +380,22 @@ class KiwoomWsClient:
         waiter = self._ack_waiters.pop(trnm, None) if isinstance(trnm, str) else None
         if waiter is not None and not waiter.done():
             waiter.set_result(msg)
+
+    def _capture_vi_rows(self, msg: dict, now_ms: int) -> None:
+        """REAL 안의 1h row 를 관측 훅에 raw 로 전달. 파서(parse_real_message)는 1h 를
+        모른 채 지나친다(None) — 관측이 종목 틱 경로를 건드리지 않는 분리다. 훅 예외는
+        여기서 흡수(recv 루프 보호)."""
+        if self._on_vi_row is None:
+            return
+        data = msg.get("data")
+        if not isinstance(data, list):
+            return
+        for row in data:
+            if isinstance(row, dict) and row.get("type") == K.TYPE_VI:
+                try:
+                    self._on_vi_row(row, now_ms)
+                except Exception:  # noqa: BLE001 — 관측 실패가 recv 루프를 못 죽이게
+                    _log.warning("live.kiwoom.vi_hook_failed", exc_info=True)
 
     async def _echo(self, raw: str | bytes) -> None:
         if self._ws is not None:

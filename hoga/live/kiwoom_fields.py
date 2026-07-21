@@ -15,6 +15,17 @@ TYPE_TRADE = "0B"  # 주식체결 → SnapshotKind.TRADE
 TYPE_ORDERBOOK = "0D"  # 주식호가잔량 → SnapshotKind.OB
 TYPE_MEMBER = "0F"  # 주식당일거래원 → SnapshotKind.BROKER
 TYPE_PROGRAM = "0w"  # 종목프로그램매매 → 프로그램 사이드카 latch (PR-F4)
+# VI발동/해제 — **시장 전체 구독**(REG item=[""], 종목 슬롯 무관)이라 종목 파이프라인이
+# 아니라 관측 캡처(kiwoom_vi_capture) 전용이다. 9068 발동구분·9069 발동방향·9075
+# 장전구분의 코드값 legend 가 어떤 문서에도 없어 실이벤트 raw 채록으로만 확정 가능 —
+# legend 확정 전까지 파서(kiwoom_frames)는 이 타입을 소비하지 않는다.
+TYPE_VI = "1h"
+
+# --- 1h VI발동/해제 FID (요약 로그용 — 저장은 raw 전체) ---
+VI_CODE = "9001"  # 종목코드
+VI_TRIGGER_PRICE = "1221"  # 발동가격
+VI_KIND = "1225"  # 적용구분 — 공식 예제상 "정적" 한글 리터럴(코드값 아님)
+VI_TRIGGER_DIR = "9069"  # 발동방향 — legend 미해독(캡처 목적 필드)
 
 # --- 0D 주식호가잔량 FID ---
 # 실측 확인(2026-07-16): 41-50 매도호가 오름차순(best=41), 51-60 매수호가 내림차순(best=51),
