@@ -260,7 +260,9 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
 
   const onTidy = useCallback(() => {
     const box = boxRef.current?.getBoundingClientRect();
-    if (box) tidyAll({ w: box.width, h: box.height });
+    // 0-크기 캔버스(미측정·jsdom)에서 실행하면 toFrac 가 0 나눗셈으로 NaN rect 를
+    // 커밋한다 — 실측 전에는 조용히 무시.
+    if (box && box.width > 0 && box.height > 0) tidyAll({ w: box.width, h: box.height });
   }, [tidyAll]);
 
   // 캔버스 실측 크기 — 비율 rect 를 px 로 펴는 기준(ADR-0122). 캔버스가 줄면 이

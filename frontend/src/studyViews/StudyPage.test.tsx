@@ -9,7 +9,7 @@ import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
-import { STUDY_CARD_KEYS, useStudyLayoutStore } from '../state/studyLayout';
+import { useStudyWorkspaceStore, type StudyWorkspaceWindow } from '../state/studyWorkspace';
 
 const {
   useStudyViewsMock,
@@ -265,11 +265,18 @@ beforeEach(() => {
   });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
-  useStudyLayoutStore.setState({
-    cardOrder: [...STUDY_CARD_KEYS],
-    cardHidden: {},
-    cardCollapsed: {},
-    detailPanelCollapsed: false,
+  // 창 워크스페이스(ADR-0123) — 시드와 무관한 결정적 배치로 초기화. DOM 순서 =
+  // windows 배열 순서(orderbook → brokers → vdist → program).
+  const seedWindows: StudyWorkspaceWindow[] = [
+    { id: 'w-chart', kind: 'chart', rect: { x: 0, y: 0, w: 0.72, h: 1 } },
+    { id: 'w-book', kind: 'book', rect: { x: 0.72, y: 0, w: 0.28, h: 0.25 } },
+    { id: 'w-broker', kind: 'broker', rect: { x: 0.72, y: 0.25, w: 0.28, h: 0.25 } },
+    { id: 'w-vdist', kind: 'vdist', rect: { x: 0.72, y: 0.5, w: 0.28, h: 0.25 } },
+    { id: 'w-program', kind: 'program', rect: { x: 0.72, y: 0.75, w: 0.28, h: 0.25 } },
+  ];
+  useStudyWorkspaceStore.setState({
+    windows: seedWindows,
+    zOrder: ['w-book', 'w-broker', 'w-vdist', 'w-program', 'w-chart'],
   });
 });
 
@@ -304,12 +311,11 @@ describe('StudyPage', () => {
   it('renders a v2 reference view from raw range data without snapshot overrides', () => {
     renderPage('/study?view=view-ref');
 
-    // 부유 카드 모델(/live 통일): 바깥 프레임은 --bg 필드(보더 없음), 차트·상세가 각각
-    // bg-card + shadow-panel 카드로 떠 있다.
+    // 창 워크스페이스(ADR-0123): 카드 크롬은 창 프레임(WindowFrameCore)이 소유하고,
+    // 차트 콘텐츠는 차트 창 안에 산다.
     expect(screen.getByTestId('study-page-primary')).toHaveClass('bg-bg');
     expect(screen.getByTestId('study-page-primary')).not.toHaveClass('border');
-    expect(screen.getByTestId('study-chart-card')).toHaveClass('shadow-panel');
-    expect(screen.getByTestId('study-chart-card')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('study-chart-card').closest('[data-win]')).not.toBeNull();
     expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
     // 44px 그리기 레일은 #760 으로 폐기 — 그리기는 헤더의 DrawingMenu 가 연다.
     expect(screen.queryByTestId('live-drawing-rail')).not.toBeInTheDocument();
@@ -700,88 +706,53 @@ describe('StudyPage', () => {
     expect(screen.getByText('+1억')).toBeTruthy();
   });
 
-  it('has no per-card collapse toggle or collapse-all control (접기 제거)', () => {
+  it('has no per-card drag handle or hide control (창 전환으로 카드 크롬 제거)', () => {
     renderPage('/study?view=view-ref');
 
     expect(screen.getByTestId('study-detail-content-orderbook')).toBeInTheDocument();
-    expect(screen.queryByTestId('study-detail-toggle-orderbook')).toBeNull();
-    expect(screen.queryByTestId('study-detail-collapse-all')).toBeNull();
-    // 드래그 핸들은 제목보다 앞(왼쪽).
-    const handle = screen.getByTestId('study-detail-drag-orderbook');
-    const title = screen.getByText('10호가');
-    expect(handle.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId('study-detail-drag-orderbook')).toBeNull();
+    expect(screen.queryByTestId('study-detail-hide-orderbook')).toBeNull();
+    expect(screen.queryByTestId('study-detail-restore')).toBeNull();
   });
 
-  it('renders study detail cards in the persisted order', () => {
-    useStudyLayoutStore.setState({
-      cardOrder: ['program', 'orderbook', 'brokers', 'volumeDistribution'],
-    });
+  it('closes a data window from its frame and re-adds it from the add menu', () => {
     renderPage('/study?view=view-ref');
 
-    const program = screen.getByTestId('study-detail-card-program');
-    const orderbook = screen.getByTestId('study-detail-card-orderbook');
-    expect(
-      program.compareDocumentPosition(orderbook) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it('hides a study detail card and restores it from the + menu', () => {
-    renderPage('/study?view=view-ref');
-
-    expect(screen.getByTestId('study-detail-card-brokers')).toBeInTheDocument();
+    const brokerFrame = screen.getByTestId('study-detail-card-brokers').closest('[data-win]') as HTMLElement;
     act(() => {
-      screen.getByTestId('study-detail-hide-brokers').click();
+      within(brokerFrame).getByTitle('창 닫기').click();
     });
-    expect(useStudyLayoutStore.getState().cardHidden.brokers).toBe(true);
     expect(screen.queryByTestId('study-detail-card-brokers')).toBeNull();
+    expect(useStudyWorkspaceStore.getState().windows.some((w) => w.kind === 'broker')).toBe(false);
 
     act(() => {
-      screen.getByTestId('study-detail-restore').click();
+      screen.getByTestId('study-window-add').click();
     });
     act(() => {
-      screen.getByTestId('study-detail-restore-item-brokers').click();
+      screen.getByTestId('study-add-broker').click();
     });
-    expect(useStudyLayoutStore.getState().cardHidden.brokers).toBe(false);
     expect(screen.getByTestId('study-detail-card-brokers')).toBeInTheDocument();
   });
 
-  it('collapses the whole study detail panel to a rail and restores it on click', () => {
-    useStudyLayoutStore.setState({ detailPanelCollapsed: true });
+  it('does not offer a close control on the chart window (차트 1개 고정)', () => {
     renderPage('/study?view=view-ref');
 
-    expect(screen.queryByTestId('study-reference-detail-cards')).toBeNull();
-    const rail = screen.getByTestId('study-detail-rail');
-    expect(rail).toHaveAttribute('aria-label', '상세 패널 펼치기');
-
-    act(() => {
-      rail.click();
-    });
-    expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(false);
-    expect(screen.getByTestId('study-reference-detail-cards')).toBeInTheDocument();
+    const chartFrame = screen.getByTestId('study-chart-card').closest('[data-win]') as HTMLElement;
+    expect(within(chartFrame).queryByTitle('창 닫기')).toBeNull();
   });
 
-  it('toggles the study detail panel with the d shortcut', () => {
+  it('toggles the memo window with the header memo button', () => {
     renderPage('/study?view=view-ref');
 
-    act(() => {
-      fireEvent.keyDown(window, { key: 'd' });
-    });
-    expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(true);
-    act(() => {
-      fireEvent.keyDown(window, { key: 'd' });
-    });
-    expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(false);
-  });
-
-  it('auto-expands the collapsed detail panel when the memo opens', () => {
-    useStudyLayoutStore.setState({ detailPanelCollapsed: true });
-    renderPage('/study?view=view-ref');
-
-    expect(screen.getByTestId('study-detail-rail')).toBeInTheDocument();
+    expect(useStudyWorkspaceStore.getState().windows.some((w) => w.kind === 'memo')).toBe(false);
     act(() => {
       screen.getByRole('button', { name: '메모' }).click();
     });
-    expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(false);
+    expect(useStudyWorkspaceStore.getState().windows.some((w) => w.kind === 'memo')).toBe(true);
+    act(() => {
+      screen.getByRole('button', { name: '메모' }).click();
+    });
+    expect(useStudyWorkspaceStore.getState().windows.some((w) => w.kind === 'memo')).toBe(false);
   });
 
   it('waits for the debounced sidebar cursor before activating reference spot details', () => {
@@ -852,18 +823,12 @@ describe('StudyPage', () => {
     expect(within(brokersCard).queryByText('거래원 정보 없음')).toBeNull();
   });
 
-  it('renders study detail sections as separated cards inside the outer detail rail', () => {
+  it('renders each data surface inside its own workspace window frame', () => {
     renderPage('/study?view=view-ref');
-
-    const stack = screen.getByTestId('study-reference-detail-cards');
-    expect(stack).toHaveClass('bg-bg-subtle/40');
-    expect(stack).toHaveClass('gap-2');
-    expect(stack).toHaveClass('p-2');
 
     for (const key of ['orderbook', 'brokers', 'volume-distribution', 'program'] as const) {
       const section = screen.getByTestId(`study-detail-card-${key}`);
-      expect(section).toHaveClass('rounded-lg');
-      expect(section).toHaveClass('border');
+      expect(section.closest('[data-win]')).not.toBeNull();
       expect(section).toHaveClass('bg-bg-card');
     }
   });
@@ -944,7 +909,7 @@ describe('StudyPage', () => {
     expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(3);
   });
 
-  it('lets long reference detail indicators grow downward while the whole detail panel scrolls', () => {
+  it('lets long reference detail indicators scroll inside their own window', () => {
     useLiveBrokersAtCursorMock.mockReturnValue(
       Array.from({ length: 18 }, (_, index) => ({
         broker: `거래원${index + 1}`,
@@ -957,16 +922,9 @@ describe('StudyPage', () => {
 
     renderPage('/study?view=view-ref');
 
-    const stack = screen.getByTestId('study-reference-detail-cards');
-    expect(stack).toHaveClass('min-h-full');
-    expect(stack).toHaveClass('flex-col');
-    expect(stack).toHaveClass('gap-2');
-    expect(stack).toHaveClass('p-2');
+    // 창 모델: 스크롤은 패널 전체가 아니라 각 창 콘텐츠가 담당한다.
     for (const key of ['orderbook', 'volume-distribution', 'brokers', 'program']) {
-      expect(screen.getByTestId(`study-detail-card-${key}`)).toHaveClass('rounded-lg');
-      expect(screen.getByTestId(`study-detail-card-${key}`)).toHaveClass('bg-bg-card');
-      expect(screen.getByTestId(`study-detail-card-${key}`)).not.toHaveClass('overflow-hidden');
-      expect(screen.getByTestId(`study-detail-content-${key}`)).not.toHaveClass('overflow-y-auto');
+      expect(screen.getByTestId(`study-detail-card-${key}`)).toHaveClass('overflow-y-auto');
       expect(screen.getByTestId(`study-detail-content-${key}`)).not.toHaveClass('overflow-hidden');
     }
   });

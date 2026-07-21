@@ -1,6 +1,11 @@
 import { it, expect, vi } from 'vitest';
 import { fireEvent, render } from '@testing-library/react';
+import { requestWorkspaceTidy } from '../workspace/workspaceCanvasControls';
 import { useStudyKeyboard } from './useStudyKeyboard';
+
+vi.mock('../workspace/workspaceCanvasControls', () => ({
+  requestWorkspaceTidy: vi.fn(),
+}));
 
 function Harness({
   onSelectTabIndex,
@@ -33,6 +38,12 @@ it('cycles tabs with ] (next) and [ (prev)', () => {
   expect(onPrevTab).not.toHaveBeenCalled();
   fireEvent.keyDown(window, { key: '[' });
   expect(onPrevTab).toHaveBeenCalledTimes(1);
+});
+
+it('t 는 창 정리(Tidy)를 요청한다', () => {
+  render(<Harness />);
+  fireEvent.keyDown(window, { key: 't' });
+  expect(requestWorkspaceTidy).toHaveBeenCalledTimes(1);
 });
 
 it('suppresses tab cycling while typing or with modifiers', () => {
