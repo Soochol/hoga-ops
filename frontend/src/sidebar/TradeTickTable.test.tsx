@@ -13,14 +13,13 @@ function view(overrides: Partial<TradeTickView> = {}): TradeTickView {
       { tMs: OPEN_MS + 1000, price: 70100, qty: 10, side: -1, key: 'k1' },
     ],
     prevClose: 70000,
-    maxQty: 40,
     ...overrides,
   };
 }
 
 describe('TradeTickTable', () => {
   it('버퍼가 비면 빈 상태를 표시한다', () => {
-    render(<TradeTickTable view={{ ticks: [], prevClose: null, maxQty: 0 }} />);
+    render(<TradeTickTable view={{ ticks: [], prevClose: null }} />);
     expect(screen.getByText('체결 데이터 없음')).toBeInTheDocument();
   });
 
@@ -53,7 +52,6 @@ describe('TradeTickTable', () => {
         view={{
           ticks: [{ tMs: OPEN_MS, price: 70000, qty: 5, side: 0, key: 'k0' }],
           prevClose: 70000,
-          maxQty: 5,
         }}
       />,
     );
@@ -78,24 +76,16 @@ describe('TradeTickTable', () => {
     expect(screen.getByText('70,100')).toHaveClass('text-price-down'); // side -1
   });
 
-  it('깊이 막대는 표시 구간 최대 체결량 대비 비율이다', () => {
+  // 회귀 가드: 수량 비율 깊이 막대는 제거됐다. 설정으로 끌 수 없는 상시 배경이라
+  // 사용자 지정 강조색과 섞였고, 정규화 기준(표시 버퍼 최댓값)이 틱마다 흔들렸다.
+  it('수량 비율 깊이 막대를 렌더하지 않는다', () => {
     const { container } = render(<TradeTickTable view={view()} />);
-    const bars = container.querySelectorAll('span[style*="width"]');
-    expect(bars[0]).toHaveStyle({ width: '100%' }); // qty 40 = maxQty
-    expect(bars[1]).toHaveStyle({ width: '25%' });  // qty 10 / 40
+    expect(container.querySelector('span[style*="width"]')).toBeNull();
   });
 
-  it('maxQty 가 0 이어도 (방어) 막대 폭 계산이 NaN 으로 새지 않는다', () => {
-    const { container } = render(
-      <TradeTickTable
-        view={{
-          ticks: [{ tMs: OPEN_MS, price: 70000, qty: 5, side: 1, key: 'k0' }],
-          prevClose: null,
-          maxQty: 0,
-        }}
-      />,
-    );
-    expect(container.querySelector('span[style*="width"]')).toHaveStyle({ width: '0%' });
+  it('강조가 꺼지면 어떤 셀에도 배경을 칠하지 않는다', () => {
+    const { container } = render(<TradeTickTable view={view()} highlight={null} />);
+    expect(container.querySelector('span[style*="background"]')).toBeNull();
   });
 
   describe('대량 체결 강조', () => {

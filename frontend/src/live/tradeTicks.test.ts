@@ -103,22 +103,6 @@ describe('buildTradeTickView', () => {
     expect(after.ticks[1].key).toBe(before.ticks[0].key);
   });
 
-  it('maxQty 는 표시 구간의 최댓값이다 (깊이 막대 정규화)', () => {
-    const view = buildTradeTickView(
-      [tick(1000, 70000, 5, 1), tick(2000, 70100, 40, -1), tick(3000, 70200, 12, 1)],
-      10,
-    );
-    expect(view.maxQty).toBe(40);
-  });
-
-  it('limit 밖의 큰 체결은 maxQty 에 반영되지 않는다', () => {
-    const view = buildTradeTickView(
-      [tick(1000, 70000, 999, 1), tick(2000, 70100, 5, -1)],
-      1,
-    );
-    expect(view.maxQty).toBe(5);
-  });
-
   it('빈 버퍼·limit 0 은 빈 뷰', () => {
     expect(buildTradeTickView([], 10).ticks).toEqual([]);
     expect(buildTradeTickView([tick(1000, 70000, 10, 1)], 0).ticks).toEqual([]);
