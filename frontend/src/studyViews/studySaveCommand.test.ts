@@ -95,8 +95,9 @@ describe('makeStudySaveCommand', () => {
       code: '005930',
       label: '삼성전자',
       viewport: { right_edge_ms: 3_000, bar_span: 2, at_live_edge: true, right_padding_bars: 18 },
+      // 저장 범위는 보이는 캔들(bar_span=2 → 마지막 2봉)만 — 최소 봉수 확장 없음.
       range: {
-        from_ms: 1_000,
+        from_ms: 2_000,
         to_ms: 3_000,
       },
     });

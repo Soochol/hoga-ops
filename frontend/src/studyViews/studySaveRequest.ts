@@ -5,7 +5,6 @@ import type {
 } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
-import { chooseSnapshotWindow } from './snapshotWindow';
 import type { TabViewport } from '../live/viewportAnchor';
 import type { LiveTimeframe } from '../state/livePage';
 
@@ -39,6 +38,9 @@ export function viewportFromCapture(
   };
 }
 
+// 저장 범위 = 화면에 보이는 캔들 범위 그대로. 예전 스냅샷(캔들 동결 저장) 시절의
+// 최소 200봉 확장(chooseSnapshotWindow)은 재조회 방식 전환 후 근거를 잃었고,
+// 일봉처럼 보이는 봉이 200개 미만인 타임프레임에서 저장 기간만 부풀렸다.
 export function visibleWindow(bundle: RangeBundle, viewport: StudyViewport) {
   const candles = bundle.candles;
   if (candles.length === 0) return { fromIndex: 0, toIndex: -1 };
@@ -47,7 +49,7 @@ export function visibleWindow(bundle: RangeBundle, viewport: StudyViewport) {
   ), 0);
   const visibleTo = Math.max(0, Math.min(candles.length - 1, rightIndex));
   const visibleFrom = Math.max(0, visibleTo - Math.ceil(viewport.bar_span) + 1);
-  return chooseSnapshotWindow(candles, visibleFrom, visibleTo);
+  return { fromIndex: visibleFrom, toIndex: visibleTo };
 }
 
 export function rangeForWindow(bundle: RangeBundle, fromIndex: number, toIndex: number) {
