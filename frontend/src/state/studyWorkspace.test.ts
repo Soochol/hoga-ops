@@ -23,14 +23,18 @@ describe('시드 — study.layout.v1 → 기본 창 배치 (ADR-0123 PR-2)', () 
 
     expect(s.windows.map((w) => w.kind)).toEqual(['chart', 'book', 'broker', 'vdist', 'program']);
     const chart = s.windows[0];
-    expect(chart.rect).toEqual({ x: 0, y: 0, w: 0.72, h: 1 });
-    // 데이터 창은 우측 열 등분 스택.
+    // 10호가(십자 배치)가 보이면 우측 열이 BookPanel min-w 계약만큼 넓어진다.
+    expect(chart.rect).toEqual({ x: 0, y: 0, w: 0.56, h: 1 });
+    // 데이터 창은 우측 열 스택 — book 은 두 배 높이 가중(2/5), 나머지 1/5.
     const data = s.windows.slice(1);
+    const expectedHeights = [0.4, 0.2, 0.2, 0.2];
+    let expectedY = 0;
     data.forEach((w, i) => {
-      expect(w.rect.x).toBeCloseTo(0.72);
-      expect(w.rect.w).toBeCloseTo(0.28);
-      expect(w.rect.y).toBeCloseTo(i * 0.25);
-      expect(w.rect.h).toBeCloseTo(0.25);
+      expect(w.rect.x).toBeCloseTo(0.56);
+      expect(w.rect.w).toBeCloseTo(0.44);
+      expect(w.rect.y).toBeCloseTo(expectedY);
+      expect(w.rect.h).toBeCloseTo(expectedHeights[i]);
+      expectedY += expectedHeights[i];
     });
     // 첫 포커스 = 차트(zOrder 마지막).
     expect(s.zOrder[s.zOrder.length - 1]).toBe(chart.id);
@@ -49,9 +53,13 @@ describe('시드 — study.layout.v1 → 기본 창 배치 (ADR-0123 PR-2)', () 
     const s = useStudyWorkspaceStore.getState();
 
     expect(s.windows.map((w) => w.kind)).toEqual(['chart', 'program', 'book', 'vdist']);
+    // 가중: program 1 + book 2 + vdist 1 = 4.
+    const expectedHeights = [0.25, 0.5, 0.25];
+    let expectedY = 0;
     s.windows.slice(1).forEach((w, i) => {
-      expect(w.rect.y).toBeCloseTo(i * (1 / 3));
-      expect(w.rect.h).toBeCloseTo(1 / 3);
+      expect(w.rect.y).toBeCloseTo(expectedY);
+      expect(w.rect.h).toBeCloseTo(expectedHeights[i]);
+      expectedY += expectedHeights[i];
     });
   });
 
