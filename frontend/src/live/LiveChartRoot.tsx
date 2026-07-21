@@ -43,7 +43,7 @@ import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
 import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle, type DepthHeatmapPointWire } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
-import { minuteRightOffsetBars } from './minuteViewportPolicy';
+import { minuteRestoreGeometry, minuteRightOffsetBars } from './minuteViewportPolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
 import {
@@ -909,14 +909,24 @@ export function LiveChartRoot({
             ? latestCandleIdx
             : null;
         rememberLatestCandleLogicalIndex(latestCandleLogicalIndex);
-        const restoreRightOffset = isMinuteTimeframe(timeframe)
-          ? minuteRightOffsetBars(restoreViewport.barSpan, tsR.width())
-          : undefined;
+        // 저장 span이 현재 차트 폭에서 그릴 수 없는 크기면(넓은 /live 에서 저장 →
+        // 좁은 /study 에서 복원) 여백만 저장 span 기준으로 부풀어 캔들을 화면 밖으로
+        // 밀어낸다. 그리기 가능한 범위로 접고 여백을 재계산한다(D/W/M의
+        // maxLegibleSpan 과 대칭).
+        const minuteGeometry = isMinuteTimeframe(timeframe)
+          ? minuteRestoreGeometry(
+              restoreViewport.barSpan,
+              tsR.width(),
+              chart.options().timeScale.minBarSpacing ?? 0.5,
+            )
+          : null;
         const range = computeRestoreRange(
-          restoreViewport,
+          minuteGeometry
+            ? { ...restoreViewport, barSpan: minuteGeometry.barSpan }
+            : restoreViewport,
           totalBarsR,
           idx,
-          restoreRightOffset,
+          minuteGeometry?.rightOffset,
           latestCandleLogicalIndex,
         );
         if (range) {

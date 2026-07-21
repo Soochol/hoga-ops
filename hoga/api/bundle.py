@@ -52,7 +52,7 @@ from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.slice_coalescer import SLICE_COALESCER
 from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.api.queries import QueryEngine, StockDateNotFound
-from hoga.api.sources import ordered_sources, resolve_source_result
+from hoga.api.sources import ordered_sources, resolve_candle_source, resolve_source_result
 from hoga.api.timeenc import (
     hhmmssms_to_intra_ms_sql,
     hhmmssms_to_unix_ms,
@@ -254,6 +254,24 @@ def build_candles_slice(
         r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
         for r in rows
     ]
+
+
+def _is_repaired_candle_partition(
+    engine: QueryEngine, date: str, code: str, winner_meta: dict,
+) -> bool:
+    """kis_api 캔들 파티션이 ADR-0109 복구본인가(≠ 레거시 rest30 캡처).
+
+    호가 승자가 kis_api면 이미 읽은 ``winner_meta``를 재사용하고, 승자가 갈렸을
+    때만(kiwoom_live가 호가로 이긴 날) kis_api meta를 추가로 읽는다.
+    """
+    if winner_meta.get("created_from") == REPAIR_MARKER:
+        return True
+    meta_path = engine.parquet_dir(date, code, "kis_api") / "meta.json"
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError, OSError):
+        return False
+    return meta.get("created_from") == REPAIR_MARKER
 
 
 def build_broker_late_entries_slice(
@@ -1468,11 +1486,16 @@ def build_range_bundle(
                 date=d, warnings=[v.to_model() for v in c.warnings],
             ))
 
+        # 캔들 승자는 호가 승자와 독립이다(소스별 보유 차원이 다름 — ADR-0040).
+        # kiwoom_live/kis_live가 호가로 이겨도 캔들은 hogaplay 또는 ADR-0109
+        # 복구본(kis_api)에서 온다. 이 분리가 없으면 캔들 미보유 승자가 같은
+        # Stock-Date의 실제 캔들을 통째로 가린다.
+        candle_source = resolve_candle_source(engine, d, code, source_pref)
         needs_trade_price_range = volume_distribution_bins is not None or include_trade_volume_pocs
         needs_raw_candles = not hoga_only and (not sidecar_only or needs_trade_price_range)
         raw_candles = (
-            build_candles_slice(engine, code=code, date=d, source=source)
-            if needs_raw_candles
+            build_candles_slice(engine, code=code, date=d, source=candle_source)
+            if needs_raw_candles and candle_source is not None
             else []
         )
         if hoga_only:
@@ -1572,9 +1595,10 @@ def build_range_bundle(
             source=source,
         ))
         included_dates.append(d)
-        if source == "kis_api" and meta.get("created_from") == REPAIR_MARKER:
+        if candle_source == "kis_api" and _is_repaired_candle_partition(engine, d, code, meta):
             # 이 거래일 캔들은 hogaplay 공백을 KIS 분봉으로 복구한 것 —
             # 프론트 배지용(호가 기반 지표는 없음). hoga.live.candle_repair 참조.
+            # 캔들 승자 기준이라 호가를 kiwoom_live가 이긴 날도 정확히 잡힌다.
             repaired_candle_dates.append(d)
         if (
             not hoga_only and not cutoff_sidecar and not candles_only

@@ -24,9 +24,12 @@ if TYPE_CHECKING:
 # 호가·체결 계열(orderflow — /api/orderbook·/api/brokers/series·range의 호가/체결
 # 차원)은 kis_api를 더는 서빙하지 않는다(소비 지점에서 억제 — bundle.orderflow_ok,
 # routes._resolved_parquet_dir). 이 사다리에 kis_api tail을 유지하는 이유는 캔들:
-# ADR-0109 복구 분봉(kis_api/candles.parquet)이 hogaplay 공백일에 여기서 이겨야
-# 서빙된다. kis_api는 사다리 꼬리 전용이라(다른 소스 존재 시 절대 승리 불가,
-# kis_api_first는 프론트 미노출 레거시) 소비 지점 억제 = 필터된 사다리와 동치.
+# ADR-0109 복구 분봉(kis_api/candles.parquet)이 hogaplay 공백일에 이겨야 서빙된다.
+#
+# 이 사다리는 **호가·체결 차원의 승자**를 정한다. 캔들 차원은 대칭인 반대 필터가
+# 필요해 별도 함수로 분리했다(ADR-0121: resolve_candle_source) — kis_api가 호가를
+# 서빙하지 않듯 kis_live/kiwoom_live는 캔들을 서빙하지 않으므로, 두 차원의 승자가
+# 한 Stock-Date에서 갈릴 수 있다.
 SourceName = Literal["hogaplay", "kis_live", "kiwoom_live", "kis_api"]
 MissingReason = Literal["stock_date_missing", "source_missing"]
 SourcePolicy = Literal[
@@ -39,6 +42,19 @@ SourcePolicy = Literal[
     "kiwoom_ws_first",
     "kis_api_first",
 ]
+
+# 캔들 차원 후보 — candles.parquet을 실제로 쓰는 Source만.
+#
+# 실시간 WS 승격본(kis_live/kiwoom_live)은 캔들을 절대 쓰지 않는다(ADR-0040/0043:
+# 캔들 차원은 Live Candle Backfill이 따로 서빙). 이들을 캔들 사다리에 남겨두면
+# "건강한 승자가 이겼는데 그 승자에겐 캔들이 없다"가 성립해, 같은 Stock-Date의
+# hogaplay 캔들과 ADR-0109 복구본(kis_api)이 **동시에** 가려진다. 사다리는 소스
+# 우선순위(정책)를 표현하고, 이 상수는 소스가 그 차원을 보유하는지(물리적 사실)를
+# 표현한다 — 두 축을 섞으면 정책이 디스크 레이아웃에 오염된다.
+#
+# ADR-0118(키움 전담) 이후 모든 거래일이 kiwoom_live 파티션을 갖게 되면서 이
+# 필터 없이는 hogaplay가 INVALID인 날의 캔들이 **항상** 사라진다.
+CANDLE_BEARING_SOURCES: frozenset[SourceName] = frozenset({"hogaplay", "kis_api"})
 
 _POLICY_ORDER: dict[str, tuple[SourceName, ...]] = {
     "hogaplay": ("hogaplay", "kis_live", "kiwoom_live", "kis_api"),
@@ -148,3 +164,40 @@ def resolve_source_result(
 
 def resolve_source(engine: QueryEngine, date: str, code: str, pref: str) -> SourceName:
     return resolve_source_result(engine, date, code, pref).source
+
+
+def resolve_candle_source(
+    engine: QueryEngine, date: str, code: str, pref: str,
+) -> SourceName | None:
+    """이 (date, code)의 캔들을 서빙할 Source — 없으면 ``None``.
+
+    호가·체결 차원의 승자(:func:`resolve_source_result`)와 **독립적으로** 정한다.
+    소스마다 보유 차원이 다르므로 한 Stock-Date의 호가 승자와 캔들 승자가 갈릴 수
+    있다(예: 호가는 kiwoom_live 승격본, 캔들은 hogaplay 또는 ADR-0109 복구본).
+
+    후보는 ``CANDLE_BEARING_SOURCES``로 좁히고, 정책 사다리 순서대로
+    ``INVALID가 아니면서 candles.parquet이 실제로 있는`` 첫 Source를 고른다.
+    파일 존재까지 보는 이유: 캔들 없이 끝난 hogaplay 캡처가 healthy로 남아
+    복구본을 가리는 것을 막는다. 승자가 없으면 ``None`` — 호출부는 캔들만
+    비우고 호가 차원은 정상 서빙한다(그날 전체를 버리지 않는다).
+    """
+    candle_order: tuple[SourceName, ...] = tuple(
+        s for s in ordered_sources(pref) if s in CANDLE_BEARING_SOURCES
+    )
+    if not candle_order:
+        return None
+    sd_dir = engine.data_dir / "parquet" / date / code
+    if not isinstance(sd_dir, Path):
+        # Path가 아닌 엔진(테스트 더블) — 디스크 사실을 확인할 수 없으므로
+        # resolve_source_result와 같은 계약으로 사다리 첫 후보를 돌려준다.
+        return candle_order[0]
+    if not sd_dir.exists():
+        return None
+    per_source = classify_stock_date(sd_dir)
+    for source in candle_order:
+        classification = per_source.get(source)
+        if classification is None or classification.state == DiskState.INVALID:
+            continue
+        if (sd_dir / source / "candles.parquet").exists():
+            return source
+    return None

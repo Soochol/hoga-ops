@@ -237,3 +237,55 @@ def test_source_pref_kis_api_first_resolves_but_suppresses_orderflow(tmp_path: P
     assert bundle.segments[0].source == "kis_api"
     assert bundle.quote_ratio.points == []
     assert bundle.fill_strength.points == []
+
+
+def _write_candles(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(rows, schema={
+        "ts_ms": pl.Int64, "open": pl.Int64, "close": pl.Int64,
+        "high": pl.Int64, "low": pl.Int64, "vol_a": pl.Int64, "vol_b": pl.Int64,
+    }).write_parquet(path)
+
+
+def test_candle_less_orderflow_winner_does_not_hide_repaired_candles(tmp_path: Path) -> None:
+    """호가 승자(kiwoom_live)에 캔들이 없어도 복구본 캔들이 서빙된다 (ADR-0121).
+
+    /study 저장뷰의 마지막 날 분봉이 사라지던 회귀: hogaplay 캡처가 중단돼
+    close_ms=0(INVALID)이면 사다리가 kiwoom_live로 넘어가는데, 그 Source는
+    candles.parquet을 아예 쓰지 않아 같은 Stock-Date의 ADR-0109 복구본이
+    통째로 가려졌다. 캔들 차원 사다리 분리 후에는 호가는 kiwoom_live,
+    캔들은 kis_api로 갈린다.
+    """
+    date, code = "20260720", "042660"
+    sd = tmp_path / "parquet" / date / code
+
+    # hogaplay: 캡처 중단 — close_ms=0 이라 INVALID.
+    _write_meta(sd / "hogaplay" / "meta.json", source="hogaplay", code=code, date=date,
+                regular_session_close_ms=0, collection_complete=False)
+    _write_candles(sd / "hogaplay" / "candles.parquet", [
+        {"ts_ms": 32400000, "open": 100, "close": 101, "high": 102, "low": 99,
+         "vol_a": 1, "vol_b": 0},
+    ])
+    # kiwoom_live: healthy 하지만 캔들 미보유 티어 (ADR-0040).
+    _write_meta(sd / "kiwoom_live" / "meta.json", source="kiwoom_live", code=code, date=date)
+    _write_snapshots(sd / "kiwoom_live" / "snapshots.parquet", [_snap(90000000, 10, 20)])
+    # kis_api: ADR-0109 복구본.
+    _write_meta(sd / "kis_api" / "meta.json", source="kis_api", code=code, date=date,
+                created_from="kis_minute_repair")
+    _write_candles(sd / "kis_api" / "candles.parquet", [
+        {"ts_ms": 32400000, "open": 200, "close": 201, "high": 202, "low": 199,
+         "vol_a": 5, "vol_b": 0},
+        {"ts_ms": 32460000, "open": 201, "close": 203, "high": 204, "low": 200,
+         "vol_a": 7, "vol_b": 0},
+    ])
+
+    engine = QueryEngine(tmp_path)
+    rb = build_range_bundle(
+        engine, code=code, from_date=date, to_date=date,
+        bucket_ms=60_000, source_pref="hogaplay_first", mode="candles",
+    )
+
+    assert [s.source for s in rb.segments] == ["kiwoom_live"]  # 호가 승자는 그대로
+    assert len(rb.candles) == 2                                 # 복구본 캔들이 서빙됨
+    assert [c.open for c in rb.candles] == [200, 201]           # hogaplay(INVALID) 것이 아님
+    assert rb.repaired_candle_dates == [date]                   # 배지도 캔들 승자 기준
