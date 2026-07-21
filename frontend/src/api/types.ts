@@ -691,7 +691,7 @@ export type RangeBundle = {
   depth_delta?: DepthDeltaPointWire[];
   broker_late_entries: BrokerLateEntryEvent[];
   /** hogaplay 캡처 공백을 KIS 분봉으로 복구한 거래일(YYYYMMDD). 승리 소스가 kis_api +
-   *  meta.created_from == 'kis_minute_repair'인 날. /study가 "KIS 보충 캔들" 배지를 띄운다.
-   *  Optional in TS라 기존 fixture 무영향(hoga/live/candle_repair.py). */
+   *  meta.created_from == 'kis_minute_repair'인 날. 백엔드 진단용 필드로, 현재 UI
+   *  소비자는 없다. Optional in TS라 기존 fixture 무영향(hoga/live/candle_repair.py). */
   repaired_candle_dates?: string[];
 };
