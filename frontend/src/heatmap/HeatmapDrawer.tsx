@@ -31,6 +31,7 @@ import { SortCycleButton } from './SortCycleButton';
 import { HeatmapSearchInput } from './HeatmapSearchInput';
 import { priceDirClass } from '../ui/priceDir';
 import { ChevronIcon } from '../ui/ChevronIcon';
+import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
 import { filterGroups } from './filterGroups';
 import { sortEntries, avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from './heat';
 import {
@@ -372,12 +373,24 @@ function HeaderAddButton({ folders }: { folders: { id: string; name: string }[] 
 }
 
 /**
- * 드로어 툴바 — 목록 필터 검색창 + 행/그룹 등락률 정렬 토글. 정렬은 useHeatmapPrefsStore
- * (localStorage heatmap.sortMode.v1 / groupSort.v1)를 구독·기록하므로 /heatmap 페이지와
- * 단일 진실(양방향 동기화)이다. 검색 query 는 드로어 로컬 상태(패널을 닫으면 리셋 — 필터는
- * 일시적 조회 보조이지 저장 설정이 아니다).
+ * 드로어 툴바 — 목록 필터 검색창 + 행/그룹 등락률 정렬 토글 + 전체 접기/펼치기. 정렬은
+ * useHeatmapPrefsStore(localStorage heatmap.sortMode.v1 / groupSort.v1)를 구독·기록하므로
+ * /heatmap 페이지와 단일 진실(양방향 동기화)이다. 검색 query 는 드로어 로컬 상태(패널을
+ * 닫으면 리셋 — 필터는 일시적 조회 보조이지 저장 설정이 아니다).
+ *
+ * 전체 접기는 **드로어 전용** 관심사다(/heatmap 페이지엔 접기 개념 자체가 없다). 페이지와
+ * 공유되는 정렬 토글과 영속 축이 다르므로 ml-auto 로 우측에 떼어 배치해 한 줄 안에서도
+ * 두 관심사가 섞여 보이지 않게 한다. 저장뷰 드로어는 같은 버튼을 테두리 박스
+ * (RailToolbarIconButton)로 쓰지만, 여기 정렬 칩이 테두리 없는 고밀도 표기라 그 문법에
+ * 맞춰 무테 아이콘 버튼으로 둔다(ui/SortCycleButton 이 히트맵을 예외로 둔 것과 같은 근거).
  */
-function DrawerToolbar({ query, onQuery }: { query: string; onQuery: (v: string) => void }) {
+function DrawerToolbar({ query, onQuery, allCollapsed, onToggleAll, toggleAllDisabled }: {
+  query: string;
+  onQuery: (v: string) => void;
+  allCollapsed: boolean;
+  onToggleAll: () => void;
+  toggleAllDisabled: boolean;
+}) {
   const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
   const setSortMode = useHeatmapPrefsStore((s) => s.setSortMode);
   const groupSort = useHeatmapPrefsStore((s) => s.groupSort);
@@ -388,6 +401,17 @@ function DrawerToolbar({ query, onQuery }: { query: string; onQuery: (v: string)
       <div className="flex items-center gap-2">
         <SortCycleButton label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />
         <SortCycleButton label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
+        <button
+          type="button"
+          data-testid="heatmap-drawer-toggle-all"
+          onClick={onToggleAll}
+          disabled={toggleAllDisabled}
+          aria-label={allCollapsed ? '전체 펼치기' : '전체 접기'}
+          title={allCollapsed ? '전체 펼치기' : '전체 접기'}
+          className="ml-auto grid h-6 w-6 place-items-center rounded text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-dim"
+        >
+          {allCollapsed ? <ExpandAllIcon className="h-4 w-4" /> : <CollapseAllIcon className="h-4 w-4" />}
+        </button>
       </div>
     </div>
   );
@@ -486,6 +510,25 @@ export function HeatmapDrawer() {
   }, [data, groupSort, pctOf, query]);
 
   const isSearching = query.trim() !== '';
+
+  // 전체 접기/펼치기. 대상은 **화면에 보이는 그룹**(visibleGroups)이지 collapsed Set 이 아니다.
+  // collapsed.size 로 "모두 접힘"을 판정하면 삭제된 그룹의 잔여 키에 걸려 거짓 양성이 난다
+  // — 아래 persist 이펙트는 저장되는 값만 실존 폴더로 거르고 메모리 Set 은 그대로 두기 때문.
+  // 검색 중엔 접힘이 통째로 무시되므로(isCollapsed = !isSearching && ...) 눌러도 화면이 안
+  // 바뀌어 아이콘이 화면과 어긋난다 → 비활성. 그룹이 하나도 없을 때도 누를 것이 없어 비활성.
+  const allCollapsed =
+    visibleGroups.length > 0 && visibleGroups.every((g) => collapsed.has(g.folder.id));
+  const toggleAllDisabled = isSearching || visibleGroups.length === 0;
+  const toggleAll = () =>
+    setCollapsed((s) => {
+      const n = new Set(s);
+      for (const g of visibleGroups) {
+        if (allCollapsed) n.delete(g.folder.id);
+        else n.add(g.folder.id);
+      }
+      return n;
+    });
+
   // ⋯ 위/아래 이동은 수동 정렬 + 비검색일 때만(정렬 중엔 folder.order 가 화면과 어긋나 애매).
   const canMoveGroups = groupSort === 'manual' && !isSearching;
   const folderCount = data?.folders.length ?? 0;
@@ -541,7 +584,8 @@ export function HeatmapDrawer() {
         )}
       />
 
-      <DrawerToolbar query={query} onQuery={setQuery} />
+      <DrawerToolbar query={query} onQuery={setQuery}
+        allCollapsed={allCollapsed} onToggleAll={toggleAll} toggleAllDisabled={toggleAllDisabled} />
 
       <RailDrawerBody testId="heatmap-drawer-scroll" quoteNav>
         {isLoading && <RailState>불러오는 중</RailState>}

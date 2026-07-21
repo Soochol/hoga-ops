@@ -56,6 +56,32 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
   });
 
+  // --- 전체 접기/펼치기 (히트맵 드로어와 같은 문법) ---
+  it('헤더 전체 접기가 미분류를 포함한 모든 그룹을 접고 영속한다', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByTestId('watchlist-row-005930')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '전체 접기' }));
+    await waitFor(() => expect(screen.queryByTestId('watchlist-row-005930')).toBeNull());
+    expect(screen.queryByTestId('watchlist-row-000660')).toBeNull();
+    const saved = JSON.parse(window.localStorage.getItem('watchlist.collapsed')!);
+    expect([...saved.keys].sort()).toEqual(['__uncat__', 'f_0000000a']);
+  });
+
+  it('모두 접힌 상태로 마운트하면 같은 버튼이 전체 펼치기로 바뀌고 되돌린다', async () => {
+    window.localStorage.setItem('watchlist.collapsed',
+      JSON.stringify({ keys: ['f_0000000a', '__uncat__'] }));
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    const expand = await screen.findByRole('button', { name: '전체 펼치기' });
+    expect(screen.queryByTestId('watchlist-row-005930')).toBeNull();
+    fireEvent.click(expand);
+    await waitFor(() => expect(screen.getByTestId('watchlist-row-005930')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '전체 접기' })).toBeInTheDocument();
+  });
+
   it('clicking a row sets activeCode and navigates to /live when elsewhere', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

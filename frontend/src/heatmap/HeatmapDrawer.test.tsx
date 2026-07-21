@@ -82,9 +82,14 @@ function renderedRowCodes(): string[] {
   );
 }
 
-/** 문서 순서대로 렌더된 그룹 라벨(chevron 토글 버튼 aria-label 의 라벨 부분). */
+/**
+ * 문서 순서대로 렌더된 그룹 라벨(chevron 토글 버튼 aria-label 의 라벨 부분).
+ * 스크롤 본문으로 스코프를 좁힌다 — 툴바의 "전체 접기/펼치기" 버튼도 같은 접미사를 쓰므로
+ * 문서 전역으로 훑으면 그룹이 아닌 "전체" 가 목록 맨 앞에 섞여 들어온다.
+ */
 function renderedGroupLabels(): string[] {
-  return Array.from(document.querySelectorAll('[aria-label$="접기"], [aria-label$="펼치기"]')).map(
+  const body = document.querySelector('[data-testid="heatmap-drawer-scroll"]') ?? document;
+  return Array.from(body.querySelectorAll('[aria-label$="접기"], [aria-label$="펼치기"]')).map(
     (el) => (el.getAttribute('aria-label') ?? '').replace(/ (접기|펼치기)$/, ''),
   );
 }
@@ -275,6 +280,46 @@ describe('HeatmapDrawer', () => {
     });
     // 접힌 그룹의 행은 사라진다.
     expect(screen.queryByTestId('heatmap-drawer-row-000001')).toBeNull();
+  });
+
+  // --- 전체 접기/펼치기 ---
+  it('전체 접기가 빈 그룹까지 포함해 모든 그룹을 접고 영속한다', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    fireEvent.click(screen.getByRole('button', { name: '전체 접기' }));
+    await waitFor(() => {
+      const saved = JSON.parse(localStorage.getItem('heatmapDrawer.collapsed')!);
+      expect([...saved.keys].sort()).toEqual(['f1', 'f2', 'f3']);
+    });
+    expect(renderedRowCodes()).toEqual([]);
+  });
+
+  it('모두 접힌 뒤엔 같은 버튼이 전체 펼치기로 바뀌고 되돌린다', async () => {
+    localStorage.setItem('heatmapDrawer.collapsed', JSON.stringify({ keys: ['f1', 'f2', 'f3'] }));
+    wrap(<HeatmapDrawer />);
+    const expand = await screen.findByRole('button', { name: '전체 펼치기' });
+    expect(screen.queryByRole('button', { name: '전체 접기' })).toBeNull();
+    fireEvent.click(expand);
+    await waitFor(() => expect(renderedRowCodes()).toEqual(['000001', '000002', '000003']));
+    expect(screen.getByRole('button', { name: '전체 접기' })).toBeInTheDocument();
+  });
+
+  // 일부만 접힌 상태는 "모두 접힘"이 아니다 — 삭제된 그룹의 잔여 키가 Set 에 남아 size 로
+  // 판정하면 거짓 양성이 나는 지점이라, 실존 그룹 전수 검사임을 못박는다.
+  it('일부만 접힌 상태에서는 여전히 전체 접기이고, 누르면 나머지도 접힌다', async () => {
+    localStorage.setItem('heatmapDrawer.collapsed', JSON.stringify({ keys: ['f1'] }));
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000003');
+    fireEvent.click(screen.getByRole('button', { name: '전체 접기' }));
+    await waitFor(() => expect(renderedRowCodes()).toEqual([]));
+  });
+
+  it('검색 중에는 접힘이 무시되므로 전체 접기 버튼을 비활성한다', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    expect(screen.getByTestId('heatmap-drawer-toggle-all')).not.toBeDisabled();
+    fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '삼성' } });
+    await waitFor(() => expect(screen.getByTestId('heatmap-drawer-toggle-all')).toBeDisabled());
   });
 
   it('shows an empty state when the heatmap has no folders or entries', async () => {
