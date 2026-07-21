@@ -397,6 +397,9 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   // 스크롤(broker 와 같은 부류). 폭은 4열(시각·체결가·체결량·구분)이라 book 보다 넓다.
   trade: { w: 268, h: 330 },
   vdist: { w: 300, h: 240 },
+  // program = 헤더 27 + 카드(py 16 + 타이틀행 ~17 + 금액/수량 그리드 ~51 +
+  // 스파크라인 최소 56 + 보간 라벨 ~20) ≈ 187 → 200. 스파크라인이 flex-1 이라
+  // 창을 키우면 그래프가 초과분을 흡수한다.
   program: { w: 260, h: 200 },
   // investor = 헤더 27 + 카드(헤더 36 + thead 32.25 + KIS 가집계 최대 5차 32.25×5 + 푸터 35) ≈ 303 → 310.
   investor: { w: 280, h: 310 },
