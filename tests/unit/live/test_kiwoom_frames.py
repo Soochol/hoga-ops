@@ -136,25 +136,33 @@ def test_orderbook_nxt_venue_and_empty_levels():
     assert t.payload["bids"][9] == {"price": 0, "qty": 0}
 
 
-def test_orderbook_expected_fill_present_when_ws_sends_values():
-    # 동시호가 — WS 가 FID 23(예상체결가)/24(예상체결량)을 값으로 보내면 그대로 싣는다
-    # (시각 무관, 순수 데이터 게이트).
-    row = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "23": "+6480", "24": "12345"}}
+def test_orderbook_expected_fill_present_in_auction_window():
+    # 동시호가 창(장마감 15:25) 프레임 — FID 23(예상체결가)/24(예상체결량)이 실린다.
+    row = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "21": "152500", "23": "+6480", "24": "12345"}}
     t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert t.payload["expected_price"] == 6480  # 부호=등락방향, abs
     assert t.payload["expected_qty"] == 12345
 
 
-def test_orderbook_expected_fill_absent_when_zero():
-    # 연속거래(평시) — 23/24 미채움/0 이면 키를 싣지 않는다(요약·OHLC 규약).
-    # REAL_0D_KRX 자체에 23/24 부재 → 없어야 정상.
-    t = parse_real_row(REAL_0D_KRX, date=DATE, now_ms=NOW_MS)
+def test_orderbook_expected_fill_dropped_outside_auction_window():
+    # 연속거래·NXT 세션 시각(13:56, REAL_0D_KRX 기본 "21"=135622)엔 값이 와도 시각
+    # 게이트가 버린다 — NXT 연속/애프터마켓 예상체결 노출을 막는 게 이 게이트의 목적.
+    row = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "23": "+6480", "24": "12345"}}
+    t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert "expected_price" not in t.payload
     assert "expected_qty" not in t.payload
-    # 한쪽만 0 인 반쪽 프레임도 둘 다 제외.
-    half = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "23": "+6480", "24": "0"}}
+
+
+def test_orderbook_expected_fill_absent_when_zero_in_window():
+    # 동시호가 창이어도 23/24 미채움/0(반쪽 포함)이면 키를 싣지 않는다(요약·OHLC 규약).
+    base_vals = {**REAL_0D_KRX["values"], "21": "085500"}  # 08:55 장전 동시호가
+    t = parse_real_row({**REAL_0D_KRX, "values": base_vals}, date=DATE, now_ms=NOW_MS)
+    assert t is not None
+    assert "expected_price" not in t.payload
+    assert "expected_qty" not in t.payload
+    half = {**REAL_0D_KRX, "values": {**base_vals, "23": "+6480", "24": "0"}}
     ht = parse_real_row(half, date=DATE, now_ms=NOW_MS)
     assert ht is not None
     assert "expected_price" not in ht.payload
