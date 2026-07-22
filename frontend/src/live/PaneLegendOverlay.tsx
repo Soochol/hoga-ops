@@ -16,9 +16,13 @@
 //
 // See docs/superpowers/specs/2026-05-31-chart-indicator-legend-design.md.
 
-import { memo, useEffect, useReducer, useRef, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useReducer, useRef, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import type { Candle } from '../api/types';
+import type { VirtualAxis } from '../util/virtualAxis';
+import { priceDirClass } from '../ui/priceDir';
+import { buildCandleTooltip } from './candleTooltipModel';
 import {
   useIndicatorActions,
   useWindowIndicator,
@@ -38,6 +42,7 @@ import {
   readSeriesValue,
   type LegendFlagId,
   type LegendFlagInput,
+  type LegendOhlcValues,
   type LegendRow,
   type PaneCellInput,
 } from './legendRows';
@@ -56,6 +61,12 @@ type Props = {
    *  없으면 게이트 결과를 그대로 계산한다. 접힌 pane 이 섞이면 pane 이동 컨트롤의
    *  "아래로" 가 보이지 않는 pane 을 가리켜 클릭해도 아무 일도 안 하는 것처럼 보인다. */
   visibleSpecs?: readonly BoundPaneSpec[];
+  /** 캔들 pane 최상단 OHLC 레전드(항상 표시)용 캔들 배열 + 가상축. `axis` 로
+   *  그려진(보이는) 봉만 추려 `param.time`(가상초)→봉을 해석하고, 커서 밖이면 최신
+   *  봉으로 폴백한다(CandleTooltip 과 동일 인덱싱). 둘 다 캔들 경로/segments 참조라
+   *  SSE 틱엔 안정 — memo 를 깨지 않는다. 없으면 OHLC 행을 렌더하지 않는다. */
+  candles?: readonly Candle[];
+  axis?: VirtualAxis;
   /** P1: latest-값 신선화 토큰(캔들 경로 chartBundle ref). /live가 SSE 호가 틱마다
    *  부모(LiveChartRoot)를 재렌더하지만 memo + 이 prop이 그 재렌더를 차단하고, 캔들
    *  갱신(chartBundle 식별자 변경) 때만 latest 값을 신선화한다. 본문에서 읽지 않고
@@ -314,6 +325,39 @@ const FLAG_SET_HIDDEN: Record<LegendFlagId, (a: IndicatorActions, hidden: boolea
   'broker-late-entry': (a, h) => a.setBrokerLateEntryHidden(h),
 };
 
+const signedPct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+
+/** OHLC 한 칸: 라벨(저채도) + 가격(중립) + 직전종가 대비 %(부호색, 괄호). pct 없으면
+ *  (가장 이른 봉) % 는 생략. 색·텍스트 모두 반올림값 기준(툴팁 PriceRow 선례). */
+function OhlcCell({ label, price, pct }: { label: string; price: number; pct: number | null }) {
+  const r = pct != null && Number.isFinite(pct) ? Number(pct.toFixed(2)) : null;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}>
+      <span style={{ color: 'var(--fg-dim)' }}>{label}</span>
+      <span style={{ color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }}>
+        {formatKoreanInt(price)}원
+      </span>
+      {r != null && (
+        <span className={priceDirClass(r)} style={{ fontVariantNumeric: 'tabular-nums' }}>
+          ({signedPct(r)})
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** 캔들 pane 최상단 OHLC 행 — 시작/고가/저가/종가 + 직전종가 대비 %. 토글 없음(항상 표시). */
+function OhlcLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ohlc' }> }) {
+  return (
+    <>
+      <OhlcCell label="시작" price={row.open} pct={row.openPct} />
+      <OhlcCell label="고가" price={row.high} pct={row.highPct} />
+      <OhlcCell label="저가" price={row.low} pct={row.lowPct} />
+      <OhlcCell label="종가" price={row.close} pct={row.closePct} />
+    </>
+  );
+}
+
 function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
   const setHidden = useIndicatorActions().setMovingAverageHidden;
   const setEnabled = useIndicatorActions().setMovingAverageEnabled;
@@ -456,6 +500,8 @@ function PaneLegendOverlay({
   paneToggles,
   hasDepthDelta = false,
   visibleSpecs,
+  candles,
+  axis,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Last crosshair param (null = cursor away → latest-fallback). Mutated by the
@@ -504,6 +550,19 @@ function PaneLegendOverlay({
   // legend appears without waiting for a crosshair move.
   const legendPanes = usePaneLegendRegistry((s) => s.panes);
 
+  // OHLC 레전드용 인덱싱 — 그려진(보이는) 봉 배열 + 가상초→index 맵(CandleTooltip 선례).
+  // candles/axis 는 캔들 경로/segments 참조라 SSE 틱엔 재계산 안 됨. 팬/줌(axis 리베이스)·
+  // 캔들 갱신 때만 새로.
+  const drawnCandles = useMemo(
+    () => (candles && axis ? candles.filter((c) => axis.contains(c.ts_ms)) : []),
+    [candles, axis],
+  );
+  const vsecToIndex = useMemo(() => {
+    const m = new Map<number, number>();
+    if (axis) drawnCandles.forEach((c, i) => m.set(axis.toVirtual(c.ts_ms) / 1000, i));
+    return m;
+  }, [drawnCandles, axis]);
+
   // Crosshair → values; ResizeObserver + range change → pane geometry. All
   // coalesced through one rAF tick (DrawingOverlay's redraw-loop pattern).
   useEffect(() => {
@@ -544,6 +603,27 @@ function PaneLegendOverlay({
 
   // ── value extraction (read-only over the chart API) ────────────────────
   const seriesData = paramRef.current?.seriesData ?? null;
+
+  // OHLC(항상 표시) — 커서가 올라간 봉(param.time=가상초)을 해석하고, 커서 밖/봉 사이면
+  // 최신 봉으로 폴백. 직전종가 대비 %는 buildCandleTooltip(순수, 툴팁과 동일 규칙)에서.
+  let ohlc: LegendOhlcValues | null = null;
+  if (drawnCandles.length > 0) {
+    const t = typeof paramRef.current?.time === 'number' ? paramRef.current.time : null;
+    const idx = (t !== null ? vsecToIndex.get(t) : undefined) ?? drawnCandles.length - 1;
+    const m = buildCandleTooltip(drawnCandles, idx, timeframe);
+    if (m) {
+      ohlc = {
+        open: m.open,
+        high: m.high,
+        low: m.low,
+        close: m.close,
+        openPct: m.openPct,
+        highPct: m.highPct,
+        lowPct: m.lowPct,
+        closePct: m.closePct,
+      };
+    }
+  }
   const maValues = new Map<string, number>();
   for (const [id, series] of maSeries) {
     const v = readSeriesValue(series, seriesData);
@@ -651,6 +731,7 @@ function PaneLegendOverlay({
   ];
 
   const rows = buildLegendRows({
+    ohlc,
     movingAverages,
     movingAverageEnabled,
     movingAverageHidden,
@@ -750,7 +831,9 @@ function PaneLegendOverlay({
                 key={row.kind === 'flag' ? `${row.paneId}:flag:${row.id}` : `${row.paneId}:${row.kind}`}
                 style={boxStyle}
               >
-                {row.kind === 'ma' ? (
+                {row.kind === 'ohlc' ? (
+                  <OhlcLegendRow row={row} />
+                ) : row.kind === 'ma' ? (
                   <MaLegendRow row={row} />
                 ) : row.kind === 'daily-ma' ? (
                   <DailyMaLegendRow row={row} />
