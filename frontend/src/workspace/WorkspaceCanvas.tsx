@@ -68,6 +68,9 @@ export interface WindowItemProps<W extends WorkspaceWindowLike, C> {
   rect: Rect;
   zIndex: number;
   focused: boolean;
+  /** 이동 드래그 중인 창 여부 — 프레임 리프트(그림자) 표현용. 창이 이동 대상이
+   *  아니면 항상 false 라 memo 경계가 그대로 유지된다(관련 없는 창은 재렌더 안 함). */
+  lifting: boolean;
   onHandleDown: (e: React.PointerEvent, id: string, mode: Mode) => void;
   onFocus: (id: string) => void;
   ctx: C;
@@ -137,6 +140,8 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
   const [preview, setPreview] = useState<Map<string, Rect> | null>(null);
   const [guides, setGuides] = useState<Guides>({ v: null, h: null });
   const [zone, setZone] = useState<SnapZone>(null);
+  // 이동 드래그 대상 창 id — 프레임 리프트(그림자)용. 리사이즈는 리프트하지 않는다.
+  const [movingId, setMovingId] = useState<string | null>(null);
 
   // zOrder 의 마지막 = 최상단 창. 헤더 틴트의 유일한 소비처.
   const focusedId = zOrder[zOrder.length - 1];
@@ -147,6 +152,7 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
     setPreview(null);
     setGuides({ v: null, h: null });
     setZone(null);
+    setMovingId(null);
   }, []);
 
   const commit = useCallback(() => {
@@ -205,6 +211,7 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
         liveRects: null,
         liveZone: null,
       };
+      setMovingId(mode === 'move' ? id : null);
     },
     [windows, focusWindow, onDragStart],
   );
@@ -364,12 +371,19 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
           style={zone === 'left' ? { left: 0, width: '50%' } : { right: 0, width: '50%' }}
         />
       )}
-      {/* 자석 가이드라인 */}
+      {/* 자석 가이드라인 — 흡착 축을 accent 2px 선으로(토스식 분할선). 좌표에 중심을
+          맞추려 절반(1px)만큼 당긴다. */}
       {guides.v !== null && (
-        <div className="pointer-events-none absolute inset-y-0 z-40 w-px bg-accent" style={{ left: guides.v }} />
+        <div
+          className="pointer-events-none absolute inset-y-0 z-40 w-[2px] bg-accent"
+          style={{ left: guides.v - 1 }}
+        />
       )}
       {guides.h !== null && (
-        <div className="pointer-events-none absolute inset-x-0 z-40 h-px bg-accent" style={{ top: guides.h }} />
+        <div
+          className="pointer-events-none absolute inset-x-0 z-40 h-[2px] bg-accent"
+          style={{ top: guides.h - 1 }}
+        />
       )}
 
       {windows.length === 0 && emptyState}
@@ -380,6 +394,7 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
           rect={rectOf(w)}
           zIndex={Math.max(0, zOrder.indexOf(w.id))}
           focused={w.id === focusedId}
+          lifting={w.id === movingId}
           onHandleDown={onHandleDown}
           onFocus={focusWindow}
           ctx={itemCtx}

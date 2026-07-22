@@ -39,7 +39,7 @@ export interface StudyItemCtx {
 
 /** 코어의 `windowItem` 슬롯 — 모듈 스코프 필수(인라인 정의는 리마운트). */
 function StudyWindowItem({
-  win, rect, zIndex, focused, onHandleDown, onFocus, ctx,
+  win, rect, zIndex, focused, lifting, onHandleDown, onFocus, ctx,
 }: WindowItemProps<StudyWorkspaceWindow, StudyItemCtx>) {
   return (
     <WindowFrameCore
@@ -47,6 +47,7 @@ function StudyWindowItem({
       rect={rect}
       zIndex={zIndex}
       focused={focused}
+      lifting={lifting}
       // 차트 창은 v1 단일 고정(스토어가 닫기를 거부) — 어포던스도 숨긴다.
       closable={win.kind !== 'chart'}
       onHandleDown={onHandleDown}

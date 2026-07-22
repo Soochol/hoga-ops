@@ -26,6 +26,8 @@ export interface WindowFrameProps {
   zIndex: number;
   /** 최상단(포커스) 창 여부 — 헤더 밴드 틴트로만 표현한다. */
   focused: boolean;
+  /** 이동 드래그 중인 창 여부 — 코어 프레임의 리프트(그림자) 표현으로 전달. */
+  lifting?: boolean;
   /** 그룹→종목명. 없으면 "그룹 N" 로 표시(PR-A 스캐폴딩). */
   symbolLabel: string | null;
   symbolCode: string | null;
@@ -46,6 +48,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
     rect,
     zIndex,
     focused,
+    lifting,
     symbolLabel,
     symbolCode,
     paletteOpen,
@@ -71,6 +74,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
       rect={rect}
       zIndex={zIndex}
       focused={focused}
+      lifting={lifting}
       onHandleDown={onHandleDown}
       onFocus={onFocus}
       onClose={onClose}
