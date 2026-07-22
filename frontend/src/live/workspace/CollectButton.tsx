@@ -9,19 +9,23 @@
  * 지수 창(KOSPI 등)은 수집할 종목 코드가 없다 — 전역 `activeStockCode` 게이트가
  * 하던 일을 창 로컬 게이트로 옮겼다(더 단순하고, 창마다 독립적으로 맞다).
  */
-import { requestCollectDialog } from './collectDialogControls';
+import { requestCollectDialog, type CollectVisibleRange } from './collectDialogControls';
 import { COMPACT_PADDING_INLINE } from './chartHeaderCompact';
 
 export function CollectButton({
   code,
   name,
   showLabel = true,
+  getVisibleRange,
 }: {
   /** 이 창의 종목 코드. 지수이거나 종목 미선택이면 null → 비활성. */
   code: string | null;
   name: string | null;
   /** false 면 아이콘만 — 헤더가 좁을 때 라벨을 접는다(#762 접힘 정책). */
   showLabel?: boolean;
+  /** 클릭 시점의 보이는 캔들 구간 스냅샷. 못 읽으면 null → 다이얼로그가 '보이는
+   *  구간' 칩을 숨긴다. 게터는 이 창의 뷰포트 캡처를 읽는다(창별로 정확). */
+  getVisibleRange?: () => CollectVisibleRange | null;
 }) {
   return (
     <button
@@ -29,7 +33,9 @@ export function CollectButton({
       data-testid="live-collect-button"
       disabled={code == null}
       onClick={() => {
-        if (code != null) requestCollectDialog({ code, name: name ?? code });
+        if (code != null) {
+          requestCollectDialog({ code, name: name ?? code, visibleRange: getVisibleRange?.() ?? null });
+        }
       }}
       aria-label="데이터 수집"
       title={code == null ? '데이터 수집 — 지수는 지원하지 않습니다' : '데이터 수집'}

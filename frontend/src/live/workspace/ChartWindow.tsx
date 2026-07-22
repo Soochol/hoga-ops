@@ -57,6 +57,8 @@ import {
 import type { LiveStudySaveSource } from '../../studyViews/studySaveCommand';
 import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButton';
 import { CollectButton } from './CollectButton';
+import type { CollectVisibleRange } from './collectDialogControls';
+import { unixMsToKSTDate } from '../../util/time';
 import { clearWindowFlagLegendValues } from '../indicators/flagLegendValueRegistry';
 import type { TabViewport } from '../viewportAnchor';
 
@@ -159,6 +161,22 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     viewportCaptureRef.current = capture;
   }, []);
+
+  // 수집 버튼용 '보이는 구간' 스냅샷 — 이 창의 뷰포트에서 양 끝 캔들의 KST 거래일을
+  // 읽는다. 저장뷰 캡처와 같은 소스(viewportCaptureRef)라 창별로 정확하다. leftEdgeMs 는
+  // 라이브 캡처엔 항상 채워지지만(콜드/빈 차트면 캡처 자체가 null) 없으면 null 로 폴백해
+  // 다이얼로그가 칩을 숨긴다. 우측 여백(rightOffset)이 미래로 넘칠 수 있어 end 는 오늘로
+  // 클램프한다 — YYYYMMDD 는 사전식 비교가 곧 날짜 순서라 문자열 min 으로 충분.
+  const todayKst = d.today;
+  const getCollectVisibleRange = useCallback((): CollectVisibleRange | null => {
+    const vp = viewportCaptureRef.current();
+    if (!vp || vp.leftEdgeMs == null || !Number.isFinite(vp.rightEdgeMs)) return null;
+    const startYmd = unixMsToKSTDate(vp.leftEdgeMs);
+    const rawEndYmd = unixMsToKSTDate(vp.rightEdgeMs);
+    const endYmd = todayKst && rawEndYmd > todayKst ? todayKst : rawEndYmd;
+    if (startYmd > endYmd) return null;
+    return { startYmd, endYmd };
+  }, [todayKst]);
 
   // 포커스 차트 창 = 상태바 발행자(C2c-2c). 파이프라인 산출물 일부(경고·갭 배열)는
   // 렌더마다 새 identity 일 수 있어 deps 로 걸면 발행→구독 재렌더→재발행 루프가
@@ -313,6 +331,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             code={symbol?.kind === 'index' ? null : symbol?.code ?? null}
             name={symbol?.name ?? null}
             showLabel={!headerFold.compactActions}
+            getVisibleRange={getCollectVisibleRange}
           />
         </div>
       </div>
