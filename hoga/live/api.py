@@ -41,6 +41,13 @@ from hoga.live.kis_venue import (
     quote_venue_for_policy,
 )
 from hoga.live import kiwoom_runtime
+from hoga.live.kiwoom_rankings import (
+    Direction as RankingDirection,
+    KiwoomRankingsError,
+    KiwoomRankingsFetcher,
+    Market as RankingMarket,
+    RankingKind,
+)
 from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
@@ -114,6 +121,7 @@ index_candles_cache_instance: IndexCandlesCache | None = None
 # ka10001 fetcher — 프로세스 싱글톤(httpx.Client 보유). build_router 재호출(테스트)
 # 마다 새 클라이언트가 새지 않도록 index_candles_cache_instance 와 같은 패턴.
 kiwoom_stock_info_fetcher_instance: KiwoomStockInfoFetcher | None = None
+kiwoom_rankings_fetcher_instance: KiwoomRankingsFetcher | None = None
 index_minute_candles_cache_instance: IndexMinuteCandlesCache | None = None
 
 # Rate-limit retry policy lives in ``KisClient._get`` (ADR-0050). Handlers
@@ -1288,6 +1296,29 @@ class StockLimitsResponse(BaseModel):
     source: Literal["kiwoom"] = "kiwoom"
 
 
+class RankingRowModel(BaseModel):
+    """순위 드로어 행 — 기준값 열 제거로 code/name/price/change_pct 만(순서=순위)."""
+
+    rank: int
+    code: str
+    name: str
+    price: int | None
+    change_pct: float | None
+
+
+class RankingsResponse(BaseModel):
+    """GET /api/live/rankings — 키움 순위 TR 4종(kiwoom_rankings). market_open 이
+    False 면 프론트는 폴링을 멈추고 "장 외" 라벨을 단다(그릴링 결정 9)."""
+
+    kind: Literal["change", "surge", "volume", "value"]
+    market: Literal["all", "kospi", "kosdaq"]
+    direction: Literal["up", "down"]
+    rows: list[RankingRowModel]
+    market_open: bool
+    fetched_at_ms: int
+    source: Literal["kiwoom"] = "kiwoom"
+
+
 def build_router(
     get_status: Callable[[], LiveStatus],
     get_buffer: Callable[[], LiveBuffer] | None = None,
@@ -1980,11 +2011,13 @@ def build_router(
     global index_candles_cache_instance
     if data_dir is not None and index_candles_cache_instance is None:
         index_candles_cache_instance = IndexCandlesCache()
-    global kiwoom_stock_info_fetcher_instance
+    global kiwoom_stock_info_fetcher_instance, kiwoom_rankings_fetcher_instance
     if data_dir is not None and kiwoom_stock_info_fetcher_instance is None:
         _kiwoom_prov = kiwoom_runtime.ensure_token_provider_for_account(0, data_dir)
         if _kiwoom_prov is not None:
             kiwoom_stock_info_fetcher_instance = KiwoomStockInfoFetcher(_kiwoom_prov)
+            # 순위 fetcher 는 같은 account-0 토큰 provider 를 재사용(스펙: rkinfo 4종).
+            kiwoom_rankings_fetcher_instance = KiwoomRankingsFetcher(_kiwoom_prov)
     global index_minute_candles_cache_instance
     if data_dir is not None and index_minute_candles_cache_instance is None:
         index_minute_candles_cache_instance = IndexMinuteCandlesCache()
@@ -2181,6 +2214,41 @@ def build_router(
             high_250_date=limits.high_250_date,
             low_250_date=limits.low_250_date,
             fetched_at_ms=fetched_at_ms,
+        )
+
+    @router.get("/rankings", response_model=RankingsResponse)
+    async def _get_rankings(
+        kind: RankingKind = Query(...),
+        market: RankingMarket = Query("all"),
+        direction: RankingDirection = Query("up"),
+    ) -> RankingsResponse:
+        """시장 전체 순위 (키움 rkinfo 4종, kind 별 api-id 분기, TTL ~8s 캐시).
+
+        우측 RightRail "순위" 드로어 소스. kind=change 만 direction(상승/하락)이
+        의미 있고 나머지는 무시된다. market_open=False 면 프론트가 폴링을 멈추고
+        "장 외" 라벨을 단다 — 비거래일엔 상류를 건너뛰고 빈(또는 웜) 목록을 준다.
+        """
+        if kiwoom_rankings_fetcher_instance is None:
+            raise HTTPException(503, "kiwoom credentials not configured")
+        try:
+            snap = await kiwoom_rankings_fetcher_instance.get(kind, market, direction)
+        except KiwoomRankingsError as e:
+            raise HTTPException(502, {"code": "kiwoom_api_error", "msg": str(e)}) from e
+        except httpx.HTTPError as e:
+            raise HTTPException(502, {"code": "kiwoom_http_error", "msg": str(e)}) from e
+        return RankingsResponse(
+            kind=snap.kind,
+            market=snap.market,
+            direction=snap.direction,
+            rows=[
+                RankingRowModel(
+                    rank=r.rank, code=r.code, name=r.name,
+                    price=r.price, change_pct=r.change_pct,
+                )
+                for r in snap.rows
+            ],
+            market_open=snap.market_open,
+            fetched_at_ms=snap.fetched_at_ms,
         )
 
     return router
