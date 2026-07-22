@@ -214,6 +214,7 @@ export function LivePage() {
           key={collectTarget.code}
           code={collectTarget.code}
           name={collectSymbolName ?? collectTarget.name}
+          visibleRange={collectTarget.visibleRange ?? null}
           onClose={() => setCollectTarget(null)}
         />
       )}

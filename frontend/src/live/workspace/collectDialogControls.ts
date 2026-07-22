@@ -11,7 +11,16 @@
  * 종목이냐" 를 결정할 뿐이고(창→그룹→종목), 그 결정이 끝나면 창은 무관해진다.
  * 트리거를 창에 두는 이유도 그것 — 전역에 두면 "활성 그룹" 을 먼저 맞춰야 했다.
  */
-export type CollectTarget = { code: string; name: string };
+/** 차트에 지금 보이는 캔들 구간(양 끝 캔들의 KST 거래일, YYYYMMDD).
+ *  수집 버튼 클릭 시점에 그 창의 뷰포트에서 스냅샷으로 얼려 싣는다 — 다이얼로그가
+ *  열린 동안 팬해도 표시가 흔들리지 않게. 뷰포트를 못 읽으면(콜드/지수 창) null. */
+export type CollectVisibleRange = { startYmd: string; endYmd: string };
+
+export type CollectTarget = {
+  code: string;
+  name: string;
+  visibleRange?: CollectVisibleRange | null;
+};
 
 let opener: ((target: CollectTarget) => void) | null = null;
 
