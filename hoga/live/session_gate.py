@@ -30,6 +30,28 @@ def market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed
     return "closed"
 
 
+# 정규장 동시호가(단일가매매) 창 — 장전 08:30–09:00, 장마감 15:20–15:30 KST.
+# 예상체결가/량(0D FID 23/24) 표시·저장 게이트. 값>0 만으론 부족함이 실측으로 확인됨:
+# NXT 는 연속/애프터마켓에도 예상체결값을 계산해 흘려 평시에도 노출됐다(2026-07-22).
+# 이 시계 창을 AND 로 걸어 창 밖 프레임의 예상체결을 표시·저장 양쪽에서 버린다.
+# ⚠ 장중 VI 단일가는 불규칙 시각이라 이 스케줄 창에 없다 — 필요 시 VI 이벤트로 별도 판정.
+_PREOPEN_AUCTION_MIN = (8 * 60 + 30, 9 * 60)          # [08:30, 09:00)
+_CLOSING_AUCTION_MIN = (15 * 60 + 20, 15 * 60 + 30)   # [15:20, 15:30)
+
+
+def is_auction_window(t_ms: int) -> bool:
+    """정규장 동시호가(단일가) 시각인지 — 순수 KST 시계(캘린더 무관, TZ 안전).
+
+    market_phase 는 09:00–15:30 을 통째로 'regular' 로 보고 08:30–09:00 을 'closed' 로
+    봐 동시호가를 구분하지 못하므로, 예상체결 게이트 전용의 별도 술어를 둔다.
+    """
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
+    minutes = kst.hour * 60 + kst.minute
+    lo1, hi1 = _PREOPEN_AUCTION_MIN
+    lo2, hi2 = _CLOSING_AUCTION_MIN
+    return lo1 <= minutes < hi1 or lo2 <= minutes < hi2
+
+
 def is_trading_day_now(t_ms: int) -> bool:
     """거래일 여부 — **시계 무관** 순수 캘린더 술어(주말 단축 후 chk-holiday).
 
