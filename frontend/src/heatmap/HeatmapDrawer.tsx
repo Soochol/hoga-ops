@@ -5,9 +5,9 @@ import { createPortal } from 'react-dom';
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
   useDraggable, useDroppable,
-  type DragEndEvent, type CollisionDetection, type DraggableAttributes, type DraggableSyntheticListeners,
+  type DragEndEvent, type DragStartEvent, type CollisionDetection, type DraggableAttributes, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { resolveFolderDrag, folderDroppableId } from '../watchlist/dragHandlers';
 import { useJumpToLive } from '../live/useJumpToLive';
@@ -35,10 +35,12 @@ import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
 import { filterGroups } from './filterGroups';
 import { sortEntries, avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from './heat';
 import {
-  useHeatmap, useRemoveFromHeatmap, useMoveHeatmapEntries,
+  useHeatmap, useRemoveFromHeatmap, useMoveHeatmapEntries, useReorderHeatmapEntries,
   useCreateHeatmapFolder, useRenameHeatmapFolder, useDeleteHeatmapFolder,
   useReorderHeatmapFolders,
 } from './useHeatmap';
+import { useFrozenWhileDragging } from './useFrozenWhileDragging';
+import type { HeatmapEntry } from '../api/heatmap';
 
 const COLLAPSE_STORAGE_KEY = 'heatmapDrawer.collapsed';
 
@@ -118,30 +120,56 @@ function GroupDropZone({ folderId, children }: {
   );
 }
 
-/** 종목 행 드래그(이동 전용, 재정렬 아님). useDraggable — 잡으면 커서를 따라 뜨고(transform),
- *  다른 그룹 GroupDropZone 에 드롭하면 소속 이동. PointerSensor(distance 5)가 클릭(차트 이동)
+/** 종목 행에 넘기는 drag 소품 — 이동 전용(DraggableRow)·재정렬(SortableEntryRow) 공용 형태.
+ *  transition 은 sortable 만 채우고 draggable 은 undefined(정적). 한 render-prop 콜백이 두
+ *  래퍼를 모두 커버해 QuoteRow JSX 를 한 번만 쓴다. */
+type RowDrag = {
+  setNodeRef: (n: HTMLElement | null) => void;
+  listeners: DraggableSyntheticListeners;
+  transform: string | undefined;
+  transition?: string;
+  isDragging: boolean;
+};
+
+/** 종목 행 드래그(이동 전용). useDraggable — 잡으면 커서를 따라 뜨고(transform), 다른 그룹
+ *  GroupDropZone 에 드롭하면 소속 이동. change/asc/desc(라이브 정렬) 모드에서 쓴다 — 그룹 내
+ *  순서는 매 폴링 시세로 덮이므로 재정렬이 무의미. PointerSensor(distance 5)가 클릭(차트 이동)
  *  과 드래그를 구분한다. children 에 drag 소품을 넘겨 QuoteRow 에 그대로 스레드. */
 function DraggableRow({ code, folderId, children }: {
   code: string;
   folderId: string;
-  children: (drag: {
-    setNodeRef: (n: HTMLElement | null) => void;
-    listeners: DraggableSyntheticListeners;
-    transform: string | undefined;
-    isDragging: boolean;
-  }) => React.ReactNode;
+  children: (drag: RowDrag) => React.ReactNode;
 }) {
   const { setNodeRef, listeners, transform, isDragging } =
     useDraggable({ id: code, data: { type: 'entry', code, folderId } });
-  return <>{children({ setNodeRef, listeners, transform: CSS.Translate.toString(transform), isDragging })}</>;
+  return <>{children({ setNodeRef, listeners, transform: CSS.Translate.toString(transform), transition: undefined, isDragging })}</>;
 }
 
-/** active 타입과 같은 계열의 droppable 만 충돌 검사에 넘긴다 — 헤더 그룹 드래그(folder)는
- *  folder sortable 만, 행 드래그(entry)는 entry-target(그룹 드롭존)만 본다(한 DndContext 공존). */
+/** 종목 행 드래그(그룹 내 재정렬). useSortable — manual 정렬 + 비검색일 때 그룹의 SortableContext
+ *  안에서 형제 행 위에 드롭하면 순서가 바뀐다(reorderHeatmapEntries). 동시에 droppable(type
+ *  'entry')로도 등록돼, 다른 그룹 행 위로 끌면 onDragEnd 가 folderId 차이를 보고 '이동'으로
+ *  처리한다(페이지 SortableHeatmapRow 와 동일 계약, 드로어는 그룹 간 이동까지 겸함). */
+function SortableEntryRow({ code, folderId, children }: {
+  code: string;
+  folderId: string;
+  children: (drag: RowDrag) => React.ReactNode;
+}) {
+  const { setNodeRef, listeners, transform, transition, isDragging } =
+    useSortable({ id: code, data: { type: 'entry', code, folderId } });
+  return <>{children({ setNodeRef, listeners, transform: CSS.Transform.toString(transform), transition, isDragging })}</>;
+}
+
+/** active 타입과 같은 계열의 droppable 만 충돌 검사에 넘긴다(한 DndContext 공존). 헤더 그룹
+ *  드래그(folder)는 folder sortable 만 본다. 행 드래그(entry)는 형제 행(entry, manual 정렬 시
+ *  sortable 로 등록)과 그룹 드롭존(entry-target)을 **둘 다** 본다 — 형제 위=그룹 내 재정렬,
+ *  다른 그룹 위=이동. non-manual 모드엔 'entry' droppable 이 없어 자동으로 entry-target 만 남는다
+ *  (기존 이동 전용 동작 보존). */
 const typeAwareCollision: CollisionDetection = (args) => {
   const activeType = args.active.data.current?.type;
-  const wanted = activeType === 'entry' ? 'entry-target' : 'folder';
-  const same = args.droppableContainers.filter((c) => c.data.current?.type === wanted);
+  const same = args.droppableContainers.filter((c) => {
+    const t = c.data.current?.type;
+    return activeType === 'entry' ? t === 'entry' || t === 'entry-target' : t === 'folder';
+  });
   return closestCenter({ ...args, droppableContainers: same });
 };
 
@@ -428,7 +456,8 @@ function DrawerToolbar({ query, onQuery, allCollapsed, onToggleAll, toggleAllDis
  *   groupByFolder → orderFolderGroups(그룹간) → filterGroups(검색) → sortEntries(그룹내).
  * 종목/그룹 추가·삭제, 그룹 이름변경·순서변경(⋯), 행 클릭 차트 점프, Delete/⋯ 제거·이동.
  * 그룹 순서 변경(⋯ 위/아래)은 수동 정렬 + 비검색 상태에서만 활성(정렬/필터 중엔 화면 순서와
- * folder.order 가 어긋나므로 비활성). 드래그 재정렬은 /heatmap 페이지가 담당한다.
+ * folder.order 가 어긋나므로 비활성). 행 드래그: 형제 위=그룹 내 재정렬(manual+비검색),
+ * 다른 그룹 위=소속 이동(모든 모드). 그룹 헤더 드래그=그룹 순서 변경.
  */
 export function HeatmapDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
@@ -436,6 +465,7 @@ export function HeatmapDrawer() {
   const { data, isLoading, error } = useHeatmap();
   const removeM = useRemoveFromHeatmap();
   const moveM = useMoveHeatmapEntries();
+  const reorderEntriesM = useReorderHeatmapEntries();
   const createM = useCreateHeatmapFolder();
   const renameM = useRenameHeatmapFolder();
   const deleteM = useDeleteHeatmapFolder();
@@ -452,6 +482,9 @@ export function HeatmapDrawer() {
   const [addGroupOpen, setAddGroupOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [query, setQuery] = useState('');
+  // 행 드래그 중(그룹 내 재정렬) 그룹 순서 동결(G1, 텔레포트 방지). groupSort≠manual 이면 그룹이
+  // 매 폴링 라이브 재배치되는데, 종목을 끄는 도중 그 밑 그룹이 튀면 드롭 타깃이 어긋난다.
+  const [isEntryDragging, setIsEntryDragging] = useState(false);
   const [menu, setMenu] =
     useState<{ x: number; y: number; code: string; name: string; folderId: string } | null>(null);
 
@@ -499,8 +532,7 @@ export function HeatmapDrawer() {
 
   // 렌더 파이프라인: groupByFolder → orderFolderGroups(그룹간 정렬) → filterGroups(검색)
   //   → (렌더 시) sortEntries(그룹내 정렬). pctOf 는 시세 Map 파생이라 change/desc/asc 모드는
-  // 매 폴링 라이브 재정렬(페이지와 동일). 드로어는 행 드래그가 없어 재정렬이 안전하다
-  // (페이지의 useFrozenWhileDragging 텔레포트 가드 불필요).
+  // 매 폴링 라이브 재정렬(페이지와 동일).
   const pctOf = useMemo(() => makePctOf(quoteByCode), [quoteByCode]);
   const visibleGroups = useMemo(() => {
     if (!data) return [];
@@ -510,6 +542,12 @@ export function HeatmapDrawer() {
   }, [data, groupSort, pctOf, query]);
 
   const isSearching = query.trim() !== '';
+  // 그룹 내 종목 드래그 재정렬은 manual 정렬 + 비검색일 때만(페이지 HeatmapFolder 와 동일 계약).
+  // desc/asc 는 매 폴링 시세로 라이브 재정렬돼 드래그가 즉시 덮이고, 검색 중엔 rows 가 부분집합
+  // 이라 orderedCodes 가 서버 순서를 손상시킨다. 그 외 모드에선 행이 이동 전용(DraggableRow).
+  const entrySortEnabled = sortMode === 'manual' && !isSearching;
+  // G1: 행 드래그 중 그룹 순서 동결(텔레포트 방지), drag-end 에 최신 반영. 페이지와 동일 가드.
+  const displayGroups = useFrozenWhileDragging(visibleGroups, isEntryDragging);
 
   // 전체 접기/펼치기. 대상은 **화면에 보이는 그룹**(visibleGroups)이지 collapsed Set 이 아니다.
   // collapsed.size 로 "모두 접힘"을 판정하면 삭제된 그룹의 잔여 키에 걸려 거짓 양성이 난다
@@ -544,19 +582,41 @@ export function HeatmapDrawer() {
   const groupDragEnabled = !isSearching;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const draggableFolderIds = groupDragEnabled
-    ? visibleGroups.map((g) => g.folder.id)
+    ? displayGroups.map((g) => g.folder.id)
     : [];
+  // 종목 드래그 시작만 동결 플래그를 켠다(그룹 헤더 드래그는 그룹 순서 자체가 목적이라 제외).
+  const onDragStart = (ev: DragStartEvent) => {
+    if (ev.active.data.current?.type === 'entry') setIsEntryDragging(true);
+  };
+  const onEntryDragEnd = (ev: DragEndEvent) => {
+    // over 는 형제 행(entry) 또는 그룹 드롭존(entry-target) — 둘 다 data.folderId 를 실어
+    // id 디코딩 없이 대상 그룹을 읽는다. 같은 그룹 형제 위 = 재정렬, 다른 그룹(행/드롭존) = 이동.
+    const over = ev.over?.data.current;
+    if (!over) return;
+    const from = String(ev.active.data.current?.folderId ?? '');
+    const code = String(ev.active.data.current?.code ?? '');
+    const overFolder = String(over.folderId ?? '');
+    if (over.type === 'entry' && overFolder === from) {
+      // 그룹 내 재정렬. rows 는 현재 화면 순서(manual=entry.order). arrayMove 로 새 순서 산출.
+      const group = visibleGroups.find((g) => g.folder.id === from);
+      if (!group) return;
+      const ordered = sortEntries(group.entries, sortMode, pctOf).map((e) => e.code);
+      const fromIdx = ordered.indexOf(code);
+      const toIdx = ordered.indexOf(String(over.code));
+      if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+      reorderEntriesM.mutate({ folderId: from, orderedCodes: arrayMove(ordered, fromIdx, toIdx) });
+      return;
+    }
+    // 다른 그룹(행 위 또는 그룹 드롭존)으로 이동. 같은 그룹 드롭존/자기 자신 = no-op. 서버가 끝에 배치.
+    if (overFolder !== '' && overFolder !== from) {
+      moveM.mutate({ codes: [code], folderId: overFolder });
+    }
+  };
   const onDragEnd = (ev: DragEndEvent) => {
     const activeType = ev.active.data.current?.type;
     if (activeType === 'entry') {
-      // 종목 행을 다른 그룹으로 이동. over 는 GroupDropZone(entry-target). data.folderId 로 대상
-      // 그룹을 읽어 id 디코딩 불필요. 같은 그룹이면 no-op. 서버가 대상 그룹 끝에 배치.
-      const over = ev.over?.data.current;
-      if (!over || over.type !== 'entry-target') return;
-      const from = String(ev.active.data.current?.folderId ?? '');
-      const to = String(over.folderId ?? '');
-      if (to === '' || from === to) return;
-      moveM.mutate({ codes: [String(ev.active.data.current?.code)], folderId: to });
+      onEntryDragEnd(ev);
+      setIsEntryDragging(false);
       return;
     }
     // 그룹 헤더 드래그(순서 변경).
@@ -596,9 +656,11 @@ export function HeatmapDrawer() {
         {!isLoading && !error && isSearching && visibleGroups.length === 0 && (
           <RailState>검색 결과 없음</RailState>
         )}
-        <DndContext sensors={sensors} collisionDetection={typeAwareCollision} onDragEnd={onDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={typeAwareCollision}
+          onDragStart={onDragStart} onDragEnd={onDragEnd}
+          onDragCancel={() => setIsEntryDragging(false)}>
           <SortableContext items={draggableFolderIds} strategy={verticalListSortingStrategy}>
-            {visibleGroups.map((g, gi) => {
+            {displayGroups.map((g, gi) => {
               const folder = g.folder;
               const key = folder.id;
               // 빈 그룹도 표시 — 새 그룹 직후 종목 추가로 채울 수 있어야 하기 때문
@@ -622,36 +684,54 @@ export function HeatmapDrawer() {
                     dragHandle={dragHandle} />
                   {!isCollapsed && (
                     <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                      {rows.map((entry) => {
-                        const q = quoteByCode.get(entry.code);
-                        return (
-                          <DraggableRow key={entry.code} code={entry.code} folderId={entry.folder_id}>
-                            {(drag) => (
-                              <QuoteRow
-                                name={entry.name}
-                                price={q?.price ?? null}
-                                pct={q?.change_pct ?? null}
-                                changeWon={q?.change_won ?? null}
-                                active={entry.code === activeCode}
-                                ariaLabel={[entry.name, entry.code, '차트 열기'].join(' ')}
-                                testId={`heatmap-drawer-row-${entry.code}`}
-                                onClick={(e) => onPick(entry.code, entry.name, e)}
-                                onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
-                                onDelete={() => removeM.mutate(entry.code)}
-                                indented
-                                sortableRef={drag.setNodeRef}
-                                sortableStyle={{ transform: drag.transform }}
-                                dragListeners={drag.listeners}
-                                dragging={drag.isDragging}
-                                trailingAction={
-                                  <RowTrailing name={entry.name}
-                                    onOpenMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)} />
-                                }
-                              />
-                            )}
-                          </DraggableRow>
+                      {/* manual+비검색이면 행을 SortableContext(items=현재 순서)로 감싸 그룹 내 재정렬
+                          활성(SortableEntryRow=useSortable). 그 외엔 SortableContext 없이 이동 전용
+                          (DraggableRow=useDraggable). 한 render-prop 콜백(renderRow)이 두 래퍼를 모두
+                          커버한다 — RowDrag 공용 형태라 QuoteRow JSX 를 한 번만 쓴다. */}
+                      {(() => {
+                        const renderRow = (entry: HeatmapEntry, drag: RowDrag) => {
+                          const q = quoteByCode.get(entry.code);
+                          return (
+                            <QuoteRow
+                              name={entry.name}
+                              price={q?.price ?? null}
+                              pct={q?.change_pct ?? null}
+                              changeWon={q?.change_won ?? null}
+                              active={entry.code === activeCode}
+                              ariaLabel={[entry.name, entry.code, '차트 열기'].join(' ')}
+                              testId={`heatmap-drawer-row-${entry.code}`}
+                              onClick={(e) => onPick(entry.code, entry.name, e)}
+                              onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
+                              onDelete={() => removeM.mutate(entry.code)}
+                              indented
+                              sortableRef={drag.setNodeRef}
+                              sortableStyle={{ transform: drag.transform, transition: drag.transition }}
+                              dragListeners={drag.listeners}
+                              dragging={drag.isDragging}
+                              trailingAction={
+                                <RowTrailing name={entry.name}
+                                  onOpenMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)} />
+                              }
+                            />
+                          );
+                        };
+                        const rowEls = rows.map((entry) =>
+                          entrySortEnabled ? (
+                            <SortableEntryRow key={entry.code} code={entry.code} folderId={entry.folder_id}>
+                              {(drag) => renderRow(entry, drag)}
+                            </SortableEntryRow>
+                          ) : (
+                            <DraggableRow key={entry.code} code={entry.code} folderId={entry.folder_id}>
+                              {(drag) => renderRow(entry, drag)}
+                            </DraggableRow>
+                          ),
                         );
-                      })}
+                        return entrySortEnabled ? (
+                          <SortableContext items={rows.map((e) => e.code)} strategy={verticalListSortingStrategy}>
+                            {rowEls}
+                          </SortableContext>
+                        ) : rowEls;
+                      })()}
                     </ul>
                   )}
                 </>
