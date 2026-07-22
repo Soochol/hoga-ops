@@ -1,15 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
-import { WindowViewContext, type WindowViewValue } from './workspace/windowView';
-import { FACTORY_INDICATOR_SETTINGS, type IndicatorSettings } from '../state/indicatorSettingsV2';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import {
-  clearWindowFlagLegendValues,
   registerFlagLegendValues,
   unregisterFlagLegendValues,
   type FlagLegendValueProvider,
@@ -100,7 +95,7 @@ describe('PaneLegendOverlay — candle MA row', () => {
     useMaSeriesRegistry.getState().register('ma-1', seriesWithValue(311400));
     renderOverlay();
     expect(screen.getByText('311,400')).toBeInTheDocument();
-    expect(screen.getByText('5')).toBeInTheDocument(); // MA period swatch label
+    expect(screen.getByText('5')).toBeInTheDocument(); // MA period (색 입힌 기간)
   });
 
   it('memo(P1): 같은 props 부모 재렌더(SSE 호가 틱)에는 series.data() 재호출 안 함; dataEpoch 변경(캔들 갱신)엔 재호출', () => {
@@ -146,7 +141,7 @@ describe('PaneLegendOverlay — candle MA row', () => {
   });
 });
 
-describe('PaneLegendOverlay — candle-pane indicator rows', () => {
+describe('PaneLegendOverlay — candle daily-MA row', () => {
   beforeEach(resetStore);
   afterEach(cleanup);
 
@@ -194,8 +189,20 @@ describe('PaneLegendOverlay — candle-pane indicator rows', () => {
     fireEvent.click(screen.getByRole('button', { name: '일봉 이동평균선 지표 끄기' }));
     expect(useLivePageStore.getState().dailyMovingAverageEnabled).toBe(false);
   });
+});
 
-  it('renders enabled flag rows on a minute timeframe and stacks them with the MA row', () => {
+// 지표 값 레전드(flag: 최대벽·매물대·히트맵·단별잔량·신규거래원 / cells: 거래량·총잔량·
+// 호가비·체결강도·프로그램·투자자)는 오버레이에서 숨긴다(2026-07-22, 차트 밀집도).
+// 캔들 pane 의 OHLC·이동평균선만 남는다. 행 생성 로직은 legendRows.test.ts 가, flag 값
+// provider 스코프는 flagLegendValueRegistry.test.ts 가 계속 커버한다.
+describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => {
+  beforeEach(resetStore);
+  afterEach(cleanup);
+
+  const minutePanes = () => makeChart([120, 60, 60, 60, 60, 60]);
+  const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
+
+  it('flag 지표를 켜도 값 행이 렌더되지 않는다(이동평균선은 유지)', () => {
     useMaSeriesRegistry.getState().register('ma-1', seriesWithValue(100));
     useLivePageStore.setState({
       askPeakEnabled: true,
@@ -205,345 +212,41 @@ describe('PaneLegendOverlay — candle-pane indicator rows', () => {
     });
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
     expect(screen.getByText('이동평균선')).toBeInTheDocument();
-    expect(screen.getByText('당일 매도 최대벽')).toBeInTheDocument();
-    expect(screen.getByText('당일 매수 최대벽')).toBeInTheDocument();
-    expect(screen.getByText('당일 최대 매물대')).toBeInTheDocument();
-    expect(screen.getByText('호가 잔량 히트맵')).toBeInTheDocument();
-  });
-
-  it('단별 잔량 증감: 데이터가 있을 때만 행이 렌더된다', () => {
-    useLivePageStore.setState({ depthDeltaEnabled: true });
-    // 오늘 SSE 가 유일한 소스 — /study·과거일 전용 뷰에서는 켜져 있어도 그릴 게 없다.
-    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    expect(screen.queryByText('단별 잔량 증감')).toBeNull();
-
-    render(
-      <PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} hasDepthDelta />,
-    );
-    expect(screen.getAllByText('단별 잔량 증감').length).toBeGreaterThan(0);
-  });
-
-  it('단별 잔량 증감: ✕ 는 끄고, 눈은 숨김만 토글한다', () => {
-    useLivePageStore.setState({ depthDeltaEnabled: true });
-    render(
-      <PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} hasDepthDelta />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: '단별 잔량 증감 표시 숨김/표시' }));
-    expect(useLivePageStore.getState().depthDeltaHidden).toBe(true);
-    expect(screen.getByText('단별 잔량 증감')).toBeInTheDocument(); // 숨김은 그리기만
-
-    fireEvent.click(screen.getByRole('button', { name: '단별 잔량 증감 지표 끄기' }));
-    expect(useLivePageStore.getState().depthDeltaEnabled).toBe(false);
-  });
-
-  it('단별 잔량 증감: D 봉에서는 데이터가 있어도 행이 없다', () => {
-    useLivePageStore.setState({ depthDeltaEnabled: true });
-    render(
-      <PaneLegendOverlay chart={minutePanes()} timeframe="D" paneToggles={toggles} hasDepthDelta />,
-    );
-    expect(screen.queryByText('단별 잔량 증감')).toBeNull();
-  });
-
-  it('renders no flag rows on D/W/M (minute-only overlays)', () => {
-    useLivePageStore.setState({ askPeakEnabled: true, depthHeatmapEnabled: true });
-    renderOverlay({ timeframe: 'D' });
     expect(screen.queryByText('당일 매도 최대벽')).toBeNull();
+    expect(screen.queryByText('당일 매수 최대벽')).toBeNull();
+    expect(screen.queryByText('당일 최대 매물대')).toBeNull();
     expect(screen.queryByText('호가 잔량 히트맵')).toBeNull();
   });
 
-  it('✕ on a flag row turns that indicator off in the store', () => {
-    useLivePageStore.setState({ askPeakEnabled: true, depthHeatmapEnabled: true });
+  it('신규 거래원 등장(broker-late-entry)도 숨긴다', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false, brokerLateEntryEnabled: true });
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽 지표 끄기' }));
-    expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: '호가 잔량 히트맵 지표 끄기' }));
-    expect(useLivePageStore.getState().depthHeatmapEnabled).toBe(false);
+    expect(screen.queryByText('신규 거래원 등장')).toBeNull();
   });
 
-  it('eye on a flag row toggles its hidden store flag (row stays rendered)', () => {
+  it('flag provider 값도 표시되지 않는다', () => {
     useLivePageStore.setState({ askPeakEnabled: true });
-    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽 표시 숨김/표시' }));
-    expect(useLivePageStore.getState().askPeakHidden).toBe(true);
-    // 눈은 그리기만 숨긴다 — 레전드 행은 그대로.
-    expect(screen.getByText('당일 매도 최대벽')).toBeInTheDocument();
-  });
-
-  it('renders provider value cells on a flag row (latest fallback, cursor away)', () => {
-    useLivePageStore.setState({ askPeakEnabled: true });
-    const provider: FlagLegendValueProvider = (cursorTimeSec) =>
-      cursorTimeSec === null ? [{ key: 'ask-peak', value: '300,000, 12.3만' }] : [];
+    const provider: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '300,000, 12.3만' }];
     registerFlagLegendValues(null, 'ask-peak', provider);
     try {
       render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-      expect(screen.getByText('300,000, 12.3만')).toBeInTheDocument();
+      expect(screen.queryByText('300,000, 12.3만')).toBeNull();
     } finally {
       unregisterFlagLegendValues(null, 'ask-peak', provider);
     }
   });
 
-  it('renders labeled/colored provider cells (히트맵 매수/매도)', () => {
-    useLivePageStore.setState({ depthHeatmapEnabled: true });
-    const provider: FlagLegendValueProvider = () => [
-      { key: 'dh-bid', label: '매수', color: '#F04452', value: '299,000, 30만' },
-      { key: 'dh-ask', label: '매도', color: '#3485FA', value: '300,000, 12만' },
-    ];
-    registerFlagLegendValues(null, 'depth-heatmap', provider);
-    try {
-      render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-      expect(screen.getByText('호가 잔량 히트맵')).toBeInTheDocument();
-      expect(screen.getByText('299,000, 30만')).toBeInTheDocument();
-      expect(screen.getByText('300,000, 12만')).toBeInTheDocument();
-      expect(screen.getByText('매수')).toBeInTheDocument();
-      expect(screen.getByText('매도')).toBeInTheDocument();
-    } finally {
-      unregisterFlagLegendValues(null, 'depth-heatmap', provider);
-    }
-  });
-
-  it('renders the 거래원 등장 flag on the ratio pane when mounted, and ✕ turns it off', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false, brokerLateEntryEnabled: true });
-    // '1m' pane order: candle volume quote-totals ratio fill-strength …
-    render(
-      <PaneLegendOverlay
-        chart={makeChart([120, 60, 60, 60, 60, 60])}
-        timeframe="1m"
-        paneToggles={toggles}
-      />,
-    );
-    expect(screen.getByText('신규 거래원 등장')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '신규 거래원 등장 지표 끄기' }));
-    expect(useLivePageStore.getState().brokerLateEntryEnabled).toBe(false);
-  });
-
-  it('hides the 거래원 등장 flag when the ratio pane is unmounted (호가비 off)', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false, brokerLateEntryEnabled: true });
-    render(
-      <PaneLegendOverlay
-        chart={makeChart([120, 60, 60, 60, 60])}
-        timeframe="1m"
-        paneToggles={{ ...toggles, ratioEnabled: false } as PaneToggles}
-      />,
-    );
-    expect(screen.queryByText('신규 거래원 등장')).toBeNull();
-  });
-
-  it('hides the 거래원 등장 flag on D (분봉 전용)', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false, brokerLateEntryEnabled: true });
-    renderOverlay({ timeframe: 'D', chart: makeChart([120, 60]) });
-    expect(screen.queryByText('신규 거래원 등장')).toBeNull();
-  });
-});
-
-describe('PaneLegendOverlay — 멀티창 flag 값 스코프(#706)', () => {
-  beforeEach(resetStore);
-  afterEach(cleanup);
-
-  const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
-  const minutePanes = () => makeChart([120, 60, 60]);
-
-  function windowValue(windowId: string, indicators: Partial<IndicatorSettings>): WindowViewValue {
-    return {
-      windowId,
-      group: 1,
-      code: null,
-      timeframe: '1m',
-      historicalFromDate: null,
-      indicators: { ...FACTORY_INDICATOR_SETTINGS, ...indicators },
-    };
-  }
-
-  function renderWindow(value: WindowViewValue) {
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <WindowViewContext.Provider value={value}>{children}</WindowViewContext.Provider>
-    );
-    return render(
-      <PaneLegendOverlay
-        chart={minutePanes()}
-        timeframe="1m"
-        paneToggles={toggles}
-        hasDepthDelta
-      />,
-      { wrapper },
-    );
-  }
-
-  it('두 창이 같은 지표를 켜도 각자 자기 provider 값을 읽는다', () => {
-    // 회귀 대상: 레지스트리가 LegendFlagId 단일 키였을 때 나중에 마운트된 창(B)의
-    // provider 가 A 의 것을 덮어써, 두 창이 모두 B 의 값(다른 종목 가격대)을 보였다.
-    const a: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '70,000, 1.1만' }];
-    const b: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '300,000, 9.9만' }];
-    registerFlagLegendValues('win-a', 'ask-peak', a);
-    registerFlagLegendValues('win-b', 'ask-peak', b); // 나중 등록 — A를 덮어써선 안 된다
-    try {
-      const winA = renderWindow(windowValue('win-a', { askPeakEnabled: true }));
-      const winB = renderWindow(windowValue('win-b', { askPeakEnabled: true }));
-
-      expect(within(winA.container).getByText('70,000, 1.1만')).toBeInTheDocument();
-      expect(within(winB.container).getByText('300,000, 9.9만')).toBeInTheDocument();
-      // 서로의 값이 새어 들어오지 않는다(버그 재현 시 A가 B 값을 표시했다).
-      expect(within(winA.container).queryByText('300,000, 9.9만')).toBeNull();
-      expect(within(winB.container).queryByText('70,000, 1.1만')).toBeNull();
-    } finally {
-      unregisterFlagLegendValues('win-a', 'ask-peak', a);
-      unregisterFlagLegendValues('win-b', 'ask-peak', b);
-    }
-  });
-
-  it('단별 잔량 증감(depth-delta)도 창별로 격리된다', () => {
-    // #731 이 #733 과 병렬로 진행돼 스코프 없이 착지했다(main 에서 tsc 3건 실패).
-    // 읽기 경로가 창 스코프를 쓰는지 지표별로 한 번 더 못박는다.
-    const a: FlagLegendValueProvider = () => [{ key: 'dd-in', label: '유입', value: '70,000, +1만' }];
-    const b: FlagLegendValueProvider = () => [{ key: 'dd-in', label: '유입', value: '300,000, +9만' }];
-    registerFlagLegendValues('win-a', 'depth-delta', a);
-    registerFlagLegendValues('win-b', 'depth-delta', b);
-    try {
-      const winA = renderWindow(windowValue('win-a', { depthDeltaEnabled: true }));
-      const winB = renderWindow(windowValue('win-b', { depthDeltaEnabled: true }));
-
-      expect(within(winA.container).getByText('70,000, +1만')).toBeInTheDocument();
-      expect(within(winB.container).getByText('300,000, +9만')).toBeInTheDocument();
-      expect(within(winA.container).queryByText('300,000, +9만')).toBeNull();
-    } finally {
-      unregisterFlagLegendValues('win-a', 'depth-delta', a);
-      unregisterFlagLegendValues('win-b', 'depth-delta', b);
-    }
-  });
-
-  it('한 창을 닫아도 남은 창의 값은 그대로다', () => {
-    const a: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '70,000, 1.1만' }];
-    const b: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '300,000, 9.9만' }];
-    registerFlagLegendValues('win-a', 'ask-peak', a);
-    registerFlagLegendValues('win-b', 'ask-peak', b);
-    try {
-      const winA = renderWindow(windowValue('win-a', { askPeakEnabled: true }));
-      renderWindow(windowValue('win-b', { askPeakEnabled: true }));
-
-      // B 창 닫힘 = 그 창의 provider 정리. A 는 자기 값을 계속 읽는다(버그 시절엔
-      // 이 시점에 남은 창이 갑자기 "자기 값으로 고쳐지는" 것처럼 보였다).
-      clearWindowFlagLegendValues('win-b');
-      winA.rerender(
-        <PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />,
-      );
-      expect(within(winA.container).getByText('70,000, 1.1만')).toBeInTheDocument();
-    } finally {
-      unregisterFlagLegendValues('win-a', 'ask-peak', a);
-    }
-  });
-
-  it('전역(Provider 밖) 등록은 창 스코프 읽기에 보이지 않는다', () => {
-    const global: FlagLegendValueProvider = () => [{ key: 'ask-peak', value: '전역값' }];
-    registerFlagLegendValues(null, 'ask-peak', global);
-    try {
-      const winA = renderWindow(windowValue('win-a', { askPeakEnabled: true }));
-      expect(within(winA.container).getByText('당일 매도 최대벽')).toBeInTheDocument();
-      expect(within(winA.container).queryByText('전역값')).toBeNull();
-    } finally {
-      unregisterFlagLegendValues(null, 'ask-peak', global);
-    }
-  });
-});
-
-describe('PaneLegendOverlay — generic pane rows', () => {
-  beforeEach(resetStore);
-  afterEach(cleanup);
-
-  it('renders a multi-cell hoga pane (총잔량 매수/매도) and ✕ turns it off', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false });
+  it('generic cells 행(총잔량·거래량)도 등록돼 있어도 숨긴다', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false, volumeEnabled: true });
     registerLegend('quote-totals', [
       { label: '매수', value: 311400, color: () => '#F04452' },
       { label: '매도', value: 6789, color: () => '#3485FA' },
     ]);
-    // 1m mounts candle(0) volume(1) quote-totals(2) ... — place quote-totals at idx 2.
-    render(
-      <PaneLegendOverlay
-        chart={makeChart([120, 60, 60])}
-        timeframe="1m"
-        paneToggles={{ foreignNet: false, institutionNet: false }}
-      />,
-    );
-    expect(screen.getByText('총잔량')).toBeInTheDocument();
-    expect(screen.getByText('매수')).toBeInTheDocument();
-    expect(screen.getByText('311,400')).toBeInTheDocument();
-    expect(screen.getByText('매도')).toBeInTheDocument();
-    expect(screen.getByText('6,789')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '총잔량 지표 끄기' }));
-    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.quoteTotalsEnabled).toBe(false);
-  });
-
-  it('omits a null-valued cell (체결강도 누적 off) but keeps the rest', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false });
-    registerLegend('fill-strength', [
-      { label: '매수', value: 10 },
-      { label: '매도', value: 20 },
-      { label: '누적', value: null }, // cumulative toggle off → empty series → omitted
-    ]);
-    render(
-      <PaneLegendOverlay
-        chart={makeChart([120, 60, 60, 60, 60])}
-        timeframe="1m"
-        paneToggles={{ foreignNet: false, institutionNet: false }}
-      />,
-    );
-    expect(screen.getByText('체결강도')).toBeInTheDocument();
-    expect(screen.getByText('매수')).toBeInTheDocument();
-    expect(screen.getByText('매도')).toBeInTheDocument();
-    expect(screen.queryByText('누적')).toBeNull();
-  });
-
-  it('renders the volume row from the registry and ✕ writes the active timeframe profile', () => {
-    useLivePageStore.setState({ volumeEnabled: true, movingAverageEnabled: false });
     registerLegend('volume', [{ label: '거래량', value: 5000 }]);
-    render(
-      <PaneLegendOverlay
-        chart={makeChart([120, 60])}
-        timeframe="D"
-        paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: true }}
-      />,
-    );
-    expect(screen.getByText('5,000')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '거래량 지표 끄기' }));
-    expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBe(false);
-    expect(useLivePageStore.getState().volumeEnabled).toBe(true);
-  });
-
-  it('renders no investor row on a weekly timeframe even with registry entries', () => {
-    useLivePageStore.setState({
-      movingAverageEnabled: false,
-      foreignNetEnabled: true,
-      institutionNetEnabled: true,
-    });
-    registerLegend('investor-foreign', [{ label: '외국인 순매수량', value: 100 }]);
-    registerLegend('investor-institution', [{ label: '기관 순매수량', value: -100 }]);
-    render(
-      <PaneLegendOverlay
-        chart={makeChart([120, 60])}
-        timeframe="W"
-        paneToggles={{ foreignNet: true, institutionNet: true, volumeEnabled: false }}
-      />,
-    );
-    // Investor panes are D-only → absent from the W spec order → no placement.
-    expect(screen.queryByText('외국인 순매수량')).toBeNull();
-    expect(screen.queryByText('기관 순매수량')).toBeNull();
-  });
-
-  it('foreign close writes D profile investor toggle', async () => {
-    useLivePageStore.setState({
-      movingAverageEnabled: false,
-      foreignNetEnabled: true,
-      indicatorsByTimeframe: { D: { foreignNetEnabled: true } },
-    });
-    registerLegend('investor-foreign', [{ label: '외국인 순매수량', value: 100 }]);
-    renderOverlay({
-      timeframe: 'D',
-      chart: makeChart([120, 60]),
-      paneToggles: { foreignNet: true, institutionNet: false, volumeEnabled: false },
-    });
-
-    await userEvent.click(screen.getByLabelText('외국인 순매수량 지표 끄기'));
-
-    expect(useLivePageStore.getState().indicatorsByTimeframe.D?.foreignNetEnabled).toBe(false);
-    expect(useLivePageStore.getState().foreignNetEnabled).toBe(true);
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.queryByText('총잔량')).toBeNull();
+    expect(screen.queryByText('311,400')).toBeNull();
+    expect(screen.queryByText('5,000')).toBeNull();
   });
 });
 

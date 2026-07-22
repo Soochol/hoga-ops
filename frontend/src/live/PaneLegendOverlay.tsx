@@ -760,7 +760,11 @@ function PaneLegendOverlay({
     dailyMaApplicable: isMinute,
     indicatorFlags,
     paneCells,
-  });
+    // 지표 값 레전드는 캔들 pane 의 OHLC·이동평균선(일봉 포함)만 표시한다. flag 행(최대벽·
+    // 매물대·히트맵·단별잔량·신규거래원)과 generic cells 행(거래량·총잔량·호가비·체결강도·
+    // 프로그램·투자자)은 사용자 요청으로 숨긴다(2026-07-22, 차트 밀집도). 지표 on/off 는
+    // 보조지표 패널이 담당. 행 생성 로직은 그대로 유지 — 되살리려면 이 옵션만 제거.
+  }).filter((r) => r.kind === 'ohlc' || r.kind === 'ma' || r.kind === 'daily-ma');
 
   // ── pane geometry (runtime order, not static paneTopY) ─────────────────
   let panes: ReturnType<IChartApi['panes']> = [];
