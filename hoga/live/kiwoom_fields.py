@@ -38,10 +38,10 @@ OB_ASK_QTY = [str(f) for f in range(61, 71)]  # 매도잔량 1~10
 OB_BID_QTY = [str(f) for f in range(71, 81)]  # 매수잔량 1~10
 OB_TOTAL_ASK_QTY = "121"
 OB_TOTAL_BID_QTY = "125"
-# 예상체결가/예상체결량 — 동시호가(단일가) 구간에만 유의미. 파서가 **시각 게이트
-# (session_gate.is_auction_window: 08:30–09:00·15:20–15:30 KST) AND 값>0** 일 때만
-# payload 에 싣는다. 값 게이트만으론 NXT 가 연속/애프터마켓에도 예상체결값을 흘려
-# 평시 노출됨을 실측 확인(2026-07-22) → 프레임 시각으로 창 밖을 버린다. 200/201 미소비.
+# 예상체결가/예상체결량 — KRX 동시호가(단일가) 개념. 파서가 **venue==KRX AND 시각
+# 게이트(session_gate.is_auction_window: 08:30–09:00·15:20–15:30 KST) AND 값>0** 일 때만
+# payload 에 싣는다. NXT 는 연속/애프터마켓·마감동시호가 창에도 예상체결값을 흘려(실측
+# 2026-07-22) KRX 프레임으로 한정한다. 200/201(예상체결대비/등락률)은 미소비.
 OB_EXPECTED_PRICE = "23"  # 예상체결가, 부호=등락방향(abs)
 OB_EXPECTED_QTY = "24"  # 예상체결량
 

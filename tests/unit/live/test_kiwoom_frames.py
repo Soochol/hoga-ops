@@ -136,8 +136,8 @@ def test_orderbook_nxt_venue_and_empty_levels():
     assert t.payload["bids"][9] == {"price": 0, "qty": 0}
 
 
-def test_orderbook_expected_fill_present_in_auction_window():
-    # 동시호가 창(장마감 15:25) 프레임 — FID 23(예상체결가)/24(예상체결량)이 실린다.
+def test_orderbook_expected_fill_present_in_krx_auction_window():
+    # KRX 동시호가 창(장마감 15:25) — FID 23(예상체결가)/24(예상체결량)이 실린다.
     row = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "21": "152500", "23": "+6480", "24": "12345"}}
     t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
     assert t is not None
@@ -146,11 +146,22 @@ def test_orderbook_expected_fill_present_in_auction_window():
 
 
 def test_orderbook_expected_fill_dropped_outside_auction_window():
-    # 연속거래·NXT 세션 시각(13:56, REAL_0D_KRX 기본 "21"=135622)엔 값이 와도 시각
-    # 게이트가 버린다 — NXT 연속/애프터마켓 예상체결 노출을 막는 게 이 게이트의 목적.
+    # 연속거래 시각(13:56, REAL_0D_KRX 기본 "21"=135622)엔 값이 와도 시각 게이트가 버린다.
     row = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "23": "+6480", "24": "12345"}}
     t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
     assert t is not None
+    assert "expected_price" not in t.payload
+    assert "expected_qty" not in t.payload
+
+
+def test_orderbook_expected_fill_dropped_for_nxt_even_in_window():
+    # NXT 는 동시호가 창(15:25)이어도 예상체결을 싣지 않는다 — 예상체결은 KRX 개념이고
+    # NXT 는 마감 동시호가 창에도 값을 흘리므로 venue==KRX 로 한정(실측 2026-07-22).
+    row = {"type": "0D", "name": "주식호가잔량", "item": "000020_NX",
+           "values": {**REAL_0D_KRX["values"], "21": "152500", "23": "+6480", "24": "12345"}}
+    t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
+    assert t is not None
+    assert t.venue == "NXT"
     assert "expected_price" not in t.payload
     assert "expected_qty" not in t.payload
 

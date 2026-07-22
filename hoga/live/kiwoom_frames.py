@@ -194,14 +194,14 @@ def _parse_orderbook(
         "total_ask_qty": _qty(values, K.OB_TOTAL_ASK_QTY),
         "total_bid_qty": _qty(values, K.OB_TOTAL_BID_QTY),
     }
-    # 예상체결가/량 — **시각 게이트(is_auction_window) AND 값>0** 일 때만 싣는다.
-    # 값 게이트만으론 부족함이 실측으로 확인됐다(2026-07-22): NXT 는 연속/애프터마켓에도
-    # 예상체결값을 흘려 평시에도 노출됐다. 프레임 시각(t_ms)이 정규장 동시호가 창
-    # (08:30–09:00·15:20–15:30 KST)일 때로 한정해 창 밖(연속·NXT 세션)이면 버린다.
+    # 예상체결가/량 — **venue==KRX AND 시각 게이트(is_auction_window) AND 값>0** 일 때만
+    # 싣는다. 예상체결은 KRX 동시호가(단일가) 개념이라 KRX 프레임으로 한정한다: NXT 는
+    # 연속/애프터마켓에도 예상체결값을 흘려(실측 2026-07-22) 평시에도 노출됐고, 마감
+    # 동시호가 창(15:20–15:30)에도 NXT 화면엔 뜨면 안 되므로 시각만으론 부족하다.
     # 키 미포함 규약(요약·OHLC 동형): 소비자는 "미수신"과 "진짜 0"을 구분할 필요가 없다.
     exp_price = _price(values, K.OB_EXPECTED_PRICE)
     exp_qty = _qty(values, K.OB_EXPECTED_QTY)
-    if is_auction_window(t_ms) and exp_price > 0 and exp_qty > 0:
+    if venue == "KRX" and is_auction_window(t_ms) and exp_price > 0 and exp_qty > 0:
         payload["expected_price"] = exp_price
         payload["expected_qty"] = exp_qty
     return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload, venue=venue)
