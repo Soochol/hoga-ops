@@ -81,6 +81,12 @@ export default function BookPanel({
 
   return (
     <div className="flex h-full flex-col bg-bg-card">
+      {/* 예상체결 배너(동시호가에만) — 호가창 전폭 중앙. 평시엔 null 이라 높이 0. */}
+      <ExpectedFillBanner
+        price={snapshot.exp_price ?? 0}
+        qty={snapshot.exp_qty ?? 0}
+        baselinePrice={baselinePrice}
+      />
       {/* min-w 가 load-bearing: 창을 좁히면 좌우 열이 0 으로 수렴해 잔량 숫자가
           겹친다. 최소 폭을 잡아 두면 대신 가로 스크롤이 생긴다(깨지지 않는다).
           우측 열의 190px 하한도 같은 계약 — fr 의 auto-min 은 콘텐츠를 min-content
@@ -141,12 +147,7 @@ export default function BookPanel({
 
           {/* 중앙: 가격축 */}
           <div className="flex flex-col border-x border-border">
-            {/* 최상단 = 예상체결(동시호가에만). 평시엔 빈 스페이서라 21행 정렬 불변. */}
-            <ExpectedFillCell
-              price={snapshot.exp_price ?? 0}
-              qty={snapshot.exp_qty ?? 0}
-              baselinePrice={baselinePrice}
-            />
+            <div style={{ height: ROW_H }} />
             {asksDesc.map((l, i) => (
               <PriceCell
                 key={`pa-${snapshot.ask.length - i}`}
@@ -237,11 +238,10 @@ function dirClass(price: number, baselinePrice: number | null): string {
   return priceDirClass(price - baselinePrice);
 }
 
-/** 예상체결가·량(키움 0D FID 23/24) — 중앙 가격축 최상단(최고 매도호가 위)에 얹는다.
+/** 예상체결가·량(키움 0D FID 23/24) — 호가창 **전폭 상단 배너**, 내용 중앙 정렬.
  *  동시호가(단일가) 구간에만 백엔드가 값을 실어 오므로 둘 다 >0 일 때만 렌더하고,
- *  평시엔 빈 스페이서(ROW_H)로 남겨 3열 21행 정렬 계약을 그대로 유지한다. 가격은
- *  전일종가 대비 방향색, 예상량은 dim 보조값(현재가 확정 전 "예상"이라 subtle 틴트). */
-function ExpectedFillCell({
+ *  평시엔 null(높이 0)이라 평상시 호가창에 영향이 없다. 가격은 전일종가 대비 방향색. */
+function ExpectedFillBanner({
   price,
   qty,
   baselinePrice,
@@ -250,21 +250,24 @@ function ExpectedFillCell({
   qty: number;
   baselinePrice: number | null;
 }) {
-  if (price <= 0 || qty <= 0) return <div style={{ height: ROW_H }} />;
+  if (price <= 0 || qty <= 0) return null;
   const color = dirClass(price, baselinePrice);
   return (
     <div
-      className="flex items-baseline justify-center gap-1.5 bg-bg-subtle px-2"
-      style={{ height: ROW_H }}
+      className="flex items-baseline justify-center gap-6 border-b border-border bg-bg-subtle px-3 py-1.5"
       data-testid="book-expected-fill"
-      title={`예상체결가 ${price.toLocaleString('ko-KR')} · 예상체결량 ${qty.toLocaleString('ko-KR')}`}
     >
-      <span className="font-data text-badge text-fg-dimmer">예상</span>
-      <span className={`font-data text-sm tabular-nums ${color}`}>
-        {price.toLocaleString('ko-KR')}
+      <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+        <span className="text-xs text-fg-dim">예상 체결가</span>
+        <span className={`font-data text-sm tabular-nums ${color}`}>
+          {price.toLocaleString('ko-KR')}원
+        </span>
       </span>
-      <span className="font-data text-badge tabular-nums text-fg-dim">
-        {qty.toLocaleString('ko-KR')}
+      <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+        <span className="text-xs text-fg-dim">예상 체결량</span>
+        <span className="font-data text-sm tabular-nums text-fg">
+          {qty.toLocaleString('ko-KR')}
+        </span>
       </span>
     </div>
   );

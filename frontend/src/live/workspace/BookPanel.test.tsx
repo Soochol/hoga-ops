@@ -265,11 +265,12 @@ describe('BookPanel', () => {
     expect(screen.queryByText('+0.39%')).toBeNull();
   });
 
-  it('예상체결가·량이 있으면(동시호가) 중앙 상단에 예상체결 셀을 그린다', () => {
+  it('예상체결가·량이 있으면(동시호가) 상단 배너에 풀 라벨로 그린다', () => {
     renderPanel({ snapshot: { ...snap(), exp_price: 265_500, exp_qty: 12_345 } });
     const cell = screen.getByTestId('book-expected-fill');
-    expect(cell).toHaveTextContent('예상');
-    expect(cell).toHaveTextContent('265,500');
+    expect(cell).toHaveTextContent('예상 체결가');
+    expect(cell).toHaveTextContent('265,500원');
+    expect(cell).toHaveTextContent('예상 체결량');
     expect(cell).toHaveTextContent('12,345');
   });
 
