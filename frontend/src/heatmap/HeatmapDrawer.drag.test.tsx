@@ -76,10 +76,15 @@ function wrap(ui: ReactNode) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
-// onDragEnd 이벤트 헬퍼
+// onDragEnd 이벤트 헬퍼 — 종목을 다른 그룹 드롭존(entry-target)에 드롭(=이동).
 const entryDrag = (code: string, from: string, to: string) => ({
   active: { id: code, data: { current: { type: 'entry', code, folderId: from } } },
   over: { id: `folder:${to}`, data: { current: { type: 'entry-target', folderId: to } } },
+});
+// 같은 그룹 형제 행(entry) 위에 드롭(=그룹 내 재정렬). over 는 행 code + 그 행의 folderId.
+const entryReorder = (code: string, folderId: string, overCode: string) => ({
+  active: { id: code, data: { current: { type: 'entry', code, folderId } } },
+  over: { id: overCode, data: { current: { type: 'entry', code: overCode, folderId } } },
 });
 
 beforeEach(() => {
@@ -106,6 +111,39 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
     // 마이크로태스크 후에도 호출 없음
     await Promise.resolve();
     expect(api.moveHeatmapEntries).not.toHaveBeenCalled();
+  });
+
+  it('같은 그룹 형제 행 위에 드롭 → reorderHeatmapEntries(folderId, 재배열된 codes)', async () => {
+    // manual 정렬(beforeEach) + 한 그룹에 종목 2개 → 그룹 내 재정렬 활성.
+    api.getHeatmap.mockResolvedValue({
+      folders: [{ id: 'f1', name: '2차전지', order: 0 }],
+      entries: [
+        { code: '000001', name: '에코프로', folder_id: 'f1', order: 0 },
+        { code: '000002', name: '엘앤에프', folder_id: 'f1', order: 1 },
+      ],
+    });
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    h.onDragEnd!(entryReorder('000001', 'f1', '000002'));
+    await waitFor(() =>
+      expect(api.reorderHeatmapEntries).toHaveBeenCalledWith('f1', ['000002', '000001']));
+    expect(api.moveHeatmapEntries).not.toHaveBeenCalled();
+  });
+
+  it('desc(라이브) 정렬 모드에선 그룹 내 재정렬 비활성 (형제 위 드롭도 no-op)', async () => {
+    useHeatmapPrefsStore.setState({ sortMode: 'desc', groupSort: 'manual' });
+    api.getHeatmap.mockResolvedValue({
+      folders: [{ id: 'f1', name: '2차전지', order: 0 }],
+      entries: [
+        { code: '000001', name: '에코프로', folder_id: 'f1', order: 0 },
+        { code: '000002', name: '엘앤에프', folder_id: 'f1', order: 1 },
+      ],
+    });
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    h.onDragEnd!(entryReorder('000001', 'f1', '000002'));
+    await Promise.resolve();
+    expect(api.reorderHeatmapEntries).not.toHaveBeenCalled();
   });
 
   it('그룹 헤더(folder) 드래그는 기존대로 reorderHeatmapFolders (행 이동과 분리)', async () => {
