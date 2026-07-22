@@ -64,6 +64,18 @@
       "dependsOn": ["Backend: dev (hot reload)", "Frontend: dev (HMR)"],
       "dependsOrder": "parallel",
       "problemMatcher": []
+    },
+    {
+      "label": "Dev: kill all servers",
+      "type": "shell",
+      "command": "pkill -f '[u]vicorn hoga.api.app'; pkill -f 'hoga-ops.*[v]ite'; sleep 1; ss -tln | grep -E ':(8000|517[0-9])' && echo '⚠ 아직 살아있는 리스너 위 참조' || echo '✔ 모든 dev 서버 종료됨'",
+      "presentation": {
+        "panel": "dedicated",
+        "group": "dev",
+        "reveal": "always",
+        "clear": true
+      },
+      "problemMatcher": []
     }
   ]
 }
