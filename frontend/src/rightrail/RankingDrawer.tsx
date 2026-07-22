@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -21,8 +21,16 @@ import {
   type RankingRow,
 } from '../api/liveRankings';
 import { QuoteRow } from './QuoteRow';
+import {
+  nextRankingSortMode,
+  rankingSortDescription,
+  rankingSortDirection,
+  sortRankingRows,
+  type RankingSortMode,
+} from './rankingSort';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
 import { SegmentedControl } from '../ui/PageShell';
+import { SortCycleButton } from '../ui/SortCycleButton';
 
 /**
  * 순위 패널 (특징주) — 앱 전역 RightRail 형제(스크리너/관심종목과 동일 계열).
@@ -102,9 +110,10 @@ export function RankingDrawer() {
   const [kind, setKind] = useState<RankingKind>('change');
   const [market, setMarket] = useState<RankingMarket>('all');
   const [direction, setDirection] = useState<RankingDirection>('up');
+  const [sortMode, setSortMode] = useState<RankingSortMode>('default');
 
   const { data, isPending, isError, error } = useLiveRankings({ kind, market, direction });
-  const rows = data?.rows ?? [];
+  const rows = useMemo(() => sortRankingRows(data?.rows ?? [], sortMode), [data?.rows, sortMode]);
 
   const sensors = useSensors(useSensor(PointerSensor, RANKING_DRAG_SENSOR_OPTIONS));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
@@ -193,6 +202,16 @@ export function RankingDrawer() {
               ))}
             </SegmentedControl>
           )}
+          {/* 현재 리스트를 등락률순으로 재정렬(클라이언트) — TR 지표순 리스트를 교차로
+              등락률 이상치 관점에서 훑는다. 순위번호는 TR 고유 순위로 유지. */}
+          <SortCycleButton
+            className="ml-auto"
+            direction={rankingSortDirection(sortMode)}
+            label="등락률 정렬"
+            description={rankingSortDescription(sortMode)}
+            disabled={rows.length === 0}
+            onClick={() => setSortMode(nextRankingSortMode(sortMode))}
+          />
         </div>
       </RailDrawerSection>
 

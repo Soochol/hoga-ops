@@ -108,4 +108,21 @@ describe('RankingDrawer', () => {
     renderDrawer();
     expect(await screen.findByText('조회 실패')).toBeInTheDocument();
   });
+
+  it('sort button re-orders the visible list by 등락률 (client-side)', async () => {
+    // 서버 순서: HDC(29.97) → 삼성(5.79). 등락률 desc 는 이미 동순이라, asc 로
+    // 두 번 눌러 삼성이 위로 오는지로 재정렬을 확인한다.
+    vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
+    renderDrawer();
+    await screen.findByText('삼성전자');
+
+    const rowNames = () =>
+      screen.getAllByRole('button', { name: /차트 열기/ }).map((li) => li.getAttribute('aria-label'));
+    expect(rowNames()[0]).toContain('HDC현대산업개발'); // 기본 = 서버 순서
+
+    const sortBtn = screen.getByRole('button', { name: '등락률 정렬' });
+    fireEvent.click(sortBtn); // → desc
+    fireEvent.click(sortBtn); // → asc: 낮은 등락률(삼성 5.79)이 위로
+    expect(rowNames()[0]).toContain('삼성전자');
+  });
 });
