@@ -66,16 +66,16 @@ describe('chartPrefsPersistence', () => {
 });
 
 describe('candleTooltipEnabled 토글', () => {
-  it('기본값 true', () => {
-    expect(DEFAULT_PREFS.candleTooltipEnabled).toBe(true);
+  it('기본값 false', () => {
+    expect(DEFAULT_PREFS.candleTooltipEnabled).toBe(false);
   });
 
-  it('persist 된 false 를 보존', () => {
-    expect(mergePrefs({ candleTooltipEnabled: false }).candleTooltipEnabled).toBe(false);
+  it('persist 된 true 를 보존', () => {
+    expect(mergePrefs({ candleTooltipEnabled: true }).candleTooltipEnabled).toBe(true);
   });
 
-  it('없으면 기본값(true) 으로 폴백', () => {
-    expect(mergePrefs({}).candleTooltipEnabled).toBe(true);
+  it('없으면 기본값(false) 으로 폴백', () => {
+    expect(mergePrefs({}).candleTooltipEnabled).toBe(false);
   });
 });
 
@@ -465,11 +465,11 @@ describe('indicator-modal per-timeframe 버킷 (PR-B #699)', () => {
     useChartPrefsStore.getState().setToggle('askPeakIntraMax', true); // minute IM
     useChartPrefsStore.getState().setIndicatorModalTimeframe('D');
     useChartPrefsStore.getState().setToggle('bidPeakIntraMax', true); // D IM
-    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false); // 차트 전반
+    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', true); // 차트 전반
     useChartPrefsStore.getState().resetToDefaults();
     const s = useChartPrefsStore.getState();
     expect(s.indicatorModalByTimeframe).toEqual({});
-    expect(s.candleTooltipEnabled).toBe(true);
+    expect(s.candleTooltipEnabled).toBe(false);
   });
 
   it('저장 블롭에 indicatorModalByTimeframe 가 있으면 flat IM 값을 무시한다', () => {

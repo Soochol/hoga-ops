@@ -74,7 +74,7 @@ export const CHART_TOGGLES = [
     key: 'candleTooltipEnabled',
     label: '캔들 정보 툴팁',
     description: '캔들에 마우스를 올리면 시·고·저·종·직전대비·거래량·거래량비를 툴팁으로 표시합니다.',
-    default: true,
+    default: false,
   },
   {
     key: 'highLowLabelsEnabled',
