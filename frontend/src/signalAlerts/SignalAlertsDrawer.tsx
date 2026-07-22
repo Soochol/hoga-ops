@@ -115,7 +115,7 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="rounded border border-line px-2 py-1 text-sm text-fg-dim hover:bg-bg-input-hover hover:text-fg"
+              className="rounded border border-border px-2 py-1 text-sm text-fg-dim hover:bg-bg-input-hover hover:text-fg"
               onClick={() => setConfirmingClear(false)}
             >
               취소
@@ -123,7 +123,7 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
             <button
               type="button"
               aria-label="비우기 확인"
-              className="rounded border border-line-strong px-2 py-1 text-sm text-fg hover:bg-bg-input"
+              className="rounded border border-border-strong px-2 py-1 text-sm text-fg hover:bg-bg-input"
               onClick={clearVisibleInbox}
             >
               비우기

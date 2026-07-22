@@ -444,7 +444,7 @@ export function StudyViewsDrawer() {
                   cancelRename();
                 }
               }}
-              className="w-full rounded border border-line bg-bg-input px-1 py-0.5 text-xs text-fg"
+              className="w-full rounded border border-border bg-bg-input px-1 py-0.5 text-xs text-fg"
             />
             {renameState.error && <div className="text-xs text-danger">{renameState.error}</div>}
           </div>
@@ -469,13 +469,13 @@ export function StudyViewsDrawer() {
                   cancelMemoEdit();
                 }
               }}
-              className="w-full resize-none rounded border border-line bg-bg-input px-1 py-0.5 text-xs text-fg"
+              className="w-full resize-none rounded border border-border bg-bg-input px-1 py-0.5 text-xs text-fg"
             />
             {memoState.error && <div className="text-xs text-danger">{memoState.error}</div>}
           </div>
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-2 leading-tight">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-line bg-bg" aria-hidden />
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-border bg-bg" aria-hidden />
             <div className="min-w-0 flex-1">
               <div
                 className="truncate text-xs text-fg"

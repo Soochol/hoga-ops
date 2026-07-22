@@ -193,6 +193,15 @@ def _parse_orderbook(
         "total_ask_qty": _qty(values, K.OB_TOTAL_ASK_QTY),
         "total_bid_qty": _qty(values, K.OB_TOTAL_BID_QTY),
     }
+    # 예상체결가/량 — 동시호가(단일가)에만 유의미. 키움은 이 값을 단일가 구간에만
+    # 채우므로(연속거래엔 개념상 없어 0) 둘 다 >0 일 때만 additive 로 싣는다 —
+    # "WS 값이 오면 표시" 순수 데이터 게이트라 VI 장중 단일가까지 자연히 포함한다.
+    # 키 미포함 규약(요약·OHLC 동형): 소비자는 "미수신"과 "진짜 0"을 구분할 필요가 없다.
+    exp_price = _price(values, K.OB_EXPECTED_PRICE)
+    exp_qty = _qty(values, K.OB_EXPECTED_QTY)
+    if exp_price > 0 and exp_qty > 0:
+        payload["expected_price"] = exp_price
+        payload["expected_qty"] = exp_qty
     return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload, venue=venue)
 
 
