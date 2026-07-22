@@ -8,6 +8,7 @@ from datetime import datetime
 
 from hoga.live.kis_client import KIS_KST
 from hoga.live.kiwoom_session import KiwoomSessionManager, _KiwoomConn
+from hoga.live.session_gate import AUTO_VENUE
 from hoga.live.snapshot import SnapshotKind
 from hoga.live.ticks import WsTick
 
@@ -220,6 +221,40 @@ async def test_un_view_nonstorage_code_adds_both_venues():
     await mgr.sync(("A",), n_accounts=1)
     await mgr.on_view_subscribe("Y", {"KRX", "NXT"}, ref="tab1")
     assert {"Y", "Y_NX"} <= _wire(mgr)  # +2
+    await mgr.stop()
+
+
+# ── AUTO(열람 옵션 미지정) venue 추종 — 아침 동시호가 깜빡임 회귀 ───────────
+
+async def test_auto_view_tracks_venue_swap_no_double_subscribe():
+    """회귀(아침 동시호가 10호가 깜빡임): 08:50 이전 AUTO로 연 비저장 표시키가 스왑 후
+    (Z,NXT)에 동결돼 KRX 저장과 이중 스트림되던 것 제거. AUTO는 target_ws_venue를 추종 —
+    Z_NX 를 버리고 Z 로 재구독(둘 다 아님 = 단일 venue 불변식 복원)."""
+    now = {"ms": _ms(8, 40)}  # 장전 NXT
+    mgr = _mgr()
+    mgr._now_fn = lambda: now["ms"]
+    await mgr.sync(("A",), n_accounts=1)  # A = 저장셋
+    await mgr.on_view_subscribe("Z", {AUTO_VENUE}, ref="tab1")  # Z 비저장, AUTO
+    assert "Z_NX" in _wire(mgr) and "Z" not in _wire(mgr)  # NXT 추종
+    # 08:50 KRX 워밍업 경계를 넘김 → 표시키가 KRX 로 이동.
+    now["ms"] = _ms(8, 55)
+    await mgr.watchdog_pass(now["ms"])
+    wire = _wire(mgr)
+    assert "Z" in wire and "Z_NX" not in wire  # 이중구독 없이 KRX 단일로 스왑
+    await mgr.stop()
+
+
+async def test_auto_view_storage_member_needs_no_display_slot():
+    """AUTO 로 연 코드가 (스왑 후) 저장셋 멤버면 저장 구독이 커버 — 표시 슬롯/이중구독 0."""
+    now = {"ms": _ms(8, 55)}  # KRX 창(A = 저장셋 = 현재 venue 커버)
+    mgr = _mgr()
+    mgr._now_fn = lambda: now["ms"]
+    await mgr.sync(("A",), n_accounts=1)
+    n_updates = len(mgr._conns[0].client.updated)
+    accepted = await mgr.on_view_subscribe("A", {AUTO_VENUE}, ref="tab1")
+    assert accepted is True
+    assert _wire(mgr) == {"A"}  # A_NX 등 추가 없음
+    assert len(mgr._conns[0].client.updated) == n_updates  # 재구독 없음
     await mgr.stop()
 
 
