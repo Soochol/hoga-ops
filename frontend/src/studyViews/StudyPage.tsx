@@ -15,6 +15,7 @@ import { useStudyTabsStore } from '../state/studyTabs';
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { StudyWorkspaceCanvas, StudyWindowAddMenu } from './StudyWorkspaceCanvas';
+import { StudyWindowListMenu } from './StudyWindowListMenu';
 import { requestWorkspaceTidy } from '../workspace/workspaceCanvasControls';
 import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
@@ -514,6 +515,7 @@ export function StudyPage() {
               )}
               <IndicatorsButton onClick={() => setIndicatorPanelOpen(true)} />
               <SettingsButton onClick={() => setSettingsOpen(true)} />
+              <StudyWindowListMenu />
               <StudyWindowAddMenu />
               <IconToolbarButton
                 data-testid="study-tidy"

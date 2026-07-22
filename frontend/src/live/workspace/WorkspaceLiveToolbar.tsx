@@ -13,26 +13,18 @@ import { SettingsButton } from '../LiveToolbar';
 import { LayoutPresetMenu } from '../presets/LayoutPresetMenu';
 import { requestWorkspaceTidy } from '../../workspace/workspaceCanvasControls';
 import { WindowAddMenu } from './WindowAddMenu';
-import { useWorkspaceStore, activeGroupOf } from '../../state/workspace';
+import { LiveWindowListMenu } from './LiveWindowListMenu';
 
 type Props = {
   onOpenSettings: () => void;
 };
 
 export function WorkspaceLiveToolbar({ onOpenSettings }: Props) {
-  const windowCount = useWorkspaceStore((s) => s.windows.length);
-  const activeGroup = useWorkspaceStore((s) => activeGroupOf(s));
-
   return (
     <WorkspaceToolbar testId="workspace-live-toolbar" className="flex-nowrap">
-      <span
-        className="flex items-center gap-1 text-xs text-fg-dim"
-        title="활성 그룹 — 검색·관심종목 클릭이 이 그룹의 종목을 교체합니다"
-      >
-        <span className="font-data">{windowCount}창</span>
-        <span>· 그룹</span>
-        <span className="font-data text-accent">{activeGroup}</span>
-      </span>
+      {/* 창 목록 — 죽어 있던 "N창 · 그룹 X" 라벨의 후계. 개수만 알리던 텍스트를
+          열린 창으로 점프·닫기·정리 하는 진입점으로 승격했다(개수는 트리거 뱃지가 계승). */}
+      <LiveWindowListMenu />
       <span className="mx-1 h-[14px] w-px shrink-0 bg-border-strong" />
       <WindowAddMenu />
       {/* 창 추가가 단일 드롭다운으로 접히면서(A안) accent 채움이던 정리가 툴바에서 가장
