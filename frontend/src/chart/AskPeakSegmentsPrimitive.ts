@@ -73,8 +73,10 @@ function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: Visi
 export function livePeakWallDockedLabelsFromSegments(
   segments: readonly AskPeakSegment[],
   visibleRange: VisibleTimeRange = null,
-  rankLimit?: 1 | 2 | 3,
+  rankLimit?: number,
 ): PeakWallDockedLabel[] {
+  // rankLimit === 0 은 "라벨 없음"(줌아웃 예산 0). undefined 는 "전체"(컷 없음).
+  if (rankLimit === 0) return [];
   const candidates = segments
     .map((segment, index) => ({ segment, index }))
     .filter(({ segment }) => (
@@ -109,6 +111,25 @@ export function livePeakWallDockedLabelsFromSegments(
       color: segment.segment.color,
       time1: segment.segment.time1,
     }));
+}
+
+// 줌(barSpacing) → side별 도킹 라벨 개수 예산. 이 아래로 좁아지면(줌아웃) 라벨을 전부 숨기고,
+// 이상이면 barSpacing 에 선형 비례해 MIN~MAX 개만 남긴다(가시범위 내 qty 상위 N). 밀집 방지 +
+// "줌인=더 보임" 요청을 한 손잡이로 해결. 픽셀 임계라 DPR/줌과 무관하게 barSpacing 만 본다.
+export const PEAK_LABEL_HIDE_BAR_SPACING_PX = 3.5;
+export const PEAK_LABEL_BUDGET_RAMP_END_PX = 16;
+export const PEAK_LABEL_BUDGET_MIN = 2;
+export const PEAK_LABEL_BUDGET_MAX = 8;
+
+export function peakLabelBudgetForBarSpacing(barSpacing: number): number {
+  if (!Number.isFinite(barSpacing) || barSpacing < PEAK_LABEL_HIDE_BAR_SPACING_PX) return 0;
+  const t = clamp(
+    (barSpacing - PEAK_LABEL_HIDE_BAR_SPACING_PX)
+      / (PEAK_LABEL_BUDGET_RAMP_END_PX - PEAK_LABEL_HIDE_BAR_SPACING_PX),
+    0,
+    1,
+  );
+  return Math.round(PEAK_LABEL_BUDGET_MIN + t * (PEAK_LABEL_BUDGET_MAX - PEAK_LABEL_BUDGET_MIN));
 }
 
 export function inlinePeakWallSegmentsForDocking(
@@ -303,7 +324,8 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
       const maxBaselineY = scope.bitmapSize.height - LABEL_EDGE_PAD_PX * vr;
       const visibleLabels = visibleAskPeakLabelCandidates(labelCandidates, LABEL_SEGMENT_PAD_PX * hr);
       const labelLayouts = layoutAskPeakLabels(visibleLabels, minBaselineY, maxBaselineY, rowHeight);
-      const { bg: chipBg, border: chipBorder } = resolveTokensThemed(CHIP_TOKENS);
+      // 칩은 외곽선 없이 표면(fill)만 — 방향색 텍스트가 캔들 위에서 또렷하도록 배경만 깐다.
+      const { bg: chipBg } = resolveTokensThemed(CHIP_TOKENS);
       for (const layout of labelLayouts) {
         const s = segments[layout.index];
         ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;
@@ -316,9 +338,6 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
         const bh = fontHeight + yPad * 2;
         ctx.fillStyle = chipBg;
         ctx.fillRect(bx, by, bw, bh);
-        ctx.strokeStyle = chipBorder;
-        ctx.lineWidth = hr;
-        ctx.strokeRect(bx, by, bw, bh);
         ctx.fillStyle = s.color;
         ctx.textBaseline = 'bottom';
         ctx.textAlign = 'right';

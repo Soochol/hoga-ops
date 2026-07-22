@@ -42,9 +42,9 @@ function snapPeakMsToCandle(tMs: number, candles: readonly Candle[]): number | n
   return ans >= 0 ? candles[ans].ts_ms : null;
 }
 
-function formatAskPeakLabel(price: number, qty: number): string {
-  const priceStr = Math.round(price).toLocaleString('ko-KR');
-  return `${priceStr}, ${formatQtyCompact(qty)}`;
+// 라벨은 잔량만 — 가격은 Y축·선 위치가 이미 말해줘 중복이라, 칩 폭을 줄여 겹침을 낮춘다.
+function formatAskPeakLabel(qty: number): string {
+  return formatQtyCompact(qty);
 }
 
 /** 거래일별 매도 최대벽(dayAskPeaks)을 그날 구간의 수평 세그먼트 좌표로 변환(순수). 각 peak.date를
@@ -81,7 +81,7 @@ export function buildAskPeakSegments(
       peakTime: (axis.toVirtual(peakMs) / 1000) as Time,
       price: peakPrice,
       qty: peakQty,
-      label: formatAskPeakLabel(peakPrice, peakQty),
+      label: formatAskPeakLabel(peakQty),
       color,
       lineWidth,
       live: isToday,

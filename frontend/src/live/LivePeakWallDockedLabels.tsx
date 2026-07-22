@@ -4,7 +4,10 @@ import type { AskPeak, BidPeak, Candle, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { livePeakWallDockedLabelsFromSegments } from '../chart/AskPeakSegmentsPrimitive';
+import {
+  livePeakWallDockedLabelsFromSegments,
+  peakLabelBudgetForBarSpacing,
+} from '../chart/AskPeakSegmentsPrimitive';
 import { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
 import { useActivePrefs, type ChartViewPrefs } from '../state/chartPrefs';
 import { buildAskPeakOverlaySegments, styleVisibleMaxAskPeakSegments } from './LiveAskPeakSegments';
@@ -125,7 +128,10 @@ function LivePeakWallDockedLabels({
         visibleTimeCutoff: askVisibleTimeCutoff,
       })
       : [];
-    const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
+    const timeScale = prim.chartApi()?.timeScale();
+    const visibleRange = timeScale?.getVisibleRange() ?? null;
+    // 줌 예산: barSpacing 이 좁으면(줌아웃) 0 → 라벨 전부 숨김. 넓으면 side별 qty 상위 N 만.
+    const labelBudget = peakLabelBudgetForBarSpacing(timeScale?.options?.().barSpacing ?? 0);
     const askStyled = styleVisibleMaxAskPeakSegments(
       askRaw,
       visibleRange,
@@ -150,8 +156,8 @@ function LivePeakWallDockedLabels({
       })
       : [];
     prim.setLabels([
-      ...livePeakWallDockedLabelsFromSegments(askStyled, visibleRange),
-      ...livePeakWallDockedLabelsFromSegments(bidSegments, visibleRange, toPeakRankLimit(bidVisibleMaxRankLimit)),
+      ...livePeakWallDockedLabelsFromSegments(askStyled, visibleRange, labelBudget),
+      ...livePeakWallDockedLabelsFromSegments(bidSegments, visibleRange, labelBudget),
     ]);
   }, [
     askAllPriceColor,

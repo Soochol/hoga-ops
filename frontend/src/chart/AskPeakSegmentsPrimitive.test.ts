@@ -5,6 +5,10 @@ import {
   layoutAskPeakLabels,
   inlinePeakWallSegmentsForDocking,
   livePeakWallDockedLabelsFromSegments,
+  peakLabelBudgetForBarSpacing,
+  PEAK_LABEL_HIDE_BAR_SPACING_PX,
+  PEAK_LABEL_BUDGET_MAX,
+  PEAK_LABEL_BUDGET_MIN,
   visibleAskPeakLabelCandidates,
   type AskPeakLabelCandidate,
   type AskPeakSegment,
@@ -76,6 +80,27 @@ describe('visibleAskPeakLabelCandidates', () => {
   });
 });
 
+describe('peakLabelBudgetForBarSpacing', () => {
+  it('hides all labels when zoomed out below the floor', () => {
+    expect(peakLabelBudgetForBarSpacing(PEAK_LABEL_HIDE_BAR_SPACING_PX - 0.5)).toBe(0);
+    expect(peakLabelBudgetForBarSpacing(0)).toBe(0);
+    expect(peakLabelBudgetForBarSpacing(NaN)).toBe(0);
+  });
+
+  it('ramps from MIN at the floor to MAX when zoomed in', () => {
+    expect(peakLabelBudgetForBarSpacing(PEAK_LABEL_HIDE_BAR_SPACING_PX)).toBe(PEAK_LABEL_BUDGET_MIN);
+    expect(peakLabelBudgetForBarSpacing(1000)).toBe(PEAK_LABEL_BUDGET_MAX);
+  });
+
+  it('grows monotonically with bar spacing', () => {
+    const near = peakLabelBudgetForBarSpacing(6);
+    const wide = peakLabelBudgetForBarSpacing(12);
+    expect(wide).toBeGreaterThanOrEqual(near);
+    expect(near).toBeGreaterThanOrEqual(PEAK_LABEL_BUDGET_MIN);
+    expect(wide).toBeLessThanOrEqual(PEAK_LABEL_BUDGET_MAX);
+  });
+});
+
 const segment = (overrides: Partial<AskPeakSegment> = {}): AskPeakSegment => ({
   time0: 1 as never,
   time1: 2 as never,
@@ -116,6 +141,31 @@ describe('live peak-wall docked label helpers', () => {
     );
 
     expect(out.map((label) => label.price)).toEqual([101, 102]);
+  });
+
+  it('emits no docked labels when the zoom budget is zero', () => {
+    const out = livePeakWallDockedLabelsFromSegments(
+      [
+        segment({ live: false, price: 100, qty: 300, label: '0.3k' }),
+        segment({ live: false, price: 101, qty: 200, label: '0.2k' }),
+      ],
+      { from: 0 as never, to: 400 as never },
+      0,
+    );
+    expect(out).toEqual([]);
+  });
+
+  it('keeps only the top-N walls by qty when a positive budget caps them', () => {
+    const out = livePeakWallDockedLabelsFromSegments(
+      [
+        segment({ live: false, price: 100, qty: 100, label: '0.1k' }),
+        segment({ live: false, price: 101, qty: 300, label: '0.3k' }),
+        segment({ live: false, price: 102, qty: 200, label: '0.2k' }),
+      ],
+      { from: 0 as never, to: 400 as never },
+      2,
+    );
+    expect(out.map((l) => l.price).sort((a, b) => a - b)).toEqual([101, 102]);
   });
 
   it('treats same-price docked-label candidates as one visible wall rank', () => {

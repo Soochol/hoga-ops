@@ -41,6 +41,7 @@ describe('LivePeakWallDockedLabels', () => {
     const chart = {
       timeScale: () => ({
         getVisibleRange: () => ({ from: 60 as never, to: 120 as never }),
+        options: () => ({ barSpacing: 12 }),
         subscribeVisibleLogicalRangeChange: vi.fn(),
         unsubscribeVisibleLogicalRangeChange: vi.fn(),
       }),
@@ -108,6 +109,7 @@ describe('LivePeakWallDockedLabels', () => {
     const chart = {
       timeScale: () => ({
         getVisibleRange: () => ({ from: 60 as never, to: 120 as never }),
+        options: () => ({ barSpacing: 12 }),
         subscribeVisibleLogicalRangeChange: vi.fn(),
         unsubscribeVisibleLogicalRangeChange: vi.fn(),
       }),
@@ -176,6 +178,7 @@ describe('LivePeakWallDockedLabels', () => {
     const chart = {
       timeScale: () => ({
         getVisibleRange: () => ({ from: 60 as never, to: 120 as never }),
+        options: () => ({ barSpacing: 12 }),
         subscribeVisibleLogicalRangeChange: vi.fn(),
         unsubscribeVisibleLogicalRangeChange: vi.fn(),
       }),
