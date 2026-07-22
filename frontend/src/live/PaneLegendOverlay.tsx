@@ -136,6 +136,23 @@ const valueCellStyle: CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
 };
 
+// MA/일봉MA 값은 양수 KRX 가격(최대 ~9자 "9,999,999")이라 OHLC 음수 최악값용 12ch
+// 대신 9ch 만 예약 — 반사(reflow) 방지는 유지하되 칸마다 남던 여백을 줄인다. flag·cells
+// 행은 음수(단별 잔량 증감)·큰 수(총잔량)가 있어 공용 12ch 를 그대로 쓴다.
+const maValueCellStyle: CSSProperties = {
+  minWidth: '9ch',
+  textAlign: 'right',
+  color: 'var(--fg)',
+  fontVariantNumeric: 'tabular-nums',
+};
+
+// MA 값 셀: 값이 있으면 9ch 우측정렬, 없으면(cold/범위 밖) min-width 없이 "—" 만 —
+// 값 없는 슬롯이 넓은 빈 칸을 예약해 레전드가 성겨 보이던 문제를 없앤다.
+function MaValueCell({ value }: { value: number | null }) {
+  if (value == null) return <span style={{ color: 'var(--fg-dimmer)' }}>—</span>;
+  return <span style={maValueCellStyle}>{formatKoreanInt(value)}</span>;
+}
+
 const swatchStyle: CSSProperties = {
   width: 8,
   height: 8,
@@ -369,9 +386,9 @@ function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
           key={m.id}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
         >
-          <span aria-hidden="true" style={{ ...swatchStyle, background: m.color }} />
-          <span style={{ color: 'var(--fg-dim)' }}>{m.period}</span>
-          <span style={valueCellStyle}>{m.value == null ? '—' : formatKoreanInt(m.value)}</span>
+          {/* 색 점 + 회색 기간 2요소를 "색 입힌 기간" 1요소로 통합(밀집도 개선 B). */}
+          <span style={{ color: m.color, fontWeight: 500 }}>{m.period}</span>
+          <MaValueCell value={m.value} />
         </span>
       ))}
       <HoverIcon
@@ -399,9 +416,9 @@ function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' 
           key={m.id}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
         >
-          <span aria-hidden="true" style={{ ...swatchStyle, background: m.color }} />
-          <span style={{ color: 'var(--fg-dim)' }}>{m.period}</span>
-          <span style={valueCellStyle}>{m.value == null ? '—' : formatKoreanInt(m.value)}</span>
+          {/* 색 점 + 회색 기간 2요소를 "색 입힌 기간" 1요소로 통합(밀집도 개선 B). */}
+          <span style={{ color: m.color, fontWeight: 500 }}>{m.period}</span>
+          <MaValueCell value={m.value} />
         </span>
       ))}
       <HoverIcon
