@@ -78,7 +78,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
       {/* 그룹 헤더 밴드 = heatHeaderBg(avg) — 평균 등락 비례 히트 틴트(섹터 온도). 폴더 본문은
           투명·평면이고 좌측 border-strong 스파인 + 이 틴트 밴드로 그룹을 구분한다. 평균 % 는
           평면 text-fg-dim 텍스트(색=밴드가 짊어짐, 숫자=보조; G4). */}
-      <div className="flex justify-between items-center gap-2 px-2 py-1 border-b border-border-strong"
+      <div className="flex justify-between items-center gap-2 px-2 py-1"
         style={{ background: heatHeaderBg(avg) }}>
         {/* 폴더(섹터)명 = 보드의 1차 앵커. 글자 크기 text-xs(가독성, origin/main). */}
         <span className="text-xs font-semibold truncate text-fg">

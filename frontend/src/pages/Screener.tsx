@@ -155,7 +155,7 @@ export function Screener() {
       </PanelCard>
 
       <PanelCard borderless data-testid="screener-results-pane" className="flex min-h-0 flex-col overflow-hidden">
-        <div className="border-b border-border p-md">
+        <div className="p-md">
           <ControlBar className="flex-wrap">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -217,7 +217,7 @@ export function Screener() {
           </ControlBar>
         </div>
 
-        <DataSection title="결과" className="flex flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col gap-sm p-md">
+        <DataSection title="결과" flushHeader className="flex flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col gap-sm p-md">
           {notSeeded ? (
             <InlineState tone="warn" className="text-sm">
               <span className="font-semibold">시드 필요</span> 스크리너 인덱스가 아직 시드되지 않았습니다. 운영자 CLI로 일회성 시드를 수행한 뒤 다시 조회하세요.
