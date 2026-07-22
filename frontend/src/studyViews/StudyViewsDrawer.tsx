@@ -16,6 +16,7 @@ import type { StudyViewListRow } from '../api/studyViews';
 import { dropPoint, isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
+import { useStudyLastMinuteTimeframeStore } from '../state/studyLastMinuteTimeframe';
 import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import {
@@ -178,6 +179,10 @@ export function StudyViewsDrawer() {
   const setOverStudy = useEntryDragStore((s) => s.setOverStudy);
   const endEntryDrag = useEntryDragStore((s) => s.endDrag);
   const defaultOpenTimeframe = useStudyViewOpenPrefsStore((s) => s.defaultTimeframe);
+  const lastMinuteTimeframe = useStudyLastMinuteTimeframeStore((s) => s.lastMinuteTimeframe);
+  // '설정된 분봉'(current)이면 복기뷰 차트에서 마지막으로 쓴 분봉을, 아니면 고른 고정 분봉을
+  // override로 넘긴다. lastMinuteTimeframe은 항상 유효값('3m' 폴백)이라 undefined 경로는 없다.
+  const openTimeframeOverride = defaultOpenTimeframe === 'current' ? lastMinuteTimeframe : defaultOpenTimeframe;
 
   useEffect(() => () => {
     if (navigateClickTimerRef.current === null) return;
@@ -231,14 +236,14 @@ export function StudyViewsDrawer() {
   function openSaveInActiveTab(row: StudyViewListRow) {
     useStudyTabsStore.getState().openSaveInActiveTab(
       row,
-      defaultOpenTimeframe === 'saved' ? undefined : { timeframeOverride: defaultOpenTimeframe },
+      { timeframeOverride: openTimeframeOverride },
     );
   }
 
   function openSaveInNewTab(row: StudyViewListRow) {
     useStudyTabsStore.getState().openSaveInNewTab(
       row,
-      defaultOpenTimeframe === 'saved' ? undefined : { timeframeOverride: defaultOpenTimeframe },
+      { timeframeOverride: openTimeframeOverride },
     );
   }
 

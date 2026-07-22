@@ -7,6 +7,7 @@ import type { StudyViewReference } from '../api/studyViews';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
+import { useStudyLastMinuteTimeframeStore } from '../state/studyLastMinuteTimeframe';
 import { StudyViewsDrawer, filterStudyViews, formatStudyViewMeta } from './StudyViewsDrawer';
 
 type DndHandlers = {
@@ -152,6 +153,7 @@ beforeEach(() => {
   dnd.onDragCancel = null;
   mockedSaves = saves;
   useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
+  useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '3m' });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   (useEntryDragStore.setState as unknown as (state: Record<string, unknown>) => void)({
     draggingCode: null,
@@ -446,8 +448,9 @@ it('uses the configured saved-view side-panel timeframe when opening a saved vie
   });
 });
 
-it('keeps the saved timeframe when the saved-view side-panel option is saved timeframe', async () => {
-  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'saved' });
+it('opens with the last study minute timeframe when the side-panel option is "current"', async () => {
+  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'current' });
+  useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '15m' });
   mockedSaves = [{ ...saves[0], timeframe: '10m' }];
   renderDrawer('/inventory');
 
@@ -456,8 +459,8 @@ it('keeps the saved timeframe when the saved-view side-panel option is saved tim
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
   expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
     viewId: 'a',
-    timeframe: '10m',
-    label: '삼성전자 · 급등 이후 · 10m',
+    timeframe: '15m',
+    label: '삼성전자 · 급등 이후 · 15m',
   });
 });
 
