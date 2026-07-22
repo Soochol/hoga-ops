@@ -50,6 +50,7 @@ import {
   EMPTY_TRADE_SUMMARY,
   aggregateBrokerSeries,
   mergeBrokerSeriesWithLiveTail,
+  filterObByVenue,
   latestOrderbookSnapshot,
   latestTradeSummary,
   orderbookSnapshotAtCursor,
@@ -170,19 +171,22 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     code: isSpot ? code : null,
     timeframe: spotTimeframe,
   });
-  const latestSnapshot = useMemo(() => latestOrderbookSnapshot(live.ob), [live.ob]);
+  // 선택 venue로 ob 버퍼를 한 번 거른다 — 전역·혼재 버퍼에서 per-user 선택 강제 +
+  // 아침 동시호가 두 시장 교대 깜빡임 차단. latest·delta·cursor 세 소비자에 공통 투입.
+  const venueOb = useMemo(() => filterObByVenue(live.ob, venue), [live.ob, venue]);
+  const latestSnapshot = useMemo(() => latestOrderbookSnapshot(venueOb), [venueOb]);
   // HTS식 순간 증감 뱃지 — 라이브 latest 표시일 때만. 스팟 커서 중에는 비활성
   // (과거 시점 위에 "방금 변화" 뱃지는 거짓 정보) + 상태도 비워 복귀 시 낡은 뱃지 방지.
-  const deltaBadges = useOrderbookDeltaBadges(live.ob, !isSpot);
+  const deltaBadges = useOrderbookDeltaBadges(venueOb, !isSpot);
   const spotSnap = spotOrderbook === undefined ? undefined : spotOrderbook.snapshot;
   // 파케이 스팟이 비었을 때 WS 버퍼로 그 버킷의 실제 호가를 복원(ADR-0044 개정 —
   // 승격 지연 ~2-5분 커버). 레거시 LiveSidebar 폴백과 동일 조성.
   const bufferSnap = useMemo(
     () =>
       isSpot && spotSnap === null && spotTimeframe !== null && scope.cursorMs !== null
-        ? orderbookSnapshotAtCursor(live.ob, scope.cursorMs, TIMEFRAME_TO_MS[spotTimeframe as Timeframe])
+        ? orderbookSnapshotAtCursor(venueOb, scope.cursorMs, TIMEFRAME_TO_MS[spotTimeframe as Timeframe])
         : null,
-    [isSpot, spotSnap, spotTimeframe, scope.cursorMs, live.ob],
+    [isSpot, spotSnap, spotTimeframe, scope.cursorMs, venueOb],
   );
   const snapshot = resolveOrderbookCardSnapshot({
     scope,

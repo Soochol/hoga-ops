@@ -1,11 +1,41 @@
 import { describe, it, expect } from 'vitest';
 import {
+  filterObByVenue,
   latestOrderbookSnapshot,
   aggregateBrokerSeries,
   latestTradeSummary,
   orderbookSnapshotAtCursor,
 } from './liveSidebarAdapters';
 import type { ObSnapshot } from './bucketHogaSeries';
+
+// 09:00 KST = 00:00 UTC (KST=UTC+9). 시분할 경계 검증용.
+const OPEN_MS = Date.UTC(2026, 4, 18, 0, 0, 0);
+const MIN = 60 * 1000;
+const HOUR = 3600 * 1000;
+const ob = (t_ms: number, venue?: 'KRX' | 'NXT'): ObSnapshot =>
+  ({ t_ms, total_ask_qty: 0, total_bid_qty: 0, ...(venue ? { venue } : {}) });
+
+describe('filterObByVenue', () => {
+  it('KRX 선택: KRX 태그와 무태그(구백엔드)만 남기고 NXT 배제', () => {
+    const input = [ob(1, 'KRX'), ob(2, 'NXT'), ob(3)];
+    expect(filterObByVenue(input, 'KRX').map((f) => f.t_ms)).toEqual([1, 3]);
+  });
+
+  it('UN(시간대 자동): 프레임 자기 t_ms의 시분할 venue와 일치할 때만 — 08:50 개장동시호가 KRX 유지', () => {
+    const input = [
+      ob(OPEN_MS - 20 * MIN, 'NXT'), // 08:40 NXT ✓
+      ob(OPEN_MS - 20 * MIN, 'KRX'), // 08:40 KRX (교차 클라이언트 주입) ✗
+      ob(OPEN_MS - 5 * MIN, 'KRX'),  // 08:55 개장동시호가 KRX ✓
+      ob(OPEN_MS - 5 * MIN, 'NXT'),  // 08:55 NXT ✗
+      ob(OPEN_MS + HOUR, 'KRX'),     // 10:00 정규장 KRX ✓
+    ];
+    expect(filterObByVenue(input, 'UN').map((f) => [f.t_ms, f.venue])).toEqual([
+      [OPEN_MS - 20 * MIN, 'NXT'],
+      [OPEN_MS - 5 * MIN, 'KRX'],
+      [OPEN_MS + HOUR, 'KRX'],
+    ]);
+  });
+});
 
 // A continuous-trading book shows depth beyond level 3 (isContinuousBook).
 const deepBook = (base = 100) =>

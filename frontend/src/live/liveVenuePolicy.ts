@@ -120,6 +120,21 @@ export function liveHogaVenueNow(
   return isKrxRegularSessionNow(nowMs) ? 'KRX' : 'NXT';
 }
 
+/**
+ * 프레임의 **시분할 구독 venue** — 백엔드 `target_ws_venue`(session_gate.py)의 프론트
+ * 미러. 08:50(KRX 워밍업)~15:31(drain 마진) KRX, 그 밖 NXT.
+ *
+ * `liveHogaVenueNow`(정규장 09:00~15:30, 배지용)와 **경계가 다르다**: 실제 구독 경계
+ * (08:50)를 써야 08:50~09:00 KRX 개장동시호가 프레임을 NXT로 오분류하지 않는다. 호가
+ * 버퍼 venue 필터(`filterObByVenue`)가 프레임 자기 t_ms로 판정할 때 쓴다.
+ */
+export function liveSubscriptionVenueForMs(tMs: number): 'KRX' | 'NXT' {
+  const open = regularSessionOpenMs(realMsToYyyymmdd(tMs)); // 09:00 KST
+  const krxStart = open - 10 * 60_000; // 08:50 워밍업
+  const krxEnd = open + (6 * 60 + 31) * 60_000; // 15:31 drain 마진
+  return tMs >= krxStart && tMs < krxEnd ? 'KRX' : 'NXT';
+}
+
 export function initialVisibleMinuteBarsFor(
   tf: LiveTimeframe,
   _venue: LiveVenueOption,

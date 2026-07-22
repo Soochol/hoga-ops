@@ -432,12 +432,17 @@ async def stop_live_stream() -> None:
 # ── ADR-0067: 보는종목 view 진입점 ─────────────────────────────────────────────
 
 def _resolve_view_venues(venues: set[str] | None) -> set[str]:
-    """뷰 구독 venue 해석 — 미지정(구 프론트)이면 현재 창 venue 1개(=현재 실시간)."""
+    """뷰 구독 venue 해석 — 미지정(프론트 기본)이면 AUTO 센티넬 1개.
+
+    AUTO는 구독 순간의 venue를 동결하지 않고 매 reconcile 패스에서 target_ws_venue(now)로
+    해석된다 — 08:50 KRX 워밍업 스왑을 넘어 (code,NXT)가 죽은 채 남아 KRX 저장 구독과
+    이중 스트림되던 아침 동시호가 깜빡임을 제거한다. 명시적 {KRX}/{NXT}/{KRX,NXT}(열람
+    옵션 직결)는 그대로 고정(pin)된다."""
     if venues:
         return venues
-    from .session_gate import target_ws_venue  # noqa: PLC0415
+    from .session_gate import AUTO_VENUE  # noqa: PLC0415
 
-    return {target_ws_venue(_now_ms())}
+    return {AUTO_VENUE}
 
 
 async def on_view_subscribe(

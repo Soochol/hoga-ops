@@ -144,6 +144,13 @@ _KRX_WARMUP_MIN = 8 * 60 + 50   # 08:50 — 개장(09:00) 전 KRX 구독 준비
 _KRX_DRAIN_MARGIN_MIN = 15 * 60 + 31  # 15:31 — 마감(15:30) drain flush 보존 후 스왑
 
 
+# 표시 원장의 "auto"(열람 옵션 미지정=현재 실시간 시장) 센티넬 venue. 실제 venue가
+# 아니라 "시점의 target_ws_venue(now)를 추종한다"는 의도 — 08:50 스왑을 넘어 동결되지
+# 않게 한다(프론트가 venues를 안 보내는 기본 경로). apply_venue에 넘기기 전 반드시
+# target_ws_venue(now)로 해석해야 한다(AUTO는 KRX/NXT가 아님).
+AUTO_VENUE = "AUTO"
+
+
 def target_ws_venue(now_ms: int) -> str:
     """이 시각에 구독해야 할 venue("KRX"/"NXT"). 순수 시계 — 거래일 여부는
     연결 게이트가 이미 강제하므로 여기선 시각만 본다(정규장 캡처 경계와 동일한

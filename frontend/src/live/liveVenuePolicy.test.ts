@@ -3,6 +3,7 @@ import {
   initialVisibleMinuteBarsFor,
   isLiveVenueSessionNow,
   liveHogaVenueNow,
+  liveSubscriptionVenueForMs,
   liveVenueAllowsTradeOverlay,
   liveVenueDisplayLabel,
   liveVenueKeepsHogaKrx,
@@ -30,6 +31,19 @@ describe('liveVenuePolicy', () => {
     expect(initialVisibleMinuteBarsFor('1m', 'UN')).toBe(300);
     expect(liveVenueKeepsHogaKrx('UN')).toBe(true);
     expect(liveVenueKeepsHogaKrx('KRX')).toBe(false);
+  });
+
+  it('mirrors the backend 08:50–15:31 subscription venue boundary (not the 09:00 badge boundary)', () => {
+    const MIN = 60 * 1000;
+    // 장전 08:40 = NXT
+    expect(liveSubscriptionVenueForMs(MON_OPEN_MS - 20 * MIN)).toBe('NXT');
+    // 08:50 KRX 워밍업 경계(포함) — 09:00 배지 경계와 달리 여기서부터 KRX여야
+    // 08:50~09:00 개장동시호가 프레임이 NXT로 오분류되지 않는다.
+    expect(liveSubscriptionVenueForMs(MON_OPEN_MS - 10 * MIN)).toBe('KRX');
+    expect(liveSubscriptionVenueForMs(MON_OPEN_MS - 5 * MIN)).toBe('KRX'); // 08:55 개장동시호가
+    expect(liveSubscriptionVenueForMs(MON_OPEN_MS + HOUR)).toBe('KRX');    // 10:00 정규장
+    expect(liveSubscriptionVenueForMs(MON_OPEN_MS + 6.5 * HOUR + MIN)).toBe('NXT'); // 15:31 drain 경계(제외)
+    expect(liveSubscriptionVenueForMs(MON_OPEN_MS + 7 * HOUR)).toBe('NXT'); // 16:00 장후 NXT
   });
 
   it('owns the user-facing venue labels used by chart chrome', () => {

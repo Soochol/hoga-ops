@@ -212,13 +212,15 @@ class KiwoomSessionManager:
         열람 옵션이 요구하는 venue(UN=KRX∪NXT). 클라이언트 현재 wire와 다를 때만
         update_codes diff(remove-before-add: 키당 200 상한). bare 저장 멤버십(conn.codes)은
         불변 — 표시는 별도 장부(레이어드)."""
-        from .session_gate import target_ws_venue  # noqa: PLC0415 — 순환/kis import 회피(lazy)
+        from .session_gate import AUTO_VENUE, target_ws_venue  # noqa: PLC0415 — 순환/kis import 회피(lazy)
 
         venue = target_ws_venue(now_ms)
         desired = {apply_venue(c, venue) for c in conn.codes}
         for (code, v), entry in self._display.items():
             if entry.owner == conn.account_id and not self._covered_by_storage(code, v, now_ms):
-                desired.add(apply_venue(code, v))
+                # AUTO는 현재 venue로 해석(apply_venue에 "AUTO"를 넘기면 bare=KRX로 잘못
+                # 파생 — NXT 시간대에 오구독). 명시적 KRX/NXT는 그대로.
+                desired.add(apply_venue(code, venue if v == AUTO_VENUE else v))
         if desired != conn.client.expected_codes:
             await conn.client.update_codes(sorted(desired))
 
@@ -314,10 +316,14 @@ class KiwoomSessionManager:
 
     def _covered_by_storage(self, code: str, venue: str, now_ms: int) -> bool:
         """(code,venue)가 이미 저장 구독에 커버되나 — 저장은 현재 창 venue 단일이라
-        venue==현재창 AND code∈저장셋일 때만. 커버되면 표시 슬롯 불요(틱=저장 경로)."""
-        from .session_gate import target_ws_venue  # noqa: PLC0415
+        venue==현재창 AND code∈저장셋일 때만. 커버되면 표시 슬롯 불요(틱=저장 경로).
 
-        return venue == target_ws_venue(now_ms) and code in self._storage_members
+        AUTO(열람 옵션 미지정)는 정의상 항상 현재 창 venue라 code∈저장셋이면 커버 —
+        스왑 후에도 저장 구독을 따라가 이중구독이 생기지 않는다."""
+        from .session_gate import AUTO_VENUE, target_ws_venue  # noqa: PLC0415
+
+        eff = target_ws_venue(now_ms) if venue == AUTO_VENUE else venue
+        return eff == target_ws_venue(now_ms) and code in self._storage_members
 
     def _storage_free(self, conn: _KiwoomConn) -> int:
         """저장분만 제외한 잔여 슬롯(표시 미차감) — _free_slots·status 용량 공용 SSOT."""
