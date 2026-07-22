@@ -26,7 +26,7 @@
         try {
           var raw = localStorage.getItem('ui.themePreference.v1');
           var pref = raw ? JSON.parse(raw).themePreference : 'auto';
-          if (pref !== 'obsidian' && pref !== 'ledger' && pref !== 'auto') pref = 'auto';
+          if (pref !== 'obsidian' && pref !== 'ledger' && pref !== 'toss-light' && pref !== 'auto') pref = 'auto';
           var theme = pref;
           if (pref === 'auto') {
             var p = location.pathname;
