@@ -265,4 +265,100 @@
   --bar-bid: rgba(196, 50, 46, 0.30);   /* C4322E @ 30% */
 }
 
+/* ═══════════════ Toss Light — light theme (Toss Securities benchmark) ═══════════════
+   Colors ONLY (same discipline as the Ledger block above): the scale dial, font
+   families, and every size/spacing/radius/layout token stay on the base block, so
+   density + typography are theme-independent. Sits OUTSIDE the base block so
+   `npm run gen:tokens` never touches it.
+
+   Palette lifted from tossinvest.com's live design tokens (2026-07-22, captured
+   via computed CSS custom properties). Unlike Ledger's tone-unified surfaces
+   (--bg == --bg-card), this theme REVIVES the layer step Toss uses: a grey floor
+   (--bg #f6f7f9) with pure-white cards (--bg-card #ffffff), so panels separate by
+   luminance the way the reference does.
+
+   ── accent-vs-price collision (DESIGN.md decision, 2026-07-22) ──
+   Toss's brand accent is blue (#3182f6) and Toss's "down" price is ALSO blue —
+   Toss has no "UI color ≠ price color" rule, so it lets them overlap. Our system
+   forbids that overlap (three-way color discipline). We keep the toss-blue accent
+   (it IS the theme's identity) and instead push --price-down one tone DARKER
+   (#1957c2, toss blue800) so the down-price blue separates from the accent blue.
+   accent stays for SOLID FILL contexts (buttons, active tab, focus, crosshair);
+   down-price rides as text/border. This is a SANCTIONED per-theme exception to the
+   discipline — recorded like the pre-existing --error/--price-up both-red overlap.
+   It is NOT perfect on the highest-density surfaces (a blue crosshair over a blue
+   down-candle can still read close); accepted trade-off for this theme. */
+[data-theme='toss-light'] {
+  /* ───── Surfaces (grey floor + white cards — layer step revived) ───── */
+  --bg: #f6f7f9;          /* backgroundScreen — the floor */
+  --bg-card: #ffffff;     /* background — cards float white on the floor */
+  --bg-subtle: #f2f4f6;   /* greyBackground — nav/drawer/sticky chrome */
+  --bg-input: #ffffff;
+  --bg-input-hover: #f2f4f6;
+
+  /* ───── Borders (hairline greys) ───── */
+  --border: #e5e8eb;         /* hairlineBorder / grey200 */
+  --border-strong: #d1d6db;  /* grey300 */
+  /* Pane separator — one step up from --border so panes read on white cards
+     (Toss's own pane rules are very faint; grey300 keeps a legible seam). */
+  --chart-pane-divider: #d1d6db;
+
+  /* ───── Foreground (ink greys) ───── */
+  --fg: #191f28;         /* grey900 — txt-primary */
+  --fg-dim: #4e5968;     /* grey700 — txt-secondary */
+  --fg-dimmer: #8b95a1;  /* grey500 — txt-tertiary */
+
+  /* ───── Accent + Semantic (toss blue) ───── */
+  --accent: #3182f6;        /* fill-brand — the toss-blue signature */
+  --accent-fg: #ffffff;
+  --accent-shade: #2272eb;  /* blue700 — hover/pressed */
+  --success: #03b26c;       /* green500 — UI status, distinct from blue accent */
+  --error:   #e42939;       /* red600 — UI status */
+  --warn: #eb7300;          /* orange600 */
+  /* Price direction — KRX convention. --price-down pushed to blue800 to separate
+     from the blue accent (see collision note in the block header). */
+  --price-up:   #de2b39;    /* red700 — 상승 */
+  --price-down: #1957c2;    /* blue800 — 하락, darker than --accent */
+
+  /* ───── Chart & Heatmap ───── */
+  --grid: #f2f4f6;    /* grey100 */
+  --heat-lo: #f2f4f6;
+  --heat-hi: #3182f6; /* accent ramp */
+
+  /* ───── Elevation — reuse Ledger's ink-tinted paper shadows (Toss's own
+     shadows are near-invisible; our layer separation leans on the grey-floor
+     luminance step, shadows are only a boost). ───── */
+  --shadow: 0 2px 8px rgba(30, 39, 50, 0.12);
+  --shadow-overlay: 0 8px 24px rgba(30, 39, 50, 0.16);
+  --shadow-panel: 0 2px 8px rgba(30, 39, 50, 0.12);
+  --shadow-modal: 0 16px 48px rgba(30, 39, 50, 0.2);
+
+  /* ───── Moving Average — reuse Ledger's paper-tuned palette (both are light
+     surfaces; the white MA-5 that was invisible on paper is likewise invisible
+     on white here). ───── */
+  --ma-1: #BE185D;
+  --ma-2: #1D4ED8;
+  --ma-3: #C2410C;
+  --ma-4: #15803D;
+  --ma-5: #334155;
+  --ma-6: #0E7490;
+  --ma-7: #A16207;
+  --ma-8: #64748B;
+
+  /* ───── Tint backgrounds (new accent/status/price rgb) ───── */
+  --tint-selection:  rgba(49, 130, 246, 0.10);  /* accent blue @ 10% */
+  --tint-success:    rgba(3, 178, 108, 0.10);
+  --tint-error:      rgba(228, 41, 57, 0.10);
+  --tint-warn:       rgba(235, 115, 0, 0.10);
+  --tint-success-border: rgba(3, 178, 108, 0.30);
+  --tint-error-border:   rgba(228, 41, 57, 0.30);
+  --tint-price-up:   rgba(222, 43, 57, 0.09);   /* de2b39 @ 9% */
+  --tint-price-down: rgba(25, 87, 194, 0.09);   /* 1957c2 @ 9% */
+  --tint-auction-window: rgba(235, 115, 0, 0.10);
+
+  /* ───── Depth bar fills (alpha nudged up for white bg) ───── */
+  --bar-ask: rgba(25, 87, 194, 0.28);   /* 1957c2 @ 28% */
+  --bar-bid: rgba(222, 43, 57, 0.28);   /* de2b39 @ 28% */
+}
+
 @keyframes tab-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }

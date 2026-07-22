@@ -4,21 +4,32 @@ import { persistJson, readJsonObject } from './persist';
 /**
  * UI theme preference — a global per-user setting.
  *
- * - `obsidian` — the dark trading-terminal theme (default).
- * - `ledger`   — the light paper/research theme.
- * - `auto`     — pick per route: the chart-heavy live surfaces stay dark, the
- *                review/analysis surfaces go light. See {@link effectiveTheme}.
+ * - `obsidian`   — the dark trading-terminal theme (default).
+ * - `ledger`     — the light paper/research theme (ivory + banker's green).
+ * - `toss-light` — the Toss Securities benchmark light theme (white + toss blue).
+ *                  Manual-select only: `auto` never resolves to it (see below).
+ * - `auto`       — pick per route: the chart-heavy live surfaces stay dark, the
+ *                  review/analysis surfaces go light. See {@link effectiveTheme}.
  *
- * The *preference* (obsidian/ledger/auto) is what we persist; the *effective*
- * theme (obsidian/ledger) is what drives `<html data-theme>`. The DOM sync lives
- * in App.tsx (and an inline bootstrap in index.html for the first paint) so the
- * store stays a pure state holder — see index.html's bootstrap, which must stay
- * in sync with {@link effectiveTheme}.
+ * The *preference* (obsidian/ledger/toss-light/auto) is what we persist; the
+ * *effective* theme (obsidian/ledger/toss-light) is what drives `<html
+ * data-theme>`. The DOM sync lives in App.tsx (and an inline bootstrap in
+ * index.html for the first paint) so the store stays a pure state holder — see
+ * index.html's bootstrap, which must stay in sync with {@link effectiveTheme}.
+ *
+ * `toss-light` is intentionally kept OUT of `auto`: `auto` only chooses between
+ * dark (obsidian) and the default light (ledger) per route, so adding a third
+ * light theme does not force a "which light?" branch into the route logic.
  */
-export type ThemePreference = 'obsidian' | 'ledger' | 'auto';
-export type EffectiveTheme = 'obsidian' | 'ledger';
+export type ThemePreference = 'obsidian' | 'ledger' | 'toss-light' | 'auto';
+export type EffectiveTheme = 'obsidian' | 'ledger' | 'toss-light';
 
-export const THEME_PREFERENCE_OPTIONS: readonly ThemePreference[] = ['obsidian', 'ledger', 'auto'];
+export const THEME_PREFERENCE_OPTIONS: readonly ThemePreference[] = [
+  'obsidian',
+  'ledger',
+  'toss-light',
+  'auto',
+];
 
 const STORAGE_KEY = 'ui.themePreference.v1';
 
