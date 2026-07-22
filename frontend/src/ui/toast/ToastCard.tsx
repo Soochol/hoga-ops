@@ -65,7 +65,7 @@ export function ToastCard({
     'toast-card pointer-events-auto relative w-full overflow-hidden rounded border bg-bg-card ' +
     'px-3 py-2 text-left shadow-lg ' +
     VARIANT_BORDER[variant] +
-    (onClick ? ' hover:border-line-strong hover:bg-bg-input' : '');
+    (onClick ? ' hover:border-border-strong hover:bg-bg-input' : '');
 
   const inner = (
     <>

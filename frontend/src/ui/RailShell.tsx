@@ -92,7 +92,7 @@ export function RailToolbarIconButton({
       aria-pressed={props['aria-pressed'] ?? active}
       {...props}
       className={`grid h-7 w-7 place-items-center rounded border text-fg-dim transition-colors ${
-        active ? 'border-line-strong bg-bg-input text-fg' : 'border-line hover:bg-bg-input hover:text-fg'
+        active ? 'border-border-strong bg-bg-input text-fg' : 'border-border hover:bg-bg-input hover:text-fg'
       } ${className}`.trim()}
     >
       {children}
@@ -131,7 +131,7 @@ export function RailTreeRow({
   return (
     <div
       {...props}
-      className={`flex cursor-pointer items-center gap-2 border-b border-border pl-10 pr-md py-sm hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-line ${className}`.trim()}
+      className={`flex cursor-pointer items-center gap-2 border-b border-border pl-10 pr-md py-sm hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-border-strong ${className}`.trim()}
     >
       {children}
     </div>
