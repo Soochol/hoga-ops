@@ -22,7 +22,7 @@ export function HeatmapSearchInput({ query, onQuery, testId, className }: {
         aria-label="종목·그룹 검색" placeholder="종목·그룹 검색"
         data-testid={testId}
         onKeyDown={(e) => { if (e.key === 'Escape' && query) { e.stopPropagation(); onQuery(''); } }}
-        className="w-full rounded bg-bg-input pl-7 pr-7 py-1 text-xs text-fg border border-border placeholder:text-fg-dimmer focus:outline-none focus:border-line-strong"
+        className="w-full rounded bg-bg-input pl-7 pr-7 py-1 text-xs text-fg border border-border placeholder:text-fg-dimmer focus:outline-none focus:border-border-strong"
       />
       {query && (
         <button type="button" aria-label="검색 지우기" onClick={() => onQuery('')}
