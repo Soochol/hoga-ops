@@ -2,6 +2,7 @@ import { useRightRailStore } from '../state/rightRail';
 import { HeartIcon } from '../ui/HeartIcon';
 import { HeatmapIcon } from '../ui/HeatmapIcon';
 import { FunnelIcon } from '../ui/FunnelIcon';
+import { RankingIcon } from '../ui/RankingIcon';
 import { BookmarkIcon } from '../ui/BookmarkIcon';
 import { BellIcon } from '../ui/BellIcon';
 import { RailButton } from '../ui/RailShell';
@@ -28,7 +29,7 @@ export default function RightRail() {
         type="button"
         onClick={toggleCollapse}
         aria-expanded={open}
-        aria-controls="right-rail-watchlist-panel right-rail-heatmap-panel right-rail-screener-panel right-rail-saved-views-panel right-rail-signal-alerts-panel"
+        aria-controls="right-rail-watchlist-panel right-rail-heatmap-panel right-rail-screener-panel right-rail-ranking-panel right-rail-saved-views-panel right-rail-signal-alerts-panel"
         aria-label={open ? '우측 패널 닫기' : '우측 패널 열기'}
         className="w-full py-2 grid place-items-center text-fg-dim hover:text-fg hover:bg-bg-input-hover"
       >
@@ -58,6 +59,14 @@ export default function RightRail() {
         active={activePanel === 'screener'}
         onClick={() => togglePanel('screener')}
         icon={<FunnelIcon filled={activePanel === 'screener'} className="w-[1.125em] h-[1.125em]" />}
+      />
+      <RailItem
+        label="순위"
+        ariaLabel="순위 패널 토글"
+        controls="right-rail-ranking-panel"
+        active={activePanel === 'ranking'}
+        onClick={() => togglePanel('ranking')}
+        icon={<RankingIcon filled={activePanel === 'ranking'} className="w-[1.125em] h-[1.125em]" />}
       />
       <RailItem
         label="저장뷰"

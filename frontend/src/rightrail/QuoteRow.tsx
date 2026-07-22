@@ -19,6 +19,8 @@ export interface QuoteRowProps {
   // 한다(useJumpToLive). 선택적이라 인자 없이 부르는 기존 호출부도 그대로 유효하고,
   // KeyboardEvent 도 받으므로 ctrl+Enter 가 같은 경로를 탄다.
   onClick: (e?: React.MouseEvent<HTMLLIElement> | React.KeyboardEvent<HTMLLIElement>) => void;
+  // 행 좌측 선행 슬롯(순위 패널의 순위번호). 미전달 시 기존 레이아웃 그대로.
+  leading?: React.ReactNode;
   trailingAction?: React.ReactNode;
   // --- drag (선택 패널용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
@@ -45,7 +47,7 @@ function formatPct(pct: number | null): string {
 }
 
 export function QuoteRow({
-  name, price, pct, changeWon: _changeWon, active, ariaLabel, testId, onClick, trailingAction,
+  name, price, pct, changeWon: _changeWon, active, ariaLabel, testId, onClick, leading, trailingAction,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging, dropIndicator,
   onContextMenu, onDelete, indented, flash,
 }: QuoteRowProps) {
@@ -102,7 +104,7 @@ export function QuoteRow({
       onClick={onClick}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
-      className={`group cursor-pointer touch-none ${indented ? 'pl-10' : 'pl-md'} pr-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
+      className={`group cursor-pointer touch-none ${leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
         flash ? 'screener-row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{
@@ -113,6 +115,7 @@ export function QuoteRow({
         ...(dropIndicator ? { position: 'relative' } : {}),
       }}
     >
+      {leading}
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
           종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분.
           truncate 는 flex 아이템 자신에 걸어야 클립된다(내부 inline span 은 overflow 를

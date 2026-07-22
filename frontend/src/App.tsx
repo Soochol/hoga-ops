@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import TopNav from './nav/TopNav';
 import { MarketIndexBar } from './layout/MarketIndexBar';
@@ -8,6 +8,7 @@ import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
 import { HeatmapDrawer } from './heatmap/HeatmapDrawer';
 import { ScreenerDrawer } from './screener/ScreenerDrawer';
+import { RankingDrawer } from './rightrail/RankingDrawer';
 import { StudyViewsDrawer } from './studyViews/StudyViewsDrawer';
 import SignalAlertsDrawer from './signalAlerts/SignalAlertsDrawer';
 import { useRightRailStore } from './state/rightRail';
@@ -24,13 +25,6 @@ import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
 import { SettingsPanel } from './pages/Settings';
 import { effectiveTheme, useThemePrefsStore } from './state/themePrefs';
-
-// PROTOTYPE (throwaway): `?proto=ranking&variant=A|B|C` 로 순위 드로어 시안 3종을
-// 드로어 슬롯에 렌더 — 머지 전 제거. DEV 게이트는 모듈 스코프 삼항이어야 프로드
-// 번들에서 청크째 제거된다(lazy() 안 게이트는 청크를 못 막는다).
-const RankingDrawerPrototype = import.meta.env.DEV
-  ? lazy(() => import('./rightrail/prototype/RankingDrawerPrototype'))
-  : null;
 
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
   [...WORKSPACE_NAV_ITEMS, ...SYSTEM_NAV_ITEMS]
@@ -56,10 +50,8 @@ export default function App() {
   // The top row is fixed; the content row owns main + optional right panel +
   // fixed rail. Keeping this as a nested grid prevents panel content from
   // inflating the chart row and returns the retired side-menu width to main.
-  const { pathname, search } = useLocation();
-  // PROTOTYPE (throwaway): proto=ranking 이면 드로어 열림과 동일하게 열 폭 확보.
-  const protoRanking = RankingDrawerPrototype != null && new URLSearchParams(search).get('proto') === 'ranking';
-  const contentCols = `1fr${activePanel || protoRanking ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
+  const { pathname } = useLocation();
+  const contentCols = `1fr${activePanel ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
   const staticTitle = pathname === '/live' ? null : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -126,20 +118,12 @@ export default function App() {
       </div>
       {/* 우측 패널: 드로어(열림 시) + 고정 레일 — 열 자동 배치로 왼쪽 스택 오른쪽에
           full-height 로 선다. */}
-      {protoRanking && RankingDrawerPrototype != null ? (
-        // PROTOTYPE (throwaway): 시안 확인 중엔 실드로어 대신 프로토를 슬롯에 렌더.
-        <Suspense fallback={null}>
-          <RankingDrawerPrototype />
-        </Suspense>
-      ) : (
-        <>
-          {activePanel === 'watchlist' && <WatchlistDrawer />}
-          {activePanel === 'heatmap' && <HeatmapDrawer />}
-          {activePanel === 'screener' && <ScreenerDrawer />}
-          {activePanel === 'savedViews' && <StudyViewsDrawer />}
-          {activePanel === 'signalAlerts' && <SignalAlertsDrawer />}
-        </>
-      )}
+      {activePanel === 'watchlist' && <WatchlistDrawer />}
+      {activePanel === 'heatmap' && <HeatmapDrawer />}
+      {activePanel === 'screener' && <ScreenerDrawer />}
+      {activePanel === 'ranking' && <RankingDrawer />}
+      {activePanel === 'savedViews' && <StudyViewsDrawer />}
+      {activePanel === 'signalAlerts' && <SignalAlertsDrawer />}
       <RightRail />
     </div>
   );
