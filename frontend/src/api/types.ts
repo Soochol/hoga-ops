@@ -90,6 +90,10 @@ export type OrderbookSnapshot = {
   bid: OrderbookLevel[]; // length 10, index 0 = best bid
   tot_ask: number;
   tot_bid: number;
+  // 예상체결가/량(키움 0D FID 23/24) — 동시호가(단일가)에만 채워진다. 연속거래 중엔
+  // 백엔드가 키를 안 실어 undefined/0 → BookPanel 이 "값>0"으로 게이트해 평시엔 숨김.
+  exp_price?: number;
+  exp_qty?: number;
 };
 
 /** Source name surfaced by the chart source chip. Orderflow sources mirror

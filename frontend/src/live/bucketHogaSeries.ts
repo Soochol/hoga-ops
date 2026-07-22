@@ -14,6 +14,9 @@ export interface ObSnapshot {
   asks?: OrderbookLevel[];
   bids?: OrderbookLevel[];
   kind?: string;
+  /** 예상체결가/량(0D FID 23/24) — 동시호가에만 백엔드가 실어 온다(연속장 부재). */
+  expected_price?: number;
+  expected_qty?: number;
   /** 이 스냅샷을 실어온 시장(#524 시분할). 백엔드 태그; 구백엔드는 부재(=KRX 해석). */
   venue?: 'KRX' | 'NXT';
   [field: string]: unknown;

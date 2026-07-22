@@ -67,6 +67,8 @@ export function latestOrderbookSnapshot(ob: readonly RawSnapshot[]): OrderbookSn
     bid: padLevels(latest.bids),
     tot_ask: (latest.total_ask_qty as number) ?? 0,
     tot_bid: (latest.total_bid_qty as number) ?? 0,
+    exp_price: (latest.expected_price as number) ?? 0,
+    exp_qty: (latest.expected_qty as number) ?? 0,
   };
 }
 
@@ -177,6 +179,8 @@ export function orderbookSnapshotAtCursor(
     bid: padLevels(pick.bids),
     tot_ask: pick.total_ask_qty ?? 0,
     tot_bid: pick.total_bid_qty ?? 0,
+    exp_price: pick.expected_price ?? 0,
+    exp_qty: pick.expected_qty ?? 0,
   };
 }
 

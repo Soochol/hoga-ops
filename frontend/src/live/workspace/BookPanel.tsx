@@ -141,7 +141,12 @@ export default function BookPanel({
 
           {/* 중앙: 가격축 */}
           <div className="flex flex-col border-x border-border">
-            <div style={{ height: ROW_H }} />
+            {/* 최상단 = 예상체결(동시호가에만). 평시엔 빈 스페이서라 21행 정렬 불변. */}
+            <ExpectedFillCell
+              price={snapshot.exp_price ?? 0}
+              qty={snapshot.exp_qty ?? 0}
+              baselinePrice={baselinePrice}
+            />
             {asksDesc.map((l, i) => (
               <PriceCell
                 key={`pa-${snapshot.ask.length - i}`}
@@ -230,6 +235,39 @@ export default function BookPanel({
 function dirClass(price: number, baselinePrice: number | null): string {
   if (baselinePrice === null || baselinePrice <= 0) return 'text-fg-dim';
   return priceDirClass(price - baselinePrice);
+}
+
+/** 예상체결가·량(키움 0D FID 23/24) — 중앙 가격축 최상단(최고 매도호가 위)에 얹는다.
+ *  동시호가(단일가) 구간에만 백엔드가 값을 실어 오므로 둘 다 >0 일 때만 렌더하고,
+ *  평시엔 빈 스페이서(ROW_H)로 남겨 3열 21행 정렬 계약을 그대로 유지한다. 가격은
+ *  전일종가 대비 방향색, 예상량은 dim 보조값(현재가 확정 전 "예상"이라 subtle 틴트). */
+function ExpectedFillCell({
+  price,
+  qty,
+  baselinePrice,
+}: {
+  price: number;
+  qty: number;
+  baselinePrice: number | null;
+}) {
+  if (price <= 0 || qty <= 0) return <div style={{ height: ROW_H }} />;
+  const color = dirClass(price, baselinePrice);
+  return (
+    <div
+      className="flex items-baseline justify-center gap-1.5 bg-bg-subtle px-2"
+      style={{ height: ROW_H }}
+      data-testid="book-expected-fill"
+      title={`예상체결가 ${price.toLocaleString('ko-KR')} · 예상체결량 ${qty.toLocaleString('ko-KR')}`}
+    >
+      <span className="font-data text-badge text-fg-dimmer">예상</span>
+      <span className={`font-data text-sm tabular-nums ${color}`}>
+        {price.toLocaleString('ko-KR')}
+      </span>
+      <span className="font-data text-badge tabular-nums text-fg-dim">
+        {qty.toLocaleString('ko-KR')}
+      </span>
+    </div>
+  );
 }
 
 function PriceCell({
