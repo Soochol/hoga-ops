@@ -136,8 +136,9 @@ def test_orderbook_nxt_venue_and_empty_levels():
     assert t.payload["bids"][9] == {"price": 0, "qty": 0}
 
 
-def test_orderbook_expected_fill_present_in_auction():
-    # 동시호가 프레임 — FID 23(예상체결가, 등락부호)/24(예상체결량)이 채워진다.
+def test_orderbook_expected_fill_present_when_ws_sends_values():
+    # 동시호가 — WS 가 FID 23(예상체결가)/24(예상체결량)을 값으로 보내면 그대로 싣는다
+    # (시각 무관, 순수 데이터 게이트).
     row = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "23": "+6480", "24": "12345"}}
     t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
     assert t is not None
