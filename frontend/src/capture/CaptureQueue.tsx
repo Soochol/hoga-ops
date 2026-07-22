@@ -184,7 +184,7 @@ export function CaptureQueue() {
       <div
         data-testid="queue-list"
         data-virtualized={shouldVirtualize}
-        className="min-h-0 flex-1 overflow-y-auto border rounded-md"
+        className="min-h-0 flex-1 overflow-y-auto rounded-md"
       >
         {shouldVirtualize
           ? <VirtualList

@@ -85,7 +85,7 @@ export function StockDateGroupDetail({ group }: Props) {
       data-testid="stock-date-group-detail-root"
       className="flex h-full flex-col min-h-0 overflow-hidden"
     >
-      <header className="px-4 py-3 border-b flex items-baseline justify-between gap-4">
+      <header className="px-4 py-3 flex items-baseline justify-between gap-4">
         <h2 className="text-md font-semibold shrink-0">
           <span className="text-accent font-data">{group.code}</span>{' '}
           <span className="text-fg">{group.name}</span>

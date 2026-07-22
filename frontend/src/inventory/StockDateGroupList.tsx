@@ -23,7 +23,7 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
       <header className="px-3 py-2 text-xs uppercase text-fg-dimmer font-semibold">
         종목 {allGroupsCount}개 · 캡처 {rows.length}건
       </header>
-      <div className="p-2 border-b sticky top-0 bg-bg-card z-10">
+      <div className="p-2 sticky top-0 bg-bg-subtle z-10">
         <div className="relative">
           <input
             value={search}

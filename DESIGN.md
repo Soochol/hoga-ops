@@ -243,6 +243,15 @@ Every feature route except the chart workspace follows one shell:
   separator(드래그 리사이즈 기능 보유). 창 이음매(2px gap+그림자)는 카드 모델의 일부로 존치 —
   이음매 병합(플레이트) 시안은 기각. `--border` 는 이제 데이터 격자·입력·팝오버 전용이다.
   1차 사료: `prototype/live-divider-variants` 브랜치(4시안 스위처).
+  - **나머지 라우트 확장 (2026-07-22 후속):** 같은 규칙을 feature 라우트 전반에 적용 —
+    /screener 결과 패널 툴바 밑줄·"결과" `DataSection` 헤더 밑줄(`flushHeader`) 제거,
+    /inventory 상세 패널 헤더 밑줄 제거·좌측 sticky 검색 밴드 `bg-bg-card`+`border-b` →
+    `bg-bg-subtle` 밴드, /heatmap 폴더 헤더 `border-b border-border-strong` 제거(틴트 밴드+
+    좌측 `border-l-2` 스파인이 그룹 분리)·섹터 온도 스트립 밑줄 제거, /study 메모 패널 섹션
+    밑줄 제거, /capture 큐 스크롤 컨테이너 외곽 `border` 링 제거(중첩 카드 회피). **유지:**
+    데이터 표 내부 격자(inventory 캡처 표·capture 큐 행·heatmap 종목 행·`DataTable*` — 전부
+    이미 `--border`)와 모달 푸터·레일 드로어(RailShell 반영 완료). /study 활성 워크스페이스는
+    공유 `WindowFrameCore`+공유 데이터 창 재사용으로 /live 작업에 이미 포함.
 - **No redundant page title:** the active top menu item is the page label, so a page never repeats its own name. Pages expose a *title-less* control bar (search / counts / actions) at the top of their card. (See the `/live` header: search only, with the active symbol shown in the status bar below.)
 - **Full-bleed exception:** only the chart workspace (`/live`) is full-bleed (no `PageContainer`, no card) — the chart must fill the viewport. Its sidebar still uses `--bg-card` to match other panels.
 

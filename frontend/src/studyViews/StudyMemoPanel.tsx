@@ -89,7 +89,7 @@ export function StudyMemoPanel({
   return (
     <section
       data-testid="study-memo-panel"
-      className="flex shrink-0 flex-col border-b border-[var(--border)] bg-bg-card"
+      className="flex shrink-0 flex-col bg-bg-card"
       style={{ height }}
     >
       <div className="flex items-center justify-between gap-2 px-3 py-2">
