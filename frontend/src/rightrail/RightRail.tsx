@@ -22,7 +22,7 @@ export default function RightRail() {
   return (
     <nav
       aria-label="우측 레일"
-      className="flex flex-col items-center h-full bg-bg-subtle border-l"
+      className="flex flex-col items-center h-full bg-bg-subtle"
       style={{ width: 'var(--rail-w)' }}
     >
       <button

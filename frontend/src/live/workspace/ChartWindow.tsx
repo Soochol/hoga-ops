@@ -282,7 +282,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         data-testid="chart-window-header"
         data-compact={headerFold.compactActions ? '' : undefined}
         data-compact-timeframe={headerFold.compactTimeframe ? '' : undefined}
-        className="flex shrink-0 items-center gap-1 overflow-hidden border-b border-border bg-bg-card/60 px-1 py-0.5"
+        className="flex shrink-0 items-center gap-1 overflow-hidden bg-bg-card/60 px-1 py-0.5"
       >
         {/* 2단계 접힘(#762) — 기능 손실 없이 폭만 줄인다.
             ① 좁아지면 액션 라벨을 접고 아이콘만(요구폭 ~213px)

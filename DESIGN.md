@@ -231,6 +231,18 @@ Every feature route except the chart workspace follows one shell:
 - **Outer padding:** wrap the route in `<PageContainer>` (`frontend/src/layout/PageContainer.tsx`) — the single source of the page padding token (`p-md`). Never hardcode `p-4`/`p-8` at the page root.
 - **Content framing:** primary content sits in `bg-bg-card` cards (`PanelCard`). Multi-pane pages (master-detail, splitter) use one card per pane; single-content pages use one card. Never nest cards. **Feature-route cards are `borderless` in both themes (2026-07-15, 통일 결정):** `/heatmap`·`/screener`·`/inventory`·`/capture` 카드는 `PanelCard borderless` 로 테두리 없이 `--bg-card` + `--shadow-panel` 만으로 배경과 분리 — `/live` 차트 패널과 동일 크롬(부유 카드 모델을 feature route 전반으로 확장). 내부 헤더/스트립 밴드도 `bg-subtle`→`bg-card`, 구분선 `border-strong`→`border` 로 평탄화(live `WorkspaceToolbar` = `bg-card` + `border-b border-border` 와 동형). **Ledger(라이트) tradeoff:** 라이트는 `--bg`=`--bg-card` + 옅은 shadow 라 카드 경계가 다크보다 약하게 읽힌다 — 이전엔 이 때문에 Ledger feature 카드의 `--border` 를 유지했으나, `/live`·`/study` 워크스페이스와의 전면 통일을 위해 **사용자 결정으로 borderless 채택**(라이트에서도 shadow+gap 의존). `--border` 는 이제 카드 프레임이 아니라 카드 **내부** 구분선(`border-b`/`border-t border-border`)·입력·테이블 등에만 쓴다.
 - **Floating-card workspace (`/live` + `/study`, 통일 2026-07-15):** both `/live` and `/study` use the **same 부유 카드 모델** — no outer frame border; the chart pane and detail pane are two separate cards (`bg-bg-card` + `rounded` + `shadow-panel`, borderless) floating on a `--bg` field with a **4px gap**. Chrome above the field (`/live` 종목명 스트립 / `/study` 탭 바 + 헤더 행 — `/live` 멀티 탭은 ADR-0113 으로 제거) is full-bleed `--bg`. Separation is carried by **gap + `shadow-panel`** (다크는 톤 스텝 0이라 shadow 단독, 라이트는 옅은 shadow). `/study` 는 이전엔 단일 `PanelCard`(border) 안 flush 패널(`--bg-card`↔`--bg-subtle` 톤 스텝)이었으나 `/live` 와 동일 모델로 전환 — 바깥 `PanelCard` 프레임 제거, 상세 aside `bg-subtle`→`bg-card` 카드화, 탭 바·헤더 `--bg` 화. 상태 화면(빈/로딩/에러)은 `PageContainer`+`PanelCard` 유지(전환 점프 방지). Rationale: 원래 차트↔상세 17px 이음매의 1px 선 3개가 소음이라 "분리는 톤+간격이 담당" 규칙(#610~613)을 적용, 나아가 두 워크스페이스의 레이어 모델을 하나로 통일. 스플리터 리사이즈 라인은 평상시 숨김·호버/드래그 시 `--accent` 노출(`/live`).
+- **구분선 최소화 — "톤 밴드" (2026-07-22, /live 프로토타입 4시안 비교로 C안 채택):** 크롬
+  구분선은 그리지 않는다 — "분리는 톤+간격" 규칙을 창 내부 크롬까지 확장해 명도가 담당한다.
+  적용: 워크스페이스 창 헤더 = 경계선 없는 톤 밴드(비포커스 `--bg-subtle` / 포커스
+  `--tint-selection`), 차트 창 툴바 밑줄·RightRail `border-l`·RailShell(드로어 좌측선·헤더/
+  섹션 밑줄·트리 행 밑줄)·관심종목 행 밑줄 제거, sticky 표 헤더/합계행(체결·거래원)은
+  `border` 대신 `--bg-subtle` 밴드, lightweight-charts 시간/가격 축 `borderVisible: false`
+  (눈금·라벨은 유지). 10호가 내부 격자(매도↔매수 경계·총잔량 스트립)는 유지하되
+  `--border-strong` → `--border` 한 단계 완화 — 호가 격자는 잔향만 남긴다. **유지하는 선:**
+  기능적 테두리(입력·팝오버·드롭다운·현재가 강조 박스·활성 스파인 `border-l-2`)와 chart pane
+  separator(드래그 리사이즈 기능 보유). 창 이음매(2px gap+그림자)는 카드 모델의 일부로 존치 —
+  이음매 병합(플레이트) 시안은 기각. `--border` 는 이제 데이터 격자·입력·팝오버 전용이다.
+  1차 사료: `prototype/live-divider-variants` 브랜치(4시안 스위처).
 - **No redundant page title:** the active top menu item is the page label, so a page never repeats its own name. Pages expose a *title-less* control bar (search / counts / actions) at the top of their card. (See the `/live` header: search only, with the active symbol shown in the status bar below.)
 - **Full-bleed exception:** only the chart workspace (`/live`) is full-bleed (no `PageContainer`, no card) — the chart must fill the viewport. Its sidebar still uses `--bg-card` to match other panels.
 

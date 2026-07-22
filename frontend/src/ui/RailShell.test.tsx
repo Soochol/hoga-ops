@@ -17,7 +17,8 @@ describe('RailShell primitives', () => {
     render(<RailDrawer id="panel" testId="panel">body</RailDrawer>);
     const drawer = screen.getByTestId('panel');
     expect(drawer).toHaveClass('h-full');
-    expect(drawer).toHaveClass('border-l');
+    // 경계선 없는 크롬 표면(2026-07-22 구분선 최소화 C안) — 분리는 bg-subtle 톤이 담당.
+    expect(drawer).not.toHaveClass('border-l');
     expect(drawer).toHaveClass('bg-bg-subtle');
     expect(drawer).toHaveStyle({ width: 'var(--watchlist-panel-w)' });
   });
@@ -31,7 +32,7 @@ describe('RailShell primitives', () => {
       </RailDrawer>,
     );
     expect(screen.getByText('스크리너')).toHaveClass('uppercase');
-    expect(screen.getByText('controls')).toHaveClass('border-b');
+    expect(screen.getByText('controls')).not.toHaveClass('border-b');
     expect(screen.getByText('rows')).toHaveClass('overflow-auto');
   });
 
