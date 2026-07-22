@@ -22,6 +22,7 @@ from typing import Any
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 
 from . import kiwoom_fields as K
+from .session_gate import is_auction_window
 from .snapshot import SnapshotKind
 from .ticks import WsTick
 
@@ -193,12 +194,14 @@ def _parse_orderbook(
         "total_ask_qty": _qty(values, K.OB_TOTAL_ASK_QTY),
         "total_bid_qty": _qty(values, K.OB_TOTAL_BID_QTY),
     }
-    # 예상체결가/량 — 동시호가에만 유의미. 둘 다 >0 일 때만 additive 로 싣는다(연속장
-    # 0 은 키 미포함 → 프론트가 "미수신 0"과 구분 없이 값 존재만으로 게이트, 요약
-    # 지표·OHLC 와 같은 규약). 한쪽만 0 인 반쪽 프레임은 표시할 게 없어 함께 뺀다.
+    # 예상체결가/량 — 동시호가에만 유의미. **시각 게이트(is_auction_window) AND 값>0**
+    # 일 때만 additive 로 싣는다. 값 게이트만으론 "키움이 연속장에 0을 보낸다"는 미검증
+    # 가정에 의존해 평시 노출 위험이 있어, 프레임 시각(t_ms)이 정규장 동시호가 창일
+    # 때로 한정한다. 창 밖(연속거래)이면 값이 와도 버려 표시·저장 모두에서 숨는다.
+    # 키 미포함 규약(요약·OHLC 동형): 소비자는 "미수신"과 "진짜 0"을 구분할 필요가 없다.
     exp_price = _price(values, K.OB_EXPECTED_PRICE)
     exp_qty = _qty(values, K.OB_EXPECTED_QTY)
-    if exp_price > 0 and exp_qty > 0:
+    if is_auction_window(t_ms) and exp_price > 0 and exp_qty > 0:
         payload["expected_price"] = exp_price
         payload["expected_qty"] = exp_qty
     return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload, venue=venue)

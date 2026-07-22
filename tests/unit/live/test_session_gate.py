@@ -7,6 +7,7 @@ from hoga.api import calendar as cal
 from hoga.live.kis_client import KIS_KST
 from hoga.live.session_gate import (
     in_krx_warmup_window,
+    is_auction_window,
     target_ws_venue,
     ws_capture_window,
     ws_capture_window_async,
@@ -90,6 +91,25 @@ def test_target_venue_krx_only_around_regular_session_with_margins():
     assert target_ws_venue(_ms(2026, 5, 27, 15, 30)) == "KRX"  # 마감 순간까지 KRX(drain 보존)
     assert target_ws_venue(_ms(2026, 5, 27, 15, 31)) == "NXT"  # drain 마진 후 NXT 스왑
     assert target_ws_venue(_ms(2026, 5, 27, 18, 0)) == "NXT"   # 장후 NXT
+
+
+def test_is_auction_window_covers_open_and_close_single_price():
+    """동시호가 창: 장전 08:30–09:00, 장마감 15:20–15:30 KST. 순수 시계.
+    경계: 시작 포함, 끝 배제. 연속거래 시각·시간외는 False(예상체결 게이트 방어선)."""
+    # 장전 동시호가
+    assert is_auction_window(_ms(2026, 5, 27, 8, 29)) is False  # 창 직전
+    assert is_auction_window(_ms(2026, 5, 27, 8, 30)) is True   # 시작(포함)
+    assert is_auction_window(_ms(2026, 5, 27, 8, 55)) is True
+    assert is_auction_window(_ms(2026, 5, 27, 9, 0)) is False   # 개장(배제) — 연속거래 시작
+    # 연속거래 중
+    assert is_auction_window(_ms(2026, 5, 27, 12, 0)) is False
+    # 장마감 동시호가
+    assert is_auction_window(_ms(2026, 5, 27, 15, 19)) is False  # 창 직전
+    assert is_auction_window(_ms(2026, 5, 27, 15, 20)) is True   # 시작(포함)
+    assert is_auction_window(_ms(2026, 5, 27, 15, 25)) is True
+    assert is_auction_window(_ms(2026, 5, 27, 15, 30)) is False  # 마감(배제)
+    # 시간외
+    assert is_auction_window(_ms(2026, 5, 27, 16, 30)) is False
 
 
 def test_krx_warmup_window_is_0850_to_0900():
