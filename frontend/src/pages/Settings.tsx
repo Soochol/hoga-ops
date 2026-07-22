@@ -130,6 +130,7 @@ const THEME_LABEL: Record<ThemePreference, string> = {
   obsidian: 'Obsidian',
   ledger: 'Ledger',
   'toss-light': 'Toss Light',
+  'toss-dark': 'Toss Dark',
   auto: '자동',
 };
 
@@ -137,6 +138,7 @@ const THEME_HINT: Record<ThemePreference, string> = {
   obsidian: '어두운 트레이딩 터미널 테마',
   ledger: '밝은 종이·리서치 테마',
   'toss-light': '밝은 토스증권 벤치마크 테마 (화이트·토스블루)',
+  'toss-dark': '어두운 토스증권 벤치마크 테마 (near-black·토스블루)',
   auto: '화면별 — 실시간·히트맵은 어둡게, 나머지는 밝게',
 };
 

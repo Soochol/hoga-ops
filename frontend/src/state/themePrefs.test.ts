@@ -29,10 +29,12 @@ describe('effectiveTheme', () => {
   it('ignores the route for an explicit preference', () => {
     expect(effectiveTheme('obsidian', '/study')).toBe('obsidian');
     expect(effectiveTheme('ledger', '/live')).toBe('ledger');
-    // toss-light is manual-only: an explicit preference is returned as-is on
-    // every route, and `auto` never resolves to it (see the maps above).
+    // toss-* are manual-only: an explicit preference is returned as-is on
+    // every route, and `auto` never resolves to them (see the maps above).
     expect(effectiveTheme('toss-light', '/live')).toBe('toss-light');
     expect(effectiveTheme('toss-light', '/settings')).toBe('toss-light');
+    expect(effectiveTheme('toss-dark', '/live')).toBe('toss-dark');
+    expect(effectiveTheme('toss-dark', '/settings')).toBe('toss-dark');
   });
 
   it('does not treat a look-alike prefix as a live route', () => {
@@ -66,7 +68,13 @@ describe('useThemePrefsStore', () => {
     expect(useThemePrefsStore.getState().themePreference).toBe('ledger');
   });
 
-  it('exposes exactly the four options', () => {
-    expect([...THEME_PREFERENCE_OPTIONS]).toEqual(['obsidian', 'ledger', 'toss-light', 'auto']);
+  it('exposes exactly the five options', () => {
+    expect([...THEME_PREFERENCE_OPTIONS]).toEqual([
+      'obsidian',
+      'ledger',
+      'toss-light',
+      'toss-dark',
+      'auto',
+    ]);
   });
 });
