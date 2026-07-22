@@ -136,6 +136,30 @@ def test_orderbook_nxt_venue_and_empty_levels():
     assert t.payload["bids"][9] == {"price": 0, "qty": 0}
 
 
+def test_orderbook_expected_fill_present_in_auction():
+    # 동시호가 프레임 — FID 23(예상체결가, 등락부호)/24(예상체결량)이 채워진다.
+    row = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "23": "+6480", "24": "12345"}}
+    t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
+    assert t is not None
+    assert t.payload["expected_price"] == 6480  # 부호=등락방향, abs
+    assert t.payload["expected_qty"] == 12345
+
+
+def test_orderbook_expected_fill_absent_when_zero():
+    # 연속거래(평시) — 23/24 미채움/0 이면 키를 싣지 않는다(요약·OHLC 규약).
+    # REAL_0D_KRX 자체에 23/24 부재 → 없어야 정상.
+    t = parse_real_row(REAL_0D_KRX, date=DATE, now_ms=NOW_MS)
+    assert t is not None
+    assert "expected_price" not in t.payload
+    assert "expected_qty" not in t.payload
+    # 한쪽만 0 인 반쪽 프레임도 둘 다 제외.
+    half = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "23": "+6480", "24": "0"}}
+    ht = parse_real_row(half, date=DATE, now_ms=NOW_MS)
+    assert ht is not None
+    assert "expected_price" not in ht.payload
+    assert "expected_qty" not in ht.payload
+
+
 def test_parse_real_message_wraps_data_list():
     msg = {"trnm": "REAL", "data": [REAL_0D_KRX, REAL_0B]}
     ticks = parse_real_message(msg, date=DATE, now_ms=NOW_MS)

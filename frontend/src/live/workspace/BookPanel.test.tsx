@@ -264,4 +264,20 @@ describe('BookPanel', () => {
     expect(screen.getByText('256,000')).toBeInTheDocument();
     expect(screen.queryByText('+0.39%')).toBeNull();
   });
+
+  it('예상체결가·량이 있으면(동시호가) 중앙 상단에 예상체결 셀을 그린다', () => {
+    renderPanel({ snapshot: { ...snap(), exp_price: 265_500, exp_qty: 12_345 } });
+    const cell = screen.getByTestId('book-expected-fill');
+    expect(cell).toHaveTextContent('예상');
+    expect(cell).toHaveTextContent('265,500');
+    expect(cell).toHaveTextContent('12,345');
+  });
+
+  it('평시(예상체결 0/미제공)엔 예상체결 셀을 그리지 않는다', () => {
+    renderPanel(); // snap() 은 exp_price/exp_qty 미포함
+    expect(screen.queryByTestId('book-expected-fill')).toBeNull();
+    // 한쪽만 값이 있어도(반쪽 프레임) 숨긴다.
+    renderPanel({ snapshot: { ...snap(), exp_price: 265_500, exp_qty: 0 } });
+    expect(screen.queryByTestId('book-expected-fill')).toBeNull();
+  });
 });
