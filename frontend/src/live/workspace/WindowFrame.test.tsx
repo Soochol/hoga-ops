@@ -85,10 +85,11 @@ describe('WindowFrame 포커스 표시', () => {
   });
 
   it('포커스는 그림자 티어를 바꾸지 않는다 (전 창 shadow-panel 고정)', () => {
-    // 이전엔 포커스가 shadow-modal 로 승격됐으나 헤더 틴트로 대체됐다.
-    const focusedFrame = renderFrame(false, true).container.querySelector('[data-win="w1"]');
+    // 이전엔 포커스가 shadow-modal 로 승격됐으나 헤더 틴트로 대체됐다. 그림자는
+    // 간격(인셋) 도입 후 바깥 rect 가 아니라 보이는 카드(첫 자식)에 얹힌다.
+    const card = renderFrame(false, true).container.querySelector('[data-win="w1"] > div');
 
-    expect(focusedFrame).toHaveClass('shadow-panel');
-    expect(focusedFrame).not.toHaveClass('shadow-modal');
+    expect(card).toHaveClass('shadow-panel');
+    expect(card).not.toHaveClass('shadow-modal');
   });
 });

@@ -254,7 +254,7 @@ export function WorkspaceCanvas() {
  * 모듈 스코프 필수(인라인 정의는 렌더마다 리마운트).
  */
 function LiveWindowItem({
-  win, rect, zIndex, focused, onHandleDown, onFocus, ctx,
+  win, rect, zIndex, focused, lifting, onHandleDown, onFocus, ctx,
 }: WindowItemProps<WorkspaceWindow, LiveItemCtx>) {
   return (
     <WorkspaceWindowItem
@@ -263,6 +263,7 @@ function LiveWindowItem({
       rect={rect}
       zIndex={zIndex}
       focused={focused}
+      lifting={lifting}
       paletteOpen={ctx.paletteId === win.id}
       onHandleDown={onHandleDown}
       onFocus={onFocus}
@@ -282,7 +283,7 @@ function LiveWindowItem({
  * 재렌더된다 — win 객체는 스토어 배열 원소라 드래그 중(로컬 프리뷰) 안정.
  */
 const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
-  win, symbol, rect, zIndex, focused, paletteOpen,
+  win, symbol, rect, zIndex, focused, lifting, paletteOpen,
   onHandleDown, onFocus, onClose, onTogglePalette, onPickGroup,
 }: {
   win: WorkspaceWindow;
@@ -290,6 +291,7 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   rect: Rect;
   zIndex: number;
   focused: boolean;
+  lifting: boolean;
   paletteOpen: boolean;
   onHandleDown: (e: React.PointerEvent, id: string, mode: Mode) => void;
   onFocus: (id: string) => void;
@@ -305,6 +307,7 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
       rect={rect}
       zIndex={zIndex}
       focused={focused}
+      lifting={lifting}
       symbolLabel={symbol?.name ?? null}
       symbolCode={symbol?.code ?? null}
       paletteOpen={paletteOpen}
