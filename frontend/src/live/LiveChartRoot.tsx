@@ -2084,6 +2084,8 @@ export function LiveChartRoot({
             visibleSpecs={visiblePaneSpecs}
             dataEpoch={cb}
             hasDepthDelta={depthDeltaToday.length > 0}
+            candles={cb?.candles}
+            axis={axis}
           />
           <CandleTooltip chart={chart} bundle={cb} quoteBundle={paneRatioBundle} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
           {/* 고저 극값 라벨 — 보이는 범위의 최고/최저봉에 극값 대비율 라벨. cb(안정)·viewport

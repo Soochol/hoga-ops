@@ -24,6 +24,47 @@ const base = {
   paneCells: [] as PaneCellInput[],
 };
 
+describe('buildLegendRows — candle OHLC row', () => {
+  const ohlc = {
+    open: 265000, high: 266000, low: 264000, close: 265750,
+    openPct: 0, highPct: 0.37, lowPct: -0.37, closePct: 0.28,
+  };
+
+  it('emits the OHLC row unconditionally (no toggle) as the FIRST candle row', () => {
+    const rows = buildLegendRows({
+      ...base,
+      ohlc,
+      movingAverages: [ma({ id: 'ma-1', period: 5 })],
+      maValues: new Map([['ma-1', 311400]]),
+    });
+    // First row overall is the OHLC row (pinned top), MA row follows.
+    expect(rows[0].kind).toBe('ohlc');
+    expect(rows[0].paneId).toBe('candle');
+    expect(rows[0].kind === 'ohlc' && rows[0].close).toBe(265750);
+    expect(rows[0].kind === 'ohlc' && rows[0].highPct).toBe(0.37);
+    expect(rows[1]?.kind).toBe('ma');
+  });
+
+  it('shows OHLC even when every other candle indicator is off', () => {
+    const rows = buildLegendRows({ ...base, ohlc, movingAverageEnabled: false });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe('ohlc');
+  });
+
+  it('omits the OHLC row when there is no candle data (ohlc null/absent)', () => {
+    expect(buildLegendRows({ ...base }).find((r) => r.kind === 'ohlc')).toBeUndefined();
+    expect(buildLegendRows({ ...base, ohlc: null }).find((r) => r.kind === 'ohlc')).toBeUndefined();
+  });
+
+  it('keeps null pcts (earliest bar) intact for the renderer to blank', () => {
+    const rows = buildLegendRows({
+      ...base,
+      ohlc: { ...ohlc, openPct: null, highPct: null, lowPct: null, closePct: null },
+    });
+    expect(rows[0].kind === 'ohlc' && rows[0].closePct).toBeNull();
+  });
+});
+
 describe('buildLegendRows — candle MA row', () => {
   it('builds candle MA rows from enabled slots; value=null when missing', () => {
     const rows = buildLegendRows({

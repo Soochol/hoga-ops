@@ -88,8 +88,24 @@ export type LegendFlagInput = {
   cells: readonly LegendFlagCell[];
 };
 
+/** OHLC readout for the candle pane's top row (always shown, no toggle). Prices
+ *  + per-value change % vs the previous bar's close (null when there is no prior
+ *  bar / prev.close ≤ 0). Resolved by the overlay from the hovered bar (cursor)
+ *  or the latest bar (cursor away) via `buildCandleTooltip`. */
+export type LegendOhlcValues = {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  openPct: number | null;
+  highPct: number | null;
+  lowPct: number | null;
+  closePct: number | null;
+};
+
 /** A single pane's legend row. */
 export type LegendRow =
+  | ({ paneId: 'candle'; kind: 'ohlc' } & LegendOhlcValues)
   | { paneId: 'candle'; kind: 'ma'; mas: LegendMAValue[]; hidden: boolean }
   | { paneId: 'candle'; kind: 'daily-ma'; mas: LegendMAValue[]; hidden: boolean }
   | {
@@ -128,6 +144,10 @@ export type PaneCellInput = {
 };
 
 export type BuildLegendRowsInput = {
+  /** Candle OHLC readout — emitted as the candle pane's FIRST (top) row when
+   *  present. Unconditional (no store toggle): the "항상 표시" contract. Null when
+   *  there are no drawn candles (cold load / empty view). */
+  ohlc?: LegendOhlcValues | null;
   movingAverages: ReadonlyArray<LiveMAConfig>;
   /** MA master toggle. When off the overlay clears the series, so a row would
    *  read all-null on an invisible line — suppress it instead. */
@@ -152,6 +172,12 @@ export type BuildLegendRowsInput = {
 
 export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
   const rows: LegendRow[] = [];
+
+  // Candle pane — OHLC readout, pinned as the top row and always shown (no
+  // toggle). Pushed first so it stacks above the MA/daily-MA/flag rows.
+  if (input.ohlc) {
+    rows.push({ paneId: 'candle', kind: 'ohlc', ...input.ohlc });
+  }
 
   // Candle pane — one row aggregating every enabled MA slot. Gated on the
   // master toggle (see field doc) so an invisible line never leaves an empty
