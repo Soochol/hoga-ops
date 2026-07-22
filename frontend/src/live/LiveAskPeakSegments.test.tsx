@@ -59,7 +59,7 @@ describe('buildAskPeakSegments', () => {
     expect(today.time0).toBe(10); // 10000/1000
     expect(today.time1).toBe(12); // 마지막 캔들 12000/1000 (session_close 99999 아님)
     expect(today.live).toBe(true);
-    expect(today.label).toBe('323,000, 153.1k'); // 가격 + formatQtyCompact(153125)
+    expect(today.label).toBe('153.1k'); // 잔량만 — formatQtyCompact(153125)
     expect(today.qty).toBe(153125);
     expect(today.peakTime).toBe(2 / 1000); // axis.toVirtual(t_ms=2)/1000 — peak 발생 시점
     expect(today.color).toBe('#1D4ED8');
@@ -82,7 +82,7 @@ describe('buildAskPeakSegments', () => {
     const segments = [seg('20260613', 60000, 240000)];
     const candles = [candle(60000), candle(120000), candle(180000)];
     const out = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1, false);
-    expect(out[0].label).toBe('100, 0.9k');
+    expect(out[0].label).toBe('0.9k');
   });
 
   it('peak이 마지막 캔들 버킷보다 뒤면(라이브 엣지) 마지막 캔들에 스냅', () => {
@@ -131,12 +131,12 @@ describe('buildAskPeakSegments', () => {
     const candles = [candle(60000), candle(120000), candle(180000)];
 
     const off = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1, false);
-    expect(off[0].label).toBe('25,100, 0.3k');
+    expect(off[0].label).toBe('0.3k');
     expect(off[0].peakTime).toBe(60);
 
     const on = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1, true);
     expect(on[0].price).toBe(25200);
-    expect(on[0].label).toBe('25,200, 0.9k');
+    expect(on[0].label).toBe('0.9k');
     expect(on[0].peakTime).toBe(120);
     expect(on[0].time0).toBe(off[0].time0);
     expect(on[0].time1).toBe(off[0].time1);
@@ -394,7 +394,7 @@ describe('buildAskPeakOverlaySegments', () => {
 
     expect(out).toHaveLength(2);
     expect(out.map((segment) => segment.price)).toEqual([100, 110]);
-    expect(out[1]).toMatchObject({ price: 110, label: '110, 0.1k', color: '#F97316', lineWidth: 1 });
+    expect(out[1]).toMatchObject({ price: 110, label: '0.1k', color: '#F97316', lineWidth: 1 });
   });
 
   it('all_*만 있고 untraded_*가 없으면 미체결 선을 만들지 않는다', () => {
@@ -463,7 +463,7 @@ describe('buildAskPeakOverlaySegments', () => {
 
     expect(out).toHaveLength(2);
     expect(out.map((s) => s.price)).toEqual([101, 115]);
-    expect(out[1]).toMatchObject({ label: '115, 0.1k', color: '#F97316', lineWidth: 1 });
+    expect(out[1]).toMatchObject({ label: '0.1k', color: '#F97316', lineWidth: 1 });
   });
 
   it('intraMax=true여도 untraded_max_qty가 max_qty보다 크지 않아도 미체결 가족을 렌더한다', () => {
@@ -498,7 +498,7 @@ describe('buildAskPeakOverlaySegments', () => {
 
     expect(out).toHaveLength(2);
     expect(out.map((segment) => segment.price)).toEqual([101, 115]);
-    expect(out[1]).toMatchObject({ price: 115, label: '115, 0.1k', color: '#F97316', lineWidth: 1 });
+    expect(out[1]).toMatchObject({ price: 115, label: '0.1k', color: '#F97316', lineWidth: 1 });
   });
 
   it('intraMax=true면 close 미체결 triple이 없어도 untraded_max_*만으로 오렌지 선을 만든다', () => {
@@ -533,7 +533,7 @@ describe('buildAskPeakOverlaySegments', () => {
 
     expect(out).toHaveLength(2);
     expect(out.map((s) => s.price)).toEqual([101, 115]);
-    expect(out[1]).toMatchObject({ label: '115, 0.1k', color: '#F97316', lineWidth: 1 });
+    expect(out[1]).toMatchObject({ label: '0.1k', color: '#F97316', lineWidth: 1 });
   });
 
   it('미체결 포함 토글이 꺼지면 체결가격 기준선만 만든다', () => {
@@ -576,7 +576,7 @@ describe('buildAskPeakOverlaySegments', () => {
 
     expect(out).toHaveLength(2);
     expect(out.map((s) => s.price)).toEqual([100, 110]);
-    expect(out[1]).toMatchObject({ label: '110, 0.1k', color: '#F97316', lineWidth: 1 });
+    expect(out[1]).toMatchObject({ label: '0.1k', color: '#F97316', lineWidth: 1 });
   });
 
   it('오늘 live all-price는 intraMax cutoff에서 max_t_ms가 cutoff 뒤면 제외한다', () => {

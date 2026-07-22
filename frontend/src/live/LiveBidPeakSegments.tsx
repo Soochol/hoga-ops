@@ -42,9 +42,9 @@ function snapPeakMsToCandle(tMs: number, candles: readonly Candle[]): number | n
   return ans >= 0 ? candles[ans].ts_ms : null;
 }
 
-function formatBidPeakLabel(price: number, qty: number): string {
-  const priceStr = Math.round(price).toLocaleString('ko-KR');
-  return `${priceStr}, ${formatQtyCompact(qty)}`;
+// 라벨은 잔량만 — 가격은 Y축·선 위치가 이미 말해줘 중복이라, 칩 폭을 줄여 겹침을 낮춘다.
+function formatBidPeakLabel(qty: number): string {
+  return formatQtyCompact(qty);
 }
 
 function toPeakRankLimit(value: number): 1 | 2 | 3 {
@@ -89,7 +89,7 @@ export function buildBidPeakSegments(
       peakTime: (axis.toVirtual(peakMs) / 1000) as Time,
       price: peakPrice,
       qty: peakQty,
-      label: formatBidPeakLabel(peakPrice, peakQty),
+      label: formatBidPeakLabel(peakQty),
       color,
       lineWidth,
       live: isToday,

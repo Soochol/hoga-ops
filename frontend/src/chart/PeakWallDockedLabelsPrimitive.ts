@@ -131,7 +131,8 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
       const maxBaselineY = scope.bitmapSize.height - LABEL_EDGE_PAD_PX * vr;
       const layouts = layoutAskPeakLabels(candidates, minBaselineY, maxBaselineY, rowHeight);
 
-      const { bg: chipBg, border: chipBorder } = resolveTokensThemed(CHIP_TOKENS);
+      // 칩은 외곽선 없이 표면(fill)만 — 인라인 프리미티브와 동일 처방(방향색 텍스트 가독성용 배경).
+      const { bg: chipBg } = resolveTokensThemed(CHIP_TOKENS);
       for (const layout of layouts) {
         const label = labels[layout.index];
         const xPad = LABEL_BOX_X_PAD_PX * hr;
@@ -143,9 +144,6 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
         const bh = fontHeight + yPad * 2;
         ctx.fillStyle = chipBg;
         ctx.fillRect(bx, by, bw, bh);
-        ctx.strokeStyle = chipBorder;
-        ctx.lineWidth = hr;
-        ctx.strokeRect(bx, by, bw, bh);
         ctx.fillStyle = label.color;
         ctx.textBaseline = 'bottom';
         ctx.textAlign = 'right';
