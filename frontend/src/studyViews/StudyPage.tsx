@@ -14,6 +14,7 @@ import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
+import { useStudyLastMinuteTimeframeStore } from '../state/studyLastMinuteTimeframe';
 import { StudyWorkspaceCanvas, StudyWindowAddMenu } from './StudyWorkspaceCanvas';
 import { StudyWindowListMenu } from './StudyWindowListMenu';
 import { requestWorkspaceTidy } from '../workspace/workspaceCanvasControls';
@@ -128,6 +129,7 @@ export function StudyPage() {
   const reorderTabs = useStudyTabsStore((state) => state.reorderTabs);
   const toggleTabPinned = useStudyTabsStore((state) => state.toggleTabPinned);
   const updateTabTimeframe = useStudyTabsStore((state) => state.updateTabTimeframe);
+  const setLastMinuteTimeframe = useStudyLastMinuteTimeframeStore((state) => state.setLastMinuteTimeframe);
   const updateTabViewport = useStudyTabsStore((state) => state.updateTabViewport);
   const initialQueryViewIdRef = useRef(queryViewId);
   const handledQueryViewIdRef = useRef(queryViewId);
@@ -247,11 +249,13 @@ export function StudyPage() {
     setViewTimeframes((current) => ({ ...current, [activeViewId]: next }));
     if (isMinuteTimeframe(next)) {
       setRememberedMinuteTimeframes((current) => ({ ...current, [activeViewId]: next }));
+      // 저장뷰 "설정된 분봉" 열기가 참조하는 전역 마지막 분봉. D/W/M 전환 땐 유지.
+      setLastMinuteTimeframe(next);
     }
     if (activeTab && activeTab.viewId === activeViewId) {
       updateTabTimeframe(activeTab.id, next);
     }
-  }, [activeTab, activeViewId, updateTabTimeframe]);
+  }, [activeTab, activeViewId, updateTabTimeframe, setLastMinuteTimeframe]);
 
   useEffect(() => {
     if (!activeTab) return;

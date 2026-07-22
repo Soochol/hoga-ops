@@ -120,15 +120,15 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     render(<LiveSettingsSections />);
     fireEvent.click(screen.getByTestId('settings-nav-study-views'));
 
-    expect(screen.getByRole('radio', { name: '저장된 분봉' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '설정된 분봉' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: '3분' })).toBeChecked();
     fireEvent.click(screen.getByRole('radio', { name: '5분' }));
 
     expect(useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('5m');
     expect(localStorage.getItem('studyView.openPrefs.v1')).toContain('5m');
 
-    fireEvent.click(screen.getByRole('radio', { name: '저장된 분봉' }));
-    expect(useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('saved');
+    fireEvent.click(screen.getByRole('radio', { name: '설정된 분봉' }));
+    expect(useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('current');
   });
 
   it('알림 상세에서 시그널 알림 설정을 수정한다', async () => {
