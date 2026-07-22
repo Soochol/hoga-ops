@@ -361,4 +361,97 @@
   --bar-bid: rgba(222, 43, 57, 0.28);   /* de2b39 @ 28% */
 }
 
+/* ═══════════════ Toss Dark — dark theme (Toss Securities benchmark) ═══════════════
+   Colors ONLY (same discipline as the blocks above). The dark counterpart of
+   Toss Light — palette lifted from tossinvest.com's live dark tokens
+   (data-wts-theme='dark', 2026-07-22, computed CSS custom properties). Sits
+   OUTSIDE the base block so `npm run gen:tokens` never touches it.
+
+   Like Toss Light (and unlike Obsidian's tone-unified --bg==--bg-card), this
+   REVIVES the layer step Toss uses in the dark: a near-black floor
+   (--bg #101013) with slightly-lighter cards (--bg-card #17171c), so panels
+   separate by luminance the way the reference does.
+
+   ── accent-vs-price collision (mirrors Toss Light, INVERTED direction) ──
+   Toss's brand accent is blue (#3182f6) and Toss's "down" price is also blue —
+   the same overlap our three-way discipline forbids. Toss Light separated them
+   by pushing --price-down DARKER; on a dark surface a darker blue would sink
+   into the background, so here we push --price-down LIGHTER (#56a3ff) than the
+   accent instead. accent rides SOLID-FILL contexts; down-price rides text/border.
+   Sanctioned per-theme exception (see DESIGN.md). Not perfect on the highest-
+   density surfaces; accepted trade-off.
+
+   --fg is #eceff5 (a slightly blue off-white), NOT pure white — Toss's dark
+   txt-primary is rgba(242,246,255,0.9), i.e. it deliberately avoids #ffffff to
+   cut glare on the dark surface. */
+[data-theme='toss-dark'] {
+  /* ───── Surfaces (near-black floor + lighter cards — layer step revived) ───── */
+  --bg: #101013;          /* backgroundScreen / greyBackground — the floor */
+  --bg-card: #17171c;     /* background — cards sit LIGHTER than the floor */
+  --bg-subtle: #0c0c0f;   /* nav/drawer/sticky chrome — sunk below the floor (Obsidian idiom) */
+  --bg-input: #202027;    /* grey50 — input surface, lifted above the card */
+  --bg-input-hover: #2c2c35; /* grey100 */
+
+  /* ───── Borders (dark hairline greys — kept subtle: --border=grey100 so the
+     seam doesn't over-read on the lighter card, unlike the grey200 hairline) ───── */
+  --border: #2c2c35;         /* grey100 */
+  --border-strong: #4d4d59;  /* grey300 */
+  --chart-pane-divider: #3e3f49; /* grey300-ish, softened */
+
+  /* ───── Foreground (off-white ink — NOT pure #fff, see block header) ───── */
+  --fg: #eceff5;         /* ≈ txt-primary rgba(242,246,255,0.9) */
+  --fg-dim: #c3c3c6;     /* grey700 — txt-secondary */
+  --fg-dimmer: #7e7e87;  /* grey500 — txt-tertiary */
+
+  /* ───── Accent + Semantic (toss blue) ───── */
+  --accent: #3182f6;        /* fill-brand — the toss-blue signature */
+  --accent-fg: #ffffff;
+  --accent-shade: #2562b9;  /* fill-brand hover (dark) — pressed/darker */
+  --success: #16bb76;       /* green500 (dark) — UI status */
+  --error:   #f65a68;       /* red, nudged off --price-up for status/price split */
+  --warn: #fcb50c;          /* txt-warning (dark) */
+  /* Price direction — KRX convention. --price-down pushed LIGHTER than the blue
+     accent (inverted from Toss Light — see collision note in the block header). */
+  --price-up:   #f5445a;    /* txt-positive (dark) — 상승 */
+  --price-down: #56a3ff;    /* lighter than --accent — 하락 */
+
+  /* ───── Chart & Heatmap ───── */
+  --grid: #1e1e24;
+  --heat-lo: #14141a;
+  --heat-hi: #3182f6; /* accent ramp */
+
+  /* ───── Elevation — reuse Obsidian's black-halo dark shadows (the layer step
+     carries most of the separation; shadows are a boost). ───── */
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-panel: 0 18px 60px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.45);
+
+  /* ───── Moving Average — reuse Obsidian's dark-surface palette (bright hues
+     legible on near-black; same face-value colors). ───── */
+  --ma-1: #EC4899;
+  --ma-2: #3B82F6;
+  --ma-3: #F97316;
+  --ma-4: #22C55E;
+  --ma-5: #F8FAFC;
+  --ma-6: #06B6D4;
+  --ma-7: #EAB308;
+  --ma-8: #94A3B8;
+
+  /* ───── Tint backgrounds (new accent/status/price rgb; alpha lifted for dark) ───── */
+  --tint-selection:  rgba(49, 130, 246, 0.16);  /* accent blue @ 16% */
+  --tint-success:    rgba(22, 187, 118, 0.15);
+  --tint-error:      rgba(246, 90, 104, 0.15);
+  --tint-warn:       rgba(252, 181, 12, 0.15);
+  --tint-success-border: rgba(22, 187, 118, 0.35);
+  --tint-error-border:   rgba(246, 90, 104, 0.35);
+  --tint-price-up:   rgba(245, 68, 90, 0.15);   /* f5445a @ 15% */
+  --tint-price-down: rgba(86, 163, 255, 0.15);  /* 56a3ff @ 15% */
+  --tint-auction-window: rgba(252, 181, 12, 0.10);
+
+  /* ───── Depth bar fills ───── */
+  --bar-ask: rgba(86, 163, 255, 0.28);   /* 56a3ff @ 28% */
+  --bar-bid: rgba(245, 68, 90, 0.28);    /* f5445a @ 28% */
+}
+
 @keyframes tab-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
