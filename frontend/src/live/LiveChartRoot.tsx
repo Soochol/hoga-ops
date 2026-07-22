@@ -1145,7 +1145,9 @@ export function LiveChartRoot({
         ...CHART_TIMESCALE_OPTIONS,
         timeVisible: true,
         secondsVisible: false,
-        borderColor: tokens.border,
+        // 축 경계선 off (2026-07-22 구분선 최소화 C안) — 눈금·라벨은 유지되고
+        // 축과 캔버스를 가르는 1px 선만 사라진다.
+        borderVisible: false,
         tickMarkFormatter: (time: UTCTimestamp, tickType: TickMarkType): string => {
           const virtualMs = (time as number) * 1000;
           const a = axisRef.current;
@@ -1175,7 +1177,7 @@ export function LiveChartRoot({
           }
         },
       },
-      rightPriceScale: { borderColor: tokens.border },
+      rightPriceScale: { borderVisible: false },
       autoSize: true,
     });
     setChartEntry({ chart: c as IChartApi, key: viewKey });

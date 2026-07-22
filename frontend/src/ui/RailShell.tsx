@@ -21,7 +21,7 @@ export function RailDrawer({
       id={id}
       aria-label={ariaLabel}
       data-testid={testId}
-      className={`h-full min-w-0 overflow-hidden border-l border-border bg-bg-subtle ${className}`.trim()}
+      className={`h-full min-w-0 overflow-hidden bg-bg-subtle ${className}`.trim()}
       style={{ width: 'var(--watchlist-panel-w)' }}
     >
       <div className="flex h-full flex-col">{children}</div>
@@ -39,7 +39,7 @@ export function RailDrawerHeader({
   className?: string;
 }) {
   return (
-    <header className={`flex items-center gap-sm border-b border-border px-md py-sm ${className}`.trim()}>
+    <header className={`flex items-center gap-sm px-md py-sm ${className}`.trim()}>
       <h2 className="text-xs font-semibold uppercase text-fg-dim">{title}</h2>
       <span className="min-w-0 flex-1" />
       {actions}
@@ -49,7 +49,7 @@ export function RailDrawerHeader({
 
 export function RailDrawerSection({ className = '', children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={`border-b border-border p-md ${className}`.trim()}>
+    <div className={`p-md ${className}`.trim()}>
       {children}
     </div>
   );
@@ -114,7 +114,7 @@ export function RailGroupHeader({
     <button
       type="button"
       {...props}
-      className={`sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-bg-subtle px-3 py-1.5 text-left text-xs text-fg hover:bg-bg-input-hover ${className}`.trim()}
+      className={`sticky top-0 z-10 flex w-full items-center gap-2 bg-bg-subtle px-3 py-1.5 text-left text-xs text-fg hover:bg-bg-input-hover ${className}`.trim()}
     >
       {leading}
       <span className="min-w-0 flex-1 truncate">{children}</span>
@@ -131,7 +131,7 @@ export function RailTreeRow({
   return (
     <div
       {...props}
-      className={`flex cursor-pointer items-center gap-2 border-b border-border pl-10 pr-md py-sm hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-border-strong ${className}`.trim()}
+      className={`flex cursor-pointer items-center gap-2 pl-10 pr-md py-sm hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-border-strong ${className}`.trim()}
     >
       {children}
     </div>

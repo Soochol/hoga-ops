@@ -49,7 +49,8 @@ describe('WatchlistDrawer', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     expect(screen.getByTestId('watchlist-panel')).toHaveClass('bg-bg-subtle');
-    expect(screen.getByTestId('watchlist-panel')).toHaveClass('border-l');
+    // 경계선 없는 크롬 표면(2026-07-22 구분선 최소화 C안) — 분리는 bg-subtle 톤이 담당.
+    expect(screen.getByTestId('watchlist-panel')).not.toHaveClass('border-l');
     await waitFor(() => expect(screen.getByTestId('watchlist-row-005930')).toBeInTheDocument());
     expect(screen.getByText(/스윙/)).toBeInTheDocument();
     expect(screen.getByText(/미분류/)).toBeInTheDocument();

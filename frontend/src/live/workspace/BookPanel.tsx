@@ -108,9 +108,11 @@ export default function BookPanel({
             ))}
             {/* 매도↔매수 경계선(3열 공통 y). 좌측은 체결강도 행 상단이 그 y라
                 여기에 얹는다 — 중앙 PriceCell·우측 QtyBar 의 topDivider 와 같은
-                `border-strong` 톤이라야 한 줄로 이어져 보인다. */}
+                `border` 톤이라야 한 줄로 이어져 보인다(2026-07-22 구분선 최소화
+                C안: strong→border 한 단계 완화, 격자는 잔향만). */}
             <div
-              className="flex items-center justify-between border-t border-border-strong px-2"
+              data-book-divider=""
+              className="flex items-center justify-between border-t border-border px-2"
               style={{ height: ROW_H }}
             >
               <span className="text-xs text-fg-dim">체결강도</span>
@@ -145,8 +147,9 @@ export default function BookPanel({
             ))}
           </div>
 
-          {/* 중앙: 가격축 */}
-          <div className="flex flex-col border-x border-border">
+          {/* 중앙: 가격축 — 세로 프레임(border-x) 없음. 열 분리는 좌우 잔량 바의
+              방향(가격축 쪽으로 자람)과 정렬이 담당한다(C안). */}
+          <div className="flex flex-col">
             <div style={{ height: ROW_H }} />
             {asksDesc.map((l, i) => (
               <PriceCell
@@ -254,7 +257,7 @@ function ExpectedFillBanner({
   const color = dirClass(price, baselinePrice);
   return (
     <div
-      className="flex items-baseline justify-center gap-6 border-b border-border bg-bg-subtle px-3 py-1.5"
+      className="flex items-baseline justify-center gap-6 bg-bg-subtle px-3 py-1.5"
       data-testid="book-expected-fill"
     >
       <span className="flex items-baseline gap-1.5 whitespace-nowrap">
@@ -322,7 +325,7 @@ function PriceCell({
   // 경계선을 셀 **바깥** 래퍼에 그린다 — 현재가가 매수 1호가인 흔한 경우 boxed 의
   // 전체 테두리와 같은 요소를 다투게 되어 박스 윗변만 색이 갈린다. 래퍼(1px) +
   // 셀(ROW_H-1) = ROW_H 라 21행 정렬 계약은 유지된다.
-  return <div className="border-t border-border-strong">{cell}</div>;
+  return <div data-book-divider="" className="border-t border-border">{cell}</div>;
 }
 
 /** 깊이 막대. ask 는 가격축 쪽(우)에서, bid 는 가격축 쪽(좌)에서 자란다. */
@@ -345,8 +348,9 @@ function QtyBar({
   const isAsk = side === 'ask';
   return (
     <div
+      data-book-divider={topDivider ? '' : undefined}
       className={`relative flex items-center ${
-        topDivider ? 'border-t border-border-strong' : ''
+        topDivider ? 'border-t border-border' : ''
       }`}
       style={{ height: ROW_H }}
     >
@@ -476,7 +480,7 @@ function TotalQtyStrip({
   const ask = snapshot.tot_ask;
   const bid = snapshot.tot_bid;
   return (
-    <div className="border-t border-border-strong">
+    <div className="border-t border-border">
       {maskRatio ? (
         <div className="h-1 bg-bg-subtle" data-testid="book-total-masked" />
       ) : (

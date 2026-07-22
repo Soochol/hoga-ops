@@ -49,7 +49,9 @@ export interface WindowFrameCoreProps {
   id: string;
   rect: WindowRectPx;
   zIndex: number;
-  /** 최상단(포커스) 창 여부 — 헤더 밴드 틴트로만 표현한다. */
+  /** 최상단(포커스) 창 여부 — 헤더 밴드 틴트로만 표현한다.
+   *  헤더는 구분선 없는 톤 밴드(비포커스 --bg-subtle / 포커스 --tint-selection) —
+   *  2026-07-22 구분선 최소화 C안: 창 내부 위계는 선이 아니라 명도가 담당한다. */
   focused: boolean;
   /** 헤더 내용(⠿ 오른쪽, × 왼쪽) — 제목·뱃지 등 페이지가 구성한다. */
   header: React.ReactNode;
@@ -93,8 +95,8 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
         <div
           data-handle="move"
           data-focused={focused ? '' : undefined}
-          className={`flex h-[26px] shrink-0 cursor-grab items-center gap-1.5 border-b border-border px-1.5 active:cursor-grabbing ${
-            focused ? 'bg-tint-selection' : ''
+          className={`flex h-[26px] shrink-0 cursor-grab items-center gap-1.5 px-1.5 active:cursor-grabbing ${
+            focused ? 'bg-tint-selection' : 'bg-bg-subtle'
           }`}
           onPointerDown={(e) => onHandleDown(e, id, 'move')}
         >
