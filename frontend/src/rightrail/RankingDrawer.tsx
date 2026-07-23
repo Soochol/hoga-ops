@@ -110,9 +110,10 @@ export function RankingDrawer() {
   const [kind, setKind] = useState<RankingKind>('change');
   const [market, setMarket] = useState<RankingMarket>('all');
   const [direction, setDirection] = useState<RankingDirection>('up');
+  const [excludeEtf, setExcludeEtf] = useState(false);
   const [sortMode, setSortMode] = useState<RankingSortMode>('default');
 
-  const { data, isPending, isError, error } = useLiveRankings({ kind, market, direction });
+  const { data, isPending, isError, error } = useLiveRankings({ kind, market, direction, excludeEtf });
   const rows = useMemo(() => sortRankingRows(data?.rows ?? [], sortMode), [data?.rows, sortMode]);
 
   const sensors = useSensors(useSensor(PointerSensor, RANKING_DRAG_SENSOR_OPTIONS));
@@ -187,6 +188,21 @@ export function RankingDrawer() {
               <option key={m.key} value={m.key}>{m.label}</option>
             ))}
           </select>
+          {/* ETF 제외 — 시장 필터와 직교하는 축이라 별도 토글. on 이면 백엔드가
+              security_type(etf/etn) 종목을 응답에서 제거(exclude_etf). */}
+          <button
+            type="button"
+            aria-pressed={excludeEtf}
+            onClick={() => setExcludeEtf((v) => !v)}
+            title="ETF·ETN 종목을 순위에서 제외"
+            className={`rounded-md border px-2 py-[3px] text-xs ${
+              excludeEtf
+                ? 'border-accent bg-tint-selection text-accent'
+                : 'border-border bg-bg-input text-fg-dim hover:bg-bg-input-hover'
+            }`}
+          >
+            ETF 제외
+          </button>
           {kind === 'change' && (
             <SegmentedControl aria-label="정렬 방향" className="self-start">
               {(['up', 'down'] as const).map((d) => (

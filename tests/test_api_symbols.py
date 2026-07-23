@@ -1093,3 +1093,32 @@ async def test_coordinator_propagates_task_exception_to_all_waiters(
         await t2
 
     assert coord._inflight is None, "initiator must still clear _inflight on task failure"
+
+
+def _hit_typed(code: str, security_type: str) -> SymbolHit:
+    return SymbolHit(
+        code=code,
+        name=code,
+        market="KOSPI",  # type: ignore[arg-type]
+        security_type=security_type,  # type: ignore[arg-type]
+        captured_count=0,
+        captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
+    )
+
+
+def test_etf_etn_codes_filters_by_security_type(monkeypatch):
+    cache = [
+        _hit_typed("005930", "stock"),   # 삼성전자 — 통과
+        _hit_typed("069500", "etf"),     # KODEX 200 — 제외 대상
+        _hit_typed("Q500093", "etn"),    # ETN — 제외 대상
+    ]
+    monkeypatch.setattr(symbols_module, "_cache", cache)
+
+    # etf/etn 만, 요청 코드와 교집합
+    assert symbols_module.etf_etn_codes({"005930", "069500", "Q500093"}) == {"069500", "Q500093"}
+    # 일반주만 요청하면 빈 집합(제외 없음)
+    assert symbols_module.etf_etn_codes({"005930"}) == set()
+    # 마스터에 없는 코드(리츠·펀드 등 파서 드롭분)는 미포함 → 통과
+    assert symbols_module.etf_etn_codes({"999999"}) == set()
+    # 빈 입력은 빈 집합 (early return)
+    assert symbols_module.etf_etn_codes(set()) == set()

@@ -17,6 +17,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
 
+from hoga.api import symbols
 from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate
 from hoga.api.params import CODE_PATTERN
@@ -2221,12 +2222,17 @@ def build_router(
         kind: RankingKind = Query(...),
         market: RankingMarket = Query("all"),
         direction: RankingDirection = Query("up"),
+        exclude_etf: bool = Query(False),
     ) -> RankingsResponse:
         """시장 전체 순위 (키움 rkinfo 4종, kind 별 api-id 분기, TTL ~8s 캐시).
 
         우측 RightRail "순위" 드로어 소스. kind=change 만 direction(상승/하락)이
         의미 있고 나머지는 무시된다. market_open=False 면 프론트가 폴링을 멈추고
         "장 외" 라벨을 단다 — 비거래일엔 상류를 건너뛰고 빈(또는 웜) 목록을 준다.
+
+        exclude_etf=True 면 심볼 마스터의 security_type(etf/etn) 종목을 응답에서
+        제거한다. 필터는 라우트 후처리 — fetcher 캐시는 전체 리스트를 그대로 캐싱해
+        캐시 효율·조합 자유를 유지한다. 제거 후 rank 는 1부터 재부여(연속 순위)한다.
         """
         if kiwoom_rankings_fetcher_instance is None:
             raise HTTPException(503, "kiwoom credentials not configured")
@@ -2236,16 +2242,20 @@ def build_router(
             raise HTTPException(502, {"code": "kiwoom_api_error", "msg": str(e)}) from e
         except httpx.HTTPError as e:
             raise HTTPException(502, {"code": "kiwoom_http_error", "msg": str(e)}) from e
+        rows = snap.rows
+        if exclude_etf:
+            drop = symbols.etf_etn_codes({r.code for r in rows})
+            rows = tuple(r for r in rows if r.code not in drop)
         return RankingsResponse(
             kind=snap.kind,
             market=snap.market,
             direction=snap.direction,
             rows=[
                 RankingRowModel(
-                    rank=r.rank, code=r.code, name=r.name,
+                    rank=i, code=r.code, name=r.name,
                     price=r.price, change_pct=r.change_pct,
                 )
-                for r in snap.rows
+                for i, r in enumerate(rows, start=1)
             ],
             market_open=snap.market_open,
             fetched_at_ms=snap.fetched_at_ms,

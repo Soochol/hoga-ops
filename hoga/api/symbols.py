@@ -586,6 +586,19 @@ def search(q: str, *, limit: int = 20) -> list[SymbolHit]:
     return matches[:limit]
 
 
+def etf_etn_codes(codes: set[str]) -> set[str]:
+    """``codes`` 중 security_type 이 etf/etn 인 코드만 반환 — 순위 "ETF 제외" 필터용.
+
+    증권그룹구분코드 EF(ETF)/EN(ETN) 판별은 실 .mst 대조로 사실상 100% 정확
+    (단일종목 레버리지·해외물 포함, 코스닥엔 ETF/ETN 부재). 마스터에 없는 코드는
+    미포함 — 일반주로 간주해 통과시킨다(리츠·펀드 등 scope 밖 종목은 파서가
+    드롭하므로 여기서 조회 실패 → 유지, 사용자 결정은 ETF+ETN 만 제외). 순위 응답은
+    ~100행이라 _cache(≈4천행) 1회 순회로 충분(요청당 1회, TTL 캐시 뒤라 저빈도)."""
+    if not codes:
+        return set()
+    return {h.code for h in _cache if h.security_type in ("etf", "etn") and h.code in codes}
+
+
 def build_router(*, path: Path, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/symbols", tags=["symbols"])
 
