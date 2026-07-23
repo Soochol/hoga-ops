@@ -77,34 +77,34 @@ export function liveVenueRefetchInterval(venue: LiveVenueOption): 60_000 | false
 }
 
 /**
- * 체결/호가 스냅샷의 시장 태그(tagVenue)가 선택된 캔들 venue의 시장 구성에 속해
- * 오버레이·현재가 라인에 반영돼도 되는지 판정한다(#523 — ADR-0096 시간 게이트를
- * venue 태그 매칭으로 대체).
+ * venue 정책 **SSOT 술어** — 프레임(체결/호가 스냅샷, 캔들 오버레이 체결, WS 틱)의
+ * 시장 태그(tagVenue)가 선택된 venue 구성에 속해 표시·반영돼도 되는지 판정한다.
+ * 호가·체결 필터(`filterObByVenue`/`filterTradeByVenue`), 캔들 오버레이
+ * (`overlayLiveTrades*`), 현재가 라인, WS 틱 오버레이가 **모두 이 하나를 공유**한다
+ * (#523 — ADR-0096 시간 게이트를 venue 태그 매칭으로 대체).
  *
- *  - **KRX venue**: KRX 태그만 수용(태그 부재=KRX 하위호환). NXT 태그는 KRX 캔들에
- *    섞지 않는다.
- *  - **자동(UN) venue**: 태그가 있으면 KRX·NXT 둘 다 수용 — 백엔드가 시분할 구독
- *    하므로 시점당 한 시장(정규장=KRX, 그 외=NXT)만 도착한다(#524). 태그가 없으면
- *    (구백엔드) ADR-0096 시간 게이트로 폴백: 정규장 KRX 체결만.
- *  - **그 외**(제거된 NXT 등): 미수용.
+ * 판정은 **프레임 자기 t_ms** 기준이라 latest·cursor 모두에 올바르다:
+ *  - **KRX venue**: KRX 태그만(태그 부재=구백엔드 KRX 하위호환).
+ *  - **자동(UN) venue**: 프레임 시각의 시분할 구독 venue(`liveSubscriptionVenueForMs`
+ *    — 08:50~15:31 KRX, 그 밖 NXT)와 태그가 **일치할 때만**. 백엔드가 시분할 구독
+ *    하므로 정상 데이터는 시점당 한 시장만 오지만(#524), 전역·혼재 표시 버퍼엔
+ *    교차 클라이언트가 주입한 off-venue 프레임이 섞일 수 있어 t_ms 기준으로 배제한다.
+ *    무태그(구백엔드)는 KRX로 승격돼 구독창 안에서만 수용된다.
+ *
+ * (이전 `liveVenueAllowsTradeOverlay`는 UN에서 KRX·NXT 양시장을 무조건 수용했으나,
+ * 정상 데이터엔 결과가 같고 off-venue 오염만 더 엄격히 배제하도록 통일했다. 이로써
+ * 호가 필터/오버레이 두 규칙이 하나로 합쳐진다.)
  *
  * tagVenue는 TradeSnapshot/ObSnapshot.venue(백엔드 태그). undefined면 구백엔드로 간주.
  */
-export function liveVenueAllowsTradeOverlay(
+export function liveVenueAcceptsFrame(
   selectedVenue: LiveVenueOption,
   tagVenue: 'KRX' | 'NXT' | undefined,
   tMs: number,
 ): boolean {
   const tag = tagVenue ?? 'KRX';
   if (selectedVenue === 'KRX') return tag === 'KRX';
-  if (selectedVenue === 'UN') {
-    if (tagVenue === undefined) {
-      const date = realMsToYyyymmdd(tMs);
-      return tMs >= regularSessionOpenMs(date) && tMs <= regularSessionCloseMs(date);
-    }
-    return tag === 'KRX' || tag === 'NXT';
-  }
-  return false;
+  return tag === liveSubscriptionVenueForMs(tMs);
 }
 
 /**
