@@ -57,7 +57,7 @@ describe('DataSurface primitives', () => {
     );
 
     expect(screen.getByText('코드').parentElement).toHaveClass('border-b');
-    expect(screen.getByText('005930').parentElement).toHaveClass('h-orderbook-row');
+    expect(screen.getByText('005930').parentElement).toHaveClass('min-h-list-row');
     expect(screen.getByText('005930').parentElement).toHaveClass('custom-row');
   });
 

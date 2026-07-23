@@ -143,7 +143,7 @@ function GroupHeader(props: {
       {...(props.dragHandle?.listeners ?? {})}
       data-testid="watchlist-group-header"
       data-draggable={props.dragHandle ? '' : undefined}
-      className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-subtle hover:bg-bg-input-hover ${
+      className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 min-h-list-group-header text-sm font-semibold text-fg-dim bg-bg-subtle hover:bg-bg-input-hover ${
         props.dragHandle ? 'cursor-grab select-none touch-none' : ''
       }`}>
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
