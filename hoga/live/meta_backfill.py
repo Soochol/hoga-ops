@@ -52,15 +52,22 @@ def _is_yyyymmdd(name: str) -> bool:
     return True
 
 
-def _recompute_fields(snapshots_path: Path) -> dict:
+def _recompute_fields(
+    snapshots_path: Path, *,
+    session_close_ms: HogaMs | None = None,
+    collection_complete: bool = True,
+) -> dict:
     """Recompute the three completeness fields from a snapshots.parquet.
 
     Delegates the gap analysis + wire shape to ``promote._completeness_fields``
     (the same builder the live promoter uses) so backfill can't drift from it.
     Missing / unreadable parquet → zero in-session snapshots, which the shared
     ``analyze_gaps(anchor_edges=True)`` treats as a full-window gap
-    (is_partial=True). ``collection_complete`` is always True here: this sweep
-    only runs on past dates, whose streams have ended.
+    (is_partial=True). ``collection_complete`` defaults True — the live sweep
+    only runs on past dates, whose streams have ended; hogaplay backfill
+    (ADR-0126) passes the meta's own value to preserve it. ``session_close_ms``
+    defaults to the regular-session close; hogaplay backfill passes the meta's
+    per-date close for half-day safety.
     """
     ts_values: list[HogaMs] = []
     if snapshots_path.exists():
@@ -69,7 +76,11 @@ def _recompute_fields(snapshots_path: Path) -> dict:
             ts_values = [HogaMs(int(v)) for v in df["ts_ms"].to_list()]
         except Exception:  # noqa: BLE001 — corrupt parquet → treat as empty
             _log.warning("meta_backfill.snapshots_unreadable path=%s", snapshots_path)
-    return _completeness_fields(ts_values, collection_complete=True)
+    return _completeness_fields(
+        ts_values,
+        collection_complete=collection_complete,
+        session_close_ms=session_close_ms,
+    )
 
 
 def backfill_live_meta(
@@ -117,4 +128,71 @@ def backfill_live_meta(
                 meta.update(fields)
                 atomic_write_json(meta_path, meta, indent=2)
                 updated += 1
+    return BackfillResult(scanned=scanned, updated=updated, skipped=skipped)
+
+
+def backfill_hogaplay_meta(
+    data_dir: Path, *, dry_run: bool = False, now: datetime | None = None,
+) -> BackfillResult:
+    """Rewrite stale hogaplay ``is_partial``/``gap_ranges`` with the ADR-0126
+    session-edge anchors.
+
+    hogaplay meta written before ADR-0126 ran ``analyze_gaps`` with
+    ``anchor_edges=False``, so a leading gap — a next-morning capture past the
+    ~18h upstream window that lost the AM session — was recorded as
+    ``is_partial=false`` and mis-ranked as COMPLETE. This one-shot sweep
+    recomputes the two gap fields from the on-disk ``snapshots.parquet`` using
+    the edge anchors and the meta's per-date close, rewriting ONLY
+    ``is_partial``/``gap_ranges``. ``collection_complete`` and every other field
+    are preserved (unlike the live sweep, which *adds* missing fields). Idempotent:
+    a second run finds no diff and skips.
+
+    Only PAST Stock-Dates are touched (``date < today_kst``): today's capture may
+    still be running and the parser owns finalizing it.
+    """
+    today = (now or datetime.now(_KST)).strftime("%Y%m%d")
+    parquet_root = data_dir / "parquet"
+    scanned = updated = skipped = 0
+    if not parquet_root.exists():
+        return BackfillResult()
+    for date_dir in sorted(parquet_root.iterdir()):
+        if not date_dir.is_dir() or not _is_yyyymmdd(date_dir.name):
+            continue
+        if date_dir.name >= today:  # today/future: still-live or midnight-race
+            continue
+        for code_dir in sorted(date_dir.iterdir()):
+            if not code_dir.is_dir():
+                continue
+            meta_path = code_dir / "hogaplay" / "meta.json"
+            if not meta_path.exists():
+                continue
+            scanned += 1
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                _log.warning("meta_backfill.hogaplay_unreadable path=%s", meta_path)
+                skipped += 1
+                continue
+            close_raw = meta.get("regular_session_close_ms")
+            close_ms = (
+                HogaMs(close_raw) if isinstance(close_raw, int) and close_raw > 0 else None
+            )
+            new_fields = _recompute_fields(
+                code_dir / "hogaplay" / "snapshots.parquet",
+                session_close_ms=close_ms,
+                collection_complete=bool(meta.get("collection_complete", True)),
+            )
+            if (
+                meta.get("is_partial") == new_fields["is_partial"]
+                and meta.get("gap_ranges") == new_fields["gap_ranges"]
+            ):
+                skipped += 1
+                continue
+            if dry_run:
+                updated += 1
+                continue
+            meta["is_partial"] = new_fields["is_partial"]
+            meta["gap_ranges"] = new_fields["gap_ranges"]
+            atomic_write_json(meta_path, meta, indent=2)
+            updated += 1
     return BackfillResult(scanned=scanned, updated=updated, skipped=skipped)

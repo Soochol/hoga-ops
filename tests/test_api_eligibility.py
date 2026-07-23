@@ -58,6 +58,43 @@ def test_decide_capture_source_partial_retries_without_force_concept(tmp_path: P
     assert decision == CaptureDecision(skip_reason=None, resume=False)
 
 
+def _write_meta_with_gap(path: Path, *, gap_ranges: list[dict]) -> None:
+    """A source_partial meta carrying ADR-0126 gap_ranges (no identical count)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "collection_complete": True,
+        "is_partial": True,
+        "gap_ranges": gap_ranges,
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_100_000,
+    }))
+
+
+def test_decide_capture_edge_gap_skips_upstream_without_identical(tmp_path: Path) -> None:
+    """ADR-0126: source_partial + leading gap → upstream_gap skip, no identical
+    corroboration needed (the AM loss is an upstream-boundary loss up front)."""
+    _write_meta_with_gap(
+        tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
+        gap_ranges=[{"start_ms": 90_000_000, "end_ms": 144_318_939}],
+    )
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
+    )
+    assert decision == CaptureDecision(skip_reason="upstream_gap", resume=False)
+
+
+def test_decide_capture_interior_gap_still_proceeds(tmp_path: Path) -> None:
+    """ADR-0126: an interior gap alone stays retryable — decide_capture proceeds."""
+    _write_meta_with_gap(
+        tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
+        gap_ranges=[{"start_ms": 122_850_000, "end_ms": 123_550_010}],
+    )
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
+    )
+    assert decision == CaptureDecision(skip_reason=None, resume=False)
+
+
 def _write_meta_with_identical(path: Path, *, identical_capture_count: int) -> None:
     """A source_partial meta carrying ADR-0093's identical_capture_count."""
     path.parent.mkdir(parents=True, exist_ok=True)

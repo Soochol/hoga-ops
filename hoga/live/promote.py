@@ -77,19 +77,24 @@ def _collection_finished(date: str, *, now: datetime | None = None) -> bool:
 
 def _completeness_fields(
     ts_values: Iterable[HogaMs], *, collection_complete: bool,
+    session_close_ms: HogaMs | None = None,
 ) -> dict:
     """The completeness block for a live promotion — the SAME gap analysis
-    hogaplay's parser runs (``analyze_gaps``), with ``anchor_edges=True`` so a
-    stream that started late (13:00) or died mid-session is flagged by the
-    session-edge anchors even with no interior gap.
+    hogaplay's parser runs (``analyze_gaps``, ``anchor_edges=True`` since
+    ADR-0126) so a stream that started late (13:00) or died mid-session is
+    flagged by the session-edge anchors even with no interior gap.
 
     Shared by :func:`_build_meta` (live promote) and ``meta_backfill`` (retro-fit),
     so the two paths can't drift on gap semantics or the ``gap_ranges`` wire shape
     (same {start_ms, end_ms} form hogaplay's parser emits). ``ts_values`` are
     snapshot ``ts_ms`` in HHMMSSmmm (entity native, already HogaMs-compatible).
+
+    ``session_close_ms`` defaults to the regular-session close; hogaplay backfill
+    (ADR-0126) passes the meta's per-date close so a half-day is bounded correctly.
     """
+    close = session_close_ms if session_close_ms is not None else _REGULAR_SESSION_CLOSE_MS
     gaps = analyze_gaps(
-        ts_values, session_close_ms=_REGULAR_SESSION_CLOSE_MS, anchor_edges=True,
+        ts_values, session_close_ms=close, anchor_edges=True,
     )
     return {
         "collection_complete": collection_complete,
