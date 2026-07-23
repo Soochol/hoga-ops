@@ -42,7 +42,7 @@ import {
 } from './liveDateTime';
 import {
   effectiveSessionBoundsByDate,
-  liveVenueAllowsTradeOverlay,
+  liveVenueAcceptsFrame,
   liveVenueSessionBoundsMs,
   liveVenueUsesExtendedMinuteWindow,
 } from './liveVenuePolicy';
@@ -118,7 +118,7 @@ export function overlayLiveTradesOnCandles(
         // 주말 캔들이 붙고, 저장뷰 to_date 가 토/일로 박제된다. 백엔드 파서가 1차로
         // 거르지만(kiwoom_frames), 버퍼에 남은 틱까지 덮도록 여기서도 막는다.
         isKstWeekend(realMsToYyyymmdd(tMs)) ||
-        !liveVenueAllowsTradeOverlay(venue, snapshot.venue, tMs)
+        !liveVenueAcceptsFrame(venue, snapshot.venue, tMs)
       ) {
         continue;
       }
@@ -210,7 +210,7 @@ export function overlayLiveTradesOnCalendarCandles(
         // 주말 캔들이 붙고, 저장뷰 to_date 가 토/일로 박제된다. 백엔드 파서가 1차로
         // 거르지만(kiwoom_frames), 버퍼에 남은 틱까지 덮도록 여기서도 막는다.
         isKstWeekend(realMsToYyyymmdd(tMs)) ||
-        !liveVenueAllowsTradeOverlay(venue, snapshot.venue, tMs)
+        !liveVenueAcceptsFrame(venue, snapshot.venue, tMs)
       ) {
         continue;
       }

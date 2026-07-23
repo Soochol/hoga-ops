@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
 import { subscribeLive } from './ws';
@@ -6,6 +6,8 @@ import type { LiveSnapshotEntry } from './types';
 import type { AskPeakCandidate } from './types';
 import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
 import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
+import { filterObByVenue, filterTradeByVenue } from '../live/liveSidebarAdapters';
+import type { LiveVenueOption } from '../state/liveVenue';
 import { unixMsToKSTDate } from '../util/time';
 
 export type LiveTodayPeakBase = {
@@ -90,8 +92,13 @@ const EMPTY_BROKER_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.fr
  *
  * Returns parallel arrays per kind plus the initial response metadata so
  * panes can compute session bounds for chart timeframes.
+ *
+ * `venue` is **required**: ob/trade are filtered at this source boundary
+ * (filterObByVenue/filterTradeByVenue) so consumers can't accidentally read the
+ * global·mixed KRX+NXT buffer and silently ignore the user's venue selection
+ * (execution-window-datasource-policy). broker/initial are venue-agnostic.
  */
-export function useLiveSeries(code: string): LiveSeriesData {
+export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesData {
   const date = unixMsToKSTDate(Date.now());
   const initial = useQuery({
     queryKey: ['live', 'series', code, date],
@@ -160,15 +167,25 @@ export function useLiveSeries(code: string): LiveSeriesData {
   // sees the updated buffer contents.
   const currentInitial = initial.data?.code === code ? initial.data : undefined;
   const bufferVisible = !!code && bufferOwnerRef.current === code;
+  // One structural cast at the buffer boundary: the buffer stores raw
+  // {t_ms, kind, ...payload} dicts; the 'ob'/'trade' kinds carry the
+  // ObSnapshot/TradeSnapshot fields the poller's typed builders wrote.
+  const rawOb = bufferVisible
+    ? (readKind(bufferRef.current, 'ob', tick) as ReadonlyArray<ObSnapshot>)
+    : EMPTY_OB_SNAPSHOTS;
+  const rawTrade = bufferVisible
+    ? (readKind(bufferRef.current, 'trade', tick) as ReadonlyArray<TradeSnapshot>)
+    : EMPTY_TRADE_SNAPSHOTS;
+  // venue 필터를 소스에서 강제한다. readKind 는 내용 불변 시 stable-ref 를 주므로
+  // (LiveSnapshotBuffer.get) useMemo 가 재계산을 건너뛰어 소비처 memo 도 유지된다.
+  const ob = useMemo(() => filterObByVenue(rawOb, venue), [rawOb, venue]);
+  const trade = useMemo(() => filterTradeByVenue(rawTrade, venue), [rawTrade, venue]);
   return {
     initial: currentInitial,
     isLoading: initial.isLoading,
     error: initial.error,
-    // One structural cast at the buffer boundary: the buffer stores raw
-    // {t_ms, kind, ...payload} dicts; the 'ob'/'trade' kinds carry the
-    // ObSnapshot/TradeSnapshot fields the poller's typed builders wrote.
-    ob: bufferVisible ? readKind(bufferRef.current, 'ob', tick) as ReadonlyArray<ObSnapshot> : EMPTY_OB_SNAPSHOTS,
-    trade: bufferVisible ? readKind(bufferRef.current, 'trade', tick) as ReadonlyArray<TradeSnapshot> : EMPTY_TRADE_SNAPSHOTS,
+    ob,
+    trade,
     broker: bufferVisible ? readKind(bufferRef.current, 'broker', tick) : EMPTY_BROKER_SNAPSHOTS,
   };
 }

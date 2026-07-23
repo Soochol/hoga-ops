@@ -189,7 +189,7 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
   // 통째로 멈추고(refetchIntervalInBackground 기본 false + main.tsx 의
   // refetchOnWindowFocus:false), (2) 주기 자체가 틱으로 움직이는 차트·호가와 어긋난다.
   // 폴링은 그대로 남는다 — 기준가 공급자이자 WS 단절·체결 공백의 폴백이다.
-  const tickPrices = useLiveTickPrices(codes);
+  const tickPrices = useLiveTickPrices(codes, venue);
   const lastGoodByCodeRef = useRef(new Map<string, LiveQuote>());
   const quoteByCode = useMemo(() => {
     const currentQuotes = q.data?.quotes;

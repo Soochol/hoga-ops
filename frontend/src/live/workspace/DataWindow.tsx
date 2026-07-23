@@ -50,7 +50,6 @@ import {
   EMPTY_TRADE_SUMMARY,
   aggregateBrokerSeries,
   mergeBrokerSeriesWithLiveTail,
-  filterObByVenue,
   latestOrderbookSnapshot,
   latestTradeSummary,
   orderbookSnapshotAtCursor,
@@ -159,8 +158,8 @@ function LinkPendingCard({ kind, group }: { kind: WindowKind; group: GroupId }) 
 }
 
 function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
-  const live = useLiveSeries(code);
   const venue = useLiveVenueStore((s) => s.venue);
+  const live = useLiveSeries(code, venue);
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const link = useGroupChartLink(win.group);
   // 스팟 진입은 분봉 호버만(ADR-0044) — D/W/M 호버는 latest 유지.
@@ -171,9 +170,10 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     code: isSpot ? code : null,
     timeframe: spotTimeframe,
   });
-  // 선택 venue로 ob 버퍼를 한 번 거른다 — 전역·혼재 버퍼에서 per-user 선택 강제 +
-  // 아침 동시호가 두 시장 교대 깜빡임 차단. latest·delta·cursor 세 소비자에 공통 투입.
-  const venueOb = useMemo(() => filterObByVenue(live.ob, venue), [live.ob, venue]);
+  // ob/trade 는 useLiveSeries 가 선택 venue 로 소스에서 이미 필터한다(강제 경계) —
+  // 창에서 재필터하지 않는다. 호가·체결강도·체결 미니리스트가 같은 venue 를 본다.
+  const venueOb = live.ob;
+  const venueTrade = live.trade;
   const latestSnapshot = useMemo(() => latestOrderbookSnapshot(venueOb), [venueOb]);
   // HTS식 순간 증감 뱃지 — 라이브 latest 표시일 때만. 스팟 커서 중에는 비활성
   // (과거 시점 위에 "방금 변화" 뱃지는 거짓 정보) + 상태도 비워 복귀 시 낡은 뱃지 방지.
@@ -222,16 +222,16 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 아니다 — 스팟에서 latest 를 그대로 보여주면 호가는 과거인데 요약만 현재인
   // 시점 불일치가 생긴다. 그래서 스팟이면 비운다(패널이 "−" 로 렌더).
   const summary = useMemo(
-    () => (isSpot ? EMPTY_TRADE_SUMMARY : latestTradeSummary(live.trade)),
-    [isSpot, live.trade],
+    () => (isSpot ? EMPTY_TRADE_SUMMARY : latestTradeSummary(venueTrade)),
+    [isSpot, venueTrade],
   );
   // 체결 리스트: 버퍼 엔트리 1건에 체결 여러 개가 실린다. 최신이 위로 오도록
   // 뒤에서부터 펼치고, 표시분(9행 — BookPanel 3열 바닥 정렬)보다 넉넉히 잡아 자른다.
   const recentTrades = useMemo(() => {
     if (isSpot) return [];
     const out: BookTrade[] = [];
-    for (let i = live.trade.length - 1; i >= 0 && out.length < 24; i--) {
-      const rows = live.trade[i].trades;
+    for (let i = venueTrade.length - 1; i >= 0 && out.length < 24; i--) {
+      const rows = venueTrade[i].trades;
       if (!Array.isArray(rows)) continue;
       for (let j = rows.length - 1; j >= 0 && out.length < 24; j--) {
         const r = rows[j] as { price?: unknown; qty?: unknown; side?: unknown };
@@ -241,7 +241,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       }
     }
     return out;
-  }, [isSpot, live.trade]);
+  }, [isSpot, venueTrade]);
   const lastPrice = recentTrades.length > 0 ? recentTrades[0].price : null;
   return (
     <div className="flex h-full flex-col">
@@ -271,7 +271,10 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
 }
 
 function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
-  const live = useLiveSeries(code);
+  // broker 는 venue 무관이지만 useLiveSeries 시그니처가 venue 를 요구한다(ob/trade
+  // 소스 필터 강제). broker 버퍼는 필터되지 않고 원본 그대로 온다.
+  const venue = useLiveVenueStore((s) => s.venue);
+  const live = useLiveSeries(code, venue);
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const spotSeries = useLiveBrokersAtCursor({
@@ -330,7 +333,10 @@ const TRADE_TICK_LIMIT = 200;
  * 경로를 먼저 만들어야 한다.
  */
 function TradeWindow({ code }: { code: string }) {
-  const live = useLiveSeries(code);
+  const venue = useLiveVenueStore((s) => s.venue);
+  const live = useLiveSeries(code, venue);
+  // live.trade 는 useLiveSeries 가 선택 venue 로 소스에서 이미 필터한다(강제 경계).
+  // 없으면 KRX 선택에도 NXT 체결이 섞여 보인다(execution-window-datasource-policy).
   const view = useMemo(() => buildTradeTickView(live.trade, TRADE_TICK_LIMIT), [live.trade]);
   // 대량 체결 강조(⚙️ 설정 「체결창」, 전역 1벌). 설정은 만원 단위 — 원으로 환산해 전달.
   const highlightEnabled = useChartPrefsStore((s) => s.tradeHighlightEnabled);
@@ -363,7 +369,10 @@ function InvestorWindow({ code }: { code: string }) {
 const VDIST_FALLBACK = { rangeCount: 10, color: '#64748B', maxColor: '#EAB308', hoverCutoffEnabled: false };
 
 function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
-  const live = useLiveSeries(code);
+  // 매물대는 live.trade 로 당일 분포를 잇는다 — useLiveSeries 가 선택 venue 로 소스에서
+  // 필터하므로 매물대도 venue 정합(이전엔 원본 혼재 버퍼를 그대로 소비).
+  const venue = useLiveVenueStore((s) => s.venue);
+  const live = useLiveSeries(code, venue);
   const link = useGroupChartLink(win.group);
   // 링크의 code 가 창의 code 와 다르면(그룹 종목 교체 직후 발행 지연 프레임) 소비하지
   // 않는다 — 이전 종목 번들이 새 종목 창에 새는 것을 막는 가드.

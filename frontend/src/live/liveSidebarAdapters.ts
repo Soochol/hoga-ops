@@ -4,8 +4,8 @@ import type {
   OrderbookLevel,
   OrderbookSnapshot,
 } from '../api/types';
-import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
-import { liveSubscriptionVenueForMs } from './liveVenuePolicy';
+import { isContinuousBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
+import { liveVenueAcceptsFrame } from './liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 type RawSnapshot = Record<string, unknown>;
@@ -13,23 +13,29 @@ type RawSnapshot = Record<string, unknown>;
 /**
  * 선택 venue로 라이브 `ob` 버퍼를 거른다 — 표시 버퍼는 전역·혼재(전달 무게이트,
  * stream.py §11)이므로 per-user venue 선택을 강제할 수 있는 유일 지점이다. 깜빡임의
- * 근원(두 시장 프레임 교대)도 여기서 끊긴다.
- *
- * 판정은 **프레임 자기 t_ms** 기준이라 latest(현재 책)·cursor(과거 책)·delta(연속
- * 증감) 세 소비자 모두에 올바르다(현재 벽시계 기준이면 과거 호버가 깨진다):
- *  - **KRX**: KRX 태그만(태그 부재=구백엔드 KRX 하위호환).
- *  - **UN(시간대 자동)**: 프레임 시각의 시분할 구독 venue와 일치할 때만
- *    (`liveSubscriptionVenueForMs` — 08:50~15:31 KRX). 교차 클라이언트가 주입한
- *    off-venue 프레임을 배제한다.
+ * 근원(두 시장 프레임 교대)도 여기서 끊긴다. 판정은 정책 SSOT 술어
+ * `liveVenueAcceptsFrame`(프레임 자기 t_ms 기준)에 위임 — latest·cursor·delta 소비자
+ * 모두에 올바르다.
  */
 export function filterObByVenue(
   ob: readonly ObSnapshot[],
   selectedVenue: LiveVenueOption,
 ): readonly ObSnapshot[] {
-  if (selectedVenue === 'KRX') {
-    return ob.filter((f) => (f.venue ?? 'KRX') === 'KRX');
-  }
-  return ob.filter((f) => (f.venue ?? 'KRX') === liveSubscriptionVenueForMs(f.t_ms));
+  return ob.filter((f) => liveVenueAcceptsFrame(selectedVenue, f.venue, f.t_ms));
+}
+
+/**
+ * 선택 venue로 라이브 `trade` 버퍼를 거른다 — `filterObByVenue`(호가)의 체결
+ * 대응물이자 같은 SSOT 술어(`liveVenueAcceptsFrame`)를 공유한다. 표시 버퍼는 전역·
+ * 혼재(전달 무게이트)이므로 체결창·체결강도·체결 미니리스트가 per-user venue 선택을
+ * 강제할 수 있는 유일 지점이다. 호가만 걸러지고 체결은 KRX+NXT가 섞여 보이던
+ * 불일치(execution-window-datasource-policy)를 여기서 끊는다.
+ */
+export function filterTradeByVenue(
+  trade: readonly TradeSnapshot[],
+  selectedVenue: LiveVenueOption,
+): readonly TradeSnapshot[] {
+  return trade.filter((f) => liveVenueAcceptsFrame(selectedVenue, f.venue, f.t_ms));
 }
 
 const EMPTY_LEVEL: OrderbookLevel = { price: 0, qty: 0 };

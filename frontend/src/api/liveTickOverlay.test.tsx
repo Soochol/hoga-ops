@@ -419,4 +419,28 @@ describe('WS 틱 등락률 오버레이', () => {
 
     expect(result.current.quoteByCode.get('005930')?.price).toBe(244500);
   });
+
+  it('선택 venue 밖 체결(KRX 선택 + NXT 태그)은 등락률을 갱신하지 않는다', async () => {
+    mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
+    const hook = renderHook(({ v }) => useLiveQuoteOverlay(['005930'], v), {
+      wrapper: wrap(), initialProps: { v: 'KRX' as const },
+    });
+    await waitFor(() => expect(hook.result.current.quoteByCode.get('005930')?.change_pct).toBe(-4.12));
+    await waitFor(() => expect(handlers.has('005930')).toBe(true));
+
+    // KRX 선택인데 NXT 태그 체결 → 소스에서 배제되어 폴링 등락률이 그대로 유지된다.
+    act(() => {
+      handlers.get('005930')?.({ t_ms: 1, kind: 'trade', venue: 'NXT', trades: [{ t_ms: 1, price: 249000, qty: 1 }] });
+      vi.advanceTimersByTime(200);
+    });
+    expect(hook.result.current.quoteByCode.get('005930')?.price).toBe(244500);
+    expect(hook.result.current.quoteByCode.get('005930')?.change_pct).toBe(-4.12);
+
+    // 대조: KRX 태그 체결은 반영된다.
+    act(() => {
+      handlers.get('005930')?.({ t_ms: 1, kind: 'trade', venue: 'KRX', trades: [{ t_ms: 1, price: 249000, qty: 1 }] });
+      vi.advanceTimersByTime(200);
+    });
+    expect(hook.result.current.quoteByCode.get('005930')?.price).toBe(249000);
+  });
 });

@@ -499,10 +499,16 @@ describe('overlayLiveTradesOnCalendarCandles', () => {
     expect(nextMonth[1]).toMatchObject({ ts_ms: 1780272000000 });
   });
 
-  it('UN venue: accepts NXT-tagged trades that KRX would drop', () => {
+  it('UN venue: accepts NXT-tagged trades in their own (post-close) session window', () => {
     const candles = [lastCandle()];
-    const un = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 30_000, 70150, 7, 'NXT')], 'D', 'UN');
+    // 장후 NXT 시간대(16:00 = BASE 09:00 + 7h)의 NXT 체결은 당일 일봉에 반영된다.
+    // 정규장 시각의 NXT 태그는 off-venue라 배제되므로(엄격 통일 규칙 — 정책 SSOT
+    // liveVenueAcceptsFrame) NXT 자기 시장 시각으로 수용을 검증한다.
+    const un = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 7 * 3600_000, 70150, 7, 'NXT')], 'D', 'UN');
     expect(un[0]).toMatchObject({ close: 70150 });
+    // 대조: 정규장 시각(09:00:30)의 NXT 태그는 교차오염이라 배제 → close 불변
+    const off = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 30_000, 70150, 7, 'NXT')], 'D', 'UN');
+    expect(off[0]).toMatchObject({ close: 70050 });
   });
 
   it('D: appended new-day candles stay ts_ms-ascending even if buffer trades are out of order', () => {

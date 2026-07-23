@@ -33,7 +33,7 @@ describe('useLiveSeries', () => {
       brokers: [],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { result } = renderHook(() => useLiveSeries('005930'), { wrapper: wrap(qc) });
+    const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
     await waitFor(() => expect(result.current.initial).toBeDefined());
     expect(result.current.ob).toEqual([]);
     expect(result.current.trade).toEqual([]);
@@ -46,7 +46,7 @@ describe('useLiveSeries', () => {
       session_close_ms: null, is_open: true, snapshots: [], trades: [], brokers: [],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { result } = renderHook(() => useLiveSeries('005930'), { wrapper: wrap(qc) });
+    const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
     await waitFor(() => expect(result.current.initial).toBeDefined());
     await waitFor(() => expect(fakeSockets.length).toBe(1));
     const sock = fakeSockets[0];
@@ -73,7 +73,7 @@ describe('useLiveSeries', () => {
       brokers: [],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { result } = renderHook(() => useLiveSeries('005930'), { wrapper: wrap(qc) });
+    const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
     await waitFor(() => expect(result.current.ob).toHaveLength(2));
     expect(result.current.trade).toHaveLength(1);
   });
@@ -90,7 +90,7 @@ describe('useLiveSeries', () => {
       brokers: [{ t_ms: 50, kind: 'broker', broker: 'stale' }],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { result } = renderHook(() => useLiveSeries('000660'), { wrapper: wrap(qc) });
+    const { result } = renderHook(() => useLiveSeries('000660', 'KRX'), { wrapper: wrap(qc) });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.initial).toBeUndefined();
     expect(result.current.ob).toEqual([]);
@@ -105,11 +105,35 @@ describe('useLiveSeries', () => {
       snapshots: [], trades: [], brokers: [],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { unmount } = renderHook(() => useLiveSeries('005930'), { wrapper: wrap(qc) });
+    const { unmount } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
     await waitFor(() => expect(fakeSockets.length).toBe(1));
     const sock = fakeSockets[0];
     sock.open();
     unmount();
     expect(sock.parsedSent()).toContainEqual({ action: 'unsubscribe', code: '005930' });
+  });
+
+  it('filters ob/trade by the selected venue at the source (KRX drops NXT-tagged frames)', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      code: '005930', date: '20260527', session_open_ms: 1000,
+      session_close_ms: null, is_open: true, snapshots: [], trades: [], brokers: [],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
+    await waitFor(() => expect(result.current.initial).toBeDefined());
+    await waitFor(() => expect(fakeSockets.length).toBe(1));
+    const sock = fakeSockets[0];
+    sock.open();
+    act(() => {
+      // KRX 태그·무태그(=KRX)는 통과, NXT 태그는 KRX 선택에서 소스에서 배제된다.
+      sock.message({ ch: 'live', code: '005930', data: { t_ms: 100, kind: 'ob', venue: 'KRX', total_bid_qty: 1 } });
+      sock.message({ ch: 'live', code: '005930', data: { t_ms: 101, kind: 'ob', venue: 'NXT', total_bid_qty: 2 } });
+      sock.message({ ch: 'live', code: '005930', data: { t_ms: 102, kind: 'trade', venue: 'NXT', trades: [] } });
+      sock.message({ ch: 'live', code: '005930', data: { t_ms: 103, kind: 'trade', trades: [] } });
+    });
+    // ob: KRX 태그 1건만(NXT 배제). trade: 무태그 1건만(NXT 배제).
+    await waitFor(() => expect(result.current.ob).toHaveLength(1));
+    expect(result.current.ob[0]).toMatchObject({ venue: 'KRX' });
+    expect(result.current.trade).toHaveLength(1);
   });
 });
