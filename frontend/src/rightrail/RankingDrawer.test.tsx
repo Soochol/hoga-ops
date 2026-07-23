@@ -78,6 +78,21 @@ describe('RankingDrawer', () => {
     });
   });
 
+  it('ETF 제외 토글이 exclude_etf=true 로 재조회한다', async () => {
+    const apiCall = vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
+    renderDrawer();
+    await screen.findByText('삼성전자');
+
+    // 기본 요청엔 exclude_etf 가 없다.
+    expect((apiCall.mock.calls[0][0] as string)).not.toContain('exclude_etf');
+
+    fireEvent.click(screen.getByRole('button', { name: 'ETF 제외' }));
+
+    await waitFor(() => {
+      expect(apiCall.mock.calls.some((c) => (c[0] as string).includes('exclude_etf=true'))).toBe(true);
+    });
+  });
+
   it('direction toggle shows only on the change kind', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
     renderDrawer();

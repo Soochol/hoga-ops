@@ -41,12 +41,14 @@ export function useLiveRankings(params: {
   kind: RankingKind;
   market: RankingMarket;
   direction: RankingDirection;
+  excludeEtf: boolean;
 }) {
-  const { kind, market, direction } = params;
+  const { kind, market, direction, excludeEtf } = params;
   return useQuery({
-    queryKey: ['live-rankings', kind, market, direction],
+    queryKey: ['live-rankings', kind, market, direction, excludeEtf],
     queryFn: async ({ signal }): Promise<RankingsView> => {
       const q = new URLSearchParams({ kind, market, direction });
+      if (excludeEtf) q.set('exclude_etf', 'true');
       const res = await apiCall<RankingsResponseWire>(`/api/live/rankings?${q}`, { signal });
       return { rows: res.rows, marketOpen: res.market_open, fetchedAtMs: res.fetched_at_ms };
     },
