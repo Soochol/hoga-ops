@@ -171,6 +171,8 @@
   --h-toolbar: 3.75rem; /* 67.5px @ default; 60px base intent — Replay-page toolbar row */
   --h-pricestrip: 3.25rem; /* 58.5px @ default; 52px base intent — Current-price strip below toolbar */
   --h-orderbook-row: 1.375rem; /* 24.75px @ default; 22px base intent — Single row in the orderbook table */
+  --list-row-min-h: 1.5625rem; /* 28.125px @ default; 25px base intent — Shared list row min-height — watchlist/ranking/screener-result/heatmap rows align (≈28px @ default density, matching the watchlist row) */
+  --list-group-header-min-h: 1.8125rem; /* 32.625px @ default; 29px base intent — Shared list group-header min-height — watchlist/heatmap group headers align (≈32px @ default density, matching the watchlist group header) */
   --h-capture-row: 2.25rem; /* 40.5px @ default; 36px base intent — Single row in the capture queue */
   --h-live-header: 2rem; /* 36px @ default; 32px base intent — Live page header row */
   --h-top-nav: 2rem; /* 36px @ default; 32px base intent — Global top navigation row */

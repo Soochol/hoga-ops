@@ -46,6 +46,8 @@ export const TAILWIND_THEME = {
     "app-floor": "var(--app-floor-min-w)",
   },
   minHeight: {
+    "list-row": "var(--list-row-min-h)",
+    "list-group-header": "var(--list-group-header-min-h)",
     "app-floor": "var(--app-floor-min-h)",
   },
   borderRadius: {

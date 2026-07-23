@@ -4,9 +4,10 @@ import { dropIndicatorClass, sortableDraggingStyle, type DropIndicator } from '.
 
 /** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가(+등락률)(우) │ (선택) 트레일링 액션.
  *  ScreenerResultRow 의 시각/키보드 계약을 그대로 가져오고 quote 셀을 우측에 둔다.
- *  밀도는 스크리너 결과표(DataTableRow)·HeatmapRow 와 정합 — py-0.5(콤팩트 2px 패딩) +
- *  행 하단 border-b 구분선. 우측 레일 세 드로어(관심·순위·스크리너)가 이 행을 공유하므로
- *  한 곳만 바꿔도 레일 전체가 같은 밀도로 통일된다(히트맵은 별도지만 이미 동일 톤).
+ *  밀도는 스크리너 결과표(DataTableRow)·HeatmapRow 와 정합 — 공용 min-h-list-row 토큰으로
+ *  행 높이(≈28px @ 기본 밀도)를 맞추고, py-0.5 패딩 + 행 하단 border-b 구분선을 얹는다.
+ *  우측 레일 세 드로어(관심·순위·스크리너)가 이 행을 공유하고, 스크리너 결과표·히트맵 행도
+ *  같은 토큰(design-tokens list-row-min-h)에서 높이를 얻으므로 네 리스트가 한 값으로 통일된다.
  *  trailingAction: 패널이 주입하는 행 우측 affordance(하트/휴지통). 자체적으로
  *  stopPropagation/aria 를 책임진다. <li> 는 group 이라 액션이 group-hover/
  *  group-focus-within 로 등장 처리를 할 수 있다. */
@@ -107,7 +108,7 @@ export function QuoteRow({
       onClick={onClick}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
-      className={`group cursor-pointer touch-none ${leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 flex items-center gap-2 border-b border-border outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
+      className={`group cursor-pointer touch-none ${leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center gap-2 border-b border-border outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
         flash ? 'screener-row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{

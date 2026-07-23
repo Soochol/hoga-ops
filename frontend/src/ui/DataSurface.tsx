@@ -163,7 +163,7 @@ export function DataTableRow<T extends ElementType = 'div'>({
   return (
     <Tag
       {...props}
-      className={`grid ${columns} items-center gap-2 px-sm h-orderbook-row border-b text-sm text-fg ${className}`.trim()}
+      className={`grid ${columns} items-center gap-2 px-sm min-h-list-row border-b text-sm text-fg ${className}`.trim()}
     >
       {children}
     </Tag>

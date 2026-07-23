@@ -103,6 +103,8 @@ export const SIZE_TOKENS = {
   'h-toolbar':          { rem: 3.75,    baseIntentPx: 60, usage: 'Replay-page toolbar row' },
   'h-pricestrip':       { rem: 3.25,    baseIntentPx: 52, usage: 'Current-price strip below toolbar' },
   'h-orderbook-row':    { rem: 1.375,   baseIntentPx: 22, usage: 'Single row in the orderbook table' },
+  'list-row-min-h':     { rem: 1.5625,  baseIntentPx: 25, usage: 'Shared list row min-height — watchlist/ranking/screener-result/heatmap rows align (≈28px @ default density, matching the watchlist row)' },
+  'list-group-header-min-h': { rem: 1.8125, baseIntentPx: 29, usage: 'Shared list group-header min-height — watchlist/heatmap group headers align (≈32px @ default density, matching the watchlist group header)' },
   'h-capture-row':      { rem: 2.25,    baseIntentPx: 36, usage: 'Single row in the capture queue' },
   'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: 'Live page header row' },
   'h-top-nav':          { rem: 2,       baseIntentPx: 32, usage: 'Global top navigation row' },
