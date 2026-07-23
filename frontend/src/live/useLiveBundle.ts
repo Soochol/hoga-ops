@@ -697,30 +697,36 @@ export function useLiveBundle(
   );
   // Chart session follows the selected KIS Venue for minute candles. HOGA/WS
   // side remains KRX-only, so buildHogaSeries keeps the default KRX bounds.
+  //
+  // 예외: 우회 ON(kis_rest_bypass) 분봉은 디스크(hogaplay/range) 소스라 KRX 전용
+  // (ADR-0003 "Hogaplay is a KRX-only product" · ADR-0078 venue=KIS 실시간 전용).
+  // 그래서 venue=UN 이어도 확장창(08:00~20:00)이 아니라 KRX 정규창을 써야 한다 —
+  // 안 그러면 KRX 캔들에 데이터 없는 확장 구간이 붙어 축이 비대칭해진다.
+  const useExtendedWindow = liveVenueUsesExtendedMinuteWindow(venue) && !kisRestBypassEnabled;
   const todayChartSession = useMemo(
     () => {
       if (!isMinute) return defaultKrxSession;
       const effective = effectiveSessionByDate.get(todayKstYyyymmdd);
       if (effective) return effective;
-      return liveVenueUsesExtendedMinuteWindow(venue)
+      return useExtendedWindow
         ? liveVenueSessionBoundsMs(todayKstYyyymmdd, venue)
         : defaultKrxSession;
     },
-    [defaultKrxSession, effectiveSessionByDate, isMinute, todayKstYyyymmdd, venue],
+    [defaultKrxSession, effectiveSessionByDate, isMinute, todayKstYyyymmdd, venue, useExtendedWindow],
   );
   const sessionBoundsForDate = useMemo(
     () =>
       isMinute
         ? (yyyymmdd: string) =>
             effectiveSessionByDate.get(yyyymmdd) ??
-            (liveVenueUsesExtendedMinuteWindow(venue)
+            (useExtendedWindow
               ? liveVenueSessionBoundsMs(yyyymmdd, venue)
               : {
                   open_ms: regularSessionOpenMs(yyyymmdd),
                   close_ms: regularSessionCloseMs(yyyymmdd),
                 })
         : undefined,
-    [effectiveSessionByDate, isMinute, venue],
+    [effectiveSessionByDate, isMinute, venue, useExtendedWindow],
   );
 
   // CHART side (candles + segments + investor). The ob path only contributes the
