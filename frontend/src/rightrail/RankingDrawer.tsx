@@ -21,6 +21,7 @@ import {
   type RankingRow,
 } from '../api/liveRankings';
 import { QuoteRow } from './QuoteRow';
+import { QuoteRowGroupMenu } from './QuoteRowGroupMenu';
 import {
   nextRankingSortMode,
   rankingSortDescription,
@@ -70,10 +71,12 @@ function DraggableRankingRow({
   row,
   active,
   onActivate,
+  onContextMenu,
 }: {
   row: RankingRow;
   active: boolean;
   onActivate: (e?: JumpModifiers) => void;
+  onContextMenu: (e: React.MouseEvent<HTMLLIElement>) => void;
 }) {
   const { setNodeRef, listeners, attributes, transform, isDragging } = useDraggable({
     id: `${RANKING_ENTRY_TYPE}:${row.code}`,
@@ -89,6 +92,7 @@ function DraggableRankingRow({
       ariaLabel={`${row.rank}위 ${row.name} ${row.code} 차트 열기`}
       testId={`ranking-row-${row.code}`}
       onClick={onActivate}
+      onContextMenu={onContextMenu}
       leading={
         <span className="w-5 flex-none text-right font-data tabular-nums text-xs text-fg-dimmer">
           {row.rank}
@@ -112,6 +116,10 @@ export function RankingDrawer() {
   const [direction, setDirection] = useState<RankingDirection>('up');
   const [excludeEtf, setExcludeEtf] = useState(false);
   const [sortMode, setSortMode] = useState<RankingSortMode>('default');
+
+  // 행 우클릭 → 관심 그룹 편집 메뉴(스크리너 패널과 동일 관용구). raw 커서 좌표만
+  // 담고 위치 클램프는 QuoteRowGroupMenu 가 실측 보정한다.
+  const [rowMenu, setRowMenu] = useState<{ code: string; name: string; x: number; y: number } | null>(null);
 
   const { data, isPending, isError, error } = useLiveRankings({ kind, market, direction, excludeEtf });
   const rows = useMemo(() => sortRankingRows(data?.rows ?? [], sortMode), [data?.rows, sortMode]);
@@ -259,12 +267,26 @@ export function RankingDrawer() {
                   row={r}
                   active={r.code === activeCode}
                   onActivate={(e) => openLive(r.code, r.name, e)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setRowMenu({ code: r.code, name: r.name, x: e.clientX, y: e.clientY });
+                  }}
                 />
               ))}
             </ul>
           </DndContext>
         )}
       </RailDrawerBody>
+
+      {rowMenu && (
+        <QuoteRowGroupMenu
+          code={rowMenu.code}
+          name={rowMenu.name}
+          x={rowMenu.x}
+          y={rowMenu.y}
+          onClose={() => setRowMenu(null)}
+        />
+      )}
     </RailDrawer>
   );
 }

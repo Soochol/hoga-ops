@@ -541,7 +541,7 @@ describe('ScreenerDrawer', () => {
     expect(screen.getByTestId('screener-row-005930')).toBeInTheDocument();        // testid preserved (regression)
   });
 
-  it('clicking a row heart opens the group picker (v3)', async () => {
+  it('right-clicking a row opens the group menu (하트 버튼 대체)', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
@@ -549,10 +549,9 @@ describe('ScreenerDrawer', () => {
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    const heart = within(screen.getByTestId('screener-row-005930')).getByRole('button', { name: '관심 그룹 편집' });
-    fireEvent.click(heart);
-    expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
-    expect(useLivePageStore.getState().activeCode).toBeNull();   // 하트는 행 활성화와 무관
+    fireEvent.contextMenu(screen.getByTestId('screener-row-005930'));
+    expect(screen.getByRole('menu', { name: '삼성전자 관심 그룹' })).toBeInTheDocument();
+    expect(useLivePageStore.getState().activeCode).toBeNull();   // 우클릭은 행 활성화와 무관
   });
 
   it('shows — for a row with no live quote (순수 라이브, EOD 코퍼스 폴백 없음)', async () => {
@@ -584,7 +583,7 @@ describe('ScreenerDrawer', () => {
     expect(screen.getAllByText(/갱신 실패/)).toHaveLength(1);
   });
 
-  it('a member row shows a filled heart; clicking opens the group picker (v3)', async () => {
+  it('a member row is pre-checked in the right-click group menu (v3)', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
       folders: [{ id: 'f_a', name: '스윙', order: 0 }],
@@ -596,13 +595,14 @@ describe('ScreenerDrawer', () => {
       lastScan: makeScan(),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
-    // 멤버십은 watchlist 쿼리(비동기) 로드 후 반영 → aria-pressed를 waitFor.
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.contextMenu(screen.getByTestId('screener-row-005930'));
+    // 멤버십은 watchlist 쿼리(비동기) 로드 후 반영 → aria-checked를 waitFor.
     await waitFor(() => {
-      const h = within(screen.getByTestId('screener-row-005930')).getByRole('button', { name: '관심 그룹 편집' });
-      expect(h.getAttribute('aria-pressed')).toBe('true');   // member → filled
+      expect(screen.getByRole('menuitemcheckbox', { name: '스윙' }).getAttribute('aria-checked')).toBe('true');   // member → checked
     });
-    fireEvent.click(within(screen.getByTestId('screener-row-005930')).getByRole('button', { name: '관심 그룹 편집' }));
-    expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
+    // 멤버 행이므로 '관심 해제' 항목도 노출된다.
+    expect(screen.getByTestId('quote-menu-remove-all')).toBeInTheDocument();
   });
 
   it('overlays live quotes on ALL result rows, not just the top 30 (cap removed)', async () => {
