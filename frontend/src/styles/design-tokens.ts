@@ -103,7 +103,7 @@ export const SIZE_TOKENS = {
   'h-toolbar':          { rem: 2,       baseIntentPx: 32, usage: 'Replay-page toolbar row — 밀도 개편(2026-07-23) 60→32, 한 줄 버튼 행' },
   'h-pricestrip':       { rem: 1.875,   baseIntentPx: 30, usage: 'Current-price strip below toolbar — 밀도 개편(2026-07-23) 52→30, 한 줄 시세 행' },
   'h-orderbook-row':    { rem: 1.375,   baseIntentPx: 22, usage: 'Single row in the orderbook table' },
-  'list-row-min-h':     { rem: 1.5625,  baseIntentPx: 25, usage: 'Shared list row min-height — watchlist/ranking/screener-result/heatmap rows align (≈28px @ default density, matching the watchlist row)' },
+  'list-row-min-h':     { rem: 1.5625,  baseIntentPx: 25, usage: 'Shared list row min-height — watchlist/ranking/screener-result rows align (≈28px @ default density, matching the watchlist row). Heatmap rows opt out for max density.' },
   'list-group-header-min-h': { rem: 1.8125, baseIntentPx: 29, usage: 'Shared list group-header min-height — watchlist/heatmap group headers align (≈32px @ default density, matching the watchlist group header)' },
   'h-capture-row':      { rem: 2.25,    baseIntentPx: 36, usage: 'Single row in the capture queue' },
   'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: 'Live page header row' },
