@@ -157,6 +157,7 @@ export default function BookPanel({
                 price={l.price}
                 baselinePrice={baselinePrice}
                 boxed={lastPrice !== null && l.price === lastPrice}
+                markers={priceMarkers(l.price, summary)}
               />
             ))}
             {bids.map((l, i) => (
@@ -165,6 +166,7 @@ export default function BookPanel({
                 price={l.price}
                 baselinePrice={baselinePrice}
                 boxed={lastPrice !== null && l.price === lastPrice}
+                markers={priceMarkers(l.price, summary)}
                 topDivider={i === 0}
               />
             ))}
@@ -276,15 +278,29 @@ function ExpectedFillBanner({
   );
 }
 
+/** 당일 시가·고가·저가와 일치하는 호가 행에 붙일 칩. 고=빨강·저=파랑(KRX 관습),
+ *  시=중립 회색. 한 가격이 둘 이상(예: 시가=고가)이면 배열로 나란히 쌓는다. */
+function priceMarkers(price: number, summary: LiveTradeSummary): { label: string; bg: string }[] {
+  if (price <= 0) return [];
+  const out: { label: string; bg: string }[] = [];
+  if (summary.dayHigh !== null && price === summary.dayHigh) out.push({ label: '고', bg: 'bg-price-up' });
+  if (summary.dayLow !== null && price === summary.dayLow) out.push({ label: '저', bg: 'bg-price-down' });
+  if (summary.dayOpen !== null && price === summary.dayOpen) out.push({ label: '시', bg: 'bg-fg-dim' });
+  return out;
+}
+
 function PriceCell({
   price,
   baselinePrice,
   boxed,
+  markers = [],
   topDivider = false,
 }: {
   price: number;
   baselinePrice: number | null;
   boxed: boolean;
+  /** 당일 시/고/저 칩(priceMarkers) — 좌측 거터에 absolute 로 얹어 가격 정렬 불변. */
+  markers?: { label: string; bg: string }[];
   /** 매수 1호가 행에만 true — 매도/매수 경계선(3열 공통 y). */
   topDivider?: boolean;
 }) {
@@ -296,16 +312,28 @@ function PriceCell({
   // 가격과 등락률은 **한 덩어리**로 읽혀야 한다 — justify-between 으로 컬럼 양 끝에
   // 밀어놓으면 폭이 넓을수록 시선이 끊긴다. 가운데 모아 붙이고, 등락률에 최소폭을
   // 줘서 값 길이(-0.19% ↔ +30.00%)가 달라져도 가격 우측 끝이 흔들리지 않게 한다.
-  // 위계는 크기로 준다: 가격 base(13px) vs 등락률 badge(8.5px) — 보조 정보라
-  // 뚜렷하게 작아야 가격이 먼저 읽힌다(이전 sm/xs 는 1px 차라 위계가 없었다).
+  // 위계는 크기로 준다: 가격 12px intent(0.75rem) vs 등락률 badge(8.5px) — 보조
+  // 정보라 뚜렷하게 작아야 가격이 먼저 읽힌다(이전 sm/xs 는 1px 차라 위계가 없었다).
   const cell = (
     <div
-      className={`flex items-baseline justify-center gap-1.5 px-2 ${
+      className={`relative flex items-baseline justify-center gap-1.5 px-2 ${
         boxed ? 'rounded-md border border-fg-dim' : ''
       }`}
       style={{ height: topDivider ? ROW_H - 1 : ROW_H }}
     >
-      <span className={`font-data text-base tabular-nums ${color}`}>
+      {markers.length > 0 && (
+        <span className="absolute left-1 top-1/2 flex -translate-y-1/2 gap-0.5">
+          {markers.map((m) => (
+            <span
+              key={m.label}
+              className={`flex items-center justify-center rounded-[3px] px-[3px] py-px font-ui text-[9px] font-semibold leading-none text-white ${m.bg}`}
+            >
+              {m.label}
+            </span>
+          ))}
+        </span>
+      )}
+      <span className={`font-data text-[0.75rem] tabular-nums ${color}`}>
         {price > 0 ? price.toLocaleString('ko-KR') : ''}
       </span>
       {pct !== null && price > 0 && (
