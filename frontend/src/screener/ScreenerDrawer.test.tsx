@@ -364,6 +364,41 @@ describe('ScreenerDrawer', () => {
     ]));
   });
 
+  it('시작(및 재조회)이 사용자 정렬을 리셋하지 않는다', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    const rows = [
+      { code: '005930', name: '삼성전자', market: 'KOSPI' as const, price: 70000, trade_value_won: 1e11, change_pct: 0.1 },
+      { code: '000660', name: 'SK하이닉스', market: 'KOSPI' as const, price: 180000, trade_value_won: 2e11, change_pct: 0.2 },
+      { code: '035420', name: 'NAVER', market: 'KOSPI' as const, price: 210000, trade_value_won: 3e11, change_pct: 0.3 },
+    ];
+    vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows, warnings: [] });
+    vi.spyOn(client, 'apiCall').mockImplementation(async (path: string) => {
+      const codes = liveQuoteCodesFromPath(path);
+      const quoteByCode: Record<string, { price: number; change_pct: number; change_won: number }> = {
+        '005930': { price: 70100, change_pct: 2.1, change_won: 100 },
+        '000660': { price: 179000, change_pct: -1.2, change_won: -1000 },
+        '035420': { price: 212000, change_pct: 4.4, change_won: 2000 },
+      };
+      return { phase: 'open' as const, quotes: codes.map((code) => ({ code, ...quoteByCode[code] })) };
+    });
+    // 사용자가 미리 등락률 내림차순 정렬을 걸어둔 상태로 시작.
+    useScreenerPanelStore.setState({ sortMode: { field: 'change_pct', direction: 'desc' } });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회(scanOnce)
+    await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
+
+    const rowOrder = () => screen.getAllByTestId(/^screener-row-/).map((el) => el.dataset.testid);
+    // scanOnce 가 정렬을 default 로 밀지 않으므로 등락률 내림차순이 유지된다.
+    await waitFor(() => expect(rowOrder()).toEqual([
+      'screener-row-035420',
+      'screener-row-005930',
+      'screener-row-000660',
+    ]));
+    expect(useScreenerPanelStore.getState().sortMode).toEqual({ field: 'change_pct', direction: 'desc' });
+  });
+
   it('preserves a persisted non-first selection when saves load', async () => {
     const SAVE2 = { ...SAVE, id: 's2', name: '두번째조건' };
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE, SAVE2] });

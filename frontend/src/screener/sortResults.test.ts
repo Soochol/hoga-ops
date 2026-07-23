@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sortScreenerRows, type ScreenerResultSortMode } from './sortResults';
+import { sortScreenerRows, stackByEntryOrder, type ScreenerResultSortMode } from './sortResults';
 
 const rows = [
   { code: '005930', name: '삼성전자', market: 'KOSPI', price: 74200, trade_value_won: 842_000_000_000, change_pct: 1.2 },
@@ -59,4 +59,33 @@ describe('sortScreenerRows', () => {
       .toEqual(['A:second', 'B:other', 'A:first']);
   });
 
+});
+
+describe('stackByEntryOrder', () => {
+  const stack = (input: readonly { code: string }[], entries: [string, number][]) =>
+    stackByEntryOrder(input, new Map(entries)).map((r) => r.code);
+
+  it('keeps server order when every code is in the same generation', () => {
+    expect(stack(rows, rows.map((r) => [r.code, 0]))).toEqual(['005930', '000660', '035420', '051910']);
+  });
+
+  it('stacks higher generations (newer entries) on top', () => {
+    // 035420 은 gen 2 로 최신 편입 → 최상단, 000660 은 gen 1 → 그 다음, 나머지 gen 0.
+    expect(stack(rows, [['000660', 1], ['035420', 2]])).toEqual(['035420', '000660', '005930', '051910']);
+  });
+
+  it('preserves server order within the same generation', () => {
+    // 005930·035420 은 같은 gen 1, 서버순(005930 먼저) 유지. 000660·051910 은 gen 0.
+    expect(stack(rows, [['005930', 1], ['035420', 1]])).toEqual(['005930', '035420', '000660', '051910']);
+  });
+
+  it('treats codes missing from the map as generation 0', () => {
+    expect(stack(rows, [['051910', 3]])).toEqual(['051910', '005930', '000660', '035420']);
+  });
+
+  it('falls back to server order for an empty map and does not mutate input', () => {
+    const before = rows.map((r) => ({ ...r }));
+    expect(stack(rows, [])).toEqual(['005930', '000660', '035420', '051910']);
+    expect(rows).toEqual(before);
+  });
 });

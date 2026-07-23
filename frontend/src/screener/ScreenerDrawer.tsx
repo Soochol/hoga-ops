@@ -26,9 +26,10 @@ import { useScreenerRowsLive } from './useScreenerRowsLive';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
 import { useScreenerMonitor, MONITOR_PERIOD_SCOPED_MS, MONITOR_PERIOD_FULL_MS } from './useScreenerMonitor';
 import { useNewEntryFlash } from './useNewEntryFlash';
+import { useEntryOrder } from './useEntryOrder';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { ScreenerResultSortControl } from './ScreenerResultSortControl';
-import { sortScreenerRows, type ScreenerResultSortMode } from './sortResults';
+import { sortScreenerRows, stackByEntryOrder, type ScreenerResultSortMode } from './sortResults';
 import type { ScanBasis, ScreenerRow } from '../api/screener';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
 import { ToolbarButton, SegmentedControl } from '../ui/PageShell';
@@ -246,7 +247,9 @@ export function ScreenerDrawer() {
         basis: DRAWER_SCAN_BASIS,
         dataStale: false,
       });
-      setSortMode('default');
+      // 정렬은 여기서 리셋하지 않는다 — 이 seam 은 모니터링 tick 도 공유하므로 매 재조회
+      // 마다 사용자 정렬을 밀어버렸다. 사용자 정렬은 명시적 변경 때만 바뀐다(조건 전환
+      // 시 default 로 복귀하는 진입순 스택은 useEntryOrder 의 resetKey 가 처리).
       return true;
     } catch {
       return false;
@@ -294,7 +297,16 @@ export function ScreenerDrawer() {
   // 풀페이지 ResultTable 과 공유하는 단일 머지 seam(codes 추출·폴링·머지 캡슐화).
   // scanRows 는 위에서 정의(모니터 phase 조회와 공유).
   const liveRows = useScreenerRowsLive(scanRows);
-  const sortedLiveRows = useMemo(() => sortScreenerRows(liveRows, sortMode), [liveRows, sortMode]);
+  // default 정렬 = 진입순 상단 스택(신규 편입이 위, 기존 위치 고정). 명시 정렬(가격·등락률
+  // 등)이 걸리면 그게 우선이라 스택을 적용하지 않는다. 진입순은 조건(selectedSavedId)별로
+  // 초기화 — 풀페이지 Screener 는 이 훅을 안 써 default 가 여전히 서버순이다(공용 계약 무손상).
+  const entryOrder = useEntryOrder(resultCodes, selectedSavedId);
+  const sortedLiveRows = useMemo(
+    () => (sortMode === 'default'
+      ? stackByEntryOrder(liveRows, entryOrder)
+      : sortScreenerRows(liveRows, sortMode)),
+    [liveRows, sortMode, entryOrder],
+  );
   // 재조회로 새로 편입된 종목을 잠시 플래시. 훅은 항상 resultCodes 를 추적해 이전
   // 집합을 정확히 유지하고(토글 시 전체 플래시 방지), 표시만 모니터링 중으로 게이트한다.
   const flashCodes = useNewEntryFlash(resultCodes);
