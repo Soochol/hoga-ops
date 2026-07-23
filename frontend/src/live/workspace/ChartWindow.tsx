@@ -48,7 +48,7 @@ import { DrawingMenu } from '../DrawingMenu';
 import { IndicatorsButton } from '../LiveToolbar';
 import { requestIndicatorDrawer } from './indicatorDrawerControls';
 import { useChartHeaderFold } from './useChartHeaderCompact';
-import { ChartWindowIdentity } from './ChartWindowIdentity';
+import type { SymbolLegendInput } from '../LegendSymbolRow';
 import type { LiveStudySaveSource } from '../../studyViews/studySaveCommand';
 import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButton';
 import { CollectButton } from './CollectButton';
@@ -56,6 +56,9 @@ import type { CollectVisibleRange } from './collectDialogControls';
 import { unixMsToKSTDate } from '../../util/time';
 import { clearWindowFlagLegendValues } from '../indicators/flagLegendValueRegistry';
 import type { TabViewport } from '../viewportAnchor';
+
+/** 빈 호가갭 배열 상수 — symbolLegend memo 가 매 렌더 새 [] 로 깨지지 않게 안정 참조. */
+const EMPTY_GAP_DATES: readonly string[] = [];
 
 export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const timeframe = win.chart?.timeframe ?? '1m';
@@ -231,6 +234,25 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     };
   }, [view.code, view.timeframe, liveSaveBundle, activeLabel, capabilities.studySave]);
 
+  // 캔들 레전드 최상단 종목 식별 행 입력(#865 후속). 지수(view.code=null)는 종목
+  // 행 없음. 백필 진행 게이트(isExtending·historicalFromDate·segments)는 여기서
+  // 판정해 결과 날짜만 넘긴다 — 레전드가 번들 내부 구조를 모르게 경계를 좁힌다.
+  // 안정 참조로 memo 해 PaneLegendOverlay memo 를 불필요히 깨지 않는다.
+  const symbolLegend = useMemo<SymbolLegendInput | null>(() => {
+    if (!view.code) return null;
+    const segs = d.workareaBundle?.segments;
+    const backfillEarliestDate =
+      d.isExtending && view.historicalFromDate != null && segs && segs.length > 0
+        ? segs[0].date
+        : null;
+    return {
+      code: view.code,
+      venue,
+      hogaGapDates: d.hogaCoverageGapDates ?? EMPTY_GAP_DATES,
+      backfillEarliestDate,
+    };
+  }, [view.code, venue, d.isExtending, view.historicalFromDate, d.workareaBundle, d.hogaCoverageGapDates]);
+
   if (!instrument) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-xs text-fg-dimmer">
@@ -249,21 +271,10 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         data-testid="chart-window-header"
         data-compact={headerFold.compactActions ? '' : undefined}
         data-compact-timeframe={headerFold.compactTimeframe ? '' : undefined}
-        className="flex shrink-0 items-center gap-1.5 overflow-hidden bg-bg-card/60 px-1.5 py-0.5"
+        className="flex shrink-0 items-center gap-1 overflow-hidden bg-bg-card/60 px-1 py-0.5"
       >
-        {/* 종목 식별·경고 — 폐지된 페이지 상태바에서 이관(창 스코프). 창이 소유한
-            bundle·체결가·호가갭을 그대로 넘긴다. 좁아지면 truncate 로 접힌다. */}
-        <ChartWindowIdentity
-          stockCode={view.code}
-          symbolName={symbol?.name ?? null}
-          venue={venue}
-          bundle={d.workareaBundle}
-          liveTradePrice={d.liveTradePrice ?? null}
-          hogaGapDates={d.activeIndexId ? [] : d.hogaCoverageGapDates ?? []}
-          isExtending={d.activeIndexId ? d.indexExtending : d.isExtending}
-          historicalFromDate={view.historicalFromDate}
-        />
-        <span className="h-[14px] w-px shrink-0 bg-border-strong" />
+        {/* 종목 식별·현재가·경고는 차트 캔버스 레전드(LegendSymbolRow)로 이관됐다
+            (#865 후속). 이 헤더는 봉·그리기·보조지표·저장·수집만 소유한다. */}
         {/* 2단계 접힘(#762) — 기능 손실 없이 폭만 줄인다.
             ① 좁아지면 액션 라벨을 접고 아이콘만(요구폭 ~213px)
             ② 더 좁아지면 일·주·월을 분봉 드롭다운에 합친다(~110px)
@@ -313,6 +324,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               isHogaLoading={d.activeIndexId ? false : d.isHogaLoading}
               isSidecarLoading={d.activeIndexId ? false : (d.isSidecarLoading || d.isDailyMaLoading)}
               isExtending={d.activeIndexId ? d.indexExtending : d.isExtending}
+              symbolLegend={symbolLegend}
               indicatorCoverageFromDate={d.activeIndexId ? null : d.indicatorCoverageFromDate}
               rangeWindowFromDate={d.activeIndexId ? null : d.rangeWindowFromDate}
               pastDataWarnings={[...d.workareaDataWarnings]}

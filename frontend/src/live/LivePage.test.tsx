@@ -38,6 +38,7 @@ const livePageMocks = vi.hoisted(() => {
       chartBundle?: RangeBundle | null;
       tradeVolumePocs?: unknown[];
       isExtending?: boolean;
+      symbolLegend?: { code: string; venue: string; hogaGapDates: readonly string[]; backfillEarliestDate: string | null } | null;
       pastDataWarnings?: Array<{ reason: string; msg?: string }>;
       paneTogglesOverride?: { hogaPanes?: boolean };
       dayAskPeaks?: unknown[];
@@ -350,11 +351,13 @@ describe('LivePage shell', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders the flip chrome: window identity header + workspace toolbar + canvas window', () => {
+  it('renders the flip chrome: chart window header + workspace toolbar + canvas window', () => {
     renderWithRouter('/live?code=000660');
-    // 종목 식별은 상태바 폐지 후 차트 창 헤더가 소유한다(ChartWindowIdentity).
-    expect(screen.getByTestId('chart-window-identity')).toBeInTheDocument();
+    // 차트 창 헤더(봉·그리기·저장 툴바)와 전역 툴바가 뜬다. 종목 식별은 차트 캔버스
+    // 레전드(LiveChartRoot 내부, mock)로 이관돼 여기선 symbolLegend prop 으로 검증.
+    expect(screen.getByTestId('chart-window-header')).toBeInTheDocument();
     expect(screen.getByTestId('workspace-live-toolbar')).toBeInTheDocument();
+    expect(livePageMocks.liveChartRootProps.at(-1)?.symbolLegend?.code).toBe('000660');
     // 봉 컨트롤은 창 소유(#708) — 차트 창 상단에 렌더된다.
     expect(screen.getByRole('button', { name: '분봉 선택 열기: 1분' })).toBeInTheDocument();
   });
@@ -422,8 +425,8 @@ describe('LivePage shell', () => {
 
   it('reads activeCode from ?code= query param', () => {
     renderWithRouter('/live?code=000660');
-    // 창 헤더의 종목 식별 블록이 코드를 노출한다(상태바 폐지 후).
-    expect(screen.getByTestId('chart-window-identity').textContent).toContain('000660');
+    // 종목 식별은 차트 캔버스 레전드로 이관 — LiveChartRoot 에 symbolLegend 로 흐른다.
+    expect(livePageMocks.liveChartRootProps.at(-1)?.symbolLegend?.code).toBe('000660');
   });
 
   it('reads active index from ?index= query param without setting activeCode', async () => {
@@ -669,7 +672,7 @@ describe('LivePage shell', () => {
     // 플립 후 종목 SSOT = live.workspace.v1 의 groupSymbols(활성 그룹) 복원.
     useWorkspaceStore.setState({ groupSymbols: { 1: { code: '035720', name: '035720' } } });
     renderWithRouter();
-    expect(screen.getByTestId('chart-window-identity').textContent).toContain('035720');
+    expect(livePageMocks.liveChartRootProps.at(-1)?.symbolLegend?.code).toBe('035720');
   });
 
   it('passes activeCode:venue as chart view identity (창별)', () => {
