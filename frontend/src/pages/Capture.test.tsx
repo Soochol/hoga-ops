@@ -55,20 +55,20 @@ describe('Capture page', () => {
     render(<Capture />, { wrapper: W(qc) });
     // queue-empty 는 큐 쿼리 resolve 후에야 뜬다 — 벽시계 대신 이 등장을 기다린다.
     await screen.findByTestId('queue-empty');
-    // 부유 카드 모델(2026-07-15): borderless — --bg-card + shadow-panel 만으로 분리.
-    expect(screen.getByTestId('capture-form-pane')).toHaveClass('bg-bg-card');
+    // 페이지 통일(2026-07-23): flat — 그림자·카드 배경 스텝 제거, 필드(--bg)에 평평.
+    expect(screen.getByTestId('capture-form-pane')).toHaveClass('bg-bg');
     expect(screen.getByTestId('capture-form-pane')).not.toHaveClass('border');
-    expect(screen.getByTestId('capture-form-pane')).toHaveClass('shadow-panel');
-    expect(screen.getByTestId('capture-queue-pane')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('capture-form-pane')).not.toHaveClass('shadow-panel');
+    expect(screen.getByTestId('capture-queue-pane')).toHaveClass('bg-bg');
     expect(screen.getByTestId('capture-queue-pane')).not.toHaveClass('border');
-    expect(screen.getByTestId('capture-queue-pane')).toHaveClass('shadow-panel');
+    expect(screen.getByTestId('capture-queue-pane')).not.toHaveClass('shadow-panel');
     expect(screen.getByPlaceholderText(/종목/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Start/i })).toBeTruthy();
     // Queue side hidden by empty-state when no rows. Check that empty state
     // marker renders — this confirms CaptureQueue mounted on the right.
     expect(screen.getByTestId('queue-empty')).toBeTruthy();
-    expect(screen.getByPlaceholderText(/종목/i).closest('.bg-bg-card')).not.toBeNull();
-    expect(screen.getByTestId('queue-empty').closest('.bg-bg-card')).not.toBeNull();
+    expect(screen.getByPlaceholderText(/종목/i).closest('[data-testid="capture-form-pane"]')).not.toBeNull();
+    expect(screen.getByTestId('queue-empty').closest('[data-testid="capture-queue-pane"]')).not.toBeNull();
   });
 
   // 두 패널 모두 줄어들 수 있어야 한다. 예전에는 큐 쪽에만 min-h-0 이 있어, 폼의

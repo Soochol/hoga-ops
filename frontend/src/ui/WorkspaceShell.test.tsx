@@ -29,7 +29,8 @@ describe('WorkspaceShell primitives', () => {
     expect(screen.getByTestId('header')).toHaveClass('border-b');
     expect(screen.getByTestId('header')).toHaveClass('backdrop-blur');
     expect(screen.getByTestId('header')).toHaveStyle({ height: 'var(--h-live-header)' });
-    expect(screen.getByTestId('toolbar')).toHaveClass('border-b');
+    // /study 통일(2026-07-23): 툴바 하단 구분선 제거 — study 툴바처럼 선 없이 톤만.
+    expect(screen.getByTestId('toolbar')).not.toHaveClass('border-b');
     expect(screen.getByTestId('toolbar')).toHaveClass('backdrop-blur');
     expect(screen.getByTestId('toolbar')).toHaveClass('overflow-x-auto');
     expect(screen.getByTestId('toolbar')).toHaveStyle({ height: 'var(--h-toolbar)' });

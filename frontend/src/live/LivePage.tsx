@@ -173,7 +173,10 @@ export function LivePage() {
 
   return (
     <div
-      className="h-full grid"
+      // /study 통일(2026-07-23): full-bleed → 좌·우 p-md 여백 + 하단 flush(!pb-0).
+      // 상단은 밀도 개편으로 pt-sm(9px) — nav 와 시세 스트립 사이 최소 숨.
+      // 여백은 그리드 컨테이너에 두므로 트랙(minmax)·캔버스 clamp 는 그대로다.
+      className="h-full grid px-md pt-sm !pb-0"
       style={{
         // minmax(0, 1fr) on the canvas row prevents chart canvases' intrinsic
         // size from pushing the row past viewport height.

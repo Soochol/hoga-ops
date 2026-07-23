@@ -74,11 +74,12 @@ beforeEach(() => {
 it('폴더·종목·phase 배지 렌더 + 색 범례 제거됨(#6)', async () => {
   renderPage();
   const routeShell = await screen.findByTestId('heatmap-page-primary');
-  expect(routeShell).toHaveClass('bg-bg-card');
-  // 부유 카드 모델(2026-07-15): borderless — live 패널처럼 --bg-card + shadow-panel 만으로
-  // 배경과 분리(테두리 제거). PanelCard borderless prop.
+  // 페이지 통일(2026-07-23): flat — 안착 그림자·카드 배경 스텝을 제거해 필드(--bg)에
+  // 평평하게 얹힌다(/study 통일). PanelCard flat prop. 테두리는 여전히 borderless.
+  expect(routeShell).toHaveClass('bg-bg');
+  expect(routeShell).not.toHaveClass('bg-bg-card');
   expect(routeShell).not.toHaveClass('border');
-  expect(routeShell).toHaveClass('shadow-panel');
+  expect(routeShell).not.toHaveClass('shadow-panel');
   expect(await screen.findByTestId('heatmap-board')).toBeInTheDocument();
   expect((await screen.findAllByText('반도체')).length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText('삼성전자')).toBeInTheDocument();

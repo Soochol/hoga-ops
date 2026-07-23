@@ -75,6 +75,9 @@ function WindowFrameImpl(props: WindowFrameProps) {
       zIndex={zIndex}
       focused={focused}
       lifting={lifting}
+      // /study 통일(2026-07-23): 안착 그림자·카드 배경 스텝 제거 → 창이 필드에 평평.
+      // 리프트(shadow-modal)는 유지해 이동 피드백은 남는다.
+      flat
       onHandleDown={onHandleDown}
       onFocus={onFocus}
       onClose={onClose}

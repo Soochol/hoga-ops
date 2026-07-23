@@ -95,8 +95,8 @@ export function Heatmap() {
   }
 
   return (
-    <PageContainer className="min-h-0">
-      <PanelCard borderless data-testid="heatmap-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
+    <PageContainer className="min-h-0 !pb-0">
+      <PanelCard borderless flat data-testid="heatmap-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
         {/* 헤더 밴드는 live 부유 카드 모델과 통일 — bg-subtle 어두운 밴드 대신 bg-card.
             구분선 없음(border-b 제거): 헤더는 카드 본문과 같은 톤으로 흐르고, 아래 섹터
             스트립과의 분리는 간격이 담당. */}
@@ -164,8 +164,8 @@ export function Heatmap() {
 
 function HeatmapStateShell({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'error' }) {
   return (
-    <PageContainer className="min-h-0">
-      <PanelCard borderless data-testid="heatmap-page-primary">
+    <PageContainer className="min-h-0 !pb-0">
+      <PanelCard borderless flat data-testid="heatmap-page-primary">
         <PageState tone={tone}>{children}</PageState>
       </PanelCard>
     </PageContainer>

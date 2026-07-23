@@ -36,7 +36,10 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
           ))}
         </div>
 
-        <div className="flex min-w-0 items-center">
+        {/* 종목 검색은 유연 중앙 열(1fr)에서 중앙 정렬 — 트리거가 max-w-[360px]로
+            캡되므로 justify-center 가 남는 여백을 양쪽으로 나눠 박스를 가운데로 민다.
+            좁아지면 flex-1 로 열을 채우며 truncate(중앙정렬은 무효화). */}
+        <div className="flex min-w-0 items-center justify-center">
           {isLive && <LiveSymbolSearch />}
         </div>
 

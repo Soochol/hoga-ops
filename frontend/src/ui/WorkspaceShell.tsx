@@ -52,7 +52,7 @@ export function WorkspaceToolbar({
   return (
     <div
       data-testid={testId}
-      className={`flex items-center gap-2 overflow-x-auto border-b border-border bg-bg-card/80 px-3 backdrop-blur ${className}`.trim()}
+      className={`flex items-center gap-2 overflow-x-auto bg-bg-card/80 px-3 backdrop-blur ${className}`.trim()}
       style={{ height: 'var(--h-toolbar)' }}
     >
       {children}

@@ -470,7 +470,8 @@ export function StudyPage() {
     : null;
 
   return (
-    <PageContainer className="min-h-0">
+    // bottom 여백만 제거(!pb-0) — 차트가 화면 하단까지 붙는다. 좌·우·상 p-md 는 유지.
+    <PageContainer className="min-h-0 !pb-0">
       {/* 부유 카드 모델(2026-07-15, /live 통일) — 바깥 PanelCard 프레임 제거. 탭 바·헤더는
           --bg full-bleed 크롬이 되고, 차트·상세는 --bg 필드 위에 gap+shadow 로 떠 있는
           카드 2장이 된다. 분리는 톤+간격(gap+shadow-panel)이 담당(보더 없음). */}
@@ -536,7 +537,7 @@ export function StudyPage() {
           <div
             ref={studyDropTargetRef}
             data-testid="study-drop-target"
-            className="relative min-h-0 p-1"
+            className="relative min-h-0 px-1 pt-1"
           >
             {/* 창 워크스페이스(ADR-0123) — 배치는 studyWorkspace 스토어, 콘텐츠는
                 활성 저장뷰(탭 = 콘텐츠 선택자). 구 2열 grid(차트 카드 + 상세 aside)의
