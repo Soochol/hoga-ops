@@ -31,7 +31,9 @@ export interface HeatmapRowProps {
  *  종목명 칼럼은 minmax(4rem,1fr) — 좁아져도 4rem 바닥을 깔아 이름이 짜부되지 않게
  *  하고(truncate 의 암묵적 min-width:0 무력화), 남는 폭은 모두 이름에 흘려보낸다.
  *  sortable* props 가 오면 행 루트가 dnd-kit 드래그 표면이 된다(클릭=차트, 드래그=재정렬;
- *  PointerSensor distance:5 가 둘을 가른다 — drawer SortableQuoteRow 와 동일 계약). */
+ *  PointerSensor distance:5 가 둘을 가른다 — drawer SortableQuoteRow 와 동일 계약).
+ *  행 높이는 캔들 글리프(16px)+py-px 콘텐츠 기반 최대 밀도 — 히트맵 보드는 밀도가
+ *  1차라 공용 min-h-list-row(28px; 관심·순위·스크리너)를 의도적으로 쓰지 않는다. */
 export function HeatmapRow({
   name, price, pct, open, high, low, onClick, ariaLabel, testId,
   sortableRef, sortableStyle, dragListeners, dragging, onContextMenu,
@@ -53,7 +55,7 @@ export function HeatmapRow({
       onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } }}
       style={dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle}
-      className={`grid grid-cols-[minmax(4rem,1fr)_2.5rem_3.2rem_4.25rem] gap-1.5 px-2 py-0.5 min-h-list-row items-center text-sm outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
+      className={`grid grid-cols-[minmax(4rem,1fr)_2.5rem_3.2rem_4.25rem] gap-1.5 px-2 py-px items-center text-sm outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
     >
       {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}

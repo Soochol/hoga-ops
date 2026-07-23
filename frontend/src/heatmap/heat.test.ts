@@ -48,15 +48,15 @@ describe('heatBg', () => {
 });
 
 
-describe('heatHeaderBg (헤더 밴드 — 선형 램프 max α 0.5, bg-input 합성)', () => {
-  it('null/0 → 순수 var(--bg-input)', () => {
-    expect(heatHeaderBg(null)).toBe('var(--bg-input)');
-    expect(heatHeaderBg(0)).toBe('var(--bg-input)');
+describe('heatHeaderBg (헤더 밴드 — 선형 램프 max α 0.5, bg-subtle 합성)', () => {
+  it('null/0 → 순수 var(--bg-subtle)', () => {
+    expect(heatHeaderBg(null)).toBe('var(--bg-subtle)');
+    expect(heatHeaderBg(0)).toBe('var(--bg-subtle)');
   });
   it('+8% 포화 → 빨강 max α 0.5 동색 2-stop 합성', () => {
     const heat = 'color-mix(in srgb, var(--price-up) 50.0%, transparent)';
     expect(heatHeaderBg(8)).toBe(
-      `linear-gradient(0deg, ${heat}, ${heat}), var(--bg-input)`,
+      `linear-gradient(0deg, ${heat}, ${heat}), var(--bg-subtle)`,
     );
     expect(heatHeaderBg(30)).toContain('50.0%'); // ±8% 초과 클램프
   });

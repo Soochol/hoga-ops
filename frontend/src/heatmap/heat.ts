@@ -42,15 +42,18 @@ export function heatBg(pct: number | null, maxAlpha: number = HEAT_MAX_ALPHA): s
 
 export const HEAT_HEADER_MAX_ALPHA = 0.5; // 헤더 밴드용(큰 면적, 선형 램프) — ±8% 포화 시 최대 농도
 
-/** 그룹 헤더 밴드 배경 = var(--bg-input) 위에 평균 등락 비례 히트(선형 램프) 합성.
- *  null/0 = 순수 var(--bg-input)(평면). ±HEAT_SAT% 포화. 동색 2-stop이라 시각상 단색 틴트
+/** 그룹 헤더 밴드 배경 = var(--bg-subtle) 위에 평균 등락 비례 히트(선형 램프) 합성.
+ *  null/0(및 0 근처) = 순수 var(--bg-subtle)(평면 회색). 베이스를 bg-input 이 아닌
+ *  bg-subtle 로 두는 이유: 0 근처면 히트 alpha 가 0에 수렴해 베이스가 그대로 드러나는데,
+ *  bg-input 은 폴더 본문/페이지 배경과 명도가 비슷해 헤더가 묻혔다(관심종목 그룹 헤더와
+ *  동일한 bg-subtle 로 구분성 확보). ±HEAT_SAT% 포화. 동색 2-stop이라 시각상 단색 틴트
  *  (공간 그라데이션 아님 — DESIGN.md "no gradients" 장식 규율과 무충돌). */
 export function heatHeaderBg(pct: number | null): string {
-  if (pct === null || pct === 0) return 'var(--bg-input)';
+  if (pct === null || pct === 0) return 'var(--bg-subtle)';
   const a = Math.min(Math.abs(pct) / HEAT_SAT, 1) * HEAT_HEADER_MAX_ALPHA;
   const token = pct > 0 ? 'var(--price-up)' : 'var(--price-down)'; // 테마 자동 추종
   const heat = `color-mix(in srgb, ${token} ${(a * 100).toFixed(1)}%, transparent)`;
-  return `linear-gradient(0deg, ${heat}, ${heat}), var(--bg-input)`;
+  return `linear-gradient(0deg, ${heat}, ${heat}), var(--bg-subtle)`;
 }
 
 /** quoteByCode → (code → 등락률|null) 접근자 팩토리. Map miss·change_pct=null 만 null로
