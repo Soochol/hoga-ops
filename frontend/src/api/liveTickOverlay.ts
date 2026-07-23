@@ -23,6 +23,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { subscribeLive } from './ws';
 import type { LiveSnapshotEntry } from './types';
+import { liveVenueAcceptsFrame } from '../live/liveVenuePolicy';
+import type { LiveVenueOption } from '../state/liveVenue';
 
 /** 트레일링 스로틀 창. liveSeries.ts 의 LIVE_FLUSH_MS 와 같은 값·같은 이유:
  *  종목 하나만도 장중 초당 수십 푸시가 오는데 리스트는 그 N배라, 코얼레싱 없이는
@@ -79,9 +81,20 @@ function sameSample(a: LiveTickSample | undefined, b: LiveTickSample): boolean {
 /** trade 프레임에서 체결 표본을 꺼낸다. payload 는
  *  {"trades": [{t_ms, price, qty, side, ...}], "prev_close"?, "phase", "venue"}
  *  (kiwoom_frames._parse_trade + stream.on_tick 이 phase/venue 를 덧붙임).
- *  LiveSnapshotEntry 는 per-kind 모델이 의도적으로 미정(types.ts)이라 여기서 좁힌다. */
-function tradeSample(entry: LiveSnapshotEntry): LiveTickSample | null {
+ *  LiveSnapshotEntry 는 per-kind 모델이 의도적으로 미정(types.ts)이라 여기서 좁힌다.
+ *
+ *  선택 venue 에 속하지 않는 프레임은 등락률에 반영하지 않는다 — 표시 버퍼는 전역·
+ *  혼재(전달 무게이트)라 호가·체결 필터와 **같은 정책 SSOT**(`liveVenueAcceptsFrame`)
+ *  로 여기서도 게이트한다. 없으면 KRX 선택에도 연장/NXT 시간대 체결이 폴링 baseline
+ *  위를 덮어써 관심종목·스크리너·히트맵 등락률이 배제한 시장으로 튄다. */
+function tradeSample(entry: LiveSnapshotEntry, venue: LiveVenueOption): LiveTickSample | null {
   if (entry.kind !== 'trade') return null;
+  const tMs = (entry as { t_ms?: unknown }).t_ms;
+  const tagVenue = (entry as { venue?: 'KRX' | 'NXT' }).venue;
+  // t_ms 는 trade 프레임에 항상 실리지만(kiwoom_frames._parse_trade), 없으면 venue
+  // 판정이 불가하므로 보수적으로 배제한다 — 소스측 filterTradeByVenue 가 술어를
+  // 무조건 거는 것과 정합(느슨한 우회로를 남기지 않는다).
+  if (typeof tMs !== 'number' || !liveVenueAcceptsFrame(venue, tagVenue, tMs)) return null;
   const trades = (entry as { trades?: unknown }).trades;
   if (!Array.isArray(trades) || trades.length === 0) return null;
   const price = (trades[trades.length - 1] as { price?: unknown } | undefined)?.price;
@@ -102,7 +115,10 @@ function tradeSample(entry: LiveSnapshotEntry): LiveTickSample | null {
 /** codes 의 최신 체결 표본을 WS live 채널에서 구독해 코드→표본 Map 으로 준다.
  *  틱이 아직 없는 코드는 키가 없다(호출부가 폴링값을 그대로 쓰도록). jsdom 등
  *  WebSocket 이 없는 환경에서는 ws.ts 가 silent no-op 이라 빈 Map 이 유지된다. */
-export function useLiveTickPrices(codes: string[]): Map<string, LiveTickSample> {
+export function useLiveTickPrices(
+  codes: string[],
+  venue: LiveVenueOption,
+): Map<string, LiveTickSample> {
   // 구독 집합은 정렬·dedup 한 문자열 키에서 파생해, 리스트 재정렬이나 매 렌더의
   // 새 배열 identity 가 전 종목 재구독(unsubscribe → subscribe 왕복)을 부르지
   // 않게 한다 — liveQuotes.ts 의 queryKey 정렬과 같은 이유.
@@ -131,7 +147,7 @@ export function useLiveTickPrices(codes: string[]): Map<string, LiveTickSample> 
     };
     const unsubs = subscribed.map((code) =>
       subscribeLive(code, (entry: LiveSnapshotEntry) => {
-        const sample = tradeSample(entry);
+        const sample = tradeSample(entry, venue);
         if (sample === null) return;
         // 같은 값 재체결은 재렌더를 만들 이유가 없다(호가만 흔들리는 구간에서
         // 흔하다). 스로틀 앞단에서 걸러 flush 자체를 아낀다. prevClose 도 비교에
@@ -149,7 +165,9 @@ export function useLiveTickPrices(codes: string[]): Map<string, LiveTickSample> 
       accumRef.current = new Map();
       snapshotRef.current = new Map();
     };
-  }, [subscribed]);
+    // venue 를 deps 에 넣어 토글 시 재구독하며 accum 을 리셋한다 — 이전 venue 로
+    // 누적된 off-venue 체결가가 새 선택에 남지 않는다.
+  }, [subscribed, venue]);
 
   return snapshotRef.current;
 }
