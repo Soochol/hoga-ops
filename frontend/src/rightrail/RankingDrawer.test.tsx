@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import * as client from '../api/client';
 import * as liveNavigate from '../live/liveNavigate';
+import * as watchlistApi from '../api/watchlist';
 import { RankingDrawer } from './RankingDrawer';
 
 // DnD 는 렌더 골격만 필요 — 실제 센서/포인터는 이 테스트 범위 밖.
@@ -122,6 +123,25 @@ describe('RankingDrawer', () => {
     vi.spyOn(client, 'apiCall').mockRejectedValue(new Error('boom'));
     renderDrawer();
     expect(await screen.findByText('조회 실패')).toBeInTheDocument();
+  });
+
+  it('right-clicking a row opens the 관심 그룹 menu (스크리너와 동일)', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
+      folders: [{ id: 'f_a', name: '스윙', order: 0 }],
+      entries: [],
+      next_run_at_ms: 0,
+    } as never);
+    renderDrawer();
+
+    fireEvent.contextMenu(await screen.findByTestId('ranking-row-005930'));
+    expect(await screen.findByRole('menu', { name: '삼성전자 관심 그룹' })).toBeInTheDocument();
+    // 비멤버 종목이므로 그룹 체크는 꺼져 있고, '관심 해제' 항목은 노출되지 않는다.
+    const group = await screen.findByRole('menuitemcheckbox', { name: '스윙' });
+    expect(group.getAttribute('aria-checked')).toBe('false');
+    expect(screen.queryByTestId('quote-menu-remove-all')).not.toBeInTheDocument();
+    // 우클릭은 행 활성화(차트 전환)와 무관하다.
+    expect(liveNavigate.activateLiveCode).not.toHaveBeenCalled();
   });
 
   it('sort button re-orders the visible list by 등락률 (client-side)', async () => {
