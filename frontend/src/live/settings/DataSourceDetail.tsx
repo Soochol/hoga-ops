@@ -93,7 +93,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
         )}
         <RoleSourceGroup
           title="호가·체결 데이터 기준"
-          description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다. 캔들과 독립된 소스입니다. 실시간 WS(호가·체결)는 키움 WS가 전담 수집합니다(ADR-0118)."
+          description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다. 캔들과 독립된 소스입니다. 실시간 WS(호가·체결)는 키움 WS가 전담 수집합니다(ADR-0118). '완결성 우선'은 두 소스 중 그날 데이터가 더 완결한 쪽을 자동 선택하며, 완결도가 같으면 실시간 WS를 씁니다(주로 과거일에서 갈리고, 장중 당일은 아직 완결 전이라 WS로 수렴)."
         >
           {/* pb-2: 라디오가 다음 그룹 구분선에 붙지 않도록 하단 여백(거래소 그룹과 동일). */}
           <div className="flex flex-col gap-2 pb-2">

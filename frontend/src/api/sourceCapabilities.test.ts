@@ -37,10 +37,16 @@ describe('sourceCapabilities', () => {
 
   it('keeps display preference options in backend policy order (kis_api_first 제거)', () => {
     // 2026-07-17 정책: 호가·체결은 KIS REST로 받지 않는다 — kis_api_first 옵션 폐지.
-    expect(SOURCE_PREFERENCE_OPTIONS).toEqual(['hogaplay_first', 'kis_ws_first']);
+    expect(SOURCE_PREFERENCE_OPTIONS).toEqual([
+      'hogaplay_first',
+      'kis_ws_first',
+      'completeness_first',
+    ]);
     expect(SOURCE_PREFERENCE_PRIMARY_SOURCE).toEqual({
       hogaplay_first: 'hogaplay',
       kis_ws_first: 'kis_live',
+      // 완결성 동급이면 WS 타이브레이크라 대표 소스도 kis_live.
+      completeness_first: 'kis_live',
     });
   });
 
@@ -51,5 +57,6 @@ describe('sourceCapabilities', () => {
     // 종목별 KIS·키움 자동 선택이라 'KIS WS 우선'이 아닌 '실시간 WS 우선'.
     expect(getOrderflowSourcePreferenceLabel('kis_ws_first')).toBe('실시간 WS 우선');
     expect(getSourcePreferenceLabel('kis_ws_first')).toBe('실시간 WS 우선');
+    expect(getOrderflowSourcePreferenceLabel('completeness_first')).toBe('완결성 우선');
   });
 });

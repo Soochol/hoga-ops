@@ -11,6 +11,7 @@ from hoga.api.disk_state import (
     DiskState,
     classify_from_meta,
     classify_stock_date,
+    completeness_rank,
 )
 
 if TYPE_CHECKING:
@@ -41,7 +42,16 @@ SourcePolicy = Literal[
     "kis_ws_first",
     "kiwoom_ws_first",
     "kis_api_first",
+    "completeness_first",
 ]
+
+# completeness_first(ADR-0124): 호가·체결 차원을 **완결성 등급**으로 고른다 —
+# 기존 정책들이 "사다리에서 첫 non-INVALID"를 쓰는 것과 달리, 소스를
+# (완결성 등급, 사다리 위치)로 정렬해 가장 완결한 소스를 채택하고, 동급이면
+# 사다리 순서(WS 우선)로 타이브레이크한다. 판정 자체는 재구현하지 않고
+# resolve_source_result가 이미 계산하는 per_source[*].state(= classify_from_meta,
+# 캡처 게이트와 동일 SSOT)를 그대로 소비한다.
+_COMPLETENESS_POLICIES: frozenset[str] = frozenset({"completeness_first"})
 
 # 캔들 차원 후보 — candles.parquet을 실제로 쓰는 Source만.
 #
@@ -65,6 +75,18 @@ _POLICY_ORDER: dict[str, tuple[SourceName, ...]] = {
     "kiwoom_ws_first": ("kiwoom_live", "kis_live", "kis_api", "hogaplay"),
     "kis_api": ("kis_api", "kis_live", "kiwoom_live", "hogaplay"),
     "kis_api_first": ("kis_api", "kis_live", "kiwoom_live", "hogaplay"),
+    # 완결성 등급이 1차 키이므로 이 사다리는 **동급 타이브레이크**로만 쓰인다
+    # (둘 다 COMPLETE·둘 다 PARTIAL이면 WS 우선). WS-first 순서와 동일.
+    "completeness_first": ("kis_live", "kiwoom_live", "kis_api", "hogaplay"),
+}
+
+# 캔들 차원은 완결성 타이브레이크를 적용하지 않는다(사용자 결정 2026-07-23):
+# 이 설정은 호가·체결 전용이고 캔들은 'KIS API 우회' 토글이 단독 결정한다.
+# completeness_first의 WS-first 사다리를 그대로 캔들에 쓰면 후보가 (kis_api,
+# hogaplay) 순이 되어 ADR-0109 복구본이 hogaplay를 앞서는 미묘한 변화가 생기므로,
+# 캔들 사다리는 오늘 기본(hogaplay 우선)으로 되돌린다.
+_CANDLE_POLICY_ALIAS: dict[str, str] = {
+    "completeness_first": "hogaplay_first",
 }
 
 
@@ -139,13 +161,34 @@ def resolve_source_result(
         for source, classification in per_source.items()
         if classification.state != DiskState.INVALID
     }
-    for source in order:
-        if source in healthy:
+
+    if pref in _COMPLETENESS_POLICIES:
+        # 완결성 등급(1차) → 사다리 위치(2차, WS-first 타이브레이크)로 최상 선택.
+        # INVALID는 healthy에서 이미 배제 — "부패 데이터는 서빙 안 함" 계약 유지.
+        ranked = sorted(
+            (
+                (completeness_rank(per_source[source].state), idx, source)
+                for idx, source in enumerate(order)
+                if source in healthy
+            ),
+            key=lambda t: (t[0], t[1]),
+        )
+        if ranked:
+            winner = cast(SourceName, ranked[0][2])
             return SourceResolution(
-                source=source,
-                path=sd_dir / source,
-                classification=per_source[source],
+                source=winner,
+                path=sd_dir / winner,
+                classification=per_source[winner],
             )
+        # healthy 없음(전부 INVALID/부재) → 아래 공통 폴백으로 진행.
+    else:
+        for source in order:
+            if source in healthy:
+                return SourceResolution(
+                    source=source,
+                    path=sd_dir / source,
+                    classification=per_source[source],
+                )
 
     source = cast(SourceName, order[0])
     if source in per_source:
@@ -181,8 +224,11 @@ def resolve_candle_source(
     복구본을 가리는 것을 막는다. 승자가 없으면 ``None`` — 호출부는 캔들만
     비우고 호가 차원은 정상 서빙한다(그날 전체를 버리지 않는다).
     """
+    # 캔들 차원은 완결성 타이브레이크 대상이 아니다 — completeness_first는 캔들에서
+    # 오늘 기본(hogaplay 우선) 사다리로 되돌린다(_CANDLE_POLICY_ALIAS).
+    candle_pref = _CANDLE_POLICY_ALIAS.get(pref, pref)
     candle_order: tuple[SourceName, ...] = tuple(
-        s for s in ordered_sources(pref) if s in CANDLE_BEARING_SOURCES
+        s for s in ordered_sources(candle_pref) if s in CANDLE_BEARING_SOURCES
     )
     if not candle_order:
         return None
