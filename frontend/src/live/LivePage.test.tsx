@@ -350,22 +350,23 @@ describe('LivePage shell', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders the flip chrome: status bar + workspace toolbar + canvas window', () => {
+  it('renders the flip chrome: window identity header + workspace toolbar + canvas window', () => {
     renderWithRouter('/live?code=000660');
-    expect(screen.getByTestId('live-status-bar')).toBeInTheDocument();
+    // 종목 식별은 상태바 폐지 후 차트 창 헤더가 소유한다(ChartWindowIdentity).
+    expect(screen.getByTestId('chart-window-identity')).toBeInTheDocument();
     expect(screen.getByTestId('workspace-live-toolbar')).toBeInTheDocument();
     // 봉 컨트롤은 창 소유(#708) — 차트 창 상단에 렌더된다.
     expect(screen.getByRole('button', { name: '분봉 선택 열기: 1분' })).toBeInTheDocument();
   });
 
-  // 열 축을 비워두면 grid-auto-columns:auto 가 되고, 그 트랙은 가장 넓은 자식(탈출구가
-  // 없는 LiveStatusBar)의 min-content 폭에서 바닥을 친다. 그러면 캔버스가 컨테이너보다
-  // 넓게 늘어난 채 App 의 <main overflow-hidden> 에 잘려 우측이 사라진다. 행 축은 이미
-  // 같은 이유로 minmax(0,1fr) 을 쓰고 있다 — 두 축을 함께 잠근다.
+  // 열 축을 비워두면 grid-auto-columns:auto 가 되고, 그 트랙은 가장 넓은 자식의
+  // min-content 폭에서 바닥을 친다. 그러면 캔버스가 컨테이너보다 넓게 늘어난 채 App 의
+  // <main overflow-hidden> 에 잘려 우측이 사라진다. 행 축도 같은 이유로 minmax(0,1fr) —
+  // 두 축을 함께 잠근다.
   it('constrains both root grid axes so narrowing shrinks the canvas instead of clipping it', () => {
     renderWithRouter('/live?code=000660');
 
-    let root: HTMLElement | null = screen.getByTestId('live-status-bar');
+    let root: HTMLElement | null = screen.getByTestId('workspace-live-toolbar');
     while (root && !root.style.gridTemplateRows) root = root.parentElement;
 
     expect(root).not.toBeNull();
@@ -421,8 +422,8 @@ describe('LivePage shell', () => {
 
   it('reads activeCode from ?code= query param', () => {
     renderWithRouter('/live?code=000660');
-    // The status bar surfaces the code somewhere visible
-    expect(screen.getByTestId('live-status-bar').textContent).toContain('000660');
+    // 창 헤더의 종목 식별 블록이 코드를 노출한다(상태바 폐지 후).
+    expect(screen.getByTestId('chart-window-identity').textContent).toContain('000660');
   });
 
   it('reads active index from ?index= query param without setting activeCode', async () => {
@@ -668,7 +669,7 @@ describe('LivePage shell', () => {
     // 플립 후 종목 SSOT = live.workspace.v1 의 groupSymbols(활성 그룹) 복원.
     useWorkspaceStore.setState({ groupSymbols: { 1: { code: '035720', name: '035720' } } });
     renderWithRouter();
-    expect(screen.getByTestId('live-status-bar').textContent).toContain('035720');
+    expect(screen.getByTestId('chart-window-identity').textContent).toContain('035720');
   });
 
   it('passes activeCode:venue as chart view identity (창별)', () => {
@@ -707,14 +708,15 @@ describe('LivePage shell', () => {
     expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('3m');
   });
 
-  it('includes the selected venue in bundle options, status text, and chart identity', () => {
+  // venue 진단 라벨(캔들 시간대 자동·호가 NXT·소스칩)은 상태바와 함께 폐지됐다 —
+  // venue 는 이제 bundle 페치 옵션과 차트 view identity 로만 흐른다.
+  it('includes the selected venue in bundle options and chart identity', () => {
     useLiveVenueStore.setState({ venue: 'UN' });
     useWorkspaceStore.setState({ groupSymbols: { 1: { code: '005930', name: '삼성전자' } } });
 
     renderWithRouter();
 
     expect(livePageMocks.liveBundleCalls.at(-1)?.options.venue).toBe('UN');
-    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 시간대 자동');
     expect(livePageMocks.liveChartRootProps.at(-1)?.viewIdentity).toBe('005930:UN');
   });
 

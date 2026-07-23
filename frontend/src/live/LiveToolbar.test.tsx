@@ -189,9 +189,10 @@ describe('창별 TimeframeControl (ChartWindow 배선 미러)', () => {
 
 function renderToolbar(props: Partial<Parameters<typeof WorkspaceLiveToolbar>[0]> = {}) {
   const qc = new QueryClient();
+  const captureHealth = { severity: 'ok' as const, label: 'LIVE●', title: 'capture_reason = healthy', showDot: true };
   return render(
     <QueryClientProvider client={qc}>
-      <WorkspaceLiveToolbar onOpenSettings={() => {}} {...props} />
+      <WorkspaceLiveToolbar onOpenSettings={() => {}} captureHealth={captureHealth} {...props} />
     </QueryClientProvider>,
   );
 }

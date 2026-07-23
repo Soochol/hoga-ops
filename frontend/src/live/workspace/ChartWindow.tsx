@@ -34,7 +34,6 @@ import { indexInstrument, isLiveIndexId, stockInstrument } from '../liveInstrume
 import { useLiveVenueStore } from '../../state/liveVenue';
 import {
   groupTargetChartWindow,
-  targetChartWindow,
   useWorkspaceStore,
   type GroupSymbol,
   type WorkspaceWindow,
@@ -49,11 +48,7 @@ import { DrawingMenu } from '../DrawingMenu';
 import { IndicatorsButton } from '../LiveToolbar';
 import { requestIndicatorDrawer } from './indicatorDrawerControls';
 import { useChartHeaderFold } from './useChartHeaderCompact';
-import {
-  publishLiveWindowStatus,
-  clearLiveWindowStatus,
-  type LiveWindowStatus,
-} from './liveWindowStatusSource';
+import { ChartWindowIdentity } from './ChartWindowIdentity';
 import type { LiveStudySaveSource } from '../../studyViews/studySaveCommand';
 import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButton';
 import { CollectButton } from './CollectButton';
@@ -106,11 +101,6 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const view = useWindowView(); // 창의 값(Provider 안)
   const ind = useWindowIndicators();
   const venue = useLiveVenueStore((s) => s.venue);
-  // 발행 게이트 = "대상 차트 창"(포커스가 데이터 창이면 z-최상위 차트) — 드로어와
-  // 같은 규칙. 엄격 포커스로 걸면 데이터 창 포커스 동안 상태바/저장뷰가 빈다.
-  const isTargetChart = useWorkspaceStore(
-    (s) => targetChartWindow(s.windows, s.zOrder)?.id === win.id,
-  );
   // 그룹 차트 링크 발행자 게이트(ADR-0119 PR-D) — 그룹당 하나(z-최상위 차트 창).
   const isGroupLink = useWorkspaceStore(
     (s) => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id,
@@ -177,47 +167,6 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     if (startYmd > endYmd) return null;
     return { startYmd, endYmd };
   }, [todayKst]);
-
-  // 포커스 차트 창 = 상태바 발행자(C2c-2c). 파이프라인 산출물 일부(경고·갭 배열)는
-  // 렌더마다 새 identity 일 수 있어 deps 로 걸면 발행→구독 재렌더→재발행 루프가
-  // 된다 — deps 없는 effect + 값 동등성 가드로 변경시에만 발행한다.
-  const { workareaCode, workareaBundle, liveTradePrice, isExtending, indexExtending,
-    activeIndexId, hogaCoverageGapDates } = d;
-  const lastPublishedRef = useRef<LiveWindowStatus | null>(null);
-  useEffect(() => {
-    if (!isTargetChart) return;
-    const next: LiveWindowStatus = {
-      windowId: win.id,
-      workareaCode,
-      bundle: workareaBundle,
-      liveTradePrice: liveTradePrice ?? null,
-      isExtending: activeIndexId ? indexExtending : isExtending,
-      historicalFromDate: view.historicalFromDate,
-      hogaGapDates: activeIndexId ? [] : hogaCoverageGapDates ?? [],
-    };
-    const prev = lastPublishedRef.current;
-    const same = prev !== null
-      && prev.windowId === next.windowId
-      && prev.workareaCode === next.workareaCode
-      && prev.bundle === next.bundle
-      && prev.liveTradePrice === next.liveTradePrice
-      && prev.isExtending === next.isExtending
-      && prev.historicalFromDate === next.historicalFromDate
-      && prev.hogaGapDates.length === next.hogaGapDates.length
-      && prev.hogaGapDates.every((v, i) => v === next.hogaGapDates[i]);
-    if (!same) {
-      lastPublishedRef.current = next;
-      publishLiveWindowStatus(next);
-    }
-  });
-  // 발행 철회는 대상 이탈/언마운트에서만 — 자기 발행일 때만 걷는다(교체 경합 무해).
-  useEffect(() => {
-    if (!isTargetChart) return undefined;
-    return () => {
-      lastPublishedRef.current = null;
-      clearLiveWindowStatus(win.id);
-    };
-  }, [isTargetChart, win.id]);
 
   // 그룹 차트 링크 발행(ADR-0119 PR-D) — 같은 그룹 데이터 창(매물대·프로그램 실
   // 콘텐츠, 10호가·거래원 스팟 모드)이 소비한다. 상태바 발행과 같은 규율: deps 없는
@@ -300,8 +249,21 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         data-testid="chart-window-header"
         data-compact={headerFold.compactActions ? '' : undefined}
         data-compact-timeframe={headerFold.compactTimeframe ? '' : undefined}
-        className="flex shrink-0 items-center gap-1 overflow-hidden bg-bg-card/60 px-1 py-0.5"
+        className="flex shrink-0 items-center gap-1.5 overflow-hidden bg-bg-card/60 px-1.5 py-0.5"
       >
+        {/* 종목 식별·경고 — 폐지된 페이지 상태바에서 이관(창 스코프). 창이 소유한
+            bundle·체결가·호가갭을 그대로 넘긴다. 좁아지면 truncate 로 접힌다. */}
+        <ChartWindowIdentity
+          stockCode={view.code}
+          symbolName={symbol?.name ?? null}
+          venue={venue}
+          bundle={d.workareaBundle}
+          liveTradePrice={d.liveTradePrice ?? null}
+          hogaGapDates={d.activeIndexId ? [] : d.hogaCoverageGapDates ?? []}
+          isExtending={d.activeIndexId ? d.indexExtending : d.isExtending}
+          historicalFromDate={view.historicalFromDate}
+        />
+        <span className="h-[14px] w-px shrink-0 bg-border-strong" />
         {/* 2단계 접힘(#762) — 기능 손실 없이 폭만 줄인다.
             ① 좁아지면 액션 라벨을 접고 아이콘만(요구폭 ~213px)
             ② 더 좁아지면 일·주·월을 분봉 드롭다운에 합친다(~110px)

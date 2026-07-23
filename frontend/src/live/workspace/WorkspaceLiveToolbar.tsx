@@ -14,12 +14,43 @@ import { LayoutPresetMenu } from '../presets/LayoutPresetMenu';
 import { requestWorkspaceTidy } from '../../workspace/workspaceCanvasControls';
 import { WindowAddMenu } from './WindowAddMenu';
 import { LiveWindowListMenu } from './LiveWindowListMenu';
+import { captureHealthPillColor } from '../captureHealthPill';
+import type { CaptureHealthView } from '../liveStatusProjection';
 
 type Props = {
   onOpenSettings: () => void;
+  /** 전역 캡처 파이프라인 건강도 — 종목 무관이라 폐지된 상태바 대신 여기 소유한다
+   *  (창 헤더에 두면 종목별인 듯 반복되어 노이즈). */
+  captureHealth: CaptureHealthView;
 };
 
-export function WorkspaceLiveToolbar({ onOpenSettings }: Props) {
+/** 캡처 헬스 표시 — ok+healthy 는 점(●), 그 외는 라벨 pill. 상태바에서 이관. */
+function CaptureHealthIndicator({ health }: { health: CaptureHealthView }) {
+  if (health.showDot) {
+    return (
+      <span
+        data-testid="capture-health-dot"
+        title={health.title}
+        aria-label="캡처 정상"
+        className="inline-block shrink-0 rounded-full"
+        style={{ width: '6px', height: '6px', background: 'var(--success)', boxShadow: '0 0 4px var(--success)' }}
+      />
+    );
+  }
+  const pill = captureHealthPillColor(health.severity);
+  return (
+    <span
+      data-testid="capture-health-pill"
+      title={health.title}
+      className="font-data shrink-0 rounded px-2 py-0.5"
+      style={{ background: pill.bg, border: pill.border, color: pill.fg, fontSize: 'var(--text-xs)' }}
+    >
+      {health.label}
+    </span>
+  );
+}
+
+export function WorkspaceLiveToolbar({ onOpenSettings, captureHealth }: Props) {
   return (
     <WorkspaceToolbar testId="workspace-live-toolbar" className="flex-nowrap">
       {/* 창 목록 — 죽어 있던 "N창 · 그룹 X" 라벨의 후계. 개수만 알리던 텍스트를
@@ -53,6 +84,10 @@ export function WorkspaceLiveToolbar({ onOpenSettings }: Props) {
           차트 창에만 있으므로 "차트 창이 있어야 연다" 가 자명하게 참이다. */}
       <SettingsButton onClick={onOpenSettings} />
       <LayoutPresetMenu />
+      {/* 전역 캡처 헬스 — 우측 끝에 밀어 배치(폐지된 상태바에서 이관). */}
+      <span className="ml-auto flex shrink-0 items-center pl-1">
+        <CaptureHealthIndicator health={captureHealth} />
+      </span>
     </WorkspaceToolbar>
   );
 }
