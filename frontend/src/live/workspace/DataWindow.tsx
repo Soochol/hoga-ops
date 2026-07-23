@@ -313,7 +313,7 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     inactiveCursorMs: latestTs,
   });
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto bg-bg-card">
       <BrokerTrajectoryTable series={card.series} cursorMs={card.cursorMs} />
     </div>
   );
@@ -349,7 +349,9 @@ function TradeWindow({ code }: { code: string }) {
     [highlightEnabled, thresholdManwon, highlightColor],
   );
   return (
-    <div className="h-full overflow-auto">
+    // 배경을 10호가(BookPanel)와 동일한 --bg-card 로 — flat 창 프레임(--bg)이 비쳐
+    // 체결창만 회색(Toss 라이트)으로 갈리던 것을 통일.
+    <div className="h-full overflow-auto bg-bg-card">
       <TradeTickTable view={view} highlight={highlight} />
     </div>
   );
@@ -358,7 +360,7 @@ function TradeWindow({ code }: { code: string }) {
 function InvestorWindow({ code }: { code: string }) {
   const query = useLiveInvestorTrendEstimate(code);
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto bg-bg-card">
       <InvestorTrendEstimateCard query={query} />
     </div>
   );
@@ -473,7 +475,7 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
 
   if (!linked) return <LinkPendingCard kind={win.kind} group={win.group} />;
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto bg-bg-card">
       <VolumeDistributionCard
         profile={cutoffProfile}
         cursorMs={markerCursorMs}
@@ -492,7 +494,7 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const linked = link !== null && link.code === code;
   if (!linked) return <LinkPendingCard kind={win.kind} group={win.group} />;
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto bg-bg-card">
       <ProgramTradeSummaryCard
         series={link.bundle?.program_trade ?? null}
         cursorMs={scope.kind === 'minute-cursor' ? scope.cursorMs : null}
