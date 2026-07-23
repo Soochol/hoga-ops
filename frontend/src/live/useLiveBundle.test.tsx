@@ -216,6 +216,7 @@ function renderUseLiveBundle(
     settings?: Partial<LiveSettings>;
     rangeCandles?: Array<{ ts_ms: number; open: number; high: number; low: number; close: number; vol_a: number; vol_b: number }>;
     screenerDailyCandles?: Array<{ t_ms: number; open: number; high: number; low: number; close: number; volume: number }>;
+    venue?: 'KRX' | 'UN';
   } = {},
 ) {
   const {
@@ -224,6 +225,7 @@ function renderUseLiveBundle(
     settings,
     rangeCandles = [],
     screenerDailyCandles = [],
+    venue,
   } = overrides;
   screenerDailyCandlesMock.candles = screenerDailyCandles;
   const previousImplementation = useRangeSpy.getMockImplementation();
@@ -238,7 +240,7 @@ function renderUseLiveBundle(
     return rangeResult();
   });
   const rendered = renderHook(
-    () => useLiveBundle(code, timeframe, '20260527', liveFixture),
+    () => useLiveBundle(code, timeframe, '20260527', liveFixture, venue ? { venue } : undefined),
     { wrapper: createWrapper(settings) },
   );
 	  useRangeSpy.mockImplementation(previousImplementation ?? (() => ({
@@ -1820,6 +1822,23 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     expect(seg.session_close_ms).toBe(1779879600000);
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastMinuteCall[3]).toBe('UN');
+  });
+
+  it('bypass ON minute keeps the KRX regular session even for UN venue (disk candles are KRX-only)', () => {
+    const result = renderUseLiveBundle({
+      timeframe: '1m',
+      venue: 'UN',
+      settings: { kis_rest_bypass_enabled: true },
+      rangeCandles: [
+        { ts_ms: 1_779_840_000_000, open: 71_000, high: 71_300, low: 70_900, close: 71_234, vol_a: 1000, vol_b: 0 },
+      ],
+    });
+    const seg = result.chartBundle!.segments[0];
+    // 우회 ON 디스크(hogaplay=KRX 전용, ADR-0003)라 UN 이어도 확장창(08:00~20:00)이
+    // 아니라 KRX 정규창(09:00~15:30)을 써야 KRX 캔들에 빈 확장 구간이 붙지 않는다.
+    // 대조: 바로 위 우회 OFF UN 테스트는 08:00(1779836400000)으로 확장된다.
+    expect(seg.session_open_ms).toBe(1779840000000);  // 09:00
+    expect(seg.session_close_ms).toBe(1779863400000); // 15:30
   });
 
   it('UN minute venue narrows fallback dates to KRX effective sessions', () => {
