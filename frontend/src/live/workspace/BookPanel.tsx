@@ -54,6 +54,9 @@ type Props = {
 };
 
 const ROW_H = 22; // DESIGN.md — Orderbook table row 22px
+/** 깊이 막대 상하 여백(px). 막대 높이 = ROW_H − 2·BAR_INSET(=16px). 이 여백이
+ *  Toss식 행간 "구분선"(흰 띠)을 만든다 — Toss 24/40 비율을 밀도 높은 22px 행에 축소. */
+const BAR_INSET = 3;
 /** 요약 패널 행 수 = 상한가 1 + 매도 10. 매수 바 정렬의 근거라 상수로 못박는다. */
 const SUMMARY_ROWS = 11;
 
@@ -259,7 +262,7 @@ function ExpectedFillBanner({
   const color = dirClass(price, baselinePrice);
   return (
     <div
-      className="flex items-baseline justify-center gap-6 bg-bg-subtle px-3 py-1.5"
+      className="flex items-baseline justify-center gap-6 bg-bg-card px-3 py-1.5"
       data-testid="book-expected-fill"
     >
       <span className="flex items-baseline gap-1.5 whitespace-nowrap">
@@ -382,9 +385,18 @@ function QtyBar({
       }`}
       style={{ height: ROW_H }}
     >
+      {/* Toss식 알약형 깊이 막대(2026-07-23 실측 이식). 행(ROW_H)보다 위아래
+          BAR_INSET 만큼 짧게 두어 생기는 흰 여백이 곧 행 사이 "구분선" 역할 —
+          Toss 호가는 실제 border 선이 없고(측정 확인), 라운드 막대+여백으로 분리한다.
+          라운드는 가격축 반대편 끝(매도=좌, 매수=우)에만 준다. */}
       <span
-        className={`absolute inset-y-px ${isAsk ? 'right-0' : 'left-0'}`}
-        style={{ width: `${widthPct}%`, background: isAsk ? 'var(--bar-ask)' : 'var(--bar-bid)' }}
+        className={`absolute rounded-md ${isAsk ? 'right-0 rounded-r-none' : 'left-0 rounded-l-none'}`}
+        style={{
+          top: BAR_INSET,
+          bottom: BAR_INSET,
+          width: `${widthPct}%`,
+          background: isAsk ? 'var(--bar-ask)' : 'var(--bar-bid)',
+        }}
       />
       {/* 뱃지는 잔량과 같은 flex 안에 둔다(#746 절대배치 겹침 교훈). 가격축 반대편에
           붙여 잔량 숫자가 항상 가격 쪽에 남게 한다. */}
