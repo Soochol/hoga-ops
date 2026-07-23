@@ -80,7 +80,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
 
   return (
     <div className="font-data text-sm">
-      <div className="sticky top-0 z-10 grid grid-cols-[78px_1fr_88px] gap-2 bg-bg-subtle px-2.5 py-1 text-[10.5px] text-fg-dimmer">
+      <div className="sticky top-0 z-10 grid grid-cols-[78px_1fr_88px] gap-2 bg-bg-card px-2.5 py-1 text-[10.5px] text-fg-dimmer">
         <span>거래원</span>
         <span>당일 궤적</span>
         <span className="text-right">순매수(주)</span>
@@ -146,7 +146,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
           </div>
         );
       })}
-      <div className="sticky bottom-0 z-10 flex items-center justify-between bg-bg-subtle px-2.5 py-1 text-[10.5px]">
+      <div className="sticky bottom-0 z-10 flex items-center justify-between bg-bg-card px-2.5 py-1 text-[10.5px]">
         <span className="text-fg-dimmer">외국계 합계</span>
         {foreignObserved ? (
           <span data-testid="broker-foreign-sum" className={priceDirClass(foreignSum)}>
