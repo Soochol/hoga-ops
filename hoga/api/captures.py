@@ -254,6 +254,35 @@ def refresh_max_concurrent() -> int:
     return _max_concurrent
 
 
+# HOGA_RATE_LIMIT_S mirrors HOGA_MAX_CONCURRENT: seconds slept between page
+# fetches per stream (upstream courtesy throttle). The code default lives in the
+# collector (DEFAULT_RATE_LIMIT_S); a smaller value hits hogaplay harder. Import
+# fires before load_env(), so refresh_rate_limit_s() re-reads at pool-start.
+_rate_limit_s: float = DEFAULT_RATE_LIMIT_S
+
+
+def refresh_rate_limit_s() -> float:
+    """Re-read HOGA_RATE_LIMIT_S from the environment into the module global.
+
+    Called from start_capture_pool (lifespan startup) after load_env() — the
+    seam where a .env-only value becomes visible (mirrors refresh_max_concurrent).
+    A non-negative float overrides; invalid/absent → keep current; never raises.
+    """
+    global _rate_limit_s  # noqa: PLW0603 — startup-only config refresh
+    raw = os.environ.get("HOGA_RATE_LIMIT_S")
+    if raw is not None:
+        try:
+            parsed = float(raw)
+            if parsed >= 0:
+                _rate_limit_s = parsed
+        except ValueError:
+            logging.getLogger(__name__).warning(
+                "HOGA_RATE_LIMIT_S=%r is not a non-negative float — keeping %s",
+                raw, _rate_limit_s,
+            )
+    return _rate_limit_s
+
+
 def _timing_enabled() -> bool:
     """Read HOGA_CAPTURE_TIMING at call time. Default ON; only explicit
     falsy values disable. Empty string is treated as 'unset' (= default ON)."""
@@ -754,9 +783,10 @@ async def _run_capture_inner(
                 code=state.code,
                 date=state.date,
                 data_dir=data_dir,
-                # Production rate from ADR-0017. HOGA_ENABLE_TEST_ENDPOINTS=1 skips the sleep
-                # entirely for tests; otherwise we use the same default as collect_stock_date.
-                rate_limit_s=0.0 if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1" else DEFAULT_RATE_LIMIT_S,
+                # Production rate: HOGA_RATE_LIMIT_S (.env-tunable, resolved at pool
+                # start) falling back to the collector default (ADR-0017).
+                # HOGA_ENABLE_TEST_ENDPOINTS=1 skips the sleep entirely for tests.
+                rate_limit_s=0.0 if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1" else _rate_limit_s,
                 resume=resume,
                 on_progress=_make_progress_callback(state),
                 cancel_token=state.cancel_token,
@@ -857,11 +887,11 @@ async def _run_item(state: QueueItemState) -> None:
         if _timing_enabled()
         else NullTimingCollector()
     )
-    # TODO(timing): plumb effective rate, see plan §13 step 4.
-    # _run_capture_inner does not currently surface the rate it passed to
-    # collect_stock_date back to this scope; recording the module default
-    # is accurate for the common case (no environment-driven override).
-    effective_rate_s: float = DEFAULT_RATE_LIMIT_S
+    # Telemetry rate: the resolved HOGA_RATE_LIMIT_S (or collector default) that
+    # the capture call below uses. Not exact under a mid-run throttle backoff —
+    # _run_capture_inner does not surface the per-page effective rate back here —
+    # but accurate for the steady state (see plan §13 step 4).
+    effective_rate_s: float = _rate_limit_s
     data_dir = _require_data_dir()
     decision = decide_capture(
         data_dir=data_dir,
@@ -1207,9 +1237,10 @@ def start_capture_pool(data_dir: Path) -> list[asyncio.Task]:
     ever contending for the lock.
     """
     global _ownership, _queue_owned  # noqa: PLW0603 — startup-only ownership wiring
-    # Re-read HOGA_MAX_CONCURRENT now that load_env() has run (import-time read
-    # was too early for a .env-only value — see refresh_max_concurrent).
+    # Re-read HOGA_MAX_CONCURRENT / HOGA_RATE_LIMIT_S now that load_env() has run
+    # (import-time read was too early for a .env-only value — see the refreshers).
     refresh_max_concurrent()
+    refresh_rate_limit_s()
     if os.environ.get("HOGA_CAPTURE_QUEUE_DISABLED", "").strip() in ("1", "true", "yes", "on"):
         _queue_owned = False
         logging.getLogger(__name__).info(

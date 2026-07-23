@@ -40,7 +40,7 @@ _MIN_FIELDS_GLOBAL_SEQ = 4
 # Default sleep between consecutive first.php requests. 0.05 adopted by
 # ADR-0017 (Phase 1 matrix sweep). Lowering this further (toward 0) increases
 # throttle risk; raising it back to 0.2 was the pre-tuning value.
-DEFAULT_RATE_LIMIT_S = 0.05
+DEFAULT_RATE_LIMIT_S = 0.15
 
 # Throttle-aware backoff constants — see spec §8.2.
 THROTTLE_BACKOFF_FACTOR = 2.0
