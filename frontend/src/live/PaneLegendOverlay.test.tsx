@@ -148,7 +148,10 @@ describe('PaneLegendOverlay — candle daily-MA row', () => {
   const minutePanes = () => makeChart([120, 60, 60]);
   const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
 
-  it('renders the daily-MA row with the latest-fallback value on a minute timeframe', () => {
+  // 일봉 이동평균선(daily-MA)은 사용자 요청으로 레전드에서 숨긴다 — 분봉 차트에서
+  // enabled + series 값이 있어도 레전드 값 표시 행은 뜨지 않는다. 차트의 일봉 MA 선
+  // 자체는 dailyMaSeriesRegistry 가 계속 그리므로 여기 검증 범위 밖(선은 유지).
+  it('never renders the daily-MA row in the legend even on a minute timeframe', () => {
     useLivePageStore.setState({
       movingAverageEnabled: false,
       dailyMovingAverageEnabled: true,
@@ -158,36 +161,9 @@ describe('PaneLegendOverlay — candle daily-MA row', () => {
     });
     useDailyMaSeriesRegistry.getState().register('dma-1', seriesWithValue(70500));
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    expect(screen.getByText('일봉 이동평균선')).toBeInTheDocument();
-    expect(screen.getByText('70,500')).toBeInTheDocument();
-    expect(screen.getByText('20')).toBeInTheDocument();
-  });
-
-  it('hides the daily-MA row on D even when enabled (minute-only overlay)', () => {
-    useLivePageStore.setState({
-      movingAverageEnabled: false,
-      dailyMovingAverageEnabled: true,
-      dailyMovingAverages: [
-        { id: 'dma-1', enabled: true, period: 20, color: '#3485FA', lineWidth: 1, source: 'close' },
-      ],
-    });
-    renderOverlay({ timeframe: 'D' });
     expect(screen.queryByText('일봉 이동평균선')).toBeNull();
-  });
-
-  it('daily-MA row: eye toggles hidden, ✕ turns the master off', () => {
-    useLivePageStore.setState({
-      movingAverageEnabled: false,
-      dailyMovingAverageEnabled: true,
-      dailyMovingAverages: [
-        { id: 'dma-1', enabled: true, period: 20, color: '#3485FA', lineWidth: 1, source: 'close' },
-      ],
-    });
-    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    fireEvent.click(screen.getByRole('button', { name: '일봉 이동평균선 선 숨김/표시' }));
-    expect(useLivePageStore.getState().dailyMovingAverageHidden).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: '일봉 이동평균선 지표 끄기' }));
-    expect(useLivePageStore.getState().dailyMovingAverageEnabled).toBe(false);
+    // 값 셀·토글 버튼도 함께 사라진다.
+    expect(screen.queryByRole('button', { name: '일봉 이동평균선 선 숨김/표시' })).toBeNull();
   });
 });
 
