@@ -354,6 +354,32 @@ def backfill_live_meta_cmd(
     )
 
 
+@app.command(name="backfill-hogaplay-meta")
+def backfill_hogaplay_meta_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),
+) -> None:
+    """ADR-0126: 과거 hogaplay meta의 is_partial/gap_ranges를 세션 엣지 앵커로 재계산.
+
+    anchor_edges=False 로 기록돼 선행 갭(다음날 아침 수집으로 오전 소실)을
+    COMPLETE 로 오판한 hogaplay meta 를 snapshots.parquet 에서 재파생한다.
+    is_partial/gap_ranges 만 rewrite 하고 collection_complete 등 나머지 필드는
+    보존한다 (과거 날짜만). 멱등: 2회차는 diff 가 없어 skip.
+    """
+    from hoga.live.meta_backfill import backfill_hogaplay_meta  # noqa: PLC0415 — CLI-local
+
+    data_dir = resolve_data_dir()
+    try:
+        res = backfill_hogaplay_meta(data_dir, dry_run=dry_run)
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]backfill-hogaplay-meta failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    tag = "dry-run" if dry_run else "done"
+    console.print(
+        f"[green]backfill-hogaplay-meta {tag}[/green]: "
+        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped}"
+    )
+
+
 @app.command(name="ls")
 def list_stock_dates() -> None:
     """Show captured/parsed Stock-Dates."""
