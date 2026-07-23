@@ -24,9 +24,11 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 from hoga.api.disk_state import analyze_gaps
-from hoga.api.timeenc import HogaMs, unix_ms_to_hhmmssms
+from hoga.api.timeenc import HogaMs, unix_ms_to_hhmmssms, unix_ms_to_ms_from_midnight
 from hoga.tables.brokers import BrokerRow
 from hoga.tables.brokers import write_parquet as write_brokers_parquet
+from hoga.tables.candles import Candle
+from hoga.tables.candles import write_parquet as write_candles_parquet
 from hoga.tables.fills import Fill, write_fills_parquet
 from hoga.tables.snapshots import Orderbook
 from hoga.tables.snapshots import write_parquet as write_snapshots_parquet
@@ -136,6 +138,9 @@ class _JsonlParseState:
     trades: list[Trade] = field(default_factory=list)
     broker_rows: list[BrokerRow] = field(default_factory=list)
     fills: list[Fill] = field(default_factory=list)
+    # 키움 WS 체결 틱에서 합성한 1분봉(kiwoom_live 전용 — 다른 소스 JSONL엔 candle
+    # kind가 없어 항상 빈 리스트). seq 불필요(ts_ms가 분 단위 자연 키).
+    candles: list[Candle] = field(default_factory=list)
 
 
 # Today Promotion 전용 증분 상태. 프로모터 루프는 코드를 순차 await하므로
@@ -250,6 +255,19 @@ def _apply_jsonl_line(
             buy_qty=int(p.get("buy_qty") or 0),
             sell_qty=int(p.get("sell_qty") or 0),
         ))
+    elif kind == "candle":
+        # candles.parquet은 **자정기준 ms** 인코딩(다른 테이블의 HHMMSSmmm과 다름) —
+        # ts_ms_encoded(HHMMSSmmm)가 아니라 t_ms_int(Unix ms)에서 별도 변환한다.
+        # 단일 거래량 채널은 vol_a에, vol_b=0(candle_repair·chart.tsv 관례).
+        state.candles.append(Candle(
+            ts_ms=unix_ms_to_ms_from_midnight(date, t_ms_int),
+            open_=int(p.get("open") or 0),
+            close_=int(p.get("close") or 0),
+            high=int(p.get("high") or 0),
+            low=int(p.get("low") or 0),
+            vol_a=int(p.get("volume") or 0),
+            vol_b=0,
+        ))
 
 
 def _consume_complete_lines(state: _JsonlParseState, jsonl_path: Path, *, code: str, date: str) -> None:
@@ -276,7 +294,7 @@ def _consume_complete_lines(state: _JsonlParseState, jsonl_path: Path, *, code: 
 
 def _parse_jsonl_incremental(
     jsonl_path: Path, *, code: str, date: str, source: str = "kis_live",
-) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], dict]:
+) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], list[Candle], dict]:
     """Today Promotion용 증분 파서 — 전량 파서와 결과 동등(패리티 테스트 고정)."""
     key = (source, code, date, str(jsonl_path))
     # 날짜가 넘어간(또는 경로가 바뀐) 같은 (source, code) 키 정리 — 장기 구동
@@ -295,7 +313,8 @@ def _parse_jsonl_incremental(
         code, date, state.snapshots, state.trades, state.broker_snapshot_count,
         fill_count=len(state.fills), source=source,
     )
-    return state.snapshots, state.trades, state.broker_rows, state.fills, meta
+    return (state.snapshots, state.trades, state.broker_rows, state.fills,
+            state.candles, meta)
 
 
 def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
@@ -304,7 +323,7 @@ def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
     code: str,
     date: str,
     source: str = "kis_live",
-) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], dict]:
+) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], list[Candle], dict]:
     """Parse one Live Capture JSONL into typed table records + meta.
 
     Shared by promote_one (ADR-0038 daily batch) and the today-promotion path
@@ -337,7 +356,8 @@ def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
             fill_count=0,
             source=source,
         )
-        return state.snapshots, state.trades, state.broker_rows, state.fills, meta
+        return (state.snapshots, state.trades, state.broker_rows, state.fills,
+                state.candles, meta)
 
     # 라인 의미론(스킵 로그·인코딩 변환·seq 부여)은 _apply_jsonl_line 한 곳에
     # 산다 — 전량(이 함수)·증분(_parse_jsonl_incremental) 경로가 공유한다.
@@ -351,6 +371,7 @@ def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
     trades = state.trades
     broker_rows = state.broker_rows
     fills = state.fills
+    candles = state.candles
     broker_snapshot_count = state.broker_snapshot_count
     meta = _build_meta(
         code,
@@ -361,7 +382,7 @@ def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
         fill_count=len(fills),
         source=source,
     )
-    return snapshots, trades, broker_rows, fills, meta
+    return snapshots, trades, broker_rows, fills, candles, meta
 
 
 def _build_meta(
@@ -434,7 +455,7 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
         return None
 
     def _sync_parse_and_write() -> None:
-        snapshots, trades, broker_rows, fills, meta = _parse_jsonl_incremental(
+        snapshots, trades, broker_rows, fills, candles, meta = _parse_jsonl_incremental(
             jsonl_path,
             code=code,
             date=today,
@@ -445,6 +466,12 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
         _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
         _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
         _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
+        # 실시간 합성 캔들(ADR-0040/0121/0124 개정): kiwoom_live가 캔들 보유 소스가
+        # 된다. **비어있을 때는 쓰지 않는다** — resolve_candle_source(ADR-0121)가
+        # candles.parquet의 *존재*로 승자를 판정하므로, 빈 파일을 남기면 캔들 0개인
+        # kiwoom_live가 hogaplay를 가리는 거짓 승자가 된다.
+        if candles:
+            _atomic_write_table(write_candles_parquet, candles, target / "candles.parquet")
         atomic_write_json(target / "meta.json", meta, indent=2)
 
     await asyncio.to_thread(_sync_parse_and_write)
@@ -490,7 +517,7 @@ async def promote_one(
     if not jsonl_path.exists():
         return
 
-    snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
+    snapshots, trades, broker_rows, fills, candles, meta = _parse_jsonl_to_records(
         jsonl_path, code=code, date=date, source=source,
     )
 
@@ -499,6 +526,11 @@ async def promote_one(
     _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
     _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
     _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
+    # 실시간 합성 캔들(kiwoom_live). 비어있으면 쓰지 않는다(위 today-promotion과 동일 —
+    # 빈 candles.parquet이 resolve_candle_source의 존재 판정에서 거짓 승자가 됨).
+    # kis_live/hogaplay JSONL엔 candle kind가 없어 candles=[] → 기존 소스 동작 불변.
+    if candles:
+        _atomic_write_table(write_candles_parquet, candles, target / "candles.parquet")
     meta_path.write_text(json.dumps(meta, indent=2))
     _log.info(
         "live.promote.done code=%s date=%s row_counts=%s",

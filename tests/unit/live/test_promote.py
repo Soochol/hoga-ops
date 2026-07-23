@@ -124,7 +124,7 @@ def test_parse_jsonl_converts_t_ms_to_hhmmssms(tmp_path: Path) -> None:
                     "total_bid_qty": 0, "total_ask_qty": 0},
     }) + "\n")
 
-    snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
+    snapshots, trades, broker_rows, fills, _candles, meta = _parse_jsonl_to_records(
         jsonl, code="005930", date=date,
     )
 
@@ -167,7 +167,7 @@ def test_parse_jsonl_converts_t_ms_for_trade_and_broker(tmp_path: Path) -> None:
     ]
     jsonl.write_text("\n".join(lines) + "\n")
 
-    _snapshots, trades, broker_rows, _fills, _meta = _parse_jsonl_to_records(
+    _snapshots, trades, broker_rows, _fills, _candles, _meta = _parse_jsonl_to_records(
         jsonl, code="005930", date=date,
     )
     assert len(trades) == 1
@@ -204,7 +204,7 @@ def test_parse_jsonl_skips_row_outside_date_window(tmp_path: Path, caplog) -> No
     }) + "\n")
 
     with caplog.at_level(logging.WARNING, logger="hoga.live.promote"):
-        snapshots, trades, broker_rows, _fills, _meta = _parse_jsonl_to_records(
+        snapshots, trades, broker_rows, _fills, _candles, _meta = _parse_jsonl_to_records(
             jsonl, code="005930", date=date,
         )
 
@@ -485,7 +485,7 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
     ]
     jsonl.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
-    snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
+    snapshots, trades, broker_rows, fills, _candles, meta = _parse_jsonl_to_records(
         jsonl, code="003490", date="20260528",
     )
 
@@ -500,6 +500,80 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
     assert meta["row_counts"]["snapshots"] == 1
     assert meta["row_counts"]["trades"] == 1
     assert meta["row_counts"]["brokers"] == 1  # snapshot count, not row count
+
+
+def test_parse_jsonl_candle_uses_ms_from_midnight_encoding(tmp_path: Path) -> None:
+    """candle kind는 candles.parquet 네이티브(자정기준 ms)로 인코딩된다 —
+    다른 테이블의 HHMMSSmmm과 다르다."""
+    from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_ms_from_midnight
+
+    date = "20260528"
+    base = hhmmssms_to_unix_ms(date, 90000000)  # 09:00 KST
+    rows = [
+        {"t_ms": base, "kind": "candle", "payload": {
+            "open": 100, "high": 110, "low": 95, "close": 105, "volume": 500}},
+        {"t_ms": base + 60_000, "kind": "candle", "payload": {
+            "open": 105, "high": 108, "low": 104, "close": 107, "volume": 300}},
+    ]
+    jsonl = tmp_path / "in.jsonl"
+    jsonl.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+    _s, _t, _b, _f, candles, meta = _parse_jsonl_to_records(
+        jsonl, code="005930", date=date, source="kiwoom_live",
+    )
+    assert len(candles) == 2
+    assert candles[0].ts_ms == unix_ms_to_ms_from_midnight(date, base)   # 자정기준 ms
+    assert (candles[0].open_, candles[0].high, candles[0].low,
+            candles[0].close_, candles[0].vol_a, candles[0].vol_b) == (100, 110, 95, 105, 500, 0)
+    assert meta["source"] == "kiwoom_live"
+
+
+async def test_promote_writes_kiwoom_candles_parquet(tmp_path: Path) -> None:
+    """kiwoom_live 승격이 candles.parquet을 쓰고 라운드트립된다(ADR 개정)."""
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.live.promote import promote_one
+    from hoga.tables import candles as candles_tbl
+
+    date = "20260528"
+    base = hhmmssms_to_unix_ms(date, 90000000)
+    rows = [
+        {"t_ms": base, "kind": "candle", "payload": {
+            "open": 100, "high": 110, "low": 95, "close": 105, "volume": 500}},
+    ]
+    jsonl = tmp_path / "in.jsonl"
+    jsonl.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    root = tmp_path / "parquet"
+
+    await promote_one(jsonl, root, code="005930", date=date, source="kiwoom_live")
+
+    cpath = root / date / "005930" / "kiwoom_live" / "candles.parquet"
+    assert cpath.exists()
+    got = candles_tbl.read_parquet(cpath)
+    assert len(got) == 1
+    assert (got[0].open_, got[0].close_, got[0].vol_a) == (100, 105, 500)
+
+
+async def test_promote_skips_empty_candles_parquet(tmp_path: Path) -> None:
+    """candle 라인이 없으면 candles.parquet을 쓰지 않는다 — 빈 파일이 존재 판정에서
+    거짓 승자가 되는 것을 막는다(resolve_candle_source, ADR-0121)."""
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.live.promote import promote_one
+
+    date = "20260528"
+    base = hhmmssms_to_unix_ms(date, 90000000)
+    rows = [
+        {"t_ms": base, "kind": "trade", "payload": {
+            "trades": [{"t_ms": base, "price": 100, "qty": 5, "side": 1}]}},
+    ]
+    jsonl = tmp_path / "in.jsonl"
+    jsonl.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    root = tmp_path / "parquet"
+
+    await promote_one(jsonl, root, code="005930", date=date, source="kiwoom_live")
+
+    target = root / date / "005930" / "kiwoom_live"
+    assert (target / "trades.parquet").exists()
+    assert not (target / "candles.parquet").exists()   # 빈 캔들 → 파일 없음
 
 
 def test_parse_jsonl_synthesizes_monotonic_seq_per_kind(tmp_path: Path) -> None:
@@ -533,7 +607,7 @@ def test_parse_jsonl_synthesizes_monotonic_seq_per_kind(tmp_path: Path) -> None:
     jsonl = tmp_path / "in.jsonl"
     jsonl.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
-    snapshots, trades, broker_rows, _, _ = _parse_jsonl_to_records(
+    snapshots, trades, broker_rows, _, _, _ = _parse_jsonl_to_records(
         jsonl, code="003490", date=date,
     )
 
@@ -596,7 +670,7 @@ def test_parse_jsonl_to_records_skips_torn_line(tmp_path: Path, caplog) -> None:
     jsonl.write_text(good + "\n{ malformed\n")
 
     with caplog.at_level("WARNING"):
-        snapshots, _, _, _, meta = _parse_jsonl_to_records(
+        snapshots, _, _, _, _, meta = _parse_jsonl_to_records(
             jsonl, code="003490", date="20260528",
         )
 

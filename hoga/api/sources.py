@@ -55,16 +55,21 @@ _COMPLETENESS_POLICIES: frozenset[str] = frozenset({"completeness_first"})
 
 # 캔들 차원 후보 — candles.parquet을 실제로 쓰는 Source만.
 #
-# 실시간 WS 승격본(kis_live/kiwoom_live)은 캔들을 절대 쓰지 않는다(ADR-0040/0043:
-# 캔들 차원은 Live Candle Backfill이 따로 서빙). 이들을 캔들 사다리에 남겨두면
-# "건강한 승자가 이겼는데 그 승자에겐 캔들이 없다"가 성립해, 같은 Stock-Date의
-# hogaplay 캔들과 ADR-0109 복구본(kis_api)이 **동시에** 가려진다. 사다리는 소스
-# 우선순위(정책)를 표현하고, 이 상수는 소스가 그 차원을 보유하는지(물리적 사실)를
-# 표현한다 — 두 축을 섞으면 정책이 디스크 레이아웃에 오염된다.
+# **kis_live는 캔들을 쓰지 않는다**(ADR-0040/0043: KIS 실시간 승격본의 캔들 차원은
+# Live Candle Backfill이 따로 서빙). kis_live를 캔들 사다리에 남겨두면 "건강한
+# 승자가 이겼는데 그 승자에겐 캔들이 없다"가 성립해, 같은 Stock-Date의 hogaplay
+# 캔들과 ADR-0109 복구본(kis_api)이 **동시에** 가려진다. 사다리는 소스 우선순위
+# (정책)를 표현하고, 이 상수는 소스가 그 차원을 보유하는지(물리적 사실)를 표현한다
+# — 두 축을 섞으면 정책이 디스크 레이아웃에 오염된다.
 #
-# ADR-0118(키움 전담) 이후 모든 거래일이 kiwoom_live 파티션을 갖게 되면서 이
-# 필터 없이는 hogaplay가 INVALID인 날의 캔들이 **항상** 사라진다.
-CANDLE_BEARING_SOURCES: frozenset[SourceName] = frozenset({"hogaplay", "kis_api"})
+# **kiwoom_live는 예외적으로 캔들을 보유한다**(ADR-0125가 ADR-0040/0043 개정):
+# 키움 WS 체결 틱에서 수신 시점에 1분봉을 합성해 kiwoom_live/candles.parquet으로
+# 승격한다(hoga/live/minute_candle_agg.py). 그래서 이 집합에 포함된다. 파일 존재
+# 판정(resolve_candle_source)이 캔들 없는 날의 kiwoom_live를 자연히 걸러내므로,
+# 캔들을 합성하지 못한 날엔 여전히 hogaplay/kis_api가 이긴다.
+CANDLE_BEARING_SOURCES: frozenset[SourceName] = frozenset(
+    {"hogaplay", "kis_api", "kiwoom_live"}
+)
 
 _POLICY_ORDER: dict[str, tuple[SourceName, ...]] = {
     "hogaplay": ("hogaplay", "kis_live", "kiwoom_live", "kis_api"),
