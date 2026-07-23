@@ -3188,6 +3188,10 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
   });
 
   it('subscribes to crosshair move on minute timeframe', () => {
+    // CandleTooltip 의 crosshair 구독은 candleTooltipEnabled 로 게이트된다(#694
+    // 이후 기본 off). 세 번째 정당 구독자를 활성화해 그 이상(누수/중복)이 없음을
+    // 검증한다 — 툴팁을 안 켜면 구독은 2개뿐이라 이 카운트 단언의 의미가 사라진다.
+    useChartPrefsStore.setState({ candleTooltipEnabled: true });
     render(
       <LiveChartRoot
         code="005930"
@@ -3208,6 +3212,9 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
   });
 
   it('subscribes on calendar timeframe too (publishes cursor for Pane Legend; spot stays minute-only in LiveSidebar)', () => {
+    // CandleTooltip 구독은 candleTooltipEnabled(#694 이후 기본 off)로 게이트되므로
+    // 켜야 세 번째 구독자가 활성화된다(위 분봉 케이스와 동일).
+    useChartPrefsStore.setState({ candleTooltipEnabled: true });
     render(
       <LiveChartRoot
         code="005930"
