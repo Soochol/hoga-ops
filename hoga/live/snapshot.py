@@ -31,6 +31,11 @@ class SnapshotKind(str, Enum):
     # kind — stream.on_tick 이 입구에서 프로그램 latch 로 라우팅하고 return 한다
     # (소비는 program_trade_store 사이드카 → /api/range 번들).
     PROGRAM = "program"
+    # 키움 WS 체결 틱에서 수신 시점에 합성한 1분봉(ADR-0040/0121/0124 개정).
+    # trade(10초 집계·매물대용)와 달리 candle은 완성된 OHLCV 봉이며 candles.parquet
+    # 으로 승격된다. payload={"open","high","low","close","volume"}(원 단위),
+    # LiveSnapshot.t_ms=분 시작 Unix ms(promote가 자정기준 ms로 변환).
+    CANDLE = "candle"
 
 
 @dataclass(frozen=True)

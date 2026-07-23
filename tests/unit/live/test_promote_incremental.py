@@ -58,13 +58,14 @@ def fill_line(t_ms: int, buy: int, sell: int) -> str:
 def assert_matches_full_parse(jsonl: Path) -> None:
     inc = _parse_jsonl_incremental(jsonl, code=CODE, date=DATE)
     full = _parse_jsonl_to_records(jsonl, code=CODE, date=DATE)
-    # 레코드 4종 + meta.row_counts 전부 동일해야 한다.
+    # 레코드 5종 + meta.row_counts 전부 동일해야 한다.
     assert inc[0] == full[0], "snapshots 불일치"
     assert inc[1] == full[1], "trades 불일치"
     assert inc[2] == full[2], "broker_rows 불일치"
     assert inc[3] == full[3], "fills 불일치"
-    assert inc[4]["row_counts"] == full[4]["row_counts"]
-    assert sum(len(x) for x in full[:4]) > 0, "오라클이 공허 — 픽스처 시각 오류"
+    assert inc[4] == full[4], "candles 불일치"
+    assert inc[5]["row_counts"] == full[5]["row_counts"]
+    assert sum(len(x) for x in full[:5]) > 0, "오라클이 공허 — 픽스처 시각 오류"
 
 
 def test_incremental_appends_match_full_parse(tmp_path: Path) -> None:

@@ -19,6 +19,7 @@ from .ask_peak_state import TodayAskPeakState, TodayBidPeakState
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
 from .lifecycle import get_signal_alert_monitor
+from .minute_candle_agg import MS_PER_MINUTE, MinuteCandleAggregator
 from . import program_trade_latch
 from .session_gate import market_phase, ws_capture_window_async
 from .snapshot import LiveSnapshot, SnapshotKind
@@ -109,6 +110,9 @@ class LiveStream:
         self._date_fn = date_fn
         self._phase_fn = phase_fn or (lambda: market_phase(_now_ms()))
         self._ds = TickDownsampler()
+        # 키움 WS 체결 틱 → 1분봉 합성(ADR-0040/0121/0124 개정). 다운샘플러와
+        # 나란히 저장 게이트 안에서만 ingest되고, flush_once가 완성 봉을 JSONL로 낸다.
+        self._candle_agg = MinuteCandleAggregator()
         # 리뷰 #6: on_tick 입구 필터용 활성 집합. None = 미설정(무필터 —
         # set_active_codes 전 부분 조립·단위 테스트 호환); 실경로는
         # start(_start_live_stream_locked)와 refresh가 항상 설정한다.
@@ -126,6 +130,7 @@ class LiveStream:
         """Live Set 변경 위임 — start/refresh_live_stream이 호출(advisor C)."""
         self._active_codes = set(codes)
         self._ds.set_active_codes(codes)
+        self._candle_agg.set_active_codes(self._active_codes)
         for code in set(self._ask_peak_by_code) - self._active_codes:
             del self._ask_peak_by_code[code]
         for code in set(self._bid_peak_by_code) - self._active_codes:
@@ -409,8 +414,13 @@ class LiveStream:
         # ingest는 전환 drain이 마감 당일로 귀속한다.
         if self._gate_open:
             self._ds.ingest(tick)
+            # 캔들 합성도 같은 게이트·KRX 격리 안에서 raw 틱을 받는다(다운샘플
+            # 이전이라 per-tick 가격·cum_volume 정확). trade가 아니면 no-op.
+            self._candle_agg.ingest(tick)
 
-    async def flush_once(self, *, now_ms: int | None = None) -> None:
+    async def flush_once(
+        self, *, now_ms: int | None = None, seal_candles_all: bool = False
+    ) -> None:
         now_ms = now_ms if now_ms is not None else _now_ms()
         # date/phase는 flush 호출 시점의 샘플 — 윈도 내 틱들이 아니라 마감 순간의
         # 날짜·위상으로 귀속된다(M2). 게이트 닫힘 전환 drain은 15:30:0x 수 초 내라
@@ -421,6 +431,7 @@ class LiveStream:
             # 오늘 날짜로 기록되는 것을 차단. KRX 세션은 자정을 넘지 않으므로
             # 날짜 변화 시 reset은 항상 안전하다(정상 경로에선 drain이 이미 비움).
             self._ds.reset()
+            self._candle_agg.reset()
             _log.warning("live.stream.stale_state_reset prev=%s now=%s",
                          self._last_flush_date, date)
         self._last_flush_date = date
@@ -451,6 +462,18 @@ class LiveStream:
                     sell_qty=fill.payload["sell_qty"],
                     trades=trade.payload["trades"] if trade is not None else None,
                 )
+        # 캔들 합성 flush(다운샘플러와 동일 durability 규율): 완성 봉만 append,
+        # 성공한 코드만 commit해 봉을 제거한다. append 실패 시 commit을 건너뛰어
+        # 봉이 다음 flush로 롤된다. seal_candles_all은 게이트 닫힘 drain에서 진행 중
+        # 마지막 봉(종가 동시호가)까지 봉인하기 위함.
+        candle_flushed = self._candle_agg.flush(now_ms=now_ms, seal_all=seal_candles_all)
+        for code, snaps in candle_flushed.items():
+            try:
+                await self._writer.append(date, code, snaps)
+            except OSError:
+                _log.exception("live.stream.candle_append_failed code=%s", code)
+                continue  # commit 안 함 → 봉 보존 → 다음 flush 재시도
+            self._candle_agg.commit(code, minutes=[s.t_ms // MS_PER_MINUTE for s in snaps])
         await self._writer.fsync_all()
         self.last_flush_ms = now_ms
 
@@ -480,10 +503,12 @@ class LiveStream:
             else:
                 if was_open:  # open→closed 전환: drain + 상태 초기화
                     try:
-                        await self.flush_once()
+                        # seal_candles_all: 진행 중 마지막 봉(종가 동시호가)을 잃지 않게.
+                        await self.flush_once(seal_candles_all=True)
                     except Exception:  # noqa: BLE001
                         _log.exception("live.stream.drain_flush_failed")
                     self._ds.reset()
+                    self._candle_agg.reset()
                     # 일경계 상태 리셋(spec 2026-06-08 §2.4): _last_flush_date를
                     # None으로 둬 다음 개장 첫 flush가 어제 날짜와 비교해 R1
                     # 경고를 내지 않게(#15), last_flush_ms도 None으로 둬 재개방

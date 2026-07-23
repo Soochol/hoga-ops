@@ -220,6 +220,55 @@ def test_resolve_candle_source_none_for_missing_stock_date(tmp_path: Path) -> No
     assert resolve_candle_source(engine, "20260720", "999999", "hogaplay_first") is None
 
 
+# --- kiwoom_live 캔들 보유 (ADR-0125 — 실시간 WS 틱 합성 1분봉) ----------------
+#
+# kiwoom_live는 캔들을 절대 안 쓴다는 ADR-0040/0043 불변식이 ADR-0125로 개정돼
+# CANDLE_BEARING_SOURCES에 편입됐다. 파일 존재 판정이 캔들 합성 못한 날을 걸러낸다.
+
+
+def test_kiwoom_live_wins_candle_when_hogaplay_absent(tmp_path: Path) -> None:
+    """hogaplay INVALID·kis_api 없음 → 실시간 합성 kiwoom_live 캔들이 서빙된다."""
+    _seed_invalid_source(tmp_path, "20260723", "005930", "hogaplay")
+    _seed_source(tmp_path, "20260723", "005930", "kiwoom_live")
+    _seed_candles(tmp_path, "20260723", "005930", "kiwoom_live")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260723", "005930", "hogaplay_first") == "kiwoom_live"
+
+
+def test_hogaplay_still_beats_kiwoom_candle_when_both_present(tmp_path: Path) -> None:
+    """hogaplay 우선: hogaplay 틱 캔들(고화질)이 kiwoom_live 합성봉을 이긴다."""
+    _seed_source(tmp_path, "20260723", "005930", "hogaplay")
+    _seed_candles(tmp_path, "20260723", "005930", "hogaplay")
+    _seed_source(tmp_path, "20260723", "005930", "kiwoom_live")
+    _seed_candles(tmp_path, "20260723", "005930", "kiwoom_live")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260723", "005930", "hogaplay_first") == "hogaplay"
+
+
+def test_ws_first_prefers_kiwoom_candle_over_hogaplay(tmp_path: Path) -> None:
+    """실시간 WS 우선: 캔들도 kiwoom_live 합성봉을 hogaplay보다 앞세운다."""
+    _seed_source(tmp_path, "20260723", "005930", "hogaplay")
+    _seed_candles(tmp_path, "20260723", "005930", "hogaplay")
+    _seed_source(tmp_path, "20260723", "005930", "kiwoom_live")
+    _seed_candles(tmp_path, "20260723", "005930", "kiwoom_live")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260723", "005930", "kis_ws_first") == "kiwoom_live"
+
+
+def test_kiwoom_live_without_candle_file_skipped(tmp_path: Path) -> None:
+    """캔들 합성 못한 kiwoom_live(파일 부재)는 걸러지고 kis_api 복구본이 이긴다."""
+    _seed_invalid_source(tmp_path, "20260723", "005930", "hogaplay")
+    _seed_source(tmp_path, "20260723", "005930", "kiwoom_live")   # candles.parquet 없음
+    _seed_source(tmp_path, "20260723", "005930", "kis_api")
+    _seed_candles(tmp_path, "20260723", "005930", "kis_api")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260723", "005930", "hogaplay_first") == "kis_api"
+
+
 # --- 완결성 우선 정책 (completeness_first, ADR-0039) ------------------------
 #
 # 기존 정책은 "사다리 첫 non-INVALID"라 hogaplay가 반쪽(SOURCE_PARTIAL)이어도

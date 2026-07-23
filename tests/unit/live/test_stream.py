@@ -75,6 +75,92 @@ async def test_prev_close_reaches_display_but_not_storage(tmp_path):
     assert "prev_close" not in jsonl                    # 저장: 미유출
 
 
+def _candle_lines(jsonl: str) -> list[dict]:
+    out = []
+    for raw in jsonl.splitlines():
+        if not raw:
+            continue
+        rec = json.loads(raw)
+        if rec.get("kind") == "candle":
+            out.append(rec)
+    return out
+
+
+async def test_candle_synthesized_and_written_on_minute_seal(tmp_path):
+    """키움 체결 틱 → 1분봉 합성 → 분 봉인 시 candle JSONL 기록(방식 a')."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260616", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    t0 = _kst_ms(10, 0, 5)
+    for t, price, qty, cum in [(t0, 100, 5, 5), (t0 + 1000, 105, 3, 8), (t0 + 2000, 98, 2, 10)]:
+        tick = WsTick(code="005930", t_ms=t, kind=SnapshotKind.TRADE, payload={
+            "trades": [{"t_ms": t, "price": price, "qty": qty, "side": 1,
+                        "side_source": "kiwoom_ws"}],
+            "cum_volume": cum,
+        })
+        await stream.on_tick(tick)
+
+    # 같은 분(10:00) flush → 아직 미봉인.
+    await stream.flush_once(now_ms=t0 + 5_000)
+    jsonl_path = tmp_path / "live" / "20260616" / "005930.jsonl"
+    assert _candle_lines(jsonl_path.read_text()) == []
+
+    # 다음 분(10:01) flush → 10:00 봉 봉인·기록.
+    await stream.flush_once(now_ms=_kst_ms(10, 1, 5))
+    candles = _candle_lines(jsonl_path.read_text())
+    assert len(candles) == 1
+    p = candles[0]["payload"]
+    assert (p["open"], p["high"], p["low"], p["close"]) == (100, 105, 98, 98)  # close=마지막 틱
+    assert p["volume"] == 10   # cum delta: 10 - 5 + 5
+
+
+async def test_candle_not_synthesized_for_nxt(tmp_path):
+    """NXT 틱은 성역 격리로 저장 경로 진입 전 리턴 — 캔들도 안 생긴다."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260616", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    t0 = _kst_ms(10, 0, 5)
+    tick = WsTick(code="005930", t_ms=t0, kind=SnapshotKind.TRADE, venue="NXT", payload={
+        "trades": [{"t_ms": t0, "price": 100, "qty": 5, "side": 1, "side_source": "kiwoom_ws"}],
+    })
+    await stream.on_tick(tick)
+    await stream.flush_once(now_ms=_kst_ms(10, 1, 5))
+    jsonl_path = tmp_path / "live" / "20260616" / "005930.jsonl"
+    assert not jsonl_path.exists() or _candle_lines(jsonl_path.read_text()) == []
+
+
+async def test_drain_seals_final_in_progress_candle(tmp_path):
+    """게이트 닫힘 drain(seal_candles_all)이 진행 중 마지막 봉을 봉인한다."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260616", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    t0 = _kst_ms(15, 30, 1)   # 종가 근처 마지막 봉
+    tick = WsTick(code="005930", t_ms=t0, kind=SnapshotKind.TRADE, payload={
+        "trades": [{"t_ms": t0, "price": 200, "qty": 7, "side": 1, "side_source": "kiwoom_ws"}],
+    })
+    await stream.on_tick(tick)
+    jsonl_path = tmp_path / "live" / "20260616" / "005930.jsonl"
+
+    # 일반 flush(같은 분)면 미봉인.
+    await stream.flush_once(now_ms=t0 + 2_000)
+    assert _candle_lines(jsonl_path.read_text()) == []
+
+    # drain: seal_candles_all → 진행 중 봉도 봉인.
+    await stream.flush_once(now_ms=t0 + 2_000, seal_candles_all=True)
+    candles = _candle_lines(jsonl_path.read_text())
+    assert len(candles) == 1
+    assert candles[0]["payload"]["close"] == 200
+
+
 async def test_program_tick_routes_to_latch_not_buffer_or_storage(tmp_path):
     """PROGRAM(0w) 틱은 표시 버퍼·JSONL 저장을 타지 않고 latch 로만 간다(PR-F4).
 
