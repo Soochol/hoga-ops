@@ -5,11 +5,9 @@ import { activeGroupOf, useWorkspaceStore, type GroupSymbol } from '../state/wor
 import { requestWorkspaceTidy } from '../workspace/workspaceCanvasControls';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
-import { LiveStatusBar } from './LiveStatusBar';
 import { LiveStateBanner } from './LiveStateBanner';
 import { activateLiveCode, activateLiveInstrument, mirrorActiveGroupToLivePage } from './liveNavigate';
 import { useLiveKeyboard } from './useLiveKeyboard';
-import { useLiveVenueStore } from '../state/liveVenue';
 import LiveSettingsModal from './LiveSettingsModal';
 import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
 import { useSymbols } from '../capture/useSymbols';
@@ -23,49 +21,26 @@ import {
 } from './workspace/WorkspaceIndicatorDrawer';
 import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';
 import { registerCollectDialogOpener, type CollectTarget } from './workspace/collectDialogControls';
-import { useLiveWindowStatus } from './workspace/liveWindowStatusSource';
 
 /**
  * /live page — 멀티창 워크스페이스 셸 (ADR-0119 C2c-2d 플립).
  *
- * Four-row grid (symbol search lives in the global TopNav header line):
+ * Three-row grid (symbol search lives in the global TopNav header line):
  *   1. LiveStateBanner (auto)                  — empty/error state matrix
- *   2. LiveStatusBar   (var(--h-pricestrip))   — 포커스 차트 창 발행 채널 구독
- *   3. WorkspaceLiveToolbar (auto)             — 창 추가·정리·지표·설정·수집·저장뷰·프리셋
- *   4. WorkspaceCanvas (1fr)                   — 창들(차트·데이터) + 자석 스냅 엔진
+ *   2. WorkspaceLiveToolbar (auto)             — 창 추가·정리·설정·프리셋·캡처헬스
+ *   3. WorkspaceCanvas (1fr)                   — 창들(차트·데이터) + 자석 스냅 엔진
+ *
+ * 종목 식별·현재가·경고는 각 차트 창 헤더(ChartWindowIdentity)가 소유한다 — 페이지
+ * 상태바(LiveStatusBar)와 그 발행→구독 채널(liveWindowStatusSource)은 폐지됐다.
+ * 창이 이미 소유한 bundle·체결가·호가갭을 헤더가 직접 그리므로 "발행→구독 재렌더
+ * 루프" 위험 자체가 사라졌다. 전역인 캡처 헬스만 툴바가 소유한다.
  *
  * 종목 SSOT = 워크스페이스 **활성 그룹**(#711): 검색·관심종목·딥링크가
  * `setGroupSymbol(활성 그룹)` 으로 교체하고(liveNavigate), 레거시 읽기 15곳이
  * 보는 `useLivePageStore.activeCode` 는 단방향 미러 effect 가 동기화한다
  * (workspace→livePage, ADR-0119 호환층). 데이터 파이프라인은 각 차트 창 안
- * (`ChartWindowInner`)에서 돌고, 셸은 발행 채널로 상태바만 받는다.
+ * (`ChartWindowInner`)에서 돈다.
  */
-/**
- * 상태바 전용 발행 구독 호스트 — 구독을 LivePage 에 두면 발행(창 파이프라인) →
- * LivePage 재렌더 → 캔버스(발행자) 재렌더 → 재발행의 피드백 루프가 생긴다
- * (파이프라인 산출물 일부는 렌더마다 identity 가 바뀔 수 있음). 구독을 이
- * 리프에 격리하면 발행은 상태바만 다시 그린다.
- */
-function WorkspaceStatusBar({ fallbackCode, captureHealth, venue }: {
-  fallbackCode: string | null;
-  captureHealth: Parameters<typeof LiveStatusBar>[0]['captureHealth'];
-  venue: Parameters<typeof LiveStatusBar>[0]['venue'];
-}) {
-  const windowStatus = useLiveWindowStatus();
-  return (
-    <LiveStatusBar
-      activeCode={windowStatus?.workareaCode ?? fallbackCode}
-      captureHealth={captureHealth}
-      bundle={windowStatus?.bundle ?? null}
-      venue={venue}
-      hogaGapDates={windowStatus?.hogaGapDates}
-      liveTradePrice={windowStatus?.liveTradePrice}
-      isExtending={windowStatus?.isExtending ?? false}
-      historicalFromDate={windowStatus?.historicalFromDate ?? null}
-    />
-  );
-}
-
 export function LivePage() {
   const [params] = useSearchParams();
   const queryCode = params.get('code');
@@ -85,7 +60,6 @@ export function LivePage() {
   const { data: status } = useLiveStatus();
   const liveStatus = useLiveStatusProjection(status);
   const banner = liveStatus.banner;
-  const liveVenue = useLiveVenueStore((s) => s.venue);
 
   // 활성 그룹 종목 + 포커스 차트 창 tf — 미러·수집·타이틀·상태바 폴백의 원천.
   const activeSymbol: GroupSymbol | null = useWorkspaceStore(
@@ -108,10 +82,6 @@ export function LivePage() {
 
   const activeStockCode = activeSymbol && activeSymbol.kind !== 'index' ? activeSymbol.code : null;
   useDocumentTitle(activeStockCode);
-
-  const statusFallbackCode = activeSymbol
-    ? (activeSymbol.kind === 'index' ? `index:${activeSymbol.code}` : activeSymbol.code)
-    : null;
 
   // 지표 드로어 = 전역 1개 + **대상 창 id**(#759 결정 3). boolean 이던 시절엔
   // 대상을 z-최상위로 추론했는데, 트리거가 창 헤더로 내려오며 추론이 불필요해졌다.
@@ -179,14 +149,13 @@ export function LivePage() {
       className="h-full grid px-md pt-sm !pb-0"
       style={{
         // minmax(0, 1fr) on the canvas row prevents chart canvases' intrinsic
-        // size from pushing the row past viewport height.
-        gridTemplateRows: 'auto var(--h-pricestrip) auto minmax(0, 1fr)',
-        // 열 축도 같은 이유로 명시해야 한다. 비워두면 grid-auto-columns:auto 가 되고,
-        // 그 트랙은 가장 넓은 자식의 min-content 폭에서 바닥을 친다. WorkspaceLiveToolbar 와
-        // WorkspaceCanvas 는 각자 overflow 로 빠져나가지만 LiveStatusBar 는 그런 탈출구가
-        // 없어 트랙을 고정시킨다. 그러면 캔버스가 컨테이너보다 넓게 늘어난 채 App 의
-        // <main overflow-hidden> 에 잘린다 — 좁힐수록 차트가 줄지 않고 우측이 사라진다
-        // (관심 드로어 연 상태에서 viewport ~815px 부터, 700px 에서 129px 잘림).
+        // size from pushing the row past viewport height. 상태바 폐지로 행이 3개로
+        // 줄었다(배너·툴바·캔버스) — 시세 스트립(--h-pricestrip)만큼 차트가 넓어진다.
+        gridTemplateRows: 'auto auto minmax(0, 1fr)',
+        // 열 축도 명시해야 한다. 비워두면 grid-auto-columns:auto 가 되고, 그 트랙은
+        // 가장 넓은 자식의 min-content 폭에서 바닥을 친다. WorkspaceLiveToolbar 와
+        // WorkspaceCanvas 는 각자 overflow 로 빠져나가므로 트랙을 minmax(0,1fr) 로
+        // 고정해 캔버스가 컨테이너를 넘겨 <main overflow-hidden> 에 잘리는 걸 막는다.
         gridTemplateColumns: 'minmax(0, 1fr)',
       }}
     >
@@ -194,12 +163,10 @@ export function LivePage() {
         primary={activeSymbol && banner.primary === 'watchlist_empty' ? null : banner.primary}
         stack={banner.stack}
       />
-      <WorkspaceStatusBar
-        fallbackCode={statusFallbackCode}
+      <WorkspaceLiveToolbar
+        onOpenSettings={() => setSettingsOpen(true)}
         captureHealth={liveStatus.captureHealth}
-        venue={liveVenue}
       />
-      <WorkspaceLiveToolbar onOpenSettings={() => setSettingsOpen(true)} />
       <WorkspaceCanvas />
       {indicatorTargetId != null && (
         <WorkspaceIndicatorDrawer
