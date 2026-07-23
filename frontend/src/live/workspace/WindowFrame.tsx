@@ -13,6 +13,7 @@ import { useDismissablePopover } from '../../util/useDismissablePopover';
 // 창 제목은 창 추가 메뉴와 같은 문자열이어야 "고른 것 = 생긴 것" 이 맞는다
 // (windowKindLabels 의 SSOT 취지). 여기에 사본을 두면 그 약속이 조용히 깨진다.
 import { WINDOW_KIND_LABEL as KIND_LABEL } from './windowKindLabels';
+import { TitleBarSymbolRow } from './TitleBarSymbolRow';
 
 const GROUP_IDS: GroupId[] = Array.from({ length: MAX_GROUP - MIN_GROUP + 1 }, (_, i) => i + MIN_GROUP);
 
@@ -31,6 +32,8 @@ export interface WindowFrameProps {
   /** 그룹→종목명. 없으면 "그룹 N" 로 표시(PR-A 스캐폴딩). */
   symbolLabel: string | null;
   symbolCode: string | null;
+  /** 지수 종목 여부 — 타이틀바 종목 행에서 현재가/등락률/히트맵/수집점을 숨긴다. */
+  isIndex?: boolean;
   paletteOpen: boolean;
   onHandleDown: (e: React.PointerEvent, id: string, mode: 'move' | ResizeMode) => void;
   onFocus: (id: string) => void;
@@ -51,6 +54,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
     lifting,
     symbolLabel,
     symbolCode,
+    isIndex = false,
     paletteOpen,
     onHandleDown,
     onFocus,
@@ -116,10 +120,18 @@ function WindowFrameImpl(props: WindowFrameProps) {
               </div>
             )}
           </div>
-          <span className="truncate text-[12px] font-medium text-fg">
-            {kind === 'chart' ? title : `${KIND_LABEL[kind]} · ${title}`}
-          </span>
-          {symbolCode && <span className="font-data text-[10px] text-fg-dimmer">{symbolCode}</span>}
+          {/* 차트 창은 종목 식별 행(종목명·현재가·등락률·히트맵·경고)을 타이틀바에
+              그린다(#869 캔버스 레전드에서 이관). 데이터 창·종목 없는 창은 기존 제목. */}
+          {kind === 'chart' && symbolCode ? (
+            <TitleBarSymbolRow name={symbolLabel} code={symbolCode} isIndex={isIndex} windowId={id} />
+          ) : (
+            <>
+              <span className="truncate text-[12px] font-medium text-fg">
+                {kind === 'chart' ? title : `${KIND_LABEL[kind]} · ${title}`}
+              </span>
+              {symbolCode && <span className="font-data text-[10px] text-fg-dimmer">{symbolCode}</span>}
+            </>
+          )}
         </>
       }
     >

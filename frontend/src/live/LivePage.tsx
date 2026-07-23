@@ -30,11 +30,11 @@ import { registerCollectDialogOpener, type CollectTarget } from './workspace/col
  *   2. WorkspaceLiveToolbar (auto)             — 창 추가·정리·설정·프리셋·캡처헬스
  *   3. WorkspaceCanvas (1fr)                   — 창들(차트·데이터) + 자석 스냅 엔진
  *
- * 종목 식별·현재가·경고는 차트 캔버스 레전드 최상단(LegendSymbolRow, TradingView식)
- * 이 소유한다 — 페이지 상태바(LiveStatusBar)와 그 발행→구독 채널
- * (liveWindowStatusSource)은 폐지됐다. 창이 이미 소유한 bundle·호가갭을
- * ChartWindow→LiveChartRoot→PaneLegendOverlay 로 통과시켜 캔버스 위에 직접 그리므로
- * "발행→구독 재렌더 루프" 위험 자체가 사라졌다. 전역인 캡처 헬스만 툴바가 소유한다.
+ * 종목 식별·현재가·등락률·히트맵·경고는 각 차트 창 **타이틀바**(TitleBarSymbolRow)가
+ * 소유한다 — 페이지 상태바(LiveStatusBar)는 폐지됐다. 현재가·등락률·히트맵은 타이틀바가
+ * code 로 self-fetch 하고, 번들 파생 경고칩만 ChartWindow 가 windowWarnings 채널로
+ * 올려 타이틀바가 windowId 로 구독한다(타이틀바가 창 데이터 스코프의 부모라 불가피).
+ * 전역인 캡처 헬스만 툴바가 소유한다.
  *
  * 종목 SSOT = 워크스페이스 **활성 그룹**(#711): 검색·관심종목·딥링크가
  * `setGroupSymbol(활성 그룹)` 으로 교체하고(liveNavigate), 레거시 읽기 15곳이

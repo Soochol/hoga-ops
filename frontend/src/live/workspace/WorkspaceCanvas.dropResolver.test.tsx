@@ -8,6 +8,9 @@ import { useEntryDragStore, resolveDropOnChart } from '../../state/entryDrag';
 // 창 본문(차트/데이터)은 이 테스트의 관심사가 아니다 — 리졸버 z-순서 선택만 검증.
 vi.mock('./ChartWindow', () => ({ ChartWindow: () => <div>chart</div> }));
 vi.mock('./DataWindow', () => ({ DataWindow: () => <div>data</div> }));
+// 타이틀바 종목 행은 전역 quote 훅(QueryClient)을 쓴다 — 이 테스트엔 provider 가
+// 없고 관심사도 아니므로 stub 한다(ChartWindow mock 과 동일 취지).
+vi.mock('./TitleBarSymbolRow', () => ({ TitleBarSymbolRow: () => <div>sym</div> }));
 
 function chart(id: string, group: number, rect: WorkspaceWindow['rect']): WorkspaceWindow {
   return { id, kind: 'chart', group, rect, chart: { timeframe: '1m', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } } };
