@@ -249,8 +249,9 @@ it('highlights the saved-view row for the active study tab', () => {
 
   const activeRow = screen.getByRole('button', { name: '눌림 저장뷰 열기' });
   expect(activeRow).toHaveAttribute('aria-current', 'true');
+  // 선택 표식은 배경 틴트(--tint-selection)만 — 좌측 accent 바는 관심·순위·스크리너와의
+  // 행 통일(2026-07-23)에서 의도적으로 제거됐다. 다시 넣지 말 것.
   expect(activeRow).toHaveStyle({ background: 'var(--tint-selection)' });
-  expect(activeRow.getAttribute('style')).toContain('border-left: 2px solid var(--accent)');
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).not.toHaveAttribute('aria-current');
 });
 

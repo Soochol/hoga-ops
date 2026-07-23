@@ -123,6 +123,9 @@ export function RailGroupHeader({
   );
 }
 
+// 저장뷰 트리 행. 관심·순위·스크리너(QuoteRow)와 같은 밀도 계약을 공유한다:
+// 공용 min-h-list-row 로 높이 기준선을 맞추고, 얇은 py-0.5 패딩 + border-b 구분선으로
+// 촘촘한 연속 리스트를 이룬다(그룹 간 간격 없이 밀착). py-sm 패딩으로 높이를 부풀리지 말 것.
 export function RailTreeRow({
   className = '',
   children,
@@ -131,7 +134,7 @@ export function RailTreeRow({
   return (
     <div
       {...props}
-      className={`flex cursor-pointer items-center gap-2 pl-10 pr-md py-sm hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-border-strong ${className}`.trim()}
+      className={`flex cursor-pointer items-center gap-2 pl-10 pr-md py-0.5 min-h-list-row border-b border-border hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-border-strong ${className}`.trim()}
     >
       {children}
     </div>
