@@ -377,15 +377,23 @@ describe('useDrawingsStore — defaults', () => {
     expect(useDrawingsStore.getState().defaults).toEqual(INITIAL_DEFAULTS);
   });
 
-  it('setDefaults patches and persists', () => {
-    useDrawingsStore.getState().setDefaults({ color: '#F43F5E' });
-    expect(useDrawingsStore.getState().defaults.color).toBe('#F43F5E');
+  it('setDefaults patches and persists the session flags', () => {
+    useDrawingsStore.getState().setDefaults({ magnet: true });
+    expect(useDrawingsStore.getState().defaults.magnet).toBe(true);
     useDrawingsStore.getState().flushPending();
     const raw = JSON.parse(localStorage.getItem(DEFAULTS_KEY)!);
-    expect(raw.value.color).toBe('#F43F5E');
+    expect(raw.value.magnet).toBe(true);
   });
 
-  it('update(id, patch) syncs color/width/lineStyle into defaults', () => {
+  it('setKindStyle patches one kind slot and persists', () => {
+    useDrawingsStore.getState().setKindStyle('hline', { color: '#F43F5E' });
+    expect(useDrawingsStore.getState().styleForKind('hline').color).toBe('#F43F5E');
+    useDrawingsStore.getState().flushPending();
+    const raw = JSON.parse(localStorage.getItem(DEFAULTS_KEY)!);
+    expect(raw.value.styleByKind.hline.color).toBe('#F43F5E');
+  });
+
+  it('update(id, patch) syncs color/width/lineStyle into that kind slot', () => {
     const s = useDrawingsStore.getState();
     s.setActiveScope(A);
     const d: Drawing = {
@@ -394,12 +402,23 @@ describe('useDrawingsStore — defaults', () => {
     };
     s.add(A, d);
     s.update(A, 'a', { color: '#10B981', width: 3, lineStyle: 'dashed' });
-    expect(useDrawingsStore.getState().defaults).toMatchObject({
+    expect(useDrawingsStore.getState().styleForKind('hline')).toMatchObject({
       color: '#10B981', width: 3, lineStyle: 'dashed',
     });
   });
 
-  it('update(id, {fontSize}) syncs the text size into defaults (sticky)', () => {
+  it('per-kind isolation: editing an hline never touches the rect slot', () => {
+    const s = useDrawingsStore.getState();
+    s.setActiveScope(A);
+    s.add(A, { id: 'a', kind: 'hline', price: 1000,
+      color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle' });
+    const rectBefore = { ...useDrawingsStore.getState().styleForKind('rect') };
+    s.update(A, 'a', { color: '#10B981', width: 4 });
+    expect(useDrawingsStore.getState().styleForKind('hline')).toMatchObject({ color: '#10B981', width: 4 });
+    expect(useDrawingsStore.getState().styleForKind('rect')).toEqual(rectBefore);
+  });
+
+  it('update(id, {fontSize}) syncs the text size into the text slot (sticky)', () => {
     const s = useDrawingsStore.getState();
     s.setActiveScope(A);
     s.add(A, {
@@ -407,7 +426,19 @@ describe('useDrawingsStore — defaults', () => {
       text: 'hi', fontSize: 13, color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
     });
     s.update(A, 't', { fontSize: 20 } as Partial<Drawing>);
-    expect(useDrawingsStore.getState().defaults.fontSize).toBe(20);
+    expect(useDrawingsStore.getState().styleForKind('text').fontSize).toBe(20);
+  });
+
+  it('update(id, {fillOpacity}) syncs the rect fill into the rect slot (sticky)', () => {
+    const s = useDrawingsStore.getState();
+    s.setActiveScope(A);
+    s.add(A, {
+      id: 'r', kind: 'rect',
+      a: { realMs: 1_700_000_000_000, price: 1000 }, b: { realMs: 1_700_000_100_000, price: 1100 },
+      fillOpacity: 0.1, color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+    });
+    s.update(A, 'r', { fillOpacity: 0.35 } as Partial<Drawing>);
+    expect(useDrawingsStore.getState().styleForKind('rect').fillOpacity).toBe(0.35);
   });
 
   it('update with no style fields does not touch defaults', () => {

@@ -6,7 +6,7 @@ import {
   loadDefaults, saveDefaults, DEFAULTS_KEY,
 } from './persistence';
 import { PANE_SPECS } from '../paneSpecs';
-import { INITIAL_DEFAULTS } from './types';
+import { INITIAL_DEFAULTS, INITIAL_STYLE, initialStyleByKind } from './types';
 
 const CODE = '005930';
 const SCOPE = drawingScope(CODE, 'minute');
@@ -203,7 +203,10 @@ describe('drawing defaults persistence', () => {
   });
 
   it('round-trips a written value', () => {
-    const written = { color: '#F43F5E', width: 4, lineStyle: 'dashed' as const, fontSize: 13, magnet: false, hiddenAll: false };
+    const written = { styleByKind: initialStyleByKind(), magnet: true, hiddenAll: false };
+    written.styleByKind.trendline = {
+      color: '#F43F5E', width: 4, lineStyle: 'dashed', fontSize: 13, fillOpacity: 0.2,
+    };
     saveDefaults(written);
     expect(loadDefaults()).toEqual(written);
   });
@@ -216,5 +219,33 @@ describe('drawing defaults persistence', () => {
   it('returns INITIAL_DEFAULTS when wrapper version mismatches', () => {
     localStorage.setItem(DEFAULTS_KEY, JSON.stringify({ v: 99, value: { color: '#000' } }));
     expect(loadDefaults()).toEqual(INITIAL_DEFAULTS);
+  });
+
+  it('migrates a v1 flat-style payload into every kind slot', () => {
+    localStorage.setItem(DEFAULTS_KEY, JSON.stringify({
+      v: 1,
+      value: { color: '#F43F5E', width: 4, lineStyle: 'dashed', fontSize: 20, magnet: true, hiddenAll: false },
+    }));
+    const loaded = loadDefaults();
+    // Session flags carry over.
+    expect(loaded.magnet).toBe(true);
+    // The single v1 style seeds EVERY kind's slot, so nothing feels reset.
+    for (const kind of ['hline', 'vline', 'trendline', 'rect', 'measure', 'text', 'pencil'] as const) {
+      expect(loaded.styleByKind[kind]).toMatchObject({
+        color: '#F43F5E', width: 4, lineStyle: 'dashed', fontSize: 20,
+      });
+    }
+    // fillOpacity did not exist in v1 defaults → falls back to the seed value.
+    expect(loaded.styleByKind.rect.fillOpacity).toBe(INITIAL_STYLE.fillOpacity);
+  });
+
+  it('backfills a missing kind slot in a v2 payload', () => {
+    // A v2 write that predates a newly-added kind: rect slot absent.
+    const partial = initialStyleByKind() as Record<string, unknown>;
+    delete partial.rect;
+    localStorage.setItem(DEFAULTS_KEY, JSON.stringify({
+      v: 2, value: { styleByKind: partial, magnet: false, hiddenAll: false },
+    }));
+    expect(loadDefaults().styleByKind.rect).toEqual(INITIAL_STYLE);
   });
 });

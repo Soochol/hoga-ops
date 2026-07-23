@@ -272,8 +272,7 @@ describe('renderTrendlineDraft', () => {
       width: 2,
       lineStyle: 'solid',
       fontSize: 13,
-      magnet: false,
-      hiddenAll: false,
+      fillOpacity: 0.1,
     });
 
     expect(c.lineTo).toHaveBeenCalledWith(2, 200);

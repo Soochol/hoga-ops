@@ -1,7 +1,7 @@
 // frontend/src/chart/drawing/persistence.ts
-import type { Drawing, DrawingKind, LineStyle, PaneId, DrawingDefaults } from './types';
+import type { Drawing, DrawingKind, LineStyle, PaneId, DrawingDefaults, DrawingStyle } from './types';
 import { PANE_SPECS } from '../paneSpecs';
-import { INITIAL_DEFAULTS } from './types';
+import { INITIAL_DEFAULTS, INITIAL_STYLE, initialStyleByKind } from './types';
 
 const PREFIX = 'replay.drawings.v2.';
 /** Pre-slot key namespace — keyed by bare `code`. Read-only: it seeds a slot
@@ -139,10 +139,57 @@ export function saveDrawings(scope: string, items: Drawing[]): void {
   }
 }
 
+// The `.v1` in the KEY NAME is historical: existing users' sticky defaults live
+// under this exact key, so we keep it and migrate the payload in place. The
+// actual schema version is the wrapper's `v` field (bumped to 2 for per-kind
+// style). Renaming the key would strand every user's saved defaults.
 export const DEFAULTS_KEY = 'replay.drawingDefaults.v1';
-const DEFAULTS_VERSION = 1;
+const DEFAULTS_VERSION = 2;
 
 type DefaultsWrapper = { v: number; value: DrawingDefaults };
+
+/** v1 payload: a single flat style shared by every tool, plus session flags. */
+type LegacyV1Defaults = {
+  color?: string;
+  width?: number;
+  lineStyle?: LineStyle;
+  fontSize?: number;
+  magnet?: boolean;
+  hiddenAll?: boolean;
+};
+
+/** v1 → v2: copy the one last-used style into EVERY kind's slot, so the upgrade
+ *  reads as "each tool kept the style you were using" rather than a reset. */
+function migrateV1(v1: LegacyV1Defaults): DrawingDefaults {
+  const seed: DrawingStyle = {
+    color: typeof v1.color === 'string' ? v1.color : INITIAL_STYLE.color,
+    width: typeof v1.width === 'number' ? v1.width : INITIAL_STYLE.width,
+    lineStyle: v1.lineStyle ?? INITIAL_STYLE.lineStyle,
+    fontSize: typeof v1.fontSize === 'number' ? v1.fontSize : INITIAL_STYLE.fontSize,
+    fillOpacity: INITIAL_STYLE.fillOpacity, // v1 never stored fill in defaults
+  };
+  const styleByKind = initialStyleByKind();
+  for (const k of Object.keys(styleByKind) as DrawingKind[]) styleByKind[k] = { ...seed };
+  return { styleByKind, magnet: v1.magnet ?? false, hiddenAll: v1.hiddenAll ?? false };
+}
+
+/** Merge a persisted v2 payload over the seed, tolerating missing kinds/fields
+ *  (a newly-added kind or a field absent from an older v2 write). */
+function mergeV2(value: Partial<DrawingDefaults>): DrawingDefaults {
+  const styleByKind = initialStyleByKind();
+  const persisted = value.styleByKind;
+  if (persisted != null && typeof persisted === 'object') {
+    for (const k of Object.keys(styleByKind) as DrawingKind[]) {
+      const s = persisted[k];
+      if (s != null && typeof s === 'object') styleByKind[k] = { ...INITIAL_STYLE, ...s };
+    }
+  }
+  return {
+    styleByKind,
+    magnet: value.magnet ?? false,
+    hiddenAll: value.hiddenAll ?? false,
+  };
+}
 
 export function loadDefaults(): DrawingDefaults {
   let raw: string | null;
@@ -152,14 +199,16 @@ export function loadDefaults(): DrawingDefaults {
     return INITIAL_DEFAULTS;
   }
   if (raw == null) return INITIAL_DEFAULTS;
-  let parsed: DefaultsWrapper;
+  let parsed: { v?: number; value?: unknown };
   try {
-    parsed = JSON.parse(raw) as DefaultsWrapper;
+    parsed = JSON.parse(raw) as { v?: number; value?: unknown };
   } catch {
     return INITIAL_DEFAULTS;
   }
-  if (parsed == null || parsed.v !== DEFAULTS_VERSION) return INITIAL_DEFAULTS;
-  return { ...INITIAL_DEFAULTS, ...parsed.value };
+  if (parsed == null || typeof parsed !== 'object') return INITIAL_DEFAULTS;
+  if (parsed.v === 1) return migrateV1((parsed.value ?? {}) as LegacyV1Defaults);
+  if (parsed.v !== DEFAULTS_VERSION) return INITIAL_DEFAULTS;
+  return mergeV2((parsed.value ?? {}) as Partial<DrawingDefaults>);
 }
 
 export function saveDefaults(d: DrawingDefaults): void {

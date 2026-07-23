@@ -64,7 +64,7 @@ describe('DrawingPropertyPanel — thickness', () => {
     fireEvent.click(screen.getByTestId('drawing-thickness-item-4'));
     const drawn = useDrawingsStore.getState().byScope.get('005930|minute')!.find((d) => d.id === 'h1')!;
     expect(drawn.width).toBe(4);
-    expect(useDrawingsStore.getState().defaults.width).toBe(4);
+    expect(useDrawingsStore.getState().styleForKind('hline').width).toBe(4);
   });
 
   it('only one popover open at a time — opening thickness closes color', () => {
@@ -104,7 +104,7 @@ describe('DrawingPropertyPanel — color', () => {
     fireEvent.click(screen.getByTestId(`drawing-color-swatch-${COLOR_PALETTE[2]}`));
     const drawn = useDrawingsStore.getState().byScope.get('005930|minute')!.find((d) => d.id === 'h1')!;
     expect(drawn.color).toBe(COLOR_PALETTE[2]);
-    expect(useDrawingsStore.getState().defaults.color).toBe(COLOR_PALETTE[2]);
+    expect(useDrawingsStore.getState().styleForKind('hline').color).toBe(COLOR_PALETTE[2]);
     expect(screen.queryAllByTestId(/^drawing-color-swatch-/)).toHaveLength(0);
   });
 
@@ -150,7 +150,7 @@ describe('DrawingPropertyPanel — line style', () => {
     fireEvent.click(screen.getByTestId('drawing-line-style-item-dashed'));
     const drawn = useDrawingsStore.getState().byScope.get('005930|minute')!.find((d) => d.id === 'h1')!;
     expect(drawn.lineStyle).toBe('dashed');
-    expect(useDrawingsStore.getState().defaults.lineStyle).toBe('dashed');
+    expect(useDrawingsStore.getState().styleForKind('hline').lineStyle).toBe('dashed');
   });
 });
 

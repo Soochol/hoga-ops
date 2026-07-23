@@ -21,6 +21,7 @@ import {
   type ProjectCtx,
 } from './drawing/render';
 import type { Drawing, PaneId, Point } from './drawing/types';
+import { INITIAL_STYLE, isDrawingKind } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import type { TimeShift } from './drawing/translate';
@@ -258,14 +259,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       const trendDraft = trendlineDraft.current;
       if (trendDraft?.b) {
         clipAndRender(trendDraft.paneId, (projCtx) => {
-          renderTrendlineDraft(c, projCtx, trendDraft, defaults);
+          renderTrendlineDraft(c, projCtx, trendDraft, defaults.styleByKind.trendline);
         });
       }
 
       const rDraft = rectDraft.current;
       if (rDraft?.b) {
         clipAndRender(rDraft.paneId, (projCtx) => {
-          renderRectDraft(c, projCtx, rDraft.a, rDraft.b!, defaults);
+          renderRectDraft(c, projCtx, rDraft.a, rDraft.b!, defaults.styleByKind.rect);
         });
       }
 
@@ -312,10 +313,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
             }
           }
         }
+        const ghostStyle = defaults.styleByKind[activeTool];
         c.save();
-        c.strokeStyle = defaults.color;
+        c.strokeStyle = ghostStyle.color;
         c.globalAlpha = 0.6;
-        c.lineWidth = defaults.width;
+        c.lineWidth = ghostStyle.width;
         c.setLineDash([5, 4]);
         c.beginPath();
         if (activeTool === 'hline') {
@@ -329,7 +331,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         c.restore();
         if (snappedDot) {
           c.save();
-          c.fillStyle = defaults.color;
+          c.fillStyle = ghostStyle.color;
           c.beginPath();
           c.arc(snappedDot.x, snappedDot.y, 3.5, 0, Math.PI * 2);
           c.fill();
@@ -348,9 +350,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
               id: '__draft__',
               kind: 'pencil',
               points: draft.points,
-              color: defaults.color,
-              width: defaults.width,
-              lineStyle: defaults.lineStyle,
+              color: defaults.styleByKind.pencil.color,
+              width: defaults.styleByKind.pencil.width,
+              lineStyle: defaults.styleByKind.pencil.lineStyle,
               paneId: draft.paneId,
             },
             false,
@@ -519,18 +521,19 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       store.update(scope, edit.id, { text: trimmed } as Partial<Drawing>);
     } else {
       const id = nanoid(8);
+      const textStyle = store.styleForKind('text');
       store.add(scope, {
         id,
         kind: 'text',
         at: edit.at,
         text: trimmed,
-        color: store.defaults.color,
-        width: store.defaults.width,
-        lineStyle: store.defaults.lineStyle,
+        color: textStyle.color,
+        width: textStyle.width,
+        lineStyle: textStyle.lineStyle,
         paneId: edit.paneId,
-        // Sticky size: a new label inherits the last-committed size. (Re-edits
-        // take the `edit.id != null` branch above and keep their own size.)
-        fontSize: store.defaults.fontSize,
+        // Sticky size: a new label inherits the text tool's last-used size.
+        // (Re-edits take the `edit.id != null` branch above and keep their own.)
+        fontSize: textStyle.fontSize,
       });
       store.setSelected(scope, id);
     }
@@ -554,9 +557,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       commitText(textInputRef.current?.value ?? textValue);
       return;
     }
-    // Open the editor at the sticky default size so the box matches what will
-    // be committed.
-    const fontSize = useDrawingsStore.getState().defaults.fontSize;
+    // Open the editor at the text tool's sticky size so the box matches what
+    // will be committed.
+    const fontSize = useDrawingsStore.getState().styleForKind('text').fontSize;
     setTextEdit({ id: null, at, paneId, initial: '', fontSize, px, py });
     setTextValue('');
   };
@@ -586,7 +589,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       dragTime,
       drawings,
       selectedId,
-      defaults,
+      // Narrow the per-kind defaults to the active tool's slot. select/eraser
+      // never read this (they don't create shapes), so INITIAL_STYLE is a safe
+      // filler there.
+      defaults: isDrawingKind(activeTool) ? defaults.styleByKind[activeTool] : INITIAL_STYLE,
       trendlineDraft,
       pencilDraft,
       rectDraft,

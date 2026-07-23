@@ -30,14 +30,13 @@
 import { nanoid } from 'nanoid';
 import {
   type Drawing,
-  type DrawingDefaults,
+  type DrawingStyle,
   type DrawingTool,
   type PaneId,
   type Point,
   type Rect,
   PENCIL_MAX_POINTS,
   HIT_THRESHOLD,
-  RECT_DEFAULT_FILL_OPACITY,
 } from './types';
 import { translateDrawing, clampDPriceForDrawing, clampDVirtualForDrawing } from './translate';
 import { constrainAngle } from './snap';
@@ -182,9 +181,11 @@ export type ToolCtx = {
   drawings: readonly Drawing[];
   /** Currently selected drawing id, if any. */
   selectedId: string | null;
-  /** The user's sticky drawing defaults. Tool constructors read these
-   *  to seed color / width / lineStyle on new Drawings. See ADR-0032. */
-  defaults: DrawingDefaults;
+  /** The sticky style for the ACTIVE tool (this gesture's kind). The overlay
+   *  narrows the per-kind defaults down to one slot before building the ctx, so
+   *  a constructor just reads `ctx.defaults.color/width/lineStyle` (+ fillOpacity
+   *  for rect) and gets that tool's own last-used values. See ADR-0032. */
+  defaults: DrawingStyle;
 
   /** Per-gesture draft refs. The overlay owns them as React refs; tools
    *  read and mutate `.current` directly. */
@@ -639,7 +640,8 @@ export const rectTool: DrawingToolSpec = {
       width: ctx.defaults.width,
       lineStyle: ctx.defaults.lineStyle,
       paneId: draft.paneId,
-      fillOpacity: RECT_DEFAULT_FILL_OPACITY,
+      // Sticky fill: a new rect inherits the rect tool's last-used fill alpha.
+      fillOpacity: ctx.defaults.fillOpacity,
     });
     ctx.setSelected(id);
   },
