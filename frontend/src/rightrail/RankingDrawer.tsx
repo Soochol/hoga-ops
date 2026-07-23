@@ -182,7 +182,7 @@ export function RankingDrawer() {
             aria-label="시장"
             value={market}
             onChange={(e) => setMarket(e.target.value as RankingMarket)}
-            className="rounded-md border border-border bg-bg-input px-1.5 py-[3px] text-xs text-fg"
+            className="rounded-lg border border-border bg-bg-input px-1.5 py-[3px] text-xs text-fg"
           >
             {MARKETS.map((m) => (
               <option key={m.key} value={m.key}>{m.label}</option>
@@ -195,7 +195,7 @@ export function RankingDrawer() {
             aria-pressed={excludeEtf}
             onClick={() => setExcludeEtf((v) => !v)}
             title="ETF·ETN 종목을 순위에서 제외"
-            className={`rounded-md border px-2 py-[3px] text-xs ${
+            className={`rounded-lg border px-2 py-[3px] text-xs ${
               excludeEtf
                 ? 'border-accent bg-tint-selection text-accent'
                 : 'border-border bg-bg-input text-fg-dim hover:bg-bg-input-hover'
@@ -221,6 +221,7 @@ export function RankingDrawer() {
           {/* 현재 리스트를 등락률순으로 재정렬(클라이언트) — TR 지표순 리스트를 교차로
               등락률 이상치 관점에서 훑는다. 순위번호는 TR 고유 순위로 유지. */}
           <SortCycleButton
+            variant="inline"
             className="ml-auto"
             direction={rankingSortDirection(sortMode)}
             label="등락률 정렬"
