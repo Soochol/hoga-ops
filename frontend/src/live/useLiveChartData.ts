@@ -86,7 +86,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const { activeCode, activeInstrument, timeframe, historicalFromDate, venue, investorNetEnabled, sidecarDemands } = args;
 
   const today = todayKstYyyymmdd();
-  const live = useLiveSeries(activeCode ?? '');
+  const live = useLiveSeries(activeCode ?? '', venue);
   const {
     bundle,
     chartBundle,
