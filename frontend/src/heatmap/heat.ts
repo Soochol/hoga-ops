@@ -24,6 +24,19 @@ export function groupHeatmapEntries(
   }));
 }
 
+/** 종목 code → 소속 히트맵 그룹명. entry 가 folder_id 를 소유하는 SSOT 구조라
+ *  (한 종목 = 최대 한 그룹) find 한 번으로 역조회한다. 미소속·데이터 미로드 시 null.
+ *  순수. /live 상태바의 "히트맵 · {그룹}" 칩이 소비. */
+export function heatmapGroupNameOf(
+  code: string,
+  folders: HeatmapFolder[],
+  entries: HeatmapEntry[],
+): string | null {
+  const folderId = entries.find((e) => e.code === code)?.folder_id;
+  if (folderId === undefined) return null;
+  return folders.find((f) => f.id === folderId)?.name ?? null;
+}
+
 // 행(종목)·그룹 정렬 공용 3-상태: manual=기본(저장 순서), desc=등락률 내림, asc=오름.
 // 관심종목의 QuoteSortMode(default/change_pct_desc/change_pct_asc)와 1:1 대응(아이콘 공용).
 export type SortMode = 'manual' | 'desc' | 'asc';

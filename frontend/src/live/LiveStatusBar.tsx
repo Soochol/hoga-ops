@@ -19,6 +19,8 @@ import { liveHogaVenueNow, liveVenueDisplayLabel, liveVenueKeepsHogaKrx } from '
 import { resolveLiveCurrentPrice } from './deriveCurrentPriceLine';
 import type { CaptureHealthView } from './liveStatusProjection';
 import { hogaCoverageGapTitle } from './hogaCoverageGap';
+import { useHeatmap } from '../heatmap/useHeatmap';
+import { heatmapGroupNameOf } from '../heatmap/heat';
 
 interface Props {
   activeCode: string | null;
@@ -62,6 +64,16 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
   const symbolLabel = activeCode
     ? (symbolName ? `${symbolName}(${activeCode})` : activeCode)
     : '—';
+
+  // 현재 포커스 종목이 속한 히트맵 그룹명(없으면 '없음'). 지수(index:)는 히트맵
+  // 대상이 아니라 칩 자체를 숨긴다. 데이터 로드 전(heatmapData undefined)에도 숨겨
+  // '없음'→그룹명 플리커를 막는다(한 종목=한 그룹이라 역조회는 find 한 번, heat.ts).
+  const { data: heatmapData } = useHeatmap();
+  const isIndexCode = !!activeCode && activeCode.startsWith('index:');
+  const showHeatmapChip = !!activeCode && !isIndexCode && !!heatmapData;
+  const heatmapGroupName = showHeatmapChip
+    ? heatmapGroupNameOf(activeCode!, heatmapData!.folders, heatmapData!.entries)
+    : null;
 
   const { isMember } = useWatchlistMembership();
   const member = !!activeCode && isMember(activeCode);
@@ -148,6 +160,19 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
               등락액은 생략(관심·스크리너 패널은 등락액+등락률 둘 다). */}
           <QuoteChange won={null} pct={quote.change_pct} />
         </span>
+      )}
+      {showHeatmapChip && (
+        <>
+          <span aria-hidden>·</span>
+          <span
+            data-testid="live-heatmap-group"
+            title={heatmapGroupName ? `히트맵 그룹: ${heatmapGroupName}` : '히트맵 그룹 없음'}
+            className="shrink-0 whitespace-nowrap"
+            style={heatmapGroupName === null ? { color: 'var(--fg-dimmer)' } : undefined}
+          >
+            히트맵 · {heatmapGroupName ?? '없음'}
+          </span>
+        </>
       )}
       <span className="inline-flex min-w-0 shrink items-center gap-2 whitespace-nowrap overflow-hidden">
         <span aria-hidden>·</span>
