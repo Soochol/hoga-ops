@@ -49,7 +49,7 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     dragTime: { toVirtual: (ms: number) => ms, toReal: (v: number) => v, originV: -Infinity },
     drawings: [],
     selectedId: null,
-    defaults: { color: '#14B8A6', width: 2, lineStyle: 'solid' as const, fontSize: 13, magnet: false, hiddenAll: false },
+    defaults: { color: '#14B8A6', width: 2, lineStyle: 'solid' as const, fontSize: 13, fillOpacity: 0.1 },
     shiftKey: false,
     trendlineDraft: { current: null },
     pencilDraft: { current: null },
@@ -151,7 +151,7 @@ describe('hlineTool.onPointerDown', () => {
 
   it('new hline inherits color/width/lineStyle from ctx.defaults', () => {
     const ctx = makeCtx();
-    ctx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed', fontSize: 13, magnet: false, hiddenAll: false };
+    ctx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed', fontSize: 13, fillOpacity: 0.1 };
     hlineTool.onPointerDown!(ctx);
     const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
     expect(added.color).toBe('#F43F5E');
@@ -365,7 +365,7 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
       pixelToData: vi.fn(() => b),
       trendlineDraft: downCtx.trendlineDraft,
     });
-    upCtx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed', fontSize: 13, magnet: false, hiddenAll: false };
+    upCtx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed', fontSize: 13, fillOpacity: 0.1 };
     trendlineTool.onPointerUp!(upCtx);
     const added = (upCtx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
     expect(added.color).toBe('#F43F5E');
@@ -418,7 +418,7 @@ describe('pencilTool commit', () => {
 
   it('new pencil inherits color/width/lineStyle from ctx.defaults', () => {
     const ctx = makeCtx();
-    ctx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed', fontSize: 13, magnet: false, hiddenAll: false };
+    ctx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed', fontSize: 13, fillOpacity: 0.1 };
     pencilTool.onPointerDown!(ctx);
     ctx.pencilDraft.current!.points.push({ realMs: 1_700_000_000_001, price: 70_010 });
     pencilTool.onPointerUp!(ctx);

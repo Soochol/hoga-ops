@@ -1,7 +1,9 @@
 // frontend/src/state/drawings.ts
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
-import type { Drawing, DrawingId, DrawingTool, DrawingDefaults } from '../chart/drawing/types';
+import type {
+  Drawing, DrawingId, DrawingTool, DrawingDefaults, DrawingKind, DrawingStyle,
+} from '../chart/drawing/types';
 import { INITIAL_DEFAULTS } from '../chart/drawing/types';
 import {
   loadDrawings, saveDrawings,
@@ -127,7 +129,13 @@ type Actions = {
   dismissClearToast(): void;
   undo(scope: string): void;
   redo(scope: string): void;
-  setDefaults(patch: Partial<DrawingDefaults>): void;
+  /** Patch the SESSION-global flags (magnet / hiddenAll). Style is per-kind now
+   *  and goes through `setKindStyle`. */
+  setDefaults(patch: Partial<Pick<DrawingDefaults, 'magnet' | 'hiddenAll'>>): void;
+  /** Patch one tool's sticky style (the per-kind last-used). */
+  setKindStyle(kind: DrawingKind, patch: Partial<DrawingStyle>): void;
+  /** The last-used style for `kind` (non-reactive read; used to seed new drawings). */
+  styleForKind(kind: DrawingKind): DrawingStyle;
   flushPending(): void;
   __resetForTests(): void;
 };
@@ -219,21 +227,48 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       set({ byScope });
       queuePersist(scope);
 
-      // Drawing Defaults sync — only style fields propagate, so the last-picked
-      // color / width / lineStyle / fontSize seeds the next new drawing.
-      const stylePatch: Partial<DrawingDefaults> = {};
-      if ('color' in patch && typeof patch.color === 'string') stylePatch.color = patch.color;
-      if ('width' in patch && typeof patch.width === 'number') stylePatch.width = patch.width;
-      if ('lineStyle' in patch && patch.lineStyle != null) stylePatch.lineStyle = patch.lineStyle;
-      if ('fontSize' in patch && typeof (patch as { fontSize?: unknown }).fontSize === 'number') {
-        stylePatch.fontSize = (patch as { fontSize: number }).fontSize;
+      // Per-kind style sync — the last-picked color / width / lineStyle (+ the
+      // fontSize of a text label, fillOpacity of a rect) seeds the NEXT drawing
+      // of the SAME kind only. Editing a trendline no longer recolors the next
+      // rectangle. The edited drawing's kind is read from the pre-update array
+      // (kind never changes on update, so `current` is fine).
+      const edited = current.find((d) => d.id === id);
+      if (edited != null) {
+        const stylePatch: Partial<DrawingStyle> = {};
+        if ('color' in patch && typeof patch.color === 'string') stylePatch.color = patch.color;
+        if ('width' in patch && typeof patch.width === 'number') stylePatch.width = patch.width;
+        if ('lineStyle' in patch && patch.lineStyle != null) stylePatch.lineStyle = patch.lineStyle;
+        if ('fontSize' in patch && typeof (patch as { fontSize?: unknown }).fontSize === 'number') {
+          stylePatch.fontSize = (patch as { fontSize: number }).fontSize;
+        }
+        if ('fillOpacity' in patch && typeof (patch as { fillOpacity?: unknown }).fillOpacity === 'number') {
+          stylePatch.fillOpacity = (patch as { fillOpacity: number }).fillOpacity;
+        }
+        if (Object.keys(stylePatch).length > 0) get().setKindStyle(edited.kind, stylePatch);
       }
-      if (Object.keys(stylePatch).length > 0) get().setDefaults(stylePatch);
     },
 
     setDefaults(patch) {
       set({ defaults: { ...get().defaults, ...patch } });
       queuePersistDefaults();
+    },
+
+    setKindStyle(kind, patch) {
+      const prev = get().defaults;
+      set({
+        defaults: {
+          ...prev,
+          styleByKind: {
+            ...prev.styleByKind,
+            [kind]: { ...prev.styleByKind[kind], ...patch },
+          },
+        },
+      });
+      queuePersistDefaults();
+    },
+
+    styleForKind(kind) {
+      return get().defaults.styleByKind[kind];
     },
 
     remove(scope, id) {

@@ -4,7 +4,7 @@ import { CANVAS_FONT_STACK } from '../../styles/design-tokens';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import type {
   Drawing,
-  DrawingDefaults,
+  DrawingStyle,
   Hline,
   Measure,
   Pencil,
@@ -353,16 +353,16 @@ export function renderRectDraft(
   ctx: ProjectCtx,
   a: { realMs: number; price: number },
   b: { realMs: number; price: number },
-  defaults: DrawingDefaults,
+  style: DrawingStyle,
 ) {
   const draft: Rect = {
     id: '__rect_draft__',
     kind: 'rect',
     a,
     b,
-    color: defaults.color,
-    width: defaults.width,
-    lineStyle: defaults.lineStyle,
+    color: style.color,
+    width: style.width,
+    lineStyle: style.lineStyle,
     paneId: 'candle',
     fillOpacity: 0,
   };
@@ -562,16 +562,16 @@ function renderTrendlineDeltaGuide(
   drawFloatingLabel(c, ctx.width, labelX, startY, label, t.color);
 }
 
-function trendlineFromDraft(draft: TrendlineDraft, defaults: DrawingDefaults): Trendline | null {
+function trendlineFromDraft(draft: TrendlineDraft, style: DrawingStyle): Trendline | null {
   if (!draft.b) return null;
   return {
     id: '__trendline_draft__',
     kind: 'trendline',
     a: draft.a,
     b: draft.b,
-    color: defaults.color,
-    width: defaults.width,
-    lineStyle: defaults.lineStyle,
+    color: style.color,
+    width: style.width,
+    lineStyle: style.lineStyle,
     paneId: draft.paneId,
   };
 }
@@ -580,9 +580,9 @@ export function renderTrendlineDraft(
   c: CanvasRenderingContext2D,
   ctx: ProjectCtx,
   draft: TrendlineDraft,
-  defaults: DrawingDefaults,
+  style: DrawingStyle,
 ) {
-  const d = trendlineFromDraft(draft, defaults);
+  const d = trendlineFromDraft(draft, style);
   if (!d) return;
   const xa = realMsToX(ctx, d.a.realMs);
   const ya = priceToY(ctx, d.a.price);

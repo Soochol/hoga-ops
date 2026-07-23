@@ -40,6 +40,12 @@ export type DrawingTool =
   | 'pencil'
   | 'eraser';
 
+/** Narrow a tool to a drawable kind — everything except the non-drawing modes
+ *  (select / eraser). Used to pick the per-kind style slot for the active tool. */
+export function isDrawingKind(tool: DrawingTool): tool is DrawingKind {
+  return tool !== 'select' && tool !== 'eraser';
+}
+
 /** Stable identifier for a chart pane. Mirrors `PaneSpec.name`. Renaming
  *  any literal here is a breaking change — strands every user's saved
  *  drawings bound to that name. See ADR-0028. */
@@ -170,29 +176,66 @@ export const COLOR_PALETTE = [
   '#FFFFFF', '#9CA3AF', '#4B5563', '#1F2937',
 ] as const;
 
-export type DrawingDefaults = {
+/** The last-used sticky style for ONE drawing tool (kind). Uniform shape across
+ *  every kind so `styleByKind` is a plain `Record` — `fontSize` is only
+ *  meaningful for `text` and `fillOpacity` only for `rect`, but every slot
+ *  carries both so the type stays flat and the propagation whitelist is a single
+ *  field list regardless of which kind was edited. */
+export type DrawingStyle = {
   color: string;
   width: number;
   lineStyle: LineStyle;
-  /** Sticky font size (CSS px) for new text labels. Separate from `width` so a
-   *  size pick never leaks into stroke-tool defaults (and vice versa); it
-   *  propagates alongside the style fields so the last-used size carries over. */
+  /** Sticky font size (CSS px) for new text labels. Lives in the per-kind slot
+   *  so a size pick on a text label never leaks into a stroke tool's defaults. */
   fontSize: number;
+  /** Sticky fill alpha 0..1 for new rectangles. Per-kind, so a fill pick on a
+   *  rect never touches another tool's style. */
+  fillOpacity: number;
+};
+
+/** Sticky drawing defaults. Style is now kept PER TOOL (kind): picking red on a
+ *  trendline no longer recolors the next rectangle — each tool remembers its own
+ *  last-used color / width / lineStyle (+ fontSize for text, fillOpacity for
+ *  rect). `magnet` / `hiddenAll` stay session-global (they are not styles), so
+ *  they never live inside a per-kind slot. See ADR-0032 / drawing-tools notes. */
+export type DrawingDefaults = {
+  /** One `DrawingStyle` per drawable kind. */
+  styleByKind: Record<DrawingKind, DrawingStyle>;
   /** Magnet mode — snap creation/handle drags to the nearest candle. Session
-   *  preference persisted alongside style defaults; NOT a per-drawing field, so
-   *  it never propagates through the style whitelist. */
+   *  preference persisted alongside style defaults; NOT a per-drawing field. */
   magnet: boolean;
   /** Hide all drawings without deleting them (rail eye toggle). */
   hiddenAll: boolean;
 };
 
-/** Seed used when no persisted defaults exist. Teal accent, integer-step
- *  2 px, solid, 13px text, magnet off, all visible. */
-export const INITIAL_DEFAULTS: DrawingDefaults = {
+/** Seed for one kind's slot: teal accent, integer-step 2 px, solid, 13px text,
+ *  10% fill. */
+export const INITIAL_STYLE: DrawingStyle = {
   color: '#14B8A6',
   width: 2,
   lineStyle: 'solid',
   fontSize: TEXT_DEFAULT_FONT_SIZE,
+  fillOpacity: RECT_DEFAULT_FILL_OPACITY,
+};
+
+/** Every drawable kind, seeded with a fresh copy of `INITIAL_STYLE`. Single
+ *  source of truth for "which kinds have a style slot". */
+export function initialStyleByKind(): Record<DrawingKind, DrawingStyle> {
+  return {
+    hline: { ...INITIAL_STYLE },
+    vline: { ...INITIAL_STYLE },
+    trendline: { ...INITIAL_STYLE },
+    rect: { ...INITIAL_STYLE },
+    measure: { ...INITIAL_STYLE },
+    text: { ...INITIAL_STYLE },
+    pencil: { ...INITIAL_STYLE },
+  };
+}
+
+/** Seed used when no persisted defaults exist. Every tool starts identical;
+ *  magnet off, all visible. */
+export const INITIAL_DEFAULTS: DrawingDefaults = {
+  styleByKind: initialStyleByKind(),
   magnet: false,
   hiddenAll: false,
 };
