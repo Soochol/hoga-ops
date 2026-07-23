@@ -196,14 +196,13 @@ const labelStyle = (place: ExtremeLabelPlace, color: string): CSSProperties => (
   fontWeight: 600,
   lineHeight: 1.2,
   whiteSpace: 'nowrap',
-  // 테마 표면(불투명) + 강한 테두리 링 + 옅은 드롭섀도 — 하드코딩 다크 반투명이던
-  // 것을 토큰화해 Ledger 라이트에서도 방향색 텍스트가 캔들 위에서 또렷하게 뜬다.
-  // 불투명이라 뒤 캔들이 비쳐 대비를 깎던 문제 해소.
+  // 배경은 차트 layout 배경(tokens.bgCard = var(--bg-card))과 동일 토큰 — 캔들과 겹치지
+  // 않는 여백에선 배경에 융화돼 방향색 텍스트만 뜨고, 캔들 위에선 불투명 배경이 텍스트
+  // 대비를 지킨다. 외곽선(테두리 링, #602)·드롭섀도(boxShadow) 모두 제거해 라벨이 차트에서
+  // 튀지 않게 평평하게 둔다 — 융화된 배경이 대비를 담당하므로 섀도 없이도 읽힌다.
   background: 'var(--bg-card)',
   borderRadius: 3,
   padding: '1px 5px',
-  // 외곽선(테두리 링) 제거 — 불투명 배경 + 드롭섀도만으로 캔들 위 가독성 유지.
-  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.28)',
 });
 
 /**
