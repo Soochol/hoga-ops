@@ -30,6 +30,7 @@ import {
   RailTreeRow,
 } from '../ui/RailShell';
 import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
+import { ChevronIcon } from '../ui/ChevronIcon';
 import { SortCycleButton } from '../ui/SortCycleButton';
 import { normalizeStudyViewQuery } from './studyViewTree';
 import {
@@ -618,7 +619,7 @@ export function StudyViewsDrawer() {
                             toggleGroup(group.key);
                           }}
                           className={dragEnabled ? 'cursor-grab active:cursor-grabbing' : ''}
-                          leading={<span className="w-3 text-xs" aria-hidden>{groupCollapsed ? '▶' : '▼'}</span>}
+                          leading={<span className="text-fg-dimmer"><ChevronIcon collapsed={groupCollapsed} /></span>}
                           count={group.rows.length}
                         >
                           {group.label}
