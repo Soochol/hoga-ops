@@ -364,9 +364,16 @@ def _build_meta(
     # here loudly rather than silently producing wrong is_partial values.
     # One analyze_gaps pass yields both is_partial (the boolean gate) and the
     # gap boundary ranges surfaced to the user (WS1 / ADR upstream-gap).
+    # anchor_edges=True (ADR-0126): identical to the live promote path
+    # (promote._completeness_fields) so a hogaplay capture that started late or
+    # ended early — e.g. next-morning collection past the ~18h upstream window,
+    # losing the AM session — is flagged by the session-edge anchors even with
+    # no interior gap. Previously omitted (default False), which let a leading
+    # gap slip through as COMPLETE and mis-rank completeness_first.
     gaps = analyze_gaps(
         [HogaMs(ts) for ts in snapshot_ts_ms],
         session_close_ms=HogaMs(info.regular_session_close_ms),
+        anchor_edges=True,
     )
     is_partial = gaps.is_partial
     gap_ranges = [

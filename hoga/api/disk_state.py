@@ -84,6 +84,48 @@ def _archived_series_violations(meta: Mapping[str, object]) -> list[Violation]:
     return out
 
 
+def _gap_touches_session_edge(
+    gap_ranges: object, open_ms: object, close_ms: object,
+) -> bool:
+    """True if any gap abuts a session edge — leading or trailing (ADR-0126).
+
+    A gap reaching the session open (leading) or the closing auction start
+    = ``close − 10min`` (trailing) is an upstream-window-boundary loss:
+    re-capture cannot recover time that has already passed. Interior gaps are
+    excluded — they may be transient collection failures worth a retry, gated
+    by ADR-0093's identical-count rule instead.
+
+    ``gap_ranges`` is the meta list of ``{start_ms, end_ms}`` in HHMMSSmmm
+    (HogaMs). Boundaries are decoded to linear ms before comparison — HogaMs
+    subtraction is non-linear across minute/hour boundaries (timeenc.py). An
+    un-normalized ``open_ms=0`` (ADR-0063) falls back to 09:00; a non-positive
+    ``close_ms`` disables the trailing check (leading still applies).
+    """
+    if not isinstance(gap_ranges, list) or not gap_ranges:
+        return False
+    open_norm = open_ms if isinstance(open_ms, int) and open_ms > 0 else int(_SESSION_OPEN_MS)
+    open_intra = _hhmmssms_to_intra_ms(HogaMs(open_norm))
+    trailing_edge_intra: int | None = None
+    if isinstance(close_ms, int) and close_ms > 0:
+        trailing_edge_intra = (
+            _hhmmssms_to_intra_ms(HogaMs(close_ms)) - _AUCTION_WINDOW_DURATION_MS
+        )
+    for g in gap_ranges:
+        if not isinstance(g, Mapping):
+            continue
+        start = g.get("start_ms")
+        end = g.get("end_ms")
+        if not isinstance(start, int) or not isinstance(end, int):
+            continue
+        start_intra = _hhmmssms_to_intra_ms(HogaMs(start))
+        end_intra = _hhmmssms_to_intra_ms(HogaMs(end))
+        if start_intra <= open_intra:
+            return True  # leading gap — data began after session open
+        if trailing_edge_intra is not None and end_intra >= trailing_edge_intra:
+            return True  # trailing gap — stream ended before the close
+    return False
+
+
 def classify_from_meta(meta: Mapping[str, object]) -> Classification:
     """Classify a Stock-Date's meta into a routing decision + violations.
 
@@ -130,14 +172,25 @@ def classify_from_meta(meta: Mapping[str, object]) -> Classification:
 
     is_partial = bool(meta.get("is_partial", True))
     state = DiskState.SOURCE_PARTIAL if is_partial else DiskState.COMPLETE
-    # ADR-0093: a SOURCE_PARTIAL whose identical result has been reproduced by a
-    # full re-capture (identical_capture_count >= 2) is a confirmed upstream gap.
+    # A SOURCE_PARTIAL is a *confirmed* upstream gap (re-capture won't fix it,
+    # so decide_capture skips it) when EITHER:
+    #   - ADR-0093: a full re-capture reproduced the identical gappy result
+    #     (identical_capture_count >= 2), OR
+    #   - ADR-0126: a gap abuts a session edge (leading/trailing) — an upstream-
+    #     window-boundary loss knowable up front, no identical-count needed.
     identical = meta.get("identical_capture_count", 0)
-    upstream_gap_confirmed = (
-        state == DiskState.SOURCE_PARTIAL
-        and isinstance(identical, int)
+    identical_confirmed = (
+        isinstance(identical, int)
         and not isinstance(identical, bool)
         and identical >= 2
+    )
+    edge_confirmed = _gap_touches_session_edge(
+        meta.get("gap_ranges"),
+        meta.get("regular_session_open_ms"),
+        meta.get("regular_session_close_ms"),
+    )
+    upstream_gap_confirmed = state == DiskState.SOURCE_PARTIAL and (
+        identical_confirmed or edge_confirmed
     )
     return Classification(
         state=state,
@@ -159,8 +212,10 @@ def latest_complete_date(data_dir: Path, code: str) -> str | None:
     Backs Watchlist's disk-reconcile flow: ``add_entry`` seeds
     ``last_success_date`` from this helper when registering a Code, and
     ``_catchup_run`` advances stale markers to match the disk on every
-    server start. Source-of-truth: hogaplay COMPLETE only (SOURCE_PARTIAL and
-    CLIENT_INCOMPLETE are in-flight from the user's POV).
+    server start. Source-of-truth: hogaplay *terminal* states — COMPLETE, or a
+    SOURCE_PARTIAL with a confirmed upstream-boundary gap (ADR-0126). Plain
+    SOURCE_PARTIAL (fixable) and CLIENT_INCOMPLETE stay in-flight from the
+    user's POV and don't advance the floor.
 
     Gated to ``source="hogaplay"``: this helper drives the hogaplay capture
     pipeline's catch-up floor and Watchlist markers, so a COMPLETE
@@ -178,7 +233,17 @@ def latest_complete_date(data_dir: Path, code: str) -> str | None:
         # Cheap pre-check before the more expensive disk_state inspection.
         if not (date_dir / code).is_dir():
             continue
-        if check_disk_state(data_dir, code, date, source="hogaplay").state != DiskState.COMPLETE:
+        # ADR-0126: terminal = COMPLETE, or a SOURCE_PARTIAL whose gap is a
+        # confirmed upstream-boundary loss (re-capture can't improve it). Both
+        # let the catch-up floor advance past a day that is already as good as
+        # it gets — otherwise a permanently-partial day pins the floor and
+        # re-invites catch-up passes that only skip via upstream_gap.
+        classification = check_disk_state(data_dir, code, date, source="hogaplay")
+        terminal = classification.state == DiskState.COMPLETE or (
+            classification.state == DiskState.SOURCE_PARTIAL
+            and classification.upstream_gap_confirmed
+        )
+        if not terminal:
             continue
         if latest is None or date > latest:
             latest = date

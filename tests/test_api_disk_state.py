@@ -109,6 +109,90 @@ def test_classify_from_meta_source_partial() -> None:
     assert classify_from_meta(meta).state == DiskState.SOURCE_PARTIAL
 
 
+def _partial_meta(gap_ranges: list[dict], **over: object) -> dict:
+    """SOURCE_PARTIAL meta with the given gap_ranges (ADR-0126 edge tests)."""
+    return {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": True,
+        "gap_ranges": gap_ranges,
+        **over,
+    }
+
+
+def test_leading_gap_confirms_upstream_without_identical_count() -> None:
+    # ADR-0126: a gap reaching the session open (data began at 14:43, e.g. the
+    # 18h-window AM loss) is an upstream-boundary loss — confirmed up front.
+    c = classify_from_meta(_partial_meta([{"start_ms": 90_000_000, "end_ms": 144_318_939}]))
+    assert c.state == DiskState.SOURCE_PARTIAL
+    assert c.upstream_gap_confirmed is True
+
+
+def test_trailing_gap_confirms_upstream() -> None:
+    # A gap reaching the closing auction start (close − 10min = 15:20) — stream
+    # died before the close. Nothing to re-capture.
+    c = classify_from_meta(_partial_meta([{"start_ms": 152_500_000, "end_ms": 153_000_000}]))
+    assert c.upstream_gap_confirmed is True
+
+
+def test_interior_gap_alone_is_not_confirmed() -> None:
+    # An interior gap (12:28~12:35) may be a transient collection failure —
+    # NOT confirmed without ADR-0093's identical-count corroboration.
+    c = classify_from_meta(_partial_meta([{"start_ms": 122_850_000, "end_ms": 123_550_010}]))
+    assert c.state == DiskState.SOURCE_PARTIAL
+    assert c.upstream_gap_confirmed is False
+
+
+def test_interior_gap_confirmed_via_identical_count() -> None:
+    # ADR-0093 path still works: interior gap reproduced by a full re-capture.
+    c = classify_from_meta(
+        _partial_meta(
+            [{"start_ms": 122_850_000, "end_ms": 123_550_010}],
+            identical_capture_count=2,
+        )
+    )
+    assert c.upstream_gap_confirmed is True
+
+
+def test_leading_gap_with_unnormalized_open_ms_zero() -> None:
+    # hogaplay stores regular_session_open_ms=0 (ADR-0063); the edge check
+    # falls back to 09:00 so the leading gap is still detected.
+    c = classify_from_meta(
+        _partial_meta(
+            [{"start_ms": 90_000_000, "end_ms": 144_318_939}],
+            regular_session_open_ms=0,
+        )
+    )
+    assert c.upstream_gap_confirmed is True
+
+
+def test_trailing_edge_uses_per_date_close_for_half_day() -> None:
+    # Half-day close 12:30 → trailing edge is 12:20, not the regular 15:20.
+    c = classify_from_meta(
+        _partial_meta(
+            [{"start_ms": 122_500_000, "end_ms": 123_000_000}],
+            regular_session_close_ms=123_000_000,
+        )
+    )
+    assert c.upstream_gap_confirmed is True
+
+
+def test_complete_state_never_confirms_upstream_gap() -> None:
+    # upstream_gap_confirmed is meaningful only for SOURCE_PARTIAL.
+    c = classify_from_meta(
+        {
+            "regular_session_open_ms": 90_000_000,
+            "regular_session_close_ms": 153_000_000,
+            "collection_complete": True,
+            "is_partial": False,
+            "gap_ranges": [],
+        }
+    )
+    assert c.state == DiskState.COMPLETE
+    assert c.upstream_gap_confirmed is False
+
+
 def test_classify_from_meta_client_incomplete_when_not_complete() -> None:
     # If collection didn't finish, the value of is_partial is irrelevant —
     # CLIENT_INCOMPLETE wins. This is the "normalize ambiguity" guarantee
