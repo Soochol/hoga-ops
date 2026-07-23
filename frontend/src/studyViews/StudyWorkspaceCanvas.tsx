@@ -50,6 +50,9 @@ function StudyWindowItem({
       lifting={lifting}
       // 차트 창은 v1 단일 고정(스토어가 닫기를 거부) — 어포던스도 숨긴다.
       closable={win.kind !== 'chart'}
+      // /study 통일: 안착 그림자·카드 배경 스텝 제거 → 콘텐츠가 필드에 평평하게 얹힌다.
+      flat
+
       onHandleDown={onHandleDown}
       onFocus={onFocus}
       onClose={ctx.closeWindow}

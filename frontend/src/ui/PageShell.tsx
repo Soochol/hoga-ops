@@ -17,16 +17,26 @@ type PanelCardProps = {
    * the only card boundary). Used by `/heatmap` to sit on `--bg` like the live panel.
    */
   borderless?: boolean;
+  /**
+   * 평면(flat) 모드 — 안착 그림자(shadow-panel)를 없애고 카드 배경을 필드(--bg)와
+   * 같게 맞춰 "떠 있는 카드" 구분을 지운다. /study 의 `WindowFrameCore` flat 과 대칭
+   * (2026-07-23 페이지 통일). 다중 pane 페이지에선 pane 구분이 gap/스플리터에만
+   * 의존하게 되므로 감안하고 쓴다. `borderless` 와 독립 — flat 은 배경·그림자를,
+   * borderless 는 테두리를 각각 끈다.
+   */
+  flat?: boolean;
   children: ReactNode;
 } & Omit<HTMLAttributes<HTMLElement>, 'className' | 'children' | 'style'>;
 
-export function PanelCard({ as = 'div', className = '', style, borderless = false, children, ...props }: PanelCardProps) {
+export function PanelCard({ as = 'div', className = '', style, borderless = false, flat = false, children, ...props }: PanelCardProps) {
   const Tag = as as ElementType;
   const borderClass = borderless ? '' : 'border border-border';
+  const bgClass = flat ? 'bg-bg' : 'bg-bg-card';
+  const shadowClass = flat ? '' : 'shadow-panel';
   return (
     <Tag
       {...props}
-      className={`bg-bg-card ${borderClass} rounded-lg min-w-0 shadow-panel ${className}`.replace(/\s+/g, ' ').trim()}
+      className={`${bgClass} ${borderClass} rounded-lg min-w-0 ${shadowClass} ${className}`.replace(/\s+/g, ' ').trim()}
       style={style}
     >
       {children}

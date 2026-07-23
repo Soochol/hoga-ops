@@ -59,6 +59,12 @@ export interface WindowFrameCoreProps {
   closable?: boolean;
   /** 이동 드래그 중인 창 — 그림자를 한 단계 띄워(shadow-modal) "들어올림"을 표현. */
   lifting?: boolean;
+  /**
+   * 평면(flat) 모드 — 안착 그림자(shadow-panel)를 없애고 카드 배경을 필드(--bg)와
+   * 같게 맞춰 "떠 있는 카드" 구분을 지운다. /study 통일용 opt-in(기본 false라 /live
+   * 창은 불변). 드래그 리프트(shadow-modal)는 유지해 이동 피드백은 남긴다.
+   */
+  flat?: boolean;
   onHandleDown: (e: React.PointerEvent, id: string, mode: 'move' | ResizeMode) => void;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
@@ -66,7 +72,7 @@ export interface WindowFrameCoreProps {
 }
 
 function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
-  const { id, rect, zIndex, focused, header, closable = true, lifting = false, onHandleDown, onFocus, onClose, children } =
+  const { id, rect, zIndex, focused, header, closable = true, lifting = false, flat = false, onHandleDown, onFocus, onClose, children } =
     props;
 
   return (
@@ -87,9 +93,9 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
           은 여기(콘텐츠 경계)에 둔다. 리사이즈 핸들은 바깥 rect 를 그대로 쓰므로
           형제로 카드 밖에 남긴다(카드 overflow-hidden 에 안 잘리도록). */}
       <div
-        className={`flex h-full flex-col overflow-hidden rounded-lg bg-bg-card transition-shadow duration-150 ease-out ${
-          lifting ? 'shadow-modal' : 'shadow-panel'
-        }`}
+        className={`flex h-full flex-col overflow-hidden rounded-lg transition-shadow duration-150 ease-out ${
+          flat ? 'bg-bg' : 'bg-bg-card'
+        } ${lifting ? 'shadow-modal' : flat ? '' : 'shadow-panel'}`}
         style={{ contain: 'layout paint' }}
       >
         <div

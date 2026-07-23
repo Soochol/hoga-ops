@@ -100,8 +100,8 @@ export const SIZE_TOKENS = {
   // ── layout — heights ──────────────────────────────────────────
   'h-tab':              { rem: 2,       baseIntentPx: 32, usage: 'Tab strip main tab height' },
   'h-tab-secondary':    { rem: 1.875,   baseIntentPx: 30, usage: 'Secondary action button — intentionally 2px shorter than main tab' },
-  'h-toolbar':          { rem: 3.75,    baseIntentPx: 60, usage: 'Replay-page toolbar row' },
-  'h-pricestrip':       { rem: 3.25,    baseIntentPx: 52, usage: 'Current-price strip below toolbar' },
+  'h-toolbar':          { rem: 2,       baseIntentPx: 32, usage: 'Replay-page toolbar row — 밀도 개편(2026-07-23) 60→32, 한 줄 버튼 행' },
+  'h-pricestrip':       { rem: 1.875,   baseIntentPx: 30, usage: 'Current-price strip below toolbar — 밀도 개편(2026-07-23) 52→30, 한 줄 시세 행' },
   'h-orderbook-row':    { rem: 1.375,   baseIntentPx: 22, usage: 'Single row in the orderbook table' },
   'list-row-min-h':     { rem: 1.5625,  baseIntentPx: 25, usage: 'Shared list row min-height — watchlist/ranking/screener-result/heatmap rows align (≈28px @ default density, matching the watchlist row)' },
   'list-group-header-min-h': { rem: 1.8125, baseIntentPx: 29, usage: 'Shared list group-header min-height — watchlist/heatmap group headers align (≈32px @ default density, matching the watchlist group header)' },

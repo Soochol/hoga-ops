@@ -141,20 +141,20 @@ export function Screener() {
   };
 
   return (
-    <PageContainer className="grid gap-md min-h-0"
+    <PageContainer className="grid gap-md min-h-0 !pb-0"
       style={{ gridTemplateColumns: '236px 336px minmax(0, 1fr)' }}>
-      <PanelCard borderless data-testid="screener-saves-pane" className="min-h-0 overflow-hidden">
+      <PanelCard borderless flat data-testid="screener-saves-pane" className="min-h-0 overflow-hidden">
         <SavedScreenerList anchorId={editor.anchorId} dirty={editor.dirty}
           onLoad={editor.load} onNewDraft={editor.newDraft}
           onSaveAsNew={editor.saveAsNew} onDuplicate={editor.duplicate}
           onRename={editor.rename} onRemove={editor.remove} />
       </PanelCard>
-      <PanelCard borderless data-testid="screener-builder-pane" className="min-h-0 overflow-hidden">
+      <PanelCard borderless flat data-testid="screener-builder-pane" className="min-h-0 overflow-hidden">
         <ConditionBuilder conditions={editor.conditions} universe={editor.universe}
           onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse} />
       </PanelCard>
 
-      <PanelCard borderless data-testid="screener-results-pane" className="flex min-h-0 flex-col overflow-hidden">
+      <PanelCard borderless flat data-testid="screener-results-pane" className="flex min-h-0 flex-col overflow-hidden">
         <div className="p-md">
           <ControlBar className="flex-wrap">
             <div className="min-w-0">
