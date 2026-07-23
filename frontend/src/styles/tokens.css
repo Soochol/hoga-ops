@@ -359,8 +359,11 @@
   --tint-auction-window: rgba(235, 115, 0, 0.10);
 
   /* ───── Depth bar fills (alpha nudged up for white bg) ───── */
-  --bar-ask: rgba(25, 87, 194, 0.28);   /* 1957c2 @ 28% */
-  --bar-bid: rgba(222, 43, 57, 0.28);   /* de2b39 @ 28% */
+  /* 매도/매수 깊이 막대 = Toss 웹트레이딩 호가창 실측 이식(2026-07-23):
+     매도 fill #CCE4FF, 매수 fill #FFD9DA. Toss는 라이트 배경에 불투명 알약 막대라
+     이 테마(toss-light)에선 알파 틴트가 아니라 실측 불투명값을 그대로 쓴다. */
+  --bar-ask: #cce4ff;   /* Toss ask fill */
+  --bar-bid: #ffd9da;   /* Toss bid fill */
 }
 
 /* ═══════════════ Toss Dark — dark theme (Toss Securities benchmark) ═══════════════
