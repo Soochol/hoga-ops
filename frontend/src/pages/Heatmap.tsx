@@ -97,10 +97,10 @@ export function Heatmap() {
   return (
     <PageContainer className="min-h-0 !pb-0">
       <PanelCard borderless flat data-testid="heatmap-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
-        {/* 헤더 밴드는 live 부유 카드 모델과 통일 — bg-subtle 어두운 밴드 대신 bg-card.
-            구분선 없음(border-b 제거): 헤더는 카드 본문과 같은 톤으로 흐르고, 아래 섹터
-            스트립과의 분리는 간격이 담당. */}
-        <header className="flex items-center gap-3 px-3 py-2 bg-bg-card flex-none">
+        {/* 헤더·섹터 스트립 배경은 카드 본문과 동일한 --bg(회색 바닥색) — flat 통일
+            (2026-07-23). 이전 bg-card(흰 밴드)를 걷어내 상단이 바닥에 녹아든다.
+            구분선 없음(border-b 제거): 분리는 간격이 담당. */}
+        <header className="flex items-center gap-3 px-3 py-2 bg-bg flex-none">
           <span className="text-md font-semibold text-fg">히트맵</span>
           {phase && <span className="text-xs font-data text-fg-dim">{PHASE_LABEL[phase] ?? phase}</span>}
           <span className="text-xs font-data text-fg-dimmer">{updated} 갱신 · {visibleCount}종목</span>

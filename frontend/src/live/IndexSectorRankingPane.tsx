@@ -260,7 +260,9 @@ export function IndexSectorRankingPane({
         height: fill ? '100%' : height,
         // fill 은 창 자체 테두리가 있어 상단 구분선 불필요.
         borderTop: fill ? undefined : '1px solid var(--border)',
-        background: 'var(--bg)',
+        // fill(워크스페이스 데이터 창)은 다른 창과 동일하게 --bg-card(테마 카드색).
+        // flat 창 프레임(--bg)이 비쳐 회색으로 갈리던 것을 통일. docked 는 유지.
+        background: fill ? 'var(--bg-card)' : 'var(--bg)',
       }}
     >
       {!fill && (
