@@ -141,7 +141,8 @@ The design system has a **single density dial** at `:root font-size`.
   - This three-way separation prevents the "is this red because it failed, or because it's up?" ambiguity.
 
 - **Tint backgrounds (alpha-tinted chip / hover):** each tracks its base color per theme — read the token, don't hardcode the rgba. Values below are the Obsidian defaults; `[data-theme='ledger']` redefines them against the Ledger accent/status/price colors.
-  - `--tint-selection` — active nav, active tab, primary hover (tracks `--accent`)
+  - `--tint-selection` — active nav, active tab, primary hover, **selected list rows** (tracks `--accent`)
+    - **List-row selection rule:** selected rows use the background tint **only** — never add a left accent bar (`border-left: 2px solid var(--accent)` or `shadow-[inset_2px_0_0_var(--accent)]`). Inventory (`ListRow`) is the reference; all right-rail drawer rows (watchlist / heatmap / screener / ranking via `QuoteRow`, saved views) match it. Unified 2026-07-23 — do not reintroduce the accent bar.
   - `--tint-success` / `--tint-error` — completion / error chip background
   - `--tint-success-border` / `--tint-error-border` — banner/chip borders
   - `--tint-price-up` / `--tint-price-down` — buy/sell depth bar, market chip (tracks `--price-*`)

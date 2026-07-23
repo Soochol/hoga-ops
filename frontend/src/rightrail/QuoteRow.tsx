@@ -112,8 +112,10 @@ export function QuoteRow({
         flash ? 'screener-row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{
+        // 선택 표식은 배경 틴트(--tint-selection)만 — 인벤토리(ListRow) 기준으로 통일.
+        // 좌측 accent 바(borderLeft: 2px solid var(--accent))를 다시 넣지 말 것.
+        // 관심·히트맵·스크리너·순위가 이 행을 공유하므로 여기 한 곳이 네 리스트를 결정한다(2026-07-23).
         background: active ? 'var(--tint-selection)' : 'transparent',
-        borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
         ...sortableStyle,
         ...(dragging ? sortableDraggingStyle(18) : {}),
         ...(dropIndicator ? { position: 'relative' } : {}),
