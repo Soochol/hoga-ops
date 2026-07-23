@@ -36,7 +36,9 @@ export interface HeatmapFolderProps {
  *  manual(수동) 정렬 모드에선 행을 드래그해 그룹 내 순서를 바꾼다(폴더마다 독립
  *  DndContext — multicol 칼럼이 다른 폴더 간 cross-talk 을 구조적으로 차단하고,
  *  드래그가 "그룹 내"로 한정된다). change 모드는 매 폴링 라이브 재정렬이라 드래그가
- *  즉시 덮어쓰이므로 정적 행으로 렌더(드래그 비활성). */
+ *  즉시 덮어쓰이므로 정적 행으로 렌더(드래그 비활성).
+ *  간격: 그룹 간 mb-xs(4.5px, 밀도 우선). 그룹 내부는 헤더-첫행·행간 모두 0으로 붙여
+ *  관심종목 패널 리스트와 같은 촘촘한 연속 리스트를 이룬다(구분은 border-b). */
 export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onReorder, onRowMenu, onRowDragState }: HeatmapFolderProps) {
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -74,7 +76,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
   });
 
   return (
-    <div id={`heatmap-folder-${folderId}`} className="break-inside-avoid border-l-2 border-border-strong mb-2 overflow-hidden">
+    <div id={`heatmap-folder-${folderId}`} className="break-inside-avoid border-l-2 border-border-strong mb-xs overflow-hidden">
       {/* 그룹 헤더 밴드 = heatHeaderBg(avg) — 평균 등락 비례 히트 틴트(섹터 온도). 폴더 본문은
           투명·평면이고 좌측 border-strong 스파인 + 이 틴트 밴드로 그룹을 구분한다. 평균 % 는
           평면 text-fg-dim 텍스트(색=밴드가 짊어짐, 숫자=보조; G4). */}
