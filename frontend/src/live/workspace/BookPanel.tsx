@@ -302,7 +302,9 @@ function PriceCell({
   price: number;
   baselinePrice: number | null;
   boxed: boolean;
-  /** 당일 시/고/저 칩(priceMarkers) — 좌측 거터에 absolute 로 얹어 가격 정렬 불변. */
+  /** 당일 시/고/저 칩(priceMarkers) — 가격 숫자 왼쪽 바로 옆(가격 span 기준 right-full)에
+   *  absolute 로 얹는다. 셀 좌단 고정이던 것을 가격 옆으로 당겨 중앙에 가깝게 읽히되,
+   *  가격 x 정렬은 여전히 불변(칩 유무가 가격 위치를 안 바꾼다). */
   markers?: { label: string; bg: string }[];
   /** 매수 1호가 행에만 true — 매도/매수 경계선(3열 공통 y). */
   topDivider?: boolean;
@@ -324,19 +326,19 @@ function PriceCell({
       }`}
       style={{ height: topDivider ? ROW_H - 1 : ROW_H }}
     >
-      {markers.length > 0 && (
-        <span className="absolute left-1 top-1/2 flex -translate-y-1/2 gap-0.5">
-          {markers.map((m) => (
-            <span
-              key={m.label}
-              className={`flex items-center justify-center rounded-[3px] px-[3px] py-px font-ui text-[9px] font-semibold leading-none text-white ${m.bg}`}
-            >
-              {m.label}
-            </span>
-          ))}
-        </span>
-      )}
-      <span className={`font-data text-[0.75rem] tabular-nums ${color}`}>
+      <span className={`relative font-data text-[0.75rem] tabular-nums ${color}`}>
+        {markers.length > 0 && (
+          <span className="absolute right-full top-1/2 mr-1 flex -translate-y-1/2 gap-0.5">
+            {markers.map((m) => (
+              <span
+                key={m.label}
+                className={`flex items-center justify-center rounded-[3px] px-[3px] py-px font-ui text-[9px] font-semibold leading-none text-white ${m.bg}`}
+              >
+                {m.label}
+              </span>
+            ))}
+          </span>
+        )}
         {price > 0 ? price.toLocaleString('ko-KR') : ''}
       </span>
       {pct !== null && price > 0 && (
