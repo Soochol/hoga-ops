@@ -1797,3 +1797,24 @@ def test_refresh_max_concurrent_ignores_garbage(monkeypatch):
     assert captures.refresh_max_concurrent() == 5
     monkeypatch.setenv("HOGA_MAX_CONCURRENT", "0")
     assert captures.refresh_max_concurrent() == 5
+
+
+def test_refresh_rate_limit_s_reads_env_after_load(monkeypatch):
+    """HOGA_RATE_LIMIT_S set purely in .env is read too early at import (before
+    load_env); refresh_rate_limit_s re-reads it at pool-start (mirrors concurrency)."""
+    monkeypatch.setattr(captures, "_rate_limit_s", 0.15, raising=False)
+    monkeypatch.setenv("HOGA_RATE_LIMIT_S", "0.3")
+    assert captures.refresh_rate_limit_s() == 0.3
+    assert captures._rate_limit_s == 0.3
+
+
+def test_refresh_rate_limit_s_allows_zero_but_ignores_garbage_and_negative(monkeypatch):
+    """0 is valid (no throttle); a non-float or <0 keeps the prior value, no raise."""
+    monkeypatch.setattr(captures, "_rate_limit_s", 0.15, raising=False)
+    monkeypatch.setenv("HOGA_RATE_LIMIT_S", "0")
+    assert captures.refresh_rate_limit_s() == 0.0
+    monkeypatch.setattr(captures, "_rate_limit_s", 0.15, raising=False)
+    monkeypatch.setenv("HOGA_RATE_LIMIT_S", "not-a-number")
+    assert captures.refresh_rate_limit_s() == 0.15
+    monkeypatch.setenv("HOGA_RATE_LIMIT_S", "-1")
+    assert captures.refresh_rate_limit_s() == 0.15
