@@ -48,7 +48,11 @@ import { DrawingMenu } from '../DrawingMenu';
 import { IndicatorsButton } from '../LiveToolbar';
 import { requestIndicatorDrawer } from './indicatorDrawerControls';
 import { useChartHeaderFold } from './useChartHeaderCompact';
-import type { SymbolLegendInput } from '../LegendSymbolRow';
+import {
+  publishWindowWarnings,
+  clearWindowWarnings,
+  type WindowWarnings,
+} from './windowWarningsSource';
 import type { LiveStudySaveSource } from '../../studyViews/studySaveCommand';
 import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButton';
 import { CollectButton } from './CollectButton';
@@ -57,7 +61,7 @@ import { unixMsToKSTDate } from '../../util/time';
 import { clearWindowFlagLegendValues } from '../indicators/flagLegendValueRegistry';
 import type { TabViewport } from '../viewportAnchor';
 
-/** 빈 호가갭 배열 상수 — symbolLegend memo 가 매 렌더 새 [] 로 깨지지 않게 안정 참조. */
+/** 빈 호가갭 배열 상수 — 경고 발행 동등성 비교가 매 렌더 새 [] 로 깨지지 않게 안정 참조. */
 const EMPTY_GAP_DATES: readonly string[] = [];
 
 export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
@@ -236,22 +240,37 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
 
   // 캔들 레전드 최상단 종목 식별 행 입력(#865 후속). 지수(view.code=null)는 종목
   // 행 없음. 백필 진행 게이트(isExtending·historicalFromDate·segments)는 여기서
-  // 판정해 결과 날짜만 넘긴다 — 레전드가 번들 내부 구조를 모르게 경계를 좁힌다.
-  // 안정 참조로 memo 해 PaneLegendOverlay memo 를 불필요히 깨지 않는다.
-  const symbolLegend = useMemo<SymbolLegendInput | null>(() => {
-    if (!view.code) return null;
+  // 타이틀바 종목 행 경고칩(호가 미수집·과거 로딩) 발행 — 번들 파생값은 타이틀바
+  // (WindowFrame, 이 창의 부모) 스코프 밖이라 windowWarnings 채널로 올린다. 현재가·
+  // 등락률·히트맵은 타이틀바가 code 로 self-fetch 하므로 여기 싣지 않는다. 백필 진행
+  // 게이트(extending·historicalFromDate·segments)는 여기서 판정해 결과 날짜만 넘긴다.
+  // deps 없는 effect + 동등성 가드로 변경시에만 발행(발행→구독은 타이틀바 리프에
+  // 격리돼 재렌더 루프 없음 — #865 liveWindowStatusSource 규율과 동일).
+  const extending = d.activeIndexId ? d.indexExtending : d.isExtending;
+  const lastWarningsRef = useRef<WindowWarnings | null>(null);
+  useEffect(() => {
     const segs = d.workareaBundle?.segments;
-    const backfillEarliestDate =
-      d.isExtending && view.historicalFromDate != null && segs && segs.length > 0
-        ? segs[0].date
-        : null;
-    return {
-      code: view.code,
-      venue,
-      hogaGapDates: d.hogaCoverageGapDates ?? EMPTY_GAP_DATES,
-      backfillEarliestDate,
+    const next: WindowWarnings = {
+      hogaGapDates: d.activeIndexId ? EMPTY_GAP_DATES : (d.hogaCoverageGapDates ?? EMPTY_GAP_DATES),
+      backfillEarliestDate:
+        extending && view.historicalFromDate != null && segs && segs.length > 0
+          ? segs[0].date
+          : null,
     };
-  }, [view.code, venue, d.isExtending, view.historicalFromDate, d.workareaBundle, d.hogaCoverageGapDates]);
+    const prev = lastWarningsRef.current;
+    const same = prev !== null
+      && prev.backfillEarliestDate === next.backfillEarliestDate
+      && prev.hogaGapDates.length === next.hogaGapDates.length
+      && prev.hogaGapDates.every((v, i) => v === next.hogaGapDates[i]);
+    if (!same) {
+      lastWarningsRef.current = next;
+      publishWindowWarnings(win.id, next);
+    }
+  });
+  useEffect(() => () => {
+    lastWarningsRef.current = null;
+    clearWindowWarnings(win.id);
+  }, [win.id]);
 
   if (!instrument) {
     return (
@@ -273,8 +292,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         data-compact-timeframe={headerFold.compactTimeframe ? '' : undefined}
         className="flex shrink-0 items-center gap-1 overflow-hidden bg-bg-card/60 px-1 py-0.5"
       >
-        {/* 종목 식별·현재가·경고는 차트 캔버스 레전드(LegendSymbolRow)로 이관됐다
-            (#865 후속). 이 헤더는 봉·그리기·보조지표·저장·수집만 소유한다. */}
+        {/* 종목 식별·현재가·경고는 창 타이틀바(TitleBarSymbolRow)로 이관됐다.
+            이 헤더는 봉·그리기·보조지표·저장·수집만 소유한다. */}
         {/* 2단계 접힘(#762) — 기능 손실 없이 폭만 줄인다.
             ① 좁아지면 액션 라벨을 접고 아이콘만(요구폭 ~213px)
             ② 더 좁아지면 일·주·월을 분봉 드롭다운에 합친다(~110px)
@@ -324,7 +343,6 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               isHogaLoading={d.activeIndexId ? false : d.isHogaLoading}
               isSidecarLoading={d.activeIndexId ? false : (d.isSidecarLoading || d.isDailyMaLoading)}
               isExtending={d.activeIndexId ? d.indexExtending : d.isExtending}
-              symbolLegend={symbolLegend}
               indicatorCoverageFromDate={d.activeIndexId ? null : d.indicatorCoverageFromDate}
               rangeWindowFromDate={d.activeIndexId ? null : d.rangeWindowFromDate}
               pastDataWarnings={[...d.workareaDataWarnings]}

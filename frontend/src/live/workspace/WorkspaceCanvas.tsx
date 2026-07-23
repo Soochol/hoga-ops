@@ -310,6 +310,7 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
       lifting={lifting}
       symbolLabel={symbol?.name ?? null}
       symbolCode={symbol?.code ?? null}
+      isIndex={symbol?.kind === 'index'}
       paletteOpen={paletteOpen}
       onHandleDown={onHandleDown}
       onFocus={onFocus}

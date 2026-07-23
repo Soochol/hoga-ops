@@ -65,7 +65,6 @@ import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import QuoteLevelLines from './QuoteLevelLines';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
-import type { SymbolLegendInput } from './LegendSymbolRow';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
 import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
@@ -242,10 +241,6 @@ interface Props {
   isSidecarLoading?: boolean;
   /** useLiveBundle.isExtending. false-edge = 한 스텝 settle → 진행 루프 다음 스텝 판정. */
   isExtending?: boolean;
-  /** #865 후속: 캔들 레전드 최상단 종목 식별 행. 상위(ChartWindow)가 계산해 통과만
-   *  한다 — LiveChartRoot 는 종목 식별 로직을 모르고 PaneLegendOverlay 로 그대로
-   *  넘긴다. /study 등 미전달 호출부는 종목 행 없음(옵셔널+기본 undefined). */
-  symbolLegend?: SymbolLegendInput | null;
   /** Coverage-gap 백필(A안): 활성 range 지표가 도달한 가장 최근 from_date. 캔들이 병합
    * 캐시로 더 과거까지 복원돼도 지표가 이 날짜까지만 있으면 useViewportBackfill이 range
    * 창을 확장한다. 옵셔널+기본 null이라 StudyPage·기존 테스트는 무변경. */
@@ -360,7 +355,6 @@ export function LiveChartRoot({
   isHogaLoading = false,
   isSidecarLoading = false,
   isExtending = false,
-  symbolLegend = null,
   indicatorCoverageFromDate = null,
   rangeWindowFromDate = null,
   pastDataWarnings,
@@ -2092,7 +2086,6 @@ export function LiveChartRoot({
             hasDepthDelta={depthDeltaToday.length > 0}
             candles={cb?.candles}
             axis={axis}
-            symbolLegend={symbolLegend}
           />
           <CandleTooltip chart={chart} bundle={cb} quoteBundle={paneRatioBundle} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
           {/* 고저 극값 라벨 — 보이는 범위의 최고/최저봉에 극값 대비율 라벨. cb(안정)·viewport

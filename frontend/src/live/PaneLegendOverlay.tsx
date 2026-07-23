@@ -48,7 +48,6 @@ import {
 } from './legendRows';
 import { readFlagLegendValues } from './indicators/flagLegendValueRegistry';
 import { formatKoreanInt } from '../util/koreanNumber';
-import { LegendSymbolRow, type SymbolLegendInput } from './LegendSymbolRow';
 
 type Props = {
   chart: IChartApi;
@@ -82,11 +81,6 @@ type Props = {
    *  SSE 틱당 O(N) series.data() 리드백이 부활하므로 금지 — idle 실시간이 필요해지면
    *  epoch 재렌더가 아니라 원시값 타겟 구독(LiveCurrentPriceLine 패턴)으로 구현할 것. */
   dataEpoch?: unknown;
-  /** 캔들 pane 최상단 종목 식별 행(#865 후속, 상태바→차트 캔버스 이관). null 이면
-   *  미표시(지수 창·종목 미선택). 현재가/등락률은 LegendSymbolRow 가 자체 quote 구독
-   *  으로 갱신하므로 이 객체는 안정 필드만 담아야 memo 를 깨지 않는다 — 상위
-   *  (LiveChartRoot)에서 useMemo 로 안정화해 전달할 것. */
-  symbolLegend?: SymbolLegendInput | null;
 };
 
 // Worst-case width `-9,999,999` (~11 glyphs) reserved so the value cell never
@@ -525,7 +519,6 @@ function PaneLegendOverlay({
   visibleSpecs,
   candles,
   axis,
-  symbolLegend,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Last crosshair param (null = cursor away → latest-fallback). Mutated by the
@@ -820,10 +813,7 @@ function PaneLegendOverlay({
         if (idx >= paneTops.length) return null;
         const paneRows = rowsByPane.get(paneId) ?? [];
         const showMoveControls = idx > 0; // 캔들은 고정
-        // 종목 식별 행은 캔들 pane(idx 0) 최상단 — OHLC 가 아직 없어도(콜드 로드)
-        // 종목명은 떠야 하므로 빈-행 스킵 게이트에서 예외 처리한다.
-        const showSymbolRow = idx === 0 && !!symbolLegend;
-        if (paneRows.length === 0 && !showMoveControls && !showSymbolRow) return null;
+        if (paneRows.length === 0 && !showMoveControls) return null;
         return (
           <div
             key={paneId}
@@ -856,18 +846,6 @@ function PaneLegendOverlay({
                 downNeighbor={idx + 1 < specs.length ? specs[idx + 1].name : null}
                 paneOrder={paneOrder}
               />
-            )}
-            {/* 종목 식별 행 — 캔들 pane 최상단, OHLC 행 위(#865 후속). 표시 전용. */}
-            {showSymbolRow && symbolLegend && (
-              <div style={boxStyle}>
-                <LegendSymbolRow
-                  code={symbolLegend.code}
-                  venue={symbolLegend.venue}
-                  candles={candles}
-                  hogaGapDates={symbolLegend.hogaGapDates}
-                  backfillEarliestDate={symbolLegend.backfillEarliestDate}
-                />
-              </div>
             )}
             {paneRows.map((row) => (
               <div
