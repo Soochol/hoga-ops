@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   heatBg, sortEntries, avgPct, heatHeaderBg, groupHeatmapEntries, orderFolderGroups, makePctOf,
+  heatmapGroupNameOf,
   type HeatmapGroup,
 } from './heat';
-import type { HeatmapEntry } from '../api/heatmap';
+import type { HeatmapEntry, HeatmapFolder } from '../api/heatmap';
 import type { LiveQuote } from '../api/liveQuotes';
 
 const E = (code: string, order: number): HeatmapEntry => ({
@@ -114,6 +115,31 @@ describe('groupHeatmapEntries', () => {
     expect(ids(gs)).toEqual(['f1', 'f2', 'f3']);
     expect(gs[0].entries.map((e) => e.code)).toEqual(['a', 'b']);
     expect(gs[2].entries).toEqual([]);
+  });
+});
+
+describe('heatmapGroupNameOf (종목 → 소속 그룹명 역조회)', () => {
+  const folders: HeatmapFolder[] = [
+    { id: 'f1', name: '반도체', order: 0 },
+    { id: 'f2', name: '2차전지', order: 1 },
+  ];
+  const entries: HeatmapEntry[] = [
+    { code: '000660', name: 'SK하이닉스', folder_id: 'f1', order: 0 },
+    { code: '373220', name: 'LG에너지솔루션', folder_id: 'f2', order: 0 },
+  ];
+  it('소속 그룹명 반환', () => {
+    expect(heatmapGroupNameOf('000660', folders, entries)).toBe('반도체');
+    expect(heatmapGroupNameOf('373220', folders, entries)).toBe('2차전지');
+  });
+  it('어느 그룹에도 없으면 null', () => {
+    expect(heatmapGroupNameOf('086790', folders, entries)).toBeNull();
+  });
+  it('데이터 미로드(빈 배열) → null', () => {
+    expect(heatmapGroupNameOf('000660', [], [])).toBeNull();
+  });
+  it('folder_id 는 있으나 폴더가 사라진 경우(정합성 깨짐) → null', () => {
+    const orphan: HeatmapEntry[] = [{ code: '000660', name: 'x', folder_id: 'gone', order: 0 }];
+    expect(heatmapGroupNameOf('000660', folders, orphan)).toBeNull();
   });
 });
 
