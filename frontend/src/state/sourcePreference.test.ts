@@ -47,7 +47,7 @@ describe('useSourcePreferenceStore', () => {
     expect(useSourcePreferenceStore.getState().sourcePreference).toBe('hogaplay_first');
   });
 
-  it('SOURCE_OPTIONS exposes the two display priority policies', () => {
-    expect(SOURCE_OPTIONS).toEqual(['hogaplay_first', 'kis_ws_first']);
+  it('SOURCE_OPTIONS exposes the display priority policies', () => {
+    expect(SOURCE_OPTIONS).toEqual(['hogaplay_first', 'kis_ws_first', 'completeness_first']);
   });
 });

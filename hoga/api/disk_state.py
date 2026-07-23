@@ -310,6 +310,23 @@ _AGGREGATE_PRIORITY = (
 )
 
 
+def completeness_rank(state: DiskState) -> int:
+    """Rank a DiskState by completeness — **lower is better**.
+
+    Single source of truth for "which state is more complete", shared by
+    :func:`aggregate_disk_state` (calendar/capture aggregate) and
+    ``sources.resolve_source_result`` under the ``completeness_first`` policy
+    (ADR-0124). Keeping the ordering here — not duplicated in ``sources`` —
+    means the completeness judgment can't drift across the two consumers.
+
+    Unknown states rank last (defensive; every DiskState is currently listed).
+    """
+    try:
+        return _AGGREGATE_PRIORITY.index(state)
+    except ValueError:
+        return len(_AGGREGATE_PRIORITY)
+
+
 def aggregate_disk_state(per_source: dict[str, DiskState]) -> DiskState:
     """Pick the best DiskState across sources.
 

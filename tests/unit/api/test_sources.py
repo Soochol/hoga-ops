@@ -51,6 +51,8 @@ def test_source_name_literal_includes_all_sources() -> None:
         ("kiwoom_ws_first", ("kiwoom_live", "kis_live", "kis_api", "hogaplay")),
         ("kis_api", ("kis_api", "kis_live", "kiwoom_live", "hogaplay")),
         ("kis_api_first", ("kis_api", "kis_live", "kiwoom_live", "hogaplay")),
+        # completeness_first의 사다리는 동급 타이브레이크(WS 우선)로만 쓰인다.
+        ("completeness_first", ("kis_live", "kiwoom_live", "kis_api", "hogaplay")),
     ],
 )
 def test_ordered_sources_maps_legacy_and_policy_names(policy, expected) -> None:
@@ -216,3 +218,86 @@ def test_resolve_candle_source_none_for_missing_stock_date(tmp_path: Path) -> No
     engine = _make_engine(tmp_path)
 
     assert resolve_candle_source(engine, "20260720", "999999", "hogaplay_first") is None
+
+
+# --- 완결성 우선 정책 (completeness_first, ADR-0039) ------------------------
+#
+# 기존 정책은 "사다리 첫 non-INVALID"라 hogaplay가 반쪽(SOURCE_PARTIAL)이어도
+# hogaplay_first면 그대로 이긴다. completeness_first는 소스를 완결성 등급으로
+# 정렬해 더 완결한 쪽을 고르고, 동급이면 실시간 WS 우선으로 타이브레이크한다.
+# 완결성 판정은 재구현하지 않고 classify_from_meta(캡처 게이트와 동일 SSOT)가
+# 산출한 per_source 상태를 그대로 소비한다.
+
+
+def _seed_partial(tmp_path: Path, date: str, code: str, source: str) -> None:
+    """SOURCE_PARTIAL — 수집은 끝났으나 갭 존재."""
+    sd = tmp_path / "parquet" / date / code / source
+    sd.mkdir(parents=True)
+    (sd / "meta.json").write_text('{"collection_complete": true, "is_partial": true}')
+
+
+def test_completeness_first_both_complete_prefers_ws(tmp_path: Path) -> None:
+    _seed_source(tmp_path, "20260622", "005930", "hogaplay")   # COMPLETE
+    _seed_source(tmp_path, "20260622", "005930", "kis_live")   # COMPLETE
+    engine = _make_engine(tmp_path)
+
+    # 둘 다 완결 → 동급 → WS-first 타이브레이크로 kis_live.
+    assert resolve_source(engine, "20260622", "005930", "completeness_first") == "kis_live"
+
+
+def test_completeness_first_picks_complete_hogaplay_over_partial_ws(tmp_path: Path) -> None:
+    _seed_source(tmp_path, "20260622", "005930", "hogaplay")   # COMPLETE
+    _seed_partial(tmp_path, "20260622", "005930", "kis_live")  # SOURCE_PARTIAL
+    engine = _make_engine(tmp_path)
+
+    # WS가 사다리 앞이지만 완결성 등급이 hogaplay보다 낮으므로 hogaplay 채택.
+    result = resolve_source_result(engine, "20260622", "005930", "completeness_first")
+    assert result.source == "hogaplay"
+    assert result.classification is not None
+    assert result.classification.state == DiskState.COMPLETE
+
+
+def test_completeness_first_picks_complete_ws_over_partial_hogaplay(tmp_path: Path) -> None:
+    _seed_partial(tmp_path, "20260622", "005930", "hogaplay")  # SOURCE_PARTIAL
+    _seed_source(tmp_path, "20260622", "005930", "kis_live")   # COMPLETE
+    engine = _make_engine(tmp_path)
+
+    assert resolve_source(engine, "20260622", "005930", "completeness_first") == "kis_live"
+
+
+def test_completeness_first_both_partial_prefers_ws(tmp_path: Path) -> None:
+    # 예: hogaplay가 아침을 영구 소실(SOURCE_PARTIAL)하고 WS도 PARTIAL — 동급이면 WS.
+    _seed_partial(tmp_path, "20260622", "005930", "hogaplay")
+    _seed_partial(tmp_path, "20260622", "005930", "kis_live")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_source(engine, "20260622", "005930", "completeness_first") == "kis_live"
+
+
+def test_completeness_first_excludes_invalid_even_if_more_recent_tier(tmp_path: Path) -> None:
+    # WS가 부패(INVALID)면 등급 비교 이전에 제외 — 완결한 hogaplay가 이긴다.
+    _seed_source(tmp_path, "20260622", "005930", "hogaplay")        # COMPLETE
+    _seed_invalid_source(tmp_path, "20260622", "005930", "kis_live")
+    engine = _make_engine(tmp_path)
+
+    result = resolve_source_result(engine, "20260622", "005930", "completeness_first")
+    assert result.source == "hogaplay"
+    assert result.classification is not None
+    assert result.classification.state == DiskState.COMPLETE
+
+
+def test_completeness_first_candle_dimension_keeps_hogaplay_first(tmp_path: Path) -> None:
+    """캔들은 완결성 타이브레이크 대상이 아니다 — 오늘 기본(hogaplay 우선) 유지.
+
+    호가 승자는 WS(kis_live)여도, 캔들은 hogaplay가 kis_api 복구본을 앞선다
+    (completeness_first의 WS-first 사다리가 캔들엔 그대로 새면 kis_api가 앞설 위험).
+    """
+    _seed_source(tmp_path, "20260622", "005930", "hogaplay")   # COMPLETE + 캔들 보유
+    _seed_candles(tmp_path, "20260622", "005930", "hogaplay")
+    _seed_source(tmp_path, "20260622", "005930", "kis_live")   # 호가 승자(캔들 미보유)
+    _seed_source(tmp_path, "20260622", "005930", "kis_api")    # 복구 캔들 보유
+    _seed_candles(tmp_path, "20260622", "005930", "kis_api")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_source(engine, "20260622", "005930", "completeness_first") == "kis_live"
+    assert resolve_candle_source(engine, "20260622", "005930", "completeness_first") == "hogaplay"
