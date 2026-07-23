@@ -114,7 +114,7 @@ export function RailGroupHeader({
     <button
       type="button"
       {...props}
-      className={`sticky top-0 z-10 flex w-full items-center gap-2 bg-bg-subtle px-3 py-1.5 text-left text-xs text-fg hover:bg-bg-input-hover ${className}`.trim()}
+      className={`sticky top-0 z-10 flex w-full items-center gap-2 bg-bg-subtle px-3 py-1.5 min-h-list-group-header text-left text-xs text-fg hover:bg-bg-input-hover ${className}`.trim()}
     >
       {leading}
       <span className="min-w-0 flex-1 truncate">{children}</span>
