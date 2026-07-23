@@ -138,6 +138,23 @@ class PastIndicatorsCache:
         self._mem_continuous_before: OrderedDict[
             tuple[str, str, str, int], int | None
         ] = OrderedDict()
+        # Capture-freshness guard (2026-07-23). A cached indicator slice is only
+        # valid for the exact capture it was computed from, yet a re-capture
+        # rewrites the source parquet + meta.json under the SAME (code,date,source)
+        # key — so without a token check a stale slice outlives the data it
+        # summarizes. Incident: a sparse 08:18 hogaplay capture cached ONE ratio
+        # point; the 08:38 full re-capture replaced snapshots.parquet (8.9k rows);
+        # /live kept serving the 1 point because neither disk nor mem was
+        # invalidated. meta.json mtime is the capture identity — bumped on every
+        # capture, shared by every kind of the Stock-Date. Disk staleness is gated
+        # in _read/_read_model_cache; mem staleness is gated by _sync_generation,
+        # which purges these dicts on a token change.
+        self._gen: dict[tuple[str, str, str], int] = {}
+        self._all_mem_dicts: tuple[OrderedDict, ...] = (
+            self._mem_ratio, self._mem_fill, self._mem_ask_peak, self._mem_bid_peak,
+            self._mem_trade_volume_poc, self._mem_depth, self._mem_depth_delta,
+            self._mem_vdist, self._mem_broker_late, self._mem_continuous_before,
+        )
         # Per-kind stats. Peak lookups are accounted on has_*, not get_* — bundle.py
         # calls has_ (the real disk-touching lookup) then get_ (an already-promoted
         # mem re-read); counting both would double-count (advisor #2).
@@ -172,12 +189,65 @@ class PastIndicatorsCache:
             if stats is not None:
                 stats.record_eviction()
 
+    def _capture_mtime_ms(self, code: str, date: str, source: str) -> int:
+        """Capture identity for a Stock-Date source: meta.json mtime in ms.
+
+        meta.json is rewritten by every capture of ``(date, code, source)``, so a
+        re-capture strictly advances this. Returns 0 when meta is absent (legacy
+        flat layout; tests with no parquet on disk) — callers read 0 as "unknown,
+        don't invalidate" so a missing source never nukes an otherwise-valid cache.
+        """
+        meta = self._data_dir / "parquet" / date / code / source / "meta.json"
+        try:
+            return meta.stat().st_mtime_ns // 1_000_000
+        except OSError:
+            return 0
+
+    def _is_stale(self, path: Path, fetched_at_ms: object) -> bool:
+        """True when the source capture is newer than this cache artifact.
+
+        Derives (code, date, source) from the cache ``path`` layout
+        (kis-past-indicators/<code>/<source>/<date>.<suffix>.json) so both disk
+        readers share one gate without threading the key through. Lenient on any
+        surprise (unparseable path, missing meta → token 0, missing timestamp):
+        returns False so a cache we cannot prove stale is never discarded."""
+        try:
+            rel = path.relative_to(self._data_dir / "kis-past-indicators")
+            code, source = rel.parts[0], rel.parts[1]
+            date = path.name.split(".", 1)[0]
+        except (ValueError, IndexError):
+            return False
+        tok = self._capture_mtime_ms(code, date, source)
+        if tok == 0 or not isinstance(fetched_at_ms, (int, float)):
+            return False
+        return tok > int(fetched_at_ms)
+
+    def _sync_generation(self, code: str, date: str, source: str) -> None:
+        """Evict in-memory entries for ``(code, date, source)`` when its capture
+        token advanced since they were memoized. One stat() per Stock-Date lookup;
+        a prefix purge only on the (rare) re-capture. Disk artifacts are gated
+        independently in _read/_read_model_cache, so a cold process is correct
+        without this — this keeps a long-lived engine correct across a re-capture
+        too (the incident's /live server held the stale slice in mem)."""
+        key = (code, date, source)
+        tok = self._capture_mtime_ms(code, date, source)
+        prev = self._gen.get(key)
+        if prev == tok:
+            return
+        self._gen[key] = tok
+        if prev is None:
+            return  # first sighting — nothing memoized under the old token
+        for od in self._all_mem_dicts:
+            for k in [k for k in od if k[:3] == key]:
+                del od[k]
+
     def _path(self, code: str, date: str, source: str, kind: Kind) -> Path:
         return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{kind}.json"
 
     # ── ratio (호가비) ─────────────────────────────────────────────────────────
 
     def get_ratio(self, code: str, date: str, source: str) -> list[QuoteRatioRow] | None:
+        self._sync_generation(code, date, source)
         key = (code, date, source)
         stats = self._stats["ratio"]
         hit = self._mem_ratio.get(key)
@@ -214,6 +284,7 @@ class PastIndicatorsCache:
     # ── fill (체결강도) ────────────────────────────────────────────────────────
 
     def get_fill(self, code: str, date: str, source: str) -> list[FillStrengthRow] | None:
+        self._sync_generation(code, date, source)
         key = (code, date, source)
         stats = self._stats["fill"]
         hit = self._mem_fill.get(key)
@@ -283,7 +354,11 @@ class PastIndicatorsCache:
         except (OSError, json.JSONDecodeError):
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             return _CACHE_MISS
-        if body.get("version") != KIND_VERSIONS[kind]:
+        # Version mismatch (semantics changed) OR source re-captured after this
+        # slice was cached (07/22 stale-slice incident) → miss, next store heals.
+        if body.get("version") != KIND_VERSIONS[kind] or self._is_stale(
+            path, body.get("fetched_at_ms")
+        ):
             return _CACHE_MISS
         value = body.get("value")
         if value is None:
@@ -306,6 +381,7 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.write_failed path=%s", path, exc_info=True)
 
     def has_ask_peak(self, code: str, date: str, source: str, bucket_ms: int) -> bool:
+        self._sync_generation(code, date, source)
         key = (code, date, source, bucket_ms)
         stats = self._stats["ask_peak"]
         if key in self._mem_ask_peak:
@@ -325,6 +401,7 @@ class PastIndicatorsCache:
 
     def get_ask_peak(self, code: str, date: str, source: str, bucket_ms: int) -> AskPeak | None:
         # Lookup accounted on has_ask_peak (the guarding call); get_ is a mem re-read.
+        self._sync_generation(code, date, source)
         key = (code, date, source, bucket_ms)
         if key in self._mem_ask_peak:
             self._mem_ask_peak.move_to_end(key)
@@ -350,6 +427,7 @@ class PastIndicatorsCache:
         )
 
     def has_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> bool:
+        self._sync_generation(code, date, source)
         key = (code, date, source, bucket_ms)
         stats = self._stats["bid_peak"]
         if key in self._mem_bid_peak:
@@ -369,6 +447,7 @@ class PastIndicatorsCache:
 
     def get_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> BidPeak | None:
         # Lookup accounted on has_bid_peak (the guarding call); get_ is a mem re-read.
+        self._sync_generation(code, date, source)
         key = (code, date, source, bucket_ms)
         if key in self._mem_bid_peak:
             self._mem_bid_peak.move_to_end(key)
@@ -404,6 +483,7 @@ class PastIndicatorsCache:
         price_min: int,
         price_max: int,
     ) -> TradeVolumePoc | None | object:
+        self._sync_generation(code, date, source)
         key = (code, date, source, range_count, price_min, price_max)
         stats = self._stats["poc"]
         if key in self._mem_trade_volume_poc:
@@ -464,6 +544,7 @@ class PastIndicatorsCache:
         """Cached depth-heatmap points for a completed past Stock-Date, or
         ``_CACHE_MISS``. An empty list is a valid cached result (no-data day),
         so the sentinel — not ``[]`` — signals a miss (mirrors get_trade_volume_poc)."""
+        self._sync_generation(code, date, source)
         key = (code, date, source, bucket_ms)
         stats = self._stats["depth"]
         hit = self._mem_depth.get(key)
@@ -481,7 +562,9 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             stats.record_miss()
             return _CACHE_MISS
-        if body.get("version") != KIND_VERSIONS["depth"]:
+        if body.get("version") != KIND_VERSIONS["depth"] or self._is_stale(
+            path, body.get("fetched_at_ms")
+        ):
             stats.record_miss()
             return _CACHE_MISS
         raw = body.get("points")
@@ -530,6 +613,7 @@ class PastIndicatorsCache:
 
         get_depth 와 완전 대칭 — 빈 리스트도 유효 결과(무데이터 일자)라 센티넬로
         미스를 구분한다."""
+        self._sync_generation(code, date, source)
         key = (code, date, source, bucket_ms)
         stats = self._stats["depth_delta"]
         hit = self._mem_depth_delta.get(key)
@@ -547,7 +631,9 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             stats.record_miss()
             return _CACHE_MISS
-        if body.get("version") != KIND_VERSIONS["depth_delta"]:
+        if body.get("version") != KIND_VERSIONS["depth_delta"] or self._is_stale(
+            path, body.get("fetched_at_ms")
+        ):
             stats.record_miss()
             return _CACHE_MISS
         raw = body.get("points")
@@ -607,6 +693,7 @@ class PastIndicatorsCache:
         """Cached체결 분포 for a completed past Stock-Date, or ``_CACHE_MISS``.
         None(무데이터일)도 유효 캐시값이라 센티널로 미스를 구분(POC와 동일).
         ``source`` 는 호출부가 넘긴 trade_indicator_source — 키 정합 유지."""
+        self._sync_generation(code, date, source)
         key = (code, date, source, range_count, price_min, price_max)
         stats = self._stats["vdist"]
         if key in self._mem_vdist:
@@ -667,7 +754,9 @@ class PastIndicatorsCache:
         except (OSError, json.JSONDecodeError):
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             return _CACHE_MISS
-        if body.get("version") != KIND_VERSIONS[kind]:
+        if body.get("version") != KIND_VERSIONS[kind] or self._is_stale(
+            path, body.get("fetched_at_ms")
+        ):
             return _CACHE_MISS
         raw = body.get(payload_key)
         if not isinstance(raw, list):
@@ -694,6 +783,7 @@ class PastIndicatorsCache:
     def get_broker_late(
         self, code: str, date: str, source: str, start_hhmm: int
     ) -> list[BrokerLateEntryEvent] | object:
+        self._sync_generation(code, date, source)
         key = (code, date, source, start_hhmm)
         stats = self._stats["broker_late"]
         hit = self._mem_broker_late.get(key)
@@ -739,6 +829,7 @@ class PastIndicatorsCache:
     def get_continuous_before(
         self, code: str, date: str, source: str, session_close_ms: int
     ) -> int | None | object:
+        self._sync_generation(code, date, source)
         key = (code, date, source, session_close_ms)
         stats = self._stats["continuous_before"]
         if key in self._mem_continuous_before:
@@ -755,7 +846,9 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             stats.record_miss()
             return _CACHE_MISS
-        if body.get("version") != KIND_VERSIONS["continuous_before"]:
+        if body.get("version") != KIND_VERSIONS["continuous_before"] or self._is_stale(
+            path, body.get("fetched_at_ms")
+        ):
             stats.record_miss()
             return _CACHE_MISS
         value = body.get("value")
@@ -802,6 +895,9 @@ class PastIndicatorsCache:
             return None
         if body.get("version") != KIND_VERSIONS[kind]:
             # Semantics changed under an old file — ignore; next store heals it.
+            return None
+        if self._is_stale(p, body.get("fetched_at_ms")):
+            # Source re-captured after this slice was cached — ignore; next store heals.
             return None
         rows = body.get("rows")
         return rows if isinstance(rows, list) else None
