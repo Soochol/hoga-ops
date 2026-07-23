@@ -6,6 +6,7 @@ import { new_high_today } from './conditions/new_high_today';
 import { new_high } from './conditions/new_high';
 import { new_high_vol_today } from './conditions/new_high_vol_today';
 import { new_high_vol } from './conditions/new_high_vol';
+import { high_off_peak } from './conditions/high_off_peak';
 import { change_pct } from './conditions/change_pct';
 import { price_range } from './conditions/price_range';
 import { ma } from './conditions/ma';
@@ -15,12 +16,12 @@ import type { CatalogEntry } from './conditions/types';
 
 export const CONDITION_ORDER: ConditionType[] =
   ['trade_value', 'trade_value_period', 'new_high_today', 'new_high',
-   'new_high_vol_today', 'new_high_vol', 'ask_depth_new_high', 'bid_depth_new_high',
+   'new_high_vol_today', 'new_high_vol', 'high_off_peak', 'ask_depth_new_high', 'bid_depth_new_high',
    'change_pct', 'price_range', 'ma'];
 
 export const CONDITION_CATALOG: Record<ConditionType, CatalogEntry> = {
   trade_value, trade_value_period, new_high_today, new_high,
-  new_high_vol_today, new_high_vol, ask_depth_new_high, bid_depth_new_high,
+  new_high_vol_today, new_high_vol, high_off_peak, ask_depth_new_high, bid_depth_new_high,
   change_pct, price_range, ma,
 };
 

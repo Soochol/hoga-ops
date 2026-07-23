@@ -253,6 +253,41 @@ def test_ma_uses_selected_price_source(tmp_path):
     assert [r.code for r in screener_scan.run_scan(adj, stk, conditions=[high_leaf], universe=ScreenerUniverse())] == ["000111"]
 
 
+from hoga.api.models import HighOffPeakLeaf, HighOffPeakParams
+
+def test_high_off_peak_within_and_outside(tmp_path):
+    # peak = 최근 N일 고가 최댓값. A(000111) 고가 200→190→180 → 최신 -10%(고점 대비).
+    # B(000222) 고가 200→160→130 → 최신 -35%. within 30%: A만; outside 30%: B만.
+    a = [("000111", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 13), [200, 190, 180])]
+    b = [("000222", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 13), [200, 160, 130])]
+    adj, stk = _seed(tmp_path, rows=a + b,
+        stocks=[("000111","a","KOSPI",False,False),("000222","b","KOSPI",False,False)])
+    within = HighOffPeakLeaf(id="w", params=HighOffPeakParams(period=250, pct=30, side="within"))
+    outside = HighOffPeakLeaf(id="o", params=HighOffPeakParams(period=250, pct=30, side="outside"))
+    out_w = screener_scan.run_scan(adj, stk, conditions=[within], universe=ScreenerUniverse())
+    out_o = screener_scan.run_scan(adj, stk, conditions=[outside], universe=ScreenerUniverse())
+    assert [r.code for r in out_w] == ["000111"]      # -10% ⊂ -30% 이내
+    assert [r.code for r in out_o] == ["000222"]      # -35% ⊂ -30% 이외
+
+def test_high_off_peak_new_high_is_within(tmp_path):
+    # 최신 고가가 곧 peak(신고가 갱신) → 위치 0% → 어떤 pct 이내라도 통과.
+    rows = [("000111", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 13), [100, 110, 120])]
+    adj, stk = _seed(tmp_path, rows=rows, stocks=[("000111","a","KOSPI",False,False)])
+    leaf = HighOffPeakLeaf(id="w", params=HighOffPeakParams(period=250, pct=5, side="within"))
+    out = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+    assert [r.code for r in out] == ["000111"]
+
+def test_high_off_peak_short_history_no_wc_gate(tmp_path):
+    # wc 게이트 없음(보유분 계산): period=250 이어도 상장 2일짜리가 보유 고가 peak 기준
+    # -10% 이내면 통과. (신고가 돌파 조건과 달리 이력 부족으로 배제하지 않는다.)
+    rows = [("000111", "2026-05-11", 0, 200, 0, 200, 1),
+            ("000111", "2026-05-12", 0, 185, 0, 185, 1)]     # 185/200-1 = -7.5%
+    adj, stk = _seed(tmp_path, rows=rows, stocks=[("000111","a","KOSPI",False,False)])
+    leaf = HighOffPeakLeaf(id="w", params=HighOffPeakParams(period=250, pct=10, side="within"))
+    out = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+    assert [r.code for r in out] == ["000111"]
+
+
 from hoga.api.models import NewHighLeaf, BreakoutParams
 
 def test_repeated_new_high_and(tmp_path):
