@@ -53,7 +53,7 @@ export function HeatmapRow({
       onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } }}
       style={dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle}
-      className={`grid grid-cols-[minmax(4rem,1fr)_2.5rem_3.2rem_4.25rem] gap-1.5 px-2 py-0.5 min-h-list-row items-center text-sm border-b border-border outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
+      className={`grid grid-cols-[minmax(4rem,1fr)_2.5rem_3.2rem_4.25rem] gap-1.5 px-2 py-0.5 min-h-list-row items-center text-sm outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
     >
       {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
