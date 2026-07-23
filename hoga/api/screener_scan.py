@@ -78,6 +78,23 @@ def _compile_change_pct(leaf, i):
             [leaf.params.lo, leaf.params.hi])
 
 
+def _compile_high_off_peak(leaf, i):
+    # 최근 M거래일 고가 peak 대비 현재(최신 봉) 고가 위치. wc 게이트 없음(보유분 계산):
+    # 이력이 M일 미만이면 보유한 만큼의 고가 peak 를 기준으로 근접도를 판정한다.
+    # within: v >= peak*(1-pct/100) (고점 −pct% 이내) / outside: v < peak*(1-pct/100)
+    M = leaf.params.period
+    frac = 1.0 - leaf.params.pct / 100.0
+    op = ">=" if leaf.params.side == "within" else "<"
+    return (
+        f"cond_{i}_w AS (SELECT code, date, high AS v, "
+        f"MAX(high) OVER (PARTITION BY code ORDER BY date "
+        f"ROWS BETWEEN {M - 1} PRECEDING AND CURRENT ROW) mx FROM adj), "
+        f"cond_{i}_l AS (SELECT DISTINCT ON (code) code, v, mx "
+        f"FROM cond_{i}_w ORDER BY code, date DESC), "
+        f"cond_{i} AS (SELECT code FROM cond_{i}_l WHERE mx > 0 AND v {op} mx * ?)"
+    ), [frac]
+
+
 def _compile_price_range(leaf, i):
     clauses, params = [], []
     if leaf.params.min is not None:
@@ -110,6 +127,7 @@ CONDITION_COMPILERS: dict[str, LeafCompiler] = {
     "new_high_today": _breakout_today("high"),
     "new_high_vol": _breakout("volume"),
     "new_high_vol_today": _breakout_today("volume"),
+    "high_off_peak": _compile_high_off_peak,
     "change_pct": _compile_change_pct,
     "price_range": _compile_price_range,
     "ma": _compile_ma,

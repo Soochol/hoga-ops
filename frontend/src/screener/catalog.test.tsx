@@ -2,12 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { CONDITION_CATALOG, CONDITION_ORDER, makeLeaf } from './catalog';
 
 describe('catalog', () => {
-  it('covers all 11 types incl. 당일/기간내 변형 + 총잔량 신고', () => {
-    expect(CONDITION_ORDER).toHaveLength(11);
+  it('covers all 12 types incl. 당일/기간내 변형 + 총잔량 신고 + 신고가 대비 고가', () => {
+    expect(CONDITION_ORDER).toHaveLength(12);
     expect(Object.keys(CONDITION_CATALOG).sort()).toEqual(
-      ['ask_depth_new_high', 'bid_depth_new_high', 'change_pct', 'ma', 'new_high',
+      ['ask_depth_new_high', 'bid_depth_new_high', 'change_pct', 'high_off_peak', 'ma', 'new_high',
        'new_high_today', 'new_high_vol', 'new_high_vol_today', 'price_range',
        'trade_value', 'trade_value_period']);
+  });
+  it('신고가 대비 고가 조건: 기본 파라미터 + 라벨 + 요약', () => {
+    expect(makeLeaf('high_off_peak').params).toEqual({ period: 250, pct: 30, side: 'within' });
+    expect(CONDITION_CATALOG.high_off_peak.label).toBe('신고가 대비 고가');
+    expect(CONDITION_CATALOG.high_off_peak.summarize({ period: 250, pct: 30, side: 'within' }))
+      .toBe('250일·−30%이내');
+    expect(CONDITION_CATALOG.high_off_peak.summarize({ period: 250, pct: 30, side: 'outside' }))
+      .toBe('250일·−30%이외');
   });
   it('총잔량 신고 조건: 기본 파라미터 + 요약', () => {
     expect(makeLeaf('ask_depth_new_high').params).toEqual({ lookback: 20, threshold_pct: 100 });

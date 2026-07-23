@@ -8,6 +8,9 @@ export interface TradeValuePeriodParams { lookback: number; min_eok: number }
 export type ChangePctOp = 'gte' | 'lte' | 'between';
 export interface ChangePctParams { op: ChangePctOp; pct?: number; lo?: number; hi?: number }
 export interface PriceRangeParams { min?: number; max?: number }
+// 최근 period일 고가 peak 대비 현재 고가 위치. within=고점 −pct% 이내 / outside=이외.
+export type HighOffPeakSide = 'within' | 'outside';
+export interface HighOffPeakParams { period: number; pct: number; side: HighOffPeakSide }
 export type MaRelation = 'above' | 'below';
 export type MaSource = 'open' | 'high' | 'low' | 'close';
 export interface MaParams { period: number; relation: MaRelation; source?: MaSource }
@@ -21,6 +24,7 @@ export type ConditionLeaf =
   | { id: string; type: 'new_high'; params: BreakoutParams }
   | { id: string; type: 'new_high_vol_today'; params: PeriodParams }
   | { id: string; type: 'new_high_vol'; params: BreakoutParams }
+  | { id: string; type: 'high_off_peak'; params: HighOffPeakParams }
   | { id: string; type: 'change_pct'; params: ChangePctParams }
   | { id: string; type: 'price_range'; params: PriceRangeParams }
   | { id: string; type: 'ma'; params: MaParams }

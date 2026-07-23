@@ -1315,6 +1315,11 @@ class MaParams(BaseModel):
     relation: Literal["above", "below"]                # source >= SMA(source) / source <= SMA(source)
     source: Literal["open", "high", "low", "close"] = "close"
 
+class HighOffPeakParams(BaseModel):                    # 신고가 대비 고가 위치 (52주 고점 근접도)
+    period: int = Field(ge=1)                          # N: peak 산출 거래일 수 (52주≈250)
+    pct: float = Field(ge=0)                           # 고점 대비 하락 허용폭(%). 양수, 라벨에 "−" 표기
+    side: Literal["within", "outside"] = "within"      # within: 고점 −pct% 이내 / outside: 이외
+
 class DepthPeakParams(BaseModel):                      # 매도/매수 총잔량 분봉 peak 신고
     lookback: int = Field(ge=1)                        # N: 비교 대상 과거 거래일 수
     # 당일 peak ≥ (threshold_pct/100) × 지난 N일 peak. 100=신고 돌파, <100=근접,
@@ -1366,6 +1371,11 @@ class MaLeaf(BaseModel):
     id: str
     params: MaParams
 
+class HighOffPeakLeaf(BaseModel):
+    type: Literal["high_off_peak"] = "high_off_peak"
+    id: str
+    params: HighOffPeakParams
+
 class AskDepthNewHighLeaf(BaseModel):
     type: Literal["ask_depth_new_high"] = "ask_depth_new_high"
     id: str
@@ -1378,8 +1388,8 @@ class BidDepthNewHighLeaf(BaseModel):
 
 ConditionLeaf = Annotated[
     Union[TradeValueLeaf, TradeValuePeriodLeaf, NewHighTodayLeaf, NewHighLeaf,
-          NewHighVolTodayLeaf, NewHighVolLeaf, ChangePctLeaf, PriceRangeLeaf, MaLeaf,
-          AskDepthNewHighLeaf, BidDepthNewHighLeaf],
+          NewHighVolTodayLeaf, NewHighVolLeaf, HighOffPeakLeaf, ChangePctLeaf,
+          PriceRangeLeaf, MaLeaf, AskDepthNewHighLeaf, BidDepthNewHighLeaf],
     Field(discriminator="type"),
 ]
 
