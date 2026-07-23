@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from hoga.api.models import (
@@ -490,3 +491,65 @@ def test_continuous_before_persists_and_close_ms_is_part_of_key(tmp_path: Path) 
     fresh = PastIndicatorsCache(tmp_path)
     assert fresh.get_continuous_before(CODE, DATE, SRC, 153_000_000) == 151_030_000
     assert fresh.get_continuous_before(CODE, DATE, SRC, 133_000_000) is CACHE_MISS
+
+
+# ── capture-freshness (재캡처 시 stale 슬라이스 무효화) ─────────────────────────
+# 07/22 사건: 빈약한 초기 캡처가 ratio 1포인트를 캐시 → 전량 재캡처로 snapshots.parquet
+# 이 교체됐으나 (code,date,source) 키가 동일해 캐시가 그대로 서빙됨. 이제 meta.json
+# mtime(캡처 신원)이 캐시 기록 시각(fetched_at_ms)보다 나중이면 stale로 판정한다.
+
+
+def _write_source_meta(tmp_path: Path, code: str, date: str, source: str, mtime_s: float) -> None:
+    """Create parquet/<date>/<code>/<source>/meta.json with a controlled mtime."""
+    meta = tmp_path / "parquet" / date / code / source / "meta.json"
+    meta.parent.mkdir(parents=True, exist_ok=True)
+    meta.write_text("{}", encoding="utf-8")
+    os.utime(meta, (mtime_s, mtime_s))
+
+
+def _cache_fetched_at_ms(tmp_path: Path, code: str, date: str, source: str, kind: str) -> int:
+    p = tmp_path / "kis-past-indicators" / code / source / f"{date}.{kind}.json"
+    return int(json.loads(p.read_text(encoding="utf-8"))["fetched_at_ms"])
+
+
+def test_disk_slice_invalidated_when_source_recaptured(tmp_path: Path) -> None:
+    PastIndicatorsCache(tmp_path).store_ratio(CODE, DATE, SRC, RATIO)
+    fetched = _cache_fetched_at_ms(tmp_path, CODE, DATE, SRC, "ratio")
+    # source re-captured 60s AFTER the cache was written
+    _write_source_meta(tmp_path, CODE, DATE, SRC, mtime_s=fetched / 1000 + 60)
+    # a cold instance (no mem) must treat the on-disk slice as stale
+    assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) is None
+
+
+def test_mem_slice_invalidated_when_source_recaptured(tmp_path: Path) -> None:
+    c = PastIndicatorsCache(tmp_path)
+    c.store_ratio(CODE, DATE, SRC, RATIO)
+    assert c.get_ratio(CODE, DATE, SRC) == RATIO  # warm the in-memory entry
+    fetched = _cache_fetched_at_ms(tmp_path, CODE, DATE, SRC, "ratio")
+    _write_source_meta(tmp_path, CODE, DATE, SRC, mtime_s=fetched / 1000 + 60)
+    # SAME long-lived instance: the generation guard must drop the stale mem entry
+    # (without it, the warm mem hit would keep returning the pre-recapture slice).
+    assert c.get_ratio(CODE, DATE, SRC) is None
+
+
+def test_model_slice_invalidated_when_source_recaptured(tmp_path: Path) -> None:
+    # non-ratio kind travels the _read_model_cache gate — verify it too (depth).
+    PastIndicatorsCache(tmp_path).store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
+    fetched = _cache_fetched_at_ms(tmp_path, CODE, DATE, SRC, "depth.60000")
+    _write_source_meta(tmp_path, CODE, DATE, SRC, mtime_s=fetched / 1000 + 60)
+    assert PastIndicatorsCache(tmp_path).get_depth(CODE, DATE, SRC, 60_000) is CACHE_MISS
+
+
+def test_fresh_slice_survives_when_source_older_than_cache(tmp_path: Path) -> None:
+    # normal flow: capture happens first, indicator cached after → keep the cache.
+    _write_source_meta(tmp_path, CODE, DATE, SRC, mtime_s=1.0)  # ancient source
+    c = PastIndicatorsCache(tmp_path)
+    c.store_ratio(CODE, DATE, SRC, RATIO)  # fetched_at_ms = now >> source mtime
+    assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == RATIO
+
+
+def test_missing_source_meta_is_lenient(tmp_path: Path) -> None:
+    # no parquet/meta on disk (legacy flat layout / pure-cache fixtures): capture
+    # token is unknown (0) → never invalidate an otherwise-valid slice.
+    PastIndicatorsCache(tmp_path).store_ratio(CODE, DATE, SRC, RATIO)
+    assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == RATIO
