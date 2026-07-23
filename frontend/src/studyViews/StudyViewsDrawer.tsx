@@ -410,7 +410,6 @@ export function StudyViewsDrawer() {
         aria-current={isActive ? 'true' : undefined}
         style={{
           background: isActive ? 'var(--tint-selection)' : 'transparent',
-          borderLeft: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
         }}
         onClick={isEditing ? undefined : (event) => {
           if (event.ctrlKey || event.metaKey) {

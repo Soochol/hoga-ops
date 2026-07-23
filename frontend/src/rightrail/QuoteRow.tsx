@@ -113,7 +113,6 @@ export function QuoteRow({
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{
         background: active ? 'var(--tint-selection)' : 'transparent',
-        borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
         ...sortableStyle,
         ...(dragging ? sortableDraggingStyle(18) : {}),
         ...(dropIndicator ? { position: 'relative' } : {}),
