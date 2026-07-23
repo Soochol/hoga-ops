@@ -1,4 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
@@ -24,7 +25,9 @@ import { WatchlistEditModal } from './WatchlistEditModal';
 import { GroupNameModal } from './GroupNameModal';
 import { WatchlistRowMenu } from './WatchlistRowMenu';
 import { WatchlistGroupPicker } from './WatchlistGroupPicker';
+import { WatchlistAddForm } from './WatchlistAddForm';
 import { useDismissablePopover } from '../util/useDismissablePopover';
+import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { TrashIcon } from '../ui/TrashIcon';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
@@ -92,6 +95,53 @@ const ArrowUpIcon = () => <MenuGlyph><path d="M12 19V5" /><path d="M6 11l6-6 6 6
 const ArrowDownIcon = () => <MenuGlyph><path d="M12 5v14" /><path d="M6 13l6 6 6-6" /></MenuGlyph>;
 const PlusIcon = () => <MenuGlyph><path d="M12 5v14" /><path d="M5 12h14" /></MenuGlyph>;
 
+const ADD_POPOVER_W = 280;
+
+/**
+ * 그룹 ⋯ 메뉴 "종목 추가" 팝오버 — anchorRef(⋯ 버튼) 우하단 기준 우측정렬 후
+ * useClampedFixedPosition 으로 뷰포트 보정, createPortal 로 body 에 fixed(드로어
+ * overflow 탈출). 내부는 기존 WatchlistAddForm(SymbolSearch + useAddMember)을 그대로
+ * 재사용해 add 로직 중복을 없앤다 — 그룹은 이미 특정돼 있으므로 folderId 로 고정
+ * (히트맵 헤더 버튼과 달리 그룹 선택 셀렉트 없음). 바깥 클릭·Escape·추가 완료 시 onClose.
+ * 히트맵 SymbolAddPopover 와 동일 셸/레이어링(메뉴와 별개 portal 레이어).
+ */
+function WatchlistSymbolAddPopover({ anchorRef, folderId, onClose }: {
+  anchorRef: React.RefObject<HTMLElement | null>;
+  folderId: string;
+  onClose: () => void;
+}) {
+  const [anchor, setAnchor] = useState({ left: 0, top: 0 });
+  useLayoutEffect(() => {
+    const r = anchorRef.current?.getBoundingClientRect();
+    if (r) setAnchor({ left: r.right - ADD_POPOVER_W, top: r.bottom + 4 });
+  }, [anchorRef]);
+  const { ref: popRef, left, top } = useClampedFixedPosition<HTMLDivElement>(anchor.left, anchor.top);
+  useLayoutEffect(() => { popRef.current?.querySelector('input')?.focus(); }, [popRef]);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (anchorRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      onClose();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [anchorRef, popRef, onClose]);
+  return createPortal(
+    <div ref={popRef} role="dialog" aria-label="종목 추가"
+      data-testid="watchlist-group-add-popover"
+      style={{ position: 'fixed', left, top, width: ADD_POPOVER_W }}
+      className="z-30 bg-bg-card border border-border-strong rounded p-2 shadow-lg">
+      <WatchlistAddForm folderId={folderId} onAdded={() => onClose()} />
+    </div>,
+    document.body,
+  );
+}
+
 /**
  * 그룹 헤더 행 — 라벨/chevron 클릭 = 접기 토글, 호버 시 ⋯ 메뉴(이름 변경/삭제;
  * 실폴더만 — 미분류는 onRename/onDelete 미전달 → ⋯ 메뉴 없이 chevron+라벨 버튼만).
@@ -110,9 +160,13 @@ function GroupHeader(props: {
   canMoveDown?: boolean;
   sortMode?: QuoteSortMode;
   onSort?: (mode: QuoteSortMode) => void;
+  /** 실폴더 id — 있으면 ⋯ 메뉴에 "종목 추가"가 붙는다(미분류는 미전달). */
+  folderId?: string;
   dragHandle?: GroupDragHandle;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // "종목 추가" 팝오버 — 메뉴와 별개 레이어라 메뉴 언마운트에 딸려 사라지지 않는다(히트맵과 동일).
+  const [addOpen, setAddOpen] = useState(false);
   const sortDescriptionId = useId();
   const menuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(menuOpen, menuRef, () => setMenuOpen(false));
@@ -188,6 +242,13 @@ function GroupHeader(props: {
           </button>
           {menuOpen && (
             <AnchoredMenu label={props.label}>
+              {props.folderId && (
+                <button type="button" role="menuitem"
+                  onClick={() => { setMenuOpen(false); setAddOpen(true); }}
+                  className={itemClass}>
+                  <span className="w-4 grid place-items-center"><PlusIcon /></span> 종목 추가
+                </button>
+              )}
               <button type="button" role="menuitem"
                 onClick={() => { setMenuOpen(false); props.onRename?.(); }}
                 className={itemClass}>
@@ -213,6 +274,10 @@ function GroupHeader(props: {
                 <span className="w-4 grid place-items-center"><TrashIcon className="w-[1em] h-[1em]" /></span> 그룹 삭제
               </button>
             </AnchoredMenu>
+          )}
+          {addOpen && props.folderId && (
+            <WatchlistSymbolAddPopover anchorRef={menuRef} folderId={props.folderId}
+              onClose={() => setAddOpen(false)} />
           )}
         </div>
       )}
@@ -648,6 +713,7 @@ export function WatchlistDrawer() {
                   canMoveDown={gi < folderCount - 1}
                   sortMode={groupSortMode}
                   onSort={folder ? (mode) => setFolderSortMode(folder.id, mode) : undefined}
+                  folderId={folder?.id}
                   dragHandle={dragHandle} />
               );
               return folder ? (

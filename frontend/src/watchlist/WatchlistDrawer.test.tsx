@@ -465,6 +465,18 @@ describe('WatchlistDrawer', () => {
     confirmSpy.mockRestore();
   });
 
+  it('그룹 헤더 ⋯ → 종목 추가 opens the add popover', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /종목 추가/ }));
+    // 메뉴와 별개 portal 레이어의 종목 검색 팝오버가 열린다.
+    expect(await screen.findByTestId('watchlist-group-add-popover')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '종목 추가' })).toBeInTheDocument();
+  });
+
   it('우클릭 → 그룹 편집 opens the group picker (v3)', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
