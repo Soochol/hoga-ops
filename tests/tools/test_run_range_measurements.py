@@ -39,29 +39,35 @@ from tools.run_range_measurements import (
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _manifest(*, name: str = "frontend-default-sidecar") -> RangeRequestManifest:
+def _manifest(
+    *,
+    name: str = "frontend-default-sidecar",
+    **request_overrides: object,
+) -> RangeRequestManifest:
+    request = {
+        "bucket_ms": 60_000,
+        "source_pref": "hogaplay_first",
+        "mode": "sidecar",
+        "broker_late_entries_enabled": False,
+        "broker_late_entry_start_hhmm": 930,
+        "volume_distribution_bins": None,
+        "trade_volume_poc_bins": None,
+        "volume_distribution_price_min": None,
+        "volume_distribution_price_max": None,
+        "volume_distribution_cutoff_ms": None,
+        "ask_peaks_enabled": False,
+        "bid_peaks_enabled": False,
+        "program_trade_enabled": False,
+        "trade_volume_poc_enabled": False,
+        "depth_heatmap_enabled": False,
+        "depth_delta_enabled": False,
+    }
+    request.update(request_overrides)
     return RangeRequestManifest.model_validate(
         {
             "schema_version": 1,
             "name": name,
-            "request": {
-                "bucket_ms": 60_000,
-                "source_pref": "hogaplay_first",
-                "mode": "sidecar",
-                "broker_late_entries_enabled": False,
-                "broker_late_entry_start_hhmm": 930,
-                "volume_distribution_bins": None,
-                "trade_volume_poc_bins": None,
-                "volume_distribution_price_min": None,
-                "volume_distribution_price_max": None,
-                "volume_distribution_cutoff_ms": None,
-                "ask_peaks_enabled": False,
-                "bid_peaks_enabled": False,
-                "program_trade_enabled": False,
-                "trade_volume_poc_enabled": False,
-                "depth_heatmap_enabled": False,
-                "depth_delta_enabled": False,
-            },
+            "request": request,
         }
     )
 
@@ -84,11 +90,16 @@ def _successful_child(
         "warmup_runs": 1 if ":warm:" in label else 0,
     }
     if leg == "profile":
+        expected = sorted(manifest.manifest.expected_profile_functions())
         result = {
             **metadata,
+            "expected_profile_functions": expected,
             "total_ms": 2.0,
             "result_counts": {"segments": 1},
-            "functions": {"slice": {"total_ms": 1.0, "calls": 1}},
+            "functions": {
+                name: {"total_ms": 1.0, "calls": 1}
+                for name in expected
+            },
         }
     else:
         result = {
@@ -819,9 +830,10 @@ def test_orchestrator_isolates_every_leg_and_keeps_warm_labels_out_of_cold_rows(
         if leg == "profile":
             result = {
                 **metadata,
+                "expected_profile_functions": [],
                 "total_ms": 2.0,
                 "result_counts": {"segments": 1},
-                "functions": {"slice": {"total_ms": 1.0, "calls": 1}},
+                "functions": {},
             }
         else:
             result = {
@@ -876,8 +888,152 @@ def test_orchestrator_isolates_every_leg_and_keeps_warm_labels_out_of_cold_rows(
     assert rows[0]["initial_cache_state"]["profile"]["state"] == "absent"
     assert rows[0]["configuration_name"] == "frontend-default-sidecar"
     assert rows[0]["commit_sha"] == "0123456789abcdef"
+    assert rows[0]["expected_profile_functions"] == []
+    assert rows[0]["profile"]["expected_profile_functions"] == []
+    assert rows[0]["profile"]["functions"] == {}
     assert [row["gate_eligible"] for row in rows] == [True, True, False]
     assert rows[-1]["evidence_issues"] == ["trial_kind_not_cold"]
+
+
+@pytest.mark.parametrize("required_timing", [None, {"total_ms": 1.0, "calls": 0}])
+def test_volume_manifest_rejects_missing_or_uncalled_required_profile_function(
+    tmp_path: Path,
+    required_timing: dict[str, object] | None,
+) -> None:
+    source = tmp_path / "immutable-fixture"
+    source.mkdir()
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(
+            name="volume-distribution-enabled-sidecar",
+            volume_distribution_bins=10,
+        ),
+        source_name="volume-distribution-enabled-sidecar.json",
+    )
+
+    def run_child(
+        leg: str,
+        clone_path: Path,
+        label: str,
+        manifest: LoadedRequestManifest,
+        window: RangeWindow,
+        code: str,
+    ) -> ChildExecution:
+        execution = _successful_child(
+            leg,
+            clone_path,
+            label,
+            manifest,
+            window,
+            code,
+        )
+        if leg != "profile":
+            return execution
+        assert execution.result is not None
+        functions = {"unexpected_slice": {"total_ms": 1.0, "calls": 1}}
+        if required_timing is not None:
+            functions["build_volume_distribution_slice"] = required_timing
+        return ChildExecution(
+            returncode=0,
+            result={**execution.result, "functions": functions},
+            stderr="",
+        )
+
+    output = io.StringIO()
+    run_measurement_matrix(
+        source_fixture=source,
+        code="005930",
+        windows=(RangeWindow("5d", "20260701", "20260701"),),
+        manifests=(loaded,),
+        cold_trials=1,
+        warm_trials=0,
+        output=output,
+        commit_sha="0123456789abcdef",
+        clone_fixture=shutil.copytree,
+        run_child=run_child,
+    )
+
+    [row] = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert row["status"] == "EVIDENCE_INVALID"
+    assert row["gate_eligible"] is False
+    assert row["expected_profile_functions"] == [
+        "build_volume_distribution_slice"
+    ]
+    assert (
+        "missing_profile_function:build_volume_distribution_slice"
+        in row["evidence_issues"]
+    )
+    assert "unexpected_slice" in row["profile"]["functions"]
+
+
+def test_volume_manifest_without_required_source_path_is_ineligible(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "immutable-fixture"
+    source.mkdir()
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(
+            name="volume-distribution-enabled-sidecar",
+            volume_distribution_bins=10,
+        ),
+        source_name="volume-distribution-enabled-sidecar.json",
+    )
+
+    def run_child(
+        leg: str,
+        clone_path: Path,
+        label: str,
+        manifest: LoadedRequestManifest,
+        window: RangeWindow,
+        code: str,
+    ) -> ChildExecution:
+        if leg != "profile":
+            return _successful_child(
+                leg,
+                clone_path,
+                label,
+                manifest,
+                window,
+                code,
+            )
+        engine = QueryEngine(clone_path)
+        try:
+            result = run_range_measurements.profile_range_case(
+                engine,
+                label=label,
+                request_manifest=manifest.manifest,
+                code=code,
+                from_date=window.from_date,
+                to_date=window.to_date,
+                manifest_source_name=manifest.source_name,
+            )
+        finally:
+            engine.close()
+        return ChildExecution(
+            returncode=0,
+            result={**result, "warmup_runs": 0},
+            stderr="",
+        )
+
+    output = io.StringIO()
+    run_measurement_matrix(
+        source_fixture=source,
+        code="005930",
+        windows=(RangeWindow("5d", "20260701", "20260701"),),
+        manifests=(loaded,),
+        cold_trials=1,
+        warm_trials=0,
+        output=output,
+        commit_sha="0123456789abcdef",
+        clone_fixture=shutil.copytree,
+        run_child=run_child,
+    )
+
+    [row] = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert row["profile"]["functions"] == {}
+    assert row["gate_eligible"] is False
+    assert row["evidence_issues"] == [
+        "missing_profile_function:build_volume_distribution_slice"
+    ]
 
 
 def test_orchestrator_marks_http_or_validation_failures_ineligible(
@@ -913,9 +1069,10 @@ def test_orchestrator_marks_http_or_validation_failures_ineligible(
         if leg == "profile":
             result = {
                 **metadata,
+                "expected_profile_functions": [],
                 "total_ms": 1.0,
                 "result_counts": {"segments": 1},
-                "functions": {"slice": {"total_ms": 0.5, "calls": 1}},
+                "functions": {},
             }
         else:
             result = {

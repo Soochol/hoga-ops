@@ -104,6 +104,9 @@ def profile_range_case(
         or f"{request_manifest.name}.json",
         "request_manifest_sha256": request_manifest.sha256(),
         "request_manifest": request_manifest.normalized(),
+        "expected_profile_functions": sorted(
+            request_manifest.expected_profile_functions()
+        ),
         "trading_calendar_policy": TRADING_CALENDAR_POLICY,
         "total_ms": round(total_ms, 3),
         "result_counts": {

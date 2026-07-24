@@ -96,10 +96,19 @@ each committed representative manifest. For each stable `trial_group`, require:
 2. Actual gzip ASGI evidence: TTFB, end-of-body duration, status, decompressed
    raw bytes, gzip wire bytes, `content-encoding=gzip`, and successful validation.
 3. A separately process/clone-cold direct-profiler leg with per-function timing
-   attribution for the identical window and request manifest.
+   attribution for the identical window and request manifest. The strict
+   manifest determines the expected optional functions: the frontend-default
+   manifest may validly emit an empty function map, while the volume-enabled
+   manifest requires a positive-call timing for the real
+   `build_volume_distribution_slice`. Unexpected timed functions remain in the
+   evidence but do not substitute for a missing expected function; a missing
+   required source/path therefore makes the row ineligible.
 
-Warm-labeled rows, failed children, and rows marked `EVIDENCE_INVALID` are
-excluded from the three-cold-run gate.
+DuckDB temporary/spill files must remain under each fixture clone. A populated
+source or clone-initial indicator cache invalidates cold evidence. Warm-labeled
+rows never count toward the three-cold-run gate; failed children and rows marked
+`EVIDENCE_INVALID` are also excluded.
+
 Apply the future gate in this order:
 
 1. If the isolated fixture or any required measurement is absent, retain

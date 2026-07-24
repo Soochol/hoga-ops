@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
+import polars as pl
 import pytest
 from pydantic import ValidationError
 
@@ -19,6 +20,8 @@ MANIFEST_DIR = (
     / "2026-07-24-backend-performance"
     / "manifests"
 )
+DEFAULT_MANIFEST = MANIFEST_DIR / "frontend-default-sidecar.json"
+VOLUME_MANIFEST = MANIFEST_DIR / "volume-distribution-enabled-sidecar.json"
 
 
 def _manifest_payload(
@@ -52,6 +55,76 @@ def _manifest_payload(
 
 def _manifest(**kwargs: object) -> RangeRequestManifest:
     return RangeRequestManifest.model_validate(_manifest_payload(**kwargs))
+
+
+def _write_synthetic_volume_fixture(root: Path) -> None:
+    source_dir = root / "parquet" / "20260701" / "005930" / "hogaplay"
+    source_dir.mkdir(parents=True)
+    (source_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "code": "005930",
+                "name": "synthetic",
+                "regular_session_open_ms": 90_000_000,
+                "regular_session_close_ms": 153_000_000,
+                "prev_close": 100,
+                "upper_limit": 130,
+                "lower_limit": 70,
+                "today_open": 100,
+                "today_high": 120,
+                "today_low": 100,
+                "today_close": 110,
+                "pages_collected": 1,
+                "total_unique_events": 1,
+                "collection_complete": True,
+                "is_partial": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    pl.DataFrame(
+        [
+            {
+                "ts_ms": 90_000_000,
+                "open": 100,
+                "high": 120,
+                "low": 100,
+                "close": 110,
+                "vol_a": 10,
+                "vol_b": 20,
+            }
+        ]
+    ).write_parquet(source_dir / "candles.parquet")
+    pl.DataFrame(
+        [
+            {
+                "ts_ms": 90_000_000,
+                "seq": 1,
+                "price": 100,
+                "change_pct": 0.0,
+                "qty": 10,
+                "side": 1,
+                "cum_vol": 10,
+                "cum_trades": 1,
+                "low_so_far": 100,
+                "high_so_far": 100,
+                "net_pressure": 10,
+            },
+            {
+                "ts_ms": 90_001_000,
+                "seq": 2,
+                "price": 120,
+                "change_pct": 0.0,
+                "qty": 20,
+                "side": -1,
+                "cum_vol": 30,
+                "cum_trades": 2,
+                "low_so_far": 100,
+                "high_so_far": 120,
+                "net_pressure": -10,
+            },
+        ]
+    ).write_parquet(source_dir / "trades.parquet")
 
 
 def test_profile_registry_matches_current_bundle() -> None:
@@ -122,6 +195,7 @@ def test_profile_range_case_reports_timings_and_restores_bundle_functions(
     assert result["configuration_name"] == "test-sidecar"
     assert result["request_manifest"]["request"]["ask_peaks_enabled"] is False
     assert len(result["request_manifest_sha256"]) == 64
+    assert result["expected_profile_functions"] == []
 
 
 def test_profile_uses_fixture_only_calendar_for_populated_weekday_inventory(
@@ -152,6 +226,8 @@ def test_profile_uses_fixture_only_calendar_for_populated_weekday_inventory(
 
     assert calendar_called is False
     assert result["trading_calendar_policy"] == "fixture-weekday-lenient-v1"
+    assert result["expected_profile_functions"] == []
+    assert result["functions"] == {}
 
 
 def test_parser_requires_explicit_data_dir() -> None:
@@ -271,54 +347,105 @@ def test_manifest_loader_records_basename_without_absolute_path(tmp_path: Path) 
     assert str(tmp_path) not in json.dumps(loaded.metadata())
 
 
-def test_enabled_manifest_invokes_and_times_volume_distribution_without_defaults(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured_kwargs: dict[str, object] = {}
-    volume_calls = 0
+def test_expected_profile_functions_default_manifest_is_empty() -> None:
+    manifest = load_request_manifest(DEFAULT_MANIFEST).manifest
 
-    def volume_builder(*args: object, **kwargs: object) -> None:
-        nonlocal volume_calls
-        volume_calls += 1
+    assert manifest.expected_profile_functions() == frozenset()
 
-    def build_range_bundle(*args: object, **kwargs: object) -> SimpleNamespace:
-        captured_kwargs.update(kwargs)
-        if kwargs["volume_distribution_bins"] is not None:
-            bundle.build_volume_distribution_slice()
-        return SimpleNamespace(
-            segments=[],
-            candles=[],
-            quote_ratio=SimpleNamespace(points=[]),
-            fill_strength=SimpleNamespace(points=[]),
-            ask_peaks=[],
-            bid_peaks=[],
-            depth_heatmap=[],
-            depth_delta=[],
-        )
 
-    monkeypatch.setattr(bundle, "build_volume_distribution_slice", volume_builder)
-    monkeypatch.setattr(bundle, "build_range_bundle", build_range_bundle)
+def test_expected_profile_functions_volume_manifest_requires_distribution() -> None:
+    manifest = load_request_manifest(VOLUME_MANIFEST).manifest
 
-    result = profile_live_range.profile_range_case(
-        cast(QueryEngine, object()),
-        label="volume-enabled",
-        request_manifest=_manifest(volume_distribution_bins=10),
-        code="005930",
-        from_date="20260701",
-        to_date="20260724",
+    assert manifest.expected_profile_functions() == frozenset(
+        {"build_volume_distribution_slice"}
     )
 
+
+@pytest.mark.parametrize(
+    ("enabled_options", "expected"),
+    [
+        (
+            {"broker_late_entries_enabled": True},
+            frozenset({"build_broker_late_entries_slice"}),
+        ),
+        (
+            {"ask_peaks_enabled": True},
+            frozenset({"build_ask_bid_peak_slices"}),
+        ),
+        (
+            {"bid_peaks_enabled": True},
+            frozenset({"build_ask_bid_peak_slices"}),
+        ),
+        (
+            {"program_trade_enabled": True},
+            frozenset({"build_program_trade_series"}),
+        ),
+        (
+            {"trade_volume_poc_enabled": True},
+            frozenset({"build_trade_volume_poc_slice"}),
+        ),
+        (
+            {"depth_heatmap_enabled": True},
+            frozenset({"build_depth_heatmap_slice"}),
+        ),
+        (
+            {"depth_delta_enabled": True},
+            frozenset({"build_depth_delta_slice"}),
+        ),
+    ],
+)
+def test_expected_profile_functions_match_enabled_manifest_option(
+    enabled_options: dict[str, object],
+    expected: frozenset[str],
+) -> None:
+    payload = _manifest_payload()
+    payload["request"].update(enabled_options)
+    manifest = RangeRequestManifest.model_validate(payload)
+
+    assert manifest.expected_profile_functions() == expected
+
+
+def test_volume_manifest_times_real_volume_distribution_through_bundle_conditions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_synthetic_volume_fixture(tmp_path)
+    volume_calls = 0
+    real_volume_builder = bundle.build_volume_distribution_slice
+
+    def counting_volume_builder(*args: object, **kwargs: object) -> object:
+        nonlocal volume_calls
+        volume_calls += 1
+        return real_volume_builder(*args, **kwargs)
+
+    monkeypatch.setattr(
+        bundle,
+        "build_volume_distribution_slice",
+        counting_volume_builder,
+    )
+    engine = QueryEngine(tmp_path)
+    try:
+        result = profile_live_range.profile_range_case(
+            engine,
+            label="volume-enabled",
+            request_manifest=_manifest(volume_distribution_bins=10),
+            code="005930",
+            from_date="20260701",
+            to_date="20260701",
+        )
+    finally:
+        engine.close()
+
     assert volume_calls == 1
-    assert captured_kwargs["volume_distribution_bins"] == 10
-    assert captured_kwargs["ask_peaks_enabled"] is False
+    assert result["expected_profile_functions"] == [
+        "build_volume_distribution_slice"
+    ]
     assert result["functions"]["build_volume_distribution_slice"]["calls"] == 1
 
 
 def test_committed_representative_manifests_are_strict_and_distinct() -> None:
-    default = load_request_manifest(MANIFEST_DIR / "frontend-default-sidecar.json")
-    volume = load_request_manifest(
-        MANIFEST_DIR / "volume-distribution-enabled-sidecar.json"
-    )
+    default = load_request_manifest(DEFAULT_MANIFEST)
+    volume = load_request_manifest(VOLUME_MANIFEST)
 
     assert default.manifest.request.volume_distribution_bins is None
     assert default.manifest.request.ask_peaks_enabled is False

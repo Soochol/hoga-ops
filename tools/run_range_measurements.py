@@ -519,10 +519,18 @@ def _manifest_metadata_issues(
     ]
 
 
-def _profile_evidence_issues(result: Mapping[str, object]) -> list[str]:
+def _profile_evidence_issues(
+    result: Mapping[str, object],
+    *,
+    expected_profile_functions: frozenset[str],
+) -> list[str]:
     issues: list[str] = []
     if not _is_non_negative_number(result.get("total_ms")):
         issues.append("profile_total_ms")
+    if result.get("expected_profile_functions") != sorted(
+        expected_profile_functions
+    ):
+        issues.append("profile_expected_profile_functions")
 
     result_counts = result.get("result_counts")
     if (
@@ -536,9 +544,11 @@ def _profile_evidence_issues(result: Mapping[str, object]) -> list[str]:
         issues.append("profile_result_counts")
 
     functions = result.get("functions")
-    if not isinstance(functions, Mapping) or not functions:
+    if not isinstance(functions, Mapping):
         issues.append("profile_functions")
+        timed_functions: Mapping[str, object] = {}
     else:
+        timed_functions = functions
         for timing in functions.values():
             if (
                 not isinstance(timing, Mapping)
@@ -549,6 +559,15 @@ def _profile_evidence_issues(result: Mapping[str, object]) -> list[str]:
             ):
                 issues.append("profile_functions")
                 break
+    for function_name in sorted(expected_profile_functions):
+        timing = timed_functions.get(function_name)
+        if (
+            not isinstance(timing, Mapping)
+            or not isinstance(timing.get("calls"), int)
+            or isinstance(timing.get("calls"), bool)
+            or timing["calls"] <= 0
+        ):
+            issues.append(f"missing_profile_function:{function_name}")
     return issues
 
 
@@ -636,7 +655,12 @@ def _evidence_issues(
         )
         if leg_results[leg].get("warmup_runs") != expected_warmup_runs:
             semantic_issues.append(f"{leg}_warmup_runs")
-    semantic_issues.extend(_profile_evidence_issues(leg_results["profile"]))
+    semantic_issues.extend(
+        _profile_evidence_issues(
+            leg_results["profile"],
+            expected_profile_functions=loaded.manifest.expected_profile_functions(),
+        )
+    )
     semantic_issues.extend(
         _endpoint_evidence_issues(
             leg_results["endpoint_identity"],
@@ -801,6 +825,9 @@ def run_measurement_matrix(
                         "request_manifest_name": loaded.source_name,
                         "request_manifest_sha256": loaded.manifest.sha256(),
                         "request_manifest": loaded.manifest.normalized(),
+                        "expected_profile_functions": sorted(
+                            loaded.manifest.expected_profile_functions()
+                        ),
                         "source_fixture_identity": fixture_identity,
                         "source_cache_state": source_cache_state,
                         "initial_cache_state": cache_states,

@@ -111,6 +111,24 @@ class RangeRequestManifest(BaseModel):
     def sha256(self) -> str:
         return hashlib.sha256(self.canonical_json().encode()).hexdigest()
 
+    def expected_profile_functions(self) -> frozenset[str]:
+        expected: set[str] = set()
+        if self.request.broker_late_entries_enabled:
+            expected.add("build_broker_late_entries_slice")
+        if self.request.volume_distribution_bins is not None:
+            expected.add("build_volume_distribution_slice")
+        if self.request.trade_volume_poc_enabled:
+            expected.add("build_trade_volume_poc_slice")
+        if self.request.ask_peaks_enabled or self.request.bid_peaks_enabled:
+            expected.add("build_ask_bid_peak_slices")
+        if self.request.program_trade_enabled:
+            expected.add("build_program_trade_series")
+        if self.request.depth_heatmap_enabled:
+            expected.add("build_depth_heatmap_slice")
+        if self.request.depth_delta_enabled:
+            expected.add("build_depth_delta_slice")
+        return frozenset(expected)
+
     def request_kwargs(
         self,
         *,

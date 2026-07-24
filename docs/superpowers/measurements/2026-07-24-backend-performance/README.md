@@ -91,13 +91,17 @@ The orchestrator never writes into or clears the declared source. Every
 profiler, identity-endpoint, and gzip-endpoint evidence leg gets its own
 `cp --reflink=always` clone and fresh Python child; unsupported copy-on-write
 cloning and source fixtures containing symlinks fail closed instead of making
-a full copy or preserving an escape path. Those three independently cold legs
-share one stable `trial_group` in the joined JSONL result. Each row records a
-path-free source identity, clone-initial indicator-cache state, the uncontrolled
-OS-cache state, `trial_kind`, window, configuration, child exit statuses,
-semantic evidence issues, gate eligibility, and commit SHA. `cold` and optional
-`warm` labels are distinct, and warm or evidence-invalid rows are never inputs
-to the three-cold-run gate.
+a full copy or preserving an escape path. The DuckDB temporary directory is
+explicitly located under each clone at `.measurement/duckdb-tmp`, so all spill
+files stay inside that clone. Those three independently cold legs share one
+stable `trial_group` in the joined JSONL result. Each row records a path-free
+source identity, clone-initial indicator-cache state, the uncontrolled OS-cache
+state, `trial_kind`, window, configuration, expected profiler functions, child
+exit statuses, semantic evidence issues, gate eligibility, and commit SHA.
+A populated source or clone-initial indicator cache invalidates cold evidence.
+`cold` and optional `warm` labels are distinct, and warm rows never count
+toward the three-cold-run gate, even when their semantic evidence is otherwise
+valid.
 
 Endpoint legs mount only the actual `/api/range` router, `RangeBundle` response
 model, and production `GZipMiddleware`; they do not enter the production
@@ -114,11 +118,15 @@ The committed manifests are the measurement contract:
 
 - `frontend-default-sidecar.json` pins the current factory-default sidecar
   toggles (off), bin fields, broker threshold, source preference, mode, and
-  explicit nullable price range.
+  explicit nullable price range. Because it enables no optional slice, it may
+  legitimately report an empty optional-function timing map.
 - `volume-distribution-enabled-sidecar.json` changes the distribution bin count
   to 10 so the enabled user path and `build_volume_distribution_slice` execute.
   Its null price-range pair means the builder derives the range from fixture
-  candles, matching the frontend path before a runtime range is available.
+  candles, matching the frontend path before a runtime range is available. A
+  row for this manifest is gate-eligible only when the real
+  `build_volume_distribution_slice` path is timed with a positive call count;
+  another timed function cannot substitute when required source data is absent.
 
 Every field that can alter `build_range_bundle` sidecar work is required;
 unknown/missing fields and invalid bounds are rejected. Future frontend
