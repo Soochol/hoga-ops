@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import BrokerTrajectoryTable, {
@@ -175,6 +175,29 @@ describe('BrokerTrajectoryTable — sparkline', () => {
     );
     const cursorLines = container.querySelectorAll('[data-testid="cursor-marker"]');
     expect(cursorLines.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('suppresses the external cursor while the pointer is inside but off the sparklines', () => {
+    // "구분선 우측 점프" 회귀 방지: 마우스가 창 안(스파크라인 밖 divider·여백)
+    // 이고 로컬 호버가 없으면, 외부 cursorMs(latest, 우측)로 복귀하지 않는다.
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [
+        { ts_ms: 1_000, net: 10 },
+        { ts_ms: 5_000, net: 20 },
+      ]),
+    ];
+    const { container } = render(
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+    );
+    const root = container.firstElementChild as HTMLElement;
+    // 창 밖(초기)에는 외부 크로스헤어를 존중해 마커가 뜬다.
+    expect(container.querySelectorAll('[data-testid="cursor-marker"]').length).toBeGreaterThan(0);
+    // 포인터가 창 안으로 들어오면(스파크라인은 호버 안 함) latest 로 안 튀고 숨긴다.
+    fireEvent.mouseEnter(root);
+    expect(container.querySelectorAll('[data-testid="cursor-marker"]').length).toBe(0);
+    // 창을 벗어나면 다시 외부 크로스헤어를 존중한다.
+    fireEvent.mouseLeave(root);
+    expect(container.querySelectorAll('[data-testid="cursor-marker"]').length).toBeGreaterThan(0);
   });
 
   it('draws the cursor marker as a dashed gray line (not accent)', () => {
