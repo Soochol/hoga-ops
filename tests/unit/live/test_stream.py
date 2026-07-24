@@ -161,14 +161,17 @@ async def test_drain_seals_final_in_progress_candle(tmp_path):
     assert candles[0]["payload"]["close"] == 200
 
 
-async def test_program_tick_routes_to_latch_not_buffer_or_storage(tmp_path):
-    """PROGRAM(0w) 틱은 표시 버퍼·JSONL 저장을 타지 않고 latch 로만 간다(PR-F4).
+async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_path):
+    """KRX PROGRAM은 latch와 표시 buffer에 가지만 JSONL 저장에는 들어가지 않는다.
 
-    NXT venue 는 latch 에도 안 남는다 — 프로그램 수급은 KRX 집계 데이터.
+    NXT venue 는 latch·표시 buffer 어디에도 안 남는다 — 프로그램 수급은 KRX
+    집계 데이터다.
     """
     from hoga.live import program_trade_latch
     program_trade_latch.reset_for_tests()
     buf = LiveBuffer()
+    display_q = buf.subscribe("005930")
+    nxt_display_q = buf.subscribe("000660")
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
@@ -188,8 +191,14 @@ async def test_program_tick_routes_to_latch_not_buffer_or_storage(tmp_path):
     latched = program_trade_latch.drain()
     assert set(latched) == {"005930"}          # KRX 만 latch
     assert latched["005930"]["net_qty"] == 50
-    series = await buf.get_series("005930")
-    assert series["trades"] == [] and series["snapshots"] == []  # 버퍼 미진입
+    display_entry = await asyncio.wait_for(display_q.get(), timeout=1.0)
+    assert display_entry == {
+        **tick.payload,
+        "kind": "program",
+        "phase": "regular",
+        "venue": "KRX",
+    }
+    assert nxt_display_q.empty()
     await stream.flush_once(now_ms=now + 10_000)
     assert not (tmp_path / "live" / "20260605" / "005930.jsonl").exists()  # 저장 미진입
     program_trade_latch.reset_for_tests()

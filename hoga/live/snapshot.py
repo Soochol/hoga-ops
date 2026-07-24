@@ -27,9 +27,9 @@ class SnapshotKind(str, Enum):
     TRADE = "trade"
     BROKER = "broker"
     FILL = "fill"
-    # 종목프로그램매매(키움 0w, PR-F4). 표시 버퍼·JSONL 저장을 타지 않는 유일한
-    # kind — stream.on_tick 이 입구에서 프로그램 latch 로 라우팅하고 return 한다
-    # (소비는 program_trade_store 사이드카 → /api/range 번들).
+    # 종목프로그램매매(키움 0w). stream.on_tick이 KRX 틱을 표시 buffer와
+    # program_trade_latch 양쪽으로 fan-out한다. 표시 buffer는 /api/live/series와
+    # WS push용이며, latch는 30초 sidecar 저장용이다. JSONL ingest에는 들어가지 않는다.
     PROGRAM = "program"
     # 키움 WS 체결 틱에서 수신 시점에 합성한 1분봉(ADR-0040/0121/0124 개정).
     # trade(10초 집계·매물대용)와 달리 candle은 완성된 OHLCV 봉이며 candles.parquet
