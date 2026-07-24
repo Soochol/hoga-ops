@@ -33,6 +33,30 @@ def test_benchmark_reports_live_buffer_current_memory() -> None:
 
 
 @pytest.mark.parametrize(
+    ("parameter", "invalid_value"),
+    [
+        ("codes", 0),
+        ("ticks_per_code", -1),
+        ("levels", 0),
+        ("retention_ms", -1),
+    ],
+)
+def test_run_benchmark_rejects_non_positive_configuration(
+    parameter: str, invalid_value: int
+) -> None:
+    config = {
+        "codes": 1,
+        "ticks_per_code": 1,
+        "levels": 1,
+        "retention_ms": 1,
+    }
+    config[parameter] = invalid_value
+
+    with pytest.raises(ValueError, match=parameter):
+        run_benchmark(**config)
+
+
+@pytest.mark.parametrize(
     ("option", "value"),
     [
         ("--codes", "0"),

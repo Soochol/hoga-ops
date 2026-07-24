@@ -61,6 +61,12 @@ def run_benchmark(
     *, codes: int, ticks_per_code: int, levels: int, retention_ms: int
 ) -> dict[str, int | float]:
     """Publish deterministic orderbook snapshots and return measurement results."""
+    _validate_benchmark_config(
+        codes=codes,
+        ticks_per_code=ticks_per_code,
+        levels=levels,
+        retention_ms=retention_ms,
+    )
     tracemalloc.start()
     started = time.perf_counter()
     _buffer, stats = asyncio.run(
@@ -96,11 +102,30 @@ def run_benchmark(
     }
 
 
+def _validate_benchmark_config(
+    *, codes: int, ticks_per_code: int, levels: int, retention_ms: int
+) -> None:
+    for parameter, value in {
+        "codes": codes,
+        "ticks_per_code": ticks_per_code,
+        "levels": levels,
+        "retention_ms": retention_ms,
+    }.items():
+        _require_positive(parameter, value)
+
+
+def _require_positive(parameter: str, value: int) -> int:
+    if value <= 0:
+        raise ValueError(f"{parameter} must be a positive integer")
+    return value
+
+
 def _positive_int(value: str) -> int:
     parsed = int(value)
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError("must be a positive integer")
-    return parsed
+    try:
+        return _require_positive("value", parsed)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
