@@ -15,15 +15,23 @@ member add (POST /folders/{id}/members); the folder-less POST "" is gone.
 """
 from __future__ import annotations
 
+import asyncio
+import datetime as dt
 import logging
+import time
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi import Path as PathParam
 
 from hoga.api import symbols
+from hoga.api.heatmap_group_flow import (
+    HeatmapGroupFlowResponse,
+    build_group_flow,
+)
 from hoga.api.heatmap import (
     FolderNotFoundError,
     HeatmapSetMismatchError,
@@ -57,6 +65,13 @@ from hoga.live.lifecycle import refresh_live_stream
 
 log = logging.getLogger(__name__)
 
+_KST = ZoneInfo("Asia/Seoul")
+# 그룹 흐름 30초 TTL 캐시(거래일 키). 무거운 JSONL 팬읽기를 폴링(60s)마다 반복하지 않게.
+_FLOW_TTL_MS = 30_000
+_flow_cache: dict[tuple[str, str], HeatmapGroupFlowResponse] = {}
+_flow_cache_at: dict[tuple[str, str], int] = {}
+_flow_lock = asyncio.Lock()
+
 
 async def _refresh_storage_targets(data_dir: Path, *, op: str) -> None:
     """Best-effort storage-target resync after an entry-set mutation (ADR-0097).
@@ -83,6 +98,39 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
     async def get_heatmap() -> HeatmapResponse:
         doc = load_document(data_dir)
         return HeatmapResponse(folders=_folder_views(doc.folders), entries=doc.entries)
+
+    @router.get("/group-flow", response_model=HeatmapGroupFlowResponse)
+    async def get_heatmap_group_flow(
+        date: str | None = Query(default=None, description="거래일 YYYYMMDD. 미지정=오늘(KST)."),
+        # venue 는 프론트 계약 호환용(현재 소스는 키움 단일이라 미사용).
+        venue: str = Query(default="KRX"),
+    ) -> HeatmapGroupFlowResponse:
+        now = dt.datetime.now(_KST)
+        if date is None:
+            basis = now.date()
+        else:
+            try:
+                basis = dt.datetime.strptime(date, "%Y%m%d").date()
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail={
+                    "code": "invalid_date", "message": "date must be YYYYMMDD"}) from e
+            if basis > now.date():
+                raise HTTPException(status_code=422, detail={
+                    "code": "date_in_future", "message": "date is in the future"})
+        key = (str(data_dir), basis.strftime("%Y%m%d"))
+        now_ms = int(time.time() * 1000)
+        cached, at = _flow_cache.get(key), _flow_cache_at.get(key)
+        if cached is not None and at is not None and now_ms - at <= _FLOW_TTL_MS:
+            return cached
+        async with _flow_lock:
+            # 락 재확인(다른 코루틴이 방금 채웠을 수 있음).
+            cached, at = _flow_cache.get(key), _flow_cache_at.get(key)
+            if cached is not None and at is not None and now_ms - at <= _FLOW_TTL_MS:
+                return cached
+            resp = await asyncio.to_thread(build_group_flow, data_dir, basis, now_ms=now_ms)
+            _flow_cache[key] = resp
+            _flow_cache_at[key] = now_ms
+            return resp
 
     @router.delete("/{code}", status_code=204)
     async def remove_from_heatmap(code: CodePathParam) -> None:
