@@ -286,13 +286,11 @@ with the Task 4 test and verification-record working-tree changes.
 The final focused command from the unblocking plan completed with `214 passed
 in 5.10s`. The changed-file Ruff command completed with `All checks passed!`.
 
-The full backend command, `uv run --extra dev pytest -q`, was started exactly
-once after the final test-file changes and collected 2,783 tests. The command's
-output stream became unavailable after 35% even though the original pytest
-process subsequently completed. Its exit code and terminal passed/skipped/
-warning counts are therefore unavailable. The empty pytest `lastfailed` cache
-was observed only as diagnostic state and is not treated as proof of a green
-full suite. The full-suite verification is inconclusive and was not rerun.
+After explicit approval to replace the lost initial evidence, the full backend
+command, `uv run --extra dev pytest -q`, was rerun once on commit
+`029708c3df9ba525c553f52574a826fb2f972499` with durable output and exit-code
+capture. It collected 2,783 tests and completed with exit code 0: `2781 passed,
+2 skipped, 9 warnings in 75.34s (0:01:15)`.
 
 Both committed raw files, `live-buffer.jsonl` and `range.jsonl`, parse as JSONL
 and are unchanged from `fffd3715`. The artifact scan found no credential terms
