@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
+import { hoverMsFromClientX } from './sparklineHover';
 import { formatKoreanInt, formatKoreanWonEok } from '../util/koreanNumber';
 import { SidebarState } from './SidebarSurface';
 
@@ -18,7 +19,12 @@ type Props = {
 
 export default function ProgramTradeSummaryCard({ series, cursorMs = null }: Props) {
   const points = series?.points ?? [];
-  const point = pickProgramTradePoint(points, cursorMs);
+  // 스파크라인 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
+  // 크로스헤어(cursorMs)로 복귀한다. effectiveCursor 하나로 상단 시각·금액·
+  // 수량(pickProgramTradePoint)까지 함께 호버 위치를 따라간다.
+  const [hoverMs, setHoverMs] = useState<number | null>(null);
+  const effectiveCursor = hoverMs ?? cursorMs;
+  const point = pickProgramTradePoint(points, effectiveCursor);
 
   if (!point) {
     return (
@@ -45,7 +51,12 @@ export default function ProgramTradeSummaryCard({ series, cursorMs = null }: Pro
         <span className="text-fg-dimmer">수량</span>
         <span className={`text-right ${qtyClass}`}>{formatSigned(point.net_qty)}</span>
       </div>
-      <ProgramTradeSparkline points={points} anchorT={point.t} cursorMs={cursorMs} />
+      <ProgramTradeSparkline
+        points={points}
+        anchorT={point.t}
+        cursorMs={effectiveCursor}
+        onHoverMsChange={setHoverMs}
+      />
       {point.gap_risk && (
         <div className="pt-1 text-[11px] text-fg-dimmer">
           일부 구간 보간
@@ -63,10 +74,12 @@ function ProgramTradeSparkline({
   points,
   anchorT,
   cursorMs,
+  onHoverMsChange,
 }: {
   points: readonly ProgramTradePoint[];
   anchorT: number;
   cursorMs: number | null;
+  onHoverMsChange: (ms: number | null) => void;
 }) {
   // viewBox 단위 — preserveAspectRatio="none" 으로 CSS 크기에 맞춰 늘어난다.
   const W = 100;
@@ -126,7 +139,16 @@ function ProgramTradeSparkline({
 
   return (
     <div className="mt-2 flex min-h-[48px] flex-1 gap-1.5">
-      <span data-testid="program-sparkline" className="relative block flex-1">
+      <span
+        data-testid="program-sparkline"
+        className="relative block flex-1 cursor-crosshair"
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const ms = hoverMsFromClientX(e.clientX, rect.left, rect.width, tFirst, tLast);
+          if (ms != null) onHoverMsChange(ms);
+        }}
+        onMouseLeave={() => onHoverMsChange(null)}
+      >
         <svg
           viewBox={`0 0 ${W} ${H}`}
           preserveAspectRatio="none"
@@ -161,9 +183,20 @@ function ProgramTradeSparkline({
               x2={cursorX}
               y1={0}
               y2={H}
-              stroke="var(--accent)"
+              stroke="var(--fg-dimmer)"
               strokeWidth={1}
-              strokeDasharray="2,2"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {showCursor && dotValue != null && (
+            <line
+              data-testid="cursor-hline"
+              x1={0}
+              x2={W}
+              y1={toY(dotValue)}
+              y2={toY(dotValue)}
+              stroke="var(--fg-dimmer)"
+              strokeWidth={1}
               vectorEffect="non-scaling-stroke"
             />
           )}
@@ -199,6 +232,18 @@ function ProgramTradeSparkline({
           </span>
         )}
         <span data-testid="axis-label-min">{formatKoreanWonEok(vMin)}</span>
+        {/* 커서 값 배지 — 캔들차트 crosshair 의 price-axis 라벨과 같은 역할.
+            가로선(cursor-hline)과 같은 높이에 앉아 커서 위치 누적값을 읽어준다.
+            눈금 라벨을 덮도록 마지막에 렌더(accent 배경으로 위에 뜬다). */}
+        {showCursor && dotValue != null && dotTopPct != null && (
+          <span
+            data-testid="axis-label-cursor"
+            className="absolute right-0 -translate-y-1/2 rounded-sm bg-accent px-1 text-accent-fg"
+            style={{ top: `${dotTopPct}%` }}
+          >
+            {formatKoreanWonEok(dotValue)}
+          </span>
+        )}
       </div>
     </div>
   );
