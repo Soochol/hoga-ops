@@ -149,14 +149,19 @@ it('그룹 정렬 순환 버튼: 클릭마다 store.groupSort 갱신(manual→de
   expect(useHeatmapPrefsStore.getState().groupSort).toBe('manual');
 });
 
-it('검색: 종목명 부분일치로 행 필터 + 헤더 카운트 감소', async () => {
+it('검색: 매칭 종목이 속한 그룹 전체 표시 + 매칭만 하이라이트', async () => {
   renderPage();
   await screen.findAllByText('반도체');
   expect(screen.getByText(/2종목/)).toBeInTheDocument();
   fireEvent.change(screen.getByTestId('heatmap-search'), { target: { value: '삼성' } });
+  // 그룹 전체 유지 — 비매칭(SK하이닉스)도 맥락으로 남는다(이전엔 숨겨졌다).
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
-  expect(screen.queryByText('SK하이닉스')).toBeNull();
-  expect(screen.getByText(/1종목/)).toBeInTheDocument();
+  expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
+  // 매칭 행만 하이라이트(data-matched).
+  expect(screen.getByTestId('heatmap-row-005930')).toHaveAttribute('data-matched');
+  expect(screen.getByTestId('heatmap-row-000660')).not.toHaveAttribute('data-matched');
+  // 헤더: 표시 2종목 중 1 매칭.
+  expect(screen.getByText(/2종목 중 1 매칭/)).toBeInTheDocument();
 });
 
 it('"/" 키로 검색창에 포커스', async () => {
