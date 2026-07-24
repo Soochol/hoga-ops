@@ -177,6 +177,22 @@ describe('BrokerTrajectoryTable — sparkline', () => {
     expect(cursorLines.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('draws the cursor marker as a solid gray line (candlestick crosshair mirror)', () => {
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [
+        { ts_ms: 1_000, net: 10 },
+        { ts_ms: 5_000, net: 20 },
+      ]),
+    ];
+    const { container } = render(
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+    );
+    const marker = container.querySelector('[data-testid="cursor-marker"]');
+    // 가는 회색 실선 — 점선(accent)이 아니라 메인 캔들차트 crosshair 와 같은 톤.
+    expect(marker).toHaveAttribute('stroke', 'var(--fg-dimmer)');
+    expect(marker).not.toHaveAttribute('stroke-dasharray');
+  });
+
   it('uses all rendered brokers when computing the visible day range', () => {
     const series: BrokerSeriesEntry[] = [
       ...Array.from({ length: 12 }, (_, i) =>

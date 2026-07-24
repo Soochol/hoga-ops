@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { BrokerSeriesEntry, BrokerSeriesPoint } from '../api/types';
 import {
   realMsToYyyymmdd,
@@ -7,6 +7,7 @@ import {
 } from '../live/liveDateTime';
 import { brokerDisplayShort, isForeignBroker } from './brokerDisplayNames';
 import { priceDirClass } from '../ui/priceDir';
+import { hoverMsFromClientX } from './sparklineHover';
 import { SidebarState } from './SidebarSurface';
 
 /** Gap detection threshold (ms). Consecutive points farther apart are
@@ -22,6 +23,10 @@ type Props = {
 };
 
 export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
+  // 스파크라인 열 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
+  // 크로스헤어(cursorMs)로 복귀한다. 모든 행이 같은 dayRange 를 쓰므로 어느
+  // 행에서 호버하든 세로 커서선이 전 행에 정렬되고 순매수 열이 함께 갱신된다.
+  const [hoverMs, setHoverMs] = useState<number | null>(null);
   const rows = useMemo(
     () =>
       (series ?? [])
@@ -64,8 +69,9 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
     );
   }
 
+  const effectiveCursor = hoverMs ?? cursorMs;
   // 규모 바 분모: 커서 시점 |순매수| 최대값. 행간 상대 규모 비교용(depth bar 문법).
-  const nets = rows.map((entry) => netAtCursor(entry, cursorMs));
+  const nets = rows.map((entry) => netAtCursor(entry, effectiveCursor));
   const maxAbsNet = nets.reduce<number>((acc, net) => Math.max(acc, Math.abs(net ?? 0)), 0);
   // 행 순서는 장 마감 기준 final_net 내림차순(어댑터 정렬)이라 위=매수우위·
   // 아래=매도우위 — 그 경계를 라벨 달린 헤어라인으로 표시한다. 스팟 커서 시점
@@ -115,7 +121,13 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
                   </span>
                 )}
               </span>
-              <Sparkline entry={entry} cursorMs={cursorMs} dayRange={dayRange} gapThresholdMs={gapThresholdMs} />
+              <Sparkline
+                entry={entry}
+                cursorMs={effectiveCursor}
+                dayRange={dayRange}
+                gapThresholdMs={gapThresholdMs}
+                onHoverMsChange={setHoverMs}
+              />
               {net == null ? (
                 // 커서가 첫 관측 이전(아직 등장 전) — 진짜 0과 구분해 표기한다.
                 <span data-testid="broker-net-preobs" className="text-fg-dimmer text-right">—</span>
@@ -199,11 +211,13 @@ function Sparkline({
   cursorMs,
   dayRange,
   gapThresholdMs,
+  onHoverMsChange,
 }: {
   entry: BrokerSeriesEntry;
   cursorMs: number | null;
   dayRange: { first: number; last: number } | null;
   gapThresholdMs: number;
+  onHoverMsChange: (ms: number | null) => void;
 }) {
   // Width/height in viewBox units — preserveAspectRatio="none" lets CSS scale.
   const W = 60;
@@ -266,7 +280,15 @@ function Sparkline({
   const dotTopPct = dotNet != null ? (toY(dotNet) / H) * 100 : null;
 
   return (
-    <span className="relative block h-4 w-full">
+    <span
+      className="relative block h-4 w-full cursor-crosshair"
+      onMouseMove={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const ms = hoverMsFromClientX(e.clientX, rect.left, rect.width, tsFirst, tsLast);
+        if (ms != null) onHoverMsChange(ms);
+      }}
+      onMouseLeave={() => onHoverMsChange(null)}
+    >
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
@@ -330,9 +352,8 @@ function Sparkline({
             x2={cursorX}
             y1={0}
             y2={H}
-            stroke="var(--accent)"
+            stroke="var(--fg-dimmer)"
             strokeWidth={1}
-            strokeDasharray="2,2"
             vectorEffect="non-scaling-stroke"
           />
         )}
