@@ -16,6 +16,8 @@ export interface HeatmapBoardProps {
   onRowDragState?: (dragging: boolean) => void;
   /** folder_id → 당일 흐름 시계열(%). 미전달이면 헤더 그래프 숨김. */
   flowByFolder?: Map<string, number[]>;
+  /** 검색 쿼리 — 매칭 종목 행 하이라이트용(폴더로 통과). */
+  query?: string;
 }
 
 /** 신문형 멀티칼럼 보드. 빈 그룹만 제외. columnWidth 로 가용 폭만큼
@@ -28,7 +30,7 @@ export interface HeatmapBoardProps {
  *  이 12rem 에 미반영돼 생기던 잠재 버그. 플로어 ≥ 행 min-content 로 그 클리핑 밴드를 제거. (board
  *  자체가 ~16rem 미만 — 관심목록 패널+좁은 뷰포트 → 단일칼럼 — 이면 어떤 플로어로도 클립 불가피;
  *  레이아웃 붕괴는 아님.) 넓어지면 칼럼 수↑, 남는 폭은 minmax(...,1fr) 종목명으로(반응형). */
-export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder, onRowMenu, onRowDragState, flowByFolder }: HeatmapBoardProps) {
+export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder, onRowMenu, onRowDragState, flowByFolder, query }: HeatmapBoardProps) {
   const visible = visibleFolderGroups(groups);
   return (
     // eng-review Q6: 스크롤 컨테이너(바깥, 높이 한정)와 multicol 블록(안쪽, height
@@ -49,6 +51,7 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
             onRowMenu={onRowMenu}
             onRowDragState={onRowDragState}
             flowSeries={flowByFolder ? (flowByFolder.get(g.folder.id) ?? []) : undefined}
+            query={query}
           />
         ))}
       </div>

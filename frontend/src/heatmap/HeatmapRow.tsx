@@ -23,6 +23,9 @@ export interface HeatmapRowProps {
   dragging?: boolean;
   /** 우클릭 컨텍스트 메뉴(삭제·폴더이동, ADR-0068 G3). 미전달이면 기본 컨텍스트 메뉴. */
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** 검색 매칭 행 하이라이트 — 그룹 전체를 보여주되 이 행만 강조(배경 틴트).
+   *  QuoteRow active 선례와 동일(좌측 accent 바 없이 배경만). */
+  matched?: boolean;
 }
 
 /** 칼럼형 행: 종목명 │ 캔들 │ 현재가 │ 등락률. 등락은 배경 워시 없이 priceDirClass
@@ -36,16 +39,20 @@ export interface HeatmapRowProps {
  *  1차라 공용 min-h-list-row(28px; 관심·순위·스크리너)를 의도적으로 쓰지 않는다. */
 export function HeatmapRow({
   name, price, pct, open, high, low, onClick, ariaLabel, testId,
-  sortableRef, sortableStyle, dragListeners, dragging, onContextMenu,
+  sortableRef, sortableStyle, dragListeners, dragging, onContextMenu, matched,
 }: HeatmapRowProps) {
   const sign = (n: number) => (n > 0 ? '+' : '');
   const draggable = !!dragListeners;
+  // 매칭 하이라이트 배경 — 드래그 중 opacity/transform 을 덮지 않도록 base style 위에
+  // 병합. QuoteRow 와 동일한 --tint-selection(accent 10%) 배경 틴트.
+  const baseStyle = dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle;
   return (
     <div
       ref={sortableRef}
       role="button"
       tabIndex={0}
       data-testid={testId}
+      data-matched={matched ? '' : undefined}
       aria-label={ariaLabel}
       // dragListeners 를 핸들러보다 먼저 펼쳐, 행의 클릭/Enter=차트 열기 핸들러가 항상
       // 우선되게 한다(현 PointerSensor 는 onPointerDown 만 — 충돌 없음; 향후 KeyboardSensor
@@ -54,7 +61,7 @@ export function HeatmapRow({
       onClick={onClick}
       onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } }}
-      style={dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle}
+      style={matched ? { ...baseStyle, background: 'var(--tint-selection)' } : baseStyle}
       className={`grid grid-cols-[minmax(4rem,1fr)_2.5rem_3.2rem_4.25rem] gap-1.5 px-2 py-px items-center text-sm outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
     >
       {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
