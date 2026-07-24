@@ -14,7 +14,7 @@ import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
 import { SortCycleButton } from '../heatmap/SortCycleButton';
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
 import { CollectDialog, SingleCodeCollectDialog } from '../heatmap/CollectDialog';
-import { filterGroups } from '../heatmap/filterGroups';
+import { filterGroups, entryMatchesQuery } from '../heatmap/filterGroups';
 import { avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from '../heatmap/heat';
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
@@ -100,8 +100,17 @@ export function Heatmap() {
 
   const updated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
-  // 헤더 "N종목" 은 검색 결과를 추종(빈 쿼리면 전체와 동일). 빈 실폴더는 0 기여 → 무필터 값 불변.
+  // 헤더 "N종목" 은 표시된 종목 수(검색 중엔 매칭 그룹의 전체 종목). 빈 실폴더는 0 기여.
   const visibleCount = visibleGroups.reduce((n, g) => n + g.entries.length, 0);
+  // 검색 중 실제 매칭(하이라이트) 종목 수 — visibleCount(그룹 전체)와 구분해 헤더에
+  // "N종목 중 M 매칭"으로 알린다. 그룹명만 매칭된 경우는 0(개별 종목 매칭 아님).
+  const matchCount = useMemo(
+    () => (isSearching
+      ? visibleGroups.reduce(
+          (n, g) => n + g.entries.filter((e) => entryMatchesQuery(e, query)).length, 0)
+      : 0),
+    [visibleGroups, query, isSearching],
+  );
   if (isLoading) return <HeatmapStateShell>히트맵 불러오는 중…</HeatmapStateShell>;
   if (error) return <HeatmapStateShell tone="error">히트맵을 불러오지 못했습니다.</HeatmapStateShell>;
   // 그룹이 하나라도 있으면 일반 페이지를 렌더 — v3 는 그룹이 있어야 종목을 추가할 수
@@ -119,7 +128,11 @@ export function Heatmap() {
         <header className="flex items-center gap-3 px-3 py-2 bg-bg flex-none">
           <span className="text-md font-semibold text-fg">히트맵</span>
           {phase && <span className="text-xs font-data text-fg-dim">{PHASE_LABEL[phase] ?? phase}</span>}
-          <span className="text-xs font-data text-fg-dimmer">{updated} 갱신 · {visibleCount}종목</span>
+          <span className="text-xs font-data text-fg-dimmer">
+            {updated} 갱신 · {isSearching && matchCount > 0
+              ? `${visibleCount}종목 중 ${matchCount} 매칭`
+              : `${visibleCount}종목`}
+          </span>
           <div className="flex-1" />
           <ControlBar className="gap-sm">
             <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowNewGroup(true)}>
@@ -156,12 +169,13 @@ export function Heatmap() {
             onClose={() => setCollectOne(null)}
           />
         )}
-        {/* 검색 중엔 재정렬 비활성(onReorder=undefined): HeatmapFolder 의 orderedCodes 는 렌더된
-            행에서 나오는데, 종목 필터 하에선 부분집합이라 서버 순서를 손상시킨다. */}
+        {/* 검색 중엔 재정렬 비활성(onReorder=undefined): 그룹 전체를 보여줘도 검색 중
+            드래그 재정렬은 매칭 탐색 흐름을 방해하고, 그룹 간 정렬(orderedGroups)이
+            검색 결과를 추종해 순서 기준이 흔들린다. query 는 매칭 행 하이라이트용. */}
         <HeatmapBoard groups={visibleGroups} quoteByCode={quoteByCode}
           sortMode={sortMode} onPick={onPick}
           onReorder={isSearching ? undefined : onReorder} onRowMenu={onRowMenu}
-          onRowDragState={setIsRowDragging} />
+          onRowDragState={setIsRowDragging} query={query} />
         {menu && (
           <HeatmapRowMenu
             x={menu.x} y={menu.y} name={menu.name}

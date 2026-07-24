@@ -32,7 +32,7 @@ import { HeatmapSearchInput } from './HeatmapSearchInput';
 import { priceDirClass } from '../ui/priceDir';
 import { ChevronIcon } from '../ui/ChevronIcon';
 import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
-import { filterGroups } from './filterGroups';
+import { filterGroups, entryMatchesQuery } from './filterGroups';
 import { sortEntries, avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from './heat';
 import {
   useHeatmap, useRemoveFromHeatmap, useMoveHeatmapEntries, useReorderHeatmapEntries,
@@ -519,8 +519,8 @@ export function HeatmapDrawer() {
 
   // v3 (ADR-0112): 그룹 삭제는 멤버 종목까지 지운다 — 멤버가 있으면 watchlist 와 같은
   // 문법으로 confirm(빈 그룹은 즉시 삭제). 종목 수는 반드시 **필터 전 원본**(data.entries)
-  // 에서 센다 — 화면 그룹(visibleGroups)은 검색 중 filterGroups 가 매칭 행만 남긴 부분집합이라
-  // 그 length 를 쓰면 confirm 이 실제보다 적은 수를 알리고도 전체를 지운다.
+  // 에서 센다 — 검색 중 매칭 없는 그룹은 visibleGroups 에서 통째로 빠지고, data.entries 가
+  // 멤버십의 SSOT 이므로 여기서 세야 confirm 이 실제 삭제 수를 정확히 알린다.
   const deleteFolderWithConfirm = (folderId: string, name: string) => {
     const memberCount = data?.entries.filter((e) => e.folder_id === folderId).length ?? 0;
     if (memberCount > 0 &&
@@ -698,6 +698,7 @@ export function HeatmapDrawer() {
                               pct={q?.change_pct ?? null}
                               changeWon={q?.change_won ?? null}
                               active={entry.code === activeCode}
+                              matched={entryMatchesQuery(entry, query)}
                               ariaLabel={[entry.name, entry.code, '차트 열기'].join(' ')}
                               testId={`heatmap-drawer-row-${entry.code}`}
                               onClick={(e) => onPick(entry.code, entry.name, e)}

@@ -43,6 +43,9 @@ export interface QuoteRowProps {
   indented?: boolean;
   // 스크리너 모니터링 전용: 재조회로 새로 편입된 행이면 한 번 accent tint 플래시.
   flash?: boolean;
+  // 검색 매칭 하이라이트(히트맵 드로어 전용). active 와 같은 배경 틴트를 쓴다 —
+  // 검색 중 그룹 전체를 보여주되 매칭 행만 강조. optional 이라 타 리스트 무영향.
+  matched?: boolean;
 }
 
 function formatPct(pct: number | null): string {
@@ -53,7 +56,7 @@ function formatPct(pct: number | null): string {
 export function QuoteRow({
   name, price, pct, changeWon: _changeWon, active, ariaLabel, testId, onClick, leading, trailingAction,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging, dropIndicator,
-  onContextMenu, onDelete, indented, flash,
+  onContextMenu, onDelete, indented, flash, matched,
 }: QuoteRowProps) {
   void _changeWon;
   const setRowRef = (node: HTMLElement | null) => {
@@ -100,6 +103,7 @@ export function QuoteRow({
       {...dragListeners}
       data-testid={testId}
       data-quote-row=""
+      data-matched={matched ? '' : undefined}
       role="button"
       tabIndex={0}
       aria-current={active ? 'true' : undefined}
@@ -115,7 +119,7 @@ export function QuoteRow({
         // 선택 표식은 배경 틴트(--tint-selection)만 — 인벤토리(ListRow) 기준으로 통일.
         // 좌측 accent 바(borderLeft: 2px solid var(--accent))를 다시 넣지 말 것.
         // 관심·히트맵·스크리너·순위가 이 행을 공유하므로 여기 한 곳이 네 리스트를 결정한다(2026-07-23).
-        background: active ? 'var(--tint-selection)' : 'transparent',
+        background: active || matched ? 'var(--tint-selection)' : 'transparent',
         ...sortableStyle,
         ...(dragging ? sortableDraggingStyle(18) : {}),
         ...(dropIndicator ? { position: 'relative' } : {}),

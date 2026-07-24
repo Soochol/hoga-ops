@@ -6,6 +6,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { HeatmapEntry, HeatmapFolder as HeatmapFolderModel } from '../api/heatmap';
 import type { LiveQuote } from '../api/liveQuotes';
 import { HeatmapRow } from './HeatmapRow';
+import { entryMatchesQuery } from './filterGroups';
 import { sortEntries, avgPct, heatHeaderBg, makePctOf, type SortMode } from './heat';
 import { resolveDrag } from '../watchlist/dragHandlers';
 import type { JumpModifiers } from '../live/useJumpToLive';
@@ -29,6 +30,9 @@ export interface HeatmapFolderProps {
   onRowMenu?: RowMenuOpener;
   /** 행 드래그 시작/끝을 페이지로 전파(그룹순서 동결용, G1). manual 모드에서만 발화. */
   onRowDragState?: (dragging: boolean) => void;
+  /** 검색 쿼리 — 매칭 종목 행을 하이라이트한다(그룹 전체는 filterGroups 가 유지).
+   *  빈 문자열/미전달이면 하이라이트 없음. */
+  query?: string;
 }
 
 /** 그룹 블록: 헤더(폴더명 + 평균 등락률 칩) + 정렬된 행들. break-inside-avoid
@@ -39,7 +43,7 @@ export interface HeatmapFolderProps {
  *  즉시 덮어쓰이므로 정적 행으로 렌더(드래그 비활성).
  *  간격: 그룹 간 mb-xs(4.5px, 밀도 우선). 그룹 내부는 헤더-첫행·행간 모두 0으로 붙여
  *  관심종목 패널 리스트와 같은 촘촘한 연속 리스트를 이룬다(구분은 border-b). */
-export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onReorder, onRowMenu, onRowDragState }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onReorder, onRowMenu, onRowDragState, query }: HeatmapFolderProps) {
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const pctOf = makePctOf(quoteByCode);
@@ -62,14 +66,17 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
 
   const rows = sorted.map((e) => {
     const q = quoteByCode.get(e.code);
+    const matched = query ? entryMatchesQuery(e, query) : false;
     return draggable ? (
         <SortableHeatmapRow key={e.code} code={e.code} name={e.name}
         price={q?.price ?? null} pct={q?.change_pct ?? null}
         open={q?.open ?? null} high={q?.high ?? null} low={q?.low ?? null}
+        matched={matched}
         onPick={(ev) => onPick(e.code, e.name, ev)} onContextMenu={ctxFor?.(e.code, e.name)} />
     ) : (
       <HeatmapRow key={e.code} name={e.name} price={q?.price ?? null} pct={q?.change_pct ?? null}
         open={q?.open ?? null} high={q?.high ?? null} low={q?.low ?? null}
+        matched={matched}
         onClick={(ev) => onPick(e.code, e.name, ev)} ariaLabel={`${e.name} ${e.code} 차트 열기`}
         testId={`heatmap-row-${e.code}`} onContextMenu={ctxFor?.(e.code, e.name)} />
     );
@@ -116,6 +123,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
 function SortableHeatmapRow(props: {
   code: string; name: string; price: number | null; pct: number | null;
   open?: number | null; high?: number | null; low?: number | null;
+  matched?: boolean;
   onPick: (e?: JumpModifiers) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
@@ -128,6 +136,7 @@ function SortableHeatmapRow(props: {
       open={props.open}
       high={props.high}
       low={props.low}
+      matched={props.matched}
       onClick={props.onPick}
       ariaLabel={`${props.name} ${props.code} 차트 열기`}
       testId={`heatmap-row-${props.code}`}

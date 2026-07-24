@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterGroups } from './filterGroups';
+import { filterGroups, entryMatchesQuery } from './filterGroups';
 import type { HeatmapGroup } from './heat';
 import type { HeatmapEntry } from '../api/heatmap';
 
@@ -38,17 +38,19 @@ describe('filterGroups', () => {
     expect(out[0].entries.map((x) => x.code)).toEqual(['005930', '000660']);
   });
 
-  it('종목명 매칭 시 해당 행만, 무매칭 그룹은 숨김', () => {
+  it('종목명 매칭 시 그 그룹 전체를 유지(매칭 행만 남기지 않음)', () => {
     const out = filterGroups(makeGroups(), '삼성');
     expect(out).toHaveLength(1);
     expect(out[0].folder.id).toBe('f2');
-    expect(out[0].entries.map((x) => x.name)).toEqual(['삼성전자']);
+    // 매칭은 삼성전자뿐이지만 그룹 전체(SK하이닉스 포함)를 맥락으로 유지 — 매칭은
+    // 하이라이트(entryMatchesQuery)로 강조한다.
+    expect(out[0].entries.map((x) => x.name)).toEqual(['삼성전자', 'SK하이닉스']);
   });
 
-  it('코드 부분일치도 매칭', () => {
+  it('코드 부분일치 시에도 그 그룹 전체를 유지', () => {
     const out = filterGroups(makeGroups(), '0066');
     expect(out).toHaveLength(1);
-    expect(out[0].entries.map((x) => x.code)).toEqual(['000660']);
+    expect(out[0].entries.map((x) => x.code)).toEqual(['005930', '000660']);
   });
 
   it('대소문자 무시', () => {
@@ -61,5 +63,17 @@ describe('filterGroups', () => {
 
   it('무매칭 쿼리는 빈 배열', () => {
     expect(filterGroups(makeGroups(), 'zzz없는종목')).toEqual([]);
+  });
+});
+
+describe('entryMatchesQuery', () => {
+  it('이름/코드 부분일치(대소문자 무시), 빈 쿼리는 false', () => {
+    const s = e('005930', '삼성전자', 'f2');
+    expect(entryMatchesQuery(s, '삼성')).toBe(true);
+    expect(entryMatchesQuery(s, '5930')).toBe(true);
+    expect(entryMatchesQuery(e('AAPL', 'Apple', 'f1'), 'apple')).toBe(true);
+    expect(entryMatchesQuery(s, 'SK하이닉스')).toBe(false);
+    expect(entryMatchesQuery(s, '')).toBe(false);
+    expect(entryMatchesQuery(s, '   ')).toBe(false);
   });
 });

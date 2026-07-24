@@ -202,16 +202,28 @@ describe('HeatmapDrawer', () => {
     confirmSpy.mockRestore();
   });
 
-  it('검색 필터 중 삭제 confirm 의 종목 수는 필터 전 전체 멤버 수다', async () => {
+  it('검색 시 그룹 전체를 유지하고 매칭 행만 하이라이트한다', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    // '에코' 검색 → 2차전지 그룹 전체 유지(에코프로 매칭, LG엔솔은 맥락).
+    fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '에코' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('heatmap-drawer-row-000001')).toHaveAttribute('data-matched'));
+    // LG엔솔(비매칭)도 그룹 전체 표시로 남고, 하이라이트는 없다.
+    expect(screen.getByTestId('heatmap-drawer-row-000002')).toBeInTheDocument();
+    expect(screen.getByTestId('heatmap-drawer-row-000002')).not.toHaveAttribute('data-matched');
+  });
+
+  it('검색 필터 중 삭제 confirm 의 종목 수는 그룹 전체 멤버 수다', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
-    // '에코' 검색 → 2차전지(f1, 멤버 2)에서 에코프로 1행만 화면에 남는다.
     fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '에코' } });
-    await waitFor(() => expect(screen.queryByTestId('heatmap-drawer-row-000002')).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByTestId('heatmap-drawer-row-000001')).toHaveAttribute('data-matched'));
     fireEvent.click(screen.getByRole('button', { name: '2차전지 그룹 메뉴' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
-    // confirm 은 화면에 보이는 1개가 아니라 실제 삭제될 2개를 알려야 한다.
+    // confirm 은 data.entries(SSOT)에서 센 실제 삭제될 2개를 알린다.
     expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('종목 2개'));
     confirmSpy.mockRestore();
   });
