@@ -277,3 +277,33 @@ Known warnings are eight Polars sortedness warnings from
 `asyncio.iscoroutinefunction` deprecation warning from
 `tests/test_api_captures_queue.py`; the latter also appears in the targeted
 suite.
+
+### Task 4 final verification
+
+Commit under test: `e9b9bd349a279d00d6f0810afab45153ce92eb78`, together
+with the Task 4 test and verification-record working-tree changes.
+
+The final focused command from the unblocking plan completed with `214 passed
+in 5.10s`. The changed-file Ruff command completed with `All checks passed!`.
+
+The full backend command, `uv run --extra dev pytest -q`, was started exactly
+once after the final test-file changes and collected 2,783 tests. The command's
+output stream became unavailable after 35% even though the original pytest
+process subsequently completed. Its exit code and terminal passed/skipped/
+warning counts are therefore unavailable. The empty pytest `lastfailed` cache
+was observed only as diagnostic state and is not treated as proof of a green
+full suite. The full-suite verification is inconclusive and was not rerun.
+
+Both committed raw files, `live-buffer.jsonl` and `range.jsonl`, parse as JSONL
+and are unchanged from `fffd3715`. The artifact scan found no credential terms
+or host-specific absolute user paths. The six pending decisions remain:
+
+- LiveBuffer: `NEEDS_RECORDED_TICK_FIXTURE`.
+- Past candles: `NEEDS_APPROVED_EXTERNAL_MEASUREMENT`.
+- Range sidecar: `NEEDS_ISOLATED_FIXTURE`.
+- Screener condition scaling: `NEEDS_ISOLATED_FIXTURE`.
+- Inventory cardinality: `NEEDS_ISOLATED_FIXTURE`.
+- Capture terminal history: `NEEDS_RECORDED_NORMAL_SESSION`.
+
+No decision was promoted to `GO`, and this verification record makes no
+latency, throughput, or user-visible improvement claim.
