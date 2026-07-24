@@ -1367,11 +1367,64 @@ describe('useLiveBundle', () => {
       program_trade: { points: [programPoint], source: 'kis_program_trade' as const },
     };
     useRangeSidecarDeltaSpy.mockReturnValueOnce(rangeResult(sidecarBundle));
+    const liveWithProgram: LiveSeriesData = {
+      ...liveFixture,
+      program: [
+        {
+          t_ms: 1_779_840_120_000,
+          kind: 'program',
+          venue: 'KRX',
+          net_qty: 2_000,
+          net_amount: 140_000_000,
+        },
+      ],
+    };
 
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveWithProgram),
+      { wrapper },
+    );
 
-    expect(result.current.chartBundle?.program_trade?.points).toEqual([programPoint]);
-    expect(result.current.bundle?.program_trade?.points).toEqual([programPoint]);
+    const expected = [
+      programPoint,
+      {
+        t: 1_779_840_120_000,
+        net_qty: 2_000,
+        net_amount: 140_000_000,
+        delta_qty: null,
+        delta_amount: null,
+        gap_risk: false,
+      },
+    ];
+    expect(result.current.chartBundle?.program_trade?.points).toEqual(expected);
+    expect(result.current.bundle?.program_trade?.points).toEqual(expected);
+  });
+
+  it('does not inject live program points when program demand is disabled', () => {
+    useLivePageStore.setState({
+      programTradeEnabled: false,
+      tradeVolumePocEnabled: false,
+      volumeDistributionEnabled: false,
+    });
+    const liveWithProgram: LiveSeriesData = {
+      ...liveFixture,
+      program: [
+        {
+          t_ms: 1_779_840_120_000,
+          kind: 'program',
+          venue: 'KRX',
+          net_qty: 2_000,
+          net_amount: 140_000_000,
+        },
+      ],
+    };
+
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveWithProgram),
+      { wrapper },
+    );
+
+    expect(result.current.chartBundle?.program_trade?.points).toEqual([]);
   });
 
   it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
