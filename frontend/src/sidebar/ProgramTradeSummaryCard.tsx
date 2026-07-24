@@ -257,10 +257,21 @@ export function pickProgramTradePoint(
   points: readonly ProgramTradePoint[],
   cursorMs: number | null,
 ): ProgramTradePoint | null {
-  if (points.length === 0) return null;
-  if (cursorMs === null) return points[points.length - 1] ?? null;
+  const last = points.length > 0 ? points[points.length - 1] : null;
+  if (last == null) return null;
+  // latest 모드, 또는 커서가 마지막 관측 이후(미래 whitespace·다음날 칸)면 최신값
+  // 고정 — 거래원·호가가 미래 whitespace 에서 latest 로 복귀하는 것과 일관.
+  // 이 클램프가 없으면 아래 floor 가 "다음날 이하 최대 = 전날 마지막 점"을 집어
+  // 전날 값이 새어나온다(병합 번들이 여러 날을 담기 때문).
+  if (cursorMs === null || cursorMs >= last.t) return last;
   for (let i = points.length - 1; i >= 0; i -= 1) {
-    if (points[i].t <= cursorMs) return points[i];
+    const p = points[i];
+    if (p != null && p.t <= cursorMs) {
+      // 날짜 경계 가드: floor 결과가 커서와 다른 KST 날짜면(그 날엔 관측 없음)
+      // 전날 값으로 넘기지 않는다. 스파크라인의 날짜 스코프(realMsToYyyymmdd
+      // 필터)와 대칭 — 카드 숫자와 궤적의 날짜 규칙을 일치시킨다.
+      return realMsToYyyymmdd(p.t) === realMsToYyyymmdd(cursorMs) ? p : null;
+    }
   }
   return null;
 }
