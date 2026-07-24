@@ -201,7 +201,19 @@ function VdistContent({ save, bundle }: ContentProps) {
 
 function ProgramContent({ save, bundle }: ContentProps) {
   const { detailCursorMs } = useStudyCursorScope(save);
-  return <ProgramTradeSummaryCard series={bundle.program_trade} cursorMs={detailCursorMs} />;
+  // 당일 종가 오버레이 — program_trade 와 같은 번들의 candles(카드가 anchorT
+  // 날짜로 잘라 쓴다).
+  const closePoints = useMemo(
+    () => volumeDistributionClosePointsFromCandles(bundle.candles ?? []),
+    [bundle.candles],
+  );
+  return (
+    <ProgramTradeSummaryCard
+      series={bundle.program_trade}
+      cursorMs={detailCursorMs}
+      closePoints={closePoints}
+    />
+  );
 }
 
 function contentFor(kind: StudyDataWindowKind, props: ContentProps): React.ReactNode {

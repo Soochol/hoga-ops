@@ -132,6 +132,58 @@ describe('ProgramTradeSummaryCard — sparkline', () => {
     expect(screen.queryByTestId('sparkline-dashed')).toBeNull();
   });
 
+  it('has no price overlay without closePoints (default unchanged)', () => {
+    const series = seriesOf([point(T0, 1), point(T0 + 30_000, 2)]);
+    render(<ProgramTradeSummaryCard series={series} />);
+    expect(screen.queryByTestId('program-price-graph')).toBeNull();
+  });
+
+  it('overlays the same-day close curve when closePoints are given', () => {
+    const series = seriesOf([point(T0, 1), point(T0 + 60_000, 3)]);
+    render(
+      <ProgramTradeSummaryCard
+        series={series}
+        closePoints={[
+          { t_ms: T0, close: 70_000 },
+          { t_ms: T0 + 60_000, close: 70_500 },
+        ]}
+      />,
+    );
+    const price = screen.getByTestId('program-price-graph');
+    // 참조선은 dim 회색(순매수 accent 와 구분) — 데이터 라인이 아닌 보조선.
+    expect(price.getAttribute('stroke')).toBe('var(--fg-dim)');
+    expect(price.getAttribute('points')?.split(' ')).toHaveLength(2);
+  });
+
+  it('clips the close overlay to the sparkline day (drops other-day closes)', () => {
+    const series = seriesOf([point(T0, 1), point(T0 + 60_000, 3)]);
+    render(
+      <ProgramTradeSummaryCard
+        series={series}
+        closePoints={[
+          { t_ms: T0 - DAY_MS, close: 60_000 }, // 전날 — 제외
+          { t_ms: T0, close: 70_000 },
+          { t_ms: T0 + 60_000, close: 70_500 },
+        ]}
+      />,
+    );
+    // 당일 2점만 그린다 — 전날 종가는 축을 오염시키지 않는다.
+    expect(
+      screen.getByTestId('program-price-graph').getAttribute('points')?.split(' '),
+    ).toHaveLength(2);
+  });
+
+  it('skips the overlay when only one same-day close exists (needs 2+)', () => {
+    const series = seriesOf([point(T0, 1), point(T0 + 60_000, 3)]);
+    render(
+      <ProgramTradeSummaryCard
+        series={series}
+        closePoints={[{ t_ms: T0, close: 70_000 }]}
+      />,
+    );
+    expect(screen.queryByTestId('program-price-graph')).toBeNull();
+  });
+
   it('draws a dashed bridge across an observation gap', () => {
     const series = seriesOf([
       point(T0, 1),

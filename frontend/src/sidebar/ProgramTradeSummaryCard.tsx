@@ -12,12 +12,23 @@ import { SidebarState } from './SidebarSurface';
  *  드레인 체제에서 매 드레인을 갭으로 오탐해(장중 전 점 true) 신호가 없다. */
 export const PROGRAM_SPARK_GAP_THRESHOLD_MS = 90_000;
 
+/** 당일 종가 오버레이용 점. 캔들의 { ts_ms, close } 를 그대로 받는다
+ *  (volumeDistributionClosePointsFromCandles 반환형). 순매수와 같은 ms 축. */
+export type ProgramClosePoint = { t_ms: number; close: number };
+
 type Props = {
   series?: ProgramTradeSeries | null;
   cursorMs?: number | null;
+  /** 당일 분봉 종가(같은 번들의 candles). 순매수 곡선 위에 dim 참조선으로
+   *  오버레이한다. 여러 날이 섞여 와도 카드가 anchorT 날짜로 잘라 쓴다. */
+  closePoints?: readonly ProgramClosePoint[] | null;
 };
 
-export default function ProgramTradeSummaryCard({ series, cursorMs = null }: Props) {
+export default function ProgramTradeSummaryCard({
+  series,
+  cursorMs = null,
+  closePoints = null,
+}: Props) {
   const points = series?.points ?? [];
   // 스파크라인 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
   // 크로스헤어(cursorMs)로 복귀한다. effectiveCursor 하나로 상단 시각·금액·
@@ -55,6 +66,7 @@ export default function ProgramTradeSummaryCard({ series, cursorMs = null }: Pro
         points={points}
         anchorT={point.t}
         cursorMs={effectiveCursor}
+        closePoints={closePoints}
         onHoverMsChange={setHoverMs}
       />
       {point.gap_risk && (
@@ -74,11 +86,13 @@ function ProgramTradeSparkline({
   points,
   anchorT,
   cursorMs,
+  closePoints,
   onHoverMsChange,
 }: {
   points: readonly ProgramTradePoint[];
   anchorT: number;
   cursorMs: number | null;
+  closePoints: readonly ProgramClosePoint[] | null;
   onHoverMsChange: (ms: number | null) => void;
 }) {
   // viewBox 단위 — preserveAspectRatio="none" 으로 CSS 크기에 맞춰 늘어난다.
@@ -100,13 +114,29 @@ function ProgramTradeSparkline({
       .map((p) => ({ t: p.t, v: p.net_amount }));
   }, [points, anchorT]);
 
+  // 당일 종가 오버레이 — 순매수와 같은 KST 날짜(anchorT)만 잘라 시간 오름차순.
+  const drawablePrice = useMemo(() => {
+    if (!closePoints || closePoints.length === 0) return [];
+    const day = realMsToYyyymmdd(anchorT);
+    return closePoints
+      .filter((c) => realMsToYyyymmdd(c.t_ms) === day)
+      .map((c) => ({ t: c.t_ms, v: c.close }))
+      .sort((a, b) => a.t - b.t);
+  }, [closePoints, anchorT]);
+
   const geometry = useMemo(() => {
     if (drawable.length < 2) return null;
-    const tFirst = drawable[0].t;
-    const tLast = drawable[drawable.length - 1].t;
+    // 시간축은 순매수·가격 두 시리즈를 모두 담도록 통합 범위로(둘 다 같은 당일
+    // 이지만 관측 시작/끝이 미세하게 달라 한쪽이 잘리지 않게 한다).
+    let tFirst = drawable[0].t;
+    let tLast = drawable[drawable.length - 1].t;
+    for (const p of drawablePrice) {
+      if (p.t < tFirst) tFirst = p.t;
+      if (p.t > tLast) tLast = p.t;
+    }
     const tSpan = tLast - tFirst || 1;
-    // Y 도메인은 0을 항상 포함 — 순매수가 양·음 어느 쪽에 있어도 0 기준선
-    // 대비 위치가 보이도록 (브로커 Sparkline 과 같은 규칙).
+    // 순매수 Y 도메인은 0을 항상 포함 — 양·음 어느 쪽이든 0 기준선 대비 위치가
+    // 보이도록 (브로커 Sparkline 과 같은 규칙).
     let vMin = 0;
     let vMax = 0;
     for (const p of drawable) {
@@ -121,14 +151,28 @@ function ProgramTradeSparkline({
       points: seg.pts.map((p) => `${toX(p.t)},${toY(p.v)}`).join(' '),
     }));
     const zeroY = toY(0);
-    return { tFirst, tLast, tSpan, segments, zeroY, toY, vMin, vMax };
-  }, [drawable]);
+    // 가격은 자기 min/max 로 플롯을 꽉 채운다(0 기준 무의미). 순매수와 축을
+    // 공유하지 않는 독립 Y 도메인 — 참조선이라 라벨 없이 곡선만 그린다.
+    let priceLine: string | null = null;
+    if (drawablePrice.length >= 2) {
+      let pMin = Infinity;
+      let pMax = -Infinity;
+      for (const p of drawablePrice) {
+        if (p.v < pMin) pMin = p.v;
+        if (p.v > pMax) pMax = p.v;
+      }
+      const pSpan = pMax - pMin || 1;
+      const toYPrice = (c: number) => H - ((c - pMin) / pSpan) * H;
+      priceLine = drawablePrice.map((p) => `${toX(p.t)},${toYPrice(p.v)}`).join(' ');
+    }
+    return { tFirst, tLast, tSpan, segments, zeroY, toY, vMin, vMax, priceLine };
+  }, [drawable, drawablePrice]);
 
   if (!geometry) {
     return <span className="block min-h-[48px] flex-1 pt-2" />;
   }
 
-  const { tFirst, tLast, tSpan, segments, zeroY, toY, vMin, vMax } = geometry;
+  const { tFirst, tLast, tSpan, segments, zeroY, toY, vMin, vMax, priceLine } = geometry;
   const showCursor = cursorMs != null && cursorMs >= tFirst && cursorMs <= tLast;
   const cursorX = showCursor ? ((cursorMs! - tFirst) / tSpan) * W : 0;
   // 커서 교차점 도트: preserveAspectRatio=none 아래 <circle>은 타원으로
@@ -181,6 +225,18 @@ function ProgramTradeSparkline({
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
+          {/* 당일 종가 오버레이 — 순매수선 아래 레이어에 dim 회색 참조선.
+              축 라벨 없이 곡선만(보조 시리즈). 순매수(accent)가 위로 올라온다. */}
+          {priceLine && (
+            <polyline
+              data-testid="program-price-graph"
+              fill="none"
+              stroke="var(--fg-dim)"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+              points={priceLine}
+            />
+          )}
           {segments.map((seg, i) => (
             <polyline
               key={`${seg.kind}${i}`}
