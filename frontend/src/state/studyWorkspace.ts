@@ -246,7 +246,9 @@ function readStorage(): Persisted {
 const REF_CANVAS = { w: 1546, h: 776 };
 const DEFAULT_SIZE: Record<StudyWindowKind, { w: number; h: number }> = {
   chart: { w: 520, h: 360 },
-  book: { w: 680, h: 560 },
+  // book 폭 = min-w 560 + 스크롤바·여유 ~40 = 600 (기존 680 슬랙이 통계 여백을
+  // 만들어 축소, 2026-07-24). live/state/workspace.ts 의 book 정의와 동일 근거.
+  book: { w: 600, h: 560 },
   broker: { w: 236, h: 280 },
   vdist: { w: 300, h: 240 },
   program: { w: 260, h: 200 },
