@@ -16,12 +16,20 @@ describe('hoverMsFromClientX', () => {
     expect(hoverMsFromClientX(200, 100, 200, T0, T1)).toBe((T0 + T1) / 2);
   });
 
-  it('clamps past the left edge to tFirst (no negative overshoot)', () => {
-    expect(hoverMsFromClientX(40, 100, 200, T0, T1)).toBe(T0);
+  it('returns null past the left edge (no clamp to tFirst)', () => {
+    // 좁은 grid 열에서 인접 열/divider 경계에 걸치면 x 가 플롯 밖이다 —
+    // 끝값으로 붙이지 않고 커서를 끈다(거래원 divider 우측 점프 방지).
+    expect(hoverMsFromClientX(40, 100, 200, T0, T1)).toBeNull();
   });
 
-  it('clamps past the right edge to tLast (no overshoot beyond last)', () => {
-    expect(hoverMsFromClientX(9_999, 100, 200, T0, T1)).toBe(T1);
+  it('returns null past the right edge (no clamp to tLast)', () => {
+    expect(hoverMsFromClientX(9_999, 100, 200, T0, T1)).toBeNull();
+  });
+
+  it('keeps the exact edges (ratio 0 and 1 are in-range)', () => {
+    // 경계 자체는 플롯 안 — 끝값을 정확히 읽는다.
+    expect(hoverMsFromClientX(100, 100, 200, T0, T1)).toBe(T0);
+    expect(hoverMsFromClientX(300, 100, 200, T0, T1)).toBe(T1);
   });
 
   it('returns null for a zero-width rect (unmeasurable plot)', () => {

@@ -284,8 +284,9 @@ function Sparkline({
       className="relative block h-4 w-full cursor-crosshair"
       onMouseMove={(e) => {
         const rect = e.currentTarget.getBoundingClientRect();
-        const ms = hoverMsFromClientX(e.clientX, rect.left, rect.width, tsFirst, tsLast);
-        if (ms != null) onHoverMsChange(ms);
+        // 플롯 밖 x 는 null → 커서를 끈다(끝값으로 튀지 않게). 이전의 stale
+        // 유지(if 로 걸러내기)가 divider 경계 우측 점프의 잔존 원인이었다.
+        onHoverMsChange(hoverMsFromClientX(e.clientX, rect.left, rect.width, tsFirst, tsLast));
       }}
       onMouseLeave={() => onHoverMsChange(null)}
     >

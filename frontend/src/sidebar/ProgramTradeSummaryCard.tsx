@@ -199,11 +199,15 @@ function ProgramTradeSparkline({
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const ms = hoverMsFromClientX(e.clientX, rect.left, rect.width, tFirst, tLast);
-          if (ms != null) onHoverMsChange(ms);
-          if (rect.height > 0) {
-            const r = (e.clientY - rect.top) / rect.height;
-            setHoverYRatio(r < 0 ? 0 : r > 1 ? 1 : r);
+          onHoverMsChange(ms);
+          // x 가 플롯 밖(ms null)이면 세로선·가로선·배지 모두 끈다 — 거래원과
+          // 같은 규칙. 안이면 마우스 Y 를 [0,1] 로 담아 가로선·값 배지에 쓴다.
+          if (ms == null || rect.height <= 0) {
+            setHoverYRatio(null);
+            return;
           }
+          const r = (e.clientY - rect.top) / rect.height;
+          setHoverYRatio(r < 0 ? 0 : r > 1 ? 1 : r);
         }}
         onMouseLeave={() => {
           onHoverMsChange(null);
@@ -313,8 +317,11 @@ function ProgramTradeSparkline({
         {showYCursor && cursorValue != null && cursorYPct != null && (
           <span
             data-testid="axis-label-cursor"
-            className="absolute right-0 -translate-y-1/2 rounded-sm bg-accent px-1 text-accent-fg"
-            style={{ top: `${cursorYPct}%` }}
+            className="absolute right-0 -translate-y-1/2 rounded-sm bg-accent px-1 py-px text-accent-fg"
+            // 플롯 상·하 가장자리에서 배지가 잘리지 않게 중심 위치를 안쪽으로
+            // 클램프한다(배지 높이 절반 ≈ 0.5rem 여백). translate-y-1/2 는 유지 —
+            // 중앙대에서는 마우스 Y·가로선과 정확히 같은 높이에 앉는다.
+            style={{ top: `clamp(0.5rem, ${cursorYPct}%, calc(100% - 0.5rem))` }}
           >
             {formatKoreanWonEok(cursorValue)}
           </span>
