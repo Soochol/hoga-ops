@@ -158,3 +158,20 @@ it('검색: 종목명 부분일치로 행 필터 + 헤더 카운트 감소', asy
   expect(screen.queryByText('SK하이닉스')).toBeNull();
   expect(screen.getByText(/1종목/)).toBeInTheDocument();
 });
+
+it('"/" 키로 검색창에 포커스', async () => {
+  renderPage();
+  const input = await screen.findByTestId('heatmap-search');
+  expect(document.activeElement).not.toBe(input);
+  fireEvent.keyDown(window, { key: '/' });
+  expect(document.activeElement).toBe(input);
+});
+
+it('이미 입력 필드에 포커스가 있으면 "/" 는 리터럴(가드)', async () => {
+  renderPage();
+  const input = await screen.findByTestId<HTMLInputElement>('heatmap-search');
+  input.focus();
+  // shouldIgnoreEvent 가드로 preventDefault 되지 않아야 "/" 가 타이핑된다.
+  const evt = fireEvent.keyDown(input, { key: '/' });
+  expect(evt).toBe(true); // not cancelled (preventDefault 미호출)
+});

@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { shouldIgnoreEvent } from '../util/keyboard';
 import {
   useHeatmap, useCreateHeatmapFolder, useReorderHeatmapEntries,
   useRemoveFromHeatmap, useMoveHeatmapEntries,
@@ -55,6 +56,21 @@ export function Heatmap() {
   const [query, setQuery] = useState('');
   const visibleGroups = useMemo(() => filterGroups(orderedGroups, query), [orderedGroups, query]);
   const isSearching = query.trim() !== '';
+  // "/" 로 검색창에 바로 포커스 — /live 의 LiveSymbolSearch 와 같은 관례. 공유
+  // shouldIgnoreEvent 가드가 이미 입력 필드(다른 input 포함)에 포커스가 있으면
+  // 건너뛰므로, 검색 중에는 "/" 가 리터럴로 타이핑된다. 리스너는 이 페이지
+  // 마운트 동안만 활성이라 다른 라우트에 영향이 없다.
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== '/' || shouldIgnoreEvent(e.target)) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showCollect, setShowCollect] = useState(false);
   // 단일 종목 수집 스코프(행 메뉴 '지난 N일 수집'). null 이면 전체/그룹 다이얼로그.
@@ -113,7 +129,7 @@ export function Heatmap() {
               disabled={collectScopes.length === 0}>
               ⬇ 데이터 수집
             </ToolbarButton>
-            <HeatmapSearchInput query={query} onQuery={setQuery} testId="heatmap-search" className="w-44" />
+            <HeatmapSearchInput query={query} onQuery={setQuery} inputRef={searchRef} testId="heatmap-search" className="w-44" />
             {/* 정렬 = 우측 레일 드로어와 공유하는 아이콘 순환 버튼(manual→desc→asc). 종목=그룹 내
                 순서, 그룹=폴더 순서(직교 축). 라벨이 정렬 키(등락률)의 축을 알린다. */}
             <SortCycleButton label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />
