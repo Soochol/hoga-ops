@@ -26,7 +26,11 @@ def connect_bounded(
     max_temp_directory_size: str | None = None,
 ) -> duckdb.DuckDBPyConnection:
     limit = memory_limit or os.environ.get("HOGA_DUCKDB_MEMORY_LIMIT", DEFAULT_MEMORY_LIMIT)
-    tmp = temp_directory or resolve_data_dir() / "duckdb-tmp"
+    tmp = (
+        resolve_data_dir() / "duckdb-tmp"
+        if temp_directory is None
+        else temp_directory
+    )
     tmp.mkdir(parents=True, exist_ok=True)
     max_tmp = max_temp_directory_size or os.environ.get(
         "HOGA_DUCKDB_MAX_TEMP_SIZE", DEFAULT_MAX_TEMP_SIZE

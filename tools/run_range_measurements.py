@@ -6,7 +6,6 @@ import argparse
 import asyncio
 import gzip
 import hashlib
-import io
 import json
 import math
 import re
@@ -19,7 +18,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TextIO
 from urllib.parse import urlencode
 
 from fastapi import FastAPI
@@ -111,9 +110,29 @@ def _validate_source_fixture(source: Path) -> None:
         raise ReflinkCloneError(f"source fixture contains symlink: {relative}")
 
 
+def _resolve_source_fixture(source: Path) -> Path:
+    if source.is_symlink():
+        raise ReflinkCloneError("source fixture must not be a symlink")
+    try:
+        resolved = source.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ReflinkCloneError(
+            "source fixture must be an existing resolvable directory"
+        ) from exc
+    _validate_source_fixture(resolved)
+    return resolved
+
+
+def _assert_outside_source(source: Path, candidate: Path) -> None:
+    resolved_candidate = candidate.resolve(strict=False)
+    if resolved_candidate == source or source in resolved_candidate.parents:
+        raise ReflinkCloneError("measurement temp root must be outside source fixture")
+
+
 def clone_fixture_reflink(source: Path, destination: Path) -> None:
     """Clone with mandatory reflinks; never fall back to a byte-for-byte copy."""
-    _validate_source_fixture(source)
+    source = _resolve_source_fixture(source)
+    _assert_outside_source(source, destination)
     if destination.exists():
         raise ReflinkCloneError("reflink destination must not already exist")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -303,9 +322,13 @@ async def measure_asgi_response(
     }
 
 
-def create_range_measurement_app(data_dir: Path) -> tuple[FastAPI, QueryEngine]:
+def create_range_measurement_app(
+    data_dir: Path,
+    *,
+    temp_directory: Path | None = None,
+) -> tuple[FastAPI, QueryEngine]:
     """Build only the real Range route/model and production GZip middleware."""
-    engine = QueryEngine(data_dir)
+    engine = QueryEngine(data_dir, temp_directory=temp_directory)
     app = FastAPI(title="Range measurement app")
     app.add_middleware(GZipMiddleware, minimum_size=1_024)
     app.include_router(build_router(engine))
@@ -322,8 +345,12 @@ async def measure_range_endpoint_case(
     from_date: str,
     to_date: str,
     accept_encoding: Literal["identity", "gzip"],
+    temp_directory: Path | None = None,
 ) -> dict[str, object]:
-    app, engine = create_range_measurement_app(data_dir)
+    app, engine = create_range_measurement_app(
+        data_dir,
+        temp_directory=temp_directory,
+    )
     try:
         with fixture_only_trading_calendar():
             measurement = await measure_asgi_response(
@@ -358,6 +385,9 @@ def _run_child_process(
     window: RangeWindow,
     code: str,
 ) -> ChildExecution:
+    trial_kind = label.rsplit(":", maxsplit=3)[-3]
+    if trial_kind not in {"cold", "warm"}:
+        raise ValueError("child label must contain a cold or warm trial kind")
     manifest_path = clone_path.parent / "request-manifest.json"
     manifest_path.write_text(manifest.manifest.canonical_json(), encoding="utf-8")
     command = [
@@ -367,6 +397,8 @@ def _run_child_process(
         "_child",
         "--leg",
         leg,
+        "--trial-kind",
+        trial_kind,
         "--data-dir",
         str(clone_path),
         "--label",
@@ -558,6 +590,7 @@ def _evidence_issues(
     leg_results: Mapping[str, Mapping[str, object]],
 ) -> tuple[list[str], list[str]]:
     semantic_issues: list[str] = []
+    expected_warmup_runs = 1 if trial_kind == "warm" else 0
     for leg in EVIDENCE_LEGS:
         semantic_issues.extend(
             _manifest_metadata_issues(
@@ -567,6 +600,8 @@ def _evidence_issues(
                 loaded=loaded,
             )
         )
+        if leg_results[leg].get("warmup_runs") != expected_warmup_runs:
+            semantic_issues.append(f"{leg}_warmup_runs")
     semantic_issues.extend(_profile_evidence_issues(leg_results["profile"]))
     semantic_issues.extend(
         _endpoint_evidence_issues(
@@ -599,12 +634,14 @@ def run_measurement_matrix(
     manifests: Sequence[LoadedRequestManifest],
     cold_trials: int,
     warm_trials: int,
+    output: TextIO,
     commit_sha: str | None = None,
     clone_fixture: Callable[[Path, Path], None] = clone_fixture_reflink,
     run_child: ChildRunner = _run_child_process,
-) -> str:
+) -> None:
     """Run each evidence leg in a fresh process/reflink clone and join by trial."""
-    _validate_source_fixture(source_fixture)
+    source_fixture = _resolve_source_fixture(source_fixture)
+    _assert_outside_source(source_fixture, source_fixture.parent)
     if not windows or not manifests:
         raise ValueError("at least one window and request manifest are required")
     if cold_trials < 0 or warm_trials < 0 or cold_trials + warm_trials == 0:
@@ -612,7 +649,6 @@ def run_measurement_matrix(
 
     fixture_identity = _source_fixture_identity(source_fixture)
     resolved_commit_sha = commit_sha or _commit_sha()
-    output = io.StringIO()
     trial_counts: tuple[tuple[TrialKind, int], ...] = (
         ("cold", cold_trials),
         ("warm", warm_trials),
@@ -628,11 +664,13 @@ def run_measurement_matrix(
                     leg_results: dict[str, Mapping[str, object]] = {}
                     exit_statuses: dict[str, int] = {}
                     cache_states: dict[str, dict[str, object]] = {}
+                    source_cache_state = _initial_cache_state(source_fixture)
                     for leg in EVIDENCE_LEGS:
                         with tempfile.TemporaryDirectory(
                             prefix=".hoga-range-measure-",
                             dir=source_fixture.parent,
                         ) as temp_dir:
+                            _assert_outside_source(source_fixture, Path(temp_dir))
                             clone_path = Path(temp_dir) / "fixture"
                             clone_fixture(source_fixture, clone_path)
                             cache_states[leg] = _initial_cache_state(clone_path)
@@ -660,8 +698,14 @@ def run_measurement_matrix(
                                     "request_manifest_sha256": loaded.manifest.sha256(),
                                     "commit_sha": resolved_commit_sha,
                                 }
-                                print(json.dumps(failure, sort_keys=True), file=output)
-                                raise ChildMeasurementError(output.getvalue().rstrip())
+                                print(
+                                    json.dumps(failure, sort_keys=True),
+                                    file=output,
+                                    flush=True,
+                                )
+                                raise ChildMeasurementError(
+                                    f"{trial_group} child failed: {leg}"
+                                )
                             leg_results[leg] = execution.result
                     if _source_fixture_identity(source_fixture) != fixture_identity:
                         raise RuntimeError("declared immutable source fixture changed")
@@ -671,6 +715,14 @@ def run_measurement_matrix(
                         loaded=loaded,
                         leg_results=leg_results,
                     )
+                    if trial_kind == "cold" and (
+                        source_cache_state["state"] == "populated"
+                        or any(
+                            state["state"] == "populated"
+                            for state in cache_states.values()
+                        )
+                    ):
+                        gate_issues.append("cold_cache_not_empty")
                     joined = {
                         "record_type": "range_trial",
                         "status": "ok" if not semantic_issues else "EVIDENCE_INVALID",
@@ -689,6 +741,7 @@ def run_measurement_matrix(
                         "request_manifest_sha256": loaded.manifest.sha256(),
                         "request_manifest": loaded.manifest.normalized(),
                         "source_fixture_identity": fixture_identity,
+                        "source_cache_state": source_cache_state,
                         "initial_cache_state": cache_states,
                         "os_cache_state": "uncontrolled",
                         "child_exit_status": exit_statuses,
@@ -699,8 +752,11 @@ def run_measurement_matrix(
                             "gzip": leg_results["endpoint_gzip"],
                         },
                     }
-                    print(json.dumps(joined, ensure_ascii=False, sort_keys=True), file=output)
-    return output.getvalue()
+                    print(
+                        json.dumps(joined, ensure_ascii=False, sort_keys=True),
+                        file=output,
+                        flush=True,
+                    )
 
 
 def _parse_window(value: str) -> RangeWindow:
@@ -741,6 +797,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     child_parser = subparsers.add_parser("_child")
     child_parser.add_argument("--leg", choices=EVIDENCE_LEGS, required=True)
+    child_parser.add_argument("--trial-kind", choices=("cold", "warm"), required=True)
     child_parser.add_argument("--data-dir", type=Path, required=True)
     child_parser.add_argument("--label", required=True)
     child_parser.add_argument("--request-manifest", type=Path, required=True)
@@ -753,10 +810,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _run_child_command(args: argparse.Namespace) -> dict[str, object]:
     loaded = load_request_manifest(args.request_manifest)
+    temp_directory = args.data_dir / ".measurement" / "duckdb-tmp"
+    warmup_runs = 1 if args.trial_kind == "warm" else 0
     if args.leg == "profile":
-        engine = QueryEngine(args.data_dir)
+        engine = QueryEngine(args.data_dir, temp_directory=temp_directory)
         try:
-            return profile_range_case(
+            if warmup_runs:
+                profile_range_case(
+                    engine,
+                    label=args.label,
+                    request_manifest=loaded.manifest,
+                    code=args.code,
+                    from_date=args.from_date,
+                    to_date=args.to_date,
+                    manifest_source_name=args.manifest_source_name,
+                )
+            result = profile_range_case(
                 engine,
                 label=args.label,
                 request_manifest=loaded.manifest,
@@ -767,21 +836,29 @@ def _run_child_command(args: argparse.Namespace) -> dict[str, object]:
             )
         finally:
             engine.close()
+        return {**result, "warmup_runs": warmup_runs}
     encoding: Literal["identity", "gzip"] = (
         "identity" if args.leg == "endpoint_identity" else "gzip"
     )
-    return asyncio.run(
-        measure_range_endpoint_case(
-            data_dir=args.data_dir,
-            label=args.label,
-            request_manifest=loaded.manifest,
-            manifest_source_name=args.manifest_source_name,
-            code=args.code,
-            from_date=args.from_date,
-            to_date=args.to_date,
-            accept_encoding=encoding,
-        )
-    )
+
+    async def run_endpoint_child() -> dict[str, object]:
+        kwargs = {
+            "data_dir": args.data_dir,
+            "label": args.label,
+            "request_manifest": loaded.manifest,
+            "manifest_source_name": args.manifest_source_name,
+            "code": args.code,
+            "from_date": args.from_date,
+            "to_date": args.to_date,
+            "accept_encoding": encoding,
+            "temp_directory": temp_directory,
+        }
+        if warmup_runs:
+            await measure_range_endpoint_case(**kwargs)
+        return await measure_range_endpoint_case(**kwargs)
+
+    result = asyncio.run(run_endpoint_child())
+    return {**result, "warmup_runs": warmup_runs}
 
 
 def main() -> None:
@@ -794,17 +871,19 @@ def main() -> None:
         parser.error("--source-fixture must be an existing directory")
     try:
         manifests = tuple(load_request_manifest(path) for path in args.request_manifest)
-        output = run_measurement_matrix(
+        run_measurement_matrix(
             source_fixture=args.source_fixture,
             code=args.code,
             windows=tuple(args.window),
             manifests=manifests,
             cold_trials=args.cold_trials,
             warm_trials=args.warm_trials,
+            output=sys.stdout,
         )
-    except (ChildMeasurementError, ReflinkCloneError, ValueError) as exc:
+    except ChildMeasurementError as exc:
+        parser.exit(1, f"{parser.prog}: error: {exc}\n")
+    except (ReflinkCloneError, ValueError) as exc:
         parser.error(str(exc))
-    sys.stdout.write(output)
 
 
 if __name__ == "__main__":

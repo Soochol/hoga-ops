@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
+import io
 import json
 import shutil
 import subprocess
@@ -12,16 +14,21 @@ import pytest
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 
+from hoga.api import queries
 from hoga.api.bundle import _empty_range_bundle
 from hoga.api.models import QuoteRatio, QuoteRatioPoint, RangeBundle
+from hoga.api.queries import QueryEngine
+from tools import run_range_measurements
 from tools.range_request_manifest import (
     LoadedRequestManifest,
     RangeRequestManifest,
 )
 from tools.run_range_measurements import (
     ChildExecution,
+    ChildMeasurementError,
     RangeWindow,
     ReflinkCloneError,
+    _run_child_command,
     clone_fixture_reflink,
     create_range_measurement_app,
     measure_asgi_response,
@@ -57,6 +64,122 @@ def _manifest(*, name: str = "frontend-default-sidecar") -> RangeRequestManifest
             },
         }
     )
+
+
+def _successful_child(
+    leg: str,
+    clone_path: Path,
+    label: str,
+    manifest: LoadedRequestManifest,
+    window: RangeWindow,
+    code: str,
+) -> ChildExecution:
+    metadata = {
+        "configuration_name": manifest.manifest.name,
+        "request_manifest_name": manifest.source_name,
+        "request_manifest_sha256": manifest.manifest.sha256(),
+        "request_manifest": manifest.manifest.normalized(),
+        "trading_calendar_policy": "fixture-weekday-lenient-v1",
+        "label": label,
+        "warmup_runs": 1 if ":warm:" in label else 0,
+    }
+    if leg == "profile":
+        result = {
+            **metadata,
+            "total_ms": 2.0,
+            "result_counts": {"segments": 1},
+            "functions": {"slice": {"total_ms": 1.0, "calls": 1}},
+        }
+    else:
+        result = {
+            **metadata,
+            "status": 200,
+            "ttfb_ms": 1.0,
+            "end_of_body_ms": 2.0,
+            "raw_body_bytes": 2_000,
+            "gzip_body_bytes": 200 if leg == "endpoint_gzip" else None,
+            "wire_body_bytes": 200 if leg == "endpoint_gzip" else 2_000,
+            "content_encoding": "gzip" if leg == "endpoint_gzip" else "identity",
+            "response_validation_outcome": "valid",
+            "response_validation_error": None,
+            "body_frame_count": 1,
+        }
+    return ChildExecution(returncode=0, result=result, stderr="")
+
+
+def test_query_engine_uses_explicit_clone_local_temp_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[Path | None] = []
+    fake_conn = SimpleNamespace(close=lambda: None)
+    monkeypatch.setattr(
+        queries,
+        "connect_bounded",
+        lambda *, temp_directory=None, **_: seen.append(temp_directory) or fake_conn,
+    )
+
+    temp_directory = tmp_path / "fixture" / ".measurement" / "duckdb-tmp"
+    engine = QueryEngine(tmp_path / "fixture", temp_directory=temp_directory)
+    engine.close()
+
+    assert seen == [temp_directory]
+
+
+def test_query_engine_preserves_default_temp_directory_when_omitted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[Path | None] = []
+    fake_conn = SimpleNamespace(close=lambda: None)
+    monkeypatch.setattr(
+        queries,
+        "connect_bounded",
+        lambda *, temp_directory=None, **_: seen.append(temp_directory) or fake_conn,
+    )
+
+    engine = QueryEngine(tmp_path / "fixture")
+    engine.close()
+
+    assert seen == [None]
+
+
+@pytest.mark.parametrize(
+    "leg",
+    ["profile", "endpoint_identity", "endpoint_gzip"],
+)
+def test_child_leg_uses_clone_local_temp_and_never_resolves_default_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    leg: str,
+) -> None:
+    clone = tmp_path / leg
+    clone.mkdir()
+    manifest = _manifest()
+    manifest_path = tmp_path / f"{leg}-manifest.json"
+    manifest_path.write_text(manifest.canonical_json(), encoding="utf-8")
+
+    def forbidden_default_data_dir() -> Path:
+        raise AssertionError("measurement child must not resolve the default data dir")
+
+    monkeypatch.setattr("hoga.duck.resolve_data_dir", forbidden_default_data_dir)
+
+    result = _run_child_command(
+        argparse.Namespace(
+            leg=leg,
+            data_dir=clone,
+            label=f"range:test:5d:cold:1:{leg}",
+            request_manifest=manifest_path,
+            manifest_source_name="test-manifest.json",
+            code="005930",
+            from_date="20260701",
+            to_date="20260701",
+            trial_kind="cold",
+        )
+    )
+
+    assert result["warmup_runs"] == 0
+    assert (clone / ".measurement" / "duckdb-tmp").is_dir()
 
 
 @pytest.mark.asyncio
@@ -274,6 +397,239 @@ def test_reflink_clone_rejects_source_symlink_escape(
     assert (external / "sentinel").read_text(encoding="utf-8") == "immutable"
 
 
+@pytest.mark.parametrize("source_argument", [".", "lexical-child/.."])
+def test_orchestrator_resolves_source_before_placing_sibling_temp_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_argument: str,
+) -> None:
+    source = tmp_path / "source"
+    (source / "lexical-child").mkdir(parents=True)
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+    clone_destinations: list[Path] = []
+
+    def clone_fixture(source_path: Path, destination: Path) -> None:
+        assert source_path == source.resolve()
+        assert not destination.is_relative_to(source_path)
+        clone_destinations.append(destination)
+        destination.mkdir()
+
+    monkeypatch.chdir(source)
+    output = io.StringIO()
+    run_measurement_matrix(
+        source_fixture=Path(source_argument),
+        code="005930",
+        windows=(RangeWindow("5d", "20260701", "20260707"),),
+        manifests=(loaded,),
+        cold_trials=1,
+        warm_trials=0,
+        output=output,
+        commit_sha="0123456789abcdef",
+        clone_fixture=clone_fixture,
+        run_child=_successful_child,
+    )
+
+    assert len(clone_destinations) == 3
+    assert all(destination.parent.parent == source.parent for destination in clone_destinations)
+    [row] = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert row["gate_eligible"] is True
+
+
+@pytest.mark.parametrize(
+    ("cache_layout", "expected_state", "expected_eligible"),
+    [
+        ("absent", "absent", True),
+        ("empty", "empty", True),
+        ("populated", "populated", False),
+    ],
+)
+def test_cold_trial_eligibility_reflects_source_and_clone_cache_state(
+    tmp_path: Path,
+    cache_layout: str,
+    expected_state: str,
+    expected_eligible: bool,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    if cache_layout != "absent":
+        cache = source / "kis-past-indicators"
+        cache.mkdir()
+        if cache_layout == "populated":
+            (cache / "synthetic.json").write_text("{}", encoding="utf-8")
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+    output = io.StringIO()
+
+    run_measurement_matrix(
+        source_fixture=source,
+        code="005930",
+        windows=(RangeWindow("5d", "20260701", "20260707"),),
+        manifests=(loaded,),
+        cold_trials=1,
+        warm_trials=0,
+        output=output,
+        commit_sha="0123456789abcdef",
+        clone_fixture=shutil.copytree,
+        run_child=_successful_child,
+    )
+
+    [row] = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert row["source_cache_state"]["state"] == expected_state
+    assert {
+        state["state"] for state in row["initial_cache_state"].values()
+    } == {expected_state}
+    assert row["gate_eligible"] is expected_eligible
+    if expected_eligible:
+        assert "cold_cache_not_empty" not in row["evidence_issues"]
+    else:
+        assert row["evidence_issues"].count("cold_cache_not_empty") == 1
+    assert (source / "kis-past-indicators" / "synthetic.json").exists() is (
+        cache_layout == "populated"
+    )
+
+
+@pytest.mark.parametrize(
+    ("leg", "expected_encoding"),
+    [
+        ("profile", None),
+        ("endpoint_identity", "identity"),
+        ("endpoint_gzip", "gzip"),
+    ],
+)
+def test_warm_child_runs_unmeasured_warmup_before_measured_invocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    leg: str,
+    expected_encoding: str | None,
+) -> None:
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+    invocations: list[tuple[Path, Path, str | None]] = []
+
+    if leg == "profile":
+        class FakeEngine:
+            def __init__(
+                self,
+                data_dir: Path,
+                *,
+                temp_directory: Path,
+            ) -> None:
+                self.data_dir = data_dir
+                self.temp_directory = temp_directory
+
+            def close(self) -> None:
+                return None
+
+        def profile_case(
+            engine: FakeEngine,
+            **kwargs: object,
+        ) -> dict[str, object]:
+            invocations.append((engine.data_dir, engine.temp_directory, None))
+            return {"invocation": len(invocations)}
+
+        monkeypatch.setattr(run_range_measurements, "QueryEngine", FakeEngine)
+        monkeypatch.setattr(run_range_measurements, "profile_range_case", profile_case)
+    else:
+        async def endpoint_case(
+            *,
+            data_dir: Path,
+            temp_directory: Path,
+            accept_encoding: str,
+            **kwargs: object,
+        ) -> dict[str, object]:
+            invocations.append((data_dir, temp_directory, accept_encoding))
+            return {"invocation": len(invocations)}
+
+        monkeypatch.setattr(
+            run_range_measurements,
+            "measure_range_endpoint_case",
+            endpoint_case,
+        )
+
+    monkeypatch.setattr(
+        run_range_measurements,
+        "load_request_manifest",
+        lambda _: loaded,
+    )
+    result = _run_child_command(
+        argparse.Namespace(
+            leg=leg,
+            data_dir=clone,
+            label=f"range:test:5d:warm:1:{leg}",
+            request_manifest=tmp_path / "unused.json",
+            manifest_source_name="frontend-default-sidecar.json",
+            code="005930",
+            from_date="20260701",
+            to_date="20260707",
+            trial_kind="warm",
+        )
+    )
+
+    expected_temp = clone / ".measurement" / "duckdb-tmp"
+    assert invocations == [
+        (clone, expected_temp, expected_encoding),
+        (clone, expected_temp, expected_encoding),
+    ]
+    assert result["invocation"] == 2
+    assert result["warmup_runs"] == 1
+
+
+def test_orchestrator_streams_success_and_child_failure_before_raising(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+    child_invocation = 0
+
+    def run_child(
+        leg: str,
+        clone_path: Path,
+        label: str,
+        manifest: LoadedRequestManifest,
+        window: RangeWindow,
+        code: str,
+    ) -> ChildExecution:
+        nonlocal child_invocation
+        child_invocation += 1
+        if child_invocation == 5:
+            return ChildExecution(returncode=23, result=None, stderr="synthetic failure")
+        return _successful_child(leg, clone_path, label, manifest, window, code)
+
+    output = io.StringIO()
+    with pytest.raises(ChildMeasurementError, match="endpoint_identity"):
+        run_measurement_matrix(
+            source_fixture=source,
+            code="005930",
+            windows=(RangeWindow("5d", "20260701", "20260707"),),
+            manifests=(loaded,),
+            cold_trials=2,
+            warm_trials=0,
+            output=output,
+            commit_sha="0123456789abcdef",
+            clone_fixture=shutil.copytree,
+            run_child=run_child,
+        )
+
+    rows = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert [row["status"] for row in rows] == ["ok", "CHILD_FAILED"]
+    assert rows[1]["failed_leg"] == "endpoint_identity"
+    assert rows[1]["child_exit_status"] == {"profile": 0, "endpoint_identity": 23}
+    assert rows[1]["child_stderr"] == "synthetic failure"
+
+
 def test_orchestrator_isolates_every_leg_and_keeps_warm_labels_out_of_cold_rows(
     tmp_path: Path,
 ) -> None:
@@ -312,6 +668,7 @@ def test_orchestrator_isolates_every_leg_and_keeps_warm_labels_out_of_cold_rows(
             "request_manifest": manifest.manifest.normalized(),
             "trading_calendar_policy": "fixture-weekday-lenient-v1",
             "label": label,
+            "warmup_runs": 1 if ":warm:" in label else 0,
         }
         if leg == "profile":
             result = {
@@ -338,19 +695,21 @@ def test_orchestrator_isolates_every_leg_and_keeps_warm_labels_out_of_cold_rows(
             }
         return ChildExecution(returncode=0, result=result, stderr="")
 
-    output = run_measurement_matrix(
+    output = io.StringIO()
+    run_measurement_matrix(
         source_fixture=source,
         code="005930",
         windows=(RangeWindow("5d", "20260701", "20260707"),),
         manifests=(loaded,),
         cold_trials=2,
         warm_trials=1,
+        output=output,
         commit_sha="0123456789abcdef",
         clone_fixture=clone_fixture,
         run_child=run_child,
     )
 
-    rows = [json.loads(line) for line in output.splitlines()]
+    rows = [json.loads(line) for line in output.getvalue().splitlines()]
     assert [row["trial_kind"] for row in rows] == ["cold", "cold", "warm"]
     cold_rows = [row for row in rows if row["trial_kind"] == "cold"]
     assert len(cold_rows) == 2
@@ -403,6 +762,7 @@ def test_orchestrator_marks_http_or_validation_failures_ineligible(
             "request_manifest": manifest.manifest.normalized(),
             "trading_calendar_policy": "fixture-weekday-lenient-v1",
             "label": label,
+            "warmup_runs": 0,
         }
         if leg == "profile":
             result = {
@@ -427,19 +787,21 @@ def test_orchestrator_marks_http_or_validation_failures_ineligible(
             }
         return ChildExecution(returncode=0, result=result, stderr="")
 
-    output = run_measurement_matrix(
+    output = io.StringIO()
+    run_measurement_matrix(
         source_fixture=source,
         code="005930",
         windows=(RangeWindow("5d", "20260701", "20260707"),),
         manifests=(loaded,),
         cold_trials=1,
         warm_trials=0,
+        output=output,
         commit_sha="0123456789abcdef",
         clone_fixture=clone_fixture,
         run_child=run_child,
     )
 
-    [row] = [json.loads(line) for line in output.splitlines()]
+    [row] = [json.loads(line) for line in output.getvalue().splitlines()]
     assert row["status"] == "EVIDENCE_INVALID"
     assert row["gate_eligible"] is False
     assert "endpoint_identity_status" in row["evidence_issues"]
