@@ -74,3 +74,28 @@ After approval and collection, apply this order exactly:
 4. Only if restart duplicate fetches consume at least 20% of past-minute calls in
    three separate measured sessions, or development quota is materially constrained,
    may an ADR-0095 disk-cache reversal be proposed.
+
+### Range-sidecar decision
+
+`NEEDS_ISOLATED_FIXTURE` remains the terminal pending decision. The range record
+contains no isolated 60 Stock-Date cold-run p95, raw or gzip response-byte, or
+function-level dominant-slice evidence, so neither `GO`, `NO-GO`, nor
+`NEEDS_MORE_BREAKDOWN` can be assigned. No range performance spec, implementation
+plan, endpoint, cache, or production-code change is authorized by this state.
+
+Once an isolated fixed fixture is available, collect three cold runs for the same
+60 Stock-Date corpus. Record the cold p95, raw and gzip response bytes, and each
+run's function-level share of total time. Apply the future gate in this order:
+
+1. If the isolated fixture or any required measurement is absent, retain
+   `NEEDS_ISOLATED_FIXTURE` and stop.
+2. If cold p95 is at most 1,000ms and the raw response is at most 5MB, decide
+   `NO-GO`; preserve the current `frontend/src/api/range.ts` delta merge and
+   current caches.
+3. If either threshold is exceeded and one profiled function accounts for at
+   least 35% of total time in at least two of the three cold runs, decide `GO`
+   and plan only that dominant slice.
+4. If either threshold is exceeded but no profiled function reaches the 35%
+   threshold in at least two cold runs, decide `NEEDS_MORE_BREAKDOWN`; add
+   nested timing only for the unmeasured internal stages, rerun the same corpus,
+   and do not pursue a broad optimization.
