@@ -1,9 +1,10 @@
 """Stage 7-β — In-memory ring buffer for live snapshots."""
+
 import asyncio
 
 import pytest
 
-from hoga.live.buffer import LiveBuffer, MAX_BUFFER_ENTRIES
+from hoga.live.buffer import MAX_BUFFER_ENTRIES, LiveBuffer
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 
 
@@ -14,11 +15,15 @@ def _snap(t_ms: int, kind: SnapshotKind, payload: dict | None = None) -> LiveSna
 @pytest.mark.asyncio
 async def test_publish_and_read_latest() -> None:
     buf = LiveBuffer()
-    await buf.publish("005930", [
-        _snap(1, SnapshotKind.OB, {"asks": [], "bids": []}),
-        _snap(1, SnapshotKind.TRADE, {"trades": [{"price": 100}]}),
-        _snap(1, SnapshotKind.BROKER, {"buy_top": []}),
-    ], now_ms=1)
+    await buf.publish(
+        "005930",
+        [
+            _snap(1, SnapshotKind.OB, {"asks": [], "bids": []}),
+            _snap(1, SnapshotKind.TRADE, {"trades": [{"price": 100}]}),
+            _snap(1, SnapshotKind.BROKER, {"buy_top": []}),
+        ],
+        now_ms=1,
+    )
     latest = await buf.get_latest("005930")
     assert latest is not None
     assert latest["t_ms"] == 1
@@ -38,11 +43,15 @@ async def test_get_series_returns_all_published() -> None:
     buf = LiveBuffer()
     for tick in range(3):
         t = (tick + 1) * 10_000
-        await buf.publish("005930", [
-            _snap(t, SnapshotKind.OB, {"total_bid_qty": 100 + tick}),
-            _snap(t, SnapshotKind.TRADE, {"trades": [{"qty": tick}]}),
-            _snap(t, SnapshotKind.BROKER, {"buy_top": []}),
-        ], now_ms=t)
+        await buf.publish(
+            "005930",
+            [
+                _snap(t, SnapshotKind.OB, {"total_bid_qty": 100 + tick}),
+                _snap(t, SnapshotKind.TRADE, {"trades": [{"qty": tick}]}),
+                _snap(t, SnapshotKind.BROKER, {"buy_top": []}),
+            ],
+            now_ms=t,
+        )
     series = await buf.get_series("005930")
     assert series["code"] == "005930"
     assert len(series["snapshots"]) == 3
@@ -57,16 +66,22 @@ async def test_buffer_caps_at_MAX_BUFFER_ENTRIES_per_kind() -> None:
     buf = LiveBuffer()
     # Publish MAX + 50 of each kind for one code
     for tick in range(MAX_BUFFER_ENTRIES + 50):
-        await buf.publish("005930", [
-            _snap(tick, SnapshotKind.OB, {"i": tick}),
-            _snap(tick, SnapshotKind.TRADE, {"trades": []}),
-            _snap(tick, SnapshotKind.BROKER, {}),
-        ], now_ms=tick)
+        await buf.publish(
+            "005930",
+            [
+                _snap(tick, SnapshotKind.OB, {"i": tick}),
+                _snap(tick, SnapshotKind.TRADE, {"trades": []}),
+                _snap(tick, SnapshotKind.BROKER, {}),
+            ],
+            now_ms=tick,
+        )
     series = await buf.get_series("005930")
     assert len(series["snapshots"]) == MAX_BUFFER_ENTRIES
     # FIFO drop: oldest is no longer at index 0; the earliest retained is
     # the 50th entry we published.
     assert series["snapshots"][0]["i"] == 50
+    stats = await buf.stats_snapshot()
+    assert stats["total_entries"] == MAX_BUFFER_ENTRIES * 3
 
 
 @pytest.mark.asyncio
@@ -103,15 +118,34 @@ async def test_subscribe_receives_published_entries() -> None:
     buf = LiveBuffer()
     q = buf.subscribe("005930")
     try:
-        await buf.publish("005930", [
-            _snap(1, SnapshotKind.OB, {"x": 1}),
-            _snap(1, SnapshotKind.TRADE, {"trades": []}),
-            _snap(1, SnapshotKind.BROKER, {}),
-        ])
+        await buf.publish(
+            "005930",
+            [
+                _snap(1, SnapshotKind.OB, {"x": 1}),
+                _snap(1, SnapshotKind.TRADE, {"trades": []}),
+                _snap(1, SnapshotKind.BROKER, {}),
+            ],
+        )
         # Three entries received in order
         for _ in range(3):
             entry = await asyncio.wait_for(q.get(), timeout=1.0)
             assert entry["t_ms"] == 1
+    finally:
+        buf.unsubscribe("005930", q)
+
+
+@pytest.mark.asyncio
+async def test_stats_track_subscriber_overflow_drop() -> None:
+    buf = LiveBuffer()
+    q = buf.subscribe("005930")
+    try:
+        await buf.publish(
+            "005930",
+            [_snap(t_ms, SnapshotKind.OB, {"x": t_ms}) for t_ms in range(1_025)],
+            now_ms=1_024,
+        )
+        stats = await buf.stats_snapshot()
+        assert stats["subscriber_drops"] == 1
     finally:
         buf.unsubscribe("005930", q)
 
@@ -145,13 +179,41 @@ async def test_publish_evicts_by_time() -> None:
     old = LiveSnapshot(t_ms=1_000, kind=SnapshotKind.OB, payload={"code": "005930"})
     new = LiveSnapshot(t_ms=2_000_000, kind=SnapshotKind.OB, payload={"code": "005930"})
     await buf.publish("005930", [old], now_ms=1_000)
-    await buf.publish("005930", [new], now_ms=2_000_000)   # old(1초)는 컷오프 밖
+    await buf.publish("005930", [new], now_ms=2_000_000)  # old(1초)는 컷오프 밖
     series = await buf.get_series("005930")
     t_list = [e["t_ms"] for e in series["snapshots"]]
     assert 1_000 not in t_list and 2_000_000 in t_list
 
 
+@pytest.mark.asyncio
+async def test_stats_track_publish_high_water_and_drop() -> None:
+    buf = LiveBuffer(retention_ms=100)
+    await buf.publish(
+        "005930",
+        [
+            _snap(100, SnapshotKind.OB, {"x": 1}),
+            _snap(100, SnapshotKind.TRADE, {"trades": []}),
+        ],
+        now_ms=100,
+    )
+    first = await buf.stats_snapshot()
+    assert first["published_total"] == 2
+    assert first["total_entries"] == 2
+    assert first["high_water_entries"] == 2
+
+    await buf.publish(
+        "005930",
+        [_snap(1_000, SnapshotKind.OB, {"x": 2})],
+        now_ms=1_000,
+    )
+    second = await buf.stats_snapshot()
+    assert second["published_total"] == 3
+    assert second["total_entries"] == 2
+    assert second["high_water_entries"] == 2
+
+
 # ── drop_codes_except 테스트 3건 (Task 11 / Task 4 리뷰 Minor 3) ──────────────
+
 
 @pytest.mark.asyncio
 async def test_drop_codes_except_removes_evicted_keeps_retained() -> None:
@@ -159,14 +221,22 @@ async def test_drop_codes_except_removes_evicted_keeps_retained() -> None:
     keep 코드는 보존."""
     buf = LiveBuffer()
     # 두 코드에 두 kind씩 publish
-    await buf.publish("005930", [
-        _snap(1, SnapshotKind.OB, {"x": 1}),
-        _snap(1, SnapshotKind.TRADE, {"trades": []}),
-    ], now_ms=1_000)
-    await buf.publish("000660", [
-        _snap(1, SnapshotKind.OB, {"x": 2}),
-        _snap(1, SnapshotKind.TRADE, {"trades": []}),
-    ], now_ms=1_000)
+    await buf.publish(
+        "005930",
+        [
+            _snap(1, SnapshotKind.OB, {"x": 1}),
+            _snap(1, SnapshotKind.TRADE, {"trades": []}),
+        ],
+        now_ms=1_000,
+    )
+    await buf.publish(
+        "000660",
+        [
+            _snap(1, SnapshotKind.OB, {"x": 2}),
+            _snap(1, SnapshotKind.TRADE, {"trades": []}),
+        ],
+        now_ms=1_000,
+    )
 
     # 005930만 keep — 000660은 축출
     await buf.drop_codes_except({"005930"})
@@ -175,6 +245,8 @@ async def test_drop_codes_except_removes_evicted_keeps_retained() -> None:
     assert await buf.get_latest("005930") is not None
     # 축출 코드는 사라짐
     assert await buf.get_latest("000660") is None
+    stats = await buf.stats_snapshot()
+    assert stats["total_entries"] == 2
 
 
 @pytest.mark.asyncio
@@ -186,16 +258,16 @@ async def test_publish_eviction_boundary_at_cutoff() -> None:
     now_ms = 200_000
     cutoff = now_ms - retention_ms  # == 100_000
 
-    stale = _snap(cutoff - 1, SnapshotKind.OB, {"label": "stale"})    # 제거 대상
+    stale = _snap(cutoff - 1, SnapshotKind.OB, {"label": "stale"})  # 제거 대상
     boundary = _snap(cutoff, SnapshotKind.OB, {"label": "boundary"})  # 유지 대상
     fresh = _snap(now_ms, SnapshotKind.OB, {"label": "fresh"})
 
     await buf.publish("005930", [stale, boundary, fresh], now_ms=now_ms)
     series = await buf.get_series("005930")
     t_list = [e["t_ms"] for e in series["snapshots"]]
-    assert (cutoff - 1) not in t_list      # stale 제거
-    assert cutoff in t_list                # boundary 유지 (< 의미론)
-    assert now_ms in t_list               # fresh 유지
+    assert (cutoff - 1) not in t_list  # stale 제거
+    assert cutoff in t_list  # boundary 유지 (< 의미론)
+    assert now_ms in t_list  # fresh 유지
 
 
 @pytest.mark.asyncio
@@ -209,11 +281,15 @@ async def test_publish_mixed_kind_independent_eviction() -> None:
 
     # OB: 오래된 것과 새 것 함께 publish
     # TRADE: 새 것만 publish
-    await buf.publish("005930", [
-        _snap(cutoff - 1, SnapshotKind.OB, {"label": "old_ob"}),
-        _snap(now_ms, SnapshotKind.OB, {"label": "new_ob"}),
-        _snap(now_ms, SnapshotKind.TRADE, {"trades": [{"label": "new_trade"}]}),
-    ], now_ms=now_ms)
+    await buf.publish(
+        "005930",
+        [
+            _snap(cutoff - 1, SnapshotKind.OB, {"label": "old_ob"}),
+            _snap(now_ms, SnapshotKind.OB, {"label": "new_ob"}),
+            _snap(now_ms, SnapshotKind.TRADE, {"trades": [{"label": "new_trade"}]}),
+        ],
+        now_ms=now_ms,
+    )
 
     series = await buf.get_series("005930")
     ob_times = [e["t_ms"] for e in series["snapshots"]]
