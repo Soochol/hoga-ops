@@ -354,6 +354,7 @@ function Sparkline({
             y2={H}
             stroke="var(--fg-dimmer)"
             strokeWidth={1}
+            strokeDasharray="3,3"
             vectorEffect="non-scaling-stroke"
           />
         )}

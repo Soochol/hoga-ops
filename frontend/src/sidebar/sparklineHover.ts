@@ -17,3 +17,11 @@ export function hoverMsFromClientX(
   const clamped = ratio < 0 ? 0 : ratio > 1 ? 1 : ratio;
   return tFirst + clamped * (tLast - tFirst);
 }
+
+/** 플롯 높이 대비 커서 Y 비율(0=위,1=아래) → 그 높이의 값. 스파크라인의
+ *  toY(v)=H-((v-vMin)/vSpan)·H 를 뒤집은 것 — 데이터 곡선에 스냅하지 않고
+ *  마우스가 가리키는 실제 높이를 읽는다(캔들차트 Normal crosshair). r=0 은
+ *  플롯 상단(vMax), r=1 은 하단(vMin). */
+export function valueFromYRatio(ratio: number, vMin: number, vMax: number): number {
+  return vMax - ratio * (vMax - vMin);
+}
