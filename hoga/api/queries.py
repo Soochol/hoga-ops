@@ -82,9 +82,14 @@ class QueryEngine:
     modules and are called by routes.py directly with this engine's connection.
     """
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        *,
+        temp_directory: Path | None = None,
+    ) -> None:
         self.data_dir = data_dir
-        self._conn = connect_bounded()
+        self._conn = connect_bounded(temp_directory=temp_directory)
         # Per-call mtime-validated cache for list_stock_dates. See
         # _CachedStockDate docstring; keyed by (date, code).
         self._stock_date_cache: dict[tuple[str, str], _CachedStockDate] = {}
@@ -221,8 +226,9 @@ class QueryEngine:
         price/volume aggregates + dir stat() for captured_at and total size.
         """
         meta = json.loads((code_dir / "meta.json").read_text(encoding="utf-8"))
-        _state = classify_from_meta(meta).state          # original meta; warn note discarded (StockDate has no warn field)
-        norm_meta, _ = normalize_session_bounds(meta)    # value-conversion only
+        # StockDate has no field for classify_from_meta's warning note.
+        _state = classify_from_meta(meta).state
+        norm_meta, _ = normalize_session_bounds(meta)
         snap_path = code_dir / "snapshots.parquet"
         # snapshots.ts_ms is stored as HHMMSSmmm (per existing tests
         # asserting e.g. ts_ms == 90010435). Convert to Unix ms here.
@@ -329,8 +335,8 @@ class QueryEngine:
         is_partial-by-count case with no discrete ranges). Raises
         :class:`StockDateNotFound` if the source has no meta.json.
         """
-        from hoga.api.disk_state import analyze_gaps
-        from hoga.api.timeenc import HogaMs
+        from hoga.api.disk_state import analyze_gaps  # noqa: PLC0415
+        from hoga.api.timeenc import HogaMs  # noqa: PLC0415
 
         meta = self.get_meta(date, code, source)
         close_ms = meta.get("regular_session_close_ms")
@@ -357,7 +363,7 @@ class QueryEngine:
             (HogaMs(r[0]) for r in rows), session_close_ms=HogaMs(close_ms),
         )
         ranges = [(int(s), int(e)) for s, e in analysis.gap_ranges]
-        sparse = analysis.in_session_count < 2 and not ranges
+        sparse = analysis.in_session_count < 2 and not ranges  # noqa: PLR2004
         return ranges, sparse, "computed"
 
     def list_stock_dates_in_range(

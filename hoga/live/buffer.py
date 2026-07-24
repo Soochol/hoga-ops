@@ -25,12 +25,13 @@ Scaling ceiling (ADR-0116 리뷰 Major, 유예/검토 — 실측 후 후속 PR):
   별도 설계(ADR)로 진행한다. 현재 안전핀: MAX_BUFFER_ENTRIES 하드캡 + 시간 eviction +
   drop_codes_except(Live Set 축출 즉시 회수).
 """
+
 from __future__ import annotations
 
 import asyncio
 import time
 from collections import deque
-from typing import Iterable
+from collections.abc import Iterable
 
 from .snapshot import LiveSnapshot, SnapshotKind
 
@@ -55,6 +56,10 @@ class LiveBuffer:
         self._buf: dict[tuple[str, str], deque[dict]] = {}
         # SSE push: per-code set of subscriber queues.
         self._subscribers: dict[str, set[asyncio.Queue[dict]]] = {}
+        self._total_entries = 0
+        self._published_total = 0
+        self._subscriber_drops = 0
+        self._high_water_entries = 0
 
     def subscribe(self, code: str) -> asyncio.Queue[dict]:
         """Subscribe to publishes for `code`. Returns a queue.
@@ -97,10 +102,18 @@ class LiveBuffer:
                 # which kind they received. Existing get_latest / get_series
                 # helpers strip the `kind` field when building their responses.
                 entry = {"t_ms": s.t_ms, "kind": s.kind.value, **s.payload}
+                before = len(d)
                 d.append(entry)
+                self._total_entries += len(d) - before
+                self._published_total += 1
                 entries.append(entry)
                 while d and d[0]["t_ms"] < cutoff:  # 시간 기반 eviction
                     d.popleft()
+                    self._total_entries -= 1
+                self._high_water_entries = max(
+                    self._high_water_entries,
+                    self._total_entries,
+                )
 
         # Notify subscribers AFTER releasing the lock so slow consumers don't
         # block the publisher. Bounded queues drop on overflow.
@@ -114,7 +127,7 @@ class LiveBuffer:
                         # Subscriber is too slow — drop this entry rather than
                         # blocking. Subscribers can recover via get_series() if
                         # they need the missing data.
-                        pass
+                        self._subscriber_drops += 1
 
     async def stats_snapshot(self) -> dict[str, object]:
         """Size-only observability. A ring buffer has no hit/miss — it always
@@ -126,7 +139,10 @@ class LiveBuffer:
             codes = len({code for (code, _kind) in self._buf})
             subscribers = sum(len(s) for s in self._subscribers.values())
         return {
-            "total_entries": sum(per_kind.values()),
+            "total_entries": self._total_entries,
+            "published_total": self._published_total,
+            "subscriber_drops": self._subscriber_drops,
+            "high_water_entries": self._high_water_entries,
             "per_kind": per_kind,
             "codes": codes,
             "subscribers": subscribers,
@@ -173,6 +189,7 @@ class LiveBuffer:
         """
         async with self._lock:
             for key in [k for k in self._buf if k[0] not in keep]:
+                self._total_entries -= len(self._buf[key])
                 del self._buf[key]
 
     async def get_series(self, code: str) -> dict:

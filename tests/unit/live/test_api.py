@@ -1,8 +1,9 @@
 """Stage 7-α / 7-β — /api/live router."""
+
+import polars as pl
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import polars as pl
 
 
 @pytest.fixture(autouse=True)
@@ -25,8 +26,8 @@ def _make_test_app(
     data_dir=None,
 ):
     """Mount the live router on a bare FastAPI for isolated testing."""
-    from hoga.live import lifecycle
-    from hoga.live.api import build_router
+    from hoga.live import lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
 
     app = FastAPI()
     app.include_router(
@@ -43,7 +44,8 @@ def _make_test_app(
 
 
 def test_get_live_status_returns_running_false_initially() -> None:
-    from hoga.live import lifecycle
+    from hoga.live import lifecycle  # noqa: PLC0415
+
     lifecycle.reset_for_tests()
 
     app = _make_test_app()
@@ -57,7 +59,8 @@ def test_get_live_status_returns_running_false_initially() -> None:
 
 
 def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> None:
-    from hoga.live import lifecycle
+    from hoga.live import lifecycle  # noqa: PLC0415
+
     lifecycle.reset_for_tests()
 
     app = _make_test_app(data_dir=tmp_path)
@@ -75,7 +78,8 @@ def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> N
 
 
 def test_get_live_status_includes_cache_stats(tmp_path) -> None:
-    from hoga.live import lifecycle
+    from hoga.live import lifecycle  # noqa: PLC0415
+
     lifecycle.reset_for_tests()
 
     app = _make_test_app(data_dir=tmp_path)
@@ -85,8 +89,12 @@ def test_get_live_status_includes_cache_stats(tmp_path) -> None:
         cache_stats = r.json()["cache_stats"]
         # Closure-reachable caches surface their counters.
         assert set(cache_stats) >= {
-            "past_candles", "minute_backfill", "past_daily_candles",
-            "investor_net_daily", "today_ttl", "live_buffer",
+            "past_candles",
+            "minute_backfill",
+            "past_daily_candles",
+            "investor_net_daily",
+            "today_ttl",
+            "live_buffer",
         }
         # PastCandlesCache splits past vs today horizons.
         assert "hits" in cache_stats["past_candles"]["past"]
@@ -94,8 +102,12 @@ def test_get_live_status_includes_cache_stats(tmp_path) -> None:
         # The cold re-spend metric (PR-1 (a)).
         assert cache_stats["minute_backfill"]["fresh_past_fetches"] == 0
         # Ring buffer is size-only — no hit rate.
-        assert "total_entries" in cache_stats["live_buffer"]
-        assert "hit_rate" not in cache_stats["live_buffer"]
+        live_buffer = cache_stats["live_buffer"]
+        assert "total_entries" in live_buffer
+        assert live_buffer["published_total"] == 0
+        assert live_buffer["subscriber_drops"] == 0
+        assert live_buffer["high_water_entries"] == 0
+        assert "hit_rate" not in live_buffer
 
 
 def test_post_live_control_dispatches_action() -> None:
@@ -124,8 +136,8 @@ def test_post_live_control_rejects_unknown_action() -> None:
 
 def test_live_router_registered_on_full_app(tmp_path) -> None:
     """create_app should mount /api/live/status."""
-    from hoga.api.app import create_app
-    from hoga.live import lifecycle
+    from hoga.api.app import create_app  # noqa: PLC0415
+    from hoga.live import lifecycle  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     app = create_app(tmp_path)
@@ -139,8 +151,8 @@ def test_status_exposes_supervised_task_health_through_lifespan(tmp_path) -> Non
     """ADR-0088 end-to-end: the lifespan sets app.state.startup_runtime and the
     status route reads it, so GET /api/live/status carries supervised_tasks with
     the always-on watchlist-daily-loop reporting running=True (alive, not stale)."""
-    from hoga.api.app import create_app
-    from hoga.live import lifecycle
+    from hoga.api.app import create_app  # noqa: PLC0415
+    from hoga.live import lifecycle  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     app = create_app(tmp_path)
@@ -152,8 +164,8 @@ def test_status_exposes_supervised_task_health_through_lifespan(tmp_path) -> Non
 
 def test_get_live_snapshot_returns_404_when_no_data(tmp_path) -> None:
     """No publish yet → 404."""
-    from hoga.api.app import create_app
-    from hoga.live import lifecycle
+    from hoga.api.app import create_app  # noqa: PLC0415
+    from hoga.live import lifecycle  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     app = create_app(tmp_path)
@@ -165,17 +177,21 @@ def test_get_live_snapshot_returns_404_when_no_data(tmp_path) -> None:
 @pytest.mark.asyncio
 async def test_get_live_snapshot_returns_buffered_latest(tmp_path) -> None:
     """After publish, GET /snapshot returns the latest entry."""
-    from hoga.api.app import create_app
-    from hoga.live import lifecycle
-    from hoga.live.snapshot import LiveSnapshot, SnapshotKind
+    from hoga.api.app import create_app  # noqa: PLC0415
+    from hoga.live import lifecycle  # noqa: PLC0415
+    from hoga.live.snapshot import LiveSnapshot, SnapshotKind  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     buf = lifecycle.get_buffer()
-    await buf.publish("005930", [
-        LiveSnapshot(t_ms=12345, kind=SnapshotKind.OB, payload={"total_bid_qty": 1000}),
-        LiveSnapshot(t_ms=12345, kind=SnapshotKind.TRADE, payload={"trades": [{"price": 100}]}),
-        LiveSnapshot(t_ms=12345, kind=SnapshotKind.BROKER, payload={"buy_top": []}),
-    ], now_ms=12345)
+    await buf.publish(
+        "005930",
+        [
+            LiveSnapshot(t_ms=12345, kind=SnapshotKind.OB, payload={"total_bid_qty": 1000}),
+            LiveSnapshot(t_ms=12345, kind=SnapshotKind.TRADE, payload={"trades": [{"price": 100}]}),
+            LiveSnapshot(t_ms=12345, kind=SnapshotKind.BROKER, payload={"buy_top": []}),
+        ],
+        now_ms=12345,
+    )
 
     app = create_app(tmp_path)
     with TestClient(app) as c:
@@ -190,24 +206,28 @@ async def test_get_live_snapshot_returns_buffered_latest(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_get_live_series_returns_buffered_arrays(tmp_path) -> None:
-    from hoga.api.app import create_app
-    from hoga.live import lifecycle
-    from hoga.live.snapshot import LiveSnapshot, SnapshotKind
+    from hoga.api.app import create_app  # noqa: PLC0415
+    from hoga.live import lifecycle  # noqa: PLC0415
+    from hoga.live.snapshot import LiveSnapshot, SnapshotKind  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     buf = lifecycle.get_buffer()
     for tick in range(3):
         t = (tick + 1) * 10_000
-        await buf.publish("005930", [
-            LiveSnapshot(t_ms=t, kind=SnapshotKind.OB, payload={"total_bid_qty": 100 + tick}),
-            LiveSnapshot(t_ms=t, kind=SnapshotKind.TRADE, payload={"trades": []}),
-            LiveSnapshot(t_ms=t, kind=SnapshotKind.BROKER, payload={"buy_top": []}),
-            LiveSnapshot(
-                t_ms=t,
-                kind=SnapshotKind.PROGRAM,
-                payload={"net_qty": 10 + tick, "net_amount": 1_000_000 + tick},
-            ),
-        ], now_ms=t)
+        await buf.publish(
+            "005930",
+            [
+                LiveSnapshot(t_ms=t, kind=SnapshotKind.OB, payload={"total_bid_qty": 100 + tick}),
+                LiveSnapshot(t_ms=t, kind=SnapshotKind.TRADE, payload={"trades": []}),
+                LiveSnapshot(t_ms=t, kind=SnapshotKind.BROKER, payload={"buy_top": []}),
+                LiveSnapshot(
+                    t_ms=t,
+                    kind=SnapshotKind.PROGRAM,
+                    payload={"net_qty": 10 + tick, "net_amount": 1_000_000 + tick},
+                ),
+            ],
+            now_ms=t,
+        )
 
     app = create_app(tmp_path)
     with TestClient(app) as c:
@@ -292,8 +312,9 @@ def test_get_live_series_includes_today_bid_peak_from_getter() -> None:
 
 # ----- /api/live/past-candles -----
 
-import datetime
-from hoga.live.kis_models import KisCandle
+import datetime  # noqa: E402
+
+from hoga.live.kis_models import KisCandle  # noqa: E402
 
 
 def _today_kst_yyyymmdd() -> str:
@@ -307,7 +328,9 @@ class _FakeKisForPast:
     def __init__(self):
         self.calls: list[str] = []  # records date arg per call
 
-    async def fetch_past_minute_candles(self, code: str, date_yyyymmdd: str, **_kw) -> list[KisCandle]:
+    async def fetch_past_minute_candles(
+        self, code: str, date_yyyymmdd: str, **_kw
+    ) -> list[KisCandle]:
         self.calls.append(date_yyyymmdd)
         # KST 09:00 of the requested date — matches the real KIS shape so
         # PastCandlesCache's date-match guard (the "evict stale" check from
@@ -325,9 +348,10 @@ def _past_app(tmp_path, fake_kis):
     capture pool / poller / KRX-network side effects. data_dir is `tmp_path`
     so the past-candles cache writes into the test sandbox.
     """
-    from fastapi import FastAPI
-    from hoga.live import kis_runtime, lifecycle
-    from hoga.live.api import build_router
+    from fastapi import FastAPI  # noqa: PLC0415
+
+    from hoga.live import kis_runtime, lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     kis_runtime.set_kis_client(fake_kis)  # type: ignore[arg-type]
@@ -417,7 +441,7 @@ async def test_past_candles_memory_cache_hit_on_second_call(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_past_candles_today_memory_cache(tmp_path, monkeypatch) -> None:
-    from hoga.live import api as live_api
+    from hoga.live import api as live_api  # noqa: PLC0415
 
     monkeypatch.setattr(live_api, "_today_kst_date", lambda: datetime.date(2026, 6, 26))
     fake = _FakeKisForPast()
@@ -435,7 +459,7 @@ async def test_past_candles_today_memory_cache(tmp_path, monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_past_candles_partial_failure_kis_api_error(tmp_path) -> None:
-    from hoga.live.kis_client import KisApiError
+    from hoga.live.kis_client import KisApiError  # noqa: PLC0415
 
     class _PartialFakeKis:
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
@@ -462,11 +486,17 @@ async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path, monkey
     max_inflight==1이라 실패한다. 완료 순서를 의도적으로 뒤섞어(늦은 날짜가
     빨리 응답) 응답 candles의 날짜 오름차순 보장(§5 테스트 4)도 함께 핀한다.
     단일 계정(KIS 키 미설정)이라 계정 비례 상한(ADR-0100)은 3이다."""
-    import asyncio as _asyncio
+    import asyncio as _asyncio  # noqa: PLC0415
 
     # 단일 계정 확정 — 개발자 env에 KIS 키가 유출돼도 상한이 3으로 결정론적.
-    for _name in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_APP_KEY_2",
-                  "KIS_APP_SECRET_2", "KIS_APP_KEY_3", "KIS_APP_SECRET_3"):
+    for _name in (
+        "KIS_APP_KEY",
+        "KIS_APP_SECRET",
+        "KIS_APP_KEY_2",
+        "KIS_APP_SECRET_2",
+        "KIS_APP_KEY_3",
+        "KIS_APP_SECRET_3",
+    ):
         monkeypatch.delenv(_name, raising=False)
 
     class _SlowFakeKis:
@@ -483,11 +513,9 @@ async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path, monkey
                 # 늦은 날짜일수록 빨리 응답 → 완료 순서 ≠ 날짜 순서
                 await _asyncio.sleep(0.05 - 0.005 * int(date_yyyymmdd[-1]))
                 kst = datetime.timezone(datetime.timedelta(hours=9))
-                y, m, d = (int(date_yyyymmdd[:4]), int(date_yyyymmdd[4:6]),
-                           int(date_yyyymmdd[6:8]))
+                y, m, d = (int(date_yyyymmdd[:4]), int(date_yyyymmdd[4:6]), int(date_yyyymmdd[6:8]))
                 t_ms = int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000)
-                return [KisCandle(t_ms=t_ms, open=100, high=110, low=95,
-                                  close=105, volume=10)]
+                return [KisCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
             finally:
                 self.inflight -= 1
 
@@ -507,7 +535,7 @@ async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path, monkey
 def test_past_candles_concurrency_scales_per_account(tmp_path, monkeypatch) -> None:
     """past-candles 동시 상한은 configured 계정 수 비례 (ADR-0100): 계정당 3슬롯,
     상한 12. REST 유량이 앱키별 독립이라 계정 수가 곧 예산 배수다."""
-    from hoga.live import api as live_api
+    from hoga.live import api as live_api  # noqa: PLC0415
 
     def _fake_ids(n: int):
         return lambda _data_dir: list(range(n))
@@ -527,9 +555,9 @@ async def test_past_candles_singleflight_dedups_concurrent_same_date(tmp_path) -
     """spec 2026-06-08 §4.3: 같은 (code, date)의 동시 요청 2건 → KIS 콜 1회
     공유(두 탭/60초 refetch 경합의 쿼터 절약). 두 응답 모두 동일 bars를 받고
     후발 요청도 fresh로 보고한다(캐시가 아니라 공유 fetch 결과이므로)."""
-    import asyncio as _asyncio
+    import asyncio as _asyncio  # noqa: PLC0415
 
-    import httpx
+    import httpx  # noqa: PLC0415
 
     class _SlowFakeKis:
         def __init__(self):
@@ -537,9 +565,8 @@ async def test_past_candles_singleflight_dedups_concurrent_same_date(tmp_path) -
 
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls.append(date_yyyymmdd)
-            await _asyncio.sleep(0.05)   # 두 요청의 fetch 창을 겹치게 한다
-            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105,
-                              volume=10)]
+            await _asyncio.sleep(0.05)  # 두 요청의 fetch 창을 겹치게 한다
+            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
 
     fake = _SlowFakeKis()
     app = _past_app(tmp_path, fake)
@@ -566,9 +593,9 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> Non
     결정성: 8날짜·슬롯 3 → D1-D3 동시 진입, D2가 0.01s에 실패(Event set은
     semaphore 해제보다 먼저 실행됨) → D4-D8은 슬롯 획득 시점에 Event를 보고
     스킵. D1·D3는 0.1s sleep 중(in-flight)이라 완주."""
-    import asyncio as _asyncio
+    import asyncio as _asyncio  # noqa: PLC0415
 
-    from hoga.live.kis_client import KisRateLimitError
+    from hoga.live.kis_client import KisRateLimitError  # noqa: PLC0415
 
     class _RateLimitedSlowKis:
         def __init__(self):
@@ -577,11 +604,10 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> Non
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls.append(date_yyyymmdd)
             if date_yyyymmdd == "20260502":
-                await _asyncio.sleep(0.01)   # 첫 배치 중 가장 먼저 실패
+                await _asyncio.sleep(0.01)  # 첫 배치 중 가장 먼저 실패
                 raise KisRateLimitError("EGW00201 rate limited")
-            await _asyncio.sleep(0.1)        # 나머지 첫 배치는 실패 시점에 in-flight
-            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105,
-                              volume=10)]
+            await _asyncio.sleep(0.1)  # 나머지 첫 배치는 실패 시점에 in-flight
+            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
 
     fake = _RateLimitedSlowKis()
     app = _past_app(tmp_path, fake)
@@ -591,11 +617,14 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> Non
         body = r.json()
     # 미시작(D4-D8)은 KIS에 도달하지 않는다 — 원 방어의 핵심.
     assert sorted(fake.calls) == [
-        "20260501", "20260502", "20260503",
+        "20260501",
+        "20260502",
+        "20260503",
     ]
     # in-flight 완주: 실패한 D2를 제외한 첫 배치 2건은 서빙된다.
     assert body["fresh_dates"] == [
-        "20260501", "20260503",
+        "20260501",
+        "20260503",
     ]
     assert len(body["candles"]) == 2
     warns = {w["date"]: w["reason"] for w in body["data_warnings"]}
@@ -618,7 +647,7 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -
     unconditionally, so cached dates were dropped from the response and the
     frontend's `kisCandles` shrank while `past.data.segments` (independent of
     KIS) kept full coverage — leaving the candle pane empty over a wide axis."""
-    from hoga.live.kis_client import KisRateLimitError
+    from hoga.live.kis_client import KisRateLimitError  # noqa: PLC0415
 
     class _RateLimitedFakeKis:
         def __init__(self):
@@ -634,9 +663,7 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -
                 int(date_yyyymmdd[4:6]),
                 int(date_yyyymmdd[6:8]),
             )
-            t_ms = int(
-                datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000
-            )
+            t_ms = int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000)
             return [KisCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
 
     fake = _RateLimitedFakeKis()
@@ -648,7 +675,8 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -
         body = r.json()
         # 20260503's cached bar must be served (this is the regression check).
         assert len(body["candles"]) == 2, (
-            f"expected cached date 20260503 to be served alongside 20260501; got candles={body['candles']}"
+            "expected cached date 20260503 to be served alongside 20260501; "
+            f"got candles={body['candles']}"
         )
         assert "20260503" in body["cached_dates"]
         # KIS must still NOT be called for the post-abort date (the existing
@@ -661,7 +689,10 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -
         # fall back on. 20260503 was cached, so it should NOT carry a warning.
         warn_dates = [w["date"] for w in body["data_warnings"]]
         assert "20260503" not in warn_dates
-        assert any(w["reason"] == "kis_rate_limit" and w["date"] == "20260502" for w in body["data_warnings"])
+        assert any(
+            w["reason"] == "kis_rate_limit" and w["date"] == "20260502"
+            for w in body["data_warnings"]
+        )
 
 
 @pytest.mark.asyncio
@@ -669,7 +700,7 @@ async def test_past_candles_rate_limit_cooldown_blocks_immediate_followup(tmp_pa
     """After an exhausted EGW00201, an immediate follow-up request should not
     start another KIS candle fetch burst. The user gets a rate-limit warning
     quickly instead of waiting through another retry wall."""
-    from hoga.live.kis_client import KisRateLimitError
+    from hoga.live.kis_client import KisRateLimitError  # noqa: PLC0415
 
     class _RateLimitedFakeKis:
         def __init__(self):
@@ -695,7 +726,7 @@ async def test_past_candles_rate_limit_cooldown_blocks_immediate_followup(tmp_pa
 @pytest.mark.asyncio
 async def test_past_candles_weekend_skips_kis_and_returns_empty(tmp_path, monkeypatch) -> None:
     """Past weekend dates are known-empty and must not spend KIS capacity."""
-    from hoga.api import calendar as cal
+    from hoga.api import calendar as cal  # noqa: PLC0415
 
     class _CountingKis:
         def __init__(self):
@@ -705,7 +736,7 @@ async def test_past_candles_weekend_skips_kis_and_returns_empty(tmp_path, monkey
             self.calls.append(date_yyyymmdd)
             return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
 
-    monkeypatch.setattr(cal, "is_trading_day", lambda d: False if d == "20260516" else True)
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: d != "20260516")
     fake = _CountingKis()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
@@ -749,7 +780,7 @@ async def test_past_candles_memory_cache_not_survives_router_rebuild(tmp_path) -
 def test_minute_today_non_trading_day_negative_caches(tmp_path, monkeypatch) -> None:
     """When today's KIS minute fetch returns empty, the cache stores a
     negative sentinel so a follow-up request within the TTL skips KIS."""
-    from hoga.live import api as live_api
+    from hoga.live import api as live_api  # noqa: PLC0415
 
     class _EmptyTodayKis:
         def __init__(self):
@@ -771,7 +802,7 @@ def test_minute_today_non_trading_day_negative_caches(tmp_path, monkeypatch) -> 
 
 def test_minute_today_weekend_skips_kis_and_negative_caches(tmp_path, monkeypatch) -> None:
     """On weekends, today's minute candles are known-empty before hitting KIS."""
-    from hoga.live import api as live_api
+    from hoga.live import api as live_api  # noqa: PLC0415
 
     class _CountingKis:
         def __init__(self):
@@ -867,7 +898,10 @@ def test_past_candles_integrated_uses_single_kis_un_call(tmp_path) -> None:
 
     assert fake.venues == ["UN"]
     assert body["venue"] == "UN"
-    assert [datetime.datetime.fromtimestamp(c["t_ms"] / 1000, tz=kst).strftime("%H%M") for c in body["candles"]] == [
+    assert [
+        datetime.datetime.fromtimestamp(c["t_ms"] / 1000, tz=kst).strftime("%H%M")
+        for c in body["candles"]
+    ] == [
         "0900",
     ]
     assert body["candles"][0]["volume"] == 25
@@ -914,10 +948,7 @@ def test_past_candles_non_krx_empty_falls_back_to_krx(tmp_path, venue: str) -> N
     fake = _NoNonKrxMinuteKis()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
-        r = c.get(
-            f"/api/live/past-candles?code=005930&from=20260518"
-            f"&to=20260518&venue={venue}"
-        )
+        r = c.get(f"/api/live/past-candles?code=005930&from=20260518&to=20260518&venue={venue}")
         assert r.status_code == 200
         body = r.json()
 
@@ -928,8 +959,7 @@ def test_past_candles_non_krx_empty_falls_back_to_krx(tmp_path, venue: str) -> N
         {"venue": "KRX", "foreground": True},
     ]
     assert any(
-        w["reason"] == "minute_fallback_to_krx"
-        and w["date"] == "20260518"
+        w["reason"] == "minute_fallback_to_krx" and w["date"] == "20260518"
         for w in body["data_warnings"]
     )
     assert body["effective_sessions"] == [
@@ -989,14 +1019,28 @@ def test_past_candles_non_krx_partial_range_fills_empty_dates_from_krx(tmp_path)
         ("KRX", "20260519"),
     ]
     assert any(
-        w["reason"] == "minute_fallback_to_krx"
-        and w["date"] == "20260518__20260519"
+        w["reason"] == "minute_fallback_to_krx" and w["date"] == "20260518__20260519"
         for w in body["data_warnings"]
     )
     assert body["effective_sessions"] == [
-        {"date": "20260518", "venue": "KRX", "open_ms": at("20260518", 9, 0), "close_ms": at("20260518", 15, 30)},
-        {"date": "20260519", "venue": "KRX", "open_ms": at("20260519", 9, 0), "close_ms": at("20260519", 15, 30)},
-        {"date": "20260520", "venue": "NXT", "open_ms": at("20260520", 8, 0), "close_ms": at("20260520", 20, 0)},
+        {
+            "date": "20260518",
+            "venue": "KRX",
+            "open_ms": at("20260518", 9, 0),
+            "close_ms": at("20260518", 15, 30),
+        },
+        {
+            "date": "20260519",
+            "venue": "KRX",
+            "open_ms": at("20260519", 9, 0),
+            "close_ms": at("20260519", 15, 30),
+        },
+        {
+            "date": "20260520",
+            "venue": "NXT",
+            "open_ms": at("20260520", 8, 0),
+            "close_ms": at("20260520", 20, 0),
+        },
     ]
 
 
@@ -1043,10 +1087,7 @@ def test_past_candles_non_krx_fallback_rechecks_primary_on_next_request(tmp_path
         ("KRX", "20260518"),
         ("NXT", "20260518"),
     ]
-    assert not any(
-        w["reason"] == "minute_fallback_to_krx"
-        for w in r2.json()["data_warnings"]
-    )
+    assert not any(w["reason"] == "minute_fallback_to_krx" for w in r2.json()["data_warnings"])
 
 
 def test_past_candles_non_krx_fallback_warning_dates_only_used_krx(tmp_path) -> None:
@@ -1081,8 +1122,7 @@ def test_past_candles_non_krx_fallback_warning_dates_only_used_krx(tmp_path) -> 
 
     assert [candle["close"] for candle in body["candles"]] == [105, 219]
     assert any(
-        w["reason"] == "minute_fallback_to_krx"
-        and w["date"] == "20260518"
+        w["reason"] == "minute_fallback_to_krx" and w["date"] == "20260518"
         for w in body["data_warnings"]
     )
 
@@ -1125,16 +1165,14 @@ def test_past_candles_non_krx_fallback_does_not_replace_present_dates(tmp_path) 
 
     assert [candle["close"] for candle in body["candles"]] == [218, 219, 220, 221, 222]
     assert ("KRX", "20260518") not in fake.calls
-    assert not any(
-        w["reason"] == "minute_fallback_to_krx"
-        for w in body["data_warnings"]
-    )
+    assert not any(w["reason"] == "minute_fallback_to_krx" for w in body["data_warnings"])
 
 
 # ----- /api/live/past-daily-candles validation -----
 
-from hoga.live.api import _validate_past_request
-from fastapi import HTTPException
+from fastapi import HTTPException  # noqa: E402
+
+from hoga.live.api import _validate_past_request  # noqa: E402
 
 
 def test_validate_daily_accepts_uncapped_range() -> None:
@@ -1164,7 +1202,9 @@ def test_validate_daily_rejects_from_after_to() -> None:
 
 def test_validate_daily_rejects_future_to() -> None:
     today = _today_kst_yyyymmdd()
-    from datetime import timedelta as _td, datetime as _dt
+    from datetime import datetime as _dt  # noqa: PLC0415
+    from datetime import timedelta as _td  # noqa: PLC0415
+
     kst = datetime.timezone(datetime.timedelta(hours=9))
     tomorrow = (_dt.now(kst) + _td(days=1)).strftime("%Y%m%d")
     with pytest.raises(HTTPException) as exc:
@@ -1174,8 +1214,9 @@ def test_validate_daily_rejects_future_to() -> None:
 
 # ----- _compute_daily_gaps -----
 
-from datetime import date as _date
-from hoga.live.api import _compute_daily_gaps
+from datetime import date as _date  # noqa: E402
+
+from hoga.live.api import _compute_daily_gaps  # noqa: E402
 
 
 def test_gaps_empty_cache_returns_full_range() -> None:
@@ -1221,7 +1262,7 @@ def test_gaps_adjacent_batches_coalesce() -> None:
 
 # ----- /api/live/past-daily-candles -----
 
-from hoga.live.kis_client import DailyCandleFetchResult, DailyInvariantViolation
+from hoga.live.kis_client import DailyCandleFetchResult, DailyInvariantViolation  # noqa: E402
 
 
 class _FakeKisForDaily:
@@ -1240,9 +1281,12 @@ class _FakeKisForDaily:
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
         self.kwargs.append(_kw)
         if self.raise_rate_limit_on_call is not None and idx == self.raise_rate_limit_on_call:
-            from hoga.live.kis_client import KisRateLimitError
+            from hoga.live.kis_client import KisRateLimitError  # noqa: PLC0415
+
             raise KisRateLimitError("simulated rate limit")
-        from datetime import datetime as _dt, timedelta as _td
+        from datetime import datetime as _dt  # noqa: PLC0415
+        from datetime import timedelta as _td  # noqa: PLC0415
+
         kst = datetime.timezone(datetime.timedelta(hours=9))
         y, m, d = int(from_yyyymmdd[:4]), int(from_yyyymmdd[4:6]), int(from_yyyymmdd[6:8])
         ye, me, de = int(to_yyyymmdd[:4]), int(to_yyyymmdd[4:6]), int(to_yyyymmdd[6:8])
@@ -1251,18 +1295,25 @@ class _FakeKisForDaily:
         candles = []
         cur = start
         while cur <= end:
-            candles.append(KisCandle(
-                t_ms=int(cur.timestamp() * 1000),
-                open=100, high=110, low=95, close=105, volume=10,
-            ))
+            candles.append(
+                KisCandle(
+                    t_ms=int(cur.timestamp() * 1000),
+                    open=100,
+                    high=110,
+                    low=95,
+                    close=105,
+                    volume=10,
+                )
+            )
             cur = cur + _td(days=1)
         return DailyCandleFetchResult(candles=candles, violations=list(self.violations))
 
 
 def _daily_app(tmp_path, fake_kis):
-    from fastapi import FastAPI
-    from hoga.live import kis_runtime, lifecycle
-    from hoga.live.api import build_router
+    from fastapi import FastAPI  # noqa: PLC0415
+
+    from hoga.live import kis_runtime, lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     kis_runtime.set_kis_client(fake_kis)
@@ -1314,7 +1365,9 @@ def test_past_daily_legacy_auto_maps_to_integrated(tmp_path) -> None:
 
 
 @pytest.mark.parametrize("venue,primary_venue", [("NXT", "NXT"), ("UN", "UN")])
-def test_past_daily_non_krx_empty_falls_back_to_krx(tmp_path, venue: str, primary_venue: str) -> None:
+def test_past_daily_non_krx_empty_falls_back_to_krx(
+    tmp_path, venue: str, primary_venue: str
+) -> None:
     class _NoNxtDailyKis(_FakeKisForDaily):
         async def fetch_past_daily_candles(
             self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, **_kw
@@ -1328,7 +1381,9 @@ def test_past_daily_non_krx_empty_falls_back_to_krx(tmp_path, venue: str, primar
     fake = _NoNxtDailyKis()
     app = _daily_app(tmp_path, fake)
     with TestClient(app) as c:
-        r = c.get(f"/api/live/past-daily-candles?code=005930&from=20240101&to=20240105&venue={venue}")
+        r = c.get(
+            f"/api/live/past-daily-candles?code=005930&from=20240101&to=20240105&venue={venue}"
+        )
         assert r.status_code == 200
         body = r.json()
 
@@ -1339,8 +1394,7 @@ def test_past_daily_non_krx_empty_falls_back_to_krx(tmp_path, venue: str, primar
         {"venue": "KRX", "foreground": True},
     ]
     assert any(
-        w["reason"] == "daily_fallback_to_krx"
-        and w["batch"] == "20240101__20240105"
+        w["reason"] == "daily_fallback_to_krx" and w["batch"] == "20240101__20240105"
         for w in body["data_warnings"]
     )
 
@@ -1356,12 +1410,24 @@ def test_past_daily_non_krx_partial_range_fills_missing_dates_from_krx(tmp_path)
                 kst = datetime.timezone(datetime.timedelta(hours=9))
                 candles = [
                     KisCandle(
-                        t_ms=int(datetime.datetime(2024, 1, 1, 9, 0, tzinfo=kst).timestamp() * 1000),
-                        open=200, high=210, low=195, close=205, volume=20,
+                        t_ms=int(
+                            datetime.datetime(2024, 1, 1, 9, 0, tzinfo=kst).timestamp() * 1000
+                        ),
+                        open=200,
+                        high=210,
+                        low=195,
+                        close=205,
+                        volume=20,
                     ),
                     KisCandle(
-                        t_ms=int(datetime.datetime(2024, 1, 2, 9, 0, tzinfo=kst).timestamp() * 1000),
-                        open=201, high=211, low=196, close=206, volume=21,
+                        t_ms=int(
+                            datetime.datetime(2024, 1, 2, 9, 0, tzinfo=kst).timestamp() * 1000
+                        ),
+                        open=201,
+                        high=211,
+                        low=196,
+                        close=206,
+                        volume=21,
                     ),
                 ]
                 return DailyCandleFetchResult(candles=candles, violations=[])
@@ -1383,8 +1449,7 @@ def test_past_daily_non_krx_partial_range_fills_missing_dates_from_krx(tmp_path)
     assert body["candles"][1]["close"] == 206
     assert body["candles"][2]["close"] == 105
     assert any(
-        w["reason"] == "daily_fallback_to_krx"
-        and "partial range" in w["msg"]
+        w["reason"] == "daily_fallback_to_krx" and "partial range" in w["msg"]
         for w in body["data_warnings"]
     )
 
@@ -1456,9 +1521,13 @@ def test_past_daily_rate_limit_surfaces_data_warning(tmp_path) -> None:
 
 def test_past_daily_violation_surfaces_to_wire(tmp_path) -> None:
     fake = _FakeKisForDaily()
-    fake.violations = [DailyInvariantViolation(
-        date_yyyymmdd="20240103", reason="close_nonpositive", detail="close=0",
-    )]
+    fake.violations = [
+        DailyInvariantViolation(
+            date_yyyymmdd="20240103",
+            reason="close_nonpositive",
+            detail="close=0",
+        )
+    ]
     app = _daily_app(tmp_path, fake)
     with TestClient(app) as c:
         r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
@@ -1483,17 +1552,20 @@ def test_past_daily_dedupes_and_sorts_overlapping_batches(tmp_path) -> None:
 
 
 def test_past_daily_validation_404_when_kis_not_wired(tmp_path) -> None:
-    from fastapi import FastAPI
-    from hoga.live import kis_runtime, lifecycle
-    from hoga.live.api import build_router
+    from fastapi import FastAPI  # noqa: PLC0415
+
+    from hoga.live import kis_runtime, lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     kis_runtime.set_kis_client(None)
     app = FastAPI()
-    app.include_router(build_router(
-        get_status=lifecycle.get_status,
-        data_dir=tmp_path,
-    ))
+    app.include_router(
+        build_router(
+            get_status=lifecycle.get_status,
+            data_dir=tmp_path,
+        )
+    )
     with TestClient(app) as c:
         r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
         assert r.status_code == 503
@@ -1507,7 +1579,8 @@ def test_past_daily_empty_gap_caches_and_does_not_refetch(tmp_path) -> None:
     class _EmptyKis(_FakeKisForDaily):
         async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
-            from hoga.live.kis_client import DailyCandleFetchResult
+            from hoga.live.kis_client import DailyCandleFetchResult  # noqa: PLC0415
+
             return DailyCandleFetchResult(candles=[], violations=[])
 
     fake = _EmptyKis()
@@ -1553,7 +1626,8 @@ def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path) -> None:
     class _EmptyTodayKis(_FakeKisForDaily):
         async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
-            from hoga.live.kis_client import DailyCandleFetchResult
+            from hoga.live.kis_client import DailyCandleFetchResult  # noqa: PLC0415
+
             return DailyCandleFetchResult(candles=[], violations=[])
 
     fake = _EmptyTodayKis()
@@ -1568,19 +1642,21 @@ def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path) -> None:
 def test_screener_daily_candles_reads_adjusted_parquet_without_kis(tmp_path) -> None:
     sdir = tmp_path / "screener"
     sdir.mkdir()
-    pl.DataFrame({
-        "code": ["005930", "005930", "000660"],
-        "date": [
-            datetime.date(2024, 1, 2),
-            datetime.date(2024, 1, 3),
-            datetime.date(2024, 1, 2),
-        ],
-        "open": [70000.0, 70100.0, 100000.0],
-        "high": [71000.0, 71100.0, 101000.0],
-        "low": [69000.0, 69100.0, 99000.0],
-        "close": [70500.0, 70600.0, 100500.0],
-        "volume": [1000, 1100, 2000],
-    }).write_parquet(sdir / "daily_adjusted.parquet")
+    pl.DataFrame(
+        {
+            "code": ["005930", "005930", "000660"],
+            "date": [
+                datetime.date(2024, 1, 2),
+                datetime.date(2024, 1, 3),
+                datetime.date(2024, 1, 2),
+            ],
+            "open": [70000.0, 70100.0, 100000.0],
+            "high": [71000.0, 71100.0, 101000.0],
+            "low": [69000.0, 69100.0, 99000.0],
+            "close": [70500.0, 70600.0, 100500.0],
+            "volume": [1000, 1100, 2000],
+        }
+    ).write_parquet(sdir / "daily_adjusted.parquet")
 
     fake = _FakeKisForDaily()
     app = _daily_app(tmp_path, fake)
@@ -1593,18 +1669,21 @@ def test_screener_daily_candles_reads_adjusted_parquet_without_kis(tmp_path) -> 
     assert body["code"] == "005930"
     assert [row["close"] for row in body["candles"]] == [70500.0, 70600.0]
     assert body["candles"][0]["t_ms"] == int(
-        datetime.datetime(2024, 1, 2, 9, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=9))).timestamp() * 1000
+        datetime.datetime(
+            2024, 1, 2, 9, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=9))
+        ).timestamp()
+        * 1000
     )
     assert fake.calls == []
 
 
 # ----- /api/live/past-investor-net -----
 
-from hoga.live.kis_client import (
+from hoga.live.kis_client import (  # noqa: E402
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
 )
-from hoga.live.kis_models import InvestorNetPoint, InvestorTrendEstimateRow
+from hoga.live.kis_models import InvestorNetPoint, InvestorTrendEstimateRow  # noqa: E402
 
 
 class _FakeKisForInvestor:
@@ -1621,9 +1700,12 @@ class _FakeKisForInvestor:
         idx = len(self.calls)
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
         if self.raise_rate_limit_on_call is not None and idx == self.raise_rate_limit_on_call:
-            from hoga.live.kis_client import KisRateLimitError
+            from hoga.live.kis_client import KisRateLimitError  # noqa: PLC0415
+
             raise KisRateLimitError("simulated rate limit")
-        from datetime import datetime as _dt, timedelta as _td
+        from datetime import datetime as _dt  # noqa: PLC0415
+        from datetime import timedelta as _td  # noqa: PLC0415
+
         kst = datetime.timezone(datetime.timedelta(hours=9))
         y, m, d = int(from_yyyymmdd[:4]), int(from_yyyymmdd[4:6]), int(from_yyyymmdd[6:8])
         ye, me, de = int(to_yyyymmdd[:4]), int(to_yyyymmdd[4:6]), int(to_yyyymmdd[6:8])
@@ -1631,33 +1713,40 @@ class _FakeKisForInvestor:
         end = _dt(ye, me, de, 9, 0, tzinfo=kst)
         points: list[InvestorNetPoint] = []
         while cur <= end:
-            points.append(InvestorNetPoint(
-                t_ms=int(cur.timestamp() * 1000), foreign_net=100, institution_net=-50,
-            ))
+            points.append(
+                InvestorNetPoint(
+                    t_ms=int(cur.timestamp() * 1000),
+                    foreign_net=100,
+                    institution_net=-50,
+                )
+            )
             cur = cur + _td(days=1)
         return InvestorNetFetchResult(points=points, violations=list(self.violations))
 
 
 def _investor_app(tmp_path, fake_kis):
-    from fastapi import FastAPI
-    from hoga.live import kis_runtime, lifecycle
-    from hoga.live.api import build_router
+    from fastapi import FastAPI  # noqa: PLC0415
+
+    from hoga.live import kis_runtime, lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     kis_runtime.set_kis_client(fake_kis)
     app = FastAPI()
-    app.include_router(build_router(
-        get_status=lifecycle.get_status,
-        data_dir=tmp_path,
-    ))
+    app.include_router(
+        build_router(
+            get_status=lifecycle.get_status,
+            data_dir=tmp_path,
+        )
+    )
     return app
 
 
 def test_index_investor_net_uses_scheduler_backed_fetcher(tmp_path) -> None:
-    from hoga.live import kis_runtime, lifecycle
-    from hoga.live.api import build_router
-    from hoga.live.kis_client import InvestorNetFetchResult
-    from hoga.live.kis_models import InvestorNetPoint
+    from hoga.live import kis_runtime, lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
+    from hoga.live.kis_client import InvestorNetFetchResult  # noqa: PLC0415
+    from hoga.live.kis_models import InvestorNetPoint  # noqa: PLC0415
 
     class _FakeKisForIndexInvestor:
         def __init__(self):
@@ -1680,10 +1769,12 @@ def test_index_investor_net_uses_scheduler_backed_fetcher(tmp_path) -> None:
     lifecycle.reset_for_tests()
     kis_runtime.set_kis_client(fake)  # type: ignore[arg-type]
     app = FastAPI()
-    app.include_router(build_router(
-        get_status=lifecycle.get_status,
-        data_dir=tmp_path,
-    ))
+    app.include_router(
+        build_router(
+            get_status=lifecycle.get_status,
+            data_dir=tmp_path,
+        )
+    )
     with TestClient(app) as c:
         r = c.get("/api/live/index-investor-net?index_id=KOSDAQ&from=20260619&to=20260619")
 
@@ -1702,8 +1793,9 @@ def test_index_investor_net_uses_scheduler_backed_fetcher(tmp_path) -> None:
 
 def _two_account_app(tmp_path, monkeypatch, fake0, fake1):
     """N=2 라우팅 검증용: account 0/1에 서로 다른 fake를 주입하고 env 2종을 세팅한다."""
-    from hoga.live import kis_runtime, lifecycle
-    from hoga.live.api import build_router
+    from hoga.live import kis_runtime, lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
+
     monkeypatch.setenv("KIS_APP_KEY", "k0")
     monkeypatch.setenv("KIS_APP_SECRET", "s0")
     monkeypatch.setenv("KIS_APP_KEY_2", "k1")
@@ -1712,10 +1804,12 @@ def _two_account_app(tmp_path, monkeypatch, fake0, fake1):
     kis_runtime.set_kis_client(fake0, 0)
     kis_runtime.set_kis_client(fake1, 1)
     app = FastAPI()
-    app.include_router(build_router(
-        get_status=lifecycle.get_status,
-        data_dir=tmp_path,
-    ))
+    app.include_router(
+        build_router(
+            get_status=lifecycle.get_status,
+            data_dir=tmp_path,
+        )
+    )
     return app
 
 
@@ -1736,7 +1830,8 @@ def test_past_investor_net_degraded_account_is_excluded(tmp_path, monkeypatch) -
     REST 라우팅은 REST 토큰 latch(is_rest_degraded)만 본다(WS sub_failed는 직교 — 폴백 무관,
     2026-06-10). 그래서 degraded를 mark_rest_auth_degraded(1)로 위조한다. _two_account_app가
     내부에서 reset_for_tests로 latch를 비우므로 app 구성 *후*에 마킹한다."""
-    from hoga.live import account_health
+    from hoga.live import account_health  # noqa: PLC0415
+
     fake0, fake1 = _FakeKisForInvestor(), _FakeKisForInvestor()
     app = _two_account_app(tmp_path, monkeypatch, fake0, fake1)
     account_health.mark_rest_auth_degraded(1)
@@ -1747,7 +1842,9 @@ def test_past_investor_net_degraded_account_is_excluded(tmp_path, monkeypatch) -
         assert len(fake1.calls) == 0, "degraded account 1을 그대로 사용"
 
 
-def test_past_candles_user_visible_request_starts_on_first_pool_account(tmp_path, monkeypatch) -> None:
+def test_past_candles_user_visible_request_starts_on_first_pool_account(
+    tmp_path, monkeypatch
+) -> None:
     """N=2: user-visible past-candles goes through scheduler pool, not legacy background routing.
 
     With no load, the account pool deterministically picks the lowest healthy
@@ -1816,17 +1913,20 @@ def test_past_investor_net_rejects_invalid_code(tmp_path) -> None:
 
 
 def test_past_investor_net_503_when_kis_not_wired(tmp_path) -> None:
-    from fastapi import FastAPI
-    from hoga.live import kis_runtime, lifecycle
-    from hoga.live.api import build_router
+    from fastapi import FastAPI  # noqa: PLC0415
+
+    from hoga.live import kis_runtime, lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     kis_runtime.set_kis_client(None)
     app = FastAPI()
-    app.include_router(build_router(
-        get_status=lifecycle.get_status,
-        data_dir=tmp_path,
-    ))
+    app.include_router(
+        build_router(
+            get_status=lifecycle.get_status,
+            data_dir=tmp_path,
+        )
+    )
     with TestClient(app) as c:
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 503
@@ -1845,9 +1945,13 @@ def test_past_investor_net_rate_limit_surfaces_warning(tmp_path) -> None:
 
 def test_past_investor_net_violation_surfaces_to_wire(tmp_path) -> None:
     fake = _FakeKisForInvestor()
-    fake.violations = [InvestorNetInvariantViolation(
-        date_yyyymmdd="20240103", reason="malformed_row", detail="bad",
-    )]
+    fake.violations = [
+        InvestorNetInvariantViolation(
+            date_yyyymmdd="20240103",
+            reason="malformed_row",
+            detail="bad",
+        )
+    ]
     app = _investor_app(tmp_path, fake)
     with TestClient(app) as c:
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
@@ -1906,17 +2010,21 @@ def _investor_estimate_row_model(
 
 
 @pytest.mark.asyncio
-async def test_investor_estimate_latest_only_accumulates_same_day_and_overwrites_slot(monkeypatch) -> None:
-    from hoga.live import api as live_api
-    from hoga.live.api import LiveInvestorEstimateFetcher
+async def test_investor_estimate_latest_only_accumulates_same_day_and_overwrites_slot(
+    monkeypatch,
+) -> None:
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
     now = 100.0
     monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
-        [InvestorTrendEstimateRow(slot="0910", foreign_qty=11, institution_qty=21, sum_qty=32)],
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=99, institution_qty=1, sum_qty=100)],
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+            [InvestorTrendEstimateRow(slot="0910", foreign_qty=11, institution_qty=21, sum_qty=32)],
+            [InvestorTrendEstimateRow(slot="0900", foreign_qty=99, institution_qty=1, sum_qty=100)],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     r1 = await fetcher.fetch(fake, "005930")
@@ -1934,18 +2042,24 @@ async def test_investor_estimate_latest_only_accumulates_same_day_and_overwrites
 
 @pytest.mark.asyncio
 async def test_investor_estimate_full_history_replaces_latest_only_accumulator(monkeypatch) -> None:
-    from hoga.live import api as live_api
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
     now = 100.0
     monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+    fake = _FakeKisForInvestorTrendEstimate(
         [
-            InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30),
-            InvestorTrendEstimateRow(slot="0920", foreign_qty=12, institution_qty=22, sum_qty=34),
-        ],
-    ])
+            [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+            [
+                InvestorTrendEstimateRow(
+                    slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30
+                ),
+                InvestorTrendEstimateRow(
+                    slot="0920", foreign_qty=12, institution_qty=22, sum_qty=34
+                ),
+            ],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     await fetcher.fetch(fake, "005930")
@@ -1953,28 +2067,41 @@ async def test_investor_estimate_full_history_replaces_latest_only_accumulator(m
     response = await fetcher.fetch(fake, "005930")
 
     assert [r.slot for r in response.rows] == ["0900", "0920"]
-    assert [(r.slot, r.observed_at_ms) for r in response.rows] == [("0900", 100_000), ("0920", 160_000)]
+    assert [(r.slot, r.observed_at_ms) for r in response.rows] == [
+        ("0900", 100_000),
+        ("0920", 160_000),
+    ]
     assert response.latest and response.latest.slot == "0920"
 
 
 @pytest.mark.asyncio
 async def test_investor_estimate_full_history_preserves_past_slot_timestamp(monkeypatch) -> None:
-    from hoga.live import api as live_api
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
     now = 100.0
     monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
     monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
-    fake = _FakeKisForInvestorTrendEstimate([
+    fake = _FakeKisForInvestorTrendEstimate(
         [
-            InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30),
-            InvestorTrendEstimateRow(slot="0910", foreign_qty=11, institution_qty=21, sum_qty=32),
-        ],
-        [
-            InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30),
-            InvestorTrendEstimateRow(slot="0910", foreign_qty=99, institution_qty=1, sum_qty=100),
-        ],
-    ])
+            [
+                InvestorTrendEstimateRow(
+                    slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30
+                ),
+                InvestorTrendEstimateRow(
+                    slot="0910", foreign_qty=11, institution_qty=21, sum_qty=32
+                ),
+            ],
+            [
+                InvestorTrendEstimateRow(
+                    slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30
+                ),
+                InvestorTrendEstimateRow(
+                    slot="0910", foreign_qty=99, institution_qty=1, sum_qty=100
+                ),
+            ],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     first = await fetcher.fetch(fake, "005930")
@@ -1994,25 +2121,27 @@ async def test_investor_estimate_full_history_preserves_past_slot_timestamp(monk
 
 @pytest.mark.asyncio
 async def test_investor_estimate_full_history_preserves_unchanged_slots(monkeypatch) -> None:
-    from hoga.live import api as live_api
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
     now = 100.0
     monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
     monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
-    fake = _FakeKisForInvestorTrendEstimate([
+    fake = _FakeKisForInvestorTrendEstimate(
         [
-            _investor_estimate_row_model("1", -95_000, 0, -95_000),
-            _investor_estimate_row_model("2", -106_000, 0, -106_000),
-            _investor_estimate_row_model("3", -117_000, 0, -117_000),
-        ],
-        [
-            _investor_estimate_row_model("1", -95_000, 0, -95_000),
-            _investor_estimate_row_model("2", -106_000, 0, -106_000),
-            _investor_estimate_row_model("3", -117_000, 0, -117_000),
-            _investor_estimate_row_model("4", -149_000, 53_000, -96_000),
-        ],
-    ])
+            [
+                _investor_estimate_row_model("1", -95_000, 0, -95_000),
+                _investor_estimate_row_model("2", -106_000, 0, -106_000),
+                _investor_estimate_row_model("3", -117_000, 0, -117_000),
+            ],
+            [
+                _investor_estimate_row_model("1", -95_000, 0, -95_000),
+                _investor_estimate_row_model("2", -106_000, 0, -106_000),
+                _investor_estimate_row_model("3", -117_000, 0, -117_000),
+                _investor_estimate_row_model("4", -149_000, 53_000, -96_000),
+            ],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260619")
 
     await fetcher.fetch(fake, "005930")
@@ -2032,19 +2161,21 @@ async def test_investor_estimate_observed_at_survives_fetcher_restart(
     monkeypatch,
     tmp_path,
 ) -> None:
-    from hoga.live import api as live_api
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
     now = 100.0
     monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
     monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
     store_path = tmp_path / "live" / "investor-trend-estimate-observed-at.json"
-    first_fake = _FakeKisForInvestorTrendEstimate([
+    first_fake = _FakeKisForInvestorTrendEstimate(
         [
-            _investor_estimate_row_model("1", -95_000, 0, -95_000),
-            _investor_estimate_row_model("2", -106_000, 0, -106_000),
-        ],
-    ])
+            [
+                _investor_estimate_row_model("1", -95_000, 0, -95_000),
+                _investor_estimate_row_model("2", -106_000, 0, -106_000),
+            ],
+        ]
+    )
     first_fetcher = LiveInvestorEstimateFetcher(
         ttl_seconds=0,
         today_fn=lambda: "20260619",
@@ -2054,13 +2185,15 @@ async def test_investor_estimate_observed_at_survives_fetcher_restart(
     await first_fetcher.fetch(first_fake, "005930")
 
     now = 160.0
-    second_fake = _FakeKisForInvestorTrendEstimate([
+    second_fake = _FakeKisForInvestorTrendEstimate(
         [
-            _investor_estimate_row_model("1", -95_000, 0, -95_000),
-            _investor_estimate_row_model("2", -106_000, 0, -106_000),
-            _investor_estimate_row_model("3", -117_000, 0, -117_000),
-        ],
-    ])
+            [
+                _investor_estimate_row_model("1", -95_000, 0, -95_000),
+                _investor_estimate_row_model("2", -106_000, 0, -106_000),
+                _investor_estimate_row_model("3", -117_000, 0, -117_000),
+            ],
+        ]
+    )
     second_fetcher = LiveInvestorEstimateFetcher(
         ttl_seconds=0,
         today_fn=lambda: "20260619",
@@ -2081,8 +2214,8 @@ async def test_investor_estimate_observed_at_store_ignores_malformed_json(
     monkeypatch,
     tmp_path,
 ) -> None:
-    from hoga.live import api as live_api
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
     now = 100.0
     monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
@@ -2093,9 +2226,11 @@ async def test_investor_estimate_observed_at_store_ignores_malformed_json(
         '{"20260619":{"005930":{"1":"bad","2":{"observed_at_ms":"bad"}}}}',
         encoding="utf-8",
     )
-    fake = _FakeKisForInvestorTrendEstimate([
-        [_investor_estimate_row_model("1", -95_000, 0, -95_000)],
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            [_investor_estimate_row_model("1", -95_000, 0, -95_000)],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(
         ttl_seconds=0,
         today_fn=lambda: "20260619",
@@ -2112,23 +2247,25 @@ async def test_investor_estimate_full_history_removes_absent_persisted_slots(
     monkeypatch,
     tmp_path,
 ) -> None:
-    from hoga.live import api as live_api
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
     now = 100.0
     monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
     monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
     store_path = tmp_path / "live" / "investor-trend-estimate-observed-at.json"
-    first_fake = _FakeKisForInvestorTrendEstimate([
+    first_fake = _FakeKisForInvestorTrendEstimate(
         [
-            _investor_estimate_row_model("1", -95_000, 0, -95_000),
-            _investor_estimate_row_model("2", -106_000, 0, -106_000),
-        ],
-        [
-            _investor_estimate_row_model("1", -95_000, 0, -95_000),
-            _investor_estimate_row_model("3", -117_000, 0, -117_000),
-        ],
-    ])
+            [
+                _investor_estimate_row_model("1", -95_000, 0, -95_000),
+                _investor_estimate_row_model("2", -106_000, 0, -106_000),
+            ],
+            [
+                _investor_estimate_row_model("1", -95_000, 0, -95_000),
+                _investor_estimate_row_model("3", -117_000, 0, -117_000),
+            ],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(
         ttl_seconds=0,
         today_fn=lambda: "20260619",
@@ -2140,12 +2277,14 @@ async def test_investor_estimate_full_history_removes_absent_persisted_slots(
     await fetcher.fetch(first_fake, "005930")
 
     now = 220.0
-    second_fake = _FakeKisForInvestorTrendEstimate([
+    second_fake = _FakeKisForInvestorTrendEstimate(
         [
-            _investor_estimate_row_model("1", -95_000, 0, -95_000),
-            _investor_estimate_row_model("2", -106_000, 0, -106_000),
-        ],
-    ])
+            [
+                _investor_estimate_row_model("1", -95_000, 0, -95_000),
+                _investor_estimate_row_model("2", -106_000, 0, -106_000),
+            ],
+        ]
+    )
     restarted_fetcher = LiveInvestorEstimateFetcher(
         ttl_seconds=0,
         today_fn=lambda: "20260619",
@@ -2164,10 +2303,10 @@ async def test_investor_estimate_observed_at_store_bounds_codes(
     monkeypatch,
     tmp_path,
 ) -> None:
-    import json
+    import json  # noqa: PLC0415
 
-    from hoga.live import api as live_api
-    from hoga.live.api import (
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import (  # noqa: PLC0415
         _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY,
         LiveInvestorEstimateFetcher,
     )
@@ -2184,9 +2323,11 @@ async def test_investor_estimate_observed_at_store_bounds_codes(
 
     for i in range(_INVESTOR_ESTIMATE_MAX_CODES_PER_DAY + 1):
         now = 100.0 + i
-        fake = _FakeKisForInvestorTrendEstimate([
-            [_investor_estimate_row_model("1", i, 0, i)],
-        ])
+        fake = _FakeKisForInvestorTrendEstimate(
+            [
+                [_investor_estimate_row_model("1", i, 0, i)],
+            ]
+        )
         await fetcher.fetch(fake, f"{i:06d}")
 
     state = json.loads(store_path.read_text(encoding="utf-8"))
@@ -2196,12 +2337,14 @@ async def test_investor_estimate_observed_at_store_bounds_codes(
 
 @pytest.mark.asyncio
 async def test_investor_estimate_empty_success_clears_same_day_accumulator() -> None:
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
-        [],
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+            [],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     await fetcher.fetch(fake, "005930")
@@ -2215,11 +2358,17 @@ async def test_investor_estimate_empty_success_clears_same_day_accumulator() -> 
 
 @pytest.mark.asyncio
 async def test_investor_estimate_all_null_rows_are_empty() -> None:
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=None, institution_qty=None, sum_qty=None)],
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            [
+                InvestorTrendEstimateRow(
+                    slot="0900", foreign_qty=None, institution_qty=None, sum_qty=None
+                )
+            ],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     response = await fetcher.fetch(fake, "005930")
@@ -2233,11 +2382,13 @@ async def test_investor_estimate_all_null_rows_are_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_investor_estimate_ttl_coalesces_calls() -> None:
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: "20260616")
 
     first = await fetcher.fetch(fake, "005930")
@@ -2250,8 +2401,9 @@ async def test_investor_estimate_ttl_coalesces_calls() -> None:
 
 @pytest.mark.asyncio
 async def test_investor_estimate_inflight_coalesces_concurrent_calls() -> None:
-    import asyncio
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    import asyncio  # noqa: PLC0415
+
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
     class _SlowKis:
         def __init__(self) -> None:
@@ -2289,13 +2441,15 @@ async def test_investor_estimate_inflight_coalesces_concurrent_calls() -> None:
 
 @pytest.mark.asyncio
 async def test_investor_estimate_kis_failure_returns_previous_same_day_rows() -> None:
-    from hoga.live.api import LiveInvestorEstimateFetcher
-    from hoga.live.kis_client import KisRateLimitError
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
+    from hoga.live.kis_client import KisRateLimitError  # noqa: PLC0415
 
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
-        KisRateLimitError("rate limited"),
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+            KisRateLimitError("rate limited"),
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     await fetcher.fetch(fake, "005930")
@@ -2308,12 +2462,14 @@ async def test_investor_estimate_kis_failure_returns_previous_same_day_rows() ->
 
 @pytest.mark.asyncio
 async def test_investor_estimate_auth_failure_returns_degraded_credentials_warning() -> None:
-    from hoga.live.api import LiveInvestorEstimateFetcher
-    from hoga.live.kis_client import KisAuthError
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
+    from hoga.live.kis_client import KisAuthError  # noqa: PLC0415
 
-    fake = _FakeKisForInvestorTrendEstimate([
-        KisAuthError("token issue failed"),
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            KisAuthError("token issue failed"),
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     response = await fetcher.fetch(fake, "005930")
@@ -2327,18 +2483,20 @@ async def test_investor_estimate_auth_failure_returns_degraded_credentials_warni
 
 @pytest.mark.asyncio
 async def test_investor_estimate_evicts_previous_day_state(monkeypatch) -> None:
-    from hoga.live import api as live_api
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
     now = 100.0
     today = "20260616"
     monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
     monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
 
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
-        [InvestorTrendEstimateRow(slot="0930", foreign_qty=11, institution_qty=21, sum_qty=32)],
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+            [InvestorTrendEstimateRow(slot="0930", foreign_qty=11, institution_qty=21, sum_qty=32)],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: today)
 
     await fetcher.fetch(fake, "005930")
@@ -2354,8 +2512,8 @@ async def test_investor_estimate_evicts_previous_day_state(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_investor_estimate_bounds_codes_per_day(monkeypatch) -> None:
-    from hoga.live import api as live_api
-    from hoga.live.api import (
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import (  # noqa: PLC0415
         _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY,
         LiveInvestorEstimateFetcher,
     )
@@ -2363,10 +2521,20 @@ async def test_investor_estimate_bounds_codes_per_day(monkeypatch) -> None:
     now = 100.0
     monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
     monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
-    fake = _FakeKisForInvestorTrendEstimate([
-        ([] if i % 2 == 0 else [InvestorTrendEstimateRow(slot="0900", foreign_qty=i, institution_qty=0, sum_qty=i)])
-        for i in range(_INVESTOR_ESTIMATE_MAX_CODES_PER_DAY + 1)
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            (
+                []
+                if i % 2 == 0
+                else [
+                    InvestorTrendEstimateRow(
+                        slot="0900", foreign_qty=i, institution_qty=0, sum_qty=i
+                    )
+                ]
+            )
+            for i in range(_INVESTOR_ESTIMATE_MAX_CODES_PER_DAY + 1)
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: "20260616")
 
     for i in range(_INVESTOR_ESTIMATE_MAX_CODES_PER_DAY + 1):
@@ -2380,19 +2548,21 @@ async def test_investor_estimate_bounds_codes_per_day(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_investor_estimate_degraded_failure_is_cached_with_previous_rows(monkeypatch) -> None:
-    from hoga.live import api as live_api
-    from hoga.live.api import LiveInvestorEstimateFetcher
-    from hoga.live.kis_client import KisRateLimitError
+    from hoga.live import api as live_api  # noqa: PLC0415
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
+    from hoga.live.kis_client import KisRateLimitError  # noqa: PLC0415
 
     now = 100.0
     monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
     monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
 
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
-        KisRateLimitError("rate limited"),
-        KisRateLimitError("rate limited again"),
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+            KisRateLimitError("rate limited"),
+            KisRateLimitError("rate limited again"),
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: "20260616")
 
     successful = await fetcher.fetch(fake, "005930")
@@ -2418,16 +2588,18 @@ async def test_investor_estimate_degraded_failure_is_cached_with_previous_rows(m
 
 @pytest.mark.asyncio
 async def test_investor_estimate_api_and_transport_errors_preserve_previous_rows() -> None:
-    import httpx
+    import httpx  # noqa: PLC0415
 
-    from hoga.live.api import LiveInvestorEstimateFetcher
-    from hoga.live.kis_client import KisApiError, KisTransportError
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
+    from hoga.live.kis_client import KisApiError, KisTransportError  # noqa: PLC0415
 
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
-        KisTransportError(httpx.RemoteProtocolError("server disconnected")),
-        KisApiError("KIS999", "upstream rejected request"),
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+            KisTransportError(httpx.RemoteProtocolError("server disconnected")),
+            KisApiError("KIS999", "upstream rejected request"),
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     await fetcher.fetch(fake, "005930")
@@ -2446,19 +2618,21 @@ async def test_investor_estimate_api_and_transport_errors_preserve_previous_rows
 
 @pytest.mark.asyncio
 async def test_investor_estimate_parse_error_degrades() -> None:
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+    fake = _FakeKisForInvestorTrendEstimate(
         [
-            InvestorTrendEstimateRow(
-                slot="0910",
-                foreign_qty=11,
-                institution_qty=21,
-                sum_qty=32,
-            ).model_copy(update={"foreign_qty": "not-an-int"})
-        ],
-    ])
+            [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+            [
+                InvestorTrendEstimateRow(
+                    slot="0910",
+                    foreign_qty=11,
+                    institution_qty=21,
+                    sum_qty=32,
+                ).model_copy(update={"foreign_qty": "not-an-int"})
+            ],
+        ]
+    )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     await fetcher.fetch(fake, "005930")
@@ -2472,7 +2646,7 @@ async def test_investor_estimate_parse_error_degrades() -> None:
 
 @pytest.mark.asyncio
 async def test_investor_estimate_does_not_degrade_programming_errors() -> None:
-    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live.api import LiveInvestorEstimateFetcher  # noqa: PLC0415
 
     fake = _FakeKisForInvestorTrendEstimate([[object()]])
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
@@ -2482,9 +2656,10 @@ async def test_investor_estimate_does_not_degrade_programming_errors() -> None:
 
 
 def _investor_estimate_app(tmp_path, fake_kis=None):
-    from fastapi import FastAPI
-    from hoga.live import kis_runtime, lifecycle
-    from hoga.live.api import build_router
+    from fastapi import FastAPI  # noqa: PLC0415
+
+    from hoga.live import kis_runtime, lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     if fake_kis is not None:
@@ -2495,9 +2670,9 @@ def _investor_estimate_app(tmp_path, fake_kis=None):
 
 
 def test_investor_trend_estimate_route_uses_capacity_scheduler(tmp_path) -> None:
-    fake = _FakeKisForInvestorTrendEstimate([
-        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)]
-    ])
+    fake = _FakeKisForInvestorTrendEstimate(
+        [[InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)]]
+    )
     app = _investor_estimate_app(tmp_path, fake)
     r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "005930"})
 
@@ -2506,12 +2681,18 @@ def test_investor_trend_estimate_route_uses_capacity_scheduler(tmp_path) -> None
 
 
 def test_investor_trend_estimate_route_returns_expected_rows(tmp_path) -> None:
-    fake = _FakeKisForInvestorTrendEstimate([
+    fake = _FakeKisForInvestorTrendEstimate(
         [
-            InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30),
-            InvestorTrendEstimateRow(slot="0910", foreign_qty=15, institution_qty=None, sum_qty=15),
+            [
+                InvestorTrendEstimateRow(
+                    slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30
+                ),
+                InvestorTrendEstimateRow(
+                    slot="0910", foreign_qty=15, institution_qty=None, sum_qty=15
+                ),
+            ]
         ]
-    ])
+    )
     app = _investor_estimate_app(tmp_path, fake)
 
     r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "005930"})
@@ -2565,8 +2746,8 @@ def test_investor_trend_estimate_route_missing_kis_returns_degraded_error(tmp_pa
 
 
 def test_live_settings_routes_round_trip(tmp_path):
-    from hoga.live import lifecycle
-    from hoga.live.api import build_router
+    from hoga.live import lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     app = FastAPI()
@@ -2598,8 +2779,8 @@ def test_live_settings_routes_round_trip(tmp_path):
 def test_live_settings_patch_ignores_legacy_storage_policy_key(tmp_path):
     """storage_policy는 제거됨(2026-07-17) — 레거시 클라이언트가 보내도 무해하게
     무시되고(422 아님) 응답에도 나타나지 않는다."""
-    from hoga.live import lifecycle
-    from hoga.live.api import build_router
+    from hoga.live import lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     app = FastAPI()
@@ -2628,8 +2809,8 @@ def test_live_settings_patch_ignores_legacy_storage_policy_key(tmp_path):
 
 
 def test_live_settings_patch_can_set_bypass_alone(tmp_path):
-    from hoga.live import lifecycle
-    from hoga.live.api import build_router
+    from hoga.live import lifecycle  # noqa: PLC0415
+    from hoga.live.api import build_router  # noqa: PLC0415
 
     lifecycle.reset_for_tests()
     app = FastAPI()
