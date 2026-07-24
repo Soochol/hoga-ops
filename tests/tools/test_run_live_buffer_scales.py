@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import resource
 from pathlib import Path
 
 import pytest
@@ -9,22 +10,71 @@ import pytest
 from tools.run_live_buffer_scales import (
     MemoryHeadroom,
     MemoryProbeError,
+    _apply_address_space_limit,
     read_memory_headroom,
+    resolve_reliable_memory_limit,
     run_scale_matrix,
 )
 
+_V2_MOUNTINFO = (
+    "36 25 0:32 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n"
+)
 
-def _write_proc_meminfo(proc_root: Path, available_kib: int) -> None:
+
+def _write_proc_meminfo(
+    proc_root: Path,
+    available_kib: int,
+    *,
+    membership: str = "0::/\n",
+    mountinfo: str = _V2_MOUNTINFO,
+) -> None:
     proc_root.mkdir(parents=True)
     (proc_root / "meminfo").write_text(
         f"MemTotal:       999999 kB\nMemAvailable:   {available_kib} kB\n",
         encoding="utf-8",
     )
     (proc_root / "self").mkdir()
-    (proc_root / "self" / "cgroup").write_text("", encoding="utf-8")
+    (proc_root / "self" / "cgroup").write_text(membership, encoding="utf-8")
+    (proc_root / "self" / "mountinfo").write_text(mountinfo, encoding="utf-8")
 
 
-def test_memory_headroom_uses_host_available_without_cgroup_limit(
+def _write_proc_and_cgroup(
+    tmp_path: Path,
+    *,
+    membership: str,
+    mountinfo: str,
+) -> tuple[Path, Path]:
+    proc_root = tmp_path / "proc"
+    cgroup_root = tmp_path / "cgroup"
+    _write_proc_meminfo(
+        proc_root,
+        available_kib=10,
+        membership=membership,
+        mountinfo=mountinfo,
+    )
+    cgroup_root.mkdir()
+    return proc_root, cgroup_root
+
+
+def _write_v2_limit(directory: Path, *, limit: int | str, current: int) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "memory.max").write_text(f"{limit}\n", encoding="utf-8")
+    (directory / "memory.current").write_text(f"{current}\n", encoding="utf-8")
+
+
+def _write_v1_limit(directory: Path, *, limit: int, current: int) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "memory.limit_in_bytes").write_text(
+        f"{limit}\n",
+        encoding="utf-8",
+    )
+    (directory / "memory.usage_in_bytes").write_text(
+        f"{current}\n",
+        encoding="utf-8",
+    )
+
+
+def test_memory_headroom_fails_closed_without_mapped_controller_files(
     tmp_path: Path,
 ) -> None:
     proc_root = tmp_path / "proc"
@@ -32,16 +82,8 @@ def test_memory_headroom_uses_host_available_without_cgroup_limit(
     _write_proc_meminfo(proc_root, available_kib=10)
     cgroup_root.mkdir()
 
-    result = read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
-
-    assert result == MemoryHeadroom(
-        host_available_bytes=10 * 1024,
-        cgroup_version=None,
-        cgroup_limit_bytes=None,
-        cgroup_current_bytes=None,
-        cgroup_remaining_bytes=None,
-        usable_headroom_bytes=10 * 1024,
-    )
+    with pytest.raises(MemoryProbeError, match="cgroup v2 memory controller"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
 
 
 def test_memory_headroom_uses_smaller_finite_cgroup_v2_remaining(
@@ -51,8 +93,7 @@ def test_memory_headroom_uses_smaller_finite_cgroup_v2_remaining(
     cgroup_root = tmp_path / "cgroup"
     _write_proc_meminfo(proc_root, available_kib=10)
     cgroup_root.mkdir()
-    (cgroup_root / "memory.max").write_text("8000\n", encoding="utf-8")
-    (cgroup_root / "memory.current").write_text("3000\n", encoding="utf-8")
+    _write_v2_limit(cgroup_root, limit=8_000, current=3_000)
 
     result = read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
 
@@ -70,8 +111,7 @@ def test_memory_headroom_treats_unlimited_cgroup_v2_as_host_only(
     cgroup_root = tmp_path / "cgroup"
     _write_proc_meminfo(proc_root, available_kib=10)
     cgroup_root.mkdir()
-    (cgroup_root / "memory.max").write_text("max\n", encoding="utf-8")
-    (cgroup_root / "memory.current").write_text("3000\n", encoding="utf-8")
+    _write_v2_limit(cgroup_root, limit="max", current=3_000)
 
     result = read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
 
@@ -93,12 +133,9 @@ def test_memory_headroom_uses_finite_cgroup_v2_ancestor_of_unlimited_leaf(
         encoding="utf-8",
     )
     leaf = cgroup_root / "parent" / "child"
-    leaf.mkdir(parents=True)
-    (leaf / "memory.max").write_text("max\n", encoding="utf-8")
-    (leaf / "memory.current").write_text("1000\n", encoding="utf-8")
+    _write_v2_limit(leaf, limit="max", current=1_000)
     parent = cgroup_root / "parent"
-    (parent / "memory.max").write_text("8000\n", encoding="utf-8")
-    (parent / "memory.current").write_text("3000\n", encoding="utf-8")
+    _write_v2_limit(parent, limit=8_000, current=3_000)
 
     result = read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
 
@@ -120,9 +157,7 @@ def test_memory_headroom_fails_closed_when_declared_cgroup_cannot_be_resolved(
         encoding="utf-8",
     )
     ancestor = cgroup_root / "missing"
-    ancestor.mkdir(parents=True)
-    (ancestor / "memory.max").write_text("8000\n", encoding="utf-8")
-    (ancestor / "memory.current").write_text("3000\n", encoding="utf-8")
+    _write_v2_limit(ancestor, limit=8_000, current=3_000)
 
     with pytest.raises(MemoryProbeError, match="declared cgroup v2"):
         read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
@@ -136,8 +171,7 @@ def test_memory_headroom_fails_closed_when_process_cgroup_is_unreadable(
     _write_proc_meminfo(proc_root, available_kib=10)
     (proc_root / "self" / "cgroup").unlink()
     cgroup_root.mkdir()
-    (cgroup_root / "memory.max").write_text("8000\n", encoding="utf-8")
-    (cgroup_root / "memory.current").write_text("3000\n", encoding="utf-8")
+    _write_v2_limit(cgroup_root, limit=8_000, current=3_000)
 
     with pytest.raises(MemoryProbeError, match="process cgroup membership"):
         read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
@@ -146,16 +180,107 @@ def test_memory_headroom_fails_closed_when_process_cgroup_is_unreadable(
 def test_memory_headroom_uses_safe_cgroup_v1_fallback(tmp_path: Path) -> None:
     proc_root = tmp_path / "proc"
     cgroup_root = tmp_path / "cgroup"
-    _write_proc_meminfo(proc_root, available_kib=10)
+    _write_proc_meminfo(
+        proc_root,
+        available_kib=10,
+        membership="5:memory:/\n",
+        mountinfo=(
+            "37 25 0:33 / /sys/fs/cgroup/memory rw - "
+            "cgroup cgroup rw,memory\n"
+        ),
+    )
     cgroup_root.mkdir()
-    (cgroup_root / "memory.limit_in_bytes").write_text("9000\n", encoding="utf-8")
-    (cgroup_root / "memory.usage_in_bytes").write_text("4000\n", encoding="utf-8")
+    _write_v1_limit(cgroup_root / "memory", limit=9_000, current=4_000)
 
     result = read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
 
     assert result.cgroup_version == "v1"
     assert result.cgroup_remaining_bytes == 5_000
     assert result.usable_headroom_bytes == 5_000
+
+
+def test_v2_membership_is_mapped_relative_to_mount_root(tmp_path: Path) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/docker/parent/child\n",
+        mountinfo=(
+            "36 25 0:32 /docker/parent /sys/fs/cgroup rw - "
+            "cgroup2 cgroup rw\n"
+        ),
+    )
+    _write_v2_limit(cgroup_root / "child", limit=1_000, current=400)
+
+    headroom = read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+    assert headroom.cgroup_remaining_bytes == 600
+
+
+def test_malformed_membership_fails_closed(tmp_path: Path) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="not-a-cgroup-membership\n",
+        mountinfo=_V2_MOUNTINFO,
+    )
+    _write_v2_limit(cgroup_root, limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="membership"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+def test_empty_membership_fails_closed(tmp_path: Path) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="",
+        mountinfo=_V2_MOUNTINFO,
+    )
+    _write_v2_limit(cgroup_root, limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="membership"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+def test_hybrid_v1_membership_is_mapped_relative_to_mount_root(
+    tmp_path: Path,
+) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership=(
+            "0::/unified/child\n"
+            "5:memory:/docker/parent/child\n"
+        ),
+        mountinfo=(
+            "36 25 0:32 /unified /sys/fs/cgroup/unified rw - "
+            "cgroup2 cgroup rw\n"
+            "37 25 0:33 /docker/parent /sys/fs/cgroup/memory rw - "
+            "cgroup cgroup rw,memory\n"
+        ),
+    )
+    _write_v2_limit(
+        cgroup_root / "unified" / "child",
+        limit="max",
+        current=100,
+    )
+    _write_v1_limit(cgroup_root / "memory" / "child", limit=1_000, current=400)
+
+    headroom = read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+    assert headroom.cgroup_version == "v1"
+    assert headroom.cgroup_remaining_bytes == 600
+
+
+def test_membership_outside_mount_root_fails_closed(tmp_path: Path) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/outside/child\n",
+        mountinfo=(
+            "36 25 0:32 /docker/parent /sys/fs/cgroup rw - "
+            "cgroup2 cgroup rw\n"
+        ),
+    )
+    _write_v2_limit(cgroup_root / "outside" / "child", limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="mapped"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
 
 
 def test_scale_matrix_accepts_each_projected_scale_in_its_own_limited_child() -> None:
@@ -287,3 +412,69 @@ def test_scale_matrix_fails_closed_when_memory_limit_is_unavailable() -> None:
     assert skipped["reason"] == "memory_limit_unavailable"
     assert skipped["scale"] == 1
     assert skipped["projected_peak_bytes"] is None
+
+
+def test_resolve_limit_never_exceeds_inherited_soft_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(resource, "getrlimit", lambda _: (128, 512))
+
+    assert resolve_reliable_memory_limit(256) == 128
+
+
+def test_apply_limit_never_raises_inherited_soft_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[tuple[int, int]] = []
+    monkeypatch.setattr(resource, "getrlimit", lambda _: (128, 512))
+    monkeypatch.setattr(resource, "setrlimit", lambda _, value: seen.append(value))
+
+    _apply_address_space_limit(256)
+
+    assert seen == [(128, 512)]
+
+
+def test_matrix_rejects_arbitrary_unprojected_first_scale() -> None:
+    with pytest.raises(ValueError, match="first scale must be 1"):
+        run_scale_matrix(
+            scales=(800,),
+            ticks_per_code=1_000,
+            levels=10,
+            retention_ms=1_000_000_000,
+            output=io.StringIO(),
+            probe_headroom=lambda: pytest.fail(
+                "validation must happen before probing memory"
+            ),
+        )
+
+
+def test_scale_one_bootstrap_receives_finite_child_limit_before_execution() -> None:
+    observed: list[tuple[int, int]] = []
+
+    def run_child(scale: int, memory_limit_bytes: int) -> dict[str, int]:
+        observed.append((scale, memory_limit_bytes))
+        return {
+            "codes": scale,
+            "max_rss_bytes": 100,
+            "published_total": scale,
+        }
+
+    run_scale_matrix(
+        scales=(1,),
+        ticks_per_code=1,
+        levels=1,
+        retention_ms=1,
+        output=io.StringIO(),
+        probe_headroom=lambda: MemoryHeadroom(
+            host_available_bytes=1_000,
+            cgroup_version="v2",
+            cgroup_limit_bytes=1_000,
+            cgroup_current_bytes=0,
+            cgroup_remaining_bytes=1_000,
+            usable_headroom_bytes=1_000,
+        ),
+        resolve_memory_limit=lambda requested: requested,
+        run_child=run_child,
+    )
+
+    assert observed == [(1, 250)]

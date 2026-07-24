@@ -17,6 +17,16 @@ from typing import Literal, TextIO
 
 DEFAULT_SCALES = (1, 50, 200, 800)
 _V1_UNLIMITED_AT_OR_ABOVE = 1 << 60
+_DEFAULT_CGROUP_ROOT = Path("/sys/fs/cgroup")
+_MOUNTINFO_ESCAPE_DIGITS = 3
+_MOUNTINFO_PRE_FIELD_COUNT = 6
+_MOUNTINFO_POST_FIELD_COUNT = 3
+_MOUNTINFO_PATH_ESCAPES = {
+    "040": " ",
+    "011": "\t",
+    "012": "\n",
+    "134": "\\",
+}
 
 
 class MemoryProbeError(RuntimeError):
@@ -35,6 +45,21 @@ class MemoryHeadroom:
     cgroup_current_bytes: int | None
     cgroup_remaining_bytes: int | None
     usable_headroom_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class CgroupMount:
+    version: Literal["v1", "v2"]
+    root: Path
+    mount_point: Path
+    controllers: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
+class _CgroupMembership:
+    version: Literal["v1", "v2"]
+    path: Path
+    controllers: frozenset[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,56 +101,210 @@ def _read_host_available(proc_root: Path) -> int:
     raise MemoryProbeError("host MemAvailable is missing or invalid")
 
 
-def _process_cgroup_paths(proc_root: Path) -> tuple[Path | None, Path | None]:
-    """Return process-relative (v2, v1-memory) paths when procfs exposes them."""
+def _absolute_cgroup_path(raw_path: str, *, source: str) -> Path:
+    if raw_path == "/":
+        return Path("/")
+    if not raw_path.startswith("/") or raw_path.endswith("/"):
+        raise MemoryProbeError(f"malformed {source}")
+    parts = raw_path[1:].split("/")
+    if any(not part or part in {".", ".."} for part in parts):
+        raise MemoryProbeError(f"malformed {source}")
+    return Path(raw_path)
+
+
+def _decode_mountinfo_path(raw_path: str) -> str:
+    decoded: list[str] = []
+    index = 0
+    while index < len(raw_path):
+        if raw_path[index] != "\\":
+            decoded.append(raw_path[index])
+            index += 1
+            continue
+        escape_end = index + 1 + _MOUNTINFO_ESCAPE_DIGITS
+        escape = raw_path[index + 1 : escape_end]
+        if (
+            len(escape) != _MOUNTINFO_ESCAPE_DIGITS
+            or escape not in _MOUNTINFO_PATH_ESCAPES
+        ):
+            raise MemoryProbeError("malformed process cgroup mountinfo")
+        decoded.append(_MOUNTINFO_PATH_ESCAPES[escape])
+        index = escape_end
+    return "".join(decoded)
+
+
+def _process_cgroup_mounts(proc_root: Path) -> tuple[CgroupMount, ...]:
     try:
-        lines = (proc_root / "self" / "cgroup").read_text(encoding="utf-8").splitlines()
+        lines = (proc_root / "self" / "mountinfo").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    except OSError as exc:
+        raise MemoryProbeError("cannot read process cgroup mountinfo") from exc
+
+    mounts: list[CgroupMount] = []
+    for line in lines:
+        try:
+            pre_section, post_section = line.split(" - ")
+        except ValueError:
+            raise MemoryProbeError("malformed process cgroup mountinfo") from None
+        pre_separator = pre_section.split()
+        post_separator = post_section.split()
+        if (
+            len(pre_separator) < _MOUNTINFO_PRE_FIELD_COUNT
+            or len(post_separator) < _MOUNTINFO_POST_FIELD_COUNT
+        ):
+            raise MemoryProbeError("malformed process cgroup mountinfo")
+        root = _absolute_cgroup_path(
+            _decode_mountinfo_path(pre_separator[3]),
+            source="process cgroup mount root",
+        )
+        mount_point = _absolute_cgroup_path(
+            _decode_mountinfo_path(pre_separator[4]),
+            source="process cgroup mount point",
+        )
+        filesystem = post_separator[0]
+        super_options = frozenset(post_separator[2].split(","))
+        if filesystem == "cgroup2":
+            version: Literal["v1", "v2"] = "v2"
+            controllers = frozenset()
+        elif filesystem == "cgroup" and "memory" in super_options:
+            version = "v1"
+            controllers = super_options
+        else:
+            continue
+        mounts.append(
+            CgroupMount(
+                version=version,
+                root=root,
+                mount_point=mount_point,
+                controllers=controllers,
+            )
+        )
+    return tuple(mounts)
+
+
+def _process_cgroup_memberships(proc_root: Path) -> tuple[_CgroupMembership, ...]:
+    try:
+        lines = (proc_root / "self" / "cgroup").read_text(
+            encoding="utf-8"
+        ).splitlines()
     except OSError as exc:
         raise MemoryProbeError("cannot read process cgroup membership") from exc
-    v2_path: Path | None = None
-    v1_path: Path | None = None
+    if not lines:
+        raise MemoryProbeError("process cgroup membership is empty")
+
+    memberships: list[_CgroupMembership] = []
     for line in lines:
-        hierarchy, separator, remainder = line.partition(":")
-        if not separator:
-            continue
-        controllers, separator, raw_path = remainder.partition(":")
-        if not separator:
-            continue
-        relative = Path(raw_path.lstrip("/"))
-        if hierarchy == "0" and not controllers:
-            v2_path = relative
-        elif "memory" in controllers.split(","):
-            v1_path = relative
-    return v2_path, v1_path
+        try:
+            hierarchy, raw_controllers, raw_path = line.split(":")
+        except ValueError:
+            raise MemoryProbeError("malformed process cgroup membership") from None
+        if not hierarchy.isdecimal():
+            raise MemoryProbeError("malformed process cgroup membership")
+        path = _absolute_cgroup_path(
+            raw_path,
+            source="process cgroup membership",
+        )
+        if hierarchy == "0":
+            if raw_controllers:
+                raise MemoryProbeError("malformed process cgroup membership")
+            version: Literal["v1", "v2"] = "v2"
+            controllers = frozenset()
+        else:
+            controller_parts = raw_controllers.split(",")
+            if any(
+                not controller
+                or controller.strip() != controller
+                for controller in controller_parts
+            ):
+                raise MemoryProbeError("malformed process cgroup membership")
+            version = "v1"
+            controllers = frozenset(controller_parts)
+        memberships.append(
+            _CgroupMembership(
+                version=version,
+                path=path,
+                controllers=controllers,
+            )
+        )
+    return tuple(memberships)
 
 
-def _candidate_cgroup_dirs(
+def _mounted_controller_root(
     *,
     cgroup_root: Path,
-    v2_path: Path | None,
-    v1_path: Path | None,
-) -> tuple[list[Path], list[Path]]:
-    def ancestors(base: Path, relative: Path) -> list[Path]:
-        candidate = base / relative
-        result: list[Path] = []
-        while candidate == base or base in candidate.parents:
-            result.append(candidate)
-            if candidate == base:
-                break
-            candidate = candidate.parent
-        return result
+    mount: CgroupMount,
+) -> Path:
+    if cgroup_root == _DEFAULT_CGROUP_ROOT:
+        return mount.mount_point
+    try:
+        relative_mount = mount.mount_point.relative_to(_DEFAULT_CGROUP_ROOT)
+    except ValueError:
+        if mount.mount_point == cgroup_root or cgroup_root in mount.mount_point.parents:
+            return mount.mount_point
+        raise MemoryProbeError(
+            "process cgroup mount point cannot be mapped to cgroup root"
+        ) from None
+    return cgroup_root / relative_mount
 
-    v2_candidates: list[Path] = []
-    v1_candidates: list[Path] = []
-    if v2_path is not None:
-        v2_candidates.extend(ancestors(cgroup_root, v2_path))
-    else:
-        v2_candidates.append(cgroup_root)
-    if v1_path is not None:
-        v1_candidates.extend(ancestors(cgroup_root / "memory", v1_path))
-        v1_candidates.extend(ancestors(cgroup_root, v1_path))
-    v1_candidates.extend((cgroup_root / "memory", cgroup_root))
-    return list(dict.fromkeys(v2_candidates)), list(dict.fromkeys(v1_candidates))
+
+def _mapped_controller_dirs(
+    *,
+    proc_root: Path,
+    cgroup_root: Path,
+) -> tuple[list[Path], list[Path], frozenset[Path], frozenset[Path]]:
+    mounts = _process_cgroup_mounts(proc_root)
+    memberships = _process_cgroup_memberships(proc_root)
+    mapped: dict[Literal["v1", "v2"], list[tuple[Path, Path]]] = {
+        "v1": [],
+        "v2": [],
+    }
+    for membership in memberships:
+        if membership.version == "v1" and "memory" not in membership.controllers:
+            continue
+        for mount in mounts:
+            if mount.version != membership.version:
+                continue
+            if mount.version == "v1" and "memory" not in mount.controllers:
+                continue
+            try:
+                relative_membership = membership.path.relative_to(mount.root)
+            except ValueError:
+                continue
+            controller_root = _mounted_controller_root(
+                cgroup_root=cgroup_root,
+                mount=mount,
+            )
+            process_dir = controller_root / relative_membership
+            mapped[membership.version].append((process_dir, controller_root))
+
+    if not mapped["v1"] and not mapped["v2"]:
+        raise MemoryProbeError(
+            "process cgroup membership could not be mapped to a memory mount"
+        )
+
+    def candidates(
+        mappings: Sequence[tuple[Path, Path]],
+    ) -> tuple[list[Path], frozenset[Path]]:
+        result: list[Path] = []
+        process_dirs: set[Path] = set()
+        for process_dir, controller_root in mappings:
+            process_dirs.add(process_dir)
+            candidate = process_dir
+            while candidate == controller_root or controller_root in candidate.parents:
+                result.append(candidate)
+                if candidate == controller_root:
+                    break
+                candidate = candidate.parent
+        return list(dict.fromkeys(result)), frozenset(process_dirs)
+
+    v2_candidates, v2_process_dirs = candidates(mapped["v2"])
+    v1_candidates, v1_process_dirs = candidates(mapped["v1"])
+    return (
+        v2_candidates,
+        v1_candidates,
+        v2_process_dirs,
+        v1_process_dirs,
+    )
 
 
 def _probe_cgroup_v2(candidates: Sequence[Path]) -> _ControllerProbe:
@@ -213,24 +392,20 @@ def read_memory_headroom(
 ) -> MemoryHeadroom:
     """Use the tighter of host MemAvailable and a finite process cgroup limit."""
     host_available = _read_host_available(proc_root)
-    v2_path, v1_path = _process_cgroup_paths(proc_root)
-    v2_candidates, v1_candidates = _candidate_cgroup_dirs(
+    (
+        v2_candidates,
+        v1_candidates,
+        v2_process_dirs,
+        v1_process_dirs,
+    ) = _mapped_controller_dirs(
+        proc_root=proc_root,
         cgroup_root=cgroup_root,
-        v2_path=v2_path,
-        v1_path=v1_path,
     )
     v2_probe = _probe_cgroup_v2(v2_candidates)
     v1_probe = _probe_cgroup_v1(v1_candidates)
-    if (
-        v2_path is not None
-        and cgroup_root / v2_path not in v2_probe.discovered_paths
-    ):
+    if v2_process_dirs and v2_process_dirs.isdisjoint(v2_probe.discovered_paths):
         raise MemoryProbeError("declared cgroup v2 memory controller could not be resolved")
-    v1_process_dirs = {
-        cgroup_root / "memory" / v1_path,
-        cgroup_root / v1_path,
-    } if v1_path is not None else set()
-    if v1_path is not None and v1_process_dirs.isdisjoint(v1_probe.discovered_paths):
+    if v1_process_dirs and v1_process_dirs.isdisjoint(v1_probe.discovered_paths):
         raise MemoryProbeError("declared cgroup v1 memory controller could not be resolved")
 
     finite_probes = [
@@ -320,27 +495,41 @@ def resolve_reliable_memory_limit(requested_bytes: int) -> int | None:
     if os.name != "posix" or not hasattr(resource, "RLIMIT_AS") or requested_bytes <= 0:
         return None
     try:
-        _soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
     except (OSError, ValueError):
         return None
+
+    if soft == resource.RLIM_INFINITY:
+        resolved = requested_bytes
+    elif soft > 0:
+        resolved = min(requested_bytes, soft)
+    else:
+        return None
+
     if hard == resource.RLIM_INFINITY:
-        return requested_bytes
+        return resolved
     if hard <= 0:
         return None
-    return min(requested_bytes, hard)
+    return min(resolved, hard)
 
 
 def _apply_address_space_limit(limit_bytes: int) -> None:
     try:
-        _soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-        new_hard = limit_bytes if hard == resource.RLIM_INFINITY else min(limit_bytes, hard)
-        if new_hard <= 0:
-            raise MemoryLimitUnavailable("RLIMIT_AS hard limit is not usable")
-        resource.setrlimit(resource.RLIMIT_AS, (new_hard, new_hard))
-        verified_soft, _verified_hard = resource.getrlimit(resource.RLIMIT_AS)
+        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+        new_soft = (
+            limit_bytes
+            if soft == resource.RLIM_INFINITY
+            else min(limit_bytes, soft)
+        )
+        if hard != resource.RLIM_INFINITY:
+            new_soft = min(new_soft, hard)
+        if new_soft <= 0:
+            raise MemoryLimitUnavailable("RLIMIT_AS soft limit is not usable")
+        resource.setrlimit(resource.RLIMIT_AS, (new_soft, hard))
+        verified_soft, verified_hard = resource.getrlimit(resource.RLIMIT_AS)
     except (OSError, ValueError) as exc:
         raise MemoryLimitUnavailable("could not establish RLIMIT_AS") from exc
-    if verified_soft != new_hard:
+    if verified_soft != new_soft or verified_hard != hard:
         raise MemoryLimitUnavailable("RLIMIT_AS verification failed")
 
 
@@ -416,6 +605,15 @@ def _skip_row(
     }
 
 
+def _validate_scales(scales: Sequence[int]) -> None:
+    if not scales or any(scale <= 0 for scale in scales):
+        raise ValueError("scales must contain positive integers")
+    if tuple(scales) != tuple(sorted(set(scales))):
+        raise ValueError("scales must be unique and strictly increasing")
+    if scales[0] != 1:
+        raise ValueError("first scale must be 1")
+
+
 def run_scale_matrix(
     *,
     scales: Sequence[int],
@@ -428,10 +626,7 @@ def run_scale_matrix(
     run_child: Callable[[int, int], Mapping[str, object]] | None = None,
 ) -> None:
     """Guard, isolate, execute, and stream one JSONL row per considered scale."""
-    if not scales or any(scale <= 0 for scale in scales):
-        raise ValueError("scales must contain positive integers")
-    if tuple(scales) != tuple(sorted(set(scales))):
-        raise ValueError("scales must be unique and strictly increasing")
+    _validate_scales(scales)
 
     completed_rows: list[Mapping[str, object]] = []
     for scale in scales:
@@ -446,7 +641,7 @@ def run_scale_matrix(
             retention_ms=retention_ms,
         )
         rejection_reason: str | None = None
-        if child_limit is None:
+        if child_limit is None or child_limit <= 0:
             rejection_reason = "memory_limit_unavailable"
         elif projected_peak is not None and projected_peak > guard_limit:
             rejection_reason = "projected_peak_exceeds_guard"
