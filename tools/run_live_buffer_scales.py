@@ -403,7 +403,14 @@ def read_memory_headroom(
     )
     v2_probe = _probe_cgroup_v2(v2_candidates)
     v1_probe = _probe_cgroup_v1(v1_candidates)
-    if v2_process_dirs and v2_process_dirs.isdisjoint(v2_probe.discovered_paths):
+    v1_controller_resolved = not v1_process_dirs.isdisjoint(
+        v1_probe.discovered_paths
+    )
+    if (
+        v2_process_dirs
+        and v2_process_dirs.isdisjoint(v2_probe.discovered_paths)
+        and not v1_controller_resolved
+    ):
         raise MemoryProbeError("declared cgroup v2 memory controller could not be resolved")
     if v1_process_dirs and v1_process_dirs.isdisjoint(v1_probe.discovered_paths):
         raise MemoryProbeError("declared cgroup v1 memory controller could not be resolved")

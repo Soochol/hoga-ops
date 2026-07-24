@@ -239,7 +239,7 @@ def test_empty_membership_fails_closed(tmp_path: Path) -> None:
         read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
 
 
-def test_hybrid_v1_membership_is_mapped_relative_to_mount_root(
+def test_hybrid_v1_is_used_when_mapped_v2_has_no_memory_controller(
     tmp_path: Path,
 ) -> None:
     proc_root, cgroup_root = _write_proc_and_cgroup(
@@ -255,17 +255,35 @@ def test_hybrid_v1_membership_is_mapped_relative_to_mount_root(
             "cgroup cgroup rw,memory\n"
         ),
     )
-    _write_v2_limit(
-        cgroup_root / "unified" / "child",
-        limit="max",
-        current=100,
-    )
     _write_v1_limit(cgroup_root / "memory" / "child", limit=1_000, current=400)
 
     headroom = read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
 
     assert headroom.cgroup_version == "v1"
     assert headroom.cgroup_remaining_bytes == 600
+
+
+def test_hybrid_partial_v2_memory_controller_fails_closed(tmp_path: Path) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership=(
+            "0::/unified/child\n"
+            "5:memory:/docker/parent/child\n"
+        ),
+        mountinfo=(
+            "36 25 0:32 /unified /sys/fs/cgroup/unified rw - "
+            "cgroup2 cgroup rw\n"
+            "37 25 0:33 /docker/parent /sys/fs/cgroup/memory rw - "
+            "cgroup cgroup rw,memory\n"
+        ),
+    )
+    v2_leaf = cgroup_root / "unified" / "child"
+    v2_leaf.mkdir(parents=True)
+    (v2_leaf / "memory.max").write_text("max\n", encoding="utf-8")
+    _write_v1_limit(cgroup_root / "memory" / "child", limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="incomplete cgroup v2"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
 
 
 def test_membership_outside_mount_root_fails_closed(tmp_path: Path) -> None:
