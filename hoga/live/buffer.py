@@ -181,15 +181,18 @@ class LiveBuffer:
             ob_buf = self._buf.get((code, SnapshotKind.OB.value))
             tr_buf = self._buf.get((code, SnapshotKind.TRADE.value))
             br_buf = self._buf.get((code, SnapshotKind.BROKER.value))
+            pr_buf = self._buf.get((code, SnapshotKind.PROGRAM.value))
             snapshots = tuple(ob_buf) if ob_buf else ()
             trades = tuple(tr_buf) if tr_buf else ()
             brokers = tuple(br_buf) if br_buf else ()
+            programs = tuple(pr_buf) if pr_buf else ()
 
         return {
             "code": code,
             "snapshots": [_strip_t_only(e) for e in snapshots],
             "trades": [_strip_t_only(e) for e in trades],
             "brokers": [_strip_t_only(e) for e in brokers],
+            "programs": [_strip_t_only(e) for e in programs],
         }
 
 

@@ -202,6 +202,11 @@ async def test_get_live_series_returns_buffered_arrays(tmp_path) -> None:
             LiveSnapshot(t_ms=t, kind=SnapshotKind.OB, payload={"total_bid_qty": 100 + tick}),
             LiveSnapshot(t_ms=t, kind=SnapshotKind.TRADE, payload={"trades": []}),
             LiveSnapshot(t_ms=t, kind=SnapshotKind.BROKER, payload={"buy_top": []}),
+            LiveSnapshot(
+                t_ms=t,
+                kind=SnapshotKind.PROGRAM,
+                payload={"net_qty": 10 + tick, "net_amount": 1_000_000 + tick},
+            ),
         ], now_ms=t)
 
     app = create_app(tmp_path)
@@ -217,6 +222,8 @@ async def test_get_live_series_returns_buffered_arrays(tmp_path) -> None:
         assert body["bid_peak_today"] is None
         assert len(body["snapshots"]) == 3
         assert body["snapshots"][0]["total_bid_qty"] == 100
+        assert len(body["programs"]) == 3
+        assert body["programs"][-1]["net_qty"] == 12
 
 
 def test_get_live_series_includes_today_ask_peak_from_getter() -> None:
