@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { shouldIgnoreEvent } from '../util/keyboard';
+import { useHeatmapGroupFlow } from '../api/heatmapGroupFlow';
 import {
   useHeatmap, useCreateHeatmapFolder, useReorderHeatmapEntries,
   useRemoveFromHeatmap, useMoveHeatmapEntries,
@@ -34,6 +35,8 @@ export function Heatmap() {
   const venue = useLiveVenueStore((s) => s.venue);
 
   const { quoteByCode, phase, dataUpdatedAt } = useLiveQuoteOverlay(codes, venue);
+  // 그룹 헤더 당일 흐름 미니 그래프(folder_id → 등락률 시계열). 60초 폴링.
+  const flowByFolder = useHeatmapGroupFlow(venue);
   const groups = useMemo(() => groupHeatmapEntries(folders, entries), [folders, entries]);
   const onPick = useJumpToLive();
   const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
@@ -161,7 +164,7 @@ export function Heatmap() {
         <HeatmapBoard groups={visibleGroups} quoteByCode={quoteByCode}
           sortMode={sortMode} onPick={onPick}
           onReorder={isSearching ? undefined : onReorder} onRowMenu={onRowMenu}
-          onRowDragState={setIsRowDragging} />
+          onRowDragState={setIsRowDragging} flowByFolder={flowByFolder} />
         {menu && (
           <HeatmapRowMenu
             x={menu.x} y={menu.y} name={menu.name}
