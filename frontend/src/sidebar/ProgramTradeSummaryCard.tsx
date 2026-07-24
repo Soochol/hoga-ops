@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
-import { hoverMsFromClientX } from './sparklineHover';
+import { hoverMsFromClientX, valueFromYRatio } from './sparklineHover';
 import { formatKoreanInt, formatKoreanWonEok } from '../util/koreanNumber';
 import { SidebarState } from './SidebarSurface';
 
@@ -85,6 +85,11 @@ function ProgramTradeSparkline({
   const W = 100;
   const H = 32;
 
+  // 마우스 Y 를 플롯 높이 대비 비율(0=위,1=아래)로 담는다. 가로선·값 배지는
+  // 데이터 곡선이 아니라 이 커서 높이를 읽는다(캔들차트 Normal crosshair —
+  // 곡선에 스냅하는 Magnet 이 아님). null 이면 이 스파크라인 밖.
+  const [hoverYRatio, setHoverYRatio] = useState<number | null>(null);
+
   const drawable = useMemo(() => {
     const day = realMsToYyyymmdd(anchorT);
     return points
@@ -130,6 +135,11 @@ function ProgramTradeSparkline({
   // 찌그러지므로 svg 밖 div 오버레이로 그린다(브로커 Sparkline 과 동일 기법).
   const dotValue = showCursor ? amountOnDrawnLineAt(drawable, cursorMs!) : null;
   const dotTopPct = dotValue != null ? (toY(dotValue) / H) * 100 : null;
+  // 가로선·값 배지는 마우스 Y 를 그대로 읽는다(곡선 스냅 없음). toY 를 뒤집어
+  // 커서 높이 비율 → 값으로: r=0(위)→vMax, r=1(아래)→vMin.
+  const showYCursor = hoverYRatio != null;
+  const cursorValue = showYCursor ? valueFromYRatio(hoverYRatio!, vMin, vMax) : null;
+  const cursorYPct = showYCursor ? hoverYRatio! * 100 : null;
 
   const zeroPct = (zeroY / H) * 100;
   // 0선 라벨은 도메인 내부(양·음 교차일)일 때만 따로 단다 — 단일 부호 날은
@@ -146,8 +156,15 @@ function ProgramTradeSparkline({
           const rect = e.currentTarget.getBoundingClientRect();
           const ms = hoverMsFromClientX(e.clientX, rect.left, rect.width, tFirst, tLast);
           if (ms != null) onHoverMsChange(ms);
+          if (rect.height > 0) {
+            const r = (e.clientY - rect.top) / rect.height;
+            setHoverYRatio(r < 0 ? 0 : r > 1 ? 1 : r);
+          }
         }}
-        onMouseLeave={() => onHoverMsChange(null)}
+        onMouseLeave={() => {
+          onHoverMsChange(null);
+          setHoverYRatio(null);
+        }}
       >
         <svg
           viewBox={`0 0 ${W} ${H}`}
@@ -185,18 +202,20 @@ function ProgramTradeSparkline({
               y2={H}
               stroke="var(--fg-dimmer)"
               strokeWidth={1}
+              strokeDasharray="3,3"
               vectorEffect="non-scaling-stroke"
             />
           )}
-          {showCursor && dotValue != null && (
+          {showYCursor && (
             <line
               data-testid="cursor-hline"
               x1={0}
               x2={W}
-              y1={toY(dotValue)}
-              y2={toY(dotValue)}
+              y1={hoverYRatio! * H}
+              y2={hoverYRatio! * H}
               stroke="var(--fg-dimmer)"
               strokeWidth={1}
+              strokeDasharray="3,3"
               vectorEffect="non-scaling-stroke"
             />
           )}
@@ -233,15 +252,15 @@ function ProgramTradeSparkline({
         )}
         <span data-testid="axis-label-min">{formatKoreanWonEok(vMin)}</span>
         {/* 커서 값 배지 — 캔들차트 crosshair 의 price-axis 라벨과 같은 역할.
-            가로선(cursor-hline)과 같은 높이에 앉아 커서 위치 누적값을 읽어준다.
-            눈금 라벨을 덮도록 마지막에 렌더(accent 배경으로 위에 뜬다). */}
-        {showCursor && dotValue != null && dotTopPct != null && (
+            가로선(cursor-hline)과 같은 높이(마우스 Y)에 앉아 그 지점 값을
+            읽어준다(곡선 스냅 없음). 눈금 라벨을 덮도록 마지막에 렌더. */}
+        {showYCursor && cursorValue != null && cursorYPct != null && (
           <span
             data-testid="axis-label-cursor"
             className="absolute right-0 -translate-y-1/2 rounded-sm bg-accent px-1 text-accent-fg"
-            style={{ top: `${dotTopPct}%` }}
+            style={{ top: `${cursorYPct}%` }}
           >
-            {formatKoreanWonEok(dotValue)}
+            {formatKoreanWonEok(cursorValue)}
           </span>
         )}
       </div>

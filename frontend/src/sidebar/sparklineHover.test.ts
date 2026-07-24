@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { hoverMsFromClientX } from './sparklineHover';
+import { hoverMsFromClientX, valueFromYRatio } from './sparklineHover';
 
 const T0 = 1_000_000;
 const T1 = 1_060_000; // +60초
@@ -27,5 +27,21 @@ describe('hoverMsFromClientX', () => {
   it('returns null for a zero-width rect (unmeasurable plot)', () => {
     // jsdom 이 rect 를 0 으로 주는 경우 — 호버를 무시해야 한다.
     expect(hoverMsFromClientX(150, 100, 0, T0, T1)).toBeNull();
+  });
+});
+
+describe('valueFromYRatio', () => {
+  it('maps the top of the plot to vMax and the bottom to vMin', () => {
+    expect(valueFromYRatio(0, -50, 200)).toBe(200);
+    expect(valueFromYRatio(1, -50, 200)).toBe(-50);
+  });
+
+  it('maps the midpoint to the domain center', () => {
+    expect(valueFromYRatio(0.5, 0, 100)).toBe(50);
+  });
+
+  it('reads the mouse height, not a snapped curve value (linear in ratio)', () => {
+    // r=0.25 → 위에서 1/4 지점 = vMax 쪽으로 3/4. 곡선과 무관한 순수 높이.
+    expect(valueFromYRatio(0.25, 0, 100)).toBe(75);
   });
 });

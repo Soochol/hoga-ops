@@ -248,27 +248,24 @@ describe('ProgramTradeSummaryCard — sparkline', () => {
     expect(screen.getByTestId('cursor-value-dot')).toBeInTheDocument();
   });
 
-  it('draws a solid gray crosshair (vertical + horizontal), not an accent dash', () => {
+  it('draws a dashed gray vertical cursor line (not an accent line)', () => {
     const series = seriesOf([point(T0, 1), point(T0 + 60_000, 3)]);
     render(<ProgramTradeSummaryCard series={series} cursorMs={T0 + 30_000} />);
     const vline = screen.getByTestId('cursor-marker');
-    // 캔들차트 crosshair 미러: 가는 회색 실선(점선 아님, accent 아님).
+    // 가는 회색 점선(accent 아님) — 데이터 라인과 톤·질감 모두로 분리한다.
     expect(vline.getAttribute('stroke')).toBe('var(--fg-dimmer)');
-    expect(vline.getAttribute('stroke-dasharray')).toBeNull();
-    // 가로선은 세로선과 짝을 이루는 십자의 나머지 절반.
-    const hline = screen.getByTestId('cursor-hline');
-    expect(hline.getAttribute('stroke')).toBe('var(--fg-dimmer)');
-    expect(hline.getAttribute('stroke-dasharray')).toBeNull();
+    expect(vline.getAttribute('stroke-dasharray')).toBe('3,3');
   });
 
-  it('adds a cursor value badge on the y-axis inside the drawn range', () => {
+  it('does not draw the horizontal line or value badge without mouse-Y hover', () => {
+    // 가로선·값 배지는 마우스 Y 를 읽는다(곡선 스냅 아님). cursorMs 주입만으론
+    // 세로선만 뜨고 — 마우스가 이 스파크라인 위에 있어야 가로선·배지가 뜬다.
+    // (jsdom 은 getBoundingClientRect 를 0 으로 줘 호버 Y 를 만들 수 없다;
+    //  Y→값 환산은 valueFromYRatio 단위 테스트로 고정한다.)
     const series = seriesOf([point(T0, 1), point(T0 + 60_000, 3)]);
-    const { rerender } = render(
-      <ProgramTradeSummaryCard series={series} cursorMs={T0 + 30_000} />,
-    );
-    expect(screen.getByTestId('axis-label-cursor')).toBeInTheDocument();
-    // 커서가 없거나 궤적 밖이면 배지도 사라진다(세로선·도트와 같은 게이트).
-    rerender(<ProgramTradeSummaryCard series={series} cursorMs={null} />);
+    render(<ProgramTradeSummaryCard series={series} cursorMs={T0 + 30_000} />);
+    expect(screen.getByTestId('cursor-marker')).toBeInTheDocument();
+    expect(screen.queryByTestId('cursor-hline')).toBeNull();
     expect(screen.queryByTestId('axis-label-cursor')).toBeNull();
   });
 
