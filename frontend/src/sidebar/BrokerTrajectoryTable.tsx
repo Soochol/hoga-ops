@@ -27,6 +27,12 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   // 크로스헤어(cursorMs)로 복귀한다. 모든 행이 같은 dayRange 를 쓰므로 어느
   // 행에서 호버하든 세로 커서선이 전 행에 정렬되고 순매수 열이 함께 갱신된다.
   const [hoverMs, setHoverMs] = useState<number | null>(null);
+  // 마우스가 이 창 안에 있으면(스파크라인 밖 divider·행간 여백 포함) 로컬
+  // 호버가 없을 때 외부 cursorMs(latest 마커)로 복귀하지 않는다. 스파크라인을
+  // 훑다 divider 로 마우스가 나가면 span 의 onMouseLeave 가 hoverMs=null 로
+  // 만들고, effectiveCursor 가 latest(우측)로 튀던 "구분선 우측 점프" 버그를
+  // 막는다. 창 밖일 때만 외부 크로스헤어(다른 창 호버)를 존중한다.
+  const [pointerInside, setPointerInside] = useState(false);
   const rows = useMemo(
     () =>
       (series ?? [])
@@ -69,7 +75,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
     );
   }
 
-  const effectiveCursor = hoverMs ?? cursorMs;
+  const effectiveCursor = hoverMs ?? (pointerInside ? null : cursorMs);
   // 규모 바 분모: 커서 시점 |순매수| 최대값. 행간 상대 규모 비교용(depth bar 문법).
   const nets = rows.map((entry) => netAtCursor(entry, effectiveCursor));
   const maxAbsNet = nets.reduce<number>((acc, net) => Math.max(acc, Math.abs(net ?? 0)), 0);
@@ -85,7 +91,14 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   );
 
   return (
-    <div className="font-data text-sm">
+    <div
+      className="font-data text-sm"
+      onMouseEnter={() => setPointerInside(true)}
+      onMouseLeave={() => {
+        setPointerInside(false);
+        setHoverMs(null);
+      }}
+    >
       <div className="sticky top-0 z-10 grid grid-cols-[78px_1fr_88px] gap-2 bg-bg-card px-2.5 py-1 text-[10.5px] text-fg-dimmer">
         <span>거래원</span>
         <span>당일 궤적</span>
