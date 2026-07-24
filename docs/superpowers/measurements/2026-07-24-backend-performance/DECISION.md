@@ -10,6 +10,46 @@ user-impact conclusions.
 | LiveBuffer | [Synthetic 1/50/200/800-code results table](./README.md#resource-guard-and-results) and [raw JSONL](./live-buffer.jsonl); [20-minute real-mix soak unavailable](./http.log#L2) | growth, >30%, or >50ms | `NEEDS_RECORDED_TICK_FIXTURE` | Provide a recorded tick fixture, run the isolated 20-minute soak, then display-plane spec or close |
 | Range sidecar | [No isolated fixture; no range measurement run](./range.jsonl#L1) | >1000ms or >5MB and slice >=35% | `NEEDS_ISOLATED_FIXTURE` | Provide fixed isolated fixture values, then slice-specific plan or close |
 
+### LiveBuffer decision
+
+`NEEDS_RECORDED_TICK_FIXTURE` is the terminal pending decision. The required
+recorded-tick replay does not exist, so neither `GO` nor `NO-GO` can be
+determined. No display-plane design, implementation plan, or production-code
+change is authorized by this state.
+
+The completed 1/50/200/800-code runs are short, deterministic synthetic
+benchmarks: each separate process generated 1,000 identical-shaped ticks per
+code with `retention_ms=1000000000`. The 800-code result's `13046259712` peak
+RSS bytes is therefore not a 20-minute real-mix RSS plateau, a LiveBuffer
+memory attribution, an event-loop-lag measurement, a first-view coverage
+measurement, or a host/container-limit assessment. It is insufficient to apply
+the gate and is not, by itself, a conclusion about a leak or user impact.
+
+Once an isolated recorded tick fixture is available, replay the same fixture in
+a fresh process for 20 minutes at both 200- and 800-code scale, without a
+WebSocket or external-system connection. Record all of the following:
+
+1. Process RSS over the full replay and after `retention_ms + 120 seconds`, to
+   determine whether RSS is still rising after that point.
+2. The estimated or attributed LiveBuffer memory and its percentage of process
+   RSS, using a recorded attribution method.
+3. Event-loop lag p99 while publish load is active.
+4. First-view coverage against the fixture for codes first viewed during the
+   replay, including any unavailable tail.
+5. The applicable host or container memory limit, current available/headroom
+   information, and RSS relative to that limit during each 200/800-code soak.
+
+Apply `GO` only if any replay shows continued RSS growth after
+`retention_ms + 120 seconds`, LiveBuffer memory above 30% of process RSS,
+event-loop lag p99 above 50ms during active publishing, or the process
+approaching its host/container memory limit. Otherwise decide `NO-GO` and
+retain the current per-deque cap, retention, and `drop_codes_except` for that
+measured workload.
+
+Task 3 observability remains in either outcome: `published_total`,
+`subscriber_drops`, `total_entries`, and `high_water_entries` stay exposed so
+later scale changes remain visible.
+
 ### Past-candle decision
 
 `NEEDS_APPROVED_EXTERNAL_MEASUREMENT` is the terminal pending decision. No approved
