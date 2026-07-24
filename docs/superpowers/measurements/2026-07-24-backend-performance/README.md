@@ -237,3 +237,54 @@ queue wait, and `fresh_past_fetches`; it must not record bodies or credentials.
 ### Unit/mock result
 
 The approved test command completed with `35 passed in 0.12s`.
+
+## Final verification
+
+Commit under test: `2e4cc284e308d7b4369b1250673ef9eca1b5b191`.
+
+Commands and results:
+
+```bash
+uv run --extra dev pytest \
+  tests/tools/test_profile_live_range.py \
+  tests/tools/test_bench_live_buffer.py \
+  tests/unit/api/test_request_timing.py \
+  tests/unit/live/test_buffer.py \
+  tests/unit/live/test_api.py \
+  tests/unit/live/test_live_candle_backfill.py \
+  tests/api/test_screener_scan.py \
+  tests/test_api_stock_dates_cache.py \
+  tests/test_api_captures_queue.py \
+  -q
+# 269 passed, 1 warning
+
+uv run --extra dev pytest -q
+# 2705 passed, 2 skipped, 9 warnings
+
+uv run --extra dev ruff check \
+  tools/profile_live_range.py \
+  tools/bench_live_buffer.py \
+  tests/tools/test_profile_live_range.py \
+  tests/tools/test_bench_live_buffer.py \
+  hoga/api/request_timing.py \
+  hoga/live/buffer.py \
+  tests/unit/api/test_request_timing.py \
+  tests/unit/live/test_buffer.py \
+  tests/unit/live/test_api.py
+# All checks passed!
+```
+
+No structural `GO` is supported and no structural follow-up plan is approved.
+The three core gates remain pending approved KIS measurement, a recorded tick
+fixture, and an isolated range fixture. The three medium-priority gates remain
+pending isolated screener and inventory fixtures and a recorded normal capture
+session. The raw results reconcile with the reported values, all measurement
+JSONL files parse, and the repository and artifact scans found no temporary
+benchmark files, credential-bearing content, or host-specific absolute paths in
+raw artifacts.
+
+Known warnings are eight Polars/DuckDB sortedness warnings from
+`hoga/api/screener_factors.py` in the full suite and one Python 3.16-targeted
+`asyncio.iscoroutinefunction` deprecation warning from
+`tests/test_api_captures_queue.py`; the latter also appears in the targeted
+suite.
