@@ -101,3 +101,94 @@ run's function-level share of total time. Apply the future gate in this order:
    threshold in at least two cold runs, decide `NEEDS_MORE_BREAKDOWN`; add
    nested timing only for the unmeasured internal stages, rerun the same corpus,
    and do not pursue a broad optimization.
+
+### Screener condition-scaling decision
+
+`NEEDS_ISOLATED_FIXTURE` is the terminal pending decision. No isolated
+development corpus, scoped timing series, or DuckDB operator evidence is
+available. Static reading only identifies the future seam: `run_scan` compiles
+each `ma` leaf into its own window CTE, while `scope_codes` limits `adj_hist`
+before downstream CTEs. It does not establish a latency, operator share, or
+user-impact result. No compiler change, follow-up plan, or production-code
+change is authorized.
+
+With one fixed isolated development corpus, run the same condition set at
+0/1/2/4/8 window conditions for both full-market and watchlist scope. For every
+case, retain the request timing samples needed to calculate p95 and the DuckDB
+`EXPLAIN ANALYZE` output needed to attribute total time to window operators.
+Keep the corpus and non-window conditions fixed across all cases.
+
+Apply the future gate in this order:
+
+1. If the isolated fixture, either scope, any condition-count case, p95, or
+   `EXPLAIN ANALYZE` evidence is absent, retain `NEEDS_ISOLATED_FIXTURE` and
+   stop.
+2. If p95 is at most 500ms, or window operators account for less than 40% of
+   total time, decide `NO-GO` and preserve the existing compiler.
+3. Only if p95 exceeds 500ms **and** window operators account for at least 40%
+   of total time may a follow-up plan be opened. That plan may combine MA
+   periods into one projection, but must retain row-by-row differential tests
+   against the existing compiler before any implementation decision.
+
+### Inventory-cardinality decision
+
+`NEEDS_ISOLATED_FIXTURE` is the terminal pending decision. No isolated
+Stock-Date cardinality, `/api/stock-dates` timing, response-byte, or filesystem
+stat/open evidence is available. Static reading only identifies the future
+measurement seam: `list_stock_dates` iterates the inventory and re-stats the
+winning `meta.json`; uncached rows may read metadata and query artifacts while
+building the response. This is not a measured cost attribution. No manifest or
+pagination plan, or production-code change, is authorized.
+
+On a fixed isolated development corpus, record the Stock-Date count,
+`/api/stock-dates` p95, response bytes, and filesystem stat/open count for the
+same request population. Preserve the raw observations and measurement method
+with the fixture so the result is reproducible.
+
+Apply the future gate in this order:
+
+1. If the isolated fixture or any required count, p95, byte, or stat/open
+   observation is absent, retain `NEEDS_ISOLATED_FIXTURE` and stop.
+2. If p95 is at most 150ms and response bytes are at most 5MB, decide `NO-GO`
+   and retain the current inventory behavior.
+3. If p95 exceeds 150ms or response bytes exceed 5MB, a manifest/pagination
+   follow-up plan may be opened, scoped to the measured bottleneck.
+
+### Capture terminal-history decision
+
+`NEEDS_RECORDED_NORMAL_SESSION` is the terminal pending decision. No recorded
+normal session provides `_done` count, queue-response p95, or response-byte
+evidence. Static reading only identifies the future seam: `get_queue_snapshot`
+serializes `_done` for the queue response. It does not establish a response
+cost, user-visible delay, or a safe retention bound. No history-separation
+plan or production-code change is authorized.
+
+During recorded normal sessions, retain the `_done` count, queue-response p95,
+and response bytes with the session record. The evidence must represent normal
+use rather than a synthetic or default/user/production data inspection.
+
+Apply the future gate in this order:
+
+1. If the recorded normal session or any required `_done` count, p95, or byte
+   observation is absent, retain `NEEDS_RECORDED_NORMAL_SESSION` and stop.
+2. If queue-response p95 is at most 100ms and response bytes are at most 5MB,
+   decide `NO-GO` and preserve the current queue/history behavior.
+3. If queue-response p95 exceeds 100ms or response bytes exceed 5MB, a
+   history-separation follow-up plan may be opened.
+
+Any future history design must keep retry/dedupe state separate from UI history.
+Do not replace `_done` directly with `deque(maxlen=...)`: existing retry and
+implicit re-enqueue paths delete terminal entries by index, and
+`pause_origin` cancelled rows are re-enqueued on resume. These invariants must
+remain intact regardless of a passed performance gate.
+
+## Medium-priority backlog
+
+No medium-priority gate has passed, so ranking is deferred rather than implying
+that a potential symptom has been measured or that a follow-up is authorized.
+
+| Rank | Workstream | User-visible symptom | Measured p95 | Cost driver | Next plan |
+|---:|---|---|---|---|---|
+| — | Screener condition scaling (`NEEDS_ISOLATED_FIXTURE`) | Unmeasured; complex-condition scans may delay results | Not measured | Window-operator share across fixed full-market and watchlist cases is unmeasured | — |
+| — | Inventory cardinality (`NEEDS_ISOLATED_FIXTURE`) | Unmeasured; a large inventory may delay loading | Not measured | Per-Stock-Date traversal and filesystem stat/open activity are unmeasured | — |
+| — | Capture terminal history (`NEEDS_RECORDED_NORMAL_SESSION`) | Unmeasured; terminal-history payload may delay queue refresh | Not measured | `_done` serialization and normal-session response size are unmeasured | — |
