@@ -351,12 +351,21 @@ class LiveStream:
         # 재생성되므로 표시·저장 모두 입구에서 드롭.
         if self._active_codes is not None and tick.code not in self._active_codes:
             return
-        # 프로그램매매(0w, PR-F4)는 표시 버퍼·JSONL 저장을 타지 않는다 — 최신값
-        # latch 에만 남기고 종료(ProgramTradeCollector 가 30초 주기로 drain →
-        # program_trade_store 병합). KRX 한정: 프로그램 수급은 KRX 집계 데이터다.
+        # 프로그램매매(0w)는 KRX 틱만 두 소비자로 fan-out한다:
+        # ① 표시 buffer → /api/live/series + WS push, ② latch →
+        # ProgramTradeCollector 30초 drain → program_trade_store. 일반 ingest
+        # 경로 전에 return하므로 JSONL/downsampler 저장에는 들어가지 않는다.
         if tick.kind is SnapshotKind.PROGRAM:
-            if tick.venue == "KRX":
-                program_trade_latch.update(tick.code, dict(tick.payload))
+            if tick.venue != "KRX":
+                return
+            program_trade_latch.update(tick.code, dict(tick.payload))
+            payload = {
+                **tick.payload,
+                "phase": self._phase_fn(),
+                "venue": tick.venue,
+            }
+            snap = LiveSnapshot(t_ms=tick.t_ms, kind=tick.kind, payload=payload)
+            await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
             return
         # phase 이중 스탬프(M1): 여기 phase는 **표시 스냅샷 전용** — 수신 벽시계
         # 기준 위상을 buffer 스냅에 박는다(tick.t_ms 거래소 시각이 아니라 도착

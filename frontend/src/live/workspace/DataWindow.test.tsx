@@ -30,6 +30,7 @@ vi.mock('../../api/liveSeries', () => ({
     ob: [],
     trade: [],
     broker: [],
+    program: [],
   }),
 }));
 

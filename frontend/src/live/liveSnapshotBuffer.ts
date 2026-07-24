@@ -31,9 +31,9 @@ function evictOld(arr: Array<{ t_ms: number }>, nowMs: number): void {
 // primary size bound; the count cap remains only as a runaway safeguard.
 export const MAX_BUFFER_PER_KIND = 60_000;
 
-export type SnapshotKind = 'ob' | 'trade' | 'broker';
+export type SnapshotKind = 'ob' | 'trade' | 'broker' | 'program';
 
-const KINDS: readonly SnapshotKind[] = ['ob', 'trade', 'broker'] as const;
+const KINDS: readonly SnapshotKind[] = ['ob', 'trade', 'broker', 'program'] as const;
 
 interface RawSnapshot {
   t_ms: number;
@@ -46,16 +46,18 @@ export class LiveSnapshotBuffer {
     ob: [],
     trade: [],
     broker: [],
+    program: [],
   };
   // Snapshot cache — returned by get() until the underlying kind is mutated.
   // Stable references let downstream useMemo(bundle) keep its identity across
   // SSE ticks that didn't actually touch a given kind. Without this, every
-  // tick produced a fresh `[...arr]` for all three kinds, invalidating bundle
+  // tick produced a fresh `[...arr]` for all kinds, invalidating bundle
   // → forcing lightweight-charts setData on the full dataset every cycle.
   private snapshot: Record<SnapshotKind, readonly RawSnapshot[]> = {
     ob: Object.freeze([]),
     trade: Object.freeze([]),
     broker: Object.freeze([]),
+    program: Object.freeze([]),
   };
 
   private invalidate(k: SnapshotKind): void {

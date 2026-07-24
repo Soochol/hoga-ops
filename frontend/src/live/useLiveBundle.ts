@@ -49,6 +49,7 @@ import {
 import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
 import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { hogaCoverageGapDates as computeHogaCoverageGapDates } from './hogaCoverageGap';
+import { mergeProgramTradeSeriesWithLiveTail } from './programTradeLiveTail';
 
 const EMPTY_INVESTOR_POINTS: InvestorNetPoint[] = [];
 const EMPTY_CANDLES: Candle[] = [];
@@ -761,6 +762,12 @@ export function useLiveBundle(
       built.volume_distributions = sidecarSource.volume_distributions ?? [];
       built.program_trade = filterProgramTradeForCandles(sidecarSource.program_trade, liveCandles);
     }
+    if (effProgramTradeEnabled) {
+      built.program_trade = mergeProgramTradeSeriesWithLiveTail(
+        built.program_trade,
+        live.program,
+      );
+    }
 
     // Segments-identity stabilization (eng review C1): buildChartBundle allocates
     // a fresh `segments` array each call even when no trading date changed.
@@ -787,7 +794,21 @@ export function useLiveBundle(
     }
 
     return built;
-  }, [code, todayKstYyyymmdd, todayChartSession, pastHoga.data, pastSidecars.data, liveCandles, candleSourceByDate, bucketMs, hasTodayObSignal, investorPoints, sessionBoundsForDate]);
+  }, [
+    code,
+    todayKstYyyymmdd,
+    todayChartSession,
+    pastHoga.data,
+    pastSidecars.data,
+    liveCandles,
+    live.program,
+    candleSourceByDate,
+    bucketMs,
+    hasTodayObSignal,
+    investorPoints,
+    sessionBoundsForDate,
+    effProgramTradeEnabled,
+  ]);
 
   // HOGA side (quote_ratio / fill_strength). Deps INCLUDE ob/trade — this is the
   // ONLY half that rebuilds on an SSE tick.
