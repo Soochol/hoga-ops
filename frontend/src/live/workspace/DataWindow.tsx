@@ -492,12 +492,19 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const linked = link !== null && link.code === code;
+  // 당일 종가 오버레이 — 순매수와 같은 번들의 candles 를 그대로 넘긴다(카드가
+  // anchorT 날짜로 잘라 쓴다). program_trade 와 형제 필드라 축이 정확히 맞는다.
+  const closePoints = useMemo(
+    () => volumeDistributionClosePointsFromCandles(link?.bundle?.candles ?? []),
+    [link?.bundle?.candles],
+  );
   if (!linked) return <LinkPendingCard kind={win.kind} group={win.group} />;
   return (
     <div className="h-full overflow-auto bg-bg-card">
       <ProgramTradeSummaryCard
         series={link.bundle?.program_trade ?? null}
         cursorMs={scope.kind === 'minute-cursor' ? scope.cursorMs : null}
+        closePoints={closePoints}
       />
     </div>
   );
