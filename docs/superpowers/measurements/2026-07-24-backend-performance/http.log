@@ -1,0 +1,2 @@
+past_candles=NEEDS_APPROVED_EXTERNAL_MEASUREMENT reason="development KIS measurement not approved; no credentials accessed and no request made"
+live_buffer_real_mix_20m=NEEDS_RECORDED_TICK_FIXTURE reason="no recorded real tick fixture exists; no production WebSocket connection made"

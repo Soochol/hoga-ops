@@ -1,0 +1,1 @@
+{"record_type":"status","workstream":"range_sidecar","status":"NEEDS_ISOLATED_FIXTURE","reason":"HOGA_BENCH_* variables and an isolated developer fixture were unavailable; no data was accessed and no code/date values were invented"}
