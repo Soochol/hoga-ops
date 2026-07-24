@@ -82,6 +82,8 @@ contains no isolated 60 Stock-Date cold-run p95, raw or gzip response-byte, or
 function-level dominant-slice evidence, so neither `GO`, `NO-GO`, nor
 `NEEDS_MORE_BREAKDOWN` can be assigned. No range performance spec, implementation
 plan, endpoint, cache, or production-code change is authorized by this state.
+Pending isolated evidence, preserve the existing `frontend/src/api/range.ts`
+delta merge and current caches unchanged.
 
 Once an isolated fixed fixture is available, collect three cold runs for the same
 60 Stock-Date corpus. Record the cold p95, raw and gzip response bytes, and each
