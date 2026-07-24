@@ -46,7 +46,7 @@ it('하락 평균도 헤더 밴드에 그대로 반영(파랑 틴트)', () => {
   ]);
   render(<HeatmapFolder folder={folder} entries={downEntries} quoteByCode={downQuotes}
     sortMode="manual" onPick={() => {}} />);
-  const header = screen.getByText('반도체').parentElement as HTMLElement;
+  const header = screen.getByText('반도체').closest('.min-h-list-group-header') as HTMLElement;
   expect(header.style.background).toBe(heatHeaderBg(-3)); // (−2−4)/2
 });
 
@@ -61,8 +61,8 @@ it('평면 보드(L3-B) 좌측 스파인 + 헤더 평균 틴트(#3): 폴더는 �
   expect(root).toHaveClass('border-l-2', 'border-border-strong');
   expect(root).not.toHaveClass('bg-bg-card');
   expect(root).not.toHaveClass('border-border'); // 외곽 박스 테두리 제거
-  // 헤더 밴드 = 폴더명 span 의 부모 div
-  const header = screen.getByText('반도체').parentElement as HTMLElement;
+  // 헤더 밴드 = 폴더명이 속한 min-h-list-group-header 밴드(이름+흐름 그래프 wrapper 상위)
+  const header = screen.getByText('반도체').closest('.min-h-list-group-header') as HTMLElement;
   // #3/G4: 헤더 밴드 = 평균(+5%) 비례 히트 틴트. bg-input 클래스 제거, inline background.
   expect(header).not.toHaveClass('bg-bg-input');
   expect(header.style.background).toBe(heatHeaderBg(5)); // (2+8)/2 = +5%
