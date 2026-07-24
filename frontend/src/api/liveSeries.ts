@@ -48,6 +48,7 @@ export interface LiveSeriesResponse {
   snapshots: Array<Record<string, unknown>>;
   trades: Array<Record<string, unknown>>;
   brokers: Array<Record<string, unknown>>;
+  programs: Array<Record<string, unknown>>;
   ask_peak_today: LiveTodayAskPeak | null;
   bid_peak_today?: LiveTodayBidPeak | null;
 }
@@ -68,6 +69,7 @@ export interface LiveSeriesData {
   ob: ReadonlyArray<ObSnapshot>;
   trade: ReadonlyArray<TradeSnapshot>;
   broker: ReadonlyArray<Record<string, unknown>>;
+  program: ReadonlyArray<Record<string, unknown>>;
 }
 
 /** Trailing-throttle window for coalescing live WS pushes into one buffer
@@ -79,6 +81,7 @@ const LIVE_FLUSH_MS = 150;
 const EMPTY_OB_SNAPSHOTS: ReadonlyArray<ObSnapshot> = Object.freeze([]);
 const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = Object.freeze([]);
 const EMPTY_BROKER_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
+const EMPTY_PROGRAM_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
 
 /**
  * useLiveSeries — initial REST fetch + WebSocket subscription for live snapshots.
@@ -96,7 +99,8 @@ const EMPTY_BROKER_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.fr
  * `venue` is **required**: ob/trade are filtered at this source boundary
  * (filterObByVenue/filterTradeByVenue) so consumers can't accidentally read the
  * global·mixed KRX+NXT buffer and silently ignore the user's venue selection
- * (execution-window-datasource-policy). broker/initial are venue-agnostic.
+ * (execution-window-datasource-policy). broker/initial are venue-agnostic;
+ * program은 백엔드 stream 경계에서 KRX-only로 강제된다.
  */
 export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesData {
   const date = unixMsToKSTDate(Date.now());
@@ -123,6 +127,7 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
       ob: initial.data.snapshots as Array<{ t_ms: number; kind: string }>,
       trade: initial.data.trades as Array<{ t_ms: number; kind: string }>,
       broker: initial.data.brokers as Array<{ t_ms: number; kind: string }>,
+      program: (initial.data.programs ?? []) as Array<{ t_ms: number; kind: string }>,
     });
     setTick((t) => t + 1);
   }, [initial.data, code]);
@@ -187,6 +192,7 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
     ob,
     trade,
     broker: bufferVisible ? readKind(bufferRef.current, 'broker', tick) : EMPTY_BROKER_SNAPSHOTS,
+    program: bufferVisible ? readKind(bufferRef.current, 'program', tick) : EMPTY_PROGRAM_SNAPSHOTS,
   };
 }
 

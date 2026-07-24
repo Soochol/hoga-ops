@@ -31,6 +31,7 @@ describe('useLiveSeries', () => {
       snapshots: [],
       trades: [],
       brokers: [],
+      programs: [],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
@@ -38,12 +39,13 @@ describe('useLiveSeries', () => {
     expect(result.current.ob).toEqual([]);
     expect(result.current.trade).toEqual([]);
     expect(result.current.broker).toEqual([]);
+    expect(result.current.program).toEqual([]);
   });
 
   it('subscribes over WebSocket and appends code-tagged snapshots by kind', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       code: '005930', date: '20260527', session_open_ms: 1000,
-      session_close_ms: null, is_open: true, snapshots: [], trades: [], brokers: [],
+      session_close_ms: null, is_open: true, snapshots: [], trades: [], brokers: [], programs: [],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
@@ -55,10 +57,22 @@ describe('useLiveSeries', () => {
     act(() => {
       sock.message({ ch: 'live', code: '005930', data: { t_ms: 100, kind: 'ob', total_bid_qty: 999 } });
       sock.message({ ch: 'live', code: '005930', data: { t_ms: 100, kind: 'trade', trades: [] } });
+      sock.message({
+        ch: 'live',
+        code: '005930',
+        data: {
+          t_ms: 101,
+          kind: 'program',
+          venue: 'KRX',
+          net_qty: 20,
+          net_amount: 2_000_000,
+        },
+      });
     });
     await waitFor(() => expect(result.current.ob).toHaveLength(1));
     expect(result.current.trade).toHaveLength(1);
     expect(result.current.broker).toHaveLength(0);
+    expect(result.current.program).toHaveLength(1);
   });
 
   it('hydrates from initial series.snapshots/trades/brokers', async () => {
@@ -71,11 +85,13 @@ describe('useLiveSeries', () => {
       snapshots: [{ t_ms: 50 }, { t_ms: 60 }],
       trades: [{ t_ms: 50 }],
       brokers: [],
+      programs: [{ t_ms: 70, kind: 'program', net_qty: 10, net_amount: 1_000_000 }],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
     await waitFor(() => expect(result.current.ob).toHaveLength(2));
     expect(result.current.trade).toHaveLength(1);
+    expect(result.current.program).toHaveLength(1);
   });
 
   it('ignores a stale initial series payload for a previous code', async () => {
