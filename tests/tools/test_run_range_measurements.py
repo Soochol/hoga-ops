@@ -408,6 +408,41 @@ def test_reflink_clone_rejects_source_symlink_escape(
     assert (external / "sentinel").read_text(encoding="utf-8") == "immutable"
 
 
+def test_orchestrator_rejects_symlink_component_hidden_by_lexical_parent(
+    tmp_path: Path,
+) -> None:
+    external = tmp_path / "external"
+    (external / "child").mkdir(parents=True)
+    alias = tmp_path / "alias"
+    alias.symlink_to(external, target_is_directory=True)
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+    clone_started = False
+
+    def clone_fixture(source_path: Path, destination: Path) -> None:
+        nonlocal clone_started
+        clone_started = True
+        shutil.copytree(source_path, destination)
+
+    with pytest.raises(ReflinkCloneError, match="symlink"):
+        run_measurement_matrix(
+            source_fixture=alias / "child" / "..",
+            code="005930",
+            windows=(RangeWindow("5d", "20260701", "20260707"),),
+            manifests=(loaded,),
+            cold_trials=1,
+            warm_trials=0,
+            output=io.StringIO(),
+            commit_sha="0123456789abcdef",
+            clone_fixture=clone_fixture,
+            run_child=_successful_child,
+        )
+
+    assert clone_started is False
+
+
 @pytest.mark.parametrize("source_argument", [".", "lexical-child/.."])
 def test_orchestrator_resolves_source_before_placing_sibling_temp_root(
     tmp_path: Path,
@@ -730,6 +765,135 @@ def test_orchestrator_streams_success_and_child_failure_before_raising(
     assert rows[1]["child_stderr"] == "synthetic failure"
 
 
+def test_orchestrator_streams_manifest_write_failure_before_raising(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+    original_write_text = Path.write_text
+
+    def fail_manifest_write(
+        path: Path,
+        data: str,
+        *,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        if path.name == "request-manifest.json":
+            raise OSError("manifest write failed")
+        return original_write_text(
+            path,
+            data,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
+        )
+
+    def forbidden_launch(*args: object, **kwargs: object) -> None:
+        raise AssertionError("child launch must not follow a failed manifest write")
+
+    monkeypatch.setattr(Path, "write_text", fail_manifest_write)
+    monkeypatch.setattr(run_range_measurements.subprocess, "run", forbidden_launch)
+    output = io.StringIO()
+
+    with pytest.raises(ChildMeasurementError, match="profile"):
+        run_measurement_matrix(
+            source_fixture=source,
+            code="005930",
+            windows=(RangeWindow("5d", "20260701", "20260707"),),
+            manifests=(loaded,),
+            cold_trials=1,
+            warm_trials=0,
+            output=output,
+            commit_sha="0123456789abcdef",
+            clone_fixture=shutil.copytree,
+        )
+
+    [row] = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert row["status"] == "CHILD_FAILED"
+    assert row["failed_leg"] == "profile"
+    assert row["child_exit_status"] == {}
+    assert row["child_stderr"] == "OSError: manifest write failed"
+
+
+def test_orchestrator_streams_subprocess_launch_failure_before_raising(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+
+    def fail_launch(*args: object, **kwargs: object) -> None:
+        raise OSError("subprocess launch failed")
+
+    monkeypatch.setattr(run_range_measurements.subprocess, "run", fail_launch)
+    output = io.StringIO()
+
+    with pytest.raises(ChildMeasurementError, match="profile"):
+        run_measurement_matrix(
+            source_fixture=source,
+            code="005930",
+            windows=(RangeWindow("5d", "20260701", "20260707"),),
+            manifests=(loaded,),
+            cold_trials=1,
+            warm_trials=0,
+            output=output,
+            commit_sha="0123456789abcdef",
+            clone_fixture=shutil.copytree,
+        )
+
+    [row] = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert row["status"] == "CHILD_FAILED"
+    assert row["failed_leg"] == "profile"
+    assert row["child_exit_status"] == {}
+    assert row["child_stderr"] == "OSError: subprocess launch failed"
+
+
+def test_orchestrator_streams_clone_setup_failure_before_raising(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+
+    def fail_clone(source_path: Path, destination: Path) -> None:
+        raise OSError("clone setup failed")
+
+    output = io.StringIO()
+    with pytest.raises(ChildMeasurementError, match="profile"):
+        run_measurement_matrix(
+            source_fixture=source,
+            code="005930",
+            windows=(RangeWindow("5d", "20260701", "20260707"),),
+            manifests=(loaded,),
+            cold_trials=1,
+            warm_trials=0,
+            output=output,
+            commit_sha="0123456789abcdef",
+            clone_fixture=fail_clone,
+            run_child=_successful_child,
+        )
+
+    [row] = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert row["status"] == "CHILD_FAILED"
+    assert row["failed_leg"] == "profile"
+    assert row["child_exit_status"] == {}
+    assert row["child_stderr"] == "OSError: clone setup failed"
+
+
 def test_orchestrator_rehashes_mutated_source_after_flushed_child_failure(
     tmp_path: Path,
 ) -> None:
@@ -785,6 +949,119 @@ def test_orchestrator_rehashes_mutated_source_after_flushed_child_failure(
     assert rows[1]["source_mutated"] is True
     assert "source_mutated" in rows[1]["evidence_issues"]
     assert output.flush_calls == 2
+
+
+def test_orchestrator_streams_source_mutation_after_successful_legs(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    sentinel = source / "sentinel"
+    sentinel.write_text("immutable", encoding="utf-8")
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+
+    class FlushTrackingStringIO(io.StringIO):
+        def __init__(self) -> None:
+            super().__init__()
+            self.flush_calls = 0
+
+        def flush(self) -> None:
+            self.flush_calls += 1
+            super().flush()
+
+    def run_child(
+        leg: str,
+        clone_path: Path,
+        label: str,
+        manifest: LoadedRequestManifest,
+        window: RangeWindow,
+        code: str,
+    ) -> ChildExecution:
+        if leg == "endpoint_gzip":
+            sentinel.write_text("mutated", encoding="utf-8")
+        return _successful_child(leg, clone_path, label, manifest, window, code)
+
+    output = FlushTrackingStringIO()
+    with pytest.raises(
+        run_range_measurements.SourceFixtureMutationError,
+        match="source fixture changed",
+    ):
+        run_measurement_matrix(
+            source_fixture=source,
+            code="005930",
+            windows=(RangeWindow("5d", "20260701", "20260707"),),
+            manifests=(loaded,),
+            cold_trials=1,
+            warm_trials=0,
+            output=output,
+            commit_sha="0123456789abcdef",
+            clone_fixture=shutil.copytree,
+            run_child=run_child,
+        )
+
+    [row] = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert row["status"] == "SOURCE_MUTATED"
+    assert row["source_mutated"] is True
+    assert row["child_exit_status"] == {
+        "profile": 0,
+        "endpoint_identity": 0,
+        "endpoint_gzip": 0,
+    }
+    assert row["observed_source_fixture_identity"] != row["source_fixture_identity"]
+    assert output.flush_calls == 1
+
+
+def test_orchestrator_stops_before_cloning_after_successful_leg_mutation(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    sentinel = source / "sentinel"
+    sentinel.write_text("immutable", encoding="utf-8")
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+    started_legs: list[str] = []
+
+    def run_child(
+        leg: str,
+        clone_path: Path,
+        label: str,
+        manifest: LoadedRequestManifest,
+        window: RangeWindow,
+        code: str,
+    ) -> ChildExecution:
+        started_legs.append(leg)
+        if leg == "profile":
+            sentinel.write_text("mutated", encoding="utf-8")
+        return _successful_child(leg, clone_path, label, manifest, window, code)
+
+    output = io.StringIO()
+    with pytest.raises(
+        run_range_measurements.SourceFixtureMutationError,
+        match="source fixture changed",
+    ):
+        run_measurement_matrix(
+            source_fixture=source,
+            code="005930",
+            windows=(RangeWindow("5d", "20260701", "20260707"),),
+            manifests=(loaded,),
+            cold_trials=1,
+            warm_trials=0,
+            output=output,
+            commit_sha="0123456789abcdef",
+            clone_fixture=shutil.copytree,
+            run_child=run_child,
+        )
+
+    assert started_legs == ["profile"]
+    [row] = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert row["status"] == "SOURCE_MUTATED"
+    assert row["child_exit_status"] == {"profile": 0}
 
 
 def test_orchestrator_isolates_every_leg_and_keeps_warm_labels_out_of_cold_rows(

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import resource
 from pathlib import Path
 
 import pytest
 
+from tools import run_live_buffer_scales
 from tools.run_live_buffer_scales import (
     MemoryHeadroom,
     MemoryProbeError,
@@ -19,6 +21,22 @@ from tools.run_live_buffer_scales import (
 _V2_MOUNTINFO = (
     "36 25 0:32 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n"
 )
+
+
+def _with_synthetic_mount_device(mountinfo: str, *, directory: Path) -> str:
+    device = directory.stat().st_dev
+    rendered_device = f"{os.major(device)}:{os.minor(device)}"
+    rendered_lines: list[str] = []
+    for raw_line in mountinfo.splitlines():
+        pre_section, separator, post_section = raw_line.partition(" - ")
+        pre_fields = pre_section.split()
+        rendered_line = raw_line
+        if separator and len(pre_fields) >= 3 and pre_fields[2] in {"0:32", "0:33"}:
+            pre_fields[2] = rendered_device
+            rendered_line = f"{' '.join(pre_fields)} - {post_section}"
+        rendered_lines.append(rendered_line)
+    suffix = "\n" if mountinfo.endswith("\n") else ""
+    return "\n".join(rendered_lines) + suffix
 
 
 def _write_proc_meminfo(
@@ -35,7 +53,10 @@ def _write_proc_meminfo(
     )
     (proc_root / "self").mkdir()
     (proc_root / "self" / "cgroup").write_text(membership, encoding="utf-8")
-    (proc_root / "self" / "mountinfo").write_text(mountinfo, encoding="utf-8")
+    (proc_root / "self" / "mountinfo").write_text(
+        _with_synthetic_mount_device(mountinfo, directory=proc_root.parent),
+        encoding="utf-8",
+    )
 
 
 def _write_proc_and_cgroup(
@@ -301,6 +322,235 @@ def test_membership_outside_mount_root_fails_closed(tmp_path: Path) -> None:
         read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
 
 
+def test_stacked_cgroup_mount_uses_visible_top_mount(tmp_path: Path) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/docker/lower/hidden\n",
+        mountinfo=(
+            "36 25 0:32 /docker/lower /sys/fs/cgroup rw - "
+            "cgroup2 cgroup rw\n"
+            "37 36 0:33 /docker/lower/hidden /sys/fs/cgroup rw - "
+            "cgroup2 cgroup rw\n"
+        ),
+    )
+    _write_v2_limit(cgroup_root / "hidden", limit=900, current=800)
+    _write_v2_limit(cgroup_root, limit=1_000, current=400)
+
+    headroom = read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+    assert headroom.cgroup_remaining_bytes == 600
+
+
+def test_covering_non_cgroup_mount_hides_cgroup_controller(tmp_path: Path) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/docker/lower/child\n",
+        mountinfo=(
+            "36 25 0:32 /docker/lower /sys/fs/cgroup rw - "
+            "cgroup2 cgroup rw\n"
+            "37 36 0:33 / /sys/fs/cgroup rw - tmpfs tmpfs rw\n"
+        ),
+    )
+    _write_v2_limit(cgroup_root / "child", limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="mapped|visible"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+def test_ancestor_non_cgroup_overmount_hides_deeper_cgroup(
+    tmp_path: Path,
+) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/docker/child\n",
+        mountinfo=(
+            "10 1 0:31 / /sys rw - sysfs sysfs rw\n"
+            "36 10 0:32 /docker /sys/fs/cgroup rw - cgroup2 cgroup rw\n"
+            "37 10 0:33 / /sys rw - tmpfs tmpfs rw\n"
+        ),
+    )
+    _write_v2_limit(cgroup_root / "child", limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="mapped|visible"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+def test_non_cgroup_filesystem_root_shape_does_not_hide_valid_cgroup(
+    tmp_path: Path,
+) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/\n",
+        mountinfo=(
+            "35 25 0:31 mnt:[4026533124] /run/example.mnt rw - "
+            "nsfs nsfs rw\n"
+            f"{_V2_MOUNTINFO}"
+        ),
+    )
+    _write_v2_limit(cgroup_root, limit=1_000, current=400)
+
+    headroom = read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+    assert headroom.cgroup_remaining_bytes == 600
+
+
+def test_controller_directory_device_must_match_visible_mount(
+    tmp_path: Path,
+) -> None:
+    device = tmp_path.stat().st_dev
+    wrong_device = f"{os.major(device)}:{os.minor(device) + 1}"
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/\n",
+        mountinfo=(
+            f"36 25 {wrong_device} / /sys/fs/cgroup rw - "
+            "cgroup2 cgroup rw\n"
+        ),
+    )
+    _write_v2_limit(cgroup_root, limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="identity|device"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+def test_oversized_mount_numeric_field_is_a_typed_probe_error(
+    tmp_path: Path,
+) -> None:
+    oversized = "9" * 5_000
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/\n",
+        mountinfo=(
+            f"{oversized} 25 0:32 / /sys/fs/cgroup rw - "
+            "cgroup2 cgroup rw\n"
+        ),
+    )
+    _write_v2_limit(cgroup_root, limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="mountinfo"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+def test_oversized_mount_device_field_is_a_typed_probe_error(
+    tmp_path: Path,
+) -> None:
+    oversized = "9" * 5_000
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/\n",
+        mountinfo=(
+            f"36 25 {oversized}:32 / /sys/fs/cgroup rw - "
+            "cgroup2 cgroup rw\n"
+        ),
+    )
+    _write_v2_limit(cgroup_root, limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="mountinfo"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+def test_oversized_membership_hierarchy_is_a_typed_probe_error(
+    tmp_path: Path,
+) -> None:
+    oversized = "9" * 5_000
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership=f"{oversized}:memory:/\n",
+        mountinfo=(
+            "37 25 0:33 / /sys/fs/cgroup/memory rw - "
+            "cgroup cgroup rw,memory\n"
+        ),
+    )
+    _write_v1_limit(cgroup_root / "memory", limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="membership"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+@pytest.mark.parametrize(
+    "mountinfo",
+    [
+        "036 25 0:32 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n",
+        "٣٦ 25 0:32 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n",
+        "36 025 0:32 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n",
+        "36 0 0:32 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n",
+        "36 25 00:32 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n",
+        "36 25 0:032 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n",
+        "36 25 -1:32 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n",
+        "36 25 0:-1 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n",
+        "36 25 not-a-device / /sys/fs/cgroup rw - cgroup2 cgroup rw\n",
+        "36 25 0:32 / /sys/fs/cgroup - cgroup2 cgroup rw\n",
+        "36 25 0:32 / /sys/fs/cgroup rw - cgroup2 cgroup rw extra\n",
+    ],
+)
+def test_noncanonical_or_malformed_mountinfo_fails_closed(
+    tmp_path: Path,
+    mountinfo: str,
+) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/\n",
+        mountinfo=mountinfo,
+    )
+    _write_v2_limit(cgroup_root, limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="mountinfo"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+def test_duplicate_v2_membership_fails_closed(tmp_path: Path) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/\n0::/\n",
+        mountinfo=_V2_MOUNTINFO,
+    )
+    _write_v2_limit(cgroup_root, limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="membership"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+@pytest.mark.parametrize(
+    "membership",
+    [
+        "05:memory:/\n",
+        "٥:memory:/\n",
+        "5:memory:/\n5:cpu:/\n",
+        "5:memory,cpu:/\n6:cpu,memory:/\n",
+        "5:memory:/\n6:memory,cpu:/\n",
+        "5:memory,memory:/\n",
+    ],
+)
+def test_noncanonical_or_duplicate_v1_membership_fails_closed(
+    tmp_path: Path,
+    membership: str,
+) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership=membership,
+        mountinfo=(
+            "37 25 0:33 / /sys/fs/cgroup/memory rw - "
+            "cgroup cgroup rw,memory\n"
+        ),
+    )
+    _write_v1_limit(cgroup_root / "memory", limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="membership"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
+def test_duplicate_non_memory_controller_set_fails_closed(tmp_path: Path) -> None:
+    proc_root, cgroup_root = _write_proc_and_cgroup(
+        tmp_path,
+        membership="0::/\n5:cpu:/\n6:cpu:/\n",
+        mountinfo=_V2_MOUNTINFO,
+    )
+    _write_v2_limit(cgroup_root, limit=1_000, current=400)
+
+    with pytest.raises(MemoryProbeError, match="membership"):
+        read_memory_headroom(proc_root=proc_root, cgroup_root=cgroup_root)
+
+
 def test_scale_matrix_accepts_each_projected_scale_in_its_own_limited_child() -> None:
     output = io.StringIO()
     child_observations: list[tuple[int, int]] = []
@@ -496,3 +746,36 @@ def test_scale_one_bootstrap_receives_finite_child_limit_before_execution() -> N
     )
 
     assert observed == [(1, 250)]
+
+
+def test_child_launch_oserror_is_an_operational_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_launch(*args: object, **kwargs: object) -> None:
+        raise OSError("exec failed")
+
+    monkeypatch.setattr(run_live_buffer_scales.subprocess, "run", fail_launch)
+    output = io.StringIO()
+
+    with pytest.raises(RuntimeError, match="launch"):
+        run_scale_matrix(
+            scales=(1,),
+            ticks_per_code=1,
+            levels=1,
+            retention_ms=1,
+            output=output,
+            probe_headroom=lambda: MemoryHeadroom(
+                host_available_bytes=1_000,
+                cgroup_version="v2",
+                cgroup_limit_bytes=1_000,
+                cgroup_current_bytes=0,
+                cgroup_remaining_bytes=1_000,
+                usable_headroom_bytes=1_000,
+            ),
+            resolve_memory_limit=lambda requested: requested,
+        )
+
+    [failure] = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert failure["status"] == "CHILD_FAILED"
+    assert failure["reason"] == "child_launch_failed"
+    assert "SKIPPED_RESOURCE_GUARD" not in output.getvalue()

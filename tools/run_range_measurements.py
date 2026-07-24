@@ -8,8 +8,10 @@ import gzip
 import hashlib
 import json
 import math
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -18,7 +20,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, TextIO
+from typing import Literal, NoReturn, TextIO
 from urllib.parse import urlencode
 
 from fastapi import FastAPI
@@ -63,15 +65,19 @@ _HTTP_SUCCESS_MIN = 200
 _HTTP_SUCCESS_MAX_EXCLUSIVE = 300
 
 
-class ReflinkCloneError(RuntimeError):
+class RangeMeasurementError(RuntimeError):
+    """A typed, user-facing Range measurement failure."""
+
+
+class ReflinkCloneError(RangeMeasurementError):
     """The immutable source fixture could not be cloned copy-on-write."""
 
 
-class ChildMeasurementError(RuntimeError):
+class ChildMeasurementError(RangeMeasurementError):
     """A fresh measurement child exited without one valid result."""
 
 
-class SourceFixtureMutationError(RuntimeError):
+class SourceFixtureMutationError(RangeMeasurementError):
     """The source fixture changed while an isolated measurement was running."""
 
 
@@ -114,9 +120,51 @@ def _validate_source_fixture(source: Path) -> None:
         raise ReflinkCloneError(f"source fixture contains symlink: {relative}")
 
 
+def _reject_traversed_symlink_components(source: Path) -> None:
+    """Walk the lexical path without following any component symlinks."""
+    absolute = source.absolute()
+    flags = (
+        getattr(os, "O_PATH", os.O_RDONLY)
+        | os.O_DIRECTORY
+        | os.O_NOFOLLOW
+        | os.O_CLOEXEC
+    )
+    try:
+        current_fd = os.open(absolute.anchor, flags)
+    except OSError as exc:
+        raise ReflinkCloneError(
+            "source fixture must be an existing resolvable directory"
+        ) from exc
+    try:
+        for component in absolute.parts[1:]:
+            try:
+                next_fd = os.open(component, flags, dir_fd=current_fd)
+            except OSError as exc:
+                try:
+                    component_stat = os.stat(
+                        component,
+                        dir_fd=current_fd,
+                        follow_symlinks=False,
+                    )
+                except OSError:
+                    component_stat = None
+                if component_stat is not None and stat.S_ISLNK(
+                    component_stat.st_mode
+                ):
+                    raise ReflinkCloneError(
+                        "source fixture path traverses a symlink"
+                    ) from exc
+                raise ReflinkCloneError(
+                    "source fixture must be an existing resolvable directory"
+                ) from exc
+            os.close(current_fd)
+            current_fd = next_fd
+    finally:
+        os.close(current_fd)
+
+
 def _resolve_source_fixture(source: Path) -> Path:
-    if source.is_symlink():
-        raise ReflinkCloneError("source fixture must not be a symlink")
+    _reject_traversed_symlink_components(source)
     try:
         resolved = source.resolve(strict=True)
     except (OSError, RuntimeError) as exc:
@@ -477,6 +525,148 @@ ChildRunner = Callable[
 ]
 
 
+def _emit_evidence(output: TextIO, row: Mapping[str, object]) -> None:
+    print(json.dumps(row, ensure_ascii=False, sort_keys=True), file=output, flush=True)
+
+
+def _operational_failure_detail(exc: OSError | ReflinkCloneError) -> str:
+    if isinstance(exc, OSError):
+        detail = exc.strerror
+        if detail is None and len(exc.args) == 1 and isinstance(exc.args[0], str):
+            detail = exc.args[0]
+        return f"{type(exc).__name__}: {detail or 'operation failed'}"
+    return f"{type(exc).__name__}: {exc}"
+
+
+def _raise_if_source_mutated(
+    *,
+    source_fixture: Path,
+    fixture_identity: str,
+    output: TextIO,
+    record: Mapping[str, object],
+    message: str,
+    cause: BaseException | None = None,
+) -> None:
+    observed_identity = _observed_source_fixture_identity(source_fixture)
+    if observed_identity == fixture_identity:
+        return
+    _emit_evidence(
+        output,
+        {
+            **record,
+            "status": "SOURCE_MUTATED",
+            "source_mutated": True,
+            "evidence_issues": ["source_mutated"],
+            "observed_source_fixture_identity": observed_identity,
+        },
+    )
+    error = SourceFixtureMutationError(message)
+    if cause is None:
+        raise error
+    raise error from cause
+
+
+def _raise_leg_failure(
+    *,
+    source_fixture: Path,
+    fixture_identity: str,
+    output: TextIO,
+    trial_record: Mapping[str, object],
+    leg: str,
+    exit_statuses: Mapping[str, int],
+    detail: str,
+    cause: BaseException | None = None,
+) -> NoReturn:
+    failure = {
+        **trial_record,
+        "status": "CHILD_FAILED",
+        "failed_leg": leg,
+        "child_exit_status": dict(exit_statuses),
+        "child_stderr": detail,
+    }
+    _emit_evidence(output, failure)
+    _raise_if_source_mutated(
+        source_fixture=source_fixture,
+        fixture_identity=fixture_identity,
+        output=output,
+        record=failure,
+        message="declared immutable source fixture changed after child failure",
+        cause=cause,
+    )
+    error = ChildMeasurementError(f"{trial_record['trial_group']} child failed: {leg}")
+    if cause is None:
+        raise error
+    raise error from cause
+
+
+def _execute_trial_leg(
+    *,
+    source_fixture: Path,
+    fixture_identity: str,
+    output: TextIO,
+    trial_record: Mapping[str, object],
+    leg: EvidenceLeg,
+    label: str,
+    loaded: LoadedRequestManifest,
+    window: RangeWindow,
+    code: str,
+    exit_statuses: dict[str, int],
+    clone_fixture: Callable[[Path, Path], None],
+    run_child: ChildRunner,
+) -> tuple[Mapping[str, object], dict[str, object]]:
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix=".hoga-range-measure-",
+            dir=source_fixture.parent,
+        ) as temp_dir:
+            _assert_outside_source(source_fixture, Path(temp_dir))
+            clone_path = Path(temp_dir) / "fixture"
+            clone_fixture(source_fixture, clone_path)
+            cache_state = _initial_cache_state(clone_path)
+            execution = run_child(
+                leg,
+                clone_path,
+                label,
+                loaded,
+                window,
+                code,
+            )
+    except (OSError, ReflinkCloneError) as exc:
+        _raise_leg_failure(
+            source_fixture=source_fixture,
+            fixture_identity=fixture_identity,
+            output=output,
+            trial_record=trial_record,
+            leg=leg,
+            exit_statuses=exit_statuses,
+            detail=_operational_failure_detail(exc),
+            cause=exc,
+        )
+
+    exit_statuses[leg] = execution.returncode
+    if execution.returncode != 0 or execution.result is None:
+        _raise_leg_failure(
+            source_fixture=source_fixture,
+            fixture_identity=fixture_identity,
+            output=output,
+            trial_record=trial_record,
+            leg=leg,
+            exit_statuses=exit_statuses,
+            detail=execution.stderr,
+        )
+    _raise_if_source_mutated(
+        source_fixture=source_fixture,
+        fixture_identity=fixture_identity,
+        output=output,
+        record={
+            **trial_record,
+            "child_exit_status": dict(exit_statuses),
+        },
+        message="declared immutable source fixture changed after successful child leg",
+    )
+    return execution.result, cache_state
+
+
 def _commit_sha() -> str:
     completed = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -723,77 +913,43 @@ def run_measurement_matrix(
                     exit_statuses: dict[str, int] = {}
                     cache_states: dict[str, dict[str, object]] = {}
                     source_cache_state = _initial_cache_state(source_fixture)
+                    trial_record = {
+                        "record_type": "range_trial",
+                        "trial_group": trial_group,
+                        "trial_kind": trial_kind,
+                        "source_fixture_identity": fixture_identity,
+                        "configuration_name": loaded.manifest.name,
+                        "request_manifest_name": loaded.source_name,
+                        "request_manifest_sha256": loaded.manifest.sha256(),
+                        "commit_sha": resolved_commit_sha,
+                    }
                     for leg in EVIDENCE_LEGS:
-                        with tempfile.TemporaryDirectory(
-                            prefix=".hoga-range-measure-",
-                            dir=source_fixture.parent,
-                        ) as temp_dir:
-                            _assert_outside_source(source_fixture, Path(temp_dir))
-                            clone_path = Path(temp_dir) / "fixture"
-                            clone_fixture(source_fixture, clone_path)
-                            cache_states[leg] = _initial_cache_state(clone_path)
-                            execution = run_child(
-                                leg,
-                                clone_path,
-                                f"{trial_group}:{leg}",
-                                loaded,
-                                window,
-                                code,
-                            )
-                            exit_statuses[leg] = execution.returncode
-                            if execution.returncode != 0 or execution.result is None:
-                                failure = {
-                                    "record_type": "range_trial",
-                                    "status": "CHILD_FAILED",
-                                    "trial_group": trial_group,
-                                    "trial_kind": trial_kind,
-                                    "failed_leg": leg,
-                                    "child_exit_status": exit_statuses,
-                                    "child_stderr": execution.stderr,
-                                    "source_fixture_identity": fixture_identity,
-                                    "configuration_name": loaded.manifest.name,
-                                    "request_manifest_name": loaded.source_name,
-                                    "request_manifest_sha256": loaded.manifest.sha256(),
-                                    "commit_sha": resolved_commit_sha,
-                                }
-                                print(
-                                    json.dumps(failure, sort_keys=True),
-                                    file=output,
-                                    flush=True,
-                                )
-                                observed_identity = (
-                                    _observed_source_fixture_identity(source_fixture)
-                                )
-                                if observed_identity != fixture_identity:
-                                    mutation = {
-                                        **failure,
-                                        "status": "SOURCE_MUTATED",
-                                        "source_mutated": True,
-                                        "evidence_issues": ["source_mutated"],
-                                        "observed_source_fixture_identity": (
-                                            observed_identity
-                                        ),
-                                    }
-                                    print(
-                                        json.dumps(mutation, sort_keys=True),
-                                        file=output,
-                                        flush=True,
-                                    )
-                                    raise SourceFixtureMutationError(
-                                        "declared immutable source fixture changed "
-                                        "after child failure"
-                                    )
-                                raise ChildMeasurementError(
-                                    f"{trial_group} child failed: {leg}"
-                                )
-                            leg_results[leg] = execution.result
-                    if (
-                        _observed_source_fixture_identity(source_fixture)
-                        != fixture_identity
-                    ):
-                        raise SourceFixtureMutationError(
-                            "declared immutable source fixture changed"
+                        result, cache_state = _execute_trial_leg(
+                            source_fixture=source_fixture,
+                            fixture_identity=fixture_identity,
+                            output=output,
+                            trial_record=trial_record,
+                            leg=leg,
+                            label=f"{trial_group}:{leg}",
+                            loaded=loaded,
+                            window=window,
+                            code=code,
+                            exit_statuses=exit_statuses,
+                            clone_fixture=clone_fixture,
+                            run_child=run_child,
                         )
+                        leg_results[leg] = result
+                        cache_states[leg] = cache_state
+                    _raise_if_source_mutated(
+                        source_fixture=source_fixture,
+                        fixture_identity=fixture_identity,
+                        output=output,
+                        record={
+                            **trial_record,
+                            "child_exit_status": dict(exit_statuses),
+                        },
+                        message="declared immutable source fixture changed",
+                    )
                     semantic_issues, gate_issues = _evidence_issues(
                         trial_group=trial_group,
                         trial_kind=trial_kind,
@@ -840,11 +996,7 @@ def run_measurement_matrix(
                             "gzip": leg_results["endpoint_gzip"],
                         },
                     }
-                    print(
-                        json.dumps(joined, ensure_ascii=False, sort_keys=True),
-                        file=output,
-                        flush=True,
-                    )
+                    _emit_evidence(output, joined)
 
 
 def _parse_window(value: str) -> RangeWindow:
@@ -965,6 +1117,9 @@ def main() -> None:
         parser.error("--source-fixture must be an existing directory")
     try:
         manifests = tuple(load_request_manifest(path) for path in args.request_manifest)
+    except ValueError as exc:
+        parser.error(str(exc))
+    try:
         run_measurement_matrix(
             source_fixture=args.source_fixture,
             code=args.code,
@@ -974,10 +1129,8 @@ def main() -> None:
             warm_trials=args.warm_trials,
             output=sys.stdout,
         )
-    except (ChildMeasurementError, SourceFixtureMutationError) as exc:
+    except RangeMeasurementError as exc:
         parser.exit(1, f"{parser.prog}: error: {exc}\n")
-    except (ReflinkCloneError, ValueError) as exc:
-        parser.error(str(exc))
 
 
 if __name__ == "__main__":

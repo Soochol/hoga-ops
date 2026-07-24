@@ -103,13 +103,14 @@ A populated source or clone-initial indicator cache invalidates cold evidence.
 toward the three-cold-run gate, even when their semantic evidence is otherwise
 valid.
 
-Endpoint legs mount only the actual `/api/range` router, `RangeBundle` response
-model, and production `GZipMiddleware`; they do not enter the production
-lifespan or construct external clients/background services. Results include
-TTFB, end-of-body time, status, raw/wire/gzip bytes, content encoding, response
+Endpoint legs mount the complete production API router with the production
+`RangeBundle` response model and `GZipMiddleware`, but measurement requests
+exercise only `/api/range`. They do not enter the production lifespan or
+construct external clients/background services. Results include TTFB,
+end-of-body time, status, raw/wire/gzip bytes, content encoding, response
 validation, and body-frame count. The separately isolated direct-profiler leg
-retains slice attribution and is joined by `trial_group`. All three legs replace
-the KIS-backed holiday lookup with the recorded
+retains slice attribution and is joined by `trial_group`. All three legs
+replace the KIS-backed holiday lookup with the recorded
 `fixture-weekday-lenient-v1` policy: weekends are excluded locally and weekday
 partitions declared by the fixture are accepted without credentials or network
 access.
@@ -305,3 +306,24 @@ or host-specific absolute user paths. The six pending decisions remain:
 
 No decision was promoted to `GO`, and this verification record makes no
 latency, throughput, or user-visible improvement claim.
+
+### Final fix-wave verification
+
+Commit under test: `c834904fb3a0d3c8922eacfaa9e427c16254904f`,
+together with the final-fix source, test, and verification-record working-tree
+changes.
+
+The final focused command covering the Range and LiveBuffer runners, Range
+profiler, DuckDB setup, request timing, and affected live paths completed with
+`253 passed in 4.51s`. Changed-file Ruff completed with `All checks passed!`,
+and `git diff --check` passed.
+
+The full backend command, `uv run --extra dev pytest -q`, then ran once with
+durable output and exit-code capture. It collected 2,818 tests and completed
+with exit code 0: `2816 passed, 2 skipped, 9 warnings in 75.19s (0:01:15)`.
+
+Both committed raw files, `live-buffer.jsonl` and `range.jsonl`, parse as JSONL
+and remain unchanged from `fffd3715`. The artifact scan found no credential
+terms or host-specific absolute user paths. All six `NEEDS_*` decisions listed
+above remain unchanged. No decision was promoted to `GO`, and this final fix
+verification makes no latency, throughput, or user-visible improvement claim.
