@@ -6,6 +6,31 @@ user-impact conclusions.
 
 | Workstream | Evidence | Gate | Decision | Next action |
 |---|---|---|---|---|
-| Past candles | [Unit/mock tests passed](./README.md#unitmock-result); [cold/warm timing was not run](./http.log#L1) | p95 > 1000ms | `NEEDS_APPROVED_EXTERNAL_MEASUREMENT` | Approve an isolated development-account measurement, then ADR-0103 review or close |
+| Past candles | [Unit/mock tests passed](./README.md#unitmock-result); [cold/warm timing was not run](./http.log#L1) | Approved three-day cold p95 and KIS-quota evidence | `NEEDS_APPROVED_EXTERNAL_MEASUREMENT` | Obtain explicit approval for an isolated development-account measurement, then apply the gate below |
 | LiveBuffer | [Synthetic 1/50/200/800-code results table](./README.md#resource-guard-and-results) and [raw JSONL](./live-buffer.jsonl); [20-minute real-mix soak unavailable](./http.log#L2) | growth, >30%, or >50ms | `NEEDS_RECORDED_TICK_FIXTURE` | Provide a recorded tick fixture, run the isolated 20-minute soak, then display-plane spec or close |
 | Range sidecar | [No isolated fixture; no range measurement run](./range.jsonl#L1) | >1000ms or >5MB and slice >=35% | `NEEDS_ISOLATED_FIXTURE` | Provide fixed isolated fixture values, then slice-specific plan or close |
+
+### Past-candle decision
+
+`NEEDS_APPROVED_EXTERNAL_MEASUREMENT` is the terminal pending decision. No approved
+real KIS measurement exists, so this workstream stops before a `GO`/`NO-GO`
+determination or any ADR reversal. ADR-0095 memory-only caching and ADR-0103
+on-demand behavior remain unchanged; no implementation plan is warranted.
+
+The missing evidence is a current-head, three-day cold and warm p50/p95 result,
+KIS quota/capacity evidence, and restart duplicate-fetch evidence: the share of
+past-minute calls attributable to restart duplicates across three measured sessions.
+An explicitly approved, isolated development-account KIS measurement is required
+before collecting it.
+
+After approval and collection, apply this order exactly:
+
+1. If no approved real KIS measurement is available, retain
+   `NEEDS_APPROVED_EXTERNAL_MEASUREMENT` and stop.
+2. If three-day cold p95 is at most 1,000ms, decide `NO-GO` and retain ADR-0095
+   and ADR-0103 unchanged.
+3. If three-day cold p95 exceeds 1,000ms but restart duplicate fetches are not a
+   quota problem, consider only prior-span read-ahead; disk caching remains rejected.
+4. Only if restart duplicate fetches consume at least 20% of past-minute calls in
+   three separate measured sessions, or development quota is materially constrained,
+   may an ADR-0095 disk-cache reversal be proposed.
