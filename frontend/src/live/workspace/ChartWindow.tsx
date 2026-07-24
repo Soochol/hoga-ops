@@ -290,7 +290,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         data-testid="chart-window-header"
         data-compact={headerFold.compactActions ? '' : undefined}
         data-compact-timeframe={headerFold.compactTimeframe ? '' : undefined}
-        className="flex shrink-0 items-center gap-1 overflow-hidden bg-bg-card/60 px-1 py-0.5"
+        className="flex shrink-0 items-center gap-1 overflow-hidden bg-bg-card px-1 py-0.5"
       >
         {/* 종목 식별·현재가·경고는 창 타이틀바(TitleBarSymbolRow)로 이관됐다.
             이 헤더는 봉·그리기·보조지표·저장·수집만 소유한다. */}

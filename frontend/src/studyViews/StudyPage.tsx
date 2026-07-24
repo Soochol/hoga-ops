@@ -493,7 +493,7 @@ export function StudyPage() {
               />
             </div>
           )}
-          <div className="flex items-center gap-3 min-h-12 px-3">
+          <div className="flex items-center gap-3 min-h-12 px-3 bg-bg-card">
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{headerLabel}</div>
               <div className="flex items-center gap-2 text-xs text-[var(--fg-dimmer)]">
