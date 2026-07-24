@@ -539,19 +539,40 @@ def test_warm_child_runs_unmeasured_warmup_before_measured_invocation(
         monkeypatch.setattr(run_range_measurements, "QueryEngine", FakeEngine)
         monkeypatch.setattr(run_range_measurements, "profile_range_case", profile_case)
     else:
+        app = SimpleNamespace(
+            data_dir=clone,
+            temp_directory=clone / ".measurement" / "duckdb-tmp",
+        )
+        engine = SimpleNamespace(close=lambda: None)
+
+        def create_app(
+            data_dir: Path,
+            *,
+            temp_directory: Path,
+        ) -> tuple[SimpleNamespace, SimpleNamespace]:
+            assert data_dir == clone
+            assert temp_directory == app.temp_directory
+            return app, engine
+
         async def endpoint_case(
             *,
-            data_dir: Path,
-            temp_directory: Path,
+            app: SimpleNamespace,
             accept_encoding: str,
             **kwargs: object,
         ) -> dict[str, object]:
-            invocations.append((data_dir, temp_directory, accept_encoding))
+            invocations.append(
+                (app.data_dir, app.temp_directory, accept_encoding)
+            )
             return {"invocation": len(invocations)}
 
         monkeypatch.setattr(
             run_range_measurements,
-            "measure_range_endpoint_case",
+            "create_range_measurement_app",
+            create_app,
+        )
+        monkeypatch.setattr(
+            run_range_measurements,
+            "_measure_range_endpoint_case_on_app",
             endpoint_case,
         )
 
@@ -579,6 +600,74 @@ def test_warm_child_runs_unmeasured_warmup_before_measured_invocation(
         (clone, expected_temp, expected_encoding),
         (clone, expected_temp, expected_encoding),
     ]
+    assert result["invocation"] == 2
+    assert result["warmup_runs"] == 1
+
+
+def test_endpoint_warm_child_reuses_same_app_engine_lifecycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+    created: list[tuple[SimpleNamespace, SimpleNamespace]] = []
+    measured_states: list[object] = []
+
+    def create_app(
+        data_dir: Path,
+        *,
+        temp_directory: Path,
+    ) -> tuple[SimpleNamespace, SimpleNamespace]:
+        state = object()
+        app = SimpleNamespace(state=state)
+        engine = SimpleNamespace(state=state, close_calls=0)
+
+        def close() -> None:
+            engine.close_calls += 1
+
+        engine.close = close
+        created.append((app, engine))
+        return app, engine
+
+    async def measure_response(
+        app: SimpleNamespace,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        measured_states.append(app.state)
+        return {"invocation": len(measured_states)}
+
+    monkeypatch.setattr(run_range_measurements, "create_range_measurement_app", create_app)
+    monkeypatch.setattr(run_range_measurements, "measure_asgi_response", measure_response)
+    monkeypatch.setattr(
+        run_range_measurements,
+        "load_request_manifest",
+        lambda _: loaded,
+    )
+
+    result = _run_child_command(
+        argparse.Namespace(
+            leg="endpoint_identity",
+            data_dir=clone,
+            label="range:test:5d:warm:1:endpoint_identity",
+            request_manifest=tmp_path / "unused.json",
+            manifest_source_name="frontend-default-sidecar.json",
+            code="005930",
+            from_date="20260701",
+            to_date="20260707",
+            trial_kind="warm",
+        )
+    )
+
+    assert len(created) == 1
+    [app_engine] = created
+    app, engine = app_engine
+    assert measured_states == [app.state, app.state]
+    assert engine.state is app.state
+    assert engine.close_calls == 1
     assert result["invocation"] == 2
     assert result["warmup_runs"] == 1
 
@@ -628,6 +717,63 @@ def test_orchestrator_streams_success_and_child_failure_before_raising(
     assert rows[1]["failed_leg"] == "endpoint_identity"
     assert rows[1]["child_exit_status"] == {"profile": 0, "endpoint_identity": 23}
     assert rows[1]["child_stderr"] == "synthetic failure"
+
+
+def test_orchestrator_rehashes_mutated_source_after_flushed_child_failure(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    sentinel = source / "sentinel"
+    sentinel.write_text("immutable", encoding="utf-8")
+    loaded = LoadedRequestManifest(
+        manifest=_manifest(),
+        source_name="frontend-default-sidecar.json",
+    )
+
+    class FlushTrackingStringIO(io.StringIO):
+        def __init__(self) -> None:
+            super().__init__()
+            self.flush_calls = 0
+
+        def flush(self) -> None:
+            self.flush_calls += 1
+            super().flush()
+
+    def run_child(
+        leg: str,
+        clone_path: Path,
+        label: str,
+        manifest: LoadedRequestManifest,
+        window: RangeWindow,
+        code: str,
+    ) -> ChildExecution:
+        sentinel.write_text("mutated", encoding="utf-8")
+        return ChildExecution(returncode=23, result=None, stderr="synthetic failure")
+
+    output = FlushTrackingStringIO()
+    with pytest.raises(
+        run_range_measurements.SourceFixtureMutationError,
+        match="source fixture changed",
+    ):
+        run_measurement_matrix(
+            source_fixture=source,
+            code="005930",
+            windows=(RangeWindow("5d", "20260701", "20260707"),),
+            manifests=(loaded,),
+            cold_trials=1,
+            warm_trials=0,
+            output=output,
+            commit_sha="0123456789abcdef",
+            clone_fixture=shutil.copytree,
+            run_child=run_child,
+        )
+
+    rows = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert [row["status"] for row in rows] == ["CHILD_FAILED", "SOURCE_MUTATED"]
+    assert rows[1]["source_mutated"] is True
+    assert "source_mutated" in rows[1]["evidence_issues"]
+    assert output.flush_calls == 2
 
 
 def test_orchestrator_isolates_every_leg_and_keeps_warm_labels_out_of_cold_rows(

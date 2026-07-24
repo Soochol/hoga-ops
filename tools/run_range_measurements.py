@@ -71,6 +71,10 @@ class ChildMeasurementError(RuntimeError):
     """A fresh measurement child exited without one valid result."""
 
 
+class SourceFixtureMutationError(RuntimeError):
+    """The source fixture changed while an isolated measurement was running."""
+
+
 @dataclass(frozen=True, slots=True)
 class RangeWindow:
     label: str
@@ -171,6 +175,13 @@ def _source_fixture_identity(source: Path) -> str:
             f"{stat_result.st_mtime_ns}\0".encode()
         )
     return f"sha256:{digest.hexdigest()}"
+
+
+def _observed_source_fixture_identity(source: Path) -> str | None:
+    try:
+        return _source_fixture_identity(source)
+    except (OSError, RuntimeError):
+        return None
 
 
 def _initial_cache_state(clone: Path) -> dict[str, object]:
@@ -335,6 +346,40 @@ def create_range_measurement_app(
     return app, engine
 
 
+async def _measure_range_endpoint_case_on_app(
+    *,
+    app: FastAPI,
+    label: str,
+    request_manifest: RangeRequestManifest,
+    manifest_source_name: str,
+    code: str,
+    from_date: str,
+    to_date: str,
+    accept_encoding: Literal["identity", "gzip"],
+) -> dict[str, object]:
+    with fixture_only_trading_calendar():
+        measurement = await measure_asgi_response(
+            app,
+            query_string=_range_query_string(
+                request_manifest=request_manifest,
+                code=code,
+                from_date=from_date,
+                to_date=to_date,
+            ),
+            accept_encoding=accept_encoding,
+            response_model=RangeBundle,
+        )
+    return {
+        "label": label,
+        "configuration_name": request_manifest.name,
+        "request_manifest_name": manifest_source_name,
+        "request_manifest_sha256": request_manifest.sha256(),
+        "request_manifest": request_manifest.normalized(),
+        "trading_calendar_policy": TRADING_CALENDAR_POLICY,
+        **measurement,
+    }
+
+
 async def measure_range_endpoint_case(
     *,
     data_dir: Path,
@@ -352,29 +397,18 @@ async def measure_range_endpoint_case(
         temp_directory=temp_directory,
     )
     try:
-        with fixture_only_trading_calendar():
-            measurement = await measure_asgi_response(
-                app,
-                query_string=_range_query_string(
-                    request_manifest=request_manifest,
-                    code=code,
-                    from_date=from_date,
-                    to_date=to_date,
-                ),
-                accept_encoding=accept_encoding,
-                response_model=RangeBundle,
-            )
+        return await _measure_range_endpoint_case_on_app(
+            app=app,
+            label=label,
+            request_manifest=request_manifest,
+            manifest_source_name=manifest_source_name,
+            code=code,
+            from_date=from_date,
+            to_date=to_date,
+            accept_encoding=accept_encoding,
+        )
     finally:
         engine.close()
-    return {
-        "label": label,
-        "configuration_name": request_manifest.name,
-        "request_manifest_name": manifest_source_name,
-        "request_manifest_sha256": request_manifest.sha256(),
-        "request_manifest": request_manifest.normalized(),
-        "trading_calendar_policy": TRADING_CALENDAR_POLICY,
-        **measurement,
-    }
 
 
 def _run_child_process(
@@ -703,12 +737,39 @@ def run_measurement_matrix(
                                     file=output,
                                     flush=True,
                                 )
+                                observed_identity = (
+                                    _observed_source_fixture_identity(source_fixture)
+                                )
+                                if observed_identity != fixture_identity:
+                                    mutation = {
+                                        **failure,
+                                        "status": "SOURCE_MUTATED",
+                                        "source_mutated": True,
+                                        "evidence_issues": ["source_mutated"],
+                                        "observed_source_fixture_identity": (
+                                            observed_identity
+                                        ),
+                                    }
+                                    print(
+                                        json.dumps(mutation, sort_keys=True),
+                                        file=output,
+                                        flush=True,
+                                    )
+                                    raise SourceFixtureMutationError(
+                                        "declared immutable source fixture changed "
+                                        "after child failure"
+                                    )
                                 raise ChildMeasurementError(
                                     f"{trial_group} child failed: {leg}"
                                 )
                             leg_results[leg] = execution.result
-                    if _source_fixture_identity(source_fixture) != fixture_identity:
-                        raise RuntimeError("declared immutable source fixture changed")
+                    if (
+                        _observed_source_fixture_identity(source_fixture)
+                        != fixture_identity
+                    ):
+                        raise SourceFixtureMutationError(
+                            "declared immutable source fixture changed"
+                        )
                     semantic_issues, gate_issues = _evidence_issues(
                         trial_group=trial_group,
                         trial_kind=trial_kind,
@@ -842,8 +903,12 @@ def _run_child_command(args: argparse.Namespace) -> dict[str, object]:
     )
 
     async def run_endpoint_child() -> dict[str, object]:
+        app, engine = create_range_measurement_app(
+            args.data_dir,
+            temp_directory=temp_directory,
+        )
         kwargs = {
-            "data_dir": args.data_dir,
+            "app": app,
             "label": args.label,
             "request_manifest": loaded.manifest,
             "manifest_source_name": args.manifest_source_name,
@@ -851,11 +916,13 @@ def _run_child_command(args: argparse.Namespace) -> dict[str, object]:
             "from_date": args.from_date,
             "to_date": args.to_date,
             "accept_encoding": encoding,
-            "temp_directory": temp_directory,
         }
-        if warmup_runs:
-            await measure_range_endpoint_case(**kwargs)
-        return await measure_range_endpoint_case(**kwargs)
+        try:
+            if warmup_runs:
+                await _measure_range_endpoint_case_on_app(**kwargs)
+            return await _measure_range_endpoint_case_on_app(**kwargs)
+        finally:
+            engine.close()
 
     result = asyncio.run(run_endpoint_child())
     return {**result, "warmup_runs": warmup_runs}
@@ -880,7 +947,7 @@ def main() -> None:
             warm_trials=args.warm_trials,
             output=sys.stdout,
         )
-    except ChildMeasurementError as exc:
+    except (ChildMeasurementError, SourceFixtureMutationError) as exc:
         parser.exit(1, f"{parser.prog}: error: {exc}\n")
     except (ReflinkCloneError, ValueError) as exc:
         parser.error(str(exc))
