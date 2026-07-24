@@ -46,6 +46,23 @@ describe('pickProgramTradePoint', () => {
     const pts = [point(T0, 1)];
     expect(pickProgramTradePoint(pts, T0 - 1)).toBeNull();
   });
+
+  it('clamps a future cursor to the latest point (no prev-day bleed)', () => {
+    // 다음날 빈 영역/칸에 호버 → 전날이 아니라 최신값 고정.
+    const pts = [point(T0, 1), point(T0 + 1000, 2)];
+    expect(pickProgramTradePoint(pts, T0 + DAY_MS)?.t).toBe(T0 + 1000);
+  });
+
+  it('returns null when the floored point is a different day (multi-day bundle)', () => {
+    // 병합 번들: 어제 마지막 + 오늘 첫 점. 커서가 오늘이지만 오늘 첫 점 이전이면
+    // floor 는 어제 점 — 날짜 경계 가드가 전날 유출을 막아 null 을 낸다.
+    const yesterday = point(T0 - DAY_MS + 1000, 5);
+    const todayFirst = point(T0 + 1000, 10);
+    const pts = [yesterday, todayFirst];
+    expect(pickProgramTradePoint(pts, T0)).toBeNull();
+    // 같은 날 안에서는 정상 floor.
+    expect(pickProgramTradePoint(pts, T0 + 2000)?.t).toBe(T0 + 1000);
+  });
 });
 
 describe('buildTimeGapSegments', () => {
