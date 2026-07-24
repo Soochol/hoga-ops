@@ -123,7 +123,7 @@ def test_streaming_measures_ttfb_not_stream_lifetime(
     threshold 30ms에 걸리지 않아야 TTFB 측정임이 증명된다.
     """
     monkeypatch.setenv("HOGA_PERF_DEBUG", "1")
-    monkeypatch.delenv("HOGA_SLOW_REQUEST_MS", raising=False)
+    monkeypatch.setenv("HOGA_SLOW_REQUEST_MS", "30")
     client = _make_client()
     with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
         resp = client.get("/stream")
@@ -135,6 +135,56 @@ def test_streaming_measures_ttfb_not_stream_lifetime(
     assert duration < 30.0
     assert "streaming=1" in msg
     assert "body_bytes=" not in msg
+
+
+@pytest.mark.asyncio
+async def test_direct_multiframe_response_preserves_zero_ttfb_and_final_body_timing(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("HOGA_PERF_DEBUG", "1")
+    clock = iter((1.0, 1.0, 1.005))
+    monkeypatch.setattr(request_timing.time, "perf_counter", lambda: next(clock))
+
+    async def multiframe_app(scope, receive, send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"first", "more_body": True})
+        await send({"type": "http.response.body", "body": b"rest", "more_body": False})
+
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
+
+    middleware = RequestTimingMiddleware(multiframe_app)
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/multi",
+        "query_string": b"",
+    }
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        await middleware(scope, receive, send)
+
+    assert [message["type"] for message in sent] == [
+        "http.response.start",
+        "http.response.body",
+        "http.response.body",
+    ]
+    [record] = _timing_records(caplog)
+    message = record.getMessage()
+    assert "ttfb_ms=0.0" in message
+    assert "duration_ms=5.0" in message
+    assert "body_bytes=9" in message
 
 
 def test_invalid_threshold_falls_back_to_default(

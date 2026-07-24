@@ -78,22 +78,35 @@ After approval and collection, apply this order exactly:
 ### Range-sidecar decision
 
 `NEEDS_ISOLATED_FIXTURE` remains the terminal pending decision. The range record
-contains no isolated 60 Stock-Date cold-run p95, raw or gzip response-byte, or
-function-level dominant-slice evidence, so neither `GO`, `NO-GO`, nor
-`NEEDS_MORE_BREAKDOWN` can be assigned. No range performance spec, implementation
-plan, endpoint, cache, or production-code change is authorized by this state.
-Pending isolated evidence, preserve the existing `frontend/src/api/range.ts`
-delta merge and current caches unchanged.
+contains no isolated 60 Stock-Date endpoint cold-run p95, actual identity/gzip
+response bytes, response-validation result, or joined function-level
+dominant-slice evidence, so neither `GO`, `NO-GO`, nor `NEEDS_MORE_BREAKDOWN`
+can be assigned. No range performance spec, implementation plan, endpoint,
+cache, or production-code change is authorized by this state. Pending isolated
+evidence, preserve the existing `frontend/src/api/range.ts` delta merge and
+current caches unchanged.
 
-Once an isolated fixed fixture is available, collect three cold runs for the same
-60 Stock-Date corpus. Record the cold p95, raw and gzip response bytes, and each
-run's function-level share of total time. Apply the future gate in this order:
+Once an isolated fixed fixture is available, use the tested Range orchestrator
+to collect three `trial_kind=cold` runs for the same 60 Stock-Date corpus and
+each committed representative manifest. For each stable `trial_group`, require:
+
+1. Actual `/api/range` response-model/serialization and ASGI identity evidence:
+   TTFB, end-of-body duration, status, raw bytes, content encoding, and successful
+   `RangeBundle` validation.
+2. Actual gzip ASGI evidence: TTFB, end-of-body duration, status, decompressed
+   raw bytes, gzip wire bytes, `content-encoding=gzip`, and successful validation.
+3. A separately process/clone-cold direct-profiler leg with per-function timing
+   attribution for the identical window and request manifest.
+
+Warm-labeled rows, failed children, and rows marked `EVIDENCE_INVALID` are
+excluded from the three-cold-run gate.
+Apply the future gate in this order:
 
 1. If the isolated fixture or any required measurement is absent, retain
    `NEEDS_ISOLATED_FIXTURE` and stop.
-2. If cold p95 is at most 1,000ms and the raw response is at most 5MB, decide
-   `NO-GO`; preserve the current `frontend/src/api/range.ts` delta merge and
-   current caches.
+2. If identity endpoint end-of-body cold p95 is at most 1,000ms and the raw
+   response is at most 5MB, decide `NO-GO`; preserve the current
+   `frontend/src/api/range.ts` delta merge and current caches.
 3. If either threshold is exceeded and one profiled function accounts for at
    least 35% of total time in at least two of the three cold runs, decide `GO`
    and plan only that dominant slice.

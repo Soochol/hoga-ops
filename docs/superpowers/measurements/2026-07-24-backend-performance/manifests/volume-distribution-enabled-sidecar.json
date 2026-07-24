@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "name": "volume-distribution-enabled-sidecar",
+  "request": {
+    "bucket_ms": 60000,
+    "source_pref": "hogaplay_first",
+    "mode": "sidecar",
+    "broker_late_entries_enabled": false,
+    "broker_late_entry_start_hhmm": 930,
+    "volume_distribution_bins": 10,
+    "trade_volume_poc_bins": null,
+    "volume_distribution_price_min": null,
+    "volume_distribution_price_max": null,
+    "volume_distribution_cutoff_ms": null,
+    "ask_peaks_enabled": false,
+    "bid_peaks_enabled": false,
+    "program_trade_enabled": false,
+    "trade_volume_poc_enabled": false,
+    "depth_heatmap_enabled": false,
+    "depth_delta_enabled": false
+  }
+}

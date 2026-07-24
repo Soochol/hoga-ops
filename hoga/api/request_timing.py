@@ -118,7 +118,7 @@ class RequestTimingMiddleware:
                     _log_timing(
                         scope=scope,
                         status=status,
-                        ttfb_ms=ttfb_ms or duration_ms,
+                        ttfb_ms=ttfb_ms if ttfb_ms is not None else duration_ms,
                         duration_ms=duration_ms,
                         body_bytes=body_bytes,
                         streaming=False,

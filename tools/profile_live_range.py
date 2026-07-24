@@ -13,6 +13,27 @@ from unittest.mock import patch
 from hoga.api import bundle as bundle_mod
 from hoga.api.queries import QueryEngine
 
+if __package__:
+    from tools.range_measurement_policy import (
+        TRADING_CALENDAR_POLICY,
+        fixture_only_trading_calendar,
+    )
+    from tools.range_request_manifest import (
+        LoadedRequestManifest,
+        RangeRequestManifest,
+        load_request_manifest,
+    )
+else:
+    from range_measurement_policy import (  # type: ignore[import-not-found]
+        TRADING_CALENDAR_POLICY,
+        fixture_only_trading_calendar,
+    )
+    from range_request_manifest import (  # type: ignore[import-not-found]
+        LoadedRequestManifest,
+        RangeRequestManifest,
+        load_request_manifest,
+    )
+
 PROFILED_FUNCTIONS: tuple[str, ...] = (
     "build_program_trade_series",
     "build_candles_slice",
@@ -33,11 +54,21 @@ def profile_range_case(
     engine: QueryEngine,
     *,
     label: str,
-    request_kwargs: dict[str, object],
+    request_manifest: RangeRequestManifest,
+    code: str,
+    from_date: str,
+    to_date: str,
+    manifest_source_name: str | None = None,
 ) -> dict[str, object]:
     """Profile one ``build_range_bundle`` request without leaking wrappers."""
+    request_kwargs = request_manifest.request_kwargs(
+        code=code,
+        from_date=from_date,
+        to_date=to_date,
+    )
     rows: list[tuple[str, float]] = []
     with ExitStack() as stack:
+        stack.enter_context(fixture_only_trading_calendar())
         for name in PROFILED_FUNCTIONS:
             original: Callable[..., object] = getattr(bundle_mod, name)
 
@@ -68,6 +99,12 @@ def profile_range_case(
 
     return {
         "label": label,
+        "configuration_name": request_manifest.name,
+        "request_manifest_name": manifest_source_name
+        or f"{request_manifest.name}.json",
+        "request_manifest_sha256": request_manifest.sha256(),
+        "request_manifest": request_manifest.normalized(),
+        "trading_calendar_policy": TRADING_CALENDAR_POLICY,
         "total_ms": round(total_ms, 3),
         "result_counts": {
             "segments": len(result.segments),
@@ -94,9 +131,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--code", required=True)
     parser.add_argument("--from", dest="from_date", required=True, metavar="YYYYMMDD")
     parser.add_argument("--to", dest="to_date", required=True, metavar="YYYYMMDD")
-    parser.add_argument("--bucket-ms", type=int, default=60_000, metavar="INT")
-    parser.add_argument("--mode", action="append", choices=SUPPORTED_MODES)
-    parser.add_argument("--repeat", type=int, default=3, metavar="INT")
+    parser.add_argument(
+        "--request-manifest",
+        type=Path,
+        required=True,
+        metavar="JSON",
+    )
+    parser.add_argument("--repeat", type=int, default=1, metavar="INT")
     parser.add_argument("--label-prefix", default="range", metavar="TEXT")
     return parser
 
@@ -106,28 +147,28 @@ def main() -> None:
     args = parser.parse_args()
     if not args.data_dir.is_dir():
         parser.error(f"--data-dir must be an existing directory: {args.data_dir}")
+    if args.repeat <= 0:
+        parser.error("--repeat must be a positive integer")
+    try:
+        loaded: LoadedRequestManifest = load_request_manifest(args.request_manifest)
+    except ValueError as exc:
+        parser.error(str(exc))
 
-    modes = args.mode or SUPPORTED_MODES
-    for mode in modes:
-        request_kwargs: dict[str, object] = {
-            "code": args.code,
-            "from_date": args.from_date,
-            "to_date": args.to_date,
-            "bucket_ms": args.bucket_ms,
-            "source_pref": "hogaplay_first",
-            "mode": mode,
-        }
-        for repeat_index in range(1, args.repeat + 1):
-            engine = QueryEngine(args.data_dir)
-            try:
-                result = profile_range_case(
-                    engine,
-                    label=f"{args.label_prefix}:{mode}:{repeat_index}",
-                    request_kwargs=request_kwargs,
-                )
-            finally:
-                engine.close()
-            print(json.dumps(result, ensure_ascii=False))
+    for repeat_index in range(1, args.repeat + 1):
+        engine = QueryEngine(args.data_dir)
+        try:
+            result = profile_range_case(
+                engine,
+                label=f"{args.label_prefix}:{loaded.manifest.name}:{repeat_index}",
+                request_manifest=loaded.manifest,
+                code=args.code,
+                from_date=args.from_date,
+                to_date=args.to_date,
+                manifest_source_name=loaded.source_name,
+            )
+        finally:
+            engine.close()
+        print(json.dumps(result, ensure_ascii=False))
 
 
 if __name__ == "__main__":

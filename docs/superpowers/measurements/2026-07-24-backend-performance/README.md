@@ -45,19 +45,19 @@ No `HOGA_BENCH_*` fixture variables were configured, and no isolated fixture was
 available. No repository-default, production, or user data was inspected. No
 representative code or date values were invented.
 
-To run this matrix later, the operator must provide an isolated developer fixture
-and configure all of the following:
+To run this matrix later, the operator must provide a declared immutable,
+isolated developer source fixture and configure all of the following:
 
 ```bash
-export HOGA_BENCH_DATA_DIR=/path/to/isolated/developer-fixture
+export HOGA_BENCH_SOURCE_FIXTURE=/path/to/immutable/isolated/developer-fixture
 export HOGA_BENCH_CODE=<fixture-code>
 export HOGA_BENCH_FROM_5=<YYYYMMDD>
 export HOGA_BENCH_FROM_20=<YYYYMMDD>
 export HOGA_BENCH_FROM_60=<YYYYMMDD>
 export HOGA_BENCH_TO=<YYYYMMDD>
 
-test -n "$HOGA_BENCH_DATA_DIR"
-test -d "$HOGA_BENCH_DATA_DIR"
+test -n "$HOGA_BENCH_SOURCE_FIXTURE"
+test -d "$HOGA_BENCH_SOURCE_FIXTURE"
 test -n "$HOGA_BENCH_CODE"
 test -n "$HOGA_BENCH_FROM_5"
 test -n "$HOGA_BENCH_FROM_20"
@@ -66,30 +66,64 @@ test -n "$HOGA_BENCH_TO"
 ```
 
 After replacing the placeholders with fixed fixture values, record those values
-here and run:
+here and run the tested orchestrator:
 
 ```bash
-for window in \
-  "5d:$HOGA_BENCH_FROM_5:$HOGA_BENCH_TO" \
-  "20d:$HOGA_BENCH_FROM_20:$HOGA_BENCH_TO" \
-  "60d:$HOGA_BENCH_FROM_60:$HOGA_BENCH_TO"
-do
-  IFS=: read -r label from_date to_date <<EOF
-$window
-EOF
-  uv run python tools/profile_live_range.py \
-    --data-dir "$HOGA_BENCH_DATA_DIR" \
-    --code "$HOGA_BENCH_CODE" \
-    --from "$from_date" \
-    --to "$to_date" \
-    --bucket-ms 60000 \
-    --mode hoga \
-    --mode sidecar \
-    --mode candles \
-    --repeat 3 \
-    --label-prefix "$label"
-done > docs/superpowers/measurements/2026-07-24-backend-performance/range.jsonl
+set -eu
+measurement_dir=docs/superpowers/measurements/2026-07-24-backend-performance
+range_rerun_jsonl="$measurement_dir/range-rerun.jsonl"
+
+uv run python tools/run_range_measurements.py run \
+  --source-fixture "$HOGA_BENCH_SOURCE_FIXTURE" \
+  --code "$HOGA_BENCH_CODE" \
+  --window "5d:$HOGA_BENCH_FROM_5:$HOGA_BENCH_TO" \
+  --window "20d:$HOGA_BENCH_FROM_20:$HOGA_BENCH_TO" \
+  --window "60d:$HOGA_BENCH_FROM_60:$HOGA_BENCH_TO" \
+  --request-manifest "$measurement_dir/manifests/frontend-default-sidecar.json" \
+  --request-manifest \
+    "$measurement_dir/manifests/volume-distribution-enabled-sidecar.json" \
+  --cold-trials 3 \
+  --warm-trials 0 \
+  > "$range_rerun_jsonl"
 ```
+
+The orchestrator never writes into or clears the declared source. Every
+profiler, identity-endpoint, and gzip-endpoint evidence leg gets its own
+`cp --reflink=always` clone and fresh Python child; unsupported copy-on-write
+cloning and source fixtures containing symlinks fail closed instead of making
+a full copy or preserving an escape path. Those three independently cold legs
+share one stable `trial_group` in the joined JSONL result. Each row records a
+path-free source identity, clone-initial indicator-cache state, the uncontrolled
+OS-cache state, `trial_kind`, window, configuration, child exit statuses,
+semantic evidence issues, gate eligibility, and commit SHA. `cold` and optional
+`warm` labels are distinct, and warm or evidence-invalid rows are never inputs
+to the three-cold-run gate.
+
+Endpoint legs mount only the actual `/api/range` router, `RangeBundle` response
+model, and production `GZipMiddleware`; they do not enter the production
+lifespan or construct external clients/background services. Results include
+TTFB, end-of-body time, status, raw/wire/gzip bytes, content encoding, response
+validation, and body-frame count. The separately isolated direct-profiler leg
+retains slice attribution and is joined by `trial_group`. All three legs replace
+the KIS-backed holiday lookup with the recorded
+`fixture-weekday-lenient-v1` policy: weekends are excluded locally and weekday
+partitions declared by the fixture are accepted without credentials or network
+access.
+
+The committed manifests are the measurement contract:
+
+- `frontend-default-sidecar.json` pins the current factory-default sidecar
+  toggles (off), bin fields, broker threshold, source preference, mode, and
+  explicit nullable price range.
+- `volume-distribution-enabled-sidecar.json` changes the distribution bin count
+  to 10 so the enabled user path and `build_volume_distribution_slice` execute.
+  Its null price-range pair means the builder derives the range from fixture
+  candles, matching the frontend path before a runtime range is available.
+
+Every field that can alter `build_range_bundle` sidecar work is required;
+unknown/missing fields and invalid bounds are rejected. Future frontend
+request-shape or factory-default changes require updating these representative
+manifests before collecting new evidence.
 
 ## LiveBuffer measurements
 
@@ -97,97 +131,44 @@ The deterministic synthetic matrix uses generated `SYNnnnnn` codes only. It does
 not read files, open a WebSocket, or access KIS.
 
 ```bash
-# 1) Capture the smaller cases first.
 set -eu
 measurement_dir=docs/superpowers/measurements/2026-07-24-backend-performance
-live_buffer_jsonl="$measurement_dir/live-buffer.jsonl"
+live_buffer_rerun_jsonl="$measurement_dir/live-buffer-rerun.jsonl"
 mkdir -p "$measurement_dir"
 
-for codes in 1 50 200; do
-  uv run python tools/bench_live_buffer.py \
-    --codes "$codes" \
-    --ticks-per-code 1000 \
-    --levels 10 \
-    --retention-ms 1000000000
-done > "$live_buffer_jsonl"
-
-# 2) Inspect current availability and project 800-code peak RSS from the
-#    observed 50-to-200-code slope. Any missing/invalid input stops safely.
-available_bytes=$(
-  awk '
-    /MemAvailable:/ {
-      printf "%.0f\n", $2 * 1024
-      found = 1
-    }
-    END { if (!found) exit 1 }
-  ' /proc/meminfo
-)
-rss_50=$(jq -er 'select(.codes == 50) | .max_rss_bytes' "$live_buffer_jsonl")
-rss_200=$(jq -er 'select(.codes == 200) | .max_rss_bytes' "$live_buffer_jsonl")
-
-for value in "$available_bytes" "$rss_50" "$rss_200"; do
-  case "$value" in
-    ""|*[!0-9]*)
-      echo "Resource guard input is not a non-negative integer" >&2
-      exit 1
-      ;;
-  esac
-done
-if [ "$rss_200" -lt "$rss_50" ]; then
-  echo "Resource guard cannot project from a negative RSS slope" >&2
-  exit 1
-fi
-
-projected_800=$(
-  expr "$rss_200" + \
-    \( 800 - 200 \) \* \( "$rss_200" - "$rss_50" \) / \( 200 - 50 \)
-)
-guard_limit=$((available_bytes / 4))
-printf 'available_bytes=%s\n' "$available_bytes"
-printf 'projected_800_max_rss_bytes=%s\n' "$projected_800"
-printf 'guard_limit_bytes=%s\n' "$guard_limit"
-
-# 3) Append the 800-code result only when the projection is within the guard.
-#    Otherwise append a status record with the projection and future command.
-measurement_command="uv run python tools/bench_live_buffer.py --codes 800 --ticks-per-code 1000 --levels 10 --retention-ms 1000000000"
-if [ "$projected_800" -le "$guard_limit" ]; then
-  uv run python tools/bench_live_buffer.py \
-    --codes 800 \
-    --ticks-per-code 1000 \
-    --levels 10 \
-    --retention-ms 1000000000 \
-    >> "$live_buffer_jsonl"
-else
-  jq -nc \
-    --arg record_type status \
-    --arg workstream live_buffer_synthetic_800 \
-    --arg status SKIPPED_RESOURCE_GUARD \
-    --arg command "$measurement_command" \
-    --argjson available_bytes "$available_bytes" \
-    --argjson projected_max_rss_bytes "$projected_800" \
-    --argjson guard_limit_bytes "$guard_limit" \
-    '{
-      record_type: $record_type,
-      workstream: $workstream,
-      status: $status,
-      available_bytes: $available_bytes,
-      projected_max_rss_bytes: $projected_max_rss_bytes,
-      guard_limit_bytes: $guard_limit_bytes,
-      command: $command
-    }' >> "$live_buffer_jsonl"
-fi
+uv run python tools/run_live_buffer_scales.py \
+  --scale 1 \
+  --scale 50 \
+  --scale 200 \
+  --scale 800 \
+  --ticks-per-code 1000 \
+  --levels 10 \
+  --retention-ms 1000000000 \
+  > "$live_buffer_rerun_jsonl"
 ```
 
-The 800-code case is conditional on this executable resource guard. It measures
-the 1-, 50-, and 200-code cases first, inspects currently available memory, and
-records `SKIPPED_RESOURCE_GUARD` instead of running 800 codes when projected peak
-RSS is more than 25% of that available memory.
+Before every scale, the runner recomputes usable headroom as the smaller of host
+`MemAvailable` and finite cgroup v2 remaining memory
+(`memory.max - memory.current`), with cgroup v1 memory limit/usage as a safe
+fallback. Completed smaller samples project the next peak conservatively from
+the highest observed per-code peak. A candidate above 25% of current usable
+headroom is never launched.
+
+Every accepted case runs in a fresh child with a verified `RLIMIT_AS` derived
+from that same guard. If the limit cannot be established, or at the first
+rejected projection, the runner emits one valid `SKIPPED_RESOURCE_GUARD` row
+with scale, host/cgroup headroom, projection, guard/child limit, and deferred
+command, then considers no larger scale. The initial one-code bootstrap has no
+smaller sample, so its projection is explicitly null and it can run only under
+the verified child limit.
 
 ### Resource guard and results
 
-The first three cases were run as separate processes. Immediately before deciding
-whether to run 800 codes, `/proc/meminfo` reported `69349429248` bytes available,
-making the 25% guard `17337357312` bytes.
+The committed historical rows below are preserved exactly. They predate the
+every-scale runner: the first three cases were separate processes, but the
+earlier guard was evaluated only before 800. Immediately before that historical
+800 decision, `/proc/meminfo` reported `69349429248` bytes available, making the
+25% guard `17337357312` bytes.
 
 The projection used the observed 50-to-200-code peak-RSS slope:
 
@@ -283,7 +264,7 @@ JSONL files parse, and the repository and artifact scans found no temporary
 benchmark files, credential-bearing content, or host-specific absolute paths in
 raw artifacts.
 
-Known warnings are eight Polars/DuckDB sortedness warnings from
+Known warnings are eight Polars sortedness warnings from
 `hoga/api/screener_factors.py` in the full suite and one Python 3.16-targeted
 `asyncio.iscoroutinefunction` deprecation warning from
 `tests/test_api_captures_queue.py`; the latter also appears in the targeted
