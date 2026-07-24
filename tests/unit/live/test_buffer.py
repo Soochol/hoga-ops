@@ -42,14 +42,22 @@ async def test_get_series_returns_all_published() -> None:
             _snap(t, SnapshotKind.OB, {"total_bid_qty": 100 + tick}),
             _snap(t, SnapshotKind.TRADE, {"trades": [{"qty": tick}]}),
             _snap(t, SnapshotKind.BROKER, {"buy_top": []}),
+            _snap(
+                t,
+                SnapshotKind.PROGRAM,
+                {"net_qty": 10 + tick, "net_amount": 1_000_000 + tick},
+            ),
         ], now_ms=t)
     series = await buf.get_series("005930")
     assert series["code"] == "005930"
     assert len(series["snapshots"]) == 3
     assert len(series["trades"]) == 3
     assert len(series["brokers"]) == 3
+    assert len(series["programs"]) == 3
     assert series["snapshots"][0]["total_bid_qty"] == 100
     assert series["snapshots"][2]["total_bid_qty"] == 102
+    assert series["programs"][0]["kind"] == "program"
+    assert series["programs"][2]["net_qty"] == 12
 
 
 @pytest.mark.asyncio
@@ -107,11 +115,16 @@ async def test_subscribe_receives_published_entries() -> None:
             _snap(1, SnapshotKind.OB, {"x": 1}),
             _snap(1, SnapshotKind.TRADE, {"trades": []}),
             _snap(1, SnapshotKind.BROKER, {}),
+            _snap(1, SnapshotKind.PROGRAM, {"net_qty": 10}),
         ])
-        # Three entries received in order
-        for _ in range(3):
-            entry = await asyncio.wait_for(q.get(), timeout=1.0)
-            assert entry["t_ms"] == 1
+        received = [await asyncio.wait_for(q.get(), timeout=1.0) for _ in range(4)]
+        assert [entry["kind"] for entry in received] == [
+            "ob",
+            "trade",
+            "broker",
+            "program",
+        ]
+        assert all(entry["t_ms"] == 1 for entry in received)
     finally:
         buf.unsubscribe("005930", q)
 

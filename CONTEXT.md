@@ -151,8 +151,8 @@ The `/live` workarea's right-side detail panel for the current **LiveInstrument*
 _Avoid_: "right rail" (global App shell chrome), "right sidebar" or "sidebar" alone (collides with **Cursor Sidebar** and other page sidebars), "Cursor Sidebar" for the whole four-card panel (the investor estimate card is not Cursor-aware).
 
 **프로그램 순매수 (Program Trade Net Buy)**:
-The KIS stock-level intraday cumulative program-trade net-buy series for one stock **Code**, surfaced as a chart pane and as a compact summary in the **Live Detail Panel**. `ProgramTradeCollector` polls KIS `program-trade-by-stock` through KIS Capacity Scheduler endpoint `PROGRAM_TRADE` and stores the merged sidecar under `kis-program-trade`.
-_Avoid_: "program" alone (too vague outside a UI card label), treating it as WebSocket orderbook/trade data (it is a KIS REST side-channel).
+The Kiwoom `0w` stock-level intraday cumulative program-trade net-buy series for one stock **Code**, surfaced as a chart pane and as a compact summary in the **Live Detail Panel**. Each KRX tick fans out to two consumers: the display-only **Live Buffer** publishes it immediately through `/api/live/series` and the shared live WebSocket, while `program_trade_latch` retains the latest value for `ProgramTradeCollector`'s 30-second durable sidecar flush under the frozen `kis-program-trade` identifier. `/live` merges the persisted `/api/range` history with the strict-after-seam 15-minute WS tail; the chart pane and `ProgramWindow` consume that same merged **Stock-Date Range** bundle.
+_Avoid_: "program" alone (too vague outside a UI card label), treating it as KIS REST data, saying that the WS tick is written to JSONL/parquet (only the 30-second sidecar path is durable), or adding a second `ProgramWindow` subscription.
 
 **Live Investor Estimate Card**:
 The `/live` **activeCode** auxiliary card rendered by `LiveSidebar` below the **Cursor Sidebar** shell, showing the full KIS intraday estimated foreign/institution net-quantity row history for the current **Code**; it is not Cursor-aware and does not participate in spot/latest mode.

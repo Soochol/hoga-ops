@@ -86,6 +86,20 @@ REST(BrokerRestPoller)는 PR-F2 로 삭제됐고, shape-compat 원칙(ADR-0111 �
   - UN 캔들 정본은 계속 KIS REST(UN div) — 병합 오버레이는 실시간 층.
 - 표시 규칙은 종목 출신(관심/히트맵/온디맨드)과 무관한 단일 규칙.
 
+### 4.1. 2026-07-24 amendment — 0w 표시 fan-out
+
+PR-F4는 프로그램매매 수집을 KIS REST에서 키움 `0w`로 교체했지만, 최초 구현은
+`PROGRAM` 틱을 `program_trade_latch`에만 라우팅했다. 따라서 수집은 push인데도
+`/live` 표시는 30초 sidecar flush와 today-range 갱신 주기에 계속 묶여 있었다.
+
+KRX `PROGRAM` 틱은 이제 기존 latch와 표시 전용 `LiveBuffer` 양쪽에 fan-out하고,
+일반 ingest 전에 return한다. 따라서 shared live WS로 즉시 전달되지만 JSONL,
+downsampler, parquet에는 들어가지 않는다. 프론트는 `/api/range`의 저장 시계열
+전역 마지막 시각보다 엄격히 뒤인 15분 live tail만 공통 chart bundle에 붙인다.
+동일 bundle을 프로그램 chart pane과 `ProgramWindow`가 함께 소비하므로 별도 창
+subscription은 만들지 않는다. 이 절단선은 기존 durable sidecar와 당일 전체 이력을
+보존하면서 표시 지연만 제거한다.
+
 ### 5. 장애·관측성 — 폴백 없음, fix-forward (#684·#686)
 
 - **키움 워치독 루프(30s) 신설**(KIS watchdog 후계): 죽은 연결 재빌드 · 시간대 스왑

@@ -552,7 +552,7 @@ export type RangeDateWarning = {
  *  per-kind wire model (deliberate follow-up). */
 export interface LiveSnapshotEntry {
   t_ms: number;
-  kind: 'ob' | 'trade' | 'broker';
+  kind: 'ob' | 'trade' | 'broker' | 'program';
   [field: string]: unknown;
 }
 
