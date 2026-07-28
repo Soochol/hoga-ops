@@ -291,6 +291,68 @@ describe('useDrawingsStore — undo/redo (ADR-0107)', () => {
   });
 });
 
+describe('useDrawingsStore — clearAll 확인 팝업', () => {
+  const s = () => useDrawingsStore.getState();
+
+  it('requestClearAll 은 지우지 않고 확인 슬롯만 채운다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().requestClearAll(A);
+
+    expect(s().clearConfirm).toEqual({ scope: A, count: 2 });
+    expect(s().drawingsFor(A)).toHaveLength(2); // 확인 전엔 그대로
+    expect(s().clearToast).toBeNull(); // 삭제가 없었으니 토스트도 없다
+  });
+
+  // 빈 목록에 "정말 지울까요" 를 묻는 팝업은 사용자에게 아무 선택도 주지 않는다.
+  it('지울 게 없으면 팝업을 띄우지 않는다', () => {
+    s().requestClearAll(A);
+    expect(s().clearConfirm).toBeNull();
+  });
+
+  it('cancelClearAll 은 슬롯만 비우고 드로잉은 살려둔다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().requestClearAll(A);
+    s().cancelClearAll();
+
+    expect(s().clearConfirm).toBeNull();
+    expect(s().drawingsFor(A)).toHaveLength(1);
+  });
+
+  it('clearAll 이 실행되면 확인 슬롯이 닫히고 실행취소 토스트로 넘어간다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().requestClearAll(A);
+    s().clearAll(A);
+
+    expect(s().clearConfirm).toBeNull();
+    expect(s().drawingsFor(A)).toHaveLength(0);
+    expect(s().clearToast).toMatchObject({ scope: A, count: 1 });
+  });
+
+  // 팝업이 떠 있는 사이 다른 창이 Ctrl+Z 로 비워버리면 clearAll 은 조기 반환한다.
+  // 그때 슬롯을 안 닫으면 확인 버튼이 아무 일도 못 하는 채로 남는다.
+  it('빈 목록으로 조기 반환해도 확인 슬롯은 닫는다', () => {
+    // 팝업이 떠 있는 사이 다른 창이 Ctrl+Z 로 이미 비워버린 상황 — 슬롯을 직접
+    // 채워 재현한다(requestClearAll 은 빈 목록엔 슬롯을 안 연다).
+    useDrawingsStore.setState({ clearConfirm: { scope: A, count: 1 } });
+    s().clearAll(A);
+
+    expect(s().clearConfirm).toBeNull();
+  });
+
+  it('요청한 scope 만 지운다 — 다른 종목·다른 봉은 무사하다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(B, mkHline('h2', 200));
+    s().add(A_DAILY, mkHline('h3', 300));
+    s().requestClearAll(A);
+    s().clearAll(s().clearConfirm!.scope);
+
+    expect(s().drawingsFor(A)).toHaveLength(0);
+    expect(s().drawingsFor(B)).toHaveLength(1);
+    expect(s().drawingsFor(A_DAILY)).toHaveLength(1);
+  });
+});
+
 describe('useDrawingsStore — clearAll undo-toast', () => {
   beforeEach(() => {
     useDrawingsStore.getState().setActiveScope(A);

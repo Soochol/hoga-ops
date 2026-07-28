@@ -290,6 +290,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (shouldIgnoreEvent(e.target)) return;
+      // 모두 지우기 확인 팝업이 떠 있는 동안엔 차트가 키를 먹지 않는다. 모달이
+      // Escape 를 자기 닫기로 쓰는데 여기서도 처리하면 도구까지 함께 풀리고,
+      // 무엇보다 팝업 뒤에서 Delete·Alt 단축키가 발화하면 사용자가 보지 못한
+      // 변경이 쌓인다.
+      if (useDrawingsStore.getState().clearConfirm != null) return;
       // 포커스 창의 오버레이만 전역 키를 처리 — 창마다 리스너가 붙으므로
       // 게이트가 없으면 Ctrl+Z 한 번에 창 수만큼 undo 가 발화한다.
       if (!isFocusedRef.current) return;
@@ -325,6 +330,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           e.preventDefault(); // suppress the browser bookmark dialog
           return;
         }
+      }
+
+      // Alt+C = 모두 지우기. 도구 전환이 아니라 TOOLS 레지스트리 밖이고
+      // matchShortcut() 은 도구 kind 만 돌려주므로 여기서 직접 가른다. 키는
+      // 도구 단축키와 같은 규칙(Alt 단독, Ctrl/Meta 조합은 브라우저 몫)을 따르고,
+      // 실제 삭제 대신 확인 요청만 낸다 — 게이트는 DrawingClearConfirmHost.
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'c') {
+        useDrawingsStore.getState().requestClearAll(keyScope);
+        e.preventDefault();
+        return;
       }
 
       const shortcutKind = matchShortcut(e);

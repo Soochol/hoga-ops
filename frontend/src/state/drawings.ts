@@ -88,6 +88,12 @@ function recordHistory(
  *  array was immutably replaced by clearAll), restored verbatim on 실행취소. */
 export type ClearToast = { scope: string; count: number; snapshot: Drawing[] } | null;
 
+/** Pending 확인 팝업 for `clearAll`. 진입점(메뉴 항목·Alt+C)이 둘이라 팝업 상태를
+ *  메뉴 컴포넌트에 두면 메뉴가 닫힌 채 눌린 단축키가 게이트를 우회한다 — 그래서
+ *  스토어가 트리거를 갖고 `DrawingClearConfirmHost` 가 표현을 갖는다(clearToast 와
+ *  같은 host-owned 모델, ADR-0107). `count` 는 문구에 쓸 삭제 예정 개수. */
+export type ClearConfirm = { scope: string; count: number } | null;
+
 // 키는 전부 `scope` = `${code}|${slot}` (drawingScope). 종목뿐 아니라 타임프레임
 // 슬롯(분/일/주/월)까지 가르므로, 같은 종목이라도 분봉에 그린 도형은 일봉에
 // 나타나지 않는다. 스토어 자료구조는 키를 해석하지 않는다 — 불투명 문자열.
@@ -102,6 +108,7 @@ type State = {
   selectedByScope: Map<string, DrawingId | null>;
   defaults: DrawingDefaults;
   clearToast: ClearToast;
+  clearConfirm: ClearConfirm;
 };
 
 type Actions = {
@@ -118,6 +125,11 @@ type Actions = {
   add(scope: string, d: Drawing): void;
   update(scope: string, id: DrawingId, patch: Partial<Drawing>): void;
   remove(scope: string, id: DrawingId): void;
+  /** 확인 팝업을 띄운다 — `clearAll` 의 유일한 UI 진입로. 지울 게 없으면
+   *  아무 일도 일어나지 않는다(빈 목록에 "정말 지울까요" 를 묻지 않는다). */
+  requestClearAll(scope: string): void;
+  /** 확인 팝업을 닫는다(취소·Escape·백드롭). 드로잉은 건드리지 않는다. */
+  cancelClearAll(): void;
   clearAll(scope: string): void;
   /** Replace the drawing list for `scope` with `items` as a normal, undoable
    *  mutation. Used by the clearAll undo-toast (restores the pre-clear
@@ -177,6 +189,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     selectedByScope: new Map(),
     defaults: loadDefaults(),
     clearToast: null,
+    clearConfirm: null,
 
     setActiveScope(scope) {
       if (scope === get().activeScope) return;
@@ -286,9 +299,24 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       queuePersist(scope);
     },
 
+    requestClearAll(scope) {
+      const count = (get().byScope.get(scope) ?? []).length;
+      if (count === 0) return; // 지울 게 없으면 팝업도 없다
+      set({ clearConfirm: { scope, count } });
+    },
+
+    cancelClearAll() {
+      if (get().clearConfirm != null) set({ clearConfirm: null });
+    },
+
     clearAll(scope) {
       const current = get().byScope.get(scope) ?? [];
-      if (current.length === 0) return; // nothing to clear → no history, no toast
+      // 확인 팝업은 이 액션의 성패와 무관하게 닫힌다 — 빈 목록으로 조기 반환해도
+      // 팝업이 남으면 확인 버튼이 죽은 채로 떠 있게 된다.
+      if (current.length === 0) {
+        if (get().clearConfirm != null) set({ clearConfirm: null });
+        return; // nothing to clear → no history, no toast
+      }
       recordHistory(scope, current, 'clearAll');
       const byScope = new Map(get().byScope);
       byScope.set(scope, []);
@@ -296,6 +324,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         byScope,
         selectedByScope: new Map(get().selectedByScope).set(scope, null),
         clearToast: { scope, count: current.length, snapshot: current },
+        clearConfirm: null,
       });
       queuePersist(scope);
     },
@@ -391,6 +420,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         selectedByScope: new Map(),
         defaults: INITIAL_DEFAULTS,
         clearToast: null,
+        clearConfirm: null,
       });
     },
   };

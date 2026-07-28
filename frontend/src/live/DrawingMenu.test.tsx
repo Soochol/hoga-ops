@@ -65,8 +65,10 @@ describe('DrawingMenu', () => {
     expect(screen.getByTestId('drawing-menu')).toBeInTheDocument();
   });
 
-  // scope 는 종목×봉 슬롯이라, 지우기는 "지금 이 창의 이 봉" 만 건드려야 한다.
-  it('clears only the scope it was given', async () => {
+  // 메뉴 항목은 더 이상 직접 지우지 않는다 — 확인 요청만 낸다(팝업은
+  // DrawingClearConfirmHost). scope 는 종목×봉 슬롯이라, 그 요청이 "지금 이
+  // 창의 이 봉" 을 가리키는지가 이 테스트의 본론이다.
+  it('requests confirmation for the scope it was given, deleting nothing yet', async () => {
     const scope = drawingScopeFor(CODE, TF)!;
     const other = drawingScopeFor('000660', TF)!;
     const store = useDrawingsStore.getState();
@@ -77,8 +79,18 @@ describe('DrawingMenu', () => {
     await openMenu();
     await userEvent.click(screen.getByTestId('drawing-menu-clear'));
 
-    expect(useDrawingsStore.getState().drawingsFor(scope)).toHaveLength(0);
+    expect(useDrawingsStore.getState().clearConfirm).toEqual({ scope, count: 1 });
+    expect(useDrawingsStore.getState().drawingsFor(scope)).toHaveLength(1);
     expect(useDrawingsStore.getState().drawingsFor(other)).toHaveLength(1);
+  });
+
+  // 단축키와 메뉴가 같은 게이트를 통과하려면 힌트도 메뉴에 있어야 한다 — 도구
+  // 항목들이 ⌥키를 노출하는 것과 같은 문법.
+  it('shows the ⌥C hint on 모두 지우기', async () => {
+    render(<DrawingMenu code={CODE} timeframe={TF} />);
+    await openMenu();
+
+    expect(screen.getByTestId('drawing-menu-clear')).toHaveTextContent('⌥C');
   });
 
   it('disables 모두 지우기 when there is no scope (no symbol)', async () => {

@@ -60,7 +60,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
   const setActiveTool = useDrawingsStore((state) => state.setActiveTool);
   const magnet = useDrawingsStore((state) => state.defaults.magnet);
   const setDefaults = useDrawingsStore((state) => state.setDefaults);
-  const clearAll = useDrawingsStore((state) => state.clearAll);
+  const requestClearAll = useDrawingsStore((state) => state.requestClearAll);
 
   const close = useCallback(() => setOpen(false), []);
   useDismissablePopover(open, wrapRef, close);
@@ -136,21 +136,29 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
       </button>
 
       <div className="my-1 border-t border-border" />
-      {/* 파괴적이지만 확인 단계를 두지 않는다(#761) — `clearAll` 은 실행취소
-          토스트와 Ctrl+Z 를 이미 갖고 있어 되돌리기가 한 동작이다. */}
+      {/* #761 은 확인 단계를 생략했다 — 실행취소 토스트와 Ctrl+Z 가 있으니
+          되돌리기가 한 동작이라는 근거였다. Alt+C 가 붙으면서 그 근거가 약해져
+          확인 팝업을 되살렸다: 단축키는 오타 한 번으로 발화하고, 그때 메뉴가
+          열려 있지도 않아 "방금 뭘 눌렀는지" 단서가 없다. 팝업은 오작동을,
+          토스트는 오확인을 막는다(둘 다 유지).
+
+          실제 삭제는 여기서 하지 않는다 — `requestClearAll` 이 스토어에 확인
+          요청만 남기고 `DrawingClearConfirmHost` 가 팝업을 띄운다. 단축키와
+          이 항목이 같은 게이트를 통과하게 만드는 유일한 배선이다. */}
       <button
         type="button"
         role="menuitem"
         data-testid="drawing-menu-clear"
         disabled={scope == null}
         onClick={() => {
-          if (scope != null) clearAll(scope);
+          if (scope != null) requestClearAll(scope);
           setOpen(false);
         }}
         className={`${itemClass(false)} disabled:cursor-not-allowed disabled:opacity-40`}
       >
         <span aria-hidden="true" className="w-4 text-center">✕</span>
         <span>모두 지우기</span>
+        <span className="ml-auto font-data text-[10px] text-fg-dimmer">⌥C</span>
       </button>
     </div>
   ) : null;
