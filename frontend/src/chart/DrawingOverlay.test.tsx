@@ -8,7 +8,7 @@
 // ADR-0032.
 
 import { act, fireEvent, render } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import DrawingOverlay, { __test__ } from './DrawingOverlay';
 import { useDrawingsStore } from '../state/drawings';
 
@@ -259,6 +259,156 @@ describe('DrawingOverlay text editor — pointer isolation', () => {
     });
     const selectNotPrevented = fireEvent.pointerDown(overlay, { clientX: 300, clientY: 90, button: 0 });
     expect(selectNotPrevented).toBe(true);
+  });
+});
+
+// 팬/줌 중 hover 프로브 스로틀. select 모드의 게이팅 effect 는 window mousemove
+// 마다 hitTestAt 을 돌리는데, `dragRef` 가드는 오버레이 자신의 도형 드래그일
+// 때만 걸린다 — 차트 팬은 lightweight-charts 가 처리하므로 팬 내내 프레임마다
+// 전 도형이 재투영됐다. 뷰포트 변경 구독으로 그 구간만 건너뛴다.
+describe('DrawingOverlay hover probe — 팬/줌 스로틀', () => {
+  const RECT = {
+    left: 0, top: 0, right: 800, bottom: 400, width: 800, height: 400, x: 0, y: 0,
+    toJSON: () => ({}),
+  } as DOMRect;
+
+  let origRaf: typeof globalThis.requestAnimationFrame;
+  let rafQueue: FrameRequestCallback[] = [];
+  /** 예약된 rAF 콜백을 한 프레임분 실행한다. */
+  const flushRaf = () => {
+    const q = rafQueue;
+    rafQueue = [];
+    act(() => { for (const cb of q) cb(0); });
+  };
+
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+    origRaf = globalThis.requestAnimationFrame;
+    rafQueue = [];
+    vi.useFakeTimers();
+    // rAF 는 큐잉만 하고 flushRaf() 로 수동 실행한다. 동기 실행 스텁을 쓰면
+    // `hoverRaf = requestAnimationFrame(cb)` 에서 콜백의 `hoverRaf = null` 이
+    // 바깥 대입보다 먼저 끝나 id 가 되살아나고, 이후 mousemove 가 전부
+    // coalesce 게이트에 막힌다 (실제 rAF 는 비동기라 생기지 않는 순서 역전).
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      rafQueue.push(cb);
+      return rafQueue.length;
+    }) as never;
+    // jsdom 의 rect 는 전부 0 이라 프로브의 "오버레이 안" 판정이 항상 실패한다.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(RECT);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    globalThis.requestAnimationFrame = origRaf;
+    vi.restoreAllMocks();
+  });
+
+  /** 항등 투영(px↔realMs, py↔price) 차트 스텁. 뷰포트 변경 핸들러를 모아 둔다. */
+  function mountWithHline() {
+    const handlers: Array<() => void> = [];
+    const timeScale = {
+      subscribeVisibleLogicalRangeChange: vi.fn((h: () => void) => { handlers.push(h); }),
+      unsubscribeVisibleLogicalRangeChange: vi.fn((h: () => void) => {
+        const i = handlers.indexOf(h);
+        if (i >= 0) handlers.splice(i, 1);
+      }),
+      coordinateToTime: (x: number) => x,
+      timeToCoordinate: (t: number) => t,
+      coordinateToLogical: (x: number) => x,
+      logicalToCoordinate: (l: number) => l,
+    };
+    const fakePane = { paneIndex: () => 0, getHeight: () => 400 };
+    const fakeSeries = {
+      priceToCoordinate: (p: number) => p,
+      coordinateToPrice: (y: number) => y,
+      getPane: () => fakePane,
+    };
+    const chart = {
+      timeScale: () => timeScale,
+      panes: () => [{ getHeight: () => 400, getSeries: () => [] }],
+    };
+    const axis = {
+      segments: [{ date: '20260101', sessionOpenMs: 0, sessionCloseMs: 10_000_000, virtualStart: 0 }],
+      contains: () => true,
+      toVirtual: (v: number) => v,
+      toReal: (v: number) => v,
+    };
+
+    const s = useDrawingsStore.getState();
+    s.setActiveScope('005930|minute');
+    s.setActiveTool('select');
+    // 가격 100 → y 100 (항등 투영). 커서 y=100 이면 hit, y=300 이면 miss.
+    s.add('005930|minute', {
+      id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle',
+    });
+
+    const view = render(
+      <DrawingOverlay
+        chart={chart as never}
+        scope="005930|minute"
+        axis={axis as never}
+        paneSeries={new Map([['candle', fakeSeries]]) as never}
+      />,
+    );
+    const overlay = view.container.querySelector('[data-drawing-overlay]') as HTMLElement;
+    return { ...view, overlay, handlers, timeScale };
+  }
+
+  /** 커서를 옮기고 그 프레임의 프로브까지 실행한다. */
+  const hoverAt = (clientX: number, clientY: number) => {
+    fireEvent.mouseMove(window, { clientX, clientY });
+    flushRaf();
+  };
+
+  /** 뷰포트가 움직였다고 알린다(= 사용자가 차트를 팬/줌 중). */
+  const movePan = (handlers: Array<() => void>) => {
+    act(() => { for (const h of [...handlers]) h(); });
+  };
+
+  it('평상시에는 커서 아래 도형 유무를 그대로 반영한다', () => {
+    const { overlay } = mountWithHline();
+
+    hoverAt(100, 100);
+    expect(overlay.style.pointerEvents).toBe('auto');
+
+    hoverAt(100, 300);
+    expect(overlay.style.pointerEvents).toBe('none');
+  });
+
+  it('팬 중에는 프로브를 건너뛰고, 팬이 멎으면 1회 프로브로 커서 아래 도형을 되찾는다', () => {
+    const { overlay, handlers } = mountWithHline();
+
+    // 도형 밖에서 시작 → 'none'.
+    hoverAt(100, 300);
+    expect(overlay.style.pointerEvents).toBe('none');
+
+    // 팬 시작. 이후 커서가 도형 위로 올라가도 프로브는 돌지 않는다.
+    movePan(handlers);
+    hoverAt(100, 100);
+    expect(overlay.style.pointerEvents).toBe('none');
+
+    // 팬이 계속되는 동안에도 그대로.
+    movePan(handlers);
+    hoverAt(100, 100);
+    expect(overlay.style.pointerEvents).toBe('none');
+
+    // 팬 종료 → settle 프로브가 마지막 커서 위치로 1회 실행.
+    // 이게 없으면 pointerEvents 가 'none' 에 갇혀 도형을 잡을 수 없다.
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(overlay.style.pointerEvents).toBe('auto');
+  });
+
+  it('언마운트 시 뷰포트 구독을 해제한다', () => {
+    const { unmount, timeScale, handlers } = mountWithHline();
+    // 정확히 1개 — 스로틀용 구독뿐이다. 렌더는 pane primitive 가 lwc 프레임 안에서
+    // 직접 처리하므로 이 컴포넌트에 렌더용 뷰포트 구독이 있으면 안 된다(있으면
+    // rAF 중첩으로 1프레임 지연이 되살아난다).
+    expect(handlers).toHaveLength(1);
+
+    unmount();
+    expect(timeScale.unsubscribeVisibleLogicalRangeChange).toHaveBeenCalled();
+    expect(handlers).toHaveLength(0);
   });
 });
 
