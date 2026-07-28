@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { useLivePageStore } from '../state/livePage';
 import { activeGroupOf, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
 import { useLiveStatus } from '../api/liveStatus';
@@ -45,6 +46,10 @@ export function LivePage() {
   const [params] = useSearchParams();
   const queryCode = params.get('code');
   const queryIndex = params.get('index');
+
+  // 그리기 도구 활성 중 우클릭 = 해제. 페이지 단위 1회 — 창·오버레이에 걸면
+  // 그 노드 밖(다른 창·워크스페이스 배경·nav)이 전부 사각지대로 남는다.
+  useDrawingToolContextMenuReset();
 
   // 1회 시드: URL ?code=/?index= 딥링크는 활성 그룹 종목을 그 종목으로 교체한다.
   // 딥링크가 없으면 live.workspace.v1 의 groupSymbols 복원이 그대로 화면이 된다
