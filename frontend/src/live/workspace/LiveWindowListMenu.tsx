@@ -7,7 +7,6 @@
  */
 import { useMemo } from 'react';
 import { WindowListMenu, type WindowListSection } from '../../workspace/WindowListMenu';
-import { requestWorkspaceTidy } from '../../workspace/workspaceCanvasControls';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
 import { WINDOW_KIND_ICON } from './windowKindIcons';
 import { useWorkspaceStore, type GroupId } from '../../state/workspace';
@@ -53,7 +52,6 @@ export function LiveWindowListMenu() {
       sections={sections}
       onFocus={focusWindow}
       onClose={closeWindow}
-      onTidy={requestWorkspaceTidy}
     />
   );
 }

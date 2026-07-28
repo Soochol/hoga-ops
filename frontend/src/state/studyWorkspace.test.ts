@@ -186,25 +186,6 @@ describe('액션', () => {
     expect(s.windows.find((w) => w.id === b.id)?.rect).toEqual(b.rect);
   });
 
-  it('tidyAll — 차트 좌측·데이터 우측 열로 비율 커밋한다', async () => {
-    const { useStudyWorkspaceStore } = await importFresh();
-    const store = useStudyWorkspaceStore;
-    // 배치를 흐뜨린 뒤 tidy.
-    const chart = store.getState().windows.find((w) => w.kind === 'chart')!;
-    store.getState().setWindowRect(chart.id, { x: 0.3, y: 0.3, w: 0.4, h: 0.4 });
-
-    store.getState().tidyAll({ w: 1200, h: 800 });
-    const s = store.getState();
-    const tidiedChart = s.windows.find((w) => w.kind === 'chart')!;
-    expect(tidiedChart.rect.x).toBe(0);
-    for (const w of s.windows) {
-      expect(w.rect.x + w.rect.w).toBeLessThanOrEqual(1.0001);
-      expect(w.rect.y + w.rect.h).toBeLessThanOrEqual(1.0001);
-    }
-    const data = s.windows.filter((w) => w.kind !== 'chart');
-    expect(data.every((w) => w.rect.x > tidiedChart.rect.w - 0.01)).toBe(true);
-  });
-
   it('스냅샷 왕복 — snapshot → 변형 → applySnapshot 으로 복원된다', async () => {
     const { useStudyWorkspaceStore, snapshotStudyWorkspace } = await importFresh();
     const store = useStudyWorkspaceStore;

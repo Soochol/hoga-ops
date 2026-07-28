@@ -7,8 +7,8 @@ import { WindowListMenu, type WindowListSection } from './WindowListMenu';
  *
  * 고정하는 계약: (1) 닫힌 동안 트리거만 있고 개수 뱃지가 보인다, (2) 열면 섹션
  * 헤더 + 행이 나온다, (3) 행 클릭 = onFocus 후 닫힘(z-최상단 raise), (4) × =
- * onClose, (5) 닫을 수 없는 창(closable:false)엔 × 가 없다, (6) 모두 정리 =
- * onTidy 후 닫힘, (7) 방향키가 섹션을 가로질러 순환한다.
+ * onClose, (5) 닫을 수 없는 창(closable:false)엔 × 가 없다, (6) 방향키가
+ * 섹션을 가로질러 순환한다.
  */
 
 function makeSections(): WindowListSection[] {
@@ -37,7 +37,6 @@ function renderMenu(overrides: Partial<Parameters<typeof WindowListMenu>[0]> = {
     sections: makeSections(),
     onFocus: vi.fn(),
     onClose: vi.fn(),
-    onTidy: vi.fn(),
     ...overrides,
   };
   render(<WindowListMenu {...props} />);
@@ -95,14 +94,6 @@ describe('WindowListMenu', () => {
     open();
     expect(screen.queryByTestId('wl-close-chart')).toBeNull();
     expect(screen.getByTestId('wl-close-memo')).toBeInTheDocument();
-  });
-
-  it('calls onTidy and closes from 모두 정리', () => {
-    const props = renderMenu();
-    open();
-    fireEvent.click(screen.getByTestId('wl-tidy'));
-    expect(props.onTidy).toHaveBeenCalledTimes(1);
-    expect(screen.queryByTestId('wl-menu')).toBeNull();
   });
 
   it('marks the focused row and focuses it on open', () => {

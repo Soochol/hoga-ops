@@ -233,10 +233,9 @@ describe('WorkspaceLiveToolbar 액션 버튼', () => {
     expect(screen.queryByRole('button', { name: '그리기' })).toBeNull();
   });
 
-  it('renders the layout preset menu button and window-add / tidy controls', () => {
+  it('renders the layout preset menu button and window-add controls', () => {
     renderToolbar();
     expect(screen.getByTestId('layout-preset-button')).toBeInTheDocument();
-    expect(screen.getByTestId('workspace-tidy')).toBeInTheDocument();
 
     // 창 추가는 종류별 버튼에서 단일 드롭다운으로 접혔다 — 열어야 종류가 보인다.
     expect(screen.queryByTestId('workspace-add-chart')).toBeNull();
@@ -244,13 +243,12 @@ describe('WorkspaceLiveToolbar 액션 버튼', () => {
     expect(screen.getByTestId('workspace-add-chart')).toBeInTheDocument();
   });
 
-  // 남는 것은 워크스페이스 관리(창 추가·정리·프리셋) + 앱 설정뿐 —
+  // 남는 것은 워크스페이스 관리(창 추가·프리셋) + 앱 설정뿐 —
   // "어느 창/그룹에 걸리나" 를 추론해야 하는 항목이 하나도 없다.
   it('keeps only workspace-management and app-settings controls', () => {
     renderToolbar();
 
     expect(screen.getByTestId('workspace-add-menu-button')).toBeInTheDocument();
-    expect(screen.getByTestId('workspace-tidy')).toBeInTheDocument();
     expect(screen.getByTestId('layout-preset-button')).toBeInTheDocument();
     expect(screen.getByTestId('live-settings-button')).toBeInTheDocument();
   });

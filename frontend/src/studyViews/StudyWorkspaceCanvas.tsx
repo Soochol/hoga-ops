@@ -12,7 +12,6 @@ import {
   type WindowItemProps,
 } from '../workspace/WorkspaceCanvas';
 import { WindowFrameCore } from '../workspace/WindowFrame';
-import { registerWorkspaceTidy } from '../workspace/workspaceCanvasControls';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { IconToolbarButton } from '../ui/WorkspaceShell';
 import type { RangeBundle } from '../api/types';
@@ -99,7 +98,6 @@ export function StudyWorkspaceCanvas({
   const focusWindow = useStudyWorkspaceStore((s) => s.focusWindow);
   const closeWindow = useStudyWorkspaceStore((s) => s.closeWindow);
   const setWindowRects = useStudyWorkspaceStore((s) => s.setWindowRects);
-  const tidyAll = useStudyWorkspaceStore((s) => s.tidyAll);
 
   const itemCtx = useMemo<StudyItemCtx>(
     () => ({ save, bundle, chartContent, memo, closeWindow }),
@@ -112,8 +110,6 @@ export function StudyWorkspaceCanvas({
       zOrder={zOrder}
       focusWindow={focusWindow}
       setWindowRects={setWindowRects}
-      tidyAll={tidyAll}
-      registerTidy={registerWorkspaceTidy}
       windowItem={StudyWindowItem}
       itemCtx={itemCtx}
     />
