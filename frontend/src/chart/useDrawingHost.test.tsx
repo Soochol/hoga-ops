@@ -1,12 +1,8 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
-import { createRef } from 'react';
 import { useDrawingHost } from './useDrawingHost';
 import type { PaneId } from './drawing/types';
-
-const axis = { segments: [] } as never;
-const containerRef = createRef<HTMLDivElement>();
 
 function Harness({
   chart,
@@ -15,7 +11,7 @@ function Harness({
   chart: IChartApi | null;
   onReady: (api: ReturnType<typeof useDrawingHost>) => void;
 }) {
-  const host = useDrawingHost(chart, axis, '005930', containerRef);
+  const host = useDrawingHost(chart, '005930');
   onReady(host);
   return <div data-testid="pane-series-size">{host.paneSeries.size}</div>;
 }

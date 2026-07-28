@@ -1,5 +1,4 @@
 // frontend/src/chart/drawing/render.ts
-import type { IChartApi } from 'lightweight-charts';
 import { CANVAS_FONT_STACK } from '../../styles/design-tokens';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import type {
@@ -16,24 +15,40 @@ import type {
   LineStyle,
 } from './types';
 import type { TrendlineDraft } from './tools';
-import {
-  type FutureBand,
-  type PaneSeriesMap,
-  dragTimeDomain,
-  priceToCanvasY,
-  realMsToCanvasX,
-  realMsToCanvasXClamped,
-  totalPanesHeight,
-} from './chartCoordinates';
+import { type FutureBand, dragTimeDomain } from './chartCoordinates';
 import { INTER_SEGMENT_GAP_MS } from '../../util/time';
 
+/**
+ * Everything a render needs to place a Drawing on SOME canvas, with the
+ * coordinate projection INJECTED rather than derived from a chart handle.
+ *
+ * The injection is what lets one renderer serve two coordinate systems:
+ *   - a lightweight-charts pane primitive draws in PANE-LOCAL space (origin at
+ *     the pane's top, width = the plot area only), and
+ *   - the DOM hit-test / text-editor path still works in CHART-GLOBAL space
+ *     (origin at the chart's top, width includes the price-axis column).
+ *
+ * Keeping `chart` / `paneSeries` out of here is the point: a renderer that
+ * could reach the chart would inevitably re-derive pane offsets and silently
+ * disagree with whichever canvas it was actually drawing on.
+ */
 export type ProjectCtx = {
-  chart: IChartApi;
-  axis: VirtualAxis;
-  paneSeries: PaneSeriesMap;
-  paneId: PaneId;
+  /** Real Unix-ms → X on THIS canvas. Null when off the virtual axis. */
+  realMsToX(realMs: number): number | null;
+  /** Off-axis-tolerant X for single-anchor drawings (text): a gap / pre-axis
+   *  realMs snaps to the nearest session boundary so the label stays visible
+   *  AND grabbable instead of vanishing. See `realMsToCanvasXClamped`. */
+  realMsToXClamped(realMs: number): number | null;
+  /** Price → Y on THIS canvas, for this ctx's pane. */
+  priceToY(price: number): number | null;
+  /** Width of the canvas being drawn on — the pane plot area under a
+   *  primitive, the whole chart element under the DOM overlay. */
   width: number;
-  height: number;
+  /** Y at which a vline terminates: the summed pane stack in chart-global
+   *  space, this pane's own height in pane-local space. */
+  paneBottom: number;
+  paneId: PaneId;
+  axis: VirtualAxis;
   /** Active timeframe bucket in ms, if known — lets the measure tool report a
    *  bar count. Absent (e.g. daily/aggregated views without a fixed bucket) →
    *  the readout omits the bar count. */
@@ -74,21 +89,6 @@ function futureBand(ctx: ProjectCtx): FutureBand | undefined {
   return ctx.lastRealMs != null && ctx.bucketMs != null && ctx.bucketMs > 0
     ? { lastRealMs: ctx.lastRealMs, bucketMs: ctx.bucketMs }
     : undefined;
-}
-
-function realMsToX(ctx: ProjectCtx, realMs: number): number | null {
-  return realMsToCanvasX(ctx.chart, ctx.axis, realMs, futureBand(ctx));
-}
-
-/** Off-axis-tolerant X for single-anchor drawings (text): snaps a gap/pre-axis
- *  realMs to the nearest session boundary so the text stays visible + grabbable
- *  instead of vanishing. See `realMsToCanvasXClamped`. */
-function realMsToXClamped(ctx: ProjectCtx, realMs: number): number | null {
-  return realMsToCanvasXClamped(ctx.chart, ctx.axis, realMs, futureBand(ctx));
-}
-
-function priceToY(ctx: ProjectCtx, price: number): number | null {
-  return priceToCanvasY(ctx.chart, ctx.paneSeries, ctx.paneId, price);
 }
 
 export function dashPattern(style: LineStyle, width: number): number[] {
@@ -285,17 +285,30 @@ function drawTimeBadge(
   c.restore();
 }
 
-export function renderVline(c: CanvasRenderingContext2D, ctx: ProjectCtx, v: Vline, selected: boolean) {
-  const x = realMsToX(ctx, v.realMs);
+/**
+ * `timeBadge` exists because a vline spans every pane but its time badge must
+ * appear exactly once, docked to the bottom of the pane STACK. Under a single
+ * chart-global canvas that was implicit; with one primitive per pane, only the
+ * bottom-most pane draws it. Defaults to true so a lone-canvas caller (and the
+ * characterization tests) keep the original behaviour.
+ */
+export function renderVline(
+  c: CanvasRenderingContext2D,
+  ctx: ProjectCtx,
+  v: Vline,
+  selected: boolean,
+  timeBadge = true,
+) {
+  const x = ctx.realMsToX(v.realMs);
   if (x == null) return; // realMs off the current virtual axis → skip
-  const bottom = totalPanesHeight(ctx.chart);
+  const bottom = ctx.paneBottom;
   drawHaloThenMain(c, v, selected, () => {
     c.beginPath();
     c.moveTo(x, 0);
     c.lineTo(x, bottom);
     c.stroke();
   });
-  drawTimeBadge(c, ctx.width, bottom, x, v.realMs, v.color, selected);
+  if (timeBadge) drawTimeBadge(c, ctx.width, bottom, x, v.realMs, v.color, selected);
 }
 
 /** Normalize two projected corners into a top-left origin + size, falling back
@@ -307,10 +320,10 @@ function projectRect(
   a: { realMs: number; price: number },
   b: { realMs: number; price: number },
 ): { x: number; y: number; w: number; h: number } | null {
-  const xaRaw = realMsToX(ctx, a.realMs);
-  const xbRaw = realMsToX(ctx, b.realMs);
-  const ya = priceToY(ctx, a.price);
-  const yb = priceToY(ctx, b.price);
+  const xaRaw = ctx.realMsToX(a.realMs);
+  const xbRaw = ctx.realMsToX(b.realMs);
+  const ya = ctx.priceToY(a.price);
+  const yb = ctx.priceToY(b.price);
   if (ya == null || yb == null) return null;
   if (xaRaw == null && xbRaw == null) return null;
   const xa = xaRaw ?? 0;
@@ -437,10 +450,10 @@ function renderMeasureShape(
   c.restore();
   if (selected) {
     // Handles at the two diagonal endpoints (a, b) — the drag anchors.
-    const xa = realMsToX(ctx, m.a.realMs);
-    const ya = priceToY(ctx, m.a.price);
-    const xb = realMsToX(ctx, m.b.realMs);
-    const yb = priceToY(ctx, m.b.price);
+    const xa = ctx.realMsToX(m.a.realMs);
+    const ya = ctx.priceToY(m.a.price);
+    const xb = ctx.realMsToX(m.b.realMs);
+    const yb = ctx.priceToY(m.b.price);
     if (xa != null && ya != null) drawHandle(c, dir, xa, ya);
     if (xb != null && yb != null) drawHandle(c, dir, xb, yb);
   }
@@ -472,8 +485,8 @@ function renderText(c: CanvasRenderingContext2D, ctx: ProjectCtx, t: Text, selec
   // Clamped X: a text dragged into an inter-session gap / weekend / pre-axis
   // must not vanish (it also becomes un-selectable, so it's lost). Snap to the
   // nearest session boundary — mirrors trendline/rect's `?? 0 / ?? width`.
-  const x = realMsToXClamped(ctx, t.at.realMs);
-  const y = priceToY(ctx, t.at.price);
+  const x = ctx.realMsToXClamped(t.at.realMs);
+  const y = ctx.priceToY(t.at.price);
   if (x == null || y == null) return;
   c.save();
   c.font = textFont(t.fontSize);
@@ -494,8 +507,14 @@ function renderText(c: CanvasRenderingContext2D, ctx: ProjectCtx, t: Text, selec
   c.restore();
 }
 
+/**
+ * The LINE only. Its price badge lives on the price-axis canvas, which is a
+ * separate surface under a pane primitive — see `renderHlinePriceBadge`. Under
+ * the old single chart-global canvas both were one call, because that canvas
+ * happened to span the axis column too.
+ */
 function renderHline(c: CanvasRenderingContext2D, ctx: ProjectCtx, h: Hline, selected: boolean) {
-  const y = priceToY(ctx, h.price);
+  const y = ctx.priceToY(h.price);
   if (y == null) return;
   drawHaloThenMain(c, h, selected, () => {
     c.beginPath();
@@ -503,6 +522,21 @@ function renderHline(c: CanvasRenderingContext2D, ctx: ProjectCtx, h: Hline, sel
     c.lineTo(ctx.width, y);
     c.stroke();
   });
+}
+
+/**
+ * An hline's price badge, drawn on the PRICE-AXIS canvas. `ctx.width` is the
+ * axis column's width here, so the existing right-inset math lands the badge in
+ * the same place it used to occupy on the chart-global canvas.
+ */
+export function renderHlinePriceBadge(
+  c: CanvasRenderingContext2D,
+  ctx: ProjectCtx,
+  h: Hline,
+  selected: boolean,
+) {
+  const y = ctx.priceToY(h.price);
+  if (y == null) return;
   drawPriceBadge(c, ctx.width, y, h.price, h.paneId, h.color, selected);
 }
 
@@ -512,10 +546,10 @@ function renderTrendline(
   t: Trendline,
   selected: boolean,
 ) {
-  const xa = realMsToX(ctx, t.a.realMs);
-  const ya = priceToY(ctx, t.a.price);
-  const xb = realMsToX(ctx, t.b.realMs);
-  const yb = priceToY(ctx, t.b.price);
+  const xa = ctx.realMsToX(t.a.realMs);
+  const ya = ctx.priceToY(t.a.price);
+  const xb = ctx.realMsToX(t.b.realMs);
+  const yb = ctx.priceToY(t.b.price);
   if (xa == null && xb == null) return; // both endpoints off-axis: skip
   if (ya == null || yb == null) return; // price scale not ready
   const x1 = xa ?? 0;
@@ -584,10 +618,10 @@ export function renderTrendlineDraft(
 ) {
   const d = trendlineFromDraft(draft, style);
   if (!d) return;
-  const xa = realMsToX(ctx, d.a.realMs);
-  const ya = priceToY(ctx, d.a.price);
-  const xb = realMsToX(ctx, d.b.realMs);
-  const yb = priceToY(ctx, d.b.price);
+  const xa = ctx.realMsToX(d.a.realMs);
+  const ya = ctx.priceToY(d.a.price);
+  const xb = ctx.realMsToX(d.b.realMs);
+  const yb = ctx.priceToY(d.b.price);
   if (xa == null || xb == null || ya == null || yb == null) return;
   c.save();
   c.globalAlpha = 0.9;
@@ -618,8 +652,8 @@ function renderPencil(
   // not a fictional segment that bridges a gap.
   const segments: { x: number; y: number }[][] = [[]];
   for (const pt of p.points) {
-    const x = realMsToX(ctx, pt.realMs);
-    const y = priceToY(ctx, pt.price);
+    const x = ctx.realMsToX(pt.realMs);
+    const y = ctx.priceToY(pt.price);
     if (x == null || y == null) {
       if (segments[segments.length - 1].length > 0) segments.push([]);
       continue;
@@ -637,17 +671,85 @@ function renderPencil(
   });
 }
 
+/**
+ * Placement preview for the two 1-click line tools — a faint dashed ghost that
+ * follows the cursor until the click commits. Expressed in DOMAIN coordinates
+ * (price / realMs) rather than cursor pixels so it projects onto whichever
+ * canvas is drawing it; the caller resolves magnet snapping first and reports
+ * the result via `snapped`, which also gates the dot marking the snapped level.
+ *
+ * X needs no translation between the two coordinate systems: `timeToCoordinate`
+ * is plot-area-relative, and the DOM overlay's left edge IS the plot's left
+ * edge (the price axis sits on the right). Only Y differs, and that travels
+ * as a price.
+ */
+export type GhostPreview = {
+  kind: 'hline' | 'vline';
+  style: DrawingStyle;
+  /** Cursor X — identical in chart-global and pane-local space (see above). */
+  cursorPx: number;
+  /** Pane the cursor is inside. An hline ghost draws only here; a vline ghost
+   *  draws in every pane but drops its dot only here. */
+  cursorPaneId: PaneId;
+  /** Price the ghost sits at (hline), or the dot's level (vline). */
+  price: number | null;
+  /** Time the vline ghost sits at. Ignored for hline. */
+  realMs: number | null;
+  /** Whether magnet actually moved the ghost — gates the snap dot. */
+  snapped: boolean;
+};
+
+export function renderGhostPreview(
+  c: CanvasRenderingContext2D,
+  ctx: ProjectCtx,
+  ghost: GhostPreview,
+) {
+  const isHline = ghost.kind === 'hline';
+  const onCursorPane = ghost.cursorPaneId === ctx.paneId;
+  // An hline ghost lives on one pane; a vline ghost spans them all.
+  if (isHline && !onCursorPane) return;
+
+  const y = ghost.price != null ? ctx.priceToY(ghost.price) : null;
+  const x = ghost.realMs != null ? ctx.realMsToX(ghost.realMs) ?? ghost.cursorPx : ghost.cursorPx;
+  if (isHline && y == null) return;
+
+  c.save();
+  c.strokeStyle = ghost.style.color;
+  c.globalAlpha = 0.6;
+  c.lineWidth = ghost.style.width;
+  c.setLineDash([5, 4]);
+  c.beginPath();
+  if (isHline) {
+    c.moveTo(0, y as number);
+    c.lineTo(ctx.width, y as number);
+  } else {
+    c.moveTo(x, 0);
+    c.lineTo(x, ctx.paneBottom);
+  }
+  c.stroke();
+  c.restore();
+
+  if (!ghost.snapped || !onCursorPane || y == null) return;
+  c.save();
+  c.fillStyle = ghost.style.color;
+  c.beginPath();
+  c.arc(isHline ? ghost.cursorPx : x, y, 3.5, 0, Math.PI * 2);
+  c.fill();
+  c.restore();
+}
+
 export function renderDrawing(
   c: CanvasRenderingContext2D,
   ctx: ProjectCtx,
   d: Drawing,
   selected: boolean,
+  opts: { vlineTimeBadge?: boolean } = {},
 ) {
   switch (d.kind) {
     case 'hline':
       return renderHline(c, ctx, d, selected);
     case 'vline':
-      return renderVline(c, ctx, d, selected);
+      return renderVline(c, ctx, d, selected, opts.vlineTimeBadge ?? true);
     case 'trendline':
       return renderTrendline(c, ctx, d, selected);
     case 'rect':
@@ -659,8 +761,4 @@ export function renderDrawing(
     case 'pencil':
       return renderPencil(c, ctx, d, selected);
   }
-}
-
-export function projectPoint(ctx: ProjectCtx, realMs: number, price: number) {
-  return { x: realMsToX(ctx, realMs), y: priceToY(ctx, price) };
 }
