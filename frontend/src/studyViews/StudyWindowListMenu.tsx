@@ -7,7 +7,6 @@
  */
 import { useMemo } from 'react';
 import { WindowListMenu, type WindowListSection } from '../workspace/WindowListMenu';
-import { requestWorkspaceTidy } from '../workspace/workspaceCanvasControls';
 import { WINDOW_KIND_ICON } from '../live/workspace/windowKindIcons';
 import { STUDY_WINDOW_LABEL } from './studyWindowMeta';
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
@@ -45,7 +44,6 @@ export function StudyWindowListMenu() {
       sections={sections}
       onFocus={focusWindow}
       onClose={closeWindow}
-      onTidy={requestWorkspaceTidy}
     />
   );
 }

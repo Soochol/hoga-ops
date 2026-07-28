@@ -105,19 +105,6 @@ describe('useWorkspaceStore 액션', () => {
     expect(s.windows.find((w) => w.id === 'b')?.rect.x).toBe(300);
   });
 
-  it('tidyAll 은 겹침 없는 타일로 재배치한다', () => {
-    useWorkspaceStore.setState({
-      windows: [chart('a', 1), chart('b', 2)],
-      zOrder: ['a', 'b'],
-      groupSymbols: {},
-    });
-    useWorkspaceStore.getState().tidyAll({ w: 1000, h: 800 });
-    const s = useWorkspaceStore.getState();
-    const a = s.windows.find((w) => w.id === 'a')!.rect;
-    const b = s.windows.find((w) => w.id === 'b')!.rect;
-    expect(a.x + a.w).toBe(b.x); // 나란히, 겹침 없음
-  });
-
   it('액션은 localStorage 로 영속화한다', () => {
     useWorkspaceStore.getState().addWindow('book');
     const raw = localStorage.getItem(WORKSPACE_STORAGE_KEY);

@@ -14,7 +14,6 @@ import {
   type WindowItemProps,
   type WorkspaceCanvasApi,
 } from '../../workspace/WorkspaceCanvas';
-import { registerWorkspaceTidy } from '../../workspace/workspaceCanvasControls';
 import { WindowFrame } from './WindowFrame';
 import { useEntryDragStore } from '../../state/entryDrag';
 import { ChartWindow } from './ChartWindow';
@@ -46,7 +45,6 @@ export function WorkspaceCanvas() {
   const focusWindow = useWorkspaceStore((s) => s.focusWindow);
   const setWindowRects = useWorkspaceStore((s) => s.setWindowRects);
   const setWindowGroup = useWorkspaceStore((s) => s.setWindowGroup);
-  const tidyAll = useWorkspaceStore((s) => s.tidyAll);
   const pendingNormalize = useWorkspaceStore((s) => s.pendingNormalize);
   const normalizeLegacyRects = useWorkspaceStore((s) => s.normalizeLegacyRects);
 
@@ -235,10 +233,8 @@ export function WorkspaceCanvas() {
       zOrder={zOrder}
       focusWindow={focusWindow}
       setWindowRects={setWindowRects}
-      tidyAll={tidyAll}
       pendingNormalize={pendingNormalize}
       normalizeLegacyRects={normalizeLegacyRects}
-      registerTidy={registerWorkspaceTidy}
       onDragStart={onDragStart}
       windowItem={LiveWindowItem}
       itemCtx={itemCtx}

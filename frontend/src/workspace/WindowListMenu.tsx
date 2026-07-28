@@ -2,7 +2,7 @@
  * WindowListMenu — 열린 창 목록 드롭다운 (페이지 공용 프리젠테이션).
  *
  * 툴바의 죽은 "N창 · 그룹 X" 라벨을 대체한다 — 개수만 알리던 텍스트를, 열린 창을
- * 한눈에 보고 **점프(포커스)·닫기·정리** 하는 진입점으로 승격한다. 창 추가(WindowAddMenu)
+ * 한눈에 보고 **점프(포커스)·닫기** 하는 진입점으로 승격한다. 창 추가(WindowAddMenu)
  * 가 창을 만드는 입구라면 이건 이미 만든 창을 관리하는 입구다.
  *
  * 스토어·kind 타입에 무의존하다 — /live 와 /study 가 각자 자기 스토어에서 창을
@@ -58,7 +58,6 @@ type Props = {
   sections: WindowListSection[];
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
-  onTidy: () => void;
   /** 트리거·팝오버 testid 접두(예 "live-window-list"). */
   testId: string;
 };
@@ -69,7 +68,6 @@ export function WindowListMenu({
   sections,
   onFocus,
   onClose,
-  onTidy,
   testId,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -130,19 +128,8 @@ export function WindowListMenu({
       className="min-w-[248px] rounded border border-border bg-bg-card py-1 shadow-overlay z-50"
       style={{ position: 'fixed', left, top }}
     >
-      <div className="flex items-center justify-between px-3 pb-1.5 pt-0.5 text-[11px] text-fg-dimmer">
+      <div className="px-3 pb-1.5 pt-0.5 text-[11px] text-fg-dimmer">
         <span>{summary}</span>
-        <button
-          type="button"
-          data-testid={`${testId}-tidy`}
-          onClick={() => {
-            onTidy();
-            close();
-          }}
-          className="rounded px-1.5 py-0.5 text-accent hover:bg-bg-input-hover"
-        >
-          모두 정리
-        </button>
       </div>
 
       {flatRows.length === 0 ? (

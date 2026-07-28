@@ -17,7 +17,6 @@ import type { PaneId } from '../chart/drawing/types';
 import { profileKeyForTimeframe } from '../live/indicators/indicatorPaneProfiles';
 import { applyPresetEnableByTimeframe } from './indicatorPresetOps';
 import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
-import { tidyLayout } from '../workspace/tidy';
 import { MIN_W, MIN_H, type Canvas, type Rect } from '../workspace/snapEngine';
 import { isFracRect, toFrac } from '../workspace/rectSpace';
 import { readLegacyWorkspaceSeed } from './workspaceMigration';
@@ -81,7 +80,7 @@ export type GroupId = number;
  * 창 위치·크기 — **캔버스 대비 비율(0~1)**, px 아님 (ADR-0122).
  *
  * 캔버스가 줄면(줌인·창 축소) 창도 같은 비율로 줄어 배치가 보존되고 창이 밖으로
- * 나가지 않는다. px 계산이 필요한 쪽(snapEngine·tidy·드래그)은 `rectSpace` 의
+ * 나가지 않는다. px 계산이 필요한 쪽(snapEngine·드래그)은 `rectSpace` 의
  * toPx/toFrac 으로 캔버스에서 변환한다 — 스토어는 px 를 모른다.
  */
 export interface WorkspaceRect {
@@ -155,7 +154,6 @@ type Store = Persisted & {
   setWindowRects: (updates: readonly { id: string; rect: WorkspaceRect }[]) => void;
   setWindowGroup: (id: string, group: GroupId) => void;
   setGroupSymbol: (group: GroupId, symbol: GroupSymbol) => void;
-  tidyAll: (canvas: Canvas) => void;
 
   // ── 차트 창 지표 쓰기 경로 (ADR-0119 C2c-2a, #712 창 소유 설정) ──
   /** 대상 창의 "현재 봉" 버킷에 patch 를 누적한다(livePage patchIndicators 미러 —
@@ -633,22 +631,6 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       const windows = state.windows.map((w) => ({ ...w, rect: toFrac(w.rect as Rect, canvas) }));
       persistFromState({ ...state, windows });
       return { windows, pendingNormalize: false };
-    });
-  },
-
-  tidyAll: (canvas) => {
-    set((state) => {
-      const layout = tidyLayout(
-        state.windows.map((w) => ({ id: w.id, isChart: w.kind === 'chart' })),
-        canvas,
-      );
-      // tidyLayout 은 px 로 계산한다(순수 배치 알고리즘 무변경) — 커밋만 비율로.
-      const windows = state.windows.map((w) => {
-        const rect = layout.get(w.id);
-        return rect ? { ...w, rect: toFrac(rect, canvas) } : w;
-      });
-      persistFromState({ ...state, windows });
-      return { windows };
     });
   },
 

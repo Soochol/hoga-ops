@@ -9,14 +9,12 @@ function Harness({
   onPrevCode,
   onSelectTimeframeShortcut,
   onAddChartWindow,
-  onTidy,
   onCycleFocus,
 }: {
   onNextCode?: () => void;
   onPrevCode?: () => void;
   onSelectTimeframeShortcut?: (slot: 'minute' | 'D' | 'W' | 'M') => void;
   onAddChartWindow?: () => void;
-  onTidy?: () => void;
   onCycleFocus?: (dir: 1 | -1) => void;
 }) {
   useLiveKeyboard({
@@ -24,7 +22,6 @@ function Harness({
     onPrevCode,
     onSelectTimeframeShortcut,
     onAddChartWindow,
-    onTidy,
     onCycleFocus,
   });
   return <div data-testid="harness" tabIndex={0} />;
@@ -34,16 +31,14 @@ function HarnessWithInput({
   onNextCode,
   onSelectTimeframeShortcut,
   onAddChartWindow,
-  onTidy,
   onCycleFocus,
 }: {
   onNextCode?: () => void;
   onSelectTimeframeShortcut?: (slot: 'minute' | 'D' | 'W' | 'M') => void;
   onAddChartWindow?: () => void;
-  onTidy?: () => void;
   onCycleFocus?: (dir: 1 | -1) => void;
 }) {
-  useLiveKeyboard({ onNextCode, onSelectTimeframeShortcut, onAddChartWindow, onTidy, onCycleFocus });
+  useLiveKeyboard({ onNextCode, onSelectTimeframeShortcut, onAddChartWindow, onCycleFocus });
   return <input data-testid="input" />;
 }
 
@@ -180,13 +175,6 @@ describe('useLiveKeyboard', () => {
       expect(add).toHaveBeenCalledOnce();
     });
 
-    it('t triggers onTidy', () => {
-      const tidy = vi.fn();
-      render(<Harness onTidy={tidy} />);
-      fireEvent.keyDown(window, { key: 't' });
-      expect(tidy).toHaveBeenCalledOnce();
-    });
-
     it('] cycles focus forward, [ backward', () => {
       const cycle = vi.fn();
       render(<Harness onCycleFocus={cycle} />);
@@ -197,25 +185,23 @@ describe('useLiveKeyboard', () => {
     });
 
     it('창 관리 키는 입력 필드에선 억제된다', () => {
-      const add = vi.fn(); const tidy = vi.fn(); const cycle = vi.fn();
+      const add = vi.fn(); const cycle = vi.fn();
       const { getByTestId } = render(
-        <HarnessWithInput onAddChartWindow={add} onTidy={tidy} onCycleFocus={cycle} />,
+        <HarnessWithInput onAddChartWindow={add} onCycleFocus={cycle} />,
       );
       const input = getByTestId('input');
       fireEvent.keyDown(input, { key: 'n' });
-      fireEvent.keyDown(input, { key: 't' });
       fireEvent.keyDown(input, { key: ']' });
       expect(add).not.toHaveBeenCalled();
-      expect(tidy).not.toHaveBeenCalled();
       expect(cycle).not.toHaveBeenCalled();
     });
 
     it('Alt 조합(드로잉 도구 단축키)에선 창 관리 키가 발화하지 않는다', () => {
-      const tidy = vi.fn();
-      render(<Harness onTidy={tidy} />);
-      // 드로잉 도구는 Alt+t — useLiveKeyboard 는 altKey early-return 이라 무충돌.
-      fireEvent.keyDown(window, { key: 't', altKey: true });
-      expect(tidy).not.toHaveBeenCalled();
+      const add = vi.fn();
+      render(<Harness onAddChartWindow={add} />);
+      // 드로잉 도구는 Alt+n 류 — useLiveKeyboard 는 altKey early-return 이라 무충돌.
+      fireEvent.keyDown(window, { key: 'n', altKey: true });
+      expect(add).not.toHaveBeenCalled();
     });
   });
 });

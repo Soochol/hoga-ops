@@ -17,7 +17,6 @@ import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTim
 import { useStudyLastMinuteTimeframeStore } from '../state/studyLastMinuteTimeframe';
 import { StudyWorkspaceCanvas, StudyWindowAddMenu } from './StudyWorkspaceCanvas';
 import { StudyWindowListMenu } from './StudyWindowListMenu';
-import { requestWorkspaceTidy } from '../workspace/workspaceCanvasControls';
 import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
@@ -522,13 +521,6 @@ export function StudyPage() {
               <SettingsButton onClick={() => setSettingsOpen(true)} />
               <StudyWindowListMenu />
               <StudyWindowAddMenu />
-              <IconToolbarButton
-                data-testid="study-tidy"
-                onClick={requestWorkspaceTidy}
-                className="shrink-0"
-              >
-                정리
-              </IconToolbarButton>
               <IconToolbarButton onClick={toggleMemoWindow} className="shrink-0">
                 메모
               </IconToolbarButton>

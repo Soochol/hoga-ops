@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useLivePageStore } from '../state/livePage';
 import { activeGroupOf, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
-import { requestWorkspaceTidy } from '../workspace/workspaceCanvasControls';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveStateBanner } from './LiveStateBanner';
@@ -27,7 +26,7 @@ import { registerCollectDialogOpener, type CollectTarget } from './workspace/col
  *
  * Three-row grid (symbol search lives in the global TopNav header line):
  *   1. LiveStateBanner (auto)                  — empty/error state matrix
- *   2. WorkspaceLiveToolbar (auto)             — 창 추가·정리·설정·프리셋·캡처헬스
+ *   2. WorkspaceLiveToolbar (auto)             — 창 추가·설정·프리셋·캡처헬스
  *   3. WorkspaceCanvas (1fr)                   — 창들(차트·데이터) + 자석 스냅 엔진
  *
  * 종목 식별·현재가·등락률·히트맵·경고는 각 차트 창 **타이틀바**(TitleBarSymbolRow)가
@@ -105,7 +104,7 @@ export function LivePage() {
   );
 
   // Shift+숫자 = 포커스 차트 창의 timeframe 슬롯(스펙 §2 — 창별 배선).
-  // n = 차트 창 추가·t = 정리·[/] = 포커스 순환(PR-E 창 관리 단축키).
+  // n = 차트 창 추가·[/] = 포커스 순환(PR-E 창 관리 단축키).
   useLiveKeyboard({
     onSelectTimeframeShortcut: (slot) => {
       const ws = useWorkspaceStore.getState();
@@ -115,7 +114,6 @@ export function LivePage() {
       ws.setChartTimeframe(target.id, next);
     },
     onAddChartWindow: () => useWorkspaceStore.getState().addWindow('chart'),
-    onTidy: () => requestWorkspaceTidy(),
     onCycleFocus: (dir) => {
       const ws = useWorkspaceStore.getState();
       // 창 목록(안정 순서)에서 현재 포커스의 다음/이전을 focus. 창 0·1개면 no-op.

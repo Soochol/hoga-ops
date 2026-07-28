@@ -92,12 +92,9 @@ export interface WorkspaceCanvasCoreProps<W extends WorkspaceWindowLike, C> {
   zOrder: string[];
   focusWindow: (id: string) => void;
   setWindowRects: (updates: { id: string; rect: FracRect }[]) => void;
-  tidyAll: (canvas: Canvas) => void;
   /** 레거시 px rect 마이그레이션 대기 여부(ADR-0122). 없으면 항상 비율로 간주. */
   pendingNormalize?: boolean;
   normalizeLegacyRects?: (canvas: Canvas) => void;
-  /** Tidy 실행기를 페이지 명령 채널에 등록. cleanup 을 반환해야 한다. */
-  registerTidy?: (run: () => void) => () => void;
   /** 드래그 시작 훅 — 페이지 팝오버(팔레트 등) 닫기용. */
   onDragStart?: (id: string) => void;
   /** 창 하나를 렌더하는 페이지 컴포넌트 — **모듈 스코프**여야 한다(인라인 정의는
@@ -121,10 +118,8 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
     zOrder,
     focusWindow,
     setWindowRects,
-    tidyAll,
     pendingNormalize,
     normalizeLegacyRects,
-    registerTidy,
     onDragStart,
     windowItem: WindowItem,
     itemCtx,
@@ -265,13 +260,6 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
     [windows, commit],
   );
 
-  const onTidy = useCallback(() => {
-    const box = boxRef.current?.getBoundingClientRect();
-    // 0-크기 캔버스(미측정·jsdom)에서 실행하면 toFrac 가 0 나눗셈으로 NaN rect 를
-    // 커밋한다 — 실측 전에는 조용히 무시.
-    if (box && box.width > 0 && box.height > 0) tidyAll({ w: box.width, h: box.height });
-  }, [tidyAll]);
-
   // 캔버스 실측 크기 — 비율 rect 를 px 로 펴는 기준(ADR-0122). 캔버스가 줄면 이
   // 값만 바뀌고 창들은 자동으로 같은 비율을 유지한다.
   // useLayoutEffect: 첫 페인트 전에 크기를 확보해야 창이 0px 로 한 프레임 깜빡이지
@@ -342,13 +330,6 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
     onApi(api);
     return () => onApi(null);
   }, [onApi, api]);
-
-  // 정리(Tidy) 트리거는 캔버스 밖 고정 툴바에 있다 — 캔버스 실측이 필요한 실행기를
-  // 페이지 명령 채널에 등록(C2c-2c).
-  useEffect(() => {
-    if (!registerTidy) return undefined;
-    return registerTidy(onTidy);
-  }, [registerTidy, onTidy]);
 
   // 렌더는 px. 프리뷰(드래그 중)는 이미 px 이고, 그 외에는 스토어의 비율을 현재
   // 캔버스로 편다 — 캔버스가 줄면 창도 같은 비율로 줄어 배치가 보존된다(ADR-0122).

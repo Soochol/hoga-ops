@@ -13,9 +13,7 @@
  * "잠깐 치움"이지 숨김이 아니었으므로 창은 생성한다(플랜 §PR-2).
  */
 import { create } from 'zustand';
-import { isFracRect, toFrac, type FracRect } from '../workspace/rectSpace';
-import type { Canvas } from '../workspace/snapEngine';
-import { tidyLayout } from '../workspace/tidy';
+import { isFracRect, type FracRect } from '../workspace/rectSpace';
 import { persistJson, readJsonObject } from './persist';
 import { STUDY_CARD_KEYS, STUDY_LAYOUT_STORAGE_KEY, type StudyCardKey } from './studyLayout';
 
@@ -46,7 +44,6 @@ interface Store extends Persisted {
   focusWindow: (id: string) => void;
   setWindowRect: (id: string, rect: FracRect) => void;
   setWindowRects: (updates: { id: string; rect: FracRect }[]) => void;
-  tidyAll: (canvas: Canvas) => void;
   /** 스냅샷 통째 적용(왕복 대비 — 프리셋은 범위 밖). 유효 창 없으면 시드 폴백. */
   applySnapshot: (snapshot: unknown) => void;
 }
@@ -108,7 +105,7 @@ const CARD_TO_KIND: Record<StudyCardKey, StudyWindowKind> = {
   program: 'program',
 };
 
-/** 차트가 좌측에서 차지하는 가로 비율 — `tidy.ts` 의 CHART_FRACTION 과 같은 값. */
+/** 차트가 좌측에서 차지하는 가로 비율(시드 배치). */
 const SEED_CHART_FRACTION = 0.72;
 /**
  * 10호가(십자 배치 BookPanel)가 보일 때의 차트 비율.
@@ -326,22 +323,6 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
       const windows = state.windows.map((w) => {
         const rect = byId.get(w.id);
         return rect && isFracRect(rect) ? { ...w, rect } : w;
-      });
-      persistFromState({ ...state, windows });
-      return { windows };
-    });
-  },
-
-  tidyAll: (canvas) => {
-    set((state) => {
-      const layout = tidyLayout(
-        state.windows.map((w) => ({ id: w.id, isChart: w.kind === 'chart' })),
-        canvas,
-      );
-      // tidyLayout 은 px 로 계산한다(순수 배치 알고리즘 무변경) — 커밋만 비율로.
-      const windows = state.windows.map((w) => {
-        const rect = layout.get(w.id);
-        return rect ? { ...w, rect: toFrac(rect, canvas) } : w;
       });
       persistFromState({ ...state, windows });
       return { windows };
