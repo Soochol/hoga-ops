@@ -12,6 +12,7 @@ import {
   type WindowItemProps,
 } from '../workspace/WorkspaceCanvas';
 import { WindowFrameCore } from '../workspace/WindowFrame';
+import { resetDrawingToolOnContextMenu } from '../chart/drawing/contextMenuReset';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { IconToolbarButton } from '../ui/WorkspaceShell';
 import type { RangeBundle } from '../api/types';
@@ -55,6 +56,9 @@ function StudyWindowItem({
       onHandleDown={onHandleDown}
       onFocus={onFocus}
       onClose={ctx.closeWindow}
+      // 차트 창에서만 — 우클릭으로 그리기 도구를 푼다. /live 와 같은 창 루트 경로라
+      // 리사이즈 핸들·헤더 위에서도 먹는다.
+      onContextMenu={win.kind === 'chart' ? resetDrawingToolOnContextMenu : undefined}
       header={
         <span className="truncate text-[12px] font-medium text-fg">
           {STUDY_WINDOW_LABEL[win.kind]}

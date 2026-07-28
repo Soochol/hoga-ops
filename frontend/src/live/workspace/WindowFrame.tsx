@@ -14,6 +14,7 @@ import { useDismissablePopover } from '../../util/useDismissablePopover';
 // (windowKindLabels 의 SSOT 취지). 여기에 사본을 두면 그 약속이 조용히 깨진다.
 import { WINDOW_KIND_LABEL as KIND_LABEL } from './windowKindLabels';
 import { TitleBarSymbolRow } from './TitleBarSymbolRow';
+import { resetDrawingToolOnContextMenu } from '../../chart/drawing/contextMenuReset';
 
 const GROUP_IDS: GroupId[] = Array.from({ length: MAX_GROUP - MIN_GROUP + 1 }, (_, i) => i + MIN_GROUP);
 
@@ -85,6 +86,9 @@ function WindowFrameImpl(props: WindowFrameProps) {
       onHandleDown={onHandleDown}
       onFocus={onFocus}
       onClose={onClose}
+      // 차트 창에서만 — 우클릭으로 그리기 도구를 푼다. 창 루트라 리사이즈 핸들·헤더
+      // 위에서도 먹는다(오버레이만 달았을 때의 가장자리 사각지대 제거).
+      onContextMenu={kind === 'chart' ? resetDrawingToolOnContextMenu : undefined}
       header={
         <>
           <div ref={paletteAnchorRef} className="relative shrink-0">
