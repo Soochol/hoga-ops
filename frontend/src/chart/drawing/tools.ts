@@ -798,7 +798,10 @@ export const eraserTool: DrawingToolSpec = {
   kind: 'eraser',
   label: '지우개',
   glyph: '⌫',
-  cursor: 'not-allowed',
+  // `not-allowed` 였다 — 표준 의미가 "이 동작은 불가" 라, 지우개를 켠 사용자에게
+  // "여긴 못 지운다" 로 읽힌다(실제로는 클릭하면 지워진다). 다른 그리기 도구와 같은
+  // 조준 커서로 맞춘다. 어느 도구인지는 헤더의 `그리기: 지우개` 라벨이 말한다.
+  cursor: 'crosshair',
   shortcut: { alt: true, key: 'e' },
   onPointerDown(ctx) {
     const hit = ctx.hitTestAt(ctx.px, ctx.py);

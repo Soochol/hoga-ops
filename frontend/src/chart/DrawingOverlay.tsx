@@ -641,6 +641,18 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     return () => window.removeEventListener('mousemove', onMove);
   }, []);
 
+  // 활성 도구의 커서를 오버레이에 입힌다. `TOOLS[].cursor` 는 도구 정의에 계속
+  // 있었지만 아무도 읽지 않는 죽은 필드였고, lightweight-charts 는 커서를 건드리지
+  // 않아(실측 `auto`) 차트 위 커서가 도구와 무관하게 늘 화살표였다. 그래서 지금
+  // 그리기 모드인지 알려주는 신호가 헤더 버튼 라벨 하나뿐이었다 — 우클릭 해제가
+  // 걸렸는지 눈으로 확인할 방법이 없어 "안 풀렸나?" 하고 다시 누르게 만든 배경이다.
+  // select 모드에선 오버레이가 도형 위에서만 포인터를 받으므로(위 게이트) 커서도
+  // 그때만 보인다 — 즉 "여기 잡을 게 있다" 는 어포던스가 덤으로 붙는다.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container) container.style.cursor = TOOLS[activeTool].cursor;
+  }, [activeTool]);
+
   // ── pointer-events gating ──────────────────────────────────────────────
   useEffect(() => {
     const container = containerRef.current;
