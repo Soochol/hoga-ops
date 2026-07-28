@@ -126,6 +126,37 @@ describe('DrawingOverlay pointer-events 게이트 — select 진입 즉시 판�
     expect(overlay.style.pointerEvents).toBe('auto');
   });
 
+  /**
+   * 활성 도구를 알려주는 유일한 신호가 헤더 버튼 라벨뿐이라, 우클릭 해제가 걸렸는지
+   * 눈으로 확인할 수가 없었다(lightweight-charts 는 커서를 안 건드려 늘 화살표).
+   * `TOOLS[].cursor` 는 정의만 있고 아무도 안 읽던 죽은 필드였다.
+   */
+  it('활성 도구의 커서를 오버레이에 입힌다', () => {
+    useDrawingsStore.getState().setActiveTool('pencil');
+    const { container } = renderOverlay();
+    const overlay = container.querySelector('[data-drawing-overlay]') as HTMLElement;
+
+    expect(overlay.style.cursor).toBe('crosshair');
+
+    act(() => {
+      useDrawingsStore.getState().setActiveTool('text');
+    });
+    expect(overlay.style.cursor).toBe('text');
+
+    act(() => {
+      useDrawingsStore.getState().setActiveTool('select');
+    });
+    expect(overlay.style.cursor).toBe('default');
+  });
+
+  it('지우개는 조준 커서다 — not-allowed 는 "못 지운다"로 읽힌다', () => {
+    useDrawingsStore.getState().setActiveTool('eraser');
+    const { container } = renderOverlay();
+    const overlay = container.querySelector('[data-drawing-overlay]') as HTMLElement;
+
+    expect(overlay.style.cursor).toBe('crosshair');
+  });
+
   it('빈 곳에서 select 로 돌아오면 포인터를 차트에 넘긴다', () => {
     useDrawingsStore.getState().setActiveTool('pencil');
     const { container } = renderOverlay();
