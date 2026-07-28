@@ -112,6 +112,16 @@ type TextEdit = {
 
 const EMPTY_DRAWINGS: Drawing[] = [];
 
+/** 뷰포트가 마지막으로 움직인 뒤 이만큼 조용하면 팬/줌이 끝난 것으로 보고
+ *  hover 프로브를 1회 돌린다. 팬 중에는 프레임마다(~16ms) 변경이 오므로
+ *  넉넉하되, 손을 뗀 뒤 체감되지 않을 만큼 짧게. */
+const PAN_SETTLE_MS = 120;
+/** 뷰포트가 계속 움직이는 동안에도 이 간격마다는 프로브를 한 번 흘려보낸다.
+ *  실시간 봉 추가처럼 주기적으로 뷰포트를 건드리는 소스가 있으면 settle 타이머가
+ *  영원히 리셋되어 hover 판정이 죽을 수 있다 — 60Hz→4Hz 로 줄이되 0 은 만들지
+ *  않는 바닥값. */
+const PAN_PROBE_FLOOR_MS = 250;
+
 export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChartHoverPassthrough, bucketMs, candles }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -661,7 +671,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       container.style.pointerEvents = 'auto';
       return;
     }
+    const ts = chart.timeScale();
+    // 팬/줌 스로틀 상태. applyGate 가 lastProbeAt 을 갱신하므로 그보다 앞에 선언한다.
+    let lastProbeAt = 0;
+    let viewportMoving = false;
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+
     const applyGate = (clientX: number, clientY: number) => {
+      lastProbeAt = performance.now();
       const rect = container.getBoundingClientRect();
       const px = clientX - rect.left;
       const py = clientY - rect.top;
@@ -690,6 +707,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     let pendingEvent: MouseEvent | null = null;
     const onHover = (e: MouseEvent) => {
       if (dragRef.current) return;
+      // 차트를 팬/줌 하는 중에는 게이트 판정을 건너뛴다. dragRef 는 오버레이
+      // 자신의 도형 드래그일 때만 세팅되므로, 차트 팬은 lightweight-charts 가
+      // 처리하는 동안 이 가드에 걸리지 않는다 — 즉 팬 내내 프레임마다 hitTest 가
+      // 돌고, 연필은 그 안에서 points 전체를 재투영한다(primitive 의 draw 와
+      // 합쳐 프레임당 2회). 병목까진 아니어도 순수한 낭비다.
+      // PAN_PROBE_FLOOR_MS 는 뷰포트 변경이 끊이지 않는 상황에서도 판정이
+      // 완전히 죽지 않게 하는 바닥값.
+      if (viewportMoving && performance.now() - lastProbeAt < PAN_PROBE_FLOOR_MS) return;
       pendingEvent = e;
       if (hoverRaf !== null) return;
       hoverRaf = requestAnimationFrame(() => {
@@ -700,9 +725,36 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         applyGate(ev.clientX, ev.clientY);
       });
     };
+
+    // 입력 스로틀 전용 구독 — 여기서 렌더(redraw)를 예약하면 안 된다. lwc 는
+    // 이 델리게이트를 자신의 rAF 콜백 "안에서" fire 하므로, 여기서 다시
+    // requestAnimationFrame 을 걸면 그 그림은 구조적으로 항상 한 프레임 뒤가
+    // 된다(그리기 렌더를 pane primitive 로 옮긴 이유). 이 핸들러는 플래그만
+    // 세운다.
+    const onViewportMove = () => {
+      viewportMoving = true;
+      if (settleTimer !== null) clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        settleTimer = null;
+        viewportMoving = false;
+        // 팬이 멎으면 마지막 커서 위치로 딱 한 번 판정한다. 이게 없으면 게이트가
+        // 팬 시작 시점의 값에 갇혀, 커서 밑으로 들어온 도형을 마우스를 흔들어
+        // 깨우기 전까지 잡을 수 없다(반대로 빠져나간 도형은 계속 클릭을 삼킨다).
+        // lastMouseRef 는 팬 중에도 갱신되므로 "지금 커서 아래"가 판정된다.
+        const settleAt = lastMouseRef.current;
+        if (settleAt) applyGate(settleAt.clientX, settleAt.clientY);
+      }, PAN_SETTLE_MS);
+    };
+
     window.addEventListener('mousemove', onHover);
+    ts.subscribeVisibleLogicalRangeChange(onViewportMove);
     return () => {
       window.removeEventListener('mousemove', onHover);
+      ts.unsubscribeVisibleLogicalRangeChange(onViewportMove);
+      if (settleTimer !== null) {
+        clearTimeout(settleTimer);
+        settleTimer = null;
+      }
       if (hoverRaf !== null) {
         cancelAnimationFrame(hoverRaf);
         hoverRaf = null;
@@ -710,7 +762,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     };
     // hitTestAt closes over drawings / paneSeries; re-bind on change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTool, drawings, paneSeries, axis]);
+  }, [activeTool, drawings, paneSeries, axis, chart]);
 
   // ── empty-click deselect ───────────────────────────────────────────────
   // When something is selected and the user clicks empty chart space,
