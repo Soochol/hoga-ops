@@ -27,6 +27,26 @@ function chartWithHeights(heights: number[]): IChartApi {
   } as unknown as IChartApi;
 }
 
+/**
+ * Like `chartWithHeights`, but the panes also expose `getHTMLElement()` laid
+ * out with a `sep`-pixel separator between them — what a real lwc chart looks
+ * like. `getHeight()` excludes the separator, so the helpers must read the gap
+ * from the DOM rather than summing heights.
+ *
+ * Each call builds a fresh chart object: the measurement is cached per chart
+ * instance (WeakMap), so reusing one across cases would pin the first `sep`.
+ */
+function chartWithSeparator(heights: number[], sep: number): IChartApi {
+  const panes = heights.map((h, i) => {
+    const top = heights.slice(0, i).reduce((a, b) => a + b, 0) + i * sep;
+    return {
+      getHeight: () => h,
+      getHTMLElement: () => ({ getBoundingClientRect: () => ({ top }) }),
+    };
+  });
+  return { panes: vi.fn(() => panes) } as unknown as IChartApi;
+}
+
 /** Stub paneSeries: each paneId's primary series reports its runtime pane
  *  index via getPane().paneIndex(), matching the mounted order. */
 function paneSeriesFor(paneIds: PaneId[]): PaneSeriesMap {
@@ -186,5 +206,62 @@ describe('canvasYToPrice (time-independent Y → price)', () => {
   it('returns null when the pane is not mounted', () => {
     const { ps } = recordingPaneSeries(['candle'], (y) => y);
     expect(canvasYToPrice(chart, ps, 'volume', 200)).toBeNull();
+  });
+});
+
+// lwc draws a 1px separator between panes and getHeight() excludes it, so a
+// naive height sum drifts by one separator per boundary — measured 0/1/2/3/4px
+// across a five-pane chart on lwc 5.2. Rendering is immune (a pane primitive
+// draws on the pane's own canvas), but pointer input still works in
+// chart-global Y, so without this correction hit-testing sits above where the
+// drawing appears — by the 7th pane that reaches hline's entire 6px threshold.
+describe('pane separator drift (chart-global input coords)', () => {
+  const HEIGHTS = [400, 80, 80, 80, 80];
+
+  it('includes one separator per pane boundary in paneTopY', () => {
+    const chart = chartWithSeparator(HEIGHTS, 1);
+    const ps = paneSeriesFor(FULL);
+    expect(paneTopY(chart, ps, 'candle')).toBe(0);
+    expect(paneTopY(chart, ps, 'volume')).toBe(400 + 1);
+    expect(paneTopY(chart, ps, 'quote-totals')).toBe(480 + 2);
+    expect(paneTopY(chart, ps, 'ratio')).toBe(560 + 3);
+    expect(paneTopY(chart, ps, 'fill-strength')).toBe(640 + 4);
+  });
+
+  it('shifts pane boundaries in paneIdAtY by the same amount', () => {
+    const chart = chartWithSeparator(HEIGHTS, 1);
+    const ps = paneSeriesFor(FULL);
+    // Without the correction this y (the last row of the volume pane) would
+    // resolve to quote-totals — the pane below.
+    expect(paneIdAtY(chart, ps, 480)).toBe('volume');
+    // The separator itself belongs to the pane above, so there is no gap that
+    // would drop the cursor to the bottom-pane fallback.
+    expect(paneIdAtY(chart, ps, 481)).toBe('volume');
+    expect(paneIdAtY(chart, ps, 482)).toBe('quote-totals');
+  });
+
+  it('clamps to the separator-corrected pane span', () => {
+    const chart = chartWithSeparator(HEIGHTS, 1);
+    const ps = paneSeriesFor(FULL);
+    // volume spans [401, 481) once the separator above it is accounted for.
+    expect(clampYToPane(chart, ps, 'volume', 0)).toBe(401);
+    expect(clampYToPane(chart, ps, 'volume', 9999)).toBe(480);
+  });
+
+  it('falls back to the plain height sum when panes expose no DOM element', () => {
+    // Guards the pre-5.2 / test-stub path: no getHTMLElement → no measurement,
+    // and the arithmetic must stay exactly what it was before this fix.
+    const chart = chartWithHeights(HEIGHTS);
+    const ps = paneSeriesFor(FULL);
+    expect(paneTopY(chart, ps, 'volume')).toBe(400);
+    expect(paneTopY(chart, ps, 'fill-strength')).toBe(640);
+  });
+
+  it('ignores an implausible gap from a transient layout', () => {
+    // Mid-resize the rects can disagree wildly; a 40px "separator" would move
+    // drawings far more than the drift it is meant to fix.
+    const chart = chartWithSeparator(HEIGHTS, 40);
+    const ps = paneSeriesFor(FULL);
+    expect(paneTopY(chart, ps, 'volume')).toBe(400);
   });
 });

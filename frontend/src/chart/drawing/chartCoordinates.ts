@@ -319,14 +319,53 @@ export function canvasXToRealMs(
 }
 
 /**
- * Sum of pane heights above `paneId`. For the candle pane (index 0) this
- * is 0. Returns 0 when the pane isn't mounted.
+ * Height of the separator lwc draws between panes, measured once per chart.
+ *
+ * `IPaneApi.getHeight()` reports the pane's own height and EXCLUDES the
+ * separator, so summing heights loses one separator per pane boundary. Measured
+ * on lwc 5.2: the drift is exactly `paneIndex × 1px` — 0/1/2/3/4 across a
+ * five-pane chart. By the 7th pane that reaches 6px, which is hline's entire
+ * HIT_THRESHOLD: a horizontal line on a low pane would stop being clickable
+ * where it is drawn.
+ *
+ * Measured rather than hardcoded — it is lwc's CSS, not our constant, and a
+ * `= 1` here would be a silent coupling that breaks on their next restyle.
+ * Cached per chart instance: `getBoundingClientRect` forces layout, and this is
+ * on the hit-test path which runs once per frame while hovering.
+ */
+const separatorHeightByChart = new WeakMap<IChartApi, number>();
+
+function paneSeparatorHeight(chart: IChartApi): number {
+  const cached = separatorHeightByChart.get(chart);
+  if (cached != null) return cached;
+  const panes = chart.panes();
+  // Fewer than two panes → no boundary to measure, and no drift to correct.
+  // Not cached: panes appear later and the measurement becomes possible.
+  if (panes.length < 2) return 0;
+  // Optional-called: `getHTMLElement` landed in lwc 5.2, and test stubs supply
+  // only the pane methods they exercise. Missing → fall back to no separator,
+  // which is exactly the pre-fix arithmetic.
+  const first = panes[0].getHTMLElement?.();
+  const second = panes[1].getHTMLElement?.();
+  if (!first || !second) return 0; // pre-mount, or a headless test stub
+  const gap =
+    second.getBoundingClientRect().top -
+    first.getBoundingClientRect().top -
+    panes[0].getHeight();
+  // Guard against a transient layout (mid-resize) reporting nonsense.
+  const measured = Number.isFinite(gap) && gap >= 0 && gap <= 8 ? gap : 0;
+  separatorHeightByChart.set(chart, measured);
+  return measured;
+}
+
+/**
+ * Sum of pane heights above `paneId`, plus the separators between them. For the
+ * candle pane (index 0) this is 0. Returns 0 when the pane isn't mounted.
  *
  * Why this exists: lightweight-charts v5's `series.priceToCoordinate` and
  * `coordinateToPrice` operate in **pane-local Y** (origin at the pane's
- * top, not the chart's top). Drawing renders into a chart-global canvas
- * — we must add the pane offset to land the pixel in the right place,
- * and subtract it before feeding a chart-global Y back to the series.
+ * top, not the chart's top). Pointer input arrives in chart-global Y, so it
+ * must be converted before reaching a series — and back again for hit-testing.
  */
 export function paneTopY(
   chart: IChartApi,
@@ -336,8 +375,9 @@ export function paneTopY(
   const idx = paneIdToIndex(paneSeries, paneId);
   if (idx < 0) return 0;
   const panes = chart.panes();
+  const separator = paneSeparatorHeight(chart);
   let top = 0;
-  for (let i = 0; i < idx && i < panes.length; i++) top += panes[i].getHeight();
+  for (let i = 0; i < idx && i < panes.length; i++) top += panes[i].getHeight() + separator;
   return top;
 }
 
@@ -464,13 +504,18 @@ export function paneIdAtY(
   const fallback = byIndex.get(0) ?? 'candle';
   const panes = chart.panes();
   if (panes.length === 0 || py < 0) return fallback;
+  const separator = paneSeparatorHeight(chart);
   let cursor = 0;
   for (let i = 0; i < panes.length; i++) {
-    const h = panes[i].getHeight();
-    if (py >= cursor && py < cursor + h) {
+    // Each separator counts as part of the pane ABOVE it. Leaving it out would
+    // open a 1px gap between panes that matches no branch, and a cursor landing
+    // exactly there would fall past the loop to the "below the chart" fallback
+    // — the bottom pane, possibly several panes away.
+    const span = panes[i].getHeight() + (i === panes.length - 1 ? 0 : separator);
+    if (py >= cursor && py < cursor + span) {
       return byIndex.get(i) ?? fallback;
     }
-    cursor += h;
+    cursor += span;
   }
   return byIndex.get(panes.length - 1) ?? fallback;
 }
@@ -490,8 +535,7 @@ export function clampYToPane(
   const idx = paneIdToIndex(paneSeries, paneId);
   if (idx < 0) return py;
   const panes = chart.panes();
-  let top = 0;
-  for (let i = 0; i < idx && i < panes.length; i++) top += panes[i].getHeight();
+  const top = paneTopY(chart, paneSeries, paneId);
   const h = panes[idx]?.getHeight() ?? 0;
   const bottom = top + h;
   return Math.max(top, Math.min(bottom - 1, py));
