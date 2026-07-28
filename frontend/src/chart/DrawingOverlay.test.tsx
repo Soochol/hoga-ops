@@ -88,6 +88,59 @@ describe('DrawingOverlay context menu', () => {
   });
 });
 
+describe('DrawingOverlay pointer-events 게이트 — select 진입 즉시 판정', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+  });
+
+  /**
+   * 그리기 도구를 우클릭으로 놓으면 커서는 방금 그린 도형 위에 멈춰 있다. 게이트가
+   * 무조건 'none' 으로 초기화하던 시절엔 그 도형이 **손을 움직이기 전까지** 클릭
+   * 불가라, select 모드가 안 걸린 것처럼 보여 사용자가 우클릭을 한 번 더 눌렀다
+   * (실제로 상태를 바꾼 건 두 번째 클릭이 아니라 그 사이의 마우스 흔들림이었다).
+   * 그래서 여기선 **mousemove 없이** 도구만 바꾸고 게이트를 확인한다.
+   */
+  function renderOverlay() {
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      }),
+      panes: () => [],
+    };
+    return render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={{ segments: [] } as never}
+        scope="005930|minute"
+        paneSeries={new Map()}
+      />,
+    );
+  }
+
+  it('도구 활성 중에는 오버레이가 포인터를 받는다', () => {
+    useDrawingsStore.getState().setActiveTool('pencil');
+    const { container } = renderOverlay();
+
+    const overlay = container.querySelector('[data-drawing-overlay]') as HTMLElement;
+    expect(overlay.style.pointerEvents).toBe('auto');
+  });
+
+  it('빈 곳에서 select 로 돌아오면 포인터를 차트에 넘긴다', () => {
+    useDrawingsStore.getState().setActiveTool('pencil');
+    const { container } = renderOverlay();
+    const overlay = container.querySelector('[data-drawing-overlay]') as HTMLElement;
+
+    // 커서 위치를 기억시킨 뒤(도형 없음 → hit 없음) 도구만 해제한다.
+    fireEvent.mouseMove(window, { clientX: 10, clientY: 10 });
+    act(() => {
+      useDrawingsStore.getState().setActiveTool('select');
+    });
+
+    expect(overlay.style.pointerEvents).toBe('none');
+  });
+});
+
 describe('DrawingOverlay text editor — pointer isolation', () => {
   beforeEach(() => {
     useDrawingsStore.getState().__resetForTests();

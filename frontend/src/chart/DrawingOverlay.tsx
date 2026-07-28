@@ -142,6 +142,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // Cursor position for the hline/vline placement preview (ghost line following
   // the mouse before the click commits). Null when not hovering with those tools.
   const previewCursorRef = useRef<{ px: number; py: number } | null>(null);
+  // Last known cursor position in CLIENT coords, tracked unconditionally. The
+  // pointer-events gate needs it to settle the moment select mode is entered —
+  // without a remembered position it can only wait for the next mousemove, and
+  // a cursor sitting still over a shape stays untouchable. See that effect.
+  const lastMouseRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const scheduleRef = useRef<() => void>(() => {});
   // Reassigned every render so the (empty-deps) keydown effect always calls the
   // latest closure over the current coordinate helpers — same pattern as
@@ -683,6 +688,19 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     }
   };
 
+  // Remember where the cursor is at all times (client coords). Deliberately
+  // separate from the gating effect below, which only lives while select mode
+  // is active — this one must keep recording *during* drawing so the gate has a
+  // position to settle against the instant the tool is released. Coordinates
+  // only, no layout reads or hit tests, so it stays cheap at OS sampling rates.
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      lastMouseRef.current = { clientX: e.clientX, clientY: e.clientY };
+    };
+    window.addEventListener('mousemove', onMove);
+    return () => window.removeEventListener('mousemove', onMove);
+  }, []);
+
   // ── pointer-events gating ──────────────────────────────────────────────
   useEffect(() => {
     const container = containerRef.current;
@@ -691,7 +709,25 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       container.style.pointerEvents = 'auto';
       return;
     }
-    container.style.pointerEvents = 'none';
+    const applyGate = (clientX: number, clientY: number) => {
+      const rect = container.getBoundingClientRect();
+      const px = clientX - rect.left;
+      const py = clientY - rect.top;
+      const hit =
+        px >= 0 && py >= 0 && px <= rect.width && py <= rect.height
+          ? hitTestAt(px, py)
+          : null;
+      container.style.pointerEvents = hit ? 'auto' : 'none';
+    };
+    // Settle immediately against the remembered cursor instead of blanking to
+    // 'none' and waiting for a mousemove. Right-clicking to leave a drawing
+    // tool leaves the cursor parked on the shape just drawn: with the old
+    // unconditional 'none', that shape stayed unclickable until the hand moved,
+    // so select mode looked like it hadn't engaged and users right-clicked
+    // again — the second click did nothing, the incidental mouse jiggle did.
+    const last = lastMouseRef.current;
+    if (last) applyGate(last.clientX, last.clientY);
+    else container.style.pointerEvents = 'none';
     // rAF-coalesce the global mousemove. Native mousemove fires at the OS
     // sampling rate (can exceed 1 kHz on high-poll-rate mice). Without
     // throttling, every event paid getBoundingClientRect() (forces layout),
@@ -709,14 +745,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         const ev = pendingEvent;
         pendingEvent = null;
         if (!ev) return;
-        const rect = container.getBoundingClientRect();
-        const px = ev.clientX - rect.left;
-        const py = ev.clientY - rect.top;
-        const hit =
-          px >= 0 && py >= 0 && px <= rect.width && py <= rect.height
-            ? hitTestAt(px, py)
-            : null;
-        container.style.pointerEvents = hit ? 'auto' : 'none';
+        applyGate(ev.clientX, ev.clientY);
       });
     };
     window.addEventListener('mousemove', onHover);

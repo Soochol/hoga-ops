@@ -21,17 +21,21 @@ import { useDrawingsStore } from '../../state/drawings';
  * 그리기 도구가 활성인 동안 화면 어디서든 우클릭 한 번에 select 로 되돌린다.
  * 그리기가 있는 페이지(/live·/study)에서 **한 번만** 호출한다 — 창마다 걸면
  * 리스너가 창 수만큼 붙는다(해제 자체는 멱등이라 결과는 같지만 낭비다).
+ *
+ * 활성 여부를 **구독하지 않고** 핸들러 안에서 getState 로 읽는다. `activeTool`을
+ * 구독하면 도구를 켜고 끌 때마다 호출한 페이지(LivePage/StudyPage) — 워크스페이스
+ * 트리 전체의 뿌리 — 가 리렌더된다. 해제는 우클릭 경로에서만 필요한 정보라 그
+ * 비용을 상시로 낼 이유가 없다. 리스너는 항상 살아 있지만 select 모드에선 첫 줄에서
+ * 빠져나가므로, 기존 우클릭 UI(관심종목·히트맵 행 메뉴)는 그대로 무손상이다.
  */
 export function useDrawingToolContextMenuReset(): void {
-  const drawing = useDrawingsStore((s) => s.activeTool !== 'select');
-
   useEffect(() => {
-    if (!drawing) return;
     const onContextMenu = (e: MouseEvent) => {
+      if (useDrawingsStore.getState().activeTool === 'select') return;
       e.preventDefault();
       useDrawingsStore.getState().setActiveTool('select');
     };
     window.addEventListener('contextmenu', onContextMenu);
     return () => window.removeEventListener('contextmenu', onContextMenu);
-  }, [drawing]);
+  }, []);
 }
