@@ -50,6 +50,8 @@ import {
   EMPTY_TRADE_SUMMARY,
   aggregateBrokerSeries,
   mergeBrokerSeriesWithLiveTail,
+  aggregateProgramTrade,
+  mergeProgramTradeWithLiveTail,
   latestOrderbookSnapshot,
   latestTradeSummary,
   orderbookSnapshotAtCursor,
@@ -492,6 +494,17 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const linked = link !== null && link.code === code;
+  // program(0w) WS 실시간 꼬리 — venue 는 useLiveSeries 시그니처 요구일 뿐 program 은
+  // venue 무관(백엔드가 KRX 만 발행, 내부 필터 없음). 5분 주기 번들의 program_trade
+  // (REST 본체)에 이 꼬리를 이어 거래원·10호가와 같은 즉시성으로 갱신한다 — 예전엔
+  // 번들만 봐서 최대 5분 지연됐다.
+  const venue = useLiveVenueStore((s) => s.venue);
+  const live = useLiveSeries(code, venue);
+  const liveTail = useMemo(() => aggregateProgramTrade(live.program), [live.program]);
+  const series = useMemo(
+    () => mergeProgramTradeWithLiveTail(link?.bundle?.program_trade ?? null, liveTail),
+    [link?.bundle?.program_trade, liveTail],
+  );
   // 당일 종가 오버레이 — 순매수와 같은 번들의 candles 를 그대로 넘긴다(카드가
   // anchorT 날짜로 잘라 쓴다). program_trade 와 형제 필드라 축이 정확히 맞는다.
   const closePoints = useMemo(
@@ -502,7 +515,7 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   return (
     <div className="h-full overflow-auto bg-bg-card">
       <ProgramTradeSummaryCard
-        series={link.bundle?.program_trade ?? null}
+        series={series}
         cursorMs={scope.kind === 'minute-cursor' ? scope.cursorMs : null}
         closePoints={closePoints}
       />

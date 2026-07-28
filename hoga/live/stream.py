@@ -351,12 +351,22 @@ class LiveStream:
         # 재생성되므로 표시·저장 모두 입구에서 드롭.
         if self._active_codes is not None and tick.code not in self._active_codes:
             return
-        # 프로그램매매(0w, PR-F4)는 표시 버퍼·JSONL 저장을 타지 않는다 — 최신값
-        # latch 에만 남기고 종료(ProgramTradeCollector 가 30초 주기로 drain →
-        # program_trade_store 병합). KRX 한정: 프로그램 수급은 KRX 집계 데이터다.
+        # 프로그램매매(0w, PR-F4)는 JSONL·집계·peak 저장 경로를 타지 않는다 — 최신값
+        # latch 에만 남겨 ProgramTradeCollector 가 30초 주기로 drain → program_trade_store
+        # 병합(디스크 본체는 계속 여기가 전담). 다만 **표시 버퍼**에는 실어 프론트가
+        # 실시간 꼬리로 소비한다(거래원 0F 대칭 — 0F 는 아래 일반 경로로 이미 publish
+        # 되지만 0w 는 저장 사이드카라 여기서 표시 몫만 따로 발행). publish 이후 return
+        # 하므로 저장·집계·peak(§ 아래 KRX 경로)에는 새지 않는다. KRX 한정: 프로그램
+        # 수급은 KRX 집계 데이터다.
         if tick.kind is SnapshotKind.PROGRAM:
             if tick.venue == "KRX":
                 program_trade_latch.update(tick.code, dict(tick.payload))
+                snap = LiveSnapshot(
+                    t_ms=tick.t_ms,
+                    kind=tick.kind,
+                    payload={**tick.payload, "venue": tick.venue},
+                )
+                await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
             return
         # phase 이중 스탬프(M1): 여기 phase는 **표시 스냅샷 전용** — 수신 벽시계
         # 기준 위상을 buffer 스냅에 박는다(tick.t_ms 거래소 시각이 아니라 도착

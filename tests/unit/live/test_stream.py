@@ -161,10 +161,14 @@ async def test_drain_seals_final_in_progress_candle(tmp_path):
     assert candles[0]["payload"]["close"] == 200
 
 
-async def test_program_tick_routes_to_latch_not_buffer_or_storage(tmp_path):
-    """PROGRAM(0w) 틱은 표시 버퍼·JSONL 저장을 타지 않고 latch 로만 간다(PR-F4).
+async def test_program_tick_routes_to_latch_and_display_but_not_storage(tmp_path):
+    """PROGRAM(0w) 틱은 latch(저장 본체) + 표시 버퍼로 가고 JSONL 저장은 안 탄다.
 
-    NXT venue 는 latch 에도 안 남는다 — 프로그램 수급은 KRX 집계 데이터.
+    표시 버퍼 발행은 프론트 실시간 꼬리용 — 이게 없으면 프로그램 창이 /api/range
+    번들(5분 주기)에만 의존해 최대 5분 지연된다(거래원·10호가와의 비대칭).
+    저장(JSONL·집계·peak)은 여전히 collector 사이드카 전담이다.
+
+    NXT venue 는 latch 에도 표시에도 안 남는다 — 프로그램 수급은 KRX 집계 데이터.
     """
     from hoga.live import program_trade_latch
     program_trade_latch.reset_for_tests()
@@ -189,7 +193,12 @@ async def test_program_tick_routes_to_latch_not_buffer_or_storage(tmp_path):
     assert set(latched) == {"005930"}          # KRX 만 latch
     assert latched["005930"]["net_qty"] == 50
     series = await buf.get_series("005930")
-    assert series["trades"] == [] and series["snapshots"] == []  # 버퍼 미진입
+    # ob/trade 로는 새지 않는다 — program 은 자기 kind 버킷에만 쌓인다.
+    assert series["trades"] == [] and series["snapshots"] == []
+    published = [e for e in buf._buf.get(("005930", "program"), [])]
+    assert len(published) == 1 and published[0]["net_qty"] == 50
+    assert published[0]["kind"] == "program" and published[0]["venue"] == "KRX"
+    assert ("000660", "program") not in buf._buf          # NXT 는 표시도 안 됨
     await stream.flush_once(now_ms=now + 10_000)
     assert not (tmp_path / "live" / "20260605" / "005930.jsonl").exists()  # 저장 미진입
     program_trade_latch.reset_for_tests()

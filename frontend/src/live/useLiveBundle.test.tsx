@@ -40,6 +40,7 @@ const liveFixture: LiveSeriesData = {
   ],
   trade: [],
   broker: [],
+  program: [],
 };
 
 const DEFAULT_CANDLE = { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 };

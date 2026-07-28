@@ -68,6 +68,9 @@ export interface LiveSeriesData {
   ob: ReadonlyArray<ObSnapshot>;
   trade: ReadonlyArray<TradeSnapshot>;
   broker: ReadonlyArray<Record<string, unknown>>;
+  // program(0w) 실시간 꼬리 — broker 와 같이 venue 필터를 거치지 않는 원본 버퍼.
+  // 프로그램 수급은 KRX 집계라 단일 venue 이므로 필터가 불필요(백엔드가 KRX 만 발행).
+  program: ReadonlyArray<Record<string, unknown>>;
 }
 
 /** Trailing-throttle window for coalescing live WS pushes into one buffer
@@ -79,6 +82,7 @@ const LIVE_FLUSH_MS = 150;
 const EMPTY_OB_SNAPSHOTS: ReadonlyArray<ObSnapshot> = Object.freeze([]);
 const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = Object.freeze([]);
 const EMPTY_BROKER_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
+const EMPTY_PROGRAM_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
 
 /**
  * useLiveSeries — initial REST fetch + WebSocket subscription for live snapshots.
@@ -187,6 +191,7 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
     ob,
     trade,
     broker: bufferVisible ? readKind(bufferRef.current, 'broker', tick) : EMPTY_BROKER_SNAPSHOTS,
+    program: bufferVisible ? readKind(bufferRef.current, 'program', tick) : EMPTY_PROGRAM_SNAPSHOTS,
   };
 }
 

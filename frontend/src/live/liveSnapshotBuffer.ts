@@ -31,9 +31,9 @@ function evictOld(arr: Array<{ t_ms: number }>, nowMs: number): void {
 // primary size bound; the count cap remains only as a runaway safeguard.
 export const MAX_BUFFER_PER_KIND = 60_000;
 
-export type SnapshotKind = 'ob' | 'trade' | 'broker';
+export type SnapshotKind = 'ob' | 'trade' | 'broker' | 'program';
 
-const KINDS: readonly SnapshotKind[] = ['ob', 'trade', 'broker'] as const;
+const KINDS: readonly SnapshotKind[] = ['ob', 'trade', 'broker', 'program'] as const;
 
 interface RawSnapshot {
   t_ms: number;
@@ -46,6 +46,7 @@ export class LiveSnapshotBuffer {
     ob: [],
     trade: [],
     broker: [],
+    program: [],
   };
   // Snapshot cache — returned by get() until the underlying kind is mutated.
   // Stable references let downstream useMemo(bundle) keep its identity across
@@ -56,6 +57,7 @@ export class LiveSnapshotBuffer {
     ob: Object.freeze([]),
     trade: Object.freeze([]),
     broker: Object.freeze([]),
+    program: Object.freeze([]),
   };
 
   private invalidate(k: SnapshotKind): void {
@@ -86,7 +88,12 @@ export class LiveSnapshotBuffer {
   }
 
   hydrate(initial: Partial<Record<SnapshotKind, RawSnapshot[]>>): void {
+    // payload 에 실린 kind 만 교체한다. /api/live/series 는 ob/trade/broker 만 주고
+    // program(0w)은 REST 하이드레이트 대상이 아니라 WS 로만 오는데, 전 kind 를 돌면
+    // 초기 쿼리가 리페치될 때마다(staleTime 60s) 누적된 program 실시간 꼬리가 빈
+    // 배열로 지워진다 — 다음 0w 틱(≤30s)까지 카드가 번들-only 로 후퇴한다.
     for (const k of KINDS) {
+      if (initial[k] === undefined) continue;
       const arr = initial[k] ?? [];
       // No time eviction on hydrate: backend eviction runs on the publish
       // path (LiveBuffer.publish, retention 900s) — get_series itself does
