@@ -6,9 +6,17 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { IChartApi } from 'lightweight-charts';
-import { renderDrawing, renderTrendlineDraft, formatMeasureLabel, type ProjectCtx, dashPattern } from './render';
+import {
+  renderDrawing,
+  renderHlinePriceBadge,
+  renderTrendlineDraft,
+  formatMeasureLabel,
+  type ProjectCtx,
+  dashPattern,
+} from './render';
+import { realMsToCanvasX, realMsToCanvasXClamped } from './chartCoordinates';
 import { createVirtualAxis } from '../../util/virtualAxis';
-import type { Hline, Measure, Text, Trendline } from './types';
+import type { Hline, Measure, Text, Trendline, Vline } from './types';
 import type { TrendlineDraft } from './tools';
 
 /** Build a context with all the canvas methods we touch spied. */
@@ -45,51 +53,54 @@ function makeCanvasSpy() {
   };
 }
 
-/** A ProjectCtx whose priceSeries always projects price → y=200.
- *  The chart stub returns a single candle pane (idx 0), so paneTopY
- *  is 0 and priceToCanvasY's pane-offset compensation is a no-op. */
+// ProjectCtx now takes its projection as injected closures rather than a chart
+// handle, so these stubs are plain functions instead of fake chart/series
+// objects. The one exception is makeGapCtx below, which deliberately drives the
+// REAL chartCoordinates helpers — the off-axis clamp it exercises is logic
+// worth integrating, not stubbing.
+
+/** A ProjectCtx that projects every price → y=200 and resolves no time. */
 function makeProjectCtx(): ProjectCtx {
-  const priceSeries = {
-    priceToCoordinate: vi.fn(() => 200),
-    coordinateToPrice: vi.fn(),
-  } as any;
   return {
-    chart: { panes: () => [{ getHeight: () => 400 }] } as unknown as IChartApi,
-    axis: {} as ProjectCtx['axis'],
-    paneSeries: new Map([['candle', priceSeries]]),
-    paneId: 'candle',
+    realMsToX: () => null,
+    realMsToXClamped: () => null,
+    priceToY: () => 200,
     width: 800,
-    height: 400,
+    paneBottom: 400,
+    paneId: 'candle',
+    axis: {} as ProjectCtx['axis'],
   };
 }
 
+/** Projects realMs → x as realMs/1000 and price → y as 300−price, over a
+ *  single 400px-tall pane. */
 function makeProjectCtxWithProjection(): ProjectCtx {
-  const priceSeries = {
-    priceToCoordinate: vi.fn((price: number) => 300 - price),
-    coordinateToPrice: vi.fn(),
-  };
   return {
-    chart: {
-      panes: () => [{ getHeight: () => 400 }],
-      timeScale: () => ({
-        timeToCoordinate: vi.fn((time: number) => time),
-      }),
-    } as unknown as IChartApi,
+    realMsToX: (realMs: number) => realMs / 1000,
+    realMsToXClamped: (realMs: number) => realMs / 1000,
+    priceToY: (price: number) => 300 - price,
+    width: 800,
+    paneBottom: 400,
+    paneId: 'candle',
     axis: {
       contains: () => true,
       toVirtual: (realMs: number) => realMs,
     } as unknown as ProjectCtx['axis'],
-    paneSeries: new Map([['candle', priceSeries]]) as unknown as ProjectCtx['paneSeries'],
-    paneId: 'candle',
-    width: 800,
-    height: 400,
   };
 }
 
-describe('renderHline price badge', () => {
+// The badge moved to the price-axis canvas when drawings became pane
+// primitives (the axis column is a separate surface there). `ctx.width` is
+// therefore the AXIS column's width, not the whole chart's.
+const AXIS_WIDTH = 58;
+function makeAxisCtx(): ProjectCtx {
+  return { ...makeProjectCtx(), width: AXIS_WIDTH };
+}
+
+describe('renderHlinePriceBadge', () => {
   it('paints the price formatted as ko-KR with thousand separators', () => {
     const c = makeCanvasSpy();
-    const ctx = makeProjectCtx();
+    const ctx = makeAxisCtx();
     const h: Hline = {
       id: 'h1',
       kind: 'hline',
@@ -99,75 +110,59 @@ describe('renderHline price badge', () => {
       lineStyle: 'solid',
       paneId: 'candle',
     };
-    renderDrawing(c, ctx, h, false);
+    renderHlinePriceBadge(c, ctx, h, false);
     const calls = (c.fillText as ReturnType<typeof vi.fn>).mock.calls;
     const labels = calls.map((args) => args[0] as string);
     expect(labels).toContain('74,500');
   });
 
-  it('positions the badge near the right edge (within 100px inset)', () => {
+  it('right-aligns the badge inside the axis column', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeAxisCtx();
+    const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
+    renderHlinePriceBadge(c, ctx, h, false);
+    const roundRectCalls = (c.roundRect as ReturnType<typeof vi.fn>).mock.calls;
+    expect(roundRectCalls.length).toBeGreaterThan(0);
+    // Args: (x, y, w, h, radius). measureText stub → 40, + 2*BADGE_PAD_X = 48
+    // wide, inset BADGE_INSET_RIGHT(8) from the axis's right edge → x = 2.
+    const [x, , w] = roundRectCalls[0] as [number, number, number, number, number];
+    expect(x).toBe(2);
+    expect(x + w).toBe(AXIS_WIDTH - 8);
+  });
+
+  it('is not drawn by the plot surface — only the line is', () => {
+    // Regression guard for the split: renderDrawing must no longer emit badge
+    // text, or the badge would be painted twice (once clipped inside the plot).
     const c = makeCanvasSpy();
     const ctx = makeProjectCtx();
     const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
     renderDrawing(c, ctx, h, false);
-    const roundRectCalls = (c.roundRect as ReturnType<typeof vi.fn>).mock.calls;
-    expect(roundRectCalls.length).toBeGreaterThan(0);
-    // The badge background roundRect (first such call when unselected).
-    // Args: (x, y, w, h, radius). Assert x is near the right edge.
-    const [x] = roundRectCalls[0] as [number, number, number, number, number];
-    expect(x).toBeGreaterThan(ctx.width - 100);
-    expect(x).toBeLessThan(ctx.width);
+    expect(c.moveTo).toHaveBeenCalledWith(0, 200);
+    expect((c.fillText as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
   });
 
   it('renders the ratio pane badge with one fraction digit', () => {
     // User decision 2026-05-25: integers everywhere EXCEPT the ratio
     // pane, whose −1..1 range collapses to "0" at integer resolution.
-    const ctx: ProjectCtx = {
-      ...makeProjectCtx(),
-      chart: {
-        panes: () => [
-          { getHeight: () => 400 },
-          { getHeight: () => 80 },
-          { getHeight: () => 80 },
-        ],
-      } as unknown as IChartApi,
-      paneSeries: new Map([['ratio', {
-        priceToCoordinate: vi.fn(() => 200),
-        coordinateToPrice: vi.fn(),
-      } as any]]),
-      paneId: 'ratio',
-    };
+    const ctx: ProjectCtx = { ...makeAxisCtx(), paneId: 'ratio' };
     const c = makeCanvasSpy();
     const h: Hline = {
       id: 'h_ratio', kind: 'hline', price: -0.34,
       color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'ratio',
     };
-    renderDrawing(c, ctx, h, false);
+    renderHlinePriceBadge(c, ctx, h, false);
     const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
     expect(labels.some((l) => l === '-0.3')).toBe(true);
   });
 
   it('rounds non-ratio indicator panes to integer (volume → no decimal)', () => {
-    const ctx: ProjectCtx = {
-      ...makeProjectCtx(),
-      chart: {
-        panes: () => [
-          { getHeight: () => 400 },
-          { getHeight: () => 80 },
-        ],
-      } as unknown as IChartApi,
-      paneSeries: new Map([['volume', {
-        priceToCoordinate: vi.fn(() => 200),
-        coordinateToPrice: vi.fn(),
-      } as any]]),
-      paneId: 'volume',
-    };
+    const ctx: ProjectCtx = { ...makeAxisCtx(), paneId: 'volume' };
     const c = makeCanvasSpy();
     const h: Hline = {
       id: 'h_vol', kind: 'hline', price: 12_345.7,
       color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'volume',
     };
-    renderDrawing(c, ctx, h, false);
+    renderHlinePriceBadge(c, ctx, h, false);
     const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
     expect(labels).toContain('12,346');
     expect(labels.every((l) => !l.includes('.'))).toBe(true);
@@ -175,15 +170,9 @@ describe('renderHline price badge', () => {
 
   it('does not paint a badge when the price scale is unavailable (y == null)', () => {
     const c = makeCanvasSpy();
-    const ctx: ProjectCtx = {
-      ...makeProjectCtx(),
-      paneSeries: new Map([['candle', {
-        priceToCoordinate: vi.fn(() => null),
-        coordinateToPrice: vi.fn(),
-      } as any]]),
-    };
+    const ctx: ProjectCtx = { ...makeAxisCtx(), priceToY: () => null };
     const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
-    renderDrawing(c, ctx, h, false);
+    renderHlinePriceBadge(c, ctx, h, false);
     expect((c.fillText as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
   });
 });
@@ -303,6 +292,66 @@ describe('renderTrendline delta label', () => {
   });
 });
 
+// Characterization tests for the vline, pinned down BEFORE the primitive
+// migration (ADR pending): a vline is the only Drawing that spans every pane,
+// and its time badge is the only element docked to the bottom of the pane
+// stack. Both are the most fragile things to move to pane-local rendering, and
+// both were previously untested. `makeProjectCtxWithProjection` projects
+// realMs → x as realMs/1000 and reports a single 400px-tall pane.
+describe('renderVline', () => {
+  const vline = (realMs: number): Vline => ({
+    id: 'v1', kind: 'vline', realMs,
+    color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+  });
+
+  it('spans the full pane stack from y=0 to the summed pane height', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtxWithProjection();
+    renderDrawing(c, ctx, vline(400_000), false);
+    expect(c.moveTo).toHaveBeenCalledWith(400, 0);
+    expect(c.lineTo).toHaveBeenCalledWith(400, 400);
+  });
+
+  it('docks a KST time badge to the bottom of the pane stack', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtxWithProjection();
+    renderDrawing(c, ctx, vline(400_000), false);
+    // 400_000ms epoch + 9h KST → 1970-01-01 09:06.
+    // Badge box: w = measureText(40) + 2*BADGE_PAD_X(4) = 48, h = 11 + 2*2 = 15.
+    // left = clamp(x - w/2) = 376; top = paneBottom(400) - h - 2 = 383.
+    // fillText lands at (left + BADGE_PAD_X, top + h/2).
+    expect((c.fillText as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
+      '01.01 09:06', 380, 390.5,
+    ]);
+  });
+
+  it('clamps the badge inside the right edge when the line is near it', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtxWithProjection();
+    renderDrawing(c, ctx, vline(790_000), false);
+    // Unclamped left would be 790 - 24 = 766, past width(800) - w(48) - 2 = 750.
+    const xs = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[1] as number);
+    expect(xs).toContain(754); // 750 + BADGE_PAD_X
+  });
+
+  it('clamps the badge inside the left edge when the line is near it', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtxWithProjection();
+    renderDrawing(c, ctx, vline(10_000), false);
+    // Unclamped left would be 10 - 24 = -14, so it pins to the 2px inset.
+    const xs = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[1] as number);
+    expect(xs).toContain(6); // 2 + BADGE_PAD_X
+  });
+
+  it('skips entirely when realMs is off the virtual axis', () => {
+    const c = makeCanvasSpy();
+    const ctx: ProjectCtx = { ...makeProjectCtxWithProjection(), realMsToX: () => null };
+    renderDrawing(c, ctx, vline(400_000), false);
+    expect(c.moveTo).not.toHaveBeenCalled();
+    expect((c.fillText as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+  });
+});
+
 describe('renderText off-axis anchor (dragged into an inter-session gap)', () => {
   // Two-session axis with a real gap: seg A [0,1000], seg B [100000,101000].
   // A text anchored at 50000 sits in the gap → off every segment. Pre-fix this
@@ -310,34 +359,37 @@ describe('renderText off-axis anchor (dragged into an inter-session gap)', () =>
   // the nearest boundary and paints there.
   const segA = { sessionOpenMs: 0, sessionCloseMs: 1_000, virtualStart: 0 };
   const segB = { sessionOpenMs: 100_000, sessionCloseMs: 101_000, virtualStart: 2_000 };
+  // Unlike the other stubs this one wires the REAL realMsToCanvasX(Clamped)
+  // into the ctx closures: the behaviour under test (an off-axis anchor snapping
+  // to the nearest session boundary) lives in chartCoordinates, so stubbing the
+  // projection here would assert nothing.
   function makeGapCtx(): ProjectCtx {
+    const chart = {
+      timeScale: () => ({
+        timeToCoordinate: (timeSec: number) => timeSec * 10,
+        coordinateToTime: () => null,
+        coordinateToLogical: (x: number) => x / 10,
+        logicalToCoordinate: (logical: number) => logical * 10,
+      }),
+    } as unknown as IChartApi;
+    const axis = {
+      segments: [segA, segB],
+      contains: (rm: number) =>
+        (rm >= segA.sessionOpenMs && rm <= segA.sessionCloseMs) ||
+        (rm >= segB.sessionOpenMs && rm <= segB.sessionCloseMs),
+      toVirtual: (rm: number) =>
+        rm <= segA.sessionCloseMs ? rm : rm - segB.sessionOpenMs + segB.virtualStart,
+      findByReal: (rm: number) =>
+        rm < segA.sessionOpenMs ? -1 : rm >= segB.sessionOpenMs && rm <= segB.sessionCloseMs ? 1 : 0,
+    } as unknown as ProjectCtx['axis'];
     return {
-      chart: {
-        panes: () => [{ getHeight: () => 400 }],
-        timeScale: () => ({
-          timeToCoordinate: (timeSec: number) => (timeSec * 1000 / 1000) * 10,
-          coordinateToTime: () => null,
-          coordinateToLogical: (x: number) => x / 10,
-          logicalToCoordinate: (logical: number) => logical * 10,
-        }),
-      } as unknown as IChartApi,
-      axis: {
-        segments: [segA, segB],
-        contains: (rm: number) =>
-          (rm >= segA.sessionOpenMs && rm <= segA.sessionCloseMs) ||
-          (rm >= segB.sessionOpenMs && rm <= segB.sessionCloseMs),
-        toVirtual: (rm: number) =>
-          rm <= segA.sessionCloseMs ? rm : rm - segB.sessionOpenMs + segB.virtualStart,
-        findByReal: (rm: number) =>
-          rm < segA.sessionOpenMs ? -1 : rm >= segB.sessionOpenMs && rm <= segB.sessionCloseMs ? 1 : 0,
-      } as unknown as ProjectCtx['axis'],
-      paneSeries: new Map([['candle', {
-        priceToCoordinate: vi.fn(() => 200),
-        coordinateToPrice: vi.fn(),
-      } as any]]) as unknown as ProjectCtx['paneSeries'],
-      paneId: 'candle',
+      realMsToX: (rm: number) => realMsToCanvasX(chart, axis, rm),
+      realMsToXClamped: (rm: number) => realMsToCanvasXClamped(chart, axis, rm),
+      priceToY: () => 200,
       width: 800,
-      height: 400,
+      paneBottom: 400,
+      paneId: 'candle',
+      axis,
     };
   }
 

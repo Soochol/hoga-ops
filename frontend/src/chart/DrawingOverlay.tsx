@@ -11,15 +11,12 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { useIsFocusedWindow } from '../live/workspace/windowView';
 import { useDrawingsStore } from '../state/drawings';
+import { textFont, measureTextWidth, type GhostPreview } from './drawing/render';
 import {
-  renderDrawing,
-  renderTrendlineDraft,
-  renderRectDraft,
-  renderMeasureDraft,
-  textFont,
-  measureTextWidth,
-  type ProjectCtx,
-} from './drawing/render';
+  DrawingsPrimitive,
+  type DrawingsSnapshot,
+  type DrawingsSource,
+} from './DrawingsPrimitive';
 import type { Drawing, PaneId, Point } from './drawing/types';
 import { INITIAL_STYLE, isDrawingKind } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
@@ -117,7 +114,6 @@ const EMPTY_DRAWINGS: Drawing[] = [];
 
 export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChartHoverPassthrough, bucketMs, candles }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const drawings = useDrawingsStore((s) =>
@@ -139,18 +135,22 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const rectDraft = useRef<RectDraft | null>(null);
   const measureDraft = useRef<MeasureDraft | null>(null);
   const dragRef = useRef<DragMode | null>(null);
-  // Cursor position for the hline/vline placement preview (ghost line following
-  // the mouse before the click commits). Null when not hovering with those tools.
-  const previewCursorRef = useRef<{ px: number; py: number } | null>(null);
+  // One primitive per mounted pane — the actual renderers. See DrawingsPrimitive.ts.
+  const primitivesRef = useRef<Map<PaneId, DrawingsPrimitive>>(new Map());
+  // hline/vline placement preview, in DOMAIN coordinates (price / realMs) with
+  // magnet snapping already resolved, so each pane's primitive can project it.
+  // Null when not hovering with those tools.
+  const ghostRef = useRef<GhostPreview | null>(null);
   // Last known cursor position in CLIENT coords, tracked unconditionally. The
   // pointer-events gate needs it to settle the moment select mode is entered —
   // without a remembered position it can only wait for the next mousemove, and
   // a cursor sitting still over a shape stays untouchable. See that effect.
   const lastMouseRef = useRef<{ clientX: number; clientY: number } | null>(null);
-  const scheduleRef = useRef<() => void>(() => {});
+  // Reassigned every render so primitives always read current state at draw time.
+  const snapshotRef = useRef<() => DrawingsSnapshot | null>(() => null);
   // Reassigned every render so the (empty-deps) keydown effect always calls the
   // latest closure over the current coordinate helpers — same pattern as
-  // scheduleRef. Set just before the return.
+  // snapshotRef. Set just before the return.
   const duplicateSelectedRef = useRef<() => void>(() => {});
 
   // Text editing — a DOM <input> rendered over the canvas (IME-safe).
@@ -179,206 +179,102 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     if (scopeRef.current != null) useDrawingsStore.getState().setSelected(scopeRef.current, newId);
   }, []);
 
-  // ── redraw loop ────────────────────────────────────────────────────────
+  // ── primitive-backed rendering ─────────────────────────────────────────
+  // Drawings are painted by lightweight-charts pane primitives, not by a canvas
+  // of our own. A canvas repainted from subscribeVisibleLogicalRangeChange →
+  // requestAnimationFrame is STRUCTURALLY one frame behind the candles, because
+  // that delegate fires from inside lwc's own rAF callback (measured 18.4–20.2ms
+  // of lag). See DrawingsPrimitive.ts. This overlay now owns only pointer input,
+  // hit-testing and the text editor.
+
+  /** Ask every mounted primitive to repaint — for draft/ghost mutations, which
+   *  happen on refs and are therefore invisible to React. */
+  const requestRedraw = useCallback(() => {
+    for (const prim of primitivesRef.current.values()) prim.requestUpdate();
+  }, []);
+
+  // Attach one primitive per mounted pane. deps = [paneSeries] ONLY: folding
+  // style or drawing data in here would re-attach on every change and flicker.
   useEffect(() => {
-    const ts = chart.timeScale();
-    let raf = 0;
-    const schedule = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(draw);
-    };
-    scheduleRef.current = schedule;
-    const draw = () => {
-      const canvas = canvasRef.current;
-      const container = containerRef.current;
-      if (!canvas || !container) return;
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      const dpr = window.devicePixelRatio || 1;
-      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-        canvas.style.width = `${w}px`;
-        canvas.style.height = `${h}px`;
+    const attached = new Map<PaneId, DrawingsPrimitive>();
+    for (const [paneId, series] of paneSeries) {
+      const prim = new DrawingsPrimitive(paneId);
+      try {
+        series.attachPrimitive(prim);
+        attached.set(paneId, prim);
+      } catch {
+        // series belongs to an already torn-down chart — skip it.
       }
-      const c = canvas.getContext('2d');
-      if (!c) return;
-      c.setTransform(dpr, 0, 0, dpr, 0, 0);
-      c.clearRect(0, 0, w, h);
-
-      // Hidden layer: canvas is cleared above, so an early return leaves nothing
-      // drawn (the drafts below also skip since no gesture runs while hidden).
-      if (defaults.hiddenAll) return;
-
-      const panes = chart.panes();
-      const paneTops: number[] = [];
-      {
-        let acc = 0;
-        for (const p of panes) {
-          paneTops.push(acc);
-          acc += p.getHeight();
-        }
-      }
-
-      const clipAndRender = (paneId: PaneId, body: (ctx: ProjectCtx) => void) => {
-        const idx = paneIdToIndex(paneSeries, paneId);
-        if (idx < 0 || idx >= panes.length) return; // pane toggled off → skip
-        const top = paneTops[idx];
-        const paneH = panes[idx].getHeight();
-        c.save();
-        c.beginPath();
-        c.rect(0, top, w, paneH);
-        c.clip();
-        const projCtx: ProjectCtx = {
-          chart, axis, paneSeries, paneId, width: w, height: h, bucketMs, lastRealMs,
-        };
-        body(projCtx);
-        c.restore();
-      };
-
-      // A vline spans every pane, so it renders un-clipped and independent of
-      // its origin pane's series being mounted — handled BEFORE the per-drawing
-      // pane guard below. Any pane's series will do for the ProjectCtx (vline
-      // render ignores it).
-      const anyPaneId = drawings.length > 0 ? [...paneSeries.keys()][0] : undefined;
-      const renderVlines = () => {
-        if (anyPaneId == null) return;
-        const projCtx: ProjectCtx = {
-          chart, axis, paneSeries, paneId: anyPaneId, width: w, height: h, bucketMs, lastRealMs,
-        };
-        for (const d of drawings) {
-          if (d.kind !== 'vline') continue;
-          renderDrawing(c, projCtx, d, d.id === selectedId);
-        }
-      };
-
-      for (const d of drawings) {
-        if (d.kind === 'vline') continue; // rendered separately (un-clipped)
-        if (!paneSeries.has(d.paneId)) continue;  // pane absent → silent skip
-        clipAndRender(d.paneId, (projCtx) => {
-          renderDrawing(c, projCtx, d, d.id === selectedId);
-        });
-      }
-      renderVlines();
-
-      const trendDraft = trendlineDraft.current;
-      if (trendDraft?.b) {
-        clipAndRender(trendDraft.paneId, (projCtx) => {
-          renderTrendlineDraft(c, projCtx, trendDraft, defaults.styleByKind.trendline);
-        });
-      }
-
-      const rDraft = rectDraft.current;
-      if (rDraft?.b) {
-        clipAndRender(rDraft.paneId, (projCtx) => {
-          renderRectDraft(c, projCtx, rDraft.a, rDraft.b!, defaults.styleByKind.rect);
-        });
-      }
-
-      const mDraft = measureDraft.current;
-      if (mDraft?.b) {
-        clipAndRender(mDraft.paneId, (projCtx) => {
-          renderMeasureDraft(c, projCtx, mDraft.a, mDraft.b!);
-        });
-      }
-
-      // hline / vline placement preview — a faint dashed ghost line at the cursor
-      // that follows the mouse until the click commits. Only for the 1-click line
-      // tools (drag tools already show a live draft). When magnet is on the ghost
-      // SNAPS to the candle it will commit to, so the snap is visible before the
-      // click. A small dot marks the snapped level.
-      const preview = previewCursorRef.current;
-      const magnetActive = defaults.magnet && candles != null && candles.length > 0;
-      if (preview && (activeTool === 'hline' || activeTool === 'vline')) {
-        let paneBottom = 0;
-        for (const p of panes) paneBottom += p.getHeight();
-        let px = preview.px;
-        let py = preview.py;
-        let snappedDot: { x: number; y: number } | null = null;
-        if (magnetActive) {
-          if (activeTool === 'hline') {
-            const paneId = projPaneIdAtY(chart, paneSeries, preview.py);
-            if (paneId === 'candle') {
-              const raw = projPixelToData(chart, axis, paneSeries, paneId, preview.px, preview.py, futureBand);
-              if (raw) {
-                const snapped = snapPoint(raw, {
-                  candles: candles!,
-                  paneId,
-                  priceToY: (pr) => projPriceToCanvasY(chart, paneSeries, paneId, pr),
-                });
-                const sy = projPriceToCanvasY(chart, paneSeries, paneId, snapped.price);
-                if (sy != null) { py = sy; snappedDot = { x: preview.px, y: sy }; }
-              }
-            }
-          } else {
-            const rawMs = projCanvasXToRealMs(chart, axis, preview.px, futureBand);
-            if (rawMs != null) {
-              const sx = projRealMsToCanvasX(chart, axis, snapRealMs(candles!, rawMs), futureBand);
-              if (sx != null) { px = sx; snappedDot = { x: sx, y: preview.py }; }
-            }
-          }
-        }
-        const ghostStyle = defaults.styleByKind[activeTool];
-        c.save();
-        c.strokeStyle = ghostStyle.color;
-        c.globalAlpha = 0.6;
-        c.lineWidth = ghostStyle.width;
-        c.setLineDash([5, 4]);
-        c.beginPath();
-        if (activeTool === 'hline') {
-          c.moveTo(0, py);
-          c.lineTo(w, py);
-        } else {
-          c.moveTo(px, 0);
-          c.lineTo(px, paneBottom);
-        }
-        c.stroke();
-        c.restore();
-        if (snappedDot) {
-          c.save();
-          c.fillStyle = ghostStyle.color;
-          c.beginPath();
-          c.arc(snappedDot.x, snappedDot.y, 3.5, 0, Math.PI * 2);
-          c.fill();
-          c.restore();
-        }
-      }
-
-      // Live pencil draft preview — clipped to its origin pane.
-      const draft = pencilDraft.current;
-      if (draft && draft.points.length >= 2) {
-        clipAndRender(draft.paneId, (projCtx) => {
-          renderDrawing(
-            c,
-            projCtx,
-            {
-              id: '__draft__',
-              kind: 'pencil',
-              points: draft.points,
-              color: defaults.styleByKind.pencil.color,
-              width: defaults.styleByKind.pencil.width,
-              lineStyle: defaults.styleByKind.pencil.lineStyle,
-              paneId: draft.paneId,
-            },
-            false,
-          );
-        });
-      }
-    };
-
-    ts.subscribeVisibleLogicalRangeChange(schedule);
-    const ro =
-      containerRef.current && typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(schedule)
-        : null;
-    if (ro && containerRef.current) ro.observe(containerRef.current);
-    schedule();
+    }
+    primitivesRef.current = attached;
     return () => {
-      cancelAnimationFrame(raf);
-      ts.unsubscribeVisibleLogicalRangeChange(schedule);
-      ro?.disconnect();
+      for (const [paneId, prim] of attached) {
+        try {
+          paneSeries.get(paneId)?.detachPrimitive(prim);
+        } catch {
+          // chart already gone — nothing to detach from.
+        }
+      }
+      primitivesRef.current = new Map();
     };
-  }, [chart, axis, paneSeries, drawings, selectedId, scope, defaults, bucketMs, lastRealMs, activeTool]);
+  }, [paneSeries]);
+
+  // Reassigned every render so the getter closes over current props/state.
+  // Pull-based rather than pushing a snapshot: drafts and the cursor ghost
+  // mutate on refs at pointer cadence, and a missed push would paint a stale
+  // stroke. See DrawingsSource.
+  // Bottom-most mounted pane: it owns the vline time badge, which docks to the
+  // bottom of the pane STACK while the line itself is drawn by every pane.
+  // Resolved from live pane indices so toggling a pane moves ownership.
+  let timeBadgePaneId: PaneId | null = null;
+  let bottomPaneIdx = -1;
+  for (const paneId of paneSeries.keys()) {
+    const idx = paneIdToIndex(paneSeries, paneId);
+    if (idx > bottomPaneIdx) {
+      bottomPaneIdx = idx;
+      timeBadgePaneId = paneId;
+    }
+  }
+
+  snapshotRef.current = () => ({
+    drawings,
+    selectedId,
+    hiddenAll: defaults.hiddenAll,
+    axis,
+    timeBadgePaneId,
+    future: futureBand,
+    bucketMs,
+    lastRealMs,
+    drafts: {
+      trendline: trendlineDraft.current,
+      rect: rectDraft.current,
+      measure: measureDraft.current,
+      pencil: pencilDraft.current,
+    },
+    draftStyles: {
+      trendline: defaults.styleByKind.trendline,
+      rect: defaults.styleByKind.rect,
+      pencil: defaults.styleByKind.pencil,
+    },
+    ghost: ghostRef.current,
+    onFrame: textEdit ? syncTextEditorPosition : undefined,
+  });
+
+  // Wire the source and repaint on every React-visible change. `paneSeries` is
+  // a dep so a re-attach re-wires the freshly created primitives.
+  useEffect(() => {
+    const source: DrawingsSource = () => snapshotRef.current();
+    for (const prim of primitivesRef.current.values()) prim.setSource(source);
+  }, [paneSeries, drawings, selectedId, defaults, axis, bucketMs, lastRealMs]);
+
+  // Drop the ghost when switching away from the 1-click line tools.
+  useEffect(() => {
+    if (activeTool !== 'hline' && activeTool !== 'vline' && ghostRef.current) {
+      ghostRef.current = null;
+      requestRedraw();
+    }
+  }, [activeTool, requestRedraw]);
+
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
@@ -569,6 +465,50 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     setTextValue('');
   };
 
+  /**
+   * Resolve the hline/vline placement ghost for a cursor position, in DOMAIN
+   * coordinates. Magnet snapping is applied HERE rather than in the renderer:
+   * the ghost has to commit to exactly the value the click will persist, and
+   * the snap needs candles + the chart-global pane lookup that only the overlay
+   * has. Each pane's primitive then just projects the result.
+   */
+  const computeGhost = (px: number, py: number): GhostPreview | null => {
+    if (activeTool !== 'hline' && activeTool !== 'vline') return null;
+    const cursorPaneId = paneIdAtY(py);
+    const style = defaults.styleByKind[activeTool];
+    const magnetActive = defaults.magnet && candles != null && candles.length > 0;
+    const cursorPrice = canvasYToPrice(py, cursorPaneId);
+
+    if (activeTool === 'hline') {
+      let price = cursorPrice;
+      let snapped = false;
+      // Magnet on the candle pane only — indicator panes have no OHLC to snap to.
+      if (magnetActive && cursorPaneId === 'candle') {
+        const raw = rawPixelToData(px, py, cursorPaneId);
+        if (raw) {
+          price = snapPoint(raw, {
+            candles: candles!,
+            paneId: cursorPaneId,
+            priceToY: (pr) => priceToCanvasY(pr, cursorPaneId),
+          }).price;
+          // Dot whenever magnet is engaged, even if it resolved to the cursor's
+          // own level — it signals "this is what will be committed".
+          snapped = true;
+        }
+      }
+      return { kind: 'hline', style, cursorPx: px, cursorPaneId, price, realMs: null, snapped };
+    }
+
+    const rawMs = rawCanvasXToRealMs(px);
+    let realMs = rawMs;
+    let snapped = false;
+    if (magnetActive && rawMs != null) {
+      realMs = snapRealMs(candles!, rawMs);
+      snapped = true;
+    }
+    return { kind: 'vline', style, cursorPx: px, cursorPaneId, price: cursorPrice, realMs, snapped };
+  };
+
   const buildCtx = (e: React.PointerEvent<HTMLDivElement>): ToolCtx => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const target = e.currentTarget as HTMLDivElement;
@@ -604,7 +544,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       measureDraft,
       dragRef,
       beginTextEdit,
-      requestRedraw: () => scheduleRef.current(),
+      requestRedraw,
       add: (d) => { if (scope != null) useDrawingsStore.getState().add(scope, d); },
       update: (id, patch) => { if (scope != null) useDrawingsStore.getState().update(scope, id, patch); },
       remove: (id) => { if (scope != null) useDrawingsStore.getState().remove(scope, id); },
@@ -637,8 +577,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     onChartHoverPassthrough?.({ x: px, y: py });
     // Track the cursor for the hline/vline ghost-line preview and repaint.
     if (activeTool === 'hline' || activeTool === 'vline') {
-      previewCursorRef.current = { px, py };
-      scheduleRef.current();
+      ghostRef.current = computeGhost(px, py);
+      requestRedraw();
     }
     TOOLS[activeTool].onPointerMove?.(buildCtx(e));
   };
@@ -647,9 +587,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   };
   const onPointerLeave = () => {
     // Drop the ghost preview when the cursor leaves the chart.
-    if (previewCursorRef.current) {
-      previewCursorRef.current = null;
-      scheduleRef.current();
+    if (ghostRef.current) {
+      ghostRef.current = null;
+      requestRedraw();
     }
   };
   // Abandon any in-flight gesture. Shared by pointercancel (touch interrupted,
@@ -852,13 +792,27 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // tracks the data if the chart shifts; falls back to the raw click pixels so
   // the input ALWAYS appears where the user clicked, even if the anchor can't
   // be projected (empty band, transient scale state).
-  const textEditPos = textEdit
-    ? (() => {
-        const x = realMsToCanvasXClamped(textEdit.at.realMs);
-        const y = priceToCanvasY(textEdit.at.price, textEdit.paneId);
-        return x != null && y != null ? { x, y } : { x: textEdit.px, y: textEdit.py };
-      })()
-    : null;
+  const textEditorPoint = (edit: TextEdit) => {
+    const x = realMsToCanvasXClamped(edit.at.realMs);
+    const y = priceToCanvasY(edit.at.price, edit.paneId);
+    return x != null && y != null ? { x, y } : { x: edit.px, y: edit.py };
+  };
+  const textEditPos = textEdit ? textEditorPoint(textEdit) : null;
+
+  /**
+   * Reposition the open editor from inside lwc's frame (via DrawingsSnapshot's
+   * `onFrame`). A pan mutates only the time scale — React never re-renders — so
+   * the render-time `textEditPos` above would freeze the input where it opened
+   * while the candles slid out from under it. Writing `transform` directly
+   * skips React and costs no layout.
+   */
+  const syncTextEditorPosition = () => {
+    const el = textInputRef.current;
+    const edit = textEditRef.current;
+    if (!el || !edit) return;
+    const p = textEditorPoint(edit);
+    el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+  };
 
   return (
     <div
@@ -873,7 +827,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
     >
-      <canvas ref={canvasRef} className="absolute inset-0" />
+
       {textEdit && textEditPos && (
         <input
           ref={textInputRef}
@@ -911,8 +865,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           placeholder="텍스트…"
           className="absolute z-30 rounded border border-accent bg-bg-card px-1 py-0 text-fg outline-none"
           style={{
-            left: textEditPos.x,
-            top: textEditPos.y,
+            // Positioned by transform, not left/top: `syncTextEditorPosition`
+            // rewrites it every lwc frame so the box tracks its anchor during a
+            // pan. These are the opening coordinates.
+            left: 0,
+            top: 0,
+            transform: `translate(${textEditPos.x}px, ${textEditPos.y}px)`,
             font: textFont(textEdit.fontSize),
             pointerEvents: 'auto',
             minWidth: '4rem',

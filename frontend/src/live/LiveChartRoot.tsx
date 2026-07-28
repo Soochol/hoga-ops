@@ -461,7 +461,7 @@ export function LiveChartRoot({
   // panel-anchor computation) live in their own hook so this file stays
   // focused on chart bootstrap, viewport policy, and overlay mounts.
   const { paneSeries, registerPaneSeries, unregisterPaneSeries } =
-    useDrawingHost(chart, axis, drawingScope, containerRef);
+    useDrawingHost(chart, drawingScope);
   // Stable per-(un)register callbacks so RangeSeriesPane's React.memo (Phase B)
   // can skip candle/volume panes on an SSE tick. RangeSeriesPane passes the
   // pane name back, so one callback serves all panes (vs a per-pane closure that

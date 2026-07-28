@@ -7,6 +7,26 @@
 // (origin at the pane's top, not the chart's top), so `priceToCanvasY` adds
 // `paneTopY(paneId)` and `canvasYToPrice` subtracts it before round-trip.
 //
+// TWO COORDINATE SYSTEMS live side by side, and the distinction matters:
+//   - RENDERING is done by pane primitives (DrawingsPrimitive.ts), which draw
+//     on the pane's own canvas in PANE-LOCAL Y — they call
+//     `series.priceToCoordinate` directly and never touch anything here.
+//   - POINTER INPUT / HIT-TESTING still happens on the DOM overlay, which spans
+//     the whole chart element, so everything in THIS file is CHART-GLOBAL:
+//     `priceToCanvasY` adds `paneTopY`, `paneIdAtY` walks the stack, and
+//     `canvasWidth` includes the price-axis column.
+// Do not feed a value from one system into the other without converting.
+//
+// KNOWN 1px DRIFT below the first pane: `paneTopY` sums `getHeight()`, which
+// excludes the 1px separator lwc draws between panes (measured on lwc 5.2 with
+// a candle+volume layout: naive sum 419, actual canvas top 420). Rendering no
+// longer has this error — a primitive draws on the pane's own canvas — so on
+// the 2nd pane and below, hit-testing is 1px above where the drawing appears.
+// That is far inside every HIT_THRESHOLD (6–8px), so it is a precision nit, not
+// a "visible but ungrabbable" bug. Fixing it means either hardcoding the
+// separator height (a fresh coupling to lwc's CSS) or measuring pane canvas
+// offsets from the DOM; neither is worth it until the drift actually bites.
+//
 // Pane index is resolved at RUNTIME from `paneSeries` — each registered
 // primary series reports its live pane via `getPane().paneIndex()` (LWC v5.2).
 // This tracks conditionally-mounted panes (volume off, daily-only investor
@@ -296,15 +316,6 @@ export function canvasXToRealMs(
   // Empty band: coordinateToTime is null past the last bar → extrapolate.
   if (future && future.bucketMs > 0) return extrapolateFutureRealMs(chart, axis, px, future);
   return null;
-}
-
-/** Total height of all mounted panes (excludes the time-axis strip below).
- *  A vertical line spans this — not the full canvas, which would cross the
- *  axis labels. */
-export function totalPanesHeight(chart: IChartApi): number {
-  let h = 0;
-  for (const p of chart.panes()) h += p.getHeight();
-  return h;
 }
 
 /**
