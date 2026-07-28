@@ -3,6 +3,8 @@ import type {
   BrokerSeriesPoint,
   OrderbookLevel,
   OrderbookSnapshot,
+  ProgramTradePoint,
+  ProgramTradeSeries,
 } from '../api/types';
 import { isContinuousBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
 import { liveVenueAcceptsFrame } from './liveVenuePolicy';
@@ -310,4 +312,57 @@ export function aggregateBrokerSeries(broker: readonly RawSnapshot[]): BrokerSer
 
   entries.sort((a, b) => b.final_net - a.final_net);
   return entries;
+}
+
+/**
+ * WS `program`(0w) 원본 스냅샷을 ProgramTradePoint[] 로 집계한다. 백엔드
+ * kiwoom_frames._parse_program payload({t_ms, net_qty, net_amount, …})가 프론트
+ * point 필드와 1:1 대응이라, t_ms→t 리네이밍과 gap_risk=false(실시간 관측이므로
+ * 공백이 아님)만 붙이면 된다. delta_qty/delta_amount 는 카드가 소비하지 않고
+ * (파생값은 저장 경로 collector 의 flush-간 diff 몫), 실시간 꼬리엔 원래 없는
+ * 필드라 채우지 않는다. t_ms 오름차순은 버퍼(append-only)가 보장한다.
+ */
+export function aggregateProgramTrade(
+  program: readonly RawSnapshot[],
+): ProgramTradePoint[] {
+  const out: ProgramTradePoint[] = [];
+  for (const snap of program) {
+    const t = snap.t_ms;
+    if (typeof t !== 'number') continue;
+    const netQty = snap.net_qty;
+    const netAmount = snap.net_amount;
+    out.push({
+      t,
+      net_qty: typeof netQty === 'number' ? netQty : null,
+      net_amount: typeof netAmount === 'number' ? netAmount : null,
+      gap_risk: false,
+    });
+  }
+  return out;
+}
+
+/**
+ * 프로그램 순매수 REST 본체(/api/range 번들, 5분 주기)에 WS 실시간 꼬리를 잇는다 —
+ * mergeBrokerSeriesWithLiveTail 의 단일-배열 판(프로그램은 종목당 단일 시리즈라
+ * broker 의 broker별 Map/seam 이 불필요하다). 이음매(seam)는 본체 마지막 관측 t,
+ * 그 이후의 tail 만 이어붙여 중복을 없앤다. 본체가 비면 tail 전체를 쓴다.
+ *
+ * 사이징 근거는 broker 와 동일: 수집기 drain(30초) + 번들 리페치(5분) 지연을
+ * WS 버퍼(15분 RETENTION_MS)가 여유 있게 덮어 이음매에 구멍이 없다.
+ *
+ * tail 이 비면 본체 원본을 그대로 반환한다 — 참조 안정성을 지켜 소비처 memo 가
+ * 유지되도록(장 시작 전·재접속 직후 버퍼가 빈 흔한 경우).
+ */
+export function mergeProgramTradeWithLiveTail(
+  parquet: ProgramTradeSeries | null | undefined,
+  liveTail: readonly ProgramTradePoint[],
+): ProgramTradeSeries {
+  const base = parquet?.points ?? [];
+  if (base.length === 0) return { points: [...liveTail], source: parquet?.source };
+
+  let seamMs = -Infinity;
+  for (const p of base) if (p.t > seamMs) seamMs = p.t;
+  const tail = liveTail.filter((p) => p.t > seamMs);
+  if (tail.length === 0) return parquet ?? { points: [...base] };
+  return { points: [...base, ...tail], source: parquet?.source };
 }
