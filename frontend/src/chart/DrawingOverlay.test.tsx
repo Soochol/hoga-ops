@@ -88,6 +88,81 @@ describe('DrawingOverlay context menu', () => {
   });
 });
 
+describe('DrawingOverlay Alt+C — 모두 지우기', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+
+  beforeEach(() => {
+    localStorage.clear();
+    s().__resetForTests();
+  });
+
+  function renderOverlay() {
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      }),
+      panes: () => [],
+    };
+    return render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={{ segments: [] } as never}
+        scope={SCOPE}
+        paneSeries={new Map()}
+      />,
+    );
+  }
+
+  function altC() {
+    return fireEvent.keyDown(window, { key: 'c', altKey: true });
+  }
+
+  const hline = { id: 'h1', kind: 'hline', price: 100, paneId: 'candle' } as never;
+
+  // 단축키가 곧장 지우면 오타 한 번이 그림 전체를 날린다. 메뉴 항목과 똑같이
+  // 확인 요청까지만 간다.
+  it('요청만 내고 지우지는 않는다', () => {
+    s().importDrawings(SCOPE, [hline]);
+    renderOverlay();
+
+    altC();
+
+    expect(s().clearConfirm).toEqual({ scope: SCOPE, count: 1 });
+    expect(s().drawingsFor(SCOPE)).toHaveLength(1);
+  });
+
+  it('지울 게 없으면 팝업도 뜨지 않는다', () => {
+    renderOverlay();
+    altC();
+    expect(s().clearConfirm).toBeNull();
+  });
+
+  // 확인 팝업이 떠 있는 동안 차트는 키를 먹지 않는다 — 모달 뒤에서 도구가
+  // 바뀌거나 선택이 지워지면 사용자가 못 본 변경이 쌓인다.
+  it('팝업이 떠 있는 동안엔 다른 단축키도 무시한다', () => {
+    s().importDrawings(SCOPE, [hline]);
+    renderOverlay();
+    altC();
+
+    fireEvent.keyDown(window, { key: 'b', altKey: true }); // 연필 단축키
+    expect(s().activeTool).toBe('select');
+  });
+
+  // Ctrl/Meta 조합은 브라우저 몫 — 도구 단축키와 같은 규칙을 따른다.
+  it('Ctrl/Meta 가 함께 눌린 Alt+C 는 무시한다', () => {
+    s().importDrawings(SCOPE, [hline]);
+    renderOverlay();
+
+    fireEvent.keyDown(window, { key: 'c', altKey: true, ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'c', altKey: true, metaKey: true });
+    fireEvent.keyDown(window, { key: 'c' }); // Alt 없이
+
+    expect(s().clearConfirm).toBeNull();
+  });
+});
+
 describe('DrawingOverlay pointer-events 게이트 — select 진입 즉시 판정', () => {
   beforeEach(() => {
     useDrawingsStore.getState().__resetForTests();

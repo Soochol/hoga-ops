@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SavedScreener } from '../api/savedScreeners';
 import { useSavedScreeners } from './useSavedScreeners';
-import { ConfirmModal } from './ConfirmModal';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import { suggestSaveName } from './suggestName';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useDismissablePopover } from '../util/useDismissablePopover';

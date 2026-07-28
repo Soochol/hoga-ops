@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { ModalShell } from '../ui/ModalShell';
+import { ModalShell } from './ModalShell';
 
 // Presentational center confirm modal. Mirrors the LiveSettingsModal /
 // IndicatorPanel pattern (backdrop + Escape useEffect; no useDismissablePopover).

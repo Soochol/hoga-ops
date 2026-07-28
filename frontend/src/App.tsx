@@ -19,6 +19,7 @@ import { useScreenerUpdateSync } from './screener/useScreenerUpdateSync';
 import SignalAlertToastHost from './signalAlerts/SignalAlertToastHost';
 import KisRestUnavailableToastHost from './live/KisRestUnavailableToastHost';
 import DrawingClearToastHost from './chart/DrawingClearToastHost';
+import DrawingClearConfirmHost from './chart/DrawingClearConfirmHost';
 import { ToastViewport } from './ui/toast/ToastViewport';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
@@ -93,6 +94,9 @@ export default function App() {
         <KisRestUnavailableToastHost />
         <DrawingClearToastHost />
       </ToastViewport>
+      {/* 토스트가 아니라 모달 — 뷰포트 밖에 둔다. 그리기 메뉴와 Alt+C 가 공유하는
+          단 하나의 확인 게이트(자세한 사연은 호스트 주석). */}
+      <DrawingClearConfirmHost />
       {settingsOpen && (
         <ModalShell
           ariaLabel="Settings"
