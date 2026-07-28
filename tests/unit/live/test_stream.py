@@ -1111,16 +1111,29 @@ async def test_flush_preserves_tick_arriving_during_append(tmp_path, monkeypatch
     stream._gate_open = True
 
     orig_append = writer.append
+    # 벽시계 파생 now 금지(보조 방어선). 상수라 분 위상이 고정된다 — 아래 주입
+    # 가드가 이미 위상 의존을 없애지만, 상수를 함께 둬 재현을 결정적으로 만든다.
+    now = 1_780_617_600_000
+    injected = False
 
     async def slow_append(date, code, snaps):
         # append await 도중 새 틱 도착을 시뮬레이션(인터리브 강제).
-        if any(snapshot.kind == SnapshotKind.FILL for snapshot in snaps):
+        #
+        # 주입 가드가 flake의 1차 방어선이다. flush_once는 append를 두 벌 부른다 —
+        # 다운샘플러 flush와 캔들 flush. now가 분의 끝자락(≈마지막 10초)에 걸리면
+        # 봉이 봉인돼 두 번째 append가 살아나고, 가드가 없으면 틱이 2회 주입돼
+        # 다음 윈도가 3이 아닌 6이 된다(실측: 벽시계 초 50~59 구간에서 결정적 실패).
+        # 조건 ① kind=FILL: 캔들 append의 snaps에는 FILL이 없어 걸러진다.
+        # 조건 ② injected: 검증 대상은 "await 창에 도착한 틱 1개의 보존"이므로
+        #   주입 총량을 append 호출 횟수에서 완전히 분리한다.
+        nonlocal injected
+        if not injected and any(snapshot.kind == SnapshotKind.FILL for snapshot in snaps):
+            injected = True
             await stream.on_tick(_trade_tick(now + 5_000, qty=3, side=1))
         return await orig_append(date, code, snaps)
 
     monkeypatch.setattr(writer, "append", slow_append)
 
-    now = 1_780_617_600_000
     await stream.on_tick(_trade_tick(now + 100, qty=5, side=1))   # 윈도1 buy=5
     await stream.flush_once(now_ms=now + 10_000)   # flush buy=5 → await 중 buy=8 → commit -5 → 3
     # 다음 윈도: 보존된 3이 기록(await 창 틱 손실 없음)
