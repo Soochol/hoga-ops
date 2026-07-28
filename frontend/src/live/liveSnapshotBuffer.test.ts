@@ -7,9 +7,11 @@ describe('LiveSnapshotBuffer', () => {
     buf.push({ t_ms: 1, kind: 'ob', total_bid_qty: 100 });
     buf.push({ t_ms: 1, kind: 'trade', trades: [] });
     buf.push({ t_ms: 1, kind: 'broker', buy_top: [] });
+    buf.push({ t_ms: 1, kind: 'program', net_qty: 10, net_amount: 1_000_000 });
     expect(buf.get('ob')).toHaveLength(1);
     expect(buf.get('trade')).toHaveLength(1);
     expect(buf.get('broker')).toHaveLength(1);
+    expect(buf.get('program')).toHaveLength(1);
   });
 
   it('preserves order within a kind', () => {
@@ -35,6 +37,7 @@ describe('LiveSnapshotBuffer', () => {
     expect(buf.get('ob')).toHaveLength(0);
     expect(buf.get('trade')).toHaveLength(0);
     expect(buf.get('broker')).toHaveLength(0);
+    expect(buf.get('program')).toHaveLength(0);
   });
 
   it('hydrate replaces all buffers with provided arrays', () => {
@@ -44,10 +47,12 @@ describe('LiveSnapshotBuffer', () => {
       ob: [{ t_ms: 10, kind: 'ob' }, { t_ms: 20, kind: 'ob' }],
       trade: [{ t_ms: 11, kind: 'trade' }],
       broker: [],
+      program: [{ t_ms: 12, kind: 'program', net_qty: 10, net_amount: 1_000_000 }],
     });
     expect(buf.get('ob')).toHaveLength(2);
     expect(buf.get('trade')).toHaveLength(1);
     expect(buf.get('broker')).toHaveLength(0);
+    expect(buf.get('program')).toHaveLength(1);
   });
 
   it('evicts entries older than retention window on push', () => {

@@ -75,9 +75,14 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
     );
   }
 
-  const effectiveCursor = hoverMs ?? (pointerInside ? null : cursorMs);
+  // 두 커서를 분리한다. 순매수 열(nets)은 로컬 호버가 없으면 latest(cursorMs)로
+  // 폴백해 항상 값을 보인다 — 마우스가 divider·여백에 있어도 "—" 로 사라지지
+  // 않게. 크로스헤어(markerCursor)만 창 안+스파크라인 밖에서 숨겨 latest 우측
+  // 점프를 막는다. (netCursor 를 null 로 두면 순매수가 전부 — 로 비던 회귀.)
+  const netCursor = hoverMs ?? cursorMs;
+  const markerCursor = hoverMs ?? (pointerInside ? null : cursorMs);
   // 규모 바 분모: 커서 시점 |순매수| 최대값. 행간 상대 규모 비교용(depth bar 문법).
-  const nets = rows.map((entry) => netAtCursor(entry, effectiveCursor));
+  const nets = rows.map((entry) => netAtCursor(entry, netCursor));
   const maxAbsNet = nets.reduce<number>((acc, net) => Math.max(acc, Math.abs(net ?? 0)), 0);
   // 행 순서는 장 마감 기준 final_net 내림차순(어댑터 정렬)이라 위=매수우위·
   // 아래=매도우위 — 그 경계를 라벨 달린 헤어라인으로 표시한다. 스팟 커서 시점
@@ -136,7 +141,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
               </span>
               <Sparkline
                 entry={entry}
-                cursorMs={effectiveCursor}
+                cursorMs={markerCursor}
                 dayRange={dayRange}
                 gapThresholdMs={gapThresholdMs}
                 onHoverMsChange={setHoverMs}

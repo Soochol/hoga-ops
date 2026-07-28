@@ -15,6 +15,16 @@ def test_connect_bounded_sets_temp_directory(tmp_path: Path) -> None:
     assert tmp.is_dir()
 
 
+def test_connect_bounded_accepts_apostrophe_in_explicit_temp_directory(
+    tmp_path: Path,
+) -> None:
+    tmp = tmp_path / "fixture's-duck-tmp"
+    con = connect_bounded(memory_limit="1.0 GiB", temp_directory=tmp)
+
+    assert con.execute("SELECT current_setting('temp_directory')").fetchone()[0] == str(tmp)
+    assert tmp.is_dir()
+
+
 def test_connect_bounded_env_override(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("HOGA_DUCKDB_MEMORY_LIMIT", "2.0 GiB")
     con = connect_bounded(temp_directory=tmp_path / "duck-tmp")

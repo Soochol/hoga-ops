@@ -2,6 +2,7 @@
 import asyncio
 import contextlib
 import json
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -161,18 +162,18 @@ async def test_drain_seals_final_in_progress_candle(tmp_path):
     assert candles[0]["payload"]["close"] == 200
 
 
-async def test_program_tick_routes_to_latch_and_display_but_not_storage(tmp_path):
-    """PROGRAM(0w) 틱은 latch(저장 본체) + 표시 버퍼로 가고 JSONL 저장은 안 탄다.
+async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_path):
+    """KRX PROGRAM은 latch와 표시 buffer에 가지만 JSONL 저장에는 들어가지 않는다.
 
-    표시 버퍼 발행은 프론트 실시간 꼬리용 — 이게 없으면 프로그램 창이 /api/range
-    번들(5분 주기)에만 의존해 최대 5분 지연된다(거래원·10호가와의 비대칭).
-    저장(JSONL·집계·peak)은 여전히 collector 사이드카 전담이다.
-
-    NXT venue 는 latch 에도 표시에도 안 남는다 — 프로그램 수급은 KRX 집계 데이터.
+    NXT venue 는 latch·표시 buffer 어디에도 안 남는다 — 프로그램 수급은 KRX
+    집계 데이터다.
     """
-    from hoga.live import program_trade_latch
+    from hoga.live import program_trade_latch  # noqa: PLC0415
+
     program_trade_latch.reset_for_tests()
     buf = LiveBuffer()
+    display_q = buf.subscribe("005930")
+    nxt_display_q = buf.subscribe("000660")
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
@@ -192,13 +193,14 @@ async def test_program_tick_routes_to_latch_and_display_but_not_storage(tmp_path
     latched = program_trade_latch.drain()
     assert set(latched) == {"005930"}          # KRX 만 latch
     assert latched["005930"]["net_qty"] == 50
-    series = await buf.get_series("005930")
-    # ob/trade 로는 새지 않는다 — program 은 자기 kind 버킷에만 쌓인다.
-    assert series["trades"] == [] and series["snapshots"] == []
-    published = [e for e in buf._buf.get(("005930", "program"), [])]
-    assert len(published) == 1 and published[0]["net_qty"] == 50
-    assert published[0]["kind"] == "program" and published[0]["venue"] == "KRX"
-    assert ("000660", "program") not in buf._buf          # NXT 는 표시도 안 됨
+    display_entry = await asyncio.wait_for(display_q.get(), timeout=1.0)
+    assert display_entry == {
+        **tick.payload,
+        "kind": "program",
+        "phase": "regular",
+        "venue": "KRX",
+    }
+    assert nxt_display_q.empty()
     await stream.flush_once(now_ms=now + 10_000)
     assert not (tmp_path / "live" / "20260605" / "005930.jsonl").exists()  # 저장 미진입
     program_trade_latch.reset_for_tests()
@@ -905,17 +907,41 @@ async def test_seed_bid_peak_from_live_file_loads_full_day_peak_and_full_coverag
         "untraded_qty": 12_000,
         "untraded_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
         "untraded_peaks": [
-            {"price": 68_900, "qty": 12_000, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
-            {"price": 70_000, "qty": 5_000, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
-            {"price": 68_450, "qty": 100, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {
+                "price": 68_900,
+                "qty": 12_000,
+                "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+            },
+            {
+                "price": 70_000,
+                "qty": 5_000,
+                "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+            },
+            {
+                "price": 68_450,
+                "qty": 100,
+                "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+            },
         ],
         "all_price": 68_900,
         "all_qty": 12_000,
         "all_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
         "all_peaks": [
-            {"price": 68_900, "qty": 12_000, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
-            {"price": 70_000, "qty": 5_000, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
-            {"price": 68_450, "qty": 100, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {
+                "price": 68_900,
+                "qty": 12_000,
+                "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+            },
+            {
+                "price": 70_000,
+                "qty": 5_000,
+                "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+            },
+            {
+                "price": 68_450,
+                "qty": 100,
+                "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+            },
         ],
     }
 
@@ -936,8 +962,6 @@ async def test_flush_once_labels_fill_with_previous_flush_time(tmp_path):
     fills.parquet 분봉 버킷팅(마감 floor)을 SSE per-trade 경로(체결 시각
     floor)와 분당 1윈도씩 어긋나게 한다. 첫 flush는 직전 시각이 없어
     now − FLUSH_INTERVAL 폴백."""
-    import json as _json
-
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
@@ -950,7 +974,7 @@ async def test_flush_once_labels_fill_with_previous_flush_time(tmp_path):
     await stream.flush_once(now_ms=base + 10_000)     # 윈도 [base, base+10s) 마감
 
     jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
-    fills = [d for d in map(_json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
+    fills = [d for d in map(json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
     assert fills[0]["t_ms"] == base                   # 윈도 시작 라벨
     assert fills[0]["payload"]["buy_qty"] == 5
 
@@ -969,8 +993,6 @@ async def test_run_flush_loop_evaluates_gate_off_event_loop(tmp_path, monkeypatc
     (should_run_now)가 콜드/네거티브 캐시에서 동기 KIS HTTP(timeout 15s)를
     부르므로, 루프에서 직접 부르면 전체 백엔드(API·SSE·WS recv)가 동결된다.
     구 poller의 `await asyncio.to_thread(_should_poll_now, ...)` 가드 승계."""
-    import threading
-
     monkeypatch.setattr(stream_mod, "IDLE_INTERVAL_S", 0.01)
     seen: list[bool] = []
 
@@ -1018,7 +1040,8 @@ async def test_drain_resets_day_state(tmp_path, monkeypatch):
     (ship 스킵분). drain을 run_flush_loop 전환으로 실제 트리거."""
     monkeypatch.setattr(stream_mod, "FLUSH_INTERVAL_S", 0.05)
     monkeypatch.setattr(stream_mod, "IDLE_INTERVAL_S", 0.02)
-    buf = LiveBuffer(); writer = LiveWriter(tmp_path / "live")
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
     now = int(time.time() * 1000)
@@ -1071,9 +1094,8 @@ async def test_flush_failure_preserves_window_sum(tmp_path, monkeypatch):
     # 다음 윈도: append 정상화 → 보존된 5가 기록돼야(손실 0)
     fail["on"] = False
     await stream.flush_once(now_ms=now + 20_000)
-    import json as _json
     jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
-    fills = [d for d in map(_json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
+    fills = [d for d in map(json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
     assert any(f["payload"]["buy_qty"] == 5 for f in fills), \
         f"실패 윈도의 합 5가 다음 윈도로 롤되지 않음: {[f['payload'] for f in fills]}"
 
@@ -1092,22 +1114,24 @@ async def test_flush_preserves_tick_arriving_during_append(tmp_path, monkeypatch
 
     async def slow_append(date, code, snaps):
         # append await 도중 새 틱 도착을 시뮬레이션(인터리브 강제).
-        await stream.on_tick(_trade_tick(now + 5000, qty=3, side=1))
+        if any(snapshot.kind == SnapshotKind.FILL for snapshot in snaps):
+            await stream.on_tick(_trade_tick(now + 5_000, qty=3, side=1))
         return await orig_append(date, code, snaps)
 
     monkeypatch.setattr(writer, "append", slow_append)
 
-    now = (int(time.time() * 1000) // 10_000) * 10_000
+    now = 1_780_617_600_000
     await stream.on_tick(_trade_tick(now + 100, qty=5, side=1))   # 윈도1 buy=5
     await stream.flush_once(now_ms=now + 10_000)   # flush buy=5 → await 중 buy=8 → commit -5 → 3
     # 다음 윈도: 보존된 3이 기록(await 창 틱 손실 없음)
-    import json as _json
     jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
-    fills = [d for d in map(_json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
+    fills = [d for d in map(json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
     await stream.flush_once(now_ms=now + 20_000)
     jsonl2 = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
-    fills2 = [d for d in map(_json.loads, jsonl2.splitlines()) if d["kind"] == "fill"]
-    assert fills2[-1]["payload"]["buy_qty"] == 3, \
+    fills2 = [d for d in map(json.loads, jsonl2.splitlines()) if d["kind"] == "fill"]
+    second_flush_fills = fills2[len(fills):]
+    assert len(second_flush_fills) == 1
+    assert second_flush_fills[0]["payload"]["buy_qty"] == 3, \
         f"await 창에 도착한 틱(3) 손실됨: {[f['payload'] for f in fills2]}"
 
 
@@ -1116,7 +1140,6 @@ async def test_flush_per_code_isolation_on_append_failure(tmp_path, monkeypatch)
     코드(B)의 윈도를 폐기하지 않는다 — old(whole-flush_once 중단)와의 headline
     차이. A 합은 보존(다음 윈도 롤), B는 기록+commit(buy→0). try를 루프 밖으로
     되돌리는 회귀를 잡는 가드."""
-    import json as _json
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
@@ -1143,7 +1166,7 @@ async def test_flush_per_code_isolation_on_append_failure(tmp_path, monkeypatch)
     # B는 기록됨(A 실패가 B를 안 버림)
     b_jsonl = tmp_path / "live" / "20260605" / "000660.jsonl"
     assert b_jsonl.exists()
-    b_fills = [d for d in map(_json.loads, b_jsonl.read_text().splitlines())
+    b_fills = [d for d in map(json.loads, b_jsonl.read_text().splitlines())
                if d["kind"] == "fill"]
     assert b_fills[-1]["payload"]["buy_qty"] == 7
     # B는 commit돼 합이 0으로(다음 윈도 새 합), A는 보존(5)

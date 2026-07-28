@@ -177,9 +177,10 @@ describe('BrokerTrajectoryTable — sparkline', () => {
     expect(cursorLines.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('suppresses the external cursor while the pointer is inside but off the sparklines', () => {
-    // "구분선 우측 점프" 회귀 방지: 마우스가 창 안(스파크라인 밖 divider·여백)
-    // 이고 로컬 호버가 없으면, 외부 cursorMs(latest, 우측)로 복귀하지 않는다.
+  it('hides only the crosshair (not the net values) while pointer is inside off the sparklines', () => {
+    // "구분선 우측 점프" + 그 회귀("순매수 전부 —") 동시 방지. 마우스가 창 안
+    // (스파크라인 밖 divider·여백)이면 크로스헤어(세로선)는 숨기되, 순매수 열은
+    // latest(cursorMs)로 값을 유지한다 — 두 커서(marker/net)를 분리했기 때문.
     const series: BrokerSeriesEntry[] = [
       entry('A', [
         { ts_ms: 1_000, net: 10 },
@@ -190,11 +191,14 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
     );
     const root = container.firstElementChild as HTMLElement;
-    // 창 밖(초기)에는 외부 크로스헤어를 존중해 마커가 뜬다.
+    // 창 밖(초기): 외부 크로스헤어 존중 + 순매수 값 표시.
     expect(container.querySelectorAll('[data-testid="cursor-marker"]').length).toBeGreaterThan(0);
-    // 포인터가 창 안으로 들어오면(스파크라인은 호버 안 함) latest 로 안 튀고 숨긴다.
+    expect(screen.getByText('+10')).toBeInTheDocument();
+    // 포인터가 창 안으로: 크로스헤어는 숨지만(우측 점프 방지) 순매수는 그대로 유지.
     fireEvent.mouseEnter(root);
     expect(container.querySelectorAll('[data-testid="cursor-marker"]').length).toBe(0);
+    expect(container.querySelector('[data-testid="broker-net-preobs"]')).toBeNull();
+    expect(screen.getByText('+10')).toBeInTheDocument();
     // 창을 벗어나면 다시 외부 크로스헤어를 존중한다.
     fireEvent.mouseLeave(root);
     expect(container.querySelectorAll('[data-testid="cursor-marker"]').length).toBeGreaterThan(0);

@@ -48,6 +48,7 @@ export interface LiveSeriesResponse {
   snapshots: Array<Record<string, unknown>>;
   trades: Array<Record<string, unknown>>;
   brokers: Array<Record<string, unknown>>;
+  programs: Array<Record<string, unknown>>;
   ask_peak_today: LiveTodayAskPeak | null;
   bid_peak_today?: LiveTodayBidPeak | null;
 }
@@ -68,8 +69,6 @@ export interface LiveSeriesData {
   ob: ReadonlyArray<ObSnapshot>;
   trade: ReadonlyArray<TradeSnapshot>;
   broker: ReadonlyArray<Record<string, unknown>>;
-  // program(0w) 실시간 꼬리 — broker 와 같이 venue 필터를 거치지 않는 원본 버퍼.
-  // 프로그램 수급은 KRX 집계라 단일 venue 이므로 필터가 불필요(백엔드가 KRX 만 발행).
   program: ReadonlyArray<Record<string, unknown>>;
 }
 
@@ -100,7 +99,8 @@ const EMPTY_PROGRAM_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.f
  * `venue` is **required**: ob/trade are filtered at this source boundary
  * (filterObByVenue/filterTradeByVenue) so consumers can't accidentally read the
  * global·mixed KRX+NXT buffer and silently ignore the user's venue selection
- * (execution-window-datasource-policy). broker/initial are venue-agnostic.
+ * (execution-window-datasource-policy). broker/initial are venue-agnostic;
+ * program은 백엔드 stream 경계에서 KRX-only로 강제된다.
  */
 export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesData {
   const date = unixMsToKSTDate(Date.now());
@@ -127,6 +127,7 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
       ob: initial.data.snapshots as Array<{ t_ms: number; kind: string }>,
       trade: initial.data.trades as Array<{ t_ms: number; kind: string }>,
       broker: initial.data.brokers as Array<{ t_ms: number; kind: string }>,
+      program: (initial.data.programs ?? []) as Array<{ t_ms: number; kind: string }>,
     });
     setTick((t) => t + 1);
   }, [initial.data, code]);
