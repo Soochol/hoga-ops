@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
+import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { PageContainer } from '../layout/PageContainer';
 import IndicatorPanel from '../live/indicators/IndicatorPanel';
 import { LiveChartRoot } from '../live/LiveChartRoot';
@@ -103,6 +104,9 @@ export function StudyPage() {
   const [params] = useSearchParams();
   const queryViewId = params.get('view');
   const navigate = useNavigate();
+
+  // 그리기 도구 활성 중 우클릭 = 해제(/live 와 동일 계약). 페이지 단위 1회.
+  useDrawingToolContextMenuReset();
   const [viewTimeframes, setViewTimeframes] = useState<Record<string, LiveTimeframe>>({});
   const [rememberedMinuteTimeframes, setRememberedMinuteTimeframes] = useState<Record<string, MinuteTimeframe>>({});
   const [activatedStudyTabIds, setActivatedStudyTabIds] = useState<Set<string>>(() => new Set());

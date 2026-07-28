@@ -1,20 +1,37 @@
-// 우클릭 = 그리기 도구 해제. 유효 범위는 **창 전체**다.
+// 우클릭 = 그리기 도구 해제. 유효 범위는 **화면 전체**다.
 //
-// 이 핸들러가 DrawingOverlay 가 아니라 창 루트(WindowFrameCore 의 `data-win` div)에
-// 사는 이유: 오버레이는 차트 콘텐츠 영역만 덮는데, 창의 리사이즈 핸들 8개가 그
-// 바깥 rect 를 그대로 써서 좌·우·하단 7~8px 띠를 형제로 가로챈다(카드 overflow 에
-// 안 잘리게 하려는 의도적 배치). 그 띠에서 우클릭하면 오버레이에도, 차트 루트의
-// preventDefault 에도 닿지 않아 **네이티브 컨텍스트 메뉴가 뜨고 도구도 안 풀렸다**.
-// 메뉴가 뜨면 다음 우클릭은 메뉴를 닫는 데 소비되므로 사용자에겐 "여러 번 눌러야
-// 풀린다"로 보인다. 창 헤더·창 바깥도 같은 사각지대였다.
+// 왜 전역(window)인가 — 이 버그는 두 번 좁게 고쳤다가 두 번 다 남았다:
+//   1차: DrawingOverlay div. 창 리사이즈 핸들이 차트 좌·우·하단 7~8px 를 형제로
+//        가로채(카드 overflow 에 안 잘리게 한 의도적 배치) 그 띠가 사각지대였다.
+//   2차: 차트 창 루트(WindowFrameCore). 핸들·헤더는 덮었지만 화면 격자 스캔 결과
+//        차트 창 밖 — 다른 창(10호가·거래원), 워크스페이스 배경, 상단 nav, 우측
+//        레일 — 이 전부 사각지대로 남았다. 1280×720 에서 차트 창은 36% 뿐이었다.
+// 사각지대에서 우클릭하면 네이티브 컨텍스트 메뉴가 뜨고, 그 메뉴가 **다음 우클릭을
+// 삼키므로** 사용자에겐 "여러 번 눌러야 풀린다" 로 보인다. 노드에 거는 한 남는
+// 면적이 있어, 도구 활성 = 모달 상태라는 의미론대로 전역으로 올린다(Esc 와 대칭).
 //
-// 창 루트는 핸들까지 포함한 rect 전체를 덮으므로 사각지대가 남지 않는다. 오버레이의
-// onContextMenu 는 진행 중인 draft 정리를 계속 맡고, 여기로 버블링돼 도구 해제가
-// 한 번 더 불리지만 setActiveTool 은 멱등이라 무해하다.
-import type { MouseEvent } from 'react';
+// 리스너는 **도구 활성 중에만** 산다. select 모드에선 아예 없으므로 평소 우클릭
+// 동작(관심종목·히트맵 행 메뉴 등)은 무손상이다. bubble 단계라 stopPropagation 하는
+// UI 는 존중되고, preventDefault 만 하는 기존 메뉴들은 그대로 열리면서 도구도 풀린다
+// — 그리기를 접고 다른 작업으로 넘어가는 흐름이라 그 편이 맞다.
+import { useEffect } from 'react';
 import { useDrawingsStore } from '../../state/drawings';
 
-export function resetDrawingToolOnContextMenu(e: MouseEvent): void {
-  e.preventDefault();
-  useDrawingsStore.getState().setActiveTool('select');
+/**
+ * 그리기 도구가 활성인 동안 화면 어디서든 우클릭 한 번에 select 로 되돌린다.
+ * 그리기가 있는 페이지(/live·/study)에서 **한 번만** 호출한다 — 창마다 걸면
+ * 리스너가 창 수만큼 붙는다(해제 자체는 멱등이라 결과는 같지만 낭비다).
+ */
+export function useDrawingToolContextMenuReset(): void {
+  const drawing = useDrawingsStore((s) => s.activeTool !== 'select');
+
+  useEffect(() => {
+    if (!drawing) return;
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      useDrawingsStore.getState().setActiveTool('select');
+    };
+    window.addEventListener('contextmenu', onContextMenu);
+    return () => window.removeEventListener('contextmenu', onContextMenu);
+  }, [drawing]);
 }

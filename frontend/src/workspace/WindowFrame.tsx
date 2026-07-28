@@ -68,17 +68,11 @@ export interface WindowFrameCoreProps {
   onHandleDown: (e: React.PointerEvent, id: string, mode: 'move' | ResizeMode) => void;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
-  /**
-   * 창 전체(리사이즈 핸들·헤더 포함) 우클릭. 바깥 rect 를 덮는 이 루트에 달아야
-   * 사각지대가 없다 — 핸들은 카드 밖 형제라 콘텐츠 오버레이가 못 덮는다.
-   * 그리기 도구 해제가 이 경로를 쓴다(chart/drawing/contextMenuReset).
-   */
-  onContextMenu?: (e: React.MouseEvent) => void;
   children: React.ReactNode;
 }
 
 function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
-  const { id, rect, zIndex, focused, header, closable = true, lifting = false, flat = false, onHandleDown, onFocus, onClose, onContextMenu, children } =
+  const { id, rect, zIndex, focused, header, closable = true, lifting = false, flat = false, onHandleDown, onFocus, onClose, children } =
     props;
 
   return (
@@ -94,7 +88,6 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
         padding: GAP / 2,
       }}
       onPointerDown={() => onFocus(id)}
-      onContextMenu={onContextMenu}
     >
       {/* 보이는 카드 — 바깥 rect 에서 GAP/2 물러난 자리. 그림자·둥근 모서리·contain
           은 여기(콘텐츠 경계)에 둔다. 리사이즈 핸들은 바깥 rect 를 그대로 쓰므로

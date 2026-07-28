@@ -1,8 +1,7 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { WindowFrame } from './WindowFrame';
 import { MAX_GROUP, MIN_GROUP } from '../../state/workspace';
-import { useDrawingsStore } from '../../state/drawings';
 import type { WindowKind } from '../../state/workspace';
 
 /** 차트 창은 `symbolCode` 가 있으면 TitleBarSymbolRow(react-query 구독)를 그린다 —
@@ -106,50 +105,3 @@ describe('WindowFrame 포커스 표시', () => {
   });
 });
 
-describe('WindowFrame 우클릭 → 그리기 도구 해제', () => {
-  beforeEach(() => {
-    useDrawingsStore.getState().setActiveTool('select');
-  });
-
-  /**
-   * 리사이즈 핸들이 이 회귀의 핵심 표면이다. 핸들은 바깥 rect 를 쓰는 카드 밖 형제라
-   * 차트 콘텐츠 오버레이가 못 덮고, 좌·우·하단 7~8px 띠를 가로챈다. 해제 핸들러가
-   * 오버레이에만 있던 동안 이 띠에서의 우클릭은 도구도 안 풀고 네이티브 메뉴만 띄웠다
-   * (그리고 그 메뉴가 다음 우클릭을 삼켜 "여러 번 눌러야" 로 보였다).
-   */
-  function handleOf(container: HTMLElement) {
-    const handle = container.querySelector('[data-handle="s"]');
-    if (!handle) throw new Error('south resize handle not found');
-    return handle as HTMLElement;
-  }
-
-  it('차트 창은 리사이즈 핸들 위 우클릭에서도 select 로 되돌린다', () => {
-    useDrawingsStore.getState().setActiveTool('pencil');
-    const { container } = renderFrame(false, false, 'chart', null);
-
-    const prevented = !fireEvent.contextMenu(handleOf(container));
-
-    expect(prevented).toBe(true);
-    expect(useDrawingsStore.getState().activeTool).toBe('select');
-  });
-
-  it('차트 창은 헤더 위 우클릭에서도 select 로 되돌린다', () => {
-    useDrawingsStore.getState().setActiveTool('trendline');
-    const { container } = renderFrame(false, false, 'chart', null);
-
-    const header = container.querySelector('[data-handle="move"]');
-    fireEvent.contextMenu(header!);
-
-    expect(useDrawingsStore.getState().activeTool).toBe('select');
-  });
-
-  it('차트가 아닌 창은 우클릭을 가로채지 않는다', () => {
-    useDrawingsStore.getState().setActiveTool('pencil');
-    const { container } = renderFrame(false, false, 'book');
-
-    const prevented = !fireEvent.contextMenu(handleOf(container));
-
-    expect(prevented).toBe(false);
-    expect(useDrawingsStore.getState().activeTool).toBe('pencil');
-  });
-});
