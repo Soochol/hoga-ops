@@ -12,7 +12,9 @@ import {
   type WindowItemProps,
 } from '../workspace/WorkspaceCanvas';
 import { WindowFrameCore } from '../workspace/WindowFrame';
+import { createPortal } from 'react-dom';
 import { useDismissablePopover } from '../util/useDismissablePopover';
+import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { IconToolbarButton } from '../ui/WorkspaceShell';
 import type { RangeBundle } from '../api/types';
 import type { StudyViewReference } from '../api/studyViews';
@@ -122,47 +124,71 @@ export function StudyWorkspaceCanvas({
 const STUDY_ADD_KINDS: readonly StudyWindowKind[] = ['book', 'broker', 'vdist', 'program', 'memo'];
 
 /**
- * 창 추가 메뉴(/study) — /live WindowAddMenu 의 축소판. 헤더 툴바는 스크롤 컨테이너가
- * 아니라 in-flow absolute 팝오버로 충분하다(포털·클램프 불필요).
+ * 창 추가 메뉴(/study) — /live WindowAddMenu 의 축소판.
+ *
+ * 팝오버 3종 세트(`useDismissablePopover` + `useClampedFixedPosition` + portal)를 쓴다.
+ * 이전 주석은 "헤더 툴바는 스크롤 컨테이너가 아니라 in-flow absolute 로 충분하다" 였는데,
+ * `/study` 가 `WorkspaceToolbar` 를 쓰기 시작하면서(#921) 그 전제가 깨졌다 — 그 툴바는
+ * `overflow-x-auto` 라 **양 축 모두 클리핑 컨텍스트**가 된다(한 축이 visible 이 아니면
+ * 다른 축도 auto 로 계산된다). 그래서 in-flow 팝오버는 툴바 높이(36px) 밖으로 나가는
+ * 순간 통째로 잘려 **메뉴가 아예 보이지 않았다**(실측: 143px 메뉴 전체가 잘림).
+ *
+ * 같은 툴바의 창 목록·프리셋 메뉴가 멀쩡했던 건 둘 다 portal 을 쓰기 때문이다.
  */
 export function StudyWindowAddMenu() {
   const [open, setOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(open, anchorRef, () => setOpen(false));
   const addWindow = useStudyWorkspaceStore((s) => s.addWindow);
+  const { ref: menuPositionRef, left, top } = useClampedFixedPosition<HTMLDivElement>(
+    anchorRect?.left ?? 0,
+    anchorRect ? anchorRect.bottom + 4 : 0,
+  );
+
+  const toggle = () => {
+    setAnchorRect(anchorRef.current?.getBoundingClientRect() ?? null);
+    setOpen((v) => !v);
+  };
+
+  const menu = open && anchorRect ? (
+    <div
+      ref={menuPositionRef}
+      role="menu"
+      aria-label="창 추가"
+      onMouseDown={(e) => e.stopPropagation()}
+      className="z-50 w-max rounded-md border border-border bg-bg-subtle p-1 shadow-overlay"
+      style={{ position: 'fixed', left, top }}
+    >
+      {STUDY_ADD_KINDS.map((kind) => (
+        <button
+          key={kind}
+          type="button"
+          role="menuitem"
+          data-testid={`study-add-${kind}`}
+          className="flex w-full items-center rounded px-2 py-1 text-left text-[12px] text-fg hover:bg-tint-selection"
+          onClick={() => {
+            addWindow(kind);
+            setOpen(false);
+          }}
+        >
+          {STUDY_WINDOW_LABEL[kind]}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <div ref={anchorRef} className="relative shrink-0">
       <IconToolbarButton
         data-testid="study-window-add"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
       >
         + 창 추가
       </IconToolbarButton>
-      {open && (
-        <div
-          role="menu"
-          aria-label="창 추가"
-          className="absolute right-0 top-full z-50 mt-1 w-max rounded-md border border-border bg-bg-subtle p-1 shadow-overlay"
-        >
-          {STUDY_ADD_KINDS.map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              role="menuitem"
-              data-testid={`study-add-${kind}`}
-              className="flex w-full items-center rounded px-2 py-1 text-left text-[12px] text-fg hover:bg-tint-selection"
-              onClick={() => {
-                addWindow(kind);
-                setOpen(false);
-              }}
-            >
-              {STUDY_WINDOW_LABEL[kind]}
-            </button>
-          ))}
-        </div>
-      )}
+      {menu && createPortal(menu, document.body)}
     </div>
   );
 }

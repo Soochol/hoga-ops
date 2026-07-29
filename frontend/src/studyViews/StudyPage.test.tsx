@@ -760,6 +760,22 @@ describe('StudyPage', () => {
     expect(screen.getByTestId('study-detail-card-brokers')).toBeInTheDocument();
   });
 
+  it('창 추가 메뉴는 툴바 밖(portal)에 뜬다 — 툴바가 클리핑 컨텍스트라', () => {
+    // WorkspaceToolbar 는 `overflow-x-auto` 라 **양 축 모두** 클리핑한다(한 축이
+    // visible 이 아니면 다른 축도 auto 로 계산). in-flow 팝오버는 툴바 높이 밖으로
+    // 나가는 순간 통째로 잘려 메뉴가 아예 안 보였다. jsdom 은 레이아웃이 없어 "보인다"
+    // 를 직접 볼 수 없으므로, 잘림을 구조적으로 불가능하게 하는 성질(툴바 밖에 있음)을
+    // 못 박는다. 같은 툴바의 창 목록·프리셋 메뉴가 멀쩡했던 이유이기도 하다.
+    renderPage('/study?view=view-ref');
+    act(() => {
+      screen.getByTestId('study-window-add').click();
+    });
+
+    const menu = screen.getByRole('menu', { name: '창 추가' });
+    expect(screen.getByTestId('study-page-toolbar').contains(menu)).toBe(false);
+    expect(menu.parentElement).toBe(document.body);
+  });
+
   it('does not offer a close control on the chart window (차트 1개 고정)', () => {
     renderPage('/study?view=view-ref');
 
