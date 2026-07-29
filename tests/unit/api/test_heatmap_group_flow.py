@@ -115,3 +115,88 @@ def test_group_flow_tolerates_torn_last_line(tmp_path: Path) -> None:
     resp = build_group_flow(tmp_path, BASIS, now_ms=_ms(9, 10))
     semi = next(g for g in resp.groups if g.folder_id == SEMI)
     assert semi.pct[0] == 5.0
+
+
+# ---------------------------------------------------------------------------
+# candle 프리필터 (2026-07-29)
+#
+# _read_candle_closes 는 json.loads 앞에 저비용 문자열 검사를 둔다. 오늘자
+# JSONL 은 kind 가 ob/fill/broker/trade/candle 로 섞여 있고 candle 은 실측 약
+# 4% 라, 나머지를 파싱했다가 버리는 것이 비용의 대부분이었다(실측 243파일
+# 947MB 스캔 11.37s → 1.90s, 6.0x).
+#
+# 이 선별자의 유일한 계약은 "과소수용하지 않는다" 다. 놓치면 그래프가 조용히
+# 비므로 예외도 로그도 없이 데이터만 사라진다 — 아래가 그 계약을 고정한다.
+# ---------------------------------------------------------------------------
+
+
+def _write_lines(path: Path, lines: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+
+
+def test_prefilter_survives_separator_changes(tmp_path: Path) -> None:
+    """직렬화 공백이 달라져도 candle 을 놓치지 않는다.
+
+    프리필터를 `'"kind": "candle"'` 처럼 공백까지 맞춰 쓰면 빠르지만,
+    LiveSnapshot.to_jsonl 이 json.dumps 기본 separators 에 의존하므로 그쪽이
+    바뀌는 순간 0건을 반환한다 — 예외 없이 빈 그래프로만 나타나는 실패다.
+    """
+    from hoga.api.heatmap_group_flow import _read_candle_closes
+
+    p = tmp_path / "005930.jsonl"
+    _write_lines(p, [
+        # 기본 separators (현재 writer 가 내는 형태)
+        json.dumps({"t_ms": 1000, "kind": "candle", "payload": {"close": 100}}),
+        # 압축 separators
+        json.dumps({"t_ms": 2000, "kind": "candle", "payload": {"close": 200}},
+                   separators=(",", ":")),
+        # 키 순서가 바뀐 경우
+        json.dumps({"kind": "candle", "payload": {"close": 300}, "t_ms": 3000}),
+    ])
+
+    assert _read_candle_closes(p) == [(1000, 100.0), (2000, 200.0), (3000, 300.0)]
+
+
+def test_prefilter_skips_non_candle_kinds(tmp_path: Path) -> None:
+    """걸러내는 쪽도 정확해야 한다 — 프리필터가 느슨한 만큼 최종 판정은
+    obj.get("kind") 가 쥔다."""
+    from hoga.api.heatmap_group_flow import _read_candle_closes
+
+    p = tmp_path / "005930.jsonl"
+    _write_lines(p, [
+        json.dumps({"t_ms": 1000, "kind": "ob", "payload": {"asks": []}}),
+        json.dumps({"t_ms": 1100, "kind": "trade", "payload": {"price": 1}}),
+        json.dumps({"t_ms": 1200, "kind": "candle", "payload": {"close": 100}}),
+        json.dumps({"t_ms": 1300, "kind": "fill", "payload": {"buy_qty": 1}}),
+        json.dumps({"t_ms": 1400, "kind": "broker", "payload": {}}),
+    ])
+
+    assert _read_candle_closes(p) == [(1200, 100.0)]
+
+
+def test_prefilter_overaccepts_without_corrupting(tmp_path: Path) -> None:
+    """payload 안에 'candle' 문자열이 있는 비-candle 줄은 파싱까지 가지만
+    kind 검사에서 정확히 탈락한다. 과다수용은 느려질 뿐 결과를 바꾸지 않는다."""
+    from hoga.api.heatmap_group_flow import _read_candle_closes
+
+    p = tmp_path / "005930.jsonl"
+    _write_lines(p, [
+        json.dumps({"t_ms": 1000, "kind": "trade", "payload": {"note": "candle"}}),
+        json.dumps({"t_ms": 2000, "kind": "candle", "payload": {"close": 100}}),
+    ])
+
+    assert _read_candle_closes(p) == [(2000, 100.0)]
+
+
+def test_prefilter_keeps_torn_last_line_tolerance(tmp_path: Path) -> None:
+    """찢긴 마지막 줄 관용 파싱은 그대로여야 한다 — fsync 경계에서 흔하다."""
+    from hoga.api.heatmap_group_flow import _read_candle_closes
+
+    p = tmp_path / "005930.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    good = json.dumps({"t_ms": 1000, "kind": "candle", "payload": {"close": 100}})
+    torn = '{"t_ms": 2000, "kind": "candle", "payl'
+    p.write_text(good + "\n" + torn, encoding="utf-8")
+
+    assert _read_candle_closes(p) == [(1000, 100.0)]

@@ -50,6 +50,18 @@ def _kst_ms(basis: dt.date, at: dt.time) -> int:
     return int(dt.datetime.combine(basis, at, _KST).timestamp() * 1000)
 
 
+# json.loads 앞에 두는 저비용 선별자. **의도적으로 느슨하다** — kind 필드가
+# 아닌 곳에 이 문자열이 있어도 통과시킨다. 정확한 판정은 아래 obj.get("kind")
+# 가 그대로 쥐고 있으므로, 이 검사는 과다수용(조금 느려짐)은 가능해도
+# 과소수용(candle 을 놓침)은 불가능하다.
+#
+# `'"kind": "candle"'` 처럼 공백까지 맞추면 더 빠르지만, LiveSnapshot.to_jsonl
+# (hoga/live/snapshot.py) 이 json.dumps 기본 separators 에 의존하므로 그쪽이
+# 바뀌는 순간 이 필터가 조용히 0건을 반환한다. 그 실패는 예외 없이 "빈 그래프"
+# 로만 나타나 원인 추적이 어렵다 — 속도보다 그 실패 모드를 피하는 쪽을 택했다.
+_CANDLE_HINT = '"candle"'
+
+
 def _read_candle_closes(jsonl_path: Path) -> list[tuple[int, float]]:
     """live_kiwoom JSONL 에서 (t_ms, close) 를 시간순으로. 없으면 빈 리스트.
     마지막 줄이 찢겨(torn) JSONDecodeError 나도 그때까지를 반환(관용 파싱)."""
@@ -59,6 +71,13 @@ def _read_candle_closes(jsonl_path: Path) -> list[tuple[int, float]]:
     try:
         with jsonl_path.open("r", encoding="utf-8") as fh:
             for line in fh:
+                # 이 파일의 kind 는 ob/fill/broker/trade/candle 이 섞여 있고 candle 은
+                # 실측 약 4% 다(2026-07-29, 243파일 947MB). 나머지 96% 를 json.loads
+                # 로 만들었다가 버리는 것이 이 함수 비용의 대부분이었다. 버려지는
+                # ob(10호가 × 6필드) 줄이 candle 줄보다 훨씬 길어 낭비되는 바이트
+                # 비중은 줄 비중보다 더 크다.
+                if _CANDLE_HINT not in line:
+                    continue
                 line = line.strip()
                 if not line:
                     continue

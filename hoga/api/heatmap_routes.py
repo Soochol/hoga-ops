@@ -66,7 +66,19 @@ from hoga.live.lifecycle import refresh_live_stream
 log = logging.getLogger(__name__)
 
 _KST = ZoneInfo("Asia/Seoul")
-# 그룹 흐름 30초 TTL 캐시(거래일 키). 무거운 JSONL 팬읽기를 폴링(60s)마다 반복하지 않게.
+# 그룹 흐름 TTL 캐시(거래일 키).
+#
+# 주의 — 이 30초는 프론트 폴링 주기(60s, frontend/src/api/heatmapGroupFlow.ts)
+# **보다 짧다**. 즉 단일 클라이언트 정상 상태에서는 다음 폴링이 오기 전에 항상
+# 만료되어 캐시가 한 번도 히트하지 않는다. 이 캐시가 실제로 막아 주는 것은
+# "폴링마다의 재계산" 이 아니라 30초 안에 몰리는 버스트(탭 여러 개, 수동 새로고침,
+# 페이지 재진입)다. 원래 주석은 전자를 막는다고 적혀 있었는데 상수와 어긋났다.
+#
+# 재계산 비용 자체는 2026-07-29 에 크게 줄었다(_read_candle_closes 의 candle
+# 프리필터: 실측 243파일 947MB 기준 11.67s → 2.52s). 60초마다 2.5초면 코어의
+# 약 4% 라 상수를 그대로 두었다. 폴링당 재계산까지 없애려면 TTL 을 폴링 주기
+# 위로 올려야 하는데, 그건 신선도를 거래하는 결정이라 별도 판단이 필요하다
+# (버킷이 5분이므로 150초까지는 시각적으로 드러나지 않는다).
 _FLOW_TTL_MS = 30_000
 _flow_cache: dict[tuple[str, str], HeatmapGroupFlowResponse] = {}
 _flow_cache_at: dict[tuple[str, str], int] = {}
