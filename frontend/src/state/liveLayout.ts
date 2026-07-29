@@ -3,6 +3,14 @@ import { normalizeKeyOrder } from './keyOrder';
 import { persistJson, readJsonObject } from './persist';
 
 export const LIVE_LAYOUT_STORAGE_KEY = 'live.layout.v1';
+/** 활성 프리셋 id 전용 **탭 스코프** 키(sessionStorage).
+ *
+ *  `live.layout.v1` 에 함께 두면, 탭1 의 무관한 조작(상세 패널 접기 등)이 전체 스냅샷을
+ *  쓰면서 탭2 의 활성 프리셋을 되돌린다. 그 뒤 탭2 에서 "현재 워크스페이스 저장"을
+ *  누르면 **엉뚱한 프리셋**을 덮어쓴다 — 그 프리셋 자체는 변경된 적이 없으므로
+ *  updated_at_ms 충돌 감지에도 걸리지 않는 경로다. 워크스페이스가 탭마다 독립이므로
+ *  (workspace.ts 스코프 주석) "이 탭이 마지막에 적용한 프리셋" 도 탭의 것이다. */
+export const LIVE_ACTIVE_PRESET_STORAGE_KEY = 'live.activePreset.v1';
 export const DEFAULT_RIGHT_PANEL_WIDTH_PX = 400;
 
 export type LiveCardKey = 'orderbook' | 'volumeDistribution' | 'program' | 'brokers' | 'investor';
@@ -141,11 +149,27 @@ function readStorage(): Partial<Persisted> {
   if (typeof parsed.detailPanelCollapsed === 'boolean') {
     next.detailPanelCollapsed = parsed.detailPanelCollapsed;
   }
-  if (typeof parsed.lastAppliedPresetId === 'string') {
-    next.lastAppliedPresetId = parsed.lastAppliedPresetId;
-  }
+  next.lastAppliedPresetId = readActivePresetId(parsed.lastAppliedPresetId);
 
   return next;
+}
+
+/** 활성 프리셋 id 하이드레이션 — 탭 키가 있으면 그것이 진실(명시적 null 포함:
+ *  "기본으로 초기화" 한 탭이 새로고침으로 옛 프리셋을 되찾으면 안 된다). 탭 키가
+ *  아예 없을 때만 공유 필드에서 폴백 시드한다 — 이 변경 전부터 쓰던 사용자의 활성
+ *  프리셋이 첫 전환에서 사라지지 않게(별도 마이그레이션 코드 불요). */
+function readActivePresetId(sharedValue: unknown): string | null {
+  const own = readJsonObject(LIVE_ACTIVE_PRESET_STORAGE_KEY, 'tab');
+  if ('lastAppliedPresetId' in own) {
+    return typeof own.lastAppliedPresetId === 'string' ? own.lastAppliedPresetId : null;
+  }
+  return typeof sharedValue === 'string' ? sharedValue : null;
+}
+
+/** 활성 프리셋 id 만 탭 저장소에 기록한다. 공유 스냅샷(`persistFromState`)에도 계속
+ *  실리지만 그쪽은 이제 새 탭 시드용 — 읽기는 위 `readActivePresetId` 가 탭 우선. */
+function persistActivePresetId(id: string | null): void {
+  persistJson(LIVE_ACTIVE_PRESET_STORAGE_KEY, { lastAppliedPresetId: id }, 'tab');
 }
 
 /** 모든 setter 가 공유하는 단일 영속화 지점 — 각 setter 가 payload 를 수동 조립하면
@@ -222,12 +246,14 @@ export const useLiveLayoutStore = create<Store>((set) => ({
     };
     set((state) => {
       persistFromState({ ...state, ...next });
+      persistActivePresetId(next.lastAppliedPresetId);
       return next;
     });
   },
   setLastAppliedPresetId: (id) => {
     set((state) => {
       persistFromState({ ...state, lastAppliedPresetId: id });
+      persistActivePresetId(id);
       return { lastAppliedPresetId: id };
     });
   },

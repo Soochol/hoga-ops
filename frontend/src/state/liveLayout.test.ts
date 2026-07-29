@@ -4,6 +4,7 @@ describe('liveLayout store helpers', () => {
   beforeEach(() => {
     vi.resetModules();
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   it('falls back to defaults when persisted weights are partially corrupt', async () => {
@@ -193,5 +194,51 @@ describe('liveLayout store helpers', () => {
 
     useLiveLayoutStore.getState().setCardHidden('brokers', false);
     expect(useLiveLayoutStore.getState().rightCardCollapsed.brokers).toBe(true);
+  });
+});
+
+/** 활성 프리셋 id 는 탭의 것이다 — 워크스페이스가 탭마다 독립이므로(workspace.ts)
+ *  "이 탭이 마지막에 적용한 프리셋" 도 탭 스코프여야 "현재 워크스페이스 저장" 이
+ *  엉뚱한 프리셋을 덮어쓰지 않는다. */
+describe('활성 프리셋 id 탭 스코프', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it('설정하면 탭 저장소(sessionStorage)에 기록한다', async () => {
+    const { useLiveLayoutStore, LIVE_ACTIVE_PRESET_STORAGE_KEY } = await import('./liveLayout');
+
+    useLiveLayoutStore.getState().setLastAppliedPresetId('p1');
+
+    const tabValue = JSON.parse(sessionStorage.getItem(LIVE_ACTIVE_PRESET_STORAGE_KEY) ?? '{}');
+    expect(tabValue.lastAppliedPresetId).toBe('p1');
+  });
+
+  it('탭 저장소가 공유 필드를 이긴다 — 다른 탭이 공유 스냅샷을 덮어써도 안 밀린다', async () => {
+    sessionStorage.setItem('live.activePreset.v1', JSON.stringify({ lastAppliedPresetId: 'mine' }));
+    localStorage.setItem('live.layout.v1', JSON.stringify({ lastAppliedPresetId: 'theirs' }));
+
+    const { useLiveLayoutStore } = await import('./liveLayout');
+
+    expect(useLiveLayoutStore.getState().lastAppliedPresetId).toBe('mine');
+  });
+
+  it('탭 저장소의 명시적 null 은 유지된다 — "기본으로 초기화" 가 새로고침에 되살아나지 않게', async () => {
+    sessionStorage.setItem('live.activePreset.v1', JSON.stringify({ lastAppliedPresetId: null }));
+    localStorage.setItem('live.layout.v1', JSON.stringify({ lastAppliedPresetId: 'old' }));
+
+    const { useLiveLayoutStore } = await import('./liveLayout');
+
+    expect(useLiveLayoutStore.getState().lastAppliedPresetId).toBeNull();
+  });
+
+  it('탭 키가 아예 없으면 공유 필드에서 폴백 시드한다(이 변경 전 사용자 보존)', async () => {
+    localStorage.setItem('live.layout.v1', JSON.stringify({ lastAppliedPresetId: 'legacy' }));
+
+    const { useLiveLayoutStore } = await import('./liveLayout');
+
+    expect(useLiveLayoutStore.getState().lastAppliedPresetId).toBe('legacy');
   });
 });

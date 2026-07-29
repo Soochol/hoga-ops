@@ -81,6 +81,51 @@ def test_preset_routes_missing_id_returns_preset_specific_404(preset_client):
     assert resp.json()["detail"]["code"] == "live_layout_preset_not_found"
 
 
+def test_preset_put_conflicts_when_expected_updated_at_ms_is_stale(preset_client):
+    # 낙관적 동시성: 탭1 이 먼저 저장해 updated_at_ms 가 바뀐 뒤, 낡은 값을 든 탭2 가
+    # 덮어쓰려 하면 409 로 거절한다 — payload 가 워크스페이스 통째 스냅샷이라 병합이
+    # 불가능하므로 조용한 덮어쓰기 대신 재조회를 강제한다.
+    pid = preset_client.post("/api/live-layout-presets", json=_preset_req()).json()["id"]
+
+    first = preset_client.put(
+        f"/api/live-layout-presets/{pid}", json=_preset_req(name="탭1 저장")
+    )
+    assert first.status_code == 200
+    fresh_ms = first.json()["updated_at_ms"]
+
+    stale = preset_client.put(
+        f"/api/live-layout-presets/{pid}",
+        json=_preset_req(name="탭2 저장", expected_updated_at_ms=fresh_ms - 1),
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "live_layout_preset_conflict"
+    # 거절은 쓰기 전에 일어난다 — 저장본은 탭1 것 그대로.
+    assert preset_client.get("/api/live-layout-presets").json()["presets"][0]["name"] == "탭1 저장"
+
+
+def test_preset_put_accepts_matching_expected_updated_at_ms(preset_client):
+    created = preset_client.post("/api/live-layout-presets", json=_preset_req()).json()
+
+    resp = preset_client.put(
+        f"/api/live-layout-presets/{created['id']}",
+        json=_preset_req(name="정상", expected_updated_at_ms=created["updated_at_ms"]),
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "정상"
+
+
+def test_preset_put_without_expected_updated_at_ms_overwrites(preset_client):
+    # 필드 생략 = 종전 동작(무조건 덮어쓰기) — 구 클라이언트 하위호환.
+    pid = preset_client.post("/api/live-layout-presets", json=_preset_req()).json()["id"]
+    preset_client.put(f"/api/live-layout-presets/{pid}", json=_preset_req(name="먼저"))
+
+    resp = preset_client.put(f"/api/live-layout-presets/{pid}", json=_preset_req(name="나중"))
+
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "나중"
+
+
 def test_preset_write_request_strips_name():
     req = LiveLayoutPresetWriteRequest.model_validate(_preset_req(name="  내 프리셋  "))
     assert req.name == "내 프리셋"

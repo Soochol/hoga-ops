@@ -25,6 +25,21 @@ class LiveLayoutPresetNotFoundError(Exception):
     pass
 
 
+class LiveLayoutPresetConflictError(Exception):
+    """PUT 의 expected_updated_at_ms 가 저장본과 다름 — 그 사이 누가 먼저 저장했다.
+
+    프리셋 payload 는 워크스페이스 전체 스냅샷이라 병합이 불가능하다(창 배열의
+    3-way merge). 조용히 덮어쓰는 대신 거절하고 클라이언트가 최신 목록을 다시 읽게
+    한다. `_lock` 안에서 검사·쓰기가 함께 일어나므로 검사-후-쓰기 경합은 없다.
+    """
+
+    def __init__(self, id: str, *, expected_ms: int, actual_ms: int) -> None:
+        super().__init__(id)
+        self.id = id
+        self.expected_ms = expected_ms
+        self.actual_ms = actual_ms
+
+
 def _root(data_dir: Path) -> Path:
     return data_dir / "live_layout_presets"
 
@@ -89,6 +104,11 @@ def update_preset_sync(
     file = load_presets(data_dir)
     for idx, old in enumerate(file.presets):
         if old.id == id:
+            expected = req.expected_updated_at_ms
+            if expected is not None and expected != old.updated_at_ms:
+                raise LiveLayoutPresetConflictError(
+                    id, expected_ms=expected, actual_ms=old.updated_at_ms
+                )
             preset = _preset_from_req(
                 req=req,
                 id=id,

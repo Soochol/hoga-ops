@@ -16,37 +16,64 @@ function snapshot(store: Storage) {
 
 /** 사용자가 늘 쓰던 공유 워크스페이스 — 창 1개 + 그룹1 종목. */
 function seedSharedWorkspace(code: string) {
-  localStorage.setItem(
+  seedWorkspace(localStorage, code);
+}
+
+function seedWorkspace(store: Storage, code: string, windowId = 'w1') {
+  store.setItem(
     WORKSPACE_STORAGE_KEY,
     JSON.stringify({
       windows: [
         {
-          id: 'w1',
+          id: windowId,
           kind: 'chart',
           group: 1,
           rect: { x: 0, y: 0, w: 500, h: 400 },
           chart: { timeframe: '1m', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } },
         },
       ],
-      zOrder: ['w1'],
+      zOrder: [windowId],
       groupSymbols: { 1: { code, name: code } },
     }),
   );
 }
 
-describe('워크스페이스 영속 스코프 (딥링크 탭 격리)', () => {
+describe('워크스페이스 영속 스코프 (전 탭 격리)', () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
   });
 
-  it('쿼리 없는 /live 는 종전대로 localStorage 에 쓴다', async () => {
+  it('메인 탭은 자기 sessionStorage 와 공유 시드에 함께 쓴다', async () => {
     seedSharedWorkspace('005930');
     const { useWorkspaceStore } = await loadWorkspaceAt('');
 
     useWorkspaceStore.getState().setGroupSymbol(1, { code: '000660', name: 'SK하이닉스' });
 
+    // authoritative = 자기 탭. 공유 키는 "새 탭의 시드" 로 함께 갱신된다.
+    expect(snapshot(sessionStorage)?.groupSymbols?.[1].code).toBe('000660');
     expect(snapshot(localStorage)?.groupSymbols?.[1].code).toBe('000660');
+  });
+
+  it('회귀 핵심: 다른 탭이 공유 시드를 바꿔도 이미 열린 탭은 밟히지 않는다', async () => {
+    // 이 탭은 이미 자기 배치를 갖고 있다(= 한 번이라도 조작했다).
+    seedWorkspace(sessionStorage, '000660', 'mine');
+    // 그 사이 다른 메인 탭이 공유 시드를 자기 것으로 덮어썼다.
+    seedWorkspace(localStorage, '005930', 'theirs');
+
+    const { useWorkspaceStore } = await loadWorkspaceAt('');
+
+    // 하이드레이션은 자기 탭만 본다 — 남의 창·종목이 새어 들어오지 않는다.
+    expect(useWorkspaceStore.getState().windows.map((w) => w.id)).toEqual(['mine']);
+    expect(useWorkspaceStore.getState().groupSymbols[1]?.code).toBe('000660');
+  });
+
+  it('메인 탭도 자기 저장소가 비어 있으면 공유 시드를 물려받는다', async () => {
+    seedSharedWorkspace('005930');
+    const { useWorkspaceStore } = await loadWorkspaceAt('');
+
+    expect(useWorkspaceStore.getState().groupSymbols[1]?.code).toBe('005930');
+    // 열기만 해서는 아무것도 쓰지 않는다(시드는 읽기 전용).
     expect(snapshot(sessionStorage)).toBeNull();
   });
 

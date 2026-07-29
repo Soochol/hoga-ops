@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persistJson, readJsonObject, type StorageScope } from './persist';
+import { persistJson, readJsonObject } from './persist';
 import {
   normalizeIndicatorsV2,
   type IndicatorSettings,
@@ -35,7 +35,7 @@ export const WORKSPACE_STORAGE_KEY = 'live.workspace.v1';
 /** 2 = rect 가 캔버스 대비 비율(ADR-0122). 없거나 낮으면 레거시 px 로 읽고 지연 비율화. */
 export const WORKSPACE_SCHEMA_VERSION = 2;
 
-/** 딥링크(`/live?code=`·`?index=`)로 열린 탭은 워크스페이스를 sessionStorage 에 둔다.
+/** 워크스페이스는 **모든 탭이 자기 sessionStorage 를 authoritative 저장소로** 쓴다.
  *
  *  이유: `persistFromState` 는 바뀐 필드가 아니라 **그 탭의 인메모리 스냅샷 전체**를
  *  쓴다(호출부 20여 곳이 전부 `{...state, 바뀐것}` 패턴). 두 탭이 같은 localStorage
@@ -44,26 +44,31 @@ export const WORKSPACE_SCHEMA_VERSION = 2;
  *  계속 보여주므로 **조용히** 깨지고, 손실은 다음 새로고침에야 드러난다.
  *  sessionStorage 는 탭마다 독립이라 이 경합을 구조적으로 없앤다.
  *
- *  대가: 딥링크 탭에서 바꾼 레이아웃은 탭을 닫으면 사라진다 — "새 탭 = 곁눈질용
- *  조회 창" 계약. 메인 탭(쿼리 없는 `/live`)은 종전대로 localStorage 를 쓴다.
+ *  공유 키(localStorage)는 이제 **새 탭의 시드 전용**이다 — 이미 열린 탭은 하이드레이션
+ *  이후 두 번 다시 읽지 않으므로 누가 마지막에 썼든 무해하다. 메인 탭(쿼리 없는
+ *  `/live`)만 write-through 로 시드를 갱신해 "새 탭 = 마지막으로 쓰던 레이아웃"을
+ *  유지한다. 딥링크 탭(`?code=`·`?index=`)은 종전대로 공유 키를 건드리지 않는다.
+ *
+ *  대가: 탭을 닫으면 그 탭에서만 하던 배치는 사라진다(메인 탭은 시드에 남는다).
+ *  아끼는 배치는 레이아웃 프리셋으로 저장한다 — 프리셋이 탭 간 유일한 다리다.
  *
  *  탭 수명 동안 고정한다(모듈 로드 1회 결정). `readStorage()` 가 모듈 초기화 시점에
  *  실행되므로 그보다 늦게 정해지면 하이드레이션이 틀린 저장소를 읽는다. SPA 내에서
- *  `/study` 를 거쳐 `/live` 로 돌아와도 스코프가 흔들리지 않는 것도 같은 이유. */
-function detectWorkspaceScope(): StorageScope {
+ *  `/study` 를 거쳐 `/live` 로 돌아와도 판정이 흔들리지 않는 것도 같은 이유. */
+function detectDeepLinkTab(): boolean {
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.has('code') || params.has('index') ? 'tab' : 'shared';
+    return params.has('code') || params.has('index');
   } catch {
-    return 'shared';
+    return false;
   }
 }
 
-let scopeCache: StorageScope | null = null;
+let deepLinkCache: boolean | null = null;
 
-function workspaceScope(): StorageScope {
-  scopeCache ??= detectWorkspaceScope();
-  return scopeCache;
+function isDeepLinkTab(): boolean {
+  deepLinkCache ??= detectDeepLinkTab();
+  return deepLinkCache;
 }
 
 /** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
@@ -335,15 +340,12 @@ function defaultWindows(): WorkspaceWindow[] {
   ];
 }
 
-/** 스코프에 맞는 raw 스냅샷. 딥링크 탭은 자기 sessionStorage 가 비어 있으면 공유
- *  워크스페이스를 **읽기만 해서** 1회 시드한다 — 사용자가 늘 쓰던 레이아웃 그대로
- *  열리되, 이후 변경은 그 탭에만 남는다(공유 키는 이 시점에도 쓰지 않는다). */
+/** raw 스냅샷 — 자기 탭 저장소가 authoritative. 비어 있으면(새 탭) 공유 시드를
+ *  **읽기만 해서** 물려받는다: 사용자가 늘 쓰던 레이아웃 그대로 열리되, 이후 변경은
+ *  그 탭에서 시작한다. 시드는 이 시점에 쓰지 않는다(열기만 해서는 아무것도 안 바뀜). */
 function readWorkspaceSnapshot(): Record<string, unknown> {
-  if (workspaceScope() === 'tab') {
-    const own = readJsonObject(WORKSPACE_STORAGE_KEY, 'tab');
-    if (Array.isArray(own.windows)) return own;
-    return readJsonObject(WORKSPACE_STORAGE_KEY, 'shared');
-  }
+  const own = readJsonObject(WORKSPACE_STORAGE_KEY, 'tab');
+  if (Array.isArray(own.windows)) return own;
   return readJsonObject(WORKSPACE_STORAGE_KEY, 'shared');
 }
 
@@ -389,18 +391,18 @@ function readStorage(): Persisted & { pendingNormalize: boolean } {
 }
 
 /** 모든 setter 가 공유하는 단일 영속화 지점(liveLayout 패턴).
- *  스코프가 'tab' 이면 sessionStorage 로만 나가므로 다른 탭을 덮어쓰지 않는다. */
+ *  authoritative 는 자기 탭의 sessionStorage — 다른 탭을 절대 덮어쓰지 않는다.
+ *  메인 탭은 같은 페이로드를 공유 키에도 흘려보내 **새 탭의 시드**를 갱신한다(열린
+ *  탭은 시드를 읽지 않으므로 탭 간 경합이 아니다). 딥링크 탭은 시드를 갱신하지 않는다. */
 function persistFromState(state: Persisted): void {
-  persistJson(
-    WORKSPACE_STORAGE_KEY,
-    {
-      schema_version: WORKSPACE_SCHEMA_VERSION,
-      windows: state.windows,
-      zOrder: state.zOrder,
-      groupSymbols: state.groupSymbols,
-    },
-    workspaceScope(),
-  );
+  const snapshot = {
+    schema_version: WORKSPACE_SCHEMA_VERSION,
+    windows: state.windows,
+    zOrder: state.zOrder,
+    groupSymbols: state.groupSymbols,
+  };
+  persistJson(WORKSPACE_STORAGE_KEY, snapshot, 'tab');
+  if (!isDeepLinkTab()) persistJson(WORKSPACE_STORAGE_KEY, snapshot, 'shared');
 }
 
 /** 대상 차트 창 = 포커스 창이 차트면 그 창, 아니면 z순서 최상위 차트 창 —
