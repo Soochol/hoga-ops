@@ -1,5 +1,8 @@
 import time
 from pathlib import Path
+
+import pytest
+
 from hoga.api.app import create_app
 
 
@@ -16,6 +19,7 @@ def test_lifespan_runs_migration_on_startup(tmp_path: Path) -> None:
         assert (sd_dir / "hogaplay" / "snapshots.parquet").exists()
 
 
+@pytest.mark.wallclock
 def test_migrate_under_5s_for_10k_dirs(tmp_path: Path) -> None:
     """Migration must be fast (filesystem rename only, no data copy).
 

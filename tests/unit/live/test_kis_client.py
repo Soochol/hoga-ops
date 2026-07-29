@@ -484,6 +484,7 @@ async def test_5xx_with_non_json_body_falls_back_to_text() -> None:
 # ------------------------------------------------------------------------
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_lets_initial_burst_through() -> None:
     """Bucket starts full so short bursts under capacity don't pay a penalty.
@@ -501,6 +502,7 @@ async def test_token_bucket_lets_initial_burst_through() -> None:
     assert elapsed < 0.1
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_paces_to_rate_when_drained() -> None:
     """Past the initial burst, calls space out to the configured rate.
@@ -519,6 +521,7 @@ async def test_token_bucket_paces_to_rate_when_drained() -> None:
     assert 0.05 < elapsed < 0.3
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_serialises_concurrent_acquirers() -> None:
     """Multiple tasks acquiring simultaneously cumulatively respect the rate.
@@ -540,6 +543,7 @@ async def test_token_bucket_serialises_concurrent_acquirers() -> None:
     assert elapsed >= 0.4
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_capacity_caps_initial_and_refill() -> None:
     """capacity < rate이면 초기 토큰과 리필 상한이 capacity로 묶인다.
@@ -581,6 +585,7 @@ async def test_token_bucket_default_capacity_unchanged() -> None:
     assert time.monotonic() - start < 0.1, "기본 버킷은 rate개 초기 burst를 즉시 통과"
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_kis_client_accepts_injected_rate_limiter() -> None:
     """주입된 공유 버킷을 두 클라이언트가 그대로 쓴다(명의-전역 예산).
@@ -702,6 +707,7 @@ async def test_token_bucket_starvation_backstop() -> None:
     await asyncio.wait_for(bucket.acquire(foreground=False), timeout=1.0)
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_foreground_still_respects_rate_cap() -> None:
     """foreground도 토큰 없이는 못 간다 — 우선순위는 순서일 뿐 15/s 천장은 불변."""

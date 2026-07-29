@@ -114,6 +114,7 @@ def test_zero_threshold_disables_slow_log(
     assert _timing_records(caplog) == []
 
 
+@pytest.mark.wallclock
 def test_streaming_measures_ttfb_not_stream_lifetime(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
