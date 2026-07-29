@@ -142,6 +142,33 @@ describe('DataWindow — 매물대·프로그램 그룹 차트 링크 (ADR-0119 
     expect(screen.queryByText(/차트 창 연동 대기/)).not.toBeInTheDocument();
   });
 
+  it('프로그램 latest 는 오늘 스코프 — 번들 마지막 점이 전일이면 빈 상태로 리셋', () => {
+    // 새날 아침(오늘 관측 0건): 번들엔 전일(20260719) 시리즈만 남는다. 링크의
+    // todayKst(20260720)가 카드로 배선돼 전일 마감 누적이 현재값처럼 렌더되지
+    // 않아야 한다 — 거래원 창의 오늘 스코프 리셋과 동일 의미론.
+    const prevDayMs = Date.UTC(2026, 6, 19, 0, 30); // KST 2026-07-19 09:30
+    const bundle = {
+      program_trade: {
+        points: [{ t: prevDayMs, net_qty: 10, net_amount: 100_000_000, gap_risk: false }],
+        source: 'kis_program_trade',
+      },
+      candles: [],
+    } as unknown as RangeBundle;
+    publishGroupChartLink(chartLink({ bundle, todayKst: '20260720' }));
+    const first = renderWithQuery(<DataWindow win={dataWin('program')} symbol={symbol} />);
+    expect(screen.getByText('프로그램 순매수 데이터 없음')).toBeInTheDocument();
+
+    // 대조: 같은 번들이라도 todayKst 가 그 점의 날이면 정상 렌더 — 빈 상태가
+    // 게이트(날짜 불일치) 때문이지 데이터 부재 때문이 아님을 고정한다.
+    // 첫 마운트는 링크 스토어를 구독 중이라 두 번째 publish 에 같이 갱신된다 —
+    // 관측을 분리하기 위해 내리고 다시 올린다.
+    first.unmount();
+    __resetGroupChartLinksForTests();
+    publishGroupChartLink(chartLink({ bundle, todayKst: '20260719' }));
+    renderWithQuery(<DataWindow win={dataWin('program')} symbol={symbol} />);
+    expect(screen.getByText('+1억')).toBeInTheDocument();
+  });
+
   it('링크 code 가 창 종목과 다르면(교체 직후 stale 발행) 소비하지 않는다', () => {
     publishGroupChartLink(chartLink({ code: '000660' }));
     renderWithQuery(<DataWindow win={dataWin('vdist')} symbol={symbol} />);
