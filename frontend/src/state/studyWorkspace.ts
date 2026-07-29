@@ -334,12 +334,33 @@ function ensureChartWindow(persisted: Persisted): Persisted {
   };
 }
 
+/**
+ * 모든 setter 가 지나는 단일 영속화 지점.
+ *
+ * authoritative 는 **자기 탭의 sessionStorage** — 다른 탭을 절대 덮어쓰지 않는다.
+ * 이 함수는 바뀐 필드가 아니라 그 탭의 인메모리 스냅샷 전체를 쓰므로(호출부 전부가
+ * `{...state, 바뀐것}` 패턴), 두 탭이 같은 localStorage 키를 공유하면 오래된 탭의
+ * 조작 하나가 다른 탭의 창 배치를 통째로 되돌린다. 두 탭 화면은 각자 자기 메모리를
+ * 계속 그리므로 **조용히** 깨지고 손실은 다음 새로고침에야 드러난다(/live 와 동일
+ * 기전 — `state/workspace.ts` 스코프 주석).
+ *
+ * 공유 키(localStorage)는 **새 탭의 시드 전용**이다. 이미 열린 탭은 하이드레이션
+ * 이후 두 번 다시 읽지 않으므로 누가 마지막에 썼든 무해하다.
+ *
+ * **`/live` 와 다른 점**: 저기선 딥링크 탭(`?code=`)만 시드 갱신에서 뺐지만 여기선
+ * 예외가 없다 — `/study?view=` 는 활성 탭에 맞춰 URL 이 항상 재작성되므로
+ * (StudyPage 의 `navigate('/study?view=…', {replace:true})`) "쿼리가 있다 = 곁눈질
+ * 탭" 이 성립하지 않는다. 그 휴리스틱을 옮기면 모든 탭이 딥링크로 분류돼 시드가
+ * 영영 갱신되지 않고, 새 탭은 언제까지나 최초 시드 배치로만 열린다.
+ */
 function persistFromState(state: Persisted): void {
-  persistJson(STUDY_WORKSPACE_STORAGE_KEY, {
+  const snapshot = {
     schema_version: STUDY_WORKSPACE_SCHEMA_VERSION,
     windows: state.windows,
     zOrder: state.zOrder,
-  });
+  };
+  persistJson(STUDY_WORKSPACE_STORAGE_KEY, snapshot, 'tab');
+  persistJson(STUDY_WORKSPACE_STORAGE_KEY, snapshot, 'shared');
 }
 
 /** raw 스냅샷 → canonical Persisted. 유효 창이 없으면 시드로 폴백(빈 워크스페이스로
@@ -354,6 +375,15 @@ function normalizeSnapshot(raw: unknown): Persisted {
   return ensureChartWindow({ windows, zOrder: normalizeZOrder(obj.zOrder, windows) });
 }
 
+/** raw 스냅샷 — 자기 탭 저장소가 authoritative. 비어 있으면(새 탭) 공유 시드를
+ *  **읽기만 해서** 물려받는다: 늘 쓰던 배치 그대로 열리되 이후 변경은 그 탭에서
+ *  시작한다. 시드는 이 시점에 쓰지 않는다(열기만 해서는 아무것도 안 바뀐다). */
+function readStudyWorkspaceSnapshot(): Record<string, unknown> {
+  const own = readJsonObject(STUDY_WORKSPACE_STORAGE_KEY, 'tab');
+  if (Array.isArray(own.windows)) return own;
+  return readJsonObject(STUDY_WORKSPACE_STORAGE_KEY, 'shared');
+}
+
 /**
  * 하이드레이션 — 저장값이 없거나 전부 무효면 `study.layout.v1` 에서 1회 시드하고
  * 즉시 persist 해 창 id 를 고정한다(재방문 시 재시드 없음).
@@ -364,7 +394,7 @@ function normalizeSnapshot(raw: unknown): Persisted {
  * 안 그러면 매 방문마다 전역 키를 다시 읽어 사용자가 창에서 바꾼 값이 덮인다.
  */
 function readStorage(): Persisted {
-  const parsed = readJsonObject(STUDY_WORKSPACE_STORAGE_KEY);
+  const parsed = readStudyWorkspaceSnapshot();
   const rawWindows = Array.isArray(parsed.windows) ? parsed.windows : [];
   const windows = rawWindows
     .map(readWindow)
