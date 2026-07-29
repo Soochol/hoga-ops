@@ -33,12 +33,45 @@ import type { PaneId } from '../../chart/drawing/types';
 import { normalizePaneOrder, type PaneStretchMap } from '../../chart/paneOrder';
 import type { PanePrefKey } from '../indicators/indicatorPaneProfiles';
 import type { PresetEnableByTimeframe } from '../presets/presetFlags';
-import { WindowViewContext, type WindowView } from './windowViewContext';
+import {
+  WindowViewContext,
+  type WindowStoreHandle,
+  type WindowView,
+  type WindowWorkspaceAdapter,
+} from './windowViewContext';
 
 // 컨텍스트 객체·타입은 `windowViewContext.ts` 가 소유한다(chartPrefs 순환 회피 —
 // 그 파일 상단 주석 참조). 소비자 호환을 위해 여기서 그대로 re-export 한다.
 export { WindowViewContext } from './windowViewContext';
-export type { WindowView, WindowViewValue } from './windowViewContext';
+export type {
+  WindowChartStoreState,
+  WindowStoreHandle,
+  WindowView,
+  WindowViewValue,
+  WindowWorkspaceAdapter,
+} from './windowViewContext';
+
+/**
+ * `/live` 워크스페이스 어댑터 — `ChartWindow`·`WorkspaceIndicatorDrawer` 가 Provider
+ * 값에 실어 준다. 모듈 상수라 참조가 안정적이다(useMemo 의존성으로 넣을 필요 없음).
+ */
+export const LIVE_WINDOW_WORKSPACE: WindowWorkspaceAdapter = {
+  store: useWorkspaceStore,
+  getCode: (windowId) => {
+    const s = useWorkspaceStore.getState();
+    const win = s.windows.find((w) => w.id === windowId);
+    return win ? s.groupSymbols[win.group]?.code ?? null : null;
+  },
+};
+
+/**
+ * Provider 밖(전역 경로)에서 훅 호출 횟수를 맞추기 위한 스토어.
+ *
+ * 창-스코프 훅들은 `windowId` 가 없어도 스토어 selector 를 **호출은 해야 한다**
+ * (조건부 훅 금지). 그때 selector 는 상수를 돌려주므로 구독이 깨어나지 않아
+ * 재렌더 비용이 0 이다 — 종전 `useWorkspaceStore` 하드코딩과 동작이 같다.
+ */
+const FALLBACK_STORE = LIVE_WINDOW_WORKSPACE.store;
 
 /**
  * 창의 (code, timeframe, historicalFromDate, group). Provider 밖에서는 전역
@@ -111,7 +144,8 @@ export function useWindowIndicator<T>(select: (s: IndicatorSettings) => T): T {
 export function useIsFocusedWindow(): boolean {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
-  const focused = useWorkspaceStore((s) =>
+  const store = ctx?.workspace.store ?? FALLBACK_STORE;
+  const focused = store((s) =>
     windowId ? s.zOrder[s.zOrder.length - 1] === windowId : true,
   );
   return windowId ? focused : true;
@@ -133,7 +167,8 @@ function useWindowLayoutSlice<T>(
 ): T {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
-  const fromWindow = useWorkspaceStore((s) => {
+  const store = ctx?.workspace.store ?? FALLBACK_STORE;
+  const fromWindow = store((s) => {
     if (!windowId) return undefined;
     const chart = s.windows.find((w) => w.id === windowId)?.chart;
     return chart ? pickWindow(chart.indicators) : undefined;
@@ -186,10 +221,13 @@ function buildGlobalIndicatorActions(): IndicatorActions {
   return out as unknown as IndicatorActions;
 }
 
-function buildWindowIndicatorActions(windowId: string): IndicatorActions {
+function buildWindowIndicatorActions(
+  windowId: string,
+  handle: WindowStoreHandle,
+): IndicatorActions {
   // 모든 읽기/쓰기를 호출 시점 getState() 로 — 렌더 시점 설정을 클로저에 가두면
   // 연속 편집(색상 드래그 등)에서 stale read 로 직전 값이 덮인다.
-  const ws = () => useWorkspaceStore.getState();
+  const ws = () => handle.getState();
   const readSettings = (): IndicatorSettings => {
     const win = ws().windows.find((w) => w.id === windowId);
     return win?.chart
@@ -214,9 +252,12 @@ function buildWindowIndicatorActions(windowId: string): IndicatorActions {
 export function useIndicatorActions(): IndicatorActions {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
+  const workspace = ctx?.workspace ?? null;
   return useMemo(
-    () => (windowId ? buildWindowIndicatorActions(windowId) : buildGlobalIndicatorActions()),
-    [windowId],
+    () => (windowId && workspace
+      ? buildWindowIndicatorActions(windowId, workspace.store)
+      : buildGlobalIndicatorActions()),
+    [windowId, workspace],
   );
 }
 
@@ -228,15 +269,17 @@ export function useIndicatorActions(): IndicatorActions {
  */
 type ViewGuard = () => { code: string | null; timeframe: LiveTimeframe };
 
-function buildWindowViewGuard(windowId: string): ViewGuard {
-  return () => {
-    const s = useWorkspaceStore.getState();
-    const win = s.windows.find((w) => w.id === windowId);
-    return {
-      code: win ? s.groupSymbols[win.group]?.code ?? null : null,
-      timeframe: win?.chart?.timeframe ?? '1m',
-    };
-  };
+function buildWindowViewGuard(
+  windowId: string,
+  workspace: WindowWorkspaceAdapter,
+): ViewGuard {
+  return () => ({
+    // 코드만 어댑터에 묻는다 — 스토어 모양으로 덮이지 않는 유일한 축이다
+    // (`/live`=링크 그룹, `/study`=활성 저장뷰). 상세는 어댑터 타입 주석 참조.
+    code: workspace.getCode(windowId),
+    timeframe: workspace.store.getState().windows
+      .find((w) => w.id === windowId)?.chart?.timeframe ?? '1m',
+  });
 }
 
 const GLOBAL_VIEW_GUARD: ViewGuard = () => {
@@ -247,9 +290,10 @@ const GLOBAL_VIEW_GUARD: ViewGuard = () => {
 export function useWindowViewGuard(): ViewGuard {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
+  const workspace = ctx?.workspace ?? null;
   return useMemo(
-    () => (windowId ? buildWindowViewGuard(windowId) : GLOBAL_VIEW_GUARD),
-    [windowId],
+    () => (windowId && workspace ? buildWindowViewGuard(windowId, workspace) : GLOBAL_VIEW_GUARD),
+    [windowId, workspace],
   );
 }
 
@@ -263,9 +307,10 @@ export interface HistoricalRangeActions {
 export function useHistoricalRangeActions(): HistoricalRangeActions {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
+  const workspace = ctx?.workspace ?? null;
   return useMemo(() => {
-    if (windowId) {
-      const ws = () => useWorkspaceStore.getState();
+    if (windowId && workspace) {
+      const ws = () => workspace.store.getState();
       return {
         extend: (date: string) => ws().extendChartHistoricalRange(windowId, date),
         reset: () => ws().resetChartHistoricalRange(windowId),
@@ -282,5 +327,5 @@ export function useHistoricalRangeActions(): HistoricalRangeActions {
         lastMinuteHistoricalFromDate: ps().lastMinuteHistoricalFromDate,
       }),
     };
-  }, [windowId]);
+  }, [windowId, workspace]);
 }

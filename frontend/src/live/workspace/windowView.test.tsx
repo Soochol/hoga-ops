@@ -5,6 +5,7 @@ import {
   WindowViewContext,
   useWindowView,
   useWindowIndicators,
+  LIVE_WINDOW_WORKSPACE,
   type WindowViewValue,
 } from './windowView';
 import { useLivePageStore } from '../../state/livePage';
@@ -17,6 +18,7 @@ const windowValue: WindowViewValue = {
   timeframe: 'D',
   historicalFromDate: '20260101',
   indicators: { ...FACTORY_INDICATOR_SETTINGS, askPeakEnabled: true },
+  workspace: LIVE_WINDOW_WORKSPACE,
 };
 
 function provider(value: WindowViewValue) {

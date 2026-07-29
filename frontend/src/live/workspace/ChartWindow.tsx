@@ -21,6 +21,7 @@ import { ChartDrawingShell } from '../ChartDrawingShell';
 import ChartErrorBoundary from '../../chart/ChartErrorBoundary';
 import { useLiveChartData } from '../useLiveChartData';
 import {
+  LIVE_WINDOW_WORKSPACE,
   WindowViewContext,
   useWindowView,
   useWindowIndicators,
@@ -90,6 +91,7 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
       timeframe,
       historicalFromDate,
       indicators: resolved,
+      workspace: LIVE_WINDOW_WORKSPACE,
     }),
     [win.id, win.group, isIndex, symbol?.code, timeframe, historicalFromDate, resolved],
   );

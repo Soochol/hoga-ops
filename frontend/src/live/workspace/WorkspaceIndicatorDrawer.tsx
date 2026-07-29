@@ -17,7 +17,7 @@ import {
   FACTORY_INDICATOR_SETTINGS,
   resolveIndicatorSettings,
 } from '../../state/indicatorSettingsV2';
-import { WindowViewContext, type WindowViewValue } from './windowView';
+import { LIVE_WINDOW_WORKSPACE, WindowViewContext, type WindowViewValue } from './windowView';
 import {
   targetChartWindow,
   useWorkspaceStore,
@@ -73,6 +73,7 @@ export function useChartWindowView(windowId: string | null): ChartWindowView | n
       timeframe,
       historicalFromDate: null, // 드로어/설정은 페치를 돌리지 않는다 — 뷰 식별용 아님
       indicators,
+      workspace: LIVE_WINDOW_WORKSPACE,
     };
     return { view, target, symbol, instrument };
   }, [target, isIndex, symbol, timeframe, indicators, instrument]);
