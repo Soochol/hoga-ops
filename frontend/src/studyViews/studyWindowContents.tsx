@@ -7,6 +7,7 @@
  * 각 kind 가 자기 데이터 훅만 부른다 — react-query 가 중복 조회를 dedupe 하므로
  * 동종 창 중복도 안전하다.
  */
+import { useStudyChartIndicators } from './useStudyChartIndicators';
 import { useMemo } from 'react';
 import {
   useLiveBrokersAtCursor,
@@ -33,7 +34,7 @@ import {
   resolveOrderbookCardSnapshot,
 } from '../sidebar/cursorDetailResolver';
 import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
-import { isMinuteTimeframe, useLivePageStore, type MinuteTimeframe } from '../state/livePage';
+import { isMinuteTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { STUDY_DATA_WINDOW_TEST_ID, type StudyDataWindowKind } from './studyWindowMeta';
 
 type ContentProps = {
@@ -137,11 +138,15 @@ function BrokerContent({ save }: ContentProps) {
 
 function VdistContent({ save, bundle }: ContentProps) {
   const { detailCursorMs, minuteTimeframe, volumeDistributionDate } = useStudyCursorScope(save);
-  const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
-  const volumeDistributionHoverCutoffEnabled = useLivePageStore((s) => s.volumeDistributionHoverCutoffEnabled);
-  const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
-  const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
-  const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
+  // 데이터 창도 차트 창 설정을 읽는다(#904) — 같은 지표를 두 창이 다르게 그리면
+  // 안 된다.
+  const {
+    volumeDistributionEnabled,
+    volumeDistributionHoverCutoffEnabled,
+    volumeDistributionRangeCount,
+    volumeDistributionColor,
+    volumeDistributionMaxColor,
+  } = useStudyChartIndicators();
   const candleDateIndex = useMemo(
     () => buildCandleDateIndex(bundle.candles),
     [bundle.candles],

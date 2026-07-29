@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
-import { useLivePageStore } from '../state/livePage';
+import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { StudyTab } from '../state/studyTabs';
@@ -79,7 +79,11 @@ describe('useWarmStudyReferenceTabQueries', () => {
     vi.mocked(apiCall).mockClear();
     useLiveVenueStore.setState({ venue: 'KRX' });
     useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
-    useLivePageStore.setState({
+    // 쿼리 키를 정하는 지표는 차트 창 소유다(#904) — 전역이 아니라 창 버킷.
+    const chartId = useStudyWorkspaceStore.getState().windows.find((w) => w.kind === 'chart')!.id;
+    useStudyWorkspaceStore.getState().resetChartIndicators(chartId);
+    useStudyWorkspaceStore.getState().setChartTimeframe(chartId, '5m');
+    useStudyWorkspaceStore.getState().patchChartIndicators(chartId, {
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
