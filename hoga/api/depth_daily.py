@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """depth_daily.parquet — (code, date)당 매도/매수 총잔량 당일 peak 집계 스토어.
 
 스크리너 ``ask_depth_new_high`` / ``bid_depth_new_high`` 조건은 "당일 매도 총잔량
@@ -17,6 +15,11 @@ v1은 스크리너 비교 기준이 hogaplay이므로 스윕도 hogaplay 소스�
 아니라 스캔 시점에 라이브 parquet(kis_live/kis_api)에서 직접 산출한다 — 그 경로는
 screener_runner가 담당한다.
 """
+# PEP 236: __future__ import 는 "첫 문장" 이어야 하지만 **모듈 docstring 은 예외**로
+# 허용된다. 순서를 뒤집어 __future__ 를 1행에 두면 뒤따르는 문자열이 docstring 자격을
+# 잃고 그냥 평가 후 버려지는 표현식이 되어 __doc__ 이 None 이 된다(문법 오류가 아니라
+# 조용히 사라진다). 위 ADR-0076·ADR-0062 v3 근거가 런타임에서 통째로 소실됐었다.
+from __future__ import annotations
 
 import datetime as dt
 import json
