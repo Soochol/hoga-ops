@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+
 from hoga.api.screener_factors import FactorSegment, compute_factor_segments
 
 

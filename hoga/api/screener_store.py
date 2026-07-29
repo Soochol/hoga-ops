@@ -111,7 +111,7 @@ def adjust_splits(df: pl.DataFrame) -> pl.DataFrame:
     """원주가 일봉 → 수정주가(최신일 basis). per-code back-adjust."""
     out = []
     # 전역 date 정렬 + maintain_order → 각 그룹은 이미 date 오름차순(group 별 재정렬 불요).
-    for (code,), g in df.sort("date").group_by(["code"], maintain_order=True):
+    for (code,), g in df.sort("date").group_by(["code"], maintain_order=True):  # noqa: B007 — 루프 변수 미사용이 의도(인덱스만 필요)
         closes = g["close"].to_list()
         n = len(closes)
         factor = [1.0] * n              # 각 날 d 의 누적계수(d 이후 분할 비율 곱). 최신일=1.
@@ -224,9 +224,9 @@ def seed_all(data_dir: Path, *, now_ms: int) -> int:
     daily + stocks export(CSV) → seed parquet(VARCHAR code) → derive 수정주가 → status."""
     sdir = data_dir / "screener"
     sdir.mkdir(parents=True, exist_ok=True)
-    import tempfile
+    import tempfile  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     with tempfile.TemporaryDirectory() as td:
-        td = Path(td)
+        td = Path(td)  # noqa: PLW2901 — 방어적 복사·정규화 후 재대입
         export_db_to_csv(td / "daily.csv")
         seed_daily_from_csv(td / "daily.csv", sdir / "daily_unadjusted.parquet")
         export_stocks_from_db(td / "stocks.csv")

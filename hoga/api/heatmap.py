@@ -66,14 +66,14 @@ def _migrate(raw: dict) -> dict:
     seeded verbatim from a v3 watchlist carries f_00000000 '기본'), rescued
     entries merge into the existing folder instead of duplicating the id."""
     version = raw.get("schema_version", raw.get("version", 1))
-    if version > 3:
+    if version > 3:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise UnsupportedHeatmapSchema(f"unsupported heatmap schema_version {version}")
-    folders = [dict(f) for f in raw.get("folders", [])] if version >= 2 else []
+    folders = [dict(f) for f in raw.get("folders", [])] if version >= 2 else []  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
     valid_ids = {f.get("id") for f in folders}
     entries: list[dict] = []
     rescued = False
     for i, e in enumerate(raw.get("entries", [])):
-        e = dict(e)
+        e = dict(e)  # noqa: PLW2901 — 방어적 복사·정규화 후 재대입
         e["order"] = e.get("order", i)
         if e.get("folder_id") not in valid_ids:
             e["folder_id"] = _UNCAT_FOLDER_ID
@@ -161,11 +161,14 @@ def seed_from_watchlist_if_absent(data_dir: Path) -> None:
     if _path(data_dir).exists():
         return
     # Local import: avoids any chance of an import cycle at module load.
-    from hoga.api import watchlist as _watchlist
+    from hoga.api import watchlist as _watchlist  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     wl = _watchlist.load_document(data_dir)
     if not wl.entries:
         return  # nothing to seed yet; retry next boot
-    from hoga.api.watchlist_projection import first_membership_positions, ordered_folders
+    from hoga.api.watchlist_projection import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        first_membership_positions,
+        ordered_folders,
+    )
 
     folders = [WatchlistFolder(id=f.id, name=f.name, order=f.order) for f in ordered_folders(wl)]
     placement = first_membership_positions(wl)

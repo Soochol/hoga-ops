@@ -141,7 +141,11 @@ def cache_report(
     in_: Path | None = typer.Option(None, "--in", help=_OUT_HELP),
 ) -> None:
     """Summarize a cache-observe trail into follow-up gate metrics."""
-    from hoga.util.cache_observe import format_report, read_records, summarize  # noqa: PLC0415
+    from hoga.util.cache_observe import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        format_report,
+        read_records,
+        summarize,
+    )
 
     path = in_ or _cache_observe_default_out()
     console.print(format_report(summarize(read_records(path))))
@@ -155,9 +159,9 @@ def screener_seed() -> None:
     machine-global data dir. Requires the tradingview-db docker container to
     be running (export_db_to_csv shells out to `docker exec ... psql`).
     """
-    import time
+    import time  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
-    from hoga.api.screener_store import seed_all
+    from hoga.api.screener_store import seed_all  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     try:
         n = seed_all(resolve_data_dir(), now_ms=int(time.time() * 1000))
@@ -173,10 +177,12 @@ def screener_backfill() -> None:
 
     ~2-4h, resumable(중단 후 재실행하면 완료 종목 skip). KIS_APP_KEY/SECRET 필요.
     """
-    import asyncio
-    import time
+    import asyncio  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    import time  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
-    from hoga.api.screener_backfill import run_backfill
+    from hoga.api.screener_backfill import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        run_backfill,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
 
     t0 = time.time()
     try:
@@ -193,9 +199,11 @@ def screener_backfill() -> None:
 
 async def _run_repair_sweep(data_dir: Path, *, dry_run: bool) -> None:
     from hoga.api import study_views  # noqa: PLC0415 — CLI-local
-    from hoga.api.queries import QueryEngine  # noqa: PLC0415
-    from hoga.live import candle_repair  # noqa: PLC0415
-    from hoga.live.kis_runtime import ensure_kis_client_from_env  # noqa: PLC0415
+    from hoga.api.queries import QueryEngine  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    from hoga.live import candle_repair  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    from hoga.live.kis_runtime import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        ensure_kis_client_from_env,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
 
     saves = study_views.load_saves(data_dir).saves
     if not saves:
@@ -431,12 +439,17 @@ def _run_series_for(stock_date_dir, meta):
     into an explicit 'I couldn't check' signal. The CLI is a diagnostic
     tool; hiding load failures would be the worst UX choice.
     """
-    import pyarrow.parquet as _pq
+    import pyarrow.parquet as _pq  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
-    from hoga.api.invariants import StockDateArtifacts, check_series
-    from hoga.tables import candles as _candles
-    from hoga.tables import snapshots as _snapshots
-    from hoga.tables.trades import Trade
+    from hoga.api.invariants import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        StockDateArtifacts,
+        check_series,
+    )
+    from hoga.tables import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        candles as _candles,
+        snapshots as _snapshots,
+    )
+    from hoga.tables.trades import Trade  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     def _read(path, loader):
         # Returns None (not []) for missing/unreadable — the series invariants
@@ -526,7 +539,7 @@ def _iter_stock_date_metas(
 
 
 @app.command()
-def validate(
+def validate(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
     code: str | None = typer.Option(None, "--code", help="Limit to a single Code (e.g. 005930)."),
     severity: str = typer.Option("error", "--severity",
                                  help="Filter: 'error', 'warn', or 'all'."),
@@ -543,10 +556,12 @@ def validate(
     archival snapshot after the invariants catalog changes; data repair
     means re-capturing.
     """
-    import json as _json
+    import json as _json  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
-    from hoga.api.invariants import check as _check
-    from hoga.config import resolve_data_dir
+    from hoga.api.invariants import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        check as _check,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
+    from hoga.config import resolve_data_dir  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     valid_severities = {"error", "warn", "all"}
     if severity not in valid_severities:
@@ -677,8 +692,11 @@ def prune(
     Trigger Condition anticipated exactly this: "비-COMPLETE raw 누적이 디스크를
     위협하면 --include-partial 옵트인 또는 별도 진단 도구를 도입한다."
     """
-    from hoga.api.prune import (
-        disk_headroom, prune_default_now, prune_raw, resolve_retention_days,
+    from hoga.api.prune import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        disk_headroom,
+        prune_default_now,
+        prune_raw,
+        resolve_retention_days,
     )
 
     retention = days if days is not None else resolve_retention_days()

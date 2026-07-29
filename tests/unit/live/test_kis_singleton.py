@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-import hoga.live.kis_runtime as kis_runtime
+from hoga.live import kis_runtime
 from hoga.live.kis_client import KisCredentials
 
 # Singleton reset is provided by tests/unit/live/conftest.py (_reset_live_singletons).

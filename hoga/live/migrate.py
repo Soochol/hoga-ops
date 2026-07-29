@@ -3,9 +3,10 @@
 See ADR-0037. Sentinel: <data_dir>/.layout_v2 marks completion.
 """
 from __future__ import annotations
+
+import shutil
 from enum import Enum
 from pathlib import Path
-import shutil
 
 SENTINEL_NAME = ".layout_v2"
 _MOVED_FILE_NAMES = (
@@ -19,7 +20,7 @@ class LayoutVersion(Enum):
     V2 = "v2"
 
     @classmethod
-    def detect(cls, data_dir: Path) -> "LayoutVersion":
+    def detect(cls, data_dir: Path) -> LayoutVersion:
         return cls.V2 if (data_dir / SENTINEL_NAME).exists() else cls.V1_FLAT
 
 

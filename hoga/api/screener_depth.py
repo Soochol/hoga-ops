@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """스크리너 '매도/매수 총잔량 분봉 peak 신고' 조건 평가.
 
 조건 의미: 당일 총잔량(10단계 합) 분봉 peak ≥ (threshold_pct/100) × 지난 N거래일
@@ -13,6 +11,10 @@ hogaplay 캡처의 depth_daily 집계에서 온다(요구사항: 당일=실시�
 평가 결과의 통과 코드 집합은 :func:`hoga.api.screener_scan.run_scan` 에 넘겨져
 AND 결합된다 — run_scan 의 CTE 아키텍처를 건드리지 않고 사전계산 코드셋으로 주입.
 """
+# PEP 236: __future__ import 는 "첫 문장" 이어야 하지만 **모듈 docstring 은 예외**로
+# 허용된다. 순서를 뒤집으면 뒤따르는 문자열이 docstring 자격을 잃어 __doc__ 이 None 이
+# 된다 — 문법 오류가 아니라 조용히 사라진다. depth_daily.py 와 같은 결함이었다.
+from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
@@ -132,12 +134,12 @@ def _past_agg(
         pl.col(side_col).max().alias("peak"),
         pl.col("date").n_unique().alias("have"),
     )
-    peak = dict(zip(agg["code"].to_list(), agg["peak"].to_list()))
-    have = dict(zip(agg["code"].to_list(), agg["have"].to_list()))
+    peak = dict(zip(agg["code"].to_list(), agg["peak"].to_list(), strict=True))
+    have = dict(zip(agg["code"].to_list(), agg["have"].to_list(), strict=True))
     return peak, have
 
 
-def evaluate(
+def evaluate(  # noqa: PLR0912, PLR0915
     *,
     data_dir: Path,
     sdir: Path,

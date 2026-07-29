@@ -21,40 +21,7 @@ from hoga.api import symbols
 from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate
 from hoga.api.params import CODE_PATTERN
-from hoga.live.kis_client import (
-    KisApiError,
-    KisAuthError,
-    KisQuote,
-    KisRateLimitError,
-    KisTransportError,
-)
-from hoga.live import kis_runtime
-from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
-from hoga.live.kis_capacity_scheduler import (
-    KisCapacityCooldown,
-    KisCapacityOverloaded,
-)
-from hoga.live.kis_models import InvestorTrendEstimateRow
-from hoga.live.kis_venue import (
-    KisVenue,
-    LiveVenuePolicy,
-    parse_live_venue_policy,
-    quote_venue_for_policy,
-)
-from hoga.live import kiwoom_runtime
-from hoga.live.kiwoom_rankings import (
-    Direction as RankingDirection,
-    KiwoomRankingsError,
-    KiwoomRankingsFetcher,
-    Market as RankingMarket,
-    RankingKind,
-)
-from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
-from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
-from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
-from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
-from hoga.live.live_index_sector_intraday import LiveIndexSectorIntradayOverlay
-from hoga.live.live_investor_net_backfill import LiveInvestorNetBackfill
+from hoga.live import kis_runtime, kiwoom_runtime
 from hoga.live.index_candles_cache import (
     IndexCandlesCache,
     collect_index_candles_with_cache,
@@ -65,16 +32,48 @@ from hoga.live.index_minute_candles_cache import (
     IndexMinuteCandlesCache,
     collect_index_minute_candles_with_cache,
 )
-from hoga.live.kiwoom_index_candles import (
-    KiwoomIndexCandlesError,
-    KiwoomIndexCandlesFetcher,
-    supports_bucket_seconds as kiwoom_supports_bucket,
-)
 from hoga.live.index_registry import (
     UnknownRepresentativeIndex,
     get_representative_index,
     list_representative_indices,
 )
+from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
+from hoga.live.kis_capacity_scheduler import (
+    KisCapacityCooldown,
+    KisCapacityOverloaded,
+)
+from hoga.live.kis_client import (
+    KisApiError,
+    KisAuthError,
+    KisQuote,
+    KisRateLimitError,
+    KisTransportError,
+)
+from hoga.live.kis_models import InvestorTrendEstimateRow
+from hoga.live.kis_venue import (
+    KisVenue,
+    LiveVenuePolicy,
+    parse_live_venue_policy,
+    quote_venue_for_policy,
+)
+from hoga.live.kiwoom_index_candles import (
+    KiwoomIndexCandlesError,
+    KiwoomIndexCandlesFetcher,
+    supports_bucket_seconds as kiwoom_supports_bucket,
+)
+from hoga.live.kiwoom_rankings import (
+    Direction as RankingDirection,
+    KiwoomRankingsError,
+    KiwoomRankingsFetcher,
+    Market as RankingMarket,
+    RankingKind,
+)
+from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
+from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
+from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
+from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
+from hoga.live.live_index_sector_intraday import LiveIndexSectorIntradayOverlay
+from hoga.live.live_investor_net_backfill import LiveInvestorNetBackfill
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.quote_change_resolver import QuoteChangeResolver
@@ -470,7 +469,7 @@ def _collect_index_minute_candles_cache_only(
     }
 
 
-async def batched_daily_walkback(
+async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
     *,
     cache: PastDailyCandlesCache,
     fetch_batch: Callable[[str, str, str], Awaitable[tuple[list[dict], list]]],
@@ -1104,7 +1103,7 @@ class LiveInvestorEstimateFetcher:
 
     async def fetch(
         self,
-        kis: "KisClient",
+        kis: KisClient,
         code: str,
     ) -> LiveInvestorTrendEstimateResponse:
         trading_day = self._today_fn()
@@ -1128,7 +1127,7 @@ class LiveInvestorEstimateFetcher:
 
     async def _fetch_uncached(
         self,
-        kis: "KisClient",
+        kis: KisClient,
         code: str,
         trading_day: str,
     ) -> LiveInvestorTrendEstimateResponse:
@@ -1346,7 +1345,7 @@ class RankingsResponse(BaseModel):
     source: Literal["kiwoom"] = "kiwoom"
 
 
-def build_router(
+def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
     get_status: Callable[[], LiveStatus],
     get_buffer: Callable[[], LiveBuffer] | None = None,
     on_control: Callable[[str], Awaitable[None]] | None = None,
@@ -1395,7 +1394,9 @@ def build_router(
     async def _collect_cache_stats(request: Request) -> dict[str, object]:
         """Per-cache observability (PR-1). Reads closure-reachable cache
         instances — the same closure path _kis_scheduler uses above."""
-        from hoga.api import today_ttl_cache  # late import: conftest swaps TODAY_TTL
+        from hoga.api import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+            today_ttl_cache,  # late import: conftest swaps TODAY_TTL  # noqa: PLC0415 — 지연 import(순환/heavy)
+        )
 
         out: dict[str, object] = {}
         if cache_instance is not None:
@@ -1526,7 +1527,7 @@ def build_router(
             return snapshot()
 
     @router.get("/index-candles")
-    async def _get_index_candles(
+    async def _get_index_candles(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
         index_id: str = Query(...),
         timeframe: Literal["1m", "3m", "5m", "10m", "15m", "30m", "D", "W", "M"] = Query(...),
         from_: str = Query(..., alias="from"),
@@ -1908,7 +1909,7 @@ def build_router(
                 ),
                 timeout=1.0,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             quotes = _quote_fetcher.stale_last_good(
                 code_list,
                 phase,
@@ -1976,7 +1977,7 @@ def build_router(
                     ),
                     timeout=1.0,
                 )
-            except (asyncio.TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
+            except (TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
                 quotes = []
         quote_by_code = {quote.code: quote for quote in quotes}
 
@@ -2038,7 +2039,7 @@ def build_router(
                 ),
                 timeout=1.5,
             )
-        except (asyncio.TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
+        except (TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
             return _investor_estimate_fetcher._error_response(
                 code,
                 _investor_estimate_fetcher._today_fn(),
@@ -2074,11 +2075,11 @@ def build_router(
         if data_dir is not None and daily_cache_instance is not None and _kis_scheduler is not None
         else None
     )
-    global index_candles_cache_instance
+    global index_candles_cache_instance  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     if data_dir is not None and index_candles_cache_instance is None:
         index_candles_cache_instance = IndexCandlesCache()
-    global kiwoom_stock_info_fetcher_instance, kiwoom_rankings_fetcher_instance
-    global _kiwoom_index_fetcher
+    global kiwoom_stock_info_fetcher_instance, kiwoom_rankings_fetcher_instance  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
+    global _kiwoom_index_fetcher  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     if data_dir is not None and kiwoom_stock_info_fetcher_instance is None:
         _kiwoom_prov = kiwoom_runtime.ensure_token_provider_for_account(0, data_dir)
         if _kiwoom_prov is not None:
@@ -2088,7 +2089,7 @@ def build_router(
             # 지수 분봉 fetcher (ADR-0129) — 같은 provider. 이 대입이 곧 소스 선택이다:
             # 자격증명이 없으면 None 으로 남아 지수 분봉이 KIS 로 간다(현행 동작 유지).
             _kiwoom_index_fetcher = KiwoomIndexCandlesFetcher(_kiwoom_prov)
-    global index_minute_candles_cache_instance
+    global index_minute_candles_cache_instance  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     if data_dir is not None and index_minute_candles_cache_instance is None:
         index_minute_candles_cache_instance = IndexMinuteCandlesCache()
     # Investor net-buy reuses the daily candle cache (ADR-0055): same date-cursor

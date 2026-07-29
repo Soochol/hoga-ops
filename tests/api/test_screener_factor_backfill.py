@@ -19,7 +19,7 @@ def _seed_unadjusted(sdir: Path):
     for d, c in [(dt.date(2021, 4, 5), 502000.0), (dt.date(2021, 4, 15), 120500.0)]:
         rows.append({"code": "035720", "date": d, "open": c, "high": c, "low": c, "close": c, "volume": 100})
     for d in (dt.date(2021, 4, 5), dt.date(2021, 4, 15)):
-        rows.append({"code": "000001", "date": d, "open": 1000.0, "high": 1000.0, "low": 1000.0, "close": 1000.0, "volume": 5})
+        rows.append({"code": "000001", "date": d, "open": 1000.0, "high": 1000.0, "low": 1000.0, "close": 1000.0, "volume": 5})  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     pl.DataFrame(rows, schema=_UNADJ_SCHEMA).write_parquet(sdir / "daily_unadjusted.parquet")
 
 
@@ -77,7 +77,7 @@ def test_backfill_one_failing_fetch_does_not_abort_others(tmp_path):
         if code == "035720":
             raise RuntimeError("boom")
         return [(dt.date(2021,4,5),1000.0),(dt.date(2021,4,15),1000.0)]
-    n = asyncio.run(factor_backfill(sdir, fetch_adj=fetch, codes=["000001","035720"]))  # no crash
+    n = asyncio.run(factor_backfill(sdir, fetch_adj=fetch, codes=["000001","035720"]))  # no crash  # noqa: E501, F841
     f = read_factors(sdir / "factors.parquet")
     assert "000001" in f["code"].unique().to_list()
     assert "035720" not in f["code"].unique().to_list()

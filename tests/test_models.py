@@ -1,5 +1,5 @@
-from hoga.api.models import SymbolMasterInfo
 from hoga.api.error_codes import UpstreamCode
+from hoga.api.models import SymbolMasterInfo
 
 
 def test_symbol_master_info_minimal():
@@ -75,6 +75,7 @@ def test_retry_request_rejects_empty_item_ids():
     """Per ADR-0031: empty retry call is a usage error, not a no-op."""
     import pytest
     from pydantic import ValidationError
+
     from hoga.api.models import RetryRequest
     with pytest.raises(ValidationError):
         RetryRequest(item_ids=[])
@@ -84,6 +85,7 @@ def test_retry_skipped_row_reasons_are_constrained():
     """Reason field is a Literal of the 4 documented skip reasons."""
     import pytest
     from pydantic import ValidationError
+
     from hoga.api.models import RetrySkippedRow
     for reason in ("not_found", "not_failed", "already_in_queue", "already_running"):
         RetrySkippedRow(item_id="x", reason=reason)
@@ -121,15 +123,17 @@ def test_enqueue_deduped_row_accepts_already_skipped():
 def test_enqueue_deduped_row_rejects_unknown_reason():
     import pytest
     from pydantic import ValidationError
+
     from hoga.api.models import EnqueueDedupedRow
     with pytest.raises(ValidationError):
         EnqueueDedupedRow(code="005930", date="20260520", reason="bogus_reason")
 
 
 def test_watchlist_entry_validates_code_format():
-    from hoga.api.models import WatchlistEntry
     import pytest
     from pydantic import ValidationError
+
+    from hoga.api.models import WatchlistEntry
     # Valid
     WatchlistEntry(
         code="003490",
@@ -162,9 +166,10 @@ def test_watchlist_response_carries_next_run_ms():
 
 
 def test_watchlist_add_request_validates_code():
-    from hoga.api.models import WatchlistAddRequest
     import pytest
     from pydantic import ValidationError
+
+    from hoga.api.models import WatchlistAddRequest
     # params.CODE_PATTERN grammar: 6-char alphanumeric (KRX's newer ticker
     # scheme — 0001A0 is a real KOSDAQ stock, 0000H0 a real ETF) plus
     # 7-char Q-prefixed ETN codes (Q500093).
@@ -210,7 +215,8 @@ def test_manual_catchup_all_entry_result_with_error():
 
 def test_manual_catchup_all_response_aggregates():
     from hoga.api.models import (
-        ManualCatchupAllResponse, ManualCatchupAllEntryResult,
+        ManualCatchupAllEntryResult,
+        ManualCatchupAllResponse,
     )
     resp = ManualCatchupAllResponse(results=[
         ManualCatchupAllEntryResult(code="003490", name="대한항공",

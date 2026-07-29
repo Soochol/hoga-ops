@@ -5,8 +5,6 @@ import pytest
 
 from hoga.api.slice_coalescer import SliceCoalescer
 
-
-
 # ── SliceCoalescer (per-day slice single-flight) ────────────────────────────
 
 

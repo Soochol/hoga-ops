@@ -124,13 +124,15 @@ def write_parquet(rows: Iterable[BrokerRow], path: Path) -> None:
         "qty_today": pa.array([r.qty_today for r in sorted_rows], type=pa.int32()),
         "qty_delta": pa.array([r.qty_delta for r in sorted_rows], type=pa.int32()),
     }
-    from hoga.api._atomic_write import atomic_write_parquet_table
+    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        atomic_write_parquet_table,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
 def query_day_series(
     con: duckdb.DuckDBPyConnection, *, path: Path
-) -> list["BrokerSeriesEntry"]:
+) -> list[BrokerSeriesEntry]:
     """Per-broker signed-net trajectories for the whole parquet file.
 
     Aggregates qty_today * sign(side) per (broker, ts_ms) so a broker on
@@ -147,7 +149,9 @@ def query_day_series(
     for gaps when the broker fell out of both top-5 lists (the frontend
     renders such gaps with a dashed line; see ADR-0023).
     """
-    from hoga.api.models import BrokerSeriesEntry  # local: avoid cycle
+    from hoga.api.models import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        BrokerSeriesEntry,  # local: avoid cycle  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
 
     by_broker = _query_canonical_series_points(con, path=path)
     if not by_broker:
@@ -170,12 +174,12 @@ def query_day_series(
 # 풀스캔이 비싸다. 완료된 과거일은 파일이 불변이므로 (path, mtime, size) 로 결과를 재사용
 # 한다 — today 는 캡처가 파일을 갱신할 때마다 mtime 이 바뀌어 자연 무효화된다. 값은 read-only
 # 공유(routes.brokers_series 는 model_copy 로 새 엔트리를 만들어 캐시를 변형하지 않는다).
-_DAY_SERIES_CACHE: "MtimeLruCache[list[BrokerSeriesEntry]]" = MtimeLruCache(max_entries=64)
+_DAY_SERIES_CACHE: MtimeLruCache[list[BrokerSeriesEntry]] = MtimeLruCache(max_entries=64)
 
 
 def query_day_series_cached(
     con: duckdb.DuckDBPyConnection, *, path: Path
-) -> list["BrokerSeriesEntry"]:
+) -> list[BrokerSeriesEntry]:
     """query_day_series 의 mtime 검증 캐시판. 브로커 canonical 이 바뀌면 프로세스
     재시작으로 무효화된다(디스크 미영속이라 SCHEMA_VERSION 불필요)."""
     return _DAY_SERIES_CACHE.get_or_load(path, lambda p: query_day_series(con, path=p))
@@ -185,10 +189,12 @@ def _query_canonical_series_points(
     con: duckdb.DuckDBPyConnection,
     *,
     path: Path,
-) -> dict[str, list["BrokerSeriesPoint"]]:
+) -> dict[str, list[BrokerSeriesPoint]]:
     """Return live broker-series points after canonical alias collapse."""
-    from hoga.api.models import BrokerSeriesPoint  # local: avoid cycle
-    from hoga.broker_names import canonical
+    from hoga.api.models import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        BrokerSeriesPoint,  # local: avoid cycle  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
+    from hoga.broker_names import canonical  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     rows = con.execute(
         """
@@ -237,7 +243,7 @@ def query_late_entry_events(
     ``threshold_ms`` and returned ``t_ms`` use the parquet-native HHMMSSmmm
     encoding. The API layer converts them to Unix ms.
     """
-    from hoga.broker_names import canonical
+    from hoga.broker_names import canonical  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     rows = con.execute(
         """
@@ -313,9 +319,9 @@ def query_cumulative_details_at(
     The result mirrors Cursor Sidebar ordering: select and order brokers by
     final full-file net, then project each ordered broker's net at the cursor.
     """
-    from bisect import bisect_right
+    from bisect import bisect_right  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
-    from hoga.broker_names import canonical
+    from hoga.broker_names import canonical  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     if not t_values:
         return {}

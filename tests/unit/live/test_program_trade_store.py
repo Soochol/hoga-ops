@@ -24,8 +24,8 @@ def row(bsop_hour: str, net_amount: int):
 
 
 def test_program_trade_store_merges_rows_idempotently_and_sorts(tmp_path):
-    from hoga.live.program_trade_store import ProgramTradeStore
     from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.live.program_trade_store import ProgramTradeStore
 
     store = ProgramTradeStore(tmp_path)
 

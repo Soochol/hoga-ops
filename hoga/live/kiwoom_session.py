@@ -21,8 +21,7 @@ from . import kiwoom_runtime
 from .buffer import LiveBuffer
 from .coverage import KIWOOM_PER_ACCOUNT_MAX, partition_kiwoom
 from .kiwoom_fields import apply_venue
-from .kiwoom_vi_capture import KiwoomViCapture
-from .kiwoom_vi_capture import replay_today as replay_vi_today
+from .kiwoom_vi_capture import KiwoomViCapture, replay_today as replay_vi_today
 from .kiwoom_vi_state import KiwoomViState
 from .kiwoom_ws_client import KiwoomWsClient
 from .snapshot import LiveSnapshot

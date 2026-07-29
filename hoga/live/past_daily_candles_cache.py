@@ -99,7 +99,7 @@ class PastDailyCandlesCache:
     def _parse_code_args(args: tuple[str, ...]) -> tuple[KisVenue, str]:
         if len(args) == 1:
             return "KRX", args[0]
-        if len(args) == 2:
+        if len(args) == 2:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             venue, code = args
             return venue, code  # type: ignore[return-value]
         raise TypeError("expected (code) or (venue, code)")
@@ -121,9 +121,9 @@ class PastDailyCandlesCache:
     def append_batch(
         self, *args,
     ) -> None:
-        if len(args) == 4:
+        if len(args) == 4:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             venue, code, frm, to, bars = "KRX", args[0], args[1], args[2], args[3]
-        elif len(args) == 5:
+        elif len(args) == 5:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             venue, code, frm, to, bars = args
         else:
             raise TypeError("expected (code, frm, to, bars) or (venue, code, frm, to, bars)")
@@ -143,9 +143,9 @@ class PastDailyCandlesCache:
         return self._today_mem.get((venue, code))
 
     def store_today(self, *args) -> None:
-        if len(args) == 2:
+        if len(args) == 2:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             venue, code, bar = "KRX", args[0], args[1]
-        elif len(args) == 3:
+        elif len(args) == 3:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             venue, code, bar = args
         else:
             raise TypeError("expected (code, bar) or (venue, code, bar)")

@@ -148,7 +148,9 @@ def write_parquet(trades: Iterable[Trade], path: Path) -> None:
         field.name: pa.array([getattr(t, field.name) for t in rows], type=field.type)
         for field in PARQUET_SCHEMA
     }
-    from hoga.api._atomic_write import atomic_write_parquet_table
+    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        atomic_write_parquet_table,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
@@ -164,7 +166,9 @@ def write_parquet_frame(df: pl.DataFrame, path: Path) -> None:
         .to_arrow()
         .cast(PARQUET_SCHEMA)
     )
-    from hoga.api._atomic_write import atomic_write_parquet_table
+    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        atomic_write_parquet_table,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
     atomic_write_parquet_table(path, table)
 
 
@@ -330,9 +334,7 @@ def dedup_overlap_resends(trades: list[Trade]) -> list[Trade]:
                 max_seq_by_cum[t.cum_vol] = t.seq
     out: list[Trade] = []
     for t in trades:
-        if t.side == 0 or t.qty == 0:
-            out.append(t)
-        elif t.seq == max_seq_by_cum[t.cum_vol]:
+        if t.side == 0 or t.qty == 0 or t.seq == max_seq_by_cum[t.cum_vol]:
             out.append(t)
         # else: an earlier-seq copy of a re-sent cum_vol — drop it.
     return out
@@ -383,7 +385,7 @@ def _hhmmssms_to_intra_ms(value: int) -> int:
 
 
 def _session_bound_to_intra_ms(value: int) -> int:
-    return _hhmmssms_to_intra_ms(value) if value > 86_400_000 else value
+    return _hhmmssms_to_intra_ms(value) if value > 86_400_000 else value  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
 
 
 def query_fill_strength(

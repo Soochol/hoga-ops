@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
+
 from hoga.api.models import BrokerSeriesResponse
-from hoga.api.sources import SourceName
 
 
 def test_brokers_response_has_source_field() -> None:

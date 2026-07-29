@@ -1,10 +1,16 @@
 from __future__ import annotations
+
 from collections.abc import Callable
 from pathlib import Path
+
 import polars as pl
+
 from hoga.api import screener_universe
 from hoga.api.models import (
-    BreakoutParams, ConditionLeaf, ScreenerRow, ScreenerUniverse,
+    BreakoutParams,
+    ConditionLeaf,
+    ScreenerRow,
+    ScreenerUniverse,
 )
 from hoga.duck import connect_bounded
 
@@ -98,9 +104,9 @@ def _compile_high_off_peak(leaf, i):
 def _compile_price_range(leaf, i):
     clauses, params = [], []
     if leaf.params.min is not None:
-        clauses.append("close >= ?"); params.append(leaf.params.min)
+        clauses.append("close >= ?"); params.append(leaf.params.min)  # noqa: E702 — 셋업 한 줄 압축
     if leaf.params.max is not None:
-        clauses.append("close <= ?"); params.append(leaf.params.max)
+        clauses.append("close <= ?"); params.append(leaf.params.max)  # noqa: E702 — 셋업 한 줄 압축
     return f"cond_{i} AS (SELECT code FROM base WHERE {' AND '.join(clauses)})", params
 
 
@@ -214,7 +220,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     cols = [c[0] for c in cur.description]
     out: list[ScreenerRow] = []
     for r in cur.fetchall():
-        d = dict(zip(cols, r))
+        d = dict(zip(cols, r, strict=True))
         out.append(ScreenerRow(
             code=d["code"], name=d["name"], market=d["market"], price=int(d["price"]),
             trade_value_won=int(d["trade_value_won"]),

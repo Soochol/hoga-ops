@@ -720,7 +720,9 @@ def test_anchor_edges_flags_late_head() -> None:
 
 def test_anchor_edges_flags_early_tail() -> None:
     from hoga.api.disk_state import (
-        _hhmmssms_to_intra_ms, _intra_ms_to_hhmmssms, analyze_gaps,
+        _hhmmssms_to_intra_ms,
+        _intra_ms_to_hhmmssms,
+        analyze_gaps,
     )
 
     # Dense from 09:00 but the stream dies at 11:00 — a big tail gap runs to the
@@ -748,7 +750,9 @@ def test_anchor_edges_empty_flags_whole_window() -> None:
 
 def test_anchor_edges_dense_full_window_no_gap() -> None:
     from hoga.api.disk_state import (
-        _hhmmssms_to_intra_ms, _intra_ms_to_hhmmssms, analyze_gaps,
+        _hhmmssms_to_intra_ms,
+        _intra_ms_to_hhmmssms,
+        analyze_gaps,
     )
 
     t = _hhmmssms_to_intra_ms(HogaMs(90000000))

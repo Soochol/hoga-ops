@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import datetime as _dt
 import time
+from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
-from typing import Callable, Iterator, Literal
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from hoga.api.models import (

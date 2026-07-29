@@ -10,6 +10,7 @@ import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
+
 from hoga.api.queries import QueryEngine
 from hoga.parser import parse_stock_date
 

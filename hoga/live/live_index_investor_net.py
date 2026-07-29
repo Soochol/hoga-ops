@@ -4,12 +4,12 @@ from collections.abc import Awaitable, Callable, Hashable
 from typing import Protocol
 
 from hoga.live import kis_access
+from hoga.live.index_registry import RepresentativeIndex
 from hoga.live.kis_capacity_scheduler import (
     KisCapacityCooldown,
     KisCapacityOverloaded,
 )
 from hoga.live.kis_client import KisClient, KisRateLimitError
-from hoga.live.index_registry import RepresentativeIndex
 
 
 class KisRestScheduler(Protocol):

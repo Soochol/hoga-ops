@@ -173,6 +173,7 @@ def _seed_with_snapshots(data_dir, date, code, meta, snap_ts_list):
     Orderbook dataclass takes tuples but parquet stores 60 scalar columns."""
     import pyarrow as pa
     import pyarrow.parquet as pq
+
     from hoga.tables.snapshots import PARQUET_SCHEMA
 
     d = data_dir / "parquet" / date / code

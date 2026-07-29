@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from hoga.api.models import (
     TimingEnv,
     TimingPageDetail,

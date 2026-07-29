@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -134,7 +132,6 @@ def test_discovery_is_cached_across_calls(tmp_path: Path, monkeypatch: pytest.Mo
     call_count = {"n": 0}
     def _spy() -> None:
         call_count["n"] += 1
-        return None
     monkeypatch.setattr(env_module, "_main_repo_root", _spy)
 
     env_module.load_env()

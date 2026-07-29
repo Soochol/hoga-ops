@@ -15,12 +15,12 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
+from . import program_trade_latch
 from .ask_peak_state import TodayAskPeakState, TodayBidPeakState
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
 from .lifecycle import get_signal_alert_monitor
 from .minute_candle_agg import MS_PER_MINUTE, MinuteCandleAggregator
-from . import program_trade_latch
 from .session_gate import market_phase, ws_capture_window_async
 from .snapshot import LiveSnapshot, SnapshotKind
 from .ticks import WsTick
@@ -70,7 +70,7 @@ def _canonicalize_broker_payload(payload: dict) -> dict:
     미지 별칭은 canonical() 이 그대로 통과시키며 1회 경고한다(추측 병합 금지 —
     골드만/씨티그룹 교훈).
     """
-    from hoga.broker_names import canonical
+    from hoga.broker_names import canonical  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     out = dict(payload)
     for side in ("buy_top", "sell_top"):

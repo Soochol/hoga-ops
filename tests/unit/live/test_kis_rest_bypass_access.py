@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-import hoga.live.kis_access as kis_access
 from hoga.api.models import LiveSettingsResponse
+from hoga.live import kis_access
 from hoga.live.settings import save_live_settings
 
 

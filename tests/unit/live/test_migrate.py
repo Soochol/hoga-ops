@@ -1,6 +1,7 @@
-from pathlib import Path
 import json
-from hoga.live.migrate import migrate_to_v2_layout, LayoutVersion
+from pathlib import Path
+
+from hoga.live.migrate import LayoutVersion, migrate_to_v2_layout
 
 
 def test_migrate_moves_flat_files_into_hogaplay_subdir(tmp_path: Path) -> None:

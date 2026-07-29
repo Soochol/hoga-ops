@@ -9,8 +9,6 @@ import pytest
 from typer.testing import CliRunner
 
 from hoga.api.prune import (
-    PruneCandidate,
-    PruneResult,
     _is_complete_hogaplay,
     find_prunable,
     prune_raw,

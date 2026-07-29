@@ -15,7 +15,7 @@ from enum import Enum
 from typing import Any
 
 
-class SnapshotKind(str, Enum):
+class SnapshotKind(str, Enum):  # noqa: UP042 — StrEnum 전환은 str() 동작이 바뀌어 wire format 위험
     """The kinds of Live Snapshot. ob/broker/trade는 poller 시절부터,
     fill은 WS 전환(그릴링 Q4)의 10초 체결강도 구간합.
 

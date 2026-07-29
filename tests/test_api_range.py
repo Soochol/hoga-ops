@@ -639,12 +639,9 @@ def test_range_bundle_unmocked_asymmetric_value_mapping(tmp_path) -> None:
     """
     from hoga.api.bundle import build_range_bundle
     from hoga.api.queries import QueryEngine
-    from hoga.tables.candles import Candle
-    from hoga.tables.candles import write_parquet as write_candles
-    from hoga.tables.snapshots import Orderbook
-    from hoga.tables.snapshots import write_parquet as write_snapshots
-    from hoga.tables.trades import Trade
-    from hoga.tables.trades import write_parquet as write_trades
+    from hoga.tables.candles import Candle, write_parquet as write_candles
+    from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots
+    from hoga.tables.trades import Trade, write_parquet as write_trades
 
     code, date = "003490", "20260519"
     code_dir = tmp_path / "parquet" / date / code / "hogaplay"

@@ -1,5 +1,7 @@
-import duckdb
 from pathlib import Path
+
+import duckdb
+
 from hoga.api.screener_store import seed_daily_from_csv, seed_stocks_from_csv
 
 

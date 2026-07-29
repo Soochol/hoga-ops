@@ -109,7 +109,7 @@ def ensure_kis_token_provider(
     One provider per account (ADR-0038/0067). The token cache path is decided
     by the caller (see _token_cache_path) — account 0 keeps the legacy file.
     """
-    global _kis_token_providers
+    global _kis_token_providers  # noqa: PLW0602 — 읽기 전용 전역 참조 선언
     with _lock:
         prov = _kis_token_providers.get(account_id)
         if prov is None:
@@ -138,7 +138,7 @@ def ensure_kis_client(
     Closed at process shutdown via aclose_kis_client — a stream/conn stop must NOT
     close it (R1).
     """
-    global _kis_clients
+    global _kis_clients  # noqa: PLW0602 — 읽기 전용 전역 참조 선언
     with _lock:
         client = _kis_clients.get(account_id)
         if client is None:
@@ -156,7 +156,9 @@ def _reload_env_for_retry() -> None:
     the test suite can no-op it (an autouse conftest guard does): without the
     guard, any test reaching the retry path re-loads the developer's REAL
     .env and silently un-does monkeypatch.delenv creds isolation."""
-    from hoga.env import load_env  # late import: keeps module import light
+    from hoga.env import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        load_env,  # late import: keeps module import light  # noqa: PLC0415 — 지연 import(순환/heavy)
+    )
 
     load_env()
 
@@ -194,7 +196,7 @@ def ensure_kis_token_provider_from_env(
     if creds is None:
         return None
     if data_dir is None:
-        from hoga.config import resolve_data_dir
+        from hoga.config import resolve_data_dir  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
         data_dir = resolve_data_dir()
     provider = ensure_kis_token_provider(_token_cache_path(data_dir, 0), creds, 0)
@@ -246,15 +248,15 @@ def configured_account_ids(data_dir: Path) -> list[int]:
 async def aclose_kis_client() -> None:
     """Close and drop ALL per-account KisClient + KisTokenProvider singletons —
     PROCESS shutdown only. A stream/conn stop must not call this (R1)."""
-    global _kis_clients, _kis_token_providers
+    global _kis_clients, _kis_token_providers  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     for client in list(_kis_clients.values()):
-        try:
+        try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
             await client.aclose()
         except Exception:  # noqa: BLE001
             pass
     _kis_clients = {}
     for prov in list(_kis_token_providers.values()):
-        try:
+        try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
             prov.close()
         except Exception:  # noqa: BLE001
             pass
@@ -263,9 +265,9 @@ async def aclose_kis_client() -> None:
 
 def reset_for_tests() -> None:
     """Test helper — drop all per-account singletons (best-effort provider close)."""
-    global _kis_clients, _kis_token_providers, _rate_limiters
+    global _kis_clients, _kis_token_providers, _rate_limiters  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     for prov in list(_kis_token_providers.values()):
-        try:
+        try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
             prov.close()
         except Exception:  # noqa: BLE001
             pass

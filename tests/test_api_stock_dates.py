@@ -65,6 +65,7 @@ def test_stock_dates_extended_fields(app_client: TestClient) -> None:
 def test_stock_date_full_capture_count_passes_through(tmp_path):
     """meta.json with full_capture_count=5 → StockDate.full_capture_count == 5."""
     import json
+
     from hoga.api.queries import QueryEngine
     code_dir = tmp_path / "parquet" / "20260519" / "005930"
     code_dir.mkdir(parents=True)
@@ -86,6 +87,7 @@ def test_stock_date_full_capture_count_passes_through(tmp_path):
 def test_stock_date_full_capture_count_null_for_legacy(tmp_path):
     """meta.json without the field → StockDate.full_capture_count is None."""
     import json
+
     from hoga.api.queries import QueryEngine
     code_dir = tmp_path / "parquet" / "20260519" / "005930"
     code_dir.mkdir(parents=True)
@@ -174,6 +176,7 @@ def test_stock_date_open_ms_zero_normalized_and_complete(tmp_path) -> None:
     """meta.json with open_ms=0 → StockDate.regular_session_open_ms is KRX 09:00 (unix ms),
     and disk_state remains 'complete' (open=0 is normalized before invariant checks)."""
     import json
+
     from hoga.api.queries import QueryEngine
     from hoga.api.timeenc import hhmmssms_to_unix_ms
 

@@ -9,7 +9,6 @@ from hoga.api.invariants import (
     normalize_session_bounds,
 )
 
-
 # Field-encoding sanity references (HHMMSSmmm = HH*10_000_000 + MM*100_000 + SS*1000 + ms).
 # Production session_open_ms / close_ms use this encoding — see
 # hoga/api/disk_state.py:_SESSION_OPEN_MS = HogaMs(90000000)  # 09:00:00.000.

@@ -49,9 +49,8 @@ from hoga.api.models import (
     validate_bucket_ms,
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
-from hoga.api.slice_coalescer import SLICE_COALESCER
-from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.api.queries import QueryEngine, StockDateNotFound
+from hoga.api.slice_coalescer import SLICE_COALESCER
 from hoga.api.sources import ordered_sources, resolve_candle_source, resolve_source_result
 from hoga.api.timeenc import (
     hhmmssms_to_intra_ms_sql,
@@ -59,13 +58,16 @@ from hoga.api.timeenc import (
     ms_from_midnight_to_unix_ms,
     unix_ms_to_hhmmssms,
 )
+from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.live.candle_repair import REPAIR_MARKER
 from hoga.live.program_trade_store import ProgramTradeStore, is_significant_gap_event
-from hoga.tables import brokers as brokers_tbl
-from hoga.tables import candles as candles_tbl
-from hoga.tables import fills as fills_tbl
-from hoga.tables import snapshots as snapshots_tbl
-from hoga.tables import trades as trades_tbl
+from hoga.tables import (
+    brokers as brokers_tbl,
+    candles as candles_tbl,
+    fills as fills_tbl,
+    snapshots as snapshots_tbl,
+    trades as trades_tbl,
+)
 from hoga.tables.candles import ApiCandle
 from hoga.tables.trades import FillStrengthRow
 
@@ -154,9 +156,9 @@ def _today_kst_yyyymmdd() -> str:
 def _hhmm_to_hhmmssms(value: int) -> int:
     hh = value // 100
     mm = value % 100
-    if hh < 9 or hh > 15 or mm < 0 or mm > 59:
+    if hh < 9 or hh > 15 or mm < 0 or mm > 59:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise ValueError("broker_late_entry_start_hhmm must be between 900 and 1520")
-    if hh == 15 and mm > 20:
+    if hh == 15 and mm > 20:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise ValueError("broker_late_entry_start_hhmm must be between 900 and 1520")
     return hh * 10_000_000 + mm * 100_000
 
@@ -201,7 +203,7 @@ def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiC
     Raises ValueError if bucket_ms is not in ALLOWED_TIMEFRAME_MS (ADR-0014).
     """
     validate_bucket_ms(bucket_ms)
-    if bucket_ms == 60_000 or not candles:
+    if bucket_ms == 60_000 or not candles:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return list(candles)
 
     out: list[ApiCandle] = []
@@ -503,7 +505,22 @@ def build_volume_distribution_slice(
     upper_bound_ms = None
     if cutoff_ms is not None:
         cutoff_hhmmssms = unix_ms_to_hhmmssms(date, cutoff_ms)
-        upper_bound_ms = trades_tbl._session_bound_to_intra_ms(cutoff_hhmmssms) + 1
+        # 휴리스틱 래퍼(_session_bound_to_intra_ms)가 아니라 무조건 디코더를 쓴다.
+        # 그 래퍼는 `value > 86_400_000` 일 때만 HHMMSSmmm 으로 보고 디코드하는데,
+        # 위 unix_ms_to_hhmmssms 는 **항상** HHMMSSmmm 을 돌려주므로 그 분기는 여기서
+        # 성립하지 않는다. 09:00 미만 커서는 HHMMSSmmm 이 86_400_000(=08:64:00.000,
+        # 존재하지 않는 시각) 아래라 linear ms 로 오인되어 원값이 그대로 통과했다.
+        #
+        # 실측: 08:30 커서 → HHMMSSmmm 83_000_000, 올바른 intra_ms 30_600_000,
+        # 실제 반환 83_000_000(=23.06h). 그러면 query_volume_distribution 의
+        # `min(session_close_intra_ms, upper_bound_ms, ...)`(trades.py:570)에서
+        # 장 마감(~55_800_000)이 이겨 **cutoff 가 조용히 무시되고 하루 전체 분포가
+        # 반환된다** — 크래시가 없어 더 나쁘다. 09:00 이후 커서만 우연히 맞았다.
+        #
+        # 재현 경로는 공개 API 다: routes.py 의 volume_distribution_cutoff_ms 는
+        # mode=sidecar 와 단일 Stock-Date 만 검증하고 장 시간대 가드가 없어,
+        # 08:30~09:00 동시호가 구간으로 스크럽하면 그대로 발현한다.
+        upper_bound_ms = trades_tbl._hhmmssms_to_intra_ms(cutoff_hhmmssms) + 1
     dist_kwargs = {}
     if upper_bound_ms is not None:
         dist_kwargs["upper_bound_ms"] = upper_bound_ms
@@ -631,7 +648,7 @@ def build_ask_peak_slice(
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = None,
     today_kst: str | None = None,
-) -> "AskPeak | None":
+) -> AskPeak | None:
     """해당 거래일(date) 연속거래 매도 최대벽. best-effort: 파일 부재(=무데이터, ADR-0043)나
     미캐탈로그(StockDateNotFound — 경고/제외 세그먼트에서 발생 가능) → None(선 미표시).
     과거일(today_kst != date)은 불변이라 cache로 1회 계산 후 재사용(범위 내 N일 재스캔 회피).
@@ -742,7 +759,7 @@ def _compute_ask_peak(
     bucket_ms: int,
     session_open_ms: int | None,
     session_close_ms: int | None,
-) -> "AskPeak | None":
+) -> AskPeak | None:
     try:
         path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):
@@ -783,7 +800,7 @@ def build_bid_peak_slice(
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = None,
     today_kst: str | None = None,
-) -> "BidPeak | None":
+) -> BidPeak | None:
     cacheable = cache is not None and today_kst is not None and date != today_kst
     if cacheable and cache.has_bid_peak(code, date, source, bucket_ms):  # type: ignore[union-attr]
         return cache.get_bid_peak(code, date, source, bucket_ms)  # type: ignore[union-attr]
@@ -805,7 +822,7 @@ def _compute_bid_peak(
     bucket_ms: int,
     session_open_ms: int | None,
     session_close_ms: int | None,
-) -> "BidPeak | None":
+) -> BidPeak | None:
     try:
         path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):
@@ -851,7 +868,7 @@ def _without_all_peak_rankings(peak: _PeakT) -> _PeakT:
     return peak.model_copy(update={"all_peaks": [], "all_max_peaks": []})
 
 
-def build_ask_bid_peak_slices(
+def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
     engine: QueryEngine,
     *,
     code: str,
@@ -1103,10 +1120,10 @@ def build_depth_heatmap_slice(
         out.append(
             DepthHeatmapPoint(
                 t_ms=t_ms,
-                asks=[[p, q] for p, q in zip(r.ask_prices, r.ask_qtys)],
-                bids=[[p, q] for p, q in zip(r.bid_prices, r.bid_qtys)],
-                asks_max=[[p, q] for p, q in zip(r.ask_prices_max, r.ask_qtys_max)],
-                bids_max=[[p, q] for p, q in zip(r.bid_prices_max, r.bid_qtys_max)],
+                asks=[[p, q] for p, q in zip(r.ask_prices, r.ask_qtys, strict=True)],
+                bids=[[p, q] for p, q in zip(r.bid_prices, r.bid_qtys, strict=True)],
+                asks_max=[[p, q] for p, q in zip(r.ask_prices_max, r.ask_qtys_max, strict=True)],
+                bids_max=[[p, q] for p, q in zip(r.bid_prices_max, r.bid_qtys_max, strict=True)],
             )
         )
     if cacheable:
@@ -1337,7 +1354,7 @@ def build_program_trade_series(engine: QueryEngine, *, code: str, dates: list[st
     return ProgramTradeSeries(points=points)
 
 
-def build_range_bundle(
+def build_range_bundle(  # noqa: PLR0912, PLR0915
     engine: QueryEngine,
     *,
     code: str,

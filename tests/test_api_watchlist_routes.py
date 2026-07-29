@@ -4,13 +4,12 @@ from __future__ import annotations
 import datetime as dt
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -24,7 +23,7 @@ def _app(tmp_path: Path) -> FastAPI:
 
 async def _seed_backend(tmp_path: Path, *, code: str, name: str, today_kst_date: str):
     """v3 seed via the service layer: ensure a '기본' folder, add the code as a member."""
-    from hoga.api.watchlist import create_folder, add_member, load_document
+    from hoga.api.watchlist import add_member, create_folder, load_document
     doc = load_document(tmp_path)
     fid = doc.folders[0].id if doc.folders else (await create_folder(tmp_path, name="기본")).id
     await add_member(tmp_path, code=code, name=name, today_kst_date=today_kst_date, folder_id=fid)
@@ -478,7 +477,7 @@ def test_order_change_endpoints_refresh_live_stream(
     with patch(f"hoga.api.watchlist_routes.{mutator}", new=AsyncMock()), \
          patch("hoga.api.watchlist_routes.refresh_live_stream", new=AsyncMock()) as ref:
         client = _order_change_app(tmp_path)
-        if method == "delete":
+        if method == "delete":  # noqa: SIM108 — 삼항이 오히려 읽기 어려운 자리
             r = client.delete(path)
         else:
             r = getattr(client, method)(path, json=payload)

@@ -2,10 +2,11 @@ import asyncio
 
 import polars as pl
 import pytest
-from fastapi.testclient import TestClient
 from fastapi import FastAPI
-from hoga.api.screener import build_router, _ScanCoalescer
+from fastapi.testclient import TestClient
+
 from hoga.api.models import ScreenerResponse
+from hoga.api.screener import _ScanCoalescer, build_router
 
 
 def _app(tmp_path):

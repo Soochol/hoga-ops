@@ -353,12 +353,11 @@ async def test_fetch_past_minute_candles_empty_nxt_day_returns_empty(tmp_path: P
 
 from hoga.live.kis_client import (
     DailyCandleFetchResult,
-    DailyInvariantViolation,
     KisRateLimitError,
 )
 
 
-def _daily_row(date_yyyymmdd: str, *, o=100, h=110, l=95, c=105, v=1000) -> dict:
+def _daily_row(date_yyyymmdd: str, *, o=100, h=110, l=95, c=105, v=1000) -> dict:  # noqa: E741 — 도메인 관례 변수(OHLC 의 l = low 등)
     return {
         "stck_bsop_date": date_yyyymmdd,
         "stck_oprc": str(o),
@@ -640,7 +639,6 @@ async def test_fetch_past_daily_candles_rejects_non_concrete_venue(
 # ----------------------------------------------------------------------
 
 from hoga.live.kis_client import (  # noqa: E402
-    KIS_KST,
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
 )

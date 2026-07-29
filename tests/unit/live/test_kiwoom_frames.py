@@ -214,7 +214,7 @@ def test_trade_payload_keys_match_kis():
     고정**하기 때문이다 — 목록 밖 키가 생기면 여기서 실패한다.
     """
     kiwoom = parse_real_row(REAL_0B, date=DATE, now_ms=NOW_MS)
-    assert _KIS_TRADE_PAYLOAD_KEYS <= set(kiwoom.payload)
+    assert set(kiwoom.payload) >= _KIS_TRADE_PAYLOAD_KEYS
     assert set(kiwoom.payload) - _KIS_TRADE_PAYLOAD_KEYS <= _KIWOOM_TRADE_EXTRA_KEYS
     # 체결 레코드 자체는 KIS 와 완전 동일 — 확장은 payload 최상위에만 붙인다.
     assert set(kiwoom.payload["trades"][0]) == _KIS_TRADE_RECORD_KEYS

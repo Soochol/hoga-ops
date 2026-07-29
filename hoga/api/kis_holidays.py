@@ -56,7 +56,9 @@ def _resolve_provider():
     calendar self-heals within a minute of the keys appearing; the live
     poller itself still starts on the next watchlist mutation or restart.
     """
-    from hoga.live.kis_runtime import ensure_kis_token_provider_from_env
+    from hoga.live.kis_runtime import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        ensure_kis_token_provider_from_env,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
 
     got = ensure_kis_token_provider_from_env(reload_env=True)
     if got is None:
@@ -142,7 +144,7 @@ def fetch_month_trading_days(year: int, month: int) -> set[str]:
                 raise KisHolidayFetchError("chk-holiday returned no rows")
             pages.append(rows)
             last = max(str(r.get("bass_dt", "")) for r in rows)
-            if len(last) != 8 or not last.isdigit():
+            if len(last) != 8 or not last.isdigit():  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                 # Schema drift (missing/malformed bass_dt) must stay inside the
                 # documented exception contract, not escape as ValueError.
                 raise KisHolidayFetchError(f"chk-holiday malformed bass_dt: {last!r}")

@@ -79,7 +79,7 @@ def parse_master(raw: bytes, market: str) -> list[MasterRow]:
     _, tail = _MARKETS[market]
     out: list[MasterRow] = []
     for row in raw.split(b"\n"):
-        row = row.rstrip(b"\r")
+        row = row.rstrip(b"\r")  # noqa: PLW2901 — 방어적 복사·정규화 후 재대입
         if len(row) <= tail:
             continue
         part1 = row[: len(row) - tail]

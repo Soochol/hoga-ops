@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 
 import pytest
@@ -11,7 +10,7 @@ import pytest
 async def _seed(tmp_path: Path, *, code: str, name: str, today_kst_date: str):
     """v3 seed: ensure a default folder exists, then add the code as a member.
     (v2 add_entry는 폐지 — 멤버십이 entry 존재를 정의한다, ADR-0070.)"""
-    from hoga.api.watchlist import create_folder, add_member, load_document
+    from hoga.api.watchlist import add_member, create_folder, load_document
     doc = load_document(tmp_path)
     fid = doc.folders[0].id if doc.folders else (await create_folder(tmp_path, name="기본")).id
     return await add_member(tmp_path, code=code, name=name,
@@ -25,8 +24,8 @@ def test_load_returns_empty_when_file_missing(tmp_path: Path):
 
 
 def test_save_then_load_round_trip(tmp_path: Path):
-    from hoga.api.watchlist import load_watchlist, save_document
     from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    from hoga.api.watchlist import load_watchlist, save_document
     # v3 불변식(ADR-0070): entry 는 어떤 폴더 member 여야 save 라운드트립에서 살아남는다
     # (어느 폴더에도 없으면 save_document 가 orphan 으로 prune — 단일 소유 강제).
     entry = WatchlistEntry(
@@ -79,7 +78,7 @@ async def test_add_member_inserts(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_remove_entry(tmp_path: Path):
-    from hoga.api.watchlist import remove_entry, load_watchlist
+    from hoga.api.watchlist import load_watchlist, remove_entry
     await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
     await remove_entry(tmp_path, code="003490")
     assert load_watchlist(tmp_path) == []
@@ -87,7 +86,7 @@ async def test_remove_entry(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_remove_entry_missing_raises(tmp_path: Path):
-    from hoga.api.watchlist import remove_entry, NotInWatchlistError
+    from hoga.api.watchlist import NotInWatchlistError, remove_entry
     with pytest.raises(NotInWatchlistError):
         await remove_entry(tmp_path, code="003490")
 
@@ -121,6 +120,7 @@ async def test_bump_last_success_ignores_unwatched_code(tmp_path: Path):
 async def test_concurrent_bumps_serialize(tmp_path: Path):
     """Two simultaneous bumps must not clobber each other."""
     import asyncio
+
     from hoga.api.watchlist import bump_last_success, load_watchlist
     await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
     await _seed(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
@@ -193,8 +193,9 @@ def test_load_watchlist_propagates_oserror_not_corruption(tmp_path: Path, monkey
 async def test_lock_prevents_lost_update_on_same_code(tmp_path: Path, monkeypatch):
     """Two bumps targeting the SAME code with different dates — without the
     lock, one would clobber the other's read-modify-write."""
-    from hoga.api import watchlist
     import asyncio as _asyncio
+
+    from hoga.api import watchlist
     await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260520")
     await _asyncio.gather(
         watchlist.bump_last_success(tmp_path, code="003490", date="20260527"),

@@ -126,7 +126,7 @@ async def test_collect_minute_skips_known_non_trading_past_dates(tmp_path, monke
     monkeypatch.setattr(
         cal,
         "is_trading_day",
-        lambda d: False if d == "20260517" else True,
+        lambda d: False if d == "20260517" else True,  # noqa: SIM211 — 명시적 분기가 의도를 드러냄
     )
 
     result = await backfill.collect_minute(

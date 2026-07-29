@@ -141,8 +141,9 @@ def test_calendar_kis_live_incomplete_shows_none(monkeypatch, tmp_path):
     assert cell["status"] == "none"
 
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from hoga.api import calendar as calendar_module
 from hoga.api.error_codes import UpstreamCode
@@ -320,6 +321,7 @@ def test_get_month_map_fail_soft_when_kis_fetch_fails(
 ) -> None:
     """Calendar UI still renders every weekday; banner reason is set."""
     import datetime as dt
+
     import hoga.api.kis_holidays as kis_holidays_module
 
     def _raise(year, month):

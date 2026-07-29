@@ -25,7 +25,7 @@ def test_document_v3_default_version():
 
 
 def test_wire_view_models_carry_folder_and_order():
-    from hoga.api.models import WatchlistFolderView, WatchlistEntryView
+    from hoga.api.models import WatchlistEntryView, WatchlistFolderView
     fv = WatchlistFolderView(id="f_0000000a", name="스윙", order=0)
     assert not hasattr(fv, "member_codes")
     ev = WatchlistEntryView(code="005930", name="삼성전자",

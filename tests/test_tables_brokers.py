@@ -494,6 +494,7 @@ def test_query_day_series_returns_empty_list_on_empty_parquet(tmp_path: Path) ->
 
 def test_query_cumulative_details_at_returns_top10_at_each_cursor(tmp_path: Path) -> None:
     import duckdb
+
     from hoga.tables.brokers import BrokerRow, query_cumulative_details_at, write_parquet
 
     path = tmp_path / "brokers.parquet"

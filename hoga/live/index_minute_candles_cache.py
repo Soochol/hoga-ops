@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import time
 from collections import OrderedDict
-from typing import Awaitable, Callable, TypeAlias
+from collections.abc import Awaitable, Callable
+from typing import TypeAlias
 
 from hoga.live.candle_fetch_result import IndexCandleFetchResult
 from hoga.util.cache_stats import CacheStats

@@ -6,8 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from hoga.api.models import LiveSettingsResponse
-from hoga.live import api as live_api
-from hoga.live import kis_runtime, lifecycle
+from hoga.live import api as live_api, kis_runtime, lifecycle
 from hoga.live.api import build_router
 from hoga.live.buffer import LiveBuffer
 from hoga.live.kis_client import InvestorNetFetchResult, KisQuote

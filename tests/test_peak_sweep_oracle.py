@@ -71,16 +71,14 @@ class _MaxFenwick:
     def update(self, i: int, value: int) -> None:
         tree = self._tree
         while i <= self._size:
-            if tree[i] < value:
-                tree[i] = value
+            tree[i] = max(tree[i], value)
             i += i & (-i)
 
     def prefix_max(self, i: int) -> int:
         best = 0
         tree = self._tree
         while i > 0:
-            if tree[i] > best:
-                best = tree[i]
+            best = max(best, tree[i])
             i -= i & (-i)
         return best
 

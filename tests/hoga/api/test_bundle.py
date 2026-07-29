@@ -13,7 +13,7 @@ from hoga.api.bundle import (
 from hoga.tables.candles import ApiCandle
 
 
-def _c(ts_ms: int, o: int, h: int, l: int, c: int, va: int = 0, vb: int = 0) -> ApiCandle:
+def _c(ts_ms: int, o: int, h: int, l: int, c: int, va: int = 0, vb: int = 0) -> ApiCandle:  # noqa: E741 — 도메인 관례 변수(OHLC 의 l = low 등)
     """KRX prices are integer-won (see hoga/tables/candles.py:ApiCandle)."""
     return ApiCandle(ts_ms=ts_ms, open=o, close=c, high=h, low=l, vol_a=va, vol_b=vb)
 
@@ -93,8 +93,10 @@ def _patch_slice_builders(
     don't exercise them. Dedicated peak tests pass False or override the stub to run
     the relevant builder for real."""
     from unittest.mock import patch
+
     from hoga.api.models import (
-        FillStrength, QuoteRatio,
+        FillStrength,
+        QuoteRatio,
     )
     qr = QuoteRatio(bucket_ms=bucket_ms, points=[])
     fs = FillStrength(bucket_ms=bucket_ms, points=[])
@@ -130,16 +132,16 @@ def _engine_with_meta_for_dates(dates):
 
 def test_build_range_bundle_single_day_yields_one_segment():
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
     patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=60_000, mode="sidecar")
+        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=60_000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
     assert len(rb.segments) == 1
     assert rb.segments[0].date == "20260512"
@@ -150,16 +152,16 @@ def test_build_range_bundle_single_day_yields_one_segment():
 
 def test_build_range_bundle_multi_day_concatenates_per_segment_lists():
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
 
     mock_engine = _engine_with_meta_for_dates(["20260512", "20260513"])
     patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260513", bucket_ms=60_000, mode="sidecar")
+        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260513", bucket_ms=60_000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
     assert len(rb.segments) == 2
     assert [s.date for s in rb.segments] == ["20260512", "20260513"]
@@ -168,9 +170,10 @@ def test_build_range_bundle_multi_day_concatenates_per_segment_lists():
 
 def test_build_range_bundle_volume_distributions_are_opt_in():
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import DayVolumeDistribution, VolumeDistributionBin, VolumeProfile
+    from hoga.api.models import DayVolumeDistribution, VolumeDistributionBin
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
     profile = DayVolumeDistribution(
@@ -224,6 +227,7 @@ def test_build_range_bundle_volume_distributions_are_opt_in():
 
 def test_build_range_bundle_sidecar_mode_includes_requested_volume_distributions():
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
     from hoga.api.models import DayVolumeDistribution, VolumeDistributionBin
@@ -265,9 +269,9 @@ def test_build_range_bundle_sidecar_mode_includes_requested_volume_distributions
 
 def test_build_range_bundle_candles_mode_skips_hoga_and_sidecar_builders():
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
 
     mock_engine = _engine_with_meta_for_dates(["20260625"])
     raw_candles = [_c(1_772_000_000_000, 100, 110, 90, 105, 1, 2)]
@@ -319,9 +323,10 @@ def test_build_range_bundle_candles_mode_skips_hoga_and_sidecar_builders():
 
 def test_build_range_bundle_builds_trade_volume_poc_by_default_from_candle_range():
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import TradeVolumePoc, VolumeProfile
+    from hoga.api.models import TradeVolumePoc
     from hoga.tables.candles import ApiCandle
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
@@ -364,9 +369,9 @@ def test_build_range_bundle_builds_trade_volume_poc_by_default_from_candle_range
 
 def test_build_range_bundle_threads_explicit_trade_volume_poc_bins():
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
     from hoga.tables.candles import ApiCandle
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
@@ -404,9 +409,7 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
 
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
-    from hoga.live.program_trade_store import ProgramTradeByStockRow
-    from hoga.live.program_trade_store import ProgramTradeStore
+    from hoga.live.program_trade_store import ProgramTradeByStockRow, ProgramTradeStore
 
     store = ProgramTradeStore(tmp_path)
     store.merge_response(
@@ -577,7 +580,7 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
                 gap_risk=False,
             )
         ])
-        program_builder = stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=program))
+        program_builder = stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=program))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(ask, bid)))
         stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[broker]))
         stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=poc))
@@ -639,8 +642,8 @@ def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_p
             )
         )
         stack.enter_context(patch.object(bundle_mod, "build_volume_distribution_slice", return_value=profile))
-        ask_bid_builder = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(None, None)))
-        broker_builder = stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[]))
+        ask_bid_builder = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(None, None)))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+        broker_builder = stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[]))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         poc_builder = stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None))
 
         rb = build_range_bundle(
@@ -671,7 +674,7 @@ def test_build_range_bundle_uses_combined_ask_bid_peak_builder():
 
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import AskPeak, BidPeak, VolumeProfile
+    from hoga.api.models import AskPeak, BidPeak
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
     ask = AskPeak(date="20260512", price=100, qty=10, t_ms=1, max_price=100, max_qty=10, max_t_ms=1)
@@ -811,7 +814,7 @@ def test_build_range_bundle_trade_source_fallback_skips_kis_api(tmp_path):
 
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import DayVolumeDistribution, VolumeDistributionBin, VolumeProfile
+    from hoga.api.models import DayVolumeDistribution, VolumeDistributionBin
 
     date = "20260512"
     code = "005930"
@@ -852,9 +855,9 @@ def test_build_range_bundle_trade_source_fallback_skips_kis_api(tmp_path):
         stack.enter_context(patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs))
         stack.enter_context(patch.object(bundle_mod, "build_ask_peak_slice", return_value=None))
         stack.enter_context(patch.object(bundle_mod, "build_bid_peak_slice", return_value=None))
-        stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=bundle_mod.ProgramTradeSeries(points=[])))
+        stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=bundle_mod.ProgramTradeSeries(points=[])))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         poc_builder = stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None))
-        dist_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_distribution_slice", return_value=profile))
+        dist_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_distribution_slice", return_value=profile))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
         rb = build_range_bundle(
             engine,
@@ -880,8 +883,8 @@ def test_build_range_bundle_trade_source_fallback_skips_kis_api(tmp_path):
 def test_range_volume_distribution_uses_first_single_price_book_cutoff(tmp_path):
     import json
 
-    from hoga.api.queries import QueryEngine
     from hoga.api.bundle import build_range_bundle
+    from hoga.api.queries import QueryEngine
     from hoga.tables.candles import Candle, write_parquet as candles_write_parquet
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
     from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
@@ -1066,11 +1069,12 @@ def test_expand_distribution_bins_single_price_day_stays_on_candle_range():
 
 def test_build_range_bundle_rejects_from_gt_to():
     from fastapi import HTTPException
+
     from hoga.api.bundle import build_range_bundle
 
     mock_engine = MagicMock()
     with pytest.raises(HTTPException) as exc:
-        build_range_bundle(mock_engine, code="005930", from_date="20260520", to_date="20260512", bucket_ms=60_000, mode="sidecar")
+        build_range_bundle(mock_engine, code="005930", from_date="20260520", to_date="20260512", bucket_ms=60_000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     assert exc.value.status_code == 400
 
 
@@ -1099,7 +1103,7 @@ def test_build_range_bundle_rejects_invalid_bucket_ms():
 
     mock_engine = MagicMock()
     with pytest.raises(ValueError, match="bucket_ms"):
-        build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=42_000, mode="sidecar")
+        build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=42_000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
 
 # --- ADR-0020 / Invariants ---
@@ -1129,9 +1133,9 @@ def test_build_range_bundle_skips_invalid_and_surfaces_in_excluded():
     """Bad Stock-Date (close=0 → INVALID) is dropped from segments
     and appears under excluded_dates with its violations."""
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
 
     eng = _engine_with_meta_for_dates(["20260520", "20260518", "20260521"])
     # Per-date meta: 5/18 is broken (close_ms=0), others healthy.
@@ -1164,9 +1168,9 @@ def test_build_range_bundle_skips_invalid_and_surfaces_in_excluded():
 def test_build_range_bundle_surfaces_warn_without_excluding():
     """Healthy shape but low unique-event ratio → warn only, segment included."""
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
 
     eng = _engine_with_meta_for_dates(["20260520"])
     # Healthy bounds, but pages=4132 events=1553 → ratio invariant fires (warn).
@@ -1193,9 +1197,9 @@ def test_bundle_open_ms_zero_served_and_normalized():
     session_open_ms must be KRX 09:00 (not midnight), and the
     meta.open_ms_normalized warn must appear exactly once (ADR-0063)."""
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
     from hoga.api.timeenc import hhmmssms_to_unix_ms
 
     DATE = "20260520"
@@ -1251,9 +1255,9 @@ def test_build_range_bundle_excludes_real_5_18_003490_case():
     as CLIENT_INCOMPLETE (which build_range_bundle does NOT skip). After the
     INVALID > CLIENT_INCOMPLETE flip, the date must be excluded."""
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
 
     eng = _engine_with_meta_for_dates(["20260520", "20260518"])
     # Healthy 5/20 + the exact 5/18/003490 production shape (close=0 AND
@@ -1282,9 +1286,9 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
     """오늘(today_kst) 날짜에 snapshots.parquet(연속거래 + 단일 큰 매도단계)를 깔고
     build_range_bundle 호출. ask_peak가 그 최대단계 price/qty로 채워지는지."""
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
 
     FIXTURE_DATE = "20260613"
@@ -1321,7 +1325,7 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000, mode="sidecar")
+        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
     assert len(bundle.ask_peaks) == 1
     p = bundle.ask_peaks[0]
@@ -1336,6 +1340,7 @@ def test_range_bundle_includes_depth_heatmap_when_enabled(monkeypatch, tmp_path)
     """depth_heatmap_enabled=True(기본) + 캡처된 단일 거래일 → depth_heatmap이 채워진다.
     (build_depth_heatmap_slice는 디스크 snapshots.parquet에서 실제 계산 — 패치 안 함.)"""
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
@@ -1378,6 +1383,7 @@ def test_range_bundle_includes_depth_heatmap_when_enabled(monkeypatch, tmp_path)
 def test_range_bundle_omits_depth_heatmap_when_disabled(monkeypatch, tmp_path) -> None:
     """depth_heatmap_enabled=False → 디스크에 캡처가 있어도 depth_heatmap은 빈 리스트."""
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
@@ -1425,6 +1431,7 @@ def test_build_range_bundle_strips_all_peak_rankings() -> None:
     거치지 않는 경로)도 조립 시점 스트립으로 커버되는 계약의 회귀 가드."""
     import contextlib
     from unittest.mock import patch
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
     from hoga.api.models import AskPeak, BidPeak
@@ -1467,9 +1474,9 @@ def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monk
     """범위가 과거일만(오늘 미포함)이어도 그날 항목이 ask_peaks에 들어간다(per-day).
     (이전엔 '달력상 오늘'에만 계산해 휴장·과거일 조회 시 항상 비어 선이 안 보였다 — 회귀 가드.)"""
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
 
     FIXTURE_DATE = "20260612"  # a past date (NOT today)
@@ -1501,7 +1508,7 @@ def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monk
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000, mode="sidecar")
+        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
     # 과거일도 그날 항목이 ask_peaks에 들어간다(거래일별).
     assert len(bundle.ask_peaks) == 1
@@ -1513,9 +1520,9 @@ def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monk
 def test_build_range_bundle_ask_peaks_per_day(monkeypatch, tmp_path) -> None:
     """다일 범위: 각 거래일이 자기 최대벽을 ask_peaks에 가진다(per-day) — 날짜별 독립."""
     import contextlib
+
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import VolumeProfile
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
 
     monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: "20260613")
@@ -1546,7 +1553,7 @@ def test_build_range_bundle_ask_peaks_per_day(monkeypatch, tmp_path) -> None:
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        bundle = build_range_bundle(eng, code="005930", from_date="20260610", to_date="20260611", bucket_ms=60000, mode="sidecar")
+        bundle = build_range_bundle(eng, code="005930", from_date="20260610", to_date="20260611", bucket_ms=60000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
     # 거래일별: 두 날 모두 각자의 최대벽이 ask_peaks에 — 06-10=9000@30000, 06-11=3000@28000.
     by_date = {p.date: p for p in bundle.ask_peaks}
@@ -1558,6 +1565,7 @@ def test_build_range_bundle_ask_peaks_per_day(monkeypatch, tmp_path) -> None:
 def test_build_ask_peak_slice_caches_past_days(tmp_path) -> None:
     """과거일은 indicators_cache로 1회만 계산(불변) — 두번째 호출은 재스캔 안 함. 오늘은 미캐시."""
     from unittest.mock import MagicMock
+
     from hoga.api.bundle import build_ask_peak_slice
     from hoga.api.past_indicators_cache import PastIndicatorsCache
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
@@ -1600,6 +1608,7 @@ def test_build_ask_peak_slice_cache_key_is_bucket_ms_aware(tmp_path) -> None:
     """버킷 대표 위에서 집계하므로 분봉(bucket_ms)이 다르면 결과도 다를 수 있다 — 캐시 키에
     bucket_ms가 포함돼야 60s 결과가 180s 조회에 잘못 재사용되지 않는다(회귀 가드)."""
     from unittest.mock import MagicMock
+
     from hoga.api.bundle import build_ask_peak_slice
     from hoga.api.past_indicators_cache import PastIndicatorsCache
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
@@ -1631,6 +1640,7 @@ def test_build_ask_peak_slice_cache_key_is_bucket_ms_aware(tmp_path) -> None:
 def test_build_ask_peak_slice_wires_intra_max(tmp_path) -> None:
     """build_ask_peak_slice가 close 변종과 틱-max 변종(max_*)을 모두 배선한다."""
     from unittest.mock import MagicMock
+
     from hoga.api.bundle import build_ask_peak_slice
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
 
@@ -1660,6 +1670,7 @@ def test_build_ask_peak_slice_wires_intra_max(tmp_path) -> None:
 def test_build_ask_peak_slice_wires_all_price_peak(tmp_path) -> None:
     """Post-touch가 없더라도 all/untraded ask peak payload는 유지된다."""
     from unittest.mock import MagicMock
+
     from hoga.api.bundle import build_ask_peak_slice
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
     from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
@@ -1704,6 +1715,7 @@ def test_build_ask_peak_slice_wires_all_price_peak(tmp_path) -> None:
 def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
     """Post-touch 후보가 없으면 ranked arrays는 all/untraded 쪽으로만 남는다."""
     from unittest.mock import MagicMock
+
     from hoga.api.bundle import build_ask_peak_slice
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
     from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
@@ -1956,6 +1968,7 @@ def test_ask_peak_from_dual_row_keeps_post_touch_scalars_nullable_without_droppi
 
 def test_build_bid_peak_slice_wires_untraded_peak(tmp_path) -> None:
     from unittest.mock import MagicMock
+
     from hoga.api.bundle import build_bid_peak_slice
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
     from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
@@ -2186,6 +2199,7 @@ def test_bid_peak_from_dual_row_keeps_post_touch_scalars_nullable_without_droppi
 
 def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
     from unittest.mock import MagicMock
+
     from hoga.api.bundle import build_bid_peak_slice
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
     from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
@@ -2262,8 +2276,7 @@ def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
 
 
 def test_range_bundle_ask_peak_field_defaults_none() -> None:
-    from hoga.api.models import AskPeak, RangeBundle
-    from hoga.api.models import QuoteRatio, FillStrength, VolumeProfile
+    from hoga.api.models import AskPeak, FillStrength, QuoteRatio, RangeBundle, VolumeProfile
     b = RangeBundle(
         code="005930", from_date="20260613", to_date="20260613", bucket_ms=60000,
         segments=[], candles=[],
@@ -2316,9 +2329,10 @@ def test_range_bundle_bid_peak_field_defaults_empty() -> None:
 
 def test_build_range_bundle_includes_bid_peaks(monkeypatch, tmp_path) -> None:
     import contextlib
+
     import hoga.api.bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import BidPeak, VolumeProfile
+    from hoga.api.models import BidPeak
 
     FIXTURE_DATE = "20260613"
     monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: FIXTURE_DATE)

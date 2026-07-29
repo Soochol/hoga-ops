@@ -8,8 +8,12 @@ import polars as pl
 
 from hoga.api import depth_daily, screener_depth
 from hoga.api.models import (
-    AskDepthNewHighLeaf, BidDepthNewHighLeaf, DepthPeakParams,
-    HeatmapDocument, HeatmapEntry, WatchlistFolder,
+    AskDepthNewHighLeaf,
+    BidDepthNewHighLeaf,
+    DepthPeakParams,
+    HeatmapDocument,
+    HeatmapEntry,
+    WatchlistFolder,
 )
 from hoga.tables.snapshots import Orderbook, write_parquet
 

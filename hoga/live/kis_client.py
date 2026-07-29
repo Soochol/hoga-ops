@@ -18,34 +18,25 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from hoga.live.kis_token_provider import KisTokenProvider
 
-log = logging.getLogger(__name__)
 
 import httpx
-
-from hoga.live.kis_venue import KIS_KST  # noqa: F401  (re-export facade)
-from hoga.live.kis_errors import (
-    KisApiError,
-    KisAuthError,  # noqa: F401 — re-export facade (ADR-0050); get_approval_key 삭제 후 in-module 미사용
-    KisRateLimitError,
-    KisTransportError,
-)
 
 # Re-export facade (ADR-0050): these moved to kis_endpoints in Stage 4 but are
 # re-exported here so existing ``from hoga.live.kis_client import ...`` callers
 # and tests keep importing them from this module. Not referenced in-module.
 from hoga.live.kis_endpoints import (  # noqa: F401
-    KisEndpointsMixin,
     DailyCandleFetchResult,
     DailyInvariantViolation,
     IndexCandleFetchResult,
     IndexQuoteSnapshot,
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
+    KisEndpointsMixin,
     KisQuote,
     _build_multi_price_params,
     _fetch_multi_price,
@@ -55,6 +46,15 @@ from hoga.live.kis_endpoints import (  # noqa: F401
     _parse_quote,
     _prev_day_yyyymmdd,
 )
+from hoga.live.kis_errors import (
+    KisApiError,
+    KisAuthError,  # noqa: F401 — re-export facade (ADR-0050); get_approval_key 삭제 후 in-module 미사용
+    KisRateLimitError,
+    KisTransportError,
+)
+from hoga.live.kis_venue import KIS_KST  # noqa: F401  (re-export facade)
+
+log = logging.getLogger(__name__)
 
 _BASE_REAL = "https://openapi.koreainvestment.com:9443"
 
@@ -108,7 +108,7 @@ def rate_limit_bounces_total() -> int:
 
 def reset_bounces_for_tests() -> None:
     """테스트 격리 — 전역 바운스 카운터를 0으로 되돌린다."""
-    global _rate_limit_bounces
+    global _rate_limit_bounces  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     _rate_limit_bounces = 0
 
 
@@ -216,7 +216,7 @@ class _TokenBucket:
                     if self._tokens >= 1.0 and not yield_to_fg:
                         self._tokens -= 1.0
                         return
-                    if self._tokens >= 1.0:
+                    if self._tokens >= 1.0:  # noqa: SIM108 — 삼항이 오히려 읽기 어려운 자리
                         # 토큰은 있으나 foreground에 양보(데드라인 전) → 짧게 재확인.
                         wait = self._yield_s
                     else:
@@ -246,10 +246,10 @@ class KisClient(KisEndpointsMixin):
     def __init__(
         self,
         credentials: KisCredentials,
-        token_provider: "KisTokenProvider",
+        token_provider: KisTokenProvider,
         *,
-        rate_limiter: "_TokenBucket | None" = None,
-        _transport: Optional[httpx.AsyncBaseTransport] = None,
+        rate_limiter: _TokenBucket | None = None,
+        _transport: httpx.AsyncBaseTransport | None = None,
         _rate_limit_per_sec: float = _RATE_LIMIT_CALLS_PER_SEC,
         _rate_limit_backoff: tuple[float, ...] = _RATE_LIMIT_BACKOFF,
         _transport_retry_backoff: tuple[float, ...] = _TRANSPORT_RETRY_BACKOFF,
@@ -334,7 +334,7 @@ class KisClient(KisEndpointsMixin):
                     path, tr_id, params, retry=retry, foreground=foreground
                 )
             except KisRateLimitError:
-                global _rate_limit_bounces
+                global _rate_limit_bounces  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
                 _rate_limit_bounces += 1
                 if attempt + 1 >= attempts:
                     raise

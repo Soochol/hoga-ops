@@ -25,15 +25,11 @@ from pathlib import Path
 
 from hoga.api.disk_state import analyze_gaps
 from hoga.api.timeenc import HogaMs, unix_ms_to_hhmmssms, unix_ms_to_ms_from_midnight
-from hoga.tables.brokers import BrokerRow
-from hoga.tables.brokers import write_parquet as write_brokers_parquet
-from hoga.tables.candles import Candle
-from hoga.tables.candles import write_parquet as write_candles_parquet
+from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parquet
+from hoga.tables.candles import Candle, write_parquet as write_candles_parquet
 from hoga.tables.fills import Fill, write_fills_parquet
-from hoga.tables.snapshots import Orderbook
-from hoga.tables.snapshots import write_parquet as write_snapshots_parquet
-from hoga.tables.trades import Trade
-from hoga.tables.trades import write_parquet as write_trades_parquet
+from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots_parquet
+from hoga.tables.trades import Trade, write_parquet as write_trades_parquet
 
 _ZERO_LEVELS: tuple[int, ...] = (0,) * 10
 
@@ -433,7 +429,7 @@ def _record_today_promote_success(code: str) -> None:
     실승격 시각(epoch ms)을 남긴다. 기록원은 promote_kiwoom_today 뿐이다(KIS판
     promote_today는 KIS live/ 수집 소멸로 삭제됨). 지연 import: lifecycle이 이
     모듈을 모듈 레벨에서 import하므로 순환을 피해 호출 시점에 바인딩한다."""
-    from hoga.live import lifecycle
+    from hoga.live import lifecycle  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     lifecycle.record_today_promote_success(code, int(time.time() * 1000))
 
@@ -451,7 +447,9 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
     (PR-E 컷오버로 관심종목이 키움 전담이 되면서 이 경로가 프론트 today 갱신의
     유일한 이벤트 소스가 됨 — None은 스퓨리어스 리페치를 막는다).
     """
-    from hoga.api._atomic_write import atomic_write_json
+    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        atomic_write_json,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
 
     today = _today_kst_yyyymmdd()
     jsonl_path = data_dir / "live_kiwoom" / today / f"{code}.jsonl"

@@ -78,7 +78,7 @@ def _read_candle_closes(jsonl_path: Path) -> list[tuple[int, float]]:
                 # 비중은 줄 비중보다 더 크다.
                 if _CANDLE_HINT not in line:
                     continue
-                line = line.strip()
+                line = line.strip()  # noqa: PLW2901 — 방어적 복사·정규화 후 재대입
                 if not line:
                     continue
                 try:

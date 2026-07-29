@@ -108,6 +108,15 @@ jobs:
           # --python 을 따로 줄 필요가 없다.
           python-version: "3.14"
 
+      # ruff 를 테스트보다 **먼저** 돌린다 — 몇 초 만에 끝나고, 린트로 잡히는 종류의
+      # 실수는 90초짜리 스위트를 기다릴 이유가 없다.
+      #
+      # 2026-07-30 도입. 그전까지 위반 2,056건이라 게이트로 세울 수 없었다. 설정
+      # 조정(ruff.toml)으로 662, 안전 autofix 로 314, 실제 수정(E402·B905)과
+      # 사유 붙인 noqa 봉인으로 0 이 됐다. 무엇을 끄고 무엇을 남겼는지는 ruff.toml
+      # 주석에 있다 — 요지는 **hoga/ 에서는 규칙을 하나도 끄지 않았다**는 것이다.
+      - run: uv run --extra dev ruff check .
+
       # -m 'not wallclock' — 경과시간을 단언하는 9개 함수는 아래 잡으로 분리했다.
       - run: uv run --extra dev pytest -q -m 'not wallclock'
 

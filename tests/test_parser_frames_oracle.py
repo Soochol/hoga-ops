@@ -10,7 +10,6 @@ HOGA_PARSER_ORACLE_RAW_DIR 로 수동 게이트.
 """
 from __future__ import annotations
 
-
 import os
 import random
 from dataclasses import astuple
@@ -21,9 +20,7 @@ import pytest
 
 from hoga.parser import ParserError, _collect_events
 from hoga.parser.frames import _SNAPSHOT_COLUMNS, _TRADE_COLUMNS, collect_event_frames
-from hoga.tables import snapshots as snapshots_tbl
-from hoga.tables import trades as trades_tbl
-
+from hoga.tables import snapshots as snapshots_tbl, trades as trades_tbl
 
 # ── 라인 빌더 ────────────────────────────────────────────────────────────────
 

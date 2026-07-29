@@ -17,8 +17,7 @@ from pathlib import Path
 
 
 def test_folders_survive_multi_writer_document_roundtrip(tmp_path: Path):
-    from hoga.api.watchlist import (create_folder, add_member,
-                                    bump_last_success, load_document)
+    from hoga.api.watchlist import add_member, bump_last_success, create_folder, load_document
 
     async def scenario():
         f = await create_folder(tmp_path, name="스윙")

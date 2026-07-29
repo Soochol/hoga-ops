@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from .snapshot import LiveSnapshot
 

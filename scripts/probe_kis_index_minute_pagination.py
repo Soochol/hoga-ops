@@ -20,7 +20,6 @@ from hoga.config import resolve_data_dir
 from hoga.env import load_env
 from hoga.live.kis_runtime import ensure_kis_token_provider_from_env
 
-
 BASE_URL = "https://openapi.koreainvestment.com:9443"
 
 
@@ -130,7 +129,7 @@ async def _probe_endpoint(
                 **_summarize_rows(rows),
             }
             pages.append(page)
-            if response.status_code != 200 or body.get("rt_cd") != "0":
+            if response.status_code != 200 or body.get("rt_cd") != "0":  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                 break
             if response_tr_cont in continuation_values:
                 tr_cont = "N"

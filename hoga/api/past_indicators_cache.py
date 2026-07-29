@@ -29,8 +29,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Sequence
 from collections import OrderedDict
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
 
@@ -321,7 +321,7 @@ class PastIndicatorsCache:
     ) -> Path:
         return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{suffix}.json"
 
-    def _peak_path(self, code: str, date: str, source: str, kind: Literal["ask_peak", "bid_peak"], bucket_ms: int) -> Path:
+    def _peak_path(self, code: str, date: str, source: str, kind: Literal["ask_peak", "bid_peak"], bucket_ms: int) -> Path:  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         return self._model_path(code, date, source, f"{kind}.{bucket_ms}")
 
     def _poc_path(
@@ -369,7 +369,7 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
             return _CACHE_MISS
 
-    def _write_model_cache(self, path: Path, value: "BaseModel | None", *, kind: str) -> None:
+    def _write_model_cache(self, path: Path, value: BaseModel | None, *, kind: str) -> None:
         payload = {
             "version": KIND_VERSIONS[kind],
             "value": None if value is None else value.model_dump(mode="json"),
@@ -768,7 +768,7 @@ class PastIndicatorsCache:
             return _CACHE_MISS
 
     def _write_model_list_cache(
-        self, path: Path, items: "Sequence[BaseModel]", *, payload_key: str, kind: str
+        self, path: Path, items: Sequence[BaseModel], *, payload_key: str, kind: str
     ) -> None:
         payload = {
             "version": KIND_VERSIONS[kind],

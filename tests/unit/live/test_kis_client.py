@@ -4,12 +4,12 @@ Task 13: `_get` 의미론(재시도/에러 정규화/율리미터) 테스트의 
 poller fetch가 은퇴하며 `client._get(...)` 직접 호출로 교체 — 검증 대상이
 _get 계약 자체이므로 wrapper 메서드는 불필요하다."""
 import asyncio
-import json
 import time
 
 import httpx
 import pytest
 
+from hoga.live.index_registry import get_representative_index
 from hoga.live.kis_client import (
     KisApiError,
     KisAuthError,
@@ -19,7 +19,6 @@ from hoga.live.kis_client import (
     KisTransportError,
     _TokenBucket,
 )
-from hoga.live.index_registry import get_representative_index
 from tests.unit.live._fakes import FakeTokenProvider
 
 

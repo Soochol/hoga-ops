@@ -11,7 +11,6 @@ import polars as pl
 
 from hoga.api import screener_store
 
-
 _DAILY_CSV = (
     "code,date,open,high,low,close,volume\n"
     "000001,2026-05-13,100,110,90,105,1000\n"

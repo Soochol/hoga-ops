@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Callable
-
-logger = logging.getLogger(__name__)
+from collections.abc import Callable
 
 from fastapi import APIRouter, WebSocket
 
 from hoga.api.events import EventBus
 from hoga.live.buffer import LiveBuffer
+
+logger = logging.getLogger(__name__)
 
 _PING_TIMEOUT_S = 30.0
 _VALID_VENUES = ("KRX", "NXT")
@@ -32,7 +32,7 @@ def _parse_venues(raw: object) -> set[str] | None:
     return venues or None
 
 
-def build_ws_router(
+def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
     bus: EventBus,
     get_buffer: Callable[[], LiveBuffer | None],
     *,
@@ -41,11 +41,11 @@ def build_ws_router(
     router = APIRouter()
 
     @router.websocket("/api/ws")
-    async def _ws(websocket: WebSocket) -> None:
+    async def _ws(websocket: WebSocket) -> None:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
         await websocket.accept()
         # ADR-0067: local import to avoid circular imports at module level.
         # Placed here so both receiver() closure and finally block can access it.
-        from hoga.live import lifecycle  # noqa: PLC0415
+        from hoga.live import lifecycle  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
         out: asyncio.Queue[dict] = asyncio.Queue(maxsize=2048)
         bus_q = bus.subscribe()
         # code → (버퍼 큐, pump 태스크, 구독 venues). venues는 해제 시 동일 키 제거용.
@@ -77,7 +77,7 @@ def build_ws_router(
             while True:
                 try:
                     frame = await asyncio.wait_for(out.get(), timeout=ping_timeout_s)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     frame = {"ch": "heartbeat"}
                 await websocket.send_json(frame)
 

@@ -54,7 +54,7 @@ def atomic_write_parquet_table(path: Path, table: Any) -> None:
         OSError: if disk write fails. On failure the target is unchanged
             (the tempfile may linger; callers can ignore).
     """
-    import pyarrow.parquet as pq  # local import — heavy
+    import pyarrow.parquet as pq  # local import — heavy  # noqa: PLC0415 — 지연 import(순환/heavy)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -120,7 +120,7 @@ def atomic_write_parquet(path: Path, records: list[dict[str, Any]]) -> None:
         OSError: if disk write fails. On failure the target is unchanged
             (the tempfile may linger; callers can ignore).
     """
-    import polars as pl  # local import — heavy module
+    import polars as pl  # local import — heavy module  # noqa: PLC0415 — 지연 import(순환/heavy)
 
     path.parent.mkdir(parents=True, exist_ok=True)
 

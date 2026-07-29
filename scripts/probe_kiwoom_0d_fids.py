@@ -47,7 +47,7 @@ async def main() -> int:
         return 2
     token = await asyncio.to_thread(prov.get_token)
 
-    import websockets
+    import websockets  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     codes = [c.strip() for c in args.codes.split(",") if c.strip()]
     frames: list[dict] = []
@@ -86,7 +86,7 @@ async def main() -> int:
                             continue
                         values = row.get("values") or {}
                         fid_counter.update(values.keys())
-                        if len(frames) < 3:
+                        if len(frames) < 3:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                             frames.append(row)
         except TimeoutError:
             pass

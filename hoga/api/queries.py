@@ -33,7 +33,7 @@ def _is_non_trading_day(date_yyyymmdd: str) -> bool:
     비거래일 파티션이 사이드카 지표로 서빙되는 것을 막는 2차 안전망이다.
     """
     try:
-        if datetime.strptime(date_yyyymmdd, "%Y%m%d").weekday() >= 5:  # 토/일  # noqa: PLR2004
+        if datetime.strptime(date_yyyymmdd, "%Y%m%d").weekday() >= 5:  # 토/일  # noqa: PLR2004 — 국소 비교 상수
             return True
     except ValueError:
         return False
@@ -156,7 +156,7 @@ class QueryEngine:
             raise StockDateNotFound(f"{date}/{code}/{source}")
         return resolved
 
-    def list_stock_dates(self) -> list[StockDate]:
+    def list_stock_dates(self) -> list[StockDate]:  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
         base = self.data_dir / "parquet"
         if not base.exists():
             # Disk gone entirely — drop the whole cache rather than
@@ -467,8 +467,10 @@ class QueryEngine:
         is_partial-by-count case with no discrete ranges). Raises
         :class:`StockDateNotFound` if the source has no meta.json.
         """
-        from hoga.api.disk_state import analyze_gaps  # noqa: PLC0415
-        from hoga.api.timeenc import HogaMs  # noqa: PLC0415
+        from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+            analyze_gaps,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        )
+        from hoga.api.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
         meta = self.get_meta(date, code, source)
         close_ms = meta.get("regular_session_close_ms")
@@ -495,7 +497,7 @@ class QueryEngine:
             (HogaMs(r[0]) for r in rows), session_close_ms=HogaMs(close_ms),
         )
         ranges = [(int(s), int(e)) for s, e in analysis.gap_ranges]
-        sparse = analysis.in_session_count < 2 and not ranges  # noqa: PLR2004
+        sparse = analysis.in_session_count < 2 and not ranges  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return ranges, sparse, "computed"
 
     def list_stock_dates_in_range(

@@ -2,8 +2,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 # We don't import build_range_bundle yet — we test the signature exists.
 
 

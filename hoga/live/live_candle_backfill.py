@@ -306,7 +306,7 @@ class LiveMinuteCandleBackfill:
             )
         return result
 
-    async def _collect_for_venue(
+    async def _collect_for_venue(  # noqa: PLR0912, PLR0915
         self,
         venue: KisVenue,
         *,
@@ -426,7 +426,7 @@ class LiveMinuteCandleBackfill:
                             kis,
                             venue,
                             code,
-                            date_s,
+                            date_s,  # noqa: B023 — await 로 즉시 소비 — 지연 실행 아님
                         ),
                     )
                     if bars:

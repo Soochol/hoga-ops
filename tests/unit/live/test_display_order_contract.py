@@ -5,6 +5,7 @@ displayOrderContract.test.ts 도 같은 파일을 검증). 한쪽 정렬 규칙�
 테스트가 깨지므로, 화면 상단과 실제 KIS WS 구독 집합(Live Set)의 desync 를 자동
 포착한다(capture-critical)."""
 from __future__ import annotations
+
 import json
 from pathlib import Path
 
@@ -13,7 +14,7 @@ _FIXTURE = (Path(__file__).resolve().parents[3]
 
 
 def test_display_ordered_codes_matches_golden_fixture():
-    from hoga.api.models import WatchlistDocument, WatchlistFolder, WatchlistEntry
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
     from hoga.api.watchlist_projection import display_ordered_codes
     fx = json.loads(_FIXTURE.read_text(encoding="utf-8"))
     doc = WatchlistDocument(

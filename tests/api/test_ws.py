@@ -7,7 +7,6 @@ code-tagged live frames, and explicit unsubscribe tears the subscription down.
 import threading
 from unittest.mock import AsyncMock
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

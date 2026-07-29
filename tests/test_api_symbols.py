@@ -195,8 +195,9 @@ def test_calendar_response_accepts_reason() -> None:
     assert resp_default.reason is None
 
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from hoga.api import symbols as symbols_module
 from hoga.api.error_codes import UpstreamCode
@@ -239,7 +240,7 @@ async def test_get_all_reason_cleared_on_success(
     async def _ok() -> list[SymbolHit]:
         return [SymbolHit(code="005930", name="삼성전자", market="KOSPI",
                           captured_count=0,
-                          captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0})]
+                          captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0})]  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _ok)
 
     path = tmp_path / "sm.json"
@@ -310,7 +311,7 @@ def test_symbol_cache_state_factories_enforce_invariants() -> None:
     assert unavailable.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
 
     # Frozen — immutable after construction.
-    with pytest.raises(Exception):  # dataclasses.FrozenInstanceError
+    with pytest.raises(Exception):  # dataclasses.FrozenInstanceError  # noqa: B017 — 광범위 예외 자체가 검증 대상
         stale.reason = None  # type: ignore[misc]
 
 
@@ -326,11 +327,7 @@ def test_symbol_cache_state_stale_requires_keyword_reason() -> None:
 # T4 — disk I/O helpers: _load_from_disk / _write_to_disk / SCHEMA_VERSION
 # ---------------------------------------------------------------------------
 
-import json
-import os
-from pathlib import Path
 
-from hoga.api import symbols as symbols_module
 from hoga.api.models import SymbolHit
 
 
@@ -429,7 +426,7 @@ def test_atomic_write_rollback_on_replace_failure(tmp_path, monkeypatch):
         raise OSError("simulated replace failure")
 
     monkeypatch.setattr("os.replace", fail_replace)
-    try:
+    try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
         symbols_module._write_to_disk(path, [_make_hit("000660", "신규")], fetched_at_ms=2)
     except OSError:
         pass
@@ -638,8 +635,9 @@ async def test_refresh_concurrent_dedupe(tmp_path, monkeypatch):
 
 def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from hoga.api.app import create_app
+
     from hoga.api import symbols
+    from hoga.api.app import create_app
 
     symbols_module.reset_state_for_tests()
     # Isolate disk path so we don't read the real machine-global file.
@@ -680,8 +678,9 @@ def test_boot_autofetch_fires_when_cache_unavailable(tmp_path, monkeypatch):
     """§4.4: when disk file is absent (status=unavailable), lifespan must
     schedule refresh() as a background task — not block startup on it."""
     from fastapi.testclient import TestClient
-    from hoga.api.app import create_app
+
     from hoga.api import symbols
+    from hoga.api.app import create_app
 
     symbols_module.reset_state_for_tests()
 
@@ -715,10 +714,12 @@ def test_boot_autofetch_fires_when_cache_unavailable(tmp_path, monkeypatch):
 def test_boot_autofetch_skipped_when_cache_fresh(tmp_path, monkeypatch):
     """§4.4: when a valid disk file loads (status=fresh), refresh must NOT be
     scheduled — no redundant network call on a warm boot."""
-    from fastapi.testclient import TestClient
-    from hoga.api.app import create_app
-    from hoga.api import symbols
     import json
+
+    from fastapi.testclient import TestClient
+
+    from hoga.api import symbols
+    from hoga.api.app import create_app
 
     symbols_module.reset_state_for_tests()
 

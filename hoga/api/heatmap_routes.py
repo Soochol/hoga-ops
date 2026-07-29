@@ -24,14 +24,9 @@ from pathlib import Path
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Query
-from fastapi import Path as PathParam
+from fastapi import APIRouter, HTTPException, Path as PathParam, Query
 
 from hoga.api import symbols
-from hoga.api.heatmap_group_flow import (
-    HeatmapGroupFlowResponse,
-    build_group_flow,
-)
 from hoga.api.heatmap import (
     FolderNotFoundError,
     HeatmapSetMismatchError,
@@ -46,6 +41,10 @@ from hoga.api.heatmap import (
     rename_folder,
     reorder_entries,
     reorder_folders,
+)
+from hoga.api.heatmap_group_flow import (
+    HeatmapGroupFlowResponse,
+    build_group_flow,
 )
 from hoga.api.models import (
     EntriesRemoveRequest,

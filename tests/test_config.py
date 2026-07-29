@@ -88,7 +88,7 @@ def test_resolve_symbol_master_path_xdg_data_home_unset(monkeypatch: pytest.Monk
     assert result == Path.home() / ".local" / "share" / "hoga-ops" / "symbol-master.json"
 
 
-def test_resolve_symbol_master_path_independent_of_hoga_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_resolve_symbol_master_path_independent_of_hoga_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     """HOGA_DATA_DIR is for capture data only — Symbol Master is a sibling, not a child."""
     monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path / "sandbox"))
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)

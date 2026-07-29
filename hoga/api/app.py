@@ -15,16 +15,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from hoga.api import captures as _captures_module
-from hoga.api import screener as _screener_module
-from hoga.api import symbols as _symbols_module
+from hoga.api import captures as _captures_module, screener as _screener_module, symbols as _symbols_module
 from hoga.api.calendar import build_router as build_calendar_router
-from hoga.api.captures import build_router as build_captures_router
-from hoga.api.captures import cancel_all_on_shutdown
-from hoga.api.captures import set_bus as set_captures_bus
+from hoga.api.captures import build_router as build_captures_router, cancel_all_on_shutdown, set_bus as set_captures_bus
 from hoga.api.events import build_event_bus
 from hoga.api.heatmap import seed_from_watchlist_if_absent
 from hoga.api.heatmap_routes import build_router as build_heatmap_router
+from hoga.api.live_layout_preset_routes import (
+    build_router as build_live_layout_preset_router,
+)
 from hoga.api.queries import QueryEngine
 from hoga.api.request_timing import RequestTimingMiddleware
 from hoga.api.routes import build_router
@@ -32,13 +31,10 @@ from hoga.api.scheduler import start_scheduler
 from hoga.api.screener import build_router as build_screener_router
 from hoga.api.signal_alert_routes import build_router as build_signal_alert_router
 from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
-from hoga.api.study_view_routes import build_router as build_study_view_router
-from hoga.api.live_layout_preset_routes import (
-    build_router as build_live_layout_preset_router,
-)
 from hoga.api.study_layout_preset_routes import (
     build_router as build_study_layout_preset_router,
 )
+from hoga.api.study_view_routes import build_router as build_study_view_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
@@ -53,25 +49,17 @@ from hoga.live.kis_models import KisCandle
 from hoga.live.kis_runtime import aclose_kis_client, get_kis_client
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
+    get_buffer as live_get_buffer,
     get_kiwoom_capture_codes,
+    get_status as live_get_status,
+    get_today_ask_peak as live_get_today_ask_peak,
+    get_today_bid_peak as live_get_today_bid_peak,
+    get_vi_status as live_get_vi_status,
     start_kiwoom_session_watchdog,
     start_live_stream,
     start_today_promoter,
     stop_live_stream,
     stop_today_promoter,
-)
-from hoga.live.lifecycle import (
-    get_buffer as live_get_buffer,
-)
-from hoga.live.lifecycle import (
-    get_status as live_get_status,
-)
-from hoga.live.lifecycle import (
-    get_today_ask_peak as live_get_today_ask_peak,
-    get_vi_status as live_get_vi_status,
-)
-from hoga.live.lifecycle import (
-    get_today_bid_peak as live_get_today_bid_peak,
 )
 from hoga.live.migrate import migrate_to_v2_layout
 
@@ -90,7 +78,7 @@ async def _repair_minute_fetch(code: str, date_s: str) -> list[KisCandle]:
     )
 
 
-def create_app(data_dir: Path) -> FastAPI:
+def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
     engine = QueryEngine(data_dir)
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
     configure_signal_alert_monitor(data_dir, bus.publish)
