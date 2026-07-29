@@ -4,13 +4,6 @@ import { persistJson, readJsonObject } from './persist';
 
 export const LIVE_LAYOUT_STORAGE_KEY = 'live.layout.v1';
 export const DEFAULT_RIGHT_PANEL_WIDTH_PX = 400;
-export const LIVE_DETAIL_MIN_WIDTH_PX = 320;
-export const CHART_MIN_WIDTH_PX = 640;
-export const LIVE_WORKAREA_SPLITTER_WIDTH_PX = 6;
-/** 상세 패널을 전체 접었을 때 남는 세로 레일 너비(펼치기 클릭 타깃). */
-export const DETAIL_PANEL_RAIL_WIDTH_PX = 28;
-
-const RIGHT_PANEL_MAX_FRACTION = 0.45;
 
 export type LiveCardKey = 'orderbook' | 'volumeDistribution' | 'program' | 'brokers' | 'investor';
 export type LiveCardWeights = Record<LiveCardKey, number>;
@@ -105,27 +98,7 @@ function readPersistedCardWeights(value: unknown): LiveCardWeights | null {
   return next;
 }
 
-export function clampRightPanelWidth(
-  widthPx: number,
-  workareaWidthPx: number,
-  splitterWidthPx = 0,
-): number {
-  const safeWorkareaWidthPx = isPositiveFiniteNumber(workareaWidthPx) ? workareaWidthPx : 0;
-  if (safeWorkareaWidthPx <= 0) return DEFAULT_RIGHT_PANEL_WIDTH_PX;
-
-  const maxByFraction = Math.floor(safeWorkareaWidthPx * RIGHT_PANEL_MAX_FRACTION);
-  const safeSplitterWidthPx = isPositiveFiniteNumber(splitterWidthPx) ? splitterWidthPx : 0;
-  const maxByChart = Math.max(
-    LIVE_DETAIL_MIN_WIDTH_PX,
-    safeWorkareaWidthPx - CHART_MIN_WIDTH_PX - safeSplitterWidthPx,
-  );
-  const maxWidth = Math.max(LIVE_DETAIL_MIN_WIDTH_PX, Math.min(maxByFraction, maxByChart));
-  const safeWidthPx = isPositiveFiniteNumber(widthPx) ? widthPx : DEFAULT_RIGHT_PANEL_WIDTH_PX;
-
-  return Math.min(maxWidth, Math.max(LIVE_DETAIL_MIN_WIDTH_PX, Math.round(safeWidthPx)));
-}
-
-export function clampCardWeights(weights: Partial<LiveCardWeights>): LiveCardWeights {
+function clampCardWeights(weights: Partial<LiveCardWeights>): LiveCardWeights {
   const next: LiveCardWeights = { ...DEFAULT_CARD_WEIGHTS };
   for (const key of Object.keys(DEFAULT_CARD_WEIGHTS)) {
     if (!isLiveCardKey(key)) continue;

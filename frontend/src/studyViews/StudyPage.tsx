@@ -44,6 +44,9 @@ function StudySearchHeader({
   label?: string;
   description?: string;
 }) {
+  // min-h-12(54px)는 WorkspaceHeader 의 인라인 `height: var(--h-live-header)`(36px)를
+  // 의도적으로 덮는다 — min-height 가 height 를 이긴다. 아래 식별부가 제목+설명 2줄이라
+  // 36px 밴드에 들어가지 않기 때문(#900: "54px 원인은 버튼이 아니라 2줄 식별부").
   return (
     <WorkspaceHeader className="min-h-12 px-4">
       <div className="min-w-0">
