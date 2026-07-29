@@ -122,12 +122,17 @@ async def test_fetch_index_minute_candles_calls_kis_time_chart_endpoint() -> Non
 @pytest.mark.parametrize(
     ("display_bucket_seconds", "kis_input_hour"),
     [
+        # KIS 가 지원하는 주기(실측 2026-07-29)는 표시 버킷 그대로 요청한다 —
+        # 응답이 주기 무관 102행 상한이라, 잔 소스를 고르면 커버 구간만 짧아진다.
         (60, "60"),
-        (180, "60"),
+        (180, "180"),
         (300, "300"),
         (600, "600"),
-        (900, "300"),
-        (1800, "600"),
+        (900, "900"),
+        (1800, "1800"),
+        # 목록 밖 버킷만 OHLC 경계를 보존하는 가장 큰 약수로 폴백(접기는 이때만).
+        (1200, "600"),
+        (2700, "900"),
     ],
 )
 async def test_fetch_index_minute_candles_uses_best_kis_source_for_display_bucket(
@@ -178,7 +183,8 @@ async def test_fetch_index_minute_candles_uses_best_kis_source_for_display_bucke
 
 
 @pytest.mark.asyncio
-async def test_fetch_index_minute_candles_aggregates_5m_source_to_15m_display_bucket() -> None:
+async def test_fetch_index_minute_candles_aggregates_source_to_display_bucket_on_divisor_fallback() -> None:
+    """KIS 미지원 버킷(20분)만 약수 소스(10분)로 받아 접는다."""
     captured: dict[str, object] = {}
 
     def row(hhmmss: str, open_s: str, high_s: str, low_s: str, close_s: str, volume_s: str) -> dict[str, str]:
@@ -202,10 +208,68 @@ async def test_fetch_index_minute_candles_aggregates_5m_source_to_15m_display_bu
                 "msg1": "OK",
                 "output2": [
                     row("090000", "100", "105", "99", "104", "10"),
-                    row("090500", "104", "108", "103", "106", "20"),
-                    row("091000", "106", "109", "101", "102", "30"),
-                    row("091500", "102", "103", "100", "101", "40"),
+                    row("091000", "104", "108", "103", "106", "20"),
+                    row("092000", "106", "109", "101", "102", "30"),
+                    row("093000", "102", "103", "100", "101", "40"),
                 ],
+            },
+        )
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = await client.fetch_index_minute_candles(
+            get_representative_index("KOSPI"),
+            "20260619",
+            "20260619",
+            bucket_seconds=1200,
+            foreground=True,
+        )
+    finally:
+        await client.aclose()
+
+    assert (captured["params"] or {})["FID_INPUT_HOUR_1"] == "600"
+    assert len(result.candles) == 2
+    first, second = result.candles
+    assert (first.open, first.high, first.low, first.close, first.volume) == (
+        100.0, 108.0, 99.0, 106.0, 30,
+    )
+    assert (second.open, second.high, second.low, second.close, second.volume) == (
+        106.0, 109.0, 100.0, 101.0, 70,
+    )
+
+
+@pytest.mark.asyncio
+async def test_fetch_index_minute_candles_passes_kis_supported_bucket_through_unaggregated() -> None:
+    """소스 주기 == 표시 버킷이면 접지 않는다 — KIS 15분봉 3행이 15분봉 3개 그대로.
+
+    회귀 방어: 종전엔 900 표시 버킷을 300 소스로 받아 102행 상한을 34봉으로
+    깎아 썼다(원인 2). 소스를 900 으로 올린 뒤 집계까지 그대로 두면 이미 15분인
+    캔들을 다시 15분 그리드로 접는 헛일이 된다.
+    """
+    def row(hhmmss: str, close_s: str) -> dict[str, str]:
+        return {
+            "stck_bsop_date": "20260619",
+            "stck_cntg_hour": hhmmss,
+            "bstp_nmix_oprc": close_s,
+            "bstp_nmix_hgpr": close_s,
+            "bstp_nmix_lwpr": close_s,
+            "bstp_nmix_prpr": close_s,
+            "cntg_vol": "10",
+        }
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "rt_cd": "0",
+                "msg_cd": "0",
+                "msg1": "OK",
+                # KIS 응답은 최신순 — 정렬은 유지돼야 한다.
+                "output2": [row("093000", "102"), row("091500", "101"), row("090000", "100")],
             },
         )
 
@@ -225,14 +289,7 @@ async def test_fetch_index_minute_candles_aggregates_5m_source_to_15m_display_bu
     finally:
         await client.aclose()
 
-    assert (captured["params"] or {})["FID_INPUT_HOUR_1"] == "300"
-    assert len(result.candles) == 2
-    first = result.candles[0]
-    assert first.open == 100.0
-    assert first.high == 109.0
-    assert first.low == 99.0
-    assert first.close == 102.0
-    assert first.volume == 60
+    assert [c.close for c in result.candles] == [100.0, 101.0, 102.0]
 
 
 @pytest.mark.asyncio
