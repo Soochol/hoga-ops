@@ -503,7 +503,22 @@ def build_volume_distribution_slice(
     upper_bound_ms = None
     if cutoff_ms is not None:
         cutoff_hhmmssms = unix_ms_to_hhmmssms(date, cutoff_ms)
-        upper_bound_ms = trades_tbl._session_bound_to_intra_ms(cutoff_hhmmssms) + 1
+        # 휴리스틱 래퍼(_session_bound_to_intra_ms)가 아니라 무조건 디코더를 쓴다.
+        # 그 래퍼는 `value > 86_400_000` 일 때만 HHMMSSmmm 으로 보고 디코드하는데,
+        # 위 unix_ms_to_hhmmssms 는 **항상** HHMMSSmmm 을 돌려주므로 그 분기는 여기서
+        # 성립하지 않는다. 09:00 미만 커서는 HHMMSSmmm 이 86_400_000(=08:64:00.000,
+        # 존재하지 않는 시각) 아래라 linear ms 로 오인되어 원값이 그대로 통과했다.
+        #
+        # 실측: 08:30 커서 → HHMMSSmmm 83_000_000, 올바른 intra_ms 30_600_000,
+        # 실제 반환 83_000_000(=23.06h). 그러면 query_volume_distribution 의
+        # `min(session_close_intra_ms, upper_bound_ms, ...)`(trades.py:570)에서
+        # 장 마감(~55_800_000)이 이겨 **cutoff 가 조용히 무시되고 하루 전체 분포가
+        # 반환된다** — 크래시가 없어 더 나쁘다. 09:00 이후 커서만 우연히 맞았다.
+        #
+        # 재현 경로는 공개 API 다: routes.py 의 volume_distribution_cutoff_ms 는
+        # mode=sidecar 와 단일 Stock-Date 만 검증하고 장 시간대 가드가 없어,
+        # 08:30~09:00 동시호가 구간으로 스크럽하면 그대로 발현한다.
+        upper_bound_ms = trades_tbl._hhmmssms_to_intra_ms(cutoff_hhmmssms) + 1
     dist_kwargs = {}
     if upper_bound_ms is not None:
         dist_kwargs["upper_bound_ms"] = upper_bound_ms
