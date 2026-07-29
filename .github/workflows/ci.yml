@@ -93,18 +93,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v9
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-
-      # 로컬(3.14.4)과 major.minor 를 맞춘다. pyproject 의 requires-python 이
-      # >=3.11 이라 uv 가 임의 버전을 고를 수 있는데, 그러면 "로컬은 되는데 CI 만
-      # 깨진다" 는 진단 비용이 생긴다. 프론트에서 node-version 을 고정한 것과 같은 이유.
-      - run: uv python install 3.14
+          # 로컬(3.14.4)과 major.minor 를 맞춘다. pyproject 의 requires-python 이
+          # >=3.11 이라 uv 가 임의 버전을 고를 수 있는데, 그러면 "로컬은 되는데
+          # CI 만 깨진다" 는 진단 비용이 생긴다. 프론트에서 node-version 을 고정한
+          # 것과 같은 이유. 이 입력은 UV_PYTHON 을 설정하므로 아래 uv run 에
+          # --python 을 따로 줄 필요가 없다.
+          python-version: "3.14"
 
       # -m 'not wallclock' — 경과시간을 단언하는 9개 함수는 아래 잡으로 분리했다.
-      - run: uv run --extra dev --python 3.14 pytest -q -m 'not wallclock'
+      - run: uv run --extra dev pytest -q -m 'not wallclock'
 
   backend-wallclock:
     name: backend (wallclock)
@@ -118,9 +119,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v9
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - run: uv python install 3.14
-      - run: uv run --extra dev --python 3.14 pytest -q -m wallclock
+          python-version: "3.14"
+      - run: uv run --extra dev pytest -q -m wallclock
