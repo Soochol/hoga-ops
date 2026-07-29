@@ -1,7 +1,7 @@
 import { render, act } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { LineSeries } from 'lightweight-charts';
+import { LineSeries, type UTCTimestamp } from 'lightweight-charts';
 import RangeSeriesPane, { type PaneSpec } from '../../src/chart/RangeSeriesPane';
 import { createVirtualAxis } from '../../src/util/virtualAxis';
 
@@ -40,7 +40,10 @@ describe('RangeSeriesPane', () => {
         {
           type: LineSeries,
           options: { color: '#aaa' },
-          data: (b, ax) => b.quote_ratio.points.map((p: any) => ({ time: ax.toVirtual(p.t) / 1000, value: p.bid_total })),
+          data: (b, ax) => b.quote_ratio.points.map((p: any) => ({
+            time: (ax.toVirtual(p.t) / 1000) as UTCTimestamp,
+            value: p.bid_total,
+          })),
         },
       ],
     };
@@ -56,8 +59,8 @@ describe('RangeSeriesPane', () => {
       name: 'test-two',
       stretch: 0.4,
       series: [
-        { type: LineSeries, options: { color: '#a' }, data: () => [{ time: 0, value: 1 }] },
-        { type: LineSeries, options: { color: '#b' }, data: () => [{ time: 0, value: 2 }] },
+        { type: LineSeries, options: { color: '#a' }, data: () => [{ time: 0 as UTCTimestamp, value: 1 }] },
+        { type: LineSeries, options: { color: '#b' }, data: () => [{ time: 0 as UTCTimestamp, value: 2 }] },
       ],
     };
     render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={2} spec={spec} />);
@@ -69,7 +72,7 @@ describe('RangeSeriesPane', () => {
   it('calls useContext, threads result into data(), and invokes afterAdd per series', () => {
     const { chart, seriesList } = makeMockChart();
     const useCtx = vi.fn(() => ({ flag: true }));
-    const dataFn = vi.fn(() => [{ time: 0, value: 1 }]);
+    const dataFn = vi.fn(() => [{ time: 0 as UTCTimestamp, value: 1 }]);
     const afterAdd = vi.fn();
     const spec: PaneSpec<{ flag: boolean }> = {
       name: 'test-ctx',
@@ -109,8 +112,8 @@ describe('RangeSeriesPane', () => {
     // the data effect on the existing handle (no recreate)", independent of
     // whether that push is a setData or an update.
     const dataFn = vi.fn((_b: any, _ax: any, ctx: { period: number }) => [
-      { time: 0, value: 1 },
-      { time: 1, value: ctx.period },
+      { time: 0 as UTCTimestamp, value: 1 },
+      { time: 1 as UTCTimestamp, value: ctx.period },
     ]);
     const spec: PaneSpec<{ period: number }> = {
       name: 'test-ctx-stability',

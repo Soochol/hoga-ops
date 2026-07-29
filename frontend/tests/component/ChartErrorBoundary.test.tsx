@@ -2,7 +2,9 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import ChartErrorBoundary from '../../src/chart/ChartErrorBoundary';
 
-function Boom({ msg }: { msg: string }) {
+// 반환형 never 를 명시한다. 본문이 항상 throw 하면 TS 는 반환형을 void 로
+// 추론하고, void 는 ReactNode 가 아니라서 <Boom /> 이 JSX 컴포넌트로 거부된다.
+function Boom({ msg }: { msg: string }): never {
   throw new Error(msg);
 }
 

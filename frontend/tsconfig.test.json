@@ -1,0 +1,24 @@
+{
+  /* jsdom 에서 도는 테스트(tests/unit, tests/component)의 타입체크 프로젝트.
+
+     tsconfig.app.json 은 include:["src"] 라 src 안에 colocated 된 테스트
+     (*.test.tsx 400여 개)는 이미 덮지만, frontend/tests/ 아래는 어느 프로젝트에도
+     속하지 않아 타입체크 밖이었다. 그 결과 tests/component 에 타입 오류가 main 에
+     살아 있는 채로 CI 는 초록이었다.
+
+     src 를 함께 include 하는 이유: 이 테스트들이 src 를 import 하므로 프로그램에
+     포함되어야 한다. 프로젝트 참조(composite)로 묶는 방법도 있지만 noEmit 과
+     선언 방출이 충돌해 TS6307 이 난다 — 참조 대신 독립 프로그램으로 둔다.
+     비용은 src 를 한 번 더 검사하는 것뿐이다.
+
+     tests/e2e 는 여기 넣지 않는다 — Playwright 스펙은 Node 전역(process, fs,
+     path)을 쓰므로 types 에 "node" 가 필요한데, 그걸 이 프로젝트에 넣으면
+     src 의 setTimeout 반환형이 number 에서 NodeJS.Timeout 으로 바뀌어 없던
+     오류가 생긴다(이 설정을 처음 시도했을 때 실제로 겪은 증상). 실행 환경이
+     다르면 프로젝트도 나눠야 한다 — tsconfig.e2e.json 참고. */
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src", "tests/setup.ts", "tests/unit", "tests/component"]
+}

@@ -34,7 +34,7 @@ function W({ children }: { children: ReactNode }) {
 }
 
 it('renders the approved minimal top menu items', () => {
-  render(<TopNav />, { wrapper: W });
+  render(<TopNav onOpenSettings={() => {}} />, { wrapper: W });
 
   expect(screen.getByText('hoga-ops')).toBeInTheDocument();
   expect(screen.getByText('Live')).toBeInTheDocument();
