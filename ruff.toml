@@ -1,13 +1,72 @@
-line-length = 100
+# 100 → 120 (2026-07-30). E501 위반 399건 중 336건(84%)이 120 이내였고, 대부분
+# "정렬을 지키려다 20칸 넘친" 형태다. ruff 는 폭을 East Asian 기준으로 세므로
+# (한글 1자 = 2칸) 후행 한글 주석이 체감보다 일찍 걸린다 — 이 저장소는 "왜" 를
+# 주석에 길게 남기는 문화라 그 비용이 크다. 규칙은 켜진 채 임계만 넓어지며,
+# 되돌리기는 숫자 하나다.
+#
+# ⚠️ 이 값은 E501 전용이 아니다. isort 줄바꿈(I001)과 SIM108(ternary 권장) 발동
+# 여부까지 좌우한다 — 실측으로 100→120 이 SIM108 을 1→5건으로 늘렸다. 이 값을
+# 바꾸면 autofix 결과가 달라지므로, 다른 정리보다 **먼저** 확정해야 한다.
+line-length = 120
 target-version = "py311"
 
 [lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "PL"]
+# PLR0913(인자 과다): FastAPI 라우트·KIS 엔드포인트 시그니처와 정면 충돌한다.
 ignore = ["PLR0913"]
 
+[lint.isort]
+# 기본값(false)은 별칭 import 를 문장 여러 개로 쪼개, 지연 import 함수 안에서
+# PLC0415 를 오히려 증식시킨다(hoga/parser/__init__.py, hoga/api/symbols.py 실측).
+# true 로 두면 -17건. autofix 를 돌리기 전에 이 값이 정해져 있어야 한다.
+combine-as-imports = true
+
+[lint.pylint]
+# 현재 위반 8건이 전부 7~8이고 모두 guard-clause 조기반환 사다리다(캐시 미스 사유
+# 분기, 프레임 디스패치, 달력 셀 상태머신, 폴백 사다리). 임계를 8로 올려 기존을
+# 통과시키되 **9번째 반환은 계속 막는다** — 규칙을 끄는 것과 다르다.
+max-returns = 8
+
+[lint.flake8-bugbear]
+# B008 은 FastAPI Query()/Depends() 와 Typer Option() 을 "가변 기본값" 으로 오탐한다.
+# 탐지 기준이 자의적이라(애노테이션이 str/int/bool 이면 건너뛴다) 같은 관용구가 타입에
+# 따라 무작위로 걸린다. 호출부만 면제하므로 진짜 `= []` / `= {}` 는 계속 잡힌다.
+extend-immutable-calls = [
+  "fastapi.Query", "fastapi.Path", "fastapi.Body", "fastapi.Header",
+  "fastapi.Cookie", "fastapi.Form", "fastapi.File", "fastapi.Depends",
+  "fastapi.Security", "typer.Option", "typer.Argument",
+]
+
 [lint.per-file-ignores]
-# Tests use literal expected values in assertions — that's their nature.
-"tests/**/*.py" = ["PLR2004"]
+# PLR2004: 테스트는 리터럴 기대값이 본질이다.
+# PLC0415: "테스트당 SUT 를 지역 import" 는 이 저장소의 관례다 — 101파일 1,085줄이고
+#          자동수정이 없으며 기능 이득이 0이다. tests/unit/live/test_api.py 한 파일에
+#          `# noqa: PLC0415` 가 109개 달려 있는 것이 "이미 켜봤다가 관례를 택했다"는 증거.
+# E402:    헤더 주석 뒤에 import 를 재개하는 "섹션 블록" 스타일.
+# PLW0108: monkeypatch 스텁 관용구(`lambda: object()` = 호출마다 새 sentinel). 제품 코드 0건.
+# E702:    `sd = tmp_path / "x"; sd.mkdir()` 류 셋업 한 줄 압축.
+#
+# ★ 전제: F401(미사용 import)·F811(재정의)은 tests/ 에서 **절대 함께 끄지 않는다.**
+#   위 관례가 실제로 만드는 피해(중복·미사용 import, 그리고 중복 def 로 조용히 사라진
+#   테스트)를 잡는 것이 정확히 그 둘이고, 지금도 발화 중이다. 이 목록에 F 계열을
+#   추가하는 순간 tests/ 는 진짜 감시를 잃는다.
+"tests/**/*.py" = ["PLR2004", "PLC0415", "E402", "PLW0108", "E702"]
+
+# 픽스처 테이블 — 한 줄 = 한 행 정렬이 대조 가능성의 핵심이다(_ob_ap / QuoteRatioRow 표).
+# 접으면 12행 표가 60줄로 흩어져 표가 존재하는 이유가 사라진다.
+# ※ tests/hoga/api/test_bundle.py 는 넣지 않는다 — 지킬 정렬 컬럼이 없고 같은 파일에
+#   이미 접힌 선례가 있어, 거기 긴 줄은 관례가 아니라 드리프트다.
+"tests/test_tables_snapshots.py" = ["E501"]
+
+# 파일명 자체가 probe_ 인 일회성 실측 스크립트(원샷 채록). 제품 코드가 아니다.
+# ※ scripts/ 전체가 아니다 — scripts/repromote_kis_live.py 는 shutil.rmtree 를 쓰는
+#   파괴적 운영 스크립트라 감시를 유지한다.
+"scripts/probe_*.py" = ["PLR0912", "PLR0915"]
+
+# 헤더에 "Re-run this only when KIS rotates field names" 가 명시된 일회성 픽스처 수집기.
+# ※ tools/ 전체가 아니다 — tools/ 는 __init__.py 를 가진 정식 패키지이고
+#   tests/tools/ 가 실제로 import 해서 테스트한다.
+"tools/capture_kis_fixtures.py" = ["PLR0915"]
 
 [format]
 quote-style = "double"
