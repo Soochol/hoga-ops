@@ -16,7 +16,7 @@ import { formatPriceQty } from './peakLegendValues';
 import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
 
 /** 가시 시간범위(가상초 {from,to}). 초기 마운트엔 null, 차트 teardown 중엔 throw → null.
- *  HighLowAnnotationOverlay.readVisibleRange 와 동일 관용구. */
+ *  HighLowLabelsPrimitive.readVisibleRange 와 동일 관용구. */
 function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number } | null {
   try {
     const r = ts.getVisibleRange();
@@ -141,7 +141,7 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
   // 레전드 값 provider 의 창 스코프(멀티창).
   const windowId = useWindowScopeId();
-  // 강도 정규화 기준 = 현재 보이는 시간범위. 팬/줌 시 재정규화(HighLowAnnotationOverlay 선례).
+  // 강도 정규화 기준 = 현재 보이는 시간범위. 팬/줌 시 재정규화(HighLowLabelsPrimitive 선례).
   const [visibleRange, setVisibleRange] = useState<{ from: number; to: number } | null>(null);
 
   // 프리미티브 부착: deps=[series]만 (bundle 파생값 금지 — 식별자 churn 함정).
@@ -161,7 +161,7 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   }, [series]);
 
   // 가시범위 구독: 팬/줌(visible logical range 변경)을 rAF 로 coalesce 해 재정규화.
-  // logical range 를 쓰는 이유는 HighLowAnnotationOverlay 와 동일 — time range 는 팬 중
+  // logical range 를 쓰는 이유는 HighLowLabelsPrimitive 와 동일 — time range 는 팬 중
   // 미세 변화를 덜 흘린다. 실제 {from,to} 는 getVisibleRange(가상초)로 읽는다.
   useEffect(() => {
     const ts = chart.timeScale();

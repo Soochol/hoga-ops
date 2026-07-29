@@ -92,7 +92,7 @@ import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import CandleTooltip from './CandleTooltip';
-import HighLowAnnotationOverlay from './HighLowAnnotationOverlay';
+import HighLowLabelsHost from './HighLowLabelsHost';
 import PriceLevelDotsOverlay from './PriceLevelDotsOverlay';
 import type { CandlePaneContext } from '../chart/projectors/candle';
 import type { PaneId } from '../chart/drawing/types';
@@ -1574,7 +1574,7 @@ export function LiveChartRoot({
   }, [chart, setPaneStretch]);
 
   // 고저 극값 라벨이 피할 매도/매수 최대벽 도킹 라벨 입력(가격·선 끝 시각·텍스트 —
-  // 픽셀 아님). 좌표 변환은 HighLowAnnotationOverlay 렌더 본문이 매 프레임 수행한다:
+  // 픽셀 아님). 좌표 변환은 HighLowLabelsPrimitive.draw 가 매 프레임 수행한다:
   // priceToCoordinate 는 가격축 스케일 스냅샷이라, 여기(데이터-deps memo)서 구우면
   // 오토스케일·팬/줌·pane 토글로 축이 리스케일돼도 재계산되지 않아 회피 rect 가 실제
   // 칩 위치와 어긋난다. 게이트는 도킹 라벨이 **실제로 그려지는** 조건과 동일해야 한다
@@ -2088,9 +2088,10 @@ export function LiveChartRoot({
             axis={axis}
           />
           <CandleTooltip chart={chart} bundle={cb} quoteBundle={paneRatioBundle} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
-          {/* 고저 극값 라벨 — 보이는 범위의 최고/최저봉에 극값 대비율 라벨. cb(안정)·viewport
-              구독이라 SSE 틱엔 미재렌더, 팬/줌·캔들 갱신 시에만 재계산. 토글 self-gate. */}
-          <HighLowAnnotationOverlay
+          {/* 고저 극값 라벨 — 보이는 범위의 최고/최저봉에 극값 대비율 라벨. DOM 없는
+              primitive 호스트라 팬/줌 재계산은 lwc 캔버스 패스가 담당한다(캔들과 같은
+              프레임). SSE 틱엔 미재렌더(cb 안정), 토글 self-gate. */}
+          <HighLowLabelsHost
             chart={chart}
             bundle={cb}
             axis={axis}
