@@ -523,8 +523,8 @@ describe('LiveChartRoot', () => {
   it('mounts AuctionWindowOverlay when bundle has segments', () => {
     // Phase D2 regression: the auctionWindowMask toggle (default ON) must
     // render the AuctionWindowOverlay band so the user sees visual parity
-    // with the data masking it triggers on RatioPane / FillStrength /
-    // TotalQtyBar. The overlay self-gates on useActivePrefs(auctionWindowMask)
+    // with the data masking it triggers on RatioPane / FillStrength and on
+    // BookPanel 의 총잔량 스트립. The overlay self-gates on useActivePrefs(auctionWindowMask)
     // and on axis.segments.length > 0, so mounting it inside the
     // bundle-has-segments JSX block is sufficient.
     render(
@@ -3236,27 +3236,11 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 // ---------------------------------------------------------------------------
 
 import { useLiveCursorStore } from './useLiveCursorStore';
-import { useLiveAxisStore } from './useLiveAxisStore';
 
 describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
   beforeEach(() => {
     useLiveCursorStore.getState().resetCursor();
-    useLiveAxisStore.getState().setAxis(null);
     vi.mocked(createChartEx).mockClear();
-  });
-
-  it('publishes axis to useLiveAxisStore on mount', () => {
-    render(
-      <LiveChartRoot
-        code="005930"
-        timeframe="1m"
-        bundle={DEFAULT_BUNDLE}
-        clampEngaged={false}
-        isPastCandlesLoading={false}
-      />,
-      { wrapper },
-    );
-    expect(useLiveAxisStore.getState().axis).not.toBeNull();
   });
 
   it('subscribes to crosshair move on minute timeframe', () => {
