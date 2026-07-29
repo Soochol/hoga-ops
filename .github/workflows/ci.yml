@@ -93,7 +93,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: astral-sh/setup-uv@v9
+      # 정확한 버전으로 고정한다. checkout/setup-node 처럼 `@v9` 로 쓸 수 없다 —
+      # astral-sh/setup-uv 는 이동 major 태그를 **v7 까지만** 발행한다(v8·v9 는
+      # v9.0.0 같은 전체 버전 태그로만 존재). `@v9` 는 해석되지 않아 "Set up job"
+      # 단계에서 즉시 실패한다(PR #938 첫 실행에서 3초 만에 재현).
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -119,7 +123,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v9
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
