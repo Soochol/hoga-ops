@@ -181,8 +181,12 @@ def _parse_index_minute_row(row: dict[str, Any]) -> IndexCandlePoint:
 def _aggregate_index_minute_candles(
     candles: list[IndexCandlePoint],
     bucket_seconds: int,
+    source_seconds: int = 60,
 ) -> list[IndexCandlePoint]:
-    if bucket_seconds <= 60:
+    """소스 주기 캔들을 표시 버킷으로 접는다. 소스가 이미 표시 버킷 이상이면
+    (= _kis_index_minute_unit_seconds 가 정확한 소스를 골랐을 때) 정렬만 하고
+    그대로 통과 — 접기는 약수 폴백 경로 전용이다."""
+    if bucket_seconds <= source_seconds:
         return sorted(candles, key=lambda c: c.t_ms)
     bucket_ms = bucket_seconds * 1000
     buckets: dict[int, list[IndexCandlePoint]] = {}
@@ -207,12 +211,31 @@ def _aggregate_index_minute_candles(
     return aggregated
 
 
+# KIS 업종분봉(FHKUP03500200)이 서버측 주기로 받아들이는 초 단위 — 실측 2026-07-29.
+#
+# 이 TR 의 FID_INPUT_HOUR_1 은 종목분봉(FHKST03010230)과 **의미가 다르다**: 종목 쪽은
+# 시각 앵커(HHMMSS)라 페이지를 시간 주소로 걸어갈 수 있지만(_minute_page_anchors),
+# 업종 쪽은 **주기 선택자**라 시간 커서가 없다. 어떤 주기를 넣든 응답은 항상 최신
+# 102행이고(목록 밖 값 — 예: "1000" — 은 0행), 그래서 요청 날짜 범위를 넓혀도 과거는
+# 채워지지 않는다.
+#
+# 그 상한이 고정이라, 표시 버킷보다 잔 주기를 요청하면 커버 구간이 정확히 그 배수만큼
+# 짧아진다: 30분봉을 600초 소스로 받으면 102개 10분봉 → 34개 30분봉이지만, 1800초로
+# 받으면 102개 30분봉이 그대로 온다(실측: 600 → 3거래일 전, 1800 → 6거래일 전부터).
+# 표시 버킷과 같은 주기를 요청하는 것이 항상 최대 커버리지다.
+_KIS_INDEX_MINUTE_SOURCE_UNITS = (60, 180, 300, 600, 900, 1800)
+
+
 def _kis_index_minute_unit_seconds(bucket_seconds: int) -> int:
-    if bucket_seconds in {600, 1800}:
-        return 600
-    if bucket_seconds in {300, 900}:
-        return 300
-    return 60
+    """표시 버킷을 그대로 담는 KIS 소스 주기.
+
+    목록 밖 버킷은 OHLC 경계를 보존하는 가장 큰 약수로 내려간다(그 경우에만
+    `_aggregate_index_minute_candles` 가 접는다). 약수가 없으면 60초.
+    """
+    if bucket_seconds in _KIS_INDEX_MINUTE_SOURCE_UNITS:
+        return bucket_seconds
+    divisors = [u for u in _KIS_INDEX_MINUTE_SOURCE_UNITS if bucket_seconds % u == 0]
+    return max(divisors) if divisors else 60
 
 
 def _parse_market_investor_daily_row(row: dict[str, Any]) -> InvestorNetPoint:
@@ -715,19 +738,22 @@ class KisEndpointsMixin:
         """Fetch domestic representative index intraday OHLCV candles.
 
         KIS TR_ID: FHKUP03500200 (inquire-time-indexchartprice). KIS supports a
-        small set of server-side minute units. Request the coarsest exact source
-        that preserves the display bucket's OHLC boundaries, then aggregate only
-        when the display bucket is a clean multiple of that source.
+        small set of server-side minute units and returns at most 102 rows per
+        call with no time cursor, so the display bucket's own unit is requested
+        whenever KIS supports it — a finer source would only shrink the covered
+        span (see `_KIS_INDEX_MINUTE_SOURCE_UNITS`). Aggregation runs only on the
+        divisor-fallback path.
         """
         if index.kis_index_code is None:
             raise KisApiError(msg_cd="UNSUPPORTED_INDEX", msg1=f"{index.id} has no KIS index code")
         path = "/uapi/domestic-stock/v1/quotations/inquire-time-indexchartprice"
         tr_id = "FHKUP03500200"
+        source_seconds = _kis_index_minute_unit_seconds(bucket_seconds)
         params = {
             "FID_COND_MRKT_DIV_CODE": "U",
             "FID_ETC_CLS_CODE": "0",
             "FID_INPUT_ISCD": index.kis_index_code,
-            "FID_INPUT_HOUR_1": str(_kis_index_minute_unit_seconds(bucket_seconds)),
+            "FID_INPUT_HOUR_1": str(source_seconds),
             "FID_PW_DATA_INCU_YN": "Y",
         }
         body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
@@ -774,7 +800,7 @@ class KisEndpointsMixin:
                 continue
             candles.append(point)
 
-        candles = _aggregate_index_minute_candles(candles, bucket_seconds)
+        candles = _aggregate_index_minute_candles(candles, bucket_seconds, source_seconds)
         return IndexCandleFetchResult(candles=candles, violations=violations)
 
     async def fetch_market_investor_net(

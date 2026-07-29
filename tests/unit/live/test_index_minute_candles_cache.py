@@ -109,6 +109,84 @@ async def test_exact_cache_preserves_row_level_violations_without_refetching() -
     assert second.violations == [warning]
 
 
+@pytest.mark.asyncio
+async def test_today_window_refetches_after_ttl() -> None:
+    """오늘을 포함한 창은 TTL 후 재fetch — 장중 새 봉이 붙는 지점."""
+    clock = {"t": 0.0}
+    cache = IndexMinuteCandlesCache(today_ttl_seconds=60.0, monotonic=lambda: clock["t"])
+    calls: list[tuple[str, str]] = []
+
+    async def fetch_batch(from_s: str, to_s: str) -> IndexCandleFetchResult:
+        calls.append((from_s, to_s))
+        return IndexCandleFetchResult(candles=[point(len(calls), float(len(calls)))])
+
+    async def collect() -> IndexCandleFetchResult:
+        return await collect_index_minute_candles_with_cache(
+            cache,
+            ("KOSPI", "1m", 60),
+            "20260622",
+            "20260629",
+            fetch_batch,
+            today_yyyymmdd="20260629",
+        )
+
+    first = await collect()
+    clock["t"] = 59.0
+    cached = await collect()
+    clock["t"] = 60.0
+    refetched = await collect()
+
+    assert [c.close for c in first.candles] == [1.0]
+    assert [c.close for c in cached.candles] == [1.0], "TTL 이내는 캐시"
+    assert [c.close for c in refetched.candles] == [2.0], "TTL 경과 후 재fetch"
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_past_only_window_never_expires() -> None:
+    """to < today 인 과거 전용 창은 불변 — 시간이 흘러도 재fetch 하지 않는다."""
+    clock = {"t": 0.0}
+    cache = IndexMinuteCandlesCache(today_ttl_seconds=60.0, monotonic=lambda: clock["t"])
+    calls: list[tuple[str, str]] = []
+
+    async def fetch_batch(from_s: str, to_s: str) -> IndexCandleFetchResult:
+        calls.append((from_s, to_s))
+        return IndexCandleFetchResult(candles=[point(1, 1.0)])
+
+    for elapsed in (0.0, 3600.0):
+        clock["t"] = elapsed
+        await collect_index_minute_candles_with_cache(
+            cache,
+            ("KOSPI", "1m", 60),
+            "20260622",
+            "20260626",
+            fetch_batch,
+            today_yyyymmdd="20260629",
+        )
+
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_missing_today_argument_keeps_legacy_no_expiry() -> None:
+    """today 를 안 주는 호출자(우회 경로 등)는 종전대로 만료 없음."""
+    clock = {"t": 0.0}
+    cache = IndexMinuteCandlesCache(today_ttl_seconds=60.0, monotonic=lambda: clock["t"])
+    calls: list[tuple[str, str]] = []
+
+    async def fetch_batch(from_s: str, to_s: str) -> IndexCandleFetchResult:
+        calls.append((from_s, to_s))
+        return IndexCandleFetchResult(candles=[point(1, 1.0)])
+
+    for elapsed in (0.0, 3600.0):
+        clock["t"] = elapsed
+        await collect_index_minute_candles_with_cache(
+            cache, ("KOSPI", "1m", 60), "20260622", "20260629", fetch_batch,
+        )
+
+    assert len(calls) == 1
+
+
 def test_exact_cache_is_lru_bounded() -> None:
     """WS4: exact-match 분봉 캐시는 무한 축적하지 않는다 — LRU 상한."""
     cache = IndexMinuteCandlesCache(max_exact_entries=2)

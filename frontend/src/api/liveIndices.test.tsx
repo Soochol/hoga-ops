@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useLiveIndexCandles, useLiveIndexInvestorNet, useLiveIndices } from './liveIndices';
+import {
+  indexCandlesRefetchInterval,
+  useLiveIndexCandles,
+  useLiveIndexInvestorNet,
+  useLiveIndices,
+} from './liveIndices';
+import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 import * as client from './client';
 
 function wrap() {
@@ -89,6 +95,30 @@ describe('useLiveIndices', () => {
       '/api/live/index-investor-net?index_id=KOSPI&from=20260619&to=20260619',
       { signal: expect.any(AbortSignal) },
     );
+  });
+
+  // 폴링 게이트 — 장중 여부(liveVenueRefetchInterval)에는 의존하지 않도록,
+  // "돌 수 있는 창"은 그 함수와 같은 값인지로만 검증한다(벽시계 flake 방지).
+  describe('indexCandlesRefetchInterval', () => {
+    const today = '20260729';
+
+    it('polls a minute timeframe whose window includes today', () => {
+      expect(indexCandlesRefetchInterval('1m', today, today)).toBe(liveVenueRefetchInterval('KRX'));
+    });
+
+    it('does not poll calendar timeframes — the daily cache has no today TTL yet', () => {
+      for (const tf of ['D', 'W', 'M'] as const) {
+        expect(indexCandlesRefetchInterval(tf, today, today)).toBe(false);
+      }
+    });
+
+    it('does not poll a past-only window', () => {
+      expect(indexCandlesRefetchInterval('1m', '20260728', today)).toBe(false);
+    });
+
+    it('does not poll without a range', () => {
+      expect(indexCandlesRefetchInterval('1m', null, today)).toBe(false);
+    });
   });
 
   it('does not fetch index investor net until explicitly enabled', async () => {

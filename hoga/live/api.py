@@ -427,6 +427,8 @@ def _collect_index_minute_candles_cache_only(
     to_s: str,
 ) -> dict:
     batch_label = f"{from_s}__{to_s}"
+    # TTL 없음(ttl_seconds 생략): 우회 모드는 KIS 를 호출하지 않으므로 오늘 창을
+    # 만료시키면 다시 채울 소스가 없다 — 만료는 재fetch 가 가능한 경로만의 것이다.
     result = cache.get_exact(key, from_s, to_s)
     if result is None:
         candles = []
@@ -1624,6 +1626,7 @@ def build_router(
                     from_,
                     to,
                     fetch_batch,
+                    today_yyyymmdd=_today_kst_yyyymmdd(),
                 )
             except (KisCapacityCooldown, KisCapacityOverloaded) as e:
                 reason = (
