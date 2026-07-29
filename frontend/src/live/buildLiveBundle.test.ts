@@ -395,6 +395,66 @@ describe('createIncrementalHogaSeriesBuilder', () => {
     }
   });
 
+  // ── 꺼진 지표 게이트 (2026-07-29 실측) ────────────────────────────────────
+  // 히트맵·증감은 15분 버퍼 전체를 훑는 O(n) 인데 **기본 OFF** 이고, 종전엔 토글과
+  // 무관하게 매 flush 계산됐다. 실측상 전체 재빌드 비용의 73~94% 가 이 둘이었다.
+  describe('히트맵·증감 계산 게이트', () => {
+    const ob = [
+      shapedOb(TODAY_OPEN, 100, 80, false),
+      shapedOb(TODAY_OPEN + 10_000, 120, 70, false),
+      shapedOb(TODAY_OPEN + 70_000, 90, 110, false),
+    ];
+    const withFlags = (heat: boolean, delta: boolean) => ({
+      ...baseInput, sseOb: ob, sseTrade: [],
+      depthHeatmapEnabled: heat, depthDeltaEnabled: delta,
+    });
+
+    it('끄면 해당 배열이 비고, 켜면 종전과 같은 결과다', () => {
+      const on = buildHogaSeries(withFlags(true, true));
+      expect(on.depth_heatmap_today.length).toBeGreaterThan(0);
+      expect(on.depth_delta_today.length).toBeGreaterThan(0);
+
+      const off = buildHogaSeries(withFlags(false, false));
+      expect(off.depth_heatmap_today).toEqual([]);
+      expect(off.depth_delta_today).toEqual([]);
+      // 끈다고 호가비·체결강도까지 달라지면 안 된다.
+      expect(off.quote_ratio).toEqual(on.quote_ratio);
+      expect(off.fill_strength).toEqual(on.fill_strength);
+    });
+
+    it('한쪽만 켠 조합이 서로 독립이다 (둘 다 기본 OFF 라 실제 설정 조합이다)', () => {
+      const heatOnly = buildHogaSeries(withFlags(true, false));
+      expect(heatOnly.depth_heatmap_today.length).toBeGreaterThan(0);
+      expect(heatOnly.depth_delta_today).toEqual([]);
+
+      const deltaOnly = buildHogaSeries(withFlags(false, true));
+      expect(deltaOnly.depth_heatmap_today).toEqual([]);
+      expect(deltaOnly.depth_delta_today.length).toBeGreaterThan(0);
+    });
+
+    it('증분 빌더가 플래그별로 오라클과 일치한다', () => {
+      for (const [heat, delta] of [[true, true], [true, false], [false, true], [false, false]] as const) {
+        const build = createIncrementalHogaSeriesBuilder();
+        for (let i = 0; i <= ob.length; i += 1) {
+          const input = {
+            ...baseInput, sseOb: ob.slice(0, i), sseTrade: [],
+            depthHeatmapEnabled: heat, depthDeltaEnabled: delta,
+          };
+          expect(build(input)).toEqual(buildHogaSeries(input));
+        }
+      }
+    });
+
+    it('장중에 토글을 켜면 누적을 재빌드해 오라클과 일치한다', () => {
+      const build = createIncrementalHogaSeriesBuilder();
+      // 꺼진 채로 전 구간을 흘려보낸다 — 이 동안 히트맵/증감 버킷은 안 쌓인다.
+      build(withFlags(false, false));
+      // 켜는 순간 플래그 변화가 리셋 트리거라 전체를 다시 채워야 한다. 리셋이 없으면
+      // 앞 구간이 빠진 반쪽짜리 결과가 나온다.
+      expect(build(withFlags(true, true))).toEqual(buildHogaSeries(withFlags(true, true)));
+    });
+  });
+
   it('falls back safely when the live buffer slides instead of only appending', () => {
     const buildIncremental = createIncrementalHogaSeriesBuilder();
     const full = [

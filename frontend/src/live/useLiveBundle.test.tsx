@@ -1288,6 +1288,10 @@ describe('useLiveBundle', () => {
       program_trade: { points: [] },
     };
     useRangeSidecarDeltaSpy.mockReturnValueOnce(rangeResult(sidecarBundle));
+    // 히트맵을 켜야 라이브 래칫이 돈다 — 꺼져 있으면 계산 자체를 건너뛴다(기본 OFF
+    // 인 지표를 매 flush 계산하던 낭비를 없앤 게이트). 이 시나리오("라이브 버킷이
+    // stale sidecar 버킷을 덮는다")는 지표가 켜져 있을 때만 성립한다.
+    useLivePageStore.setState({ depthHeatmapEnabled: true });
 
     // Drive a continuous-book live ob tick (asks/bids with depth beyond L3) so
     // the incremental builder produces a depth_heatmap_today bucket at the
