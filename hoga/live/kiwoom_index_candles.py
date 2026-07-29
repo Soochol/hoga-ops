@@ -255,9 +255,16 @@ class KiwoomIndexCandlesFetcher:
     ) -> IndexCandleFetchResult:
         """`from_yyyymmdd` 를 덮을 때까지 과거로 페이지를 걸어간다.
 
-        중단 조건 셋: (1) 응답의 최과거 날짜가 `from` 이하 — 목표 달성,
+        중단 조건 셋: (1) 응답에 `from` **이전** 날짜가 나옴 — 목표 달성,
         (2) `cont-yn != 'Y'` — 더 이상 과거 없음, (3) `_MAX_PAGES` — 폭주 방지.
         (3)에 걸리면 `out_of_range` violation 을 남긴다(조용한 절단 금지).
+
+        (1)이 `<=` 가 아니라 **`<`** 인 이유: 페이지 경계는 900행마다 끊겨 날짜
+        경계와 무관하다. `from` 날짜의 캔들이 페이지에 하나라도 걸치면 `<=` 는
+        "덮었다"고 판단하는데, 그날 **앞부분은 다음 페이지에 있다** — 요청 범위의
+        가장 오래된 하루만 앞이 잘려 들어온다(실측: from=20260723 요청에 07-23 이
+        09:52 부터 시작, 09:00~09:51 누락). `from` 이전 날짜를 볼 때까지 걸어야
+        그날이 온전해진다. 대가는 대개 페이지 한 번 더다.
         """
         tic_scope = BUCKET_SECONDS_TO_TIC_SCOPE.get(bucket_seconds)
         if tic_scope is None:
@@ -278,7 +285,7 @@ class KiwoomIndexCandlesFetcher:
                 break
             all_rows.extend(rows)
             oldest = _oldest_date_in(rows)
-            if oldest is not None and oldest <= from_yyyymmdd:
+            if oldest is not None and oldest < from_yyyymmdd:
                 break
             cont_yn = headers.get("cont-yn", "N")
             next_key = headers.get("next-key", "")
