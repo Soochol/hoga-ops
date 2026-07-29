@@ -1713,11 +1713,19 @@ describe('useRangeHogaDelta', () => {
 describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
   const today = '20260607';
 
+  // 오늘 분기는 탭 가림 중에도 폴링을 유지하고(refetchIntervalInBackground) 복귀
+  // 시 즉시 재조회한다(refetchOnWindowFocus). 2026-07-29 조사: 두 플래그가 없으면
+  // 탭이 가려진 동안 5분 폴링이 멈춰 pastMaxQrT 가 동결되고, 오늘 보조지표가
+  // 15분 SSE 버퍼만으로 남다가 축출과 함께 구멍이 난다.
+  const LIVE_HEAD = { refetchIntervalInBackground: true, refetchOnWindowFocus: true };
+  const FROZEN = { refetchIntervalInBackground: false, refetchOnWindowFocus: false };
+
   it('sets the 5-min refetch when the range includes today (to === today)', () => {
     // /live always requests `to = today`, so this is the live-call branch.
     expect(rangeFreshnessOptions(today, today)).toEqual({
       staleTime: TODAY_RANGE_REFETCH_MS,
       refetchInterval: TODAY_RANGE_REFETCH_MS,
+      ...LIVE_HEAD,
     });
   });
 
@@ -1725,6 +1733,7 @@ describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
     expect(rangeFreshnessOptions('20260610', today)).toEqual({
       staleTime: TODAY_RANGE_REFETCH_MS,
       refetchInterval: TODAY_RANGE_REFETCH_MS,
+      ...LIVE_HEAD,
     });
   });
 
@@ -1732,14 +1741,18 @@ describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
     expect(rangeFreshnessOptions('20260606', today)).toEqual({
       staleTime: Infinity,
       refetchInterval: false,
+      ...FROZEN,
     });
   });
 
   it('freezes when no todayKst is given — non-live callers stay frozen', () => {
     // capture/replay backfill omit todayKst entirely; the refetch must not leak.
+    // 배경 폴링·focus 재조회도 같이 막혀야 한다 — 셋 다 켜지면 과거 전용 호출자가
+    // 조용히 라이브 유량을 타게 된다.
     expect(rangeFreshnessOptions('20260606', null)).toEqual({
       staleTime: Infinity,
       refetchInterval: false,
+      ...FROZEN,
     });
   });
 
@@ -1747,6 +1760,7 @@ describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
     expect(rangeFreshnessOptions(null, today)).toEqual({
       staleTime: Infinity,
       refetchInterval: false,
+      ...FROZEN,
     });
   });
 });
