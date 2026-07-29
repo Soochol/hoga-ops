@@ -60,7 +60,6 @@ import {
   shouldPublishSidebarCursor,
   sidebarCursorPublishDelayMs,
 } from './sidebarCursorRateLimit';
-import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
@@ -665,15 +664,6 @@ export function LiveChartRoot({
     return () => onViewportCaptureReady?.(() => null);
   }, [captureViewport, onViewportCaptureReady]);
 
-  // Publish axis to the shared store so LiveSidebar can read
-  // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.
-  useEffect(() => {
-    useLiveAxisStore.getState().setAxis(axis);
-    return () => {
-      useLiveAxisStore.getState().setAxis(null);
-    };
-  }, [axis]);
-
   // Viewport policy: trading-chart standard. Initial paint shows the
   // most recent INITIAL_VISIBLE_BARS candles (so today and recent past are
   // legible at native scale); series carries the full
@@ -1190,11 +1180,10 @@ export function LiveChartRoot({
     // to the container — an extra manual observer here just produces the
     // "Height and width values ignored because 'autoSize' option is enabled"
     // warning on every resize without affecting layout.
-    // Dev-only QA handles for browser-level chart viewport inspection.
+    // Dev-only QA handle for browser-level chart viewport inspection.
     if (import.meta.env.DEV) {
-      const w = window as unknown as { __liveChart?: unknown; __liveAxisGet?: unknown };
+      const w = window as unknown as { __liveChart?: unknown };
       w.__liveChart = c;
-      w.__liveAxisGet = () => useLiveAxisStore.getState().axis;
     }
 
     return () => {
@@ -1204,7 +1193,7 @@ export function LiveChartRoot({
       // 도달 가능한 채로 남아 힙 스냅샷 조사를 오염시킨다(이 파일의 진단 대상이
       // 바로 힙이라 특히 곤란하다).
       if (import.meta.env.DEV) {
-        const w = window as unknown as { __liveChart?: unknown; __liveAxisGet?: unknown };
+        const w = window as unknown as { __liveChart?: unknown };
         if (w.__liveChart === c) delete w.__liveChart;
       }
     };
@@ -2126,7 +2115,8 @@ export function LiveChartRoot({
               axis.segments.length > 0, so safe on D/W/M too. Gives
               visual parity (gray band over 15:20–15:30 KST) with the
               data masking the same toggle applies to RatioPane /
-              FillStrength / TotalQtyBar. */}
+              FillStrength, and to BookPanel 의 총잔량 스트립
+              (DataWindow 가 maskRatio 로 내려보낸다). */}
           <AuctionWindowOverlay chart={chart} axis={axis} enabled={venue === 'KRX'} />
         </>
       )}
