@@ -411,13 +411,19 @@ def build_router(engine: QueryEngine) -> APIRouter:
                 mode=mode,
             )
         except Exception:
-            if perf_debug.enabled():
-                log.exception(
-                    "hoga_perf api_range status=error code=%s from=%s to=%s bucket_ms=%s "
-                    "mode=%s source_pref=%s duration_ms=%.1f",
-                    code, from_date, to_date, bucket_ms, mode, source_pref,
-                    perf_debug.elapsed_ms(t0),
-                )
+            # NOT gated on perf_debug. The success log below is performance
+            # instrumentation and belongs behind the flag; a failure is a
+            # defect report and must survive the default configuration.
+            # Gating both meant the traceback for a 500 existed only when a
+            # developer had already suspected this endpoint and restarted with
+            # HOGA_PERF_DEBUG set — i.e. the log was absent exactly when it
+            # was needed. ADR-0120 records four days lost to this failure class.
+            log.exception(
+                "hoga_perf api_range status=error code=%s from=%s to=%s bucket_ms=%s "
+                "mode=%s source_pref=%s duration_ms=%.1f",
+                code, from_date, to_date, bucket_ms, mode, source_pref,
+                perf_debug.elapsed_ms(t0),
+            )
             raise
         if perf_debug.enabled():
             log.warning(

@@ -25,6 +25,9 @@ log = logging.getLogger(__name__)
 
 DEFAULT_SLOW_REQUEST_MS = 2000.0
 _QUERY_LOG_MAX_CHARS = 200
+# 이 값 이상은 서버 결함으로 보고 두 성능 게이트와 무관하게 항상 로그한다.
+# 4xx 는 호출자 잘못이라 제외 — 404 를 훑는 브라우저 한 대가 5xx 신호를 덮는다.
+_SERVER_ERROR_STATUS = 500
 
 
 def slow_request_threshold_ms() -> float:
@@ -49,7 +52,14 @@ def _log_timing(
     threshold = slow_request_threshold_ms()
     observed_ms = ttfb_ms if streaming else duration_ms
     slow = threshold > 0 and observed_ms >= threshold
-    if not (slow or perf_debug.enabled()):
+    # Server errors are always logged, regardless of the two perf gates. A 500
+    # that returns quickly (the common case — a raise on the way in) matched
+    # neither `slow` nor `perf_debug.enabled()`, so the only record of it was
+    # uvicorn's stderr line. This is the one place that sees method+path+status
+    # for every request, which makes it the cheapest correlation surface we
+    # have; the route-level handler still owns the traceback.
+    server_error = status >= _SERVER_ERROR_STATUS
+    if not (slow or server_error or perf_debug.enabled()):
         return
 
     query = scope.get("query_string", b"").decode("latin-1")
@@ -58,7 +68,7 @@ def _log_timing(
     streaming_field = " streaming=1" if streaming else ""
     log.warning(
         "hoga_perf http_request status=%d method=%s path=%s%s%s "
-        "ttfb_ms=%.1f duration_ms=%.1f%s%s%s",
+        "ttfb_ms=%.1f duration_ms=%.1f%s%s%s%s",
         status,
         scope.get("method", "-"),
         scope.get("path", "-"),
@@ -69,6 +79,9 @@ def _log_timing(
         body_bytes_field,
         streaming_field,
         " slow=1" if slow else "",
+        # Distinct token so `grep server_error=1` finds every 5xx without also
+        # matching the status= field of unrelated lines.
+        " server_error=1" if server_error else "",
     )
 
 
@@ -125,4 +138,32 @@ class RequestTimingMiddleware:
                     )
                     logged = True
 
-        await self.app(scope, receive, send_wrapper)
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception:
+            # Starlette builds the stack as
+            #   ServerErrorMiddleware -> user middleware -> ExceptionMiddleware -> router
+            # so ServerErrorMiddleware is OUTSIDE this one. An unhandled route
+            # exception therefore propagates through here as an exception and
+            # the 500 response is synthesized above us — send_wrapper never
+            # observes status=500. The `server_error` branch in _log_timing
+            # only catches *explicit* 500 responses; this except is what covers
+            # the unhandled case, which is the one worth diagnosing.
+            #
+            # log.exception (not .warning) so the traceback lands in the same
+            # durable file sink as everything else, with the method/path/query
+            # context that uvicorn's own "Exception in ASGI application" line
+            # lacks. Re-raised unchanged: ServerErrorMiddleware still owns the
+            # response, so status codes and error bodies are untouched.
+            duration_ms = (time.perf_counter() - t0) * 1000
+            query = scope.get("query_string", b"").decode("latin-1")[:_QUERY_LOG_MAX_CHARS]
+            log.exception(
+                "hoga_perf http_request status=500 method=%s path=%s%s%s "
+                "duration_ms=%.1f server_error=1 unhandled=1",
+                scope.get("method", "-"),
+                scope.get("path", "-"),
+                "?" if query else "",
+                query,
+                duration_ms,
+            )
+            raise
