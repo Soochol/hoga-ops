@@ -66,6 +66,7 @@ import { useVolumeDistributionCutoffProfile } from '../useVolumeDistributionCuto
 import {
   buildCandleDateIndex,
   firstTrailingSinglePriceBookMs,
+  regularSessionBinningSegment,
   volumeDistributionClosePointsFromCandles,
 } from '../continuousTradeVolumeDistribution';
 import { realMsToYyyymmdd } from '../liveDateTime';
@@ -409,16 +410,28 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     [bundle?.volume_distributions],
   );
   const liveDistribution = useLiveDistributionTrades(live.trade, linked);
+  // 집계에 넘기는 segment 는 전부 정규장으로 좁힌다 — venue=UN 의 확장창
+  // (08:00~20:00)이 그대로 들어오면 bar 에 NXT 프리·애프터 체결이 섞이고, 백엔드가
+  // 산출하는 과거일 분포(정규장 고정)와 기준이 어긋난다. 축은 아래 axisStartMs 가
+  // 원본 확장창을 그대로 쓰므로 종가 라인은 NXT 시간대까지 이어진다.
   const todayContinuousBeforeMs = useMemo(() => {
     if (!bundle || !todayKst) return null;
     const todaySegment = bundle.segments.find((segment) => segment.date === todayKst);
     if (!todaySegment) return null;
-    return firstTrailingSinglePriceBookMs(live.ob, todaySegment.session_close_ms);
+    return firstTrailingSinglePriceBookMs(
+      live.ob,
+      regularSessionBinningSegment(todaySegment).session_close_ms,
+    );
   }, [bundle, todayKst, live.ob]);
-  const todaySegment = useMemo(
-    () => bundle?.segments.find((segment) => segment.date === todayKst) ?? null,
-    [bundle, todayKst],
+  // 원본(축용) — 확장창이면 확장창 그대로.
+  const activeSegment = useMemo(
+    () => bundle?.segments.find((segment) => segment.date === activeDate) ?? null,
+    [bundle, activeDate],
   );
+  const todaySegment = useMemo(() => {
+    const raw = bundle?.segments.find((segment) => segment.date === todayKst) ?? null;
+    return raw ? regularSessionBinningSegment(raw) : null;
+  }, [bundle, todayKst]);
   const persistedToday = useMemo(
     () => (todayKst
       ? persistedDistributions.find((profile) => profile.date === todayKst) ?? null
@@ -464,7 +477,7 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     priceRange,
     liveTrades: liveDistribution.trades,
     candles: activeCandles,
-    segment: bundle?.segments.find((segment) => segment.date === activeDate) ?? null,
+    segment: activeSegment ? regularSessionBinningSegment(activeSegment) : null,
   });
   const closePoints = useMemo(
     () => (activeDate ? volumeDistributionClosePointsFromCandles(activeCandles) : []),
@@ -484,6 +497,7 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         closePoints={closePoints}
         color={vdistSettings.color}
         maxColor={vdistSettings.maxColor}
+        axisStartMs={activeSegment?.session_open_ms}
       />
     </div>
   );

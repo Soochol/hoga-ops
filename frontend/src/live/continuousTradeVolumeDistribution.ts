@@ -1,6 +1,26 @@
 import type { Candle, DayVolumeDistribution, RangeSegment } from '../api/types';
-import { realMsToYyyymmdd } from './liveDateTime';
+import { realMsToYyyymmdd, regularSessionCloseMs, regularSessionOpenMs } from './liveDateTime';
 import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
+
+/**
+ * 매물대 집계 창을 KRX 정규장으로 좁힌 segment 사본.
+ *
+ * venue=UN 은 분봉 표시창이 08:00~20:00 확장창이라(liveVenuePolicy) segment 의
+ * 세션 경계도 확장창이 된다. 그 경계를 그대로 집계에 쓰면 NXT 프리·애프터 체결이
+ * 매물대에 섞이고, **오늘은 확장창 · 과거일(백엔드 산출)은 정규장** 이라는 비대칭이
+ * 생겨 같은 창에서 날짜를 옮길 때마다 기준이 조용히 바뀐다.
+ *
+ * 축(x)은 좁히지 않는다 — 종가 라인은 NXT 시간대까지 이어져야 하고, 그 분리는
+ * `VolumeDistributionCard` 의 `axisStartMs` 가 맡는다.
+ *
+ * 백엔드 실측 세션(effective_sessions)이 정규장보다 좁으면 그쪽을 존중한다(교집합).
+ */
+export function regularSessionBinningSegment(segment: RangeSegment): RangeSegment {
+  const openMs = Math.max(segment.session_open_ms, regularSessionOpenMs(segment.date));
+  const closeMs = Math.min(segment.session_close_ms, regularSessionCloseMs(segment.date));
+  if (openMs === segment.session_open_ms && closeMs === segment.session_close_ms) return segment;
+  return { ...segment, session_open_ms: openMs, session_close_ms: closeMs };
+}
 
 export type ContinuousTradeLike = {
   t_ms: number;

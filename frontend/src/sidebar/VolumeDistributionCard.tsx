@@ -9,6 +9,16 @@ type Props = {
   closePoints?: readonly ClosePoint[];
   color: string;
   maxColor: string;
+  /**
+   * x 축 원점. 생략하면 `profile.session_open_ms`(= 집계 창의 시작).
+   *
+   * venue=UN 은 분봉 표시창이 08:00~20:00 확장창이라(liveVenuePolicy) 종가 라인이
+   * NXT 프리·애프터까지 이어지는데, bar 는 정규장 연속체결만 담는다. 두 창이
+   * 다를 때 이 prop 으로 축을 넓혀 라인을 온전히 보이게 하고, bar 는 자기 집계
+   * 창(`profile.session_open_ms`~`session_close_ms`)에 해당하는 가로 구간에만
+   * 그린다 — 막대의 시작·끝이 곧 "이 값이 어느 시간대의 것인지" 를 말한다.
+   */
+  axisStartMs?: number;
 };
 
 type ClosePoint = {
@@ -31,6 +41,7 @@ export function VolumeDistributionCard({
   closePoints = [],
   color,
   maxColor,
+  axisStartMs,
 }: Props) {
   if (profile === undefined) {
     return <SidebarState>—</SidebarState>;
@@ -41,23 +52,43 @@ export function VolumeDistributionCard({
 
   const maxQty = Math.max(0, ...profile.bins.map((bin) => bin.qty));
   const rows = [...profile.bins].reverse();
+  // 축 원점은 집계 창보다 앞설 수 있다(확장창). 뒤로는 밀지 않는다 — 축이 집계
+  // 창보다 늦게 시작하면 bar 구간이 축 밖으로 나가 버린다.
+  const axisFromMs = Math.min(axisStartMs ?? profile.session_open_ms, profile.session_open_ms);
+  const lastCloseMs = closePoints.length > 0 ? closePoints[closePoints.length - 1]?.t_ms : null;
+  const axisEndMs = Math.max(axisFromMs, lastCloseMs ?? profile.last_trade_ms ?? profile.session_close_ms);
+  const axisSpanMs = axisEndMs - axisFromMs;
+  // 커서 마커는 **축** 전체에서 유효하다 — 정규장 밖(NXT 시간대) 을 가리켜도
+  // 라인은 거기 있으므로 마커만 사라지면 읽는 사람이 위치를 잃는다.
   const cursorPhase = cursorMs == null
     ? null
     : classifyWithinSegment({
-      sessionOpenMs: profile.session_open_ms,
-      sessionCloseMs: profile.session_close_ms,
+      sessionOpenMs: axisFromMs,
+      sessionCloseMs: Math.max(axisEndMs, profile.session_close_ms),
     }, cursorMs);
   const markerVisible = cursorMs != null && (cursorPhase === 'regular' || cursorPhase === 'auction');
-  const lastCloseMs = closePoints.length > 0 ? closePoints[closePoints.length - 1]?.t_ms : null;
-  const axisEndMs = Math.max(profile.session_open_ms, lastCloseMs ?? profile.last_trade_ms ?? profile.session_close_ms);
-  const markerPct = markerVisible && axisEndMs > profile.session_open_ms
-    ? ((cursorMs - profile.session_open_ms) / (axisEndMs - profile.session_open_ms)) * 100
+  const markerPct = markerVisible && axisSpanMs > 0
+    ? ((cursorMs - axisFromMs) / axisSpanMs) * 100
     : 0;
+  // bar 가 차지할 가로 구간 = 집계 창을 축 백분율로 옮긴 것. 두 창이 같으면
+  // (venue=KRX·저장뷰) 0~100% 이라 기존과 동일하게 전체 폭을 쓴다.
+  const binWindow = axisSpanMs > 0
+    ? {
+      startPct: clampPct(((profile.session_open_ms - axisFromMs) / axisSpanMs) * 100),
+      endPct: clampPct(((Math.min(profile.session_close_ms, axisEndMs) - axisFromMs) / axisSpanMs) * 100),
+    }
+    : { startPct: 0, endPct: 100 };
+  // 축 경계와 겹치는 끝은 선을 그리지 않는다 — 카드 가장자리에 붙은 선은 정보가
+  // 아니라 테두리로 읽힌다.
+  const binWindowEdgePcts = [
+    ...(binWindow.startPct > 0 ? [binWindow.startPct] : []),
+    ...(binWindow.endPct < 100 ? [binWindow.endPct] : []),
+  ];
   const closeCoords = buildCloseCoords({
     points: closePoints,
     priceMin: profile.price_min,
     priceMax: profile.price_max,
-    sessionOpenMs: profile.session_open_ms,
+    sessionOpenMs: axisFromMs,
     axisEndMs,
   });
   const closePath = closeCoords
@@ -75,11 +106,11 @@ export function VolumeDistributionCard({
     : [];
   // 데이터가 세션 시작 시각뿐이면(축 스팬 0) 예정 세션 종료를 눈금 폴백으로 쓴다.
   // 이 경우 종가 라인·커서 마커는 어차피 비활성이라 축 불일치가 생기지 않는다.
-  const tickEndMs = axisEndMs > profile.session_open_ms ? axisEndMs : profile.session_close_ms;
-  const timeTicks = tickEndMs > profile.session_open_ms
+  const tickEndMs = axisEndMs > axisFromMs ? axisEndMs : profile.session_close_ms;
+  const timeTicks = tickEndMs > axisFromMs
     ? [
-      profile.session_open_ms,
-      profile.session_open_ms + (tickEndMs - profile.session_open_ms) / 2,
+      axisFromMs,
+      axisFromMs + (tickEndMs - axisFromMs) / 2,
       tickEndMs,
     ].map((ms) => unixMsToKSTClock(ms).slice(0, 5))
     : null;
@@ -97,6 +128,17 @@ export function VolumeDistributionCard({
               style={{ left: `${Math.min(100, Math.max(0, markerPct))}%` }}
             />
           )}
+          {/* 집계 창의 양 끝 — 막대가 축 중간에서 시작·종료하는 이유를 말해준다.
+              축과 창이 같으면(venue=KRX·저장뷰) 양쪽 다 렌더하지 않아 선이 늘지
+              않는다. 커서 마커(dotted·accent)보다 한 단계 약한 위계로 둔다. */}
+          {binWindowEdgePcts.map((pct) => (
+            <div
+              key={pct}
+              data-testid="volume-distribution-bin-window-edge"
+              className="pointer-events-none absolute bottom-0 top-0 border-l border-dashed border-border"
+              style={{ left: `${pct}%` }}
+            />
+          ))}
           {closePath && (
             <svg
               data-testid="volume-distribution-close-graph"
@@ -142,8 +184,15 @@ export function VolumeDistributionCard({
               창이 커지면 bar 는 상단에만 몰리고 라인만 전 구간으로 늘어났다 —
               사이드바 카드 높이에서만 우연히 맞던 정합이 창 승격으로 깨진 것.
               bin 은 [price_min, price_max] 균등 분할이라(continuousTradeVolumeDistribution)
-              bin i 는 백분율 구간 [i/N, (i+1)/N] 에 정확히 대응한다. */}
-          <div className="absolute inset-0">
+              bin i 는 백분율 구간 [i/N, (i+1)/N] 에 정확히 대응한다.
+
+              가로로는 집계 창(binWindow)에 갇힌다 — 확장창에서 막대가 축 전체로
+              뻗으면 정규장 값이 NXT 시간대까지 걸쳐 있는 것처럼 읽힌다. */}
+          <div
+            data-testid="volume-distribution-bar-window"
+            className="absolute inset-y-0"
+            style={{ left: `${binWindow.startPct}%`, right: `${100 - binWindow.endPct}%` }}
+          >
             {rows.map((bin, index) => {
               const isMax = maxQty > 0 && bin.qty === maxQty;
               const width = maxQty > 0 ? `${(bin.qty / maxQty) * 100}%` : '0%';
