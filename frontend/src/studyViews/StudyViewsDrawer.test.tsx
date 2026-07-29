@@ -177,8 +177,8 @@ it('filters by name, code, and memo ignoring whitespace and case', () => {
 
 it('renders list and no-match state', async () => {
   renderDrawer('/inventory');
-  expect(screen.getByRole('complementary', { name: '저장뷰' })).toHaveClass('bg-bg-subtle');
-  // 경계선 없는 크롬 표면(2026-07-22 구분선 최소화 C안) — 분리는 bg-subtle 톤이 담당.
+  expect(screen.getByRole('complementary', { name: '저장뷰' })).toHaveClass('bg-bg');
+  // 경계선 없는 표면(2026-07-22 C안) + 페이지 필드와 동일 톤(2026-07-29 배경 통일 완결).
   expect(screen.getByRole('complementary', { name: '저장뷰' })).not.toHaveClass('border-l');
   expect(screen.getByText('급등 이후')).toBeTruthy();
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), '없음');

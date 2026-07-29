@@ -1,8 +1,10 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 
-/** 우측 레일 드로어 셸. 크롬(chrome) 표면이므로 bg-subtle — 콘텐츠 카드(bg-card)보다
- *  한 단계 가라앉혀 메인 워크에어리어가 화면에서 가장 밝은 표면이 되게 유지한다.
- *  드로어 안의 sticky 헤더류는 이 배경과 같은 bg-subtle을 써야 스크롤 시 이질감이 없다. */
+/** 우측 레일 드로어 셸. 배경은 페이지 필드와 같은 --bg (2026-07-29, 배경 통일 완결).
+ *  이전엔 크롬 표면이라 bg-subtle 로 한 단계 가라앉혔으나, #636/#637 이후 --bg==--bg-card
+ *  라 우측 패널만 홀로 어두운 톤으로 남아 워크에어리어와의 경계가 선 없이 명도로만 그어졌다.
+ *  이제 톤 스텝 0 — 패널 구조는 행 border-b 와 간격이 담당한다.
+ *  드로어 안의 sticky 헤더류는 이 배경과 같은 bg-bg 를 써야 스크롤 시 이질감이 없다. */
 export function RailDrawer({
   id,
   testId,
@@ -21,7 +23,7 @@ export function RailDrawer({
       id={id}
       aria-label={ariaLabel}
       data-testid={testId}
-      className={`h-full min-w-0 overflow-hidden bg-bg-subtle ${className}`.trim()}
+      className={`h-full min-w-0 overflow-hidden bg-bg ${className}`.trim()}
       style={{ width: 'var(--watchlist-panel-w)' }}
     >
       <div className="flex h-full flex-col">{children}</div>
@@ -114,7 +116,7 @@ export function RailGroupHeader({
     <button
       type="button"
       {...props}
-      className={`sticky top-0 z-10 flex w-full items-center gap-2 bg-bg-subtle px-3 py-1.5 min-h-list-group-header text-left text-xs text-fg hover:bg-bg-input-hover ${className}`.trim()}
+      className={`sticky top-0 z-10 flex w-full items-center gap-2 bg-bg px-3 py-1.5 min-h-list-group-header text-left text-xs text-fg hover:bg-bg-input-hover ${className}`.trim()}
     >
       {leading}
       <span className="min-w-0 flex-1 truncate">{children}</span>
