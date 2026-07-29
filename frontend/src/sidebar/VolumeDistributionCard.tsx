@@ -19,6 +19,11 @@ type ClosePoint = {
 const PRICE_AXIS_WIDTH_PX = 48;
 // 가격 눈금이 POC 라벨과 이 거리(%) 안으로 붙으면 눈금을 양보한다(POC가 우선).
 const PRICE_TICK_POC_CLEARANCE_PCT = 9;
+// bar 행 슬롯(= 컨테이너 높이 / bin 수) 중 간격이 차지하는 비율. 옛 고정 치수
+// (트랙 8px + gap 4px)의 밀도감을 그대로 옮긴 값이다. px 이 아닌 비율이라야
+// 좌표가 순수 백분율로 닫히고(가격축과 같은 단위), 창이 작아져도 간격이 트랙을
+// 잡아먹지 않는다.
+const ROW_GAP_RATIO = 1 / 3;
 
 export function VolumeDistributionCard({
   profile,
@@ -132,7 +137,13 @@ export function VolumeDistributionCard({
               }}
             />
           )}
-          <div className="flex h-full min-h-0 flex-col gap-1">
+          {/* bar 행은 종가 라인·가격 눈금·POC 라벨과 같은 백분율 좌표계에 절대배치한다.
+              고정 높이 스택이던 시절엔 행 높이(8px+gap)가 컨테이너 높이와 무관해서
+              창이 커지면 bar 는 상단에만 몰리고 라인만 전 구간으로 늘어났다 —
+              사이드바 카드 높이에서만 우연히 맞던 정합이 창 승격으로 깨진 것.
+              bin 은 [price_min, price_max] 균등 분할이라(continuousTradeVolumeDistribution)
+              bin i 는 백분율 구간 [i/N, (i+1)/N] 에 정확히 대응한다. */}
+          <div className="absolute inset-0">
             {rows.map((bin, index) => {
               const isMax = maxQty > 0 && bin.qty === maxQty;
               const width = maxQty > 0 ? `${(bin.qty / maxQty) * 100}%` : '0%';
@@ -140,11 +151,17 @@ export function VolumeDistributionCard({
                 <div
                   key={`${bin.price_low}-${bin.price_high}-${index}`}
                   data-testid="volume-distribution-row"
-                  className="min-h-0"
+                  className="absolute inset-x-0"
+                  style={{
+                    // 간격을 위아래로 절반씩 나눠 넣어 트랙 중심이 정확히
+                    // (index + 0.5) / N — 즉 bin 중간가의 가격 좌표 — 에 놓인다.
+                    top: `${((index + ROW_GAP_RATIO / 2) / rows.length) * 100}%`,
+                    height: `${((1 - ROW_GAP_RATIO) / rows.length) * 100}%`,
+                  }}
                 >
                   <div
                     data-testid="volume-distribution-track"
-                    className="h-2 overflow-hidden rounded-[1px]"
+                    className="h-full overflow-hidden rounded-[1px]"
                     style={{ background: 'var(--grid)' }}
                   >
                     <div

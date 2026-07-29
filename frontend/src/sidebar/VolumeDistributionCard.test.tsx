@@ -187,4 +187,56 @@ describe('VolumeDistributionCard', () => {
     expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(10);
     expect(screen.getAllByTestId('volume-distribution-track')).toHaveLength(10);
   });
+
+  // bar 가 고정 높이(8px+gap) 스택이던 시절엔 컨테이너가 커질수록 상단으로 몰려
+  // 종가 라인·가격축과 어긋났다. 행은 백분율 좌표에만 놓여야 한다.
+  it('places bar rows on the same percentage price axis as the close line', () => {
+    const binCount = 10;
+    render(
+      <VolumeDistributionCard
+        profile={{
+          ...profile,
+          range_count: binCount,
+          // 100~120 을 10등분. index 7(=110~112) 이 최대 → POC.
+          bins: Array.from({ length: binCount }, (_, index) => ({
+            price_low: 100 + index * 2,
+            price_high: 102 + index * 2,
+            qty: index === 7 ? 99 : 1,
+          })),
+        }}
+        cursorMs={cursorMs}
+        color="#64748B"
+        maxColor="#EAB308"
+      />,
+    );
+
+    const rows = screen.getAllByTestId('volume-distribution-row');
+    const centersPct = rows.map((row) => {
+      const el = row as HTMLElement;
+      const top = parsePct(el.style.top);
+      const height = parsePct(el.style.height);
+      return top + height / 2;
+    });
+    // 행 i 의 중심 = (i + 0.5) / N — buildCloseCoords 가 bin 중간가에 대해 내는 y 와 같다.
+    centersPct.forEach((center, index) => {
+      expect(center).toBeCloseTo(((index + 0.5) / binCount) * 100, 6);
+    });
+    // 최상단 행이 price_max, 최하단 행이 price_min 쪽(가격 내림차순).
+    expect(centersPct[0]).toBeLessThan(centersPct[binCount - 1]);
+
+    // POC 라벨과 최대 bar 행이 같은 높이에 있어야 한다(어긋남의 눈에 보이던 증상).
+    const maxRowIndex = rows.findIndex((row) =>
+      row.querySelector('[data-testid="volume-distribution-max-bar"]') !== null,
+    );
+    expect(maxRowIndex).toBeGreaterThanOrEqual(0);
+    const pocLabel = screen.getByTestId('volume-distribution-poc-label') as HTMLElement;
+    expect(centersPct[maxRowIndex]).toBeCloseTo(parsePct(pocLabel.style.top), 6);
+  });
 });
+
+function parsePct(value: string): number {
+  const parsed = Number.parseFloat(value);
+  expect(value.endsWith('%')).toBe(true);
+  expect(Number.isFinite(parsed)).toBe(true);
+  return parsed;
+}
