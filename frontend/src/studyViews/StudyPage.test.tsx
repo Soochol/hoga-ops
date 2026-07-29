@@ -53,6 +53,17 @@ vi.mock('./useStudyRangeCacheEviction', () => ({
   useStudyRangeCacheEviction: () => {},
 }));
 
+// 툴바의 창 배치 프리셋 메뉴도 react-query 훅을 쓴다 — 이 파일은 Provider 를 두지 않고
+// 데이터 훅을 모킹하는 방식이라 같은 규율을 따른다(프리셋 동작은 자기 테스트가 본다).
+vi.mock('./presets/useStudyLayoutPresets', () => ({
+  useStudyLayoutPresets: () => ({ data: { schema_version: 1, presets: [] }, refetch: vi.fn() }),
+  useStudyLayoutPresetMutations: () => ({
+    create: { mutate: vi.fn() },
+    update: { mutate: vi.fn() },
+    remove: { mutate: vi.fn() },
+  }),
+}));
+
 vi.mock('../api/useLiveCursor', () => ({
   useLiveOrderbookAtCursor: useLiveOrderbookAtCursorMock,
   useLiveBrokersAtCursor: useLiveBrokersAtCursorMock,

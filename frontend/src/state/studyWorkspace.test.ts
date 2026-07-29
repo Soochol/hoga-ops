@@ -461,3 +461,24 @@ describe('탭 격리 (study.workspace.v1)', () => {
     expect(sessionStorage.getItem('study.workspace.v1')).toBeNull();
   });
 });
+
+/** 프리셋이 이 스냅샷을 저장본으로 쓴다 — 스토어 내부 참조를 물고 있으면 저장 뒤의
+ *  조작이 이미 저장한 프리셋을 소급 오염시킨다. 왕복 테스트는 rect 교체만 보므로
+ *  참조 공유가 가장 위험한 chart 설정을 따로 못 박는다. */
+describe('snapshotStudyWorkspace — 깊은 복사(프리셋 저장본 오염 방지)', () => {
+  it('스냅샷 후 차트 설정을 바꿔도 스냅샷은 변하지 않는다', async () => {
+    const { useStudyWorkspaceStore, snapshotStudyWorkspace } = await importFresh();
+    const store = useStudyWorkspaceStore;
+    const chartId = store.getState().windows.find((w) => w.kind === 'chart')!.id;
+
+    const snap = snapshotStudyWorkspace();
+    const before = snap.windows.find((w) => w.id === chartId)!.chart!.timeframe;
+
+    store.getState().setChartTimeframe(chartId, before === 'D' ? '5m' : 'D');
+    store.getState().setWindowRect(chartId, { x: 0.4, y: 0.4, w: 0.2, h: 0.2 });
+
+    const after = snap.windows.find((w) => w.id === chartId)!;
+    expect(after.chart!.timeframe).toBe(before);
+    expect(after.rect).not.toEqual({ x: 0.4, y: 0.4, w: 0.2, h: 0.2 });
+  });
+});

@@ -18,6 +18,7 @@ import {
 import { StudyIndicatorDrawer } from './StudyIndicatorDrawer';
 import { StudyWorkspaceCanvas, StudyWindowAddMenu } from './StudyWorkspaceCanvas';
 import { StudyWindowListMenu } from './StudyWindowListMenu';
+import { StudyLayoutPresetMenu } from './presets/StudyLayoutPresetMenu';
 import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
@@ -549,6 +550,7 @@ export function StudyPage() {
               <SettingsButton onClick={() => setSettingsOpen(true)} />
               <StudyWindowListMenu />
               <StudyWindowAddMenu />
+              <StudyLayoutPresetMenu />
               <IconToolbarButton onClick={toggleMemoWindow} className="shrink-0">
                 메모
               </IconToolbarButton>

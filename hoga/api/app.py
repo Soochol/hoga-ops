@@ -36,6 +36,9 @@ from hoga.api.study_view_routes import build_router as build_study_view_router
 from hoga.api.live_layout_preset_routes import (
     build_router as build_live_layout_preset_router,
 )
+from hoga.api.study_layout_preset_routes import (
+    build_router as build_study_layout_preset_router,
+)
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
@@ -239,6 +242,7 @@ def create_app(data_dir: Path) -> FastAPI:
         )
     )
     app.include_router(build_live_layout_preset_router(data_dir=data_dir))
+    app.include_router(build_study_layout_preset_router(data_dir=data_dir))
     app.include_router(
         build_live_router(
             get_status=live_get_status,
