@@ -73,7 +73,11 @@ async def _daily_run(data_dir: Path) -> None:
     # Stage 9: Prune COMPLETE hogaplay raw past the retention window (ADR-0075).
     # Scheduler-owned, queue-untouching (like Promotion) — runs every day,
     # before the trading-day gate, so weekends/holidays still reclaim disk.
-    from hoga.api.prune import prune_raw, resolve_retention_days  # noqa: PLC0415
+    from hoga.api.prune import (  # noqa: PLC0415
+        disk_headroom,
+        prune_raw,
+        resolve_retention_days,
+    )
     try:
         pruned = await asyncio.to_thread(
             prune_raw, data_dir,
@@ -83,6 +87,27 @@ async def _daily_run(data_dir: Path) -> None:
             "daily prune: removed %d dirs, reclaimed %.2f GiB",
             pruned.deleted, pruned.reclaimed_bytes / 1024**3,
         )
+        # 0건일 때 이유를 남긴다. 이 줄이 없던 동안 스케줄러는 매일
+        # "removed 0 dirs, reclaimed 0.00 GiB" 만 찍었고, 그건 "지울 게 없다" 와
+        # "전부 게이트에 걸려 351GB 가 영구 보존 중이다" 를 구분해 주지 않았다.
+        # 성공처럼 보이는 침묵이 디스크가 차오르는 걸 가렸다.
+        if pruned.deleted == 0 and pruned.skipped_by_state:
+            held = ", ".join(
+                f"{reason}={count}({pruned.skipped_bytes_by_state.get(reason, 0) / 1024**3:.1f}GiB)"
+                for reason, count in sorted(
+                    pruned.skipped_by_state.items(),
+                    key=lambda kv: -pruned.skipped_bytes_by_state.get(kv[0], 0),
+                )
+            )
+            log.info("daily prune: nothing prunable — held by state: %s", held)
+        head = await asyncio.to_thread(disk_headroom, data_dir)
+        if head is not None and head.is_low:
+            log.warning(
+                "disk headroom low: %.1f%% free (%.1f GiB of %.1f GiB). "
+                "raw retention gate holds non-COMPLETE captures — "
+                "`hoga prune --include-confirmed-gaps` reports what could be reclaimed.",
+                head.free_pct, head.free_bytes / 1024**3, head.total_bytes / 1024**3,
+            )
     except Exception:  # noqa: BLE001 — prune 실패가 enqueue를 막으면 안 됨
         log.exception("daily run: prune failed; continuing")
 

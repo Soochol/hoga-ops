@@ -12,10 +12,28 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from hoga.api.disk_state import DiskState, check_disk_state, classify_stock_date
+from hoga.api.disk_state import (
+    Classification,
+    DiskState,
+    check_disk_state,
+    classify_stock_date,
+)
 from hoga.collector.orchestrator import now_kst
 
 RETENTION_DAYS_DEFAULT = 3
+
+# 디스크 여유 경고 임계(%). 이 아래로 내려가면 로그에 경고를 남긴다.
+#
+# 왜 필요한가: 2026-06-13 에 raw 704GB 가 디스크를 100% 로 채워 쓰기가 실패했다
+# (ADR-0075 를 만든 사고). 그 뒤로도 코드베이스에 여유 공간을 보는 곳이 단
+# 한 군데도 없었다 — statvfs / disk_usage / ENOSPC 검색 결과 0건(2026-07-29).
+# 즉 같은 사고가 재현되어도 가득 찬 뒤 쓰기 실패로만 알 수 있었다.
+#
+# 하드 게이트(임계 미만이면 캡처 거부)를 두지 않은 이유: ADR-0036 의 "백엔드는
+# 사용자 명시 액션 없이 자동 동작하지 않는다" 원칙과, ADR-0075 가 그 예외를
+# **디스크 회수(삭제)** 에 한정한 것을 존중한다. 여기서 늘리는 것은 가시성이지
+# 새로운 자동 차단이 아니다.
+DISK_WARN_FREE_PCT = 10.0
 
 
 def resolve_retention_days() -> int:
@@ -37,22 +55,84 @@ class PruneResult:
     deleted: int = 0
     reclaimed_bytes: int = 0
     scanned: int = 0  # 함수 종료 시점 raw/에 남은 (date,code) 수 (execute 후=생존자)
+    # 컷오프를 통과했는데 상태 게이트에서 걸린 항목의 사유별 집계.
+    #
+    # 왜 필요한가: 이게 없으면 "후보 0건" 이 두 가지 정반대 상황에 대해 똑같이
+    # 출력된다 — (a) 지울 게 정말 없다, (b) 전부 게이트에 걸려 영구 보존 중이다.
+    # 실제로 2026-07-29 진단에서 raw 는 (b) 였는데, 스케줄러는 매일
+    # "removed 0 dirs, reclaimed 0.00 GiB" 를 성공처럼 로그하고 있었다. 디스크가
+    # 차오르는 동안 아무도 이유를 알 수 없는 상태였다.
+    skipped_by_state: dict[str, int] = field(default_factory=dict)
+    skipped_bytes_by_state: dict[str, int] = field(default_factory=dict)
+
+
+def _hogaplay_classification(data_dir: Path, code: str, date: str) -> Classification:
+    """이 (date,code)의 hogaplay-source Classification.
+
+    raw/는 hogaplay 전용이므로 aggregate가 아니라 hogaplay-source의 상태로
+    판정한다. per-source 레이아웃이면 hogaplay Classification 을, legacy flat
+    레이아웃(source subdir 없음)이면 단일 hogaplay이므로 check_disk_state 를
+    쓴다. per-source 인데 hogaplay 키 자체가 없으면(예: kis_api 만 있는 경우)
+    NONE — raw 의 짝이 되는 parquet 이 없다는 뜻이라 판정 불가로 보존한다.
+    (ADR-0075, ADR-0039)
+    """
+    per_source = classify_stock_date(data_dir / "parquet" / date / code)
+    if per_source:
+        return per_source.get("hogaplay") or Classification(state=DiskState.NONE)
+    return check_disk_state(data_dir, code, date)
+
+
+def _is_prunable(cls: Classification, *, include_confirmed_gaps: bool) -> bool:
+    """이 상태의 raw 를 삭제해도 되는가?
+
+    기본은 ADR-0075 그대로 COMPLETE 뿐이다. ``include_confirmed_gaps`` 는
+    ADR-0075 의 Trigger Condition("비-COMPLETE raw 누적이 디스크를 위협하면
+    --include-partial 옵트인 또는 별도 진단 도구를 도입한다")에 대한 응답이다.
+
+    **모든 partial 이 아니라 확인된 갭만** 포함한다. 그 경계가 load-bearing 이다:
+
+    - ``CLIENT_INCOMPLETE`` — 우리 수집이 중간에 멈춘 상태. raw 가 resume 커서의
+      소스다. 지우면 재개가 불가능해지고 처음부터 다시 받아야 한다. 절대 포함 불가.
+    - ``SOURCE_PARTIAL`` + ``upstream_gap_confirmed=False`` — 수집은 끝났지만
+      갭이 업스트림 탓인지 아직 미확정이다. decide_capture 가 재캡처를 다시
+      시도할 수 있는 대상이라 제외한다.
+    - ``SOURCE_PARTIAL`` + ``upstream_gap_confirmed=True`` — 재캡처가 동일한 갭을
+      재현했거나(ADR-0093) 갭이 세션 경계에 접한다(ADR-0126). **decide_capture 가
+      이미 건너뛰는 상태**, 즉 시스템 스스로 terminal 로 선언한 것이다. 이 raw 를
+      다시 파싱해도 지금 있는 parquet 과 똑같은 결과가 나온다.
+
+    실측(2026-07-29): 유예 밖 raw 351GB 중 confirmed 갭이 520건 77.2GB,
+    unconfirmed 가 743건 110.1GB. 안전한 쪽만으로도 회수량이 충분해서 굳이
+    unconfirmed 까지 열지 않았다.
+    """
+    if cls.state == DiskState.COMPLETE:
+        return True
+    if not include_confirmed_gaps:
+        return False
+    return cls.state == DiskState.SOURCE_PARTIAL and cls.upstream_gap_confirmed
 
 
 def _is_complete_hogaplay(data_dir: Path, code: str, date: str) -> bool:
-    """이 (date,code)의 hogaplay raw를 삭제해도 되는가?
+    """기본 게이트(ADR-0075): 이 (date,code) 의 hogaplay-source 가 COMPLETE 인가.
 
-    raw/는 hogaplay 전용이므로 aggregate가 아니라 hogaplay-source의 상태로
-    판정한다. per-source 레이아웃이면 hogaplay Classification이 COMPLETE인지
-    보고, legacy flat 레이아웃(source subdir 없음)이면 단일 hogaplay이므로
-    check_disk_state로 폴백한다. (ADR-0075, ADR-0039)
+    _hogaplay_classification + _is_prunable 로 분리된 뒤에도 남겨 둔 얇은 래퍼다.
+    "hogaplay 가 COMPLETE 일 때만" 이라는 규칙 자체가 ADR-0075 의 핵심 계약이고
+    (특히 aggregate 가 COMPLETE 여도 hogaplay 가 partial 이면 보존해야 한다는
+    부분), 그 계약을 직접 겨냥한 테스트들이 이 이름에 걸려 있다.
     """
-    parquet_dir = data_dir / "parquet" / date / code
-    per_source = classify_stock_date(parquet_dir)
-    if per_source:
-        cls = per_source.get("hogaplay")
-        return cls is not None and cls.state == DiskState.COMPLETE
-    return check_disk_state(data_dir, code, date).state == DiskState.COMPLETE
+    return _is_prunable(
+        _hogaplay_classification(data_dir, code, date), include_confirmed_gaps=False,
+    )
+
+
+def _skip_reason(cls: Classification) -> str:
+    """진단용 사유 라벨. state 만으로는 SOURCE_PARTIAL 두 종류가 구분되지 않는다."""
+    if cls.state == DiskState.SOURCE_PARTIAL:
+        return (
+            "source_partial(gap_confirmed)" if cls.upstream_gap_confirmed
+            else "source_partial(gap_unconfirmed)"
+        )
+    return cls.state.value
 
 
 def _dir_size(path: Path) -> int:
@@ -60,31 +140,68 @@ def _dir_size(path: Path) -> int:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
 
 
-def find_prunable(data_dir: Path, *, retention_days: int, now: dt.datetime) -> list[PruneCandidate]:
-    """raw/ 순회 → 날짜 컷오프 통과(date < today−N 달력일) + hogaplay-source
-    COMPLETE인 (date,code)만 PruneCandidate로 반환한다. 부작용 없음.
+def _scan(
+    data_dir: Path, *, retention_days: int, now: dt.datetime,
+    include_confirmed_gaps: bool = False,
+) -> tuple[list[PruneCandidate], dict[str, int], dict[str, int]]:
+    """raw/ 를 한 번 순회해 (후보, 보존 사유별 건수, 보존 사유별 바이트) 를 낸다.
+
+    보존 사유를 함께 내는 이유: 후보 0건이 "지울 게 없다" 와 "전부 게이트에 걸려
+    영구 보존 중이다" 두 정반대 상황에 대해 같은 출력을 내던 것이 이 트리를
+    351GB 까지 조용히 자라게 한 조건이었다.
     """
     raw_root = data_dir / "raw"
     if not raw_root.is_dir():
-        return []
+        return [], {}, {}
     cutoff = (now.date() - dt.timedelta(days=retention_days)).strftime("%Y%m%d")
     out: list[PruneCandidate] = []
+    skipped: dict[str, int] = {}
+    skipped_bytes: dict[str, int] = {}
+
+    def _note(reason: str, size: int) -> None:
+        skipped[reason] = skipped.get(reason, 0) + 1
+        skipped_bytes[reason] = skipped_bytes.get(reason, 0) + size
+
     for date_dir in sorted(raw_root.iterdir()):
         if not date_dir.is_dir():
             continue
         date = date_dir.name
         if date >= cutoff:  # 유예 내 → 보존
+            for code_dir in date_dir.iterdir():
+                if code_dir.is_dir():
+                    _note("within_grace", _dir_size(code_dir))
             continue
         for code_dir in sorted(date_dir.iterdir()):
             if not code_dir.is_dir():
                 continue
             code = code_dir.name
-            if not _is_complete_hogaplay(data_dir, code, date):
+            cls = _hogaplay_classification(data_dir, code, date)
+            size = _dir_size(code_dir)
+            if not _is_prunable(cls, include_confirmed_gaps=include_confirmed_gaps):
+                _note(_skip_reason(cls), size)
                 continue
             out.append(PruneCandidate(
-                date=date, code=code, raw_dir=code_dir, size_bytes=_dir_size(code_dir),
+                date=date, code=code, raw_dir=code_dir, size_bytes=size,
             ))
-    return out
+    return out, skipped, skipped_bytes
+
+
+def find_prunable(
+    data_dir: Path, *, retention_days: int, now: dt.datetime,
+    include_confirmed_gaps: bool = False,
+) -> list[PruneCandidate]:
+    """raw/ 순회 → 날짜 컷오프 통과(date < today−N 달력일) + 상태 게이트를
+    통과한 (date,code)만 PruneCandidate로 반환한다. 부작용 없음.
+
+    기본 게이트는 hogaplay-source COMPLETE 다(ADR-0075). ``include_confirmed_gaps``
+    를 켜면 확인된 업스트림 갭(SOURCE_PARTIAL + upstream_gap_confirmed)도 포함한다 —
+    _is_prunable 의 docstring 이 그 경계의 근거를 설명한다.
+    """
+    candidates, _, _ = _scan(
+        data_dir, retention_days=retention_days, now=now,
+        include_confirmed_gaps=include_confirmed_gaps,
+    )
+    return candidates
 
 
 def _count_stock_dates(raw_root: Path) -> int:
@@ -111,7 +228,8 @@ def _remove_empty_date_dirs(raw_root: Path) -> None:
 
 
 def prune_raw(
-    data_dir: Path, *, retention_days: int, now: dt.datetime, execute: bool
+    data_dir: Path, *, retention_days: int, now: dt.datetime, execute: bool,
+    include_confirmed_gaps: bool = False,
 ) -> PruneResult:
     """find_prunable 후보를 (execute면) rmtree로 삭제하고 결과를 반환한다.
 
@@ -122,7 +240,10 @@ def prune_raw(
     (dry-run이면 전체, execute 후면 생존자).
     """
     raw_root = data_dir / "raw"
-    candidates = find_prunable(data_dir, retention_days=retention_days, now=now)
+    candidates, skipped, skipped_bytes = _scan(
+        data_dir, retention_days=retention_days, now=now,
+        include_confirmed_gaps=include_confirmed_gaps,
+    )
     deleted = 0
     reclaimed = 0
     if execute:
@@ -136,9 +257,42 @@ def prune_raw(
         deleted=deleted,
         reclaimed_bytes=reclaimed,
         scanned=_count_stock_dates(raw_root),
+        skipped_by_state=skipped,
+        skipped_bytes_by_state=skipped_bytes,
     )
 
 
 def prune_default_now() -> dt.datetime:
     """CLI/scheduler가 쓰는 기본 시각. 테스트는 hoga.api.prune.now_kst를 패치한다."""
     return now_kst()
+
+
+@dataclass(frozen=True)
+class DiskHeadroom:
+    total_bytes: int
+    free_bytes: int
+
+    @property
+    def free_pct(self) -> float:
+        return 100.0 * self.free_bytes / self.total_bytes if self.total_bytes else 0.0
+
+    @property
+    def is_low(self) -> bool:
+        return self.free_pct < DISK_WARN_FREE_PCT
+
+
+def disk_headroom(path: Path) -> DiskHeadroom | None:
+    """``path`` 가 속한 파일시스템의 총/여유 용량. 조회 실패 시 None.
+
+    None 을 돌려주는 경우까지 호출부가 다루게 하는 이유: 이건 진단 보조라
+    실패가 캡처나 prune 을 막아서는 안 된다. 데이터 디렉터리가 아직 없을 수도
+    있으므로 가장 가까운 존재하는 상위로 거슬러 올라가 묻는다.
+    """
+    probe = path
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    try:
+        usage = shutil.disk_usage(probe)
+    except OSError:
+        return None
+    return DiskHeadroom(total_bytes=usage.total, free_bytes=usage.free)

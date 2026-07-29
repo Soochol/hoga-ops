@@ -657,14 +657,29 @@ def prune(
         False, "--execute",
         help="Actually delete. Default is dry-run (report only).",
     ),
+    include_confirmed_gaps: bool = typer.Option(
+        False, "--include-confirmed-gaps",
+        help=(
+            "Also prune SOURCE_PARTIAL raw whose upstream gap is CONFIRMED "
+            "(re-capture reproduced it, or it abuts a session edge). Never "
+            "touches CLIENT_INCOMPLETE — that raw is the resume source."
+        ),
+    ),
 ) -> None:
     """Prune hogaplay raw older than the retention window when its parquet is COMPLETE.
 
     Read-only by default — prints what WOULD be deleted. Pass ``--execute`` to
     delete. Only hogaplay-source COMPLETE raw past the window is removed; resume
     sources, partials, and sentinels are preserved (ADR-0075).
+
+    ``--include-confirmed-gaps`` widens the gate to captures the system has
+    already declared terminal (``decide_capture`` skips them). ADR-0075's
+    Trigger Condition anticipated exactly this: "비-COMPLETE raw 누적이 디스크를
+    위협하면 --include-partial 옵트인 또는 별도 진단 도구를 도입한다."
     """
-    from hoga.api.prune import prune_default_now, prune_raw, resolve_retention_days
+    from hoga.api.prune import (
+        disk_headroom, prune_default_now, prune_raw, resolve_retention_days,
+    )
 
     retention = days if days is not None else resolve_retention_days()
     if retention < 1:
@@ -672,8 +687,10 @@ def prune(
             "--days must be >= 1 (a 0-day window would race in-flight captures)."
         )
 
+    data_dir = resolve_data_dir()
     result = prune_raw(
-        resolve_data_dir(), retention_days=retention, now=prune_default_now(), execute=execute,
+        data_dir, retention_days=retention, now=prune_default_now(), execute=execute,
+        include_confirmed_gaps=include_confirmed_gaps,
     )
     if execute:
         gib = result.reclaimed_bytes / 1024**3
@@ -683,4 +700,32 @@ def prune(
         console.print(
             f"[yellow]dry-run[/yellow]: would delete {len(result.candidates)} dirs, "
             f"~{cand_gib:.1f} GiB (pass --execute to delete)"
+        )
+
+    # 보존 사유 내역. 후보가 0건일 때 "지울 게 없다" 와 "전부 게이트에 걸려
+    # 보존 중이다" 를 구분해 주는 유일한 출력이다 — 이게 없어 raw 가 351GB 까지
+    # 조용히 자랐다.
+    if result.skipped_by_state:
+        console.print("\n[bold]held (not prunable)[/bold]")
+        for reason, count in sorted(
+            result.skipped_by_state.items(),
+            key=lambda kv: -result.skipped_bytes_by_state.get(kv[0], 0),
+        ):
+            gib = result.skipped_bytes_by_state.get(reason, 0) / 1024**3
+            console.print(f"  {reason:<34}{count:>6} dirs {gib:>8.1f} GiB")
+        if not include_confirmed_gaps and any(
+            r.startswith("source_partial(gap_confirmed)") for r in result.skipped_by_state
+        ):
+            console.print(
+                "\n[blue]--include-confirmed-gaps[/blue] would also prune the "
+                "gap_confirmed rows above (upstream gap reproduced or session-edge; "
+                "re-capture cannot improve them)."
+            )
+
+    head = disk_headroom(data_dir)
+    if head is not None:
+        style = "red" if head.is_low else "dim"
+        console.print(
+            f"\n[{style}]disk: {head.free_pct:.1f}% free "
+            f"({head.free_bytes / 1024**3:.0f} GiB of {head.total_bytes / 1024**3:.0f} GiB)[/{style}]"
         )
