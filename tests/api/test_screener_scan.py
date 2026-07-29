@@ -265,8 +265,8 @@ from hoga.api.models import HighOffPeakLeaf, HighOffPeakParams
 def test_high_off_peak_within_and_outside(tmp_path):
     # peak = 최근 N일 고가 최댓값. A(000111) 고가 200→190→180 → 최신 -10%(고점 대비).
     # B(000222) 고가 200→160→130 → 최신 -35%. within 30%: A만; outside 30%: B만.
-    a = [("000111", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 13), [200, 190, 180])]
-    b = [("000222", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 13), [200, 160, 130])]
+    a = [("000111", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 13), [200, 190, 180], strict=True)]
+    b = [("000222", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 13), [200, 160, 130], strict=True)]
     adj, stk = _seed(tmp_path, rows=a + b,
         stocks=[("000111","a","KOSPI",False,False),("000222","b","KOSPI",False,False)])
     within = HighOffPeakLeaf(id="w", params=HighOffPeakParams(period=250, pct=30, side="within"))
@@ -278,7 +278,7 @@ def test_high_off_peak_within_and_outside(tmp_path):
 
 def test_high_off_peak_new_high_is_within(tmp_path):
     # 최신 고가가 곧 peak(신고가 갱신) → 위치 0% → 어떤 pct 이내라도 통과.
-    rows = [("000111", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 13), [100, 110, 120])]
+    rows = [("000111", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 13), [100, 110, 120], strict=True)]
     adj, stk = _seed(tmp_path, rows=rows, stocks=[("000111","a","KOSPI",False,False)])
     leaf = HighOffPeakLeaf(id="w", params=HighOffPeakParams(period=250, pct=5, side="within"))
     out = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
@@ -331,8 +331,8 @@ def test_new_high_lookback_window_boundary(tmp_path):
     # 000111 highs 100,110,105,102: real breakout at day-2 (wc=2), but the last 2
     #   days (105,102) sit below their window max → excluded by lookback alone.
     # 000222 highs 100,110,120,130: day-4 is a breakout inside the last 2 days.
-    nm = [("000111", f"2026-04-0{d}", 0, h, 0, h, 1) for d, h in zip(range(1, 5), [100, 110, 105, 102])]
-    m = [("000222", f"2026-04-0{d}", 0, h, 0, h, 1) for d, h in zip(range(1, 5), [100, 110, 120, 130])]
+    nm = [("000111", f"2026-04-0{d}", 0, h, 0, h, 1) for d, h in zip(range(1, 5), [100, 110, 105, 102], strict=True)]
+    m = [("000222", f"2026-04-0{d}", 0, h, 0, h, 1) for d, h in zip(range(1, 5), [100, 110, 120, 130], strict=True)]
     adj, stk = _seed(tmp_path, rows=nm + m,
         stocks=[("000111","a","KOSPI",False,False),("000222","b","KOSPI",False,False)])
     leaf = NewHighLeaf(id="b", params=BreakoutParams(lookback=2, period=2))
@@ -437,7 +437,7 @@ def test_new_high_today_vs_period_divergence(tmp_path):
     #            최근 5일 내 돌파 이력은 있음. 당일/기간내가 갈려야 신규 타입이 진짜 다름.
     a = [("000111", f"2026-04-{d:02d}", 0, 100+d, 0, 100+d, 1) for d in range(1, 9)]   # 고가 101..108
     bh = [100, 101, 102, 103, 104, 103, 102, 101]                                       # day5=104 peak
-    b = [("000222", f"2026-04-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(1, 9), bh)]
+    b = [("000222", f"2026-04-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(1, 9), bh, strict=True)]
     adj, stk = _seed(tmp_path, rows=a + b,
         stocks=[("000111","a","KOSPI",False,False),("000222","b","KOSPI",False,False)])
     today = NewHighTodayLeaf(id="t", params=PeriodParams(period=5))
@@ -459,8 +459,8 @@ def test_new_high_today_wc_window_guard(tmp_path):
 
 def test_new_high_vol_today_latest_is_volume_peak(tmp_path):
     # A: 거래량이 오늘 최고; B: 거래량이 과거에 최고, 오늘은 최저.
-    a = [("000111", f"2026-05-{d:02d}", 0, 1, 0, 1, vol) for d, vol in zip(range(10, 14), [10, 20, 30, 40])]
-    b = [("000222", f"2026-05-{d:02d}", 0, 1, 0, 1, vol) for d, vol in zip(range(10, 14), [40, 30, 20, 10])]
+    a = [("000111", f"2026-05-{d:02d}", 0, 1, 0, 1, vol) for d, vol in zip(range(10, 14), [10, 20, 30, 40], strict=True)]
+    b = [("000222", f"2026-05-{d:02d}", 0, 1, 0, 1, vol) for d, vol in zip(range(10, 14), [40, 30, 20, 10], strict=True)]
     adj, stk = _seed(tmp_path, rows=a + b,
         stocks=[("000111","a","KOSPI",False,False),("000222","b","KOSPI",False,False)])
     leaf = NewHighVolTodayLeaf(id="v", params=PeriodParams(period=4))
@@ -470,7 +470,7 @@ def test_new_high_vol_today_latest_is_volume_peak(tmp_path):
 def test_new_high_today_equals_breakout_lookback1(tmp_path):
     # 동치 보증: new_high_today(P) == new_high(lookback=1, period=P).
     hs = [100, 105, 103, 108, 107, 110, 109, 112]
-    rows = [("000111", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 18), hs)]
+    rows = [("000111", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 18), hs, strict=True)]
     adj, stk = _seed(tmp_path, rows=rows, stocks=[("000111","a","KOSPI",False,False)])
     today = screener_scan.run_scan(adj, stk,
         conditions=[NewHighTodayLeaf(id="t", params=PeriodParams(period=5))], universe=ScreenerUniverse())

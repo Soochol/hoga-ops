@@ -220,7 +220,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     cols = [c[0] for c in cur.description]
     out: list[ScreenerRow] = []
     for r in cur.fetchall():
-        d = dict(zip(cols, r))
+        d = dict(zip(cols, r, strict=True))
         out.append(ScreenerRow(
             code=d["code"], name=d["name"], market=d["market"], price=int(d["price"]),
             trade_value_won=int(d["trade_value_won"]),

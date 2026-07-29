@@ -1120,10 +1120,10 @@ def build_depth_heatmap_slice(
         out.append(
             DepthHeatmapPoint(
                 t_ms=t_ms,
-                asks=[[p, q] for p, q in zip(r.ask_prices, r.ask_qtys)],
-                bids=[[p, q] for p, q in zip(r.bid_prices, r.bid_qtys)],
-                asks_max=[[p, q] for p, q in zip(r.ask_prices_max, r.ask_qtys_max)],
-                bids_max=[[p, q] for p, q in zip(r.bid_prices_max, r.bid_qtys_max)],
+                asks=[[p, q] for p, q in zip(r.ask_prices, r.ask_qtys, strict=True)],
+                bids=[[p, q] for p, q in zip(r.bid_prices, r.bid_qtys, strict=True)],
+                asks_max=[[p, q] for p, q in zip(r.ask_prices_max, r.ask_qtys_max, strict=True)],
+                bids_max=[[p, q] for p, q in zip(r.bid_prices_max, r.bid_qtys_max, strict=True)],
             )
         )
     if cacheable:

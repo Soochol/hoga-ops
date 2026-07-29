@@ -30,7 +30,7 @@ def _raw_close_by_code(unadjusted: pl.DataFrame) -> dict[str, list[tuple[dt.date
         "code", maintain_order=True
     ):
         key = code[0] if isinstance(code, tuple) else code
-        out[key] = list(zip(sub["date"].to_list(), sub["close"].to_list()))
+        out[key] = list(zip(sub["date"].to_list(), sub["close"].to_list(), strict=True))
     return out
 
 
@@ -113,9 +113,9 @@ async def reconcile_raw(
     """
     up = sdir / "daily_unadjusted.parquet"
     disk = pl.read_parquet(up)
-    disk_keys = {(c, d) for c, d in zip(disk["code"].to_list(), disk["date"].to_list())}
+    disk_keys = {(c, d) for c, d in zip(disk["code"].to_list(), disk["date"].to_list(), strict=True)}
     disk_close = {(c, d): cl for c, d, cl in
-                  zip(disk["code"].to_list(), disk["date"].to_list(), disk["close"].to_list())}
+                  zip(disk["code"].to_list(), disk["date"].to_list(), disk["close"].to_list(), strict=True)}
     all_codes = codes if codes is not None else sorted(disk["code"].unique().to_list())
 
     # recent_cutoff: bars on or after this date are eligible for in-place overwrite

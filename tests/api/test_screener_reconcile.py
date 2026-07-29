@@ -82,7 +82,7 @@ def test_recent_overwrite_and_old_preserved(tmp_path: Path):
     assert rep.filled_rows == 0
 
     disk = pl.read_parquet(sdir / "daily_unadjusted.parquet").sort("date")
-    close_by_date = dict(zip(disk["date"].to_list(), disk["close"].to_list()))
+    close_by_date = dict(zip(disk["date"].to_list(), disk["close"].to_list(), strict=True))
     # Old mismatch: disk value preserved
     assert close_by_date[old_date] == 70000.0
     # Recent mismatch: KIS value overwrote disk value

@@ -346,7 +346,10 @@ def _needs_krx_daily_fill(candles: list, from_s: str, to_s: str) -> bool:
         return True
     if dates[-1] < to_d - timedelta(days=10):
         return True
-    return any((b - a).days > 10 for a, b in zip(dates, dates[1:]))
+    # strict=False 가 의도다 — 이건 인접쌍(pairwise) 순회라 두 시퀀스의 길이가 1
+    # 차이나는 것이 정상이다(dates 와 dates[1:]). 나머지 zip 은 전부 strict=True 로
+    # 바꿨는데(길이 일치가 구조적으로 보장되는 곳), 여기만 그러면 정상 코드가 터진다.
+    return any((b - a).days > 10 for a, b in zip(dates, dates[1:], strict=False))
 
 
 def _merge_daily_fallback(primary: list, fallback: list) -> list:

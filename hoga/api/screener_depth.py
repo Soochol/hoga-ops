@@ -134,8 +134,8 @@ def _past_agg(
         pl.col(side_col).max().alias("peak"),
         pl.col("date").n_unique().alias("have"),
     )
-    peak = dict(zip(agg["code"].to_list(), agg["peak"].to_list()))
-    have = dict(zip(agg["code"].to_list(), agg["have"].to_list()))
+    peak = dict(zip(agg["code"].to_list(), agg["peak"].to_list(), strict=True))
+    have = dict(zip(agg["code"].to_list(), agg["have"].to_list(), strict=True))
     return peak, have
 
 
