@@ -824,8 +824,17 @@ export function useLiveBundle(
         sseOb: isMinute ? live.ob : [],
         sseTrade: isMinute ? live.trade : [],
         bucketMs,
+        // 꺼진 지표는 계산하지 않는다. 이 둘은 15분 버퍼 전체를 훑는 O(n) 이고 기본
+        // OFF 인데 종전엔 토글과 무관하게 매 flush 돌았다 — 실측상 전체 재빌드 비용의
+        // 73~94%(자세한 근거는 BuildHogaSeriesInput 주석). 소비처는 전부 이 창의
+        // 차트 오버레이라 같은 토글로 게이트돼 있어, 끄면 애초에 그릴 대상이 없다.
+        depthHeatmapEnabled,
+        depthDeltaEnabled,
       }),
-    [defaultKrxSession, pastHoga.data, isMinute, live.ob, live.trade, bucketMs],
+    [
+      defaultKrxSession, pastHoga.data, isMinute, live.ob, live.trade, bucketMs,
+      depthHeatmapEnabled, depthDeltaEnabled,
+    ],
   );
   const livePriceLevelHits = useMemo(
     () => (isMinute ? buildLivePriceLevelHits(liveCandles, todayKstYyyymmdd) : []),

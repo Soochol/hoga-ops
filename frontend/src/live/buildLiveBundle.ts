@@ -76,6 +76,22 @@ export interface BuildHogaSeriesInput {
   sseOb: readonly ObSnapshot[];
   sseTrade: readonly TradeSnapshot[];
   bucketMs: number;
+  /**
+   * 호가 히트맵 / 단별 잔량증감을 **계산할지**. 생략 = true.
+   *
+   * 왜 있나: 이 둘은 15분 버퍼 전체를 훑는 O(n) 작업이고 **기본 OFF 인 지표**인데
+   * 종전엔 토글과 무관하게 매 flush 계산됐다. 실측(2026-07-29, 버퍼 9k~36k 스냅샷)
+   * 에서 전체 재빌드 비용의 **73~94% 가 이 둘**이었고 그중 대부분이 증감이다
+   * (9k: 전체 31.6ms 중 증감 21.2ms). 15분 슬라이딩 버퍼가 앞을 자르기 시작하면
+   * prefix-guard 가 깨져 유입률 ≥ flush율(6.67/s)인 구간에선 **매 flush 가 전체
+   * 재빌드**가 되므로, 끈 사용자에게 이 비용은 전액 낭비였다.
+   *
+   * 기본이 true 인 이유: 이 함수는 `IncrementalHogaBucketer` 의 **패리티 오라클**
+   * 이라 기존 테스트가 플래그 없이 호출한다. 기본을 켜 두면 오라클 계약이 그대로고
+   * 게이트는 /live 호출부만 옵트인한다.
+   */
+  depthHeatmapEnabled?: boolean;
+  depthDeltaEnabled?: boolean;
 }
 
 export interface HogaSeries {
@@ -130,7 +146,10 @@ function preparePastHogaSeries(pastBundle: RangeBundle | null, todaySessionClose
 }
 
 export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
-  const { todaySession, pastBundle, sseOb, sseTrade, bucketMs } = input;
+  const {
+    todaySession, pastBundle, sseOb, sseTrade, bucketMs,
+    depthHeatmapEnabled = true, depthDeltaEnabled = true,
+  } = input;
 
   // ADR-0049 / spec §3 — filter (not clip) past points whose t escapes
   // the Live Session end so a backend encoding regression cannot block SSE
@@ -162,8 +181,12 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
   return {
     quote_ratio: { bucket_ms: bucketMs, points: [...validPastQR, ...incrementalQR] },
     fill_strength: { bucket_ms: bucketMs, points: [...validPastFS, ...incrementalFS] },
-    depth_heatmap_today: bucketDepthHeatmap(sseOb, bucketMs, todaySession.close_ms),
-    depth_delta_today: bucketDepthDelta(sseOb, bucketMs, todaySession.close_ms),
+    depth_heatmap_today: depthHeatmapEnabled
+      ? bucketDepthHeatmap(sseOb, bucketMs, todaySession.close_ms)
+      : [],
+    depth_delta_today: depthDeltaEnabled
+      ? bucketDepthDelta(sseOb, bucketMs, todaySession.close_ms)
+      : [],
   };
 }
 
@@ -305,6 +328,11 @@ function bucketStartMs(tMs: number, bucketMs: number): number {
 class IncrementalHogaBucketer {
   private bucketMs = 0;
   private sessionCloseMs = Number.POSITIVE_INFINITY;
+  // 계산 여부 플래그. bucketMs·sessionCloseMs 와 **같은 등급의 리셋 트리거**다 —
+  // 꺼져 있던 동안 그 지표의 버킷을 안 쌓았으므로, 켜지는 순간 누적 상태가 반쪽이라
+  // 전체 재빌드로 다시 채워야 한다.
+  private depthHeatmapEnabled = true;
+  private depthDeltaEnabled = true;
   private obLength = 0;
   private tradeLength = 0;
   private lastObRef: ObSnapshot | null = null;
@@ -339,6 +367,8 @@ class IncrementalHogaBucketer {
     trade: readonly TradeSnapshot[],
     bucketMs: number,
     sessionCloseMs: number,
+    depthHeatmapEnabled: boolean,
+    depthDeltaEnabled: boolean,
   ): {
     quoteRatioPoints: QuoteRatioPoint[];
     fillStrengthPoints: FillStrengthPoint[];
@@ -348,10 +378,12 @@ class IncrementalHogaBucketer {
     if (
       this.bucketMs !== bucketMs ||
       this.sessionCloseMs !== sessionCloseMs ||
+      this.depthHeatmapEnabled !== depthHeatmapEnabled ||
+      this.depthDeltaEnabled !== depthDeltaEnabled ||
       !this.canAppendOb(ob) ||
       !this.canAppendTrade(trade)
     ) {
-      this.reset(bucketMs, sessionCloseMs);
+      this.reset(bucketMs, sessionCloseMs, depthHeatmapEnabled, depthDeltaEnabled);
       const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
       const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
       this.appendOb(obSorted);
@@ -363,7 +395,7 @@ class IncrementalHogaBucketer {
     const obDelta = ob.slice(this.obLength);
     const tradeDelta = trade.slice(this.tradeLength);
     if (!this.isMonotonicObDelta(obDelta) || !this.isMonotonicTradeDelta(tradeDelta)) {
-      this.reset(bucketMs, sessionCloseMs);
+      this.reset(bucketMs, sessionCloseMs, depthHeatmapEnabled, depthDeltaEnabled);
       const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
       const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
       this.appendOb(obSorted);
@@ -372,7 +404,7 @@ class IncrementalHogaBucketer {
       return this.snapshot();
     }
     if (!this.appendOb(obDelta)) {
-      this.reset(bucketMs, sessionCloseMs);
+      this.reset(bucketMs, sessionCloseMs, depthHeatmapEnabled, depthDeltaEnabled);
       const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
       const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
       this.appendOb(obSorted);
@@ -385,9 +417,16 @@ class IncrementalHogaBucketer {
     return this.snapshot();
   }
 
-  private reset(bucketMs: number, sessionCloseMs: number) {
+  private reset(
+    bucketMs: number,
+    sessionCloseMs: number,
+    depthHeatmapEnabled: boolean,
+    depthDeltaEnabled: boolean,
+  ) {
     this.bucketMs = bucketMs;
     this.sessionCloseMs = sessionCloseMs;
+    this.depthHeatmapEnabled = depthHeatmapEnabled;
+    this.depthDeltaEnabled = depthDeltaEnabled;
     this.obLength = 0;
     this.tradeLength = 0;
     this.lastObRef = null;
@@ -477,11 +516,13 @@ class IncrementalHogaBucketer {
       // 공용 술어 isIndicatorEligibleBook(구조 + 개장 09:00 하한)을 요구해 장중 VI
       // 붕괴책과 개장 동시호가를 대표선정에서 배제한다(parity 계약 유지). 배제 버킷은
       // 아래 else의 0-센티넬로 방출. depth 래칫은 이 게이트 안쪽이라 개장전 자동 드롭.
-      const deltaEligible = s.t_ms <= deltaThreshold && isIndicatorEligibleBook(s) && !!s.asks && !!s.bids;
-      // 증감 체인 차단 — bucketDepthDelta 의 `prev = null; continue;` 와 **같은 조건**을
-      // 한 곳에 모은다. 배제 구간(동시호가·VI·개장전)이나 book 없는 totals-only 틱을
-      // 가로지르는 diff 는 관측되지 않은 구간의 변화를 한 버킷에 몰아넣기 때문이다.
-      if (!deltaEligible) this.prevDeltaBook = null;
+      if (this.depthDeltaEnabled) {
+        const deltaEligible = s.t_ms <= deltaThreshold && isIndicatorEligibleBook(s) && !!s.asks && !!s.bids;
+        // 증감 체인 차단 — bucketDepthDelta 의 `prev = null; continue;` 와 **같은 조건**을
+        // 한 곳에 모은다. 배제 구간(동시호가·VI·개장전)이나 book 없는 totals-only 틱을
+        // 가로지르는 diff 는 관측되지 않은 구간의 변화를 한 버킷에 몰아넣기 때문이다.
+        if (!deltaEligible) this.prevDeltaBook = null;
+      }
       if (s.t_ms <= threshold && isIndicatorEligibleBook(s)) {
         const prev = this.quoteByBucket.get(t);
         const bid_max = Math.max(prev?.bid_max ?? 0, s.total_bid_qty);
@@ -510,7 +551,7 @@ class IncrementalHogaBucketer {
         // update quote totals but never fabricate a depth book. CLOSE = latest
         // tick; MAX = the tick whose total bid+ask qty peaked (strict `>` keeps the
         // earliest at a tie, same single-snapshot argmax as imb_max).
-        if (s.asks && s.bids) {
+        if (s.asks && s.bids && this.depthHeatmapEnabled) {
           const curTotal = s.total_bid_qty + s.total_ask_qty;
           const prevD = this.depthByBucket.get(t);
           if (!prevD) this.depthOrder.push(t);
@@ -527,10 +568,11 @@ class IncrementalHogaBucketer {
               bidsMax: keepMax ? prevD.point.bidsMax : s.bids,
             },
           });
-          // 증감 폴드 — bucketDepthDelta 를 미러한다. 직전 eligible book 과의 가격
-          // 교집합 diff 를 이 틱의 버킷에 누적한다.
-          this.foldDelta(t, s);
         }
+        // 증감 폴드 — bucketDepthDelta 를 미러한다. 직전 eligible book 과의 가격
+        // 교집합 diff 를 이 틱의 버킷에 누적한다. 히트맵 래칫과 **독립**으로 가른다 —
+        // 한쪽만 켠 조합이 실제 설정이라(둘 다 기본 OFF) 묶으면 안 된다.
+        if (s.asks && s.bids && this.depthDeltaEnabled) this.foldDelta(t, s);
       } else if (!this.seenPre.has(t) && !this.quoteByBucket.has(t)) {
         this.quoteOrder.push(t);
         this.quoteByBucket.set(t, {
@@ -625,7 +667,10 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
   let cachedPastMaxFsT = 0;
 
   return (input: BuildHogaSeriesInput): HogaSeries => {
-    const { todaySession, pastBundle, sseOb, sseTrade, bucketMs } = input;
+    const {
+      todaySession, pastBundle, sseOb, sseTrade, bucketMs,
+      depthHeatmapEnabled = true, depthDeltaEnabled = true,
+    } = input;
     if (pastBundleRef !== pastBundle || pastSessionCloseMs !== todaySession.close_ms) {
       pastBundleRef = pastBundle;
       pastSessionCloseMs = todaySession.close_ms;
@@ -636,7 +681,10 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
       cachedPastMaxFsT = past.pastMaxFsT;
     }
 
-    const sseBuckets = bucketer.update(sseOb, sseTrade, bucketMs, todaySession.close_ms);
+    const sseBuckets = bucketer.update(
+      sseOb, sseTrade, bucketMs, todaySession.close_ms,
+      depthHeatmapEnabled, depthDeltaEnabled,
+    );
     const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > cachedPastMaxQrT);
     const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > cachedPastMaxFsT);
 
