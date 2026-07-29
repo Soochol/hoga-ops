@@ -120,7 +120,8 @@
      doesn't compete with actual data series. */
   --tint-auction-window: rgba(245, 158, 11, 0.08);  /* warn @ 8% */
 
-  /* Depth bar fills for OrderbookTable. Distinct from --tint-price-up/down
+  /* Depth bar fills for BookPanel (the 10호가 window shared by /live and
+     /study). Distinct from --tint-price-up/down
      (chip backgrounds @ 10% flat); depth bars need higher contrast against
      the card background so they read at small widths. Flat fill (no
      gradient) per user preference 2026-05-24. Anchored from the qty

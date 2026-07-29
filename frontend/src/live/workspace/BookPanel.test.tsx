@@ -235,7 +235,8 @@ describe('BookPanel', () => {
 
   it('순간 증감 뱃지(#750)를 각 단 잔량 옆에 그린다', () => {
     // 레이아웃 개편이 이 기능을 지우지 않도록 고정한다 — 십자 배치로 갈아끼우면서
-    // OrderbookTable 의 deltaBadges 를 이식했다.
+    // 구 sidebar/OrderbookTable(#808 이후 소비처 0 → 삭제)의 deltaBadges 를 이식했다.
+    // 그 컴포넌트의 전용 테스트도 함께 지웠으므로 이 케이스가 유일한 회귀 방어선이다.
     renderPanel({
       // key 규약 = `a:${price}` | `b:${price}` (orderbookDeltaBadges).
       deltaBadges: new Map([

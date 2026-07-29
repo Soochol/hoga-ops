@@ -74,7 +74,8 @@ vi.mock('../live/useVolumeDistributionCutoffProfile', () => ({
 }));
 
 // 10호가 전일 종가 baseline 조회 훅만 목킹(순수 prevCloseBeforeDate 는 실제 유지). 기본은
-// data 없음 → baselinePrice null → OrderbookTable 매도/매수 폴백(색 단언 없는 기존 테스트 무영향).
+// data 없음 → baselinePrice null → BookPanel.dirClass 가 중립 text-fg-dim 으로 폴백하고
+// 등락률은 생략된다(색 단언 없는 기존 테스트 무영향).
 vi.mock('../api/screenerDailyCandles', async (orig) => ({
   ...(await orig<typeof import('../api/screenerDailyCandles')>()),
   useScreenerDailyCandles: vi.fn(() => ({ data: undefined })),

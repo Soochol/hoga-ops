@@ -530,7 +530,7 @@ function toSessionSegments(segments: readonly RangeSegment[]): SessionSegment[] 
   return segments.map((s) => ({ sessionOpenMs: s.session_open_ms, sessionCloseMs: s.session_close_ms }));
 }
 
-// KST 표기 — 사이드바 카드들(OrderbookTable 등)과 동일하게 toLocaleTimeString.
+// KST 표기 — 사이드바 카드들(TradeTickTable 등)과 동일하게 toLocaleTimeString.
 // 로컬 tz 시계는 비-KST 워크스테이션에서 차트 x축과 어긋난다.
 function formatKstClock(tsMs: number): string {
   return new Date(tsMs).toLocaleTimeString('ko-KR', {

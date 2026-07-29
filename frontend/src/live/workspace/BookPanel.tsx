@@ -10,8 +10,12 @@
  * (상한가 1 + 매도 10)이어야** 그 아래 매수 잔량 바가 매수 가격 행과 정렬된다 —
  * 항목을 늘리거나 줄일 때 SUMMARY_ROWS 개수를 함께 맞출 것.
  *
- * 좁은 사이드바용 2열 표(sidebar/OrderbookTable)는 `/study` replay 가 계속 쓰므로
- * 건드리지 않는다. 이 패널은 /live 워크스페이스 전용이다.
+ * **이 패널은 /live 와 /study 가 공유하는 단일 10호가 표면이다** — /live 는
+ * DataWindow, /study 는 studyWindowContents 의 BookContent 가 각각 자기 자료원으로
+ * props 를 채워 렌더한다. 따라서 여기의 레이아웃·색 규약을 바꾸면 두 페이지가
+ * 함께 바뀐다. (#808 이전엔 /study 만 좁은 2열 표 sidebar/OrderbookTable 을 썼는데,
+ * 같은 이름의 창이 페이지마다 다르게 생기는 것이 창 모델의 취지에 반해 이 패널로
+ * 통일했다. 그 컴포넌트는 소비처가 0이 되어 삭제됐다.)
  */
 import type { OrderbookSnapshot } from '../../api/types';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
