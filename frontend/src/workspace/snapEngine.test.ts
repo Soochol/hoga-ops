@@ -4,12 +4,9 @@ import {
   computeMove,
   detectFollowers,
   computeResize,
-  snapZone,
-  zoneRect,
   SNAP_THRESHOLD,
   MIN_W,
   MIN_H,
-  EDGE_ZONE_PX,
   GRAB_EXPOSE_W,
   GRAB_EXPOSE_H,
   type RectWin,
@@ -422,27 +419,5 @@ describe('computeResize — 화면 밖에 걸친 창 (ADR-0127)', () => {
       others: [], followers: [], canvas: CANVAS, alt: true,
     });
     expect(r.rect.x + r.rect.w).toBe(CANVAS.w);
-  });
-});
-
-describe('snapZone / zoneRect', () => {
-  it('벽에 밀착하면 left/right', () => {
-    expect(snapZone(1, CANVAS, false)).toBe('left');
-    expect(snapZone(CANVAS.w - 1, CANVAS, false)).toBe('right');
-  });
-  it('벽 근처지만 밀착 전이면 null — 이 구간이 화면 밖으로 밀어내는 길이다 (ADR-0127)', () => {
-    expect(snapZone(EDGE_ZONE_PX, CANVAS, false)).toBeNull();
-    expect(snapZone(20, CANVAS, false)).toBeNull();
-    expect(snapZone(CANVAS.w - 20, CANVAS, false)).toBeNull();
-  });
-  it('가운데면 null', () => {
-    expect(snapZone(500, CANVAS, false)).toBeNull();
-  });
-  it('alt=true 면 스냅존 비활성', () => {
-    expect(snapZone(10, CANVAS, true)).toBeNull();
-  });
-  it('zoneRect 는 좌/우 절반을 만든다', () => {
-    expect(zoneRect('left', CANVAS)).toEqual({ x: 0, y: 0, w: 500, h: 800 });
-    expect(zoneRect('right', CANVAS)).toEqual({ x: 500, y: 0, w: 500, h: 800 });
   });
 });

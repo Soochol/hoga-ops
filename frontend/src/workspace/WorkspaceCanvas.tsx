@@ -3,7 +3,7 @@
  * (ADR-0119/0122/0123).
  *
  * 스냅 엔진(`snapEngine.ts`)에 포인터 좌표를 위임해 창 이동·8방향 리사이즈·
- * 스플리터 승격·반분할 스냅존을 구동하고, props 로 받은 창 목록을 `renderWindow`
+ * 스플리터 승격을 구동하고, props 로 받은 창 목록을 `renderWindow`
  * 로 렌더한다. 드래그 중에는 로컬 preview 로만 렌더하고 드롭 시 `setWindowRects`
  * 로 커밋한다(#710: 이동=transform 프리뷰 + 드롭 시 rect 커밋, localStorage
  * 스래싱 회피).
@@ -19,14 +19,11 @@ import {
   computeMove,
   computeResize,
   detectFollowers,
-  snapZone,
-  zoneRect,
   type Guides,
   type Rect,
   type RectWin,
   type ResizeMode,
   type Edge,
-  type SnapZone,
   type Canvas,
 } from './snapEngine';
 
@@ -40,11 +37,9 @@ interface DragState {
   origin: Rect;
   followers: RectWin[]; // 스플리터 승격 대상(원본 rect)
   canvas: Canvas;
-  canvasLeft: number;
   // 커밋은 이 mutable 필드에서 읽는다(React state 플러시 타이밍에 의존하지 않도록).
-  // preview/zone state 는 렌더 전용, 이 필드가 진실.
+  // preview state 는 렌더 전용, 이 필드가 진실.
   liveRects: Map<string, Rect> | null;
-  liveZone: SnapZone;
 }
 
 const PURE_EDGES: readonly Edge[] = ['e', 'w', 'n', 's'];
@@ -134,7 +129,6 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
   // 드래그 중 프리뷰(스토어 미커밋). null = 유휴.
   const [preview, setPreview] = useState<Map<string, Rect> | null>(null);
   const [guides, setGuides] = useState<Guides>({ v: null, h: null });
-  const [zone, setZone] = useState<SnapZone>(null);
   // 이동 드래그 대상 창 id — 프레임 리프트(그림자)용. 리사이즈는 리프트하지 않는다.
   const [movingId, setMovingId] = useState<string | null>(null);
 
@@ -146,7 +140,6 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
     dragRef.current = null;
     setPreview(null);
     setGuides({ v: null, h: null });
-    setZone(null);
     setMovingId(null);
   }, []);
 
@@ -155,12 +148,9 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
     if (!d) return;
     // 커밋은 ref(진실)에서 읽는다 — React state 는 렌더 전용이라 합성 이벤트 배칭
     // 하에서 플러시가 늦을 수 있다(#714 함정). idempotent — endDrag 후 재호출은 no-op.
-    let updates: { id: string; rect: Rect }[] = [];
-    if (d.mode === 'move' && d.liveZone) {
-      updates = [{ id: d.id, rect: zoneRect(d.liveZone, d.canvas) }];
-    } else if (d.liveRects) {
-      updates = [...d.liveRects.entries()].map(([id, rect]) => ({ id, rect }));
-    }
+    const updates: { id: string; rect: Rect }[] = d.liveRects
+      ? [...d.liveRects.entries()].map(([id, rect]) => ({ id, rect }))
+      : [];
     // 드래그·스냅은 전부 px 로 계산했다(snapEngine 무변경). 스토어 경계에서만
     // 드래그 당시의 캔버스 기준 비율로 되돌린다 — ADR-0122.
     if (updates.length > 0) {
@@ -202,9 +192,7 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
         origin: originPx,
         followers,
         canvas,
-        canvasLeft: box.left,
         liveRects: null,
-        liveZone: null,
       };
       setMovingId(mode === 'move' ? id : null);
     },
@@ -232,12 +220,9 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
       if (d.mode === 'move') {
         const r = computeMove({ origin: d.origin, dx, dy, others, canvas: d.canvas, alt: e.altKey });
         const next = new Map([[d.id, { ...d.origin, x: r.x, y: r.y }]]);
-        const z = snapZone(e.clientX - d.canvasLeft, d.canvas, e.altKey);
         d.liveRects = next;
-        d.liveZone = z;
         setPreview(next);
         setGuides(r.guides);
-        setZone(z);
         return;
       }
 
@@ -345,13 +330,6 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
       onLostPointerCapture={commit}
     >
       {overlays}
-      {/* 반분할 스냅존 미리보기 */}
-      {zone && (
-        <div
-          className="pointer-events-none absolute inset-y-0 z-40 border border-accent bg-tint-selection"
-          style={zone === 'left' ? { left: 0, width: '50%' } : { right: 0, width: '50%' }}
-        />
-      )}
       {/* 자석 가이드라인 — 흡착 축을 accent 2px 선으로(토스식 분할선). 좌표에 중심을
           맞추려 절반(1px)만큼 당긴다. */}
       {guides.v !== null && (

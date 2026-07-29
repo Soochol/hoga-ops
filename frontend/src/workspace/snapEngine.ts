@@ -47,12 +47,6 @@ export const MIN_W = 160;
 export const MIN_H = 120;
 /** 두 변이 "맞닿았다"고 볼 허용 오차 — 스플리터 승격 대상 판정. */
 export const ADJACENT_EPS = 2;
-/**
- * 좌/우 화면 벽 반분할 스냅존의 트리거 폭(px, 벽으로부터).
- * 벽에 커서를 **밀착**시키는 제스처만 반분할로 친다 — 넓게 잡으면 창을 화면 밖으로
- * 밀어내는 제스처(ADR-0127)가 벽 근처에서 전부 반분할에 먹힌다.
- */
-export const EDGE_ZONE_PX = 4;
 
 /**
  * 창이 화면 밖으로 나가도 캔버스 안에 남겨두는 헤더(드래그 손잡이) 크기 — ADR-0127.
@@ -354,23 +348,4 @@ export function computeResize(args: {
   });
 
   return { rect: { x, y, w, h }, followers: followerRects, guides: { v: gv, h: gh } };
-}
-
-export type SnapZone = 'left' | 'right' | null;
-
-/**
- * 이동 중 포인터가 화면 좌/우 벽에 닿았는지 판정(반분할 스냅존). alt=해제.
- * `pointerX` 는 워크스페이스 좌측 기준 좌표.
- */
-export function snapZone(pointerX: number, canvas: Canvas, alt: boolean): SnapZone {
-  if (alt) return null;
-  if (pointerX < EDGE_ZONE_PX) return 'left';
-  if (pointerX > canvas.w - EDGE_ZONE_PX) return 'right';
-  return null;
-}
-
-/** 반분할 스냅존이 만드는 최종 rect(좌/우 절반, 전체 높이). */
-export function zoneRect(zone: 'left' | 'right', canvas: Canvas): Rect {
-  const half = Math.round(canvas.w / 2);
-  return { x: zone === 'left' ? 0 : half, y: 0, w: half, h: canvas.h };
 }
