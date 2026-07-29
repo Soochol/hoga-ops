@@ -95,7 +95,7 @@ cd frontend && npm run typecheck && npx vitest run && npx vite build
 ```
 
 ```bash
-uv run --extra dev pytest -q -m 'not wallclock'
+uv run --extra dev ruff check . && uv run --extra dev pytest -q -m 'not wallclock'
 ```
 
 Notes:
@@ -113,8 +113,13 @@ Notes:
   locally by default; CI runs them in a separate non-blocking job because they measure
   scheduling jitter, not behavior. Before adding a new one, try to express the property
   deterministically (call counts) instead — that's what PR #516 did for the frontend.
-- Not yet gated: `ruff` (2,057 pre-existing violations) and Playwright e2e execution
-  (port mismatch + missing globalSetup). Typecheck-only for the latter.
+- `ruff check` is gated as of 2026-07-30. It was 2,056 violations before: config tuning
+  (`ruff.toml`) took it to 662, safe autofix to 314, and real fixes (E402 import blockers,
+  B905 explicit `strict=`) plus reasoned `noqa` sealing to 0. **Nothing was disabled in
+  `hoga/`** — the relaxations are in `tests/` and thresholds, and each carries a comment
+  explaining why. `ruff format` is NOT gated (it would reformat 345 files).
+- Not yet gated: Playwright e2e execution (port mismatch + missing globalSetup).
+  Typecheck-only for that.
 
 ## Design System
 
