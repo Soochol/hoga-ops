@@ -24,6 +24,7 @@ from hoga.api.heatmap_routes import build_router as build_heatmap_router
 from hoga.api.live_layout_preset_routes import (
     build_router as build_live_layout_preset_router,
 )
+from hoga.api.origin_guard import OriginGuardMiddleware
 from hoga.api.queries import QueryEngine
 from hoga.api.request_timing import RequestTimingMiddleware
 from hoga.api.routes import build_router
@@ -62,6 +63,18 @@ from hoga.live.lifecycle import (
     stop_today_promoter,
 )
 from hoga.live.migrate import migrate_to_v2_layout
+
+# CORS 와 OriginGuard 가 **공유**하는 단일 출처. 두 곳에 리터럴을 따로 두면
+# 한쪽만 고쳐져 "CORS 는 통과하는데 가드가 막는"(또는 그 반대) 상태가 조용히 생긴다.
+#
+# 127.0.0.1 과 localhost 는 브라우저가 서로 다른 origin 으로 취급하므로 둘 다 넣는다.
+# 5174 는 5173 이 점유됐을 때 vite 가 자동으로 옮겨 가는 포트다.
+ALLOWED_ORIGINS: tuple[str, ...] = (
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+)
 
 
 async def _repair_minute_fetch(code: str, date_s: str) -> list[KisCandle]:
@@ -182,15 +195,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     app = FastAPI(title="hoga-ops API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        # 127.0.0.1 and localhost are treated as separate origins by browsers.
-        # Allow both so the dev frontend works regardless of which host the
-        # user / harness opens.
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:5174",
-            "http://127.0.0.1:5174",
-        ],
+        allow_origins=list(ALLOWED_ORIGINS),
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -200,7 +205,18 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     # CORS 뒤(안쪽)에 둬 CORS 헤더가 붙은 뒤 본문만 압축한다. minimum_size로 작은
     # 응답(health·control ack)은 무압축 통과시켜 CPU를 낭비하지 않는다.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+    # 상태 변경 요청의 Origin 검사. **CORSMiddleware 보다 바깥**이어야 한다 —
+    # add_middleware 는 나중에 추가한 것이 바깥이므로 CORS 뒤에 온다.
+    #
+    # CORS 는 이걸 못 막는다: Starlette 은 OPTIONS + access-control-request-method
+    # 일 때만 preflight 로 차단하고, 나머지는 origin 이 화이트리스트 밖이어도
+    # 핸들러를 실행한 뒤 응답 헤더만 뺀다. 게다가 이 API 에는 파라미터가 없는
+    # 상태변경 라우트가 6개 있어(cancel-all·catchup 등) body 파싱이 없고, 그러면
+    # form-urlencoded 로 도달해 **preflight 자체가 생기지 않는다**. 자세한 근거는
+    # hoga/api/origin_guard.py docstring 참고.
+    app.add_middleware(OriginGuardMiddleware, allowed_origins=ALLOWED_ORIGINS)
     # WS5: 요청 TTFB 타이밍 — 마지막에 추가해 최외곽(전 구간 측정)으로 배선.
+    # OriginGuard 보다 바깥이라 차단된 요청도 타이밍 로그에 남는다.
     app.add_middleware(RequestTimingMiddleware)
     # Liveness probe. Used by the Playwright e2e webServer config and by any
     # process supervisor that needs a no-side-effects 200 OK.
