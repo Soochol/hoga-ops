@@ -25,11 +25,7 @@ export const TAILWIND_THEME = {
     "3xl": "var(--space-3xl)",
   },
   height: {
-    "tab": "var(--h-tab)",
-    "tab-secondary": "var(--h-tab-secondary)",
     "toolbar": "var(--h-toolbar)",
-    "pricestrip": "var(--h-pricestrip)",
-    "orderbook-row": "var(--h-orderbook-row)",
     "capture-row": "var(--h-capture-row)",
     "live-header": "var(--h-live-header)",
     "top-nav": "var(--h-top-nav)",
@@ -41,7 +37,6 @@ export const TAILWIND_THEME = {
     "rail": "var(--rail-w)",
   },
   minWidth: {
-    "combobox": "var(--combobox-min-w)",
     "dropdown": "var(--dropdown-min-w)",
     "app-floor": "var(--app-floor-min-w)",
   },

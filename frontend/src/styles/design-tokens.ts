@@ -98,21 +98,18 @@ export const SIZE_TOKENS = {
   'space-3xl':  { rem: 3,       baseIntentPx: 48,   usage: '(rarely used)' },
 
   // ── layout — heights ──────────────────────────────────────────
-  'h-tab':              { rem: 2,       baseIntentPx: 32, usage: 'Tab strip main tab height' },
-  'h-tab-secondary':    { rem: 1.875,   baseIntentPx: 30, usage: 'Secondary action button — intentionally 2px shorter than main tab' },
-  'h-toolbar':          { rem: 2,       baseIntentPx: 32, usage: 'Replay-page toolbar row — 밀도 개편(2026-07-23) 60→32, 한 줄 버튼 행' },
-  'h-pricestrip':       { rem: 1.875,   baseIntentPx: 30, usage: 'Current-price strip below toolbar — 밀도 개편(2026-07-23) 52→30, 한 줄 시세 행' },
-  'h-orderbook-row':    { rem: 1.375,   baseIntentPx: 22, usage: 'Single row in the orderbook table' },
+  'h-toolbar':          { rem: 2,       baseIntentPx: 32, usage: 'Workspace toolbar row — ui/WorkspaceShell.tsx WorkspaceToolbar, 소비처는 /live 의 WorkspaceLiveToolbar. 밀도 개편(2026-07-23) 60→32, 한 줄 버튼 행' },
   'list-row-min-h':     { rem: 1.5625,  baseIntentPx: 25, usage: 'Shared list row min-height — watchlist/ranking/screener-result rows align (≈28px @ default density, matching the watchlist row). Heatmap rows opt out for max density.' },
   'list-group-header-min-h': { rem: 1.8125, baseIntentPx: 29, usage: 'Shared list group-header min-height — watchlist/heatmap group headers align (≈32px @ default density, matching the watchlist group header)' },
   'h-capture-row':      { rem: 2.25,    baseIntentPx: 36, usage: 'Single row in the capture queue' },
-  'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: 'Live page header row' },
+  // 이름과 달리 /live 는 이 밴드를 쓰지 않는다(LiveStatusBar 폐지). 유일한 소비처는
+  // /study 의 StudyPage 헤더이고, 그마저 min-h-12 를 얹어 실효 높이는 54px 다.
+  'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: 'Workspace header row — ui/WorkspaceShell.tsx WorkspaceHeader, 소비처는 /study 의 StudyPage 뿐' },
   'h-top-nav':          { rem: 2,       baseIntentPx: 32, usage: 'Global top navigation row' },
   'h-bottom-bar':       { rem: 1.5,     baseIntentPx: 24, usage: 'Global market-index bottom bar row' },
 
   // ── layout — widths ───────────────────────────────────────────
-  'sidebar-w':          { rem: 20,      baseIntentPx: 320, usage: 'Cursor sidebar on the right of replay viewer' },
-  'combobox-min-w':     { rem: 13.75,   baseIntentPx: 220, usage: 'Stock combobox trigger minimum width' },
+  'sidebar-w':          { rem: 20,      baseIntentPx: 320, usage: '/inventory master-detail 좌열 폭 (pages/Inventory.tsx)' },
   'dropdown-min-w':     { rem: 20,      baseIntentPx: 320, usage: 'Combobox / search dropdown minimum width' },
   'watchlist-panel-w':  { rem: 17.5,    baseIntentPx: 280, usage: 'Global Watchlist Panel (Right Rail) width' },
   'rail-w':             { rem: 3,       baseIntentPx: 48,  usage: 'Right Rail icon column width (fixed)' },

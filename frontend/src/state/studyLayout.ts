@@ -1,11 +1,8 @@
 import { create } from 'zustand';
 import { normalizeKeyOrder } from './keyOrder';
-import { DETAIL_PANEL_RAIL_WIDTH_PX } from './liveLayout';
 import { persistJson, readJsonObject } from './persist';
 
 export const STUDY_LAYOUT_STORAGE_KEY = 'study.layout.v1';
-/** 상세 패널을 전체 접었을 때 남는 세로 레일 너비 — /live 와 같은 값 하나만 존재. */
-export const STUDY_DETAIL_PANEL_RAIL_WIDTH_PX = DETAIL_PANEL_RAIL_WIDTH_PX;
 
 export type StudyCardKey = 'orderbook' | 'brokers' | 'volumeDistribution' | 'program';
 

@@ -60,16 +60,6 @@ describe('liveLayout store helpers', () => {
       .toBe(DEFAULT_RIGHT_PANEL_WIDTH_PX);
   });
 
-  it('clamps detail width against current workarea width', async () => {
-    const { clampRightPanelWidth, LIVE_WORKAREA_SPLITTER_WIDTH_PX } = await import('./liveLayout');
-
-    expect(clampRightPanelWidth(500, 2000)).toBe(500);
-    expect(clampRightPanelWidth(100, 2000)).toBe(320);
-    expect(clampRightPanelWidth(1200, 2000)).toBe(900);
-    expect(clampRightPanelWidth(600, 850)).toBe(320);
-    expect(clampRightPanelWidth(700, 966, LIVE_WORKAREA_SPLITTER_WIDTH_PX)).toBe(320);
-  });
-
   it('hydrates legacy payloads (width + weights only) to expanded defaults', async () => {
     localStorage.setItem('live.layout.v1', JSON.stringify({
       rightPanelWidthPx: 480,

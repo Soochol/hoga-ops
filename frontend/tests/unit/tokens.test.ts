@@ -99,10 +99,6 @@ describe('design-tokens registry', () => {
     expect(SIZE_TOKENS['text-badge'].baseIntentPx).toBeLessThan(SIZE_TOKENS['text-xs'].baseIntentPx);
   });
 
-  it('--h-tab-secondary is intentionally 2px shorter than --h-tab at base intent', () => {
-    expect(SIZE_TOKENS['h-tab'].baseIntentPx - SIZE_TOKENS['h-tab-secondary'].baseIntentPx).toBe(2);
-  });
-
   it('--sidebar-w and --dropdown-min-w share the same base intent (both 320px)', () => {
     expect(SIZE_TOKENS['sidebar-w'].baseIntentPx).toBe(SIZE_TOKENS['dropdown-min-w'].baseIntentPx);
   });

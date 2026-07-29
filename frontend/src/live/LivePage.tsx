@@ -154,7 +154,7 @@ export function LivePage() {
       style={{
         // minmax(0, 1fr) on the canvas row prevents chart canvases' intrinsic
         // size from pushing the row past viewport height. 상태바 폐지로 행이 3개로
-        // 줄었다(배너·툴바·캔버스) — 시세 스트립(--h-pricestrip)만큼 차트가 넓어진다.
+        // 줄었다(배너·툴바·캔버스) — 폐지된 시세 스트립 행만큼 차트가 넓어진다.
         gridTemplateRows: 'auto auto minmax(0, 1fr)',
         // 열 축도 명시해야 한다. 비워두면 grid-auto-columns:auto 가 되고, 그 트랙은
         // 가장 넓은 자식의 min-content 폭에서 바닥을 친다. WorkspaceLiveToolbar 와
