@@ -28,6 +28,19 @@ def _not_found(preset_id: str) -> HTTPException:
     )
 
 
+def _conflict(e: live_layout_presets.LiveLayoutPresetConflictError) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "live_layout_preset_conflict",
+            "message": (
+                "live layout preset changed elsewhere: "
+                f"expected updated_at_ms={e.expected_ms}, actual={e.actual_ms}"
+            ),
+        },
+    )
+
+
 def build_router(*, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/live-layout-presets", tags=["live-layout-presets"])
 
@@ -58,6 +71,8 @@ def build_router(*, data_dir: Path) -> APIRouter:
             )
         except live_layout_presets.LiveLayoutPresetNotFoundError as e:
             raise _not_found(preset_id) from e
+        except live_layout_presets.LiveLayoutPresetConflictError as e:
+            raise _conflict(e) from e
 
     @router.delete("/{preset_id}", status_code=204)
     async def delete_preset(preset_id: str) -> None:

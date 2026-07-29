@@ -5,6 +5,8 @@ import { useClampedFixedPosition } from '../../util/useClampedFixedPosition';
 import { useLiveLayoutStore } from '../../state/liveLayout';
 import { IconToolbarButton } from '../../ui/WorkspaceShell';
 import { useLiveLayoutPresets, useLiveLayoutPresetMutations } from './useLiveLayoutPresets';
+import { LIVE_LAYOUT_PRESET_CONFLICT } from '../../api/liveLayoutPresets';
+import type { ApiError } from '../../api/client';
 import {
   applyPresetPayload,
   capturePresetPayload,
@@ -40,15 +42,21 @@ export function LayoutPresetMenu() {
     anchorRect ? anchorRect.bottom + 4 : 0,
   );
 
-  const { data } = useLiveLayoutPresets();
+  const { data, refetch } = useLiveLayoutPresets();
   const { create, update, remove } = useLiveLayoutPresetMutations();
   const lastAppliedPresetId = useLiveLayoutStore((s) => s.lastAppliedPresetId);
   const presets = data?.presets ?? [];
   const activePreset = presets.find((p) => p.id === lastAppliedPresetId) ?? null;
 
   const toggle = () => {
+    const next = !open;
     setAnchorRect(wrapRef.current?.getBoundingClientRect() ?? null);
-    setOpen((prev) => !prev);
+    setOpen(next);
+    // 메뉴 열기 = "지금 목록을 보겠다" 는 명시적 의도 → staleTime(60s)을 우회해 다시
+    // 읽는다. 이 메뉴는 툴바에 상시 마운트라 mount-refetch 가 돌지 않고 전역
+    // refetchOnWindowFocus 도 꺼져 있어(main.tsx), 다른 탭이 방금 저장한 프리셋이
+    // 새로고침 전까지 보이지 않았다.
+    if (next) void refetch();
   };
 
   const apply = (id: string) => {
@@ -62,8 +70,27 @@ export function LayoutPresetMenu() {
     if (!activePreset) return;
     setError(null);
     update.mutate(
-      { id: activePreset.id, body: { name: activePreset.name, payload: capturePresetPayload() } },
-      { onSuccess: () => close(), onError: failWith('프리셋 저장에 실패했습니다.') },
+      {
+        id: activePreset.id,
+        body: {
+          name: activePreset.name,
+          payload: capturePresetPayload(),
+          expected_updated_at_ms: activePreset.updated_at_ms,
+        },
+      },
+      {
+        onSuccess: () => close(),
+        onError: (e) => {
+          // 그 사이 다른 탭·기기가 먼저 저장했다 — 조용히 덮어쓰지 않고 최신 목록을
+          // 다시 읽어 사용자가 무엇을 덮어쓸지 보고 판단하게 한다(메뉴는 열어 둔다).
+          if ((e as ApiError).code === LIVE_LAYOUT_PRESET_CONFLICT) {
+            void refetch();
+            setError('다른 곳에서 먼저 변경된 프리셋입니다. 최신 목록을 다시 불러왔습니다.');
+            return;
+          }
+          failWith('프리셋 저장에 실패했습니다.')(e);
+        },
+      },
     );
   };
 

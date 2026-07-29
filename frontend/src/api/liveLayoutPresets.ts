@@ -30,7 +30,15 @@ export type LiveLayoutPresetsFile = { schema_version: number; presets: LiveLayou
 export type LiveLayoutPresetWriteRequest = {
   name: string;
   payload: LiveLayoutPresetPayload;
+  /** 낙관적 동시성(PUT 전용) — 읽었던 시점의 updated_at_ms. 그 사이 다른 탭·기기가
+   *  먼저 저장했으면 백엔드가 409(`LIVE_LAYOUT_PRESET_CONFLICT`)로 거절한다. 생략하면
+   *  종전대로 무조건 덮어쓴다. payload 가 워크스페이스 통째 스냅샷이라 병합이 불가능해
+   *  "거절 후 재조회"가 유일하게 정직한 처리다. */
+  expected_updated_at_ms?: number;
 };
+
+/** 백엔드 409 detail.code — apiCall 이 구조화 detail 에서 ApiError.code 로 실어준다. */
+export const LIVE_LAYOUT_PRESET_CONFLICT = 'live_layout_preset_conflict';
 
 // LineStyle 은 프리셋 payload 엔 직접 안 실리지만(호가 level style 은 flags 대상 아님),
 // 타입 재노출로 소비자가 한 곳에서 import 하도록 유지.

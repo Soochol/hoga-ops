@@ -19,6 +19,9 @@ const LEGACY_PX = {
 
 describe('워크스페이스 rect 정규화 (ADR-0122)', () => {
   beforeEach(() => {
+    // 탭 저장소가 authoritative 이므로(workspace.ts 스코프) 공유 픽스처를 세우기 전에
+    // 반드시 비운다 — 앞 테스트가 남긴 sessionStorage 가 localStorage 픽스처를 가린다.
+    sessionStorage.clear();
     localStorage.clear();
     vi.resetModules();
   });

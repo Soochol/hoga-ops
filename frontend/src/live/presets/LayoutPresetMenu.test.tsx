@@ -8,10 +8,14 @@ import type { LiveLayoutPreset } from '../../api/liveLayoutPresets';
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
 const removeMutate = vi.fn();
+const refetchMock = vi.fn();
 let mockedPresets: LiveLayoutPreset[] = [];
 
 vi.mock('./useLiveLayoutPresets', () => ({
-  useLiveLayoutPresets: () => ({ data: { schema_version: 1, presets: mockedPresets } }),
+  useLiveLayoutPresets: () => ({
+    data: { schema_version: 1, presets: mockedPresets },
+    refetch: refetchMock,
+  }),
   useLiveLayoutPresetMutations: () => ({
     create: { mutate: createMutate },
     update: { mutate: updateMutate },
@@ -103,6 +107,51 @@ describe('LayoutPresetMenu', () => {
 
     // 에러가 표면화되고 메뉴는 닫히지 않는다.
     expect(screen.getByTestId('layout-preset-error')).toHaveTextContent('서버 오류');
+    expect(screen.getByTestId('layout-preset-menu')).toBeInTheDocument();
+  });
+
+  it('메뉴를 열 때마다 목록을 다시 읽는다 — 다른 탭이 방금 저장한 프리셋을 보이게', () => {
+    renderMenu();
+    expect(refetchMock).not.toHaveBeenCalled();
+
+    act(() => screen.getByTestId('layout-preset-button').click());
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+
+    // 닫을 때는 읽지 않는다.
+    act(() => screen.getByTestId('layout-preset-button').click());
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('덮어쓰기 저장은 읽었던 updated_at_ms 를 실어 보낸다', () => {
+    mockedPresets = [{ ...preset('p1', '단타용'), updated_at_ms: 4242 }];
+    renderMenu();
+    act(() => screen.getByTestId('layout-preset-button').click());
+    act(() => { useLiveLayoutStore.setState({ lastAppliedPresetId: 'p1' }); });
+    act(() => screen.getByTestId('layout-preset-save-current').click());
+
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'p1',
+        body: expect.objectContaining({ expected_updated_at_ms: 4242 }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('409 충돌이면 조용히 덮어쓰지 않고 목록을 다시 읽어 알린다', () => {
+    const conflict = Object.assign(new Error('changed elsewhere'), {
+      code: 'live_layout_preset_conflict',
+      status: 409,
+    });
+    updateMutate.mockImplementationOnce((_body, opts) => opts?.onError?.(conflict));
+    renderMenu();
+    act(() => screen.getByTestId('layout-preset-button').click());
+    act(() => { useLiveLayoutStore.setState({ lastAppliedPresetId: 'p1' }); });
+    refetchMock.mockClear(); // 메뉴 열기분 제외 — 충돌 처리가 다시 읽었는지만 본다.
+    act(() => screen.getByTestId('layout-preset-save-current').click());
+
+    expect(screen.getByTestId('layout-preset-error')).toHaveTextContent('다른 곳에서 먼저 변경된');
+    expect(refetchMock).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('layout-preset-menu')).toBeInTheDocument();
   });
 

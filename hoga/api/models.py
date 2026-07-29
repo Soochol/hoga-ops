@@ -1645,6 +1645,11 @@ class LiveLayoutPresetPayload(BaseModel):
 class LiveLayoutPresetWriteRequest(BaseModel):
     name: str
     payload: LiveLayoutPresetPayload
+    # 낙관적 동시성 제어(PUT 전용, POST 는 무시). 클라이언트가 읽었던 시점의
+    # updated_at_ms 를 실어 보내면, 그 사이 다른 탭·기기가 먼저 저장한 경우 409 로
+    # 거절한다 — 낡은 워크스페이스 스냅샷이 조용히 최신본을 덮어쓰는 것을 막는다.
+    # 생략(None) 시 종전대로 무조건 덮어쓴다(구 클라이언트 하위호환).
+    expected_updated_at_ms: int | None = None
 
     @field_validator("name")
     @classmethod

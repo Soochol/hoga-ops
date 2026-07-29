@@ -35,6 +35,9 @@ function chartOf(id: string) {
 }
 
 beforeEach(() => {
+  // 탭 저장소가 authoritative 이므로(workspace.ts 스코프) 함께 비운다 — 앞 테스트가
+  // 남긴 sessionStorage 가 localStorage 픽스처를 가린다.
+  sessionStorage.clear();
   localStorage.clear();
   seed([chartWindow('c1'), bookWindow('b1')]);
 });

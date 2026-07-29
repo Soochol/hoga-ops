@@ -24,6 +24,13 @@ function book(id: string, group: number): WorkspaceWindow {
   return { id, kind: 'book', group, rect: { x: 0, y: 0, w: 236, h: 440 } };
 }
 
+// 워크스페이스의 authoritative 저장소는 자기 탭의 sessionStorage 다(workspace.ts 스코프
+// 주석). 이 파일의 픽스처는 전부 localStorage 로 세우므로, 앞 테스트가 남긴 탭 저장소가
+// 픽스처를 가리지 않도록 매 테스트 전에 비운다 — 하이드레이션은 탭을 먼저 본다.
+beforeEach(() => {
+  sessionStorage.clear();
+});
+
 describe('activeGroupOf', () => {
   it('포커스 창(zOrder 마지막)의 그룹을 반환한다', () => {
     const state = { windows: [chart('a', 3), chart('b', 7)], zOrder: ['a', 'b'] };
@@ -52,6 +59,9 @@ describe('useWorkspaceStore 액션', () => {
   beforeEach(() => {
     // 알려진 상태로 초기화 — 싱글톤 하이드레이션·이전 테스트 잔여 제거.
     useWorkspaceStore.setState({ windows: [chart('a', 3)], zOrder: ['a'], groupSymbols: {} });
+    // 탭 저장소가 authoritative 이므로(workspace.ts 스코프) 함께 비운다 — 앞 테스트가
+    // 남긴 sessionStorage 가 아래 localStorage 픽스처를 가린다.
+    sessionStorage.clear();
     localStorage.clear();
   });
 
