@@ -179,28 +179,59 @@ def _fetcher(handler, **kw) -> KiwoomIndexCandlesFetcher:
     )
 
 
-def test_fetch_stops_once_the_page_covers_from_date() -> None:
-    """목표 날짜를 덮으면 더 걷지 않는다 — 불필요한 페이지는 곧 유량 낭비다."""
+def test_fetch_stops_once_a_page_reaches_before_from_date() -> None:
+    """`from` **이전** 날짜가 보이면 멈춘다 — 불필요한 페이지는 곧 유량 낭비다."""
     calls: list[dict] = []
 
     def handler(req: httpx.Request) -> httpx.Response:
         calls.append(dict(req.headers))
         return httpx.Response(200, json={
             "return_code": 0,
-            "inds_min_pole_qry": [row("20260728153000", "100", "100", "100", "100")],
+            "inds_min_pole_qry": [row("20260727153000", "100", "100", "100", "100")],
         }, headers={"cont-yn": "Y", "next-key": "K"})
 
     result = _fetcher(handler).fetch("KOSPI", "20260728", "20260729", bucket_seconds=60)
 
-    assert len(calls) == 1, "첫 페이지가 이미 from 을 덮었다"
-    assert len(result.candles) == 1
+    assert len(calls) == 1, "첫 페이지가 이미 from 이전까지 갔다"
+    assert result.candles == [], "from 이전 행은 범위 밖이라 결과에서 빠진다"
+
+
+def test_fetch_keeps_walking_while_the_page_only_grazes_the_from_date() -> None:
+    """회귀(2026-07-30): `from` 날짜에 **걸치기만** 한 페이지에서 멈추면 그날 앞이 잘린다.
+
+    페이지 경계는 900행마다 끊겨 날짜 경계와 무관하다. 옛 조건(`oldest <= from`)은
+    07-23 09:52 캔들 하나만 보고 "덮었다"고 판단해 09:00~09:51 을 영영 안 받아왔다
+    (실측: 다른 날은 09:00 시작인데 07-23 만 09:52 시작).
+    """
+    pages = [
+        # 1페이지: from 날짜에 걸치기만 함 (그날 09:52 부터) — 여기서 멈추면 안 된다
+        ([row("20260723095200", "100", "100", "100", "100")], "Y"),
+        # 2페이지: from 날짜의 앞부분 + 그 이전 날짜 → 이제 멈춰도 된다
+        ([
+            row("20260723090000", "100", "100", "100", "100"),
+            row("20260722153000", "100", "100", "100", "100"),
+        ], "Y"),
+    ]
+    seen: list[str] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req.headers.get("next-key", ""))
+        rows, cont = pages[len(seen) - 1]
+        return httpx.Response(200, json={"return_code": 0, "inds_min_pole_qry": rows},
+                              headers={"cont-yn": cont, "next-key": f"K{len(seen)}"})
+
+    result = _fetcher(handler).fetch("KOSPI", "20260723", "20260729", bucket_seconds=60)
+
+    assert len(seen) == 2, "from 날짜에 걸치기만 한 페이지에서 멈추지 않는다"
+    stamps = [c.t_ms for c in result.candles]
+    assert len(stamps) == 2, "from 날짜의 09:00 과 09:52 가 모두 들어온다"
 
 
 def test_fetch_walks_back_until_from_is_covered() -> None:
     pages = [
         ([row("20260729153000", "100", "100", "100", "100")], "Y"),
         ([row("20260728153000", "100", "100", "100", "100")], "Y"),
-        ([row("20260727153000", "100", "100", "100", "100")], "N"),
+        ([row("20260726153000", "100", "100", "100", "100")], "N"),
     ]
     seen: list[str] = []
 
@@ -213,7 +244,7 @@ def test_fetch_walks_back_until_from_is_covered() -> None:
     result = _fetcher(handler).fetch("KOSPI", "20260727", "20260729", bucket_seconds=60)
 
     assert seen == ["", "K1", "K2"], "next-key 가 다음 요청으로 전달된다"
-    assert len(result.candles) == 3
+    assert len(result.candles) == 2, "07-26 은 범위 밖"
 
 
 def test_fetch_stops_when_server_says_no_more_pages() -> None:
