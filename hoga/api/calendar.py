@@ -86,7 +86,7 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
     negative-cached for ``_FAILURE_TTL_SECONDS`` so hot callers (poller gate)
     don't re-run the blocking fetch every cycle during an outage.
     """
-    global _last_failure_reason  # noqa: PLW0603
+    global _last_failure_reason  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
 
     key = (year, month)
     with _trading_days_lock:
@@ -100,7 +100,10 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
 
         # Late import (per call) keeps the documented monkeypatch seam: tests patch
         # hoga.api.kis_holidays.fetch_month_trading_days as a module attribute.
-        from hoga.api.kis_holidays import KisCredentialsMissing, fetch_month_trading_days
+        from hoga.api.kis_holidays import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+            KisCredentialsMissing,
+            fetch_month_trading_days,
+        )
 
         try:
             result = fetch_month_trading_days(year, month)
@@ -197,7 +200,7 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
             if start <= d <= end:
                 out.append(d)
         # Advance to the first day of the next month.
-        if cur.month == 12:
+        if cur.month == 12:  # noqa: PLR2004, SIM108
             cur = dt.date(cur.year + 1, 1, 1)
         else:
             cur = dt.date(cur.year, cur.month + 1, 1)
@@ -223,7 +226,7 @@ def is_trading_day(date_yyyymmdd: str) -> bool | None:
 
 def reset_cache_for_tests() -> None:
     """Test helper — clears the trading-day cache between tests."""
-    global _last_failure_reason  # noqa: PLW0603
+    global _last_failure_reason  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     _month_cache.clear()
     _failure_cache.clear()
     _session_confirmed.clear()
@@ -242,7 +245,7 @@ def _all_weekdays_in_month(year: int, month: int) -> set[str]:
     out: set[str] = set()
     for day in range(1, last_day + 1):
         d = dt.date(year, month, day)
-        if d.weekday() < 5:
+        if d.weekday() < 5:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             out.add(f"{year:04d}{month:02d}{day:02d}")
     return out
 
@@ -283,7 +286,7 @@ def _cell_status_for(date_str: str, now: dt.datetime, trading_days: set[str],
     if is_today_too_early(date_str, now):
         return "today_locked"
     if date_str not in trading_days:
-        return "weekend" if d.weekday() >= 5 else "holiday"
+        return "weekend" if d.weekday() >= 5 else "holiday"  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
     # hogaplay is the canonical capture source — show its state directly (this
     # also covers the sentinel / raw / legacy-flat fallbacks, all hogaplay-only
     # artifacts). Only when there is NO hogaplay artifact at all do we consider a

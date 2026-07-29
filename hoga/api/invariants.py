@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from hoga.api.models import ViolationModel
 
 
-class Severity(str, Enum):
+class Severity(str, Enum):  # noqa: UP042 — StrEnum 전환은 str() 동작이 바뀌어 wire format 위험
     error = "error"
     warn = "warn"
 
@@ -55,7 +55,7 @@ class Violation:
     def to_model(self) -> ViolationModel:
         """Convert to the Pydantic wire mirror. Keeps the dataclass free
         of Pydantic dep while giving callers a typed wire boundary."""
-        from hoga.api.models import ViolationModel
+        from hoga.api.models import ViolationModel  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
         return ViolationModel(
             invariant_id=self.invariant_id,
             severity=self.severity.value,
@@ -125,7 +125,7 @@ def _meta_open_in_kst_range(m: Mapping[str, Any]) -> Violation | None:
     if "regular_session_open_ms" not in m:
         return None
     open_ms = m["regular_session_open_ms"]
-    if 40_000_000 <= open_ms <= 120_000_000:
+    if 40_000_000 <= open_ms <= 120_000_000:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return None
     return Violation(
         "meta.open_in_kst_range",
@@ -139,7 +139,7 @@ def _meta_close_in_kst_range(m: Mapping[str, Any]) -> Violation | None:
     if "regular_session_close_ms" not in m:
         return None
     close_ms = m["regular_session_close_ms"]
-    if 120_000_000 <= close_ms <= 180_000_000:
+    if 120_000_000 <= close_ms <= 180_000_000:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return None
     return Violation(
         "meta.close_in_kst_range",
@@ -331,8 +331,10 @@ def _series_snapshots_no_gaps(a: StockDateArtifacts) -> list[Violation]:
         # meta lacks the bound (legacy / malformed) — gap analysis requires it
         # to compute the Auction Window cutoff; skip rather than guess a default.
         return []
-    from hoga.api.disk_state import has_meaningful_gaps
-    from hoga.api.timeenc import HogaMs
+    from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        has_meaningful_gaps,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
+    from hoga.api.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     ts_values = [HogaMs(ts) for ts in raw_ts]
     if not has_meaningful_gaps(ts_values, session_close_ms=HogaMs(close_ms)):
         return []
@@ -370,10 +372,14 @@ def _series_snapshots_no_gaps(a: StockDateArtifacts) -> list[Violation]:
 
 def _series_cum_vol_monotonic(a: StockDateArtifacts) -> list[Violation]:
     if a.trades_frame is not None:
-        from hoga.tables.trades import find_cum_vol_violations_frame
+        from hoga.tables.trades import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+            find_cum_vol_violations_frame,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        )
         violations = find_cum_vol_violations_frame(a.trades_frame)
     elif a.trades is not None:
-        from hoga.tables.trades import find_cum_vol_violations
+        from hoga.tables.trades import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+            find_cum_vol_violations,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        )
         violations = find_cum_vol_violations(a.trades)
     else:
         return []

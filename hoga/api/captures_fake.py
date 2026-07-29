@@ -24,7 +24,7 @@ def configure_fake_to_raise_on(request_index: int | None) -> None:
     """Cause the fake to raise CookieExpiredError on its Nth global
     fetch_first call. Pass None (or a negative value) to disable.
     """
-    global _raise_on_request_index, _global_first_calls
+    global _raise_on_request_index, _global_first_calls  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     _raise_on_request_index = request_index if (request_index is not None and request_index > 0) else None
     _global_first_calls = 0
 
@@ -43,7 +43,7 @@ class FakeHogaplayClient:
         )
 
     def fetch_first(self, code: str, date: str, time_ms: int) -> str:
-        global _global_first_calls
+        global _global_first_calls  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
         del code, date, time_ms
         self._first_call += 1
         _global_first_calls += 1

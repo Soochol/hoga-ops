@@ -65,23 +65,23 @@ def _migrate(raw: dict) -> dict:
     here — it surfaces as ValidationError to load_document's backup path.
     """
     version = raw.get("schema_version", raw.get("version", 1))
-    if version > 3:
+    if version > 3:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise UnsupportedWatchlistSchema(f"unsupported watchlist schema_version {version}")
-    if version >= 3:
+    if version >= 3:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return {
             "schema_version": 3,
             "folders": [{"id": f["id"], "name": f["name"], "order": f.get("order", i),
                          "member_codes": list(f.get("member_codes", [])),
-                         "capture_enabled": f["capture_enabled"] if "capture_enabled" in f else True}
+                         "capture_enabled": f["capture_enabled"] if "capture_enabled" in f else True}  # noqa: SIM401 — 분기가 기본값의 근거를 담고 있음
                         for i, f in enumerate(raw.get("folders", []))],
             "entries": [_slim(e) for e in raw.get("entries", [])],
         }
     # v1/legacy/v2 → v2-shaped (folder_id, order) 행 먼저
-    folders_v2 = raw.get("folders", []) if version >= 2 else []
+    folders_v2 = raw.get("folders", []) if version >= 2 else []  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
     valid_ids = {f.get("id") for f in folders_v2}
     v2_entries: list[dict] = []
     for i, e in enumerate(raw.get("entries", [])):
-        e = dict(e)
+        e = dict(e)  # noqa: PLW2901 — 방어적 복사·정규화 후 재대입
         fid = e.get("folder_id")
         e["folder_id"] = fid if fid in valid_ids else None
         e["order"] = e.get("order", i)
@@ -217,7 +217,9 @@ async def add_member(
     last_success 를 디스크에서 시드(첫 Watchlist 진입). 이미 멤버면 멱등 no-op.
     폴더 없으면 FolderNotFoundError. 불변식 {e.code}==⋃member_codes 유지."""
     # Local import: disk_state -> watchlist would cycle if at module top.
-    from hoga.api.disk_state import latest_complete_date
+    from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        latest_complete_date,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
     async with _lock:
         doc = load_document(data_dir)
         folder = next((f for f in doc.folders if f.id == folder_id), None)

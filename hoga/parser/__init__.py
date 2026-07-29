@@ -123,7 +123,9 @@ def parse_stock_date(
     # 컬럼형 고속 경로 (hoga.parser.frames): type-1/2는 polars 벡터 파싱,
     # 그 외·의심 라인은 python parse_row 폴백 — strict/lenient 오류 의미론
     # 바이트 동일. 리스트 경로(_collect_events)는 폴백·오라클로 상존한다.
-    from hoga.parser.frames import collect_event_frames
+    from hoga.parser.frames import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        collect_event_frames,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
     collected = collect_event_frames(raw_dir, lenient=lenient)
     skipped = collected.skipped
     brokers_list = collected.brokers
@@ -160,7 +162,7 @@ def parse_stock_date(
     # violations are also re-evaluated live by read-paths (self-healing).
     # Series-level violations are archival-only (ADR-0020 §3c) — read-paths
     # trust this field rather than re-loading parquet on every request.
-    from hoga.api.invariants import (
+    from hoga.api.invariants import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
         StockDateArtifacts,
         check as _check_meta,
         check_series as _check_series,

@@ -139,7 +139,7 @@ def _past_agg(
     return peak, have
 
 
-def evaluate(
+def evaluate(  # noqa: PLR0912, PLR0915
     *,
     data_dir: Path,
     sdir: Path,

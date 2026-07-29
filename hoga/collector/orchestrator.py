@@ -430,7 +430,7 @@ def _store_page_body(
 
 
 
-def _page_step_loop(
+def _page_step_loop(  # noqa: PLR0912, PLR0915
     raw_dir: Path,
     client: HogaplayClientProto,
     code: str,
@@ -590,7 +590,7 @@ def _page_step_loop(
                 _time.sleep(effective_rate)
 
 
-def collect_stock_date(
+def collect_stock_date(  # noqa: PLR0912, PLR0915
     *,
     client: HogaplayClientProto,
     code: str,

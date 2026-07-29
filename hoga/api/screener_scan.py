@@ -104,9 +104,9 @@ def _compile_high_off_peak(leaf, i):
 def _compile_price_range(leaf, i):
     clauses, params = [], []
     if leaf.params.min is not None:
-        clauses.append("close >= ?"); params.append(leaf.params.min)
+        clauses.append("close >= ?"); params.append(leaf.params.min)  # noqa: E702 — 셋업 한 줄 압축
     if leaf.params.max is not None:
-        clauses.append("close <= ?"); params.append(leaf.params.max)
+        clauses.append("close <= ?"); params.append(leaf.params.max)  # noqa: E702 — 셋업 한 줄 압축
     return f"cond_{i} AS (SELECT code FROM base WHERE {' AND '.join(clauses)})", params
 
 

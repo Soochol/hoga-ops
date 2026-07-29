@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Generic, Literal, TypeVar
 
-
 from fastapi import APIRouter, Query
 
 from hoga.api._atomic_write import atomic_write_json
@@ -216,7 +215,7 @@ _loaded_schema_version: int | None = None
 
 
 def reset_state_for_tests() -> None:
-    global _cache, _fetched_at_ms, _state, _loaded_schema_version  # noqa: PLW0603
+    global _cache, _fetched_at_ms, _state, _loaded_schema_version  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     _cache, _fetched_at_ms, _state = (
         [],
         None,
@@ -338,7 +337,7 @@ async def _fetch_symbol_master() -> list[SymbolHit]:
     ]
 
 
-def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
+def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
     """Walk ``data/parquet/*`` and ``data/raw/*`` ONCE, building ``{code: breakdown}``.
 
     A per-symbol bucketing pass called from :func:`_do_refresh`
@@ -409,7 +408,7 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
     cache is empty and _state surfaces SYMBOL_MASTER_NOT_INITIALIZED so the
     UI prompts the user to click Update.
     """
-    global _cache, _fetched_at_ms, _state, _loaded_schema_version  # noqa: PLW0603
+    global _cache, _fetched_at_ms, _state, _loaded_schema_version  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     result = _load_from_disk(path)
     if result is None:
         _cache = []
@@ -471,7 +470,7 @@ async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
     Concurrency: _refresh_coordinator dedupes simultaneous clicks.
     """
     def _start_refresh_task() -> asyncio.Task[SymbolsAllResponse]:
-        global _state  # noqa: PLW0603
+        global _state  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
         _state = SymbolCacheState.loading()
         return asyncio.create_task(_do_refresh(path=path, data_dir=data_dir))
 
@@ -491,7 +490,7 @@ async def aclose_refresh() -> None:
 
 def _set_stale_or_unavailable(reason: UpstreamCode) -> None:
     """Pick stale vs unavailable based on whether the cache has prior data."""
-    global _state  # noqa: PLW0603
+    global _state  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     _state = (
         SymbolCacheState.stale(reason=reason)
         if _cache
@@ -524,7 +523,7 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
     ``loading()`` even when an unexpected exception (e.g. ``OSError`` from
     a filesystem walk) escapes the typed handlers above.
     """
-    global _cache, _fetched_at_ms, _state  # noqa: PLW0603
+    global _cache, _fetched_at_ms, _state  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     try:
         try:
             entries = await _fetch_symbol_master()

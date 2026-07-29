@@ -61,11 +61,11 @@ class QueueOwnership:
     def release(self) -> None:
         """Release the lock and close the fd. Idempotent-safe: a second call
         after the fd is closed is swallowed."""
-        try:
+        try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
             fcntl.flock(self.fd, fcntl.LOCK_UN)
         except OSError:
             pass
-        try:
+        try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
             os.close(self.fd)
         except OSError:
             pass

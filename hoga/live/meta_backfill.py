@@ -43,7 +43,7 @@ class BackfillResult:
 
 
 def _is_yyyymmdd(name: str) -> bool:
-    if len(name) != 8 or not name.isdigit():
+    if len(name) != 8 or not name.isdigit():  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return False
     try:
         datetime.strptime(name, "%Y%m%d")

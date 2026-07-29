@@ -95,7 +95,7 @@ def _field(i: int) -> pl.Expr:
     return pl.col("fields").list.get(i, null_on_oob=True)
 
 
-def collect_event_frames(raw_dir: Path, *, lenient: bool) -> CollectedFrames:
+def collect_event_frames(raw_dir: Path, *, lenient: bool) -> CollectedFrames:  # noqa: PLR0912, PLR0915
     df = _read_lines(raw_dir)
     if df.height == 0:
         return CollectedFrames(
@@ -119,7 +119,7 @@ def collect_event_frames(raw_dir: Path, *, lenient: bool) -> CollectedFrames:
     # Kleene null이 되어 ~null=null → filter가 해당 라인을 "폴백도 skipped도
     # 아닌" 조용한 드롭으로 흘린다(퍼즈가 잡은 결함). fill_null(False) 필수.
     # ── type-1 체결: 벡터 추출 ────────────────────────────────────────────
-    is_t1 = ((pl.col("et") == 1) & (pl.col("nf") == 18)).fill_null(False)
+    is_t1 = ((pl.col("et") == 1) & (pl.col("nf") == 18)).fill_null(False)  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
     # 0행이어도 동일 표현식을 적용한다 — 빈 프레임이 출력 스키마를 유지해야
     # 이후 select/concat이 성립한다(비용은 0행이라 무시 가능).
     t1 = df.filter(is_t1)
@@ -144,7 +144,7 @@ def collect_event_frames(raw_dir: Path, *, lenient: bool) -> CollectedFrames:
     t1_suspicious_gidx = set(t1.filter(t1_bad)["gidx"].to_list())
 
     # ── type-2 호가: 벡터 추출 (70필드 → 64컬럼 플랫) ─────────────────────
-    is_t2 = ((pl.col("et") == 2) & (pl.col("nf") == 70)).fill_null(False)
+    is_t2 = ((pl.col("et") == 2) & (pl.col("nf") == 70)).fill_null(False)  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
     t2 = df.filter(is_t2)
     base = 6
     exprs = [
@@ -167,7 +167,7 @@ def collect_event_frames(raw_dir: Path, *, lenient: bool) -> CollectedFrames:
 
     # ── type-5 하트비트: 필드수 무관 스킵 (parse_row와 동일 — SKIP 판정은
     #    개수 검사보다 먼저다) ─────────────────────────────────────────────
-    is_t5 = ((pl.col("et") == 5) & (pl.col("nf") >= 2)).fill_null(False)
+    is_t5 = ((pl.col("et") == 5) & (pl.col("nf") >= 2)).fill_null(False)  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
 
     # ── 폴백: 나머지 전부 python parse_row (type-3/4, 의심 라인, 미지 타입) ──
     fallback = df.filter(~is_t1 & ~is_t2 & ~is_t5)
@@ -188,7 +188,9 @@ def collect_event_frames(raw_dir: Path, *, lenient: bool) -> CollectedFrames:
     py_trades: list[tuple[int, Trade]] = []
     py_snapshots: list[tuple[int, Orderbook]] = []
     py_brokers: list[tuple[int, list[BrokerRow]]] = []
-    from hoga.parser import ParserError  # 지연 import — 순환 회피
+    from hoga.parser import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        ParserError,  # 지연 import — 순환 회피  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
 
     for gidx, page, lineno, line in fallback_rows:
         try:

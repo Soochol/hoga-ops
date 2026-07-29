@@ -79,7 +79,7 @@ def _project(doc: WatchlistDocument, *, next_run_at_ms: int) -> WatchlistRespons
     return project_watchlist_response(doc, next_run_at_ms=next_run_at_ms)
 
 
-def build_router(*, data_dir: Path) -> APIRouter:
+def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
     router = APIRouter(prefix="/api/watchlist", tags=["watchlist"])
 
     @router.get("", response_model=WatchlistResponse)

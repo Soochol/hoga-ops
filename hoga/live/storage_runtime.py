@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-
 from .buffer import LiveBuffer
 from .coverage import (
     KIWOOM_PER_ACCOUNT_MAX,
@@ -68,8 +67,10 @@ def _ensure_kiwoom_session(
     연결 시간대(08~20)를 쓴다 — 저장 게이트(정규장)는 LiveStream 내부 flush 루프가 유지."""
     if state.kiwoom_session is not None:
         return state.kiwoom_session
-    from .kiwoom_session import KiwoomSessionManager  # noqa: PLC0415
-    from .session_gate import ws_connection_window  # noqa: PLC0415
+    from .kiwoom_session import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        KiwoomSessionManager,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
+    from .session_gate import ws_connection_window  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     mgr = KiwoomSessionManager(
         buffer=buffer,
@@ -89,7 +90,9 @@ def _ensure_program_trade_collector(
     date_fn: Callable[[], str],
     now_ms_fn: Callable[[], int],
 ) -> ProgramTradeCollectorLike:
-    from .program_trade_collector import ProgramTradeCollector  # noqa: PLC0415
+    from .program_trade_collector import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        ProgramTradeCollector,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
 
     if state.program_trade_collector is not None:
         return state.program_trade_collector
@@ -111,7 +114,7 @@ async def sync_storage_runtime(
     now_ms_fn: Callable[[], int],
 ) -> StorageRuntimeSnapshot:
     """Plan targets and sync the WS capture runtimes."""
-    from . import kiwoom_runtime  # noqa: PLC0415
+    from . import kiwoom_runtime  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     n_kiwoom = len(kiwoom_runtime.configured_account_ids(data_dir))
     targets = plan_storage_targets(
         _compute_capture_candidates(data_dir),

@@ -119,7 +119,7 @@ def _row_value(row: dict[str, Any], *keys: str) -> Any:
 
 def _parse_index_daily_row(row: dict[str, Any]) -> IndexCandlePoint:
     date_str = str(_row_value(row, "stck_bsop_date", "bsop_date"))
-    if len(date_str) != 8:
+    if len(date_str) != 8:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise ValueError("stck_bsop_date missing or wrong length")
     return IndexCandlePoint(
         t_ms=_daily_anchor_t_ms(date_str),
@@ -155,9 +155,9 @@ def _is_index_minute_sentinel_row(row: dict[str, Any]) -> bool:
 def _parse_index_minute_row(row: dict[str, Any]) -> IndexCandlePoint:
     date_str = str(_row_value(row, "stck_bsop_date", "bsop_date"))
     hour_str = str(_row_value(row, "stck_cntg_hour", "bsop_hour"))
-    if len(date_str) != 8:
+    if len(date_str) != 8:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise ValueError("stck_bsop_date missing or wrong length")
-    if len(hour_str) < 6:
+    if len(hour_str) < 6:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise ValueError("stck_cntg_hour missing or wrong length")
     hour_str = hour_str[:6]
     dt = datetime(
@@ -237,7 +237,7 @@ def _kis_index_minute_unit_seconds(bucket_seconds: int) -> int:
 
 def _parse_market_investor_daily_row(row: dict[str, Any]) -> InvestorNetPoint:
     date_str = str(_row_value(row, "stck_bsop_date", "bsop_date"))
-    if len(date_str) != 8:
+    if len(date_str) != 8:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise ValueError("stck_bsop_date missing or wrong length")
     foreign = _parse_optional_int(_row_value(row, "frgn_ntby_qty"))
     institution = _parse_optional_int(_row_value(row, "orgn_ntby_qty"))
@@ -384,7 +384,7 @@ class KisEndpointsMixin:
             for row in rows:
                 date_str = row.get("stck_bsop_date") or ""
                 hhmmss = row.get("stck_cntg_hour") or ""
-                if len(date_str) != 8 or len(hhmmss) != 6:
+                if len(date_str) != 8 or len(hhmmss) != 6:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                     # Defensive: malformed row, skip rather than crash the page.
                     continue
                 if date_str != date_yyyymmdd:
@@ -428,7 +428,7 @@ class KisEndpointsMixin:
     # fetch_past_daily_candles (FHKST03010100, inquire-daily-itemchartprice)
     # ------------------------------------------------------------------
 
-    async def fetch_past_daily_candles(
+    async def fetch_past_daily_candles(  # noqa: PLR0912, PLR0915
         self,
         code: str,
         from_yyyymmdd: str,
@@ -482,7 +482,7 @@ class KisEndpointsMixin:
 
             for row in rows:
                 date_str = row.get("stck_bsop_date") or ""
-                if len(date_str) != 8:
+                if len(date_str) != 8:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                     row_key = "malformed:" + json.dumps(row, sort_keys=True)
                     if row_key in seen_keys:
                         continue
@@ -617,7 +617,7 @@ class KisEndpointsMixin:
             page_progress = False
             for row in rows:
                 date_str = str(row.get("stck_bsop_date") or row.get("bsop_date") or "")
-                if len(date_str) != 8:
+                if len(date_str) != 8:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                     violations.append(DailyInvariantViolation(
                         date_yyyymmdd=date_str or "(empty)",
                         reason="malformed_row",
@@ -655,7 +655,7 @@ class KisEndpointsMixin:
                     ))
                     page_progress = True
                     continue
-                if point.high < max(point.open, point.close) or point.low > min(point.open, point.close) or point.high < point.low:
+                if point.high < max(point.open, point.close) or point.low > min(point.open, point.close) or point.high < point.low:  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
                     violations.append(DailyInvariantViolation(
                         date_yyyymmdd=date_str,
                         reason="ohlc_inconsistent",
@@ -766,7 +766,7 @@ class KisEndpointsMixin:
                 sentinel_rows += 1
                 continue
             date_str = str(row.get("stck_bsop_date") or row.get("bsop_date") or "")
-            if len(date_str) != 8:
+            if len(date_str) != 8:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                 violations.append(DailyInvariantViolation(
                     date_yyyymmdd=date_str or "(empty)",
                     reason="malformed_row",
@@ -791,7 +791,7 @@ class KisEndpointsMixin:
                     detail=f"close={point.close}",
                 ))
                 continue
-            if point.high < max(point.open, point.close) or point.low > min(point.open, point.close) or point.high < point.low:
+            if point.high < max(point.open, point.close) or point.low > min(point.open, point.close) or point.high < point.low:  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
                 violations.append(DailyInvariantViolation(
                     date_yyyymmdd=date_str,
                     reason="ohlc_inconsistent",
@@ -863,7 +863,7 @@ class KisEndpointsMixin:
                 rows = []
             for row in rows:
                 row_date = str(row.get("stck_bsop_date") or row.get("bsop_date") or "")
-                if len(row_date) != 8:
+                if len(row_date) != 8:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                     row_key = "malformed:" + json.dumps(row, sort_keys=True)
                     if row_key in seen:
                         continue
@@ -956,7 +956,7 @@ class KisEndpointsMixin:
 
             for row in rows:
                 date_str = row.get("stck_bsop_date") or ""
-                if len(date_str) != 8:
+                if len(date_str) != 8:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                     row_key = "malformed:" + json.dumps(row, sort_keys=True)
                     if row_key in seen:
                         continue

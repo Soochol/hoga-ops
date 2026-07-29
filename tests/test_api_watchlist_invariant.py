@@ -14,7 +14,7 @@ def test_save_document_prunes_orphan_entries(tmp_path):
         folders=[WatchlistFolder(id="f_0000000a", name="A", order=0, member_codes=["000660"])],
         entries=[
             WatchlistEntry(code="000660", name="SK", registered_at_kst_date="20260101", last_success_date=None),
-            WatchlistEntry(code="005930", name="삼성", registered_at_kst_date="20260101", last_success_date=None),  # orphan
+            WatchlistEntry(code="005930", name="삼성", registered_at_kst_date="20260101", last_success_date=None),  # orphan  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         ],
     )
     save_document(tmp_path, doc)
@@ -30,7 +30,7 @@ def test_load_document_does_not_prune_drift(tmp_path):
         "folders": [{"id": "f_0000000a", "name": "A", "order": 0, "member_codes": ["000660"]}],
         "entries": [
             {"code": "000660", "name": "SK", "registered_at_kst_date": "20260101", "last_success_date": None},
-            {"code": "005930", "name": "삼성", "registered_at_kst_date": "20260101", "last_success_date": None},  # orphan
+            {"code": "005930", "name": "삼성", "registered_at_kst_date": "20260101", "last_success_date": None},  # orphan  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         ],
     }), encoding="utf-8")
     doc = load_document(tmp_path)

@@ -189,7 +189,7 @@ class QueueItemState:
         }
 
     def to_wire(self):
-        from hoga.api.models import QueueItem
+        from hoga.api.models import QueueItem  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
         return QueueItem(
             item_id=self.item_id,
             code=self.code,
@@ -240,7 +240,7 @@ _active: dict[str, Any] = {}                            # item_id → QueueItemS
 _done: list[Any] = []
 _inflight_paths: set[tuple[str, str]] = set()           # (code, date) — see spec §11 Q15 Layer 2
 _queue_paused: bool = False
-_fail_streaks: dict[str, int] = {}                      # ADR-0042: per-(Code, Stock-Date) consecutive failed+skipped counter
+_fail_streaks: dict[str, int] = {}                      # ADR-0042: per-(Code, Stock-Date) consecutive failed+skipped counter  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 _MAX_CONCURRENT_DEFAULT = 3
 # Read at import so tests and bare `start_workers()` callers have a value, but
 # this fires BEFORE default_app() runs load_env() — so a .env-only override is
@@ -335,7 +335,7 @@ def _require_data_dir() -> Path:
 
 
 def _require_client_factory() -> Callable[[], object]:
-    assert _client_factory is not None, "captures._client_factory not initialized; call build_router() or set in test fixture"
+    assert _client_factory is not None, "captures._client_factory not initialized; call build_router() or set in test fixture"  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     return _client_factory
 
 
@@ -484,7 +484,7 @@ def _apply_terminal_to_streaks(
 
     Caller is responsible for persisting after mutation.
     """
-    from hoga.api.fail_streak import streak_key
+    from hoga.api.fail_streak import streak_key  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     key = streak_key(code, date)
     if phase == "done":
         if done_complete:
@@ -744,7 +744,9 @@ async def _run_capture_and_parse(
     so earlier tests (Tasks 5/6/9/10) that monkeypatch this name keep working
     — Task 11 backoff is INTERNAL.
     """
-    from hoga.collector.orchestrator import CaptureCancelled
+    from hoga.collector.orchestrator import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        CaptureCancelled,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
     collector = collector or NullTimingCollector()
     if state.cancel_token is None:
         state.cancel_token = CancelToken()
@@ -754,7 +756,7 @@ async def _run_capture_and_parse(
             await _run_capture_inner(state, resume=resume, collector=collector)
             return
         except HogaplayHTTPError as exc:
-            if exc.status_code != 429 or delay is None:
+            if exc.status_code != 429 or delay is None:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                 raise
             last_exc = exc
             collector.record_error("http_429")
@@ -973,7 +975,9 @@ async def _run_item(state: QueueItemState) -> None:
 async def _finalize_item(state: QueueItemState) -> None:
     """Move state into _done, publish finished, wake other workers, emit
     drained if applicable."""
-    from hoga.api.models import CaptureQueueDrainedEvent
+    from hoga.api.models import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        CaptureQueueDrainedEvent,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
 
     # ADR-0042 (amended 2026-06-03) + ADR-0034: ``phase="done"`` only means "worker
     # returned without exception" — it is reachable with ``abort_reason`` set
@@ -986,7 +990,10 @@ async def _finalize_item(state: QueueItemState) -> None:
     # this (code, date); the parser already wrote meta.json before we got here.
     done_complete = False
     if state.phase == "done":
-        from hoga.api.disk_state import DiskState, check_disk_state
+        from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+            DiskState,
+            check_disk_state,
+        )
         try:
             # source="hogaplay": this gates the hogaplay worker's fail_streak
             # reset and Watchlist last_success marker. A COMPLETE kis_live/kis_api
@@ -1157,10 +1164,10 @@ async def cancel_all() -> dict:
     }
 
 
-async def _worker_loop() -> None:
+async def _worker_loop() -> None:  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
     """One of N coroutines. Pulls items off _queue under the lock, runs each,
     finalizes."""
-    global _wakeup  # noqa: PLW0603
+    global _wakeup  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     while True:
         async with _lock:
             if _queue_paused or len(_active) >= _max_concurrent or not _queue:
@@ -1232,7 +1239,7 @@ def start_workers(n: int | None = None) -> list[asyncio.Task]:
     raise "bound to a different event loop" when teardown tries to await
     on the worker tasks still waiting on the old Event.
     """
-    global _wakeup  # noqa: PLW0603
+    global _wakeup  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     _wakeup = asyncio.Event()
     n = n if n is not None else _max_concurrent
     return [asyncio.create_task(_worker_loop(), name=f"capture-worker-{i}") for i in range(n)]
@@ -1287,7 +1294,7 @@ async def stop_workers(workers: list[asyncio.Task]) -> None:
     for w in workers:
         w.cancel()
     for w in workers:
-        try:
+        try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
             await w
         except asyncio.CancelledError:
             pass
@@ -1318,7 +1325,9 @@ def _expand_to_trading_days(start: str, end: str) -> list[str]:
     KIS-backed cache (Task 15). Late import so tests can monkeypatch
     the calendar function source.
     """
-    from hoga.api.calendar import trading_days_in_range
+    from hoga.api.calendar import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        trading_days_in_range,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
     return trading_days_in_range(start, end)
 
 
@@ -1435,7 +1444,7 @@ async def _retry_items(item_ids: list[str]) -> _RetryResult:
     return _RetryResult(enqueued=enqueued, skipped=skipped, dismissed_item_ids=dismissed)
 
 
-async def enqueue_items_core(
+async def enqueue_items_core(  # noqa: PLR0912, PLR0915
     req: EnqueueRequest,
     *,
     data_dir: Path,
@@ -1522,7 +1531,10 @@ async def enqueue_items_core(
         # not racing a concurrent _finalize_item) but BEFORE the Q15/ADR-0033
         # dedupe loop, so a blocked (Code, Stock-Date) never reaches Implicit
         # Retry. This cap is the only user-visible retry limiter.
-        from hoga.api.fail_streak import ATTEMPT_CAP, streak_key
+        from hoga.api.fail_streak import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+            ATTEMPT_CAP,
+            streak_key,
+        )
         unblocked_dates: list[str] = []
         for date in candidate_dates:
             current = _fail_streaks.get(streak_key(req.code, date), 0)
@@ -1688,7 +1700,10 @@ async def coverage_preview_core(
         })
 
     def _classify() -> tuple[int, int, list[MissingStockDate]]:
-        from hoga.api.disk_state import DiskState, check_disk_state  # noqa: PLC0415
+        from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+            DiskState,
+            check_disk_state,
+        )
         have = no_up = 0
         missing: list[MissingStockDate] = []
         for code in req.codes:
@@ -1747,7 +1762,7 @@ async def bulk_enqueue_core(
     )
 
 
-def build_router(
+def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
     *,
     data_dir: Path,
     client_factory: Callable[[], object],
@@ -1819,7 +1834,9 @@ def build_router(
         pattern (line 1344): acquire ``_lock``, mutate, persist, return dict.
         """
         _require_queue_ownership()  # ADR-0094
-        from hoga.api.fail_streak import streak_key
+        from hoga.api.fail_streak import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+            streak_key,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        )
         key = streak_key(code, date)
         async with _lock:
             if key in _fail_streaks:

@@ -125,7 +125,7 @@ class QuoteChangeResolver:
             )
 
         if q.change_pct is not None:
-            if self._adjusted_daily_path is not None and self._adjusted_daily_path.exists():
+            if self._adjusted_daily_path is not None and self._adjusted_daily_path.exists():  # noqa: SIM102 — 중첩 if 가 조건의 의미 단위를 보존
                 if baseline is None:
                     warnings.append("adjusted_baseline_unavailable")
             return QuoteChangeResolution(
@@ -238,7 +238,7 @@ class QuoteChangeResolver:
 
 
 def _max_expected_baseline_age_days(today: dt.date) -> int:
-    if today.weekday() == 6:
+    if today.weekday() == 6:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return 2
     if today.weekday() == 0:
         return 3

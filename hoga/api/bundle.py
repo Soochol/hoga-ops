@@ -156,9 +156,9 @@ def _today_kst_yyyymmdd() -> str:
 def _hhmm_to_hhmmssms(value: int) -> int:
     hh = value // 100
     mm = value % 100
-    if hh < 9 or hh > 15 or mm < 0 or mm > 59:
+    if hh < 9 or hh > 15 or mm < 0 or mm > 59:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise ValueError("broker_late_entry_start_hhmm must be between 900 and 1520")
-    if hh == 15 and mm > 20:
+    if hh == 15 and mm > 20:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise ValueError("broker_late_entry_start_hhmm must be between 900 and 1520")
     return hh * 10_000_000 + mm * 100_000
 
@@ -203,7 +203,7 @@ def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiC
     Raises ValueError if bucket_ms is not in ALLOWED_TIMEFRAME_MS (ADR-0014).
     """
     validate_bucket_ms(bucket_ms)
-    if bucket_ms == 60_000 or not candles:
+    if bucket_ms == 60_000 or not candles:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return list(candles)
 
     out: list[ApiCandle] = []
@@ -868,7 +868,7 @@ def _without_all_peak_rankings(peak: _PeakT) -> _PeakT:
     return peak.model_copy(update={"all_peaks": [], "all_max_peaks": []})
 
 
-def build_ask_bid_peak_slices(
+def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
     engine: QueryEngine,
     *,
     code: str,
@@ -1354,7 +1354,7 @@ def build_program_trade_series(engine: QueryEngine, *, code: str, dates: list[st
     return ProgramTradeSeries(points=points)
 
 
-def build_range_bundle(
+def build_range_bundle(  # noqa: PLR0912, PLR0915
     engine: QueryEngine,
     *,
     code: str,

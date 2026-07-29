@@ -220,7 +220,7 @@ def is_significant_gap_event(event: Mapping[str, int | str], *, poll_interval_ms
 
 def _hhmmss_to_ms(value: int | str | None) -> int | None:
     text = str(value or "")
-    if len(text) != 6 or not text.isdigit():
+    if len(text) != 6 or not text.isdigit():  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return None
     return (int(text[:2]) * 3600 + int(text[2:4]) * 60 + int(text[4:6])) * 1000
 

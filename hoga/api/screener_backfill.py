@@ -149,11 +149,11 @@ async def reconcile_raw(
         for b in bars:
             key = (b.code, b.date)
             if key in disk_keys:
-                if abs(disk_close[key] - b.close) < 1e-6:
+                if abs(disk_close[key] - b.close) < 1e-6:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                     matches += 1
                 else:
                     mismatches += 1
-                    if len(sample) < 20:
+                    if len(sample) < 20:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                         sample.append((b.code, b.date.strftime("%Y-%m-%d")))
                     # overwrite recent days: KIS is authoritative for intraday-stale raw
                     if recent_cutoff is not None and b.date >= recent_cutoff:
@@ -190,7 +190,7 @@ def build_impact_report(sdir: Path, *, old_path: Path) -> dict:
     new = pl.read_parquet(sdir / "daily_adjusted.parquet").select(["code", "date", "close"])
     old = pl.read_parquet(old_path).select(["code", "date", "close"]).rename({"close": "old_close"})
     joined = new.join(old, on=["code", "date"], how="inner")
-    changed = joined.filter((pl.col("close") - pl.col("old_close")).abs() > 1e-6)
+    changed = joined.filter((pl.col("close") - pl.col("old_close")).abs() > 1e-6)  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
     changed_codes = sorted(changed["code"].unique().to_list())
     report = {
         "rows_compared": joined.height,
@@ -237,11 +237,13 @@ async def run_backfill_with(sdir: Path, *, fetch_adj: FetchAdj, fetch_raw: Fetch
 
 async def run_backfill(data_dir: Path) -> dict:
     """프로덕션 진입: KIS 클라이언트로 fetch_adj/fetch_raw 를 묶어 run_backfill_with 실행."""
-    from datetime import datetime
+    from datetime import datetime  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
-    from hoga.live import kis_access
-    from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
-    from hoga.live.kis_client import KIS_KST
+    from hoga.live import kis_access  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    from hoga.live.kis_capacity_runtime import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        ensure_kis_capacity_scheduler,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
+    from hoga.live.kis_client import KIS_KST  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     sdir = data_dir / "screener"
     # 전체 백필도 배경 배치이므로 Capacity Scheduler에 맡긴다. creds 게이트만 먼저

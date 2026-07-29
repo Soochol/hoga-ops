@@ -50,11 +50,11 @@ def classify_inventory_event(
         return None
     parts = rel.parts
 
-    if kind == "deleted" and is_directory and len(parts) == 2:
+    if kind == "deleted" and is_directory and len(parts) == 2:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         date, code = parts
         return {"type": "inventory_removed", "code": code, "date": date}
 
-    if kind in ("created", "modified") and not is_directory and len(parts) == 3:
+    if kind in ("created", "modified") and not is_directory and len(parts) == 3:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         date, code, fname = parts
         if fname == "meta.json":
             return {"type": "inventory_added", "code": code, "date": date}

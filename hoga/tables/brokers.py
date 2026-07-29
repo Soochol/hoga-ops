@@ -124,7 +124,9 @@ def write_parquet(rows: Iterable[BrokerRow], path: Path) -> None:
         "qty_today": pa.array([r.qty_today for r in sorted_rows], type=pa.int32()),
         "qty_delta": pa.array([r.qty_delta for r in sorted_rows], type=pa.int32()),
     }
-    from hoga.api._atomic_write import atomic_write_parquet_table
+    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        atomic_write_parquet_table,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
@@ -147,7 +149,9 @@ def query_day_series(
     for gaps when the broker fell out of both top-5 lists (the frontend
     renders such gaps with a dashed line; see ADR-0023).
     """
-    from hoga.api.models import BrokerSeriesEntry  # local: avoid cycle
+    from hoga.api.models import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        BrokerSeriesEntry,  # local: avoid cycle  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
 
     by_broker = _query_canonical_series_points(con, path=path)
     if not by_broker:
@@ -187,8 +191,10 @@ def _query_canonical_series_points(
     path: Path,
 ) -> dict[str, list[BrokerSeriesPoint]]:
     """Return live broker-series points after canonical alias collapse."""
-    from hoga.api.models import BrokerSeriesPoint  # local: avoid cycle
-    from hoga.broker_names import canonical
+    from hoga.api.models import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        BrokerSeriesPoint,  # local: avoid cycle  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
+    from hoga.broker_names import canonical  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     rows = con.execute(
         """
@@ -237,7 +243,7 @@ def query_late_entry_events(
     ``threshold_ms`` and returned ``t_ms`` use the parquet-native HHMMSSmmm
     encoding. The API layer converts them to Unix ms.
     """
-    from hoga.broker_names import canonical
+    from hoga.broker_names import canonical  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     rows = con.execute(
         """
@@ -313,9 +319,9 @@ def query_cumulative_details_at(
     The result mirrors Cursor Sidebar ordering: select and order brokers by
     final full-file net, then project each ordered broker's net at the cursor.
     """
-    from bisect import bisect_right
+    from bisect import bisect_right  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
-    from hoga.broker_names import canonical
+    from hoga.broker_names import canonical  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     if not t_values:
         return {}

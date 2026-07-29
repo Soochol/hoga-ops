@@ -185,7 +185,7 @@ async def test_watchdog_rebuilds_dead_conn():
     # 계정 0의 ws_task를 죽인다(킥 정지 모의).
     conn = mgr._conns[0]
     conn.ws_task.cancel()
-    try:
+    try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
         await conn.ws_task
     except asyncio.CancelledError:
         pass

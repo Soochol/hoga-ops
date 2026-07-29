@@ -129,7 +129,7 @@ async def _probe_endpoint(
                 **_summarize_rows(rows),
             }
             pages.append(page)
-            if response.status_code != 200 or body.get("rt_cd") != "0":
+            if response.status_code != 200 or body.get("rt_cd") != "0":  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                 break
             if response_tr_cont in continuation_values:
                 tr_cont = "N"

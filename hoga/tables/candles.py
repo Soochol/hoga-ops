@@ -89,7 +89,9 @@ def write_parquet(candles: Iterable[Candle], path: Path) -> None:
         "vol_a": pa.array([c.vol_a for c in rows], type=pa.int32()),
         "vol_b": pa.array([c.vol_b for c in rows], type=pa.int32()),
     }
-    from hoga.api._atomic_write import atomic_write_parquet_table
+    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        atomic_write_parquet_table,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
 
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 

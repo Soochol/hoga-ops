@@ -74,18 +74,18 @@ def _cancel_after(token: CancelToken, seconds: float) -> threading.Timer:
 def _summarize_profile(profile_path: Path) -> dict:
     if not profile_path.exists():
         return {"iters": 0}
-    lines = [json.loads(l) for l in profile_path.read_text().splitlines() if l]
+    lines = [json.loads(l) for l in profile_path.read_text().splitlines() if l]  # noqa: E741 — 도메인 관례 변수(OHLC 의 l = low 등)
     if not lines:
         return {"iters": 0}
-    http = sorted(l["http_ms"] for l in lines)
+    http = sorted(l["http_ms"] for l in lines)  # noqa: E741 — 도메인 관례 변수(OHLC 의 l = low 등)
     return {
         "iters": len(lines),
         "pages": lines[-1]["page_idx"],
-        "cap_hits": sum(1 for l in lines if l["cap_hit"]),
-        "cap_hit_rate": sum(1 for l in lines if l["cap_hit"]) / len(lines),
+        "cap_hits": sum(1 for l in lines if l["cap_hit"]),  # noqa: E741 — 도메인 관례 변수(OHLC 의 l = low 등)
+        "cap_hit_rate": sum(1 for l in lines if l["cap_hit"]) / len(lines),  # noqa: E741 — 도메인 관례 변수(OHLC 의 l = low 등)
         "http_ms_p50": http[len(http) // 2],
         "http_ms_p95": http[int(len(http) * 0.95)],
-        "body_len_p50": sorted(l["body_len"] for l in lines)[len(lines) // 2],
+        "body_len_p50": sorted(l["body_len"] for l in lines)[len(lines) // 2],  # noqa: E741 — 도메인 관례 변수(OHLC 의 l = low 등)
     }
 
 
@@ -149,7 +149,7 @@ def main() -> None:
                 results.append(r)
                 OUT.parent.mkdir(parents=True, exist_ok=True)
                 OUT.write_text(json.dumps(results, indent=2))
-                if r["outcome"].startswith("http_4") or r["outcome"].startswith("http_5") or r["outcome"] == "cookie_expired":
+                if r["outcome"].startswith("http_4") or r["outcome"].startswith("http_5") or r["outcome"] == "cookie_expired":  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
                     print("ABORT: throttle/block signal detected")
                     return
                 time.sleep(COOLDOWN_S)

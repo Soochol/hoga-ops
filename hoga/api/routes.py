@@ -141,7 +141,7 @@ def _blocked_manifest_stock_date(
     )
 
 
-def build_router(engine: QueryEngine) -> APIRouter:
+def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
     router = APIRouter(prefix="/api")
 
     @router.get("/stock-dates", response_model=list[StockDateModel])
@@ -150,8 +150,11 @@ def build_router(engine: QueryEngine) -> APIRouter:
         # Read the in-memory _fail_streaks dict once (no I/O); model_copy
         # produces a non-cached instance so QueryEngine's mtime-cached
         # StockDate objects keep fail_streak=0 internally.
-        from hoga.api import captures
-        from hoga.api.fail_streak import ATTEMPT_CAP, streak_key
+        from hoga.api import captures  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        from hoga.api.fail_streak import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+            ATTEMPT_CAP,
+            streak_key,
+        )
         rows = engine.list_stock_dates()
         if not captures._fail_streaks:
             return rows
@@ -376,7 +379,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             _cursor_to_native(from_date, volume_distribution_cutoff_ms)
         hh = broker_late_entry_start_hhmm // 100
         mm = broker_late_entry_start_hhmm % 100
-        if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):
+        if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             raise HTTPException(
                 400,
                 "broker_late_entry_start_hhmm must be between 900 and 1520",

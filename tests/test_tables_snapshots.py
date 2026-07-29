@@ -992,7 +992,7 @@ def test_query_bucket_representative_excludes_auction_snapshot(tmp_path: Path) -
     )
     assert snap is not None
     assert snap.ts_ms == 151_958_000  # last continuous, NOT the 15:20:58 auction
-    assert sum(1 for l in snap.ask if l.qty > 0) == 4  # 10-level book, not the 3-level auction
+    assert sum(1 for l in snap.ask if l.qty > 0) == 4  # 10-level book, not the 3-level auction  # noqa: E741 — 도메인 관례 변수(OHLC 의 l = low 등)
 
 
 def test_query_bucket_representative_fully_auction_returns_none(tmp_path: Path) -> None:

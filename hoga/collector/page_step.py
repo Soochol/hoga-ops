@@ -17,11 +17,11 @@ DEFAULT_PAGE_STEP_MS = 60000
 MIN_PAGE_STEP_MS = 1000
 DATA_WINDOW_END_MS = 160000000
 TERMINATION_EMPTY_PAGES = 3
-# see spec §8.3 v2 — guards against hogaplay response freeze (raised from initial 100 after Phase 0 baseline showed normal captures reach stagnant streaks up to 130; ×1.5 margin)
+# see spec §8.3 v2 — guards against hogaplay response freeze (raised from initial 100 after Phase 0 baseline showed normal captures reach stagnant streaks up to 130; ×1.5 margin)  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 MAX_STAGNANT_PAGES = 200
 
 
-class StopReason(str, Enum):
+class StopReason(str, Enum):  # noqa: UP042 — StrEnum 전환은 str() 동작이 바뀌어 wire format 위험
     """Why the page step loop terminated.
 
     EMPTY_STREAK is the normal end (t past Data Window end + N consecutive empty

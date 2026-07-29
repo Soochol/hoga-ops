@@ -1017,14 +1017,14 @@ class SellTotalRenewalSettings(BaseModel):
     def _valid_hhmm(cls, value: int) -> int:
         hh = value // 100
         mm = value % 100
-        if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):
+        if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             raise ValueError("start_hhmm must be between 0900 and 1520 KST")
         return value
 
     @field_validator("threshold_pct")
     @classmethod
     def _valid_threshold(cls, value: int) -> int:
-        if value < 50 or value > 150:
+        if value < 50 or value > 150:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             raise ValueError("threshold_pct must be between 50 and 150")
         return value
 
@@ -1387,7 +1387,7 @@ class BidDepthNewHighLeaf(BaseModel):
     params: DepthPeakParams
 
 ConditionLeaf = Annotated[
-    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf,
+    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 

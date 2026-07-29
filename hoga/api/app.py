@@ -78,7 +78,7 @@ async def _repair_minute_fetch(code: str, date_s: str) -> list[KisCandle]:
     )
 
 
-def create_app(data_dir: Path) -> FastAPI:
+def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
     engine = QueryEngine(data_dir)
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
     configure_signal_alert_monitor(data_dir, bus.publish)

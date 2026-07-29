@@ -357,7 +357,7 @@ from hoga.live.kis_client import (
 )
 
 
-def _daily_row(date_yyyymmdd: str, *, o=100, h=110, l=95, c=105, v=1000) -> dict:
+def _daily_row(date_yyyymmdd: str, *, o=100, h=110, l=95, c=105, v=1000) -> dict:  # noqa: E741 — 도메인 관례 변수(OHLC 의 l = low 등)
     return {
         "stck_bsop_date": date_yyyymmdd,
         "stck_oprc": str(o),

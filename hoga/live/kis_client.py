@@ -108,7 +108,7 @@ def rate_limit_bounces_total() -> int:
 
 def reset_bounces_for_tests() -> None:
     """테스트 격리 — 전역 바운스 카운터를 0으로 되돌린다."""
-    global _rate_limit_bounces
+    global _rate_limit_bounces  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     _rate_limit_bounces = 0
 
 
@@ -216,7 +216,7 @@ class _TokenBucket:
                     if self._tokens >= 1.0 and not yield_to_fg:
                         self._tokens -= 1.0
                         return
-                    if self._tokens >= 1.0:
+                    if self._tokens >= 1.0:  # noqa: SIM108 — 삼항이 오히려 읽기 어려운 자리
                         # 토큰은 있으나 foreground에 양보(데드라인 전) → 짧게 재확인.
                         wait = self._yield_s
                     else:
@@ -334,7 +334,7 @@ class KisClient(KisEndpointsMixin):
                     path, tr_id, params, retry=retry, foreground=foreground
                 )
             except KisRateLimitError:
-                global _rate_limit_bounces
+                global _rate_limit_bounces  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
                 _rate_limit_bounces += 1
                 if attempt + 1 >= attempts:
                     raise

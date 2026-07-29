@@ -143,7 +143,9 @@ def write_parquet(snapshots: Iterable[Orderbook], path: Path) -> None:
             )
     for total in _TOTAL_COLS:
         cols[total] = pa.array([getattr(o, total) for o in rows], type=_TOTAL_TYPE)
-    from hoga.api._atomic_write import atomic_write_parquet_table
+    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        atomic_write_parquet_table,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
@@ -157,7 +159,9 @@ def write_parquet_frame(df: pl.DataFrame, path: Path) -> None:
         .to_arrow()
         .cast(PARQUET_SCHEMA)
     )
-    from hoga.api._atomic_write import atomic_write_parquet_table
+    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        atomic_write_parquet_table,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    )
     atomic_write_parquet_table(path, table)
 
 

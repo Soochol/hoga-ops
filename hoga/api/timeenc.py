@@ -108,7 +108,7 @@ def unix_ms_to_hhmmssms(date: str, unix_ms: int) -> int:
     """
     base = _date_unix_ms_at_kst_midnight(date)
     delta_ms = unix_ms - base
-    if not 0 <= delta_ms < 86_400_000:
+    if not 0 <= delta_ms < 86_400_000:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise ValueError(f"Unix ms {unix_ms} is not within Stock-Date {date}")
     h, rem = divmod(delta_ms, 3_600_000)
     m, rem = divmod(rem, 60_000)

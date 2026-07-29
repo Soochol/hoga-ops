@@ -157,7 +157,7 @@ def _filter_violations(
     kept: list[DailyInvariantViolation] = []
     for violation in violations:
         date_s = violation.date_yyyymmdd
-        if len(date_s) != 8:
+        if len(date_s) != 8:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             continue
         violation_day = _parse_yyyymmdd(date_s)
         if frm <= violation_day <= to:

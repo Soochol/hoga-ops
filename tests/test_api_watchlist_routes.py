@@ -477,7 +477,7 @@ def test_order_change_endpoints_refresh_live_stream(
     with patch(f"hoga.api.watchlist_routes.{mutator}", new=AsyncMock()), \
          patch("hoga.api.watchlist_routes.refresh_live_stream", new=AsyncMock()) as ref:
         client = _order_change_app(tmp_path)
-        if method == "delete":
+        if method == "delete":  # noqa: SIM108 — 삼항이 오히려 읽기 어려운 자리
             r = client.delete(path)
         else:
             r = getattr(client, method)(path, json=payload)

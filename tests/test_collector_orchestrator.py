@@ -369,7 +369,7 @@ def test_collect_backs_off_rate_limit_on_429(tmp_path: Path) -> None:
 
     fake = ThrottlingFake()
     # rate_limit_s starts at 0 so timing is dominated by backoff.
-    result = collect_stock_date(
+    result = collect_stock_date(  # noqa: F841 — 의도적 미사용(언패킹·시그니처 유지)
         client=fake, code="003490", date="20260519",
         data_dir=tmp_path, rate_limit_s=0,
     )

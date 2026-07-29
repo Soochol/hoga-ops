@@ -182,7 +182,7 @@ def classify_from_meta(meta: Mapping[str, object]) -> Classification:
     identical_confirmed = (
         isinstance(identical, int)
         and not isinstance(identical, bool)
-        and identical >= 2
+        and identical >= 2  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
     )
     edge_confirmed = _gap_touches_session_edge(
         meta.get("gap_ranges"),

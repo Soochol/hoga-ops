@@ -73,7 +73,7 @@ class ProgramTradeCollector:
         self.status.running = False
         if task is not None and not task.done():
             task.cancel()
-            try:
+            try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
                 await task
             except asyncio.CancelledError:
                 pass

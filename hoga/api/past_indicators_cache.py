@@ -321,7 +321,7 @@ class PastIndicatorsCache:
     ) -> Path:
         return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{suffix}.json"
 
-    def _peak_path(self, code: str, date: str, source: str, kind: Literal["ask_peak", "bid_peak"], bucket_ms: int) -> Path:
+    def _peak_path(self, code: str, date: str, source: str, kind: Literal["ask_peak", "bid_peak"], bucket_ms: int) -> Path:  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         return self._model_path(code, date, source, f"{kind}.{bucket_ms}")
 
     def _poc_path(

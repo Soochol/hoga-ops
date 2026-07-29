@@ -60,7 +60,7 @@ def main() -> int:
         return 1
 
     # local token cache to avoid hitting KIS's "1 issuance per minute" gate
-    from datetime import datetime
+    from datetime import datetime  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     token_cache = Path.home() / ".local/share/hoga-ops/kis-token-capture.json"
     token: str | None = None
     if token_cache.exists():
@@ -74,16 +74,16 @@ def main() -> int:
 
     with httpx.Client(base_url=REAL_BASE, timeout=15.0) as client:
         if token is None:
-            import time
+            import time  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
             for attempt in range(3):
                 print(f"[1/6] POST /oauth2/tokenP (attempt {attempt + 1}/3)")
                 r = client.post(
                     "/oauth2/tokenP",
                     json={"grant_type": "client_credentials", "appkey": app_key, "appsecret": app_secret},
                 )
-                if r.status_code == 200:
+                if r.status_code == 200:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                     break
-                if r.status_code == 403:
+                if r.status_code == 403:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                     print("  403 (likely 1-per-minute rate-limit); waiting 70s before retry...")
                     time.sleep(70)
                     continue
@@ -93,7 +93,7 @@ def main() -> int:
             token = token_body["access_token"]
             _save("token", _redact(token_body))
             # local cache (not committed — gitignored via ~/.local/share)
-            from datetime import timedelta
+            from datetime import timedelta  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
             token_cache.parent.mkdir(parents=True, exist_ok=True)
             expiry = datetime.now() + timedelta(seconds=int(token_body.get("expires_in", 86400)) - 600)
             token_cache.write_text(json.dumps({"access_token": token, "expires_at_iso": expiry.isoformat()}))
@@ -153,7 +153,11 @@ def main() -> int:
         _save(f"candle_1m_{args.code}", r.json())
 
         # 6. 일봉 — requires FID_INPUT_DATE_1 / FID_INPUT_DATE_2
-        from datetime import datetime, timedelta, timezone
+        from datetime import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+            datetime,
+            timedelta,
+            timezone,
+        )
         kst_now = datetime.now(timezone(timedelta(hours=9)))
         today = kst_now.strftime("%Y%m%d")
         sixty_days_ago = (kst_now - timedelta(days=90)).strftime("%Y%m%d")
@@ -190,7 +194,7 @@ def main() -> int:
             params={**params, "fid_hour_cls_code": "1"},
         )
         # 시간외 endpoint는 15:30 이후가 아니면 빈 결과 — non-200도 허용
-        if r.status_code == 200:
+        if r.status_code == 200:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             _save(f"overtime_conclusion_{args.code}", r.json())
         else:
             print(f"  skipped (HTTP {r.status_code})")
@@ -202,7 +206,7 @@ def main() -> int:
             headers={**base_headers, "tr_id": "FHPST02300400"},
             params=params,
         )
-        if r.status_code == 200:
+        if r.status_code == 200:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             _save(f"overtime_orderbook_{args.code}", r.json())
         else:
             print(f"  skipped (HTTP {r.status_code})")

@@ -243,7 +243,7 @@ def test_live_package_asserts_single_worker() -> None:
         "sys.modules.pop('hoga.live', None); "
         "import hoga.live"
     )
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: PLW1510 — 반환코드를 직접 검사하는 호출부
         [sys.executable, "-c", code],
         capture_output=True,
         text=True,

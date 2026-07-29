@@ -12,8 +12,8 @@ def _seed(tmp_path: Path, rows: list[tuple], stocks: list[tuple]) -> tuple[Path,
     # rows: (code, 'YYYY-MM-DD', open, high, low, close, volume); stocks: (code,name,market,is_etf,is_halted)
     adj, stk = tmp_path / "adj.parquet", tmp_path / "stk.parquet"
     con = duckdb.connect(":memory:")
-    con.execute("CREATE TABLE d(code VARCHAR, date DATE, open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT)")
-    con.executemany("INSERT INTO d VALUES (?,?,?,?,?,?,?)", [(c, dt.date.fromisoformat(da), o, h, l, cl, v) for (c, da, o, h, l, cl, v) in rows])
+    con.execute("CREATE TABLE d(code VARCHAR, date DATE, open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT)")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    con.executemany("INSERT INTO d VALUES (?,?,?,?,?,?,?)", [(c, dt.date.fromisoformat(da), o, h, l, cl, v) for (c, da, o, h, l, cl, v) in rows])  # noqa: E501, E741
     con.execute(f"COPY d TO '{adj}' (FORMAT parquet)")
     con.execute("CREATE TABLE s(code VARCHAR, name VARCHAR, market VARCHAR, is_etf BOOLEAN, is_halted BOOLEAN)")
     con.executemany("INSERT INTO s VALUES (?,?,?,?,?)", stocks)
@@ -256,7 +256,7 @@ def test_ma_uses_selected_price_source(tmp_path):
     high_leaf = MaLeaf(id="m2", params=MaParams(period=3, relation="above", source="high"))
 
     assert screener_scan.run_scan(adj, stk, conditions=[close_leaf], universe=ScreenerUniverse()) == []
-    assert [r.code for r in screener_scan.run_scan(adj, stk, conditions=[high_leaf], universe=ScreenerUniverse())] == ["000111"]
+    assert [r.code for r in screener_scan.run_scan(adj, stk, conditions=[high_leaf], universe=ScreenerUniverse())] == ["000111"]  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
 
 from hoga.api.models import HighOffPeakLeaf, HighOffPeakParams
@@ -459,8 +459,8 @@ def test_new_high_today_wc_window_guard(tmp_path):
 
 def test_new_high_vol_today_latest_is_volume_peak(tmp_path):
     # A: 거래량이 오늘 최고; B: 거래량이 과거에 최고, 오늘은 최저.
-    a = [("000111", f"2026-05-{d:02d}", 0, 1, 0, 1, vol) for d, vol in zip(range(10, 14), [10, 20, 30, 40], strict=True)]
-    b = [("000222", f"2026-05-{d:02d}", 0, 1, 0, 1, vol) for d, vol in zip(range(10, 14), [40, 30, 20, 10], strict=True)]
+    a = [("000111", f"2026-05-{d:02d}", 0, 1, 0, 1, vol) for d, vol in zip(range(10, 14), [10, 20, 30, 40], strict=True)]  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    b = [("000222", f"2026-05-{d:02d}", 0, 1, 0, 1, vol) for d, vol in zip(range(10, 14), [40, 30, 20, 10], strict=True)]  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     adj, stk = _seed(tmp_path, rows=a + b,
         stocks=[("000111","a","KOSPI",False,False),("000222","b","KOSPI",False,False)])
     leaf = NewHighVolTodayLeaf(id="v", params=PeriodParams(period=4))

@@ -275,7 +275,7 @@ class KisCapacityScheduler:
                 )
             except KisNoAccountAvailable:
                 if last_rate_limit is not None:
-                    raise last_rate_limit
+                    raise last_rate_limit  # noqa: B904 — 원인 체인이 노이즈가 되는 경계
                 raise
             if attempt > 0:
                 self._rate_limit_failovers += 1

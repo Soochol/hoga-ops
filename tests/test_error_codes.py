@@ -50,5 +50,5 @@ def test_exception_to_error_code_returns_upstream_for_cookie() -> None:
     from hoga.config import CookieMissingError
 
     assert _exception_to_error_code(CookieMissingError("no cookie")) == UpstreamCode.COOKIE_MISSING
-    assert _exception_to_error_code(CookieExpiredError("cookie expired", status_code=401)) == UpstreamCode.COOKIE_EXPIRED
-    assert _exception_to_error_code(HogaplayHTTPError("server error", status_code=500)) == UpstreamCode.HOGAPLAY_HTTP_ERROR
+    assert _exception_to_error_code(CookieExpiredError("cookie expired", status_code=401)) == UpstreamCode.COOKIE_EXPIRED  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    assert _exception_to_error_code(HogaplayHTTPError("server error", status_code=500)) == UpstreamCode.HOGAPLAY_HTTP_ERROR  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)

@@ -109,7 +109,7 @@ def load(data_dir: Path) -> pl.DataFrame:
 
 
 def is_yyyymmdd(name: str) -> bool:
-    if len(name) != 8 or not name.isdigit():
+    if len(name) != 8 or not name.isdigit():  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return False
     try:
         dt.datetime.strptime(name, "%Y%m%d")
@@ -118,7 +118,7 @@ def is_yyyymmdd(name: str) -> bool:
     return True
 
 
-def sweep(
+def sweep(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
     data_dir: Path,
     *,
     codes: set[str] | None = None,

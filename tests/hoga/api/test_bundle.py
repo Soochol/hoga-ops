@@ -13,7 +13,7 @@ from hoga.api.bundle import (
 from hoga.tables.candles import ApiCandle
 
 
-def _c(ts_ms: int, o: int, h: int, l: int, c: int, va: int = 0, vb: int = 0) -> ApiCandle:
+def _c(ts_ms: int, o: int, h: int, l: int, c: int, va: int = 0, vb: int = 0) -> ApiCandle:  # noqa: E741 — 도메인 관례 변수(OHLC 의 l = low 등)
     """KRX prices are integer-won (see hoga/tables/candles.py:ApiCandle)."""
     return ApiCandle(ts_ms=ts_ms, open=o, close=c, high=h, low=l, vol_a=va, vol_b=vb)
 
@@ -141,7 +141,7 @@ def test_build_range_bundle_single_day_yields_one_segment():
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=60_000, mode="sidecar")
+        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=60_000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
     assert len(rb.segments) == 1
     assert rb.segments[0].date == "20260512"
@@ -161,7 +161,7 @@ def test_build_range_bundle_multi_day_concatenates_per_segment_lists():
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260513", bucket_ms=60_000, mode="sidecar")
+        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260513", bucket_ms=60_000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
     assert len(rb.segments) == 2
     assert [s.date for s in rb.segments] == ["20260512", "20260513"]
@@ -580,7 +580,7 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
                 gap_risk=False,
             )
         ])
-        program_builder = stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=program))
+        program_builder = stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=program))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(ask, bid)))
         stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[broker]))
         stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=poc))
@@ -642,8 +642,8 @@ def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_p
             )
         )
         stack.enter_context(patch.object(bundle_mod, "build_volume_distribution_slice", return_value=profile))
-        ask_bid_builder = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(None, None)))
-        broker_builder = stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[]))
+        ask_bid_builder = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(None, None)))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+        broker_builder = stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[]))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         poc_builder = stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None))
 
         rb = build_range_bundle(
@@ -855,9 +855,9 @@ def test_build_range_bundle_trade_source_fallback_skips_kis_api(tmp_path):
         stack.enter_context(patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs))
         stack.enter_context(patch.object(bundle_mod, "build_ask_peak_slice", return_value=None))
         stack.enter_context(patch.object(bundle_mod, "build_bid_peak_slice", return_value=None))
-        stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=bundle_mod.ProgramTradeSeries(points=[])))
+        stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=bundle_mod.ProgramTradeSeries(points=[])))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         poc_builder = stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None))
-        dist_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_distribution_slice", return_value=profile))
+        dist_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_distribution_slice", return_value=profile))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
         rb = build_range_bundle(
             engine,
@@ -1074,7 +1074,7 @@ def test_build_range_bundle_rejects_from_gt_to():
 
     mock_engine = MagicMock()
     with pytest.raises(HTTPException) as exc:
-        build_range_bundle(mock_engine, code="005930", from_date="20260520", to_date="20260512", bucket_ms=60_000, mode="sidecar")
+        build_range_bundle(mock_engine, code="005930", from_date="20260520", to_date="20260512", bucket_ms=60_000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     assert exc.value.status_code == 400
 
 
@@ -1103,7 +1103,7 @@ def test_build_range_bundle_rejects_invalid_bucket_ms():
 
     mock_engine = MagicMock()
     with pytest.raises(ValueError, match="bucket_ms"):
-        build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=42_000, mode="sidecar")
+        build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=42_000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
 
 # --- ADR-0020 / Invariants ---
@@ -1325,7 +1325,7 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000, mode="sidecar")
+        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
     assert len(bundle.ask_peaks) == 1
     p = bundle.ask_peaks[0]
@@ -1508,7 +1508,7 @@ def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monk
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000, mode="sidecar")
+        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
     # 과거일도 그날 항목이 ask_peaks에 들어간다(거래일별).
     assert len(bundle.ask_peaks) == 1
@@ -1553,7 +1553,7 @@ def test_build_range_bundle_ask_peaks_per_day(monkeypatch, tmp_path) -> None:
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        bundle = build_range_bundle(eng, code="005930", from_date="20260610", to_date="20260611", bucket_ms=60000, mode="sidecar")
+        bundle = build_range_bundle(eng, code="005930", from_date="20260610", to_date="20260611", bucket_ms=60000, mode="sidecar")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
     # 거래일별: 두 날 모두 각자의 최대벽이 ask_peaks에 — 06-10=9000@30000, 06-11=3000@28000.
     by_date = {p.date: p for p in bundle.ask_peaks}

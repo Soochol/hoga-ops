@@ -160,7 +160,7 @@ class KisTokenProvider:
                 "appsecret": self._creds.app_secret,
             },
         )
-        if resp.status_code != 200:
+        if resp.status_code != 200:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             raise KisAuthError(
                 f"token issue failed: HTTP {resp.status_code} {resp.text[:200]}"
             )

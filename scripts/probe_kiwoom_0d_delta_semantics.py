@@ -58,7 +58,7 @@ async def main() -> int:
         return 2
     token = await asyncio.to_thread(prov.get_token)
 
-    import websockets
+    import websockets  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     frames: list[dict] = []
     async with websockets.connect(WS_URL_REAL, ping_interval=None, max_size=None) as ws:
@@ -90,7 +90,7 @@ async def main() -> int:
             pass
 
     print(f"프레임 {len(frames)}건 수신")
-    if len(frames) < 2:
+    if len(frames) < 2:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         print("프레임 부족 — 장 시간/종목 확인")
         return 4
 
@@ -121,7 +121,7 @@ async def main() -> int:
                 stats["price_ok"] += 1
             else:
                 stats["neither"] += 1
-                if shifted and len(examples) < 3:
+                if shifted and len(examples) < 3:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                     examples.append(
                         f"{label} 사다리이동={shifted}\n  prev_p={pp}\n  cur_p ={cp}\n"
                         f"  prev_q={pq}\n  cur_q ={cq}\n  수신증감={cd}\n"

@@ -43,7 +43,7 @@ def main() -> None:
     print("| rate | step | pages/90s | cap_hit | http_p95 | body_p50 | safe |")
     print("|---|---|---|---|---|---|---|")
     for r in rows:
-        print(f"| {r['rate_s']} | {r['step_ms']} | {r['avg_pages_per_90s']} | {r['avg_cap_hit_rate']} | {r['avg_http_ms_p95']} | {r['avg_body_len_p50']} | {r['safe_runs']}/{r['total_runs']} |")
+        print(f"| {r['rate_s']} | {r['step_ms']} | {r['avg_pages_per_90s']} | {r['avg_cap_hit_rate']} | {r['avg_http_ms_p95']} | {r['avg_body_len_p50']} | {r['safe_runs']}/{r['total_runs']} |")  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
 
 
 if __name__ == "__main__":

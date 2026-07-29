@@ -240,7 +240,7 @@ async def test_get_all_reason_cleared_on_success(
     async def _ok() -> list[SymbolHit]:
         return [SymbolHit(code="005930", name="삼성전자", market="KOSPI",
                           captured_count=0,
-                          captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0})]
+                          captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0})]  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _ok)
 
     path = tmp_path / "sm.json"
@@ -311,7 +311,7 @@ def test_symbol_cache_state_factories_enforce_invariants() -> None:
     assert unavailable.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
 
     # Frozen — immutable after construction.
-    with pytest.raises(Exception):  # dataclasses.FrozenInstanceError
+    with pytest.raises(Exception):  # dataclasses.FrozenInstanceError  # noqa: B017 — 광범위 예외 자체가 검증 대상
         stale.reason = None  # type: ignore[misc]
 
 
@@ -426,7 +426,7 @@ def test_atomic_write_rollback_on_replace_failure(tmp_path, monkeypatch):
         raise OSError("simulated replace failure")
 
     monkeypatch.setattr("os.replace", fail_replace)
-    try:
+    try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
         symbols_module._write_to_disk(path, [_make_hit("000660", "신규")], fetched_at_ms=2)
     except OSError:
         pass

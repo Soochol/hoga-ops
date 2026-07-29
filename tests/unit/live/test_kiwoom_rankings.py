@@ -39,13 +39,13 @@ GOLDEN_SURGE = {
 GOLDEN_VOLUME = {
     "return_code": 0,
     "tdy_trde_qty_upper": [
-        {"stk_cd": "137310", "stk_nm": "에스디바이오센서", "cur_prc": "-11840", "flu_rt": "-18.32", "trde_qty": "98420000"},
+        {"stk_cd": "137310", "stk_nm": "에스디바이오센서", "cur_prc": "-11840", "flu_rt": "-18.32", "trde_qty": "98420000"},  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     ],
 }
 GOLDEN_VALUE = {
     "return_code": 0,
     "trde_prica_upper": [
-        {"stk_cd": "005930", "stk_nm": "삼성전자", "cur_prc": "+71200", "flu_rt": "+5.79", "now_rank": "1", "trde_prica": "3119200"},
+        {"stk_cd": "005930", "stk_nm": "삼성전자", "cur_prc": "+71200", "flu_rt": "+5.79", "now_rank": "1", "trde_prica": "3119200"},  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     ],
 }
 
@@ -90,7 +90,7 @@ def test_parse_missing_wrapper_key_yields_empty():
 
 
 def test_parse_skips_rows_without_code():
-    body = {"pred_pre_flu_rt_upper": [{"stk_nm": "무코드"}, {"stk_cd": "005930", "stk_nm": "삼성전자", "cur_prc": "+71200", "flu_rt": "+1.0"}]}
+    body = {"pred_pre_flu_rt_upper": [{"stk_nm": "무코드"}, {"stk_cd": "005930", "stk_nm": "삼성전자", "cur_prc": "+71200", "flu_rt": "+1.0"}]}  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     rows = parse_rankings("change", body)
     assert len(rows) == 1
     assert rows[0].code == "005930"
@@ -286,7 +286,7 @@ def test_rankings_route_returns_rows(monkeypatch, tmp_path, _hermetic_kiwoom_env
 
     fetcher = _fetcher(lambda request: httpx.Response(200, json=GOLDEN_CHANGE))
     monkeypatch.setattr(live_api, "kiwoom_rankings_fetcher_instance", fetcher)
-    r = _route_client(tmp_path).get("/api/live/rankings", params={"kind": "change", "market": "kosdaq", "direction": "down"})
+    r = _route_client(tmp_path).get("/api/live/rankings", params={"kind": "change", "market": "kosdaq", "direction": "down"})  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     assert r.status_code == 200
     body = r.json()
     assert body["kind"] == "change"
