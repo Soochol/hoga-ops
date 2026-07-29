@@ -5,8 +5,11 @@ import { MINUTE_TIMEFRAMES, type MinuteTimeframe } from './livePage';
 // "설정된 분봉"으로 열 때(studyViewOpenPrefs='current') 이 값을 override로 쓴다.
 // /live의 lastMinuteTimeframe(live.page.v1)과 같은 역할이지만 라우트가 다르므로 별도 키.
 // 분봉을 한 번도 안 쓴 초기 상태 폴백은 이 기본값('3m')이 그대로 담당한다.
-const STORAGE_KEY = 'study.lastMinuteTimeframe.v1';
-const DEFAULT_MINUTE_TIMEFRAME: MinuteTimeframe = '3m';
+export const STUDY_LAST_MINUTE_TIMEFRAME_STORAGE_KEY = 'study.lastMinuteTimeframe.v1';
+const STORAGE_KEY = STUDY_LAST_MINUTE_TIMEFRAME_STORAGE_KEY;
+/** 분봉을 한 번도 안 쓴 초기 상태의 폴백 — 차트 창 설정 시드도 이 값을 쓴다(#906). */
+export const STUDY_DEFAULT_MINUTE_TIMEFRAME: MinuteTimeframe = '3m';
+const DEFAULT_MINUTE_TIMEFRAME = STUDY_DEFAULT_MINUTE_TIMEFRAME;
 
 interface Store {
   lastMinuteTimeframe: MinuteTimeframe;
