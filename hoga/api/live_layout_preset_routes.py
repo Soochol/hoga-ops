@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from hoga.api import live_layout_presets
+from hoga.api.layout_preset_store import PresetConflictError, PresetNotFoundError
 from hoga.api.models import (
     LiveLayoutPreset,
     LiveLayoutPresetListRow,
@@ -28,7 +29,7 @@ def _not_found(preset_id: str) -> HTTPException:
     )
 
 
-def _conflict(e: live_layout_presets.LiveLayoutPresetConflictError) -> HTTPException:
+def _conflict(e: PresetConflictError) -> HTTPException:
     return HTTPException(
         status_code=409,
         detail={
@@ -69,16 +70,16 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 req=req,
                 now_ms=int(time.time() * 1000),
             )
-        except live_layout_presets.LiveLayoutPresetNotFoundError as e:
+        except PresetNotFoundError as e:
             raise _not_found(preset_id) from e
-        except live_layout_presets.LiveLayoutPresetConflictError as e:
+        except PresetConflictError as e:
             raise _conflict(e) from e
 
     @router.delete("/{preset_id}", status_code=204)
     async def delete_preset(preset_id: str) -> None:
         try:
             await live_layout_presets.delete_preset(data_dir, id=preset_id)
-        except live_layout_presets.LiveLayoutPresetNotFoundError as e:
+        except PresetNotFoundError as e:
             raise _not_found(preset_id) from e
 
     return router

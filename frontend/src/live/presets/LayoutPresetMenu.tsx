@@ -1,262 +1,78 @@
-import { useCallback, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { useDismissablePopover } from '../../util/useDismissablePopover';
-import { useClampedFixedPosition } from '../../util/useClampedFixedPosition';
 import { useLiveLayoutStore } from '../../state/liveLayout';
-import { IconToolbarButton } from '../../ui/WorkspaceShell';
+import { PresetMenu, type PresetRow } from '../../workspace/presets/PresetMenu';
 import { useLiveLayoutPresets, useLiveLayoutPresetMutations } from './useLiveLayoutPresets';
-import { LIVE_LAYOUT_PRESET_CONFLICT } from '../../api/liveLayoutPresets';
-import type { ApiError } from '../../api/client';
 import {
   applyPresetPayload,
   capturePresetPayload,
   defaultPresetPayload,
 } from './layoutPresetSnapshot';
+import {
+  LIVE_LAYOUT_PRESET_CONFLICT,
+  type LiveLayoutPresetPayload,
+} from '../../api/liveLayoutPresets';
+import type { ApiError } from '../../api/client';
 
 /**
- * /live 레이아웃 프리셋 드롭다운 (ADR-0119 PR-E, v3). LiveToolbar 전용(StudyPage 는
- * LiveChartActionButtons 만 import 하므로 자동으로 /live 스코프).
+ * `/live` 레이아웃 프리셋 드롭다운 (ADR-0119 PR-E, v3). LiveToolbar 전용.
  *
  * v3 프리셋 = **워크스페이스 전체 스냅샷**(창·배치·그룹→종목). 적용 시 현재 창과
  * 종목이 통째 교체된다(TradingView 레이아웃 관례, #713 §5) — 문구·안내가 이를 알린다.
+ *
+ * UI 는 `/study` 와 공유한다(`workspace/presets/PresetMenu`). 여기 남는 것은 어댑터 —
+ * 어느 API·어느 스토어·어느 워크스페이스인지만 주입한다.
  */
 export function LayoutPresetMenu() {
-  const [open, setOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const [saveAsName, setSaveAsName] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const close = useCallback(() => {
-    setOpen(false);
-    setSaveAsName(null);
-    setPendingDelete(null);
-    setError(null);
-  }, []);
-  // 저장/이름변경/삭제 실패 시 메뉴를 닫지 않고 에러를 표면화 — study-views 패턴.
-  const failWith = (fallback: string) => (e: unknown) =>
-    setError(e instanceof Error ? e.message : fallback);
-  useDismissablePopover(open, wrapRef, close);
-  const { ref: menuPositionRef, left, top } = useClampedFixedPosition<HTMLDivElement>(
-    anchorRect?.left ?? 0,
-    anchorRect ? anchorRect.bottom + 4 : 0,
-  );
-
   const { data, refetch } = useLiveLayoutPresets();
   const { create, update, remove } = useLiveLayoutPresetMutations();
   const lastAppliedPresetId = useLiveLayoutStore((s) => s.lastAppliedPresetId);
-  const presets = data?.presets ?? [];
-  const activePreset = presets.find((p) => p.id === lastAppliedPresetId) ?? null;
-
-  const toggle = () => {
-    const next = !open;
-    setAnchorRect(wrapRef.current?.getBoundingClientRect() ?? null);
-    setOpen(next);
-    // 메뉴 열기 = "지금 목록을 보겠다" 는 명시적 의도 → staleTime(60s)을 우회해 다시
-    // 읽는다. 이 메뉴는 툴바에 상시 마운트라 mount-refetch 가 돌지 않고 전역
-    // refetchOnWindowFocus 도 꺼져 있어(main.tsx), 다른 탭이 방금 저장한 프리셋이
-    // 새로고침 전까지 보이지 않았다.
-    if (next) void refetch();
-  };
-
-  const apply = (id: string) => {
-    const preset = presets.find((p) => p.id === id);
-    if (!preset) return;
-    applyPresetPayload(preset.payload, preset.id);
-    close();
-  };
-
-  const saveCurrent = () => {
-    if (!activePreset) return;
-    setError(null);
-    update.mutate(
-      {
-        id: activePreset.id,
-        body: {
-          name: activePreset.name,
-          payload: capturePresetPayload(),
-          expected_updated_at_ms: activePreset.updated_at_ms,
-        },
-      },
-      {
-        onSuccess: () => close(),
-        onError: (e) => {
-          // 그 사이 다른 탭·기기가 먼저 저장했다 — 조용히 덮어쓰지 않고 최신 목록을
-          // 다시 읽어 사용자가 무엇을 덮어쓸지 보고 판단하게 한다(메뉴는 열어 둔다).
-          if ((e as ApiError).code === LIVE_LAYOUT_PRESET_CONFLICT) {
-            void refetch();
-            setError('다른 곳에서 먼저 변경된 프리셋입니다. 최신 목록을 다시 불러왔습니다.');
-            return;
-          }
-          failWith('프리셋 저장에 실패했습니다.')(e);
-        },
-      },
-    );
-  };
-
-  const confirmSaveAs = () => {
-    const name = (saveAsName ?? '').trim();
-    if (!name) return;
-    setError(null);
-    create.mutate(
-      { name, payload: capturePresetPayload() },
-      {
-        onSuccess: (row) => {
-          useLiveLayoutStore.getState().setLastAppliedPresetId(row.id);
-          close();
-        },
-        onError: failWith('프리셋 저장에 실패했습니다.'),
-      },
-    );
-  };
-
-  const resetDefault = () => {
-    applyPresetPayload(defaultPresetPayload(), null);
-    close();
-  };
-
-  const menu = open && anchorRect ? (
-    <div
-      ref={menuPositionRef}
-      role="menu"
-      aria-label="레이아웃 프리셋"
-      data-testid="layout-preset-menu"
-      onMouseDown={(e) => e.stopPropagation()}
-      className="min-w-56 rounded border border-border bg-bg-card py-1 shadow-overlay z-50"
-      style={{ position: 'fixed', left, top }}
-    >
-      {error && (
-        <div data-testid="layout-preset-error" role="alert" className="px-3 py-1.5 text-xs text-danger">
-          {error}
-        </div>
-      )}
-      {presets.length === 0 ? (
-        <div className="px-3 py-1.5 text-xs text-fg-dimmer">저장된 프리셋이 없습니다</div>
-      ) : (
-        <div className="px-3 pb-1 pt-0.5 text-[10px] text-fg-dimmer">
-          적용 시 현재 창·종목이 통째 교체됩니다
-        </div>
-      )}
-      {presets.map((preset) => (
-        <div key={preset.id} className="flex items-center gap-1 px-1">
-          <button
-            type="button"
-            role="menuitem"
-            title="이 워크스페이스로 교체 — 현재 창·종목이 대체됩니다"
-            data-testid={`layout-preset-apply-${preset.id}`}
-            onClick={() => apply(preset.id)}
-            className={`flex-1 truncate rounded px-2 py-1.5 text-left text-xs hover:bg-bg-input-hover ${
-              preset.id === lastAppliedPresetId ? 'text-accent' : 'text-fg-dim'
-            }`}
-          >
-            {preset.name}
-          </button>
-          {pendingDelete === preset.id ? (
-            <button
-              type="button"
-              data-testid={`layout-preset-confirm-delete-${preset.id}`}
-              onClick={() => {
-                setError(null);
-                remove.mutate(preset.id, { onError: failWith('프리셋 삭제에 실패했습니다.') });
-                setPendingDelete(null);
-              }}
-              className="rounded px-2 py-1 text-[11px] text-error hover:bg-tint-error"
-            >
-              삭제?
-            </button>
-          ) : (
-            <button
-              type="button"
-              aria-label={`${preset.name} 삭제`}
-              data-testid={`layout-preset-delete-${preset.id}`}
-              onClick={() => setPendingDelete(preset.id)}
-              className="flex h-6 w-6 items-center justify-center rounded text-fg-dimmer hover:bg-bg-input-hover hover:text-fg"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
-              </svg>
-            </button>
-          )}
-        </div>
-      ))}
-
-      <div className="my-1 border-t border-border" />
-
-      <button
-        type="button"
-        role="menuitem"
-        data-testid="layout-preset-save-current"
-        onClick={saveCurrent}
-        disabled={!activePreset}
-        className="block w-full px-3 py-1.5 text-left text-xs text-fg-dim hover:bg-bg-input-hover disabled:opacity-40 disabled:hover:bg-transparent"
-      >
-        현재 워크스페이스 저장
-      </button>
-
-      {saveAsName === null ? (
-        <button
-          type="button"
-          role="menuitem"
-          data-testid="layout-preset-save-as-open"
-          onClick={() => setSaveAsName('')}
-          className="block w-full px-3 py-1.5 text-left text-xs text-fg-dim hover:bg-bg-input-hover"
-        >
-          새 프리셋으로 저장…
-        </button>
-      ) : (
-        <div className="flex items-center gap-1 px-2 py-1">
-          <input
-            autoFocus
-            value={saveAsName}
-            data-testid="layout-preset-save-as-input"
-            onChange={(e) => setSaveAsName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') confirmSaveAs(); }}
-            placeholder="프리셋 이름"
-            className="h-7 min-w-0 flex-1 rounded border border-border bg-bg-input px-2 text-xs text-fg outline-none focus:border-accent"
-          />
-          <button
-            type="button"
-            data-testid="layout-preset-save-as-confirm"
-            onClick={confirmSaveAs}
-            className="rounded px-2 py-1 text-[11px] text-accent hover:bg-bg-input-hover"
-          >
-            저장
-          </button>
-        </div>
-      )}
-
-      <button
-        type="button"
-        role="menuitem"
-        data-testid="layout-preset-reset"
-        onClick={resetDefault}
-        className="block w-full px-3 py-1.5 text-left text-xs text-fg-dim hover:bg-bg-input-hover"
-      >
-        기본 워크스페이스로 초기화
-      </button>
-    </div>
-  ) : null;
 
   return (
-    <div ref={wrapRef} className="relative">
-      <IconToolbarButton
-        data-testid="layout-preset-button"
-        onClick={toggle}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="레이아웃 프리셋"
-        icon={(
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
-        )}
-      >
-        <span>{activePreset ? activePreset.name : '레이아웃'}</span>
-      </IconToolbarButton>
-      {menu && createPortal(menu, document.body)}
-    </div>
+    <PresetMenu<LiveLayoutPresetPayload>
+      testIdPrefix="layout-preset"
+      presets={(data?.presets ?? []) as PresetRow<LiveLayoutPresetPayload>[]}
+      refetchPresets={() => void refetch()}
+      activePresetId={lastAppliedPresetId}
+      capture={capturePresetPayload}
+      apply={applyPresetPayload}
+      defaultPayload={defaultPresetPayload}
+      isConflict={(e) => (e as ApiError)?.code === LIVE_LAYOUT_PRESET_CONFLICT}
+      saveExisting={(preset, payload, handlers) =>
+        update.mutate(
+          {
+            id: preset.id,
+            body: {
+              name: preset.name,
+              payload,
+              expected_updated_at_ms: preset.updated_at_ms,
+            },
+          },
+          { onSuccess: () => handlers.onSuccess(), onError: handlers.onError },
+        )
+      }
+      saveNew={(name, payload, handlers) =>
+        create.mutate(
+          { name, payload },
+          {
+            onSuccess: (row) => {
+              // 새로 만든 프리셋이 곧 활성 프리셋 — "현재 워크스페이스 저장"의 대상.
+              useLiveLayoutStore.getState().setLastAppliedPresetId(row.id);
+              handlers.onSuccess({ id: row.id });
+            },
+            onError: handlers.onError,
+          },
+        )
+      }
+      removePreset={(id, handlers) =>
+        remove.mutate(id, { onSuccess: () => handlers.onSuccess(), onError: handlers.onError })
+      }
+      labels={{
+        buttonFallback: '레이아웃',
+        ariaLabel: '레이아웃 프리셋',
+        applyHint: '적용 시 현재 창·종목이 통째 교체됩니다',
+        applyTitle: '이 워크스페이스로 교체 — 현재 창·종목이 대체됩니다',
+        saveCurrent: '현재 워크스페이스 저장',
+        reset: '기본 워크스페이스로 초기화',
+      }}
+    />
   );
 }

@@ -1,149 +1,76 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
-from hoga.api._atomic_write import atomic_write_json
+from hoga.api.layout_preset_store import PresetStore
 from hoga.api.models import (
     LiveLayoutPreset,
     LiveLayoutPresetListRow,
     LiveLayoutPresetsFile,
     LiveLayoutPresetWriteRequest,
 )
-from hoga.api.versioned_json_file import load_versioned_json_file
 
-# 화면 구성 프리셋 저장소 — study_views 와 동일한 versioned-JSON-manifest 패턴
-# (asyncio.Lock + load_versioned_json_file + atomic_write_json). ADR-0114 §4.
-# v3 (PR-E, #713 §5): payload 가 워크스페이스 전체 스냅샷으로 바뀜(창·그룹·종목).
-# 구 v1/v2 프리셋은 폐기(변환 없음) — 아래 load_presets 가 stale 버전 파일을 빈
-# 목록으로 대체한다(저장 프리셋 0개라 실질 손실 없음).
+# `/live` 레이아웃 프리셋 — 저장소 뼈대는 layout_preset_store 가 갖고, 여기선 리소스
+# 고유값(루트·버전·모델)만 묶는다. `/study` 는 study_layout_presets 가 같은 방식으로 얹는다.
+#
+# v3 (PR-E, #713 §5): payload 가 워크스페이스 전체 스냅샷이다(창·그룹·종목). 구 v1/v2
+# 프리셋은 폐기(변환 없음) — 스토어의 stale 버전 가드가 빈 목록으로 대체한다.
 _CURRENT_VERSION = 3
-_lock = asyncio.Lock()
 
+_store: PresetStore[LiveLayoutPreset, LiveLayoutPresetsFile] = PresetStore(
+    root_name="live_layout_presets",
+    current_version=_CURRENT_VERSION,
+    preset_model=LiveLayoutPreset,
+    file_model=LiveLayoutPresetsFile,
+)
 
-class LiveLayoutPresetNotFoundError(Exception):
-    pass
-
-
-class LiveLayoutPresetConflictError(Exception):
-    """PUT 의 expected_updated_at_ms 가 저장본과 다름 — 그 사이 누가 먼저 저장했다.
-
-    프리셋 payload 는 워크스페이스 전체 스냅샷이라 병합이 불가능하다(창 배열의
-    3-way merge). 조용히 덮어쓰는 대신 거절하고 클라이언트가 최신 목록을 다시 읽게
-    한다. `_lock` 안에서 검사·쓰기가 함께 일어나므로 검사-후-쓰기 경합은 없다.
-    """
-
-    def __init__(self, id: str, *, expected_ms: int, actual_ms: int) -> None:
-        super().__init__(id)
-        self.id = id
-        self.expected_ms = expected_ms
-        self.actual_ms = actual_ms
-
-
-def _root(data_dir: Path) -> Path:
-    return data_dir / "live_layout_presets"
+# 예외는 스토어의 것을 그대로 쓴다(routes 가 거기서 import). 리소스별 하위 클래스를
+# 만들면 스토어가 기반 클래스를 raise 하므로 잡히지 않는다.
 
 
 def _manifest_path(data_dir: Path) -> Path:
-    return _root(data_dir) / "saves.json"
+    return _store.manifest_path(data_dir)
 
 
 def load_presets(data_dir: Path) -> LiveLayoutPresetsFile:
-    file = load_versioned_json_file(
-        _manifest_path(data_dir),
-        model=LiveLayoutPresetsFile,
-        current_version=_CURRENT_VERSION,
-        empty_factory=LiveLayoutPresetsFile,
-    )
-    # 구버전 파일(schema_version < 현재)은 폐기 — payload 형식이 바뀌어 변환하지
-    # 않는다(#699 PR-D). 폐기의 단일 기준: 빈 목록을 반환하고(다음 쓰기가 v2 로
-    # 덮어쓴다) 구 매니페스트는 손대지 않는다.
-    if file.schema_version < _CURRENT_VERSION:
-        return LiveLayoutPresetsFile()
-    return file
+    return _store.load(data_dir)
 
 
 def save_presets(data_dir: Path, file: LiveLayoutPresetsFile) -> None:
-    atomic_write_json(_manifest_path(data_dir), file.model_dump(mode="json"))
-
-
-def _preset_from_req(
-    *,
-    req: LiveLayoutPresetWriteRequest,
-    id: str,
-    created_at_ms: int,
-    updated_at_ms: int,
-) -> LiveLayoutPreset:
-    return LiveLayoutPreset(
-        id=id,
-        name=req.name,
-        payload=req.payload,
-        created_at_ms=created_at_ms,
-        updated_at_ms=updated_at_ms,
-    )
+    _store.save(data_dir, file)
 
 
 def list_presets_sync(data_dir: Path) -> list[LiveLayoutPresetListRow]:
-    return load_presets(data_dir).presets
+    return _store.list_sync(data_dir)
 
 
 def create_preset_sync(
     data_dir: Path, *, req: LiveLayoutPresetWriteRequest, id: str, now_ms: int
 ) -> LiveLayoutPreset:
-    file = load_presets(data_dir)
-    preset = _preset_from_req(req=req, id=id, created_at_ms=now_ms, updated_at_ms=now_ms)
-    file.presets.append(preset)
-    file.presets.sort(key=lambda p: p.updated_at_ms, reverse=True)
-    save_presets(data_dir, file)
-    return preset
+    return _store.create_sync(data_dir, req=req, id=id, now_ms=now_ms)
 
 
 def update_preset_sync(
     data_dir: Path, *, id: str, req: LiveLayoutPresetWriteRequest, now_ms: int
 ) -> LiveLayoutPreset:
-    file = load_presets(data_dir)
-    for idx, old in enumerate(file.presets):
-        if old.id == id:
-            expected = req.expected_updated_at_ms
-            if expected is not None and expected != old.updated_at_ms:
-                raise LiveLayoutPresetConflictError(
-                    id, expected_ms=expected, actual_ms=old.updated_at_ms
-                )
-            preset = _preset_from_req(
-                req=req,
-                id=id,
-                created_at_ms=old.created_at_ms,
-                updated_at_ms=now_ms,
-            )
-            file.presets[idx] = preset
-            file.presets.sort(key=lambda p: p.updated_at_ms, reverse=True)
-            save_presets(data_dir, file)
-            return preset
-    raise LiveLayoutPresetNotFoundError(id)
+    return _store.update_sync(data_dir, id=id, req=req, now_ms=now_ms)
 
 
 def delete_preset_sync(data_dir: Path, *, id: str) -> None:
-    file = load_presets(data_dir)
-    if not any(p.id == id for p in file.presets):
-        raise LiveLayoutPresetNotFoundError(id)
-    file.presets = [p for p in file.presets if p.id != id]
-    save_presets(data_dir, file)
+    _store.delete_sync(data_dir, id=id)
 
 
 async def create_preset(
     data_dir: Path, *, req: LiveLayoutPresetWriteRequest, id: str, now_ms: int
 ) -> LiveLayoutPreset:
-    async with _lock:
-        return create_preset_sync(data_dir, req=req, id=id, now_ms=now_ms)
+    return await _store.create(data_dir, req=req, id=id, now_ms=now_ms)
 
 
 async def update_preset(
     data_dir: Path, *, id: str, req: LiveLayoutPresetWriteRequest, now_ms: int
 ) -> LiveLayoutPreset:
-    async with _lock:
-        return update_preset_sync(data_dir, id=id, req=req, now_ms=now_ms)
+    return await _store.update(data_dir, id=id, req=req, now_ms=now_ms)
 
 
 async def delete_preset(data_dir: Path, *, id: str) -> None:
-    async with _lock:
-        delete_preset_sync(data_dir, id=id)
+    await _store.delete(data_dir, id=id)
