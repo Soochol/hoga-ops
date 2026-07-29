@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-log = logging.getLogger(__name__)
 
 from .buffer import LiveBuffer
 from .coverage import (
@@ -22,6 +21,8 @@ from .coverage import (
     _compute_heatmap_codes,
     plan_storage_targets,
 )
+
+log = logging.getLogger(__name__)
 
 
 class ProgramTradeCollectorLike(Protocol):

@@ -11,12 +11,13 @@ import asyncio
 import logging
 from collections.abc import Callable
 
-logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, WebSocket
 
 from hoga.api.events import EventBus
 from hoga.live.buffer import LiveBuffer
+
+logger = logging.getLogger(__name__)
 
 _PING_TIMEOUT_S = 30.0
 _VALID_VENUES = ("KRX", "NXT")

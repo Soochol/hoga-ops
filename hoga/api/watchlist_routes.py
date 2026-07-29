@@ -12,14 +12,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path as PathParam
 
-from hoga.api.params import CODE_PATTERN
-
-log = logging.getLogger(__name__)
-
-# KRX code — params.CODE_PATTERN is the single source of the ticker grammar
-# (6-char alphanumeric + 7-char Q-prefixed ETN).
-CodePathParam = Annotated[str, PathParam(pattern=CODE_PATTERN)]
-
 from hoga.api import symbols
 from hoga.api.calendar import TradingDayUnavailableError
 from hoga.api.models import (
@@ -39,6 +31,7 @@ from hoga.api.models import (
     WatchlistFolderView,
     WatchlistResponse,
 )
+from hoga.api.params import CODE_PATTERN
 from hoga.api.scheduler import catchup_one_entry, seconds_until_next_17_kst
 from hoga.api.watchlist import (
     FolderNotFoundError,
@@ -60,6 +53,15 @@ from hoga.api.watchlist import (
 from hoga.api.watchlist_projection import project_watchlist_response
 from hoga.collector.orchestrator import now_kst
 from hoga.live.lifecycle import refresh_live_stream
+
+log = logging.getLogger(__name__)
+
+# KRX code — params.CODE_PATTERN is the single source of the ticker grammar
+# (6-char alphanumeric + 7-char Q-prefixed ETN).
+#
+# import 블록 **아래** 에 둔다. 위(중간)에 있으면 그 뒤 import 전부가 E402
+# "module level import not at top of file" 로 잡힌다 — 별칭 한 줄이 8건을 만들었다.
+CodePathParam = Annotated[str, PathParam(pattern=CODE_PATTERN)]
 
 
 def _next_run_at_ms(now: dt.datetime) -> int:

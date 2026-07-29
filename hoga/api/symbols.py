@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Generic, Literal, TypeVar
 
-logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Query
 
@@ -29,6 +28,8 @@ from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.kis_master import KisMasterFetchError, fetch_symbol_master as _fetch_mst
 from hoga.api.models import SymbolHit, SymbolMasterInfo, SymbolsAllResponse
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)

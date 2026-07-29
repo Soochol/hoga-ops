@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from hoga.live.kis_token_provider import KisTokenProvider
 
-log = logging.getLogger(__name__)
 
 import httpx
 
@@ -54,6 +53,8 @@ from hoga.live.kis_errors import (
     KisTransportError,
 )
 from hoga.live.kis_venue import KIS_KST  # noqa: F401  (re-export facade)
+
+log = logging.getLogger(__name__)
 
 _BASE_REAL = "https://openapi.koreainvestment.com:9443"
 
