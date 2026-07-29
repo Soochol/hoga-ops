@@ -344,6 +344,77 @@ async def test_fetch_index_minute_candles_filters_out_of_range_rows_without_warn
     assert result.violations == []
 
 
+def _index_minute_handler(rows: list[dict]):
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"rt_cd": "0", "msg_cd": "0", "msg1": "OK", "output2": rows},
+        )
+    return handler
+
+
+async def _fetch_index_minute(rows: list[dict]):
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(_index_minute_handler(rows)),
+    )
+    try:
+        return await client.fetch_index_minute_candles(
+            get_representative_index("KOSPI"),
+            "20260619",
+            "20260619",
+            bucket_seconds=1800,
+            foreground=True,
+        )
+    finally:
+        await client.aclose()
+
+
+def _index_minute_row(hhmmss: str) -> dict:
+    return {
+        "stck_bsop_date": "20260619",
+        "stck_cntg_hour": hhmmss,
+        "bstp_nmix_oprc": "2850.10",
+        "bstp_nmix_hgpr": "2852.34",
+        "bstp_nmix_lwpr": "2849.87",
+        "bstp_nmix_prpr": "2851.67",
+        "cntg_vol": "123456",
+    }
+
+
+@pytest.mark.asyncio
+async def test_fetch_index_minute_candles_skips_kis_time_sentinel_rows_without_warning() -> None:
+    """FID_PW_DATA_INCU_YN=Y 응답의 999999/888888 행은 실패가 아니다.
+
+    KIS 업종분봉은 거래일마다 장마감(999999)·예상체결(888888) 자리표시자를 끼워
+    넣는다. 이를 malformed_row 로 승격하면 데이터가 온전한데도 프론트에
+    "일부 과거구간 로딩 실패" 칩이 상시 뜬다(거래일당 2건).
+    """
+    result = await _fetch_index_minute([
+        _index_minute_row("093000"),
+        _index_minute_row("999999"),
+        _index_minute_row("888888"),
+    ])
+
+    assert result.violations == []
+    assert [c.close for c in result.candles] == [2851.67]
+
+
+@pytest.mark.asyncio
+async def test_fetch_index_minute_candles_still_warns_on_genuinely_malformed_hour() -> None:
+    """더미 skip 분기가 진짜 깨진 시각까지 삼키면 안 된다 — 997000 은 더미가 아니다."""
+    result = await _fetch_index_minute([
+        _index_minute_row("093000"),
+        _index_minute_row("997000"),
+    ])
+
+    assert [c.close for c in result.candles] == [2851.67]
+    assert [(v.date_yyyymmdd, v.reason) for v in result.violations] == [
+        ("20260619", "malformed_row"),
+    ]
+
+
 @pytest.mark.asyncio
 async def test_5xx_with_json_body_preserves_upstream_msg_cd() -> None:
     """KIS sometimes wraps a domain error in a 5xx — keep its msg_cd visible.

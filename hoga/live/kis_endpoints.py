@@ -155,6 +155,27 @@ def _parse_index_daily_row(row: dict[str, Any]) -> IndexCandlePoint:
     )
 
 
+# KIS 업종분봉(FHKUP03500200)이 FID_PW_DATA_INCU_YN=Y 응답에 매 거래일마다 끼워
+# 넣는 시각 더미 — 999999 = 장마감 집계 행, 888888 = 예상체결 행. 실제 체결 시각이
+# 아니라 프로토콜이 규정한 자리표시자다. _parse_index_minute_row 에 넘기면
+# datetime() 이 ValueError("hour must be in 0..23") 를 던지고, 호출자는 그것을
+# malformed_row violation 으로 승격시켜 정상 응답이 프론트에 "일부 과거구간 로딩
+# 실패" 로 보고된다(2026-07-29 실측: 거래일당 2건). 같은 봉 데이터는 정상 시각 행에
+# 이미 들어 있으므로 조용히 버려도 손실이 없다.
+_INDEX_MINUTE_SENTINEL_HOURS = frozenset({"999999", "888888"})
+
+
+def _is_index_minute_sentinel_row(row: dict[str, Any]) -> bool:
+    """True iff the row's time field is a KIS filler, not a real HHMMSS.
+
+    판정을 파서 밖(원본 row)에 두는 이유: 파서의 실패 채널은 ValueError 하나뿐이라
+    "규약상 더미"와 "진짜 malformed"를 구분할 수 없다. 알려진 더미 값만 정확히
+    맞출 때 skip 하고, 그 외의 깨진 시각은 기존 malformed_row 경로로 흘려보낸다.
+    """
+    hour_str = str(row.get("stck_cntg_hour") or row.get("bsop_hour") or "").strip()
+    return hour_str[:6] in _INDEX_MINUTE_SENTINEL_HOURS
+
+
 def _parse_index_minute_row(row: dict[str, Any]) -> IndexCandlePoint:
     date_str = str(_row_value(row, "stck_bsop_date", "bsop_date"))
     hour_str = str(_row_value(row, "stck_cntg_hour", "bsop_hour"))
@@ -760,8 +781,14 @@ class KisEndpointsMixin:
         rows = body.get("output2") or body.get("output") or []
         candles: list[IndexCandlePoint] = []
         violations: list[DailyInvariantViolation] = []
+        sentinel_rows = 0
 
         for row in rows:
+            if _is_index_minute_sentinel_row(row):
+                # 장마감(999999)/예상체결(888888) 자리표시자 — 실패가 아니므로
+                # violation 을 만들지 않는다 (_INDEX_MINUTE_SENTINEL_HOURS 주석 참조).
+                sentinel_rows += 1
+                continue
             date_str = str(row.get("stck_bsop_date") or row.get("bsop_date") or "")
             if len(date_str) != 8:
                 violations.append(DailyInvariantViolation(
@@ -800,6 +827,11 @@ class KisEndpointsMixin:
                 continue
             candles.append(point)
 
+        if sentinel_rows:
+            log.debug(
+                "live.kis.index_minute.sentinel_rows_skipped index=%s count=%d",
+                index.id, sentinel_rows,
+            )
         candles = _aggregate_index_minute_candles(candles, bucket_seconds, source_seconds)
         return IndexCandleFetchResult(candles=candles, violations=violations)
 
