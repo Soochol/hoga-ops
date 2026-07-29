@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
@@ -191,6 +191,20 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
   // 폴링은 그대로 남는다 — 기준가 공급자이자 WS 단절·체결 공백의 폴백이다.
   const tickPrices = useLiveTickPrices(codes, venue);
   const lastGoodByCodeRef = useRef(new Map<string, LiveQuote>());
+  // 구독 코드 집합의 안정 키. 스크리너·관심종목처럼 목록이 갈리는 소비자에서
+  // last-good 캐시가 "한때 봤던 모든 코드" 로 단조 증가하던 걸 여기서 끊는다.
+  const subscribedKey = uniqueSortedCodes(codes).join(',');
+  // 요청 목록에서 빠진 코드의 last-good 을 버린다. 기준은 **요청 목록**이지 응답이
+  // 아니다 — 응답에서 일시적으로 빠진 코드는 다음 폴링에 돌아오고 그때 폴백 근거가
+  // 필요하다. 렌더가 아니라 effect 에서 하는 이유: ref 변형은 렌더 부수효과다.
+  // 한 렌더 늦게 지워져도 무해하다 — 구독에서 빠진 코드는 응답에도 없어 조회되지 않는다.
+  useEffect(() => {
+    const subscribed = new Set(subscribedKey.split(',').filter(Boolean));
+    const lastGood = lastGoodByCodeRef.current;
+    for (const code of lastGood.keys()) {
+      if (!subscribed.has(code)) lastGood.delete(code);
+    }
+  }, [subscribedKey]);
   const quoteByCode = useMemo(() => {
     const currentQuotes = q.data?.quotes;
     if (currentQuotes == null) return new Map<string, LiveQuote>();

@@ -143,3 +143,75 @@ describe('mergeBrokerSeriesWithLiveTail', () => {
     expect(live[0].points).toHaveLength(1);
   });
 });
+
+/**
+ * 틱당 비용 회귀 가드.
+ *
+ * 호출부 memo deps 가 `[todaySeries, liveTail]` 인데 liveTail 은 브로커 WS 푸시마다
+ * 새 참조라 이 함수는 **틱마다** 돈다. 파케이는 60초 리페치로만 바뀐다. 종전엔 매 틱
+ * 전 브로커의 전 포인트를 복사 + 브로커마다 재정렬했고, 그 비용이 당일 궤적 길이에
+ * 비례해 장이 갈수록 무거워졌다.
+ */
+describe('mergeBrokerSeriesWithLiveTail — 틱당 비용', () => {
+  it('꼬리가 없는 브로커의 포인트 배열은 틱마다 새로 만들지 않는다', () => {
+    const parquet = [
+      entry('A', [{ ts_ms: 1_000, net: 10 }, { ts_ms: 2_000, net: 20 }]),
+      entry('B', [{ ts_ms: 1_000, net: 5 }, { ts_ms: 2_000, net: 7 }]),
+    ];
+    // A 에만 새 점이 붙는 틱.
+    const live = [entry('A', [{ ts_ms: 3_000, net: 30 }])];
+
+    const first = mergeBrokerSeriesWithLiveTail(parquet, live);
+    const second = mergeBrokerSeriesWithLiveTail(parquet, live);
+
+    // 손대지 않은 브로커는 같은 배열을 그대로 재사용한다 = 틱당 할당 0.
+    expect(find(second, 'B').points).toBe(find(first, 'B').points);
+    // 값 자체는 물론 동일해야 한다.
+    expect(tsOf(find(second, 'B'))).toEqual([1_000, 2_000]);
+  });
+
+  it('반복 호출이 파케이 본체를 오염시키지 않는다 (concat 은 비변형)', () => {
+    const parquet = [entry('A', [{ ts_ms: 1_000, net: 10 }])];
+    const live = [entry('A', [{ ts_ms: 2_000, net: 20 }])];
+
+    const first = mergeBrokerSeriesWithLiveTail(parquet, live);
+    const second = mergeBrokerSeriesWithLiveTail(parquet, live);
+
+    // 캐시된 본체에 꼬리가 누적되면 두 번째가 [1000, 2000, 2000] 이 된다.
+    expect(tsOf(find(first, 'A'))).toEqual([1_000, 2_000]);
+    expect(tsOf(find(second, 'A'))).toEqual([1_000, 2_000]);
+    expect(parquet[0].points).toHaveLength(1);
+  });
+
+  it('이어붙인 결과는 정렬 없이도 ts_ms 오름차순이다', () => {
+    // 파케이 전역 최대 ts = 5_000. B 는 그보다 이르게 끝나지만(top-5 이탈) 꼬리는
+    // 전역 이음매 초과라, 어느 브로커에서든 파케이 뒤에 온다.
+    const parquet = [
+      entry('A', [{ ts_ms: 1_000, net: 1 }, { ts_ms: 5_000, net: 5 }]),
+      entry('B', [{ ts_ms: 1_000, net: 2 }, { ts_ms: 2_000, net: 3 }]),
+    ];
+    const live = [
+      entry('A', [{ ts_ms: 6_000, net: 6 }]),
+      entry('B', [{ ts_ms: 7_000, net: 7 }]),
+    ];
+
+    const out = mergeBrokerSeriesWithLiveTail(parquet, live);
+
+    for (const e of out) {
+      const ts = tsOf(e);
+      expect(ts).toEqual([...ts].sort((x, y) => x - y));
+    }
+    expect(tsOf(find(out, 'B'))).toEqual([1_000, 2_000, 7_000]);
+  });
+
+  it('꼬리가 없고 파케이에도 없는 브로커는 빈 엔트리로 남는다 (종전 동작 보존)', () => {
+    const parquet = [entry('A', [{ ts_ms: 5_000, net: 5 }])];
+    // 모든 점이 이음매 이하 = 꼬리 없음. 그리고 파케이에 없는 브로커.
+    const live = [entry('Z', [{ ts_ms: 1_000, net: 9 }])];
+
+    const out = mergeBrokerSeriesWithLiveTail(parquet, live);
+
+    expect(find(out, 'Z').points).toEqual([]);
+    expect(find(out, 'Z').final_net).toBe(0);
+  });
+});

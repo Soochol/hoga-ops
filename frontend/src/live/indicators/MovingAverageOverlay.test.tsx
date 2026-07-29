@@ -47,7 +47,7 @@ describe('MovingAverageOverlay', () => {
       movingAverageHidden: false,
     });
     useChartPrefsStore.getState().resetToDefaults();
-    useMaSeriesRegistry.setState({ series: new Map() });
+    useMaSeriesRegistry.setState({ byScope: new Map() });
   });
 
   it('mounts one LineSeries per configured slot', () => {
@@ -208,7 +208,7 @@ describe('MovingAverageOverlay', () => {
   it('registers each MA series in maSeriesRegistry by slot id', () => {
     const m = makeChartMock();
     render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
-    expect(useMaSeriesRegistry.getState().series.size).toBe(DEFAULT_LIVE_MAS.length);
+    expect((useMaSeriesRegistry.getState().byScope.get(null)?.size ?? 0)).toBe(DEFAULT_LIVE_MAS.length);
   });
 
   it('re-pushes SMA data into the new chart\'s series on a chart instance swap', () => {

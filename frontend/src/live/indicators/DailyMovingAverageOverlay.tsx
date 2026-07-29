@@ -9,6 +9,7 @@ import { computeDailyMaByDate } from '../../chart/projectors/dailyMovingAverage'
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
 import { useResolvedDailyCandles } from './useResolvedDailyCandles';
 import { useDailyMaSeriesRegistry } from './dailyMaSeriesRegistry';
+import { useWindowScopeId } from '../workspace/windowView';
 import { useWindowIndicator } from '../workspace/windowView';
 
 type Props = {
@@ -65,6 +66,8 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
     kisEnabled: dailyCandleKisEnabled,
   });
   const daily = dailyQuery.candles;
+  // 레지스트리 키를 창별로 가른다 — 고정 슬롯 id 는 창끼리 충돌한다.
+  const scope = useWindowScopeId();
 
   // Reconcile series ↔ configs by id (MovingAverageOverlay와 동일).
   useEffect(() => {
@@ -74,7 +77,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
       if (!currentIds.has(id)) {
         try { chart.removeSeries(s); } catch { /* torn down */ }
         map.delete(id);
-        useDailyMaSeriesRegistry.getState().unregister(id);
+        useDailyMaSeriesRegistry.getState().unregister(scope, id);
       }
     }
     for (const cfg of configs) {
@@ -95,13 +98,13 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
             ...createScaleOptions,
           }, 0); // paneIndex 0 — candle pane overlay
           map.set(cfg.id, s);
-          useDailyMaSeriesRegistry.getState().register(cfg.id, s);
+          useDailyMaSeriesRegistry.getState().register(scope, cfg.id, s);
         } catch { /* torn down */ }
       } else {
         existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth, ...updateScaleOptions });
       }
     }
-  }, [chart, configs, candleOnlyScale]);
+  }, [chart, configs, candleOnlyScale, scope]);
 
   // Unmount cleanup — remove all series.
   useEffect(() => {
@@ -109,11 +112,11 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
       const map = seriesByIdRef.current;
       for (const [id, s] of map) {
         try { chart.removeSeries(s); } catch { /* torn down */ }
-        useDailyMaSeriesRegistry.getState().unregister(id);
+        useDailyMaSeriesRegistry.getState().unregister(scope, id);
       }
       map.clear();
     };
-  }, [chart]);
+  }, [chart, scope]);
 
   // 오늘 현재가 프록시 (dailyMaProjection, 테스트됨).
   const todayLiveClose = useMemo(

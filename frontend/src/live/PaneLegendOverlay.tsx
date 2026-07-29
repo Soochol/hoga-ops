@@ -33,6 +33,7 @@ import {
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
+import { scopeEntries } from './indicators/windowScopedRegistry';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
 import type { BoundPaneSpec } from '../chart/paneSpecs';
 import type { PaneId } from '../chart/drawing/types';
@@ -562,11 +563,12 @@ function PaneLegendOverlay({
   const brokerLateEntrySideMode = useWindowIndicator((s) => s.brokerLateEntrySideMode);
   const brokerLateEntryBuyColor = useWindowIndicator((s) => s.brokerLateEntryBuyColor);
   const brokerLateEntrySellColor = useWindowIndicator((s) => s.brokerLateEntrySellColor);
-  const maSeries = useMaSeriesRegistry((s) => s.series);
-  const dailyMaSeries = useDailyMaSeriesRegistry((s) => s.series);
+  // 자기 창의 등록만 고른다 — 남의 창 등록에는 같은 참조가 돌아와 재렌더가 안 난다.
+  const maSeries = useMaSeriesRegistry((s) => scopeEntries(s.byScope, windowId));
+  const dailyMaSeries = useDailyMaSeriesRegistry((s) => scopeEntries(s.byScope, windowId));
   // Registry subscription: re-renders on pane (un)mount so a toggled-on pane's
   // legend appears without waiting for a crosshair move.
-  const legendPanes = usePaneLegendRegistry((s) => s.panes);
+  const legendPanes = usePaneLegendRegistry((s) => scopeEntries(s.byScope, windowId));
 
   // OHLC 레전드용 인덱싱 — 그려진(보이는) 봉 배열 + 가상초→index 맵(CandleTooltip 선례).
   // candles/axis 는 캔들 경로/segments 참조라 SSE 틱엔 재계산 안 됨. 팬/줌(axis 리베이스)·

@@ -229,12 +229,34 @@ export function orderbookSnapshotAtCursor(
  * 사이징 근거: 프로모터 지연 ≤ 10s(다운샘플 윈도) + 300s(승격 주기) ≈ 5분 10초 <
  * RETENTION_MS(15분). 리페치 주기를 얹어도 여유가 크다.
  */
-export function mergeBrokerSeriesWithLiveTail(
-  parquetSeries: readonly BrokerSeriesEntry[] | null | undefined,
-  liveSeries: readonly BrokerSeriesEntry[],
-): BrokerSeriesEntry[] {
-  const parquet = parquetSeries ?? [];
-  if (parquet.length === 0) return liveSeries.map(cloneEntry);
+/** 파케이 본체를 **파케이 배열 정체성당 1회만** 준비해 둔 결과.
+ *
+ *  호출부(DataWindow)의 memo deps 는 `[todaySeries, liveTail]` 인데 `liveTail` 은
+ *  브로커 WS 푸시마다 새 참조라, 이 함수는 **틱마다** 돈다. 반면 파케이는 60초
+ *  리페치 주기로만 바뀐다. 종전엔 매 틱 전 브로커의 전 포인트를 복사하고
+ *  브로커마다 정렬까지 했다 — 그 비용이 당일 궤적 길이에 비례하니 장이 진행될수록
+ *  무거워졌다(09:00 엔 공짜, 15:00 엔 브로커당 수천 점 × 초당 수 회).
+ *
+ *  `points` 배열은 **우리가 만든 사본**이다 — 호출부가 넘긴 배열을 그대로 들고
+ *  있지 않으므로, 아래에서 이 배열을 결과에 재사용해도 입력을 별칭하지 않는다
+ *  (입력 불변 계약 유지). */
+type PreparedBrokerParquet = {
+  seamMs: number;
+  byBroker: Map<string, BrokerSeriesPoint[]>;
+};
+
+/** 파케이 배열 참조를 키로 준비 결과를 캐시한다. WeakMap 이라 파케이가 교체되면
+ *  이전 준비물은 저절로 회수된다(누적 없음). */
+const preparedBrokerParquet = new WeakMap<
+  readonly BrokerSeriesEntry[],
+  PreparedBrokerParquet
+>();
+
+function prepareBrokerParquet(
+  parquet: readonly BrokerSeriesEntry[],
+): PreparedBrokerParquet {
+  const hit = preparedBrokerParquet.get(parquet);
+  if (hit) return hit;
 
   // 전역 이음매 — 승격된 마지막 관측 시각.
   let seamMs = -Infinity;
@@ -242,20 +264,45 @@ export function mergeBrokerSeriesWithLiveTail(
     const last = e.points[e.points.length - 1];
     if (last && last.ts_ms > seamMs) seamMs = last.ts_ms;
   }
-
   const byBroker = new Map<string, BrokerSeriesPoint[]>();
   for (const e of parquet) byBroker.set(e.broker, [...e.points]);
+
+  const prepared = { seamMs, byBroker };
+  preparedBrokerParquet.set(parquet, prepared);
+  return prepared;
+}
+
+export function mergeBrokerSeriesWithLiveTail(
+  parquetSeries: readonly BrokerSeriesEntry[] | null | undefined,
+  liveSeries: readonly BrokerSeriesEntry[],
+): BrokerSeriesEntry[] {
+  const parquet = parquetSeries ?? [];
+  if (parquet.length === 0) return liveSeries.map(cloneEntry);
+
+  const { seamMs, byBroker: base } = prepareBrokerParquet(parquet);
+
+  // 브로커별 최종 포인트 배열. 꼬리가 없는 브로커는 준비된 사본을 **그대로 재사용**
+  // 한다 — 틱마다 새 점이 붙는 브로커는 보통 소수라, 여기서 대부분의 할당이 사라진다.
+  const merged = new Map<string, BrokerSeriesPoint[]>(base);
   for (const e of liveSeries) {
     const tail = e.points.filter((p) => p.ts_ms > seamMs);
-    if (tail.length === 0 && byBroker.has(e.broker)) continue;
-    const merged = byBroker.get(e.broker) ?? [];
-    merged.push(...tail);
-    byBroker.set(e.broker, merged);
+    if (tail.length === 0) {
+      // 꼬리가 없고 파케이에도 없는 브로커는 **빈 엔트리로 남긴다** — 종전 동작
+      // 보존이다. 이 함수 변경은 순수 성능 작업이므로 출력이 달라지면 안 된다.
+      if (!merged.has(e.broker)) merged.set(e.broker, []);
+      continue;
+    }
+    const head = base.get(e.broker);
+    // concat 은 입력을 변형하지 않는다 — 준비된 사본은 다음 틱에도 온전해야 한다.
+    merged.set(e.broker, head ? head.concat(tail) : tail.slice());
   }
 
   const entries: BrokerSeriesEntry[] = [];
-  for (const [broker, points] of byBroker) {
-    points.sort((a, b) => a.ts_ms - b.ts_ms);
+  for (const [broker, points] of merged) {
+    // 정렬하지 않는다. 파케이는 ts_ms 오름차순이 타입 계약이고(BrokerSeriesEntry),
+    // 꼬리는 전부 seamMs(= 파케이 전역 최대 ts) **초과**라 어느 브로커에서든
+    // 파케이 구간 뒤에 온다. 이어붙이면 오름차순이 보존되므로 매 틱 O(n log n)
+    // 재정렬은 순수 낭비였다.
     const finalNet = points.length > 0 ? points[points.length - 1].net : 0;
     entries.push({
       broker,

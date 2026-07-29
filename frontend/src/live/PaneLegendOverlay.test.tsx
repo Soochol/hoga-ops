@@ -44,7 +44,7 @@ function registerLegend(
     series: c.value === null ? ({ data: () => [] } as never) : seriesWithValue(c.value),
     meta: { label: c.label, color: c.color, format: c.format },
   }));
-  usePaneLegendRegistry.getState().register(paneId, entries);
+  usePaneLegendRegistry.getState().register(null, paneId, entries);
 }
 
 function renderOverlay({
@@ -82,9 +82,9 @@ function resetStore() {
     foreignNetEnabled: false,
     institutionNetEnabled: false,
   });
-  useMaSeriesRegistry.setState({ series: new Map() });
-  useDailyMaSeriesRegistry.setState({ series: new Map() });
-  usePaneLegendRegistry.setState({ panes: new Map() });
+  useMaSeriesRegistry.setState({ byScope: new Map() });
+  useDailyMaSeriesRegistry.setState({ byScope: new Map() });
+  usePaneLegendRegistry.setState({ byScope: new Map() });
 }
 
 describe('PaneLegendOverlay — candle MA row', () => {
@@ -92,7 +92,7 @@ describe('PaneLegendOverlay — candle MA row', () => {
   afterEach(cleanup);
 
   it('renders the candle MA legend with the latest-fallback value when no cursor', () => {
-    useMaSeriesRegistry.getState().register('ma-1', seriesWithValue(311400));
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(311400));
     renderOverlay();
     expect(screen.getByText('311,400')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument(); // MA period (색 입힌 기간)
@@ -106,7 +106,7 @@ describe('PaneLegendOverlay — candle MA row', () => {
         return [{ time: 1, value: 100 }, { time: 2, value: 200 }];
       },
     } as never;
-    useMaSeriesRegistry.getState().register('ma-1', spy);
+    useMaSeriesRegistry.getState().register(null, 'ma-1', spy);
     const chart = makeChart([120]);
     const paneToggles = { foreignNet: false, institutionNet: false, volumeEnabled: false };
     const { rerender } = render(
@@ -127,14 +127,14 @@ describe('PaneLegendOverlay — candle MA row', () => {
   });
 
   it('✕ on the MA row turns the moving-average master off', () => {
-    useMaSeriesRegistry.getState().register('ma-1', seriesWithValue(100));
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
     renderOverlay();
     fireEvent.click(screen.getByRole('button', { name: '이동평균선 지표 끄기' }));
     expect(useLivePageStore.getState().movingAverageEnabled).toBe(false);
   });
 
   it('eye on the MA row toggles movingAverageHidden', () => {
-    useMaSeriesRegistry.getState().register('ma-1', seriesWithValue(100));
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
     renderOverlay();
     fireEvent.click(screen.getByRole('button', { name: '이동평균선 선 숨김/표시' }));
     expect(useLivePageStore.getState().movingAverageHidden).toBe(true);
@@ -159,7 +159,7 @@ describe('PaneLegendOverlay — candle daily-MA row', () => {
         { id: 'dma-1', enabled: true, period: 20, color: '#3485FA', lineWidth: 1, source: 'close' },
       ],
     });
-    useDailyMaSeriesRegistry.getState().register('dma-1', seriesWithValue(70500));
+    useDailyMaSeriesRegistry.getState().register(null, 'dma-1', seriesWithValue(70500));
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
     expect(screen.queryByText('일봉 이동평균선')).toBeNull();
     // 값 셀·토글 버튼도 함께 사라진다.
@@ -179,7 +179,7 @@ describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => 
   const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
 
   it('flag 지표를 켜도 값 행이 렌더되지 않는다(이동평균선은 유지)', () => {
-    useMaSeriesRegistry.getState().register('ma-1', seriesWithValue(100));
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
     useLivePageStore.setState({
       askPeakEnabled: true,
       bidPeakEnabled: true,
