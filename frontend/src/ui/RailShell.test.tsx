@@ -17,9 +17,10 @@ describe('RailShell primitives', () => {
     render(<RailDrawer id="panel" testId="panel">body</RailDrawer>);
     const drawer = screen.getByTestId('panel');
     expect(drawer).toHaveClass('h-full');
-    // 경계선 없는 크롬 표면(2026-07-22 구분선 최소화 C안) — 분리는 bg-subtle 톤이 담당.
+    // 경계선 없는 표면(2026-07-22 구분선 최소화 C안) + 페이지 필드와 동일 톤(2026-07-29
+    // 배경 통일 완결) — 톤 스텝 0이므로 border-l 로 경계를 되살리지 않는다.
     expect(drawer).not.toHaveClass('border-l');
-    expect(drawer).toHaveClass('bg-bg-subtle');
+    expect(drawer).toHaveClass('bg-bg');
     expect(drawer).toHaveStyle({ width: 'var(--watchlist-panel-w)' });
   });
 

@@ -151,8 +151,8 @@ describe('ScreenerDrawer', () => {
   it('lists saved screeners in the dropdown', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
-    expect(screen.getByTestId('screener-panel')).toHaveClass('bg-bg-subtle');
-    // 경계선 없는 크롬 표면(2026-07-22 구분선 최소화 C안) — 분리는 bg-subtle 톤이 담당.
+    expect(screen.getByTestId('screener-panel')).toHaveClass('bg-bg');
+    // 경계선 없는 표면(2026-07-22 C안) + 페이지 필드와 동일 톤(2026-07-29 배경 통일 완결).
     expect(screen.getByTestId('screener-panel')).not.toHaveClass('border-l');
     // 커스텀 드롭다운: 트리거가 선택된 조건명을 보여주고, 열면 option 목록이 뜬다.
     const trigger = await screen.findByRole('button', { name: '저장한 조건검색 선택' });
