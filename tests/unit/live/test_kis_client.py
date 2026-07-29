@@ -762,8 +762,15 @@ async def test_token_bucket_background_not_starved_under_sustained_foreground() 
         # flood에도 불구하고 background는 BOUNDED 시간에 완료한다(과거 코드는 무한 대기).
         # 고정 코드는 backstop(0.1s) 후 FIFO lock으로 공정 경쟁해 보통 ~0.2s에 완료하나,
         # lock 경쟁 스케줄링 변동으로 1s를 넘을 수 있다(분산 큼). 타임아웃은 '무한 vs
-        # 유한'을 가르는 용도라 넉넉히 둔다 — 5s는 관측 최악(~1.2s)의 4배 여유.
-        await asyncio.wait_for(bucket.acquire(foreground=False), timeout=5.0)
+        # 유한'을 가르는 용도라 넉넉히 둔다.
+        #
+        # 5s → 30s (2026-07-29). 5s 는 개발 머신 관측 최악(~1.2s)의 4배였는데, GitHub
+        # 러너(vCPU 2개)에서는 **결정적으로** 초과한다 — PR #938 에서 2연속 실패, 로컬은
+        # 계속 통과. fg_flood 3개가 busy-spin 하므로 코어가 2개면 이벤트 루프 포화도가
+        # 개발 머신과 질적으로 다르다. 관측 최악에 배수를 곱하는 방식은 실행 환경이
+        # 하나일 때만 통하고, 여기서는 '유한임' 만 보이면 되므로 여유를 크게 준다.
+        # 진짜 무한 대기는 이 값이 아니라 잡 타임아웃(15분)이 잡는다.
+        await asyncio.wait_for(bucket.acquire(foreground=False), timeout=30.0)
     finally:
         stop = True
         for t in floods:
