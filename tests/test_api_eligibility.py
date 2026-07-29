@@ -205,7 +205,14 @@ def test_decide_capture_invalid_proceeds_as_fresh(tmp_path: Path) -> None:
     }
     (pq_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
 
-    decision = decide_capture(data_dir=tmp_path, code="003490", date="20260518", force_retry=False)
+    # now 를 명시해 캡처 날짜를 업스트림 보유 창 **안**에 둔다. 창 밖이면
+    # _is_expired_upstream_stub 가 upstream_gap 으로 스킵하는데(2026-07-29 추가),
+    # 이 테스트가 지키는 계약은 그쪽이 아니라 "아직 받을 수 있는 INVALID 는
+    # 손상 아티팩트를 믿지 말고 fresh capture 한다" 쪽이다.
+    decision = decide_capture(
+        data_dir=tmp_path, code="003490", date="20260518", force_retry=False,
+        now=dt.datetime(2026, 5, 19),
+    )
 
     # Sanity: precondition holds (classify is INVALID)
     from hoga.api.disk_state import check_disk_state
@@ -260,3 +267,114 @@ def test_skip_reason_wire_type_includes_no_upstream_data() -> None:
     from typing import get_args
     assert set(get_args(elig_module.SkipReason)) == set(get_args(models_module.SkipReason))
     assert "no_upstream_data" in get_args(elig_module.SkipReason)
+
+
+# ---------------------------------------------------------------------------
+# 만료된 업스트림 스텁 스킵 (2026-07-29)
+#
+# hogaplay 는 보유 창(~18h) 밖 거래일을 요청하면 실패하는 대신 스텁을 준다:
+# info.tsv 의 close 필드가 0 이고 이벤트도 정상의 10% 미만. 파서가 그 0 을
+# 기록하고 → error invariant → INVALID 로 분류된다. 전 구간이 올바른 동작이다.
+#
+# 문제는 ADR-0093 의 upstream_gap 스킵이 SOURCE_PARTIAL 전용이라, 이 클래스만
+# 재시도 차단 없이 남았다는 것이다. 날짜 범위 백필이 같은 날짜를 반복해 훑으며
+# INVALID 를 재생산했다 — ADR-0063 이 129건으로 적은 것이 573건이 됐고 그중
+# 537건이 최근 14일 내 작성분이었다.
+#
+# 경계가 이 묶음의 핵심이다: **보유 창 안의 close_ms=0 은 막으면 안 된다**
+# (장중 캡처는 세션이 안 끝나 0 인 게 정상이고 마감 후 재캡처하면 채워진다).
+# ---------------------------------------------------------------------------
+
+
+def _write_close_zero_meta(data_dir: Path, code: str, date: str, **extra: object) -> None:
+    """close_ms=0 스텁 meta. 실제 573건의 형태(collection_complete=False)를 따른다."""
+    p = data_dir / "parquet" / date / code
+    p.mkdir(parents=True)
+    (p / "meta.json").write_text(json.dumps({
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 0,
+        "collection_complete": False,
+        "is_partial": True,
+        **extra,
+    }), encoding="utf-8")
+
+
+def test_expired_close_zero_stub_is_skipped(tmp_path: Path) -> None:
+    """보유 창 밖 close_ms=0 → upstream_gap 스킵(백필 재생산 중단)."""
+    _write_close_zero_meta(tmp_path, "003490", "20260518")
+
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="003490", date="20260518", force_retry=False,
+        now=dt.datetime(2026, 7, 29),
+    )
+    assert decision.skip_reason == "upstream_gap"
+    assert decision.resume is False
+
+
+def test_recent_close_zero_still_proceeds(tmp_path: Path) -> None:
+    """보유 창 **안**이면 재캡처가 채울 수 있다 — 막지 않는다.
+
+    이게 없으면 장중에 잡힌 close_ms=0(세션 미종료라 정상)까지 영구 차단된다.
+    """
+    _write_close_zero_meta(tmp_path, "003490", "20260518")
+
+    for day in (18, 19, 20):  # 당일 · +1 · +2 = 보유 창 안
+        decision = eligibility.decide_capture(
+            data_dir=tmp_path, code="003490", date="20260518", force_retry=False,
+            now=dt.datetime(2026, 5, day),
+        )
+        assert decision.skip_reason is None, f"2026-05-{day} 에 막히면 안 된다"
+
+
+def test_expired_stub_skip_is_bypassed_by_force_retry(tmp_path: Path) -> None:
+    """force_retry 는 ADR-0093 과 같은 탈출구를 준다 — 사용자가 직접 재확인 가능."""
+    _write_close_zero_meta(tmp_path, "003490", "20260518")
+
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="003490", date="20260518", force_retry=True,
+        now=dt.datetime(2026, 7, 29),
+    )
+    assert decision.skip_reason is None
+
+
+def test_invalid_with_other_errors_still_proceeds(tmp_path: Path) -> None:
+    """원인이 close_ms 하나가 아니면 스킵하지 않는다.
+
+    다른 error 가 섞여 있으면 아티팩트가 다른 이유로도 깨진 것이라, "업스트림이
+    못 준다" 로 단정할 수 없다 — fresh capture 가 여전히 맞다. open_ms 는
+    normalize 가 09:00 으로 복원하므로, 여기서는 세션 범위를 벗어난 close 로
+    close_in_kst_range 만 남기고 close_after_open 은 통과시킨다.
+    """
+    p = tmp_path / "parquet" / "20260518" / "003490"
+    p.mkdir(parents=True)
+    (p / "meta.json").write_text(json.dumps({
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 200_000_000,  # 20:00 — open 보다 크지만 장 마감 범위 밖
+        "collection_complete": False,
+        "is_partial": True,
+    }), encoding="utf-8")
+
+    from hoga.api.disk_state import check_disk_state
+    cls = check_disk_state(tmp_path, "003490", "20260518")
+    ids = {v.invariant_id for v in cls.errors}
+    # 전제: close_ms=0 쌍과 다른 조합이어야 이 테스트가 의미를 갖는다.
+    assert ids != {"meta.close_after_open", "meta.close_in_kst_range"}
+
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="003490", date="20260518", force_retry=False,
+        now=dt.datetime(2026, 7, 29),
+    )
+    assert decision.skip_reason is None
+
+
+def test_expired_stub_guard_ignores_non_invalid_states(tmp_path: Path) -> None:
+    """정상 CLIENT_INCOMPLETE 는 계속 resume 된다 — 가드가 넘치지 않는다."""
+    _write_meta(tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
+                collection_complete=False, is_partial=True)
+
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
+        now=dt.datetime(2026, 7, 29),
+    )
+    assert decision.skip_reason is None
+    assert decision.resume is True
