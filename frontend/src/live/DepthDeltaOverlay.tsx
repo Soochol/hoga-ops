@@ -15,6 +15,7 @@ import {
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceDelta } from './peakLegendValues';
 import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
+import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 /** 가시 시간범위(가상초). DepthHeatmapOverlay.readVisibleRange 와 동일 관용구. */
 function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number } | null {
@@ -159,7 +160,7 @@ function DepthDeltaOverlay({ chart, paneSeries, axis, points }: Props) {
     ts.subscribeVisibleLogicalRangeChange(schedule);
     return () => {
       if (raf) cancelAnimationFrame(raf);
-      ts.unsubscribeVisibleLogicalRangeChange(schedule);
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
     };
   }, [chart]);
 

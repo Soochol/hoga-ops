@@ -110,6 +110,78 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ lastMinuteHistoricalFromDate: null });
   });
 
+  it('크로스헤어 구독 해제가 throw 해도 teardown 꼬리가 끝까지 돈다', () => {
+    // 차트 파괴 레이스 재현 — 부모의 chart.remove() 가 먼저 돌면 lightweight-charts 가
+    // 핸들이 dangling 이라며 던진다. 해제는 이 cleanup 의 **첫 줄**이라 가드가 없으면
+    // 뒤따르는 rAF 취소·타이머 취소·커서 스토어 리셋이 전부 스킵된다(그냥 JS 다).
+    const series = {
+      setData: vi.fn(),
+      update: vi.fn(),
+      removeSeries: vi.fn(),
+      applyOptions: vi.fn(),
+      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+      createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+      removePriceLine: vi.fn(),
+      attachPrimitive: vi.fn(),
+      detachPrimitive: vi.fn(),
+      setMarkers: vi.fn(),
+    };
+    const chart = {
+      addSeries: vi.fn(() => series),
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ({
+        subscribeVisibleTimeRangeChange: vi.fn(),
+        unsubscribeVisibleTimeRangeChange: vi.fn(),
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        applyOptions: vi.fn(),
+        fitContent: vi.fn(),
+        scrollToRealTime: vi.fn(),
+        scrollToPosition: vi.fn(),
+        setVisibleLogicalRange: vi.fn(),
+        getVisibleLogicalRange: vi.fn(() => null),
+        getVisibleRange: vi.fn(() => null),
+        setVisibleRange: vi.fn(),
+        timeToCoordinate: vi.fn(() => null),
+        coordinateToTime: vi.fn(() => null),
+        coordinateToLogical: vi.fn(() => null),
+        timeToIndex: vi.fn(() => null),
+        width: vi.fn(() => 800),
+      })),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      subscribeCrosshairMove: vi.fn(),
+      unsubscribeCrosshairMove: vi.fn(() => {
+        throw new Error('Value is undefined');
+      }),
+      chartElement: vi.fn(() => ({ clientWidth: 0, clientHeight: 0 })),
+    };
+    vi.mocked(createChartEx).mockReturnValueOnce(chart as never);
+
+    const { unmount } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    act(() => {
+      useLiveCursorStore.setState({ cursorMs: 123, sidebarCursorMs: 123 });
+    });
+
+    expect(() => unmount()).not.toThrow();
+    // 가드가 없으면 해제에서 던지고 이 리셋까지 못 온다 — 커서가 굳은 채 남는다.
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+  });
+
   it('renders root container with chart slot', () => {
     render(
       <LiveChartRoot

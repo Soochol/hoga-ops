@@ -14,6 +14,7 @@ import {
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty } from './peakLegendValues';
 import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
+import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 /** 가시 시간범위(가상초 {from,to}). 초기 마운트엔 null, 차트 teardown 중엔 throw → null.
  *  HighLowLabelsPrimitive.readVisibleRange 와 동일 관용구. */
@@ -177,7 +178,7 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
     ts.subscribeVisibleLogicalRangeChange(schedule);
     return () => {
       if (raf) cancelAnimationFrame(raf);
-      ts.unsubscribeVisibleLogicalRangeChange(schedule);
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
     };
   }, [chart]);
 

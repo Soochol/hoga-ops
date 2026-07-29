@@ -101,6 +101,7 @@ import type { BoundPaneSpec } from '../chart/paneSpecs';
 import { useDrawingHost } from '../chart/useDrawingHost';
 import { drawingScopeFor } from '../state/drawings';
 import type { TradeVolumePoc } from './tradeVolumePoc';
+import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#121216'],
@@ -809,7 +810,7 @@ export function LiveChartRoot({
       window.removeEventListener('pointermove', onPointerMove, true);
       window.removeEventListener('pointerup', clearDrag);
       window.removeEventListener('pointercancel', clearDrag);
-      ts.unsubscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange);
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange));
     };
   }, [chart, containerRef, markViewportUserAdjusted]);
   useEffect(() => {
@@ -1291,7 +1292,7 @@ export function LiveChartRoot({
     update();
     timeScale.subscribeVisibleTimeRangeChange(update);
     return () => {
-      timeScale.unsubscribeVisibleTimeRangeChange(update);
+      safeUnsubscribe(() => timeScale.unsubscribeVisibleTimeRangeChange(update));
     };
   }, [chart, cb, cb?.candles, axis, timeframe]);
 
@@ -1863,7 +1864,7 @@ export function LiveChartRoot({
     };
     chart.subscribeCrosshairMove(handler);
     return () => {
-      chart.unsubscribeCrosshairMove(handler);
+      safeUnsubscribe(() => chart.unsubscribeCrosshairMove(handler));
       if (pending !== null) cancelAnimationFrame(pending);
       cancelPendingLeaveClear();
       publishedBasisDateRef.current = null;
@@ -1906,7 +1907,7 @@ export function LiveChartRoot({
     };
     chart.subscribeClick(handler);
     return () => {
-      chart.unsubscribeClick(handler);
+      safeUnsubscribe(() => chart.unsubscribeClick(handler));
     };
   }, [chart, axis, onCandleBasisClick]);
 

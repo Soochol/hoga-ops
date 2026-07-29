@@ -5,6 +5,7 @@ import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { PaneId } from '../chart/drawing/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
+import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 type Props = {
   chart: IChartApi;
@@ -80,7 +81,7 @@ function PriceLevelDotsOverlay({ chart, bundle, axis, paneSeries }: Props) {
     if (ro && containerRef.current) ro.observe(containerRef.current);
     return () => {
       if (raf) cancelAnimationFrame(raf);
-      ts.unsubscribeVisibleLogicalRangeChange(schedule);
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
       ro?.disconnect();
     };
   }, [chart, enabled]);

@@ -1902,3 +1902,62 @@ describe('rangePlaceholderData', () => {
     expect(rangePlaceholderData(fakeBundle, currentKey, previousKey)).toBeUndefined();
   });
 });
+
+describe('좌측 팬 중 range 캐시 사본 누적', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
+  });
+
+  it('팬 스텝마다 재발행해도 지배당한 사본은 남지 않고 최심 복원원은 유지된다', async () => {
+    const today = '20260706';
+    const bundleFor = (url: unknown): RangeBundle => {
+      const m = String(url).match(/from=(\d+)&to=(\d+)/);
+      return {
+        ...fakeBundle,
+        code: '005930',
+        from_date: m ? m[1] : today,
+        to_date: m ? m[2] : today,
+        bucket_ms: 60_000,
+      };
+    };
+    vi.spyOn(client, 'apiCall').mockImplementation((url) => Promise.resolve(bundleFor(url)));
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    // 사용자가 차트를 왼쪽으로 계속 미는 상황 — historicalFromDate 가 스텝마다
+    // 뒤로 밀리므로 훅의 from 이 바뀌고, 그때마다 base 키가 **새로** 생긴다.
+    const steps = ['20260629', '20260622', '20260615', '20260608', '20260601'];
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useRangeSidecarDelta('005930', from, today, '1m', undefined, today, {
+          mode: 'sidecar',
+          volumeDistributionBins: 10,
+        }, 'hogaplay_first'),
+      { wrapper, initialProps: { from: steps[0] } },
+    );
+
+    for (const from of steps) {
+      rerender({ from });
+      await waitFor(() => expect(result.current.data?.from_date).toBe(from), { timeout: 5000 });
+    }
+
+    const cached = qc.getQueryCache()
+      .findAll({ queryKey: ['range', '005930'] })
+      .map((q) => q.state.data as RangeBundle | undefined)
+      .filter((d): d is RangeBundle => !!d);
+    const wideCopies = cached.filter((d) => d.to_date === today);
+
+    console.log('[dominated] 전체 =', cached.length, '| to=today 사본 =', wideCopies.length,
+      wideCopies.map((d) => `${d.from_date}~${d.to_date}`).join(' '));
+
+    // to_date=today 인 "최광폭 병합본" 사본은 스텝 수만큼 쌓이면 안 된다. 가드가 없으면
+    // 스텝마다 한 벌씩(각각 그 시점의 전체 번들) 남아 힙을 그대로 갉아먹는다.
+    expect(wideCopies.length).toBe(1);
+    // 그리고 남은 한 벌은 반드시 최심(=팬 끝까지 확장된) 복원원이어야 한다.
+    expect(wideCopies[0].from_date).toBe('20260601');
+  });
+});

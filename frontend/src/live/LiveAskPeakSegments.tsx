@@ -19,6 +19,7 @@ import {
   type AskPeakSegment,
 } from '../chart/AskPeakSegmentsPrimitive';
 import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
+import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 /** peak 시각(ms)을 그 시각이 속한 캔들(버킷)의 ts_ms로 스냅. 캔들은 버킷 시작에 놓이는데
  *  (downsample_candles: ts_ms = floor(ts_ms/bucket)*bucket), peak.t_ms는 그 버킷의 마지막
@@ -563,7 +564,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
     timeScale.subscribeVisibleLogicalRangeChange(handler);
     updateSegments();
     return () => {
-      timeScale.unsubscribeVisibleLogicalRangeChange(handler);
+      safeUnsubscribe(() => timeScale.unsubscribeVisibleLogicalRangeChange(handler));
     };
   }, [series, updateSegments]);
 

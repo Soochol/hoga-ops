@@ -14,6 +14,7 @@ import { buildAskPeakOverlaySegments, styleVisibleMaxAskPeakSegments } from './L
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { useWindowIndicator } from './workspace/windowView';
+import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 type VisibleMaxRankLimit = 0 | 1 | 2 | 3;
 
@@ -209,7 +210,7 @@ function LivePeakWallDockedLabels({
     timeScale.subscribeVisibleLogicalRangeChange(handler);
     updateLabels();
     return () => {
-      timeScale.unsubscribeVisibleLogicalRangeChange(handler);
+      safeUnsubscribe(() => timeScale.unsubscribeVisibleLogicalRangeChange(handler));
     };
   }, [series, updateLabels]);
 

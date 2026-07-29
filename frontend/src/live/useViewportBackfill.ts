@@ -15,6 +15,7 @@ import {
   realMsToYyyymmdd,
 } from './liveDateTime';
 import { livePerfLog } from '../util/perfDebug';
+import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 /** viewport 좌단 가시 바의 KST 날짜(YYYYMMDD). getVisibleRange().from(virtual sec)를
  * axis.toReal로 실시간 ms 변환 — coverage-gap 판정용. 측정 불가 시 null. */
@@ -468,7 +469,7 @@ export function useViewportBackfill({
     ts.subscribeVisibleLogicalRangeChange(handler);
     return () => {
       if (timeoutId !== null) clearTimeout(timeoutId);
-      ts.unsubscribeVisibleLogicalRangeChange(handler);
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(handler));
     };
   }, [chart, axis, timeframe, canTriggerBackfill, historicalRange, viewGuard]);
 
