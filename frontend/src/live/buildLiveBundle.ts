@@ -338,6 +338,12 @@ class IncrementalHogaBucketer {
   private lastObRef: ObSnapshot | null = null;
   private lastTradeRef: TradeSnapshot | null = null;
   private continuousBoundaryMs: number | null = null;
+  // 버킷별 "연속장 틱의 최신 t_ms". 축출로 버킷을 버린 뒤 continuousBoundaryMs 를
+  // O(버킷수) 로 다시 구하기 위한 것 — 전체 배열 재스캔(O(n))을 피한다.
+  private continuousByBucket = new Map<number, number>();
+  // 배열 선두의 정체성. 이게 바뀌었다 = 15분 창이 앞을 잘라냈다(축출).
+  private firstObRef: ObSnapshot | null = null;
+  private firstTradeRef: TradeSnapshot | null = null;
   private maxProcessedObT: number | null = null;
   private maxProcessedTradeT: number | null = null;
   private quoteByBucket = new Map<number, QuoteRatioPoint>();
@@ -375,46 +381,160 @@ class IncrementalHogaBucketer {
     depthHeatmapToday: DepthHeatmapPoint[];
     depthDeltaToday: DepthDeltaPoint[];
   } {
+    // 안전망: 조금이라도 다루기 애매하면 통짜 재빌드로 떨어진다. 재빌드는 "현재
+    // 배열만" 보고 오라클과 같은 답을 내므로 정합이 구조적으로 보장된다 — 빠른
+    // 경로가 감당 못 하는 입력에서 **틀린 값** 대신 **느린 값**이 나오게 하는 장치다.
+    const rebuild = () => {
+      this.reset(bucketMs, sessionCloseMs, depthHeatmapEnabled, depthDeltaEnabled);
+      const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
+      const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
+      this.appendOb(obSorted);
+      this.appendTrade(tradeSorted);
+      this.rememberInputs(ob, trade);
+      return this.snapshot();
+    };
+
     if (
       this.bucketMs !== bucketMs ||
       this.sessionCloseMs !== sessionCloseMs ||
       this.depthHeatmapEnabled !== depthHeatmapEnabled ||
-      this.depthDeltaEnabled !== depthDeltaEnabled ||
-      !this.canAppendOb(ob) ||
-      !this.canAppendTrade(trade)
+      this.depthDeltaEnabled !== depthDeltaEnabled
     ) {
-      this.reset(bucketMs, sessionCloseMs, depthHeatmapEnabled, depthDeltaEnabled);
-      const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
-      const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
-      this.appendOb(obSorted);
-      this.appendTrade(tradeSorted);
-      this.rememberInputs(ob, trade);
-      return this.snapshot();
+      return rebuild();
     }
 
-    const obDelta = ob.slice(this.obLength);
-    const tradeDelta = trade.slice(this.tradeLength);
-    if (!this.isMonotonicObDelta(obDelta) || !this.isMonotonicTradeDelta(tradeDelta)) {
-      this.reset(bucketMs, sessionCloseMs, depthHeatmapEnabled, depthDeltaEnabled);
-      const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
-      const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
-      this.appendOb(obSorted);
-      this.appendTrade(tradeSorted);
-      this.rememberInputs(ob, trade);
-      return this.snapshot();
-    }
-    if (!this.appendOb(obDelta)) {
-      this.reset(bucketMs, sessionCloseMs, depthHeatmapEnabled, depthDeltaEnabled);
-      const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
-      const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
-      this.appendOb(obSorted);
-      this.appendTrade(tradeSorted);
-      this.rememberInputs(ob, trade);
-      return this.snapshot();
-    }
+    // 이전에 소비한 마지막 스냅샷이 지금 몇 번째인가. 종전엔 "길이가 같고 끝이 같다"
+    // 만 봤기 때문에, 앞이 한 건이라도 잘리면 인덱스가 밀려 무조건 재빌드였다.
+    const obAt = this.locate(ob, this.lastObRef, this.obLength);
+    const tradeAt = this.locate(trade, this.lastTradeRef, this.tradeLength);
+    if (obAt === null || tradeAt === null) return rebuild();
+
+    if (!this.reconcileEviction(ob, trade)) return rebuild();
+
+    const obDelta = ob.slice(obAt + 1);
+    const tradeDelta = trade.slice(tradeAt + 1);
+    if (!this.isMonotonicObDelta(obDelta) || !this.isMonotonicTradeDelta(tradeDelta)) return rebuild();
+    if (!this.appendOb(obDelta)) return rebuild();
     this.appendTrade(tradeDelta);
     this.rememberInputs(ob, trade);
     return this.snapshot();
+  }
+
+  /**
+   * 이전에 소비한 마지막 스냅샷의 **현재 인덱스**. `-1` = 아직 소비한 게 없음(전부가
+   * 델타), `null` = 그 스냅샷마저 축출돼 이어붙일 기준이 없음(전체 재빌드).
+   *
+   * 배열은 t_ms 오름차순이고 축출은 **앞에서만** 일어나므로, 이진탐색으로 같은 t_ms
+   * 구간을 찾고 그 안에서 identity 를 확인한다. 같은 ms 에 여러 스냅샷이 올 수 있어
+   * t_ms 비교만으로는 위치를 특정할 수 없다(중복 틱을 통째로 흘릴 위험).
+   */
+  private locate<T extends { t_ms: number }>(
+    arr: readonly T[],
+    ref: T | null,
+    len: number,
+  ): number | null {
+    if (ref === null) return -1;
+    // 축출이 없었던 최빈 경로를 O(1) 로.
+    if (len > 0 && len <= arr.length && arr[len - 1] === ref) return len - 1;
+    let lo = 0;
+    let hi = arr.length - 1;
+    let at = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid].t_ms < ref.t_ms) lo = mid + 1;
+      else { at = mid; hi = mid - 1; }
+    }
+    if (at < 0) return null;
+    for (let i = at; i < arr.length && arr[i].t_ms === ref.t_ms; i += 1) {
+      if (arr[i] === ref) return i;
+    }
+    return null;
+  }
+
+  /**
+   * 축출이 일어났으면 누적 상태를 현재 창에 맞춘다.
+   *
+   * 왜 인덱스 보정만으론 안 되나: 버킷의 `bid_max`/`ask_max` 는 **러닝 맥스**, 체결
+   * 강도는 **합**이라, 버킷 앞부분 틱이 사라지면 오라클(현재 배열만 봄)의 값이
+   * 내려간다. 누적본을 그대로 두면 사라진 피크를 계속 들고 있어 지표가 틀린다.
+   *
+   * 그래서 두 가지를 한다: ① 창 밖으로 완전히 밀려난 버킷은 버리고, ② **부분만
+   * 잘린 선두 버킷 하나**를 지우고 현재 배열로 다시 접는다. 중간·최신 버킷의 틱은
+   * 그대로 남아 있으므로 손댈 필요가 없다 — 이게 O(창 전체) 를 O(버킷 하나) 로
+   * 줄이는 지점이다. 시간 기반 축출이라 부분 손실은 언제나 선두 버킷 **하나**뿐이다.
+   */
+  private reconcileEviction(ob: readonly ObSnapshot[], trade: readonly TradeSnapshot[]): boolean {
+    const obEvicted = ob.length > 0 && this.firstObRef !== null && this.firstObRef !== ob[0];
+    const tradeEvicted = trade.length > 0 && this.firstTradeRef !== null && this.firstTradeRef !== trade[0];
+    if (!obEvicted && !tradeEvicted) return true;
+
+    if (obEvicted) {
+      const headBucket = bucketStartMs(ob[0].t_ms, this.bucketMs);
+      this.dropObBucketsBefore(headBucket);
+      this.clearObBucket(headBucket);
+      let end = 0;
+      while (end < ob.length && bucketStartMs(ob[end].t_ms, this.bucketMs) === headBucket) end += 1;
+      // 선두 버킷은 오라클과 같이 **체인 시작(prev=null)** 으로 접어야 한다. 뒤 버킷의
+      // baseline 은 건드리면 안 되므로 원복한다 — 그 기준 스냅샷은 그대로 창 안에 있다.
+      const savedPrevDelta = this.prevDeltaBook;
+      this.prevDeltaBook = null;
+      const ok = this.appendOb(ob.slice(0, end));
+      this.prevDeltaBook = savedPrevDelta;
+      if (!ok) return false;
+    }
+    if (tradeEvicted) {
+      const headBucket = bucketStartMs(trade[0].t_ms, this.bucketMs);
+      this.dropFillBucketsBefore(headBucket);
+      this.clearFillBucket(headBucket);
+      let end = 0;
+      while (end < trade.length && bucketStartMs(trade[end].t_ms, this.bucketMs) === headBucket) end += 1;
+      this.appendTrade(trade.slice(0, end));
+    }
+    // 선두 버킷을 지웠다 다시 넣으면 삽입 순서 배열의 끝으로 가므로 시간순으로 되돌린다
+    // (오라클의 방출 순서 = 틱 시간순).
+    this.quoteOrder.sort((a, b) => a - b);
+    this.fillOrder.sort((a, b) => a - b);
+    this.depthOrder.sort((a, b) => a - b);
+    this.deltaOrder.sort((a, b) => a - b);
+    // 버린 버킷에 있던 연속장 틱은 더 이상 경계가 될 수 없다.
+    let boundary: number | null = null;
+    for (const v of this.continuousByBucket.values()) {
+      boundary = boundary === null ? v : Math.max(boundary, v);
+    }
+    this.continuousBoundaryMs = boundary;
+    return true;
+  }
+
+  private dropObBucketsBefore(headBucket: number): void {
+    for (const t of [...this.quoteByBucket.keys()]) if (t < headBucket) this.quoteByBucket.delete(t);
+    for (const t of [...this.depthByBucket.keys()]) if (t < headBucket) this.depthByBucket.delete(t);
+    for (const t of [...this.deltaByBucket.keys()]) if (t < headBucket) this.deltaByBucket.delete(t);
+    for (const t of [...this.seenPre]) if (t < headBucket) this.seenPre.delete(t);
+    for (const t of [...this.continuousByBucket.keys()]) if (t < headBucket) this.continuousByBucket.delete(t);
+    this.quoteOrder = this.quoteOrder.filter((t) => t >= headBucket);
+    this.depthOrder = this.depthOrder.filter((t) => t >= headBucket);
+    this.deltaOrder = this.deltaOrder.filter((t) => t >= headBucket);
+  }
+
+  private clearObBucket(bucket: number): void {
+    this.quoteByBucket.delete(bucket);
+    this.depthByBucket.delete(bucket);
+    this.deltaByBucket.delete(bucket);
+    this.seenPre.delete(bucket);
+    this.continuousByBucket.delete(bucket);
+    this.quoteOrder = this.quoteOrder.filter((t) => t !== bucket);
+    this.depthOrder = this.depthOrder.filter((t) => t !== bucket);
+    this.deltaOrder = this.deltaOrder.filter((t) => t !== bucket);
+  }
+
+  private dropFillBucketsBefore(headBucket: number): void {
+    for (const t of [...this.fillByBucket.keys()]) if (t < headBucket) this.fillByBucket.delete(t);
+    this.fillOrder = this.fillOrder.filter((t) => t >= headBucket);
+  }
+
+  private clearFillBucket(bucket: number): void {
+    this.fillByBucket.delete(bucket);
+    this.fillOrder = this.fillOrder.filter((t) => t !== bucket);
   }
 
   private reset(
@@ -432,6 +552,9 @@ class IncrementalHogaBucketer {
     this.lastObRef = null;
     this.lastTradeRef = null;
     this.continuousBoundaryMs = null;
+    this.continuousByBucket = new Map();
+    this.firstObRef = null;
+    this.firstTradeRef = null;
     this.maxProcessedObT = null;
     this.maxProcessedTradeT = null;
     this.quoteByBucket = new Map();
@@ -447,23 +570,13 @@ class IncrementalHogaBucketer {
     this.prevDeltaBook = null;
   }
 
-  private canAppendOb(ob: readonly ObSnapshot[]): boolean {
-    if (ob.length < this.obLength) return false;
-    if (this.obLength === 0) return true;
-    return ob[this.obLength - 1] === this.lastObRef;
-  }
-
-  private canAppendTrade(trade: readonly TradeSnapshot[]): boolean {
-    if (trade.length < this.tradeLength) return false;
-    if (this.tradeLength === 0) return true;
-    return trade[this.tradeLength - 1] === this.lastTradeRef;
-  }
-
   private rememberInputs(ob: readonly ObSnapshot[], trade: readonly TradeSnapshot[]) {
     this.obLength = ob.length;
     this.tradeLength = trade.length;
     this.lastObRef = ob.length > 0 ? ob[ob.length - 1] : null;
     this.lastTradeRef = trade.length > 0 ? trade[trade.length - 1] : null;
+    this.firstObRef = ob.length > 0 ? ob[0] : null;
+    this.firstTradeRef = trade.length > 0 ? trade[0] : null;
   }
 
   private isMonotonicObDelta(obs: readonly ObSnapshot[]): boolean {
@@ -491,6 +604,10 @@ class IncrementalHogaBucketer {
     for (const s of obs) {
       if (s.t_ms <= this.sessionCloseMs && isContinuousBook(s)) {
         nextBoundary = nextBoundary === null ? s.t_ms : Math.max(nextBoundary, s.t_ms);
+        // 버킷별로도 남긴다 — 축출로 버킷을 버린 뒤 경계를 다시 구하는 근거.
+        const cb = bucketStartMs(s.t_ms, this.bucketMs);
+        const prevC = this.continuousByBucket.get(cb);
+        if (prevC === undefined || s.t_ms > prevC) this.continuousByBucket.set(cb, s.t_ms);
       }
     }
 
