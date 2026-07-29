@@ -434,8 +434,7 @@ def _run_series_for(stock_date_dir, meta):
     import pyarrow.parquet as _pq
 
     from hoga.api.invariants import StockDateArtifacts, check_series
-    from hoga.tables import candles as _candles
-    from hoga.tables import snapshots as _snapshots
+    from hoga.tables import candles as _candles, snapshots as _snapshots
     from hoga.tables.trades import Trade
 
     def _read(path, loader):
@@ -678,7 +677,10 @@ def prune(
     위협하면 --include-partial 옵트인 또는 별도 진단 도구를 도입한다."
     """
     from hoga.api.prune import (
-        disk_headroom, prune_default_now, prune_raw, resolve_retention_days,
+        disk_headroom,
+        prune_default_now,
+        prune_raw,
+        resolve_retention_days,
     )
 
     retention = days if days is not None else resolve_retention_days()

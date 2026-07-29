@@ -1,7 +1,8 @@
 """Tests for hoga.live.kis_venue."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 from hoga.live.kis_venue import (
     KIS_KST,

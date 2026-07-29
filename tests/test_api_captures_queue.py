@@ -241,8 +241,6 @@ async def test_worker_defers_when_inflight_collision(monkeypatch, tmp_path):
 
 import datetime as dt  # noqa: E402
 
-from fastapi.testclient import TestClient  # noqa: E402
-
 
 def _build_test_app(monkeypatch, tmp_path):
     """Build a real FastAPI app pointed at tmp_path. Tests should monkeypatch
@@ -497,7 +495,7 @@ async def test_cookie_expired_pauses_pool(monkeypatch):
     """When _run_capture_and_parse raises CookieExpiredError, the whole pool
     pauses and OTHER active items are cancelled with pause_origin=True."""
     from hoga.collector.client import CookieExpiredError
-    from hoga.collector.orchestrator import CaptureCancelled, CancelToken
+    from hoga.collector.orchestrator import CancelToken, CaptureCancelled
 
     # Synchronization: the runner that throws cookie-expired waits until all
     # 3 workers are active before raising, so the OTHER active items exist
@@ -522,7 +520,7 @@ async def test_cookie_expired_pauses_pool(monkeypatch):
                 raise CaptureCancelled()
             try:
                 await asyncio.wait_for(barrier.wait(), timeout=0.02)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
     # Bypass disk-state checks (route into _run_capture_and_parse directly).
@@ -1580,7 +1578,8 @@ async def test_finalize_item_done_bumps_watchlist_last_success(tmp_path):
     when phase is 'done' AND the on-disk classification is COMPLETE.
     Gating on disk_state (not just phase) is what keeps /watchlist in
     agreement with /capture — see test_api_watchlist_marker_sync."""
-    from unittest.mock import patch, AsyncMock
+    from unittest.mock import AsyncMock, patch
+
     from hoga.api import captures, watchlist
     captures.reset_state_for_tests()
     captures._data_dir = tmp_path
@@ -1614,7 +1613,8 @@ async def test_finalize_item_done_bumps_watchlist_last_success(tmp_path):
 
 @pytest.mark.asyncio
 async def test_finalize_item_failed_does_not_bump(tmp_path):
-    from unittest.mock import patch, AsyncMock
+    from unittest.mock import AsyncMock, patch
+
     from hoga.api import captures
     captures.reset_state_for_tests()
     captures._data_dir = tmp_path
@@ -1750,8 +1750,8 @@ def test_apply_progress_threads_upstream_health_telemetry():
     where a new field silently drops if any hop is missed — the UI badge would
     just never render, and no compiler catches it (ADR-0004 hand-mirror).
     """
-    from hoga.collector.orchestrator import ProgressEvent
     from hoga.api.timeenc import HogaMs
+    from hoga.collector.orchestrator import ProgressEvent
 
     state = QueueItemState(
         item_id="x-20260709",

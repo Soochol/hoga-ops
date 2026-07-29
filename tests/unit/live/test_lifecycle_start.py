@@ -87,6 +87,7 @@ async def test_lifespan_starts_and_stops_stream_gracefully(tmp_path: Path, monke
     한다. WS 게이트(should_run_now=False)는 REST 사이드카를 네트워크 없이 idle로 유지한다.
     """
     import json
+
     from fastapi.testclient import TestClient
 
     from hoga.api.app import create_app

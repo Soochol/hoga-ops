@@ -11,8 +11,7 @@ def test_app_startup_scheduler_does_not_spawn_catchup_by_default(
     tmp_path: Path,
     monkeypatch,
 ):
-    from hoga.api import app as app_mod
-    from hoga.api import scheduler as scheduler_mod
+    from hoga.api import app as app_mod, scheduler as scheduler_mod
 
     task_names: list[str] = []
 
@@ -52,8 +51,7 @@ def test_app_startup_can_opt_into_live_startup(
     tmp_path: Path,
     monkeypatch,
 ):
-    from hoga.api import app as app_mod
-    from hoga.api import scheduler as scheduler_mod
+    from hoga.api import app as app_mod, scheduler as scheduler_mod
 
     task_names: list[str] = []
 

@@ -184,6 +184,7 @@ def test_migrate_v2_without_nulls_is_clean_version_bump(tmp_path: Path):
 
 def test_future_schema_version_halts_loudly(tmp_path: Path):
     import json
+
     from hoga.api.heatmap import UnsupportedHeatmapSchema, load_document
     (tmp_path / "heatmap.json").write_text(
         json.dumps({"schema_version": 4, "folders": [], "entries": []}))
@@ -440,7 +441,7 @@ def _seed_watchlist(tmp_path: Path) -> None:
 
 
 def test_seed_copies_watchlist_stripping_capture_fields(tmp_path: Path):
-    from hoga.api.heatmap import seed_from_watchlist_if_absent, load_document
+    from hoga.api.heatmap import load_document, seed_from_watchlist_if_absent
     _seed_watchlist(tmp_path)
     seed_from_watchlist_if_absent(tmp_path)
     doc = load_document(tmp_path)
@@ -456,7 +457,7 @@ def test_seed_copies_watchlist_stripping_capture_fields(tmp_path: Path):
 
 
 def test_seed_skips_when_heatmap_already_present(tmp_path: Path):
-    from hoga.api.heatmap import seed_from_watchlist_if_absent, save_document, load_heatmap
+    from hoga.api.heatmap import load_heatmap, save_document, seed_from_watchlist_if_absent
     from hoga.api.models import HeatmapDocument
     _seed_watchlist(tmp_path)
     # Heatmap already exists (empty, user-cleared) → seed must NOT overwrite it.

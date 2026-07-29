@@ -52,8 +52,8 @@ def test_migrate_v1_to_v3_default_folder(tmp_path):
 
 
 def test_migrate_is_idempotent(tmp_path):
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
     from hoga.api.watchlist import load_document, save_document
-    from hoga.api.models import WatchlistDocument, WatchlistFolder, WatchlistEntry
     doc = WatchlistDocument(
         folders=[WatchlistFolder(id="f_0000000a", name="스윙", order=0, member_codes=["005930"])],
         entries=[WatchlistEntry(code="005930", name="삼성전자",
@@ -119,8 +119,8 @@ def test_load_invalid_v3_capture_enabled_backs_up_and_returns_empty_doc(tmp_path
 
 def test_bump_last_success_preserves_folders(tmp_path):
     """Blocker #1 regression: the Scheduler's bump must NOT drop folders/members."""
-    from hoga.api.watchlist import load_document, save_document, bump_last_success
-    from hoga.api.models import WatchlistDocument, WatchlistFolder, WatchlistEntry
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    from hoga.api.watchlist import bump_last_success, load_document, save_document
     save_document(tmp_path, WatchlistDocument(
         folders=[WatchlistFolder(id="f_0000000a", name="스윙", order=0, member_codes=["005930"])],
         entries=[WatchlistEntry(code="005930", name="삼성전자",
@@ -137,7 +137,7 @@ def test_future_version_raises_not_downgrades(tmp_path):
     """ADR-0065 rule 1: a FUTURE schema_version (>3) must raise, not be clobbered.
     Raised as UnsupportedWatchlistSchema (not ValueError) so the corruption-backup
     path can catch malformed ValueErrors without swallowing it."""
-    from hoga.api.watchlist import load_document, UnsupportedWatchlistSchema
+    from hoga.api.watchlist import UnsupportedWatchlistSchema, load_document
     (tmp_path / "watchlist.json").write_text(json.dumps({
         "schema_version": 4, "folders": [], "entries": [],
     }), encoding="utf-8")
@@ -195,7 +195,7 @@ def test_set_folder_capture_enabled_persists(tmp_path):
 
 
 def test_rename_folder_keeps_id(tmp_path):
-    from hoga.api.watchlist import create_folder, rename_folder, load_document
+    from hoga.api.watchlist import create_folder, load_document, rename_folder
     f = asyncio.run(create_folder(tmp_path, name="스윙"))
     asyncio.run(rename_folder(tmp_path, folder_id=f.id, name="단타"))
     folders = load_document(tmp_path).folders
@@ -217,7 +217,7 @@ def test_delete_folder_drops_sole_members_keeps_shared(tmp_path):
 
 
 def test_reorder_folders(tmp_path):
-    from hoga.api.watchlist import create_folder, reorder_folders, load_document
+    from hoga.api.watchlist import create_folder, load_document, reorder_folders
     a = asyncio.run(create_folder(tmp_path, name="A"))
     b = asyncio.run(create_folder(tmp_path, name="B"))
     asyncio.run(reorder_folders(tmp_path, ordered_ids=[b.id, a.id]))
@@ -229,7 +229,8 @@ def test_rename_to_invalid_name_rejects_without_corrupting(tmp_path, bad_name):
     """An invalid rename must be rejected BEFORE the write, leaving the watchlist
     intact (model_copy(update=...) would skip validation and quarantine on next load)."""
     from pydantic import ValidationError
-    from hoga.api.watchlist import create_folder, rename_folder, load_document
+
+    from hoga.api.watchlist import create_folder, load_document, rename_folder
     f = asyncio.run(create_folder(tmp_path, name="스윙"))
     with pytest.raises(ValidationError):
         asyncio.run(rename_folder(tmp_path, folder_id=f.id, name=bad_name))
@@ -241,20 +242,21 @@ def test_rename_to_invalid_name_rejects_without_corrupting(tmp_path, bad_name):
 
 def test_create_folder_with_whitespace_name_rejects(tmp_path):
     from pydantic import ValidationError
+
     from hoga.api.watchlist import create_folder
     with pytest.raises(ValidationError):
         asyncio.run(create_folder(tmp_path, name="   "))
 
 
 def test_rename_unknown_folder_raises(tmp_path):
-    from hoga.api.watchlist import create_folder, rename_folder, FolderNotFoundError
+    from hoga.api.watchlist import FolderNotFoundError, create_folder, rename_folder
     asyncio.run(create_folder(tmp_path, name="스윙"))
     with pytest.raises(FolderNotFoundError):
         asyncio.run(rename_folder(tmp_path, folder_id="f_deadbeef", name="단타"))
 
 
 def test_delete_unknown_folder_raises(tmp_path):
-    from hoga.api.watchlist import create_folder, delete_folder, FolderNotFoundError
+    from hoga.api.watchlist import FolderNotFoundError, create_folder, delete_folder
     asyncio.run(create_folder(tmp_path, name="스윙"))
     with pytest.raises(FolderNotFoundError):
         asyncio.run(delete_folder(tmp_path, folder_id="f_deadbeef"))
@@ -262,7 +264,7 @@ def test_delete_unknown_folder_raises(tmp_path):
 
 def test_reorder_folders_mismatched_set_raises(tmp_path):
     """ordered_ids that don't match the current folder set are rejected (409)."""
-    from hoga.api.watchlist import create_folder, reorder_folders, WatchlistSetMismatchError
+    from hoga.api.watchlist import WatchlistSetMismatchError, create_folder, reorder_folders
     a = asyncio.run(create_folder(tmp_path, name="A"))
     asyncio.run(create_folder(tmp_path, name="B"))
     with pytest.raises(WatchlistSetMismatchError):
@@ -270,7 +272,7 @@ def test_reorder_folders_mismatched_set_raises(tmp_path):
 
 
 def test_add_member_unknown_folder_raises(tmp_path):
-    from hoga.api.watchlist import add_member, FolderNotFoundError
+    from hoga.api.watchlist import FolderNotFoundError, add_member
     with pytest.raises(FolderNotFoundError):
         asyncio.run(add_member(tmp_path, code="005930", name="삼성전자",
                                today_kst_date="20260101", folder_id="f_deadbeef"))
@@ -278,7 +280,7 @@ def test_add_member_unknown_folder_raises(tmp_path):
 
 def test_reorder_entries_mismatched_set_raises(tmp_path):
     """ordered_codes must be exactly the folder's current members (else 409)."""
-    from hoga.api.watchlist import create_folder, reorder_entries, WatchlistSetMismatchError
+    from hoga.api.watchlist import WatchlistSetMismatchError, create_folder, reorder_entries
     f = asyncio.run(create_folder(tmp_path, name="스윙"))
     asyncio.run(_seed(tmp_path, f.id, [("005930", "삼성"), ("000660", "SK")]))
     with pytest.raises(WatchlistSetMismatchError):
@@ -286,7 +288,7 @@ def test_reorder_entries_mismatched_set_raises(tmp_path):
 
 
 def test_reorder_entries_within_folder(tmp_path):
-    from hoga.api.watchlist import create_folder, reorder_entries, load_document
+    from hoga.api.watchlist import create_folder, load_document, reorder_entries
     f = asyncio.run(create_folder(tmp_path, name="스윙"))
     asyncio.run(_seed(tmp_path, f.id, [("005930", "삼성"), ("000660", "SK"), ("035720", "카카오")]))
     asyncio.run(reorder_entries(tmp_path, folder_id=f.id,
@@ -296,7 +298,7 @@ def test_reorder_entries_within_folder(tmp_path):
 
 
 def test_remove_entries_bulk(tmp_path):
-    from hoga.api.watchlist import create_folder, remove_entries, load_document
+    from hoga.api.watchlist import create_folder, load_document, remove_entries
     f = asyncio.run(create_folder(tmp_path, name="스윙"))
     asyncio.run(_seed(tmp_path, f.id, [("005930", "삼성"), ("000660", "SK")]))
     asyncio.run(remove_entries(tmp_path, codes=["005930", "000660"]))

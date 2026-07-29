@@ -1,7 +1,7 @@
 import polars as pl
 
-from hoga.api.models import ScreenerUniverse
 from hoga.api import screener_universe
+from hoga.api.models import ScreenerUniverse
 
 
 def test_codes_for_universe_filters_stock_table(tmp_path):
@@ -37,11 +37,14 @@ def test_scope_codes_none_when_no_scopes(tmp_path):
 
 def test_scope_codes_union_of_watchlist_and_heatmap(tmp_path):
     from hoga.api.heatmap import save_document as save_heatmap
-    from hoga.api.watchlist import save_document as save_watchlist
     from hoga.api.models import (
-        HeatmapDocument, HeatmapEntry, WatchlistDocument, WatchlistEntry,
+        HeatmapDocument,
+        HeatmapEntry,
+        WatchlistDocument,
+        WatchlistEntry,
         WatchlistFolder,
     )
+    from hoga.api.watchlist import save_document as save_watchlist
     save_heatmap(tmp_path, HeatmapDocument(
         folders=[WatchlistFolder(id="f_0000000a", name="A", order=0)],
         entries=[HeatmapEntry(code="000111", name="a", folder_id="f_0000000a")]))

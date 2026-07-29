@@ -1,6 +1,9 @@
-import duckdb, datetime as dt
+import datetime as dt
 from pathlib import Path
+
+import duckdb
 import polars as pl
+
 from hoga.api import screener_scan
 from hoga.api.models import ScreenerUniverse, TradeValueLeaf, TradeValueParams
 
@@ -143,6 +146,7 @@ def test_scan_filters_noncorpus_market_and_null_name(tmp_path):
 
 from hoga.api.models import ChangePctLeaf, ChangePctParams
 
+
 def test_change_pct_gte_latest_day(tmp_path):
     adj, stk = _seed(tmp_path,
         rows=[("005930", "2026-05-29", 100, 100, 100, 100, 1),
@@ -184,6 +188,7 @@ def test_change_pct_between_latest_day(tmp_path):
 
 from hoga.api.models import PriceRangeLeaf, PriceRangeParams
 
+
 def test_price_range_both_bounds(tmp_path):
     adj, stk = _seed(tmp_path,
         rows=[("005930", "2026-05-30", 0, 0, 0, 5000, 1),
@@ -216,6 +221,7 @@ def test_price_range_max_only(tmp_path):
 
 
 from hoga.api.models import MaLeaf, MaParams
+
 
 def _ramp(code, start, n, step):  # n 연속 거래일, close = start, start+step, ...
     return [(code, f"2026-0{3 + (d // 28)}-{(d % 28) + 1:02d}", 0, 0, 0, start + d * step, 1) for d in range(n)]
@@ -255,6 +261,7 @@ def test_ma_uses_selected_price_source(tmp_path):
 
 from hoga.api.models import HighOffPeakLeaf, HighOffPeakParams
 
+
 def test_high_off_peak_within_and_outside(tmp_path):
     # peak = 최근 N일 고가 최댓값. A(000111) 고가 200→190→180 → 최신 -10%(고점 대비).
     # B(000222) 고가 200→160→130 → 최신 -35%. within 30%: A만; outside 30%: B만.
@@ -288,7 +295,8 @@ def test_high_off_peak_short_history_no_wc_gate(tmp_path):
     assert [r.code for r in out] == ["000111"]
 
 
-from hoga.api.models import NewHighLeaf, BreakoutParams
+from hoga.api.models import BreakoutParams, NewHighLeaf
+
 
 def test_repeated_new_high_and(tmp_path):
     # AND of (20,20) and (5,5) new_high leaves.
@@ -391,6 +399,7 @@ def test_trade_value_uses_ohlc_average_price(tmp_path):
 
 from hoga.api.models import TradeValuePeriodLeaf, TradeValuePeriodParams
 
+
 def test_trade_value_period_threshold_within_lookback(tmp_path):
     # 005930: 3억 날이 2거래일 전(lookback 3 안) → 매치.
     # 000660: 유일한 3억 날이 5거래일 전(lookback 3 밖) → 미스. OHLC 평탄(avg=close).
@@ -420,6 +429,7 @@ def test_trade_value_period_short_history_eligible(tmp_path):
 
 
 from hoga.api.models import NewHighTodayLeaf, NewHighVolTodayLeaf, PeriodParams
+
 
 def test_new_high_today_vs_period_divergence(tmp_path):
     # A(000111): 최신일까지 상승 → 오늘이 5일 신고가.

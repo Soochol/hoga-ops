@@ -8,13 +8,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-
 KST = ZoneInfo("Asia/Seoul")
 
 
 async def _seed(tmp_path, *, code: str, name: str, today_kst_date: str):
     """v3 seed (add_entry 폐지): ensure a '기본' folder, add the code as a member."""
-    from hoga.api.watchlist import create_folder, add_member, load_document
+    from hoga.api.watchlist import add_member, create_folder, load_document
     doc = load_document(tmp_path)
     fid = doc.folders[0].id if doc.folders else (await create_folder(tmp_path, name="기본")).id
     return await add_member(tmp_path, code=code, name=name,
@@ -52,7 +51,7 @@ def test_midnight_returns_17h():
 
 @pytest.mark.asyncio
 async def test_daily_run_enqueues_each_watchlist_entry_on_trading_day(tmp_path: Path):
-    from hoga.api import scheduler, watchlist
+    from hoga.api import scheduler
     await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     await _seed(tmp_path, code="005930", name="삼성전자",
@@ -75,7 +74,7 @@ async def test_daily_run_enqueues_each_watchlist_entry_on_trading_day(tmp_path: 
 
 @pytest.mark.asyncio
 async def test_daily_run_skips_non_trading_day(tmp_path: Path):
-    from hoga.api import scheduler, watchlist
+    from hoga.api import scheduler
     await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     fake_now = dt.datetime(2026, 5, 24, 18, 0, 0, tzinfo=KST)  # Sunday
@@ -93,7 +92,8 @@ async def test_daily_run_skips_non_trading_day(tmp_path: Path):
 async def test_daily_run_per_entry_failure_does_not_abort_loop(tmp_path: Path):
     """One bad entry must not stop later entries from being enqueued."""
     from fastapi import HTTPException
-    from hoga.api import scheduler, watchlist
+
+    from hoga.api import scheduler
     await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     await _seed(tmp_path, code="005930", name="삼성전자",
@@ -124,7 +124,8 @@ async def test_daily_run_logs_blocked_watchlist_date(tmp_path: Path, caplog):
     the cap from repeated stagnation_abort) silently drops out of unattended
     capture with no operator signal."""
     import logging
-    from hoga.api import scheduler, watchlist
+
+    from hoga.api import scheduler
     from hoga.api.models import BlockedItem, EnqueueResponse
     await _seed(tmp_path, code="180640", name="한진칼",
                               today_kst_date="20260520")
@@ -202,7 +203,7 @@ async def test_catchup_pretrims_today_when_too_early(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_catchup_uses_registered_at_when_no_last_success(tmp_path: Path):
-    from hoga.api import scheduler, watchlist
+    from hoga.api import scheduler
     from hoga.api.models import EnqueueResponse
     await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
@@ -340,6 +341,7 @@ async def test_start_scheduler_spawns_only_daily_loop_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ):
     import asyncio
+
     from hoga.api import scheduler
 
     catchup_called = asyncio.Event()
@@ -374,6 +376,7 @@ async def test_start_scheduler_can_opt_into_startup_catchup(
     monkeypatch: pytest.MonkeyPatch,
 ):
     import asyncio
+
     from hoga.api import scheduler
 
     catchup_called = asyncio.Event()
@@ -530,11 +533,10 @@ async def test_catchup_one_entry_propagates_trading_day_unavailable(tmp_path: Pa
     with patch("hoga.api.scheduler.latest_complete_date", return_value=None), \
          patch("hoga.api.scheduler.trading_days_in_range", side_effect=boom), \
          patch("hoga.api.scheduler.enqueue_items_core",
-               new_callable=AsyncMock) as enq:
-        with pytest.raises(TradingDayUnavailableError):
-            await scheduler.catchup_one_entry(
-                entry, data_dir=tmp_path, now=fake_now,
-            )
+               new_callable=AsyncMock) as enq, pytest.raises(TradingDayUnavailableError):
+        await scheduler.catchup_one_entry(
+            entry, data_dir=tmp_path, now=fake_now,
+        )
     assert enq.await_count == 0
 
 
@@ -565,6 +567,7 @@ async def test_daily_loop_survives_daily_run_crash(tmp_path: Path):
     iteration with sleep raising CancelledError to exit cleanly. The loop
     must swallow the crash and proceed to the next sleep."""
     import asyncio as _asyncio
+
     from hoga.api import scheduler
     iteration = {"n": 0}
 
@@ -577,9 +580,8 @@ async def test_daily_loop_survives_daily_run_crash(tmp_path: Path):
         raise RuntimeError("simulated crash inside _daily_run")
 
     with patch("hoga.api.scheduler.asyncio.sleep", side_effect=fake_sleep), \
-         patch("hoga.api.scheduler._daily_run", side_effect=boom) as run_spy:
-        with pytest.raises(_asyncio.CancelledError):
-            await scheduler._daily_loop(tmp_path)
+         patch("hoga.api.scheduler._daily_run", side_effect=boom) as run_spy, pytest.raises(_asyncio.CancelledError):
+        await scheduler._daily_loop(tmp_path)
     # First iteration ran _daily_run (which crashed); the loop did NOT
     # propagate the crash — it advanced to the second sleep.
     assert run_spy.await_count == 1
@@ -591,7 +593,7 @@ async def test_daily_run_swallows_trading_day_lookup_failure(tmp_path: Path):
     """If trading_days_in_range raises (KRX unavailable, etc.), _daily_run
     must log + return; downstream enqueue_items_core must NOT be called.
     Pins the silent-failure branch at scheduler.py:48 in the diff."""
-    from hoga.api import scheduler, watchlist
+    from hoga.api import scheduler
     await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     fake_now = dt.datetime(2026, 5, 27, 18, 0, tzinfo=KST)

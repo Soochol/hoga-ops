@@ -50,19 +50,19 @@ class SymbolCacheState:
     reason: UpstreamCode | None = None
 
     @classmethod
-    def loading(cls) -> "SymbolCacheState":
+    def loading(cls) -> SymbolCacheState:
         return cls(status="loading", reason=None)
 
     @classmethod
-    def fresh(cls) -> "SymbolCacheState":
+    def fresh(cls) -> SymbolCacheState:
         return cls(status="fresh", reason=None)
 
     @classmethod
-    def stale(cls, *, reason: UpstreamCode) -> "SymbolCacheState":
+    def stale(cls, *, reason: UpstreamCode) -> SymbolCacheState:
         return cls(status="stale", reason=reason)
 
     @classmethod
-    def unavailable(cls, *, reason: UpstreamCode) -> "SymbolCacheState":
+    def unavailable(cls, *, reason: UpstreamCode) -> SymbolCacheState:
         return cls(status="unavailable", reason=reason)
 
 

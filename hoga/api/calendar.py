@@ -24,8 +24,7 @@ from hoga.api.params import CODE_PATTERN
 # orchestrator.py per Refactor 3. The today_locked overlay below reuses
 # the same predicate that captures.py's enqueue guard uses — keeps the
 # 17-KST cutoff in one place.
-from hoga.collector.orchestrator import is_today_too_early
-from hoga.collector.orchestrator import now_kst as _now_kst
+from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
 
 log = logging.getLogger(__name__)
 

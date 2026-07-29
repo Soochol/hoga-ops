@@ -18,7 +18,6 @@ import pytest
 
 from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "repromote_kis_live.py"
 

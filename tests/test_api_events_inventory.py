@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from watchdog.events import FileCreatedEvent
 
-from hoga.api.events import WatchdogKind, EventBus, _InventoryHandler, classify_inventory_event
+from hoga.api.events import EventBus, WatchdogKind, _InventoryHandler, classify_inventory_event
 
 
 @pytest.fixture

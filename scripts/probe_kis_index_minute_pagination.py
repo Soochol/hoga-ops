@@ -20,7 +20,6 @@ from hoga.config import resolve_data_dir
 from hoga.env import load_env
 from hoga.live.kis_runtime import ensure_kis_token_provider_from_env
 
-
 BASE_URL = "https://openapi.koreainvestment.com:9443"
 
 

@@ -3,8 +3,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from hoga.api import live_layout_presets as llp
-from hoga.api import study_layout_presets as slp
+from hoga.api import live_layout_presets as llp, study_layout_presets as slp
 from hoga.api.models import StudyLayoutPresetWriteRequest
 from hoga.api.study_layout_preset_routes import build_router
 

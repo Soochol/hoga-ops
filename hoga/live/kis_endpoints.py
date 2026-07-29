@@ -91,7 +91,7 @@ class InvestorNetFetchResult:
 
     `points` is ASC-sorted by t_ms; `violations` is the per-row drop log.
     """
-    points: list["InvestorNetPoint"]
+    points: list[InvestorNetPoint]
     violations: list[InvestorNetInvariantViolation] = field(default_factory=list)
 
 
@@ -1139,7 +1139,7 @@ def _parse_change_won(raw: str | None, mult: float) -> int | None:
     return int(mult * abs(v))
 
 
-async def _fetch_multi_price(get, codes: list[str], *, venue: KisVenue = "KRX") -> list["KisQuote"]:
+async def _fetch_multi_price(get, codes: list[str], *, venue: KisVenue = "KRX") -> list[KisQuote]:
     """get: async (*, path, tr_id, params)->dict (KisClient._get 와 동일 시그니처).
     30개씩 청크해 intstock-multprice 호출. 청크는 동시 호출(직렬 RTT 제거; 15/s 버킷은
     _get 가 캡). 각 행을 **응답 자신의 inter_shrn_iscd** 로 매핑(위치 의존 X — 누락/

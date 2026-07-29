@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from calendar import monthrange
+from collections.abc import Awaitable, Callable
 from datetime import date
-from typing import Awaitable, Callable
 
 from hoga.live.candle_fetch_result import IndexCandleFetchResult
 

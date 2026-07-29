@@ -1,5 +1,6 @@
 import pytest
-from hoga.live.kis_client import KisQuote, _parse_quote, _build_multi_price_params, _fetch_multi_price
+
+from hoga.live.kis_client import KisQuote, _build_multi_price_params, _fetch_multi_price, _parse_quote
 
 
 def test_parse_quote_up_sign_positive():

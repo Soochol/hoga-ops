@@ -1202,8 +1202,10 @@ def test_validate_daily_rejects_from_after_to() -> None:
 
 def test_validate_daily_rejects_future_to() -> None:
     today = _today_kst_yyyymmdd()
-    from datetime import datetime as _dt  # noqa: PLC0415
-    from datetime import timedelta as _td  # noqa: PLC0415
+    from datetime import (
+        datetime as _dt,  # noqa: PLC0415
+        timedelta as _td,  # noqa: PLC0415
+    )
 
     kst = datetime.timezone(datetime.timedelta(hours=9))
     tomorrow = (_dt.now(kst) + _td(days=1)).strftime("%Y%m%d")
@@ -1284,8 +1286,10 @@ class _FakeKisForDaily:
             from hoga.live.kis_client import KisRateLimitError  # noqa: PLC0415
 
             raise KisRateLimitError("simulated rate limit")
-        from datetime import datetime as _dt  # noqa: PLC0415
-        from datetime import timedelta as _td  # noqa: PLC0415
+        from datetime import (
+            datetime as _dt,  # noqa: PLC0415
+            timedelta as _td,  # noqa: PLC0415
+        )
 
         kst = datetime.timezone(datetime.timedelta(hours=9))
         y, m, d = int(from_yyyymmdd[:4]), int(from_yyyymmdd[4:6]), int(from_yyyymmdd[6:8])
@@ -1703,8 +1707,10 @@ class _FakeKisForInvestor:
             from hoga.live.kis_client import KisRateLimitError  # noqa: PLC0415
 
             raise KisRateLimitError("simulated rate limit")
-        from datetime import datetime as _dt  # noqa: PLC0415
-        from datetime import timedelta as _td  # noqa: PLC0415
+        from datetime import (
+            datetime as _dt,  # noqa: PLC0415
+            timedelta as _td,  # noqa: PLC0415
+        )
 
         kst = datetime.timezone(datetime.timedelta(hours=9))
         y, m, d = int(from_yyyymmdd[:4]), int(from_yyyymmdd[4:6]), int(from_yyyymmdd[6:8])

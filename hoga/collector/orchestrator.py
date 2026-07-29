@@ -17,7 +17,6 @@ from typing import Protocol
 
 from hoga.api.timeenc import HogaMs
 from hoga.collector.client import HogaplayHTTPError
-from hoga.collector.timing import CaptureTimingCollector
 from hoga.collector.page_step import (
     DATA_WINDOW_END_MS,
     DEFAULT_PAGE_STEP_MS,
@@ -25,6 +24,7 @@ from hoga.collector.page_step import (
     PageStepController,
     StopReason,
 )
+from hoga.collector.timing import CaptureTimingCollector
 
 log = logging.getLogger(__name__)
 

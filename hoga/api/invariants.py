@@ -40,7 +40,7 @@ class Violation:
         }
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, Any]) -> "Violation":
+    def from_dict(cls, d: Mapping[str, Any]) -> Violation:
         """Inverse of :meth:`as_dict` — reconstruct a violation archived in
         meta.json's ``invariant_violations`` field. Raises on a missing
         ``invariant_id`` or an unknown ``severity`` (callers reading a possibly
@@ -52,7 +52,7 @@ class Violation:
             ctx=dict(d.get("ctx") or {}),
         )
 
-    def to_model(self) -> "ViolationModel":
+    def to_model(self) -> ViolationModel:
         """Convert to the Pydantic wire mirror. Keeps the dataclass free
         of Pydantic dep while giving callers a typed wire boundary."""
         from hoga.api.models import ViolationModel
@@ -81,7 +81,7 @@ class Invariant:
 _KRX_REGULAR_OPEN_MS = 90_000_000  # 09:00:00.000 — KRX 정규장 정의상 시가 (ADR-0063)
 
 
-def normalize_session_bounds(meta: dict) -> tuple[dict, list["Violation"]]:
+def normalize_session_bounds(meta: dict) -> tuple[dict, list[Violation]]:
     """알려진 업스트림 sentinel(``regular_session_open_ms == 0``)을 KRX 표준
     09:00으로 복원한 사본과, 보정이 일어났을 때의 warn violation을 반환한다.
 
@@ -260,13 +260,13 @@ class StockDateArtifacts:
       - future per-table checks can pass just one
     """
     meta: Mapping[str, Any]
-    candles: "list[Candle] | None" = None
-    snapshots: "list[Orderbook] | None" = None
-    trades: "list[Trade] | None" = None
+    candles: list[Candle] | None = None
+    snapshots: list[Orderbook] | None = None
+    trades: list[Trade] | None = None
     # 컬럼형 대안 입력 (파서 고속 경로): 리스트 필드와 동시 설정 금지 —
     # series 검사는 컬럼형이 설정돼 있으면 그것을 우선한다.
-    snapshot_ts_ms: "list[int] | None" = None
-    trades_frame: "Any | None" = None  # polars.DataFrame(ts_ms, seq, side, cum_vol …)
+    snapshot_ts_ms: list[int] | None = None
+    trades_frame: Any | None = None  # polars.DataFrame(ts_ms, seq, side, cum_vol …)
 
 
 @dataclass(frozen=True)
@@ -277,7 +277,7 @@ class SeriesInvariant:
     id: str
     severity: Severity
     description: str
-    check: Callable[["StockDateArtifacts"], list[Violation]]
+    check: Callable[[StockDateArtifacts], list[Violation]]
 
 
 # --- error: candles ts_ms strictly ascending (post-sort = no duplicates) ---
@@ -295,7 +295,7 @@ class SeriesInvariant:
 # breaks the chart library. Same defensive pattern as
 # ``find_cum_vol_violations`` (tie-break sort there, full sort here).
 
-def _series_candles_ts_monotonic(a: "StockDateArtifacts") -> list[Violation]:
+def _series_candles_ts_monotonic(a: StockDateArtifacts) -> list[Violation]:
     if a.candles is None:
         return []
     rows = sorted(a.candles, key=lambda c: c.ts_ms)
@@ -317,7 +317,7 @@ def _series_candles_ts_monotonic(a: "StockDateArtifacts") -> list[Violation]:
 # Wraps the existing has_meaningful_gaps predicate so the same signal
 # parser uses for is_partial also flows into the catalog.
 
-def _series_snapshots_no_gaps(a: "StockDateArtifacts") -> list[Violation]:
+def _series_snapshots_no_gaps(a: StockDateArtifacts) -> list[Violation]:
     if a.snapshot_ts_ms is not None:
         raw_ts: list[int] | None = a.snapshot_ts_ms
     elif a.snapshots is not None:
@@ -368,7 +368,7 @@ def _series_snapshots_no_gaps(a: "StockDateArtifacts") -> list[Violation]:
 # archives the full list; the parser's strict TradeValidationError still raises on
 # the first regression to drive the lenient fallback, independent of severity).
 
-def _series_cum_vol_monotonic(a: "StockDateArtifacts") -> list[Violation]:
+def _series_cum_vol_monotonic(a: StockDateArtifacts) -> list[Violation]:
     if a.trades_frame is not None:
         from hoga.tables.trades import find_cum_vol_violations_frame
         violations = find_cum_vol_violations_frame(a.trades_frame)

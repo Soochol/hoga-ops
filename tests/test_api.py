@@ -180,8 +180,9 @@ def test_orderbook_invalid_bucket_ms_returns_400(app_client: TestClient) -> None
 
 def test_watchlist_route_is_mounted(tmp_path):
     """The /api/watchlist endpoint must be reachable via create_app."""
-    from hoga.api.app import create_app
     from fastapi.testclient import TestClient
+
+    from hoga.api.app import create_app
     app = create_app(tmp_path)
     with TestClient(app):  # triggers lifespan startup
         r = TestClient(app).get("/api/watchlist")

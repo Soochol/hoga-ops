@@ -6,7 +6,10 @@ from pathlib import Path
 import polars as pl
 
 from hoga.api.screener_factors import (
-    FactorSegment, read_factors, segments_to_frame, write_factors,
+    FactorSegment,
+    read_factors,
+    segments_to_frame,
+    write_factors,
 )
 
 

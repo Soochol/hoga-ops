@@ -15,12 +15,12 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
+from . import program_trade_latch
 from .ask_peak_state import TodayAskPeakState, TodayBidPeakState
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
 from .lifecycle import get_signal_alert_monitor
 from .minute_candle_agg import MS_PER_MINUTE, MinuteCandleAggregator
-from . import program_trade_latch
 from .session_gate import market_phase, ws_capture_window_async
 from .snapshot import LiveSnapshot, SnapshotKind
 from .ticks import WsTick

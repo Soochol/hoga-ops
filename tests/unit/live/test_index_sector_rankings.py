@@ -9,11 +9,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hoga.live import api as live_api
-from hoga.live import kis_runtime, lifecycle
-from hoga.live import index_sector_rankings as rankings
 from hoga.api.heatmap import save_document
 from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
+from hoga.live import api as live_api, index_sector_rankings as rankings, kis_runtime, lifecycle
 from hoga.live.api import build_router
 from hoga.live.index_sector_rankings import build_index_sector_rankings
 from hoga.live.kis_client import KisQuote

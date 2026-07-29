@@ -779,7 +779,7 @@ def test_build_meta_complete_for_dense_past_stream() -> None:
 
 def test_build_meta_partial_on_late_head() -> None:
     """A stream that only starts at 13:00 has a head gap → SOURCE_PARTIAL shape."""
-    from hoga.api.disk_state import classify_from_meta, DiskState
+    from hoga.api.disk_state import DiskState, classify_from_meta
     from hoga.live.promote import _build_meta
 
     late = [s for s in _dense_snapshots() if s.ts_ms >= 130000000]
@@ -792,7 +792,7 @@ def test_build_meta_partial_on_late_head() -> None:
 
 
 def test_build_meta_dense_classifies_complete() -> None:
-    from hoga.api.disk_state import classify_from_meta, DiskState
+    from hoga.api.disk_state import DiskState, classify_from_meta
     from hoga.live.promote import _build_meta
 
     meta = _build_meta("005930", "20200101", _dense_snapshots(), [], 0, source="kis_live")

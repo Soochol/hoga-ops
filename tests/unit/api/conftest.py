@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 
 from hoga.api.app import create_app
 
-
 # ---------------------------------------------------------------------------
 # Helpers (mirrors test_bundle_source_aware.py)
 # ---------------------------------------------------------------------------
@@ -71,6 +70,7 @@ def _broker_row(t_hhmmssms: int) -> dict:
 def _write_brokers(path: Path, rows: list[dict]) -> None:
     import pyarrow as pa
     import pyarrow.parquet as pq
+
     from hoga.tables.brokers import PARQUET_SCHEMA
     path.parent.mkdir(parents=True, exist_ok=True)
     cols = {

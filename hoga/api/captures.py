@@ -20,21 +20,17 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import hoga
+from hoga.api import watchlist
 from hoga.api.calendar import TradingDayUnavailableError
 from hoga.api.captures_persistence import load_manifest, manifest_path, save_manifest
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
 from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
-from hoga.api.params import CODE_PATTERN
-from hoga.api.queue_ownership import QueueOwnership, try_acquire_queue_ownership
 from hoga.api.models import (
     BlockedItem,
     BulkEnqueueRequest,
     BulkEnqueueResponse,
     CaptureDismissedEvent,
     CaptureError,
-    CoveragePreviewRequest,
-    CoveragePreviewResponse,
-    MissingStockDate,
     CaptureFinishedEvent,
     CapturePhase,
     CapturePhaseEvent,
@@ -45,9 +41,12 @@ from hoga.api.models import (
     CaptureQueueResumedEvent,
     CaptureResult,
     CaptureTimingEvent,
+    CoveragePreviewRequest,
+    CoveragePreviewResponse,
     EnqueueDedupedRow,
     EnqueueRequest,
     EnqueueResponse,
+    MissingStockDate,
     QueueManifest,
     QueueManifestItem,
     QueueSnapshot,
@@ -58,11 +57,10 @@ from hoga.api.models import (
     TimingEnv,
     ViolationModel,
 )
-from hoga.api import watchlist
+from hoga.api.params import CODE_PATTERN
+from hoga.api.queue_ownership import QueueOwnership, try_acquire_queue_ownership
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
-from hoga.collector.timing import CaptureTimingCollector, NullTimingCollector
-from hoga.collector.timing_writer import write_timing_report
 from hoga.collector.orchestrator import (
     CHART_FINAL_TIME_MS,
     DATA_WINDOW_START_MS,
@@ -75,11 +73,13 @@ from hoga.collector.orchestrator import (
     UpstreamNoDataError,
     collect_stock_date,
 )
-from hoga.util.git_sha import get_git_sha
+from hoga.collector.timing import CaptureTimingCollector, NullTimingCollector
+from hoga.collector.timing_writer import write_timing_report
 from hoga.config import CookieMissingError
 from hoga.parser import parse_stock_date
 from hoga.tables.snapshots import SnapshotValidationError
 from hoga.tables.trades import TradeValidationError
+from hoga.util.git_sha import get_git_sha
 
 # Fail fast if someone runs uvicorn multi-worker — see spec §4.4.
 # The _latest singleton and asyncio.Lock are per-process; multi-worker would
@@ -727,7 +727,7 @@ async def _cancel_aware_sleep(state: QueueItemState, delay: float) -> bool:
     try:
         await asyncio.wait_for(state.cancel_token._event.wait(), timeout=delay)
         return True
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return False
 
 
@@ -1331,7 +1331,7 @@ def _make_item_id(code: str, date: str) -> str:
 def _publish_queue_mutations(
     *,
     dismissed_ids: list[str] | None = None,
-    enqueued: list["QueueItemState"] | None = None,
+    enqueued: list[QueueItemState] | None = None,
 ) -> None:
     """Emit the standard SSE sequence for a queue mutation: ``CaptureDismissedEvent``
     first (so frontends remove the old rows), then ``CaptureQueuedEvent`` (so they

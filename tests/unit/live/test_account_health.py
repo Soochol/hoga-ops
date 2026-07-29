@@ -3,7 +3,7 @@ import logging
 
 import pytest
 
-import hoga.live.account_health as account_health
+from hoga.live import account_health
 
 
 @pytest.fixture(autouse=True)

@@ -29,8 +29,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Sequence
 from collections import OrderedDict
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
 
@@ -369,7 +369,7 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
             return _CACHE_MISS
 
-    def _write_model_cache(self, path: Path, value: "BaseModel | None", *, kind: str) -> None:
+    def _write_model_cache(self, path: Path, value: BaseModel | None, *, kind: str) -> None:
         payload = {
             "version": KIND_VERSIONS[kind],
             "value": None if value is None else value.model_dump(mode="json"),
@@ -768,7 +768,7 @@ class PastIndicatorsCache:
             return _CACHE_MISS
 
     def _write_model_list_cache(
-        self, path: Path, items: "Sequence[BaseModel]", *, payload_key: str, kind: str
+        self, path: Path, items: Sequence[BaseModel], *, payload_key: str, kind: str
     ) -> None:
         payload = {
             "version": KIND_VERSIONS[kind],

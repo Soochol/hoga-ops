@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -814,12 +814,12 @@ class RangeBundle(BaseModel):
     # 거래일별 매도 최대벽(연속거래만) — 범위 내 데이터 있는 각 거래일당 1개. 프론트가 각 항목을
     # 그날 segment x-구간의 수평 세그먼트로 그린다. 오늘 항목은 클라 ratchet이 live.ob로 갱신.
     # D·W·M/무데이터는 빈 리스트. 기본 []라 기존 클라 무영향.
-    ask_peaks: list["AskPeak"] = []
-    bid_peaks: list["BidPeak"] = Field(default_factory=list)
+    ask_peaks: list[AskPeak] = []
+    bid_peaks: list[BidPeak] = Field(default_factory=list)
     # 분봉 버킷별 대표 스냅샷 10호가 잔량 분포(호가 잔량 히트맵). 기본 []라 기존 클라 무영향.
-    depth_heatmap: list["DepthHeatmapPoint"] = Field(default_factory=list)
-    depth_delta: list["DepthDeltaPoint"] = Field(default_factory=list)
-    broker_late_entries: list["BrokerLateEntryEvent"] = Field(default_factory=list)
+    depth_heatmap: list[DepthHeatmapPoint] = Field(default_factory=list)
+    depth_delta: list[DepthDeltaPoint] = Field(default_factory=list)
+    broker_late_entries: list[BrokerLateEntryEvent] = Field(default_factory=list)
     price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)
     volume_distributions: list[DayVolumeDistribution] = Field(default_factory=list)
@@ -1135,7 +1135,7 @@ class HeatmapDocument(BaseModel):
     entries: list[HeatmapEntry] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _no_dangling_folder_id(self) -> "HeatmapDocument":
+    def _no_dangling_folder_id(self) -> HeatmapDocument:
         valid = {f.id for f in self.folders}
         for e in self.entries:
             if e.folder_id not in valid:
@@ -1288,7 +1288,7 @@ class ChangePctParams(BaseModel):
     hi: float | None = None
 
     @model_validator(mode="after")
-    def _check(self) -> "ChangePctParams":
+    def _check(self) -> ChangePctParams:
         if self.op in ("gte", "lte") and self.pct is None:
             raise ValueError("gte/lte requires pct")
         if self.op == "between":
@@ -1303,7 +1303,7 @@ class PriceRangeParams(BaseModel):
     max: int | None = None
 
     @model_validator(mode="after")
-    def _check(self) -> "PriceRangeParams":
+    def _check(self) -> PriceRangeParams:
         if self.min is None and self.max is None:
             raise ValueError("price_range needs at least one of min/max")
         if self.min is not None and self.max is not None and self.min > self.max:
@@ -1387,9 +1387,7 @@ class BidDepthNewHighLeaf(BaseModel):
     params: DepthPeakParams
 
 ConditionLeaf = Annotated[
-    Union[TradeValueLeaf, TradeValuePeriodLeaf, NewHighTodayLeaf, NewHighLeaf,
-          NewHighVolTodayLeaf, NewHighVolLeaf, HighOffPeakLeaf, ChangePctLeaf,
-          PriceRangeLeaf, MaLeaf, AskDepthNewHighLeaf, BidDepthNewHighLeaf],
+    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf,
     Field(discriminator="type"),
 ]
 

@@ -29,8 +29,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from datetime import time as dt_time
+from datetime import datetime, time as dt_time, timedelta, timezone
 from typing import Literal
 
 import httpx

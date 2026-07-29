@@ -54,6 +54,7 @@ async def test_coverage_preview_requires_range_or_lookback(tmp_path):
 async def test_coverage_preview_trading_day_unavailable_is_503(monkeypatch, tmp_path):
     """KIS 캘린더 불가 → 500 아닌 503(enqueue_items_core 와 동일). 무자격증명 안내."""
     from fastapi import HTTPException
+
     from hoga.api.calendar import TradingDayUnavailableError
     from hoga.api.error_codes import UpstreamCode
 

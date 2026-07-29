@@ -3,9 +3,8 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hoga.live import api as live_api
+from hoga.live import api as live_api, lifecycle
 from hoga.live.api import build_router
-from hoga.live import lifecycle
 from hoga.live.kis_client import KIS_KST, IndexCandleFetchResult, InvestorNetFetchResult
 from hoga.live.kis_models import IndexCandlePoint, InvestorNetPoint
 

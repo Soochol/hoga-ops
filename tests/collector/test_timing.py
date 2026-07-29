@@ -31,10 +31,9 @@ def test_phase_accumulates_time(fake_clock):
 def test_phase_records_time_on_exception(fake_clock):
     c = CaptureTimingCollector("005930", "20250520", clock=fake_clock)
 
-    with pytest.raises(RuntimeError, match="boom"):
-        with c.phase("parse"):
-            fake_clock.tick_ms(50.0)
-            raise RuntimeError("boom")
+    with pytest.raises(RuntimeError, match="boom"), c.phase("parse"):
+        fake_clock.tick_ms(50.0)
+        raise RuntimeError("boom")
 
     # Exception propagated AND time was still recorded.
     assert c.phase_totals_ms["parse"] == pytest.approx(50.0)
@@ -42,10 +41,8 @@ def test_phase_records_time_on_exception(fake_clock):
 
 def test_nested_phase_raises(fake_clock):
     c = CaptureTimingCollector("005930", "20250520", clock=fake_clock)
-    with c.phase("http_fetch"):
-        with pytest.raises(RuntimeError, match="nesting is not allowed"):
-            with c.phase("parse"):
-                pass
+    with c.phase("http_fetch"), pytest.raises(RuntimeError, match="nesting is not allowed"), c.phase("parse"):
+        pass
 
 
 def test_mark_page_boundary_creates_new_page(fake_clock):
@@ -147,9 +144,8 @@ def test_null_collector_phase_allows_reentry_unlike_real_collector():
     the unconditional `with collector.phase(...)` call sites are always safe
     even if a future change nests them."""
     c = NullTimingCollector()
-    with c.phase("http_fetch"):
-        with c.phase("parse"):  # would RuntimeError on the real collector
-            pass
+    with c.phase("http_fetch"), c.phase("parse"):  # would RuntimeError on the real collector
+        pass
 
 
 def test_null_collector_record_methods_are_noops():

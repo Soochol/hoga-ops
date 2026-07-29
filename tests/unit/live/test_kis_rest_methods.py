@@ -353,7 +353,6 @@ async def test_fetch_past_minute_candles_empty_nxt_day_returns_empty(tmp_path: P
 
 from hoga.live.kis_client import (
     DailyCandleFetchResult,
-    DailyInvariantViolation,
     KisRateLimitError,
 )
 
@@ -640,7 +639,6 @@ async def test_fetch_past_daily_candles_rejects_non_concrete_venue(
 # ----------------------------------------------------------------------
 
 from hoga.live.kis_client import (  # noqa: E402
-    KIS_KST,
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
 )

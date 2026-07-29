@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 # ── plan_storage_targets: 저장셋=키움 WS 전담(ADR-0118 PR-G 컷오버) ──
 # KIS WebSocket 계층이 삭제돼 ws_targets는 항상 (). kiwoom off/무자격이면 저장셋도 빈다
 # (fix-forward — REST/WS 폴백 없음, 커버리지는 계좌 추가로).

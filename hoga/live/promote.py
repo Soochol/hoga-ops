@@ -25,15 +25,11 @@ from pathlib import Path
 
 from hoga.api.disk_state import analyze_gaps
 from hoga.api.timeenc import HogaMs, unix_ms_to_hhmmssms, unix_ms_to_ms_from_midnight
-from hoga.tables.brokers import BrokerRow
-from hoga.tables.brokers import write_parquet as write_brokers_parquet
-from hoga.tables.candles import Candle
-from hoga.tables.candles import write_parquet as write_candles_parquet
+from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parquet
+from hoga.tables.candles import Candle, write_parquet as write_candles_parquet
 from hoga.tables.fills import Fill, write_fills_parquet
-from hoga.tables.snapshots import Orderbook
-from hoga.tables.snapshots import write_parquet as write_snapshots_parquet
-from hoga.tables.trades import Trade
-from hoga.tables.trades import write_parquet as write_trades_parquet
+from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots_parquet
+from hoga.tables.trades import Trade, write_parquet as write_trades_parquet
 
 _ZERO_LEVELS: tuple[int, ...] = (0,) * 10
 

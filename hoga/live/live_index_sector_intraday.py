@@ -80,7 +80,7 @@ class LiveIndexSectorIntradayOverlay:
                 ),
                 timeout=self._timeout_seconds,
             )
-        except (asyncio.TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
+        except (TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
             return {}
         except Exception as exc:  # noqa: BLE001 - rankings must degrade to daily corpus.
             log.warning("index sector intraday quote fetch failed: %s", exc)

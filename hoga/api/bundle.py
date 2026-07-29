@@ -49,9 +49,8 @@ from hoga.api.models import (
     validate_bucket_ms,
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
-from hoga.api.slice_coalescer import SLICE_COALESCER
-from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.api.queries import QueryEngine, StockDateNotFound
+from hoga.api.slice_coalescer import SLICE_COALESCER
 from hoga.api.sources import ordered_sources, resolve_candle_source, resolve_source_result
 from hoga.api.timeenc import (
     hhmmssms_to_intra_ms_sql,
@@ -59,13 +58,16 @@ from hoga.api.timeenc import (
     ms_from_midnight_to_unix_ms,
     unix_ms_to_hhmmssms,
 )
+from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.live.candle_repair import REPAIR_MARKER
 from hoga.live.program_trade_store import ProgramTradeStore, is_significant_gap_event
-from hoga.tables import brokers as brokers_tbl
-from hoga.tables import candles as candles_tbl
-from hoga.tables import fills as fills_tbl
-from hoga.tables import snapshots as snapshots_tbl
-from hoga.tables import trades as trades_tbl
+from hoga.tables import (
+    brokers as brokers_tbl,
+    candles as candles_tbl,
+    fills as fills_tbl,
+    snapshots as snapshots_tbl,
+    trades as trades_tbl,
+)
 from hoga.tables.candles import ApiCandle
 from hoga.tables.trades import FillStrengthRow
 
@@ -646,7 +648,7 @@ def build_ask_peak_slice(
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = None,
     today_kst: str | None = None,
-) -> "AskPeak | None":
+) -> AskPeak | None:
     """해당 거래일(date) 연속거래 매도 최대벽. best-effort: 파일 부재(=무데이터, ADR-0043)나
     미캐탈로그(StockDateNotFound — 경고/제외 세그먼트에서 발생 가능) → None(선 미표시).
     과거일(today_kst != date)은 불변이라 cache로 1회 계산 후 재사용(범위 내 N일 재스캔 회피).
@@ -757,7 +759,7 @@ def _compute_ask_peak(
     bucket_ms: int,
     session_open_ms: int | None,
     session_close_ms: int | None,
-) -> "AskPeak | None":
+) -> AskPeak | None:
     try:
         path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):
@@ -798,7 +800,7 @@ def build_bid_peak_slice(
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = None,
     today_kst: str | None = None,
-) -> "BidPeak | None":
+) -> BidPeak | None:
     cacheable = cache is not None and today_kst is not None and date != today_kst
     if cacheable and cache.has_bid_peak(code, date, source, bucket_ms):  # type: ignore[union-attr]
         return cache.get_bid_peak(code, date, source, bucket_ms)  # type: ignore[union-attr]
@@ -820,7 +822,7 @@ def _compute_bid_peak(
     bucket_ms: int,
     session_open_ms: int | None,
     session_close_ms: int | None,
-) -> "BidPeak | None":
+) -> BidPeak | None:
     try:
         path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):

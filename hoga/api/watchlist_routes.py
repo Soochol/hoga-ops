@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 CodePathParam = Annotated[str, PathParam(pattern=CODE_PATTERN)]
 
 from hoga.api import symbols
+from hoga.api.calendar import TradingDayUnavailableError
 from hoga.api.models import (
     EnqueueResponse,
     EntriesRemoveRequest,
@@ -38,7 +39,6 @@ from hoga.api.models import (
     WatchlistFolderView,
     WatchlistResponse,
 )
-from hoga.api.calendar import TradingDayUnavailableError
 from hoga.api.scheduler import catchup_one_entry, seconds_until_next_17_kst
 from hoga.api.watchlist import (
     FolderNotFoundError,

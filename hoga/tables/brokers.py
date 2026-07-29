@@ -130,7 +130,7 @@ def write_parquet(rows: Iterable[BrokerRow], path: Path) -> None:
 
 def query_day_series(
     con: duckdb.DuckDBPyConnection, *, path: Path
-) -> list["BrokerSeriesEntry"]:
+) -> list[BrokerSeriesEntry]:
     """Per-broker signed-net trajectories for the whole parquet file.
 
     Aggregates qty_today * sign(side) per (broker, ts_ms) so a broker on
@@ -170,12 +170,12 @@ def query_day_series(
 # 풀스캔이 비싸다. 완료된 과거일은 파일이 불변이므로 (path, mtime, size) 로 결과를 재사용
 # 한다 — today 는 캡처가 파일을 갱신할 때마다 mtime 이 바뀌어 자연 무효화된다. 값은 read-only
 # 공유(routes.brokers_series 는 model_copy 로 새 엔트리를 만들어 캐시를 변형하지 않는다).
-_DAY_SERIES_CACHE: "MtimeLruCache[list[BrokerSeriesEntry]]" = MtimeLruCache(max_entries=64)
+_DAY_SERIES_CACHE: MtimeLruCache[list[BrokerSeriesEntry]] = MtimeLruCache(max_entries=64)
 
 
 def query_day_series_cached(
     con: duckdb.DuckDBPyConnection, *, path: Path
-) -> list["BrokerSeriesEntry"]:
+) -> list[BrokerSeriesEntry]:
     """query_day_series 의 mtime 검증 캐시판. 브로커 canonical 이 바뀌면 프로세스
     재시작으로 무효화된다(디스크 미영속이라 SCHEMA_VERSION 불필요)."""
     return _DAY_SERIES_CACHE.get_or_load(path, lambda p: query_day_series(con, path=p))
@@ -185,7 +185,7 @@ def _query_canonical_series_points(
     con: duckdb.DuckDBPyConnection,
     *,
     path: Path,
-) -> dict[str, list["BrokerSeriesPoint"]]:
+) -> dict[str, list[BrokerSeriesPoint]]:
     """Return live broker-series points after canonical alias collapse."""
     from hoga.api.models import BrokerSeriesPoint  # local: avoid cycle
     from hoga.broker_names import canonical

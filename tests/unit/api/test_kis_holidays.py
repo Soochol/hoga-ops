@@ -74,9 +74,8 @@ def test_fetch_raises_on_rt_cd_error(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_creds_missing_raises_distinct_subclass(monkeypatch: pytest.MonkeyPatch) -> None:
     """KisCredentialsMissing (≠ generic fetch failure) lets calendar map it to
     KIS_CREDENTIALS_MISSING so the UI gives 'set keys' instead of 'retry'."""
-    from hoga.api.kis_holidays import KisCredentialsMissing
-
     import hoga.api.kis_holidays as kh
+    from hoga.api.kis_holidays import KisCredentialsMissing
     monkeypatch.setattr(kh, "_resolve_provider", lambda: None)
     with pytest.raises(KisCredentialsMissing):
         fetch_month_trading_days(2026, 6)

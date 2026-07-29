@@ -21,40 +21,7 @@ from hoga.api import symbols
 from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate
 from hoga.api.params import CODE_PATTERN
-from hoga.live.kis_client import (
-    KisApiError,
-    KisAuthError,
-    KisQuote,
-    KisRateLimitError,
-    KisTransportError,
-)
-from hoga.live import kis_runtime
-from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
-from hoga.live.kis_capacity_scheduler import (
-    KisCapacityCooldown,
-    KisCapacityOverloaded,
-)
-from hoga.live.kis_models import InvestorTrendEstimateRow
-from hoga.live.kis_venue import (
-    KisVenue,
-    LiveVenuePolicy,
-    parse_live_venue_policy,
-    quote_venue_for_policy,
-)
-from hoga.live import kiwoom_runtime
-from hoga.live.kiwoom_rankings import (
-    Direction as RankingDirection,
-    KiwoomRankingsError,
-    KiwoomRankingsFetcher,
-    Market as RankingMarket,
-    RankingKind,
-)
-from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
-from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
-from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
-from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
-from hoga.live.live_index_sector_intraday import LiveIndexSectorIntradayOverlay
-from hoga.live.live_investor_net_backfill import LiveInvestorNetBackfill
+from hoga.live import kis_runtime, kiwoom_runtime
 from hoga.live.index_candles_cache import (
     IndexCandlesCache,
     collect_index_candles_with_cache,
@@ -65,16 +32,48 @@ from hoga.live.index_minute_candles_cache import (
     IndexMinuteCandlesCache,
     collect_index_minute_candles_with_cache,
 )
-from hoga.live.kiwoom_index_candles import (
-    KiwoomIndexCandlesError,
-    KiwoomIndexCandlesFetcher,
-    supports_bucket_seconds as kiwoom_supports_bucket,
-)
 from hoga.live.index_registry import (
     UnknownRepresentativeIndex,
     get_representative_index,
     list_representative_indices,
 )
+from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
+from hoga.live.kis_capacity_scheduler import (
+    KisCapacityCooldown,
+    KisCapacityOverloaded,
+)
+from hoga.live.kis_client import (
+    KisApiError,
+    KisAuthError,
+    KisQuote,
+    KisRateLimitError,
+    KisTransportError,
+)
+from hoga.live.kis_models import InvestorTrendEstimateRow
+from hoga.live.kis_venue import (
+    KisVenue,
+    LiveVenuePolicy,
+    parse_live_venue_policy,
+    quote_venue_for_policy,
+)
+from hoga.live.kiwoom_index_candles import (
+    KiwoomIndexCandlesError,
+    KiwoomIndexCandlesFetcher,
+    supports_bucket_seconds as kiwoom_supports_bucket,
+)
+from hoga.live.kiwoom_rankings import (
+    Direction as RankingDirection,
+    KiwoomRankingsError,
+    KiwoomRankingsFetcher,
+    Market as RankingMarket,
+    RankingKind,
+)
+from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
+from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
+from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
+from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
+from hoga.live.live_index_sector_intraday import LiveIndexSectorIntradayOverlay
+from hoga.live.live_investor_net_backfill import LiveInvestorNetBackfill
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.quote_change_resolver import QuoteChangeResolver
@@ -1104,7 +1103,7 @@ class LiveInvestorEstimateFetcher:
 
     async def fetch(
         self,
-        kis: "KisClient",
+        kis: KisClient,
         code: str,
     ) -> LiveInvestorTrendEstimateResponse:
         trading_day = self._today_fn()
@@ -1128,7 +1127,7 @@ class LiveInvestorEstimateFetcher:
 
     async def _fetch_uncached(
         self,
-        kis: "KisClient",
+        kis: KisClient,
         code: str,
         trading_day: str,
     ) -> LiveInvestorTrendEstimateResponse:
@@ -1908,7 +1907,7 @@ def build_router(
                 ),
                 timeout=1.0,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             quotes = _quote_fetcher.stale_last_good(
                 code_list,
                 phase,
@@ -1976,7 +1975,7 @@ def build_router(
                     ),
                     timeout=1.0,
                 )
-            except (asyncio.TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
+            except (TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
                 quotes = []
         quote_by_code = {quote.code: quote for quote in quotes}
 
@@ -2038,7 +2037,7 @@ def build_router(
                 ),
                 timeout=1.5,
             )
-        except (asyncio.TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
+        except (TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
             return _investor_estimate_fetcher._error_response(
                 code,
                 _investor_estimate_fetcher._today_fn(),

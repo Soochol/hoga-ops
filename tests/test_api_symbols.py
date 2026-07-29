@@ -195,8 +195,9 @@ def test_calendar_response_accepts_reason() -> None:
     assert resp_default.reason is None
 
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from hoga.api import symbols as symbols_module
 from hoga.api.error_codes import UpstreamCode
@@ -326,11 +327,7 @@ def test_symbol_cache_state_stale_requires_keyword_reason() -> None:
 # T4 — disk I/O helpers: _load_from_disk / _write_to_disk / SCHEMA_VERSION
 # ---------------------------------------------------------------------------
 
-import json
-import os
-from pathlib import Path
 
-from hoga.api import symbols as symbols_module
 from hoga.api.models import SymbolHit
 
 
@@ -638,8 +635,9 @@ async def test_refresh_concurrent_dedupe(tmp_path, monkeypatch):
 
 def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from hoga.api.app import create_app
+
     from hoga.api import symbols
+    from hoga.api.app import create_app
 
     symbols_module.reset_state_for_tests()
     # Isolate disk path so we don't read the real machine-global file.
@@ -680,8 +678,9 @@ def test_boot_autofetch_fires_when_cache_unavailable(tmp_path, monkeypatch):
     """§4.4: when disk file is absent (status=unavailable), lifespan must
     schedule refresh() as a background task — not block startup on it."""
     from fastapi.testclient import TestClient
-    from hoga.api.app import create_app
+
     from hoga.api import symbols
+    from hoga.api.app import create_app
 
     symbols_module.reset_state_for_tests()
 
@@ -715,10 +714,12 @@ def test_boot_autofetch_fires_when_cache_unavailable(tmp_path, monkeypatch):
 def test_boot_autofetch_skipped_when_cache_fresh(tmp_path, monkeypatch):
     """§4.4: when a valid disk file loads (status=fresh), refresh must NOT be
     scheduled — no redundant network call on a warm boot."""
-    from fastapi.testclient import TestClient
-    from hoga.api.app import create_app
-    from hoga.api import symbols
     import json
+
+    from fastapi.testclient import TestClient
+
+    from hoga.api import symbols
+    from hoga.api.app import create_app
 
     symbols_module.reset_state_for_tests()
 

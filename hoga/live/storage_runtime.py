@@ -15,13 +15,13 @@ from typing import Protocol
 
 log = logging.getLogger(__name__)
 
+from .buffer import LiveBuffer
 from .coverage import (
     KIWOOM_PER_ACCOUNT_MAX,
     _compute_capture_candidates,
     _compute_heatmap_codes,
     plan_storage_targets,
 )
-from .buffer import LiveBuffer
 
 
 class ProgramTradeCollectorLike(Protocol):

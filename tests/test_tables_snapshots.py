@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import duckdb
+import polars as pl
 import pyarrow.parquet as pq
 import pytest
 
@@ -18,22 +19,18 @@ from hoga.tables.snapshots import (
     BidPeakRow,
     Orderbook,
     SnapshotValidationError,
+    _classify_wall_frame,
+    _peak_distinct,
     query_at,
-    query_day_ask_peak_dual,
     query_day_ask_bid_peak_dual,
     query_day_ask_peak,
+    query_day_ask_peak_dual,
     query_day_bid_peak,
     query_day_bid_peak_dual,
     query_first_ts,
     query_time_bounds,
     validate,
     write_parquet,
-)
-import polars as pl
-
-from hoga.tables.snapshots import (
-    _classify_wall_frame,
-    _peak_distinct,
 )
 from hoga.tables.trades import Trade, write_parquet as write_trades
 
@@ -703,8 +700,8 @@ def test_query_bucketed_ratio_imb_max_picks_extreme_imbalance_snapshot(tmp_path:
     """호가비 Intra-Bar Max는 |imbalance| 최대 스냅샷의 (bid,ask) 쌍. max끼리 결합과
     부호가 뒤집힌다(스펙 예시): A(bid100,ask2)=매수우위, B(bid10,ask300)=매도우위.
     |imbalance| 극값 = A → imb_max_bid/ask = (100,2). (bid_max=100, ask_max=300 결합 아님.)"""
-    from hoga.tables.snapshots import query_bucketed_ratio
     from hoga.api.timeenc import hhmmssms_to_unix_ms  # noqa: F401 (의도 명시용)
+    from hoga.tables.snapshots import query_bucketed_ratio
 
     obs = [
         _ob(ts_ms=90_000_100, seq=1, ask_q=(2,), bid_q=(100,)),   # A: |imb| = 100/2-1 = 49 (매수우위)
@@ -1273,7 +1270,7 @@ def _ob_ap(
     ask_p: list[int] | None = None,
     *,
     seq: int = 1,
-) -> "Orderbook":
+) -> Orderbook:
     """ask_q/ask_p는 길이 10. bid는 연속거래로 보이게 깊이 채움(레벨4+ >0)."""
     ap = tuple(ask_p or [25000 + 50 * i for i in range(10)])
     aq = tuple(ask_q)
@@ -1291,7 +1288,7 @@ def _ob_bp(
     bid_p: list[int] | None = None,
     *,
     seq: int = 1,
-) -> "Orderbook":
+) -> Orderbook:
     """bid_q/bid_p are length 10. ask is filled deep enough to look continuous."""
     bp = tuple(bid_p or [24950 - 50 * i for i in range(10)])
     bq = tuple(bid_q)
@@ -1303,7 +1300,7 @@ def _ob_bp(
                      tot_bid=sum(bq), tot_bid_d=0)
 
 
-def _con_for(path) -> "duckdb.DuckDBPyConnection":
+def _con_for(path) -> duckdb.DuckDBPyConnection:
     return duckdb.connect()
 
 

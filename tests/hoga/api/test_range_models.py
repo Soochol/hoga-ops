@@ -9,8 +9,8 @@ from hoga.api.models import (
     QuoteRatio,
     RangeBundle,
     RangeSegment,
-    VolumeProfile,
     TradeVolumePoc,
+    VolumeProfile,
     validate_bucket_ms,
 )
 
@@ -75,9 +75,6 @@ def test_range_bundle_requires_at_least_one_segment_and_consistent_bucket():
 
 
 def test_range_bundle_has_excluded_dates_field_default_empty() -> None:
-    from hoga.api.models import (
-        ExcludedDate, DateWarning,
-    )
     rb = RangeBundle(
         code="005930", from_date="20260520", to_date="20260520",
         bucket_ms=60_000,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ def build_ws_router(
             while True:
                 try:
                     frame = await asyncio.wait_for(out.get(), timeout=ping_timeout_s)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     frame = {"ch": "heartbeat"}
                 await websocket.send_json(frame)
 

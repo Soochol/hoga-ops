@@ -3,7 +3,7 @@ from __future__ import annotations
 
 
 def _doc(folders, entries_codes):
-    from hoga.api.models import WatchlistDocument, WatchlistFolder, WatchlistEntry
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
     return WatchlistDocument(
         folders=[WatchlistFolder(**f) for f in folders],
         entries=[WatchlistEntry(code=c, name=c, registered_at_kst_date="20260101",

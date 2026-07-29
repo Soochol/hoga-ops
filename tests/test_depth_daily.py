@@ -134,6 +134,7 @@ def test_sweep_recapture_good_to_degenerate_evicts_stale_peak(tmp_path: Path) ->
     """good→degenerate 재캡처 시 keep='last' 로 센티넬이 기존 good 행을 덮어 stale peak 를
     남기지 않는다(재캡처는 meta mtime 을 바꿔 재계산을 유발)."""
     import os
+
     import polars as pl  # noqa: PLC0415
 
     d = _write_stock_date(

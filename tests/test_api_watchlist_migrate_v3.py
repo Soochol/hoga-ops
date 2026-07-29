@@ -1,5 +1,6 @@
 """v2→v3 마이그레이션: folder_id/order → member_codes, null → '기본' 보존 폴더."""
 from __future__ import annotations
+
 import json
 
 
@@ -66,8 +67,8 @@ def test_migrate_v1_legacy_nulls_to_default(tmp_path):
 
 
 def test_migrate_v3_passthrough_is_idempotent(tmp_path):
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
     from hoga.api.watchlist import load_document, save_document
-    from hoga.api.models import WatchlistDocument, WatchlistFolder, WatchlistEntry
     doc = WatchlistDocument(
         folders=[WatchlistFolder(id="f_0000000a", name="스윙", order=0, member_codes=["005930"])],
         entries=[WatchlistEntry(code="005930", name="삼성",
@@ -80,8 +81,8 @@ def test_migrate_v3_passthrough_is_idempotent(tmp_path):
 
 
 def test_reindex_dedupes_member_codes_and_normalizes_order(tmp_path):
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
     from hoga.api.watchlist import load_document, save_document
-    from hoga.api.models import WatchlistDocument, WatchlistFolder, WatchlistEntry
     doc = WatchlistDocument(
         folders=[WatchlistFolder(id="f_0000000a", name="A", order=5,
                                  member_codes=["005930", "005930", "000660"])],
@@ -96,7 +97,8 @@ def test_reindex_dedupes_member_codes_and_normalizes_order(tmp_path):
 
 def test_migrate_rejects_future_version(tmp_path):
     import pytest
-    from hoga.api.watchlist import load_document, UnsupportedWatchlistSchema
+
+    from hoga.api.watchlist import UnsupportedWatchlistSchema, load_document
     (tmp_path / "watchlist.json").write_text(json.dumps({"schema_version": 4, "folders": [], "entries": []}),
                                              encoding="utf-8")
     with pytest.raises(UnsupportedWatchlistSchema):

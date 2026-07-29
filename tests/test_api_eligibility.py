@@ -262,9 +262,9 @@ def test_skip_reason_wire_type_includes_no_upstream_data() -> None:
     Literal. Set equality catches the full class of divergence (e.g., a
     future PR adds a value to one module but forgets the other), which a
     presence check would silently miss."""
-    from hoga.api import eligibility as elig_module
-    from hoga.api import models as models_module
     from typing import get_args
+
+    from hoga.api import eligibility as elig_module, models as models_module
     assert set(get_args(elig_module.SkipReason)) == set(get_args(models_module.SkipReason))
     assert "no_upstream_data" in get_args(elig_module.SkipReason)
 

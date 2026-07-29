@@ -386,8 +386,8 @@ def test_collect_doubles_rate_for_THROTTLE_BACKOFF_HOLD_PAGES_after_429(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """After a 429, next 10 pages sleep at 2x rate_limit_s, then page 11 returns to 1x."""
-    from hoga.collector.client import HogaplayHTTPError
     from hoga.collector import orchestrator as orch
+    from hoga.collector.client import HogaplayHTTPError
 
     sleeps: list[float] = []
     monkeypatch.setattr(orch._time, "sleep", lambda s: sleeps.append(s))
@@ -428,8 +428,8 @@ def test_throttle_backoff_aborts_on_cancel_within_poll_interval(
     one poll interval (~50ms), not held hostage by the full 1.0s floor.
     Prior to the fix _time.sleep(1.0) blocked Cancel for the full second.
     """
-    from hoga.collector.client import HogaplayHTTPError
     from hoga.collector import orchestrator as orch
+    from hoga.collector.client import HogaplayHTTPError
 
     sleeps: list[float] = []
 
@@ -483,8 +483,8 @@ def test_collect_records_stagnation_abort_in_progress_and_result(
     into a "looks complete but is partial" data state — the exact failure
     the guard was added to detect.
     """
-    from hoga.collector.page_step import StopReason
     from hoga.collector import orchestrator as orch
+    from hoga.collector.page_step import StopReason
 
     # Patch _page_step_loop to skip the real pagination and force a STAGNATION
     # exit. This isolates orchestrator's stop_reason handling from the page

@@ -330,9 +330,7 @@ def dedup_overlap_resends(trades: list[Trade]) -> list[Trade]:
                 max_seq_by_cum[t.cum_vol] = t.seq
     out: list[Trade] = []
     for t in trades:
-        if t.side == 0 or t.qty == 0:
-            out.append(t)
-        elif t.seq == max_seq_by_cum[t.cum_vol]:
+        if t.side == 0 or t.qty == 0 or t.seq == max_seq_by_cum[t.cum_vol]:
             out.append(t)
         # else: an earlier-seq copy of a re-sent cum_vol — drop it.
     return out

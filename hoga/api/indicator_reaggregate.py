@@ -77,10 +77,8 @@ def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[Quot
         last_any[tb] = (r.bid_total, r.ask_total)
         if r.bid_total != 0 or r.ask_total != 0:
             last_nonzero[tb] = (r.bid_total, r.ask_total)
-        if r.bid_max > bid_max[tb]:
-            bid_max[tb] = r.bid_max
-        if r.ask_max > ask_max[tb]:
-            ask_max[tb] = r.ask_max
+        bid_max[tb] = max(bid_max[tb], r.bid_max)
+        ask_max[tb] = max(ask_max[tb], r.ask_max)
         mag = _imb_mag(r.imb_max_bid, r.imb_max_ask)
         if mag > imb_best[tb][0]:
             imb_best[tb] = (mag, r.imb_max_bid, r.imb_max_ask)

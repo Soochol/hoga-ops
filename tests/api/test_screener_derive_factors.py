@@ -112,8 +112,8 @@ def test_derive_adjusted_with_factors_path(tmp_path):
 
     컬럼 정렬(pl.concat) 및 파일 왕복(write→read_parquet)까지 검증.
     """
-    from hoga.api.screener_store import derive_adjusted
     from hoga.api.screener_factors import write_factors
+    from hoga.api.screener_store import derive_adjusted
 
     # Two codes: "005930" covered by factors, "000660" not covered (fallback)
     raw = tmp_path / "u.parquet"

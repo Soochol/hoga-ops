@@ -21,10 +21,8 @@ from hoga.api.models import (
     Meta,
     OrderbookResponse,
     RangeBundle,
-    validate_bucket_ms,
-)
-from hoga.api.models import (
     StockDate as StockDateModel,
+    validate_bucket_ms,
 )
 from hoga.api.params import CODE_PATTERN, Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
@@ -34,9 +32,7 @@ from hoga.api.timeenc import (
     ms_from_midnight_to_unix_ms,
     unix_ms_to_hhmmssms,
 )
-from hoga.tables import brokers as brokers_tbl
-from hoga.tables import candles as candles_tbl
-from hoga.tables import snapshots as snapshots_tbl
+from hoga.tables import brokers as brokers_tbl, candles as candles_tbl, snapshots as snapshots_tbl
 
 log = logging.getLogger(__name__)
 

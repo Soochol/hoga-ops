@@ -1,13 +1,13 @@
 import asyncio
+from datetime import datetime
+from pathlib import Path
 
 import polars as pl
 import pytest
-from pathlib import Path
 from fastapi.testclient import TestClient
-from datetime import datetime
-from hoga.api.screener_store import last_raw_date, append_rows, write_status, read_status
-from hoga.api.screener_store import DailyBar
+
 from hoga.api import screener as _screener_mod
+from hoga.api.screener_store import DailyBar, append_rows, last_raw_date, read_status, write_status
 
 
 @pytest.fixture(autouse=True)
@@ -177,6 +177,7 @@ def test_lifespan_does_not_run_screener_recovery_on_startup(tmp_path: Path, monk
 
 def test_manual_update_route_delegates_to_start_update(tmp_path: Path, monkeypatch):
     from fastapi import FastAPI
+
     from hoga.api import screener as screener_mod
 
     calls = []

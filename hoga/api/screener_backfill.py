@@ -82,7 +82,7 @@ async def factor_backfill(
 
 from dataclasses import dataclass  # noqa: E402 — appended reconcile block
 
-from hoga.api.screener_store import DailyBar, _DAILY_PL_SCHEMA, append_rows  # noqa: E402
+from hoga.api.screener_store import _DAILY_PL_SCHEMA, DailyBar, append_rows  # noqa: E402
 
 # (code, from_yyyymmdd, to_yyyymmdd) -> list[DailyBar] (full 원주가 rows)
 FetchRaw = Callable[[str, str, str], Awaitable[list["DailyBar"]]]

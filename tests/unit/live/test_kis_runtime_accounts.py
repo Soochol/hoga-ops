@@ -9,9 +9,7 @@ from pathlib import Path
 
 import pytest
 
-import hoga.live.account_health as account_health
-import hoga.live.kis_access as kis_access
-import hoga.live.kis_runtime as kis_runtime
+from hoga.live import account_health, kis_access, kis_runtime
 
 
 @pytest.fixture(autouse=True)

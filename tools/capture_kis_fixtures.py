@@ -84,7 +84,7 @@ def main() -> int:
                 if r.status_code == 200:
                     break
                 if r.status_code == 403:
-                    print(f"  403 (likely 1-per-minute rate-limit); waiting 70s before retry...")
+                    print("  403 (likely 1-per-minute rate-limit); waiting 70s before retry...")
                     time.sleep(70)
                     continue
                 r.raise_for_status()

@@ -15,8 +15,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
-from hoga.api.timeenc import KST, hhmmssms_to_unix_ms
 from hoga.api._atomic_write import atomic_write_json
+from hoga.api.timeenc import KST, hhmmssms_to_unix_ms
 from hoga.util.mtime_cache import MtimeLruCache
 
 log = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ class ProgramTradeByStockRow(BaseModel):
 # today 포함으로 주기적 refetch 될 때 과거 전 날짜 JSON 을 매번 재파싱하던 것을, 파일이
 # 안 바뀐 과거일은 파싱 결과를 재사용해 제거한다. today 는 캡처 write(atomic)가 mtime 을
 # 바꿔 자연 무효화. 쓰기 경로(merge_response)는 반드시 uncached load()를 써야 한다.
-_LOAD_CACHE: "MtimeLruCache[ProgramTradeDayFile]" = MtimeLruCache(max_entries=512)
+_LOAD_CACHE: MtimeLruCache[ProgramTradeDayFile] = MtimeLruCache(max_entries=512)
 
 
 class ProgramTradeStoredRow(ProgramTradeByStockRow):

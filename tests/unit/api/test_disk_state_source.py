@@ -6,8 +6,6 @@ picks the best state across sources.
 import json
 from pathlib import Path
 
-import pytest
-
 from hoga.api.disk_state import (
     DiskState,
     aggregate_disk_state,

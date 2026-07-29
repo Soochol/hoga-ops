@@ -10,8 +10,8 @@ to outcome=="ok" only. The top safe cell is the adoption candidate.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
 
 IN = Path("docs/superpowers/measurements/2026-05-23-throughput/matrix-results.json")
 

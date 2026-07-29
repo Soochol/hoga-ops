@@ -24,7 +24,6 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -67,18 +66,18 @@ class KisTokenProvider:
         credentials: KisCredentials,
         token_cache_path: Path,
         *,
-        _transport: Optional[httpx.BaseTransport] = None,
-        on_issue_failure: Optional[Callable[[], None]] = None,
+        _transport: httpx.BaseTransport | None = None,
+        on_issue_failure: Callable[[], None] | None = None,
     ):
         self._creds = credentials
         self._cache_path = token_cache_path
         self._client = httpx.Client(
             base_url=credentials.base_url, transport=_transport, timeout=10.0
         )
-        self._token: Optional[str] = None
-        self._token_expires_at: Optional[datetime] = None
+        self._token: str | None = None
+        self._token_expires_at: datetime | None = None
         # monotonic clock so NTP steps / DST don't confuse the cooldown.
-        self._last_issued_monotonic_ms: Optional[int] = None
+        self._last_issued_monotonic_ms: int | None = None
         self._lock = threading.Lock()
         # REST bearer 토큰 발급 실패 시 호출되는 콜백. kis_runtime이 account_id에
         # 바인딩해 주입하므로, scheduler/account pool은 해당 계정을 REST-degraded로
@@ -174,7 +173,7 @@ class KisTokenProvider:
         self._write_cache(token, expires_at)
         return token
 
-    def _read_cache(self) -> Optional[tuple[str, datetime]]:
+    def _read_cache(self) -> tuple[str, datetime] | None:
         if not self._cache_path.exists():
             return None
         try:

@@ -1,10 +1,16 @@
 from __future__ import annotations
+
 from collections.abc import Callable
 from pathlib import Path
+
 import polars as pl
+
 from hoga.api import screener_universe
 from hoga.api.models import (
-    BreakoutParams, ConditionLeaf, ScreenerRow, ScreenerUniverse,
+    BreakoutParams,
+    ConditionLeaf,
+    ScreenerRow,
+    ScreenerUniverse,
 )
 from hoga.duck import connect_bounded
 

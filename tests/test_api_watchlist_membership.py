@@ -1,5 +1,6 @@
 """멤버십 1급 ops(v3): add_member(생성·시드), remove_member(마지막 폴더→entry 삭제)."""
 from __future__ import annotations
+
 import pytest
 
 
@@ -40,7 +41,7 @@ async def test_add_member_idempotent(tmp_path):
 
 
 async def test_remove_member_last_folder_drops_entry(tmp_path):
-    from hoga.api.watchlist import add_member, remove_member, load_document
+    from hoga.api.watchlist import add_member, load_document, remove_member
     fid = await _seed_folder(tmp_path)
     await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260611", folder_id=fid)
     await remove_member(tmp_path, code="005930", folder_id=fid)
@@ -50,7 +51,7 @@ async def test_remove_member_last_folder_drops_entry(tmp_path):
 
 
 async def test_remove_member_other_folder_keeps_entry(tmp_path):
-    from hoga.api.watchlist import add_member, remove_member, create_folder, load_document
+    from hoga.api.watchlist import add_member, create_folder, load_document, remove_member
     f1 = await _seed_folder(tmp_path, name="스윙")
     f2 = (await create_folder(tmp_path, name="장기")).id
     await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260611", folder_id=f1)
@@ -62,13 +63,13 @@ async def test_remove_member_other_folder_keeps_entry(tmp_path):
 
 
 async def test_add_member_unknown_folder_raises(tmp_path):
-    from hoga.api.watchlist import add_member, FolderNotFoundError
+    from hoga.api.watchlist import FolderNotFoundError, add_member
     with pytest.raises(FolderNotFoundError):
         await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260611", folder_id="f_deadbeef")
 
 
 async def test_delete_folder_orphans_dropped_keeps_shared(tmp_path):
-    from hoga.api.watchlist import add_member, delete_folder, create_folder, load_document
+    from hoga.api.watchlist import add_member, create_folder, delete_folder, load_document
     f1 = await _seed_folder(tmp_path, name="스윙")
     f2 = (await create_folder(tmp_path, name="장기")).id
     await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260611", folder_id=f1)
@@ -82,7 +83,7 @@ async def test_delete_folder_orphans_dropped_keeps_shared(tmp_path):
 
 
 async def test_reorder_entries_reorders_member_codes(tmp_path):
-    from hoga.api.watchlist import add_member, reorder_entries, load_document
+    from hoga.api.watchlist import add_member, load_document, reorder_entries
     fid = await _seed_folder(tmp_path)
     await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260611", folder_id=fid)
     await add_member(tmp_path, code="000660", name="SK", today_kst_date="20260611", folder_id=fid)
