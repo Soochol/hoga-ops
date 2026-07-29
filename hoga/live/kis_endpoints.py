@@ -14,6 +14,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
+from hoga.live.candle_fetch_result import (
+    # 브로커 중립 포트 타입 — 정의는 candle_fetch_result 로 이주했다(ADR-0129 D2).
+    # 키움 어댑터가 이 모듈(=KIS HTTP 어댑터)에서 import 하면 ADR-0116 규율 1 위반이라
+    # 접두 없는 모듈로 뺐다. 기존 사용처를 위한 re-export 로 남긴다.
+    DailyCandleFetchResult,
+    DailyInvariantViolation,
+    IndexCandleFetchResult,
+)
 from hoga.live.index_registry import RepresentativeIndex
 from hoga.live.kis_errors import KisApiError
 from hoga.live.kis_models import (
@@ -35,38 +43,6 @@ log = logging.getLogger(__name__)
 # pass an explicit venue value and include it in cache/query keys.
 _DEFAULT_KIS_VENUE: KisVenue = "KRX"
 _STOCK_MRKT_DIV = kis_venue_div(_DEFAULT_KIS_VENUE)
-
-@dataclass(frozen=True)
-class DailyInvariantViolation:
-    """A row dropped by fetch_past_daily_candles boundary defense.
-
-    Surfaced to the handler so wire data_warnings can tell operators which
-    dates were silently lost — ADR-0040's defensive-parse policy made explicit
-    (grill Q3 decision in 2026-05-28 daily backfill spec).
-    """
-    date_yyyymmdd: str
-    reason: Literal[
-        "close_nonpositive", "ohlc_inconsistent", "malformed_row", "out_of_range"
-    ]
-    detail: str
-
-
-@dataclass(frozen=True)
-class DailyCandleFetchResult:
-    """Return value of fetch_past_daily_candles.
-
-    `candles` is the cleaned, ASC-sorted result; `violations` is the per-row
-    drop log so the caller can surface them to data_warnings.
-    """
-    candles: list["KisCandle"]
-    violations: list[DailyInvariantViolation] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class IndexCandleFetchResult:
-    candles: list["IndexCandlePoint"]
-    violations: list[DailyInvariantViolation] = field(default_factory=list)
-
 
 @dataclass(frozen=True)
 class IndexQuoteSnapshot:

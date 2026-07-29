@@ -32,14 +32,14 @@ async def test_repeated_exact_minute_request_uses_cache() -> None:
 
     first = await collect_index_minute_candles_with_cache(
         cache,
-        ("KOSPI", "1m", 60),
+        ("kis", "KOSPI", "1m", 60),
         "20260622",
         "20260622",
         fetch_batch,
     )
     second = await collect_index_minute_candles_with_cache(
         cache,
-        ("KOSPI", "1m", 60),
+        ("kis", "KOSPI", "1m", 60),
         "20260622",
         "20260622",
         fetch_batch,
@@ -62,14 +62,14 @@ async def test_broader_range_does_not_claim_cache_hit_when_cached_rows_do_not_co
 
     await collect_index_minute_candles_with_cache(
         cache,
-        ("KOSPI", "1m", 60),
+        ("kis", "KOSPI", "1m", 60),
         "20260622",
         "20260622",
         fetch_batch,
     )
     broader = await collect_index_minute_candles_with_cache(
         cache,
-        ("KOSPI", "1m", 60),
+        ("kis", "KOSPI", "1m", 60),
         "20260601",
         "20260622",
         fetch_batch,
@@ -91,14 +91,14 @@ async def test_exact_cache_preserves_row_level_violations_without_refetching() -
 
     first = await collect_index_minute_candles_with_cache(
         cache,
-        ("KOSPI", "1m", 60),
+        ("kis", "KOSPI", "1m", 60),
         "20260622",
         "20260622",
         fetch_batch,
     )
     second = await collect_index_minute_candles_with_cache(
         cache,
-        ("KOSPI", "1m", 60),
+        ("kis", "KOSPI", "1m", 60),
         "20260622",
         "20260622",
         fetch_batch,
@@ -123,7 +123,7 @@ async def test_today_window_refetches_after_ttl() -> None:
     async def collect() -> IndexCandleFetchResult:
         return await collect_index_minute_candles_with_cache(
             cache,
-            ("KOSPI", "1m", 60),
+            ("kis", "KOSPI", "1m", 60),
             "20260622",
             "20260629",
             fetch_batch,
@@ -157,7 +157,7 @@ async def test_past_only_window_never_expires() -> None:
         clock["t"] = elapsed
         await collect_index_minute_candles_with_cache(
             cache,
-            ("KOSPI", "1m", 60),
+            ("kis", "KOSPI", "1m", 60),
             "20260622",
             "20260626",
             fetch_batch,
@@ -181,16 +181,47 @@ async def test_missing_today_argument_keeps_legacy_no_expiry() -> None:
     for elapsed in (0.0, 3600.0):
         clock["t"] = elapsed
         await collect_index_minute_candles_with_cache(
-            cache, ("KOSPI", "1m", 60), "20260622", "20260629", fetch_batch,
+            cache, ("kis", "KOSPI", "1m", 60), "20260622", "20260629", fetch_batch,
         )
 
     assert len(calls) == 1
 
 
+@pytest.mark.asyncio
+async def test_source_is_part_of_the_key() -> None:
+    """소스가 다르면 캐시를 공유하지 않는다 (ADR-0129 D4).
+
+    두 소스의 depth 가 크게 다르므로(KIS 102행 vs 키움 900행/페이지), 키를 공유하면
+    소스 전환 직후 짧은 쪽 응답이 긴 쪽 자리를 차지한다.
+    """
+    cache = IndexMinuteCandlesCache()
+    calls: list[str] = []
+
+    def fetch_for(source: str):
+        async def fetch_batch(from_s: str, to_s: str) -> IndexCandleFetchResult:
+            calls.append(source)
+            return IndexCandleFetchResult(
+                candles=[point(1, 1.0 if source == "kis" else 2.0)]
+            )
+        return fetch_batch
+
+    from_s, to_s = "20260622", "20260622"
+    kis = await collect_index_minute_candles_with_cache(
+        cache, ("kis", "KOSPI", "1m", 60), from_s, to_s, fetch_for("kis"),
+    )
+    kiwoom = await collect_index_minute_candles_with_cache(
+        cache, ("kiwoom", "KOSPI", "1m", 60), from_s, to_s, fetch_for("kiwoom"),
+    )
+
+    assert calls == ["kis", "kiwoom"], "각 소스가 자기 fetch 를 탄다"
+    assert [c.close for c in kis.candles] == [1.0]
+    assert [c.close for c in kiwoom.candles] == [2.0], "키움이 KIS 캐시를 재사용하지 않는다"
+
+
 def test_exact_cache_is_lru_bounded() -> None:
     """WS4: exact-match 분봉 캐시는 무한 축적하지 않는다 — LRU 상한."""
     cache = IndexMinuteCandlesCache(max_exact_entries=2)
-    key = ("KOSPI", "1m", 60)
+    key = ("kis", "KOSPI", "1m", 60)
     r = IndexCandleFetchResult(candles=[point(1, 1.0)])
 
     cache.store_exact(key, "20260620", "20260620", r)

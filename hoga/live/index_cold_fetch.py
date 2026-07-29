@@ -5,7 +5,7 @@ from calendar import monthrange
 from datetime import date
 from typing import Awaitable, Callable
 
-from hoga.live.kis_client import IndexCandleFetchResult
+from hoga.live.candle_fetch_result import IndexCandleFetchResult
 
 
 def _parse(s: str) -> date:

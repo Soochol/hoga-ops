@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import TypeAlias
 
-from hoga.live.kis_client import KIS_KST, DailyInvariantViolation, IndexCandleFetchResult
+from hoga.live.candle_fetch_result import DailyInvariantViolation, IndexCandleFetchResult
+from hoga.live.kis_venue import KIS_KST
 from hoga.live.kis_models import IndexCandlePoint
 from hoga.util.cache_stats import CacheStats
 

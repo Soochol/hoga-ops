@@ -61,8 +61,14 @@ from hoga.live.index_candles_cache import (
 )
 from hoga.live.index_cold_fetch import fetch_index_daily_candles_windowed
 from hoga.live.index_minute_candles_cache import (
+    IndexMinuteCacheKey,
     IndexMinuteCandlesCache,
     collect_index_minute_candles_with_cache,
+)
+from hoga.live.kiwoom_index_candles import (
+    KiwoomIndexCandlesError,
+    KiwoomIndexCandlesFetcher,
+    supports_bucket_seconds as kiwoom_supports_bucket,
 )
 from hoga.live.index_registry import (
     UnknownRepresentativeIndex,
@@ -124,6 +130,24 @@ index_candles_cache_instance: IndexCandlesCache | None = None
 kiwoom_stock_info_fetcher_instance: KiwoomStockInfoFetcher | None = None
 kiwoom_rankings_fetcher_instance: KiwoomRankingsFetcher | None = None
 index_minute_candles_cache_instance: IndexMinuteCandlesCache | None = None
+# ka20005 fetcher — 지수 **분봉** 전용(ADR-0129). 키움 자격증명이 있을 때만 만들어지고,
+# None 이면 지수 분봉이 KIS 로 간다(= ADR-0129 이전 동작). 이 None 여부가 소스 선택의
+# 유일한 축이다 — 요청 중에 바뀌지 않는다(D3).
+_kiwoom_index_fetcher: KiwoomIndexCandlesFetcher | None = None
+_KIWOOM_INDEX_MINUTE_API_ID = "ka20005"
+
+
+def _index_minute_source(bucket_seconds: int) -> str:
+    """지수 분봉 캔들의 소스 — `"kiwoom"` 또는 `"kis"`.
+
+    부팅 시점 가용성만 본다(ADR-0129 D3): 키움 fetcher 가 배선돼 있고 그 버킷을
+    **정확한 소스로** 받을 수 있으면 키움, 아니면 KIS. 런타임 실패는 이 판정을 바꾸지
+    않는다 — 폴백 사다리를 만들면 소스 경계에서 값이 튀고(실측 15:30 종가 불일치),
+    "지금 어느 소스를 보고 있나"가 요청마다 달라져 장애 재현이 어려워진다.
+    """
+    if _kiwoom_index_fetcher is not None and kiwoom_supports_bucket(bucket_seconds):
+        return "kiwoom"
+    return "kis"
 
 # Rate-limit retry policy lives in ``KisClient._get`` (ADR-0050). Handlers
 # here just call ``kis.fetch_*`` directly; a ``KisRateLimitError`` that
@@ -420,7 +444,7 @@ def _collect_index_daily_candles_cache_only(
 def _collect_index_minute_candles_cache_only(
     *,
     cache: IndexMinuteCandlesCache,
-    key: tuple[str, str, int],
+    key: IndexMinuteCacheKey,
     index_id: str,
     timeframe: str,
     from_s: str,
@@ -1588,46 +1612,84 @@ def build_router(
             }[timeframe]
             if index_minute_candles_cache_instance is None:
                 raise HTTPException(503, "index-minute-candles cache not wired (data_dir missing)")
+            # 소스는 여기(조립 지점)서 한 번만 정해진다 — 요청마다 폴백하지 않는다
+            # (ADR-0129 D3). 아래 두 클로저 중 하나만 살아 캐시로 내려가고, 그 아래
+            # 파이프라인은 누가 fetch 했는지 모른다.
+            source = _index_minute_source(bucket_seconds)
+            cache_key = (source, index.id, timeframe, bucket_seconds)
             if kis_access.kis_rest_bypass_enabled(data_dir):
                 return _collect_index_minute_candles_cache_only(
                     cache=index_minute_candles_cache_instance,
-                    key=(index.id, timeframe, bucket_seconds),
+                    key=cache_key,
                     index_id=index.id,
                     timeframe=timeframe,
                     from_s=from_,
                     to_s=to,
                 )
-            if _kis_scheduler is None:
-                raise HTTPException(503, "KIS scheduler not wired")
-            if not kis_access.has_rest_capacity(data_dir):
-                raise HTTPException(503, "KIS client not initialized")
 
-            async def fetch_batch(from_s: str, to_s: str):
-                return await kis_access.run_with_capacity(
-                    _kis_scheduler,
-                    data_dir=data_dir,
-                    key=("index-minute", index.id, timeframe, bucket_seconds, from_s, to_s),
-                    endpoint=kis_access.KisRestEndpoint.INDEX_MINUTE,
-                    priority="user_visible",
-                    cooldown_scope=("index-minute", index.id, timeframe),
-                    fetch_fn=lambda kis: kis.fetch_index_minute_candles(
-                        index,
+            if source == "kiwoom":
+                fetcher = _kiwoom_index_fetcher
+                assert fetcher is not None  # _index_minute_source 가 보장
+
+                async def fetch_batch(from_s: str, to_s: str):
+                    # 동기 httpx + 페이지당 1s 페이싱이라 스레드로 뺀다
+                    # (kiwoom_rankings 와 같은 패턴). KIS 유량 스케줄러는 타지 않는다
+                    # — 별개 브로커의 별개 예산이다.
+                    return await asyncio.to_thread(
+                        fetcher.fetch,
+                        index.id,
                         from_s,
                         to_s,
                         bucket_seconds=bucket_seconds,
-                        foreground=True,
-                    ),
-                )
+                    )
+            else:
+                if _kis_scheduler is None:
+                    raise HTTPException(503, "KIS scheduler not wired")
+                if not kis_access.has_rest_capacity(data_dir):
+                    raise HTTPException(503, "KIS client not initialized")
+
+                async def fetch_batch(from_s: str, to_s: str):
+                    return await kis_access.run_with_capacity(
+                        _kis_scheduler,
+                        data_dir=data_dir,
+                        key=("index-minute", index.id, timeframe, bucket_seconds, from_s, to_s),
+                        endpoint=kis_access.KisRestEndpoint.INDEX_MINUTE,
+                        priority="user_visible",
+                        cooldown_scope=("index-minute", index.id, timeframe),
+                        fetch_fn=lambda kis: kis.fetch_index_minute_candles(
+                            index,
+                            from_s,
+                            to_s,
+                            bucket_seconds=bucket_seconds,
+                            foreground=True,
+                        ),
+                    )
 
             try:
                 result = await collect_index_minute_candles_with_cache(
                     index_minute_candles_cache_instance,
-                    (index.id, timeframe, bucket_seconds),
+                    cache_key,
                     from_,
                     to,
                     fetch_batch,
                     today_yyyymmdd=_today_kst_yyyymmdd(),
                 )
+            except KiwoomIndexCandlesError:
+                # 키움 실패는 KIS 로 떨어지지 않는다(D3) — 값 경계 튐과 진단 어려움을
+                # 피하려는 의도적 선택이다. 대신 원인을 경고로 드러내고 빈 응답을 준다.
+                log.exception("kiwoom index-minute fetch failed: %s %s", index.id, timeframe)
+                return {
+                    "index_id": index.id,
+                    "from": from_,
+                    "to": to,
+                    "timeframe": timeframe,
+                    "candles": [],
+                    "data_warnings": [{
+                        "batch": f"{from_}__{to}",
+                        "reason": "kis_api_error",
+                        "msg": f"kiwoom {_KIWOOM_INDEX_MINUTE_API_ID} fetch failed",
+                    }],
+                }
             except (KisCapacityCooldown, KisCapacityOverloaded) as e:
                 reason = (
                     "index_kis_capacity_cooldown"
@@ -2016,12 +2078,16 @@ def build_router(
     if data_dir is not None and index_candles_cache_instance is None:
         index_candles_cache_instance = IndexCandlesCache()
     global kiwoom_stock_info_fetcher_instance, kiwoom_rankings_fetcher_instance
+    global _kiwoom_index_fetcher
     if data_dir is not None and kiwoom_stock_info_fetcher_instance is None:
         _kiwoom_prov = kiwoom_runtime.ensure_token_provider_for_account(0, data_dir)
         if _kiwoom_prov is not None:
             kiwoom_stock_info_fetcher_instance = KiwoomStockInfoFetcher(_kiwoom_prov)
             # 순위 fetcher 는 같은 account-0 토큰 provider 를 재사용(스펙: rkinfo 4종).
             kiwoom_rankings_fetcher_instance = KiwoomRankingsFetcher(_kiwoom_prov)
+            # 지수 분봉 fetcher (ADR-0129) — 같은 provider. 이 대입이 곧 소스 선택이다:
+            # 자격증명이 없으면 None 으로 남아 지수 분봉이 KIS 로 간다(현행 동작 유지).
+            _kiwoom_index_fetcher = KiwoomIndexCandlesFetcher(_kiwoom_prov)
     global index_minute_candles_cache_instance
     if data_dir is not None and index_minute_candles_cache_instance is None:
         index_minute_candles_cache_instance = IndexMinuteCandlesCache()
