@@ -48,15 +48,38 @@ export const TODAY_RANGE_REFETCH_MS = 5 * 60_000;
  * - Past-only (`to < todayKst`, or `todayKst`/`to` unknown): staleTime Infinity,
  *   no refetch — captured Stock-Dates are immutable historical data. This keeps
  *   non-live callers (capture/replay backfill) on the original frozen behavior;
- *   the refetch must NOT leak into them. */
+ *   the refetch must NOT leak into them.
+ *
+ * 탭 가림(document hidden) 대응(2026-07-29) — 오늘 분기에만 두 플래그를 켠다.
+ * 전역 `refetchOnWindowFocus:false`(main.tsx) + react-query 의
+ * `refetchIntervalInBackground` 기본 false 때문에, /live 탭이 가려지면 이 5분
+ * 폴링이 멈춰 pastMaxQrT 가 동결되고 오늘 보조지표가 SSE 버퍼(15분 보존)만으로
+ * 남다가 축출과 함께 구멍이 난다 — 캔들 쪽과 같은 병(livePastCandles.ts 의
+ * PAST_CANDLES_REFETCH_IN_BACKGROUND 주석에 전말). 과거 전용 분기는 명시적으로
+ * false 를 돌려 "비-라이브 호출자는 동결" 계약을 값으로 못박는다(테스트가 단언). */
 export function rangeFreshnessOptions(
   to: string | null,
   todayKst: string | null,
-): { staleTime: number; refetchInterval: number | false } {
+): {
+  staleTime: number;
+  refetchInterval: number | false;
+  refetchIntervalInBackground: boolean;
+  refetchOnWindowFocus: boolean;
+} {
   const includesToday = !!(to && todayKst && to >= todayKst);
   return includesToday
-    ? { staleTime: TODAY_RANGE_REFETCH_MS, refetchInterval: TODAY_RANGE_REFETCH_MS }
-    : { staleTime: Infinity, refetchInterval: false };
+    ? {
+        staleTime: TODAY_RANGE_REFETCH_MS,
+        refetchInterval: TODAY_RANGE_REFETCH_MS,
+        refetchIntervalInBackground: true,
+        refetchOnWindowFocus: true,
+      }
+    : {
+        staleTime: Infinity,
+        refetchInterval: false,
+        refetchIntervalInBackground: false,
+        refetchOnWindowFocus: false,
+      };
 }
 
 /** Whether an at-rest today-range delta should refetch now.
@@ -83,7 +106,9 @@ export function rangeBundleQueryOptions(
   input: RangeBundleQueryOptionsInput,
 ): UseQueryOptions<RangeBundle, Error, RangeBundle, RangeQueryKey> {
   const request = buildRangeBundleRequest(input);
-  const { staleTime, refetchInterval } = rangeFreshnessOptions(input.to, request.todayKst);
+  const {
+    staleTime, refetchInterval, refetchIntervalInBackground, refetchOnWindowFocus,
+  } = rangeFreshnessOptions(input.to, request.todayKst);
   return {
     queryKey: request.queryKey,
     queryFn: ({ signal }) =>
@@ -91,6 +116,8 @@ export function rangeBundleQueryOptions(
     enabled: request.enabled,
     staleTime,
     refetchInterval,
+    refetchIntervalInBackground,
+    refetchOnWindowFocus,
     placeholderData: (prev, previousQuery) =>
       rangePlaceholderData(prev, request.queryKey, previousQuery?.queryKey),
   };
@@ -547,7 +574,9 @@ function useLiveRangeDelta(
     [baseInput, previous, previousIdentity, cachedPrevious?.updatedAtMs, nowMs, mode, lastPromotionMs],
   );
   const request = buildRangeBundleRequest(plan.requestInput);
-  const { staleTime, refetchInterval } = rangeFreshnessOptions(plan.requestInput.to, request.todayKst);
+  const {
+    staleTime, refetchInterval, refetchIntervalInBackground, refetchOnWindowFocus,
+  } = rangeFreshnessOptions(plan.requestInput.to, request.todayKst);
   const initialData = plan.servePrevious && !plan.canReusePrevious ? previous : undefined;
 
   const query = useQuery<RangeBundle, Error, RangeBundle, RangeQueryKey>({
@@ -556,6 +585,8 @@ function useLiveRangeDelta(
     enabled: plan.enabled,
     staleTime,
     refetchInterval,
+    refetchIntervalInBackground,
+    refetchOnWindowFocus,
     placeholderData: plan.usePlaceholderData
       ? (prev, previousQuery) =>
           rangePlaceholderData(prev, request.queryKey, previousQuery?.queryKey)

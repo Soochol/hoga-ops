@@ -5,7 +5,9 @@ import {
   hasBlockingWarnings,
   mergedPastCandlesKey,
   mergePastCandleResponses,
+  PAST_CANDLES_REFETCH_IN_BACKGROUND,
   pastCandlesRefetchInterval,
+  pastCandlesRefetchOnFocus,
   pastCandlesStaleTime,
   planPastCandlesDelta,
   useLivePastCandles,
@@ -62,6 +64,27 @@ describe('past-candles freshness gating (range.ts parity)', () => {
   });
 });
 
+// 탭 가림(document hidden) 중 정본 폴링이 멈추면 오늘 캔들이 15분 SSE 버퍼만으로
+// 남다가 축출과 함께 소급 소멸한다(2026-07-29 조사). 두 플래그가 그 구멍을 막는다.
+describe('past-candles tab-hidden refetch flags', () => {
+  it('keeps the interval alive while the tab is hidden', () => {
+    // refetchInterval:false 인 쿼리엔 돌 타이머가 없어 무조건 true 여도 no-op —
+    // 이 플래그는 "기존 interval 이 배경에서도 도는가"만 게이트한다.
+    expect(PAST_CANDLES_REFETCH_IN_BACKGROUND).toBe(true);
+  });
+
+  it('gates focus refetch on the same predicate as the polling interval', () => {
+    // 과거 전용 청크: 폴링도 focus 재조회도 없다(비-라이브 호출자 동결 계약).
+    expect(pastCandlesRefetchOnFocus(RESPONSE, '20260502', '20260610', 'KRX')).toBe(false);
+    // 오늘 head·blocking 경고: 폴링이 도는 조건과 정확히 일치한다. 세션 시각에
+    // 의존하므로 venue 정책과 대조해 clock-independent 하게 단언한다.
+    expect(pastCandlesRefetchOnFocus(RESPONSE, '20260610', '20260610', 'KRX'))
+      .toBe(liveVenueRefetchInterval('KRX') !== false);
+    expect(pastCandlesRefetchOnFocus(BLOCKED, '20260502', '20260610', 'KRX'))
+      .toBe(liveVenueRefetchInterval('KRX') !== false);
+  });
+});
+
 function mockApiEchoingWindow() {
   return vi.spyOn(client, 'apiCall').mockImplementation(async (url: string) => {
     const params = new URLSearchParams(url.split('?')[1]);
@@ -77,6 +100,49 @@ function mockApiEchoingWindow() {
     } satisfies LivePastCandlesResponse;
   });
 }
+
+describe('useLivePastCandles 탭 복귀 즉시 재조회', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  /** jsdom 의 visibilityState 를 갈아끼우고 이벤트를 쏜다.
+   *  `bubbles: true` 가 load-bearing — focusManager 는 리스너를 **window** 에 걸고
+   *  (query-core/focusManager.js), 이벤트는 document 에서 발화한다. 기본값
+   *  bubbles:false 로 쏘면 window 에 영영 닿지 않아 테스트가 거짓 실패한다.
+   *  실제 브라우저도 visibilitychange 를 bubbles=true 로 발화하므로 이쪽이 충실한 재현. */
+  function setVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+    Object.defineProperty(document, 'hidden', { value: state === 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+  }
+
+  it('전역 refetchOnWindowFocus:false 를 오늘 head 청크가 override 한다', async () => {
+    // 실측(2026-07-29, :5173 대조군): 탭 복귀 후 정본이 돌아오기까지 59초가 걸렸다.
+    // 이 override 가 그 구멍을 닫는다 — 죽으면 증상이 조용히 부활하므로 핀으로 건다.
+    //
+    // 05:00 UTC = 14:00 KST → KRX 정규장 안. liveVenueRefetchInterval 이 시계
+    // 의존이라 고정하지 않으면 장 마감 뒤엔 이 테스트가 뒤집힌다.
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 6, 29, 5, 0, 0));
+    const spy = mockApiEchoingWindow();
+    // main.tsx 와 동일한 전역 설정 — per-query 옵션이 실제로 이기는지가 요점이다.
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+    renderHook(
+      () => useLivePastCandles('005930', '20260729', '20260729', 'KRX', '20260729'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+
+    // 탭 가림 → 그 사이 데이터가 낡았다고만 표시(refetchType:'none' 이라 재조회 없음).
+    setVisibility('hidden');
+    await qc.invalidateQueries({ refetchType: 'none' });
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // 탭 복귀 → 다음 interval 틱(최대 60s)을 기다리지 않고 즉시 1회.
+    setVisibility('visible');
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+  });
+});
 
 describe('useLivePastCandles', () => {
   beforeEach(() => vi.restoreAllMocks());

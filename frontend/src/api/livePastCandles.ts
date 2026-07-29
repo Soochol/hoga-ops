@@ -172,6 +172,38 @@ export function pastCandlesRefetchInterval(
   return false;
 }
 
+/** 탭 가림(document hidden) 구간의 캔들 구멍 방지 — 2026-07-29 조사.
+ *
+ * react-query 의 `refetchIntervalInBackground` 기본 false 에 main.tsx 의 전역
+ * `refetchOnWindowFocus:false` 가 겹쳐, /live 탭이 가려지면(다른 탭·창 가림·화면
+ * 잠금) **정본 60초 폴링만 멈추고 WS 틱은 계속 온다**. 그 사이 오늘 캔들은
+ * `overlayLiveTradesOnCandles` 의 15분 슬라이딩 버퍼(liveSnapshotBuffer.ts)로만
+ * 존재하다 축출과 함께 **소급 소멸**한다 → 복귀 직후 [가림 시각 ~ now-15분] 구간이
+ * 통째로 빈 차트. 60초 뒤 다음 interval 틱이 정본을 재공급해 자가치유되므로
+ * "복귀 직후 1분만 보이는 구멍"이라 재현이 어렵다.
+ *
+ * PR #543 은 델타 플랜이 옵저버를 꺼 버리는 분기(enabled:false)만 고쳤다. 여기서
+ * 막는 것은 **옵저버는 살아 있는데 브라우저가 타이머를 재우는** 나머지 절반이다.
+ *
+ * - A(예방) `refetchIntervalInBackground: true` — 가려져 있어도 interval 유지.
+ *   `refetchInterval` 이 false 면 애초에 돌 타이머가 없으므로, 과거 전용 청크엔
+ *   **무조건 true 여도 no-op** 이다(플래그는 기존 interval 의 실행 여부만 게이트).
+ * - B(복귀 보험) `pastCandlesRefetchOnFocus` — 복귀 시 다음 interval 틱을 기다리지
+ *   않고 즉시 1회. 위 `pastCandlesRefetchInterval` 과 **같은 술어**를 쓴다: 폴링이
+ *   도는 쿼리에서만 focus refetch 도 돈다. (과거 전용은 staleTime Infinity 라
+ *   focus 가 와도 stale 이 아니어서 이중으로 막힌다.)
+ */
+export const PAST_CANDLES_REFETCH_IN_BACKGROUND = true;
+
+export function pastCandlesRefetchOnFocus(
+  data: LivePastCandlesResponse | undefined,
+  requestTo: string | null,
+  todayKst: string | null,
+  venue: LiveVenueOption,
+): boolean {
+  return pastCandlesRefetchInterval(data, requestTo, todayKst, venue) !== false;
+}
+
 export function planPastCandlesDelta(
   code: string | null,
   from: string | null,
@@ -316,6 +348,10 @@ export function useLivePastCandles(
     staleTime: pastCandlesStaleTime(plan.requestTo, todayKst),
     refetchInterval: (query) =>
       pastCandlesRefetchInterval(query.state.data, plan.requestTo, todayKst, venue),
+    // 탭 가림 구멍 방지 — 근거는 PAST_CANDLES_REFETCH_IN_BACKGROUND 주석 참조.
+    refetchIntervalInBackground: PAST_CANDLES_REFETCH_IN_BACKGROUND,
+    refetchOnWindowFocus: (query) =>
+      pastCandlesRefetchOnFocus(query.state.data, plan.requestTo, todayKst, venue),
     // Code+venue-aware placeholder: keep previous data only when the identity
     // still means the same candle venue. Same-code refetches (lazy from/to
     // extension, refetchInterval) keep the previous render to avoid blanking.

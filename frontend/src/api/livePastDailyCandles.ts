@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
+import { PAST_CANDLES_REFETCH_IN_BACKGROUND } from './livePastCandles';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
 
@@ -50,6 +51,13 @@ export function useLivePastDailyCandles(
     enabled,
     staleTime: 60_000,
     refetchInterval: () => liveVenueRefetchInterval(venue),
+    // 탭 가림(document hidden) 구간의 D/W/M 갱신 정지 방지 — 전체 근거는
+    // livePastCandles.ts 의 PAST_CANDLES_REFETCH_IN_BACKGROUND 주석 참조.
+    // focus refetch 는 refetchInterval 과 **같은 술어**로 게이트한다: staleTime 이
+    // 60s 고정이라 게이트 없이 true 로 두면 장 마감 후에도 탭 복귀마다 KIS 호출이
+    // 창 수만큼 나간다(일봉은 장외에 변할 게 없다).
+    refetchIntervalInBackground: PAST_CANDLES_REFETCH_IN_BACKGROUND,
+    refetchOnWindowFocus: () => liveVenueRefetchInterval(venue) !== false,
     // See livePastCandles.ts for the rationale — code+venue-aware placeholder
     // prevents the previous code/venue's candle count from leaking into
     // LiveChartRoot's initial-view effect on watchlist and venue switches.
