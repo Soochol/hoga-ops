@@ -85,6 +85,37 @@ caches?.keys?.().then((keys) => keys.forEach((key) => caches.delete(key)));
 location.reload();
 ```
 
+## CI and local verification
+
+`.github/workflows/ci.yml` gates every PR. Run the **same commands locally** — CI runs
+nothing you can't reproduce:
+
+```bash
+cd frontend && npm run typecheck && npx vitest run && npx vite build
+```
+
+```bash
+uv run --extra dev pytest -q -m 'not wallclock'
+```
+
+Notes:
+
+- `npm run typecheck` covers **three** TypeScript projects: `tsc -b` (app + vite config),
+  `tsconfig.test.json` (`tests/unit`, `tests/component`), and `tsconfig.e2e.json`
+  (Playwright specs). They are separate because the environments have different globals —
+  putting e2e's `types: ["node"]` on the app project changes `setTimeout`'s return type
+  from `number` to `NodeJS.Timeout` and invents errors in `src/`. `npx tsc -b` alone does
+  **not** check `frontend/tests/`.
+- Run vitest from `frontend/`, never the repo root — the root resolves a different vitest
+  that runs without jsdom and reports a full suite of false `document is not defined`
+  failures.
+- `@pytest.mark.wallclock` marks the 9 backend tests that assert on elapsed time. They run
+  locally by default; CI runs them in a separate non-blocking job because they measure
+  scheduling jitter, not behavior. Before adding a new one, try to express the property
+  deterministically (call counts) instead — that's what PR #516 did for the frontend.
+- Not yet gated: `ruff` (2,057 pre-existing violations) and Playwright e2e execution
+  (port mismatch + missing globalSetup). Typecheck-only for the latter.
+
 ## Design System
 
 Always read `DESIGN.md` at the repo root before making any visual or UI decisions in the frontend.

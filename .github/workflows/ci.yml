@@ -1,0 +1,126 @@
+# 이 레포의 CI.
+#
+# 2026-07-29 이전까지 이 파일은 `frontend-typecheck.yml` 이었고 `npx tsc -b` 하나만
+# 돌렸다. 범위를 좁게 잡은 최초 근거는 이랬다(원문 요지):
+#
+#   "테스트·린트·백엔드는 넣지 않았다 — 실행이 길어지고 벽시계 의존 테스트가
+#    간헐 실패로 머지를 막을 수 있어서, 먼저 이 한 겹만 확실히 세운다."
+#
+# 당시로선 타당한 조심이었다. 다만 그 뒤로 전제가 바뀌었고 2026-07-29 에 실측했다:
+#
+#   - 실행 시간: vitest 4,4xx건 38초 / pytest 2,8xx건 115초 / vite build 2초.
+#     "길어진다" 는 성립하지 않는다.
+#   - 간헐 실패: 프론트 벽시계 perf 단언은 PR #516(2026-07-09)에서 이미 결정론적
+#     불변식으로 대체됐다. 남은 벽시계 의존은 백엔드 9개 함수뿐이라 전부
+#     `@pytest.mark.wallclock` 으로 표시하고 블로킹 잡에서 제외했다.
+#
+# 그동안의 대가는 컸다. 테스트 7천여 건이 전부 초록인데 CI 는 그중 0건을 실행했고,
+# tsc 가 보는 범위도 tsconfig.app.json 의 include:["src"] 뿐이라 frontend/tests/ 에
+# 타입 오류 7건이 main 에 살아 있었다. 백엔드는 어떤 검증도 받지 않아 백엔드 전용
+# PR 은 의미 없는 초록 체크를 받았다.
+#
+# 아직 넣지 않은 것:
+#   - ruff: 기존 위반 2,057건. 게이트로 세우려면 정리나 규칙 조정이 선행돼야 한다.
+#   - Playwright e2e: 포트 불일치·globalSetup 부재로 현재 실행 불가. 타입체크만 걸어 뒀다.
+
+name: CI
+
+on:
+  # PR 트리거가 핵심이다. GitHub 은 PR 브랜치가 아니라 **base 와 합친 머지 커밋**을
+  # 체크아웃하므로, "각자는 초록인데 합치면 깨지는" 교차 PR 충돌이 머지 전에
+  # 드러난다(#734 가 그 사고였다). 로컬 검증으로는 구조적으로 볼 수 없던 지점.
+  pull_request:
+  # main 이 어떤 경로로든(직접 푸시·핫픽스) 깨지면 알 수 있게 하는 안전망.
+  push:
+    branches: [main]
+
+# 같은 PR 에 연속 푸시하면 이전 실행을 취소한다 — 마지막 커밋 결과만 의미 있다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 최소 권한: 소스만 읽으면 된다.
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      # v5 = Node 24 런타임. v4 는 Node 20 기반이라 러너가 강제로 24 로 올리며
+      # deprecation 경고를 남긴다(2025-09 GitHub 공지) — 미리 맞춰둔다.
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # 로컬 개발 환경(v24)과 major 를 맞춘다 — CI 에서만 재현되는 런타임 차이로
+          # 디버깅 시간을 쓰지 않기 위해서다. package.json 에 engines 가 없어 여기가
+          # 사실상 Node 버전의 유일한 선언 지점이다.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci = package-lock.json 그대로 설치(락 무시하는 npm install 과 다르다).
+      - run: npm ci
+
+      # tsc -b(app+node) + tsconfig.test.json + tsconfig.e2e.json 세 프로젝트.
+      # 로컬과 **같은 명령**이어야 하므로 npm script 를 경유한다.
+      # 왜 셋인가: 실행 환경마다 전역 타입이 달라 한 프로젝트로 합칠 수 없다.
+      # e2e 에 필요한 types:["node"] 를 app 에 넣으면 setTimeout 반환형이
+      # number → NodeJS.Timeout 으로 바뀌어 src 에 없던 오류가 생긴다.
+      - run: npm run typecheck
+
+      # vitest 는 타입을 검사하지 않고 tsc 는 동작을 검사하지 않는다. 둘 다 필요하다.
+      # working-directory 가 frontend 인 것이 중요하다 — 레포 루트에서 vitest 를
+      # 돌리면 다른 vitest 가 jsdom 없이 잡혀 전량 위양성이 난다.
+      - run: npx vitest run
+
+      # 번들링 단계에서만 드러나는 실패(순환 참조, 동적 import 해석, manualChunks
+      # 오설정)가 있어 타입체크로 대체되지 않는다.
+      - run: npx vite build
+
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # 로컬(3.14.4)과 major.minor 를 맞춘다. pyproject 의 requires-python 이
+      # >=3.11 이라 uv 가 임의 버전을 고를 수 있는데, 그러면 "로컬은 되는데 CI 만
+      # 깨진다" 는 진단 비용이 생긴다. 프론트에서 node-version 을 고정한 것과 같은 이유.
+      - run: uv python install 3.14
+
+      # -m 'not wallclock' — 경과시간을 단언하는 9개 함수는 아래 잡으로 분리했다.
+      - run: uv run --extra dev --python 3.14 pytest -q -m 'not wallclock'
+
+  backend-wallclock:
+    name: backend (wallclock)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # 실패해도 머지를 막지 않는다. 이 테스트들을 CI 에서 아예 빼면 회귀를 영영 못
+    # 보므로 신호는 남기되, 스케줄링 지터로 인한 실패가 게이트가 되지는 않게 한다.
+    # 여기서 반복 실패하면 해당 테스트를 결정론적 불변식으로 다시 쓸 신호다
+    # (PR #516 이 프론트에서 했던 작업과 같다).
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv python install 3.14
+      - run: uv run --extra dev --python 3.14 pytest -q -m wallclock
