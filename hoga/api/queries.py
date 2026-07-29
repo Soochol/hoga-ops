@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -56,6 +57,27 @@ def resolve_source_dir(stock_date_dir: Path, source: str) -> Path:
     if (stock_date_dir / "meta.json").exists():
         return stock_date_dir  # legacy flat layout
     return sub  # return the not-existing source path for the error to surface naturally
+
+
+log = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class _ParquetStats:
+    """Per-Stock-Date parquet aggregates, precomputed in one batched query.
+
+    Field-for-field the values ``_compute_stock_date`` would otherwise derive
+    from two per-row DuckDB calls. Defaults match that function's own
+    "no parquet / empty parquet" branch, so a dir the batch didn't produce a
+    row for lands on exactly the same values the per-row path would give.
+
+    Mutable (no frozen=True) because _batch_parquet_stats fills the snapshots
+    half and the candles half in two separate passes.
+    """
+    bounds: tuple[int, int] | None = None
+    price_min: int = 0
+    price_max: int = 0
+    total_volume: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,8 +164,12 @@ class QueryEngine:
             # the same empty result.
             self._stock_date_cache.clear()
             return []
+        # Pass 1 — walk the tree, split into cache hits and misses. Nothing
+        # touches DuckDB here, so the steady-state (all hits) cost stays the
+        # directory walk it always was (~274ms for 15.9k rows, 2026-07-29).
         out: list[StockDate] = []
         seen_keys: set[tuple[str, str]] = set()
+        misses: list[tuple[str, str, Path, int]] = []  # (date, code, code_dir, mtime_ns)
         for date_dir in sorted(base.iterdir()):
             if not date_dir.is_dir():
                 continue
@@ -173,19 +199,39 @@ class QueryEngine:
                     continue
                 # _compute_stock_date wants the dir containing the parquet files,
                 # which is the source dir or the flat dir — same as meta_path.parent.
-                # Wrap in try/except: a parquet with a non-hogaplay schema
-                # (e.g. partially-migrated state) would raise a DuckDB
-                # BinderException; we'd rather skip the row than 500 the whole
-                # inventory endpoint.
-                try:
-                    sd = self._compute_stock_date(date, code, meta_path.parent)
-                except Exception:  # noqa: BLE001
-                    seen_keys.discard(key)
-                    continue
-                self._stock_date_cache[key] = _CachedStockDate(
-                    meta_mtime_ns=mtime_ns, value=sd
+                misses.append((date, code, meta_path.parent, mtime_ns))
+
+        # Pass 2 — one batched DuckDB query per artifact for every miss, instead
+        # of two per row. Cold-cache inventory was 36.9s at 15.9k rows because
+        # of ~32k individual read_parquet calls (2026-07-29). Returns {} on any
+        # failure, which puts every row back on the per-row path below.
+        batch = self._batch_parquet_stats([d for _, _, d, _ in misses]) if misses else {}
+
+        # Pass 3 — build the missing rows. The try/except stays per row even
+        # when the batch succeeded: a malformed parquet must cost one row, not
+        # the whole inventory endpoint (a non-hogaplay schema raises DuckDB
+        # BinderException). That isolation is why the batch is allowed to be
+        # best-effort.
+        by_key: dict[tuple[str, str], StockDate] = {}
+        for date, code, code_dir, mtime_ns in misses:
+            key = (date, code)
+            try:
+                sd = self._compute_stock_date(
+                    date, code, code_dir, stats=batch.get(code_dir),
                 )
-                out.append(sd)
+            except Exception:  # noqa: BLE001
+                seen_keys.discard(key)
+                continue
+            self._stock_date_cache[key] = _CachedStockDate(
+                meta_mtime_ns=mtime_ns, value=sd
+            )
+            by_key[key] = sd
+
+        # 정렬 계약 유지: 기존 구현은 (date, code) 오름차순으로 append 했다.
+        # 위에서 히트/미스를 두 패스로 나누면서 순서가 섞이므로 여기서 복원한다.
+        if by_key:
+            out.extend(by_key.values())
+            out.sort(key=lambda sd: (sd.date, sd.code))
         # Snapshot iteration via list() — safe against concurrent inserts
         # from another threadpool worker. pop(..., None) instead of del
         # because a concurrent pruner may have already removed the same
@@ -216,14 +262,93 @@ class QueryEngine:
             return flat
         return None
 
+    def _batch_parquet_stats(
+        self, code_dirs: list[Path]
+    ) -> dict[Path, _ParquetStats]:
+        """Aggregate snapshots bounds + candle price/volume for many dirs at once.
+
+        Why: ``_compute_stock_date`` issues **two** DuckDB parquet queries per
+        Stock-Date. On a cold cache that is ~2 queries × 15.9k rows ≈ 32k
+        separate ``read_parquet`` calls, measured at 36.9s for the full
+        inventory (2026-07-29). DuckDB can fold the same work into one query
+        per artifact via ``read_parquet([...], filename=true)`` + GROUP BY —
+        measured 16.6s → 1.36s (12×) for the candles half alone.
+
+        **This is strictly an optimization with a per-row fallback.** A single
+        parquet whose schema doesn't match (a partially-migrated Stock-Date
+        raises DuckDB BinderException) would fail the *whole* batch, whereas
+        the per-row path skips just that row. So any failure here returns an
+        empty dict and the caller silently falls back to per-row computation —
+        slower, but the isolation property that ``list_stock_dates`` depends on
+        is preserved. Never let this raise into the caller.
+
+        Returns a dict keyed by the directory; a dir absent from the result (or
+        whose parquet had no rows) simply gets the per-row path's zero/None
+        defaults.
+        """
+        out: dict[Path, _ParquetStats] = {}
+        snap_paths = [d / "snapshots.parquet" for d in code_dirs]
+        snap_paths = [p for p in snap_paths if p.exists()]
+        cand_paths = [d / "candles.parquet" for d in code_dirs]
+        cand_paths = [p for p in cand_paths if p.exists()]
+
+        def _stats_for(d: Path) -> _ParquetStats:
+            return out.setdefault(d, _ParquetStats())
+
+        if snap_paths:
+            try:
+                rows = self.conn.execute(
+                    "SELECT filename, min(ts_ms), max(ts_ms) "
+                    "FROM read_parquet(?, filename=true) GROUP BY filename",
+                    [[str(p) for p in snap_paths]],
+                ).fetchall()
+            except Exception:  # noqa: BLE001 — 배치 실패는 행별 경로로 되돌린다
+                log.warning("inventory: batched snapshots bounds failed; per-row fallback")
+                return {}
+            for filename, lo, hi in rows:
+                if lo is None:
+                    continue
+                _stats_for(Path(filename).parent).bounds = (int(lo), int(hi))
+
+        if cand_paths:
+            try:
+                rows = self.conn.execute(
+                    "SELECT filename, MIN(low), MAX(high), "
+                    "COALESCE(SUM(CAST(vol_a AS BIGINT) + CAST(vol_b AS BIGINT)), 0) "
+                    "FROM read_parquet(?, filename=true) GROUP BY filename",
+                    [[str(p) for p in cand_paths]],
+                ).fetchall()
+            except Exception:  # noqa: BLE001 — 배치 실패는 행별 경로로 되돌린다
+                log.warning("inventory: batched candle aggregates failed; per-row fallback")
+                return {}
+            for filename, lo, hi, vol in rows:
+                if lo is None:
+                    continue
+                st = _stats_for(Path(filename).parent)
+                st.price_min = int(lo)
+                st.price_max = int(hi)
+                st.total_volume = int(vol)
+
+        # 배치가 답을 준 디렉터리만 "계산됨" 으로 표시한다. 여기 없는 디렉터리는
+        # 호출부에서 stats=None 이 되어 행별 쿼리를 그대로 탄다.
+        for d in code_dirs:
+            out.setdefault(d, _ParquetStats())
+        return out
+
     def _compute_stock_date(
-        self, date: str, code: str, code_dir: Path
+        self, date: str, code: str, code_dir: Path,
+        stats: _ParquetStats | None = None,
     ) -> StockDate:
         """Build a StockDate row from on-disk parquet for one (date, code).
 
         Caller has already verified that code_dir/meta.json exists.
         Reads meta.json + snapshots.parquet bounds + candles.parquet
         price/volume aggregates + dir stat() for captured_at and total size.
+
+        ``stats`` — precomputed aggregates from :meth:`_batch_parquet_stats`.
+        When None (the batch was skipped or failed) this falls back to the
+        original one-query-per-artifact path, which is what keeps a single
+        malformed parquet from taking down the whole inventory.
         """
         meta = json.loads((code_dir / "meta.json").read_text(encoding="utf-8"))
         # StockDate has no field for classify_from_meta's warning note.
@@ -232,11 +357,14 @@ class QueryEngine:
         snap_path = code_dir / "snapshots.parquet"
         # snapshots.ts_ms is stored as HHMMSSmmm (per existing tests
         # asserting e.g. ts_ms == 90010435). Convert to Unix ms here.
-        bounds = (
-            snapshots.query_time_bounds(self.conn, path=snap_path)
-            if snap_path.exists()
-            else None
-        )
+        if stats is not None:
+            bounds = stats.bounds
+        else:
+            bounds = (
+                snapshots.query_time_bounds(self.conn, path=snap_path)
+                if snap_path.exists()
+                else None
+            )
         open_ms = hhmmssms_to_unix_ms(date, norm_meta["regular_session_open_ms"])
         close_ms = hhmmssms_to_unix_ms(date, meta["regular_session_close_ms"])
         if bounds is not None:
@@ -248,7 +376,11 @@ class QueryEngine:
 
         # Price range + total volume from candles.parquet.
         candles_path = code_dir / "candles.parquet"
-        if candles_path.exists():
+        if stats is not None:
+            price_min = stats.price_min
+            price_max = stats.price_max
+            total_volume = stats.total_volume
+        elif candles_path.exists():
             row = self.conn.execute(
                 "SELECT MIN(low), MAX(high), "
                 "COALESCE(SUM(CAST(vol_a AS BIGINT) + CAST(vol_b AS BIGINT)), 0) "

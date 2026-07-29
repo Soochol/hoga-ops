@@ -143,3 +143,89 @@ def test_disappeared_dir_pruned_from_cache(tmp_path: Path) -> None:
         assert (_DATES[0], "003490") not in engine._stock_date_cache
     finally:
         engine.close()
+
+
+# ---------------------------------------------------------------------------
+# 배치 parquet 집계 (2026-07-29)
+#
+# _compute_stock_date 는 Stock-Date 당 DuckDB 쿼리를 2개 던진다. 콜드 캐시에서
+# 15.9k 행 × 2 ≈ 32k 개의 read_parquet 호출이 되어 실측 39.5s 였다.
+# _batch_parquet_stats 가 이를 아티팩트당 1쿼리로 접는다(실측 39.5s → 6.9s,
+# 전 행 값 동일).
+#
+# 배치는 **최적화일 뿐 계약이 아니다**. 스키마가 어긋난 parquet 하나가 배치
+# 전체를 죽일 수 있는데, 행별 경로는 그 한 행만 건너뛴다. 아래는 그 격리
+# 속성이 배치 도입 후에도 유지되는지 고정한다.
+# ---------------------------------------------------------------------------
+
+
+def test_batch_and_per_row_produce_identical_rows(tmp_path: Path) -> None:
+    """배치 경로와 행별 경로의 결과가 완전히 같아야 한다."""
+    engine = _build_engine_with_stock_dates(tmp_path, _DATES[:3])
+    batched = engine.list_stock_dates()
+
+    # 캐시를 비우고 배치를 무력화해 행별 경로로 다시 계산.
+    engine._stock_date_cache.clear()
+    with mock.patch.object(QueryEngine, "_batch_parquet_stats", return_value={}):
+        per_row = engine.list_stock_dates()
+
+    assert [r.model_dump() for r in batched] == [r.model_dump() for r in per_row]
+
+
+def test_batch_failure_falls_back_to_per_row(tmp_path: Path) -> None:
+    """배치 쿼리가 터져도 목록은 정상적으로 나와야 한다.
+
+    _batch_parquet_stats 는 어떤 실패도 삼키고 {} 를 돌려주며, 그러면 모든 행이
+    기존 행별 쿼리를 탄다. 이게 성립하지 않으면 parquet 하나의 스키마 드리프트가
+    인벤토리 엔드포인트 전체를 500 으로 만든다.
+    """
+    engine = _build_engine_with_stock_dates(tmp_path, _DATES[:3])
+    expected = [r.model_dump() for r in engine.list_stock_dates()]
+
+    engine._stock_date_cache.clear()
+    real_execute = engine.conn.execute
+
+    def _fail_batch(sql, *args, **kwargs):
+        if "filename=true" in sql:
+            raise RuntimeError("simulated BinderException")
+        return real_execute(sql, *args, **kwargs)
+
+    with mock.patch.object(type(engine.conn), "execute", side_effect=_fail_batch):
+        got = engine.list_stock_dates()
+
+    assert [r.model_dump() for r in got] == expected
+
+
+def test_malformed_parquet_costs_one_row_not_the_endpoint(tmp_path: Path) -> None:
+    """읽을 수 없는 parquet 이 섞여도 나머지 Stock-Date 는 살아남는다."""
+    engine = _build_engine_with_stock_dates(tmp_path, _DATES[:3])
+    all_rows = engine.list_stock_dates()
+    assert len(all_rows) == 3
+
+    # 한 Stock-Date 의 candles.parquet 을 쓰레기로 덮는다.
+    victim_date = _DATES[0]
+    victim = engine.data_dir / "parquet" / victim_date / "003490"
+    target = victim / "hogaplay" / "candles.parquet"
+    if not target.exists():
+        target = victim / "candles.parquet"
+    target.write_bytes(b"not a parquet file")
+    # meta.json mtime 을 흔들어 캐시 미스를 강제.
+    meta = target.parent / "meta.json"
+    os.utime(meta, None)
+    engine._stock_date_cache.clear()
+
+    survivors = engine.list_stock_dates()
+    assert victim_date not in {r.date for r in survivors}
+    assert len(survivors) == 2
+
+
+def test_batch_stats_absent_dir_matches_empty_defaults(tmp_path: Path) -> None:
+    """배치가 행을 못 만든 디렉터리(빈 parquet)는 행별 경로의 기본값과 같아야 한다."""
+    from hoga.api.queries import _ParquetStats
+
+    engine = _build_engine_with_stock_dates(tmp_path, _DATES[:1])
+    stats = engine._batch_parquet_stats([tmp_path / "does" / "not" / "exist"])
+    assert stats[tmp_path / "does" / "not" / "exist"] == _ParquetStats()
+    assert _ParquetStats().bounds is None
+    assert (_ParquetStats().price_min, _ParquetStats().price_max) == (0, 0)
+    assert _ParquetStats().total_volume == 0
