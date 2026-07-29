@@ -8,8 +8,10 @@ import {
   nextHeaderFold,
   LIVE_HEADER_FOLD,
   STUDY_HEADER_FOLD,
+  STUDY_HEADER_NEED,
   type HeaderFold,
 } from './chartHeaderCompact';
+import { MIN_W } from '../../workspace/snapEngine';
 
 const BOTH_FOLDED: HeaderFold = { compactActions: true, compactTimeframe: true };
 
@@ -116,5 +118,38 @@ describe('표면별 임계 (#903 — 정책은 공유, 숫자는 표면마다)',
     expect(stillFolded.compactActions).toBe(true);
     const restored = nextHeaderFold(STUDY_HEADER_FOLD.labelRestoreWidthPx, folded, STUDY_HEADER_FOLD);
     expect(restored.compactActions).toBe(false);
+  });
+});
+
+/**
+ * #905 — 임계는 "언제 접을지" 만 정한다. "접은 게 충분히 작은지" 는 별개 불변식이라
+ * 따로 못 박는다. #767 이 난 이유가 정확히 이 둘을 한 값으로 착각해서다.
+ */
+describe('/study 접힘 불변식 (#905 실측 고정)', () => {
+  it('각 단계 임계는 그 단계 형태의 요구 폭보다 크다', () => {
+    // 라벨을 유지하는 구간의 하한 = 다 펴진 형태가 들어가야 한다.
+    expect(STUDY_HEADER_FOLD.labelMinWidthPx).toBeGreaterThan(STUDY_HEADER_NEED.full);
+    // 봉 그룹을 유지하는 구간의 하한 = 1단계 형태(아이콘 액션 + 봉 그룹)가 들어가야 한다.
+    expect(STUDY_HEADER_FOLD.timeframeFoldWidthPx).toBeGreaterThan(STUDY_HEADER_NEED.actionsFolded);
+  });
+
+  it('단계 순서가 뒤집히지 않는다 — 봉은 라벨보다 늦게 접힌다', () => {
+    expect(STUDY_HEADER_FOLD.timeframeFoldWidthPx).toBeLessThan(STUDY_HEADER_FOLD.labelMinWidthPx);
+    // 되펴기 임계도 같은 순서. 겹치면 두 단계가 같은 폭에서 진동한다.
+    expect(STUDY_HEADER_FOLD.timeframeRestoreWidthPx).toBeLessThan(STUDY_HEADER_FOLD.labelMinWidthPx);
+  });
+
+  it('완전 접힘이 창 최소 폭(MIN_W)에 들어간다', () => {
+    // 창을 MIN_W 까지 좁혀도 헤더가 잘리면 안 된다. 임계로는 보장되지 않는 축이다 —
+    // 더 접을 단계가 없으므로 이 여유가 음수면 사용자가 잘림을 그대로 본다.
+    // 컨테이너 패딩(px-1 = 0.25rem × 2, 기본 밀도 18px 기준 9px)을 뺀 값과 비교.
+    const containerPaddingPx = 9;
+    expect(STUDY_HEADER_NEED.bothFolded).toBeLessThanOrEqual(MIN_W - containerPaddingPx);
+  });
+
+  it('되펴기 dead band 가 요구 폭을 넘지 않는다 — 되편 직후 잘리면 안 된다', () => {
+    // 히스테리시스로 되편 순간의 폭이 그 형태의 요구 폭보다 넓어야 한다.
+    expect(STUDY_HEADER_FOLD.labelRestoreWidthPx).toBeGreaterThan(STUDY_HEADER_NEED.full);
+    expect(STUDY_HEADER_FOLD.timeframeRestoreWidthPx).toBeGreaterThan(STUDY_HEADER_NEED.actionsFolded);
   });
 });
