@@ -97,6 +97,55 @@ describe('useCaptureQueue SSE multiplex', () => {
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(before));
   });
 
+  it('연속 capture_finished 를 한 번의 refetch 로 접는다 (O(N^2) 방지)', async () => {
+    // GET /queue 는 done 버킷 전체를 돌려주고 _done 은 계속 자란다. 완료 1건마다
+    // 무효화하면 N 건 백필이 크기 1,2,...,N 인 응답을 N 번 받아 전송량이 O(N^2)
+    // 가 된다. 동시 워커의 완료는 거의 동시에 도착하므로 짧은 창으로 접힌다.
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ active: [], queued: [QUEUED_ITEM], done: [], paused: false, max_concurrent: 3 }),
+    } as Response);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(() => { useCaptureQueueSync(); return useCaptureQueue(); }, { wrapper: makeWrapper(qc) });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const before = fetchMock.mock.calls.length;
+
+    for (let i = 0; i < 8; i++) {
+      fireSse({
+        type: 'capture_finished', item_id: `i${i}`, code: '005930', date: '20260518',
+        phase: 'done', result: null, error: null, skip_reason: null,
+      });
+    }
+
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(before));
+    // 창이 닫히고도 추가 발사가 없어야 한다.
+    await new Promise((r) => setTimeout(r, 400));
+    expect(fetchMock.mock.calls.length - before).toBe(1);
+  });
+
+  it('접기 창이 지난 뒤의 완료는 다시 refetch 한다', async () => {
+    // 접기가 "한 번만 하고 마는" 것이 되어선 안 된다 — 창마다 최신 상태를 받아야 한다.
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ active: [], queued: [QUEUED_ITEM], done: [], paused: false, max_concurrent: 3 }),
+    } as Response);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(() => { useCaptureQueueSync(); return useCaptureQueue(); }, { wrapper: makeWrapper(qc) });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const before = fetchMock.mock.calls.length;
+
+    const fire = (id: string) => fireSse({
+      type: 'capture_finished', item_id: id, code: '005930', date: '20260518',
+      phase: 'done', result: null, error: null, skip_reason: null,
+    });
+
+    fire('a');
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(before + 1));
+    await new Promise((r) => setTimeout(r, 400));
+    fire('b');
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(before + 2));
+  });
+
   it('capture_queued + capture_queue_paused + capture_queue_resumed all invalidate', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
       ok: true, status: 200,

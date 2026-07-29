@@ -10,6 +10,7 @@ import Settings from './pages/Settings';
 import { Heatmap } from './pages/Heatmap';
 import { StudyPage } from './studyViews/StudyPage';
 import { initStudyTabsSync } from './state/studyTabs';
+import AppErrorBoundary from './ui/AppErrorBoundary';
 import './styles/global.css';
 
 
@@ -53,21 +54,27 @@ qc.setQueryDefaults(['live', 'past-candles'], { gcTime: 2 * 60 * 60_000 });
 // /study 의 useStudyRangeCacheEviction(['range'] 축출)과 겹치지 않아 왕복에도 생존.
 qc.setQueryDefaults(['live', 'range-merged'], { gcTime: 2 * 60 * 60_000 });
 
+// AppErrorBoundary sits OUTSIDE the providers on purpose: a throw from the
+// QueryClientProvider/BrowserRouter subtree — including anything a route
+// renders — must still land somewhere that can paint. Inside them, a failure
+// during provider setup would escape to the root and blank the page again.
 createRoot(document.getElementById('root')!).render(
-  <QueryClientProvider client={qc}>
-    <BrowserRouter>
-      <Routes>
-        <Route element={<App />}>
-          <Route path="/" element={<Navigate to="/live" replace />} />
-          <Route path="live" element={<LivePage />} />
-          <Route path="study" element={<StudyPage />} />
-          <Route path="heatmap" element={<Heatmap />} />
-          <Route path="inventory" element={<Inventory />} />
-          <Route path="screener" element={<Screener />} />
-          <Route path="capture" element={<Capture />} />
-          <Route path="settings" element={<Settings />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
-  </QueryClientProvider>,
+  <AppErrorBoundary>
+    <QueryClientProvider client={qc}>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<App />}>
+            <Route path="/" element={<Navigate to="/live" replace />} />
+            <Route path="live" element={<LivePage />} />
+            <Route path="study" element={<StudyPage />} />
+            <Route path="heatmap" element={<Heatmap />} />
+            <Route path="inventory" element={<Inventory />} />
+            <Route path="screener" element={<Screener />} />
+            <Route path="capture" element={<Capture />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
+  </AppErrorBoundary>,
 );

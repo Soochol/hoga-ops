@@ -45,6 +45,19 @@ export function patchQueueItem(
 function yearOf(date8: string): number { return parseInt(date8.slice(0, 4), 10); }
 function monthOf(date8: string): number { return parseInt(date8.slice(4, 6), 10); }
 
+/** capture_finished 무효화를 접는 창(ms).
+ *
+ *  왜 필요한가: GET /queue 는 `done` 버킷 **전체**를 돌려주고(captures.py
+ *  get_queue_snapshot), `_done` 은 DELETE /done 전까지 계속 자란다. 완료 1건마다
+ *  무효화하면 N 건짜리 백필이 크기 1,2,…,N 인 응답을 N 번 받는다 — 전송량이
+ *  O(N²) 다. 완료 이벤트는 워커 수만큼 몰려 오므로 짧은 창으로도 대부분 접힌다.
+ *
+ *  250ms 인 이유: 사람이 "즉시" 로 느끼는 상한 안이면서(목록이 늦게 갱신되는
+ *  느낌을 주지 않는다) 동시 워커(기본 3)의 완료 버스트를 한 번으로 모으기에
+ *  충분하다. 진행률·단계 이벤트는 여기 해당하지 않는다 — 그쪽은 이미
+ *  setQueryData 로 지역 패치라 네트워크를 타지 않는다. */
+const FINISHED_INVALIDATE_COALESCE_MS = 250;
+
 /** Single owner of the capture-queue push subscription. Mount EXACTLY ONCE at
  *  the app root (App.tsx) alongside useEventStream / the origins cleanup hook.
  *
@@ -59,6 +72,16 @@ function monthOf(date8: string): number { return parseInt(date8.slice(4, 6), 10)
 export function useCaptureQueueSync(): void {
   const qc = useQueryClient();
   useEffect(() => {
+    // 접기 타이머. 창 안에 몰린 capture_finished 는 한 번의 무효화로 합쳐진다.
+    let coalesceTimer: ReturnType<typeof setTimeout> | null = null;
+    const invalidateQueueCoalesced = (): void => {
+      if (coalesceTimer !== null) return;   // 이미 예약됨 — 창이 끝날 때 한 번만 돈다
+      coalesceTimer = setTimeout(() => {
+        coalesceTimer = null;
+        qc.invalidateQueries({ queryKey: CAPTURE_QUEUE_QUERY_KEY });
+      }, FINISHED_INVALIDATE_COALESCE_MS);
+    };
+
     const unsub = subscribeToCaptureEvents((e: PushEvent) => {
       if (e.type === 'capture_progress') {
         qc.setQueryData<QueueSnapshot>(CAPTURE_QUEUE_QUERY_KEY, (prev) =>
@@ -70,7 +93,10 @@ export function useCaptureQueueSync(): void {
         );
       } else if (e.type === 'capture_finished') {
         // Refetch the queue (state moved across active/done buckets).
-        qc.invalidateQueries({ queryKey: CAPTURE_QUEUE_QUERY_KEY });
+        // 접어서 보낸다 — 캘린더 셀 패치는 아래에서 이벤트마다 그대로 적용되므로
+        // 사용자가 보는 즉각적 피드백(달력 색)은 지연되지 않는다. 지연되는 것은
+        // 큐 목록의 버킷 재배치뿐이고, 그건 250ms 안에 따라온다.
+        invalidateQueueCoalesced();
         // Patch the calendar cell for (e.code, e.date) without refetching the month.
         const key = CALENDAR_QUERY_KEY(e.code, yearOf(e.date), monthOf(e.date));
         const status = phaseToCalendarStatus(e.phase, e.skip_reason);
@@ -109,7 +135,16 @@ export function useCaptureQueueSync(): void {
         useCaptureTimings.getState().upsert(e.id, e.summary);
       }
     });
-    return unsub;
+    return () => {
+      unsub();
+      // 예약된 무효화를 취소한다. 남겨 두면 구독 해제 뒤에도 한 번 더 발사돼,
+      // 언마운트된 트리를 위해 쓸모없는 fetch 를 한다(테스트에서는 이게
+      // "act 밖 업데이트" 경고로 나타난다).
+      if (coalesceTimer !== null) {
+        clearTimeout(coalesceTimer);
+        coalesceTimer = null;
+      }
+    };
   }, [qc]);
 }
 

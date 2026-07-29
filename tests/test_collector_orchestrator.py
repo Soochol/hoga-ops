@@ -565,3 +565,93 @@ def test_collect_raises_when_info_body_is_status_2(tmp_path: Path) -> None:
     # The "2" status body must NOT be persisted as info.tsv.
     info_path = tmp_path / "raw" / "20250424" / "258540" / "info.tsv"
     assert not info_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Fresh re-capture clears the previous attempt's pages (2026-07-29)
+#
+# A non-resume capture restarts the page index at 0, so it only OVERWRITES
+# first_00001..N. A previous, longer attempt left first_(N+1)..M behind, and
+# raw_pages() globs the union — the parser then reads two capture generations
+# as one. Silent data contamination; truncated leftovers additionally raise
+# ParserError, which is not lenient-retryable, so the Stock-Date accrues
+# fail_streak and lands in `blocked` for a reason that isn't the real one.
+# ---------------------------------------------------------------------------
+
+
+def test_clear_raw_pages_removes_pages_and_progress(tmp_path: Path) -> None:
+    from hoga.collector.orchestrator import clear_raw_pages, raw_pages
+
+    raw_dir = tmp_path / "raw" / "20260519" / "003490"
+    raw_dir.mkdir(parents=True)
+    for idx in (1, 2, 3):
+        (raw_dir / f"first_{idx:05d}.tsv").write_text("stale\n", encoding="utf-8")
+    (raw_dir / "_progress.json").write_text('{"last_time_ms": 120000000}', encoding="utf-8")
+    # Files that are NOT ours to delete.
+    (raw_dir / "info.tsv").write_text("info\n", encoding="utf-8")
+    (raw_dir / "chart.tsv").write_text("chart\n", encoding="utf-8")
+
+    removed = clear_raw_pages(raw_dir)
+
+    assert removed == 3
+    assert raw_pages(raw_dir) == []
+    assert not (raw_dir / "_progress.json").exists()
+    # Untouched — the caller rewrites these unconditionally.
+    assert (raw_dir / "info.tsv").read_text(encoding="utf-8") == "info\n"
+    assert (raw_dir / "chart.tsv").read_text(encoding="utf-8") == "chart\n"
+
+
+def test_clear_raw_pages_is_safe_on_missing_dir(tmp_path: Path) -> None:
+    """A first-ever capture calls this before any page exists."""
+    from hoga.collector.orchestrator import clear_raw_pages
+
+    assert clear_raw_pages(tmp_path / "raw" / "20260519" / "003490") == 0
+
+
+def test_fresh_capture_does_not_inherit_longer_previous_attempt(tmp_path: Path) -> None:
+    """The regression: leftover trailing pages must not survive a fresh run."""
+    from hoga.collector.orchestrator import raw_pages
+
+    raw_dir = tmp_path / "raw" / "20260519" / "003490"
+    raw_dir.mkdir(parents=True)
+    # Previous attempt got 40 pages deep and wrote a resume marker.
+    for idx in range(1, 41):
+        (raw_dir / f"first_{idx:05d}.tsv").write_text(
+            f"stale-page-{idx}\n", encoding="utf-8"
+        )
+    (raw_dir / "_progress.json").write_text(
+        '{"last_time_ms": 150000000, "finished": false}', encoding="utf-8"
+    )
+
+    fake = FakeClient(info_body="info\n", first_pages={}, chart_body="chart\n")
+    collect_stock_date(
+        client=fake, code="003490", date="20260519",
+        data_dir=tmp_path, rate_limit_s=0.0, resume=False,
+    )
+
+    # Whatever this run wrote, none of it may be a stale page body.
+    for page in raw_pages(raw_dir):
+        assert "stale-page-" not in page.read_text(encoding="utf-8"), page.name
+
+
+def test_resume_capture_still_keeps_previous_pages(tmp_path: Path) -> None:
+    """The clear is strictly non-resume — resume depends on those pages."""
+    from hoga.collector.orchestrator import raw_pages
+
+    raw_dir = tmp_path / "raw" / "20260519" / "003490"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "info.tsv").write_text("info\n", encoding="utf-8")
+    for idx in (1, 2):
+        (raw_dir / f"first_{idx:05d}.tsv").write_text(
+            f"prior-page-{idx}\n", encoding="utf-8"
+        )
+
+    fake = FakeClient(info_body="info\n", first_pages={}, chart_body="chart\n")
+    collect_stock_date(
+        client=fake, code="003490", date="20260519",
+        data_dir=tmp_path, rate_limit_s=0.0, resume=True,
+    )
+
+    bodies = [p.read_text(encoding="utf-8") for p in raw_pages(raw_dir)]
+    assert any("prior-page-1" in b for b in bodies)
+    assert any("prior-page-2" in b for b in bodies)

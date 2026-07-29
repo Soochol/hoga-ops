@@ -218,7 +218,26 @@ _lock = asyncio.Lock()
 
 _queue: collections.deque[Any] = collections.deque()    # deque[QueueItemState]
 _active: dict[str, Any] = {}                            # item_id → QueueItemState
-_done: list[Any] = []                                   # terminal items, cleared by DELETE /done
+# terminal items, cleared by DELETE /done.
+#
+# 무한히 자란다. `collections.deque(maxlen=N)` 으로 바꾸고 싶어지는데 — 2026-07-29
+# 성능 리뷰가 실제로 그렇게 제안했다 — **그건 안전하지 않다.** 두 가지가 걸린다:
+#
+#  1. pause_origin 복구 목록. _items_in_restore_order() 가 _done 에서
+#     `pause_origin and phase == "cancelled"` 인 항목을 골라 재큐 대상으로 쓴다.
+#     이건 "_done 은 휘발성"(ADR-0019 §3 결정 #6)의 **의도적 예외**이고, 그 함수
+#     docstring 이 명시하듯 없으면 쿠키 만료와 resume 사이의 크래시가 일시정지된
+#     작업을 조용히 버린다. maxlen 축출은 일반 완료 항목이 쌓이는 것만으로
+#     그 목록을 밀어내 ADR-0019 가 닫은 버그를 되살린다.
+#  2. 드레인 통계. capture_queue_drained 의 total_done/failed/cancelled/skipped 가
+#     _done 을 세어서 나온다. 축출되면 "5,000건 돌렸는데 2,000건 완료" 라는 거짓
+#     보고가 된다. 상한을 두려면 세션 누적 카운터를 따로 들어야 한다.
+#
+# 그리고 애초에 O(N²) 의 원인은 이 리스트의 길이가 아니라 **완료 1건마다 전량을
+# 다시 받던 프론트 무효화** 였다(get_queue_snapshot 이 done 버킷 전체를 돌려준다).
+# 그쪽은 frontend/src/capture/useCaptureQueue.ts 의 접기(coalesce)로 해결했다.
+# 여기에 상한이 필요하다는 근거가 새로 생기면 위 두 제약을 먼저 설계에 넣을 것.
+_done: list[Any] = []
 _inflight_paths: set[tuple[str, str]] = set()           # (code, date) — see spec §11 Q15 Layer 2
 _queue_paused: bool = False
 _fail_streaks: dict[str, int] = {}                      # ADR-0042: per-(Code, Stock-Date) consecutive failed+skipped counter

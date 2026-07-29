@@ -1,0 +1,20 @@
+{
+  /* Playwright e2e 스펙의 타입체크 프로젝트.
+
+     Node 런타임이라 types 에 "node" 가 필요하다(process / fs / path). 이걸
+     app 이나 test 프로젝트에 합치면 브라우저 타입과 충돌한다 — 대표적으로
+     setTimeout 이 number 대신 NodeJS.Timeout 을 돌려주게 되어 src 에 없던
+     오류가 생긴다. 그래서 별도 프로젝트로 분리했다.
+
+     주의: 이 프로젝트가 초록이라고 e2e 가 실행 가능하다는 뜻은 아니다.
+     타입체크는 URL 문자열이나 셀렉터가 현재 앱과 맞는지 검증하지 못한다
+     (2026-07-29 감사 기준 이 스펙들은 포트 불일치·globalSetup 부재·삭제된
+     /replay 라우트 참조로 실행 불가 상태다 — 별건). 여기서 얻는 것은
+     "스펙이 더 썩지 않게 하는 하한선" 이다. */
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "@playwright/test"]
+  },
+  "include": ["tests/e2e"]
+}

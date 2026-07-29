@@ -260,15 +260,29 @@ def create_app(data_dir: Path) -> FastAPI:
     return app
 
 
+# Logger namespaces that get the durable file sink.
+#
+# ``hoga`` — our own modules.
+# ``uvicorn.error`` — where uvicorn logs "Exception in ASGI application" with
+#   the traceback for anything that escapes a route. uvicorn configures this
+#   logger with ``propagate: False``, so it never reaches the root logger and
+#   a handler on ``hoga`` alone does not see it. Result before this: an
+#   unhandled 500 left its traceback on stderr only, and stderr is gone the
+#   moment the terminal scrolls or the process is restarted by a supervisor.
+#   That is the single most valuable line in the file and it was the one line
+#   guaranteed not to be in it.
+_FILE_LOG_NAMESPACES = ("hoga", "uvicorn.error")
+
+
 def _ensure_file_logging() -> None:
-    """Attach a rotating file handler to the ``hoga`` logger namespace.
+    """Attach a rotating file handler to the durable log namespaces.
 
     Called from default_app() (the uvicorn factory) — NOT create_app(), so
-    the test app never writes log files. Idempotent: skips if the ``hoga``
-    logger already has a RotatingFileHandler for the same file, so
+    the test app never writes log files. Idempotent per namespace: skips a
+    logger that already has a RotatingFileHandler for the same file, so
     ``uvicorn --reload`` re-imports don't stack handlers.
 
-    propagate is left True so console output (uvicorn's default) is
+    propagate is left untouched so console output (uvicorn's default) is
     unchanged — this only adds a durable file sink. Terminal-only logs meant
     KIS WS rejection codes couldn't be confirmed post-hoc (2026-07-15).
     """
@@ -276,21 +290,24 @@ def _ensure_file_logging() -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "hoga.log"
     target = str(log_path)
-    logger = logging.getLogger("hoga")
-    for handler in logger.handlers:
-        if isinstance(handler, RotatingFileHandler) and handler.baseFilename == target:
-            return
-    handler = RotatingFileHandler(
-        log_path, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
-    )
-    handler.setLevel(logging.INFO)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
-    )
-    logger.addHandler(handler)
-    # Only lower the threshold — never raise it above a caller's explicit level.
-    if logger.level == logging.NOTSET or logger.level > logging.INFO:
-        logger.setLevel(logging.INFO)
+    for name in _FILE_LOG_NAMESPACES:
+        logger = logging.getLogger(name)
+        if any(
+            isinstance(h, RotatingFileHandler) and h.baseFilename == target
+            for h in logger.handlers
+        ):
+            continue
+        handler = RotatingFileHandler(
+            log_path, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+        )
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+        )
+        logger.addHandler(handler)
+        # Only lower the threshold — never raise it above a caller's explicit level.
+        if logger.level == logging.NOTSET or logger.level > logging.INFO:
+            logger.setLevel(logging.INFO)
 
 
 def default_app() -> FastAPI:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import json
+import logging
 import os
 import time as _time
 from collections import deque
@@ -24,6 +25,8 @@ from hoga.collector.page_step import (
     PageStepController,
     StopReason,
 )
+
+log = logging.getLogger(__name__)
 
 # Time constants — HogaMs (HHMMSSmmm) per ADR-0003. The type alias makes
 # the encoding explicit at every call site, so Pyright catches accidental
@@ -90,6 +93,39 @@ def raw_pages(raw_dir: Path) -> list[Path]:
     absent directory to nothing rather than raising).
     """
     return sorted(raw_dir.glob(PAGE_GLOB), key=page_sort_key)
+
+
+def clear_raw_pages(raw_dir: Path) -> int:
+    """Delete every Page file and the resume marker. Returns the count removed.
+
+    Called only on the NON-resume path, where the loop restarts at page_idx=0.
+    Without it a fresh capture merely *overwrites* `first_00001..N` and leaves
+    `first_(N+1)..M` from the previous, longer attempt on disk — and raw_pages()
+    globs the union, so the parser reads both generations as one capture.
+
+    Two concrete failure modes this closes:
+
+    - A previous attempt that reached further in the Data Window contributes
+      trailing pages whose global_seq values were never in the new run's
+      `seen_seqs`, so dedup keeps them and the merged frame carries rows the
+      re-capture was meant to replace. This is silent — nothing about the
+      output announces that it is two captures deep.
+    - A page truncated by an interrupted write raises ParserError, which is not
+      in the lenient-retry set, so the Stock-Date fails, `fail_streak`
+      increments, and it eventually lands in `blocked` — a state whose stated
+      cause (upstream trouble) is not the real one.
+
+    Deliberately narrow: only PAGE_GLOB and `_progress.json`. `info.tsv` and
+    `chart.tsv` are rewritten unconditionally by the caller, and nothing else
+    in raw_dir belongs to us — the ADR-0021 `.no_upstream_data` sentinel lives
+    under parquet/, not here.
+    """
+    removed = 0
+    for page_path in raw_dir.glob(PAGE_GLOB):
+        page_path.unlink(missing_ok=True)
+        removed += 1
+    (raw_dir / "_progress.json").unlink(missing_ok=True)
+    return removed
 
 
 def page_filename(page_idx: int) -> str:
@@ -618,6 +654,15 @@ def collect_stock_date(
     if resume:
         seen_seqs, page_idx, t = _resume_state(raw_dir)
     else:
+        # Restarting the index at 0 only overwrites as far as this run gets;
+        # any longer previous attempt leaves a tail that raw_pages() would
+        # merge into this capture. Clear before the first write, not after.
+        cleared = clear_raw_pages(raw_dir)
+        if cleared:
+            log.info(
+                "capture.fresh_cleared_stale_pages code=%s date=%s pages=%d",
+                code, date, cleared,
+            )
         seen_seqs = set()
         page_idx = 0
         t = DATA_WINDOW_START_MS

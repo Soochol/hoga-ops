@@ -16,6 +16,11 @@
     "jsx": "react-jsx",
 
     /* Linting */
+    /* strict 는 2026-07-29 에 켰다. 켜기 전에 잰 위반 수는 src 전체에서 0 —
+       코드는 이미 strict 를 만족하고 있었고 선언만 빠져 있었다. 즉 이 줄이
+       없는 동안 유일한 CI 게이트(tsc -b)가 non-strict 모드로 돌면서, 새로
+       들어오는 암묵적 any 나 null 누락을 잡지 못하는 상태였다. */
+    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,

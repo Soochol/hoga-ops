@@ -7,7 +7,7 @@ import logging
 
 import pytest
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.testclient import TestClient
 
 from hoga.api import request_timing
@@ -114,6 +114,7 @@ def test_zero_threshold_disables_slow_log(
     assert _timing_records(caplog) == []
 
 
+@pytest.mark.wallclock
 def test_streaming_measures_ttfb_not_stream_lifetime(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -199,3 +200,105 @@ def test_invalid_threshold_falls_back_to_default(
 def test_create_app_wires_timing_middleware(tmp_path) -> None:
     app = create_app(tmp_path)
     assert any(m.cls is RequestTimingMiddleware for m in app.user_middleware)
+
+
+# ---------------------------------------------------------------------------
+# Server-error logging (2026-07-29)
+#
+# Regression cluster for the "failures never reach the durable log" finding.
+# A fast 500 matched neither the slow threshold nor HOGA_PERF_DEBUG, so the
+# only record was uvicorn's stderr line — gone on restart or scrollback.
+# ---------------------------------------------------------------------------
+
+
+def _make_failing_client() -> TestClient:
+    """Client whose routes fail two different ways.
+
+    /boom raises (unhandled — the 500 is synthesized by ServerErrorMiddleware,
+    which sits OUTSIDE RequestTimingMiddleware, so send_wrapper never sees it).
+    /explicit-500 returns a real 500 response through the normal send path.
+    raise_server_exceptions=False so TestClient renders the 500 instead of
+    re-raising into the test.
+    """
+    app = FastAPI()
+
+    @app.get("/boom")
+    async def _boom() -> dict[str, str]:
+        raise RuntimeError("kaboom")
+
+    @app.get("/explicit-500")
+    async def _explicit() -> JSONResponse:
+        return JSONResponse({"detail": "nope"}, status_code=500)
+
+    @app.get("/not-found")
+    async def _client_error() -> JSONResponse:
+        return JSONResponse({"detail": "nope"}, status_code=404)
+
+    app.add_middleware(RequestTimingMiddleware)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_unhandled_exception_is_logged_with_traceback(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The default configuration must record an unhandled 500."""
+    monkeypatch.delenv("HOGA_PERF_DEBUG", raising=False)
+    monkeypatch.delenv("HOGA_SLOW_REQUEST_MS", raising=False)
+    client = _make_failing_client()
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        resp = client.get("/boom?code=005930")
+    assert resp.status_code == 500
+
+    records = _timing_records(caplog)
+    assert len(records) == 1
+    msg = records[0].getMessage()
+    assert "server_error=1" in msg
+    assert "unhandled=1" in msg
+    assert "path=/boom" in msg
+    assert "code=005930" in msg
+    # The traceback is the payload — a bare warning would not be enough.
+    assert records[0].exc_info is not None
+    assert "kaboom" in logging.Formatter().formatException(records[0].exc_info)
+
+
+def test_explicit_500_response_is_logged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A route that returns 500 without raising is logged too."""
+    monkeypatch.delenv("HOGA_PERF_DEBUG", raising=False)
+    monkeypatch.delenv("HOGA_SLOW_REQUEST_MS", raising=False)
+    client = _make_failing_client()
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        resp = client.get("/explicit-500")
+    assert resp.status_code == 500
+
+    records = _timing_records(caplog)
+    assert len(records) == 1
+    assert "server_error=1" in records[0].getMessage()
+    assert "status=500" in records[0].getMessage()
+
+
+def test_client_error_is_not_logged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """4xx stays quiet — it is the caller's fault, not a server defect, and
+    logging it would drown the 5xx signal on a browser that probes 404s."""
+    monkeypatch.delenv("HOGA_PERF_DEBUG", raising=False)
+    monkeypatch.delenv("HOGA_SLOW_REQUEST_MS", raising=False)
+    client = _make_failing_client()
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        resp = client.get("/not-found")
+    assert resp.status_code == 404
+    assert _timing_records(caplog) == []
+
+
+def test_server_error_logging_survives_slow_log_disabled(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """HOGA_SLOW_REQUEST_MS=0 disables the slow log; errors must still log."""
+    monkeypatch.delenv("HOGA_PERF_DEBUG", raising=False)
+    monkeypatch.setenv("HOGA_SLOW_REQUEST_MS", "0")
+    client = _make_failing_client()
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        client.get("/explicit-500")
+    assert len(_timing_records(caplog)) == 1

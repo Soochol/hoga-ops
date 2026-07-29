@@ -484,6 +484,7 @@ async def test_5xx_with_non_json_body_falls_back_to_text() -> None:
 # ------------------------------------------------------------------------
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_lets_initial_burst_through() -> None:
     """Bucket starts full so short bursts under capacity don't pay a penalty.
@@ -501,6 +502,7 @@ async def test_token_bucket_lets_initial_burst_through() -> None:
     assert elapsed < 0.1
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_paces_to_rate_when_drained() -> None:
     """Past the initial burst, calls space out to the configured rate.
@@ -519,6 +521,7 @@ async def test_token_bucket_paces_to_rate_when_drained() -> None:
     assert 0.05 < elapsed < 0.3
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_serialises_concurrent_acquirers() -> None:
     """Multiple tasks acquiring simultaneously cumulatively respect the rate.
@@ -540,6 +543,7 @@ async def test_token_bucket_serialises_concurrent_acquirers() -> None:
     assert elapsed >= 0.4
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_capacity_caps_initial_and_refill() -> None:
     """capacity < rate이면 초기 토큰과 리필 상한이 capacity로 묶인다.
@@ -581,6 +585,7 @@ async def test_token_bucket_default_capacity_unchanged() -> None:
     assert time.monotonic() - start < 0.1, "기본 버킷은 rate개 초기 burst를 즉시 통과"
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_kis_client_accepts_injected_rate_limiter() -> None:
     """주입된 공유 버킷을 두 클라이언트가 그대로 쓴다(명의-전역 예산).
@@ -680,6 +685,7 @@ async def test_token_bucket_foreground_served_before_background() -> None:
     assert max(fg_pos) < min(bg_pos), f"fg가 bg보다 먼저여야 함: {order}"
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_background_normal_without_foreground() -> None:
     """foreground 대기자가 없으면 background는 평소처럼 즉시 토큰을 받는다."""
@@ -688,6 +694,7 @@ async def test_token_bucket_background_normal_without_foreground() -> None:
     await asyncio.wait_for(bucket.acquire(foreground=False), timeout=0.1)
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_starvation_backstop() -> None:
     """누적 양보가 상한을 넘으면 background도 강제 획득(영구 기아 방지).
@@ -702,6 +709,7 @@ async def test_token_bucket_starvation_backstop() -> None:
     await asyncio.wait_for(bucket.acquire(foreground=False), timeout=1.0)
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_foreground_still_respects_rate_cap() -> None:
     """foreground도 토큰 없이는 못 간다 — 우선순위는 순서일 뿐 15/s 천장은 불변."""
@@ -730,6 +738,7 @@ async def test_token_bucket_foreground_waiter_count_released_on_cancel() -> None
     assert bucket._fg_waiters == 0  # finally 복구
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_background_not_starved_under_sustained_foreground() -> None:
     """지속 foreground가 모든 리필 토큰을 가져가도 background는 백스톱 안에 진전.
@@ -753,8 +762,15 @@ async def test_token_bucket_background_not_starved_under_sustained_foreground() 
         # flood에도 불구하고 background는 BOUNDED 시간에 완료한다(과거 코드는 무한 대기).
         # 고정 코드는 backstop(0.1s) 후 FIFO lock으로 공정 경쟁해 보통 ~0.2s에 완료하나,
         # lock 경쟁 스케줄링 변동으로 1s를 넘을 수 있다(분산 큼). 타임아웃은 '무한 vs
-        # 유한'을 가르는 용도라 넉넉히 둔다 — 5s는 관측 최악(~1.2s)의 4배 여유.
-        await asyncio.wait_for(bucket.acquire(foreground=False), timeout=5.0)
+        # 유한'을 가르는 용도라 넉넉히 둔다.
+        #
+        # 5s → 30s (2026-07-29). 5s 는 개발 머신 관측 최악(~1.2s)의 4배였는데, GitHub
+        # 러너(vCPU 2개)에서는 **결정적으로** 초과한다 — PR #938 에서 2연속 실패, 로컬은
+        # 계속 통과. fg_flood 3개가 busy-spin 하므로 코어가 2개면 이벤트 루프 포화도가
+        # 개발 머신과 질적으로 다르다. 관측 최악에 배수를 곱하는 방식은 실행 환경이
+        # 하나일 때만 통하고, 여기서는 '유한임' 만 보이면 되므로 여유를 크게 준다.
+        # 진짜 무한 대기는 이 값이 아니라 잡 타임아웃(15분)이 잡는다.
+        await asyncio.wait_for(bucket.acquire(foreground=False), timeout=30.0)
     finally:
         stop = True
         for t in floods:
