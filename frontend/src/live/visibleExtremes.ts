@@ -24,7 +24,7 @@ function gap(basis: number, extreme: number): number {
 /**
  * 현재 보이는 뷰포트 범위 안에서 그려진 캔들의 최고가 봉/최저가 봉을 찾아 극값 대비율을 계산한다.
  * (CONTEXT.md: `극값 대비율` / `High/Low Extreme Labels`.) lightweight-charts 비의존 —
- * 좌표→픽셀 변환은 호출부(HighLowAnnotationOverlay)가 담당한다.
+ * 좌표→픽셀 변환은 호출부(HighLowLabelsPrimitive.draw)가 담당한다.
  *
  *  - **기준가 = 보이는 범위의 우측 끝(가장 최근) 캔들 close**. 전체 데이터의 마지막 캔들이 아니라
  *    *현재 보이는* 범위의 rightmost라, 차트를 좌측으로 팬하면 기준가가 바뀌어 % 가 재계산된다.
