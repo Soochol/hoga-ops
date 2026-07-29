@@ -260,6 +260,17 @@ describe('BookPanel', () => {
     expect(screen.getByText('−800').className).toContain('text-price-down');
   });
 
+  it('잔량 숫자 색은 side 별 토큰 — 뱃지의 delta 색과 독립이다', () => {
+    // 잔량 숫자 = 등락률과 같은 방향색 2벌(매도 파랑 / 매수 빨강, 토스 실측 근거).
+    // 두 색이 같은 토큰으로 합쳐지면(예: 둘 다 text-fg-dim 회귀) 이 단언이 잡는다.
+    renderPanel({ deltaBadges: new Map([['b:251000', { delta: -800, atMs: 1 }]]) });
+    expect(screen.getByText('109').className).toContain('text-qty-ask'); // 매도 최말단
+    expect(screen.getByText('209').className).toContain('text-qty-bid'); // 매수 최말단
+    // 같은 행에서 잔량은 매수색(빨강), 뱃지는 감소색(파랑) — 축이 다르므로 정상.
+    expect(screen.getByText('200').className).toContain('text-qty-bid');
+    expect(screen.getByText('−800').className).toContain('text-price-down');
+  });
+
   it('뱃지가 없으면(스팟 커서) 아무것도 그리지 않는다', () => {
     renderPanel({ deltaBadges: null });
     expect(screen.queryByText('+1,200')).toBeNull();

@@ -33,6 +33,8 @@ export default {
         warn:    'var(--warn)',
         'price-up':   'var(--price-up)',
         'price-down': 'var(--price-down)',
+        'qty-ask': 'var(--qty-ask)',
+        'qty-bid': 'var(--qty-bid)',
         grid: 'var(--grid)',
         'heat-lo': 'var(--heat-lo)',
         'heat-hi': 'var(--heat-hi)',

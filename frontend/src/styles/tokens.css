@@ -128,6 +128,17 @@
   --bar-ask: rgba(52, 133, 250, 0.28);   /* 3485FA @ 28% */
   --bar-bid: rgba(240, 68, 82, 0.28);    /* F04452 @ 28% */
 
+  /* 10호가 잔량 **숫자**(막대가 아니라 그 위에 얹힌 텍스트). 값 = 등락률 글자와
+     같은 방향색 — 사용자 지시로 tossinvest.com 주문 페이지를 실측해 확정했다
+     (2026-07-29). 토스 종목 상세 본문의 등락률 쌍은 WTS 스케일 blue600 #2272eb /
+     red600 #e42939 이고, 우리 등락률 색은 --price-down/--price-up 이므로 그 둘에
+     붙인다(테마별 값은 각 테마 블록이 소유).
+     --bar-* 와 분리된 토큰인 이유: 막대는 알파 워시라 값을 그대로 텍스트에 쓰면
+     대비가 무너진다. 별도 토큰으로 남겨 두면 "잔량 숫자 색"을 방향색과 독립적으로
+     조정할 여지도 유지된다(축이 다르다 — DESIGN.md §10호가 잔량 숫자). */
+  --qty-ask: var(--price-down);
+  --qty-bid: var(--price-up);
+
   /* Source-identity chips (ADR-0039) — provenance, not UI/status/price. Hand-edited (color refs, not size). */
   --source-hogaplay-bg: var(--bg-card);
   --source-hogaplay-border: var(--fg-dimmer);

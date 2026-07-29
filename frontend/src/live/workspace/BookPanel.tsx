@@ -420,7 +420,11 @@ function QtyBar({
             {Math.abs(badge.delta).toLocaleString('ko-KR')}
           </span>
         )}
-        <span className={`flex-1 text-fg-dim ${isAsk ? 'text-right' : 'text-left'}`}>
+        {/* 잔량 숫자 색은 side 별 토큰(--qty-ask/--qty-bid). 증감 뱃지의
+            priceDirClass 와는 **다른 축**이다 — 뱃지는 delta 의 부호(늘었나/줄었나),
+            이건 호가의 방향(매도냐/매수냐)이라 같은 행에서 두 색이 어긋날 수 있고
+            그게 정상이다(매수 잔량이 줄면 빨간 숫자 옆에 파란 −뱃지). */}
+        <span className={`flex-1 ${isAsk ? 'text-right text-qty-ask' : 'text-left text-qty-bid'}`}>
           {qty > 0 ? qty.toLocaleString('ko-KR') : ''}
         </span>
       </span>
