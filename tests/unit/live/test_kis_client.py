@@ -685,6 +685,7 @@ async def test_token_bucket_foreground_served_before_background() -> None:
     assert max(fg_pos) < min(bg_pos), f"fg가 bg보다 먼저여야 함: {order}"
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_background_normal_without_foreground() -> None:
     """foreground 대기자가 없으면 background는 평소처럼 즉시 토큰을 받는다."""
@@ -693,6 +694,7 @@ async def test_token_bucket_background_normal_without_foreground() -> None:
     await asyncio.wait_for(bucket.acquire(foreground=False), timeout=0.1)
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_starvation_backstop() -> None:
     """누적 양보가 상한을 넘으면 background도 강제 획득(영구 기아 방지).
@@ -736,6 +738,7 @@ async def test_token_bucket_foreground_waiter_count_released_on_cancel() -> None
     assert bucket._fg_waiters == 0  # finally 복구
 
 
+@pytest.mark.wallclock
 @pytest.mark.asyncio
 async def test_token_bucket_background_not_starved_under_sustained_foreground() -> None:
     """지속 foreground가 모든 리필 토큰을 가져가도 background는 백스톱 안에 진전.
