@@ -340,11 +340,12 @@ describe('BrokerTrajectoryTable — 0선·커서 도트·규모 바·관측 전 
   });
 });
 
-describe('BrokerTrajectoryTable — 표 크롬(헤더·순매도 경계·외국계)', () => {
-  it('renders the column header so the number column is self-describing', () => {
+describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', () => {
+  it('열 헤더 라벨을 렌더하지 않는다 (2026-07-29 사용자 요청)', () => {
     render(<BrokerTrajectoryTable series={[entry('A', [{ ts_ms: 1_000, net: 5 }])]} cursorMs={null} />);
-    expect(screen.getByText('당일 궤적')).toBeInTheDocument();
-    expect(screen.getByText('순매수(주)')).toBeInTheDocument();
+    for (const label of ['거래원', '당일 궤적', '순매수(주)', '순매도']) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
   });
 
   it('marks the 순매수/순매도 boundary once, at the first negative final_net row', () => {
