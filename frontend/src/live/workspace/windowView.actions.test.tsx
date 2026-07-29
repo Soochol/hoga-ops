@@ -9,6 +9,7 @@ import {
   useWindowPaneOrder,
   useWindowPaneStretch,
   useWindowViewGuard,
+  LIVE_WINDOW_WORKSPACE,
   type WindowViewValue,
 } from './windowView';
 import { useLivePageStore } from '../../state/livePage';
@@ -47,6 +48,7 @@ function windowValue(windowId: string): WindowViewValue {
     timeframe: '5m',
     historicalFromDate: null,
     indicators: { ...FACTORY_INDICATOR_SETTINGS },
+    workspace: LIVE_WINDOW_WORKSPACE,
   };
 }
 
