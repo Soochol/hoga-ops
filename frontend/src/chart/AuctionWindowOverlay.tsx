@@ -3,6 +3,7 @@ import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
 import { AUCTION_WINDOW_LENGTH_MS } from '../util/sessionTime';
+import { safeUnsubscribe } from './util/safeUnsubscribe';
 
 type Props = {
   chart: IChartApi;
@@ -40,7 +41,7 @@ function AuctionWindowOverlay({ chart, axis, enabled = true }: Props) {
     if (ro && parent) ro.observe(parent);
     return () => {
       cancelAnimationFrame(raf);
-      ts.unsubscribeVisibleLogicalRangeChange(schedule);
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
       ro?.disconnect();
     };
   }, [chart]);

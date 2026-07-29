@@ -8,6 +8,7 @@ import { paneIdAtY, type PaneSeriesMap } from '../chart/drawing/chartCoordinates
 import { priceDirClass } from '../ui/priceDir';
 import { formatKoreanInt } from '../util/koreanNumber';
 import { buildCandleTooltip, formatTooltipQtyK, placeTooltip } from './candleTooltipModel';
+import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 type Props = {
   chart: IChartApi;
@@ -164,7 +165,7 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
     };
     chart.subscribeCrosshairMove(handler);
     return () => {
-      chart.unsubscribeCrosshairMove(handler);
+      safeUnsubscribe(() => chart.unsubscribeCrosshairMove(handler));
       if (pending !== null) cancelAnimationFrame(pending);
       clearHover();
     };

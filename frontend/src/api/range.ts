@@ -217,6 +217,30 @@ export function mergedLiveRangeKey(
   return ['live', 'range-merged', identity] as const;
 }
 
+/**
+ * canonical 병합본 키에서 종목코드를 복원한다 — 축출(useLiveRangeCacheEviction)용.
+ *
+ * identity 는 실키 배열의 JSON 이라 code 는 인덱스 1 에 그대로 있다(RangeQueryKey
+ * 규약). 이 지식을 여기 가둬 두어 축출 쪽이 JSON 형식을 알 필요가 없게 한다.
+ *
+ * 모르면 **null** 을 준다. 호출부는 null 을 "판별 불가 → 보존"으로 다뤄야 한다 —
+ * 축출은 되돌릴 수 없으니 애매하면 남기는 쪽이 안전하다.
+ */
+export function codeFromMergedLiveRangeKey(queryKey: QueryKey): string | null {
+  if (!Array.isArray(queryKey)) return null;
+  if (queryKey[0] !== 'live' || queryKey[1] !== 'range-merged') return null;
+  const identity = queryKey[2];
+  if (typeof identity !== 'string') return null;
+  try {
+    const parsed: unknown = JSON.parse(identity);
+    if (!Array.isArray(parsed)) return null;
+    const code: unknown = parsed[1];
+    return typeof code === 'string' ? code : null;
+  } catch {
+    return null;
+  }
+}
+
 /** canonical 병합본 정확-키 O(1) 복원. 실키 스캔(cachedLiveRangeDeltaPrevious)의
  * 폴백이 아니라 선행 경로 — 개별 청크 키가 gc돼도(전역 30분) 병합본은 2h 살아
  * 있으므로 최광폭을 잃지 않는다. */
@@ -228,6 +252,44 @@ function restoredLiveRangeMerged(
   const data = queryClient.getQueryData<RangeBundle>(key);
   if (!data) return undefined;
   return { data, updatedAtMs: queryClient.getQueryState(key)?.dataUpdatedAt ?? 0 };
+}
+
+/**
+ * 방금 발행한 병합본에 **지배당한**(dominated) 같은-identity `['range', …]` 사본을 걷어낸다.
+ *
+ * 왜 쌓이나: 좌측 팬은 `historicalFromDate` 를 스텝마다 뒤로 민다. 아래 effect 가
+ * 매 병합마다 `baseInput.from`(= 그 시점의 팬 위치) 키로 **그때의 최광폭 병합본
+ * 전체**를 재발행하므로, 스텝이 진행될수록 7일치·14일치·…·63일치 사본이 덮어쓰기가
+ * 아니라 **나란히 증식**한다. 옵저버가 없어 gcTime 30분을 꽉 채우고, 2개월 팬 한 번이
+ * 한 종목·한 identity 기준 수십 MB 다(2026-07-29 크로스헤어 지연 진단 2순위).
+ *
+ * 왜 지워도 안전한가: `cachedLiveRangeDeltaPrevious` 는 같은 identity 중 **from_date
+ * 최소**인 사본만 집어온다. 방금 쓴 병합본이 곧 그 최소이고, 여기서 지우는 건
+ * `from_date >= merged.from_date` 인 **완전히 포함되는** 창들뿐이라 복원원의 깊이가
+ * 그대로다. 즉 회수되는 건 중복 사본이지 정보가 아니다.
+ *
+ * 가드 둘:
+ *  - `type: 'inactive'` — 옵저버가 남은 쿼리를 지우면 RQ 가 즉시 재생성·재요청한다
+ *    (useStudyRangeCacheEviction 과 같은 함정). 현재 서빙 중인 청크가 여기 걸린다.
+ *  - `cached === merged` — 방금 쓴 사본 자신을 제외한다.
+ *
+ * identity 로 좁히므로 /study 가 쓰는 `['range', …]` 는 건드리지 않는다.
+ */
+function removeDominatedLiveRangeCopies(
+  queryClient: QueryClient,
+  identity: string,
+  merged: RangeBundle,
+): void {
+  queryClient.removeQueries({
+    queryKey: ['range', merged.code],
+    type: 'inactive',
+    predicate: (query) => {
+      const cached = query.state.data as RangeBundle | undefined;
+      if (!cached || cached === merged) return false;
+      if (liveRangeDeltaIdentityFromKey(query.queryKey) !== identity) return false;
+      return cached.to_date === merged.to_date && cached.from_date >= merged.from_date;
+    },
+  });
 }
 
 function cachedLiveRangeDeltaPrevious(
@@ -620,6 +682,8 @@ function useLiveRangeDelta(
     // 가드가 mergedRef 와 canonical 을 동기 유지하므로(둘 다 이 effect 에서만 쓰기)
     // 캔들의 별도 publishedRef 는 불필요 — range.ts 는 렌더 단계 pin 이 없다.
     queryClient.setQueryData(mergedLiveRangeKey(plan.identity), data);
+    // 위 재발행이 남긴 이전 팬 스텝 사본들을 즉시 회수 — 근거는 함수 주석.
+    removeDominatedLiveRangeCopies(queryClient, plan.identity, data);
     if (plan.forceRerenderAfterMerge) forceRerender();
   }, [baseInput, data, queryClient, query.dataUpdatedAt, query.isPlaceholderData, plan.identity, plan.forceRerenderAfterMerge]);
 

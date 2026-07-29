@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
+import { safeUnsubscribe } from './util/safeUnsubscribe';
 
 type Props = {
   chart: IChartApi;
@@ -41,7 +42,7 @@ function DayBoundaryOverlay({ chart, axis }: Props) {
     if (ro && parent) ro.observe(parent);
     return () => {
       cancelAnimationFrame(raf);
-      ts.unsubscribeVisibleLogicalRangeChange(schedule);
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
       ro?.disconnect();
     };
   }, [chart, enabled]);

@@ -20,6 +20,32 @@ import type { OrderbookSnapshot, BrokerSeriesEntry, SourceName } from './types';
 import type { MinuteTimeframe } from '../state/livePage';
 import { unixMsToKSTDate } from '../util/time';
 
+// ─── Spot 캐시 튜닝 ───────────────────────────────────────────────────────────
+
+/** useSpot 기본 디바운스. capacity 를 넘기려면 4번째 인자라 함께 명시해야 한다. */
+const SPOT_DEBOUNCE_MS = 30;
+
+/** 커서 거래원 궤적 LRU 용량.
+ *
+ * 페이로드가 **당일 전체** 거래원 궤적(브로커 수십 × 10초 다운샘플 포인트)이라
+ * 호가 스냅샷과 크기 등급이 다르다. useSpot 기본 100 이면 훑어본 (code, date)
+ * 조합 100 벌이 상주해 힙을 수백 MB 로 밀어올린다. 커서는 한 날짜 안에서 오래
+ * 머물다 가끔 옆 날짜로 옮기는 사용 패턴이라, 최근 몇 벌만 있어도 재요청은 거의
+ * 안 생긴다. 초과분은 재요청(백엔드 parquet 읽기)으로 되메워지므로 정합 손실 없음. */
+const BROKER_SERIES_SPOT_CAPACITY = 6;
+
+/** latest 모드 당일 궤적 LRU 용량 = 1.
+ *
+ * 키에 60초 스탬프가 박혀 있어(TODAY_SERIES_REFRESH_MS) **지나간 키는 다시는
+ * 조회되지 않는다** — 캐시가 아니라 "한 번 쓰고 버릴 사본"의 무덤이었다. 기본
+ * 100 이면 100 분치 당일 궤적이 상주하고, 그 페이로드는 장중 단조 증가라 오후엔
+ * 최대 크기 × 100 이 된다(2026-07-29 크로스헤어 지연 1 순위 원인). 1 이면 현재
+ * 스탬프 1 벌만 남고, 새 스탬프가 랜딩될 때 이전 벌이 축출된다.
+ *
+ * 1 이어도 네트워크 동작은 불변이다 — 스탬프가 바뀌면 어차피 항상 miss 였다.
+ * 재렌더에서 같은 키로 다시 들어오는 경우만 캐시가 흡수하면 되므로 1 로 충분하다. */
+const BROKER_TODAY_SPOT_CAPACITY = 1;
+
 // ─── Shared param type ────────────────────────────────────────────────────────
 
 interface Params {
@@ -120,10 +146,14 @@ export function useLiveBrokersAtCursor(
     p.code && date && p.timeframe !== null
       ? `live|br|${p.code}|${date}|${sourcePref}`
       : null;
-  const { data } = useSpot<BrokerSeriesEntry[]>(key, () =>
-    apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
-      `/api/brokers/series?code=${p.code}&date=${date}&source_pref=${sourcePref}`,
-    ).then((r) => r.brokers),
+  const { data } = useSpot<BrokerSeriesEntry[]>(
+    key,
+    () =>
+      apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
+        `/api/brokers/series?code=${p.code}&date=${date}&source_pref=${sourcePref}`,
+      ).then((r) => r.brokers),
+    SPOT_DEBOUNCE_MS,
+    BROKER_SERIES_SPOT_CAPACITY,
   );
   return data;
 }
@@ -141,7 +171,8 @@ const TODAY_SERIES_REFRESH_MS = 60_000;
  * useLiveBrokersAtCursor 와 같은 파케이 엔드포인트를 읽지만 두 가지가 다르다:
  * 커서가 아니라 "오늘" 로 키를 잡고, 장중에 계속 자라는 파일이라 주기적으로
  * 다시 읽는다(useSpot 은 키 단위 영구 캐시라 키에 시각 스탬프를 넣어야 갱신된다 —
- * 스팟 키를 재활용하면 화면이 첫 로드 시점에 얼어붙는다).
+ * 스팟 키를 재활용하면 화면이 첫 로드 시점에 얼어붙는다). 스탬프를 키에 넣는 이상
+ * LRU 용량은 반드시 1 이어야 한다 — 근거는 BROKER_TODAY_SPOT_CAPACITY 주석.
  *
  * ADR-0044 불변식 유지: 이 훅은 **parquet-only** 다. 승격 지연(≤약 5분 10초)으로
  * 비는 꼬리는 호출부가 WS 버퍼로 잇는다(liveSidebarAdapters의
@@ -162,10 +193,14 @@ export function useLiveBrokersToday(code: string | null): BrokerSeriesEntry[] | 
 
   const date = unixMsToKSTDate(stampMs);
   const key = code ? `live|br-today|${code}|${date}|${sourcePref}|${stampMs}` : null;
-  const { data } = useSpot<BrokerSeriesEntry[]>(key, () =>
-    apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
-      `/api/brokers/series?code=${code}&date=${date}&source_pref=${sourcePref}`,
-    ).then((r) => r.brokers),
+  const { data } = useSpot<BrokerSeriesEntry[]>(
+    key,
+    () =>
+      apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
+        `/api/brokers/series?code=${code}&date=${date}&source_pref=${sourcePref}`,
+      ).then((r) => r.brokers),
+    SPOT_DEBOUNCE_MS,
+    BROKER_TODAY_SPOT_CAPACITY,
   );
   return data;
 }

@@ -21,6 +21,7 @@ import {
 } from './workspace/WorkspaceIndicatorDrawer';
 import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';
 import { registerCollectDialogOpener, type CollectTarget } from './workspace/collectDialogControls';
+import { liveOpenCodesKey, useLiveRangeCacheEviction } from './useLiveRangeCacheEviction';
 
 /**
  * /live page — 멀티창 워크스페이스 셸 (ADR-0119 C2c-2d 플립).
@@ -72,6 +73,12 @@ export function LivePage() {
   );
   const focusedChartTf = useWorkspaceStore(
     (s) => targetChartWindow(s.windows, s.zOrder)?.chart?.timeframe,
+  );
+
+  // 열린 창에서 빠진 종목의 /live 캐시 회수 — 장시간 세션 힙 누적 방지.
+  // 셀렉터가 문자열을 돌려주므로 창 이동·리사이즈로는 재렌더가 안 난다.
+  useLiveRangeCacheEviction(
+    useWorkspaceStore((s) => liveOpenCodesKey(s.windows, s.groupSymbols)),
   );
 
   // 레거시 미러(ADR-0119 호환층): 활성 그룹 종목·포커스 봉 → livePage. 관심종목

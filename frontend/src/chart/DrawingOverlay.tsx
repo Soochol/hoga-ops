@@ -47,6 +47,7 @@ import {
   dragTimeDomain,
   type PaneSeriesMap,
 } from './drawing/chartCoordinates';
+import { safeUnsubscribe } from './util/safeUnsubscribe';
 
 /**
  * Pure predicate for the empty-click deselect flow. Returns true iff the
@@ -765,7 +766,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     ts.subscribeVisibleLogicalRangeChange(onViewportMove);
     return () => {
       window.removeEventListener('mousemove', onHover);
-      ts.unsubscribeVisibleLogicalRangeChange(onViewportMove);
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(onViewportMove));
       if (settleTimer !== null) {
         clearTimeout(settleTimer);
         settleTimer = null;

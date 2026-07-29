@@ -48,6 +48,7 @@ import {
 } from './legendRows';
 import { readFlagLegendValues } from './indicators/flagLegendValueRegistry';
 import { formatKoreanInt } from '../util/koreanNumber';
+import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 type Props = {
   chart: IChartApi;
@@ -605,8 +606,8 @@ function PaneLegendOverlay({
     if (ro && containerRef.current) ro.observe(containerRef.current);
     return () => {
       if (raf) cancelAnimationFrame(raf);
-      chart.unsubscribeCrosshairMove(onCrosshair);
-      ts.unsubscribeVisibleLogicalRangeChange(schedule);
+      safeUnsubscribe(() => chart.unsubscribeCrosshairMove(onCrosshair));
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
       ro?.disconnect();
     };
   }, [chart]);
