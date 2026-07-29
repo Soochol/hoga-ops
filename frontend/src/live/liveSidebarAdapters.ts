@@ -58,7 +58,7 @@ function padLevels(levels: unknown): OrderbookLevel[] {
 
 /**
  * Project the latest `ob` snapshot from the live buffer into the
- * OrderbookSnapshot shape that OrderbookTable / TotalQtyBar consume.
+ * OrderbookSnapshot shape that BookPanel consumes (via DataWindow).
  *
  * Returns null if the buffer is empty. Callers should treat that as
  * "data not yet arrived" and render the empty state. Missing or short

@@ -81,7 +81,7 @@ export const DEPTH_HEATMAP_DEFAULT_MAX_OPACITY = 0.7;
 // 중간 명도다. 기본 불투명도는 히트맵(0.7)보다 낮게 잡아 두 레이어가 겹칠 때 아래층이 완전히
 // 묻히지 않게 한다.
 //
-// ⚠️ 호가창 증감 뱃지(BookPanel · OrderbookTable)는 2026-07-21부터 이 상수를 쓰지 않는다 —
+// ⚠️ 호가창 증감 뱃지(BookPanel)는 2026-07-21부터 이 상수를 쓰지 않는다 —
 // 겹치는 레이어가 없어 KRX 컨벤션(증가 빨강 / 감소 파랑, priceDirClass)이 더 직관적이다.
 // 두 표면의 색이 다른 것은 의도된 분기다(DESIGN.md 2026-07-21 changelog).
 export const DEPTH_DELTA_DEFAULT_IN_COLOR = '#0D9488';

@@ -59,7 +59,7 @@ describe('TradeTickTable', () => {
   });
 
   // KRX 컨벤션: 체결가 색 기준은 매수/매도가 아니라 **전일 종가 대비**다. 매도
-  // 체결이라도 전일 종가보다 높으면 빨강 — OrderbookTable 과 같은 규칙.
+  // 체결이라도 전일 종가보다 높으면 빨강 — 10호가 창(BookPanel.dirClass)과 같은 규칙.
   it('체결가 색은 전일 종가 대비 방향을 따른다 (매도 체결이어도 상승이면 빨강)', () => {
     render(<TradeTickTable view={view({ prevClose: 70000 })} />);
     expect(screen.getByText('70,100')).toHaveClass('text-price-up');
