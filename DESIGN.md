@@ -147,6 +147,20 @@ The design system has a **single density dial** at `:root font-size`.
   - `--tint-success-border` / `--tint-error-border` — banner/chip borders
   - `--tint-price-up` / `--tint-price-down` — buy/sell depth bar, market chip (tracks `--price-*`)
 
+- **10호가 잔량 숫자 (`--qty-ask` / `--qty-bid`, 2026-07-29):** 깊이 막대(`--bar-*`) 위에 얹히는
+  잔량 **텍스트** 색. 별도 토큰인 이유는 두 가지 — (1) 막대는 알파 워시라 그 값을 텍스트에
+  그대로 쓰면 대비가 무너진다, (2) 같은 행의 증감 뱃지(`priceDirClass`)와 **축이 다르다**:
+  뱃지는 delta 의 부호(늘었나/줄었나), 이건 호가의 방향(매도냐/매수냐)이라 매수 잔량이 줄면
+  빨간 숫자 옆에 파란 `−` 뱃지가 정상적으로 공존한다. 값은 **등락률 글자와 같은 방향색 2벌** —
+  `--qty-ask: var(--price-down)`(매도 파랑) · `--qty-bid: var(--price-up)`(매수 빨강). 새 색이
+  아니라 **별칭**이라 `:root` 한 곳 정의로 4개 테마가 각자 값으로 풀리고, 같은 패널 하단의
+  총잔량 스트립(`text-price-down`/`text-price-up`)과도 자동으로 일치한다.
+  **실측 근거(2026-07-29, tossinvest.com 주문 페이지):** 토스는 표면마다 톤 등급이 다르다 —
+  종목 상세 본문 등락률 `blue600 #2272eb`/`red600 #e42939`, 우측 관심 리스트 `blue500 #3182f6`/
+  `red500 #f04452`, 하단 지수바 `red700 #de2b39`. 우리 Toss Light 는 `--price-up #de2b39` /
+  `--price-down #1957c2`(blue800) 로, 파랑이 한 톤 진한 것은 accent-vs-price 파랑 충돌의 승인된
+  예외(위 Toss Light 항목)이지 드리프트가 아니다.
+
 - **Semantic (banners / toasts):** read the token (values vary per theme).
   - Success: `--success`
   - Error: `--error`
@@ -391,6 +405,7 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-07-22 | **세 번째 테마 Toss Light 추가 (`[data-theme='toss-light']`) — "no third theme" 규칙 폐지** | 사용자 요청으로 tossinvest.com 라이트 팔레트를 벤치마크(라이브 CSS 커스텀 프로퍼티 실측)해 3번째 테마로 도입. Ledger(ivory+초록)를 교체하지 않고 병존 — 수동 선택 전용(`auto` 는 여전히 Obsidian/Ledger 만). **핵심 결정 2가지**: (1) **배경 층 부활** — Ledger 는 `--bg`==`--bg-card` 통일이지만 Toss Light 는 `--bg #f6f7f9`(회색 바닥) ≠ `--bg-card #ffffff`(흰 카드)로 토스식 명도 층을 되살림. (2) **accent-vs-price 파랑 충돌의 승인된 예외** — 토스 브랜드 accent 가 파랑(#3182f6)이고 하락 시세도 파랑이라 우리 3분류 규율(UI색 ≠ 시세색)과 충돌. accent 를 초록으로 빼면 "토스다움"이 사라지므로 토스블루 accent 를 유지하고, 대신 `--price-down` 을 한 톤 진한 `#1957c2`(blue800)로 벌려 분리(accent=solid fill, down-price=text/border). 고밀도 화면에서 완벽하진 않은 트레이드오프를 수용 — 기존 `--error`/`--price-up` 양쪽 빨강 중첩 선례와 동형. 구현: tokens.css 색-only 블록(Ledger 와 동일 세트, base 밖) + themePrefs.ts 4-옵션 + index.html 부트스트랩 + Settings 세그먼트. 차트 canvas 색은 `resolveTokensThemed` 가 `data-theme` 를 캐시키로 런타임 `getComputedStyle` 해석하므로 프로젝터 코드 무변경(폴백 hex 는 테스트/SSR 전용). |
 | 2026-07-21 | **타이포 전면 전환: IBM Plex Sans KR + IBM Plex Mono → Pretendard 단일 패밀리** — 모노스페이스 폐지, 숫자 정렬은 `tnum` 으로 이관, `--font-mono`→`--font-data` 리네이밍, 자간 전면 `normal` (사용자 승인, 프로토타입 A/B/C 비교) | 토스증권 타이포 시스템 벤치마크에서 출발. 토스는 **한 패밀리로 본문·숫자를 모두 처리하고 정렬은 `tnum` OpenType 피처로 얻는다** — 모노스페이스 두 번째 패밀리(~50KB)가 불필요해진다. Toss Product Sans 자체는 산돌 제작 전용 서체로 공개 배포되지 않아 사용 불가 → 동일 계열 오픈 라이선스(SIL OFL) 대체제 **Pretendard** 채택(기존 폴백 체인 2순위였음). **실측이 결정 근거**: Pretendard 숫자는 기본 프로포셔널(40px 에서 `1`=17.55px vs `4`=24.97px)이나 `tnum` 적용 시 전부 24.58px 로 균일. 실 호가창에서 대조 실험 — `tnum` OFF 시 9자리 가격 20개가 **18종 폭(편차 3.12px)** 으로 흩어지고, ON 시 **1종(편차 0px)**. 즉 정렬의 원인은 서체가 아니라 피처 플래그이므로, 개별 호출부의 `tabular-nums` 선언에 맡기지 않고 **Tailwind `fontFamily` 튜플로 `font-data` 유틸리티 자체에 `font-feature-settings:"tnum"` 를 결속**했다(구조적 안전). 이 결속이 없으면 `font-mono` 만 있고 `tabular-nums` 가 없던 80개 호출부가 타입 에러도 테스트 실패도 없이 조용히 어긋난다. `font-mono` 는 삭제하지 않고 deprecated 별칭으로 남긴다 — 키를 지우면 Tailwind 기본 모노 스택이 승계돼 등폭 보장이 사라지기 때문(fail-safe). **포기한 것**: 2026-05-20 이 세운 "데이터=기계적 텍스트" 시각적 위계. 토스는 위계를 굵기·색으로만 만들고 서체로 만들지 않으며, 사용자가 실데이터 프로토타입 3안(현행/토스식/하이브리드)을 비교한 뒤 토스식을 선택했다. |
 | 2026-07-29 | **우측 패널(레일 + 6개 드로어 + sticky 그룹헤더) `--bg-subtle` → `--bg`** — 배경 통일 완결, 앱 셸에서 크롬 톤 소멸 | 2026-07-15 #636/#637 이 `--bg`=`--bg-card` 로 배경을 통일한 뒤 "크롬 톤(`--bg-subtle`)은 우측 패널에만 남는다"고 적어둔 잔여분을 정리. Obsidian 실측 = 페이지 `#121216` vs 패널 `#0E0E11` (채널당 4~5, 상대휘도 ≈1.3%), 두 면 사이 **border 없음** — 즉 이 미세한 명도차 하나가 패널의 유일한 윤곽선이었다. 사용자가 스크린샷 실측(경계 x≈910px 에서 `rgb(18,18,22)`→`rgb(14,14,17)` 로 딱 끊김)을 보고 우측 패널 전체 적용을 결정. **범위**: `RailShell.RailDrawer`(6개 드로어 공용 셸)·`RailShell.RailGroupHeader`·`RightRail` 레일·`WatchlistDrawer`/`HeatmapDrawer` 자체 sticky 그룹헤더(드래그 재정렬용 별도 구현). sticky 헤더는 "패널 배경과 동일색이어야 평시에 투명" 계약이라 **선택이 아니라 동반 필수** — 어긋나면 평시에도 띠로 드러난다. **범위 밖**(계속 `--bg-subtle`): 모달 내부 recessed 박스(`CollectDialog`·`StudyViewSaveDialog`), 스크리너 조건 카드(`ConditionRow`), 설정/지표 nav, `StudyViewsDrawer` 삭제 유예 토스트(transient 밴드 — `border-t` 로 이미 구분되고 recessed 톤이 "임시" 어포던스). **부수 효과**: `RailToolbarIconButton` active(`--bg-input` `#101014`)가 패널보다 밝음→어두움으로 극성이 뒤집히나 `border-strong` 이 어포던스를 유지한다. 톤 스텝 0이므로 `border-l` 로 경계를 되살리지 않는다(테스트가 `not.toHaveClass('border-l')` 로 고정). Toss Light/Dark 는 층 구조를 유지하는 테마지만 드로어=바닥 톤이라는 의미는 동일하게 성립. |
+| 2026-07-29 | **10호가 잔량 숫자에 방향색 2벌 부여 — `--qty-ask`(매도 `--price-down` 파랑) / `--qty-bid`(매수 `--price-up` 빨강) 신설** | 그전까지 `/live`·`/study` BookPanel 의 잔량 숫자는 양쪽 다 `text-fg-dim` 한 색이라 side 정보를 색이 전혀 나르지 않았다. 색 출처는 사용자 지시로 tossinvest.com 주문 페이지 **실측** — 페이지의 `%` 텍스트를 계산색으로 그룹핑하니 세 쌍이 나왔고(본문 `#2272eb`/`#e42939`, 관심 리스트 `#3182f6`/`#f04452`, 지수바 `#de2b39`), `:root` 의 `--wts-adaptive-*` 스케일을 덤프해 본문 등락률 = **blue600/red600** 으로 등급을 확정했다. **스크린샷만으로는 어느 표면의 톤인지 구분 불가**라는 것이 이 실측의 핵심 교훈. 우리 쪽 대응 토큰은 등락률 글자를 칠하는 `--price-down`/`--price-up` 이라 거기에 별칭으로 붙였다 — Toss Light 의 파랑이 한 톤 진한 것(`#1957c2` vs `#2272eb`)은 accent-vs-price 충돌의 승인된 예외이지 드리프트가 아니다. **막대 토큰(`--bar-*`)을 재사용하지 않은 이유**: 막대는 저알파 워시(다크 28~30%)라 텍스트에 그대로 쓰면 대비가 무너진다. **뱃지 색과 축이 다르다** — 증감 뱃지는 delta 의 부호(2026-07-21 행), 잔량 숫자는 호가의 방향이라 "빨간 잔량 + 파란 −뱃지"가 정상 조합이다(테스트가 이 조합을 고정). 별칭이라 4개 테마가 각자 값으로 풀리고 같은 패널 하단 총잔량 스트립과도 자동 일치한다. |
 
 ## App-shell & live tokens (ADR-0039, ADR-0052)
 
