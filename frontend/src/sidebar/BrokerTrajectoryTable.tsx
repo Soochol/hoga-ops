@@ -104,11 +104,9 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
         setHoverMs(null);
       }}
     >
-      <div className="sticky top-0 z-10 grid grid-cols-[78px_1fr_88px] gap-2 bg-bg-card px-2.5 py-1 text-[10.5px] text-fg-dimmer">
-        <span>거래원</span>
-        <span>당일 궤적</span>
-        <span className="text-right">순매수(주)</span>
-      </div>
+      {/* 열 헤더(거래원/당일 궤적/순매수(주)) 없음 — 창 제목이 이미 "거래원"을 말하고
+          세 열의 정체(이름·스파크라인·부호 있는 숫자)가 형태로 자명하다는 사용자
+          판단(2026-07-29). 열 폭은 아래 행 grid 가 스스로 들고 있어 정렬은 불변. */}
       {rows.map((entry, rowIndex) => {
         const net = nets[rowIndex];
         return (
@@ -117,10 +115,11 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
               <div
                 data-testid="broker-sell-divider"
                 aria-hidden
-                className="flex items-center gap-1.5 px-2.5 py-0.5"
+                className="flex items-center px-2.5 py-0.5"
               >
-                <span className="h-px flex-1 bg-grid" />
-                <span className="text-[9px] leading-none text-fg-dimmer">순매도</span>
+                {/* 라벨('순매도') 제거 — 경계 자체는 남긴다. 위=매수우위·아래=매도우위
+                    라는 정렬 규칙을 읽어내는 유일한 단서라, 선까지 지우면 표가
+                    "그냥 내림차순 목록"이 되어 정보가 사라진다. */}
                 <span className="h-px flex-1 bg-grid" />
               </div>
             )}
