@@ -178,11 +178,12 @@ describe('액션', () => {
     const [a, b] = store.getState().windows;
 
     store.getState().setWindowRects([
-      { id: a.id, rect: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 } },
-      { id: b.id, rect: { x: 0.9, y: 0, w: 0.5, h: 0.5 } }, // x+w>1 — 무효
+      // 화면 오른쪽으로 걸친 배치 — ADR-0127 이후 유효하다.
+      { id: a.id, rect: { x: 0.9, y: 0.1, w: 0.5, h: 0.5 } },
+      { id: b.id, rect: { x: 748, y: 16, w: 680, h: 560 } }, // 레거시 px — 무효
     ]);
     const s = store.getState();
-    expect(s.windows.find((w) => w.id === a.id)?.rect).toEqual({ x: 0.1, y: 0.1, w: 0.5, h: 0.5 });
+    expect(s.windows.find((w) => w.id === a.id)?.rect).toEqual({ x: 0.9, y: 0.1, w: 0.5, h: 0.5 });
     expect(s.windows.find((w) => w.id === b.id)?.rect).toEqual(b.rect);
   });
 

@@ -9,6 +9,9 @@ import {
   SNAP_THRESHOLD,
   MIN_W,
   MIN_H,
+  EDGE_ZONE_PX,
+  GRAB_EXPOSE_W,
+  GRAB_EXPOSE_H,
   type RectWin,
   type Rect,
 } from './snapEngine';
@@ -72,17 +75,46 @@ describe('computeMove', () => {
     expect(r.guides.v).toBe(300);
   });
 
-  it('화면 안으로 클램프한다(음수·초과 방지)', () => {
+  it('좌·우·아래로는 화면 밖으로 나가되 헤더 손잡이를 남긴다 (ADR-0127)', () => {
+    const origin: Rect = { x: 0, y: 0, w: 200, h: 150 };
+    const args = { origin, others: [], canvas: CANVAS, alt: true };
+
+    const left = computeMove({ ...args, dx: -5000, dy: 0 });
+    expect(left.x).toBe(GRAB_EXPOSE_W - origin.w); // 오른쪽 끝 48px 만 남는다
+    expect(left.x + origin.w).toBe(GRAB_EXPOSE_W);
+
+    const right = computeMove({ ...args, dx: 5000, dy: 0 });
+    expect(right.x).toBe(CANVAS.w - GRAB_EXPOSE_W); // 왼쪽 끝 48px 만 남는다
+
+    const down = computeMove({ ...args, dx: 0, dy: 5000 });
+    expect(down.y).toBe(CANVAS.h - GRAB_EXPOSE_H); // 헤더 높이만 남는다
+  });
+
+  it('위로는 나가지 못한다 — 헤더가 사라지면 다시 잡을 수 없다', () => {
     const r = computeMove({
-      origin: { x: 0, y: 0, w: 200, h: 150 },
-      dx: -500,
-      dy: 5000,
+      origin: { x: 300, y: 400, w: 200, h: 150 },
+      dx: 0,
+      dy: -5000,
+      others: [],
+      canvas: CANVAS,
+      alt: true,
+    });
+    expect(r.y).toBe(0);
+  });
+
+  it('화면 경계 흡착은 이탈 경로에서도 살아 있다', () => {
+    // 오른쪽 벽에 딱 맞는 위치(x=800) 근처를 지나면 여전히 흡착한다 — 이탈은
+    // 흡착 임계(12px)를 넘겨 계속 밀 때만 일어난다.
+    const r = computeMove({
+      origin: { x: 795, y: 100, w: 200, h: 150 },
+      dx: 0,
+      dy: 0,
       others: [],
       canvas: CANVAS,
       alt: false,
     });
-    expect(r.x).toBe(0);
-    expect(r.y).toBe(CANVAS.h - 150);
+    expect(r.x).toBe(CANVAS.w - 200);
+    expect(r.guides.v).toBe(CANVAS.w);
   });
 
   it('alt=true 면 흡착 없이 이동한다', () => {
@@ -347,12 +379,61 @@ describe('computeResize — 순수 변 스플리터 승격', () => {
   });
 });
 
-describe('snapZone / zoneRect', () => {
-  it('좌측 벽 근처면 left', () => {
-    expect(snapZone(10, CANVAS, false)).toBe('left');
+describe('computeResize — 화면 밖에 걸친 창 (ADR-0127)', () => {
+  it('밖으로 나간 변을 잡아도 화면 안으로 되당기지 않는다(점프 방지)', () => {
+    // 오른쪽으로 200px 걸쳐 나간 창. 예전 클램프(hi=canvas.w)면 오른변이 1000 으로
+    // 튀면서 손도 안 댄 폭이 확 줄어든다.
+    const origin: Rect = { x: 900, y: 100, w: 300, h: 200 }; // 오른변 1200 > canvas.w
+    const r = computeResize({
+      origin, mode: 'e', dx: 0, dy: 0,
+      others: [], followers: [], canvas: CANVAS, alt: true,
+    });
+    expect(r.rect.w).toBe(300);
+
+    const below: Rect = { x: 100, y: 700, w: 200, h: 300 }; // 아랫변 1000 > canvas.h
+    const s = computeResize({
+      origin: below, mode: 's', dx: 0, dy: 0,
+      others: [], followers: [], canvas: CANVAS, alt: true,
+    });
+    expect(s.rect.h).toBe(300);
+
+    const outLeft: Rect = { x: -150, y: 100, w: 300, h: 200 }; // 왼변 -150 < 0
+    const w = computeResize({
+      origin: outLeft, mode: 'w', dx: 0, dy: 0,
+      others: [], followers: [], canvas: CANVAS, alt: true,
+    });
+    expect(w.rect.x).toBe(-150);
+    expect(w.rect.w).toBe(300);
   });
-  it('우측 벽 근처면 right', () => {
-    expect(snapZone(CANVAS.w - 10, CANVAS, false)).toBe('right');
+
+  it('밖에 걸친 변을 안으로 줄이는 것은 열려 있다', () => {
+    const origin: Rect = { x: 900, y: 100, w: 300, h: 200 };
+    const r = computeResize({
+      origin, mode: 'e', dx: -250, dy: 0,
+      others: [], followers: [], canvas: CANVAS, alt: true,
+    });
+    expect(r.rect.w).toBe(MIN_W); // 300-250=50 → MIN_W 에서 정지
+  });
+
+  it('화면 안 창은 리사이즈로 밖까지 늘어나지 않는다(이동만 이탈 허용)', () => {
+    const origin: Rect = { x: 700, y: 100, w: 200, h: 200 }; // 오른변 900, 화면 안
+    const r = computeResize({
+      origin, mode: 'e', dx: 5000, dy: 0,
+      others: [], followers: [], canvas: CANVAS, alt: true,
+    });
+    expect(r.rect.x + r.rect.w).toBe(CANVAS.w);
+  });
+});
+
+describe('snapZone / zoneRect', () => {
+  it('벽에 밀착하면 left/right', () => {
+    expect(snapZone(1, CANVAS, false)).toBe('left');
+    expect(snapZone(CANVAS.w - 1, CANVAS, false)).toBe('right');
+  });
+  it('벽 근처지만 밀착 전이면 null — 이 구간이 화면 밖으로 밀어내는 길이다 (ADR-0127)', () => {
+    expect(snapZone(EDGE_ZONE_PX, CANVAS, false)).toBeNull();
+    expect(snapZone(20, CANVAS, false)).toBeNull();
+    expect(snapZone(CANVAS.w - 20, CANVAS, false)).toBeNull();
   });
   it('가운데면 null', () => {
     expect(snapZone(500, CANVAS, false)).toBeNull();

@@ -47,8 +47,47 @@ export const MIN_W = 160;
 export const MIN_H = 120;
 /** 두 변이 "맞닿았다"고 볼 허용 오차 — 스플리터 승격 대상 판정. */
 export const ADJACENT_EPS = 2;
-/** 좌/우 화면 벽 반분할 스냅존의 트리거 폭(px, 벽으로부터). */
-export const EDGE_ZONE_PX = 28;
+/**
+ * 좌/우 화면 벽 반분할 스냅존의 트리거 폭(px, 벽으로부터).
+ * 벽에 커서를 **밀착**시키는 제스처만 반분할로 친다 — 넓게 잡으면 창을 화면 밖으로
+ * 밀어내는 제스처(ADR-0127)가 벽 근처에서 전부 반분할에 먹힌다.
+ */
+export const EDGE_ZONE_PX = 4;
+
+/**
+ * 창이 화면 밖으로 나가도 캔버스 안에 남겨두는 헤더(드래그 손잡이) 크기 — ADR-0127.
+ * 이만큼은 항상 잡히므로 마우스만으로 창을 언제나 되찾을 수 있고, 그래서 "창 소환"
+ * 같은 구제 수단이 필요 없다. 세로 값은 `WindowFrame` 헤더 높이(h-[26px])와 결속 —
+ * 헤더보다 작게 잡으면 손잡이가 잘려 보이고, 크게 잡으면 본문까지 붙들려 이탈이 막힌다.
+ */
+export const GRAB_EXPOSE_W = 48;
+export const GRAB_EXPOSE_H = 26;
+
+/**
+ * 이동으로 창 좌상단이 갈 수 있는 좌표 범위. 화면 밖 이탈을 허용하되 헤더 손잡이가
+ * 캔버스 안에 남게 한다(ADR-0127).
+ *
+ * 위쪽만 이탈을 막는 이유는 비대칭이 아니라 **손잡이가 헤더 하나뿐**이기 때문이다.
+ * 헤더는 창의 맨 위에 있어서, 위로 나가는 순간 가장 먼저 사라지는 게 손잡이 자신이다.
+ * 나머지 세 방향은 무엇이 밖으로 나가든 헤더는 마지막까지 남는다.
+ *
+ * 드래그 중(`computeMove`)과 커밋 시(`rectSpace.toFrac`)가 이 한 함수를 공유한다 —
+ * 두 곳이 각자 산술을 들면 "끌 수 있는 곳"과 "저장되는 곳"이 어긋난다.
+ */
+export function moveBounds(
+  rect: Rect,
+  canvas: Canvas,
+): { minX: number; maxX: number; minY: number; maxY: number } {
+  // 창이 노출 기준보다 작으면(이론상 MIN_W/MIN_H 아래) 창 자신이 노출 하한이 된다.
+  const keepW = Math.min(GRAB_EXPOSE_W, rect.w);
+  const keepH = Math.min(GRAB_EXPOSE_H, rect.h);
+  return {
+    minX: Math.min(0, keepW - rect.w), // 왼쪽 이탈 — 창의 오른쪽 끝 keepW 만 남는다
+    maxX: Math.max(0, canvas.w - keepW), // 오른쪽 이탈 — 창의 왼쪽 끝 keepW 만 남는다
+    minY: 0, // 위쪽 이탈 불가 — 헤더가 사라지면 다시 잡을 수단이 없다
+    maxY: Math.max(0, canvas.h - keepH), // 아래쪽 이탈 — 헤더 높이만 남는다
+  };
+}
 
 /** 후보 우선순위(작을수록 우선). near-tie 에서만 갈린다. */
 const RANK_ADJACENT = 0;
@@ -118,8 +157,12 @@ function moveCandidatesY(h: number, others: readonly RectWin[], canvas: Canvas):
 }
 
 /**
- * 창 이동을 계산한다. origin 에서 (dx,dy) 만큼 옮긴 뒤 화면 안으로 클램프하고,
+ * 창 이동을 계산한다. origin 에서 (dx,dy) 만큼 옮긴 뒤 `moveBounds` 로 클램프하고,
  * 이웃/경계에 흡착한다. 반환은 새 좌상단 좌표 + 가이드.
+ *
+ * 클램프는 "화면 안"이 아니라 "손잡이 노출"이다 — 창은 좌/우/아래로 화면을 벗어날 수
+ * 있다(ADR-0127). 화면 경계 흡착 후보는 그대로 살아 있어서, 밖으로 밀어내는 길에
+ * 가장자리 정렬 위치를 한 번 지나간다(임계 12px, Alt 로 해제).
  */
 export function computeMove(args: {
   origin: Rect;
@@ -130,8 +173,9 @@ export function computeMove(args: {
   alt: boolean;
 }): { x: number; y: number; guides: Guides } {
   const { origin, dx, dy, others, canvas, alt } = args;
-  const clampedX = Math.min(Math.max(origin.x + dx, 0), Math.max(0, canvas.w - origin.w));
-  const clampedY = Math.min(Math.max(origin.y + dy, 0), Math.max(0, canvas.h - origin.h));
+  const b = moveBounds(origin, canvas);
+  const clampedX = Math.min(Math.max(origin.x + dx, b.minX), b.maxX);
+  const clampedY = Math.min(Math.max(origin.y + dy, b.minY), b.maxY);
   const sx = snapAxis(clampedX, moveCandidatesX(origin.w, others, canvas), alt);
   const sy = snapAxis(clampedY, moveCandidatesY(origin.h, others, canvas), alt);
   return { x: sx.val, y: sy.val, guides: { v: sx.guide, h: sy.guide } };
@@ -242,11 +286,20 @@ export function computeResize(args: {
     return { val, guide: val === s.val ? s.guide : null };
   };
 
+  // 리사이즈는 캔버스 경계를 상한으로 쓴다 — 이동과 달리 변을 **새로** 화면 밖으로
+  // 늘리지는 못한다(ADR-0127 은 이동만 다룬다). 다만 이동으로 이미 밖에 걸친 변까지
+  // 안으로 되당기면 리사이즈를 잡는 순간 창이 튄다. 그래서 경계는 캔버스와 현재 변
+  // 중 바깥쪽 — 이미 밖인 변은 제자리를 지키고, 안쪽으로 줄이는 건 그대로 열려 있다.
+  const outerE = Math.max(canvas.w, origin.x + origin.w);
+  const outerS = Math.max(canvas.h, origin.y + origin.h);
+  const outerW = Math.min(0, origin.x);
+  const outerN = Math.min(0, origin.y);
+
   // 밴드[lo,hi]가 역전되면(sub-MIN follower 가 드래그 변을 드래그 창 자신의 MIN
   // 아래로 밀려는 경우) 드래그 창 MIN 을 우선한다 — follower 는 이미 MIN 위반 상태라
   // 더 짜부되더라도 드래그 창은 hard MIN 을 지킨다.
   if (hasE) {
-    let hi = canvas.w;
+    let hi = outerE;
     const cap = reduce((f) => f.x + f.w - MIN_W, 'min');
     if (cap !== null) hi = Math.min(hi, cap);
     const lo = origin.x + MIN_W;
@@ -257,7 +310,7 @@ export function computeResize(args: {
     edgeV = s.val;
   }
   if (hasW) {
-    let lo = 0;
+    let lo = outerW;
     const cap = reduce((f) => f.x + MIN_W, 'max');
     if (cap !== null) lo = Math.max(lo, cap);
     const hi = origin.x + origin.w - MIN_W;
@@ -269,7 +322,7 @@ export function computeResize(args: {
     edgeV = s.val;
   }
   if (hasS) {
-    let hi = canvas.h;
+    let hi = outerS;
     const cap = reduce((f) => f.y + f.h - MIN_H, 'min');
     if (cap !== null) hi = Math.min(hi, cap);
     const lo = origin.y + MIN_H;
@@ -280,7 +333,7 @@ export function computeResize(args: {
     edgeH = s.val;
   }
   if (hasN) {
-    let lo = 0;
+    let lo = outerN;
     const cap = reduce((f) => f.y + MIN_H, 'max');
     if (cap !== null) lo = Math.max(lo, cap);
     const hi = origin.y + origin.h - MIN_H;
