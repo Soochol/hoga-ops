@@ -35,6 +35,7 @@ import {
   useWindowIndicator,
   useWindowPaneOrder,
   useWindowPaneStretch,
+  useWindowScopeId,
   useWindowViewGuard,
 } from './workspace/windowView';
 import { useActivePrefs, useChartPrefsStore, type ChartViewPrefs } from '../state/chartPrefs';
@@ -481,14 +482,17 @@ export function LiveChartRoot({
   // registry setters are referentially stable) so RangeSeriesPane's memo holds.
   const registerPaneLegend = usePaneLegendRegistry((s) => s.register);
   const unregisterPaneLegend = usePaneLegendRegistry((s) => s.unregister);
+  // PaneId('candle'·'volume' …)는 창마다 같은 고정 문자열이라 창 스코프가 없으면
+  // 차트 창끼리 서로의 레전드를 덮어쓰고 지운다.
+  const legendScope = useWindowScopeId();
   const handleLegendReady = useCallback(
     (name: string, entries: { series: ISeriesApi<any>; meta: SeriesLegendMeta }[]) =>
-      registerPaneLegend(name as PaneId, entries),
-    [registerPaneLegend],
+      registerPaneLegend(legendScope, name as PaneId, entries),
+    [registerPaneLegend, legendScope],
   );
   const handleLegendGone = useCallback(
-    (name: string) => unregisterPaneLegend(name as PaneId),
-    [unregisterPaneLegend],
+    (name: string) => unregisterPaneLegend(legendScope, name as PaneId),
+    [unregisterPaneLegend, legendScope],
   );
 
   // axisRef / timeframeRef bridge the latest axis + timeframe to the
@@ -1196,6 +1200,13 @@ export function LiveChartRoot({
     return () => {
       c.remove();
       setChartEntry(null);
+      // 파괴된 차트를 dev 전역이 계속 붙들면 그 인스턴스와 데이터가 window 에서
+      // 도달 가능한 채로 남아 힙 스냅샷 조사를 오염시킨다(이 파일의 진단 대상이
+      // 바로 힙이라 특히 곤란하다).
+      if (import.meta.env.DEV) {
+        const w = window as unknown as { __liveChart?: unknown; __liveAxisGet?: unknown };
+        if (w.__liveChart === c) delete w.__liveChart;
+      }
     };
     // Recreate the chart per (code, timeframe) view. lightweight-charts keeps
     // per-instance caches keyed by time VALUE (tick weights, marks, formatted

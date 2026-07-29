@@ -513,3 +513,52 @@ describe('useDrawingsStore — defaults', () => {
     expect(useDrawingsStore.getState().defaults).toEqual(before);
   });
 });
+
+/**
+ * 스코프 캐시 상한 (2026-07-29).
+ *
+ * 스코프는 `${code}|${slot}` 이라 종목·타임프레임을 옮겨 다닌 만큼 늘어나는데
+ * 버리는 경로가 없었다. 캐시라 버려도 재방문 시 localStorage 에서 다시 읽지만,
+ * **저장 대기 중이거나 내용이 있는 스코프를 버리면 그림이 사라진다** — 아래 두
+ * 테스트가 그 경계를 고정한다.
+ */
+describe('useDrawingsStore — 스코프 캐시 상한', () => {
+  const scopeAt = (i: number) => drawingScope(String(100000 + i), 'minute');
+
+  it('빈 스코프를 많이 방문해도 캐시가 무한히 자라지 않는다', () => {
+    const store = useDrawingsStore.getState();
+    for (let i = 0; i < 40; i += 1) store.setActiveScope(scopeAt(i));
+
+    const { byScope, loadedScopes } = useDrawingsStore.getState();
+    expect(byScope.size).toBeLessThanOrEqual(16);
+    // loadedScopes 도 같이 줄어야 한다 — 남으면 재방문 시 재적재를 건너뛰고
+    // byScope 에 없는 스코프를 빈 것으로 오인한다.
+    expect(loadedScopes.size).toBe(byScope.size);
+  });
+
+  it('도형이 있는 스코프는 상한을 넘겨도 절대 버리지 않는다', () => {
+    const store = useDrawingsStore.getState();
+    const kept = scopeAt(0);
+    store.setActiveScope(kept);
+    store.add(kept, mkHline('h1', 100));
+
+    for (let i = 1; i < 40; i += 1) useDrawingsStore.getState().setActiveScope(scopeAt(i));
+
+    expect(useDrawingsStore.getState().drawingsFor(kept)).toHaveLength(1);
+  });
+
+  it('저장 대기 중인 스코프는 비어 보여도 버리지 않는다 (지연 저장이 빈 배열을 쓰는 것 방지)', () => {
+    const store = useDrawingsStore.getState();
+    const pending = scopeAt(0);
+    store.setActiveScope(pending);
+    store.add(pending, mkHline('h1', 100));
+    // 전부 지우면 배열은 비지만 저장은 아직 대기 중이다. 이 순간 캐시에서 축출하면
+    // 디바운스 콜백이 `byScope.get(scope) ?? []` 를 읽어 빈 배열을 저장하는데,
+    // 그 시점 스토어에 스코프가 없으면 "지웠다" 가 아니라 "몰라서 비었다" 가 된다.
+    store.remove(pending, 'h1');
+
+    for (let i = 1; i < 40; i += 1) useDrawingsStore.getState().setActiveScope(scopeAt(i));
+
+    expect(useDrawingsStore.getState().byScope.has(pending)).toBe(true);
+  });
+});

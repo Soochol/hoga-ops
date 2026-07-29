@@ -5,6 +5,7 @@ import type { VirtualAxis } from '../../util/virtualAxis';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { computeSMA, selectSource } from '../../chart/projectors/movingAverage';
 import { useMaSeriesRegistry } from './maSeriesRegistry';
+import { useWindowScopeId } from '../workspace/windowView';
 import { useWindowIndicator } from '../workspace/windowView';
 
 type Props = {
@@ -32,6 +33,8 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const hidden = useWindowIndicator((s) => s.movingAverageHidden);
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
+  // 레지스트리 키를 창별로 가른다 — 고정 슬롯 id 는 창끼리 충돌한다.
+  const scope = useWindowScopeId();
 
   // Reconcile series ↔ configs by id.
   useEffect(() => {
@@ -43,7 +46,7 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
       if (!currentIds.has(id)) {
         try { chart.removeSeries(s); } catch { /* chart torn down */ }
         map.delete(id);
-        useMaSeriesRegistry.getState().unregister(id);
+        useMaSeriesRegistry.getState().unregister(scope, id);
       }
     }
 
@@ -66,13 +69,13 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
             ...createScaleOptions,
           }, 0); // paneIndex 0 — candle pane overlay
           map.set(cfg.id, s);
-          useMaSeriesRegistry.getState().register(cfg.id, s);
+          useMaSeriesRegistry.getState().register(scope, cfg.id, s);
         } catch { /* chart torn down */ }
       } else {
         existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth, ...updateScaleOptions });
       }
     }
-  }, [chart, configs, candleOnlyScale]);
+  }, [chart, configs, candleOnlyScale, scope]);
 
   // Unmount cleanup — remove all series.
   useEffect(() => {
@@ -80,11 +83,11 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
       const map = seriesByIdRef.current;
       for (const [id, s] of map) {
         try { chart.removeSeries(s); } catch { /* chart torn down */ }
-        useMaSeriesRegistry.getState().unregister(id);
+        useMaSeriesRegistry.getState().unregister(scope, id);
       }
       map.clear();
     };
-  }, [chart]);
+  }, [chart, scope]);
 
   // Push projected SMA into each series.
   useEffect(() => {

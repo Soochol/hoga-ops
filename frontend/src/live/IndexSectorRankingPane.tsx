@@ -173,11 +173,18 @@ export function IndexSectorRankingPane({
   const [height, setHeight] = useState(readStoredPaneHeight);
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
 
+  // 리사이즈 중에만 window 리스너를 단다. 종전엔 deps `[]` 로 상시 등록이라, 이
+  // pane 이 떠 있는 내내 모든 OS mousemove 샘플이 (창 수만큼) 여기까지 왔다 —
+  // 핸들러가 곧바로 early-return 해도 디스패치 비용은 매 샘플 발생한다.
+  const [resizing, setResizing] = useState(false);
+
   const startResize = useCallback((clientY: number) => {
     resizeStartRef.current = { y: clientY, height };
+    setResizing(true);
   }, [height]);
 
   useEffect(() => {
+    if (!resizing) return undefined;
     const handleMouseMove = (event: MouseEvent) => {
       const start = resizeStartRef.current;
       if (!start) return;
@@ -189,6 +196,7 @@ export function IndexSectorRankingPane({
     };
     const handleMouseUp = () => {
       resizeStartRef.current = null;
+      setResizing(false);
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -196,7 +204,7 @@ export function IndexSectorRankingPane({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, []);
+  }, [resizing]);
 
   const sectors = ranking?.sectors ?? [];
   const activeSectorId = resolveActiveSectorId(sectors, state);

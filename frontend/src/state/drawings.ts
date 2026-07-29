@@ -48,11 +48,30 @@ const UPDATE_MERGE_MS = 500;
 
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : 0);
 
+/** 되돌리기 이력을 보관할 스코프 수의 상한.
+ *
+ *  스코프는 `${code}|${slot}` 이라 종목을 옮겨 다니면 계속 새로 생기는데, 종전엔
+ *  스코프별 undo 가 HISTORY_CAP 으로 묶여 있을 뿐 **스코프 자체를 버리는 경로가
+ *  없었다** — 여러 종목에 그린 세션에서는 각 스코프가 최대 50개 스냅샷(각각 Drawing
+ *  배열 전체)을 붙든 채 영구히 남는다. 이력은 애초에 비영속(새로고침하면 사라진다)
+ *  이므로, 오래된 스코프의 이력을 버리는 건 새로고침과 같은 수준의 손실이다. */
+const HISTORY_SCOPE_CAP = 12;
+
+/** byScope 캐시에 남길 스코프 수의 상한 — pruneIdleEmptyScopes 참조. */
+const SCOPE_CACHE_CAP = 16;
+
 function historyFor(scope: string): ScopeHistory {
   let h = histories.get(scope);
   if (h == null) {
     h = { undo: [], redo: [] };
-    histories.set(scope, h);
+  } else {
+    // 재삽입으로 MRU 끝으로 옮긴다 — Map 은 삽입 순서를 보존하므로 앞쪽이 LRU.
+    histories.delete(scope);
+  }
+  histories.set(scope, h);
+  for (const oldest of histories.keys()) {
+    if (histories.size <= HISTORY_SCOPE_CAP) break;
+    histories.delete(oldest);
   }
   return h;
 }
@@ -173,6 +192,43 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     }, PERSIST_DEBOUNCE_MS));
   };
 
+  /**
+   * 방문만 하고 **아무것도 그리지 않은** 스코프 캐시를 상한까지 정리한다.
+   *
+   * byScope 는 localStorage 의 캐시라 버려도 재방문 시 setActiveScope 가 다시 읽는다.
+   * 그래도 세 조건을 모두 만족하는 스코프만 버린다:
+   *  - 활성 스코프가 아니다.
+   *  - **저장 대기(pendingTimers)가 없다.** 이건 성능이 아니라 정확성 조건이다 —
+   *    queuePersist 의 디바운스 콜백이 나중에 `byScope.get(scope) ?? []` 를 다시
+   *    읽으므로, 먼저 비우면 그 콜백이 **빈 배열을 저장해 사용자의 그림을 지운다**.
+   *  - 도형이 0개다. 버릴 내용이 없으니 최악의 경우가 "localStorage 재조회" 뿐이라
+   *    손실이 원천적으로 불가능하다.
+   *
+   * 상한을 두는 이유: 매 전환마다 싹 비우면 되돌아올 때마다 재조회가 생긴다. 최근
+   * 스코프는 캐시로 남기고 초과분(삽입 순서 앞쪽 = 오래된 것)만 버린다.
+   */
+  const pruneIdleEmptyScopes = (active: string | null) => {
+    const { byScope, loadedScopes, selectedByScope } = get();
+    if (byScope.size <= SCOPE_CACHE_CAP) return;
+    const doomed: string[] = [];
+    for (const [scope, items] of byScope) {
+      if (byScope.size - doomed.length <= SCOPE_CACHE_CAP) break;
+      if (scope === active || items.length > 0 || pendingTimers.has(scope)) continue;
+      doomed.push(scope);
+    }
+    if (doomed.length === 0) return;
+    const nextByScope = new Map(byScope);
+    const nextLoaded = new Set(loadedScopes);
+    const nextSelected = new Map(selectedByScope);
+    for (const scope of doomed) {
+      nextByScope.delete(scope);
+      nextLoaded.delete(scope);
+      nextSelected.delete(scope);
+      histories.delete(scope);
+    }
+    set({ byScope: nextByScope, loadedScopes: nextLoaded, selectedByScope: nextSelected });
+  };
+
   const queuePersistDefaults = () => {
     if (defaultsTimer != null) clearTimeout(defaultsTimer);
     defaultsTimer = setTimeout(() => {
@@ -202,6 +258,8 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         loadedScopes.add(scope);
         set({ byScope, loadedScopes });
       }
+      // 종목·타임프레임을 옮겨 다닌 만큼 쌓인 빈 스코프 캐시를 상한까지 회수한다.
+      pruneIdleEmptyScopes(scope);
     },
 
     setActiveTool(tool) {
