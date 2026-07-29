@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import typer
@@ -472,6 +473,58 @@ def _run_series_for(stock_date_dir, meta):
     ))
 
 
+def _iter_stock_date_metas(
+    parquet_root: Path, code: str | None
+) -> Iterator[tuple[str, Path]]:
+    """Yield ``(label, meta_path)`` for every Stock-Date meta.json under parquet/.
+
+    Handles BOTH on-disk layouts:
+
+    - ADR-0037 (current): ``parquet/{date}/{code}/{source}/meta.json`` — one
+      meta per Source, label ``{date}/{code}/{source}``.
+    - pre-ADR-0037 (legacy residue): ``parquet/{date}/{code}/meta.json`` —
+      label ``{date}/{code}``.
+
+    Why both: the ADR-0037 migration moved captures into ``{source}/``
+    subdirectories, but a flat-layout tail survives on real corpora. Measured
+    2026-07-29 on the dev machine: 404 flat vs 18,809 source-scoped, i.e. the
+    flat-only walk this replaces was checking **2.1%** of Stock-Dates and
+    silently ``continue``-ing past the rest — then printing "All Stock-Dates
+    are clean". A diagnostic tool that skips 97.9% of its corpus and reports
+    safety is worse than no tool. Every test in tests/test_cli_validate.py
+    seeded the flat layout, so the suite stayed green throughout.
+
+    The yielded path is the directory-bearing meta.json, so ``--deep`` reads
+    ``candles/snapshots/trades.parquet`` from ``meta_path.parent`` — which is
+    the Source directory under ADR-0037, exactly where those files live.
+
+    Mirrors ``disk_state.classify_stock_date``'s ``<stock_date_dir>/*/meta.json``
+    traversal; kept here rather than reusing it because validate needs the raw
+    path (for ``--fix`` write-back), not a Classification.
+    """
+    for date_dir in sorted(parquet_root.iterdir()):
+        if not date_dir.is_dir():
+            continue
+        for code_dir in sorted(date_dir.iterdir()):
+            if not code_dir.is_dir():
+                continue
+            if code is not None and code_dir.name != code:
+                continue
+            stem = f"{date_dir.name}/{code_dir.name}"
+            # Source-scoped first (ADR-0037), then the legacy flat file. Both
+            # can coexist mid-migration; each is a distinct row so a violation
+            # in one source is never masked by a clean sibling.
+            for src_dir in sorted(code_dir.iterdir()):
+                if not src_dir.is_dir():
+                    continue
+                meta_p = src_dir / "meta.json"
+                if meta_p.exists():
+                    yield f"{stem}/{src_dir.name}", meta_p
+            flat = code_dir / "meta.json"
+            if flat.exists():
+                yield stem, flat
+
+
 @app.command()
 def validate(
     code: str | None = typer.Option(None, "--code", help="Limit to a single Code (e.g. 005930)."),
@@ -507,67 +560,91 @@ def validate(
         console.print("[yellow]No parquet directory found.[/yellow]")
         return
 
-    rows: list[tuple[str, str, list]] = []
+    rows: list[tuple[str, list]] = []
     fix_count = 0
-    for date_dir in sorted(parquet_root.iterdir()):
-        if not date_dir.is_dir():
-            continue
-        for code_dir in sorted(date_dir.iterdir()):
-            if not code_dir.is_dir():
-                continue
-            if code is not None and code_dir.name != code:
-                continue
-            meta_p = code_dir / "meta.json"
-            if not meta_p.exists():
-                continue
+    scanned = 0
+    unreadable: list[str] = []
+    for label, meta_p in _iter_stock_date_metas(parquet_root, code):
+        scanned += 1
+        try:
             meta = _json.loads(meta_p.read_text(encoding="utf-8"))
-            # Compute the full (severity-unfiltered) set ONCE — `violations`
-            # is the display slice (severity-filtered); `full` is the archival
-            # source. Without the cache, --deep --fix would load parquet twice
-            # for every Stock-Date with violations.
-            full = _check(meta)
-            if deep:
-                full = full + _run_series_for(code_dir, meta)
-            violations = (full if severity == "all"
-                          else [v for v in full if v.severity.value == severity])
-            # --fix reconciles archival_violations both directions: writes new
-            # entries AND clears stale ones (e.g. when an invariant tightens
-            # OR loosens). The previous "skip when display-empty" branch
-            # short-circuited BEFORE the fix block, so files whose computed
-            # set dropped to empty (catalog loosening case) kept their stale
-            # archival list forever. Concrete loss: when the
-            # series.candles_ts_monotonic false-positive fix landed, --fix
-            # cleared only 66/805 affected files; the other 739 had only the
-            # stale candles entries (nothing else to display), so they were
-            # silently skipped.
-            if fix:
-                stored = meta.get("invariant_violations") or []
-                computed = [v.as_dict() for v in full]
-                if stored != computed:
-                    if computed:
-                        meta["invariant_violations"] = computed
-                    else:
-                        meta.pop("invariant_violations", None)
-                    meta_p.write_text(_json.dumps(meta, ensure_ascii=False, indent=2),
-                                      encoding="utf-8")
-                    fix_count += 1
-            if not violations:
-                continue
-            rows.append((date_dir.name, code_dir.name, violations))
+        except (ValueError, OSError) as exc:
+            # A meta.json that won't parse is a finding, not a reason to skip
+            # quietly — same principle as _read's warning in --deep. Before
+            # this, a corrupt meta raised and aborted the whole sweep partway,
+            # leaving the operator with a partial report and a traceback.
+            unreadable.append(f"{label}: {exc}")
+            continue
+        # Compute the full (severity-unfiltered) set ONCE — `violations`
+        # is the display slice (severity-filtered); `full` is the archival
+        # source. Without the cache, --deep --fix would load parquet twice
+        # for every Stock-Date with violations.
+        full = _check(meta)
+        if deep:
+            # meta_p.parent, NOT the Code directory: under ADR-0037 the
+            # parquet artifacts sit beside their meta.json inside {source}/.
+            full = full + _run_series_for(meta_p.parent, meta)
+        violations = (full if severity == "all"
+                      else [v for v in full if v.severity.value == severity])
+        # --fix reconciles archival_violations both directions: writes new
+        # entries AND clears stale ones (e.g. when an invariant tightens
+        # OR loosens). The previous "skip when display-empty" branch
+        # short-circuited BEFORE the fix block, so files whose computed
+        # set dropped to empty (catalog loosening case) kept their stale
+        # archival list forever. Concrete loss: when the
+        # series.candles_ts_monotonic false-positive fix landed, --fix
+        # cleared only 66/805 affected files; the other 739 had only the
+        # stale candles entries (nothing else to display), so they were
+        # silently skipped.
+        if fix:
+            stored = meta.get("invariant_violations") or []
+            computed = [v.as_dict() for v in full]
+            if stored != computed:
+                if computed:
+                    meta["invariant_violations"] = computed
+                else:
+                    meta.pop("invariant_violations", None)
+                meta_p.write_text(_json.dumps(meta, ensure_ascii=False, indent=2),
+                                  encoding="utf-8")
+                fix_count += 1
+        if not violations:
+            continue
+        rows.append((label, violations))
+
+    # Coverage before verdict. "I checked 18,805 and found nothing" and "I
+    # checked nothing" are opposite outcomes that this command used to render
+    # identically as "All Stock-Dates are clean" — that ambiguity is what let
+    # the flat-only walk hide a 97.9% blind spot for two months. The count is
+    # printed on every path, so a sudden drop is visible without --verbose.
+    if scanned == 0:
+        console.print(
+            f"[yellow]No Stock-Date meta.json found under {parquet_root} — "
+            f"nothing was checked.[/yellow]"
+        )
+        return
+
+    for entry in unreadable:
+        console.print(f"[yellow]  warning: unreadable meta.json {entry}[/yellow]")
 
     if not rows:
         if fix and fix_count:
             console.print(f"[blue]--fix: cleared stale invariant_violations on {fix_count} files.[/blue]")
-        console.print("[green]All Stock-Dates are clean for the requested severity.[/green]")
+        console.print(
+            f"[green]All {scanned} Stock-Date sources are clean for the "
+            f"requested severity.[/green]"
+        )
         return
 
-    for date, code_, violations in rows:
-        console.print(f"[bold]{date}/{code_}[/bold]")
+    for label, violations in rows:
+        console.print(f"[bold]{label}[/bold]")
         for v in violations:
             console.print(f"  [{v.severity.value}] {v.invariant_id}: {v.message}  ctx={v.ctx}")
 
+    console.print(
+        f"\n[bold]{len(rows)} of {scanned} Stock-Date sources have violations.[/bold]"
+    )
     if fix:
-        console.print(f"\n[blue]--fix: rewrote invariant_violations on {fix_count} files.[/blue]")
+        console.print(f"[blue]--fix: rewrote invariant_violations on {fix_count} files.[/blue]")
 
 
 @app.command()

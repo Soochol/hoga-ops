@@ -10,9 +10,39 @@ from hoga.cli import app
 
 
 def _seed(data_dir: Path, date: str, code: str, meta: dict) -> None:
+    """Seed the pre-ADR-0037 FLAT layout: parquet/{date}/{code}/meta.json.
+
+    Kept because a flat tail still exists on real corpora (404 files measured
+    2026-07-29), but note that every test in this module used to seed *only*
+    this layout — which is exactly why the source-scoped blind spot below went
+    undetected. Prefer _seed_v2 for new tests.
+    """
     d = data_dir / "parquet" / date / code
     d.mkdir(parents=True, exist_ok=True)
     (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def _flat(stdout: str) -> str:
+    """Collapse rich's terminal line-wrapping so substring asserts survive it.
+
+    rich wraps console.print output at the detected width, so a long sentence
+    can arrive with a newline in the middle ("nothing \\nwas checked"). Asserting
+    on the wrapped form would couple these tests to terminal width.
+    """
+    return " ".join(stdout.split())
+
+
+def _seed_v2(data_dir: Path, date: str, code: str, meta: dict,
+             source: str = "hogaplay") -> Path:
+    """Seed the ADR-0037 layout: parquet/{date}/{code}/{source}/meta.json.
+
+    This is the layout 97.9% of the real corpus uses. Returns the source
+    directory so --deep fixtures can drop parquet files beside the meta.
+    """
+    d = data_dir / "parquet" / date / code / source
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    return d
 
 
 def _healthy() -> dict:
@@ -262,3 +292,144 @@ def test_validate_fix_clears_stale_archival_when_now_clean(tmp_path, monkeypatch
     assert "invariant_violations" not in after
     # User-visible signal that --fix did real work even when display is clean.
     assert "cleared stale" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# ADR-0037 source-scoped layout
+#
+# Regression cluster for the 2026-07-29 finding: validate walked only
+# `{date}/{code}/meta.json` and `continue`d past everything else, so on the
+# real corpus it checked 404 of 19,213 Stock-Date sources (2.1%) and printed
+# "All Stock-Dates are clean". Every pre-existing test in this file seeded the
+# flat layout, so the suite was green the whole time. These tests seed the
+# layout production actually writes.
+# ---------------------------------------------------------------------------
+
+
+def test_validate_reports_violations_in_source_scoped_layout(tmp_path, monkeypatch):
+    """The ADR-0037 layout must be swept, not skipped."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    _seed_v2(tmp_path, "20260518", "003490", _healthy() | {"regular_session_close_ms": 0})
+
+    result = CliRunner().invoke(app, ["validate"])
+    assert result.exit_code == 0, result.stdout
+    assert "meta.close_after_open" in result.stdout
+    # Label carries the Source so a violation is attributable when a Stock-Date
+    # has several (hogaplay + kis_live).
+    assert "20260518/003490/hogaplay" in _flat(result.stdout)
+
+
+def test_validate_does_not_mask_one_source_with_a_clean_sibling(tmp_path, monkeypatch):
+    """Each Source is its own row — a clean kis_live must not hide a broken
+    hogaplay for the same Stock-Date."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    _seed_v2(tmp_path, "20260518", "003490",
+             _healthy() | {"regular_session_close_ms": 0}, source="hogaplay")
+    _seed_v2(tmp_path, "20260518", "003490", _healthy(), source="kis_live")
+
+    result = CliRunner().invoke(app, ["validate"])
+    assert result.exit_code == 0, result.stdout
+    assert "20260518/003490/hogaplay" in _flat(result.stdout)
+    assert "20260518/003490/kis_live" not in _flat(result.stdout)
+    assert "1 of 2 Stock-Date sources have violations" in _flat(result.stdout)
+
+
+def test_validate_sweeps_both_layouts_when_they_coexist(tmp_path, monkeypatch):
+    """Mid-migration corpora carry both; neither may be dropped."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    _seed(tmp_path, "20260518", "003490", _healthy() | {"regular_session_close_ms": 0})
+    _seed_v2(tmp_path, "20260520", "005930", _healthy() | {"regular_session_close_ms": 0})
+
+    result = CliRunner().invoke(app, ["validate"])
+    assert result.exit_code == 0, result.stdout
+    assert "20260518/003490" in result.stdout
+    assert "20260520/005930/hogaplay" in _flat(result.stdout)
+    assert "2 of 2 Stock-Date sources have violations" in _flat(result.stdout)
+
+
+def test_validate_code_filter_applies_to_source_scoped_layout(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    _seed_v2(tmp_path, "20260518", "003490", _healthy() | {"regular_session_close_ms": 0})
+    _seed_v2(tmp_path, "20260518", "005930", _healthy() | {"regular_session_close_ms": 0})
+
+    result = CliRunner().invoke(app, ["validate", "--code", "003490"])
+    assert result.exit_code == 0, result.stdout
+    assert "003490" in result.stdout
+    assert "005930" not in result.stdout
+
+
+def test_validate_fix_writes_to_source_scoped_meta(tmp_path, monkeypatch):
+    """--fix must write back to the meta it actually read."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    src = _seed_v2(tmp_path, "20260518", "003490",
+                   _healthy() | {"regular_session_close_ms": 0})
+
+    result = CliRunner().invoke(app, ["validate", "--fix"])
+    assert result.exit_code == 0, result.stdout
+
+    after = json.loads((src / "meta.json").read_text())
+    ids = {v["invariant_id"] for v in after["invariant_violations"]}
+    assert "meta.close_after_open" in ids
+
+
+def test_validate_deep_reads_parquet_from_source_dir(tmp_path, monkeypatch):
+    """--deep resolves artifacts relative to the meta, not the Code dir.
+
+    Under ADR-0037 candles.parquet lives in {code}/{source}/, so a Code-dir
+    lookup finds nothing and _read's None sentinel silently reports 'clean'.
+    """
+    from hoga.tables.candles import Candle, write_parquet
+
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    src = _seed_v2(tmp_path, "20260520", "005930", _healthy())
+    write_parquet(
+        [Candle(ts_ms=t, open_=100, close_=100, high=100, low=100, vol_a=0, vol_b=0)
+         for t in (90_001_000, 90_001_000)],  # duplicate ts_ms
+        src / "candles.parquet",
+    )
+
+    result = CliRunner().invoke(app, ["validate", "--deep", "--severity", "all"])
+    assert result.exit_code == 0, result.stdout
+    assert "series.candles_ts_monotonic" in result.stdout
+
+
+def test_validate_reports_coverage_count_when_clean(tmp_path, monkeypatch):
+    """'Clean' must state how many sources were actually checked.
+
+    Without the count, 'checked 18,805 and found nothing' and 'checked nothing'
+    render identically — the ambiguity that hid this bug.
+    """
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    _seed_v2(tmp_path, "20260520", "005930", _healthy())
+    _seed_v2(tmp_path, "20260521", "005930", _healthy())
+
+    result = CliRunner().invoke(app, ["validate"])
+    assert result.exit_code == 0, result.stdout
+    assert "All 2 Stock-Date sources are clean" in _flat(result.stdout)
+
+
+def test_validate_empty_corpus_does_not_claim_clean(tmp_path, monkeypatch):
+    """Zero scanned is 'nothing was checked', never a clean bill of health."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    # parquet/ exists but holds a Stock-Date directory with no meta.json at all.
+    (tmp_path / "parquet" / "20260520" / "005930").mkdir(parents=True)
+
+    result = CliRunner().invoke(app, ["validate"])
+    assert result.exit_code == 0, result.stdout
+    assert "nothing was checked" in _flat(result.stdout)
+    assert "clean" not in _flat(result.stdout)
+
+
+def test_validate_unreadable_meta_warns_and_continues(tmp_path, monkeypatch):
+    """A corrupt meta.json is a finding, not a sweep-aborting traceback."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    bad = _seed_v2(tmp_path, "20260518", "003490", _healthy())
+    (bad / "meta.json").write_text("{not json", encoding="utf-8")
+    _seed_v2(tmp_path, "20260520", "005930", _healthy() | {"regular_session_close_ms": 0})
+
+    result = CliRunner().invoke(app, ["validate"])
+    assert result.exit_code == 0, result.stdout
+    assert "unreadable meta.json" in _flat(result.stdout)
+    assert "20260518/003490/hogaplay" in _flat(result.stdout)
+    # The sweep continued past the corrupt file.
+    assert "meta.close_after_open" in result.stdout
