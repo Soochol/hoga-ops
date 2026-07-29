@@ -1,5 +1,11 @@
 import { type RefObject, useEffect, useState } from 'react';
-import { HEADER_FOLD_NONE, nextHeaderFold, type HeaderFold } from './chartHeaderCompact';
+import {
+  HEADER_FOLD_NONE,
+  LIVE_HEADER_FOLD,
+  nextHeaderFold,
+  type HeaderFold,
+  type HeaderFoldThresholds,
+} from './chartHeaderCompact';
 
 /**
  * 헤더 컨테이너 폭을 관측해 접힘 단계를 정한다 — 접힘의 React 경계.
@@ -8,7 +14,11 @@ import { HEADER_FOLD_NONE, nextHeaderFold, type HeaderFold } from './chartHeader
  * (`usePaneFolding` 과 같은 분리). 관측 대상이 **컨테이너 폭**이라 접힘이
  * 관측값을 되바꾸지 않는다 — 피드백 루프 없음.
  */
-export function useChartHeaderFold(ref: RefObject<HTMLElement | null>): HeaderFold {
+export function useChartHeaderFold(
+  ref: RefObject<HTMLElement | null>,
+  /** 표면별 임계 — 정책은 공유하고 숫자는 헤더마다 다르다(그 타입 주석 참조). */
+  thresholds: HeaderFoldThresholds = LIVE_HEADER_FOLD,
+): HeaderFold {
   const [fold, setFold] = useState<HeaderFold>(HEADER_FOLD_NONE);
 
   useEffect(() => {
@@ -18,7 +28,7 @@ export function useChartHeaderFold(ref: RefObject<HTMLElement | null>): HeaderFo
     // 상태가 바뀔 때마다 관측자가 재구독된다.
     const push = (width: number): void => {
       setFold((prev) => {
-        const next = nextHeaderFold(width, prev);
+        const next = nextHeaderFold(width, prev, thresholds);
         return next.compactActions === prev.compactActions
           && next.compactTimeframe === prev.compactTimeframe
           ? prev
@@ -32,7 +42,7 @@ export function useChartHeaderFold(ref: RefObject<HTMLElement | null>): HeaderFo
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ref]);
+  }, [ref, thresholds]);
 
   return fold;
 }

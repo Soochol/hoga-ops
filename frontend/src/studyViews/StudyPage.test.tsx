@@ -8,7 +8,6 @@ import type { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
-import { useLivePageStore } from '../state/livePage';
 import { useStudyWorkspaceStore, type StudyWorkspaceWindow } from '../state/studyWorkspace';
 
 const {
@@ -249,26 +248,41 @@ beforeEach(() => {
     (args: { finalProfile: DayVolumeDistribution | null | undefined }) => args.finalProfile,
   );
   useLiveCursorStore.getState().resetCursor();
-  useLivePageStore.setState({
-    volumeDistributionEnabled: true,
-    volumeDistributionHoverCutoffEnabled: false,
-    volumeDistributionRangeCount: 2,
-    // StudyPage 마운트가 ambient 봉으로 재투영하므로(PR-A #699), 최상위뿐 아니라
-    // minute 버킷에도 넣어야 투영 후에도 살아남는다.
-    indicatorsByTimeframe: {
-      minute: {
-        volumeDistributionEnabled: true,
-        volumeDistributionHoverCutoffEnabled: false,
-        volumeDistributionRangeCount: 2,
-      },
-    },
-  });
+  // 지표는 차트 창이 소유한다(#904) — 전역이 아니라 창 버킷에 심는다.
+  // 창 밖 소비자(vdist 데이터 창·번들 쿼리 키)도 같은 곳을 읽는다.
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
   // 창 워크스페이스(ADR-0123) — 시드와 무관한 결정적 배치로 초기화. DOM 순서 =
   // windows 배열 순서(orderbook → brokers → vdist → program).
   const seedWindows: StudyWorkspaceWindow[] = [
-    { id: 'w-chart', kind: 'chart', rect: { x: 0, y: 0, w: 0.72, h: 1 } },
+    {
+      id: 'w-chart',
+      kind: 'chart',
+      rect: { x: 0, y: 0, w: 0.72, h: 1 },
+      // ⚠️ setState 는 하이드레이션(ensureChartWindow)을 우회하므로 창 설정을
+      // 직접 심어야 한다. 없으면 `withChart` 가 no-op 이라 봉 전환이 조용히
+      // 죽고 지표는 공장 기본값으로 렌더된다.
+      chart: {
+        timeframe: '5m',
+        lastMinuteTimeframe: '5m',
+        indicators: {
+          paneOrder: [],
+          paneStretch: {},
+          byTimeframe: {
+            minute: {
+              volumeDistributionEnabled: true,
+              volumeDistributionHoverCutoffEnabled: false,
+              volumeDistributionRangeCount: 2,
+            },
+            D: {
+              volumeDistributionEnabled: true,
+              volumeDistributionHoverCutoffEnabled: false,
+              volumeDistributionRangeCount: 2,
+            },
+          },
+        },
+      },
+    },
     { id: 'w-book', kind: 'book', rect: { x: 0.72, y: 0, w: 0.28, h: 0.25 } },
     { id: 'w-broker', kind: 'broker', rect: { x: 0.72, y: 0.25, w: 0.28, h: 0.25 } },
     { id: 'w-vdist', kind: 'vdist', rect: { x: 0.72, y: 0.5, w: 0.28, h: 0.25 } },
@@ -368,7 +382,7 @@ describe('StudyPage', () => {
     renderPage('/study?view=view-ref');
 
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('3m');
-    expect(screen.getByText('005930 · 3m · 복기뷰')).toBeTruthy();
+    expect(screen.getByText('005930 · 복기뷰')).toBeTruthy();
   });
 
   it('never requests the saved timeframe when the tab overrides it', () => {
@@ -402,7 +416,7 @@ describe('StudyPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '일' }));
 
-    expect(screen.getByText('005930 · D · 복기뷰')).toBeTruthy();
+    expect(screen.getByText('005930 · 복기뷰')).toBeTruthy();
     expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
       id: 'view-ref',
       timeframe: 'D',
@@ -411,7 +425,7 @@ describe('StudyPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
 
-    expect(screen.getByText('005930 · 5m · 복기뷰')).toBeTruthy();
+    expect(screen.getByText('005930 · 복기뷰')).toBeTruthy();
     expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
       id: 'view-ref',
       timeframe: '5m',
@@ -421,7 +435,7 @@ describe('StudyPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 5분' }));
     fireEvent.click(within(screen.getByRole('menu', { name: '분봉 목록' })).getByRole('menuitemradio', { name: '15분' }));
 
-    expect(screen.getByText('005930 · 15m · 복기뷰')).toBeTruthy();
+    expect(screen.getByText('005930 · 복기뷰')).toBeTruthy();
     expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
       id: 'view-ref',
       timeframe: '15m',
@@ -446,7 +460,7 @@ describe('StudyPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
 
-    expect(screen.getByText('005930 · 5m · 복기뷰')).toBeTruthy();
+    expect(screen.getByText('005930 · 복기뷰')).toBeTruthy();
     expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
       timeframe: '5m',
       label: '삼성전자 · 돌파 복기 · 5m',
@@ -845,17 +859,11 @@ describe('StudyPage', () => {
   });
 
   it('uses hover-cutoff volume distribution for reference study views when enabled', () => {
-    useLivePageStore.setState({
+    // hover-cutoff 를 켜는 곳도 차트 창 버킷이다(#904).
+    useStudyWorkspaceStore.getState().patchChartIndicatorsAt('w-chart', '5m', {
       volumeDistributionEnabled: true,
       volumeDistributionHoverCutoffEnabled: true,
       volumeDistributionRangeCount: 2,
-      indicatorsByTimeframe: {
-        minute: {
-          volumeDistributionEnabled: true,
-          volumeDistributionHoverCutoffEnabled: true,
-          volumeDistributionRangeCount: 2,
-        },
-      },
     });
     const previousDateCandle = {
       ts_ms: Date.UTC(2026, 5, 15, 1, 0, 0),

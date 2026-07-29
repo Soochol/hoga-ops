@@ -6,7 +6,7 @@
  * 배치만 담당한다(방안 A). 창 콘텐츠는 ctx 로 주입받는다: 차트/메모는 StudyPage 가
  * 조립한 노드·props, 데이터 창은 kind 분기(studyWindowContents).
  */
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   WorkspaceCanvasCore,
   type WindowItemProps,
@@ -17,6 +17,7 @@ import { IconToolbarButton } from '../ui/WorkspaceShell';
 import type { RangeBundle } from '../api/types';
 import type { StudyViewReference } from '../api/studyViews';
 import { StudyMemoPanel, type StudyMemoPanelProps } from './StudyMemoPanel';
+import { StudyChartWindow, type StudyChartWindowProps } from './StudyChartWindow';
 import { StudyDataWindowContent } from './studyWindowContents';
 import { STUDY_WINDOW_LABEL, type StudyDataWindowKind } from './studyWindowMeta';
 import {
@@ -29,8 +30,9 @@ import {
 export interface StudyItemCtx {
   save: StudyViewReference | null;
   bundle: RangeBundle | null;
-  /** 차트 창 본문 — 로딩/차트 셸 조립은 StudyPage 소유. */
-  chartContent: ReactNode;
+  /** 차트 창 배선 — 창이 헤더·셸·차트를 소유하고(#908) 페이지는 데이터만 준다.
+   *  `windowId` 만 창 쪽에서 채운다(창이 자기 id 를 안다). */
+  chart: Omit<StudyChartWindowProps, 'windowId'>;
   /** 메모 창 본문 props(onClose 제외 — 창 닫기와 결속). null 이면 로딩 카드. */
   memo: Omit<StudyMemoPanelProps, 'onClose'> | null;
   closeWindow: (id: string) => void;
@@ -62,7 +64,7 @@ function StudyWindowItem({
       }
     >
       {win.kind === 'chart' ? (
-        ctx.chartContent
+        <StudyChartWindow {...ctx.chart} windowId={win.id} />
       ) : win.kind === 'memo' ? (
         ctx.memo ? (
           <StudyMemoPanel {...ctx.memo} onClose={() => ctx.closeWindow(win.id)} />
@@ -85,12 +87,12 @@ function StudyWindowItem({
 export function StudyWorkspaceCanvas({
   save,
   bundle,
-  chartContent,
+  chart,
   memo,
 }: {
   save: StudyViewReference | null;
   bundle: RangeBundle | null;
-  chartContent: ReactNode;
+  chart: Omit<StudyChartWindowProps, 'windowId'>;
   memo: Omit<StudyMemoPanelProps, 'onClose'> | null;
 }) {
   const windows = useStudyWorkspaceStore((s) => s.windows);
@@ -100,8 +102,8 @@ export function StudyWorkspaceCanvas({
   const setWindowRects = useStudyWorkspaceStore((s) => s.setWindowRects);
 
   const itemCtx = useMemo<StudyItemCtx>(
-    () => ({ save, bundle, chartContent, memo, closeWindow }),
-    [save, bundle, chartContent, memo, closeWindow],
+    () => ({ save, bundle, chart, memo, closeWindow }),
+    [save, bundle, chart, memo, closeWindow],
   );
 
   return (

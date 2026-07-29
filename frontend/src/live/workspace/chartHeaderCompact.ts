@@ -54,6 +54,54 @@ export type HeaderFold = {
 export const HEADER_FOLD_NONE: HeaderFold = { compactActions: false, compactTimeframe: false };
 
 /**
+ * 한 헤더 표면의 접힘 임계 묶음.
+ *
+ * **정책은 공유하고 숫자는 표면마다 잰다.** 임계는 그 헤더가 실제로 들고 있는
+ * 버튼 수·라벨 길이의 함수라, 액션 4개인 `/live` 값을 액션 2개인 `/study` 에
+ * 그대로 쓰면 ~120px 일찍 접힌다. 반대 방향 사고의 전례가 #767 이다 — 2버튼
+ * 시절 값(344)을 4버튼 헤더에 방치해 71px 부족으로 `+보조지표` 가 무성 잘렸다.
+ */
+export type HeaderFoldThresholds = {
+  labelMinWidthPx: number;
+  labelRestoreWidthPx: number;
+  timeframeFoldWidthPx: number;
+  timeframeRestoreWidthPx: number;
+};
+
+/** `/live` 차트 창 헤더 — 액션 4버튼(그리기·보조지표·저장뷰·수집) 실측. */
+export const LIVE_HEADER_FOLD: HeaderFoldThresholds = {
+  labelMinWidthPx: HEADER_LABEL_MIN_WIDTH_PX,
+  labelRestoreWidthPx: HEADER_LABEL_RESTORE_WIDTH_PX,
+  timeframeFoldWidthPx: HEADER_TIMEFRAME_FOLD_WIDTH_PX,
+  timeframeRestoreWidthPx: HEADER_TIMEFRAME_RESTORE_WIDTH_PX,
+};
+
+/**
+ * `/study` 차트 창 헤더 — 액션 **2버튼**(그리기·보조지표). 저장뷰 저장·수집은
+ * `/study` 에 없다(지도 #900 Out of scope).
+ *
+ * 실측(2026-07-29, `/browse` 도그푸딩): 봉 그룹 **157** + 라벨 액션 **141** +
+ * 갭·패딩 **12** = **310px**. `/live` 와 같은 방식으로 긴 분봉 라벨·테마별 폰트
+ * 편차 여유를 얹어 **320** 으로 둔다.
+ *
+ * 액션 2개가 4개의 절반이라고 어림했던 잠정값(300)은 **2px 모자랐다** — 그대로
+ * 뒀으면 경계 폭에서 `보조지표` 가 무성 잘리는 #767 을 그대로 재현했을 것이다.
+ * 어림이 아니라 재야 하는 이유가 이것이다.
+ *
+ * ⚠️ 관측값은 `ResizeObserver` 의 `contentRect.width`(**content-box**)라 컨테이너
+ * 좌우 패딩 8px 을 이미 뺀 값이다 — `clientWidth` 로 비교하면 8px 어긋난다.
+ *
+ * 2단계(봉 접힘) 임계는 액션 라벨이 이미 접힌 뒤의 값이라 버튼 수에 덜 민감하고,
+ * 실측에서도 `/live` 값(258)이 그대로 맞았다(content-box 252 에서 접히고 잘림 없음).
+ */
+export const STUDY_HEADER_FOLD: HeaderFoldThresholds = {
+  labelMinWidthPx: 320,
+  labelRestoreWidthPx: 320 + 24,
+  timeframeFoldWidthPx: HEADER_TIMEFRAME_FOLD_WIDTH_PX,
+  timeframeRestoreWidthPx: HEADER_TIMEFRAME_RESTORE_WIDTH_PX,
+};
+
+/**
  * 폭과 직전 상태로 다음 접힘 단계를 정한다. 각 단계는 자기 dead band 안에서
  * 직전 상태를 유지하므로 같은 입력·같은 직전 상태에 대해 멱등이다
  * (StrictMode 이중 렌더 안전).
@@ -61,14 +109,18 @@ export const HEADER_FOLD_NONE: HeaderFold = { compactActions: false, compactTime
  * 폭 0 은 "아직 측정 전"(마운트 직후·display:none)이라 접지 않는다 — 첫 프레임에
  * 라벨이 깜빡 사라졌다 나타나는 것을 막는다.
  */
-export function nextHeaderFold(widthPx: number, prev: HeaderFold): HeaderFold {
+export function nextHeaderFold(
+  widthPx: number,
+  prev: HeaderFold,
+  thresholds: HeaderFoldThresholds = LIVE_HEADER_FOLD,
+): HeaderFold {
   if (widthPx <= 0) return prev;
   return {
     compactActions: prev.compactActions
-      ? widthPx < HEADER_LABEL_RESTORE_WIDTH_PX
-      : widthPx < HEADER_LABEL_MIN_WIDTH_PX,
+      ? widthPx < thresholds.labelRestoreWidthPx
+      : widthPx < thresholds.labelMinWidthPx,
     compactTimeframe: prev.compactTimeframe
-      ? widthPx < HEADER_TIMEFRAME_RESTORE_WIDTH_PX
-      : widthPx < HEADER_TIMEFRAME_FOLD_WIDTH_PX,
+      ? widthPx < thresholds.timeframeRestoreWidthPx
+      : widthPx < thresholds.timeframeFoldWidthPx,
   };
 }

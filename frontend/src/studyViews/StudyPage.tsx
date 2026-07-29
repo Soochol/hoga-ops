@@ -2,20 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { useNavigate, useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { PageContainer } from '../layout/PageContainer';
-import IndicatorPanel from '../live/indicators/IndicatorPanel';
-import { LiveChartRoot } from '../live/LiveChartRoot';
 import LiveSettingsModal from '../live/LiveSettingsModal';
-import { ChartDrawingShell } from '../live/ChartDrawingShell';
-import { DrawingMenu } from '../live/DrawingMenu';
-import { TimeframeControl } from '../live/TimeframeControl';
-import { IndicatorsButton, SettingsButton } from '../live/LiveToolbar';
+import { SettingsButton } from '../live/LiveToolbar';
+import { registerIndicatorDrawerOpener } from '../live/workspace/indicatorDrawerControls';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
-import { useStudyLastMinuteTimeframeStore } from '../state/studyLastMinuteTimeframe';
+import {
+  STUDY_DEFAULT_MINUTE_TIMEFRAME,
+  useStudyLastMinuteTimeframeStore,
+} from '../state/studyLastMinuteTimeframe';
+import { StudyIndicatorDrawer } from './StudyIndicatorDrawer';
 import { StudyWorkspaceCanvas, StudyWindowAddMenu } from './StudyWorkspaceCanvas';
 import { StudyWindowListMenu } from './StudyWindowListMenu';
 import { StudyTabBar } from './StudyTabBar';
@@ -31,7 +31,14 @@ import {
 } from './studyViewVariant';
 import { studyActiveViewModel } from './studyActiveViewModel';
 import { PanelCard } from '../ui/PageShell';
-import { DropOverlay, IconToolbarButton, WorkspaceHeader, WorkspaceRoot, WorkspaceState } from '../ui/WorkspaceShell';
+import {
+  DropOverlay,
+  IconToolbarButton,
+  WorkspaceHeader,
+  WorkspaceRoot,
+  WorkspaceState,
+  WorkspaceToolbar,
+} from '../ui/WorkspaceShell';
 
 function StudyDropOverlay() {
   return <DropOverlay>여기에 놓아 학습뷰 열기</DropOverlay>;
@@ -123,7 +130,11 @@ export function StudyPage() {
     if (memoWindow) workspace.closeWindow(memoWindow.id);
     else workspace.addWindow('memo');
   }, []);
-  const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
+  // 보조지표 드로어는 /live 와 같은 명령 채널을 쓴다 — 창 헤더 버튼이 **대상 창을
+  // 지정**하고(추론 금지) 페이지는 셸만 연다. 두 라우트가 동시에 마운트되지
+  // 않으므로 모듈 슬롯 하나를 공유해도 안전하다.
+  const [indicatorTargetId, setIndicatorTargetId] = useState<string | null>(null);
+  useEffect(() => registerIndicatorDrawerOpener(setIndicatorTargetId), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [memoError, setMemoError] = useState<string | null>(null);
   const tabs = useStudyTabsStore((state) => state.tabs);
@@ -145,6 +156,18 @@ export function StudyPage() {
     () => tabs.find((tab) => tab.id === activeTabId) ?? null,
     [activeTabId, tabs],
   );
+  // 봉은 차트 창이 런타임 소유자고 탭은 탭별 저장소다(#902 write-through 거울).
+  // v1 은 차트 창 1개 고정(ADR-0123).
+  const chartWindowId = useStudyWorkspaceStore(
+    (s) => s.windows.find((w) => w.kind === 'chart')?.id ?? null,
+  );
+  const setChartTimeframe = useStudyWorkspaceStore((s) => s.setChartTimeframe);
+  const chartWindowTimeframe = useStudyWorkspaceStore(
+    (s) => s.windows.find((w) => w.kind === 'chart')?.chart?.timeframe ?? null,
+  );
+  const chartWindowLastMinute = useStudyWorkspaceStore(
+    (s) => s.windows.find((w) => w.kind === 'chart')?.chart?.lastMinuteTimeframe ?? null,
+  );
   const activatedTabIds = useMemo(() => Array.from(activatedStudyTabIds), [activatedStudyTabIds]);
   const querySave = useMemo(
     () => savesQuery.data?.saves.find((row) => row.id === queryViewId) ?? null,
@@ -164,15 +187,23 @@ export function StudyPage() {
   // effect로 한 커밋 늦게 동기화되므로, 그걸 먼저 읽으면 "열 때 기본 시간봉"
   // override로 연 첫 렌더가 save.timeframe으로 range 번들(수십 MB)을 한 벌
   // 더 fetch한다. viewTimeframes는 탭 없는 라우트 과도기 전용 폴백.
+  // 창 봉을 먼저 읽지 않는 이유: 탭을 바꾼 첫 커밋에는 창이 아직 이전 탭의 봉을
+  // 들고 있다(재시드가 effect 라 한 커밋 늦다). 그때 창을 읽으면 엉뚱한 봉으로
+  // 번들을 한 벌 더 fetch 한다. write-through 로 둘이 같게 유지되므로 탭을 먼저
+  // 읽어도 창 소유와 어긋나지 않는다(#902).
   const selectedTimeframe = activeViewId && referenceSave
     ? (activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
+      ?? chartWindowTimeframe
       ?? viewTimeframes[activeViewId]
       ?? referenceSave.timeframe
     : null;
-  const rememberedMinuteTimeframe = activeViewId && referenceSave
-    ? rememberedMinuteTimeframes[activeViewId]
-      ?? (isMinuteTimeframe(referenceSave.timeframe) ? referenceSave.timeframe : '1m')
-    : '1m';
+  // 창별 분봉 기억이 헤더 컨트롤의 분봉 슬롯을 정한다(#902 — 전역
+  // studyLastMinuteTimeframe 은 서랍 "설정된 분봉으로 열기" 용으로 따로 산다).
+  const rememberedMinuteTimeframe = chartWindowLastMinute
+    ?? (activeViewId && referenceSave
+      ? rememberedMinuteTimeframes[activeViewId]
+        ?? (isMinuteTimeframe(referenceSave.timeframe) ? referenceSave.timeframe : '1m')
+      : STUDY_DEFAULT_MINUTE_TIMEFRAME);
   const displayedReferenceSave = useMemo(
     () => referenceSave && selectedTimeframe
       ? { ...referenceSave, timeframe: selectedTimeframe }
@@ -250,7 +281,15 @@ export function StudyPage() {
       },
     );
   }, [activeViewId, mutations.updateMetadata, selectedSave?.memo]);
+  /**
+   * 봉 전환 — 창이 소유하고 활성 탭에 **즉시 되받아쓴다**(#902 write-through).
+   *
+   * 이탈 시 캡처(뷰포트 방식)로는 부족하다: 탭 라벨에 봉이 박혀 있고 그 라벨은
+   * 비활성 탭에서도 보이므로, 지연 반영하면 활성 탭 라벨이 창 봉과 어긋난 채
+   * 노출된다. 봉은 문자열 하나라 상시 쓰기 비용도 없다.
+   */
   const changeTimeframe = useCallback((next: LiveTimeframe) => {
+    if (chartWindowId) setChartTimeframe(chartWindowId, next);
     if (!activeViewId) return;
     setViewTimeframes((current) => ({ ...current, [activeViewId]: next }));
     if (isMinuteTimeframe(next)) {
@@ -261,7 +300,18 @@ export function StudyPage() {
     if (activeTab && activeTab.viewId === activeViewId) {
       updateTabTimeframe(activeTab.id, next);
     }
-  }, [activeTab, activeViewId, updateTabTimeframe, setLastMinuteTimeframe]);
+  }, [activeTab, activeViewId, chartWindowId, setChartTimeframe, updateTabTimeframe, setLastMinuteTimeframe]);
+
+  /**
+   * 탭 재활성 시 창을 탭 값으로 **재시드**한다 — 탭 A(일봉)→B→A 로 돌아오면
+   * 일봉이 유지되는 이유(#902). 창이 이미 같은 봉이면 스토어가 no-op 이 아니라
+   * 백필 런타임을 건드리므로 여기서 먼저 걸러낸다.
+   */
+  useEffect(() => {
+    if (!chartWindowId || !selectedTimeframe) return;
+    if (chartWindowTimeframe === selectedTimeframe) return;
+    setChartTimeframe(chartWindowId, selectedTimeframe);
+  }, [chartWindowId, chartWindowTimeframe, selectedTimeframe, setChartTimeframe]);
 
   useEffect(() => {
     if (!activeTab) return;
@@ -376,12 +426,6 @@ export function StudyPage() {
           </StudyStateWorkspace>
         )}
       >
-        {indicatorPanelOpen && (
-          <IndicatorPanel
-            onClose={() => setIndicatorPanelOpen(false)}
-            timeframe={indicatorPanelTimeframe}
-          />
-        )}
         {settingsOpen && (
           <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
         )}
@@ -402,12 +446,6 @@ export function StudyPage() {
           </StudyStateWorkspace>
         )}
       >
-        {indicatorPanelOpen && (
-          <IndicatorPanel
-            onClose={() => setIndicatorPanelOpen(false)}
-            timeframe={indicatorPanelTimeframe}
-          />
-        )}
         {settingsOpen && (
           <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
         )}
@@ -429,12 +467,6 @@ export function StudyPage() {
           </StudyStateWorkspace>
         )}
       >
-        {indicatorPanelOpen && (
-          <IndicatorPanel
-            onClose={() => setIndicatorPanelOpen(false)}
-            timeframe={indicatorPanelTimeframe}
-          />
-        )}
         {settingsOpen && (
           <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
         )}
@@ -444,11 +476,13 @@ export function StudyPage() {
 
   const headerLabel = selectedSave?.label ?? activeTab?.label ?? '학습뷰';
   const headerCode = selectedSave?.code ?? activeTab?.code ?? '';
-  const headerTimeframe = selectedTimeframe ?? selectedSave?.timeframe ?? activeTab?.timeframe ?? null;
   const headerKindLabel = selectedSave ? studyViewKindLabel(selectedSave) : '복기뷰';
   const activeViewTimeframe = activeViewModel.status === 'ready' ? activeViewModel.save.timeframe : null;
+  // 가드의 실체는 "봉 전환 과도기에 옛 봉 번들 위로 새 봉 뷰포트가 새는 것" 차단이라
+  // 우변은 **로드된 번들의 봉** 그대로다. 좌변만 창 봉으로 바꾼다(#902) —
+  // selectedTimeframe 이 곧 창 봉이다(write-through 로 탭과 동치).
   const activeTabViewport =
-    activeTab?.viewId === activeViewId && activeTab.timeframe === activeViewTimeframe
+    activeTab?.viewId === activeViewId && selectedTimeframe === activeViewTimeframe
       ? activeTab.viewport
       : null;
   const canUseSavedViewport =
@@ -499,32 +533,19 @@ export function StudyPage() {
               />
             </div>
           )}
-          <div className="flex items-center gap-3 min-h-12 px-3 bg-bg-card">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">{headerLabel}</div>
-              <div className="flex items-center gap-2 text-xs text-[var(--fg-dimmer)]">
-                <span className="truncate">
-                  {headerCode} · {headerTimeframe ?? '-'} · {headerKindLabel}
-                </span>
-              </div>
+          {/* 봉·그리기·보조지표가 차트 창 헤더로 내려간 뒤 남는 줄(#903).
+              2줄 식별부를 한 줄로 눕히고 `WorkspaceToolbar`(36px 고정)를 쓴다 —
+              54px 을 만들던 건 버튼이 아니라 2줄 식별부였다. `· 5m` 은 뺐다:
+              창 헤더가 보여주고 탭 라벨에도 남아 손실이 없고, 멀티창에서
+              "어느 창의 봉인가" 라는 답 없는 질문을 만들지 않는다. */}
+          <WorkspaceToolbar testId="study-page-toolbar">
+            <div className="min-w-0 truncate text-xs">
+              <span className="font-semibold text-fg">{headerLabel}</span>
+              <span className="text-[var(--fg-dimmer)]">
+                {' '}{headerCode} · {headerKindLabel}
+              </span>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {headerTimeframe && (
-                <TimeframeControl
-                  timeframe={headerTimeframe}
-                  rememberedMinute={rememberedMinuteTimeframe}
-                  onChange={changeTimeframe}
-                />
-              )}
-              {/* 레일 폐기(#760)로 그리기가 툴바에 합류. /study 는 창 개념이
-                  없어 봉·액션이 원래 한 툴바에 있었으므로 겉보기는 그대로다. */}
-              {headerTimeframe && activeViewModel.status === 'ready' && (
-                <DrawingMenu
-                  code={activeViewModel.save.code}
-                  timeframe={activeViewModel.save.timeframe}
-                />
-              )}
-              <IndicatorsButton onClick={() => setIndicatorPanelOpen(true)} />
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               <SettingsButton onClick={() => setSettingsOpen(true)} />
               <StudyWindowListMenu />
               <StudyWindowAddMenu />
@@ -532,7 +553,7 @@ export function StudyPage() {
                 메모
               </IconToolbarButton>
             </div>
-          </div>
+          </WorkspaceToolbar>
           <div
             ref={studyDropTargetRef}
             data-testid="study-drop-target"
@@ -556,47 +577,48 @@ export function StudyPage() {
                       onCommit: commitMemo,
                     }
                   : null}
-                chartContent={(
-                  <div data-testid="study-chart-card" className="relative h-full min-h-0 min-w-0 overflow-hidden">
-                    {isStudyPageLoading ? (
-                      <div data-testid="study-page-loading" className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
-                        학습뷰 불러오는 중...
-                      </div>
-                    ) : activeViewModel.status === 'ready' ? (
-                      <ChartDrawingShell>
-                        <LiveChartRoot
-                          code={activeViewModel.save.code}
-                          timeframe={activeViewModel.save.timeframe}
-                          venue={referenceQuery.venue}
-                          viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}:${activeViewModel.save.timeframe}` : `${activeViewId}:${activeViewModel.save.timeframe}`}
-                          bundle={activeViewModel.bundle}
-                          chartBundle={activeViewModel.chartBundle}
-                          clampEngaged={false}
-                          isPastCandlesLoading={false}
-                          isExtending={false}
-                          pastDataWarnings={activeViewModel.pastDataWarnings}
-                          restoreViewport={restoreViewport}
-                          dayAskPeaks={activeViewModel.bundle.ask_peaks}
-                          dayBidPeaks={activeViewModel.bundle.bid_peaks}
-                          todayKst={activeViewModel.save.range.to_date}
-                          tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
-                          depthHeatmap={activeViewModel.bundle.depth_heatmap}
-                          forceHogaPanes
-                          dailyCandleKisEnabled={false}
-                          onViewportCaptureReady={handleViewportCaptureReady}
-                        />
-                      </ChartDrawingShell>
-                    ) : null}
-                  </div>
-                )}
+                chart={{
+                  code: activeViewModel.status === 'ready' ? activeViewModel.save.code : null,
+                  rememberedMinute: rememberedMinuteTimeframe,
+                  onTimeframeChange: changeTimeframe,
+                  targetLabel: headerLabel,
+                  loading: isStudyPageLoading,
+                  chart: activeViewModel.status === 'ready' ? {
+                    code: activeViewModel.save.code,
+                    timeframe: activeViewModel.save.timeframe,
+                    venue: referenceQuery.venue,
+                    // 창 id 를 키에 넣는다(#902) — #801 이 창을 늘리는 날 창마다
+                    // 독립 리마운트 경계가 따라오게. 봉 세그먼트는 **로드된 번들의
+                    // 봉**이라는 현행 의미를 유지한다(전환 과도기 리마운트 지연).
+                    viewIdentity: [chartWindowId, activeTabId, activeViewId, activeViewModel.save.timeframe]
+                      .filter(Boolean).join(':'),
+                    bundle: activeViewModel.bundle,
+                    chartBundle: activeViewModel.chartBundle,
+                    clampEngaged: false,
+                    isPastCandlesLoading: false,
+                    isExtending: false,
+                    pastDataWarnings: activeViewModel.pastDataWarnings,
+                    restoreViewport,
+                    dayAskPeaks: activeViewModel.bundle.ask_peaks,
+                    dayBidPeaks: activeViewModel.bundle.bid_peaks,
+                    todayKst: activeViewModel.save.range.to_date,
+                    tradeVolumePocs: tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs),
+                    depthHeatmap: activeViewModel.bundle.depth_heatmap,
+                    forceHogaPanes: true,
+                    dailyCandleKisEnabled: false,
+                    onViewportCaptureReady: handleViewportCaptureReady,
+                  } : null,
+                }}
               />
             </div>
             {draggingEntry && overStudy && <StudyDropOverlay />}
           </div>
-          {indicatorPanelOpen && (
-            <IndicatorPanel
-              onClose={() => setIndicatorPanelOpen(false)}
-              timeframe={indicatorPanelTimeframe}
+          {indicatorTargetId != null && (
+            <StudyIndicatorDrawer
+              windowId={indicatorTargetId}
+              code={selectedSave?.code ?? null}
+              targetLabel={headerLabel}
+              onClose={() => setIndicatorTargetId(null)}
             />
           )}
           {settingsOpen && (

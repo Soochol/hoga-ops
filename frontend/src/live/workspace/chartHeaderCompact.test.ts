@@ -6,6 +6,8 @@ import {
   HEADER_TIMEFRAME_FOLD_WIDTH_PX,
   HEADER_TIMEFRAME_RESTORE_WIDTH_PX,
   nextHeaderFold,
+  LIVE_HEADER_FOLD,
+  STUDY_HEADER_FOLD,
   type HeaderFold,
 } from './chartHeaderCompact';
 
@@ -84,5 +86,35 @@ describe('nextHeaderFold', () => {
         expect(nextHeaderFold(width, once)).toEqual(once);
       }
     }
+  });
+});
+
+describe('표면별 임계 (#903 — 정책은 공유, 숫자는 표면마다)', () => {
+  // 액션 4버튼(/live) 값을 액션 2버튼(/study)에 그대로 쓰면 ~120px 일찍 접힌다.
+  // 반대 방향으로 틀린 전례가 #767 이다(2버튼 값을 4버튼 헤더에 방치 → 무성 잘림).
+  it('/study 는 /live 보다 좁은 폭까지 라벨을 유지한다', () => {
+    expect(STUDY_HEADER_FOLD.labelMinWidthPx).toBeLessThan(LIVE_HEADER_FOLD.labelMinWidthPx);
+
+    // 두 임계 사이의 폭에서 판정이 갈리는 게 이 분리의 전부다.
+    const between = (LIVE_HEADER_FOLD.labelMinWidthPx + STUDY_HEADER_FOLD.labelMinWidthPx) / 2;
+    expect(nextHeaderFold(between, HEADER_FOLD_NONE, LIVE_HEADER_FOLD).compactActions).toBe(true);
+    expect(nextHeaderFold(between, HEADER_FOLD_NONE, STUDY_HEADER_FOLD).compactActions).toBe(false);
+  });
+
+  it('기본 인자는 /live — 인자를 빠뜨린 호출부가 조용히 달라지지 않는다', () => {
+    for (const width of [160, 250, 300, 400, 424, 500]) {
+      expect(nextHeaderFold(width, HEADER_FOLD_NONE))
+        .toEqual(nextHeaderFold(width, HEADER_FOLD_NONE, LIVE_HEADER_FOLD));
+    }
+  });
+
+  it('히스테리시스는 표면과 무관하게 유지된다', () => {
+    const folded = nextHeaderFold(STUDY_HEADER_FOLD.labelMinWidthPx - 1, HEADER_FOLD_NONE, STUDY_HEADER_FOLD);
+    expect(folded.compactActions).toBe(true);
+    // 접힘 임계를 갓 넘긴 폭에서는 아직 되펴지 않는다(1px 떨림 방지).
+    const stillFolded = nextHeaderFold(STUDY_HEADER_FOLD.labelMinWidthPx + 1, folded, STUDY_HEADER_FOLD);
+    expect(stillFolded.compactActions).toBe(true);
+    const restored = nextHeaderFold(STUDY_HEADER_FOLD.labelRestoreWidthPx, folded, STUDY_HEADER_FOLD);
+    expect(restored.compactActions).toBe(false);
   });
 });

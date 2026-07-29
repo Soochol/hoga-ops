@@ -1,8 +1,8 @@
+import { useStudyChartIndicators } from './useStudyChartIndicators';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import type { LiveVenueOption } from '../state/liveVenue';
-import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { LiveDataWarning } from '../live/liveDataWarnings';
 import type { LiveEffectiveSession } from '../api/livePastCandles';
@@ -41,12 +41,16 @@ const STUDY_VENUE: LiveVenueOption = 'KRX';
 export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const venue = STUDY_VENUE;
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
-  const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
-  const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
-  const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
-  const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
-  const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
-  const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
+  // 지표는 차트 창이 소유한다(#904) — 전역을 읽으면 차트가 그릴 지표와 여기서
+  // 받아오는 데이터가 어긋난다.
+  const {
+    brokerLateEntryEnabled,
+    brokerLateEntryStartHHMM,
+    tradeVolumePocEnabled,
+    depthHeatmapEnabled,
+    volumeDistributionEnabled,
+    volumeDistributionRangeCount,
+  } = useStudyChartIndicators();
   const queryOptions = useMemo(
     () => studyReferenceQueryOptions(save, {
       sourcePref,
