@@ -5,10 +5,12 @@ import {
   computeContinuousTradeVolumeDistribution,
   mergeVolumeDistributionTail,
   firstTrailingSinglePriceBookMs,
+  regularSessionBinningSegment,
   selectVolumeDistributionProfile,
   volumeDistributionClosePointsFromCandles,
   volumeDistributionClosePoints,
 } from './continuousTradeVolumeDistribution';
+import { regularSessionCloseMs, regularSessionOpenMs } from './liveDateTime';
 import type { DayVolumeDistribution } from '../api/types';
 import type { ObSnapshot } from './bucketHogaSeries';
 
@@ -264,5 +266,54 @@ describe('computeContinuousTradeVolumeDistribution', () => {
       { t_ms: Date.UTC(2026, 5, 25, 0, 1), close: 101 },
       { t_ms: Date.UTC(2026, 5, 25, 0, 2), close: 102 },
     ]);
+  });
+});
+
+describe('regularSessionBinningSegment', () => {
+  const date = '20260625';
+  const regularOpen = regularSessionOpenMs(date);
+  const regularClose = regularSessionCloseMs(date);
+
+  it('clamps the venue=UN extended window down to the regular session', () => {
+    // 08:00~20:00 (liveVenuePolicy 확장창)
+    const extended = {
+      date,
+      session_open_ms: regularOpen - 60 * 60 * 1000,
+      session_close_ms: regularOpen + 11 * 3600 * 1000,
+    };
+
+    expect(regularSessionBinningSegment(extended)).toEqual({
+      date,
+      session_open_ms: regularOpen,
+      session_close_ms: regularClose,
+    });
+  });
+
+  it('returns the same reference when already within the regular session', () => {
+    const regular = { date, session_open_ms: regularOpen, session_close_ms: regularClose };
+
+    expect(regularSessionBinningSegment(regular)).toBe(regular);
+  });
+
+  it('keeps a measured session that is narrower than the regular one', () => {
+    // 반장(半場)·실측 effective_sessions 처럼 정규장보다 좁은 창은 존중한다(교집합).
+    const halfDay = {
+      date,
+      session_open_ms: regularOpen,
+      session_close_ms: regularOpen + 4 * 3600 * 1000,
+    };
+
+    expect(regularSessionBinningSegment(halfDay)).toBe(halfDay);
+  });
+
+  it('preserves unrelated segment fields', () => {
+    const withSource = {
+      date,
+      session_open_ms: regularOpen - 60 * 60 * 1000,
+      session_close_ms: regularClose,
+      source: 'kiwoom_live' as const,
+    };
+
+    expect(regularSessionBinningSegment(withSource).source).toBe('kiwoom_live');
   });
 });

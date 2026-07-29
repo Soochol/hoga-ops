@@ -234,6 +234,103 @@ describe('VolumeDistributionCard', () => {
   });
 });
 
+describe('VolumeDistributionCard 확장축', () => {
+  // venue=UN 은 표시창이 08:00~20:00 이지만 bar 는 정규장 연속체결만 담는다.
+  // 막대는 집계 창에 갇히고, 종가 라인은 NXT 시간대까지 이어져야 한다.
+  const axisStartMs = sessionOpenMs - 60 * 60 * 1000;        // 08:00
+  const lastCloseMs = sessionOpenMs + 10.5 * 3600 * 1000;    // 19:30
+  const axisSpanMs = lastCloseMs - axisStartMs;
+
+  function renderExtended() {
+    return render(
+      <VolumeDistributionCard
+        profile={profile}
+        cursorMs={null}
+        closePoints={[
+          { t_ms: axisStartMs, close: 100 },
+          { t_ms: sessionCloseMs, close: 110 },
+          { t_ms: lastCloseMs, close: 120 },
+        ]}
+        color="#64748B"
+        maxColor="#EAB308"
+        axisStartMs={axisStartMs}
+      />,
+    );
+  }
+
+  it('confines bars to the binning window', () => {
+    renderExtended();
+
+    const barWindow = screen.getByTestId('volume-distribution-bar-window') as HTMLElement;
+    // 09:00 에서 시작해 15:30 에서 끝난다 — 축(08:00~19:30)의 부분구간.
+    expect(parsePct(barWindow.style.left))
+      .toBeCloseTo(((sessionOpenMs - axisStartMs) / axisSpanMs) * 100, 6);
+    expect(parsePct(barWindow.style.right))
+      .toBeCloseTo(100 - ((sessionCloseMs - axisStartMs) / axisSpanMs) * 100, 6);
+  });
+
+  it('marks both edges of the binning window', () => {
+    renderExtended();
+
+    const edges = screen.getAllByTestId('volume-distribution-bin-window-edge') as HTMLElement[];
+    expect(edges).toHaveLength(2);
+    const barWindow = screen.getByTestId('volume-distribution-bar-window') as HTMLElement;
+    // 경계선은 막대 구간의 시작·끝과 같은 자리에 선다.
+    expect(parsePct(edges[0].style.left)).toBeCloseTo(parsePct(barWindow.style.left), 6);
+    expect(parsePct(edges[1].style.left)).toBeCloseTo(100 - parsePct(barWindow.style.right), 6);
+  });
+
+  it('draws no edge line when the window fills the axis', () => {
+    render(
+      <VolumeDistributionCard
+        profile={profile}
+        cursorMs={null}
+        closePoints={[
+          { t_ms: sessionOpenMs, close: 100 },
+          { t_ms: sessionCloseMs, close: 120 },
+        ]}
+        color="#64748B"
+        maxColor="#EAB308"
+      />,
+    );
+
+    expect(screen.queryAllByTestId('volume-distribution-bin-window-edge')).toHaveLength(0);
+  });
+
+  it('keeps the close line and time axis on the full extended span', () => {
+    renderExtended();
+
+    // 라인은 축 시작(08:00)에서 끝(19:30)까지 — 잘리지 않는다.
+    const path = screen.getByTestId('volume-distribution-close-graph').querySelector('path');
+    const d = path?.getAttribute('d') ?? '';
+    expect(d.startsWith('M 0.00')).toBe(true);
+    expect(d.endsWith('100.00 0.00')).toBe(true);
+
+    const timeAxis = screen.getByTestId('volume-distribution-time-axis');
+    expect(timeAxis).toHaveTextContent('08:00');
+    expect(timeAxis).toHaveTextContent('19:30');
+  });
+
+  it('spans the full width when the axis matches the binning window', () => {
+    render(
+      <VolumeDistributionCard
+        profile={profile}
+        cursorMs={null}
+        closePoints={[
+          { t_ms: sessionOpenMs, close: 100 },
+          { t_ms: sessionCloseMs, close: 120 },
+        ]}
+        color="#64748B"
+        maxColor="#EAB308"
+      />,
+    );
+
+    const barWindow = screen.getByTestId('volume-distribution-bar-window') as HTMLElement;
+    expect(parsePct(barWindow.style.left)).toBe(0);
+    expect(parsePct(barWindow.style.right)).toBe(0);
+  });
+});
+
 function parsePct(value: string): number {
   const parsed = Number.parseFloat(value);
   expect(value.endsWith('%')).toBe(true);
