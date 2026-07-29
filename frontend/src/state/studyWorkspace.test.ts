@@ -403,3 +403,61 @@ describe('차트 창 설정 쓰기 경로 (#906 — windowView 핸들 계약)', 
     expect(storedWorkspace()).not.toHaveProperty('chartRuntime');
   });
 });
+
+/** 탭 격리 — /live 와 같은 계약(state/workspace.ts 스코프 주석). `persistFromState` 가
+ *  스냅샷 전체를 쓰므로 공유 키 하나를 두 탭이 나눠 쓰면 오래된 탭의 조작 하나가
+ *  다른 탭의 배치를 통째로 되돌린다. 자기 탭 저장소를 authoritative 로 두어 끊는다. */
+describe('탭 격리 (study.workspace.v1)', () => {
+  /** 창 1개짜리 raw 스냅샷 — 어느 저장소에 심었는지 구분하려고 id 를 달리 준다.
+   *  `chart` 설정을 채워 둔다: 없으면 `needsChartConfigSeed`(#906) 가 하이드레이션
+   *  중 설정을 붙이고 즉시 persist 하므로, "열기만 해서는 안 쓴다" 를 볼 수 없다. */
+  function seed(store: Storage, windowId: string) {
+    store.setItem(
+      'study.workspace.v1',
+      JSON.stringify({
+        schema_version: 1,
+        windows: [{
+          id: windowId,
+          kind: 'chart',
+          rect: { x: 0, y: 0, w: 0.7, h: 1 },
+          chart: {
+            timeframe: '1m',
+            indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} },
+          },
+        }],
+        zOrder: [windowId],
+      }),
+    );
+  }
+
+  it('변경은 자기 탭(session)과 공유 시드(local)에 함께 기록된다', async () => {
+    const { useStudyWorkspaceStore } = await importFresh();
+    useStudyWorkspaceStore.getState().addWindow('memo');
+
+    const session = JSON.parse(sessionStorage.getItem('study.workspace.v1') ?? 'null');
+    const local = JSON.parse(localStorage.getItem('study.workspace.v1') ?? 'null');
+    expect(session.windows.some((w: { kind: string }) => w.kind === 'memo')).toBe(true);
+    // 공유 키는 "새 탭의 시드" — 열린 탭은 읽지 않으므로 갱신해도 경합이 아니다.
+    expect(local.windows.some((w: { kind: string }) => w.kind === 'memo')).toBe(true);
+  });
+
+  it('회귀 핵심: 다른 탭이 공유 시드를 덮어써도 이미 열린 탭은 밟히지 않는다', async () => {
+    seed(sessionStorage, 'mine');
+    seed(localStorage, 'theirs');
+
+    const { useStudyWorkspaceStore } = await importFresh();
+
+    expect(useStudyWorkspaceStore.getState().windows.map((w) => w.id)).toEqual(['mine']);
+  });
+
+  it('자기 저장소가 비어 있으면 공유 시드를 물려받고, 열기만 해서는 쓰지 않는다', async () => {
+    seed(localStorage, 'theirs');
+
+    const { useStudyWorkspaceStore } = await importFresh();
+
+    expect(useStudyWorkspaceStore.getState().windows.map((w) => w.id)).toEqual(['theirs']);
+    // 시드는 읽기 전용 — 하이드레이션만으로 탭 저장소가 생기지 않는다(유효 창이
+    // 있으므로 재시드 persist 경로를 타지 않는다).
+    expect(sessionStorage.getItem('study.workspace.v1')).toBeNull();
+  });
+});
