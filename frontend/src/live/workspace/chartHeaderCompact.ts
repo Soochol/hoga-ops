@@ -77,28 +77,50 @@ export const LIVE_HEADER_FOLD: HeaderFoldThresholds = {
 };
 
 /**
+ * `/study` 차트 창 헤더가 각 접힘 단계에서 **실제로 요구하는 폭**(content-box, px).
+ *
+ * 실측 방법(#905, 2026-07-29): `/browse` 로 실제 저장뷰를 열고 헤더를 자유 폭
+ * 컨테이너에 복제해 `max-content` 폭을 잰 뒤 컨테이너 패딩을 뺐다. 창 폭을
+ * 0.72 → 0.13(=`MIN_W`)까지 좁혀 가며 단계별로 반복.
+ *
+ * 불변 확인: **두 테마(obsidian·ledger) 동일**(DESIGN.md 의 "테마는 색만" 과 일치),
+ * **최장 분봉 라벨(30분)에서도 동일**(봉 라벨이 `tnum` 이라 자릿수 폭이 같다).
+ *
+ * ⚠️ 관측값은 `ResizeObserver` 의 `contentRect.width`(**content-box**)라 컨테이너
+ * 좌우 패딩(기본 밀도에서 9px)을 이미 뺀 값이다 — `clientWidth` 로 비교하면 어긋난다.
+ */
+export const STUDY_HEADER_NEED = {
+  /** 다 펴진 상태: 봉 그룹 + 라벨 단 액션 2개. */
+  full: 303,
+  /** 1단계: 액션 라벨만 접음(아이콘 2개) + 봉 그룹 유지. */
+  actionsFolded: 202,
+  /** 2단계: 봉 드롭다운 + 아이콘 2개. 이보다 좁아지면 더 접을 게 없다. */
+  bothFolded: 104,
+} as const;
+
+/** 되펴기 dead band 와 별개인 접힘 여유 — 폰트 렌더 편차·소수 픽셀 반올림 몫. */
+const STUDY_FOLD_MARGIN_PX = 16;
+
+/**
  * `/study` 차트 창 헤더 — 액션 **2버튼**(그리기·보조지표). 저장뷰 저장·수집은
  * `/study` 에 없다(지도 #900 Out of scope).
  *
- * 실측(2026-07-29, `/browse` 도그푸딩): 봉 그룹 **157** + 라벨 액션 **141** +
- * 갭·패딩 **12** = **310px**. `/live` 와 같은 방식으로 긴 분봉 라벨·테마별 폰트
- * 편차 여유를 얹어 **320** 으로 둔다.
+ * 임계를 실측값에서 **파생**시킨다. 재측정하면 위 숫자 하나만 고치면 되고,
+ * "임계가 그 단계의 요구 폭보다 큰가" 를 테스트가 기계적으로 검사할 수 있다.
  *
- * 액션 2개가 4개의 절반이라고 어림했던 잠정값(300)은 **2px 모자랐다** — 그대로
- * 뒀으면 경계 폭에서 `보조지표` 가 무성 잘리는 #767 을 그대로 재현했을 것이다.
- * 어림이 아니라 재야 하는 이유가 이것이다.
+ * `/live` 값을 그대로 쓰면 **양방향으로 틀린다**:
+ * - 1단계 424 는 너무 커서 라벨이 121px 일찍 사라지고,
+ * - 2단계 258 은 너무 커서 일·주·월이 **56px 일찍** 사라진다(1단계 형태는 202 면 된다).
  *
- * ⚠️ 관측값은 `ResizeObserver` 의 `contentRect.width`(**content-box**)라 컨테이너
- * 좌우 패딩 8px 을 이미 뺀 값이다 — `clientWidth` 로 비교하면 8px 어긋난다.
- *
- * 2단계(봉 접힘) 임계는 액션 라벨이 이미 접힌 뒤의 값이라 버튼 수에 덜 민감하고,
- * 실측에서도 `/live` 값(258)이 그대로 맞았다(content-box 252 에서 접히고 잘림 없음).
+ * 어림도 못 미덥다 — "액션 2개는 4개의 절반" 으로 잡은 잠정값 300 은 실측 303 보다
+ * **3px 모자랐다**. 그대로 뒀으면 경계 폭에서 `보조지표` 가 무성 잘리는 #767 의
+ * 재현이다. 반대 방향 전례도 같은 파일이 경고하고 있었다.
  */
 export const STUDY_HEADER_FOLD: HeaderFoldThresholds = {
-  labelMinWidthPx: 320,
-  labelRestoreWidthPx: 320 + 24,
-  timeframeFoldWidthPx: HEADER_TIMEFRAME_FOLD_WIDTH_PX,
-  timeframeRestoreWidthPx: HEADER_TIMEFRAME_RESTORE_WIDTH_PX,
+  labelMinWidthPx: STUDY_HEADER_NEED.full + STUDY_FOLD_MARGIN_PX,
+  labelRestoreWidthPx: STUDY_HEADER_NEED.full + STUDY_FOLD_MARGIN_PX + 24,
+  timeframeFoldWidthPx: STUDY_HEADER_NEED.actionsFolded + STUDY_FOLD_MARGIN_PX,
+  timeframeRestoreWidthPx: STUDY_HEADER_NEED.actionsFolded + STUDY_FOLD_MARGIN_PX + 24,
 };
 
 /**
