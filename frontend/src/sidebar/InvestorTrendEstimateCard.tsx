@@ -41,14 +41,18 @@ export function InvestorTrendEstimateCard({ query }: Props) {
       )}
 
       <table className="w-full table-fixed border-collapse font-data text-sm tabular-nums">
-        {/* 헤더는 선이 아니라 톤 밴드로 분리한다(DESIGN.md "구분선 최소화").
-            sticky 는 창을 좁혀 스크롤이 생겼을 때 컬럼 이름을 붙잡아 둔다. */}
+        {/* 헤더 배경은 창 본문(--bg-card)과 같은 값 — 밴드로 분리하지 않는다
+            (2026-07-30 사용자 결정, 거래원 합계행 #961 과 동일 방침).
+            sticky 는 창을 좁혀 스크롤이 생겼을 때 컬럼 이름을 붙잡아 두므로
+            배경 자체는 필수다 — 투명하면 스크롤되는 행이 뒤로 비친다.
+            배경을 thead/tr 이 아니라 th 마다 주는 이유: border-collapse 표에서는
+            thead/tr 배경이 sticky 헤더를 따라오지 않는다. */}
         <thead className="sticky top-0 z-10 text-xs text-fg-dimmer">
           <tr>
-            <th className="w-[4.6rem] bg-bg-subtle py-1.5 pl-3 pr-1.5 text-left font-medium">차수</th>
-            <th className="bg-bg-subtle px-1.5 py-1.5 text-right font-medium">외국인</th>
-            <th className="bg-bg-subtle px-1.5 py-1.5 text-right font-medium">기관</th>
-            <th className="bg-bg-subtle py-1.5 pl-1.5 pr-3 text-right font-medium">합산</th>
+            <th className="w-[4.6rem] bg-bg-card py-1.5 pl-3 pr-1.5 text-left font-medium">차수</th>
+            <th className="bg-bg-card px-1.5 py-1.5 text-right font-medium">외국인</th>
+            <th className="bg-bg-card px-1.5 py-1.5 text-right font-medium">기관</th>
+            <th className="bg-bg-card py-1.5 pl-1.5 pr-3 text-right font-medium">합산</th>
           </tr>
         </thead>
         <tbody>
