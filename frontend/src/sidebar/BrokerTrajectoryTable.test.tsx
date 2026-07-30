@@ -406,13 +406,14 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
     expect(screen.getByTestId('broker-foreign-sum')).toHaveTextContent('+200');
   });
 
-  // bg-bg-card 였을 땐 창 배경과 같은 값이라 밴드가 한 픽셀도 보이지 않았다.
-  // 토큰 값이 또 합쳐져도 깨지도록 클래스를 못박는다.
-  it('pins the foreign total row as a --bg-subtle tone band', () => {
+  // 2026-07-30 사용자 결정: 합계행은 창 본문(--bg-card)과 같은 배경 — 밴드 금지.
+  // sticky 라 배경 클래스 자체는 남아야 한다(투명하면 스크롤 행이 뒤로 비친다).
+  it('keeps the foreign total row on the window body background (no tone band)', () => {
     const series: BrokerSeriesEntry[] = [entry('JP모간', [{ ts_ms: 1_000, net: 200 }])];
     render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
     const totalRow = screen.getByText('외국계 합계').parentElement;
-    expect(totalRow).toHaveClass('bg-bg-subtle');
+    expect(totalRow).toHaveClass('bg-bg-card');
+    expect(totalRow).not.toHaveClass('bg-bg-subtle');
     expect(totalRow).toHaveClass('sticky');
   });
 });
