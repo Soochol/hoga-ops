@@ -105,7 +105,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 �
                     enqueued_count=0, deduped_count=0,
                     error=ManualCatchupError(code=e.code, message="Trading-day list unavailable (KIS)."),
                 ))
-            except Exception:  # noqa: BLE001 — one bad entry mustn't kill the run
+            except Exception:  # one bad entry mustn't kill the run
                 log.exception("catchup_all: entry %s/%s failed", entry.code, entry.name)
                 results.append(ManualCatchupAllEntryResult(
                     code=entry.code, name=entry.name,
@@ -126,7 +126,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 �
             }) from e
         try:
             await refresh_live_stream(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — stream re-sync is best-effort; the mutation already succeeded
+        except Exception:  # stream re-sync is best-effort; the mutation already succeeded
             log.exception("watchlist.remove: refresh_live_stream failed code=%s", code)
 
     @router.post("/{code}/catchup", status_code=201, response_model=EnqueueResponse)
@@ -168,7 +168,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 �
         # 폴더 순서 변경은 표시 순서(=Live Set 산출 입력)를 바꾼다.
         try:
             await refresh_live_stream(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
+        except Exception:  # best-effort, mutation already succeeded
             log.exception("watchlist.folders_order: refresh_live_stream failed")
 
     @router.patch("/folders/{folder_id}", status_code=204)
@@ -218,7 +218,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 �
                 "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
         try:
             await refresh_live_stream(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
+        except Exception:  # best-effort, mutation already succeeded
             log.exception("watchlist.folder_delete: refresh_live_stream failed")
 
     @router.post("/folders/{folder_id}/members", status_code=201, response_model=WatchlistEntry)
@@ -238,7 +238,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 �
                 "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
         try:
             await refresh_live_stream(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # best-effort
             log.exception("watchlist.add_member: refresh_live_stream failed code=%s", req.code)
         return entry
 
@@ -251,7 +251,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 �
                 "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
         try:
             await refresh_live_stream(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # best-effort
             log.exception("watchlist.remove_member: refresh_live_stream failed code=%s", code)
 
     @router.put("/reorder", status_code=204)
@@ -269,7 +269,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 �
         # 그룹 내 reorder = 표시 순서 변경 → W-경계 넘으면 구독 스왑.
         try:
             await refresh_live_stream(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
+        except Exception:  # best-effort, mutation already succeeded
             log.exception("watchlist.reorder: refresh_live_stream failed")
 
     @router.post("/remove", status_code=204)
@@ -277,7 +277,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 �
         await remove_entries(data_dir, codes=req.codes)
         try:
             await refresh_live_stream(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
+        except Exception:  # best-effort, mutation already succeeded
             log.exception("watchlist.bulk_remove: refresh_live_stream failed")
 
     return router

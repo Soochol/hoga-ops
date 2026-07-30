@@ -124,7 +124,7 @@ def parse_stock_date(
     # 그 외·의심 라인은 python parse_row 폴백 — strict/lenient 오류 의미론
     # 바이트 동일. 리스트 경로(_collect_events)는 폴백·오라클로 상존한다.
     from hoga.parser.frames import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        collect_event_frames,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        collect_event_frames,
     )
     collected = collect_event_frames(raw_dir, lenient=lenient)
     skipped = collected.skipped

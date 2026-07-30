@@ -51,7 +51,7 @@ def collect(
                 data_dir=resolve_data_dir(),
                 resume=resume,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             console.print(f"[red]collect failed: {e}[/red]")
             raise typer.Exit(code=1) from e
     console.print(
@@ -70,7 +70,7 @@ def parse(
     """Parse captured raw TSV into Parquet."""
     try:
         out = parse_stock_date(code=code, date=date, data_dir=resolve_data_dir(), lenient=lenient)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         console.print(f"[red]parse failed: {e}[/red]")
         raise typer.Exit(code=1) from e
     console.print(f"[green]parsed[/green] {code}/{date} -> {out}")
@@ -165,7 +165,7 @@ def screener_seed() -> None:
 
     try:
         n = seed_all(resolve_data_dir(), now_ms=int(time.time() * 1000))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         console.print(f"[red]screener-seed failed: {e}[/red]")
         raise typer.Exit(code=1) from e
     console.print(f"[green]seeded[/green] screener archive: {n} stocks")
@@ -181,13 +181,13 @@ def screener_backfill() -> None:
     import time  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     from hoga.api.screener_backfill import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        run_backfill,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        run_backfill,
     )
 
     t0 = time.time()
     try:
         rep = asyncio.run(run_backfill(resolve_data_dir()))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         console.print(f"[red]screener-backfill failed: {e}[/red]")
         raise typer.Exit(code=1) from e
     print(f"backfill done in {time.time() - t0:.0f}s: "
@@ -202,7 +202,7 @@ async def _run_repair_sweep(data_dir: Path, *, dry_run: bool) -> None:
     from hoga.api.queries import QueryEngine  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     from hoga.live import candle_repair  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     from hoga.live.kis_runtime import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        ensure_kis_client_from_env,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        ensure_kis_client_from_env,
     )
 
     saves = study_views.load_saves(data_dir).saves
@@ -283,7 +283,7 @@ def repair_study_candles(
     data_dir = resolve_data_dir()
     try:
         asyncio.run(_run_repair_sweep(data_dir, dry_run=dry_run))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         console.print(f"[red]repair-study-candles failed: {e}[/red]")
         raise typer.Exit(code=1) from e
 
@@ -327,7 +327,7 @@ def depth_daily_sweep(
     t0 = time.time()
     try:
         res = depth_daily.sweep(data_dir, codes=codes)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         console.print(f"[red]depth-daily-sweep failed: {e}[/red]")
         raise typer.Exit(code=1) from e
     console.print(
@@ -353,7 +353,7 @@ def backfill_live_meta_cmd(
     data_dir = resolve_data_dir()
     try:
         res = backfill_live_meta(data_dir, dry_run=dry_run)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         console.print(f"[red]backfill-live-meta failed: {e}[/red]")
         raise typer.Exit(code=1) from e
     tag = "dry-run" if dry_run else "done"
@@ -379,7 +379,7 @@ def backfill_hogaplay_meta_cmd(
     data_dir = resolve_data_dir()
     try:
         res = backfill_hogaplay_meta(data_dir, dry_run=dry_run)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         console.print(f"[red]backfill-hogaplay-meta failed: {e}[/red]")
         raise typer.Exit(code=1) from e
     tag = "dry-run" if dry_run else "done"
@@ -559,7 +559,7 @@ def validate(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기
     import json as _json  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     from hoga.api.invariants import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        check as _check,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        check as _check,
     )
     from hoga.config import resolve_data_dir  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 

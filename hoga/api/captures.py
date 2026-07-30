@@ -640,7 +640,7 @@ def _publish_event(event: BaseModel) -> None:
         return
     try:
         payload = event.model_dump(mode="json")
-    except Exception:  # noqa: BLE001 — keep SSE channel alive on serializer bugs
+    except Exception:  # keep SSE channel alive on serializer bugs
         logging.getLogger(__name__).exception(
             "_publish_event: failed to serialize %s; event dropped",
             type(event).__name__,
@@ -745,7 +745,7 @@ async def _run_capture_and_parse(
     — Task 11 backoff is INTERNAL.
     """
     from hoga.collector.orchestrator import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        CaptureCancelled,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        CaptureCancelled,
     )
     collector = collector or NullTimingCollector()
     if state.cancel_token is None:
@@ -886,7 +886,7 @@ async def _run_capture_inner(
                 data_dir, codes={state.code}, dates={state.date},
             ),
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         logging.getLogger(__name__).exception(
             "depth_daily incremental sweep failed for %s/%s", state.code, state.date,
         )
@@ -976,7 +976,7 @@ async def _finalize_item(state: QueueItemState) -> None:
     """Move state into _done, publish finished, wake other workers, emit
     drained if applicable."""
     from hoga.api.models import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        CaptureQueueDrainedEvent,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        CaptureQueueDrainedEvent,
     )
 
     # ADR-0042 (amended 2026-06-03) + ADR-0034: ``phase="done"`` only means "worker
@@ -1061,7 +1061,7 @@ async def _finalize_item(state: QueueItemState) -> None:
             await watchlist.bump_last_success(
                 _require_data_dir(), code=state.code, date=state.date,
             )
-        except Exception:  # noqa: BLE001 — never let watchlist break the queue
+        except Exception:  # never let watchlist break the queue
             logging.getLogger(__name__).exception(
                 "watchlist bump_last_success failed for %s/%s",
                 state.code, state.date,
@@ -1326,7 +1326,7 @@ def _expand_to_trading_days(start: str, end: str) -> list[str]:
     the calendar function source.
     """
     from hoga.api.calendar import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        trading_days_in_range,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        trading_days_in_range,
     )
     return trading_days_in_range(start, end)
 
@@ -1835,7 +1835,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         """
         _require_queue_ownership()  # ADR-0094
         from hoga.api.fail_streak import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-            streak_key,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+            streak_key,
         )
         key = streak_key(code, date)
         async with _lock:

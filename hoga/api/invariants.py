@@ -332,7 +332,7 @@ def _series_snapshots_no_gaps(a: StockDateArtifacts) -> list[Violation]:
         # to compute the Auction Window cutoff; skip rather than guess a default.
         return []
     from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        has_meaningful_gaps,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        has_meaningful_gaps,
     )
     from hoga.api.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     ts_values = [HogaMs(ts) for ts in raw_ts]
@@ -373,12 +373,12 @@ def _series_snapshots_no_gaps(a: StockDateArtifacts) -> list[Violation]:
 def _series_cum_vol_monotonic(a: StockDateArtifacts) -> list[Violation]:
     if a.trades_frame is not None:
         from hoga.tables.trades import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-            find_cum_vol_violations_frame,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+            find_cum_vol_violations_frame,
         )
         violations = find_cum_vol_violations_frame(a.trades_frame)
     elif a.trades is not None:
         from hoga.tables.trades import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-            find_cum_vol_violations,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+            find_cum_vol_violations,
         )
         violations = find_cum_vol_violations(a.trades)
     else:

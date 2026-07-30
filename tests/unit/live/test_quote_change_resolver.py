@@ -1,4 +1,5 @@
 import datetime as dt
+import logging
 
 import duckdb
 
@@ -195,6 +196,45 @@ def test_missing_adjusted_file_falls_back_to_kis_without_warning(tmp_path):
     assert out.baseline_price is None
     assert out.baseline_date is None
     assert out.warnings == []
+
+
+def test_unreadable_adjusted_file_is_logged_not_swallowed(tmp_path, caplog):
+    """읽기 실패는 "unavailable" 로만 나가면 원인을 못 알아본다.
+
+    change_pct_source 의 "unavailable" 은 "코퍼스에 그 종목이 없음"(정상)과
+    "parquet 읽기가 터짐"(고장)을 구분하지 못한다. 후자만 로그로 갈라진다.
+    """
+    daily = tmp_path / "daily_adjusted.parquet"
+    daily.write_bytes(b"not a parquet file")
+    resolver = QuoteChangeResolver(adjusted_daily_path=daily)
+
+    q = KisQuote(code="005930", price=103, change_pct=None, change_won=None)
+    with caplog.at_level(logging.WARNING, logger="hoga.live.quote_change_resolver"):
+        out = resolver.resolve_quote(q, phase="open")
+
+    assert out.change_pct_source == "unavailable"  # 응답은 여전히 죽지 않는다
+    records = [r for r in caplog.records if "baseline read failed" in r.getMessage()]
+    assert len(records) == 1
+    assert "005930" in records[0].getMessage()
+    assert records[0].exc_info is not None  # 원인 예외가 붙어 있어야 손댈 수 있다
+
+
+def test_unreadable_adjusted_file_logs_once_per_code(tmp_path, caplog):
+    """_baseline_for 의 (code, today) 캐시가 로그 폭주를 막는다는 전제를 고정한다.
+
+    이 캐시가 없으면 시세 폴링 주기마다 종목 수만큼 스택트레이스가 쏟아진다 —
+    그러면 다음 사람이 로그를 지우게 되고, 진단 능력이 조용히 사라진다.
+    """
+    daily = tmp_path / "daily_adjusted.parquet"
+    daily.write_bytes(b"not a parquet file")
+    resolver = QuoteChangeResolver(adjusted_daily_path=daily)
+
+    q = KisQuote(code="005930", price=103, change_pct=None, change_won=None)
+    with caplog.at_level(logging.WARNING, logger="hoga.live.quote_change_resolver"):
+        for _ in range(5):
+            resolver.resolve_quote(q, phase="open")
+
+    assert sum("baseline read failed" in r.getMessage() for r in caplog.records) == 1
 
 
 def test_missing_adjusted_file_does_not_cache_absent_baseline(tmp_path):

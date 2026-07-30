@@ -218,7 +218,7 @@ async def add_member(
     폴더 없으면 FolderNotFoundError. 불변식 {e.code}==⋃member_codes 유지."""
     # Local import: disk_state -> watchlist would cycle if at module top.
     from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        latest_complete_date,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        latest_complete_date,
     )
     async with _lock:
         doc = load_document(data_dir)

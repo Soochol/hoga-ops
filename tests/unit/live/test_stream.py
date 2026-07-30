@@ -168,7 +168,7 @@ async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_p
     NXT venue 는 latch·표시 buffer 어디에도 안 남는다 — 프로그램 수급은 KRX
     집계 데이터다.
     """
-    from hoga.live import program_trade_latch  # noqa: PLC0415
+    from hoga.live import program_trade_latch
 
     program_trade_latch.reset_for_tests()
     buf = LiveBuffer()

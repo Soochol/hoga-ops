@@ -559,7 +559,7 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
         _fetched_at_ms = now_ms
         _state = SymbolCacheState.fresh()
         return _build_response()
-    except Exception:  # noqa: BLE001 — safety net so _state never sticks at loading()
+    except Exception:  # safety net so _state never sticks at loading()
         logger.exception("Symbol refresh failed unexpectedly")
         _set_stale_or_unavailable(UpstreamCode.KIS_MASTER_FETCH_FAILED)
         return _build_response()

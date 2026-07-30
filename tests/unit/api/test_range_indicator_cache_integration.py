@@ -80,8 +80,8 @@ def _engine_with_day(tmp_path: Path) -> QueryEngine:
     trows = []
     minute, h, m = 0, 9, 0
     while (h, m) < (15, 20):
-        trows.append({"ts_ms": unix_ms_to_hhmmssms(DATE, _unix(h, m, 5)), "side": 1, "qty": 10 + minute % 5})  # noqa: E501
-        trows.append({"ts_ms": unix_ms_to_hhmmssms(DATE, _unix(h, m, 35)), "side": -1, "qty": 4 + minute % 3})  # noqa: E501
+        trows.append({"ts_ms": unix_ms_to_hhmmssms(DATE, _unix(h, m, 5)), "side": 1, "qty": 10 + minute % 5})
+        trows.append({"ts_ms": unix_ms_to_hhmmssms(DATE, _unix(h, m, 35)), "side": -1, "qty": 4 + minute % 3})
         minute, m = minute + 1, m + 1
         if m == 60:
             m, h = 0, h + 1

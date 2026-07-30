@@ -468,7 +468,7 @@ class QueryEngine:
         :class:`StockDateNotFound` if the source has no meta.json.
         """
         from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-            analyze_gaps,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+            analyze_gaps,
         )
         from hoga.api.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 

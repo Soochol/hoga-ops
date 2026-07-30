@@ -69,7 +69,9 @@ def main() -> int:
             if cached.get("expires_at_iso") and datetime.fromisoformat(cached["expires_at_iso"]) > datetime.now():
                 token = cached["access_token"]
                 print(f"[1/6] cached token reused (expires {cached['expires_at_iso']})")
-        except Exception:
+        except Exception:  # noqa: BLE001 — 토큰 캐시는 순수 최적화다(KIS "분당 1회 발급"
+            # 회피용). 손상·구버전 스키마·권한 등 어떤 이유로 못 읽든 대응은 하나뿐이고
+            # (새로 발급), 바로 아래에서 실제로 그렇게 한다.
             token = None
 
     with httpx.Client(base_url=REAL_BASE, timeout=15.0) as client:

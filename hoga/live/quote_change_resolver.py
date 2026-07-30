@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from collections.abc import Hashable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Literal
 
 from hoga.duck import connect_bounded
 from hoga.live.kis_client import KisQuote
+
+log = logging.getLogger(__name__)
 
 ChangePctSource = Literal[
     "kis",
@@ -194,7 +197,13 @@ class QuoteChangeResolver:
                     """,
                     params,
                 ).fetchone()
-        except Exception:
+        except Exception:  # noqa: BLE001 — 기준가 조회 실패가 시세 응답을 죽이면 안 된다.
+            # None 을 돌려주면 change_pct_source 가 "unavailable" 이 되는데, 그 값은
+            # "코퍼스에 그 종목이 없음" 과 "parquet 읽기가 터짐" 을 구분하지 못한다.
+            # 후자는 손대야 하는 고장이므로 여기서만 남길 수 있다.
+            # 호출부 _baseline_for 가 (code, today) 로 결과를 캐시하고 파일 시그니처가
+            # 바뀔 때만 비우므로, 이 로그는 파일 세대당 종목 1회로 묶인다(폭주 없음).
+            log.warning("adjusted-daily baseline read failed for %s", code, exc_info=True)
             return None
         if row is None:
             return None

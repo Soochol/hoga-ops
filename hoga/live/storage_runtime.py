@@ -68,7 +68,7 @@ def _ensure_kiwoom_session(
     if state.kiwoom_session is not None:
         return state.kiwoom_session
     from .kiwoom_session import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        KiwoomSessionManager,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        KiwoomSessionManager,
     )
     from .session_gate import ws_connection_window  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
@@ -91,7 +91,7 @@ def _ensure_program_trade_collector(
     now_ms_fn: Callable[[], int],
 ) -> ProgramTradeCollectorLike:
     from .program_trade_collector import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        ProgramTradeCollector,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        ProgramTradeCollector,
     )
 
     if state.program_trade_collector is not None:

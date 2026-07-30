@@ -74,7 +74,7 @@ class SliceCoalescer:
             result = compute()
             flight.result = result
             return result
-        except BaseException as exc:  # noqa: BLE001 - re-raised to followers + caller
+        except BaseException as exc:  # re-raised to followers + caller
             flight.error = exc
             raise
         finally:

@@ -109,7 +109,7 @@ def test_sweep_scopes_by_codes_and_dates(tmp_path: Path) -> None:
 def test_sweep_no_eligible_writes_sentinel_and_skips_next(tmp_path: Path) -> None:
     """유효 스냅샷 0(deep book 이 전부 세션 밖)이면 센티넬 행(peak null, eligible_count 0)을
     기록한다 — 다음 sweep 이 fingerprint 로 건너뛰고(재계산 방지), 스크리너는 읽지 않는다."""
-    import polars as pl  # noqa: PLC0415
+    import polars as pl
 
     _write_stock_date(
         tmp_path, date="20260714", code="005930",
@@ -135,7 +135,7 @@ def test_sweep_recapture_good_to_degenerate_evicts_stale_peak(tmp_path: Path) ->
     남기지 않는다(재캡처는 meta mtime 을 바꿔 재계산을 유발)."""
     import os
 
-    import polars as pl  # noqa: PLC0415
+    import polars as pl
 
     d = _write_stock_date(
         tmp_path, date="20260714", code="005930",

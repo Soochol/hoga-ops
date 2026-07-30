@@ -401,7 +401,9 @@ def build_index_sector_rankings(
     codes = [entry.code for entry in doc.entries]
     try:
         daily_rows = _load_daily_rows(corpus_path, codes, basis)
-    except Exception:
+    except Exception:  # noqa: BLE001 — 코퍼스 parquet 은 외부 산출물이라 스키마·인코딩
+        # 어떤 식으로도 깨질 수 있다. 실패를 daily_corpus_invalid 로 응답에 실어 보내므로
+        # 위의 screener_daily_corpus_missing 과 같은 층위의 "이유 있는 unavailable" 이다.
         return _cache_put_with_disk(
             cache_key,
             disk_cache_path,

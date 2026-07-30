@@ -318,7 +318,7 @@ def _parse_jsonl_incremental(
             state.candles, meta)
 
 
-def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
+def _parse_jsonl_to_records(
     jsonl_path: Path,
     *,
     code: str,
@@ -448,7 +448,7 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
     유일한 이벤트 소스가 됨 — None은 스퓨리어스 리페치를 막는다).
     """
     from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        atomic_write_json,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        atomic_write_json,
     )
 
     today = _today_kst_yyyymmdd()

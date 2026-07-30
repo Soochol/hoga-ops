@@ -189,7 +189,7 @@ def collect_event_frames(raw_dir: Path, *, lenient: bool) -> CollectedFrames:  #
     py_snapshots: list[tuple[int, Orderbook]] = []
     py_brokers: list[tuple[int, list[BrokerRow]]] = []
     from hoga.parser import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        ParserError,  # 지연 import — 순환 회피  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        ParserError,  # 지연 import — 순환 회피
     )
 
     for gidx, page, lineno, line in fallback_rows:

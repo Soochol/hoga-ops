@@ -77,7 +77,7 @@ def test_backfill_one_failing_fetch_does_not_abort_others(tmp_path):
         if code == "035720":
             raise RuntimeError("boom")
         return [(dt.date(2021,4,5),1000.0),(dt.date(2021,4,15),1000.0)]
-    n = asyncio.run(factor_backfill(sdir, fetch_adj=fetch, codes=["000001","035720"]))  # no crash  # noqa: E501, F841
+    n = asyncio.run(factor_backfill(sdir, fetch_adj=fetch, codes=["000001","035720"]))  # no crash  # noqa: F841
     f = read_factors(sdir / "factors.parquet")
     assert "000001" in f["code"].unique().to_list()
     assert "035720" not in f["code"].unique().to_list()

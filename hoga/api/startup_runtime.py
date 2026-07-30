@@ -97,7 +97,7 @@ class AppStartupRuntime:
                 await task
             except asyncio.CancelledError:
                 pass
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.exception("scheduler task crashed during shutdown")
 
         await self.deps.aclose_kis_capacity_scheduler()
