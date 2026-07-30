@@ -1,6 +1,9 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
-const API = 'http://localhost:8080';
+// 호스트를 박지 않는다 — 'http://localhost:8080' 은 API 주소가 아니라
+// config.ts 의 DEFAULT_CONFIG **폴백**이었다. /config.json 이 정상 제공되면
+// 앱은 진짜 백엔드로 가고 이 모킹은 한 건도 안 걸린다(2026-07-30 실측).
+const API = '**';
 
 if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
   test.use({
