@@ -1,9 +1,9 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { apiPrefix } from './helpers/apiRoutes';
 
 // 호스트를 박지 않는다 — 'http://localhost:8080' 은 API 주소가 아니라
 // config.ts 의 DEFAULT_CONFIG **폴백**이었다. /config.json 이 정상 제공되면
 // 앱은 진짜 백엔드로 가고 이 모킹은 한 건도 안 걸린다(2026-07-30 실측).
-const API = '**';
 
 if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
   test.use({
@@ -33,7 +33,7 @@ async function installCaptureQueueMocks(page: Page) {
   const json = (route: Route, body: unknown) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
-  await page.route(`${API}/api/captures/queue*`, (route) =>
+  await page.route(apiPrefix('captures/queue'), (route) =>
     json(route, {
       active: [],
       queued: Array.from({ length: 260 }, (_, i) => queueItem(i)),
@@ -42,15 +42,15 @@ async function installCaptureQueueMocks(page: Page) {
       max_concurrent: 3,
     }),
   );
-  await page.route(`${API}/api/symbols/all*`, (route) =>
+  await page.route(apiPrefix('symbols/all'), (route) =>
     json(route, {
       symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', captured_count: 0 }],
       status: 'fresh',
       fetched_at_ms: 1,
     }),
   );
-  await page.route(`${API}/api/stock-dates*`, (route) => json(route, []));
-  await page.route(`${API}/api/calendar*`, (route) => json(route, { cells: [], holidays: [] }));
+  await page.route(apiPrefix('stock-dates'), (route) => json(route, []));
+  await page.route(apiPrefix('calendar'), (route) => json(route, { cells: [], holidays: [] }));
   await page.routeWebSocket('**/api/ws', (ws) => {
     ws.onMessage(() => {
       ws.send(JSON.stringify({ ch: 'heartbeat', t_ms: Date.now() }));

@@ -7,13 +7,13 @@
 
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
+import { apiExact, apiPrefix } from './helpers/apiRoutes';
 
 test.use({ channel: 'chrome' }); // 시스템 Chrome (live-smoke 와 동일 사유)
 
 // 호스트를 박지 않는다 — 'http://localhost:8080' 은 API 주소가 아니라
 // config.ts 의 DEFAULT_CONFIG **폴백**이었다. /config.json 이 정상 제공되면
 // 앱은 진짜 백엔드로 가고 이 모킹은 한 건도 안 걸린다(2026-07-30 실측).
-const API = '**';
 
 interface Entry {
   code: string; name: string; registered_at_kst_date: string;
@@ -43,9 +43,9 @@ test.describe('Watchlist Panel context menu', () => {
     let entries = makeEntries();
     let deleted: string | null = null;
 
-    await page.route(`${API}/api/live/quotes*`, (r) => json(r, { phase: 'open', quotes: [] }));
+    await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
     // DELETE /api/watchlist/{code} → 204, stateful 제거. {code} 경로라 GET 보다 먼저 등록.
-    await page.route(`${API}/api/watchlist/*`, async (route) => {
+    await page.route(apiPrefix('watchlist/'), async (route) => {
       if (route.request().method() === 'DELETE') {
         const code = route.request().url().split('/').pop()!;
         deleted = code;
@@ -54,7 +54,7 @@ test.describe('Watchlist Panel context menu', () => {
       }
       return route.fallback();
     });
-    await page.route(`${API}/api/watchlist`, (r) =>
+    await page.route(apiExact('watchlist'), (r) =>
       json(r, { folders: FOLDERS, entries, next_run_at_ms: 0 }));
 
     await page.goto('/live');
@@ -76,9 +76,9 @@ test.describe('Watchlist Panel context menu', () => {
     let entries = makeEntries();
     let movedTo: string | null | undefined;
 
-    await page.route(`${API}/api/live/quotes*`, (r) => json(r, { phase: 'open', quotes: [] }));
+    await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
     // POST /api/watchlist/folders/{id}/members — 그룹 편집에서 체크토글로 멤버십 추가를 수행한다.
-    await page.route(`${API}/api/watchlist/folders/*/members`, async (route) => {
+    await page.route(apiPrefix('watchlist/folders/[^/]+/members'), async (route) => {
       if (route.request().method() !== 'POST') return route.fallback();
       const folderId = route.request().url().split('/').at(-2);
       const code = (JSON.parse(route.request().postData() || '{}') as { code?: string }).code;
@@ -87,7 +87,7 @@ test.describe('Watchlist Panel context menu', () => {
       entries = [...entries, { ...entries.find((e) => e.code === code)!, code, folder_id: folderId, order: 0 }];
       return route.fulfill({ status: 204, body: '' });
     });
-    await page.route(`${API}/api/watchlist`, (r) =>
+    await page.route(apiExact('watchlist'), (r) =>
       json(r, { folders: FOLDERS, entries, next_run_at_ms: 0 }));
 
     await page.goto('/live');

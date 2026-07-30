@@ -5,13 +5,13 @@
 
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
+import { apiExact, apiPrefix } from './helpers/apiRoutes';
 
 test.use({ channel: 'chrome' });
 
 // 호스트를 박지 않는다 — 'http://localhost:8080' 은 API 주소가 아니라
 // config.ts 의 DEFAULT_CONFIG **폴백**이었다. /config.json 이 정상 제공되면
 // 앱은 진짜 백엔드로 가고 이 모킹은 한 건도 안 걸린다(2026-07-30 실측).
-const API = '**';
 
 interface Entry {
   code: string; name: string; registered_at_kst_date: string;
@@ -24,7 +24,7 @@ const json = (route: import('@playwright/test').Route, body: unknown) =>
 
 async function openPanel(page: import('@playwright/test').Page) {
   await page.goto('/live');
-  const editMenuBtn = page.getByRole('button', { name: '관심종목 편집 메뉴' });
+  const editMenuBtn = page.getByRole('button', { name: '관심종목 편집' });
   if (!(await editMenuBtn.isVisible().catch(() => false))) {
     await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
   }
@@ -43,13 +43,13 @@ test.describe('Watchlist panel drag', () => {
         last_success_date: null, folder_id: 'f_a', order: i,
       })),
     ];
-    await page.route(`${API}/api/live/quotes*`, (r) => json(r, { phase: 'open', quotes: [] }));
-    await page.route(`${API}/api/watchlist/reorder`, async (route) => {
+    await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
+    await page.route(apiExact('watchlist/reorder'), async (route) => {
       lastPut = JSON.parse(route.request().postData() || '{}');
       order = lastPut!.ordered_codes;
       return route.fulfill({ status: 204, body: '' });
     });
-    await page.route(`${API}/api/watchlist`, (r) =>
+    await page.route(apiExact('watchlist'), (r) =>
       json(r, { folders: [{ id: 'f_a', name: '스윙', order: 0 }], entries: entries(), next_run_at_ms: 0 }));
 
     await openPanel(page);
@@ -86,12 +86,12 @@ test.describe('Watchlist panel drag', () => {
       { code: '005930', name: '삼성전자', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_a', order: 0 },
       { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_a', order: 1 },
     ];
-    await page.route(`${API}/api/live/quotes*`, (r) => json(r, { phase: 'open', quotes: [] }));
-    await page.route(`${API}/api/watchlist/reorder`, async (route) => {
+    await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
+    await page.route(apiExact('watchlist/reorder'), async (route) => {
       reorderCalled = true;
       return route.fulfill({ status: 204, body: '' });
     });
-    await page.route(`${API}/api/watchlist`, (r) =>
+    await page.route(apiExact('watchlist'), (r) =>
       json(r, { folders: [{ id: 'f_a', name: '스윙', order: 0 }], entries, next_run_at_ms: 0 }));
 
     await openPanel(page);
@@ -117,13 +117,13 @@ test.describe('Watchlist panel drag', () => {
       { code: '005930', name: '삼성전자', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_a', order: 0 },
       { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_b', order: 0 },
     ];
-    await page.route(`${API}/api/live/quotes*`, (r) => json(r, { phase: 'open', quotes: [] }));
-    await page.route(`${API}/api/watchlist/folders/order`, async (route) => {
+    await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
+    await page.route(apiExact('watchlist/folders/order'), async (route) => {
       lastPut = JSON.parse(route.request().postData() || '{}');
       folderOrder = lastPut!.ordered_ids;
       return route.fulfill({ status: 204, body: '' });
     });
-    await page.route(`${API}/api/watchlist`, (r) =>
+    await page.route(apiExact('watchlist'), (r) =>
       json(r, { folders: folders(), entries, next_run_at_ms: 0 }));
 
     await openPanel(page);

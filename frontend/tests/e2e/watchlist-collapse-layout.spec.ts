@@ -8,13 +8,13 @@
 
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
+import { apiPrefix } from './helpers/apiRoutes';
 
 test.use({ channel: 'chrome' }); // 시스템 Chrome (live-smoke 와 동일 사유)
 
 // 호스트를 박지 않는다 — 'http://localhost:8080' 은 API 주소가 아니라
 // config.ts 의 DEFAULT_CONFIG **폴백**이었다. /config.json 이 정상 제공되면
 // 앱은 진짜 백엔드로 가고 이 모킹은 한 건도 안 걸린다(2026-07-30 실측).
-const API = '**';
 
 // 뷰포트(기본 720px)를 확실히 넘기는 콘텐츠: 2개 그룹 × 25행 ≈ 1850px+
 const makeState = () => {
@@ -42,8 +42,8 @@ async function setup(page: import('@playwright/test').Page) {
   await installLiveMocks(page);
   const json = (route: import('@playwright/test').Route, body: unknown) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  await page.route(`${API}/api/live/quotes*`, (r) => json(r, { phase: 'open', quotes: [] }));
-  await page.route(`${API}/api/watchlist*`, (r) => json(r, { ...makeState(), next_run_at_ms: 0 }));
+  await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
+  await page.route(apiPrefix('watchlist'), (r) => json(r, { ...makeState(), next_run_at_ms: 0 }));
 
   await page.goto('/live');
   const panel = page.getByTestId('watchlist-panel');
