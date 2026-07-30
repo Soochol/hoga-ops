@@ -11,6 +11,11 @@ import { useLiveVenueStore } from '../state/liveVenue';
 export interface ScreenerRowLive extends Omit<ScreenerRow, 'price'> {
   price: number | null;
   change_won: number | null;
+  /** 동시호가 예상체결가/등락률(LiveQuote.expected_*) — 표시 전용, 정렬키 아님.
+   *  optional 인 이유는 LiveQuote 의 OHLC 와 동일(테스트 픽스처 등 tsc 파급 회피)
+   *  — 이 훅은 항상 채워서 내보낸다. */
+  expected_price?: number | null;
+  expected_change_pct?: number | null;
 }
 
 /**
@@ -38,6 +43,8 @@ export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
           price: q?.price ?? null,
           change_pct: q?.change_pct ?? null,
           change_won: q?.change_won ?? null,
+          expected_price: q?.expected_price ?? null,
+          expected_change_pct: q?.expected_change_pct ?? null,
         };
       }),
     [rows, quoteByCode],

@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
-import { useLiveTickPrices, type LiveTickSample } from './liveTickOverlay';
+import {
+  EXPECTED_FILL_TTL_MS,
+  useLiveTickPrices,
+  type LiveExpectedSample,
+  type LiveTickSample,
+} from './liveTickOverlay';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 export interface LiveQuote {
@@ -27,6 +32,12 @@ export interface LiveQuote {
   warnings?: string[];
   stale?: boolean;
   stale_reason?: string | null;
+  /** 동시호가 예상체결가/량/등락률 — WS ob 프레임(키움 0D FID 23/24)에서만 채워지는
+   *  표시 전용 필드. price/change_pct 등 기존 필드는 건드리지 않는다(pre_open 의
+   *  hidden_pre_open 계약 불침범). 창 밖·체결 후엔 키 자체가 없다. */
+  expected_price?: number | null;
+  expected_qty?: number | null;
+  expected_change_pct?: number | null;
 }
 
 export interface LiveQuotesResponse {
@@ -155,6 +166,36 @@ function withTickPrice(quote: LiveQuote, tick: LiveTickSample | undefined): Live
   };
 }
 
+/** 폴링 quote 에 동시호가 예상체결 표본을 얹는다 — withTickPrice **뒤에** 별도 적용.
+ *
+ *  withTickPrice 안에 넣지 않는 이유: 그 함수는 체결 틱 부재 시 첫 줄에서 반환하는데,
+ *  동시호가 중엔 체결이 없어 예상가가 영원히 도달하지 못한다. 표시 조건도 phase 에
+ *  걸지 않는다 — pre_open 은 KRX 선택에서만 나오고 UN(시간대 자동)은 같은 시각에
+ *  open 이라, phase 게이트면 UN 에서 안 뜬다. 백엔드 3중 게이트가 이미 SSOT 이므로
+ *  표본 존재 = 표시 조건이다.
+ *
+ *  예상 등락률 기준가는 referenceClose(폴링 역산 previous_close → baseline 폴백)를
+ *  그대로 쓴다 — pre_open 엔 change_won=null 이라 자동으로 baseline_price(백엔드가
+ *  previous_close 를 실어 주는 필드)로 떨어진다. 기준가를 못 구하면 등락률만 null 로
+ *  두고 예상가는 표시한다(가격 자체는 기준가가 필요 없다). */
+function withExpectedFill(
+  quote: LiveQuote,
+  expected: LiveExpectedSample | undefined,
+  nowMs: number,
+): LiveQuote {
+  if (expected === undefined || nowMs - expected.seenAtMs > EXPECTED_FILL_TTL_MS) return quote;
+  const ref = referenceClose(quote);
+  const expectedPct = ref === null
+    ? null
+    : Math.round((expected.price / ref - 1) * 10_000) / 100;
+  return {
+    ...quote,
+    expected_price: expected.price,
+    expected_qty: expected.qty,
+    expected_change_pct: expectedPct,
+  };
+}
+
 /** unavailable 응답에 직전 등락률을 물려 깜빡임을 막는다 — 단 **일시적** 결측일
  *  때만이다(원 도입 의도: "transient response marks them unavailable").
  *
@@ -189,7 +230,7 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
   // 통째로 멈추고(refetchIntervalInBackground 기본 false + main.tsx 의
   // refetchOnWindowFocus:false), (2) 주기 자체가 틱으로 움직이는 차트·호가와 어긋난다.
   // 폴링은 그대로 남는다 — 기준가 공급자이자 WS 단절·체결 공백의 폴백이다.
-  const tickPrices = useLiveTickPrices(codes, venue);
+  const { prices: tickPrices, expected: expectedFills } = useLiveTickPrices(codes, venue);
   const lastGoodByCodeRef = useRef(new Map<string, LiveQuote>());
   // 구독 코드 집합의 안정 키. 스크리너·관심종목처럼 목록이 갈리는 소비자에서
   // last-good 캐시가 "한때 봤던 모든 코드" 로 단조 증가하던 걸 여기서 끊는다.
@@ -208,6 +249,9 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
   const quoteByCode = useMemo(() => {
     const currentQuotes = q.data?.quotes;
     if (currentQuotes == null) return new Map<string, LiveQuote>();
+    // TTL 판정용 시계 읽기는 useMemo 당 1회. 프레임이 끊긴 뒤의 재평가 계기는
+    // 10초 REST 폴링(q.data 교체)이라, 만료 표본은 폴링 주기 안에 청소된다.
+    const nowMs = Date.now();
     const next = new Map<string, LiveQuote>();
     for (const quote of currentQuotes) {
       const merged = withLastGoodChangeFields(quote, lastGoodByCodeRef.current.get(quote.code));
@@ -215,10 +259,17 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
       // unavailable 을 낼 때의 등락률 폴백이라, 틱 파생값을 섞으면 다음 폴백의
       // 근거가 흐려진다.
       lastGoodByCodeRef.current.set(quote.code, merged);
-      next.set(quote.code, withTickPrice(merged, tickPrices.get(quote.code)));
+      next.set(
+        quote.code,
+        withExpectedFill(
+          withTickPrice(merged, tickPrices.get(quote.code)),
+          expectedFills.get(quote.code),
+          nowMs,
+        ),
+      );
     }
     return next;
-  }, [q.data, tickPrices]);
+  }, [q.data, tickPrices, expectedFills]);
   return { quoteByCode, phase: q.data?.phase, dataUpdatedAt: q.dataUpdatedAt };
 }
 

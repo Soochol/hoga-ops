@@ -132,9 +132,18 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
                 {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
               </span>
               <span className="font-data text-xs text-fg-dim">{r.market}</span>
-              <span className={`font-data tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
-                {r.price != null ? `${r.price.toLocaleString('ko-KR')} (${formatPct(r.change_pct)})` : '—'}
-              </span>
+              {/* 동시호가 중엔 예상체결가/등락률로 대체('예' 마커, QuoteRow·HeatmapRow 와
+                  동일 규칙) — 창 밖·체결 후엔 expected_* 가 사라져 자동 복귀. */}
+              {r.expected_price != null ? (
+                <span className={`font-data tabular-nums text-right ${r.expected_change_pct == null ? '' : priceDirClass(r.expected_change_pct)}`}>
+                  <span className="mr-0.5 text-[10px] text-fg-dimmer">예</span>
+                  {`${r.expected_price.toLocaleString('ko-KR')} (${formatPct(r.expected_change_pct ?? null)})`}
+                </span>
+              ) : (
+                <span className={`font-data tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
+                  {r.price != null ? `${r.price.toLocaleString('ko-KR')} (${formatPct(r.change_pct)})` : '—'}
+                </span>
+              )}
               <span className="font-data tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
               <span className="flex items-center justify-end gap-2">
                 <WatchlistHeartButton code={r.code} name={r.name} variant="row" />

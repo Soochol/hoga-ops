@@ -10,6 +10,11 @@ export interface HeatmapRowProps {
   open?: number | null;
   high?: number | null;
   low?: number | null;
+  /** 동시호가 예상체결가/등락률(WS 0D 유래, LiveQuote.expected_*). 값이 있으면 가격·
+   *  등락률 셀을 예상값으로 대체하고 캔들 셀에 '예' 마커를 띄운다. 창 밖·체결 후엔
+   *  키 자체가 사라져(백엔드 게이트 SSOT) 자동으로 확정치 표시로 돌아온다. */
+  expectedPrice?: number | null;
+  expectedPct?: number | null;
   // QuoteRow 와 동일 계약: 이벤트를 통과시켜 호출부가 ctrl/⌘ 로 새 탭 분기를 할 수
   // 있게 한다. 선택적이라 인자 없이 부르던 기존 호출부는 그대로 유효하다.
   onClick: (e?: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>) => void;
@@ -38,11 +43,17 @@ export interface HeatmapRowProps {
  *  행 높이는 캔들 글리프(16px)+py-px 콘텐츠 기반 최대 밀도 — 히트맵 보드는 밀도가
  *  1차라 공용 min-h-list-row(28px; 관심·순위·스크리너)를 의도적으로 쓰지 않는다. */
 export function HeatmapRow({
-  name, price, pct, open, high, low, onClick, ariaLabel, testId,
+  name, price, pct, open, high, low, expectedPrice, expectedPct, onClick, ariaLabel, testId,
   sortableRef, sortableStyle, dragListeners, dragging, onContextMenu, matched,
 }: HeatmapRowProps) {
   const sign = (n: number) => (n > 0 ? '+' : '');
   const draggable = !!dragListeners;
+  // 예상 표시 모드 — 가격·등락률 셀이 예상값을 싣고, 유휴 캔들 셀이 '예' 마커를 진다
+  // (개장 동시호가엔 OHLC 가 null 이라 원래 빈칸; 마감 동시호가 10분간 캔들 대신
+  // 마커가 서는 것은 의도 — 그 창에선 예상 상태가 더 중요한 신호고 자동 복원된다).
+  const showExpected = expectedPrice != null;
+  const shownPrice = showExpected ? expectedPrice : price;
+  const shownPct = showExpected ? (expectedPct ?? null) : pct;
   // 매칭 하이라이트 배경 — 드래그 중 opacity/transform 을 덮지 않도록 base style 위에
   // 병합. QuoteRow 와 동일한 --tint-selection(accent 10%) 배경 틴트.
   const baseStyle = dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle;
@@ -67,18 +78,23 @@ export function HeatmapRow({
       {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
       <span className="truncate text-xs text-fg-dim">{name}</span>
-      {/* 당일 캔들 셀 — CandleGlyph 가 null 이어도 이 span 이 칼럼을 점유해 정렬 유지. */}
-      <span className="flex items-center justify-center overflow-hidden"><CandleGlyph open={open} high={high} low={low} close={price} /></span>
+      {/* 당일 캔들 셀 — CandleGlyph 가 null 이어도 이 span 이 칼럼을 점유해 정렬 유지.
+          예상 표시 중엔 '예' 마커(text-fg-dimmer, DepthBadge 급 크기)가 캔들을 대신한다. */}
+      <span className="flex items-center justify-center overflow-hidden">
+        {showExpected
+          ? <span className="text-[10px] text-fg-dimmer" data-testid={`${testId}-expected-marker`}>예상</span>
+          : <CandleGlyph open={open} high={high} low={low} close={price} />}
+      </span>
       <span className="text-right font-data tabular-nums text-fg">
-        {price === null ? '—' : price.toLocaleString('ko-KR')}
+        {shownPrice === null ? '—' : shownPrice.toLocaleString('ko-KR')}
       </span>
       {/* 등락: 방향=priceDirClass 텍스트 색(+적/−청/0 중립) + 부호. 배경 워시·▲▼ 없음
           — 우측 패널 QuoteChange 와 동일 컨벤션(색+부호 2중, 색약 보조). 결측은 '—'. */}
-      {pct === null ? (
+      {shownPct === null ? (
         <span className="text-right font-data tabular-nums text-fg-dim">—</span>
       ) : (
-        <span className={`text-right font-data tabular-nums ${priceDirClass(pct)}`}>
-          {sign(pct)}{pct.toFixed(2)}
+        <span className={`text-right font-data tabular-nums ${priceDirClass(shownPct)}`}>
+          {sign(shownPct)}{shownPct.toFixed(2)}
         </span>
       )}
     </div>

@@ -364,6 +364,7 @@ function SortableGroup({ folderId, children }: {
 function SortableQuoteRow(props: {
   entry: WatchlistEntry;
   price: number | null; pct: number | null; changeWon: number | null;
+  expectedPrice?: number | null; expectedPct?: number | null;
   active: boolean;
   onPick: (e?: JumpModifiers) => void;
   onContextMenu: (e: React.MouseEvent<HTMLLIElement>) => void;
@@ -384,6 +385,8 @@ function SortableQuoteRow(props: {
       price={props.price}
       pct={props.pct}
       changeWon={props.changeWon}
+      expectedPrice={props.expectedPrice}
+      expectedPct={props.expectedPct}
       active={props.active}
       ariaLabel={[entry.name, entry.code, props.collectionLabel, '차트 열기'].filter(Boolean).join(' ')}
       testId={`watchlist-row-${entry.code}`}
@@ -689,6 +692,8 @@ export function WatchlistDrawer() {
                           price={q?.price ?? null}
                           pct={q?.change_pct ?? null}
                           changeWon={q?.change_won ?? null}
+                          expectedPrice={q?.expected_price ?? null}
+                          expectedPct={q?.expected_change_pct ?? null}
                           active={entry.code === activeCode}
                           onPick={(e) => onPick(entry.code, entry.name, e)}
                           onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}

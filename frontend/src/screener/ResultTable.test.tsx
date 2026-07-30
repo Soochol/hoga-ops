@@ -51,6 +51,22 @@ describe('ResultTable', () => {
     expect(screen.queryByRole('button', { name: '등락률 정렬' })).not.toBeInTheDocument();
   });
 
+  it('동시호가 예상체결 행: 예 마커 + 예상가(예상등락률)로 대체 표시한다', () => {
+    const expected: ScreenerRowLive[] = [
+      {
+        code: '005930', name: '삼성전자', market: 'KOSPI', price: 74200,
+        trade_value_won: 842_000_000_000, change_pct: 5.8, change_won: null,
+        expected_price: 71500, expected_change_pct: 2.14,
+      },
+    ];
+    render(<ResultTable rows={expected} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()} />);
+    const row = screen.getByRole('button', { name: '삼성전자 005930 호가창 열기' });
+    // 마커('예')와 값이 같은 셀 안 — 마커의 부모 span textContent 로 대조한다.
+    const cell = within(row).getByText('예').parentElement;
+    expect(cell).toHaveTextContent('71,500 (+2.14%)');
+    expect(within(row).queryByText(/74,200/)).not.toBeInTheDocument(); // 확정가는 표시 안 함
+  });
+
   it('renders — for a row with no live quote (price null) without crashing', () => {
     // 라이브 미도착 행: 순수 라이브라 price/change_pct 가 null → 셀은 '—' 하나.
     const noQuote: ScreenerRowLive[] = [

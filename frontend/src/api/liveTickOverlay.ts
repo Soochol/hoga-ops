@@ -62,6 +62,28 @@ export interface LiveTickSample {
   dayLow?: number;
 }
 
+/** 한 코드의 최신 동시호가 예상체결 표본 (키움 0D FID 23/24).
+ *
+ *  백엔드가 이미 3중 게이트(venue==KRX AND is_auction_window(프레임 t_ms) AND 값>0,
+ *  kiwoom_frames._parse_orderbook)를 걸어 실을지 말지를 결정하므로, 프론트는 시계를
+ *  보지 않는다 — 필드가 실려 오면 동시호가고, 안 실려 오면 아니다. 초 단위로
+ *  흔들리는 창 경계를 프론트가 두 번째 시계로 추적하지 않기 위한 설계다. */
+export interface LiveExpectedSample {
+  /** 예상 체결가. */
+  price: number;
+  /** 예상 체결량. */
+  qty: number;
+  /** 프레임 자기 시각(거래소 호가시간 유래) — trade 와의 신구 판정용. */
+  tMs: number;
+  /** 로컬 수신 시각 — TTL 백스톱용(거래정지 등 종료 신호가 안 오는 종목 청소). */
+  seenAtMs: number;
+}
+
+/** 예상 표본의 신선도 상한. 종료는 보통 데이터 신호(체결 도착·필드 부재 ob)로
+ *  오지만, 프레임 자체가 끊긴 종목(거래정지 등)은 이 TTL 이 유일한 청소 경로다.
+ *  동시호가 중엔 ob 프레임이 초 단위로 계속 와 seenAtMs 가 갱신되므로 오탐 없음. */
+export const EXPECTED_FILL_TTL_MS = 30_000;
+
 function positiveNumber(value: unknown): number | undefined {
   return typeof value === 'number' && value > 0 ? value : undefined;
 }
@@ -112,13 +134,43 @@ function tradeSample(entry: LiveSnapshotEntry, venue: LiveVenueOption): LiveTick
   };
 }
 
-/** codes 의 최신 체결 표본을 WS live 채널에서 구독해 코드→표본 Map 으로 준다.
- *  틱이 아직 없는 코드는 키가 없다(호출부가 폴링값을 그대로 쓰도록). jsdom 등
- *  WebSocket 이 없는 환경에서는 ws.ts 가 silent no-op 이라 빈 Map 이 유지된다. */
+/** ob 프레임의 예상체결 신호. 세 갈래:
+ *  - 표본: expected_price/qty 둘 다 >0 (백엔드 게이트를 통과해 실려 온 값)
+ *  - 'clear': venue 게이트는 통과했으나 expected 필드 부재 — 백엔드 게이트가 닫혔다는
+ *    뜻(동시호가 종료 후 첫 정규장 호가)이므로 남은 표본을 지운다.
+ *  - null: venue 불일치·불량 프레임 — 판단 보류(다른 venue 의 호가로 지우지 않는다).
+ *  t_ms 부재 시 배제는 tradeSample 과 동일 논리 — venue 판정 불가면 보수적으로 무시. */
+function expectedSignal(
+  entry: LiveSnapshotEntry,
+  venue: LiveVenueOption,
+): LiveExpectedSample | 'clear' | null {
+  if (entry.kind !== 'ob') return null;
+  const tMs = (entry as { t_ms?: unknown }).t_ms;
+  const tagVenue = (entry as { venue?: 'KRX' | 'NXT' }).venue;
+  if (typeof tMs !== 'number' || !liveVenueAcceptsFrame(venue, tagVenue, tMs)) return null;
+  const e = entry as { expected_price?: unknown; expected_qty?: unknown };
+  const price = positiveNumber(e.expected_price);
+  const qty = positiveNumber(e.expected_qty);
+  if (price === undefined || qty === undefined) return 'clear';
+  return { price, qty, tMs, seenAtMs: Date.now() };
+}
+
+export interface LiveTickOverlayMaps {
+  /** 코드→최신 체결 표본. 틱이 아직 없는 코드는 키가 없다. */
+  prices: Map<string, LiveTickSample>;
+  /** 코드→동시호가 예상체결 표본. 창 밖·체결 도착 후엔 키가 없다. */
+  expected: Map<string, LiveExpectedSample>;
+}
+
+/** codes 의 최신 체결·예상체결 표본을 WS live 채널에서 구독해 코드→표본 Map 으로
+ *  준다. 표본이 아직 없는 코드는 키가 없다(호출부가 폴링값을 그대로 쓰도록). jsdom 등
+ *  WebSocket 이 없는 환경에서는 ws.ts 가 silent no-op 이라 빈 Map 이 유지된다.
+ *  반환 객체는 렌더마다 새로 만들지만 내부 Map identity 는 flush 때만 바뀐다 —
+ *  소비자는 개별 Map 을 deps 로 잡을 것. */
 export function useLiveTickPrices(
   codes: string[],
   venue: LiveVenueOption,
-): Map<string, LiveTickSample> {
+): LiveTickOverlayMaps {
   // 구독 집합은 정렬·dedup 한 문자열 키에서 파생해, 리스트 재정렬이나 매 렌더의
   // 새 배열 identity 가 전 종목 재구독(unsubscribe → subscribe 왕복)을 부르지
   // 않게 한다 — liveQuotes.ts 의 queryKey 정렬과 같은 이유.
@@ -135,6 +187,8 @@ export function useLiveTickPrices(
   // 돼 같은 가격에 flush 가 중복 예약된다.
   const accumRef = useRef(new Map<string, LiveTickSample>());
   const snapshotRef = useRef(new Map<string, LiveTickSample>());
+  const expectedAccumRef = useRef(new Map<string, LiveExpectedSample>());
+  const expectedSnapshotRef = useRef(new Map<string, LiveExpectedSample>());
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -143,18 +197,41 @@ export function useLiveTickPrices(
     const flush = () => {
       timer = null;
       snapshotRef.current = new Map(accumRef.current);
+      expectedSnapshotRef.current = new Map(expectedAccumRef.current);
       setTick((t) => t + 1);
+    };
+    const scheduleFlush = () => {
+      if (timer === null) timer = setTimeout(flush, LIVE_FLUSH_MS);
     };
     const unsubs = subscribed.map((code) =>
       subscribeLive(code, (entry: LiveSnapshotEntry) => {
+        if (entry.kind === 'ob') {
+          const signal = expectedSignal(entry, venue);
+          if (signal === null) return;
+          if (signal === 'clear') {
+            if (expectedAccumRef.current.delete(code)) scheduleFlush();
+            return;
+          }
+          // 값이 직전과 같아도 매번 set + flush 한다 — seenAtMs 갱신이 곧 "아직
+          // 동시호가 진행 중" 신호라서다. 값 비교로 건너뛰면 예상가가 안 움직이는
+          // 저유동 종목에서 seenAtMs 가 얼어 TTL 백스톱이 진행 중인 창을 오탐
+          // 청소한다. 재렌더 비용은 LIVE_FLUSH_MS 코얼레싱이 이미 상한을 친다.
+          expectedAccumRef.current.set(code, signal);
+          scheduleFlush();
+          return;
+        }
         const sample = tradeSample(entry, venue);
         if (sample === null) return;
+        // venue 게이트를 통과한 체결 = 단일가가 맺혔다는 뜻 — 예상 표본은 즉시
+        // 폐기한다(데이터 주도 전환의 종료 신호 ①). sameSample 로 표본 갱신을
+        // 건너뛰는 경우에도 폐기는 수행해야 하므로 dedup 앞에 둔다.
+        if (expectedAccumRef.current.delete(code)) scheduleFlush();
         // 같은 값 재체결은 재렌더를 만들 이유가 없다(호가만 흔들리는 구간에서
         // 흔하다). 스로틀 앞단에서 걸러 flush 자체를 아낀다. prevClose 도 비교에
         // 넣는 건 첫 프레임에서 뒤늦게 채워지는 경우를 놓치지 않기 위해서다.
         if (sameSample(accumRef.current.get(code), sample)) return;
         accumRef.current.set(code, sample);
-        if (timer === null) timer = setTimeout(flush, LIVE_FLUSH_MS);
+        scheduleFlush();
       }),
     );
     return () => {
@@ -164,10 +241,12 @@ export function useLiveTickPrices(
       // 되돌아가는 게 옛 틱을 계속 보여주는 것보다 정직하다.
       accumRef.current = new Map();
       snapshotRef.current = new Map();
+      expectedAccumRef.current = new Map();
+      expectedSnapshotRef.current = new Map();
     };
     // venue 를 deps 에 넣어 토글 시 재구독하며 accum 을 리셋한다 — 이전 venue 로
     // 누적된 off-venue 체결가가 새 선택에 남지 않는다.
   }, [subscribed, venue]);
 
-  return snapshotRef.current;
+  return { prices: snapshotRef.current, expected: expectedSnapshotRef.current };
 }
