@@ -65,20 +65,30 @@ from hoga.live.lifecycle import refresh_live_stream
 log = logging.getLogger(__name__)
 
 _KST = ZoneInfo("Asia/Seoul")
-# 그룹 흐름 TTL 캐시(거래일 키).
+# 그룹 흐름 **버스트 합치기** 창(거래일 키).
 #
-# 주의 — 이 30초는 프론트 폴링 주기(60s, frontend/src/api/heatmapGroupFlow.ts)
-# **보다 짧다**. 즉 단일 클라이언트 정상 상태에서는 다음 폴링이 오기 전에 항상
-# 만료되어 캐시가 한 번도 히트하지 않는다. 이 캐시가 실제로 막아 주는 것은
-# "폴링마다의 재계산" 이 아니라 30초 안에 몰리는 버스트(탭 여러 개, 수동 새로고침,
-# 페이지 재진입)다. 원래 주석은 전자를 막는다고 적혀 있었는데 상수와 어긋났다.
+# 이름이 `_FLOW_TTL_MS` 였을 때 주석은 "폴링(60s)마다 재계산하지 않게" 라고 적혀
+# 있었다. **그건 이 상수가 할 수 없는 일이다** — 30초는 프론트 폴링 주기(60s,
+# frontend/src/api/heatmapGroupFlow.ts)보다 짧아, 단일 클라이언트 정상 상태에서는
+# 다음 폴링이 오기 전에 항상 만료된다. 즉 폴링 경로에서는 한 번도 히트하지 않는다.
 #
-# 재계산 비용 자체는 2026-07-29 에 크게 줄었다(_read_candle_closes 의 candle
-# 프리필터: 실측 243파일 947MB 기준 11.67s → 2.52s). 60초마다 2.5초면 코어의
-# 약 4% 라 상수를 그대로 두었다. 폴링당 재계산까지 없애려면 TTL 을 폴링 주기
-# 위로 올려야 하는데, 그건 신선도를 거래하는 결정이라 별도 판단이 필요하다
-# (버킷이 5분이므로 150초까지는 시각적으로 드러나지 않는다).
-_FLOW_TTL_MS = 30_000
+# 실제로 막아 주는 것은 이 창 안에 **몰리는** 요청이다: 탭 여러 개 동시 열기,
+# 새로고침 연타, 페이지 재진입. 아래 "확인 → 락 → 재확인" 이 그 single-flight
+# 이고, 그게 이 블록에서 유일하게 load-bearing 한 부분이다. 락이 없으면 동시
+# 탭 N개가 947MB JSONL 읽기를 N번 동시에 돌린다.
+#
+# **값을 올리지 않는 이유**: 폴링당 재계산까지 없애려면 창을 60초 위로 올려야
+# 하는데, 그건 신선도를 판다. 스파크라인의 **마지막 버킷은 계속 움직인다**
+# (_code_bucket_pct 가 진행 중인 5분 칸에도 carry-forward 값을 넣는다). 즉
+# 오른쪽 끝 점이 창 길이만큼 뒤처지고, 장이 움직이는 날엔 눈에 띈다.
+# "버킷이 5분이니 150초까지는 안 보인다" 는 틀린 추론이다 — 칸 경계만 5분이지
+# 마지막 칸의 값은 실시간에 가깝다.
+#
+# **값을 내리지도 않는 이유**: 재계산 비용은 2026-07-29 에 이미 4.6배 줄었다
+# (_read_candle_closes 의 candle 프리필터, 실측 243파일 947MB 기준 11.67s →
+# 2.52s). 60초당 2.5초 = 코어의 약 4% 이고 to_thread 라 이벤트 루프도 안 막는다.
+# 30초는 버스트 창으로서 적절하다.
+_FLOW_BURST_COALESCE_MS = 30_000
 _flow_cache: dict[tuple[str, str], HeatmapGroupFlowResponse] = {}
 _flow_cache_at: dict[tuple[str, str], int] = {}
 _flow_lock = asyncio.Lock()
@@ -131,12 +141,12 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
         key = (str(data_dir), basis.strftime("%Y%m%d"))
         now_ms = int(time.time() * 1000)
         cached, at = _flow_cache.get(key), _flow_cache_at.get(key)
-        if cached is not None and at is not None and now_ms - at <= _FLOW_TTL_MS:
+        if cached is not None and at is not None and now_ms - at <= _FLOW_BURST_COALESCE_MS:
             return cached
         async with _flow_lock:
             # 락 재확인(다른 코루틴이 방금 채웠을 수 있음).
             cached, at = _flow_cache.get(key), _flow_cache_at.get(key)
-            if cached is not None and at is not None and now_ms - at <= _FLOW_TTL_MS:
+            if cached is not None and at is not None and now_ms - at <= _FLOW_BURST_COALESCE_MS:
                 return cached
             resp = await asyncio.to_thread(build_group_flow, data_dir, basis, now_ms=now_ms)
             _flow_cache[key] = resp
