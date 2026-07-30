@@ -55,16 +55,56 @@ _HOT_PATH_MODULES = (
 )
 
 
-# 전이 폐쇄에서 이미 polars/pyarrow 에 닿는 핫패스 모듈 — **고쳐야 할 부채**다.
+# 전이 폐쇄에서 polars/pyarrow 에 닿는 오케스트레이션 표면 —
+# **성능 부채가 아니다. 갚아도 회수액이 0 이다.**
 #
-# 2026-07-30 실측(정적 폐쇄 = 런타임 sys.modules 비교, 15/15 일치). 뿌리는 둘이다:
-#   - hoga/api/models.py:17-18 이 hoga.tables.candles / hoga.tables.snapshots 를
-#     최상단에서 import 한다(ApiCandle · ApiOrderbookSnapshot 타입 제공). 여기로
-#     watchlist_projection → coverage, 그리고 stream · lifecycle 이 딸려 온다.
-#   - hoga/live/api.py → hoga/live/screener_daily_candles.py:6 `import polars as pl`.
+# 원래 이 주석은 이 목록을 "고쳐야 할 부채" 라고 불렀다. 2026-07-30 실측이 그걸
+# 뒤집었으므로 근거를 남긴다.
 #
-# baseline 을 두는 이유: 위 뿌리를 끊으려면 모델 타입 배치를 바꾸는 별건 리팩터가
-# 필요하다. 그때까지 **신규 유입만 막는다** — 부채를 숨기는 게 아니라 고정한다.
+# 【회수액이 0 인 이유】 hoga/api/app.py:18·20·32·47 이 hoga.api.captures ·
+# hoga.api.screener · hoga.live.candle_repair 를 **최상단에서 무조건** import 하고,
+# 셋 다 단독으로 polars+pyarrow 를 끌어온다 — ru_maxrss(peak) 기준 각각 137.6 /
+# 139.2 / 137.2 MB 이고, VmRSS(current) 로 재도 139.7~140.5MB 로 같은 결론이다.
+# 대조군: 빈 인터프리터 peak 35.7 / cur 11.8MB, hoga/live/writer.py 는 peak 36.0 /
+# cur 20.9MB 이고 polars·pyarrow 둘 다 False — ADR-0038 이 유일하게 이름을 지목한
+# 그 모듈은 이미 클린이다. (지표를 적어 두는 이유: peak 과 current 를 섞어 인용하면
+# 재현자가 "숫자가 안 맞는다" 로 결론이 갈린다. 실제로 갈렸다.)
+# 셋 다 _HOT_PATH_MODULES 밖이라 이 가드가 보지 않는다. 즉 아래 5개를 전부 고쳐도
+# `hoga serve` 의 기동 시간과 RSS 는 1바이트도 안 줄고, 줄어드는 것은
+# "hoga.live.* 만 골라 import 하는 테스트/스크립트" 뿐이다.
+#
+# 【배선 자체가 승인된 것이다】 lifecycle → promote 간선은 ADR-0043 이 명시적으로
+# 승인했다: "Today Promotion은 hoga/live/promote.py(jsonl writer와 분리된 모듈)에서
+# 동작 — hot path 외부. 위반 아님." 즉 모듈 분리로 충분하다는 것이 accepted ADR 의
+# 해석이고, promote 가 pyarrow 를 쓰는 것은 ADR-0038 이 시키는 일이다.
+#
+# 【그래도 목록을 유지하는 이유】 신규 유입을 막는 값은 그대로다. 새 핫패스 모듈이
+# parquet 계층에 붙는 것은 여전히 설계 후퇴이고, 아래 5개는 그 판정에서 제외될 뿐
+# test_hot_path_module_does_not_import_parquet(직접 import)은 계속 받는다.
+#
+# 【남은 진짜 구멍 — 둘 다 선존재이고 별건 이슈다】
+#  (a) **`from pkg import submod` 간선을 서브모듈로 해석하지 않는다.** _module_level_imports
+#      는 ImportFrom 에서 n.module(= "hoga.tables")만 기록하고 alias 이름을 안 붙이므로,
+#      BFS 는 비어 있는 hoga/tables/__init__.py 만 방문하고 candles.py 에 영영 못 간다.
+#      즉 핫패스 파일에 `from hoga.tables import candles` 한 줄을 넣으면 런타임에는
+#      polars+pyarrow 가 둘 다 적재되는데 **두 검사가 모두 통과**한다. 이건 baseline
+#      면제와 무관하게 enforced 모듈 전부에 적용된다. 이 형태는 가공 사례가 아니라
+#      이미 쓰인다(hoga/api/queries.py:21 등). 위음성 5건의 단일 원인이다.
+#      ※ 같은 이유로 _module_level_imports 의 상대 import 처리도 `from . import x`
+#        (n.module is None) 형태는 패키지까지만 해석한다.
+#  (b) 두 검사 모두 "라이브러리 import" 만 보고 **호출**은 안 본다. 아래 baseline 모듈에
+#      `from hoga.tables.candles import write_parquet` 를 넣고 부르면 직접 검사는 모듈명이
+#      안 맞아 통과하고 폐쇄 검사는 면제라 건너뛴다 — ADR-0038 이 실제로 금지한
+#      "핫패스에서 Parquet **쓰기**" 가 hoga.live.stream 에서 안 잡힌다.
+#  (a) 를 보정해도 핫패스 15개의 판정은 15/15 그대로임을 실측 확인했다. 즉 오늘 새는
+#  핫패스는 없고, 둘 다 "지금 고칠 필요는 없지만 알고 있어야 하는" 구멍이다.
+#
+# 【경로(2026-07-30 실측, 정적 폐쇄 = 런타임 sys.modules, 15/15 일치)】
+#   - hoga/api/models.py:17-18 → hoga.tables.candles(pyarrow) / snapshots(polars).
+#     여기로 watchlist_projection → coverage, 그리고 lifecycle → stream 이 딸려 온다.
+#     ※ lifecycle 은 promote 간선을 끊어도 settings → api.models 로 여전히 닿는다.
+#   - hoga/live/api.py → screener_daily_candles.py:6, 그리고 그 간선을 끊어도
+#     index_sector_rankings.py:11 `import polars as pl` 가 남는다.
 _PARQUET_CLOSURE_BASELINE = frozenset({
     "hoga.api.watchlist_projection",
     "hoga.live.stream",
@@ -82,6 +122,33 @@ def _module_name(module_path: str) -> str:
     return p.replace("/", ".")
 
 
+def _is_type_checking_test(test: ast.expr) -> bool:
+    """``if`` 의 조건식이 정확히 ``TYPE_CHECKING`` / ``typing.TYPE_CHECKING`` 인가.
+
+    ``not TYPE_CHECKING`` · ``TYPE_CHECKING and X`` 같은 합성식은 False 를 돌려
+    본문을 계속 세게 한다. 판정을 못 하면 "센다" 쪽으로 틀리는 것이 안전하다 —
+    아래 두 갈래 모두 그 방향을 지킨다.
+
+    속성 형태는 ``typing.TYPE_CHECKING`` 만 받는다. ``attr`` 이름만 보면
+    ``cfg.TYPE_CHECKING`` 처럼 typing 과 무관한 아무 객체의 속성도 면제를 받고,
+    그건 런타임에 **실제로 도는** 자리라 위음성이 된다. ``import typing as t`` 뒤의
+    ``t.TYPE_CHECKING`` 은 이제 "센다" 쪽으로 틀리는데, 그게 위 약속의 방향이고
+    저장소에 0건이다.
+
+    **알려진 한계**: ``TYPE_CHECKING = True`` 로 재바인딩한 뒤 ``if TYPE_CHECKING:``
+    을 쓰면 본문이 실제로 도는데 여기서는 면제된다. 잡으려면 모듈 전체의 대입을
+    스캔해야 해서 비용 대비 현실성이 낮다(저장소에 0건). 이 한계를 알고 남긴다.
+    """
+    if isinstance(test, ast.Name):
+        return test.id == "TYPE_CHECKING"
+    return (
+        isinstance(test, ast.Attribute)
+        and test.attr == "TYPE_CHECKING"
+        and isinstance(test.value, ast.Name)
+        and test.value.id == "typing"
+    )
+
+
 def _module_level_imports(mod: str) -> list[str]:
     """``mod`` 이 **import 시점에** 끌어오는 모듈 이름들.
 
@@ -89,12 +156,26 @@ def _module_level_imports(mod: str) -> list[str]:
     무거운 라이브러리를 지불하는 것" 이고, 지연 import 는 호출 시에만 지불된다.
     그래서 ast.walk 가 아니라 tree.body 만 훑는다.
 
-    ``if TYPE_CHECKING:`` / ``try: ... except ImportError:`` 안쪽도 최상단 취급한다 —
-    런타임에 실제로 평가될 수 있는 자리다.
+    ``try: ... except ImportError:`` 안쪽은 최상단 취급한다 — 런타임에 실제로
+    평가되는 자리다. 다른 ``if`` (예: ``if sys.version_info >= ...``) 도 마찬가지다.
 
-    **상대 import(`from . import x`)를 반드시 해석해야 한다.** 이걸 빠뜨리면
-    hoga.live.stream 처럼 실제로는 새는 모듈이 "경로 없음" 으로 나온다 — 이 가드를
-    만들면서 실제로 겪은 오분석이고, 런타임 대조로만 드러났다.
+    **``if TYPE_CHECKING:`` 은 제외한다.** 그 블록은 런타임에 절대 평가되지 않으므로
+    (``typing.TYPE_CHECKING`` 은 언제나 False) import 비용이 0 이고, 이 함수가 재려는
+    것은 정확히 그 비용이다. 세면 위양성이 난다 — 실증: hoga/api/invariants.py:245 는
+    바로 이 패턴으로 pyarrow 를 피하고 있는데("avoids forcing every consumer ... to
+    also pull in pyarrow / tables"), 세던 시절 이 가드는 그 모듈이 pyarrow 에 닿는다고
+    판정했다. 런타임 sys.modules 대조는 False 였다.
+
+    ``if not TYPE_CHECKING:`` 처럼 뒤집힌 형태는 본문이 실제로 돌므로 계속 센다 —
+    판정은 "테스트가 정확히 TYPE_CHECKING 이름인가" 로만 한다(보수적인 방향).
+
+    **상대 import(`from .foo import bar`)의 패키지 접두사를 반드시 복원해야 한다.**
+    이걸 빠뜨리면 hoga.live.stream 처럼 실제로는 새는 모듈이 "경로 없음" 으로 나온다 —
+    이 가드를 만들면서 실제로 겪은 오분석이고, 런타임 대조로만 드러났다.
+
+    다만 여기서 해석되는 것은 **모듈 경로까지**다. `from pkg import submod` 형태는
+    ``n.module`` 이 pkg 라 submod 로 내려가지 못한다(절대·상대 공통). 아래
+    _PARQUET_CLOSURE_BASELINE 주석의 【남은 진짜 구멍】 (a) 를 보라.
     """
     try:
         spec = importlib.util.find_spec(mod)
@@ -119,10 +200,16 @@ def _module_level_imports(mod: str) -> list[str]:
                     out.append(f"{base}.{n.module}" if n.module else base)
                 elif n.module:
                     out.append(n.module)
-            elif isinstance(n, (ast.If, ast.Try)):
+            elif isinstance(n, ast.If):
+                # TYPE_CHECKING 본문은 런타임에 안 돈다 → 비용 0 → 세지 않는다.
+                # else 절은 반대로 **실제로 도는** 자리이므로 항상 센다.
+                if not _is_type_checking_test(n.test):
+                    visit(n.body)
+                visit(n.orelse)
+            elif isinstance(n, ast.Try):
                 visit(n.body)
                 visit(n.orelse)
-                for handler in getattr(n, "handlers", []):
+                for handler in n.handlers:
                     visit(handler.body)
 
     visit(tree.body)
@@ -188,8 +275,86 @@ def test_hot_path_import_closure_is_parquet_free(module_name: str) -> None:
     chain = _closure_reaches_parquet(module_name)
     assert chain is None, (
         f"ADR-0038 위반(전이): {' → '.join(chain)}\n"
-        "핫패스는 import 만으로 polars/pyarrow 를 지불하면 안 된다. 중간 모듈에서 해당 "
-        "import 를 함수 지역으로 내리거나, 타입만 필요하면 TYPE_CHECKING 으로 옮겨라."
+        "핫패스는 import 만으로 polars/pyarrow 를 지불하면 안 된다. 고치는 방법은 둘이고, "
+        "**첫 번째를 먼저 시도하라**:\n"
+        "  1) 중간 모듈에서 해당 import 를 함수 지역으로 내린다. 이 저장소의 관례이고"
+        " (hoga/ 에 107곳), 런타임 동작이 안 바뀐다. 다만 첫 호출이 어디서 일어나는지"
+        " 확인하라 — /live 라우터 핸들러는 전부 async 라, 거기서 처음 import 하면"
+        " 이벤트 루프가 통째로 멈춘다(실측 polars: 웜 ~90ms, 콜드/부하 120~250ms).\n"
+        "  2) 타입으로만 쓰인다면 **중간 모듈에서** `if TYPE_CHECKING:` 으로 옮긴다"
+        " (hoga/api/invariants.py:245 가 선례). **단 pydantic 모델의 필드 애노테이션에는"
+        " 쓸 수 없다** — 런타임에 애노테이션을 해석해야 하므로 첫 인스턴스화에서"
+        " PydanticUserError 로 죽는다. hoga/api/models.py 가 정확히 그 경우다.\n"
+        "두 처방 모두 **핫패스 파일 자신에는 못 쓴다** — 형제 가드"
+        " test_hot_path_module_does_not_import_parquet 은 ast.walk 라 함수 본문이든"
+        " TYPE_CHECKING 블록이든 `import polars` 를 그대로 잡는다. 핫패스 파일이 직접"
+        " 무거운 것을 원하면 그건 설계를 바꿀 일이지 우회할 일이 아니다."
+    )
+
+
+def _write_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, src: str) -> str:
+    """tmp_path 에 import 가능한 단일 모듈을 만들고 이름을 돌려준다.
+
+    ``monkeypatch.syspath_prepend`` 를 쓰는 이유: 케이스마다 tmp_path 가 다르므로
+    직접 ``sys.path.insert`` 하면 파라미터 수만큼 경로가 쌓이고, pytest 가 나중에
+    그 디렉터리를 지우면 **존재하지 않는 경로가 검색 1순위로 남는다.** monkeypatch 는
+    테스트 종료 시 되돌린다.
+    """
+    (tmp_path / f"{name}.py").write_text(src, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    importlib.invalidate_caches()
+    return name
+
+
+_TC = "from typing import TYPE_CHECKING\n"
+
+
+@pytest.mark.parametrize(
+    ("label", "src", "counted"),
+    [
+        ("type_checking", _TC + "if TYPE_CHECKING:\n    import polars\n", False),
+        ("typing_qualified", "import typing\nif typing.TYPE_CHECKING:\n    import polars\n", False),
+        ("type_checking_else", _TC + "if TYPE_CHECKING:\n    pass\nelse:\n    import polars\n", True),
+        ("not_type_checking", _TC + "if not TYPE_CHECKING:\n    import polars\n", True),
+        # typing 이 아닌 객체의 .TYPE_CHECKING 은 런타임에 실제로 도는 자리다 → 센다.
+        ("alien_attr", "import cfgmod\nif cfgmod.TYPE_CHECKING:\n    import polars\n", True),
+        # `import typing as t` 는 판정 불가 → 보수적으로 센다(면제하면 위음성).
+        ("typing_aliased", "import typing as t\nif t.TYPE_CHECKING:\n    import polars\n", True),
+        ("try_import_error", "try:\n    import polars\nexcept ImportError:\n    polars = None\n", True),
+        ("version_gate", "import sys\nif sys.version_info >= (3, 9):\n    import polars\n", True),
+    ],
+)
+def test_type_checking_block_is_not_import_time_cost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, label: str, src: str, counted: bool
+) -> None:
+    """``if TYPE_CHECKING:`` 만 비용 0 으로 취급하고 나머지 분기는 계속 센다.
+
+    이 구분이 없으면 가드가 자기 실패 메시지의 조언(2번)을 거부한다. 실제로
+    hoga/api/invariants.py:245 가 그 패턴으로 pyarrow 를 피하는데, 세던 시절
+    가드는 그 모듈이 pyarrow 에 닿는다고 판정했다 — 런타임은 아니었다.
+
+    반대 방향도 같이 못 박는다: ``else`` 절·``not TYPE_CHECKING``·``try/except
+    ImportError``·버전 게이트는 **런타임에 실제로 도는** 자리라 계속 세야 한다.
+    """
+    mod = _write_probe(tmp_path, monkeypatch, f"adr0038_probe_{label}", src)
+    reached = _closure_reaches_parquet(mod) is not None
+    assert reached is counted, (
+        f"{label}: polars 를 {'세야' if counted else '세지 말아야'} 하는데 "
+        f"{'셌다' if reached else '안 셌다'}. _is_type_checking_test 판정을 확인하라."
+    )
+
+
+def test_type_checking_precedent_module_is_closure_clean() -> None:
+    """정적 판정이 런타임과 일치하는지 실제 모듈로 대조한다.
+
+    hoga/api/invariants.py 는 무거운 도메인 타입을 ``if TYPE_CHECKING:`` 뒤에 두어
+    "consumer 가 pyarrow 를 같이 끌어오지 않게" 한다(그 파일의 주석). 정적 가드가
+    그걸 위반으로 보면, 가드가 옳은 코드를 벌주는 것이다.
+    """
+    chain = _closure_reaches_parquet("hoga.api.invariants")
+    assert chain is None, (
+        f"정적 폐쇄가 {' → '.join(chain)} 로 판정했다. 런타임 sys.modules 에는 "
+        "pyarrow 가 없다(실측). TYPE_CHECKING 을 최상단으로 세고 있지 않은지 확인하라."
     )
 
 
