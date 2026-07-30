@@ -394,9 +394,13 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
 
   // ── 이하 조성은 레거시 LiveSidebar 의 매물대 경로 이식(#719 플립으로 삭제된
   //    LiveSidebar.tsx — 활성 날짜 선정·오늘 증분 fold·호버 컷오프·종가 라인). ──
+  // latest 는 오늘 스코프(ADR-0044 "당일 전체 누적") — 거래원·프로그램 창과 같은
+  // 의미론. 번들 마지막 세그먼트를 쓰면 새날 아침(오늘 캡처 부재)에 전일 분포가
+  // 날짜 라벨 없이 현재값처럼 남고, 마커(마지막 체결 = 오늘 시각)까지 전일
+  // 히스토그램 위에 겹친다. 오늘 데이터가 없으면 빈 상태("매물대 분포 없음")가 맞다.
   const activeDate = spotCursorMs !== null
     ? realMsToYyyymmdd(spotCursorMs)
-    : (bundle?.segments[bundle.segments.length - 1]?.date ?? todayKst ?? null);
+    : (todayKst || null);
   const candleDateIndex = useMemo(
     () => buildCandleDateIndex(bundle?.candles ?? []),
     [bundle?.candles],

@@ -180,6 +180,47 @@ describe('DataWindow — 매물대·프로그램 그룹 차트 링크 (ADR-0119 
     renderWithQuery(<DataWindow win={dataWin('program', 1)} symbol={symbol} />);
     expect(screen.getByText(/차트 창 연동 대기/)).toBeInTheDocument();
   });
+
+  // 2026-07-20 09:00~15:30 KST 세그먼트·분포만 담은 번들 — 오늘 스코프 테스트 공용.
+  const VDIST_OPEN_MS = 1784505600000;
+  const VDIST_CLOSE_MS = VDIST_OPEN_MS + 6.5 * 3600 * 1000;
+
+  function vdistBundle(): RangeBundle {
+    return {
+      code: '005930', from_date: '20260720', to_date: '20260720', bucket_ms: 60000,
+      segments: [{ date: '20260720', session_open_ms: VDIST_OPEN_MS, session_close_ms: VDIST_CLOSE_MS }],
+      candles: [], investorPoints: [],
+      volume_distributions: [{
+        date: '20260720',
+        range_count: 2,
+        price_min: 1000,
+        price_max: 2000,
+        session_open_ms: VDIST_OPEN_MS,
+        session_close_ms: VDIST_CLOSE_MS,
+        last_trade_ms: VDIST_CLOSE_MS,
+        bins: [
+          { price_low: 1000, price_high: 1500, qty: 100 },
+          { price_low: 1500, price_high: 2000, qty: 50 },
+        ],
+      }],
+    } as unknown as RangeBundle;
+  }
+
+  // persisted 프로필이 본체로 쓰이려면 bins 수 = rangeCount (persistedUsable 규칙).
+  const VDIST_2BIN = { rangeCount: 2, color: '#64748B', maxColor: '#EAB308', hoverCutoffEnabled: false };
+
+  it('매물대 latest 는 오늘 스코프 — 새날 아침(번들 마지막 세그먼트=전일)에 전일 분포를 표시하지 않는다', () => {
+    // todayKst=다음날 — 오늘 세그먼트·분포는 아직 없다(새날 아침 캡처 전).
+    publishGroupChartLink(chartLink({ bundle: vdistBundle(), todayKst: '20260721', vdist: VDIST_2BIN }));
+    renderWithQuery(<DataWindow win={dataWin('vdist')} symbol={symbol} />);
+    expect(screen.getByText('매물대 분포 없음')).toBeInTheDocument();
+  });
+
+  it('매물대 latest — todayKst 가 세그먼트 날짜와 일치하면(정상 장중) 당일 분포를 그린다', () => {
+    publishGroupChartLink(chartLink({ bundle: vdistBundle(), todayKst: '20260720', vdist: VDIST_2BIN }));
+    renderWithQuery(<DataWindow win={dataWin('vdist')} symbol={symbol} />);
+    expect(screen.queryByText('매물대 분포 없음')).not.toBeInTheDocument();
+  });
 });
 
 describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤어 버스)', () => {
