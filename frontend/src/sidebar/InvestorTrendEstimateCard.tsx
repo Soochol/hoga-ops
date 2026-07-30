@@ -2,12 +2,7 @@ import type {
   LiveInvestorTrendEstimateResponse,
   LiveInvestorTrendEstimateRow,
 } from '../api/liveInvestorTrendEstimate';
-import {
-  SidebarCard,
-  SidebarCardFooter,
-  SidebarCardHeader,
-  SidebarState,
-} from './SidebarSurface';
+import { SidebarCard, SidebarCardHeader, SidebarState } from './SidebarSurface';
 
 type QueryLike = {
   data?: LiveInvestorTrendEstimateResponse;
@@ -71,11 +66,6 @@ export function InvestorTrendEstimateCard({ query }: Props) {
           {stateText}
         </SidebarState>
       )}
-
-      <SidebarCardFooter
-        left="KIS 장중 가집계 · 수량 기준"
-        right={hasRows && data?.fetched_at_ms ? `최근 조회 ${formatHourMinute(data.fetched_at_ms)}` : undefined}
-      />
     </SidebarCard>
   );
 }

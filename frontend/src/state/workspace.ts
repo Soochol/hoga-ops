@@ -478,8 +478,8 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   // 스파크라인 최소 56 + 보간 라벨 ~20) ≈ 187 → 200. 스파크라인이 flex-1 이라
   // 창을 키우면 그래프가 초과분을 흡수한다.
   program: { w: 260, h: 200 },
-  // investor = 헤더 27 + 카드(헤더 36 + thead 32.25 + KIS 가집계 최대 5차 32.25×5 + 푸터 35) ≈ 303 → 310.
-  investor: { w: 280, h: 310 },
+  // investor = 헤더 27 + 카드(헤더 36 + thead 32.25 + KIS 가집계 최대 5차 32.25×5) ≈ 257 → 270.
+  investor: { w: 280, h: 270 },
   'sector-ranking': { w: 360, h: 320 },
 };
 

@@ -72,7 +72,7 @@ describe('formatAggregationTime', () => {
 });
 
 describe('InvestorTrendEstimateCard', () => {
-  it('renders title, all rows, latest marker, fetched time, and footer', () => {
+  it('renders title, all rows, and latest marker without a source footer', () => {
     render(<InvestorTrendEstimateCard query={{ data: response() }} />);
 
     expect(screen.getByTestId('investor-trend-estimate-card')).toBeInTheDocument();
@@ -85,8 +85,8 @@ describe('InvestorTrendEstimateCard', () => {
     expect(screen.getByText('2차(09:30)')).toBeInTheDocument();
     expect(screen.getByText('+1,500')).toBeInTheDocument();
     expect(screen.getByText('-200')).toBeInTheDocument();
-    expect(screen.getByText('KIS 장중 가집계 · 수량 기준')).toBeInTheDocument();
-    expect(screen.getByText('최근 조회 09:15')).toBeInTheDocument();
+    expect(screen.queryByText('KIS 장중 가집계 · 수량 기준')).not.toBeInTheDocument();
+    expect(screen.queryByText('최근 조회 09:15')).not.toBeInTheDocument();
 
     const latest = screen.getByTestId('investor-estimate-row-latest');
     expect(within(latest).getByText('2차(09:30)')).toBeInTheDocument();
