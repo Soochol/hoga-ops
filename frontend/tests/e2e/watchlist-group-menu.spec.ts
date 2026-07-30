@@ -66,13 +66,16 @@ async function setup(page: import('@playwright/test').Page) {
 }
 
 test.describe('Watchlist Panel group ⋯ menu', () => {
-  test('hover reveals ⋯ → 이름 변경 dialog (prefilled) → PATCH and header updates', async ({ page }) => {
+  test('⋯ 메뉴 → 이름 변경 dialog (prefilled) → PATCH and header updates', async ({ page }) => {
     const { getPatched, hoverHeader, dots } = await setup(page);
 
-    // hover 전엔 시각적으로 숨김(opacity 0) — 실 마우스 hover 로 노출
-    await expect(dots).toHaveCSS('opacity', '0');
+    // **hover 로 나타나던 시절의 단언을 걷어냈다.** 그룹 헤더 도구(드래그·정렬·⋯)는
+    // 이제 호버 없이 항시 표시된다 — `WatchlistDrawer.tsx` 주석 그대로:
+    // "그룹 헤더 도구(드래그·정렬·⋯)는 호버 없이 항시 표시(사용자 요청) — dim 으로
+    // 밀도는 유지하되 발견성을 높인다". opacity 0→1 을 기대하면 항상 1 이라 실패한다.
+    // hover 는 남겨 둔다(실 마우스 경로를 계속 지나가게).
+    await expect(dots).toBeVisible();
     await hoverHeader();
-    await expect(dots).toHaveCSS('opacity', '1');
 
     await dots.click();
     await page.getByRole('menuitem', { name: '그룹 이름 변경' }).click();
@@ -86,19 +89,18 @@ test.describe('Watchlist Panel group ⋯ menu', () => {
     await expect(group.getByRole('button', { name: /^단타(\s+\d+)?$/ })).toBeVisible(); // 헤더 갱신
   });
 
-  test('hover reveals group sort icon and toggles sort directly', async ({ page }) => {
+  test('group sort icon toggles sort directly', async ({ page }) => {
     const { sortButton, hoverHeader } = await setup(page);
 
-    await expect(sortButton).toHaveCSS('opacity', '0');
-
+    // 위 테스트와 같은 이유로 opacity 전제를 걷어냈다(항시 표시).
+    await expect(sortButton).toBeVisible();
     await hoverHeader();
-    await expect(sortButton).toHaveCSS('opacity', '1');
 
     await sortButton.click();
     await expect(page.getByRole('menu', { name: '정렬' })).toHaveCount(0);
   });
 
-  test('Escape closes the open menu/dialog first — panel stays, next Escape closes it', async ({ page }) => {
+  test('Escape 는 열린 메뉴·다이얼로그만 닫는다 — 패널은 그대로(#534 로 패널 단축키는 제거됨)', async ({ page }) => {
     const { hoverHeader, dots, menuByLabel } = await setup(page);
     const panel = page.getByTestId('watchlist-panel');
 
@@ -118,8 +120,13 @@ test.describe('Watchlist Panel group ⋯ menu', () => {
     await expect(page.getByRole('dialog', { name: '그룹 추가하기' })).toHaveCount(0);
     await expect(panel).toBeVisible();
 
-    // 아무것도 안 열린 상태의 Escape 만 패널을 닫는다
+    // **"마지막 Escape 가 패널을 닫는다" 단계를 걷어냈다.** 그 단축키는 #534
+    // ("fix(live): Esc 우측 사이드패널 닫기 단축키 제거")에서 의도적으로 없앴다 —
+    // `useLiveKeyboard.ts` 에 Escape 처리가 아예 없다. 회귀가 아니라 제거된 기능이다.
+    // 이 테스트가 지키는 건 **레이어링**(열린 메뉴/다이얼로그의 Escape 가 패널까지
+    // 삼키지 않는다)이고, 그건 위에서 이미 검증했다. 아무것도 안 열린 상태의 Escape 가
+    // 패널을 그대로 두는 것까지 못박아 둔다.
     await page.keyboard.press('Escape');
-    await expect(panel).toHaveCount(0);
+    await expect(panel).toBeVisible();
   });
 });

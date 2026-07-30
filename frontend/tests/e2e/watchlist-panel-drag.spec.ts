@@ -127,13 +127,22 @@ test.describe('Watchlist panel drag', () => {
       json(r, { folders: folders(), entries, next_run_at_ms: 0 }));
 
     await openPanel(page);
+    // **접두사 충돌 주의.** `watchlist-group-` 로 시작하는 testid 는 그룹 컨테이너 말고도
+    // `watchlist-group-header` · `-picker` · `-add-popover` 가 있어서, 그대로 세면
+    // ['f_a','header','f_b','header'] 가 나온다(실측). 폴더 id 만 남긴다.
+    const NON_GROUP = new Set(['header', 'picker', 'add-popover']);
     const groupsInDom = () =>
       page.locator('[data-testid^="watchlist-group-"]').evaluateAll((els) =>
-        els.map((e) => e.getAttribute('data-testid')!.replace('watchlist-group-', '')));
+        els.map((e) => e.getAttribute('data-testid')!.replace('watchlist-group-', '')))
+        .then((ids) => ids.filter((id) => !NON_GROUP.has(id)));
     await expect.poll(groupsInDom).toEqual(['f_a', 'f_b']);
 
-    // 스윙(f_a) 그룹 핸들을 장기(f_b) 그룹 위로 드래그.
-    const handle = await page.getByTestId('watchlist-group-f_a').getByTestId('group-drag-handle').boundingBox();
+    // 스윙(f_a) 그룹을 장기(f_b) 그룹 위로 드래그.
+    // **별도 ⠿ 핸들 요소가 없다** — dnd-kit 리스너가 그룹 **헤더 전체**에 붙어 있어
+    // (`watchlist-group-header`, `setActivatorNodeRef` + `{...listeners}`) 헤더를 5px 이상
+    // 끌면 그룹 드래그가 시작된다. `group-drag-handle` 은 앱에 존재한 적 없는 testid 다.
+    const handle = await page.getByTestId('watchlist-group-f_a')
+      .getByTestId('watchlist-group-header').boundingBox();
     const target = await page.getByTestId('watchlist-group-f_b').boundingBox();
     if (!handle || !target) throw new Error('handle/target has no bounding box');
     const fx = handle.x + handle.width / 2;

@@ -66,7 +66,12 @@ test.describe('Watchlist Panel collapse — app-shell layout invariance', () => 
     // 패널·main 모두 뷰포트에 묶인다 — auto 행 폭주(버그)면 콘텐츠 높이(≈1900px+)로 커진다.
     expect((await panel.boundingBox())!.height).toBeLessThanOrEqual(vh);
     const h0 = await mainHeight(page);
-    expect(h0).toBeCloseTo(vh, 0); // 뷰포트 일치 — DPR/서브픽셀 내성(±0.5px); 불변성 검사는 아래서 엄격 비교
+    // **뷰포트와 '같다' 가 아니라 '넘지 않는다'.** <main> 은 상단 헤더·하단 바 아래의
+    // 중첩 그리드라 뷰포트보다 그만큼 작다(실측 vh=720 일 때 657). 예전 단언은 그 크롬이
+    // 없던 시절의 수치를 박아 둔 것이다. 이 테스트가 막으려는 버그는 auto 행 폭주로
+    // main 이 콘텐츠 높이(≈1900px+)까지 부푸는 것이고, 그건 이 부등식이 그대로 잡는다.
+    // 실제 불변성 검사는 아래 collapse/expand 전후 비교(h0 동일)가 담당한다.
+    expect(h0).toBeLessThanOrEqual(vh);
 
     // 긴 목록은 패널 내부 스크롤 영역(overflow:auto)이 받는다 — 행이 커지면 스크롤이 죽는다.
     const scroller = page.getByTestId('watchlist-scroll');

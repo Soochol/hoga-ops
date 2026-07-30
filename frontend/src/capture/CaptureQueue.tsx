@@ -229,7 +229,11 @@ function VirtualList({
     overscan: 8,
   });
   return (
-    <div ref={parentRef} style={{ height: '100%', overflowY: 'auto' }}>
+    // testid: 가상화가 켜지면 **실제 스크롤 컨테이너가 여기**다 — 바깥
+    // `queue-list` 는 껍데기가 되어 scrollHeight 가 안 늘어난다(실측 701=701, 안쪽은
+    // 9500). e2e 가 "긴 목록이 카드 안에서 스크롤된다" 를 검증하려면 이 요소를 봐야 한다.
+    <div ref={parentRef} data-testid="queue-virtual-scroller"
+      style={{ height: '100%', overflowY: 'auto' }}>
       <div style={{ height: v.getTotalSize(), position: 'relative' }}>
         {v.getVirtualItems().map((vr) => {
           const row = rows[vr.index];
