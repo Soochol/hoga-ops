@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import {
-  formatAggregationTime,
+  formatAggregationSlot,
   formatQtyCompact,
   InvestorTrendEstimateCard,
 } from './InvestorTrendEstimateCard';
@@ -60,37 +60,52 @@ describe('formatQtyCompact', () => {
   });
 });
 
-describe('formatAggregationTime', () => {
-  it('renders the actual observed HH:MM with the aggregation round', () => {
-    expect(formatAggregationTime(rows[0], 0)).toBe('1차(09:20)');
-    expect(formatAggregationTime({
+describe('formatAggregationSlot', () => {
+  it('splits the round and the actual observed HH:MM into separate pieces', () => {
+    expect(formatAggregationSlot(rows[0], 0)).toEqual({ ordinal: '1', time: '09:20' });
+    expect(formatAggregationSlot({
       slot: '0910',
       observed_at_ms: new Date('2026-06-16T00:40:00Z').getTime(),
-    }, 1)).toBe('2차(09:40)');
-    expect(formatAggregationTime({ slot: '0920' }, 0)).toBe('09:20');
+    }, 1)).toEqual({ ordinal: '2', time: '09:40' });
+  });
+
+  it('claims no round when the observed timestamp is missing', () => {
+    expect(formatAggregationSlot({ slot: '0920' }, 0)).toEqual({ ordinal: null, time: '09:20' });
   });
 });
 
 describe('InvestorTrendEstimateCard', () => {
-  it('renders title, all rows, and latest marker without a source footer', () => {
+  it('renders the bare table with no card chrome of its own', () => {
     render(<InvestorTrendEstimateCard query={{ data: response() }} />);
 
     expect(screen.getByTestId('investor-trend-estimate-card')).toBeInTheDocument();
-    expect(screen.getByText('외인·기관 추정')).toBeInTheDocument();
-    expect(screen.getByText('집계시간')).toBeInTheDocument();
+    expect(screen.getByText('차수')).toBeInTheDocument();
     expect(screen.getByText('외국인')).toBeInTheDocument();
     expect(screen.getByText('기관')).toBeInTheDocument();
     expect(screen.getByText('합산')).toBeInTheDocument();
-    expect(screen.getByText('1차(09:20)')).toBeInTheDocument();
-    expect(screen.getByText('2차(09:30)')).toBeInTheDocument();
+    expect(screen.getByText('09:20')).toBeInTheDocument();
+    expect(screen.getByText('09:30')).toBeInTheDocument();
     expect(screen.getByText('+1,500')).toBeInTheDocument();
     expect(screen.getByText('-200')).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(3);
+
+    // 창 프레임이 이미 제목·테두리를 그린다 — 카드가 두 번째 제목이나
+    // 출처 각주를 덧대면 안 된다.
+    expect(screen.queryByText('외인·기관 추정')).not.toBeInTheDocument();
     expect(screen.queryByText('KIS 장중 가집계 · 수량 기준')).not.toBeInTheDocument();
     expect(screen.queryByText('최근 조회 09:15')).not.toBeInTheDocument();
+    // 평상시(상태 없음)엔 상태 줄도 없다.
+    expect(screen.queryByText('조회 중')).not.toBeInTheDocument();
+  });
+
+  // `bg-bg` 로 칠하던 시절엔 Obsidian·Ledger 에서 --bg 와 --bg-card 가 같은 값이라
+  // 강조가 한 픽셀도 바뀌지 않았다. 토큰 값이 합쳐져도 테스트가 잡도록 클래스를 못박는다.
+  it('marks the latest row with a tint that is actually visible', () => {
+    render(<InvestorTrendEstimateCard query={{ data: response() }} />);
 
     const latest = screen.getByTestId('investor-estimate-row-latest');
-    expect(within(latest).getByText('2차(09:30)')).toBeInTheDocument();
-    expect(screen.getAllByRole('row')).toHaveLength(3);
+    expect(within(latest).getByText('09:30')).toBeInTheDocument();
+    expect(latest).toHaveClass('bg-tint-selection');
   });
 
   it('keeps rows visible and shows delayed state when an error response has rows', () => {
@@ -103,8 +118,8 @@ describe('InvestorTrendEstimateCard', () => {
     );
 
     expect(screen.getByText('조회 지연')).toBeInTheDocument();
-    expect(screen.getByText('1차(09:20)')).toBeInTheDocument();
-    expect(screen.getByText('2차(09:30)')).toBeInTheDocument();
+    expect(screen.getByText('09:20')).toBeInTheDocument();
+    expect(screen.getByText('09:30')).toBeInTheDocument();
   });
 
   it('shows failure when an error response has no rows', () => {

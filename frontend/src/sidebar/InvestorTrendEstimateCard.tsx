@@ -2,7 +2,7 @@ import type {
   LiveInvestorTrendEstimateResponse,
   LiveInvestorTrendEstimateRow,
 } from '../api/liveInvestorTrendEstimate';
-import { SidebarCard, SidebarCardHeader, SidebarState } from './SidebarSurface';
+import { SidebarState } from './SidebarSurface';
 
 type QueryLike = {
   data?: LiveInvestorTrendEstimateResponse;
@@ -22,57 +22,65 @@ export function InvestorTrendEstimateCard({ query }: Props) {
   const isLoadingFirstFetch = query.isLoading && !data;
   const stateText = getStateText({ isLoadingFirstFetch, isError, data, hasRows });
 
-  return (
-    <SidebarCard testId="investor-trend-estimate-card">
-      <SidebarCardHeader
-        title="외인·기관 추정"
-        meta={hasRows && stateText ? stateText : undefined}
-      />
+  if (!hasRows) {
+    return (
+      <div data-testid="investor-trend-estimate-card" className="h-full">
+        <SidebarState className="min-h-[72px] px-3 py-4">{stateText}</SidebarState>
+      </div>
+    );
+  }
 
-      {hasRows ? (
-        <div className="overflow-hidden">
-          <table className="w-full table-fixed border-collapse font-data text-sm tabular-nums">
-            <thead className="text-fg-dimmer">
-              <tr>
-                <th className="w-[6rem] px-2 py-1.5 text-left font-medium">집계시간</th>
-                <th className="px-1.5 py-1.5 text-right font-medium">외국인</th>
-                <th className="px-1.5 py-1.5 text-right font-medium">기관</th>
-                <th className="px-1.5 py-1.5 text-right font-medium">합산</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => {
-                const isLatest = isLatestRow(row, data?.latest ?? null);
-                return (
-                  <tr
-                    key={row.slot}
-                    data-testid={isLatest ? 'investor-estimate-row-latest' : undefined}
-                    className={isLatest ? 'bg-bg' : undefined}
-                  >
-                    <td className="px-2 py-1.5 text-left text-fg-dim">
-                      {formatAggregationTime(row, index)}
-                    </td>
-                    <QtyCell value={row.foreign_qty} />
-                    <QtyCell value={row.institution_qty} />
-                    <QtyCell value={row.sum_qty} />
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <SidebarState className="min-h-[72px] px-3 py-4">
+  return (
+    <div data-testid="investor-trend-estimate-card" className="flex h-full flex-col">
+      {/* 상태는 평소엔 렌더하지 않는다 — "조회 중"·"조회 지연" 처럼 표가 거짓말을
+          하고 있을 때만 한 줄이 생긴다. 항상 있는 크롬이면 그게 라벨이 된다. */}
+      {stateText && (
+        <div className="shrink-0 px-3 pt-1.5 text-right font-data text-xs text-fg-dimmer">
           {stateText}
-        </SidebarState>
+        </div>
       )}
-    </SidebarCard>
+
+      <table className="w-full table-fixed border-collapse font-data text-sm tabular-nums">
+        {/* 헤더는 선이 아니라 톤 밴드로 분리한다(DESIGN.md "구분선 최소화").
+            sticky 는 창을 좁혀 스크롤이 생겼을 때 컬럼 이름을 붙잡아 둔다. */}
+        <thead className="sticky top-0 z-10 text-xs text-fg-dimmer">
+          <tr>
+            <th className="w-[4.6rem] bg-bg-subtle py-1.5 pl-3 pr-1.5 text-left font-medium">차수</th>
+            <th className="bg-bg-subtle px-1.5 py-1.5 text-right font-medium">외국인</th>
+            <th className="bg-bg-subtle px-1.5 py-1.5 text-right font-medium">기관</th>
+            <th className="bg-bg-subtle py-1.5 pl-1.5 pr-3 text-right font-medium">합산</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => {
+            const isLatest = isLatestRow(row, data?.latest ?? null);
+            const { ordinal, time } = formatAggregationSlot(row, index);
+            return (
+              <tr
+                key={row.slot}
+                data-testid={isLatest ? 'investor-estimate-row-latest' : undefined}
+                // 선택 행은 배경 틴트만 — 좌측 accent 바 금지(DESIGN.md list-row rule).
+                className={isLatest ? 'bg-tint-selection' : undefined}
+              >
+                <td className="py-1.5 pl-3 pr-1.5 text-left text-fg-dim">
+                  {ordinal !== null && <span className="mr-1.5 text-fg-dimmer">{ordinal}</span>}
+                  <span>{time}</span>
+                </td>
+                <QtyCell value={row.foreign_qty} />
+                <QtyCell value={row.institution_qty} />
+                <QtyCell value={row.sum_qty} className="pl-1.5 pr-3" />
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-function QtyCell({ value }: { value: number | null }) {
+function QtyCell({ value, className = 'px-1.5' }: { value: number | null; className?: string }) {
   return (
-    <td className={`px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap ${qtyClass(value)}`}>
+    <td className={`py-1.5 text-right tabular-nums whitespace-nowrap ${className} ${qtyClass(value)}`}>
       {formatQtyCompact(value)}
     </td>
   );
@@ -98,20 +106,28 @@ export function formatQtyCompact(value: number | null): string {
   return `${rounded > 0 ? '+' : ''}${body}만`;
 }
 
-export function formatAggregationTime(
+/** 집계시간 셀을 차수와 시각 두 조각으로 나눠 준다 — 셀 안에서 차수는 한 단계
+ *  더 흐리게 깔고 시각이 읽히도록. `1차(09:20)` 한 덩어리였을 땐 괄호가 폭을
+ *  먹고 두 값이 같은 무게로 붙어 있었다.
+ *  `observed_at_ms` 가 없으면 실제 관측 시각을 모르므로 차수도 주장하지 않고
+ *  슬롯 문자열만 그대로 보여 준다(추정 차수를 붙이면 없는 사실을 만든다). */
+export function formatAggregationSlot(
   row: Pick<LiveInvestorTrendEstimateRow, 'slot' | 'observed_at_ms'>,
   index: number,
-): string {
+): { ordinal: string | null; time: string } {
   if (typeof row.observed_at_ms === 'number') {
-    return `${formatAggregationOrdinal(row.slot, index)}(${formatHourMinute(row.observed_at_ms)})`;
+    return {
+      ordinal: formatAggregationOrdinal(row.slot, index),
+      time: formatHourMinute(row.observed_at_ms),
+    };
   }
-  return formatSlotFallback(row.slot);
+  return { ordinal: null, time: formatSlotFallback(row.slot) };
 }
 
 function formatAggregationOrdinal(slot: string, index: number): string {
   const normalized = slot.trim();
-  if (/^\d{1,2}$/.test(normalized)) return `${Number(normalized)}차`;
-  return `${index + 1}차`;
+  if (/^\d{1,2}$/.test(normalized)) return String(Number(normalized));
+  return String(index + 1);
 }
 
 function formatSlotFallback(slot: string): string {
