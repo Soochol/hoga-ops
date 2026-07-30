@@ -31,6 +31,26 @@ async function seedOne(code: string, date: string): Promise<void> {
   }
 }
 
+/** 거래일 캐시를 평일로 선주입 — 범위 캡처 enqueue 의 전제.
+ *
+ *  `trading_days_in_range` 는 KIS 거래일 목록을 요구하고 **폴백이 없다**. CI 에는
+ *  자격증명이 없어 enqueue 가 503(`KIS_CREDENTIALS_MISSING`)으로 즉시 실패했고,
+ *  자격증명이 있는 로컬은 토큰 발급 쿨다운(분당 1회)에 걸려 201/503 을 오갔다.
+ *  스펙이 쓰는 달(전월·현재월)만 심는다. 자세한 근거는 `/api/test/seed-trading-days`. */
+async function seedTradingDays(): Promise<void> {
+  const now = new Date();
+  const months = [
+    [now.getFullYear(), now.getMonth() + 1],
+    [new Date(now.getFullYear(), now.getMonth() - 1, 1).getFullYear(),
+     new Date(now.getFullYear(), now.getMonth() - 1, 1).getMonth() + 1],
+  ];
+  for (const [year, month] of months) {
+    const res = await fetch(`${API}/api/test/seed-trading-days?year=${year}&month=${month}`,
+      { method: 'POST' });
+    if (!res.ok) throw new Error(`seed-trading-days ${year}-${month}: ${res.status} ${await res.text()}`);
+  }
+}
+
 export default async function globalSetup(): Promise<void> {
   // webServer 가 /health 를 기다리고 나서 부르므로 서버는 이미 떠 있다.
   // 그래도 재시도를 둔다 — 준비 신호와 라우터 마운트 사이에 틈이 있을 수 있다.
@@ -38,6 +58,7 @@ export default async function globalSetup(): Promise<void> {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     try {
       for (const [code, date] of SEED) await seedOne(code, date);
+      await seedTradingDays();
       return;
     } catch (e) {
       lastErr = e;
