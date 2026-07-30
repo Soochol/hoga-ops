@@ -52,8 +52,11 @@ export default function TradeTickTable({
   }
   return (
     <div className="font-data text-sm tabular-nums">
+      {/* 헤더는 선이 아니라 톤 밴드로 분리한다(DESIGN.md "구분선 최소화", 2026-07-22).
+          bg-bg-card 였을 땐 창 배경과 같은 값이라 밴드가 보이지 않았고, sticky 는
+          행이 비쳐 보이는 것만 막고 있었다. */}
       <div
-        className={`sticky top-0 z-10 grid ${COLS} gap-2 bg-bg-card px-2.5 py-1 text-[10.5px] text-fg-dimmer`}
+        className={`sticky top-0 z-10 grid ${COLS} gap-2 bg-bg-subtle px-2.5 py-1 text-[10.5px] text-fg-dimmer`}
       >
         <span>시각</span>
         <span className="text-right">체결가</span>
