@@ -34,6 +34,15 @@ describe('TradeTickTable', () => {
     expect(screen.queryByText('매도')).not.toBeInTheDocument();
   });
 
+  // bg-bg-card 였을 땐 창 배경과 같은 값이라 밴드가 한 픽셀도 보이지 않았다.
+  // 토큰 값이 또 합쳐져도 깨지도록 클래스를 못박는다.
+  it('열 헤더는 --bg-subtle 톤 밴드로 분리된다', () => {
+    render(<TradeTickTable view={view()} />);
+    const header = screen.getByText('시각').parentElement;
+    expect(header).toHaveClass('bg-bg-subtle');
+    expect(header).toHaveClass('sticky');
+  });
+
   it('최신 체결이 DOM 상에서 위에 온다', () => {
     render(<TradeTickTable view={view()} />);
     const times = screen.getAllByText(/^09:00:0\d$/).map((el) => el.textContent);

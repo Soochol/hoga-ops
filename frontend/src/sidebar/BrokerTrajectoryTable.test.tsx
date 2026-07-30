@@ -405,4 +405,14 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
     render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
     expect(screen.getByTestId('broker-foreign-sum')).toHaveTextContent('+200');
   });
+
+  // bg-bg-card 였을 땐 창 배경과 같은 값이라 밴드가 한 픽셀도 보이지 않았다.
+  // 토큰 값이 또 합쳐져도 깨지도록 클래스를 못박는다.
+  it('pins the foreign total row as a --bg-subtle tone band', () => {
+    const series: BrokerSeriesEntry[] = [entry('JP모간', [{ ts_ms: 1_000, net: 200 }])];
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    const totalRow = screen.getByText('외국계 합계').parentElement;
+    expect(totalRow).toHaveClass('bg-bg-subtle');
+    expect(totalRow).toHaveClass('sticky');
+  });
 });

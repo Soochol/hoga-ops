@@ -175,7 +175,9 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
           </div>
         );
       })}
-      <div className="sticky bottom-0 z-10 flex items-center justify-between bg-bg-card px-2.5 py-1 text-[10.5px]">
+      {/* 합계행도 헤더와 같은 톤 밴드 — 선 없이 명도가 행 목록과 가른다
+          (DESIGN.md "구분선 최소화", 2026-07-22). */}
+      <div className="sticky bottom-0 z-10 flex items-center justify-between bg-bg-subtle px-2.5 py-1 text-[10.5px]">
         <span className="text-fg-dimmer">외국계 합계</span>
         {foreignObserved ? (
           <span data-testid="broker-foreign-sum" className={priceDirClass(foreignSum)}>
