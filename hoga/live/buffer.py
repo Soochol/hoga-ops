@@ -4,8 +4,19 @@ The live stream publishes ticks/snapshots here; the /api/live/snapshot and
 /api/live/series endpoints read from it. ADR-0038: buffer.py is hot-path,
 no Parquet imports.
 
-Capacity: time-based eviction (DEFAULT_RETENTION_MS = 15 min) with a
-MAX_BUFFER_ENTRIES hard cap as a flood safety pin.
+Capacity: time-based eviction (DEFAULT_RETENTION_MS = 15 min) with a per-deque
+hard cap (:func:`cap_for_retention`) as a flood safety pin.
+
+메모리 실측 (2026-07-30, `live_kiwoom/20260729` · 243종목 947MB 를 이 버퍼에 재생):
+  - 엔트리당 tracemalloc 2,407B / VmRSS 2,576B
+  - (code,kind) 당 15분 창 = **90~91개**. `stream.py:FLUSH_INTERVAL_S = 10.0` 의
+    함수라 **시장 활동과 무관**하다(활동이 폭발해도 이 수는 안 변한다).
+  - 종목당 1.15MiB → 235종목 262MiB · 800종목 894MiB (VmRSS, gc 후 current)
+  - kind 비중: ob 49% · broker 31% · trade 13% · fill 5% · candle 2%
+  즉 이 버퍼의 메모리는 종목 수의 **선형 함수**다 — 어느 날 갑자기 터지는 종류가
+  아니라 종목 수를 늘리면 그만큼 늘어나는 예측 가능한 비용이다.
+  (측정 시 주의: `ru_maxrss`(peak) + 측정용 임시객체 churn 을 쓰면 같은 코드가
+  2.4배로 나온다 — 보유량은 gc 후 VmRSS(current) 로 봐야 한다.)
 
 Concurrency: a single asyncio.Lock guards all mutations and reads.
 Readers grab a frozen tuple snapshot of the deque under the lock, then
@@ -22,23 +33,66 @@ Scaling ceiling (ADR-0116 리뷰 Major, 유예/검토 — 실측 후 후속 PR):
   기본 promote 300s → 바닥 600s)에 막혀 900→600s(33%)뿐이라 효과가 작다. 근본 해법은
   '구독(조회) 종목만 버퍼링 + 첫 조회 시 backfill' 인데, 첫 조회 intraday tail이 최대
   promote_interval만큼 비는 UX 트레이드오프가 있어 4×200 실규모 활성화 시 부하 실측 후
-  별도 설계(ADR)로 진행한다. 현재 안전핀: MAX_BUFFER_ENTRIES 하드캡 + 시간 eviction +
+  별도 설계(ADR)로 진행한다. 현재 안전핀: per-deque 하드캡 + 시간 eviction +
   drop_codes_except(Live Set 축출 즉시 회수).
+
+  **남은 갭**: per-deque 캡은 전역 예산이 아니다. deque 수가 종목 수에 비례하므로
+  전체 상한 = 종목 × kind × 캡 이고, 기본값·800종목이면 최악 ~3.7GiB 다
+  (60,000 캡 시절엔 538GiB 였다 — 즉 안전핀이 발화할 수 없는 위치에 있었다).
+  전역 예산은 "초과 시 어느 deque 를 줄일지" 라는 축출 정책이 필요해 별개 설계다.
 """
 
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from collections import deque
 from collections.abc import Iterable
 
 from .snapshot import LiveSnapshot, SnapshotKind
 
-# Eng C5 → WS 전환: 개수 캡은 폭주 안전핀으로만. 실 보존은 시간 기반
-# (spec §8 봉합 사이징 불변식: 보존 > 2× HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S).
-MAX_BUFFER_ENTRIES = 60_000
 DEFAULT_RETENTION_MS = 900_000  # 15분
+
+# 한 flush 가 (code,kind) 당 엔트리 1개를 만든다 — `stream.py` 의 `FLUSH_INTERVAL_S`
+# 와 **같은 값이어야 한다**. stream 이 buffer 를 import 하므로 역방향 import 는
+# 순환이라 여기 복제하고, 드리프트는 테스트가 막는다
+# (`test_buffer_flush_interval_matches_stream`).
+BUFFER_FLUSH_INTERVAL_MS = 10_000
+
+# 폭주 안전핀 배수. 실측(2026-07-30, live_kiwoom/20260729 · 243종목)에 근거한다:
+#   - (code,kind) 당 15분 창 정상상태 = **90~91개** (보존창 ÷ flush 주기와 정확히 일치)
+#   - 한 flush 창 안 버스트 = ob·fill·broker·trade 최대 2개(창 경계 정렬),
+#     candle 만 최대 11개(분봉 합성 backfill)
+#   → 실 피크는 정상상태 + 버스트 ≈ 101. 4배(=360)면 닿지 않는다.
+BUFFER_CAP_SAFETY_FACTOR = 4
+
+
+def cap_for_retention(retention_ms: int) -> int:
+    """보존창이 함의하는 엔트리 수 × 안전배수 = deque 당 하드캡.
+
+    **보존창에서 파생하는 이유**: 고정 상수로 두면 누군가 `retention_ms` 를 올릴 때
+    캡이 조용히 실제 보존량을 잘라낸다(1시간 보존 = 360개인데 캡이 360이면 경계에서
+    바로 물린다). 파생시켜 두면 "캡은 항상 보존량의 N배" 라는 불변식이 유지된다.
+
+    이전에는 `MAX_BUFFER_ENTRIES = 60_000` 고정이었다. 실측 피크가 deque 당 91개라
+    **660배 느슨**했고, 그 상한에 닿는 상황이면 800종목 기준 메모리가 이미 538GiB —
+    프로세스가 훨씬 전에 죽는다. 즉 "폭주 안전핀" 이 절대 발화할 수 없는 위치에
+    박혀 있었다(있다는 사실이 대비돼 있다는 착각만 줬다).
+
+    주의: **이건 전역 예산이 아니다.** deque 수가 종목 수에 비례하므로(종목 × kind)
+    전체 상한 = 종목수 × kind수 × 캡 이다. 기본 보존창·800종목 기준 최악
+    800 × 5 × 360 × 2.6KB ≈ 3.7GiB(이전 538GiB). 진짜 전역 예산은 축출 정책이
+    필요한 별개 설계이고 미결이다 — 실측 근거는 세션 기록 참고.
+    """
+    expected = max(1, math.ceil(retention_ms / BUFFER_FLUSH_INTERVAL_MS))
+    return expected * BUFFER_CAP_SAFETY_FACTOR
+
+
+# 기본 보존창(15분)에서의 실효 캡 = 90 × 4 = 360. 이름은 유지하되 의미가
+# "고정 상한" 에서 "**기본 보존창에서의** 상한" 으로 좁아졌다 — 인스턴스가 쓰는 값은
+# `LiveBuffer.max_entries_per_deque` 다(보존창이 다르면 값도 다르다).
+MAX_BUFFER_ENTRIES = cap_for_retention(DEFAULT_RETENTION_MS)
 
 
 class LiveBuffer:
@@ -50,6 +104,8 @@ class LiveBuffer:
 
     def __init__(self, *, retention_ms: int = DEFAULT_RETENTION_MS) -> None:
         self._retention_ms = retention_ms
+        # 보존창에서 파생한 하드캡 — 근거는 cap_for_retention docstring.
+        self._max_entries = cap_for_retention(retention_ms)
         self._lock = asyncio.Lock()
         # Keyed by (code, kind.value) → deque[dict]. deque(maxlen=...) handles
         # FIFO drop automatically when the cap is exceeded.
@@ -96,7 +152,7 @@ class LiveBuffer:
                 key = (code, s.kind.value)
                 d = self._buf.get(key)
                 if d is None:
-                    d = deque(maxlen=MAX_BUFFER_ENTRIES)
+                    d = deque(maxlen=self._max_entries)
                     self._buf[key] = d
                 # Store payload + t_ms + kind together so subscribers know
                 # which kind they received. Existing get_latest / get_series
@@ -147,7 +203,7 @@ class LiveBuffer:
             "codes": codes,
             "subscribers": subscribers,
             "retention_ms": self._retention_ms,
-            "max_entries_per_deque": MAX_BUFFER_ENTRIES,
+            "max_entries_per_deque": self._max_entries,
         }
 
     async def get_latest(self, code: str) -> dict | None:

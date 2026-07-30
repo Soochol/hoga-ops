@@ -313,3 +313,78 @@ async def test_publish_mixed_kind_independent_eviction() -> None:
     assert now_ms in ob_times
     # TRADE: fresh 유지, 독립적으로 관리
     assert now_ms in trade_times
+
+
+# ── deque 하드캡 = 보존창 파생 폭주 안전핀 (실측 근거) ────────────────────────
+#
+# 이전에는 `MAX_BUFFER_ENTRIES = 60_000` 고정이었다. 실측(2026-07-30,
+# live_kiwoom/20260729 · 243종목) (code,kind) 당 15분 창 피크가 **91개**라 캡이
+# 660배 느슨했고, 그 상한에 닿는 상황이면 800종목 메모리가 이미 538GiB — 프로세스가
+# 훨씬 전에 죽는다. 즉 "안전핀" 이 발화 불가능한 위치에 박혀 있었다.
+
+
+def test_cap_is_derived_from_retention_not_a_fixed_constant() -> None:
+    """보존창을 올리면 캡도 올라간다 — 고정 상수면 캡이 실제 보존량을 잘라낸다."""
+    from hoga.live.buffer import (
+        BUFFER_CAP_SAFETY_FACTOR,
+        DEFAULT_RETENTION_MS,
+        MAX_BUFFER_ENTRIES,
+        cap_for_retention,
+    )
+
+    # 기본 15분: 900s / 10s flush = 90 → × 안전배수
+    assert cap_for_retention(DEFAULT_RETENTION_MS) == 90 * BUFFER_CAP_SAFETY_FACTOR
+    assert cap_for_retention(DEFAULT_RETENTION_MS) == MAX_BUFFER_ENTRIES
+    # 1시간으로 올리면 360 × 배수 — 캡이 보존량을 넘어선 상태가 유지된다.
+    assert cap_for_retention(3_600_000) == 360 * BUFFER_CAP_SAFETY_FACTOR
+    assert cap_for_retention(3_600_000) > 360
+    # 아주 짧은 보존창에도 0 이 되지 않는다.
+    assert cap_for_retention(1) >= BUFFER_CAP_SAFETY_FACTOR
+
+
+def test_buffer_flush_interval_matches_stream() -> None:
+    """buffer 의 flush 주기 가정이 stream 의 실제 값과 어긋나면 캡 산식이 틀어진다.
+
+    stream 이 buffer 를 import 하므로 역방향 import 는 순환이라 값을 복제했다 —
+    드리프트를 막는 것은 이 테스트뿐이다.
+    """
+    from hoga.live.buffer import BUFFER_FLUSH_INTERVAL_MS
+    from hoga.live.stream import FLUSH_INTERVAL_S
+
+    assert int(FLUSH_INTERVAL_S * 1000) == BUFFER_FLUSH_INTERVAL_MS
+
+
+@pytest.mark.asyncio
+async def test_cap_does_not_bind_at_the_measured_production_cadence() -> None:
+    """실측 정상상태(10초 간격 × 15분)에서 캡이 물리지 않아야 한다.
+
+    물리면 화면이 조용히 과거를 잃는다 — 캡은 폭주 전용 안전핀이고 정상 동작에는
+    닿지 않아야 한다. 실측 피크 91 vs 캡 360 = 약 4배 여유.
+    """
+    from hoga.live.buffer import DEFAULT_RETENTION_MS, MAX_BUFFER_ENTRIES
+
+    buf = LiveBuffer()
+    base = 1_785_283_200_000
+    # 15분 창을 10초 간격으로 꽉 채운다(+ 여유 5분 = 시간 축출도 함께 검증).
+    for i in range(120):
+        t_ms = base + i * 10_000
+        await buf.publish("005930", [_snap(t_ms, SnapshotKind.OB, {"asks": []})], now_ms=t_ms)
+
+    series = await buf.get_series("005930")
+    held = len(series["snapshots"])
+    stats = await buf.stats_snapshot()
+
+    # 보존창 안의 것만 남는다(캡이 아니라 **시간** 이 결정한다).
+    assert held == DEFAULT_RETENTION_MS // 10_000 + 1 == 91
+    assert held < MAX_BUFFER_ENTRIES, "정상 cadence 에서 캡이 물렸다"
+    assert stats["max_entries_per_deque"] == MAX_BUFFER_ENTRIES
+
+
+@pytest.mark.asyncio
+async def test_instance_cap_follows_its_own_retention() -> None:
+    """인스턴스가 쓰는 캡은 자기 보존창에서 나온다(모듈 상수 고정값이 아니다)."""
+    from hoga.live.buffer import cap_for_retention
+
+    buf = LiveBuffer(retention_ms=60_000)
+    stats = await buf.stats_snapshot()
+    assert stats["max_entries_per_deque"] == cap_for_retention(60_000)
