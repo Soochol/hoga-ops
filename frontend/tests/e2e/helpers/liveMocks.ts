@@ -155,17 +155,26 @@ export async function installLiveMocks(
   const json = (route: Route, body: unknown) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
-  await page.route('http://localhost:8080/api/watchlist*', (r) => json(r, WATCHLIST));
-  await page.route('http://localhost:8080/api/live/status*', (r) => json(r, LIVE_STATUS_OK));
-  await page.route('http://localhost:8080/api/live/past-candles*', (r) => json(r, PAST_CANDLES_NORMAL));
-  await page.route('http://localhost:8080/api/live/series*', (r) => json(r, EMPTY_SERIES));
-  await page.route('http://localhost:8080/api/range*', (r) => json(r, rangeBody));
-  await page.route('http://localhost:8080/api/captures/queue*', (r) =>
+  // **호스트를 박지 않는다.** 여기 원래 'http://localhost:8080' 이 하드코딩돼
+  // 있었는데, 그건 API 주소가 아니라 config.ts 의 DEFAULT_CONFIG **폴백**이다 —
+  // `/config.json` 을 못 읽었을 때만 쓰이는 값이다. 즉 이 모킹은 "설정 로드가
+  // 실패한다" 는 사고에 기대어 동작하고 있었다.
+  //
+  // 2026-07-30 에 e2e 가 실제로 실행되기 시작하면서 `/config.json` 이 8765 를
+  // 정상 제공하자, 앱은 진짜 백엔드로 가고 **모킹이 한 건도 안 걸렸다**. 스펙
+  // 8개가 그래서 실패했다. 절대 URL 은 애초에 깨지기 쉬운 결합이었고, 포트가
+  // 바뀔 때마다 조용히 무력화된다.
+  await page.route('**/api/watchlist*', (r) => json(r, WATCHLIST));
+  await page.route('**/api/live/status*', (r) => json(r, LIVE_STATUS_OK));
+  await page.route('**/api/live/past-candles*', (r) => json(r, PAST_CANDLES_NORMAL));
+  await page.route('**/api/live/series*', (r) => json(r, EMPTY_SERIES));
+  await page.route('**/api/range*', (r) => json(r, rangeBody));
+  await page.route('**/api/captures/queue*', (r) =>
     json(r, { active: [], queued: [], done: [] }),
   );
-  await page.route('http://localhost:8080/api/calendar*', (r) => json(r, { holidays: [] }));
-  await page.route('http://localhost:8080/api/symbols*', (r) => json(r, { symbols: [] }));
-  await page.route('http://localhost:8080/api/upstream-hints*', (r) => json(r, { hints: [] }));
+  await page.route('**/api/calendar*', (r) => json(r, { holidays: [] }));
+  await page.route('**/api/symbols*', (r) => json(r, { symbols: [] }));
+  await page.route('**/api/upstream-hints*', (r) => json(r, { hints: [] }));
   // TODO(ws-migration): the /live tick channel is no longer mockable via page.route.
   // The app now opens ONE WebSocket at ws://<host>/api/ws (ADR-0053) carrying
   // {ch:'event'|'live'|'subscribed'|'heartbeat'} frames; the client sends

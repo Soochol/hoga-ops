@@ -10,7 +10,10 @@ import { installLiveMocks } from './helpers/liveMocks';
 
 test.use({ channel: 'chrome' }); // 시스템 Chrome (live-smoke 와 동일 사유)
 
-const API = 'http://localhost:8080';
+// 호스트를 박지 않는다 — 'http://localhost:8080' 은 API 주소가 아니라
+// config.ts 의 DEFAULT_CONFIG **폴백**이었다. /config.json 이 정상 제공되면
+// 앱은 진짜 백엔드로 가고 이 모킹은 한 건도 안 걸린다(2026-07-30 실측).
+const API = '**';
 
 interface Entry {
   code: string; name: string; registered_at_kst_date: string;
