@@ -9,13 +9,13 @@
 
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
+import { apiExact, apiPrefix } from './helpers/apiRoutes';
 
 test.use({ channel: 'chrome' }); // 시스템 Chrome (live-smoke 와 동일 사유)
 
 // 호스트를 박지 않는다 — 'http://localhost:8080' 은 API 주소가 아니라
 // config.ts 의 DEFAULT_CONFIG **폴백**이었다. /config.json 이 정상 제공되면
 // 앱은 진짜 백엔드로 가고 이 모킹은 한 건도 안 걸린다(2026-07-30 실측).
-const API = '**';
 
 interface Entry {
   code: string; name: string; registered_at_kst_date: string;
@@ -40,14 +40,14 @@ test.describe('Watchlist edit modal drag-reorder', () => {
     const json = (route: import('@playwright/test').Route, body: unknown) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
-    await page.route(`${API}/api/live/quotes*`, (r) => json(r, { phase: 'open', quotes: [] }));
+    await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
     // PUT /reorder — 새 순서를 캡처하고 서버 상태를 갱신해 echo.
-    await page.route(`${API}/api/watchlist/reorder`, async (route) => {
+    await page.route(apiExact('watchlist/reorder'), async (route) => {
       lastPut = JSON.parse(route.request().postData() || '{}');
       order = lastPut!.ordered_codes;
       return route.fulfill({ status: 204, body: '' });
     });
-    await page.route(`${API}/api/watchlist`, (r) => {
+    await page.route(apiExact('watchlist'), (r) => {
       if (r.request().method() !== 'GET') return r.fallback();
       return json(r, {
         folders: [{ id: FOLDER_ID, name: '테스트 그룹', order: 0 }],
@@ -58,12 +58,13 @@ test.describe('Watchlist edit modal drag-reorder', () => {
 
     await page.goto('/live');
     // 패널 열기(영속 상태로 이미 열려 있으면 생략) → 편집 메뉴 → 관심 편집
-    const editMenuBtn = page.getByRole('button', { name: '관심종목 편집 메뉴' });
+    const editMenuBtn = page.getByRole('button', { name: '관심종목 편집' });
     if (!(await editMenuBtn.isVisible().catch(() => false))) {
       await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
     }
+    // 드로어에서 **메뉴가 제거**됐다 — "편집" 버튼이 모달을 바로 연다
+    // (`WatchlistDrawer.tsx`: "메뉴를 없애고 '편집'이 관심 편집 모달을 바로 연다").
     await editMenuBtn.click();
-    await page.getByRole('menuitem', { name: '관심 편집' }).click();
     await expect(page.getByRole('dialog', { name: '관심종목 편집' })).toBeVisible();
     const editDialog = page.getByRole('dialog', { name: '관심종목 편집' });
     await editDialog.getByRole('button', { name: '테스트 그룹 3' }).click();

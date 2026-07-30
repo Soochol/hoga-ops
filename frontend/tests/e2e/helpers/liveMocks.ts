@@ -164,17 +164,29 @@ export async function installLiveMocks(
   // 정상 제공하자, 앱은 진짜 백엔드로 가고 **모킹이 한 건도 안 걸렸다**. 스펙
   // 8개가 그래서 실패했다. 절대 URL 은 애초에 깨지기 쉬운 결합이었고, 포트가
   // 바뀔 때마다 조용히 무력화된다.
-  await page.route('**/api/watchlist*', (r) => json(r, WATCHLIST));
-  await page.route('**/api/live/status*', (r) => json(r, LIVE_STATUS_OK));
-  await page.route('**/api/live/past-candles*', (r) => json(r, PAST_CANDLES_NORMAL));
-  await page.route('**/api/live/series*', (r) => json(r, EMPTY_SERIES));
-  await page.route('**/api/range*', (r) => json(r, rangeBody));
-  await page.route('**/api/captures/queue*', (r) =>
+  // …그런데 `'**/api/…'` 로 완화하면 **자기 소스 파일까지 가로챈다**. Playwright 의
+  // `**` 는 `/` 를 포함해 매칭하므로 `**/api/symbols*` 가 vite 가 서빙하는
+  // `/src/api/symbols.ts` 에도 걸린다 — 그 모듈이 JSON 으로 대체되면서
+  // "Failed to load module script: … MIME type of application/json" 으로 앱이 통째로
+  // 빈 화면이 됐다(실측). 이 저장소는 프론트 소스에 `src/api/` 가 있어서 API 경로와
+  // 소스 경로가 문자열로 겹친다 — 실제 충돌 5건: watchlist · symbols · calendar ·
+  // range · captures.
+  //
+  // 그래서 **호스트 루트에 앵커한 정규식**을 쓴다. `/api/…` 가 경로 맨 앞일 때만
+  // 걸리므로 `/src/api/…` 는 절대 매칭되지 않고, 포트가 바뀌어도 그대로 동작한다.
+  const api = (path: string) => new RegExp(`^https?://[^/]+/api/${path}`);
+
+  await page.route(api('watchlist'), (r) => json(r, WATCHLIST));
+  await page.route(api('live/status'), (r) => json(r, LIVE_STATUS_OK));
+  await page.route(api('live/past-candles'), (r) => json(r, PAST_CANDLES_NORMAL));
+  await page.route(api('live/series'), (r) => json(r, EMPTY_SERIES));
+  await page.route(api('range'), (r) => json(r, rangeBody));
+  await page.route(api('captures/queue'), (r) =>
     json(r, { active: [], queued: [], done: [] }),
   );
-  await page.route('**/api/calendar*', (r) => json(r, { holidays: [] }));
-  await page.route('**/api/symbols*', (r) => json(r, { symbols: [] }));
-  await page.route('**/api/upstream-hints*', (r) => json(r, { hints: [] }));
+  await page.route(api('calendar'), (r) => json(r, { holidays: [] }));
+  await page.route(api('symbols'), (r) => json(r, { symbols: [] }));
+  await page.route(api('upstream-hints'), (r) => json(r, { hints: [] }));
   // TODO(ws-migration): the /live tick channel is no longer mockable via page.route.
   // The app now opens ONE WebSocket at ws://<host>/api/ws (ADR-0053) carrying
   // {ch:'event'|'live'|'subscribed'|'heartbeat'} frames; the client sends

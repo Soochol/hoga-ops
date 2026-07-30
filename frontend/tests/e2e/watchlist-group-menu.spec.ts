@@ -7,13 +7,13 @@
 
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
+import { apiExact, apiPrefix } from './helpers/apiRoutes';
 
 test.use({ channel: 'chrome' }); // 시스템 Chrome (live-smoke 와 동일 사유)
 
 // 호스트를 박지 않는다 — 'http://localhost:8080' 은 API 주소가 아니라
 // config.ts 의 DEFAULT_CONFIG **폴백**이었다. /config.json 이 정상 제공되면
 // 앱은 진짜 백엔드로 가고 이 모킹은 한 건도 안 걸린다(2026-07-30 실측).
-const API = '**';
 
 const makeState = () => ({
   folders: [{ id: 'f_a', name: '스윙', order: 0 }],
@@ -31,9 +31,9 @@ async function setup(page: import('@playwright/test').Page) {
   const state = makeState();
   let patched: { id: string; name: string } | null = null;
 
-  await page.route(`${API}/api/live/quotes*`, (r) => json(r, { phase: 'open', quotes: [] }));
+  await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
   // PATCH /folders/{id} — stateful rename. {id} 경로라 GET 보다 먼저 등록.
-  await page.route(`${API}/api/watchlist/folders/*`, async (route) => {
+  await page.route(apiPrefix('watchlist/folders/'), async (route) => {
     if (route.request().method() === 'PATCH') {
       const id = route.request().url().split('/').pop()!;
       const name = (JSON.parse(route.request().postData() || '{}') as { name: string }).name;
@@ -43,7 +43,7 @@ async function setup(page: import('@playwright/test').Page) {
     }
     return route.fallback();
   });
-  await page.route(`${API}/api/watchlist`, (r) => json(r, { ...state, next_run_at_ms: 0 }));
+  await page.route(apiExact('watchlist'), (r) => json(r, { ...state, next_run_at_ms: 0 }));
 
   await page.goto('/live');
   const group = page.locator('[data-testid="watchlist-group-f_a"]');
@@ -111,8 +111,8 @@ test.describe('Watchlist Panel group ⋯ menu', () => {
     await expect(panel).toBeVisible();
 
     // 다이얼로그 열고 Escape → 다이얼로그만 닫힌다
-    await page.getByRole('button', { name: '관심종목 편집 메뉴' }).click();
-    await page.getByRole('menuitem', { name: '새 그룹 만들기' }).click();
+    // "새 그룹 만들기" 도 메뉴 항목이 아니라 헤더의 독립 버튼이 됐다.
+    await page.getByRole('button', { name: '새 그룹 만들기' }).click();
     await expect(page.getByRole('dialog', { name: '그룹 추가하기' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: '그룹 추가하기' })).toHaveCount(0);
