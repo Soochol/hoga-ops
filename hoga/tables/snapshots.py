@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections import OrderedDict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -1054,6 +1054,94 @@ def query_daily_depth_peak(
     return DailyDepthPeak(
         ask_peak=int(row[0]), bid_peak=int(row[1]), eligible_count=int(row[2]),
     )
+
+
+def query_daily_depth_peaks(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    paths: Sequence[Path],
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+) -> dict[str, DailyDepthPeak]:
+    """여러 파일의 당일 peak 을 **쿼리 1회**로. :func:`query_daily_depth_peak` 와 동치.
+
+    단건판은 파일당 2쿼리(연속거래 존재 판정 + 집계)라 스크리너 총잔량 조건이
+    유니버스 전체를 훑을 때 ~478 쿼리가 나간다 — 실측 1.5초(2026-07-30, 241종목 ·
+    42MiB). 데이터가 많아서가 아니라 왕복 비용이 종목 수만큼 반복돼서다(호출당 중위
+    6.4ms · p95 8.7ms 로 거의 균일 = 고정 오버헤드). 배치는 실측 0.12초(12~16배).
+
+    **분기 정의가 함정이다.** 단건판의 완화(TRUE) 조건은 "유효 행이 0개" 가 아니라
+    ``_last_continuous_intra_ms is None`` — 즉 **연속거래 호가창 행이 close 이하에
+    하나도 없음** 이다. 개장 전(``>= session_open`` 미달) 연속거래 행만 있는 파일은
+    두 정의가 갈린다(단건판은 None, "유효 0개면 완화" 는 값을 반환). 그래서 두 판정을
+    ``FILTER`` 로 한 쿼리에 담아 조건부 집계로 계산한다 — 정의도 같아지고 쿼리도 1회다.
+
+    빈 파일·행 0개는 결과에서 빠진다(단건판이 None 을 반환하는 것과 같은 의미).
+    호출자는 스키마 불일치 등으로 배치가 실패할 수 있음을 가정하고 단건 경로로
+    폴백해야 한다 — 파일 하나가 배치 전체를 죽이기 때문이다(``_batch_parquet_stats``
+    와 같은 규율).
+
+    반환 키는 ``str(path)`` 로, DuckDB ``filename`` 컬럼이 돌려주는 값 그대로다.
+    """
+    if not paths:
+        return {}
+    str_paths = [str(p) for p in paths]
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+
+    if session_close_ms is None:
+        # 단건판과 동일 — close 가 없으면 술어가 아예 TRUE 다.
+        rows = con.execute(
+            f"""
+            SELECT filename,
+                   max({_ASK_Q_SUM}) AS ask_peak,
+                   max({_BID_Q_SUM}) AS bid_peak,
+                   count(*) AS eligible_count
+            FROM read_parquet(?, filename=true)
+            GROUP BY filename
+            """,
+            [str_paths],
+        ).fetchall()
+        return {
+            str(name): DailyDepthPeak(int(ask), int(bid), int(cnt))
+            for name, ask, bid, cnt in rows
+            if ask is not None
+        }
+
+    eligible = _book_indicator_eligible_sql(
+        intra_ms_expr,
+        session_open_ms=session_open_ms,
+        session_close_ms=session_close_ms,
+    )
+    close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
+    # `_last_continuous_intra_ms is not None` 과 같은 술어.
+    has_continuous = f"{_DEEP_BOOK_SQL} AND {intra_ms_expr} <= {close_intra_sql}"
+
+    rows = con.execute(
+        f"""
+        SELECT filename,
+               count(*)          FILTER (WHERE {has_continuous}) AS n_continuous,
+               max({_ASK_Q_SUM}) FILTER (WHERE {eligible})       AS ask_eligible,
+               max({_BID_Q_SUM}) FILTER (WHERE {eligible})       AS bid_eligible,
+               count(*)          FILTER (WHERE {eligible})       AS n_eligible,
+               max({_ASK_Q_SUM}) AS ask_all,
+               max({_BID_Q_SUM}) AS bid_all,
+               count(*)          AS n_all
+        FROM read_parquet(?, filename=true)
+        GROUP BY filename
+        """,
+        [str_paths],
+    ).fetchall()
+
+    out: dict[str, DailyDepthPeak] = {}
+    for name, n_cont, ask_e, bid_e, n_e, ask_all, bid_all, n_all in rows:
+        if n_cont:
+            ask, bid, cnt = ask_e, bid_e, n_e   # 정상 — 유효 술어
+        else:
+            ask, bid, cnt = ask_all, bid_all, n_all  # 퇴화 파일 — 술어 완화
+        if ask is None:
+            continue
+        out[str(name)] = DailyDepthPeak(int(ask), int(bid), int(cnt))
+    return out
 
 
 @dataclass(frozen=True)
