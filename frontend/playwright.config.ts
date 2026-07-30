@@ -64,7 +64,10 @@ export default defineConfig({
   globalSetup: './tests/e2e/global-setup.ts',
   webServer: [
     {
-      command: 'cd .. && HOGA_ENABLE_TEST_ENDPOINTS=1 HOGA_DATA_DIR=/tmp/hoga-e2e-data uv run hoga serve --port 8765',
+      // `HOGA_RATE_LIMIT_S=0` 필수 — 캡처 한 건이 페이지 ~1,300회를 도는데
+      // (수집기 커서가 페이지마다 60000 씩만 전진한다) 기본 0.15초를 곱하면 190초다.
+      // 페이크는 실제 업스트림이 아니므로 유량을 지킬 이유가 없다.
+      command: 'cd .. && HOGA_ENABLE_TEST_ENDPOINTS=1 HOGA_RATE_LIMIT_S=0 HOGA_DATA_DIR=/tmp/hoga-e2e-data uv run hoga serve --port 8765',
       url: 'http://127.0.0.1:8765/health',
       timeout: 120_000,  // CI 첫 실행은 uv 가 파이썬·의존성을 받는다(실측 ~6s, 여유)
       reuseExistingServer: !process.env.CI,

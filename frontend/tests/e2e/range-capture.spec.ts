@@ -2,14 +2,6 @@ import { test, expect, request } from '@playwright/test';
 import { selectSymbol, tradingDates } from './helpers/calendar';
 import { resetQueue } from './helpers/queue';
 
-// **알려진 공백 — 픽스처가 완결성 게이트를 못 넘는다.**
-// 배선·날짜·큐 오염은 전부 해소돼 큐에 정확히 3행이 들어가고 캡처도 실제로 돈다. 그런데
-// `FakeHogaplayClient` 는 5페이지만 내주므로 행이 `failed 5 100 17%`(커버리지 17%)로
-// 끝나 "3 of 3 done" 에 도달할 수 없다. 통과시키려면 완결로 판정될 만큼 큰 페이크
-// 픽스처가 필요하다(ADR-0115 per-source 완결성 게이트). 단언만 느슨하게 바꾸면 "캡처가
-// 끝까지 간다" 는 이 스펙의 요지가 사라지므로 그렇게 하지 않았다.
-test.fixme(true, '페이크 픽스처 커버리지 17% — 완결성 게이트를 못 넘어 done 에 도달 불가');
-
 test('range-capture: search → pick 3 trading days → Start → queue progresses to done × 3', async ({ page }) => {
   // 날짜는 런타임에 고른다 — 이전 판의 20260518/20 은 작성 시점(2026-05)에만 존재했다.
   // 근거와 오프셋 배분은 helpers/calendar.ts.
@@ -43,7 +35,15 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   await expect(page.locator('text=/3 of 3 done/')).toBeVisible({ timeout: 15_000 });
 
   // 6. Append a second symbol's range — multi-symbol queue test.
-  await page.getByPlaceholder(/종목/).fill('SK');
+  // **이름이 아니라 코드로 찾는다.** 'SK' 로 검색하면 20건이 돌아오고 SK하이닉스 는
+  // 그 안에 없다(SK · SKC · SK우 · SK증권 · SK가스 …). 코드는 1건으로 결정적이다.
+  // 종목을 이미 고른 뒤라 `fill()` 만으로는 드롭다운이 다시 안 열린다(실측: 입력창은
+  // active 인데 값도 옵션도 없다). 클릭 → 비우기 → **한 글자씩 입력**으로 실제 타이핑을
+  // 흉내 낸다.
+  const symbolInput = page.getByPlaceholder(/종목/);
+  await symbolInput.click();
+  await symbolInput.fill('');
+  await symbolInput.pressSequentially('000660', { delay: 30 });
   await page.getByText(/SK하이닉스/, { exact: false }).first().click();
   // 종목을 바꾸면 달력이 이번 달로 돌아오므로 다시 전월로 넘어가 같은 날짜를 고른다.
   const days2 = await tradingDates(page, 3, 5);
@@ -58,6 +58,11 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   await page.getByRole('button', { name: /Click again to confirm/i }).click();
 
   // 8. Dismiss Done — table empties.
+  // **취소가 반영될 때까지 기다린 뒤에 누른다.** Cancel All 은 비동기라, 진행/대기 행이
+  // terminal 로 내려앉기 전에 Dismiss 를 누르면 그 행들이 그대로 남는다(CI 에서 2건
+  // 잔존). 로컬은 이미 전부 done 이라 우연히 통과했다.
+  await expect(page.getByRole('button', { name: /^Capture row .* (capturing|queued)/ }))
+    .toHaveCount(0, { timeout: 15_000 });
   await page.getByRole('button', { name: /Dismiss Done/i }).click();
-  await expect(rows).toHaveCount(0, { timeout: 5_000 });
+  await expect(rows).toHaveCount(0, { timeout: 10_000 });
 });
