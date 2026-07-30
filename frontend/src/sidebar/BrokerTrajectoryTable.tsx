@@ -96,8 +96,11 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   );
 
   return (
+    // 합계행을 창 바닥에 붙이려면 flex 기둥이 필요하다 — sticky 만으로는 스크롤이
+    // 있을 때(내용이 넘칠 때)만 바닥에 붙고, 창을 키워 여유가 생기면 마지막 행
+    // 바로 아래에 떠 버린다. min-h-full 이라 짧을 땐 창을 채우고 길면 늘어난다.
     <div
-      className="font-data text-sm"
+      className="flex min-h-full flex-col font-data text-sm"
       onMouseEnter={() => setPointerInside(true)}
       onMouseLeave={() => {
         setPointerInside(false);
@@ -110,7 +113,8 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
       {rows.map((entry, rowIndex) => {
         const net = nets[rowIndex];
         return (
-          <div key={entry.broker}>
+          // shrink-0 — flex 기둥의 자식이라 기본 shrink 로 행 높이가 눌릴 수 있다.
+          <div key={entry.broker} className="shrink-0">
             {rowIndex === sellStart && sellStart > 0 && (
               <div
                 data-testid="broker-sell-divider"
@@ -178,7 +182,10 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
       {/* 합계행 배경은 창 본문(--bg-card)과 같은 값 — 밴드로 분리하지 않는다
           (2026-07-30 사용자 결정, #955 의 --bg-subtle 밴드 되돌림).
           sticky 라 배경 자체는 필수다: 투명하면 스크롤되는 행이 뒤로 비친다. */}
-      <div className="sticky bottom-0 z-10 flex items-center justify-between bg-bg-card px-2.5 py-1 text-[10.5px]">
+      {/* mt-auto = 남는 세로 공간을 전부 위로 밀어 합계행을 창 바닥에 붙인다(footer).
+          sticky 와 역할이 갈린다: 여유가 있을 땐 mt-auto 가, 내용이 넘쳐 스크롤이
+          생기면 sticky 가 바닥을 지킨다. */}
+      <div className="sticky bottom-0 z-10 mt-auto flex shrink-0 items-center justify-between bg-bg-card px-2.5 py-1 text-[10.5px]">
         <span className="text-fg-dimmer">외국계 합계</span>
         {foreignObserved ? (
           <span data-testid="broker-foreign-sum" className={priceDirClass(foreignSum)}>
