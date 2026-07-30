@@ -49,20 +49,3 @@ export function SidebarCardHeader({
     </header>
   );
 }
-
-export function SidebarCardFooter({
-  left,
-  right,
-  className = '',
-}: {
-  left: ReactNode;
-  right?: ReactNode;
-  className?: string;
-}) {
-  return (
-    <footer className={`flex items-center justify-between gap-2 border-t px-3 py-2 text-[11px] text-fg-dimmer ${className}`.trim()}>
-      <span>{left}</span>
-      {right !== undefined && <span className="font-data">{right}</span>}
-    </footer>
-  );
-}
