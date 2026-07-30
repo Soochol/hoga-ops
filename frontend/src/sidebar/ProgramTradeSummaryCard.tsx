@@ -3,6 +3,7 @@ import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { hoverMsFromClientX, valueFromYRatio } from './sparklineHover';
 import { formatKoreanInt, formatKoreanWonEok } from '../util/koreanNumber';
+import { unixMsToKSTClock } from '../util/time';
 import { SidebarState } from './SidebarSurface';
 
 /** 스파크라인 점선(관측 공백) 판정 임계. 수집 주기(program_trade_collector
@@ -41,9 +42,18 @@ export default function ProgramTradeSummaryCard({
   // 수량(pickProgramTradePoint)까지 함께 호버 위치를 따라간다.
   const [hoverMs, setHoverMs] = useState<number | null>(null);
   const effectiveCursor = hoverMs ?? cursorMs;
+  // 빈 상태 판정은 latest(커서 무관) 로만 한다 — "데이터가 없다" 와 "커서 위치에
+  // 아직 관측이 없다" 는 다른 사건이다. 예전엔 커서 기준 point 하나로 둘을 함께
+  // 판정해, x 축이 담는 구간(가격 오버레이 포함 통합 범위)의 앞쪽 — 순매수 첫
+  // 관측 이전 — 에 호버하면 카드 전체가 빈 상태로 무너졌다. 스파크라인이 사라지면
+  // onMouseLeave 가 걸릴 대상도 없어져 hoverMs 가 그 값에 고착됐다(리로드로만 복구).
+  const latest = pickProgramTradePoint(points, null, todayKst);
   const point = pickProgramTradePoint(points, effectiveCursor, todayKst);
 
-  if (!point) {
+  // 읽을 것(커서 위치 point)도 그릴 것(오늘 스코프 latest)도 없을 때만 빈 상태다.
+  // latest 만으로 판정하면 새날 아침에 전일 캔들을 호버하는 경로(point 는 전일 값을
+  // floor 로 집는다)가 함께 죽는다 — 그건 todayKst 스코프가 막으려던 대상이 아니다.
+  if (!latest && !point) {
     return (
       <SidebarState className="min-h-[88px] px-3 py-4">
         프로그램 순매수 데이터 없음
@@ -51,31 +61,36 @@ export default function ProgramTradeSummaryCard({
     );
   }
 
-  const amountClass = signedClass(point.net_amount);
-  const qtyClass = signedClass(point.net_qty);
+  const amountClass = signedClass(point?.net_amount ?? null);
+  const qtyClass = signedClass(point?.net_qty ?? null);
+  // 궤적의 날짜 스코프. 커서 위치에 관측이 없으면(point null) 커서 날짜를 쓴다 —
+  // 그 날 궤적은 그대로 보여주고 상단 숫자만 비운다.
+  // 마지막 `?? 0` 은 도달 불가다: effectiveCursor 가 null 이면 point 는 latest 경로로
+  // 계산돼 non-null 이고, 둘 다 null 인 경우는 위에서 빈 상태로 빠졌다.
+  const anchorT = point?.t ?? effectiveCursor ?? latest?.t ?? 0;
 
   return (
     <div className="flex h-full min-h-[96px] flex-col px-3 py-2 font-data text-xs">
       <div className="flex items-center justify-between gap-2 text-fg-dimmer">
         <span>누적 순매수</span>
-        <span>{formatTime(point.t)}</span>
+        <span>{formatTime(anchorT)}</span>
       </div>
       <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 pt-2 tabular-nums">
         <span className="text-fg-dimmer">금액</span>
         <span className={`text-right text-sm font-semibold ${amountClass}`}>
-          {formatSignedAmount(point.net_amount)}
+          {formatSignedAmount(point?.net_amount ?? null)}
         </span>
         <span className="text-fg-dimmer">수량</span>
-        <span className={`text-right ${qtyClass}`}>{formatSigned(point.net_qty)}</span>
+        <span className={`text-right ${qtyClass}`}>{formatSigned(point?.net_qty ?? null)}</span>
       </div>
       <ProgramTradeSparkline
         points={points}
-        anchorT={point.t}
+        anchorT={anchorT}
         cursorMs={effectiveCursor}
         closePoints={closePoints}
         onHoverMsChange={setHoverMs}
       />
-      {point.gap_risk && (
+      {point?.gap_risk && (
         <div className="pt-1 text-[11px] text-fg-dimmer">
           일부 구간 보간
         </div>
@@ -132,14 +147,23 @@ function ProgramTradeSparkline({
 
   const geometry = useMemo(() => {
     if (drawable.length < 2) return null;
-    // 시간축은 순매수·가격 두 시리즈를 모두 담도록 통합 범위로(둘 다 같은 당일
-    // 이지만 관측 시작/끝이 미세하게 달라 한쪽이 잘리지 않게 한다).
+    // 축 시작은 순매수·가격 통합 최소 — 둘 다 같은 당일이지만 관측 시작이 미세하게
+    // 달라 한쪽이 잘리지 않게 한다(가격 첫 봉이 보통 더 이르다 = 세션 오픈).
     let tFirst = drawable[0].t;
-    let tLast = drawable[drawable.length - 1].t;
     for (const p of drawablePrice) {
       if (p.t < tFirst) tFirst = p.t;
-      if (p.t > tLast) tLast = p.t;
     }
+    // 축 끝은 매물대 카드에 맞춘다 — 매물대의 axisEndMs 는 종가 라인의 마지막 점
+    // (= 마지막 봉의 ts_ms)이다. 프로그램은 30초 주기 실시간 꼬리를 갖고 있어
+    // "두 시리즈 관측 최대" 를 쓰면 축 끝이 봉 경계를 최대 1봉 벗어나고, 두 창을
+    // 위아래로 놓았을 때 같은 x 가 서로 다른 시각을 가리켰다(장 초반은 span 이
+    // 짧아 그 오차의 비율이 커진다). 가격 오버레이가 없으면 맞출 대상이 없으므로
+    // 순매수 마지막 관측을 상한으로 쓴다 — 판정을 priceLine 렌더 조건(2점 이상)과
+    // 같은 술어로 두면 "축은 가격에 맞췄는데 가격선은 없는" 상태가 생기지 않는다.
+    const alignedEnd = drawablePrice.length >= 2
+      ? drawablePrice[drawablePrice.length - 1].t
+      : null;
+    const tLast = alignedEnd ?? drawable[drawable.length - 1].t;
     const tSpan = tLast - tFirst || 1;
     // 순매수 Y 도메인은 0을 항상 포함 — 양·음 어느 쪽이든 0 기준선 대비 위치가
     // 보이도록 (브로커 Sparkline 과 같은 규칙).
@@ -150,7 +174,14 @@ function ProgramTradeSparkline({
       if (p.v > vMax) vMax = p.v;
     }
     const vSpan = vMax - vMin || 1;
-    const toX = (t: number) => ((t - tFirst) / tSpan) * W;
+    // 축 끝(tLast)을 넘는 순매수 점은 버리지 않고 x=W 로 클램프한다 — 실시간
+    // 최신값이 곡선에서 사라지면 "지금 프로그램이 들어오는 중" 을 못 읽는다.
+    // 뭉치는 폭은 최대 1봉(1분봉·좁은 창에서 약 2~3px)이고, 매물대의 커서 마커도
+    // 같은 클램프(Math.min(100, ...))로 축 끝에 붙인다.
+    const toX = (t: number) => {
+      const x = ((t - tFirst) / tSpan) * W;
+      return x < 0 ? 0 : x > W ? W : x;
+    };
     const toY = (v: number) => H - ((v - vMin) / vSpan) * H;
     const segments = buildTimeGapSegments(drawable, PROGRAM_SPARK_GAP_THRESHOLD_MS).map((seg) => ({
       kind: seg.kind,
@@ -171,14 +202,20 @@ function ProgramTradeSparkline({
       const toYPrice = (c: number) => H - ((c - pMin) / pSpan) * H;
       priceLine = drawablePrice.map((p) => `${toX(p.t)},${toYPrice(p.v)}`).join(' ');
     }
-    return { tFirst, tLast, tSpan, segments, zeroY, toY, vMin, vMax, priceLine };
+    // 시간축 눈금 — 매물대 카드(VolumeDistributionCard)와 같은 3 라벨·같은
+    // HH:MM 표기. 두 창을 나란히 놓고 "같은 x = 같은 시각" 을 읽는 것이 이
+    // 라벨의 용도라 포맷을 통일한다(초는 버린다 — 폭이 좁고 봉 단위 비교가 목적).
+    const timeTicks = [tFirst, tFirst + tSpan / 2, tLast].map(
+      (ms) => unixMsToKSTClock(ms).slice(0, 5),
+    );
+    return { tFirst, tLast, tSpan, segments, zeroY, toY, vMin, vMax, priceLine, timeTicks };
   }, [drawable, drawablePrice]);
 
   if (!geometry) {
     return <span className="block min-h-[48px] flex-1 pt-2" />;
   }
 
-  const { tFirst, tLast, tSpan, segments, zeroY, toY, vMin, vMax, priceLine } = geometry;
+  const { tFirst, tLast, tSpan, segments, zeroY, toY, vMin, vMax, priceLine, timeTicks } = geometry;
   const showCursor = cursorMs != null && cursorMs >= tFirst && cursorMs <= tLast;
   const cursorX = showCursor ? ((cursorMs! - tFirst) / tSpan) * W : 0;
   // 커서 교차점 도트: preserveAspectRatio=none 아래 <circle>은 타원으로
@@ -198,10 +235,16 @@ function ProgramTradeSparkline({
   const showZeroLabel = vMin < 0 && vMax > 0 && zeroPct > 30 && zeroPct < 70;
 
   return (
-    <div className="mt-2 flex min-h-[48px] flex-1 gap-1.5">
+    // 2×2 그리드 — (1,1) 플롯 · (1,2) 금액축 · (2,1) 시간축.
+    // 시간축이 플롯과 **같은 열**에 놓이는 것이 요점이다: 라벨의 0%·100% 가 플롯의
+    // 좌우 끝과 정확히 일치해야 "라벨이 가리키는 시각 = 곡선의 그 지점" 이 성립한다.
+    // 매물대 카드는 가격축이 고정 폭(48px)이라 paddingRight 로 같은 정렬을 얻지만,
+    // 이 카드의 금액축은 값에 따라 폭이 변해(억 단위 자릿수) 고정값을 쓸 수 없다 —
+    // auto 열이 금액축 폭을 재고 시간축은 1fr 열을 물려받는다.
+    <div className="mt-2 grid min-h-[48px] flex-1 grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto] gap-x-1.5">
       <span
         data-testid="program-sparkline"
-        className="relative block flex-1 cursor-crosshair"
+        className="relative block cursor-crosshair"
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const ms = hoverMsFromClientX(e.clientX, rect.left, rect.width, tFirst, tLast);
@@ -332,6 +375,18 @@ function ProgramTradeSparkline({
             {formatKoreanWonEok(cursorValue)}
           </span>
         )}
+      </div>
+      {/* 시간축 — 축 도메인의 시작·중간·끝(KST). 매물대 카드의 시간축과 같은
+          위계(border-t 로 플롯과 분리, dim 라벨)라 두 창을 위아래로 놓으면 같은
+          높이에서 같은 방식으로 읽힌다. 축 도메인은 순매수·가격 통합 범위이므로
+          왼쪽 라벨이 순매수 첫 관측보다 이를 수 있다(가격 오버레이가 더 이른 경우). */}
+      <div
+        data-testid="program-sparkline-time-axis"
+        className="relative h-4 border-t border-border/70 font-data text-badge leading-4 text-fg-dimmer tabular-nums"
+      >
+        <span className="absolute left-0 top-0">{timeTicks[0]}</span>
+        <span className="absolute left-1/2 top-0 -translate-x-1/2">{timeTicks[1]}</span>
+        <span className="absolute right-0 top-0">{timeTicks[2]}</span>
       </div>
     </div>
   );
