@@ -58,6 +58,11 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   await page.getByRole('button', { name: /Click again to confirm/i }).click();
 
   // 8. Dismiss Done — table empties.
+  // **취소가 반영될 때까지 기다린 뒤에 누른다.** Cancel All 은 비동기라, 진행/대기 행이
+  // terminal 로 내려앉기 전에 Dismiss 를 누르면 그 행들이 그대로 남는다(CI 에서 2건
+  // 잔존). 로컬은 이미 전부 done 이라 우연히 통과했다.
+  await expect(page.getByRole('button', { name: /^Capture row .* (capturing|queued)/ }))
+    .toHaveCount(0, { timeout: 15_000 });
   await page.getByRole('button', { name: /Dismiss Done/i }).click();
-  await expect(rows).toHaveCount(0, { timeout: 5_000 });
+  await expect(rows).toHaveCount(0, { timeout: 10_000 });
 });

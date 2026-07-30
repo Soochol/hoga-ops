@@ -34,8 +34,11 @@ test('cookie-pause: 3rd request → pause banner → Resume → completes', asyn
   // `pause_origin` 취소 항목만 되살리는데, 취소가 확정되기 전에 누르면 되살릴 대상이
   // 0건이라 아무 일도 안 일어난다(실측: resume 200 인데 4건이 cancelled 로 남았다).
   // 사람은 배너를 보고 누르므로 자연히 피해 가는 창이다 — 테스트도 같은 순서를 지킨다.
-  await expect(page.getByRole('button', { name: /^Capture row .* cancelled/ }))
-    .toHaveCount(4, { timeout: 15_000 });
+  // **개수를 못 박지 않는다** — 일시정지 순간 몇 건이 활성이었느냐는 워커 동시성
+  // (코어 수)에 좌우된다. 로컬 32코어에서는 4건, CI 에서는 2건이 취소됐다.
+  // 필요한 건 "정지가 정착했다" 뿐이므로 진행 중인 행이 없어질 때까지만 기다린다.
+  await expect(page.getByRole('button', { name: /^Capture row .* capturing/ }))
+    .toHaveCount(0, { timeout: 15_000 });
 
   // Disable the failure-injection and click Resume.
   await api.post(`${API}/api/test/cookie_expire_at`, { data: { index: -1 } });
