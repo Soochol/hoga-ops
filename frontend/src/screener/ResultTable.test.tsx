@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { ResultTable } from './ResultTable';
 import type { ScreenerResultSortMode } from './sortResults';
@@ -12,8 +13,18 @@ const rows: ScreenerRowLive[] = [
   { code: '005930', name: '삼성전자', market: 'KOSPI', price: 74200, trade_value_won: 842_000_000_000, change_pct: 5.8, change_won: null },
 ];
 
+/** ResultTable 이 useWatchlistMembership 을 (행마다가 아니라) 한 번 부르므로
+ *  QueryClientProvider 가 필요하다. */
+function withClient(ui: React.ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(['watchlist'], { folders: [], entries: [], next_run_at_ms: 0 });
+  return <QueryClientProvider client={qc}>{ui}</QueryClientProvider>;
+}
+
 function renderTable(sortMode: ScreenerResultSortMode = 'default', onSortChange = vi.fn()) {
-  render(<ResultTable rows={rows} onActivate={vi.fn()} sortMode={sortMode} onSortChange={onSortChange} />);
+  render(withClient(
+    <ResultTable rows={rows} onActivate={vi.fn()} sortMode={sortMode} onSortChange={onSortChange} />,
+  ));
   return onSortChange;
 }
 
@@ -59,7 +70,7 @@ describe('ResultTable', () => {
         expected_price: 71500, expected_change_pct: 2.14,
       },
     ];
-    render(<ResultTable rows={expected} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()} />);
+    render(withClient(<ResultTable rows={expected} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()} />));
     const row = screen.getByRole('button', { name: '삼성전자 005930 호가창 열기' });
     // 마커('예')와 값이 같은 셀 안 — 마커의 부모 span textContent 로 대조한다.
     const cell = within(row).getByText('예').parentElement;
@@ -74,7 +85,7 @@ describe('ResultTable', () => {
     const noQuote: ScreenerRowLive[] = [
       { code: '000660', name: 'SK하이닉스', market: 'KOSPI', price: null, trade_value_won: 6e11, change_pct: null, change_won: null },
     ];
-    render(<ResultTable rows={noQuote} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()} />);
+    render(withClient(<ResultTable rows={noQuote} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()} />));
     const row = screen.getByRole('button', { name: 'SK하이닉스 000660 호가창 열기' });
     expect(within(row).getByText('—')).toBeInTheDocument();
   });

@@ -6,6 +6,7 @@ import { activateLiveCode, activateLiveInstrument } from './liveNavigate';
 import { onFocusLiveSearch } from './liveSearchFocus';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
+import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 import type { SymbolHit } from '../api/types';
 import { useLiveIndices, type LiveIndexEntry } from '../api/liveIndices';
 import { indexInstrument, type LiveIndexId } from './liveInstrument';
@@ -42,6 +43,10 @@ function writeRecentSearches(recent: RecentSearch[]) {
 
 export function LiveSymbolSearch() {
   const [query, setQuery] = useState('');
+  // 드롭다운 항목마다가 아니라 **여기서 한 번** — useWatchlistMembership 의 계약
+  // ("ONCE per component, not per row")대로. 하트가 직접 부르던 시절엔 항목 수만큼
+  // react-query 옵저버가 붙었다.
+  const { isMember } = useWatchlistMembership();
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>(() => readRecentSearches());
   const rawItems = useSymbolSearch(query, 20);
   const indices = useLiveIndices().data ?? [];
@@ -191,7 +196,8 @@ export function LiveSymbolSearch() {
                     <span className="text-sm text-fg">{item.hit.name}</span>
                     <span className="text-sm font-data text-fg-dim tabular-nums">{item.hit.code}</span>
                     <span className="border border-border-strong rounded px-1 text-badge font-semibold text-fg-dim">{item.hit.market}</span>
-                    <WatchlistHeartButton code={item.hit.code} name={item.hit.name} />
+                    <WatchlistHeartButton code={item.hit.code} name={item.hit.name}
+                      isMember={isMember(item.hit.code)} />
                   </>
                 ) : (
                   <>
