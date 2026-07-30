@@ -406,6 +406,26 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
     expect(screen.getByTestId('broker-foreign-sum')).toHaveTextContent('+200');
   });
 
+  // 합계행은 footer 다 — 창을 키워 스크롤이 사라져도 바닥에 붙어 있어야 한다.
+  // sticky 는 스크롤이 있을 때만 일하므로 mt-auto(+ flex 기둥)가 함께 있어야
+  // 한다. 실측(2026-07-30): mt-auto 없이는 창을 키웠을 때 합계행 아래로 250px
+  // 빈 공간이 생겼다.
+  it('pins the foreign total row to the window floor as a footer', () => {
+    const series: BrokerSeriesEntry[] = [entry('JP모간', [{ ts_ms: 1_000, net: 200 }])];
+    const { container } = render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+
+    const totalRow = screen.getByText('외국계 합계').parentElement;
+    expect(totalRow).toHaveClass('mt-auto');   // 여유 공간을 위로 밀어낸다(짧을 때)
+    expect(totalRow).toHaveClass('sticky');    // 스크롤을 버틴다(넘칠 때)
+    expect(totalRow).toHaveClass('shrink-0');
+
+    // mt-auto 는 flex 기둥 안에서만 뜻이 있다.
+    const root = container.firstElementChild;
+    expect(root).toHaveClass('flex');
+    expect(root).toHaveClass('flex-col');
+    expect(root).toHaveClass('min-h-full');
+  });
+
   // 2026-07-30 사용자 결정: 합계행은 창 본문(--bg-card)과 같은 배경 — 밴드 금지.
   // sticky 라 배경 클래스 자체는 남아야 한다(투명하면 스크롤 행이 뒤로 비친다).
   it('keeps the foreign total row on the window body background (no tone band)', () => {
