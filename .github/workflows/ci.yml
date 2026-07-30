@@ -21,7 +21,12 @@
 #
 # 아직 넣지 않은 것:
 #   - ruff: 기존 위반 2,057건. 게이트로 세우려면 정리나 규칙 조정이 선행돼야 한다.
-#   - Playwright e2e: 포트 불일치·globalSetup 부재로 현재 실행 불가. 타입체크만 걸어 뒀다.
+#     → 2026-07-30 해소. backend 잡에서 블로킹으로 돈다.
+#   - Playwright e2e: 포트 불일치·globalSetup 부재로 실행 불가였다.
+#     → 2026-07-30 배선 해소(globalSetup 추가, e2e 프론트를 5174 로 이동해 사용자
+#       개발 서버 5173 과 분리, /config.json 을 8765 로 재정의). 다만 **어떤 스펙이
+#       실제로 통과하는지 모르는 상태**라 `e2e` 잡은 continue-on-error 로 들어간다.
+#       통과 집합을 확인한 뒤 게이트로 승격할 것.
 
 name: CI
 
@@ -138,3 +143,46 @@ jobs:
           cache-dependency-glob: uv.lock
           python-version: "3.14"
       - run: uv run --extra dev pytest -q -m wallclock
+
+  e2e:
+    name: e2e (playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # **현재는 비차단이다.** 2026-07-30 에 배선(globalSetup·포트)만 먼저 고쳤고,
+    # 어떤 스펙이 실제로 통과하는지는 아직 모른다 — tests/e2e/README.md 가 일부
+    # 스펙을 "Phase 6+ 미배선" 으로 게이트해 두었고 그 목록이 최신인지 검증된 적이
+    # 없다. 통과 집합을 CI 로그로 확인한 뒤에 게이트로 승격한다.
+    #
+    # 지금 곧바로 블로킹으로 세우면 "실패가 회귀인지 미구현인지" 를 구분하지 못한
+    # 채 머지를 막게 된다. 그 구분이 안 되는 게이트는 신호가 아니라 소음이다.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # 백엔드도 필요하다 — playwright.config.ts 의 webServer 가 `uv run hoga serve`
+      # 로 8765 를 띄우고, globalSetup 이 /api/test/add-stockdate 로 픽스처를 심는다.
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version: "3.14"
+      - run: npm ci
+        working-directory: frontend
+      # --with-deps 는 러너에 시스템 라이브러리를 깐다. 로컬(Ubuntu 26.04)에서는
+      # Playwright 가 지원하지 않아 실행 자체가 불가능하고, 그래서 이 잡의 결과가
+      # 유일한 검증 경로다.
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npx playwright test --reporter=list
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: frontend/test-results/
+          retention-days: 7
