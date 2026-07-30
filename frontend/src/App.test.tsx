@@ -163,7 +163,10 @@ describe('App shell layout', () => {
     expect(screen.getByTestId('watchlist-drawer')).toBeInTheDocument();
   });
 
-  it('mounts the heatmap drawer when the heatmap panel is active', () => {
+  // 드로어·설정 패널은 lazy(초기 번들에서 제외 — App.tsx 주석 참고)라 마운트가
+  // 비동기다. `findBy*` 는 청크가 해석될 때까지 기다린다. 레이아웃(그리드 열)은
+  // Suspense 가 DOM 요소를 만들지 않으므로 fallback 단계에서도 이미 확정이다.
+  it('mounts the heatmap drawer when the heatmap panel is active', async () => {
     useRightRailStore.setState({ activePanel: 'heatmap', lastPanel: 'heatmap' });
 
     wrap(<div>Heatmap</div>, '/heatmap');
@@ -171,24 +174,28 @@ describe('App shell layout', () => {
     expect(screen.getByTestId('app-content-grid')).toHaveStyle({
       gridTemplateColumns: '1fr var(--watchlist-panel-w) var(--rail-w)',
     });
-    expect(screen.getByTestId('heatmap-drawer')).toBeInTheDocument();
+    expect(await screen.findByTestId('heatmap-drawer')).toBeInTheDocument();
   });
 
-  it('opens Settings as a centered popover without leaving the current page', () => {
+  it('opens Settings as a centered popover without leaving the current page', async () => {
     wrap(<div>unused</div>, '/live');
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
 
+    // 모달 껍데기(ModalShell)는 정적이라 즉시 뜬다 — 안쪽 패널만 lazy 다.
     const dialog = screen.getByRole('dialog', { name: 'Settings' });
     expect(dialog).toHaveClass('fixed', 'inset-0', 'items-center', 'justify-center');
-    expect(within(dialog).getByText('settings panel body')).toBeInTheDocument();
+    expect(await within(dialog).findByText('settings panel body')).toBeInTheDocument();
     expect(screen.getByText('live page')).toBeInTheDocument();
   });
 
-  it('closes the Settings popover with Escape', () => {
+  it('closes the Settings popover with Escape', async () => {
     wrap(<div>unused</div>, '/live');
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    // 패널이 실제로 마운트된 뒤 닫아야 "열렸다가 닫혔다"를 검증한다 — 기다리지 않으면
+    // lazy 해석 전에 Escape 를 눌러 빈 모달을 닫는 셈이 된다.
+    await screen.findByText('settings panel body');
     fireEvent.keyDown(document, { key: 'Escape' });
 
     expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull();

@@ -200,3 +200,139 @@ def test_prefilter_keeps_torn_last_line_tolerance(tmp_path: Path) -> None:
     p.write_text(good + "\n" + torn, encoding="utf-8")
 
     assert _read_candle_closes(p) == [(1000, 100.0)]
+
+
+# ── tail-append 증분 읽기 ──────────────────────────────────────────────────────
+#
+# 이전에는 폴링마다 당일 JSONL 을 처음부터 전량 재파싱했다(실측 243파일 947MB,
+# candle 선별 후 2.52초). 라우트의 버스트 합치기 창(30초)은 프론트 폴링 주기(60초)
+# 보다 짧아 단일 클라이언트에서는 절대 히트하지 않으므로 완화 장치가 아니었다.
+
+
+def _candle_line(t_ms: int, close: float) -> str:
+    return json.dumps({"kind": "candle", "t_ms": t_ms, "payload": {"close": close}}) + "\n"
+
+
+def _read_closes(path: Path) -> list[tuple[int, float]]:
+    from hoga.api.heatmap_group_flow import _read_candle_closes
+
+    return _read_candle_closes(path)
+
+
+def _fresh(tmp_path: Path) -> Path:
+    from hoga.api.heatmap_group_flow import reset_tail_cache_for_tests
+
+    reset_tail_cache_for_tests()
+    p = tmp_path / "live_kiwoom" / "20260619" / "005930.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def test_append_only_reads_the_new_tail(tmp_path: Path, monkeypatch) -> None:
+    """두 번째 호출은 새로 붙은 바이트만 읽는다."""
+    path = _fresh(tmp_path)
+    path.write_text(_candle_line(_ms(9, 0), 100.0), encoding="utf-8")
+    assert _read_closes(path) == [(_ms(9, 0), 100.0)]
+
+    # 이후 read() 가 반환하는 바이트 수를 센다.
+    read_bytes: list[int] = []
+    real_open = Path.open
+
+    def counting_open(self, *args, **kwargs):  # noqa: ANN001
+        fh = real_open(self, *args, **kwargs)
+        if "b" in (args[0] if args else kwargs.get("mode", "")):
+            real_read = fh.read
+
+            def read(*a, **k):
+                data = real_read(*a, **k)
+                read_bytes.append(len(data))
+                return data
+
+            fh.read = read  # type: ignore[method-assign]
+        return fh
+
+    monkeypatch.setattr(Path, "open", counting_open)
+
+    tail = _candle_line(_ms(9, 5), 101.0)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(tail)
+
+    assert _read_closes(path) == [(_ms(9, 0), 100.0), (_ms(9, 5), 101.0)]
+    assert sum(read_bytes) == len(tail.encode("utf-8")), (
+        f"꼬리만 읽어야 한다 — 실제 {sum(read_bytes)}B, 기대 {len(tail.encode())}B"
+    )
+
+
+def test_unchanged_file_is_not_reopened(tmp_path: Path, monkeypatch) -> None:
+    """크기가 그대로면 파일을 아예 열지 않는다."""
+    path = _fresh(tmp_path)
+    path.write_text(_candle_line(_ms(9, 0), 100.0), encoding="utf-8")
+    first = _read_closes(path)
+
+    opened: list[str] = []
+    real_open = Path.open
+
+    def tracking_open(self, *args, **kwargs):  # noqa: ANN001
+        opened.append(str(self))
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", tracking_open)
+
+    assert _read_closes(path) == first
+    assert opened == [], "변경 없는 파일을 다시 열었다"
+
+
+def test_incomplete_trailing_line_is_not_consumed(tmp_path: Path) -> None:
+    """개행 없이 끝난 꼬리는 소비하지 않고, 완성되면 반영된다.
+
+    소비해 버리면 그 줄은 영구 유실이다(promote.py _JsonlParseState 와 같은 규율).
+    """
+    path = _fresh(tmp_path)
+    path.write_text(_candle_line(_ms(9, 0), 100.0), encoding="utf-8")
+    assert _read_closes(path) == [(_ms(9, 0), 100.0)]
+
+    partial = _candle_line(_ms(9, 5), 101.0).rstrip("\n")
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(partial)          # 개행 없음 — 쓰기 도중 상태
+    assert _read_closes(path) == [(_ms(9, 0), 100.0)], "부분 라인을 반영했다"
+
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write("\n")             # 완성
+    assert _read_closes(path) == [(_ms(9, 0), 100.0), (_ms(9, 5), 101.0)]
+
+
+def test_shrunk_file_falls_back_to_a_full_reparse(tmp_path: Path) -> None:
+    """파일이 교체(축소)되면 옛 오프셋을 버리고 전량 재파싱한다."""
+    path = _fresh(tmp_path)
+    path.write_text(
+        _candle_line(_ms(9, 0), 100.0) + _candle_line(_ms(9, 5), 101.0), encoding="utf-8",
+    )
+    assert len(_read_closes(path)) == 2
+
+    path.write_text(_candle_line(_ms(10, 0), 200.0), encoding="utf-8")  # 더 짧게 교체
+    assert _read_closes(path) == [(_ms(10, 0), 200.0)]
+
+
+def test_deleted_file_drops_the_cached_state(tmp_path: Path) -> None:
+    """승격 후 삭제된 파일은 빈 리스트 + 상태 폐기(되살아나면 처음부터)."""
+    path = _fresh(tmp_path)
+    path.write_text(_candle_line(_ms(9, 0), 100.0), encoding="utf-8")
+    assert len(_read_closes(path)) == 1
+
+    path.unlink()
+    assert _read_closes(path) == []
+
+    path.write_text(_candle_line(_ms(11, 0), 300.0), encoding="utf-8")
+    assert _read_closes(path) == [(_ms(11, 0), 300.0)]
+
+
+def test_broken_line_does_not_discard_later_valid_lines(tmp_path: Path) -> None:
+    """깨진 줄은 건너뛴다 — 구 구현의 `break` 는 뒤의 정상 줄까지 버렸다."""
+    path = _fresh(tmp_path)
+    path.write_text(
+        _candle_line(_ms(9, 0), 100.0)
+        + '{"kind": "candle", "t_ms": broken\n'
+        + _candle_line(_ms(9, 5), 101.0),
+        encoding="utf-8",
+    )
+    assert _read_closes(path) == [(_ms(9, 0), 100.0), (_ms(9, 5), 101.0)]

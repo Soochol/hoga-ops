@@ -28,11 +28,12 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from collections import OrderedDict
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
 from hoga.api.models import (
     AskPeak,
@@ -100,6 +101,16 @@ class PastIndicatorsCache:
         mem_max_depth_entries: int = DEFAULT_DEPTH_MEM_MAX_ENTRIES,
     ):
         self._data_dir = data_dir
+        # `/api/range` 는 **sync 라우트**(routes.py 의 `def api_range`)라 Starlette
+        # 이 anyio 스레드풀에서 돌린다 — 즉 이 캐시의 OrderedDict 들이 여러 스레드에서
+        # 동시에 변이된다. 락이 없던 동안 두 창을 재캡처 중에 팬하면
+        # `_sync_generation` 의 prefix purge 가 순회 중 삭제와 겹쳐
+        # `RuntimeError: dictionary changed size during iteration` 이 되고,
+        # getter 의 `move_to_end` 는 다른 스레드가 방금 축출한 키에 `KeyError` 를 낸다.
+        # 같은 파일 계열의 `QueryEngine._stock_date_cache` 는 정확히 이 문제를 알고
+        # 방어해 뒀다(queries.py 주석) — 여기 한 곳만 빠져 있었다.
+        # RLock: 락 구간에서 다른 락 메서드를 부르는 경로가 생겨도 자기 교착이 없다.
+        self._lock = threading.RLock()
         self._mem_max_entries = max(0, int(mem_max_entries))
         self._mem_max_depth_entries = max(0, int(mem_max_depth_entries))
         # In-memory hot cache (avoids re-reading disk within a process).
@@ -182,12 +193,40 @@ class PastIndicatorsCache:
         return {kind: st.snapshot(size=sizes[kind]) for kind, st in self._stats.items()}
 
     def _mem_put(self, od: OrderedDict, key, value, stats: CacheStats | None = None) -> None:
-        od[key] = value
-        od.move_to_end(key)
-        while len(od) > self._mem_max_entries:
-            od.popitem(last=False)
-            if stats is not None:
-                stats.record_eviction()
+        with self._lock:
+            od[key] = value
+            od.move_to_end(key)
+            while len(od) > self._mem_max_entries:
+                od.popitem(last=False)
+                if stats is not None:
+                    stats.record_eviction()
+
+    def _mem_hit(self, od: OrderedDict, key):
+        """LRU 조회 — get 과 move_to_end 를 한 임계구역으로 묶는다.
+
+        둘을 따로 하면 그 사이에 다른 스레드가 같은 키를 축출해 `move_to_end` 가
+        `KeyError` 를 낸다. 값이 없으면 None(캐시가 None 을 유효값으로 쓰는 kind 는
+        has_ 로 존재를 먼저 판정하므로 이 반환 계약이 유지된다).
+        """
+        with self._lock:
+            hit = od.get(key)
+            if hit is not None:
+                od.move_to_end(key)
+            return hit
+
+    def _mem_hit_allowing_none(self, od: OrderedDict, key):
+        """`None` 을 유효한 캐시값으로 쓰는 kind 용 LRU 조회 — 부재는 `_CACHE_MISS`.
+
+        `if key in od: od.move_to_end(key); return od[key]` 는 **3단계 check-then-act**
+        라 그 사이 다른 스레드의 축출이 끼면 `move_to_end` 나 `od[key]` 가 KeyError 를
+        낸다. `_mem_hit` 을 쓸 수 없는 이유는 이 kind 들이 "없음" 과 "None 이 캐시됨" 을
+        구별해야 해서다(has_ 와 get_ 이 따로 있는 이유와 같다).
+        """
+        with self._lock:
+            if key not in od:
+                return _CACHE_MISS
+            od.move_to_end(key)
+            return od[key]
 
     def _capture_mtime_ms(self, code: str, date: str, source: str) -> int:
         """Capture identity for a Stock-Date source: meta.json mtime in ms.
@@ -231,15 +270,18 @@ class PastIndicatorsCache:
         too (the incident's /live server held the stale slice in mem)."""
         key = (code, date, source)
         tok = self._capture_mtime_ms(code, date, source)
-        prev = self._gen.get(key)
-        if prev == tok:
-            return
-        self._gen[key] = tok
-        if prev is None:
-            return  # first sighting — nothing memoized under the old token
-        for od in self._all_mem_dicts:
-            for k in [k for k in od if k[:3] == key]:
-                del od[k]
+        with self._lock:
+            prev = self._gen.get(key)
+            if prev == tok:
+                return
+            self._gen[key] = tok
+            if prev is None:
+                return  # first sighting — nothing memoized under the old token
+            for od in self._all_mem_dicts:
+                # list(od) 로 스냅샷을 뜬 뒤 지운다 — 순회 중 삭제는 같은 스레드에서도
+                # 위험하고, 락 밖이면 다른 스레드의 삽입이 순회를 깨뜨렸다.
+                for k in [k for k in list(od) if k[:3] == key]:
+                    od.pop(k, None)
 
     def _path(self, code: str, date: str, source: str, kind: Kind) -> Path:
         return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{kind}.json"
@@ -250,9 +292,8 @@ class PastIndicatorsCache:
         self._sync_generation(code, date, source)
         key = (code, date, source)
         stats = self._stats["ratio"]
-        hit = self._mem_ratio.get(key)
+        hit = self._mem_hit(self._mem_ratio, key)
         if hit is not None:
-            self._mem_ratio.move_to_end(key)
             stats.record_hit()
             return hit
         tuples = self._read(code, date, source, "ratio")
@@ -287,9 +328,8 @@ class PastIndicatorsCache:
         self._sync_generation(code, date, source)
         key = (code, date, source)
         stats = self._stats["fill"]
-        hit = self._mem_fill.get(key)
+        hit = self._mem_hit(self._mem_fill, key)
         if hit is not None:
-            self._mem_fill.move_to_end(key)
             stats.record_hit()
             return hit
         triples = self._read(code, date, source, "fill")
@@ -403,9 +443,9 @@ class PastIndicatorsCache:
         # Lookup accounted on has_ask_peak (the guarding call); get_ is a mem re-read.
         self._sync_generation(code, date, source)
         key = (code, date, source, bucket_ms)
-        if key in self._mem_ask_peak:
-            self._mem_ask_peak.move_to_end(key)
-            return self._mem_ask_peak[key]
+        cached = self._mem_hit_allowing_none(self._mem_ask_peak, key)
+        if cached is not _CACHE_MISS:
+            return cached
         value = self._read_model_cache(
             self._peak_path(code, date, source, "ask_peak", bucket_ms),
             AskPeak,
@@ -414,7 +454,8 @@ class PastIndicatorsCache:
         if value is _CACHE_MISS:
             return None
         self._mem_put(self._mem_ask_peak, key, value, self._stats["ask_peak"])  # type: ignore[arg-type]
-        return self._mem_ask_peak[key]
+        # put 직후 dict 재조회는 경합(그 사이 축출 → KeyError) — 손에 있는 값을 쓴다.
+        return cast("AskPeak | None", value)
 
     def store_ask_peak(
         self, code: str, date: str, source: str, bucket_ms: int, peak: AskPeak | None
@@ -449,9 +490,9 @@ class PastIndicatorsCache:
         # Lookup accounted on has_bid_peak (the guarding call); get_ is a mem re-read.
         self._sync_generation(code, date, source)
         key = (code, date, source, bucket_ms)
-        if key in self._mem_bid_peak:
-            self._mem_bid_peak.move_to_end(key)
-            return self._mem_bid_peak[key]
+        cached = self._mem_hit_allowing_none(self._mem_bid_peak, key)
+        if cached is not _CACHE_MISS:
+            return cached
         value = self._read_model_cache(
             self._peak_path(code, date, source, "bid_peak", bucket_ms),
             BidPeak,
@@ -460,7 +501,7 @@ class PastIndicatorsCache:
         if value is _CACHE_MISS:
             return None
         self._mem_put(self._mem_bid_peak, key, value, self._stats["bid_peak"])  # type: ignore[arg-type]
-        return self._mem_bid_peak[key]
+        return cast("BidPeak | None", value)
 
     def store_bid_peak(
         self, code: str, date: str, source: str, bucket_ms: int, peak: BidPeak | None
@@ -486,10 +527,10 @@ class PastIndicatorsCache:
         self._sync_generation(code, date, source)
         key = (code, date, source, range_count, price_min, price_max)
         stats = self._stats["poc"]
-        if key in self._mem_trade_volume_poc:
-            self._mem_trade_volume_poc.move_to_end(key)
+        cached = self._mem_hit_allowing_none(self._mem_trade_volume_poc, key)
+        if cached is not _CACHE_MISS:
             stats.record_hit()
-            return self._mem_trade_volume_poc[key]
+            return cached
         value = self._read_model_cache(
             self._poc_path(code, date, source, range_count, price_min, price_max),
             TradeVolumePoc,
@@ -500,7 +541,7 @@ class PastIndicatorsCache:
             return _CACHE_MISS
         stats.record_disk_hit()
         self._mem_put(self._mem_trade_volume_poc, key, value, stats)  # type: ignore[arg-type]
-        return self._mem_trade_volume_poc[key]
+        return cast("TradeVolumePoc | None", value)
 
     def store_trade_volume_poc(
         self,
@@ -532,11 +573,12 @@ class PastIndicatorsCache:
     ) -> None:
         stats = self._stats["depth"]
         od = self._mem_depth
-        od[key] = value
-        od.move_to_end(key)
-        while len(od) > self._mem_max_depth_entries:
-            od.popitem(last=False)
-            stats.record_eviction()
+        with self._lock:
+            od[key] = value
+            od.move_to_end(key)
+            while len(od) > self._mem_max_depth_entries:
+                od.popitem(last=False)
+                stats.record_eviction()
 
     def get_depth(
         self, code: str, date: str, source: str, bucket_ms: int
@@ -547,9 +589,8 @@ class PastIndicatorsCache:
         self._sync_generation(code, date, source)
         key = (code, date, source, bucket_ms)
         stats = self._stats["depth"]
-        hit = self._mem_depth.get(key)
+        hit = self._mem_hit(self._mem_depth, key)
         if hit is not None:
-            self._mem_depth.move_to_end(key)
             stats.record_hit()
             return hit
         path = self._depth_path(code, date, source, bucket_ms)
@@ -616,9 +657,8 @@ class PastIndicatorsCache:
         self._sync_generation(code, date, source)
         key = (code, date, source, bucket_ms)
         stats = self._stats["depth_delta"]
-        hit = self._mem_depth_delta.get(key)
+        hit = self._mem_hit(self._mem_depth_delta, key)
         if hit is not None:
-            self._mem_depth_delta.move_to_end(key)
             stats.record_hit()
             return hit
         path = self._depth_delta_path(code, date, source, bucket_ms)
@@ -647,11 +687,7 @@ class PastIndicatorsCache:
             stats.record_miss()
             return _CACHE_MISS
         stats.record_disk_hit()
-        self._mem_depth_delta[key] = points
-        self._mem_depth_delta.move_to_end(key)
-        while len(self._mem_depth_delta) > DEFAULT_MEM_MAX_ENTRIES:
-            self._mem_depth_delta.popitem(last=False)
-            stats.record_eviction()
+        self._mem_put(self._mem_depth_delta, key, points, stats)
         return points
 
     def store_depth_delta(
@@ -659,11 +695,7 @@ class PastIndicatorsCache:
     ) -> None:
         stats = self._stats["depth_delta"]
         stats.record_store()
-        self._mem_depth_delta[(code, date, source, bucket_ms)] = points
-        self._mem_depth_delta.move_to_end((code, date, source, bucket_ms))
-        while len(self._mem_depth_delta) > DEFAULT_MEM_MAX_ENTRIES:
-            self._mem_depth_delta.popitem(last=False)
-            stats.record_eviction()
+        self._mem_put(self._mem_depth_delta, (code, date, source, bucket_ms), points, stats)
         payload = {
             "version": KIND_VERSIONS["depth_delta"],
             "points": [p.model_dump(mode="json") for p in points],
@@ -696,10 +728,10 @@ class PastIndicatorsCache:
         self._sync_generation(code, date, source)
         key = (code, date, source, range_count, price_min, price_max)
         stats = self._stats["vdist"]
-        if key in self._mem_vdist:
-            self._mem_vdist.move_to_end(key)
+        cached = self._mem_hit_allowing_none(self._mem_vdist, key)
+        if cached is not _CACHE_MISS:
             stats.record_hit()
-            return self._mem_vdist[key]
+            return cached
         value = self._read_model_cache(
             self._vdist_path(code, date, source, range_count, price_min, price_max),
             DayVolumeDistribution,
@@ -710,7 +742,7 @@ class PastIndicatorsCache:
             return _CACHE_MISS
         stats.record_disk_hit()
         self._mem_put(self._mem_vdist, key, value, stats)  # type: ignore[arg-type]
-        return self._mem_vdist[key]
+        return cast("DayVolumeDistribution | None", value)
 
     def store_volume_distribution(
         self,
@@ -786,9 +818,8 @@ class PastIndicatorsCache:
         self._sync_generation(code, date, source)
         key = (code, date, source, start_hhmm)
         stats = self._stats["broker_late"]
-        hit = self._mem_broker_late.get(key)
+        hit = self._mem_hit(self._mem_broker_late, key)
         if hit is not None:
-            self._mem_broker_late.move_to_end(key)
             stats.record_hit()
             return hit
         value = self._read_model_list_cache(
@@ -832,10 +863,10 @@ class PastIndicatorsCache:
         self._sync_generation(code, date, source)
         key = (code, date, source, session_close_ms)
         stats = self._stats["continuous_before"]
-        if key in self._mem_continuous_before:
-            self._mem_continuous_before.move_to_end(key)
+        cached = self._mem_hit_allowing_none(self._mem_continuous_before, key)
+        if cached is not _CACHE_MISS:
             stats.record_hit()
-            return self._mem_continuous_before[key]
+            return cached
         path = self._continuous_before_path(code, date, source, session_close_ms)
         if not path.exists():
             stats.record_miss()
