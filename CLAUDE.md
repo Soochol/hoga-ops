@@ -129,8 +129,14 @@ Notes:
     `logging.exception()` / `exc_info=True`. So a `# noqa: BLE001` on a well-handled
     `except Exception` is dead weight, and RUF100 will say so. Fix the handler, don't
     annotate it.
-- Not yet gated: Playwright e2e execution (port mismatch + missing globalSetup).
-  Typecheck-only for that.
+- Playwright e2e는 **2026-07-30부터 게이트**다(`17 passed / 2 skipped`). 로컬에서도
+  돈다 — `playwright.config.ts`가 CI 밖에서는 시스템 Chrome(`channel: 'chrome'`)을 쓴다
+  (Ubuntu 26.04는 Playwright가 번들 chromium 설치를 거부한다). 반복 실행 전에는 e2e
+  전용 서버·데이터를 반드시 초기화한다 — 포트 8765·5174를 kill하고 **실제로 비워질
+  때까지 기다린 뒤** `rm -rf /tmp/hoga-e2e-data`. 안 그러면 이전 실행의 캡처 큐 행이
+  남아 개수 단언이 엉킨다. **사용자 개발 서버(5173·8000)는 절대 건드리지 말 것.**
+  `workers: 1`은 필수다 — 캡처 큐·페이크 실패 카운터·디스크 픽스처가 백엔드 전역이라
+  병렬이면 서로의 상태를 센다.
 
 ## Design System
 
