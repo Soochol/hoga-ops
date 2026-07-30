@@ -16,9 +16,9 @@ from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import StockDate
 from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.api.sources import resolve_source_result
-from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.duck import connect_bounded
 from hoga.tables import snapshots
+from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 
 def _is_non_trading_day(date_yyyymmdd: str) -> bool:
@@ -470,7 +470,7 @@ class QueryEngine:
         from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환/heavy)
             analyze_gaps,
         )
-        from hoga.api.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        from hoga.util.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
         meta = self.get_meta(date, code, source)
         close_ms = meta.get("regular_session_close_ms")

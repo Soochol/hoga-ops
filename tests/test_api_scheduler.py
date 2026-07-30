@@ -580,12 +580,102 @@ async def test_daily_loop_survives_daily_run_crash(tmp_path: Path):
         raise RuntimeError("simulated crash inside _daily_run")
 
     with patch("hoga.api.scheduler.asyncio.sleep", side_effect=fake_sleep), \
+         patch("hoga.api.scheduler.now_kst", return_value=_at(17, 0)), \
          patch("hoga.api.scheduler._daily_run", side_effect=boom) as run_spy, pytest.raises(_asyncio.CancelledError):
         await scheduler._daily_loop(tmp_path)
     # First iteration ran _daily_run (which crashed); the loop did NOT
     # propagate the crash — it advanced to the second sleep.
     assert run_spy.await_count == 1
     assert iteration["n"] == 2
+    # 실패도 마커를 찍는다 — 그래야 60초마다 promote/prune 전체 스윕이 재실행되지 않는다.
+    assert scheduler.read_last_daily_run_date(tmp_path) == "20260526"
+
+
+# ── 놓친 실행 복구 / 절전 드리프트 (17:00 단발 sleep 교체) ────────────────────
+
+def test_daily_run_not_due_before_17():
+    from hoga.api.scheduler import daily_run_due
+    assert daily_run_due(_at(16, 59), last_run_date=None) is False
+
+
+def test_daily_run_due_after_17_when_never_run():
+    """16:00 크래시 → 17:30 재기동이 그날 런을 복구해야 한다.
+
+    구 동작은 다음 17:00 까지 ~23시간을 단발로 잤고, 그래서 그날 런(승격·prune·
+    오늘 enqueue·스크리너·depth_daily)이 영구히 건너뛰어졌다.
+    """
+    from hoga.api.scheduler import daily_run_due
+    assert daily_run_due(_at(17, 30), last_run_date=None) is True
+
+
+def test_daily_run_not_due_when_already_ran_today():
+    from hoga.api.scheduler import daily_run_due
+    assert daily_run_due(_at(23, 59), last_run_date="20260526") is False
+
+
+def test_daily_run_due_again_the_next_day():
+    from hoga.api.scheduler import daily_run_due
+    assert daily_run_due(_at(17, 0, day=27), last_run_date="20260526") is True
+
+
+def test_last_daily_run_date_roundtrips(tmp_path: Path):
+    from hoga.api.scheduler import read_last_daily_run_date, write_last_daily_run_date
+    assert read_last_daily_run_date(tmp_path) is None
+    write_last_daily_run_date(tmp_path, "20260526")
+    assert read_last_daily_run_date(tmp_path) == "20260526"
+
+
+def test_corrupt_marker_reads_as_never_run(tmp_path: Path):
+    """마커는 캐시다 — 손상 시 그날 런이 한 번 더 도는 게 최악이어야 한다."""
+    from hoga.api.scheduler import _scheduler_state_path, read_last_daily_run_date
+    _scheduler_state_path(tmp_path).write_text("{ not json", encoding="utf-8")
+    assert read_last_daily_run_date(tmp_path) is None
+
+
+@pytest.mark.asyncio
+async def test_daily_loop_runs_once_per_day_across_many_ticks(tmp_path: Path):
+    """폴링 루프가 60초마다 깨어도 하루 1회만 실행한다(마커가 멱등성 담당)."""
+    import asyncio as _asyncio
+
+    from hoga.api import scheduler
+    iteration = {"n": 0}
+
+    async def fake_sleep(_secs):
+        iteration["n"] += 1
+        if iteration["n"] >= 5:
+            raise _asyncio.CancelledError
+
+    with patch("hoga.api.scheduler.asyncio.sleep", side_effect=fake_sleep), \
+         patch("hoga.api.scheduler.now_kst", return_value=_at(17, 5)), \
+         patch("hoga.api.scheduler._daily_run", new=AsyncMock()) as run_spy, \
+         pytest.raises(_asyncio.CancelledError):
+        await scheduler._daily_loop(tmp_path)
+
+    assert run_spy.await_count == 1, "폴링 틱마다 재실행하면 안 된다"
+    assert iteration["n"] == 5
+
+
+@pytest.mark.asyncio
+async def test_daily_loop_skips_run_before_trigger_hour(tmp_path: Path):
+    """17:00 전에는 폴링만 하고 실행하지 않는다."""
+    import asyncio as _asyncio
+
+    from hoga.api import scheduler
+    iteration = {"n": 0}
+
+    async def fake_sleep(_secs):
+        iteration["n"] += 1
+        if iteration["n"] >= 3:
+            raise _asyncio.CancelledError
+
+    with patch("hoga.api.scheduler.asyncio.sleep", side_effect=fake_sleep), \
+         patch("hoga.api.scheduler.now_kst", return_value=_at(10, 0)), \
+         patch("hoga.api.scheduler._daily_run", new=AsyncMock()) as run_spy, \
+         pytest.raises(_asyncio.CancelledError):
+        await scheduler._daily_loop(tmp_path)
+
+    assert run_spy.await_count == 0
+    assert scheduler.read_last_daily_run_date(tmp_path) is None
 
 
 @pytest.mark.asyncio

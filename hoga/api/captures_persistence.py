@@ -10,9 +10,9 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import QueueManifest
 from hoga.collector.orchestrator import now_kst
+from hoga.util.atomic_write import atomic_write_json
 
 logger = logging.getLogger(__name__)
 

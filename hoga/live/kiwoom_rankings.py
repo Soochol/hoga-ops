@@ -29,19 +29,21 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, time as dt_time, timedelta, timezone
+from datetime import datetime, time as dt_time
 from typing import Literal
 
 import httpx
 
 from hoga.api.calendar import is_trading_day
+from hoga.util.timeenc import KST
 
 from .kiwoom_token_provider import KiwoomTokenProvider
 from .single_flight import SingleFlight
 
 log = logging.getLogger(__name__)
 
-_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 _BASE_REAL = "https://api.kiwoom.com"
 _RKINFO_PATH = "/api/dostk/rkinfo"
 _CACHE_TTL_MS = 8_000

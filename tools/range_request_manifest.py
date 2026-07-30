@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from hoga.api.models import validate_bucket_ms
 from hoga.api.params import CODE_PATTERN
-from hoga.api.timeenc import unix_ms_to_hhmmssms
+from hoga.util.timeenc import unix_ms_to_hhmmssms
 
 SourcePolicy = Literal[
     "hogaplay",

@@ -20,16 +20,17 @@ import shutil
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from hoga.api.disk_state import analyze_gaps
-from hoga.api.timeenc import HogaMs, unix_ms_to_hhmmssms, unix_ms_to_ms_from_midnight
 from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parquet
 from hoga.tables.candles import Candle, write_parquet as write_candles_parquet
 from hoga.tables.fills import Fill, write_fills_parquet
 from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots_parquet
 from hoga.tables.trades import Trade, write_parquet as write_trades_parquet
+from hoga.util.atomic_write import atomic_write_json
+from hoga.util.timeenc import KST, HogaMs, unix_ms_to_hhmmssms, unix_ms_to_ms_from_midnight
 
 _ZERO_LEVELS: tuple[int, ...] = (0,) * 10
 
@@ -38,7 +39,8 @@ _ZERO_LEVELS: tuple[int, ...] = (0,) * 10
 # that KIS live capture only runs the Regular Session — Half-Day sessions are a
 # known, pre-existing limitation shared with the rest of this module.
 _REGULAR_SESSION_CLOSE_MS: HogaMs = HogaMs(153000000)  # 15:30:00.000 (HHMMSSmmm)
-_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 # Session close 15:30 + 5-min settle buffer: the first Today-Promoter cycle at or
 # after 15:35 KST finalizes today's meta to collection_complete=True.
 _SESSION_FINALIZE_HHMM: tuple[int, int] = (15, 35)
@@ -421,7 +423,7 @@ def _build_meta(
 
 def _today_kst_yyyymmdd() -> str:
     """오늘 날짜 YYYYMMDD KST."""
-    return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+    return datetime.now(KST).strftime("%Y%m%d")
 
 
 def _record_today_promote_success(code: str) -> None:
@@ -447,10 +449,6 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
     (PR-E 컷오버로 관심종목이 키움 전담이 되면서 이 경로가 프론트 today 갱신의
     유일한 이벤트 소스가 됨 — None은 스퓨리어스 리페치를 막는다).
     """
-    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        atomic_write_json,
-    )
-
     today = _today_kst_yyyymmdd()
     jsonl_path = data_dir / "live_kiwoom" / today / f"{code}.jsonl"
     target = data_dir / "parquet" / today / code / "kiwoom_live"

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api._atomic_write import atomic_write_parquet_df
+from hoga.util.atomic_write import atomic_write_parquet_df
 
 
 @dataclass(frozen=True)

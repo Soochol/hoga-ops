@@ -34,7 +34,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
 
-from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import (
     AskPeak,
     BidPeak,
@@ -46,6 +45,7 @@ from hoga.api.models import (
 )
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
+from hoga.util.atomic_write import atomic_write_json
 from hoga.util.cache_stats import CacheStats
 
 if TYPE_CHECKING:

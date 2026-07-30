@@ -19,7 +19,8 @@ import duckdb
 import polars as pl
 import pyarrow as pa
 
-from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
+from hoga.util.atomic_write import atomic_write_parquet_table
+from hoga.util.timeenc import hhmmssms_to_intra_ms_sql
 
 # === In-memory entity ===
 
@@ -148,9 +149,6 @@ def write_parquet(trades: Iterable[Trade], path: Path) -> None:
         field.name: pa.array([getattr(t, field.name) for t in rows], type=field.type)
         for field in PARQUET_SCHEMA
     }
-    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        atomic_write_parquet_table,
-    )
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
@@ -165,9 +163,6 @@ def write_parquet_frame(df: pl.DataFrame, path: Path) -> None:
         .select([f.name for f in PARQUET_SCHEMA])
         .to_arrow()
         .cast(PARQUET_SCHEMA)
-    )
-    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        atomic_write_parquet_table,
     )
     atomic_write_parquet_table(path, table)
 
@@ -349,7 +344,7 @@ class FillStrengthRow:
 
     ``bucket_intra_ms`` is bucket-aligned LINEAR ms-from-midnight (NOT raw
     HHMMSSmmm and NOT Unix ms). The caller converts it to Unix ms via
-    ``hoga.api.timeenc.ms_from_midnight_to_unix_ms(date, bucket_intra_ms)`` —
+    ``hoga.util.timeenc.ms_from_midnight_to_unix_ms(date, bucket_intra_ms)`` —
     the conversion needs the Stock-Date, which this table-level query does not
     take, so it stays the caller's responsibility (mirrors how candles.query_all
     returns native ts_ms and bundle re-bases it). ``buy_qty`` / ``sell_qty`` are

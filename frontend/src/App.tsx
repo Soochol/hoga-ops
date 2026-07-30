@@ -18,6 +18,8 @@ import { useCaptureQueueSync } from './capture/useCaptureQueue';
 import { useScreenerUpdateSync } from './screener/useScreenerUpdateSync';
 import SignalAlertToastHost from './signalAlerts/SignalAlertToastHost';
 import KisRestUnavailableToastHost from './live/KisRestUnavailableToastHost';
+import KiwoomFullHouseToastHost from './live/KiwoomFullHouseToastHost';
+import SupervisedTaskFailureToastHost from './live/SupervisedTaskFailureToastHost';
 import DrawingClearToastHost from './chart/DrawingClearToastHost';
 import DrawingClearConfirmHost from './chart/DrawingClearConfirmHost';
 import { ToastViewport } from './ui/toast/ToastViewport';
@@ -92,6 +94,10 @@ export default function App() {
             새 토스트가 맨 아래에서 떠오르게 하고, KIS 경고는 스택 위쪽에 둔다. */}
         <SignalAlertToastHost />
         <KisRestUnavailableToastHost />
+        <KiwoomFullHouseToastHost />
+        {/* 운영 경보는 스택 위쪽(가장 오래 남는 자리) — 배경 태스크 사망은 프로세스
+            재시작 외에 복구 수단이 없어 사용자가 놓치면 안 된다. */}
+        <SupervisedTaskFailureToastHost />
         <DrawingClearToastHost />
       </ToastViewport>
       {/* 토스트가 아니라 모달 — 뷰포트 밖에 둔다. 그리기 메뉴와 Alt+C 가 공유하는

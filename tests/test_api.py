@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from hoga.api.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
+from hoga.util.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
 
 
 def test_stock_dates(app_client: TestClient) -> None:

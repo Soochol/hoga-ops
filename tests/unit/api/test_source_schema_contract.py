@@ -20,8 +20,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.live.promote import _parse_jsonl_to_records
+from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 # ADR-0049: tests must use Unix ms inside the promotion `date`'s KST day
 # window so the writer's HHMMSSmmm conversion succeeds (rows outside the

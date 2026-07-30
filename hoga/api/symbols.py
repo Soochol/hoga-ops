@@ -22,11 +22,11 @@ from typing import Generic, Literal, TypeVar
 
 from fastapi import APIRouter, Query
 
-from hoga.api._atomic_write import atomic_write_json
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.kis_master import KisMasterFetchError, fetch_symbol_master as _fetch_mst
 from hoga.api.models import SymbolHit, SymbolMasterInfo, SymbolsAllResponse
+from hoga.util.atomic_write import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -293,7 +293,7 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int, int] | None:
 def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> None:
     """Atomically persist the catalog. Creates parent dir if needed.
 
-    Delegates to hoga.api._atomic_write.atomic_write_json (extracted per
+    Delegates to hoga.util.atomic_write.atomic_write_json (extracted per
     ADR-0015 footer + ADR-0019). captured_breakdown fields are stripped —
     disk file holds KRX-side data only (breakdown is a runtime view of
     data_dir).

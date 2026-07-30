@@ -12,14 +12,16 @@ from __future__ import annotations
 
 import time
 from collections import OrderedDict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 from hoga.live.kis_venue import KisVenue
 from hoga.util.cache_stats import CacheStats
+from hoga.util.timeenc import KST
 
-_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 
 
 def _ts_ms_to_kst_yyyymmdd(ts_ms: int) -> str:

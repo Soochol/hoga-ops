@@ -15,9 +15,9 @@ from fastapi.testclient import TestClient
 from hoga.api.app import create_app
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import _resolved_parquet_dir
-from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.tables import candles as candles_tbl
 from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots
+from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 _CODE = "005930"
 _DATE = "20260518"

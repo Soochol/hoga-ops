@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 
 from hoga.api.models import SellTotalRenewalSettings, SignalAlertEvent, SignalAlertSource
 from hoga.live.signal_alerts import append_signal_alert, load_signal_alert_settings
+from hoga.util.timeenc import KST
 
-_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 _REARM_RATIO = 0.85
 _EPOCH_MS_THRESHOLD = 10_000_000_000
 

@@ -10,6 +10,7 @@ vi.mock('./api/eventStream', () => ({
   useEventStream: () => {},
   lastHeartbeat: () => 0,
   subscribeToScreenerUpdateEvents: () => () => {},
+  subscribeToKiwoomFullHouseEvents: () => () => {},
 }));
 
 vi.mock('./capture/useCaptureQueue', () => ({

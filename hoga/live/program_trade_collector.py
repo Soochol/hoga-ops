@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from hoga.api.timeenc import KST
+from hoga.util.timeenc import KST
 
 from . import program_trade_latch
 from .error_policy import classify_live_error, format_live_error
@@ -29,6 +29,10 @@ log = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class ProgramTradeCollectorStatus:
+    # NOTE: 이 플래그는 start()/stop() 에서만 갱신되므로 **태스크가 죽어도 True** 로
+    # 남는다(ADR-0064 가 제거한 거짓 health 패턴). 정직한 판정은
+    # ProgramTradeCollector.task 를 보는 lifecycle.get_program_trade_task() 경유
+    # supervised_tasks 이며, 이 필드는 "기동 의도" 만 뜻한다.
     running: bool = False
     targets: tuple[str, ...] = ()
     last_cycle_ms: int | None = None
@@ -61,6 +65,14 @@ class ProgramTradeCollector:
         # REST 30초의 icdc 의미(주기 증감)를 재현한다. 날짜가 바뀌면 리셋.
         self._last_net: dict[str, tuple[int | None, int | None]] = {}
         self._last_date: str | None = None
+
+    @property
+    def task(self) -> asyncio.Task | None:
+        """실행 태스크 핸들 — ADR-0088 정직한 liveness 판정의 유일한 근거.
+
+        `status.running` 은 기동 의도만 뜻하고 태스크 사망을 반영하지 않는다.
+        """
+        return self._task
 
     def start(self) -> None:
         if self._task is not None and not self._task.done():

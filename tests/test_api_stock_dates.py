@@ -178,7 +178,7 @@ def test_stock_date_open_ms_zero_normalized_and_complete(tmp_path) -> None:
     import json
 
     from hoga.api.queries import QueryEngine
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     DATE = "20260519"
     code_dir = tmp_path / "parquet" / DATE / "005930"

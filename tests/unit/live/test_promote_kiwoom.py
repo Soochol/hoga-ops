@@ -4,9 +4,9 @@ import time
 
 import polars as pl
 
-from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.live import lifecycle
 from hoga.live.promote import _today_kst_yyyymmdd, promote_kiwoom_today
+from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 
 async def test_promote_kiwoom_today_writes_kiwoom_live_parquet(tmp_path):

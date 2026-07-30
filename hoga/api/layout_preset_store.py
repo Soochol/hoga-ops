@@ -6,8 +6,8 @@ from typing import Any, Generic, Protocol, TypeVar
 
 from pydantic import BaseModel
 
-from hoga.api._atomic_write import atomic_write_json
 from hoga.api.versioned_json_file import load_versioned_json_file
+from hoga.util.atomic_write import atomic_write_json
 
 # 화면 구성 프리셋 저장소의 **공용 뼈대** — study_views 와 동일한 versioned-JSON-manifest
 # 패턴(asyncio.Lock + load_versioned_json_file + atomic_write_json, ADR-0114 §4).

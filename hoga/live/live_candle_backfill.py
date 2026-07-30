@@ -5,7 +5,7 @@ import logging
 import time as monotonic_time
 from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import Protocol
 
 from hoga import perf_debug
@@ -22,8 +22,10 @@ from hoga.live.kis_venue import (
     session_window_hhmmss,
 )
 from hoga.live.past_candles_cache import PastCandlesCache
+from hoga.util.timeenc import KST
 
-_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 _WEEKEND_START_WEEKDAY = 5
 
 # 미캐시 날짜 fetch가 이 시간을 넘으면 HOGA_PERF_DEBUG 없이도 WARNING 1줄(ADR-0120).

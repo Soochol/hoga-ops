@@ -17,8 +17,8 @@ from hoga.live.promote import _parse_jsonl_to_records
 
 @pytest.mark.asyncio
 async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live.promote import promote_one
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     live_root = tmp_path / "live"
     jsonl_path = live_root / "20260527" / "005930.jsonl"
@@ -106,7 +106,7 @@ def test_parse_jsonl_converts_t_ms_to_hhmmssms(tmp_path: Path) -> None:
     Live Snapshot t_ms is Unix ms per ADR-0003. Promotion writes it to ts_ms
     column which the schema (ADR-0010) defines as HHMMSSmmm packed decimal.
     """
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     date = "20260529"
     # Compute Unix ms for 10:30:45.123 KST = 09:00:00 + 1h 30m 45s 123ms after open.
@@ -145,7 +145,7 @@ def test_parse_jsonl_converts_t_ms_for_trade_and_broker(tmp_path: Path) -> None:
     per polling cycle. A future "fix" that reverts trade to
     tr.get("t_ms") raw would silently break this; the test guards it.
     """
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     date = "20260529"
     unix_ms_at_open = hhmmssms_to_unix_ms(date, 90000000)  # 09:00:00.000 KST
@@ -187,7 +187,7 @@ def test_parse_jsonl_skips_row_outside_date_window(tmp_path: Path, caplog) -> No
     """
     import logging
 
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     date = "20260529"
     # A t_ms that belongs to the NEXT day (20260530 00:30 KST).
@@ -244,8 +244,8 @@ async def test_promote_idempotent_skips_if_meta_exists(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_promote_tolerates_partial_last_line(tmp_path: Path) -> None:
     """ADR-0038: a torn last line from a crash is silently dropped."""
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live.promote import promote_one
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     jsonl_path = tmp_path / "live" / "20260527" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
@@ -356,8 +356,8 @@ async def test_cleanup_archive_noop_when_dir_missing(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_promote_writes_fills_parquet_only_when_fill_lines_exist(tmp_path: Path):
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live.promote import promote_one
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     live_root = tmp_path / "live"
     jsonl_path = live_root / "20260605" / "005930.jsonl"
@@ -391,8 +391,8 @@ async def test_promote_kiwoom_today_persists_price_grouped_trades_for_distributi
     (원판은 KIS promote_today 대상이었으나 그 경로가 삭제되며 유일한 today
     promotion 인 promote_kiwoom_today 로 이식 — 같은 _parse_jsonl_records 공유.)
     """
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live import promote as promote_mod
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     date = "20260625"
     code = "005930"
@@ -441,8 +441,8 @@ async def test_promote_kiwoom_today_persists_price_grouped_trades_for_distributi
 async def test_promote_legacy_jsonl_without_fill_writes_no_fills_parquet(tmp_path: Path):
     """레거시(trade kind만 있는) JSONL 재프로모트 시 빈 fills.parquet이 생기면
     bundle의 fills-우선 분기가 진짜 trades 데이터를 가리게 됨 — 금지."""
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live.promote import promote_one
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     jsonl_path = tmp_path / "live" / "20260527" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
@@ -463,7 +463,7 @@ async def test_promote_legacy_jsonl_without_fill_writes_no_fills_parquet(tmp_pat
 # ---------------------------------------------------------------------------
 
 def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     jsonl = tmp_path / "in.jsonl"
     # ADR-0049: in-window Unix ms for 20260528 (09:00 KST + small offsets)
@@ -505,7 +505,7 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
 def test_parse_jsonl_candle_uses_ms_from_midnight_encoding(tmp_path: Path) -> None:
     """candle kind는 candles.parquet 네이티브(자정기준 ms)로 인코딩된다 —
     다른 테이블의 HHMMSSmmm과 다르다."""
-    from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_ms_from_midnight
+    from hoga.util.timeenc import hhmmssms_to_unix_ms, unix_ms_to_ms_from_midnight
 
     date = "20260528"
     base = hhmmssms_to_unix_ms(date, 90000000)  # 09:00 KST
@@ -530,9 +530,9 @@ def test_parse_jsonl_candle_uses_ms_from_midnight_encoding(tmp_path: Path) -> No
 
 async def test_promote_writes_kiwoom_candles_parquet(tmp_path: Path) -> None:
     """kiwoom_live 승격이 candles.parquet을 쓰고 라운드트립된다(ADR 개정)."""
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live.promote import promote_one
     from hoga.tables import candles as candles_tbl
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     date = "20260528"
     base = hhmmssms_to_unix_ms(date, 90000000)
@@ -556,8 +556,8 @@ async def test_promote_writes_kiwoom_candles_parquet(tmp_path: Path) -> None:
 async def test_promote_skips_empty_candles_parquet(tmp_path: Path) -> None:
     """candle 라인이 없으면 candles.parquet을 쓰지 않는다 — 빈 파일이 존재 판정에서
     거짓 승자가 되는 것을 막는다(resolve_candle_source, ADR-0121)."""
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live.promote import promote_one
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     date = "20260528"
     base = hhmmssms_to_unix_ms(date, 90000000)
@@ -584,7 +584,7 @@ def test_parse_jsonl_synthesizes_monotonic_seq_per_kind(tmp_path: Path) -> None:
     Each kind has its own counter; ties on (ts_ms, seq) within a kind
     must order strictly by arrival.
     """
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     date = "20260528"
     base = hhmmssms_to_unix_ms(date, 90000000)
@@ -630,9 +630,9 @@ def test_promoted_snapshots_query_at_succeeds(tmp_path: Path) -> None:
 
     import duckdb
 
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live.promote import promote_one
     from hoga.tables.snapshots import query_at
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     date = "20260528"
     t = hhmmssms_to_unix_ms(date, 90000000)
@@ -659,7 +659,7 @@ def test_promoted_snapshots_query_at_succeeds(tmp_path: Path) -> None:
 
 
 def test_parse_jsonl_to_records_skips_torn_line(tmp_path: Path, caplog) -> None:
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     jsonl = tmp_path / "in.jsonl"
     # ADR-0049: in-window Unix ms for 20260528 so the row survives encoding.
@@ -747,8 +747,8 @@ async def test_promote_pending_skips_today(tmp_path: Path) -> None:
 def _dense_snapshots():
     """Dense 30s snapshots across the whole continuous-trading window."""
     from hoga.api.disk_state import _hhmmssms_to_intra_ms, _intra_ms_to_hhmmssms
-    from hoga.api.timeenc import HogaMs
     from hoga.tables.snapshots import Orderbook
+    from hoga.util.timeenc import HogaMs
 
     t = _hhmmssms_to_intra_ms(HogaMs(90000000))
     end = _hhmmssms_to_intra_ms(HogaMs(153000000)) - 10 * 60 * 1000  # auction start

@@ -1,5 +1,5 @@
 """Unix-ms ↔ hogaplay intra-day encodings, per ADR 0003."""
-from hoga.api.timeenc import (
+from hoga.util.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
     unix_ms_to_hhmmssms,

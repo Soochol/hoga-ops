@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import assert_never
 
 from hoga.api.disk_state import analyze_gaps
-from hoga.api.timeenc import HogaMs
 from hoga.collector.orchestrator import raw_pages
 from hoga.tables import brokers, candles, snapshots, trades
 from hoga.tables.brokers import BrokerRow
@@ -18,6 +17,8 @@ from hoga.tables.candles import Candle
 from hoga.tables.dispatch import FieldCountError, parse_row, split_row
 from hoga.tables.snapshots import Orderbook
 from hoga.tables.trades import Trade
+from hoga.util.atomic_write import atomic_write_json
+from hoga.util.timeenc import HogaMs
 
 PARSER_VERSION = "0.1.0"
 
@@ -212,9 +213,11 @@ def parse_stock_date(
     meta["full_capture_count"] = prior_count + 1
     meta["identical_capture_count"] = _identical_capture_count(prior_meta, meta)
 
-    (out_dir / "meta.json").write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    # 원자적 쓰기 필수: meta.json 은 분류 SSOT 이면서 **캡처 완료 신호**다 —
+    # inotify watchdog 이 이 파일의 등장을 inventory_added 트리거로 쓴다
+    # (hoga/api/events.py). write_text 는 먼저 truncate 하므로 디스크가 꽉 차면
+    # 잘린 meta 가 그 자리에 남고, 그건 곧 잘못된 완료 이벤트다.
+    atomic_write_json(out_dir / "meta.json", meta)
     return out_dir
 
 

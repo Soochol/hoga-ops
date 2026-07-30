@@ -219,6 +219,30 @@ export type UpstreamCode =
   | 'disk_write_failed'
   | 'kis_master_fetch_failed';
 
+/** Mirrors hoga/api/error_codes.py::LiveErrorCode verbatim (ADR-0009 3번째 카테고리).
+ *
+ *  `/api/live` 의 요청 문법 위반(422) · 의존성 미배선(503) · 키움 업스트림(502) 코드.
+ *  2026-07-30 이전에는 이 라우터가 raw 문자열 code + `msg` 키를 쓰거나 아예 평문
+ *  `detail` 문자열을 냈다. `apiCall` 은 `detail.message` 만 읽으므로 `msg` 페이로드는
+ *  사람이 읽을 메시지를 잃고 `"<status> <path>"` 로 폴백했다 — 즉 `/api/live` 의 에러
+ *  문구가 사용자에게 도달하지 않았다.
+ *
+ *  주의: HTTP 200 응답의 `data_warnings[].msg` 는 **다른 계약**이고 그대로 `msg` 다. */
+export type LiveErrorCode =
+  | 'invalid_code'
+  | 'invalid_date'
+  | 'from_after_to'
+  | 'date_in_future'
+  | 'date_range_too_large'
+  | 'invalid_venue'
+  | 'invalid_index_id'
+  | 'unsupported_index'
+  | 'unsupported_index_investor_net'
+  | 'no_live_data'
+  | 'not_wired'
+  | 'kiwoom_api_error'
+  | 'kiwoom_http_error';
+
 /** Union used wherever an error code can be either domain — currently
  *  CaptureError.code on the per-item SSE capture_finished payload. */
 export type CaptureFinishedErrorCode = CaptureErrorCode | UpstreamCode;
@@ -268,6 +292,11 @@ export type PushEvent =
   | { type: 'promotion_completed'; code: string; date: string }
   | { type: 'screener_update_progress'; done: number; total: number }
   | { type: 'screener_update_finished'; updated: number; total: number; reason: string | null }
+  // 키움 표시(온디맨드) 슬롯 만석 — 이 탭의 구독이 보류됐다(hoga/api/ws.py).
+  // 등록은 보류 상태로 장부에 남아 슬롯이 반환되면 watchdog 이 자동 배정하므로,
+  // 사용자에게는 "지금 실시간이 안 오는 이유 + 창을 닫으면 풀린다"만 알리면 된다.
+  // 이 이벤트를 소비하지 않으면 해당 탭은 멈춘 차트만 보여 준다(무증상 실패).
+  | { type: 'kiwoom_full_house'; code: string }
   | SignalAlertEvent
   | (CaptureEventBase & { type: 'capture_progress'; progress: CaptureProgress })
   | (CaptureEventBase & { type: 'capture_phase' })

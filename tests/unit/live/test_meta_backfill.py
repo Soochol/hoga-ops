@@ -10,9 +10,9 @@ from hoga.api.disk_state import (
     _intra_ms_to_hhmmssms,
     check_disk_state,
 )
-from hoga.api.timeenc import HogaMs
 from hoga.live.meta_backfill import backfill_hogaplay_meta, backfill_live_meta
 from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots
+from hoga.util.timeenc import HogaMs
 
 _KST = timezone(timedelta(hours=9))
 _NOW = datetime(2026, 7, 16, 12, 0, tzinfo=_KST)

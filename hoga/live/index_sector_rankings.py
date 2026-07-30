@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from hoga.api.heatmap import load_document
 from hoga.api.models import HeatmapEntry
+from hoga.util.atomic_write import atomic_write_text
 
 RankingSource = Literal["daily_adjusted", "unavailable"]
 MissingReason = Literal["no_basis_bar", "no_previous_close", "no_intraday_price"]
@@ -312,11 +313,12 @@ def _read_disk_cache(path: Path) -> IndexSectorRankingResponse | None:
 
 
 def _write_disk_cache(path: Path, value: IndexSectorRankingResponse) -> None:
+    # 원래도 tmp+replace 였지만 tmp 이름이 고정(``<name>.tmp``)이라 같은 날짜를 동시에
+    # 쓰는 두 요청이 서로의 tmp 를 덮을 수 있었고 fsync 도 없었다. 공용 헬퍼는 고유
+    # tempfile + fsync 를 쓴다. 실패는 그대로 삼킨다 — 이건 캐시이고, 못 쓰면 다음
+    # 요청이 다시 계산하면 된다.
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = path.with_suffix(path.suffix + ".tmp")
-        tmp_path.write_text(value.model_dump_json(), encoding="utf-8")
-        tmp_path.replace(path)
+        atomic_write_text(path, value.model_dump_json())
     except OSError:
         return
 

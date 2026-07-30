@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import (
     StudyViewListRow,
     StudyViewMetadataUpdateRequest,
@@ -12,6 +11,7 @@ from hoga.api.models import (
     StudyViewsFile,
 )
 from hoga.api.versioned_json_file import load_versioned_json_file
+from hoga.util.atomic_write import atomic_write_json
 
 _CURRENT_VERSION = 1
 _lock = asyncio.Lock()

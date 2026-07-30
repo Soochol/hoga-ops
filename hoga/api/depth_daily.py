@@ -30,11 +30,11 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api._atomic_write import atomic_write_parquet_df
 from hoga.api.invariants import normalize_session_bounds
 from hoga.api.queries import resolve_source_dir
 from hoga.duck import connect_bounded
 from hoga.tables import snapshots as snapshots_tbl
+from hoga.util.atomic_write import atomic_write_parquet_df
 
 log = logging.getLogger(__name__)
 

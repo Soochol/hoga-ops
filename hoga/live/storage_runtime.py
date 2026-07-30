@@ -7,6 +7,7 @@ KIS REST 30s 캡처(ADR-0097 rest30)와 KIS WS 는 제거됐다(#678·ADR-0118 �
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,6 +28,11 @@ log = logging.getLogger(__name__)
 class ProgramTradeCollectorLike(Protocol):
     def start(self) -> None: ...
     async def stop(self) -> None: ...
+
+    @property
+    def task(self) -> asyncio.Task | None:
+        """ADR-0088 liveness 판정용 태스크 핸들(lifecycle.get_program_trade_task)."""
+        ...
 
 
 class KiwoomSessionLike(Protocol):

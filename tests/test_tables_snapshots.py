@@ -700,8 +700,8 @@ def test_query_bucketed_ratio_imb_max_picks_extreme_imbalance_snapshot(tmp_path:
     """호가비 Intra-Bar Max는 |imbalance| 최대 스냅샷의 (bid,ask) 쌍. max끼리 결합과
     부호가 뒤집힌다(스펙 예시): A(bid100,ask2)=매수우위, B(bid10,ask300)=매도우위.
     |imbalance| 극값 = A → imb_max_bid/ask = (100,2). (bid_max=100, ask_max=300 결합 아님.)"""
-    from hoga.api.timeenc import hhmmssms_to_unix_ms  # noqa: F401 (의도 명시용)
     from hoga.tables.snapshots import query_bucketed_ratio
+    from hoga.util.timeenc import hhmmssms_to_unix_ms  # noqa: F401 (의도 명시용)
 
     obs = [
         _ob(ts_ms=90_000_100, seq=1, ask_q=(2,), bid_q=(100,)),   # A: |imb| = 100/2-1 = 49 (매수우위)
@@ -909,8 +909,8 @@ def test_query_bucketed_ratio_parity_genuine_straddle_bucket(tmp_path: Path) -> 
     shallow row (is_pre=FALSE): the tiering picks the EARLIER deep row over
     the LATER shallow row, the one case where the tiering is not a no-op.
     """
-    from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
     from hoga.tables.snapshots import query_bucketed_ratio
+    from hoga.util.timeenc import hhmmssms_to_intra_ms_sql
 
     z = tuple([0] * 10)
     DEEP_TS = 152_005_000  # 15:20:05.000 — continuous book, depth beyond level 3

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Query
@@ -18,8 +18,10 @@ from hoga.live.signal_alerts import (
     recent_response,
     update_signal_alert_settings,
 )
+from hoga.util.timeenc import KST
 
-_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 
 
 def _today() -> str:

@@ -10,7 +10,7 @@ import datetime as dt
 import logging
 import os
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Coroutine, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -59,7 +59,6 @@ from hoga.api.models import (
 )
 from hoga.api.params import CODE_PATTERN
 from hoga.api.queue_ownership import QueueOwnership, try_acquire_queue_ownership
-from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import (
     CHART_FINAL_TIME_MS,
@@ -80,6 +79,7 @@ from hoga.parser import parse_stock_date
 from hoga.tables.snapshots import SnapshotValidationError
 from hoga.tables.trades import TradeValidationError
 from hoga.util.git_sha import get_git_sha
+from hoga.util.timeenc import HogaMs, hhmmssms_to_unix_ms
 
 # Fail fast if someone runs uvicorn multi-worker — see spec §4.4.
 # The _latest singleton and asyncio.Lock are per-process; multi-worker would
@@ -1164,6 +1164,25 @@ async def cancel_all() -> dict:
     }
 
 
+async def _run_worker_step(
+    coro: Coroutine[Any, Any, None], state: QueueItemState, step: str,
+) -> None:
+    """워커 루프의 **비치명** 단계를 실행한다 — 실패해도 워커를 죽이지 않는다.
+
+    이 래퍼가 없으면 항목 실행 전후의 무방비 await 하나가 워커 코루틴을 조용히
+    없애고, 풀이 N-1 로 줄어든 것을 아무도 알아채지 못한다(ADR-0064 의 실패 모드).
+    ``CancelledError`` 는 ``Exception`` 이 아니므로 종료 경로는 그대로 전파된다.
+    """
+    try:
+        await coro
+    except Exception:
+        # 워커 생존이 한 단계의 성공보다 중요하다 — 광범위 catch 가 의도다.
+        logging.getLogger(__name__).exception(
+            "worker: %s failed for %s/%s — 워커는 계속한다",
+            step, state.code, state.date,
+        )
+
+
 async def _worker_loop() -> None:  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
     """One of N coroutines. Pulls items off _queue under the lock, runs each,
     finalizes."""
@@ -1200,7 +1219,9 @@ async def _worker_loop() -> None:  # noqa: PLR0912 — ADR 이 지정한 단일 
             await asyncio.sleep(0)
             continue
         # Outside the lock: notify deciding, run, finalize.
-        await _publish_phase(state)
+        # 알림 실패가 캡처를 막아선 안 된다 — _publish_event 는 직렬화 예외를 이미
+        # 삼키지만, 그 바깥(이벤트 생성·헤더 조립)에서 raise 되면 워커가 죽는다.
+        await _run_worker_step(_publish_phase(state), state, "publish deciding phase")
         try:
             await _run_item(state)
         except CookieExpiredError as exc:
@@ -1222,7 +1243,12 @@ async def _worker_loop() -> None:  # noqa: PLR0912 — ADR 이 지정한 단일 
                 at_page=state.pages_done or None,
             )
             state.phase = "failed"
-        await _finalize_item(state)
+        # finalize 는 락 안에서 장부(_active·_inflight_paths·_done·persist)를 먼저
+        # 정리하고, 그 **뒤**의 이벤트 생성(pydantic 검증)에서 raise 될 수 있다. 여기서
+        # 잡지 않으면 워커 코루틴이 조용히 사라져 풀이 N-1 로 줄고 아무도 알아채지 못한다
+        # (ADR-0064 의 실패 모드). 워커 사망은 이제 supervised_tasks 로도 보이지만,
+        # 애초에 죽지 않는 것이 낫다.
+        await _run_worker_step(_finalize_item(state), state, "finalize")
 
 
 def start_workers(n: int | None = None) -> list[asyncio.Task]:

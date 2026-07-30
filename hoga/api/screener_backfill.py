@@ -176,8 +176,8 @@ async def reconcile_raw(
     )
 
 
-from hoga.api._atomic_write import atomic_write_json  # noqa: E402 — appended impact-report block
 from hoga.api.screener_store import derive_adjusted, last_raw_date, write_status  # noqa: E402
+from hoga.util.atomic_write import atomic_write_json  # noqa: E402 — appended impact-report block
 
 
 def build_impact_report(sdir: Path, *, old_path: Path) -> dict:

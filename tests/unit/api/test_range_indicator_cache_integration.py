@@ -25,8 +25,8 @@ import pytest
 
 from hoga.api.bundle import build_fill_strength_slice, build_quote_ratio_slice
 from hoga.api.queries import QueryEngine
-from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
 from hoga.tables import snapshots as snapshots_tbl
+from hoga.util.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
 
 DATE = "20260529"
 FUTURE = "20260601"  # > DATE, so DATE counts as a completed past day

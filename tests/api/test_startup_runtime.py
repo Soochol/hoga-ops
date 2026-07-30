@@ -252,7 +252,99 @@ async def test_supervised_task_health_reports_alive_sleeping_and_dead(tmp_path: 
     assert health["kiwoom-session-watchdog"] is False  # done() = silent death
     assert health["today-promoter"] is False  # None handle = not running
 
+    # `state` 는 running 불리언이 접어 버리는 구별을 보존한다 — UI 경보는 dead 만
+    # 봐야 한다. 이게 없으면 today-promoter 를 env 로 끈 사용자에게 배너가 상시 켜진다.
+    state = {row["name"]: row["state"] for row in runtime.supervised_task_health()}
+    assert state["watchlist-daily-loop"] == "running"
+    assert state["kiwoom-session-watchdog"] == "dead"
+    assert state["today-promoter"] == "not_started"
+
     daily.cancel()
+
+
+@pytest.mark.asyncio
+async def test_supervised_health_includes_capture_workers_and_program_trade(
+    tmp_path: Path,
+) -> None:
+    """ADR-0088 확장: 캡처 워커 풀과 프로그램매매 수집기도 liveness 를 노출한다.
+
+    둘은 감시 목록에서 빠져 있었다 — 조용히 죽으면 캡처 큐가 N-1 로 줄거나
+    프로그램매매 수집이 멈추는데 어떤 표면에도 나타나지 않았다.
+    """
+    from hoga.api.startup_runtime import AppStartupRuntime, StartupRuntimeDeps
+
+    async def sleeping() -> None:
+        await asyncio.sleep(3600)
+
+    async def finished() -> None:
+        return None
+
+    worker_alive = asyncio.create_task(sleeping(), name="capture-worker-0")
+    worker_dead = asyncio.create_task(finished(), name="capture-worker-1")
+    await worker_dead
+    program_trade = asyncio.create_task(sleeping(), name="program-trade-collector")
+
+    deps = StartupRuntimeDeps(
+        env={},
+        start_scheduler=lambda _d: [],
+        start_live_stream=None,  # type: ignore[arg-type]
+        start_today_promoter=None,  # type: ignore[arg-type]
+        stop_today_promoter=None,  # type: ignore[arg-type]
+        stop_live_stream=None,  # type: ignore[arg-type]
+        aclose_kis_capacity_scheduler=None,  # type: ignore[arg-type]
+        aclose_kis_client=None,  # type: ignore[arg-type]
+        load_symbol_disk_state=lambda **_k: None,
+        needs_symbol_boot_refresh=lambda: False,
+        refresh_symbols=None,  # type: ignore[arg-type]
+        resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+        get_capture_worker_tasks=lambda: [worker_alive, worker_dead],
+        get_program_trade_task=lambda: program_trade,
+    )
+    runtime = AppStartupRuntime(
+        scheduler_tasks=[], today_promoter_task=None, deps=deps,
+    )
+
+    state = {row["name"]: row["state"] for row in runtime.supervised_task_health()}
+    assert state["capture-worker-0"] == "running"
+    assert state["capture-worker-1"] == "dead"
+    assert state["program-trade-collector"] == "running"
+
+    worker_alive.cancel()
+    program_trade.cancel()
+
+
+@pytest.mark.asyncio
+async def test_absent_program_trade_task_is_omitted_not_reported_dead(
+    tmp_path: Path,
+) -> None:
+    """라이브가 꺼져 있으면 수집기 태스크가 없다 — 미기동을 dead 로 보고하면 안 된다.
+
+    이 구별이 없으면 라이브를 안 켠 사용자에게 UI 경보가 영구히 뜬다.
+    """
+    from hoga.api.startup_runtime import AppStartupRuntime, StartupRuntimeDeps
+
+    deps = StartupRuntimeDeps(
+        env={},
+        start_scheduler=lambda _d: [],
+        start_live_stream=None,  # type: ignore[arg-type]
+        start_today_promoter=None,  # type: ignore[arg-type]
+        stop_today_promoter=None,  # type: ignore[arg-type]
+        stop_live_stream=None,  # type: ignore[arg-type]
+        aclose_kis_capacity_scheduler=None,  # type: ignore[arg-type]
+        aclose_kis_client=None,  # type: ignore[arg-type]
+        load_symbol_disk_state=lambda **_k: None,
+        needs_symbol_boot_refresh=lambda: False,
+        refresh_symbols=None,  # type: ignore[arg-type]
+        resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+        get_capture_worker_tasks=lambda: [],
+        get_program_trade_task=lambda: None,
+    )
+    runtime = AppStartupRuntime(
+        scheduler_tasks=[], today_promoter_task=None, deps=deps,
+    )
+
+    names = [row["name"] for row in runtime.supervised_task_health()]
+    assert "program-trade-collector" not in names
 
 
 @pytest.mark.asyncio

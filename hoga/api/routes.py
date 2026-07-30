@@ -27,12 +27,12 @@ from hoga.api.models import (
 from hoga.api.params import CODE_PATTERN, Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import SourceName, ordered_sources, resolve_source_result
-from hoga.api.timeenc import (
+from hoga.tables import brokers as brokers_tbl, candles as candles_tbl, snapshots as snapshots_tbl
+from hoga.util.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
     unix_ms_to_hhmmssms,
 )
-from hoga.tables import brokers as brokers_tbl, candles as candles_tbl, snapshots as snapshots_tbl
 
 log = logging.getLogger(__name__)
 

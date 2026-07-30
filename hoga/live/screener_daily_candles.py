@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from pathlib import Path
 
 import polars as pl
 
-_KST = timezone(timedelta(hours=9))
+from hoga.util.timeenc import KST
+
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 
 
 def _daily_t_ms(d: date) -> int:

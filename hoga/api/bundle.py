@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
@@ -52,12 +52,6 @@ from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.slice_coalescer import SLICE_COALESCER
 from hoga.api.sources import ordered_sources, resolve_candle_source, resolve_source_result
-from hoga.api.timeenc import (
-    hhmmssms_to_intra_ms_sql,
-    hhmmssms_to_unix_ms,
-    ms_from_midnight_to_unix_ms,
-    unix_ms_to_hhmmssms,
-)
 from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.live.candle_repair import REPAIR_MARKER
 from hoga.live.program_trade_store import ProgramTradeStore, is_significant_gap_event
@@ -70,13 +64,21 @@ from hoga.tables import (
 )
 from hoga.tables.candles import ApiCandle
 from hoga.tables.trades import FillStrengthRow
+from hoga.util.timeenc import (
+    KST,
+    hhmmssms_to_intra_ms_sql,
+    hhmmssms_to_unix_ms,
+    ms_from_midnight_to_unix_ms,
+    unix_ms_to_hhmmssms,
+)
 
 if TYPE_CHECKING:
     from hoga.api.past_indicators_cache import PastIndicatorsCache
 
 log = logging.getLogger(__name__)
 
-_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 DEFAULT_TRADE_VOLUME_POC_BINS = 10
 
 # /api/range minute timeframes are multiples of this; the indicator cache stores
