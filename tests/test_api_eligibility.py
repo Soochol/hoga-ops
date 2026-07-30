@@ -50,10 +50,12 @@ def test_decide_capture_complete_skips_even_with_force_retry_per_adr_0035(tmp_pa
 
 
 def test_decide_capture_source_partial_retries_without_force_concept(tmp_path: Path) -> None:
+    """``now`` 고정: "재시도 가능" 은 보유 창 **안**에서만 성립하는 성질이다."""
     _write_meta(tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
                 collection_complete=True, is_partial=True)
     decision = eligibility.decide_capture(
         data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
+        now=dt.datetime(2026, 5, 19),
     )
     assert decision == CaptureDecision(skip_reason=None, resume=False)
 
@@ -84,13 +86,19 @@ def test_decide_capture_edge_gap_skips_upstream_without_identical(tmp_path: Path
 
 
 def test_decide_capture_interior_gap_still_proceeds(tmp_path: Path) -> None:
-    """ADR-0126: an interior gap alone stays retryable — decide_capture proceeds."""
+    """ADR-0126: an interior gap alone stays retryable — decide_capture proceeds.
+
+    ``now`` 고정이 필수다. 내부 갭은 edge_confirmed 가 안 되므로 미확정으로 남는데,
+    보유 창 밖이면 그 재시도를 업스트림이 못 받아 준다 — 즉 "retryable" 은 창 안에서만
+    참이다. 고정하지 않으면 이 테스트가 시간이 지나며 조용히 반대를 검사하게 된다.
+    """
     _write_meta_with_gap(
         tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
         gap_ranges=[{"start_ms": 122_850_000, "end_ms": 123_550_010}],
     )
     decision = eligibility.decide_capture(
         data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
+        now=dt.datetime(2026, 5, 19),
     )
     assert decision == CaptureDecision(skip_reason=None, resume=False)
 
@@ -133,15 +141,66 @@ def test_decide_capture_confirmed_upstream_gap_bypassed_by_force_retry(tmp_path:
 
 def test_decide_capture_unconfirmed_source_partial_still_proceeds(tmp_path: Path) -> None:
     """identical_capture_count=1 (only one capture so far) is NOT confirmed →
-    proceed fresh, same as the pre-ADR-0093 behavior."""
+    proceed fresh, same as the pre-ADR-0093 behavior.
+
+    ``now`` 를 고정한다 — 보유 창 **안**이라는 것이 이 테스트의 전제이기 때문이다.
+    고정하지 않으면 벽시계가 흐르면서 어느 날 만료 가드에 걸려 조용히 다른 것을
+    검사하게 된다(2026-07-30 에 실제로 그렇게 됐다).
+    """
     _write_meta_with_identical(
         tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
         identical_capture_count=1,
     )
     decision = eligibility.decide_capture(
         data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
+        now=dt.datetime(2026, 5, 19),
     )
     assert decision == CaptureDecision(skip_reason=None, resume=False)
+
+
+def test_expired_unconfirmed_gap_is_skipped(tmp_path: Path) -> None:
+    """보유 창 밖 미확정 갭 → upstream_gap 스킵.
+
+    ADR-0093 의 확정 경로는 "재캡처가 동일 갭을 재현" 뿐인데(세션 경계 접촉은
+    파싱 시점에 이미 판정된다), 업스트림이 그 재캡처를 못 주면 경로가 영원히
+    닫힌다. 막지 않으면 백필이 돌 때마다 없는 데이터를 받으러 간다.
+    """
+    _write_meta_with_identical(
+        tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
+        identical_capture_count=1,
+    )
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
+        now=dt.datetime(2026, 7, 29),
+    )
+    assert decision == CaptureDecision(skip_reason="upstream_gap", resume=False)
+
+
+def test_unconfirmed_gap_inside_retention_window_still_proceeds(tmp_path: Path) -> None:
+    """보유 창 안이면 재캡처가 확정을 만들 수 있다 — 막으면 그 경로를 죽인다."""
+    _write_meta_with_identical(
+        tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
+        identical_capture_count=1,
+    )
+    for day in (18, 19, 20):  # 당일 · +1 · +2
+        decision = eligibility.decide_capture(
+            data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
+            now=dt.datetime(2026, 5, day),
+        )
+        assert decision.skip_reason is None, f"2026-05-{day} 에 막히면 안 된다"
+
+
+def test_expired_unconfirmed_gap_bypassed_by_force_retry(tmp_path: Path) -> None:
+    """다른 만료 가드들과 같은 탈출구 — 사용자가 직접 재확인할 수 있어야 한다."""
+    _write_meta_with_identical(
+        tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
+        identical_capture_count=1,
+    )
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="005930", date="20260518", force_retry=True,
+        now=dt.datetime(2026, 7, 29),
+    )
+    assert decision.skip_reason is None
 
 
 def test_decide_capture_client_incomplete_resumes(tmp_path: Path) -> None:

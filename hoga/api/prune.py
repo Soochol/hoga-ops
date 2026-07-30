@@ -18,6 +18,7 @@ from hoga.api.disk_state import (
     check_disk_state,
     classify_stock_date,
 )
+from hoga.api.eligibility import is_expired_unconfirmed_gap
 from hoga.collector.orchestrator import now_kst
 
 RETENTION_DAYS_DEFAULT = 3
@@ -94,8 +95,14 @@ def _is_prunable(cls: Classification, *, include_confirmed_gaps: bool) -> bool:
     - ``CLIENT_INCOMPLETE`` — 우리 수집이 중간에 멈춘 상태. raw 가 resume 커서의
       소스다. 지우면 재개가 불가능해지고 처음부터 다시 받아야 한다. 절대 포함 불가.
     - ``SOURCE_PARTIAL`` + ``upstream_gap_confirmed=False`` — 수집은 끝났지만
-      갭이 업스트림 탓인지 아직 미확정이다. decide_capture 가 재캡처를 다시
-      시도할 수 있는 대상이라 제외한다.
+      갭이 업스트림 탓인지 아직 미확정이다. **보유 창 안이면** decide_capture 가
+      재캡처를 다시 시도할 수 있는 대상이라 제외한다.
+      보유 창 **밖**(is_expired_unconfirmed_gap)이면 확정 경로가 영원히 닫혀
+      있으므로 사실상 terminal 이고, decide_capture 도 2026-07-30 부터
+      건너뛴다. 그럼에도 **여기서는 여전히 제외한다** — 재캡처 중단(1단계)과
+      삭제 허용(2단계)은 별개 결정이고, 후자는 "구멍 있는 채로 확정된 날짜를
+      다시 파싱할 권리" 를 영구히 포기하는 것이라 별도 승인이 필요하다.
+      진단 라벨은 `_skip_reason` 이 `(expired)` 로 갈라 보여 준다.
     - ``SOURCE_PARTIAL`` + ``upstream_gap_confirmed=True`` — 재캡처가 동일한 갭을
       재현했거나(ADR-0093) 갭이 세션 경계에 접한다(ADR-0126). **decide_capture 가
       이미 건너뛰는 상태**, 즉 시스템 스스로 terminal 로 선언한 것이다. 이 raw 를
@@ -125,13 +132,23 @@ def _is_complete_hogaplay(data_dir: Path, code: str, date: str) -> bool:
     )
 
 
-def _skip_reason(cls: Classification) -> str:
-    """진단용 사유 라벨. state 만으로는 SOURCE_PARTIAL 두 종류가 구분되지 않는다."""
+def _skip_reason(cls: Classification, date: str, now: dt.datetime) -> str:
+    """진단용 사유 라벨. state 만으로는 SOURCE_PARTIAL 종류가 구분되지 않는다.
+
+    미확정 갭을 다시 둘로 가른다 — 이 구분이 없으면 "언젠가 확정될 것" 과
+    "영원히 확정될 수 없는 것" 이 한 줄로 합산돼, 보고를 읽는 사람이 기다리면
+    줄어들 양으로 오해한다. 실제로는 2026-07-30 기준 미확정 1,344건 중 확정
+    가능한 것은 2건뿐이었다.
+
+    ``(expired)`` 는 **재캡처가 원리적으로 무의미하다**는 뜻이지 삭제해도 된다는
+    뜻이 아니다. prune 게이트는 이 라벨을 보지 않는다(_is_prunable 참조).
+    """
     if cls.state == DiskState.SOURCE_PARTIAL:
-        return (
-            "source_partial(gap_confirmed)" if cls.upstream_gap_confirmed
-            else "source_partial(gap_unconfirmed)"
-        )
+        if cls.upstream_gap_confirmed:
+            return "source_partial(gap_confirmed)"
+        if is_expired_unconfirmed_gap(cls, date, now):
+            return "source_partial(gap_unconfirmed,expired)"
+        return "source_partial(gap_unconfirmed)"
     return cls.state.value
 
 
@@ -178,7 +195,7 @@ def _scan(
             cls = _hogaplay_classification(data_dir, code, date)
             size = _dir_size(code_dir)
             if not _is_prunable(cls, include_confirmed_gaps=include_confirmed_gaps):
-                _note(_skip_reason(cls), size)
+                _note(_skip_reason(cls, date, now), size)
                 continue
             out.append(PruneCandidate(
                 date=date, code=code, raw_dir=code_dir, size_bytes=size,

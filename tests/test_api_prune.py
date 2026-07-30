@@ -357,8 +357,50 @@ def test_result_reports_why_nothing_was_prunable(tmp_data_dir: Path) -> None:
 
     assert res.candidates == []
     assert res.skipped_by_state["client_incomplete"] == 1
-    assert res.skipped_by_state["source_partial(gap_unconfirmed)"] == 1
+    # 20260605 는 _NOW(06-13) 기준 보유 창 밖 → 확정 경로가 닫힌 쪽으로 분류된다.
+    assert res.skipped_by_state["source_partial(gap_unconfirmed,expired)"] == 1
     assert res.skipped_bytes_by_state["client_incomplete"] > 0
+
+
+def test_unconfirmed_gap_split_by_retention_window(tmp_data_dir: Path) -> None:
+    """미확정 갭은 "언젠가 확정됨" 과 "영원히 못 함" 으로 갈려 보고돼야 한다.
+
+    합산하면 보고를 읽는 사람이 기다리면 줄어들 양으로 오해한다 — 2026-07-30
+    실측에서 미확정 1,344건 중 확정 가능한 것은 2건(0.15%)뿐이었다.
+    """
+    # 06-11 = _NOW(06-13) −2일 → 보유 창 **안**. 컷오프(retention_days=1)는 통과.
+    _seed(tmp_data_dir, "005930", "20260611",
+          collection_complete=True, is_partial=True, identical_capture_count=0)
+    # 06-05 = −8일 → 보유 창 밖.
+    _seed(tmp_data_dir, "000660", "20260605",
+          collection_complete=True, is_partial=True, identical_capture_count=0)
+
+    res = prune_raw(tmp_data_dir, retention_days=1, now=_NOW, execute=False)
+
+    assert res.skipped_by_state["source_partial(gap_unconfirmed)"] == 1
+    assert res.skipped_by_state["source_partial(gap_unconfirmed,expired)"] == 1
+
+
+def test_expired_unconfirmed_gap_is_still_not_prunable(tmp_data_dir: Path) -> None:
+    """**1단계 경계**: 만료 판정은 재캡처를 멈출 뿐 삭제를 허용하지 않는다.
+
+    decide_capture 가 이제 이 클래스를 건너뛰므로 "terminal 이니 지워도 되겠지" 로
+    미끄러지기 쉽다. 그러나 삭제는 "구멍 있는 채로 확정된 날짜를 다시 파싱할 권리"
+    를 영구히 포기하는 별개 결정이고, 별도 승인을 받아야 한다(2단계).
+    include_confirmed_gaps 를 켜도 열리지 않아야 한다 — 그 플래그가 여는 것은
+    **확인된** 갭뿐이다.
+    """
+    _seed(tmp_data_dir, "000660", "20260605",
+          collection_complete=True, is_partial=True, identical_capture_count=0)
+
+    for optin in (False, True):
+        res = prune_raw(
+            tmp_data_dir, retention_days=3, now=_NOW, execute=True,
+            include_confirmed_gaps=optin,
+        )
+        assert res.candidates == [], f"include_confirmed_gaps={optin} 에서 후보가 생기면 안 된다"
+        assert res.deleted == 0
+        assert (tmp_data_dir / "raw" / "20260605" / "000660").exists()
 
 
 def test_within_grace_is_reported_separately(tmp_data_dir: Path) -> None:
