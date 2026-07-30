@@ -19,7 +19,12 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? 'list' : 'html',
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
+    // **5173 이 아니라 5174.** 5173 은 사람이 쓰는 개발 서버 자리다 —
+    // CI 에서는 `reuseExistingServer: !CI` 라 playwright 가 직접 띄우는데,
+    // 로컬에서 그대로 돌리면 사용자의 vite 와 충돌하거나(포트 점유) 더 나쁘게는
+    // 사용자 서버에 붙어 e2e 가 **다른 데이터**를 보고 통과해 버린다.
+    // 5174 는 app.py 의 ALLOWED_ORIGINS 에 이미 있어 CORS 를 그대로 통과한다.
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5174',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -29,17 +34,24 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
+  // 픽스처 Stock-Date 시딩. README 의 "Remaining gating #1" 이 이것이었다 —
+  // 없으면 스펙이 종목을 못 골라, 실패가 회귀인지 데이터 부재인지 구분되지 않는다.
+  globalSetup: './tests/e2e/global-setup.ts',
   webServer: [
     {
       command: 'cd .. && HOGA_ENABLE_TEST_ENDPOINTS=1 HOGA_DATA_DIR=/tmp/hoga-e2e-data uv run hoga serve --port 8765',
       url: 'http://127.0.0.1:8765/health',
-      timeout: 30_000,
+      timeout: 60_000,
       reuseExistingServer: !process.env.CI,
     },
     {
-      command: 'npm run dev -- --port 5173',
-      url: 'http://127.0.0.1:5173',
-      timeout: 30_000,
+      // E2E_API_URL 이 vite 의 /config.json 미들웨어를 켠다(vite.config.ts).
+      // public/config.json 은 8000 을 가리키므로 이게 없으면 프론트가 사용자의
+      // 개발 서버로 붙어 버린다 — 로컬에서는 "그럭저럭 통과" 하고 CI 에서만
+      // 깨지는, 가장 진단하기 나쁜 형태가 된다.
+      command: 'E2E_API_URL=http://127.0.0.1:8765 npm run dev -- --port 5174 --strictPort',
+      url: 'http://127.0.0.1:5174',
+      timeout: 60_000,
       reuseExistingServer: !process.env.CI,
     },
   ],
