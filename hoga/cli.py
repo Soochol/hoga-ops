@@ -16,6 +16,7 @@ from hoga.collector.orchestrator import collect_stock_date
 from hoga.config import Config, CookieMissingError, resolve_data_dir
 from hoga.env import load_env
 from hoga.parser import parse_stock_date
+from hoga.util.atomic_write import atomic_write_json
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="hoga-ops backend CLI")
 console = Console()
@@ -619,8 +620,10 @@ def validate(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기
                     meta["invariant_violations"] = computed
                 else:
                     meta.pop("invariant_violations", None)
-                meta_p.write_text(_json.dumps(meta, ensure_ascii=False, indent=2),
-                                  encoding="utf-8")
+                # 원자적 쓰기 필수: 이 스윕은 19k+ 스톡데이트를 훑으므로 중간에
+                # 중단되면(Ctrl+C·디스크 풀) 잘린 meta 를 하나 남긴다 — 고치려던
+                # 명령이 오염을 만드는 셈이다.
+                atomic_write_json(meta_p, meta)
                 fix_count += 1
         if not violations:
             continue

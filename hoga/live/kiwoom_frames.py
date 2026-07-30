@@ -19,7 +19,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from hoga.api.timeenc import hhmmssms_to_unix_ms
+from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 from . import kiwoom_fields as K
 from .session_gate import is_auction_window

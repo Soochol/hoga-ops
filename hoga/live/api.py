@@ -9,7 +9,7 @@ import logging
 import re
 import time as monotonic_time
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
 
 from hoga.api import symbols
-from hoga.api._atomic_write import atomic_write_json
+from hoga.api.error_codes import LiveErrorCode
 from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate
 from hoga.api.params import CODE_PATTERN
 from hoga.live import kis_runtime, kiwoom_runtime
@@ -78,6 +78,8 @@ from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.quote_change_resolver import QuoteChangeResolver
 from hoga.live.screener_daily_candles import read_screener_daily_candles
+from hoga.util.atomic_write import atomic_write_json
+from hoga.util.timeenc import KST
 
 from . import kis_access
 from .buffer import LiveBuffer
@@ -121,7 +123,8 @@ def _past_candles_concurrency(data_dir) -> int:
         _PAST_CANDLES_CONCURRENCY_MAX,
     )
 _CODE_RE = re.compile(CODE_PATTERN)
-_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
 index_candles_cache_instance: IndexCandlesCache | None = None
 # ka10001 fetcher — 프로세스 싱글톤(httpx.Client 보유). build_router 재호출(테스트)
@@ -201,22 +204,22 @@ def _validate_past_request(
     Raises HTTPException(422) for any constraint violation.
     """
     if not _CODE_RE.match(code):
-        raise HTTPException(422, {"code": "invalid_code", "msg": "code must be 6 digits"})
+        raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "code must be 6 digits"})
     frm = _parse_yyyymmdd(from_)
     too = _parse_yyyymmdd(to)
     if frm is None or too is None:
-        raise HTTPException(422, {"code": "invalid_date", "msg": "from/to must be YYYYMMDD"})
+        raise HTTPException(422, {"code": LiveErrorCode.INVALID_DATE, "message": "from/to must be YYYYMMDD"})
     if frm > too:
-        raise HTTPException(422, {"code": "from_after_to", "msg": "from must be <= to"})
+        raise HTTPException(422, {"code": LiveErrorCode.FROM_AFTER_TO, "message": "from must be <= to"})
     today_d = _today_kst_date()
     if too > today_d:
-        raise HTTPException(422, {"code": "date_in_future", "msg": "to must be <= today_kst"})
+        raise HTTPException(422, {"code": LiveErrorCode.DATE_IN_FUTURE, "message": "to must be <= today_kst"})
     if max_days is not None:
         span_days = (too - frm).days + 1
         if span_days > max_days:
             raise HTTPException(
                 422,
-                {"code": "date_range_too_large", "msg": f"max {max_days} days", "max_days": max_days},
+                {"code": LiveErrorCode.DATE_RANGE_TOO_LARGE, "message": f"max {max_days} days", "max_days": max_days},
             )
     return frm, too, today_d
 
@@ -227,22 +230,22 @@ def _validate_index_range(index_id: str, from_: str, to: str):
     except UnknownRepresentativeIndex as e:
         raise HTTPException(
             422,
-            {"code": "invalid_index_id", "msg": "unknown representative index"},
+            {"code": LiveErrorCode.INVALID_INDEX_ID, "message": "unknown representative index"},
         ) from e
     if index.kis_index_code is None:
         raise HTTPException(
             422,
-            {"code": "unsupported_index", "msg": f"{index.id} is not supported by KIS index routes"},
+            {"code": LiveErrorCode.UNSUPPORTED_INDEX, "message": f"{index.id} is not supported by KIS index routes"},
         )
     frm = _parse_yyyymmdd(from_)
     too = _parse_yyyymmdd(to)
     if frm is None or too is None:
-        raise HTTPException(422, {"code": "invalid_date", "msg": "from/to must be YYYYMMDD"})
+        raise HTTPException(422, {"code": LiveErrorCode.INVALID_DATE, "message": "from/to must be YYYYMMDD"})
     if frm > too:
-        raise HTTPException(422, {"code": "from_after_to", "msg": "from must be <= to"})
+        raise HTTPException(422, {"code": LiveErrorCode.FROM_AFTER_TO, "message": "from must be <= to"})
     today_d = _today_kst_date()
     if too > today_d:
-        raise HTTPException(422, {"code": "date_in_future", "msg": "to must be <= today_kst"})
+        raise HTTPException(422, {"code": LiveErrorCode.DATE_IN_FUTURE, "message": "to must be <= today_kst"})
     return index
 
 
@@ -1425,13 +1428,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     @router.get("/settings", response_model=LiveSettingsResponse)
     async def _get_settings() -> LiveSettingsResponse:
         if data_dir is None:
-            raise HTTPException(503, "live settings not wired")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live settings not wired"})
         return load_live_settings(data_dir)
 
     @router.patch("/settings", response_model=LiveSettingsResponse)
     async def _patch_settings(req: LiveSettingsUpdate) -> LiveSettingsResponse:
         if data_dir is None:
-            raise HTTPException(503, "live settings not wired")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live settings not wired"})
         settings = update_live_settings(
             data_dir,
             kis_rest_bypass_enabled=req.kis_rest_bypass_enabled,
@@ -1535,10 +1538,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     ) -> dict:
         index = _validate_index_range(index_id, from_, to)
         if data_dir is None:
-            raise HTTPException(503, "KIS client not wired")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not wired"})
         if timeframe in {"D", "W", "M"}:
             if index_candles_cache_instance is None:
-                raise HTTPException(503, "index-candles cache not wired (data_dir missing)")
+                raise HTTPException(
+                    503,
+                    {"code": LiveErrorCode.NOT_WIRED, "message": "index-candles cache not wired (data_dir missing)"},
+                )
             if kis_access.kis_rest_bypass_enabled(data_dir):
                 return _collect_index_daily_candles_cache_only(
                     cache=index_candles_cache_instance,
@@ -1549,9 +1555,9 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     to_s=to,
                 )
             if _kis_scheduler is None:
-                raise HTTPException(503, "KIS scheduler not wired")
+                raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
             if not kis_access.has_rest_capacity(data_dir):
-                raise HTTPException(503, "KIS client not initialized")
+                raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
 
             async def fetch_batch(from_s: str, to_s: str):
                 async def direct_fetch(inner_from_s: str, inner_to_s: str):
@@ -1612,7 +1618,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 "30m": 1800,
             }[timeframe]
             if index_minute_candles_cache_instance is None:
-                raise HTTPException(503, "index-minute-candles cache not wired (data_dir missing)")
+                raise HTTPException(
+                    503,
+                    {
+                        "code": LiveErrorCode.NOT_WIRED,
+                        "message": "index-minute-candles cache not wired (data_dir missing)",
+                    },
+                )
             # 소스는 여기(조립 지점)서 한 번만 정해진다 — 요청마다 폴백하지 않는다
             # (ADR-0129 D3). 아래 두 클로저 중 하나만 살아 캐시로 내려가고, 그 아래
             # 파이프라인은 누가 fetch 했는지 모른다.
@@ -1645,9 +1657,9 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     )
             else:
                 if _kis_scheduler is None:
-                    raise HTTPException(503, "KIS scheduler not wired")
+                    raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
                 if not kis_access.has_rest_capacity(data_dir):
-                    raise HTTPException(503, "KIS client not initialized")
+                    raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
 
                 async def fetch_batch(from_s: str, to_s: str):
                     return await kis_access.run_with_capacity(
@@ -1743,8 +1755,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             raise HTTPException(
                 422,
                 {
-                    "code": "unsupported_index_investor_net",
-                    "msg": f"{index.id} does not support market investor net",
+                    "code": LiveErrorCode.UNSUPPORTED_INDEX_INVESTOR_NET,
+                    "message": f"{index.id} does not support market investor net",
                 },
             )
         if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
@@ -1758,11 +1770,14 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 ],
             }
         if _kis_scheduler is None:
-            raise HTTPException(503, "KIS scheduler not wired")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
         if not _has_kis_capacity_candidate():
-            raise HTTPException(503, "KIS client not initialized")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
         if _index_investor_net_fetcher is None:
-            raise HTTPException(503, "index-investor-net fetcher not wired")
+            raise HTTPException(
+                503,
+                {"code": LiveErrorCode.NOT_WIRED, "message": "index-investor-net fetcher not wired"},
+            )
         return await _index_investor_net_fetcher.fetch(
             index=index,
             from_label=from_,
@@ -1773,47 +1788,60 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     async def _get_index_sector_rankings(date: str = Query(...)) -> IndexSectorRankingResponse:
         basis = _parse_yyyymmdd(date)
         if basis is None:
-            raise HTTPException(422, {"code": "invalid_date", "msg": "date must be YYYYMMDD"})
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_DATE, "message": "date must be YYYYMMDD"})
         today = _today_kst_yyyymmdd()
         if date > today:
-            raise HTTPException(422, {"code": "date_in_future", "msg": "date must be <= today_kst"})
+            raise HTTPException(422, {"code": LiveErrorCode.DATE_IN_FUTURE, "message": "date must be <= today_kst"})
         if data_dir is None:
-            raise HTTPException(503, "live data dir not wired")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live data dir not wired"})
         intraday_prices: dict[str, int] | None = {} if date == today else None
         if date == today and _index_sector_intraday_overlay is not None:
             intraday_prices = await _index_sector_intraday_overlay.fetch_prices(
                 phase=_quote_phase(datetime.now(_KST)),
             )
-        return build_index_sector_rankings(
+        # to_thread 필수: build_index_sector_rankings 는 히트맵 전 종목에 대해
+        # scan_parquet 을 돌리는 동기 함수다. 루프에서 직접 부르면 그 동안 이 프로세스의
+        # 모든 요청·WS 프레임 송출·KIS 스케줄러가 정지한다(60초 폴링 엔드포인트).
+        # 대상 모듈은 _cache_lock(threading.Lock) 으로 캐시 변이를 이미 감싸고 있어
+        # 스레드 실행이 안전하다.
+        rankings = await asyncio.to_thread(
+            build_index_sector_rankings,
             data_dir,
             date,
             intraday_prices=intraday_prices,
-        ).model_dump()
+        )
+        return rankings.model_dump()
 
     @router.post("/control")
     async def _post_control(req: ControlRequest) -> dict[str, str]:
         if on_control is None:
-            raise HTTPException(503, "live control not wired (Stage 8)")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live control not wired (Stage 8)"})
         await on_control(req.action)
         return {"action": req.action, "ok": "true"}
 
     @router.get("/snapshot")
     async def _get_snapshot(code: str) -> dict:
         if get_buffer is None:
-            raise HTTPException(503, "live buffer not wired")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live buffer not wired"})
         buf = get_buffer()
         latest = await buf.get_latest(code)
         if latest is None:
-            raise HTTPException(404, f"no live data for {code}")
+            raise HTTPException(
+                404,
+                {
+                    "code": LiveErrorCode.NO_LIVE_DATA,
+                    "message": f"no live data for {code}",
+                },
+            )
         return latest
 
     @router.get("/series")
     async def _get_series(code: str, date: str) -> dict:
         if get_buffer is None:
-            raise HTTPException(503, "live buffer not wired")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live buffer not wired"})
         buf = get_buffer()
         series = await buf.get_series(code)
-        kst = timezone(timedelta(hours=9))
+        kst = KST
         dt = datetime.strptime(date, "%Y%m%d").replace(tzinfo=kst)
         session_open_ms = int(dt.replace(hour=9, minute=0).timestamp() * 1000)
         return {
@@ -1871,7 +1899,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         try:
             venue_policy = parse_live_venue_policy(venue)
         except ValueError as e:
-            raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_VENUE, "message": str(e)}) from e
         quote_venue = quote_venue_for_policy(venue_policy, now)
         phase = _quote_phase(now, venue_policy)
         code_list = [c for c in codes.split(",") if _CODE_RE.match(c)]
@@ -1945,7 +1973,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         try:
             venue_policy = parse_live_venue_policy(venue)
         except ValueError as e:
-            raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_VENUE, "message": str(e)}) from e
         quote_venue = quote_venue_for_policy(venue_policy, now)
         phase = _quote_phase(now, venue_policy)
         code_list = list(dict.fromkeys(c for c in codes.split(",") if _CODE_RE.match(c)))
@@ -2011,7 +2039,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if not _CODE_RE.match(code):
             raise HTTPException(
                 422,
-                {"code": "invalid_code", "msg": "code must be 6 digits"},
+                {"code": LiveErrorCode.INVALID_CODE, "message": "code must be 6 digits"},
             )
         if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
             return _investor_estimate_fetcher._error_response(
@@ -2119,9 +2147,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         try:
             policy = parse_live_venue_policy(venue)
         except ValueError as e:
-            raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_VENUE, "message": str(e)}) from e
         if minute_backfill is None:
-            raise HTTPException(503, "past-candles cache not wired (data_dir missing)")
+            raise HTTPException(
+                503,
+                {"code": LiveErrorCode.NOT_WIRED, "message": "past-candles cache not wired (data_dir missing)"},
+            )
         if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
             out = await minute_backfill.collect_minute_cache_only(
                 code=code,
@@ -2132,9 +2163,9 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             )
             return {"code": code, "from": from_, "to": to, "venue": policy, **out.model_dump()}
         if _kis_scheduler is None:
-            raise HTTPException(503, "KIS scheduler not wired")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
         if not _has_kis_capacity_candidate():
-            raise HTTPException(503, "KIS client not initialized")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
 
         out = await minute_backfill.collect_minute(
             code=code,
@@ -2156,9 +2187,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         try:
             policy = parse_live_venue_policy(venue)
         except ValueError as e:
-            raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_VENUE, "message": str(e)}) from e
         if daily_backfill is None:
-            raise HTTPException(503, "past-daily-candles cache not wired (data_dir missing)")
+            raise HTTPException(
+                503,
+                {"code": LiveErrorCode.NOT_WIRED, "message": "past-daily-candles cache not wired (data_dir missing)"},
+            )
         if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
             return await daily_backfill.collect_daily_cache_only(
                 code=code,
@@ -2170,9 +2204,9 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 to_label=to,
             )
         if _kis_scheduler is None:
-            raise HTTPException(503, "KIS scheduler not wired")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
         if not _has_kis_capacity_candidate():
-            raise HTTPException(503, "KIS client not initialized")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
         return await daily_backfill.collect_daily(
             code=code,
             frm=frm,
@@ -2191,8 +2225,15 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     ) -> dict:
         frm, too, _today_d = _validate_past_request(code, from_, to, max_days=None)
         if data_dir is None:
-            raise HTTPException(503, "screener daily corpus not wired (data_dir missing)")
-        return read_screener_daily_candles(
+            raise HTTPException(
+                503,
+                {"code": LiveErrorCode.NOT_WIRED, "message": "screener daily corpus not wired (data_dir missing)"},
+            )
+        # to_thread 필수: 전체 유니버스 × 전체 이력 parquet 을 스캔하는 동기 함수다.
+        # 루프에서 직접 부르면 그 동안 프로세스 전체가 멈춘다. 순수 함수(공유 상태 없음)라
+        # 스레드 실행이 안전하다.
+        return await asyncio.to_thread(
+            read_screener_daily_candles,
             data_dir,
             code=code,
             frm=frm,
@@ -2231,11 +2272,14 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 to_label=to,
             )
         if _kis_scheduler is None:
-            raise HTTPException(503, "KIS scheduler not wired")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
         if not _has_kis_capacity_candidate():
-            raise HTTPException(503, "KIS client not initialized")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
         if investor_net_backfill is None:
-            raise HTTPException(503, "past-investor-net cache not wired (data_dir missing)")
+            raise HTTPException(
+                503,
+                {"code": LiveErrorCode.NOT_WIRED, "message": "past-investor-net cache not wired (data_dir missing)"},
+            )
         return await investor_net_backfill.collect(
             code=code,
             frm=frm,
@@ -2253,7 +2297,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         VI 는 2분 지속이라 폴링 지연이 실용 범위다.
         """
         if not _CODE_RE.match(code):
-            raise HTTPException(422, {"code": "invalid_code", "msg": "code must be 6 digits"})
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "code must be 6 digits"})
         vi = get_vi_status(code) if get_vi_status is not None else None
         return {"code": code, "vi": vi}
 
@@ -2266,15 +2310,15 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         등)는 null 로 내려가고 패널이 대시로 렌더한다.
         """
         if not _CODE_RE.match(code):
-            raise HTTPException(422, {"code": "invalid_code", "msg": "code must be 6 digits"})
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "code must be 6 digits"})
         if kiwoom_stock_info_fetcher_instance is None:
-            raise HTTPException(503, "kiwoom credentials not configured")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom credentials not configured"})
         try:
             limits, fetched_at_ms = await kiwoom_stock_info_fetcher_instance.get(code)
         except KiwoomStockInfoError as e:
-            raise HTTPException(502, {"code": "kiwoom_api_error", "msg": str(e)}) from e
+            raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_API_ERROR, "message": str(e)}) from e
         except httpx.HTTPError as e:
-            raise HTTPException(502, {"code": "kiwoom_http_error", "msg": str(e)}) from e
+            raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_HTTP_ERROR, "message": str(e)}) from e
         return StockLimitsResponse(
             code=limits.code,
             base_price=limits.base_price,
@@ -2305,13 +2349,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         캐시 효율·조합 자유를 유지한다. 제거 후 rank 는 1부터 재부여(연속 순위)한다.
         """
         if kiwoom_rankings_fetcher_instance is None:
-            raise HTTPException(503, "kiwoom credentials not configured")
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom credentials not configured"})
         try:
             snap = await kiwoom_rankings_fetcher_instance.get(kind, market, direction)
         except KiwoomRankingsError as e:
-            raise HTTPException(502, {"code": "kiwoom_api_error", "msg": str(e)}) from e
+            raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_API_ERROR, "message": str(e)}) from e
         except httpx.HTTPError as e:
-            raise HTTPException(502, {"code": "kiwoom_http_error", "msg": str(e)}) from e
+            raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_HTTP_ERROR, "message": str(e)}) from e
         rows = snap.rows
         if exclude_etf:
             drop = symbols.etf_etn_codes({r.code for r in rows})

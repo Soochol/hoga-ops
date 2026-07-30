@@ -13,9 +13,9 @@ from pathlib import Path
 import duckdb
 import pyarrow as pa
 
-from hoga.api._atomic_write import atomic_write_parquet_table
-from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
 from hoga.tables.trades import FillStrengthRow
+from hoga.util.atomic_write import atomic_write_parquet_table
+from hoga.util.timeenc import hhmmssms_to_intra_ms_sql
 
 PARQUET_SCHEMA: pa.Schema = pa.schema(
     [

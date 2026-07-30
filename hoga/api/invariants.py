@@ -334,7 +334,7 @@ def _series_snapshots_no_gaps(a: StockDateArtifacts) -> list[Violation]:
     from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환/heavy)
         has_meaningful_gaps,
     )
-    from hoga.api.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    from hoga.util.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     ts_values = [HogaMs(ts) for ts in raw_ts]
     if not has_meaningful_gaps(ts_values, session_close_ms=HogaMs(close_ms)):
         return []

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 import duckdb
 import pyarrow as pa
 
+from hoga.util.atomic_write import atomic_write_parquet_table
 from hoga.util.mtime_cache import MtimeLruCache
 
 BrokerSide = Literal["buy", "sell"]
@@ -124,9 +125,6 @@ def write_parquet(rows: Iterable[BrokerRow], path: Path) -> None:
         "qty_today": pa.array([r.qty_today for r in sorted_rows], type=pa.int32()),
         "qty_delta": pa.array([r.qty_delta for r in sorted_rows], type=pa.int32()),
     }
-    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        atomic_write_parquet_table,
-    )
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 

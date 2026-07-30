@@ -17,12 +17,12 @@ import pytest
 
 from hoga.api.bundle import build_fill_strength_slice, build_quote_ratio_slice
 from hoga.api.queries import QueryEngine
+from hoga.tables.fills import Fill, write_fills_parquet
 
 # NOTE: per Task 1 code review, tests do NOT import the private
 # _date_unix_ms_at_kst_midnight. Use hhmmssms_to_unix_ms(date, 0) instead
 # (= 00:00:00.000 KST = day start), a stable public contract.
-from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
-from hoga.tables.fills import Fill, write_fills_parquet
+from hoga.util.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
 
 DATE = "20260529"
 CODE = "005930"

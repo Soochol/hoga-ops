@@ -4,7 +4,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from hoga.api._atomic_write import atomic_write_parquet
+from hoga.util.atomic_write import atomic_write_parquet
 
 
 def test_atomic_write_parquet_creates_file(tmp_path: Path) -> None:

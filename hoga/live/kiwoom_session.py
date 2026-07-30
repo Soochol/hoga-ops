@@ -264,8 +264,9 @@ class KiwoomSessionManager:
 
         전역 1회 등록: (code,venue)가 저장셋에 이미 커버되면 슬롯 불요(틱은 저장 경로),
         아니면 잔여 슬롯 최다 연결에 표시 슬롯 배정. 두 탭이 같은 (code,venue)를 봐도
-        참조만 늘고 등록은 1회. 만석(전 연결 슬롯 소진)이면 그 venue는 거부(참조 미기록)
-        하고 경고 로그. 하나라도 거부되면 False 반환 — ws.py가 요청 탭에 만석 이벤트
+        참조만 늘고 등록은 1회. 만석(전 연결 슬롯 소진)이면 등록을 **보류**한다 —
+        미배정(owner=None) 참조로 장부에 남겨 watchdog의 _reassign_display가 슬롯 반환
+        시 자동 배정한다. 하나라도 보류되면 False 반환 — ws.py가 요청 탭에 만석 이벤트
         (토스트)를 보낸다. _lock으로 sync·watchdog와 직렬화."""
         async with self._lock:
             now_ms = self._now_fn()
@@ -281,11 +282,14 @@ class KiwoomSessionManager:
                 if entry.owner is not None and entry.owner in self._conns:
                     continue  # 이미 등록됨(다른 탭)
                 account = self._pick_account(now_ms)
-                if account is None:  # 만석 — 이 venue 등록 안 함(참조 롤백)
+                if account is None:
+                    # 만석 — 등록은 못 하지만 **참조는 남긴다**(owner=None = 미배정).
+                    # 참조를 롤백하고 항목을 지우면 _reassign_display 가 재배정할 근거가
+                    # 사라져, 슬롯이 반환돼도 사용자가 종목을 다시 전환할 때까지 그 탭은
+                    # 영구히 실시간을 못 받는다(멈춘 차트만 보인다).
+                    # 미배정 항목은 슬롯을 소모하지 않고(_free_slots·_reconcile 은 owner
+                    # 일치만 센다), 탭이 닫히면 on_view_unsubscribe → sweep 이 회수한다.
                     rejected = True
-                    entry.refs.discard(ref)
-                    if not entry.refs and entry.owner is None:
-                        del self._display[key]
                     continue
                 entry.owner = account
                 touched.add(account)

@@ -7,13 +7,13 @@ import asyncio
 import logging
 from pathlib import Path
 
-from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import (
     SavedScreener,
     SavedScreenersFile,
     ScreenerSaveWriteRequest,
 )
 from hoga.api.versioned_json_file import load_versioned_json_file
+from hoga.util.atomic_write import atomic_write_json
 
 log = logging.getLogger(__name__)
 _lock = asyncio.Lock()

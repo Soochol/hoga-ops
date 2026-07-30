@@ -10,7 +10,7 @@ from hoga.api.disk_state import (
     classify_from_meta,
     has_meaningful_gaps,
 )
-from hoga.api.timeenc import HogaMs
+from hoga.util.timeenc import HogaMs
 
 
 def test_disk_state_enum_has_six_members() -> None:
@@ -764,3 +764,75 @@ def test_anchor_edges_dense_full_window_no_gap() -> None:
     g = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
     assert g.is_partial is False
     assert g.gap_ranges == []
+
+
+# ── meta 분류 캐시 (요청당 3중 중복 파싱 제거) ────────────────────────────────
+
+
+def _seed_stock_date(root: Path, *, sources: tuple[str, ...]) -> Path:
+    sd = root / "20260701" / "005930"
+    for src in sources:
+        d = sd / src
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(
+            json.dumps({"collection_complete": True, "is_partial": False}),
+            encoding="utf-8",
+        )
+    return sd
+
+
+def _count_meta_reads(monkeypatch) -> dict[str, int]:
+    counter = {"n": 0}
+    original = Path.read_text
+
+    def counting(self: Path, *args: object, **kwargs: object) -> str:
+        if self.name == "meta.json":
+            counter["n"] += 1
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", counting)
+    return counter
+
+
+def test_repeated_classification_parses_each_meta_once(tmp_path: Path, monkeypatch) -> None:
+    """`/api/range` 한 요청이 같은 meta 를 세 경로에서 각자 파싱했다 —
+    queries.list_stock_dates_in_range · bundle 날짜 루프 · bundle 캔들 소스 해석.
+    60일 요청이면 그중 2/3 가 순수 중복이었다."""
+    from hoga.api.disk_state import classify_stock_date, reset_classify_cache_for_tests
+
+    reset_classify_cache_for_tests()
+    sd = _seed_stock_date(tmp_path, sources=("hogaplay", "kis_live", "kiwoom_live", "kis_api"))
+    counter = _count_meta_reads(monkeypatch)
+
+    for _ in range(3):
+        classify_stock_date(sd)
+
+    assert counter["n"] == 4, "소스 4개 × 3회 호출이 4회 파싱으로 접혀야 한다"
+
+
+def test_recapture_invalidates_the_cached_classification(tmp_path: Path, monkeypatch) -> None:
+    """재캡처(meta 재작성)는 즉시 반영돼야 한다.
+
+    캐시 단위를 Stock-Date **디렉터리**로 잡으면 이 성질이 깨진다 — 디렉터리 mtime 은
+    내부 파일 재작성에 반응하지 않아서 stale 분류를 영구히 반환한다. 파일 단위 +
+    (mtime_ns, size) 검증이라야 원자적 교체가 자연 무효화된다.
+    """
+    from hoga.api.disk_state import classify_stock_date, reset_classify_cache_for_tests
+
+    reset_classify_cache_for_tests()
+    sd = _seed_stock_date(tmp_path, sources=("hogaplay",))
+    assert classify_stock_date(sd)["hogaplay"].state == DiskState.COMPLETE
+
+    # 재캡처가 부분 수집으로 판정을 바꿨다 — 크기가 달라 mtime 해상도에 의존하지 않는다.
+    (sd / "hogaplay" / "meta.json").write_text(
+        json.dumps({
+            "collection_complete": True,
+            "is_partial": True,
+            "gap_ranges": [{"start_ms": 90000000, "end_ms": 152000000}],
+        }),
+        encoding="utf-8",
+    )
+    counter = _count_meta_reads(monkeypatch)
+
+    assert classify_stock_date(sd)["hogaplay"].state == DiskState.SOURCE_PARTIAL
+    assert counter["n"] == 1, "변경된 meta 는 다시 파싱해야 한다"

@@ -24,13 +24,26 @@ captures/cancel-all · captures/queue/resume · captures/done DELETE).
 README 가 규정한 **로컬 단독 실행에서 그대로 성립**한다 — 사용자가 `hoga serve` 를
 켜둔 채 브라우저로 아무 페이지나 열면 된다.
 
-설계 원칙 두 가지:
+**WebSocket 핸드셰이크도 검사한다.** 핸드셰이크는 GET 이지만 아래 `_SAFE_METHODS`
+면제를 받지 못한다. GET 을 면제하는 근거는 "부작용이 없고, 응답은 CORS 가 읽기를
+막아 준다" 인데 WS 는 두 전제가 모두 깨진다:
+
+1. **읽기 보호가 아예 없다.** CORS 는 WebSocket 에 적용되지 않는다 — 브라우저는
+   교차 출처 페이지에 양방향 소켓을 그대로 넘긴다. `ch:'live'` 프레임의 실시간
+   호가·체결·거래원과 `ch:'event'` 의 캡처 큐 진행이 전량 읽힌다.
+2. **부작용이 있다.** `{"action":"subscribe","code":...}` 는 키움 표시 슬롯 장부를
+   변경한다(`lifecycle.on_view_subscribe`). 슬롯은 계정당 200 개로 유계라, 악성
+   페이지가 임의 종목을 밀어넣어 **정상 탭을 만석으로 밀어낼 수 있다.**
+
+설계 원칙 세 가지:
 
 1. **CORSMiddleware 보다 바깥에 둔다.** 안쪽이면 CORS 가 통과시킨 뒤라 의미가 없다.
 2. **비브라우저 클라이언트를 막지 않는다.** curl · 스크립트 · CLI 는 ``Origin`` 도
    ``Sec-Fetch-Site`` 도 보내지 않으므로 통과시킨다. 이 가드가 막으려는 것은
    "브라우저가 다른 출처의 지시로 보낸 요청" 이지 "인증 없는 요청" 이 아니다 —
    인증은 ADR-0036 이 명시적으로 스코프 밖으로 둔 별개 주제다.
+3. **판정 로직은 HTTP 와 WS 가 공유한다** (``_is_allowed`` 하나). 두 벌로 두면 한쪽만
+   고쳐져 조용히 어긋난다 — 이 저장소가 이미 겪은 실패 형태다.
 """
 from __future__ import annotations
 
@@ -61,7 +74,13 @@ class OriginGuardMiddleware:
         self._allowed = frozenset(allowed_origins)
 
     async def __call__(self, scope, receive, send) -> None:
-        if scope["type"] != "http" or scope.get("method") in _SAFE_METHODS:
+        scope_type = scope["type"]
+        if scope_type == "http":
+            if scope.get("method") in _SAFE_METHODS:
+                await self.app(scope, receive, send)
+                return
+        elif scope_type != "websocket":
+            # lifespan 등 — 브라우저가 만드는 scope 가 아니다.
             await self.app(scope, receive, send)
             return
 
@@ -80,10 +99,14 @@ class OriginGuardMiddleware:
         # "왜 저장이 안 되지" 의 유일한 단서가 이 로그다.
         log.warning(
             "origin_guard: blocked %s %s origin=%r sec-fetch-site=%r "
-            "(allowed=%s) — 브라우저 교차 출처 상태변경 요청",
-            scope.get("method"), scope.get("path"), origin, fetch_site,
-            sorted(self._allowed),
+            "(allowed=%s) — 브라우저 교차 출처 %s",
+            scope.get("method") or scope_type.upper(), scope.get("path"),
+            origin, fetch_site, sorted(self._allowed),
+            "WS 핸드셰이크" if scope_type == "websocket" else "상태변경 요청",
         )
+        if scope_type == "websocket":
+            await _reject_ws(send)
+            return
         await _reject(send)
 
     def _is_allowed(self, origin: str | None, fetch_site: str | None) -> bool:
@@ -95,6 +118,20 @@ class OriginGuardMiddleware:
             return origin in self._allowed
         # Origin 이 없고 Sec-Fetch-Site 만 있는 경우(일부 브라우저의 same-origin POST).
         return fetch_site in _SELF_INITIATED_FETCH_SITES
+
+
+async def _reject_ws(send) -> None:
+    """accept 전에 close 를 보내 핸드셰이크를 거부한다(ASGI 규약: 서버가 HTTP 403 응답).
+
+    ``receive()`` 로 ``websocket.connect`` 를 먼저 소비하지 않는 것은 Starlette 자신의
+    ``WebSocketClose`` 와 같은 형태다(라우트 미스 시 그렇게 거부한다). 1008 =
+    policy violation.
+    """
+    await send({
+        "type": "websocket.close",
+        "code": 1008,
+        "reason": "cross_origin_blocked",
+    })
 
 
 async def _reject(send) -> None:

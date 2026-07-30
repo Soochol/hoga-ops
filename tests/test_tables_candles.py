@@ -63,7 +63,7 @@ def test_write_parquet_is_atomic_on_replace_failure(tmp_path: Path, monkeypatch)
     out = tmp_path / "candles.parquet"
     write_parquet([Candle(ts_ms=1, open_=1, close_=1, high=1, low=1, vol_a=1, vol_b=1)], out)
 
-    import hoga.api._atomic_write as aw
+    import hoga.util.atomic_write as aw
 
     def _boom(_src, _dst):
         raise OSError("simulated crash during atomic replace")

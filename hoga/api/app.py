@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 
 from hoga.api import captures as _captures_module, screener as _screener_module, symbols as _symbols_module
 from hoga.api.calendar import build_router as build_calendar_router
@@ -52,6 +53,7 @@ from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
     get_buffer as live_get_buffer,
     get_kiwoom_capture_codes,
+    get_program_trade_task,
     get_status as live_get_status,
     get_today_ask_peak as live_get_today_ask_peak,
     get_today_bid_peak as live_get_today_bid_peak,
@@ -156,6 +158,11 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
                 aclose_kis_capacity_scheduler=aclose_kis_capacity_scheduler,
                 aclose_kis_client=aclose_kis_client,
                 get_kiwoom_capture_codes=get_kiwoom_capture_codes,
+                # ADR-0088 확장: 캡처 워커 풀과 프로그램매매 수집기도 liveness 를
+                # 노출한다. 둘은 lifespan/라이브 런타임이 각각 소유해 런타임이 핸들을
+                # 들고 있지 않으므로 접근자로 주입한다(호출 시점에 다시 읽는다).
+                get_capture_worker_tasks=lambda: _captures_module._workers,
+                get_program_trade_task=get_program_trade_task,
                 load_symbol_disk_state=_symbols_module.load_disk_state,
                 needs_symbol_boot_refresh=_symbols_module.needs_boot_refresh,
                 refresh_symbols=_symbols_module.refresh,
@@ -220,9 +227,31 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     app.add_middleware(RequestTimingMiddleware)
     # Liveness probe. Used by the Playwright e2e webServer config and by any
     # process supervisor that needs a no-side-effects 200 OK.
+    #
+    # `?deep=1` 은 **readiness** 다: 프로세스가 살아 있다는 것만으로는 부족한 질문에
+    # 답한다. 배경 태스크가 전멸해도 얕은 /health 는 200 이므로, 감독자가 그걸 물면
+    # "살아 있지만 아무 일도 안 하는" 프로세스를 영원히 방치한다(ADR-0064 실패 모드).
+    # deep 은 조용히 죽은 태스크가 하나라도 있으면 503 을 내 감독자가 재시작할 수
+    # 있게 한다 — 미기동(env 로 끈 기능)은 실패로 세지 않는다.
+    #
+    # 부작용 없음(메모리 상태 읽기)이므로 감독자가 짧은 주기로 물어도 안전하다.
     @app.get("/health")
-    def _health() -> dict[str, str]:
-        return {"status": "ok"}
+    def _health(deep: bool = False) -> JSONResponse:
+        if not deep:
+            return JSONResponse({"status": "ok"})
+        runtime = getattr(app.state, "startup_runtime", None)
+        if runtime is None:
+            # lifespan 밖(부팅 중·종료 중·테스트) — 판정 근거가 없다. 감독자가
+            # 부팅 중을 실패로 오해하지 않도록 200 + 미확정을 명시한다.
+            return JSONResponse({"status": "ok", "checks": {"supervised_tasks": "unknown"}})
+        tasks = runtime.supervised_task_health()
+        dead = [t["name"] for t in tasks if t.get("state") == "dead"]
+        body: dict[str, object] = {
+            "status": "degraded" if dead else "ok",
+            "dead_tasks": dead,
+            "supervised_tasks": tasks,
+        }
+        return JSONResponse(body, status_code=503 if dead else 200)
 
     app.include_router(build_router(engine))
     app.include_router(build_ws_router(bus, live_get_buffer))

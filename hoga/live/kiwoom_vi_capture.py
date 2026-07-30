@@ -17,14 +17,17 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
+
+from hoga.util.timeenc import KST
 
 from . import kiwoom_fields as K
 
 _log = logging.getLogger(__name__)
 
-_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 
 
 def capture_path(data_dir: Path, now_ms: int) -> Path:

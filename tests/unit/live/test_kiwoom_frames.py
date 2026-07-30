@@ -10,9 +10,9 @@ parity 테스트로 고정한다.
 import json
 from pathlib import Path
 
-from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.live.kiwoom_frames import parse_real_message, parse_real_row
 from hoga.live.snapshot import SnapshotKind
+from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 _T2_GOLDEN = (
     Path(__file__).resolve().parents[2]

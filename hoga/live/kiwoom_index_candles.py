@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -24,10 +24,12 @@ from hoga.live.candle_fetch_result import (
     IndexCandleFetchResult,
 )
 from hoga.live.kis_models import IndexCandlePoint
+from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
 
-KIWOOM_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+KIWOOM_KST = KST
 
 _BASE_REAL = "https://api.kiwoom.com"
 _CHART_PATH = "/api/dostk/chart"

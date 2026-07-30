@@ -10,7 +10,7 @@ from hoga.api.models import (
     StudyViewsFile,
 )
 from hoga.api.study_view_routes import build_router
-from hoga.api.timeenc import hhmmssms_to_unix_ms
+from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 
 def _ref_req(**overrides):

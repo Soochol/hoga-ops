@@ -16,14 +16,17 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
 
+from hoga.util.timeenc import KST
+
 log = logging.getLogger(__name__)
 
-KIWOOM_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+KIWOOM_KST = KST
 _BASE_REAL = "https://api.kiwoom.com"
 # 키움 토큰 발급 쿨다운 — 문서에 분당 상한 명시는 없으나 KIS와 동일하게 보수적 60s.
 # 발급 시도(성공 아닌) 시점에 마킹해 장애 엔드포인트에서 10s POST 반복을 막는다.

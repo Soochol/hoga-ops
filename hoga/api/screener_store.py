@@ -10,8 +10,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from hoga.api._atomic_write import atomic_write_json, atomic_write_parquet_df
 from hoga.duck import connect_bounded
+from hoga.util.atomic_write import atomic_write_json, atomic_write_parquet_df
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def export_stocks_from_db(csv_path: Path, *, container: str = "tradingview-db",
 
 import polars as pl  # noqa: E402 — appended after stdlib imports
 
-from hoga.api import screener_factors  # noqa: E402 — 순환 없음(screener_factors는 _atomic_write만 import)
+from hoga.api import screener_factors  # noqa: E402 — 순환 없음(screener_factors는 hoga.util.atomic_write만 import)
 
 
 @dataclass(frozen=True)

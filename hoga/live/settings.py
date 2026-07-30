@@ -8,8 +8,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import LiveSettingsResponse
+from hoga.util.atomic_write import atomic_write_json
 
 log = logging.getLogger(__name__)
 

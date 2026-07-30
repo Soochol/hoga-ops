@@ -25,6 +25,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from hoga.util.timeenc import KST
+
 from . import kis_runtime
 from .buffer import LiveBuffer
 from .promote import promote_kiwoom_today
@@ -136,6 +138,20 @@ def get_kiwoom_capture_codes() -> list[str]:
     return session.active_codes()
 
 
+def get_program_trade_task() -> asyncio.Task | None:
+    """프로그램매매 수집기의 실행 태스크 — ADR-0088 liveness 노출용(supervised_tasks).
+
+    라이브가 꺼져 있거나 수집기가 아직 안 만들어졌으면 None. 이 접근자가 없던 동안
+    `ProgramTradeCollectorStatus.running` 이 유일한 신호였고, 그 플래그는 start()에서
+    True 로 찍힌 뒤 갱신되지 않아 **태스크가 죽어도 계속 True** 였다 — ADR-0064 가
+    제거한 바로 그 거짓 health 패턴이다.
+    """
+    collector = _state.program_trade_collector
+    if collector is None:
+        return None
+    return getattr(collector, "task", None)
+
+
 def get_vi_status(code: str) -> dict | None:
     """종목의 최신 VI 이벤트 상태(키움 1h, 계정 0 수신) — /api/live/vi-status 소스.
 
@@ -199,9 +215,9 @@ def _now_ms() -> int:
 
 
 def _today_kst() -> str:
-    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+    from datetime import datetime  # noqa: PLC0415
 
-    return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+    return datetime.now(KST).strftime("%Y%m%d")
 
 
 def _market_clock_closed_for_capture(now_ms: int) -> bool:

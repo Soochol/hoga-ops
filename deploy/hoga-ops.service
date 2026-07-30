@@ -1,0 +1,53 @@
+# hoga-ops 프로세스 감독용 systemd user unit.
+#
+# 왜 필요한가: 앱 내부 워치독(키움 WS 재연결, KIS 용량 워커 자가재생성)은 전부
+# **프로세스 안에서만** 동작한다. 장중 09:05 에 프로세스가 죽으면 그날 실시간 수집은
+# 그 시점에서 끝나고, 더 나쁜 건 죽었다는 사실 자체를 저녁에 데이터 구멍으로 알게
+# 된다는 것이다. 프로세스 사망은 구조적으로 외부 감독자만 덮을 수 있다.
+#
+# 설치:
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/hoga-ops.service ~/.config/systemd/user/
+#   # WorkingDirectory 를 실제 체크아웃 경로로 고치고:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now hoga-ops
+#
+# 로그아웃 후에도 계속 돌게 하려면(노트북 기준 권장):
+#   loginctl enable-linger "$USER"
+#
+# 상태·로그:
+#   systemctl --user status hoga-ops
+#   journalctl --user -u hoga-ops -f
+#
+# 자동 시작 스위치를 함께 켜야 의미가 있다 — 감독자가 되살려도
+# HOGA_LIVE_STARTUP_ENABLED 가 off 면 수집은 재개되지 않는다(.env.example 참고).
+
+[Unit]
+Description=hoga-ops local API server
+Documentation=https://github.com/Soochol/hoga-ops
+After=network-online.target
+
+[Service]
+Type=simple
+# ↓ 실제 체크아웃 경로로 교체할 것.
+WorkingDirectory=%h/code/hoga-ops
+# .env 는 앱이 스스로 읽는다(default_app() → load_env()) — EnvironmentFile 불필요.
+ExecStart=/usr/bin/env uv run hoga serve
+
+Restart=always
+RestartSec=5
+# 재시작 폭주 방지: 5분 안에 5회를 넘기면 멈춘다(설정 오류로 즉시 죽는 경우
+# 무한 루프를 돌지 않게). 이때는 journalctl 로 원인을 봐야 한다.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# 종료 유예. 캡처 워커가 스레드에서 돌고 큐 flock 해제까지 마쳐야 하므로
+# SIGKILL 을 너무 빨리 보내지 않는다.
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

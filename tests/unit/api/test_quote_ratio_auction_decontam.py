@@ -17,7 +17,7 @@ import polars as pl
 
 from hoga.api.bundle import build_quote_ratio_slice
 from hoga.api.queries import QueryEngine
-from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
+from hoga.util.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
 
 DATE = "20260529"
 CODE = "005930"

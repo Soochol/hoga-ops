@@ -25,6 +25,30 @@ export interface LiveStatus {
   // 키움 WS 수집 관측(ADR-0116). 키움 미배선/무자격(앱키 없음)이면 null. 백엔드 신규
   // 필드라 optional — 설정 상태줄·커버리지 칩이 소비한다.
   kiwoom?: KiwoomStatus | null;
+  // lifespan 소유 배경 태스크의 정직한 liveness(ADR-0088). 백엔드가 lifespan 밖
+  // (테스트 등)이면 없을 수 있어 optional.
+  supervised_tasks?: SupervisedTask[];
+}
+
+/**
+ * 한 배경 태스크의 상태. 미러: hoga/api/startup_runtime.py::_task_health.
+ *
+ * `running` 불리언만으로는 "죽었다"와 "애초에 안 띄웠다(env 비활성·미주입)"를
+ * 구별할 수 없어 경보에 쓸 수 없다 — `HOGA_LIVE_TODAY_PROMOTE_ENABLED=false` 면
+ * today-promoter 는 정상인데도 영구히 `running:false` 다. **경보는 `state`가
+ * `'dead'`인 항목만 봐야 한다.**
+ */
+export interface SupervisedTask {
+  name: string;
+  running: boolean;
+  state?: 'running' | 'dead' | 'not_started';
+}
+
+/** 조용히 죽은 배경 태스크 이름들. 미기동(not_started)은 죽음이 아니다. */
+export function deadSupervisedTasks(status: LiveStatus | undefined): string[] {
+  return (status?.supervised_tasks ?? [])
+    .filter((t) => t.state === 'dead')
+    .map((t) => t.name);
 }
 
 export interface KiwoomStatus {

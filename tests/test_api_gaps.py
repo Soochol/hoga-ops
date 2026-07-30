@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from hoga.api.app import create_app
 from hoga.api.queries import QueryEngine
-from hoga.api.timeenc import hhmmssms_to_unix_ms
+from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 _CLOSE = 153000000  # 15:30:00.000 (regular)
 

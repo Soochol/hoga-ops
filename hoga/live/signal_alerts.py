@@ -9,7 +9,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
-from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import (
     SignalAlertClearResponse,
     SignalAlertEvent,
@@ -18,6 +17,7 @@ from hoga.api.models import (
     SignalAlertSettings,
     SignalAlertSettingsUpdate,
 )
+from hoga.util.atomic_write import atomic_write_json
 
 _lock = threading.RLock()
 

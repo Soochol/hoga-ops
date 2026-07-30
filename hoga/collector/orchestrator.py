@@ -15,7 +15,6 @@ from pathlib import Path
 from statistics import median
 from typing import Protocol
 
-from hoga.api.timeenc import HogaMs
 from hoga.collector.client import HogaplayHTTPError
 from hoga.collector.page_step import (
     DATA_WINDOW_END_MS,
@@ -25,6 +24,8 @@ from hoga.collector.page_step import (
     StopReason,
 )
 from hoga.collector.timing import CaptureTimingCollector
+from hoga.util.atomic_write import atomic_write_json, atomic_write_text
+from hoga.util.timeenc import HogaMs
 
 log = logging.getLogger(__name__)
 
@@ -355,20 +356,20 @@ def _write_progress(
     finished: bool = False,
     abort_reason: str | None = None,
 ) -> None:
-    path.write_text(
-        json.dumps(
-            {
-                "last_time_ms": last_time_ms,
-                "pages_done": pages_done,
-                "global_seqs_seen": seq_count,
-                "started_at": started_at,
-                "finished_at": finished_at,
-                "finished": finished,
-                "abort_reason": abort_reason,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
+    # 원자적 쓰기 필수: 이 파일이 resume 커서다(ADR-0019). 매 페이지마다 갱신되므로
+    # 디스크가 꽉 차는 순간과 겹칠 확률이 가장 높은 쓰기이고, 잘리면 재개 지점을
+    # 잃거나(전량 재수집) 잘못된 지점에서 재개한다.
+    atomic_write_json(
+        path,
+        {
+            "last_time_ms": last_time_ms,
+            "pages_done": pages_done,
+            "global_seqs_seen": seq_count,
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "finished": finished,
+            "abort_reason": abort_reason,
+        },
     )
 
 
@@ -424,7 +425,7 @@ def _store_page_body(
     new_seqs = page_seqs - seen_seqs
     if body:
         page_idx += 1
-        (raw_dir / page_filename(page_idx)).write_text(body, encoding="utf-8")
+        atomic_write_text(raw_dir / page_filename(page_idx), body)
         seen_seqs.update(page_seqs)
     return page_idx, new_seqs
 
@@ -640,9 +641,9 @@ def collect_stock_date(  # noqa: PLR0912, PLR0915
             raise UpstreamNoDataError(code, date)
         if collector is not None:
             with collector.phase("disk_write"):
-                info_path.write_text(info_body, encoding="utf-8")
+                atomic_write_text(info_path, info_body)
         else:
-            info_path.write_text(info_body, encoding="utf-8")
+            atomic_write_text(info_path, info_body)
         if rate_limit_s > 0:
             if collector is not None:
                 with collector.phase("rate_limit"):
@@ -685,9 +686,9 @@ def collect_stock_date(  # noqa: PLR0912, PLR0915
         chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
     if collector is not None:
         with collector.phase("disk_write"):
-            (raw_dir / "chart.tsv").write_text(chart_body, encoding="utf-8")
+            atomic_write_text(raw_dir / "chart.tsv", chart_body)
     else:
-        (raw_dir / "chart.tsv").write_text(chart_body, encoding="utf-8")
+        atomic_write_text(raw_dir / "chart.tsv", chart_body)
 
     # Stagnation abort writes finished=False so the parser's
     # ``collection_complete`` flag stays False and the resulting parquet is

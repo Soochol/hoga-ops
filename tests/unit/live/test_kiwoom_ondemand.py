@@ -204,6 +204,52 @@ async def test_display_fills_remaining_slot_then_full():
     await mgr.stop()
 
 
+async def test_full_house_pending_ref_is_reassigned_when_slot_frees():
+    """만석으로 보류된 표시 구독은 슬롯이 반환되면 watchdog 이 자동 배정한다.
+
+    참조를 롤백하고 장부 항목을 지우면(구 동작) _reassign_display 가 재배정할 근거가
+    사라져서, 슬롯이 나도 사용자가 종목을 다시 전환할 때까지 그 탭은 영구히 멈춘
+    차트만 본다. 보류 항목은 owner=None 이라 슬롯을 소모하지 않는다.
+    """
+    now = {"ms": _KRX_MS}
+    mgr = _mgr(per_account_max=3)
+    mgr._now_fn = lambda: now["ms"]
+    await mgr.sync(("A",), n_accounts=1)  # 저장 1, 잔여 2
+    assert await mgr.on_view_subscribe("Y", {"KRX"}, ref="tab1") is True
+    assert await mgr.on_view_subscribe("Z", {"KRX"}, ref="tab2") is True
+    assert await mgr.on_view_subscribe("W", {"KRX"}, ref="tab3") is False  # 만석 → 보류
+    assert "W" not in _wire(mgr)
+    # 보류분이 슬롯을 먹지 않았음을 고정 — 먹었다면 Y·Z 중 하나가 밀려난다.
+    assert {"A", "Y", "Z"} == _wire(mgr)
+
+    # tab1 이 닫혀 슬롯 1개 반환 → 유예 경과 후 watchdog 이 보류분(W)에 배정.
+    await mgr.on_view_unsubscribe("Y", {"KRX"}, ref="tab1")
+    now["ms"] += 61_000
+    await mgr.watchdog_pass(now["ms"])
+
+    assert "W" in _wire(mgr), "보류된 표시 구독이 슬롯 반환 후에도 배정되지 않는다"
+    assert "Y" not in _wire(mgr)
+    await mgr.stop()
+
+
+async def test_full_house_pending_ref_is_released_when_tab_closes():
+    """보류 항목도 탭이 닫히면 회수된다 — 장부에 영구 누적되지 않는다."""
+    now = {"ms": _KRX_MS}
+    mgr = _mgr(per_account_max=2)
+    mgr._now_fn = lambda: now["ms"]
+    await mgr.sync(("A", "B"), n_accounts=1)  # 저장 2 = 만석
+    assert await mgr.on_view_subscribe("Z", {"KRX"}, ref="tab1") is False
+    assert ("Z", "KRX") in mgr._display  # 보류 상태로 장부에 남는다
+    assert mgr._display[("Z", "KRX")].owner is None
+
+    await mgr.on_view_unsubscribe("Z", {"KRX"}, ref="tab1")
+    now["ms"] += 61_000
+    await mgr.watchdog_pass(now["ms"])
+
+    assert ("Z", "KRX") not in mgr._display
+    await mgr.stop()
+
+
 # ── UN 슬롯 산술(+1/+2) ──────────────────────────────────────────────────
 
 async def test_un_view_storage_code_adds_only_missing_venue():

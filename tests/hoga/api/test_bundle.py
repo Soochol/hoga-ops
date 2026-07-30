@@ -701,8 +701,8 @@ def test_build_range_bundle_uses_combined_ask_bid_peak_builder():
 def test_build_volume_distribution_slice_returns_unix_session_bounds(tmp_path):
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_volume_distribution_slice
-    from hoga.api.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
     from hoga.tables.trades import VolumeProfileBinning
+    from hoga.util.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
 
     code_dir = tmp_path / "20260512" / "005930"
     code_dir.mkdir(parents=True)
@@ -1200,7 +1200,7 @@ def test_bundle_open_ms_zero_served_and_normalized():
 
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     DATE = "20260520"
     eng = _engine_with_meta_for_dates([DATE])
@@ -2375,8 +2375,8 @@ def test_build_range_bundle_includes_bid_peaks(monkeypatch, tmp_path) -> None:
 def test_build_depth_heatmap_slice_converts_rows_to_points(tmp_path):
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_depth_heatmap_slice
-    from hoga.api.timeenc import ms_from_midnight_to_unix_ms
     from hoga.tables.snapshots import DepthHeatmapRow
+    from hoga.util.timeenc import ms_from_midnight_to_unix_ms
 
     code_dir = tmp_path / "20260102" / "005930"
     code_dir.mkdir(parents=True)

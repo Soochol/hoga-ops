@@ -10,13 +10,19 @@ preflight 로 차단하고, 그 밖의 요청은 origin 이 화이트리스트 �
 catchup 등) FastAPI 가 body 를 파싱하지 않고, 그러면 form-urlencoded 로 도달해
 **preflight 자체가 생기지 않는다** — 악성 페이지의 숨은 <form> 자동 제출로 그대로
 호출된다. cancel_all() 은 큐를 전량 drain 하고 디스크에 확정하므로 되돌릴 수 없다.
+
+**WebSocket 핸드셰이크도 같은 이유로 검사한다.** 핸드셰이크는 GET 이지만 GET 면제의
+두 전제가 WS 에서는 모두 깨진다 — CORS 는 WS 에 적용되지 않아 교차 출처 페이지가
+프레임을 그대로 읽고, `subscribe` 액션은 키움 표시 슬롯(계정당 200, 유계)을 소모해
+정상 탭을 만석으로 밀어낸다. 즉 WS 는 읽기 전용이 아니다.
 """
 from __future__ import annotations
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from hoga.api.app import ALLOWED_ORIGINS
 from hoga.api.origin_guard import OriginGuardMiddleware
@@ -40,6 +46,11 @@ def _client() -> TestClient:
     @app.delete("/done")
     async def _done() -> dict:
         return {"cleared": True}
+
+    @app.websocket("/ws")
+    async def _ws(websocket: WebSocket) -> None:
+        await websocket.accept()
+        await websocket.send_json({"ch": "live", "data": "실시간 호가"})
 
     app.add_middleware(
         CORSMiddleware, allow_origins=list(ALLOWED_ORIGINS),
@@ -111,6 +122,64 @@ def test_safe_methods_are_never_blocked() -> None:
     assert resp.status_code == 200
 
 
+def test_websocket_without_guard_would_have_streamed_to_evil_origin() -> None:
+    """전제 확인 — 가드가 **없으면** 교차 출처 WS 가 실제로 붙어 프레임을 받는다.
+
+    CORS 는 WebSocket 에 적용되지 않으므로 CORSMiddleware 를 붙여도 막히지 않는다.
+    이게 성립하지 않으면 아래 WS 검사는 존재할 이유가 없다.
+    """
+    app = FastAPI()
+
+    @app.websocket("/ws")
+    async def _ws(websocket: WebSocket) -> None:
+        await websocket.accept()
+        await websocket.send_json({"ch": "live", "data": "실시간 호가"})
+
+    app.add_middleware(
+        CORSMiddleware, allow_origins=list(ALLOWED_ORIGINS),
+        allow_methods=["*"], allow_headers=["*"],
+    )
+    with TestClient(app).websocket_connect("/ws", headers={"Origin": _EVIL}) as ws:
+        assert ws.receive_json() == {"ch": "live", "data": "실시간 호가"}, (
+            "CORS 는 교차 출처 WebSocket 을 막지 않는다"
+        )
+
+
+def test_cross_origin_websocket_handshake_is_blocked() -> None:
+    """WS 는 GET 면제 대상이 아니다 — 프레임 유출 + 표시 슬롯 소모 둘 다 가능하다."""
+    with (
+        pytest.raises(WebSocketDisconnect) as excinfo,
+        _client().websocket_connect("/ws", headers={"Origin": _EVIL}) as ws,
+    ):
+        ws.receive_json()
+    assert excinfo.value.code == 1008, "policy violation 으로 거부해야 한다"
+
+
+def test_allowed_origin_websocket_passes() -> None:
+    """정상 프론트엔드(localhost:5173)의 실시간 스트림은 그대로 동작해야 한다."""
+    with _client().websocket_connect("/ws", headers={"Origin": _GOOD}) as ws:
+        assert ws.receive_json() == {"ch": "live", "data": "실시간 호가"}
+
+
+def test_non_browser_websocket_passes() -> None:
+    """스크립트·CLI 의 WS 클라이언트는 Origin 을 보내지 않는다 — 통과.
+
+    HTTP 쪽과 같은 정책이다(이 가드는 인증 장치가 아니다). 판정은 `_is_allowed`
+    한 벌을 공유하므로 두 표면이 어긋날 수 없다.
+    """
+    with _client().websocket_connect("/ws") as ws:
+        assert ws.receive_json() == {"ch": "live", "data": "실시간 호가"}
+
+
+def test_cross_site_websocket_is_blocked_without_origin_header() -> None:
+    client = _client()
+    with (
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect("/ws", headers={"Sec-Fetch-Site": "cross-site"}) as ws,
+    ):
+        ws.receive_json()
+
+
 def test_guard_and_cors_share_one_origin_list() -> None:
     """두 곳에 리터럴을 따로 두면 한쪽만 고쳐져 조용히 어긋난다.
 
@@ -123,6 +192,22 @@ def test_guard_and_cors_share_one_origin_list() -> None:
     src = inspect.getsource(app_mod.create_app)
     assert "allow_origins=list(ALLOWED_ORIGINS)" in src
     assert "allowed_origins=ALLOWED_ORIGINS" in src
+
+
+def test_real_app_websocket_endpoint_is_guarded(tmp_path) -> None:
+    """실제 앱의 `/api/ws` 가 가드를 지나는지 고정 — 합성 앱만 검증하면 배선 누락을 놓친다.
+
+    거부는 라우트에 도달하기 전에 끝나므로 lifespan(폴러·워커) 을 띄우지 않는다.
+    """
+    from hoga.api.app import create_app
+
+    client = TestClient(create_app(tmp_path))
+    with (
+        pytest.raises(WebSocketDisconnect) as excinfo,
+        client.websocket_connect("/api/ws", headers={"Origin": _EVIL}),
+    ):
+        pass
+    assert excinfo.value.code == 1008
 
 
 def test_guard_sits_outside_cors_in_the_real_app(tmp_path) -> None:

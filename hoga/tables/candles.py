@@ -18,6 +18,7 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel
 
 from hoga.tables.dispatch import FieldCountError, split_row
+from hoga.util.atomic_write import atomic_write_parquet_table
 
 CANDLE_MIN_FIELDS = 8
 
@@ -89,10 +90,6 @@ def write_parquet(candles: Iterable[Candle], path: Path) -> None:
         "vol_a": pa.array([c.vol_a for c in rows], type=pa.int32()),
         "vol_b": pa.array([c.vol_b for c in rows], type=pa.int32()),
     }
-    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        atomic_write_parquet_table,
-    )
-
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 

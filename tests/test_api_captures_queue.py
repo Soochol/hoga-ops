@@ -1750,8 +1750,8 @@ def test_apply_progress_threads_upstream_health_telemetry():
     where a new field silently drops if any hop is missed — the UI badge would
     just never render, and no compiler catches it (ADR-0004 hand-mirror).
     """
-    from hoga.api.timeenc import HogaMs
     from hoga.collector.orchestrator import ProgressEvent
+    from hoga.util.timeenc import HogaMs
 
     state = QueueItemState(
         item_id="x-20260709",

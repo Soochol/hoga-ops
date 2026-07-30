@@ -17,14 +17,14 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 
 import polars as pl
 
-from hoga.api._atomic_write import atomic_write_json
-from hoga.api.timeenc import HogaMs
 from hoga.live.promote import _completeness_fields
+from hoga.util.atomic_write import atomic_write_json
+from hoga.util.timeenc import KST, HogaMs
 
 _log = logging.getLogger(__name__)
 
@@ -32,7 +32,8 @@ _log = logging.getLogger(__name__)
 # already writes the completeness fields at capture time. kiwoom_live(ADR-0116)는
 # kis_live와 동일하게 승격 후 메타 복구가 필요하다.
 _LIVE_SOURCES: tuple[str, ...] = ("kis_live", "kiwoom_live", "kis_api")
-_KST = timezone(timedelta(hours=9))
+# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
+_KST = KST
 
 
 @dataclass(frozen=True)

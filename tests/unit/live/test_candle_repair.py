@@ -9,10 +9,10 @@ import pytest
 from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.queries import QueryEngine
 from hoga.api.sources import resolve_source_result
-from hoga.api.timeenc import ms_from_midnight_to_unix_ms
 from hoga.live import candle_repair
 from hoga.live.kis_models import KisCandle
 from hoga.tables import candles as candles_tbl
+from hoga.util.timeenc import ms_from_midnight_to_unix_ms
 
 _CODE = "005930"
 _DATE = "20260518"  # 월요일

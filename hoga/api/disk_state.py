@@ -15,7 +15,8 @@ from enum import Enum
 from pathlib import Path
 
 from hoga.api.invariants import Severity, Violation, check
-from hoga.api.timeenc import HogaMs
+from hoga.util.mtime_cache import MtimeLruCache
+from hoga.util.timeenc import HogaMs
 
 
 class DiskState(Enum):
@@ -327,6 +328,35 @@ def check_disk_state(
 # ============================================================================
 
 
+# meta.json 한 개당 (읽기 + json 파싱 + invariants 검사) 결과 캐시.
+#
+# 왜 필요한가: `/api/range` 한 요청이 **같은 meta.json 을 세 경로에서 각자 파싱**한다 —
+# queries.list_stock_dates_in_range → bundle 의 날짜 루프 → bundle 의 캔들 소스 해석.
+# 60일 요청이면 3 × 60 × (소스 수) 만큼의 read+parse 가 나가고 그중 2/3 가 순수 중복이다.
+# `/api/inventory/calendar` 도 날짜당 check_disk_state 를 2회 부른다.
+#
+# 캐시 단위를 Stock-Date 디렉터리가 아니라 **meta 파일**로 잡은 이유: 디렉터리 mtime 은
+# 항목 추가/삭제 때만 바뀌고 내부 meta.json 재작성에는 반응하지 않는다. 디렉터리로
+# 캐싱하면 재캡처가 무효화를 못 일으켜 stale 분류를 영구히 반환한다. 파일 단위면
+# 원자적 교체(atomic_write_json)가 mtime/size 를 바꿔 자연 무효화된다.
+#
+# 값은 frozen dataclass 이고 소비자는 전부 읽기 전용이다(MtimeLruCache 규약).
+_META_CLASSIFY_CACHE: MtimeLruCache[Classification] = MtimeLruCache(max_entries=4096)
+
+
+def reset_classify_cache_for_tests() -> None:
+    """meta 분류 캐시를 비운다 — 같은 tmp_path 를 재사용하는 테스트용."""
+    _META_CLASSIFY_CACHE.clear()
+
+
+def _classify_meta_file(meta_path: Path) -> Classification:
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return Classification(state=DiskState.INVALID)
+    return classify_from_meta(meta)
+
+
 def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
     """Return per-source :class:`Classification` for a Stock-Date directory.
 
@@ -341,6 +371,9 @@ def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
     project to state via ``{src: c.state for src, c in result.items()}``;
     key-only callers (``sources.resolve_source``) are unaffected.
 
+    디렉터리 순회(iterdir)는 매번 한다 — 새 소스 디렉터리가 즉시 보여야 하고, 비용은
+    read+parse 가 아니라 syscall 이다. 캐시는 파일별 read+parse 에만 걸린다.
+
     Returns empty dict if `stock_date_dir` doesn't exist or has no source
     subdirs.
     """
@@ -353,12 +386,9 @@ def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
         meta_path = src_dir / "meta.json"
         if not meta_path.exists():
             continue
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            out[src_dir.name] = Classification(state=DiskState.INVALID)
-            continue
-        out[src_dir.name] = classify_from_meta(meta)
+        out[src_dir.name] = _META_CLASSIFY_CACHE.get_or_load(
+            meta_path, _classify_meta_file,
+        )
     return out
 
 

@@ -21,7 +21,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
-from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
+from hoga.util.atomic_write import atomic_write_parquet_table
+from hoga.util.timeenc import hhmmssms_to_intra_ms_sql
 
 ORDERBOOK_LEVELS = 10
 
@@ -143,9 +144,6 @@ def write_parquet(snapshots: Iterable[Orderbook], path: Path) -> None:
             )
     for total in _TOTAL_COLS:
         cols[total] = pa.array([getattr(o, total) for o in rows], type=_TOTAL_TYPE)
-    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        atomic_write_parquet_table,
-    )
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
@@ -158,9 +156,6 @@ def write_parquet_frame(df: pl.DataFrame, path: Path) -> None:
         .select([f.name for f in PARQUET_SCHEMA])
         .to_arrow()
         .cast(PARQUET_SCHEMA)
-    )
-    from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        atomic_write_parquet_table,
     )
     atomic_write_parquet_table(path, table)
 
@@ -616,7 +611,7 @@ class QuoteRatioRow:
 
     ``bucket_intra_ms`` is bucket-aligned LINEAR ms-from-midnight (NOT raw
     HHMMSSmmm and NOT Unix ms). The caller converts via
-    ``hoga.api.timeenc.ms_from_midnight_to_unix_ms(date, bucket_intra_ms)`` —
+    ``hoga.util.timeenc.ms_from_midnight_to_unix_ms(date, bucket_intra_ms)`` —
     the conversion needs the Stock-Date, which this table-level query does not
     take. ``ask_total`` / ``bid_total`` are the SUM of the 10 ask_q / bid_q
     level columns at the last snapshot in the bucket.

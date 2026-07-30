@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 from hoga.api.app import create_app
 from hoga.api.bundle import build_range_bundle, build_volume_distribution_slice
 from hoga.api.queries import QueryEngine
-from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.tables.trades import query_continuous_trade_volume_distribution
+from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 
 def _write_stock_date(root: Path) -> None:

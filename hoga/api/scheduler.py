@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
 import logging
 import os
 from pathlib import Path
@@ -24,6 +25,7 @@ from hoga.api.eligibility import find_ineligible_dates
 from hoga.api.models import EnqueueRequest, EnqueueResponse, WatchlistEntry
 from hoga.api.watchlist import load_watchlist, set_last_success
 from hoga.collector.orchestrator import next_kst_day, now_kst
+from hoga.util.atomic_write import atomic_write_json
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +39,52 @@ def seconds_until_next_17_kst(now: dt.datetime) -> float:
     today_17 = now.replace(hour=17, minute=0, second=0, microsecond=0)
     target = today_17 if now < today_17 else today_17 + dt.timedelta(days=1)
     return (target - now).total_seconds()
+
+
+_DAILY_TRIGGER_HOUR = 17
+# 폴링 주기. 단발 sleep 대신 짧게 반복 확인하는 이유는 _daily_loop docstring 참고.
+_DAILY_POLL_INTERVAL_S = 60.0
+
+
+def _scheduler_state_path(data_dir: Path) -> Path:
+    return data_dir / "scheduler_state.json"
+
+
+def read_last_daily_run_date(data_dir: Path) -> str | None:
+    """마지막으로 시도를 마친 일일 런의 KST 날짜(YYYYMMDD). 없거나 손상되면 None.
+
+    손상을 격리하지 않고 None 으로 접는다 — 이 마커는 캐시이고, 잃으면 그날 런이
+    한 번 더 도는 것이 최악이다(런은 멱등: promote·prune·enqueue 모두 dedupe/게이트).
+    """
+    try:
+        payload = json.loads(_scheduler_state_path(data_dir).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get("last_daily_run_date")
+    return value if isinstance(value, str) else None
+
+
+def write_last_daily_run_date(data_dir: Path, date: str) -> None:
+    try:
+        atomic_write_json(_scheduler_state_path(data_dir), {"last_daily_run_date": date})
+    except OSError:
+        # 마커를 못 써도 런은 이미 끝났다. 다음 틱에 같은 날이 한 번 더 도는 것이
+        # 루프를 죽이는 것보다 낫다.
+        log.exception("scheduler: failed to persist last daily run date")
+
+
+def daily_run_due(now: dt.datetime, last_run_date: str | None) -> bool:
+    """오늘 17:00 을 지났고 오늘 아직 시도하지 않았는가.
+
+    마커가 없으면(첫 부팅·업그레이드 직후) 17:00 이후라면 due 다 — 이건 의도한
+    복구 동작이다. "17:00 을 지났는데 오늘 런 기록이 없다" 는 정확히 놓친 실행의
+    정의이고, 런 자체가 멱등이라 한 번 더 도는 비용이 하루를 잃는 비용보다 싸다.
+    """
+    if now.hour < _DAILY_TRIGGER_HOUR:
+        return False
+    return last_run_date != now.strftime("%Y%m%d")
 
 
 def _log_blocked(resp: EnqueueResponse, *, context: str) -> None:
@@ -228,19 +276,41 @@ async def _catchup_run(data_dir: Path) -> None:
 
 
 async def _daily_loop(data_dir: Path) -> None:
-    """Perpetual: sleep to next KST 17:00, run _daily_run, repeat.
+    """Perpetual: 매 틱 벽시계를 다시 읽어 "오늘 17:00 을 지났고 오늘 아직 안 돌았다" 를
+    판정해 _daily_run 을 실행한다.
 
-    Never lets a single failure kill the loop — see ADR-0034 for the
-    "scheduler is a queue client" framing. The Capture Queue's own
-    pause/resume semantics handle the heavyweight failures; this loop
-    only ensures the *trigger* stays alive.
+    다음 17:00 까지 한 번에 자는(≈23시간) 방식이 아닌 이유가 둘이다:
+
+    1. **놓친 실행 복구.** 16:00 에 죽고 17:30 에 재기동하면 그날 17:00 런(승격 ·
+       prune · 오늘 enqueue · 스크리너 · depth_daily)이 영구히 건너뛰어졌다. 다음 날
+       런도 그 날짜를 메우지 않는다(``dates=[today]`` 뿐) — 메우는 경로는 기본 off 인
+       startup catch-up 하나였다.
+    2. **절전 드리프트.** 단일 사용자 로컬 도구(대개 노트북)에서 장시간
+       ``asyncio.sleep`` 은 suspend 구간만큼 늦게 깬다. 매 틱 ``now_kst()`` 를 다시
+       읽으면 깨어난 직후 판정이 정확하다.
+
+    하루 1회 보장은 디스크 마커(``scheduler_state.json``)가 담당한다. 마커는 성공·실패
+    **모두** 찍는다 — 실패 시 60초마다 재시도하면 거래일 게이트 앞에 있는
+    promote/prune(전체 트리 스윕)이 자정까지 수백 번 재실행된다. 오늘의 실패는 기존과
+    동일하게 다음 날 런에 맡긴다: 이 루프의 책임은 *트리거* 생존이고(ADR-0034),
+    재시도 정책은 별개 결정이다.
+
+    한 실패가 루프를 죽이지 않는다 — ADR-0034 의 "scheduler is a queue client" 프레이밍.
     """
     while True:
-        await asyncio.sleep(seconds_until_next_17_kst(now_kst()))
         try:
-            await _daily_run(data_dir)
+            now = now_kst()
+            if daily_run_due(now, read_last_daily_run_date(data_dir)):
+                today = now.strftime("%Y%m%d")
+                try:
+                    await _daily_run(data_dir)
+                except Exception:
+                    log.exception("daily run crashed; loop continues")
+                write_last_daily_run_date(data_dir, today)
         except Exception:
-            log.exception("daily run crashed; loop continues")
+            # 판정·마커 읽기 실패도 루프를 죽이면 안 된다.
+            log.exception("daily loop tick failed; loop continues")
+        await asyncio.sleep(_DAILY_POLL_INTERVAL_S)
 
 
 def startup_catchup_enabled_from_env() -> bool:
