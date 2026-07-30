@@ -67,15 +67,22 @@ test.describe('Watchlist edit modal drag-reorder', () => {
     await editMenuBtn.click();
     await expect(page.getByRole('dialog', { name: '관심종목 편집' })).toBeVisible();
     const editDialog = page.getByRole('dialog', { name: '관심종목 편집' });
-    await editDialog.getByRole('button', { name: '테스트 그룹 3' }).click();
+    // **행 래퍼도 role="button" 이다**(dnd-kit sortable) — 이름이 같아 strict 위반이
+    // 난다. 선택을 담당하는 건 행 **안쪽** 버튼(`onSelect`)이고, 바깥 div 는 드래그용
+    // 래퍼다. 행 testid 로 범위를 좁혀 어느 쪽을 누르는지 코드에 드러낸다.
+    await editDialog.getByTestId(`folder-row-${FOLDER_ID}`).getByRole('button', { name: '테스트 그룹 3' }).click();
 
     const codesInDom = () =>
       page.locator('[data-testid^="edit-row-"]').evaluateAll((els) =>
         els.map((e) => e.getAttribute('data-testid')!.replace('edit-row-', '')));
     expect(await codesInDom()).toEqual(['005930', '000660', '035720']);
 
-    // 첫 행(005930)의 ⠿ 핸들을 셋째 행(035720) 위로 드래그 ⇒ [000660, 035720, 005930].
-    const handle = await page.getByTestId('edit-row-005930').locator('.cursor-grab').boundingBox();
+    // 첫 행(005930)을 셋째 행(035720) 위로 드래그 ⇒ [000660, 035720, 005930].
+    // **핸들이 따로 없다** — dnd-kit 의 `{...listeners}` 가 행 자체에 붙어 있어
+    // 행 어디를 잡아도 드래그가 시작된다(`WatchlistEntryPane.tsx`). 예전엔 `.cursor-grab`
+    // 이라는 **CSS 클래스**를 잡았는데, 그건 스타일에 결합된 셀렉터라 클래스가 바뀌면
+    // 조용히 깨진다 — 행 testid 로 잡는다.
+    const handle = await page.getByTestId('edit-row-005930').boundingBox();
     const target = await page.getByTestId('edit-row-035720').boundingBox();
     if (!handle || !target) throw new Error('drag handle/target has no bounding box');
     const fx = handle.x + handle.width / 2;

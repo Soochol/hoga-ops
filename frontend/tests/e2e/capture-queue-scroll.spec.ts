@@ -65,10 +65,18 @@ test('capture queue keeps long launcher lists scrollable inside the right card',
   await page.goto('/capture');
   await expect(page.getByTestId('queue-list')).toBeVisible();
 
-  const before = await page.evaluate(() => {
-    const queue = document.querySelector('[data-testid="queue-list"]') as HTMLElement | null;
+  // **가상화가 켜지면 스크롤 컨테이너가 안쪽으로 들어간다.** 바깥 `queue-list` 는
+  // 껍데기라 scrollHeight 가 clientHeight 와 같아지고(실측 701=701), 실제 스크롤은
+  // `queue-virtual-scroller`(안쪽, scrollHeight 9500)가 받는다. 260건이면 가상화가
+  // 켜지므로 그쪽을 잰다. 가상화가 꺼진 경우엔 없으므로 바깥으로 폴백한다.
+  // 셀렉터 목록(`A, B`)은 **우선순위가 아니라 문서 순서**로 고르므로 바깥이 먼저 잡힌다
+  // — 안쪽을 먼저 찾고 없을 때만 폴백한다.
+  const scroller = (await page.getByTestId('queue-virtual-scroller').count())
+    ? page.getByTestId('queue-virtual-scroller')
+    : page.getByTestId('queue-list');
+  const before = await scroller.evaluate((queue) => {
     const pane = document.querySelector('[data-testid="capture-queue-pane"]') as HTMLElement | null;
-    if (!queue || !pane) throw new Error('queue or pane missing');
+    if (!pane) throw new Error('pane missing');
     return {
       queueClientHeight: queue.clientHeight,
       queueScrollHeight: queue.scrollHeight,
@@ -81,11 +89,9 @@ test('capture queue keeps long launcher lists scrollable inside the right card',
   expect(before.queueScrollHeight).toBeGreaterThan(before.queueClientHeight);
   expect(before.paneScrollHeight).toBe(before.paneClientHeight);
 
-  await page.getByTestId('queue-list').evaluate((el) => {
-    el.scrollTop = 500;
-  });
+  await scroller.evaluate((el) => { (el as HTMLElement).scrollTop = 500; });
 
   await expect.poll(async () =>
-    page.getByTestId('queue-list').evaluate((el) => (el as HTMLElement).scrollTop),
+    scroller.evaluate((el) => (el as HTMLElement).scrollTop),
   ).toBeGreaterThan(before.queueScrollTop);
 });

@@ -51,14 +51,20 @@ test.describe('Screener Panel results — app-shell layout invariance', () => {
     }
     await expect(panel).toBeVisible();
 
-    // 조회 실행 → 60행 렌더 대기
-    await page.getByRole('button', { name: '조회', exact: true }).click();
+    // **`조회` 버튼은 드로어에 없다.** 그건 `/screener` **페이지**의 트리거이고,
+    // 패널은 "저장한 조건검색을 고르고 ▶ 시작" 흐름으로 바뀌었다(저장 조건이 하나면
+    // 자동 선택된다 — 실측). 패널 안으로 스코프해서 /live 헤더의 동명 버튼과 섞이지
+    // 않게 한다.
+    await panel.getByRole('button', { name: /시작/ }).click();
     await expect(page.getByTestId('screener-row-200000')).toBeVisible();
 
     // 패널·main 모두 뷰포트에 묶인다 — auto 행 폭주(버그)면 결과 높이(≈2200px+)로 커진다.
     const vh = page.viewportSize()!.height;
     expect((await panel.boundingBox())!.height).toBeLessThanOrEqual(vh);
-    expect((await page.locator('main').boundingBox())!.height).toBeCloseTo(vh, 0); // DPR/서브픽셀 내성
+    // 뷰포트와 '같다' 가 아니라 '넘지 않는다' — <main> 은 상단 헤더·하단 바 아래의
+    // 중첩 그리드라 그만큼 작다(실측 720 → 657). 이 테스트가 막는 건 auto 행 폭주로
+    // main 이 결과 높이(≈2200px+)까지 부푸는 것이고, 부등식이 그대로 잡는다.
+    expect((await page.locator('main').boundingBox())!.height).toBeLessThanOrEqual(vh);
 
     // 긴 결과는 패널 내부 스크롤 영역(min-h-0 + overflow-auto)이 받는다.
     const scroller = page.getByTestId('screener-scroll');
