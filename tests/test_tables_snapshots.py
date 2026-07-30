@@ -2585,3 +2585,131 @@ def test_depth_delta_tick_uses_median_gap_across_band_boundary(tmp_path: Path) -
     assert len(rows) == 1
     assert rows[0].ask_tick == 100  # 다수 간격(100)이 이긴다
     assert rows[0].bid_tick == 50
+
+
+# ---------------------------------------------------------------------------
+# query_daily_depth_peaks: 여러 파일을 쿼리 1회로 — 단건판과 동치
+# ---------------------------------------------------------------------------
+#
+# 스크리너 총잔량 조건이 유니버스 전체를 훑으면 단건판은 ~478 쿼리(실측 1.5초,
+# 2026-07-30 · 241종목 42MiB)다. 데이터량이 아니라 왕복 비용이 종목 수만큼 반복되는
+# 것이 원인이라 한 쿼리로 접으면 0.12초다. 여기서는 **속도가 아니라 동치**를 고정한다.
+
+
+def _peaks_batch(con, paths, **bounds):
+    from hoga.tables.snapshots import query_daily_depth_peaks
+
+    return query_daily_depth_peaks(con, paths=paths, **bounds)
+
+
+def _peak_single(con, path, **bounds):
+    from hoga.tables.snapshots import query_daily_depth_peak
+
+    return query_daily_depth_peak(con, path=path, **bounds)
+
+
+def test_query_daily_depth_peaks_matches_single_file_results(tmp_path: Path) -> None:
+    """정상 파일 여러 개 — 배치 결과가 단건판을 파일마다 부른 것과 같아야 한다."""
+    bounds = {"session_open_ms": 90_000_000, "session_close_ms": 153_000_000}
+    paths = []
+    for i, qty in enumerate((100, 250, 700)):
+        out = tmp_path / f"s{i}.parquet"
+        write_parquet([
+            _ob(ts_ms=90_100_000, seq=1, ask_q=(qty,) * 10, bid_q=(qty // 2,) * 10),
+            _ob(ts_ms=91_000_000, seq=2, ask_q=(qty * 2,) * 10, bid_q=(qty,) * 10),
+        ], out)
+        paths.append(out)
+
+    con = duckdb.connect()
+    batched = _peaks_batch(con, paths, **bounds)
+    for path in paths:
+        single = _peak_single(con, path, **bounds)
+        assert single is not None
+        got = batched[str(path)]
+        assert (got.ask_peak, got.bid_peak, got.eligible_count) == (
+            single.ask_peak, single.bid_peak, single.eligible_count,
+        )
+
+
+def test_query_daily_depth_peaks_omits_file_whose_deep_book_is_all_pre_open(
+    tmp_path: Path,
+) -> None:
+    """**분기 정의 회귀 가드.**
+
+    단건판의 완화(TRUE) 조건은 "유효 행이 0개" 가 아니라 "연속거래 행이 close 이하에
+    하나도 없음" 이다. deep book 이 있지만 전부 개장 전이면 — 유효 행은 0개인데
+    연속거래 행은 존재하므로 — 단건판은 **None** 을 반환한다.
+
+    "유효 0개면 완화" 로 구현하면 이 파일이 전체 max 를 반환해 조용히 달라진다.
+    실데이터 3거래일 719파일에서는 이 케이스가 한 번도 안 나와서 실측 동등성만으로는
+    잡히지 않는다 — 그래서 합성으로 고정한다.
+    """
+    bounds = {"session_open_ms": 90_000_000, "session_close_ms": 153_000_000}
+    out = tmp_path / "pre_open_only.parquet"
+    write_parquet([_ob(ts_ms=85_900_000, seq=1, ask_q=(9999,) * 10, bid_q=(9999,) * 10)], out)
+
+    con = duckdb.connect()
+    assert _peak_single(con, out, **bounds) is None
+    assert str(out) not in _peaks_batch(con, [out], **bounds)
+
+
+def test_query_daily_depth_peaks_relaxes_predicate_for_degenerate_file(
+    tmp_path: Path,
+) -> None:
+    """연속거래 행이 전무한 퇴화 파일은 단건판처럼 술어를 완화(TRUE)해야 한다.
+
+    실데이터에서는 발화하지 않는 경로다(3거래일 719파일 중 0건) — 합성으로만 검증된다.
+    """
+    bounds = {"session_open_ms": 90_000_000, "session_close_ms": 153_000_000}
+    out = tmp_path / "auction_only.parquet"
+    # 3호가만 = 단일가 구조 → deep book 술어가 전부 배제 → last_continuous None.
+    write_parquet([
+        _ob(ts_ms=152_500_000, seq=1, ask_q=(500, 500, 500), bid_q=(400, 400, 400)),
+        _ob(ts_ms=152_600_000, seq=2, ask_q=(700, 700, 700), bid_q=(300, 300, 300)),
+    ], out)
+
+    con = duckdb.connect()
+    single = _peak_single(con, out, **bounds)
+    assert single is not None, "퇴화 파일은 완화 술어로 값을 낸다(단건판 계약)"
+    got = _peaks_batch(con, [out], **bounds)[str(out)]
+    assert (got.ask_peak, got.bid_peak, got.eligible_count) == (
+        single.ask_peak, single.bid_peak, single.eligible_count,
+    )
+
+
+def test_query_daily_depth_peaks_skips_empty_parquet(tmp_path: Path) -> None:
+    """빈 파일은 결과에서 빠진다(단건판이 None 을 반환하는 것과 같은 의미)."""
+    bounds = {"session_open_ms": 90_000_000, "session_close_ms": 153_000_000}
+    empty = tmp_path / "empty.parquet"
+    write_parquet([], empty)
+    good = tmp_path / "good.parquet"
+    write_parquet([_ob(ts_ms=90_100_000, seq=1, ask_q=(10,) * 10, bid_q=(20,) * 10)], good)
+
+    con = duckdb.connect()
+    batched = _peaks_batch(con, [empty, good], **bounds)
+    assert str(empty) not in batched
+    assert batched[str(good)].ask_peak == 100
+
+
+def test_query_daily_depth_peaks_without_close_bound_relaxes_like_single(
+    tmp_path: Path,
+) -> None:
+    """session_close 가 None 이면 단건판은 술어를 아예 TRUE 로 둔다 — 배치도 같다."""
+    out = tmp_path / "s.parquet"
+    write_parquet([
+        _ob(ts_ms=85_900_000, seq=1, ask_q=(9999,) * 10, bid_q=(1,) * 10),
+        _ob(ts_ms=90_100_000, seq=2, ask_q=(10,) * 10, bid_q=(20,) * 10),
+    ], out)
+
+    con = duckdb.connect()
+    single = _peak_single(con, out, session_open_ms=90_000_000, session_close_ms=None)
+    assert single is not None
+    got = _peaks_batch(con, [out], session_open_ms=90_000_000, session_close_ms=None)[str(out)]
+    assert (got.ask_peak, got.bid_peak, got.eligible_count) == (
+        single.ask_peak, single.bid_peak, single.eligible_count,
+    )
+
+
+def test_query_daily_depth_peaks_empty_input(tmp_path: Path) -> None:
+    del tmp_path
+    assert _peaks_batch(duckdb.connect(), [], session_close_ms=153_000_000) == {}

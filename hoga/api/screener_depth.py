@@ -80,36 +80,78 @@ def _corpus_dates(adjusted_path: Path) -> list[str]:
     return [r[0] for r in rows]
 
 
+def _existing_today_snapshots(day_dir: Path, codes: set[str]) -> list[tuple[str, Path]]:
+    """(code, snapshots.parquet) — 실제로 존재하는 것만, 정렬된 순서로."""
+    found: list[tuple[str, Path]] = []
+    for code in sorted(codes):
+        for source in _TODAY_SOURCES:
+            snap = day_dir / code / source / "snapshots.parquet"
+            if snap.exists():
+                found.append((code, snap))
+    return found
+
+
+def _fold_peaks(
+    out: dict[str, tuple[int | None, int | None]],
+    code: str,
+    peak: snapshots_tbl.DailyDepthPeak,
+) -> None:
+    """소스가 둘이면 side 별 최댓값을 취한다(관심=WS, 히트맵=키움 WS)."""
+    best_ask, best_bid = out.get(code, (None, None))
+    out[code] = (
+        peak.ask_peak if best_ask is None else max(best_ask, peak.ask_peak),
+        peak.bid_peak if best_bid is None else max(best_bid, peak.bid_peak),
+    )
+
+
 def _today_peaks(
     data_dir: Path, codes: set[str], today: str,
 ) -> dict[str, tuple[int | None, int | None]]:
-    """오늘 live parquet(kis_live/kis_api)의 code별 (ask,bid) 당일 peak.
+    """오늘 live parquet(kis_live/kiwoom_live)의 code별 (ask,bid) 당일 peak.
 
-    두 소스가 모두 있으면 각 side 최댓값을 취한다(관심=WS, 히트맵=REST30). 표준 KRX
-    세션 경계로 query_daily_depth_peak 를 재사용 — 장중이라 마감 상한은 무해하고 개장
-    동시호가는 하한이 배제한다."""
-    con = connect_bounded()
+    두 소스가 모두 있으면 각 side 최댓값을 취한다. 표준 KRX 세션 경계로 재사용 —
+    장중이라 마감 상한은 무해하고 개장 동시호가는 하한이 배제한다.
+
+    **배치 1쿼리 + 단건 폴백.** 종목당 개별 쿼리는 유니버스 전체에서 ~478 쿼리가 되고
+    실측 1.5초였다(2026-07-30, 241종목 · 42MiB). 데이터량이 아니라 왕복 비용이 종목
+    수만큼 반복되는 것이 원인이라(호출당 중위 6.4ms 로 균일) 한 쿼리로 접으면 0.12초다
+    — 실데이터 3거래일 719파일에서 결과 완전 일치를 확인했다.
+
+    배치는 **최적화일 뿐**이다: 파일 하나의 스키마가 어긋나면 배치 전체가 죽으므로
+    (부분 마이그레이션된 Stock-Date 등) 실패 시 단건 경로로 조용히 되돌아간다 —
+    느리지만 파일 단위 격리가 보존된다(``_batch_parquet_stats`` 와 같은 규율).
+    """
     out: dict[str, tuple[int | None, int | None]] = {}
     day_dir = data_dir / "parquet" / today
     if not day_dir.exists():
         return out
-    for code in codes:
-        best_ask: int | None = None
-        best_bid: int | None = None
-        for source in _TODAY_SOURCES:
-            snap = day_dir / code / source / "snapshots.parquet"
-            if not snap.exists():
-                continue
-            peak = snapshots_tbl.query_daily_depth_peak(
-                con, path=snap,
-                session_open_ms=_KRX_OPEN_MS, session_close_ms=_KRX_CLOSE_MS,
-            )
-            if peak is None:
-                continue
-            best_ask = peak.ask_peak if best_ask is None else max(best_ask, peak.ask_peak)
-            best_bid = peak.bid_peak if best_bid is None else max(best_bid, peak.bid_peak)
-        if best_ask is not None or best_bid is not None:
-            out[code] = (best_ask, best_bid)
+    present = _existing_today_snapshots(day_dir, codes)
+    if not present:
+        return out
+
+    con = connect_bounded()
+    try:
+        batched = snapshots_tbl.query_daily_depth_peaks(
+            con, paths=[p for _code, p in present],
+            session_open_ms=_KRX_OPEN_MS, session_close_ms=_KRX_CLOSE_MS,
+        )
+    except Exception:  # noqa: BLE001 — 배치는 최적화, 실패는 단건으로 흡수
+        log.warning("depth eval: batched today-peak query failed; per-file fallback",
+                    exc_info=True)
+    else:
+        for code, snap in present:
+            peak = batched.get(str(snap))
+            if peak is not None:
+                _fold_peaks(out, code, peak)
+        return out
+
+    for code, snap in present:
+        peak = snapshots_tbl.query_daily_depth_peak(
+            con, path=snap,
+            session_open_ms=_KRX_OPEN_MS, session_close_ms=_KRX_CLOSE_MS,
+        )
+        if peak is not None:
+            _fold_peaks(out, code, peak)
     return out
 
 
