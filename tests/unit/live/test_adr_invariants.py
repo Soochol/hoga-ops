@@ -82,22 +82,16 @@ _HOT_PATH_MODULES = (
 # parquet 계층에 붙는 것은 여전히 설계 후퇴이고, 아래 5개는 그 판정에서 제외될 뿐
 # test_hot_path_module_does_not_import_parquet(직접 import)은 계속 받는다.
 #
-# 【남은 진짜 구멍 — 둘 다 선존재이고 별건 이슈다】
-#  (a) **`from pkg import submod` 간선을 서브모듈로 해석하지 않는다.** _module_level_imports
-#      는 ImportFrom 에서 n.module(= "hoga.tables")만 기록하고 alias 이름을 안 붙이므로,
-#      BFS 는 비어 있는 hoga/tables/__init__.py 만 방문하고 candles.py 에 영영 못 간다.
-#      즉 핫패스 파일에 `from hoga.tables import candles` 한 줄을 넣으면 런타임에는
-#      polars+pyarrow 가 둘 다 적재되는데 **두 검사가 모두 통과**한다. 이건 baseline
-#      면제와 무관하게 enforced 모듈 전부에 적용된다. 이 형태는 가공 사례가 아니라
-#      이미 쓰인다(hoga/api/queries.py:21 등). 위음성 5건의 단일 원인이다.
-#      ※ 같은 이유로 _module_level_imports 의 상대 import 처리도 `from . import x`
-#        (n.module is None) 형태는 패키지까지만 해석한다.
-#  (b) 두 검사 모두 "라이브러리 import" 만 보고 **호출**은 안 본다. 아래 baseline 모듈에
-#      `from hoga.tables.candles import write_parquet` 를 넣고 부르면 직접 검사는 모듈명이
-#      안 맞아 통과하고 폐쇄 검사는 면제라 건너뛴다 — ADR-0038 이 실제로 금지한
-#      "핫패스에서 Parquet **쓰기**" 가 hoga.live.stream 에서 안 잡힌다.
-#  (a) 를 보정해도 핫패스 15개의 판정은 15/15 그대로임을 실측 확인했다. 즉 오늘 새는
-#  핫패스는 없고, 둘 다 "지금 고칠 필요는 없지만 알고 있어야 하는" 구멍이다.
+# 【남은 진짜 구멍】
+#  두 검사 모두 "라이브러리 import" 만 보고 **호출**은 안 본다. 아래 baseline 모듈에
+#  `from hoga.tables.candles import write_parquet` 를 넣고 부르면 직접 검사는 모듈명이
+#  안 맞아 통과하고 폐쇄 검사는 면제라 건너뛴다 — ADR-0038 이 실제로 금지한
+#  "핫패스에서 Parquet **쓰기**" 가 hoga.live.stream 에서 안 잡힌다. 별건 이슈다.
+#
+#  ※ 과거 여기 적혀 있던 `from pkg import submod` 미해석 구멍은 닫혔다(2026-07-30).
+#    _module_level_imports 가 서브모듈 후보를 내고 find_spec 이 거른다. 그 구멍이
+#    위음성 5건의 단일 원인이었고, 수정 후 hoga/ 155개 전수 대조에서 정적 판정이
+#    런타임 sys.modules 와 **155/155 일치**한다(위음성 0 · 위양성 0).
 #
 # 【경로(2026-07-30 실측, 정적 폐쇄 = 런타임 sys.modules, 15/15 일치)】
 #   - hoga/api/models.py:17-18 → hoga.tables.candles(pyarrow) / snapshots(polars).
@@ -173,9 +167,16 @@ def _module_level_imports(mod: str) -> list[str]:
     이걸 빠뜨리면 hoga.live.stream 처럼 실제로는 새는 모듈이 "경로 없음" 으로 나온다 —
     이 가드를 만들면서 실제로 겪은 오분석이고, 런타임 대조로만 드러났다.
 
-    다만 여기서 해석되는 것은 **모듈 경로까지**다. `from pkg import submod` 형태는
-    ``n.module`` 이 pkg 라 submod 로 내려가지 못한다(절대·상대 공통). 아래
-    _PARQUET_CLOSURE_BASELINE 주석의 【남은 진짜 구멍】 (a) 를 보라.
+    **``from pkg import submod`` 도 서브모듈까지 내려가야 한다.** ``n.module`` 만
+    기록하면 탐색이 ``pkg/__init__.py`` 에서 멈춘다 — hoga/tables/__init__.py 는
+    비어 있으므로 거기서 끝난다. 즉 핫패스에 ``from hoga.tables import candles``
+    한 줄이면 런타임엔 polars+pyarrow 가 둘 다 붙는데 가드는 통과시킨다. 이 형태는
+    가공 사례가 아니라 이미 쓰인다(hoga/api/queries.py 등 68파일).
+
+    가져오는 이름이 서브모듈인지 함수인지는 **정적으로 구분할 수 없으므로**
+    (``from hoga.config import resolve_data_dir`` 는 함수다) 후보로 내보내고
+    ``find_spec`` 이 걸러내게 한다 — 모듈이 아니면 spec 이 없어 [] 를 돌려준다.
+    과다 생성은 무해하고, 누락은 위음성이 된다.
     """
     try:
         spec = importlib.util.find_spec(mod)
@@ -197,9 +198,17 @@ def _module_level_imports(mod: str) -> list[str]:
             elif isinstance(n, ast.ImportFrom):
                 if n.level:
                     base = pkg.rsplit(".", n.level - 1)[0] if n.level > 1 else pkg
-                    out.append(f"{base}.{n.module}" if n.module else base)
+                    resolved = f"{base}.{n.module}" if n.module else base
                 elif n.module:
-                    out.append(n.module)
+                    resolved = n.module
+                else:
+                    continue
+                out.append(resolved)
+                # `from pkg import submod` 의 submod 도 후보로 낸다. 이름이 모듈인지
+                # 함수인지는 정적으로 못 가리므로 둘 다 내고 find_spec 이 거른다.
+                out.extend(
+                    f"{resolved}.{a.name}" for a in n.names if a.name != "*"
+                )
             elif isinstance(n, ast.If):
                 # TYPE_CHECKING 본문은 런타임에 안 돈다 → 비용 0 → 세지 않는다.
                 # else 절은 반대로 **실제로 도는** 자리이므로 항상 센다.
@@ -342,6 +351,78 @@ def test_type_checking_block_is_not_import_time_cost(
         f"{label}: polars 를 {'세야' if counted else '세지 말아야'} 하는데 "
         f"{'셌다' if reached else '안 셌다'}. _is_type_checking_test 판정을 확인하라."
     )
+
+
+@pytest.mark.parametrize(
+    ("label", "src", "reached"),
+    [
+        # 핵심 케이스: 패키지에서 서브모듈을 꺼내는 형태. hoga/tables/__init__.py 가
+        # 비어 있어, 여기서 멈추면 candles.py 의 pyarrow 를 영영 못 본다.
+        ("from_pkg_import_submod", "from hoga.tables import candles\n", True),
+        # 대조군 1 — 직접 서브모듈 경로. 고치기 전에도 잡히던 형태.
+        ("direct_submod", "from hoga.tables.candles import ApiCandle\n", True),
+        # 대조군 2 — 같은 문법이지만 가져오는 이름이 **함수**다. find_spec 이 걸러
+        # 내야 하고, 무해한 후보 생성이 오탐으로 이어지면 안 된다.
+        ("from_module_import_func", "from hoga.config import resolve_data_dir\n", False),
+        # 여러 이름 중 하나만 모듈인 혼합 형태.
+        ("mixed_names", "from hoga.tables import dispatch, candles\n", True),
+    ],
+)
+def test_from_package_import_submodule_is_followed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, label: str, src: str, reached: bool
+) -> None:
+    """``from pkg import submod`` 가 서브모듈까지 내려가야 한다.
+
+    이걸 빠뜨리면 핫패스에 ``from hoga.tables import candles`` 한 줄을 넣어도
+    **두 검사가 모두 통과**한다 — 직접 검사는 모듈명이 polars/pyarrow 가 아니라
+    안 걸리고, 폐쇄 검사는 빈 ``hoga/tables/__init__.py`` 에서 멈춘다. 그런데
+    런타임에는 polars 와 pyarrow 가 둘 다 적재된다.
+
+    2026-07-30 전수 대조에서 이 구멍이 위음성 5건의 단일 원인이었고, 그중 넷이
+    ``hoga.live.*`` 였다 — 감시 대상 계층에서 실제로 일어나고 있었다.
+    """
+    mod = _write_probe(tmp_path, monkeypatch, f"adr0038_submod_{label}", src)
+    assert (_closure_reaches_parquet(mod) is not None) is reached
+
+
+# 2026-07-30 전수 대조에서 **실제로 위음성이었던** 모듈들. 원인은 하나 —
+# `from pkg import submod` 를 서브모듈로 해석하지 않아 탐색이 빈 __init__.py 에서
+# 멈춘 것. 핫패스 목록 밖이라 위 파라미터 대조만으로는 재발을 못 잡는다.
+# 넷이 hoga.live.* 라는 점이 이 구멍이 추상적 위험이 아니었음을 보여준다.
+_HISTORICALLY_DRIFTED = (
+    "hoga.api.calendar_policy",
+    "hoga.live.live_candle_backfill",
+    "hoga.live.live_daily_candle_backfill",
+    "hoga.live.live_index_investor_net",
+    "hoga.live.live_investor_net_backfill",
+)
+
+
+def test_static_closure_matches_runtime_for_hot_path() -> None:
+    """정적 판정이 런타임 sys.modules 와 일치하는가 — 가드의 근본 계약.
+
+    이 가드는 AST 근사이므로 언제든 실제와 어긋날 수 있고, 어긋나는 방향이
+    위음성이면 **초록인 채로 새게 된다**. 그래서 근사를 진실과 직접 대조한다.
+
+    대상을 핫패스 + 과거 드리프트 모듈로 한정하는 이유는 비용이다(모듈당
+    서브프로세스 1개). hoga/ 155개 전수 대조는 2026-07-30 에 수행했고 수정 후
+    위음성·위양성 모두 0 이었다(수정 전 위음성 5).
+    """
+    targets = [_module_name(p) for p in _HOT_PATH_MODULES] + list(_HISTORICALLY_DRIFTED)
+    for mod in targets:
+        static_leaks = _closure_reaches_parquet(mod) is not None
+        probe = subprocess.run(
+            [sys.executable, "-c",
+             f"import sys, {mod};"
+             "print(any(k.split('.')[0] in ('polars','pyarrow') for k in sys.modules))"],
+            capture_output=True, text=True, check=False,
+        )
+        assert probe.returncode == 0, f"{mod} import 실패: {probe.stderr[-400:]}"
+        runtime_leaks = probe.stdout.strip().splitlines()[-1] == "True"
+        assert static_leaks == runtime_leaks, (
+            f"{mod}: 정적={static_leaks} 런타임={runtime_leaks} — 가드가 실제와 어긋난다. "
+            "위음성이면 이 모듈은 초록인 채로 새고 있다."
+        )
 
 
 def test_type_checking_precedent_module_is_closure_clean() -> None:
