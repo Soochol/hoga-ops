@@ -153,6 +153,10 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
              depth_pass: dict[str, list[str]] | None = None,
              scope_codes: set[str] | None = None) -> list[ScreenerRow]:
     con = connect_bounded()
+    # 뷰는 전부 **TEMP** — connect_bounded 가 프로세스 공유 인스턴스의 커서를 주므로,
+    # TEMP 없는 뷰는 전역 카탈로그에 들어가 동시 스캔끼리 이름이 충돌한다(실측:
+    # `Catalog Error: View with name "adj_hist" already exists`). TEMP 는 커서별 temp
+    # 스키마라 격리되고, 커서가 닫히면 같이 사라진다(DROP 이 없는 이유).
     # 스코프(관심∪히트맵)가 있으면 adj_hist 를 코드셋으로 semi-join — 다운스트림 CTE
     # (base·신고가·MA 윈도우)가 전 종목 이력이 아니라 스코프 크기로 계산돼 리소스가
     # 유니버스에 비례해 준다. 최종 JOIN 만 좁히면 윈도우는 여전히 전체 위에서 돈다.
@@ -160,14 +164,14 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         con.register("scope_codes", pl.DataFrame(
             {"code": pl.Series("code", sorted(scope_codes), dtype=pl.Utf8)}))
         con.execute(
-            f"CREATE VIEW adj_hist AS SELECT h.* FROM '{adjusted_path}' h "
+            f"CREATE TEMP VIEW adj_hist AS SELECT h.* FROM '{adjusted_path}' h "
             "SEMI JOIN scope_codes s ON s.code = h.code")
     else:
-        con.execute(f"CREATE VIEW adj_hist AS SELECT * FROM '{adjusted_path}'")
+        con.execute(f"CREATE TEMP VIEW adj_hist AS SELECT * FROM '{adjusted_path}'")
     if intraday_rows is not None and intraday_rows.height > 0:
         con.register("intraday_rows", intraday_rows)
         con.execute("""
-            CREATE VIEW adj AS
+            CREATE TEMP VIEW adj AS
             SELECT * FROM adj_hist h
             WHERE NOT EXISTS (
               SELECT 1 FROM intraday_rows i WHERE i.code = h.code AND i.date = h.date
@@ -176,8 +180,8 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
             SELECT code, date, open, high, low, close, volume FROM intraday_rows
         """)
     else:
-        con.execute("CREATE VIEW adj AS SELECT * FROM adj_hist")
-    con.execute(f"CREATE VIEW stk AS SELECT * FROM '{stocks_path}'")
+        con.execute("CREATE TEMP VIEW adj AS SELECT * FROM adj_hist")
+    con.execute(f"CREATE TEMP VIEW stk AS SELECT * FROM '{stocks_path}'")
 
     ctes = ["base AS (SELECT DISTINCT ON (code) code, date, open, high, low, close, volume, "
             "LAG(close) OVER (PARTITION BY code ORDER BY date) AS prev_close "

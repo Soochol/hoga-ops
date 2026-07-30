@@ -477,3 +477,50 @@ def test_new_high_today_equals_breakout_lookback1(tmp_path):
     bk1 = screener_scan.run_scan(adj, stk,
         conditions=[NewHighLeaf(id="b", params=BreakoutParams(lookback=1, period=5))], universe=ScreenerUniverse())
     assert [r.code for r in today] == [r.code for r in bk1]
+
+
+def test_repeat_scans_do_not_collide_on_view_names(tmp_path):
+    """스캔을 두 번 돌려도 뷰 이름이 충돌하지 않는다.
+
+    connect_bounded 가 프로세스 공유 인스턴스의 커서를 주므로(2026-07-30), TEMP 없는
+    CREATE VIEW 는 전역 카탈로그에 남아 두 번째 스캔이
+    `Catalog Error: View with name "adj_hist" already exists` 로 죽는다. 예전처럼
+    호출마다 새 인스턴스면 이 테스트는 무의미하게 통과하므로, 공유로 바뀐 지금에만
+    의미가 있는 가드다.
+    """
+    adj, stk = _seed(tmp_path,
+        rows=[("005930", "2026-05-30", 100, 100, 100, 100, 6_000_000)],
+        stocks=[("005930", "삼성전자", "KOSPI", False, False)])
+    leaf = TradeValueLeaf(id="t", params=TradeValueParams(min_eok=5))
+
+    first = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+    second = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+
+    assert [r.code for r in first] == [r.code for r in second] == ["005930"]
+
+
+def test_concurrent_scans_do_not_collide(tmp_path):
+    """동시 스캔 — 실제 위험 형태(동기 라우트가 AnyIO 워커 스레드에서 병렬 호출)."""
+    import threading
+
+    adj, stk = _seed(tmp_path,
+        rows=[("005930", "2026-05-30", 100, 100, 100, 100, 6_000_000)],
+        stocks=[("005930", "삼성전자", "KOSPI", False, False)])
+    leaf = TradeValueLeaf(id="t", params=TradeValueParams(min_eok=5))
+    errors: list[BaseException] = []
+
+    def work() -> None:
+        try:
+            rows = screener_scan.run_scan(
+                adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+            assert [r.code for r in rows] == ["005930"]
+        except BaseException as exc:  # noqa: BLE001 — 워커 예외를 본 스레드로 옮긴다
+            errors.append(exc)
+
+    threads = [threading.Thread(target=work) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"동시 스캔에서 예외: {errors[:2]}"
