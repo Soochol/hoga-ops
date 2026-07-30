@@ -83,3 +83,70 @@ describe('useEventStream disconnect handler', () => {
     expect(calls.some((c: any) => typeof c?.predicate === 'function')).toBe(true);
   });
 });
+
+describe('useEventStream inventory 무효화 접기', () => {
+  function mount() {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children);
+    const view = renderHook(() => useEventStream(), { wrapper });
+    return { spy, view };
+  }
+
+  function stockDatesCalls(spy: { mock: { calls: unknown[][] } }): number {
+    return spy.mock.calls
+      .map((call) => call[0] as { queryKey?: unknown } | undefined)
+      .filter((arg) => Array.isArray(arg?.queryKey) && arg.queryKey[0] === 'stock-dates')
+      .length;
+  }
+
+  it('버스트를 한 번의 무효화로 접는다', async () => {
+    // `/api/stock-dates` 는 응답 하나가 parquet 트리 전체 순회다(warm 274ms). 접기
+    // 없이는 캡처 100건 배치가 274ms 순회 100회를 낸다. inotify 가 meta.json 한 번
+    // 쓰기에 두 이벤트를 내는 것까지 겹친다.
+    vi.useFakeTimers();
+    try {
+      const { spy } = mount();
+      // connect()는 실시간 타이머를 쓰므로 fake timer 아래서 직접 진행시킨다.
+      await vi.advanceTimersByTimeAsync(0);
+      const sock = fakeSockets[0];
+      sock.open();
+
+      for (let i = 0; i < 10; i += 1) {
+        sock.message({
+          ch: 'event',
+          data: { type: 'inventory_added', code: '005930', date: `202607${10 + i}` },
+        });
+      }
+      expect(stockDatesCalls(spy)).toBe(0);   // 창이 끝나기 전엔 아직 안 나간다
+
+      await vi.advanceTimersByTimeAsync(250);
+      expect(stockDatesCalls(spy)).toBe(1);   // 10건 → 1회
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('언마운트 시 예약된 타이머를 취소한다', async () => {
+    vi.useFakeTimers();
+    try {
+      const { spy, view } = mount();
+      await vi.advanceTimersByTimeAsync(0);
+      const sock = fakeSockets[0];
+      sock.open();
+      sock.message({
+        ch: 'event',
+        data: { type: 'inventory_added', code: '005930', date: '20260710' },
+      });
+
+      view.unmount();
+      await vi.advanceTimersByTimeAsync(250);
+
+      // 정리된 클라이언트를 무효화하면 안 된다.
+      expect(stockDatesCalls(spy)).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

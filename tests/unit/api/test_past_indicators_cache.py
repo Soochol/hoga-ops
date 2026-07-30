@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 from hoga.api.models import (
@@ -553,3 +555,140 @@ def test_missing_source_meta_is_lenient(tmp_path: Path) -> None:
     # token is unknown (0) → never invalidate an otherwise-valid slice.
     PastIndicatorsCache(tmp_path).store_ratio(CODE, DATE, SRC, RATIO)
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == RATIO
+
+
+# ── 스레드 안전성 (`/api/range` 는 sync 라우트 = anyio 스레드풀) ────────────────
+#
+# `/api/range` 는 `def api_range`(async 아님)라 Starlette 이 anyio 스레드풀에서
+# 돌린다 — 이 캐시의 OrderedDict 들이 **여러 스레드에서 동시에 변이된다**. 락이 없던
+# 동안 `_sync_generation` 의 prefix purge 가 순회 중 삭제와 겹치면
+# `RuntimeError: dictionary changed size during iteration` 이 되고, LRU 축출과
+# `move_to_end` 가 겹치면 `KeyError` 가 난다.
+#
+# 여기서는 스레드를 띄워 경합을 **기다리지** 않는다: GIL 아래서 dict 연산이 워낙
+# 빨라 그런 테스트는 버그가 있어도 통과해 커버리지를 위장한다(실측 확인). 대신
+# 불변식을 직접 검사한다 — **모든 변이가 락 보유 중에 일어나는가**. 결정론적이고,
+# 락을 지우면 반드시 실패한다.
+
+
+class _TrackedLock:
+    """보유 여부를 스레드별로 추적하는 락 래퍼."""
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+        self._local = threading.local()
+
+    def __enter__(self):
+        self._inner.__enter__()
+        self._local.depth = getattr(self._local, "depth", 0) + 1
+        return self
+
+    def __exit__(self, *exc) -> bool | None:
+        self._local.depth = getattr(self._local, "depth", 1) - 1
+        return self._inner.__exit__(*exc)
+
+    @property
+    def held(self) -> bool:
+        return getattr(self._local, "depth", 0) > 0
+
+
+class _LockAssertingDict(OrderedDict):
+    """변이 시 락 보유를 단언하는 OrderedDict."""
+
+    def __init__(self, lock: _TrackedLock, name: str, src: OrderedDict) -> None:
+        super().__init__(src)
+        self._lock_ref = lock
+        self._name = name
+
+    def _require_lock(self, op: str) -> None:
+        assert self._lock_ref.held, f"{self._name}.{op}() 이 락 밖에서 실행됐다"
+
+    def __setitem__(self, key, value) -> None:
+        self._require_lock("__setitem__")
+        super().__setitem__(key, value)
+
+    def __delitem__(self, key) -> None:
+        self._require_lock("__delitem__")
+        super().__delitem__(key)
+
+    def move_to_end(self, key, last: bool = True) -> None:
+        self._require_lock("move_to_end")
+        super().move_to_end(key, last)
+
+    def popitem(self, last: bool = True):
+        self._require_lock("popitem")
+        return super().popitem(last)
+
+    def pop(self, key, *default):
+        self._require_lock("pop")
+        return super().pop(key, *default)
+
+
+def _instrument(cache: PastIndicatorsCache) -> _TrackedLock:
+    """캐시의 락을 추적 래퍼로, 모든 mem dict 를 단언 dict 로 교체한다."""
+    lock = _TrackedLock(cache._lock)
+    cache._lock = lock
+    names = [n for n in vars(cache) if n.startswith("_mem_")]
+    for name in names:
+        value = getattr(cache, name)
+        if isinstance(value, OrderedDict):
+            setattr(cache, name, _LockAssertingDict(lock, name, value))
+    # _all_mem_dicts 는 같은 객체들의 튜플이라 교체 후 다시 묶어야 purge 가 새 dict 를 본다.
+    cache._all_mem_dicts = tuple(
+        getattr(cache, n) for n in (
+            "_mem_ratio", "_mem_fill", "_mem_ask_peak", "_mem_bid_peak",
+            "_mem_trade_volume_poc", "_mem_depth", "_mem_depth_delta",
+            "_mem_vdist", "_mem_broker_late", "_mem_continuous_before",
+        )
+    )
+    return lock
+
+
+def _seed_meta(tmp_path: Path, *, code: str, date: str, source: str, marker: int) -> None:
+    """meta.json 을 써서 capture 토큰(mtime)을 만든다 — _sync_generation 의 입력."""
+    d = tmp_path / "parquet" / date / code / source
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "meta.json").write_text(json.dumps({"marker": marker}), encoding="utf-8")
+
+
+def test_every_mem_mutation_happens_under_the_lock(tmp_path: Path) -> None:
+    """put · LRU 축출 · getter 의 move_to_end · 재캡처 purge 전부 락 안에서."""
+    cache = PastIndicatorsCache(tmp_path, mem_max_entries=2)
+    _instrument(cache)
+    date, source = "20260701", "hogaplay"
+
+    # put + LRU 축출(상한 2를 넘겨 popitem 을 강제)
+    for i in range(5):
+        code = f"{i:06d}"
+        _seed_meta(tmp_path, code=code, date=date, source=source, marker=i)
+        cache.store_ratio(code, date, source, RATIO)
+
+    # getter 히트 경로(move_to_end)
+    assert cache.get_ratio("000004", date, source) is not None
+
+    # None 을 유효값으로 쓰는 kind 의 히트 경로
+    cache.store_ask_peak("000004", date, source, 60_000, None)
+    assert cache.has_ask_peak("000004", date, source, 60_000)
+    cache.get_ask_peak("000004", date, source, 60_000)
+
+    # 재캡처 → prefix purge (토큰 전진 후 같은 키를 다시 조회)
+    cache.store_ratio("000004", date, source, RATIO)
+    os.utime(
+        tmp_path / "parquet" / date / "000004" / source / "meta.json",
+        (10_000_000, 10_000_000),
+    )
+    cache.get_ratio("000004", date, source)
+
+
+def test_lock_assertion_catches_an_unlocked_mutation(tmp_path: Path) -> None:
+    """가드 자체가 작동하는지 — 락 밖 변이를 실제로 잡는다.
+
+    이게 없으면 위 테스트가 "변이가 한 번도 안 일어나서" 통과하는 경우와
+    구별되지 않는다.
+    """
+    import pytest
+
+    cache = PastIndicatorsCache(tmp_path, mem_max_entries=8)
+    _instrument(cache)
+    with pytest.raises(AssertionError, match="락 밖에서"):
+        cache._mem_ratio["x"] = []

@@ -1,17 +1,32 @@
+import { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { LivePage } from './live/LivePage';
-import Inventory from './pages/Inventory';
-import { Screener } from './pages/Screener';
-import Capture from './pages/Capture';
-import Settings from './pages/Settings';
-import { Heatmap } from './pages/Heatmap';
-import { StudyPage } from './studyViews/StudyPage';
 import { initStudyTabsSync } from './state/studyTabs';
 import AppErrorBoundary from './ui/AppErrorBoundary';
 import './styles/global.css';
+
+/*
+ * `/live` 만 정적(기본 라우트 — lazy 로 내리면 첫 페인트에 왕복만 추가된다).
+ * 나머지는 lazy — 이 파일이 전 페이지를 정적 import 하던 동안 vite.config 의
+ * manualChunks 는 **아무 효과가 없었다**: 청크로 쪼개지긴 하지만 정적 그래프에
+ * 있으면 전부 modulepreload 로 즉시 페치되므로 `/live` 첫 페인트가 study·screener·
+ * capture·inventory·heatmap 코드를 다 기다렸다.
+ *
+ * App.tsx 의 드로어·설정 모달도 같은 이유로 함께 lazy 여야 한다 — App 은 레이아웃
+ * 라우트라 항상 로드되므로, 거기서 정적 import 하면 라우트만 lazy 로 바꿔도 초기
+ * 번들이 줄지 않는다(그쪽 주석에 실측 수치).
+ */
+const StudyPage = lazy(() =>
+  import('./studyViews/StudyPage').then((m) => ({ default: m.StudyPage })),
+);
+const Heatmap = lazy(() => import('./pages/Heatmap').then((m) => ({ default: m.Heatmap })));
+const Inventory = lazy(() => import('./pages/Inventory'));
+const Screener = lazy(() => import('./pages/Screener').then((m) => ({ default: m.Screener })));
+const Capture = lazy(() => import('./pages/Capture'));
+const Settings = lazy(() => import('./pages/Settings'));
 
 
 const _disposeStudyTabsSync = initStudyTabsSync();
@@ -66,12 +81,16 @@ createRoot(document.getElementById('root')!).render(
           <Route element={<App />}>
             <Route path="/" element={<Navigate to="/live" replace />} />
             <Route path="live" element={<LivePage />} />
-            <Route path="study" element={<StudyPage />} />
-            <Route path="heatmap" element={<Heatmap />} />
-            <Route path="inventory" element={<Inventory />} />
-            <Route path="screener" element={<Screener />} />
-            <Route path="capture" element={<Capture />} />
-            <Route path="settings" element={<Settings />} />
+            {/* lazy 라우트는 각자 Suspense 로 감싼다 — App(레이아웃) 안쪽이라
+                청크를 기다리는 동안에도 nav·레일·하단 바는 그대로 서 있다.
+                fallback=null: 로컬 페치가 한 자리 ms 라 빈 프레임이 보이지 않고,
+                스켈레톤을 새로 그리는 것은 DESIGN.md 밖의 발명이다. */}
+            <Route path="study" element={<Suspense fallback={null}><StudyPage /></Suspense>} />
+            <Route path="heatmap" element={<Suspense fallback={null}><Heatmap /></Suspense>} />
+            <Route path="inventory" element={<Suspense fallback={null}><Inventory /></Suspense>} />
+            <Route path="screener" element={<Suspense fallback={null}><Screener /></Suspense>} />
+            <Route path="capture" element={<Suspense fallback={null}><Capture /></Suspense>} />
+            <Route path="settings" element={<Suspense fallback={null}><Settings /></Suspense>} />
           </Route>
         </Routes>
       </BrowserRouter>

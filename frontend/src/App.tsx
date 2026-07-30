@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import TopNav from './nav/TopNav';
 import { MarketIndexBar } from './layout/MarketIndexBar';
@@ -6,11 +6,6 @@ import { useDrawerAutoCollapse } from './layout/useDrawerAutoCollapse';
 import { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './nav/items';
 import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
-import { HeatmapDrawer } from './heatmap/HeatmapDrawer';
-import { ScreenerDrawer } from './screener/ScreenerDrawer';
-import { RankingDrawer } from './rightrail/RankingDrawer';
-import { StudyViewsDrawer } from './studyViews/StudyViewsDrawer';
-import SignalAlertsDrawer from './signalAlerts/SignalAlertsDrawer';
 import { useRightRailStore } from './state/rightRail';
 import { useEventStream } from './api/eventStream';
 import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRecaptureOrigins';
@@ -26,8 +21,41 @@ import { ToastViewport } from './ui/toast/ToastViewport';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
-import { SettingsPanel } from './pages/Settings';
 import { effectiveTheme, useThemePrefsStore } from './state/themePrefs';
+
+/*
+ * 드로어·설정 모달은 **조건부 마운트**라 lazy 로 내린다.
+ *
+ * 이걸 안 하면 라우트만 lazy 로 바꿔도 초기 번들이 줄지 않는다: App 은 레이아웃
+ * 라우트라 항상 로드되고, 여기서 정적 import 하면 heatmap·screener·study-views
+ * 모듈 트리가 그대로 정적 그래프에 남아 modulepreload 로 즉시 페치된다
+ * (vite.config 의 manualChunks 는 파일만 쪼개고 페치 시점은 안 바꾼다).
+ * 실측 2026-07-30: 이 4개가 초기 로드 1303KB 중 heatmap 213KB + study-views 72KB
+ * 를 차지했다.
+ *
+ * fallback 은 `null` 이다 — 로컬 서버라 청크 페치가 한 자리 ms 이고, 드로어는
+ * 어차피 열릴 때 애니메이션이 있어 빈 프레임 한 장이 보이지 않는다. 스켈레톤을
+ * 새로 그리는 것은 DESIGN.md 밖의 시각 요소를 발명하는 일이라 하지 않는다.
+ *
+ * WatchlistDrawer 는 정적 유지 — 기본 활성 패널이라 lazy 로 내리면 첫 페인트에
+ * 왕복만 추가된다.
+ */
+const HeatmapDrawer = lazy(() =>
+  import('./heatmap/HeatmapDrawer').then((m) => ({ default: m.HeatmapDrawer })),
+);
+const ScreenerDrawer = lazy(() =>
+  import('./screener/ScreenerDrawer').then((m) => ({ default: m.ScreenerDrawer })),
+);
+const RankingDrawer = lazy(() =>
+  import('./rightrail/RankingDrawer').then((m) => ({ default: m.RankingDrawer })),
+);
+const StudyViewsDrawer = lazy(() =>
+  import('./studyViews/StudyViewsDrawer').then((m) => ({ default: m.StudyViewsDrawer })),
+);
+const SignalAlertsDrawer = lazy(() => import('./signalAlerts/SignalAlertsDrawer'));
+const SettingsPanel = lazy(() =>
+  import('./pages/Settings').then((m) => ({ default: m.SettingsPanel })),
+);
 
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
   [...WORKSPACE_NAV_ITEMS, ...SYSTEM_NAV_ITEMS]
@@ -112,7 +140,9 @@ export default function App() {
         >
           {/* title 없음 — 섹션 제목·닫기 X는 SettingsPanel 콘텐츠 헤더가 담당(첨부 디자인).
               SettingsPanel이 다이얼로그를 edge-to-edge로 채운다(중첩 카드 제거). */}
-          <SettingsPanel onClose={() => setSettingsOpen(false)} />
+          <Suspense fallback={null}>
+            <SettingsPanel onClose={() => setSettingsOpen(false)} />
+          </Suspense>
         </ModalShell>
       )}
       {/* 왼쪽 스택(1fr 열): 상단 nav / 페이지 / 하단 시장지표 바 — 모두 main 너비.
@@ -128,12 +158,24 @@ export default function App() {
       </div>
       {/* 우측 패널: 드로어(열림 시) + 고정 레일 — 열 자동 배치로 왼쪽 스택 오른쪽에
           full-height 로 선다. */}
+      {/* Suspense 는 DOM 요소를 만들지 않으므로 이 열의 자동 배치가 그대로 유지된다
+          (위 gridTemplateColumns 주석의 전제). */}
       {activePanel === 'watchlist' && <WatchlistDrawer />}
-      {activePanel === 'heatmap' && <HeatmapDrawer />}
-      {activePanel === 'screener' && <ScreenerDrawer />}
-      {activePanel === 'ranking' && <RankingDrawer />}
-      {activePanel === 'savedViews' && <StudyViewsDrawer />}
-      {activePanel === 'signalAlerts' && <SignalAlertsDrawer />}
+      {activePanel === 'heatmap' && (
+        <Suspense fallback={null}><HeatmapDrawer /></Suspense>
+      )}
+      {activePanel === 'screener' && (
+        <Suspense fallback={null}><ScreenerDrawer /></Suspense>
+      )}
+      {activePanel === 'ranking' && (
+        <Suspense fallback={null}><RankingDrawer /></Suspense>
+      )}
+      {activePanel === 'savedViews' && (
+        <Suspense fallback={null}><StudyViewsDrawer /></Suspense>
+      )}
+      {activePanel === 'signalAlerts' && (
+        <Suspense fallback={null}><SignalAlertsDrawer /></Suspense>
+      )}
       <RightRail />
     </div>
   );
