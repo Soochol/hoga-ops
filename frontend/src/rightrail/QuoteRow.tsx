@@ -69,6 +69,13 @@ export function QuoteRow({
   const showExpected = expectedPrice != null;
   const shownPrice = showExpected ? expectedPrice : price;
   const shownPct = showExpected ? (expectedPct ?? null) : pct;
+  // 마감 동시호가(15:20~15:30)엔 확정가가 이미 있는데 예상가가 그 위를 덮는다.
+  // 히트맵은 캔들 글리프가 정규장 종가를 남기지만 이 행엔 캔들이 없어(폭 4.75rem)
+  // 두 숫자를 나란히 둘 수 없다 — 확정가를 title 로 보존해 호버로 되찾게 한다.
+  // 개장 동시호가엔 확정 등락률이 숨겨진 상태(price 만 있음)라 이 힌트가 특히 값싸다.
+  const priceTitle = showExpected && price != null
+    ? `예상 ${expectedPrice.toLocaleString('ko-KR')} · 직전 체결 ${price.toLocaleString('ko-KR')}`
+    : undefined;
   const setRowRef = (node: HTMLElement | null) => {
     sortableRef?.(node);
     if (dragListeners) dragActivatorRef?.(node);
@@ -145,7 +152,7 @@ export function QuoteRow({
       {/* 가격은 --fg 중립, 등락%만 방향색 — 패널이 온통 적/청이던 것을 진정시켜 변동 큰
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
-      <span className="flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
+      <span title={priceTitle} className="flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
         {showExpected && (
           <span className="mr-0.5 text-[10px] text-fg-dimmer" data-testid={`${testId}-expected-marker`}>예</span>
         )}

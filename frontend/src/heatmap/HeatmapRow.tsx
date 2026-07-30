@@ -48,9 +48,13 @@ export function HeatmapRow({
 }: HeatmapRowProps) {
   const sign = (n: number) => (n > 0 ? '+' : '');
   const draggable = !!dragListeners;
-  // 예상 표시 모드 — 가격·등락률 셀이 예상값을 싣고, 유휴 캔들 셀이 '예' 마커를 진다
-  // (개장 동시호가엔 OHLC 가 null 이라 원래 빈칸; 마감 동시호가 10분간 캔들 대신
-  // 마커가 서는 것은 의도 — 그 창에선 예상 상태가 더 중요한 신호고 자동 복원된다).
+  // 예상 표시 모드 — 가격·등락률 셀이 예상값을 싣고 캔들 셀에 '예상' 마커가 붙는다.
+  // 마커는 캔들을 **대체하지 않고 나란히** 선다: 마감 동시호가(15:20~15:30)엔 당일
+  // OHLC 가 살아 있어(phase=open) 캔들이 정규장 종가·흐름을 계속 보여줘야 한다 —
+  // 예상가가 가격 셀을 덮어도 확정 종가가 글리프로 남는다. 개장 동시호가엔 OHLC 가
+  // null(hidden_pre_open)이라 CandleGlyph 가 스스로 미렌더 → 마커만 남는다.
+  // 두 시간창을 시계로 가르지 않고 **OHLC 유무**로 가른다(데이터 주도).
+  // 폭: 셀 2.5rem(45px @기본밀도) ⊃ 캔들 10px + gap + '예상' ~20px.
   const showExpected = expectedPrice != null;
   const shownPrice = showExpected ? expectedPrice : price;
   const shownPct = showExpected ? (expectedPct ?? null) : pct;
@@ -79,11 +83,12 @@ export function HeatmapRow({
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
       <span className="truncate text-xs text-fg-dim">{name}</span>
       {/* 당일 캔들 셀 — CandleGlyph 가 null 이어도 이 span 이 칼럼을 점유해 정렬 유지.
-          예상 표시 중엔 '예' 마커(text-fg-dimmer, DepthBadge 급 크기)가 캔들을 대신한다. */}
-      <span className="flex items-center justify-center overflow-hidden">
-        {showExpected
-          ? <span className="text-[10px] text-fg-dimmer" data-testid={`${testId}-expected-marker`}>예상</span>
-          : <CandleGlyph open={open} high={high} low={low} close={price} />}
+          예상 표시 중엔 '예상' 마커(text-fg-dimmer, DepthBadge 급 크기)가 캔들 옆에 붙는다. */}
+      <span className="flex items-center justify-center gap-0.5 overflow-hidden">
+        <CandleGlyph open={open} high={high} low={low} close={price} />
+        {showExpected && (
+          <span className="text-[10px] text-fg-dimmer" data-testid={`${testId}-expected-marker`}>예상</span>
+        )}
       </span>
       <span className="text-right font-data tabular-nums text-fg">
         {shownPrice === null ? '—' : shownPrice.toLocaleString('ko-KR')}

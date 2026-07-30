@@ -489,6 +489,51 @@ describe('WS 틱 등락률 오버레이', () => {
       expect(q?.price).toBe(249500); // 실체결가로 전환
     });
 
+    it('예상값보다 오래된 체결(15:20 낙오분)은 예상 표본을 폐기하지 않는다', async () => {
+      // 마감 동시호가는 연속장에서 곧바로 이어져, 15:19:59 체결 프레임이 첫 예상
+      // 프레임(15:20:00+)보다 늦게 소켓에 닿을 수 있다. 시각 비교 없이 폐기하면
+      // 오래된 체결이 더 새로운 예상값을 죽여 표시가 깜빡인다.
+      const t1519 = Date.UTC(2026, 4, 18, 6, 19, 59); // 15:19:59 KST
+      const t1520 = Date.UTC(2026, 4, 18, 6, 20, 1);  // 15:20:01 KST
+      mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
+      const { result } = await renderOverlay(['005930']);
+
+      pushOb('005930', { expected_price: 249000, expected_qty: 100 }, t1520);
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
+
+      // 낙오 체결(예상값보다 t_ms 가 이르다) — 폐기되지 않아야 한다.
+      act(() => {
+        handlers.get('005930')?.({
+          t_ms: t1519, kind: 'trade', trades: [{ t_ms: t1519, price: 244000, qty: 1 }],
+        });
+        vi.advanceTimersByTime(200);
+      });
+
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
+    });
+
+    it('예상값과 같은 초 이후의 체결(15:30 마감 크로스)은 정상 폐기한다', async () => {
+      // 위 가드가 종료 신호까지 막아버리면 예상가가 TTL 까지 30초 남는다.
+      const t1529 = Date.UTC(2026, 4, 18, 6, 29, 59); // 15:29:59 KST
+      const t1530 = Date.UTC(2026, 4, 18, 6, 30, 0);  // 15:30:00 KST 크로스
+      mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
+      const { result } = await renderOverlay(['005930']);
+
+      pushOb('005930', { expected_price: 249000, expected_qty: 100 }, t1529);
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
+
+      act(() => {
+        handlers.get('005930')?.({
+          t_ms: t1530, kind: 'trade', trades: [{ t_ms: t1530, price: 249500, qty: 1 }],
+        });
+        vi.advanceTimersByTime(200);
+      });
+
+      const q = result.current.quoteByCode.get('005930');
+      expect(q?.expected_price).toBeUndefined();
+      expect(q?.price).toBe(249500);
+    });
+
     it('선택 venue 밖 ob(KRX 선택 + NXT 태그)의 expected 는 무시한다', async () => {
       mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
       const { result } = await renderOverlay(['005930']);

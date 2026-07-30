@@ -65,6 +65,8 @@ describe('ResultTable', () => {
     const cell = within(row).getByText('예').parentElement;
     expect(cell).toHaveTextContent('71,500 (+2.14%)');
     expect(within(row).queryByText(/74,200/)).not.toBeInTheDocument(); // 확정가는 표시 안 함
+    // 대신 직전 체결가를 title 로 보존한다(표에도 두 숫자를 둘 폭이 없다).
+    expect(cell).toHaveAttribute('title', '예상 71,500 · 직전 체결 74,200');
   });
 
   it('renders — for a row with no live quote (price null) without crashing', () => {
