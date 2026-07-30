@@ -52,6 +52,21 @@ describe('QuoteRow', () => {
     expect(screen.queryByTestId('quote-row-005930-expected-marker')).not.toBeInTheDocument();
     expect(screen.getByText('72,400')).toBeInTheDocument();
     expect(screen.getByText('+1.20%')).toBeInTheDocument();
+    expect(screen.getByText('72,400').getAttribute('title')).toBeNull();
+  });
+
+  it('예상가가 확정가를 덮을 때 직전 체결가를 title 로 보존한다', () => {
+    // 마감 동시호가엔 확정가가 이미 있는데 예상가가 덮는다. 캔들이 없는 행이라
+    // 두 숫자를 나란히 둘 폭이 없어 호버로 되찾게 한다.
+    row({ expectedPrice: 71500, expectedPct: 2.14 });
+    const cell = screen.getByTestId('quote-row-005930-expected-marker').parentElement;
+    expect(cell).toHaveAttribute('title', '예상 71,500 · 직전 체결 72,400');
+  });
+
+  it('확정가가 없으면(개장 동시호가 미도착) title 을 붙이지 않는다', () => {
+    row({ price: null, pct: null, changeWon: null, expectedPrice: 71500, expectedPct: 2.14 });
+    const cell = screen.getByTestId('quote-row-005930-expected-marker').parentElement;
+    expect(cell?.getAttribute('title')).toBeNull();
   });
 
   it('Enter key triggers onClick (keyboard a11y)', () => {

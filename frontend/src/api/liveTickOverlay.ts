@@ -222,10 +222,23 @@ export function useLiveTickPrices(
         }
         const sample = tradeSample(entry, venue);
         if (sample === null) return;
-        // venue 게이트를 통과한 체결 = 단일가가 맺혔다는 뜻 — 예상 표본은 즉시
-        // 폐기한다(데이터 주도 전환의 종료 신호 ①). sameSample 로 표본 갱신을
-        // 건너뛰는 경우에도 폐기는 수행해야 하므로 dedup 앞에 둔다.
-        if (expectedAccumRef.current.delete(code)) scheduleFlush();
+        // venue 게이트를 통과한 체결 = 단일가가 맺혔다는 뜻 — 예상 표본을 폐기한다
+        // (데이터 주도 전환의 종료 신호 ①). sameSample 로 표본 갱신을 건너뛰는
+        // 경우에도 폐기는 수행해야 하므로 dedup 앞에 둔다.
+        //
+        // 단 **거래소 시각을 비교**해야 한다. 마감 동시호가(15:20~)는 연속장에서
+        // 곧바로 이어지므로 15:19:59 에 맺힌 체결 프레임이 첫 예상 프레임(15:20:00+)
+        // 보다 늦게 도착할 수 있다. 무조건 폐기하면 그 오래된 체결이 더 새로운
+        // 예상값을 죽여 표시가 한 프레임 깜빡인다(개장 동시호가엔 직전 체결이
+        // 20분 이상 없어 이 경합 자체가 없다 — 오후 전용 경계 조건).
+        // >= 인 이유: 15:30 마감 크로스 체결은 마지막 예상 프레임과 같은 초이거나
+        // 그 이후라, 정상 종료 신호로서 반드시 폐기되어야 한다.
+        const tradeTMs = (entry as { t_ms?: unknown }).t_ms; // tradeSample 이 number 검증
+        const pending = expectedAccumRef.current.get(code);
+        if (pending !== undefined && typeof tradeTMs === 'number' && tradeTMs >= pending.tMs) {
+          expectedAccumRef.current.delete(code);
+          scheduleFlush();
+        }
         // 같은 값 재체결은 재렌더를 만들 이유가 없다(호가만 흔들리는 구간에서
         // 흔하다). 스로틀 앞단에서 걸러 flush 자체를 아낀다. prevClose 도 비교에
         // 넣는 건 첫 프레임에서 뒤늦게 채워지는 경우를 놓치지 않기 위해서다.

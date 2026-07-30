@@ -135,7 +135,14 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
               {/* 동시호가 중엔 예상체결가/등락률로 대체('예' 마커, QuoteRow·HeatmapRow 와
                   동일 규칙) — 창 밖·체결 후엔 expected_* 가 사라져 자동 복귀. */}
               {r.expected_price != null ? (
-                <span className={`font-data tabular-nums text-right ${r.expected_change_pct == null ? '' : priceDirClass(r.expected_change_pct)}`}>
+                // 마감 동시호가엔 확정가가 예상가에 덮인다 — QuoteRow 와 동일하게
+                // 직전 체결가를 title 로 보존한다(표에도 두 숫자를 나란히 둘 폭이 없다).
+                <span
+                  title={r.price != null
+                    ? `예상 ${r.expected_price.toLocaleString('ko-KR')} · 직전 체결 ${r.price.toLocaleString('ko-KR')}`
+                    : undefined}
+                  className={`font-data tabular-nums text-right ${r.expected_change_pct == null ? '' : priceDirClass(r.expected_change_pct)}`}
+                >
                   <span className="mr-0.5 text-[10px] text-fg-dimmer">예</span>
                   {`${r.expected_price.toLocaleString('ko-KR')} (${formatPct(r.expected_change_pct ?? null)})`}
                 </span>
