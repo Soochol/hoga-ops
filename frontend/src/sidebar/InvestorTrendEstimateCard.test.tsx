@@ -98,6 +98,20 @@ describe('InvestorTrendEstimateCard', () => {
     expect(screen.queryByText('조회 중')).not.toBeInTheDocument();
   });
 
+  // 2026-07-30 사용자 결정: 헤더는 창 본문(--bg-card)과 같은 배경 — 밴드 금지.
+  // 배경 클래스 자체는 셀마다 남아야 한다(sticky 헤더 뒤로 행이 비치는 것을 막는다.
+  // border-collapse 표라 thead/tr 에 준 배경은 sticky 를 따라오지 않는다).
+  it('keeps the sticky header on the window body background (no tone band)', () => {
+    render(<InvestorTrendEstimateCard query={{ data: response() }} />);
+
+    for (const label of ['차수', '외국인', '기관', '합산']) {
+      const cell = screen.getByText(label);
+      expect(cell).toHaveClass('bg-bg-card');
+      expect(cell).not.toHaveClass('bg-bg-subtle');
+    }
+    expect(screen.getByText('차수').closest('thead')).toHaveClass('sticky');
+  });
+
   // `bg-bg` 로 칠하던 시절엔 Obsidian·Ledger 에서 --bg 와 --bg-card 가 같은 값이라
   // 강조가 한 픽셀도 바뀌지 않았다. 토큰 값이 합쳐져도 테스트가 잡도록 클래스를 못박는다.
   it('marks the latest row with a tint that is actually visible', () => {
