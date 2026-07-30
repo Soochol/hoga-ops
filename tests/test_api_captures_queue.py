@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import time
 
@@ -145,7 +146,13 @@ async def test_deciding_retries_source_partial(monkeypatch, tmp_path):
         state.phase = "done"
     monkeypatch.setattr(captures, "_run_capture_and_parse", _stub_capture)
 
-    captures._queue.append(_make_item("x-1"))  # force_retry=False
+    # 어제 날짜 — 이 워커 경로는 decide_capture 에 now 를 넘기지 않아 실제 시계를
+    # 쓴다. 고정 과거 날짜(_make_item 기본값)를 쓰면 보유 창 밖이라 미확정 갭
+    # 만료 가드가 upstream_gap 으로 걸러 버려, 이 테스트가 검사하려는 "재시도
+    # 경로" 자체에 도달하지 못한다. "어제" 는 언제 돌려도 창 안이다.
+    kst = dt.timezone(dt.timedelta(hours=9))
+    yesterday = (dt.datetime.now(kst).date() - dt.timedelta(days=1)).strftime("%Y%m%d")
+    captures._queue.append(_make_item("x-1", date=yesterday))  # force_retry=False
     workers = captures.start_workers(n=1)
     await asyncio.wait_for(captures.wait_drained(), timeout=2.0)
     await captures.stop_workers(workers)
@@ -238,8 +245,6 @@ async def test_worker_defers_when_inflight_collision(monkeypatch, tmp_path):
 
 
 # --- Task 7: POST /api/captures/items HTTP-level tests ----------------------
-
-import datetime as dt
 
 
 def _build_test_app(monkeypatch, tmp_path):

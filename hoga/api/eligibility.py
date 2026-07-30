@@ -44,6 +44,57 @@ from hoga.collector.orchestrator import is_today_too_early, now_kst
 # 훨씬 나쁘다. 오늘·어제는 항상 재시도 가능하다.
 _UPSTREAM_RETENTION_DAYS = 2
 
+
+def is_past_upstream_retention(date: str, now: dt.datetime) -> bool:
+    """이 거래일이 hogaplay 보유 창 **밖**인가 — 즉 재캡처가 원리적으로 무의미한가.
+
+    두 만료 판정(close_ms=0 스텁, 미확정 갭)이 공유하는 술어다. 한쪽만 고치면
+    "재캡처는 멈췄는데 진단 보고는 여전히 대기중" 같은 어긋난 상태가 조용히
+    생긴다 — prune 쪽 라벨도 이 함수를 부른다.
+
+    날짜 형식이 이상하면 False(막지 않는다). 판정 불가는 "만료 아님" 쪽으로
+    틀리는 것이 안전하다 — 반대로 틀리면 아직 받을 수 있는 캡처를 막는다.
+    """
+    try:
+        captured = dt.datetime.strptime(date, "%Y%m%d").date()
+    except ValueError:
+        return False
+    return (now.date() - captured).days > _UPSTREAM_RETENTION_DAYS
+
+
+def is_expired_unconfirmed_gap(
+    classification: Classification, date: str, now: dt.datetime
+) -> bool:
+    """이 SOURCE_PARTIAL 의 "갭 미확정" 이 **영원히** 확정될 수 없는 상태인가?
+
+    ADR-0093/0126 의 확정 경로는 둘뿐이다(disk_state.py 의 upstream_gap_confirmed):
+    재캡처가 **동일한 갭을 재현**하거나(identical >= 2), 갭이 **세션 경계에 접하거나**.
+    후자는 파싱 시점에 이미 판정되므로, 아직 미확정인 것은 오직 전자 — 재캡처 —
+    로만 확정될 수 있다.
+
+    그런데 그 재캡처를 hogaplay 가 못 준다. 보유 창이 ~18시간이기 때문이다.
+    결과적으로 보유 창 밖 날짜의 미확정 갭은 **구조적 막다른 길**이다:
+    decide_capture 가 계속 재캡처 대상으로 넘기고, 업스트림은 데이터를 못 주고,
+    상태는 그대로 미확정으로 남는다.
+
+    2026-07-30 전수 실측이 이를 확인한다 — 미확정 1,344건 중 보유 창 안은 **2건**
+    (0.15%)뿐이고, 가장 오래된 것은 2025-05-02 로 15개월째 같은 자리다.
+
+    이것은 ADR-0130 이 close_ms=0 스텁에 적용한 것과 **같은 형태의 논증**이다:
+    "재시도로 고칠 수 있는 상태" 와 "재시도가 원리적으로 무의미한 상태" 를 나이로
+    가른다. 다른 점은 그쪽이 INVALID 였고 이쪽은 SOURCE_PARTIAL 이라는 것뿐이다.
+
+    **이 술어는 삭제 권한을 주지 않는다.** prune 의 게이트는 그대로다(1단계).
+    여기서 하는 일은 무의미한 재캡처를 멈추고, 진단 보고에서 이 부분집합을
+    보이게 만드는 것뿐이다.
+    """
+    return (
+        classification.state == DiskState.SOURCE_PARTIAL
+        and not classification.upstream_gap_confirmed
+        and is_past_upstream_retention(date, now)
+    )
+
+
 # `regular_session_close_ms == 0` 스텁이 만드는 error 위반 집합.
 #
 # 0 은 **반드시 둘 다** 발화시킨다: open 보다 작고(close_after_open), 12–18시
@@ -89,11 +140,7 @@ def _is_expired_upstream_stub(
         return False
     if {v.invariant_id for v in classification.errors} != _CLOSE_MS_ZERO_ERRORS:
         return False
-    try:
-        captured = dt.datetime.strptime(date, "%Y%m%d").date()
-    except ValueError:
-        return False  # 날짜 형식이 이상하면 판정하지 않는다(막지 않는다)
-    return (now.date() - captured).days > _UPSTREAM_RETENTION_DAYS
+    return is_past_upstream_retention(date, now)
 
 
 @dataclass(frozen=True)
@@ -162,6 +209,15 @@ def decide_capture(
     if (
         not force_retry
         and _is_expired_upstream_stub(classification, date, now or now_kst())
+    ):
+        return CaptureDecision(skip_reason="upstream_gap", resume=False)
+    # 미확정 갭도 보유 창 밖이면 같은 자리에 선다. ADR-0093 은 "재캡처가 갭을
+    # 재현하면 확정" 이라는 경로를 만들었는데, 업스트림이 그 재캡처를 못 주면
+    # 그 경로는 영원히 닫혀 있다. 2026-07-30 실측 미확정 1,344건 중 창 안은 2건.
+    # 막지 않으면 백필이 돌 때마다 없는 데이터를 다시 받으러 간다.
+    if (
+        not force_retry
+        and is_expired_unconfirmed_gap(classification, date, now or now_kst())
     ):
         return CaptureDecision(skip_reason="upstream_gap", resume=False)
     if disk == DiskState.NO_UPSTREAM_DATA:
