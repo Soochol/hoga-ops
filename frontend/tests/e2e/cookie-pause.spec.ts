@@ -10,11 +10,6 @@ const API = 'http://127.0.0.1:8765';
 // 이 파일 안에서는 직렬로 두고, 파일 간 간섭은 날짜 오프셋으로 겹치지 않게 한다.
 test.describe.configure({ mode: 'serial' });
 
-// **알려진 공백 — range-capture 와 같은 원인.** 일시정지 배너까지는 실제로 도달하지만
-// (그 부분 단언은 이제 실재하는 문구·버튼을 본다), 마지막 "5 of 5 done" 은 페이크
-// 픽스처가 완결성 게이트를 못 넘어 도달할 수 없다.
-test.fixme(true, '페이크 픽스처 커버리지 부족 — 재개 후 done 도달 불가');
-
 test('cookie-pause: 3rd request → pause banner → Resume → completes', async ({ page }) => {
   // Configure the fake to raise on the 3rd capture request.
   const api = await request.newContext();
@@ -35,10 +30,21 @@ test('cookie-pause: 3rd request → pause banner → Resume → completes', asyn
   await expect(page.locator('text=/Cookie expired/i')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('button', { name: /Refresh & Resume/i })).toBeVisible();
 
+  // **일시정지가 정착할 때까지 기다린 뒤 재개한다.** `resume_queue` 는 `_done` 에 있는
+  // `pause_origin` 취소 항목만 되살리는데, 취소가 확정되기 전에 누르면 되살릴 대상이
+  // 0건이라 아무 일도 안 일어난다(실측: resume 200 인데 4건이 cancelled 로 남았다).
+  // 사람은 배너를 보고 누르므로 자연히 피해 가는 창이다 — 테스트도 같은 순서를 지킨다.
+  await expect(page.getByRole('button', { name: /^Capture row .* cancelled/ }))
+    .toHaveCount(4, { timeout: 15_000 });
+
   // Disable the failure-injection and click Resume.
   await api.post(`${API}/api/test/cookie_expire_at`, { data: { index: -1 } });
   await page.getByRole('button', { name: /Refresh & Resume/i }).click();
 
-  // Queue resumes; eventually all 5 done.
-  await expect(page.locator('text=/5 of 5 done/')).toBeVisible({ timeout: 20_000 });
+  // **"5 of 5 done" 은 설계상 도달 불가다.** 쿠키 오류를 맞은 항목은 terminal 이다
+  // (`captures.py`: "the failing item is terminal and never sleeps awaiting a resume").
+  // 재개가 되살리는 건 그 때문에 **취소된 나머지**(`pause_origin`)뿐이라 최대 4건이다.
+  // 그래서 "재개 후 큐가 빠져나가고 실패는 1건뿐" 을 주장한다.
+  await expect(page.locator('text=/4 of 5 done/')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('text=/1 failed/')).toBeVisible();
 });

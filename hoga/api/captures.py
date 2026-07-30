@@ -1114,6 +1114,14 @@ async def resume_queue() -> None:
         for s in reversed(to_reenqueue):
             s.phase = "queued"
             s.pause_origin = False
+            # **취소된 토큰을 물려주면 재개가 재개가 아니다.** 일시정지가
+            # `_handle_cookie_expired` 에서 이 항목들의 cancel_token 을 이미 cancel 했고,
+            # `_run_capture*` 는 `if state.cancel_token is None` 일 때만 새로 만든다 —
+            # 그대로 두면 워커가 집어드는 즉시 CaptureCancelled 가 터져 phase 가 다시
+            # cancelled 가 된다(실측: resume 200 인데 4건이 cancelled 로 되돌아왔고
+            # pause_origin 만 지워져 두 번째 재개도 불가능해졌다). None 으로 비워
+            # 다음 시도가 새 토큰을 받게 한다.
+            s.cancel_token = None
             _queue.appendleft(s)
         # Remove them from _done.
         _done[:] = [s for s in _done if s not in to_reenqueue]

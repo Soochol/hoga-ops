@@ -589,6 +589,39 @@ async def test_resume_reenqueues_pause_origin():
         assert s.pause_origin is False
 
 
+async def test_resume_clears_cancelled_token_so_the_retry_is_not_insta_cancelled():
+    """재개는 **새 시도**다 — 취소된 cancel_token 을 물려주면 안 된다.
+
+    `_handle_cookie_expired` 는 일시정지 대상들의 cancel_token 을 cancel 한다. 그런데
+    `_run_capture*` 는 `if state.cancel_token is None` 일 때만 새로 만들므로, 토큰을 그대로
+    둔 채 재큐잉하면 워커가 집어드는 즉시 CaptureCancelled 가 터져 phase 가 다시
+    cancelled 가 된다 — "Refresh & Resume" 이 아무 일도 못 한다.
+
+    위의 `test_resume_reenqueues_pause_origin` 은 phase·플래그만 봐서 이걸 놓쳤다.
+    e2e(cookie-pause)에서 실측으로 드러났다: resume 이 200 인데 4건이 cancelled 로
+    되돌아왔고 pause_origin 만 지워져 두 번째 재개조차 불가능했다.
+    """
+    from hoga.collector.orchestrator import CancelToken
+
+    token = CancelToken()
+    token.cancel()
+    assert token.cancelled, "전제: 일시정지가 토큰을 취소해 둔 상태"
+
+    item = _make_item("p-tok", date="20260518")
+    item.phase = "cancelled"
+    item.pause_origin = True
+    item.cancel_token = token
+    captures._done.append(item)
+    captures._queue_paused = True
+
+    await captures.resume_queue()
+
+    requeued = next(s for s in captures._queue if s.item_id == "p-tok")
+    assert requeued.cancel_token is None, (
+        "재개된 항목이 취소된 토큰을 그대로 들고 있다 — 다음 시도가 즉시 재취소된다"
+    )
+
+
 async def test_cancel_all_in_paused_resets_everything():
     """Q20: cancel_all() called while _queue_paused clears the pause flag and
     downgrades pause_origin items to plain cancelled."""
