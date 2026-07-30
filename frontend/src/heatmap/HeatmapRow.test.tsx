@@ -43,6 +43,28 @@ it('시세 결측(null) → 가격·등락 모두 —', () => {
   expect(screen.getAllByText('—').length).toBe(2);
 });
 
+it('예상체결 모드: 가격·등락률 셀이 예상값으로 대체되고 캔들 셀에 마커가 선다', () => {
+  row({ expectedPrice: 71500, expectedPct: 2.14 });
+  expect(screen.getByTestId('heatmap-row-005930-expected-marker')).toHaveTextContent('예상');
+  expect(screen.getByText('71,500')).toBeInTheDocument();
+  expect(screen.queryByText('70,000')).not.toBeInTheDocument(); // 확정가는 표시 안 함
+  const cell = screen.getByText('+2.14');
+  expect(cell).toHaveClass('text-price-up'); // 예상 등락도 방향색 컨벤션 동일
+});
+
+it('예상가만 있고 예상 등락률이 없으면 등락 셀은 —', () => {
+  row({ expectedPrice: 71500, expectedPct: null });
+  expect(screen.getByText('71,500')).toBeInTheDocument();
+  expect(screen.getByText('—')).toBeInTheDocument();
+});
+
+it('예상값이 없으면(평시) 마커 없이 확정치 그대로 — 기존 모습 불변', () => {
+  row({ expectedPrice: null, expectedPct: null });
+  expect(screen.queryByTestId('heatmap-row-005930-expected-marker')).not.toBeInTheDocument();
+  expect(screen.getByText('70,000')).toBeInTheDocument();
+  expect(screen.getByText('+5.00')).toBeInTheDocument();
+});
+
 it('클릭 시 onClick 호출', () => {
   const onClick = vi.fn();
   row({ onClick });

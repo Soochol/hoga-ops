@@ -150,6 +150,8 @@ function DraggableScreenerRow({
       price={row.price}
       pct={row.change_pct}
       changeWon={row.change_won}
+      expectedPrice={row.expected_price}
+      expectedPct={row.expected_change_pct}
       active={active}
       flash={flash}
       ariaLabel={`${row.name} ${row.code} 차트 열기`}

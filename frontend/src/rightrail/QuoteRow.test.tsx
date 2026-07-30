@@ -36,6 +36,24 @@ describe('QuoteRow', () => {
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
+  it('예상체결 모드: 가격 앞 예 마커 + 가격·등락% 셀이 예상값으로 대체된다', () => {
+    row({ expectedPrice: 71500, expectedPct: 2.14 });
+    const marker = screen.getByTestId('quote-row-005930-expected-marker');
+    expect(marker).toHaveTextContent('예');
+    // 마커와 가격이 같은 셀 — 부모 span 의 textContent 로 대조한다.
+    expect(marker.parentElement).toHaveTextContent('71,500');
+    expect(screen.queryByText('72,400')).not.toBeInTheDocument(); // 확정가는 표시 안 함
+    const pctCell = screen.getByText('+2.14%');
+    expect(pctCell).toHaveClass('text-price-up');
+  });
+
+  it('예상값이 없으면(평시) 마커 없이 확정치 그대로 — 기존 모습 불변', () => {
+    row({ expectedPrice: null, expectedPct: null });
+    expect(screen.queryByTestId('quote-row-005930-expected-marker')).not.toBeInTheDocument();
+    expect(screen.getByText('72,400')).toBeInTheDocument();
+    expect(screen.getByText('+1.20%')).toBeInTheDocument();
+  });
+
   it('Enter key triggers onClick (keyboard a11y)', () => {
     const { onClick } = row();
     fireEvent.keyDown(screen.getByTestId('quote-row-005930'), { key: 'Enter' });

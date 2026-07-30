@@ -408,7 +408,7 @@ describe('WS 틱 등락률 오버레이', () => {
     expect(result.current.quoteByCode.get('005930')?.high).toBe(253000);
   });
 
-  it('trade 가 아닌 프레임(ob)은 무시한다', async () => {
+  it('ob 프레임은 가격·등락률을 갱신하지 않는다(예상체결 필드만 소비)', async () => {
     mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
     const { result } = await renderOverlay(['005930']);
 
@@ -418,6 +418,147 @@ describe('WS 틱 등락률 오버레이', () => {
     });
 
     expect(result.current.quoteByCode.get('005930')?.price).toBe(244500);
+    expect(result.current.quoteByCode.get('005930')?.change_pct).toBe(-4.12);
+  });
+
+  describe('동시호가 예상체결 오버레이', () => {
+    /** ob 프레임 한 건 밀어넣고 스로틀 창을 넘긴다. fields 로 expected_* 유무를 제어. */
+    function pushOb(code: string, fields: Record<string, unknown> = {}, tMs = 1): void {
+      act(() => {
+        handlers.get(code)?.({ t_ms: tMs, kind: 'ob', asks: [], bids: [], ...fields });
+        vi.advanceTimersByTime(200);
+      });
+    }
+
+    it('expected_price 가 실린 ob 프레임 → expected_* 필드가 얹히고 기존 필드는 불변', async () => {
+      mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
+      const { result } = await renderOverlay(['005930']);
+
+      pushOb('005930', { expected_price: 249000, expected_qty: 29863 });
+
+      const q = result.current.quoteByCode.get('005930');
+      expect(q?.expected_price).toBe(249000);
+      expect(q?.expected_qty).toBe(29863);
+      // 기준가 = 폴링 역산 255,000 → (249000/255000 - 1)*100 = -2.35
+      expect(q?.expected_change_pct).toBe(-2.35);
+      // 확정 필드는 건드리지 않는다 — hidden_pre_open 계약과 동일한 원칙.
+      expect(q?.price).toBe(244500);
+      expect(q?.change_pct).toBe(-4.12);
+    });
+
+    it('pre_open 계약(hidden_pre_open) 불침범 — 예상 등락률은 baseline_price 로 계산', async () => {
+      // pre_open 응답 형태: change_pct/won=null, baseline_price=previous_close.
+      mockQuotes([{
+        code: '005930', price: 244500, change_pct: null, change_won: null,
+        baseline_price: 255000, change_pct_source: 'hidden_pre_open',
+      }]);
+      const { result } = await renderOverlay(['005930']);
+
+      pushOb('005930', { expected_price: 249000, expected_qty: 100 });
+
+      const q = result.current.quoteByCode.get('005930');
+      expect(q?.expected_price).toBe(249000);
+      expect(q?.expected_change_pct).toBe(-2.35);
+      expect(q?.change_pct).toBeNull(); // 확정 등락률 숨김은 그대로
+      expect(q?.change_pct_source).toBe('hidden_pre_open');
+    });
+
+    it('expected 가 없는 ob 프레임이 오면 표본을 지운다 — 백엔드 게이트 닫힘 신호', async () => {
+      mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
+      const { result } = await renderOverlay(['005930']);
+
+      pushOb('005930', { expected_price: 249000, expected_qty: 100 });
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
+
+      pushOb('005930'); // 정규장 첫 호가 — expected 필드 부재
+
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBeUndefined();
+    });
+
+    it('체결이 도착하면 예상 표본을 폐기한다 — 단일가 크로스 신호', async () => {
+      mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
+      const { result } = await renderOverlay(['005930']);
+
+      pushOb('005930', { expected_price: 249000, expected_qty: 100 });
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
+
+      pushTrade('005930', 249500);
+
+      const q = result.current.quoteByCode.get('005930');
+      expect(q?.expected_price).toBeUndefined();
+      expect(q?.price).toBe(249500); // 실체결가로 전환
+    });
+
+    it('선택 venue 밖 ob(KRX 선택 + NXT 태그)의 expected 는 무시한다', async () => {
+      mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
+      const { result } = await renderOverlay(['005930']);
+
+      pushOb('005930', { venue: 'NXT', expected_price: 249000, expected_qty: 100 });
+
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBeUndefined();
+    });
+
+    it('UN(시간대 자동) 선택 + 개장동시호가(08:55 KST) KRX 프레임은 수용한다', async () => {
+      // 2026-05-18(월) 08:55 KST — liveSubscriptionVenueForMs 의 KRX 구간(08:50~) 안.
+      const kst0855 = Date.UTC(2026, 4, 17, 23, 55, 0);
+      mockQuotes([{ code: '005930', price: 244500, change_pct: null, change_won: null, baseline_price: 255000 }]);
+      const hook = renderHook(() => useLiveQuoteOverlay(['005930'], 'UN'), { wrapper: wrap() });
+      await waitFor(() => expect(hook.result.current.quoteByCode.size).toBeGreaterThan(0));
+      await waitFor(() => expect(handlers.has('005930')).toBe(true));
+
+      pushOb('005930', { venue: 'KRX', expected_price: 249000, expected_qty: 100 }, kst0855);
+
+      expect(hook.result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
+    });
+
+    it('UN 선택이라도 08:50 이전(NXT 시간대) KRX 태그 프레임은 배제한다', async () => {
+      // 08:30 KST — 구독 venue 가 NXT 인 구간. 백엔드는 이때 KRX 를 구독하지 않지만,
+      // 정책 게이트가 프레임 t_ms 로 일관되게 판정함을 고정한다.
+      const kst0830 = Date.UTC(2026, 4, 17, 23, 30, 0);
+      mockQuotes([{ code: '005930', price: 244500, change_pct: null, change_won: null, baseline_price: 255000 }]);
+      const hook = renderHook(() => useLiveQuoteOverlay(['005930'], 'UN'), { wrapper: wrap() });
+      await waitFor(() => expect(hook.result.current.quoteByCode.size).toBeGreaterThan(0));
+      await waitFor(() => expect(handlers.has('005930')).toBe(true));
+
+      pushOb('005930', { venue: 'KRX', expected_price: 249000, expected_qty: 100 }, kst0830);
+
+      expect(hook.result.current.quoteByCode.get('005930')?.expected_price).toBeUndefined();
+    });
+
+    it('TTL(30초) 경과한 표본은 표시하지 않는다 — 종료 신호가 안 오는 종목의 백스톱', async () => {
+      mockQuotes([
+        { code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 },
+        { code: '000660', price: 1790000, change_pct: -2.82, change_won: -52000 },
+      ]);
+      const { result } = await renderOverlay(['005930', '000660']);
+
+      pushOb('005930', { expected_price: 249000, expected_qty: 100 });
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
+
+      // 31초 경과(005930 프레임 두절) 후 다른 코드의 체결이 재평가를 트리거.
+      act(() => { vi.advanceTimersByTime(31_000); });
+      pushTrade('000660', 1795000);
+
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBeUndefined();
+    });
+
+    it('예상값이 그대로여도 프레임 도착이 seenAtMs 를 갱신해 TTL 오탐이 없다', async () => {
+      // 저유동 종목: 동시호가 내내 예상가 동일. 값 dedup 으로 갱신을 건너뛰면
+      // seenAtMs 가 얼어 31초 뒤 오탐 청소된다 — 매 프레임 갱신을 고정하는 회귀 가드.
+      mockQuotes([
+        { code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 },
+        { code: '000660', price: 1790000, change_pct: -2.82, change_won: -52000 },
+      ]);
+      const { result } = await renderOverlay(['005930', '000660']);
+
+      pushOb('005930', { expected_price: 249000, expected_qty: 100 });
+      act(() => { vi.advanceTimersByTime(20_000); });
+      pushOb('005930', { expected_price: 249000, expected_qty: 100 }); // 동일 값 재수신
+      act(() => { vi.advanceTimersByTime(20_000); });
+      pushTrade('000660', 1795000); // 재평가 트리거 — 마지막 수신 후 20초뿐
+
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
+    });
   });
 
   it('선택 venue 밖 체결(KRX 선택 + NXT 태그)은 등락률을 갱신하지 않는다', async () => {

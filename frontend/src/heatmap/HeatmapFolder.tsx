@@ -74,11 +74,13 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
         <SortableHeatmapRow key={e.code} code={e.code} name={e.name}
         price={q?.price ?? null} pct={q?.change_pct ?? null}
         open={q?.open ?? null} high={q?.high ?? null} low={q?.low ?? null}
+        expectedPrice={q?.expected_price ?? null} expectedPct={q?.expected_change_pct ?? null}
         matched={matched}
         onPick={(ev) => onPick(e.code, e.name, ev)} onContextMenu={ctxFor?.(e.code, e.name)} />
     ) : (
       <HeatmapRow key={e.code} name={e.name} price={q?.price ?? null} pct={q?.change_pct ?? null}
         open={q?.open ?? null} high={q?.high ?? null} low={q?.low ?? null}
+        expectedPrice={q?.expected_price ?? null} expectedPct={q?.expected_change_pct ?? null}
         matched={matched}
         onClick={(ev) => onPick(e.code, e.name, ev)} ariaLabel={`${e.name} ${e.code} 차트 열기`}
         testId={`heatmap-row-${e.code}`} onContextMenu={ctxFor?.(e.code, e.name)} />
@@ -130,6 +132,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
 function SortableHeatmapRow(props: {
   code: string; name: string; price: number | null; pct: number | null;
   open?: number | null; high?: number | null; low?: number | null;
+  expectedPrice?: number | null; expectedPct?: number | null;
   matched?: boolean;
   onPick: (e?: JumpModifiers) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -143,6 +146,8 @@ function SortableHeatmapRow(props: {
       open={props.open}
       high={props.high}
       low={props.low}
+      expectedPrice={props.expectedPrice}
+      expectedPct={props.expectedPct}
       matched={props.matched}
       onClick={props.onPick}
       ariaLabel={`${props.name} ${props.code} 차트 열기`}

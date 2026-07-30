@@ -16,6 +16,11 @@ export interface QuoteRowProps {
   price: number | null;
   pct: number | null;
   changeWon: number | null;
+  /** 동시호가 예상체결가/등락률(LiveQuote.expected_*). 값이 있으면 가격·등락% 셀을
+   *  예상값으로 대체하고 가격 앞에 '예' 마커를 붙인다. 창 밖·체결 후엔 키가 사라져
+   *  자동으로 확정치로 복귀(백엔드 게이트 SSOT). 미전달 시 기존 동작 그대로. */
+  expectedPrice?: number | null;
+  expectedPct?: number | null;
   active: boolean;
   ariaLabel: string;
   testId: string;
@@ -54,11 +59,16 @@ function formatPct(pct: number | null): string {
 }
 
 export function QuoteRow({
-  name, price, pct, changeWon: _changeWon, active, ariaLabel, testId, onClick, leading, trailingAction,
+  name, price, pct, changeWon: _changeWon, expectedPrice, expectedPct,
+  active, ariaLabel, testId, onClick, leading, trailingAction,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging, dropIndicator,
   onContextMenu, onDelete, indented, flash, matched,
 }: QuoteRowProps) {
   void _changeWon;
+  // 예상 표시 모드 — HeatmapRow 와 동일 규칙(가격·등락% 셀을 예상값으로 대체 + 마커).
+  const showExpected = expectedPrice != null;
+  const shownPrice = showExpected ? expectedPrice : price;
+  const shownPct = showExpected ? (expectedPct ?? null) : pct;
   const setRowRef = (node: HTMLElement | null) => {
     sortableRef?.(node);
     if (dragListeners) dragActivatorRef?.(node);
@@ -136,10 +146,13 @@ export function QuoteRow({
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
       <span className="flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
-        {price != null ? price.toLocaleString('ko-KR') : '—'}
+        {showExpected && (
+          <span className="mr-0.5 text-[10px] text-fg-dimmer" data-testid={`${testId}-expected-marker`}>예</span>
+        )}
+        {shownPrice != null ? shownPrice.toLocaleString('ko-KR') : '—'}
       </span>
-      <span className={`flex-none w-[3.5rem] text-right font-data tabular-nums text-xs leading-tight ${pct === null ? 'text-fg-dimmer' : priceDirClass(pct)}`}>
-        {pct != null ? formatPct(pct) : ''}
+      <span className={`flex-none w-[3.5rem] text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dimmer' : priceDirClass(shownPct)}`}>
+        {shownPct != null ? formatPct(shownPct) : ''}
       </span>
       {trailingAction != null && (
         <span className="flex items-center justify-center" style={{ minWidth: '1.25rem' }}>

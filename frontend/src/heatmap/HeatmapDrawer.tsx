@@ -697,6 +697,8 @@ export function HeatmapDrawer() {
                               price={q?.price ?? null}
                               pct={q?.change_pct ?? null}
                               changeWon={q?.change_won ?? null}
+                              expectedPrice={q?.expected_price ?? null}
+                              expectedPct={q?.expected_change_pct ?? null}
                               active={entry.code === activeCode}
                               matched={entryMatchesQuery(entry, query)}
                               ariaLabel={[entry.name, entry.code, '차트 열기'].join(' ')}
