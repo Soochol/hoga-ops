@@ -33,8 +33,8 @@ def test_candles_not_in_dispatcher_registry() -> None:
     adds ``PARSERS = {6: parse_row}`` to candles.py, the dispatcher would pick it up
     and try to feed first.tsv rows through it. Catch that here.
     """
-    from hoga.tables import candles as candles_mod  # noqa: PLC0415
-    from hoga.tables.dispatch import PARSERS as registry  # noqa: PLC0415
+    from hoga.tables import candles as candles_mod
+    from hoga.tables.dispatch import PARSERS as registry
 
     assert getattr(candles_mod, "PARSERS", {}) == {}, "candles must not declare PARSERS"
     # And no registry entry should call into candles.parse_row.

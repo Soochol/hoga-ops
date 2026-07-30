@@ -638,7 +638,7 @@ async def test_fetch_past_daily_candles_rejects_non_concrete_venue(
 # fetch_investor_net (FHPTJ04160001, investor-trade-by-stock-daily)
 # ----------------------------------------------------------------------
 
-from hoga.live.kis_client import (  # noqa: E402
+from hoga.live.kis_client import (
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
 )

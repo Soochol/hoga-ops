@@ -1395,7 +1395,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         """Per-cache observability (PR-1). Reads closure-reachable cache
         instances — the same closure path _kis_scheduler uses above."""
         from hoga.api import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-            today_ttl_cache,  # late import: conftest swaps TODAY_TTL  # noqa: PLC0415 — 지연 import(순환/heavy)
+            today_ttl_cache,  # late import: conftest swaps TODAY_TTL
         )
 
         out: dict[str, object] = {}

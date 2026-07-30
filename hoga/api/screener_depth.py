@@ -59,12 +59,12 @@ def _depth_universe(data_dir: Path) -> dict[str, str]:
     try:
         for e in heatmap.load_heatmap(data_dir):
             name_by.setdefault(e.code, e.name)
-    except Exception:  # noqa: BLE001 — 히트맵 부재/손상이 스캔을 죽이면 안 됨
+    except Exception:  # 히트맵 부재/손상이 스캔을 죽이면 안 됨
         log.exception("depth eval: heatmap load failed")
     try:
         for e in watchlist.load_watchlist(data_dir):
             name_by.setdefault(e.code, e.name)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("depth eval: watchlist load failed")
     return name_by
 

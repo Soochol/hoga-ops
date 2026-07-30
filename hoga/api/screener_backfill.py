@@ -241,7 +241,7 @@ async def run_backfill(data_dir: Path) -> dict:
 
     from hoga.live import kis_access  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     from hoga.live.kis_capacity_runtime import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        ensure_kis_capacity_scheduler,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        ensure_kis_capacity_scheduler,
     )
     from hoga.live.kis_client import KIS_KST  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 

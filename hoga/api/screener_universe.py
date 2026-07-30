@@ -24,12 +24,12 @@ def scope_codes(data_dir: Path, scopes: list[str]) -> set[str] | None:
     if "heatmap" in scopes:
         try:
             codes.update(e.code for e in heatmap.load_heatmap(data_dir))
-        except Exception:  # noqa: BLE001 — 히트맵 부재/손상이 스캔을 죽이면 안 됨
+        except Exception:  # 히트맵 부재/손상이 스캔을 죽이면 안 됨
             log.exception("scope_codes: heatmap load failed")
     if "watchlist" in scopes:
         try:
             codes.update(e.code for e in watchlist.load_watchlist(data_dir))
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("scope_codes: watchlist load failed")
     return codes
 

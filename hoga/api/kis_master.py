@@ -69,7 +69,7 @@ def download_master(market: str) -> bytes:
         data = urllib.request.urlopen(url, timeout=60).read()
         z = zipfile.ZipFile(io.BytesIO(data))
         return z.read(z.namelist()[0])
-    except Exception as e:  # noqa: BLE001 — network/zip errors are all fetch failures
+    except Exception as e:  # network/zip errors are all fetch failures
         raise KisMasterFetchError(f"{market} .mst download/unzip failed: {e}") from e
 
 

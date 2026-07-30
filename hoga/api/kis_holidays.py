@@ -57,7 +57,7 @@ def _resolve_provider():
     poller itself still starts on the next watchlist mutation or restart.
     """
     from hoga.live.kis_runtime import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        ensure_kis_token_provider_from_env,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        ensure_kis_token_provider_from_env,
     )
 
     got = ensure_kis_token_provider_from_env(reload_env=True)
@@ -124,7 +124,7 @@ def fetch_month_trading_days(year: int, month: int) -> set[str]:
     # normalize it here so callers can rely on KisHolidayFetchError alone.
     try:
         resolved = _resolve_provider()
-    except Exception as e:  # noqa: BLE001 — KisAuthError et al. → one failure class
+    except Exception as e:  # KisAuthError et al. → one failure class
         raise KisHolidayFetchError(f"KIS token unavailable: {e}") from e
     if resolved is None:
         raise KisCredentialsMissing("KIS_APP_KEY/KIS_APP_SECRET missing")

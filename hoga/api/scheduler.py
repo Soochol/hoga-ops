@@ -67,7 +67,7 @@ async def _daily_run(data_dir: Path) -> None:
     try:
         await promote_pending(data_dir)
         await cleanup_archive(data_dir)
-    except Exception:  # noqa: BLE001 — one source of failure mustn't block the other
+    except Exception:  # one source of failure mustn't block the other
         log.exception("daily run: live promotion failed; continuing to hogaplay enqueue")
 
     # Stage 9: Prune COMPLETE hogaplay raw past the retention window (ADR-0075).
@@ -108,7 +108,7 @@ async def _daily_run(data_dir: Path) -> None:
                 "`hoga prune --include-confirmed-gaps` reports what could be reclaimed.",
                 head.free_pct, head.free_bytes / 1024**3, head.total_bytes / 1024**3,
             )
-    except Exception:  # noqa: BLE001 — prune 실패가 enqueue를 막으면 안 됨
+    except Exception:  # prune 실패가 enqueue를 막으면 안 됨
         log.exception("daily run: prune failed; continuing")
 
     now = now_kst()
@@ -124,7 +124,7 @@ async def _daily_run(data_dir: Path) -> None:
                 now=now,
             )
             _log_blocked(resp, context="daily")
-        except Exception:  # noqa: BLE001 — one bad entry mustn't kill the run
+        except Exception:  # one bad entry mustn't kill the run
             log.exception("daily enqueue failed for %s/%s", entry.code, today)
 
     # Screener daily gap update (local import avoids an import cycle). A
@@ -132,7 +132,7 @@ async def _daily_run(data_dir: Path) -> None:
     try:
         from hoga.api import screener  # noqa: PLC0415
         await screener.trigger_update(data_dir)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("daily run: screener update failed; continuing")
 
     # depth_daily 집계 갱신(스크리너 총잔량 신고 조건의 과거 기준). 디스크에 있는 모든
@@ -148,7 +148,7 @@ async def _daily_run(data_dir: Path) -> None:
             "daily run: depth_daily sweep computed=%d total=%d",
             res.computed, res.total_rows,
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("daily run: depth_daily sweep failed; continuing")
 
 
@@ -223,7 +223,7 @@ async def _catchup_run(data_dir: Path) -> None:
         try:
             resp = await catchup_one_entry(entry, data_dir=data_dir, now=now)
             _log_blocked(resp, context="catch-up")
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("catch-up failed for %s", entry.code)
 
 
@@ -239,7 +239,7 @@ async def _daily_loop(data_dir: Path) -> None:
         await asyncio.sleep(seconds_until_next_17_kst(now_kst()))
         try:
             await _daily_run(data_dir)
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("daily run crashed; loop continues")
 
 

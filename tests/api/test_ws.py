@@ -298,7 +298,7 @@ def test_disconnect_calls_on_view_unsubscribe_for_all_subscribed_codes(monkeypat
 
     async def spy(code, venues=None, *, ref=None):
         unsubscribed_codes.append(code)
-        if len(unsubscribed_codes) >= 2:  # noqa: PLR2004
+        if len(unsubscribed_codes) >= 2:
             done.set()
 
     monkeypatch.setattr(lc, "on_view_unsubscribe", spy)

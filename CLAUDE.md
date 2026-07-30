@@ -118,6 +118,17 @@ Notes:
   B905 explicit `strict=`) plus reasoned `noqa` sealing to 0. **Nothing was disabled in
   `hoga/`** — the relaxations are in `tests/` and thresholds, and each carries a comment
   explaining why. `ruff format` is NOT gated (it would reformat 345 files).
+- `RUF100` (dead `# noqa`) and `BLE` (blind `except`) joined `select` right after. Two
+  things follow from that pair, and both bite if you don't know them:
+  - **`lint.external` in `ruff.toml` is load-bearing — do not delete it.** It lists codes
+    (`S102`, `S310`, `T201`, `ARG001`, `ANN001`) whose families are outside `select`.
+    Without it RUF100 calls their `noqa` dead and **autofix erases the whole comment,
+    reason text included**. Add to that list whenever you write a `noqa` for an unselected
+    rule; do not silence RUF100 itself.
+  - `BLE001` does **not** fire when the handler re-raises or logs with
+    `logging.exception()` / `exc_info=True`. So a `# noqa: BLE001` on a well-handled
+    `except Exception` is dead weight, and RUF100 will say so. Fix the handler, don't
+    annotate it.
 - Not yet gated: Playwright e2e execution (port mismatch + missing globalSetup).
   Typecheck-only for that.
 

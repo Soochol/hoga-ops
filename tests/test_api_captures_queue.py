@@ -239,7 +239,7 @@ async def test_worker_defers_when_inflight_collision(monkeypatch, tmp_path):
 
 # --- Task 7: POST /api/captures/items HTTP-level tests ----------------------
 
-import datetime as dt  # noqa: E402
+import datetime as dt
 
 
 def _build_test_app(monkeypatch, tmp_path):

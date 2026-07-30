@@ -83,7 +83,9 @@ class ProgramTradeCollector:
         while True:
             try:
                 await self.run_once()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — 수집 루프의 감독자. 한 사이클의 어떤
+                # 예외도 루프를 죽이면 안 된다(죽으면 수집이 조용히 멈춘다). 삼키는 게
+                # 아니라 _record_cycle_error 가 분류해 상태로 노출한다.
                 self._record_cycle_error(e)
             await asyncio.sleep(self._poll_interval_s)
 
@@ -125,7 +127,7 @@ class ProgramTradeCollector:
                     rows=[row],
                     observed_at_ms=observed_at_ms,
                 )
-            except Exception as e:  # noqa: BLE001 — per-code failures must stay local.
+            except Exception as e:  # per-code failures must stay local.
                 policy = classify_live_error(e)
                 self.status.last_error = f"{code}: {format_live_error(e)}"
                 self.status.last_error_kind = policy.kind

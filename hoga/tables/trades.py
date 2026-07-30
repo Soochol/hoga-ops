@@ -149,7 +149,7 @@ def write_parquet(trades: Iterable[Trade], path: Path) -> None:
         for field in PARQUET_SCHEMA
     }
     from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        atomic_write_parquet_table,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        atomic_write_parquet_table,
     )
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
@@ -167,7 +167,7 @@ def write_parquet_frame(df: pl.DataFrame, path: Path) -> None:
         .cast(PARQUET_SCHEMA)
     )
     from hoga.api._atomic_write import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        atomic_write_parquet_table,  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        atomic_write_parquet_table,
     )
     atomic_write_parquet_table(path, table)
 

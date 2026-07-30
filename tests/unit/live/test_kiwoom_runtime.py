@@ -47,4 +47,4 @@ def test_parse_expiry_expires_dt():
 def test_parse_expiry_falls_back_to_expires_in():
     exp = KiwoomTokenProvider._parse_expiry({"expires_in": 3600})
     now = datetime.now(KIWOOM_KST)
-    assert 3500 < (exp - now).total_seconds() < 3700  # noqa: PLR2004
+    assert 3500 < (exp - now).total_seconds() < 3700

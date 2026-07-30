@@ -102,7 +102,8 @@ async def build_intraday_overlay(
                 cooldown_scope="quotes:KRX",
                 fetch_fn=lambda client: client.fetch_multi_price(list(unique_codes)),
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 — 업스트림(KIS) 경계. 삼키는 게 아니라
+            # intraday_quote_fetch_failed 로 응답에 실어 프론트가 표시한다.
             return _empty(["intraday_quote_fetch_failed"])
 
         rows = []

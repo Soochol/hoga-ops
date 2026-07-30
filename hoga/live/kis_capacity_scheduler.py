@@ -209,7 +209,7 @@ class KisCapacityScheduler:
             for key, priority in self._queued_priorities.items()
         )
 
-    async def _worker(self) -> None:  # noqa: PLR0912, PLR0915
+    async def _worker(self) -> None:  # noqa: PLR0912
         while True:
             request = await self._queue.get()
             if request.future.done():

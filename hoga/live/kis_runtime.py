@@ -157,7 +157,7 @@ def _reload_env_for_retry() -> None:
     guard, any test reaching the retry path re-loads the developer's REAL
     .env and silently un-does monkeypatch.delenv creds isolation."""
     from hoga.env import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        load_env,  # late import: keeps module import light  # noqa: PLC0415 — 지연 import(순환/heavy)
+        load_env,  # late import: keeps module import light
     )
 
     load_env()
