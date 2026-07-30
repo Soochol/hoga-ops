@@ -140,15 +140,10 @@
   --qty-ask: var(--price-down);
   --qty-bid: var(--price-up);
 
-  /* Source-identity chips (ADR-0039) — provenance, not UI/status/price. Hand-edited (color refs, not size). */
-  --source-hogaplay-bg: var(--bg-card);
-  --source-hogaplay-border: var(--fg-dimmer);
-  --source-kis-live-bg: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
+  /* Source identity (ADR-0039) — provenance, not UI/status/price. Hand-edited (color refs, not size).
+     원래 소스별 bg/border 8개였으나 SourceChip 제거(2026-07-31)로 7개가 죽어 정리했다.
+     kis_live border만 남는다 — calendarStatus.ts 의 캡처 배지 색이 쓴다. */
   --source-kis-live-border: var(--accent);
-  --source-kis-api-bg: color-mix(in srgb, var(--warn) 12%, var(--bg-card));
-  --source-kis-api-border: var(--warn);
-  --source-screener-daily-bg: color-mix(in srgb, var(--success) 12%, var(--bg-card));
-  --source-screener-daily-border: var(--success);
 
   /* BEGIN AUTO-GENERATED (size + radius + layout) — regenerate via npm run gen:tokens */
   /* ───── Typography sizes (rem-based) ───── */

@@ -428,15 +428,17 @@ Layout and source-identity tokens beyond the core scale. The Right Rail tokens (
 
 **소비처 없는 토큰은 정의째 삭제한다** — 정의만 남은 토큰은 "이 값이 화면에 나타난다"고 오독되기 때문. 2026-07-29 (#916) 에 `--h-pricestrip`(시세 스트립 폐지)·`--h-tab`·`--h-tab-secondary`·`--h-orderbook-row`·`--combobox-min-w` 5개를 삭제했다. 판정은 `--token-name` grep 만으로 하지 말 것 — `TAILWIND_THEME` 이 토큰을 유틸리티로도 매핑하므로(`--h-tab` → `className="h-tab"`) **CSS 변수명과 Tailwind 클래스명 양쪽**을 봐야 한다. 삭제해도 Tailwind 기본 스케일이 승계하지 않는 이름이라 무음 회귀는 없다(`font-mono` 별칭을 남긴 이유와 대비 — 그쪽은 기본 스택이 승계한다). `usage` 문자열은 `npm run gen:tokens` 로 `tokens.css` 주석에 그대로 찍히므로, 고칠 때는 `design-tokens.ts` 를 고치고 재생성해야 한다.
 
-**Source identity chips** — neither UI state nor status nor price direction, but data provenance.
-A fourth category limited to identifying which capture source rendered a given segment.
+**Source identity** — neither UI state nor status nor price direction, but data provenance.
+A fourth category limited to identifying which capture source produced the data.
 
 | Token | Value | Use |
 |---|---|---|
-| `--source-hogaplay-bg` | `var(--bg-card)` | hogaplay-sourced segment chip background |
-| `--source-hogaplay-border` | `var(--fg-dimmer)` | hogaplay-sourced segment chip border |
-| `--source-kis-live-bg` | `color-mix(in srgb, var(--accent) 12%, var(--bg-card))` | kis_live-sourced segment chip background |
-| `--source-kis-live-border` | `var(--accent)` | kis_live-sourced segment chip border |
+| `--source-kis-live-border` | `var(--accent)` | kis_live 출처 표식 — 캘린더 캡처 배지 (`capture/calendarStatus.ts`) |
+
+*소스별 `-bg`/`-border` 8개였으나 2026-07-31 에 7개를 삭제했다.* 이 토큰들은 `SourceChip` 전용이었고,
+그 칩을 얹던 `LiveStatusBar` 가 #865 에서 폐지되면서 컴포넌트가 죽은 채 남아 있었다(참조는 자기 테스트뿐).
+`-border` 4개는 그보다 앞선 #639 (2026-07-15 borderless 전환) 부터 이미 죽어 있었다 — 칩이 `-bg` 만 썼다.
+위의 "소비처 없는 토큰은 정의째 삭제한다" 규칙을 적용한 결과다.
 
 ## Copy tone (Stage 9)
 

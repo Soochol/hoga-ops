@@ -38,8 +38,8 @@ test.describe('/live smoke', () => {
     // Header surfaces the selected code (창 제목이 "고영(098460)").
     await expect(page.getByText('098460').first()).toBeVisible();
     // **소스 배지 단언을 걷어냈다.** 배지를 얹던 상태바가 #865
-    // ("종목 식별 라벨을 상태바→차트 창 헤더로 이관, 상태바 폐지")에서 없어졌고,
-    // `SourceChip` 은 지금 프로덕션 사용처가 0인 죽은 컴포넌트다(자기 테스트만 참조).
+    // ("종목 식별 라벨을 상태바→차트 창 헤더로 이관, 상태바 폐지")에서 없어졌다.
+    // 남아 있던 `SourceChip`(사용처 0, 자기 테스트만 참조)은 2026-07-31 에 삭제했다.
 
     // Chart root mounts (containerRef parent — present whenever the LivePage
     // selected-symbol branch renders).
