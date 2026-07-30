@@ -63,6 +63,42 @@ describe('pickProgramTradePoint', () => {
     // 같은 날 안에서는 정상 floor.
     expect(pickProgramTradePoint(pts, T0 + 2000)?.t).toBe(T0 + 1000);
   });
+
+  describe('todayKst 오늘 스코프 (거래원식 latest 리셋)', () => {
+    // 마지막 점은 T0 의 날(20260721). "다음날 아침" = todayKst 를 하루 뒤로.
+    const pts = [point(T0, 1), point(T0 + 1000, 2)];
+    const LAST_DAY = '20260721';
+    const NEXT_DAY = '20260722';
+
+    it('keeps the last point in latest mode when it is from today', () => {
+      expect(pickProgramTradePoint(pts, null, LAST_DAY)?.t).toBe(T0 + 1000);
+    });
+
+    it('returns null in latest mode when the last point is from a previous day', () => {
+      // 새날 아침(오늘 관측 0건): 전일 마감 누적이 현재값처럼 남지 않는다.
+      expect(pickProgramTradePoint(pts, null, NEXT_DAY)).toBeNull();
+    });
+
+    it('still floors to a past day under an explicit cursor (hover unaffected)', () => {
+      // 오늘 스코프는 latest 전용 — 차트 크로스헤어로 전일을 짚으면 그대로 나온다.
+      expect(pickProgramTradePoint(pts, T0 + 500, NEXT_DAY)?.t).toBe(T0);
+    });
+
+    it('keeps the same-day future clamp regardless of todayKst', () => {
+      // 전일 뷰에서 마지막 관측 이후(그 날 마감 후) 호버 — 그 날 마지막 값 고정.
+      expect(pickProgramTradePoint(pts, T0 + 2000, NEXT_DAY)?.t).toBe(T0 + 1000);
+    });
+
+    it('blocks the cross-day future clamp when the last point is not today', () => {
+      // 커서가 오늘(다음날) 칸인데 마지막 점은 전일 — 클램프 경로로도 전일이
+      // 새지 않는다(latest 와 같은 오늘 스코프).
+      expect(pickProgramTradePoint(pts, T0 + DAY_MS, NEXT_DAY)).toBeNull();
+    });
+
+    it('leaves the cross-day clamp intact without todayKst (/study semantics)', () => {
+      expect(pickProgramTradePoint(pts, T0 + DAY_MS, null)?.t).toBe(T0 + 1000);
+    });
+  });
 });
 
 describe('buildTimeGapSegments', () => {
@@ -110,6 +146,21 @@ describe('ProgramTradeSummaryCard — render states', () => {
     // 커서 → 첫 point (1억).
     expect(screen.getByText('+1억')).toBeInTheDocument();
     expect(screen.getByText('+10')).toBeInTheDocument();
+  });
+
+  it('shows empty state in latest mode when the series has no today point', () => {
+    // 새날 아침: 번들엔 전일 시리즈만 있다 — 전일 마감 누적(15:29 값)이 현재값처럼
+    // 렌더되지 않고 거래원 창("거래원 정보 없음")과 같은 빈 상태로 리셋된다.
+    const series = seriesOf([point(T0, 100_000_000), point(T0 + 1000, 200_000_000)]);
+    render(<ProgramTradeSummaryCard series={series} todayKst="20260722" />);
+    expect(screen.getByText(/프로그램 순매수 데이터 없음/)).toBeInTheDocument();
+    expect(screen.queryByTestId('program-sparkline')).toBeNull();
+  });
+
+  it('renders normally in latest mode when the last point is from today', () => {
+    const series = seriesOf([point(T0, 100_000_000, { net_qty: 10 })]);
+    render(<ProgramTradeSummaryCard series={series} todayKst="20260721" />);
+    expect(screen.getByText('+1억')).toBeInTheDocument();
   });
 
   it('shows the 보간 label only when the picked point has gap_risk', () => {

@@ -22,12 +22,18 @@ type Props = {
   /** 당일 분봉 종가(같은 번들의 candles). 순매수 곡선 위에 dim 참조선으로
    *  오버레이한다. 여러 날이 섞여 와도 카드가 anchorT 날짜로 잘라 쓴다. */
   closePoints?: readonly ProgramClosePoint[] | null;
+  /** 오늘(KST YYYYMMDD). 주어지면 latest 모드가 거래원 창과 같은 오늘 스코프로
+   *  동작한다 — 마지막 점이 오늘이 아니면(새날 아침, 전일 마감 누적) 빈 상태.
+   *  /live 데이터 창만 전달하고 /study(과거 저장뷰)는 생략해 기존 "마지막 점 =
+   *  latest" 를 유지한다. */
+  todayKst?: string | null;
 };
 
 export default function ProgramTradeSummaryCard({
   series,
   cursorMs = null,
   closePoints = null,
+  todayKst = null,
 }: Props) {
   const points = series?.points ?? [];
   // 스파크라인 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
@@ -35,7 +41,7 @@ export default function ProgramTradeSummaryCard({
   // 수량(pickProgramTradePoint)까지 함께 호버 위치를 따라간다.
   const [hoverMs, setHoverMs] = useState<number | null>(null);
   const effectiveCursor = hoverMs ?? cursorMs;
-  const point = pickProgramTradePoint(points, effectiveCursor);
+  const point = pickProgramTradePoint(points, effectiveCursor, todayKst);
 
   if (!point) {
     return (
@@ -383,6 +389,7 @@ function amountOnDrawnLineAt(pts: readonly SparkPoint[], cursorMs: number): numb
 export function pickProgramTradePoint(
   points: readonly ProgramTradePoint[],
   cursorMs: number | null,
+  todayKst: string | null = null,
 ): ProgramTradePoint | null {
   const last = points.length > 0 ? points[points.length - 1] : null;
   if (last == null) return null;
@@ -390,7 +397,18 @@ export function pickProgramTradePoint(
   // 고정 — 거래원·호가가 미래 whitespace 에서 latest 로 복귀하는 것과 일관.
   // 이 클램프가 없으면 아래 floor 가 "다음날 이하 최대 = 전날 마지막 점"을 집어
   // 전날 값이 새어나온다(병합 번들이 여러 날을 담기 때문).
-  if (cursorMs === null || cursorMs >= last.t) return last;
+  if (cursorMs === null || cursorMs >= last.t) {
+    // 커서가 마지막 관측과 같은 KST 날짜(장중·장 마감 후 미래 whitespace)면
+    // 오늘 스코프와 무관하게 최신값 고정 — 전일 캔들 뒤쪽 호버도 그 날 마지막
+    // 값을 읽는다(floor 의 날짜 경계 가드와 같은 "같은 날" 규칙).
+    if (cursorMs !== null && realMsToYyyymmdd(last.t) === realMsToYyyymmdd(cursorMs)) {
+      return last;
+    }
+    // 오늘 스코프(거래원 latest 와 같은 의미론, ADR-0044): todayKst 가 주어지면
+    // 마지막 점이 오늘일 때만 latest 로 인정한다 — 새날 아침(오늘 관측 0건)에
+    // 전일 마감 누적이 현재값처럼 남는 것을 막는다.
+    return todayKst === null || realMsToYyyymmdd(last.t) === todayKst ? last : null;
+  }
   for (let i = points.length - 1; i >= 0; i -= 1) {
     const p = points[i];
     if (p != null && p.t <= cursorMs) {
