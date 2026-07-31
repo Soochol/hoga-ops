@@ -532,7 +532,12 @@ async def promote_one(
     # kis_live/hogaplay JSONL엔 candle kind가 없어 candles=[] → 기존 소스 동작 불변.
     if candles:
         _atomic_write_table(write_candles_parquet, candles, target / "candles.parquet")
-    meta_path.write_text(json.dumps(meta, indent=2))
+    # atomic_write_json 이어야 한다 — 바로 위 today 경로(:476)와 같은 계약이다.
+    # meta.json 은 캡처 완료 신호이고 events.py 가 이 파일의 create/modify 를 인벤토리
+    # 이벤트로 발행하므로, 반쪽 쓰기가 곧 잘못된 완료 이벤트다(atomic_write 모듈
+    # docstring 이 지목하는 바로 그 사례). write_text 는 truncate 후 기록이라
+    # 그 사이에 읽은 독자가 빈/깨진 JSON 을 본다.
+    atomic_write_json(meta_path, meta, indent=2)
     _log.info(
         "live.promote.done code=%s date=%s row_counts=%s",
         code, date, meta["row_counts"],
