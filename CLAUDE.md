@@ -109,7 +109,7 @@ Notes:
 - Run vitest from `frontend/`, never the repo root — the root resolves a different vitest
   that runs without jsdom and reports a full suite of false `document is not defined`
   failures.
-- `@pytest.mark.wallclock` marks the 9 backend tests that assert on elapsed time. They run
+- `@pytest.mark.wallclock` marks the backend tests that depend on elapsed time. They run
   locally by default; CI runs them in a separate non-blocking job because they measure
   scheduling jitter, not behavior. Before adding a new one, try to express the property
   deterministically (call counts) instead — that's what PR #516 did for the frontend.

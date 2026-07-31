@@ -11,7 +11,7 @@
 #   - 실행 시간: vitest 4,4xx건 38초 / pytest 2,8xx건 115초 / vite build 2초.
 #     "길어진다" 는 성립하지 않는다.
 #   - 간헐 실패: 프론트 벽시계 perf 단언은 PR #516(2026-07-09)에서 이미 결정론적
-#     불변식으로 대체됐다. 남은 벽시계 의존은 백엔드 9개 함수뿐이라 전부
+#     불변식으로 대체됐다. 남은 벽시계 의존은 백엔드 십여 개 함수뿐이라 전부
 #     `@pytest.mark.wallclock` 으로 표시하고 블로킹 잡에서 제외했다.
 #
 # 그동안의 대가는 컸다. 테스트 7천여 건이 전부 초록인데 CI 는 그중 0건을 실행했고,
@@ -122,7 +122,7 @@ jobs:
       # 주석에 있다 — 요지는 **hoga/ 에서는 규칙을 하나도 끄지 않았다**는 것이다.
       - run: uv run --extra dev ruff check .
 
-      # -m 'not wallclock' — 경과시간을 단언하는 9개 함수는 아래 잡으로 분리했다.
+      # -m 'not wallclock' — 경과시간에 의존하는 함수는 아래 잡으로 분리했다.
       - run: uv run --extra dev pytest -q -m 'not wallclock'
 
   backend-wallclock:

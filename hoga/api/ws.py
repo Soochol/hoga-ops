@@ -8,6 +8,7 @@ Data sources are unchanged — this is a wire-transport layer only.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Callable
 
@@ -114,33 +115,36 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
         recv_task = asyncio.create_task(receiver())
         try:
             await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
-        except asyncio.CancelledError:
-            # The endpoint task itself was cancelled (e.g. ASGI server / test-client
-            # teardown tearing the connection down out from under us, rather than a
-            # clean client disconnect). Swallow after the finally cleanup so the
-            # cancellation doesn't propagate to the caller as an error — teardown is
-            # not a failure. (Fixes a CancelledError leaking out of Starlette's
-            # TestClient portal under load.)
-            pass
         finally:
+            # 이 블록은 **이 태스크가 취소된 상태로** 진입할 수 있다(ASGI 서버 종료,
+            # TestClient teardown). 그때는 여기서 하는 첫 await 가 즉시 취소를 다시
+            # 받는다 — 취소는 스코프가 끝날 때까지 재전달되기 때문이다. 그러니
+            # **동기 정리를 전부 await 앞에 둔다**. 순서를 되돌리면 취소 경로에서
+            # bus/버퍼 구독이 통째로 샌다(이전 판의 실제 결함).
             for t in (send_task, recv_task, bus_task):
                 t.cancel()
             subs = list(code_subs.items())
             for _code, (_q, task, _v) in subs:
                 task.cancel()
-            await asyncio.gather(
-                send_task, recv_task, bus_task,
-                *(task for _code, (_q, task, _v) in subs),
-                return_exceptions=True,
-            )
+            bus.unsubscribe(bus_q)
             buf = get_buffer()
             if buf is not None:
                 for code, (q, _task, _v) in subs:
                     buf.unsubscribe(code, q)
-            # ADR-0067/PR-C: ghost-polling prevention — unsubscribe all subscribed
-            # codes from the REST poller + 키움 표시셋 lifecycle on disconnect.
-            for code, (_q, _task, venues) in subs:
-                await lifecycle.on_view_unsubscribe(code, venues, ref=view_ref)
-            bus.unsubscribe(bus_q)
+            # 남은 정리는 await 가 필요하다. 취소 중이면 첫 await 에서 끊기므로
+            # 여기서 삼킨다 — 삼켜도 try 본문의 취소는 finally 종료와 함께 그대로
+            # 전파되므로 태스크 경계에서 취소를 감추지 않는다. 취소를 감추면
+            # anyio 취소 스코프의 uncancel 회계가 어긋나 CancelledError 가 ASGI
+            # 호출자 밖으로 새어 나간다(차단 게이트 위 flake 의 원인이었다).
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.gather(
+                    send_task, recv_task, bus_task,
+                    *(task for _code, (_q, task, _v) in subs),
+                    return_exceptions=True,
+                )
+                # ADR-0067/PR-C: ghost-polling prevention — unsubscribe all subscribed
+                # codes from the REST poller + 키움 표시셋 lifecycle on disconnect.
+                for code, (_q, _task, venues) in subs:
+                    await lifecycle.on_view_unsubscribe(code, venues, ref=view_ref)
 
     return router
