@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
 import type { DepthPeakValue } from '../api/screener';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
@@ -58,6 +60,14 @@ function DepthBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides }) {
 }
 
 const COLS = 'grid-cols-[3.5rem_1fr_4rem_8.5rem_6rem_2.4rem]';
+
+/** 이 줄 수를 넘으면 가상화한다. CaptureQueue 의 임계와 같은 값 — 그보다 작으면
+ *  DOM 을 다 그려도 재렌더가 10ms 안쪽이고(실측 100행 8ms), 가상화는 스크롤 위치
+ *  복원·측정 같은 부수 복잡도를 들여온다. 백엔드는 `LIMIT 1000` 이라 상한이 있다. */
+const VIRTUALIZE_THRESHOLD = 200;
+/** 행 1개의 초기 추정 높이(px). 실제 높이는 measureElement 로 되읽는다 —
+ *  총잔량 배지가 붙은 행은 더 높다. */
+const ROW_ESTIMATE_PX = 28;
 /** Won → 억 (100M), rounded to whole 억 for the table — matches the filter
  *  unit (거래대금 하한 is entered in 억). */
 const toEok = (won: number) => Math.round(won / 1e8).toLocaleString('ko-KR');
@@ -100,13 +110,82 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
   );
 }
 
+/** 행 하나 — 평면 렌더와 가상 렌더가 **같은 마크업**을 쓰도록 뽑아냈다.
+ *  둘이 갈라지면 가상화가 켜지는 임계(200행) 위아래에서 화면이 달라진다. */
+function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef }: {
+  r: ScreenerRowLive;
+  isMember: (code: string) => boolean;
+  onActivate: Props['onActivate'];
+  depthValues?: Record<string, DepthPeakValue> | null;
+  depthSides?: DepthSides;
+  style?: React.CSSProperties;
+  measureRef?: (el: HTMLElement | null) => void;
+}) {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(r.code, r.name, e); }
+  };
+  return (
+    <DataTableRow role="button" tabIndex={0} aria-label={`${r.name} ${r.code} 호가창 열기`}
+      rowRef={measureRef} style={style}
+      onClick={(e) => onActivate(r.code, r.name, e)} onKeyDown={onKeyDown}
+      columns={COLS}
+      className="cursor-pointer outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
+      <span className="font-data tabular-nums text-fg-dim">{r.code}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate">{r.name}</span>
+        {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
+      </span>
+      <span className="font-data text-xs text-fg-dim">{r.market}</span>
+      {/* 동시호가 중엔 예상체결가/등락률로 대체('예' 마커, QuoteRow·HeatmapRow 와
+          동일 규칙) — 창 밖·체결 후엔 expected_* 가 사라져 자동 복귀. */}
+      {r.expected_price != null ? (
+        // 마감 동시호가엔 확정가가 예상가에 덮인다 — QuoteRow 와 동일하게
+        // 직전 체결가를 title 로 보존한다(표에도 두 숫자를 나란히 둘 폭이 없다).
+        <span
+          title={r.price != null
+            ? `예상 ${r.expected_price.toLocaleString('ko-KR')} · 직전 체결 ${r.price.toLocaleString('ko-KR')}`
+            : undefined}
+          className={`font-data tabular-nums text-right ${r.expected_change_pct == null ? '' : priceDirClass(r.expected_change_pct)}`}
+        >
+          <span className="mr-0.5 text-[10px] text-fg-dimmer">예</span>
+          {`${r.expected_price.toLocaleString('ko-KR')} (${formatPct(r.expected_change_pct ?? null)})`}
+        </span>
+      ) : (
+        <span className={`font-data tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
+          {r.price != null ? `${r.price.toLocaleString('ko-KR')} (${formatPct(r.change_pct)})` : '—'}
+        </span>
+      )}
+      <span className="font-data tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
+      <span className="flex items-center justify-end gap-2">
+        <WatchlistHeartButton code={r.code} name={r.name} isMember={isMember(r.code)} variant="row" />
+      </span>
+    </DataTableRow>
+  );
+}
+
 export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false, depthValues, depthSides }: Props) {
   // 훅은 표 전체에서 **한 번만** 부른다(useWatchlistMembership 계약: "ONCE per component,
   // not per row"). 행마다 부르던 시절엔 1,000행 = react-query 옵저버 1,000개였다.
   // 실측(재렌더): 500행 44 → 30 ms, 1,000행 65 → 59 ms.
   const { isMember } = useWatchlistMembership();
+
+  // 가상화(2단계). 1단계(훅 끌어올리기)로 1,000행 65→59ms 였고, 남은 비용은 **행 자체의
+  // 렌더·DOM** 이라 화면 밖 행을 안 그리는 것 말고는 줄일 방법이 없다.
+  const shellRef = useRef<HTMLDivElement>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const virtualize = rows.length > VIRTUALIZE_THRESHOLD;
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => shellRef.current,
+    estimateSize: () => ROW_ESTIMATE_PX,
+    overscan: 8,
+    // 헤더가 스크롤 요소 안에 있으므로 행 영역의 시작 오프셋을 알려줘야 한다.
+    scrollMargin: rowsRef.current?.offsetTop ?? 0,
+  });
+
   return (
     <DataTableShell
+      scrollRef={shellRef}
       minWidth="640px"
       className={embedded ? 'flex-1 border-0 rounded-none bg-transparent' : ''}
     >
@@ -116,54 +195,47 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
         ))}
         <span className="text-right text-xs font-semibold uppercase text-fg-dimmer">액션</span>
       </DataTableHeader>
-      <div className="flex-1 min-h-0">
-        {rows.length === 0 ? (
-          // sticky left-0: 빈 상태는 DataTableShell 의 min-width(640px) 안에 있어서,
-          // 셸이 그보다 좁으면(반응형 바닥 부근) 가로 스크롤 밖으로 밀려 잘렸다.
-          // 컬럼을 지킬 이유가 없는 콘텐츠이므로 스크롤포트 왼쪽에 붙여 항상 보이게 한다.
+      {rows.length === 0 ? (
+        // sticky left-0: 빈 상태는 DataTableShell 의 min-width(640px) 안에 있어서,
+        // 셸이 그보다 좁으면(반응형 바닥 부근) 가로 스크롤 밖으로 밀려 잘렸다.
+        // 컬럼을 지킬 이유가 없는 콘텐츠이므로 스크롤포트 왼쪽에 붙여 항상 보이게 한다.
+        <div className="flex-1 min-h-0">
           <EmptyState align="start" className="sticky left-0">조건에 맞는 종목이 없습니다.</EmptyState>
-        ) : rows.map((r) => {
-          const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(r.code, r.name, e); }
-          };
-          return (
-            <DataTableRow key={r.code} role="button" tabIndex={0} aria-label={`${r.name} ${r.code} 호가창 열기`}
-              onClick={(e) => onActivate(r.code, r.name, e)} onKeyDown={onKeyDown}
-              columns={COLS}
-              className="cursor-pointer outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
-              <span className="font-data tabular-nums text-fg-dim">{r.code}</span>
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="truncate">{r.name}</span>
-                {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
-              </span>
-              <span className="font-data text-xs text-fg-dim">{r.market}</span>
-              {/* 동시호가 중엔 예상체결가/등락률로 대체('예' 마커, QuoteRow·HeatmapRow 와
-                  동일 규칙) — 창 밖·체결 후엔 expected_* 가 사라져 자동 복귀. */}
-              {r.expected_price != null ? (
-                // 마감 동시호가엔 확정가가 예상가에 덮인다 — QuoteRow 와 동일하게
-                // 직전 체결가를 title 로 보존한다(표에도 두 숫자를 나란히 둘 폭이 없다).
-                <span
-                  title={r.price != null
-                    ? `예상 ${r.expected_price.toLocaleString('ko-KR')} · 직전 체결 ${r.price.toLocaleString('ko-KR')}`
-                    : undefined}
-                  className={`font-data tabular-nums text-right ${r.expected_change_pct == null ? '' : priceDirClass(r.expected_change_pct)}`}
-                >
-                  <span className="mr-0.5 text-[10px] text-fg-dimmer">예</span>
-                  {`${r.expected_price.toLocaleString('ko-KR')} (${formatPct(r.expected_change_pct ?? null)})`}
-                </span>
-              ) : (
-                <span className={`font-data tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
-                  {r.price != null ? `${r.price.toLocaleString('ko-KR')} (${formatPct(r.change_pct)})` : '—'}
-                </span>
-              )}
-              <span className="font-data tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
-              <span className="flex items-center justify-end gap-2">
-                <WatchlistHeartButton code={r.code} name={r.name} isMember={isMember(r.code)} variant="row" />
-              </span>
-            </DataTableRow>
-          );
-        })}
-      </div>
+        </div>
+      ) : virtualize ? (
+        // 가상 경로 — 스크롤 요소는 **셸 자신**이다(`scrollRef`). 안쪽에 새 스크롤
+        // 영역을 만들지 않으므로 헤더는 지금처럼 함께 스크롤된다(UX 불변).
+        // `scrollMargin` 이 헤더 높이만큼의 오프셋을 보정한다.
+        // **`flex-1 min-h-0` 을 쓰면 안 된다** — 스페이서의 명시 높이를 flex 가 덮어
+        // 셸이 스크롤되지 않는다(실측: style 28000px 인데 실제 403px, scrollHeight ==
+        // clientHeight, 14행 뒤로 도달 불가). `shrink-0` 로 높이를 지킨다.
+        <div ref={rowsRef} data-testid="screener-result-rows" data-virtualized="true"
+          className="shrink-0 relative"
+          style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((vi) => (
+            <ResultRow
+              key={rows[vi.index].code}
+              r={rows[vi.index]}
+              isMember={isMember}
+              onActivate={onActivate}
+              depthValues={depthValues}
+              depthSides={depthSides}
+              measureRef={virtualizer.measureElement}
+              style={{
+                position: 'absolute', top: 0, left: 0, width: '100%',
+                transform: `translateY(${vi.start - virtualizer.options.scrollMargin}px)`,
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div data-testid="screener-result-rows" data-virtualized="false" className="flex-1 min-h-0">
+          {rows.map((r) => (
+            <ResultRow key={r.code} r={r} isMember={isMember} onActivate={onActivate}
+              depthValues={depthValues} depthSides={depthSides} />
+          ))}
+        </div>
+      )}
     </DataTableShell>
   );
 }

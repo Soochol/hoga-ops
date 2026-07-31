@@ -90,3 +90,32 @@ describe('ResultTable', () => {
     expect(within(row).getByText('—')).toBeInTheDocument();
   });
 });
+
+describe('가상화 임계', () => {
+  const mkRows = (n: number): ScreenerRowLive[] =>
+    Array.from({ length: n }, (_, i) => ({
+      code: String(100000 + i), name: `종목${i}`, market: 'KOSPI',
+      price: 1000 + i, change_pct: 0, trade_value_won: 1e10,
+    } as ScreenerRowLive));
+
+  it('임계 이하면 평면 렌더 — 모든 행이 DOM 에 있다', () => {
+    const { container } = render(withClient(
+      <ResultTable rows={mkRows(5)} onActivate={vi.fn()} />,
+    ));
+    expect(container.querySelector('[data-testid="screener-result-rows"]')!
+      .getAttribute('data-virtualized')).toBe('false');
+    expect(container.querySelectorAll('[aria-label*="호가창 열기"]').length).toBe(5);
+  });
+
+  it('임계를 넘으면 가상 렌더로 전환한다', () => {
+    // jsdom 에는 레이아웃이 없어 **행 수**는 검증할 수 없다(가상화기가 0행을 그린다).
+    // 여기서는 전환 여부만 보고, 실제 렌더·스크롤·잘림은 e2e 가 본다
+    // (`screener-results-virtualized.spec.ts`). CaptureQueue 의 가상화 테스트도 같은
+    // 이유로 `data-virtualized` 속성만 확인한다.
+    const { container } = render(withClient(
+      <ResultTable rows={mkRows(201)} onActivate={vi.fn()} />,
+    ));
+    expect(container.querySelector('[data-testid="screener-result-rows"]')!
+      .getAttribute('data-virtualized')).toBe('true');
+  });
+});
