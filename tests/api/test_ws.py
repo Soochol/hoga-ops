@@ -4,9 +4,13 @@ Exercise the /api/ws endpoint end-to-end through Starlette's TestClient:
 global EventBus events are auto-delivered, per-code subscribe acks then streams
 code-tagged live frames, and explicit unsubscribe tears the subscription down.
 """
+import asyncio
 import threading
+from collections.abc import MutableMapping
+from typing import Any
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -69,8 +73,11 @@ def test_heartbeat_on_idle():
         frame = ws.receive_json()
         assert frame == {"ch": "heartbeat"}
         # Close from the client side before leaving the context so the server's
-        # rapid (50ms) heartbeat sender is torn down deterministically — avoids a
-        # CancelledError racing out of the portal on context exit (test-only flake).
+        # rapid (50ms) heartbeat sender is torn down deterministically.
+        # (이건 원래 "포털 밖으로 CancelledError 가 새는" flake 회피용이기도 했다.
+        # 그 원인은 엔드포인트 finally 쪽에서 고쳤으니 — 아래
+        # test_cancelled_teardown_releases_bus_subscription 참조 — 이제는 그냥
+        # 명시적 종료다.)
         ws.close()
 
 
@@ -316,3 +323,77 @@ def test_disconnect_calls_on_view_unsubscribe_for_all_subscribed_codes(monkeypat
         f"on_view_unsubscribe not called for both codes within 2 s; got {unsubscribed_codes!r}"
     )
     assert set(unsubscribed_codes) == {"005930", "000660"}
+
+
+# ── teardown 계약: 취소된 상태로 finally 에 들어와도 정리가 끝나야 한다 ────────
+
+
+async def _drive_raw_ws(app: FastAPI) -> asyncio.Task[None]:
+    """미들웨어 없이 /api/ws 엔드포인트를 생 ASGI 로 띄운 태스크를 돌려준다.
+
+    TestClient 로는 "취소가 finally 도중에 도착" 을 재현할 수 없다 — 항상
+    close 를 먼저 보내 정상 경로로 빠진다. 여기서는 클라이언트가 아무것도
+    보내지 않는 채로 태스크를 직접 cancel 해서 그 경로를 만든다.
+    """
+    inbox: asyncio.Queue[dict] = asyncio.Queue()
+    inbox.put_nowait({"type": "websocket.connect"})
+
+    async def receive() -> dict:
+        return await inbox.get()
+
+    async def send(_message: MutableMapping[str, Any]) -> None:
+        return None
+
+    scope = {
+        "type": "websocket", "asgi": {"version": "3.0"}, "http_version": "1.1",
+        "scheme": "ws", "path": "/api/ws", "raw_path": b"/api/ws", "query_string": b"",
+        "root_path": "", "headers": [], "client": ("testclient", 50000),
+        "server": ("testserver", 80), "subprotocols": [], "state": {},
+    }
+    return asyncio.create_task(app(scope, receive, send))
+
+
+async def _settle(predicate, *, limit: int = 200) -> bool:
+    """벽시계 없이 루프를 돌려 조건이 설 때까지 기다린다(횟수 상한만 둔다)."""
+    for _ in range(limit):
+        if predicate():
+            return True
+        await asyncio.sleep(0)
+    return predicate()
+
+
+async def test_cancelled_teardown_releases_bus_subscription():
+    """엔드포인트 태스크가 취소돼도 EventBus 구독이 반드시 해제된다.
+
+    이전 판은 finally 에서 `await asyncio.gather(...)` 를 **먼저** 했다.
+    `return_exceptions=True` 는 자식의 예외만 담는다 — await 하는 태스크 자신이
+    취소된 상태면 그 await 가 그대로 CancelledError 를 던지고, 뒤따르던
+    `bus.unsubscribe(bus_q)` 는 영영 실행되지 않았다(연결마다 큐가 샌다).
+    그래서 동기 정리를 전부 await 앞으로 옮겼다.
+    """
+    app, bus, _ = _make_app()
+    task = await _drive_raw_ws(app)
+
+    assert await _settle(lambda: len(bus.queues) == 1), (
+        f"엔드포인트가 버스를 구독하지 못했다: {bus.queues!r}"
+    )
+
+    # 취소를 **반복** 전달한다. 이게 실제 조건이다 — 이 엔드포인트를 취소하는
+    # 주체(Starlette TestClient / anyio 취소 스코프)는 `_deliver_cancellation`
+    # 으로 스코프가 끝날 때까지 매 루프 반복마다 다시 cancel 한다. 한 번만
+    # cancel 하면 finally 안의 두 번째 await 가 멀쩡히 완료돼 버그가 숨는다.
+    for _ in range(200):
+        if task.done():
+            break
+        task.cancel()
+        await asyncio.sleep(0)
+
+    with pytest.raises(asyncio.CancelledError):
+        # 취소는 전파돼야 한다. 삼키면 anyio 취소 스코프의 uncancel 회계가
+        # 어긋나 CancelledError 가 ASGI 호출자 밖으로 새어 나간다 — 차단 게이트
+        # 위 test_api_ws_inventory flake 의 원인이었다.
+        await task
+
+    assert bus.queues == set(), (
+        f"취소 경로에서 버스 구독이 샜다: {bus.queues!r}"
+    )
