@@ -3,7 +3,7 @@ import { shouldIgnoreEvent } from '../util/keyboard';
 import { useHeatmapGroupFlow } from '../api/heatmapGroupFlow';
 import {
   useHeatmap, useCreateHeatmapFolder, useReorderHeatmapEntries,
-  useRemoveFromHeatmap, useMoveHeatmapEntries,
+  useRemoveFromHeatmap, useMoveHeatmapEntries, useCopyHeatmapEntry,
 } from '../heatmap/useHeatmap';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
 import { useJumpToLive } from '../live/useJumpToLive';
@@ -31,7 +31,9 @@ export function Heatmap() {
   const { data, isLoading, error } = useHeatmap();
   const entries = useMemo(() => data?.entries ?? [], [data]);
   const folders = useMemo(() => data?.folders ?? [], [data]);
-  const codes = useMemo(() => entries.map((e) => e.code), [entries]);
+  // entries 는 등록 단위 — 한 종목이 여러 그룹에 등록되면 여러 행이다. 시세 조회는 코드
+  // 집합이므로 dedup(중복 코드를 그대로 넘기면 폴링 페이로드가 헛되이 커진다).
+  const codes = useMemo(() => [...new Set(entries.map((e) => e.code))], [entries]);
   const venue = useLiveVenueStore((s) => s.venue);
 
   const { quoteByCode, phase, dataUpdatedAt } = useLiveQuoteOverlay(codes, venue);
@@ -88,8 +90,15 @@ export function Heatmap() {
   const reorderEntriesM = useReorderHeatmapEntries();
   const removeM = useRemoveFromHeatmap();
   const moveM = useMoveHeatmapEntries();
+  const copyM = useCopyHeatmapEntry();
   const onReorder = (folderId: string, orderedCodes: string[]) =>
     reorderEntriesM.mutate({ folderId, orderedCodes });
+  // 그룹 간 드래그: 기본은 이동, Ctrl 유지면 복제(원본 그룹 등록 유지). 보드가 수정자
+  // 판정을 갖고 어느 콜백을 부를지 고른다 — 페이지는 커맨드만 제공한다.
+  const onDragMove = (code: string, fromFolderId: string, folderId: string) =>
+    moveM.mutate({ codes: [code], fromFolderId, folderId });
+  const onDragCopy = (code: string, name: string, folderId: string) =>
+    copyM.mutate({ code, name, folderId });
   // 행 우클릭 → 컨텍스트 메뉴(삭제·폴더이동, ADR-0068 G3). 분리 후 히트맵 편집의 단독 표면.
   const onRowMenu = (e: React.MouseEvent, code: string, name: string, folderId: string) => {
     e.preventDefault();
@@ -178,14 +187,18 @@ export function Heatmap() {
         <HeatmapBoard groups={visibleGroups} quoteByCode={quoteByCode}
           sortMode={sortMode} onPick={onPick}
           onReorder={isSearching ? undefined : onReorder} onRowMenu={onRowMenu}
+          onMove={onDragMove} onCopy={onDragCopy}
           onRowDragState={setIsRowDragging} flowByFolder={flowByFolder} query={query} />
+        {/* 제거·이동 모두 menu.folderId(우클릭한 행이 속한 그룹) 스코프 — 같은 종목이
+            다른 그룹에도 등록돼 있으면 그 등록은 건드리지 않는다. */}
         {menu && (
           <HeatmapRowMenu
             x={menu.x} y={menu.y} name={menu.name}
             folders={folders}
             currentFolderId={menu.folderId}
-            onRemove={() => removeM.mutate(menu.code)}
-            onMove={(folderId) => moveM.mutate({ codes: [menu.code], folderId })}
+            onRemove={() => removeM.mutate({ code: menu.code, folderId: menu.folderId })}
+            onMove={(folderId) =>
+              moveM.mutate({ codes: [menu.code], fromFolderId: menu.folderId, folderId })}
             onCollect={() => setCollectOne({ code: menu.code, name: menu.name })}
             onClose={() => setMenu(null)}
           />

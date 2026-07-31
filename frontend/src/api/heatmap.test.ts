@@ -3,6 +3,7 @@ import {
   getHeatmap,
   addToHeatmapFolder,
   removeFromHeatmap,
+  removeFromHeatmapFolder,
   moveHeatmapEntries,
   createHeatmapFolder,
   reorderHeatmapEntries,
@@ -54,12 +55,23 @@ describe('heatmap api client (independent of watchlist, ADR-0068)', () => {
     );
   });
 
-  it('moveHeatmapEntries POSTs codes + folder_id to /api/heatmap/move', async () => {
+  it('moveHeatmapEntries POSTs codes + from_folder_id + folder_id to /api/heatmap/move', async () => {
     vi.mocked(apiAction).mockResolvedValueOnce(undefined);
-    await moveHeatmapEntries(['005930', '003490'], 'f_0000000a');
+    await moveHeatmapEntries(['005930', '003490'], 'f_0000000b', 'f_0000000a');
     const [path, init] = vi.mocked(apiAction).mock.calls[0];
     expect(path).toBe('/api/heatmap/move');
-    expect(JSON.parse(init?.body as string)).toEqual({ codes: ['005930', '003490'], folder_id: 'f_0000000a' });
+    expect(JSON.parse(init?.body as string)).toEqual({
+      codes: ['005930', '003490'], from_folder_id: 'f_0000000b', folder_id: 'f_0000000a',
+    });
+  });
+
+  it('removeFromHeatmapFolder DELETEs the folder-scoped member path', async () => {
+    vi.mocked(apiAction).mockResolvedValueOnce(undefined);
+    await removeFromHeatmapFolder('003490', 'f_0000000a');
+    expect(apiAction).toHaveBeenCalledWith(
+      '/api/heatmap/folders/f_0000000a/members/003490',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
   });
 
   it('reorderHeatmapEntries PUTs folder_id + ordered_codes to /api/heatmap/reorder', async () => {

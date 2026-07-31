@@ -155,6 +155,9 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
 
     @router.delete("/{code}", status_code=204)
     async def remove_from_heatmap(code: CodePathParam) -> None:
+        """Unregister the code from EVERY group. The per-group surface is
+        DELETE /folders/{folder_id}/members/{code} — that is what the UI row
+        menu calls, since a code may now be registered in several groups."""
         try:
             await remove_entry(data_dir, code=code)
         except NotInHeatmapError as e:
@@ -163,6 +166,19 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
                 "message": f"Code {code} is not in the Heatmap.",
             }) from e
         await _refresh_storage_targets(data_dir, op="remove")
+
+    @router.delete("/folders/{folder_id}/members/{code}", status_code=204)
+    async def remove_heatmap_folder_member(folder_id: str, code: CodePathParam) -> None:
+        """Unregister the code from THIS group only — its registrations in
+        other groups stand."""
+        try:
+            await remove_entry(data_dir, code=code, folder_id=folder_id)
+        except NotInHeatmapError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "not_in_heatmap",
+                "message": f"Code {code} is not in heatmap folder {folder_id}.",
+            }) from e
+        await _refresh_storage_targets(data_dir, op="remove_member")
 
     @router.post("/folders", status_code=201, response_model=HeatmapFolderView)
     async def create_heatmap_folder(req: FolderCreateRequest) -> HeatmapFolderView:
@@ -221,12 +237,19 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
 
     @router.post("/move", status_code=204)
     async def move_heatmap_entries(req: HeatmapEntriesMoveRequest) -> None:
+        """Move registrations from one group to another. No storage resync: the
+        code SET is unchanged (move never adds or drops a code, only its group
+        membership) — unlike add/remove, which do change the set (ADR-0097)."""
         try:
-            await move_entries(data_dir, codes=req.codes, folder_id=req.folder_id)
+            await move_entries(data_dir, codes=req.codes,
+                               from_folder_id=req.from_folder_id, folder_id=req.folder_id)
         except FolderNotFoundError as e:
+            # e.args[0] 은 실제로 없는 쪽(source 일 수도, target 일 수도) — 요청의
+            # folder_id 를 그대로 쓰면 source 가 없는 경우 틀린 id 를 안내한다.
+            missing = e.args[0] if e.args else req.folder_id
             raise HTTPException(status_code=404, detail={
                 "code": "folder_not_found",
-                "message": f"Folder {req.folder_id} not found."}) from e
+                "message": f"Folder {missing} not found."}) from e
 
     @router.put("/reorder", status_code=204)
     async def reorder_heatmap_entries(req: EntriesReorderRequest) -> None:

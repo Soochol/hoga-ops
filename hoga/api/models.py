@@ -1100,10 +1100,15 @@ class EntriesRemoveRequest(BaseModel):
 
 
 class HeatmapEntry(BaseModel):
-    """One Code on the Heatmap. Mirrors WatchlistEntry MINUS the capture
-    markers (registered_at_kst_date / last_success_date) — the heatmap drives
-    no captures (ADR-0068). v3 (ADR-0112): folder_id is REQUIRED — every entry
-    belongs to a real folder; the 미분류(null) render-group no longer exists."""
+    """One Code IN ONE GROUP on the Heatmap. Mirrors WatchlistEntry MINUS the
+    capture markers (registered_at_kst_date / last_success_date) — the heatmap
+    drives no captures (ADR-0068). v3 (ADR-0112): folder_id is REQUIRED — every
+    entry belongs to a real folder; the 미분류(null) render-group no longer exists.
+
+    Entry identity is the PAIR ``(folder_id, code)``, not the code alone: one
+    Code may be registered in several groups at once (multi-group membership).
+    A Code is therefore no longer a key into ``entries`` — every command that
+    targets one registration (remove / move) must carry the folder too."""
 
     code: str = Field(pattern=CODE_PATTERN)
     name: str
@@ -1114,9 +1119,15 @@ class HeatmapEntry(BaseModel):
 class HeatmapEntriesMoveRequest(BaseModel):
     """POST /api/heatmap/move body. The watchlist's shared EntriesMoveRequest
     allows folder_id=null; the heatmap has no null group (ADR-0112), so the
-    wire itself rejects a null destination (422, not a silent reparent)."""
+    wire itself rejects a null destination (422, not a silent reparent).
+
+    ``from_folder_id`` is REQUIRED because a Code may now live in several groups
+    (multi-group membership): without the source group "move 005930 to X" would
+    be ambiguous — it could mean any of its registrations. Callers always know
+    the row they dragged, so the wire demands it rather than guessing."""
 
     codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+    from_folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
     folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
 
 
@@ -1147,6 +1158,22 @@ class HeatmapDocument(BaseModel):
                 raise ValueError(
                     f"entry {e.code} references unknown folder {e.folder_id}"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _unique_within_folder(self) -> HeatmapDocument:
+        """The same Code twice in the SAME group is still a bug — across groups
+        it is the feature (multi-group membership). Enforcing the pair keeps
+        per-folder commands (reorder_entries' ordered_codes, the drag ids)
+        keyed by code WITHIN a folder, which is what the whole UI assumes."""
+        seen: set[tuple[str, str]] = set()
+        for e in self.entries:
+            key = (e.folder_id, e.code)
+            if key in seen:
+                raise ValueError(
+                    f"entry {e.code} appears twice in folder {e.folder_id}"
+                )
+            seen.add(key)
         return self
 
 

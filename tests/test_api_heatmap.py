@@ -273,16 +273,28 @@ def test_folder_create_and_move_routes(tmp_path: Path):
     dst = client.post("/api/heatmap/folders", json={"name": "대형주"}).json()["id"]
     with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
         client.post(f"/api/heatmap/folders/{src}/members", json={"code": "005930"})
-    mv = client.post("/api/heatmap/move", json={"codes": ["005930"], "folder_id": dst})
+    mv = client.post("/api/heatmap/move", json={
+        "codes": ["005930"], "from_folder_id": src, "folder_id": dst})
     assert mv.status_code == 204
-    assert client.get("/api/heatmap").json()["entries"][0]["folder_id"] == dst
+    entries = client.get("/api/heatmap").json()["entries"]
+    # 이동이지 복제가 아니다 — 출발 그룹 등록은 사라진다.
+    assert [(e["code"], e["folder_id"]) for e in entries] == [("005930", dst)]
+
+
+def test_move_without_from_folder_is_rejected_422(tmp_path: Path):
+    """한 종목이 여러 그룹에 등록될 수 있으므로 출발 그룹 없는 이동은 어느 등록을 옮길지
+    정해지지 않는다 — 서버가 추측하는 대신 와이어에서 거절한다."""
+    r = TestClient(_app(tmp_path)).post(
+        "/api/heatmap/move", json={"codes": ["005930"], "folder_id": "f_0000000a"})
+    assert r.status_code == 422
 
 
 def test_move_to_null_folder_is_rejected_422(tmp_path: Path):
     """v3 wire contract: folder_id must be a real folder id — a null
     destination (the old 미분류) is a validation error, not a reparent."""
     r = TestClient(_app(tmp_path)).post(
-        "/api/heatmap/move", json={"codes": ["005930"], "folder_id": None})
+        "/api/heatmap/move",
+        json={"codes": ["005930"], "from_folder_id": "f_0000000a", "folder_id": None})
     assert r.status_code == 422
 
 
@@ -302,21 +314,98 @@ def test_folder_member_add_is_atomic_for_new_code(tmp_path: Path):
     assert [(e["code"], e["folder_id"], e["order"]) for e in entries] == [("005930", fid, 0)]
 
 
-def test_folder_member_add_moves_existing_code_without_duplicate(tmp_path: Path):
+def test_folder_member_add_registers_in_both_groups(tmp_path: Path):
+    """한 종목 다중 그룹 등록. 다른 그룹에 이미 있어도 **이동이 아니라 추가** — 옮기려면
+    명시적 /move 를 쓴다. (구 v3 동작은 두 번째 추가가 첫 등록을 옮겨 갔다.)"""
     from unittest.mock import patch
     hit = [_fake_hit("005930", "삼성전자")]
     client = TestClient(_app(tmp_path))
-    src = client.post("/api/heatmap/folders", json={"name": "대형주"}).json()["id"]
-    dst = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+    a = client.post("/api/heatmap/folders", json={"name": "대형주"}).json()["id"]
+    b = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
 
     with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
-        assert client.post(f"/api/heatmap/folders/{src}/members",
+        assert client.post(f"/api/heatmap/folders/{a}/members",
                            json={"code": "005930"}).status_code == 201
-        r = client.post(f"/api/heatmap/folders/{dst}/members", json={"code": "005930"})
+        r = client.post(f"/api/heatmap/folders/{b}/members", json={"code": "005930"})
 
     assert r.status_code == 201
     entries = client.get("/api/heatmap").json()["entries"]
-    assert [(e["code"], e["folder_id"]) for e in entries] == [("005930", dst)]
+    assert sorted((e["code"], e["folder_id"]) for e in entries) == sorted(
+        [("005930", a), ("005930", b)])
+    # 각 그룹 안에서는 여전히 0-based 단일 등록.
+    assert all(e["order"] == 0 for e in entries)
+
+
+def test_remove_member_is_scoped_to_one_group(tmp_path: Path):
+    """그룹 스코프 해제는 다른 그룹의 등록을 건드리지 않는다 — 화면의 한 행을 지웠는데
+    보이지도 않는 그룹에서 종목이 사라지면 안 된다."""
+    from unittest.mock import patch
+    hit = [_fake_hit("005930", "삼성전자")]
+    client = TestClient(_app(tmp_path))
+    a = client.post("/api/heatmap/folders", json={"name": "대형주"}).json()["id"]
+    b = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+    with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
+        client.post(f"/api/heatmap/folders/{a}/members", json={"code": "005930"})
+        client.post(f"/api/heatmap/folders/{b}/members", json={"code": "005930"})
+
+    r = client.delete(f"/api/heatmap/folders/{a}/members/005930")
+    assert r.status_code == 204
+    entries = client.get("/api/heatmap").json()["entries"]
+    assert [(e["code"], e["folder_id"]) for e in entries] == [("005930", b)]
+
+    # 그 그룹에 없는 코드를 지우려 하면 404 (다른 그룹에 있어도 마찬가지).
+    assert client.delete(f"/api/heatmap/folders/{a}/members/005930").status_code == 404
+
+
+def test_remove_code_route_clears_every_group(tmp_path: Path):
+    """그룹 없는 DELETE /{code} 는 '히트맵에서 완전 제거' — 모든 등록을 지운다."""
+    from unittest.mock import patch
+    hit = [_fake_hit("005930", "삼성전자")]
+    client = TestClient(_app(tmp_path))
+    a = client.post("/api/heatmap/folders", json={"name": "대형주"}).json()["id"]
+    b = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+    with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
+        client.post(f"/api/heatmap/folders/{a}/members", json={"code": "005930"})
+        client.post(f"/api/heatmap/folders/{b}/members", json={"code": "005930"})
+
+    assert client.delete("/api/heatmap/005930").status_code == 204
+    assert client.get("/api/heatmap").json()["entries"] == []
+
+
+def test_move_into_group_that_already_has_the_code_collapses(tmp_path: Path):
+    """한 그룹은 같은 코드를 한 번만 담는다 — 이미 있는 그룹으로 옮기면 출발 등록이
+    사라질 뿐 중복 행이 생기지 않는다."""
+    from unittest.mock import patch
+    hit = [_fake_hit("005930", "삼성전자")]
+    client = TestClient(_app(tmp_path))
+    a = client.post("/api/heatmap/folders", json={"name": "대형주"}).json()["id"]
+    b = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+    with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
+        client.post(f"/api/heatmap/folders/{a}/members", json={"code": "005930"})
+        client.post(f"/api/heatmap/folders/{b}/members", json={"code": "005930"})
+
+    mv = client.post("/api/heatmap/move", json={
+        "codes": ["005930"], "from_folder_id": a, "folder_id": b})
+    assert mv.status_code == 204
+    entries = client.get("/api/heatmap").json()["entries"]
+    assert [(e["code"], e["folder_id"]) for e in entries] == [("005930", b)]
+
+
+def test_delete_folder_keeps_the_codes_other_registrations(tmp_path: Path):
+    """그룹 삭제는 그 그룹의 등록만 지운다(파괴적이지만 그룹 스코프) — 같은 종목이
+    다른 그룹에 있으면 히트맵에서 사라지지 않는다."""
+    from unittest.mock import patch
+    hit = [_fake_hit("005930", "삼성전자")]
+    client = TestClient(_app(tmp_path))
+    a = client.post("/api/heatmap/folders", json={"name": "대형주"}).json()["id"]
+    b = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+    with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
+        client.post(f"/api/heatmap/folders/{a}/members", json={"code": "005930"})
+        client.post(f"/api/heatmap/folders/{b}/members", json={"code": "005930"})
+
+    assert client.delete(f"/api/heatmap/folders/{a}").status_code == 204
+    entries = client.get("/api/heatmap").json()["entries"]
+    assert [(e["code"], e["folder_id"]) for e in entries] == [("005930", b)]
 
 
 def test_folder_member_add_preserves_order_when_code_already_in_folder(tmp_path: Path):

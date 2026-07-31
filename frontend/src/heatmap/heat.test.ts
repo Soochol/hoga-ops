@@ -134,6 +134,14 @@ describe('heatmapGroupNameOf (종목 → 소속 그룹명 역조회)', () => {
   it('어느 그룹에도 없으면 null', () => {
     expect(heatmapGroupNameOf('086790', folders, entries)).toBeNull();
   });
+  // 한 종목 다중 그룹 등록: 첫 등록만 보면 나머지 소속이 화면에서 사라진다.
+  it('여러 그룹에 등록된 종목은 폴더 순서대로 모두 표기', () => {
+    const dup: HeatmapEntry[] = [
+      { code: '000660', name: 'SK하이닉스', folder_id: 'f2', order: 0 },
+      { code: '000660', name: 'SK하이닉스', folder_id: 'f1', order: 0 },
+    ];
+    expect(heatmapGroupNameOf('000660', folders, dup)).toBe('반도체 · 2차전지');
+  });
   it('데이터 미로드(빈 배열) → null', () => {
     expect(heatmapGroupNameOf('000660', [], [])).toBeNull();
   });
