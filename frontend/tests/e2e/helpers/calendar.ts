@@ -34,6 +34,29 @@ export async function selectSymbol(page: Page, query = '삼성', name = /삼성�
   await page.getByText(name, { exact: false }).first().click();
 }
 
+/** 앱이 여는 달의 **전월** — `src/pages/Capture.tsx` 의 `currentKstMonth` 와 같은 규칙.
+ *
+ *  `new Date().getMonth()` 를 쓰면 안 된다. 그건 **테스트 프로세스의 TZ**(CI 러너는
+ *  UTC)를 따르는데, 앱 달력은 러너 TZ 와 무관하게 언제나 KST 월을 연다. 둘이 갈리는
+ *  구간이 실제로 있다 — **매달 1일 KST 00:00–09:00**(UTC 로는 아직 전월). 그때
+ *  헬퍼는 6월을 고르는데 달력은 7월을 열어 셀을 영영 못 찾는다
+ *  (`element(s) not found`). 2026-08-01 CI 가 그 창에 들어가 실제로 터졌고, main 이
+ *  그때까지 초록이던 건 성공한 run 이 전부 UTC 오전(=KST 낮)이었기 때문이다.
+ *
+ *  재현: 매달 1일 KST 오전에
+ *  `TZ=UTC npx playwright test tests/e2e/calendar-markers.spec.ts`.
+ *
+ *  이 파일 맨 위 주석이 "날짜를 하드코딩하지 않는다"고 선언하지만, 하드코딩을 런타임
+ *  계산으로 바꾼 것만으로는 시간 결합이 사라지지 않는다 — **어느 시계로** 계산하는지가
+ *  앱과 같아야 비로소 풀린다. */
+function previousKstMonth(): { year: number; month: number } {
+  const now = new Date();
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60_000;
+  const kst = new Date(utcMs + 9 * 60 * 60_000);
+  const prev = new Date(kst.getFullYear(), kst.getMonth() - 1, 1);
+  return { year: prev.getFullYear(), month: prev.getMonth() + 1 };
+}
+
 /** 달력을 전월로 넘긴다. 종목을 다시 고르면 이번 달로 돌아오므로 그때마다 필요하다. */
 export async function previousMonth(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Previous month' }).click();
@@ -51,17 +74,16 @@ export async function tradingDates(
 ): Promise<string[]> {
   await previousMonth(page);
 
-  const now = new Date();
-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prev = previousKstMonth();
   const res = await fetch(
-    `${API}/api/inventory/calendar?code=${code}&year=${prev.getFullYear()}&month=${prev.getMonth() + 1}`);
+    `${API}/api/inventory/calendar?code=${code}&year=${prev.year}&month=${prev.month}`);
   expect(res.ok, `calendar API 실패: ${res.status}`).toBe(true);
   const { cells } = await res.json() as { cells: CalendarCell[] };
 
   // **요청한 달만.** 달력은 6주 그리드라 앞뒤 달의 날짜가 셀에 섞여 들어온다 — 그대로
   // 정렬하면 앞 달 말일이 앞쪽을 차지해 오프셋이 밀리고, 두 끝점 사이에 예상보다 많은
   // 거래일이 들어간다(실측: 3일 범위를 의도했는데 6행이 큐에 들어갔다).
-  const prefix = `${prev.getFullYear()}${String(prev.getMonth() + 1).padStart(2, '0')}`;
+  const prefix = `${prev.year}${String(prev.month).padStart(2, '0')}`;
   const dates = cells
     .filter((c) => c.date.startsWith(prefix) && SELECTABLE.has(c.status))
     .map((c) => c.date)
