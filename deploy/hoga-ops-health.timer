@@ -1,0 +1,21 @@
+# hoga-ops-health.service 를 60초 주기로 돈다.
+#
+# 주기 근거: 배경 태스크 사망의 비용은 "수집 공백 × 시간"이고 hogaplay 보유가
+# ~18h 라 늦게 알수록 회복 불가 구간이 커진다. 반면 판정은 메모리 상태 읽기라
+# 부작용이 없다(hoga/api/app.py `_health` 주석: "감독자가 짧은 주기로 물어도 안전").
+# 60초면 최악의 공백이 1분이고 부하는 무시 가능하다.
+
+[Unit]
+Description=Run hoga-ops deep-health supervisor every 60s
+Documentation=https://github.com/Soochol/hoga-ops
+
+[Timer]
+# 부팅 직후는 hoga-ops 가 기동 중이라 판정 근거가 없다(그때 deep 은 200+unknown 을
+# 준다 — 오탐은 안 나지만 굳이 물 이유도 없다). 2분 유예 후 시작한다.
+OnBootSec=120
+OnUnitActiveSec=60
+AccuracySec=10
+Unit=hoga-ops-health.service
+
+[Install]
+WantedBy=timers.target

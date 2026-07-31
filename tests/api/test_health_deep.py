@@ -65,6 +65,22 @@ def test_deep_health_does_not_fail_on_disabled_features(tmp_path: Path) -> None:
     assert resp.json()["dead_tasks"] == []
 
 
+def test_deep_health_does_not_fail_on_completed_oneshot_boot_tasks(tmp_path: Path) -> None:
+    """일회성 부팅 태스크의 완료는 죽음이 아니다 — 이게 503 이면 **정상 부팅한 모든
+    프로세스**가 감독자에 의해 주기적으로 재시작된다(실측 2026-07-31, ADR-0088 참고).
+    """
+    client, app = _client(tmp_path)
+    app.state.startup_runtime = _Runtime([
+        {"name": "watchlist-daily-loop", "running": True, "state": "running"},
+        {"name": "symbols-boot-refresh", "running": False, "state": "completed"},
+        {"name": "watchlist-catchup", "running": False, "state": "completed"},
+    ])
+
+    resp = client.get("/health?deep=1")
+    assert resp.status_code == 200
+    assert resp.json()["dead_tasks"] == []
+
+
 def test_deep_health_reports_503_with_the_dead_task_names(tmp_path: Path) -> None:
     client, app = _client(tmp_path)
     app.state.startup_runtime = _Runtime([

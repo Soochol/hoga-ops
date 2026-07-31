@@ -1,8 +1,41 @@
 # 플랜: 무인 운영 감독 배선 (1인 사용자 P0-1)
 
 2026-07-31. `docs/research/2026-07-31-market-launch-readiness.md` 의 1인 사용자
-우선순위 첫 항목. **코드 수정 없이 설정·배선만으로** "장중 프로세스/태스크 사망 →
-영구 데이터 구멍" 창을 닫는다.
+우선순위 첫 항목. "장중 프로세스/태스크 사망 → 영구 데이터 구멍" 창을 닫는다.
+
+> **구현 중 정정 (2026-07-31).** 이 플랜은 원래 "코드 수정 없이 설정·배선만" 이라고
+> 적었다. 틀렸다. 구현 전 실측에서 **정상 부팅한 백엔드가 `/health?deep=1` 에 503 을
+> 낸다**는 것이 드러났다(`dead_tasks: ["symbols-boot-refresh"]`). 판정 로직이 일회성
+> 부팅 태스크의 **정상 완료를 죽음으로 읽고** 있었기 때문이다. 이 상태로 3단계
+> 타이머를 걸면 정상 시스템을 홀드오프 주기마다 영원히 재시작한다 — 하려던 일의 정반대다.
+> 따라서 감독 배선에 앞서 `_task_health` 에 `completed` 상태를 도입했다(§0 참고).
+> 시그널을 소비하기 전에 시그널이 옳은지 확인해야 한다는 교훈이 이 플랜의 핵심 기록이다.
+
+## 0. 선행 수정 — deep health 오탐 두 건 (완료)
+
+**(a) 일회성 부팅 태스크가 `dead` 로 보고됐다.** `symbols-boot-refresh`(.mst 재다운로드
+1회)와 `watchlist-catchup`(미보유 거래일 1회 훑기)은 제 일을 마치면 끝난다. 그런데
+`_task_health` 는 감독 대상이 전부 무한 루프라는 전제로 `task.done()` 을 일괄 죽음으로
+판정했다. 결과: 부팅 몇 초 뒤부터 deep health 가 영구 503, 프론트엔드 "배경 작업이
+죽었습니다" 토스트도 상시 점등(둘 다 이번 작업과 무관하게 이미 존재하던 버그).
+
+수정: `_task_health` 에 네 번째 상태 `completed` 를 추가했다 — 이름이
+`_ONESHOT_TASKS` 에 있고 예외·취소 없이 끝난 태스크만 해당한다. 끝나면 안 되는 루프가
+끝난 것은 여전히 `dead`(ADR-0064 실패 모드)이고, 일회성이라도 **예외로 끝났거나 취소된
+것은 `dead`** 다. `task.exception()` 은 취소된 태스크에서 예외를 던지므로
+`cancelled()` 를 먼저 본다 — 안 그러면 health 자체가 500 이 된다.
+
+검증(실측): 수정 전 갓 부팅한 백엔드 = `HTTP 503 dead_tasks:["symbols-boot-refresh"]`
+→ 수정 후 같은 조건(빈 `XDG_DATA_HOME` 으로 부팅 리프레시를 실제 생성) =
+`HTTP 200 dead_tasks:[] symbols-boot-refresh=completed`.
+
+**(b) `hoga-ops.service` 의 재시작 폭주 가드가 꺼져 있었다.**
+`StartLimitIntervalSec`/`StartLimitBurst` 가 `[Service]` 에 있었는데 systemd 는 이 둘을
+`[Unit]` 키로 읽는다 — `systemd-analyze verify` 가 "Unknown key name ... in section
+'Service', ignoring" 으로 확인해 준다(systemd 255). 무시되면 가드가 없는 것과 같아
+설정 오류로 즉시 죽는 프로세스를 5초 간격으로 영원히 되살린다. `[Unit]` 로 옮겼고
+이제 `systemd-analyze verify` 가 무경고 통과한다. 이 가드는 3단계 홀드오프 설계가
+"결정적 장애면 StartLimitBurst 가 서비스를 세운다" 고 기대는 대상이라 선행 조건이었다.
 
 ## 우선순위 전체 (1인 사용자 관점)
 

@@ -80,15 +80,40 @@ npm run dev
 
    얕은 쪽은 배경 태스크가 전멸해도 200 이다 — 감독자가 그것만 물면 "살아 있지만
    아무 일도 안 하는" 프로세스를 방치한다. deep 은 `dead_tasks` 에 죽은 태스크
-   이름을 실어 준다. 설정으로 끈 기능(`not_started`)은 실패로 세지 않으므로
-   무한 재시작을 유발하지 않는다.
+   이름을 실어 준다. **실패로 세지 않는 두 상태**가 있고 둘 다 무한 재시작을 막는
+   장치다: 설정으로 끈 기능은 `not_started`, 일회성 부팅 태스크
+   (`symbols-boot-refresh`·`watchlist-catchup`)의 정상 완료는 `completed` 다.
+   후자를 죽음으로 읽으면 정상 부팅이 곧 영구 503 이 된다.
 
    ```sh
    curl -s http://127.0.0.1:8000/health?deep=1 | python -m json.tool
    ```
 
-배경 작업이 죽으면 프론트엔드에도 토스트가 뜬다(어느 페이지에서든). 자동 재시작
-감독자는 설계상 없으므로(ADR-0088) 조치는 프로세스 재시작이다.
+4. **deep health 감독 타이머** — 배경 태스크가 조용히 죽으면 프로세스는 살아 있으므로
+   `Restart=always` 가 못 잡는다(ADR-0088: 부활 경로는 프로세스 재시작뿐). 위 503 을
+   실제 재시작으로 잇는 것이 `deploy/hoga-ops-health.{sh,service,timer}` 다:
+
+   ```sh
+   chmod +x deploy/hoga-ops-health.sh
+   cp deploy/hoga-ops-health.{service,timer} ~/.config/systemd/user/
+   # ExecStart 를 실제 체크아웃 경로로 고친 뒤:
+   systemctl --user daemon-reload
+   systemctl --user enable --now hoga-ops-health.timer
+   ```
+
+   60초마다 판정한다. 무응답(프로세스 다운)에는 관여하지 않는다 — 그건
+   `Restart=always` 의 영역이고, 겹치면 기동 중인 프로세스를 이중으로 걷어찬다.
+   재시작은 10분에 한 번으로 제한한다(`HOGA_HEALTH_HOLDOFF_S`): 재시작 직후 또 503
+   이면 결정적 장애라 반복해도 소용없으므로 로그만 남기고 사람을 기다린다.
+
+   ```sh
+   journalctl --user -u hoga-ops-health --since today   # 감독 동작 이력
+   systemctl --user list-timers                         # 타이머 스케줄
+   ```
+
+배경 작업이 죽으면 프론트엔드에도 토스트가 뜬다(어느 페이지에서든). 앱 안에는 자동
+재시작 감독자가 없으므로(ADR-0088) 조치는 프로세스 재시작이고, 위 4번이 그 조치를
+자동화한 것이다.
 
 ## Live index checks
 

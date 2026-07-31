@@ -59,14 +59,27 @@ class StartupRuntimeDeps:
     get_program_trade_task: Callable[[], TaskOrNone] | None = None
 
 
+# 한 번 돌고 끝나는 **부팅 태스크**. 이들에게 완료는 죽음이 아니라 정상 종료다.
+# 나머지 감독 대상은 전부 무한 루프라 반환 자체가 ADR-0064 의 실패 모드지만,
+# 이 둘은 각각 .mst 재다운로드 1회(symbols-boot-refresh) 와 미보유 거래일 1회
+# 훑기(watchlist-catchup) 를 마치면 끝난다. asyncio.Task 에 "일회성" 이라는 정보가
+# 없으므로 이름으로 구분한다 — 둘 다 create_task(name=...) 으로 명명돼 있다.
+_ONESHOT_TASKS = frozenset({"symbols-boot-refresh", "watchlist-catchup"})
+
+
 def _task_health(name: str, task: TaskOrNone) -> dict[str, object]:
     """한 태스크의 정직한 상태 한 줄. 판정 근거는 supervised_task_health docstring."""
     if task is None:
         state = "not_started"
-    elif task.done():
-        state = "dead"
-    else:
+    elif not task.done():
         state = "running"
+    elif name in _ONESHOT_TASKS and not task.cancelled() and task.exception() is None:
+        # 일회성 태스크의 무사 완료. cancelled() 를 먼저 보는 이유는 취소된 태스크에
+        # exception() 을 부르면 CancelledError 가 **발생**하기 때문이다 — health 를
+        # 500 으로 만들 수 있다. 취소·예외는 아래 dead 로 떨어진다.
+        state = "completed"
+    else:
+        state = "dead"
     return {"name": name, "running": state == "running", "state": state}
 
 
@@ -93,10 +106,20 @@ class AppStartupRuntime:
         세 값을 낸다:
 
         - `running`  — 살아 있음
-        - `dead`     — 태스크가 있었고 끝났다(조용한 죽음, **경보 대상**)
+        - `dead`     — 끝나면 안 되는 루프가 끝났다(조용한 죽음, **경보 대상**)
+        - `completed` — 일회성 부팅 태스크가 무사히 끝났다(정상, 경보 아님)
         - `not_started` — 핸들이 없다(비활성·미주입, 경보 아님)
 
+        `completed` 가 없으면 **정상 부팅이 곧 영구 503** 이 된다. `symbols-boot-refresh`
+        와 `watchlist-catchup` 은 부팅 직후 제 일을 마치고 끝나는데, 완료를 죽음으로
+        읽으면 deep health 가 그 시점부터 영원히 degraded 가 되고 프론트엔드 토스트도
+        상시 켜진다. 실측(2026-07-31): 갓 부팅한 백엔드가 `dead_tasks:
+        ["symbols-boot-refresh"]` 로 503. 이걸 감독자에 물리면 정상 시스템을 홀드오프
+        주기마다 재시작한다 — `not_started` 를 따로 둔 것과 정확히 같은 종류의 오경보다.
+
         `running` 불리언은 하위호환으로 유지한다(`state == "running"` 과 동의).
+        따라서 완료된 일회성 태스크는 `running=False, state="completed"` 다 — 경보는
+        `state == "dead"` 만 봐야 한다는 규칙이 여기서도 그대로 성립한다.
 
         이 태스크들에는 설계상 자동 재시작 감독자가 없다(ADR-0088): 캡처 워커 풀과
         KIS 용량 워커는 자가 치유하고 WS 스트림 워치독이 WS/flush 태스크를 되살리지만,

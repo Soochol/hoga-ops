@@ -27,6 +27,17 @@ Description=hoga-ops local API server
 Documentation=https://github.com/Soochol/hoga-ops
 After=network-online.target
 
+# 재시작 폭주 방지: 5분 안에 5회를 넘기면 멈춘다(설정 오류로 즉시 죽는 경우 무한
+# 루프를 돌지 않게). 이때는 journalctl 로 원인을 보고 `systemctl --user reset-failed
+# hoga-ops` 후 다시 start 한다.
+#
+# **[Unit] 에 있어야 한다.** systemd 는 이 둘을 [Unit] 키로 읽으며, [Service] 에 두면
+# "Unknown key name ... in section 'Service', ignoring" 으로 조용히 무시한다(systemd
+# 255 에서 `systemd-analyze verify` 로 확인, 2026-07-31). 무시되면 가드가 없는 것과
+# 같아 즉시 죽는 프로세스를 5초 간격으로 영원히 되살린다.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
 [Service]
 Type=simple
 # ↓ 실제 체크아웃 경로로 교체할 것.
@@ -36,10 +47,6 @@ ExecStart=/usr/bin/env uv run hoga serve
 
 Restart=always
 RestartSec=5
-# 재시작 폭주 방지: 5분 안에 5회를 넘기면 멈춘다(설정 오류로 즉시 죽는 경우
-# 무한 루프를 돌지 않게). 이때는 journalctl 로 원인을 봐야 한다.
-StartLimitIntervalSec=300
-StartLimitBurst=5
 
 # 종료 유예. 캡처 워커가 스레드에서 돌고 큐 flock 해제까지 마쳐야 하므로
 # SIGKILL 을 너무 빨리 보내지 않는다.

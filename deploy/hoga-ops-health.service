@@ -1,0 +1,28 @@
+# deep-health 감독 1회 실행. 스케줄은 hoga-ops-health.timer 가 건다.
+#
+# 설치:
+#   chmod +x deploy/hoga-ops-health.sh
+#   cp deploy/hoga-ops-health.{service,timer} ~/.config/systemd/user/
+#   # ExecStart 를 실제 체크아웃 경로로 고친 뒤:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now hoga-ops-health.timer
+#
+# 동작 이력:
+#   journalctl --user -u hoga-ops-health --since today
+
+[Unit]
+Description=hoga-ops deep-health supervisor (restart on dead background tasks)
+Documentation=https://github.com/Soochol/hoga-ops
+# hoga-ops 가 아예 설치/기동되지 않은 환경에서 헛돌지 않게.
+After=hoga-ops.service
+
+[Service]
+Type=oneshot
+# ↓ 실제 체크아웃 경로로 교체할 것 (hoga-ops.service 의 WorkingDirectory 와 동일 위치).
+ExecStart=%h/code/hoga-ops/deploy/hoga-ops-health.sh
+
+# 판정 5s + 재시작 대기(hoga-ops 의 TimeoutStopSec=30)를 덮는 상한.
+TimeoutStartSec=60
+
+StandardOutput=journal
+StandardError=journal

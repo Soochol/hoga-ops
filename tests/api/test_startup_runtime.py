@@ -263,6 +263,81 @@ async def test_supervised_task_health_reports_alive_sleeping_and_dead(tmp_path: 
 
 
 @pytest.mark.asyncio
+async def test_oneshot_boot_tasks_report_completed_not_dead(tmp_path: Path) -> None:
+    """일회성 부팅 태스크의 완료는 죽음이 아니다 — 이걸 dead 로 읽으면 **정상 부팅이
+    곧 영구 503** 이다.
+
+    실측(2026-07-31): 갓 부팅한 백엔드의 `/health?deep=1` 이 `dead_tasks:
+    ["symbols-boot-refresh"]` 로 503 을 냈다. `symbols-boot-refresh`(.mst 재다운로드
+    1회)와 `watchlist-catchup`(미보유 거래일 1회 훑기)은 제 일을 마치면 끝나는데,
+    감독 목록의 나머지는 전부 무한 루프라 done() 을 일괄 죽음으로 판정하고 있었다.
+    감독자에 물리면 정상 시스템을 주기적으로 재시작하고, 프론트 토스트는 상시 켜진다.
+    """
+    from hoga.api.startup_runtime import AppStartupRuntime, StartupRuntimeDeps
+
+    async def finished() -> None:
+        return None
+
+    async def boom() -> None:
+        raise RuntimeError("mst download failed")
+
+    async def sleeping() -> None:
+        await asyncio.sleep(3600)
+
+    daily = asyncio.create_task(sleeping(), name="watchlist-daily-loop")
+    boot_refresh = asyncio.create_task(finished(), name="symbols-boot-refresh")
+    catchup = asyncio.create_task(finished(), name="watchlist-catchup")
+    await boot_refresh
+    await catchup
+
+    deps = StartupRuntimeDeps(
+        env={},
+        start_scheduler=lambda _d: [],
+        start_live_stream=None,  # type: ignore[arg-type]
+        start_today_promoter=None,  # type: ignore[arg-type]
+        stop_today_promoter=None,  # type: ignore[arg-type]
+        stop_live_stream=None,  # type: ignore[arg-type]
+        aclose_kis_capacity_scheduler=None,  # type: ignore[arg-type]
+        aclose_kis_client=None,  # type: ignore[arg-type]
+        load_symbol_disk_state=lambda **_k: None,
+        needs_symbol_boot_refresh=lambda: False,
+        refresh_symbols=None,  # type: ignore[arg-type]
+        resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+    )
+    runtime = AppStartupRuntime(
+        scheduler_tasks=[daily, boot_refresh, catchup],
+        today_promoter_task=None,
+        deps=deps,
+    )
+
+    state = {row["name"]: row["state"] for row in runtime.supervised_task_health()}
+    assert state["symbols-boot-refresh"] == "completed"
+    assert state["watchlist-catchup"] == "completed"
+    assert state["watchlist-daily-loop"] == "running"
+
+    # 완료는 running 이 아니다 — 하위호환 불리언은 그대로 False 다. 경보 규칙이
+    # `state == "dead"` 인 이유가 여기(그리고 not_started)에 있다.
+    running = {row["name"]: row["running"] for row in runtime.supervised_task_health()}
+    assert running["symbols-boot-refresh"] is False
+
+    # 그러나 **실패한** 일회성은 여전히 죽음이다 — 완료 면제가 예외를 삼키면 안 된다.
+    failed = asyncio.create_task(boom(), name="symbols-boot-refresh")
+    await asyncio.gather(failed, return_exceptions=True)
+    runtime.scheduler_tasks = [failed]
+    assert runtime.supervised_task_health()[0]["state"] == "dead"
+
+    # 취소된 일회성도 죽음이다. cancelled() 를 먼저 보지 않으면 exception() 이
+    # CancelledError 를 던져 health 자체가 500 이 된다.
+    cancelled = asyncio.create_task(sleeping(), name="watchlist-catchup")
+    cancelled.cancel()
+    await asyncio.gather(cancelled, return_exceptions=True)
+    runtime.scheduler_tasks = [cancelled]
+    assert runtime.supervised_task_health()[0]["state"] == "dead"
+
+    daily.cancel()
+
+
+@pytest.mark.asyncio
 async def test_supervised_health_includes_capture_workers_and_program_trade(
     tmp_path: Path,
 ) -> None:

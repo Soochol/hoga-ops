@@ -35,13 +35,15 @@ export interface LiveStatus {
  *
  * `running` 불리언만으로는 "죽었다"와 "애초에 안 띄웠다(env 비활성·미주입)"를
  * 구별할 수 없어 경보에 쓸 수 없다 — `HOGA_LIVE_TODAY_PROMOTE_ENABLED=false` 면
- * today-promoter 는 정상인데도 영구히 `running:false` 다. **경보는 `state`가
+ * today-promoter 는 정상인데도 영구히 `running:false` 다. 같은 이유로 일회성 부팅
+ * 태스크(`symbols-boot-refresh`·`watchlist-catchup`)의 정상 완료는 `'completed'` 다 —
+ * 이걸 죽음으로 읽으면 부팅 직후부터 토스트가 상시 켜진다. **경보는 `state`가
  * `'dead'`인 항목만 봐야 한다.**
  */
 export interface SupervisedTask {
   name: string;
   running: boolean;
-  state?: 'running' | 'dead' | 'not_started';
+  state?: 'running' | 'dead' | 'completed' | 'not_started';
 }
 
 /** 조용히 죽은 배경 태스크 이름들. 미기동(not_started)은 죽음이 아니다. */
