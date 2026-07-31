@@ -1,4 +1,5 @@
 import type {
+  Ref,
   CSSProperties,
   ElementType,
   HTMLAttributes,
@@ -115,11 +116,16 @@ type DataTableShellProps = {
   children: ReactNode;
   className?: string;
   minWidth?: string;
+  /** 스크롤 요소 참조 — **가상화 표가 필요로 한다**. 셸이 양축 스크롤을 소유하므로
+   *  (`overflow-auto`), 가상화하려면 이 요소를 스크롤 컨테이너로 삼아야 한다.
+   *  안쪽에 새 스크롤 영역을 만들면 헤더가 고정되는 UX 변화가 따라오는데, 이 방식은
+   *  그게 없다 — 헤더는 지금처럼 함께 스크롤된다. 안 넘기면 아무 영향 없다. */
+  scrollRef?: Ref<HTMLDivElement>;
 };
 
-export function DataTableShell({ children, className = '', minWidth = '640px' }: DataTableShellProps) {
+export function DataTableShell({ children, className = '', minWidth = '640px', scrollRef }: DataTableShellProps) {
   return (
-    <div className={`min-w-0 bg-bg-card border rounded-lg flex flex-col min-h-0 overflow-auto ${className}`.trim()}>
+    <div ref={scrollRef} className={`min-w-0 bg-bg-card border rounded-lg flex flex-col min-h-0 overflow-auto ${className}`.trim()}>
       <div className="flex min-h-full flex-col" style={{ minWidth }}>
         {children}
       </div>
@@ -157,11 +163,18 @@ export function DataTableRow<T extends ElementType = 'div'>({
   columns,
   className = '',
   children,
+  rowRef,
   ...props
-}: DataGridProps<T>) {
+}: DataGridProps<T> & {
+  /** 가상화 표가 행의 **실제 높이**를 되읽는 통로(`virtualizer.measureElement`).
+   *  `ref` 라는 이름을 못 쓰는 이유: 이 컴포넌트는 `as` 로 태그를 바꾸는 제네릭이라
+   *  React 의 ref 전달 규약과 타입이 맞지 않는다. 안 넘기면 아무 영향 없다. */
+  rowRef?: (el: HTMLElement | null) => void;
+}) {
   const Tag = (as ?? 'div') as ElementType;
   return (
     <Tag
+      ref={rowRef}
       {...props}
       className={`grid ${columns} items-center gap-2 px-sm min-h-list-row border-b text-sm text-fg ${className}`.trim()}
     >

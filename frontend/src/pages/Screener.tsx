@@ -217,7 +217,11 @@ export function Screener() {
           </ControlBar>
         </div>
 
-        <DataSection title="결과" flushHeader className="flex flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col gap-sm p-md">
+        {/* `min-h-0` 이 빠져 있었다 — flex 자식의 기본 `min-height:auto` 때문에 결과가
+            길면 섹션이 콘텐츠 높이(1,000행 = 28,000px)로 자라고, 부모(`overflow:hidden`,
+            644px)가 그걸 **잘라낸다**. 즉 아래쪽 행은 스크롤로도 도달할 수 없었다.
+            이걸 넣어야 셸(`overflow-auto`)이 유계 높이를 받아 내부 스크롤이 산다. */}
+        <DataSection title="결과" flushHeader className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col gap-sm p-md">
           {notSeeded ? (
             <InlineState tone="warn" className="text-sm">
               <span className="font-semibold">시드 필요</span> 스크리너 인덱스가 아직 시드되지 않았습니다. 운영자 CLI로 일회성 시드를 수행한 뒤 다시 조회하세요.
