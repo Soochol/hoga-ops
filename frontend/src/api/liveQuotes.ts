@@ -83,6 +83,25 @@ export function useQuotes(codes: string[], venue: LiveVenueOption = 'KRX') {
     enabled: codes.length > 0,
     staleTime: 10_000,
     refetchInterval: (q) => quotesRefetchInterval(q.state.data?.phase),
+    // 전역 기본(main.tsx)은 refetchOnWindowFocus:false 다. 여기만 되살린다 —
+    // 그게 없으면 마감 후 시세가 **영구히 동결**되기 때문이다:
+    //   ① 탭이 hidden → refetchIntervalInBackground 기본 false 라 인터벌 정지
+    //   ② 돌아와도 focus refetch 가 없어 즉시 조회 없음
+    //   ③ closed 인터벌이 600s 라, 탭을 잠깐씩 확인하는 사용 패턴에서는 그
+    //      타이머가 한 번도 완주하지 못하고 매번 ①로 되돌아간다
+    //   ④ 장중이면 WS 틱 오버레이(liveTickOverlay)가 ①~③을 덮지만, 마감 후엔
+    //      WS 연결 창(거래일 08–20시)이 닫혀 그 보완책이 없다
+    // 실측 2026-08-01: 관심종목의 삼성전자가 07/31 오전 값 247,000 에 멈춰 있었고
+    // (종가 262,500), 새로고침 전까지 스스로 풀리지 않았다.
+    //
+    // 전역에서 이걸 끈 이유(포커스 시 전 쿼리가 한꺼번에 재조회 → 백엔드 peak
+    // 쿼리 폭발)는 여기서 재현되지 않는다. 되살리는 건 이 seam 하나다 — 다만
+    // **쿼리 인스턴스는 하나가 아니다**: queryKey 가 코드 집합별이라 관심종목·
+    // 히트맵·스크리너가 각자 하나씩 갖는다(열린 패널 수만큼, 실측 최대 3~4).
+    // 그래도 감당되는 근거는 셋이다: staleTime 10s 가 포커스 연타를 흡수하고,
+    // open phase 엔 어차피 같은 요청이 10s 마다 나가고 있으며, 백엔드가
+    // run_with_capacity + cooldown_scope='quotes:{venue}' 로 유량을 이미 막는다.
+    refetchOnWindowFocus: true,
     // codes 집합이 바뀌면 새 queryKey라 data가 잠시 undefined → 전 셀이 '—'로
     // 깜빡인다. 직전 결과를 유지해 겹치는 코드는 그대로 두고 새 코드만 채워지게
     // 한다(형제 훅 range.ts·livePastCandles.ts 와 동일 패턴).

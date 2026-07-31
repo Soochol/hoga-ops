@@ -415,10 +415,20 @@ def _counting_app(fake, tmp_path):
     return app
 
 
-def test_quotes_closed_serves_last_seen_without_kis(monkeypatch, tmp_path):
-    """closed에는 장중 마지막 시세를 KIS 무호출로 서빙('마지막 시세 유지' 결정,
-    스펙 2026-06-08 ⑧). 등락률은 open과 동일하게 표시(종가+등락 — pre_open과
-    다름)."""
+def test_quotes_closed_refetches_over_intraday_sample_then_holds(monkeypatch, tmp_path):
+    """closed 전환 시 장중 표본밖에 없으면 **다시 조회**하고, 종가 표본 확보 후엔 멈춘다.
+
+    이 테스트는 원래 "장중 마지막 시세를 KIS 무호출로 서빙"을 계약으로 못 박고
+    있었다 — '마지막 시세 유지'(스펙 2026-06-08 ⑧)의 과잉 해석이었다. 캐시를 채우는
+    유일한 주체가 프론트 폴링이라(갱신 스케줄러 없음), 탭이 가려져 폴링이 끊기면 그
+    순간 값이 종가 자리에 영구히 눌러앉았다. 실측 2026-08-01 — 관심종목의 삼성전자가
+    07/31 오전 10시대 247,000 을 종가(262,500) 자리에 표시했고, 새로고침으로도 안
+    풀려 백엔드 재시작만이 복구 경로였다.
+
+    '마지막 시세 유지'는 여전히 유효하다. 다만 그 '마지막'이 **마감 후 표본**이어야
+    한다(LiveQuoteFetcher.is_closing_sample). 등락률 표시 계약(종가+등락, pre_open 과
+    다름)은 그대로다.
+    """
     fake = _CountingFakeKis(QUOTES)
     c = TestClient(_counting_app(fake, tmp_path))
     monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
@@ -428,11 +438,17 @@ def test_quotes_closed_serves_last_seen_without_kis(monkeypatch, tmp_path):
     monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "closed")
     r2 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
     body = r2.json()
-    assert fake.calls == 1, "closed에서 캐시 보유 코드에 KIS 호출 발생"
+    assert fake.calls == 2, "장중 표본뿐이면 closed 는 종가를 다시 받아야 한다"
     assert body["phase"] == "closed"
     assert body["quotes"][0]["price"] == 72400
     assert body["quotes"][0]["change_pct"] == 1.2   # closed는 등락률 유지
     assert body["quotes"][1]["change_won"] == -1500
+    assert body["quotes"][0]["stale"] is False      # 종가 표본이라 stale 아님
+
+    # 종가 표본을 확보한 뒤에는 더 부르지 않는다 — 600s 하트비트 감속의 전제이자,
+    # 이 수정이 closed 폴링을 매번 KIS 로 흘려보내지 않는다는 증거.
+    c.get("/api/live/quotes", params={"codes": "005930,000660"})
+    assert fake.calls == 2
 
 
 def test_quotes_closed_cached_quotes_use_adjusted_change_pct_without_kis(monkeypatch, tmp_path):
@@ -453,7 +469,9 @@ def test_quotes_closed_cached_quotes_use_adjusted_change_pct_without_kis(monkeyp
     r2 = c.get("/api/live/quotes", params={"codes": "049080"})
 
     assert r2.status_code == 200
-    assert fake.calls == 1, "closed cached quote should not call KIS again"
+    # open 표본은 종가가 아니라 closed 가 한 번 다시 받는다(같은 값이 돌아온다).
+    # 이 테스트의 관심사는 그 다음 — 수정주가 baseline 이 closed 경로에서도 적용되는가.
+    assert fake.calls == 2, "장중 표본뿐이면 closed 는 종가를 다시 받는다"
     body = r2.json()
     assert body["phase"] == "closed"
     q0 = body["quotes"][0]

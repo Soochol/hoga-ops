@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { getQuotes, liveQuotesQueryKey, useQuoteByCode, useLiveQuoteOverlay, quotesRefetchInterval } from './liveQuotes';
 import * as client from './client';
 
@@ -249,5 +249,50 @@ describe('quotesRefetchInterval', () => {
     expect(quotesRefetchInterval('open')).toBe(10_000);
     expect(quotesRefetchInterval('pre_open')).toBe(10_000);
     expect(quotesRefetchInterval(undefined)).toBe(10_000);
+  });
+});
+
+describe('포커스 복귀 재조회 (마감 후 동결 방지)', () => {
+  // 전역 기본(main.tsx)이 refetchOnWindowFocus:false 라, 그 조건을 재현하지 않으면
+  // 훅의 override 를 지워도 테스트가 통과한다(테스트용 QueryClient 기본값은 true).
+  // 이 wrapper 가 없으면 이 파일 전체가 회귀를 못 잡는다.
+  function wrapWithGlobalFocusRefetchOff() {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+    return ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+  }
+
+  const CLOSED_RESPONSE = {
+    phase: 'closed' as const,
+    quotes: [{ code: '005930', price: 262500, change_pct: 26.81, change_won: 55500 }],
+  };
+
+  beforeEach(() => {
+    focusManager.setFocused(undefined);
+  });
+
+  it('closed 에서 탭 복귀 시 재조회한다 — 600s 인터벌만으로는 영구 동결', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(CLOSED_RESPONSE);
+    const { result } = renderHook(() => useQuoteByCode(['005930']), {
+      wrapper: wrapWithGlobalFocusRefetchOff(),
+    });
+    await waitFor(() => expect(result.current.get('005930')?.price).toBe(262500));
+    const beforeFocus = spy.mock.calls.length;
+
+    // staleTime(10s) 경과를 **시계로만** 만든다. 가짜 타이머로 시간을 밀면 600s
+    // 인터벌·리트라이 타이머까지 함께 돌아 무엇이 재조회를 유발했는지 흐려진다
+    // (실제로 그렇게 짰을 때 초기 호출이 1회가 아니라 2회로 나왔다). 여기서
+    // 검증할 건 "포커스가 재조회를 유발하는가" 하나뿐이므로 유발 요인을 하나만 남긴다.
+    const frozenNow = Date.now() + 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(frozenNow);
+
+    await act(async () => {
+      focusManager.setFocused(true);
+    });
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(beforeFocus + 1));
   });
 });

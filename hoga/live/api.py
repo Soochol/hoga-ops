@@ -11,7 +11,7 @@ import time as monotonic_time
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -866,6 +866,22 @@ class ControlRequest(BaseModel):
     action: ControlAction
 
 
+class _QuoteSample(NamedTuple):
+    """마지막-시세 캐시 1건 + **그 표본이 어디서 왔는지**.
+
+    quote 만 담으면 closed 서빙이 "이 값이 종가인가"를 물을 수 없다. 그게 장중
+    폴링이 끊긴 시점의 값을 종가로 서빙하던 결함의 근인이었다 — 캐시를 채우는
+    유일한 주체가 프론트 폴링이라(/quotes 요청 외에 갱신 스케줄러가 없다), 탭이
+    가려져 폴링이 멈추면 그 순간 값이 캐시에 남고 closed 경로가 그걸 종가로
+    내보냈다. 실측 2026-08-01: 07/31 오전 10시대 247,000 이 종가(262,500) 자리에.
+
+    phase/day 를 함께 남기면 그 질문에 답할 수 있다 — `is_closing_sample` 참조.
+    """
+    quote: KisQuote
+    phase: str
+    day: date
+
+
 class LiveQuoteFetcher:
     """`/quotes` 오버레이의 시세 fetch + 마지막-시세 캐시 + phase 게이팅을 한 곳에 모은
     모듈. 라우트는 phase 계산·코드 파싱·KisClient 획득만 하고 이 모듈을 호출한다 —
@@ -882,8 +898,24 @@ class LiveQuoteFetcher:
         # code 만으로 키잉하면 마지막에 조회된 venue 의 봉이 다른 venue 요청에 그대로
         # 서빙된다 — 장마감(closed)·KIS 실패(stale) 경로가 캐시만 보기 때문이다. 실제
         # 증상: 장 마감 후 venue 를 바꿔도 히트맵 행의 캔들·시가가 그대로.
-        self._last_quotes: dict[tuple[str, str], KisQuote] = {}
+        self._last_quotes: dict[tuple[str, str], _QuoteSample] = {}
         self._change_resolver = change_resolver or QuoteChangeResolver(adjusted_daily_path=None)
+
+    @staticmethod
+    def is_closing_sample(sample: _QuoteSample | None, today: date) -> bool:
+        """이 표본을 **종가로서** 서빙해도 되는가.
+
+        두 조건을 모두 요구한다:
+          - `phase == "closed"` — 마감 후에 찍혔다. 장중 표본은 그 시각의 값일 뿐
+            종가가 아니다(폴링이 언제 끊겼는지 알 수 없으므로 나이도 알 수 없다).
+          - `day == today` — 오늘 찍혔다. 어제 밤 표본을 오늘 밤에 서빙하면 하루
+            묵은 종가가 된다(앱을 하루 걸러 켜는 사용 패턴에서 실제로 발생).
+
+        `open` 표본이 마감 직전(예: KRX 15:59)이라 사실상 종가와 같은 경우에도
+        재조회를 시킨다 — 같은 값이면 KIS 가 같은 값을 돌려줄 뿐이라 비용은 요청
+        1회이고, "같을 것"이라는 추측 위에 종가 표시를 세우지 않는 편이 옳다.
+        """
+        return sample is not None and sample.phase == "closed" and sample.day == today
 
     def _to_live_quote(
         self,
@@ -917,25 +949,42 @@ class LiveQuoteFetcher:
         *,
         venue: KisVenue = "KRX",
     ) -> list[LiveQuote]:
-        """code_list 의 시세를 phase 에 맞춰 반환. closed=마지막 시세(캐시 미스면 1회 채움),
-        open=라이브, pre_open=등락률 숨김. KIS 실패는 절대 전파하지 않는다(오버레이는 500 금지)."""
+        """code_list 의 시세를 phase 에 맞춰 반환. closed=마지막 **종가** 시세(표본이
+        종가가 아니면 재조회 — is_closing_sample), open=라이브, pre_open=등락률 숨김.
+        KIS 실패는 절대 전파하지 않는다(오버레이는 500 금지)."""
+        day = today or _today_kst_date()
         if phase == "closed":
-            # 장외: 마지막 시세 서빙. 캐시 미스(재시작 직후)면 1회만 KIS를 불러
-            # 채운다 — KIS는 장외에도 종가를 반환. 프론트는 closed에 600s
-            # 하트비트라 이 경로의 KIS 콜은 사실상 드로어 마운트 시 1회뿐.
-            missing = [c for c in code_list if (venue, c) not in self._last_quotes]
-            if missing:
+            # 장외: 마지막 시세 서빙. 단 **종가 표본일 때만** 캐시를 신뢰한다.
+            # 판정 기준이 "캐시에 있는가"였을 때, 장중에 폴링이 끊기면 그 시점 값이
+            # 종가 자리에 영구히 눌러앉았다(is_closing_sample 참조). KIS는 장외에도
+            # 종가를 반환하므로 재조회가 정확한 복구 경로다. 프론트는 closed에 600s
+            # 하트비트라 이 경로의 KIS 콜은 마감 후 첫 요청 1회로 수렴한다.
+            refetch = [
+                c for c in code_list
+                if not self.is_closing_sample(self._last_quotes.get((venue, c)), day)
+            ]
+            if refetch:
                 try:
                     for q in await kis.fetch_multi_price(code_list, venue=venue):
-                        self._last_quotes[(venue, q.code)] = q
+                        self._last_quotes[(venue, q.code)] = _QuoteSample(q, phase, day)
                 except Exception as e:  # noqa: BLE001 — 오버레이는 절대 500 금지
                     log.warning("live quotes cold fetch failed (%d codes): %s",
                                 len(code_list), e)
-            return [
-                self._to_live_quote(q, phase=phase, today=today)
-                for c in code_list
-                if (q := self._last_quotes.get((venue, c))) is not None
-            ]
+            rows: list[LiveQuote] = []
+            for code in code_list:
+                sample = self._last_quotes.get((venue, code))
+                if sample is None:
+                    continue
+                row = self._to_live_quote(sample.quote, phase=phase, today=today)
+                # 재조회가 실패해 장중/전일 표본이 남았다면 숨기지 않고 stale 로
+                # 표시한다. 값 자체는 목록에 계속 보여 주되(빈 칸보다 낫다), 정밀
+                # 소비자(현재가 라인·탭 제목)는 isStaleLiveQuote 로 이걸 거른다.
+                if not self.is_closing_sample(sample, day):
+                    row = row.model_copy(
+                        update={"stale": True, "stale_reason": "pre_close_sample"}
+                    )
+                rows.append(row)
+            return rows
         try:
             quotes = await kis.fetch_multi_price(code_list, venue=venue)
         except Exception as e:  # noqa: BLE001 — 10초 폴링 오버레이는 절대 500 금지;
@@ -949,7 +998,7 @@ class LiveQuoteFetcher:
                 stale_reason="kis_fetch_failed",
             )
         for q in quotes:
-            self._last_quotes[(venue, q.code)] = q
+            self._last_quotes[(venue, q.code)] = _QuoteSample(q, phase, day)
         return [self._to_live_quote(q, phase=phase, today=today) for q in quotes]
 
     def stale_last_good(
@@ -966,11 +1015,11 @@ class LiveQuoteFetcher:
         OHLC 는 이 venue 의 봉이 아니다). 프론트는 그 코드를 '—' 로 렌더한다."""
         rows: list[LiveQuote] = []
         for code in code_list:
-            q = self._last_quotes.get((venue, code))
-            if q is None:
+            sample = self._last_quotes.get((venue, code))
+            if sample is None:
                 continue
             rows.append(
-                self._to_live_quote(q, phase=phase, today=today).model_copy(
+                self._to_live_quote(sample.quote, phase=phase, today=today).model_copy(
                     update={
                         "stale": True,
                         "stale_reason": stale_reason,
