@@ -4,7 +4,7 @@ import { SymbolSearch } from './SymbolSearch';
 import { DateRangePicker, type DateRange } from './DateRangePicker';
 import { useCaptureQueue } from './useCaptureQueue';
 import { useSymbols, filterSymbols } from './useSymbols';
-import { enqueueErrorHints } from '../api/upstream-hints';
+import { enqueueErrorHints, enqueueWarningHints } from '../api/upstream-hints';
 import type { ApiError } from '../api/client';
 import type { BlockedItem, EnqueueResponse, SymbolHit, UpstreamCode } from '../api/types';
 import { legendText } from './calendarStatus';
@@ -34,6 +34,8 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
   const [error, setError] = useState<string | null>(null);
   const [inlineError, setInlineError] = useState<ReactNode>(null);
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
+  // 성공했지만 날짜 목록이 추정치(평일 기준)인 경우의 알림 — 에러가 아니라 warn 톤.
+  const [enqueueWarning, setEnqueueWarning] = useState<ReactNode | null>(null);
 
   // Prefill the symbol from ?code once the cache has resolved (so we get the real
   // name/market); fall back to a placeholder for an unverified 6-digit code.
@@ -73,6 +75,9 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
       if (resp.blocked && resp.blocked.length > 0) {
         setBlockedMessage(formatBlockedMessage(resp.blocked));
       }
+      // 성공했지만 날짜 목록이 추정치인 경우 — 조용히 넘기면 나중에 "왜 휴장일이
+      // 큐에 있지?" 로 돌아온다.
+      setEnqueueWarning(resp.warning ? enqueueWarningHints[resp.warning] ?? null : null);
       // On a successful enqueue, clear the date range so the picker returns to a
       // fresh slate and Start re-disables (valid = symbol && range.end). This
       // prevents an accidental double-submit of the same range; the symbol is
@@ -132,6 +137,12 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
 
       {error !== null && (
         <InlineState role="alert" tone="error" className="border-0 bg-transparent p-0 text-xs">{error}</InlineState>
+      )}
+
+      {enqueueWarning !== null && (
+        <InlineState role="status" tone="warn" className="mt-2" data-testid="enqueue-warning">
+          {enqueueWarning}
+        </InlineState>
       )}
 
       {blockedMessage !== null && (

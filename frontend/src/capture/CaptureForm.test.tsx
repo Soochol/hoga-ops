@@ -192,6 +192,33 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
     expect(screen.getByText(/KRX is down/)).toBeTruthy();
   });
 
+  it('201 이지만 warning 이 오면 알림을 띄운다 (평일 폴백)', async () => {
+    // 자격증명이 없으면 백엔드가 평일 기준으로 담고 warning 을 실어 보낸다.
+    // 성공 경로라 에러 배너가 아니라 status/warn 알림이어야 한다 — 조용히 넘기면
+    // 나중에 "왜 휴장일이 큐에 있지?" 로 돌아온다.
+    const { qc, fetchMock } = setup();
+    fetchMock.mockImplementation(async (url: RequestInfo | URL) => {
+      const s = String(url);
+      if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
+      if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
+      if (s.includes('/api/captures/items')) return { ok: true, status: 201, json: async () => ({
+        enqueued: [{}], deduped: [], blocked: [], warning: 'kis_credentials_missing',
+      }) } as Response;
+      if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByText('삼성전자'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(screen.getByTestId('enqueue-warning').textContent).toContain('평일 기준');
+  });
+
   // ADR-0042: response.blocked[] surfacing.
 
   it('shows the blocked message when all pairs blocked (HTTP 409)', async () => {

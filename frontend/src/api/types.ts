@@ -458,6 +458,10 @@ export interface EnqueueResponse {
   deduped: EnqueueDedupedRow[];
   /** ADR-0042: pairs rejected by the fail_streak cap. Default []. */
   blocked: BlockedItem[];
+  /** 성공했지만 **품질이 떨어진 채** 진행했다. 현재 유일한 값은
+   *  `kis_credentials_missing` — KIS 거래일 목록을 못 얻어 **평일 기준**으로 담았다는
+   *  뜻이고, 휴장일이 섞일 수 있다. 실패가 아니라 알림이다. */
+  warning?: UpstreamCode | null;
 }
 
 /** Mirrors hoga/api/models.py::RetryRequest. */

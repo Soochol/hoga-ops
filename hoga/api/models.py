@@ -509,6 +509,11 @@ class EnqueueResponse(BaseModel):
     enqueued: list[QueueItem]
     deduped: list[EnqueueDedupedRow]
     blocked: list[BlockedItem] = Field(default_factory=list)
+    #: 성공했지만 **품질이 떨어진 채** 진행했음을 알린다. 현재 유일한 값은
+    #: ``kis_credentials_missing`` — KIS 거래일 목록을 못 얻어 **평일 기준**으로 날짜를
+    #: 담았다는 뜻이다(휴장일이 섞일 수 있다). 실패가 아니므로 에러 채널이 아니라
+    #: 여기에 싣는다 — 조용히 폴백하면 나중에 "왜 휴장일이 큐에 있지?" 로 돌아온다.
+    warning: UpstreamCode | None = None
 
 
 # --- 다종목 지난 N일 수집: coverage-preview + bulk-items (히트맵/스크리너 공용) ---

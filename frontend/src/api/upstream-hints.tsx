@@ -65,6 +65,16 @@ export const calendarHints: Record<UpstreamCode, ReactNode> = {
   ),
 };
 
+/** 성공했지만 품질이 떨어진 채 진행한 경우의 알림(에러 아님). `EnqueueResponse.warning`. */
+export const enqueueWarningHints: Partial<Record<UpstreamCode, ReactNode>> = {
+  kis_credentials_missing: (
+    <>
+      KIS 자격증명이 없어 휴장일을 판정하지 못했습니다 — <b>평일 기준</b>으로 담았습니다.
+      휴장일이 섞여 있으면 해당 날짜는 수집 데이터 없음으로 끝납니다.
+    </>
+  ),
+};
+
 /** Inline error in the range-capture form when enqueue returns HTTP 503. */
 export const enqueueErrorHints: Record<UpstreamCode, ReactNode> = {
   kis_holiday_fetch_failed: (

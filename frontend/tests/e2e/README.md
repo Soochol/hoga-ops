@@ -1,9 +1,21 @@
 # E2E specs — 상태와 실행 방법
 
-## 지금 상태 (2026-07-30)
+## 지금 상태 (2026-07-31)
 
-**CI 에서 실제로 실행된다** — `.github/workflows/ci.yml` 의 `e2e` 잡. 단 아직
-`continue-on-error: true` 라 머지를 막지 않는다. 통과 집합이 확정되면 승격한다.
+**게이트다.** `.github/workflows/ci.yml` 의 `e2e` 잡이 `continue-on-error` 없이
+머지를 막는다. **19 passed / 0 skipped / 0 failed**, 잡 소요 ~1.5분.
+
+**로컬에서도 돈다.** `playwright.config.ts` 가 CI 밖에서는 시스템 Chrome
+(`channel: 'chrome'`)을 쓴다 — Ubuntu 26.04 는 Playwright 가 번들 chromium 설치를
+거부하기 때문이다. 이전 판 주석은 "CI 가 유일한 판정 경로" 라고 적었지만, 스펙 11개 중
+7개는 **이미** 시스템 Chrome 을 쓰고 있었다.
+
+반복 실행 전에는 e2e 전용 서버·데이터를 반드시 초기화한다 — 포트 8765·5174 를 kill 하고
+**실제로 비워질 때까지 기다린 뒤** `rm -rf /tmp/hoga-e2e-data`. 안 그러면 이전 실행의
+캡처 큐 행이 남아 개수 단언이 엉킨다. **사용자 개발 서버(5173·8000)는 건드리지 말 것.**
+
+`workers: 1` 은 필수다 — 캡처 큐 · 페이크 실패 카운터 · 디스크 픽스처가 모두 백엔드
+전역이라 병렬이면 서로의 상태를 센다.
 
 그전까지 이 스펙들은 **한 번도 실행된 적이 없었다.** CI 는 타입체크만 했고, 타입은
 `page.goto('/replay')` 가 죽은 경로인지 알 수 없다. 그래서 파일 20개가 커밋돼 있고
@@ -29,7 +41,10 @@
 `drawing` 은 경로만 `/live` 로 바꿔서는 살릴 수 없다 — 선택자를 새로 심어야 하는
 별건 작업이다. 그리기 회귀 커버리지가 필요하면 그 작업을 먼저 하라.
 
-## 남은 11개는 아직 통과하지 않는다 — 원인은 **셀렉터 드리프트**다
+## (사료) 남은 11개의 원인은 **셀렉터 드리프트**였다 — 2026-07-31 전부 해소
+
+아래는 진단 당시의 기록이다. 표의 수치는 그때의 것이고, 해당 스펙들은 이후
+#972 · #973 에서 현재 UI 에 맞춰 고쳐졌다.
 
 처음에는 "픽스처 전제가 안 맞는다" 로 봤다. **틀렸다.** 모킹 URL 을 고쳐도
 20 failed / 0 passed 가 그대로였고, 실제 원인은 **스펙이 기대하는 UI 문자열이
@@ -55,59 +70,19 @@ Locator: getByText('관심종목을 선택해주세요')   ← 프로덕션 코�
 `/replay` 8개와 **같은 계열**이다. 정도가 덜할 뿐, UI 가 진화하는 동안 스펙이
 따라가지 않았고 실행된 적이 없으니 아무도 몰랐다.
 
-**이걸 이어받는 사람에게**: 이건 픽스처 조정이 아니라 **스펙 재작성**이다.
-스펙마다 현재 UI 를 열어 셀렉터를 다시 맞춰야 하고, `watchlist-collapse-layout`
-처럼 4개 중 4개가 사라진 것은 사실상 새로 쓰는 일이다. 순서는 이렇게 잡아라:
+**이 작업에서 남길 교훈**(#971~#974):
 
-1. 위 표에서 "사라진 것" 이 0~1 인 스펙부터(`watchlist-context-menu` ·
-   `watchlist-group-menu` · `watchlist-panel-drag`) — 통과 집합을 먼저 만든다.
-2. 통과하는 것이 생기면 `e2e` 잡을 **그 스펙들만 실행**하도록 좁혀 게이트로
-   승격한다(`npx playwright test <파일들>`). 전부 초록이 될 때까지 기다리면
-   게이트가 영영 안 선다.
-3. 실데이터 3개(`calendar-markers` · `cookie-pause` · `range-capture`)는 마지막에.
-   날짜별로 **서로 다른 disk_state** 를 만들어야 해서 가장 비싸다. 픽스처는
-   `tests/fixtures/tiny_tsv_multi/` 에 005930 · 000660 두 종목뿐이다.
+1. **개수를 못 박지 말고 상태를 기다려라.** 워커 동시성은 코어 수가 정한다 — 로컬
+   32코어에서 4건이던 것이 CI 에서는 2건이었다. 로컬 재현법: `HOGA_MAX_CONCURRENT=1`.
+2. **모킹 패턴은 호스트 루트에 앵커하라.** `**/api/…` 는 vite 가 서빙하는 앱 자기 소스
+   `/src/api/…` 까지 가로채 페이지를 통째로 빈 화면으로 만든다(`helpers/apiRoutes.ts`).
+3. **날짜를 박지 마라.** 달력은 언제나 현재 달을 연다. 날짜는 UI 가 쓰는 그 API
+   (`/api/inventory/calendar`)에서 런타임에 고른다(`helpers/calendar.ts`).
+4. **스펙이 틀렸을 가능성을 먼저 의심하라.** 이번에 고친 11건 중 2건은 **제거된 기능**을
+   지키고 있었고(결함 배너 `d5c2adc1` · Esc 패널 닫기 `#534`), 1건은 애초에 성립하지
+   않는 전제였다(`force_retry` 가 뒤집을 스킵이 없었다).
+5. 그래도 **진짜 버그도 나온다.** `cookie-pause` 를 살리다 "Refresh & Resume" 이 실제로는
+   재개하지 못하는 제품 버그를 찾았다(취소된 `cancel_token` 승계, #974).
 
-셀렉터를 다시 맞출 때는 **문자열 대신 `data-testid`** 를 쓰는 쪽으로 옮겨라.
-사라진 문자열들은 전부 사용자에게 보이는 문구였고, 그건 디자인 변경마다 바뀐다.
-
-## 배선 (2026-07-30 해소)
-
-세 가지가 실행 자체를 막고 있었다:
-
-1. **globalSetup 부재** — 픽스처가 안 심겨 스펙이 종목을 못 골랐다.
-   `tests/e2e/global-setup.ts` 가 `/api/test/add-stockdate` 를 호출한다
-   (`HOGA_ENABLE_TEST_ENDPOINTS=1` 게이트).
-2. **포트 불일치** — `public/config.json` 은 8000(사람이 쓰는 개발 서버)을
-   가리키는데 playwright 는 백엔드를 8765 로 띄운다. `vite.config.ts` 의
-   `e2eConfigJson` 플러그인이 `E2E_API_URL` 이 있을 때만 `/config.json` 을
-   가로챈다 — 정적 파일은 건드리지 않는다.
-3. **프론트가 5173 점유** — 5173 은 사람 자리다. 5174 로 옮겼다(ALLOWED_ORIGINS
-   에 이미 있어 CORS 통과). `--strictPort` 로 조용히 다른 포트로 밀려나는 것도
-   막았다. `--host 127.0.0.1` 도 필수다 — 기본 `localhost` 는 CI 에서 IPv6 에만
-   바인딩될 수 있고, 그러면 url 폴링이 영원히 실패한다.
-
-## 실행
-
-```bash
-cd frontend
-npx playwright install --with-deps chromium
-npx playwright test
-```
-
-webServer 두 개(백엔드 8765, vite 5174)는 playwright 가 직접 띄운다. 사람이 쓰는
-5173 · 8000 은 건드리지 않는다.
-
-**주의 — Ubuntu 26.04 에서는 브라우저를 받을 수 없다**
-(`ERROR: Playwright does not support chromium on ubuntu26.04-x64`). 그 환경에서
-`npx playwright install` 을 돌리면 **다른 도구가 쓰는 브라우저를 "unused" 로 지운다**
-— 2026-07-30 에 `/browse`(gstack, playwright-core 1.58.2 / chromium-1208)가 그렇게
-깨졌다. 복구는 그 도구 자신의 playwright 로:
-
-```bash
-cd ~/.claude/skills/gstack
-PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 \
-  node node_modules/playwright-core/cli.js install chromium chromium-headless-shell
-```
-
-지원되지 않는 환경에서는 **CI 결과를 유일한 검증 경로로 쓰는 것이 맞다.**
+남은 공백: `/live` 틱 채널은 아직 모킹할 수 없다(`helpers/liveMocks.ts` 의
+`TODO(ws-migration)` — `page.routeWebSocket` 으로 복구 가능).
