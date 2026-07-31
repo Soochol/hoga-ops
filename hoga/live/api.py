@@ -877,7 +877,12 @@ class LiveQuoteFetcher:
 
     def __init__(self, *, change_resolver: QuoteChangeResolver | None = None) -> None:
         # 장중 마지막 quotes — closed 서빙용(스펙 2026-06-08 ⑧ '마지막 시세 유지').
-        self._last_quotes: dict[str, KisQuote] = {}
+        # 키가 **(venue, code)** 인 이유: OHLC 는 venue 마다 다르다(실측 2026-07-31,
+        # 005930 시가 KRX 257,000 vs UN 225,500 — UN 은 프리마켓 체결이 시가가 된다).
+        # code 만으로 키잉하면 마지막에 조회된 venue 의 봉이 다른 venue 요청에 그대로
+        # 서빙된다 — 장마감(closed)·KIS 실패(stale) 경로가 캐시만 보기 때문이다. 실제
+        # 증상: 장 마감 후 venue 를 바꿔도 히트맵 행의 캔들·시가가 그대로.
+        self._last_quotes: dict[tuple[str, str], KisQuote] = {}
         self._change_resolver = change_resolver or QuoteChangeResolver(adjusted_daily_path=None)
 
     def _to_live_quote(
@@ -918,18 +923,18 @@ class LiveQuoteFetcher:
             # 장외: 마지막 시세 서빙. 캐시 미스(재시작 직후)면 1회만 KIS를 불러
             # 채운다 — KIS는 장외에도 종가를 반환. 프론트는 closed에 600s
             # 하트비트라 이 경로의 KIS 콜은 사실상 드로어 마운트 시 1회뿐.
-            missing = [c for c in code_list if c not in self._last_quotes]
+            missing = [c for c in code_list if (venue, c) not in self._last_quotes]
             if missing:
                 try:
                     for q in await kis.fetch_multi_price(code_list, venue=venue):
-                        self._last_quotes[q.code] = q
+                        self._last_quotes[(venue, q.code)] = q
                 except Exception as e:  # noqa: BLE001 — 오버레이는 절대 500 금지
                     log.warning("live quotes cold fetch failed (%d codes): %s",
                                 len(code_list), e)
             return [
                 self._to_live_quote(q, phase=phase, today=today)
                 for c in code_list
-                if (q := self._last_quotes.get(c)) is not None
+                if (q := self._last_quotes.get((venue, c))) is not None
             ]
         try:
             quotes = await kis.fetch_multi_price(code_list, venue=venue)
@@ -944,7 +949,7 @@ class LiveQuoteFetcher:
                 stale_reason="kis_fetch_failed",
             )
         for q in quotes:
-            self._last_quotes[q.code] = q
+            self._last_quotes[(venue, q.code)] = q
         return [self._to_live_quote(q, phase=phase, today=today) for q in quotes]
 
     def stale_last_good(
@@ -954,10 +959,14 @@ class LiveQuoteFetcher:
         today: date | None = None,
         *,
         stale_reason: str = "kis_rest_bypassed",
+        venue: KisVenue = "KRX",
     ) -> list[LiveQuote]:
+        """캐시된 마지막 시세를 stale 표시로 서빙. venue 는 캐시 키의 일부다 —
+        요청 venue 의 표본이 없으면 **다른 venue 것을 대신 주지 않고 비운다**(그쪽
+        OHLC 는 이 venue 의 봉이 아니다). 프론트는 그 코드를 '—' 로 렌더한다."""
         rows: list[LiveQuote] = []
         for code in code_list:
-            q = self._last_quotes.get(code)
+            q = self._last_quotes.get((venue, code))
             if q is None:
                 continue
             rows.append(
@@ -1912,6 +1921,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     code_list,
                     phase,
                     today=now.date(),
+                    venue=quote_venue,
                 ),
             )
         if _kis_scheduler is None:
@@ -1943,6 +1953,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 phase,
                 today=now.date(),
                 stale_reason="kis_capacity_timeout",
+                venue=quote_venue,
             )
         except KisCapacityCooldown:
             quotes = _quote_fetcher.stale_last_good(
@@ -1950,6 +1961,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 phase,
                 today=now.date(),
                 stale_reason="kis_capacity_cooldown",
+                venue=quote_venue,
             )
         except KisCapacityOverloaded:
             quotes = _quote_fetcher.stale_last_good(
@@ -1957,6 +1969,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 phase,
                 today=now.date(),
                 stale_reason="kis_capacity_overloaded",
+                venue=quote_venue,
             )
         return LiveQuotesResponse(
             phase=phase,
