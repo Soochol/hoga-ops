@@ -187,26 +187,11 @@ export async function installLiveMocks(
   await page.route(api('calendar'), (r) => json(r, { holidays: [] }));
   await page.route(api('symbols'), (r) => json(r, { symbols: [] }));
   await page.route(api('upstream-hints'), (r) => json(r, { hints: [] }));
-  // TODO(ws-migration): the /live tick channel is no longer mockable via page.route.
-  // The app now opens ONE WebSocket at ws://<host>/api/ws (ADR-0053) carrying
-  // {ch:'event'|'live'|'subscribed'|'heartbeat'} frames; the client sends
-  // {action:'subscribe'|'unsubscribe', code} to drive subscription.
-  // To restore controllable e2e ticks inject frames like this:
+  // **틱 채널은 `helpers/liveWs.ts` 가 맡는다**(2026-07-31 해소). SSE→WebSocket 이관
+  // (ADR-0053) 이후 앱은 `/api/ws` 하나만 열고 `{ch}` 로 다중화하므로 `page.route` 로는
+  // 못 잡는다 — `page.routeWebSocket` 을 쓴다(Playwright ≥ 1.48; 이 저장소는 1.60).
+  // 사용 예는 `live-tick.spec.ts`.
   //
-  //   await page.routeWebSocket('**/api/ws', ws => {
-  //     ws.onMessage(msg => {
-  //       const parsed = JSON.parse(msg as string);
-  //       if (parsed.action === 'subscribe') {
-  //         ws.send(JSON.stringify({ ch: 'subscribed', code: parsed.code }));
-  //       }
-  //       // push live-tick frames on demand:
-  //       // ws.send(JSON.stringify({ ch: 'live', code: '098460', data: { t_ms, kind, ... } }));
-  //     });
-  //   });
-  //
-  // NOTE: page.routeWebSocket requires Playwright ≥ 1.48. The removed
-  // /api/events and /api/live/stream SSE route mocks were dead after the
-  // SSE→WebSocket migration (ADR-0053) and have been dropped.
-  // Tracked as a follow-up; requires a Playwright run to validate (not in the
-  // vitest+build gate).
+  // 여기서 SSE 라우트 모킹(`/api/events` · `/api/live/stream`)은 이관 후 죽은 코드라
+  // 삭제됐다. 이 헬퍼는 **REST 만** 담당한다 — 틱이 필요하면 `installLiveWs` 를 함께 부른다.
 }
