@@ -4,6 +4,7 @@ import { useHeatmapGroupFlow } from '../api/heatmapGroupFlow';
 import {
   useHeatmap, useCreateHeatmapFolder, useReorderHeatmapEntries,
   useRemoveFromHeatmap, useMoveHeatmapEntries, useCopyHeatmapEntry,
+  useRenameHeatmapFolder, useDeleteHeatmapFolder,
 } from '../heatmap/useHeatmap';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
 import { useJumpToLive } from '../live/useJumpToLive';
@@ -91,6 +92,8 @@ export function Heatmap() {
   const removeM = useRemoveFromHeatmap();
   const moveM = useMoveHeatmapEntries();
   const copyM = useCopyHeatmapEntry();
+  const renameFolderM = useRenameHeatmapFolder();
+  const deleteFolderM = useDeleteHeatmapFolder();
   const onReorder = (folderId: string, orderedCodes: string[]) =>
     reorderEntriesM.mutate({ folderId, orderedCodes });
   // 그룹 간 드래그: 기본은 이동, Ctrl 유지면 복제(원본 그룹 등록 유지). 보드가 수정자
@@ -99,6 +102,21 @@ export function Heatmap() {
     moveM.mutate({ codes: [code], fromFolderId, folderId });
   const onDragCopy = (code: string, name: string, folderId: string) =>
     copyM.mutate({ code, name, folderId });
+  // 그룹명 변경 = 이름 더블클릭(빠른 길) 또는 헤더 우클릭 메뉴(발견 가능한 길). await 를
+  // 돌려줘 실패 시 보드가 입력을 열어 둔 채 사유를 띄운다.
+  const onRenameFolder = (folderId: string, name: string) =>
+    renameFolderM.mutateAsync({ folderId, name });
+  // v3 (ADR-0112): 그룹 삭제는 멤버 종목까지 지운다 — 드로어와 같은 문법으로 confirm.
+  // 종목 수는 **필터 전 원본**(entries)에서 센다: 검색 중엔 화면 그룹이 부분집합이라
+  // visibleGroups 로 세면 실제 삭제량보다 적게 알린다.
+  const onDeleteFolder = (folderId: string, name: string) => {
+    const memberCount = entries.filter((e) => e.folder_id === folderId).length;
+    if (memberCount > 0
+        && !window.confirm(`'${name}' 그룹과 종목 ${memberCount}개가 함께 삭제됩니다. 계속할까요?`)) {
+      return;
+    }
+    deleteFolderM.mutate(folderId);
+  };
   // 행 우클릭 → 컨텍스트 메뉴(삭제·폴더이동, ADR-0068 G3). 분리 후 히트맵 편집의 단독 표면.
   const onRowMenu = (e: React.MouseEvent, code: string, name: string, folderId: string) => {
     e.preventDefault();
@@ -188,17 +206,16 @@ export function Heatmap() {
           sortMode={sortMode} onPick={onPick}
           onReorder={isSearching ? undefined : onReorder} onRowMenu={onRowMenu}
           onMove={onDragMove} onCopy={onDragCopy}
+          onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder}
           onRowDragState={setIsRowDragging} flowByFolder={flowByFolder} query={query} />
-        {/* 제거·이동 모두 menu.folderId(우클릭한 행이 속한 그룹) 스코프 — 같은 종목이
-            다른 그룹에도 등록돼 있으면 그 등록은 건드리지 않는다. */}
+        {/* 제거는 menu.folderId(우클릭한 행이 속한 그룹) 스코프 — 같은 종목이 다른 그룹에도
+            등록돼 있으면 그 등록은 건드리지 않는다. '그룹으로 이동' 항목은 넘기지 않는다:
+            실폴더를 전부 나열하는 구조라 그룹이 수십 개면 메뉴가 화면을 덮었고, 이동은
+            이제 드래그앤드롭이 대신한다(다른 그룹에 드롭=이동, Ctrl=복제). */}
         {menu && (
           <HeatmapRowMenu
             x={menu.x} y={menu.y} name={menu.name}
-            folders={folders}
-            currentFolderId={menu.folderId}
             onRemove={() => removeM.mutate({ code: menu.code, folderId: menu.folderId })}
-            onMove={(folderId) =>
-              moveM.mutate({ codes: [menu.code], fromFolderId: menu.folderId, folderId })}
             onCollect={() => setCollectOne({ code: menu.code, name: menu.name })}
             onClose={() => setMenu(null)}
           />

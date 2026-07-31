@@ -57,11 +57,17 @@ it('행 우클릭 → "히트맵에서 제거" → 그 그룹에서만 해제', 
   await waitFor(() => expect(removeFromHeatmapFolder).toHaveBeenCalledWith('005930', 'f1'));
 });
 
-it('행 우클릭 → 다른 그룹으로 이동 → moveHeatmapEntries(코드, from, to) 호출', async () => {
+// 메뉴는 관심종목 패널과 같은 짧은 항목 리스트 — 실폴더를 전부 나열하는 '그룹으로 이동'
+// 섹션은 없다(그룹이 수십 개면 메뉴가 화면을 덮었다). 그룹 간 이동은 드래그앤드롭 담당.
+it('행 우클릭 메뉴에 그룹 이동 목록이 없다', async () => {
   renderPage();
   fireEvent.contextMenu(await screen.findByTestId('heatmap-row-005930'));
-  // 005930 은 f1 소속 → 이동 대상은 f2 만(현재 그룹 제외, v3: 미분류 없음).
+  await screen.findByTestId('heatmap-row-menu');
   expect(screen.queryByTestId('heatmap-menu-move-f1')).toBeNull();
-  fireEvent.click(await screen.findByTestId('heatmap-menu-move-f2'));
-  await waitFor(() => expect(moveHeatmapEntries).toHaveBeenCalledWith(['005930'], 'f1', 'f2'));
+  expect(screen.queryByTestId('heatmap-menu-move-f2')).toBeNull();
+  expect(screen.queryByText('그룹으로 이동')).toBeNull();
+  // 메뉴 항목은 제거 + 수집 둘뿐(testid 로 단언 — 라벨엔 아이콘 글리프가 섞인다).
+  expect(screen.getAllByRole('menuitem').map((b) => b.getAttribute('data-testid')))
+    .toEqual(['heatmap-menu-remove', 'heatmap-menu-collect']);
+  expect(moveHeatmapEntries).not.toHaveBeenCalled();
 });

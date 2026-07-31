@@ -32,8 +32,8 @@ async def test_open_returns_live_and_caches() -> None:
     out = await f.fetch_and_gate(kis, ["005930", "000660"], "open")  # type: ignore[arg-type]
     assert {q.code: q.change_pct for q in out} == {"005930": 1.2, "000660": -0.8}
     assert (out[0].open, out[0].high, out[0].low) == (72000, 73000, 71500)  # open 경로 OHLC 통과
-    # 캐시에 적재됨(closed 서빙용).
-    assert f._last_quotes["005930"].price == 72400
+    # 캐시에 적재됨(closed 서빙용). 키는 (venue, code) — OHLC 가 venue 마다 다르다.
+    assert f._last_quotes[("KRX", "005930")].price == 72400
 
 
 async def test_open_threads_quote_venue() -> None:
@@ -72,6 +72,33 @@ async def test_closed_cold_fetch_threads_quote_venue() -> None:
     await f.fetch_and_gate(kis, ["005930"], "closed", venue="UN")  # type: ignore[arg-type]
 
     assert kis.venues == ["UN"]
+
+
+# --- venue 격리: OHLC 는 venue 마다 다르므로(005930 시가 KRX 257,000 vs UN 225,500 실측)
+#     한 venue 의 캐시가 다른 venue 요청에 새면 캔들·시가가 통째로 틀린다 ---
+
+async def test_closed_does_not_serve_other_venues_cache() -> None:
+    """KRX 로 캐시를 채운 뒤 UN 을 요청하면 **KRX 봉을 주지 않고** 그 venue 로 다시 받는다.
+    캐시 키가 code 뿐이면 'not missing' 으로 판정돼 KRX 봉이 UN 인 척 서빙됐다."""
+    f = LiveQuoteFetcher()
+    krx = _FakeKis([KisQuote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500)])
+    await f.fetch_and_gate(krx, ["005930"], "closed")  # type: ignore[arg-type]
+
+    un = _FakeKis([KisQuote("005930", 72500, 1.4, 900, open=70000, high=73200, low=69800)])
+    out = await f.fetch_and_gate(un, ["005930"], "closed", venue="UN")  # type: ignore[arg-type]
+
+    assert un.calls == 1                      # KRX 캐시로 때우지 않고 UN 을 실제 조회
+    assert out[0].open == 70000               # UN 시가(72000=KRX 가 아니다)
+
+
+async def test_stale_last_good_is_venue_scoped() -> None:
+    """KIS 실패/우회 경로도 같은 규칙 — 요청 venue 의 표본이 없으면 다른 venue 것을
+    대신 주지 않고 그 코드를 비운다(틀린 봉보다 '—' 가 정직하다)."""
+    f = LiveQuoteFetcher()
+    await f.fetch_and_gate(_FakeKis(Q), ["005930"], "open")  # type: ignore[arg-type]
+
+    assert [q.code for q in f.stale_last_good(["005930"], "open")] == ["005930"]
+    assert f.stale_last_good(["005930"], "open", venue="UN") == []
 
 
 async def test_closed_omits_uncached_code() -> None:

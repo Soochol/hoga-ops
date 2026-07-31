@@ -23,6 +23,10 @@ export interface HeatmapBoardProps {
   onCopy?: (code: string, name: string, toFolderId: string) => void;
   /** 행 우클릭 메뉴(삭제·폴더이동) 오프너. 페이지에서 주입. */
   onRowMenu?: RowMenuOpener;
+  /** 그룹 이름 변경 커밋(이름 더블클릭·헤더 우클릭 메뉴). 미전달이면 두 진입점 모두 비활성. */
+  onRenameFolder?: (folderId: string, name: string) => Promise<void>;
+  /** 그룹 삭제(헤더 우클릭 메뉴). 파괴적이라 confirm 은 페이지가 띄운다. */
+  onDeleteFolder?: (folderId: string, name: string) => void;
   /** 행 드래그 시작/끝을 페이지로 전파(그룹순서 동결용, G1). */
   onRowDragState?: (dragging: boolean) => void;
   /** folder_id → 당일 흐름 시계열(%). 미전달이면 헤더 그래프 숨김. */
@@ -56,7 +60,7 @@ const entryCollision: CollisionDetection = (args) => {
  *  그래서 드래그가 구조적으로 "그룹 내"에 갇혀 있었다. 그룹 간 이동/복제를 드래그로 하려면
  *  컨텍스트가 하나여야 한다. multicol 이 블록을 칼럼에 흩뿌려도 폴더 블록은 break-inside-avoid
  *  라 한 칼럼 안에 온전히 있고, dnd-kit 은 좌표로 충돌을 재므로 칼럼을 넘는 드래그도 동작한다. */
-export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder, onMove, onCopy, onRowMenu, onRowDragState, flowByFolder, query }: HeatmapBoardProps) {
+export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder, onMove, onCopy, onRowMenu, onRenameFolder, onDeleteFolder, onRowDragState, flowByFolder, query }: HeatmapBoardProps) {
   const visible = visibleFolderGroups(groups);
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬/이동)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -116,6 +120,8 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
           dragEnabled={dragEnabled}
           sortEnabled={sortEnabled}
           copyIntent={copyIntent}
+          onRenameFolder={onRenameFolder}
+          onDeleteFolder={onDeleteFolder}
         />
       ))}
     </div>

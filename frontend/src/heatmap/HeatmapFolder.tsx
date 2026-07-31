@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -10,6 +11,7 @@ import { folderDroppableId, entrySortableId } from '../watchlist/dragHandlers';
 import type { JumpModifiers } from '../live/useJumpToLive';
 import { FolderAddButton } from './FolderAddButton';
 import { GroupFlowSparkline } from './GroupFlowSparkline';
+import { HeatmapGroupMenu } from './HeatmapGroupMenu';
 
 /** 행 우클릭 메뉴 열기 — (이벤트, 코드, 이름, 이 행이 속한 폴더 id). */
 export type RowMenuOpener = (
@@ -37,6 +39,12 @@ export interface HeatmapFolderProps {
   sortEnabled?: boolean;
   /** 드롭 하이라이트를 복제(success)로 칠할지 — Ctrl 유지 중. */
   copyIntent?: boolean;
+  /** 그룹 이름 변경 커밋. 미전달이면 더블클릭·메뉴의 '이름 변경'이 비활성.
+   *  reject 하면 입력이 열린 채 에러를 보여 재시도할 수 있게 한다. */
+  onRenameFolder?: (folderId: string, name: string) => Promise<void>;
+  /** 그룹 삭제. 미전달이면 메뉴의 '그룹 삭제'가 빠진다. 파괴적이므로(멤버 종목 동반 삭제)
+   *  confirm 은 호출측 책임. */
+  onDeleteFolder?: (folderId: string, name: string) => void;
 }
 
 /** 그룹 블록: 헤더(폴더명 + 평균 등락률 칩) + 정렬된 행들. break-inside-avoid
@@ -51,12 +59,15 @@ export interface HeatmapFolderProps {
  *
  *  간격: 그룹 간 mb-xs(4.5px, 밀도 우선). 그룹 내부는 헤더-첫행·행간 모두 0으로 붙여
  *  관심종목 패널 리스트와 같은 촘촘한 연속 리스트를 이룬다(구분은 border-b). */
-export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, dragEnabled, sortEnabled, copyIntent }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder }: HeatmapFolderProps) {
   const pctOf = makePctOf(quoteByCode);
   const sorted = sortEntries(entries, sortMode, pctOf);
   const avg = avgPct(entries, pctOf);
   const folderId = folder.id;
   const canSort = !!dragEnabled && !!sortEnabled;
+  const [renaming, setRenaming] = useState<{ value: string; error: string | null } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const hasGroupMenu = !!onRenameFolder || !!onDeleteFolder;
 
   const ctxFor = onRowMenu
     ? (code: string, name: string) => (e: React.MouseEvent) => onRowMenu(e, code, name, folderId)
@@ -96,14 +107,51 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
       {/* 그룹 헤더 밴드 = heatHeaderBg(avg) — 평균 등락 비례 히트 틴트(섹터 온도). 폴더 본문은
           투명·평면이고 좌측 border-strong 스파인 + 이 틴트 밴드로 그룹을 구분한다. 평균 % 는
           평면 text-fg-dim 텍스트(색=밴드가 짊어짐, 숫자=보조; G4). */}
+      {/* 헤더 우클릭 = 그룹 메뉴(이름 변경·삭제). ⋯ 버튼을 얹지 않는 이유는
+          HeatmapGroupMenu 주석 참조(헤더 밀도). 이름 편집 중엔 메뉴를 막는다. */}
       <div className="flex justify-between items-center gap-2 px-2 py-1 min-h-list-group-header"
-        style={{ background: heatHeaderBg(avg) }}>
+        style={{ background: heatHeaderBg(avg) }}
+        onContextMenu={hasGroupMenu && !renaming
+          ? (e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }
+          : undefined}>
         {/* 폴더(섹터)명 = 보드의 1차 앵커. 글자 크기 text-xs(가독성, origin/main).
             그룹 당일 흐름 미니 그래프는 이름 옆(기준선 면적형, GroupFlowSparkline). */}
         <span className="flex items-center gap-2 min-w-0">
-          <span className="text-xs font-semibold truncate text-fg">
-            {folder.name}
-          </span>
+          {renaming && onRenameFolder ? (
+            <GroupNameInput
+              state={renaming}
+              onChange={(value) => setRenaming({ value, error: null })}
+              onCancel={() => setRenaming(null)}
+              onCommit={async (value) => {
+                const next = value.trim();
+                if (next === '' || next === folder.name) { setRenaming(null); return; }
+                try {
+                  await onRenameFolder(folderId, next);
+                  setRenaming(null);
+                } catch (e) {
+                  // 입력을 열어 둔 채 사유를 보여 재시도시킨다 — 조용히 닫으면 이름이
+                  // 안 바뀐 이유를 알 길이 없다(StudyViewsDrawer.commitRename 과 동일 계약).
+                  setRenaming({
+                    value,
+                    error: e instanceof Error ? e.message : '이름 변경에 실패했습니다.',
+                  });
+                }
+              }}
+            />
+          ) : (
+            /* 더블클릭 = 제자리 이름 변경. select-none 은 더블클릭이 텍스트를 선택해
+               입력 위에 파란 하이라이트가 남는 것을 막는다. */
+            <span
+              className={`text-xs font-semibold truncate text-fg${onRenameFolder ? ' select-none' : ''}`}
+              data-testid={`heatmap-folder-name-${folderId}`}
+              title={onRenameFolder ? '더블클릭하면 이름을 바꿉니다' : undefined}
+              onDoubleClick={onRenameFolder
+                ? (e) => { e.preventDefault(); setRenaming({ value: folder.name, error: null }); }
+                : undefined}
+            >
+              {folder.name}
+            </span>
+          )}
           {flowSeries !== undefined && <GroupFlowSparkline series={flowSeries} />}
         </span>
         <span className="flex items-center gap-2 flex-none">
@@ -116,7 +164,57 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
         </span>
       </div>
       {body}
+      {menu && (
+        <HeatmapGroupMenu x={menu.x} y={menu.y} name={folder.name}
+          onRename={onRenameFolder
+            ? () => setRenaming({ value: folder.name, error: null })
+            : undefined}
+          onDelete={onDeleteFolder ? () => onDeleteFolder(folderId, folder.name) : undefined}
+          onClose={() => setMenu(null)} />
+      )}
     </FolderDropZone>
+  );
+}
+
+/** 그룹명 제자리 편집 입력 — Enter 확정 / Escape 취소 / blur 확정(StudyViewsDrawer 의
+ *  저장뷰 이름 변경과 동일 계약). 마운트 시 전체 선택해 곧바로 덮어쓸 수 있게 한다.
+ *
+ *  `committing` 가드가 필요한 이유: Enter 로 커밋하면 입력이 언마운트되며 blur 가 한 번 더
+ *  터져 같은 커밋이 두 번 나간다. 커밋이 async(서버 왕복)라 그 사이 창이 열려 있다. */
+function GroupNameInput({ state, onChange, onCommit, onCancel }: {
+  state: { value: string; error: string | null };
+  onChange: (value: string) => void;
+  onCommit: (value: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const committing = useRef(false);
+  const commit = async () => {
+    if (committing.current) return;
+    committing.current = true;
+    try {
+      await onCommit(state.value);
+    } finally {
+      committing.current = false;
+    }
+  };
+  return (
+    <span className="flex min-w-0 flex-col gap-0.5">
+      <input
+        aria-label="그룹 이름 수정"
+        autoFocus
+        value={state.value}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => { void commit(); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); void commit(); }
+          if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+        }}
+        // 헤더 밴드 위에 얹히므로 bg-bg-input 으로 편집 중임을 분명히 한다.
+        className="w-full min-w-0 rounded border border-border bg-bg-input px-1 py-0.5 text-xs font-semibold text-fg"
+      />
+      {state.error && <span className="truncate text-badge text-error">{state.error}</span>}
+    </span>
   );
 }
 
