@@ -15,6 +15,13 @@ the genuinely capture-agnostic, type-free helper ``_mint_folder_id`` is shared.
 
 Own ``_lock`` — NOT the watchlist lock — so heatmap UI mutations never
 serialize behind the capture finalize hook (ADR-0068 rule 1).
+
+**Entry identity is ``(folder_id, code)``** — one Code may be registered in
+several groups at once. Commands that target a single registration therefore
+take the folder as well (``remove_entry(folder_id=...)``,
+``move_entries(from_folder_id=...)``). Callers that want the *set of codes*
+(REST-30s targets, quote fetches) must de-duplicate — ``load_heatmap`` returns
+one row per registration, not per code.
 """
 from __future__ import annotations
 
@@ -64,13 +71,20 @@ def _migrate(raw: dict) -> dict:
     folder (_UNCAT_FOLDER_ID) — an ordinary folder thereafter (renamable,
     deletable, never auto-recreated). If that id already exists (heatmap.json
     seeded verbatim from a v3 watchlist carries f_00000000 '기본'), rescued
-    entries merge into the existing folder instead of duplicating the id."""
+    entries merge into the existing folder instead of duplicating the id.
+
+    A Code may repeat ACROSS folders (multi-group membership) but not within
+    one: two dangling rows for the same code both land in 미분류 and would
+    collide, so same-folder repeats are dropped (first wins) rather than left
+    to fail HeatmapDocument validation — which would quarantine the whole file
+    as "corrupt" and lose every other group."""
     version = raw.get("schema_version", raw.get("version", 1))
     if version > 3:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         raise UnsupportedHeatmapSchema(f"unsupported heatmap schema_version {version}")
     folders = [dict(f) for f in raw.get("folders", [])] if version >= 2 else []  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
     valid_ids = {f.get("id") for f in folders}
     entries: list[dict] = []
+    seen: set[tuple[str, str]] = set()
     rescued = False
     for i, e in enumerate(raw.get("entries", [])):
         e = dict(e)  # noqa: PLW2901 — 방어적 복사·정규화 후 재대입
@@ -81,6 +95,10 @@ def _migrate(raw: dict) -> dict:
             # 기존 멤버 뒤에 서게 한다 — _reindex 가 최종 0..N-1 로 압축.
             e["order"] += len(raw.get("entries", []))
             rescued = True
+        key = (str(e.get("folder_id")), str(e.get("code")))
+        if key in seen:
+            continue
+        seen.add(key)
         entries.append(e)
     if rescued and _UNCAT_FOLDER_ID not in valid_ids:
         folders.append({"id": _UNCAT_FOLDER_ID, "name": _UNCAT_FOLDER_NAME,
@@ -136,7 +154,11 @@ def save_document(data_dir: Path, doc: HeatmapDocument) -> None:
 
 
 def load_heatmap(data_dir: Path) -> list[HeatmapEntry]:
-    """Read-only convenience for callers that only need the entry list."""
+    """Read-only convenience for callers that only need the entry list.
+
+    One row per REGISTRATION: a Code registered in three groups appears three
+    times. Callers deriving a code SET (REST-30s targets, quote fetches) must
+    de-duplicate."""
     return load_document(data_dir).entries
 
 
@@ -204,49 +226,49 @@ async def add_entry_to_folder(
     name: str,
     folder_id: str,
 ) -> HeatmapEntry:
-    """Add code to the Heatmap placed in folder_id — the ONLY add command
-    (v3, ADR-0112: every entry needs a real folder, so a folder-less add_entry
-    no longer exists).
+    """Register code in folder_id — the ONLY add command (v3, ADR-0112: every
+    entry needs a real folder, so a folder-less add_entry no longer exists).
 
-    If the code already exists, this moves the existing entry to folder_id
-    instead of failing.
+    Multi-group membership: a code already registered in ANOTHER group is added
+    here too (both registrations stand) instead of being moved. Re-adding it to
+    the SAME group is idempotent — it refreshes the display name and keeps the
+    existing position, so a double-click never duplicates a row or shuffles the
+    group. "Move it instead" is the separate, explicit ``move_entries``.
     """
     async with _lock:
         doc = load_document(data_dir)
         if not any(f.id == folder_id for f in doc.folders):
             raise FolderNotFoundError(folder_id)
-        existing = next((e for e in doc.entries if e.code == code), None)
-        base = max((e.order for e in doc.entries if e.folder_id == folder_id), default=-1) + 1
-        if existing is None:
-            entry = HeatmapEntry(code=code, name=name, folder_id=folder_id, order=base)
-            save_document(data_dir, doc.model_copy(update={"entries": [*doc.entries, entry]}))
-            return entry
-        if existing.folder_id == folder_id:
-            entry = existing.model_copy(update={"name": name})
+        here = next(
+            (e for e in doc.entries if e.code == code and e.folder_id == folder_id), None)
+        if here is not None:
+            entry = here.model_copy(update={"name": name})
             save_document(
                 data_dir,
                 doc.model_copy(update={
-                    "entries": [entry if e.code == code else e for e in doc.entries],
+                    "entries": [entry if e is here else e for e in doc.entries],
                 }),
             )
             return entry
-        entry = existing.model_copy(update={"name": name, "folder_id": folder_id, "order": base})
-        save_document(
-            data_dir,
-            doc.model_copy(update={
-                "entries": [entry if e.code == code else e for e in doc.entries],
-            }),
-        )
+        base = max((e.order for e in doc.entries if e.folder_id == folder_id), default=-1) + 1
+        entry = HeatmapEntry(code=code, name=name, folder_id=folder_id, order=base)
+        save_document(data_dir, doc.model_copy(update={"entries": [*doc.entries, entry]}))
         return entry
 
 
-async def remove_entry(data_dir: Path, *, code: str) -> None:
+async def remove_entry(data_dir: Path, *, code: str, folder_id: str | None = None) -> None:
+    """Unregister code. ``folder_id`` given → drop only THAT registration (the
+    row the user right-clicked), leaving the code's other groups alone; omitted
+    → drop it from every group ("히트맵에서 완전히 제거"). Absent → NotInHeatmapError,
+    so a stale UI still gets a 404 rather than a silent success."""
     async with _lock:
         doc = load_document(data_dir)
-        if not any(e.code == code for e in doc.entries):
+        def targeted(e: HeatmapEntry) -> bool:
+            return e.code == code and (folder_id is None or e.folder_id == folder_id)
+        if not any(targeted(e) for e in doc.entries):
             raise NotInHeatmapError(code)
         save_document(data_dir, doc.model_copy(
-            update={"entries": [e for e in doc.entries if e.code != code]}))
+            update={"entries": [e for e in doc.entries if not targeted(e)]}))
 
 
 async def create_folder(data_dir: Path, *, name: str) -> WatchlistFolder:
@@ -302,23 +324,35 @@ async def reorder_folders(data_dir: Path, *, ordered_ids: list[str]) -> None:
         save_document(data_dir, doc.model_copy(update={"folders": new}))
 
 
-async def move_entries(data_dir: Path, *, codes: list[str], folder_id: str) -> None:
-    """Move codes into folder_id (a real folder — v3 has no null group),
-    appended after the target's current members, preserving caller order. A
-    code already in folder_id is a no-op; absent codes are ignored. _reindex
-    compacts order to 0..N-1."""
+async def move_entries(data_dir: Path, *, codes: list[str], from_folder_id: str,
+                       folder_id: str) -> None:
+    """Move codes OUT OF from_folder_id INTO folder_id (both real folders — v3
+    has no null group), appended after the target's current members, preserving
+    caller order. Codes absent from the source group are ignored; from == to is
+    a no-op. _reindex compacts order to 0..N-1.
+
+    Multi-group membership makes the source explicit: without it "move 005930"
+    would silently pick one of its registrations. A code already registered in
+    the TARGET group collapses — the source registration is dropped rather than
+    duplicated (a folder holds each code at most once)."""
     async with _lock:
         doc = load_document(data_dir)
-        if not any(f.id == folder_id for f in doc.folders):
-            raise FolderNotFoundError(folder_id)
-        by_code = {e.code: e for e in doc.entries}
-        moving = [c for c in codes if c in by_code and by_code[c].folder_id != folder_id]
+        for fid in (from_folder_id, folder_id):
+            if not any(f.id == fid for f in doc.folders):
+                raise FolderNotFoundError(fid)
+        if from_folder_id == folder_id:
+            return
+        source = {e.code for e in doc.entries if e.folder_id == from_folder_id}
+        already = {e.code for e in doc.entries if e.folder_id == folder_id}
+        moving = [c for c in codes if c in source]
+        pos = {c: i for i, c in enumerate(c for c in moving if c not in already)}
+        collapsing = {c for c in moving if c in already}
         base = max((e.order for e in doc.entries if e.folder_id == folder_id), default=-1) + 1
-        pos = {c: i for i, c in enumerate(moving)}
         new = [
             e.model_copy(update={"folder_id": folder_id, "order": base + pos[e.code]})
-            if e.code in pos else e
+            if e.folder_id == from_folder_id and e.code in pos else e
             for e in doc.entries
+            if not (e.folder_id == from_folder_id and e.code in collapsing)
         ]
         save_document(data_dir, doc.model_copy(update={"entries": new}))
 
@@ -340,7 +374,8 @@ async def reorder_entries(data_dir: Path, *, folder_id: str,
 
 
 async def remove_entries(data_dir: Path, *, codes: list[str]) -> None:
-    """Bulk remove. Absent codes are ignored (idempotent bulk delete)."""
+    """Bulk remove — every registration of each code, in ALL groups (there is
+    no folder-scoped bulk surface). Absent codes are ignored (idempotent)."""
     async with _lock:
         doc = load_document(data_dir)
         keep = [e for e in doc.entries if e.code not in set(codes)]

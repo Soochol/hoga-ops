@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { it, expect, vi, beforeEach } from 'vitest';
 
 // dnd-kit passthrough — DndContext가 주입한 onDragStart/onDragEnd 캡처(WatchlistDrawer.drag.test 패턴).
-// 폴더마다 DndContext가 있으나 핸들러는 모두 동일 onRowDragState(true/false)를 호출하므로 마지막 캡처로 충분.
+// DndContext는 보드에 하나뿐이다(그룹 간 드래그를 위해 폴더별 컨텍스트를 걷어냈다).
 const h = vi.hoisted(() => ({
   onDragStart: null as null | ((e?: unknown) => void),
   onDragEnd: null as null | ((e: unknown) => void),
@@ -93,7 +93,8 @@ it('G1: 행 드래그 active 동안 groupSort 변경에도 그룹 순서 동결,
   expect(folderOrder()).toEqual(['heatmap-folder-f1', 'heatmap-folder-f2']); // manual=folder.order
 
   expect(h.onDragStart).toBeTruthy();
-  act(() => { h.onDragStart!(); }); // 드래그 시작 → isRowDragging=true
+  // 실제 DragStartEvent 는 activatorEvent(Ctrl 여부 판정용)를 항상 싣는다 — 그 모양대로 준다.
+  act(() => { h.onDragStart!({ active: { id: 'f1:005930' }, activatorEvent: { ctrlKey: false } }); });
 
   // 드래그 중 desc로 변경 — 평소면 [f2(+5), f1(+1)]가 되어야 하나 동결돼야 함
   act(() => { useHeatmapPrefsStore.getState().setGroupSort('desc'); });

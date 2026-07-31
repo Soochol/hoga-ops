@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   getHeatmap: vi.fn<() => Promise<HeatmapResponse>>(),
   addToHeatmapFolder: vi.fn(() => Promise.resolve({ code: '', name: '', folder_id: 'f1', order: 0 })),
   removeFromHeatmap: vi.fn(() => Promise.resolve()),
+  removeFromHeatmapFolder: vi.fn(() => Promise.resolve()),
   createHeatmapFolder: vi.fn(() => Promise.resolve({ id: 'fNew', name: '', order: 9 })),
   renameHeatmapFolder: vi.fn(() => Promise.resolve()),
   deleteHeatmapFolder: vi.fn(() => Promise.resolve()),
@@ -134,11 +135,13 @@ describe('HeatmapDrawer', () => {
     expect(screen.getByTestId('heatmap-drawer-row-000002')).not.toHaveAttribute('aria-current');
   });
 
-  it('Delete key removes the row (removeFromHeatmap)', async () => {
+  // 삭제는 그 행이 속한 그룹 스코프 — 같은 종목이 다른 그룹에도 등록돼 있으면 그쪽은 남는다.
+  it('Delete key removes the row from its group only', async () => {
     wrap(<HeatmapDrawer />);
     const row = await screen.findByTestId('heatmap-drawer-row-000001');
     fireEvent.keyDown(row, { key: 'Delete' });
-    await waitFor(() => expect(api.removeFromHeatmap).toHaveBeenCalledWith('000001'));
+    await waitFor(() => expect(api.removeFromHeatmapFolder).toHaveBeenCalledWith('000001', 'f1'));
+    expect(api.removeFromHeatmap).not.toHaveBeenCalled();
   });
 
   it('row ⋯ menu has only 제거 — no 그룹으로 이동 (드래그로 대체)', async () => {
@@ -147,7 +150,7 @@ describe('HeatmapDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: '에코프로 행 메뉴' }));
     // '히트맵에서 제거'만 있고 '그룹으로 이동' 섹션(heatmap-menu-move-*)은 없다.
     fireEvent.click(screen.getByTestId('heatmap-menu-remove'));
-    await waitFor(() => expect(api.removeFromHeatmap).toHaveBeenCalledWith('000001'));
+    await waitFor(() => expect(api.removeFromHeatmapFolder).toHaveBeenCalledWith('000001', 'f1'));
     // 이동 항목 부재 확인 (다른 행 메뉴를 열어도 move 버튼 없음).
     fireEvent.click(screen.getByRole('button', { name: 'LG엔솔 행 메뉴' }));
     expect(screen.queryByTestId('heatmap-menu-move-f2')).toBeNull();

@@ -24,17 +24,23 @@ export function groupHeatmapEntries(
   }));
 }
 
-/** 종목 code → 소속 히트맵 그룹명. entry 가 folder_id 를 소유하는 SSOT 구조라
- *  (한 종목 = 최대 한 그룹) find 한 번으로 역조회한다. 미소속·데이터 미로드 시 null.
+/** 종목 code → 소속 히트맵 그룹명. 한 종목이 **여러 그룹에 동시 등록**될 수 있으므로
+ *  모든 소속 그룹명을 폴더 순서로 이어 붙인다("반도체 · 대형주"). find 한 번으로 첫
+ *  등록만 보면 나머지 소속이 화면에서 사라져, 같은 종목의 칩이 어느 그룹에서 열었느냐와
+ *  무관하게 한 이름만 보이는 거짓말이 된다. 미소속·데이터 미로드 시 null.
  *  순수. /live 상태바의 "히트맵 · {그룹}" 칩이 소비. */
 export function heatmapGroupNameOf(
   code: string,
   folders: HeatmapFolder[],
   entries: HeatmapEntry[],
 ): string | null {
-  const folderId = entries.find((e) => e.code === code)?.folder_id;
-  if (folderId === undefined) return null;
-  return folders.find((f) => f.id === folderId)?.name ?? null;
+  const ids = new Set(entries.filter((e) => e.code === code).map((e) => e.folder_id));
+  if (ids.size === 0) return null;
+  const names = [...folders]
+    .sort((a, b) => a.order - b.order)
+    .filter((f) => ids.has(f.id))
+    .map((f) => f.name);
+  return names.length > 0 ? names.join(' · ') : null;
 }
 
 // 행(종목)·그룹 정렬 공용 3-상태: manual=기본(저장 순서), desc=등락률 내림, asc=오름.
