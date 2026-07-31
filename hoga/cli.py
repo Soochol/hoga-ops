@@ -13,7 +13,12 @@ from rich.table import Table
 
 from hoga.collector.client import HogaplayClient
 from hoga.collector.orchestrator import collect_stock_date
-from hoga.config import Config, CookieMissingError, resolve_data_dir
+from hoga.config import (
+    Config,
+    CookieMissingError,
+    resolve_data_dir,
+    resolve_symbol_master_path,
+)
 from hoga.env import load_env
 from hoga.parser import parse_stock_date
 from hoga.util.atomic_write import atomic_write_json
@@ -750,3 +755,112 @@ def prune(
             f"\n[{style}]disk: {head.free_pct:.1f}% free "
             f"({head.free_bytes / 1024**3:.0f} GiB of {head.total_bytes / 1024**3:.0f} GiB)[/{style}]"
         )
+
+
+@app.command()
+def backup(
+    dest: str | None = typer.Option(
+        None, "--dest",
+        help="백업 목적지 디렉토리(기본: HOGA_BACKUP_DEST env).",
+    ),
+    include_raw: bool = typer.Option(
+        False, "--include-raw",
+        help="hogaplay raw TSV 도 미러한다. 용량이 지배적이다(실측 351GB).",
+    ),
+    include_live: bool = typer.Option(
+        False, "--include-live",
+        help="실시간 JSONL 원본(live/·live_kiwoom/)도 미러한다.",
+    ),
+    keep: int | None = typer.Option(
+        None, "--keep",
+        help="보관할 상태 스냅샷 세대 수(기본 14).",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run",
+        help="무엇을 담을지만 보고한다. 목적지를 건드리지 않는다.",
+    ),
+) -> None:
+    """다시 구할 수 없는 데이터를 목적지로 복제한다.
+
+    두 갈래로 담는다. ``state/`` 는 사용자 저작물(관심종목·저장뷰·프리셋 등)의
+    **날짜별 스냅샷**이다 — 여기서 흔한 사고는 디스크 고장이 아니라 오삭제·손상이라
+    세대를 남겨야 되돌릴 수 있다. ``market/`` 는 시장 데이터의 **덧쓰기 전용
+    미러**다 — 파티션이 불변이라 새 파일만 복사하면 되고, 원본의 prune 이 백업으로
+    전파되지 않도록 목적지에서는 절대 지우지 않는다.
+
+    권장 실행 시각은 17:00 일일 런 이후다. 그때는 JSONL 이 아카이브로 옮겨졌고
+    parquet 이 확정돼 있다 — 완료 여부는 결과에 표시된다.
+
+    자격증명(``.local/*token*.json``)과 DuckDB 스필은 절대 담지 않는다.
+    """
+    from hoga.backup import (  # noqa: PLC0415 — 지연 import(CLI 기동 비용)
+        KEEP_DEFAULT,
+        resolve_backup_dest,
+        run_backup,
+    )
+
+    try:
+        target = resolve_backup_dest(dest)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    result = run_backup(
+        resolve_data_dir(),
+        target,
+        symbol_master=resolve_symbol_master_path(),
+        include_raw=include_raw,
+        include_live=include_live,
+        keep=KEEP_DEFAULT if keep is None else keep,
+        dry_run=dry_run,
+    )
+
+    tag = "[yellow]dry-run[/yellow]" if result.dry_run else "[green]backup[/green]"
+    # 원본 경로를 반드시 보여 준다 — HOGA_DATA_DIR 를 빠뜨리면 엉뚱한(또는 빈)
+    # 디렉토리를 담고도 출력이 성공처럼 보인다.
+    console.print(f"{tag} {result.data_dir} → {result.dest}")
+    if result.state_archive is not None:
+        console.print(
+            f"  state : {result.state_items}개 항목, "
+            f"{result.state_bytes / 1024**2:.1f} MiB → {result.state_archive.name}"
+        )
+    console.print(
+        f"  market: {result.copied_files}개 복사 "
+        f"({result.copied_bytes / 1024**3:.2f} GiB), {result.skipped_files}개 최신"
+    )
+    if result.pruned_archives:
+        console.print(f"  세대 정리: 오래된 스냅샷 {result.pruned_archives}개 삭제")
+    if result.daily_run_done is True:
+        console.print("  [dim]오늘 일일 런 완료 후 시점 — parquet 확정 상태[/dim]")
+    for w in result.warnings:
+        console.print(f"  [yellow]![/yellow] {w}")
+
+
+@app.command("backup-verify")
+def backup_verify(
+    dest: str | None = typer.Option(
+        None, "--dest",
+        help="검증할 백업 목적지(기본: HOGA_BACKUP_DEST env).",
+    ),
+) -> None:
+    """백업본을 실제로 열어 복원 가능한지 확인한다(복원 리허설).
+
+    존재 확인만으로는 부족하다 — 0바이트 파일도, 잘린 tar 도 존재는 한다. 상태
+    아카이브를 임시 디렉토리에 **풀어** JSON 을 파싱하고, parquet 표본의 매직바이트를
+    확인한다. 라이브 데이터는 건드리지 않는다.
+    """
+    from hoga.backup import resolve_backup_dest, verify_backup  # noqa: PLC0415
+
+    try:
+        target = resolve_backup_dest(dest)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    result = verify_backup(target)
+    for name, ok, detail in result.checks:
+        mark = "[green]PASS[/green]" if ok else "[red]FAIL[/red]"
+        console.print(f"{mark}  {name:<16}{detail}")
+    if result.ok:
+        console.print("\n[green]복원 가능합니다.[/green]")
+    else:
+        console.print(f"\n[red]{len(result.failed())}개 검사 실패 — 백업을 신뢰할 수 없습니다.[/red]")
+        raise typer.Exit(code=1)

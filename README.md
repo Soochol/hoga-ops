@@ -115,6 +115,49 @@ npm run dev
 재시작 감독자가 없으므로(ADR-0088) 조치는 프로세스 재시작이고, 위 4번이 그 조치를
 자동화한 것이다.
 
+## 백업
+
+**왜 필요한가.** 로컬 디스크가 이 앱의 유일한 DB 인데 상류 재취득 창이 극히 짧다 —
+hogaplay 는 ~18시간만 보유하고 실시간 WS 틱은 재요청 대상이 아니다. 게다가 원본은
+스스로 지워진다: raw 는 3일(ADR-0075), `_archive` JSONL 은 7일 뒤 삭제된다. 즉
+promoted parquet 이 유일 사본이 되는 시점이 정상 운영 중에 반드시 오고, 그때 디스크가
+죽으면 복구 경로가 없다.
+
+```sh
+export HOGA_BACKUP_DEST=/mnt/backup/hoga-ops   # 반드시 **다른 물리 디스크**
+uv run hoga backup           # 담는다
+uv run hoga backup-verify    # 실제로 열어 복원 가능한지 확인한다
+```
+
+목적지는 두 갈래다. 실패 양상이 다르기 때문이다:
+
+| 경로 | 담는 것 | 방식 | 이유 |
+| --- | --- | --- | --- |
+| `state/` | 관심종목·저장뷰·프리셋·스크리너 저장·알림 설정·`symbol-master.json` | 날짜별 tar 스냅샷(기본 14세대) | 여기서 흔한 사고는 디스크 고장이 아니라 **오삭제·손상**이다. `versioned_json_file` 은 깨진 파일을 격리하고 빈 문서를 반환하므로, 미러였다면 그 빈 문서가 정상본을 덮는다 |
+| `market/` | `parquet/`·`screener/`·`research/` | 덧쓰기 전용 미러 | 파티션이 불변이라 새 파일만 복사하면 하루치 비용이다. **목적지에서 절대 지우지 않는다** — 원본의 prune 이 백업으로 전파되면 백업이 아니다 |
+
+- `--include-raw` / `--include-live` 로 raw TSV·실시간 JSONL 도 담는다. 용량이
+  지배적이라(raw 실측 351GB) 기본 제외이며, 어차피 보존창(3일·7일) 안에만 존재한다.
+- **자격증명(`.local/*token*.json`)과 DuckDB 스필은 절대 담지 않는다.** 백업본이
+  유출되면 실전투자 앱키가 함께 나가기 때문이다.
+- 출력의 첫 줄이 `<원본> → <목적지>` 다. `HOGA_DATA_DIR` 를 빠뜨리고 엉뚱한 디렉토리를
+  담는 사고를 눈으로 잡으라고 넣었다.
+
+자동화는 `deploy/hoga-ops-backup.{service,timer}` 다. 매일 18:30 에 백업 후 **곧바로
+검증까지** 돌린다(검증하지 않은 백업은 백업이 아니고, 별도 타이머로 미루면 아무도 안
+본다). 17:00 일일 런 뒤라 parquet 이 확정되고 JSONL append 도 멎은 사본을 얻는다.
+
+```sh
+cp deploy/hoga-ops-backup.{service,timer} ~/.config/systemd/user/
+# WorkingDirectory 와 HOGA_BACKUP_DEST 를 실제 값으로 고친 뒤:
+systemctl --user daemon-reload
+systemctl --user enable --now hoga-ops-backup.timer
+systemctl --user start hoga-ops-backup.service   # 첫 실행은 전량 복사라 오래 걸린다
+```
+
+`Persistent=true` 라 그 시각에 노트북이 꺼져 있었으면 다음 부팅 직후 따라잡는다.
+시스템 시간대가 KST 가 아니면 타이머의 `OnCalendar` 를 고칠 것.
+
 ## Live index checks
 
 `/live` representative index charts use `/api/live/index-candles` for `1m`, `3m`, `5m`, `10m`, `15m`, `30m`, `D`, `W`, and `M` candles. Index daily candles are fetched in 3-month windows and cached in memory; index minute candles cache exact repeated requests, while fetch depth is limited by the KIS source unit available for each timeframe.

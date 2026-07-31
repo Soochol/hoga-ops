@@ -1,0 +1,43 @@
+# 일일 백업 1회 실행. 스케줄은 hoga-ops-backup.timer 가 건다.
+#
+# 설치:
+#   cp deploy/hoga-ops-backup.{service,timer} ~/.config/systemd/user/
+#   # WorkingDirectory 와 Environment 를 실제 값으로 고친 뒤:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now hoga-ops-backup.timer
+#
+# 즉시 한 번 돌려보기 (권장 — 첫 실행은 전량 복사라 오래 걸린다):
+#   systemctl --user start hoga-ops-backup.service
+#   journalctl --user -u hoga-ops-backup -f
+#
+# 목적지는 **다른 물리 디스크**여야 의미가 있다. 같은 디스크 안의 다른 디렉토리는
+# 오삭제만 막고 디스크 고장은 못 막는다 — 외장 디스크·NAS 마운트를 권한다.
+
+[Unit]
+Description=hoga-ops daily backup (state snapshots + market mirror)
+Documentation=https://github.com/Soochol/hoga-ops
+# 목적지가 마운트여야 한다면 여기에 RequiresMountsFor 를 추가할 것. 예:
+#   RequiresMountsFor=/mnt/backup
+# 안 그러면 마운트 전에 돌아 빈 마운트포인트에 백업을 쌓는다.
+
+[Service]
+Type=oneshot
+# ↓ 실제 체크아웃 경로로 교체할 것.
+WorkingDirectory=%h/code/hoga-ops
+# ↓ 실제 백업 목적지로 교체할 것.
+Environment=HOGA_BACKUP_DEST=%h/hoga-ops-backup
+
+ExecStart=/usr/bin/env uv run hoga backup
+# 백업 직후 바로 검증한다. 검증하지 않은 백업은 백업이 아니고, 별도 타이머로
+# 미루면 아무도 안 본다. 실패하면 유닛이 failed 로 남아 systemctl 로 드러난다.
+ExecStart=/usr/bin/env uv run hoga backup-verify
+
+# 첫 실행은 전량 복사라 길다. 이후 증분은 수 초.
+TimeoutStartSec=6h
+
+# 백업이 장중 조회를 굶기지 않게 우선순위를 낮춘다.
+Nice=10
+IOSchedulingClass=idle
+
+StandardOutput=journal
+StandardError=journal
