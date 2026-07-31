@@ -174,6 +174,34 @@ def is_trading_session_today(
     return False
 
 
+def weekdays_in_range(start: str, end: str) -> list[str]:
+    """[start, end] 의 **평일**(월~금) YYYYMMDD, 오름차순. 휴장일은 모른다.
+
+    KIS 거래일 목록을 못 얻을 때의 최후 폴백이다. 자격증명이 아예 없으면
+    :func:`trading_days_in_range` 는 영원히 실패하고, 그 위에 fail-fast 로 서 있는
+    범위 캡처는 **영원히 사용할 수 없다**. 그건 "잘못된 날짜를 막는" 게 아니라
+    기능 자체를 없애는 것이다.
+
+    휴장일이 섞여 들어가는 비용은 유계다 — 캡처가 업스트림에서 빈 응답을 받고
+    ADR-0021 의 ``.no_upstream_data`` 센티넬을 남기고 끝난다(설계된 경로). 반면
+    이득은 "자격증명 없이도 캡처를 걸 수 있다" 이다.
+
+    **일시 장애에는 쓰지 않는다.** 그때는 잠시 후 재시도가 옳은 안내이고, 추측한
+    날짜 목록으로 진행할 이유가 없다 — 호출부가 사유를 보고 갈라야 한다.
+    """
+    start_d = dt.date(int(start[:4]), int(start[4:6]), int(start[6:8]))
+    end_d = dt.date(int(end[:4]), int(end[4:6]), int(end[6:8]))
+    if end_d < start_d:
+        raise ValueError("end_date < start_date")
+    out: list[str] = []
+    cur = start_d
+    while cur <= end_d:
+        if cur.weekday() < 5:  # noqa: PLR2004 — 5=토
+            out.append(cur.strftime("%Y%m%d"))
+        cur += dt.timedelta(days=1)
+    return out
+
+
 def trading_days_in_range(start: str, end: str) -> list[str]:
     """Public helper used by captures.py Task 7. Returns YYYYMMDD trading days
     in [start, end] inclusive, sorted.

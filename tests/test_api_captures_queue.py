@@ -290,6 +290,62 @@ def test_enqueue_expands_date_range_to_trading_days(monkeypatch, tmp_path):
         assert body["deduped"] == []
 
 
+def test_enqueue_falls_back_to_weekdays_when_kis_credentials_missing(monkeypatch, tmp_path):
+    """자격증명이 없으면 **평일로 담고 경고를 준다** — 영원히 못 쓰게 두지 않는다.
+
+    KIS 거래일 목록이 없으면 범위 캡처는 503 으로 죽었다. 자격증명 미설정은 영구
+    조건이라 그건 "잘못된 날짜를 막는" 게 아니라 기능을 없애는 것이다(실측: UI 에
+    "범위 캡처 시작 실패 — KIS 자격증명 미설정", 큐에 한 건도 못 넣음).
+    """
+    from hoga.api.calendar import TradingDayUnavailableError
+    from hoga.api.error_codes import UpstreamCode
+
+    _no_workers(monkeypatch)
+
+    def _no_creds(_s, _e):
+        raise TradingDayUnavailableError(UpstreamCode.KIS_CREDENTIALS_MISSING)
+
+    monkeypatch.setattr("hoga.api.calendar.trading_days_in_range", _no_creds)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            # 금~월 — 주말은 폴백도 제외해야 한다.
+            "code": "005930", "start_date": "20260605", "end_date": "20260608",
+            "force_retry": False,
+        })
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert [it["date"] for it in body["enqueued"]] == ["20260605", "20260608"]
+        assert body["warning"] == UpstreamCode.KIS_CREDENTIALS_MISSING, (
+            "폴백은 조용하면 안 된다 — 휴장일이 섞일 수 있다는 걸 응답이 말해야 한다"
+        )
+
+
+def test_enqueue_still_fails_fast_on_transient_calendar_error(monkeypatch, tmp_path):
+    """일시 장애는 **그대로 503** — 잠시 후 재시도가 옳은 안내다.
+
+    폴백은 영구 조건(자격증명 미설정)에만 준다. 여기까지 완화하면
+    `trading_days_in_range` docstring 이 말한 fail-fast 의 취지가 사라진다.
+    """
+    from hoga.api.calendar import TradingDayUnavailableError
+    from hoga.api.error_codes import UpstreamCode
+
+    _no_workers(monkeypatch)
+
+    def _flaky(_s, _e):
+        raise TradingDayUnavailableError(UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+
+    monkeypatch.setattr("hoga.api.calendar.trading_days_in_range", _flaky)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "start_date": "20260605", "end_date": "20260608",
+            "force_retry": False,
+        })
+        assert r.status_code == 503, r.text
+        assert r.json()["detail"]["code"] == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+
+
 def test_enqueue_skips_weekend_dates(monkeypatch, tmp_path):
     """Range spanning a weekend yields only weekday items."""
     _no_workers(monkeypatch)

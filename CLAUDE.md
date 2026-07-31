@@ -170,8 +170,15 @@ Both entry points (`hoga serve` and direct uvicorn) auto-load `.env` from the re
 `default_app()` calls `load_env()` so the discovery is a property of the app, not the CLI.
 Set `KIS_APP_KEY` / `KIS_APP_SECRET` (and optionally `HOGAPLAY_COOKIE`) per `.env.example`.
 Symbol search uses the static KIS `.mst` files — no credentials required.
-거래일 조회는 KIS Open API를 사용하며, 자격증명이 없으면 `kis_holiday_fetch_failed`가
-기록되고 평일 폴백으로 전환됩니다 (캡처 동작에 영향 없음).
+거래일 조회는 KIS Open API를 사용합니다. 자격증명이 없으면 **범위 캡처 enqueue 는
+평일 기준으로 담고 응답에 `warning: kis_credentials_missing` 을 실어 보냅니다**
+(2026-07-31, UI 에 "평일 기준으로 담았습니다" 알림). 휴장일이 섞이면 그 날짜는 업스트림
+빈 응답 → ADR-0021 센티넬로 끝납니다.
+
+**일시 장애(`kis_holiday_fetch_failed`)는 폴백하지 않고 503 으로 실패**합니다 — 그때는
+잠시 후 재시도가 옳은 안내이고, 추측한 날짜 목록으로 진행할 이유가 없습니다.
+(이전 판은 "자격증명이 없으면 평일 폴백 · 캡처 동작에 영향 없음" 이라고 적었지만
+실측하니 enqueue 가 503 으로 죽어 **캡처를 아예 걸 수 없었습니다** — 그래서 고쳤습니다.)
 `/live` 실시간 스트림(KIS WebSocket)은 `KIS_APP_KEY`/`KIS_APP_SECRET` 미설정 시 오프라인으로 시작하며
 프론트엔드에 "KIS 자격증명이 설정되지 않았습니다" 배너를 표시합니다.
 

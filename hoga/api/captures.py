@@ -1352,17 +1352,49 @@ async def wait_drained() -> None:
 from hoga.collector.orchestrator import now_kst as _now_kst  # noqa: E402
 
 
-def _expand_to_trading_days(start: str, end: str) -> list[str]:
+def _expand_trading_days_with_fallback(start: str, end: str) -> tuple[list[str], bool]:
     """Return YYYYMMDD strings for each KIS trading day in [start, end].
 
     Delegates to hoga.api.calendar.trading_days_in_range which owns the
     KIS-backed cache (Task 15). Late import so tests can monkeypatch
     the calendar function source.
+
+    **자격증명이 아예 없으면 평일로 폴백한다**(2026-07-31). 그 조건은 영구적이라
+    fail-fast 가 "잘못된 날짜를 막는" 게 아니라 **범위 캡처를 영영 못 쓰게** 만든다
+    (실측: UI 에 "범위 캡처 시작 실패 — KIS 자격증명 미설정", 큐에 한 건도 못 넣음).
+    휴장일이 섞이는 비용은 유계다 — 업스트림 빈 응답 → ADR-0021 센티넬(설계된 경로).
+
+    **일시 장애(`kis_holiday_fetch_failed`)는 그대로 fail-fast** 한다. 그때는 "잠시 후
+    재시도" 가 옳은 안내이고, 추측한 날짜로 진행할 이유가 없다 —
+    `trading_days_in_range` docstring 이 말한 fail-fast 의 원래 취지가 이쪽이다.
+
+    ``(dates, weekday_fallback_used)`` 를 돌려준다. 플래그를 **반환값으로** 주는 이유:
+    이 함수는 `run_in_executor` 로 워커 스레드에서 돌기 때문에 thread-local 에 세우면
+    이벤트 루프 쪽에서 읽히지 않는다(실제로 그렇게 짰다가 warning 이 None 이었다).
     """
     from hoga.api.calendar import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        TradingDayUnavailableError,
         trading_days_in_range,
+        weekdays_in_range,
     )
-    return trading_days_in_range(start, end)
+    try:
+        return trading_days_in_range(start, end), False
+    except TradingDayUnavailableError as exc:
+        if exc.code != UpstreamCode.KIS_CREDENTIALS_MISSING:
+            raise
+        logging.getLogger(__name__).warning(
+            "capture.trading_days_weekday_fallback start=%s end=%s reason=%s",
+            start, end, exc.code,
+        )
+        return weekdays_in_range(start, end), True
+
+
+def _expand_to_trading_days(start: str, end: str) -> list[str]:
+    """거래일 목록만. **몽키패치 이음매**라 시그니처를 바꾸지 않는다 —
+    `test_captures_coverage_preview` 가 이 이름을 패치한다(리스트를 돌려주는 형태로).
+    폴백 여부까지 필요한 enqueue 는 `_expand_trading_days_with_fallback` 을 쓴다."""
+    days, _ = _expand_trading_days_with_fallback(start, end)
+    return days
 
 
 def _make_item_id(code: str, date: str) -> str:
@@ -1503,6 +1535,9 @@ async def enqueue_items_core(  # noqa: PLR0912, PLR0915
     Returns the dedupe list in the response.
     """
     # 1. Expand to a flat list of candidate dates.
+    # 명시 dates 경로는 캘린더를 안 거치므로 폴백도 없다 — 분기마다 정의하지 않도록
+    # 여기서 한 번 세운다(안 그러면 그 경로에서 NameError).
+    weekday_fallback = False
     if req.dates is not None:
         candidate_dates = list(req.dates)
     elif req.start_date and req.end_date:
@@ -1511,9 +1546,9 @@ async def enqueue_items_core(  # noqa: PLR0912, PLR0915
             # so it doesn't block the event loop. Warm cache hit returns
             # in microseconds; cold hit can be 1-3 s of network.
             loop = asyncio.get_running_loop()
-            candidate_dates = await loop.run_in_executor(
+            candidate_dates, weekday_fallback = await loop.run_in_executor(
                 None,
-                _expand_to_trading_days,
+                _expand_trading_days_with_fallback,
                 req.start_date,
                 req.end_date,
             )
@@ -1655,6 +1690,8 @@ async def enqueue_items_core(  # noqa: PLR0912, PLR0915
         enqueued=[s.to_wire() for s in enqueued],
         deduped=deduped_rows,
         blocked=blocked_items,
+        # 평일 폴백이 걸렸으면 알린다 — 담기는 했지만 휴장일이 섞일 수 있다.
+        warning=UpstreamCode.KIS_CREDENTIALS_MISSING if weekday_fallback else None,
     )
 
 
