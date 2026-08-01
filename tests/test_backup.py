@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from hoga.backup import resolve_backup_dest, run_backup, verify_backup
+from hoga.backup import measure_backup, resolve_backup_dest, run_backup, verify_backup
 from hoga.cli import app
 
 _runner = CliRunner()
@@ -300,6 +300,157 @@ def test_empty_market_is_reported_not_failed(tmp_path: Path) -> None:
     assert result.ok
     detail = next(d for name, _, d in result.checks if name == "market-mirror")
     assert "0개" in detail
+
+
+def test_program_trade_sidecar_is_backed_up(tmp_path: Path) -> None:
+    """공급원이 키움 0w push 라 과거일을 다시 받아올 REST 경로가 없다
+    (program_trade_collector docstring: "fetch 가 사라지고 drain 만 남았다").
+    잃으면 research/ 와 똑같이 영구 소실이므로 미러에 들어가야 한다."""
+    data_dir = _make_data_dir(tmp_path)
+    pt = data_dir / "kis-program-trade" / "005930"
+    pt.mkdir(parents=True)
+    (pt / "20260730.json").write_text(json.dumps({"rows": [1, 2]}), encoding="utf-8")
+
+    run_backup(data_dir, tmp_path / "backup")
+
+    assert (tmp_path / "backup" / "market" / "kis-program-trade" / "005930"
+            / "20260730.json").exists()
+
+
+def test_derived_caches_are_not_backed_up(tmp_path: Path) -> None:
+    """판정 기준은 크기가 아니라 재취득 가능성이다 — 파생물은 담지 않는다."""
+    data_dir = _make_data_dir(tmp_path)
+    for name in ("cache", "kis-past-indicators", "timing"):
+        d = data_dir / name / "sub"
+        d.mkdir(parents=True)
+        (d / "x.json").write_text("{}", encoding="utf-8")
+
+    run_backup(data_dir, tmp_path / "backup")
+
+    market = tmp_path / "backup" / "market"
+    for name in ("cache", "kis-past-indicators", "timing"):
+        assert not (market / name).exists(), f"{name} 은 재계산 가능하므로 담지 않는다"
+
+
+def test_measure_market_matches_what_backup_actually_copies(tmp_path: Path) -> None:
+    """측정이 실제 백업과 어긋나면 사용자는 틀린 숫자로 요금제를 고른다.
+
+    두 경로가 같은 헬퍼(_iter_files·_is_excluded·_owned_by_state·_MARKET_ROOTS)를
+    쓰는지 불변식으로 고정한다 — 한쪽만 고쳐지는 드리프트가 이 파일의 가장 큰 위험이다.
+    """
+    data_dir = _make_data_dir(tmp_path)
+
+    report = measure_backup(data_dir)
+    dry = run_backup(data_dir, tmp_path / "backup", dry_run=True)
+
+    market = [c for c in report.default_scope if not c.name.startswith("state")]
+    assert sum(c.files for c in market) == dry.copied_files
+    assert sum(c.bytes for c in market) == dry.copied_bytes
+
+
+def test_measure_optin_matches_include_flags(tmp_path: Path) -> None:
+    data_dir = _make_data_dir(tmp_path)
+
+    report = measure_backup(data_dir)
+    base = run_backup(data_dir, tmp_path / "b1", dry_run=True)
+    both = run_backup(
+        data_dir, tmp_path / "b2", include_raw=True, include_live=True, dry_run=True,
+    )
+
+    assert report.optin_total().files == both.copied_files - base.copied_files
+    assert report.optin_total().bytes == both.copied_bytes - base.copied_bytes
+
+
+def test_measure_counts_state_directories_recursively(tmp_path: Path) -> None:
+    """study_views/ 같은 디렉토리 항목을 1개로 세면 state 크기가 과소보고된다."""
+    data_dir = _make_data_dir(tmp_path)
+    (data_dir / "study_views" / "extra.json").write_text('{"a":1}', encoding="utf-8")
+
+    report = measure_backup(data_dir)
+    state = next(c for c in report.default_scope if c.name.startswith("state"))
+
+    # watchlist·heatmap·live_settings·study_views/saves.json·extra.json·
+    # screener/saves.json·.layout_v2 = 7
+    assert state.files == 7
+    assert state.bytes > 0
+
+    # dry-run 도 같은 재귀 합계를 보고해야 한다(디렉토리 0바이트 버그 회귀 방지).
+    dry = run_backup(data_dir, tmp_path / "backup", dry_run=True)
+    assert dry.state_bytes == state.bytes
+    assert dry.state_items == state.files
+    assert dry.state_archive_bytes is None  # 압축을 안 했으므로 모른다
+
+
+def test_state_fields_mean_the_same_thing_in_both_modes(tmp_path: Path) -> None:
+    """같은 필드가 모드에 따라 다른 것을 의미하면 비교가 성립하지 않는다.
+
+    이전에는 실제 실행이 (tar 멤버 수, **압축** 크기)를, dry-run 이 (최상위 항목 수,
+    비압축 크기)를 같은 이름으로 돌려줬다 — 크기 산정에 그대로 쓰이는 값이라
+    조용히 틀린 요금 판단으로 이어진다.
+    """
+    data_dir = _make_data_dir(tmp_path)
+
+    real = run_backup(data_dir, tmp_path / "b1")
+    dry = run_backup(data_dir, tmp_path / "b2", dry_run=True)
+
+    assert real.state_items == dry.state_items
+    assert real.state_bytes == dry.state_bytes
+
+    # 압축 크기는 별도 필드이고, 실제 파일 크기와 일치해야 한다.
+    assert real.state_archive_bytes == real.state_archive.stat().st_size
+
+
+def test_measure_excludes_secrets_from_totals_but_reports_them(tmp_path: Path) -> None:
+    """제외 대상은 합계에 들어가면 안 되고, 크기는 보여 줘야 결정에 쓸 수 있다."""
+    data_dir = _make_data_dir(tmp_path)
+
+    report = measure_backup(data_dir)
+
+    names = {c.name for c in report.default_scope} | {c.name for c in report.optin}
+    assert ".local" not in names
+    assert "duckdb-tmp" not in names
+    excluded = {c.name: c for c in report.excluded}
+    assert excluded[".local"].files == 1       # kis-token.json
+    assert excluded["duckdb-tmp"].files == 1   # spill.tmp
+
+
+def test_measure_recent_window_filters_by_mtime(tmp_path: Path) -> None:
+    """최근 N일 변경분이 일일 증분 근사다 — 전송량·요청수 추정의 입력값이다."""
+    import os as _os
+
+    data_dir = _make_data_dir(tmp_path)
+    old = data_dir / "parquet" / "20260730" / "005930" / "kiwoom_live" / "snapshots.parquet"
+    long_ago = dt.datetime(2026, 1, 1, tzinfo=dt.UTC).timestamp()
+    _os.utime(old, (long_ago, long_ago))
+
+    report = measure_backup(data_dir, recent_days=1)
+
+    assert report.recent.files >= 1              # meta.json 등 방금 만든 것들
+    assert old.stat().st_size not in (report.recent.bytes,)  # 오래된 건 빠졌다
+    assert report.recent.files < report.default_total().files
+
+
+def test_measure_writes_nothing(tmp_path: Path) -> None:
+    data_dir = _make_data_dir(tmp_path)
+    before = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*"))
+
+    measure_backup(data_dir)
+
+    assert sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*")) == before
+
+
+def test_cli_backup_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    data_dir = _make_data_dir(tmp_path)
+    master = tmp_path / "symbol-master.json"
+    master.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("hoga.cli.resolve_data_dir", lambda: data_dir)
+    monkeypatch.setattr("hoga.cli.resolve_symbol_master_path", lambda: master)
+
+    res = _runner.invoke(app, ["backup-size"])
+
+    assert res.exit_code == 0, res.output
+    assert "기본 백업 범위" in res.output
+    assert "첫 업로드 크기" in res.output
 
 
 def test_resolve_dest_requires_explicit_target(monkeypatch: pytest.MonkeyPatch) -> None:

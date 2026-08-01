@@ -819,10 +819,12 @@ def backup(
     # 디렉토리를 담고도 출력이 성공처럼 보인다.
     console.print(f"{tag} {result.data_dir} → {result.dest}")
     if result.state_archive is not None:
-        console.print(
-            f"  state : {result.state_items}개 항목, "
-            f"{result.state_bytes / 1024**2:.1f} MiB → {result.state_archive.name}"
-        )
+        # 비압축 내용 크기와 실제 아카이브 크기를 함께 보여 준다 — 업로드/저장되는
+        # 바이트는 후자이고, JSON 텍스트라 압축률이 커서 둘이 크게 다르다.
+        line = f"  state : {result.state_items}개 파일, {result.state_bytes / 1000**2:.1f} MB"
+        if result.state_archive_bytes is not None:
+            line += f" → {result.state_archive_bytes / 1000**2:.1f} MB 압축"
+        console.print(f"{line} ({result.state_archive.name})")
     console.print(
         f"  market: {result.copied_files}개 복사 "
         f"({result.copied_bytes / 1024**3:.2f} GiB), {result.skipped_files}개 최신"
@@ -864,3 +866,72 @@ def backup_verify(
     else:
         console.print(f"\n[red]{len(result.failed())}개 검사 실패 — 백업을 신뢰할 수 없습니다.[/red]")
         raise typer.Exit(code=1)
+
+
+@app.command("backup-size")
+def backup_size(
+    recent_days: int = typer.Option(
+        1, "--recent-days",
+        help="일일 증분 근사에 쓸 최근 N일 창(기본 1).",
+    ),
+) -> None:
+    """백업이 담을 것들의 크기·개수를 계층별로 잰다. 아무것도 쓰지 않는다.
+
+    "클라우드에 둘까" 는 결국 크기 질문인데, 목적지를 정하기 **전에** 답해야 한다.
+    그래서 `--dry-run`(목적지 필수)과 달리 이 명령은 목적지가 필요 없다.
+
+    **객체 수를 크기만큼 중요하게 보라.** 오브젝트 스토리지는 요청당 과금이고,
+    첫 업로드 시간은 대역폭이 아니라 파일 수 × 왕복지연에 지배된다.
+    """
+    from hoga.backup import measure_backup  # noqa: PLC0415
+
+    data_dir = resolve_data_dir()
+    report = measure_backup(
+        data_dir,
+        symbol_master=resolve_symbol_master_path(),
+        recent_days=recent_days,
+    )
+
+    def fmt(c) -> str:
+        # 클라우드 요금은 10진 GB 로 매긴다(1 GB = 10^9 B). GiB(2^30)로만 보여 주면
+        # 수백 GB 구간에서 7% 낮게 읽혀 요금 판단이 어긋난다 — 둘 다 보여 준다.
+        gb = c.bytes / 1000**3
+        size = f"{gb:.2f} GB" if gb >= 1 else f"{c.bytes / 1000**2:.1f} MB"
+        return f"{c.files:>9,}개 {size:>11}"
+
+    console.print(f"[bold]원본[/bold] {data_dir}\n")
+
+    console.print("[bold]기본 백업 범위[/bold] (hoga backup 이 담는 것)")
+    for c in report.default_scope:
+        console.print(f"  {c.name:<26}{fmt(c)}")
+    total = report.default_total()
+    console.print(f"  [green]{'─' * 26}[/green]")
+    console.print(f"  [green]{total.name:<26}{fmt(total)}[/green]  ← 첫 업로드 크기\n")
+
+    console.print(f"[bold]{report.recent.name}[/bold] (일일 증분 근사)")
+    console.print(f"  {'':<26}{fmt(report.recent)}\n")
+
+    optin_total = report.optin_total()
+    if optin_total.files:
+        console.print("[bold]옵트인 추가분[/bold] (--include-raw / --include-live)")
+        for c in report.optin:
+            if c.files:
+                console.print(f"  {c.name:<26}{fmt(c)}")
+        console.print(f"  {'합계':<26}{fmt(optin_total)}")
+        console.print(
+            "  [yellow]![/yellow] 로컬 raw 는 3일 보존으로 수렴하지만 미러는 목적지에서\n"
+            "     지우지 않는다 — 클라우드에 올리면 이 값은 줄지 않는다.\n"
+        )
+
+    if any(c.files for c in report.derived):
+        console.print("[dim]파생물 (재계산 가능 — 담지 않음)[/dim]")
+        for c in report.derived:
+            if c.files:
+                console.print(f"  [dim]{c.name:<26}{fmt(c)}[/dim]")
+        console.print()
+
+    if any(c.files for c in report.excluded):
+        console.print("[dim]제외 (자격증명·스필·락)[/dim]")
+        for c in report.excluded:
+            if c.files:
+                console.print(f"  [dim]{c.name:<26}{fmt(c)}[/dim]")

@@ -76,11 +76,22 @@ _STATE_ITEMS: tuple[str, ...] = (
 )
 
 # 미러 대상(덧쓰기 전용). data_dir 상대경로.
+#
+# 판정 기준은 크기가 아니라 **재취득 가능성**이다. 여기 없는 상위 디렉토리
+# (cache/·kis-past-indicators/·timing/)는 전부 parquet 에서 재계산하거나 버려도
+# 되는 파생물이라 뺐다.
 _MARKET_ROOTS: tuple[str, ...] = (
     "parquet",
     "screener",
     # VI 관측 채록 — legend 해독 근거라 재취득 경로가 없다.
     "research",
+    # 종목프로그램매매 사이드카. 이름의 "kis" 는 동결 식별자이고 실제 공급원은
+    # 키움 0w push 다 — 수집기 docstring 그대로 **"fetch 가 사라지고 drain 만
+    # 남았다"**(hoga/live/program_trade_collector.py). 즉 과거일을 다시 받아올
+    # REST 경로가 없어서, 잃으면 research/ 와 똑같이 영구 소실이다.
+    # 주의: (code, date) 당 작은 JSON 이라 **바이트보다 객체 수가 늘어난다** —
+    # 오브젝트 스토리지 요청 과금에서 이 항목이 체감된다(backup-size 가 보여 준다).
+    "kis-program-trade",
 )
 
 # 옵트인 미러 대상. 보존창(raw 3일 · _archive 7일) 안에만 존재하므로 백업 주기가
@@ -134,8 +145,11 @@ class BackupResult:
     # (또는 빈) 디렉토리를 담고도 출력은 성공처럼 보인다. 실측으로 겪은 함정이다.
     data_dir: Path | None = None
     state_archive: Path | None = None
+    # 재귀 파일 수와 **비압축** 바이트. 모드와 무관하게 같은 뜻이다.
     state_items: int = 0
     state_bytes: int = 0
+    # 실제 tar.gz 크기(= 업로드/저장되는 바이트). dry-run 은 압축을 안 하므로 None.
+    state_archive_bytes: int | None = None
     copied_files: int = 0
     copied_bytes: int = 0
     skipped_files: int = 0        # 목적지가 이미 최신
@@ -193,8 +207,10 @@ def _needs_copy(src: Path, dst: Path) -> bool:
 
 def _write_state_archive(
     data_dir: Path, symbol_master: Path | None, out_dir: Path, *, stamp: str, dry_run: bool,
-) -> tuple[Path | None, int, int]:
-    """T0 상태를 tar.gz 한 벌로 묶는다. (경로, 항목수, 바이트) 반환.
+) -> tuple[Path | None, int, int, int | None]:
+    """T0 상태를 tar.gz 한 벌로 묶는다.
+
+    (경로, **재귀 파일 수**, **비압축 바이트**, 압축 아카이브 크기|None) 반환.
 
     ``.tmp`` 로 쓴 뒤 **읽어서 검증하고** rename 한다. 중간에 죽은 실행이 목적지에
     유효해 보이는 반쪽 아카이브를 남기면, 세대 정리가 그걸 정상본으로 세어 진짜
@@ -211,10 +227,18 @@ def _write_state_archive(
         members.append((symbol_master.name, symbol_master))
 
     if not members:
-        return None, 0, 0
+        return None, 0, 0, None
+
+    # **필드마다 뜻을 하나로 고정한다.** 이전에는 실제 실행이 (tar 멤버 수, 압축 크기)
+    # 를, dry-run 이 (최상위 항목 수, 비압축 크기)를 같은 이름으로 돌려줬다 — 같은
+    # 필드가 모드에 따라 다른 것을 의미하면 비교가 성립하지 않고, 크기 산정에 그대로
+    # 쓰인다. 이제 files/bytes 는 **항상 재귀 파일 수와 비압축 바이트**이고, 압축된
+    # 아카이브 크기는 별도 필드다(dry-run 에서는 압축을 안 하므로 None).
+    content = _measure_paths([
+        p for _, item in members for p in ([item] if item.is_file() else _iter_files(item))
+    ])
     if dry_run:
-        total = sum(p.stat().st_size for _, p in members if p.is_file())
-        return out_dir / f"state-{stamp}.tar.gz", len(members), total
+        return out_dir / f"state-{stamp}.tar.gz", content.files, content.bytes, None
 
     out_dir.mkdir(parents=True, exist_ok=True)
     final = out_dir / f"state-{stamp}.tar.gz"
@@ -225,13 +249,14 @@ def _write_state_archive(
                 tar.add(path, arcname=arcname, filter=_tar_filter)
         # 검증: 다시 열어 목록이 읽히는지 본다. 여기서 터지면 rename 하지 않는다.
         with tarfile.open(tmp, "r:gz") as tar:
-            count = sum(1 for _ in tar)
-        size = tmp.stat().st_size
+            for _ in tar:
+                pass
+        archive_bytes = tmp.stat().st_size
         os.replace(tmp, final)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
-    return final, count, size
+    return final, content.files, content.bytes, archive_bytes
 
 
 def _tar_filter(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
@@ -322,7 +347,7 @@ def run_backup(
             "parquet 이 미확정일 수 있습니다(사본은 그래도 유효합니다)."
         )
 
-    state_archive, state_items, state_bytes = _write_state_archive(
+    state_archive, state_items, state_bytes, state_archive_bytes = _write_state_archive(
         data_dir, symbol_master, dest / "state", stamp=stamp, dry_run=dry_run,
     )
     if state_archive is None:
@@ -348,6 +373,7 @@ def run_backup(
         state_archive=state_archive,
         state_items=state_items,
         state_bytes=state_bytes,
+        state_archive_bytes=state_archive_bytes,
         copied_files=copied,
         copied_bytes=copied_bytes,
         skipped_files=skipped,
@@ -379,6 +405,172 @@ def _write_manifest(dest: Path, result: BackupResult, *, now: dt.datetime, data_
     tmp = dest / ".MANIFEST.json.tmp"
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, dest / "MANIFEST.json")
+
+
+# ── 크기 측정 ────────────────────────────────────────────────────────────────
+#
+# "클라우드에 둘까" 는 결국 크기 질문이다. 목적지를 정하기 **전에** 답해야 하므로
+# --dry-run(목적지 필수)과 별개의 경로가 필요하다.
+#
+# 이 측정은 반드시 실제 백업과 **같은 코드 경로**를 써야 한다. 루트 목록·제외 규칙·
+# 소유권 판정을 여기서 따로 구현하면 시간이 지나며 조용히 어긋나고, 그러면 사용자는
+# 틀린 숫자를 보고 요금제를 고른다. 그래서 _iter_files·_is_excluded·_owned_by_state·
+# _MARKET_ROOTS 를 그대로 재사용한다.
+
+
+@dataclass(frozen=True)
+class CategorySize:
+    name: str
+    files: int = 0
+    bytes: int = 0
+
+    def plus(self, other: CategorySize) -> CategorySize:
+        return CategorySize(self.name, self.files + other.files, self.bytes + other.bytes)
+
+
+# 백업하지 않는 파생물. parquet 에서 재계산하거나 버려도 되는 것들이라 담지 않지만,
+# **크기는 보여 준다** — 이게 없으면 사용자가 "디스크는 500GB 인데 백업은 왜 150GB
+# 인가" 를 대조할 수 없어 측정값을 의심하게 된다.
+_DERIVED_ROOTS: tuple[str, ...] = ("cache", "kis-past-indicators", "timing")
+
+
+@dataclass(frozen=True)
+class SizeReport:
+    data_dir: Path
+    default_scope: list[CategorySize] = field(default_factory=list)
+    optin: list[CategorySize] = field(default_factory=list)
+    derived: list[CategorySize] = field(default_factory=list)
+    excluded: list[CategorySize] = field(default_factory=list)
+    recent: CategorySize = CategorySize("recent")
+    recent_days: int = 1
+
+    def _total(self, name: str, rows: list[CategorySize]) -> CategorySize:
+        out = CategorySize(name)
+        for r in rows:
+            out = out.plus(r)
+        return out
+
+    def default_total(self) -> CategorySize:
+        return self._total("기본 백업 범위", self.default_scope)
+
+    def optin_total(self) -> CategorySize:
+        return self._total("옵트인 추가분", self.optin)
+
+
+def _measure_paths(paths) -> CategorySize:
+    """주어진 파일들의 (개수, 바이트). 심볼릭 링크는 세지 않는다."""
+    files = total = 0
+    for p in paths:
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        files += 1
+        total += st.st_size
+    return CategorySize("", files, total)
+
+
+def _measure_root(data_dir: Path, rel_root: str, *, skip_state_owned: bool) -> CategorySize:
+    root = data_dir / rel_root
+    if not root.is_dir():
+        return CategorySize(rel_root)
+    kept = []
+    for src in _iter_files(root):
+        rel = src.relative_to(data_dir)
+        if _is_excluded(rel) or (skip_state_owned and _owned_by_state(rel)):
+            continue
+        kept.append(src)
+    m = _measure_paths(kept)
+    return CategorySize(rel_root, m.files, m.bytes)
+
+
+def _state_paths(data_dir: Path, symbol_master: Path | None):
+    for rel in _STATE_ITEMS:
+        p = data_dir / rel
+        if p.is_file():
+            yield p
+        elif p.is_dir():
+            yield from _iter_files(p)
+    if symbol_master is not None and symbol_master.is_file():
+        yield symbol_master
+
+
+def measure_backup(
+    data_dir: Path,
+    *,
+    symbol_master: Path | None = None,
+    recent_days: int = 1,
+    now: dt.datetime | None = None,
+) -> SizeReport:
+    """백업이 담을 것들의 크기·개수를 계층별로 잰다. 아무것도 쓰지 않는다.
+
+    ``recent`` 는 최근 N일 안에 mtime 이 바뀐 기본 범위 파일의 합이다 — **일일 증분의
+    근사**이고, 클라우드 요금에서 저장비만큼 중요한 전송량·요청수의 입력값이다.
+    (완전한 값은 아니다: 같은 날 여러 번 재작성된 파일도 1회로 세고, 백업 주기보다
+    자주 바뀌는 파일은 실제 전송이 이보다 많다.)
+    """
+    now = now or dt.datetime.now(dt.UTC)
+    cutoff = (now - dt.timedelta(days=recent_days)).timestamp()
+
+    state = _measure_paths(list(_state_paths(data_dir, symbol_master)))
+    default_scope = [CategorySize("state (사용자 상태)", state.files, state.bytes)]
+    default_scope += [
+        _measure_root(data_dir, r, skip_state_owned=True) for r in _MARKET_ROOTS
+    ]
+    optin = [
+        _measure_root(data_dir, r, skip_state_owned=True)
+        for r in (*_RAW_ROOTS, *_LIVE_ROOTS)
+    ]
+    derived = [
+        _measure_root(data_dir, r, skip_state_owned=False) for r in _DERIVED_ROOTS
+    ]
+
+    # 제외 대상도 **크기를 보여 준다**. "안 담는다" 는 말보다 "334GB 를 안 담아서
+    # 이 값이 이만큼이다" 가 결정에 훨씬 유용하다.
+    excluded = []
+    for name in sorted(_EXCLUDE_NAMES):
+        p = data_dir / name
+        if p.is_dir():
+            m = _measure_paths(list(_iter_files_unfiltered(p)))
+            excluded.append(CategorySize(name, m.files, m.bytes))
+        elif p.is_file():
+            excluded.append(CategorySize(name, 1, p.stat().st_size))
+
+    recent_files = []
+    for rel_root in _MARKET_ROOTS:
+        root = data_dir / rel_root
+        if not root.is_dir():
+            continue
+        for src in _iter_files(root):
+            rel = src.relative_to(data_dir)
+            if _is_excluded(rel) or _owned_by_state(rel):
+                continue
+            try:
+                if src.stat().st_mtime >= cutoff:
+                    recent_files.append(src)
+            except OSError:
+                continue
+    rm = _measure_paths(recent_files)
+
+    return SizeReport(
+        data_dir=data_dir,
+        default_scope=default_scope,
+        optin=optin,
+        derived=derived,
+        excluded=excluded,
+        recent=CategorySize(f"최근 {recent_days}일 변경", rm.files, rm.bytes),
+        recent_days=recent_days,
+    )
+
+
+def _iter_files_unfiltered(root: Path):
+    """제외 규칙을 적용하지 않는 순회 — 제외 대상 자체의 크기를 재는 데 쓴다."""
+    for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
+        here = Path(dirpath)
+        for name in filenames:
+            p = here / name
+            if not p.is_symlink() and p.is_file():
+                yield p
 
 
 # ── 복원 리허설 ──────────────────────────────────────────────────────────────
