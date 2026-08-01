@@ -106,21 +106,32 @@ npm run dev
 ### Prod: Tailscale 단일 origin 배포 (ADR-0134)
 
 지인 몇 명이 외부에서 접속하는 prod 서버의 확정 형태는 **`http://<MagicDNS 이름>:8000`
-하나** 다. 서버 기동과 출처 허용은 두 줄이 전부다:
+하나** 다 — FastAPI 프로세스 하나가 API 와 프론트(dist)를 같이 서빙한다.
 
 ```sh
-# .env: 배포 origin 을 CORS·OriginGuard 허용 목록에 추가
+# 1) 프론트 빌드 (산출물: frontend/dist)
+cd frontend && npm ci && npx vite build && cd ..
+
+# 2) dist/config.json 을 same-origin 으로 교체 (원본 public/config.json 은 dev 용)
+echo '{ "api_url": "" }' > frontend/dist/config.json
+```
+
+```sh
+# .env: 배포 origin 허용 + 프론트 서빙 켜기
 HOGA_ALLOWED_ORIGINS=http://<이름>:8000
+HOGA_FRONTEND_DIST=/path/to/hoga-ops/frontend/dist
 ```
 
 ```sh
 hoga serve --host <tailscale-ip> --port 8000
 ```
 
+`HOGA_FRONTEND_DIST` 경로가 틀리면 기동 시점에 죽는다(오설정이 "빈 화면 404" 로
+위장되지 않게 한 계약). SPA 딥링크(`/live` 직접 진입)는 index.html 로 폴백되고,
+미등록 `/api` 경로와 스테일 자산 참조는 정직하게 404 다(`hoga/api/frontend_static.py`).
+
 주소는 **바꾸지 않는 것이 원칙**이다 — 그리기·창 배치 등 화면 상태는 브라우저의
 origin 단위 저장이라, 주소가 바뀌면 전원의 상태가 처음부터 다시 시작된다.
-프론트엔드(dist) 서빙은 FastAPI 가 직접 맡는 형태로 확정됐고(지도 #985 · #993),
-그 착지 전까지 prod 프론트 경로는 없다.
 
 ## Live index checks
 

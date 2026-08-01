@@ -32,6 +32,13 @@ export function resolveWsUrl(config: AppConfig, path: string): string {
   const url = resolveApiUrl(config, path);
   if (url.startsWith('https://')) return url.replace(/^https:\/\//, 'wss://');
   if (url.startsWith('http://')) return url.replace(/^http:\/\//, 'ws://');
+  // same-origin 모드(api_url: "") — resolveApiUrl 이 상대 경로를 돌려준다.
+  // `new WebSocket('/api/ws')` 의 상대 URL 지원은 2024년에야 표준화돼 구형
+  // 웹뷰에서 SyntaxError 로 죽는다. location 기준으로 절대화한다(ADR-0134).
+  if (url.startsWith('/') && typeof window !== 'undefined' && window.location?.host) {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}${url}`;
+  }
   return url;
 }
 
