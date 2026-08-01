@@ -45,8 +45,8 @@ describe('loadConfig', () => {
     expect(await loadConfig()).toEqual(DEFAULT_CONFIG);
   });
 
-  it('defaults to the local backend port used by the dev server scripts', () => {
-    expect(DEFAULT_CONFIG.api_url).toBe('http://localhost:8080');
+  it('defaults to the real backend port so a config.json failure still reaches the API', () => {
+    expect(DEFAULT_CONFIG.api_url).toBe('http://localhost:8000');
   });
 
   it('builds REST URLs with one slash between base and path', () => {

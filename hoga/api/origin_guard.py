@@ -44,6 +44,14 @@ README 가 규정한 **로컬 단독 실행에서 그대로 성립**한다 — �
    인증은 ADR-0036 이 명시적으로 스코프 밖으로 둔 별개 주제다.
 3. **판정 로직은 HTTP 와 WS 가 공유한다** (``_is_allowed`` 하나). 두 벌로 두면 한쪽만
    고쳐져 조용히 어긋난다 — 이 저장소가 이미 겪은 실패 형태다.
+4. **same-origin 을 추론하지 않는다** (ADR-0134 에서 기각). ``Sec-Fetch-Site:
+   same-origin`` 우선 인정이나 ``Origin==Host`` 비교로 whitelist 없이 통과시키는
+   안은 DNS rebinding 에 뚫린다 — 공격자 도메인을 서버 IP 로 rebind 하고 그
+   도메인:포트에서 페이지를 서빙하면, 이후 요청은 rebound 호스트 기준으로 **진짜
+   same-origin** 이라 두 신호가 모두 통과한다. Origin 헤더의 *값*(공격자 도메인)을
+   명시 목록과 대조하는 현행 방식만이 이를 구분한다. same-origin 배포는 자기
+   origin 을 ``HOGA_ALLOWED_ORIGINS`` 에 명시하는 것으로 해결한다(app.py
+   ``allowed_origins()``).
 """
 from __future__ import annotations
 

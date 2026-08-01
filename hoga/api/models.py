@@ -476,7 +476,9 @@ class EnqueueRequest(BaseModel):
     code: str = Field(pattern=CODE_PATTERN)
     start_date: str | None = Field(default=None, pattern=r"^\d{8}$")
     end_date: str | None = Field(default=None, pattern=r"^\d{8}$")
-    dates: list[str] | None = None       # alternative to start/end
+    # start/end 의 대안. 날짜는 디렉터리 경로 세그먼트가 되므로(raw/<code>/<date>)
+    # 형식을 여기서 못 박는다 — 패턴 없이는 "../" 류가 경로로 흘러든다.
+    dates: list[Annotated[str, Field(pattern=r"^\d{8}$")]] | None = None
     force_retry: bool = False
 
 
@@ -550,7 +552,8 @@ class CoveragePreviewResponse(BaseModel):
 
 class BulkEnqueueItem(BaseModel):
     code: str = Field(pattern=CODE_PATTERN)
-    dates: list[str] = Field(min_length=1)
+    # EnqueueRequest.dates 와 같은 이유로 형식 고정(경로 세그먼트).
+    dates: list[Annotated[str, Field(pattern=r"^\d{8}$")]] = Field(min_length=1)
 
 
 class BulkEnqueueRequest(BaseModel):

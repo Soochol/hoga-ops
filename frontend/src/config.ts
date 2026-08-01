@@ -1,5 +1,7 @@
 export type AppConfig = Readonly<{ api_url: string }>;
-export const DEFAULT_CONFIG: AppConfig = { api_url: 'http://localhost:8080' };
+// 폴백은 백엔드 실제 기본 포트(8000)와 일치해야 한다 — 8080 이던 시절에는
+// config.json 로드 실패가 "아무도 안 듣는 포트로의 전면 무응답" 으로 위장됐다.
+export const DEFAULT_CONFIG: AppConfig = { api_url: 'http://localhost:8000' };
 
 function normalizeApiUrl(raw: string): string {
   return raw.replace(/\/+$/, '');

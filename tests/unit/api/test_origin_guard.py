@@ -183,15 +183,63 @@ def test_cross_site_websocket_is_blocked_without_origin_header() -> None:
 def test_guard_and_cors_share_one_origin_list() -> None:
     """두 곳에 리터럴을 따로 두면 한쪽만 고쳐져 조용히 어긋난다.
 
-    app.py 가 ALLOWED_ORIGINS 하나를 CORS 와 가드 양쪽에 넘기는지 고정한다.
+    app.py 가 allowed_origins() 를 **한 번** 호출해 그 결과 하나를 CORS 와 가드
+    양쪽에 넘기는지 고정한다. 호출이 두 번이면 env 변경 타이밍에 따라 두 층이
+    다른 목록을 볼 수 있다.
     """
     import inspect
 
     from hoga.api import app as app_mod
 
     src = inspect.getsource(app_mod.create_app)
-    assert "allow_origins=list(ALLOWED_ORIGINS)" in src
-    assert "allowed_origins=ALLOWED_ORIGINS" in src
+    assert src.count("allowed_origins()") == 1
+    assert "allow_origins=list(origins)" in src
+    assert "allowed_origins=origins" in src
+
+
+def test_env_extends_allowed_origins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HOGA_ALLOWED_ORIGINS 는 기본 4개에 **추가**된다 — 대체가 아니다.
+
+    콤마 구분·공백 정리·후행 슬래시 제거(Origin 헤더에는 슬래시가 없다)·빈 항목
+    무시까지 한 번에 고정한다.
+    """
+    from hoga.api.app import allowed_origins
+
+    monkeypatch.setenv(
+        "HOGA_ALLOWED_ORIGINS",
+        " http://hoga-prod:8000/ ,, http://100.64.0.7:8000 ",
+    )
+    got = allowed_origins()
+    assert got[: len(ALLOWED_ORIGINS)] == ALLOWED_ORIGINS
+    assert got[len(ALLOWED_ORIGINS):] == (
+        "http://hoga-prod:8000",
+        "http://100.64.0.7:8000",
+    )
+
+    monkeypatch.delenv("HOGA_ALLOWED_ORIGINS")
+    assert allowed_origins() == ALLOWED_ORIGINS
+
+
+def test_env_added_origin_passes_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    """prod 배포 origin(ADR-0134: http://<이름>:8000)이 env 한 줄로 열리는지 —
+    same-origin 배포도 Sec-Fetch-Site 추론이 아니라 이 명시 경로를 쓴다."""
+    from hoga.api.app import allowed_origins
+
+    monkeypatch.setenv("HOGA_ALLOWED_ORIGINS", "http://hoga-prod:8000")
+
+    app = FastAPI()
+
+    @app.post("/no-body")
+    async def _no_body() -> dict:
+        return {"did": "mutate"}
+
+    app.add_middleware(OriginGuardMiddleware, allowed_origins=allowed_origins())
+    client = TestClient(app)
+
+    ok = client.post("/no-body", headers={"Origin": "http://hoga-prod:8000"})
+    assert ok.status_code == 200
+    still_blocked = client.post("/no-body", headers={"Origin": _EVIL})
+    assert still_blocked.status_code == 403
 
 
 def test_real_app_websocket_endpoint_is_guarded(tmp_path) -> None:

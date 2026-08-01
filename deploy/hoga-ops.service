@@ -32,7 +32,10 @@ Type=simple
 # ↓ 실제 체크아웃 경로로 교체할 것.
 WorkingDirectory=%h/code/hoga-ops
 # .env 는 앱이 스스로 읽는다(default_app() → load_env()) — EnvironmentFile 불필요.
-ExecStart=/usr/bin/env uv run hoga serve
+# host·port 는 명시 인자로 둔다 — 유닛 파일만 봐도 바인드 면이 보이게.
+# prod(ADR-0134)는 127.0.0.1 을 tailscale 인터페이스 주소로 바꾼다. 공인·LAN
+# 인터페이스(0.0.0.0 등) 금지 — README "Access model" 참고.
+ExecStart=/usr/bin/env uv run hoga serve --host 127.0.0.1 --port 8000
 
 Restart=always
 RestartSec=5
