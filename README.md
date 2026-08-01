@@ -7,22 +7,35 @@ See [`CONTEXT.md`](./CONTEXT.md) for the glossary, [`DESIGN.md`](./DESIGN.md) fo
 ## Access model — read this before exposing the server
 
 **This API has no authentication.** That is a deliberate, recorded decision
-([ADR-0036](./docs/adr/0036-local-deployment-no-resource-caps.md): hoga-ops is a
-**local single-user tool**), not an oversight. The security boundary is the
-loopback bind: `hoga serve` hardcodes `host="127.0.0.1"` and deliberately exposes
-no `--host` option.
+([ADR-0036](./docs/adr/0036-local-deployment-no-resource-caps.md), revised by
+[ADR-0134](./docs/adr/0134-tailscale-single-origin-prod.md)), not an oversight.
+The security boundary is the **network**, in one of exactly two shapes:
 
-**Do not bind it to a non-loopback address.** Anyone who can reach the port can
-enqueue captures with your hogaplay cookie and KIS quota, stop live collection
-mid-session (hogaplay retains only ~18h, so the morning is then lost for good),
-and delete saved views and layout presets — all without credentials.
+- **Dev (default)**: loopback. `hoga serve` binds `127.0.0.1` unless told
+  otherwise.
+- **Prod (ADR-0134)**: a Tailscale tailnet. Bind the tailscale interface
+  address only — `hoga serve --host <tailscale-ip>` — so the port is reachable
+  by invited tailnet members and nobody else. Everyone (owner included) uses
+  the single MagicDNS origin `http://<name>:8000`; all tailnet members are
+  fully trusted (write access included).
+
+**Never bind a public or LAN interface** (`0.0.0.0`, `192.168.*`). Anyone who
+can reach the port can enqueue captures with your hogaplay cookie and KIS
+quota, stop live collection mid-session (hogaplay retains only ~18h, so the
+morning is then lost for good), and delete saved views and layout presets —
+all without credentials.
 
 Browser-initiated cross-origin state changes are blocked separately by
 `hoga/api/origin_guard.py`, because CORS does **not** stop them: Starlette only
 rejects on preflight, and several routes take no parameters at all, so a form
 POST from any page reaches the handler with no preflight. That guard is not
 authentication — it only stops *browsers*; `curl` and scripts pass through by
-design.
+design. The allow-list is the four localhost dev origins plus whatever
+`HOGA_ALLOWED_ORIGINS` (comma-separated) adds — a prod deployment lists its own
+origin there. The guard deliberately does **not** infer same-origin from
+`Sec-Fetch-Site` or an `Origin`==`Host` comparison: a DNS-rebinding page is a
+*genuine* same-origin caller for the rebound host, so only an explicit origin
+list tells the attacker's domain apart (ADR-0134).
 
 ## Current status
 
@@ -89,6 +102,25 @@ npm run dev
 
 배경 작업이 죽으면 프론트엔드에도 토스트가 뜬다(어느 페이지에서든). 자동 재시작
 감독자는 설계상 없으므로(ADR-0088) 조치는 프로세스 재시작이다.
+
+### Prod: Tailscale 단일 origin 배포 (ADR-0134)
+
+지인 몇 명이 외부에서 접속하는 prod 서버의 확정 형태는 **`http://<MagicDNS 이름>:8000`
+하나** 다. 서버 기동과 출처 허용은 두 줄이 전부다:
+
+```sh
+# .env: 배포 origin 을 CORS·OriginGuard 허용 목록에 추가
+HOGA_ALLOWED_ORIGINS=http://<이름>:8000
+```
+
+```sh
+hoga serve --host <tailscale-ip> --port 8000
+```
+
+주소는 **바꾸지 않는 것이 원칙**이다 — 그리기·창 배치 등 화면 상태는 브라우저의
+origin 단위 저장이라, 주소가 바뀌면 전원의 상태가 처음부터 다시 시작된다.
+프론트엔드(dist) 서빙은 FastAPI 가 직접 맡는 형태로 확정됐고(지도 #985 · #993),
+그 착지 전까지 prod 프론트 경로는 없다.
 
 ## Live index checks
 

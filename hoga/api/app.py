@@ -66,8 +66,9 @@ from hoga.live.lifecycle import (
 )
 from hoga.live.migrate import migrate_to_v2_layout
 
-# CORS 와 OriginGuard 가 **공유**하는 단일 출처. 두 곳에 리터럴을 따로 두면
-# 한쪽만 고쳐져 "CORS 는 통과하는데 가드가 막는"(또는 그 반대) 상태가 조용히 생긴다.
+# CORS 와 OriginGuard 가 **공유**하는 단일 출처의 정적 기본값. 두 곳에 리터럴을
+# 따로 두면 한쪽만 고쳐져 "CORS 는 통과하는데 가드가 막는"(또는 그 반대) 상태가
+# 조용히 생긴다. 소비는 create_app 의 allowed_origins() 한 번뿐이어야 한다.
 #
 # 127.0.0.1 과 localhost 는 브라우저가 서로 다른 origin 으로 취급하므로 둘 다 넣는다.
 # 5174 는 5173 이 점유됐을 때 vite 가 자동으로 옮겨 가는 포트다.
@@ -77,6 +78,26 @@ ALLOWED_ORIGINS: tuple[str, ...] = (
     "http://localhost:5174",
     "http://127.0.0.1:5174",
 )
+
+
+def allowed_origins() -> tuple[str, ...]:
+    """최종 허용 출처 = 정적 기본 4개 + ``HOGA_ALLOWED_ORIGINS``(콤마 구분).
+
+    prod 는 자기 origin 을 여기 명시한다(예: ``http://hoga-prod:8000`` — ADR-0134
+    의 same-origin 배포도 예외가 아니다). Sec-Fetch-Site 나 Origin==Host 비교로
+    same-origin 을 **추론해 통과시키는 안은 기각됐다**: DNS rebinding 페이지는
+    rebound 호스트 기준으로 진짜 same-origin 이라 두 신호를 모두 통과한다.
+    명시 목록만이 rebound Origin(공격자 도메인)을 구분한다.
+
+    모듈 상수가 아니라 함수인 이유: env 는 default_app() 의 load_env() 이후에야
+    확정되는데, 모듈 상수는 import 시점(그 이전)에 굳는다.
+    """
+    extra = tuple(
+        o.strip().rstrip("/")
+        for o in os.environ.get("HOGA_ALLOWED_ORIGINS", "").split(",")
+        if o.strip()
+    )
+    return ALLOWED_ORIGINS + extra
 
 
 async def _repair_minute_fetch(code: str, date_s: str) -> list[KisCandle]:
@@ -200,9 +221,12 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
             set_captures_bus(None, None)
 
     app = FastAPI(title="hoga-ops API", version="0.1.0", lifespan=lifespan)
+    # 허용 출처는 여기서 한 번만 확정해 CORS 와 OriginGuard 양쪽에 넘긴다 —
+    # 두 방어층이 다른 목록을 보는 상태를 구조적으로 못 만들게.
+    origins = allowed_origins()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(ALLOWED_ORIGINS),
+        allow_origins=list(origins),
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -221,7 +245,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     # 상태변경 라우트가 6개 있어(cancel-all·catchup 등) body 파싱이 없고, 그러면
     # form-urlencoded 로 도달해 **preflight 자체가 생기지 않는다**. 자세한 근거는
     # hoga/api/origin_guard.py docstring 참고.
-    app.add_middleware(OriginGuardMiddleware, allowed_origins=ALLOWED_ORIGINS)
+    app.add_middleware(OriginGuardMiddleware, allowed_origins=origins)
     # WS5: 요청 TTFB 타이밍 — 마지막에 추가해 최외곽(전 구간 측정)으로 배선.
     # OriginGuard 보다 바깥이라 차단된 요청도 타이밍 로그에 남는다.
     app.add_middleware(RequestTimingMiddleware)

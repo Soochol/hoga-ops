@@ -84,13 +84,21 @@ def parse(
 
 
 @app.command()
-def serve(port: int = typer.Option(8000, "--port")) -> None:
+def serve(
+    port: int = typer.Option(8000, "--port"),
+    host: str = typer.Option(
+        "127.0.0.1",
+        "--host",
+        help="바인드 주소. 기본은 루프백. prod 는 tailscale 인터페이스 주소만 지정 — "
+        "공인 인터페이스 바인드 금지 (ADR-0134, README 'Access model').",
+    ),
+) -> None:
     """Start the FastAPI server."""
     load_env()  # ADR-0008: discover and load .env (no override at startup)
     uvicorn.run(
         "hoga.api.app:default_app",
         factory=True,
-        host="127.0.0.1",
+        host=host,
         port=port,
         reload=False,
     )
