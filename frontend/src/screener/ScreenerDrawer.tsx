@@ -487,6 +487,11 @@ export function ScreenerDrawer() {
                 종목 범위가 비어 있음 · 관심종목·히트맵에 종목을 추가하세요
               </div>
             )}
+            {(lastScan.warnings ?? []).includes('etf_filter_stale_master_unavailable') && (
+              <div className="mx-md mt-sm rounded-lg border px-3 py-2 text-sm" style={{ color: 'var(--warn)' }}>
+                종목 마스터 없음 · ETF 제외가 오래된 목록 기준입니다
+              </div>
+            )}
             {lastScan.rows.length === 0 ? (
               <RailState>조건에 맞는 종목이 없습니다.</RailState>
             ) : (

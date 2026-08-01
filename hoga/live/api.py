@@ -1404,6 +1404,10 @@ class RankingsResponse(BaseModel):
     market_open: bool
     fetched_at_ms: int
     source: Literal["kiwoom"] = "kiwoom"
+    # 비치명 경고(스크리너 ScreenerResponse.warnings 와 같은 관용구). 현재 유일한
+    # 값은 "etf_filter_unavailable" — exclude_etf 를 요청했으나 심볼 마스터가
+    # 미로드라 걸러내지 못했다는 뜻. 조용한 fail-open 을 UI 가 볼 수 있게 만든다.
+    warnings: list[str] = Field(default_factory=list)
 
 
 def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
@@ -2409,6 +2413,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         exclude_etf=True 면 심볼 마스터의 security_type(etf/etn) 종목을 응답에서
         제거한다. 필터는 라우트 후처리 — fetcher 캐시는 전체 리스트를 그대로 캐싱해
         캐시 효율·조합 자유를 유지한다. 제거 후 rank 는 1부터 재부여(연속 순위)한다.
+
+        마스터가 미로드면 거를 수 없다. 그때는 조용히 통과시키지 않고
+        warnings=["etf_filter_unavailable"] 를 실어 보낸다 — 순위 목록 자체는
+        보여주되(503 으로 목록을 통째로 잃는 것보다 낫다) 필터가 듣지 않았음을
+        사용자가 알 수 있어야 한다.
         """
         if kiwoom_rankings_fetcher_instance is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom credentials not configured"})
@@ -2419,9 +2428,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         except httpx.HTTPError as e:
             raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_HTTP_ERROR, "message": str(e)}) from e
         rows = snap.rows
+        warnings: list[str] = []
         if exclude_etf:
-            drop = symbols.etf_etn_codes({r.code for r in rows})
-            rows = tuple(r for r in rows if r.code not in drop)
+            drop = symbols.all_etf_etn_codes()
+            if drop is None:
+                warnings.append("etf_filter_unavailable")
+            else:
+                rows = tuple(r for r in rows if r.code not in drop)
         return RankingsResponse(
             kind=snap.kind,
             market=snap.market,
@@ -2435,6 +2448,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             ],
             market_open=snap.market_open,
             fetched_at_ms=snap.fetched_at_ms,
+            warnings=warnings,
         )
 
     return router

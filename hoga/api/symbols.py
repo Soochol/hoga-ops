@@ -586,17 +586,24 @@ def search(q: str, *, limit: int = 20) -> list[SymbolHit]:
     return matches[:limit]
 
 
-def etf_etn_codes(codes: set[str]) -> set[str]:
-    """``codes`` 중 security_type 이 etf/etn 인 코드만 반환 — 순위 "ETF 제외" 필터용.
+def all_etf_etn_codes() -> frozenset[str] | None:
+    """마스터 전체의 etf/etn 코드 집합. 마스터 미로드면 ``None`` — "ETF 제외" SSOT.
 
     증권그룹구분코드 EF(ETF)/EN(ETN) 판별은 실 .mst 대조로 사실상 100% 정확
-    (단일종목 레버리지·해외물 포함, 코스닥엔 ETF/ETN 부재). 마스터에 없는 코드는
-    미포함 — 일반주로 간주해 통과시킨다(리츠·펀드 등 scope 밖 종목은 파서가
-    드롭하므로 여기서 조회 실패 → 유지, 사용자 결정은 ETF+ETN 만 제외). 순위 응답은
-    ~100행이라 _cache(≈4천행) 1회 순회로 충분(요청당 1회, TTL 캐시 뒤라 저빈도)."""
-    if not codes:
-        return set()
-    return {h.code for h in _cache if h.security_type in ("etf", "etn") and h.code in codes}
+    (단일종목 레버리지·해외물 포함, ETF/ETN 은 전량 KOSPI — 코스닥엔 부재).
+    마스터에 없는 코드는 미포함 — 일반주로 간주해 통과시킨다(리츠·펀드 등 scope
+    밖 종목은 파서가 드롭하므로 여기서 조회 실패 → 유지, 사용자 결정은 ETF+ETN
+    만 제외).
+
+    ``None`` 과 빈 집합을 **구분**하는 것이 이 시그니처의 요점이다. 이전 판은
+    캐시가 비어도 빈 집합을 돌려줘, 마스터 다운로드가 실패한 부팅에서 "ETF 제외"
+    토글이 켜진 채 **조용히 아무것도 거르지 않았다**(fail-open, 사용자·UI 어디에도
+    신호 없음). None = 판정 불가이므로 호출처가 경고를 띄우거나 폴백을 고를 수 있다.
+
+    _cache(≈4천행) 1회 순회 — 순위는 TTL 캐시 뒤, 스캔은 요청당 1회라 저빈도."""
+    if not _cache:
+        return None
+    return frozenset(h.code for h in _cache if h.security_type in ("etf", "etn"))
 
 
 def build_router(*, path: Path, data_dir: Path) -> APIRouter:
