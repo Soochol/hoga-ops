@@ -18,6 +18,8 @@ catchup 등) FastAPI 가 body 를 파싱하지 않고, 그러면 form-urlencoded
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -183,15 +185,28 @@ def test_cross_site_websocket_is_blocked_without_origin_header() -> None:
 def test_guard_and_cors_share_one_origin_list() -> None:
     """두 곳에 리터럴을 따로 두면 한쪽만 고쳐져 조용히 어긋난다.
 
-    app.py 가 ALLOWED_ORIGINS 하나를 CORS 와 가드 양쪽에 넘기는지 고정한다.
+    app.py 가 같은 출처 목록을 CORS 와 가드 양쪽에 넘기는지 고정한다.
+
+    소스 문자열 매칭이 아니라 **조립된 앱을 들여다본다** — 변수명을 바꿨다고 깨지면
+    안 되고, 반대로 두 곳이 실제로 다른 값을 받으면 반드시 깨져야 한다.
     """
-    import inspect
+    import tempfile
 
-    from hoga.api import app as app_mod
+    from hoga.api.app import create_app
 
-    src = inspect.getsource(app_mod.create_app)
-    assert "allow_origins=list(ALLOWED_ORIGINS)" in src
-    assert "allowed_origins=ALLOWED_ORIGINS" in src
+    with tempfile.TemporaryDirectory() as td:
+        app = create_app(Path(td))
+
+    def _origins(cls_name: str, key: str) -> tuple[str, ...]:
+        for m in app.user_middleware:
+            if getattr(m.cls, "__name__", "") == cls_name:
+                kwargs = getattr(m, "kwargs", None) or getattr(m, "options", {})
+                return tuple(kwargs[key])
+        raise AssertionError(f"{cls_name} 이 앱에 배선되지 않았다")
+
+    assert _origins("CORSMiddleware", "allow_origins") == _origins(
+        "OriginGuardMiddleware", "allowed_origins"
+    )
 
 
 def test_real_app_websocket_endpoint_is_guarded(tmp_path) -> None:

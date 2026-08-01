@@ -20,6 +20,7 @@ from hoga.api import captures as _captures_module, screener as _screener_module,
 from hoga.api.calendar import build_router as build_calendar_router
 from hoga.api.captures import build_router as build_captures_router, cancel_all_on_shutdown, set_bus as set_captures_bus
 from hoga.api.events import build_event_bus
+from hoga.api.frontend import mount_frontend, resolve_dist_dir
 from hoga.api.heatmap import seed_from_watchlist_if_absent
 from hoga.api.heatmap_routes import build_router as build_heatmap_router
 from hoga.api.live_layout_preset_routes import (
@@ -79,6 +80,27 @@ ALLOWED_ORIGINS: tuple[str, ...] = (
 )
 
 
+def resolve_allowed_origins() -> tuple[str, ...]:
+    """위 dev 기본값 + ``HOGA_ALLOWED_ORIGINS``(쉼표 구분).
+
+    **왜 필요한가.** 터널(Cloudflare Tunnel 등) 뒤에서 접속하면 호스트명이
+    localhost 가 아니게 된다. 그런데 ``origin_guard._is_allowed`` 는 ``Origin``
+    헤더가 **있으면** 화이트리스트만 본다 — ``Sec-Fetch-Site: same-origin`` 구제는
+    Origin 이 **없을 때만** 적용된다. 브라우저는 same-origin 이라도 POST 와 WS
+    핸드셰이크에는 Origin 을 붙이므로, 같은 오리진에서 서빙해도 이 목록에 없으면
+    막힌다. 실측(2026-08-01): GET /live 는 200 인데 POST /api/symbols/refresh 는
+    403 cross_origin_blocked — **화면은 뜨는데 캡처와 실시간 스트림만 죽는다.**
+    가장 알아채기 어려운 고장 형태라 env 로 여는 경로를 만든다.
+
+    덧붙이기(replace 가 아니라)로 두는 이유: 원격 접속을 켜도 로컬 개발이 계속
+    돌아야 한다. 그리고 이건 **인증이 아니다** — 터널의 인증 계층이 앞에 있어야
+    한다는 ADR-0036 의 전제는 그대로다.
+    """
+    raw = os.environ.get("HOGA_ALLOWED_ORIGINS", "")
+    extra = tuple(o.strip().rstrip("/") for o in raw.split(",") if o.strip())
+    return ALLOWED_ORIGINS + extra
+
+
 async def _repair_minute_fetch(code: str, date_s: str) -> list[KisCandle]:
     """저장뷰 캡처-공백 복구용 KIS 과거 분봉 fetch(KRX 고정 — /study venue).
 
@@ -95,6 +117,8 @@ async def _repair_minute_fetch(code: str, date_s: str) -> list[KisCandle]:
 
 def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
     engine = QueryEngine(data_dir)
+    # CORS 와 OriginGuard 가 같은 값을 봐야 한다 — 한 번만 계산해 둘에 넘긴다.
+    _allowed_origins = resolve_allowed_origins()
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
     configure_signal_alert_monitor(data_dir, bus.publish)
 
@@ -202,7 +226,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     app = FastAPI(title="hoga-ops API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(ALLOWED_ORIGINS),
+        allow_origins=list(_allowed_origins),
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -221,7 +245,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     # 상태변경 라우트가 6개 있어(cancel-all·catchup 등) body 파싱이 없고, 그러면
     # form-urlencoded 로 도달해 **preflight 자체가 생기지 않는다**. 자세한 근거는
     # hoga/api/origin_guard.py docstring 참고.
-    app.add_middleware(OriginGuardMiddleware, allowed_origins=ALLOWED_ORIGINS)
+    app.add_middleware(OriginGuardMiddleware, allowed_origins=_allowed_origins)
     # WS5: 요청 TTFB 타이밍 — 마지막에 추가해 최외곽(전 구간 측정)으로 배선.
     # OriginGuard 보다 바깥이라 차단된 요청도 타이밍 로그에 남는다.
     app.add_middleware(RequestTimingMiddleware)
@@ -289,6 +313,13 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     )
     if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
         app.include_router(build_test_router(data_dir))
+
+    # **반드시 모든 라우터 뒤.** SPA catch-all 이 먼저 등록되면 API 를 통째로 가린다.
+    # dist 가 없으면(개발 중 = Vite dev server 사용) 아무것도 마운트하지 않는다.
+    dist_dir = resolve_dist_dir()
+    if dist_dir is not None:
+        mount_frontend(app, dist_dir)
+
     app.state.engine = engine
     return app
 
