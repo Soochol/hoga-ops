@@ -151,7 +151,8 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
              limit: int = 1000,
              intraday_rows: pl.DataFrame | None = None,
              depth_pass: dict[str, list[str]] | None = None,
-             scope_codes: set[str] | None = None) -> list[ScreenerRow]:
+             scope_codes: set[str] | None = None,
+             etf_codes: frozenset[str] | None = None) -> list[ScreenerRow]:
     con = connect_bounded()
     # 뷰는 전부 **TEMP** — connect_bounded 가 프로세스 공유 인스턴스의 커서를 주므로,
     # TEMP 없는 뷰는 전역 카탈로그에 들어가 동시 스캔끼리 이름이 충돌한다(실측:
@@ -181,7 +182,19 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         """)
     else:
         con.execute("CREATE TEMP VIEW adj AS SELECT * FROM adj_hist")
-    con.execute(f"CREATE TEMP VIEW stk AS SELECT * FROM '{stocks_path}'")
+    # is_etf 는 심볼 마스터(KIS .mst)가 SSOT — stocks.parquet 의 값은 외부 DB 에서
+    # 수동 1회 시드된 정적 스냅샷이라 신규 상장 ETF 를 놓친다. 뷰 단계에서 REPLACE 로
+    # 덮어쓰면 duckdb_wheres 의 `NOT stk.is_etf` 는 손대지 않아도 된다. OR 인 이유와
+    # None 폴백 근거는 screener_universe.apply_etf_master 를 보라(같은 규칙의 polars 짝).
+    if etf_codes is not None:
+        con.register("etf_master", pl.DataFrame(
+            {"code": pl.Series("code", sorted(etf_codes), dtype=pl.Utf8)}))
+        con.execute(
+            f"CREATE TEMP VIEW stk AS SELECT s.* REPLACE ("
+            f"(s.is_etf OR s.code IN (SELECT code FROM etf_master)) AS is_etf) "
+            f"FROM '{stocks_path}' s")
+    else:
+        con.execute(f"CREATE TEMP VIEW stk AS SELECT * FROM '{stocks_path}'")
 
     ctes = ["base AS (SELECT DISTINCT ON (code) code, date, open, high, low, close, volume, "
             "LAG(close) OVER (PARTITION BY code ORDER BY date) AS prev_close "

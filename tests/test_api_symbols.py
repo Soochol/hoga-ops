@@ -1107,7 +1107,7 @@ def _hit_typed(code: str, security_type: str) -> SymbolHit:
     )
 
 
-def test_etf_etn_codes_filters_by_security_type(monkeypatch):
+def test_all_etf_etn_codes_filters_by_security_type(monkeypatch):
     cache = [
         _hit_typed("005930", "stock"),   # 삼성전자 — 통과
         _hit_typed("069500", "etf"),     # KODEX 200 — 제외 대상
@@ -1115,11 +1115,19 @@ def test_etf_etn_codes_filters_by_security_type(monkeypatch):
     ]
     monkeypatch.setattr(symbols_module, "_cache", cache)
 
-    # etf/etn 만, 요청 코드와 교집합
-    assert symbols_module.etf_etn_codes({"005930", "069500", "Q500093"}) == {"069500", "Q500093"}
-    # 일반주만 요청하면 빈 집합(제외 없음)
-    assert symbols_module.etf_etn_codes({"005930"}) == set()
-    # 마스터에 없는 코드(리츠·펀드 등 파서 드롭분)는 미포함 → 통과
-    assert symbols_module.etf_etn_codes({"999999"}) == set()
-    # 빈 입력은 빈 집합 (early return)
-    assert symbols_module.etf_etn_codes(set()) == set()
+    # etf/etn 만. 마스터에 없는 코드(리츠·펀드 등 파서 드롭분)는 미포함 → 호출처에서 통과.
+    assert symbols_module.all_etf_etn_codes() == frozenset({"069500", "Q500093"})
+
+
+def test_all_etf_etn_codes_returns_none_when_master_not_loaded(monkeypatch):
+    """캐시 미로드는 빈 집합이 아니라 None — 조용한 fail-open 을 막는 계약.
+
+    이전 판은 캐시가 비어도 빈 집합을 돌려줬고, 그래서 마스터 다운로드가 실패한
+    부팅에서 "ETF 제외" 토글이 켜진 채 아무것도 걸러지지 않았다(사용자·UI 어디에도
+    신호 없음). 호출처가 경고/폴백을 고를 수 있으려면 이 둘이 구분돼야 한다."""
+    monkeypatch.setattr(symbols_module, "_cache", [])
+    assert symbols_module.all_etf_etn_codes() is None
+
+    # 마스터는 떴는데 ETF 가 하나도 없는 경우는 빈 집합 — "판정 불가"와 다르다.
+    monkeypatch.setattr(symbols_module, "_cache", [_hit_typed("005930", "stock")])
+    assert symbols_module.all_etf_etn_codes() == frozenset()

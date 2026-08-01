@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import httpx
 import pytest
@@ -294,6 +295,74 @@ def test_rankings_route_returns_rows(monkeypatch, tmp_path, _hermetic_kiwoom_env
     assert body["rows"][0]["code"] == "294870"
     assert body["rows"][0]["change_pct"] == 29.97
     assert body["source"] == "kiwoom"
+    fetcher.close()
+
+
+def _symbol_cache(types: dict[str, Literal["stock", "etf", "etn"]]):
+    from hoga.api.models import SymbolHit
+    return [
+        SymbolHit(
+            code=code, name=code, market="KOSPI", security_type=st,
+            captured_count=0,
+            captured_breakdown={"complete": 0, "source_partial": 0,
+                                "client_incomplete": 0, "invalid": 0},
+        )
+        for code, st in types.items()
+    ]
+
+
+def test_rankings_route_exclude_etf_drops_and_renumbers(monkeypatch, tmp_path, _hermetic_kiwoom_env):
+    from hoga.api import symbols as symbols_module
+    from hoga.live import api as live_api
+
+    # GOLDEN_CHANGE 1위(294870)를 ETF 로 두면 2위(095340)가 rank 1 로 올라와야 한다.
+    monkeypatch.setattr(symbols_module, "_cache",
+                        _symbol_cache({"294870": "etf", "095340": "stock"}))
+    fetcher = _fetcher(lambda request: httpx.Response(200, json=GOLDEN_CHANGE))
+    monkeypatch.setattr(live_api, "kiwoom_rankings_fetcher_instance", fetcher)
+
+    body = _route_client(tmp_path).get(
+        "/api/live/rankings", params={"kind": "change", "exclude_etf": "true"}).json()
+
+    assert [r["code"] for r in body["rows"]] == ["095340"]
+    assert body["rows"][0]["rank"] == 1
+    assert body["warnings"] == []
+    fetcher.close()
+
+
+def test_rankings_route_warns_when_master_unavailable(monkeypatch, tmp_path, _hermetic_kiwoom_env):
+    """마스터 미로드 시 목록은 주되 필터가 듣지 않았음을 warning 으로 알린다.
+
+    회귀 대상: 이전 판은 캐시가 비면 조용히 0건을 제외하고 끝났다 — 사용자에겐
+    "ETF 제외를 켰는데 ETF 가 그대로 보이는" 상태로만 나타났고 원인 단서가 없었다."""
+    from hoga.api import symbols as symbols_module
+    from hoga.live import api as live_api
+
+    monkeypatch.setattr(symbols_module, "_cache", [])
+    fetcher = _fetcher(lambda request: httpx.Response(200, json=GOLDEN_CHANGE))
+    monkeypatch.setattr(live_api, "kiwoom_rankings_fetcher_instance", fetcher)
+
+    body = _route_client(tmp_path).get(
+        "/api/live/rankings", params={"kind": "change", "exclude_etf": "true"}).json()
+
+    assert body["warnings"] == ["etf_filter_unavailable"]
+    assert [r["code"] for r in body["rows"]] == ["294870", "095340"]  # 목록 자체는 유지
+    fetcher.close()
+
+
+def test_rankings_route_no_warning_when_filter_off(monkeypatch, tmp_path, _hermetic_kiwoom_env):
+    """exclude_etf 를 요청하지 않았으면 마스터가 없어도 경고하지 않는다."""
+    from hoga.api import symbols as symbols_module
+    from hoga.live import api as live_api
+
+    monkeypatch.setattr(symbols_module, "_cache", [])
+    fetcher = _fetcher(lambda request: httpx.Response(200, json=GOLDEN_CHANGE))
+    monkeypatch.setattr(live_api, "kiwoom_rankings_fetcher_instance", fetcher)
+
+    body = _route_client(tmp_path).get(
+        "/api/live/rankings", params={"kind": "change"}).json()
+
+    assert body["warnings"] == []
     fetcher.close()
 
 

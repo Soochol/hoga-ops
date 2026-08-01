@@ -27,12 +27,17 @@ interface RankingsResponseWire {
   rows: RankingRow[];
   market_open: boolean;
   fetched_at_ms: number;
+  /** 비치명 경고. 구버전 백엔드는 이 키가 없으므로 옵셔널. */
+  warnings?: string[];
 }
 
 export interface RankingsView {
   rows: RankingRow[];
   marketOpen: boolean;
   fetchedAtMs: number;
+  /** exclude_etf 를 요청했으나 심볼 마스터 미로드로 걸러내지 못했다. 드로어가
+   *  배지를 띄운다 — 이게 없으면 사용자에겐 "토글이 안 먹는" 상태로만 보인다. */
+  etfFilterUnavailable: boolean;
 }
 
 export const RANKINGS_REFETCH_MS = 10_000;
@@ -50,7 +55,12 @@ export function useLiveRankings(params: {
       const q = new URLSearchParams({ kind, market, direction });
       if (excludeEtf) q.set('exclude_etf', 'true');
       const res = await apiCall<RankingsResponseWire>(`/api/live/rankings?${q}`, { signal });
-      return { rows: res.rows, marketOpen: res.market_open, fetchedAtMs: res.fetched_at_ms };
+      return {
+        rows: res.rows,
+        marketOpen: res.market_open,
+        fetchedAtMs: res.fetched_at_ms,
+        etfFilterUnavailable: res.warnings?.includes('etf_filter_unavailable') ?? false,
+      };
     },
     // 장중이면 10s 폴링, 장외면 첫 응답(market_open=false) 뒤 멈춘다.
     refetchInterval: (query) => (query.state.data?.marketOpen ? RANKINGS_REFETCH_MS : false),

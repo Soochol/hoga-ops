@@ -10,6 +10,7 @@ from hoga.api import (
     screener_intraday,
     screener_scan,
     screener_universe,
+    symbols,
 )
 from hoga.api.models import ScanRequest, ScreenerResponse
 from hoga.collector.orchestrator import now_kst
@@ -37,6 +38,14 @@ async def run_screener_scan(
     if scope is not None and not scope:
         warnings.append("scope_universe_empty")
 
+    # "ETF 제외"의 판정 소스 = 심볼 마스터(순위 패널과 동일). 여기서 1회 해석해
+    # intraday overlay·depth·run_scan 세 경로에 같은 집합을 흘린다 — 경로마다 다른
+    # 유니버스를 보면 depth 통과 코드가 최종 JOIN 에서 사라지는 식으로 어긋난다.
+    # None = 마스터 미로드 → stocks.parquet 의 (낡았을 수 있는) is_etf 로 강등.
+    etf_codes = symbols.all_etf_etn_codes() if req.universe.exclude_etf else None
+    if req.universe.exclude_etf and etf_codes is None:
+        warnings.append("etf_filter_stale_master_unavailable")
+
     if req.basis == "intraday":
         if screener_intraday.intraday_overlay_bypassed(data_dir):
             warnings.extend([
@@ -49,6 +58,7 @@ async def run_screener_scan(
                 sdir / "stocks.parquet",
                 req.universe,
                 scope=scope,
+                etf_codes=etf_codes,
             )
             overlay = await screener_intraday.build_intraday_overlay(
                 data_dir=data_dir,
@@ -68,6 +78,7 @@ async def run_screener_scan(
             sdir / "stocks.parquet",
             req.universe,
             scope=scope,
+            etf_codes=etf_codes,
         ))
         depth_eval = await asyncio.to_thread(
             screener_depth.evaluate,
@@ -94,6 +105,7 @@ async def run_screener_scan(
         intraday_rows=intraday_rows,
         depth_pass=depth_pass,
         scope_codes=scope,
+        etf_codes=etf_codes,
     )
     return ScreenerResponse(
         status="ok", rows=rows, warnings=warnings,

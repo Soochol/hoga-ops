@@ -48,6 +48,57 @@ def test_scope_codes_semi_join_excludes_out_of_scope(tmp_path):
     assert [r.code for r in rows] == ["005930"]
 
 
+def _etf_seed(tmp_path: Path) -> tuple[Path, Path]:
+    # 069660 = 시드가 놓친 ETF(is_etf=false), 000333 = 시드가 이미 아는 ETF.
+    return _seed(tmp_path,
+        rows=[("005930", "2026-05-30", 100, 100, 100, 100, 6_000_000),
+              ("069660", "2026-05-30", 100, 100, 100, 100, 6_000_000),
+              ("000333", "2026-05-30", 100, 100, 100, 100, 6_000_000)],
+        stocks=[("005930", "삼성전자", "KOSPI", False, False),
+                ("069660", "KIWOOM 200", "KOSPI", False, False),
+                ("000333", "시드가 아는 ETF", "KOSPI", True, False)])
+
+
+def test_exclude_etf_uses_symbol_master_over_stale_seed(tmp_path):
+    """duckdb 경로도 마스터를 SSOT 로 쓴다 — screener_universe 의 polars 짝과 같은 규칙.
+
+    같은 규칙이 두 곳에 구현돼 있어(뷰의 REPLACE / polars with_columns) 한쪽만
+    고치면 EOD 와 intraday·depth 가 서로 다른 유니버스를 보게 된다."""
+    adj, stk = _etf_seed(tmp_path)
+    leaf = TradeValueLeaf(id="t", params=TradeValueParams(min_eok=5))
+
+    rows = screener_scan.run_scan(
+        adj, stk, conditions=[leaf], universe=ScreenerUniverse(exclude_etf=True),
+        etf_codes=frozenset({"069660"}))
+
+    assert [r.code for r in rows] == ["005930"]
+
+
+def test_exclude_etf_falls_back_to_seed_when_master_unavailable(tmp_path):
+    """etf_codes=None → 낡은 is_etf 로 강등(놓친 ETF 는 새지만 필터가 죽지는 않는다)."""
+    adj, stk = _etf_seed(tmp_path)
+    leaf = TradeValueLeaf(id="t", params=TradeValueParams(min_eok=5))
+
+    rows = screener_scan.run_scan(
+        adj, stk, conditions=[leaf], universe=ScreenerUniverse(exclude_etf=True),
+        etf_codes=None)
+
+    assert sorted(r.code for r in rows) == ["005930", "069660"]
+
+
+def test_exclude_etf_keeps_seed_verdict_for_codes_absent_from_master(tmp_path):
+    """마스터에 없는 코드는 시드 판정을 유지 — OR 이지 덮어쓰기가 아니다."""
+    adj, stk = _etf_seed(tmp_path)
+    leaf = TradeValueLeaf(id="t", params=TradeValueParams(min_eok=5))
+
+    rows = screener_scan.run_scan(
+        adj, stk, conditions=[leaf], universe=ScreenerUniverse(exclude_etf=True),
+        etf_codes=frozenset({"069660"}))
+
+    # 000333 은 마스터에 없지만 시드가 ETF 라 했으므로 계속 제외돼야 한다.
+    assert "000333" not in [r.code for r in rows]
+
+
 def test_scope_codes_empty_set_yields_zero_rows(tmp_path):
     # 빈 스코프(스코프는 켰으나 대상 0종목) → 0행. runner 가 scope_universe_empty warning.
     adj, stk = _seed(tmp_path,

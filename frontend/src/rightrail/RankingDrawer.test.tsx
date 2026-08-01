@@ -94,6 +94,24 @@ describe('RankingDrawer', () => {
     });
   });
 
+  it('마스터 미로드 경고를 배지로 띄운다 (조용한 fail-open 방지)', async () => {
+    // 대조군 먼저 — 경고 없는 응답에서 배지가 뜨면 아래 단언은 아무것도 증명하지 못한다.
+    vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
+    renderDrawer();
+    await screen.findByText('삼성전자');
+    expect(screen.queryByText(/ETF 를 거르지 못했습니다/)).not.toBeInTheDocument();
+
+    cleanup();
+    vi.spyOn(client, 'apiCall').mockResolvedValue(
+      { ...OPEN_RESPONSE, warnings: ['etf_filter_unavailable'] } as never,
+    );
+    renderDrawer();
+
+    expect(await screen.findByText(/ETF 를 거르지 못했습니다/)).toBeInTheDocument();
+    // 필터가 듣지 않았을 뿐 목록 자체는 계속 보여준다.
+    expect(screen.getByText('삼성전자')).toBeInTheDocument();
+  });
+
   it('direction toggle shows only on the change kind', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
     renderDrawer();
