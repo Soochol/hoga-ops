@@ -58,4 +58,13 @@ describe('loadConfig', () => {
     expect(resolveWsUrl({ api_url: 'http://x:9000' }, '/api/ws')).toBe('ws://x:9000/api/ws');
     expect(resolveWsUrl({ api_url: 'https://x.example' }, '/api/ws')).toBe('wss://x.example/api/ws');
   });
+
+  it('absolutizes same-origin WS URLs from window.location (api_url: "")', () => {
+    // jsdom 기본 origin 은 http://localhost:3000 — 상대 '/api/ws' 가
+    // 스킴 있는 절대 ws:// 로 나와야 구형 웹뷰의 SyntaxError 를 피한다(ADR-0134).
+    expect(resolveWsUrl({ api_url: '' }, '/api/ws')).toBe(
+      `ws://${window.location.host}/api/ws`,
+    );
+    expect(resolveWsUrl({ api_url: '' }, '/api/ws').startsWith('ws://')).toBe(true);
+  });
 });

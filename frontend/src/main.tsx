@@ -6,6 +6,13 @@ import App from './App';
 import { LivePage } from './live/LivePage';
 import { initStudyTabsSync } from './state/studyTabs';
 import AppErrorBoundary from './ui/AppErrorBoundary';
+// 앱 서체(Pretendard dynamic-subset)를 번들에 내장한다 — ADR-0134 §4 (폰트
+// self-host). 이전에는 index.html 이 jsdelivr CDN 을 렌더 블로킹으로 링크해,
+// CDN 이 느린 날 첫 페인트 전체가 따라 늦어졌다(유일한 외부 런타임 의존).
+// vite 가 이 CSS 를 entry 스타일시트로 추출해 <link> 로 싣으므로 "첫 페인트에
+// 올바른 서체" 라는 렌더 블로킹 성질은 prod 빌드에서 그대로 유지된다.
+// unicode-range 92분할이라 실제로 화면에 있는 글자 범위의 woff2 만 받는다.
+import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
 import './styles/global.css';
 
 /*

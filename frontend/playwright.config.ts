@@ -67,9 +67,17 @@ export default defineConfig({
       // `HOGA_RATE_LIMIT_S=0` 필수 — 캡처 한 건이 페이지 ~1,300회를 도는데
       // (수집기 커서가 페이지마다 60000 씩만 전진한다) 기본 0.15초를 곱하면 190초다.
       // 페이크는 실제 업스트림이 아니므로 유량을 지킬 이유가 없다.
-      command: 'cd .. && HOGA_ENABLE_TEST_ENDPOINTS=1 HOGA_RATE_LIMIT_S=0 HOGA_DATA_DIR=/tmp/hoga-e2e-data uv run hoga serve --port 8765',
+      //
+      // dist-smoke(ADR-0134) 전제 두 가지가 serve 앞에 붙는다:
+      //  - `vite build && prepare-dist.mjs` — HOGA_FRONTEND_DIST 는 기동 시점에
+      //    디렉터리를 검사하므로(오설정이 조용히 404 가 되지 않게) globalSetup
+      //    에서는 늦다. 사본(/tmp/hoga-e2e-dist)에 same-origin config.json 을 쓴다.
+      //  - `HOGA_ALLOWED_ORIGINS=http://127.0.0.1:8765` — same-origin 이어도
+      //    브라우저는 WS/POST 에 Origin 을 붙이고, 가드는 명시 목록만 믿는다
+      //    (Sec-Fetch-Site 추론은 DNS rebinding 사유로 기각 — origin_guard.py).
+      command: 'npx vite build && node tests/e2e/prepare-dist.mjs && cd .. && HOGA_ENABLE_TEST_ENDPOINTS=1 HOGA_RATE_LIMIT_S=0 HOGA_DATA_DIR=/tmp/hoga-e2e-data HOGA_FRONTEND_DIST=/tmp/hoga-e2e-dist HOGA_ALLOWED_ORIGINS=http://127.0.0.1:8765 uv run hoga serve --port 8765',
       url: 'http://127.0.0.1:8765/health',
-      timeout: 120_000,  // CI 첫 실행은 uv 가 파이썬·의존성을 받는다(실측 ~6s, 여유)
+      timeout: 120_000,  // CI 첫 실행은 uv 의존성 + vite build 까지 포함(여유)
       reuseExistingServer: !process.env.CI,
       stdout: 'pipe',
       stderr: 'pipe',

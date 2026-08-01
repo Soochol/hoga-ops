@@ -20,6 +20,7 @@ from hoga.api import captures as _captures_module, screener as _screener_module,
 from hoga.api.calendar import build_router as build_calendar_router
 from hoga.api.captures import build_router as build_captures_router, cancel_all_on_shutdown, set_bus as set_captures_bus
 from hoga.api.events import build_event_bus
+from hoga.api.frontend_static import mount_frontend
 from hoga.api.heatmap import seed_from_watchlist_if_absent
 from hoga.api.heatmap_routes import build_router as build_heatmap_router
 from hoga.api.live_layout_preset_routes import (
@@ -313,6 +314,11 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     )
     if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
         app.include_router(build_test_router(data_dir))
+    # prod 프론트 서빙(ADR-0134 §4). env opt-in — dev 는 vite 가 서빙한다.
+    # 모든 라우터 include 뒤에 마운트해야 /api·/health 가 정적에 안 가린다.
+    frontend_dist = os.environ.get("HOGA_FRONTEND_DIST")
+    if frontend_dist:
+        mount_frontend(app, Path(frontend_dist))
     app.state.engine = engine
     return app
 
