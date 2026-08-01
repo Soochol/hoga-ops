@@ -430,6 +430,125 @@ def test_measure_recent_window_filters_by_mtime(tmp_path: Path) -> None:
     assert report.recent.files < report.default_total().files
 
 
+def test_measure_reports_state_as_one_compressed_object(tmp_path: Path) -> None:
+    """state 는 파일 N개가 아니라 tar.gz **1개 객체**로 올라간다.
+
+    비압축 합계로 보고하면 JSON 텍스트라 객체 수도 바이트도 과대보고되고, 그 숫자로
+    요금제를 고르게 된다. 그리고 그 객체는 세대만큼 쌓인다.
+    """
+    data_dir = _make_data_dir(tmp_path)
+
+    report = measure_backup(data_dir, keep=14)
+
+    assert report.state_archive_bytes > 0
+    assert report.state_steady_bytes() == report.state_archive_bytes * 14
+
+    # 실제로 백업했을 때의 아카이브 크기와 일치해야 한다(추정이 아니라 실측이므로).
+    real = run_backup(data_dir, tmp_path / "backup")
+    assert abs(report.state_archive_bytes - real.state_archive_bytes) < 200
+
+
+def test_measure_counts_small_objects_for_minimum_billing(tmp_path: Path) -> None:
+    """S3 IA·Glacier 는 128KB 미만도 128KB 로 과금한다 — 평균으로는 안 보인다."""
+    data_dir = _make_data_dir(tmp_path)
+    big = data_dir / "parquet" / "20260731" / "005930" / "kiwoom_live"
+    big.mkdir(parents=True)
+    (big / "snapshots.parquet").write_bytes(b"PAR1" + b"\x00" * 200_000 + b"PAR1")
+
+    report = measure_backup(data_dir)
+
+    # meta.json·작은 parquet 들은 세고, 200KB 짜리는 안 센다.
+    assert report.small_objects >= 1
+    assert report.small_objects < report.default_total().files
+
+
+def test_measure_recent_covers_optin_roots_separately(tmp_path: Path) -> None:
+    """raw 를 켤지 정하려면 그 증가율을 봐야 하는데, 기본 범위만 재면 항상 0 이다."""
+    data_dir = _make_data_dir(tmp_path)
+
+    report = measure_backup(data_dir, recent_days=1)
+
+    assert report.recent_optin.files >= 1  # 방금 만든 raw·live_kiwoom 파일
+    assert report.recent_optin.bytes > 0
+
+
+def test_unclassified_reveals_a_gap_in_backup_scope(tmp_path: Path) -> None:
+    """새 최상위 디렉토리를 목록에 넣는 걸 잊으면 조용히 백업에서 빠진다.
+
+    kis-program-trade 누락이 정확히 이 방식으로 드러났다 — 총합 대조가 없으면
+    아무도 모른 채 그 데이터가 영영 백업되지 않는다.
+    """
+    data_dir = _make_data_dir(tmp_path)
+    rogue = data_dir / "brand-new-feature-data"
+    rogue.mkdir()
+    (rogue / "important.json").write_text('{"irreplaceable": true}', encoding="utf-8")
+
+    report = measure_backup(data_dir)
+
+    assert report.unclassified.files >= 1
+    assert report.unclassified.bytes > 0
+
+
+def test_symbol_master_does_not_mask_a_scope_gap(tmp_path: Path) -> None:
+    """symbol-master.json 은 data_dir **밖**이라 전체 합계에는 없는데 분류 합계에는
+    들어간다. 그대로 빼면 미분류 1건을 정확히 상쇄해 진짜 구멍을 가린다 —
+    실측으로 그 상쇄를 확인하고 고쳤다.
+    """
+    data_dir = _make_data_dir(tmp_path)
+    master = tmp_path / "symbol-master.json"
+    master.write_text(json.dumps({"symbols": []}), encoding="utf-8")
+    rogue = data_dir / "brand-new-feature-data"
+    rogue.mkdir()
+    (rogue / "important.json").write_text('{"irreplaceable": true}', encoding="utf-8")
+
+    with_master = measure_backup(data_dir, symbol_master=master)
+    without = measure_backup(data_dir)
+
+    # symbol master 유무가 대조 결과를 바꾸면 안 된다.
+    assert with_master.unclassified.files == without.unclassified.files >= 1
+
+
+def test_permission_errors_are_surfaced_not_swallowed(tmp_path: Path) -> None:
+    """os.walk 는 기본으로 진입 실패를 조용히 건너뛴다 — 트리 절반만 담고도 성공한다.
+
+    백업에서 그건 조용한 데이터 유실이다. 접근 실패는 반드시 표면화해야 한다.
+    """
+    import os as _os
+    import stat as _stat
+
+    if _os.geteuid() == 0:
+        pytest.skip("root 는 권한 검사를 우회해 이 시나리오를 만들 수 없다")
+
+    data_dir = _make_data_dir(tmp_path)
+    locked = data_dir / "parquet" / "20260731" / "005930" / "kiwoom_live"
+    locked.mkdir(parents=True)
+    (locked / "snapshots.parquet").write_bytes(_PARQUET_BYTES)
+    _os.chmod(locked, 0o000)
+    try:
+        report = measure_backup(data_dir)
+        result = run_backup(data_dir, tmp_path / "backup")
+    finally:
+        _os.chmod(locked, _stat.S_IRWXU)
+
+    assert report.problems, "접근 실패가 보고되어야 한다"
+    assert any("접근하지 못한" in w for w in result.warnings)
+
+
+def test_symlinked_subtree_is_reported_not_silently_dropped(tmp_path: Path) -> None:
+    """큰 parquet 트리를 다른 디스크로 심링크해 둔 구성이면 통째로 빠진다."""
+    import os as _os
+
+    data_dir = _make_data_dir(tmp_path)
+    elsewhere = tmp_path / "other-disk" / "20260731"
+    elsewhere.mkdir(parents=True)
+    (elsewhere / "snapshots.parquet").write_bytes(_PARQUET_BYTES)
+    _os.symlink(elsewhere, data_dir / "parquet" / "20260731")
+
+    report = measure_backup(data_dir)
+
+    assert any("심볼릭 링크" in p for p in report.problems)
+
+
 def test_measure_writes_nothing(tmp_path: Path) -> None:
     data_dir = _make_data_dir(tmp_path)
     before = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*"))

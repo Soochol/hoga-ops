@@ -903,13 +903,35 @@ def backup_size(
 
     console.print("[bold]기본 백업 범위[/bold] (hoga backup 이 담는 것)")
     for c in report.default_scope:
-        console.print(f"  {c.name:<26}{fmt(c)}")
+        note = ""
+        if c.name.startswith("state"):
+            # state 는 파일 N개가 아니라 tar.gz **1개 객체**로 올라간다.
+            note = (
+                f"  → 실제 1개 객체 {report.state_archive_bytes / 1000**2:.1f} MB(압축), "
+                f"{report.keep}세대 누적 {report.state_steady_bytes() / 1000**2:.1f} MB"
+            )
+        console.print(f"  {c.name:<26}{fmt(c)}{note}")
     total = report.default_total()
     console.print(f"  [green]{'─' * 26}[/green]")
     console.print(f"  [green]{total.name:<26}{fmt(total)}[/green]  ← 첫 업로드 크기\n")
 
-    console.print(f"[bold]{report.recent.name}[/bold] (일일 증분 근사)")
-    console.print(f"  {'':<26}{fmt(report.recent)}\n")
+    console.print(f"[bold]{report.recent.name}[/bold] (신규 + 재작성 합계)")
+    console.print(f"  {'':<26}{fmt(report.recent)}")
+    console.print(
+        "  [dim]재작성(같은 key 덮어쓰기)은 저장을 늘리지 않는다 — 다만 전송·요청은\n"
+        "  그대로 들고, 버저닝을 켜면 구버전이 이만큼 매일 쌓인다.[/dim]\n"
+    )
+
+    if report.small_objects:
+        pct = report.small_objects / max(1, total.files) * 100
+        console.print(
+            f"[bold]작은 객체[/bold] 128KB 미만 {report.small_objects:,}개 "
+            f"({pct:.0f}%)"
+        )
+        console.print(
+            "  [dim]S3 Standard-IA·Glacier 는 128KB 미만도 128KB 로 과금한다 —\n"
+            "  이 비율이 높으면 청구액이 실제 용량을 크게 웃돈다. B2·R2 는 무관.[/dim]\n"
+        )
 
     optin_total = report.optin_total()
     if optin_total.files:
@@ -918,11 +940,17 @@ def backup_size(
             if c.files:
                 console.print(f"  {c.name:<26}{fmt(c)}")
         console.print(f"  {'합계':<26}{fmt(optin_total)}")
+        console.print(f"  {'└ 최근 변경분':<26}{fmt(report.recent_optin)}  ← 증가율")
         console.print(
             "  [yellow]![/yellow] 로컬 raw 는 3일 보존으로 수렴하지만 미러는 목적지에서\n"
-            "     지우지 않는다 — 클라우드에 올리면 이 값은 줄지 않는다.\n"
+            "     지우지 않는다 — 클라우드에 올리면 위 증가율로 **무한히 누적된다**.\n"
         )
 
+    _print_size_footer(report, fmt)
+
+
+def _print_size_footer(report, fmt) -> None:
+    """backup-size 출력의 꼬리 — 파생물·제외·총합 대조·접근 실패."""
     if any(c.files for c in report.derived):
         console.print("[dim]파생물 (재계산 가능 — 담지 않음)[/dim]")
         for c in report.derived:
@@ -935,3 +963,21 @@ def backup_size(
         for c in report.excluded:
             if c.files:
                 console.print(f"  [dim]{c.name:<26}{fmt(c)}[/dim]")
+        console.print()
+
+    # 총합 대조. 0 이 아니면 백업 범위에 구멍이 있다는 신호다 — 새 기능이 새 최상위
+    # 디렉토리를 만들고 목록에 넣는 걸 잊으면 여기서만 드러난다.
+    if report.unclassified.files:
+        console.print(
+            f"[yellow]미분류[/yellow] {report.unclassified.files:,}개 "
+            f"{report.unclassified.bytes / 1000**2:.1f} MB"
+        )
+        console.print(
+            "  [dim]어느 분류에도 안 잡힌 파일이다. 격리본(.corrupt-*)이면 정상이고,\n"
+            "  그 밖이면 백업 범위에서 빠지고 있다는 뜻이다.[/dim]\n"
+        )
+
+    if report.problems:
+        console.print(f"[red]접근하지 못한 경로 {len(report.problems)}건[/red] — 숫자가 불완전하다")
+        for line in report.problems[:5]:
+            console.print(f"  [red]·[/red] {line}")

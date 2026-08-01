@@ -175,12 +175,34 @@ def _daily_run_done_today(data_dir: Path, *, today: str) -> bool | None:
     return last == today if isinstance(last, str) else None
 
 
-def _iter_files(root: Path):
-    """root 아래 일반 파일을 전부 순회한다(제외 규칙 적용, 심볼릭 링크 무시)."""
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+def _iter_files(root: Path, problems: list[str] | None = None):
+    """root 아래 일반 파일을 전부 순회한다(제외 규칙 적용, 심볼릭 링크 무시).
+
+    **오류를 삼키지 않는다.** ``os.walk`` 는 기본(``onerror=None``)으로 디렉토리 진입
+    실패를 조용히 건너뛴다 — 권한 하나 잘못되면 트리 절반만 걷고도 정상 종료한다.
+    백업에서 그건 조용한 데이터 유실이고, 크기 측정에서는 사용자가 절반짜리 숫자로
+    요금제를 고르게 된다. 그래서 ``problems`` 에 모아 호출부가 표면화하게 한다.
+
+    심볼릭 링크도 마찬가지로 **말없이 빠지면 안 된다.** 큰 parquet 트리를 다른
+    디스크로 심링크해 두는 구성이 충분히 있을 수 있는데, 그러면 백업 대상에서
+    통째로 사라진다. 따라가지는 않되(순환·중복 위험) 발견 사실은 보고한다.
+    """
+    def _on_error(exc: OSError) -> None:
+        if problems is not None:
+            problems.append(f"{getattr(exc, 'filename', root)}: {exc.strerror or exc}")
+
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, onerror=_on_error):
         here = Path(dirpath)
         # 제외 디렉토리는 통째로 가지치기 — 하위를 걷지도 않는다.
-        dirnames[:] = [d for d in dirnames if d not in _EXCLUDE_NAMES]
+        kept_dirs = []
+        for d in dirnames:
+            if d in _EXCLUDE_NAMES:
+                continue
+            if problems is not None and (here / d).is_symlink():
+                problems.append(f"{here / d}: 심볼릭 링크 디렉토리 — 백업에서 제외됨")
+                continue
+            kept_dirs.append(d)
+        dirnames[:] = kept_dirs
         for name in filenames:
             if name in _EXCLUDE_NAMES or ".corrupt-" in name:
                 continue
@@ -281,6 +303,7 @@ def _prune_state_archives(out_dir: Path, *, keep: int, dry_run: bool) -> int:
 
 def _mirror(
     data_dir: Path, mirror_root: Path, roots: list[str], *, dry_run: bool,
+    problems: list[str] | None = None,
 ) -> tuple[int, int, int]:
     """덧쓰기 전용 미러. (복사, 바이트, 최신이라 건너뜀) 반환.
 
@@ -292,7 +315,7 @@ def _mirror(
         src_root = data_dir / rel_root
         if not src_root.is_dir():
             continue
-        for src in _iter_files(src_root):
+        for src in _iter_files(src_root, problems):
             rel = src.relative_to(data_dir)
             if _is_excluded(rel) or _owned_by_state(rel):
                 continue
@@ -359,7 +382,16 @@ def run_backup(
         roots += list(_RAW_ROOTS)
     if include_live:
         roots += list(_LIVE_ROOTS)
-    copied, copied_bytes, skipped = _mirror(data_dir, dest / "market", roots, dry_run=dry_run)
+    problems: list[str] = []
+    copied, copied_bytes, skipped = _mirror(
+        data_dir, dest / "market", roots, dry_run=dry_run, problems=problems,
+    )
+    if problems:
+        # 조용히 넘어가면 절반짜리 백업을 정상으로 착각한다. 개수와 예시를 싣는다.
+        warnings.append(
+            f"접근하지 못한 경로 {len(problems)}건 — 그만큼 백업에서 빠졌습니다: "
+            + "; ".join(problems[:3])
+        )
 
     if not dry_run:
         # 시장 데이터가 아직 없어도 market/ 은 만든다. 백업 레이아웃이 스스로를
@@ -434,6 +466,13 @@ class CategorySize:
 _DERIVED_ROOTS: tuple[str, ...] = ("cache", "kis-past-indicators", "timing")
 
 
+# 오브젝트 스토리지의 **최소 과금 객체 크기**. S3 Standard-IA·Glacier 계열은 이보다
+# 작은 객체도 이 크기로 청구한다 — meta.json(~1KB)·프로그램매매 JSON 처럼 작은 파일이
+# 많으면 청구액이 실제 용량의 몇 배가 된다. 평균값으로는 절대 안 보이므로 개수를 센다.
+# (B2·R2 에는 최소 과금 크기가 없어 무관하다.)
+_SMALL_OBJECT_BYTES = 128 * 1024
+
+
 @dataclass(frozen=True)
 class SizeReport:
     data_dir: Path
@@ -442,7 +481,24 @@ class SizeReport:
     derived: list[CategorySize] = field(default_factory=list)
     excluded: list[CategorySize] = field(default_factory=list)
     recent: CategorySize = CategorySize("recent")
+    recent_optin: CategorySize = CategorySize("recent-optin")
     recent_days: int = 1
+    # state 는 파일 N개가 아니라 **tar.gz 1개 객체**로 올라간다. 압축 후 크기를 실제로
+    # 재서 넣는다(비압축 합계로 보고하면 JSON 텍스트라 몇 배 과대보고된다).
+    state_archive_bytes: int = 0
+    # 그 객체가 세대만큼 쌓인다 — 정상 상태 저장량은 archive × keep 이다.
+    keep: int = KEEP_DEFAULT
+    # 최소 과금 크기 미만 객체 수(기본 범위 기준).
+    small_objects: int = 0
+    # 어느 분류에도 안 잡힌 나머지. **0 이 아니면 백업 범위에 구멍이 있다는 신호다** —
+    # kis-program-trade 누락도 정확히 이 방식으로 드러났다.
+    unclassified: CategorySize = CategorySize("미분류")
+    # 순회 중 접근 실패·심링크 등. 비어 있지 않으면 숫자를 믿으면 안 된다.
+    problems: list[str] = field(default_factory=list)
+
+    def state_steady_bytes(self) -> int:
+        """정상 상태에서 state 가 차지하는 저장량(세대 누적)."""
+        return self.state_archive_bytes * self.keep
 
     def _total(self, name: str, rows: list[CategorySize]) -> CategorySize:
         out = CategorySize(name)
@@ -470,12 +526,15 @@ def _measure_paths(paths) -> CategorySize:
     return CategorySize("", files, total)
 
 
-def _measure_root(data_dir: Path, rel_root: str, *, skip_state_owned: bool) -> CategorySize:
+def _measure_root(
+    data_dir: Path, rel_root: str, *, skip_state_owned: bool,
+    problems: list[str] | None = None,
+) -> CategorySize:
     root = data_dir / rel_root
     if not root.is_dir():
         return CategorySize(rel_root)
     kept = []
-    for src in _iter_files(root):
+    for src in _iter_files(root, problems):
         rel = src.relative_to(data_dir)
         if _is_excluded(rel) or (skip_state_owned and _owned_by_state(rel)):
             continue
@@ -500,6 +559,7 @@ def measure_backup(
     *,
     symbol_master: Path | None = None,
     recent_days: int = 1,
+    keep: int = KEEP_DEFAULT,
     now: dt.datetime | None = None,
 ) -> SizeReport:
     """백업이 담을 것들의 크기·개수를 계층별로 잰다. 아무것도 쓰지 않는다.
@@ -512,13 +572,17 @@ def measure_backup(
     now = now or dt.datetime.now(dt.UTC)
     cutoff = (now - dt.timedelta(days=recent_days)).timestamp()
 
+    problems: list[str] = []
     state = _measure_paths(list(_state_paths(data_dir, symbol_master)))
+    # data_dir 안에 있는 state 파일만 — 총합 대조용(위 _unclassified 주석 참고).
+    state_local = _measure_paths(list(_state_paths(data_dir, None)))
     default_scope = [CategorySize("state (사용자 상태)", state.files, state.bytes)]
     default_scope += [
-        _measure_root(data_dir, r, skip_state_owned=True) for r in _MARKET_ROOTS
+        _measure_root(data_dir, r, skip_state_owned=True, problems=problems)
+        for r in _MARKET_ROOTS
     ]
     optin = [
-        _measure_root(data_dir, r, skip_state_owned=True)
+        _measure_root(data_dir, r, skip_state_owned=True, problems=problems)
         for r in (*_RAW_ROOTS, *_LIVE_ROOTS)
     ]
     derived = [
@@ -534,9 +598,36 @@ def measure_backup(
             m = _measure_paths(list(_iter_files_unfiltered(p)))
             excluded.append(CategorySize(name, m.files, m.bytes))
         elif p.is_file():
-            excluded.append(CategorySize(name, 1, p.stat().st_size))
+            # flock 파일 등은 레이스로 사라질 수 있다 — 크기 하나 때문에 측정 전체가
+            # 죽으면 안 된다.
+            try:
+                excluded.append(CategorySize(name, 1, p.stat().st_size))
+            except OSError:
+                excluded.append(CategorySize(name, 1, 0))
 
-    recent_files = []
+    def _recent(roots) -> CategorySize:
+        hits = []
+        for rel_root in roots:
+            root = data_dir / rel_root
+            if not root.is_dir():
+                continue
+            for src in _iter_files(root):
+                rel = src.relative_to(data_dir)
+                if _is_excluded(rel) or _owned_by_state(rel):
+                    continue
+                try:
+                    if src.stat().st_mtime >= cutoff:
+                        hits.append(src)
+                except OSError:
+                    continue
+        return _measure_paths(hits)
+
+    rm = _recent(_MARKET_ROOTS)
+    # 옵트인 루트도 따로 잰다 — raw 를 켤지 결정하려면 그 증가율을 봐야 하는데,
+    # 기본 범위만 재면 항상 0 이라 "1년 뒤 얼마" 에 답할 수 없다.
+    ro = _recent((*_RAW_ROOTS, *_LIVE_ROOTS))
+
+    small = 0
     for rel_root in _MARKET_ROOTS:
         root = data_dir / rel_root
         if not root.is_dir():
@@ -546,11 +637,10 @@ def measure_backup(
             if _is_excluded(rel) or _owned_by_state(rel):
                 continue
             try:
-                if src.stat().st_mtime >= cutoff:
-                    recent_files.append(src)
+                if src.stat().st_size < _SMALL_OBJECT_BYTES:
+                    small += 1
             except OSError:
                 continue
-    rm = _measure_paths(recent_files)
 
     return SizeReport(
         data_dir=data_dir,
@@ -559,8 +649,49 @@ def measure_backup(
         derived=derived,
         excluded=excluded,
         recent=CategorySize(f"최근 {recent_days}일 변경", rm.files, rm.bytes),
+        recent_optin=CategorySize(f"최근 {recent_days}일 변경(옵트인)", ro.files, ro.bytes),
         recent_days=recent_days,
+        state_archive_bytes=_compressed_state_bytes(data_dir, symbol_master),
+        keep=keep,
+        small_objects=small,
+        unclassified=_unclassified(
+            data_dir,
+            # **symbol-master.json 은 빼고 대조한다.** data_dir 밖의 형제라 전체
+            # 합계에는 없는데 분류 합계(state)에는 들어가므로, 그대로 빼면 미분류
+            # 1건을 정확히 상쇄해 진짜 구멍을 가린다. 실측으로 그 상쇄를 확인했다.
+            [CategorySize("state-local", state_local.files, state_local.bytes),
+             *default_scope[1:], *optin, *derived, *excluded],
+        ),
+        problems=problems,
     )
+
+
+def _compressed_state_bytes(data_dir: Path, symbol_master: Path | None) -> int:
+    """state 를 실제로 압축해 크기를 잰다. 목적지에는 아무것도 남기지 않는다.
+
+    state 는 파일 N개가 아니라 **tar.gz 1개 객체**로 올라가고, JSON 텍스트라 압축률이
+    커서 비압축 합계로 보고하면 몇 배 과대보고된다. 요금제를 고르는 숫자이므로
+    추정하지 않고 실제로 압축해 본다 — state 는 수백 KB 급이라 비용이 무시할 만하다.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        path, _files, _bytes, archive_bytes = _write_state_archive(
+            data_dir, symbol_master, Path(td), stamp="measure", dry_run=False,
+        )
+        return archive_bytes or 0 if path is not None else 0
+
+
+def _unclassified(data_dir: Path, classified: list[CategorySize]) -> CategorySize:
+    """data_dir 전체에서 분류된 것을 뺀 나머지.
+
+    **0 이 아니면 백업 범위에 구멍이 있다는 신호다.** 새 기능이 새 최상위 디렉토리를
+    만들었는데 _MARKET_ROOTS 에 넣는 걸 잊으면, 이 줄이 없으면 아무도 모른 채 그
+    데이터가 영영 백업되지 않는다. (state 는 개별 파일 단위라 여기서 이중으로
+    빠지지 않도록 파일 경로 집합으로 대조한다.)
+    """
+    total = _measure_paths(list(_iter_files_unfiltered(data_dir)))
+    files = total.files - sum(c.files for c in classified)
+    size = total.bytes - sum(c.bytes for c in classified)
+    return CategorySize("미분류", max(0, files), max(0, size))
 
 
 def _iter_files_unfiltered(root: Path):
