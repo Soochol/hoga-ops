@@ -1,0 +1,24 @@
+# hoga-ops 워치독 oneshot (#998) — hoga-ops-watchdog.timer 가 5분마다 부른다.
+#
+# 설치 (hoga-ops.service 와 같은 요령):
+#   cp deploy/hoga-ops-watchdog.{service,timer} ~/.config/systemd/user/
+#   # WorkingDirectory 와 Environment 의 HOGA_HEALTH_URL 을 실제 값으로 고치고:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now hoga-ops-watchdog.timer
+#
+# 상태·이력:
+#   systemctl --user list-timers hoga-ops-watchdog.timer
+#   journalctl --user -u hoga-ops-watchdog -n 20
+
+[Unit]
+Description=hoga-ops deep-health watchdog (oneshot)
+Documentation=https://github.com/Soochol/hoga-ops
+
+[Service]
+Type=oneshot
+# ↓ 실제 체크아웃 경로로 교체할 것.
+WorkingDirectory=%h/code/hoga-ops
+# prod 는 tailscale 인터페이스에만 바인드하므로 루프백으로는 안 닿는다 —
+# 실제 바인드 주소로 재정의할 것 (예: http://100.x.y.z:8000/health?deep=1).
+Environment=HOGA_HEALTH_URL=http://127.0.0.1:8000/health?deep=1
+ExecStart=/usr/bin/env bash deploy/hoga-ops-watchdog.sh

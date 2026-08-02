@@ -27,6 +27,7 @@ from hoga.api.live_layout_preset_routes import (
     build_router as build_live_layout_preset_router,
 )
 from hoga.api.origin_guard import OriginGuardMiddleware
+from hoga.api.prune import disk_headroom
 from hoga.api.queries import QueryEngine
 from hoga.api.request_timing import RequestTimingMiddleware
 from hoga.api.routes import build_router
@@ -79,6 +80,25 @@ ALLOWED_ORIGINS: tuple[str, ...] = (
     "http://localhost:5174",
     "http://127.0.0.1:5174",
 )
+
+
+def _read_app_version() -> str:
+    """리포 루트 VERSION 파일을 읽는다 — 실행 인스턴스 식별의 단일 진실 (#998).
+
+    dev/prod 2대 운영에서 "지금 8000 에 뜬 게 새 코드인가" 를 curl 한 줄로
+    답하기 위한 것. 이전에는 FastAPI version 이 '0.1.0' 하드코딩이라 답이
+    없었다. 파일이 없으면(비정상 설치본) unknown — 식별 실패가 기동을 막을
+    이유는 없다.
+    """
+    try:
+        return (Path(__file__).resolve().parents[2] / "VERSION").read_text(
+            encoding="utf-8",
+        ).strip()
+    except OSError:
+        return "unknown"
+
+
+APP_VERSION: str = _read_app_version()
 
 
 def allowed_origins() -> tuple[str, ...]:
@@ -221,7 +241,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
             engine.close()
             set_captures_bus(None, None)
 
-    app = FastAPI(title="hoga-ops API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="hoga-ops API", version=APP_VERSION, lifespan=lifespan)
     # 허용 출처는 여기서 한 번만 확정해 CORS 와 OriginGuard 양쪽에 넘긴다 —
     # 두 방어층이 다른 목록을 보는 상태를 구조적으로 못 만들게.
     origins = allowed_origins()
@@ -262,21 +282,46 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     # 부작용 없음(메모리 상태 읽기)이므로 감독자가 짧은 주기로 물어도 안전하다.
     @app.get("/health")
     def _health(deep: bool = False) -> JSONResponse:
+        # version 은 얕은 쪽에도 싣는다(#998) — dev/prod 2대 운영에서 "이 포트에
+        # 뜬 게 어느 코드인가" 는 liveness 만큼 자주 묻는 질문이다.
         if not deep:
-            return JSONResponse({"status": "ok"})
+            return JSONResponse({"status": "ok", "version": APP_VERSION})
         runtime = getattr(app.state, "startup_runtime", None)
         if runtime is None:
             # lifespan 밖(부팅 중·종료 중·테스트) — 판정 근거가 없다. 감독자가
             # 부팅 중을 실패로 오해하지 않도록 200 + 미확정을 명시한다.
-            return JSONResponse({"status": "ok", "checks": {"supervised_tasks": "unknown"}})
+            return JSONResponse({
+                "status": "ok", "version": APP_VERSION,
+                "checks": {"supervised_tasks": "unknown"},
+            })
         tasks = runtime.supervised_task_health()
         dead = [t["name"] for t in tasks if t.get("state") == "dead"]
+        # 큐 소유권(#998): 비소유 부팅은 이전엔 deep 어디에도 안 드러났다 —
+        # 워커 행이 "dead" 가 아니라 **생략**되는 형태라(captures.py 비소유 부팅
+        # 시 워커 0개) 감독자가 read-only prod 를 영원히 방치했다. env 옵트아웃
+        # (도그푸딩 read-only)은 의도이므로 실패로 세지 않는다 — 세면
+        # HOGA_CAPTURE_QUEUE_DISABLED=1 인스턴스가 무한 재시작된다(미기동을
+        # 실패로 안 세는 위 원칙과 같은 이유).
+        queue = _captures_module.queue_ownership_state()
+        queue_anomaly = not queue["owned"] and not queue["disabled_by_env"]
+        # 디스크(#998): 관측 전용 — is_low 여도 503 을 내지 않는다. 503 은
+        # 워치독의 재시작 신호인데 재시작은 디스크를 비우지 못한다(경고는
+        # 스케줄러 일일 prune 로그가 담당).
+        head = disk_headroom(data_dir)
+        degraded = bool(dead) or queue_anomaly
         body: dict[str, object] = {
-            "status": "degraded" if dead else "ok",
+            "status": "degraded" if degraded else "ok",
+            "version": APP_VERSION,
             "dead_tasks": dead,
+            "queue": queue,
+            "disk": None if head is None else {
+                "free_pct": round(head.free_pct, 1),
+                "free_gib": round(head.free_bytes / 1024**3, 1),
+                "low": head.is_low,
+            },
             "supervised_tasks": tasks,
         }
-        return JSONResponse(body, status_code=503 if dead else 200)
+        return JSONResponse(body, status_code=503 if degraded else 200)
 
     app.include_router(build_router(engine))
     app.include_router(build_ws_router(bus, live_get_buffer))

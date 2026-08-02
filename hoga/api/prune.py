@@ -42,6 +42,19 @@ def resolve_retention_days() -> int:
     return int(os.environ.get("HOGA_RETENTION_DAYS", RETENTION_DAYS_DEFAULT))
 
 
+def resolve_include_confirmed_gaps() -> bool:
+    """HOGA_PRUNE_CONFIRMED_GAPS truthy 판정 — 일일 prune 의 게이트 확장 옵트인 (#998).
+
+    기본 게이트(COMPLETE 만 삭제)는 실측에서 유예 밖 raw 351GB 를 전량 보존했다
+    — "수동 CLI(--include-confirmed-gaps)를 기억해야 회수된다" 가 무인 prod 의
+    실질 디스크 구멍(raw ~4GB/day)이라, env 한 줄로 확인된 업스트림 갭까지
+    일일 자동 회수에 포함시킨다. 기본은 off(현행 보수 게이트 유지).
+    """
+    return os.environ.get("HOGA_PRUNE_CONFIRMED_GAPS", "").strip() in (
+        "1", "true", "yes", "on",
+    )
+
+
 @dataclass(frozen=True)
 class PruneCandidate:
     date: str          # YYYYMMDD

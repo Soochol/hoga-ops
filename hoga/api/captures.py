@@ -329,6 +329,23 @@ _data_dir: Path | None = None
 _client_factory: Callable[[], object] | None = None
 
 
+def _env_queue_disabled() -> bool:
+    """HOGA_CAPTURE_QUEUE_DISABLED 의 truthy 판정 — 부팅과 health 가 공유한다."""
+    return os.environ.get("HOGA_CAPTURE_QUEUE_DISABLED", "").strip() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def queue_ownership_state() -> dict[str, bool]:
+    """deep health 배선용 소유권 스냅샷 (#998).
+
+    ``owned=False`` 는 두 부류로 갈리고 health 의 판정이 달라진다:
+    ``disabled_by_env=True`` 면 의도된 옵트아웃(도그푸딩 read-only) — 정상.
+    False 면 flock 경합·상실 — prod 단독 서버에서는 이상 신호라 degraded 다.
+    """
+    return {"owned": _queue_owned, "disabled_by_env": _env_queue_disabled()}
+
+
 def _require_data_dir() -> Path:
     assert _data_dir is not None, "captures._data_dir not initialized; call build_router() or set in test fixture"
     return _data_dir
@@ -1301,7 +1318,7 @@ def start_capture_pool(data_dir: Path) -> list[asyncio.Task]:
     # (import-time read was too early for a .env-only value — see the refreshers).
     refresh_max_concurrent()
     refresh_rate_limit_s()
-    if os.environ.get("HOGA_CAPTURE_QUEUE_DISABLED", "").strip() in ("1", "true", "yes", "on"):
+    if _env_queue_disabled():
         _queue_owned = False
         logging.getLogger(__name__).info(
             "HOGA_CAPTURE_QUEUE_DISABLED set — capture queue runs read-only (no workers)",

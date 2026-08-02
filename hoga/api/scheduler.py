@@ -124,12 +124,16 @@ async def _daily_run(data_dir: Path) -> None:
     from hoga.api.prune import (  # noqa: PLC0415
         disk_headroom,
         prune_raw,
+        resolve_include_confirmed_gaps,
         resolve_retention_days,
     )
     try:
+        # HOGA_PRUNE_CONFIRMED_GAPS=true 면 확인된 업스트림 갭까지 자동 회수(#998)
+        # — 별도 타이머가 아니라 이 일일 실행에 편승한다(부품 최소).
         pruned = await asyncio.to_thread(
             prune_raw, data_dir,
             retention_days=resolve_retention_days(), now=now_kst(), execute=True,
+            include_confirmed_gaps=resolve_include_confirmed_gaps(),
         )
         log.info(
             "daily prune: removed %d dirs, reclaimed %.2f GiB",

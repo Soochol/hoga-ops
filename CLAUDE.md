@@ -164,7 +164,10 @@ uv run uvicorn hoga.api.app:default_app \
 
 `--factory` is required (`default_app` returns the FastAPI instance). `--reload-dir hoga`
 scopes the watcher to the backend package so editing `frontend/` or `docs/` doesn't bounce
-the API. Verify with `curl -s http://127.0.0.1:8000/health` (expects `{"status":"ok"}`).
+the API. **`--workers` 는 절대 붙이지 말 것** — 프로세스 내 싱글턴(키움 WS 세션·
+스케줄러·DuckDB) 구조라 워커마다 키움 WS 중복 접속(킥 전쟁)·스케줄러 N중 실행이
+난다(#998, README 운영 절). Verify with `curl -s http://127.0.0.1:8000/health`
+(expects `{"status":"ok","version":...}`).
 
 Both entry points (`hoga serve` and direct uvicorn) auto-load `.env` from the repo root —
 `default_app()` calls `load_env()` so the discovery is a property of the app, not the CLI.

@@ -447,3 +447,30 @@ def test_disk_headroom_walks_up_to_existing_parent(tmp_data_dir: Path) -> None:
     from hoga.api.prune import disk_headroom
 
     assert disk_headroom(tmp_data_dir / "nope" / "still-nope") is not None
+
+
+def test_resolve_include_confirmed_gaps_env_optin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HOGA_PRUNE_CONFIRMED_GAPS truthy 판정(#998) — 기본 off, 켜면 일일 prune
+    이 확인된 업스트림 갭까지 회수한다(별도 타이머 없이 스케줄러 편승)."""
+    from hoga.api.prune import resolve_include_confirmed_gaps
+
+    monkeypatch.delenv("HOGA_PRUNE_CONFIRMED_GAPS", raising=False)
+    assert resolve_include_confirmed_gaps() is False
+    for truthy in ("1", "true", "yes", "on", " true "):
+        monkeypatch.setenv("HOGA_PRUNE_CONFIRMED_GAPS", truthy)
+        assert resolve_include_confirmed_gaps() is True, truthy
+    for falsy in ("", "0", "false", "off"):
+        monkeypatch.setenv("HOGA_PRUNE_CONFIRMED_GAPS", falsy)
+        assert resolve_include_confirmed_gaps() is False, falsy
+
+
+def test_daily_scheduler_prune_wires_the_env_optin() -> None:
+    """스케줄러의 일일 prune 호출이 env 옵트인을 배선하는지 봉인 —
+    resolve_include_confirmed_gaps 를 만들고 안 꽂으면 env 가 무음 무시된다
+    (origin guard 의 '한 목록 공유' 봉인 테스트와 같은 형태)."""
+    import inspect
+
+    from hoga.api import scheduler
+
+    src = inspect.getsource(scheduler._daily_run)
+    assert "include_confirmed_gaps=resolve_include_confirmed_gaps()" in src
