@@ -1,6 +1,7 @@
 """Tests for hoga/env.py — .env loader with worktree → main-repo fallback (ADR-0008)."""
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -86,6 +87,46 @@ def test_worktree_fallback_to_main_repo(tmp_path: Path, monkeypatch: pytest.Monk
     loaded = env_module.load_env()
     assert loaded == main_repo / ".env"
     assert os.environ["HOGA_TEST_KEY"] == "fromMain"
+
+
+def test_worktree_fallback_warns_about_inheritance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """폴백 상속은 시끄러워야 한다(#996) — 메인 .env 에 실자격증명이 있으면 이
+    프로세스가 벤더 유량·WS 슬롯을 실제로 소모한다(#993 e2e 실측). 경로가
+    경고에 포함되어야 "어느 .env 를 물려받았나" 를 로그만으로 답할 수 있다."""
+    import hoga.env as env_module
+
+    worktree = tmp_path / "worktree"
+    main_repo = tmp_path / "main"
+    worktree.mkdir()
+    main_repo.mkdir()
+    (main_repo / ".env").write_text("HOGA_TEST_KEY=fromMain\n", encoding="utf-8")
+
+    monkeypatch.setattr(env_module, "_WORKING_TREE", worktree)
+    monkeypatch.setattr(env_module, "_main_repo_root", lambda: main_repo)
+    _purge_keys(monkeypatch, "HOGA_TEST_KEY")
+
+    with caplog.at_level(logging.WARNING, logger="hoga.env"):
+        env_module.load_env()
+    inherit_warnings = [r for r in caplog.records if "상속" in r.getMessage()]
+    assert len(inherit_warnings) == 1
+    assert str(main_repo / ".env") in inherit_warnings[0].getMessage()
+
+
+def test_local_env_does_not_warn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """워크트리 자체 .env 는 정상 경로 — 경고가 없어야 신호가 신호로 남는다."""
+    import hoga.env as env_module
+
+    (tmp_path / ".env").write_text("HOGA_TEST_KEY=local\n", encoding="utf-8")
+    monkeypatch.setattr(env_module, "_WORKING_TREE", tmp_path)
+    _purge_keys(monkeypatch, "HOGA_TEST_KEY")
+
+    with caplog.at_level(logging.WARNING, logger="hoga.env"):
+        env_module.load_env()
+    assert [r for r in caplog.records if "상속" in r.getMessage()] == []
 
 
 def test_worktree_env_wins_over_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
