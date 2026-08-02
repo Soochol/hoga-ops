@@ -65,9 +65,9 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           # 로컬 개발 환경(v24)과 major 를 맞춘다 — CI 에서만 재현되는 런타임 차이로
-          # 디버깅 시간을 쓰지 않기 위해서다. package.json 에 engines 가 없어 여기가
-          # 사실상 Node 버전의 유일한 선언 지점이다.
-          node-version: 24
+          # 디버깅 시간을 쓰지 않기 위해서다. 선언 지점은 리포 루트 .nvmrc 하나로
+          # 통일했다(#998) — e2e 잡·온프레미스 prod 빌드가 같은 값을 읽는다.
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -166,7 +166,9 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          # frontend 잡(24)·.nvmrc 와 통일(#998) — 22/24 로 갈라져 있던 동안
+          # "검증된 node 조합" 이 하나가 아니었다. 기준은 리포 루트 .nvmrc.
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # 백엔드도 필요하다 — playwright.config.ts 의 webServer 가 `uv run hoga serve`

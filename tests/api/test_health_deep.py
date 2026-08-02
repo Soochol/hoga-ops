@@ -12,10 +12,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hoga.api.app import create_app
+from hoga.api.app import APP_VERSION, create_app
 
 
 class _Runtime:
@@ -31,11 +32,15 @@ def _client(tmp_path: Path) -> tuple[TestClient, FastAPI]:
     return TestClient(app), app
 
 
-def test_shallow_health_stays_a_plain_liveness_probe(tmp_path: Path) -> None:
+def test_shallow_health_is_liveness_plus_version(tmp_path: Path) -> None:
+    """얕은 쪽은 liveness + version 식별(#998) — dev/prod 2대에서 "이 포트의
+    코드가 무엇인가" 는 살아있냐 만큼 자주 묻는 질문이라 얕은 쪽에 싣는다."""
     client, _ = _client(tmp_path)
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    assert resp.json() == {"status": "ok", "version": APP_VERSION}
+    # VERSION 파일이 읽혔다면 하드코딩 시절('0.1.0')이 아니어야 한다.
+    assert APP_VERSION not in ("", "0.1.0")
 
 
 def test_deep_health_is_ok_when_all_tasks_run(tmp_path: Path) -> None:
@@ -89,3 +94,69 @@ def test_deep_health_is_ok_outside_lifespan(tmp_path: Path) -> None:
     resp = client.get("/health?deep=1")
     assert resp.status_code == 200
     assert resp.json()["checks"]["supervised_tasks"] == "unknown"
+
+
+_RUNNING = [{"name": "watchlist-daily-loop", "running": True, "state": "running"}]
+
+
+def test_deep_health_carries_version_and_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#998: version(인스턴스 식별)과 disk(잠식 관측)가 deep 에 실린다.
+
+    disk 는 관측 전용 — low 여도 503 이 아니어야 한다: 503 은 워치독의 재시작
+    신호인데 재시작은 디스크를 비우지 못한다.
+    """
+    from hoga.api import captures
+
+    monkeypatch.setattr(captures, "_queue_owned", True)
+    client, app = _client(tmp_path)
+    app.state.startup_runtime = _Runtime(list(_RUNNING))
+
+    resp = client.get("/health?deep=1")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["version"] == APP_VERSION
+    disk = body["disk"]
+    assert disk is not None
+    assert set(disk) == {"free_pct", "free_gib", "low"}
+    assert 0.0 <= disk["free_pct"] <= 100.0
+
+
+def test_deep_health_flags_unowned_queue_as_degraded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#998 핵심: 비소유 부팅(ADR-0094 flock 패배)은 이전엔 deep 어디에도 안
+    드러났다 — 워커 행이 'dead' 가 아니라 **생략**되는 형태라 감독자가 read-only
+    prod 를 영원히 방치했다. env 옵트아웃이 아닌 비소유는 503 이어야 워치독이
+    회수한다."""
+    from hoga.api import captures
+
+    monkeypatch.delenv("HOGA_CAPTURE_QUEUE_DISABLED", raising=False)
+    monkeypatch.setattr(captures, "_queue_owned", False)
+    client, app = _client(tmp_path)
+    app.state.startup_runtime = _Runtime(list(_RUNNING))
+
+    resp = client.get("/health?deep=1")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["queue"] == {"owned": False, "disabled_by_env": False}
+    assert body["dead_tasks"] == []  # 태스크는 멀쩡 — 큐 축이 독립 판정임을 고정
+
+
+def test_deep_health_env_optout_queue_is_not_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """의도된 read-only(HOGA_CAPTURE_QUEUE_DISABLED=1 도그푸딩)는 실패가 아니다 —
+    실패로 세면 그 인스턴스가 무한 재시작된다(미기동≠죽음 원칙과 동일)."""
+    from hoga.api import captures
+
+    monkeypatch.setenv("HOGA_CAPTURE_QUEUE_DISABLED", "1")
+    monkeypatch.setattr(captures, "_queue_owned", False)
+    client, app = _client(tmp_path)
+    app.state.startup_runtime = _Runtime(list(_RUNNING))
+
+    resp = client.get("/health?deep=1")
+    assert resp.status_code == 200
+    assert resp.json()["queue"] == {"owned": False, "disabled_by_env": True}

@@ -67,6 +67,10 @@ npm run dev
 워커 자가재생성)은 **프로세스 안에서만** 동작하므로 프로세스 자체의 사망은 외부
 감독자만 덮을 수 있다. 장중에 죽으면 그날 실시간 수집이 그 시점에서 끝난다.
 
+**단일 워커 전제**: 이 앱은 프로세스 내 싱글턴(키움 WS 세션·일일 스케줄러·DuckDB)
+구조다. uvicorn 으로 직접 띄우더라도 `--workers` 를 붙이지 말 것 — 워커마다 키움
+WS 를 중복 접속해 서로를 킥하고, 일일 스케줄러가 N 중 실행된다.
+
 무인 운영 최소 구성 세 가지:
 
 1. **감독자** — `deploy/hoga-ops.service` 를 `~/.config/systemd/user/` 에 복사하고
@@ -101,7 +105,40 @@ npm run dev
    ```
 
 배경 작업이 죽으면 프론트엔드에도 토스트가 뜬다(어느 페이지에서든). 자동 재시작
-감독자는 설계상 없으므로(ADR-0088) 조치는 프로세스 재시작이다.
+감독자는 설계상 없으므로(ADR-0088) 조치는 프로세스 재시작이다 — 그 재시작을
+자동화하는 것이 아래 워치독 타이머다(앱 밖의 감독이라 ADR-0088 과 충돌하지 않는다).
+
+**워치독 타이머** — deep health 가 503 이면(조용히 죽은 태스크·큐 비소유 부팅)
+5분 안에 재시작한다. `Restart=always` 가 못 덮는 "살아 있지만 아픈" 상태 전용:
+
+```sh
+cp deploy/hoga-ops-watchdog.{service,timer} ~/.config/systemd/user/
+# hoga-ops-watchdog.service 의 WorkingDirectory·HOGA_HEALTH_URL 을 실제 값으로
+# (prod 는 tailscale 주소 — 루프백으로는 안 닿는다) 고친 뒤:
+systemctl --user daemon-reload && systemctl --user enable --now hoga-ops-watchdog.timer
+```
+
+deep health 는 `version`(VERSION 파일)·`queue.owned`·`disk.free_pct` 도 싣는다 —
+dev/prod 2대를 curl 한 줄로 구분하고, read-only 부팅과 디스크 잠식을 같은
+엔드포인트로 잡는다. 디스크는 관측 전용(503 아님 — 재시작이 디스크를 못 비운다).
+
+**prune 게이트 확장(옵트인)** — 기본 일일 prune 은 COMPLETE 만 지운다. 확인된
+업스트림 갭까지 자동 회수하려면 `.env` 에 `HOGA_PRUNE_CONFIRMED_GAPS=true`
+(무인 prod 권장 — raw 는 하루 ~4GB 씩 자란다).
+
+### 업그레이드 러닝북
+
+```sh
+git pull
+uv sync --frozen                      # 네트워크가 필요한 단계를 재시작 전에 분리
+cd frontend && npm ci && npx vite build && cd ..   # 프론트 서빙 시
+systemctl --user restart hoga-ops
+curl -s http://<주소>:8000/health | python3 -m json.tool   # version 이 새 값인지
+```
+
+롤백은 `git checkout <이전 커밋>` 후 같은 절차. 롤백으로 `.queue.json` 스키마가
+구버전과 어긋나면 큐가 `.corrupt-*` 로 격리(=대기 큐 초기화)될 수 있다 — 재시작
+후 인벤토리에서 대기 항목을 확인할 것.
 
 ### Prod: Tailscale 단일 origin 배포 (ADR-0134)
 

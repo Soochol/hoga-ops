@@ -1,0 +1,16 @@
+# hoga-ops 워치독 타이머 (#998) — 5분마다 deep health 를 묻는다.
+#
+# 5분인 이유: 장중 실시간 수집이 죽은 채 방치되는 최대 구간을 5분으로 캡한다.
+# 더 짧게는 안 한다 — 재시작 자체가 수십 초의 수집 공백이므로, 오탐(일시 지연)
+# 한 번의 비용이 탐지 지연보다 크다. Persistent 는 두지 않는다 — 밀린 체크를
+# 부팅 직후 몰아서 쏘면 기동 중(판정 근거 없음) 프로세스를 두드리게 된다.
+
+[Unit]
+Description=Run hoga-ops deep-health watchdog every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+Unit=hoga-ops-watchdog.service
+
+[Install]
+WantedBy=timers.target

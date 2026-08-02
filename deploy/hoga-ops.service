@@ -35,7 +35,15 @@ WorkingDirectory=%h/code/hoga-ops
 # host·port 는 명시 인자로 둔다 — 유닛 파일만 봐도 바인드 면이 보이게.
 # prod(ADR-0134)는 127.0.0.1 을 tailscale 인터페이스 주소로 바꾼다. 공인·LAN
 # 인터페이스(0.0.0.0 등) 금지 — README "Access model" 참고.
-ExecStart=/usr/bin/env uv run hoga serve --host 127.0.0.1 --port 8000
+#
+# --frozen: 재시작마다 uv 가 락파일을 재해석·동기화하는 것을 막는다(#998) —
+# 재시작이 네트워크·인덱스 상태에 좌우되면 안 된다. 의존성 갱신은 업그레이드
+# 러닝북(README)의 `uv sync --frozen` 단계가 재시작 **전에** 명시적으로 한다.
+#
+# 단일 워커 전제: 이 앱은 프로세스 내 싱글턴(키움 WS 세션·일일 스케줄러·DuckDB)
+# 구조다. uvicorn 직접 기동 시에도 --workers 를 절대 붙이지 말 것 — 워커마다
+# 키움 WS 를 중복 접속(킥 전쟁)하고 스케줄러가 N중 실행된다.
+ExecStart=/usr/bin/env uv run --frozen hoga serve --host 127.0.0.1 --port 8000
 
 Restart=always
 RestartSec=5
