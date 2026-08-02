@@ -169,6 +169,13 @@ the API. Verify with `curl -s http://127.0.0.1:8000/health` (expects `{"status":
 Both entry points (`hoga serve` and direct uvicorn) auto-load `.env` from the repo root —
 `default_app()` calls `load_env()` so the discovery is a property of the app, not the CLI.
 Set `KIS_APP_KEY` / `KIS_APP_SECRET` (and optionally `HOGAPLAY_COOKIE`) per `.env.example`.
+
+**dev 무자격 관례 (ADR-0134 · #989)**: dev/prod 서버 분리 후 실자격증명은 prod `.env`
+에만 둔다. dev·워크트리는 키를 비워 두는 것이 기본이다 — 키가 비면 키움/KIS 경로가
+자동 휴면하고, 검색·과거 데이터·프론트 개발·페이크 캡처는 전부 동작한다. 같은 키를
+dev 에서 병행 사용하면 **머신이 달라도** 키움 WS 킥 전쟁·KIS 유량 합산 초과가 난다.
+워크트리에 `.env` 가 없으면 메인 체크아웃 것을 상속한다(`hoga/env.py` 가 경고 로그를
+1회 남긴다) — 상속을 원치 않으면 워크트리에 빈 `.env` 를 둔다.
 Symbol search uses the static KIS `.mst` files — no credentials required.
 거래일 조회는 KIS Open API를 사용합니다. 자격증명이 없으면 **범위 캡처 enqueue 는
 평일 기준으로 담고 응답에 `warning: kis_credentials_missing` 을 실어 보냅니다**

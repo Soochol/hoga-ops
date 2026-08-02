@@ -19,11 +19,14 @@ Precedence: shell env > .env > .cookie file (legacy, for HOGAPLAY_COOKIE only).
 """
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
+
+log = logging.getLogger(__name__)
 
 _WORKING_TREE: Path = Path(__file__).resolve().parent.parent
 
@@ -72,6 +75,18 @@ def _discover_env_file() -> Path | None:
     if main is not None and main != _WORKING_TREE:
         candidate = main / ".env"
         if candidate.exists():
+            # 조용히 상속하면 위험하다: 메인 .env 에 실자격증명이 있으면 이
+            # 프로세스가 키움 WS 슬롯·KIS 유량·토큰 발급 쿨다운을 실제로 소모한다
+            # (#993 e2e 에서 실측 — 상속된 키로 실토큰 발급을 시도했다).
+            # dev 무자격 관례(#989·ADR-0134)에서 이 경고는 "메인에 키가 남아
+            # 있다" 는 신호이기도 하다. 발견은 프로세스당 1회 캐시되므로 이
+            # 경고도 1회만 나간다.
+            log.warning(
+                "env: 워크트리에 .env 가 없어 메인 체크아웃 것을 상속합니다: %s "
+                "— 자격증명이 든 .env 라면 이 프로세스가 벤더 유량·WS 슬롯을 "
+                "실제로 소모합니다. 의도가 아니면 워크트리에 빈 .env 를 두세요.",
+                candidate,
+            )
             return candidate
     return None
 
