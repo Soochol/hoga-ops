@@ -186,6 +186,7 @@ export function ScreenerDrawer() {
   const setSelectedSavedId = useScreenerPanelStore((s) => s.setSelectedSavedId);
   const lastScan = useScreenerPanelStore((s) => s.lastScan);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
+  const clearLastScan = useScreenerPanelStore((s) => s.clearLastScan);
   const sortMode = useScreenerPanelStore((s) => s.sortMode);
   const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
   const monitoringActive = useScreenerPanelStore((s) => s.monitoringActive);
@@ -280,6 +281,7 @@ export function ScreenerDrawer() {
     periodMs: effectivePeriodMs,
     disabled: notSeeded || !selected,
     resultCodes,
+    hasResults: lastScan !== null,
     scanOnce,
     onAutoStop: (message) => {
       setMonitoringActive(false);
@@ -317,7 +319,9 @@ export function ScreenerDrawer() {
   );
   // 재조회로 새로 편입된 종목을 잠시 플래시. 훅은 항상 resultCodes 를 추적해 이전
   // 집합을 정확히 유지하고(토글 시 전체 플래시 방지), 표시만 모니터링 중으로 게이트한다.
-  const flashCodes = useNewEntryFlash(resultCodes);
+  // 스캔 결과 자체가 없으면(시작 시 초기화) null 을 넘겨 이력을 버린다 — [] 로 넘기면
+  // 초기화 뒤 첫 결과가 전 종목 플래시로 터진다(useNewEntryFlash 주석 참조).
+  const flashCodes = useNewEntryFlash(lastScan ? resultCodes : null);
   const sensors = useSensors(useSensor(PointerSensor, SCREENER_DRAG_SENSOR_OPTIONS));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverChart = useEntryDragStore((s) => s.setOverChart);
@@ -368,15 +372,22 @@ export function ScreenerDrawer() {
           <SavedConditionSelect
             saves={saves}
             selectedId={selectedSavedId}
-            onSelect={setSelectedSavedId}
+            // 조건을 바꾸면 이전 조건의 결과는 즉시 버린다 — 모니터링 중이면 selectedId
+            // 변경이 곧바로 재조회를 트리거하므로 빈 구간은 그 왕복뿐이다. 마운트 시
+            // 선택 복구 effect 는 이 경로를 타지 않아, 영속된 결과는 그대로 살아난다.
+            onSelect={(id) => {
+              if (id !== selectedSavedId) clearLastScan();
+              setSelectedSavedId(id);
+            }}
           />
         )}
         {/* 대기 = 시작(즉시 1회 조회 + 실시간 유지)만. 별도의 수동 조회 버튼은 두지
-            않는다 — 시작이 즉시 조회를 겸한다. */}
+            않는다 — 시작이 즉시 조회를 겸한다. 시작 = 새 검색이므로 이전 결과를 먼저
+            버린다(옛 리스트가 조회 왕복 동안 새 결과인 척 남지 않게). */}
         {!monitoringActive ? (
           <ToolbarButton
             tone="primary"
-            onClick={() => setMonitoringActive(true)}
+            onClick={() => { clearLastScan(); setMonitoringActive(true); }}
             disabled={notSeeded || !selected}
             className="w-full py-1.5"
             aria-pressed={false}
@@ -520,6 +531,10 @@ export function ScreenerDrawer() {
               </DndContext>
             )}
           </>
+        ) : monitoringActive || screener.isPending ? (
+          // 결과를 비운 뒤 첫 응답이 오기 전. 이 자리를 비워 두면 "조건에 맞는 종목이
+          // 없습니다"와 구분이 안 돼, 초기화가 '결과 0건'으로 오독된다.
+          <RailState>조회 중…</RailState>
         ) : (
           <RailState>조건을 선택하고 시작하세요.</RailState>
         )}
