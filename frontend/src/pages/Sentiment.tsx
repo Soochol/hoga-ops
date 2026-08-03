@@ -28,22 +28,34 @@ function fmtTime(ms: number | null): string {
   return d.toLocaleTimeString('ko-KR', { hour12: false });
 }
 
-const UNAVAILABLE_COPY: Record<string, { title: string; body: string }> = {
+/**
+ * 휴면·대기 사유별 안내. `body` 가 함수인 이유는 대기 문구가 **체인 종목 수에
+ * 따라 달라져야** 하기 때문이다 — 근월물 종목 수는 만기마다 다르고(실측
+ * 202608=780 · 202609=1012 · 202610=682) 상수로 박으면 롤오버 때 조용히 틀린다.
+ * 소요 시간도 종목 수에 비례하므로 단정하지 않고 범위로 적는다(유량 경합도 흡수).
+ */
+const UNAVAILABLE_COPY: Record<
+  string,
+  { title: string; body: (chainSize: number | null) => string }
+> = {
   kis_credentials_missing: {
     title: 'KIS 자격증명이 설정되지 않았습니다',
-    body: '.env 에 KIS_APP_KEY / KIS_APP_SECRET 를 설정하면 수집이 시작됩니다.',
+    body: () => '.env 에 KIS_APP_KEY / KIS_APP_SECRET 를 설정하면 수집이 시작됩니다.',
   },
   warming: {
     title: '체인을 수집하는 중입니다',
-    body: '근월물 780종목을 처음 훑는 데 1분쯤 걸립니다. 잠시 후 자동으로 채워집니다.',
+    body: (n) =>
+      n === null
+        ? '근월물 체인을 처음 훑는 중입니다. 보통 1~2분 걸리며 자동으로 채워집니다.'
+        : `근월물 ${n.toLocaleString()}종목을 처음 훑는 중입니다. 보통 1~2분 걸리며 자동으로 채워집니다.`,
   },
   option_master_unavailable: {
     title: '옵션 종목 마스터를 받지 못했습니다',
-    body: '잠시 후 다시 시도합니다.',
+    body: () => '잠시 후 다시 시도합니다.',
   },
   collector_failed: {
     title: '수집이 중단됐습니다',
-    body: '새로고침하면 다시 시도합니다. 반복되면 서버 로그를 확인하세요.',
+    body: () => '새로고침하면 다시 시도합니다. 반복되면 서버 로그를 확인하세요.',
   },
 };
 
@@ -100,14 +112,15 @@ export default function Sentiment() {
   if (!data || data.unavailable) {
     const copy = UNAVAILABLE_COPY[data?.unavailable ?? ''] ?? {
       title: '표시할 데이터가 없습니다',
-      body: '',
+      body: () => '',
     };
+    const body = copy.body(data?.chain_size ?? null);
     return (
       <PageContainer>
         <PanelCard borderless className="p-md">
           <PageState>
             {copy.title}
-            {copy.body && <div className="mt-xs text-xs text-fg-dimmer">{copy.body}</div>}
+            {body && <div className="mt-xs text-xs text-fg-dimmer">{body}</div>}
           </PageState>
         </PanelCard>
       </PageContainer>

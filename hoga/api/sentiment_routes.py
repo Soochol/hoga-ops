@@ -53,6 +53,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
             return OptionSentimentResponse(
                 unavailable=st.unavailable or "warming",
                 expiry=st.expiry,
+                chain_size=st.chain_size,
             )
 
         full = st.full
@@ -74,6 +75,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
         return OptionSentimentResponse(
             unavailable=None,
             expiry=full.expiry,
+            chain_size=st.chain_size,
             underlying=full.underlying,
             full_as_of_ms=st.full_at_ms,
             atm_as_of_ms=st.atm_at_ms,

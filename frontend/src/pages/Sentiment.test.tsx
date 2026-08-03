@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { expect, it, vi } from 'vitest';
 
@@ -22,6 +22,7 @@ function ready(over: Partial<OptionSentiment> = {}): OptionSentiment {
   return {
     unavailable: null,
     expiry: '202608',
+    chain_size: 780,
     underlying: 1007.83,
     full_as_of_ms: 1_700_000_000_000,
     atm_as_of_ms: 1_700_000_030_000,
@@ -71,9 +72,29 @@ it('자격증명 없음과 콜드스타트를 다르게 안내한다', () => {
   mount(ready({ unavailable: 'kis_credentials_missing' }));
   expect(screen.getByText(/KIS 자격증명이 설정되지 않았습니다/)).toBeInTheDocument();
 
+  cleanup();
   mockHook.mockReset();
   mount(ready({ unavailable: 'warming' }));
   expect(screen.getByText(/체인을 수집하는 중입니다/)).toBeInTheDocument();
+});
+
+it('대기 문구의 종목 수는 만기 롤오버를 따라간다', () => {
+  // 근월물 종목 수는 만기마다 다르다(실측 202608=780 · 202609=1012 · 202610=682).
+  // 화면에 상수로 박으면 만기가 넘어가는 순간 조용히 틀린 안내가 된다.
+  mount(ready({ unavailable: 'warming', expiry: '202608', chain_size: 780 }));
+  expect(screen.getByText(/780종목/)).toBeInTheDocument();
+
+  cleanup(); // 같은 it 안에서 두 번 렌더하면 앞 DOM 이 남아 단언이 무의미해진다
+  mockHook.mockReset();
+  mount(ready({ unavailable: 'warming', expiry: '202609', chain_size: 1012 }));
+  expect(screen.getByText(/1,012종목/)).toBeInTheDocument();
+  expect(screen.queryByText(/780종목/)).not.toBeInTheDocument();
+});
+
+it('마스터를 아직 못 받았으면 종목 수 없이 안내한다', () => {
+  // chain_size 가 null 인데 숫자를 지어내면 안 된다.
+  mount(ready({ unavailable: 'warming', chain_size: null }));
+  expect(screen.getByText(/근월물 체인을 처음 훑는 중입니다/)).toBeInTheDocument();
 });
 
 it('지표 4종과 계층별 관측 시각을 함께 보여준다', () => {
