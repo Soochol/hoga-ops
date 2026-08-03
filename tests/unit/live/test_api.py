@@ -362,6 +362,15 @@ def _past_app(tmp_path, fake_kis, monkeypatch):
     lifecycle.reset_for_tests()
     kis_runtime.set_kis_client(fake_kis)  # type: ignore[arg-type]
     _use_fake_kiwoom_client(monkeypatch, fake_kis)
+    # 달력을 **"모름"** 으로 고정한다 — PR-H(#1044) 이전의 이 파일 환경과 같다.
+    #
+    # PR-H 이후 달력이 커밋된 시드에서 진짜 답을 내는데, 아래 테스트들이 쓰는
+    # 날짜에 실제 휴장일이 섞여 있다(20260501 근로자의날 · 20260505 어린이날).
+    # 이 파일이 보는 것은 백필 기계이지 달력이 아니므로, 달력 축을 중립으로 두어
+    # 원래 검증하던 것(요청 구간의 모든 날짜를 어떻게 다루는가)을 보존한다.
+    # 달력 자체의 계약은 `tests/api/test_trading_days_source.py` 가 덮는다.
+    from hoga.api import calendar as _cal
+    monkeypatch.setattr(_cal, "is_trading_day", lambda _d: None)
     app = FastAPI()
     app.include_router(
         build_router(
@@ -744,9 +753,11 @@ async def test_past_candles_weekend_skips_kis_and_returns_empty(tmp_path, monkey
             self.calls.append(date_yyyymmdd)
             return [LiveCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
 
-    monkeypatch.setattr(cal, "is_trading_day", lambda d: d != "20260516")
     fake = _CountingKis()
     app = _past_app(tmp_path, fake, monkeypatch)
+    # **`_past_app` 뒤에 세운다** — 그 헬퍼가 달력을 중립("모름")으로 고정하므로
+    # 먼저 세우면 덮인다. 이 테스트만은 달력이 답을 내는 것이 검증 대상이다.
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: d != "20260516")
     with TestClient(app) as c:
         r1 = c.get("/api/live/past-candles?code=005930&from=20260516&to=20260516")
         r2 = c.get("/api/live/past-candles?code=005930&from=20260516&to=20260516")
