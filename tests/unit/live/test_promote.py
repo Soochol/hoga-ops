@@ -857,3 +857,48 @@ async def test_promote_one_skips_finalized(tmp_path: Path) -> None:
     # Untouched — the finalized meta's row_counts stays at the sentinel value.
     meta = json.loads((target / "meta.json").read_text())
     assert meta["row_counts"]["snapshots"] == 999
+
+
+@pytest.mark.asyncio
+async def test_promote_one_parses_off_the_event_loop(tmp_path: Path) -> None:
+    """전량 파싱은 **스레드에서** 돌아야 한다 — 이벤트 루프 위가 아니라.
+
+    라인당 json.loads 하는 순수 파이썬 루프라, 17:00 배치가 (전날 서버가 세션
+    마감 전에 죽었다면) 이걸 종목 수만큼 연속으로 돈다. 루프 위에서 돌면 그동안
+    HTTP·WS 가 통째로 얼고, 10초를 넘기면 워치독 curl(--max-time 10)까지 실패해
+    일일 런 도중 재시작이 걸린다 — 그러면 다음 부팅이 같은 파싱을 다시 한다.
+
+    소스 문자열이 아니라 **실제 실행 스레드**로 단언한다. to_thread 를 지우면
+    파서가 루프 스레드에서 불리므로 이 단언이 바로 깨진다.
+    """
+    import threading
+
+    from hoga.live import promote as promote_mod
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
+
+    jsonl_path = tmp_path / "live" / "20260527" / "005930.jsonl"
+    jsonl_path.parent.mkdir(parents=True)
+    t = hhmmssms_to_unix_ms("20260527", 90000000)
+    jsonl_path.write_text(json.dumps({"t_ms": t, "kind": "trade", "payload": {
+        "trades": [{"t_ms": t, "price": 75000, "qty": 5, "side": 1, "side_source": "inferred"}],
+        "phase": "regular",
+    }}) + "\n")
+
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+    real_parse = promote_mod._parse_jsonl_to_records
+
+    def spy(*args, **kwargs):
+        seen.append(threading.get_ident())
+        return real_parse(*args, **kwargs)
+
+    promote_mod._parse_jsonl_to_records = spy
+    try:
+        await promote_mod.promote_one(
+            jsonl_path, tmp_path / "parquet", code="005930", date="20260527",
+        )
+    finally:
+        promote_mod._parse_jsonl_to_records = real_parse
+
+    assert seen, "파서가 아예 불리지 않았다 — 테스트가 경로를 놓쳤다"
+    assert loop_thread not in seen, "파싱이 이벤트 루프 스레드에서 돌았다"

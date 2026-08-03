@@ -606,6 +606,27 @@ def all_etf_etn_codes() -> frozenset[str] | None:
     return frozenset(h.code for h in _cache if h.security_type in ("etf", "etn"))
 
 
+def all_listed_rows() -> list[tuple[str, str, str, bool]] | None:
+    """마스터 전체를 ``(code, name, market, is_etf)`` 로. 미로드면 ``None``.
+
+    스크리너 로스터(stocks.parquet)를 최신 상장 목록에 맞추는 데 쓴다. 그 파일은
+    외부 DB 에서 수동 1회 시드된 스냅샷이라 **신규 상장을 영영 모른다** — 그리고
+    일봉 갱신 대상 목록이 바로 그 파일에서 나오므로(screener._build_plan), 로스터에
+    없는 종목은 봉을 받지도 못하고 따라서 스크리너에 나타날 수도 없다. 실측
+    2026-08-03: 마스터에만 있는 일반주 **79 종목**이 그 상태였다.
+
+    ``all_etf_etn_codes`` 와 같은 규칙으로 ``None`` 과 빈 목록을 구분한다 —
+    마스터 다운로드가 실패한 부팅에서 "상장 종목이 0개"로 읽히면 호출처가 로스터를
+    비우는 파괴적 오작동을 할 수 있다.
+    """
+    if not _cache:
+        return None
+    return [
+        (h.code, h.name, h.market, h.security_type in ("etf", "etn"))
+        for h in _cache
+    ]
+
+
 def build_router(*, path: Path, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/symbols", tags=["symbols"])
 

@@ -12,7 +12,13 @@ def test_live_calendar_policy_is_lenient_on_unavailable() -> None:
 
 
 @pytest.mark.asyncio
-async def test_daily_calendar_policy_fails_closed_on_unavailable() -> None:
+async def test_daily_calendar_policy_reports_unavailable_as_undecided() -> None:
+    """판정 불가는 '휴장(False)' 이 아니라 None 이다.
+
+    접어 버리면 KIS 일시 장애가 휴장일과 똑같이 처리돼 호출자가 실행 마커를 찍고,
+    그날 관심종목 enqueue 가 재시도 없이 사라진다 — hogaplay 보유가 ~18시간이라
+    다음 날엔 복구 불가다(2026-08-03).
+    """
     from hoga.api.calendar import TradingDayUnavailableError
     from hoga.api.calendar_policy import daily_run_allowed_by_calendar
     from hoga.api.error_codes import UpstreamCode
@@ -20,7 +26,7 @@ async def test_daily_calendar_policy_fails_closed_on_unavailable() -> None:
     def unavailable(_start: str, _end: str) -> list[str]:
         raise TradingDayUnavailableError(UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
 
-    assert await daily_run_allowed_by_calendar(unavailable, "20260605") is False
+    assert await daily_run_allowed_by_calendar(unavailable, "20260605") is None
 
 
 @pytest.mark.asyncio

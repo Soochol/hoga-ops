@@ -1912,3 +1912,48 @@ def test_refresh_rate_limit_s_allows_zero_but_ignores_garbage_and_negative(monke
     assert captures.refresh_rate_limit_s() == 0.15
     monkeypatch.setenv("HOGA_RATE_LIMIT_S", "-1")
     assert captures.refresh_rate_limit_s() == 0.15
+
+
+# ── ENOSPC 는 (Code, Stock-Date) 의 잘못이 아니다 (2026-08-03) ────────────────
+
+
+def test_disk_full_failure_does_not_burn_the_retry_cap() -> None:
+    """디스크가 차서 죽은 실패는 fail_streak 를 태우지 않는다.
+
+    태우면 만수 기간에 시도된 모든 (code,date) 가 cap 5 를 소진해, 디스크를
+    비운 뒤에도 인벤토리에서 사람이 행마다 풀기 전까지 영구 차단된다 — 그 사이
+    hogaplay 보유 창(~18h)이 지나 데이터도 사라진다. 일시 장애가 영구 구멍이
+    되는 경로라 ADR-0093 의 upstream_gap 예외와 같은 형태로 갈라냈다.
+    """
+    from hoga.api.captures import _apply_terminal_to_streaks
+    from hoga.api.fail_streak import streak_key
+
+    streaks: dict[str, int] = {}
+    key = streak_key("005930", "20260605")
+
+    for _ in range(5):
+        _apply_terminal_to_streaks(
+            streaks, "005930", "20260605", "failed", local_disk_failure=True,
+        )
+    assert key not in streaks
+
+    # 대조군: 같은 phase 라도 디스크 탓이 아니면 종전대로 +1 이다.
+    _apply_terminal_to_streaks(streaks, "005930", "20260605", "failed")
+    assert streaks[key] == 1
+
+
+def test_enospc_is_classified_as_disk_full_not_internal_error() -> None:
+    """errno 로 판정한다 — 메시지 문자열 매칭은 로케일·드라이버에 흔들린다."""
+    import errno as _errno
+
+    from hoga.api.captures import _exception_to_error_code
+    from hoga.api.error_codes import CaptureErrorCode
+
+    for code in (_errno.ENOSPC, _errno.EDQUOT, _errno.EROFS):
+        exc = OSError(code, "no space left on device")
+        assert _exception_to_error_code(exc) is CaptureErrorCode.DISK_FULL, code
+
+    # 다른 OSError 는 종전대로 INTERNAL_ERROR — 넓게 잡으면 진짜 실패가 숨는다.
+    other = OSError(_errno.EACCES, "permission denied")
+    assert _exception_to_error_code(other) is CaptureErrorCode.INTERNAL_ERROR
+    assert _exception_to_error_code(RuntimeError("x")) is CaptureErrorCode.INTERNAL_ERROR

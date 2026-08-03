@@ -10,13 +10,14 @@
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hoga.api.app import APP_VERSION, create_app
+from hoga.api.app import APP_COMMIT, APP_VERSION, create_app
 
 
 class _Runtime:
@@ -33,14 +34,30 @@ def _client(tmp_path: Path) -> tuple[TestClient, FastAPI]:
 
 
 def test_shallow_health_is_liveness_plus_version(tmp_path: Path) -> None:
-    """얕은 쪽은 liveness + version 식별(#998) — dev/prod 2대에서 "이 포트의
+    """얕은 쪽은 liveness + 인스턴스 식별(#998) — dev/prod 2대에서 "이 포트의
     코드가 무엇인가" 는 살아있냐 만큼 자주 묻는 질문이라 얕은 쪽에 싣는다."""
     client, _ = _client(tmp_path)
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "version": APP_VERSION}
+    assert resp.json() == {
+        "status": "ok", "version": APP_VERSION, "commit": APP_COMMIT,
+    }
     # VERSION 파일이 읽혔다면 하드코딩 시절('0.1.0')이 아니어야 한다.
     assert APP_VERSION not in ("", "0.1.0")
+
+
+def test_health_carries_the_running_commit(tmp_path: Path) -> None:
+    """업그레이드 성공 판정의 실제 신호는 commit 이다.
+
+    VERSION 은 사람이 릴리스 때 올리는 값이라 갱신을 빠뜨리면 '항상 같은 값'이
+    되고, 러닝북의 유일한 검증 단계가 restart 실패·git pull 누락을 성공과
+    구별하지 못한다(2026-08-03). 여기서는 git 체크아웃에서 돌므로 실제 SHA 여야
+    한다 — unknown 이면 식별이 다시 무신호로 돌아간 것이다.
+    """
+    client, _ = _client(tmp_path)
+    commit = client.get("/health").json()["commit"]
+    assert commit != "unknown"
+    assert re.fullmatch(r"[0-9a-f]{7,40}", commit), commit
 
 
 def test_deep_health_is_ok_when_all_tasks_run(tmp_path: Path) -> None:

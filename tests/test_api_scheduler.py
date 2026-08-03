@@ -694,3 +694,90 @@ async def test_daily_run_swallows_trading_day_lookup_failure(tmp_path: Path):
                new_callable=AsyncMock) as enq:
         await scheduler._daily_run(tmp_path)
     assert enq.await_count == 0
+
+
+# ── 거래일 판정 불가 = 재시도 (2026-08-03) ──────────────────────────────────
+#
+# 17:00 의 KIS chk-holiday 일시 장애가 휴장일과 똑같이 처리되던 시절에는, 그날
+# 관심종목 enqueue 가 통째로 사라지고 마커까지 찍혀 재시도가 없었다. hogaplay
+# 업스트림 보유가 ~18시간이라 다음 날 사람이 알아챌 때면 복구 불가였다.
+
+
+@pytest.mark.asyncio
+async def test_trading_stage_is_unsettled_when_verdict_unavailable(tmp_path: Path):
+    """판정 불가면 enqueue 하지 않고 '미결(False)' 을 돌려준다."""
+    from hoga.api import scheduler
+
+    with patch("hoga.api.scheduler.daily_run_allowed_by_calendar", AsyncMock(return_value=None)), \
+         patch("hoga.api.scheduler.load_watchlist") as watchlist_spy, \
+         patch("hoga.api.scheduler.now_kst", return_value=_at(17, 0)):
+        settled = await scheduler.run_trading_stage(tmp_path)
+
+    assert settled is False
+    # 판정을 못 받았으면 오늘 몫을 담아서는 안 된다 — 휴장일 수도 있다.
+    assert watchlist_spy.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_trading_stage_is_settled_on_a_confirmed_holiday(tmp_path: Path):
+    """휴장은 **확정** 판정이다 — 재시도 대상이 아니다(매일 재시도하면 안 된다)."""
+    from hoga.api import scheduler
+
+    with patch("hoga.api.scheduler.daily_run_allowed_by_calendar", AsyncMock(return_value=False)), \
+         patch("hoga.api.scheduler.load_watchlist") as watchlist_spy, \
+         patch("hoga.api.scheduler.now_kst", return_value=_at(17, 0)):
+        settled = await scheduler.run_trading_stage(tmp_path)
+
+    assert settled is True
+    assert watchlist_spy.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_daily_loop_retries_only_the_trading_stage_until_it_settles(tmp_path: Path):
+    """미결이면 다음 틱이 **뒷단만** 다시 시도하고, 확정되면 마커를 찍고 멈춘다.
+
+    앞단(promote·prune, 전체 트리 스윕)은 재시도 대상이 아니다 — 그걸 60초마다
+    되돌리면 자정까지 수백 번 재실행된다. 두 마커가 그 경계를 만든다.
+    """
+    import asyncio as _asyncio
+
+    from hoga.api import scheduler
+    ticks = {"n": 0}
+
+    async def fake_sleep(_secs):
+        ticks["n"] += 1
+        if ticks["n"] >= 3:
+            raise _asyncio.CancelledError
+
+    # 1틱: 전체 런은 돌았지만 달력 판정이 안 나 미결(False).
+    # 2틱: 재시도에서 KIS 가 회복돼 확정(True). 3틱: 더 이상 시도하지 않는다.
+    retry_results = [True]
+
+    async def fake_trading_stage(_data_dir):
+        return retry_results.pop(0)
+
+    with patch("hoga.api.scheduler.asyncio.sleep", side_effect=fake_sleep), \
+         patch("hoga.api.scheduler.now_kst", return_value=_at(17, 0)), \
+         patch("hoga.api.scheduler._daily_run", AsyncMock(return_value=False)) as full_run, \
+         patch("hoga.api.scheduler.run_trading_stage", side_effect=fake_trading_stage) as retry, \
+         pytest.raises(_asyncio.CancelledError):
+        await scheduler._daily_loop(tmp_path)
+
+    # 비싼 앞단은 딱 한 번. 미결이어도 되돌리지 않는다.
+    assert full_run.await_count == 1
+    # 값싼 뒷단만 재시도됐고, 확정된 뒤로는 3틱째에 다시 시도하지 않았다.
+    assert retry.call_count == 1
+    assert scheduler.read_last_daily_run_date(tmp_path) == "20260526"
+    assert scheduler.read_last_trading_stage_date(tmp_path) == "20260526"
+
+
+def test_markers_do_not_overwrite_each_other(tmp_path: Path):
+    """한 마커 갱신이 다른 마커를 지우면 재시도 게이트가 조용히 무력화된다."""
+    from hoga.api import scheduler
+
+    scheduler.write_last_daily_run_date(tmp_path, "20260526")
+    scheduler.write_last_trading_stage_date(tmp_path, "20260526")
+    assert scheduler.read_last_daily_run_date(tmp_path) == "20260526"
+
+    scheduler.write_last_daily_run_date(tmp_path, "20260527")
+    assert scheduler.read_last_trading_stage_date(tmp_path) == "20260526"

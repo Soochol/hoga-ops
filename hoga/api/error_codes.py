@@ -53,6 +53,10 @@ class CaptureErrorCode(StrEnum):
     # Queue mutation attempted on a server that does not own the capture queue
     # for this data dir (another instance holds the flock — ADR-0094). HTTP 503.
     QUEUE_NOT_OWNED = "queue_not_owned"
+    # 로컬 디스크에 쓸 수 없다(ENOSPC/EDQUOT/EROFS). INTERNAL_ERROR 에서 갈라낸
+    # 이유는 ADR-0042 cap 회계가 다르기 때문이다 — 이건 (Code, Stock-Date) 의
+    # 속성이 아니라 **머신의 일시 상태**라, 재시도 한도를 태워서는 안 된다.
+    DISK_FULL = "disk_full"
 
 
 class UpstreamCode(StrEnum):
