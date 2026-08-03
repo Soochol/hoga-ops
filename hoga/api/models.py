@@ -1854,6 +1854,8 @@ class IvPointModel(BaseModel):
     strike: float
     call_iv: float | None
     put_iv: float | None
+    #: 행사가 미결제 합 — IV 신뢰도. 화면이 저유동성 포인트의 투명도를 감쇠한다.
+    oi: int = 0
 
 
 class IvSkewModel(BaseModel):

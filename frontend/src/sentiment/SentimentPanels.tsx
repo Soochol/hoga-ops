@@ -31,7 +31,7 @@ import {
  * 상태 전용이므로 기준선·호버 가이드라인에만 쓴다.
  */
 
-function fmtCompact(n: number): string {
+export function fmtCompact(n: number): string {
   const abs = Math.abs(n);
   if (abs >= 1e12) return `${(n / 1e12).toFixed(1)}조`;
   if (abs >= 1e8) return `${(n / 1e8).toFixed(1)}억`;
@@ -245,6 +245,13 @@ export function OiDistributionChart({
         {dist.max_pain !== null && (
           <RefLine strike={dist.max_pain} domain={domain} height={H} label={`Max Pain ${dist.max_pain}`} dashed />
         )}
+        {/* 미니 범례 — caveat 문구가 하단으로 내려가도 색 의미가 즉시 보이게 */}
+        <g fontSize={10}>
+          <rect x={PAD_L} y={2} width={8} height={3} fill="var(--price-up)" />
+          <text x={PAD_L + 11} y={7} fill="var(--fg-dim)">콜</text>
+          <rect x={PAD_L + 30} y={2} width={8} height={3} fill="var(--price-down)" />
+          <text x={PAD_L + 41} y={7} fill="var(--fg-dim)">풋</text>
+        </g>
         <StrikeAxis domain={domain} y={H + 2} />
       </svg>
       {hovered && (
@@ -302,8 +309,11 @@ export function GexChart({
               y={up ? half - h : half}
               width={barW}
               height={h}
-              fill={up ? 'var(--price-up)' : 'var(--price-down)'}
-              opacity={0.75}
+              // 단색 — 부호는 0선 위/아래 위치가 이미 말한다. 빨강/파랑을 재사용하면
+              // 이웃 카드의 콜/풋 인코딩과 충돌하고, 양수(=움직임 억제)에 빨강이
+              // 붙어 직관과 반대로 읽힌다.
+              fill="var(--fg-dim)"
+              opacity={0.7}
             />
           );
         })}
@@ -373,8 +383,23 @@ export function IvSkewChart({
         onMouseMove={onMouseMove}
         onMouseLeave={onMouseLeave}
       >
-        {callPath && <path d={callPath} fill="none" stroke="var(--price-up)" strokeWidth={1.5} />}
-        {putPath && <path d={putPath} fill="none" stroke="var(--price-down)" strokeWidth={1.5} />}
+        {/* 선은 흐리게 — 저유동성 구간의 톱니(실측: OI 한 자릿수 행사가의 실제
+            IV 산포)가 화면을 지배하지 않게 한다. 신뢰도는 점의 투명도가 말한다. */}
+        {callPath && <path d={callPath} fill="none" stroke="var(--price-up)" strokeWidth={1} opacity={0.3} />}
+        {putPath && <path d={putPath} fill="none" stroke="var(--price-down)" strokeWidth={1} opacity={0.3} />}
+        {rows.map((r) => {
+          // OI 로그 스케일 투명도: OI 5 → ~0.34, 100 → ~0.6, 10,000 → 1.0.
+          // 지표에서 지우는 대신 화면에서 감쇠한다 — 지우면 Max Pain·GEX 가 보는
+          // 데이터와 달라진다.
+          const alpha = Math.min(1, 0.2 + 0.8 * (Math.log10(1 + r.oi) / 4));
+          const cx = xOf(domain, r.strike);
+          return (
+            <g key={r.strike} opacity={alpha}>
+              {r.call_iv !== null && <circle cx={cx} cy={y(r.call_iv)} r={1.8} fill="var(--price-up)" />}
+              {r.put_iv !== null && <circle cx={cx} cy={y(r.put_iv)} r={1.8} fill="var(--price-down)" />}
+            </g>
+          );
+        })}
         {hover !== null && <HoverGuide domain={domain} strike={hover} height={H} />}
         {underlying !== null && (
           <RefLine strike={underlying} domain={domain} height={H} label={`현재 ${underlying.toFixed(2)}`} />

@@ -54,8 +54,8 @@ function ready(over: Partial<OptionSentiment> = {}): OptionSentiment {
     },
     iv_skew: {
       points: [
-        { strike: 1000, call_iv: 96.4, put_iv: 108.5 },
-        { strike: 1100, call_iv: 92.1, put_iv: null },
+        { strike: 1000, call_iv: 96.4, put_iv: 108.5, oi: 7873 },
+        { strike: 1100, call_iv: 92.1, put_iv: null, oi: 4000 },
       ],
       atm_iv: 108.51,
       risk_reversal_25d: 27.49,
@@ -152,6 +152,32 @@ it('도메인 밖 기준선은 사라지지 않고 가장자리 화살표로 남
   fireEvent.click(screen.getByRole('button', { name: '전체' }));
   expect(screen.queryByText(/◀ 플립/)).not.toBeInTheDocument();
   expect(screen.getByText(/^플립 702.5$/)).toBeInTheDocument();
+});
+
+it('헤더 요약만으로 시장 상태가 잡힌다 — P/C·Max Pain 괴리·총 GEX·RR 해석', () => {
+  mount(ready({ full_as_of_ms: Date.now(), atm_as_of_ms: Date.now() }));
+  // Max Pain 1100, 현재가 1007.83 → 괴리 +92.2 가 헤더에 붙는다
+  expect(screen.getByText(/\(\+92\.2\)/)).toBeInTheDocument();
+  // 총 GEX 는 압축 표기 (−73,431,064,166 → −734.3억원). 헤더와 GEX 카드 두 곳.
+  expect(screen.getAllByText(/-734\.3억원/).length).toBe(2);
+  // RR 부호 해석 마이크로 라벨 — 값만 있으면 방향을 모른다
+  expect(screen.getByText('+면 하방 보험이 비쌈')).toBeInTheDocument();
+});
+
+it('관측 시각이 주기보다 크게 낡으면 지연 경고가 붙는다', () => {
+  // 수집 루프가 죽으면 화면은 조용히 낡은 값을 계속 보여준다 — 낡음 표시가
+  // 유일한 경고 채널이므로 임계(전수 12분)를 넘으면 명시적으로 알린다.
+  mount(ready({
+    full_as_of_ms: Date.now() - 20 * 60_000,
+    atm_as_of_ms: Date.now() - 10_000,
+  }));
+  expect(screen.getAllByText(/지연/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/방금/).length).toBeGreaterThan(0);
+
+  cleanup();
+  mockHook.mockReset();
+  mount(ready({ full_as_of_ms: Date.now() - 60_000, atm_as_of_ms: Date.now() }));
+  expect(screen.queryByText(/지연/)).not.toBeInTheDocument();
 });
 
 it('비율 분모가 0이면 0 이 아니라 — 로 표시한다', () => {
