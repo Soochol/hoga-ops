@@ -188,6 +188,77 @@ describe('ScreenerDrawer', () => {
     expect(screen.getByTestId('screener-monitor-status')).toHaveTextContent('실시간 · 30초');
   });
 
+  it('시작: 이전 결과를 즉시 비우고 조회 중을 보여준 뒤 새 결과로 채운다', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    // 응답을 손으로 풀어 "조회 왕복 중" 구간을 관측 가능하게 만든다.
+    let release: (() => void) | null = null;
+    const NEW_ROWS = [
+      { code: '035420', name: 'NAVER', market: 'KOSPI' as const, price: 210000, trade_value_won: 3e11, change_pct: 0.3 },
+    ];
+    vi.spyOn(screenerApi, 'runScan').mockImplementation(
+      () => new Promise((resolve) => {
+        release = () => resolve({ status: 'ok', rows: NEW_ROWS, warnings: [] });
+      }),
+    );
+    useScreenerPanelStore.setState({ selectedSavedId: 's1', lastScan: makeScan() });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    // saves 가 로드돼야 시작 버튼이 enable 된다 — 안 기다리면 disabled 버튼을 눌러
+    // 아무 일도 안 일어난 채 단언만 통과하는 위양성이 된다.
+    await waitFor(() => expect(screen.getByTestId('screener-monitor-toggle')).toBeEnabled());
+
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 새 검색
+
+    // 옛 리스트가 조회 왕복 동안 남지 않는다. 빈 화면이 '결과 0건'으로 오독되지 않게
+    // 조회 중임을 명시한다.
+    await waitFor(() => expect(screen.queryByText('삼성전자')).not.toBeInTheDocument());
+    expect(screen.getByText('조회 중…')).toBeInTheDocument();
+    expect(screen.queryByText('조건에 맞는 종목이 없습니다.')).not.toBeInTheDocument();
+    expect(useScreenerPanelStore.getState().lastScan).toBeNull();
+
+    await act(async () => { release?.(); });
+    await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
+    expect(screen.queryByText('조회 중…')).not.toBeInTheDocument();
+  });
+
+  it('초기화 후 첫 결과는 신규 편입 플래시를 걸지 않는다', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    const scan = vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
+    useScreenerPanelStore.setState({ selectedSavedId: 's1', lastScan: makeScan() });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('screener-monitor-toggle')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 초기화 + 재조회
+    // 재조회가 실제로 돌아 결과가 다시 채워진 뒤를 본다(초기화만 된 상태를 보면 위양성).
+    await waitFor(() => expect(scan).toHaveBeenCalled());
+    await waitFor(() => expect(useScreenerPanelStore.getState().lastScan).not.toBeNull());
+    await waitFor(() => expect(screen.getByTestId('screener-row-005930')).toBeInTheDocument());
+
+    // 멤버십은 그대로다(같은 조건 재조회) — 리스트를 지웠다는 이유로 전 종목이
+    // 신규 편입처럼 반짝이면 안 된다.
+    expect(screen.getByTestId('screener-row-005930').className).not.toContain('flash');
+    expect(screen.getByTestId('screener-row-000660').className).not.toContain('flash');
+  });
+
+  it('드롭다운으로 조건을 바꾸면 이전 조건의 결과를 즉시 버린다', async () => {
+    const SAVE2 = { ...SAVE, id: 's2', name: '두번째조건' };
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE, SAVE2] });
+    useScreenerPanelStore.setState({ selectedSavedId: 's1', lastScan: makeScan() });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: '저장한 조건검색 선택' })).toHaveTextContent('돌파+거래대금'));
+
+    fireEvent.click(screen.getByRole('button', { name: '저장한 조건검색 선택' }));
+    fireEvent.click(screen.getByRole('option', { name: '두번째조건' }));
+
+    await waitFor(() => expect(useScreenerPanelStore.getState().lastScan).toBeNull());
+    expect(screen.queryByText('삼성전자')).not.toBeInTheDocument();
+    expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s2');
+  });
+
   it('주기 선택: 30초 클릭 시 상태 텍스트와 스토어가 갱신된다', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });

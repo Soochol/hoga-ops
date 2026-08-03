@@ -321,11 +321,20 @@ def test_enqueue_falls_back_to_weekdays_when_kis_credentials_missing(monkeypatch
         )
 
 
-def test_enqueue_still_fails_fast_on_transient_calendar_error(monkeypatch, tmp_path):
-    """일시 장애는 **그대로 503** — 잠시 후 재시도가 옳은 안내다.
+def test_enqueue_approximates_instead_of_failing_fast(monkeypatch, tmp_path):
+    """**#976 의 두 갈래 정책을 PR-H(#1044)에서 하나로 합쳤다.**
 
-    폴백은 영구 조건(자격증명 미설정)에만 준다. 여기까지 완화하면
-    `trading_days_in_range` docstring 이 말한 fail-fast 의 취지가 사라진다.
+    #976 은 "영구 결여(자격증명 없음)는 평일 폴백 · 일시 장애는 fail-fast" 로
+    갈랐다. 근거는 "일시 장애면 잠시 후 재시도가 옳은 안내" 였다.
+
+    달력 소스가 커밋된 정적 파일이 되면서 **"일시 장애" 라는 사건이 사라졌다.**
+    파일은 읽히거나(정답) 안 읽히거나(배포 사고) 둘 중 하나이고, 남는 불확실성은
+    "커버리지 밖" 하나인데 그건 재시도로 해결되지 않는다 — 스케줄러가 오버레이를
+    채워야 풀린다.
+
+    그래서 정책을 **근사 + 경고**로 통일한다. 막는 대신 알린다:
+      - 근사 비용은 유계다(휴장일 → 업스트림 빈 응답 → ADR-0021 센티넬)
+      - 막는 비용은 무계다(dev 무자격 프로필에서 범위 캡처를 아예 못 건다)
     """
     from hoga.api.calendar import TradingDayUnavailableError
     from hoga.api.error_codes import UpstreamCode
@@ -342,8 +351,13 @@ def test_enqueue_still_fails_fast_on_transient_calendar_error(monkeypatch, tmp_p
             "code": "005930", "start_date": "20260605", "end_date": "20260608",
             "force_retry": False,
         })
-        assert r.status_code == 503, r.text
-        assert r.json()["detail"]["code"] == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert [it["date"] for it in body["enqueued"]] == ["20260605", "20260608"], (
+        "금~월 — 주말은 근사에서도 뺀다"
+    )
+    assert body["warning"] == "kis_credentials_missing", "근사 사실을 반드시 알린다"
 
 
 def test_enqueue_skips_weekend_dates(monkeypatch, tmp_path):
@@ -865,32 +879,49 @@ def test_dismiss_done_empty_publishes_no_event(monkeypatch, tmp_path):
     assert not any(isinstance(e, CaptureDismissedEvent) for e in published)
 
 
-def test_enqueue_range_returns_503_when_kis_holiday_fetch_fails(monkeypatch, tmp_path):
-    """When KIS holiday fetch fails, range-based enqueue returns 503 with code."""
-    import hoga.api.kis_holidays as kis_holidays_module
+def test_range_expansion_clamps_tail_beyond_calendar_coverage(monkeypatch, tmp_path):
+    """PR-H(#1044) — **달력 때문에 503 이 나는 경로가 사라졌다.**
+
+    원래 이 테스트는 "KIS chk-holiday 가 실패하면 503" 이었다. 이제 달력은 커밋된
+    정적 시드라 조회가 실패하지 않는다. 남은 불확실성은 **커버리지 밖 꼬리**
+    하나이고, 거기서 503 을 내면 dev 무자격 프로필(오버레이가 자라지 않는다)에서
+    범위 캡처를 아예 걸 수 없다 — #976 이 고쳤던 회귀다.
+
+    그래서 경계에서 자른다: 커버리지 안은 정확한 거래일, 꼬리는 평일 근사.
+
+    라우트가 아니라 헬퍼를 직접 본다 — 라우트로 가면 꼬리가 필연적으로 "오늘"
+    이라 16:30 게이트에 걸려, 검증하려는 축과 무관한 시각 의존이 생긴다.
+    """
     from hoga.api import calendar as calendar_module
+    from hoga.api.captures import _expand_trading_days_with_fallback
 
-    def _raise(year, month):
-        raise kis_holidays_module.KisHolidayFetchError("KIS_APP_KEY/KIS_APP_SECRET missing")
-
-    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
-
-    # Reset calendar cache so the fetch is attempted.
     calendar_module.reset_cache_for_tests()
+    end_known = calendar_module.coverage_end()
+    assert end_known is not None, "커밋된 시드가 답해야 한다"
 
-    _no_workers(monkeypatch)
-    app = _build_test_app(monkeypatch, tmp_path)
-    with TestClient(app) as c:
-        response = c.post("/api/captures/items", json={
-            "code": "005930",
-            "start_date": "20260501",
-            "end_date": "20260531",
-            "force_retry": False,
-        })
-        assert response.status_code == 503
-        detail = response.json()["detail"]
-        assert detail["code"] == "kis_holiday_fetch_failed"
-        assert "KIS" in detail["message"] or "kis" in detail["message"].lower()
+    end_d = dt.date(int(end_known[:4]), int(end_known[4:6]), int(end_known[6:8]))
+    tail_end = (end_d + dt.timedelta(days=3)).strftime("%Y%m%d")
+
+    days, approximated = _expand_trading_days_with_fallback(end_known, tail_end)
+
+    assert approximated is True, "근사했다는 사실은 반드시 알린다"
+    assert days[0] == end_known, "커버리지 안은 정확한 거래일 그대로"
+    assert len(days) > 1, "꼬리도 담긴다 — 기능을 없애지 않는다"
+    assert all(
+        dt.date(int(d[:4]), int(d[4:6]), int(d[6:8])).weekday() < 5 for d in days
+    ), "근사는 평일까지다 — 주말은 넣지 않는다"
+
+
+def test_range_expansion_is_exact_inside_coverage() -> None:
+    """커버리지 안이면 근사 플래그가 서지 않는다 — 경고를 남발하지 않는다."""
+    from hoga.api import calendar as calendar_module
+    from hoga.api.captures import _expand_trading_days_with_fallback
+
+    calendar_module.reset_cache_for_tests()
+    days, approximated = _expand_trading_days_with_fallback("20260501", "20260508")
+    assert approximated is False
+    assert "20260501" not in days, "근로자의날 — 정확한 달력은 이 날을 뺀다"
+    assert "20260504" in days
 
 
 async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_path):

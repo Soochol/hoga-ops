@@ -24,25 +24,42 @@ interface Props {
 
 /** 활성화된 총잔량 조건의 side(매도/매수). evaluate 는 code 마다 양쪽을 모두 채우므로,
  *  배지는 실제로 통과를 좌우한 side 만 보여줘야 한다(매수 조건인데 매도 값 표시 방지).
- *  `askRenewal` 은 기준시각 돌파 조건 — peak 조건과 숫자의 의미가 달라 별도 배지다. */
-export interface DepthSides { ask: boolean; bid: boolean; askRenewal?: boolean }
+ *  `*Renewal` 은 기준시각 돌파 조건 — peak 조건과 숫자의 의미가 달라 별도 배지다. */
+export interface DepthSides { ask: boolean; bid: boolean; askRenewal?: boolean; bidRenewal?: boolean }
 
 const fmtQty = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('ko-KR'));
 const fmtHhmm = (hhmm: number | null | undefined) =>
   (hhmm == null ? '' : `${String(Math.floor(hhmm / 100)).padStart(2, '0')}:${String(hhmm % 100).padStart(2, '0')}`);
 
 /** 기준시각 돌파 배지 — 기준시각 이전 최대 → 이후 최대. peak 배지와 문구가 다른 이유는
- *  숫자가 다른 것을 뜻하기 때문이다(저쪽은 "지난 N일 peak", 이쪽은 같은 날 두 구간). */
-function DepthRenewalBadge({ v }: { v: DepthPeakValue }) {
-  const pre = v.ask_pre_max;
-  const post = v.ask_post_max;
-  if (pre == null && post == null) return null;
-  const at = fmtHhmm(v.renewal_start_hhmm);
+ *  숫자가 다른 것을 뜻하기 때문이다(저쪽은 "지난 N일 peak", 이쪽은 같은 날 두 구간).
+ *  기준시각은 side 별로 다를 수 있어 각 행이 자기 시각을 단다. */
+function DepthRenewalBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides }) {
+  interface Row { label: string; pre: number | null; post: number | null; at: string }
+  const rows: Row[] = [];
+  if (sides.askRenewal) {
+    rows.push({ label: '매도', pre: v.ask_pre_max ?? null, post: v.ask_post_max ?? null,
+      at: fmtHhmm(v.ask_renewal_start_hhmm) });
+  }
+  if (sides.bidRenewal) {
+    rows.push({ label: '매수', pre: v.bid_pre_max ?? null, post: v.bid_post_max ?? null,
+      at: fmtHhmm(v.bid_renewal_start_hhmm) });
+  }
+  const shown = rows.filter((r) => r.pre != null || r.post != null);
+  if (shown.length === 0) return null;
+  const title = shown
+    .map((r) => `${r.at} 이전 최대 ${r.label} 총잔량 ${fmtQty(r.pre)} → 이후 최대 ${fmtQty(r.post)}`)
+    .join(' / ');
   return (
-    <span className="inline-flex items-center gap-1 font-data text-[10px] tabular-nums text-fg-dimmer"
-      title={`${at} 이전 최대 매도 총잔량 ${fmtQty(pre)} → 이후 최대 ${fmtQty(post)}`}>
-      <span className="text-fg-dimmer">{at}</span>
-      <span>{fmtQty(pre)}→{fmtQty(post)}</span>
+    <span className="inline-flex items-center gap-1.5 font-data text-[10px] tabular-nums text-fg-dimmer"
+      title={title}>
+      {shown.map((r) => (
+        <span key={r.label} className="inline-flex items-center gap-1">
+          {shown.length > 1 && <span className="text-fg-dimmer">{r.label}</span>}
+          <span className="text-fg-dimmer">{r.at}</span>
+          <span>{fmtQty(r.pre)}→{fmtQty(r.post)}</span>
+        </span>
+      ))}
     </span>
   );
 }
@@ -153,7 +170,8 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       <span className="flex min-w-0 items-center gap-2">
         <span className="truncate">{r.name}</span>
         {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
-        {depthValues?.[r.code] && depthSides?.askRenewal && <DepthRenewalBadge v={depthValues[r.code]} />}
+        {depthValues?.[r.code] && depthSides && (depthSides.askRenewal || depthSides.bidRenewal)
+          && <DepthRenewalBadge v={depthValues[r.code]} sides={depthSides} />}
       </span>
       <span className="font-data text-xs text-fg-dim">{r.market}</span>
       {/* 동시호가 중엔 예상체결가/등락률로 대체('예' 마커, QuoteRow·HeatmapRow 와

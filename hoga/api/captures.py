@@ -1430,19 +1430,55 @@ def _expand_trading_days_with_fallback(start: str, end: str) -> tuple[list[str],
     """
     from hoga.api.calendar import (  # noqa: PLC0415 — 지연 import(순환/heavy)
         TradingDayUnavailableError,
+        coverage_end,
         trading_days_in_range,
         weekdays_in_range,
     )
     try:
         return trading_days_in_range(start, end), False
     except TradingDayUnavailableError as exc:
-        if exc.code != UpstreamCode.KIS_CREDENTIALS_MISSING:
-            raise
-        logging.getLogger(__name__).warning(
-            "capture.trading_days_weekday_fallback start=%s end=%s reason=%s",
-            start, end, exc.code,
+        pass_reason = exc.code
+    log = logging.getLogger(__name__)
+
+    # PR-H(#1044) — **경계에서 자른다.** 정적 달력은 커밋(+오버레이) 시점까지만
+    # 덮으므로 `[start, 오늘]` 요청의 꼬리가 커버리지를 넘는 것이 정상이다.
+    # 여기서 통째로 fail-fast 하면 dev 무자격 프로필(오버레이가 자라지 않는다)에서
+    # **범위 캡처를 아예 걸 수 없다** — #976 이 고쳤던 바로 그 회귀다.
+    #
+    # 그래서 양극단 대신 가른다: 커버리지 안은 **정확한 거래일**, 그 뒤 꼬리만
+    # 평일 근사. 휴장일이 섞이는 비용은 유계다(업스트림 빈 응답 → ADR-0021 센티넬).
+    end_known = coverage_end()
+    if end_known is None or end_known < start:
+        log.warning(
+            "capture.trading_days_weekday_fallback start=%s end=%s reason=%s "
+            "coverage_end=%s (전 구간 근사)",
+            start, end, pass_reason, end_known,
         )
         return weekdays_in_range(start, end), True
+
+    try:
+        exact = trading_days_in_range(start, min(end, end_known))
+    except TradingDayUnavailableError:
+        # 커버리지 안인데도 실패했다 = 소스 자체가 없다(배포 사고). 전 구간 근사.
+        log.warning(
+            "capture.trading_days_weekday_fallback start=%s end=%s reason=%s (소스 부재)",
+            start, end, pass_reason,
+        )
+        return weekdays_in_range(start, end), True
+    tail = weekdays_in_range(_next_day(end_known), end) if end_known < end else []
+    log.warning(
+        "capture.trading_days_weekday_fallback start=%s end=%s reason=%s "
+        "coverage_end=%s exact=%d approx=%d",
+        start, end, pass_reason, end_known, len(exact), len(tail),
+    )
+    return exact + tail, bool(tail)
+
+
+def _next_day(yyyymmdd: str) -> str:
+    import datetime as _dt  # noqa: PLC0415 — 국소 사용
+
+    d = _dt.date(int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))
+    return (d + _dt.timedelta(days=1)).strftime("%Y%m%d")
 
 
 def _expand_to_trading_days(start: str, end: str) -> list[str]:

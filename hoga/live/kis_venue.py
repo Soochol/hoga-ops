@@ -1,27 +1,20 @@
-"""KIS venue routing for /live candle backfill."""
+"""KIS 고유의 venue wire 인코딩.
+
+거래소 개념 자체(`Venue`·정책·세션창)는 브로커 중립이라 `hoga.live.venue` 로
+이사했다(#1018, 지도 #1005). 여기 남은 것은 **KIS 가 소유하는 매핑뿐**이다 —
+`FID_COND_MRKT_DIV_CODE` 값과, KIS 분봉이 KRX 동시호가 경계에서 빈 페이지를
+내보낼 때의 앵커 점프표.
+
+KIS 스택이 삭제되면 이 파일도 함께 사라진다(지도 #1005 A 분류).
+"""
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Literal, cast
+from hoga.live.venue import Venue, parse_venue, session_window_hhmmss
 
-from hoga.util.timeenc import KST
-
-# 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
-KIS_KST = KST
-
-KisVenue = Literal["KRX", "NXT", "UN"]
-LiveVenuePolicy = Literal["KRX", "NXT", "UN"]
-
-_KIS_DIV: dict[KisVenue, str] = {
+_KIS_DIV: dict[Venue, str] = {
     "KRX": "J",
     "NXT": "NX",
     "UN": "UN",
-}
-
-_SESSION_WINDOWS: dict[KisVenue, tuple[str, str]] = {
-    "KRX": ("090000", "153000"),
-    "NXT": ("080000", "200000"),
-    "UN": ("080000", "200000"),
 }
 
 _EMPTY_PAGE_PREVIOUS_ANCHORS: dict[str, str] = {
@@ -32,42 +25,12 @@ _EMPTY_PAGE_PREVIOUS_ANCHORS: dict[str, str] = {
 }
 
 
-def parse_kis_venue(value: str) -> KisVenue:
-    if value in _KIS_DIV:
-        return cast(KisVenue, value)
-    raise ValueError("venue must be one of KRX, NXT, UN")
-
-
-def parse_live_venue_policy(value: str | None) -> LiveVenuePolicy:
-    if value is None or value == "":
-        return "KRX"
-    if value == "AUTO":
-        return "UN"
-    if value in ("KRX", "NXT", "UN"):
-        return cast(LiveVenuePolicy, value)
-    raise ValueError("venue must be one of KRX, NXT, UN")
-
-
-def kis_venue_div(venue: KisVenue) -> str:
-    return _KIS_DIV[parse_kis_venue(venue)]
-
-
-def session_window_hhmmss(venue: KisVenue) -> tuple[str, str]:
-    return _SESSION_WINDOWS[parse_kis_venue(venue)]
-
-
-def daily_venue_for_policy(policy: LiveVenuePolicy) -> KisVenue:
-    """Return the concrete KIS Venue for daily candles."""
-    return parse_kis_venue(policy)
-
-
-def quote_venue_for_policy(policy: LiveVenuePolicy, _now: datetime) -> KisVenue:
-    """Return the concrete KIS Venue for live quote overlay requests."""
-    return parse_kis_venue(policy)
+def kis_venue_div(venue: Venue) -> str:
+    return _KIS_DIV[parse_venue(venue)]
 
 
 def previous_empty_page_anchor_hhmmss(
-    venue: KisVenue,
+    venue: Venue,
     _date_yyyymmdd: str,
     hhmmss: str,
 ) -> str | None:
@@ -76,8 +39,12 @@ def previous_empty_page_anchor_hhmmss(
     KRX stops on empty pages. NXT/UN may emit empty pages at KRX auction-pause
     boundaries, so those concrete venues can skip to the previous meaningful
     anchor while still honoring the venue's opening bound.
+
+    **프로덕션 호출자 0** — 2026-08-03 #1010 전수조사에서 확인했다. `kis_endpoints`
+    는 고정 앵커 목록(`_minute_page_anchors`)을 쓴다. KIS 스택 삭제와 함께 사라질
+    코드라 이번 이사(#1018)에서는 건드리지 않는다.
     """
-    venue = parse_kis_venue(venue)
+    venue = parse_venue(venue)
     if venue == "KRX":
         return None
 

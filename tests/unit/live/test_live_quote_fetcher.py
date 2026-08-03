@@ -4,8 +4,26 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
+from hoga.live import api as live_api
 from hoga.live.api import LiveQuoteFetcher
 from hoga.live.kis_client import KisQuote
+
+
+@pytest.fixture(autouse=True)
+def _adapter_delegates_to_fake_client(monkeypatch):
+    """어댑터 모듈 함수를 **전달된 클라이언트의 메서드로 위임**시킨다.
+
+    PR-D(#1040)로 `fetch_and_gate` 가 클라이언트를 받아 `kiwoom_multi_quote.
+    fetch_multi_price(client, ...)` 를 부른다. 이 파일은 fetcher 의 **게이팅 로직**을
+    보는 곳이고 와이어 파싱은 `test_kiwoom_multi_quote` 가 덮으므로, 기존 `_FakeKis`
+    를 그대로 살리는 이 위임이 가장 작은 이음매다.
+    """
+    async def _fetch(client, codes, *, venue="KRX"):
+        return await client.fetch_multi_price(codes, venue=venue)
+
+    monkeypatch.setattr(live_api.kiwoom_multi_quote, "fetch_multi_price", _fetch)
 
 Q = [KisQuote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500),
      KisQuote("000660", 183500, -0.8, -1500, open=184000, high=185000, low=182000)]
