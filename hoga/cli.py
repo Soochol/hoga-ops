@@ -691,6 +691,14 @@ def prune(
             "touches CLIENT_INCOMPLETE — that raw is the resume source."
         ),
     ),
+    include_expired_unconfirmed: bool = typer.Option(
+        False, "--include-expired-unconfirmed",
+        help=(
+            "Also prune SOURCE_PARTIAL raw whose gap is UNCONFIRMED but past the "
+            "upstream retention window, so confirmation is permanently impossible "
+            "(ADR-0135). Irreversible: that day can never be re-parsed."
+        ),
+    ),
 ) -> None:
     """Prune hogaplay raw older than the retention window when its parquet is COMPLETE.
 
@@ -720,6 +728,7 @@ def prune(
     result = prune_raw(
         data_dir, retention_days=retention, now=prune_default_now(), execute=execute,
         include_confirmed_gaps=include_confirmed_gaps,
+        include_expired_unconfirmed=include_expired_unconfirmed,
     )
     if execute:
         gib = result.reclaimed_bytes / 1024**3
@@ -749,6 +758,15 @@ def prune(
                 "\n[blue]--include-confirmed-gaps[/blue] would also prune the "
                 "gap_confirmed rows above (upstream gap reproduced or session-edge; "
                 "re-capture cannot improve them)."
+            )
+        if not include_expired_unconfirmed and any(
+            r == "source_partial(gap_unconfirmed,expired)" for r in result.skipped_by_state
+        ):
+            console.print(
+                "\n[blue]--include-expired-unconfirmed[/blue] would also prune the "
+                "gap_unconfirmed,expired rows above (past the ~18h upstream window, "
+                "so the gap can never be confirmed). [red]Irreversible[/red] — "
+                "see ADR-0135."
             )
 
     head = disk_headroom(data_dir)

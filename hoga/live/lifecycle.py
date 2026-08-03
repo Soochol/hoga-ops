@@ -73,6 +73,13 @@ class LiveStatus(BaseModel):
     kis_rest_bypass_enabled: bool = False
     # 감독 태스크 헬스(ADR-0088) — 각 lifespan-소유 배경 태스크의 alive 여부.
     supervised_tasks: list[dict[str, object]] = Field(default_factory=list)
+    # 디스크 여유(free_pct·free_gib·low). 조회 실패·데이터 디렉터리 미주입이면 None.
+    #
+    # 왜 여기 싣는가: 디스크 잠식의 능동 신호가 하루 한 번 17:00 로그 한 줄뿐이라
+    # 아무도 읽지 않았다. deep health 에도 실리지만 그건 워치독이 묻는 자리이고,
+    # 워치독은 디스크로 재시작하지 않는다(재시작이 디스크를 못 비운다). 사람이
+    # 보는 표면이 필요해서 이미 5초마다 폴링되는 이 응답에 얹었다 — 부품 추가 0.
+    disk: dict[str, object] | None = None
     # 키움 WS 수집 관측(ADR-0116, PR-4). 키움 미배선/무자격이면 None. additive.
     # 키(enabled/accounts_configured/connected_accounts/subscribed_count/last_tick_ms/
     # accounts 등)는 KiwoomSessionManager.status()가 정의.

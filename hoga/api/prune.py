@@ -55,6 +55,19 @@ def resolve_include_confirmed_gaps() -> bool:
     )
 
 
+def resolve_include_expired_unconfirmed() -> bool:
+    """HOGA_PRUNE_EXPIRED_UNCONFIRMED truthy 판정 — 2단계 옵트인 (ADR-0135).
+
+    확인된 갭(위 옵트인)만으로는 지배 클래스가 남는다: 2026-07-29 실측에서 유예
+    밖 raw 351GB 중 confirmed 는 520건 77GB 인데 **unconfirmed 가 743건 110GB**
+    였고, 그 미확정분의 99.85% 는 업스트림 보유 창(~18h)을 지나 확정 경로가
+    영구히 닫힌 것들이다. 기본은 off — 근거와 되돌릴 수 없는 성질은 ADR-0135.
+    """
+    return os.environ.get("HOGA_PRUNE_EXPIRED_UNCONFIRMED", "").strip() in (
+        "1", "true", "yes", "on",
+    )
+
+
 @dataclass(frozen=True)
 class PruneCandidate:
     date: str          # YYYYMMDD
@@ -96,7 +109,12 @@ def _hogaplay_classification(data_dir: Path, code: str, date: str) -> Classifica
     return check_disk_state(data_dir, code, date)
 
 
-def _is_prunable(cls: Classification, *, include_confirmed_gaps: bool) -> bool:
+def _is_prunable(
+    cls: Classification,
+    *,
+    include_confirmed_gaps: bool,
+    reclaim_expired_unconfirmed: bool = False,
+) -> bool:
     """이 상태의 raw 를 삭제해도 되는가?
 
     기본은 ADR-0075 그대로 COMPLETE 뿐이다. ``include_confirmed_gaps`` 는
@@ -112,24 +130,27 @@ def _is_prunable(cls: Classification, *, include_confirmed_gaps: bool) -> bool:
       재캡처를 다시 시도할 수 있는 대상이라 제외한다.
       보유 창 **밖**(is_expired_unconfirmed_gap)이면 확정 경로가 영원히 닫혀
       있으므로 사실상 terminal 이고, decide_capture 도 2026-07-30 부터
-      건너뛴다. 그럼에도 **여기서는 여전히 제외한다** — 재캡처 중단(1단계)과
-      삭제 허용(2단계)은 별개 결정이고, 후자는 "구멍 있는 채로 확정된 날짜를
-      다시 파싱할 권리" 를 영구히 포기하는 것이라 별도 승인이 필요하다.
-      진단 라벨은 `_skip_reason` 이 `(expired)` 로 갈라 보여 준다.
+      건너뛴다. 그 2단계(삭제 허용)가 **ADR-0135 로 승인돼** 별도 옵트인
+      (`reclaim_expired_unconfirmed`, 기본 off)으로 열렸다 — 1단계(재캡처
+      중단)와 여전히 다른 결정이라 스위치도 따로다. 켜지 않으면 종전대로
+      보존되고, 진단 라벨은 `_skip_reason` 이 `(expired)` 로 갈라 보여 준다.
     - ``SOURCE_PARTIAL`` + ``upstream_gap_confirmed=True`` — 재캡처가 동일한 갭을
       재현했거나(ADR-0093) 갭이 세션 경계에 접한다(ADR-0126). **decide_capture 가
       이미 건너뛰는 상태**, 즉 시스템 스스로 terminal 로 선언한 것이다. 이 raw 를
       다시 파싱해도 지금 있는 parquet 과 똑같은 결과가 나온다.
 
     실측(2026-07-29): 유예 밖 raw 351GB 중 confirmed 갭이 520건 77.2GB,
-    unconfirmed 가 743건 110.1GB. 안전한 쪽만으로도 회수량이 충분해서 굳이
-    unconfirmed 까지 열지 않았다.
+    unconfirmed 가 743건 110.1GB. 처음에는 안전한 쪽만으로 충분하다고 봤는데,
+    2026-08-03 재측정에서 raw 성장이 **거래일당 ~33GB**(문서 전제의 8배)로
+    드러나 지배 클래스를 남겨 둘 여유가 없어졌다 — 그 재평가가 ADR-0135 다.
     """
     if cls.state == DiskState.COMPLETE:
         return True
-    if not include_confirmed_gaps:
+    if cls.state != DiskState.SOURCE_PARTIAL:
         return False
-    return cls.state == DiskState.SOURCE_PARTIAL and cls.upstream_gap_confirmed
+    if cls.upstream_gap_confirmed:
+        return include_confirmed_gaps
+    return reclaim_expired_unconfirmed
 
 
 def _is_complete_hogaplay(data_dir: Path, code: str, date: str) -> bool:
@@ -173,6 +194,7 @@ def _dir_size(path: Path) -> int:
 def _scan(
     data_dir: Path, *, retention_days: int, now: dt.datetime,
     include_confirmed_gaps: bool = False,
+    include_expired_unconfirmed: bool = False,
 ) -> tuple[list[PruneCandidate], dict[str, int], dict[str, int]]:
     """raw/ 를 한 번 순회해 (후보, 보존 사유별 건수, 보존 사유별 바이트) 를 낸다.
 
@@ -207,7 +229,15 @@ def _scan(
             code = code_dir.name
             cls = _hogaplay_classification(data_dir, code, date)
             size = _dir_size(code_dir)
-            if not _is_prunable(cls, include_confirmed_gaps=include_confirmed_gaps):
+            prunable = _is_prunable(
+                cls,
+                include_confirmed_gaps=include_confirmed_gaps,
+                reclaim_expired_unconfirmed=(
+                    include_expired_unconfirmed
+                    and is_expired_unconfirmed_gap(cls, date, now)
+                ),
+            )
+            if not prunable:
                 _note(_skip_reason(cls, date, now), size)
                 continue
             out.append(PruneCandidate(
@@ -219,17 +249,20 @@ def _scan(
 def find_prunable(
     data_dir: Path, *, retention_days: int, now: dt.datetime,
     include_confirmed_gaps: bool = False,
+    include_expired_unconfirmed: bool = False,
 ) -> list[PruneCandidate]:
     """raw/ 순회 → 날짜 컷오프 통과(date < today−N 달력일) + 상태 게이트를
     통과한 (date,code)만 PruneCandidate로 반환한다. 부작용 없음.
 
     기본 게이트는 hogaplay-source COMPLETE 다(ADR-0075). ``include_confirmed_gaps``
-    를 켜면 확인된 업스트림 갭(SOURCE_PARTIAL + upstream_gap_confirmed)도 포함한다 —
-    _is_prunable 의 docstring 이 그 경계의 근거를 설명한다.
+    를 켜면 확인된 업스트림 갭(SOURCE_PARTIAL + upstream_gap_confirmed)도,
+    ``include_expired_unconfirmed`` 를 켜면 보유 창 밖 미확정 갭(ADR-0135)까지
+    포함한다 — _is_prunable 의 docstring 이 그 경계의 근거를 설명한다.
     """
     candidates, _, _ = _scan(
         data_dir, retention_days=retention_days, now=now,
         include_confirmed_gaps=include_confirmed_gaps,
+        include_expired_unconfirmed=include_expired_unconfirmed,
     )
     return candidates
 
@@ -260,6 +293,7 @@ def _remove_empty_date_dirs(raw_root: Path) -> None:
 def prune_raw(
     data_dir: Path, *, retention_days: int, now: dt.datetime, execute: bool,
     include_confirmed_gaps: bool = False,
+    include_expired_unconfirmed: bool = False,
 ) -> PruneResult:
     """find_prunable 후보를 (execute면) rmtree로 삭제하고 결과를 반환한다.
 
@@ -273,6 +307,7 @@ def prune_raw(
     candidates, skipped, skipped_bytes = _scan(
         data_dir, retention_days=retention_days, now=now,
         include_confirmed_gaps=include_confirmed_gaps,
+        include_expired_unconfirmed=include_expired_unconfirmed,
     )
     deleted = 0
     reclaimed = 0

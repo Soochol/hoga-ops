@@ -382,13 +382,13 @@ def test_unconfirmed_gap_split_by_retention_window(tmp_data_dir: Path) -> None:
 
 
 def test_expired_unconfirmed_gap_is_still_not_prunable(tmp_data_dir: Path) -> None:
-    """**1단계 경계**: 만료 판정은 재캡처를 멈출 뿐 삭제를 허용하지 않는다.
+    """**두 스위치가 서로를 여는 일이 없어야 한다.**
 
-    decide_capture 가 이제 이 클래스를 건너뛰므로 "terminal 이니 지워도 되겠지" 로
-    미끄러지기 쉽다. 그러나 삭제는 "구멍 있는 채로 확정된 날짜를 다시 파싱할 권리"
-    를 영구히 포기하는 별개 결정이고, 별도 승인을 받아야 한다(2단계).
-    include_confirmed_gaps 를 켜도 열리지 않아야 한다 — 그 플래그가 여는 것은
-    **확인된** 갭뿐이다.
+    삭제는 "구멍 있는 채로 확정된 날짜를 다시 파싱할 권리" 를 영구히 포기하는
+    결정이라, 재캡처 중단(ADR-0131, 1단계)과 별개 승인을 받았다(ADR-0135, 2단계).
+    승인된 지금도 스위치는 따로다 — `include_confirmed_gaps` 가 여는 것은
+    **확인된** 갭뿐이고, 만료 미확정은 자기 옵트인으로만 열린다. 합치면 한쪽을
+    원한 운영자가 결이 다른 쪽까지 켜게 된다.
     """
     _seed(tmp_data_dir, "000660", "20260605",
           collection_complete=True, is_partial=True, identical_capture_count=0)
@@ -474,3 +474,75 @@ def test_daily_scheduler_prune_wires_the_env_optin() -> None:
 
     src = inspect.getsource(scheduler._daily_run)
     assert "include_confirmed_gaps=resolve_include_confirmed_gaps()" in src
+    assert "include_expired_unconfirmed=resolve_include_expired_unconfirmed()" in src
+
+
+def test_expired_unconfirmed_gap_is_prunable_with_its_own_optin(
+    tmp_data_dir: Path,
+) -> None:
+    """ADR-0135 2단계: 전용 옵트인을 켜면 만료 미확정 갭이 회수된다.
+
+    이 클래스가 지배적이라(2026-07-29 실측 743건 110GB > confirmed 520건 77GB)
+    확인된 갭만 회수해서는 raw 33GB/거래일 성장을 못 따라간다.
+    """
+    _seed(tmp_data_dir, "000660", "20260605",
+          collection_complete=True, is_partial=True, identical_capture_count=0)
+
+    res = prune_raw(
+        tmp_data_dir, retention_days=3, now=_NOW, execute=True,
+        include_expired_unconfirmed=True,
+    )
+
+    assert res.deleted == 1
+    assert not (tmp_data_dir / "raw" / "20260605" / "000660").exists()
+
+
+def test_expired_optin_does_not_open_the_still_confirmable_window(
+    tmp_data_dir: Path,
+) -> None:
+    """보유 창 **안**의 미확정 갭은 전용 옵트인으로도 열리지 않는다.
+
+    그쪽은 재캡처가 아직 갭을 확정시킬 수 있다 — 지우면 고칠 수 있던 것을 버린다.
+    경계가 '미확정 전체' 가 아니라 '만료된 미확정' 인 이유.
+    """
+    _seed(tmp_data_dir, "005930", "20260611",  # _NOW(06-13) −2일 → 보유 창 안
+          collection_complete=True, is_partial=True, identical_capture_count=0)
+
+    res = prune_raw(
+        tmp_data_dir, retention_days=1, now=_NOW, execute=True,
+        include_expired_unconfirmed=True,
+    )
+
+    assert res.deleted == 0
+    assert res.skipped_by_state["source_partial(gap_unconfirmed)"] == 1
+    assert (tmp_data_dir / "raw" / "20260611" / "005930").exists()
+
+
+def test_expired_optin_never_touches_resume_sources(tmp_data_dir: Path) -> None:
+    """CLIENT_INCOMPLETE 는 어느 옵트인 조합으로도 삭제되지 않는다 —
+    그 raw 가 resume 커서의 소스라 지우면 처음부터 다시 받아야 한다."""
+    _seed(tmp_data_dir, "005930", "20260605", collection_complete=False)
+
+    res = prune_raw(
+        tmp_data_dir, retention_days=3, now=_NOW, execute=True,
+        include_confirmed_gaps=True, include_expired_unconfirmed=True,
+    )
+
+    assert res.deleted == 0
+    assert res.skipped_by_state["client_incomplete"] == 1
+    assert (tmp_data_dir / "raw" / "20260605" / "005930").exists()
+
+
+def test_resolve_include_expired_unconfirmed_env_optin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hoga.api.prune import resolve_include_expired_unconfirmed
+
+    monkeypatch.delenv("HOGA_PRUNE_EXPIRED_UNCONFIRMED", raising=False)
+    assert resolve_include_expired_unconfirmed() is False
+    for truthy in ("1", "true", "yes", "on"):
+        monkeypatch.setenv("HOGA_PRUNE_EXPIRED_UNCONFIRMED", truthy)
+        assert resolve_include_expired_unconfirmed() is True, truthy
+    for falsy in ("", "0", "false", "no"):
+        monkeypatch.setenv("HOGA_PRUNE_EXPIRED_UNCONFIRMED", falsy)
+        assert resolve_include_expired_unconfirmed() is False, falsy

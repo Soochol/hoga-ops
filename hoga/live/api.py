@@ -1451,6 +1451,16 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         runtime = getattr(request.app.state, "startup_runtime", None)
         if runtime is not None:
             update["supervised_tasks"] = runtime.supervised_task_health()
+        if data_dir is not None:
+            # statvfs 한 번 — 마이크로초 단위라 5초 폴링에 얹어도 무해하다.
+            from hoga.api.prune import disk_headroom  # noqa: PLC0415 — 순환 절단
+            head = disk_headroom(data_dir)
+            if head is not None:
+                update["disk"] = {
+                    "free_pct": round(head.free_pct, 1),
+                    "free_gib": round(head.free_bytes / 1024**3, 1),
+                    "low": head.is_low,
+                }
         cache_stats = await _collect_cache_stats(request)
         if cache_stats:
             update["cache_stats"] = cache_stats

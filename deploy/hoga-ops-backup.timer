@@ -1,0 +1,22 @@
+# hoga-ops 백업 타이머 — 매일 04:00 KST.
+#
+# 04:00 인 이유: 장(09:00~)과 일일 배치(17:00) 둘 다에서 멀다. 백업이 승격·prune
+# 과 겹치면 같은 트리를 읽고 쓰며 IO 를 다투고, 장중이면 실시간 기록이 밀린다.
+#
+# Persistent=true: 서버가 04:00 에 꺼져 있었다면(정전·재부팅) 부팅 직후 밀린
+# 회차를 한 번 돌린다. 워치독 타이머와 정반대 선택인데 이유가 있다 — 그쪽은
+# 기동 중 프로세스를 두드리면 판정 근거 없이 재시작을 부르지만, 백업은 늦게
+# 도는 것이 안 도는 것보다 언제나 낫다.
+
+[Unit]
+Description=Run hoga-ops data backup daily
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+# 여러 타이머가 같은 순간에 몰리지 않게 흩뜨린다.
+RandomizedDelaySec=600
+Unit=hoga-ops-backup.service
+
+[Install]
+WantedBy=timers.target
