@@ -198,9 +198,11 @@ tests/unit/live/test_api_kis_rest_bypass_candles.py   test_api_kis_rest_bypass_q
 
 | 필드 | 위치 |
 |---|---|
-| `kis_calls_today` | `hoga/live/lifecycle.py:53`, `:272` |
-| `kis_rate_limit_remaining` | `hoga/live/lifecycle.py:54`, `:273` |
+| `kis_calls_today` | `hoga/live/lifecycle.py:53`, `:272` — **죽은 필드**(아래) |
+| `kis_rate_limit_remaining` | `hoga/live/lifecycle.py:54`, `:273` — **죽은 필드**(아래) |
 | `kis_rest_bypass_enabled` | `hoga/api/models.py:993`, `:1008` / `hoga/live/lifecycle.py:73` / `hoga/live/settings.py:47` |
+
+**`kis_calls_today` / `kis_rate_limit_remaining` 은 이식 대상이 아니다 — 이미 죽어 있다**(2026-08-03 #1011 조사에서 확인). 백엔드가 하드코딩 상수를 내보내고(`lifecycle.py:279-280` — `0` 과 `None`, 채우는 곳 없음), 프론트는 타입만 선언하며(`frontend/src/api/liveStatus.ts:20-21`) **렌더하는 곳이 0**, 테스트 fixture 에만 등장한다. 운영자가 이 값을 본 적이 없다는 뜻이다. 1:1 치환(`kiwoom_calls_today` 등)은 **죽은 필드를 이름만 바꿔 이식**하는 것이므로 삭제하고, 유량 지표는 #1011 거버너의 `snapshot()` 에서 새로 정의한다.
 
 `kis_rest_bypass_enabled` 는 **디스크 영속 설정**(live settings JSON)이기도 하다 — 기존 설정 파일에 남은 키 처리 필요.
 
