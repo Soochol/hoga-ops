@@ -21,7 +21,7 @@ from hoga.api import symbols
 from hoga.api.error_codes import LiveErrorCode
 from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate
 from hoga.api.params import CODE_PATTERN
-from hoga.live import kis_runtime, kiwoom_runtime
+from hoga.live import kis_runtime, kiwoom_access, kiwoom_index_rest, kiwoom_rest_runtime, kiwoom_runtime
 from hoga.live.index_candles_cache import (
     IndexCandlesCache,
     collect_index_candles_with_cache,
@@ -50,6 +50,8 @@ from hoga.live.kis_client import (
     KisRateLimitError,
     KisTransportError,
 )
+from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
+from hoga.live.kiwoom_errors import KiwoomRestError
 from hoga.live.kiwoom_index_candles import (
     KiwoomIndexCandlesError,
     KiwoomIndexCandlesFetcher,
@@ -1549,13 +1551,22 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 ],
             )
 
+        # PR-C(#1039) 칼 컷오버 — 이 표면의 소스는 키움 하나다. 런타임 폴백을 두지
+        # 않는 이유는 #683 이 관심종목 전환에서 세운 것과 같다: 두 벤더가 동시에
+        # 살아있으면 유량이 합산되고 "어느 소스였나" 가 응답에 안 드러나 진단이 흐려진다.
+        # 되돌림은 이 PR 을 revert 하면 된다(플랜 원칙 1 — KIS 코드는 남아 있다).
+        kiwoom_client = (
+            kiwoom_rest_runtime.ensure_rest_client(data_dir) if data_dir is not None else None
+        )
         if (
             data_dir is None
-            or _kis_scheduler is None
-            or not kis_access.has_rest_capacity(data_dir)
+            or kiwoom_client is None
+            # bypass 는 과도기에 "REST 우회" 로 읽는다 — 벤더가 바뀌어도 사용자가
+            # 보는 동작(캐시로 강등)은 같다. 토글 자체는 PR-J 에서 사라진다.
             or kis_access.kis_rest_bypass_enabled(data_dir)
         ):
             return snapshot()
+        scheduler = kiwoom_rest_runtime.ensure_scheduler()
 
         async with _index_quotes_lock:
             if monotonic_time.monotonic() - _index_quotes_meta["fetched_at"] < _INDEX_QUOTES_TTL_S:
@@ -1563,16 +1574,17 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
 
             async def fetch_one(index) -> LiveIndexQuote | None:
                 try:
-                    snap = await kis_access.run_with_capacity(
-                        _kis_scheduler,
-                        data_dir=data_dir,
+                    _, value, change, change_rate, t_ms = await kiwoom_access.run_with_capacity(
+                        scheduler,
                         key=("index-price", index.id),
-                        endpoint=kis_access.KisRestEndpoint.INDEX_PRICE,
+                        api_id="ka20001",
                         priority="background",
-                        cooldown_scope="index-price",
-                        fetch_fn=lambda kis, index=index: kis.fetch_index_price(index),
+                        fetch_fn=lambda c, index=index: kiwoom_index_rest.fetch_index_price(
+                            c, index
+                        ),
+                        client=kiwoom_client,
                     )
-                except (KisApiError, KisCapacityCooldown, KisCapacityOverloaded) as e:
+                except (KiwoomRestError, KiwoomCapacityOverloaded) as e:
                     # 20s 주기 배경 폴 — 개별 WARN 은 로그벽이 된다(EGW00201 교훈).
                     log.debug("index-quote fetch failed: %s (%s)", index.id, e)
                     return None
@@ -1582,10 +1594,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 return LiveIndexQuote(
                     id=index.id,
                     label=index.label,
-                    value=snap.value,
-                    change=snap.change,
-                    change_rate=snap.change_rate,
-                    t_ms=snap.t_ms,
+                    value=value,
+                    change=change,
+                    change_rate=change_rate,
+                    t_ms=t_ms,
                 )
 
             results = await asyncio.gather(*(fetch_one(index) for index in indices))
@@ -1621,27 +1633,26 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     from_s=from_,
                     to_s=to,
                 )
-            if _kis_scheduler is None:
-                raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
-            if not kis_access.has_rest_capacity(data_dir):
-                raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
+            # PR-C(#1039) 칼 컷오버 — 이 표면의 소스는 키움 하나다(위 지수 현재가와 동일).
+            daily_client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
+            if daily_client is None:
+                raise HTTPException(
+                    503,
+                    {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom client not initialized"},
+                )
+            daily_scheduler = kiwoom_rest_runtime.ensure_scheduler()
 
             async def fetch_batch(from_s: str, to_s: str):
                 async def direct_fetch(inner_from_s: str, inner_to_s: str):
-                    return await kis_access.run_with_capacity(
-                        _kis_scheduler,
-                        data_dir=data_dir,
+                    return await kiwoom_access.run_with_capacity(
+                        daily_scheduler,
                         key=("index-daily", index.id, timeframe, inner_from_s, inner_to_s),
-                        endpoint=kis_access.KisRestEndpoint.INDEX_DAILY,
+                        api_id=kiwoom_index_rest.PERIOD_TO_API_ID[timeframe],
                         priority="user_visible",
-                        cooldown_scope=("index-daily", index.id, timeframe),
-                        fetch_fn=lambda kis: kis.fetch_index_daily_candles(
-                            index,
-                            inner_from_s,
-                            inner_to_s,
-                            period=timeframe,
-                            foreground=True,
+                        fetch_fn=lambda c: kiwoom_index_rest.fetch_index_daily_candles(
+                            c, index, inner_from_s, inner_to_s, period=timeframe,
                         ),
+                        client=daily_client,
                     )
 
                 return await fetch_index_daily_candles_windowed(
