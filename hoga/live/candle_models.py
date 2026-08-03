@@ -46,3 +46,22 @@ class IndexCandlePoint(BaseModel):
     low: float
     close: float
     volume: int
+
+
+def daily_anchor_ms(date_yyyymmdd: str) -> int:
+    """일봉 1건의 시각 앵커 = **그날 09:00 KST**.
+
+    소스 무관 규약이다. KIS 경로(`kis_endpoints._daily_anchor_t_ms`)와 같은 값을
+    내야 프론트가 같은 날의 캔들·투자자 막대·지수 봉을 한 x 위치에 정렬한다 —
+    앵커가 어긋나면 차트에서 하루씩 밀린 것처럼 보인다.
+
+    키움 어댑터 3벌(`kiwoom_index_rest`·`kiwoom_investor`·`kiwoom_daily_candles`)이
+    각자 복사본을 갖고 있었다. 규약은 하나인데 정의가 여럿이면 한 곳만 고쳐도
+    조용히 어긋나므로 여기로 모은다.
+    """
+    from datetime import datetime  # noqa: PLC0415 — ADR-0038 핫패스 모듈: 모듈 레벨 import 최소화
+
+    from hoga.util.timeenc import KST  # noqa: PLC0415
+
+    dt = datetime.strptime(date_yyyymmdd, "%Y%m%d").replace(hour=9, tzinfo=KST)
+    return int(dt.timestamp() * 1000)

@@ -1276,7 +1276,7 @@ class _FakeKisForDaily:
         self.violations: list[DailyInvariantViolation] = []
         self.raise_rate_limit_on_call: int | None = None
 
-    async def fetch_past_daily_candles(
+    async def fetch_daily_candles(
         self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, **_kw
     ) -> DailyCandleFetchResult:
         idx = len(self.calls)
@@ -1313,7 +1313,7 @@ class _FakeKisForDaily:
         return DailyCandleFetchResult(candles=candles, violations=list(self.violations))
 
 
-def _daily_app(tmp_path, fake_kis):
+def _daily_app(tmp_path, fake_kis, monkeypatch):
     from fastapi import FastAPI
 
     from hoga.live import kis_runtime, lifecycle
@@ -1321,6 +1321,7 @@ def _daily_app(tmp_path, fake_kis):
 
     lifecycle.reset_for_tests()
     kis_runtime.set_kis_client(fake_kis)
+    _use_fake_kiwoom_client(monkeypatch, fake_kis)
     app = FastAPI()
     app.include_router(
         build_router(
@@ -1331,9 +1332,9 @@ def _daily_app(tmp_path, fake_kis):
     return app
 
 
-def test_past_daily_cache_miss_calls_kis(tmp_path) -> None:
+def test_past_daily_cache_miss_calls_kis(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForDaily()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
@@ -1344,46 +1345,46 @@ def test_past_daily_cache_miss_calls_kis(tmp_path) -> None:
         assert len(fake.calls) == 1
 
 
-def test_past_daily_threads_explicit_venue_to_kis_and_response(tmp_path) -> None:
+def test_past_daily_threads_explicit_venue_to_kis_and_response(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForDaily()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105&venue=UN")
         assert r.status_code == 200
         body = r.json()
 
     assert body["venue"] == "UN"
-    assert fake.kwargs == [{"venue": "UN", "foreground": True}]
+    assert fake.kwargs == [{"venue": "UN"}]   # `foreground` 는 키움에 없다
 
 
-def test_past_daily_legacy_auto_maps_to_integrated(tmp_path) -> None:
+def test_past_daily_legacy_auto_maps_to_integrated(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForDaily()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105&venue=AUTO")
         assert r.status_code == 200
         body = r.json()
 
     assert body["venue"] == "UN"
-    assert fake.kwargs == [{"venue": "UN", "foreground": True}]
+    assert fake.kwargs == [{"venue": "UN"}]   # `foreground` 는 키움에 없다
 
 
 @pytest.mark.parametrize("venue,primary_venue", [("NXT", "NXT"), ("UN", "UN")])
 def test_past_daily_non_krx_empty_falls_back_to_krx(
-    tmp_path, venue: str, primary_venue: str
+    tmp_path, monkeypatch, venue: str, primary_venue: str
 ) -> None:
     class _NoNxtDailyKis(_FakeKisForDaily):
-        async def fetch_past_daily_candles(
+        async def fetch_daily_candles(
             self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, **_kw
         ) -> DailyCandleFetchResult:
             if _kw.get("venue") in ("NXT", "UN"):
                 self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
                 self.kwargs.append(_kw)
                 return DailyCandleFetchResult(candles=[], violations=[])
-            return await super().fetch_past_daily_candles(code, from_yyyymmdd, to_yyyymmdd, **_kw)
+            return await super().fetch_daily_candles(code, from_yyyymmdd, to_yyyymmdd, **_kw)
 
     fake = _NoNxtDailyKis()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get(
             f"/api/live/past-daily-candles?code=005930&from=20240101&to=20240105&venue={venue}"
@@ -1393,19 +1394,17 @@ def test_past_daily_non_krx_empty_falls_back_to_krx(
 
     assert body["venue"] == venue
     assert len(body["candles"]) == 5
-    assert fake.kwargs[:2] == [
-        {"venue": primary_venue, "foreground": True},
-        {"venue": "KRX", "foreground": True},
-    ]
+    # `foreground` 는 키움에 없다 — 의도 신호는 거버너의 `priority` 다(#1015).
+    assert fake.kwargs[:2] == [{"venue": primary_venue}, {"venue": "KRX"}]
     assert any(
         w["reason"] == "daily_fallback_to_krx" and w["batch"] == "20240101__20240105"
         for w in body["data_warnings"]
     )
 
 
-def test_past_daily_non_krx_partial_range_fills_missing_dates_from_krx(tmp_path) -> None:
+def test_past_daily_non_krx_partial_range_fills_missing_dates_from_krx(tmp_path, monkeypatch) -> None:
     class _PartialUnDailyKis(_FakeKisForDaily):
-        async def fetch_past_daily_candles(
+        async def fetch_daily_candles(
             self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, **_kw
         ) -> DailyCandleFetchResult:
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
@@ -1435,19 +1434,17 @@ def test_past_daily_non_krx_partial_range_fills_missing_dates_from_krx(tmp_path)
                     ),
                 ]
                 return DailyCandleFetchResult(candles=candles, violations=[])
-            return await super().fetch_past_daily_candles(code, from_yyyymmdd, to_yyyymmdd, **_kw)
+            return await super().fetch_daily_candles(code, from_yyyymmdd, to_yyyymmdd, **_kw)
 
     fake = _PartialUnDailyKis()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-daily-candles?code=089030&from=20240101&to=20240120&venue=UN")
         assert r.status_code == 200
         body = r.json()
 
-    assert fake.kwargs[:2] == [
-        {"venue": "UN", "foreground": True},
-        {"venue": "KRX", "foreground": True},
-    ]
+    # `foreground` 는 키움에 없다 — 의도 신호는 거버너의 `priority` 다(#1015).
+    assert fake.kwargs[:2] == [{"venue": "UN"}, {"venue": "KRX"}]
     assert len(body["candles"]) == 20
     assert body["candles"][0]["close"] == 205
     assert body["candles"][1]["close"] == 206
@@ -1458,9 +1455,9 @@ def test_past_daily_non_krx_partial_range_fills_missing_dates_from_krx(tmp_path)
     )
 
 
-def test_past_daily_rejects_invalid_venue_before_kis(tmp_path) -> None:
+def test_past_daily_rejects_invalid_venue_before_kis(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForDaily()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105&venue=BAD")
 
@@ -1469,9 +1466,9 @@ def test_past_daily_rejects_invalid_venue_before_kis(tmp_path) -> None:
     assert fake.calls == []
 
 
-def test_past_daily_cache_hit_skips_kis(tmp_path) -> None:
+def test_past_daily_cache_hit_skips_kis(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForDaily()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
         r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
@@ -1481,9 +1478,9 @@ def test_past_daily_cache_hit_skips_kis(tmp_path) -> None:
         assert len(fake.calls) == 1
 
 
-def test_past_daily_partial_hit_gap_fill(tmp_path) -> None:
+def test_past_daily_partial_hit_gap_fill(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForDaily()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         c.get("/api/live/past-daily-candles?code=005930&from=20240301&to=20240501")
         r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240501")
@@ -1496,7 +1493,7 @@ def test_past_daily_partial_hit_gap_fill(tmp_path) -> None:
         assert ts == sorted(set(ts))
 
 
-def test_past_daily_rate_limit_surfaces_data_warning(tmp_path) -> None:
+def test_past_daily_rate_limit_surfaces_data_warning(tmp_path, monkeypatch) -> None:
     """Daily endpoint inherits ADR-0049: a ``KisRateLimitError`` reaching the
     handler means the client has already exhausted retries. The gap loop then
     breaks and the user sees one ``kis_rate_limit`` warning rather than the
@@ -1504,7 +1501,7 @@ def test_past_daily_rate_limit_surfaces_data_warning(tmp_path) -> None:
     """
     fake = _FakeKisForDaily()
     fake.raise_rate_limit_on_call = 1
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         c.get("/api/live/past-daily-candles?code=005930&from=20240301&to=20240501")
         # Snapshot the call count after the warm-up call so we can assert the
@@ -1523,7 +1520,7 @@ def test_past_daily_rate_limit_surfaces_data_warning(tmp_path) -> None:
         )
 
 
-def test_past_daily_violation_surfaces_to_wire(tmp_path) -> None:
+def test_past_daily_violation_surfaces_to_wire(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForDaily()
     fake.violations = [
         DailyInvariantViolation(
@@ -1532,7 +1529,7 @@ def test_past_daily_violation_surfaces_to_wire(tmp_path) -> None:
             detail="close=0",
         )
     ]
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
         body = r.json()
@@ -1542,9 +1539,9 @@ def test_past_daily_violation_surfaces_to_wire(tmp_path) -> None:
         assert warn[0]["date"] == "20240103"
 
 
-def test_past_daily_dedupes_and_sorts_overlapping_batches(tmp_path) -> None:
+def test_past_daily_dedupes_and_sorts_overlapping_batches(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForDaily()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
         c.get("/api/live/past-daily-candles?code=005930&from=20240103&to=20240107")
@@ -1575,20 +1572,20 @@ def test_past_daily_validation_404_when_kis_not_wired(tmp_path) -> None:
         assert r.status_code == 503
 
 
-def test_past_daily_empty_gap_caches_and_does_not_refetch(tmp_path) -> None:
+def test_past_daily_empty_gap_caches_and_does_not_refetch(tmp_path, monkeypatch) -> None:
     """KIS returning [] for a gap (range fully non-trading) must still cache
     the empty batch so a follow-up request inside that range hits the cache
     instead of re-calling KIS. Prevents infinite re-fetch on holiday ranges."""
 
     class _EmptyKis(_FakeKisForDaily):
-        async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
+        async def fetch_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
             from hoga.live.kis_client import DailyCandleFetchResult
 
             return DailyCandleFetchResult(candles=[], violations=[])
 
     fake = _EmptyKis()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r1 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
         assert r1.status_code == 200
@@ -1601,9 +1598,9 @@ def test_past_daily_empty_gap_caches_and_does_not_refetch(tmp_path) -> None:
         assert len(fake.calls) == 1
 
 
-def test_past_daily_single_day_past_request(tmp_path) -> None:
+def test_past_daily_single_day_past_request(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForDaily()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240101")
         assert r.status_code == 200
@@ -1614,9 +1611,9 @@ def test_past_daily_single_day_past_request(tmp_path) -> None:
         assert gap_from == "20240101" and gap_to == "20240101"
 
 
-def test_past_daily_today_only_request_skips_gap_branch(tmp_path) -> None:
+def test_past_daily_today_only_request_skips_gap_branch(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForDaily()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     today = _today_kst_yyyymmdd()
     with TestClient(app) as c:
         r = c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
@@ -1626,16 +1623,16 @@ def test_past_daily_today_only_request_skips_gap_branch(tmp_path) -> None:
         assert call_from == today and call_to == today
 
 
-def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path) -> None:
+def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path, monkeypatch) -> None:
     class _EmptyTodayKis(_FakeKisForDaily):
-        async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
+        async def fetch_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
             from hoga.live.kis_client import DailyCandleFetchResult
 
             return DailyCandleFetchResult(candles=[], violations=[])
 
     fake = _EmptyTodayKis()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     today = _today_kst_yyyymmdd()
     with TestClient(app) as c:
         c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
@@ -1643,7 +1640,7 @@ def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path) -> None:
         assert len(fake.calls) == 1
 
 
-def test_screener_daily_candles_reads_adjusted_parquet_without_kis(tmp_path) -> None:
+def test_screener_daily_candles_reads_adjusted_parquet_without_kis(tmp_path, monkeypatch) -> None:
     sdir = tmp_path / "screener"
     sdir.mkdir()
     pl.DataFrame(
@@ -1663,7 +1660,7 @@ def test_screener_daily_candles_reads_adjusted_parquet_without_kis(tmp_path) -> 
     ).write_parquet(sdir / "daily_adjusted.parquet")
 
     fake = _FakeKisForDaily()
-    app = _daily_app(tmp_path, fake)
+    app = _daily_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/screener-daily-candles?code=005930&from=20240101&to=20240104")
 
@@ -1709,7 +1706,7 @@ def test_screener_daily_candles_runs_off_the_event_loop(tmp_path, monkeypatch) -
         }
 
     monkeypatch.setattr(live_api, "read_screener_daily_candles", _record_thread)
-    app = _daily_app(tmp_path, _FakeKisForDaily())
+    app = _daily_app(tmp_path, _FakeKisForDaily(), monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/screener-daily-candles?code=005930&from=20240101&to=20240104")
 
@@ -1756,12 +1753,19 @@ def _kiwoom_investor_seam(monkeypatch):
     async def _estimate(client, code):
         return await client.fetch_investor_trend_estimate(code)
 
+    async def _daily(client, code, from_yyyymmdd, to_yyyymmdd, **kw):
+        return await client.fetch_daily_candles(code, from_yyyymmdd, to_yyyymmdd, **kw)
+
     for name, fn in (
         ("fetch_investor_net", _net),
         ("fetch_market_investor_net", _market),
         ("fetch_investor_trend_estimate", _estimate),
     ):
         monkeypatch.setattr(live_api.kiwoom_investor, name, fn)
+    # 일봉은 `live_daily_candle_backfill` 이 부른다 — `live_api` 를 거치지 않는다.
+    from hoga.live import kiwoom_daily_candles
+
+    monkeypatch.setattr(kiwoom_daily_candles, "fetch_daily_candles", _daily)
     yield
     _fake_kiwoom_client["client"] = None
 

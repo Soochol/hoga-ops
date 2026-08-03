@@ -25,8 +25,7 @@ from hoga.api.models import (
 )
 from hoga.api.screener_store import DailyBar
 from hoga.collector.orchestrator import next_kst_day, now_kst
-from hoga.live import kis_access
-from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
+from hoga.live import kiwoom_rest_runtime
 from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
@@ -109,8 +108,18 @@ def _gap_trading_days(last_raw_date: str, today: str, *, now: datetime) -> list[
     return days
 
 
-async def _kis_fetch_one(client, code: str, frm: str, to: str) -> list[DailyBar]:
-    res = await client.fetch_past_daily_candles(code, frm, to, adjust=False)  # 원주가
+async def _daily_fetch_one(client, code: str, frm: str, to: str) -> list[DailyBar]:
+    """PR-F(#1042) 칼 컷오버 — 소스는 키움 `ka10081` 이다.
+
+    `adjust=False`(원주가)는 스크리너 코퍼스의 규약이다. **와이어 값 극성은
+    어댑터가 뒤집는다** — 키움 `upd_stkpc_tp` 는 KIS 와 반대(1=수정주가)라
+    불리언을 그대로 넘기고 변환은 `kiwoom_daily_candles.adjust_flag` 한 곳에 둔다.
+    """
+    from hoga.live import kiwoom_daily_candles  # noqa: PLC0415 — 지연 import(순환 절단)
+
+    res = await kiwoom_daily_candles.fetch_daily_candles(
+        client, code, frm, to, adjust=False,
+    )
     if res.violations:
         log.warning("screener daily violations %s: %d", code, len(res.violations))
     return [DailyBar(code=code,
@@ -147,8 +156,10 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
 
     # EOD 갭 캐치업은 배경 배치(종목 다수 daily fetch)이므로 Capacity Scheduler에 맡긴다.
     # creds가 없으면 기존처럼 skip하고, 있으면 per-code 요청이 계정풀/쿨다운/예약용량 정책을 탄다.
-    if not kis_access.has_rest_capacity(data_dir):
-        log.warning("screener update: KIS creds missing, skipping")
+    # PR-F(#1042) 칼 컷오버 — 자격 게이트도 키움을 본다. reason 문자열
+    # `kis_creds_missing` 은 **프론트 계약**이라 지금 바꾸지 않는다(#1046 에서 정리).
+    if kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
+        log.warning("screener update: 키움 자격증명 없음, skip")
         return "kis_creds_missing"
 
     stocks_df = await asyncio.to_thread(pl.read_parquet, sdir / "stocks.parquet")
@@ -172,17 +183,25 @@ async def _run_update_job(data_dir: Path, plan: _UpdatePlan, *, bus) -> int:
     global _job_task, _progress  # noqa: PLW0603
     total = len(plan.codes)
     try:
-        scheduler = ensure_kis_capacity_scheduler(data_dir)
+        from hoga.live import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈)
+            kiwoom_access,
+            kiwoom_daily_candles,
+            kiwoom_rest_runtime,
+        )
+
+        scheduler = kiwoom_rest_runtime.ensure_scheduler()
+        client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
+        if client is None:
+            raise RuntimeError("키움 자격증명 없음 — 스크리너 갱신 불가")
 
         async def fetch_one(c: str, f: str, t: str) -> list[DailyBar]:
-            return await kis_access.run_with_capacity(
+            return await kiwoom_access.run_with_capacity(
                 scheduler,
-                data_dir=data_dir,
                 key=("screener-update", c, f, t),
-                endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
+                api_id=kiwoom_daily_candles.API_ID,
                 priority="background",
-                cooldown_scope="screener-daily",
-                fetch_fn=lambda client: _kis_fetch_one(client, c, f, t),
+                client=client,
+                fetch_fn=lambda cl: _daily_fetch_one(cl, c, f, t),
             )
 
         last_pub = 0.0

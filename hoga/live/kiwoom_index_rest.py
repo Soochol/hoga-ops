@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import Any
 
 from hoga.live.candle_fetch_result import DailyInvariantViolation, IndexCandleFetchResult
-from hoga.live.candle_models import IndexCandlePoint
+from hoga.live.candle_models import IndexCandlePoint, daily_anchor_ms
 from hoga.live.index_registry import RepresentativeIndex
 from hoga.live.kiwoom_errors import KiwoomApiError
 from hoga.live.kiwoom_index_candles import index_id_to_kiwoom_code, parse_price
@@ -65,11 +65,6 @@ def _signed(raw: object) -> float:
     return float(text)
 
 
-def _daily_anchor_ms(date_yyyymmdd: str) -> int:
-    """일봉 1건의 시각 앵커 = 그날 09:00 KST. KIS 경로와 같은 규약이라
-    프론트가 투자자 막대를 같은 날 캔들에 정렬한다."""
-    dt = datetime.strptime(date_yyyymmdd, "%Y%m%d").replace(hour=9, tzinfo=KST)
-    return int(dt.timestamp() * 1000)
 
 
 async def fetch_index_price(
@@ -154,7 +149,7 @@ async def fetch_index_daily_candles(
         seen.add(date_s)
         try:
             point = IndexCandlePoint(
-                t_ms=_daily_anchor_ms(date_s),
+                t_ms=daily_anchor_ms(date_s),
                 open=parse_price(row.get("open_pric")),
                 high=parse_price(row.get("high_pric")),
                 low=parse_price(row.get("low_pric")),
