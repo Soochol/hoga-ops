@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { expect, it, vi } from 'vitest';
 
@@ -36,6 +36,8 @@ function ready(over: Partial<OptionSentiment> = {}): OptionSentiment {
     },
     oi_distribution: {
       strikes: [
+        // 700 은 도메인 검증용: 전체 뷰에서 플립(702.5)이 축 안에 들어오게 한다
+        { strike: 700, call_oi: 10, put_oi: 10 },
         { strike: 1000, call_oi: 1651, put_oi: 6222 },
         { strike: 1100, call_oi: 3000, put_oi: 1000 },
         { strike: 1597.5, call_oi: 14_444, put_oi: 100 },
@@ -125,6 +127,31 @@ it('극외가 편중을 드러내는 기여 표를 보여준다', () => {
   expect(screen.getByText(/미결제가 몰리는 특성/)).toBeInTheDocument();
   expect(screen.getByText('1597.5')).toBeInTheDocument();
   expect(screen.getByText('14,444')).toBeInTheDocument();
+});
+
+it('행사가 축은 기본 ATM 줌이고 전체 토글로 넓어진다', () => {
+  // 극외가(1597.5)가 축을 지배하면 중앙 구조가 좁은 띠로 압축된다. 기본 ATM
+  // 줌에서는 그 행사가가 차트 밖이고(기여 표에는 남는다), 전체로 바꾸면 눈금이
+  // 넓어져 1,500 라벨이 생긴다.
+  mount(ready());
+  // ATM 줌(underlying 1007.83 ±15% → ~1000-1159): 1,500 눈금 없음
+  expect(screen.queryByText('1,500')).not.toBeInTheDocument();
+  // 기여 표는 줌과 무관하게 극외가를 계속 보여준다
+  expect(screen.getByText('1597.5')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: '전체' }));
+  expect(screen.getAllByText('1,500').length).toBeGreaterThan(0);
+});
+
+it('도메인 밖 기준선은 사라지지 않고 가장자리 화살표로 남는다', () => {
+  // ATM 줌에서 감마 플립(702.5)은 화면 밖이다. 선을 조용히 생략하면 "플립이
+  // 없다" 로 오독되므로 가장자리 마커로 존재를 알린다.
+  mount(ready());
+  expect(screen.getByText(/◀ 플립 702.5/)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: '전체' }));
+  expect(screen.queryByText(/◀ 플립/)).not.toBeInTheDocument();
+  expect(screen.getByText(/^플립 702.5$/)).toBeInTheDocument();
 });
 
 it('비율 분모가 0이면 0 이 아니라 — 로 표시한다', () => {

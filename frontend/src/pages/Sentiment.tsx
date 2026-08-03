@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { useOptionSentiment } from '../api/optionSentiment';
 import { PageContainer } from '../layout/PageContainer';
 import {
@@ -8,7 +10,8 @@ import {
   OiDistributionChart,
   PutCallPanel,
 } from '../sentiment/SentimentPanels';
-import { PageState, PanelCard } from '../ui/PageShell';
+import { atmDomain, fullDomain, type StrikeDomain } from '../sentiment/strikeScale';
+import { PageState, PanelCard, SegmentedControl } from '../ui/PageShell';
 
 /**
  * KOSPI200 옵션 심리 패널 (ADR-0135).
@@ -85,6 +88,10 @@ function Section({
 
 export default function Sentiment() {
   const { data, isLoading, error } = useOptionSentiment();
+  // 행사가 축 범위. 기본은 ATM 근처 — 실측상 극외가 로또 물량이 전체 축을 지배해
+  // 중앙 구조를 좁은 띠로 압축한다(극외가는 기여 표가 커버). 세 차트가 이 도메인을
+  // 공유해야 축이 정렬된다.
+  const [strikeRange, setStrikeRange] = useState<'atm' | 'all'>('atm');
 
   if (isLoading && !data) {
     return (
@@ -129,6 +136,9 @@ export default function Sentiment() {
 
   const fullAt = fmtTime(data.full_as_of_ms);
   const atmAt = fmtTime(data.atm_as_of_ms);
+  const allStrikes = data.oi_distribution?.strikes.map((s) => s.strike) ?? [];
+  const domain: StrikeDomain | null =
+    strikeRange === 'atm' ? atmDomain(allStrikes, data.underlying) : fullDomain(allStrikes);
 
   return (
     <PageContainer className="overflow-auto">
@@ -157,8 +167,31 @@ export default function Sentiment() {
                 {data.iv_skew?.risk_reversal_25d?.toFixed(2) ?? '—'}
               </div>
             </div>
-            <div className="ml-auto text-xs text-fg-dimmer">
-              전수 {fullAt} · ATM {atmAt}
+            <div className="ml-auto flex items-center gap-md">
+              <SegmentedControl aria-label="행사가 축 범위">
+                {(
+                  [
+                    ['atm', 'ATM 근처'],
+                    ['all', '전체'],
+                  ] as const
+                ).map(([key, label]) => {
+                  const on = strikeRange === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setStrikeRange(key)}
+                      className={`px-2 py-[3px] text-xs ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </SegmentedControl>
+              <div className="text-xs text-fg-dimmer">
+                전수 {fullAt} · ATM {atmAt}
+              </div>
             </div>
           </div>
         </PanelCard>
@@ -179,7 +212,13 @@ export default function Sentiment() {
             caveat="위 빨강이 콜, 아래 파랑이 풋입니다. Max Pain 은 만기 시 옵션 매도자 손실이 최소가 되는 지점일 뿐 가격 예측이 아닙니다."
             asOf={`전수 ${fullAt}`}
           >
-            <OiDistributionChart dist={data.oi_distribution} underlying={data.underlying} />
+            {domain && (
+              <OiDistributionChart
+                dist={data.oi_distribution}
+                underlying={data.underlying}
+                domain={domain}
+              />
+            )}
             <div className="mt-sm">
               <div className="mb-xs text-xs text-fg-dim">
                 미결제 상위 행사가 — Max Pain 과 감마 플립이 무엇에 끌려간 값인지 보여줍니다.
@@ -197,7 +236,9 @@ export default function Sentiment() {
             asOf={`전수 ${fullAt}`}
           >
             <GexSummary gex={data.gamma_exposure} />
-            <GexChart gex={data.gamma_exposure} underlying={data.underlying} />
+            {domain && (
+              <GexChart gex={data.gamma_exposure} underlying={data.underlying} domain={domain} />
+            )}
           </Section>
         )}
 
@@ -207,7 +248,9 @@ export default function Sentiment() {
             caveat="IV 절대값은 그 자체로 정보량이 적습니다 — 주식 옵션은 구조적으로 항상 풋이 비쌉니다. 자기 히스토리 대비로 읽어야 의미가 생깁니다. ATM IV 와 리스크리버설만 30초 주기로 갱신됩니다."
             asOf={`곡선 ${fullAt} · ATM ${atmAt}`}
           >
-            <IvSkewChart skew={data.iv_skew} underlying={data.underlying} />
+            {domain && (
+              <IvSkewChart skew={data.iv_skew} underlying={data.underlying} domain={domain} />
+            )}
           </Section>
         )}
 
