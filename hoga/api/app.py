@@ -236,6 +236,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
                 # 들고 있지 않으므로 접근자로 주입한다(호출 시점에 다시 읽는다).
                 get_capture_worker_tasks=lambda: _captures_module._workers,
                 get_program_trade_task=get_program_trade_task,
+                get_inventory_observer=lambda: observer,
                 load_symbol_disk_state=_symbols_module.load_disk_state,
                 needs_symbol_boot_refresh=_symbols_module.needs_boot_refresh,
                 refresh_symbols=_symbols_module.refresh,
