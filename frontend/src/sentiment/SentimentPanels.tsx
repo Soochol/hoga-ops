@@ -5,6 +5,7 @@ import type {
   IvSkew,
   OiDistribution,
   PutCallRatio,
+  PutCallSeriesPoint,
 } from '../api/optionSentiment';
 import {
   AXIS_H,
@@ -190,6 +191,81 @@ export function PutCallPanel({ pc }: { pc: PutCallRatio }) {
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * P/C 비율 당일 추이. 스냅샷 숫자는 "지금 얼마"만 말한다 — "지금 풋이 쌓이는
+ * 중인가" 는 이 곡선의 기울기가 말한다. 1.0 기준선 = 콜/풋 균형.
+ *
+ * 색을 쓰지 않는 이유: 비율은 콜도 풋도 아니라서 빨강/파랑 어느 쪽을 칠해도
+ * 이웃 차트의 콜/풋 인코딩과 충돌한다. 두 계열은 실선(거래량)/점선(미결제)으로
+ * 가른다.
+ */
+export function PutCallSeriesChart({ points }: { points: PutCallSeriesPoint[] }) {
+  const H = 110;
+  if (points.length < 2) {
+    return (
+      <div className="text-xs text-fg-dimmer">
+        추이 축적 중 — 전수 수집(5분)마다 한 점씩 쌓입니다. 서버를 재시작하면 그
+        시점부터 다시 쌓입니다.
+      </div>
+    );
+  }
+  const t0 = points[0].t_ms;
+  const t1 = points[points.length - 1].t_ms;
+  const tSpan = t1 - t0 || 1;
+  const x = (t: number) => PAD_L + ((t - t0) / tSpan) * (CHART_W - PAD_L - PAD_R);
+  const vals = points
+    .flatMap((p) => [p.volume_ratio, p.oi_ratio])
+    .filter((v): v is number => v !== null);
+  // 1.0(균형)을 항상 도메인에 포함 — 기준선이 화면 밖으로 나가면 절대 수준을 잃는다.
+  const lo = Math.min(1, ...vals);
+  const hi = Math.max(1, ...vals);
+  const span = hi - lo || 1;
+  const y = (v: number) => H - 10 - ((v - lo) / span) * (H - 26);
+
+  const path = (pick: (p: PutCallSeriesPoint) => number | null) => {
+    const pts = points
+      .map((p) => ({ t: p.t_ms, v: pick(p) }))
+      .filter((q): q is { t: number; v: number } => q.v !== null);
+    if (pts.length === 0) return null;
+    return pts.map((q, i) => `${i === 0 ? 'M' : 'L'}${x(q.t).toFixed(1)},${y(q.v).toFixed(1)}`).join(' ');
+  };
+  const volPath = path((p) => p.volume_ratio);
+  const oiPath = path((p) => p.oi_ratio);
+  const fmtT = (ms: number) =>
+    new Date(ms).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <svg viewBox={`0 0 ${CHART_W} ${H + AXIS_H}`} className="w-full" role="img" aria-label="P/C 비율 당일 추이">
+      <line
+        x1={PAD_L}
+        x2={CHART_W - PAD_R}
+        y1={y(1)}
+        y2={y(1)}
+        stroke="var(--grid)"
+        strokeWidth={1}
+        strokeDasharray="2 3"
+      />
+      <text x={CHART_W - PAD_R} y={y(1) - 3} fontSize={10} fill="var(--fg-dimmer)" textAnchor="end">
+        1.0 균형
+      </text>
+      {volPath && <path d={volPath} fill="none" stroke="var(--fg)" strokeWidth={1.5} />}
+      {oiPath && (
+        <path d={oiPath} fill="none" stroke="var(--fg-dim)" strokeWidth={1.5} strokeDasharray="4 3" />
+      )}
+      <g fontSize={10} fill="var(--fg-dim)">
+        <line x1={PAD_L} x2={PAD_L + 14} y1={5} y2={5} stroke="var(--fg)" strokeWidth={1.5} />
+        <text x={PAD_L + 18} y={8}>거래량</text>
+        <line x1={PAD_L + 58} x2={PAD_L + 72} y1={5} y2={5} stroke="var(--fg-dim)" strokeWidth={1.5} strokeDasharray="4 3" />
+        <text x={PAD_L + 76} y={8}>미결제</text>
+      </g>
+      <g fontSize={10} fill="var(--fg-dimmer)">
+        <text x={PAD_L} y={H + 13}>{fmtT(t0)}</text>
+        <text x={CHART_W - PAD_R} y={H + 13} textAnchor="end">{fmtT(t1)}</text>
+      </g>
+    </svg>
   );
 }
 

@@ -26,6 +26,7 @@ function ready(over: Partial<OptionSentiment> = {}): OptionSentiment {
     underlying: 1007.83,
     full_as_of_ms: 1_700_000_000_000,
     atm_as_of_ms: 1_700_000_030_000,
+    put_call_series: [],
     put_call: {
       volume_ratio: 0.62,
       oi_ratio: 0.905,
@@ -152,6 +153,26 @@ it('도메인 밖 기준선은 사라지지 않고 가장자리 화살표로 남
   fireEvent.click(screen.getByRole('button', { name: '전체' }));
   expect(screen.queryByText(/◀ 플립/)).not.toBeInTheDocument();
   expect(screen.getByText(/^플립 702.5$/)).toBeInTheDocument();
+});
+
+it('P/C 시계열은 점이 2개 미만이면 축적 안내, 이상이면 곡선을 그린다', () => {
+  mount(ready({ put_call_series: [{ t_ms: 1, volume_ratio: 0.6, oi_ratio: 0.9 }] }));
+  expect(screen.getByText(/추이 축적 중/)).toBeInTheDocument();
+
+  cleanup();
+  mockHook.mockReset();
+  mount(ready({
+    put_call_series: [
+      { t_ms: 1_700_000_000_000, volume_ratio: 0.6, oi_ratio: 0.9 },
+      { t_ms: 1_700_000_300_000, volume_ratio: 0.7, oi_ratio: 0.92 },
+    ],
+  }));
+  expect(screen.getByRole('img', { name: 'P/C 비율 당일 추이' })).toBeInTheDocument();
+  // 1.0 기준선 라벨 — 절대 수준(콜/풋 균형)을 잃지 않게 항상 도메인에 포함된다
+  expect(screen.getByText('1.0 균형')).toBeInTheDocument();
+  // 실선/점선 범례 — 비율은 콜도 풋도 아니라 색으로 못 가른다
+  expect(screen.getByText('거래량')).toBeInTheDocument();
+  expect(screen.getByText('미결제')).toBeInTheDocument();
 });
 
 it('헤더 요약만으로 시장 상태가 잡힌다 — P/C·Max Pain 괴리·총 GEX·RR 해석', () => {
