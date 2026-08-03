@@ -52,6 +52,7 @@ from hoga.live.kis_errors import (
     KisRateLimitError,
     KisTransportError,
 )
+from hoga.live.kis_option_endpoints import KisOptionEndpointsMixin
 from hoga.live.kis_venue import KIS_KST  # noqa: F401  (re-export facade)
 
 log = logging.getLogger(__name__)
@@ -242,7 +243,7 @@ class KisCredentials:
         return _BASE_REAL
 
 
-class KisClient(KisEndpointsMixin):
+class KisClient(KisEndpointsMixin, KisOptionEndpointsMixin):
     def __init__(
         self,
         credentials: KisCredentials,
