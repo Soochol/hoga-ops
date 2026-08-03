@@ -3,10 +3,10 @@ import { CONDITION_CATALOG, makeLeaf } from './catalog';
 import { CONDITION_GROUPS } from './ConditionBuilder';
 
 describe('catalog', () => {
-  it('covers all 13 types incl. 당일/기간내 변형 + 총잔량 신고·돌파 + 신고가 대비 고가', () => {
+  it('covers all 14 types incl. 당일/기간내 변형 + 총잔량 신고·돌파 + 신고가 대비 고가', () => {
     expect(Object.keys(CONDITION_CATALOG).sort()).toEqual(
-      ['ask_depth_new_high', 'ask_depth_renewal', 'bid_depth_new_high', 'change_pct',
-       'high_off_peak', 'ma', 'new_high',
+      ['ask_depth_new_high', 'ask_depth_renewal', 'bid_depth_new_high', 'bid_depth_renewal',
+       'change_pct', 'high_off_peak', 'ma', 'new_high',
        'new_high_today', 'new_high_vol', 'new_high_vol_today', 'price_range',
        'trade_value', 'trade_value_period']);
   });
@@ -44,6 +44,11 @@ describe('catalog', () => {
     // 한 자리 시각도 0 패딩 — '9:5' 같은 요약이 나오지 않게.
     expect(CONDITION_CATALOG.ask_depth_renewal.summarize({ start_hhmm: 905, threshold_pct: 100 }))
       .toBe('09:05 이전 최대의 100%');
+    // 매수 측은 라벨만 다르고 파라미터·요약 규칙은 같다(폼도 공용).
+    expect(makeLeaf('bid_depth_renewal').params).toEqual({ start_hhmm: 1200, threshold_pct: 100 });
+    expect(CONDITION_CATALOG.bid_depth_renewal.label).toBe('매수 총잔량 기준시각 돌파');
+    expect(CONDITION_CATALOG.bid_depth_renewal.summarize({ start_hhmm: 1300, threshold_pct: 120 }))
+      .toBe('13:00 이전 최대의 120%');
   });
   it('renames breakout labels to 기간내, bare label = 당일', () => {
     expect(CONDITION_CATALOG.new_high.label).toBe('기간내 신고가');
