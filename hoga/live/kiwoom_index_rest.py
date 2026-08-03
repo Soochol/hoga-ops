@@ -37,6 +37,10 @@ _MRKT_KOSPI = "0"
 _MRKT_KOSDAQ = "10"
 _KOSDAQ_IDS = frozenset({"KOSDAQ", "KOSDAQ150"})
 
+# 표시 주기 → 키움 TR. **KIS 는 FID_PERIOD_DIV_CODE 하나로 D/W/M 을 처리하지만
+# 키움은 TR 이 갈린다** — 라우팅을 빠뜨리면 주봉 자리에 일봉이 들어가 조용히 틀린다.
+PERIOD_TO_API_ID: dict[str, str] = {"D": "ka20006", "W": "ka20007", "M": "ka20008"}
+
 # 일봉 커서 상한 — 600행/페이지라 한 페이지로 2.4년이 덮인다. 그 이상은 폭주 신호다.
 _MAX_DAILY_PAGES = 8
 _DATE_LEN = 8
@@ -112,8 +116,10 @@ async def fetch_index_daily_candles(
     index: RepresentativeIndex,
     from_yyyymmdd: str,
     to_yyyymmdd: str,
+    *,
+    period: str = "D",
 ) -> IndexCandleFetchResult:
-    """[from, to] 지수 일봉. `base_dt` 랜덤 액세스 + 커서.
+    """[from, to] 지수 일/주/월봉. `base_dt` 랜덤 액세스 + 커서.
 
     **완결성을 데이터로 판정하지 않는다**(ADR-0136 §3). 한 페이지에서 앞이 잘릴 수
     있는 것은 최古 날짜 하나뿐이라는 **프로토콜의 성질**로 판정한다 — 일봉은 날짜가
@@ -121,13 +127,16 @@ async def fetch_index_daily_candles(
     **`from` 이전 날짜를 볼 때까지** 걸어야 `from` 이 온전하다.
     """
     code = index_id_to_kiwoom_code(index.id)
+    api_id = PERIOD_TO_API_ID.get(period)
+    if api_id is None:
+        raise KiwoomIndexRestError(code="UNSUPPORTED_PERIOD", msg=f"period={period!r}")
 
     def _covered(rows: list[dict[str, Any]], _page: Any) -> bool:
         oldest = min((str(r.get("dt") or "") for r in rows if r.get("dt")), default="")
         return bool(oldest) and oldest < from_yyyymmdd
 
     rows, truncated = await client.walk(
-        "ka20006",
+        api_id,
         {"inds_cd": code, "base_dt": to_yyyymmdd},
         max_pages=_MAX_DAILY_PAGES,
         stop=_covered,

@@ -88,6 +88,12 @@ TR: dict[str, TrSpec] = {
                       required=("inds_cd", "tic_scope")),
     "ka20006": TrSpec("ka20006", PATH_CHART, "inds_dt_pole_qry", cursor=True,
                       required=("inds_cd", "base_dt")),
+    # 지수 주/월봉 — KIS 는 FID_PERIOD_DIV_CODE 하나로 D/W/M 을 처리하지만 키움은
+    # **TR 이 갈린다**. 라우팅을 빠뜨리면 주봉 자리에 일봉이 들어가 조용히 틀린다.
+    "ka20007": TrSpec("ka20007", PATH_CHART, "inds_stk_pole_qry", cursor=True,
+                      required=("inds_cd", "base_dt")),
+    "ka20008": TrSpec("ka20008", PATH_CHART, "inds_mth_pole_qry", cursor=True,
+                      required=("inds_cd", "base_dt")),
     "ka10064": TrSpec("ka10064", PATH_CHART, "opmr_invsr_trde_chart",
                       required=("stk_cd", "mrkt_tp", "amt_qty_tp", "trde_tp")),
     # 종목정보 — ka10001 만 flat 이다
