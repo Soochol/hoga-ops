@@ -1,17 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { CONDITION_CATALOG, CONDITION_ORDER, makeLeaf } from './catalog';
+import { CONDITION_CATALOG, makeLeaf } from './catalog';
+import { CONDITION_GROUPS } from './ConditionBuilder';
 
 describe('catalog', () => {
   it('covers all 13 types incl. 당일/기간내 변형 + 총잔량 신고·돌파 + 신고가 대비 고가', () => {
-    expect(CONDITION_ORDER).toHaveLength(13);
     expect(Object.keys(CONDITION_CATALOG).sort()).toEqual(
       ['ask_depth_new_high', 'ask_depth_renewal', 'bid_depth_new_high', 'change_pct',
        'high_off_peak', 'ma', 'new_high',
        'new_high_today', 'new_high_vol', 'new_high_vol_today', 'price_range',
        'trade_value', 'trade_value_period']);
-    // 카탈로그에 있는 타입은 전부 CONDITION_ORDER 에도 있어야 한다 — 빠지면 추가
-    // 메뉴에서 영영 안 보이는데, Record 의 exhaustive 검사는 그걸 못 잡는다.
-    expect([...CONDITION_ORDER].sort()).toEqual(Object.keys(CONDITION_CATALOG).sort());
+  });
+  it('카탈로그의 모든 조건이 추가 메뉴 그룹에 정확히 한 번 들어간다', () => {
+    // 메뉴는 CONDITION_GROUPS 만 보고 그린다. 카탈로그에만 있고 그룹에 없는 조건은
+    // 타입 검사를 통과하면서도 사용자에게 영영 보이지 않는다 — #1021 에서 실제로
+    // 그렇게 빠졌다. 중복도 막는다(같은 조건이 두 그룹에 뜨는 것도 버그).
+    const inMenu = CONDITION_GROUPS.flatMap(([, types]) => types);
+    expect([...inMenu].sort()).toEqual(Object.keys(CONDITION_CATALOG).sort());
+    expect(new Set(inMenu).size).toBe(inMenu.length);
   });
   it('신고가 대비 고가 조건: 기본 파라미터 + 라벨 + 요약', () => {
     expect(makeLeaf('high_off_peak').params).toEqual({ period: 250, pct: 30, side: 'within' });
