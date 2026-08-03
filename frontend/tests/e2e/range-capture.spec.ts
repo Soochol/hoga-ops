@@ -1,6 +1,15 @@
 import { test, expect, request } from '@playwright/test';
 import { selectSymbol, tradingDates } from './helpers/calendar';
+import { observeCaptureQueue } from './helpers/captureEvents';
 import { resetQueue } from './helpers/queue';
+
+// **기본 30초로는 안 된다 — 이 스펙은 백엔드에서 진짜 작업을 시킨다.**
+// 캡처 6건 × 1,523 페이지이고, 실측(32코어 개발기)이 건당 2.8~3.9초 · 스펙 전체 9.0초다.
+// 2코어 공유 러너에서는 GIL 경합으로 몇 배가 되므로 기본 예산이 곧바로 구속조건이 된다
+// (2026-08-03 CI: `Test timeout of 30000ms exceeded`). 여유를 실측의 ~13배로 잡는다.
+// 아래 대기들은 벽시계가 아니라 WS 프레임으로 깨어나므로, 이 값은 교착 백스톱이지
+// 성능 예산이 아니다.
+test.setTimeout(120_000);
 
 test('range-capture: search → pick 3 trading days → Start → queue progresses to done × 3', async ({ page }) => {
   // 날짜는 런타임에 고른다 — 이전 판의 20260518/20 은 작성 시점(2026-05)에만 존재했다.
@@ -11,6 +20,8 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   const api = await request.newContext();
   await api.post('http://127.0.0.1:8765/api/test/cookie_expire_at', { data: { index: -1 } });
 
+  // 네비게이션 **전에** 붙인다 — 앱이 첫 로드에서 /api/ws 를 연다.
+  const queueEvents = observeCaptureQueue(page);
   await selectSymbol(page);
   // 큐는 전역이라 앞선 스펙의 행이 남아 있다 — 개수를 세기 전에 비운다.
   await resetQueue(page);
@@ -20,7 +31,8 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   await page.getByTestId(`calendar-cell-${days[0]}`).click();
   await page.getByTestId(`calendar-cell-${days[2]}`).click();
 
-  // 3. Start.
+  // 3. Start. 드레인 프레임은 **클릭 전에** 예약한다(클릭 후면 놓칠 수 있다).
+  const drained1 = queueEvents.nextDrained();
   await page.getByRole('button', { name: /Start/i }).click();
 
   // 4. capture_queued WebSocket event (ch:'event'): 3 rows appear.
@@ -32,7 +44,13 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   // 5. Phase transitions visible — wait for header summary to read "3 of 3 done".
   //    업스트림 없이도 도달한다 — HOGA_ENABLE_TEST_ENDPOINTS=1 이면 FakeHogaplayClient 가
   //    결정론적 페이지를 내준다(날짜 무관).
-  await expect(page.locator('text=/3 of 3 done/')).toBeVisible({ timeout: 15_000 });
+  //
+  //    **캡처 작업이 끝나는 것과 UI 가 그걸 그리는 것을 분리한다.** 앞의 대기는 백엔드
+  //    프레임(`capture_queue_drained`)으로 깨어나므로 러너 속도에 좌우되지 않고, 캡처가
+  //    실패하면 15초를 기다리는 대신 즉시 그 에러로 죽는다. 뒤의 단언은 이제 렌더 반영만
+  //    본다 — UI 회귀는 그대로 잡히면서 바운드는 짧아도 된다.
+  await drained1;
+  await expect(page.locator('text=/3 of 3 done/')).toBeVisible({ timeout: 10_000 });
 
   // 6. Append a second symbol's range — multi-symbol queue test.
   // **이름이 아니라 코드로 찾는다.** 'SK' 로 검색하면 20건이 돌아오고 SK하이닉스 는
@@ -49,8 +67,10 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   const days2 = await tradingDates(page, 3, 5);
   await page.getByTestId(`calendar-cell-${days2[0]}`).click();
   await page.getByTestId(`calendar-cell-${days2[2]}`).click();
+  const drained2 = queueEvents.nextDrained();
   await page.getByRole('button', { name: /Start/i }).click();
-  await expect(page.locator('text=/6 of 6 done/')).toBeVisible({ timeout: 15_000 });
+  await drained2;
+  await expect(page.locator('text=/6 of 6 done/')).toBeVisible({ timeout: 10_000 });
 
   // 7. Cancel All — drains any leftover queued; verify it does not crash.
   await page.getByRole('button', { name: /Cancel All/i }).click();
@@ -61,6 +81,12 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   // **취소가 반영될 때까지 기다린 뒤에 누른다.** Cancel All 은 비동기라, 진행/대기 행이
   // terminal 로 내려앉기 전에 Dismiss 를 누르면 그 행들이 그대로 남는다(CI 에서 2건
   // 잔존). 로컬은 이미 전부 done 이라 우연히 통과했다.
+  //
+  // **여기는 `nextDrained()` 로 바꾸면 안 된다.** 위에서 "6 of 6 done" 을 확인한 뒤라
+  // 큐도 활성도 이미 비어 있고, 그러면 `_finalize_item` 이 돌지 않아 드레인 프레임이
+  // **아예 나오지 않는다**(captures.py: 드레인은 마지막 항목의 finalize 안에서만 발행).
+  // 예약해 두면 백스톱까지 매달린다. 반대로 여기서 기다리는 일(취소 반영)은 캡처 작업이
+  // 아니라 UI 정착이라 부하에 민감하지도 않다 — 벽시계 바운드가 맞는 자리다.
   await expect(page.getByRole('button', { name: /^Capture row .* (capturing|queued)/ }))
     .toHaveCount(0, { timeout: 15_000 });
   await page.getByRole('button', { name: /Dismiss Done/i }).click();
