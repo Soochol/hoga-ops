@@ -284,6 +284,7 @@ export function Screener() {
                   ask: editor.conditions.some((c) => c.type === 'ask_depth_new_high'),
                   bid: editor.conditions.some((c) => c.type === 'bid_depth_new_high'),
                   askRenewal: editor.conditions.some((c) => c.type === 'ask_depth_renewal'),
+                  bidRenewal: editor.conditions.some((c) => c.type === 'bid_depth_renewal'),
                 }}
               />
             </>

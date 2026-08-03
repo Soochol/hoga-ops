@@ -56,6 +56,17 @@ def _no_real_mst_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(kis_master, "download_master", _blocked)
 
+    # 옵션 심리 패널(ADR-0135)의 지수선물옵션 .mst 도 같은 부류의 실 다운로드다.
+    # 수집 런타임이 이걸 부르므로 같은 가드 아래 둔다.
+    from hoga.api import kis_option_master
+
+    def _blocked_option() -> bytes:
+        raise kis_option_master.KisOptionMasterFetchError(
+            "옵션 .mst download blocked in tests (autouse guard)"
+        )
+
+    monkeypatch.setattr(kis_option_master, "download_option_master", _blocked_option)
+
 
 @pytest.fixture(autouse=True)
 def _no_env_reload_on_retry(monkeypatch: pytest.MonkeyPatch) -> None:

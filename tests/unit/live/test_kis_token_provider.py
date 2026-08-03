@@ -7,8 +7,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from hoga.live.kis_client import KIS_KST, KisAuthError, KisCredentials
+from hoga.live.kis_client import KisAuthError, KisCredentials
 from hoga.live.kis_token_provider import KisTokenProvider, _key_fingerprint
+from hoga.util.timeenc import KST
 
 
 def _creds() -> KisCredentials:
@@ -92,7 +93,7 @@ def test_on_issue_failure_not_called_on_success(tmp_path: Path) -> None:
 
 
 def test_token_near_expiry_triggers_reissue(tmp_path: Path) -> None:
-    near_expiry = (datetime.now(KIS_KST) + timedelta(minutes=5)).isoformat()
+    near_expiry = (datetime.now(KST) + timedelta(minutes=5)).isoformat()
     cache = tmp_path / "token.json"
     cache.write_text(json.dumps({"access_token": "STALE", "expires_at": near_expiry}))
     transport = httpx.MockTransport(
@@ -201,7 +202,7 @@ def test_get_token_is_thread_safe(tmp_path: Path) -> None:
 
 def test_valid_disk_cache_returns_without_issue(tmp_path: Path) -> None:
     """A fresh provider with a far-future disk token returns it without any POST."""
-    far_future = (datetime.now(KIS_KST) + timedelta(hours=20)).isoformat()
+    far_future = (datetime.now(KST) + timedelta(hours=20)).isoformat()
     cache = tmp_path / "token.json"
     cache.write_text(_disk_cache_json("DISK", far_future))
     calls = {"n": 0}
@@ -222,7 +223,7 @@ def test_disk_cache_for_other_app_key_is_a_miss(tmp_path: Path) -> None:
     """Key rotation: a valid-looking token issued for ANOTHER app key must not
     be served — it is a guaranteed auth mismatch with the new key's headers.
     Pre-fix this was served for up to ~24h with no recovery path."""
-    far_future = (datetime.now(KIS_KST) + timedelta(hours=20)).isoformat()
+    far_future = (datetime.now(KST) + timedelta(hours=20)).isoformat()
     cache = tmp_path / "token.json"
     cache.write_text(_disk_cache_json("OLD_KEY_TOKEN", far_future, app_key="ROTATED_AWAY"))
     transport = httpx.MockTransport(

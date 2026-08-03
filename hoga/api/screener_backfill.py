@@ -236,51 +236,50 @@ async def run_backfill_with(sdir: Path, *, fetch_adj: FetchAdj, fetch_raw: Fetch
 
 
 async def run_backfill(data_dir: Path) -> dict:
-    """프로덕션 진입: KIS 클라이언트로 fetch_adj/fetch_raw 를 묶어 run_backfill_with 실행."""
+    """프로덕션 진입: 키움 클라이언트로 fetch_adj/fetch_raw 를 묶어 run_backfill_with 실행."""
     from datetime import datetime  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
-    from hoga.live import kis_access  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
-    from hoga.live.kis_capacity_runtime import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        ensure_kis_capacity_scheduler,
+    from hoga.live import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        kiwoom_access,
+        kiwoom_daily_candles,
+        kiwoom_rest_runtime,
     )
-    from hoga.live.kis_client import KIS_KST  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    from hoga.util.timeenc import KST  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     sdir = data_dir / "screener"
     # 전체 백필도 배경 배치이므로 Capacity Scheduler에 맡긴다. creds 게이트만 먼저
     # 유지해서 기존처럼 백필은 조용히 skip하지 않고 loud fail 한다.
-    if not kis_access.has_rest_capacity(data_dir):
-        raise RuntimeError("KIS creds missing (KIS_APP_KEY/SECRET) — cannot backfill")
-    scheduler = ensure_kis_capacity_scheduler(data_dir)
+    # PR-F(#1042) 칼 컷오버 — 소스는 키움 `ka10081` 이다. creds 게이트를 유지하는
+    # 이유는 그대로다: 백필은 조용히 skip 하지 않고 loud fail 해야 한다.
+    client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
+    if client is None:
+        raise RuntimeError("키움 자격증명 없음(KIWOOM_APP_KEY/SECRET) — 백필 불가")
+    scheduler = kiwoom_rest_runtime.ensure_scheduler()
+
+    async def _daily(code: str, frm: str, to: str, *, adjust: bool, tag: str):
+        """**`adjust` 극성은 어댑터가 뒤집는다.** 키움 `upd_stkpc_tp` 는 KIS 의
+        `FID_ORG_ADJ_PRC` 와 반대라(1=수정주가) 여기서 불리언을 그대로 넘기고
+        와이어 값 변환은 `kiwoom_daily_candles.adjust_flag` 한 곳에만 둔다."""
+        return await kiwoom_access.run_with_capacity(
+            scheduler,
+            key=(f"screener-backfill-{tag}", code, frm, to),
+            api_id=kiwoom_daily_candles.API_ID,
+            priority="background",
+            client=client,
+            fetch_fn=lambda c: kiwoom_daily_candles.fetch_daily_candles(
+                c, code, frm, to, adjust=adjust,
+            ),
+        )
 
     async def fetch_adj(code: str, frm: str, to: str):
-        async def _do(client):
-            res = await client.fetch_past_daily_candles(code, frm, to, adjust=True)   # 수정주가
-            return [(datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(), float(c.close))
-                    for c in res.candles]
-        return await kis_access.run_with_capacity(
-            scheduler,
-            data_dir=data_dir,
-            key=("screener-backfill-adj", code, frm, to),
-            endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
-            priority="background",
-            cooldown_scope="screener-daily",
-            fetch_fn=_do,
-        )
+        res = await _daily(code, frm, to, adjust=True, tag="adj")   # 수정주가
+        return [(datetime.fromtimestamp(c.t_ms / 1000, tz=KST).date(), float(c.close))
+                for c in res.candles]
 
     async def fetch_raw(code: str, frm: str, to: str):
-        async def _do(client):
-            res = await client.fetch_past_daily_candles(code, frm, to, adjust=False)  # 원주가
-            return [DailyBar(code, datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(),
-                             float(c.open), float(c.high), float(c.low), float(c.close), c.volume)
-                    for c in res.candles]
-        return await kis_access.run_with_capacity(
-            scheduler,
-            data_dir=data_dir,
-            key=("screener-backfill-raw", code, frm, to),
-            endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
-            priority="background",
-            cooldown_scope="screener-daily",
-            fetch_fn=_do,
-        )
+        res = await _daily(code, frm, to, adjust=False, tag="raw")  # 원주가
+        return [DailyBar(code, datetime.fromtimestamp(c.t_ms / 1000, tz=KST).date(),
+                         float(c.open), float(c.high), float(c.low), float(c.close), c.volume)
+                for c in res.candles]
 
     return await run_backfill_with(sdir, fetch_adj=fetch_adj, fetch_raw=fetch_raw)

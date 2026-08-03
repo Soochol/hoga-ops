@@ -246,21 +246,25 @@ async def test_catchup_all_per_entry_failure_does_not_abort(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_catchup_all_surfaces_trading_day_unavailable(tmp_path: Path):
-    """End-to-end through the REAL catchup_one_entry: a KIS calendar outage must
-    produce the structured error envelope (error.code) per entry."""
-    from hoga.api import kis_holidays as kis_holidays_module
+    """PR-H(#1044) — **달력이 커버리지 밖일 때만 이 오류가 남는다.**
+
+    원래는 KIS chk-holiday 실패를 몽키패치해 재현했다. 이제 달력은 커밋된 정적
+    시드라 조회가 실패하지 않으므로, 이 표면이 오류를 내는 유일한 조건은
+    "요청 구간이 달력 커버리지를 넘는다" 이다. 그걸 소스 스텁으로 재현한다.
+    """
+    from hoga.api import calendar as calendar_module
     from hoga.api.calendar import reset_cache_for_tests
 
     await _seed_backend(tmp_path, code="003490", name="대한항공", today_kst_date="20260520")
     fake_now = dt.datetime(2026, 5, 27, 19, 0, tzinfo=KST)
 
-    def _raise(year, month):
-        raise kis_holidays_module.KisHolidayFetchError("upstream down")
-
     reset_cache_for_tests()
     try:
         with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
-             patch.object(kis_holidays_module, "fetch_month_trading_days", _raise):
+             patch.object(
+                 calendar_module.trading_days_source, "trading_days",
+                 lambda _data_dir=None: frozenset(),
+             ):
             client = TestClient(_app(tmp_path))
             r = client.post("/api/watchlist/catchup")
     finally:
@@ -273,25 +277,6 @@ async def test_catchup_all_surfaces_trading_day_unavailable(tmp_path: Path):
         "message": "Trading-day list unavailable (KIS).",
     }
     assert results["003490"]["enqueued_count"] == 0
-
-
-@pytest.mark.asyncio
-async def test_catchup_one_route_maps_trading_day_unavailable_to_503(tmp_path: Path):
-    """Per-row catch-up: TradingDayUnavailableError → 503 with the stable code."""
-    from hoga.api.calendar import TradingDayUnavailableError
-    from hoga.api.error_codes import UpstreamCode
-
-    await _seed_backend(tmp_path, code="003490", name="대한항공", today_kst_date="20260520")
-    fake_now = dt.datetime(2026, 5, 27, 19, 0, tzinfo=KST)
-    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
-         patch("hoga.api.watchlist_routes.catchup_one_entry",
-               new_callable=AsyncMock,
-               side_effect=TradingDayUnavailableError(
-                   UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)):
-        client = TestClient(_app(tmp_path))
-        r = client.post("/api/watchlist/003490/catchup")
-    assert r.status_code == 503
-    assert r.json()["detail"]["code"] == "kis_holiday_fetch_failed"
 
 
 def test_catchup_all_empty_watchlist_returns_empty_results(tmp_path: Path):

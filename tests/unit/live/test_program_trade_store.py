@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from hoga.live.kis_client import KIS_KST
+from hoga.util.timeenc import KST
 
 
 def row(bsop_hour: str, net_amount: int):
@@ -188,14 +188,14 @@ def test_program_trade_store_quarantines_future_sidecar_and_accepts_current_rows
         code="005930",
         date="20260626",
         rows=[row("152801", 15_280_100), row("180242", 18_024_200)],
-        observed_at_ms=int(datetime(2026, 6, 26, 0, 37, 15, tzinfo=KIS_KST).timestamp() * 1000),
+        observed_at_ms=int(datetime(2026, 6, 26, 0, 37, 15, tzinfo=KST).timestamp() * 1000),
     )
 
     result = store.merge_response(
         code="005930",
         date="20260626",
         rows=[row("131155", 13_115_500), row("131544", 13_154_400)],
-        observed_at_ms=int(datetime(2026, 6, 26, 13, 15, 50, tzinfo=KIS_KST).timestamp() * 1000),
+        observed_at_ms=int(datetime(2026, 6, 26, 13, 15, 50, tzinfo=KST).timestamp() * 1000),
     )
 
     assert [p.bsop_hour for p in result.rows] == ["131155", "131544"]
@@ -212,7 +212,7 @@ def test_load_cached_hits_unchanged_and_reloads_after_write(tmp_path):
     from hoga.live.program_trade_store import ProgramTradeStore
 
     store = ProgramTradeStore(tmp_path)
-    obs = int(datetime(2026, 6, 26, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    obs = int(datetime(2026, 6, 26, 10, 0, 0, tzinfo=KST).timestamp() * 1000)
     store.merge_response(code="005930", date="20260626", rows=[row("100000", 1_000)], observed_at_ms=obs)
 
     a = store.load_cached("005930", "20260626")
@@ -234,7 +234,7 @@ def test_load_cached_does_not_poison_writer_path(tmp_path):
     from hoga.live.program_trade_store import ProgramTradeStore
 
     store = ProgramTradeStore(tmp_path)
-    obs = int(datetime(2026, 6, 26, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    obs = int(datetime(2026, 6, 26, 10, 0, 0, tzinfo=KST).timestamp() * 1000)
     store.merge_response(code="005930", date="20260626", rows=[row("100000", 1_000)], observed_at_ms=obs)
     store.load_cached("005930", "20260626")  # 캐시 예열
 

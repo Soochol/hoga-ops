@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 from hoga.live import account_health, api as live_api, kis_runtime, lifecycle
 from hoga.live.api import _KST, _quote_phase, build_router
 from hoga.live.buffer import LiveBuffer
-from hoga.live.kis_capacity_scheduler import KisCapacityCooldown, KisCapacityOverloaded
 from hoga.live.kis_client import KisQuote
+from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 
 
@@ -24,6 +24,36 @@ def _hermetic_kis_env(monkeypatch):
     for _k in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_APP_KEY_2", "KIS_APP_SECRET_2"):
         monkeypatch.delenv(_k, raising=False)
     lifecycle.reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _bridge_kis_seed_to_kiwoom(monkeypatch):
+    """PR-D(#1040) 칼 컷오버 이후에도 **기존 테스트 의도를 그대로** 살리는 브리지.
+
+    이 파일의 테스트들은 "KIS 클라이언트가 있다/없다" 를 `kis_runtime` 시드로
+    표현한다. 라우트가 키움을 쓰게 됐으므로 그 시드를 **키움 클라이언트 자리로
+    이어준다** — creds 부재 → None → 빈 결과 같은 불변식이 재작성 없이 보존된다.
+
+    어댑터 모듈 함수는 전달된 클라이언트의 메서드로 위임한다(와이어 파싱은
+    `test_kiwoom_multi_quote` 가 덮는다).
+    """
+    def _client(data_dir, account_id=0):
+        seeded = live_api.kis_runtime.get_kis_client(0)
+        if seeded is not None:
+            return seeded
+        return live_api.kis_runtime.ensure_kis_client_from_env(data_dir)
+
+    async def _fetch(client, codes, *, venue="KRX"):
+        return await client.fetch_multi_price(codes, venue=venue)
+
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_rest_client", _client)
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda: object())
+    monkeypatch.setattr(live_api.kiwoom_multi_quote, "fetch_multi_price", _fetch)
+
+    async def _run(scheduler, *, key, api_id, priority, fetch_fn, client):
+        return await fetch_fn(client)
+
+    monkeypatch.setattr(live_api.kiwoom_access, "run_with_capacity", _run)
 
 
 class _FakeKis:
@@ -578,7 +608,7 @@ def test_quotes_capacity_timeout_returns_stale_last_good(monkeypatch, tmp_path):
 
         await asyncio.sleep(10)
 
-    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", never_returns)
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", never_returns)
 
     r2 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
 
@@ -592,27 +622,9 @@ def test_quotes_capacity_timeout_returns_stale_last_good(monkeypatch, tmp_path):
     assert body["quotes"][0]["stale_reason"] == "kis_capacity_timeout"
 
 
-def test_quotes_capacity_cooldown_returns_stale_last_good(monkeypatch, tmp_path):
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
-    fake = _CountingFakeKis(QUOTES)
-    c = TestClient(_counting_app(fake, tmp_path))
-
-    seed = c.get("/api/live/quotes", params={"codes": "005930,000660"})
-    assert seed.status_code == 200
-    assert fake.calls == 1
-
-    async def raise_cooldown(*_args, **_kwargs):
-        raise KisCapacityCooldown("cooldown")
-
-    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", raise_cooldown)
-
-    response = c.get("/api/live/quotes", params={"codes": "005930,000660"})
-
-    assert response.status_code == 200
-    body = response.json()
-    assert [q["code"] for q in body["quotes"]] == ["005930", "000660"]
-    assert body["quotes"][0]["stale"] is True
-    assert body["quotes"][0]["stale_reason"] == "kis_capacity_cooldown"
+# `test_quotes_capacity_cooldown_returns_stale_last_good` 는 PR-D(#1040)에서
+# 삭제했다 — 계정별 쿨다운은 KIS 계정 풀의 개념이고, 키움 유량은 TR별이라
+# 고를 계정이 없다(#1015). 강등 경로가 타임아웃·과부하 둘로 줄었다.
 
 
 def test_quotes_capacity_overloaded_returns_stale_last_good(monkeypatch, tmp_path):
@@ -625,9 +637,9 @@ def test_quotes_capacity_overloaded_returns_stale_last_good(monkeypatch, tmp_pat
     assert fake.calls == 1
 
     async def raise_overloaded(*_args, **_kwargs):
-        raise KisCapacityOverloaded("overloaded")
+        raise KiwoomCapacityOverloaded("overloaded")
 
-    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", raise_overloaded)
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", raise_overloaded)
 
     response = c.get("/api/live/quotes", params={"codes": "005930,000660"})
 

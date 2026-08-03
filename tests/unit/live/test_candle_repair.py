@@ -10,7 +10,7 @@ from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.queries import QueryEngine
 from hoga.api.sources import resolve_source_result
 from hoga.live import candle_repair
-from hoga.live.kis_models import KisCandle
+from hoga.live.candle_models import LiveCandle
 from hoga.tables import candles as candles_tbl
 from hoga.util.timeenc import ms_from_midnight_to_unix_ms
 
@@ -26,19 +26,19 @@ def _force_trading_day(monkeypatch: pytest.MonkeyPatch):
     candle_repair._inflight.clear()
 
 
-def _kis_candles() -> list[KisCandle]:
+def _kis_candles() -> list[LiveCandle]:
     open_unix = ms_from_midnight_to_unix_ms(_DATE, 90000000)  # 09:00
     return [
-        KisCandle(t_ms=open_unix, open=100, high=110, low=95, close=105, volume=1000),
-        KisCandle(t_ms=open_unix + 60_000, open=105, high=108, low=101, close=102, volume=800),
+        LiveCandle(t_ms=open_unix, open=100, high=110, low=95, close=105, volume=1000),
+        LiveCandle(t_ms=open_unix + 60_000, open=105, high=108, low=101, close=102, volume=800),
     ]
 
 
-async def _fetch_ok(code: str, date_s: str) -> list[KisCandle]:
+async def _fetch_ok(code: str, date_s: str) -> list[LiveCandle]:
     return _kis_candles()
 
 
-async def _fetch_empty(code: str, date_s: str) -> list[KisCandle]:
+async def _fetch_empty(code: str, date_s: str) -> list[LiveCandle]:
     return []
 
 

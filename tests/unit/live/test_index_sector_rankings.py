@@ -458,3 +458,28 @@ def test_build_index_sector_rankings_marks_missing_previous_close(tmp_path: Path
     assert stock.change_pct is None
     assert stock.missing_reason == "no_previous_close"
     assert result.sectors[0].change_pct is None
+
+
+@pytest.fixture(autouse=True)
+def _bridge_kis_seed_to_kiwoom(monkeypatch):
+    """PR-D(#1040) 칼 컷오버 브리지 — `kis_runtime` 시드를 키움 클라이언트 자리로.
+
+    이 파일의 테스트는 "클라이언트가 있다/없다" 를 KIS 시드로 표현한다. 라우트가
+    키움을 쓰게 됐으므로 그 시드를 이어주면 기존 불변식이 재작성 없이 보존된다.
+    """
+    def _client(data_dir, account_id=0):
+        seeded = live_api.kis_runtime.get_kis_client(0)
+        if seeded is not None:
+            return seeded
+        return live_api.kis_runtime.ensure_kis_client_from_env(data_dir)
+
+    async def _fetch(client, codes, *, venue="KRX"):
+        return await client.fetch_multi_price(codes, venue=venue)
+
+    async def _run(scheduler, *, key, api_id, priority, fetch_fn, client):
+        return await fetch_fn(client)
+
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_rest_client", _client)
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda: object())
+    monkeypatch.setattr(live_api.kiwoom_multi_quote, "fetch_multi_price", _fetch)
+    monkeypatch.setattr(live_api.kiwoom_access, "run_with_capacity", _run)
