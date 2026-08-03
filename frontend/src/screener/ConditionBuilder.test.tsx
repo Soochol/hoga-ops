@@ -76,4 +76,25 @@ describe('ConditionBuilder', () => {
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole('menuitem', { name: '기간내 신고가' })).not.toBeInTheDocument();
   });
+
+  it('매수 총잔량 기준시각 돌파가 메뉴에 뜨고, 고르면 조건이 추가된다', () => {
+    const onConditions = vi.fn();
+    render(<ConditionBuilder {...base} onConditionsChange={onConditions} onUniverseChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '매수 총잔량 기준시각 돌파' }));
+    expect(onConditions).toHaveBeenCalledWith([expect.objectContaining({
+      type: 'bid_depth_renewal', params: { start_hhmm: 1200, threshold_pct: 100 },
+    })]);
+  });
+
+  it('매도 총잔량 기준시각 돌파가 호가 잔량 그룹에 뜨고, 고르면 조건이 추가된다', () => {
+    const onConditions = vi.fn();
+    render(<ConditionBuilder {...base} onConditionsChange={onConditions} onUniverseChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
+    expect(screen.getByText('호가 잔량')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: '매도 총잔량 기준시각 돌파' }));
+    expect(onConditions).toHaveBeenCalledWith([expect.objectContaining({
+      type: 'ask_depth_renewal', params: { start_hhmm: 1200, threshold_pct: 100 },
+    })]);
+  });
 });

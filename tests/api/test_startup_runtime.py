@@ -506,3 +506,61 @@ def test_one_shot_registry_matches_the_tasks_actually_spawned() -> None:
     )
     for name in startup_runtime.ONE_SHOT_TASK_NAMES:
         assert f'name="{name}"' in spawn_sites, f"{name} 이 생성처에 없다"
+
+
+@pytest.mark.asyncio
+async def test_inventory_observer_liveness_is_reported(tmp_path: Path) -> None:
+    """인벤토리 옵서버(watchdog **스레드**)도 감독 대상이다.
+
+    이 감독이 없으면 옵서버가 죽어도 아무 표면에 안 나타난다 — HTTP 는 멀쩡하고
+    (얕은 health 통과), asyncio 태스크가 아니라 태스크 목록에도 안 잡힌다. 그 뒤로
+    캡처가 끝나도 인벤토리 SSE 가 조용히 멈춘다. parquet 트리가 커져 inotify
+    watch 한도를 소진하면 실제로 그렇게 된다.
+    """
+    from hoga.api.startup_runtime import AppStartupRuntime, StartupRuntimeDeps
+
+    class _Observer:
+        def __init__(self, alive: bool) -> None:
+            self._alive = alive
+
+        def is_alive(self) -> bool:
+            return self._alive
+
+    def _runtime(observer: object | None) -> AppStartupRuntime:
+        deps = StartupRuntimeDeps(
+            env={},
+            start_scheduler=lambda _d: [],
+            start_live_stream=None,  # type: ignore[arg-type]
+            start_today_promoter=None,  # type: ignore[arg-type]
+            stop_today_promoter=None,  # type: ignore[arg-type]
+            stop_live_stream=None,  # type: ignore[arg-type]
+            aclose_kis_capacity_scheduler=None,  # type: ignore[arg-type]
+            aclose_kis_client=None,  # type: ignore[arg-type]
+            load_symbol_disk_state=lambda **_k: None,
+            needs_symbol_boot_refresh=lambda: False,
+            refresh_symbols=None,  # type: ignore[arg-type]
+            resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+            get_inventory_observer=lambda: observer,
+        )
+        return AppStartupRuntime(
+            scheduler_tasks=[], today_promoter_task=None, deps=deps,
+        )
+
+    def _state(observer: object | None) -> str:
+        rows = _runtime(observer).supervised_task_health()
+        return next(r["state"] for r in rows if r["name"] == "inventory-observer")
+
+    assert _state(_Observer(alive=True)) == "running"
+    assert _state(_Observer(alive=False)) == "dead"
+    # 미주입·판정 불가는 경보가 아니다 — 감독 코드가 타입 가정으로 죽으면 안 된다.
+    assert _state(None) == "not_started"
+    assert _state(object()) == "not_started"
+
+
+def test_app_wires_the_inventory_observer_into_supervision() -> None:
+    """배선 봉인 — 접근자를 만들고 안 꽂으면 사각이 그대로 남는다."""
+    import inspect
+
+    from hoga.api import app as app_mod
+
+    assert "get_inventory_observer=" in inspect.getsource(app_mod.create_app)

@@ -118,4 +118,62 @@ describe('가상화 임계', () => {
     expect(container.querySelector('[data-testid="screener-result-rows"]')!
       .getAttribute('data-virtualized')).toBe('true');
   });
+
+  describe('기준시각 돌파 배지', () => {
+    const v = {
+      ask_today: null, ask_past_peak: null, ask_have_days: 0, ask_need_days: 0,
+      bid_today: null, bid_past_peak: null, bid_have_days: 0, bid_need_days: 0,
+      ask_pre_max: 1012716, ask_post_max: 2489755, ask_renewal_start_hhmm: 1200,
+    };
+    const renderWith = (sides: { ask: boolean; bid: boolean; askRenewal?: boolean; bidRenewal?: boolean }) =>
+      render(withClient(
+        <ResultTable rows={rows} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()}
+          depthValues={{ '005930': v }} depthSides={sides} />,
+      ));
+
+    it('조건이 켜져 있으면 이전→이후 최댓값을 보여준다', () => {
+      renderWith({ ask: false, bid: false, askRenewal: true });
+      expect(screen.getByText('12:00')).toBeInTheDocument();
+      expect(screen.getByText('1,012,716→2,489,755')).toBeInTheDocument();
+    });
+
+    it('조건이 없으면 배지를 그리지 않는다 — 값이 실려 와도', () => {
+      renderWith({ ask: false, bid: false });
+      expect(screen.queryByText('12:00')).not.toBeInTheDocument();
+    });
+
+    it('매수 조건이면 매수 값만 — 매도 값이 실려 와도 새지 않는다', () => {
+      const both = { ...v, bid_pre_max: 500, bid_post_max: 900, bid_renewal_start_hhmm: 1300 };
+      render(withClient(
+        <ResultTable rows={rows} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()}
+          depthValues={{ '005930': both }} depthSides={{ ask: false, bid: false, bidRenewal: true }} />,
+      ));
+      expect(screen.getByText('500→900')).toBeInTheDocument();
+      expect(screen.queryByText('1,012,716→2,489,755')).not.toBeInTheDocument();
+    });
+
+    it('양쪽 다 켜지면 side 라벨과 **각자의 기준시각**을 단다', () => {
+      const both = { ...v, bid_pre_max: 500, bid_post_max: 900, bid_renewal_start_hhmm: 1300 };
+      render(withClient(
+        <ResultTable rows={rows} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()}
+          depthValues={{ '005930': both }}
+          depthSides={{ ask: false, bid: false, askRenewal: true, bidRenewal: true }} />,
+      ));
+      expect(screen.getByText('매도')).toBeInTheDocument();
+      expect(screen.getByText('매수')).toBeInTheDocument();
+      // 시각이 섞이면 한쪽이 남의 시각을 달게 된다 — 둘 다 자기 것을 보여야 한다.
+      expect(screen.getByText('12:00')).toBeInTheDocument();
+      expect(screen.getByText('13:00')).toBeInTheDocument();
+    });
+
+    it('peak 조건만 켜져 있으면 peak 배지만 — 두 숫자가 섞이지 않는다', () => {
+      const mixed = { ...v, ask_today: 2489755, ask_past_peak: 951284, ask_need_days: 20, ask_have_days: 20 };
+      render(withClient(
+        <ResultTable rows={rows} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()}
+          depthValues={{ '005930': mixed }} depthSides={{ ask: true, bid: false }} />,
+      ));
+      expect(screen.getByText('2,489,755/951,284')).toBeInTheDocument();   // peak 배지
+      expect(screen.queryByText('1,012,716→2,489,755')).not.toBeInTheDocument();  // 돌파 배지 없음
+    });
+  });
 });

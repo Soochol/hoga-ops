@@ -171,6 +171,16 @@ uv run hoga prune --include-confirmed-gaps --include-expired-unconfirmed
 이것도 성장률 자체는 줄이지 못하는 **유예**다 — `deep=1` 의 `disk.free_pct` 를
 계속 볼 것.
 
+**파생 트리는 별개 축이고 기본으로 회수된다.** `kis-past-indicators/`(지표 디스크
+캐시)와 `timing/`(수집 타이밍 텔레메트리)는 parquet 에서 재계산되거나 제품 동작에
+쓰이지 않으므로, 잃는 것이 재계산 시간(500~1000ms)뿐이다. 그래서 raw 처럼 옵트인을
+두지 않았다 — 옵트인은 "게이트는 있는데 아무도 안 켜서 쌓인다" 를 재현한다.
+보존 창은 `HOGA_DERIVED_RETENTION_DAYS`(기본 180일).
+
+코드가 더 이상 읽지 않는 트리(`kis-past-candles/`, `_trash_*`)는 `hoga prune` 이
+**항상 보고**하되 삭제는 `--include-dead-trees`(+`--execute`) 옵트인이다 —
+"안 쓴다" 는 판단이고, 판단으로 지우는 것은 명시적이어야 한다.
+
 ### 백업 — 무엇이 유일본인가
 
 데이터는 OS 와 같은 디스크에 있다. 그 디스크가 죽으면 **다시 받을 수 없는 것**이
