@@ -21,7 +21,14 @@ from hoga.api import symbols
 from hoga.api.error_codes import LiveErrorCode
 from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate
 from hoga.api.params import CODE_PATTERN
-from hoga.live import kis_runtime, kiwoom_access, kiwoom_index_rest, kiwoom_rest_runtime, kiwoom_runtime
+from hoga.live import (
+    kis_runtime,
+    kiwoom_access,
+    kiwoom_index_rest,
+    kiwoom_multi_quote,
+    kiwoom_rest_runtime,
+    kiwoom_runtime,
+)
 from hoga.live.index_candles_cache import (
     IndexCandlesCache,
     collect_index_candles_with_cache,
@@ -64,6 +71,7 @@ from hoga.live.kiwoom_rankings import (
     Market as RankingMarket,
     RankingKind,
 )
+from hoga.live.kiwoom_rest import KiwoomRestClient
 from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
@@ -939,7 +947,7 @@ class LiveQuoteFetcher:
 
     async def fetch_and_gate(
         self,
-        kis: KisClient,
+        client: KiwoomRestClient,
         code_list: list[str],
         phase: str,
         today: date | None = None,
@@ -948,7 +956,10 @@ class LiveQuoteFetcher:
     ) -> list[LiveQuote]:
         """code_list 의 시세를 phase 에 맞춰 반환. closed=마지막 **종가** 시세(표본이
         종가가 아니면 재조회 — is_closing_sample), open=라이브, pre_open=등락률 숨김.
-        KIS 실패는 절대 전파하지 않는다(오버레이는 500 금지)."""
+        벤더 실패는 절대 전파하지 않는다(오버레이는 500 금지).
+
+        PR-D(#1040) 칼 컷오버로 소스는 키움 `ka10095` 다. venue 는 KIS 처럼
+        파라미터가 아니라 **종목코드 접미**로 표현된다."""
         day = today or _today_kst_date()
         if phase == "closed":
             # 장외: 마지막 시세 서빙. 단 **종가 표본일 때만** 캐시를 신뢰한다.
@@ -962,7 +973,9 @@ class LiveQuoteFetcher:
             ]
             if refetch:
                 try:
-                    for q in await kis.fetch_multi_price(code_list, venue=venue):
+                    for q in await kiwoom_multi_quote.fetch_multi_price(
+                        client, code_list, venue=venue
+                    ):
                         self._last_quotes[(venue, q.code)] = _QuoteSample(q, phase, day)
                 except Exception as e:  # noqa: BLE001 — 오버레이는 절대 500 금지
                     log.warning("live quotes cold fetch failed (%d codes): %s",
@@ -983,7 +996,9 @@ class LiveQuoteFetcher:
                 rows.append(row)
             return rows
         try:
-            quotes = await kis.fetch_multi_price(code_list, venue=venue)
+            quotes = await kiwoom_multi_quote.fetch_multi_price(
+                client, code_list, venue=venue
+            )
         except Exception as e:  # noqa: BLE001 — 10초 폴링 오버레이는 절대 500 금지;
             # KIS rate-limit/api-error/네트워크 타임아웃 등 무엇이든 빈 결과로 graceful
             # (프론트는 '—' 표시). retry-exhausted 신호는 warning 으로만 남긴다.
@@ -1993,20 +2008,20 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     venue=quote_venue,
                 ),
             )
-        if _kis_scheduler is None:
+        quote_client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
+        if quote_client is None:
             return LiveQuotesResponse(phase=phase, quotes=[])
         try:
             quotes = await asyncio.wait_for(
                 asyncio.shield(
-                    kis_access.run_with_capacity(
-                        _kis_scheduler,
-                        data_dir=data_dir,
+                    kiwoom_access.run_with_capacity(
+                        kiwoom_rest_runtime.ensure_scheduler(),
                         key=("quotes", quote_venue, tuple(sorted(code_list)), phase),
-                        endpoint=kis_access.KisRestEndpoint.QUOTES,
+                        api_id="ka10095",
                         priority="background",
-                        cooldown_scope=f"quotes:{quote_venue}",
-                        fetch_fn=lambda kis: _quote_fetcher.fetch_and_gate(
-                            kis,
+                        client=quote_client,
+                        fetch_fn=lambda c: _quote_fetcher.fetch_and_gate(
+                            c,
                             code_list,
                             phase,
                             today=now.date(),
@@ -2024,15 +2039,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 stale_reason="kis_capacity_timeout",
                 venue=quote_venue,
             )
-        except KisCapacityCooldown:
-            quotes = _quote_fetcher.stale_last_good(
-                code_list,
-                phase,
-                today=now.date(),
-                stale_reason="kis_capacity_cooldown",
-                venue=quote_venue,
-            )
-        except KisCapacityOverloaded:
+        # 계정별 쿨다운(`KisCapacityCooldown`) 분기는 사라졌다 — 그건 KIS 계정 풀의
+        # 개념이고 키움 유량은 TR별이라 고를 계정이 없다(#1015). 남는 강등은
+        # 타임아웃과 큐 과부하 둘뿐이다. `stale_reason` 문자열은 프론트 계약이라
+        # 지금 바꾸지 않는다 — #1046(PR-J)에서 벤더명과 함께 정리한다.
+        except KiwoomCapacityOverloaded:
             quotes = _quote_fetcher.stale_last_good(
                 code_list,
                 phase,
@@ -2065,19 +2076,18 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         quotes: list[LiveQuote] = []
         if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
             quotes = []
-        elif _kis_scheduler is not None:
+        elif (tab_client := kiwoom_rest_runtime.ensure_rest_client(data_dir)) is not None:
             try:
                 quotes = await asyncio.wait_for(
                     asyncio.shield(
-                        kis_access.run_with_capacity(
-                            _kis_scheduler,
-                            data_dir=data_dir,
+                        kiwoom_access.run_with_capacity(
+                            kiwoom_rest_runtime.ensure_scheduler(),
                             key=("tab-metrics-quotes", quote_venue, tuple(sorted(code_list)), phase),
-                            endpoint=kis_access.KisRestEndpoint.QUOTES,
+                            api_id="ka10095",
                             priority="background",
-                            cooldown_scope=f"quotes:{quote_venue}",
-                            fetch_fn=lambda kis: _quote_fetcher.fetch_and_gate(
-                                kis,
+                            client=tab_client,
+                            fetch_fn=lambda c: _quote_fetcher.fetch_and_gate(
+                                c,
                                 code_list,
                                 phase,
                                 today=now.date(),
@@ -2087,7 +2097,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     ),
                     timeout=1.0,
                 )
-            except (TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
+            except (TimeoutError, KiwoomCapacityOverloaded):
                 quotes = []
         quote_by_code = {quote.code: quote for quote in quotes}
 

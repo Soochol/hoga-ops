@@ -33,6 +33,7 @@ import httpx
 from hoga.live.kiwoom_errors import (
     KiwoomApiError,
     KiwoomAuthError,
+    KiwoomBatchLimitError,
     KiwoomRateLimitError,
     KiwoomRestError,
     KiwoomTransportError,
@@ -56,6 +57,9 @@ _HTTP_TOO_MANY = 429
 _RC_RATE_LIMITED = 5
 # authorization 헤더 부재. 자격증명 미설정을 인증 실패와 같은 축으로 다룬다.
 _RC_MSG_NO_AUTH = "1513"
+# **배치 크기 초과.** 벤더가 유량 초과(1700)와 똑같은 return_code 5 + 똑같은 한글
+# 문구로 돌려주므로 대괄호 코드로만 구분된다(#1040 실측). 재시도 대상이 아니다.
+_RC_MSG_BATCH_LIMIT = "1634"
 
 
 @dataclass(frozen=True)
@@ -132,6 +136,10 @@ def _raise_for_body(spec: TrSpec, status: int, body: dict[str, Any]) -> None:
     """벤더 응답을 도메인 예외로 정규화한다 — **HTTP 상태와 return_code 두 축**."""
     rc = body.get("return_code")
     msg = str(body.get("return_msg") or "")
+    if _RC_MSG_BATCH_LIMIT in msg:
+        # **유량 초과보다 먼저 본다** — rc·문구가 같아 순서를 뒤집으면 영구 실패를
+        # 일시 실패로 오분류해 무한 재시도가 된다(#1040).
+        raise KiwoomBatchLimitError(code=rc, msg=msg)
     if status == _HTTP_TOO_MANY or rc == _RC_RATE_LIMITED:
         raise KiwoomRateLimitError(msg or f"HTTP {status}", api_id=spec.api_id)
     if status != httpx.codes.OK:
