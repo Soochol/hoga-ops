@@ -121,7 +121,9 @@ def test_legacy_flat_layout_still_works(tmp_path: Path) -> None:
     resolve_source_dir의 legacy fallback이 정상 동작해야 함.
     """
     code = "003490"
-    date = "20260501"
+    # **실제 거래일이어야 한다.** 20260501 은 근로자의날이라 PR-H(#1044) 이후
+    # 달력이 휴장으로 정확히 답하고, 번들이 그 날을 건너뛴다.
+    date = "20260504"
     sd_dir = tmp_path / "parquet" / date / code
 
     sd_dir.mkdir(parents=True)

@@ -7,8 +7,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.live import kis_access
-from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
+from hoga.live import kis_access, kiwoom_access, kiwoom_multi_quote, kiwoom_rest_runtime
 
 _SCHEMA = {
     "code": pl.Utf8,
@@ -86,23 +85,25 @@ async def build_intraday_overlay(
         if cached is not None and cached_at is not None and now_ms - cached_at <= ttl_ms:
             return cached
 
-        if not kis_access.has_rest_capacity(data_dir):
+        # PR-D(#1040) 칼 컷오버 — 소스는 키움 `ka10095` 다. 쿨다운 스코프 정렬은
+        # 더 필요 없다: 키움 유량은 **TR별**이라 같은 api_id 를 쓰는 호출자끼리
+        # 자동으로 같은 버킷을 공유한다(#1015). 계정 차원이 사라졌기 때문이다.
+        client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
+        if client is None:
             return _empty(["intraday_kis_unavailable"])
 
         try:
-            quotes = await kis_access.run_with_capacity(
-                ensure_kis_capacity_scheduler(data_dir),
-                data_dir=data_dir,
+            quotes = await kiwoom_access.run_with_capacity(
+                kiwoom_rest_runtime.ensure_scheduler(),
                 key=("screener-intraday", today, unique_codes),
-                endpoint=kis_access.KisRestEndpoint.QUOTES,
+                api_id="ka10095",
                 priority="background",
-                # 스크리너 인트라데이는 국내(KRX) 종목 시세만 조회하므로 api.py의
-                # `quotes:{venue}` 쿨다운 스코프(KRX 경로)와 정렬한다. scope가 갈라지면
-                # rate-limit된 계좌를 다른 스코프 호출자가 즉시 재시도한다.
-                cooldown_scope="quotes:KRX",
-                fetch_fn=lambda client: client.fetch_multi_price(list(unique_codes)),
+                client=client,
+                fetch_fn=lambda c: kiwoom_multi_quote.fetch_multi_price(
+                    c, list(unique_codes)
+                ),
             )
-        except Exception:  # noqa: BLE001 — 업스트림(KIS) 경계. 삼키는 게 아니라
+        except Exception:  # noqa: BLE001 — 업스트림 경계. 삼키는 게 아니라
             # intraday_quote_fetch_failed 로 응답에 실어 프론트가 표시한다.
             return _empty(["intraday_quote_fetch_failed"])
 
