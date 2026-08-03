@@ -22,26 +22,19 @@ from hoga.live.candle_fetch_result import (
     DailyInvariantViolation,
     IndexCandleFetchResult,
 )
+from hoga.live.candle_models import IndexCandlePoint, LiveCandle
 from hoga.live.index_registry import RepresentativeIndex
+from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
 from hoga.live.kis_errors import KisApiError
-from hoga.live.kis_models import (
-    IndexCandlePoint,
-    InvestorNetPoint,
-    InvestorTrendEstimateRow,
-    KisCandle,
-)
-from hoga.live.kis_venue import (
-    KIS_KST,
-    KisVenue,
-    kis_venue_div,
-    session_window_hhmmss,
-)
+from hoga.live.kis_venue import kis_venue_div
+from hoga.live.venue import Venue, session_window_hhmmss
+from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
 
 # Default KIS Venue for backwards-compatible callers. New /live candle routes
 # pass an explicit venue value and include it in cache/query keys.
-_DEFAULT_KIS_VENUE: KisVenue = "KRX"
+_DEFAULT_KIS_VENUE: Venue = "KRX"
 _STOCK_MRKT_DIV = kis_venue_div(_DEFAULT_KIS_VENUE)
 
 @dataclass(frozen=True)
@@ -104,7 +97,7 @@ def _daily_anchor_t_ms(date_yyyymmdd: str) -> int:
     """
     dt = datetime(
         int(date_yyyymmdd[:4]), int(date_yyyymmdd[4:6]), int(date_yyyymmdd[6:8]),
-        9, 0, tzinfo=KIS_KST,
+        9, 0, tzinfo=KST,
     )
     return int(dt.timestamp() * 1000)
 
@@ -163,7 +156,7 @@ def _parse_index_minute_row(row: dict[str, Any]) -> IndexCandlePoint:
     dt = datetime(
         int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
         int(hour_str[:2]), int(hour_str[2:4]), int(hour_str[4:6]),
-        tzinfo=KIS_KST,
+        tzinfo=KST,
     )
     return IndexCandlePoint(
         t_ms=int(dt.timestamp() * 1000),
@@ -188,7 +181,7 @@ def _aggregate_index_minute_candles(
     bucket_ms = bucket_seconds * 1000
     buckets: dict[int, list[IndexCandlePoint]] = {}
     for candle in sorted(candles, key=lambda c: c.t_ms):
-        dt = datetime.fromtimestamp(candle.t_ms / 1000, KIS_KST)
+        dt = datetime.fromtimestamp(candle.t_ms / 1000, KST)
         session_open = dt.replace(hour=9, minute=0, second=0, microsecond=0)
         session_open_ms = int(session_open.timestamp() * 1000)
         bucket_start = session_open_ms + ((candle.t_ms - session_open_ms) // bucket_ms) * bucket_ms
@@ -268,14 +261,14 @@ def _prev_day_yyyymmdd(yyyymmdd: str) -> str:
     skeletons otherwise differ (cursor param slot, anchor semantics, termination)
     enough that a unified driver would be leaky — see ADR-0060."""
     d = datetime(
-        int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]), tzinfo=KIS_KST,
+        int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]), tzinfo=KST,
     )
     return (d - timedelta(days=1)).strftime("%Y%m%d")
 
 
 def _next_day_yyyymmdd(yyyymmdd: str) -> str:
     d = datetime(
-        int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]), tzinfo=KIS_KST,
+        int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]), tzinfo=KST,
     )
     return (d + timedelta(days=1)).strftime("%Y%m%d")
 
@@ -300,7 +293,7 @@ class KisEndpointsMixin:
     _MINUTE_PAGE_ANCHOR_STEP_MIN = 100
 
     @staticmethod
-    def _minute_page_anchors(venue: KisVenue, now_hhmmss: str | None = None) -> list[str]:
+    def _minute_page_anchors(venue: Venue, now_hhmmss: str | None = None) -> list[str]:
         """세션 창을 덮는 사전 계산 앵커들 (내림차순, 세션 마감부터).
 
         구 구현은 "다음 앵커 = 응답의 최이른 바 − 1분"인 순차 커서 워크라
@@ -340,9 +333,9 @@ class KisEndpointsMixin:
         code: str,
         date_yyyymmdd: str,
         *,
-        venue: KisVenue = _DEFAULT_KIS_VENUE,
+        venue: Venue = _DEFAULT_KIS_VENUE,
         foreground: bool = False,
-    ) -> list[KisCandle]:
+    ) -> list[LiveCandle]:
         """Fetch 1-minute candles for *code* on *date_yyyymmdd* (KST).
 
         KIS endpoint `inquire-time-dailychartprice` returns at most 120 rows
@@ -372,13 +365,13 @@ class KisEndpointsMixin:
             body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
             return body.get("output2") or []
 
-        now_kst = datetime.now(KIS_KST)
+        now_kst = datetime.now(KST)
         now_hhmmss = now_kst.strftime("%H%M%S") if now_kst.strftime("%Y%m%d") == date_yyyymmdd else None
         anchors = self._minute_page_anchors(venue, now_hhmmss)
         pages = await asyncio.gather(*(one_page(a) for a in anchors))
 
         seen_t_ms: set[int] = set()
-        all_candles: list[KisCandle] = []
+        all_candles: list[LiveCandle] = []
         # 처리 순서는 앵커 내림차순(리스트 순) — dedup 승자 선택이 결정적이다.
         for rows in pages:
             for row in rows:
@@ -398,13 +391,13 @@ class KisEndpointsMixin:
                 dt = datetime(
                     int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
                     int(hhmmss[:2]), int(hhmmss[2:4]), int(hhmmss[4:6]),
-                    tzinfo=KIS_KST,
+                    tzinfo=KST,
                 )
                 t_ms = int(dt.timestamp() * 1000)
                 if t_ms in seen_t_ms:
                     continue
                 try:
-                    candle = KisCandle(
+                    candle = LiveCandle(
                         t_ms=t_ms,
                         open=int(row["stck_oprc"]),
                         high=int(row["stck_hgpr"]),
@@ -434,7 +427,7 @@ class KisEndpointsMixin:
         from_yyyymmdd: str,
         to_yyyymmdd: str,
         *,
-        venue: KisVenue = _DEFAULT_KIS_VENUE,
+        venue: Venue = _DEFAULT_KIS_VENUE,
         adjust: bool = True,
         foreground: bool = False,
     ) -> DailyCandleFetchResult:
@@ -460,7 +453,7 @@ class KisEndpointsMixin:
         # the YYYYMMDD date; for malformed rows missing a date we fall back to
         # a stable hash of the row content.
         seen_keys: set[str] = set()
-        all_candles: list[KisCandle] = []
+        all_candles: list[LiveCandle] = []
         violations: list[DailyInvariantViolation] = []
 
         for _ in range(60):
@@ -475,7 +468,7 @@ class KisEndpointsMixin:
             }
             body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
             rows = body.get("output2") or []
-            page_candles: list[KisCandle] = []
+            page_candles: list[LiveCandle] = []
             page_earliest: str | None = None
             page_latest: str | None = None
             page_progress = False
@@ -545,7 +538,7 @@ class KisEndpointsMixin:
                     page_earliest = date_str
                 if page_latest is None or date_str > page_latest:
                     page_latest = date_str
-                page_candles.append(KisCandle(
+                page_candles.append(LiveCandle(
                     t_ms=t_ms, open=o, high=h, low=l_, close=c, volume=v,
                 ))
 
@@ -720,7 +713,7 @@ class KisEndpointsMixin:
             value=value,
             change=change,
             change_rate=change_rate,
-            t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
+            t_ms=int(datetime.now(KST).timestamp() * 1000),
         )
 
     async def fetch_index_minute_candles(
@@ -835,13 +828,13 @@ class KisEndpointsMixin:
             int(from_yyyymmdd[:4]),
             int(from_yyyymmdd[4:6]),
             int(from_yyyymmdd[6:8]),
-            tzinfo=KIS_KST,
+            tzinfo=KST,
         )
         end = datetime(
             int(to_yyyymmdd[:4]),
             int(to_yyyymmdd[4:6]),
             int(to_yyyymmdd[6:8]),
-            tzinfo=KIS_KST,
+            tzinfo=KST,
         )
         points: list[InvestorNetPoint] = []
         violations: list[InvestorNetInvariantViolation] = []
@@ -896,7 +889,7 @@ class KisEndpointsMixin:
     # fetch_multi_price (FHKST11300006, intstock-multprice)
     # ------------------------------------------------------------------
 
-    async def fetch_multi_price(self, codes: list[str], *, venue: KisVenue = "KRX") -> list[KisQuote]:
+    async def fetch_multi_price(self, codes: list[str], *, venue: Venue = "KRX") -> list[KisQuote]:
         """관심종목/스크리너 결과 코드들의 현재가+등락률 (intstock-multprice)."""
         return await _fetch_multi_price(
             lambda *, path, tr_id, params: self._get(path=path, tr_id=tr_id, params=params),
@@ -1045,7 +1038,7 @@ class KisEndpointsMixin:
 _MULTI_PRICE_CHUNK = 30  # intstock-multprice: 최대 30종목/콜 (FHKST11300006)
 
 
-def _build_multi_price_params(codes_chunk: list[str], *, venue: KisVenue = "KRX") -> dict[str, str]:
+def _build_multi_price_params(codes_chunk: list[str], *, venue: Venue = "KRX") -> dict[str, str]:
     """FID_COND_MRKT_DIV_CODE_N / FID_INPUT_ISCD_N (N=1..30) 번호 키 빌드."""
     market_div = kis_venue_div(venue)
     params: dict[str, str] = {}
@@ -1139,7 +1132,7 @@ def _parse_change_won(raw: str | None, mult: float) -> int | None:
     return int(mult * abs(v))
 
 
-async def _fetch_multi_price(get, codes: list[str], *, venue: KisVenue = "KRX") -> list[KisQuote]:
+async def _fetch_multi_price(get, codes: list[str], *, venue: Venue = "KRX") -> list[KisQuote]:
     """get: async (*, path, tr_id, params)->dict (KisClient._get 와 동일 시그니처).
     30개씩 청크해 intstock-multprice 호출. 청크는 동시 호출(직렬 RTT 제거; 15/s 버킷은
     _get 가 캡). 각 행을 **응답 자신의 inter_shrn_iscd** 로 매핑(위치 의존 X — 누락/

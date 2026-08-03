@@ -3,13 +3,13 @@ dead 재빌드·warmup 술어·재구독). fake conn 주입 + 시각 주입(결�
 import asyncio
 from datetime import datetime
 
-from hoga.live.kis_client import KIS_KST
 from hoga.live.kiwoom_session import KiwoomSessionManager, _KiwoomConn
+from hoga.util.timeenc import KST
 
 
 def _ms(hour: int, minute: int) -> int:
     # 2026-05-27 = 화요일(거래일). 순수 시각만 venue/warmup 파생에 쓰인다.
-    return int(datetime(2026, 5, 27, hour, minute, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    return int(datetime(2026, 5, 27, hour, minute, 0, tzinfo=KST).timestamp() * 1000)
 
 
 _KRX_MS = _ms(10, 0)       # 정규장 → target_ws_venue=KRX (wire=bare)

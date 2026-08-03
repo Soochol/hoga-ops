@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
+from hoga.live.candle_models import IndexCandlePoint
 from hoga.live.index_minute_candles_cache import (
     IndexMinuteCandlesCache,
     collect_index_minute_candles_with_cache,
 )
 from hoga.live.kis_client import IndexCandleFetchResult
-from hoga.live.kis_models import IndexCandlePoint
 
 
 def point(t_ms: int, close: float) -> IndexCandlePoint:

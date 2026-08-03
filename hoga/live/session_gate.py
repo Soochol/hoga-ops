@@ -8,7 +8,7 @@ import asyncio
 from datetime import datetime
 from typing import Literal
 
-from .kis_client import KIS_KST
+from .kis_client import KST
 
 
 def market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed"]:
@@ -21,7 +21,7 @@ def market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed
     Calendar-aware gating (holidays, weekends) lives in :func:`should_run_now`
     so the phase predicate stays pure and reusable from non-poller contexts.
     """
-    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
     h, m = kst.hour, kst.minute
     if h == 15 and m >= 30:  # noqa: PLR2004
         return "after_hours_closing"
@@ -45,7 +45,7 @@ def is_auction_window(t_ms: int) -> bool:
     market_phase 는 09:00–15:30 을 통째로 'regular' 로 보고 08:30–09:00 을 'closed' 로
     봐 동시호가를 구분하지 못하므로, 예상체결 게이트 전용의 별도 술어를 둔다.
     """
-    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
     minutes = kst.hour * 60 + kst.minute
     lo1, hi1 = _PREOPEN_AUCTION_MIN
     lo2, hi2 = _CLOSING_AUCTION_MIN
@@ -72,7 +72,7 @@ def is_trading_day_now(t_ms: int) -> bool:
     이벤트 루프에서 직접 호출 금지. 코루틴은 ``asyncio.to_thread``로 감싸라
     (``ws_capture_window`` blocking 계약과 동일).
     """
-    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
     if kst.weekday() >= 5:  # Saturday/Sunday — never a KRX session  # noqa: PLR2004
         return False
     from hoga.api.calendar_policy import live_session_allowed_today  # noqa: PLC0415
@@ -131,7 +131,7 @@ _CONN_CLOSE_MIN = 20 * 60       # 20:00 KST
 
 
 def _within_connection_clock(t_ms: int) -> bool:
-    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
     return _CONN_OPEN_MIN <= (kst.hour * 60 + kst.minute) < _CONN_CLOSE_MIN
 
 
@@ -177,7 +177,7 @@ def target_ws_venue(now_ms: int) -> str:
     """이 시각에 구독해야 할 venue("KRX"/"NXT"). 순수 시계 — 거래일 여부는
     연결 게이트가 이미 강제하므로 여기선 시각만 본다(정규장 캡처 경계와 동일한
     pure-clock 기준, market_phase와 일관)."""
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KST)
     minutes = kst.hour * 60 + kst.minute
     return "KRX" if _KRX_WARMUP_MIN <= minutes < _KRX_DRAIN_MARGIN_MIN else "NXT"
 
@@ -193,6 +193,6 @@ def in_krx_warmup_window(now_ms: int) -> bool:
     술어로 09:00 전 미완 등록을 감지해 재구독+경고한다(유일한 저장 리스크 창).
     09:00(개장)은 배제 — 그 순간부터는 정규 캡처 게이트가 별도로 커버한다.
     """
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KST)
     minutes = kst.hour * 60 + kst.minute
     return _KRX_WARMUP_MIN <= minutes < _MARKET_OPEN_MIN

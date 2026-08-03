@@ -5,8 +5,10 @@ from fastapi.testclient import TestClient
 
 from hoga.live import api as live_api, lifecycle
 from hoga.live.api import build_router
-from hoga.live.kis_client import KIS_KST, IndexCandleFetchResult, InvestorNetFetchResult
-from hoga.live.kis_models import IndexCandlePoint, InvestorNetPoint
+from hoga.live.candle_models import IndexCandlePoint
+from hoga.live.investor import InvestorNetPoint
+from hoga.live.kis_client import IndexCandleFetchResult
+from hoga.util.timeenc import KST
 
 
 def _daily_t_ms(day: str) -> int:
@@ -16,7 +18,7 @@ def _daily_t_ms(day: str) -> int:
         int(day[6:8]),
         15,
         30,
-        tzinfo=KIS_KST,
+        tzinfo=KST,
     )
     return int(dt.timestamp() * 1000)
 
@@ -57,6 +59,25 @@ def _patch_kis_capacity(monkeypatch, fake_kis):
     return scheduler, calls
 
 
+def _patch_kiwoom_capacity(monkeypatch, fake_daily):
+    """키움 시임 한 곳 + 어댑터 함수. PR-C(#1039) 칼 컷오버로 일/주/월봉이 키움을 쓴다."""
+    scheduler = object()
+    calls = []
+    monkeypatch.setattr(
+        live_api.kiwoom_rest_runtime, "ensure_rest_client",
+        lambda data_dir, account_id=0: object(),
+    )
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda: scheduler)
+
+    async def fake_run_with_capacity(scheduler_arg, *, key, api_id, priority, fetch_fn, client):
+        calls.append({"key": key, "api_id": api_id, "priority": priority})
+        return await fetch_fn(client)
+
+    monkeypatch.setattr(live_api.kiwoom_access, "run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr(live_api.kiwoom_index_rest, "fetch_index_daily_candles", fake_daily)
+    return scheduler, calls
+
+
 def test_live_indices_route_lists_only_enabled_representative_indices() -> None:
     res = _client().get("/api/live/indices")
 
@@ -84,27 +105,25 @@ def test_index_candles_rejects_stock_code_as_index_id(tmp_path) -> None:
 
 
 def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> None:
-    class FakeKis:
-        async def fetch_index_daily_candles(self, index, from_s, to_s, *, period="D", foreground=False):
-            assert index.id == "KOSPI"
-            assert from_s == "20260601"
-            assert to_s == "20260619"
-            assert period == "D"
-            assert foreground is True
-            return IndexCandleFetchResult(
-                candles=[
-                    IndexCandlePoint(
-                        t_ms=_daily_t_ms("20260619"),
-                        open=2840.12,
-                        high=2861.34,
-                        low=2833.20,
-                        close=2855.67,
-                        volume=450000000,
-                    ),
-                ],
-            )
+    async def fake_daily(_client, index, from_s, to_s, *, period="D"):
+        assert index.id == "KOSPI"
+        assert from_s == "20260601"
+        assert to_s == "20260619"
+        assert period == "D"
+        return IndexCandleFetchResult(
+            candles=[
+                IndexCandlePoint(
+                    t_ms=_daily_t_ms("20260619"),
+                    open=2840.12,
+                    high=2861.34,
+                    low=2833.20,
+                    close=2855.67,
+                    volume=450000000,
+                ),
+            ],
+        )
 
-    scheduler, calls = _patch_kis_capacity(monkeypatch, FakeKis())
+    scheduler, calls = _patch_kiwoom_capacity(monkeypatch, fake_daily)
 
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
@@ -124,13 +143,12 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
             "volume": 450000000,
         },
     ]
+    # 계정 차원(cooldown_scope·data_dir)은 키움 전환과 함께 사라졌다 — 유량이
+    # TR별이라 계정을 고를 이유가 없다(#1015).
     assert calls == [{
-        "scheduler": scheduler,
-        "data_dir": tmp_path,
         "key": ("index-daily", "KOSPI", "D", "20260601", "20260619"),
-        "endpoint": "index-daily",
+        "api_id": "ka20006",
         "priority": "user_visible",
-        "cooldown_scope": ("index-daily", "KOSPI", "D"),
     }]
 
 
@@ -140,27 +158,22 @@ def test_index_daily_candles_reuses_cached_newer_range_for_broader_scrollback(
 ) -> None:
     calls: list[tuple[str, str]] = []
 
-    class FakeKis:
-        async def fetch_index_daily_candles(self, index, from_s, to_s, *, period="D", foreground=False):
-            calls.append((from_s, to_s))
-            close = float(len(calls))
-            return IndexCandleFetchResult(
-                candles=[
-                    IndexCandlePoint(
-                        t_ms=_daily_t_ms(from_s),
-                        open=close,
-                        high=close,
-                        low=close,
-                        close=close,
-                        volume=1,
-                    ),
-                ],
-            )
+    async def fake_daily(_client, index, from_s, to_s, *, period="D"):
+        calls.append((from_s, to_s))
+        close = float(len(calls))
+        return IndexCandleFetchResult(
+            candles=[
+                IndexCandlePoint(
+                    t_ms=_daily_t_ms(from_s),
+                    open=close, high=close, low=close, close=close, volume=1,
+                ),
+            ],
+        )
 
     async def no_windowing(from_s, to_s, period, fetch_batch, *, max_concurrency=3):
         return await fetch_batch(from_s, to_s)
 
-    _patch_kis_capacity(monkeypatch, FakeKis())
+    _patch_kiwoom_capacity(monkeypatch, fake_daily)
     monkeypatch.setattr(live_api, "fetch_index_daily_candles_windowed", no_windowing, raising=False)
     monkeypatch.setattr(live_api, "index_candles_cache_instance", None, raising=False)
 
@@ -313,22 +326,22 @@ def test_index_minute_candles_warn_when_request_starts_before_returned_depth(tmp
 
 
 def test_index_investor_net_returns_market_rows_for_kospi(tmp_path, monkeypatch) -> None:
-    class FakeKis:
-        async def fetch_market_investor_net(self, index, from_s, to_s):
-            assert index.id == "KOSPI"
-            assert from_s == "20260619"
-            assert to_s == "20260619"
-            return InvestorNetFetchResult(
-                points=[
-                    InvestorNetPoint(
-                        t_ms=1,
-                        foreign_net=-3519,
-                        institution_net=17184,
-                    ),
-                ],
-            )
+    """PR-E(#1041) 칼 컷오버 — 소스가 키움 `ka10051` 이다.
 
-    _patch_kis_capacity(monkeypatch, FakeKis())
+    어댑터가 **평평한 리스트**를 준다(날짜당 한 콜이라 불변식 위반 개념이 없다).
+    """
+    async def fake_market_investor_net(_client, index, from_s, to_s):
+        assert index.id == "KOSPI"
+        assert from_s == "20260619"
+        assert to_s == "20260619"
+        return [InvestorNetPoint(t_ms=1, foreign_net=-3519, institution_net=17184)]
+
+    monkeypatch.setattr(
+        live_api.kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
+    )
+    monkeypatch.setattr(
+        live_api.kiwoom_investor, "fetch_market_investor_net", fake_market_investor_net
+    )
 
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
@@ -381,6 +394,18 @@ def _patch_capacity_raises(monkeypatch, exc: Exception) -> None:
         raise exc
 
     monkeypatch.setattr(live_api.kis_access, "run_with_capacity", raising_run_with_capacity)
+
+    # 일/주/월봉은 PR-C 로 키움을 쓴다 — 같은 강등 경로를 키움 시임에도 건다.
+    monkeypatch.setattr(
+        live_api.kiwoom_rest_runtime, "ensure_rest_client",
+        lambda data_dir, account_id=0: object(),
+    )
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda: object())
+
+    async def raising_kiwoom(scheduler_arg, *, key, api_id, priority, fetch_fn, client):
+        raise exc
+
+    monkeypatch.setattr(live_api.kiwoom_access, "run_with_capacity", raising_kiwoom)
 
 
 def test_index_daily_candles_degrade_on_capacity_cooldown(tmp_path, monkeypatch) -> None:
