@@ -2,12 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { CONDITION_CATALOG, CONDITION_ORDER, makeLeaf } from './catalog';
 
 describe('catalog', () => {
-  it('covers all 12 types incl. 당일/기간내 변형 + 총잔량 신고 + 신고가 대비 고가', () => {
-    expect(CONDITION_ORDER).toHaveLength(12);
+  it('covers all 13 types incl. 당일/기간내 변형 + 총잔량 신고·돌파 + 신고가 대비 고가', () => {
+    expect(CONDITION_ORDER).toHaveLength(13);
     expect(Object.keys(CONDITION_CATALOG).sort()).toEqual(
-      ['ask_depth_new_high', 'bid_depth_new_high', 'change_pct', 'high_off_peak', 'ma', 'new_high',
+      ['ask_depth_new_high', 'ask_depth_renewal', 'bid_depth_new_high', 'change_pct',
+       'high_off_peak', 'ma', 'new_high',
        'new_high_today', 'new_high_vol', 'new_high_vol_today', 'price_range',
        'trade_value', 'trade_value_period']);
+    // 카탈로그에 있는 타입은 전부 CONDITION_ORDER 에도 있어야 한다 — 빠지면 추가
+    // 메뉴에서 영영 안 보이는데, Record 의 exhaustive 검사는 그걸 못 잡는다.
+    expect([...CONDITION_ORDER].sort()).toEqual(Object.keys(CONDITION_CATALOG).sort());
   });
   it('신고가 대비 고가 조건: 기본 파라미터 + 라벨 + 요약', () => {
     expect(makeLeaf('high_off_peak').params).toEqual({ period: 250, pct: 30, side: 'within' });
@@ -24,6 +28,17 @@ describe('catalog', () => {
     expect(CONDITION_CATALOG.bid_depth_new_high.label).toBe('매수 총잔량 peak');
     expect(CONDITION_CATALOG.ask_depth_new_high.summarize({ lookback: 20, threshold_pct: 100 }))
       .toBe('20일 peak의 100%');
+  });
+  it('총잔량 기준시각 돌파 조건: 기본 파라미터 + 라벨 + 요약', () => {
+    expect(makeLeaf('ask_depth_renewal').params).toEqual({ start_hhmm: 1200, threshold_pct: 100 });
+    expect(CONDITION_CATALOG.ask_depth_renewal.label).toBe('매도 총잔량 기준시각 돌파');
+    expect(CONDITION_CATALOG.ask_depth_renewal.summarize({ start_hhmm: 1200, threshold_pct: 100 }))
+      .toBe('12:00 이전 최대의 100%');
+    expect(CONDITION_CATALOG.ask_depth_renewal.summarize({ start_hhmm: 1200, threshold_pct: 120 }))
+      .toBe('12:00 이전 최대의 120%');
+    // 한 자리 시각도 0 패딩 — '9:5' 같은 요약이 나오지 않게.
+    expect(CONDITION_CATALOG.ask_depth_renewal.summarize({ start_hhmm: 905, threshold_pct: 100 }))
+      .toBe('09:05 이전 최대의 100%');
   });
   it('renames breakout labels to 기간내, bare label = 당일', () => {
     expect(CONDITION_CATALOG.new_high.label).toBe('기간내 신고가');

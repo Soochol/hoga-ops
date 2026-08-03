@@ -5,7 +5,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api import screener_universe
+from hoga.api import screener_depth, screener_universe
 from hoga.api.models import (
     BreakoutParams,
     ConditionLeaf,
@@ -140,10 +140,12 @@ CONDITION_COMPILERS: dict[str, LeafCompiler] = {
 }
 
 
-# run_scan 이 사전계산 코드셋으로 처리하는 조건 타입(총잔량 신고). SQL CTE 가 아니라
+# run_scan 이 사전계산 코드셋으로 처리하는 조건 타입(총잔량 조건). SQL CTE 가 아니라
 # screener_depth.evaluate 가 이미 통과 코드셋을 계산해 넘긴다 — CTE 는 그 코드셋을
 # 등록한 relation 을 읽는 얇은 SELECT 로만 emit 한다(기존 컴파일러 dict 미경유).
-_DEPTH_TYPES = ("ask_depth_new_high", "bid_depth_new_high")
+# 목록은 screener_depth 가 소유한다 — 여기 복제본을 두면 새 타입이 한쪽에만 추가돼
+# CONDITION_COMPILERS 조회로 새어 KeyError 가 난다.
+_DEPTH_TYPES = screener_depth.DEPTH_TYPES
 
 
 def run_scan(adjusted_path: Path, stocks_path: Path, *,

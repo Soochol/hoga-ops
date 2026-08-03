@@ -108,6 +108,9 @@ export function Screener() {
   const scopeUniverseEmpty = (lastScan?.warnings ?? []).includes('scope_universe_empty');
   // 심볼 마스터 미로드 → ETF 판정이 stocks.parquet(수동 시드, 낡을 수 있음)으로 강등.
   const etfFilterStale = (lastScan?.warnings ?? []).includes('etf_filter_stale_master_unavailable');
+  // 기준시각 돌파는 당일 전용 — eod 로 조회하면 0행이 된다. 이유를 안 보여주면
+  // "조건에 맞는 종목이 없음"과 구분되지 않는다.
+  const renewalNeedsIntraday = (lastScan?.warnings ?? []).includes('depth_renewal_requires_intraday');
   const runScan = () => screener.mutate(scanBody, {
     onSuccess: (res) => {
       // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
@@ -254,6 +257,9 @@ export function Screener() {
               {etfFilterStale && (
                 <InlineState tone="warn">종목 마스터 없음 · ETF 제외가 오래된 목록 기준입니다</InlineState>
               )}
+              {renewalNeedsIntraday && (
+                <InlineState tone="warn">매도 총잔량 기준시각 돌파는 당일 전용 · 장중 기준으로 조회하세요</InlineState>
+              )}
               {screener.data?.depth_coverage && (
                 // key = 결측 코드 집합. 재조회로 집합이 바뀌면 배너를 새 인스턴스로
                 // 리마운트해 stale "수집 중 N건"/사라진 버튼 상태를 리셋한다(같은 집합이면
@@ -277,6 +283,7 @@ export function Screener() {
                 depthSides={{
                   ask: editor.conditions.some((c) => c.type === 'ask_depth_new_high'),
                   bid: editor.conditions.some((c) => c.type === 'bid_depth_new_high'),
+                  askRenewal: editor.conditions.some((c) => c.type === 'ask_depth_renewal'),
                 }}
               />
             </>

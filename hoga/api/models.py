@@ -1014,6 +1014,21 @@ SignalAlertName = Literal["sell_total_renewal"]
 SignalAlertScope = Literal["inbox", "all"]
 
 
+def validate_session_start_hhmm(value: int) -> int:
+    """장중 기준시각 HHMM(0900~1520 KST) 검증. 유효하면 그대로 반환.
+
+    실시간 알림(:class:`SellTotalRenewalSettings`)과 스크리너 조건
+    (:class:`DepthRenewalParams`)이 **같은 의미의 기준시각**을 받는다 — 판정 로직은
+    표면마다 다르지만(알림=이벤트 스트림+재무장, 스크리너=당일 집합) 허용 범위가
+    갈리면 한쪽에서만 저장되는 값이 생긴다. 검증기는 하나로 둔다.
+    """
+    hh = value // 100
+    mm = value % 100
+    if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
+        raise ValueError("start_hhmm must be between 0900 and 1520 KST")
+    return value
+
+
 class SellTotalRenewalSettings(BaseModel):
     enabled: bool = True
     start_hhmm: int = 1100
@@ -1023,11 +1038,7 @@ class SellTotalRenewalSettings(BaseModel):
     @field_validator("start_hhmm")
     @classmethod
     def _valid_hhmm(cls, value: int) -> int:
-        hh = value // 100
-        mm = value % 100
-        if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
-            raise ValueError("start_hhmm must be between 0900 and 1520 KST")
-        return value
+        return validate_session_start_hhmm(value)
 
     @field_validator("threshold_pct")
     @classmethod
@@ -1361,6 +1372,23 @@ class DepthPeakParams(BaseModel):                      # 매도/매수 총잔량
     # >100=초과 돌파. 단일 비율 파라미터로 "보다 클 때"와 "N% 이상"을 통합.
     threshold_pct: float = Field(default=100.0, ge=1)
 
+class DepthRenewalParams(BaseModel):                   # 매도 총잔량 기준시각 돌파 — 당일 전용
+    # 판정: start_hhmm 이후 최댓값 ≥ (threshold_pct/100) × 개장~start_hhmm 최댓값.
+    # 두 창 모두 유효 스냅샷이 있어야 하며, 이후 창의 **최댓값**으로 보므로 하루 중
+    # 한 번이라도 돌파하면 그 뒤 재조회에도 계속 잡힌다(스크리너는 이벤트 스트림이
+    # 아니라 집합이다 — 15~30초 폴링 사이에 지나간 순간을 놓치지 않게 하는 것이 요점).
+    start_hhmm: int = 1200
+    # DepthPeakParams·SellTotalRenewalSettings 와 **같은 식(≥)** 이다. 100 이면 동률도
+    # 통과하는데, 이는 신호 정의가 "renews or revisits a high"(signal-alerts 설계)이기
+    # 때문 — 매도벽이 그만큼 다시 쌓인 것도 신호다. 엄밀히 더 큰 것만 원하면 101 이상,
+    # 근접까지 보려면 100 미만을 쓴다.
+    threshold_pct: float = Field(default=100.0, ge=1)
+
+    @field_validator("start_hhmm")
+    @classmethod
+    def _valid_hhmm(cls, value: int) -> int:
+        return validate_session_start_hhmm(value)
+
 class TradeValueLeaf(BaseModel):
     type: Literal["trade_value"] = "trade_value"
     id: str
@@ -1421,8 +1449,13 @@ class BidDepthNewHighLeaf(BaseModel):
     id: str
     params: DepthPeakParams
 
+class AskDepthRenewalLeaf(BaseModel):
+    type: Literal["ask_depth_renewal"] = "ask_depth_renewal"
+    id: str
+    params: DepthRenewalParams
+
 ConditionLeaf = Annotated[
-    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -1484,6 +1517,13 @@ class DepthPeakValue(BaseModel):                       # 결과 행 검증용 �
     bid_past_peak: int | None = None
     bid_have_days: int = 0
     bid_need_days: int = 0
+    # 기준시각 돌파 조건(ask_depth_renewal) 전용 — 개장~기준시각 / 기준시각~현재의 당일
+    # 최댓값. peak 조건의 ask_today/ask_past_peak 과 **의미가 다르므로** 필드를 나눈다
+    # (그쪽 배지는 "지난 N일 peak" 이라고 쓴다 — 여기 값을 끼우면 문구가 거짓이 된다).
+    # 조건이 없으면 None 이고, 그때 배지는 이 행을 그리지 않는다.
+    ask_pre_max: int | None = None
+    ask_post_max: int | None = None
+    renewal_start_hhmm: int | None = None
 
 class ScreenerResponse(BaseModel):
     status: Literal["ok", "not_seeded", "building"]

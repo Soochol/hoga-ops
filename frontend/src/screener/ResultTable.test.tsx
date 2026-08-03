@@ -118,4 +118,38 @@ describe('가상화 임계', () => {
     expect(container.querySelector('[data-testid="screener-result-rows"]')!
       .getAttribute('data-virtualized')).toBe('true');
   });
+
+  describe('기준시각 돌파 배지', () => {
+    const v = {
+      ask_today: null, ask_past_peak: null, ask_have_days: 0, ask_need_days: 0,
+      bid_today: null, bid_past_peak: null, bid_have_days: 0, bid_need_days: 0,
+      ask_pre_max: 1012716, ask_post_max: 2489755, renewal_start_hhmm: 1200,
+    };
+    const renderWith = (sides: { ask: boolean; bid: boolean; askRenewal?: boolean }) =>
+      render(withClient(
+        <ResultTable rows={rows} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()}
+          depthValues={{ '005930': v }} depthSides={sides} />,
+      ));
+
+    it('조건이 켜져 있으면 이전→이후 최댓값을 보여준다', () => {
+      renderWith({ ask: false, bid: false, askRenewal: true });
+      expect(screen.getByText('12:00')).toBeInTheDocument();
+      expect(screen.getByText('1,012,716→2,489,755')).toBeInTheDocument();
+    });
+
+    it('조건이 없으면 배지를 그리지 않는다 — 값이 실려 와도', () => {
+      renderWith({ ask: false, bid: false });
+      expect(screen.queryByText('12:00')).not.toBeInTheDocument();
+    });
+
+    it('peak 조건만 켜져 있으면 peak 배지만 — 두 숫자가 섞이지 않는다', () => {
+      const mixed = { ...v, ask_today: 2489755, ask_past_peak: 951284, ask_need_days: 20, ask_have_days: 20 };
+      render(withClient(
+        <ResultTable rows={rows} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()}
+          depthValues={{ '005930': mixed }} depthSides={{ ask: true, bid: false }} />,
+      ));
+      expect(screen.getByText('2,489,755/951,284')).toBeInTheDocument();   // peak 배지
+      expect(screen.queryByText('1,012,716→2,489,755')).not.toBeInTheDocument();  // 돌파 배지 없음
+    });
+  });
 });
