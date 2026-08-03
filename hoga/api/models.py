@@ -1864,6 +1864,12 @@ class IvSkewModel(BaseModel):
     risk_reversal_25d: float | None
 
 
+class PutCallSeriesPointModel(BaseModel):
+    t_ms: int
+    volume_ratio: float | None
+    oi_ratio: float | None
+
+
 class OptionSentimentResponse(BaseModel):
     #: 휴면 사유. None 이 아니면 나머지 필드는 비어 있을 수 있다.
     unavailable: str | None = None
@@ -1877,6 +1883,9 @@ class OptionSentimentResponse(BaseModel):
     #: ATM 창 스냅샷 관측 시각 — P/C·IV 스큐의 as_of.
     atm_as_of_ms: int | None = None
     put_call: PutCallRatioModel | None = None
+    #: 당일 P/C 시계열(전수 5분마다 한 점, KST 자정 리셋, 프로세스 메모리 한정).
+    put_call_series: list[PutCallSeriesPointModel] = Field(default_factory=list)
+
     oi_distribution: OiDistributionModel | None = None
     gamma_exposure: GammaExposureModel | None = None
     iv_skew: IvSkewModel | None = None

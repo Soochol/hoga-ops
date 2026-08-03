@@ -10,6 +10,7 @@ import {
   OiContributors,
   OiDistributionChart,
   PutCallPanel,
+  PutCallSeriesChart,
 } from '../sentiment/SentimentPanels';
 import { atmDomain, fullDomain, type StrikeDomain } from '../sentiment/strikeScale';
 import { PageState, PanelCard, SegmentedControl } from '../ui/PageShell';
@@ -259,6 +260,7 @@ export default function Sentiment() {
             asOf={<AsOf label="전수" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />}
           >
             <PutCallPanel pc={data.put_call} />
+            <PutCallSeriesChart points={data.put_call_series} />
           </Section>
         )}
 

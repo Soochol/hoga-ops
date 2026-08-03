@@ -25,6 +25,7 @@ from hoga.api.models import (
     OiDistributionModel,
     OptionSentimentResponse,
     PutCallRatioModel,
+    PutCallSeriesPointModel,
     StrikeOiModel,
 )
 from hoga.live.kis_runtime import ensure_kis_client_for_account
@@ -79,6 +80,12 @@ def build_router(*, data_dir: Path) -> APIRouter:
             underlying=full.underlying,
             full_as_of_ms=st.full_at_ms,
             atm_as_of_ms=st.atm_at_ms,
+            put_call_series=[
+                PutCallSeriesPointModel(
+                    t_ms=pt.t_ms, volume_ratio=pt.volume_ratio, oi_ratio=pt.oi_ratio
+                )
+                for pt in st.put_call_series
+            ],
             put_call=PutCallRatioModel(
                 volume_ratio=pc.volume_ratio,
                 oi_ratio=pc.oi_ratio,
