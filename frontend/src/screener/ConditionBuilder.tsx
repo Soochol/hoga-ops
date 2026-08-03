@@ -6,6 +6,19 @@ import { UniverseFilterButton } from './UniverseFilterButton';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 
+/** 조건 추가 메뉴의 그룹·순서 — **이 목록이 메뉴에 실제로 그려지는 유일한 입력이다.**
+ *  새 조건을 CONDITION_CATALOG 에만 더하면 타입 검사는 통과하지만 메뉴에는 영영
+ *  나타나지 않는다(#1021 에서 실제로 그렇게 빠뜨렸다). catalog.test 가 이 목록과
+ *  카탈로그가 같은 집합인지 단언하므로, 조건을 추가하면 여기도 반드시 채워야 한다. */
+export const CONDITION_GROUPS: Array<[string, ConditionType[]]> = [
+  ['가격', ['price_range']],
+  ['거래대금', ['trade_value', 'trade_value_period']],
+  ['신고가/거래량', ['new_high_today', 'new_high', 'new_high_vol_today', 'new_high_vol', 'high_off_peak']],
+  ['호가 잔량', ['ask_depth_new_high', 'bid_depth_new_high', 'ask_depth_renewal', 'bid_depth_renewal']],
+  ['이동평균', ['ma']],
+  ['등락률', ['change_pct']],
+];
+
 export function ConditionBuilder({ conditions, universe, onConditionsChange, onUniverseChange }: {
   conditions: ConditionLeaf[]; universe: ScreenerUniverse;
   onConditionsChange: (c: ConditionLeaf[]) => void; onUniverseChange: (u: ScreenerUniverse) => void;
@@ -52,15 +65,6 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
   };
 
-  const grouped: Array<[string, ConditionType[]]> = [
-    ['가격', ['price_range']],
-    ['거래대금', ['trade_value', 'trade_value_period']],
-    ['신고가/거래량', ['new_high_today', 'new_high', 'new_high_vol_today', 'new_high_vol', 'high_off_peak']],
-    ['호가 잔량', ['ask_depth_new_high', 'bid_depth_new_high']],
-    ['이동평균', ['ma']],
-    ['등락률', ['change_pct']],
-  ];
-
   return (
     <div className="flex h-full flex-col gap-sm min-h-0 overflow-auto p-md">
       {/* Header: [조건 추가 (flex-1)] [사전필터 버튼]. 전역 사전필터는 버튼이 여는
@@ -75,7 +79,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
             <ul ref={menuRef} role="menu"
               className="bg-bg-card border border-border-strong rounded-[6px] shadow-overlay overflow-hidden z-50"
               style={{ position: 'fixed', top, left, width: anchorRect.width }}>
-              {grouped.map(([label, types]) => (
+              {CONDITION_GROUPS.map(([label, types]) => (
                 <li key={label} role="none">
                   <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase text-fg-dimmer">{label}</div>
                   <ul role="none">

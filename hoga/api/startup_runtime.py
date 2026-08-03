@@ -57,6 +57,9 @@ class StartupRuntimeDeps:
     # 프로그램매매 수집기 태스크 접근자. 라이브 런타임 소유라 라이브 시작/정지에 따라
     # 생겼다 사라진다 — 없으면 "죽음"이 아니라 미기동이므로 목록에서 생략한다.
     get_program_trade_task: Callable[[], TaskOrNone] | None = None
+    # 인벤토리 watchdog 옵서버(스레드). asyncio 태스크가 아니라 별도 판정이 필요하다.
+    # 미주입이면 목록에서 생략.
+    get_inventory_observer: Callable[[], object | None] | None = None
 
 
 # 한 번 일하고 끝나는 것이 **계약**인 감독 태스크들. 이 이름들만 정상 반환을
@@ -89,6 +92,25 @@ def _task_health(name: str, task: TaskOrNone) -> dict[str, object]:
         state = "completed"
     else:
         state = "dead"
+    return {"name": name, "running": state == "running", "state": state}
+
+
+def _observer_health(name: str, observer: object | None) -> dict[str, object]:
+    """watchdog 옵서버 **스레드**의 상태 한 줄. 값 어휘는 `_task_health` 와 같다.
+
+    이 감독이 없으면 인벤토리 SSE 가 조용히 멈춘다. 옵서버는 parquet 트리 전체를
+    recursive 로 watch 하는데, 트리가 커져 inotify watch 한도(`max_user_watches`)를
+    소진하면 스레드가 죽고 — 그 뒤로 캡처가 끝나도 화면이 갱신되지 않는다. HTTP 는
+    멀쩡하므로 얕은 health 로도, 태스크 목록으로도(스레드라 asyncio 태스크가 아니다)
+    드러나지 않던 사각이었다.
+
+    `is_alive()` 가 없는 객체는 판정 불가 → `not_started`(경보 아님). 감독 목적의
+    코드가 타입 가정으로 죽으면 안 된다.
+    """
+    alive = getattr(observer, "is_alive", None)
+    if observer is None or not callable(alive):
+        return {"name": name, "running": False, "state": "not_started"}
+    state = "running" if alive() else "dead"
     return {"name": name, "running": state == "running", "state": state}
 
 
@@ -155,7 +177,14 @@ class AppStartupRuntime:
             program_trade = self.deps.get_program_trade_task()
             if program_trade is not None:
                 tasks.append(("program-trade-collector", program_trade))
-        return [_task_health(name, task) for name, task in tasks]
+        rows = [_task_health(name, task) for name, task in tasks]
+        if self.deps.get_inventory_observer is not None:
+            rows.append(
+                _observer_health(
+                    "inventory-observer", self.deps.get_inventory_observer()
+                )
+            )
+        return rows
 
     async def stop(self) -> None:
         """Stop runtime-owned background work in shutdown order."""

@@ -9,8 +9,11 @@ import polars as pl
 from hoga.api import depth_daily, screener_depth
 from hoga.api.models import (
     AskDepthNewHighLeaf,
+    AskDepthRenewalLeaf,
     BidDepthNewHighLeaf,
+    BidDepthRenewalLeaf,
     DepthPeakParams,
+    DepthRenewalParams,
     HeatmapDocument,
     HeatmapEntry,
     WatchlistFolder,
@@ -187,3 +190,291 @@ def test_bid_side_condition(tmp_path: Path) -> None:
     assert code in res.passing["b1"]  # bid 3000 >= 2000
     assert res.values[code].bid_today == 3000
     assert res.values[code].bid_past_peak == 2000
+
+
+# === 매도 총잔량 기준시각 돌파 (ask_depth_renewal) — 당일 전용 ===
+
+def _renewal_leaf(start_hhmm: int = 1200, leaf_id: str = "r1",
+                  threshold_pct: float = 100.0) -> AskDepthRenewalLeaf:
+    return AskDepthRenewalLeaf(id=leaf_id, params=DepthRenewalParams(
+        start_hhmm=start_hhmm, threshold_pct=threshold_pct))
+
+
+def _renewal_eval(data_dir: Path, code: str, *, leaves, basis: str = "intraday"):
+    return screener_depth.evaluate(
+        data_dir=data_dir, sdir=data_dir / "screener", conditions=leaves,
+        universe_codes={code}, basis=basis, today="20260715",
+    )
+
+
+def test_renewal_passes_when_after_exceeds_before(tmp_path: Path) -> None:
+    """기준시각 이후 최대 > 이전 최대 이면 통과."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=100_000_000, ask_q=(100,) * 10, bid_q=(10,) * 10),  # 10:00 → 1000
+        _ob(ts_ms=113_000_000, ask_q=(150,) * 10, bid_q=(10,) * 10),  # 11:30 → 1500 (이전 최대)
+        _ob(ts_ms=130_000_000, ask_q=(200,) * 10, bid_q=(10,) * 10),  # 13:00 → 2000 (이후 최대)
+    ])
+    res = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf()])
+    assert code in res.passing["r1"]
+    assert res.values[code].ask_pre_max == 1500
+    assert res.values[code].ask_post_max == 2000
+    assert res.values[code].ask_renewal_start_hhmm == 1200
+
+
+def test_renewal_fails_when_after_falls_short(tmp_path: Path) -> None:
+    """이후 최대가 문턱에 못 미치면 미통과."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(200,) * 10, bid_q=(10,) * 10),  # 이전 2000
+        _ob(ts_ms=130_000_000, ask_q=(150,) * 10, bid_q=(10,) * 10),  # 이후 1500
+    ])
+    res = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf()])
+    assert res.passing["r1"] == set()
+
+
+def test_renewal_tie_passes_at_100_and_fails_at_101(tmp_path: Path) -> None:
+    """100% 는 동률 포함 — 신호 정의가 "renews **or revisits** a high" 이기 때문이다.
+
+    peak 조건·실시간 알림과 같은 식(≥)이다. 엄밀히 더 큰 것만 원하는 사용자는 101 을
+    쓴다 — 그 경계가 실제로 갈리는지 여기서 못 박는다.
+    """
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(200,) * 10, bid_q=(10,) * 10),  # 이전 2000
+        _ob(ts_ms=130_000_000, ask_q=(200,) * 10, bid_q=(10,) * 10),  # 이후 2000 — 동률
+    ])
+    at100 = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf(leaf_id="t100")])
+    assert code in at100.passing["t100"]
+    at101 = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf(leaf_id="t101", threshold_pct=101)])
+    assert at101.passing["t101"] == set()
+
+
+def test_renewal_threshold_above_100_requires_bigger_wall(tmp_path: Path) -> None:
+    """120% 는 이전 최대의 1.2배 이상일 때만 — 문턱이 실제로 선별에 쓰인다."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(100,) * 10, bid_q=(10,) * 10),  # 이전 1000
+        _ob(ts_ms=130_000_000, ask_q=(115,) * 10, bid_q=(10,) * 10),  # 이후 1150 — 115%
+    ])
+    assert code in _renewal_eval(
+        tmp_path, code, leaves=[_renewal_leaf(leaf_id="a", threshold_pct=110)]).passing["a"]
+    assert _renewal_eval(
+        tmp_path, code, leaves=[_renewal_leaf(leaf_id="b", threshold_pct=120)]).passing["b"] == set()
+
+
+def test_renewal_threshold_below_100_catches_near_misses(tmp_path: Path) -> None:
+    """100 미만은 '근접'까지 잡는다 — 돌파 전에 미리 보고 싶을 때."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(200,) * 10, bid_q=(10,) * 10),  # 이전 2000
+        _ob(ts_ms=130_000_000, ask_q=(180,) * 10, bid_q=(10,) * 10),  # 이후 1800 — 90%
+    ])
+    assert code in _renewal_eval(
+        tmp_path, code, leaves=[_renewal_leaf(leaf_id="n", threshold_pct=90)]).passing["n"]
+
+
+def test_renewal_latches_after_pullback(tmp_path: Path) -> None:
+    """한 번 돌파했으면 뒤에서 다시 줄어도 계속 잡힌다(이후 창의 **최댓값** 판정).
+
+    폴링(15~30초) 사이에 지나간 순간을 놓치지 않는 것이 이 조건의 요점 — 스냅샷
+    최신값으로 판정하면 이 케이스가 사라진다.
+    """
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(150,) * 10, bid_q=(10,) * 10),  # 이전 최대 1500
+        _ob(ts_ms=130_000_000, ask_q=(200,) * 10, bid_q=(10,) * 10),  # 돌파 2000
+        _ob(ts_ms=140_000_000, ask_q=(80,) * 10, bid_q=(10,) * 10),   # 되돌림 800 — 현재값 판정이면 탈락
+    ])
+    res = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf()])
+    assert code in res.passing["r1"]
+
+
+def test_renewal_needs_both_windows(tmp_path: Path) -> None:
+    """기준시각이 아직 미래면(이후 창이 비면) 통과하지 않는다."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=100_000_000, ask_q=(100,) * 10, bid_q=(10,) * 10),
+        _ob(ts_ms=113_000_000, ask_q=(150,) * 10, bid_q=(10,) * 10),
+    ])
+    res = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf()])
+    assert res.passing["r1"] == set()
+    assert res.values[code].ask_post_max is None
+
+
+def test_renewal_start_hhmm_moves_the_boundary(tmp_path: Path) -> None:
+    """같은 데이터라도 기준시각이 다르면 판정이 뒤집힌다 — 파라미터가 실제로 쓰인다."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=100_000_000, ask_q=(100,) * 10, bid_q=(10,) * 10),  # 10:00 → 1000
+        _ob(ts_ms=113_000_000, ask_q=(200,) * 10, bid_q=(10,) * 10),  # 11:30 → 2000
+        _ob(ts_ms=130_000_000, ask_q=(150,) * 10, bid_q=(10,) * 10),  # 13:00 → 1500
+    ])
+    # 11:00 기준 → 이전 1000 < 이후 2000 → 통과.
+    early = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf(1100, "early")])
+    assert code in early.passing["early"]
+    # 12:00 기준 → 이전 2000 > 이후 1500 → 미통과.
+    late = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf(1200, "late")])
+    assert late.passing["late"] == set()
+
+
+def test_renewal_alone_reports_no_coverage(tmp_path: Path) -> None:
+    """과거 hogaplay 의존이 없으므로 커버리지 배너를 띄우지 않는다.
+
+    커버리지 배너의 처방은 "지난 N일 수집"인데, 당일 전용 조건엔 줄 수 있는 조치가
+    아니다 — 없는 처방을 제안하느니 배너를 그리지 않는다.
+    """
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(150,) * 10, bid_q=(10,) * 10),
+        _ob(ts_ms=130_000_000, ask_q=(200,) * 10, bid_q=(10,) * 10),
+    ])
+    res = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf()])
+    assert res.coverage is None
+    assert "depth_corpus_unavailable" not in res.warnings  # 코퍼스를 아예 읽지 않는다
+
+
+def test_renewal_on_eod_basis_is_empty_with_warning(tmp_path: Path) -> None:
+    """eod 기준에선 '기준시각 이후'가 정의되지 않는다 — 조용히 통과시키지 않는다."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(150,) * 10, bid_q=(10,) * 10),
+        _ob(ts_ms=130_000_000, ask_q=(200,) * 10, bid_q=(10,) * 10),
+    ])
+    res = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf()], basis="eod")
+    assert res.passing["r1"] == set()
+    assert "depth_renewal_requires_intraday" in res.warnings
+
+
+def test_renewal_and_peak_conditions_coexist(tmp_path: Path) -> None:
+    """두 갈래를 한 스크린에 섞어도 각자의 사이드카·커버리지가 유지된다."""
+    code = "005930"
+    sdir = tmp_path / "screener"
+    _seed_heatmap(tmp_path, [code])
+    _seed_corpus(sdir, ["20260713", "20260714"], [code])
+    _write_snap(tmp_path, date="20260713", code=code, source="hogaplay",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(100,) * 10, bid_q=(10,) * 10)])
+    depth_daily.sweep(tmp_path)
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(150,) * 10, bid_q=(10,) * 10),
+        _ob(ts_ms=130_000_000, ask_q=(200,) * 10, bid_q=(10,) * 10),
+    ])
+    peak = AskDepthNewHighLeaf(id="p1", params=DepthPeakParams(lookback=20, threshold_pct=100))
+    res = _renewal_eval(tmp_path, code, leaves=[peak, _renewal_leaf()])
+    assert code in res.passing["p1"]   # 당일 2000 >= 과거 1000
+    assert code in res.passing["r1"]   # 1500 → 2000
+    v = res.values[code]
+    assert (v.ask_today, v.ask_past_peak) == (2000, 1000)   # peak 배지 값
+    assert (v.ask_pre_max, v.ask_post_max) == (1500, 2000)  # 돌파 배지 값
+    assert res.coverage is not None    # peak 조건이 있으므로 커버리지는 살아 있다
+
+
+# === 매수 총잔량 기준시각 돌파 (bid_depth_renewal) ===
+
+def _bid_renewal_leaf(start_hhmm: int = 1200, leaf_id: str = "rb",
+                      threshold_pct: float = 100.0) -> BidDepthRenewalLeaf:
+    return BidDepthRenewalLeaf(id=leaf_id, params=DepthRenewalParams(
+        start_hhmm=start_hhmm, threshold_pct=threshold_pct))
+
+
+def test_bid_renewal_reads_the_bid_side(tmp_path: Path) -> None:
+    """매수 조건은 매수 총잔량만 본다 — 두 side 가 반대로 움직이는 데이터로 확인."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        # 이전: ask 2000 / bid 1000,  이후: ask 800 / bid 3000
+        _ob(ts_ms=113_000_000, ask_q=(200,) * 10, bid_q=(100,) * 10),
+        _ob(ts_ms=130_000_000, ask_q=(80,) * 10, bid_q=(300,) * 10),
+    ])
+    res = _renewal_eval(tmp_path, code, leaves=[_bid_renewal_leaf()])
+    assert code in res.passing["rb"]                       # bid 1000 → 3000
+    v = res.values[code]
+    assert (v.bid_pre_max, v.bid_post_max) == (1000, 3000)
+    assert v.bid_renewal_start_hhmm == 1200
+    # 매도 조건이 없으므로 매도 사이드카는 비어 있다(남의 값이 새지 않는다).
+    assert (v.ask_pre_max, v.ask_post_max, v.ask_renewal_start_hhmm) == (None, None, None)
+
+    # 같은 데이터에 매도 조건을 걸면 미통과 — side 를 실제로 가려 본다는 증거.
+    ask = _renewal_eval(tmp_path, code, leaves=[_renewal_leaf(leaf_id="ra")])
+    assert ask.passing["ra"] == set()
+
+
+def test_both_renewal_sides_keep_separate_start_hhmm(tmp_path: Path) -> None:
+    """매도 12:00 · 매수 13:00 처럼 섞어 써도 배지가 남의 시각을 달지 않는다."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=100_000_000, ask_q=(100,) * 10, bid_q=(100,) * 10),  # 10:00 → 1000/1000
+        _ob(ts_ms=123_000_000, ask_q=(150,) * 10, bid_q=(150,) * 10),  # 12:30 → 1500/1500
+        _ob(ts_ms=140_000_000, ask_q=(200,) * 10, bid_q=(200,) * 10),  # 14:00 → 2000/2000
+    ])
+    res = _renewal_eval(tmp_path, code, leaves=[
+        _renewal_leaf(1200, "ra"), _bid_renewal_leaf(1300, "rb")])
+    v = res.values[code]
+    # 매도 12:00 기준 → 이전 1000, 이후 max(1500, 2000)=2000
+    assert (v.ask_pre_max, v.ask_post_max, v.ask_renewal_start_hhmm) == (1000, 2000, 1200)
+    # 매수 13:00 기준 → 이전 max(1000,1500)=1500, 이후 2000
+    assert (v.bid_pre_max, v.bid_post_max, v.bid_renewal_start_hhmm) == (1500, 2000, 1300)
+    assert code in res.passing["ra"]
+    assert code in res.passing["rb"]
+
+
+def test_both_renewal_sides_same_hhmm_scan_once(tmp_path: Path) -> None:
+    """같은 기준시각이면 스냅샷 스캔은 한 번 — 양측 값이 한 쿼리에서 나온다."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(100,) * 10, bid_q=(200,) * 10),
+        _ob(ts_ms=130_000_000, ask_q=(300,) * 10, bid_q=(100,) * 10),
+    ])
+    calls: list[int] = []
+    real = screener_depth._today_split_peaks
+
+    def _counting(*args, **kwargs):
+        calls.append(kwargs["split_ms"])
+        return real(*args, **kwargs)
+
+    screener_depth._today_split_peaks = _counting
+    try:
+        res = _renewal_eval(tmp_path, code, leaves=[
+            _renewal_leaf(1200, "ra"), _bid_renewal_leaf(1200, "rb")])
+    finally:
+        screener_depth._today_split_peaks = real
+    assert calls == [120_000_000]              # 두 leaf, 스캔 1회
+    assert code in res.passing["ra"]           # ask 1000 → 3000
+    assert res.passing["rb"] == set()          # bid 2000 → 1000
+
+
+def test_bid_renewal_alone_reports_no_coverage(tmp_path: Path) -> None:
+    """매수 측도 과거 hogaplay 의존이 없다 — 커버리지 배너를 띄우지 않는다."""
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(10,) * 10, bid_q=(100,) * 10),
+        _ob(ts_ms=130_000_000, ask_q=(10,) * 10, bid_q=(200,) * 10),
+    ])
+    res = _renewal_eval(tmp_path, code, leaves=[_bid_renewal_leaf()])
+    assert res.coverage is None
+    assert "depth_corpus_unavailable" not in res.warnings
+
+
+def test_bid_renewal_on_eod_basis_is_empty_with_warning(tmp_path: Path) -> None:
+    code = "005930"
+    _seed_heatmap(tmp_path, [code])
+    _write_snap(tmp_path, date="20260715", code=code, source="kiwoom_live", obs=[
+        _ob(ts_ms=113_000_000, ask_q=(10,) * 10, bid_q=(100,) * 10),
+        _ob(ts_ms=130_000_000, ask_q=(10,) * 10, bid_q=(200,) * 10),
+    ])
+    res = _renewal_eval(tmp_path, code, leaves=[_bid_renewal_leaf()], basis="eod")
+    assert res.passing["rb"] == set()
+    assert "depth_renewal_requires_intraday" in res.warnings

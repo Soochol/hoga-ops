@@ -1145,6 +1145,114 @@ def query_daily_depth_peaks(
 
 
 @dataclass(frozen=True)
+class DepthSplitPeak:
+    """기준시각(HHMMSSmmm)으로 하루를 둘로 가른 매도/매수 총잔량 최댓값.
+
+    ``pre_*`` = [session_open, split) 의 최댓값, ``post_*`` = [split, session_close]
+    의 최댓값. 경계는 ``_book_indicator_eligible_sql`` 이 이미 걸므로 여기 술어는
+    split 하나만 더한다 — 동시호가·VI 배제 규칙이 :class:`DailyDepthPeak` 와 글자
+    그대로 같아야 두 조건의 숫자가 /live 총잔량 pane 과 함께 일치한다.
+
+    한쪽 창에 유효 스냅샷이 하나도 없으면 그쪽만 None 이다(장 초반이라 split 이 아직
+    미래인 경우 ``post_*`` 가 None — 정상 상태이지 오류가 아니다).
+
+    매수 측은 지금 소비자가 없다(조건은 매도만). 그럼에도 양측을 담는 것은 이 모듈의
+    depth 프리미티브(:class:`DailyDepthPeak`·:class:`QuoteRatioRow`·
+    :class:`DepthHeatmapRow`)가 전부 대칭이기 때문이다 — 매수 대응 조건이 생길 때
+    쿼리를 다시 짜지 않는다.
+    """
+
+    pre_ask_peak: int | None
+    post_ask_peak: int | None
+    pre_bid_peak: int | None
+    post_bid_peak: int | None
+    eligible_count: int
+
+
+def query_daily_depth_split_peaks(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    paths: Sequence[Path],
+    split_ms: int,
+    session_open_ms: int,
+    session_close_ms: int,
+) -> dict[str, DepthSplitPeak]:
+    """여러 파일의 기준시각 분할 peak 을 **쿼리 1회**로.
+
+    :func:`query_daily_depth_peaks` 의 형제 — 같은 유효 술어, 같은 퇴화 파일 완화
+    규칙(연속거래 호가창 행이 close 이하에 하나도 없으면 술어를 풀어 집계)을 쓰고,
+    ``FILTER`` 로 pre/post 를 한 번에 계산하므로 **쿼리 왕복이 늘지 않는다**. 종목당
+    개별 쿼리로 풀면 유니버스 전체에서 수백 왕복이 되어 실측 1.5초가 나온 자리다
+    (그쪽 docstring 참조).
+
+    형제와 달리 세션 경계가 **필수**다. 완화 분기가 ``session_close_ms`` 없이는
+    정의되지 않는데, 이 함수의 호출자는 항상 경계를 안다 — 없는 경우를 위한 죽은
+    분기를 두지 않는다.
+
+    반환 키는 ``str(path)`` (DuckDB ``filename`` 컬럼 그대로). 빈 파일·행 0개는 결과에서
+    빠진다. 호출자는 스키마 불일치로 배치 전체가 실패할 수 있음을 가정해야 한다 —
+    파일 하나가 배치를 죽이는 것은 형제와 같다.
+    """
+    if not paths:
+        return {}
+    str_paths = [str(p) for p in paths]
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+
+    eligible = _book_indicator_eligible_sql(
+        intra_ms_expr,
+        session_open_ms=session_open_ms,
+        session_close_ms=session_close_ms,
+    )
+    close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
+    split_intra_sql = hhmmssms_to_intra_ms_sql(str(int(split_ms)))
+    # `_last_continuous_intra_ms is not None` 과 같은 술어(형제와 동일).
+    has_continuous = f"{_DEEP_BOOK_SQL} AND {intra_ms_expr} <= {close_intra_sql}"
+    pre = f"{intra_ms_expr} < {split_intra_sql}"
+    post = f"{intra_ms_expr} >= {split_intra_sql}"
+
+    rows = con.execute(
+        f"""
+        SELECT filename,
+               count(*)          FILTER (WHERE {has_continuous})           AS n_continuous,
+               max({_ASK_Q_SUM}) FILTER (WHERE ({eligible}) AND {pre})     AS pre_ask_e,
+               max({_ASK_Q_SUM}) FILTER (WHERE ({eligible}) AND {post})    AS post_ask_e,
+               max({_BID_Q_SUM}) FILTER (WHERE ({eligible}) AND {pre})     AS pre_bid_e,
+               max({_BID_Q_SUM}) FILTER (WHERE ({eligible}) AND {post})    AS post_bid_e,
+               count(*)          FILTER (WHERE {eligible})                 AS n_eligible,
+               max({_ASK_Q_SUM}) FILTER (WHERE {pre})                      AS pre_ask_all,
+               max({_ASK_Q_SUM}) FILTER (WHERE {post})                     AS post_ask_all,
+               max({_BID_Q_SUM}) FILTER (WHERE {pre})                      AS pre_bid_all,
+               max({_BID_Q_SUM}) FILTER (WHERE {post})                     AS post_bid_all,
+               count(*)                                                    AS n_all
+        FROM read_parquet(?, filename=true)
+        GROUP BY filename
+        """,
+        [str_paths],
+    ).fetchall()
+
+    out: dict[str, DepthSplitPeak] = {}
+    for (name, n_cont,
+         pre_ask_e, post_ask_e, pre_bid_e, post_bid_e, n_e,
+         pre_ask_all, post_ask_all, pre_bid_all, post_bid_all, n_all) in rows:
+        if n_cont:  # 정상 — 유효 술어
+            pre_ask, post_ask, pre_bid, post_bid, cnt = (
+                pre_ask_e, post_ask_e, pre_bid_e, post_bid_e, n_e)
+        else:       # 퇴화 파일 — 술어 완화(형제와 같은 규칙)
+            pre_ask, post_ask, pre_bid, post_bid, cnt = (
+                pre_ask_all, post_ask_all, pre_bid_all, post_bid_all, n_all)
+        if pre_ask is None and post_ask is None:
+            continue  # 그 날 유효 총잔량 데이터 없음 — 형제의 None 반환과 같은 의미
+        out[str(name)] = DepthSplitPeak(
+            pre_ask_peak=None if pre_ask is None else int(pre_ask),
+            post_ask_peak=None if post_ask is None else int(post_ask),
+            pre_bid_peak=None if pre_bid is None else int(pre_bid),
+            post_bid_peak=None if post_bid is None else int(post_bid),
+            eligible_count=int(cnt),
+        )
+    return out
+
+
+@dataclass(frozen=True)
 class DepthHeatmapRow:
     """버킷 대표(마지막 연속거래) 스냅샷의 10단계 매도/매수 가격·잔량.
 
