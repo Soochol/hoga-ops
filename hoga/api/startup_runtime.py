@@ -57,16 +57,60 @@ class StartupRuntimeDeps:
     # 프로그램매매 수집기 태스크 접근자. 라이브 런타임 소유라 라이브 시작/정지에 따라
     # 생겼다 사라진다 — 없으면 "죽음"이 아니라 미기동이므로 목록에서 생략한다.
     get_program_trade_task: Callable[[], TaskOrNone] | None = None
+    # 인벤토리 watchdog 옵서버(스레드). asyncio 태스크가 아니라 별도 판정이 필요하다.
+    # 미주입이면 목록에서 생략.
+    get_inventory_observer: Callable[[], object | None] | None = None
+
+
+# 한 번 일하고 끝나는 것이 **계약**인 감독 태스크들. 이 이름들만 정상 반환을
+# `completed`(경보 아님)로 센다 — 나머지는 영구 루프가 계약이므로 정상 반환도
+# 조용한 죽음(ADR-0064)이다. 판정을 "예외로 끝났나"로만 두면 루프의 조용한 죽음이
+# 통째로 안 보이게 되고, 반대로 "끝났나"로만 두면 one-shot 완료가 영구 503 이 된다.
+#
+# 이름을 키로 쓰는 이유: health 행 자체가 이미 이름으로 식별되고(테스트·UI·워치독
+# 로그가 전부 이름을 읽는다) 태스크 객체는 생성처에서 여기까지 계약을 실어 나를
+# 채널이 없다. 새 one-shot 을 감독 목록에 넣으면 **여기에도 등록**해야 한다.
+ONE_SHOT_TASK_NAMES: frozenset[str] = frozenset({
+    "watchlist-catchup",      # scheduler.start_scheduler — 부팅 캐치업 1회 스윕
+    "symbols-boot-refresh",   # start_app_runtime — 심볼 마스터 1회 갱신
+})
 
 
 def _task_health(name: str, task: TaskOrNone) -> dict[str, object]:
     """한 태스크의 정직한 상태 한 줄. 판정 근거는 supervised_task_health docstring."""
     if task is None:
         state = "not_started"
-    elif task.done():
-        state = "dead"
-    else:
+    elif not task.done():
         state = "running"
+    elif task.cancelled() or task.exception() is not None:
+        # cancelled() 를 먼저 본다 — 취소된 태스크에 exception() 을 물으면
+        # CancelledError 를 되던진다. 실행 중 취소는 아무도 시키지 않았어야 할
+        # 일이므로(정상 취소는 stop() 안에서만, 그때는 health 를 묻지 않는다)
+        # one-shot 이라도 조용한 죽음과 같은 등급이다.
+        state = "dead"
+    elif name in ONE_SHOT_TASK_NAMES:
+        state = "completed"
+    else:
+        state = "dead"
+    return {"name": name, "running": state == "running", "state": state}
+
+
+def _observer_health(name: str, observer: object | None) -> dict[str, object]:
+    """watchdog 옵서버 **스레드**의 상태 한 줄. 값 어휘는 `_task_health` 와 같다.
+
+    이 감독이 없으면 인벤토리 SSE 가 조용히 멈춘다. 옵서버는 parquet 트리 전체를
+    recursive 로 watch 하는데, 트리가 커져 inotify watch 한도(`max_user_watches`)를
+    소진하면 스레드가 죽고 — 그 뒤로 캡처가 끝나도 화면이 갱신되지 않는다. HTTP 는
+    멀쩡하므로 얕은 health 로도, 태스크 목록으로도(스레드라 asyncio 태스크가 아니다)
+    드러나지 않던 사각이었다.
+
+    `is_alive()` 가 없는 객체는 판정 불가 → `not_started`(경보 아님). 감독 목적의
+    코드가 타입 가정으로 죽으면 안 된다.
+    """
+    alive = getattr(observer, "is_alive", None)
+    if observer is None or not callable(alive):
+        return {"name": name, "running": False, "state": "not_started"}
+    state = "running" if alive() else "dead"
     return {"name": name, "running": state == "running", "state": state}
 
 
@@ -90,11 +134,27 @@ class AppStartupRuntime:
         와 "애초에 안 띄웠다(env 로 비활성 · 미주입)" 를 구별할 수 없다. 예컨대
         `HOGA_LIVE_TODAY_PROMOTE_ENABLED=false` 면 today-promoter 는 정상인데도
         영구히 `running=False` 다 — 이걸 UI 경보로 쓰면 배너가 상시 켜진다. 그래서
-        세 값을 낸다:
+        네 값을 낸다:
 
         - `running`  — 살아 있음
-        - `dead`     — 태스크가 있었고 끝났다(조용한 죽음, **경보 대상**)
+        - `dead`     — 계약을 어기고 끝났다(조용한 죽음, **경보 대상**)
+        - `completed` — one-shot 이 할 일을 마치고 정상 반환했다(경보 아님)
         - `not_started` — 핸들이 없다(비활성·미주입, 경보 아님)
+
+        **`completed` 를 `dead` 에서 떼어내는 것이 load-bearing 이다.** 감독 목록에는
+        루프뿐 아니라 one-shot 이 섞여 있다 — `watchlist-catchup`(부팅 캐치업,
+        `HOGA_STARTUP_CATCHUP_ENABLED` 옵트인)과 `symbols-boot-refresh` 는 한 번
+        일하고 정상 반환한다. `done()` 하나로 판정하던 판(2026-08-03 이전)에서는
+        이들이 완료되는 순간 deep health 가 **영구 503** 이 되고, README 무인 운영
+        절이 지시하는 워치독 타이머(5분)가 완벽히 건강한 서버를 무한 재시작했다 —
+        장중이면 재시작마다 실시간 틱이 영구 소실된다. `not_started` 를 `dead` 에서
+        떼어낸 것과 같은 이유이고, 같은 축의 반대쪽 끝이다.
+
+        **단 "정상 반환 = 무사"가 아니다.** 영구 루프에게 정상 반환은 ADR-0064 가
+        지목한 바로 그 조용한 죽음이다. 그래서 판정 기준은 예외 여부가 아니라
+        태스크의 **계약**이고, 계약은 `ONE_SHOT_TASK_NAMES` 가 이름으로 못박는다.
+        one-shot 이라도 예외·취소로 끝났으면 `dead` 다 — 실패한 캐치업은 계속
+        보여야 한다.
 
         `running` 불리언은 하위호환으로 유지한다(`state == "running"` 과 동의).
 
@@ -117,7 +177,14 @@ class AppStartupRuntime:
             program_trade = self.deps.get_program_trade_task()
             if program_trade is not None:
                 tasks.append(("program-trade-collector", program_trade))
-        return [_task_health(name, task) for name, task in tasks]
+        rows = [_task_health(name, task) for name, task in tasks]
+        if self.deps.get_inventory_observer is not None:
+            rows.append(
+                _observer_health(
+                    "inventory-observer", self.deps.get_inventory_observer()
+                )
+            )
+        return rows
 
     async def stop(self) -> None:
         """Stop runtime-owned background work in shutdown order."""

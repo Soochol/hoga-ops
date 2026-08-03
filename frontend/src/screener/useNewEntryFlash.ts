@@ -12,13 +12,25 @@ export const NEW_ENTRY_FLASH_MS = 2200;
  * **첫 조회는 플래시하지 않는다**(prev=null): 처음 채워진 결과 전체가 플래시하면
  * 노이즈다 — 이후 멤버십 변화에만 반응한다. 코드 배열은 호출부에서 메모(lastScan
  * 기반)해 넘겨야 가격 폴링 리렌더마다 재계산되지 않는다.
+ *
+ * codes 가 **null 이면 "아직 스캔 결과가 없음"**(시작 시 초기화·TTL 만료)이라 이력을
+ * 통째로 버리고 다음 채움을 첫 조회로 취급한다. 빈 배열(결과 0건)과 구분하는 게 핵심이다
+ * — 초기화를 `[]` 로 표현하면 prev 가 "빈 집합"이 되어 다음 결과 **전 종목이 신규 편입**
+ * 으로 플래시한다(멤버십이 실제로 바뀐 게 아니라 리스트를 지웠을 뿐인데).
  */
-export function useNewEntryFlash(codes: string[], holdMs = NEW_ENTRY_FLASH_MS): Set<string> {
+export function useNewEntryFlash(codes: string[] | null, holdMs = NEW_ENTRY_FLASH_MS): Set<string> {
   const prevRef = useRef<Set<string> | null>(null);
   const timersRef = useRef<Map<string, number>>(new Map());
   const [flashing, setFlashing] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
+    if (codes === null) {
+      prevRef.current = null;
+      timersRef.current.forEach((t) => window.clearTimeout(t));
+      timersRef.current.clear();
+      setFlashing((f) => (f.size === 0 ? f : new Set()));
+      return;
+    }
     const current = new Set(codes);
     const prev = prevRef.current;
     prevRef.current = current;

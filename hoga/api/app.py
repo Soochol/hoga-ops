@@ -6,6 +6,7 @@ import asyncio
 import functools
 import logging
 import os
+import subprocess
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
@@ -16,7 +17,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from hoga.api import captures as _captures_module, screener as _screener_module, symbols as _symbols_module
+from hoga.api import (
+    calendar as calendar_module,
+    captures as _captures_module,
+    screener as _screener_module,
+    symbols as _symbols_module,
+)
 from hoga.api.calendar import build_router as build_calendar_router
 from hoga.api.captures import build_router as build_captures_router, cancel_all_on_shutdown, set_bus as set_captures_bus
 from hoga.api.events import build_event_bus
@@ -33,6 +39,7 @@ from hoga.api.request_timing import RequestTimingMiddleware
 from hoga.api.routes import build_router
 from hoga.api.scheduler import start_scheduler
 from hoga.api.screener import build_router as build_screener_router
+from hoga.api.sentiment_routes import build_router as build_sentiment_router
 from hoga.api.signal_alert_routes import build_router as build_signal_alert_router
 from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
 from hoga.api.study_layout_preset_routes import (
@@ -47,9 +54,9 @@ from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_log_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
+from hoga.live.candle_models import LiveCandle
 from hoga.live.candle_repair import build_saved_view_repair_hook
 from hoga.live.kis_capacity_runtime import aclose_kis_capacity_scheduler
-from hoga.live.kis_models import KisCandle
 from hoga.live.kis_runtime import aclose_kis_client, get_kis_client
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
@@ -98,7 +105,37 @@ def _read_app_version() -> str:
         return "unknown"
 
 
+def _read_git_commit() -> str:
+    """기동 시점 체크아웃의 짧은 커밋 SHA. 없으면 ``unknown``.
+
+    ``VERSION`` 이 답하지 못하는 질문을 답한다. 그 파일은 사람이 릴리스 때 손으로
+    올리는 값인데 2026-07-07 이후 600여 커밋 동안 멈춰 있었다 — 그래서 업그레이드
+    러닝북의 유일한 검증 단계("version 이 새 값인지")가 **항상 같은 문자열**을
+    돌려주었고, `git pull` 누락 · `systemctl restart` 실패 · 구프로세스 잔존이
+    성공과 구분되지 않았다(2026-08-03). 커밋 SHA 는 사람 규율에 의존하지 않는다.
+
+    기동 시 1회만 부른다(모듈 상수) — 응답마다 subprocess 를 띄우면 감독자가
+    짧은 주기로 무는 엔드포인트에 fork 비용이 붙는다. 설치본(비-git 체크아웃)이나
+    git 부재는 정상 상황이므로 조용히 unknown 이다 — 식별 실패가 기동을 막을
+    이유는 없다(VERSION 과 같은 규칙).
+    """
+    try:
+        # 인자는 전부 리터럴이고 셸을 거치지 않는다 — 외부 입력이 닿는 곳이 없다.
+        done = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).resolve().parents[2],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    return done.stdout.strip() if done.returncode == 0 else "unknown"
+
+
 APP_VERSION: str = _read_app_version()
+APP_COMMIT: str = _read_git_commit()
 
 
 def allowed_origins() -> tuple[str, ...]:
@@ -121,7 +158,7 @@ def allowed_origins() -> tuple[str, ...]:
     return ALLOWED_ORIGINS + extra
 
 
-async def _repair_minute_fetch(code: str, date_s: str) -> list[KisCandle]:
+async def _repair_minute_fetch(code: str, date_s: str) -> list[LiveCandle]:
     """저장뷰 캡처-공백 복구용 KIS 과거 분봉 fetch(KRX 고정 — /study venue).
 
     현재 KIS 클라이언트를 raw로 호출한다(클라이언트 내장 rate-limiter가 쿼터를
@@ -205,6 +242,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
                 # 들고 있지 않으므로 접근자로 주입한다(호출 시점에 다시 읽는다).
                 get_capture_worker_tasks=lambda: _captures_module._workers,
                 get_program_trade_task=get_program_trade_task,
+                get_inventory_observer=lambda: observer,
                 load_symbol_disk_state=_symbols_module.load_disk_state,
                 needs_symbol_boot_refresh=_symbols_module.needs_boot_refresh,
                 refresh_symbols=_symbols_module.refresh,
@@ -282,16 +320,20 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     # 부작용 없음(메모리 상태 읽기)이므로 감독자가 짧은 주기로 물어도 안전하다.
     @app.get("/health")
     def _health(deep: bool = False) -> JSONResponse:
-        # version 은 얕은 쪽에도 싣는다(#998) — dev/prod 2대 운영에서 "이 포트에
-        # 뜬 게 어느 코드인가" 는 liveness 만큼 자주 묻는 질문이다.
+        # version·commit 은 얕은 쪽에도 싣는다(#998) — dev/prod 2대 운영에서 "이
+        # 포트에 뜬 게 어느 코드인가" 는 liveness 만큼 자주 묻는 질문이다.
+        # 업그레이드 성공 판정은 commit 으로 한다: VERSION 은 손으로 올리는 값이라
+        # 갱신을 빠뜨리면 '항상 같은 값' 이 되어 검증이 무신호가 된다.
         if not deep:
-            return JSONResponse({"status": "ok", "version": APP_VERSION})
+            return JSONResponse(
+                {"status": "ok", "version": APP_VERSION, "commit": APP_COMMIT},
+            )
         runtime = getattr(app.state, "startup_runtime", None)
         if runtime is None:
             # lifespan 밖(부팅 중·종료 중·테스트) — 판정 근거가 없다. 감독자가
             # 부팅 중을 실패로 오해하지 않도록 200 + 미확정을 명시한다.
             return JSONResponse({
-                "status": "ok", "version": APP_VERSION,
+                "status": "ok", "version": APP_VERSION, "commit": APP_COMMIT,
                 "checks": {"supervised_tasks": "unknown"},
             })
         tasks = runtime.supervised_task_health()
@@ -312,6 +354,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
         body: dict[str, object] = {
             "status": "degraded" if degraded else "ok",
             "version": APP_VERSION,
+            "commit": APP_COMMIT,
             "dead_tasks": dead,
             "queue": queue,
             "disk": None if head is None else {
@@ -331,11 +374,15 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     app.include_router(
         build_symbols_router(path=resolve_symbol_master_path(), data_dir=data_dir)
     )
+    # PR-H(#1044): 거래일 달력이 data_dir 오버레이를 보게 한다. 시드는 패키지에
+    # 붙어 있어 이 호출 없이도 답하지만, 커밋 이후의 새 거래일은 오버레이에 있다.
+    calendar_module.set_data_dir(data_dir)
     app.include_router(build_calendar_router(data_dir=data_dir))
     app.include_router(build_watchlist_router(data_dir=data_dir))
     app.include_router(build_heatmap_router(data_dir=data_dir))
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus))
     app.include_router(build_signal_alert_router(data_dir=data_dir))
+    app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(
         build_study_view_router(
             data_dir=data_dir,

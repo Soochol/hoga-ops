@@ -518,21 +518,38 @@ async def promote_one(
     if not jsonl_path.exists():
         return
 
-    snapshots, trades, broker_rows, fills, candles, meta = _parse_jsonl_to_records(
-        jsonl_path, code=code, date=date, source=source,
-    )
+    def _sync_parse_and_write() -> dict:
+        """파싱 + 테이블 쓰기 전부. 호출자가 to_thread 로 내린다.
 
-    target.mkdir(parents=True, exist_ok=True)
-    _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
-    _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
-    _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
-    _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
-    # 실시간 합성 캔들(kiwoom_live). 비어있으면 쓰지 않는다(위 today-promotion과 동일 —
-    # 빈 candles.parquet이 resolve_candle_source의 존재 판정에서 거짓 승자가 됨).
-    # kis_live/hogaplay JSONL엔 candle kind가 없어 candles=[] → 기존 소스 동작 불변.
-    if candles:
-        _atomic_write_table(write_candles_parquet, candles, target / "candles.parquet")
-    meta_path.write_text(json.dumps(meta, indent=2))
+        **이벤트 루프에서 직접 돌리면 안 된다.** 라인당 json.loads 하는 순수
+        파이썬 루프라 하루치 틱이면 종목 하나에도 수초가 나온다. 17:00 배치는
+        (전날 서버가 15:35 전에 죽었다면) 이걸 종목 수만큼 연속으로 돈다 —
+        그동안 HTTP·WS 가 통째로 얼고, 10초를 넘기면 워치독 curl(--max-time 10)
+        까지 실패해 일일 런 도중 재시작이 걸린다. 자매 경로
+        promote_kiwoom_today 는 처음부터 to_thread 였다.
+        """
+        snapshots, trades, broker_rows, fills, candles, meta = _parse_jsonl_to_records(
+            jsonl_path, code=code, date=date, source=source,
+        )
+
+        target.mkdir(parents=True, exist_ok=True)
+        _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
+        _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
+        _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
+        _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
+        # 실시간 합성 캔들(kiwoom_live). 비어있으면 쓰지 않는다(위 today-promotion과 동일 —
+        # 빈 candles.parquet이 resolve_candle_source의 존재 판정에서 거짓 승자가 됨).
+        # kis_live/hogaplay JSONL엔 candle kind가 없어 candles=[] → 기존 소스 동작 불변.
+        if candles:
+            _atomic_write_table(write_candles_parquet, candles, target / "candles.parquet")
+        # meta.json 은 **마지막**이자 원자적으로. 이 파일의 존재가 "승격 완료" 의
+        # 표식이라(위 early-return 이 이걸 읽는다), 부분 쓰기된 meta 는 정전 뒤
+        # 재기동에서 "이미 승격됨" 으로 오독되거나 파싱 실패로 남는다. 같은 모듈의
+        # 다른 쓰기는 전부 원자적인데 여기만 write_text 로 남아 있었다.
+        atomic_write_json(meta_path, meta, indent=2)
+        return meta
+
+    meta = await asyncio.to_thread(_sync_parse_and_write)
     _log.info(
         "live.promote.done code=%s date=%s row_counts=%s",
         code, date, meta["row_counts"],

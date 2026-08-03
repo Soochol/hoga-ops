@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import datetime as dt
+import errno
 import logging
 import os
 import time
@@ -133,7 +134,26 @@ def _exception_to_error_code(exc: BaseException) -> CaptureErrorCode | UpstreamC
         return UpstreamCode.HOGAPLAY_HTTP_ERROR
     if isinstance(exc, CaptureCancelled):
         return None
+    if _is_local_disk_failure(exc):
+        return CaptureErrorCode.DISK_FULL
     return CaptureErrorCode.INTERNAL_ERROR
+
+
+def _is_local_disk_failure(exc: BaseException) -> bool:
+    """이 실패가 (Code, Stock-Date) 가 아니라 **머신** 탓인가.
+
+    디스크가 차면 캡처의 모든 쓰기가 ENOSPC 로 죽는다. 그걸 보통 실패로 세면
+    만수 기간에 시도된 모든 (code,date) 가 fail_streak 를 5까지 태워 **디스크를
+    비운 뒤에도 영구 차단**된다 — 인벤토리에서 사람이 행마다 손으로 풀기 전까지
+    일일 수집에서 조용히 이탈한다. 그런데 hogaplay 보유 창이 ~18시간이라 그걸
+    알아챌 때쯤엔 데이터도 없다. 일시 장애가 영구 구멍이 되는 경로다.
+
+    #976 이 범위 캡처에서 세운 것과 같은 구분이다: 영구 조건과 일시 조건은
+    다른 처방을 받아야 한다.
+    """
+    if not isinstance(exc, OSError) or exc.errno is None:
+        return False
+    return exc.errno in (errno.ENOSPC, errno.EDQUOT, errno.EROFS)
 
 
 @dataclass
@@ -470,12 +490,14 @@ def _items_in_restore_order() -> Iterator[QueueItemState]:
 def _apply_terminal_to_streaks(
     fail_streaks: dict[str, int], code: str, date: str, phase: str,
     *, done_complete: bool = False, skip_reason: str | None = None,
+    local_disk_failure: bool = False,
 ) -> None:
     """Mutate ``fail_streaks`` in place per ADR-0042 (amended 2026-06-03) + ADR-0093:
 
     - ``phase == "done"`` AND ``done_complete``      → counter reset (key removed)
     - ``phase == "done"`` AND NOT ``done_complete``  → counter += 1
     - ``phase == "skipped"`` AND ``skip_reason == "upstream_gap"`` → no change
+    - ``phase == "failed"`` AND ``local_disk_failure``            → no change
     - ``phase in {"failed", "skipped"}`` (other)     → counter += 1
     - ``phase == "cancelled"``                       → no change (user-initiated;
       external-call status unknown)
@@ -499,6 +521,12 @@ def _apply_terminal_to_streaks(
     upstream. All OTHER skips (already_complete, source_partial, no_upstream_data)
     keep the existing +1.
 
+    ``local_disk_failure`` (2026-08-03): 디스크가 차서(ENOSPC 계열) 죽은 실패는
+    **(Code, Stock-Date) 의 속성이 아니라 머신의 일시 상태**다. 보통 실패로 세면
+    만수 기간에 시도된 모든 항목이 cap 을 태워, 디스크를 비운 뒤에도 인벤토리에서
+    사람이 행마다 풀기 전까지 영구 차단된다 — 그 사이 hogaplay 보유 창(~18h)이
+    지나 데이터도 사라진다. 판정은 :func:`_is_local_disk_failure`.
+
     Caller is responsible for persisting after mutation.
     """
     from hoga.api.fail_streak import streak_key  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
@@ -510,6 +538,8 @@ def _apply_terminal_to_streaks(
             fail_streaks[key] = fail_streaks.get(key, 0) + 1
     elif phase == "skipped" and skip_reason == "upstream_gap":
         pass  # ADR-0093: no external call made — don't burn the cap
+    elif phase == "failed" and local_disk_failure:
+        pass  # 머신의 일시 상태 — 이 (code,date) 를 벌하면 안 된다
     elif phase in ("failed", "skipped"):
         fail_streaks[key] = fail_streaks.get(key, 0) + 1
     elif phase == "cancelled":
@@ -521,6 +551,7 @@ def _apply_terminal_to_streaks(
 def apply_terminal_to_manifest(
     manifest: QueueManifest, code: str, date: str, phase: str,
     *, done_complete: bool = False, skip_reason: str | None = None,
+    local_disk_failure: bool = False,
 ) -> None:
     """ADR-0042 worker-terminal hook (pure function on a QueueManifest).
 
@@ -534,6 +565,7 @@ def apply_terminal_to_manifest(
     _apply_terminal_to_streaks(
         manifest.fail_streaks, code, date, phase,
         done_complete=done_complete, skip_reason=skip_reason,
+        local_disk_failure=local_disk_failure,
     )
 
 
@@ -1042,6 +1074,13 @@ async def _finalize_item(state: QueueItemState) -> None:
         _apply_terminal_to_streaks(
             _fail_streaks, state.code, state.date, state.phase,
             done_complete=done_complete, skip_reason=state.skip_reason,
+            # 분류는 예외 핸들러가 이미 error.code 에 실어 놨다 — 여기서 예외를
+            # 다시 볼 방법이 없고, 상태 객체에 새 필드를 더하면 매니페스트
+            # 스키마가 바뀌어 롤백 시 큐가 격리된다(README 업그레이드 절).
+            local_disk_failure=(
+                state.error is not None
+                and state.error.code == CaptureErrorCode.DISK_FULL
+            ),
         )
         _persist_queue_locked()  # ADR-0019 + ADR-0042 — item left _active, fail_streak updated
         # Drain detection — also check we're not paused (drained only fires
@@ -1391,19 +1430,55 @@ def _expand_trading_days_with_fallback(start: str, end: str) -> tuple[list[str],
     """
     from hoga.api.calendar import (  # noqa: PLC0415 — 지연 import(순환/heavy)
         TradingDayUnavailableError,
+        coverage_end,
         trading_days_in_range,
         weekdays_in_range,
     )
     try:
         return trading_days_in_range(start, end), False
     except TradingDayUnavailableError as exc:
-        if exc.code != UpstreamCode.KIS_CREDENTIALS_MISSING:
-            raise
-        logging.getLogger(__name__).warning(
-            "capture.trading_days_weekday_fallback start=%s end=%s reason=%s",
-            start, end, exc.code,
+        pass_reason = exc.code
+    log = logging.getLogger(__name__)
+
+    # PR-H(#1044) — **경계에서 자른다.** 정적 달력은 커밋(+오버레이) 시점까지만
+    # 덮으므로 `[start, 오늘]` 요청의 꼬리가 커버리지를 넘는 것이 정상이다.
+    # 여기서 통째로 fail-fast 하면 dev 무자격 프로필(오버레이가 자라지 않는다)에서
+    # **범위 캡처를 아예 걸 수 없다** — #976 이 고쳤던 바로 그 회귀다.
+    #
+    # 그래서 양극단 대신 가른다: 커버리지 안은 **정확한 거래일**, 그 뒤 꼬리만
+    # 평일 근사. 휴장일이 섞이는 비용은 유계다(업스트림 빈 응답 → ADR-0021 센티넬).
+    end_known = coverage_end()
+    if end_known is None or end_known < start:
+        log.warning(
+            "capture.trading_days_weekday_fallback start=%s end=%s reason=%s "
+            "coverage_end=%s (전 구간 근사)",
+            start, end, pass_reason, end_known,
         )
         return weekdays_in_range(start, end), True
+
+    try:
+        exact = trading_days_in_range(start, min(end, end_known))
+    except TradingDayUnavailableError:
+        # 커버리지 안인데도 실패했다 = 소스 자체가 없다(배포 사고). 전 구간 근사.
+        log.warning(
+            "capture.trading_days_weekday_fallback start=%s end=%s reason=%s (소스 부재)",
+            start, end, pass_reason,
+        )
+        return weekdays_in_range(start, end), True
+    tail = weekdays_in_range(_next_day(end_known), end) if end_known < end else []
+    log.warning(
+        "capture.trading_days_weekday_fallback start=%s end=%s reason=%s "
+        "coverage_end=%s exact=%d approx=%d",
+        start, end, pass_reason, end_known, len(exact), len(tail),
+    )
+    return exact + tail, bool(tail)
+
+
+def _next_day(yyyymmdd: str) -> str:
+    import datetime as _dt  # noqa: PLC0415 — 국소 사용
+
+    d = _dt.date(int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))
+    return (d + _dt.timedelta(days=1)).strftime("%Y%m%d")
 
 
 def _expand_to_trading_days(start: str, end: str) -> list[str]:

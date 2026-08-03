@@ -26,6 +26,7 @@ const baseArgs = (over: Partial<UseScreenerMonitorArgs> = {}): UseScreenerMonito
   periodMs: MONITOR_PERIOD_FULL_MS,
   disabled: false,
   resultCodes: ['005930'],
+  hasResults: true,
   scanOnce: vi.fn().mockResolvedValue(true),
   onAutoStop: vi.fn(),
   ...over,
@@ -82,6 +83,26 @@ describe('useScreenerMonitor', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(MONITOR_PERIOD_FULL_MS); });
     expect(scanOnce).not.toHaveBeenCalled();
     expect(result.current.paused).toBe('closed');
+  });
+
+  it('장마감이라도 보여줄 결과가 없으면 1회 조회한다(시작 시 초기화 직후)', async () => {
+    mockPhase('closed');
+    const scanOnce = vi.fn().mockResolvedValue(true);
+    renderHook((props: UseScreenerMonitorArgs) => useScreenerMonitor(props), {
+      initialProps: baseArgs({ scanOnce, hasResults: false }),
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(scanOnce).toHaveBeenCalledTimes(1);            // 빈 화면으로 끝내지 않는다
+  });
+
+  it('탭 숨김이라도 보여줄 결과가 없으면 조회한다', async () => {
+    const scanOnce = vi.fn().mockResolvedValue(true);
+    setHidden(true);
+    renderHook((props: UseScreenerMonitorArgs) => useScreenerMonitor(props), {
+      initialProps: baseArgs({ scanOnce, hasResults: false }),
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(scanOnce).toHaveBeenCalledTimes(1);
   });
 
   it('탭 숨김이면 조회하지 않고, 복귀 시 즉시 재조회한다', async () => {

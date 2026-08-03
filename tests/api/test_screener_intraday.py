@@ -37,31 +37,35 @@ class FakeKis:
 
 
 def _patch_scheduler(monkeypatch, fake: FakeKis, calls: list[dict] | None = None) -> None:
-    monkeypatch.setattr(screener_intraday.kis_access, "has_rest_capacity", lambda data_dir: True)
-    monkeypatch.setattr(screener_intraday, "ensure_kis_capacity_scheduler", lambda data_dir: object())
+    """PR-D(#1040) 칼 컷오버 — 키움 시임으로 옮겼다.
 
-    async def fake_run_with_capacity(
-        scheduler,
-        *,
-        data_dir,
-        key,
-        endpoint,
-        priority,
-        fetch_fn,
-        cooldown_scope=None,
-    ):
+    `data_dir`·`cooldown_scope` 가 사라진 것은 **계정 차원이 사라졌기 때문**이다:
+    키움 유량은 TR별이라 고를 계정이 없고, 같은 `api_id` 호출자끼리 자동으로 같은
+    버킷을 공유한다(#1015).
+    """
+    sentinel = object()
+    monkeypatch.setattr(
+        screener_intraday.kiwoom_rest_runtime, "ensure_rest_client",
+        lambda data_dir, account_id=0: sentinel,
+    )
+    monkeypatch.setattr(
+        screener_intraday.kiwoom_rest_runtime, "ensure_scheduler", lambda: object()
+    )
+
+    async def fake_run_with_capacity(scheduler, *, key, api_id, priority, fetch_fn, client):
         if calls is not None:
             calls.append({
-                "scheduler": scheduler,
-                "data_dir": data_dir,
-                "key": key,
-                "endpoint": str(endpoint),
-                "priority": priority,
-                "cooldown_scope": cooldown_scope,
+                "scheduler": scheduler, "key": key,
+                "api_id": api_id, "priority": priority,
             })
-        return await fetch_fn(fake)
+        return await fetch_fn(client)
 
-    monkeypatch.setattr(screener_intraday.kis_access, "run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr(screener_intraday.kiwoom_access, "run_with_capacity", fake_run_with_capacity)
+
+    async def fake_fetch(client, codes, *, venue="KRX"):
+        return await fake.fetch_multi_price(codes)
+
+    monkeypatch.setattr(screener_intraday.kiwoom_multi_quote, "fetch_multi_price", fake_fetch)
 
 
 def _write_stocks(path: Path) -> None:
@@ -112,13 +116,12 @@ async def test_build_intraday_overlay_creates_daily_rows(monkeypatch, tmp_path: 
     assert row["high"] == 110.0
     assert row["volume"] == 1234
     assert "intraday_quote_invalid" in overlay.warnings
+    # 계정 차원(data_dir·cooldown_scope) 소멸 — 키움 유량은 TR별이다(#1015).
     assert calls == [{
         "scheduler": calls[0]["scheduler"],
-        "data_dir": tmp_path,
         "key": ("screener-intraday", "20260625", ("000111", "000222")),
-        "endpoint": "quotes",
+        "api_id": "ka10095",
         "priority": "background",
-        "cooldown_scope": "quotes:KRX",
     }]
 
 

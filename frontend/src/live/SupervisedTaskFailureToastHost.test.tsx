@@ -50,6 +50,22 @@ describe('deadSupervisedTasks', () => {
     ).toEqual(['capture-worker-1']);
   });
 
+  it('정상 완료한 one-shot 은 경보 대상이 아니다', () => {
+    // 부팅 캐치업(watchlist-catchup)은 한 번 일하고 끝나는 게 계약이다. 이걸
+    // 죽음으로 세던 판에서는 캐치업이 끝나는 순간 전 사용자에게 "백그라운드
+    // 작업이 중단됐습니다" 토스트가 상시 떴다(2026-08-03).
+    expect(
+      deadSupervisedTasks(
+        baseStatus({
+          supervised_tasks: [
+            { name: 'watchlist-daily-loop', running: true, state: 'running' },
+            { name: 'watchlist-catchup', running: false, state: 'completed' },
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
   it('필드가 없는 구버전 응답은 빈 목록으로 접는다', () => {
     expect(deadSupervisedTasks(baseStatus())).toEqual([]);
     expect(deadSupervisedTasks(undefined)).toEqual([]);

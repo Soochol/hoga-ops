@@ -1014,6 +1014,21 @@ SignalAlertName = Literal["sell_total_renewal"]
 SignalAlertScope = Literal["inbox", "all"]
 
 
+def validate_session_start_hhmm(value: int) -> int:
+    """장중 기준시각 HHMM(0900~1520 KST) 검증. 유효하면 그대로 반환.
+
+    실시간 알림(:class:`SellTotalRenewalSettings`)과 스크리너 조건
+    (:class:`DepthRenewalParams`)이 **같은 의미의 기준시각**을 받는다 — 판정 로직은
+    표면마다 다르지만(알림=이벤트 스트림+재무장, 스크리너=당일 집합) 허용 범위가
+    갈리면 한쪽에서만 저장되는 값이 생긴다. 검증기는 하나로 둔다.
+    """
+    hh = value // 100
+    mm = value % 100
+    if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
+        raise ValueError("start_hhmm must be between 0900 and 1520 KST")
+    return value
+
+
 class SellTotalRenewalSettings(BaseModel):
     enabled: bool = True
     start_hhmm: int = 1100
@@ -1023,11 +1038,7 @@ class SellTotalRenewalSettings(BaseModel):
     @field_validator("start_hhmm")
     @classmethod
     def _valid_hhmm(cls, value: int) -> int:
-        hh = value // 100
-        mm = value % 100
-        if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
-            raise ValueError("start_hhmm must be between 0900 and 1520 KST")
-        return value
+        return validate_session_start_hhmm(value)
 
     @field_validator("threshold_pct")
     @classmethod
@@ -1361,6 +1372,23 @@ class DepthPeakParams(BaseModel):                      # 매도/매수 총잔량
     # >100=초과 돌파. 단일 비율 파라미터로 "보다 클 때"와 "N% 이상"을 통합.
     threshold_pct: float = Field(default=100.0, ge=1)
 
+class DepthRenewalParams(BaseModel):                   # 매도 총잔량 기준시각 돌파 — 당일 전용
+    # 판정: start_hhmm 이후 최댓값 ≥ (threshold_pct/100) × 개장~start_hhmm 최댓값.
+    # 두 창 모두 유효 스냅샷이 있어야 하며, 이후 창의 **최댓값**으로 보므로 하루 중
+    # 한 번이라도 돌파하면 그 뒤 재조회에도 계속 잡힌다(스크리너는 이벤트 스트림이
+    # 아니라 집합이다 — 15~30초 폴링 사이에 지나간 순간을 놓치지 않게 하는 것이 요점).
+    start_hhmm: int = 1200
+    # DepthPeakParams·SellTotalRenewalSettings 와 **같은 식(≥)** 이다. 100 이면 동률도
+    # 통과하는데, 이는 신호 정의가 "renews or revisits a high"(signal-alerts 설계)이기
+    # 때문 — 매도벽이 그만큼 다시 쌓인 것도 신호다. 엄밀히 더 큰 것만 원하면 101 이상,
+    # 근접까지 보려면 100 미만을 쓴다.
+    threshold_pct: float = Field(default=100.0, ge=1)
+
+    @field_validator("start_hhmm")
+    @classmethod
+    def _valid_hhmm(cls, value: int) -> int:
+        return validate_session_start_hhmm(value)
+
 class TradeValueLeaf(BaseModel):
     type: Literal["trade_value"] = "trade_value"
     id: str
@@ -1421,8 +1449,18 @@ class BidDepthNewHighLeaf(BaseModel):
     id: str
     params: DepthPeakParams
 
+class AskDepthRenewalLeaf(BaseModel):
+    type: Literal["ask_depth_renewal"] = "ask_depth_renewal"
+    id: str
+    params: DepthRenewalParams
+
+class BidDepthRenewalLeaf(BaseModel):
+    type: Literal["bid_depth_renewal"] = "bid_depth_renewal"
+    id: str
+    params: DepthRenewalParams
+
 ConditionLeaf = Annotated[
-    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -1484,6 +1522,20 @@ class DepthPeakValue(BaseModel):                       # 결과 행 검증용 �
     bid_past_peak: int | None = None
     bid_have_days: int = 0
     bid_need_days: int = 0
+    # 기준시각 돌파 조건(ask/bid_depth_renewal) 전용 — 개장~기준시각 / 기준시각~현재의
+    # 당일 최댓값. peak 조건의 ask_today/ask_past_peak 과 **의미가 다르므로** 필드를
+    # 나눈다(그쪽 배지는 "지난 N일 peak" 이라고 쓴다 — 여기 값을 끼우면 문구가 거짓이
+    # 된다). 조건이 없으면 None 이고, 그때 배지는 그 행을 그리지 않는다.
+    #
+    # 기준시각도 side 별이다. 매도 12:00 · 매수 13:00 처럼 섞어 쓸 수 있는데 한 벌만
+    # 실으면 한쪽 배지가 남의 시각을 달고 나온다 — peak 조건이 ask_need_days/
+    # bid_need_days 로 같은 문제를 푼 것과 같은 이유다.
+    ask_pre_max: int | None = None
+    ask_post_max: int | None = None
+    ask_renewal_start_hhmm: int | None = None
+    bid_pre_max: int | None = None
+    bid_post_max: int | None = None
+    bid_renewal_start_hhmm: int | None = None
 
 class ScreenerResponse(BaseModel):
     status: Literal["ok", "not_seeded", "building"]
@@ -1760,3 +1812,80 @@ StudyLayoutPresetListRow = StudyLayoutPreset
 class StudyLayoutPresetsFile(BaseModel):
     schema_version: int = 1
     presets: list[StudyLayoutPreset] = Field(default_factory=list)
+
+
+# ── 옵션 심리 패널 (ADR-0135) ────────────────────────────────────────────────
+# 계층별 as_of 를 따로 싣는 이유: 전수(5분)와 ATM(30초)의 관측 시각이 다르다.
+# 하나로 뭉치면 5분 전 GEX 와 30초 전 P/C 가 같은 시각으로 표시되어 오독을 부른다.
+
+
+class PutCallRatioModel(BaseModel):
+    volume_ratio: float | None
+    oi_ratio: float | None
+    call_volume: int
+    put_volume: int
+    call_oi: int
+    put_oi: int
+
+
+class StrikeOiModel(BaseModel):
+    strike: float
+    call_oi: int
+    put_oi: int
+
+
+class OiDistributionModel(BaseModel):
+    strikes: list[StrikeOiModel]
+    max_pain: float | None
+
+
+class GexPointModel(BaseModel):
+    strike: float
+    gex: float
+
+
+class GammaExposureModel(BaseModel):
+    points: list[GexPointModel]
+    total: float
+    flip_strike: float | None
+
+
+class IvPointModel(BaseModel):
+    strike: float
+    call_iv: float | None
+    put_iv: float | None
+    #: 행사가 미결제 합 — IV 신뢰도. 화면이 저유동성 포인트의 투명도를 감쇠한다.
+    oi: int = 0
+
+
+class IvSkewModel(BaseModel):
+    points: list[IvPointModel]
+    atm_iv: float | None
+    risk_reversal_25d: float | None
+
+
+class PutCallSeriesPointModel(BaseModel):
+    t_ms: int
+    volume_ratio: float | None
+    oi_ratio: float | None
+
+
+class OptionSentimentResponse(BaseModel):
+    #: 휴면 사유. None 이 아니면 나머지 필드는 비어 있을 수 있다.
+    unavailable: str | None = None
+    expiry: str | None = None
+    #: 근월물 체인 종목 수. 만기마다 다르므로(202608=780·202609=1012) 화면이
+    #: 대기 안내 문구를 이 값으로 만든다 — 상수로 박으면 롤오버 때 조용히 틀린다.
+    chain_size: int | None = None
+    underlying: float | None = None
+    #: 전 행사가 스냅샷 관측 시각 — Max Pain·GEX 의 as_of.
+    full_as_of_ms: int | None = None
+    #: ATM 창 스냅샷 관측 시각 — P/C·IV 스큐의 as_of.
+    atm_as_of_ms: int | None = None
+    put_call: PutCallRatioModel | None = None
+    #: 당일 P/C 시계열(전수 5분마다 한 점, KST 자정 리셋, 프로세스 메모리 한정).
+    put_call_series: list[PutCallSeriesPointModel] = Field(default_factory=list)
+
+    oi_distribution: OiDistributionModel | None = None
+    gamma_exposure: GammaExposureModel | None = None
+    iv_skew: IvSkewModel | None = None

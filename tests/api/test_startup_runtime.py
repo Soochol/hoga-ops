@@ -398,3 +398,169 @@ async def test_startup_runtime_spawns_and_stops_kiwoom_watchdog(tmp_path: Path) 
 
 async def _record_async(calls: list[Any], name: str, value: Any) -> None:
     calls.append((name, value))
+
+
+@pytest.mark.asyncio
+async def test_completed_one_shot_is_not_reported_dead(tmp_path: Path) -> None:
+    """one-shot 의 정상 완료는 죽음이 아니다 — 이 구별이 없으면 README 무인 운영
+    구성(부팅 캐치업 + 5분 워치독)이 건강한 서버를 영구히 재시작한다(2026-08-03).
+
+    기존 테스트가 전부 dict 스텁이라 **실제 Task 의 정상-완료 경로를 한 번도 통과
+    시키지 않았다** — 그래서 버그가 커버리지 안에서 살아 있었다. 여기서는 진짜
+    asyncio.Task 로 네 상태를 전부 만든다.
+    """
+    from hoga.api.startup_runtime import AppStartupRuntime, StartupRuntimeDeps
+
+    async def sleeping() -> None:
+        await asyncio.sleep(3600)
+
+    async def one_sweep() -> None:
+        return None
+
+    async def crashing() -> None:
+        raise RuntimeError("catchup upstream refused")
+
+    daily = asyncio.create_task(sleeping(), name="watchlist-daily-loop")
+    catchup = asyncio.create_task(one_sweep(), name="watchlist-catchup")
+    boot_refresh = asyncio.create_task(crashing(), name="symbols-boot-refresh")
+    await catchup
+    await asyncio.gather(boot_refresh, return_exceptions=True)
+
+    deps = StartupRuntimeDeps(
+        env={},
+        start_scheduler=lambda _d: [],
+        start_live_stream=None,  # type: ignore[arg-type]
+        start_today_promoter=None,  # type: ignore[arg-type]
+        stop_today_promoter=None,  # type: ignore[arg-type]
+        stop_live_stream=None,  # type: ignore[arg-type]
+        aclose_kis_capacity_scheduler=None,  # type: ignore[arg-type]
+        aclose_kis_client=None,  # type: ignore[arg-type]
+        load_symbol_disk_state=lambda **_k: None,
+        needs_symbol_boot_refresh=lambda: False,
+        refresh_symbols=None,  # type: ignore[arg-type]
+        resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+    )
+    runtime = AppStartupRuntime(
+        scheduler_tasks=[daily, catchup, boot_refresh],
+        today_promoter_task=None,
+        deps=deps,
+    )
+
+    state = {row["name"]: row["state"] for row in runtime.supervised_task_health()}
+    assert state["watchlist-daily-loop"] == "running"
+    # 계약대로 한 번 일하고 끝났다 — 경보 아님.
+    assert state["watchlist-catchup"] == "completed"
+    # one-shot 이라도 예외로 끝났으면 보여야 한다. 실패한 부팅 갱신을 숨기면
+    # completed 분리가 관측을 깎아먹는 순수 손해가 된다.
+    assert state["symbols-boot-refresh"] == "dead"
+
+    daily.cancel()
+
+
+@pytest.mark.asyncio
+async def test_perpetual_loop_returning_normally_is_still_dead(tmp_path: Path) -> None:
+    """영구 루프에게 '정상 반환' 은 ADR-0064 가 지목한 조용한 죽음 그 자체다.
+
+    completed 를 '예외 없이 끝났나' 로 판정했다면 이 케이스가 통째로 안 보이게
+    된다 — 그래서 기준은 예외 여부가 아니라 계약(ONE_SHOT_TASK_NAMES)이다.
+    """
+    from hoga.api.startup_runtime import AppStartupRuntime, StartupRuntimeDeps
+
+    async def returns_without_raising() -> None:
+        return None
+
+    daily = asyncio.create_task(returns_without_raising(), name="watchlist-daily-loop")
+    await daily
+
+    deps = StartupRuntimeDeps(
+        env={},
+        start_scheduler=lambda _d: [],
+        start_live_stream=None,  # type: ignore[arg-type]
+        start_today_promoter=None,  # type: ignore[arg-type]
+        stop_today_promoter=None,  # type: ignore[arg-type]
+        stop_live_stream=None,  # type: ignore[arg-type]
+        aclose_kis_capacity_scheduler=None,  # type: ignore[arg-type]
+        aclose_kis_client=None,  # type: ignore[arg-type]
+        load_symbol_disk_state=lambda **_k: None,
+        needs_symbol_boot_refresh=lambda: False,
+        refresh_symbols=None,  # type: ignore[arg-type]
+        resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+    )
+    runtime = AppStartupRuntime(
+        scheduler_tasks=[daily], today_promoter_task=None, deps=deps,
+    )
+
+    state = {row["name"]: row["state"] for row in runtime.supervised_task_health()}
+    assert state["watchlist-daily-loop"] == "dead"
+
+
+def test_one_shot_registry_matches_the_tasks_actually_spawned() -> None:
+    """ONE_SHOT_TASK_NAMES 는 생성처와 떨어져 있다 — 이름이 갈리면 조용히 의미가
+    바뀌므로(캐치업 rename → 다시 영구 503) 생성처 리터럴과 대조해 못박는다."""
+    import inspect
+
+    from hoga.api import scheduler, startup_runtime
+
+    spawn_sites = inspect.getsource(scheduler.start_scheduler) + inspect.getsource(
+        startup_runtime.start_app_runtime
+    )
+    for name in startup_runtime.ONE_SHOT_TASK_NAMES:
+        assert f'name="{name}"' in spawn_sites, f"{name} 이 생성처에 없다"
+
+
+@pytest.mark.asyncio
+async def test_inventory_observer_liveness_is_reported(tmp_path: Path) -> None:
+    """인벤토리 옵서버(watchdog **스레드**)도 감독 대상이다.
+
+    이 감독이 없으면 옵서버가 죽어도 아무 표면에 안 나타난다 — HTTP 는 멀쩡하고
+    (얕은 health 통과), asyncio 태스크가 아니라 태스크 목록에도 안 잡힌다. 그 뒤로
+    캡처가 끝나도 인벤토리 SSE 가 조용히 멈춘다. parquet 트리가 커져 inotify
+    watch 한도를 소진하면 실제로 그렇게 된다.
+    """
+    from hoga.api.startup_runtime import AppStartupRuntime, StartupRuntimeDeps
+
+    class _Observer:
+        def __init__(self, alive: bool) -> None:
+            self._alive = alive
+
+        def is_alive(self) -> bool:
+            return self._alive
+
+    def _runtime(observer: object | None) -> AppStartupRuntime:
+        deps = StartupRuntimeDeps(
+            env={},
+            start_scheduler=lambda _d: [],
+            start_live_stream=None,  # type: ignore[arg-type]
+            start_today_promoter=None,  # type: ignore[arg-type]
+            stop_today_promoter=None,  # type: ignore[arg-type]
+            stop_live_stream=None,  # type: ignore[arg-type]
+            aclose_kis_capacity_scheduler=None,  # type: ignore[arg-type]
+            aclose_kis_client=None,  # type: ignore[arg-type]
+            load_symbol_disk_state=lambda **_k: None,
+            needs_symbol_boot_refresh=lambda: False,
+            refresh_symbols=None,  # type: ignore[arg-type]
+            resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+            get_inventory_observer=lambda: observer,
+        )
+        return AppStartupRuntime(
+            scheduler_tasks=[], today_promoter_task=None, deps=deps,
+        )
+
+    def _state(observer: object | None) -> str:
+        rows = _runtime(observer).supervised_task_health()
+        return next(r["state"] for r in rows if r["name"] == "inventory-observer")
+
+    assert _state(_Observer(alive=True)) == "running"
+    assert _state(_Observer(alive=False)) == "dead"
+    # 미주입·판정 불가는 경보가 아니다 — 감독 코드가 타입 가정으로 죽으면 안 된다.
+    assert _state(None) == "not_started"
+    assert _state(object()) == "not_started"
+
+
+def test_app_wires_the_inventory_observer_into_supervision() -> None:
+    """배선 봉인 — 접근자를 만들고 안 꽂으면 사각이 그대로 남는다."""
+    import inspect
+
+    from hoga.api import app as app_mod
+
+    assert "get_inventory_observer=" in inspect.getsource(app_mod.create_app)

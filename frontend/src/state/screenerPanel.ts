@@ -64,6 +64,7 @@ type Store = Persisted & {
   setSelectedSavedId: (id: string | null) => void;
   setSortMode: (mode: ScreenerResultSortMode) => void;
   setLastScan: (scan: PanelScan) => void;
+  clearLastScan: () => void;
   markLastScanDataStale: () => void;
   clearExpiredScan: (nowMs?: number) => void;
   setMonitoringActive: (active: boolean) => void;
@@ -278,6 +279,14 @@ export const useScreenerPanelStore = create<Store>((set, get) => ({
 
   setLastScan: (scan) => {
     set({ lastScan: scan });
+    persistFromState(get());
+  },
+
+  // 드로어 '시작' = 새 검색. 이전 결과를 즉시 버려 조회 왕복 동안 옛 리스트가 새 결과인
+  // 척 남지 않게 한다(조건을 바꿔 시작했을 때 특히 — 그 전엔 경고 문구로만 알렸다).
+  clearLastScan: () => {
+    if (get().lastScan === null) return;
+    set({ lastScan: null });
     persistFromState(get());
   },
 

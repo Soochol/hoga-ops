@@ -295,3 +295,57 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
 
     await asyncio.to_thread(_commit)
     return len({b.date for b in rows})
+
+
+def merge_roster_from_master(
+    stocks_path: Path, master_rows: list[tuple[str, str, str, bool]] | None,
+) -> int:
+    """마스터에만 있는 신규 상장을 stocks.parquet 에 **추가**한다. 추가된 행 수 반환.
+
+    왜 필요한가: 이 파일은 외부 DB 에서 수동 1회 시드된 스냅샷이고 갱신 경로가
+    아예 없었다. 그런데 일봉 갱신 대상 목록이 여기서 나오므로
+    (``screener._build_plan``), 로스터에 없는 종목은 **봉을 받지도 못하고** 따라서
+    스크리너 결과에 나타날 수도 없다. 실측 2026-08-03: 마스터에만 있는 종목
+    79 개가 그 상태였다(신규 상장·스팩 포함). #984 가 고친 ``is_etf`` 축과 같은
+    뿌리이고, 그때 남겨 둔 나머지 절반이다.
+
+    **추가만 한다 — 기존 행은 손대지 않고, 마스터에 없다고 지우지도 않는다.**
+    지우는 쪽은 상장폐지 처리이고 그건 과거 일봉·캡처 이력과 얽힌 별개 결정이다.
+    (실측상 마스터에 없는 기존 코드 916 개는 대부분 ETF/ETN 과 구 종목이라,
+    지우는 구현이었다면 멀쩡한 데이터를 대량으로 날렸다.)
+
+    ``is_halted`` 는 마스터가 답을 주지 않으므로 ``False`` 로 넣는다. 보수적인
+    방향이 어느 쪽인지가 갈리는 자리인데 — ``True`` 면 "거래정지 제외" 를 켠
+    사용자에게 신규 상장이 계속 안 보이고, 이는 지금 상태(아예 없음)와 같다.
+    ``False`` 는 정지된 신규 상장이 잠깐 목록에 낄 수 있지만 그 종목은 일봉이
+    안 쌓여 어차피 결과에 못 든다. 보이는 쪽을 택했다.
+
+    ``master_rows`` 가 ``None``(마스터 미로드)이면 아무것도 하지 않는다 — 빈
+    목록으로 오해해 로스터를 건드리면 안 된다(``symbols.all_listed_rows`` 참고).
+    """
+    if not master_rows:
+        return 0
+    if not stocks_path.exists():
+        return 0
+    df = pl.read_parquet(stocks_path)
+    have = set(df["code"].to_list())
+    fresh = [r for r in master_rows if r[0] not in have]
+    if not fresh:
+        return 0
+    added = pl.DataFrame(
+        {
+            "code": [r[0] for r in fresh],
+            "name": [r[1] for r in fresh],
+            "market": [r[2] for r in fresh],
+            "is_etf": [r[3] for r in fresh],
+            "is_halted": [False] * len(fresh),
+        },
+        schema={
+            "code": pl.Utf8, "name": pl.Utf8, "market": pl.Utf8,
+            "is_etf": pl.Boolean, "is_halted": pl.Boolean,
+        },
+    )
+    # 열 순서·타입을 기존 파일에 맞춘다 — concat 이 스키마 불일치로 죽지 않게.
+    atomic_write_parquet_df(stocks_path, pl.concat([df, added.select(df.columns)]))
+    log.info("screener roster: added %d newly listed codes", len(fresh))
+    return len(fresh)

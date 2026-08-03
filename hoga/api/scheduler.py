@@ -50,8 +50,23 @@ def _scheduler_state_path(data_dir: Path) -> Path:
     return data_dir / "scheduler_state.json"
 
 
-def read_last_daily_run_date(data_dir: Path) -> str | None:
-    """마지막으로 시도를 마친 일일 런의 KST 날짜(YYYYMMDD). 없거나 손상되면 None.
+# 마커가 둘인 이유는 게이트 앞뒤의 비용이 다르기 때문이다.
+#
+# `last_daily_run_date` — 런 **전체**의 하루 1회 표식. 거래일 게이트 **앞**에 있는
+#   promote/prune 은 전체 트리 스윕이라, 실패했다고 60초마다 재시도하면 자정까지
+#   수백 번 재실행된다. 그래서 이 마커는 성공·실패 불문 찍는다(ADR-0034: 루프의
+#   책임은 트리거 생존이고 재시도 정책은 별개 결정).
+# `last_trading_stage_date` — 거래일 게이트 **뒤**(enqueue·스크리너·depth_daily)의
+#   표식. 이쪽은 KIS 달력 판정이 **확정**됐을 때만 찍는다. 판정 불가(일시 장애)면
+#   안 찍고, 루프가 다음 틱에 이 단계만 다시 시도한다 — 값싼 재시도(달력 1콜 +
+#   enqueue)라 전체 런 재시도의 비용 문제가 없다. 이 분리가 없던 시절에는 17:00
+#   의 KIS 블립 한 번이 그날 관심종목 캡처를 통째로 날렸다(2026-08-03).
+_LAST_RUN_KEY = "last_daily_run_date"
+_LAST_TRADING_STAGE_KEY = "last_trading_stage_date"
+
+
+def _read_marker(data_dir: Path, key: str) -> str | None:
+    """스케줄러 상태 파일의 한 마커. 없거나 손상되면 None.
 
     손상을 격리하지 않고 None 으로 접는다 — 이 마커는 캐시이고, 잃으면 그날 런이
     한 번 더 도는 것이 최악이다(런은 멱등: promote·prune·enqueue 모두 dedupe/게이트).
@@ -62,17 +77,47 @@ def read_last_daily_run_date(data_dir: Path) -> str | None:
         return None
     if not isinstance(payload, dict):
         return None
-    value = payload.get("last_daily_run_date")
+    value = payload.get(key)
     return value if isinstance(value, str) else None
 
 
-def write_last_daily_run_date(data_dir: Path, date: str) -> None:
+def _write_marker(data_dir: Path, key: str, date: str) -> None:
+    """한 마커만 갱신한다 — 나머지 키는 보존한다.
+
+    통째로 덮어쓰면 두 마커가 서로를 지워 재시도 게이트가 무력화된다.
+    """
+    path = _scheduler_state_path(data_dir)
     try:
-        atomic_write_json(_scheduler_state_path(data_dir), {"last_daily_run_date": date})
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    payload[key] = date
+    try:
+        atomic_write_json(path, payload)
     except OSError:
         # 마커를 못 써도 런은 이미 끝났다. 다음 틱에 같은 날이 한 번 더 도는 것이
         # 루프를 죽이는 것보다 낫다.
-        log.exception("scheduler: failed to persist last daily run date")
+        log.exception("scheduler: failed to persist marker %s", key)
+
+
+def read_last_daily_run_date(data_dir: Path) -> str | None:
+    """마지막으로 시도를 마친 일일 런의 KST 날짜(YYYYMMDD)."""
+    return _read_marker(data_dir, _LAST_RUN_KEY)
+
+
+def write_last_daily_run_date(data_dir: Path, date: str) -> None:
+    _write_marker(data_dir, _LAST_RUN_KEY, date)
+
+
+def read_last_trading_stage_date(data_dir: Path) -> str | None:
+    """거래일 게이트 뒤 단계를 **확정 판정 아래** 마지막으로 마친 날짜."""
+    return _read_marker(data_dir, _LAST_TRADING_STAGE_KEY)
+
+
+def write_last_trading_stage_date(data_dir: Path, date: str) -> None:
+    _write_marker(data_dir, _LAST_TRADING_STAGE_KEY, date)
 
 
 def daily_run_due(now: dt.datetime, last_run_date: str | None) -> bool:
@@ -106,9 +151,13 @@ def _log_blocked(resp: EnqueueResponse, *, context: str) -> None:
         )
 
 
-async def _daily_run(data_dir: Path) -> None:
-    """Enqueue ``(code, today_kst)`` for every Watchlist entry on a
-    trading day. Per-entry exceptions are logged; the loop continues.
+async def _daily_run(data_dir: Path) -> bool:
+    """일일 런 전체: 유지보수(promote·prune) → 거래일 게이트 → 오늘 몫 enqueue.
+
+    Per-entry exceptions are logged; the loop continues. 반환값은 거래일 게이트 뒤
+    단계가 매듭지어졌는지다(:func:`run_trading_stage` 참고) — 유지보수 단계의
+    성패는 여기 반영되지 않는다. 두 단계의 재시도 정책이 다르기 때문이다
+    (마커 주석 참고).
     """
     # Stage 8: Promote pending Live Capture JSONLs before hogaplay enqueue (ADR-0038).
     from hoga.live.promote import cleanup_archive, promote_pending  # noqa: PLC0415
@@ -123,17 +172,22 @@ async def _daily_run(data_dir: Path) -> None:
     # before the trading-day gate, so weekends/holidays still reclaim disk.
     from hoga.api.prune import (  # noqa: PLC0415
         disk_headroom,
+        prune_derived,
         prune_raw,
+        resolve_derived_retention_days,
         resolve_include_confirmed_gaps,
+        resolve_include_expired_unconfirmed,
         resolve_retention_days,
     )
     try:
-        # HOGA_PRUNE_CONFIRMED_GAPS=true 면 확인된 업스트림 갭까지 자동 회수(#998)
-        # — 별도 타이머가 아니라 이 일일 실행에 편승한다(부품 최소).
+        # 게이트 확장 두 단계 모두 env 옵트인이고, 별도 타이머가 아니라 이 일일
+        # 실행에 편승한다(부품 최소). HOGA_PRUNE_CONFIRMED_GAPS=확인된 업스트림
+        # 갭(#998) · HOGA_PRUNE_EXPIRED_UNCONFIRMED=보유 창 밖 미확정 갭(ADR-0135).
         pruned = await asyncio.to_thread(
             prune_raw, data_dir,
             retention_days=resolve_retention_days(), now=now_kst(), execute=True,
             include_confirmed_gaps=resolve_include_confirmed_gaps(),
+            include_expired_unconfirmed=resolve_include_expired_unconfirmed(),
         )
         log.info(
             "daily prune: removed %d dirs, reclaimed %.2f GiB",
@@ -152,6 +206,22 @@ async def _daily_run(data_dir: Path) -> None:
                 )
             )
             log.info("daily prune: nothing prunable — held by state: %s", held)
+        # 파생 트리(재계산 가능한 지표 캐시 · 타이밍 텔레메트리)는 raw 와 다른
+        # 축이라 옵트인이 아니다 — 근거는 prune.prune_derived. raw 회수가
+        # 실패해도 이건 돌아야 하므로 예외 경계를 따로 둔다.
+        derived = await asyncio.to_thread(
+            prune_derived, data_dir,
+            retention_days=resolve_derived_retention_days(),
+            now=now_kst(), execute=True,
+        )
+        if derived.total_items:
+            log.info(
+                "daily prune: derived trees reclaimed %.2f GiB (%s)",
+                derived.total_bytes / 1024**3,
+                ", ".join(
+                    f"{name}={n}" for name, (n, _) in derived.by_tree.items() if n
+                ),
+            )
         head = await asyncio.to_thread(disk_headroom, data_dir)
         if head is not None and head.is_low:
             log.warning(
@@ -163,11 +233,31 @@ async def _daily_run(data_dir: Path) -> None:
     except Exception:  # prune 실패가 enqueue를 막으면 안 됨
         log.exception("daily run: prune failed; continuing")
 
+    return await run_trading_stage(data_dir)
+
+
+async def run_trading_stage(data_dir: Path) -> bool:
+    """거래일 게이트와 그 뒤 단계(enqueue·스크리너·depth_daily). 확정이면 True.
+
+    반환값은 "오늘 이 단계를 매듭지었는가" 다 — 거래일이라 실행했거나, 휴장이라
+    할 일이 없음을 확인했으면 True. KIS 가 답을 못 줘서 **아직 아무것도 결론나지
+    않았으면 False** 이고, 그때는 호출자가 마커를 찍지 않아 다음 틱이 다시 시도한다.
+    """
     now = now_kst()
     today = now.strftime("%Y%m%d")
-    if not await daily_run_allowed_by_calendar(trading_days_in_range, today):
+    verdict = await daily_run_allowed_by_calendar(trading_days_in_range, today)
+    if verdict is None:
+        # 휴장과 같은 INFO 로 남기면 안 된다 — 조치가 정반대다(휴장은 정상, 이건
+        # 업스트림 장애). 마커를 안 찍고 False 를 돌려 다음 틱에 재시도시킨다.
+        log.warning(
+            "daily run: trading-day verdict unavailable for %s (KIS chk-holiday) — "
+            "will retry on the next tick; today's watchlist enqueue has NOT run yet",
+            today,
+        )
+        return False
+    if not verdict:
         log.info("daily run: %s is not a trading day, skipping", today)
-        return
+        return True
     for entry in load_watchlist(data_dir):
         try:
             resp = await enqueue_items_core(
@@ -182,7 +272,15 @@ async def _daily_run(data_dir: Path) -> None:
     # Screener daily gap update (local import avoids an import cycle). A
     # screener failure must not kill the rest of the daily run.
     try:
-        from hoga.api import screener  # noqa: PLC0415
+        from hoga.api import screener, screener_store, symbols  # noqa: PLC0415
+        # 로스터 먼저: 일봉 갱신 대상 목록이 stocks.parquet 에서 나오므로, 신규
+        # 상장을 여기서 넣어야 같은 런에서 그 종목의 봉을 받기 시작한다. 시드
+        # 스냅샷에는 갱신 경로가 없어 79 종목이 영영 안 보이던 상태였다(2026-08-03).
+        await asyncio.to_thread(
+            screener_store.merge_roster_from_master,
+            data_dir / "screener" / "stocks.parquet",
+            symbols.all_listed_rows(),
+        )
         await screener.trigger_update(data_dir)
     except Exception:
         log.exception("daily run: screener update failed; continuing")
@@ -202,6 +300,7 @@ async def _daily_run(data_dir: Path) -> None:
         )
     except Exception:
         log.exception("daily run: depth_daily sweep failed; continuing")
+    return True
 
 
 async def catchup_one_entry(
@@ -293,24 +392,42 @@ async def _daily_loop(data_dir: Path) -> None:
        ``asyncio.sleep`` 은 suspend 구간만큼 늦게 깬다. 매 틱 ``now_kst()`` 를 다시
        읽으면 깨어난 직후 판정이 정확하다.
 
-    하루 1회 보장은 디스크 마커(``scheduler_state.json``)가 담당한다. 마커는 성공·실패
-    **모두** 찍는다 — 실패 시 60초마다 재시도하면 거래일 게이트 앞에 있는
-    promote/prune(전체 트리 스윕)이 자정까지 수백 번 재실행된다. 오늘의 실패는 기존과
-    동일하게 다음 날 런에 맡긴다: 이 루프의 책임은 *트리거* 생존이고(ADR-0034),
-    재시도 정책은 별개 결정이다.
+    하루 1회 보장은 디스크 마커(``scheduler_state.json``)가 담당하는데, **마커가
+    둘이고 재시도 정책이 서로 다르다**(마커 상수 옆 주석에 근거).
+
+    - 전체 런 마커는 성공·실패 **모두** 찍는다 — 실패마다 60초 재시도를 하면 거래일
+      게이트 앞의 promote/prune(전체 트리 스윕)이 자정까지 수백 번 재실행된다.
+      그 실패는 다음 날 런에 맡긴다: 이 루프의 책임은 *트리거* 생존이다(ADR-0034).
+    - 거래일 단계 마커는 KIS 판정이 **확정**됐을 때만 찍는다. 판정 불가(업스트림
+      일시 장애)면 안 찍고, 다음 틱이 **그 단계만** 다시 시도한다(달력 1콜 +
+      enqueue — 앞단의 비용 문제가 없다). 이 분리가 없던 시절에는 17:00 의 KIS
+      블립 한 번이 그날 관심종목 캡처를 통째로 날렸고, hogaplay 보유가 ~18시간
+      이라 다음 날 알아채면 이미 복구 불가였다.
 
     한 실패가 루프를 죽이지 않는다 — ADR-0034 의 "scheduler is a queue client" 프레이밍.
     """
     while True:
         try:
             now = now_kst()
+            today = now.strftime("%Y%m%d")
             if daily_run_due(now, read_last_daily_run_date(data_dir)):
-                today = now.strftime("%Y%m%d")
+                settled = False
                 try:
-                    await _daily_run(data_dir)
+                    settled = await _daily_run(data_dir)
                 except Exception:
                     log.exception("daily run crashed; loop continues")
                 write_last_daily_run_date(data_dir, today)
+                if settled:
+                    write_last_trading_stage_date(data_dir, today)
+            elif daily_run_due(now, read_last_trading_stage_date(data_dir)):
+                # 전체 런은 이미 돌았는데(비싼 앞단 완료) 거래일 판정이 안 나서
+                # 뒷단만 미결인 상태다. 값싼 그 단계만 다시 시도한다 — KIS 가
+                # 회복되면 다음 틱(60초)에 그날 몫이 자동으로 들어간다.
+                try:
+                    if await run_trading_stage(data_dir):
+                        write_last_trading_stage_date(data_dir, today)
+                except Exception:
+                    log.exception("daily trading stage retry crashed; loop continues")
         except Exception:
             # 판정·마커 읽기 실패도 루프를 죽이면 안 된다.
             log.exception("daily loop tick failed; loop continues")

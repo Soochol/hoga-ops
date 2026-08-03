@@ -382,13 +382,13 @@ def test_unconfirmed_gap_split_by_retention_window(tmp_data_dir: Path) -> None:
 
 
 def test_expired_unconfirmed_gap_is_still_not_prunable(tmp_data_dir: Path) -> None:
-    """**1단계 경계**: 만료 판정은 재캡처를 멈출 뿐 삭제를 허용하지 않는다.
+    """**두 스위치가 서로를 여는 일이 없어야 한다.**
 
-    decide_capture 가 이제 이 클래스를 건너뛰므로 "terminal 이니 지워도 되겠지" 로
-    미끄러지기 쉽다. 그러나 삭제는 "구멍 있는 채로 확정된 날짜를 다시 파싱할 권리"
-    를 영구히 포기하는 별개 결정이고, 별도 승인을 받아야 한다(2단계).
-    include_confirmed_gaps 를 켜도 열리지 않아야 한다 — 그 플래그가 여는 것은
-    **확인된** 갭뿐이다.
+    삭제는 "구멍 있는 채로 확정된 날짜를 다시 파싱할 권리" 를 영구히 포기하는
+    결정이라, 재캡처 중단(ADR-0131, 1단계)과 별개 승인을 받았다(ADR-0135, 2단계).
+    승인된 지금도 스위치는 따로다 — `include_confirmed_gaps` 가 여는 것은
+    **확인된** 갭뿐이고, 만료 미확정은 자기 옵트인으로만 열린다. 합치면 한쪽을
+    원한 운영자가 결이 다른 쪽까지 켜게 된다.
     """
     _seed(tmp_data_dir, "000660", "20260605",
           collection_complete=True, is_partial=True, identical_capture_count=0)
@@ -474,3 +474,191 @@ def test_daily_scheduler_prune_wires_the_env_optin() -> None:
 
     src = inspect.getsource(scheduler._daily_run)
     assert "include_confirmed_gaps=resolve_include_confirmed_gaps()" in src
+    assert "include_expired_unconfirmed=resolve_include_expired_unconfirmed()" in src
+
+
+def test_expired_unconfirmed_gap_is_prunable_with_its_own_optin(
+    tmp_data_dir: Path,
+) -> None:
+    """ADR-0135 2단계: 전용 옵트인을 켜면 만료 미확정 갭이 회수된다.
+
+    이 클래스가 지배적이라(2026-07-29 실측 743건 110GB > confirmed 520건 77GB)
+    확인된 갭만 회수해서는 raw 33GB/거래일 성장을 못 따라간다.
+    """
+    _seed(tmp_data_dir, "000660", "20260605",
+          collection_complete=True, is_partial=True, identical_capture_count=0)
+
+    res = prune_raw(
+        tmp_data_dir, retention_days=3, now=_NOW, execute=True,
+        include_expired_unconfirmed=True,
+    )
+
+    assert res.deleted == 1
+    assert not (tmp_data_dir / "raw" / "20260605" / "000660").exists()
+
+
+def test_expired_optin_does_not_open_the_still_confirmable_window(
+    tmp_data_dir: Path,
+) -> None:
+    """보유 창 **안**의 미확정 갭은 전용 옵트인으로도 열리지 않는다.
+
+    그쪽은 재캡처가 아직 갭을 확정시킬 수 있다 — 지우면 고칠 수 있던 것을 버린다.
+    경계가 '미확정 전체' 가 아니라 '만료된 미확정' 인 이유.
+    """
+    _seed(tmp_data_dir, "005930", "20260611",  # _NOW(06-13) −2일 → 보유 창 안
+          collection_complete=True, is_partial=True, identical_capture_count=0)
+
+    res = prune_raw(
+        tmp_data_dir, retention_days=1, now=_NOW, execute=True,
+        include_expired_unconfirmed=True,
+    )
+
+    assert res.deleted == 0
+    assert res.skipped_by_state["source_partial(gap_unconfirmed)"] == 1
+    assert (tmp_data_dir / "raw" / "20260611" / "005930").exists()
+
+
+def test_expired_optin_never_touches_resume_sources(tmp_data_dir: Path) -> None:
+    """CLIENT_INCOMPLETE 는 어느 옵트인 조합으로도 삭제되지 않는다 —
+    그 raw 가 resume 커서의 소스라 지우면 처음부터 다시 받아야 한다."""
+    _seed(tmp_data_dir, "005930", "20260605", collection_complete=False)
+
+    res = prune_raw(
+        tmp_data_dir, retention_days=3, now=_NOW, execute=True,
+        include_confirmed_gaps=True, include_expired_unconfirmed=True,
+    )
+
+    assert res.deleted == 0
+    assert res.skipped_by_state["client_incomplete"] == 1
+    assert (tmp_data_dir / "raw" / "20260605" / "005930").exists()
+
+
+def test_resolve_include_expired_unconfirmed_env_optin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hoga.api.prune import resolve_include_expired_unconfirmed
+
+    monkeypatch.delenv("HOGA_PRUNE_EXPIRED_UNCONFIRMED", raising=False)
+    assert resolve_include_expired_unconfirmed() is False
+    for truthy in ("1", "true", "yes", "on"):
+        monkeypatch.setenv("HOGA_PRUNE_EXPIRED_UNCONFIRMED", truthy)
+        assert resolve_include_expired_unconfirmed() is True, truthy
+    for falsy in ("", "0", "false", "no"):
+        monkeypatch.setenv("HOGA_PRUNE_EXPIRED_UNCONFIRMED", falsy)
+        assert resolve_include_expired_unconfirmed() is False, falsy
+
+
+# ── 파생 트리 보존 (2026-08-03) ─────────────────────────────────────────────
+#
+# raw 와 다른 축이다: 재계산 가능(지표 캐시)하거나 텔레메트리(timing)라 잃는 것이
+# CPU 시간뿐이다. 그래서 옵트인이 아니라 기본 켜짐 — 옵트인으로 두면 ADR-0075 가
+# 겪은 실패(게이트가 있는데 아무도 안 켜서 쌓임)를 그대로 재현한다.
+
+
+def _touch(path: Path, size: int = 16) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"x" * size)
+
+
+def test_derived_prune_drops_old_indicator_cache_by_filename_date(
+    tmp_data_dir: Path,
+) -> None:
+    """날짜는 파일명에 있다 — 트리가 종목·소스로 먼저 갈리기 때문이다."""
+    from hoga.api.prune import prune_derived
+
+    root = tmp_data_dir / "kis-past-indicators"
+    _touch(root / "005930" / "hogaplay" / "20250101.ratio.json")   # 오래됨
+    _touch(root / "005930" / "hogaplay" / "20260612.ratio.json")   # 창 안
+    _touch(root / "005930" / "hogaplay" / "README.txt")            # 날짜 아님
+
+    res = prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=True)
+
+    n, _size = res.by_tree["kis-past-indicators"]
+    assert n == 1
+    assert not (root / "005930" / "hogaplay" / "20250101.ratio.json").exists()
+    assert (root / "005930" / "hogaplay" / "20260612.ratio.json").exists()
+    # 형식을 모르는 파일을 나이로 지우면 안 된다.
+    assert (root / "005930" / "hogaplay" / "README.txt").exists()
+
+
+def test_derived_prune_drops_old_timing_date_dirs(tmp_data_dir: Path) -> None:
+    from hoga.api.prune import prune_derived
+
+    root = tmp_data_dir / "timing"
+    _touch(root / "20250101" / "005930.json")
+    _touch(root / "20260612" / "005930.json")
+
+    res = prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=True)
+
+    assert res.by_tree["timing"][0] == 1
+    assert not (root / "20250101").exists()
+    assert (root / "20260612").exists()
+
+
+def test_derived_dry_run_touches_nothing(tmp_data_dir: Path) -> None:
+    from hoga.api.prune import prune_derived
+
+    old = tmp_data_dir / "kis-past-indicators" / "005930" / "hogaplay" / "20250101.ratio.json"
+    _touch(old)
+
+    res = prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=False)
+
+    assert res.total_items == 1  # 회수 예상량은 보고하되
+    assert old.exists()          # 디스크는 불변
+
+
+def test_derived_prune_never_touches_raw_or_parquet(tmp_data_dir: Path) -> None:
+    """파생 트리 회수가 진실 소스에 닿으면 안 된다 — 축이 다르다."""
+    from hoga.api.prune import prune_derived
+
+    _seed(tmp_data_dir, "005930", "20250101", collection_complete=True, is_partial=False)
+    before_raw = sorted(p.name for p in (tmp_data_dir / "raw").rglob("*"))
+    before_pq = sorted(p.name for p in (tmp_data_dir / "parquet").rglob("*"))
+
+    prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=True)
+
+    assert sorted(p.name for p in (tmp_data_dir / "raw").rglob("*")) == before_raw
+    assert sorted(p.name for p in (tmp_data_dir / "parquet").rglob("*")) == before_pq
+
+
+def test_dead_trees_are_reported_but_never_auto_deleted(tmp_data_dir: Path) -> None:
+    """'코드가 안 읽는다' 는 판단이고, 판단으로 지우는 것은 옵트인이어야 한다."""
+    from hoga.api.prune import find_dead_trees, prune_derived, remove_dead_trees
+
+    _touch(tmp_data_dir / "kis-past-candles" / "005930" / "20250101.json")
+    _touch(tmp_data_dir / "_trash_kis_api_20260717" / "junk.bin")
+    _touch(tmp_data_dir / "screener" / "stocks.parquet")   # 살아 있는 트리
+
+    dead = find_dead_trees(tmp_data_dir)
+    assert set(dead) == {"kis-past-candles", "_trash_kis_api_20260717"}
+
+    # 일일 경로(prune_derived)는 이것들을 건드리지 않는다.
+    prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=True)
+    assert (tmp_data_dir / "kis-past-candles").exists()
+    assert (tmp_data_dir / "_trash_kis_api_20260717").exists()
+
+    n, reclaimed = remove_dead_trees(tmp_data_dir)
+    assert n == 2
+    assert reclaimed > 0
+    assert not (tmp_data_dir / "kis-past-candles").exists()
+    assert (tmp_data_dir / "screener").exists()  # 살아 있는 트리는 그대로
+
+
+def test_daily_scheduler_runs_derived_prune() -> None:
+    """배선 봉인 — 만들고 안 꽂으면 트리는 계속 자란다(ADR-0075 의 실패 모드)."""
+    import inspect
+
+    from hoga.api import scheduler
+
+    src = inspect.getsource(scheduler._daily_run)
+    assert "prune_derived" in src
+    assert "resolve_derived_retention_days()" in src
+
+
+def test_resolve_derived_retention_days_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from hoga.api.prune import DERIVED_RETENTION_DAYS_DEFAULT, resolve_derived_retention_days
+
+    monkeypatch.delenv("HOGA_DERIVED_RETENTION_DAYS", raising=False)
+    assert resolve_derived_retention_days() == DERIVED_RETENTION_DAYS_DEFAULT
+    monkeypatch.setenv("HOGA_DERIVED_RETENTION_DAYS", "30")
+    assert resolve_derived_retention_days() == 30

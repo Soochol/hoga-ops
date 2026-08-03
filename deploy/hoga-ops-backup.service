@@ -1,0 +1,22 @@
+# hoga-ops 백업 oneshot — hoga-ops-backup.timer 가 하루 한 번 부른다.
+#
+# 설치·복구 절차는 deploy/hoga-ops-backup.sh 주석 참고.
+#
+# 상태·이력:
+#   systemctl --user list-timers hoga-ops-backup.timer
+#   journalctl --user -u hoga-ops-backup -n 40
+
+[Unit]
+Description=hoga-ops data backup (oneshot)
+Documentation=https://github.com/Soochol/hoga-ops
+
+[Service]
+Type=oneshot
+# ↓ 실제 체크아웃 경로로 교체할 것.
+WorkingDirectory=%h/code/hoga-ops
+# HOGA_BACKUP_DEST(+ 선택적 HOGA_DATA_DIR)는 서비스·워치독과 같은 파일에서 온다.
+EnvironmentFile=-%h/.config/hoga-ops/deploy.env
+ExecStart=/usr/bin/env bash deploy/hoga-ops-backup.sh
+# 백업이 캡처와 디스크·IO 를 다투지 않게 한다 — 실패해도 수집이 우선이다.
+Nice=10
+IOSchedulingClass=idle

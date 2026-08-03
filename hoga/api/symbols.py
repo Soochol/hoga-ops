@@ -24,7 +24,11 @@ from fastapi import APIRouter, Query
 
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
-from hoga.api.kis_master import KisMasterFetchError, fetch_symbol_master as _fetch_mst
+from hoga.api.kiwoom_master import (
+    KiwoomMasterFetchError,
+    fetch_symbol_master as kiwoom_fetch_symbol_master,
+    load_seed as _load_master_seed,
+)
 from hoga.api.models import SymbolHit, SymbolMasterInfo, SymbolsAllResponse
 from hoga.util.atomic_write import atomic_write_json
 
@@ -202,16 +206,30 @@ _state: SymbolCacheState = SymbolCacheState.unavailable(
     reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
 )
 _refresh_coordinator: _RefreshCoordinator[SymbolsAllResponse] = _RefreshCoordinator()
-SCHEMA_VERSION = 2
-# Oldest schema the loader still accepts. v1 (pykrx era) lacks security_type,
-# which the loader defaults to "stock" — rejecting it discarded a perfectly
-# usable catalog on upgrade and left search EMPTY on an offline boot (the
-# stale-serving tier can never engage on a cache that was never loaded).
-_MIN_SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
+# 로더가 받아들이는 가장 오래된 스키마.
+#
+# **v3 에서 하한을 올렸다(PR-I·#1045).** v2 는 KIS `.mst` 산이라 ETN 코드에 `Q`
+# 접두가 붙어 있다(`Q500061`). 키움 `ka10099` 는 `500061` 을 준다. 하한을 안
+# 올리면 stale 캐시와 새 fetch 가 **같은 종목을 다른 코드로** 내보내 검색 결과가
+# 이원화된다 — 기존 캐시에 380건이다.
+#
+# v1 을 받아들이던 이유("거부하면 오프라인 부팅에서 검색이 빈다")는 여전히
+# 유효하지만, 이제 **커밋된 시드 스냅샷**(`kiwoom_master_seed.json`)이 그 자리를
+# 메운다. 디스크 캐시가 없거나 낡았으면 시드로 부팅한다.
+_MIN_SCHEMA_VERSION = 3
 # Schema version of the file load_disk_state read (None = nothing loaded).
 # needs_boot_refresh() uses it to schedule a background re-download when a
 # legacy-schema cache was accepted, so the upgrade converges to v2 online.
 _loaded_schema_version: int | None = None
+
+# 키움 클라이언트 조달용 data_dir. `load_disk_state` 가 채운다 — 마스터 갱신은
+# 이제 인증이 필요해서(`.mst` 무인증과 달리) 런타임 클라이언트가 있어야 한다.
+_data_dir_for_fetch: Path | None = None
+
+
+def _symbols_data_dir() -> Path | None:
+    return _data_dir_for_fetch
 
 
 def reset_state_for_tests() -> None:
@@ -310,20 +328,8 @@ def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> 
     atomic_write_json(path, payload)
 
 
-async def _fetch_symbol_master() -> list[SymbolHit]:
-    """Sole upstream entry point — downloads + parses the KIS .mst (no auth).
-
-    Blocking download+parse runs in a threadpool so the event loop isn't
-    stalled. Any download/unzip/parse failure surfaces as KisMasterFetchError →
-    UpstreamCode.KIS_MASTER_FETCH_FAILED (see _do_refresh). No credentials
-    needed — the .mst is a static file (SPEC §7).
-    """
-    # No re-wrap here: kis_master already normalizes every download/parse
-    # failure to KisMasterFetchError, and wrapping the remainder downgraded
-    # genuinely unexpected errors (executor machinery) into the SILENT typed
-    # handler in _do_refresh, skipping its logger.exception traceback.
-    loop = asyncio.get_running_loop()
-    rows = await loop.run_in_executor(None, _fetch_mst)
+def _rows_to_hits(rows) -> list[SymbolHit]:
+    empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
     return [
         SymbolHit(
             code=r.code,
@@ -331,10 +337,26 @@ async def _fetch_symbol_master() -> list[SymbolHit]:
             market=r.market,  # type: ignore[arg-type]
             security_type=r.security_type,
             captured_count=0,
-            captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
+            captured_breakdown=dict(empty),
         )
         for r in rows
     ]
+
+
+async def _fetch_symbol_master() -> list[SymbolHit]:
+    """유일한 업스트림 진입점 — 키움 `ka10099` (PR-I·#1045).
+
+    `.mst` 는 무인증 정적 파일이라 자격증명 없이도 검색이 살아 있었다(SPEC §7).
+    `ka10099` 는 인증이 필요하므로 그 성질이 **시드 스냅샷**으로 옮겨간다:
+    자격증명이 없으면 여기서 실패하고, 부팅은 커밋된 시드로 이뤄진다.
+    """
+    from hoga.live import kiwoom_rest_runtime  # noqa: PLC0415 — 순환 절단(api ↔ live)
+
+    client = kiwoom_rest_runtime.ensure_rest_client(_symbols_data_dir())
+    if client is None:
+        raise KiwoomMasterFetchError("키움 자격증명 없음 — 마스터를 갱신할 수 없다")
+    rows = await kiwoom_fetch_symbol_master(client)
+    return _rows_to_hits(rows)
 
 
 def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
@@ -408,9 +430,28 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
     cache is empty and _state surfaces SYMBOL_MASTER_NOT_INITIALIZED so the
     UI prompts the user to click Update.
     """
-    global _cache, _fetched_at_ms, _state, _loaded_schema_version  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
+    global _cache, _fetched_at_ms, _state, _loaded_schema_version, _data_dir_for_fetch  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
+    _data_dir_for_fetch = data_dir
     result = _load_from_disk(path)
     if result is None:
+        # **시드 스냅샷으로 부팅한다**(PR-I·#1045). `.mst` 는 무인증이라 첫 부팅에서
+        # 바로 받아올 수 있었지만 `ka10099` 는 인증이 필요하다. 그 성질을 잃지
+        # 않으려고 커밋된 시드를 둔다 — 자격증명이 없어도 검색이 산다.
+        seed = _load_master_seed()
+        if seed:
+            entries = _rows_to_hits(seed)
+            breakdowns = _build_all_captured_breakdowns(data_dir)
+            empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
+            for h in entries:
+                breakdown = breakdowns.get(h.code, empty)
+                h.captured_count = breakdown["complete"]
+                h.captured_breakdown = breakdown
+            _cache = entries
+            _fetched_at_ms = None
+            # 시드는 "낡았을 수 있는 진짜 카탈로그" 다 — fresh 가 아니라 stale.
+            _state = SymbolCacheState.stale(reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED)
+            _loaded_schema_version = None
+            return
         _cache = []
         _fetched_at_ms = None
         _state = SymbolCacheState.unavailable(reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED)
@@ -439,7 +480,9 @@ def needs_boot_refresh() -> bool:
     the background .mst auto-refresh when the cache is unavailable OR a
     legacy-schema file was accepted (serve the old catalog now, converge to
     the current schema online)."""
-    if _state.status == "unavailable":
+    # PR-I(#1045): `stale` 도 포함한다. 시드 부팅이 그 상태를 만드는데, 시드는
+    # 정의상 낡았으므로 온라인에서 수렴시켜야 한다.
+    if _state.status in {"unavailable", "stale"}:
         return True
     return _loaded_schema_version is not None and _loaded_schema_version < SCHEMA_VERSION
 
@@ -527,7 +570,7 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
     try:
         try:
             entries = await _fetch_symbol_master()
-        except KisMasterFetchError:
+        except KiwoomMasterFetchError:
             _set_stale_or_unavailable(UpstreamCode.KIS_MASTER_FETCH_FAILED)
             return _build_response()
 
@@ -604,6 +647,27 @@ def all_etf_etn_codes() -> frozenset[str] | None:
     if not _cache:
         return None
     return frozenset(h.code for h in _cache if h.security_type in ("etf", "etn"))
+
+
+def all_listed_rows() -> list[tuple[str, str, str, bool]] | None:
+    """마스터 전체를 ``(code, name, market, is_etf)`` 로. 미로드면 ``None``.
+
+    스크리너 로스터(stocks.parquet)를 최신 상장 목록에 맞추는 데 쓴다. 그 파일은
+    외부 DB 에서 수동 1회 시드된 스냅샷이라 **신규 상장을 영영 모른다** — 그리고
+    일봉 갱신 대상 목록이 바로 그 파일에서 나오므로(screener._build_plan), 로스터에
+    없는 종목은 봉을 받지도 못하고 따라서 스크리너에 나타날 수도 없다. 실측
+    2026-08-03: 마스터에만 있는 일반주 **79 종목**이 그 상태였다.
+
+    ``all_etf_etn_codes`` 와 같은 규칙으로 ``None`` 과 빈 목록을 구분한다 —
+    마스터 다운로드가 실패한 부팅에서 "상장 종목이 0개"로 읽히면 호출처가 로스터를
+    비우는 파괴적 오작동을 할 수 있다.
+    """
+    if not _cache:
+        return None
+    return [
+        (h.code, h.name, h.market, h.security_type in ("etf", "etn"))
+        for h in _cache
+    ]
 
 
 def build_router(*, path: Path, data_dir: Path) -> APIRouter:

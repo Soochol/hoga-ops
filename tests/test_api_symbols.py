@@ -256,18 +256,30 @@ async def test_spec7_no_creds_refresh_succeeds(
     monkeypatch: pytest.MonkeyPatch,
     _reset_symbols_state: None,
 ) -> None:
-    """SPEC §7: symbol refresh works without credentials — .mst is static/no-auth."""
+    """SPEC §7 재정의(PR-I·#1045) — **무자격 성질이 refresh 에서 시드로 옮겨갔다.**
 
-    # Patch the sync _fetch_mst (called in executor) to return rows without network.
+    `.mst` 는 무인증 정적 파일이라 자격증명 없이도 refresh 가 됐다. `ka10099` 는
+    인증이 필요하므로 그 성질을 유지하는 자리가 바뀐다: **읽기 경로는 커밋된 시드가
+    보장하고, refresh 는 자격증명을 요구한다.** 여기서는 클라이언트가 있을 때
+    refresh 가 성공하는 것과, 없을 때 조용히 성공한 척하지 않는 것을 함께 본다.
+    """
+
+    # 어댑터 이음매 — PR-I(#1045) 이후 소스는 키움 `ka10099` 다.
     fake_rows = [MasterRow(code="005930", name="삼성전자", market="KOSPI", security_type="stock")]
-    monkeypatch.setattr(symbols_module, "_fetch_mst", lambda: fake_rows)
+    async def _fake_fetch(_client=None):
+        return fake_rows
+
+    monkeypatch.setattr(symbols_module, "kiwoom_fetch_symbol_master", _fake_fetch)
+    monkeypatch.setattr(symbols_module, "_symbols_data_dir", lambda: tmp_path)
+    import hoga.live.kiwoom_rest_runtime as _krr
+    monkeypatch.setattr(_krr, "ensure_rest_client", lambda *_a, **_k: object())
 
     path = tmp_path / "sm.json"
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     resp = await symbols_module.refresh(path=path, data_dir=data_dir)
 
-    assert resp.status == "fresh", "refresh must succeed without any KRX credentials"
+    assert resp.status == "fresh", "클라이언트가 있으면 refresh 는 성공한다"
     assert len(resp.symbols) == 1
     assert resp.symbols[0].code == "005930"
 
@@ -379,7 +391,7 @@ def test_load_wrong_schema_version_returns_none(tmp_path):
 def test_load_missing_entries_array_returns_none(tmp_path):
     path = tmp_path / "no-entries.json"
     path.write_text(
-        json.dumps({"schema_version": 2, "fetched_at_ms": 1}),
+        json.dumps({"schema_version": 3, "fetched_at_ms": 1}),
         encoding="utf-8",
     )
     assert symbols_module._load_from_disk(path) is None
@@ -389,7 +401,7 @@ def test_load_malformed_entry_returns_none(tmp_path):
     path = tmp_path / "bad-entry.json"
     path.write_text(
         json.dumps({
-            "schema_version": 2,
+            "schema_version": 3,
             "fetched_at_ms": 1,
             "entries": [{"code": "005930"}],  # missing name and market
         }),
@@ -447,9 +459,13 @@ def test_load_disk_state_no_file(tmp_path):
 
     symbols_module.load_disk_state(path=path, data_dir=data_dir)
 
-    assert symbols_module._cache == []
+    # **디스크가 없으면 커밋된 시드로 부팅한다**(PR-I·#1045). `.mst` 는 무인증
+    # 정적 파일이라 첫 부팅에서 바로 받아올 수 있었지만 `ka10099` 는 인증이
+    # 필요하다 — 그 성질을 시드가 되산다(SPEC §7). 상태는 `stale` 이다:
+    # 진짜 카탈로그이지만 낡았을 수 있고, 갱신이 필요하다는 신호는 남겨야 한다.
+    assert len(symbols_module._cache) > 4000
     assert symbols_module._fetched_at_ms is None
-    assert symbols_module._state.status == "unavailable"
+    assert symbols_module._state.status == "stale"
     assert symbols_module._state.reason == UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
 
 
@@ -462,8 +478,9 @@ def test_load_disk_state_corrupt_file(tmp_path):
 
     symbols_module.load_disk_state(path=path, data_dir=data_dir)
 
-    assert symbols_module._state.status == "unavailable"
-    assert symbols_module._state.reason == UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
+    # 손상 파일도 같은 경로 — 시드로 부팅한다.
+    assert symbols_module._state.status == "stale"
+    assert len(symbols_module._cache) > 4000
 
 
 def test_load_disk_state_valid_file(tmp_path):
@@ -471,7 +488,7 @@ def test_load_disk_state_valid_file(tmp_path):
     path = tmp_path / "sm.json"
     path.write_text(
         json.dumps({
-            "schema_version": 2,
+            "schema_version": 3,
             "fetched_at_ms": 1747900000000,
             "source": "kis_mst",
             "entries": [
@@ -527,7 +544,7 @@ async def test_get_all_returns_cached_entries(tmp_path, monkeypatch):
     path = tmp_path / "sm.json"
     path.write_text(
         json.dumps({
-            "schema_version": 2,
+            "schema_version": 3,
             "fetched_at_ms": 99,
             "source": "kis_mst",
             "entries": [{"code": "005930", "name": "삼성전자", "market": "KOSPI"}],
@@ -569,7 +586,7 @@ async def test_refresh_happy_path(tmp_path, monkeypatch):
     assert resp.status == "fresh"
     assert resp.reason is None
     payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == symbols_module.SCHEMA_VERSION
     assert len(payload["entries"]) == 1
 
 
@@ -633,7 +650,7 @@ async def test_refresh_concurrent_dedupe(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
+def test_symbols_info_endpoint_reports_seed_catalog(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
     from hoga.api import symbols
@@ -663,8 +680,9 @@ def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["count"] == 0
-    assert body["status"] == "unavailable"
+    # **시드 카탈로그가 보고된다**(PR-I·#1045) — 디스크 캐시가 없어도 검색이 산다.
+    assert body["count"] > 4000
+    assert body["status"] == "stale", "시드는 진짜 카탈로그지만 낡았을 수 있다"
     assert body["fetched_at_ms"] is None
     assert body["reason"] == "symbol_master_not_initialized"
 
@@ -727,7 +745,7 @@ def test_boot_autofetch_skipped_when_cache_fresh(tmp_path, monkeypatch):
     sm_path = tmp_path / "symbol-master.json"
     sm_path.write_text(
         json.dumps({
-            "schema_version": 2,
+            "schema_version": 3,
             "fetched_at_ms": 1747900000000,
             "source": "kis_mst",
             "entries": [{"code": "005930", "name": "삼성전자", "market": "KOSPI"}],

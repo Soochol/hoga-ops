@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from hoga.api import screener as _screener_mod
 from hoga.api.screener_store import DailyBar, append_rows, last_raw_date, read_status, write_status
+from hoga.live import kiwoom_access as _kiwoom_access, kiwoom_rest_runtime as _kiwoom_runtime
 
 
 @pytest.fixture(autouse=True)
@@ -41,8 +42,11 @@ def _patch_update_env(monkeypatch):
     now=16:00 이후 → 오늘(20260627)이 D6 컷오프를 지나 확정 거래일로 갭에 포함된다."""
     monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27, 16, 0))
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda _f, _t: ["20260627"])
-    monkeypatch.setattr(_screener_mod.kis_access, "has_rest_capacity", lambda data_dir: True)
-    monkeypatch.setattr(_screener_mod, "ensure_kis_capacity_scheduler", lambda data_dir: object())
+    # PR-F(#1042) 칼 컷오버 — 자격·거버너 모두 키움이다.
+    monkeypatch.setattr(
+        _kiwoom_runtime, "ensure_rest_client", lambda *_a, **_k: object()
+    )
+    monkeypatch.setattr(_kiwoom_runtime, "ensure_scheduler", lambda: object())
     monkeypatch.setattr(_screener_mod, "_PROGRESS_MIN_INTERVAL_S", 0.0)
 
 
@@ -223,44 +227,35 @@ async def test_trigger_update_fetches_daily_rows_through_capacity_scheduler(tmp_
         return len(rows)
 
     async def fake_run_with_capacity(
-        scheduler_arg,
-        *,
-        data_dir,
-        key,
-        endpoint,
-        priority,
-        fetch_fn,
-        cooldown_scope=None,
+        scheduler_arg, *, key, api_id, priority, fetch_fn, client,
     ):
+        # 계정 차원(data_dir·endpoint·cooldown_scope)은 사라졌다 — 키움 유량은
+        # TR별이라 고를 계정이 없다(#1015). 버킷 키는 api_id 다.
         calls.append({
-            "scheduler": scheduler_arg,
-            "data_dir": data_dir,
-            "key": key,
-            "endpoint": str(endpoint),
-            "priority": priority,
-            "cooldown_scope": cooldown_scope,
+            "scheduler": scheduler_arg, "key": key,
+            "api_id": api_id, "priority": priority,
         })
-        return await fetch_fn(object())
+        return await fetch_fn(client)
 
-    async def fake_kis_fetch_one(_client, code, frm, to):
+    async def fake_daily_fetch_one(_client, code, frm, to):
         return [DailyBar(code, datetime(2026, 6, 27).date(), 1.0, 2.0, 1.0, 2.0, 10)]
 
     monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27, 16, 0))
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda _f, _t: ["20260627"])
     monkeypatch.setattr(_screener_mod.screener_store, "run_update", fake_run_update)
-    monkeypatch.setattr(_screener_mod.kis_access, "has_rest_capacity", lambda data_dir: True)
-    monkeypatch.setattr(_screener_mod, "ensure_kis_capacity_scheduler", lambda data_dir: scheduler)
-    monkeypatch.setattr(_screener_mod.kis_access, "run_with_capacity", fake_run_with_capacity)
-    monkeypatch.setattr(_screener_mod, "_kis_fetch_one", fake_kis_fetch_one)
+    monkeypatch.setattr(
+        _kiwoom_runtime, "ensure_rest_client", lambda *_a, **_k: object()
+    )
+    monkeypatch.setattr(_kiwoom_runtime, "ensure_scheduler", lambda: scheduler)
+    monkeypatch.setattr(_kiwoom_access, "run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr(_screener_mod, "_daily_fetch_one", fake_daily_fetch_one)
 
     assert await _screener_mod.trigger_update(tmp_path) == 1
     assert calls == [{
         "scheduler": scheduler,
-        "data_dir": tmp_path,
         "key": ("screener-update", "005930", "20260627", "20260627"),
-        "endpoint": "screener-daily",
+        "api_id": "ka10081",
         "priority": "background",
-        "cooldown_scope": "screener-daily",
     }]
 
 
@@ -296,7 +291,7 @@ async def test_start_update_creds_missing_reason(tmp_path: Path, monkeypatch):
     _seed_archive(tmp_path, ["005930"])
     monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27, 16, 0))
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda _f, _t: ["20260627"])
-    monkeypatch.setattr(_screener_mod.kis_access, "has_rest_capacity", lambda data_dir: False)
+    monkeypatch.setattr(_kiwoom_runtime, "ensure_rest_client", lambda *_a, **_k: None)
     assert await _screener_mod.start_update(tmp_path) == {
         "running": False, "updated": 0, "reason": "kis_creds_missing"}
 
@@ -369,11 +364,11 @@ async def test_progress_events_published_per_code_with_terminal_finished(
     _patch_update_env(monkeypatch)
     bus = _BusStub()
 
-    async def fake_run_with_capacity(scheduler_arg, *, data_dir, key, endpoint,
-                                     priority, fetch_fn, cooldown_scope=None):
-        return await fetch_fn(object())
+    async def fake_run_with_capacity(scheduler_arg, *, key, api_id, priority,
+                                     fetch_fn, client):
+        return await fetch_fn(client)
 
-    async def fake_kis_fetch_one(_client, code, frm, to):
+    async def fake_daily_fetch_one(_client, code, frm, to):
         return [DailyBar(code, datetime(2026, 6, 27).date(), 1.0, 2.0, 1.0, 2.0, 10)]
 
     async def fake_run_update(sdir, *, codes, fetch_one, trading_days, now_ms):
@@ -381,8 +376,8 @@ async def test_progress_events_published_per_code_with_terminal_finished(
             await fetch_one(c, trading_days[0], trading_days[-1])
         return len(trading_days)
 
-    monkeypatch.setattr(_screener_mod.kis_access, "run_with_capacity", fake_run_with_capacity)
-    monkeypatch.setattr(_screener_mod, "_kis_fetch_one", fake_kis_fetch_one)
+    monkeypatch.setattr(_kiwoom_access, "run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr(_screener_mod, "_daily_fetch_one", fake_daily_fetch_one)
     monkeypatch.setattr(_screener_mod.screener_store, "run_update", fake_run_update)
 
     assert await _screener_mod.trigger_update(tmp_path, bus=bus) == 1
