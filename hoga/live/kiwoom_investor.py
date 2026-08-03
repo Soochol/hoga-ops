@@ -32,13 +32,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from hoga.live.candle_models import daily_anchor_ms
 from hoga.live.index_registry import RepresentativeIndex
 from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
 from hoga.live.kis_endpoints import InvestorNetFetchResult, InvestorNetInvariantViolation
 from hoga.live.kiwoom_errors import KiwoomApiError
 from hoga.live.kiwoom_index_candles import index_id_to_kiwoom_code
 from hoga.live.kiwoom_rest import KiwoomRestClient
-from hoga.util.timeenc import KST
 
 # **수량**축. 이름과 달리 2 가 수량이다(위 함정 ①).
 AMT_QTY_QUANTITY = "2"
@@ -82,10 +82,6 @@ def foreign_net(row: dict[str, Any], *, base: str, native: str | None) -> int:
     return total
 
 
-def _anchor_ms(date_yyyymmdd: str) -> int:
-    """그날 09:00 KST — KIS 경로와 같은 앵커라 프론트가 일봉에 정렬한다."""
-    dt = datetime.strptime(date_yyyymmdd, "%Y%m%d").replace(hour=9, tzinfo=KST)
-    return int(dt.timestamp() * 1000)
 
 
 def _mrkt_tp(index_id: str) -> str:
@@ -126,7 +122,7 @@ async def fetch_investor_net(
             continue
         seen.add(date_s)
         points.append(InvestorNetPoint(
-            t_ms=_anchor_ms(date_s),
+            t_ms=daily_anchor_ms(date_s),
             foreign_net=foreign_net(row, base="frgnr_invsr", native="natfor"),
             institution_net=_signed(row.get("orgn")),
         ))
@@ -166,7 +162,7 @@ async def fetch_market_investor_net(
             if code != want:
                 continue
             out.append(InvestorNetPoint(
-                t_ms=_anchor_ms(date_s),
+                t_ms=daily_anchor_ms(date_s),
                 foreign_net=foreign_net(
                     row, base="frgnr_netprps", native="native_trmt_frgnr_netprps"
                 ),

@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import polars as pl
+import pytest
 
 from hoga.api import screener_backfill as screener_backfill_mod
 from hoga.api.screener_backfill import run_backfill_with
@@ -67,43 +68,38 @@ def test_rerun_preserves_prebackfill_baseline(tmp_path):
 
 
 async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_path, monkeypatch):
+    """PR-F(#1042) 칼 컷오버 — 소스는 키움 `ka10081` 이다.
+
+    계정 차원(`data_dir`·`endpoint`·`cooldown_scope`)이 사라졌다: 키움 유량은
+    TR별이라 고를 계정이 없다(#1015). 버킷 키는 `api_id` 다.
+
+    **수정주가/원주가 2벌이 이 테스트의 핵심**이다. 키움 `upd_stkpc_tp` 는 KIS 의
+    `FID_ORG_ADJ_PRC` 와 극성이 반대라(1=수정주가) 옮기다 뒤집히기 쉽다. 여기서는
+    불리언이 어댑터까지 그대로 도달하는지만 보고, 와이어 값 변환은
+    `test_kiwoom_daily_candles.py` 가 액면분할 리트머스로 못 박는다.
+    """
+    from hoga.live import kiwoom_access, kiwoom_daily_candles, kiwoom_rest_runtime
+
     scheduler = object()
+    client = object()
     calls = []
     t_ms = int(dt.datetime(2026, 6, 1, tzinfo=KST).timestamp() * 1000)
 
-    class FakeKis:
-        async def fetch_past_daily_candles(self, code, frm, to, *, adjust):
-            calls.append(("client", code, frm, to, adjust))
-            return SimpleNamespace(candles=[
-                SimpleNamespace(
-                    t_ms=t_ms,
-                    open=1.0,
-                    high=2.0,
-                    low=1.0,
-                    close=3.0 if adjust else 2.0,
-                    volume=10,
-                )
-            ])
+    async def fake_fetch_daily_candles(client_arg, code, frm, to, *, venue="KRX", adjust=True):
+        calls.append(("adapter", client_arg, code, frm, to, adjust))
+        return SimpleNamespace(candles=[
+            SimpleNamespace(
+                t_ms=t_ms, open=1.0, high=2.0, low=1.0,
+                close=3.0 if adjust else 2.0, volume=10,
+            )
+        ])
 
-    async def fake_run_with_capacity(
-        scheduler_arg,
-        *,
-        data_dir,
-        key,
-        endpoint,
-        priority,
-        fetch_fn,
-        cooldown_scope=None,
-    ):
+    async def fake_run_with_capacity(scheduler_arg, *, key, api_id, priority, fetch_fn, client):
         calls.append({
-            "scheduler": scheduler_arg,
-            "data_dir": data_dir,
-            "key": key,
-            "endpoint": str(endpoint),
-            "priority": priority,
-            "cooldown_scope": cooldown_scope,
+            "scheduler": scheduler_arg, "key": key,
+            "api_id": api_id, "priority": priority,
         })
-        return await fetch_fn(FakeKis())
+        return await fetch_fn(client)
 
     async def fake_run_backfill_with(sdir, *, fetch_adj, fetch_raw, now_ms=None):
         adj = await fetch_adj("005930", "20260601", "20260601")
@@ -111,14 +107,13 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
         return {"adj": adj, "raw": raw, "sdir": sdir}
 
     monkeypatch.setattr(
-        "hoga.live.kis_access.has_rest_capacity",
-        lambda data_dir: True,
+        kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: client
     )
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda: scheduler)
+    monkeypatch.setattr(kiwoom_access, "run_with_capacity", fake_run_with_capacity)
     monkeypatch.setattr(
-        "hoga.live.kis_capacity_runtime.ensure_kis_capacity_scheduler",
-        lambda data_dir: scheduler,
+        kiwoom_daily_candles, "fetch_daily_candles", fake_fetch_daily_candles
     )
-    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", fake_run_with_capacity)
     monkeypatch.setattr(screener_backfill_mod, "run_backfill_with", fake_run_backfill_with)
 
     result = await screener_backfill_mod.run_backfill(tmp_path)
@@ -129,18 +124,26 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
     assert [call for call in calls if isinstance(call, dict)] == [
         {
             "scheduler": scheduler,
-            "data_dir": tmp_path,
             "key": ("screener-backfill-adj", "005930", "20260601", "20260601"),
-            "endpoint": "screener-daily",
+            "api_id": "ka10081",
             "priority": "background",
-            "cooldown_scope": "screener-daily",
         },
         {
             "scheduler": scheduler,
-            "data_dir": tmp_path,
             "key": ("screener-backfill-raw", "005930", "20260601", "20260601"),
-            "endpoint": "screener-daily",
+            "api_id": "ka10081",
             "priority": "background",
-            "cooldown_scope": "screener-daily",
         },
     ]
+    assert [c[5] for c in calls if isinstance(c, tuple)] == [True, False], (
+        "수정주가 1벌 · 원주가 1벌 — 극성이 뒤집히면 여기서 걸린다"
+    )
+
+
+async def test_run_backfill_fails_loudly_without_kiwoom_credentials(tmp_path, monkeypatch):
+    """무자격이면 조용히 skip 하지 않고 loud fail 한다 — KIS 시절 규약을 유지한다."""
+    from hoga.live import kiwoom_rest_runtime
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: None)
+    with pytest.raises(RuntimeError, match="자격증명"):
+        await screener_backfill_mod.run_backfill(tmp_path)

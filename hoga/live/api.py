@@ -2219,10 +2219,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         LiveDailyCandleBackfill(
             data_dir=data_dir,
             cache=daily_cache_instance,
-            scheduler=_kis_scheduler,
+            # PR-F(#1042): 키움 거버너다 — KIS 스케줄러와 무관한 축이다.
+            scheduler=kiwoom_rest_runtime.ensure_scheduler(),
             walkback=batched_daily_walkback,
         )
-        if data_dir is not None and daily_cache_instance is not None and _kis_scheduler is not None
+        if data_dir is not None and daily_cache_instance is not None
         else None
     )
     global index_candles_cache_instance  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩

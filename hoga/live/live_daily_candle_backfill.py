@@ -4,12 +4,9 @@ from collections.abc import Awaitable, Callable, Hashable
 from datetime import date, datetime, timedelta
 from typing import Protocol
 
-from hoga.live import kis_access
-from hoga.live.kis_capacity_scheduler import (
-    KisCapacityCooldown,
-    KisCapacityOverloaded,
-)
-from hoga.live.kis_client import KisClient, KisRateLimitError
+from hoga.live import kiwoom_access, kiwoom_daily_candles, kiwoom_rest_runtime
+from hoga.live.kis_client import KisRateLimitError
+from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded, Priority
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.single_flight import SingleFlight
 from hoga.live.venue import LiveVenuePolicy, Venue, daily_venue_for_policy
@@ -19,15 +16,19 @@ from hoga.util.timeenc import KST
 _KST = KST
 
 
-class KisRestScheduler(Protocol):
+class KiwoomRestScheduler(Protocol):
+    """PR-F(#1042) 칼 컷오버 — 계정 차원(`endpoint`·`cooldown_scope`)이 사라졌다.
+
+    키움 유량은 TR별이라 고를 계정이 없다(#1015). 버킷 키는 `api_id` 다.
+    """
+
     async def submit(
         self,
         *,
         key: Hashable,
-        endpoint: str,
-        priority: kis_access.KisRequestPriority,
-        call: Callable[[KisClient], Awaitable],
-        cooldown_scope: Hashable | None = None,
+        api_id: str,
+        priority: Priority,
+        call: Callable[[], Awaitable],
     ): ...
 
 
@@ -45,7 +46,7 @@ class LiveDailyCandleBackfill:
         *,
         data_dir,
         cache: PastDailyCandlesCache,
-        scheduler: KisRestScheduler,
+        scheduler: KiwoomRestScheduler,
         walkback: Walkback,
     ) -> None:
         self._data_dir = data_dir
@@ -180,24 +181,11 @@ class LiveDailyCandleBackfill:
         from_s: str,
         to_s: str,
     ):
-        try:
-            return await kis_access.run_with_capacity(
-                self._scheduler,
-                data_dir=self._data_dir,
-                key=("live-candle-backfill", "daily", venue, code, from_s, to_s),
-                endpoint=kis_access.KisRestEndpoint.PAST_DAILY,
-                priority="user_visible",
-                cooldown_scope=venue,
-                fetch_fn=lambda kis: kis.fetch_past_daily_candles(
-                    code,
-                    from_s,
-                    to_s,
-                    venue=venue,
-                    foreground=True,
-                ),
-            )
-        except (KisCapacityCooldown, KisCapacityOverloaded) as e:
-            raise KisRateLimitError(str(e)) from e
+        return await self._fetch(
+            venue=venue,
+            key=("live-candle-backfill", "daily", venue, code, from_s, to_s),
+            code=code, from_s=from_s, to_s=to_s,
+        )
 
     async def _fetch_krx_fallback_batch(
         self,
@@ -206,23 +194,34 @@ class LiveDailyCandleBackfill:
         from_s: str,
         to_s: str,
     ):
+        return await self._fetch(
+            venue="KRX",
+            key=("live-candle-backfill", "daily", "KRX", code, from_s, to_s, "fallback"),
+            code=code, from_s=from_s, to_s=to_s,
+        )
+
+    async def _fetch(self, *, venue: Venue, key, code: str, from_s: str, to_s: str):
+        """PR-F(#1042) 칼 컷오버 — 소스는 키움 `ka10081` 이다.
+
+        거버너 과부하를 `KisRateLimitError` 로 감싸는 것은 **의도적**이다: 상위
+        walkback 오케스트레이터가 그 타입으로 "잠시 후 재시도" 경고를 만든다.
+        벤더명이 붙은 예외 이름은 #1046(PR-J)에서 한꺼번에 정리한다.
+        """
+        client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
+        if client is None:
+            raise KisRateLimitError("kiwoom client not initialized")
         try:
-            return await kis_access.run_with_capacity(
+            return await kiwoom_access.run_with_capacity(
                 self._scheduler,
-                data_dir=self._data_dir,
-                key=("live-candle-backfill", "daily", "KRX", code, from_s, to_s, "fallback"),
-                endpoint=kis_access.KisRestEndpoint.PAST_DAILY,
+                key=key,
+                api_id=kiwoom_daily_candles.API_ID,
                 priority="user_visible",
-                cooldown_scope="KRX",
-                fetch_fn=lambda kis: kis.fetch_past_daily_candles(
-                    code,
-                    from_s,
-                    to_s,
-                    venue="KRX",
-                    foreground=True,
+                client=client,
+                fetch_fn=lambda c: kiwoom_daily_candles.fetch_daily_candles(
+                    c, code, from_s, to_s, venue=venue,
                 ),
             )
-        except (KisCapacityCooldown, KisCapacityOverloaded) as e:
+        except KiwoomCapacityOverloaded as e:
             raise KisRateLimitError(str(e)) from e
 
 
