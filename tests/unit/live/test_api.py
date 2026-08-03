@@ -1722,10 +1722,64 @@ def test_screener_daily_candles_runs_off_the_event_loop(tmp_path, monkeypatch) -
 # ----- /api/live/past-investor-net -----
 
 from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
-from hoga.live.kis_client import (
+from hoga.live.kis_endpoints import (
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
 )
+
+# 투자자 3표면의 페이크 클라이언트를 라우트에 흘려보내는 홀더.
+# `_investor_app`/`_investor_estimate_app` 이 채우고, 아래 seam 이 읽는다.
+# dict 인 이유는 `global` 없이 갱신하기 위해서다(PLW0603).
+_fake_kiwoom_client: dict[str, object | None] = {"client": None}
+
+
+@pytest.fixture(autouse=True)
+def _kiwoom_investor_seam(monkeypatch):
+    """PR-E(#1041) 이후 어댑터는 **모듈 레벨 함수**다 — 그 한 점을 위임으로 돌린다.
+
+    KIS 시절 소비자는 클라이언트 객체의 메서드를 불렀다. 키움 배선은 런타임에서
+    클라이언트를 받아 `kiwoom_investor.fetch_*(client, ...)` 를 부른다. 이 아래
+    테스트들이 검증하는 건 어댑터가 아니라 **페처의 캐시·누적·코얼레스 로직**이라,
+    어댑터 자리에 "클라이언트 객체로 되돌려 보내는" 위임을 꽂으면 의도가 그대로
+    보존된다. 어댑터 자체는 `test_kiwoom_investor.py` 가 덮는다.
+    """
+    from hoga.live import api as live_api
+
+    _fake_kiwoom_client["client"] = None
+
+    async def _net(client, code, from_yyyymmdd, to_yyyymmdd):
+        return await client.fetch_investor_net(code, from_yyyymmdd, to_yyyymmdd)
+
+    async def _market(client, index, from_yyyymmdd, to_yyyymmdd):
+        return await client.fetch_market_investor_net(index, from_yyyymmdd, to_yyyymmdd)
+
+    async def _estimate(client, code):
+        return await client.fetch_investor_trend_estimate(code)
+
+    for name, fn in (
+        ("fetch_investor_net", _net),
+        ("fetch_market_investor_net", _market),
+        ("fetch_investor_trend_estimate", _estimate),
+    ):
+        monkeypatch.setattr(live_api.kiwoom_investor, name, fn)
+    yield
+    _fake_kiwoom_client["client"] = None
+
+
+def _use_fake_kiwoom_client(monkeypatch, fake) -> None:
+    """라우트가 조달하는 클라이언트를 페이크로 바꾼다.
+
+    `None` 을 넣으면 무자격 경로(ADR-0134)를 재현한다 — 라우트가 503 을 내는
+    유일한 조건이다.
+    """
+    from hoga.live import api as live_api
+
+    _fake_kiwoom_client["client"] = fake
+    monkeypatch.setattr(
+        live_api.kiwoom_rest_runtime,
+        "ensure_rest_client",
+        lambda *_a, **_k: _fake_kiwoom_client["client"],
+    )
 
 
 class _FakeKisForInvestor:
@@ -1742,9 +1796,9 @@ class _FakeKisForInvestor:
         idx = len(self.calls)
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
         if self.raise_rate_limit_on_call is not None and idx == self.raise_rate_limit_on_call:
-            from hoga.live.kis_client import KisRateLimitError
+            from hoga.live.kiwoom_errors import KiwoomRateLimitError
 
-            raise KisRateLimitError("simulated rate limit")
+            raise KiwoomRateLimitError("simulated rate limit")
         from datetime import (
             datetime as _dt,
             timedelta as _td,
@@ -1768,7 +1822,7 @@ class _FakeKisForInvestor:
         return InvestorNetFetchResult(points=points, violations=list(self.violations))
 
 
-def _investor_app(tmp_path, fake_kis):
+def _investor_app(tmp_path, fake_kis, monkeypatch):
     from fastapi import FastAPI
 
     from hoga.live import kis_runtime, lifecycle
@@ -1776,6 +1830,7 @@ def _investor_app(tmp_path, fake_kis):
 
     lifecycle.reset_for_tests()
     kis_runtime.set_kis_client(fake_kis)
+    _use_fake_kiwoom_client(monkeypatch, fake_kis)
     app = FastAPI()
     app.include_router(
         build_router(
@@ -1786,32 +1841,29 @@ def _investor_app(tmp_path, fake_kis):
     return app
 
 
-def test_index_investor_net_uses_scheduler_backed_fetcher(tmp_path) -> None:
-    from hoga.live import kis_runtime, lifecycle
+def test_index_investor_net_uses_scheduler_backed_fetcher(tmp_path, monkeypatch) -> None:
+    from hoga.live import lifecycle
     from hoga.live.api import build_router
     from hoga.live.investor import InvestorNetPoint
-    from hoga.live.kis_client import InvestorNetFetchResult
 
-    class _FakeKisForIndexInvestor:
+    class _FakeKiwoomForIndexInvestor:
         def __init__(self):
             self.calls: list[tuple[str, str, str]] = []
 
         async def fetch_market_investor_net(self, index, from_yyyymmdd, to_yyyymmdd):
+            # **평평한 리스트**다 — ka10051 은 날짜당 한 콜이라 종목별(ka10059)의
+            # FetchResult 와 모양이 다르다(#1041). 소비자가 `.points` 를 읽으면
+            # 여기서 터진다.
             self.calls.append((index.id, from_yyyymmdd, to_yyyymmdd))
-            return InvestorNetFetchResult(
-                points=[
-                    InvestorNetPoint(
-                        t_ms=1_718_574_400_000,
-                        foreign_net=-3519,
-                        institution_net=17184,
-                    )
-                ],
-                violations=[],
-            )
+            return [
+                InvestorNetPoint(
+                    t_ms=1_718_574_400_000, foreign_net=-3519, institution_net=17184,
+                )
+            ]
 
-    fake = _FakeKisForIndexInvestor()
+    fake = _FakeKiwoomForIndexInvestor()
     lifecycle.reset_for_tests()
-    kis_runtime.set_kis_client(fake)  # type: ignore[arg-type]
+    _use_fake_kiwoom_client(monkeypatch, fake)
     app = FastAPI()
     app.include_router(
         build_router(
@@ -1857,33 +1909,24 @@ def _two_account_app(tmp_path, monkeypatch, fake0, fake1):
     return app
 
 
-def test_past_investor_net_uses_capacity_scheduler_pool(tmp_path, monkeypatch) -> None:
-    """N=2 정상: investor-net은 fixed account role이 아니라 scheduler pool을 쓴다."""
-    fake0, fake1 = _FakeKisForInvestor(), _FakeKisForInvestor()
-    app = _two_account_app(tmp_path, monkeypatch, fake0, fake1)
-    with TestClient(app) as c:
-        r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
-        assert r.status_code == 200
-        assert len(fake0.calls) + len(fake1.calls) == 1
-        assert fake0.calls or fake1.calls
+def test_past_investor_net_ignores_kis_account_health(tmp_path, monkeypatch) -> None:
+    """PR-E(#1041) 칼 컷오버 회귀 가드 — **계정 차원이 통째로 사라졌다.**
 
-
-def test_past_investor_net_degraded_account_is_excluded(tmp_path, monkeypatch) -> None:
-    """N=2이지만 account 1 REST 토큰 저하 → scheduler pool에서 account 1을 제외한다.
-
-    REST 라우팅은 REST 토큰 latch(is_rest_degraded)만 본다(WS sub_failed는 직교 — 폴백 무관,
-    2026-06-10). 그래서 degraded를 mark_rest_auth_degraded(1)로 위조한다. _two_account_app가
-    내부에서 reset_for_tests로 latch를 비우므로 app 구성 *후*에 마킹한다."""
+    이 자리에는 원래 두 테스트가 있었다: N=2 계정 풀 라우팅과 degraded 계정
+    제외. 키움 유량은 TR별이라 고를 계정이 없어(#1015) 둘 다 검증할 대상이
+    없어졌다. 대신 **KIS 계정 건강이 이 라우트에 더는 영향을 주지 않는다**는
+    새 불변식을 못 박는다 — 옛 배선이 되살아나면 여기서 걸린다.
+    """
     from hoga.live import account_health
 
-    fake0, fake1 = _FakeKisForInvestor(), _FakeKisForInvestor()
-    app = _two_account_app(tmp_path, monkeypatch, fake0, fake1)
+    fake = _FakeKisForInvestor()
+    app = _investor_app(tmp_path, fake, monkeypatch)
+    account_health.mark_rest_auth_degraded(0)
     account_health.mark_rest_auth_degraded(1)
     with TestClient(app) as c:
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
-        assert r.status_code == 200
-        assert len(fake0.calls) == 1, "healthy account 0을 쓰지 않음"
-        assert len(fake1.calls) == 0, "degraded account 1을 그대로 사용"
+    assert r.status_code == 200, "KIS 계정이 전부 degraded 여도 키움 경로는 산다"
+    assert len(fake.calls) == 1
 
 
 def test_past_candles_user_visible_request_starts_on_first_pool_account(
@@ -1904,9 +1947,9 @@ def test_past_candles_user_visible_request_starts_on_first_pool_account(
         assert len(fake1.calls) == 0, "user-visible request leaked to legacy role allocator"
 
 
-def test_past_investor_net_miss_calls_kis(tmp_path) -> None:
+def test_past_investor_net_miss_calls_kis(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForInvestor()
-    app = _investor_app(tmp_path, fake)
+    app = _investor_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
@@ -1920,9 +1963,9 @@ def test_past_investor_net_miss_calls_kis(tmp_path) -> None:
         assert len(fake.calls) == 1
 
 
-def test_past_investor_net_cache_hit_skips_kis(tmp_path) -> None:
+def test_past_investor_net_cache_hit_skips_kis(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForInvestor()
-    app = _investor_app(tmp_path, fake)
+    app = _investor_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         r2 = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
@@ -1932,9 +1975,9 @@ def test_past_investor_net_cache_hit_skips_kis(tmp_path) -> None:
         assert len(fake.calls) == 1
 
 
-def test_past_investor_net_partial_hit_gap_fill(tmp_path) -> None:
+def test_past_investor_net_partial_hit_gap_fill(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForInvestor()
-    app = _investor_app(tmp_path, fake)
+    app = _investor_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         c.get("/api/live/past-investor-net?code=005930&from=20240301&to=20240501")
         r2 = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240501")
@@ -1947,9 +1990,9 @@ def test_past_investor_net_partial_hit_gap_fill(tmp_path) -> None:
         assert ts == sorted(set(ts))
 
 
-def test_past_investor_net_rejects_invalid_code(tmp_path) -> None:
+def test_past_investor_net_rejects_invalid_code(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForInvestor()
-    app = _investor_app(tmp_path, fake)
+    app = _investor_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-investor-net?code=ABC&from=20240101&to=20240105")
         assert r.status_code == 422
@@ -1976,10 +2019,10 @@ def test_past_investor_net_503_when_kis_not_wired(tmp_path) -> None:
         assert r.status_code == 503
 
 
-def test_past_investor_net_rate_limit_surfaces_warning(tmp_path) -> None:
+def test_past_investor_net_rate_limit_surfaces_warning(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForInvestor()
     fake.raise_rate_limit_on_call = 0
-    app = _investor_app(tmp_path, fake)
+    app = _investor_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
@@ -1987,7 +2030,7 @@ def test_past_investor_net_rate_limit_surfaces_warning(tmp_path) -> None:
         assert any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
 
 
-def test_past_investor_net_violation_surfaces_to_wire(tmp_path) -> None:
+def test_past_investor_net_violation_surfaces_to_wire(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForInvestor()
     fake.violations = [
         InvestorNetInvariantViolation(
@@ -1996,7 +2039,7 @@ def test_past_investor_net_violation_surfaces_to_wire(tmp_path) -> None:
             detail="bad",
         )
     ]
-    app = _investor_app(tmp_path, fake)
+    app = _investor_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         body = r.json()
@@ -2005,14 +2048,14 @@ def test_past_investor_net_violation_surfaces_to_wire(tmp_path) -> None:
         assert warn[0]["date"] == "20240103"
 
 
-def test_past_investor_net_empty_result_cached(tmp_path) -> None:
+def test_past_investor_net_empty_result_cached(tmp_path, monkeypatch) -> None:
     class _EmptyKis(_FakeKisForInvestor):
         async def fetch_investor_net(self, code, from_yyyymmdd, to_yyyymmdd):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
             return InvestorNetFetchResult(points=[], violations=[])
 
     fake = _EmptyKis()
-    app = _investor_app(tmp_path, fake)
+    app = _investor_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
         c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         r2 = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
@@ -2486,12 +2529,12 @@ async def test_investor_estimate_inflight_coalesces_concurrent_calls() -> None:
 @pytest.mark.asyncio
 async def test_investor_estimate_kis_failure_returns_previous_same_day_rows() -> None:
     from hoga.live.api import LiveInvestorEstimateFetcher
-    from hoga.live.kis_client import KisRateLimitError
+    from hoga.live.kiwoom_errors import KiwoomRateLimitError
 
     fake = _FakeKisForInvestorTrendEstimate(
         [
             [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
-            KisRateLimitError("rate limited"),
+            KiwoomRateLimitError("rate limited"),
         ]
     )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
@@ -2507,11 +2550,11 @@ async def test_investor_estimate_kis_failure_returns_previous_same_day_rows() ->
 @pytest.mark.asyncio
 async def test_investor_estimate_auth_failure_returns_degraded_credentials_warning() -> None:
     from hoga.live.api import LiveInvestorEstimateFetcher
-    from hoga.live.kis_client import KisAuthError
+    from hoga.live.kiwoom_errors import KiwoomAuthError
 
     fake = _FakeKisForInvestorTrendEstimate(
         [
-            KisAuthError("token issue failed"),
+            KiwoomAuthError("token issue failed"),
         ]
     )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
@@ -2594,7 +2637,7 @@ async def test_investor_estimate_bounds_codes_per_day(monkeypatch) -> None:
 async def test_investor_estimate_degraded_failure_is_cached_with_previous_rows(monkeypatch) -> None:
     from hoga.live import api as live_api
     from hoga.live.api import LiveInvestorEstimateFetcher
-    from hoga.live.kis_client import KisRateLimitError
+    from hoga.live.kiwoom_errors import KiwoomRateLimitError
 
     now = 100.0
     monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
@@ -2603,8 +2646,8 @@ async def test_investor_estimate_degraded_failure_is_cached_with_previous_rows(m
     fake = _FakeKisForInvestorTrendEstimate(
         [
             [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
-            KisRateLimitError("rate limited"),
-            KisRateLimitError("rate limited again"),
+            KiwoomRateLimitError("rate limited"),
+            KiwoomRateLimitError("rate limited again"),
         ]
     )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: "20260616")
@@ -2635,13 +2678,13 @@ async def test_investor_estimate_api_and_transport_errors_preserve_previous_rows
     import httpx
 
     from hoga.live.api import LiveInvestorEstimateFetcher
-    from hoga.live.kis_client import KisApiError, KisTransportError
+    from hoga.live.kiwoom_errors import KiwoomApiError, KiwoomTransportError
 
     fake = _FakeKisForInvestorTrendEstimate(
         [
             [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
-            KisTransportError(httpx.RemoteProtocolError("server disconnected")),
-            KisApiError("KIS999", "upstream rejected request"),
+            KiwoomTransportError(httpx.RemoteProtocolError("server disconnected")),
+            KiwoomApiError("1503", "upstream rejected request"),
         ]
     )
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
@@ -2699,7 +2742,7 @@ async def test_investor_estimate_does_not_degrade_programming_errors() -> None:
         await fetcher.fetch(fake, "005930")
 
 
-def _investor_estimate_app(tmp_path, fake_kis=None):
+def _investor_estimate_app(tmp_path, monkeypatch, fake_kis=None):
     from fastapi import FastAPI
 
     from hoga.live import kis_runtime, lifecycle
@@ -2708,23 +2751,25 @@ def _investor_estimate_app(tmp_path, fake_kis=None):
     lifecycle.reset_for_tests()
     if fake_kis is not None:
         kis_runtime.set_kis_client(fake_kis)
+    # fake_kis 가 None 이면 무자격 경로 — 라우트가 credentials_missing 을 낸다.
+    _use_fake_kiwoom_client(monkeypatch, fake_kis)
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
     return app
 
 
-def test_investor_trend_estimate_route_uses_capacity_scheduler(tmp_path) -> None:
+def test_investor_trend_estimate_route_uses_capacity_scheduler(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForInvestorTrendEstimate(
         [[InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)]]
     )
-    app = _investor_estimate_app(tmp_path, fake)
+    app = _investor_estimate_app(tmp_path, monkeypatch, fake)
     r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "005930"})
 
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
 
 
-def test_investor_trend_estimate_route_returns_expected_rows(tmp_path) -> None:
+def test_investor_trend_estimate_route_returns_expected_rows(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForInvestorTrendEstimate(
         [
             [
@@ -2737,7 +2782,7 @@ def test_investor_trend_estimate_route_returns_expected_rows(tmp_path) -> None:
             ]
         ]
     )
-    app = _investor_estimate_app(tmp_path, fake)
+    app = _investor_estimate_app(tmp_path, monkeypatch, fake)
 
     r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "005930"})
 
@@ -2766,16 +2811,16 @@ def test_investor_trend_estimate_route_returns_expected_rows(tmp_path) -> None:
     assert body["data_warning"] is None
 
 
-def test_investor_trend_estimate_route_rejects_invalid_code(tmp_path) -> None:
-    app = _investor_estimate_app(tmp_path, _FakeKisForInvestorTrendEstimate())
+def test_investor_trend_estimate_route_rejects_invalid_code(tmp_path, monkeypatch) -> None:
+    app = _investor_estimate_app(tmp_path, monkeypatch, _FakeKisForInvestorTrendEstimate())
 
     r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "ABC"})
 
     assert r.status_code == 422
 
 
-def test_investor_trend_estimate_route_missing_kis_returns_degraded_error(tmp_path) -> None:
-    app = _investor_estimate_app(tmp_path)
+def test_investor_trend_estimate_route_missing_kis_returns_degraded_error(tmp_path, monkeypatch) -> None:
+    app = _investor_estimate_app(tmp_path, monkeypatch)
 
     r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "005930"})
 

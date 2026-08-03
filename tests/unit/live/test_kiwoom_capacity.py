@@ -283,3 +283,70 @@ async def test_queue_overflow_raises_overloaded() -> None:
 def test_default_rate_matches_vendor_measured_quota() -> None:
     """#1015 실측: 벤더가 429 에 `유량=5` 를 적어 보낸다."""
     assert DEFAULT_TR_RATE_PER_SEC == 5.0
+
+
+# === 무한 대기 방지 — 이 거버너는 프로세스 싱글턴이라 조용히 죽는다 ===========
+
+def test_workers_are_recreated_when_the_event_loop_changes() -> None:
+    """**루프가 바뀌면 큐를 아무도 안 비운다** — 예외도 타임아웃도 없는 무한 대기.
+
+    거버너는 프로세스 싱글턴인데 `asyncio.run` 은 매번 새 루프를 만든다. 옛
+    구현은 `if self._workers: return` 이라 죽은 루프의 워커 시체를 보고 "이미
+    떠 있다" 고 판단했다. 그 상태에서 `submit` 하면 큐에 들어간 요청을 꺼낼
+    워커가 없어 **영원히 매달린다** — 실패 모드 중 최악이라 못 박는다.
+    """
+    s = KiwoomCapacityScheduler(workers=1)
+
+    async def round_one() -> str:
+        return await s.submit(
+            key="a", api_id="ka10001", priority="background",
+            call=_returns("first"),
+        )
+
+    async def round_two() -> str:
+        # 새 루프. 옛 구현은 여기서 **영원히** 매달렸다 — 상한을 씌워 행 대신
+        # 명시적 실패로 떨어뜨린다(행은 CI 에서 최악의 실패 신호다). 실제 작업은
+        # 1ms 미만이라 5초는 성질을 재는 예산이 아니라 교착 오라클이다.
+        out = await asyncio.wait_for(
+            s.submit(
+                key="b", api_id="ka10001", priority="background",
+                call=_returns("second"),
+            ),
+            timeout=5,
+        )
+        await s.aclose()
+        return out
+
+    assert asyncio.run(round_one()) == "first"
+    assert asyncio.run(round_two()) == "second"
+
+
+def test_dead_workers_do_not_wedge_the_queue() -> None:
+    """워커가 끝나 있으면(시체) 다시 띄운다 — 같은 무한 대기의 다른 경로."""
+    s = KiwoomCapacityScheduler(workers=1)
+
+    async def scenario() -> str:
+        await s.submit(
+            key="a", api_id="ka10001", priority="background", call=_returns("warm"),
+        )
+        # 워커를 강제로 세운다(감시 태스크 사망 재현). aclose 는 리스트를 비우므로
+        # 시체가 남는 상황을 만들려면 cancel 만 하고 리스트는 그대로 둔다.
+        for w in s._workers:
+            w.cancel()
+        await asyncio.sleep(0)
+        return await asyncio.wait_for(   # 교착 오라클 — 위와 같은 이유
+            s.submit(
+                key="b", api_id="ka10001", priority="background",
+                call=_returns("revived"),
+            ),
+            timeout=5,
+        )
+
+    assert asyncio.run(scenario()) == "revived"
+
+
+def _returns(value: str):
+    async def _call() -> str:
+        return value
+
+    return _call

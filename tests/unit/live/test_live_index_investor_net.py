@@ -4,9 +4,10 @@ from collections.abc import Awaitable, Callable, Hashable
 
 import pytest
 
+from hoga.live import kiwoom_investor, kiwoom_rest_runtime
 from hoga.live.index_registry import get_representative_index
 from hoga.live.investor import InvestorNetPoint
-from hoga.live.kis_client import InvestorNetFetchResult, KisClient, KisRateLimitError
+from hoga.live.kiwoom_errors import KiwoomRateLimitError
 from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
 
 
@@ -16,26 +17,23 @@ class _FakeKis:
 
     async def fetch_market_investor_net(
         self,
+        _client,
         index,
         from_yyyymmdd: str,
         to_yyyymmdd: str,
-    ) -> InvestorNetFetchResult:
+    ) -> list[InvestorNetPoint]:
+        # **평평한 리스트다** — 종목별(ka10059)의 FetchResult 와 모양이 다르다.
+        # ka10051 은 날짜당 한 콜이라 불변식 위반 개념이 없다(#1041).
         self.calls.append((index.id, from_yyyymmdd, to_yyyymmdd))
-        return InvestorNetFetchResult(
-            points=[
-                InvestorNetPoint(
-                    t_ms=1_718_574_400_000,
-                    foreign_net=-3519,
-                    institution_net=17184,
-                )
-            ],
-            violations=[],
-        )
+        return [
+            InvestorNetPoint(
+                t_ms=1_718_574_400_000, foreign_net=-3519, institution_net=17184,
+            )
+        ]
 
 
 class _RecordingScheduler:
-    def __init__(self, kis: _FakeKis, *, raise_rate_limit: bool = False) -> None:
-        self.kis = kis
+    def __init__(self, *, raise_rate_limit: bool = False) -> None:
         self.raise_rate_limit = raise_rate_limit
         self.calls: list[dict] = []
 
@@ -43,28 +41,41 @@ class _RecordingScheduler:
         self,
         *,
         key: Hashable,
-        endpoint: str,
+        api_id: str,
         priority: str,
-        call: Callable[[KisClient], Awaitable],
-        cooldown_scope: Hashable | None = None,
+        call: Callable[[], Awaitable],
     ):
         self.calls.append(
             {
                 "key": key,
-                "endpoint": endpoint,
+                "api_id": api_id,
                 "priority": priority,
-                "cooldown_scope": cooldown_scope,
             }
         )
         if self.raise_rate_limit:
-            raise KisRateLimitError("simulated EGW00201")
-        return await call(self.kis)  # type: ignore[arg-type]
+            raise KiwoomRateLimitError("simulated 1700 유량 초과")
+        return await call()
+
+
+@pytest.fixture
+def kiwoom(monkeypatch):
+    """키움 이음매 2점(클라이언트 조달·어댑터 함수)을 갈아끼운다."""
+    def _install(fake: _FakeKis) -> _FakeKis:
+        monkeypatch.setattr(
+            kiwoom_rest_runtime, "ensure_rest_client", lambda _d, **_k: object()
+        )
+        monkeypatch.setattr(
+            kiwoom_investor, "fetch_market_investor_net", fake.fetch_market_investor_net
+        )
+        return fake
+
+    return _install
 
 
 @pytest.mark.asyncio
-async def test_live_index_investor_net_schedules_background_request(tmp_path) -> None:
-    kis = _FakeKis()
-    scheduler = _RecordingScheduler(kis)
+async def test_live_index_investor_net_schedules_background_request(tmp_path, kiwoom) -> None:
+    kis = kiwoom(_FakeKis())
+    scheduler = _RecordingScheduler()
     fetcher = LiveIndexInvestorNetFetcher(
         data_dir=tmp_path,
         scheduler=scheduler,  # type: ignore[arg-type]
@@ -89,16 +100,16 @@ async def test_live_index_investor_net_schedules_background_request(tmp_path) ->
     assert scheduler.calls == [
         {
             "key": ("index-investor-net", "KOSDAQ", "20260619", "20260619"),
-            "endpoint": "index-investor-net",
+            "api_id": "ka10051",
             "priority": "background",
-            "cooldown_scope": "index-investor-net",
         }
     ]
 
 
 @pytest.mark.asyncio
-async def test_live_index_investor_net_surfaces_rate_limit_warning(tmp_path) -> None:
-    scheduler = _RecordingScheduler(_FakeKis(), raise_rate_limit=True)
+async def test_live_index_investor_net_surfaces_rate_limit_warning(tmp_path, kiwoom) -> None:
+    kiwoom(_FakeKis())
+    scheduler = _RecordingScheduler(raise_rate_limit=True)
     fetcher = LiveIndexInvestorNetFetcher(
         data_dir=tmp_path,
         scheduler=scheduler,  # type: ignore[arg-type]
@@ -115,6 +126,6 @@ async def test_live_index_investor_net_surfaces_rate_limit_warning(tmp_path) -> 
         {
             "batch": "20260619__20260619",
             "reason": "kis_rate_limit",
-            "msg": "simulated EGW00201",
+            "msg": "simulated 1700 유량 초과",
         }
     ]

@@ -6,9 +6,10 @@ from collections.abc import Awaitable, Callable, Hashable
 
 import pytest
 
+from hoga.live import kiwoom_investor, kiwoom_rest_runtime
 from hoga.live.api import batched_daily_walkback
 from hoga.live.investor import InvestorNetPoint
-from hoga.live.kis_client import InvestorNetFetchResult, KisClient
+from hoga.live.kis_endpoints import InvestorNetFetchResult
 from hoga.live.live_investor_net_backfill import LiveInvestorNetBackfill
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
@@ -45,6 +46,7 @@ class _FakeKis:
 
     async def fetch_investor_net(
         self,
+        _client,
         code: str,
         from_yyyymmdd: str,
         to_yyyymmdd: str,
@@ -57,34 +59,47 @@ class _FakeKis:
 
 
 class _RecordingScheduler:
-    def __init__(self, kis: _FakeKis) -> None:
-        self.kis = kis
+    def __init__(self) -> None:
         self.calls: list[dict] = []
 
     async def submit(
         self,
         *,
         key: Hashable,
-        endpoint: str,
+        api_id: str,
         priority: str,
-        call: Callable[[KisClient], Awaitable],
-        cooldown_scope: Hashable | None = None,
+        call: Callable[[], Awaitable],
     ):
-        self.calls.append(
-            {
-                "key": key,
-                "endpoint": endpoint,
-                "priority": priority,
-                "cooldown_scope": cooldown_scope,
-            }
+        # 계정 차원(endpoint·cooldown_scope)은 PR-E(#1041)에서 사라졌다 —
+        # 키움 유량은 TR별이라 고를 계정이 없다(#1015). api_id 가 버킷 키다.
+        self.calls.append({"key": key, "api_id": api_id, "priority": priority})
+        return await call()
+
+
+@pytest.fixture
+def kiwoom(monkeypatch):
+    """키움 이음매 2점을 갈아끼운다 — 클라이언트 조달과 어댑터 함수.
+
+    PR-E(#1041) 이후 소비자는 KIS 클라이언트 객체를 들고 다니지 않는다:
+    런타임에서 클라이언트를 받고 **모듈 레벨 어댑터 함수**를 부른다. 그래서
+    페이크도 객체가 아니라 그 함수 자리에 꽂는다.
+    """
+    def _install(fake: _FakeKis) -> _FakeKis:
+        monkeypatch.setattr(
+            kiwoom_rest_runtime, "ensure_rest_client", lambda _d, **_k: object()
         )
-        return await call(self.kis)  # type: ignore[arg-type]
+        monkeypatch.setattr(
+            kiwoom_investor, "fetch_investor_net", fake.fetch_investor_net
+        )
+        return fake
+
+    return _install
 
 
 @pytest.mark.asyncio
-async def test_live_investor_net_backfill_schedules_background_request(tmp_path) -> None:
-    kis = _FakeKis()
-    scheduler = _RecordingScheduler(kis)
+async def test_live_investor_net_backfill_schedules_background_request(tmp_path, kiwoom) -> None:
+    kis = kiwoom(_FakeKis())
+    scheduler = _RecordingScheduler()
     backfill = LiveInvestorNetBackfill(
         data_dir=tmp_path,
         cache=PastDailyCandlesCache(),
@@ -107,9 +122,8 @@ async def test_live_investor_net_backfill_schedules_background_request(tmp_path)
     assert scheduler.calls == [
         {
             "key": ("live-investor-net", "005930", "20240101", "20240105"),
-            "endpoint": "investor-net",
+            "api_id": "ka10059",
             "priority": "background",
-            "cooldown_scope": "investor-net",
         }
     ]
 
@@ -124,6 +138,7 @@ class _GatedKis(_FakeKis):
 
     async def fetch_investor_net(
         self,
+        _client,
         code: str,
         from_yyyymmdd: str,
         to_yyyymmdd: str,
@@ -137,13 +152,13 @@ class _GatedKis(_FakeKis):
 
 
 @pytest.mark.asyncio
-async def test_collect_coalesces_concurrent_same_code_requests(tmp_path) -> None:
+async def test_collect_coalesces_concurrent_same_code_requests(tmp_path, kiwoom) -> None:
     # Two overlapping [from, today] requests for the same code fire at once on a
-    # cold cache. Single-flight must serialise them: the first walks KIS, the
+    # cold cache. Single-flight must serialise them: the first walks upstream, the
     # second reads the warm cache and issues zero upstream calls (240→60 storm
     # collapse). Without coalescing both would fetch while the first is gated.
-    kis = _GatedKis()
-    scheduler = _RecordingScheduler(kis)
+    kis = kiwoom(_GatedKis())
+    scheduler = _RecordingScheduler()
     backfill = LiveInvestorNetBackfill(
         data_dir=tmp_path,
         cache=PastDailyCandlesCache(),
@@ -173,7 +188,7 @@ async def test_collect_coalesces_concurrent_same_code_requests(tmp_path) -> None
     kis.gate.set()
     r1, r2 = await asyncio.gather(t1, t2)
 
-    # Exactly one KIS round-trip served both requests.
+    # Exactly one upstream round-trip served both requests.
     assert len(kis.calls) == 1
     assert len(r1["points"]) == 10
     assert len(r2["points"]) == 6

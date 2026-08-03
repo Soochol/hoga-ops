@@ -25,6 +25,7 @@ from hoga.live import (
     kis_runtime,
     kiwoom_access,
     kiwoom_index_rest,
+    kiwoom_investor,
     kiwoom_multi_quote,
     kiwoom_rest_runtime,
     kiwoom_runtime,
@@ -52,13 +53,18 @@ from hoga.live.kis_capacity_scheduler import (
 )
 from hoga.live.kis_client import (
     KisApiError,
-    KisAuthError,
     KisQuote,
     KisRateLimitError,
     KisTransportError,
 )
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
-from hoga.live.kiwoom_errors import KiwoomRestError
+from hoga.live.kiwoom_errors import (
+    KiwoomApiError,
+    KiwoomAuthError,
+    KiwoomRateLimitError,
+    KiwoomRestError,
+    KiwoomTransportError,
+)
 from hoga.live.kiwoom_index_candles import (
     KiwoomIndexCandlesError,
     KiwoomIndexCandlesFetcher,
@@ -96,7 +102,7 @@ from .lifecycle import LiveStatus, refresh_live_stream
 from .settings import load_live_settings, update_live_settings
 
 if TYPE_CHECKING:
-    from .kis_client import KisClient
+    pass
 
 ControlAction = Literal["start", "stop", "pause"]
 
@@ -477,6 +483,19 @@ def _collect_index_minute_candles_cache_only(
     }
 
 
+# 이행기(#1005) — 이 오케스트레이터를 **두 벤더가 공유한다**: 일봉은 아직 KIS
+# (#1042 에서 이관), 투자자는 이미 키움(#1041). 한쪽만 잡으면 다른 쪽 실패가
+# data_warnings 로 안 내려가고 500 으로 샌다. #1046(PR-J)에서 키움만 남긴다.
+_RATE_LIMIT_ERRORS = (KisRateLimitError, KiwoomRateLimitError)
+_TRANSPORT_ERRORS = (KisTransportError, KiwoomTransportError)
+_API_ERRORS = (KisApiError, KiwoomApiError)
+
+
+def _vendor_code(exc: Exception) -> str:
+    """벤더별 에러코드 필드 이름이 다르다 — KIS 는 `msg_cd`, 키움은 `code`."""
+    return str(getattr(exc, "msg_cd", None) or getattr(exc, "code", "") or "")
+
+
 async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
     *,
     cache: PastDailyCandlesCache,
@@ -528,19 +547,19 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
             label = f"{gap_from_s}__{gap_to_s}"
             try:
                 rows, violations = await fetch_batch(code, gap_from_s, gap_to_s)
-            except KisRateLimitError as e:
+            except _RATE_LIMIT_ERRORS as e:
                 warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), label))
                 break
-            except KisTransportError as e:
-                # Subtype of KisApiError — must precede the generic arm so a
-                # network blip (TCP disconnect) carries its own reason and an
-                # operator can tell it apart from a KIS rejection (different
+            except _TRANSPORT_ERRORS as e:
+                # Subtype of the generic api-error — must precede the generic arm
+                # so a network blip (TCP disconnect) carries its own reason and an
+                # operator can tell it apart from an upstream rejection (different
                 # remediation). Skip this batch, keep walking back. The client
                 # already retried connection-level failures once (ADR-0050).
-                warnings.append(_kis_error_to_warning("kis_transport", e.msg_cd, label))
+                warnings.append(_kis_error_to_warning("kis_transport", _vendor_code(e), label))
                 continue
-            except KisApiError as e:
-                warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, label))
+            except _API_ERRORS as e:
+                warnings.append(_kis_error_to_warning("kis_api_error", _vendor_code(e), label))
                 continue
             cache.append_batch(code, gap_from, gap_to, rows)
             loaded.extend(rows)
@@ -1176,7 +1195,7 @@ class LiveInvestorEstimateFetcher:
 
     async def fetch(
         self,
-        kis: KisClient,
+        client: KiwoomRestClient,
         code: str,
     ) -> LiveInvestorTrendEstimateResponse:
         trading_day = self._today_fn()
@@ -1191,7 +1210,7 @@ class LiveInvestorEstimateFetcher:
 
         task = self._inflight.get(key)
         if task is None:
-            task = asyncio.create_task(self._fetch_uncached(kis, code, trading_day))
+            task = asyncio.create_task(self._fetch_uncached(client, code, trading_day))
             self._inflight[key] = task
             task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
         # shield: 대기자 취소가 공유 태스크로 전파되면 같은 키에 올라탄 다른
@@ -1200,13 +1219,18 @@ class LiveInvestorEstimateFetcher:
 
     async def _fetch_uncached(
         self,
-        kis: KisClient,
+        client: KiwoomRestClient,
         code: str,
         trading_day: str,
     ) -> LiveInvestorTrendEstimateResponse:
+        """PR-E(#1041) 칼 컷오버 — 소스는 키움 `ka10064`(장중투자자별매매차트)다.
+
+        `reason` 문자열(`kis_*`)은 프론트 계약이라 지금 바꾸지 않는다 —
+        #1046(PR-J)에서 벤더명과 함께 정리한다.
+        """
         key = (trading_day, code)
         try:
-            raw_rows = await kis.fetch_investor_trend_estimate(code)
+            raw_rows = await kiwoom_investor.fetch_investor_trend_estimate(client, code)
             fetched_at_ms = int(monotonic_time.time() * 1000)
             rows = [
                 _investor_estimate_row_to_wire(r, observed_at_ms=fetched_at_ms)
@@ -1220,7 +1244,7 @@ class LiveInvestorEstimateFetcher:
                     fetched_at_ms=fetched_at_ms,
                     full_history=len(rows) > 1,
                 )
-        except KisAuthError:
+        except KiwoomAuthError:
             log.warning("investor trend estimate auth failed for %s", code, exc_info=True)
             response = self._error_response(
                 code,
@@ -1229,14 +1253,12 @@ class LiveInvestorEstimateFetcher:
                 "KIS authentication failed",
             )
             return self._cache_response(key, response)
-        except KisRateLimitError as e:
+        except KiwoomRateLimitError as e:
             response = self._error_response(code, trading_day, "kis_rate_limit", str(e))
             return self._cache_response(key, response)
-        except KisTransportError as e:
-            response = self._error_response(code, trading_day, "kis_api_error", e.msg_cd)
-            return self._cache_response(key, response)
-        except KisApiError as e:
-            response = self._error_response(code, trading_day, "kis_api_error", e.msg_cd)
+        except KiwoomApiError as e:
+            # KiwoomTransportError 도 이 팔이 흡수한다(KiwoomApiError 상속).
+            response = self._error_response(code, trading_day, "kis_api_error", str(e.code))
             return self._cache_response(key, response)
         except ValidationError as e:
             response = self._error_response(code, trading_day, "parse_error", str(e))
@@ -1862,10 +1884,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     _kis_rest_bypassed_batch_warning(f"{from_}__{to}"),
                 ],
             }
-        if _kis_scheduler is None:
-            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
-        if not _has_kis_capacity_candidate():
-            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
+        # PR-E(#1041) 칼 컷오버 — 게이트도 키움을 본다. KIS 계정 후보 개념은
+        # 사라졌다: 키움 유량은 TR별이라 고를 계정이 없다(#1015).
+        if data_dir is None or kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
+            raise HTTPException(
+                503,
+                {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom client not initialized"},
+            )
         if _index_investor_net_fetcher is None:
             raise HTTPException(
                 503,
@@ -1968,9 +1993,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             else None
         )
     )
+    # PR-E(#1041) 칼 컷오버 — 투자자 3표면은 키움 거버너를 쓴다. KIS 스케줄러가
+    # 없어도 구성된다: 두 스케줄러는 이제 서로 무관한 축이다.
     _index_investor_net_fetcher: LiveIndexInvestorNetFetcher | None = (
-        LiveIndexInvestorNetFetcher(data_dir=data_dir, scheduler=_kis_scheduler)
-        if data_dir is not None and _kis_scheduler is not None
+        LiveIndexInvestorNetFetcher(
+            data_dir=data_dir, scheduler=kiwoom_rest_runtime.ensure_scheduler()
+        )
+        if data_dir is not None
         else None
     )
     _index_sector_intraday_overlay: LiveIndexSectorIntradayOverlay | None = (
@@ -2140,31 +2169,32 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 "kis_rest_bypassed",
                 "KIS REST bypass is enabled",
             )
-        if _kis_scheduler is None:
-            return _investor_estimate_fetcher.credentials_missing(code)
-        if not _has_kis_capacity_candidate():
+        # PR-E(#1041) 칼 컷오버 — 소스는 키움 ka10064 다.
+        est_client = (
+            kiwoom_rest_runtime.ensure_rest_client(data_dir) if data_dir is not None else None
+        )
+        if est_client is None:
             return _investor_estimate_fetcher.credentials_missing(code)
         try:
             return await asyncio.wait_for(
                 asyncio.shield(
-                    kis_access.run_with_capacity(
-                        _kis_scheduler,
-                        data_dir=data_dir,
+                    kiwoom_access.run_with_capacity(
+                        kiwoom_rest_runtime.ensure_scheduler(),
                         key=("investor-trend-estimate", code),
-                        endpoint=kis_access.KisRestEndpoint.INVESTOR_TREND_ESTIMATE,
+                        api_id="ka10064",
                         priority="background",
-                        cooldown_scope="investor-trend-estimate",
-                        fetch_fn=lambda kis: _investor_estimate_fetcher.fetch(kis, code),
+                        client=est_client,
+                        fetch_fn=lambda c: _investor_estimate_fetcher.fetch(c, code),
                     )
                 ),
                 timeout=1.5,
             )
-        except (TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
+        except (TimeoutError, KiwoomCapacityOverloaded):
             return _investor_estimate_fetcher._error_response(
                 code,
                 _investor_estimate_fetcher._today_fn(),
                 "kis_rate_limit",
-                "KIS capacity scheduler unavailable",
+                "kiwoom capacity scheduler unavailable",
             )
 
     cache_instance: PastCandlesCache | None = (
@@ -2221,10 +2251,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         LiveInvestorNetBackfill(
             data_dir=data_dir,
             cache=investor_cache_instance,
-            scheduler=_kis_scheduler,
+            # PR-E(#1041): 키움 거버너다 — KIS 스케줄러와 무관한 축이다.
+            scheduler=kiwoom_rest_runtime.ensure_scheduler(),
             walkback=batched_daily_walkback,
         )
-        if data_dir is not None and investor_cache_instance is not None and _kis_scheduler is not None
+        if data_dir is not None and investor_cache_instance is not None
         else None
     )
 
@@ -2363,10 +2394,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 from_label=from_,
                 to_label=to,
             )
-        if _kis_scheduler is None:
-            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
-        if not _has_kis_capacity_candidate():
-            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
+        # PR-E(#1041) 칼 컷오버 — 게이트도 키움을 본다(#1015).
+        if data_dir is None or kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
+            raise HTTPException(
+                503,
+                {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom client not initialized"},
+            )
         if investor_net_backfill is None:
             raise HTTPException(
                 503,
