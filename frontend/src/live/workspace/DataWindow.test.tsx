@@ -13,6 +13,10 @@ import {
 import { useLiveCursorStore } from '../useLiveCursorStore';
 import { useLiveOrderbookAtCursor } from '../../api/useLiveCursor';
 import { useChartPrefsStore } from '../../state/chartPrefs';
+import { useQuoteByCode, type LiveQuote } from '../../api/liveQuotes';
+import { useLiveStockLimits } from '../../api/liveStockLimits';
+import { useLiveViStatus } from '../../api/liveViStatus';
+import { useScreenerDailyCandles } from '../../api/screenerDailyCandles';
 import type { RangeBundle } from '../../api/types';
 
 // sector-ranking 라우팅 가드만 검증한다 — 지수 happy-path 는 SectorRankingWindow 를
@@ -40,10 +44,46 @@ vi.mock('../../api/useLiveCursor', () => ({
   useLiveBrokersAtCursor: vi.fn(() => undefined),
 }));
 
-// BookPanel 은 maskRatio prop 만 관측한다(동시호가 마스크 검증). 실제 패널은
-// snapshot 이 null 이면 빈 상태를 그리므로 목킹하지 않으면 mask 를 관측할 수 없다.
+// BookPanel 은 배선 prop 만 관측한다(마스크·기준가·시점 게이트). 실제 패널은
+// snapshot 이 null 이면 빈 상태를 그리므로 목킹하지 않으면 아무것도 관측할 수 없다.
+// mask 행은 **별도 요소로 유지**한다 — 기존 마스크 테스트가 getByText('mask:true')
+// 로 정확 매칭하므로 같은 노드에 다른 값을 합치면 전부 깨진다.
 vi.mock('./BookPanel', () => ({
-  default: ({ maskRatio }: { maskRatio: boolean }) => <div>mask:{String(maskRatio)}</div>,
+  default: ({
+    maskRatio,
+    baselinePrice,
+    limits,
+    vi: viEvent,
+  }: {
+    maskRatio: boolean;
+    baselinePrice: number | null;
+    limits: unknown;
+    vi: unknown;
+  }) => (
+    <div>
+      <div>mask:{String(maskRatio)}</div>
+      <div>baseline:{String(baselinePrice)}</div>
+      <div>limits:{limits === null || limits === undefined ? 'null' : 'set'}</div>
+      <div>vi:{viEvent === null || viEvent === undefined ? 'null' : 'set'}</div>
+    </div>
+  ),
+}));
+
+// 10호가 창의 per-code 쿼리 — 기본은 "값 없음"이고, 기준가 테스트에서만 덮어쓴다.
+vi.mock('../../api/liveQuotes', () => ({
+  useQuoteByCode: vi.fn(() => new Map()),
+}));
+vi.mock('../../api/liveStockLimits', () => ({
+  useLiveStockLimits: vi.fn(() => ({ data: undefined })),
+}));
+vi.mock('../../api/liveViStatus', () => ({
+  useLiveViStatus: vi.fn(() => ({ data: undefined })),
+}));
+// prevCloseBeforeDate 는 **실물을 그대로 쓴다** — 커서 날짜에서 직전 거래일 종가를
+// 고르는 것이 이 수정의 핵심 로직이라, 목으로 대체하면 검증 대상이 사라진다.
+vi.mock('../../api/screenerDailyCandles', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/screenerDailyCandles')>()),
+  useScreenerDailyCandles: vi.fn(() => ({ data: undefined })),
 }));
 
 function renderWithQuery(ui: ReactNode) {
@@ -321,5 +361,169 @@ describe('DataWindow — 10호가 동시호가 마스크 (ADR-0119 PR-D2)', () =
     useChartPrefsStore.getState().setToggle('auctionWindowMask', true);
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(screen.getByText('mask:false')).toBeInTheDocument();
+  });
+});
+
+describe('DataWindow — 10호가 등락률 기준가는 커서 날짜를 따라간다', () => {
+  const symbol = { code: '005930', name: '삼성전자' };
+  // 링크의 todayKst = 2026-07-20(월). 커서를 7/17(금)에 두면 "과거 날짜" 커서다.
+  const PAST_CURSOR_MS = Date.UTC(2026, 6, 17, 1, 0); // KST 2026-07-17 10:00
+  const TODAY_CURSOR_MS = Date.UTC(2026, 6, 20, 2, 0); // KST 2026-07-20 11:00
+  /** 오늘(7/20) 기준 전일종가 — 실전에서 KIS 가 실어 주는 값. */
+  const TODAY_BASELINE = 262500;
+  /** 7/17 기준 전일종가 = 7/16 종가. 이 값이 나와야 등락률이 그날 기준으로 맞는다. */
+  const CURSOR_BASELINE = 208500;
+
+  /** t_ms 는 KST 날짜로 환산되므로 UTC 00:30(=KST 09:30)으로 박아 날짜 경계를 피한다. */
+  function daily(dayUtc: number, close: number) {
+    return { t_ms: Date.UTC(2026, 6, dayUtc, 0, 30), open: close, high: close, low: close, close, volume: 1 };
+  }
+
+  function setQuote(overrides: Partial<LiveQuote> = {}) {
+    const quote: LiveQuote = {
+      code: '005930',
+      price: 241500,
+      change_pct: -8.0,
+      change_won: -21000,
+      baseline_price: TODAY_BASELINE,
+      change_pct_source: 'kis',
+      ...overrides,
+    };
+    vi.mocked(useQuoteByCode).mockReturnValue(new Map([['005930', quote]]));
+  }
+
+  function hover(cursorMs: number | null) {
+    __resetGroupChartLinksForTests();
+    useLiveCursorStore.getState().resetCursor();
+    publishGroupChartLink(chartLink({ todayKst: '20260720' }));
+    if (cursorMs !== null) {
+      useLiveCursorStore.getState().setSidebarCursor(cursorMs, {
+        windowId: 'cw1', group: 1, code: '005930', timeframe: '1m',
+      });
+    }
+  }
+
+  beforeEach(() => {
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(undefined);
+    vi.mocked(useLiveStockLimits).mockReturnValue({ data: undefined } as never);
+    vi.mocked(useLiveViStatus).mockReturnValue({ data: undefined } as never);
+    vi.mocked(useScreenerDailyCandles).mockReturnValue({ data: undefined } as never);
+    setQuote();
+  });
+
+  it('과거 날짜 호버 → 그날의 전일종가를 기준가로 쓴다 (오늘 기준가 아님)', () => {
+    // 이 케이스가 버그 그 자체였다: 7/17 호가 옆에 7/20 기준가(262,500)가 붙어
+    // 등락률의 **부호까지** 뒤집혔다. 실측 재현은 대화 기록 참조(−20.00% vs +0.72%).
+    vi.mocked(useScreenerDailyCandles).mockReturnValue({
+      data: { candles: [daily(16, CURSOR_BASELINE), daily(17, 207000)] },
+    } as never);
+    hover(PAST_CURSOR_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText(`baseline:${CURSOR_BASELINE}`)).toBeInTheDocument();
+    expect(screen.queryByText(`baseline:${TODAY_BASELINE}`)).not.toBeInTheDocument();
+  });
+
+  it('과거 날짜 호버 + 일봉 미도착 → 기준가를 비운다 (틀린 값보다 대시)', () => {
+    hover(PAST_CURSOR_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('baseline:null')).toBeInTheDocument();
+  });
+
+  it('오늘 안에서의 호버 → 실시간 기준가 유지 (일봉 조회도 걸지 않는다)', () => {
+    // 당일 스팟은 원래 옳았다 — 고치면서 회귀시키지 않았음을 못박는다.
+    hover(TODAY_CURSOR_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText(`baseline:${TODAY_BASELINE}`)).toBeInTheDocument();
+    // code=null = 쿼리 비활성. 당일 커서에 불필요한 일봉 요청이 붙지 않는다.
+    expect(vi.mocked(useScreenerDailyCandles)).toHaveBeenLastCalledWith(null, expect.any(String), '20260720');
+  });
+
+  it('일봉 조회창은 커서 날짜와 무관하게 to=오늘 고정 (커서가 날짜를 넘어도 키 1벌)', () => {
+    vi.mocked(useScreenerDailyCandles).mockReturnValue({
+      data: { candles: [daily(16, CURSOR_BASELINE)] },
+    } as never);
+    hover(PAST_CURSOR_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    // from 은 60일 전, to 는 오늘 — 커서가 7/17 이어도 to 가 7/17 로 좁혀지지 않는다.
+    expect(vi.mocked(useScreenerDailyCandles)).toHaveBeenLastCalledWith('005930', '20260521', '20260720');
+  });
+
+  it('latest 모드(호버 없음) → 실시간 기준가', () => {
+    hover(null);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText(`baseline:${TODAY_BASELINE}`)).toBeInTheDocument();
+  });
+
+  it('백엔드가 기준가를 봉인하면(change_pct_source=unavailable) 등락률을 그리지 않는다', () => {
+    // 백엔드는 change_pct 를 null 로 죽이면서 baseline_price 는 실어 보낸다. 패널이
+    // baseline_price 로 직접 계산하므로, 봉인을 존중하지 않으면 리스트는 숨기는 값을
+    // 호가창만 그리는 비대칭이 생긴다.
+    setQuote({ change_pct: null, change_won: null, change_pct_source: 'unavailable' });
+    hover(null);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('baseline:null')).toBeInTheDocument();
+  });
+
+  it('장전(hidden_pre_open)은 봉인이 아니다 — 기준가 유지', () => {
+    // pre_open 도 change_pct 는 null 이지만 기준가 자체는 유효하다. 'unavailable'
+    // 만 골라 막는지(과잉 차단이 아닌지) 대조군으로 고정한다.
+    setQuote({ change_pct: null, change_won: null, change_pct_source: 'hidden_pre_open' });
+    hover(null);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText(`baseline:${TODAY_BASELINE}`)).toBeInTheDocument();
+  });
+});
+
+describe('DataWindow — 10호가 시점 게이트 (상하한가·VI)', () => {
+  const symbol = { code: '005930', name: '삼성전자' };
+  const PAST_CURSOR_MS = Date.UTC(2026, 6, 17, 1, 0); // KST 2026-07-17 10:00
+  const TODAY_CURSOR_MS = Date.UTC(2026, 6, 20, 2, 0); // KST 2026-07-20 11:00
+
+  function hover(cursorMs: number | null) {
+    __resetGroupChartLinksForTests();
+    useLiveCursorStore.getState().resetCursor();
+    publishGroupChartLink(chartLink({ todayKst: '20260720' }));
+    if (cursorMs !== null) {
+      useLiveCursorStore.getState().setSidebarCursor(cursorMs, {
+        windowId: 'cw1', group: 1, code: '005930', timeframe: '1m',
+      });
+    }
+  }
+
+  beforeEach(() => {
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(undefined);
+    vi.mocked(useQuoteByCode).mockReturnValue(new Map());
+    vi.mocked(useScreenerDailyCandles).mockReturnValue({ data: undefined } as never);
+    vi.mocked(useLiveStockLimits).mockReturnValue({
+      data: { base_price: 260000, upper_limit: 341000, lower_limit: 183500, high_250: 304000, low_250: 181100 },
+    } as never);
+    vi.mocked(useLiveViStatus).mockReturnValue({
+      data: { vi: { active: true, direction: 'up', trigger_price: 270000 } },
+    } as never);
+  });
+
+  it('과거 날짜 호버 → 상하한가·250일을 비운다 (오늘 기준가에서 파생된 값)', () => {
+    hover(PAST_CURSOR_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('limits:null')).toBeInTheDocument();
+  });
+
+  it('오늘 안에서의 호버 → 상하한가 유지 (날짜 단위 상수)', () => {
+    hover(TODAY_CURSOR_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('limits:set')).toBeInTheDocument();
+  });
+
+  it('스팟이면 당일이라도 VI 를 비운다 ("지금 발동 중"은 과거 시각에 거짓)', () => {
+    hover(TODAY_CURSOR_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('vi:null')).toBeInTheDocument();
+  });
+
+  it('latest 모드 → 상하한가·VI 모두 유지', () => {
+    hover(null);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('limits:set')).toBeInTheDocument();
+    expect(screen.getByText('vi:set')).toBeInTheDocument();
   });
 });

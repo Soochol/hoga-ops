@@ -28,7 +28,9 @@ import type { LiveTradeSummary } from '../liveSidebarAdapters';
 export type BookTrade = { price: number; qty: number; side: number };
 
 /** 상하한가·기준가·250일 최고/최저 — /api/live/stock-limits(키움 ka10001) 부분집합.
- *  당일 고정값이라 스팟 커서에서도 유효하다(요약 지표와 달리 비우지 않는다).
+ *  **날짜 단위 상수**다: 오늘 안에서는 시각이 달라도 고정이라 당일 스팟 커서에서
+ *  유효하지만(요약 지표와 달리 비우지 않는다), 과거 날짜 커서에서는 그날의 기준가에서
+ *  파생된 상하한가와 다르므로 호출부가 null 로 비운다.
  *  base_price 는 VI 예상가의 장전 폴백(시가 형성 전 기준가). */
 export type BookStockLimits = {
   base_price: number | null;
