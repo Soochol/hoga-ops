@@ -57,6 +57,12 @@ export interface OptionSentiment {
   /** null 이면 정상. 'kis_credentials_missing' | 'warming' | 'collector_failed' | 'option_master_unavailable' */
   unavailable: string | null;
   expiry: string | null;
+  /**
+   * 근월물 체인 종목 수. 만기마다 다르다(실측 202608=780 · 202609=1012 · 202610=682)
+   * — 대기 안내 문구에 쓸 숫자를 화면에 상수로 박으면 롤오버 때 조용히 틀린다.
+   * 마스터를 아직 못 받았으면 null.
+   */
+  chain_size: number | null;
   underlying: number | null;
   full_as_of_ms: number | null;
   atm_as_of_ms: number | null;

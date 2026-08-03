@@ -70,6 +70,24 @@ def test_cold_start_reports_warming_not_error(tmp_path) -> None:
     assert body["put_call"] is None
 
 
+def test_chain_size_rides_the_warming_response(tmp_path) -> None:
+    """대기 화면이 "N종목 훑는 중" 을 쓰려면 데이터가 없을 때도 크기가 와야 한다.
+
+    근월물 종목 수는 만기마다 다르다(실측 202608=780 · 202609=1012 · 202610=682).
+    화면에 상수로 박으면 롤오버 때 조용히 틀린 안내가 되므로 여기서 흘려보낸다.
+    """
+    client = TestClient(_app(tmp_path))
+    client.get("/api/sentiment/option")
+    rt = get_runtime(lambda: None)
+    rt._expiry = "202609"
+    rt._chain_size = 1012  # full 스냅샷은 아직 없음 = warming
+
+    body = client.get("/api/sentiment/option").json()
+    assert body["unavailable"] in ("warming", "kis_credentials_missing")
+    assert body["chain_size"] == 1012
+    assert body["expiry"] == "202609"
+
+
 def test_full_snapshot_drives_all_indicators(tmp_path) -> None:
     client = TestClient(_app(tmp_path))
     client.get("/api/sentiment/option")  # 런타임 싱글턴 생성
@@ -83,10 +101,12 @@ def test_full_snapshot_drives_all_indicators(tmp_path) -> None:
     ])
     rt._full_at = 1_700_000_000_000
     rt._expiry = "202608"
+    rt._chain_size = 780
 
     body = client.get("/api/sentiment/option").json()
     assert body["unavailable"] is None
     assert body["expiry"] == "202608"
+    assert body["chain_size"] == 780
     assert body["full_as_of_ms"] == 1_700_000_000_000
     # P/C 는 전수 기준 — 거래량 (300+100)/(100+200)
     assert body["put_call"]["volume_ratio"] == pytest.approx(400 / 300)

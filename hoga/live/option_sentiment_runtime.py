@@ -2,11 +2,15 @@
 
 **왜 2계층인가** — 지표마다 필요한 커버리지가 다르다.
 
-    전수 계층 (5분)   : 근월물 780종목. Max Pain·GEX 는 전 행사가 합산이라 필수.
-                        실측 60.7초 소요(12.9 req/s)라 고빈도로 돌 수 없다.
+    전수 계층 (5분)   : 근월물 전 종목. Max Pain·GEX 는 전 행사가 합산이라 필수.
+                        202608 기준 780종목·실측 60.7초(12.9 req/s)라 고빈도 불가.
     ATM 계층 (30초)   : ATM ±20 행사가 ~82종목. P/C 비율·IV 스큐용.
 
-**왜 요청 구동인가** — 아무도 안 보는 동안 780종목을 5분마다 긁으면 KIS 유량을
+**체인 크기는 만기마다 다르다** — 실측 202608=780 · 202609=1012 · 202610=682.
+그래서 화면 대기 안내에 쓸 종목 수는 상수로 박지 않고 ``SentimentState.chain_size``
+로 흘려보낸다(만기가 롤오버되면 문구가 조용히 틀려지는 것을 막는다).
+
+**왜 요청 구동인가** — 아무도 안 보는 동안 전 종목을 5분마다 긁으면 KIS 유량을
 /live 와 나눠 쓰는 의미가 없다. 첫 요청이 루프를 깨우고, 마지막 요청 후
 ``_IDLE_STOP_S`` 동안 조용하면 스스로 멈춘다.
 
@@ -51,6 +55,9 @@ class SentimentState:
     full_at_ms: int | None
     atm_at_ms: int | None
     expiry: str | None
+    #: 근월물 체인의 종목 수. 만기마다 다르다(실측: 202608=780 · 202609=1012 ·
+    #: 202610=682) — 화면이 대기 안내에 쓰므로 상수로 박지 말고 여기서 흘려보낸다.
+    chain_size: int | None
     #: 휴면 사유(자격증명 없음·마스터 실패 등). None 이면 정상.
     unavailable: str | None
 
@@ -75,6 +82,7 @@ class OptionSentimentRuntime:
         self._full_at: int | None = None
         self._atm_at: int | None = None
         self._expiry: str | None = None
+        self._chain_size: int | None = None
         self._unavailable: str | None = None
 
     def state(self) -> SentimentState:
@@ -84,6 +92,7 @@ class OptionSentimentRuntime:
             full_at_ms=self._full_at,
             atm_at_ms=self._atm_at,
             expiry=self._expiry,
+            chain_size=self._chain_size,
             unavailable=self._unavailable,
         )
 
@@ -138,6 +147,7 @@ class OptionSentimentRuntime:
                     await asyncio.sleep(_ATM_INTERVAL_S)
                     continue
                 self._expiry = expiry
+                self._chain_size = len(chain)
                 self._unavailable = None
 
                 now = time.monotonic()

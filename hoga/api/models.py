@@ -1866,6 +1866,9 @@ class OptionSentimentResponse(BaseModel):
     #: 휴면 사유. None 이 아니면 나머지 필드는 비어 있을 수 있다.
     unavailable: str | None = None
     expiry: str | None = None
+    #: 근월물 체인 종목 수. 만기마다 다르므로(202608=780·202609=1012) 화면이
+    #: 대기 안내 문구를 이 값으로 만든다 — 상수로 박으면 롤오버 때 조용히 틀린다.
+    chain_size: int | None = None
     underlying: float | None = None
     #: 전 행사가 스냅샷 관측 시각 — Max Pain·GEX 의 as_of.
     full_as_of_ms: int | None = None
