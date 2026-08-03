@@ -1812,3 +1812,66 @@ StudyLayoutPresetListRow = StudyLayoutPreset
 class StudyLayoutPresetsFile(BaseModel):
     schema_version: int = 1
     presets: list[StudyLayoutPreset] = Field(default_factory=list)
+
+
+# ── 옵션 심리 패널 (ADR-0135) ────────────────────────────────────────────────
+# 계층별 as_of 를 따로 싣는 이유: 전수(5분)와 ATM(30초)의 관측 시각이 다르다.
+# 하나로 뭉치면 5분 전 GEX 와 30초 전 P/C 가 같은 시각으로 표시되어 오독을 부른다.
+
+
+class PutCallRatioModel(BaseModel):
+    volume_ratio: float | None
+    oi_ratio: float | None
+    call_volume: int
+    put_volume: int
+    call_oi: int
+    put_oi: int
+
+
+class StrikeOiModel(BaseModel):
+    strike: float
+    call_oi: int
+    put_oi: int
+
+
+class OiDistributionModel(BaseModel):
+    strikes: list[StrikeOiModel]
+    max_pain: float | None
+
+
+class GexPointModel(BaseModel):
+    strike: float
+    gex: float
+
+
+class GammaExposureModel(BaseModel):
+    points: list[GexPointModel]
+    total: float
+    flip_strike: float | None
+
+
+class IvPointModel(BaseModel):
+    strike: float
+    call_iv: float | None
+    put_iv: float | None
+
+
+class IvSkewModel(BaseModel):
+    points: list[IvPointModel]
+    atm_iv: float | None
+    risk_reversal_25d: float | None
+
+
+class OptionSentimentResponse(BaseModel):
+    #: 휴면 사유. None 이 아니면 나머지 필드는 비어 있을 수 있다.
+    unavailable: str | None = None
+    expiry: str | None = None
+    underlying: float | None = None
+    #: 전 행사가 스냅샷 관측 시각 — Max Pain·GEX 의 as_of.
+    full_as_of_ms: int | None = None
+    #: ATM 창 스냅샷 관측 시각 — P/C·IV 스큐의 as_of.
+    atm_as_of_ms: int | None = None
+    put_call: PutCallRatioModel | None = None
+    oi_distribution: OiDistributionModel | None = None
+    gamma_exposure: GammaExposureModel | None = None
+    iv_skew: IvSkewModel | None = None

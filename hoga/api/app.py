@@ -34,6 +34,7 @@ from hoga.api.request_timing import RequestTimingMiddleware
 from hoga.api.routes import build_router
 from hoga.api.scheduler import start_scheduler
 from hoga.api.screener import build_router as build_screener_router
+from hoga.api.sentiment_routes import build_router as build_sentiment_router
 from hoga.api.signal_alert_routes import build_router as build_signal_alert_router
 from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
 from hoga.api.study_layout_preset_routes import (
@@ -373,6 +374,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     app.include_router(build_heatmap_router(data_dir=data_dir))
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus))
     app.include_router(build_signal_alert_router(data_dir=data_dir))
+    app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(
         build_study_view_router(
             data_dir=data_dir,

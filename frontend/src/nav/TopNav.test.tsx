@@ -34,7 +34,9 @@ describe('TopNav', () => {
 
     const labels = screen.getAllByRole('link').map((link) => link.textContent);
 
-    expect(labels).toEqual(['Live', 'Study', 'Heatmap', 'Screener', 'Inventory', 'Capture']);
+    expect(labels).toEqual([
+      'Live', 'Study', 'Heatmap', 'Screener', 'Sentiment', 'Inventory', 'Capture',
+    ]);
     expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
     expect(screen.queryByText('Watchlist')).not.toBeInTheDocument();
   });
