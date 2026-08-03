@@ -16,6 +16,10 @@ export type MaSource = 'open' | 'high' | 'low' | 'close';
 export interface MaParams { period: number; relation: MaRelation; source?: MaSource }
 // 매도/매수 총잔량 분봉 peak 신고: 당일 peak ≥ (threshold_pct/100) × 지난 N일 peak.
 export interface DepthPeakParams { lookback: number; threshold_pct: number }
+// 매도 총잔량 기준시각 돌파(당일 전용): start_hhmm 이후 최댓값 ≥ (threshold_pct/100)
+// × 개장~start_hhmm 최댓값. start_hhmm 은 HHMM(예: 1200 = 12:00), 0900~1520 KST.
+// 100 은 동률 포함("renews or revisits") — 엄밀히 더 큰 것만 원하면 101 이상.
+export interface DepthRenewalParams { start_hhmm: number; threshold_pct: number }
 
 export type ConditionLeaf =
   | { id: string; type: 'trade_value'; params: TradeValueParams }
@@ -29,7 +33,8 @@ export type ConditionLeaf =
   | { id: string; type: 'price_range'; params: PriceRangeParams }
   | { id: string; type: 'ma'; params: MaParams }
   | { id: string; type: 'ask_depth_new_high'; params: DepthPeakParams }
-  | { id: string; type: 'bid_depth_new_high'; params: DepthPeakParams };
+  | { id: string; type: 'bid_depth_new_high'; params: DepthPeakParams }
+  | { id: string; type: 'ask_depth_renewal'; params: DepthRenewalParams };
 export type ConditionType = ConditionLeaf['type'];
 
 export type ScreenerScope = 'watchlist' | 'heatmap';
@@ -81,6 +86,12 @@ export interface DepthPeakValue {
   bid_past_peak: number | null;
   bid_have_days: number;
   bid_need_days: number;
+  // 기준시각 돌파 조건 전용. peak 조건의 ask_today/ask_past_peak 과 의미가 달라
+  // 필드를 나눴다 — 그쪽 배지 문구는 "지난 N일 peak" 이다. 조건이 없으면 없다
+  // (구버전 저장 상태에도 없으므로 옵셔널).
+  ask_pre_max?: number | null;
+  ask_post_max?: number | null;
+  renewal_start_hhmm?: number | null;
 }
 
 export interface ScreenerResponse {

@@ -12,17 +12,18 @@ import { price_range } from './conditions/price_range';
 import { ma } from './conditions/ma';
 import { ask_depth_new_high } from './conditions/ask_depth_new_high';
 import { bid_depth_new_high } from './conditions/bid_depth_new_high';
+import { ask_depth_renewal } from './conditions/ask_depth_renewal';
 import type { CatalogEntry } from './conditions/types';
 
 export const CONDITION_ORDER: ConditionType[] =
   ['trade_value', 'trade_value_period', 'new_high_today', 'new_high',
    'new_high_vol_today', 'new_high_vol', 'high_off_peak', 'ask_depth_new_high', 'bid_depth_new_high',
-   'change_pct', 'price_range', 'ma'];
+   'ask_depth_renewal', 'change_pct', 'price_range', 'ma'];
 
 export const CONDITION_CATALOG: Record<ConditionType, CatalogEntry> = {
   trade_value, trade_value_period, new_high_today, new_high,
   new_high_vol_today, new_high_vol, high_off_peak, ask_depth_new_high, bid_depth_new_high,
-  change_pct, price_range, ma,
+  ask_depth_renewal, change_pct, price_range, ma,
 };
 
 export function makeLeaf(type: ConditionType): ConditionLeaf {

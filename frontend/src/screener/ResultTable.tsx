@@ -23,10 +23,29 @@ interface Props {
 }
 
 /** 활성화된 총잔량 조건의 side(매도/매수). evaluate 는 code 마다 양쪽을 모두 채우므로,
- *  배지는 실제로 통과를 좌우한 side 만 보여줘야 한다(매수 조건인데 매도 값 표시 방지). */
-export interface DepthSides { ask: boolean; bid: boolean }
+ *  배지는 실제로 통과를 좌우한 side 만 보여줘야 한다(매수 조건인데 매도 값 표시 방지).
+ *  `askRenewal` 은 기준시각 돌파 조건 — peak 조건과 숫자의 의미가 달라 별도 배지다. */
+export interface DepthSides { ask: boolean; bid: boolean; askRenewal?: boolean }
 
 const fmtQty = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('ko-KR'));
+const fmtHhmm = (hhmm: number | null | undefined) =>
+  (hhmm == null ? '' : `${String(Math.floor(hhmm / 100)).padStart(2, '0')}:${String(hhmm % 100).padStart(2, '0')}`);
+
+/** 기준시각 돌파 배지 — 기준시각 이전 최대 → 이후 최대. peak 배지와 문구가 다른 이유는
+ *  숫자가 다른 것을 뜻하기 때문이다(저쪽은 "지난 N일 peak", 이쪽은 같은 날 두 구간). */
+function DepthRenewalBadge({ v }: { v: DepthPeakValue }) {
+  const pre = v.ask_pre_max;
+  const post = v.ask_post_max;
+  if (pre == null && post == null) return null;
+  const at = fmtHhmm(v.renewal_start_hhmm);
+  return (
+    <span className="inline-flex items-center gap-1 font-data text-[10px] tabular-nums text-fg-dimmer"
+      title={`${at} 이전 최대 매도 총잔량 ${fmtQty(pre)} → 이후 최대 ${fmtQty(post)}`}>
+      <span className="text-fg-dimmer">{at}</span>
+      <span>{fmtQty(pre)}→{fmtQty(post)}</span>
+    </span>
+  );
+}
 
 /** 결과행의 총잔량 peak 배지 — side별 당일/과거 값 + 부분 커버리지(N/M일). /live 총잔량
  *  pane 의 intra-bar max 와 같은 값이라 사용자가 눈으로 대조할 수 있다. */
@@ -134,6 +153,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       <span className="flex min-w-0 items-center gap-2">
         <span className="truncate">{r.name}</span>
         {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
+        {depthValues?.[r.code] && depthSides?.askRenewal && <DepthRenewalBadge v={depthValues[r.code]} />}
       </span>
       <span className="font-data text-xs text-fg-dim">{r.market}</span>
       {/* 동시호가 중엔 예상체결가/등락률로 대체('예' 마커, QuoteRow·HeatmapRow 와
