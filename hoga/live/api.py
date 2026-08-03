@@ -2205,11 +2205,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         LiveMinuteCandleBackfill(
             data_dir=data_dir,
             cache=cache_instance,
-            scheduler=_kis_scheduler,
+            # PR-G(#1043): 키움 거버너다 — KIS 스케줄러와 무관한 축이다.
+            scheduler=kiwoom_rest_runtime.ensure_scheduler(),
             concurrency=_past_candles_concurrency(data_dir),
             rate_limit_cooldown_s=_PAST_CANDLES_RATE_LIMIT_COOLDOWN_S,
         )
-        if data_dir is not None and cache_instance is not None and _kis_scheduler is not None
+        if data_dir is not None and cache_instance is not None
         else None
     )
     daily_cache_instance: PastDailyCandlesCache | None = (

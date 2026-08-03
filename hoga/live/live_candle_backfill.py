@@ -10,12 +10,13 @@ from typing import Protocol
 
 from hoga import perf_debug
 from hoga.api import calendar as trading_calendar
-from hoga.live import kis_access
-from hoga.live.kis_capacity_scheduler import (
-    KisCapacityCooldown,
-    KisCapacityOverloaded,
+from hoga.live import (
+    kiwoom_access,
+    kiwoom_minute_candles,
+    kiwoom_rest_runtime,
 )
-from hoga.live.kis_client import KisApiError, KisClient, KisRateLimitError
+from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded, Priority
+from hoga.live.kiwoom_errors import KiwoomRateLimitError, KiwoomRestError
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.venue import LiveVenuePolicy, Venue, session_window_hhmmss
 from hoga.util.timeenc import KST
@@ -32,15 +33,19 @@ _SLOW_COLLECT_WARN_MS = 5000.0
 log = logging.getLogger(__name__)
 
 
-class KisRestScheduler(Protocol):
+class KiwoomRestScheduler(Protocol):
+    """PR-G(#1043) 칼 컷오버 — 계정 차원(`endpoint`·`cooldown_scope`)이 사라졌다.
+
+    키움 유량은 TR별이라 고를 계정이 없다(#1015). 버킷 키는 `api_id` 다.
+    """
+
     async def submit(
         self,
         *,
         key: Hashable,
-        endpoint: str,
-        priority: kis_access.KisRequestPriority,
-        call: Callable[[KisClient], Awaitable],
-        cooldown_scope: Hashable | None = None,
+        api_id: str,
+        priority: Priority,
+        call: Callable[[], Awaitable],
     ): ...
 
 
@@ -70,7 +75,7 @@ class LiveMinuteCandleBackfill:
         *,
         data_dir,
         cache: PastCandlesCache,
-        scheduler: KisRestScheduler,
+        scheduler: KiwoomRestScheduler,
         concurrency: int = 3,
         rate_limit_cooldown_s: float = 10.0,
         max_fresh_dates_per_collect: int = 12,
@@ -348,46 +353,24 @@ class LiveMinuteCandleBackfill:
             for date_s in overflow:
                 warnings_by_date[date_s] = _fetch_budget_exhausted_warning(date_s)
 
-        blocked = asyncio.Event()
-
-        async def one(date_s: str) -> None:
-            async with self._sem:
-                if blocked.is_set() or self._rate_limited_now():
-                    warnings_by_date[date_s] = self._rate_limit_aborted_warning(date_s)
-                    return
-                try:
-                    bars = await self._fetch_past_shared(venue, code, date_s)
-                except KisCapacityOverloaded:
-                    warnings_by_date[date_s] = _capacity_overloaded_warning(date_s)
-                    return
-                except KisCapacityCooldown:
-                    warnings_by_date[date_s] = self._rate_limit_aborted_warning(date_s)
-                    return
-                except KisRateLimitError as e:
-                    blocked.set()
-                    self._mark_rate_limited()
-                    warnings_by_date[date_s] = {
-                        "date": date_s,
-                        "reason": "kis_rate_limit",
-                        "msg": str(e),
-                    }
-                    return
-                except KisApiError as e:
-                    warnings_by_date[date_s] = {
-                        "date": date_s,
-                        "reason": "kis_api_error",
-                        "msg": e.msg_cd,
-                    }
-                    return
-                rows[date_s] = bars
-                fresh.add(date_s)
-
-        await asyncio.gather(*(one(d) for d in pending))
+        # PR-G(#1043) 칼 컷오버 — **팬이 walk-back 으로 바뀐다**(ADR-0136 §3).
+        #
+        # KIS 분봉은 날짜당 1콜(120행)이라 날짜 N개를 asyncio.gather 로 병렬
+        # 부채질하는 것이 최적이었다. 키움은 1콜이 900행 ≈ 2.35 거래일이라 같은
+        # 팬을 쓰면 이웃 콜끼리 같은 날짜를 중복 수신한다 — 콜당 효율이 그대로
+        # 낭비가 된다. 순차 walk 로 콜 수가 절반 이하로 떨어진다(#1012 실측:
+        # 20거래일 10콜 2.8초, ADR-0120 시절 46거래일 98초).
+        blocked = False
+        if pending:
+            blocked = await self._walk_pending(
+                venue, code, pending, rows=rows, fresh=fresh,
+                warnings_by_date=warnings_by_date,
+            )
 
         candles_all: list[dict] = []
         fresh_dates: list[str] = []
         warnings: list[dict] = []
-        kis_blocked = blocked.is_set()
+        kis_blocked = blocked
 
         for date_s in _date_iter(frm, too):
             if date_s < today_s:
@@ -413,15 +396,18 @@ class LiveMinuteCandleBackfill:
                     if kis_blocked or self._rate_limited_now():
                         warnings.append(self._rate_limit_aborted_warning(date_s))
                         continue
-                    bars = await kis_access.run_with_capacity(
+                    today_client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
+                    if today_client is None:
+                        warnings.append(self._rate_limit_aborted_warning(date_s))
+                        continue
+                    bars = await kiwoom_access.run_with_capacity(
                         self._scheduler,
-                        data_dir=self._data_dir,
                         key=("live-candle-backfill", "minute", venue, code, date_s, "today"),
-                        endpoint=kis_access.KisRestEndpoint.PAST_MINUTE,
+                        api_id=kiwoom_minute_candles.API_ID,
                         priority="user_visible",
-                        cooldown_scope=venue,
-                        fetch_fn=lambda kis: self._fetch_past_today_once(
-                            kis,
+                        client=today_client,
+                        fetch_fn=lambda c: self._fetch_past_today_once(
+                            c,
                             venue,
                             code,
                             date_s,  # noqa: B023 — await 로 즉시 소비 — 지연 실행 아님
@@ -433,16 +419,15 @@ class LiveMinuteCandleBackfill:
                     else:
                         self._cache.store_today(venue, code, None)
                 candles_all.extend(bars)
-            except KisRateLimitError as e:
+            except KiwoomRateLimitError as e:
                 warnings.append({"date": date_s, "reason": "kis_rate_limit", "msg": str(e)})
                 self._mark_rate_limited()
                 kis_blocked = True
-            except KisCapacityCooldown:
-                warnings.append(self._rate_limit_aborted_warning(date_s))
-            except KisCapacityOverloaded:
+            except KiwoomCapacityOverloaded:
                 warnings.append(_capacity_overloaded_warning(date_s))
-            except KisApiError as e:
-                warnings.append({"date": date_s, "reason": "kis_api_error", "msg": e.msg_cd})
+            except KiwoomRestError as e:
+                # `reason` 문자열은 프론트 계약이라 유지한다(#1046 에서 정리).
+                warnings.append({"date": date_s, "reason": "kis_api_error", "msg": str(e)})
 
         result = LiveMinuteCandleBackfillResult(
             candles=candles_all,
@@ -492,117 +477,145 @@ class LiveMinuteCandleBackfill:
             )
         return result
 
-    async def _fetch_past_shared(
+    async def _walk_pending(
         self,
         venue: Venue,
         code: str,
-        date_s: str,
+        pending: list[str],
         *,
-        priority: kis_access.KisRequestPriority = "user_visible",
-    ) -> list[dict]:
-        # 단일 비행 키는 priority를 포함하지 않는다: warm(background)이 먼저 띄운
-        # 태스크에 사용자 요청이 올라타면 background 우선순위로 대기하게 되지만,
-        # ADR-0087의 background 비굶주림 보장으로 진전은 유지된다. 반대 방향
-        # (user_visible 태스크에 warm이 올라탐)은 순수 이득.
-        key = (venue, code, date_s)
-        task = self._inflight.get(key)
-        if task is None:
-            task = asyncio.create_task(
-                self._fetch_past_scheduled(venue, code, date_s, priority=priority)
-            )
-            self._inflight[key] = task
-            task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
-        # shield 필수: bare `await task`는 대기자 취소를 _fut_waiter.cancel()로
-        # 공유 태스크까지 전파해, 같은 (venue, code, date)를 inflight dedup으로
-        # 공유하는 다른 대기자를 전부 CancelledError로 죽인다. 한 사용자 요청이
-        # 취소되면(예: 타임프레임 전환 abort) 같은 날짜에 올라탄 다른 /past-candles
-        # 요청까지 죽는 회귀가 실제로 있었다(/investigate 2026-07-10).
-        return await asyncio.shield(task)
+        rows: dict[str, list[dict]],
+        fresh: set[str],
+        warnings_by_date: dict[str, dict],
+    ) -> bool:
+        """미캐시 날짜들을 **한 번의 walk-back** 으로 채운다. 유량 차단이면 True.
 
-    async def _fetch_past_scheduled(
-        self,
-        venue: Venue,
-        code: str,
-        date_s: str,
-        *,
-        priority: kis_access.KisRequestPriority = "user_visible",
-    ) -> list[dict]:
+        `pending` 은 오름차순이다. walk 는 최신(`pending[-1]`)에서 시작해 가장
+        오래된 날(`pending[0]`)보다 더 오래된 날짜를 볼 때까지 커서를 뒤로 민다.
+        """
+        newest, oldest = pending[-1], pending[0]
+        if self._rate_limited_now():
+            for date_s in pending:
+                warnings_by_date[date_s] = self._rate_limit_aborted_warning(date_s)
+            return True
+
         t0 = perf_debug.now()
         try:
-            result = await kis_access.run_with_capacity(
+            result = await self._walk_scheduled(venue, code, newest, oldest)
+        except KiwoomCapacityOverloaded:
+            for date_s in pending:
+                warnings_by_date[date_s] = _capacity_overloaded_warning(date_s)
+            return False
+        except KiwoomRateLimitError as e:
+            self._mark_rate_limited()
+            for date_s in pending:
+                warnings_by_date[date_s] = {
+                    "date": date_s, "reason": "kis_rate_limit", "msg": str(e),
+                }
+            return True
+        except KiwoomRestError as e:
+            for date_s in pending:
+                warnings_by_date[date_s] = {
+                    "date": date_s, "reason": "kis_api_error", "msg": str(e),
+                }
+            return False
+        self._fresh_past_fetches += 1
+        if perf_debug.enabled():
+            log.warning(
+                "hoga_perf past_candles_walk code=%s venue=%s from=%s to=%s "
+                "pages=%d days=%d exhausted=%s wedged=%s duration_ms=%.1f",
+                code, venue, oldest, newest, result.pages,
+                len(result.bars_by_date), result.exhausted, result.wedged,
+                perf_debug.elapsed_ms(t0),
+            )
+
+        self._apply_walk_result(
+            venue, code, pending, result,
+            rows=rows, fresh=fresh, warnings_by_date=warnings_by_date,
+        )
+        return False
+
+    def _apply_walk_result(
+        self,
+        venue: Venue,
+        code: str,
+        pending: list[str],
+        result,
+        *,
+        rows: dict[str, list[dict]],
+        fresh: set[str],
+        warnings_by_date: dict[str, dict],
+    ) -> None:
+        """walk 결과를 캐시·행·경고로 흩뿌린다.
+
+        **walk 가 깨끗이 끝났으면** `[oldest, newest]` 를 전부 지나왔다는 뜻이라,
+        응답에 없는 날짜는 비거래일이다 — 빈 배열로 캐시해 재요청을 막는다.
+        **중간에 멈췄으면**(보유 바닥·페이지 상한) 도달한 곳 아래는 **모른다**.
+        그 구간을 "데이터 없음" 으로 흘려보내면 프론트가 빈 캔들을 진실로 그린다.
+        """
+        for date_s, bars in result.bars_by_date.items():
+            self._cache.store_past(venue, code, date_s, [_candle_to_dict(c) for c in bars])
+
+        clean = not (result.exhausted or result.wedged)
+        floor = pending[0] if clean else min(result.bars_by_date, default=None)
+        msg = (
+            "kiwoom minute retention floor" if result.wedged
+            else f"walk exhausted after {result.pages} pages"
+        )
+        for date_s in pending:
+            bars = result.bars_by_date.get(date_s)
+            if bars is not None:
+                rows[date_s] = [_candle_to_dict(c) for c in bars]
+                fresh.add(date_s)
+            elif floor is not None and date_s >= floor:
+                empty: list[dict] = []
+                self._cache.store_past(venue, code, date_s, empty)
+                rows[date_s] = empty
+                fresh.add(date_s)
+            else:
+                warnings_by_date[date_s] = {
+                    "date": date_s, "reason": "kis_api_error", "msg": msg,
+                }
+
+    async def _walk_scheduled(
+        self,
+        venue: Venue,
+        code: str,
+        newest: str,
+        oldest: str,
+        *,
+        priority: Priority = "user_visible",
+    ):
+        client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
+        if client is None:
+            raise KiwoomRestError("kiwoom client not initialized")
+        try:
+            return await kiwoom_access.run_with_capacity(
                 self._scheduler,
-                data_dir=self._data_dir,
-                key=("live-candle-backfill", "minute", venue, code, date_s),
-                endpoint=kis_access.KisRestEndpoint.PAST_MINUTE,
+                key=("live-candle-backfill", "minute", venue, code, oldest, newest),
+                api_id=kiwoom_minute_candles.API_ID,
                 priority=priority,
-                cooldown_scope=venue,
-                fetch_fn=lambda kis: self._fetch_past_once(
-                    kis,
-                    venue,
-                    code,
-                    date_s,
-                    # ADR-0087 2층(토큰버킷) 우선순위를 스케줄러 priority와 일치:
-                    # warm(background)이 foreground를 참칭하면 사용자 호출에
-                    # 토큰을 양보하지 않아 EGW00201 폭풍의 원인이 된다.
-                    foreground=(priority == "user_visible"),
+                client=client,
+                fetch_fn=lambda c: kiwoom_minute_candles.walk_minute_days(
+                    c, code,
+                    newest_yyyymmdd=newest, oldest_yyyymmdd=oldest, venue=venue,
                 ),
             )
         except Exception:
             self._fresh_past_fetch_errors += 1
-            if perf_debug.enabled():
-                log.warning(
-                    "hoga_perf past_candles_fetch status=error code=%s venue=%s date=%s "
-                    "duration_ms=%.1f",
-                    code, venue, date_s, perf_debug.elapsed_ms(t0),
-                )
             raise
-        self._fresh_past_fetches += 1
-        if perf_debug.enabled():
-            log.warning(
-                "hoga_perf past_candles_fetch status=ok code=%s venue=%s date=%s "
-                "candles=%d duration_ms=%.1f",
-                code,
-                venue,
-                date_s,
-                len(result),
-                perf_debug.elapsed_ms(t0),
-            )
-        return result
-
-    async def _fetch_past_once(
-        self,
-        kis: KisClient,
-        venue: Venue,
-        code: str,
-        date_s: str,
-        *,
-        foreground: bool = True,
-    ) -> list[dict]:
-        raw = await kis.fetch_past_minute_candles(
-            code,
-            date_s,
-            venue=venue,
-            foreground=foreground,
-        )
-        bars = [_candle_to_dict(c) for c in raw]
-        self._cache.store_past(venue, code, date_s, bars)
-        return bars
 
     async def _fetch_past_today_once(
         self,
-        kis: KisClient,
+        client,
         venue: Venue,
         code: str,
         date_s: str,
     ) -> list[dict]:
-        raw = await kis.fetch_past_minute_candles(
-            code,
-            date_s,
-            venue=venue,
-            foreground=True,
+        """오늘치. `base_dt=오늘` 이면 오늘이 응답의 **최新** 이라 온전하다."""
+        raw = await kiwoom_minute_candles.fetch_day(
+            client, code, date_s, venue=venue,
         )
         return [_candle_to_dict(c) for c in raw]
-
     def _rate_limited_now(self) -> bool:
         return monotonic_time.monotonic() < self._rate_limit_until
 

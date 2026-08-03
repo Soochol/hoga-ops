@@ -53,6 +53,44 @@ async def test_same_key_joins_one_inflight_call() -> None:
     await s.aclose()
 
 
+async def test_corider_survives_another_waiters_cancellation() -> None:
+    """한 대기자의 취소가 **공유 태스크에 올라탄 다른 대기자를 죽이면 안 된다.**
+
+    `live_candle_backfill` 이 날짜별 single-flight 에서 지키던 성질인데,
+    PR-G(#1043)에서 중복제거가 거버너로 올라오면서 여기로 이사했다. 원 회귀
+    (/investigate 2026-07-10): 타임프레임 전환 abort 로 한 요청이 취소되자
+    같은 (venue, code, date) 에 dedup 으로 올라탄 다른 `/past-candles` 요청까지
+    CancelledError 로 죽었다. bare `await` 는 대기자 취소를 `_fut_waiter.cancel()`
+    로 공유 future 까지 전파한다 — 조인 지점이 `shield` 여야 한다.
+    """
+    s = _sched(workers=1)
+    gate = asyncio.Event()
+    calls = 0
+
+    async def fn() -> str:
+        nonlocal calls
+        calls += 1
+        await gate.wait()
+        return "v"
+
+    doomed = asyncio.create_task(
+        s.submit(key="k", api_id="ka10001", priority="background", call=fn))
+    rider = asyncio.create_task(
+        s.submit(key="k", api_id="ka10001", priority="background", call=fn))
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    doomed.cancel()
+    await asyncio.sleep(0)
+    gate.set()
+
+    assert await rider == "v", "shield 가 없으면 여기서 CancelledError 다"
+    assert calls == 1
+    with pytest.raises(asyncio.CancelledError):
+        await doomed
+    await s.aclose()
+
+
 async def test_distinct_keys_do_not_dedupe() -> None:
     s = _sched(workers=2)
     calls = 0
