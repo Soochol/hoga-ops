@@ -38,6 +38,8 @@ export interface IvPoint {
   strike: number;
   call_iv: number | null;
   put_iv: number | null;
+  /** 행사가 미결제 합(콜+풋) — IV 신뢰도. 화면이 저유동성 포인트를 감쇠한다. */
+  oi: number;
 }
 
 export interface IvSkew {

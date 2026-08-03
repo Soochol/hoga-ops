@@ -101,7 +101,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
             ),
             iv_skew=IvSkewModel(
                 points=[
-                    IvPointModel(strike=p.strike, call_iv=p.call_iv, put_iv=p.put_iv)
+                    IvPointModel(strike=p.strike, call_iv=p.call_iv, put_iv=p.put_iv, oi=p.oi)
                     for p in skew.points
                 ],
                 atm_iv=atm_iv,
