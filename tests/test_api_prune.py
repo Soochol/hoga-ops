@@ -546,3 +546,119 @@ def test_resolve_include_expired_unconfirmed_env_optin(
     for falsy in ("", "0", "false", "no"):
         monkeypatch.setenv("HOGA_PRUNE_EXPIRED_UNCONFIRMED", falsy)
         assert resolve_include_expired_unconfirmed() is False, falsy
+
+
+# ── 파생 트리 보존 (2026-08-03) ─────────────────────────────────────────────
+#
+# raw 와 다른 축이다: 재계산 가능(지표 캐시)하거나 텔레메트리(timing)라 잃는 것이
+# CPU 시간뿐이다. 그래서 옵트인이 아니라 기본 켜짐 — 옵트인으로 두면 ADR-0075 가
+# 겪은 실패(게이트가 있는데 아무도 안 켜서 쌓임)를 그대로 재현한다.
+
+
+def _touch(path: Path, size: int = 16) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"x" * size)
+
+
+def test_derived_prune_drops_old_indicator_cache_by_filename_date(
+    tmp_data_dir: Path,
+) -> None:
+    """날짜는 파일명에 있다 — 트리가 종목·소스로 먼저 갈리기 때문이다."""
+    from hoga.api.prune import prune_derived
+
+    root = tmp_data_dir / "kis-past-indicators"
+    _touch(root / "005930" / "hogaplay" / "20250101.ratio.json")   # 오래됨
+    _touch(root / "005930" / "hogaplay" / "20260612.ratio.json")   # 창 안
+    _touch(root / "005930" / "hogaplay" / "README.txt")            # 날짜 아님
+
+    res = prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=True)
+
+    n, _size = res.by_tree["kis-past-indicators"]
+    assert n == 1
+    assert not (root / "005930" / "hogaplay" / "20250101.ratio.json").exists()
+    assert (root / "005930" / "hogaplay" / "20260612.ratio.json").exists()
+    # 형식을 모르는 파일을 나이로 지우면 안 된다.
+    assert (root / "005930" / "hogaplay" / "README.txt").exists()
+
+
+def test_derived_prune_drops_old_timing_date_dirs(tmp_data_dir: Path) -> None:
+    from hoga.api.prune import prune_derived
+
+    root = tmp_data_dir / "timing"
+    _touch(root / "20250101" / "005930.json")
+    _touch(root / "20260612" / "005930.json")
+
+    res = prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=True)
+
+    assert res.by_tree["timing"][0] == 1
+    assert not (root / "20250101").exists()
+    assert (root / "20260612").exists()
+
+
+def test_derived_dry_run_touches_nothing(tmp_data_dir: Path) -> None:
+    from hoga.api.prune import prune_derived
+
+    old = tmp_data_dir / "kis-past-indicators" / "005930" / "hogaplay" / "20250101.ratio.json"
+    _touch(old)
+
+    res = prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=False)
+
+    assert res.total_items == 1  # 회수 예상량은 보고하되
+    assert old.exists()          # 디스크는 불변
+
+
+def test_derived_prune_never_touches_raw_or_parquet(tmp_data_dir: Path) -> None:
+    """파생 트리 회수가 진실 소스에 닿으면 안 된다 — 축이 다르다."""
+    from hoga.api.prune import prune_derived
+
+    _seed(tmp_data_dir, "005930", "20250101", collection_complete=True, is_partial=False)
+    before_raw = sorted(p.name for p in (tmp_data_dir / "raw").rglob("*"))
+    before_pq = sorted(p.name for p in (tmp_data_dir / "parquet").rglob("*"))
+
+    prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=True)
+
+    assert sorted(p.name for p in (tmp_data_dir / "raw").rglob("*")) == before_raw
+    assert sorted(p.name for p in (tmp_data_dir / "parquet").rglob("*")) == before_pq
+
+
+def test_dead_trees_are_reported_but_never_auto_deleted(tmp_data_dir: Path) -> None:
+    """'코드가 안 읽는다' 는 판단이고, 판단으로 지우는 것은 옵트인이어야 한다."""
+    from hoga.api.prune import find_dead_trees, prune_derived, remove_dead_trees
+
+    _touch(tmp_data_dir / "kis-past-candles" / "005930" / "20250101.json")
+    _touch(tmp_data_dir / "_trash_kis_api_20260717" / "junk.bin")
+    _touch(tmp_data_dir / "screener" / "stocks.parquet")   # 살아 있는 트리
+
+    dead = find_dead_trees(tmp_data_dir)
+    assert set(dead) == {"kis-past-candles", "_trash_kis_api_20260717"}
+
+    # 일일 경로(prune_derived)는 이것들을 건드리지 않는다.
+    prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=True)
+    assert (tmp_data_dir / "kis-past-candles").exists()
+    assert (tmp_data_dir / "_trash_kis_api_20260717").exists()
+
+    n, reclaimed = remove_dead_trees(tmp_data_dir)
+    assert n == 2
+    assert reclaimed > 0
+    assert not (tmp_data_dir / "kis-past-candles").exists()
+    assert (tmp_data_dir / "screener").exists()  # 살아 있는 트리는 그대로
+
+
+def test_daily_scheduler_runs_derived_prune() -> None:
+    """배선 봉인 — 만들고 안 꽂으면 트리는 계속 자란다(ADR-0075 의 실패 모드)."""
+    import inspect
+
+    from hoga.api import scheduler
+
+    src = inspect.getsource(scheduler._daily_run)
+    assert "prune_derived" in src
+    assert "resolve_derived_retention_days()" in src
+
+
+def test_resolve_derived_retention_days_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from hoga.api.prune import DERIVED_RETENTION_DAYS_DEFAULT, resolve_derived_retention_days
+
+    monkeypatch.delenv("HOGA_DERIVED_RETENTION_DAYS", raising=False)
+    assert resolve_derived_retention_days() == DERIVED_RETENTION_DAYS_DEFAULT
+    monkeypatch.setenv("HOGA_DERIVED_RETENTION_DAYS", "30")
+    assert resolve_derived_retention_days() == 30

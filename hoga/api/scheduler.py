@@ -172,7 +172,9 @@ async def _daily_run(data_dir: Path) -> bool:
     # before the trading-day gate, so weekends/holidays still reclaim disk.
     from hoga.api.prune import (  # noqa: PLC0415
         disk_headroom,
+        prune_derived,
         prune_raw,
+        resolve_derived_retention_days,
         resolve_include_confirmed_gaps,
         resolve_include_expired_unconfirmed,
         resolve_retention_days,
@@ -204,6 +206,22 @@ async def _daily_run(data_dir: Path) -> bool:
                 )
             )
             log.info("daily prune: nothing prunable — held by state: %s", held)
+        # 파생 트리(재계산 가능한 지표 캐시 · 타이밍 텔레메트리)는 raw 와 다른
+        # 축이라 옵트인이 아니다 — 근거는 prune.prune_derived. raw 회수가
+        # 실패해도 이건 돌아야 하므로 예외 경계를 따로 둔다.
+        derived = await asyncio.to_thread(
+            prune_derived, data_dir,
+            retention_days=resolve_derived_retention_days(),
+            now=now_kst(), execute=True,
+        )
+        if derived.total_items:
+            log.info(
+                "daily prune: derived trees reclaimed %.2f GiB (%s)",
+                derived.total_bytes / 1024**3,
+                ", ".join(
+                    f"{name}={n}" for name, (n, _) in derived.by_tree.items() if n
+                ),
+            )
         head = await asyncio.to_thread(disk_headroom, data_dir)
         if head is not None and head.is_low:
             log.warning(
