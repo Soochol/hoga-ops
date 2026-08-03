@@ -6,15 +6,15 @@ KiwoomOnDemandSession(별도 세션) 삭제 후, 온디맨드 표시 구독은 K
 import asyncio
 from datetime import datetime
 
-from hoga.live.kis_client import KIS_KST
 from hoga.live.kiwoom_session import KiwoomSessionManager, _KiwoomConn
 from hoga.live.session_gate import AUTO_VENUE
 from hoga.live.snapshot import SnapshotKind
 from hoga.live.ticks import WsTick
+from hoga.util.timeenc import KST
 
 
 def _ms(hour: int, minute: int) -> int:
-    return int(datetime(2026, 5, 27, hour, minute, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    return int(datetime(2026, 5, 27, hour, minute, 0, tzinfo=KST).timestamp() * 1000)
 
 
 _KRX_MS = _ms(10, 0)  # 정규장 → target_ws_venue=KRX (wire=bare)

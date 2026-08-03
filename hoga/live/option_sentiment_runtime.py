@@ -34,7 +34,9 @@ from hoga.api.kis_option_master import (
     near_month_chain,
 )
 from hoga.live.kis_option_endpoints import OptionChainSnapshot
-from hoga.live.kis_venue import KIS_KST
+from hoga.live.option_sentiment import put_call_ratio
+from hoga.live.put_call_series import PutCallPoint, PutCallSeries
+from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +57,8 @@ class SentimentState:
     full_at_ms: int | None
     atm_at_ms: int | None
     expiry: str | None
+    #: 당일 P/C 시계열 — 전수 스냅샷(5분)마다 한 점. "지금 풋이 쌓이는 중인가"용.
+    put_call_series: tuple[PutCallPoint, ...]
     #: 근월물 체인의 종목 수. 만기마다 다르다(실측: 202608=780 · 202609=1012 ·
     #: 202610=682) — 화면이 대기 안내에 쓰므로 상수로 박지 말고 여기서 흘려보낸다.
     chain_size: int | None
@@ -63,7 +67,11 @@ class SentimentState:
 
 
 def _now_ms() -> int:
-    return int(datetime.now(KIS_KST).timestamp() * 1000)
+    return int(datetime.now(KST).timestamp() * 1000)
+
+
+def _today_key() -> str:
+    return datetime.now(KST).strftime("%Y%m%d")
 
 
 class OptionSentimentRuntime:
@@ -83,6 +91,7 @@ class OptionSentimentRuntime:
         self._atm_at: int | None = None
         self._expiry: str | None = None
         self._chain_size: int | None = None
+        self._pc_series = PutCallSeries()
         self._unavailable: str | None = None
 
     def state(self) -> SentimentState:
@@ -92,6 +101,7 @@ class OptionSentimentRuntime:
             full_at_ms=self._full_at,
             atm_at_ms=self._atm_at,
             expiry=self._expiry,
+            put_call_series=self._pc_series.points(),
             chain_size=self._chain_size,
             unavailable=self._unavailable,
         )
@@ -157,6 +167,15 @@ class OptionSentimentRuntime:
                     snap = await client.fetch_option_chain(chain, expiry=expiry)
                     if snap.quotes:
                         self._full, self._full_at = snap, _now_ms()
+                        # 시계열은 전수 계층에서만 쌓는다 — P/C 표준 정의가 전 종목
+                        # 비율이라 ATM 창 값을 섞으면 두 지표의 혼합이 된다.
+                        pc = put_call_ratio(snap)
+                        self._pc_series.append(
+                            t_ms=self._full_at,
+                            date_key=_today_key(),
+                            volume_ratio=pc.volume_ratio,
+                            oi_ratio=pc.oi_ratio,
+                        )
                     next_full = time.monotonic() + _FULL_INTERVAL_S
                 elif now >= next_atm and self._full is not None:
                     window = atm_window(chain, self._full.underlying, width=_ATM_WIDTH)

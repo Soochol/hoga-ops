@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { expect, it, vi } from 'vitest';
 
@@ -26,6 +26,7 @@ function ready(over: Partial<OptionSentiment> = {}): OptionSentiment {
     underlying: 1007.83,
     full_as_of_ms: 1_700_000_000_000,
     atm_as_of_ms: 1_700_000_030_000,
+    put_call_series: [],
     put_call: {
       volume_ratio: 0.62,
       oi_ratio: 0.905,
@@ -36,6 +37,8 @@ function ready(over: Partial<OptionSentiment> = {}): OptionSentiment {
     },
     oi_distribution: {
       strikes: [
+        // 700 은 도메인 검증용: 전체 뷰에서 플립(702.5)이 축 안에 들어오게 한다
+        { strike: 700, call_oi: 10, put_oi: 10 },
         { strike: 1000, call_oi: 1651, put_oi: 6222 },
         { strike: 1100, call_oi: 3000, put_oi: 1000 },
         { strike: 1597.5, call_oi: 14_444, put_oi: 100 },
@@ -52,8 +55,8 @@ function ready(over: Partial<OptionSentiment> = {}): OptionSentiment {
     },
     iv_skew: {
       points: [
-        { strike: 1000, call_iv: 96.4, put_iv: 108.5 },
-        { strike: 1100, call_iv: 92.1, put_iv: null },
+        { strike: 1000, call_iv: 96.4, put_iv: 108.5, oi: 7873 },
+        { strike: 1100, call_iv: 92.1, put_iv: null, oi: 4000 },
       ],
       atm_iv: 108.51,
       risk_reversal_25d: 27.49,
@@ -125,6 +128,77 @@ it('극외가 편중을 드러내는 기여 표를 보여준다', () => {
   expect(screen.getByText(/미결제가 몰리는 특성/)).toBeInTheDocument();
   expect(screen.getByText('1597.5')).toBeInTheDocument();
   expect(screen.getByText('14,444')).toBeInTheDocument();
+});
+
+it('행사가 축은 기본 ATM 줌이고 전체 토글로 넓어진다', () => {
+  // 극외가(1597.5)가 축을 지배하면 중앙 구조가 좁은 띠로 압축된다. 기본 ATM
+  // 줌에서는 그 행사가가 차트 밖이고(기여 표에는 남는다), 전체로 바꾸면 눈금이
+  // 넓어져 1,500 라벨이 생긴다.
+  mount(ready());
+  // ATM 줌(underlying 1007.83 ±15% → ~1000-1159): 1,500 눈금 없음
+  expect(screen.queryByText('1,500')).not.toBeInTheDocument();
+  // 기여 표는 줌과 무관하게 극외가를 계속 보여준다
+  expect(screen.getByText('1597.5')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: '전체' }));
+  expect(screen.getAllByText('1,500').length).toBeGreaterThan(0);
+});
+
+it('도메인 밖 기준선은 사라지지 않고 가장자리 화살표로 남는다', () => {
+  // ATM 줌에서 감마 플립(702.5)은 화면 밖이다. 선을 조용히 생략하면 "플립이
+  // 없다" 로 오독되므로 가장자리 마커로 존재를 알린다.
+  mount(ready());
+  expect(screen.getByText(/◀ 플립 702.5/)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: '전체' }));
+  expect(screen.queryByText(/◀ 플립/)).not.toBeInTheDocument();
+  expect(screen.getByText(/^플립 702.5$/)).toBeInTheDocument();
+});
+
+it('P/C 시계열은 점이 2개 미만이면 축적 안내, 이상이면 곡선을 그린다', () => {
+  mount(ready({ put_call_series: [{ t_ms: 1, volume_ratio: 0.6, oi_ratio: 0.9 }] }));
+  expect(screen.getByText(/추이 축적 중/)).toBeInTheDocument();
+
+  cleanup();
+  mockHook.mockReset();
+  mount(ready({
+    put_call_series: [
+      { t_ms: 1_700_000_000_000, volume_ratio: 0.6, oi_ratio: 0.9 },
+      { t_ms: 1_700_000_300_000, volume_ratio: 0.7, oi_ratio: 0.92 },
+    ],
+  }));
+  expect(screen.getByRole('img', { name: 'P/C 비율 당일 추이' })).toBeInTheDocument();
+  // 1.0 기준선 라벨 — 절대 수준(콜/풋 균형)을 잃지 않게 항상 도메인에 포함된다
+  expect(screen.getByText('1.0 균형')).toBeInTheDocument();
+  // 실선/점선 범례 — 비율은 콜도 풋도 아니라 색으로 못 가른다
+  expect(screen.getByText('거래량')).toBeInTheDocument();
+  expect(screen.getByText('미결제')).toBeInTheDocument();
+});
+
+it('헤더 요약만으로 시장 상태가 잡힌다 — P/C·Max Pain 괴리·총 GEX·RR 해석', () => {
+  mount(ready({ full_as_of_ms: Date.now(), atm_as_of_ms: Date.now() }));
+  // Max Pain 1100, 현재가 1007.83 → 괴리 +92.2 가 헤더에 붙는다
+  expect(screen.getByText(/\(\+92\.2\)/)).toBeInTheDocument();
+  // 총 GEX 는 압축 표기 (−73,431,064,166 → −734.3억원). 헤더와 GEX 카드 두 곳.
+  expect(screen.getAllByText(/-734\.3억원/).length).toBe(2);
+  // RR 부호 해석 마이크로 라벨 — 값만 있으면 방향을 모른다
+  expect(screen.getByText('+면 하방 보험이 비쌈')).toBeInTheDocument();
+});
+
+it('관측 시각이 주기보다 크게 낡으면 지연 경고가 붙는다', () => {
+  // 수집 루프가 죽으면 화면은 조용히 낡은 값을 계속 보여준다 — 낡음 표시가
+  // 유일한 경고 채널이므로 임계(전수 12분)를 넘으면 명시적으로 알린다.
+  mount(ready({
+    full_as_of_ms: Date.now() - 20 * 60_000,
+    atm_as_of_ms: Date.now() - 10_000,
+  }));
+  expect(screen.getAllByText(/지연/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/방금/).length).toBeGreaterThan(0);
+
+  cleanup();
+  mockHook.mockReset();
+  mount(ready({ full_as_of_ms: Date.now() - 60_000, atm_as_of_ms: Date.now() }));
+  expect(screen.queryByText(/지연/)).not.toBeInTheDocument();
 });
 
 it('비율 분모가 0이면 0 이 아니라 — 로 표시한다', () => {

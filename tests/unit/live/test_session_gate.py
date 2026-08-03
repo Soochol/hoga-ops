@@ -4,7 +4,6 @@ from datetime import datetime
 import pytest
 
 from hoga.api import calendar as cal
-from hoga.live.kis_client import KIS_KST
 from hoga.live.session_gate import (
     in_krx_warmup_window,
     is_auction_window,
@@ -13,10 +12,11 @@ from hoga.live.session_gate import (
     ws_capture_window_async,
     ws_connection_window,
 )
+from hoga.util.timeenc import KST
 
 
 def _ms(year: int, month: int, day: int, hour: int, minute: int) -> int:
-    return int(datetime(year, month, day, hour, minute, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    return int(datetime(year, month, day, hour, minute, 0, tzinfo=KST).timestamp() * 1000)
 
 
 def test_regular_hours_trading_day_returns_true(monkeypatch):

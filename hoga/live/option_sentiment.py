@@ -86,6 +86,11 @@ class IvPoint:
     strike: float
     call_iv: float | None
     put_iv: float | None
+    #: 해당 행사가 미결제 합(콜+풋). IV 의 **신뢰도** 신호다 — 실측상 OI 한
+    #: 자릿수 행사가의 IV 는 심하게 산포해 곡선을 톱니로 만든다. 지표에서 지우는
+    #: 대신(그러면 Max Pain·GEX 가 보는 데이터와 달라진다) 화면이 이 값으로
+    #: 투명도를 감쇠한다.
+    oi: int = 0
 
 
 @dataclass(frozen=True)
@@ -207,9 +212,12 @@ def iv_skew(snap: OptionChainSnapshot) -> IvSkew:
     calls, puts = _split(snap.quotes)
     call_iv = {q.strike: q.iv for q in calls if _iv_usable(q)}
     put_iv = {q.strike: q.iv for q in puts if _iv_usable(q)}
+    oi_sum: dict[float, int] = {}
+    for q in snap.quotes:
+        oi_sum[q.strike] = oi_sum.get(q.strike, 0) + q.open_interest
     strikes = sorted(set(call_iv) | set(put_iv))
     points = tuple(
-        IvPoint(k, call_iv.get(k), put_iv.get(k)) for k in strikes
+        IvPoint(k, call_iv.get(k), put_iv.get(k), oi=oi_sum.get(k, 0)) for k in strikes
     )
 
     atm: float | None = None
