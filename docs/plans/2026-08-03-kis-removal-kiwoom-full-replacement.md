@@ -1,5 +1,9 @@
 # KIS 제거 · 키움 전면 대체 — PR 분할 플랜
 
+> **개정 2026-08-04** — PR-B~I 는 머지 완료(#1048·#1049·#1051·#1052·#1053·#1054·#1055·#1056).
+> PR-J 의 범위가 **"완전 제거" → "축소 제거"** 로 좁혀졌다: KOSPI200 옵션 심리
+> 패널(ADR-0135)은 키움에 대체 TR 이 없어 존치한다. 아래 PR-J 절 참조.
+
 - 근거 ADR: [0136](../adr/0136-kis-removal-kiwoom-full-replacement.md)
 - 지도: [#1005](https://github.com/Soochol/hoga-ops/issues/1005) — 조사 4건·결정 5건 전부 해소
 - 작성: 2026-08-03 ([#1016](https://github.com/Soochol/hoga-ops/issues/1016))
@@ -73,17 +77,26 @@ ADR-0136 §2 의 구현. **이 지도에서 가장 큰 단일 PR.**
 
 **모든 이관 PR 이 안정화된 뒤 한 번에.** 삭제 표면은 [#1010 전수조사](../research/2026-08-03-kis-removal-surface.md)가 이미 목록화했다.
 
-- **A 분류 1,574줄** — `kis_endpoints`(1162)·`kis_token_provider`·`kis_account_pool`·`kis_errors`
-- **B 분류 1,279줄** — `kis_client`·`kis_capacity_scheduler`·`kis_runtime`·`kis_access`·`kis_capacity_runtime` (PR-B 가 대체물 제공 완료 전제)
-- **D 분류** — `kis_holidays`(PR-H 후) · `kis_master`(PR-I 후)
-- **잔존** — `kis_venue` 의 `_KIS_DIV` 등 KIS wire 인코딩도 이때 함께 삭제
+> **범위 개정 2026-08-04.** 착수 직전 재측정에서 지도의 "갭 0건" 이 **KOSPI200 옵션
+> 심리 패널(ADR-0135)** 을 빠뜨렸다는 것이 드러났다(조사와 같은 날 별도 랜딩).
+> **키움 REST 337개 TR 중 파생 TR 0건** — 옮길 수 없다. 사용자 결정으로 존치한다.
+> 아래 목록은 그 결정을 반영한 것이다. 원 A/B 분류(#1010)와 다르다.
+
+- **삭제 (≈900줄)** — `kis_holidays`(PR-H 후) · `kis_master`(PR-I 후) · `kis_models` ·
+  `kis_capacity_scheduler` · `kis_access` · `kis_capacity_runtime` · `kis_account_pool` ·
+  `kis_venue` 잔존분(`_KIS_DIV` 등 wire 인코딩)
+- **대폭 축소** — `kis_endpoints`(1,155줄): 옵션이 쓰지 않는 메서드(주식·지수 캔들 ·
+  투자자 · 시세 · 마스터) 전량 제거
+- **존치 (파생 전용)** — `kis_client`(축소본) · `kis_errors` · `kis_token_provider` ·
+  `kis_runtime` · `kis_option_endpoints` · `kis_option_master` · `option_sentiment*`
+  · 남는 KIS 코드의 유일한 정당성은 파생이다. 파생 아닌 용도의 신규 KIS 호출은 ADR-0136 위반
 - **테스트**: 전용 20파일 / 5,317줄 / 218 함수 삭제 + 간접 75파일 수정
 - **프론트**: 배너 문구 · `KisRestUnavailableToastHost` 컴포넌트 전체 · `DataSourceDetail` 패널 재설계 · `state/kisRestMode.ts` + localStorage 2키 정리 · **`reason` 유니온 4곳**(유니온에서 KIS 값을 지우면 누락 문구가 **컴파일 에러로 잡힌다** — 이관 체크리스트로 활용)
 - **관측**: `kis_calls_today`/`kis_rate_limit_remaining` **삭제**(죽은 필드), 거버너 `snapshot()` 노출 범위 결정
 - **설정**: `kis_rest_bypass_enabled` — API·**디스크 영속 설정**·프론트 토글 전부. 기존 설정 파일에 남은 키 처리
 - **에러 코드 4종** · `.env.example`/`README`/`CLAUDE.md` **20건**
 - **`test_adr_invariants.py` `_HOT_PATH_MODULES`** 동반 수정 — 안 고치면 설계된 대로 시끄럽게 실패한다
-- **ADR supersede 명시** — 0100 · 0109 · 0116/0118 의 REST 절 · 0120. ADR-0121 은 개정(`kis_api` 단이 legacy 읽기 전용)
+- **ADR supersede 명시** — 0100 · 0109 · 0116/0118 의 REST 절 · 0120. ADR-0121 은 개정(`kis_api` 단이 legacy 읽기 전용). **ADR-0135 는 존치**(파생 예외)
 
 ## 검증 게이트 (모든 PR 공통)
 
