@@ -202,6 +202,15 @@ npm run dev                   # serves http://localhost:5173
 A fresh worktree starts with empty `node_modules`; if `vite: not found` appears, run
 `npm install` once. Do not add `--host` unless you intentionally want LAN exposure.
 
+**프론트 버전 필드는 `0.0.0` 고정** — 리포 버전의 유일 진실은 루트 `VERSION` 파일이다
+(#1001 에서 `frontend/package.json` 의 버전 관리를 의도적으로 포기했다). 따라서
+`frontend/package-lock.json` 의 `version` 2곳(최상위 · `packages[""]`)도 **`0.0.0` 이어야
+한다**. 어긋나면 `npm install` 이 lockfile 을 package.json 쪽으로 조용히 되돌려서 모든
+워크트리에 유령 `M frontend/package-lock.json` 이 뜨고, 그게 커밋되면 값이 다시 갈린다.
+`npm ci` 는 이 불일치를 **경고도 에러도 내지 않는다** — 의존성 그래프만 검증하고 최상위
+`version` 은 비교하지 않는다(실측). 즉 CI 가 잡아 주지 않으니 릴리스 버전을 프론트
+package.json/lock 에 다시 스탬프하지 말 것.
+
 **VS Code task runner** — `.vscode/tasks.json` exposes three labels: `Backend: dev (hot
 reload)`, `Frontend: dev (HMR)`, and the compound `Dev: backend + frontend` (parallel).
 Run via `Tasks: Run Task` (⇧⌘P) or the Task Runner side panel; each task gets a dedicated
