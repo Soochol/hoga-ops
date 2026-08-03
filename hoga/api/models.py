@@ -1854,12 +1854,20 @@ class IvPointModel(BaseModel):
     strike: float
     call_iv: float | None
     put_iv: float | None
+    #: 행사가 미결제 합 — IV 신뢰도. 화면이 저유동성 포인트의 투명도를 감쇠한다.
+    oi: int = 0
 
 
 class IvSkewModel(BaseModel):
     points: list[IvPointModel]
     atm_iv: float | None
     risk_reversal_25d: float | None
+
+
+class PutCallSeriesPointModel(BaseModel):
+    t_ms: int
+    volume_ratio: float | None
+    oi_ratio: float | None
 
 
 class OptionSentimentResponse(BaseModel):
@@ -1875,6 +1883,9 @@ class OptionSentimentResponse(BaseModel):
     #: ATM 창 스냅샷 관측 시각 — P/C·IV 스큐의 as_of.
     atm_as_of_ms: int | None = None
     put_call: PutCallRatioModel | None = None
+    #: 당일 P/C 시계열(전수 5분마다 한 점, KST 자정 리셋, 프로세스 메모리 한정).
+    put_call_series: list[PutCallSeriesPointModel] = Field(default_factory=list)
+
     oi_distribution: OiDistributionModel | None = None
     gamma_exposure: GammaExposureModel | None = None
     iv_skew: IvSkewModel | None = None

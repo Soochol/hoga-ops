@@ -25,7 +25,7 @@ from typing import Any
 
 from hoga.api.kis_option_master import OptionMasterRow, OptionRight
 from hoga.live.kis_errors import KisApiError, KisRateLimitError
-from hoga.live.kis_venue import KIS_KST
+from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
 
@@ -160,5 +160,5 @@ class KisOptionEndpointsMixin:
             underlying=underlying,
             quotes=tuple(quotes),
             dropped=dropped,
-            t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
+            t_ms=int(datetime.now(KST).timestamp() * 1000),
         )

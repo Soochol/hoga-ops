@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
 from collections.abc import Awaitable, Callable, Hashable
 
 import pytest
 
-from hoga.live.kis_capacity_scheduler import KisCapacityOverloaded
-from hoga.live.kis_client import KisClient
-from hoga.live.kis_models import KisCandle
+from hoga.live import kiwoom_minute_candles, kiwoom_rest_runtime
+from hoga.live.candle_models import LiveCandle
+from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
+from hoga.live.kiwoom_minute_candles import MinuteWalkResult
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.past_candles_cache import PastCandlesCache
 
@@ -21,65 +21,89 @@ def _kst_ms(date_yyyymmdd: str, hour: int = 9, minute: int = 0) -> int:
     return int(dt.datetime(y, m, d, hour, minute, tzinfo=kst).timestamp() * 1000)
 
 
-class _FakeKis:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, str, str | None, bool | None]] = []
+def _bar(date_yyyymmdd: str) -> LiveCandle:
+    return LiveCandle(
+        t_ms=_kst_ms(date_yyyymmdd), open=100, high=110, low=95, close=105, volume=10,
+    )
 
-    async def fetch_past_minute_candles(
-        self,
-        code: str,
-        date_yyyymmdd: str,
-        *,
-        venue: str | None = None,
-        foreground: bool | None = None,
-    ) -> list[KisCandle]:
-        self.calls.append((code, date_yyyymmdd, venue, foreground))
-        return [
-            KisCandle(
-                t_ms=_kst_ms(date_yyyymmdd),
-                open=100,
-                high=110,
-                low=95,
-                close=105,
-                volume=10,
-            )
-        ]
+
+class _FakeWalk:
+    """어댑터 자리에 꽂히는 페이크.
+
+    PR-G(#1043) 이후 소비자는 **날짜별 1콜 팬**이 아니라 **구간 1회 walk-back** 을
+    부른다(ADR-0136 §3). 그래서 페이크가 받는 것도 날짜가 아니라 `[oldest, newest]`
+    구간이고, 그 안의 거래일을 한꺼번에 돌려준다.
+    """
+
+    def __init__(self, *, wedged: bool = False, exhausted: bool = False,
+                 only: set[str] | None = None) -> None:
+        self.calls: list[tuple[str, str, str, str | None]] = []
+        self.day_calls: list[tuple[str, str, str | None]] = []
+        self._wedged = wedged
+        self._exhausted = exhausted
+        self._only = only
+
+    async def walk(self, _client, code, *, newest_yyyymmdd, oldest_yyyymmdd,
+                   venue=None, **_kw) -> MinuteWalkResult:
+        self.calls.append((code, oldest_yyyymmdd, newest_yyyymmdd, venue))
+        bars: dict[str, list[LiveCandle]] = {}
+        cur = dt.datetime.strptime(oldest_yyyymmdd, "%Y%m%d").date()
+        end = dt.datetime.strptime(newest_yyyymmdd, "%Y%m%d").date()
+        while cur <= end:
+            date_s = cur.strftime("%Y%m%d")
+            if self._only is None or date_s in self._only:
+                bars[date_s] = [_bar(date_s)]
+            cur += dt.timedelta(days=1)
+        return MinuteWalkResult(
+            bars_by_date=bars, pages=1,
+            exhausted=self._exhausted, wedged=self._wedged,
+        )
+
+    async def day(self, _client, code, date_yyyymmdd, *, venue=None, **_kw):
+        self.day_calls.append((code, date_yyyymmdd, venue))
+        return [_bar(date_yyyymmdd)]
+
+
+@pytest.fixture
+def kiwoom(monkeypatch):
+    """키움 이음매 3점(클라이언트 조달·walk·하루치)을 갈아끼운다."""
+    def _install(fake: _FakeWalk) -> _FakeWalk:
+        monkeypatch.setattr(
+            kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
+        )
+        monkeypatch.setattr(kiwoom_minute_candles, "walk_minute_days", fake.walk)
+        monkeypatch.setattr(kiwoom_minute_candles, "fetch_day", fake.day)
+        return fake
+
+    return _install
 
 
 class _RecordingScheduler:
-    def __init__(self, kis: _FakeKis) -> None:
-        self.kis = kis
+    def __init__(self) -> None:
         self.calls: list[dict] = []
 
     async def submit(
         self,
         *,
         key: Hashable,
-        endpoint: str,
+        api_id: str,
         priority: str,
-        call: Callable[[KisClient], Awaitable],
-        cooldown_scope: Hashable | None = None,
+        call: Callable[[], Awaitable],
     ):
-        self.calls.append(
-            {
-                "key": key,
-                "endpoint": endpoint,
-                "priority": priority,
-                "cooldown_scope": cooldown_scope,
-            }
-        )
-        return await call(self.kis)  # type: ignore[arg-type]
+        # 계정 차원(endpoint·cooldown_scope)은 PR-G(#1043)에서 사라졌다(#1015).
+        self.calls.append({"key": key, "api_id": api_id, "priority": priority})
+        return await call()
 
 
 class _OverloadedScheduler:
     async def submit(self, **_kwargs):
-        raise KisCapacityOverloaded("KIS capacity scheduler pending request limit reached")
+        raise KiwoomCapacityOverloaded("KIS capacity scheduler pending request limit reached")
 
 
 @pytest.mark.asyncio
-async def test_live_minute_candle_backfill_schedules_past_minute_fetches(tmp_path) -> None:
-    kis = _FakeKis()
-    scheduler = _RecordingScheduler(kis)
+async def test_live_minute_candle_backfill_schedules_past_minute_fetches(tmp_path, kiwoom) -> None:
+    kis = kiwoom(_FakeWalk())
+    scheduler = _RecordingScheduler()
     backfill = LiveMinuteCandleBackfill(
         data_dir=tmp_path,
         cache=PastCandlesCache(data_dir=tmp_path),
@@ -99,23 +123,23 @@ async def test_live_minute_candle_backfill_schedules_past_minute_fetches(tmp_pat
     assert result.cached_dates == []
     assert result.data_warnings == []
     assert len(result.candles) == 1
-    assert kis.calls == [("005930", "20260518", "NXT", True)]
+    assert kis.calls == [("005930", "20260518", "20260518", "NXT")]
     assert scheduler.calls == [
         {
-            "key": ("live-candle-backfill", "minute", "NXT", "005930", "20260518"),
-            "endpoint": "past-minute",
+            "key": ("live-candle-backfill", "minute", "NXT", "005930",
+                    "20260518", "20260518"),
+            "api_id": "ka10080",
             "priority": "user_visible",
-            "cooldown_scope": "NXT",
         }
     ]
 
 
 @pytest.mark.asyncio
-async def test_collect_minute_skips_known_non_trading_past_dates(tmp_path, monkeypatch) -> None:
+async def test_collect_minute_skips_known_non_trading_past_dates(tmp_path, monkeypatch, kiwoom) -> None:
     from hoga.api import calendar as cal
 
-    kis = _FakeKis()
-    scheduler = _RecordingScheduler(kis)
+    kis = kiwoom(_FakeWalk())
+    scheduler = _RecordingScheduler()
     backfill = LiveMinuteCandleBackfill(
         data_dir=tmp_path,
         cache=PastCandlesCache(data_dir=tmp_path),
@@ -137,13 +161,15 @@ async def test_collect_minute_skips_known_non_trading_past_dates(tmp_path, monke
         policy="KRX",
     )
 
-    assert kis.calls == [("005930", "20260518", "KRX", True)]
+    assert kis.calls == [("005930", "20260518", "20260518", "KRX")], (
+        "비거래일은 walk 구간에서 아예 빠진다"
+    )
     assert scheduler.calls == [
         {
-            "key": ("live-candle-backfill", "minute", "KRX", "005930", "20260518"),
-            "endpoint": "past-minute",
+            "key": ("live-candle-backfill", "minute", "KRX", "005930",
+                    "20260518", "20260518"),
+            "api_id": "ka10080",
             "priority": "user_visible",
-            "cooldown_scope": "KRX",
         }
     ]
     assert result.cached_dates == ["20260517"]
@@ -153,11 +179,11 @@ async def test_collect_minute_skips_known_non_trading_past_dates(tmp_path, monke
 
 
 @pytest.mark.asyncio
-async def test_collect_minute_treats_non_trading_empty_as_covered_for_fallback(tmp_path, monkeypatch) -> None:
+async def test_collect_minute_treats_non_trading_empty_as_covered_for_fallback(tmp_path, monkeypatch, kiwoom) -> None:
     from hoga.api import calendar as cal
 
-    kis = _FakeKis()
-    scheduler = _RecordingScheduler(kis)
+    kis = kiwoom(_FakeWalk())
+    scheduler = _RecordingScheduler()
     backfill = LiveMinuteCandleBackfill(
         data_dir=tmp_path,
         cache=PastCandlesCache(data_dir=tmp_path),
@@ -184,7 +210,8 @@ async def test_collect_minute_treats_non_trading_empty_as_covered_for_fallback(t
 
 
 @pytest.mark.asyncio
-async def test_live_minute_candle_backfill_reports_capacity_overload(tmp_path) -> None:
+async def test_live_minute_candle_backfill_reports_capacity_overload(tmp_path, kiwoom) -> None:
+    kiwoom(_FakeWalk())
     backfill = LiveMinuteCandleBackfill(
         data_dir=tmp_path,
         cache=PastCandlesCache(data_dir=tmp_path),
@@ -212,57 +239,20 @@ async def test_live_minute_candle_backfill_reports_capacity_overload(tmp_path) -
     ]
 
 
-@pytest.mark.asyncio
-async def test_fetch_past_shared_corider_survives_waiter_cancellation(tmp_path) -> None:
-    """한 대기자의 취소가 공유 single-flight 태스크에 올라탄 다른 대기자를 죽이는
-    회귀 가드(/investigate 2026-07-10). bare `await task`는 대기자 취소를
-    _fut_waiter.cancel()로 공유 태스크까지 전파한다 — 같은 (venue, code, date)를
-    inflight dedup으로 공유하는 두 요청 중 하나가 취소되면(예: 타임프레임 전환
-    abort) 공유 태스크가 죽어 다른 사용자 /past-candles 요청까지 CancelledError로
-    죽는다. 조인 지점은 shield여야 한다."""
-    kis = _FakeKis()
-    gate = asyncio.Event()
-
-    class _GatedScheduler:
-        async def submit(self, *, key, endpoint, priority, call, cooldown_scope=None):
-            await gate.wait()
-            return await call(kis)  # type: ignore[arg-type]
-
-    backfill = LiveMinuteCandleBackfill(
-        data_dir=tmp_path,
-        cache=PastCandlesCache(data_dir=tmp_path),
-        scheduler=_GatedScheduler(),  # type: ignore[arg-type]
-        concurrency=1,
-    )
-
-    cancelled_rider = asyncio.create_task(
-        backfill._fetch_past_shared("KRX", "005930", "20260518")
-    )
-    user_rider = asyncio.create_task(
-        backfill._fetch_past_shared("KRX", "005930", "20260518")
-    )
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)  # 두 rider 모두 공유 태스크에 매달린 상태
-
-    cancelled_rider.cancel()  # 한 대기자의 취소(예: 타임프레임 전환 abort)
-    await asyncio.sleep(0)
-    gate.set()
-
-    bars = await user_rider  # shield 없으면 여기서 CancelledError
-    assert len(bars) == 1
-    assert kis.calls == [("005930", "20260518", "KRX", True)]
-    with pytest.raises(asyncio.CancelledError):
-        await cancelled_rider
+# `test_fetch_past_shared_corider_survives_waiter_cancellation` 은
+# `tests/unit/live/test_kiwoom_capacity.py` 로 이사했다. PR-G(#1043)에서 날짜별
+# single-flight 가 사라지고 중복제거가 **거버너**(`KiwoomCapacityScheduler`)로
+# 올라갔기 때문이다 — 성질(대기자 취소가 코라이더를 죽이면 안 된다)은 그대로다.
 
 
 @pytest.mark.asyncio
-async def test_collect_minute_caps_uncached_fetches_per_request(tmp_path, monkeypatch) -> None:
+async def test_collect_minute_caps_uncached_fetches_per_request(tmp_path, monkeypatch, kiwoom) -> None:
     """예산(3)보다 큰 미캐시 창(10일) → 최신 3일만 fetch, 나머지는 budget 경고로 유예."""
     from hoga.api import calendar as cal
 
     monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
-    kis = _FakeKis()
-    scheduler = _RecordingScheduler(kis)
+    kis = kiwoom(_FakeWalk())
+    scheduler = _RecordingScheduler()
     backfill = LiveMinuteCandleBackfill(
         data_dir=tmp_path,
         cache=PastCandlesCache(data_dir=tmp_path),
@@ -280,19 +270,20 @@ async def test_collect_minute_caps_uncached_fetches_per_request(tmp_path, monkey
     )
 
     assert result.fresh_dates == ["20260508", "20260509", "20260510"]
-    assert sorted(d for _, d, _, _ in kis.calls) == ["20260508", "20260509", "20260510"]
+    # **콜이 3개가 아니라 1개다** — walk 한 번이 구간을 덮는다(ADR-0136 §3).
+    assert kis.calls == [("005930", "20260508", "20260510", "KRX")]
     warned = [w for w in result.data_warnings if w["reason"] == "fetch_budget_exhausted"]
     assert [w["date"] for w in warned] == [f"2026050{d}" for d in range(1, 8)]
 
 
 @pytest.mark.asyncio
-async def test_budget_counts_only_uncached_dates(tmp_path, monkeypatch) -> None:
+async def test_budget_counts_only_uncached_dates(tmp_path, monkeypatch, kiwoom) -> None:
     """캐시된 날짜는 예산을 소모하지 않는다."""
     from hoga.api import calendar as cal
 
     monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
-    kis = _FakeKis()
-    scheduler = _RecordingScheduler(kis)
+    kis = kiwoom(_FakeWalk())
+    scheduler = _RecordingScheduler()
     cache = PastCandlesCache(data_dir=tmp_path)
     for day in range(1, 8):  # 5/1-5/7 캐시 채움 → 미캐시는 5/8-5/10 셋뿐
         date_s = f"2026050{day}"
@@ -314,3 +305,6 @@ async def test_budget_counts_only_uncached_dates(tmp_path, monkeypatch) -> None:
 
     assert result.fresh_dates == ["20260508", "20260509", "20260510"]
     assert result.data_warnings == []  # 예산 내 완결 → 경고 없음
+    assert kis.calls == [("005930", "20260508", "20260510", "KRX")], (
+        "캐시된 앞구간은 walk 구간에서 빠진다"
+    )

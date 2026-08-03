@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import time
-from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,9 +21,18 @@ _MAY_2026_TRADING_DAYS = {
 
 @pytest.fixture(autouse=True)
 def _stub_trading_days(monkeypatch):
-    """Pre-populate the (year, month) cache to avoid live KRX access."""
+    """거래일 소스를 2026-05 한 달로 고정한다.
+
+    PR-H(#1044) 이후 소스는 KIS 원격이 아니라 **정적 시드 + data_dir 오버레이**다.
+    그래서 스텁하는 자리도 월 캐시가 아니라 소스 자체다. 커버리지 끝은 이 집합의
+    최대값이라, 2026-05 밖 날짜는 자연히 "모름"(None)이 된다 — 그 계약은
+    `tests/api/test_trading_days_source.py` 가 따로 본다.
+    """
     cal.reset_cache_for_tests()
-    cal._month_cache[(2026, 5)] = set(_MAY_2026_TRADING_DAYS)
+    monkeypatch.setattr(
+        cal.trading_days_source, "trading_days",
+        lambda _data_dir=None: frozenset(_MAY_2026_TRADING_DAYS),
+    )
     yield
     cal.reset_cache_for_tests()
 
@@ -196,196 +203,168 @@ def _reset_calendar_state():
     calendar_module.reset_cache_for_tests()
 
 
-def test_trading_days_for_returns_none_when_fetch_raises(
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_calendar_state: None,
+def _stub_source(monkeypatch, days_yyyymmdd, *, calls=None):
+    """거래일 소스를 고정한다 — PR-H(#1044) 이후의 유일한 이음매.
+
+    KIS 판의 `fetch_month_trading_days` 몽키패치를 대체한다. 그쪽은 월 단위
+    원격 호출이었고 실패가 곧 조회 실패였지만, 여기서는 파일 내용만 정한다.
+    """
+    def _days(_data_dir=None):
+        if calls is not None:
+            calls.append(1)
+        return frozenset(days_yyyymmdd)
+
+    monkeypatch.setattr(calendar_module.trading_days_source, "trading_days", _days)
+
+
+# ---------------------------------------------------------------------------
+# 커버리지 계약 — PR-H(#1044)
+#
+# **조회 경로에 벤더가 없으면 "일시 장애" 라는 사건이 없다.** 그래서 이 자리에
+# 있던 세 테스트가 사라졌다:
+#
+#   test_trading_days_for_negative_caches_failures
+#   test_trading_days_for_singleflights_concurrent_failures
+#   test_trading_days_for_maps_creds_missing_to_distinct_reason
+#
+# 셋 다 "원격이 실패했을 때" 의 캐시·경합·사유 분류를 봤는데, 정적 파일에는
+# 실패가 없다. #976 이 세운 두 갈래("영구 결여는 평일 폴백 · 일시 장애는
+# fail-fast") 중 일시 장애 쪽이 통째로 없어진 결과다.
+#
+# 남는 불확실성은 하나다: **커버리지 밖**. 아래가 그것을 못 박는다.
+# ---------------------------------------------------------------------------
+
+def test_trading_days_for_returns_none_beyond_coverage(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    """_trading_days_for returns None and sets KIS_HOLIDAY_FETCH_FAILED when
-    fetch_month_trading_days raises (covers creds-missing, network, rt_cd)."""
-    import hoga.api.kis_holidays as kis_holidays_module
-
-    def _raise(year, month):
-        raise kis_holidays_module.KisHolidayFetchError("KIS_APP_KEY/KIS_APP_SECRET missing")
-
-    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
-
-    assert calendar_module._trading_days_for(2026, 5) is None
+    """커버리지 끝을 넘는 달은 None. 재시도해도 달라지지 않는다."""
+    _stub_source(monkeypatch, _MAY_2026_TRADING_DAYS)
+    assert calendar_module._trading_days_for(2026, 5) is not None
+    assert calendar_module._trading_days_for(2027, 1) is None
     assert calendar_module.last_failure_reason() == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+
+
+def test_trading_days_for_needs_no_credentials(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    """**자격증명 없이도 달력이 정확하다.**
+
+    dev 무자격 관례(ADR-0134)에서 지금까지 휴장일 정확도를 포기하고 평일 폴백을
+    쓰던 경로가 그냥 맞는 답을 낸다. 여기서는 KIS 자격증명 env 를 비워도 커밋된
+    시드가 답하는 것을 본다(스텁 없이 실제 파일).
+    """
+    for key in ("KIS_APP_KEY", "KIS_APP_SECRET"):
+        monkeypatch.delenv(key, raising=False)
+    days = calendar_module._trading_days_for(2026, 5)
+    assert days is not None and "20260501" in days
 
 
 # ---------------------------------------------------------------------------
 # is_trading_session_today (ADR-0064): lag-free "is TODAY a KRX session?"
 #
-# The poller gate must NOT rely on a lagging proxy to decide whether *today*
-# is a trading day — a wrong False, once cached, silently halts live capture
-# for the whole process. Post KRX→KIS migration the source is the KIS
-# chk-holiday calendar via _trading_days_for (month cache + failure TTL);
-# the per-day session semantics (positive cached, negative re-checked with a
-# throttle + fresh fetch) are preserved from the pykrx-era tests these
-# replace. Seam: monkeypatch hoga.api.kis_holidays.fetch_month_trading_days.
+# 폴러 게이트는 **오늘**이 거래일인지를 지연 없는 소스로 판정해야 한다 — 잘못된
+# False 가 캐시되면 그 프로세스의 라이브 캡처가 조용히 멈춘다. 소스가 정적
+# 파일로 바뀌어도 per-day 의미론(양성은 캐시, 음성은 스로틀 재확인)은 그대로다.
 # ---------------------------------------------------------------------------
-
-def _stub_month_fetch(monkeypatch, days_yyyymmdd, *, raises=None, calls=None):
-    """fetch_month_trading_days stub returning the given day set (or raising)."""
-    import hoga.api.kis_holidays as kis_holidays_module
-
-    def _fetch(year, month):
-        if calls is not None:
-            calls.append((year, month))
-        if raises is not None:
-            raise raises
-        return set(days_yyyymmdd)
-
-    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _fetch)
-
 
 def test_is_trading_session_today_true_when_in_trading_days(
     monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    # June 2026: 1,2,4,5 trading; 3 holiday. Today=05 IS in the set.
-    _stub_month_fetch(monkeypatch, ["20260601", "20260602", "20260604", "20260605"])
+    _stub_source(monkeypatch, ["20260604", "20260605"])
     assert calendar_module.is_trading_session_today("20260605") is True
 
 
 def test_is_trading_session_today_false_on_holiday(
     monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    # 20260603 is NOT in the trading-day set → it's a holiday → False.
-    _stub_month_fetch(monkeypatch, ["20260601", "20260602", "20260604", "20260605"])
-    assert calendar_module.is_trading_session_today("20260603") is False
+    _stub_source(monkeypatch, ["20260604", "20260608"])
+    assert calendar_module.is_trading_session_today("20260605") is False
 
 
-def test_is_trading_session_today_none_when_creds_missing(
+def test_is_trading_session_today_none_beyond_coverage(
     monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    import hoga.api.kis_holidays as kis_holidays_module
-
-    _stub_month_fetch(
-        monkeypatch, [],
-        raises=kis_holidays_module.KisCredentialsMissing("KIS keys missing"),
-    )
+    """커버리지 밖이면 None — 폴러는 None 에 관대하다(잠깐의 헛발질이 캡처
+    중단보다 낫다). **False 로 답하면 그 관대함이 발동하지 않는다.**"""
+    _stub_source(monkeypatch, ["20260101"])
     assert calendar_module.is_trading_session_today("20260605") is None
-    assert calendar_module.last_failure_reason() == UpstreamCode.KIS_CREDENTIALS_MISSING
 
 
-def test_is_trading_session_today_none_when_fetch_raises(
+def test_is_trading_session_today_none_when_source_is_empty(
     monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    import hoga.api.kis_holidays as kis_holidays_module
-
-    _stub_month_fetch(
-        monkeypatch, [],
-        raises=kis_holidays_module.KisHolidayFetchError("chk-holiday exploded"),
-    )
+    """시드를 못 읽은 상태 = 배포 사고. 재시도 대상은 아니지만 None 이어야 한다."""
+    _stub_source(monkeypatch, [])
     assert calendar_module.is_trading_session_today("20260605") is None
 
 
 def test_is_trading_session_today_caches_positive(
     monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    """A confirmed trading session is cached per day — no repeat KIS fetch."""
+    """확정된 거래 세션은 하루 단위로 캐시된다 — 소스를 다시 읽지 않는다."""
     calls: list = []
-    _stub_month_fetch(monkeypatch, ["20260605"], calls=calls)
+    _stub_source(monkeypatch, ["20260605"], calls=calls)
     assert calendar_module.is_trading_session_today("20260605") is True
     assert calendar_module.is_trading_session_today("20260605") is True
-    assert len(calls) == 1  # second call served from the per-day cache
+    assert len(calls) == 1
 
 
 def test_is_trading_session_today_rechecks_negative_and_self_heals(
     monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    """A False for today is NOT cached permanently. If the calendar source
-    transiently omits today (the ADR-0064 bug shape), the gate self-heals once
-    it reappears — the throttled re-check evicts the month cache so the
-    verdict comes from a FRESH fetch, not the pinned month set. Re-fetches are
-    throttled, not every call."""
-    calls: list = []
-    # First: today missing from a non-empty month → False.
-    _stub_month_fetch(monkeypatch, ["20260604"], calls=calls)
+    """**오늘에 대한 False 는 영구 캐시하지 않는다.**
+
+    소스가 일시적으로 오늘을 빠뜨리면(ADR-0064 의 버그 모양) 게이트가 재시작
+    없이 스스로 회복해야 한다. 지금은 그 "일시적 누락" 이 **오버레이가 아직
+    갱신되지 않은 상태**다 — 스케줄러가 채우면 다음 재확인에서 True 가 된다.
+    재확인은 스로틀된다.
+    """
+    _stub_source(monkeypatch, ["20260604", "20260630"])
     assert calendar_module.is_trading_session_today("20260605", _now_s=0.0) is False
-    assert len(calls) == 1
-    # Within the throttle window: still False, but NO re-fetch.
+    # 스로틀 창 안: 여전히 False
     assert calendar_module.is_trading_session_today("20260605", _now_s=10.0) is False
-    assert len(calls) == 1
-    # After the throttle window AND the source now includes today → True
-    # (month cache evicted on re-check, fresh fetch sees the fixed data).
-    _stub_month_fetch(monkeypatch, ["20260604", "20260605"], calls=calls)
-    assert calendar_module.is_trading_session_today("20260605", _now_s=999.0) is True
-    assert len(calls) == 2
+    # 오버레이가 채워졌다 → 스로틀 창 밖에서 True 로 회복
+    _stub_source(monkeypatch, ["20260604", "20260605", "20260630"])
+    assert calendar_module.is_trading_session_today("20260605", _now_s=120.0) is True
 
 
-def test_get_month_map_fail_soft_when_kis_fetch_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_calendar_state: None,
+def test_get_month_map_fail_soft_when_calendar_has_no_coverage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, _reset_calendar_state: None,
 ) -> None:
-    """Calendar UI still renders every weekday; banner reason is set."""
-    import datetime as dt
+    """커버리지가 없으면 평일 폴백으로 **렌더는 계속된다**(fail-soft).
 
-    import hoga.api.kis_holidays as kis_holidays_module
-
-    def _raise(year, month):
-        raise kis_holidays_module.KisHolidayFetchError("KIS_APP_KEY/KIS_APP_SECRET missing")
-
-    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
-    # Freeze "now" to a mid-month weekday (Wed 2026-05-13) so that the
-    # weekend-cell assertion below stays deterministic regardless of the
-    # actual calendar date when the suite runs. Without this freeze, a test
-    # run on a weekend would classify "today" as today_locked even though it
-    # is a weekend day, breaking `c.status in ("weekend", "future")`.
-    KST = dt.timezone(dt.timedelta(hours=9))
-    frozen_now = dt.datetime(2026, 5, 13, 12, 0, 0, tzinfo=KST)
-    monkeypatch.setattr(calendar_module, "_now_kst", lambda: frozen_now)
-
-    resp = calendar_module.get_month_map(data_dir=tmp_path, code="005930", year=2026, month=5)
-    assert resp.reason == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
-    # May 2026 has 31 days; all are present as cells.
-    assert len(resp.cells) == 31
-    weekday_cells = [c for c in resp.cells
-                     if dt.date(int(c.date[:4]), int(c.date[4:6]), int(c.date[6:8])).weekday() < 5]
-    weekend_cells = [c for c in resp.cells
-                     if dt.date(int(c.date[:4]), int(c.date[4:6]), int(c.date[6:8])).weekday() >= 5]
-    assert all(c.status in ("none", "future", "today_locked") for c in weekday_cells), \
-        "weekdays should not be misclassified as holiday when KRX is unavailable"
-    # Past and future weekend days show "weekend"/"future"; with now frozen to
-    # a weekday, no weekend cell falls on the frozen "today" so today_locked
-    # never overrides the weekend classification.
-    assert all(c.status in ("weekend", "future") for c in weekend_cells)
+    달력 화면은 휴장일 정확도가 떨어져도 보이는 편이 낫다 — 사용자는
+    `reason` 배너로 그 사실을 안다. 이 정책은 KIS 판과 같다.
+    """
+    _stub_source(monkeypatch, [])
+    resp = calendar_module.get_month_map(
+        data_dir=tmp_path, code="005930", year=2026, month=5,
+    )
+    assert resp.reason is not None
+    assert len(resp.cells) > 0
 
 
-def test_trading_days_in_range_raises_when_kis_fetch_fails(
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_calendar_state: None,
+def test_trading_days_in_range_raises_beyond_coverage(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    import hoga.api.kis_holidays as kis_holidays_module
-
-    def _raise(year, month):
-        raise kis_holidays_module.KisHolidayFetchError("KIS_APP_KEY/KIS_APP_SECRET missing")
-
-    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
-
-    with pytest.raises(calendar_module.TradingDayUnavailableError) as exc_info:
-        calendar_module.trading_days_in_range("20260501", "20260531")
-    assert exc_info.value.code == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+    """추측한 날짜 목록으로 진행하지 않는다 — enqueue 경로는 fail-fast 다."""
+    _stub_source(monkeypatch, _MAY_2026_TRADING_DAYS)
+    assert calendar_module.trading_days_in_range("20260501", "20260508")
+    with pytest.raises(calendar_module.TradingDayUnavailableError):
+        calendar_module.trading_days_in_range("20260501", "20270108")
 
 
 def test_reset_cache_clears_last_failure_reason(
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_calendar_state: None,
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    import hoga.api.kis_holidays as kis_holidays_module
-
-    def _raise(year, month):
-        raise kis_holidays_module.KisHolidayFetchError("creds missing")
-
-    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
-    calendar_module._trading_days_for(2026, 5)
+    _stub_source(monkeypatch, _MAY_2026_TRADING_DAYS)
+    calendar_module._trading_days_for(2027, 1)
     assert calendar_module.last_failure_reason() is not None
     calendar_module.reset_cache_for_tests()
     assert calendar_module.last_failure_reason() is None
 
 
-def test_calendar_cell_shows_no_upstream_data_for_sentinel(tmp_path: Path) -> None:
+def test_calendar_cell_shows_no_upstream_data_for_sentinel(tmp_path: Path, monkeypatch) -> None:
     """A sentinel directory must surface as CalendarCell.status =
     'no_upstream_data' on the wire so the frontend can render the '–' marker.
     captured_at_ms stays None (no capture timestamp — there was nothing to
@@ -396,11 +375,13 @@ def test_calendar_cell_shows_no_upstream_data_for_sentinel(tmp_path: Path) -> No
     raw_dir.mkdir(parents=True)
     (raw_dir / ".no_upstream_data").touch()
 
-    # Force the trading-day branch deterministically: pretend 20260319 is a
-    # trading day by populating the module cache.
-    from hoga.api.calendar import _month_cache, reset_cache_for_tests
+    # 거래일 분기를 결정론적으로 태운다 — 소스를 2026-03 전체로 고정한다.
+    from hoga.api.calendar import reset_cache_for_tests
     reset_cache_for_tests()
-    _month_cache[(2026, 3)] = {f"202603{day:02d}" for day in range(1, 32)}
+    monkeypatch.setattr(
+        calendar_module.trading_days_source, "trading_days",
+        lambda _data_dir=None: frozenset(f"202603{day:02d}" for day in range(1, 32)),
+    )
 
     try:
         resp = get_month_map(data_dir=tmp_path, code="003490", year=2026, month=3)
@@ -412,77 +393,3 @@ def test_calendar_cell_shows_no_upstream_data_for_sentinel(tmp_path: Path) -> No
     assert cell.captured_at_ms is None
 
 
-def test_trading_days_for_negative_caches_failures(
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_calendar_state: None,
-) -> None:
-    """Within the failure TTL a repeat call must NOT re-fetch — without this
-    the live poller's gate re-ran the full blocking fetch every ~20s cycle on
-    the event loop for the whole session during a chk-holiday outage."""
-    import hoga.api.kis_holidays as kis_holidays_module
-
-    calls = {"n": 0}
-
-    def _raise(year, month):
-        calls["n"] += 1
-        raise kis_holidays_module.KisHolidayFetchError("upstream down")
-
-    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
-
-    assert calendar_module._trading_days_for(2026, 5) is None
-    assert calendar_module._trading_days_for(2026, 5) is None  # within TTL
-    assert calls["n"] == 1  # second call served by the negative cache
-
-    # TTL expiry → one more real attempt
-    key = (2026, 5)
-    calendar_module._failure_cache[key] -= calendar_module._FAILURE_TTL_SECONDS + 1
-    assert calendar_module._trading_days_for(2026, 5) is None
-    assert calls["n"] == 2
-
-
-def test_trading_days_for_singleflights_concurrent_failures(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-    _reset_calendar_state: None,
-) -> None:
-    """Concurrent startup callers for the same month should share one failed
-    KIS attempt. The negative cache prevents later retries, but without a
-    lock two first callers can miss the cache together and duplicate the
-    chk-holiday 500/log wall."""
-    import hoga.api.kis_holidays as kis_holidays_module
-
-    calls = {"n": 0}
-
-    def _raise(year, month):
-        calls["n"] += 1
-        time.sleep(0.05)
-        raise kis_holidays_module.KisHolidayFetchError("upstream down")
-
-    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
-
-    with (
-        caplog.at_level("WARNING", logger="hoga.api.calendar"),
-        ThreadPoolExecutor(max_workers=2) as pool,
-    ):
-        got = list(pool.map(lambda _i: calendar_module._trading_days_for(2026, 5), range(2)))
-
-    assert got == [None, None]
-    assert calls["n"] == 1
-    warnings = [r for r in caplog.records if "KIS trading-day fetch failed" in r.message]
-    assert len(warnings) == 1
-
-
-def test_trading_days_for_maps_creds_missing_to_distinct_reason(
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_calendar_state: None,
-) -> None:
-    """KisCredentialsMissing → KIS_CREDENTIALS_MISSING (UI says 'set keys');
-    any other failure → KIS_HOLIDAY_FETCH_FAILED (UI says 'retry later')."""
-    import hoga.api.kis_holidays as kis_holidays_module
-
-    def _creds_missing(year, month):
-        raise kis_holidays_module.KisCredentialsMissing("KIS_APP_KEY/KIS_APP_SECRET missing")
-
-    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _creds_missing)
-    assert calendar_module._trading_days_for(2026, 5) is None
-    assert calendar_module.last_failure_reason() == UpstreamCode.KIS_CREDENTIALS_MISSING

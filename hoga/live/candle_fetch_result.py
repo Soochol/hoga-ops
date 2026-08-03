@@ -8,9 +8,11 @@ WS 쪽 `ticks.WsTick` 과 같은 자리다: KIS 어댑터(`kis_endpoints`)와 �
 금지) 정면 위반이 된다. 그래서 접두 없는 모듈로 분리했다. `kis_endpoints` 는 기존
 사용처를 위해 re-export 를 유지한다.
 
-`IndexCandlePoint`(`kis_models`)는 옮기지 않았다 — 바로 옆 `KisCandle` 이 "브로커 중립
-캔들 포트, 이름의 Kis 는 역사적, 리네임은 22개 사용처 파급이라 보류"로 선례를 세웠고,
-`kis_models` 는 어댑터가 아니라 모델 모듈이라 같은 처리로 일관성을 지킨다.
+`IndexCandlePoint`·`LiveCandle` 은 2026-08-03 까지 `kis_models` 에 남아 있었다. 당시
+판단은 "`kis_models` 는 어댑터가 아니라 모델 모듈이라 옮기지 않는다" 였으나, 그
+결과 `kiwoom_index_candles` 가 `kis_models` 를 import 하는 상태가 굳어져 **ADR-0116
+규율 1 위반이 상시화**돼 있었다. #1018(지도 #1005)에서 `candle_models` 로 이사하며
+해소했다 — 판정 기준은 "어댑터냐 모델이냐" 가 아니라 **소비자가 소스 무관이냐** 다.
 """
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from hoga.live.kis_models import IndexCandlePoint, KisCandle
+    from hoga.live.candle_models import IndexCandlePoint, LiveCandle
 
 
 @dataclass(frozen=True)
@@ -46,7 +48,7 @@ class DailyCandleFetchResult:
     `candles` is the cleaned, ASC-sorted result; `violations` is the per-row
     drop log so the caller can surface them to data_warnings.
     """
-    candles: list[KisCandle]
+    candles: list[LiveCandle]
     violations: list[DailyInvariantViolation] = field(default_factory=list)
 
 

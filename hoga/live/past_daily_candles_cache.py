@@ -15,9 +15,10 @@ import time
 from datetime import date, datetime
 from typing import Literal
 
-from hoga.live.kis_venue import KIS_KST, KisVenue
+from hoga.live.venue import Venue
 from hoga.util.cache_primitives import LruDict, TtlTriStateCache
 from hoga.util.cache_stats import CacheStats
+from hoga.util.timeenc import KST
 
 
 def _monotonic() -> float:
@@ -57,9 +58,9 @@ class PastDailyCandlesCache:
         # `past_daily_candles_cache.time.monotonic` patch seam still resolve; the
         # today clock is a module-local late lookup so that patch is observed.
         self._per_key: LruDict[
-            tuple[KisVenue, str], list[tuple[date, date, list[dict]]]
+            tuple[Venue, str], list[tuple[date, date, list[dict]]]
         ] = LruDict(max_past_keys, stats=self._batch_stats)
-        self._today_mem: TtlTriStateCache[tuple[KisVenue, str], dict] = TtlTriStateCache(
+        self._today_mem: TtlTriStateCache[tuple[Venue, str], dict] = TtlTriStateCache(
             today_ttl_seconds,
             max_today_keys,
             clock=_monotonic,
@@ -80,7 +81,7 @@ class PastDailyCandlesCache:
         for bar in bars:
             ts = bar.get("t_ms")
             if isinstance(ts, int):
-                dates.append(datetime.fromtimestamp(ts / 1000, tz=KIS_KST).date())
+                dates.append(datetime.fromtimestamp(ts / 1000, tz=KST).date())
         if not dates:
             return None
         return min(dates), max(dates)
@@ -96,7 +97,7 @@ class PastDailyCandlesCache:
         return max(frm, row_from), min(to, row_to), bars
 
     @staticmethod
-    def _parse_code_args(args: tuple[str, ...]) -> tuple[KisVenue, str]:
+    def _parse_code_args(args: tuple[str, ...]) -> tuple[Venue, str]:
         if len(args) == 1:
             return "KRX", args[0]
         if len(args) == 2:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리

@@ -4,13 +4,14 @@ from datetime import date, datetime
 
 import pytest
 
+from hoga.live.candle_models import IndexCandlePoint
 from hoga.live.index_candles_cache import (
     IndexCandleCacheHit,
     IndexCandlesCache,
     collect_index_candles_with_cache,
 )
-from hoga.live.kis_client import KIS_KST, DailyInvariantViolation, IndexCandleFetchResult
-from hoga.live.kis_models import IndexCandlePoint
+from hoga.live.kis_client import DailyInvariantViolation, IndexCandleFetchResult
+from hoga.util.timeenc import KST
 
 
 def point(day: str, close: float = 1.0) -> IndexCandlePoint:
@@ -20,7 +21,7 @@ def point(day: str, close: float = 1.0) -> IndexCandlePoint:
         int(day[6:8]),
         15,
         30,
-        tzinfo=KIS_KST,
+        tzinfo=KST,
     )
     return IndexCandlePoint(
         t_ms=int(dt.timestamp() * 1000),

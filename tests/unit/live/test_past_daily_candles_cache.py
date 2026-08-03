@@ -5,8 +5,8 @@ import time
 from datetime import date, datetime
 from unittest.mock import patch
 
-from hoga.live.kis_venue import KIS_KST
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
+from hoga.util.timeenc import KST
 
 
 def _bar(t_ms: int) -> dict:
@@ -14,7 +14,7 @@ def _bar(t_ms: int) -> dict:
 
 
 def _bar_for(d: date) -> dict:
-    return _bar(int(datetime(d.year, d.month, d.day, 9, 0, tzinfo=KIS_KST).timestamp() * 1000))
+    return _bar(int(datetime(d.year, d.month, d.day, 9, 0, tzinfo=KST).timestamp() * 1000))
 
 
 def test_empty_code_returns_no_batches() -> None:

@@ -235,10 +235,10 @@ def _market_clock_closed_for_capture(now_ms: int) -> bool:
     reconnecting 앰버로 보이나 드물어 수용(quote 게이트와 동일 트레이드오프)."""
     from datetime import datetime  # noqa: PLC0415
 
-    from .kis_client import KIS_KST  # noqa: PLC0415
+    from .kis_client import KST  # noqa: PLC0415
     from .session_gate import market_phase  # noqa: PLC0415
 
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KST)
     if kst.weekday() >= 5:  # noqa: PLR2004 — 토/일
         return True
     return market_phase(now_ms) != "regular"  # regular = 09:00–15:30
@@ -535,3 +535,35 @@ async def start_kiwoom_session_watchdog(
             await asyncio.sleep(interval_s)
 
     return asyncio.create_task(loop(), name="kiwoom-session-watchdog")
+
+
+def start_trading_calendar_refresher(
+    data_dir,
+    *,
+    interval_s: float = 6 * 3600.0,
+) -> asyncio.Task:
+    """거래일 달력 오버레이 갱신 태스크 (PR-H · #1044).
+
+    **조회 경로가 아니라 갱신 경로다.** 조회는 커밋된 시드 + 오버레이 파일만 읽고
+    벤더를 부르지 않는다. 이 태스크는 그 오버레이를 키움 `ka20006` 으로 하루씩
+    밀어 준다.
+
+    저빈도(6시간)로 충분하다 — 새 거래일은 하루에 하나 늘 뿐이다. 실패해도 조회는
+    시드까지 그대로 답하므로 이 태스크의 사망이 달력을 죽이지 않는다. 그게 KIS
+    판과 가장 크게 다른 점이다(그쪽은 조회가 곧 원격 호출이라 장애가 곧 조회 실패).
+    """
+    log = logging.getLogger(__name__)
+
+    async def loop() -> None:
+        while True:
+            try:
+                from hoga.api.trading_days import refresh_overlay  # noqa: PLC0415
+
+                await refresh_overlay(data_dir)
+            except Exception:
+                # 갱신 실패는 **조회를 막지 않는다** — 시드까지는 그대로 답한다.
+                # 다만 반복되면 커버리지가 더 이상 전진하지 않으므로 ERROR 다.
+                log.exception("live.trading_calendar.refresh_failed")
+            await asyncio.sleep(interval_s)
+
+    return asyncio.create_task(loop(), name="trading-calendar-refresher")

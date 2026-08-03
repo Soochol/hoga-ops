@@ -70,6 +70,26 @@ def test_cold_start_reports_warming_not_error(tmp_path) -> None:
     assert body["put_call"] is None
 
 
+def test_put_call_series_rides_the_response(tmp_path) -> None:
+    # "지금 풋이 쌓이는 중인가" 는 추이가 있어야 읽힌다 — 스냅샷 P/C 옆에 당일
+    # 시계열이 함께 실려야 화면이 그린다.
+    client = TestClient(_app(tmp_path))
+    client.get("/api/sentiment/option")
+    rt = get_runtime(lambda: None)
+    rt._full = _snap([
+        _q("call", 100.0, oi=10, volume=100),
+        _q("put", 100.0, oi=10, volume=50),
+    ])
+    rt._full_at = 1_000
+    rt._expiry = "202608"
+    rt._pc_series.append(t_ms=500, date_key="20260803", volume_ratio=0.4, oi_ratio=0.8)
+    rt._pc_series.append(t_ms=1_000, date_key="20260803", volume_ratio=0.5, oi_ratio=1.0)
+
+    body = client.get("/api/sentiment/option").json()
+    assert [pt["t_ms"] for pt in body["put_call_series"]] == [500, 1_000]
+    assert body["put_call_series"][1]["volume_ratio"] == 0.5
+
+
 def test_chain_size_rides_the_warming_response(tmp_path) -> None:
     """대기 화면이 "N종목 훑는 중" 을 쓰려면 데이터가 없을 때도 크기가 와야 한다.
 

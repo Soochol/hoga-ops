@@ -144,6 +144,17 @@ def test_iv_skew_drops_strikes_with_no_liquidity() -> None:
     assert [p.strike for p in sk.points] == [110.0, 120.0]
 
 
+def test_iv_skew_points_carry_oi_for_confidence() -> None:
+    # 화면이 저유동성 IV 를 투명도로 감쇠하려면 포인트에 OI 가 실려야 한다.
+    # 콜+풋 합산 — IV 없는 쪽(풋)의 미결제도 그 행사가의 유동성이다.
+    snap = _snap([
+        _q("call", 110.0, oi=12, iv=15.0),
+        _q("put", 110.0, oi=8, iv=0.0),  # IV 결측이지만 OI 는 합산 대상
+    ])
+    sk = iv_skew(snap)
+    assert sk.points[0].oi == 20
+
+
 def test_iv_skew_no_valid_iv_returns_none() -> None:
     snap = _snap([_q("call", 100.0, oi=5, iv=0.0), _q("put", 100.0, oi=5, iv=0.0)])
     sk = iv_skew(snap)
