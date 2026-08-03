@@ -107,3 +107,43 @@ describe('AppErrorBoundary', () => {
     expect(screen.queryByText('화면을 표시하지 못했습니다')).toBeNull();
   });
 });
+
+describe('배포로 청크가 갈린 경우', () => {
+  function Boom({ message }: { message: string }): never {
+    throw new Error(message);
+  }
+
+  // 브라우저별 실제 문구. 하나만 잡으면 나머지 브라우저 사용자는 죽은 버튼을 본다.
+  const MESSAGES = [
+    'Failed to fetch dynamically imported module: http://x/assets/Settings-abc.js',
+    'error loading dynamically imported module: http://x/assets/Settings-abc.js',
+    'Importing a module script failed.',
+  ];
+
+  it.each(MESSAGES)('%s → 새 버전 안내로 바뀐다', (message) => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(
+      <AppErrorBoundary>
+        <Boom message={message} />
+      </AppErrorBoundary>,
+    );
+    expect(screen.getByText('새 버전이 배포되었습니다')).toBeTruthy();
+    // '다시 시도' 는 같은 404 를 다시 부르므로 반드시 실패한다 — 내려야 한다.
+    expect(screen.queryByText('다시 시도')).toBeNull();
+    expect(screen.getByText('새로고침')).toBeTruthy();
+    spy.mockRestore();
+  });
+
+  it('평범한 렌더 오류는 두 출구를 그대로 유지한다', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(
+      <AppErrorBoundary>
+        <Boom message="Cannot read properties of undefined" />
+      </AppErrorBoundary>,
+    );
+    expect(screen.getByText('화면을 표시하지 못했습니다')).toBeTruthy();
+    expect(screen.getByText('다시 시도')).toBeTruthy();
+    expect(screen.getByText('새로고침')).toBeTruthy();
+    spy.mockRestore();
+  });
+});
