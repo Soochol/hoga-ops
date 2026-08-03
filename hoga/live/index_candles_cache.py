@@ -6,9 +6,9 @@ from datetime import date, datetime, timedelta
 from typing import TypeAlias
 
 from hoga.live.candle_fetch_result import DailyInvariantViolation, IndexCandleFetchResult
-from hoga.live.kis_models import IndexCandlePoint
-from hoga.live.kis_venue import KIS_KST
+from hoga.live.candle_models import IndexCandlePoint
 from hoga.util.cache_stats import CacheStats
+from hoga.util.timeenc import KST
 
 IndexCandleCacheKey: TypeAlias = tuple[str, str]
 IndexCandleCacheBatch: TypeAlias = tuple[
@@ -133,7 +133,7 @@ def _fmt(d: date) -> str:
 
 
 def _point_date(point: IndexCandlePoint) -> date:
-    return datetime.fromtimestamp(point.t_ms / 1000, KIS_KST).date()
+    return datetime.fromtimestamp(point.t_ms / 1000, KST).date()
 
 
 def _filter_dedupe_points(

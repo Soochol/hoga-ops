@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -9,8 +10,8 @@ from hoga.api.models import LiveSettingsResponse
 from hoga.live import api as live_api, kis_runtime, lifecycle
 from hoga.live.api import build_router
 from hoga.live.buffer import LiveBuffer
+from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
 from hoga.live.kis_client import InvestorNetFetchResult, KisQuote
-from hoga.live.kis_models import InvestorNetPoint, InvestorTrendEstimateRow
 from hoga.live.settings import save_live_settings
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 
@@ -84,7 +85,7 @@ def _forbid_run_with_capacity(monkeypatch) -> dict[str, int]:
         calls["count"] += 1
         raise AssertionError("run_with_capacity must not be called during KIS REST bypass")
 
-    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", fake_run_with_capacity)
     return calls
 
 
@@ -209,3 +210,28 @@ def test_investor_routes_bypass_degrade_without_kis_capacity(
     assert fake.investor_net_fetch_count == 0
     assert fake.index_investor_net_fetch_count == 0
     assert fake.investor_trend_estimate_fetch_count == 0
+
+
+@pytest.fixture(autouse=True)
+def _bridge_kis_seed_to_kiwoom(monkeypatch):
+    """PR-D(#1040) 칼 컷오버 브리지 — `kis_runtime` 시드를 키움 클라이언트 자리로.
+
+    bypass 계약("우회 중에는 REST 를 부르지 않는다")은 벤더와 무관하다 — 시임만
+    옮기면 그대로 성립한다.
+    """
+    def _client(data_dir, account_id=0):
+        seeded = live_api.kis_runtime.get_kis_client(0)
+        if seeded is not None:
+            return seeded
+        return live_api.kis_runtime.ensure_kis_client_from_env(data_dir)
+
+    async def _fetch(client, codes, *, venue="KRX"):
+        return await client.fetch_multi_price(codes, venue=venue)
+
+    async def _run(scheduler, *, key, api_id, priority, fetch_fn, client):
+        return await fetch_fn(client)
+
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_rest_client", _client)
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda: object())
+    monkeypatch.setattr(live_api.kiwoom_multi_quote, "fetch_multi_price", _fetch)
+    monkeypatch.setattr(live_api.kiwoom_access, "run_with_capacity", _run)

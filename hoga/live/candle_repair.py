@@ -48,7 +48,7 @@ from hoga.api.calendar import is_trading_day
 from hoga.api.queries import QueryEngine
 from hoga.api.sources import resolve_candle_source
 from hoga.live import kis_access
-from hoga.live.kis_models import KisCandle
+from hoga.live.candle_models import LiveCandle
 from hoga.tables import candles as candles_tbl
 from hoga.tables.candles import Candle
 from hoga.util.atomic_write import atomic_write_json
@@ -61,7 +61,7 @@ log = logging.getLogger(__name__)
 
 # (code, date_yyyymmdd) -> 그 KST 거래일의 분봉. 빈 리스트 = 데이터 없음(만료/미보유).
 # 앱은 KIS 클라이언트로, 테스트는 canned 응답으로 주입한다.
-MinuteFetch = Callable[[str, str], Awaitable[list[KisCandle]]]
+MinuteFetch = Callable[[str, str], Awaitable[list[LiveCandle]]]
 
 # meta.json ``created_from`` 마커 — 복구본 kis_api Stock-Date를 식별한다.
 # /api/range가 이 값을 읽어 프론트에 "KIS 보충 캔들" 배지를 띄운다.
@@ -138,7 +138,7 @@ def _has_served_candles(engine: QueryEngine, code: str, date_s: str) -> bool:
     return len(candles_tbl.query_all(engine.conn, path=candles_path)) > 0
 
 
-def _kis_candle_to_row(c: KisCandle, date_s: str) -> Candle:
+def _kis_candle_to_row(c: LiveCandle, date_s: str) -> Candle:
     """KIS 분봉(t_ms=Unix epoch ms)을 candles.parquet 스키마로.
 
     ts_ms는 자정 기준 ms(KST). vol_a=거래량, vol_b=0 — 스크리너 일봉 갭필이 쓰는

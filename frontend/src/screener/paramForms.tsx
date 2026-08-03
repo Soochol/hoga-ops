@@ -72,7 +72,9 @@ export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; o
   </div>;
 }
 
-/** (기준시각) 폼 — ask_depth_renewal(매도 총잔량 기준시각 돌파). 당일 전용. */
+/** (기준시각, 이전 최대 대비 X%) 폼 — ask/bid_depth_renewal 공용. 당일 전용.
+ *  문구는 side 중립이다(DepthPeakForm 과 같은 규칙) — 어느 쪽인지는 조건 행 라벨이
+ *  말한다. ParamForm 은 params/onChange 만 받으므로 side 를 알 방법도 없다. */
 export function DepthRenewalForm({ params, onChange }: { params: DepthRenewalParams; onChange: (p: DepthRenewalParams) => void }) {
   // 범위 밖·미완성 입력(사용자가 시를 지우는 중 등)은 마지막 유효값을 유지한다 —
   // 여기서 0 이나 NaN 을 흘리면 서버가 422 로 스캔을 통째로 거절한다.
@@ -89,7 +91,7 @@ export function DepthRenewalForm({ params, onChange }: { params: DepthRenewalPar
           value={hhmmToTimeValue(params.start_hhmm)} onChange={(e) => onTime(e.target.value)}
           className="w-28 bg-bg-input border border-border rounded-md px-2 py-1 font-data text-sm tabular-nums text-fg" />
       </label>
-      <span className="text-sm text-fg-dimmer">이후 매도 총잔량이</span>
+      <span className="text-sm text-fg-dimmer">이후 총잔량이</span>
       <Num label="이전 최대 대비" value={params.threshold_pct}
         onChange={(n) => onChange({ ...params, threshold_pct: n ?? 100 })} />
       <span className="text-sm text-fg-dimmer">% 이상</span>

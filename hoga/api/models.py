@@ -1454,8 +1454,13 @@ class AskDepthRenewalLeaf(BaseModel):
     id: str
     params: DepthRenewalParams
 
+class BidDepthRenewalLeaf(BaseModel):
+    type: Literal["bid_depth_renewal"] = "bid_depth_renewal"
+    id: str
+    params: DepthRenewalParams
+
 ConditionLeaf = Annotated[
-    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -1517,13 +1522,20 @@ class DepthPeakValue(BaseModel):                       # 결과 행 검증용 �
     bid_past_peak: int | None = None
     bid_have_days: int = 0
     bid_need_days: int = 0
-    # 기준시각 돌파 조건(ask_depth_renewal) 전용 — 개장~기준시각 / 기준시각~현재의 당일
-    # 최댓값. peak 조건의 ask_today/ask_past_peak 과 **의미가 다르므로** 필드를 나눈다
-    # (그쪽 배지는 "지난 N일 peak" 이라고 쓴다 — 여기 값을 끼우면 문구가 거짓이 된다).
-    # 조건이 없으면 None 이고, 그때 배지는 이 행을 그리지 않는다.
+    # 기준시각 돌파 조건(ask/bid_depth_renewal) 전용 — 개장~기준시각 / 기준시각~현재의
+    # 당일 최댓값. peak 조건의 ask_today/ask_past_peak 과 **의미가 다르므로** 필드를
+    # 나눈다(그쪽 배지는 "지난 N일 peak" 이라고 쓴다 — 여기 값을 끼우면 문구가 거짓이
+    # 된다). 조건이 없으면 None 이고, 그때 배지는 그 행을 그리지 않는다.
+    #
+    # 기준시각도 side 별이다. 매도 12:00 · 매수 13:00 처럼 섞어 쓸 수 있는데 한 벌만
+    # 실으면 한쪽 배지가 남의 시각을 달고 나온다 — peak 조건이 ask_need_days/
+    # bid_need_days 로 같은 문제를 푼 것과 같은 이유다.
     ask_pre_max: int | None = None
     ask_post_max: int | None = None
-    renewal_start_hhmm: int | None = None
+    ask_renewal_start_hhmm: int | None = None
+    bid_pre_max: int | None = None
+    bid_post_max: int | None = None
+    bid_renewal_start_hhmm: int | None = None
 
 class ScreenerResponse(BaseModel):
     status: Literal["ok", "not_seeded", "building"]
@@ -1800,3 +1812,80 @@ StudyLayoutPresetListRow = StudyLayoutPreset
 class StudyLayoutPresetsFile(BaseModel):
     schema_version: int = 1
     presets: list[StudyLayoutPreset] = Field(default_factory=list)
+
+
+# ── 옵션 심리 패널 (ADR-0135) ────────────────────────────────────────────────
+# 계층별 as_of 를 따로 싣는 이유: 전수(5분)와 ATM(30초)의 관측 시각이 다르다.
+# 하나로 뭉치면 5분 전 GEX 와 30초 전 P/C 가 같은 시각으로 표시되어 오독을 부른다.
+
+
+class PutCallRatioModel(BaseModel):
+    volume_ratio: float | None
+    oi_ratio: float | None
+    call_volume: int
+    put_volume: int
+    call_oi: int
+    put_oi: int
+
+
+class StrikeOiModel(BaseModel):
+    strike: float
+    call_oi: int
+    put_oi: int
+
+
+class OiDistributionModel(BaseModel):
+    strikes: list[StrikeOiModel]
+    max_pain: float | None
+
+
+class GexPointModel(BaseModel):
+    strike: float
+    gex: float
+
+
+class GammaExposureModel(BaseModel):
+    points: list[GexPointModel]
+    total: float
+    flip_strike: float | None
+
+
+class IvPointModel(BaseModel):
+    strike: float
+    call_iv: float | None
+    put_iv: float | None
+    #: 행사가 미결제 합 — IV 신뢰도. 화면이 저유동성 포인트의 투명도를 감쇠한다.
+    oi: int = 0
+
+
+class IvSkewModel(BaseModel):
+    points: list[IvPointModel]
+    atm_iv: float | None
+    risk_reversal_25d: float | None
+
+
+class PutCallSeriesPointModel(BaseModel):
+    t_ms: int
+    volume_ratio: float | None
+    oi_ratio: float | None
+
+
+class OptionSentimentResponse(BaseModel):
+    #: 휴면 사유. None 이 아니면 나머지 필드는 비어 있을 수 있다.
+    unavailable: str | None = None
+    expiry: str | None = None
+    #: 근월물 체인 종목 수. 만기마다 다르므로(202608=780·202609=1012) 화면이
+    #: 대기 안내 문구를 이 값으로 만든다 — 상수로 박으면 롤오버 때 조용히 틀린다.
+    chain_size: int | None = None
+    underlying: float | None = None
+    #: 전 행사가 스냅샷 관측 시각 — Max Pain·GEX 의 as_of.
+    full_as_of_ms: int | None = None
+    #: ATM 창 스냅샷 관측 시각 — P/C·IV 스큐의 as_of.
+    atm_as_of_ms: int | None = None
+    put_call: PutCallRatioModel | None = None
+    #: 당일 P/C 시계열(전수 5분마다 한 점, KST 자정 리셋, 프로세스 메모리 한정).
+    put_call_series: list[PutCallSeriesPointModel] = Field(default_factory=list)
+
+    oi_distribution: OiDistributionModel | None = None
+    gamma_exposure: GammaExposureModel | None = None
+    iv_skew: IvSkewModel | None = None

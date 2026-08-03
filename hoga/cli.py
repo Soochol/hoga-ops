@@ -673,6 +673,54 @@ def validate(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기
         console.print(f"[blue]--fix: rewrote invariant_violations on {fix_count} files.[/blue]")
 
 
+def _report_derived_and_dead(
+    data_dir: Path, *, execute: bool, include_dead_trees: bool,
+) -> None:
+    """`hoga prune` 의 raw 이후 절 — 파생 트리 회수와 죽은 트리 보고.
+
+    prune() 본문에서 뺀 이유는 분기 수 때문만이 아니다: 이 절은 raw 게이트와
+    **판정 축이 다르다**(재계산 가능 여부이지 완결성이 아니다). 섞어 두면 읽는
+    사람이 같은 규칙의 연장으로 오해한다.
+    """
+    from hoga.api.prune import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈)
+        find_dead_trees,
+        prune_default_now,
+        prune_derived,
+        remove_dead_trees,
+        resolve_derived_retention_days,
+    )
+
+    retention = resolve_derived_retention_days()
+    derived = prune_derived(
+        data_dir, retention_days=retention, now=prune_default_now(), execute=execute,
+    )
+    if derived.total_items:
+        verb = "pruned" if execute else "would delete"
+        console.print(f"\n[bold]derived trees[/bold] ({verb}, 보존 {retention}일)")
+        for name, (n, size) in derived.by_tree.items():
+            if n:
+                console.print(f"  {name:<34}{n:>6} items {size / 1024**3:>8.1f} GiB")
+
+    # 코드가 읽지 않는 트리는 **항상 보고**하고 삭제만 옵트인이다 — 안 보이면
+    # 없는 것과 같아서 몇 GB 가 조용히 남는다.
+    dead = find_dead_trees(data_dir)
+    if not dead:
+        return
+    console.print("\n[bold]dead trees[/bold] (no code reads these)")
+    for name, size in sorted(dead.items(), key=lambda kv: -kv[1]):
+        console.print(f"  {name:<34}       {size / 1024**3:>8.1f} GiB")
+    if not include_dead_trees:
+        console.print(
+            "\n[blue]--include-dead-trees[/blue] (with --execute) would remove them."
+        )
+    elif execute:
+        n, reclaimed = remove_dead_trees(data_dir)
+        console.print(
+            f"[green]removed[/green] {n} dead trees, "
+            f"{reclaimed / 1024**3:.1f} GiB reclaimed"
+        )
+
+
 @app.command()
 def prune(
     days: int | None = typer.Option(
@@ -697,6 +745,14 @@ def prune(
             "Also prune SOURCE_PARTIAL raw whose gap is UNCONFIRMED but past the "
             "upstream retention window, so confirmation is permanently impossible "
             "(ADR-0135). Irreversible: that day can never be re-parsed."
+        ),
+    ),
+    include_dead_trees: bool = typer.Option(
+        False, "--include-dead-trees",
+        help=(
+            "Also delete trees no code reads any more (kis-past-candles, _trash_*). "
+            "These are reported unconditionally; deleting them is a judgement call, "
+            "so it stays opt-in."
         ),
     ),
 ) -> None:
@@ -768,6 +824,10 @@ def prune(
                 "so the gap can never be confirmed). [red]Irreversible[/red] — "
                 "see ADR-0135."
             )
+
+    _report_derived_and_dead(
+        data_dir, execute=execute, include_dead_trees=include_dead_trees,
+    )
 
     head = disk_headroom(data_dir)
     if head is not None:

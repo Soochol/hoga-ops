@@ -79,33 +79,38 @@ def build_test_router(data_dir: Path) -> APIRouter:
 
     @router.post("/seed-trading-days")
     def seed_trading_days(year: int, month: int) -> dict:
-        """해당 달의 거래일 캐시를 **평일**로 채운다(KIS 없이).
+        """해당 달의 **평일 전부**를 거래일로 만든다(벤더 없이).
 
-        범위 캡처 enqueue 는 `trading_days_in_range` 로 거래일 목록을 확정하는데, 이
-        경로에는 폴백이 없어 KIS 자격증명이 없으면 503
-        (`KIS_CREDENTIALS_MISSING`)으로 즉시 실패한다 — CI 에는 자격증명이 없으므로
-        `range-capture` · `cookie-pause` 가 통과할 수 없었다(실측: UI 에 "범위 캡처 시작
-        실패 — KIS 자격증명 미설정"). 자격증명이 **있는** 로컬은 더 나쁘다: 반복 실행이
-        KIS 토큰 발급 쿨다운(분당 1회)에 걸려 같은 스펙이 201/503 을 오간다.
+        범위 캡처 enqueue 는 `trading_days_in_range` 로 거래일 목록을 확정하는데,
+        e2e 러너에는 그 달이 달력 커버리지 밖일 수 있다(정적 시드는 커밋 시점까지만
+        덮는다). 그러면 근사 경고가 붙거나 날짜 집합이 실행 시점에 따라 달라져
+        **개수 단언이 흔들린다.**
 
-        `trading_days_in_range` 의 docstring 이 지정한 확장점(`_month_cache` 선주입)을
-        그대로 쓴다. 업스트림 클라이언트를 `FakeHogaplayClient` 로 갈아끼우는 기존 테스트
-        모드 설계와 같은 결이다 — 라우터 자체가 프로덕션에 마운트되지 않는다.
+        PR-H(#1044) 이전에는 `_calendar._month_cache` 를 선주입했다. 그 캐시는
+        사라졌고, 지금의 확장점은 **data_dir 오버레이**다 —
+        `trading_days.append_overlay` 가 공개 API 이고 프로덕션 갱신 경로가 쓰는
+        것과 같은 자리다. 오버레이는 합집합이라 시드가 휴장으로 아는 날짜도
+        거래일로 덮어쓴다(그게 이 라우트의 원래 계약이다).
 
-        휴장일은 무시된다(평일이면 전부 거래일). e2e 결정성을 위해 의도한 것이며, 진짜
-        휴장일 판정은 `kis_holidays` 단위 테스트가 덮는다.
+        휴장일은 무시된다(평일이면 전부 거래일). e2e 결정성을 위해 의도한 것이며,
+        진짜 휴장일 판정은 `tests/api/test_trading_days_source.py` 가 덮는다.
         """
-        from hoga.api import calendar as _calendar  # noqa: PLC0415 — 테스트 전용 지연 import
+        from hoga.api import (  # noqa: PLC0415 — 테스트 전용 지연 import(프로덕션 미마운트)
+            calendar as _calendar,
+            trading_days as _trading_days,
+        )
 
         last = calendar_mod.monthrange(year, month)[1]
-        weekdays = {
+        weekdays = sorted(
             f"{year:04d}{month:02d}{day:02d}"
             for day in range(1, last + 1)
             if dt.date(year, month, day).weekday() < 5  # noqa: PLR2004 — 5=토
-        }
-        with _calendar._trading_days_lock:
-            _calendar._month_cache[(year, month)] = weekdays
-            _calendar._failure_cache.pop((year, month), None)
+        )
+        _trading_days.append_overlay(data_dir, weekdays)
+        # 세션 판정 캐시(ADR-0064)까지 비운다 — 오늘에 대한 옛 False 가 남아 있으면
+        # 새로 심은 거래일이 반영되지 않는다.
+        _calendar.reset_cache_for_tests()
+        _calendar.set_data_dir(data_dir)
         return {"ok": True, "year": year, "month": month, "trading_days": len(weekdays)}
 
     return router
