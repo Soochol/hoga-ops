@@ -1454,8 +1454,13 @@ class AskDepthRenewalLeaf(BaseModel):
     id: str
     params: DepthRenewalParams
 
+class BidDepthRenewalLeaf(BaseModel):
+    type: Literal["bid_depth_renewal"] = "bid_depth_renewal"
+    id: str
+    params: DepthRenewalParams
+
 ConditionLeaf = Annotated[
-    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -1517,13 +1522,20 @@ class DepthPeakValue(BaseModel):                       # 결과 행 검증용 �
     bid_past_peak: int | None = None
     bid_have_days: int = 0
     bid_need_days: int = 0
-    # 기준시각 돌파 조건(ask_depth_renewal) 전용 — 개장~기준시각 / 기준시각~현재의 당일
-    # 최댓값. peak 조건의 ask_today/ask_past_peak 과 **의미가 다르므로** 필드를 나눈다
-    # (그쪽 배지는 "지난 N일 peak" 이라고 쓴다 — 여기 값을 끼우면 문구가 거짓이 된다).
-    # 조건이 없으면 None 이고, 그때 배지는 이 행을 그리지 않는다.
+    # 기준시각 돌파 조건(ask/bid_depth_renewal) 전용 — 개장~기준시각 / 기준시각~현재의
+    # 당일 최댓값. peak 조건의 ask_today/ask_past_peak 과 **의미가 다르므로** 필드를
+    # 나눈다(그쪽 배지는 "지난 N일 peak" 이라고 쓴다 — 여기 값을 끼우면 문구가 거짓이
+    # 된다). 조건이 없으면 None 이고, 그때 배지는 그 행을 그리지 않는다.
+    #
+    # 기준시각도 side 별이다. 매도 12:00 · 매수 13:00 처럼 섞어 쓸 수 있는데 한 벌만
+    # 실으면 한쪽 배지가 남의 시각을 달고 나온다 — peak 조건이 ask_need_days/
+    # bid_need_days 로 같은 문제를 푼 것과 같은 이유다.
     ask_pre_max: int | None = None
     ask_post_max: int | None = None
-    renewal_start_hhmm: int | None = None
+    ask_renewal_start_hhmm: int | None = None
+    bid_pre_max: int | None = None
+    bid_post_max: int | None = None
+    bid_renewal_start_hhmm: int | None = None
 
 class ScreenerResponse(BaseModel):
     status: Literal["ok", "not_seeded", "building"]

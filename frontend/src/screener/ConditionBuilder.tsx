@@ -14,7 +14,7 @@ export const CONDITION_GROUPS: Array<[string, ConditionType[]]> = [
   ['가격', ['price_range']],
   ['거래대금', ['trade_value', 'trade_value_period']],
   ['신고가/거래량', ['new_high_today', 'new_high', 'new_high_vol_today', 'new_high_vol', 'high_off_peak']],
-  ['호가 잔량', ['ask_depth_new_high', 'bid_depth_new_high', 'ask_depth_renewal']],
+  ['호가 잔량', ['ask_depth_new_high', 'bid_depth_new_high', 'ask_depth_renewal', 'bid_depth_renewal']],
   ['이동평균', ['ma']],
   ['등락률', ['change_pct']],
 ];

@@ -5,8 +5,10 @@
 당일 값은 오늘 WS/REST(kis_live/kis_api) 데이터에서, 과거 값은 hogaplay 캡처의
 depth_daily 집계에서 온다(요구사항: 당일=실시간, 과거=hogaplay).
 
-**기준시각 돌파** (``ask_depth_renewal``, 당일 전용): 기준시각 이후 매도 총잔량
-최댓값 ≥ (threshold_pct/100) × 개장~기준시각 최댓값. 과거일을 전혀 보지 않으므로
+**기준시각 돌파** (``ask_depth_renewal`` / ``bid_depth_renewal``, 당일 전용):
+기준시각 이후 그 side 총잔량 최댓값 ≥ (threshold_pct/100) × 개장~기준시각 최댓값.
+매도·매수는 같은 스캔에서 함께 나오므로 기준시각이 같으면 쿼리도 한 번이다.
+과거일을 전혀 보지 않으므로
 depth_daily·코퍼스에 의존하지 않는다 — 애초에 쓸 수도 없다(depth_daily 는 하루당
 스칼라 하나여서 시각 분해가 없다). 대신 당일 원본 스냅샷을 기준시각으로 갈라 읽는다.
 이후 창의 **최댓값**으로 보므로 하루 중 한 번 돌파하면 재조회에도 계속 잡힌다 —
@@ -45,11 +47,13 @@ BID_TYPE = "bid_depth_new_high"
 # hogaplay 집계(depth_daily)를 보지만 이쪽은 **당일 원본 스냅샷만** 본다: depth_daily
 # 는 하루당 스칼라 하나라 시각 분해가 없어서 애초에 쓸 수 없다.
 RENEWAL_ASK_TYPE = "ask_depth_renewal"
+RENEWAL_BID_TYPE = "bid_depth_renewal"
 _PEAK_TYPES = (ASK_TYPE, BID_TYPE)
+_RENEWAL_TYPES = (RENEWAL_ASK_TYPE, RENEWAL_BID_TYPE)
 # 사전계산 코드셋으로 처리되는 조건 타입의 **단일 진실 소스**. screener_scan 이 같은
 # 목록을 따로 들고 있었는데, 새 타입을 한쪽에만 더하면 다른 쪽이 CONDITION_COMPILERS
 # 조회로 흘러 KeyError 로 죽는다 — 그래서 여기서 import 하게 했다.
-DEPTH_TYPES = (ASK_TYPE, BID_TYPE, RENEWAL_ASK_TYPE)
+DEPTH_TYPES = (*_PEAK_TYPES, *_RENEWAL_TYPES)
 _DEPTH_TYPES = DEPTH_TYPES
 # 당일 값 소스: 관심종목은 KIS WS 승격(kis_live), 히트맵은 키움 WS 승격(kiwoom_live,
 # ADR-0116). REST30 승격(kis_api)은 캡처와 함께 제거됨(2026-07-17 — api 폴백 없음).
@@ -192,17 +196,17 @@ def _max_opt(a: int | None, b: int | None) -> int | None:
 
 def _today_split_peaks(
     data_dir: Path, codes: set[str], today: str, *, split_ms: int,
-) -> dict[str, tuple[int | None, int | None]]:
-    """오늘 live parquet 의 code별 (기준시각 이전 최대, 이후 최대) 매도 총잔량.
+) -> dict[str, snapshots_tbl.DepthSplitPeak]:
+    """오늘 live parquet 의 code별 기준시각 분할 peak(매도·매수 양측).
 
-    두 소스(관심=KIS WS, 히트맵=키움 WS)가 모두 있으면 **창별로 각각** 최댓값을
-    취한다 — :func:`_fold_peaks` 와 같은 규칙.
+    두 소스(관심=KIS WS, 히트맵=키움 WS)가 모두 있으면 **창별·side별로 각각**
+    최댓값을 취한다 — :func:`_fold_peaks` 와 같은 규칙.
 
     배치 1쿼리를 쓰고, 실패하면 같은 배치 함수를 **파일 1개짜리로** 재호출해 되돌린다.
     별도의 단건 SQL 을 만들지 않는 이유는 술어가 두 벌이 되면 정의가 갈릴 수 있어서다
     — 여기서 필요한 건 속도가 아니라 파일 하나가 배치 전체를 죽이지 않는 격리다.
     """
-    out: dict[str, tuple[int | None, int | None]] = {}
+    out: dict[str, snapshots_tbl.DepthSplitPeak] = {}
     day_dir = data_dir / "parquet" / today
     if not day_dir.exists():
         return out
@@ -211,10 +215,16 @@ def _today_split_peaks(
         return out
 
     def _fold(code: str, peak: snapshots_tbl.DepthSplitPeak) -> None:
-        prev_pre, prev_post = out.get(code, (None, None))
-        out[code] = (
-            _max_opt(prev_pre, peak.pre_ask_peak),
-            _max_opt(prev_post, peak.post_ask_peak),
+        prev = out.get(code)
+        if prev is None:
+            out[code] = peak
+            return
+        out[code] = snapshots_tbl.DepthSplitPeak(
+            pre_ask_peak=_max_opt(prev.pre_ask_peak, peak.pre_ask_peak),
+            post_ask_peak=_max_opt(prev.post_ask_peak, peak.post_ask_peak),
+            pre_bid_peak=_max_opt(prev.pre_bid_peak, peak.pre_bid_peak),
+            post_bid_peak=_max_opt(prev.post_bid_peak, peak.post_bid_peak),
+            eligible_count=prev.eligible_count + peak.eligible_count,
         )
 
     con = connect_bounded()
@@ -293,7 +303,7 @@ def evaluate(  # noqa: PLR0912, PLR0915
     (그 커버리지 배너의 처방인 "지난 N일 수집"이 당일 전용 조건엔 무의미하다).
     """
     peak_leaves = [c for c in conditions if c.type in _PEAK_TYPES]
-    renewal_leaves = [c for c in conditions if c.type == RENEWAL_ASK_TYPE]
+    renewal_leaves = [c for c in conditions if c.type in _RENEWAL_TYPES]
     warnings: list[str] = []
 
     name_by = _depth_universe(data_dir)
@@ -375,9 +385,11 @@ def evaluate(  # noqa: PLR0912, PLR0915
             bid_peak_by, bid_have_by = _past_agg(
                 dd, _window_dates(corpus, before=today_ref, n=bid_n), "bid_peak")
 
-    # === 기준시각 돌파 조건 (ask_depth_renewal) — 당일 원본 스냅샷만 본다 ===
-    split_by: dict[str, tuple[int | None, int | None]] = {}
-    sidecar_hhmm: int | None = None
+    # === 기준시각 돌파 조건 (ask/bid_depth_renewal) — 당일 원본 스냅샷만 본다 ===
+    # side 별 사이드카: (기준시각, code -> (이전 최대, 이후 최대)).
+    renewal_side: dict[str, tuple[int | None, dict[str, tuple[int | None, int | None]]]] = {
+        RENEWAL_ASK_TYPE: (None, {}), RENEWAL_BID_TYPE: (None, {}),
+    }
     if renewal_leaves:
         if basis != "intraday":
             # 당일 전용 조건이다. eod 기준에선 '기준시각 이후'가 정의되지 않으므로
@@ -386,14 +398,21 @@ def evaluate(  # noqa: PLR0912, PLR0915
             for leaf in renewal_leaves:
                 passing[leaf.id] = set()
         else:
-            by_hhmm: dict[int, dict[str, tuple[int | None, int | None]]] = {}
+            # 스냅샷 스캔은 기준시각당 한 번이면 된다 — 매도·매수가 같은 시각을 쓰면
+            # 쿼리도 한 번이다(같은 파일에서 양측 값이 함께 나온다).
+            by_hhmm: dict[int, dict[str, snapshots_tbl.DepthSplitPeak]] = {}
             for leaf in renewal_leaves:
                 hhmm = leaf.params.start_hhmm
                 thr = leaf.params.threshold_pct
+                is_ask = leaf.type == RENEWAL_ASK_TYPE
                 if hhmm not in by_hhmm:
                     by_hhmm[hhmm] = _today_split_peaks(
                         data_dir, depth_codes, today, split_ms=hhmm * _HHMM_TO_HHMMSSMMM)
-                windows = by_hhmm[hhmm]
+                windows = {
+                    code: ((sp.pre_ask_peak, sp.post_ask_peak) if is_ask
+                           else (sp.pre_bid_peak, sp.post_bid_peak))
+                    for code, sp in by_hhmm[hhmm].items()
+                }
                 passing[leaf.id] = {
                     code for code, (pre, post) in windows.items()
                     # 두 창 모두 유효 데이터가 있어야 한다. post 가 None 이면 기준시각이
@@ -401,18 +420,23 @@ def evaluate(  # noqa: PLR0912, PLR0915
                     # 비교식(≥)은 peak 조건·실시간 알림과 글자 그대로 같다.
                     if pre is not None and post is not None and post >= pre * (thr / 100.0)
                 }
-            # 사이드카는 코드당 한 벌뿐이라 기준시각이 여럿이면 가장 늦은 것을 싣는다
-            # (_side_n 이 가장 넓은 N 을 싣는 것과 같은 규칙 — 배지가 무엇을 말하는지
-            # renewal_start_hhmm 으로 함께 밝힌다).
-            sidecar_hhmm = max(by_hhmm)
-            split_by = by_hhmm[sidecar_hhmm]
+                # 사이드카는 side 당 한 벌뿐이라 같은 side 에 기준시각이 여럿이면 가장
+                # 늦은 것을 싣는다(_side_n 이 가장 넓은 N 을 싣는 것과 같은 규칙 —
+                # 배지가 무엇을 말하는지 *_renewal_start_hhmm 으로 함께 밝힌다).
+                prev_hhmm, _ = renewal_side[leaf.type]
+                if prev_hhmm is None or hhmm > prev_hhmm:
+                    renewal_side[leaf.type] = (hhmm, windows)
+
+    ask_hhmm, ask_split = renewal_side[RENEWAL_ASK_TYPE]
+    bid_hhmm, bid_split = renewal_side[RENEWAL_BID_TYPE]
 
     excluded: list[DepthCoverageCode] = []
     partial: list[DepthCoverageCode] = []
     values: dict[str, DepthPeakValue] = {}
     for code in sorted(depth_codes):
         tp_v = today_peaks.get(code)
-        pre_max, post_max = split_by.get(code, (None, None))
+        ask_pre, ask_post = ask_split.get(code, (None, None))
+        bid_pre, bid_post = bid_split.get(code, (None, None))
         values[code] = DepthPeakValue(
             ask_today=tp_v[0] if tp_v else None,
             ask_past_peak=ask_peak_by.get(code),
@@ -422,9 +446,12 @@ def evaluate(  # noqa: PLR0912, PLR0915
             bid_past_peak=bid_peak_by.get(code),
             bid_have_days=int(bid_have_by.get(code, 0)),
             bid_need_days=bid_n or 0,
-            ask_pre_max=pre_max,
-            ask_post_max=post_max,
-            renewal_start_hhmm=sidecar_hhmm,
+            ask_pre_max=ask_pre,
+            ask_post_max=ask_post,
+            ask_renewal_start_hhmm=ask_hhmm,
+            bid_pre_max=bid_pre,
+            bid_post_max=bid_post,
+            bid_renewal_start_hhmm=bid_hhmm,
         )
         if not peak_leaves:
             continue
