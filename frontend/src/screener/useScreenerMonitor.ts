@@ -24,6 +24,11 @@ export interface UseScreenerMonitorArgs {
   disabled: boolean;
   /** 결과 코드 — 장 상태(phase)를 추가 요청 없이 얻기 위한 quotes 키(드로어와 동일). */
   resultCodes: string[];
+  /** 화면에 보여줄 스캔 결과가 이미 있는지. false(시작 시 초기화 직후·TTL 만료)면
+   *  장마감·탭 비가시 게이트를 건너뛰고 조회한다 — 게이트의 전제는 "옛 결과라도 보여줄
+   *  게 있다"이고, 비어 있을 땐 그 전제가 깨져 사용자가 영구 빈 화면을 보게 된다.
+   *  마감 후 스캔은 intraday_fallback_eod 로 전일 확정 데이터를 준다. */
+  hasResults: boolean;
   /** 1회 조회 + 결과 처리. 성공 true. 드로어의 수동 조회와 공유하는 단일 seam. */
   scanOnce: () => Promise<boolean>;
   /** 연속 MONITOR_FAIL_LIMIT 회 실패 시 호출 — 드로어가 모니터링을 끄고 피드백 표시. */
@@ -45,7 +50,7 @@ export interface ScreenerMonitorStatus {
  * 않게 한다 — 재예약 트리거는 active/selectedId/disabled/scoped 뿐.
  */
 export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonitorStatus {
-  const { active, selectedId, periodMs, disabled, resultCodes, scanOnce, onAutoStop } = args;
+  const { active, selectedId, periodMs, disabled, resultCodes, hasResults, scanOnce, onAutoStop } = args;
   const venue = useLiveVenueStore((s) => s.venue);
   // 드로어 내부 useScreenerRowsLive 와 동일 queryKey(codes+venue) → react-query 캐시
   // 공유, 추가 요청 0. 장 상태만 읽는다.
@@ -55,6 +60,8 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
   phaseRef.current = phase;
   const scanOnceRef = useRef(scanOnce);
   scanOnceRef.current = scanOnce;
+  const hasResultsRef = useRef(hasResults);
+  hasResultsRef.current = hasResults;
   const onAutoStopRef = useRef(onAutoStop);
   onAutoStopRef.current = onAutoStop;
 
@@ -72,7 +79,9 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
     const tick = async () => {
       if (cancelled) return;
       // 게이트: 탭 숨김·장마감이면 조회를 건너뛰고 나중에 재확인만(무요청 no-op).
-      if (document.hidden || phaseRef.current === 'closed') {
+      // 단 보여줄 결과가 없으면(시작 시 초기화 직후) 게이트를 통과시킨다 — 안 그러면
+      // 마감 후 '시작'이 빈 화면으로 끝난다.
+      if ((document.hidden || phaseRef.current === 'closed') && hasResultsRef.current) {
         schedule(periodMs);
         return;
       }
