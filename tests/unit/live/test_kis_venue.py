@@ -1,30 +1,12 @@
-"""Tests for hoga.live.kis_venue."""
+"""Tests for hoga.live.kis_venue — KIS 고유의 venue wire 인코딩.
 
-from datetime import datetime
+거래소 도메인 자체의 테스트는 #1018(지도 #1005)에서 `test_venue.py` 로 분리했다.
+여기 남은 것은 KIS 스택과 함께 사라질 검증뿐이다.
+"""
 
 import pytest
 
-from hoga.live.kis_venue import (
-    KIS_KST,
-    daily_venue_for_policy,
-    kis_venue_div,
-    parse_kis_venue,
-    parse_live_venue_policy,
-    previous_empty_page_anchor_hhmmss,
-    quote_venue_for_policy,
-    session_window_hhmmss,
-)
-
-
-def test_parse_kis_venue_accepts_supported_values() -> None:
-    assert parse_kis_venue("KRX") == "KRX"
-    assert parse_kis_venue("NXT") == "NXT"
-    assert parse_kis_venue("UN") == "UN"
-
-
-def test_parse_kis_venue_rejects_auto_at_kis_client_boundary() -> None:
-    with pytest.raises(ValueError, match="venue must be one of KRX, NXT, UN"):
-        parse_kis_venue("AUTO")
+from hoga.live.kis_venue import kis_venue_div, previous_empty_page_anchor_hhmmss
 
 
 def test_kis_venue_div_maps_to_kis_codes() -> None:
@@ -38,34 +20,8 @@ def test_kis_venue_div_rejects_non_concrete_runtime_values() -> None:
         kis_venue_div("AUTO")  # type: ignore[arg-type]
 
 
-def test_session_window_hhmmss_by_venue() -> None:
-    assert session_window_hhmmss("KRX") == ("090000", "153000")
-    assert session_window_hhmmss("NXT") == ("080000", "200000")
-    assert session_window_hhmmss("UN") == ("080000", "200000")
-
-
-def test_session_window_rejects_non_concrete_runtime_values() -> None:
-    with pytest.raises(ValueError, match="venue must be one of KRX, NXT, UN"):
-        session_window_hhmmss("AUTO")  # type: ignore[arg-type]
-
-
-def test_parse_live_venue_policy_maps_legacy_auto_to_integrated() -> None:
-    assert parse_live_venue_policy("AUTO") == "UN"
-
-
-def test_daily_venue_for_policy_maps_explicit_values() -> None:
-    assert daily_venue_for_policy("KRX") == "KRX"
-    assert daily_venue_for_policy("NXT") == "NXT"
-    assert daily_venue_for_policy("UN") == "UN"
-
-
-def test_quote_venue_for_policy_maps_explicit_values() -> None:
-    now = datetime(2026, 7, 1, 8, 30, tzinfo=KIS_KST)
-    assert quote_venue_for_policy("KRX", now) == "KRX"
-    assert quote_venue_for_policy("NXT", now) == "NXT"
-    assert quote_venue_for_policy("UN", now) == "UN"
-
-
+# `previous_empty_page_anchor_hhmmss` 는 프로덕션 호출자가 0 이다(#1010 전수조사).
+# KIS 스택 삭제와 함께 사라질 코드라 정리하지 않고, 그 사실만 여기 남긴다.
 def test_previous_empty_page_anchor_stops_for_krx() -> None:
     assert previous_empty_page_anchor_hhmmss("KRX", "20260609", "153000") is None
 

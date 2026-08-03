@@ -37,6 +37,7 @@ from hoga.live.index_registry import (
     get_representative_index,
     list_representative_indices,
 )
+from hoga.live.investor import InvestorTrendEstimateRow
 from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
 from hoga.live.kis_capacity_scheduler import (
     KisCapacityCooldown,
@@ -48,13 +49,6 @@ from hoga.live.kis_client import (
     KisQuote,
     KisRateLimitError,
     KisTransportError,
-)
-from hoga.live.kis_models import InvestorTrendEstimateRow
-from hoga.live.kis_venue import (
-    KisVenue,
-    LiveVenuePolicy,
-    parse_live_venue_policy,
-    quote_venue_for_policy,
 )
 from hoga.live.kiwoom_index_candles import (
     KiwoomIndexCandlesError,
@@ -78,6 +72,7 @@ from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.quote_change_resolver import QuoteChangeResolver
 from hoga.live.screener_daily_candles import read_screener_daily_candles
+from hoga.live.venue import LiveVenuePolicy, Venue, parse_live_venue_policy, quote_venue_for_policy
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.timeenc import KST
 
@@ -947,7 +942,7 @@ class LiveQuoteFetcher:
         phase: str,
         today: date | None = None,
         *,
-        venue: KisVenue = "KRX",
+        venue: Venue = "KRX",
     ) -> list[LiveQuote]:
         """code_list 의 시세를 phase 에 맞춰 반환. closed=마지막 **종가** 시세(표본이
         종가가 아니면 재조회 — is_closing_sample), open=라이브, pre_open=등락률 숨김.
@@ -1008,7 +1003,7 @@ class LiveQuoteFetcher:
         today: date | None = None,
         *,
         stale_reason: str = "kis_rest_bypassed",
-        venue: KisVenue = "KRX",
+        venue: Venue = "KRX",
     ) -> list[LiveQuote]:
         """캐시된 마지막 시세를 stale 표시로 서빙. venue 는 캐시 키의 일부다 —
         요청 venue 의 표본이 없으면 **다른 venue 것을 대신 주지 않고 비운다**(그쪽

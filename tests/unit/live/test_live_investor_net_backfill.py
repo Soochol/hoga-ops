@@ -7,8 +7,8 @@ from collections.abc import Awaitable, Callable, Hashable
 import pytest
 
 from hoga.live.api import batched_daily_walkback
+from hoga.live.investor import InvestorNetPoint
 from hoga.live.kis_client import InvestorNetFetchResult, KisClient
-from hoga.live.kis_models import InvestorNetPoint
 from hoga.live.live_investor_net_backfill import LiveInvestorNetBackfill
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 

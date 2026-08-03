@@ -34,9 +34,9 @@ from hoga.api.kis_option_master import (
     near_month_chain,
 )
 from hoga.live.kis_option_endpoints import OptionChainSnapshot
-from hoga.live.kis_venue import KIS_KST
 from hoga.live.option_sentiment import put_call_ratio
 from hoga.live.put_call_series import PutCallPoint, PutCallSeries
+from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
 
@@ -67,11 +67,11 @@ class SentimentState:
 
 
 def _now_ms() -> int:
-    return int(datetime.now(KIS_KST).timestamp() * 1000)
+    return int(datetime.now(KST).timestamp() * 1000)
 
 
 def _today_key() -> str:
-    return datetime.now(KIS_KST).strftime("%Y%m%d")
+    return datetime.now(KST).strftime("%Y%m%d")
 
 
 class OptionSentimentRuntime:

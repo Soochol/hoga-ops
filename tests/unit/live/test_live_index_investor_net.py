@@ -5,8 +5,8 @@ from collections.abc import Awaitable, Callable, Hashable
 import pytest
 
 from hoga.live.index_registry import get_representative_index
+from hoga.live.investor import InvestorNetPoint
 from hoga.live.kis_client import InvestorNetFetchResult, KisClient, KisRateLimitError
-from hoga.live.kis_models import InvestorNetPoint
 from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
 
 

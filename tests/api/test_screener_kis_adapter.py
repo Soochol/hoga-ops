@@ -4,8 +4,8 @@ import pytest
 
 from hoga.api.screener import _kis_fetch_one
 from hoga.api.screener_store import DailyBar
+from hoga.live.candle_models import LiveCandle
 from hoga.live.kis_client import DailyCandleFetchResult
-from hoga.live.kis_models import KisCandle
 
 
 class _FakeRes:
@@ -15,7 +15,7 @@ class _FakeClient:
     async def fetch_past_daily_candles(self, code, frm, to, *, adjust):
         assert adjust is False                       # 스크리너는 원주가
         # 2026-05-14 09:00 KST epoch ms 근처
-        return _FakeRes([KisCandle(t_ms=1778716800000, open=100, high=120, low=90, close=110, volume=5)])
+        return _FakeRes([LiveCandle(t_ms=1778716800000, open=100, high=120, low=90, close=110, volume=5)])
 
 
 @pytest.mark.asyncio
@@ -41,12 +41,12 @@ class _FakeClientMulti:
 @pytest.mark.asyncio
 async def test_kis_adapter_maps_dailybar_fields():
     """_kis_fetch_one 이 DailyCandleFetchResult → list[DailyBar] 를 올바르게 매핑하는지 검증.
-    code 전파, t_ms→date(KIS_KST), ohlcv float/int 위드닝 모두 포함."""
+    code 전파, t_ms→date(KST), ohlcv float/int 위드닝 모두 포함."""
     # 2026-05-14 09:00 KST = 2026-05-14 00:00 UTC → epoch ms 1778716800000
     # 2026-05-15 09:00 KST = 2026-05-15 00:00 UTC → epoch ms 1778803200000
     candles = [
-        KisCandle(t_ms=1778716800000, open=100, high=120, low=90,  close=110, volume=5000),
-        KisCandle(t_ms=1778803200000, open=111, high=130, low=105, close=125, volume=3000),
+        LiveCandle(t_ms=1778716800000, open=100, high=120, low=90,  close=110, volume=5000),
+        LiveCandle(t_ms=1778803200000, open=111, high=130, low=105, close=125, volume=3000),
     ]
     bars = await _kis_fetch_one(_FakeClientMulti(candles), "005930", "20260514", "20260515")
 
@@ -57,7 +57,7 @@ async def test_kis_adapter_maps_dailybar_fields():
     assert all(isinstance(b, DailyBar) for b in bars)
     # code 전파
     assert b0.code == "005930" and b1.code == "005930"
-    # t_ms → date (KIS_KST 기준 09:00 앵커 → 당일 date)
+    # t_ms → date (KST 기준 09:00 앵커 → 당일 date)
     assert b0.date == datetime.date(2026, 5, 14)
     assert b1.date == datetime.date(2026, 5, 15)
     # ohlcv — int→float 위드닝, volume 은 int

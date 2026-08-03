@@ -314,7 +314,7 @@ def test_get_live_series_includes_today_bid_peak_from_getter() -> None:
 
 import datetime
 
-from hoga.live.kis_models import KisCandle
+from hoga.live.candle_models import LiveCandle
 
 
 def _today_kst_yyyymmdd() -> str:
@@ -330,7 +330,7 @@ class _FakeKisForPast:
 
     async def fetch_past_minute_candles(
         self, code: str, date_yyyymmdd: str, **_kw
-    ) -> list[KisCandle]:
+    ) -> list[LiveCandle]:
         self.calls.append(date_yyyymmdd)
         # KST 09:00 of the requested date — matches the real KIS shape so
         # PastCandlesCache's date-match guard (the "evict stale" check from
@@ -338,7 +338,7 @@ class _FakeKisForPast:
         kst = datetime.timezone(datetime.timedelta(hours=9))
         y, m, d = int(date_yyyymmdd[:4]), int(date_yyyymmdd[4:6]), int(date_yyyymmdd[6:8])
         t_ms = int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000)
-        return [KisCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
+        return [LiveCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
 
 
 def _past_app(tmp_path, fake_kis):
@@ -465,7 +465,7 @@ async def test_past_candles_partial_failure_kis_api_error(tmp_path) -> None:
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             if date_yyyymmdd == "20260502":
                 raise KisApiError(msg_cd="HTTP_500", msg1="server error")
-            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+            return [LiveCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
 
     app = _past_app(tmp_path, _PartialFakeKis())
     with TestClient(app) as c:
@@ -515,7 +515,7 @@ async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path, monkey
                 kst = datetime.timezone(datetime.timedelta(hours=9))
                 y, m, d = (int(date_yyyymmdd[:4]), int(date_yyyymmdd[4:6]), int(date_yyyymmdd[6:8]))
                 t_ms = int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000)
-                return [KisCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
+                return [LiveCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
             finally:
                 self.inflight -= 1
 
@@ -566,7 +566,7 @@ async def test_past_candles_singleflight_dedups_concurrent_same_date(tmp_path) -
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls.append(date_yyyymmdd)
             await _asyncio.sleep(0.05)  # 두 요청의 fetch 창을 겹치게 한다
-            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+            return [LiveCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
 
     fake = _SlowFakeKis()
     app = _past_app(tmp_path, fake)
@@ -607,7 +607,7 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> Non
                 await _asyncio.sleep(0.01)  # 첫 배치 중 가장 먼저 실패
                 raise KisRateLimitError("EGW00201 rate limited")
             await _asyncio.sleep(0.1)  # 나머지 첫 배치는 실패 시점에 in-flight
-            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+            return [LiveCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
 
     fake = _RateLimitedSlowKis()
     app = _past_app(tmp_path, fake)
@@ -664,7 +664,7 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -
                 int(date_yyyymmdd[6:8]),
             )
             t_ms = int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000)
-            return [KisCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
+            return [LiveCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
 
     fake = _RateLimitedFakeKis()
     app = _past_app(tmp_path, fake)
@@ -734,7 +734,7 @@ async def test_past_candles_weekend_skips_kis_and_returns_empty(tmp_path, monkey
 
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls.append(date_yyyymmdd)
-            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+            return [LiveCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
 
     monkeypatch.setattr(cal, "is_trading_day", lambda d: d != "20260516")
     fake = _CountingKis()
@@ -810,7 +810,7 @@ def test_minute_today_weekend_skips_kis_and_negative_caches(tmp_path, monkeypatc
 
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls += 1
-            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+            return [LiveCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
 
     monkeypatch.setattr(live_api, "_today_kst_date", lambda: datetime.date(2026, 6, 27))
     fake = _CountingKis()
@@ -836,7 +836,7 @@ def test_past_candles_threads_explicit_venue_to_kis_and_response(tmp_path) -> No
 
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **kw):
             self.kwargs.append(kw)
-            return [KisCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
+            return [LiveCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
 
     fake = _VenueFakeKis()
     app = _past_app(tmp_path, fake)
@@ -886,7 +886,7 @@ def test_past_candles_integrated_uses_single_kis_un_call(tmp_path) -> None:
             venue = kw["venue"]
             self.venues.append(venue)
             if venue == "UN":
-                return [KisCandle(t_ms=ts(9, 0), open=100, high=112, low=95, close=106, volume=25)]
+                return [LiveCandle(t_ms=ts(9, 0), open=100, high=112, low=95, close=106, volume=25)]
             raise AssertionError(f"unexpected venue {venue}")
 
     fake = _IntegratedFakeKis()
@@ -935,7 +935,7 @@ def test_past_candles_non_krx_empty_falls_back_to_krx(tmp_path, venue: str) -> N
             if kw["venue"] in ("NXT", "UN"):
                 return []
             return [
-                KisCandle(
+                LiveCandle(
                     t_ms=ts(9, 0),
                     open=100,
                     high=110,
@@ -975,9 +975,9 @@ def test_past_candles_non_krx_empty_falls_back_to_krx(tmp_path, venue: str) -> N
 def test_past_candles_non_krx_partial_range_fills_empty_dates_from_krx(tmp_path) -> None:
     kst = datetime.timezone(datetime.timedelta(hours=9))
 
-    def ts(date_s: str, close: int) -> KisCandle:
+    def ts(date_s: str, close: int) -> LiveCandle:
         y, m, d = int(date_s[:4]), int(date_s[4:6]), int(date_s[6:8])
-        return KisCandle(
+        return LiveCandle(
             t_ms=int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000),
             open=close - 1,
             high=close + 1,
@@ -1047,8 +1047,8 @@ def test_past_candles_non_krx_partial_range_fills_empty_dates_from_krx(tmp_path)
 def test_past_candles_non_krx_fallback_rechecks_primary_on_next_request(tmp_path) -> None:
     kst = datetime.timezone(datetime.timedelta(hours=9))
 
-    def ts(close: int) -> KisCandle:
-        return KisCandle(
+    def ts(close: int) -> LiveCandle:
+        return LiveCandle(
             t_ms=int(datetime.datetime(2026, 5, 18, 9, 0, tzinfo=kst).timestamp() * 1000),
             open=close - 1,
             high=close + 1,
@@ -1093,9 +1093,9 @@ def test_past_candles_non_krx_fallback_rechecks_primary_on_next_request(tmp_path
 def test_past_candles_non_krx_fallback_warning_dates_only_used_krx(tmp_path) -> None:
     kst = datetime.timezone(datetime.timedelta(hours=9))
 
-    def ts(date_s: str, close: int) -> KisCandle:
+    def ts(date_s: str, close: int) -> LiveCandle:
         y, m, d = int(date_s[:4]), int(date_s[4:6]), int(date_s[6:8])
-        return KisCandle(
+        return LiveCandle(
             t_ms=int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000),
             open=close - 1,
             high=close + 1,
@@ -1130,9 +1130,9 @@ def test_past_candles_non_krx_fallback_warning_dates_only_used_krx(tmp_path) -> 
 def test_past_candles_non_krx_fallback_does_not_replace_present_dates(tmp_path) -> None:
     kst = datetime.timezone(datetime.timedelta(hours=9))
 
-    def ts(date_s: str, close: int) -> KisCandle:
+    def ts(date_s: str, close: int) -> LiveCandle:
         y, m, d = int(date_s[:4]), int(date_s[4:6]), int(date_s[6:8])
-        return KisCandle(
+        return LiveCandle(
             t_ms=int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000),
             open=close - 1,
             high=close + 1,
@@ -1300,7 +1300,7 @@ class _FakeKisForDaily:
         cur = start
         while cur <= end:
             candles.append(
-                KisCandle(
+                LiveCandle(
                     t_ms=int(cur.timestamp() * 1000),
                     open=100,
                     high=110,
@@ -1413,7 +1413,7 @@ def test_past_daily_non_krx_partial_range_fills_missing_dates_from_krx(tmp_path)
             if _kw.get("venue") == "UN":
                 kst = datetime.timezone(datetime.timedelta(hours=9))
                 candles = [
-                    KisCandle(
+                    LiveCandle(
                         t_ms=int(
                             datetime.datetime(2024, 1, 1, 9, 0, tzinfo=kst).timestamp() * 1000
                         ),
@@ -1423,7 +1423,7 @@ def test_past_daily_non_krx_partial_range_fills_missing_dates_from_krx(tmp_path)
                         close=205,
                         volume=20,
                     ),
-                    KisCandle(
+                    LiveCandle(
                         t_ms=int(
                             datetime.datetime(2024, 1, 2, 9, 0, tzinfo=kst).timestamp() * 1000
                         ),
@@ -1721,11 +1721,11 @@ def test_screener_daily_candles_runs_off_the_event_loop(tmp_path, monkeypatch) -
 
 # ----- /api/live/past-investor-net -----
 
+from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
 from hoga.live.kis_client import (
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
 )
-from hoga.live.kis_models import InvestorNetPoint, InvestorTrendEstimateRow
 
 
 class _FakeKisForInvestor:
@@ -1789,8 +1789,8 @@ def _investor_app(tmp_path, fake_kis):
 def test_index_investor_net_uses_scheduler_backed_fetcher(tmp_path) -> None:
     from hoga.live import kis_runtime, lifecycle
     from hoga.live.api import build_router
+    from hoga.live.investor import InvestorNetPoint
     from hoga.live.kis_client import InvestorNetFetchResult
-    from hoga.live.kis_models import InvestorNetPoint
 
     class _FakeKisForIndexInvestor:
         def __init__(self):

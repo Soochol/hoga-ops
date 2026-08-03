@@ -16,12 +16,8 @@ from hoga.live.kis_capacity_scheduler import (
     KisCapacityOverloaded,
 )
 from hoga.live.kis_client import KisApiError, KisClient, KisRateLimitError
-from hoga.live.kis_venue import (
-    KisVenue,
-    LiveVenuePolicy,
-    session_window_hhmmss,
-)
 from hoga.live.past_candles_cache import PastCandlesCache
+from hoga.live.venue import LiveVenuePolicy, Venue, session_window_hhmmss
 from hoga.util.timeenc import KST
 
 # 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
@@ -95,7 +91,7 @@ class LiveMinuteCandleBackfill:
         # 전진한다(기능은 유지, 속도 저하).
         self._max_fresh_dates_per_collect = max(1, int(max_fresh_dates_per_collect))
         self._inflight: dict[
-            tuple[KisVenue, str, str],
+            tuple[Venue, str, str],
             asyncio.Task[list[dict]],
         ] = {}
         self._rate_limit_until = 0.0
@@ -250,7 +246,7 @@ class LiveMinuteCandleBackfill:
         rows: list[dict] = []
         cached_dates: list[str] = []
         warnings: list[dict] = []
-        effective_session_venues: dict[str, KisVenue] = {}
+        effective_session_venues: dict[str, Venue] = {}
         today_s = today_d.strftime("%Y%m%d")
 
         for date_s in _date_iter(frm, too):
@@ -310,7 +306,7 @@ class LiveMinuteCandleBackfill:
 
     async def _collect_for_venue(  # noqa: PLR0912, PLR0915
         self,
-        venue: KisVenue,
+        venue: Venue,
         *,
         code: str,
         frm: date,
@@ -498,7 +494,7 @@ class LiveMinuteCandleBackfill:
 
     async def _fetch_past_shared(
         self,
-        venue: KisVenue,
+        venue: Venue,
         code: str,
         date_s: str,
         *,
@@ -525,7 +521,7 @@ class LiveMinuteCandleBackfill:
 
     async def _fetch_past_scheduled(
         self,
-        venue: KisVenue,
+        venue: Venue,
         code: str,
         date_s: str,
         *,
@@ -576,7 +572,7 @@ class LiveMinuteCandleBackfill:
     async def _fetch_past_once(
         self,
         kis: KisClient,
-        venue: KisVenue,
+        venue: Venue,
         code: str,
         date_s: str,
         *,
@@ -595,7 +591,7 @@ class LiveMinuteCandleBackfill:
     async def _fetch_past_today_once(
         self,
         kis: KisClient,
-        venue: KisVenue,
+        venue: Venue,
         code: str,
         date_s: str,
     ) -> list[dict]:
@@ -684,7 +680,7 @@ def _session_bound_ms(date_s: str, hhmmss: str) -> int:
     )
 
 
-def _effective_session(date_s: str, venue: KisVenue) -> dict:
+def _effective_session(date_s: str, venue: Venue) -> dict:
     open_hhmmss, close_hhmmss = session_window_hhmmss(venue)
     return {
         "date": date_s,
@@ -694,7 +690,7 @@ def _effective_session(date_s: str, venue: KisVenue) -> dict:
     }
 
 
-def _effective_sessions_for_candles(candles: list[dict], venue: KisVenue) -> list[dict]:
+def _effective_sessions_for_candles(candles: list[dict], venue: Venue) -> list[dict]:
     return [
         _effective_session(date_s, venue)
         for date_s in sorted(_dates_for_candles(candles))
@@ -777,7 +773,7 @@ def _kis_rest_bypassed_warning(date_s: str) -> dict:
     }
 
 
-def _minute_fallback_to_krx_warning(primary_venue: KisVenue, dates: list[str]) -> dict:
+def _minute_fallback_to_krx_warning(primary_venue: Venue, dates: list[str]) -> dict:
     label = _format_date_label(dates)
     return {
         "date": label,

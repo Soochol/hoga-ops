@@ -23,7 +23,7 @@ from hoga.live.candle_fetch_result import (
     DailyInvariantViolation,
     IndexCandleFetchResult,
 )
-from hoga.live.kis_models import IndexCandlePoint
+from hoga.live.candle_models import IndexCandlePoint
 from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)

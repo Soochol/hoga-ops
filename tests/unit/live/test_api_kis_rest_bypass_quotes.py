@@ -9,8 +9,8 @@ from hoga.api.models import LiveSettingsResponse
 from hoga.live import api as live_api, kis_runtime, lifecycle
 from hoga.live.api import build_router
 from hoga.live.buffer import LiveBuffer
+from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
 from hoga.live.kis_client import InvestorNetFetchResult, KisQuote
-from hoga.live.kis_models import InvestorNetPoint, InvestorTrendEstimateRow
 from hoga.live.settings import save_live_settings
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 

@@ -7,13 +7,13 @@ from collections.abc import Awaitable, Callable, Hashable
 import pytest
 
 from hoga.live.api import batched_daily_walkback
+from hoga.live.candle_models import LiveCandle
 from hoga.live.kis_client import DailyCandleFetchResult, KisClient
-from hoga.live.kis_models import KisCandle
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
 
-def _daily_candles(from_yyyymmdd: str, to_yyyymmdd: str, *, close: int = 105) -> list[KisCandle]:
+def _daily_candles(from_yyyymmdd: str, to_yyyymmdd: str, *, close: int = 105) -> list[LiveCandle]:
     kst = dt.timezone(dt.timedelta(hours=9))
     start = dt.date(
         int(from_yyyymmdd[:4]),
@@ -25,11 +25,11 @@ def _daily_candles(from_yyyymmdd: str, to_yyyymmdd: str, *, close: int = 105) ->
         int(to_yyyymmdd[4:6]),
         int(to_yyyymmdd[6:8]),
     )
-    out: list[KisCandle] = []
+    out: list[LiveCandle] = []
     cur = start
     while cur <= end:
         out.append(
-            KisCandle(
+            LiveCandle(
                 t_ms=int(dt.datetime(cur.year, cur.month, cur.day, 9, 0, tzinfo=kst).timestamp() * 1000),
                 open=100,
                 high=110,
