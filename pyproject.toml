@@ -40,7 +40,7 @@ exclude = ["tests*", "explorer*"]
 [tool.setuptools.package-data]
 # 거래일 달력 시드(PR-H·#1044). 조회 경로가 이 파일만 읽으므로 **패키지에 반드시
 # 실려야 한다** — 빠지면 설치본에서 달력이 통째로 "모름" 이 된다.
-"hoga.api" = ["trading_days_seed.txt"]
+"hoga.api" = ["trading_days_seed.txt", "kiwoom_master_seed.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
