@@ -7,7 +7,7 @@ from hoga.live import api as live_api, lifecycle
 from hoga.live.api import build_router
 from hoga.live.candle_models import IndexCandlePoint
 from hoga.live.investor import InvestorNetPoint
-from hoga.live.kis_client import IndexCandleFetchResult, InvestorNetFetchResult
+from hoga.live.kis_client import IndexCandleFetchResult
 from hoga.util.timeenc import KST
 
 
@@ -326,22 +326,22 @@ def test_index_minute_candles_warn_when_request_starts_before_returned_depth(tmp
 
 
 def test_index_investor_net_returns_market_rows_for_kospi(tmp_path, monkeypatch) -> None:
-    class FakeKis:
-        async def fetch_market_investor_net(self, index, from_s, to_s):
-            assert index.id == "KOSPI"
-            assert from_s == "20260619"
-            assert to_s == "20260619"
-            return InvestorNetFetchResult(
-                points=[
-                    InvestorNetPoint(
-                        t_ms=1,
-                        foreign_net=-3519,
-                        institution_net=17184,
-                    ),
-                ],
-            )
+    """PR-E(#1041) 칼 컷오버 — 소스가 키움 `ka10051` 이다.
 
-    _patch_kis_capacity(monkeypatch, FakeKis())
+    어댑터가 **평평한 리스트**를 준다(날짜당 한 콜이라 불변식 위반 개념이 없다).
+    """
+    async def fake_market_investor_net(_client, index, from_s, to_s):
+        assert index.id == "KOSPI"
+        assert from_s == "20260619"
+        assert to_s == "20260619"
+        return [InvestorNetPoint(t_ms=1, foreign_net=-3519, institution_net=17184)]
+
+    monkeypatch.setattr(
+        live_api.kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
+    )
+    monkeypatch.setattr(
+        live_api.kiwoom_investor, "fetch_market_investor_net", fake_market_investor_net
+    )
 
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))

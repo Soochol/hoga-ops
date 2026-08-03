@@ -108,6 +108,8 @@ class KiwoomCapacityScheduler:
         self._queued_priority: dict[Hashable, Priority] = {}
         self._started: set[Hashable] = set()
         self._workers: list[asyncio.Task] = []
+        # 워커가 붙어 있는 루프. 바뀌면 큐·inflight 를 통째로 버린다(_ensure_started).
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._n_workers = workers
         self._max_queued = max_queued
         self._seq = 0
@@ -198,6 +200,30 @@ class KiwoomCapacityScheduler:
         )
 
     def _ensure_started(self) -> None:
+        """워커를 **살아 있고 이 루프에 속한 것만** 남기고 모자란 만큼 채운다.
+
+        `if self._workers: return` 은 안 된다. 이 거버너는 프로세스 싱글턴이라
+        두 가지 방식으로 조용히 죽는다:
+
+          - 워커가 끝났는데(`done()`) 리스트에 시체로 남아 있다
+          - 워커가 **다른 이벤트 루프**에서 만들어졌다(테스트마다 새 루프,
+            혹은 재기동 경로)
+
+        둘 다 결과가 같다: 큐에 넣은 요청을 아무도 꺼내지 않아 `submit` 이
+        **예외도 타임아웃도 없이 영원히 대기**한다. 무한 대기는 최악의 실패
+        모드라 여기서 사전에 끊는다.
+        """
+        loop = asyncio.get_running_loop()
+        if self._loop is not None and self._loop is not loop:
+            # 루프가 바뀌었으면 큐·inflight 도 전부 죽은 루프 소유다. 남겨 두면
+            # 새 요청이 **죽은 future 에 조인해서** 다시 무한 대기한다.
+            self._queue = asyncio.PriorityQueue()
+            self._inflight.clear()
+            self._queued_priority.clear()
+            self._started.clear()
+            self._workers = []
+        self._loop = loop
+        self._workers = [t for t in self._workers if not t.done()]
         if self._workers:
             return
         self._workers = [
