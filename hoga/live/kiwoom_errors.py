@@ -54,6 +54,18 @@ class KiwoomApiError(KiwoomRestError):
         super().__init__(f"kiwoom api error {code}: {msg}")
 
 
+class KiwoomBatchLimitError(KiwoomApiError):
+    """배치 크기 초과(`1634`) — **재시도해도 영원히 실패한다.**
+
+    함정: 벤더가 이것을 **유량 초과(`1700`)와 똑같은 `return_code == 5` + 똑같은
+    한글 문구**("허용된 요청 개수를 초과하였습니다")로 돌려준다. 구분 키는 대괄호
+    안의 코드뿐이다. 잘못 분류하면 거버너가 버킷을 물리고 호출자는 "잠시 후 재시도"
+    로 읽어 **무한 재시도**에 빠진다.
+
+    올바른 대응은 **청크를 줄이는 것**이다(실측 상한: `ka10095` 100종목, #1040).
+    """
+
+
 class KiwoomRateLimitError(KiwoomRestError):
     """HTTP 429 / `return_code == 5` — 유량 초과.
 
