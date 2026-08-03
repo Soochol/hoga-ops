@@ -41,6 +41,7 @@ import {
   useLiveBrokersAtCursor,
   useLiveBrokersToday,
 } from '../../api/useLiveCursor';
+import { useScreenerDailyCandles, prevCloseBeforeDate } from '../../api/screenerDailyCandles';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
@@ -69,7 +70,7 @@ import {
   regularSessionBinningSegment,
   volumeDistributionClosePointsFromCandles,
 } from '../continuousTradeVolumeDistribution';
-import { realMsToYyyymmdd } from '../liveDateTime';
+import { realMsToYyyymmdd, subtractDaysKst } from '../liveDateTime';
 import { buildTradeTickView } from '../tradeTicks';
 import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId } from '../liveInstrument';
@@ -198,8 +199,51 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     bufferFallbackSnapshot: bufferSnap,
   });
   const quote = useQuoteByCode([code], venue).get(code);
-  const baselinePrice = quote?.baseline_price ?? null;
-  // 상하한가·250일 최고/최저(ka10001) — 당일 고정값이라 스팟 커서에서도 유효.
+  // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.
+  //
+  // quote.baseline_price 는 언제나 "오늘 기준" 전일종가다(백엔드 QuoteChangeResolver
+  // 가 `date < today` 로 잘라 온다). 그래서 어제 캔들을 호버하면 분자(호가)만 과거로
+  // 바뀌고 분모는 오늘에 남아, 가격은 맞는데 등락률·방향색만 통째로 틀렸다
+  // — 2026-08-03 실측: 7/30 10:00 매수1호가 210,000 이 **−20.00%** 로 찍혔다
+  // (분모 262,500=7/31 종가). 정답은 7/30 기준가 208,500 대비 **+0.72%** 로, 크기가
+  // 아니라 **부호가 뒤집히는** 오류였다.
+  //
+  // 같은 BookPanel 을 쓰는 /study 의 BookContent 는 처음부터 커서 날짜의 전일종가를
+  // 썼다 — 표시 컴포넌트는 통일해 놓고 자료 조달만 두 벌로 갈라져 한쪽만 옳았다.
+  const todayKst = link?.todayKst ?? realMsToYyyymmdd(Date.now());
+  const cursorDate = isSpot && scope.cursorMs !== null ? realMsToYyyymmdd(scope.cursorMs) : null;
+  const isPastDateCursor = cursorDate !== null && cursorDate < todayKst;
+  // 조회창은 **오늘까지 한 벌로 고정**한다. /study 처럼 to 를 커서 날짜로 잡으면
+  // 커서가 날짜를 넘을 때마다 쿼리 키가 새로 생기는데, /live 는 분봉을 며칠씩
+  // 가로지르며 호버하는 표면이라 키가 날짜 수만큼 불어난다. to=오늘 고정이면 키가
+  // 하나뿐이라 날짜 사이를 오가도 재요청이 없다. 60일이면 연휴가 끼어도 직전
+  // 거래일이 반드시 창 안에 들어온다.
+  const baselineCandles = useScreenerDailyCandles(
+    isPastDateCursor ? code : null,
+    subtractDaysKst(todayKst, 60),
+    todayKst,
+  );
+  const cursorBaseline = useMemo(
+    () =>
+      cursorDate !== null && isPastDateCursor
+        ? prevCloseBeforeDate(baselineCandles.data?.candles ?? [], cursorDate)
+        : null,
+    [cursorDate, isPastDateCursor, baselineCandles.data],
+  );
+  // change_pct_source==='unavailable' = 백엔드가 기준가를 **못 믿겠다고 판정한** 상태
+  // (adjusted_baseline_stale · adjusted_baseline_scale_mismatch). 그때 백엔드는
+  // change_pct 를 null 로 죽이면서도 baseline_price 는 그대로 실어 보낸다. 이 패널은
+  // change_pct 를 쓰지 않고 baseline_price 로 직접 등락률을 계산하므로, 그냥 두면
+  // **봉인된 판정을 뚫고** 값을 그린다 — 종목 리스트는 숨기는데 호가창만 표시되는
+  // 비대칭이 된다. 여기서 함께 봉인해 대시로 떨어뜨린다.
+  const liveBaseline =
+    quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null);
+  // 과거 날짜 커서면 일봉에서 뽑은 그날의 기준가. 로딩 중이면 null(등락률 생략) —
+  // 틀린 값을 잠깐 보여주느니 비는 편이 옳다.
+  const baselinePrice = isPastDateCursor ? cursorBaseline : liveBaseline;
+  // 상하한가·250일 최고/최저(ka10001) — **오늘의** 값이다. 당일 안에서는 시각이
+  // 달라져도 고정이라 오늘 스팟 커서에서 유효하지만, 과거 날짜 커서에서는 그날의
+  // 기준가에서 파생된 상하한가와 다르므로 아래에서 비운다.
   const stockLimits = useLiveStockLimits(code);
   // VI 이벤트 상태(키움 1h) — 예상 발동가의 기준가 갱신 + 발동 중 강조.
   const viStatus = useLiveViStatus(code);
@@ -246,6 +290,14 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     return out;
   }, [isSpot, venueTrade]);
   const lastPrice = recentTrades.length > 0 ? recentTrades[0].price : null;
+  // 상하한가·250일은 **날짜** 단위 상수다 — 오늘 스팟(시각만 과거)에서는 유효하고
+  // 과거 날짜에서만 거짓이라, 시각 단위 누적인 summary 와 게이트가 다르다.
+  const spotLimits = isPastDateCursor ? null : (stockLimits.data ?? null);
+  // VI 는 "지금 발동 중"이라는 **현재 상태**라 과거 시각 위에서는 날짜와 무관하게
+  // 거짓이다 — 당일 스팟에서도 비운다(deltaBadges 와 같은 근거). vi=null 이면 ViRow
+  // 가 기준가에서 예상 발동가를 계산하는데, 스팟에선 summary(dayOpen)도 비고 과거
+  // 날짜면 limits(base_price)도 비므로 base 가 없어 대시로 떨어진다.
+  const spotVi = isSpot ? null : (viStatus.data?.vi ?? null);
   return (
     <div className="flex h-full flex-col">
       {showAvailableHint && (
@@ -265,8 +317,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           maskRatio={maskRatio}
           lastPrice={lastPrice}
           deltaBadges={isSpot ? null : deltaBadges}
-          limits={stockLimits.data ?? null}
-          vi={viStatus.data?.vi ?? null}
+          limits={spotLimits}
+          vi={spotVi}
         />
       </div>
     </div>
