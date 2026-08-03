@@ -4,7 +4,8 @@ These tests are AST-level static checks that catch the most consequential
 architectural drift before runtime:
 
 1. **ADR-0038 (write hot-path, no Parquet libs)**: writer / snapshot /
-   poller / api / lifecycle / buffer / kis_client / kis_models must NOT
+   poller / api / lifecycle / buffer / kis_client / candle_models /
+   investor must NOT
    import pyarrow or polars (transitive or direct). Promote.py is the
    only allowed Parquet importer — it's the cold-path converter.
 
@@ -50,7 +51,8 @@ _HOT_PATH_MODULES = (
     "hoga/live/api.py",
     "hoga/live/lifecycle.py",
     "hoga/live/kis_client.py",
-    "hoga/live/kis_models.py",
+    "hoga/live/candle_models.py",  # #1018 — kis_models 이사처(캔들 포트)
+    "hoga/live/investor.py",       # #1018 — kis_models 이사처(투자자 수급)
     "hoga/live/kiwoom_frames.py",  # PR-F2 — 거래원 0F 파서가 REST 폴러를 대체(핫패스)
 )
 

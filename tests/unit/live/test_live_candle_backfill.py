@@ -6,9 +6,9 @@ from collections.abc import Awaitable, Callable, Hashable
 
 import pytest
 
+from hoga.live.candle_models import LiveCandle
 from hoga.live.kis_capacity_scheduler import KisCapacityOverloaded
 from hoga.live.kis_client import KisClient
-from hoga.live.kis_models import KisCandle
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.past_candles_cache import PastCandlesCache
 
@@ -32,10 +32,10 @@ class _FakeKis:
         *,
         venue: str | None = None,
         foreground: bool | None = None,
-    ) -> list[KisCandle]:
+    ) -> list[LiveCandle]:
         self.calls.append((code, date_yyyymmdd, venue, foreground))
         return [
-            KisCandle(
+            LiveCandle(
                 t_ms=_kst_ms(date_yyyymmdd),
                 open=100,
                 high=110,

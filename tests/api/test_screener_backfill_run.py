@@ -11,7 +11,7 @@ from hoga.api import screener_backfill as screener_backfill_mod
 from hoga.api.screener_backfill import run_backfill_with
 from hoga.api.screener_factors import read_factors
 from hoga.api.screener_store import DailyBar
-from hoga.live.kis_client import KIS_KST
+from hoga.util.timeenc import KST
 
 _S = {"code": pl.Utf8, "date": pl.Date, "open": pl.Float64, "high": pl.Float64,
       "low": pl.Float64, "close": pl.Float64, "volume": pl.Int64}
@@ -69,7 +69,7 @@ def test_rerun_preserves_prebackfill_baseline(tmp_path):
 async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_path, monkeypatch):
     scheduler = object()
     calls = []
-    t_ms = int(dt.datetime(2026, 6, 1, tzinfo=KIS_KST).timestamp() * 1000)
+    t_ms = int(dt.datetime(2026, 6, 1, tzinfo=KST).timestamp() * 1000)
 
     class FakeKis:
         async def fetch_past_daily_candles(self, code, frm, to, *, adjust):

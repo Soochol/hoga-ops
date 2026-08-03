@@ -235,10 +235,10 @@ def _market_clock_closed_for_capture(now_ms: int) -> bool:
     reconnecting 앰버로 보이나 드물어 수용(quote 게이트와 동일 트레이드오프)."""
     from datetime import datetime  # noqa: PLC0415
 
-    from .kis_client import KIS_KST  # noqa: PLC0415
+    from .kis_client import KST  # noqa: PLC0415
     from .session_gate import market_phase  # noqa: PLC0415
 
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KST)
     if kst.weekday() >= 5:  # noqa: PLR2004 — 토/일
         return True
     return market_phase(now_ms) != "regular"  # regular = 09:00–15:30

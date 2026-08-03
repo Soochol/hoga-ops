@@ -5,8 +5,10 @@ from fastapi.testclient import TestClient
 
 from hoga.live import api as live_api, lifecycle
 from hoga.live.api import build_router
-from hoga.live.kis_client import KIS_KST, IndexCandleFetchResult, InvestorNetFetchResult
-from hoga.live.kis_models import IndexCandlePoint, InvestorNetPoint
+from hoga.live.candle_models import IndexCandlePoint
+from hoga.live.investor import InvestorNetPoint
+from hoga.live.kis_client import IndexCandleFetchResult, InvestorNetFetchResult
+from hoga.util.timeenc import KST
 
 
 def _daily_t_ms(day: str) -> int:
@@ -16,7 +18,7 @@ def _daily_t_ms(day: str) -> int:
         int(day[6:8]),
         15,
         30,
-        tzinfo=KIS_KST,
+        tzinfo=KST,
     )
     return int(dt.timestamp() * 1000)
 

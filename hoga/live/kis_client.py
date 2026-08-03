@@ -52,7 +52,7 @@ from hoga.live.kis_errors import (
     KisRateLimitError,
     KisTransportError,
 )
-from hoga.live.kis_venue import KIS_KST  # noqa: F401  (re-export facade)
+from hoga.util.timeenc import KST  # noqa: F401  (re-export facade)
 
 log = logging.getLogger(__name__)
 

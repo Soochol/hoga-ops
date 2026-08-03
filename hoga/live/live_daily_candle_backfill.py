@@ -10,13 +10,9 @@ from hoga.live.kis_capacity_scheduler import (
     KisCapacityOverloaded,
 )
 from hoga.live.kis_client import KisClient, KisRateLimitError
-from hoga.live.kis_venue import (
-    KisVenue,
-    LiveVenuePolicy,
-    daily_venue_for_policy,
-)
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.single_flight import SingleFlight
+from hoga.live.venue import LiveVenuePolicy, Venue, daily_venue_for_policy
 from hoga.util.timeenc import KST
 
 # 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
@@ -179,7 +175,7 @@ class LiveDailyCandleBackfill:
     async def _fetch_primary_batch(
         self,
         *,
-        venue: KisVenue,
+        venue: Venue,
         code: str,
         from_s: str,
         to_s: str,
@@ -231,7 +227,7 @@ class LiveDailyCandleBackfill:
 
 
 class _VenueDailyCacheAdapter:
-    def __init__(self, inner: PastDailyCandlesCache, venue: KisVenue) -> None:
+    def __init__(self, inner: PastDailyCandlesCache, venue: Venue) -> None:
         self._inner = inner
         self._venue = venue
 
@@ -310,7 +306,7 @@ def _kis_rest_bypassed_warning(batch_label: str) -> dict:
     }
 
 
-def _daily_fallback_to_krx_warning(primary_venue: KisVenue, batch_label: str) -> dict:
+def _daily_fallback_to_krx_warning(primary_venue: Venue, batch_label: str) -> dict:
     return {
         "batch": batch_label,
         "reason": "daily_fallback_to_krx",
@@ -321,7 +317,7 @@ def _daily_fallback_to_krx_warning(primary_venue: KisVenue, batch_label: str) ->
     }
 
 
-def _daily_partial_fallback_to_krx_warning(primary_venue: KisVenue, batch_label: str) -> dict:
+def _daily_partial_fallback_to_krx_warning(primary_venue: Venue, batch_label: str) -> dict:
     return {
         "batch": batch_label,
         "reason": "daily_fallback_to_krx",

@@ -243,7 +243,7 @@ async def run_backfill(data_dir: Path) -> dict:
     from hoga.live.kis_capacity_runtime import (  # noqa: PLC0415 — 지연 import(순환/heavy)
         ensure_kis_capacity_scheduler,
     )
-    from hoga.live.kis_client import KIS_KST  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    from hoga.util.timeenc import KST  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
     sdir = data_dir / "screener"
     # 전체 백필도 배경 배치이므로 Capacity Scheduler에 맡긴다. creds 게이트만 먼저
@@ -255,7 +255,7 @@ async def run_backfill(data_dir: Path) -> dict:
     async def fetch_adj(code: str, frm: str, to: str):
         async def _do(client):
             res = await client.fetch_past_daily_candles(code, frm, to, adjust=True)   # 수정주가
-            return [(datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(), float(c.close))
+            return [(datetime.fromtimestamp(c.t_ms / 1000, tz=KST).date(), float(c.close))
                     for c in res.candles]
         return await kis_access.run_with_capacity(
             scheduler,
@@ -270,7 +270,7 @@ async def run_backfill(data_dir: Path) -> dict:
     async def fetch_raw(code: str, frm: str, to: str):
         async def _do(client):
             res = await client.fetch_past_daily_candles(code, frm, to, adjust=False)  # 원주가
-            return [DailyBar(code, datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(),
+            return [DailyBar(code, datetime.fromtimestamp(c.t_ms / 1000, tz=KST).date(),
                              float(c.open), float(c.high), float(c.low), float(c.close), c.volume)
                     for c in res.candles]
         return await kis_access.run_with_capacity(

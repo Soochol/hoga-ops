@@ -48,9 +48,9 @@ from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_log_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
+from hoga.live.candle_models import LiveCandle
 from hoga.live.candle_repair import build_saved_view_repair_hook
 from hoga.live.kis_capacity_runtime import aclose_kis_capacity_scheduler
-from hoga.live.kis_models import KisCandle
 from hoga.live.kis_runtime import aclose_kis_client, get_kis_client
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
@@ -152,7 +152,7 @@ def allowed_origins() -> tuple[str, ...]:
     return ALLOWED_ORIGINS + extra
 
 
-async def _repair_minute_fetch(code: str, date_s: str) -> list[KisCandle]:
+async def _repair_minute_fetch(code: str, date_s: str) -> list[LiveCandle]:
     """저장뷰 캡처-공백 복구용 KIS 과거 분봉 fetch(KRX 고정 — /study venue).
 
     현재 KIS 클라이언트를 raw로 호출한다(클라이언트 내장 rate-limiter가 쿼터를

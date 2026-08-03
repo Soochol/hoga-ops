@@ -9,7 +9,8 @@ import httpx
 import pytest
 
 from hoga.live.api import _candle_to_dict, batched_daily_walkback
-from hoga.live.kis_client import KIS_KST, KisClient, KisCredentials, KisTransportError
+from hoga.live.kis_client import KisClient, KisCredentials, KisTransportError
+from hoga.util.timeenc import KST
 from tests.unit.live._fakes import FakeTokenProvider
 
 FIXTURES = Path("tests/fixtures/kis_mock/responses")
@@ -308,8 +309,8 @@ async def test_fetch_past_minute_candles_nxt_empty_bands_harmless(tmp_path: Path
     ]
     assert [c.t_ms for c in candles] == sorted(c.t_ms for c in candles)
     assert len(candles) == 4
-    assert datetime.fromtimestamp(candles[0].t_ms / 1000, tz=KIS_KST).strftime("%H%M%S") == "151800"
-    assert datetime.fromtimestamp(candles[-1].t_ms / 1000, tz=KIS_KST).strftime("%H%M%S") == "153200"
+    assert datetime.fromtimestamp(candles[0].t_ms / 1000, tz=KST).strftime("%H%M%S") == "151800"
+    assert datetime.fromtimestamp(candles[-1].t_ms / 1000, tz=KST).strftime("%H%M%S") == "153200"
 
 
 
@@ -574,7 +575,7 @@ async def test_fetch_past_daily_paginates_forward_when_venue_returns_low_side(tm
     result = await client.fetch_past_daily_candles("005930", "20260101", "20260619", venue="UN")
 
     dates = [
-        datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).strftime("%Y%m%d")
+        datetime.fromtimestamp(c.t_ms / 1000, tz=KST).strftime("%Y%m%d")
         for c in result.candles
     ]
     assert seen_params == [("20260101", "20260619"), ("20260228", "20260619")]
@@ -791,7 +792,7 @@ async def test_fetch_investor_net_parses_foreign_and_institution(tmp_path) -> No
     # Sorted ASC by t_ms regardless of upstream order.
     assert result.points[0].t_ms < result.points[1].t_ms
     by_date = {
-        datetime.fromtimestamp(pt.t_ms / 1000, tz=KIS_KST).strftime("%Y%m%d"): pt
+        datetime.fromtimestamp(pt.t_ms / 1000, tz=KST).strftime("%Y%m%d"): pt
         for pt in result.points
     }
     assert by_date["20240105"].foreign_net == 12345
@@ -808,7 +809,7 @@ async def test_fetch_investor_net_anchors_t_ms_at_session_open(tmp_path) -> None
         _investor_handler([_investor_row("20240105", frgn=1, orgn=2)]), tmp_path
     )
     result = await client.fetch_investor_net("005930", "20240105", "20240105")
-    expected = int(datetime(2024, 1, 5, 9, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    expected = int(datetime(2024, 1, 5, 9, 0, tzinfo=KST).timestamp() * 1000)
     assert result.points[0].t_ms == expected
 
 
@@ -827,7 +828,7 @@ async def test_fetch_investor_net_walks_back_across_pages(tmp_path) -> None:
     client = _make_client(_investor_walk_handler(pages), tmp_path)
     result = await client.fetch_investor_net("005930", "20240103", "20240110")
     dates = sorted(
-        datetime.fromtimestamp(p.t_ms / 1000, tz=KIS_KST).strftime("%Y%m%d")
+        datetime.fromtimestamp(p.t_ms / 1000, tz=KST).strftime("%Y%m%d")
         for p in result.points
     )
     assert dates == [
@@ -844,7 +845,7 @@ async def test_fetch_investor_net_filters_outside_requested_range(tmp_path) -> N
     client = _make_client(_investor_handler(rows), tmp_path)
     result = await client.fetch_investor_net("005930", "20240104", "20240105")
     dates = sorted(
-        datetime.fromtimestamp(p.t_ms / 1000, tz=KIS_KST).strftime("%Y%m%d")
+        datetime.fromtimestamp(p.t_ms / 1000, tz=KST).strftime("%Y%m%d")
         for p in result.points
     )
     assert dates == ["20240104", "20240105"]

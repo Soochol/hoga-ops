@@ -27,7 +27,7 @@ from hoga.api.screener_store import DailyBar
 from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import kis_access
 from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
-from hoga.live.kis_client import KIS_KST
+from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ async def _kis_fetch_one(client, code: str, frm: str, to: str) -> list[DailyBar]
     if res.violations:
         log.warning("screener daily violations %s: %d", code, len(res.violations))
     return [DailyBar(code=code,
-                     date=datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(),
+                     date=datetime.fromtimestamp(c.t_ms / 1000, tz=KST).date(),
                      open=float(c.open), high=float(c.high),
                      low=float(c.low), close=float(c.close), volume=c.volume)
             for c in res.candles]

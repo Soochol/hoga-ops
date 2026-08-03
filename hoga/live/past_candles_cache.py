@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from hoga.live.kis_venue import KisVenue
+from hoga.live.venue import Venue
 from hoga.util.cache_stats import CacheStats
 from hoga.util.timeenc import KST
 
@@ -61,11 +61,11 @@ class PastCandlesCache:
         self._max_past_dates_per_code = max(0, int(max_past_dates_per_code))
         self._max_today_mem_entries = max(0, int(max_today_mem_entries))
         self._past_mem: OrderedDict[
-            tuple[KisVenue, str], OrderedDict[str, list[dict]]
+            tuple[Venue, str], OrderedDict[str, list[dict]]
         ] = OrderedDict()
         self._past_total = 0
         self._today_mem: OrderedDict[
-            tuple[KisVenue, str],
+            tuple[Venue, str],
             tuple[float, list[dict] | None],
         ] = OrderedDict()
         self._past_stats = CacheStats()
@@ -82,7 +82,7 @@ class PastCandlesCache:
             "today": self._today_stats.snapshot(size=len(self._today_mem)),
         }
 
-    def get_past(self, venue: KisVenue, code: str, date: str) -> list[dict] | None:
+    def get_past(self, venue: Venue, code: str, date: str) -> list[dict] | None:
         key = (venue, code)
         inner = self._past_mem.get(key)
         if inner is None:
@@ -114,7 +114,7 @@ class PastCandlesCache:
         return _ts_ms_to_kst_yyyymmdd(first_ts) == date_yyyymmdd
 
     def store_past(
-        self, venue: KisVenue, code: str, date: str, bars: list[dict]
+        self, venue: Venue, code: str, date: str, bars: list[dict]
     ) -> None:
         key = (venue, code)
         inner = self._past_mem.get(key)
@@ -143,7 +143,7 @@ class PastCandlesCache:
             if not lru_inner:
                 del self._past_mem[lru_key]
 
-    def delete_past(self, venue: KisVenue, code: str, date: str) -> None:
+    def delete_past(self, venue: Venue, code: str, date: str) -> None:
         key = (venue, code)
         inner = self._past_mem.get(key)
         if inner is None:
@@ -152,7 +152,7 @@ class PastCandlesCache:
             self._drop_date(key, inner, date)
 
     def _drop_date(
-        self, key: tuple[KisVenue, str], inner: OrderedDict, date: str
+        self, key: tuple[Venue, str], inner: OrderedDict, date: str
     ) -> None:
         inner.pop(date, None)
         self._past_total -= 1
@@ -162,7 +162,7 @@ class PastCandlesCache:
     # --- today ---
 
     def get_today_tri(
-        self, venue: KisVenue, code: str
+        self, venue: Venue, code: str
     ) -> tuple[TodayState, list[dict] | None]:
         """Tri-state today accessor."""
         entry = self._today_mem.get((venue, code))
@@ -182,7 +182,7 @@ class PastCandlesCache:
         return "hit", value
 
     def store_today(
-        self, venue: KisVenue, code: str, bars: list[dict] | None
+        self, venue: Venue, code: str, bars: list[dict] | None
     ) -> None:
         key = (venue, code)
         self._today_mem[key] = (time.monotonic(), bars)
