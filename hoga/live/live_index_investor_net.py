@@ -3,24 +3,20 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Hashable
 from typing import Protocol
 
-from hoga.live import kis_access
+from hoga.live import kiwoom_access, kiwoom_investor, kiwoom_rest_runtime
 from hoga.live.index_registry import RepresentativeIndex
-from hoga.live.kis_capacity_scheduler import (
-    KisCapacityCooldown,
-    KisCapacityOverloaded,
-)
-from hoga.live.kis_client import KisClient, KisRateLimitError
+from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded, Priority
+from hoga.live.kiwoom_errors import KiwoomRestError
 
 
-class KisRestScheduler(Protocol):
+class KiwoomRestScheduler(Protocol):
     async def submit(
         self,
         *,
         key: Hashable,
-        endpoint: str,
-        priority: kis_access.KisRequestPriority,
-        call: Callable[[KisClient], Awaitable],
-        cooldown_scope: Hashable | None = None,
+        api_id: str,
+        priority: Priority,
+        call: Callable[[], Awaitable],
     ): ...
 
 
@@ -31,7 +27,7 @@ class LiveIndexInvestorNetFetcher:
         self,
         *,
         data_dir,
-        scheduler: KisRestScheduler,
+        scheduler: KiwoomRestScheduler,
     ) -> None:
         self._data_dir = data_dir
         self._scheduler = scheduler
@@ -45,20 +41,22 @@ class LiveIndexInvestorNetFetcher:
     ) -> dict:
         batch_label = f"{from_label}__{to_label}"
         try:
-            result = await kis_access.run_with_capacity(
-                self._scheduler,
-                data_dir=self._data_dir,
+            # PR-E(#1041) 칼 컷오버 — 소스는 키움 ka10051 이다. 계정 차원
+            # (cooldown_scope·data_dir)은 사라졌다(#1015).
+            client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
+            if client is None:
+                raise KiwoomRestError("kiwoom client not initialized")
+            result = await kiwoom_access.run_with_capacity(
+                self._scheduler,   # 주입된 거버너 — 테스트가 갈아끼우는 이음매다
                 key=("index-investor-net", index.id, from_label, to_label),
-                endpoint=kis_access.KisRestEndpoint.INDEX_INVESTOR_NET,
+                api_id="ka10051",
                 priority="background",
-                cooldown_scope="index-investor-net",
-                fetch_fn=lambda kis: kis.fetch_market_investor_net(
-                    index,
-                    from_label,
-                    to_label,
+                client=client,
+                fetch_fn=lambda c: kiwoom_investor.fetch_market_investor_net(
+                    c, index, from_label, to_label,
                 ),
             )
-        except (KisCapacityCooldown, KisCapacityOverloaded, KisRateLimitError) as e:
+        except (KiwoomCapacityOverloaded, KiwoomRestError) as e:
             return {
                 "index_id": index.id,
                 "from": from_label,
@@ -73,10 +71,10 @@ class LiveIndexInvestorNetFetcher:
             "index_id": index.id,
             "from": from_label,
             "to": to_label,
-            "points": [_investor_point_to_dict(p) for p in result.points],
-            "data_warnings": [
-                _violation_to_warning(v, batch_label) for v in result.violations
-            ],
+            # ka10051 은 날짜당 한 콜이고 휴장일은 빈 응답으로 자연히 걸러진다 —
+            # 종목별(ka10059)과 달리 불변식 위반 개념이 없어 리스트를 그대로 준다.
+            "points": [_investor_point_to_dict(p) for p in result],
+            "data_warnings": [],
         }
 
 
@@ -87,14 +85,6 @@ def _investor_point_to_dict(p) -> dict:
         "institution_net": p.institution_net,
     }
 
-
-def _violation_to_warning(v, batch_label: str) -> dict:
-    return {
-        "batch": batch_label,
-        "date": v.date_yyyymmdd,
-        "reason": "invariant_violation",
-        "msg": f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
-    }
 
 
 def _kis_error_to_warning(reason: str, msg: str, batch_label: str) -> dict:

@@ -9,12 +9,12 @@ import asyncio
 import calendar as stdlib_calendar
 import datetime as dt
 import logging
-import threading
 import time
 from pathlib import Path
 
 from fastapi import APIRouter, Query
 
+from hoga.api import trading_days as trading_days_source
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import CalendarCell, CalendarResponse
@@ -28,23 +28,6 @@ from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
 
 log = logging.getLogger(__name__)
 
-# Module-level cache: (year, month) → set of YYYYMMDD trading-day strings.
-# KRX trading days for past months are stable (holidays don't reschedule retro-
-# actively), so an unbounded dict is fine for one process. For the current/future
-# month we accept staleness — a new holiday announced mid-process is rare enough
-# that a server bounce (or the negative-today recheck below evicting the month)
-# fixes it. ADR-0064 deliberately left this future-trading-day cache untouched
-# (blast radius 0); is_trading_session_today handles TODAY's verdict separately
-# with its own confirmed-positive / throttled-negative-recheck path.
-_month_cache: dict[tuple[int, int], set[str]] = {}
-
-# Negative cache: (year, month) → monotonic time of the last FAILED fetch.
-# Without it, the live poller's calendar gate re-ran the full blocking fetch
-# every ~20s cycle for the whole session during a chk-holiday outage. Within
-# the TTL we return None (weekday fallback) instantly instead of re-fetching.
-_failure_cache: dict[tuple[int, int], float] = {}
-_FAILURE_TTL_SECONDS = 60.0
-_trading_days_lock = threading.Lock()
 
 # ADR-0064 — "is TODAY a KRX session?" cache, kept SEPARATE from _month_cache.
 # `_session_confirmed` holds YYYYMMDD strings proven to be trading sessions;
@@ -64,6 +47,9 @@ _SESSION_MISS_RECHECK_S = 60.0
 
 _last_failure_reason: UpstreamCode | None = None
 
+# 오버레이 위치. `set_data_dir` 로 주입한다(PR-H·#1044).
+_data_dir: Path | None = None
+
 
 def last_failure_reason() -> UpstreamCode | None:
     """Public accessor for the most recent KIS-availability failure."""
@@ -78,49 +64,46 @@ class TradingDayUnavailableError(RuntimeError):
         self.code = code
 
 
+def set_data_dir(data_dir: Path | None) -> None:
+    """오버레이 위치를 알려 준다. 앱 기동에서 한 번 호출한다(PR-H·#1044).
+
+    시드는 패키지에 붙어 있어 항상 읽히지만, **커밋 이후의 새 거래일**은
+    `<data_dir>/calendar/trading_days.txt` 오버레이에 쌓인다. 이 값이 없으면
+    시드까지만 답한다 — 틀리지는 않고 커버리지가 짧아질 뿐이다.
+    """
+    global _data_dir  # noqa: PLW0603 — 문서화된 프로세스 싱글턴
+    _data_dir = data_dir
+
+
 def _trading_days_for(year: int, month: int) -> set[str] | None:
-    """Return YYYYMMDD strings for trading days in (year, month) via KIS
-    chk-holiday (opnd_yn). Returns None when the fetch fails (creds missing,
-    network, rt_cd) — most recent reason via :func:`last_failure_reason`.
-    Cached results from earlier successful fetches stay valid; failures are
-    negative-cached for ``_FAILURE_TTL_SECONDS`` so hot callers (poller gate)
-    don't re-run the blocking fetch every cycle during an outage.
+    """(year, month) 의 거래일 YYYYMMDD 집합. 커버리지 밖이면 None.
+
+    **PR-H(#1044) 이후 조회 경로에 벤더가 없다.** 정적 시드
+    (`hoga/api/trading_days_seed.txt`, 키움 `ka20006` 역산)와 data_dir 오버레이만
+    읽는다. 그래서 여기서 사라진 것들:
+
+      - 월 캐시 → `trading_days` 가 프로세스 싱글턴으로 이미 들고 있다
+      - 실패 음성 캐시(60s TTL) → **실패라는 사건이 없다**
+      - 자격증명 결여 vs 일시 장애 갈래(#976) → 파일은 자격증명을 안 쓴다
+
+    None 이 뜻하는 것도 하나로 줄었다: **파일이 덮는 범위 밖**. 그건 진짜 모르는
+    것이라 재시도해도 달라지지 않는다.
     """
     global _last_failure_reason  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
 
-    key = (year, month)
-    with _trading_days_lock:
-        cached = _month_cache.get(key)
-        if cached is not None:
-            return cached
-
-        failed_at = _failure_cache.get(key)
-        if failed_at is not None and (time.monotonic() - failed_at) < _FAILURE_TTL_SECONDS:
-            return None  # recent failure — keep the fallback, don't re-fetch yet
-
-        # Late import (per call) keeps the documented monkeypatch seam: tests patch
-        # hoga.api.kis_holidays.fetch_month_trading_days as a module attribute.
-        from hoga.api.kis_holidays import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
-            KisCredentialsMissing,
-            fetch_month_trading_days,
-        )
-
-        try:
-            result = fetch_month_trading_days(year, month)
-        except Exception as e:  # noqa: BLE001 — KisHolidayFetchError or worse
-            _last_failure_reason = (
-                UpstreamCode.KIS_CREDENTIALS_MISSING
-                if isinstance(e, KisCredentialsMissing)
-                else UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
-            )
-            _failure_cache[key] = time.monotonic()
-            # The cause never reached operators before (no logger here) — keep it.
-            log.warning("calendar: KIS trading-day fetch failed for %04d-%02d: %s", year, month, e)
-            return None
-        _month_cache[key] = result
-        _failure_cache.pop(key, None)
-        _last_failure_reason = None
-        return result
+    days = trading_days_source.trading_days(_data_dir)
+    if not days:
+        # 시드를 못 읽었다 = 배포 사고. 재시도 대상이 아니지만 사유는 남긴다.
+        _last_failure_reason = UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+        return None
+    end = max(days)
+    prefix = f"{year:04d}{month:02d}"
+    # 그 달의 첫날이 커버리지를 넘으면 통째로 모른다.
+    if f"{prefix}01" > end:
+        _last_failure_reason = UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+        return None
+    _last_failure_reason = None
+    return {d for d in days if d.startswith(prefix)}
 
 
 def is_trading_session_today(
@@ -150,22 +133,17 @@ def is_trading_session_today(
 
     now = _now_s if _now_s is not None else time.monotonic()
     year, month = int(today_yyyymmdd[:4]), int(today_yyyymmdd[4:6])
+    # 음성 재확인 스로틀은 남긴다. 원래는 여기서 월 캐시를 비워 **fresh fetch** 를
+    # 강제했는데, PR-H(#1044) 이후 소스가 정적 파일이라 다시 읽어도 같은 답이고
+    # "일시적 miss" 라는 사건 자체가 없다 — 스케줄러가 오버레이를 갱신하면 mtime
+    # 으로 자연히 반영되고, 그 갱신을 보는 시점이 바로 이 재확인이다.
     last_miss = _session_last_miss_ms.get(today_yyyymmdd)
-    if last_miss is not None:
-        if (now - last_miss) < _SESSION_MISS_RECHECK_S:
-            return False  # recently checked; today genuinely absent (holiday) — throttle
-        # Throttle expired: this is a deliberate RE-CHECK of a negative.
-        # Evict the month so the verdict comes from a FRESH fetch — otherwise
-        # the permanent month cache would pin a transient miss for the whole
-        # process, which is exactly the silent-halt ADR-0064 exists to prevent.
-        # Cost: one extra KIS fetch per minute, only on days the calendar says
-        # holiday during market hours (rare), and off-loop at the call sites.
-        _month_cache.pop((year, month), None)
+    if last_miss is not None and (now - last_miss) < _SESSION_MISS_RECHECK_S:
+        return False  # 최근에 확인했다 — 오늘은 진짜 휴장
 
     days = _trading_days_for(year, month)
     if days is None:
-        # Fetch failed — reason (creds vs upstream) already recorded by
-        # _trading_days_for; its failure TTL throttles the retry cadence.
+        # 달력 커버리지 밖 — 오버레이가 아직 그 날까지 못 왔다는 뜻이다.
         return None
     if today_yyyymmdd in days:
         _session_confirmed.add(today_yyyymmdd)
@@ -210,14 +188,21 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     any month spanned by the range — fail-fast on the enqueue path so the user
     can't proceed with a guessed day list.
 
-    Tests should monkeypatch or pre-populate ``_month_cache`` rather than rely
-    on live KIS chk-holiday; tests should monkeypatch
-    ``hoga.api.kis_holidays.fetch_month_trading_days`` to raise for error paths.
+    PR-H(#1044) 이후 소스는 정적 시드 + data_dir 오버레이라, **범위 안에서는
+    실패하지 않는다**. 이 예외가 남아 있는 이유는 하나뿐이다: 요청 구간이
+    달력 커버리지를 넘을 때. 그건 추측한 날짜 목록으로 진행할 일이 아니다.
     """
     start_d = dt.date(int(start[:4]), int(start[4:6]), int(start[6:8]))
     end_d = dt.date(int(end[:4]), int(end[4:6]), int(end[6:8]))
     if end_d < start_d:
         raise ValueError("end_date < start_date")
+    # **날짜 단위로도 커버리지를 본다.** 월 단위만 보면 같은 달 안에서 커버리지를
+    # 넘는 꼬리(8/3까지 아는데 8/6까지 요청)를 못 잡아 **조용히 짧은 목록**을
+    # 돌려준다 — 호출자는 그 사이 거래일이 원래 없었다고 읽는다.
+    end_known = coverage_end()
+    if end_known is None or end > end_known:
+        raise TradingDayUnavailableError(UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+
     out: list[str] = []
     cur = dt.date(start_d.year, start_d.month, 1)
     while cur <= end_d:
@@ -233,6 +218,15 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
         else:
             cur = dt.date(cur.year, cur.month + 1, 1)
     return out
+
+
+def coverage_end() -> str | None:
+    """달력이 답할 수 있는 마지막 날짜(YYYYMMDD). 소스가 비면 None.
+
+    이 경계 뒤는 **모른다** — 아직 안 열린 날일 수도, 휴장일 수도 있다.
+    호출자가 "정확한 구간" 과 "근사해야 하는 꼬리" 를 가르는 데 쓴다.
+    """
+    return trading_days_source.coverage_end(_data_dir)
 
 
 def is_trading_day(date_yyyymmdd: str) -> bool | None:
@@ -255,8 +249,7 @@ def is_trading_day(date_yyyymmdd: str) -> bool | None:
 def reset_cache_for_tests() -> None:
     """Test helper — clears the trading-day cache between tests."""
     global _last_failure_reason  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
-    _month_cache.clear()
-    _failure_cache.clear()
+    trading_days_source.reset_for_tests()
     _session_confirmed.clear()
     _session_last_miss_ms.clear()
     _last_failure_reason = None

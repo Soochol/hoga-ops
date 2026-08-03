@@ -1854,6 +1854,8 @@ class IvPointModel(BaseModel):
     strike: float
     call_iv: float | None
     put_iv: float | None
+    #: 행사가 미결제 합 — IV 신뢰도. 화면이 저유동성 포인트의 투명도를 감쇠한다.
+    oi: int = 0
 
 
 class IvSkewModel(BaseModel):
@@ -1862,16 +1864,28 @@ class IvSkewModel(BaseModel):
     risk_reversal_25d: float | None
 
 
+class PutCallSeriesPointModel(BaseModel):
+    t_ms: int
+    volume_ratio: float | None
+    oi_ratio: float | None
+
+
 class OptionSentimentResponse(BaseModel):
     #: 휴면 사유. None 이 아니면 나머지 필드는 비어 있을 수 있다.
     unavailable: str | None = None
     expiry: str | None = None
+    #: 근월물 체인 종목 수. 만기마다 다르므로(202608=780·202609=1012) 화면이
+    #: 대기 안내 문구를 이 값으로 만든다 — 상수로 박으면 롤오버 때 조용히 틀린다.
+    chain_size: int | None = None
     underlying: float | None = None
     #: 전 행사가 스냅샷 관측 시각 — Max Pain·GEX 의 as_of.
     full_as_of_ms: int | None = None
     #: ATM 창 스냅샷 관측 시각 — P/C·IV 스큐의 as_of.
     atm_as_of_ms: int | None = None
     put_call: PutCallRatioModel | None = None
+    #: 당일 P/C 시계열(전수 5분마다 한 점, KST 자정 리셋, 프로세스 메모리 한정).
+    put_call_series: list[PutCallSeriesPointModel] = Field(default_factory=list)
+
     oi_distribution: OiDistributionModel | None = None
     gamma_exposure: GammaExposureModel | None = None
     iv_skew: IvSkewModel | None = None

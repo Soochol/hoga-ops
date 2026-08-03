@@ -27,11 +27,8 @@ from pathlib import Path
 
 import httpx
 
-from hoga.live.kis_client import (
-    KIS_KST,
-    KisAuthError,
-    KisCredentials,
-)
+from hoga.live.kis_client import KisAuthError, KisCredentials
+from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
 
@@ -94,7 +91,7 @@ class KisTokenProvider:
             if (
                 self._token
                 and self._token_expires_at
-                and datetime.now(KIS_KST) < self._token_expires_at - timedelta(minutes=10)
+                and datetime.now(KST) < self._token_expires_at - timedelta(minutes=10)
             ):
                 return self._token
             # disk cache hit
@@ -167,7 +164,7 @@ class KisTokenProvider:
         body = resp.json()
         token: str = body["access_token"]
         expires_in = int(body.get("expires_in", 86400))
-        expires_at = datetime.now(KIS_KST) + timedelta(seconds=expires_in)
+        expires_at = datetime.now(KST) + timedelta(seconds=expires_in)
         self._token = token
         self._token_expires_at = expires_at
         self._write_cache(token, expires_at)
@@ -186,7 +183,7 @@ class KisTokenProvider:
             if data.get("app_key_sha256") != _key_fingerprint(self._creds.app_key):
                 return None
             exp = datetime.fromisoformat(data["expires_at"])
-            if datetime.now(KIS_KST) >= exp - timedelta(minutes=10):
+            if datetime.now(KST) >= exp - timedelta(minutes=10):
                 return None
             return data["access_token"], exp
         # TypeError: non-string expires_at / non-str token shapes.

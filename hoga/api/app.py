@@ -17,7 +17,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from hoga.api import captures as _captures_module, screener as _screener_module, symbols as _symbols_module
+from hoga.api import (
+    calendar as calendar_module,
+    captures as _captures_module,
+    screener as _screener_module,
+    symbols as _symbols_module,
+)
 from hoga.api.calendar import build_router as build_calendar_router
 from hoga.api.captures import build_router as build_captures_router, cancel_all_on_shutdown, set_bus as set_captures_bus
 from hoga.api.events import build_event_bus
@@ -49,9 +54,9 @@ from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_log_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
+from hoga.live.candle_models import LiveCandle
 from hoga.live.candle_repair import build_saved_view_repair_hook
 from hoga.live.kis_capacity_runtime import aclose_kis_capacity_scheduler
-from hoga.live.kis_models import KisCandle
 from hoga.live.kis_runtime import aclose_kis_client, get_kis_client
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
@@ -153,7 +158,7 @@ def allowed_origins() -> tuple[str, ...]:
     return ALLOWED_ORIGINS + extra
 
 
-async def _repair_minute_fetch(code: str, date_s: str) -> list[KisCandle]:
+async def _repair_minute_fetch(code: str, date_s: str) -> list[LiveCandle]:
     """저장뷰 캡처-공백 복구용 KIS 과거 분봉 fetch(KRX 고정 — /study venue).
 
     현재 KIS 클라이언트를 raw로 호출한다(클라이언트 내장 rate-limiter가 쿼터를
@@ -369,6 +374,9 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     app.include_router(
         build_symbols_router(path=resolve_symbol_master_path(), data_dir=data_dir)
     )
+    # PR-H(#1044): 거래일 달력이 data_dir 오버레이를 보게 한다. 시드는 패키지에
+    # 붙어 있어 이 호출 없이도 답하지만, 커밋 이후의 새 거래일은 오버레이에 있다.
+    calendar_module.set_data_dir(data_dir)
     app.include_router(build_calendar_router(data_dir=data_dir))
     app.include_router(build_watchlist_router(data_dir=data_dir))
     app.include_router(build_heatmap_router(data_dir=data_dir))
