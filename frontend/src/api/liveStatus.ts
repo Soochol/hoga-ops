@@ -28,6 +28,21 @@ export interface LiveStatus {
   // lifespan 소유 배경 태스크의 정직한 liveness(ADR-0088). 백엔드가 lifespan 밖
   // (테스트 등)이면 없을 수 있어 optional.
   supervised_tasks?: SupervisedTask[];
+  // 데이터 디렉터리 파일시스템의 여유. 조회 실패·미주입이면 없음.
+  disk?: DiskHeadroom | null;
+}
+
+/**
+ * 디스크 여유. 미러: hoga/api/prune.py::DiskHeadroom.
+ *
+ * `low` 는 백엔드 임계(10% 미만)다. raw 가 거래일당 ~33GB 씩 자라는데 능동 신호가
+ * 하루 한 번 로그 한 줄뿐이라, 가득 차는 순간을 사용자들의 "데이터가 없어요" 로
+ * 알게 되던 것을 막기 위한 표면이다(2026-08-03).
+ */
+export interface DiskHeadroom {
+  free_pct: number;
+  free_gib: number;
+  low: boolean;
 }
 
 /**
@@ -37,14 +52,18 @@ export interface LiveStatus {
  * 구별할 수 없어 경보에 쓸 수 없다 — `HOGA_LIVE_TODAY_PROMOTE_ENABLED=false` 면
  * today-promoter 는 정상인데도 영구히 `running:false` 다. **경보는 `state`가
  * `'dead'`인 항목만 봐야 한다.**
+ *
+ * `'completed'`는 one-shot(`watchlist-catchup`·`symbols-boot-refresh`)이 할 일을
+ * 마치고 정상 반환한 상태다 — 경보 아님. 이 값이 없던 판에서는 부팅 캐치업이
+ * 끝나는 순간 전 사용자에게 "백그라운드 작업이 중단됐습니다" 토스트가 상시 떴다.
  */
 export interface SupervisedTask {
   name: string;
   running: boolean;
-  state?: 'running' | 'dead' | 'not_started';
+  state?: 'running' | 'dead' | 'completed' | 'not_started';
 }
 
-/** 조용히 죽은 배경 태스크 이름들. 미기동(not_started)은 죽음이 아니다. */
+/** 조용히 죽은 배경 태스크 이름들. 미기동·정상완료는 죽음이 아니다. */
 export function deadSupervisedTasks(status: LiveStatus | undefined): string[] {
   return (status?.supervised_tasks ?? [])
     .filter((t) => t.state === 'dead')

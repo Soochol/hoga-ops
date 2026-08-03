@@ -6,9 +6,10 @@
 # 된다는 것이다. 프로세스 사망은 구조적으로 외부 감독자만 덮을 수 있다.
 #
 # 설치:
-#   mkdir -p ~/.config/systemd/user
+#   mkdir -p ~/.config/systemd/user ~/.config/hoga-ops
 #   cp deploy/hoga-ops.service ~/.config/systemd/user/
-#   # WorkingDirectory 를 실제 체크아웃 경로로 고치고:
+#   cp deploy/hoga-ops.env.example ~/.config/hoga-ops/deploy.env
+#   # deploy.env 의 바인드 주소와 이 파일의 WorkingDirectory 를 고치고:
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now hoga-ops
 #
@@ -25,16 +26,33 @@
 [Unit]
 Description=hoga-ops local API server
 Documentation=https://github.com/Soochol/hoga-ops
-After=network-online.target
+# user 유닛에는 network-online.target 이 **없다**(시스템 매니저의 타깃이라 user
+# 매니저 네임스페이스에 존재하지 않는다) — 여기 적어도 순서가 강제되지 않는다.
+# 부팅 레이스는 아래 ExecStartPre 가 실제로 막는다.
 
 [Service]
 Type=simple
 # ↓ 실제 체크아웃 경로로 교체할 것.
 WorkingDirectory=%h/code/hoga-ops
-# .env 는 앱이 스스로 읽는다(default_app() → load_env()) — EnvironmentFile 불필요.
-# host·port 는 명시 인자로 둔다 — 유닛 파일만 봐도 바인드 면이 보이게.
-# prod(ADR-0134)는 127.0.0.1 을 tailscale 인터페이스 주소로 바꾼다. 공인·LAN
-# 인터페이스(0.0.0.0 등) 금지 — README "Access model" 참고.
+# 앱 설정(.env)은 앱이 스스로 읽는다(default_app() → load_env()). 여기서 읽는
+# 것은 **배포 좌표**뿐이다 — 바인드 주소를 워치독과 공유하기 위한 단일 진실
+# (deploy/hoga-ops.env.example). 없으면 아래 기본값(루프백)이 남는다.
+Environment=HOGA_BIND_HOST=127.0.0.1
+Environment=HOGA_BIND_PORT=8000
+EnvironmentFile=-%h/.config/hoga-ops/deploy.env
+#
+# 바인드 주소가 인터페이스에 올라올 때까지 기다린다. 재부팅(정전 복구)에서
+# user 매니저는 linger 로 즉시 기동하는데 tailscaled 는 아직 인터페이스를 안
+# 올렸을 수 있고, 그러면 uvicorn 의 bind 가 EADDRNOTAVAIL 로 즉사한다 —
+# Restart=always 가 5초 간격으로 5번 재시도하고 끝나 **유닛이 failed 로 고착**
+# 한다(그때는 Restart 가 더 이상 동작하지 않는다). 무인 서버가 정전 다음 날
+# 아침까지 죽어 있는 경로가 정확히 이것이었다.
+ExecStartPre=/usr/bin/env bash deploy/hoga-ops-wait-bind.sh
+# 위 대기(최대 60초)는 기본 TimeoutStartSec(90초)에 아슬아슬하다 — 여유를 준다.
+TimeoutStartSec=120
+#
+# prod(ADR-0134)는 HOGA_BIND_HOST 를 tailscale 인터페이스 주소로 바꾼다. 공인·
+# LAN 인터페이스(0.0.0.0 등) 금지 — README "Access model" 참고.
 #
 # --frozen: 재시작마다 uv 가 락파일을 재해석·동기화하는 것을 막는다(#998) —
 # 재시작이 네트워크·인덱스 상태에 좌우되면 안 된다. 의존성 갱신은 업그레이드
@@ -43,7 +61,7 @@ WorkingDirectory=%h/code/hoga-ops
 # 단일 워커 전제: 이 앱은 프로세스 내 싱글턴(키움 WS 세션·일일 스케줄러·DuckDB)
 # 구조다. uvicorn 직접 기동 시에도 --workers 를 절대 붙이지 말 것 — 워커마다
 # 키움 WS 를 중복 접속(킥 전쟁)하고 스케줄러가 N중 실행된다.
-ExecStart=/usr/bin/env uv run --frozen hoga serve --host 127.0.0.1 --port 8000
+ExecStart=/usr/bin/env uv run --frozen hoga serve --host ${HOGA_BIND_HOST} --port ${HOGA_BIND_PORT}
 
 Restart=always
 RestartSec=5

@@ -2,13 +2,16 @@
 #
 # 설치 (hoga-ops.service 와 같은 요령):
 #   cp deploy/hoga-ops-watchdog.{service,timer} ~/.config/systemd/user/
-#   # WorkingDirectory 와 Environment 의 HOGA_HEALTH_URL 을 실제 값으로 고치고:
+#   # WorkingDirectory 만 실제 값으로 고치면 된다 — 바인드 주소는 서비스 유닛과
+#   # 공유하는 ~/.config/hoga-ops/deploy.env 에서 온다.
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now hoga-ops-watchdog.timer
 #
 # 상태·이력:
 #   systemctl --user list-timers hoga-ops-watchdog.timer
 #   journalctl --user -u hoga-ops-watchdog -n 20
+#   # 재시작이 몇 번, 어떤 원인으로 일어났는지(원인 본문 포함):
+#   tail ~/.local/state/hoga-ops/watchdog-restarts.log
 
 [Unit]
 Description=hoga-ops deep-health watchdog (oneshot)
@@ -18,7 +21,9 @@ Documentation=https://github.com/Soochol/hoga-ops
 Type=oneshot
 # ↓ 실제 체크아웃 경로로 교체할 것.
 WorkingDirectory=%h/code/hoga-ops
-# prod 는 tailscale 인터페이스에만 바인드하므로 루프백으로는 안 닿는다 —
-# 실제 바인드 주소로 재정의할 것 (예: http://100.x.y.z:8000/health?deep=1).
-Environment=HOGA_HEALTH_URL=http://127.0.0.1:8000/health?deep=1
+# 바인드 좌표는 서비스 유닛과 **같은 파일**에서 읽는다 — 두 곳에 적으면 한쪽만
+# 고쳐져 건강한 서버를 5분마다 재시작하게 된다(deploy/hoga-ops.env.example).
+Environment=HOGA_BIND_HOST=127.0.0.1
+Environment=HOGA_BIND_PORT=8000
+EnvironmentFile=-%h/.config/hoga-ops/deploy.env
 ExecStart=/usr/bin/env bash deploy/hoga-ops-watchdog.sh
