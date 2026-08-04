@@ -1,4 +1,4 @@
-// 달력 셀의 disk_state 마커(✓ ⚠ ✕) + COMPLETE 스킵 + 보유 창 밖 갭 스킵.
+// 달력 셀의 disk_state 마커(✓ ⊘ ✕) + COMPLETE 스킵 + 보유 창 밖 갭 스킵.
 //
 // **날짜를 하드코딩하지 않는다.** 이전 판은 20260501/02/03 을 박아 뒀는데, 달력은
 // 언제나 **현재 달**을 열기 때문에 작성 시점(2026-05)이 지나면 셀이 아예 렌더링되지
@@ -47,7 +47,7 @@ const seedSourcePartial = (date: string) =>
 const seedClientIncomplete = (date: string) =>
   seedWithMeta(date, { collection_complete: false, is_partial: false });
 
-test('calendar-markers: ✓ ⚠ ✕ render per disk_state', async ({ page }) => {
+test('calendar-markers: ✓ ⊘ ✕ render per disk_state', async ({ page }) => {
   await selectSymbol(page);
   // **테스트마다 겹치지 않는 날짜를 쓴다** — fullyParallel 이라 같은 날짜를 고르면
   // 서로의 픽스처를 덮어쓴다(실제로 겪었다: 3번의 source_partial 이 1번의 complete 를
@@ -64,7 +64,12 @@ test('calendar-markers: ✓ ⚠ ✕ render per disk_state', async ({ page }) => 
   await previousMonth(page);
 
   await expect(page.getByTestId(`calendar-cell-${dComplete}`)).toContainText('✓');
-  await expect(page.getByTestId(`calendar-cell-${dPartial}`)).toContainText('⚠');
+  // ⚠ 가 아니라 ⊘ 다. 헬퍼가 **전월** 날짜를 고르므로 업스트림 보유 창(2일) 밖이
+  // 보장되고, 그러면 미확정 갭도 확정 경로가 원리적으로 닫힌다(ADR-0131) — 달력이
+  // `source_partial_confirmed` 로 그리는 바로 그 조건이다. 아래 3번 테스트가 같은
+  // 클래스의 날짜에서 `skipped(upstream_gap)` 을 단언하는 것과 앞뒤가 맞는다:
+  // 표시(⊘)와 동작(스킵)이 같은 술어를 쓴다.
+  await expect(page.getByTestId(`calendar-cell-${dPartial}`)).toContainText('⊘');
   await expect(page.getByTestId(`calendar-cell-${dBroken}`)).toContainText('✕');
 });
 

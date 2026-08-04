@@ -11,7 +11,7 @@ import type { CalendarStatus } from '../api/types';
 // phase.ts 의 phaseToCalendarStatus 가 소유한다.
 export interface CalendarStatusDescriptor {
   /** Glyph rendered in the corner of the cell; null = no glyph. */
-  marker: '✓' | '⚠' | '✕' | '!' | '◆' | '◇' | '🔒' | '–' | null;
+  marker: '✓' | '⚠' | '✕' | '!' | '◆' | '◇' | '🔒' | '–' | '⊘' | null;
   /** Per-status badge color for the marker. Optional — today_locked relies
    *  on the 🔒 glyph itself and intentionally has no separate color. */
   badgeColor?: string;
@@ -44,6 +44,33 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
     disabled: false,
     tooltipSuffix: '부분 — 업스트림 결손 가능 (재캡처로 복구 안 될 수 있음)',
     legendLabel: '⚠ 부분',
+  },
+  source_partial_confirmed: {
+    // 같은 "부분" 이지만 **끝난** 부분이다. ⚠ 를 재사용하지 않는 이유: amber ⚠ 는
+    // "조치하라" 를 말하는데 여기서 할 수 있는 조치가 없다. 최근 실측(2026-08-03,
+    // hogaplay 247종목 중 246종목이 09:02~09:05 동일 결손)처럼 결손이 전 종목·연일로
+    // 번지면 ⚠ 가 달력을 뒤덮어 신호 가치를 잃는다 — 그 대량 구간을 갈라 내는 것이
+    // 이 상태의 목적이다.
+    //
+    // 글리프는 ⊘("더 채울 수 없음"), 색은 --fg-dimmer 로 가라앉힌다. 낮 숫자
+    // (baseColorVar)는 --fg 를 유지한다 — no_upstream_data 처럼 흐리게 하면 "그날
+    // 데이터가 없다" 로 오독되는데, 실제로는 하루 대부분이 정상 수집돼 있다.
+    // (--fg-dimmer 는 DESIGN.md 2026-08-04 규칙상 장식 글리프에 허용된 자리다.)
+    //
+    // 셀은 클릭 가능하게 둔다: 캡처 폼의 강제 재시도(force_retry)가 이 판정을
+    // 우회해 재검증하는 유일한 경로다.
+    //
+    // 위 어휘 계약의 예외다 — 보관함 DiskStateBadge 에 대응 행이 없다. 이건
+    // 디스크 상태 5종이 아니라 `source_partial` 의 **달력 전용 정제**이고,
+    // 판정에 필요한 `upstream_gap_confirmed` 가 보관함 wire(disk_state)에는
+    // 실리지 않는다. 보관함은 같은 Stock-Date 를 '⚠ 부분' 으로 두되 행을 펼치면
+    // "업스트림 결손 N구간" 패널로 같은 사실을 더 자세히 말한다.
+    marker: '⊘',
+    badgeColor: 'var(--fg-dimmer)',
+    baseColorVar: 'var(--fg)',
+    disabled: false,
+    tooltipSuffix: '부분 확정 — 업스트림 결손 확인 (재캡처해도 동일)',
+    legendLabel: '⊘ 부분 확정',
   },
   client_incomplete: {
     // 종전 범례가 이 상태를 '손상'이라 불렀다 — 보관함(DiskStateBadge)은 같은
@@ -142,6 +169,7 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
 export const LEGEND_ORDER: readonly CalendarStatus[] = [
   'complete',
   'source_partial',
+  'source_partial_confirmed',   // ⚠ 바로 뒤 — 같은 축의 정제라 붙여 읽혀야 한다
   'client_incomplete',
   'invalid',
   'no_upstream_data',

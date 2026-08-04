@@ -140,6 +140,75 @@ def test_calendar_hogaplay_wins_over_kis_live(monkeypatch, tmp_path):
     assert cell["status"] == "complete"
 
 
+_KST = dt.timezone(dt.timedelta(hours=9))
+
+
+def _status_at(monkeypatch, tmp_path, date, code, now):
+    """`_status_for` 와 같지만 시계를 고정한다.
+
+    확정/미확정 갈림은 **보유 창(2일) 기준 나이**에 달려 있어(ADR-0131) 실제
+    시각으로 돌리면 모든 픽스처가 만료되어 미확정 경로를 아예 못 밟는다.
+    """
+    monkeypatch.setattr("hoga.api.calendar._now_kst", lambda: now, raising=False)
+    return _status_for(monkeypatch, tmp_path, date, code)
+
+
+def test_calendar_unconfirmed_gap_within_retention_stays_source_partial(monkeypatch, tmp_path):
+    """아직 재캡처가 채워 줄 여지가 있는 구멍은 ⚠ 그대로."""
+    _write_source_meta(tmp_path, "20260519", "005930", "hogaplay",
+                       {"collection_complete": True, "is_partial": True})
+    cell = _status_at(monkeypatch, tmp_path, "20260519", "005930",
+                      dt.datetime(2026, 5, 20, 18, 0, tzinfo=_KST))
+    assert cell["status"] == "source_partial"
+
+
+def test_calendar_identical_recapture_marks_confirmed(monkeypatch, tmp_path):
+    """ADR-0093: 재캡처가 동일 갭을 재현하면 확정 — 별도 상태로 갈라진다."""
+    _write_source_meta(tmp_path, "20260519", "005930", "hogaplay",
+                       {"collection_complete": True, "is_partial": True,
+                        "identical_capture_count": 2})
+    cell = _status_at(monkeypatch, tmp_path, "20260519", "005930",
+                      dt.datetime(2026, 5, 20, 18, 0, tzinfo=_KST))
+    assert cell["status"] == "source_partial_confirmed"
+    # 확정이어도 하루 대부분은 수집돼 있다 — 캡처 시각을 잃으면 안 된다.
+    assert cell["captured_at_ms"] is not None
+
+
+def test_calendar_session_edge_gap_marks_confirmed(monkeypatch, tmp_path):
+    """ADR-0126: 세션 개시에 접한 갭은 재캡처 횟수와 무관하게 확정이다."""
+    _write_source_meta(tmp_path, "20260519", "005930", "hogaplay",
+                       {"collection_complete": True, "is_partial": True,
+                        "regular_session_open_ms": 90000000,
+                        "regular_session_close_ms": 153000000,
+                        "gap_ranges": [{"start_ms": 90000000, "end_ms": 90200000}]})
+    cell = _status_at(monkeypatch, tmp_path, "20260519", "005930",
+                      dt.datetime(2026, 5, 20, 18, 0, tzinfo=_KST))
+    assert cell["status"] == "source_partial_confirmed"
+
+
+def test_calendar_expired_unconfirmed_gap_marks_confirmed(monkeypatch, tmp_path):
+    """ADR-0131: 보유 창 밖 미확정 갭은 확정 경로가 원리적으로 닫혀 있다.
+
+    같은 meta 가 창 안(위 테스트)에서는 ⚠ 로 남는다는 점이 핵심 — 판정은 meta
+    단독이 아니라 meta × 나이다. 이 셀을 ⚠ 로 두면 decide_capture 가
+    `upstream_gap` 으로 건너뛰는 동안 사용자는 계속 재캡처를 누른다.
+    """
+    _write_source_meta(tmp_path, "20260511", "005930", "hogaplay",
+                       {"collection_complete": True, "is_partial": True})
+    cell = _status_at(monkeypatch, tmp_path, "20260511", "005930",
+                      dt.datetime(2026, 5, 20, 18, 0, tzinfo=_KST))
+    assert cell["status"] == "source_partial_confirmed"
+
+
+def test_calendar_complete_is_unaffected_by_confirmation_split(monkeypatch, tmp_path):
+    """구멍이 없으면 나이와 무관하게 ✓ — 새 분기가 완결 셀을 건드리지 않는다."""
+    _write_source_meta(tmp_path, "20260511", "005930", "hogaplay",
+                       {"collection_complete": True, "is_partial": False})
+    cell = _status_at(monkeypatch, tmp_path, "20260511", "005930",
+                      dt.datetime(2026, 5, 20, 18, 0, tzinfo=_KST))
+    assert cell["status"] == "complete"
+
+
 def test_calendar_kis_live_incomplete_shows_none(monkeypatch, tmp_path):
     """kis_live not finalized (CLIENT_INCOMPLETE) → 'none' (✕ noise removed)."""
     _write_source_meta(tmp_path, "20260518", "005930", "kis_live",

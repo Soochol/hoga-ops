@@ -24,7 +24,10 @@ const API = 'http://127.0.0.1:8765';
 
 /** 클릭 가능한 상태들 — `src/capture/calendarStatus.ts` 의 `disabled: false` 와 동기.
  *  (테스트에서 앱 소스를 import 하지 않는 대신 여기 한 줄로 못박고 근거를 남긴다.) */
-const SELECTABLE = new Set(['complete', 'source_partial', 'client_incomplete', 'invalid', 'none']);
+const SELECTABLE = new Set([
+  'complete', 'source_partial', 'source_partial_confirmed',
+  'client_incomplete', 'invalid', 'none',
+]);
 
 interface CalendarCell { date: string; status: string }
 

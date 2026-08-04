@@ -101,8 +101,10 @@ describe('phaseToCalendarStatus', () => {
     expect(phaseToCalendarStatus('skipped', 'already_complete')).toBe('complete');
   });
 
-  it('skipped + upstream_gap → source_partial (ADR-0093: confirmed gap stays partial)', () => {
-    expect(phaseToCalendarStatus('skipped', 'upstream_gap')).toBe('source_partial');
+  it('skipped + upstream_gap → source_partial_confirmed, NOT plain source_partial', () => {
+    // 워커가 건너뛴 그 순간이 확정이다. ⚠ 로 두면 방금 무시당한 재캡처를 다시 누른다.
+    expect(phaseToCalendarStatus('skipped', 'upstream_gap')).toBe('source_partial_confirmed');
+    expect(phaseToCalendarStatus('skipped', 'source_partial')).toBe('source_partial');
   });
 
   it('failed / cancelled → client_incomplete', () => {
