@@ -270,6 +270,12 @@ async def test_spec7_no_creds_refresh_succeeds(
         return fake_rows
 
     monkeypatch.setattr(symbols_module, "kiwoom_fetch_symbol_master", _fake_fetch)
+    # autouse 가드가 소비자 이음매(`_fetch_symbol_master`)를 막아 두므로, refresh
+    # **성공** 을 보는 테스트는 그 자리를 다시 연다(가드 docstring 의 명시된 관례).
+    async def _consumer_seam():
+        return symbols_module._rows_to_hits(fake_rows)
+
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _consumer_seam)
     monkeypatch.setattr(symbols_module, "_symbols_data_dir", lambda: tmp_path)
     import hoga.live.kiwoom_rest_runtime as _krr
     monkeypatch.setattr(_krr, "ensure_rest_client", lambda *_a, **_k: object())

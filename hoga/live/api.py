@@ -1745,6 +1745,18 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             # 사라졌다. 성분 자체는 남긴다: 기존 캐시 항목과 키가 갈리지 않아야 한다.
             cache_key = ("kiwoom", index.id, timeframe, bucket_seconds)
 
+            # REST 우회 토글 — **가용성 검사보다 앞에 온다.** 우회 중에는 업스트림을
+            # 아예 만지지 않는 것이 계약이라, fetcher 미배선으로 503 을 내면 안 된다.
+            if kis_access.kis_rest_bypass_enabled(data_dir):
+                return _collect_index_minute_candles_cache_only(
+                    cache=index_minute_candles_cache_instance,
+                    key=cache_key,
+                    index_id=index.id,
+                    timeframe=timeframe,
+                    from_s=from_,
+                    to_s=to,
+                )
+
             if not _index_minute_available(bucket_seconds):
                 raise HTTPException(
                     503,

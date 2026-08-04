@@ -43,14 +43,17 @@ def _no_real_mst_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
     사라졌지만, 자격증명이 있는 로컬에서는 여전히 실제 호출이 나간다 — 그래서
     가드는 유지하고 막는 지점만 옮긴다.
     """
-    from hoga.api import kiwoom_master
+    from hoga.api import kiwoom_master, symbols
 
-    async def _blocked(_client):
+    async def _blocked():
         raise kiwoom_master.KiwoomMasterFetchError(
             "종목 마스터 갱신은 테스트에서 차단된다(autouse 가드)"
         )
 
-    monkeypatch.setattr(kiwoom_master, "fetch_symbol_master", _blocked)
+    # **소비자 이음매에 건다.** 어댑터(`kiwoom_master.fetch_symbol_master`)에 걸면
+    # 어댑터의 자기 테스트까지 막힌다 — 가드의 목적은 "앱 부팅이 네트워크를
+    # 때리지 않게" 이지 "어댑터를 못 쓰게" 가 아니다.
+    monkeypatch.setattr(symbols, "_fetch_symbol_master", _blocked)
 
     # 옵션 심리 패널(ADR-0135)의 지수선물옵션 .mst 도 같은 부류의 실 다운로드다.
     # 수집 런타임이 이걸 부르므로 같은 가드 아래 둔다.
