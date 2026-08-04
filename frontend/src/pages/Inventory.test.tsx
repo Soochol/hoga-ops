@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import Inventory from './Inventory';
 
 vi.mock('../api/stock-dates', () => ({
@@ -53,7 +54,7 @@ describe('Inventory page', () => {
       data: [],
       isLoading: true,
     } as unknown as ReturnType<typeof useStockDates>);
-    render(<Inventory />);
+    render(<MemoryRouter><Inventory /></MemoryRouter>);
 
     // 재고 스캔은 ~10초짜리 표면 — 영어 맨 텍스트("Loading inventory…") 대신
     // 한국어 안내 + 로드 후와 같은 grid 의 스켈레톤(레이아웃 점프 방지).
@@ -63,7 +64,7 @@ describe('Inventory page', () => {
   });
 
   it('renders surfaced list and detail panes', () => {
-    render(<Inventory />);
+    render(<MemoryRouter><Inventory /></MemoryRouter>);
 
     // 페이지 통일(2026-07-23): flat — 그림자·카드 배경 스텝 제거, 필드(--bg)에 평평.
     expect(screen.getByTestId('inventory-list-pane')).toHaveClass('bg-bg');

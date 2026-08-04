@@ -328,7 +328,8 @@ function RowRecaptureCell({
       disabled={isInFlight}
       onClick={onClick}
       className={[
-        'bg-transparent border-none p-0 text-sm',
+        // p-1 -m-1: 히트 영역만 키우고 레이아웃은 불변(터치 타깃 확대).
+        'bg-transparent border-none p-1 -m-1 text-sm',
         isInFlight
           ? 'text-fg-dim animate-spin cursor-not-allowed'
           : 'text-accent hover:text-fg cursor-pointer',
@@ -351,7 +352,7 @@ function UnblockCell({ onClick, isPending }: { onClick: () => void; isPending: b
       disabled={isPending}
       onClick={onClick}
       className={[
-        'bg-transparent border-none p-0 text-badge underline',
+        'bg-transparent border-none p-1 -m-1 text-badge underline',
         isPending
           ? 'text-fg-dim cursor-not-allowed'
           : 'text-error hover:text-fg cursor-pointer',
@@ -375,9 +376,12 @@ function SortableTh({ column, sort, onSort, right, title, children }: SortableTh
   const active = sort?.key === column;
   const dir = active ? sort.dir : null;
   const ariaSort = dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none';
-  const indicator = dir === 'desc' ? '▼' : dir === 'asc' ? '▲' : '▾';
-  const indicatorClass = active ? 'text-accent opacity-100' : 'opacity-0 group-hover:opacity-30';
-  const labelClass = active ? 'text-fg' : 'text-fg-dimmer';
+  // 비활성 인디케이터(↕)는 상시 표시 — /screener 결과 표와 같은 문법. 종전의
+  // hover 전용 노출(opacity-0 group-hover)은 터치·키보드 사용자가 정렬 가능
+  // 여부 자체를 알 수 없었다. 라벨도 활성 컨트롤이므로 fg-dim 이 바닥이다.
+  const indicator = dir === 'desc' ? '▼' : dir === 'asc' ? '▲' : '↕';
+  const indicatorClass = active ? 'text-accent' : 'opacity-40';
+  const labelClass = active ? 'text-fg' : 'text-fg-dim hover:text-fg';
 
   return (
     <th

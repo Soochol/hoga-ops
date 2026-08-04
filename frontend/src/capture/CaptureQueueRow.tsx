@@ -118,7 +118,7 @@ export function CaptureQueueRow({
               type="button"
               aria-label="취소" title="취소"
               onClick={(e) => { e.stopPropagation(); onCancel(item.item_id); }}
-              className="bg-transparent border-none text-fg-dim cursor-pointer text-sm p-0"
+              className="bg-transparent border-none text-fg-dim cursor-pointer text-sm p-1 -m-1"
             >✕</button>
           )}
           {showRetry && (
@@ -126,7 +126,7 @@ export function CaptureQueueRow({
               type="button"
               aria-label="재시도" title="재시도"
               onClick={(e) => { e.stopPropagation(); onRetry(item); }}
-              className="bg-transparent border-none text-accent cursor-pointer text-sm p-0"
+              className="bg-transparent border-none text-accent cursor-pointer text-sm p-1 -m-1"
             >↻</button>
           )}
         </span>

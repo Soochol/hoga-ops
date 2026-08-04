@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router';
 import { useStockDates } from '../api/stock-dates';
 import { StockDateGroupList } from '../inventory/StockDateGroupList';
 import { StockDateGroupDetail } from '../inventory/StockDateGroupDetail';
@@ -54,11 +55,22 @@ function InventoryLoadingSkeleton() {
 
 export default function Inventory() {
   const { data: rows = [], isLoading, isError, refetch } = useStockDates();
-  const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  // 딥링크: ?code= 로 특정 종목을 바로 연다(/capture 와 대칭). 선택이 바뀌면
+  // URL 에도 반영해 새로고침·공유가 선택을 보존한다.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedCode, setSelectedCode] = useState<string | null>(
+    () => searchParams.get('code'),
+  );
+  const selectCode = (code: string) => {
+    setSelectedCode(code);
+    setSearchParams({ code }, { replace: true });
+  };
   const unfilteredGroups = useStockDateGroups(rows, '');
 
   useEffect(() => {
-    if (selectedCode !== null || unfilteredGroups.length === 0) return;
+    if (unfilteredGroups.length === 0) return;
+    // ?code= 가 없거나 존재하지 않는 종목이면 첫 그룹으로 폴백.
+    if (selectedCode !== null && unfilteredGroups.some((g) => g.code === selectedCode)) return;
     setSelectedCode(unfilteredGroups[0].code);
   }, [unfilteredGroups, selectedCode]);
 
@@ -100,7 +112,7 @@ export default function Inventory() {
       style={{ gridTemplateColumns: 'var(--sidebar-w) 1fr' }}
     >
       <PanelCard borderless flat data-testid="inventory-list-pane" className="flex min-h-0 flex-col overflow-hidden">
-        <StockDateGroupList rows={rows} selectedCode={selectedCode} onSelect={setSelectedCode} />
+        <StockDateGroupList rows={rows} selectedCode={selectedCode} onSelect={selectCode} />
       </PanelCard>
       <PanelCard borderless flat data-testid="inventory-detail-pane" className="flex min-h-0 flex-col overflow-hidden">
         <StockDateGroupDetail group={selectedGroup} />
