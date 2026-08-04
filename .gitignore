@@ -14,5 +14,17 @@ node_modules/
 .worktrees/
 .superpowers/
 .playwright-mcp/
+# 자격증명. `.env` 한 줄만으로는 **변종을 못 막는다** — gitignore 의 `.env` 는
+# 정확히 그 이름만 걸러서 `.env.bak`·`.env.prod`·`.env.backup-YYYYMMDD` 는 전부
+# 추적 대상이 된다. 그리고 그런 백업은 사람이 아니라 **도구가 자동으로 만든다**
+# (실측 2026-08-04: prune opt-in 작업이 남긴 `.env.bak-pre-prune-optin-*` 에
+# 키움·KIS 앱키와 hogaplay 쿠키가 전부 들어 있었고 `git add -A` 한 번이면
+# 커밋될 상태였다 — 히스토리 유출은 없었다).
+#
+# 개발기에서 `.env.local` 이 무시되는 것을 보고 "env 는 다 막힌다" 고 읽기 쉬운데,
+# 그건 **사용자 전역** `~/.config/git/ignore` 였다. 전역 설정은 클론·CI 로 따라가지
+# 않으므로 보호는 리포 안에 있어야 한다.
 .env
+.env.*
+!.env.example
 prompt.txt
