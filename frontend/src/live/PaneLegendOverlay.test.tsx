@@ -167,10 +167,11 @@ describe('PaneLegendOverlay — candle daily-MA row', () => {
   });
 });
 
-// 지표 값 레전드(flag: 최대벽·매물대·히트맵·단별잔량·신규거래원 / cells: 거래량·총잔량·
-// 호가비·체결강도·프로그램·투자자)는 오버레이에서 숨긴다(2026-07-22, 차트 밀집도).
-// 캔들 pane 의 OHLC·이동평균선만 남는다. 행 생성 로직은 legendRows.test.ts 가, flag 값
-// provider 스코프는 flagLegendValueRegistry.test.ts 가 계속 커버한다.
+// 지표 값 레전드 중 flag 행(최대벽·매물대·히트맵·단별잔량·신규거래원)과 거래량·총잔량
+// 밖의 cells pane(호가비·체결강도·프로그램·투자자)은 오버레이에서 숨긴다(2026-07-22,
+// 차트 밀집도). 거래량·총잔량 cells 행은 2026-08-04 에 되살렸다(아래 describe). 행 생성
+// 로직은 legendRows.test.ts 가, flag 값 provider 스코프는 flagLegendValueRegistry.test.ts
+// 가 계속 커버한다.
 describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => {
   beforeEach(resetStore);
   afterEach(cleanup);
@@ -212,17 +213,87 @@ describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => 
     }
   });
 
-  it('generic cells 행(총잔량·거래량)도 등록돼 있어도 숨긴다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false, volumeEnabled: true });
+  it('거래량·총잔량 밖의 cells pane(호가비·체결강도)은 등록돼 있어도 숨긴다', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false });
+    registerLegend('ratio', [{ label: '호가비', value: 1.23 }]);
+    registerLegend('fill-strength', [
+      { label: '매수', value: 777, color: () => '#F04452' },
+      { label: '매도', value: 888, color: () => '#3485FA' },
+    ]);
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.queryByText('호가비')).toBeNull();
+    expect(screen.queryByText('체결강도')).toBeNull();
+    expect(screen.queryByText('777')).toBeNull();
+    expect(screen.queryByText('888')).toBeNull();
+  });
+});
+
+// 거래량·총잔량 pane 은 다른 지표(캔들 OHLC·이동평균선)처럼 값 레전드를 갖는다
+// (2026-08-04 사용자 요청). `/live` 와 `/study` 가 같은 LiveChartRoot 를 쓰므로
+// 이 게이트 하나가 두 화면을 동시에 덮는다.
+describe('PaneLegendOverlay — 거래량·총잔량 cells 행 표시(2026-08-04)', () => {
+  beforeEach(resetStore);
+  afterEach(cleanup);
+
+  const minutePanes = () => makeChart([120, 60, 60, 60, 60, 60]);
+  const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
+
+  it('거래량 pane 의 값 행을 렌더한다(라벨 + 최신값 폴백)', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false });
+    registerLegend('volume', [
+      { label: '거래량', value: 5000 },
+      { label: '누적', value: 12345, color: () => '#8B5CF6' },
+    ]);
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.getByText('거래량')).toBeInTheDocument();
+    expect(screen.getByText('5,000')).toBeInTheDocument();
+    expect(screen.getByText('누적')).toBeInTheDocument();
+    expect(screen.getByText('12,345')).toBeInTheDocument();
+  });
+
+  it('총잔량 pane 은 spec 의 legendTitle 과 매수·매도 셀을 렌더한다', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false });
     registerLegend('quote-totals', [
       { label: '매수', value: 311400, color: () => '#F04452' },
       { label: '매도', value: 6789, color: () => '#3485FA' },
     ]);
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.getByText('총잔량')).toBeInTheDocument();
+    expect(screen.getByText('311,400')).toBeInTheDocument();
+    expect(screen.getByText('6,789')).toBeInTheDocument();
+  });
+
+  // 값이 null 인 셀(토글 off / 콜드로드)은 빠지고, 남는 셀이 없으면 행 자체가 사라진다
+  // — buildLegendRows 의 범용 규칙(legendRows.ts)이 여기서도 그대로 성립한다.
+  it('값 없는 셀은 빠지고, 전부 비면 행이 사라진다', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false });
+    registerLegend('volume', [
+      { label: '거래량', value: 5000 },
+      { label: '누적', value: null },
+    ]);
+    registerLegend('quote-totals', [
+      { label: '매수', value: null },
+      { label: '매도', value: null },
+    ]);
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.getByText('5,000')).toBeInTheDocument();
+    expect(screen.queryByText('누적')).toBeNull();
+    expect(screen.queryByText('총잔량')).toBeNull();
+  });
+
+  it('✕ 는 해당 pane 지표를 현재 타임프레임에서 끈다', () => {
+    // 최상위 volumeEnabled 는 indicatorTimeframe 으로 resolve 된 값이라(livePage.ts
+    // §IndicatorSettings), 분봉 버킷에 쓴 결과가 최상위에 반영되려면 둘이 같은
+    // 프로파일이어야 한다.
+    useLivePageStore.setState({
+      movingAverageEnabled: false,
+      indicatorTimeframe: '1m',
+      volumeEnabled: true,
+    });
     registerLegend('volume', [{ label: '거래량', value: 5000 }]);
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    expect(screen.queryByText('총잔량')).toBeNull();
-    expect(screen.queryByText('311,400')).toBeNull();
-    expect(screen.queryByText('5,000')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '거래량 지표 끄기' }));
+    expect(useLivePageStore.getState().volumeEnabled).toBe(false);
   });
 });
 
