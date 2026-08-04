@@ -14,7 +14,6 @@ from pydantic import (
     BaseModel,
     Field,
     field_validator,
-    model_serializer,
     model_validator,
 )
 
@@ -1001,29 +1000,19 @@ class LiveSettingsResponse(BaseModel):
     # 벤더가 키움으로 바뀌었으므로 이름에서 `kis_` 를 걷어내되 **기능은 유지**한다
     # — 지도가 "bypass 토글은 그대로 적용하되 REST 우회 의미로" 로 확정했다.
     #
-    # 이름 교체는 expand/contract 다:
-    #   1) 지금 — 두 이름을 **모두 읽고**, 응답에는 **둘 다 싣는다**(프론트 무변경)
-    #   2) 프론트가 새 이름으로 갈아탄 뒤
-    #   3) 옛 이름 제거
+    # 이름 교체는 expand/contract 로 했고 3단계까지 끝났다(응답 이중 노출 제거).
     #
-    # `validation_alias` 가 없으면 pydantic 의 extra-ignore 가 디스크의 옛 키를
-    # **조용히 버려** 사용자의 우회 설정이 False 로 리셋된다.
+    # **읽기 별칭만 영구히 남는다.** `LiveSettings` 가 이 모델의 별칭이라 이건
+    # 와이어 타입이면서 **디스크 타입**이다 — 사용자 머신의 `live_settings.json` 에
+    # 여전히 옛 키가 들어 있고, 그건 배포와 무관하게 살아 있다. 별칭을 지우면
+    # pydantic 의 extra-ignore 가 그 키를 **조용히 버려** 사용자가 켜 둔 우회
+    # 설정이 False 로 리셋된다. 디스크가 한 번 새 키로 다시 써지기 전까지는
+    # 지울 수 없고, 그 시점을 알 방법이 없으므로 남긴다.
     rest_bypass_enabled: bool = Field(
         default=False,
         validation_alias=AliasChoices("rest_bypass_enabled", "kis_rest_bypass_enabled"),
     )
 
-    @model_serializer(mode="wrap")
-    def _emit_both_names(self, handler):  # type: ignore[no-untyped-def]
-        """응답에 **옛 이름도 함께** 싣는다 — expand/contract 1단계.
-
-        이게 없으면 이름을 바꾸는 순간 프론트의 우회 토글이 `undefined` 를 읽어
-        조용히 꺼진 것처럼 보인다. 프론트가 새 이름으로 갈아탄 뒤 이 직렬화기와
-        옛 키를 함께 지운다(3단계).
-        """
-        data = handler(self)
-        data["kis_rest_bypass_enabled"] = data["rest_bypass_enabled"]
-        return data
     # 스크리너 총잔량 조건에서 hogaplay 결측 종목을 발견하면 자동으로 지난 N일치 수집을
     # 큐에 적재할지. 기본 False — 스캔은 탐색적으로 반복 실행되므로 묵시적 큐 증가를 막고
     # 명시적 [수집 요청] 버튼을 1차 UX 로 둔다.
@@ -1038,11 +1027,9 @@ class LiveSettingsResponse(BaseModel):
 
 
 class LiveSettingsUpdate(BaseModel):
-    # 옛 이름도 받는다(위 expand/contract 1단계) — 프론트가 갈아타기 전까지.
-    rest_bypass_enabled: bool | None = Field(
-        default=None,
-        validation_alias=AliasChoices("rest_bypass_enabled", "kis_rest_bypass_enabled"),
-    )
+    # **순수 와이어 타입이라 별칭이 필요 없다** — 디스크에 저장되지 않는다.
+    # 프론트가 새 이름으로 갈아탔으므로(#1046 2단계) 옛 이름 수용을 거뒀다.
+    rest_bypass_enabled: bool | None = None
     screener_depth_autocollect: bool | None = None
 
 

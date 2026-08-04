@@ -95,3 +95,36 @@ def test_legacy_storage_policy_keys_are_ignored_on_load(tmp_path):
     assert "storage_policy" not in on_disk
     assert "heatmap_capture_enabled" not in on_disk
     assert "program_trade_storage_enabled" not in on_disk
+
+
+def test_legacy_disk_key_still_read(tmp_path) -> None:
+    """**디스크의 옛 키 별칭은 영구히 남아야 한다**(#1046 expand/contract 3단계).
+
+    `LiveSettings` 는 `LiveSettingsResponse` 의 별칭이라 이 모델은 와이어 타입이면서
+    **디스크 타입**이다. 사용자 머신의 `live_settings.json` 에는 여전히
+    `kis_rest_bypass_enabled` 가 들어 있고, 그건 배포와 무관하게 살아 있다.
+
+    별칭을 지우면 pydantic 의 extra-ignore 가 그 키를 **조용히 버려** 사용자가 켜 둔
+    우회 설정이 False 로 리셋된다. 디스크가 새 키로 다시 써지는 시점을 알 방법이
+    없으므로 지울 수 없다 — 이 테스트가 그 사실을 못 박는다.
+    """
+    import json
+
+    from hoga.live.settings import load_live_settings
+
+    (tmp_path / "live_settings.json").write_text(
+        json.dumps({"schema_version": 1, "kis_rest_bypass_enabled": True}),
+        encoding="utf-8",
+    )
+    assert load_live_settings(tmp_path).rest_bypass_enabled is True
+
+
+def test_new_disk_key_read(tmp_path) -> None:
+    import json
+
+    from hoga.live.settings import load_live_settings
+
+    (tmp_path / "live_settings.json").write_text(
+        json.dumps({"schema_version": 1, "rest_bypass_enabled": True}), encoding="utf-8",
+    )
+    assert load_live_settings(tmp_path).rest_bypass_enabled is True
