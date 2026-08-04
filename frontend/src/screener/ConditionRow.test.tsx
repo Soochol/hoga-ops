@@ -8,8 +8,8 @@ const leaf: ConditionLeaf = { id: 'x', type: 'new_high', params: { lookback: 200
 describe('ConditionRow', () => {
   it('renders the ParamForm immediately with no collapse caret', () => {
     render(<ConditionRow leaf={leaf} onChange={vi.fn()} onRemove={vi.fn()} />);
-    expect(screen.getByLabelText('lookback (N)')).toBeInTheDocument();
-    expect(screen.getByLabelText('period (M)')).toBeInTheDocument();
+    expect(screen.getByLabelText('최근 기간(일)')).toBeInTheDocument();
+    expect(screen.getByLabelText('신고 기준 기간(일)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '펼치기' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '접기' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '조건 복제' })).not.toBeInTheDocument();

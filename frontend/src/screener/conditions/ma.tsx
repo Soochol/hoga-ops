@@ -26,7 +26,8 @@ function MaForm({ params, onChange }: { params: MaParams; onChange: (p: MaParams
     <Select label="이평선 관계" value={params.relation} onChange={(relation) => onChange({ ...params, relation })}
       options={[['above', '≥'], ['below', '≤']]} />
     <span className="text-sm text-fg-dim">MA</span>
-    <Num value={params.period} onChange={(n) => onChange({ ...params, period: n ?? 1 })} w="w-16" /></div>;
+    <Num ariaLabel="이동평균 기간(일)" min={1} max={1000}
+      value={params.period} onChange={(n) => onChange({ ...params, period: n ?? 1 })} w="w-16" /></div>;
 }
 
 export const ma: CatalogEntry = {
