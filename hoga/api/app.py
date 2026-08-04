@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import logging
 import os
@@ -70,6 +71,7 @@ from hoga.live.lifecycle import (
     start_kiwoom_session_watchdog,
     start_live_stream,
     start_today_promoter,
+    start_trading_calendar_refresher,
     stop_live_stream,
     stop_today_promoter,
 )
@@ -251,9 +253,16 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
         )
         # ADR-0088: expose lifespan-owned task liveness at GET /api/live/status.
         _app.state.startup_runtime = startup_runtime
+        # 거래일 달력 오버레이 갱신(PR-H·#1044). **배선이 빠져 있었다** — 함수만
+        # 만들고 lifespan 에 안 달아 오버레이가 자라지 않았고, 정적 시드 생성일
+        # 다음 날부터 오늘이 커버리지 밖이 됐다(실측 2026-08-04).
+        calendar_refresher = start_trading_calendar_refresher(data_dir)
         try:
             yield
         finally:
+            calendar_refresher.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await calendar_refresher
             _app.state.startup_runtime = None
             # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로
             # startup_runtime.stop()(KIS teardown 포함)보다 먼저 cancel+await.

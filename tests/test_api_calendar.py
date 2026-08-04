@@ -305,8 +305,12 @@ def test_is_trading_session_today_caches_positive(
     calls: list = []
     _stub_source(monkeypatch, ["20260605"], calls=calls)
     assert calendar_module.is_trading_session_today("20260605") is True
+    after_first = len(calls)
     assert calendar_module.is_trading_session_today("20260605") is True
-    assert len(calls) == 1
+    # **증분으로 잰다.** 첫 호출은 커버리지 검사 + 월 조회로 소스를 두 번 읽는다
+    # (부분 커버 달 회귀 수정, 2026-08-04). 이 테스트가 지키는 성질은 "확정된
+    # 세션은 다시 조회하지 않는다" 이므로 절대 횟수가 아니라 증분이 맞다.
+    assert len(calls) == after_first, "확정 양성은 소스를 다시 읽지 않는다"
 
 
 def test_is_trading_session_today_rechecks_negative_and_self_heals(
