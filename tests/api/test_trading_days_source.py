@@ -120,6 +120,36 @@ def test_no_data_dir_still_answers_from_seed() -> None:
     assert td.is_trading_day("20260803", None) is True
 
 
+# === 부분 커버 달 — 실측 회귀(2026-08-04) ====================================
+
+def test_partially_covered_month_does_not_confirm_a_holiday() -> None:
+    """**월 단위 검사만 하면 정규장 중에 세션이 닫힌다.**
+
+    실측: 시드가 20260803 까지인데 8월의 첫날은 커버리지 안이라
+    `_trading_days_for(2026, 8)` 이 None 이 아닌 `{20260803}` 을 돌려줬다.
+    8/4 는 그 집합에 없으니 "휴장" 으로 **확정**됐고, 라이브 세션 게이트가
+    `is not False` 판정이라 09:32 정규장 중에 호가·체결 스트림이 전면 차단됐다.
+
+    커버리지 밖은 **모른다(None)** 여야 한다.
+    """
+    from hoga.api import calendar as cal
+
+    cal.reset_cache_for_tests()
+    end = max(td.trading_days())
+    day_after = (
+        datetime.date(int(end[:4]), int(end[4:6]), int(end[6:8]))
+        + datetime.timedelta(days=1)
+    ).strftime("%Y%m%d")
+
+    assert cal.is_trading_day(day_after) is None, "커버리지 밖은 휴장이 아니라 모름"
+    assert cal.is_trading_session_today(day_after) is None
+
+    from hoga.api.calendar_policy import live_session_allowed_today
+    assert live_session_allowed_today(day_after) is True, (
+        "모름이면 시계 게이트가 권위를 가진다 — 세션을 닫으면 안 된다"
+    )
+
+
 # === 파서 ====================================================================
 
 def test_parser_ignores_comments_and_blank_lines() -> None:

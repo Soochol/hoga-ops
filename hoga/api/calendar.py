@@ -130,6 +130,8 @@ def is_trading_session_today(
     """
     if today_yyyymmdd in _session_confirmed:
         return True
+    if _beyond_coverage(today_yyyymmdd):
+        return None   # 커버리지 밖 — 모른다. 폴러는 None 에 관대하다(ADR-0064).
 
     now = _now_s if _now_s is not None else time.monotonic()
     year, month = int(today_yyyymmdd[:4]), int(today_yyyymmdd[4:6])
@@ -220,6 +222,21 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     return out
 
 
+def _beyond_coverage(date_yyyymmdd: str) -> bool:
+    """그 날짜가 달력 커버리지 **끝을 넘었나**.
+
+    `_trading_days_for` 는 월 단위라 **부분 커버 달을 못 잡는다** — 8월의 첫날이
+    커버리지(8/3) 안이면 None 이 아닌 `{20260803}` 을 돌려주고, 8/4 는 그 집합에
+    없으니 "휴장" 으로 **확정**된다. 그러면 라이브 세션 게이트가 정규장 중에
+    닫힌다(실측 2026-08-04 09:32, 호가·체결 스트림 전면 차단).
+
+    `trading_days_in_range` 는 같은 함정을 이미 막고 있었는데 날짜 술어 둘에는
+    빠져 있었다. 커버리지 밖은 **모른다(None)** 여야 한다.
+    """
+    end = coverage_end()
+    return end is None or date_yyyymmdd > end
+
+
 def coverage_end() -> str | None:
     """달력이 답할 수 있는 마지막 날짜(YYYYMMDD). 소스가 비면 None.
 
@@ -238,6 +255,8 @@ def is_trading_day(date_yyyymmdd: str) -> bool | None:
     KIS is briefly unreachable). Keeping the data accessor and the policy
     separate avoids embedding either stance in the module.
     """
+    if _beyond_coverage(date_yyyymmdd):
+        return None
     year = int(date_yyyymmdd[:4])
     month = int(date_yyyymmdd[4:6])
     days = _trading_days_for(year, month)
