@@ -338,7 +338,7 @@ function PriceCell({
             {markers.map((m) => (
               <span
                 key={m.label}
-                className={`flex items-center justify-center rounded-[3px] px-[3px] py-px font-ui text-[9px] font-semibold leading-none text-white ${m.bg}`}
+                className={`flex items-center justify-center rounded-[3px] px-[3px] py-px font-ui text-badge font-semibold leading-none text-white ${m.bg}`}
               >
                 {m.label}
               </span>
@@ -421,7 +421,7 @@ function QtyBar({
             히트맵(빨강·파랑)과 같은 셀에 겹쳐 켜지므로 색이 충돌하면 판독 불가라
             다른 색조가 필수지만, 이 뱃지는 겹치는 레이어가 없다. */}
         {badge !== null && (
-          <span className={`shrink-0 text-[10px] ${priceDirClass(badge.delta)}`}>
+          <span className={`shrink-0 text-badge ${priceDirClass(badge.delta)}`}>
             {badge.delta > 0 ? '+' : '−'}
             {Math.abs(badge.delta).toLocaleString('ko-KR')}
           </span>
@@ -567,7 +567,7 @@ function TotalQtyStrip({
 
 function PanelState({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-full w-full items-center justify-center bg-bg-card text-[11px] text-fg-dim">
+    <div className="flex h-full w-full items-center justify-center bg-bg-card text-xs text-fg-dim">
       <span className="font-data">{children}</span>
     </div>
   );

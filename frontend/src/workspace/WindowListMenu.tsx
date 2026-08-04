@@ -128,7 +128,7 @@ export function WindowListMenu({
       className="min-w-[248px] rounded border border-border bg-bg-card py-1 shadow-overlay z-50"
       style={{ position: 'fixed', left, top }}
     >
-      <div className="px-3 pb-1.5 pt-0.5 text-[11px] text-fg-dim">
+      <div className="px-3 pb-1.5 pt-0.5 text-xs text-fg-dim">
         <span>{summary}</span>
       </div>
 
@@ -138,7 +138,7 @@ export function WindowListMenu({
         sections.map((section) => (
           <div key={section.key}>
             {section.heading && (
-              <div className="flex items-center gap-1.5 border-t border-border px-3 pb-1 pt-1.5 text-[10.5px] text-fg-dim first:border-t-0">
+              <div className="flex items-center gap-1.5 border-t border-border px-3 pb-1 pt-1.5 text-xs text-fg-dim first:border-t-0">
                 {section.dotColor && (
                   <span
                     aria-hidden
@@ -172,7 +172,7 @@ export function WindowListMenu({
                       {row.sublabel && <span className="text-fg-dimmer"> · {row.sublabel}</span>}
                     </span>
                     {row.isFocused && (
-                      <span className="shrink-0 rounded-full border border-accent px-1.5 text-[9.5px] text-accent">
+                      <span className="shrink-0 rounded-full border border-accent px-1.5 text-badge text-accent">
                         포커스
                       </span>
                     )}
@@ -218,7 +218,7 @@ export function WindowListMenu({
         )}
       >
         <span>창 목록</span>
-        <span className="ml-0.5 rounded-full bg-bg-input px-1.5 font-data text-[11px] text-fg-dim">
+        <span className="ml-0.5 rounded-full bg-bg-input px-1.5 font-data text-xs text-fg-dim">
           {count}
         </span>
       </IconToolbarButton>

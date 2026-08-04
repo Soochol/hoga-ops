@@ -86,14 +86,14 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
       className="inline-flex min-w-0 items-center gap-1.5 tabular-nums"
     >
       {!isIndex && <CollectionDot status={collection.displayStatus} />}
-      <span className="truncate text-[12px] font-medium text-fg">{symbolLabel}</span>
+      <span className="truncate text-xs font-medium text-fg">{symbolLabel}</span>
       {currentPrice !== null && (
-        <span data-testid="titlebar-current-price" className="font-data text-[12px] font-semibold text-fg">
+        <span data-testid="titlebar-current-price" className="font-data text-xs font-semibold text-fg">
           {formatKoreanInt(currentPrice)}
         </span>
       )}
       {quote && (
-        <span data-testid="titlebar-change" className="font-data text-[11px]">
+        <span data-testid="titlebar-change" className="font-data text-xs">
           {/* 등락률(%)만 — 현재가가 옆에 있어 등락액 생략(레전드·상태바와 동일). */}
           <QuoteChange won={null} pct={quote.change_pct} />
         </span>
@@ -101,7 +101,7 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
       {showHeatmapChip && (
         <span
           data-testid="titlebar-heatmap-group"
-          className="truncate text-[11px]"
+          className="truncate text-xs"
           style={{ color: heatmapGroupName === null ? 'var(--fg-dimmer)' : 'var(--fg-dim)' }}
           title={heatmapGroupName ? `히트맵 그룹: ${heatmapGroupName}` : '히트맵 그룹 없음'}
         >
@@ -115,7 +115,7 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
           <span
             data-testid="past-backfill-progress-chip"
             title={`과거 데이터 불러오는 중 — ${md}까지 로드됨`}
-            className="font-data whitespace-nowrap rounded px-1.5 text-[10px]"
+            className="font-data whitespace-nowrap rounded px-1.5 text-badge"
             style={{ background: pill.bg, border: pill.border, color: pill.fg }}
           >
             과거 불러오는 중 · {md}까지
@@ -128,7 +128,7 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
           <span
             data-testid="hoga-coverage-gap-chip"
             title={hogaCoverageGapTitle(hogaGapDates)}
-            className="font-data whitespace-nowrap rounded px-1.5 text-[10px]"
+            className="font-data whitespace-nowrap rounded px-1.5 text-badge"
             style={{ background: gapPill.bg, border: gapPill.border, color: gapPill.fg }}
           >
             호가 미수집 {hogaGapDates.length}일

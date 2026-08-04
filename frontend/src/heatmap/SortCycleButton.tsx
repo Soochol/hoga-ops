@@ -16,7 +16,7 @@ export function SortCycleButton({ label, mode, onCycle }: {
       className={`flex items-center gap-1 px-1 py-0.5 leading-none rounded hover:bg-bg-input-hover ${
         mode === 'manual' ? 'text-fg-dimmer' : 'text-accent'
       }`}>
-      <span className="text-[11px]">{label}</span>
+      <span className="text-xs">{label}</span>
       <QuoteSortIcon mode={qm} className="w-[1em] h-[1em]" />
     </button>
   );

@@ -61,7 +61,7 @@ function StudyWindowItem({
       onFocus={onFocus}
       onClose={ctx.closeWindow}
       header={
-        <span className="truncate text-[12px] font-medium text-fg">
+        <span className="truncate text-xs font-medium text-fg">
           {STUDY_WINDOW_LABEL[win.kind]}
         </span>
       }
@@ -77,7 +77,7 @@ function StudyWindowItem({
             ctx.memo ? (
               <StudyMemoPanel {...ctx.memo} onClose={() => ctx.closeWindow(win.id)} />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dim">
+              <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-xs text-fg-dim">
                 <span className="font-data">학습뷰 불러오는 중…</span>
               </div>
             )
@@ -174,7 +174,7 @@ export function StudyWindowAddMenu() {
           type="button"
           role="menuitem"
           data-testid={`study-add-${kind}`}
-          className="flex w-full items-center rounded px-2 py-1 text-left text-[12px] text-fg hover:bg-tint-selection"
+          className="flex w-full items-center rounded px-2 py-1 text-left text-xs text-fg hover:bg-tint-selection"
           onClick={() => {
             addWindow(kind);
             setOpen(false);

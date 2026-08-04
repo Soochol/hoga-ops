@@ -42,7 +42,7 @@ type Props = {
 
 function itemClass(active: boolean): string {
   return [
-    'flex w-full items-center gap-2.5 px-3 py-[7px] text-left text-[13px] transition-colors',
+    'flex w-full items-center gap-2.5 px-3 py-[7px] text-left text-sm transition-colors',
     active
       ? 'bg-tint-selection text-accent'
       : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg',
@@ -102,7 +102,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
             <span aria-hidden="true" className="w-4 text-center font-data">{spec.glyph}</span>
             <span>{spec.label}</span>
             {spec.shortcut && (
-              <span className="ml-auto font-data text-[10px] text-fg-dim">
+              <span className="ml-auto font-data text-badge text-fg-dim">
                 ⌥{spec.shortcut.key.toUpperCase()}
               </span>
             )}
@@ -158,7 +158,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
       >
         <span aria-hidden="true" className="w-4 text-center">✕</span>
         <span>모두 지우기</span>
-        <span className="ml-auto font-data text-[10px] text-fg-dim">⌥C</span>
+        <span className="ml-auto font-data text-badge text-fg-dim">⌥C</span>
       </button>
     </div>
   ) : null;

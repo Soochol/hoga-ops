@@ -78,7 +78,9 @@ export const SIZE_TOKENS = {
   // ── typography ────────────────────────────────────────────────
   // `text-badge` sits below text-xs to preserve hierarchy on micro-labels
   // like the SymbolSearch market tag (KOSPI/KOSDAQ). 8.5px base intent.
-  'text-badge': { rem: 0.53125, baseIntentPx: 8.5, usage: 'Hierarchical badges (e.g., SymbolSearch market tag)' },
+  // 2026-08-04: 하드코딩 px 토큰화로 소비처가 넓어졌다 — 상태 칩("수정됨"), 마커
+  // ("예"·"예상"), 카운트·그룹 배지, 단축키 표기(⌥C), 정렬 화살표가 여기로 왔다.
+  'text-badge': { rem: 0.53125, baseIntentPx: 8.5, usage: 'Micro-labels: status chips, markers, count badges, shortcut hints' },
   'text-xs':    { rem: 0.65625, baseIntentPx: 10.5, usage: 'Small-caps labels, badges' },
   'text-sm':    { rem: 0.71875, baseIntentPx: 11.5, usage: 'Table rows, secondary data values' },
   'text-base':  { rem: 0.8125,  baseIntentPx: 13,   usage: 'Body / UI default' },
