@@ -1,11 +1,20 @@
 import type { DiskStateValue } from '../api/types';
 
-/** 같은 어휘로 CalendarCell의 마커와 일치시킨다 (DESIGN.md status semantic 토큰). */
+/** 같은 어휘로 CalendarCell의 마커와 일치시킨다 (DESIGN.md status semantic 토큰).
+ *  라벨은 표시용 한국어 — 원 상태값(DiskStateValue)은 wire·정렬 계약으로 남는다. */
 const PRESENTATION: Record<DiskStateValue, { marker: string; color: string; label: string }> = {
-  complete:          { marker: '✓', color: 'var(--success)', label: 'complete' },
-  source_partial:    { marker: '⚠', color: 'var(--warn)',    label: 'source partial — 업스트림 결손 가능 (재캡처로 복구 안 될 수 있음)' },
-  client_incomplete: { marker: '✕', color: 'var(--error)',   label: 'client incomplete — resume on capture' },
-  invalid:           { marker: '!', color: 'var(--error)',   label: 'invalid — domain invariant violated' },
+  complete:          { marker: '✓', color: 'var(--success)', label: '완결' },
+  source_partial:    { marker: '⚠', color: 'var(--warn)',    label: '부분 — 업스트림 결손 가능 (재캡처로 복구 안 될 수 있음)' },
+  client_incomplete: { marker: '✕', color: 'var(--error)',   label: '미완결 — 다음 캡처에서 이어받음' },
+  invalid:           { marker: '!', color: 'var(--error)',   label: '손상 — 데이터 무결성 위반' },
+};
+
+/** 짧은 한국어 라벨 — 툴팁 나열("부분 · 미완결 · 손상")용. */
+export const STATE_SHORT_LABEL: Record<DiskStateValue, string> = {
+  complete: '완결',
+  source_partial: '부분',
+  client_incomplete: '미완결',
+  invalid: '손상',
 };
 
 /**

@@ -4,10 +4,10 @@ import type { EnqueueDedupedRow, QueueSnapshot } from '../api/types';
 
 /** Human label per dedupe reason — order here is the display order in the banner. */
 const DEDUPE_REASON_LABEL: Record<EnqueueDedupedRow['reason'], string> = {
-  already_running: 'already running',
-  already_in_queue: 'already in queue',
-  already_complete: 'already complete',
-  already_skipped: 'already skipped',
+  already_running: '이미 수집 중',
+  already_in_queue: '이미 대기 중',
+  already_complete: '이미 완료',
+  already_skipped: '이미 건너뜀',
 };
 
 export function summarizeDedupeReasons(rows: EnqueueDedupedRow[]): string {
@@ -17,7 +17,7 @@ export function summarizeDedupeReasons(rows: EnqueueDedupedRow[]): string {
   }
   return (Object.entries(DEDUPE_REASON_LABEL) as Array<[EnqueueDedupedRow['reason'], string]>)
     .filter(([reason]) => (counts[reason] ?? 0) > 0)
-    .map(([reason, label]) => `${counts[reason]} ${label}`)
+    .map(([reason, label]) => `${label} ${counts[reason]}건`)
     .join(' · ');
 }
 

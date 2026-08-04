@@ -1,5 +1,5 @@
 import type { RecaptureStatus } from './useInventoryRecapture';
-import { RECAPTURABLE_DISK_STATES } from './DiskStateBadge';
+import { RECAPTURABLE_DISK_STATES, STATE_SHORT_LABEL } from './DiskStateBadge';
 
 export type { RecaptureStatus };
 
@@ -10,12 +10,10 @@ type Props = {
   isPending: boolean;
 };
 
-/** Short tooltip derived from the DiskStateValue strings themselves —
- *  "source partial · client incomplete · invalid". Per the spec, this avoids
- *  the verbose PRESENTATION labels (which include em-dash explanations) and
- *  the hardcoded-string footgun. */
+/** Short tooltip — "부분 · 미완결 · 손상". STATE_SHORT_LABEL 을 SSOT 로 참조해
+ *  상태 추가 시 여기 하드코딩이 새로 생기지 않게 한다. */
 function recapturableTooltip(): string {
-  return RECAPTURABLE_DISK_STATES.map((s) => s.replace(/_/g, ' ')).join(' · ');
+  return RECAPTURABLE_DISK_STATES.map((s) => STATE_SHORT_LABEL[s]).join(' · ');
 }
 
 export function RecaptureActionBar({
@@ -40,7 +38,8 @@ export function RecaptureActionBar({
         </button>
       )}
       {status?.kind === 'success' && (
-        <div className="text-fg-dim font-data tabular-nums">
+        // role=status: 4초 뒤 자동 소멸하는 안내라 스크린리더 공지가 없으면 놓친다.
+        <div role="status" className="text-fg-dim font-data tabular-nums">
           {status.enqueued}건 큐 등록
           {status.skipped > 0 && ` (${status.skipped}건 건너뜀)`}
         </div>

@@ -53,7 +53,7 @@ function InventoryLoadingSkeleton() {
 }
 
 export default function Inventory() {
-  const { data: rows = [], isLoading } = useStockDates();
+  const { data: rows = [], isLoading, isError, refetch } = useStockDates();
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const unfilteredGroups = useStockDateGroups(rows, '');
 
@@ -72,6 +72,23 @@ export default function Inventory() {
   if (isLoading) {
     // main 의 한글 텍스트('불러오는 중')를 스켈레톤이 포섭한다 — 같은 문구 + 2-pane 자리.
     return <InventoryLoadingSkeleton />;
+  }
+  if (isError) {
+    // 에러를 빈 상태와 구분한다 — 재고 API 는 cold ~37초짜리라 실패·타임아웃이 드물지
+    // 않은데, "캡처된 데이터가 없습니다"로 보이면 데이터가 지워졌다고 오독한다.
+    return (
+      <InventoryStateShell>
+        <div role="alert" className="flex items-center gap-3">
+          <span className="flex-1" style={{ color: 'var(--error)' }}>
+            캡처 재고를 불러오지 못했습니다 · 백엔드 연결을 확인하세요
+          </span>
+          <button type="button" onClick={() => refetch()}
+            className="rounded-lg px-3 py-[7px] text-sm bg-transparent text-fg-dim hover:bg-bg-input-hover hover:text-fg">
+            다시 시도
+          </button>
+        </div>
+      </InventoryStateShell>
+    );
   }
   if (rows.length === 0) {
     return <InventoryStateShell>캡처된 데이터가 없습니다</InventoryStateShell>;

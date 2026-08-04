@@ -190,6 +190,8 @@ export function useCaptureQueue() {
   return {
     queue: queue.data,
     isLoading: queue.isLoading,
+    isError: queue.isError,
+    refetchQueue: queue.refetch,
     addItems: addItemsM,
     cancelItem: cancelItemM,
     cancelAll: cancelAllM,

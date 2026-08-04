@@ -347,7 +347,7 @@ function UnblockCell({ onClick, isPending }: { onClick: () => void; isPending: b
   return (
     <button
       type="button"
-      aria-label="잠금 해제 (fail_streak 카운터 0으로 초기화)"
+      aria-label="잠금 해제 (연속 실패 카운터 초기화)"
       disabled={isPending}
       onClick={onClick}
       className={[

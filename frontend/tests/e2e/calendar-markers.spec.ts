@@ -82,7 +82,8 @@ test('calendar-markers: complete date Start → immediately skipped/already_comp
 
   // COMPLETE 는 decide_capture 가 already_complete 로 즉시 스킵한다 —
   // 업스트림에 나가지 않으므로 CI 에서도 결정론적이다.
-  await expect(page.locator('text=/skipped/i').first()).toBeVisible({ timeout: 10_000 });
+  // 칩 표시는 한국어(건너뜀)라 원값 셀렉터(data-phase)로 본다 — 문구 변경에 면역.
+  await expect(page.locator('[data-phase="skipped"]').first()).toBeVisible({ timeout: 10_000 });
 });
 
 test('calendar-markers: 보유 창 밖 source_partial 은 skipped(upstream_gap)', async ({ page }) => {
@@ -106,5 +107,5 @@ test('calendar-markers: 보유 창 밖 source_partial 은 skipped(upstream_gap)'
   await cell.click();
   await page.getByRole('button', { name: /캡처 시작/ }).click();
 
-  await expect(page.locator('text=/skipped/i').first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-phase="skipped"]').first()).toBeVisible({ timeout: 10_000 });
 });

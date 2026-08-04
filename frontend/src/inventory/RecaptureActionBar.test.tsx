@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { RecaptureActionBar } from './RecaptureActionBar';
-import { RECAPTURABLE_DISK_STATES } from './DiskStateBadge';
+import { RECAPTURABLE_DISK_STATES, STATE_SHORT_LABEL } from './DiskStateBadge';
 
 const baseProps = {
   recapturableCount: 3,
@@ -26,7 +26,7 @@ describe('RecaptureActionBar', () => {
   it('button tooltip is derived from RECAPTURABLE_DISK_STATES (no hardcoded string)', () => {
     render(<RecaptureActionBar {...baseProps} recapturableCount={3} />);
     const btn = screen.getByRole('button', { name: /미완결 전체 재캡처/i });
-    const expected = RECAPTURABLE_DISK_STATES.map((s) => s.replace(/_/g, ' ')).join(' · ');
+    const expected = RECAPTURABLE_DISK_STATES.map((s) => STATE_SHORT_LABEL[s]).join(' · ');
     expect(btn.getAttribute('title')).toBe(expected);
   });
 

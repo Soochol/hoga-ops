@@ -110,7 +110,7 @@ describe('CaptureQueue', () => {
     const qc = setup({ ...SNAPSHOT(), paused: true });
     render(<CaptureQueue />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.getByText(/Cookie expired/i)).toBeTruthy();
+    expect(screen.getByText(/쿠키 만료/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /재개/ })).toBeTruthy();
   });
 
@@ -135,7 +135,7 @@ describe('CaptureQueue', () => {
     render(<CaptureQueue />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
     expect(screen.queryByTestId('queue-empty')).toBeNull();
-    expect(screen.getByText(/Cookie expired/i)).toBeTruthy();
+    expect(screen.getByText(/쿠키 만료/)).toBeTruthy();
   });
 });
 
@@ -200,7 +200,7 @@ describe('CaptureQueue 실패 재시도 (ADR-0031)', () => {
     render(<CaptureQueue />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(screen.getByRole('button', { name: '재시도' }));
     await new Promise((r) => setTimeout(r, 30));
 
     expect(calls).toContain('retry');
@@ -215,14 +215,14 @@ describe('CaptureQueue dedupe banner', () => {
       { code: '005930', date: '20260518', reason: 'already_complete' },
       { code: '005930', date: '20260519', reason: 'already_complete' },
       { code: '005930', date: '20260520', reason: 'already_running' },
-    ])).toBe('1 already running · 2 already complete');
+    ])).toBe('이미 수집 중 1건 · 이미 완료 2건');
   });
 
   it('summarizeDedupeReasons omits reasons with zero count', async () => {
     const { summarizeDedupeReasons } = await import('./queueSummary');
     expect(summarizeDedupeReasons([
       { code: '005930', date: '20260518', reason: 'already_skipped' },
-    ])).toBe('1 already skipped');
+    ])).toBe('이미 건너뜀 1건');
   });
 
   it('renders banner when an addItems mutation in the shared cache has deduped rows', async () => {
@@ -249,8 +249,8 @@ describe('CaptureQueue dedupe banner', () => {
 
     const banner = screen.getByTestId('deduped-banner');
     expect(banner).toBeTruthy();
-    expect(banner.textContent).toContain('1 already running');
-    expect(banner.textContent).toContain('1 already complete');
+    expect(banner.textContent).toContain('이미 수집 중 1건');
+    expect(banner.textContent).toContain('이미 완료 1건');
   });
 
   it('does not render banner when deduped is empty', async () => {
