@@ -586,17 +586,35 @@ class LiveMinuteCandleBackfill:
         client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
         if client is None:
             raise KiwoomRestError("kiwoom client not initialized")
-        try:
+
+        async def _paced_page(cursor: str):
+            """walk 의 페이지 1장 = 거버너 submit 1건.
+
+            **walk 전체를 감싸면 안 된다.** 거버너는 submit 진입 전에 버킷을 한 번만
+            소비하므로, 바깥에서 감싸면 안쪽 최대 40콜이 페이싱 없이 나가 `1700
+            유량=5` 를 맞는다(2026-08-04 실측). 이중으로 감싸는 것도 금지다 — 바깥
+            submit 이 `ka10080` 버킷 토큰을 쥔 채 안쪽 submit 이 같은 버킷을 기다려
+            자기 자신을 굶긴다.
+
+            key 가 구간이 아니라 **커서** 단위인 것은 부수 이득이다: 겹치는 구간을
+            보는 두 요청이 공통 페이지에서 조인된다.
+            """
             return await kiwoom_access.run_with_capacity(
                 self._scheduler,
-                key=("live-candle-backfill", "minute", venue, code, oldest, newest),
+                key=("live-candle-backfill", "minute-page", venue, code, cursor),
                 api_id=kiwoom_minute_candles.API_ID,
                 priority=priority,
                 client=client,
-                fetch_fn=lambda c: kiwoom_minute_candles.walk_minute_days(
-                    c, code,
-                    newest_yyyymmdd=newest, oldest_yyyymmdd=oldest, venue=venue,
+                fetch_fn=lambda c: kiwoom_minute_candles.fetch_minute_page(
+                    c, code, cursor, venue=venue,
                 ),
+            )
+
+        try:
+            return await kiwoom_minute_candles.walk_minute_days(
+                client, code,
+                newest_yyyymmdd=newest, oldest_yyyymmdd=oldest, venue=venue,
+                fetch_page=_paced_page,
             )
         except Exception:
             self._fresh_past_fetch_errors += 1

@@ -20,10 +20,12 @@ def _adapter_delegates_to_fake_client(monkeypatch):
     보는 곳이고 와이어 파싱은 `test_kiwoom_multi_quote` 가 덮으므로, 기존 `_FakeKis`
     를 그대로 살리는 이 위임이 가장 작은 이음매다.
     """
-    async def _fetch(client, codes, *, venue="KRX"):
-        return await client.fetch_multi_price(codes, venue=venue)
+    async def _fetch_chunk(client, chunk, *, venue="KRX"):
+        return await client.fetch_multi_price(chunk, venue=venue)
 
-    monkeypatch.setattr(live_api.kiwoom_multi_quote, "fetch_multi_price", _fetch)
+    # **청크 레벨에 꽂는다.** `fetch_multi_price` 를 통째로 대체하면 청킹·러너 주입
+    # 배선이 페이크에 가려져, 유량 페이싱이 깨져도 초록이 된다(ADR-0137).
+    monkeypatch.setattr(live_api.kiwoom_multi_quote, "fetch_chunk", _fetch_chunk)
 
 Q = [Quote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500),
      Quote("000660", 183500, -0.8, -1500, open=184000, high=185000, low=182000)]

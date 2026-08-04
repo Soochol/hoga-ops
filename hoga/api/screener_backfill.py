@@ -260,15 +260,24 @@ async def run_backfill(data_dir: Path) -> dict:
         """**`adjust` 극성은 어댑터가 뒤집는다.** 키움 `upd_stkpc_tp` 는 KIS 의
         `FID_ORG_ADJ_PRC` 와 반대라(1=수정주가) 여기서 불리언을 그대로 넘기고
         와이어 값 변환은 `kiwoom_daily_candles.adjust_flag` 한 곳에만 둔다."""
-        return await kiwoom_access.run_with_capacity(
-            scheduler,
-            key=(f"screener-backfill-{tag}", code, frm, to),
-            api_id=kiwoom_daily_candles.API_ID,
-            priority="background",
-            client=client,
-            fetch_fn=lambda c: kiwoom_daily_candles.fetch_daily_candles(
-                c, code, frm, to, adjust=adjust,
-            ),
+        def _run_page(fetch_fn, page_idx: int):
+            """페이지 1장 = 거버너 submit 1건.
+
+            **walk 전체를 감싸던 자리다.** 전체 시장 백필이라 종목 × 페이지가 곧
+            콜 수인데, 바깥에서 감싸면 페이지 축이 통째로 페이싱 밖으로 샌다
+            (ADR-0137).
+            """
+            return kiwoom_access.run_with_capacity(
+                scheduler,
+                key=(f"screener-backfill-{tag}", code, frm, to, page_idx),
+                api_id=kiwoom_daily_candles.API_ID,
+                priority="background",
+                client=client,
+                fetch_fn=fetch_fn,
+            )
+
+        return await kiwoom_daily_candles.fetch_daily_candles(
+            client, code, frm, to, adjust=adjust, run_page=_run_page,
         )
 
     async def fetch_adj(code: str, frm: str, to: str):

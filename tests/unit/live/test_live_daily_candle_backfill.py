@@ -43,6 +43,18 @@ def _daily_candles(from_yyyymmdd: str, to_yyyymmdd: str, *, close: int = 105) ->
     return out
 
 
+async def _fake_page_fetch(_client):
+    """페이크 어댑터가 러너에 넘기는 페이지 팩토리.
+
+    러너는 프로덕션 코드(`run_with_capacity`)라 반드시 실행되어야 하지만, 페이크
+    클라이언트에는 `call` 이 없으므로 진짜 페이지 fetch 를 넣을 수 없다. 빈 페이지를
+    돌려주는 팩토리를 넣어 **거버너 경로만** 실제로 지나게 한다.
+    """
+    from hoga.live.kiwoom_rest import Page
+
+    return Page(rows=[], cont=False, next_key="")
+
+
 class _FakeKis:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str, str | None, bool]] = []
@@ -56,8 +68,13 @@ class _FakeKis:
         *,
         venue: str | None = None,
         adjust: bool = True,
+        run_page=None,
     ) -> DailyCandleFetchResult:
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd, venue, adjust))
+        if run_page is not None:
+            # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
+            # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
+            await run_page(_fake_page_fetch, 0)
         return DailyCandleFetchResult(
             candles=_daily_candles(from_yyyymmdd, to_yyyymmdd),
             violations=[],
@@ -74,8 +91,13 @@ class _FallbackKis(_FakeKis):
         *,
         venue: str | None = None,
         adjust: bool = True,
+        run_page=None,
     ) -> DailyCandleFetchResult:
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd, venue, adjust))
+        if run_page is not None:
+            # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
+            # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
+            await run_page(_fake_page_fetch, 0)
         if venue == "UN":
             return DailyCandleFetchResult(candles=[], violations=[])
         return DailyCandleFetchResult(
@@ -148,7 +170,9 @@ async def test_live_daily_candle_backfill_schedules_past_daily_fetches(tmp_path,
     assert kis.calls == [("005930", "20240101", "20240105", "UN", True)]
     assert scheduler.calls == [
         {
-            "key": ("live-candle-backfill", "daily", "UN", "005930", "20240101", "20240105"),
+            # 끝의 0 은 **페이지 인덱스** — 거버너 단위가 페이지다(ADR-0137).
+            "key": ("live-candle-backfill", "daily", "UN", "005930",
+                    "20240101", "20240105", 0),
             "api_id": "ka10081",
             "priority": "user_visible",
         }
@@ -172,8 +196,13 @@ class _GatedKis(_FakeKis):
         *,
         venue: str | None = None,
         adjust: bool = True,
+        run_page=None,
     ) -> DailyCandleFetchResult:
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd, venue, adjust))
+        if run_page is not None:
+            # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
+            # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
+            await run_page(_fake_page_fetch, 0)
         await self.gate.wait()
         return DailyCandleFetchResult(
             candles=_daily_candles(from_yyyymmdd, to_yyyymmdd),
@@ -251,7 +280,8 @@ async def test_live_daily_candle_backfill_falls_back_to_krx_for_empty_integrated
     # PR-F(#1042)에서 계정 차원이 사라졌기 때문이다(#1015). key 쪽이 더 강한 신호다:
     # primary/fallback 을 함께 못 박는다.
     assert [call["key"][2] for call in scheduler.calls] == ["UN", "KRX"]
-    assert scheduler.calls[1]["key"][-1] == "fallback"
+    # 위치가 아니라 **포함**으로 본다 — key 끝에 페이지 인덱스가 붙기 때문이다.
+    assert "fallback" in scheduler.calls[1]["key"]
     assert [c[3] for c in kis.calls] == ["UN", "KRX"], "어댑터에도 venue 가 흘러야 한다"
     assert any(
         warning["reason"] == "daily_fallback_to_krx"

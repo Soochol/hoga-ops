@@ -9,7 +9,7 @@ from hoga.live import kiwoom_minute_candles, kiwoom_rest_runtime
 from hoga.live.candle_models import LiveCandle
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import KiwoomRestError
-from hoga.live.kiwoom_minute_candles import MinuteWalkResult
+from hoga.live.kiwoom_minute_candles import MinutePage, MinuteWalkResult
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.past_candles_cache import PastCandlesCache
 
@@ -40,13 +40,19 @@ class _FakeWalk:
                  only: set[str] | None = None) -> None:
         self.calls: list[tuple[str, str, str, str | None]] = []
         self.day_calls: list[tuple[str, str, str | None]] = []
+        self.page_calls: list[str] = []
         self._wedged = wedged
         self._exhausted = exhausted
         self._only = only
 
     async def walk(self, _client, code, *, newest_yyyymmdd, oldest_yyyymmdd,
-                   venue=None, **_kw) -> MinuteWalkResult:
+                   venue=None, fetch_page=None, **_kw) -> MinuteWalkResult:
         self.calls.append((code, oldest_yyyymmdd, newest_yyyymmdd, venue))
+        if fetch_page is not None:
+            # **진짜 walk 와 같은 계약을 지킨다: I/O 는 주입된 러너로만 한다.**
+            # 이 한 줄이 없으면 페이크가 거버너를 통째로 건너뛰어, 과부하·유량
+            # 검증(`_OverloadedScheduler`)이 아무것도 안 하면서 초록이 된다.
+            await fetch_page(newest_yyyymmdd)
         bars: dict[str, list[LiveCandle]] = {}
         cur = dt.datetime.strptime(oldest_yyyymmdd, "%Y%m%d").date()
         end = dt.datetime.strptime(newest_yyyymmdd, "%Y%m%d").date()
@@ -64,16 +70,22 @@ class _FakeWalk:
         self.day_calls.append((code, date_yyyymmdd, venue))
         return [_bar(date_yyyymmdd)]
 
+    async def page(self, _client, _code, cursor, **_kw) -> MinutePage:
+        """주입된 러너가 실제로 도달하는 바닥. 내용은 이 페이크에서 안 쓴다."""
+        self.page_calls.append(cursor)
+        return MinutePage(complete={}, oldest="")
+
 
 @pytest.fixture
 def kiwoom(monkeypatch):
-    """키움 이음매 3점(클라이언트 조달·walk·하루치)을 갈아끼운다."""
+    """키움 이음매 4점(클라이언트 조달·walk·하루치·페이지)을 갈아끼운다."""
     def _install(fake: _FakeWalk) -> _FakeWalk:
         monkeypatch.setattr(
             kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
         )
         monkeypatch.setattr(kiwoom_minute_candles, "walk_minute_days", fake.walk)
         monkeypatch.setattr(kiwoom_minute_candles, "fetch_day", fake.day)
+        monkeypatch.setattr(kiwoom_minute_candles, "fetch_minute_page", fake.page)
         return fake
 
     return _install
@@ -125,10 +137,11 @@ async def test_live_minute_candle_backfill_schedules_past_minute_fetches(tmp_pat
     assert result.data_warnings == []
     assert len(result.candles) == 1
     assert kis.calls == [("005930", "20260518", "20260518", "NXT")]
+    # 거버너 단위는 walk 구간이 아니라 **페이지(커서)** 다 — 유량 페이싱의 전제다.
     assert scheduler.calls == [
         {
-            "key": ("live-candle-backfill", "minute", "NXT", "005930",
-                    "20260518", "20260518"),
+            "key": ("live-candle-backfill", "minute-page", "NXT", "005930",
+                    "20260518"),
             "api_id": "ka10080",
             "priority": "user_visible",
         }
@@ -167,8 +180,8 @@ async def test_collect_minute_skips_known_non_trading_past_dates(tmp_path, monke
     )
     assert scheduler.calls == [
         {
-            "key": ("live-candle-backfill", "minute", "KRX", "005930",
-                    "20260518", "20260518"),
+            "key": ("live-candle-backfill", "minute-page", "KRX", "005930",
+                    "20260518"),
             "api_id": "ka10080",
             "priority": "user_visible",
         }
@@ -309,6 +322,70 @@ async def test_budget_counts_only_uncached_dates(tmp_path, monkeypatch, kiwoom) 
     assert kis.calls == [("005930", "20260508", "20260510", "KRX")], (
         "캐시된 앞구간은 walk 구간에서 빠진다"
     )
+
+
+@pytest.mark.asyncio
+async def test_each_walk_page_takes_its_own_governor_slot(tmp_path, monkeypatch) -> None:
+    """**페이지 N장이면 거버너 submit 도 N건이다.**
+
+    walk 전체를 한 submit 으로 감싸면 거버너는 1건을 세고 벤더는 N건을 센다. 그
+    간극이 2026-08-04 `ka10080` 유량 초과 8회(→ `/live` "시세 서버 연결 불가"
+    토스트)의 직접 원인이었다: `run_with_capacity` 는 진입 전에 버킷을 한 번만
+    소비하므로 walk 안쪽 최대 40콜은 페이싱을 전혀 받지 않았다.
+
+    **`_FakeWalk` 로는 이 배선을 잡을 수 없다** — 페이크가 walk 를 통째로 대체하면
+    페이지 루프가 사라지기 때문이다. 그래서 여기서만 **진짜 `walk_minute_days`** 를
+    돌리고 페이지 1장만 페이크로 바꾼다.
+    """
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    monkeypatch.setattr(
+        kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
+    )
+
+    # 커서 → (온전한 날짜들, 다음 커서가 될 최古 날짜). 마지막 장은 목표 하한보다
+    # **더** 오래된 날짜를 물어 walk 를 끝낸다.
+    pages = {
+        "20260518": (["20260518", "20260517"], "20260516"),
+        "20260516": (["20260516", "20260515"], "20260514"),
+        "20260514": (["20260514", "20260513"], "20260512"),
+        "20260512": (["20260512"], "20260430"),
+    }
+    seen: list[str] = []
+
+    async def _page(_client, _code, cursor, **_kw) -> MinutePage:
+        seen.append(cursor)
+        complete, oldest = pages[cursor]
+        return MinutePage(complete={d: [_bar(d)] for d in complete}, oldest=oldest)
+
+    monkeypatch.setattr(kiwoom_minute_candles, "fetch_minute_page", _page)
+
+    scheduler = _RecordingScheduler()
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        concurrency=1,
+    )
+
+    result = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 12),
+        too=dt.date(2026, 5, 18),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+    )
+
+    assert seen == ["20260518", "20260516", "20260514", "20260512"]
+    assert len(scheduler.calls) == len(seen), "페이지마다 대기표 1장 — 여기가 계약이다"
+    assert [c["key"] for c in scheduler.calls] == [
+        ("live-candle-backfill", "minute-page", "KRX", "005930", cursor)
+        for cursor in seen
+    ], "중복제거 key 는 구간이 아니라 커서 단위여야 겹치는 페이지가 조인된다"
+    assert {c["api_id"] for c in scheduler.calls} == {"ka10080"}
+    assert result.data_warnings == []
+    assert result.fresh_dates == [f"2026051{d}" for d in range(2, 9)]
 
 
 @pytest.mark.asyncio

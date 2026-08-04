@@ -225,13 +225,15 @@ def _bridge_kis_seed_to_kiwoom(monkeypatch):
             return seeded
         return live_api.kis_runtime.ensure_kis_client_from_env(data_dir)
 
-    async def _fetch(client, codes, *, venue="KRX"):
-        return await client.fetch_multi_price(codes, venue=venue)
+    async def _fetch_chunk(client, chunk, *, venue="KRX"):
+        # **청크 레벨 이음매다.** `fetch_multi_price` 를 통째로 대체하면 청킹·러너
+        # 주입 배선이 페이크에 가려져 유량 페이싱이 깨져도 초록이 된다(ADR-0137).
+        return await client.fetch_multi_price(chunk, venue=venue)
 
     async def _run(scheduler, *, key, api_id, priority, fetch_fn, client):
         return await fetch_fn(client)
 
     monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_rest_client", _client)
     monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda *_a, **_k: object())
-    monkeypatch.setattr(live_api.kiwoom_multi_quote, "fetch_multi_price", _fetch)
+    monkeypatch.setattr(live_api.kiwoom_multi_quote, "fetch_chunk", _fetch_chunk)
     monkeypatch.setattr(live_api.kiwoom_access, "run_with_capacity", _run)

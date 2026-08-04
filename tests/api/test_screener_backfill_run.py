@@ -18,6 +18,12 @@ _S = {"code": pl.Utf8, "date": pl.Date, "open": pl.Float64, "high": pl.Float64,
       "low": pl.Float64, "close": pl.Float64, "volume": pl.Int64}
 
 
+async def _fake_page_fetch(_client):
+    """페이크가 러너에 넘기는 페이지 팩토리 — 거버너 경로만 지나게 한다(ADR-0137)."""
+    from hoga.live.kiwoom_rest import Page
+
+    return Page(rows=[], cont=False, next_key="")
+
 def test_run_backfill_produces_factors_and_report(tmp_path: Path):
     sdir = tmp_path / "screener"
     sdir.mkdir(parents=True)
@@ -85,8 +91,11 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
     calls = []
     t_ms = int(dt.datetime(2026, 6, 1, tzinfo=KST).timestamp() * 1000)
 
-    async def fake_fetch_daily_candles(client_arg, code, frm, to, *, venue="KRX", adjust=True):
+    async def fake_fetch_daily_candles(client_arg, code, frm, to, *, venue="KRX",
+                                       adjust=True, run_page=None):
         calls.append(("adapter", client_arg, code, frm, to, adjust))
+        if run_page is not None:
+            await run_page(_fake_page_fetch, 0)
         return SimpleNamespace(candles=[
             SimpleNamespace(
                 t_ms=t_ms, open=1.0, high=2.0, low=1.0,
@@ -124,13 +133,15 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
     assert [call for call in calls if isinstance(call, dict)] == [
         {
             "scheduler": scheduler,
-            "key": ("screener-backfill-adj", "005930", "20260601", "20260601"),
+            # 끝의 0 은 **페이지 인덱스** — 거버너 단위가 walk 전체가 아니라 페이지다.
+            "key": ("screener-backfill-adj", "005930", "20260601", "20260601", 0),
             "api_id": "ka10081",
             "priority": "background",
         },
         {
             "scheduler": scheduler,
-            "key": ("screener-backfill-raw", "005930", "20260601", "20260601"),
+            # 끝의 0 은 **페이지 인덱스** — 거버너 단위가 walk 전체가 아니라 페이지다.
+            "key": ("screener-backfill-raw", "005930", "20260601", "20260601", 0),
             "api_id": "ka10081",
             "priority": "background",
         },

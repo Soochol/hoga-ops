@@ -29,7 +29,7 @@ from hoga.live.candle_models import IndexCandlePoint, daily_anchor_ms
 from hoga.live.index_registry import RepresentativeIndex
 from hoga.live.kiwoom_errors import KiwoomApiError
 from hoga.live.kiwoom_index_candles import index_id_to_kiwoom_code, parse_price
-from hoga.live.kiwoom_rest import KiwoomRestClient
+from hoga.live.kiwoom_rest import KiwoomRestClient, PageRunner
 from hoga.util.timeenc import KST
 
 # 코스피/코스닥 시장 구분. ka20001 이 요구하는 필수 파라미터다.
@@ -113,6 +113,7 @@ async def fetch_index_daily_candles(
     to_yyyymmdd: str,
     *,
     period: str = "D",
+    run_page: PageRunner | None = None,
 ) -> IndexCandleFetchResult:
     """[from, to] 지수 일/주/월봉. `base_dt` 랜덤 액세스 + 커서.
 
@@ -135,6 +136,7 @@ async def fetch_index_daily_candles(
         {"inds_cd": code, "base_dt": to_yyyymmdd},
         max_pages=_MAX_DAILY_PAGES,
         stop=_covered,
+        run_page=run_page,
     )
 
     candles: list[IndexCandlePoint] = []

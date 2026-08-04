@@ -108,7 +108,9 @@ def _gap_trading_days(last_raw_date: str, today: str, *, now: datetime) -> list[
     return days
 
 
-async def _daily_fetch_one(client, code: str, frm: str, to: str) -> list[DailyBar]:
+async def _daily_fetch_one(
+    client, code: str, frm: str, to: str, *, run_page=None
+) -> list[DailyBar]:
     """PR-F(#1042) 칼 컷오버 — 소스는 키움 `ka10081` 이다.
 
     `adjust=False`(원주가)는 스크리너 코퍼스의 규약이다. **와이어 값 극성은
@@ -118,7 +120,7 @@ async def _daily_fetch_one(client, code: str, frm: str, to: str) -> list[DailyBa
     from hoga.live import kiwoom_daily_candles  # noqa: PLC0415 — 지연 import(순환 절단)
 
     res = await kiwoom_daily_candles.fetch_daily_candles(
-        client, code, frm, to, adjust=False,
+        client, code, frm, to, adjust=False, run_page=run_page,
     )
     if res.violations:
         log.warning("screener daily violations %s: %d", code, len(res.violations))
@@ -195,14 +197,23 @@ async def _run_update_job(data_dir: Path, plan: _UpdatePlan, *, bus) -> int:
             raise RuntimeError("키움 자격증명 없음 — 스크리너 갱신 불가")
 
         async def fetch_one(c: str, f: str, t: str) -> list[DailyBar]:
-            return await kiwoom_access.run_with_capacity(
-                scheduler,
-                key=("screener-update", c, f, t),
-                api_id=kiwoom_daily_candles.API_ID,
-                priority="background",
-                client=client,
-                fetch_fn=lambda cl: _daily_fetch_one(cl, c, f, t),
-            )
+            def _run_page(fetch_fn, page_idx: int):
+                """페이지 1장 = 거버너 submit 1건.
+
+                **walk 전체를 감싸던 자리다.** 갱신은 종목 수만큼 도는데 각 종목이
+                다시 페이지 N장이라, 바깥에서 감싸면 페이지 축이 통째로 페이싱
+                밖으로 샌다(ADR-0137).
+                """
+                return kiwoom_access.run_with_capacity(
+                    scheduler,
+                    key=("screener-update", c, f, t, page_idx),
+                    api_id=kiwoom_daily_candles.API_ID,
+                    priority="background",
+                    client=client,
+                    fetch_fn=fetch_fn,
+                )
+
+            return await _daily_fetch_one(client, c, f, t, run_page=_run_page)
 
         last_pub = 0.0
 

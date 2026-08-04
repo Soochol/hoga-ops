@@ -47,6 +47,7 @@ N개를 `asyncio.gather` 로 병렬 부채질하는 것이 최적이었다.
 """
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -176,6 +177,10 @@ async def fetch_minute_page(
     return split_page(page.rows)
 
 
+PageFetcher = Callable[[str], Awaitable[MinutePage]]
+"""커서(`YYYYMMDD`) 1개 → 페이지 1장. `walk_minute_days` 의 페이싱 이음매다."""
+
+
 @dataclass(frozen=True)
 class MinuteWalkResult:
     bars_by_date: dict[str, list[LiveCandle]]
@@ -195,6 +200,7 @@ async def walk_minute_days(
     venue: Venue = "KRX",
     tic_scope: str = TIC_SCOPE_1MIN,
     max_pages: int = 40,
+    fetch_page: PageFetcher | None = None,
 ) -> MinuteWalkResult:
     """[oldest, newest] 를 덮을 때까지 커서를 뒤로 민다.
 
@@ -204,14 +210,29 @@ async def walk_minute_days(
 
     `max_pages` 기본 40 은 900행/콜 ≈ 2.35일 기준 **약 94 거래일**이다. 한
     수집 호출이 그보다 넓은 구간을 요구하면 `exhausted` 로 알린다.
+
+    ## `fetch_page` 는 유량 페이싱 이음매다 — 기본값으로 두면 안 된다
+
+    이 루프는 **콜 1건이 아니라 최대 40건**이다. 거버너(`kiwoom_capacity`)는
+    `run_with_capacity` **진입 전에 한 번** 버킷을 소비하므로, walk 전체를 한
+    submit 으로 감싸면 그 40콜은 페이싱을 전혀 받지 않고 초당 ~25콜로 나가
+    6번째에서 `1700 유량=5` 로 거절당한다(실측 2026-08-04: `ka10080` 유량 초과
+    8회 → `/live` "시세 서버 연결 불가" 토스트).
+
+    그래서 **반복은 거버너 위, 실행은 거버너 안**이다. 호출자가 페이지 1장을
+    `run_with_capacity` 로 감싼 러너를 주입하면 페이지마다 대기표를 뽑는다.
+    기본값(주입 없음)은 페이싱이 없는 직접 호출이라 **테스트·단발 조사용**이다.
     """
     out: dict[str, list[LiveCandle]] = {}
+    fetch = fetch_page or (
+        lambda cur: fetch_minute_page(
+            client, code, cur, venue=venue, tic_scope=tic_scope
+        )
+    )
     cursor = newest_yyyymmdd
     pages = 0
     while pages < max_pages:
-        page = await fetch_minute_page(
-            client, code, cursor, venue=venue, tic_scope=tic_scope
-        )
+        page = await fetch(cursor)
         pages += 1
         for date_s, bars in page.complete.items():
             # 요청 구간 밖(커서보다 새로운 날짜)은 담지 않는다 — base_dt 는
