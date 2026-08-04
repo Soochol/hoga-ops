@@ -18,7 +18,7 @@ import {
   initialCandleTargetFor,
   initialHistoricalDaysFor,
 } from './liveDateTime';
-import { PAST_CHUNK_CALENDAR_DAYS } from '../api/livePastCandles';
+import { PAST_CHUNK_CALENDAR_DAYS, pastChunkCalendarDays } from '../api/livePastCandles';
 import { unixMsToKSTDate } from '../util/time';
 
 /** SR-1/SR-3: the /live infinite-scroll backfill policy was fused inside
@@ -55,11 +55,11 @@ describe('nextHistoricalFrom', () => {
     const m1 = nextHistoricalFrom(axisEarliestMs, null, '1m');
     const m30 = nextHistoricalFrom(axisEarliestMs, null, '30m');
     const daily = nextHistoricalFrom(axisEarliestMs, null, 'D');
-    // 분봉은 전부 5거래일이라 1m·30m 스텝 크기가 같다(단일 통화).
+    // 분봉 스텝은 tf 비례(5×m 거래일, ADR-0105 개정) — 30m(150) > D(50) > 1m(5).
     expect(m30).toBe(subtractWeekdaysKst(axisEarliestDate, STEP_TRADING_DAYS['30m']));
-    expect(m30).toBe(m1);
+    expect(m30 < m1).toBe(true);
     expect(daily).toBe(subtractWeekdaysKst(axisEarliestDate, STEP_TRADING_DAYS['D']));
-    expect(daily < m30).toBe(true);
+    expect(m30 < daily).toBe(true);
   });
 
   it('is monotonic: feeding its own output back always steps further back', () => {
@@ -85,9 +85,15 @@ describe('nextCoverageFrom', () => {
   });
 
   it('does NOT use an axis earliest — result is window-relative, not months-deep', () => {
-    // 캔들이 몇 달치 복원돼도(=axis가 과거여도) coverage 스텝은 창 기준 한 스텝만 뒤로.
-    const got = nextCoverageFrom(null, '20260601', '30m');
+    // 캔들이 몇 달치 복원돼도(=axis가 과거여도) coverage 스텝은 창 기준 **한 스텝**만
+    // 뒤로. 1m 스텝(5거래일) 기준으로 단언한다 — 30m 은 스텝 자체가 150거래일이라
+    // (ADR-0105 개정) "한 달 폭발 아님" 단언의 리트머스로 못 쓴다.
+    const got = nextCoverageFrom(null, '20260601', '1m');
     expect(got > '20260501').toBe(true); // 한 달치 폭발 아님
+    // 30m 도 여전히 정확히 한 스텝이다(폭이 넓을 뿐 axis 기준 폭발이 아님).
+    expect(nextCoverageFrom(null, '20260601', '30m')).toBe(
+      subtractWeekdaysKst('20260601', STEP_TRADING_DAYS['30m']),
+    );
   });
 
   it('is monotonic: feeding its own output back always steps further back', () => {
@@ -97,14 +103,34 @@ describe('nextCoverageFrom', () => {
   });
 });
 
-describe('step sizing — STEP_TRADING_DAYS 단일 테이블 (ADR-0105)', () => {
-  it('분봉은 전 타임프레임 5거래일로 균일 (백엔드 날짜-병렬 배치 1회)', () => {
+describe('step sizing — STEP_TRADING_DAYS 단일 테이블 (ADR-0105, 2026-08-05 개정)', () => {
+  it('분봉은 5거래일 × tf분 — 스텝당 벤더 페이지 수가 전 tf 균일해진다', () => {
+    // #1091 이후 벤더 페이지 커버리지가 tf 에 비례하므로 스텝도 비례해야
+    // 넓은 tf 딥팬의 왕복 수가 tf 배수로 준다. 1m 은 종전 값 그대로(회귀 없음).
     expect(STEP_TRADING_DAYS['1m']).toBe(5);
-    expect(STEP_TRADING_DAYS['3m']).toBe(5);
-    expect(STEP_TRADING_DAYS['5m']).toBe(5);
-    expect(STEP_TRADING_DAYS['10m']).toBe(5);
-    expect(STEP_TRADING_DAYS['15m']).toBe(5);
-    expect(STEP_TRADING_DAYS['30m']).toBe(5);
+    expect(STEP_TRADING_DAYS['3m']).toBe(15);
+    expect(STEP_TRADING_DAYS['5m']).toBe(25);
+    expect(STEP_TRADING_DAYS['10m']).toBe(50);
+    expect(STEP_TRADING_DAYS['15m']).toBe(75);
+    expect(STEP_TRADING_DAYS['30m']).toBe(150);
+  });
+
+  it('3-상수 불변식이 전 분봉 tf 에서 성립한다 (스텝×2 ≤ 청크, ≤ 백엔드 예산)', () => {
+    // 셋 중 하나만 바뀌면 조용히 깨지는 사슬 — 여기서 tf 마다 핀으로 박는다.
+    // 백엔드 예산(12×m, live_candle_backfill._fresh_budget_for)은 이 파일에서
+    // import 할 수 없으므로 같은 식으로 재계산해 대조한다.
+    const MINUTE_TFS = ['1m', '3m', '5m', '10m', '15m', '30m'] as const;
+    for (const tf of MINUTE_TFS) {
+      const m = parseInt(tf, 10) * (tf.endsWith('m') ? 1 : NaN);
+      const stepTradingDays = STEP_TRADING_DAYS[tf];
+      expect(stepTradingDays).toBe(5 * m);
+      const dispatchTradingDays = stepTradingDays * MAX_BATCH_STEPS_PER_DISPATCH;
+      // 거래일 → 캘린더일 상한: ×7/5 (주말 스킵의 최악 폭).
+      const dispatchCalendarDays = Math.ceil(dispatchTradingDays * (7 / 5));
+      expect(dispatchCalendarDays).toBeLessThanOrEqual(pastChunkCalendarDays(m * 60_000));
+      const backendFreshBudget = 12 * m;
+      expect(dispatchTradingDays).toBeLessThanOrEqual(backendFreshBudget);
+    }
   });
 
   it('D/W/M은 캔들 STEP_CANDLE_TARGET(50)개에서 유도된 거래일', () => {
@@ -199,19 +225,20 @@ describe('realMsToYyyymmdd', () => {
 });
 
 describe('fillBudgetSteps / stepCandlesEstimate — 제스처 예산 산정', () => {
-  it('스텝당 봉 수는 5거래일 폭을 반영한다 (STEP_TRADING_DAYS × 봉/거래일)', () => {
-    // 1m: 5거래일 × 390 = 1,950봉/스텝. D/W/M은 STEP_CANDLE_TARGET(50)봉.
+  it('스텝당 봉 수는 분봉 전 tf 에서 1,950봉 균일 (스텝 tf 비례의 귀결)', () => {
+    // 스텝 = 5m 거래일, 봉/거래일 = 390/m → 곱하면 m 이 약분되어 1,950. 이 균일성이
+    // 곧 "스텝당 벤더 페이지 ~2.2개 균일"이다. D/W/M은 STEP_CANDLE_TARGET(50)봉.
     expect(stepCandlesEstimate('1m')).toBe(1950);
-    expect(stepCandlesEstimate('5m')).toBe(390); // 5거래일 × 78봉
-    expect(stepCandlesEstimate('15m')).toBe(130); // 5거래일 × 26봉
-    expect(stepCandlesEstimate('30m')).toBe(65); // 5거래일 × 13봉
+    expect(stepCandlesEstimate('5m')).toBe(1950); // 25거래일 × 78봉
+    expect(stepCandlesEstimate('15m')).toBe(1950); // 75거래일 × 26봉
+    expect(stepCandlesEstimate('30m')).toBe(1950); // 150거래일 × 13봉
     expect(stepCandlesEstimate('D')).toBe(50);
   });
 
   it('예산 = ceil(빈공간 바 수 ÷ 스텝당 봉 수), 최소 1', () => {
     expect(fillBudgetSteps(50, '1m')).toBe(1); // 1,950봉 스텝 1개로 충분
     expect(fillBudgetSteps(3000, '1m')).toBe(2); // ceil(3000/1950)
-    expect(fillBudgetSteps(350, '30m')).toBe(6); // ceil(350/65)
+    expect(fillBudgetSteps(350, '30m')).toBe(1); // 스텝이 1,950봉이라 1개로 충분
     expect(fillBudgetSteps(60, 'D')).toBe(2); // ceil(60/50)
     expect(fillBudgetSteps(0, '1m')).toBe(1); // 트리거됐다면 최소 1스텝
   });
