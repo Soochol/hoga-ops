@@ -25,9 +25,11 @@ const RESPONSE_005930: LiveInvestorTrendEstimateResponse = {
   trading_day: '20260616',
   fetched_at_ms: 1,
   rows: [
-    { slot: '09:00', foreign_qty: 10, institution_qty: 20, sum_qty: 30 },
+    { slot: '09:00', foreign_qty: 10, institution_qty: 20, sum_qty: 30,
+      foreign_amt_mwon: 2, institution_amt_mwon: 5, sum_amt_mwon: 7 },
   ],
-  latest: { slot: '09:00', foreign_qty: 10, institution_qty: 20, sum_qty: 30 },
+  latest: { slot: '09:00', foreign_qty: 10, institution_qty: 20, sum_qty: 30,
+      foreign_amt_mwon: 2, institution_amt_mwon: 5, sum_amt_mwon: 7 },
   source: 'kis',
   status: 'ok',
   data_warning: null,
@@ -37,9 +39,11 @@ const RESPONSE_000660: LiveInvestorTrendEstimateResponse = {
   ...RESPONSE_005930,
   code: '000660',
   rows: [
-    { slot: '09:00', foreign_qty: 100, institution_qty: 200, sum_qty: 300 },
+    { slot: '09:00', foreign_qty: 100, institution_qty: 200, sum_qty: 300,
+      foreign_amt_mwon: 24, institution_amt_mwon: 48, sum_amt_mwon: 72 },
   ],
-  latest: { slot: '09:00', foreign_qty: 100, institution_qty: 200, sum_qty: 300 },
+  latest: { slot: '09:00', foreign_qty: 100, institution_qty: 200, sum_qty: 300,
+      foreign_amt_mwon: 24, institution_amt_mwon: 48, sum_amt_mwon: 72 },
 };
 
 describe('useLiveInvestorTrendEstimate', () => {
