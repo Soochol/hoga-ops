@@ -14,7 +14,7 @@ from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
 from hoga.live import api as live_api, index_sector_rankings as rankings, kis_runtime, lifecycle
 from hoga.live.api import build_router
 from hoga.live.index_sector_rankings import build_index_sector_rankings
-from hoga.live.kis_client import KisQuote
+from hoga.live.quote_models import Quote
 
 
 @pytest.fixture(autouse=True)
@@ -70,11 +70,11 @@ def _seed_daily(tmp_path: Path) -> None:
 
 
 class _FakeKis:
-    def __init__(self, quotes: list[KisQuote]) -> None:
+    def __init__(self, quotes: list[Quote]) -> None:
         self.quotes = quotes
         self.seen_codes: list[str] = []
 
-    async def fetch_multi_price(self, codes: list[str], **_kw) -> list[KisQuote]:
+    async def fetch_multi_price(self, codes: list[str], **_kw) -> list[Quote]:
         self.seen_codes = codes
         by_code = {quote.code: quote for quote in self.quotes}
         return [by_code[code] for code in codes if code in by_code]
@@ -108,9 +108,9 @@ def test_index_sector_rankings_route_uses_intraday_quotes_for_today(
     _seed_daily(tmp_path)
     monkeypatch.setattr(live_api, "_today_kst_yyyymmdd", lambda: "20260620")
     fake = _FakeKis([
-        KisQuote("005930", 121, 0.0),
-        KisQuote("000660", 189, 0.0),
-        KisQuote("068270", 107, 0.0),
+        Quote("005930", 121, 0.0),
+        Quote("000660", 189, 0.0),
+        Quote("068270", 107, 0.0),
     ])
     lifecycle.reset_for_tests()
     kis_runtime.set_kis_client(fake, 0)  # type: ignore[arg-type]

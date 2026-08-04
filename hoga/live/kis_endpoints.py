@@ -8,9 +8,8 @@ plus this module's own helpers only — no state beyond the injected getter.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import Any
 
 from hoga.live.candle_models import IndexCandlePoint
 from hoga.live.index_registry import RepresentativeIndex
@@ -26,57 +25,6 @@ log = logging.getLogger(__name__)
 # pass an explicit venue value and include it in cache/query keys.
 _DEFAULT_KIS_VENUE: Venue = "KRX"
 _STOCK_MRKT_DIV = kis_venue_div(_DEFAULT_KIS_VENUE)
-
-@dataclass(frozen=True)
-class IndexQuoteSnapshot:
-    """국내업종 현재지수 1건 (FHPUP02100000) — 하단 시장지표 바 용.
-
-    change/change_rate 는 부호 정규화 완료값 (KRX 하락 = 음수).
-    t_ms 는 fetch 시각(epoch ms) — KIS 응답에 체결 시각이 없어 수신 시각으로 대체.
-    """
-    index_id: str
-    value: float
-    change: float
-    change_rate: float
-    t_ms: int
-
-
-@dataclass(frozen=True)
-class KisQuote:
-    """One row of intstock-multprice (현재가 + 등락률 + 전일대비 등락액 + 당일 OHLCV) for a Code."""
-    code: str
-    price: int
-    change_pct: float | None
-    change_won: int | None = None
-    # 당일 OHLC(inter2_oprc/hgpr/lwpr). 기본 None — positional 생성자/동등성 테스트 보존.
-    open: int | None = None
-    high: int | None = None
-    low: int | None = None
-    volume: int | None = None
-    previous_close: int | None = None
-
-
-@dataclass(frozen=True)
-class InvestorNetInvariantViolation:
-    """A row dropped by fetch_investor_net boundary defense.
-
-    Investor rows carry no OHLC invariant, so the only drop reason is a
-    malformed/missing trading date. Surfaced to wire data_warnings.
-    """
-    date_yyyymmdd: str
-    reason: Literal["malformed_row"]
-    detail: str
-
-
-@dataclass(frozen=True)
-class InvestorNetFetchResult:
-    """Return value of fetch_investor_net.
-
-    `points` is ASC-sorted by t_ms; `violations` is the per-row drop log.
-    """
-    points: list[InvestorNetPoint]
-    violations: list[InvestorNetInvariantViolation] = field(default_factory=list)
-
 
 def _daily_anchor_t_ms(date_yyyymmdd: str) -> int:
     """Epoch-ms anchor for a daily datum: 09:00:00 KST of the trading day.

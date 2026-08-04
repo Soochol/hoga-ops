@@ -1737,10 +1737,11 @@ def test_screener_daily_candles_runs_off_the_event_loop(tmp_path, monkeypatch) -
 
 # ----- /api/live/past-investor-net -----
 
-from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
-from hoga.live.kis_endpoints import (
+from hoga.live.investor import (
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
+    InvestorNetPoint,
+    InvestorTrendEstimateRow,
 )
 
 # 투자자 3표면의 페이크 클라이언트를 라우트에 흘려보내는 홀더.

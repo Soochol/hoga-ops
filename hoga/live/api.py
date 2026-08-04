@@ -53,7 +53,6 @@ from hoga.live.kis_capacity_scheduler import (
 )
 from hoga.live.kis_client import (
     KisApiError,
-    KisQuote,
     KisRateLimitError,
     KisTransportError,
 )
@@ -87,6 +86,7 @@ from hoga.live.live_investor_net_backfill import LiveInvestorNetBackfill
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.quote_change_resolver import QuoteChangeResolver
+from hoga.live.quote_models import Quote
 from hoga.live.screener_daily_candles import read_screener_daily_candles
 from hoga.live.venue import LiveVenuePolicy, Venue, parse_live_venue_policy, quote_venue_for_policy
 from hoga.util.atomic_write import atomic_write_json
@@ -899,7 +899,7 @@ class _QuoteSample(NamedTuple):
 
     phase/day 를 함께 남기면 그 질문에 답할 수 있다 — `is_closing_sample` 참조.
     """
-    quote: KisQuote
+    quote: Quote
     phase: str
     day: date
 
@@ -941,7 +941,7 @@ class LiveQuoteFetcher:
 
     def _to_live_quote(
         self,
-        q: KisQuote,
+        q: Quote,
         *,
         phase: str,
         today: date | None = None,

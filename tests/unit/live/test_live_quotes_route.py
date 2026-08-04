@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 from hoga.live import account_health, api as live_api, kis_runtime, lifecycle
 from hoga.live.api import _KST, _quote_phase, build_router
 from hoga.live.buffer import LiveBuffer
-from hoga.live.kis_client import KisQuote
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
+from hoga.live.quote_models import Quote
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 
 
@@ -80,7 +80,7 @@ def _app(quotes, tmp_path, kis=True):
     return app
 
 
-QUOTES = [KisQuote("005930", 72400, 1.2, 750), KisQuote("000660", 183500, -0.8, -1500)]
+QUOTES = [Quote("005930", 72400, 1.2, 750), Quote("000660", 183500, -0.8, -1500)]
 
 
 def test_quotes_open_returns_change_pct(monkeypatch, tmp_path):
@@ -161,7 +161,7 @@ def test_tab_metrics_batches_quotes_and_latest_hoga(monkeypatch, tmp_path):
 
 def test_quotes_open_serves_today_ohlc(monkeypatch, tmp_path):
     monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
-    quotes = [KisQuote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500)]
+    quotes = [Quote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500)]
     c = TestClient(_app(quotes, tmp_path))
     r = c.get("/api/live/quotes", params={"codes": "005930"})
     q0 = r.json()["quotes"][0]
@@ -205,7 +205,7 @@ def test_quotes_recomputes_change_pct_when_kis_uses_unadjusted_baseline(monkeypa
         tmp_path,
         [("049080", baseline_date, 9930, 9930, 9930, 9930, 100)],
     )
-    quotes = [KisQuote("049080", 7770, 682.48, None)]
+    quotes = [Quote("049080", 7770, 682.48, None)]
     c = TestClient(_app(quotes, tmp_path))
 
     r = c.get("/api/live/quotes", params={"codes": "049080"})
@@ -228,7 +228,7 @@ def test_quotes_recomputes_small_stale_kis_change_pct(monkeypatch, tmp_path):
         tmp_path,
         [("005930", baseline_date, 100, 100, 100, 100, 100)],
     )
-    quotes = [KisQuote("005930", 105, 2.1, 2)]
+    quotes = [Quote("005930", 105, 2.1, 2)]
     c = TestClient(_app(quotes, tmp_path))
 
     r = c.get("/api/live/quotes", params={"codes": "005930"})
@@ -251,7 +251,7 @@ def test_quotes_hides_change_pct_when_adjusted_baseline_scale_mismatches_quote(m
         tmp_path,
         [("049080", baseline_date, 993, 993, 993, 993, 100)],
     )
-    quotes = [KisQuote("049080", 6290, 533.43, 5297, open=7550, high=7660, low=6080)]
+    quotes = [Quote("049080", 6290, 533.43, 5297, open=7550, high=7660, low=6080)]
     c = TestClient(_app(quotes, tmp_path))
 
     r = c.get("/api/live/quotes", params={"codes": "049080"})
@@ -280,7 +280,7 @@ def test_quotes_hides_change_pct_when_adjusted_baseline_is_stale(monkeypatch, tm
         tmp_path,
         [("005930", "2026-06-26", 100, 100, 100, 100, 100)],
     )
-    quotes = [KisQuote("005930", 105, 2.1, 2)]
+    quotes = [Quote("005930", 105, 2.1, 2)]
     c = TestClient(_app(quotes, tmp_path))
 
     r = c.get("/api/live/quotes", params={"codes": "005930"})
@@ -487,7 +487,7 @@ def test_quotes_closed_cached_quotes_use_adjusted_change_pct_without_kis(monkeyp
         tmp_path,
         [("049080", baseline_date, 9930, 9930, 9930, 9930, 100)],
     )
-    fake = _CountingFakeKis([KisQuote("049080", 7770, 682.48, None)])
+    fake = _CountingFakeKis([Quote("049080", 7770, 682.48, None)])
     c = TestClient(_counting_app(fake, tmp_path))
     monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     r1 = c.get("/api/live/quotes", params={"codes": "049080"})
@@ -520,7 +520,7 @@ def test_quotes_route_nxt_zero_price_stays_unavailable(monkeypatch, tmp_path):
         tmp_path,
         [("067310", baseline_date, 48650, 48650, 48650, 48650, 100)],
     )
-    fake = _FakeKis([KisQuote("067310", 0, None, None)])
+    fake = _FakeKis([Quote("067310", 0, None, None)])
     kis_runtime.set_kis_client(fake, 0)  # type: ignore[arg-type]
     monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     app = FastAPI()

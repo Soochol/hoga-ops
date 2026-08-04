@@ -8,8 +8,7 @@ import pytest
 
 from hoga.live import kiwoom_investor, kiwoom_rest_runtime
 from hoga.live.api import batched_daily_walkback
-from hoga.live.investor import InvestorNetPoint
-from hoga.live.kis_endpoints import InvestorNetFetchResult
+from hoga.live.investor import InvestorNetFetchResult, InvestorNetPoint
 from hoga.live.live_investor_net_backfill import LiveInvestorNetBackfill
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 

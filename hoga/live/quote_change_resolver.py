@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from hoga.duck import connect_bounded
-from hoga.live.kis_client import KisQuote
+from hoga.live.quote_models import Quote
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class QuoteChangeResolver:
 
     def resolve_quote(
         self,
-        q: KisQuote,
+        q: Quote,
         *,
         phase: str,
         today: dt.date | None = None,
@@ -209,17 +209,17 @@ class QuoteChangeResolver:
             return None
         return _Baseline(date=str(row[0]), close=int(round(float(row[1]))))
 
-    def _adjusted_change_pct(self, q: KisQuote, baseline: _Baseline | None) -> float | None:
+    def _adjusted_change_pct(self, q: Quote, baseline: _Baseline | None) -> float | None:
         if baseline is None or baseline.close <= 0 or q.price <= 0:
             return None
         return round((q.price / baseline.close - 1.0) * 100.0, 2)
 
-    def _valid_previous_close(self, q: KisQuote) -> int | None:
+    def _valid_previous_close(self, q: Quote) -> int | None:
         if q.previous_close is None or q.previous_close <= 0 or q.price <= 0:
             return None
         return q.previous_close
 
-    def _baseline_scale_mismatch(self, q: KisQuote, baseline: _Baseline) -> bool:
+    def _baseline_scale_mismatch(self, q: Quote, baseline: _Baseline) -> bool:
         quote_prices = [
             value for value in (q.price, q.open, q.high, q.low)
             if value is not None and value > 0

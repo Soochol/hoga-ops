@@ -6,8 +6,9 @@ import pytest
 
 from hoga.api.heatmap import save_document
 from hoga.api.models import HeatmapDocument, HeatmapEntry
-from hoga.live.kis_client import KisClient, KisQuote
+from hoga.live.kis_client import KisClient
 from hoga.live.live_index_sector_intraday import LiveIndexSectorIntradayOverlay
+from hoga.live.quote_models import Quote
 
 
 class _FakeQuoteFetcher:
@@ -19,11 +20,11 @@ class _FakeQuoteFetcher:
         _kis: KisClient,
         code_list: list[str],
         phase: str,
-    ) -> list[KisQuote]:
+    ) -> list[Quote]:
         self.calls.append((code_list, phase))
         return [
-            KisQuote("005930", 121, 0.0),
-            KisQuote("000660", 189, 0.0),
+            Quote("005930", 121, 0.0),
+            Quote("000660", 189, 0.0),
         ]
 
 

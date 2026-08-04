@@ -8,7 +8,7 @@ import pytest
 
 from hoga.live import api as live_api
 from hoga.live.api import LiveQuoteFetcher
-from hoga.live.kis_client import KisQuote
+from hoga.live.quote_models import Quote
 
 
 @pytest.fixture(autouse=True)
@@ -25,19 +25,19 @@ def _adapter_delegates_to_fake_client(monkeypatch):
 
     monkeypatch.setattr(live_api.kiwoom_multi_quote, "fetch_multi_price", _fetch)
 
-Q = [KisQuote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500),
-     KisQuote("000660", 183500, -0.8, -1500, open=184000, high=185000, low=182000)]
+Q = [Quote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500),
+     Quote("000660", 183500, -0.8, -1500, open=184000, high=185000, low=182000)]
 
 
 class _FakeKis:
     """fetch_multi_price 만 흉내 — codes 교집합 반환, 호출 수 기록, fail 시 raise."""
-    def __init__(self, quotes: list[KisQuote], *, fail: bool = False) -> None:
+    def __init__(self, quotes: list[Quote], *, fail: bool = False) -> None:
         self._quotes = quotes
         self.calls = 0
         self.venues: list[str] = []
         self._fail = fail
 
-    async def fetch_multi_price(self, codes: list[str], *, venue: str = "KRX") -> list[KisQuote]:
+    async def fetch_multi_price(self, codes: list[str], *, venue: str = "KRX") -> list[Quote]:
         self.calls += 1
         self.venues.append(venue)
         if self._fail:
@@ -103,10 +103,10 @@ async def test_closed_does_not_serve_other_venues_cache() -> None:
     """KRX 로 캐시를 채운 뒤 UN 을 요청하면 **KRX 봉을 주지 않고** 그 venue 로 다시 받는다.
     캐시 키가 code 뿐이면 'not missing' 으로 판정돼 KRX 봉이 UN 인 척 서빙됐다."""
     f = LiveQuoteFetcher()
-    krx = _FakeKis([KisQuote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500)])
+    krx = _FakeKis([Quote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500)])
     await f.fetch_and_gate(krx, ["005930"], "closed")  # type: ignore[arg-type]
 
-    un = _FakeKis([KisQuote("005930", 72500, 1.4, 900, open=70000, high=73200, low=69800)])
+    un = _FakeKis([Quote("005930", 72500, 1.4, 900, open=70000, high=73200, low=69800)])
     out = await f.fetch_and_gate(un, ["005930"], "closed", venue="UN")  # type: ignore[arg-type]
 
     assert un.calls == 1                      # KRX 캐시로 때우지 않고 UN 을 실제 조회
@@ -125,7 +125,7 @@ async def test_stale_last_good_is_venue_scoped() -> None:
 
 async def test_closed_omits_uncached_code() -> None:
     f = LiveQuoteFetcher()
-    kis = _FakeKis([KisQuote("005930", 72400, 1.2, 750)])
+    kis = _FakeKis([Quote("005930", 72400, 1.2, 750)])
     out = await f.fetch_and_gate(kis, ["005930", "999999"], "closed")  # type: ignore[arg-type]
     assert {q.code for q in out} == {"005930"}  # 999999 는 KIS도 캐시도 없음 → 누락
 
@@ -141,11 +141,11 @@ async def test_closed_omits_uncached_code() -> None:
 async def test_closed_refetches_when_cache_is_only_an_intraday_sample() -> None:
     """장중 표본밖에 없으면 closed 는 **다시 조회한다** — 그 값은 종가가 아니다."""
     f = LiveQuoteFetcher()
-    morning = _FakeKis([KisQuote("005930", 247000, 19.32, 40000)])
+    morning = _FakeKis([Quote("005930", 247000, 19.32, 40000)])
     await f.fetch_and_gate(morning, ["005930"], "open")  # type: ignore[arg-type]
 
     # 마감 후. KIS 는 진짜 종가를 줄 준비가 돼 있다.
-    night = _FakeKis([KisQuote("005930", 262500, 26.81, 55500)])
+    night = _FakeKis([Quote("005930", 262500, 26.81, 55500)])
     out = await f.fetch_and_gate(night, ["005930"], "closed")  # type: ignore[arg-type]
 
     assert night.calls == 1          # 캐시로 때우지 않는다
@@ -172,7 +172,7 @@ async def test_closed_marks_stale_when_refetch_fails_over_intraday_sample() -> N
     값이 방금 받은 값과 구분되지 않는다(그게 이 버그가 무증상이었던 이유). 정밀
     소비자는 프론트의 isStaleLiveQuote 로 이 플래그를 보고 거른다."""
     f = LiveQuoteFetcher()
-    morning = _FakeKis([KisQuote("005930", 247000, 19.32, 40000)])
+    morning = _FakeKis([Quote("005930", 247000, 19.32, 40000)])
     await f.fetch_and_gate(morning, ["005930"], "open")  # type: ignore[arg-type]
 
     out = await f.fetch_and_gate(_FakeKis(Q, fail=True), ["005930"], "closed")  # type: ignore[arg-type]
@@ -189,10 +189,10 @@ async def test_closed_refetches_yesterdays_closing_sample() -> None:
     저장돼 있어 phase 조건만으로는 통과해 버린다."""
     f = LiveQuoteFetcher()
     yesterday, today = date(2026, 7, 30), date(2026, 7, 31)
-    stale_night = _FakeKis([KisQuote("005930", 207000, 0.5, 1000)])
+    stale_night = _FakeKis([Quote("005930", 207000, 0.5, 1000)])
     await f.fetch_and_gate(stale_night, ["005930"], "closed", today=yesterday)  # type: ignore[arg-type]
 
-    kis = _FakeKis([KisQuote("005930", 262500, 26.81, 55500)])
+    kis = _FakeKis([Quote("005930", 262500, 26.81, 55500)])
     out = await f.fetch_and_gate(kis, ["005930"], "closed", today=today)  # type: ignore[arg-type]
 
     assert kis.calls == 1

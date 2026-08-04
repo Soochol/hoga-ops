@@ -1,7 +1,7 @@
 """키움 관심종목 복수시세(`ka10095`) 어댑터 — PR-D (#1040).
 
 KIS `fetch_multi_price`(`FHKST11300006`, 30종목/콜)의 대체다. 반환 타입은
-그대로 `KisQuote` 라 소비자(관심종목 목록·스크리너 장중 오버레이)는 무변경이다.
+그대로 `Quote` 라 소비자(관심종목 목록·스크리너 장중 오버레이)는 무변경이다.
 
 ## 배치 상한 100 — 실측이고, 넘기면 **영구 실패**다
 
@@ -28,8 +28,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from hoga.live.kis_client import KisQuote
 from hoga.live.kiwoom_rest import KiwoomRestClient
+from hoga.live.quote_models import Quote
 from hoga.live.venue import Venue
 
 # venue → 종목코드 접미. KIS 는 `FID_COND_MRKT_DIV_CODE`(J/NX/UN) 파라미터를 쓰지만
@@ -89,13 +89,13 @@ def strip_venue_suffix(code: str) -> str:
     return code
 
 
-def parse_row(row: dict[str, Any]) -> KisQuote | None:
-    """`ka10095` 한 행 → `KisQuote`. 가격이 없으면 None(호출자가 건너뛴다)."""
+def parse_row(row: dict[str, Any]) -> Quote | None:
+    """`ka10095` 한 행 → `Quote`. 가격이 없으면 None(호출자가 건너뛴다)."""
     code = strip_venue_suffix(str(row.get("stk_cd") or "").strip())
     price = _abs_int(row.get("cur_prc"))
     if not code or price is None:
         return None
-    return KisQuote(
+    return Quote(
         code=code,
         price=price,
         change_pct=_signed_float(row.get("flu_rt")),
@@ -117,14 +117,14 @@ def chunk_codes(codes: list[str], size: int = MAX_CODES_PER_CALL) -> list[list[s
 
 async def fetch_multi_price(
     client: KiwoomRestClient, codes: list[str], *, venue: Venue = "KRX"
-) -> list[KisQuote]:
+) -> list[Quote]:
     """복수 종목 현재가. 상한(100)에 맞춰 청킹해 순차 호출한다.
 
     청크를 **병렬로 쏘지 않는다** — 거버너가 TR별 버킷으로 페이싱하므로 병렬화는
     큐에서 일어난다. 여기서 동시 발사하면 같은 TR 버킷을 서로 밀어낸다.
     """
     suffix = VENUE_SUFFIX.get(venue, "")
-    out: list[KisQuote] = []
+    out: list[Quote] = []
     for chunk in chunk_codes([c for c in codes if c]):
         page = await client.call(
             "ka10095", {"stk_cd": "|".join(f"{c}{suffix}" for c in chunk)}

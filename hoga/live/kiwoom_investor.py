@@ -34,8 +34,12 @@ from typing import Any
 
 from hoga.live.candle_models import daily_anchor_ms
 from hoga.live.index_registry import RepresentativeIndex
-from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
-from hoga.live.kis_endpoints import InvestorNetFetchResult, InvestorNetInvariantViolation
+from hoga.live.investor import (
+    InvestorNetFetchResult,
+    InvestorNetInvariantViolation,
+    InvestorNetPoint,
+    InvestorTrendEstimateRow,
+)
 from hoga.live.kiwoom_errors import KiwoomApiError
 from hoga.live.kiwoom_index_candles import index_id_to_kiwoom_code
 from hoga.live.kiwoom_rest import KiwoomRestClient

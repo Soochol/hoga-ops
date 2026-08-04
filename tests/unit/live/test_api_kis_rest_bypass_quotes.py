@@ -10,8 +10,8 @@ from hoga.api.models import LiveSettingsResponse
 from hoga.live import api as live_api, kis_runtime, lifecycle
 from hoga.live.api import build_router
 from hoga.live.buffer import LiveBuffer
-from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
-from hoga.live.kis_client import InvestorNetFetchResult, KisQuote
+from hoga.live.investor import InvestorNetFetchResult, InvestorNetPoint, InvestorTrendEstimateRow
+from hoga.live.quote_models import Quote
 from hoga.live.settings import save_live_settings
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 
@@ -26,7 +26,7 @@ class _CountingKis:
     async def fetch_multi_price(self, codes, *, venue="KRX"):
         self.quote_fetch_count += 1
         quotes = {
-            "005930": KisQuote(
+            "005930": Quote(
                 "005930",
                 70_000,
                 1.2,
