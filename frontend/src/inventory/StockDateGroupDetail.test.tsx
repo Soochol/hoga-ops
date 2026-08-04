@@ -343,10 +343,11 @@ describe('StockDateGroupDetail — WS1 upstream-gap panel', () => {
     sparse: false, origin: 'computed',
   };
 
-  it('shows the confirmed message + force-recapture button when identical_capture_count>=2', async () => {
+  it('확정 + 카운터 근거가 있으면 "N회 재캡처 동일 결과" 를 덧붙인다', async () => {
     setupFetchWithGaps(GAP_BODY);
     renderDetail(
-      [row('003490', '대한항공', '20260707', 'source_partial', { identical_capture_count: 2 })],
+      [row('003490', '대한항공', '20260707', 'source_partial',
+        { identical_capture_count: 2, upstream_gap_confirmed: true })],
       '003490', qc(),
     );
     fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));
@@ -355,16 +356,50 @@ describe('StockDateGroupDetail — WS1 upstream-gap panel', () => {
     expect(screen.getByTestId('force-recapture-button')).toBeTruthy();
   });
 
-  it('hides the confirmed message + force button when identical_capture_count<2', async () => {
+  it('카운터가 1이어도 서버가 확정이면 확정 문구 + 강제 재캡처가 나온다', async () => {
+    // 이게 종전 구멍이다. 확정 경로는 셋인데(ADR-0093 동일 재현 / ADR-0126 세션
+    // 경계 / ADR-0131 보유 창 만료) 패널은 첫째만 보고 있었다. 뒤 둘로 확정된
+    // 행은 워커가 이미 `upstream_gap` 으로 건너뛰는데도 사용자에겐 "재시도해
+    // 보세요" 로 보이고 강제 재검증 경로조차 없었다.
     setupFetchWithGaps(GAP_BODY);
     renderDetail(
-      [row('003490', '대한항공', '20260707', 'source_partial', { identical_capture_count: 1 })],
+      [row('003490', '대한항공', '20260707', 'source_partial',
+        { identical_capture_count: 1, upstream_gap_confirmed: true })],
+      '003490', qc(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));
+    await waitFor(() => expect(screen.getByTestId('gap-panel')).toBeTruthy());
+    // 카운터 근거가 없으므로 "N회" 를 주장하지 않는다.
+    expect(screen.getByTestId('gap-panel-confirmed').textContent).not.toMatch(/회 재캡처/);
+    expect(screen.getByTestId('gap-panel-confirmed').textContent).toMatch(/업스트림 결손 확정/);
+    expect(screen.getByTestId('force-recapture-button')).toBeTruthy();
+  });
+
+  it('서버가 미확정이면 카운터와 무관하게 확정 문구도 강제 버튼도 없다', async () => {
+    setupFetchWithGaps(GAP_BODY);
+    renderDetail(
+      [row('003490', '대한항공', '20260707', 'source_partial',
+        { identical_capture_count: 1, upstream_gap_confirmed: false })],
       '003490', qc(),
     );
     fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));
     await waitFor(() => expect(screen.getByTestId('gap-panel')).toBeTruthy());
     expect(screen.queryByTestId('gap-panel-confirmed')).toBeNull();
     expect(screen.queryByTestId('force-recapture-button')).toBeNull();
+  });
+
+  it('확정 행도 결손 구간 상세는 그대로 열린다', async () => {
+    // disk_state 를 쪼개지 않고 불리언을 더한 이유가 이것 — 값을 나눴다면
+    // `disk_state === 'source_partial'` 게이트가 확정 행에서 패널을 없앴다.
+    setupFetchWithGaps(GAP_BODY);
+    renderDetail(
+      [row('003490', '대한항공', '20260707', 'source_partial',
+        { upstream_gap_confirmed: true })],
+      '003490', qc(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));
+    await waitFor(() => expect(screen.getByTestId('gap-panel')).toBeTruthy());
+    expect(screen.getByText(/업스트림 결손 1구간/)).toBeTruthy();
   });
 
   it('force-recapture button POSTs force_retry: true', async () => {
@@ -384,7 +419,8 @@ describe('StockDateGroupDetail — WS1 upstream-gap panel', () => {
       return { ok: true, status: 200, json: async () => ({}) } as Response;
     });
     renderDetail(
-      [row('003490', '대한항공', '20260707', 'source_partial', { identical_capture_count: 3 })],
+      [row('003490', '대한항공', '20260707', 'source_partial',
+        { identical_capture_count: 3, upstream_gap_confirmed: true })],
       '003490', qc(),
     );
     fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));

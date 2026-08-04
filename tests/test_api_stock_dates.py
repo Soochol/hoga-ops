@@ -12,6 +12,8 @@ the HHMMSSmmm packed-decimal encoding stored on disk.
 
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi.testclient import TestClient
 
 
@@ -198,3 +200,86 @@ def test_stock_date_open_ms_zero_normalized_and_complete(tmp_path) -> None:
     assert sd.regular_session_open_ms == hhmmssms_to_unix_ms(DATE, 90_000_000)
     assert sd.regular_session_open_ms != hhmmssms_to_unix_ms(DATE, 0)
     assert sd.disk_state == "complete"
+
+
+# ADR-0093/0126/0131 — 보관함 행의 "재캡처가 무의미하다" 판정.
+#
+# 이 플래그를 wire 에 실은 이유는 클라이언트가 못 만들어서다. 종전엔 결손 패널이
+# `identical_capture_count >= 2` 로 자체 계산했는데 그건 확정 경로 셋 중 하나뿐이라,
+# 세션 경계(ADR-0126)·보유 창 만료(ADR-0131)로 확정된 행은 확정 표시도 강제 재캡처
+# 버튼도 못 받았다 — 워커는 이미 건너뛰고 있었는데도.
+
+_KST = dt.timezone(dt.timedelta(hours=9))
+_GAP_DATE = "20260519"
+
+
+def _write_partial_meta(tmp_path, **extra):
+    import json
+
+    code_dir = tmp_path / "parquet" / _GAP_DATE / "005930"
+    code_dir.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "code": "005930", "name": "삼성전자",
+        "regular_session_open_ms": 90000000, "regular_session_close_ms": 153000000,
+        "pages_collected": 1, "total_unique_events": 0,
+        "today_open": 70_000, "today_high": 71_000, "today_low": 69_000, "today_close": 70_500,
+        "parser_version": "0", "collection_complete": True, "is_partial": True,
+    }
+    meta.update(extra)
+    (code_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def _rows_at(monkeypatch, tmp_path, now):
+    """시계를 고정하고 보관함 행을 조립한다.
+
+    ADR-0131 경로는 **오늘 날짜**에 달려 있어(보유 창 2일) 실제 시각으로 돌리면
+    모든 픽스처가 만료 쪽으로 쏠려 미확정 분기를 밟지 못한다.
+    """
+    from hoga.api.queries import QueryEngine
+    monkeypatch.setattr("hoga.api.queries.now_kst", lambda: now)
+    return QueryEngine(data_dir=tmp_path).list_stock_dates()
+
+
+def test_stock_date_unconfirmed_gap_within_retention_is_not_confirmed(monkeypatch, tmp_path):
+    """보유 창 안 + 미확정 → 아직 재캡처가 채워 줄 여지가 있다."""
+    _write_partial_meta(tmp_path)
+    rows = _rows_at(monkeypatch, tmp_path, dt.datetime(2026, 5, 20, 18, 0, tzinfo=_KST))
+    assert rows[0].disk_state == "source_partial"
+    assert rows[0].upstream_gap_confirmed is False
+
+
+def test_stock_date_identical_recapture_is_confirmed(monkeypatch, tmp_path):
+    """ADR-0093 — 재캡처가 동일 갭을 재현하면 확정."""
+    _write_partial_meta(tmp_path, identical_capture_count=2)
+    rows = _rows_at(monkeypatch, tmp_path, dt.datetime(2026, 5, 20, 18, 0, tzinfo=_KST))
+    assert rows[0].upstream_gap_confirmed is True
+
+
+def test_stock_date_session_edge_gap_is_confirmed(monkeypatch, tmp_path):
+    """ADR-0126 — 세션 개시에 접한 갭은 카운터가 1이어도 확정이다.
+
+    카운터로는 이 행을 절대 못 잡는다 — 클라이언트 계산이 놓치던 바로 그 케이스.
+    """
+    _write_partial_meta(tmp_path, gap_ranges=[{"start_ms": 90000000, "end_ms": 90200000}])
+    rows = _rows_at(monkeypatch, tmp_path, dt.datetime(2026, 5, 20, 18, 0, tzinfo=_KST))
+    assert rows[0].identical_capture_count is None
+    assert rows[0].upstream_gap_confirmed is True
+
+
+def test_stock_date_expired_unconfirmed_gap_is_confirmed(monkeypatch, tmp_path):
+    """ADR-0131 — 같은 meta 라도 보유 창 밖이면 확정 경로가 원리적으로 닫힌다.
+
+    위 `..._within_retention_...` 과 meta 가 동일하다는 점이 핵심: 판정은 meta
+    단독이 아니라 meta × 나이라서 클라이언트가 재현할 수 없다.
+    """
+    _write_partial_meta(tmp_path)
+    rows = _rows_at(monkeypatch, tmp_path, dt.datetime(2026, 5, 25, 18, 0, tzinfo=_KST))
+    assert rows[0].upstream_gap_confirmed is True
+
+
+def test_stock_date_complete_is_never_confirmed(monkeypatch, tmp_path):
+    """확정 판정은 SOURCE_PARTIAL 전용 — 완결 행에 새어 나오면 안 된다."""
+    _write_partial_meta(tmp_path, is_partial=False, identical_capture_count=5)
+    rows = _rows_at(monkeypatch, tmp_path, dt.datetime(2026, 5, 25, 18, 0, tzinfo=_KST))
+    assert rows[0].disk_state == "complete"
+    assert rows[0].upstream_gap_confirmed is False

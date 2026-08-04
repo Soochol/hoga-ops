@@ -15,8 +15,8 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 
 from hoga.api import trading_days as trading_days_source
-from hoga.api.disk_state import Classification, DiskState, check_disk_state
-from hoga.api.eligibility import is_expired_unconfirmed_gap
+from hoga.api.disk_state import DiskState, check_disk_state
+from hoga.api.eligibility import is_terminal_partial
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import CalendarCell, CalendarResponse
 from hoga.api.params import CODE_PATTERN
@@ -318,25 +318,6 @@ def _disk_state_to_status(st: DiskState) -> str:
     }[st]
 
 
-def _is_terminal_partial(cls: Classification, date: str, now: dt.datetime) -> bool:
-    """이 SOURCE_PARTIAL 이 **재캡처로 나아지지 않는** 부분 결손인가.
-
-    ``decide_capture`` 가 SOURCE_PARTIAL 을 ``upstream_gap`` 으로 건너뛰는 두
-    경로와 **같은 술어**여야 한다 — 여기서 더 좁게 잡으면 셀은 "⚠ 부분(재시도해
-    보세요)" 으로 보이는데 워커는 조용히 건너뛰는 어긋남이 생긴다. 표시 계약은
-    동작 계약이기도 하다.
-
-      1. ``upstream_gap_confirmed`` — 재캡처가 동일 갭을 재현했거나(ADR-0093)
-         갭이 세션 경계에 접한다(ADR-0126).
-      2. ``is_expired_unconfirmed_gap`` — 아직 미확정이지만 hogaplay 보유 창
-         밖이라 (1)의 확정 경로가 **원리적으로 닫혀 있다**(ADR-0131).
-
-    INVALID 쪽 ``upstream_gap`` 경로(close_ms=0 스텁, ADR-0130)는 여기 없다.
-    그건 SOURCE_PARTIAL 이 아니라 ``invalid`` 셀로 그려지는 별개 클래스다.
-    """
-    return cls.upstream_gap_confirmed or is_expired_unconfirmed_gap(cls, date, now)
-
-
 def _captured_at_ms(data_dir: Path, code: str, date: str) -> int | None:
     parquet = data_dir / "parquet" / date / code
     if parquet.exists():
@@ -373,7 +354,7 @@ def _cell_status_for(date_str: str, now: dt.datetime, trading_days: set[str],
     if hp.state != DiskState.NONE:
         # 부분 결손 중 "재캡처가 무의미하다고 판정된" 것만 갈라 낸다. 나머지
         # SOURCE_PARTIAL 은 그대로 ⚠ — 아직 재캡처가 채워 줄 여지가 있다.
-        if hp.state == DiskState.SOURCE_PARTIAL and _is_terminal_partial(hp, date_str, now):
+        if is_terminal_partial(hp, date_str, now):
             return "source_partial_confirmed"
         return _disk_state_to_status(hp.state)
     kis = check_disk_state(data_dir, code, date_str).state  # aggregate: kis_live/kis_api
