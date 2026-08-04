@@ -1593,7 +1593,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             or live_settings.rest_bypass_enabled(data_dir)
         ):
             return snapshot()
-        scheduler = kiwoom_rest_runtime.ensure_scheduler()
+        scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
 
         async with _index_quotes_lock:
             if monotonic_time.monotonic() - _index_quotes_meta["fetched_at"] < _INDEX_QUOTES_TTL_S:
@@ -1667,7 +1667,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     503,
                     {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom client not initialized"},
                 )
-            daily_scheduler = kiwoom_rest_runtime.ensure_scheduler()
+            daily_scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
 
             async def fetch_batch(from_s: str, to_s: str):
                 async def direct_fetch(inner_from_s: str, inner_to_s: str):
@@ -1973,7 +1973,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     # 없어도 구성된다: 두 스케줄러는 이제 서로 무관한 축이다.
     _index_investor_net_fetcher: LiveIndexInvestorNetFetcher | None = (
         LiveIndexInvestorNetFetcher(
-            data_dir=data_dir, scheduler=kiwoom_rest_runtime.ensure_scheduler()
+            data_dir=data_dir, scheduler=kiwoom_rest_runtime.ensure_scheduler(data_dir)
         )
         if data_dir is not None
         else None
@@ -1981,7 +1981,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     _index_sector_intraday_overlay: LiveIndexSectorIntradayOverlay | None = (
         LiveIndexSectorIntradayOverlay(
             data_dir=data_dir,
-            scheduler=kiwoom_rest_runtime.ensure_scheduler(),
+            scheduler=kiwoom_rest_runtime.ensure_scheduler(data_dir),
             quote_fetcher=_quote_fetcher,
         )
         if data_dir is not None
@@ -2020,7 +2020,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             quotes = await asyncio.wait_for(
                 asyncio.shield(
                     kiwoom_access.run_with_capacity(
-                        kiwoom_rest_runtime.ensure_scheduler(),
+                        kiwoom_rest_runtime.ensure_scheduler(data_dir),
                         key=("quotes", quote_venue, tuple(sorted(code_list)), phase),
                         api_id="ka10095",
                         priority="background",
@@ -2086,7 +2086,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 quotes = await asyncio.wait_for(
                     asyncio.shield(
                         kiwoom_access.run_with_capacity(
-                            kiwoom_rest_runtime.ensure_scheduler(),
+                            kiwoom_rest_runtime.ensure_scheduler(data_dir),
                             key=("tab-metrics-quotes", quote_venue, tuple(sorted(code_list)), phase),
                             api_id="ka10095",
                             priority="background",
@@ -2155,7 +2155,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             return await asyncio.wait_for(
                 asyncio.shield(
                     kiwoom_access.run_with_capacity(
-                        kiwoom_rest_runtime.ensure_scheduler(),
+                        kiwoom_rest_runtime.ensure_scheduler(data_dir),
                         key=("investor-trend-estimate", code),
                         api_id="ka10064",
                         priority="background",
@@ -2182,7 +2182,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             data_dir=data_dir,
             cache=cache_instance,
             # PR-G(#1043): 키움 거버너다 — KIS 스케줄러와 무관한 축이다.
-            scheduler=kiwoom_rest_runtime.ensure_scheduler(),
+            scheduler=kiwoom_rest_runtime.ensure_scheduler(data_dir),
             concurrency=_past_candles_concurrency(data_dir),
             rate_limit_cooldown_s=_PAST_CANDLES_RATE_LIMIT_COOLDOWN_S,
         )
@@ -2197,7 +2197,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             data_dir=data_dir,
             cache=daily_cache_instance,
             # PR-F(#1042): 키움 거버너다 — KIS 스케줄러와 무관한 축이다.
-            scheduler=kiwoom_rest_runtime.ensure_scheduler(),
+            scheduler=kiwoom_rest_runtime.ensure_scheduler(data_dir),
             walkback=batched_daily_walkback,
         )
         if data_dir is not None and daily_cache_instance is not None
@@ -2230,7 +2230,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             data_dir=data_dir,
             cache=investor_cache_instance,
             # PR-E(#1041): 키움 거버너다 — KIS 스케줄러와 무관한 축이다.
-            scheduler=kiwoom_rest_runtime.ensure_scheduler(),
+            scheduler=kiwoom_rest_runtime.ensure_scheduler(data_dir),
             walkback=batched_daily_walkback,
         )
         if data_dir is not None and investor_cache_instance is not None

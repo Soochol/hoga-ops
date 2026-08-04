@@ -52,8 +52,10 @@ def _patch_scheduler(monkeypatch, fake: FakeKis, calls: list[dict] | None = None
         screener_intraday.kiwoom_rest_runtime, "ensure_rest_client",
         lambda data_dir, account_id=0: sentinel,
     )
+    # 거버너는 이제 계정 풀 갱신을 위해 data_dir 을 받는다(ADR-0138).
     monkeypatch.setattr(
-        screener_intraday.kiwoom_rest_runtime, "ensure_scheduler", lambda: object()
+        screener_intraday.kiwoom_rest_runtime, "ensure_scheduler",
+        lambda data_dir=None: object(),
     )
 
     async def fake_run_with_capacity(scheduler, *, key, api_id, priority, fetch_fn, client):

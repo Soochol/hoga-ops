@@ -37,7 +37,7 @@ async def test_same_key_joins_one_inflight_call() -> None:
     calls = 0
     gate = asyncio.Event()
 
-    async def fn() -> str:
+    async def fn(_client=None) -> str:
         nonlocal calls
         calls += 1
         await gate.wait()
@@ -67,7 +67,7 @@ async def test_corider_survives_another_waiters_cancellation() -> None:
     gate = asyncio.Event()
     calls = 0
 
-    async def fn() -> str:
+    async def fn(_client=None) -> str:
         nonlocal calls
         calls += 1
         await gate.wait()
@@ -95,7 +95,7 @@ async def test_distinct_keys_do_not_dedupe() -> None:
     s = _sched(workers=2)
     calls = 0
 
-    async def fn() -> int:
+    async def fn(_client=None) -> int:
         nonlocal calls
         calls += 1
         return calls
@@ -116,7 +116,7 @@ async def test_user_visible_runs_before_queued_background() -> None:
     order: list[str] = []
     gate = asyncio.Event()
 
-    async def blocker() -> None:
+    async def blocker(_client=None) -> None:
         order.append("blocker")
         await gate.wait()
 
@@ -128,10 +128,10 @@ async def test_user_visible_runs_before_queued_background() -> None:
     await asyncio.sleep(0)  # blocker 가 워커를 점유하게 한다
 
     tb = asyncio.create_task(
-        s.submit(key="bg", api_id="ka10001", priority="background", call=lambda: mark("bg")))
+        s.submit(key="bg", api_id="ka10001", priority="background", call=lambda _client: mark("bg")))
     await asyncio.sleep(0)
     tu = asyncio.create_task(
-        s.submit(key="uv", api_id="ka10001", priority="user_visible", call=lambda: mark("uv")))
+        s.submit(key="uv", api_id="ka10001", priority="user_visible", call=lambda _client: mark("uv")))
     await asyncio.sleep(0)
 
     gate.set()
@@ -164,21 +164,26 @@ async def test_background_defers_when_user_visible_arrives_during_bucket_wait() 
                 in_bucket.set()
                 await release.wait()
 
+        def available_at(self) -> float:
+            return 0.0
+
         def penalize(self, seconds: float) -> None:
             return None
 
     # 내부 버킷을 갈아끼워 "대기 중" 창을 결정론적으로 연다 — 벽시계를 쓰지 않기 위해서다.
-    s._buckets["ka10001"] = _GatedBucket()
+    # 키는 (앱키, TR) 다(ADR-0138) — 문자열로 넣으면 주입이 조용히 무시되고 실제 버킷이
+    # 생겨서 이 테스트가 **무한 대기**한다.
+    s._buckets[(0, "ka10001")] = _GatedBucket()
 
     async def mark(name: str) -> None:
         order.append(name)
 
     tb = asyncio.create_task(
-        s.submit(key="bg", api_id="ka10001", priority="background", call=lambda: mark("bg")))
+        s.submit(key="bg", api_id="ka10001", priority="background", call=lambda _client: mark("bg")))
     await in_bucket.wait()          # background 가 버킷에서 자는 중
 
     tu = asyncio.create_task(
-        s.submit(key="uv", api_id="ka10001", priority="user_visible", call=lambda: mark("uv")))
+        s.submit(key="uv", api_id="ka10001", priority="user_visible", call=lambda _client: mark("uv")))
     await asyncio.sleep(0)
     release.set()                   # background 를 깨운다
 
@@ -193,10 +198,10 @@ async def test_defer_happens_at_most_once_per_request() -> None:
     s = _sched(workers=1)
     gate = asyncio.Event()
 
-    async def blocked_uv() -> None:
+    async def blocked_uv(_client=None) -> None:
         await gate.wait()
 
-    async def bg() -> None:
+    async def bg(_client=None) -> None:
         return None
 
     tu = asyncio.create_task(
@@ -222,10 +227,10 @@ async def test_background_inflight_is_promoted_when_user_asks_again() -> None:
     s = _sched(workers=1)
     gate = asyncio.Event()
 
-    async def blocker() -> None:
+    async def blocker(_client=None) -> None:
         await gate.wait()
 
-    async def slow() -> str:
+    async def slow(_client=None) -> str:
         return "v"
 
     t0 = asyncio.create_task(
@@ -255,7 +260,7 @@ async def test_buckets_are_per_tr_not_global() -> None:
     """유량은 TR(API ID)별 독립이다 — ka10080 이 429 여도 ka10081 은 즉시 통과했다(#1015)."""
     s = _sched(workers=2)
 
-    async def noop() -> None:
+    async def noop(_client=None) -> None:
         return None
 
     await asyncio.gather(
@@ -270,7 +275,7 @@ async def test_rate_limit_error_retunes_bucket_from_vendor_quota() -> None:
     """벤더가 `유량=5` 를 알려주므로 버킷을 그 값으로 자가 교정한다."""
     s = _sched(workers=1, rate_per_sec=_FAST)
 
-    async def boom() -> None:
+    async def boom(_client=None) -> None:
         raise KiwoomRateLimitError("… 유량=3, API ID=ka10080]", api_id="ka10080")
 
     with pytest.raises(KiwoomRateLimitError):
@@ -284,10 +289,10 @@ async def test_rate_limit_error_retunes_bucket_from_vendor_quota() -> None:
 async def test_exception_propagates_and_worker_survives() -> None:
     s = _sched(workers=1)
 
-    async def boom() -> None:
+    async def boom(_client=None) -> None:
         raise ValueError("x")
 
-    async def ok() -> str:
+    async def ok(_client=None) -> str:
         return "v"
 
     with pytest.raises(ValueError, match="x"):
@@ -302,7 +307,7 @@ async def test_queue_overflow_raises_overloaded() -> None:
     s = _sched(workers=1, max_queued=1)
     gate = asyncio.Event()
 
-    async def blocker() -> None:
+    async def blocker(_client=None) -> None:
         await gate.wait()
 
     t0 = asyncio.create_task(
@@ -384,7 +389,117 @@ def test_dead_workers_do_not_wedge_the_queue() -> None:
 
 
 def _returns(value: str):
-    async def _call() -> str:
+    async def _call(_client=None) -> str:
         return value
 
     return _call
+
+
+# === 계정 풀 (ADR-0138) ======================================================
+#
+# 유량은 TR별인 **동시에 앱키별**이다. #1015 는 TR 축만 실증했고 앱키 축은
+# ADR-0136 이 "미검증으로 남는다" 고 유보했다. 실측 결과 앱키0 을 429 까지
+# 밀어붙인 직후 앱키1 이 대기 없이 통과했다 — 1키 4.17 → 4키 18.4 콜/초.
+
+
+class _FakeClient:
+    def __init__(self, account_id: int) -> None:
+        self.account_id = account_id
+
+
+async def test_pool_spreads_calls_across_accounts() -> None:
+    """버킷이 (앱키, TR) 라야 계정 수만큼 처리량이 는다. 키가 TR 하나면 계정을
+    아무리 늘려도 같은 버킷에서 직렬화된다."""
+    s = _sched(workers=4)
+    s.set_clients([_FakeClient(i) for i in range(4)])
+    seen: list[int] = []
+
+    async def fn(client) -> None:
+        seen.append(client.account_id)
+
+    await asyncio.gather(*(
+        s.submit(key=f"k{i}", api_id="ka10001", priority="background", call=fn)
+        for i in range(8)
+    ))
+
+    assert len(seen) == 8
+    assert set(seen) == {0, 1, 2, 3}, "네 계정이 모두 쓰여야 한다"
+    assert {k[0] for k in s._buckets} == {0, 1, 2, 3}
+    await s.aclose()
+
+
+async def test_rate_limited_account_falls_to_the_back_of_the_line() -> None:
+    """failover 를 상태 기계 없이 얻는 방식 — `penalize` 로 밀린 계정은
+    `available_at()` 이 뒤로 가서 자동으로 후순위가 된다."""
+    s = _sched(workers=1)
+    s.set_clients([_FakeClient(0), _FakeClient(1)])
+
+    # 계정 0 을 실제 429 경로로 물린다(벤더 quota 파싱까지 그대로 태운다).
+    s._penalize_if_rate_limited(
+        0, "ka10001", KiwoomRateLimitError("초과[1700:유량=5, API ID=ka10001]"),
+    )
+
+    assert s._pick_account("ka10001") == 1, "물린 계정을 다시 고르면 안 된다"
+    await s.aclose()
+
+
+async def test_single_account_degenerates_to_previous_behavior() -> None:
+    """풀이 비면 계정 0 하나로 동작하고 클라이언트는 호출자가 준 것을 쓴다 —
+    자격증명 1벌인 환경(ADR-0134 dev 프로필)이 이 경로다."""
+    s = _sched(workers=1)
+    received: list[object] = []
+
+    async def fn(client) -> str:
+        received.append(client)
+        return "v"
+
+    assert await s.submit(
+        key="k", api_id="ka10001", priority="background", call=fn) == "v"
+
+    assert s._accounts == (0,)
+    assert received == [None], "풀이 없으면 None — 호출자 클라이언트를 쓰라는 신호"
+    assert set(s._buckets) == {(0, "ka10001")}
+    await s.aclose()
+
+
+async def test_shrinking_the_pool_drops_dead_account_buckets() -> None:
+    """계정이 줄면 사라진 계정의 버킷도 함께 버린다 — 남겨두면 `_pick_account`
+    가 존재하지 않는 계정을 고를 수 있다."""
+    s = _sched(workers=2)
+    s.set_clients([_FakeClient(i) for i in range(4)])
+
+    async def fn(client) -> None:
+        return None
+
+    await asyncio.gather(*(
+        s.submit(key=f"k{i}", api_id="ka10001", priority="background", call=fn)
+        for i in range(8)
+    ))
+    assert {k[0] for k in s._buckets} == {0, 1, 2, 3}
+
+    s.set_clients([_FakeClient(0)])
+
+    assert {k[0] for k in s._buckets} == {0}
+    assert s._accounts == (0,)
+    await s.aclose()
+
+
+async def test_snapshot_exposes_per_account_call_counts() -> None:
+    """쏠림이 보이지 않으면 앱키를 늘려도 배수가 안 나는 것을 알아챌 수 없다."""
+    s = _sched(workers=2)
+    s.set_clients([_FakeClient(0), _FakeClient(1)])
+
+    async def fn(client) -> None:
+        return None
+
+    await asyncio.gather(*(
+        s.submit(key=f"k{i}", api_id="ka10001", priority="background", call=fn)
+        for i in range(6)
+    ))
+
+    snap = s.snapshot()
+    assert snap["accounts"] == 2
+    counts = snap["calls_by_account"]
+    assert sum(counts.values()) == 6
+    assert set(counts) == {0, 1}
+    await s.aclose()

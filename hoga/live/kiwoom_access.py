@@ -35,7 +35,7 @@ class _Scheduler(Protocol):
         key: Hashable,
         api_id: str,
         priority: Priority,
-        call: Callable[[], Awaitable[_T]],
+        call: Callable[[KiwoomRestClient | None], Awaitable[_T]],
     ) -> _T: ...
 
 
@@ -51,15 +51,18 @@ async def run_with_capacity(
     """키움 fetch 를 거버너를 통해 실행한다.
 
     `priority` 가 유일한 의도 신호다 — `user_visible`(인터랙티브) 또는
-    `background`(백필·워밍). 계정 선택 개념은 없다: 키움 유량은 TR별이라
-    고를 계정이 없다(#1015).
+    `background`(백필·워밍).
 
     `key` 는 중복제거 단위다. 같은 key 가 이미 떠 있으면 새 호출 없이 그
     결과에 조인한다.
+
+    **계정은 거버너가 고른다**(ADR-0138). 유량이 TR별인 **동시에 앱키별**이라
+    풀이 크면 처리량이 그만큼 는다. `client` 는 풀이 비었을 때(자격증명 1벌,
+    테스트)만 쓰이는 폴백이다 — 넘긴 클라이언트가 항상 쓰인다고 가정하지 말 것.
     """
     return await scheduler.submit(
         key=key,
         api_id=api_id,
         priority=priority,
-        call=lambda: fetch_fn(client),
+        call=lambda picked: fetch_fn(picked if picked is not None else client),
     )

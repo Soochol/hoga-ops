@@ -38,11 +38,11 @@ class _RecordingScheduler:
         key: Hashable,
         api_id: str,
         priority: str,
-        call: Callable[[], Awaitable],
+        call: Callable[[object | None], Awaitable],
     ):
         # 계정 차원(endpoint·cooldown_scope)은 PR-J(#1046)에서 사라졌다(#1015).
         self.calls.append({"key": key, "api_id": api_id, "priority": priority})
-        return await call()
+        return await call(None)
 
 
 def _seed_heatmap(tmp_path) -> None:
