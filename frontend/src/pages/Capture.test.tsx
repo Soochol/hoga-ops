@@ -63,7 +63,7 @@ describe('Capture page', () => {
     expect(screen.getByTestId('capture-queue-pane')).not.toHaveClass('border');
     expect(screen.getByTestId('capture-queue-pane')).not.toHaveClass('shadow-panel');
     expect(screen.getByPlaceholderText(/종목/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Start/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /캡처 시작/ })).toBeTruthy();
     // Queue side hidden by empty-state when no rows. Check that empty state
     // marker renders — this confirms CaptureQueue mounted on the right.
     expect(screen.getByTestId('queue-empty')).toBeTruthy();
