@@ -1339,6 +1339,16 @@ describe('useLiveBundle', () => {
       [70_300, 100],
       [70_400, 100],
     ]);
+
+    // 반대편 계약 (2026-08-04 회귀): `chartBundle` 은 **sidecar 원본 그대로**이며
+    // 라이브 오버레이를 담지 않는다. 이 단언이 없던 동안 소비처가
+    // `chartBundle ?? bundle` 로 골라도 스위트가 초록이었고, 그래서 히트맵이 디스크
+    // 승격 주기(5분)로만 갱신되는 것을 아무도 못 잡았다 — 오버레이 소비처는 반드시
+    // `bundle` 쪽을 써야 한다(useLiveChartData.workareaDepthHeatmap).
+    expect(result.current.chartBundle?.depth_heatmap).toEqual([pastOnly, overlapStale]);
+    expect(result.current.chartBundle?.depth_heatmap).not.toEqual(
+      result.current.bundle?.depth_heatmap,
+    );
   });
 
   it('merges sidecar program trade into the chart and live bundles', () => {
