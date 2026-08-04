@@ -1470,7 +1470,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         # 대신한다. 키는 프론트 계약이라 유지한다(#1046 관측 절에서 정리).
         snapshot = kiwoom_rest_runtime.snapshot()
         if snapshot:
-            update["kis_capacity_scheduler"] = snapshot
+            update["rest_capacity_scheduler"] = snapshot
         # ADR-0088: lifespan-owned task liveness (set on app.state at startup).
         runtime = getattr(request.app.state, "startup_runtime", None)
         if runtime is not None:

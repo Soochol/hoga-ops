@@ -339,8 +339,6 @@ describe('LivePage shell', () => {
         capture_healthy: true,
         capture_reason: 'healthy',
         watchlist_count: 1,
-        kis_calls_today: 0,
-        kis_rate_limit_remaining: null,
       },
       isLoading: false,
     } as unknown as ReturnType<typeof liveStatus.useLiveStatus>);

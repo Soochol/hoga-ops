@@ -10,8 +10,6 @@ const baseStatus: LiveStatus = {
   capture_healthy: true,
   capture_reason: 'healthy',
   watchlist_count: 0,
-  kis_calls_today: 0,
-  kis_rate_limit_remaining: null,
   live_set: [],
   rest_bypass_enabled: false,
 };

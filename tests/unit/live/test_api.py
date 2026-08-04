@@ -55,7 +55,6 @@ def test_get_live_status_returns_running_false_initially() -> None:
         body = r.json()
         assert body["running"] is False
         assert body["watchlist_count"] == 0
-        assert body["kis_calls_today"] == 0
 
 
 def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> None:
@@ -70,7 +69,7 @@ def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> N
         # 관측 표면의 **키는 프론트 계약이라 유지**하고 내용물만 키움 거버너로
         # 바뀐다(PR-J·#1046). 계정 성분(`configured_account_count` 등)은 사라졌다 —
         # 키움 유량은 TR별이라 셀 계정이 없다(#1015).
-        scheduler = r.json()["kis_capacity_scheduler"]
+        scheduler = r.json()["rest_capacity_scheduler"]
         # `workers` 는 **살아 있는 워커 수**다 — 옛 KIS 스냅샷의 `max_workers`(설정값)와
         # 성격이 다르다. 첫 요청 전에는 0 이고, 그게 맞는 값이다.
         assert isinstance(scheduler["workers"], int)

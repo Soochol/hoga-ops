@@ -17,8 +17,6 @@ export interface LiveStatus {
    * Keying UI empty-states off this field conflates the two (diagnose 2026-05-30).
    */
   watchlist_count: number;
-  kis_calls_today: number;
-  kis_rate_limit_remaining: number | null;
   /** Codes the backend is *actively collecting* in the current cycle. Used for collection-status badge visibility. */
   live_set: string[];
   rest_bypass_enabled: boolean;

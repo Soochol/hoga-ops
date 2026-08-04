@@ -50,8 +50,6 @@ class LiveStatus(BaseModel):
     # 프론트는 의도적으로 이 필드를 비소비(useLiveBannerState.ts 주석 참조).
     watchlist_count: int
     # poller-era 필드(wire 호환 유지): 캡처 경로가 REST를 쓰지 않으므로 0/None 고정.
-    kis_calls_today: int
-    kis_rate_limit_remaining: int | None
     # ADR-0043 / design-review B2 — last successful Today Promotion per code (epoch ms).
     today_promote_last_ms: dict[str, int] = Field(default_factory=dict)
     # WS transport info (unknown keys are safely ignored by frontend)
@@ -67,7 +65,7 @@ class LiveStatus(BaseModel):
     capture_missing_codes: list[str] = Field(default_factory=list)
     # broker_poll_* 필드는 제거됨 — 거래원이 키움 0F push 로 전환(PR-F2, ADR-0111 폐지).
     # 프론트 미소비(관측 전용)였음을 확인하고 additive 원칙대로 조용히 내렸다.
-    kis_capacity_scheduler: dict[str, object] | None = None
+    rest_capacity_scheduler: dict[str, object] | None = None
     # Per-cache hit/miss/eviction observability (PR-1). Assembled in the status route.
     cache_stats: dict[str, object] | None = None
     rest_bypass_enabled: bool = False
@@ -276,8 +274,6 @@ def get_status() -> LiveStatus:
         last_tick_ms=last_tick_ms,
         cycle_lag_ms=0,
         watchlist_count=len(live_set),
-        kis_calls_today=0,
-        kis_rate_limit_remaining=None,
         today_promote_last_ms=get_today_promote_last_ms(),
         transport="ws",
         ws_connected=ws_connected,
