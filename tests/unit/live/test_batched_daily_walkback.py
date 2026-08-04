@@ -119,10 +119,14 @@ def test_api_error_continues_with_warning() -> None:
 def test_transport_error_continues_with_distinct_warning() -> None:
     """A KisTransportError (TCP disconnect mid-backfill) must NOT propagate out
     of the walk-back as a 500 — it degrades like an api error (skip the batch,
-    keep going) but records a DISTINCT ``kis_transport`` reason so operators
-    can tell a network blip from a KIS rejection (different remediation).
+    keep going) but records a DISTINCT ``transport_error`` reason so operators
+    can tell a network blip from a vendor rejection (different remediation).
     Regression: 2026-06-11 foreground daily-candle backfill 500, where
-    ``httpx.RemoteProtocolError`` escaped the client uncaught."""
+    ``httpx.RemoteProtocolError`` escaped the client uncaught.
+
+    사유는 ``"transport"`` 가 아니라 **``"transport_error"``** 다 — 프론트 계약이
+    후자인데 전자를 내보내고 있어서, 이 경로의 전송 실패가 토스트에 도달하지
+    못했다(ADR-0137)."""
     cache = _FakeCache()
 
     async def fetch_batch(code, from_s, to_s):
@@ -135,7 +139,10 @@ def test_transport_error_continues_with_distinct_warning() -> None:
     ))
 
     assert out["candles"] == []
-    assert any(w["reason"] == "transport" for w in out["data_warnings"])
+    assert any(w["reason"] == "transport_error" for w in out["data_warnings"])
+    assert not any(w["reason"] == "transport" for w in out["data_warnings"]), (
+        "프론트가 보는 문자열은 `transport_error` 다 — 짧은 쪽은 아무도 안 읽는다"
+    )
     # Not misreported as a generic api error.
     assert not any(w["reason"] == "api_error" for w in out["data_warnings"])
 

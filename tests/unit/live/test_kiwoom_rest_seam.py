@@ -196,3 +196,88 @@ async def test_walk_rejects_non_cursor_tr() -> None:
     with pytest.raises(KiwoomRestError, match="커서를 지원하지 않는"):
         await c.walk("ka10095", {"stk_cd": "A"}, max_pages=2)
     await c.aclose()
+
+
+async def test_walk_routes_every_page_through_the_injected_runner() -> None:
+    """**페이지 N장이면 러너도 N번 불린다** — 유량 페이싱의 전제다.
+
+    거버너(`kiwoom_capacity`)는 `run_with_capacity` 진입 전에 버킷을 한 번만
+    소비한다. walk 전체가 한 submit 안에 있으면 버킷은 1 을, 벤더는 페이지 수만큼
+    센다 — ka10095·ka10080·ka10051 을 차례로 무너뜨린 것과 같은 결함이다(ADR-0137).
+    """
+    pages = [
+        _ok("stk_min_pole_chart_qry", [{"i": 1}], cont="Y", nk="k1"),
+        _ok("stk_min_pole_chart_qry", [{"i": 2}], cont="Y", nk="k2"),
+        _ok("stk_min_pole_chart_qry", [{"i": 3}], cont="N", nk=""),
+    ]
+    it = iter(pages)
+    c = _client(lambda _r: next(it))
+    seen_idx: list[int] = []
+
+    async def _run_page(fetch_fn, page_idx):
+        seen_idx.append(page_idx)
+        return await fetch_fn(c)
+
+    rows, truncated = await c.walk(
+        "ka10080", {"stk_cd": "A", "tic_scope": "1", "upd_stkpc_tp": "1"},
+        max_pages=5, run_page=_run_page,
+    )
+
+    assert seen_idx == [0, 1, 2], "페이지마다 대기표 1장 — 여기가 계약이다"
+    assert [r["i"] for r in rows] == [1, 2, 3]
+    assert truncated is False
+    await c.aclose()
+
+
+async def test_injected_runner_receives_the_client_it_should_call() -> None:
+    """러너가 넘겨주는 클라이언트로 호출해야 한다 — `self` 가 아니다.
+
+    계정은 거버너가 고르므로(ADR-0138) 팩토리가 받는 클라이언트가 곧 그 계정의
+    것이다. `self` 로 부르면 계정 분산이 조용히 무력해진다.
+    """
+    used: list[str] = []
+
+    def _h(tag: str):
+        def _inner(_r: httpx.Request) -> httpx.Response:
+            used.append(tag)
+            return _ok("stk_min_pole_chart_qry", [{"i": 1}], cont="N", nk="")
+        return _inner
+
+    owner = _client(_h("owner"))
+    picked = _client(_h("picked"))
+
+    async def _run_page(fetch_fn, _idx):
+        return await fetch_fn(picked)   # 거버너가 고른 계정
+
+    await owner.walk(
+        "ka10080", {"stk_cd": "A", "tic_scope": "1", "upd_stkpc_tp": "1"},
+        max_pages=2, run_page=_run_page,
+    )
+
+    assert used == ["picked"], "walk 는 self 가 아니라 러너가 준 클라이언트를 쓴다"
+    await owner.aclose()
+    await picked.aclose()
+
+
+async def test_cursor_advances_across_paced_pages() -> None:
+    """페이싱을 끼워도 커서는 그대로 전진한다 — 지연 실행이 커서를 얼리지 않는다."""
+    sent: list[str] = []
+
+    def _h(r: httpx.Request) -> httpx.Response:
+        sent.append(r.headers.get("next-key", ""))
+        idx = len(sent)
+        return _ok("stk_min_pole_chart_qry", [{"i": idx}],
+                   cont="Y" if idx < 3 else "N", nk=f"k{idx}" if idx < 3 else "")
+
+    c = _client(_h)
+
+    async def _run_page(fetch_fn, _idx):
+        return await fetch_fn(c)
+
+    await c.walk(
+        "ka10080", {"stk_cd": "A", "tic_scope": "1", "upd_stkpc_tp": "1"},
+        max_pages=5, run_page=_run_page,
+    )
+
+    assert sent == ["", "k1", "k2"], "각 페이지가 직전 응답의 next-key 를 쓴다"
+    await c.aclose()

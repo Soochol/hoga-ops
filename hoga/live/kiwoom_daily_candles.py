@@ -43,7 +43,7 @@ from typing import Any
 from hoga.live.candle_fetch_result import DailyCandleFetchResult, DailyInvariantViolation
 from hoga.live.candle_models import LiveCandle, daily_anchor_ms
 from hoga.live.kiwoom_multi_quote import VENUE_SUFFIX
-from hoga.live.kiwoom_rest import KiwoomRestClient
+from hoga.live.kiwoom_rest import KiwoomRestClient, PageRunner
 from hoga.live.venue import Venue
 
 API_ID = "ka10081"
@@ -133,6 +133,7 @@ async def fetch_daily_candles(
     *,
     venue: Venue = "KRX",
     adjust: bool = True,
+    run_page: PageRunner | None = None,
 ) -> DailyCandleFetchResult:
     """[from, to] 구간의 일봉. KIS `fetch_past_daily_candles` 대체.
 
@@ -140,6 +141,9 @@ async def fetch_daily_candles(
     KIS 구현이 `[DATE_1, DATE_2]` 양끝을 밀고 당기며 venue 별 예외까지 다뤄야
     했던 것(60회 루프·4갈래 커서 분기)과 달리, 여기서는 종료 조건이 하나다:
     **페이지에서 `from` 보다 오래된 날짜를 봤으면 덮은 것이다.**
+
+    `run_page` 는 유량 페이싱 이음매다 — walk 는 최대 `_MAX_PAGES` 콜이고,
+    주입하지 않으면 그 전부가 한 submit 안에서 페이싱 없이 나간다(ADR-0137).
     """
     def _covered(rows: list[dict[str, Any]], _page: Any) -> bool:
         oldest = min((str(r.get("dt") or "") for r in rows if r.get("dt")), default="")
@@ -154,6 +158,7 @@ async def fetch_daily_candles(
         },
         max_pages=_MAX_PAGES,
         stop=_covered,
+        run_page=run_page,
     )
 
     candles: list[LiveCandle] = []

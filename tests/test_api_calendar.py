@@ -237,10 +237,30 @@ def _stub_source(monkeypatch, days_yyyymmdd, *, calls=None):
 def test_trading_days_for_returns_none_beyond_coverage(
     monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    """커버리지 끝을 넘는 달은 None. 재시도해도 달라지지 않는다."""
+    """커버리지 끝을 넘는 달은 None. 재시도해도 달라지지 않는다.
+
+    **사유는 세우지 않는다.** 커버리지 밖은 사건이 아니라 소스의 성질이라
+    (`ka20006` 역산은 미래를 못 준다) 여기에 사유를 세우면 `get_month_map` 이
+    미래 달마다 경고를 실어 보낸다 — 캡처 폼의 오른쪽 그리드가 항상 +1개월이라
+    배너가 상시 점등됐다.
+    """
     _stub_source(monkeypatch, _MAY_2026_TRADING_DAYS)
     assert calendar_module._trading_days_for(2026, 5) is not None
     assert calendar_module._trading_days_for(2027, 1) is None
+    assert calendar_module.last_failure_reason() is None
+
+
+def test_trading_days_for_sets_reason_only_when_source_absent(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    """사유를 세우는 경로는 **시드 부재 하나뿐**이다.
+
+    그 결과 사유가 프로세스 전역이어도 경합이 없다 — 소스가 없으면 모든 스레드가
+    같은 값을 쓰고, 있으면 아무도 세우지 않는다. 예전에는 커버리지 밖 달과
+    커버리지 안 달이 스레드풀에서 서로의 사유를 덮었다(좌/우 그리드 동시 요청).
+    """
+    _stub_source(monkeypatch, set())
+    assert calendar_module._trading_days_for(2026, 5) is None
     assert calendar_module.last_failure_reason() == UpstreamCode.TRADING_DAYS_UNAVAILABLE
 
 
@@ -351,17 +371,116 @@ def test_get_month_map_fail_soft_when_calendar_has_no_coverage(
 def test_trading_days_in_range_raises_beyond_coverage(
     monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    """추측한 날짜 목록으로 진행하지 않는다 — enqueue 경로는 fail-fast 다."""
+    """추측한 날짜 목록으로 진행하지 않는다 — enqueue 경로는 fail-fast 다.
+
+    사유는 STALE(커버리지 부족)이지 UNAVAILABLE(소스 부재)이 아니다. 조치가 다르다:
+    종료일을 앞당기면 되는 것과, 서버 설치를 고쳐야 하는 것.
+    """
     _stub_source(monkeypatch, _MAY_2026_TRADING_DAYS)
     assert calendar_module.trading_days_in_range("20260501", "20260508")
-    with pytest.raises(calendar_module.TradingDayUnavailableError):
+    with pytest.raises(calendar_module.TradingDayUnavailableError) as exc:
         calendar_module.trading_days_in_range("20260501", "20270108")
+    assert exc.value.code == UpstreamCode.TRADING_DAYS_STALE
+
+
+def test_trading_days_in_range_distinguishes_absent_source(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    """소스를 못 읽으면 UNAVAILABLE — 종료일을 앞당겨도 낫지 않는다."""
+    _stub_source(monkeypatch, set())
+    with pytest.raises(calendar_module.TradingDayUnavailableError) as exc:
+        calendar_module.trading_days_in_range("20260501", "20260508")
+    assert exc.value.code == UpstreamCode.TRADING_DAYS_UNAVAILABLE
+
+
+# ---------------------------------------------------------------------------
+# get_month_map 의 커버리지 계약
+#
+# `_trading_days_for` 는 **월 단위**라 부분 커버 달을 못 가른다 — 커버리지가 5/15
+# 까지인 5월은 비어 있지 않은 집합을 돌려주고, 그러면 5/18 이후가 전부 "휴장" 으로
+# **확정**된다. `5db711f9`(#1044 회귀)가 라이브 세션 게이트에서 고친 함정이 달력
+# 셀에는 그대로 남아 있었다. 아래 셋이 세 갈래를 각각 못 박는다.
+# ---------------------------------------------------------------------------
+
+_KST = dt.timezone(dt.timedelta(hours=9))
+
+
+def _month_map(monkeypatch, tmp_path: Path, *, now: dt.datetime, year: int, month: int):
+    monkeypatch.setattr("hoga.api.calendar._now_kst", lambda: now, raising=False)
+    return calendar_module.get_month_map(
+        data_dir=tmp_path, code="005930", year=year, month=month,
+    )
+
+
+def test_month_map_future_month_carries_no_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _reset_calendar_state: None,
+) -> None:
+    """미래 달은 **경고할 게 없다** — 모든 셀이 `future` 라 거래일 여부를 주장하지 않는다.
+
+    캡처 폼의 `DateRangePicker` 는 항상 두 달(현재 + 다음)을 그리고, 배너는
+    `left.reason ?? right.reason` 이다. 다음 달은 구조적으로 항상 커버리지 밖이라
+    여기서 사유를 내면 배너가 **영구 점등**된다(실측 2026-08-04).
+    """
+    _stub_source(monkeypatch, _MAY_2026_TRADING_DAYS)
+    resp = _month_map(monkeypatch, tmp_path,
+                      now=dt.datetime(2026, 5, 20, 10, 0, tzinfo=_KST), year=2026, month=7)
+    assert resp.reason is None
+    assert {c.status for c in resp.cells} == {"future"}
+
+
+def test_month_map_past_beyond_coverage_is_not_holiday(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _reset_calendar_state: None,
+) -> None:
+    """**경계에서 자른다** — 커버리지 안은 정확한 휴장일, 그 뒤는 평일 근사 + 경고.
+
+    커버리지 밖을 `holiday` 로 단정하면 진짜 거래일이 **선택조차 불가능**해진다.
+    모르는 것은 근사하고, 근사했다고 말한다.
+    """
+    covered = {d for d in _MAY_2026_TRADING_DAYS if d <= "20260515"}
+    _stub_source(monkeypatch, covered)
+    resp = _month_map(monkeypatch, tmp_path,
+                      now=dt.datetime(2026, 5, 20, 17, 0, tzinfo=_KST), year=2026, month=5)
+    status = {c.date: c.status for c in resp.cells}
+
+    # 커버리지 안의 진짜 휴장일(어린이날)은 그대로 확정된다.
+    assert status["20260505"] == "holiday"
+    # 커버리지 밖 과거 평일은 "휴장" 이 아니라 "미수집" 이다 — 캡처를 걸 수 있다.
+    assert status["20260518"] == "none"
+    assert status["20260519"] == "none"
+    # 주말은 근사와 무관하게 주말이다.
+    assert status["20260516"] == "weekend"
+    assert resp.reason == UpstreamCode.TRADING_DAYS_STALE
+
+
+def test_month_map_today_alone_beyond_coverage_is_quiet(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _reset_calendar_state: None,
+) -> None:
+    """**오늘은 구조적으로 항상 커버리지 밖**이라 경고 근거가 될 수 없다.
+
+    `ka20006` 은 장이 끝나야 오늘 행을 준다. 오늘을 근거로 경고하면 정상 운영에서
+    매일 배너가 뜬다 — 경고는 "알았어야 하는 과거 날짜를 못 안다" 일 때만 뜬다.
+    """
+    covered = {d for d in _MAY_2026_TRADING_DAYS if d <= "20260519"}
+    _stub_source(monkeypatch, covered)
+    resp = _month_map(monkeypatch, tmp_path,
+                      now=dt.datetime(2026, 5, 20, 10, 0, tzinfo=_KST), year=2026, month=5)
+    assert resp.reason is None
+
+
+def test_month_map_absent_source_reports_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _reset_calendar_state: None,
+) -> None:
+    """소스 부재는 커버리지 부족과 **조치가 다르다** — 사유도 다르다."""
+    _stub_source(monkeypatch, set())
+    resp = _month_map(monkeypatch, tmp_path,
+                      now=dt.datetime(2026, 5, 20, 17, 0, tzinfo=_KST), year=2026, month=5)
+    assert resp.reason == UpstreamCode.TRADING_DAYS_UNAVAILABLE
 
 
 def test_reset_cache_clears_last_failure_reason(
     monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
 ) -> None:
-    _stub_source(monkeypatch, _MAY_2026_TRADING_DAYS)
+    _stub_source(monkeypatch, set())
     calendar_module._trading_days_for(2027, 1)
     assert calendar_module.last_failure_reason() is not None
     calendar_module.reset_cache_for_tests()

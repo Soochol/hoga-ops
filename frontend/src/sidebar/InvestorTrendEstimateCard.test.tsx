@@ -1,13 +1,16 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   formatAggregationSlot,
-  formatQtyCompact,
+  formatAmount,
+  formatQty,
   InvestorTrendEstimateCard,
   toDescendingDisplayRows,
 } from './InvestorTrendEstimateCard';
 import type { LiveInvestorTrendEstimateResponse } from '../api/liveInvestorTrendEstimate';
+import { useInvestorEstimateUnitStore } from '../state/investorEstimateUnit';
 
 const rows: LiveInvestorTrendEstimateResponse['rows'] = [
   {
@@ -16,6 +19,9 @@ const rows: LiveInvestorTrendEstimateResponse['rows'] = [
     foreign_qty: 1500,
     institution_qty: -200,
     sum_qty: 1300,
+    foreign_amt_mwon: 360,
+    institution_amt_mwon: -48,
+    sum_amt_mwon: 312,
   },
   {
     slot: '2',
@@ -23,8 +29,18 @@ const rows: LiveInvestorTrendEstimateResponse['rows'] = [
     foreign_qty: null,
     institution_qty: 0,
     sum_qty: 0,
+    foreign_amt_mwon: null,
+    institution_amt_mwon: 0,
+    sum_amt_mwon: 0,
   },
 ];
+
+beforeEach(() => {
+  // 단위는 전역 스토어 + localStorage 라 테스트 간에 샌다. 한쪽만 지우면 다음
+  // 테스트가 이전 클릭을 물려받는다.
+  localStorage.clear();
+  useInvestorEstimateUnitStore.setState({ unit: 'qty' });
+});
 
 function response(
   overrides: Partial<LiveInvestorTrendEstimateResponse> = {},
@@ -42,22 +58,55 @@ function response(
   };
 }
 
-describe('formatQtyCompact', () => {
-  it('abbreviates ≥1만 quantities to 만 units so the 3 columns fit', () => {
-    expect(formatQtyCompact(-4_361_000)).toBe('-436만');
-    expect(formatQtyCompact(-620_000)).toBe('-62만');
-    expect(formatQtyCompact(265_000)).toBe('+26.5만');
-    expect(formatQtyCompact(1_146_000)).toBe('+115만'); // ≥100만 → 0 digits
+describe('formatQty', () => {
+  // 2026-08-04 사용자 결정: 만 단위 축약 금지. 20,000 은 "2만" 이 아니다.
+  it('never abbreviates — raw signed comma values at every magnitude', () => {
+    expect(formatQty(20_000)).toBe('+20,000');
+    expect(formatQty(-1_925_000)).toBe('-1,925,000');
+    expect(formatQty(1500)).toBe('+1,500');
+    expect(formatQty(-200)).toBe('-200');
   });
 
-  it('keeps sub-1만 quantities as raw signed comma values', () => {
-    expect(formatQtyCompact(1500)).toBe('+1,500');
-    expect(formatQtyCompact(-200)).toBe('-200');
+  // 옛 판(formatQtyCompact)은 벤더가 이미 천주로 반올림해 보낸 값 위에 만 단위
+  // 반올림을 한 겹 더 얹어 -1,925,000 을 -193만(= -1,930,000)으로 만들었다.
+  it('does not round away the vendor thousand-share granularity', () => {
+    expect(formatQty(-1_925_000)).not.toContain('만');
+    expect(formatQty(-1_925_000)).toContain('925');
   });
 
   it('handles zero and null', () => {
-    expect(formatQtyCompact(0)).toBe('0');
-    expect(formatQtyCompact(null)).toBe('-');
+    expect(formatQty(0)).toBe('0');
+    expect(formatQty(null)).toBe('-');
+  });
+});
+
+describe('formatAmount', () => {
+  // 입력은 벤더 단위(백만원)다. 실측(005930 · 2026-08-04 14:31) 기준 값.
+  it('scales 백만원 to 억 so the axis is visually distinct from quantity', () => {
+    expect(formatAmount(-451_250)).toBe('-4,513억');
+    expect(formatAmount(-212_372)).toBe('-2,124억');
+    expect(formatAmount(-663_622)).toBe('-6,636억');
+  });
+
+  it('keeps one decimal only below 10억, where the digit still carries information', () => {
+    expect(formatAmount(-540)).toBe('-5.4억');
+    expect(formatAmount(360)).toBe('+3.6억');
+    expect(formatAmount(-21_796)).toBe('-218억');
+  });
+
+  // 부호만 남은 0 은 방향을 주장하지 않는다 — "-0.0억" 은 매도처럼 읽힌다.
+  it('folds sub-threshold magnitudes to a bare zero', () => {
+    expect(formatAmount(4)).toBe('0');
+    expect(formatAmount(0)).toBe('0');
+    expect(formatAmount(null)).toBe('-');
+  });
+
+  // 배포 순서 방어 — 프론트가 백엔드보다 먼저 나가면 금액 축 키가 응답에 아예 없다.
+  // 타입은 `number | null` 이라 이 경로를 만들어 주지 않고, /browse 실측에서만 잡혔다
+  // (표 전체가 "NaN억" 으로 덮였다).
+  it('renders a dash when the axis is missing from the response entirely', () => {
+    expect(formatAmount(undefined)).toBe('-');
+    expect(formatQty(undefined)).toBe('-');
   });
 });
 
@@ -202,5 +251,60 @@ describe('InvestorTrendEstimateCard', () => {
     render(<InvestorTrendEstimateCard query={{ isLoading: true }} />);
 
     expect(screen.getByText('조회 중')).toBeInTheDocument();
+  });
+});
+
+describe('unit chip', () => {
+  function chip() {
+    return screen.getByRole('button', { name: /표시 단위/ });
+  }
+
+  it('starts on quantity and shows raw share counts', () => {
+    render(<InvestorTrendEstimateCard query={{ data: response() }} />);
+
+    expect(chip()).toHaveTextContent('주');
+    expect(chip()).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('+1,500')).toBeInTheDocument();
+  });
+
+  // 값이 실제로 바뀌는 것까지 봐야 배선이 검증된다 — 칩 글자만 확인하면 라벨은
+  // 토글되는데 셀은 여전히 수량 필드를 읽는 버그가 통과한다.
+  it('switches every value column to 억 when pressed', async () => {
+    const user = userEvent.setup();
+    render(<InvestorTrendEstimateCard query={{ data: response() }} />);
+
+    await user.click(chip());
+
+    expect(chip()).toHaveTextContent('억');
+    expect(chip()).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('+3.6억')).toBeInTheDocument();
+    expect(screen.getByText('-0.5억')).toBeInTheDocument();
+    expect(screen.getByText('+3.1억')).toBeInTheDocument();
+    expect(screen.queryByText('+1,500')).not.toBeInTheDocument();
+  });
+
+  it('persists the choice so a reopened window keeps the unit', async () => {
+    const user = userEvent.setup();
+    render(<InvestorTrendEstimateCard query={{ data: response() }} />);
+
+    await user.click(chip());
+
+    expect(useInvestorEstimateUnitStore.getState().unit).toBe('amount');
+    expect(localStorage.getItem('live.investorEstimateUnit.v1')).toContain('amount');
+  });
+
+  // 부호 색은 축이 바뀌어도 그대로여야 한다 — 금액과 수량의 부호는 같은 사실이고,
+  // 색이 튀면 데이터가 갱신된 것처럼 읽힌다.
+  it('keeps the sign colouring identical across both axes', async () => {
+    const user = userEvent.setup();
+    render(<InvestorTrendEstimateCard query={{ data: response() }} />);
+
+    expect(screen.getByText('+1,500')).toHaveClass('text-price-up');
+    expect(screen.getByText('-200')).toHaveClass('text-price-down');
+
+    await user.click(chip());
+
+    expect(screen.getByText('+3.6억')).toHaveClass('text-price-up');
+    expect(screen.getByText('-0.5억')).toHaveClass('text-price-down');
   });
 });

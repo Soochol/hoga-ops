@@ -333,6 +333,18 @@ def _today_kst_yyyymmdd() -> str:
     return datetime.datetime.now(kst).strftime("%Y%m%d")
 
 
+async def _fake_page_fetch(_client):
+    """페이크 어댑터가 러너에 넘기는 페이지 팩토리.
+
+    러너는 프로덕션 코드(`run_with_capacity`)라 반드시 실행되어야 하는데, 이 파일의
+    페이크 클라이언트에는 `call` 이 없어 진짜 페이지 fetch 를 넣을 수 없다. 빈 페이지를
+    돌려주는 팩토리로 **거버너 경로만** 실제로 지나게 한다(ADR-0137).
+    """
+    from hoga.live.kiwoom_rest import Page
+
+    return Page(rows=[], cont=False, next_key="")
+
+
 class _FakeKisForPast:
     """Stub KIS client returning deterministic minute bars per date."""
 
@@ -1769,7 +1781,9 @@ def _kiwoom_investor_seam(monkeypatch):
 
     _fake_kiwoom_client["client"] = None
 
-    async def _net(client, code, from_yyyymmdd, to_yyyymmdd):
+    async def _net(client, code, from_yyyymmdd, to_yyyymmdd, *, run_page=None):
+        if run_page is not None:
+            await run_page(_fake_page_fetch, 0)
         return await client.fetch_investor_net(code, from_yyyymmdd, to_yyyymmdd)
 
     async def _market_day(client, index, date_yyyymmdd):
@@ -1779,10 +1793,18 @@ def _kiwoom_investor_seam(monkeypatch):
             index, date_yyyymmdd, date_yyyymmdd)
         return points[0] if points else None
 
-    async def _estimate(client, code):
+    async def _estimate(client, code, *, run_call=None):
+        # ka10064 는 수량·금액이 별개의 콜이다 — 이음매를 축마다 태워야 거버너가
+        # 세는 수와 벤더가 세는 수가 같아진다(ADR-0137). 페이크가 한 번만 태우면
+        # 실코드가 두 콜을 한 대기표로 내보내도 테스트가 통과한다.
+        if run_call is not None:
+            for axis in ("2", "1"):
+                await run_call(_fake_page_fetch, axis)
         return await client.fetch_investor_trend_estimate(code)
 
-    async def _daily(client, code, from_yyyymmdd, to_yyyymmdd, **kw):
+    async def _daily(client, code, from_yyyymmdd, to_yyyymmdd, *, run_page=None, **kw):
+        if run_page is not None:
+            await run_page(_fake_page_fetch, 0)
         return await client.fetch_daily_candles(code, from_yyyymmdd, to_yyyymmdd, **kw)
 
     for name, fn in (
@@ -2173,12 +2195,20 @@ def _investor_estimate_row_model(
     foreign_qty: int | None,
     institution_qty: int | None,
     sum_qty: int | None,
+    *,
+    amt: tuple[int | None, int | None, int | None] | None = None,
 ) -> InvestorTrendEstimateRow:
+    """`amt` 는 (외국인, 기관, 합산) 백만원. 생략하면 금액 축이 비어 있는 행이다 —
+    수량만 검증하는 기존 테스트가 금액을 지어내지 않게 하려고 옵션으로 둔다."""
+    foreign_amt, institution_amt, sum_amt = amt if amt is not None else (None, None, None)
     return InvestorTrendEstimateRow(
         slot=slot,
         foreign_qty=foreign_qty,
         institution_qty=institution_qty,
         sum_qty=sum_qty,
+        foreign_amt_mwon=foreign_amt,
+        institution_amt_mwon=institution_amt,
+        sum_amt_mwon=sum_amt,
     )
 
 
@@ -2413,6 +2443,85 @@ async def test_investor_estimate_observed_at_store_ignores_malformed_json(
     response = await fetcher.fetch(fake, "005930")
 
     assert [(r.slot, r.observed_at_ms) for r in response.rows] == [("1", 100_000)]
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_observed_at_tracks_the_amount_axis_too(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """수량이 그대로여도 금액이 움직였으면 그 슬롯은 새로 관측된 것이다.
+
+    수량은 천주 단위로 반올림돼 오므로 몇 분간 같은 값에 머문다. 관측시각 판정이
+    수량만 보면 그 사이 금액이 계속 갱신돼도 슬롯이 "안 변했다" 로 읽혀 차수 시각이
+    옛날에 못 박힌다.
+    """
+    from hoga.live import api as live_api
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
+    store_path = tmp_path / "live" / "investor-trend-estimate-observed-at.json"
+    fake = _FakeKisForInvestorTrendEstimate(
+        [
+            [_investor_estimate_row_model("1", -912_000, 0, -912_000, amt=(-212_372, 0, -212_372))],
+            # 같은 수량, 다른 금액 — 벤더가 천주 반올림 안에서 움직인 프레임.
+            [_investor_estimate_row_model("1", -912_000, 0, -912_000, amt=(-213_500, 0, -213_500))],
+        ]
+    )
+    fetcher = LiveInvestorEstimateFetcher(
+        ttl_seconds=0,
+        today_fn=lambda: "20260619",
+        observed_at_store_path=store_path,
+    )
+
+    await fetcher.fetch(fake, "005930")
+    now = 160.0
+    response = await fetcher.fetch(fake, "005930")
+
+    assert [(r.slot, r.observed_at_ms) for r in response.rows] == [("1", 160_000)]
+
+
+def test_investor_estimate_stored_values_reads_legacy_rows_as_amounts() -> None:
+    """구포맷(수량 이름에 담긴 금액)은 **금액 축으로** 읽는다.
+
+    2026-08-04 이전 판은 `amt_qty_tp="1"`(금액, 백만원) 응답을 `foreign_qty` 등에
+    담아 저장했다. 값 자체는 멀쩡하고 **단위 라벨만 틀렸다** — 그대로 수량으로 읽으면
+    다음 폴링의 진짜 수량과 나란히 비교되어, 디스크의 금액이 수량 행세를 계속한다.
+
+    구포맷 판별은 금액 키의 부재다. 신포맷은 값이 None 이어도 6키를 모두 쓴다.
+    """
+    from hoga.live.api import _investor_estimate_stored_values
+
+    legacy = _investor_estimate_stored_values({
+        "observed_at_ms": 100_000,
+        "foreign_qty": -212_372,      # 실제로는 백만원이었다
+        "institution_qty": -451_250,
+        "sum_qty": -663_622,
+    })
+    assert legacy["foreign_amt_mwon"] == -212_372
+    assert legacy["institution_amt_mwon"] == -451_250
+    assert legacy["foreign_qty"] is None, "금액이 수량 자리에 남으면 안 된다"
+    assert legacy["sum_qty"] is None
+
+    current = _investor_estimate_stored_values({
+        "observed_at_ms": 100_000,
+        "foreign_qty": -912_000, "institution_qty": -1_925_000, "sum_qty": -2_837_000,
+        "foreign_amt_mwon": -212_372, "institution_amt_mwon": -451_250,
+        "sum_amt_mwon": -663_622,
+    })
+    assert current["foreign_qty"] == -912_000
+    assert current["foreign_amt_mwon"] == -212_372
+
+    # 신포맷인데 한 축이 비어 있는 슬롯 — 금액 키가 있으므로 구포맷으로 오인하지 않는다.
+    one_sided = _investor_estimate_stored_values({
+        "observed_at_ms": 100_000,
+        "foreign_qty": -5_000, "institution_qty": -1_000, "sum_qty": -6_000,
+        "foreign_amt_mwon": None, "institution_amt_mwon": None, "sum_amt_mwon": None,
+    })
+    assert one_sided["foreign_qty"] == -5_000
+    assert one_sided["foreign_amt_mwon"] is None
 
 
 @pytest.mark.asyncio
@@ -2860,10 +2969,12 @@ def test_investor_trend_estimate_route_returns_expected_rows(tmp_path, monkeypat
         [
             [
                 InvestorTrendEstimateRow(
-                    slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30
+                    slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30,
+                    foreign_amt_mwon=2, institution_amt_mwon=5, sum_amt_mwon=7,
                 ),
                 InvestorTrendEstimateRow(
-                    slot="0910", foreign_qty=15, institution_qty=None, sum_qty=15
+                    slot="0910", foreign_qty=15, institution_qty=None, sum_qty=15,
+                    foreign_amt_mwon=4, institution_amt_mwon=None, sum_amt_mwon=4,
                 ),
             ]
         ]
@@ -2877,6 +2988,8 @@ def test_investor_trend_estimate_route_returns_expected_rows(tmp_path, monkeypat
     assert body["code"] == "005930"
     assert body["source"] == "kis"
     assert body["status"] == "ok"
+    # 프론트가 축을 서버 왕복 없이 토글하므로 **두 축이 모두 실려야** 한다. 한 축만
+    # 나가면 토글이 빈 표를 그리고, 그 회귀는 이 단언 말고는 잡히지 않는다.
     assert body["rows"] == [
         {
             "slot": "0900",
@@ -2884,6 +2997,9 @@ def test_investor_trend_estimate_route_returns_expected_rows(tmp_path, monkeypat
             "foreign_qty": 10,
             "institution_qty": 20,
             "sum_qty": 30,
+            "foreign_amt_mwon": 2,
+            "institution_amt_mwon": 5,
+            "sum_amt_mwon": 7,
         },
         {
             "slot": "0910",
@@ -2891,6 +3007,9 @@ def test_investor_trend_estimate_route_returns_expected_rows(tmp_path, monkeypat
             "foreign_qty": 15,
             "institution_qty": None,
             "sum_qty": 15,
+            "foreign_amt_mwon": 4,
+            "institution_amt_mwon": None,
+            "sum_amt_mwon": 4,
         },
     ]
     assert body["latest"]["slot"] == "0910"

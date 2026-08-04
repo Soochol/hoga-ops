@@ -29,7 +29,9 @@ KIS 는 내국인대우외국인(`natfor`)을 외국인에 **합산**하고 키�
 """
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime
+from functools import partial
 from typing import Any
 
 from hoga.live.candle_models import daily_anchor_ms
@@ -42,12 +44,29 @@ from hoga.live.investor import (
 )
 from hoga.live.kiwoom_errors import KiwoomApiError
 from hoga.live.kiwoom_index_candles import index_id_to_kiwoom_code
-from hoga.live.kiwoom_rest import KiwoomRestClient
+from hoga.live.kiwoom_rest import KiwoomRestClient, Page, PageFetch, PageRunner
+
+EstimateCallRunner = Callable[[PageFetch, str], Awaitable[Page]]
+"""`(페이지 팩토리, 축)` → 페이지. `fetch_investor_trend_estimate` 의 페이싱 이음매.
+
+`PageRunner` 와 모양이 같지만 두 번째 인자가 페이지 인덱스가 아니라 **축**이다 —
+중복제거 key 를 갈라야 하는 단위가 여기서는 페이지가 아니라 축이기 때문이다.
+"""
 
 # **수량**축. 이름과 달리 2 가 수량이다(위 함정 ①).
 AMT_QTY_QUANTITY = "2"
+# **금액**축(백만원). 1 이 금액이다 — 직관과 반대라 상수로 못 박는다.
+AMT_QTY_AMOUNT = "1"
 # 필수지만 응답에 영향이 없다(함정 ②). 벤더가 요구하므로 채워 보낼 뿐이다.
 UNIT_TP_IGNORED = "1"
+
+# `ka10064` 축 → 그 축이 채우는 행 필드 3개. 단위가 이름에 박혀 있어야 축이 뒤바뀐
+# 배선이 리뷰에서 눈에 띈다(함정 ① 이 조용히 통과한 경로가 정확히 여기였다).
+_ESTIMATE_AXES: dict[str, tuple[str, str, str]] = {
+    AMT_QTY_QUANTITY: ("foreign_qty", "institution_qty", "sum_qty"),
+    AMT_QTY_AMOUNT: ("foreign_amt_mwon", "institution_amt_mwon", "sum_amt_mwon"),
+}
+_ESTIMATE_FIELDS = tuple(field for keys in _ESTIMATE_AXES.values() for field in keys)
 _TRDE_TP_ALL = "0"
 _STEX_ALL = "3"
 _DATE_LEN = 8
@@ -88,14 +107,29 @@ def foreign_net(row: dict[str, Any], *, base: str, native: str | None) -> int:
 
 
 
+async def _direct_call(fetch: PageFetch, _axis: str, *, client: KiwoomRestClient) -> Page:
+    """페이싱 없는 폴백. 테스트·단발 조회용이며 **운영 경로가 아니다** — 라우트는
+    `run_call` 을 반드시 주입한다(ADR-0137)."""
+    return await fetch(client)
+
+
 def _mrkt_tp(index_id: str) -> str:
     return _MRKT_KOSDAQ if index_id in _KOSDAQ_IDS else _MRKT_KOSPI
 
 
 async def fetch_investor_net(
-    client: KiwoomRestClient, code: str, from_yyyymmdd: str, to_yyyymmdd: str
+    client: KiwoomRestClient,
+    code: str,
+    from_yyyymmdd: str,
+    to_yyyymmdd: str,
+    *,
+    run_page: PageRunner | None = None,
 ) -> InvestorNetFetchResult:
-    """종목별 투자자 일별 순매수(`ka10059`). KIS `fetch_investor_net` 대체."""
+    """종목별 투자자 일별 순매수(`ka10059`). KIS `fetch_investor_net` 대체.
+
+    `run_page` 는 유량 페이싱 이음매다 — walk 는 최대 `_MAX_PAGES` 콜이고,
+    주입하지 않으면 그 전부가 한 submit 안에서 페이싱 없이 나간다(ADR-0137).
+    """
     def _covered(rows: list[dict[str, Any]], _page: Any) -> bool:
         oldest = min((str(r.get("dt") or "") for r in rows if r.get("dt")), default="")
         return bool(oldest) and oldest < from_yyyymmdd
@@ -109,6 +143,7 @@ async def fetch_investor_net(
         },
         max_pages=_MAX_PAGES,
         stop=_covered,
+        run_page=run_page,
     )
 
     points: list[InvestorNetPoint] = []
@@ -188,25 +223,65 @@ def date_range(from_yyyymmdd: str, to_yyyymmdd: str) -> list[str]:
 
 
 async def fetch_investor_trend_estimate(
-    client: KiwoomRestClient, code: str
+    client: KiwoomRestClient,
+    code: str,
+    *,
+    run_call: EstimateCallRunner | None = None,
 ) -> list[InvestorTrendEstimateRow]:
-    """장중 투자자 추정(`ka10064`). KIS `HHPTJ04160200` 대체.
+    """장중 투자자 추정(`ka10064`) — **수량·금액 두 축**. KIS `HHPTJ04160200` 대체.
 
     `natfor` 가 없는 TR 이라(가집계) `frgnr_invsr` 를 그대로 쓴다. 슬롯 간격이
     불규칙한 것(`090000`→`091900`→`095700`)은 KIS 가집계 발표 주기와 같은 성질이다.
+
+    ## 축이 둘인 이유 — 그리고 **함정 ① 이 여기서도 참이다**
+
+    2026-08-04 까지 이 함수는 `amt_qty_tp="1"` 하나만 불렀다. 위 함정 ① 이 같은
+    파일에 적혀 있는데도 그랬고, 그래서 **금액(백만원)이 `_qty` 필드로 흘러** 화면에
+    "만주" 로 그려졌다. `ka10064` 실측(005930 · 2026-08-04 14:31):
+
+        amt_qty_tp=2  →  외국인 -912,000    기관 -1,925,000   ← **수량(주)**
+        amt_qty_tp=1  →  외국인 -212,372    기관   -451,250   ← 금액(백만원)
+
+    검산: 212,372백만원 ÷ 912,000주 = 232,864원/주 — 당일 범위(228,000~244,500)
+    안이다. 반대로 놓으면 429만원/주라 성립하지 않는다. **크기만 보고는 판별이
+    안 된다** — 두 축 모두 부호도 자릿수도 그럴듯하다. 비율이 당일 캔들 고저 안에
+    떨어지는지가 유일한 오라클이다.
+
+    수량 축은 천주 단위로 반올림돼 온다(`-90000` · `-925000` · `-912000`). 가집계의
+    성질이지 절단이 아니다.
+
+    ## `run_call` 은 유량 페이싱 이음매다 — 주입하지 않으면 페이싱이 무효다
+
+    축이 둘이라 **콜도 둘**이다. 호출자가 이 함수 전체를 거버너 하나로 감싸면 버킷은
+    1 을 세고 벤더는 2 를 세서, 대기표 한 장으로 두 콜이 나간다(ADR-0137). 축마다
+    대기표를 뽑으려면 호출자가 이 자리에 `run_with_capacity` 를 끼워야 한다.
     """
-    page = await client.call("ka10064", {
-        "stk_cd": code, "mrkt_tp": "000",
-        "amt_qty_tp": "1", "trde_tp": _TRDE_TP_ALL,
-    })
-    out: list[InvestorTrendEstimateRow] = []
-    for row in page.rows:
-        slot = str(row.get("tm") or "").strip()
-        if not slot:
-            continue
-        f = foreign_net(row, base="frgnr_invsr", native=None)
-        i = _signed(row.get("orgn"))
-        out.append(InvestorTrendEstimateRow(
-            slot=slot, foreign_qty=f, institution_qty=i, sum_qty=f + i,
-        ))
-    return out
+    runner = run_call if run_call is not None else partial(_direct_call, client=client)
+    by_slot: dict[str, dict[str, int]] = {}
+    order: list[str] = []
+    for axis, keys in _ESTIMATE_AXES.items():
+        page = await runner(
+            lambda c, axis=axis: c.call("ka10064", {
+                "stk_cd": code, "mrkt_tp": "000",
+                "amt_qty_tp": axis, "trde_tp": _TRDE_TP_ALL,
+            }),
+            axis,
+        )
+        for row in page.rows:
+            slot = str(row.get("tm") or "").strip()
+            if not slot:
+                continue
+            if slot not in by_slot:
+                by_slot[slot] = {}
+                order.append(slot)
+            f = foreign_net(row, base="frgnr_invsr", native=None)
+            i = _signed(row.get("orgn"))
+            by_slot[slot].update({keys[0]: f, keys[1]: i, keys[2]: f + i})
+
+    # 한 축에만 있는 슬롯(축 사이 경계에서 새 슬롯이 생긴 프레임)은 그 축만 채우고
+    # 반대 축은 None 으로 둔다 — 없는 값을 0 으로 만들면 "순매수 0" 이라는 없는
+    # 사실이 된다.
+    return [
+        InvestorTrendEstimateRow(slot=slot, **{k: by_slot[slot].get(k) for k in _ESTIMATE_FIELDS})
+        for slot in order
+    ]

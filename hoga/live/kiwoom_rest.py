@@ -25,6 +25,7 @@
 """
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -121,6 +122,17 @@ class Page:
     cont: bool
     next_key: str
     raw: dict[str, Any] = field(repr=False, default_factory=dict)
+
+
+PageFetch = Callable[["KiwoomRestClient"], Awaitable[Page]]
+"""거버너가 고른 클라이언트를 받아 페이지 1장을 가져오는 팩토리."""
+
+PageRunner = Callable[[PageFetch, int], Awaitable[Page]]
+"""`(페이지 팩토리, 페이지 인덱스)` → 페이지. `walk` 의 페이싱 이음매다.
+
+호출자가 이 자리에 `run_with_capacity` 를 끼우면 페이지마다 유량 대기표를 뽑는다.
+인덱스는 중복제거 key 를 페이지 단위로 가르는 데 쓴다.
+"""
 
 
 def extract_rows(spec: TrSpec, body: dict[str, Any]) -> list[dict[str, Any]]:
@@ -221,6 +233,7 @@ class KiwoomRestClient:
         *,
         max_pages: int,
         stop: Any = None,
+        run_page: PageRunner | None = None,
     ) -> tuple[list[dict[str, Any]], bool]:
         """커서를 따라 여러 페이지. ``(rows, truncated)`` 를 돌려준다.
 
@@ -230,14 +243,41 @@ class KiwoomRestClient:
         `truncated=True` 는 `max_pages` 에 걸렸다는 뜻이다. **조용한 절단을 만들지
         않기 위해** 호출자에게 돌려주고, 호출자가 violation 으로 남긴다
         (`kiwoom_index_candles` 의 `out_of_range` 선례).
+
+        ## `run_page` 는 유량 페이싱 이음매다 — 기본값으로 두면 안 된다
+
+        이 루프는 **콜 1건이 아니라 최대 `max_pages` 건**이다. 거버너
+        (`kiwoom_capacity`)는 `run_with_capacity` 진입 전에 버킷을 한 번만
+        소비하므로, walk 전체가 한 submit 안에 있으면 버킷은 1 을, 벤더는
+        페이지 수만큼 센다 — ka10095·ka10080·ka10051 을 차례로 무너뜨린 것과
+        같은 결함이다(ADR-0137).
+
+        그래서 **반복은 거버너 위, 실행은 거버너 안**이다. 호출자가
+        `run_page(fetch_fn, page_idx)` 로 페이지 1장을 `run_with_capacity` 에
+        태우면 페이지마다 대기표를 뽑는다. 이 이음매가 **코루틴 팩토리를 받는
+        모양**인 것은 층을 지키기 위해서다: 클라이언트는 거버너를 모르고,
+        호출자는 `api_id`·`body`·커서를 모른다. 팩토리가 받는 클라이언트는
+        거버너가 고른 계정의 것이라(ADR-0138) `self` 가 아니라 **인자를 써야
+        한다**.
+
+        커서가 직전 응답에 의존하므로 여기서 얻는 것은 병렬이 아니라 **페이싱**
+        뿐이다 — 순차인 것이 맞다.
         """
         spec = TR.get(api_id)
         if spec is None or not spec.cursor:
             raise KiwoomRestError(f"{api_id}: 커서를 지원하지 않는 TR 이다")
         out: list[dict[str, Any]] = []
         cont, next_key = False, ""
-        for _ in range(max_pages):
-            page = await self.call(api_id, body, cont=cont, next_key=next_key)
+        for page_idx in range(max_pages):
+            def _fetch(
+                client: KiwoomRestClient, *, _cont: bool = cont, _nk: str = next_key
+            ) -> Awaitable[Page]:
+                # 기본인자 바인딩 — 러너가 지연 실행해도 그 시점의 커서를 쓴다.
+                return client.call(api_id, body, cont=_cont, next_key=_nk)
+
+            page = await (
+                run_page(_fetch, page_idx) if run_page is not None else _fetch(self)
+            )
             if not page.rows:
                 return out, False
             out.extend(page.rows)

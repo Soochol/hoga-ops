@@ -1408,25 +1408,32 @@ async def wait_drained() -> None:
 from hoga.collector.orchestrator import now_kst as _now_kst  # noqa: E402
 
 
-def _expand_trading_days_with_fallback(start: str, end: str) -> tuple[list[str], bool]:
-    """Return YYYYMMDD strings for each KIS trading day in [start, end].
+def _expand_trading_days_with_fallback(
+    start: str, end: str,
+) -> tuple[list[str], UpstreamCode | None]:
+    """Return YYYYMMDD strings for each trading day in [start, end].
 
     Delegates to hoga.api.calendar.trading_days_in_range which owns the
-    KIS-backed cache (Task 15). Late import so tests can monkeypatch
-    the calendar function source.
+    calendar source. Late import so tests can monkeypatch it.
 
-    **자격증명이 아예 없으면 평일로 폴백한다**(2026-07-31). 그 조건은 영구적이라
-    fail-fast 가 "잘못된 날짜를 막는" 게 아니라 **범위 캡처를 영영 못 쓰게** 만든다
-    (실측: UI 에 "범위 캡처 시작 실패 — KIS 자격증명 미설정", 큐에 한 건도 못 넣음).
+    **달력이 못 덮는 구간은 평일로 폴백한다**(2026-07-31 #976 → PR-H #1044 로 이관).
+    그 조건은 영구적이라 fail-fast 가 "잘못된 날짜를 막는" 게 아니라 **범위 캡처를
+    영영 못 쓰게** 만든다(실측: UI 에 "범위 캡처 시작 실패", 큐에 한 건도 못 넣음).
     휴장일이 섞이는 비용은 유계다 — 업스트림 빈 응답 → ADR-0021 센티넬(설계된 경로).
 
-    **일시 장애(`kis_holiday_fetch_failed`)는 그대로 fail-fast** 한다. 그때는 "잠시 후
-    재시도" 가 옳은 안내이고, 추측한 날짜로 진행할 이유가 없다 —
-    `trading_days_in_range` docstring 이 말한 fail-fast 의 원래 취지가 이쪽이다.
+    #976 은 이 갈래를 "자격증명 결여(영구) vs 일시 장애(재시도)" 로 세웠는데, PR-H
+    이후 **둘 다 사라졌다** — 달력은 자격증명을 안 쓰고, 조회 경로에 벤더가 없어
+    "일시 장애" 라는 사건이 없다. 남은 축은 **커버리지**(STALE) 대 **소스 부재**
+    (UNAVAILABLE) 이고, 폴백은 전자에서만 걸린다.
 
-    ``(dates, weekday_fallback_used)`` 를 돌려준다. 플래그를 **반환값으로** 주는 이유:
-    이 함수는 `run_in_executor` 로 워커 스레드에서 돌기 때문에 thread-local 에 세우면
+    ``(dates, fallback_reason)`` 를 돌려준다. 사유를 **반환값으로** 주는 이유: 이
+    함수는 `run_in_executor` 로 워커 스레드에서 돌기 때문에 thread-local 에 세우면
     이벤트 루프 쪽에서 읽히지 않는다(실제로 그렇게 짰다가 warning 이 None 이었다).
+
+    bool 이 아니라 코드인 이유: 두 사유는 **사용자가 할 수 있는 일이 다르다**.
+    STALE 은 종료일을 앞당기거나 오버레이가 따라오길 기다리면 되고, UNAVAILABLE 은
+    서버 설치를 고쳐야 한다. bool 로 접으면 호출부가 둘 중 하나를 골라 말해야 해서
+    반드시 절반은 거짓말이 된다.
     """
     from hoga.api.calendar import (  # noqa: PLC0415 — 지연 import(순환/heavy)
         TradingDayUnavailableError,
@@ -1435,7 +1442,7 @@ def _expand_trading_days_with_fallback(start: str, end: str) -> tuple[list[str],
         weekdays_in_range,
     )
     try:
-        return trading_days_in_range(start, end), False
+        return trading_days_in_range(start, end), None
     except TradingDayUnavailableError as exc:
         pass_reason = exc.code
     log = logging.getLogger(__name__)
@@ -1454,7 +1461,7 @@ def _expand_trading_days_with_fallback(start: str, end: str) -> tuple[list[str],
             "coverage_end=%s (전 구간 근사)",
             start, end, pass_reason, end_known,
         )
-        return weekdays_in_range(start, end), True
+        return weekdays_in_range(start, end), pass_reason
 
     try:
         exact = trading_days_in_range(start, min(end, end_known))
@@ -1464,14 +1471,35 @@ def _expand_trading_days_with_fallback(start: str, end: str) -> tuple[list[str],
             "capture.trading_days_weekday_fallback start=%s end=%s reason=%s (소스 부재)",
             start, end, pass_reason,
         )
-        return weekdays_in_range(start, end), True
+        return weekdays_in_range(start, end), UpstreamCode.TRADING_DAYS_UNAVAILABLE
     tail = weekdays_in_range(_next_day(end_known), end) if end_known < end else []
     log.warning(
         "capture.trading_days_weekday_fallback start=%s end=%s reason=%s "
         "coverage_end=%s exact=%d approx=%d",
         start, end, pass_reason, end_known, len(exact), len(tail),
     )
-    return exact + tail, bool(tail)
+    return exact + tail, pass_reason if tail else None
+
+
+def _trading_days_503(exc: TradingDayUnavailableError) -> HTTPException:
+    """`TradingDayUnavailableError` → HTTP 503. **조치가 다르므로 문구도 갈린다.**
+
+    두 호출부(enqueue · coverage preview)가 같은 분기를 복제하고 있었는데, 둘 다
+    `CREDENTIALS_MISSING` 을 검사했다 — PR-H(#1044) 이후 달력이 자격증명을 안 쓰므로
+    **영영 참이 되지 않는 분기**였고, 남은 else 는 "KIS upstream error … retry in a
+    minute" 라 존재하지 않는 벤더의 존재하지 않는 장애를 안내했다.
+    """
+    if exc.code == UpstreamCode.TRADING_DAYS_STALE:
+        message = (
+            "Trading-day calendar does not reach the requested end date yet. "
+            "Pick an earlier end date, or let the calendar overlay catch up."
+        )
+    else:
+        message = (
+            "Trading-day calendar could not be read (seed file missing or "
+            "unreadable) — a deployment problem, not a transient error."
+        )
+    return HTTPException(status_code=503, detail={"code": exc.code, "message": message})
 
 
 def _next_day(yyyymmdd: str) -> str:
@@ -1629,7 +1657,7 @@ async def enqueue_items_core(  # noqa: PLR0912, PLR0915
     # 1. Expand to a flat list of candidate dates.
     # 명시 dates 경로는 캘린더를 안 거치므로 폴백도 없다 — 분기마다 정의하지 않도록
     # 여기서 한 번 세운다(안 그러면 그 경로에서 NameError).
-    weekday_fallback = False
+    weekday_fallback: UpstreamCode | None = None
     if req.dates is not None:
         candidate_dates = list(req.dates)
     elif req.start_date and req.end_date:
@@ -1645,24 +1673,7 @@ async def enqueue_items_core(  # noqa: PLR0912, PLR0915
                 req.end_date,
             )
         except TradingDayUnavailableError as e:
-            # Remediation differs by cause: missing creds need configuration
-            # (and a process restart picks up .env edits); a fetch failure with
-            # valid creds is a transient upstream problem — telling the user to
-            # reconfigure keys would be wrong and wasteful.
-            if e.code == UpstreamCode.CREDENTIALS_MISSING:
-                message = (
-                    "Trading-day list unavailable (KIS). Configure KIS_APP_KEY / "
-                    "KIS_APP_SECRET in repo-root .env and try again."
-                )
-            else:
-                message = (
-                    "Trading-day list unavailable (KIS upstream error). "
-                    "Credentials look configured — retry in a minute."
-                )
-            raise HTTPException(status_code=503, detail={
-                "code": e.code,
-                "message": message,
-            }) from e
+            raise _trading_days_503(e) from e
     else:
         raise HTTPException(status_code=400, detail={
             "code": CaptureErrorCode.MISSING_RANGE,
@@ -1782,8 +1793,14 @@ async def enqueue_items_core(  # noqa: PLR0912, PLR0915
         enqueued=[s.to_wire() for s in enqueued],
         deduped=deduped_rows,
         blocked=blocked_items,
-        # 평일 폴백이 걸렸으면 알린다 — 담기는 했지만 휴장일이 섞일 수 있다.
-        warning=UpstreamCode.CREDENTIALS_MISSING if weekday_fallback else None,
+        # 평일 폴백이 걸렸으면 **그 사유 그대로** 알린다 — 담기는 했지만 휴장일이
+        # 섞일 수 있다.
+        #
+        # 사유를 CREDENTIALS_MISSING 으로 고정하던 것은 #976 의 잔재다. 그때는 KIS
+        # 자격증명이 없으면 거래일을 못 얻어 폴백했지만, PR-H(#1044) 이후 달력은
+        # **자격증명을 아예 안 쓴다** — 자격증명을 지목하는 안내는 하라는 조치
+        # (.env 설정)를 해도 아무것도 바뀌지 않는다.
+        warning=weekday_fallback,
     )
 
 
@@ -1821,9 +1838,9 @@ async def coverage_preview_core(
     creds/큐 소유권을 요구하지 않는 읽기 전용 미리보기(적재는 bulk-items 가 한다).
     분류는 (code,date)당 meta.json stat/read 라 디스크 I/O — 스레드로 오프로드."""
     loop = asyncio.get_running_loop()
-    # 거래일 캘린더는 KIS 백엔드 — 무자격증명/일시장애 시 TradingDayUnavailableError.
-    # enqueue_items_core 와 동일하게 503(자격증명 vs 일시장애 안내)으로 변환한다.
-    # 그냥 두면 FastAPI 500 → 프론트가 "잠시 후 재시도" 오안내(진짜 원인=자격증명).
+    # 거래일 캘린더가 요청 구간을 못 덮으면 TradingDayUnavailableError.
+    # enqueue_items_core 와 동일하게 503(커버리지 vs 소스부재)으로 변환한다.
+    # 그냥 두면 FastAPI 500 → 프론트가 원인 없는 일반 오류로 읽는다.
     try:
         if req.lookback_days is not None:
             dates = await loop.run_in_executor(None, _trading_window, req.lookback_days, now)
@@ -1838,19 +1855,7 @@ async def coverage_preview_core(
                 "message": "Provide either lookback_days or start_date+end_date.",
             })
     except TradingDayUnavailableError as e:
-        if e.code == UpstreamCode.CREDENTIALS_MISSING:
-            message = (
-                "Trading-day list unavailable (KIS). Configure KIS_APP_KEY / "
-                "KIS_APP_SECRET in repo-root .env and try again."
-            )
-        else:
-            message = (
-                "Trading-day list unavailable (KIS upstream error). "
-                "Credentials look configured — retry in a minute."
-            )
-        raise HTTPException(status_code=503, detail={
-            "code": e.code, "message": message,
-        }) from e
+        raise _trading_days_503(e) from e
 
     cells = len(req.codes) * len(dates)
     if cells > _MAX_PREVIEW_CELLS:

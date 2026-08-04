@@ -210,16 +210,25 @@ class LiveDailyCandleBackfill:
         client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
         if client is None:
             raise KisRateLimitError("kiwoom client not initialized")
-        try:
-            return await kiwoom_access.run_with_capacity(
+        def _run_page(fetch_fn, page_idx: int):
+            """페이지 1장 = 거버너 submit 1건.
+
+            **walk 전체를 감싸던 자리다.** 거버너는 submit 진입 전에 버킷을 한 번만
+            소비하므로, 바깥에서 감싸면 커서 walk 의 페이지 N장(최대 12)이 페이싱을
+            못 받는다(ADR-0137).
+            """
+            return kiwoom_access.run_with_capacity(
                 self._scheduler,
-                key=key,
+                key=(*key, page_idx) if isinstance(key, tuple) else (key, page_idx),
                 api_id=kiwoom_daily_candles.API_ID,
                 priority="user_visible",
                 client=client,
-                fetch_fn=lambda c: kiwoom_daily_candles.fetch_daily_candles(
-                    c, code, from_s, to_s, venue=venue,
-                ),
+                fetch_fn=fetch_fn,
+            )
+
+        try:
+            return await kiwoom_daily_candles.fetch_daily_candles(
+                client, code, from_s, to_s, venue=venue, run_page=_run_page,
             )
         except KiwoomCapacityOverloaded as e:
             raise KisRateLimitError(str(e)) from e
