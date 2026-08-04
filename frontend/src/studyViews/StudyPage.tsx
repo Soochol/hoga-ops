@@ -547,26 +547,18 @@ export function StudyPage() {
             </div>
           )}
           {/* 봉·그리기·보조지표가 차트 창 헤더로 내려간 뒤 남는 줄(#903).
-              2줄 식별부를 한 줄로 눕히고 `WorkspaceToolbar`(36px 고정)를 쓴다 —
-              54px 을 만들던 건 버튼이 아니라 2줄 식별부였다. `· 5m` 은 뺐다:
-              창 헤더가 보여주고 탭 라벨에도 남아 손실이 없고, 멀티창에서
-              "어느 창의 봉인가" 라는 답 없는 질문을 만들지 않는다. */}
+              식별부(`종목 코드 · 복기뷰`)는 그 뒤 차트 창 **타이틀바**로 이관했다 —
+              `/live` 가 종목 식별을 창 타이틀바(TitleBarSymbolRow)에 두는 것과 같은
+              자리다. 그래서 이 줄은 `/live` 툴바처럼 워크스페이스 관리 버튼만
+              남고, 버튼은 좌측 정렬(`ml-auto` 없음)로 두 페이지가 같아진다. */}
           <WorkspaceToolbar testId="study-page-toolbar">
-            <div className="min-w-0 truncate text-xs">
-              <span className="font-semibold text-fg">{headerLabel}</span>
-              <span className="text-fg-dim">
-                {' '}{headerCode} · {headerKindLabel}
-              </span>
-            </div>
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <SettingsButton onClick={() => setSettingsOpen(true)} />
-              <StudyWindowListMenu />
-              <StudyWindowAddMenu />
-              <StudyLayoutPresetMenu />
-              <IconToolbarButton onClick={toggleMemoWindow} className="shrink-0">
-                메모
-              </IconToolbarButton>
-            </div>
+            <SettingsButton onClick={() => setSettingsOpen(true)} />
+            <StudyWindowListMenu />
+            <StudyWindowAddMenu />
+            <StudyLayoutPresetMenu />
+            <IconToolbarButton onClick={toggleMemoWindow} className="shrink-0">
+              메모
+            </IconToolbarButton>
           </WorkspaceToolbar>
           <div
             ref={studyDropTargetRef}
@@ -583,6 +575,9 @@ export function StudyPage() {
               <StudyWorkspaceCanvas
                 save={activeViewModel.status === 'ready' ? activeViewModel.save : null}
                 bundle={activeViewModel.status === 'ready' ? activeViewModel.bundle : null}
+                symbolLabel={headerLabel}
+                symbolCode={headerCode}
+                symbolKindLabel={headerKindLabel}
                 memo={selectedSave
                   ? {
                       memo: selectedSave.memo,
