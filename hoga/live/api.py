@@ -549,7 +549,12 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                 # operator can tell it apart from an upstream rejection (different
                 # remediation). Skip this batch, keep walking back. The client
                 # already retried connection-level failures once (ADR-0050).
-                warnings.append(_kis_error_to_warning("transport", _vendor_code(e), label))
+                # **`"transport"` 가 아니라 `"transport_error"` 다.** 프론트 계약은
+                # 후자인데 전자를 내보내고 있어서, 일봉 경로의 진짜 전송 실패가
+                # 토스트에 도달하지 못했다(ADR-0137).
+                warnings.append(
+                    _kis_error_to_warning("transport_error", _vendor_code(e), label)
+                )
                 continue
             except _API_ERRORS as e:
                 warnings.append(_kis_error_to_warning("api_error", _vendor_code(e), label))
@@ -588,7 +593,9 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
             except KisRateLimitError as e:
                 warnings.append(_kis_error_to_warning("rate_limit_upstream", str(e), today_label))
             except KisTransportError as e:
-                warnings.append(_kis_error_to_warning("transport", e.msg_cd, today_label))
+                warnings.append(
+                    _kis_error_to_warning("transport_error", e.msg_cd, today_label)
+                )
             except KisApiError as e:
                 warnings.append(_kis_error_to_warning("api_error", e.msg_cd, today_label))
 

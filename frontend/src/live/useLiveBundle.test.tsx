@@ -12,7 +12,7 @@ import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { LIVE_SETTINGS_KEY, type LiveSettings } from '../api/liveSettings';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
-import { useRestBypassModeStore } from '../state/restBypassMode';
+import { type RestFailureKind, useRestBypassModeStore } from '../state/restBypassMode';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { projectVolume } from '../chart/projectors/volume';
@@ -1108,13 +1108,18 @@ describe('useLiveBundle', () => {
 
   it('suppresses bypass-time candle warnings but still notifies for non-bypass transport failures', async () => {
     const realNotifyFailure = useRestBypassModeStore.getState().notifyFailure;
-    const notifyFailureSpy = vi.fn((nowMs?: number) => realNotifyFailure(nowMs));
+    const notifyFailureSpy = vi.fn((kind: RestFailureKind, nowMs?: number) =>
+      realNotifyFailure(kind, nowMs),
+    );
     useRestBypassModeStore.setState({
       lastFailureAtMs: null,
       lastToastAtMs: null,
+      lastKind: null,
       notifyFailure: notifyFailureSpy,
     });
-    candlesMock.warnings = [{ reason: 'api_error', msg: 'TRANSPORT/ConnectError' }];
+    // 사유는 백엔드가 `error_policy` 로 정확히 싣는다 — 프론트가 `msg` 에서
+    // `'TRANSPORT/'` 를 뒤지던 우회로는 죽었다(ADR-0137).
+    candlesMock.warnings = [{ reason: 'transport_error', msg: 'ConnectTimeout' }];
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
       wrapper: createWrapper({ rest_bypass_enabled: true }),
@@ -1130,6 +1135,56 @@ describe('useLiveBundle', () => {
       expect(notifyFailureSpy).toHaveBeenCalledTimes(1);
       expect(useRestBypassModeStore.getState().lastFailureAtMs).not.toBeNull();
       expect(useRestBypassModeStore.getState().lastToastAtMs).not.toBeNull();
+    });
+    expect(notifyFailureSpy).toHaveBeenCalledWith('transport');
+  });
+
+  it('reports congestion separately from an unreachable server', async () => {
+    const realNotifyFailure = useRestBypassModeStore.getState().notifyFailure;
+    const notifyFailureSpy = vi.fn((kind: RestFailureKind, nowMs?: number) =>
+      realNotifyFailure(kind, nowMs),
+    );
+    useRestBypassModeStore.setState({
+      lastFailureAtMs: null,
+      lastToastAtMs: null,
+      lastKind: null,
+      notifyFailure: notifyFailureSpy,
+    });
+    // 우리 쪽 쿨다운이다 — 서버는 멀쩡하다.
+    candlesMock.warnings = [{ reason: 'rate_limit_aborted', msg: 'cooldown active' }];
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(notifyFailureSpy).toHaveBeenCalledWith('congestion');
+    });
+  });
+
+  it('prefers transport over congestion when both arrive together', async () => {
+    const realNotifyFailure = useRestBypassModeStore.getState().notifyFailure;
+    const notifyFailureSpy = vi.fn((kind: RestFailureKind, nowMs?: number) =>
+      realNotifyFailure(kind, nowMs),
+    );
+    useRestBypassModeStore.setState({
+      lastFailureAtMs: null,
+      lastToastAtMs: null,
+      lastKind: null,
+      notifyFailure: notifyFailureSpy,
+    });
+    // 닿지 못한 사실이 혼잡보다 무겁고, 사용자 처방도 그쪽에 붙어 있다.
+    candlesMock.warnings = [
+      { reason: 'rate_limit_aborted', msg: 'cooldown active' },
+      { reason: 'transport_error', msg: 'ConnectTimeout' },
+    ];
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(notifyFailureSpy).toHaveBeenCalledWith('transport');
     });
   });
 
@@ -1611,7 +1666,11 @@ describe('useLiveBundle', () => {
     candlesMock.candles = [
       { t_ms: yesterdayOpen, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
     ];
-    candlesMock.warnings = [{ date: '20260527', reason: 'api_error', msg: 'TRANSPORT/ConnectError' }];
+    // 사유는 백엔드가 `error_policy` 로 정확히 싣는다 — `api_error` 는 벤더가 요청을
+    // 거절한 것이라 알림 대상이 아니고, 전송 실패는 `transport_error` 로 온다(ADR-0137).
+    candlesMock.warnings = [
+      { date: '20260527', reason: 'transport_error', msg: 'ConnectTimeout' },
+    ];
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 

@@ -26,6 +26,7 @@ describe('RestUnavailableToastHost', () => {
     restBypassMode.useRestBypassModeStore.setState({
       lastFailureAtMs: null,
       lastToastAtMs: null,
+      lastKind: null,
       toastDismissed: false,
     });
   });
@@ -43,7 +44,7 @@ describe('RestUnavailableToastHost', () => {
     });
 
     act(() => {
-      restBypassMode.useRestBypassModeStore.getState().notifyFailure(1_000);
+      restBypassMode.useRestBypassModeStore.getState().notifyFailure('transport', 1_000);
     });
 
     expect(screen.getByRole('status')).toHaveTextContent('시세 서버 연결 불가');
@@ -70,7 +71,7 @@ describe('RestUnavailableToastHost', () => {
     });
 
     act(() => {
-      restBypassMode.useRestBypassModeStore.getState().notifyFailure(1_000);
+      restBypassMode.useRestBypassModeStore.getState().notifyFailure('transport', 1_000);
     });
     expect(screen.getByRole('status')).toBeInTheDocument();
 
@@ -90,20 +91,20 @@ describe('RestUnavailableToastHost', () => {
     });
 
     act(() => {
-      restBypassMode.useRestBypassModeStore.getState().notifyFailure(1_000);
+      restBypassMode.useRestBypassModeStore.getState().notifyFailure('transport', 1_000);
     });
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     expect(screen.queryByRole('status')).toBeNull();
 
     // 쿨다운(5분) 내 재실패는 닫힌 상태 존중 → 재노출 안 함.
     act(() => {
-      restBypassMode.useRestBypassModeStore.getState().notifyFailure(1_000 + 60_000);
+      restBypassMode.useRestBypassModeStore.getState().notifyFailure('transport', 1_000 + 60_000);
     });
     expect(screen.queryByRole('status')).toBeNull();
 
     // 쿨다운 경과 후 재실패는 다시 띄운다.
     act(() => {
-      restBypassMode.useRestBypassModeStore.getState().notifyFailure(1_000 + restBypassMode.REST_FAILURE_TOAST_COOLDOWN_MS + 1);
+      restBypassMode.useRestBypassModeStore.getState().notifyFailure('transport', 1_000 + restBypassMode.REST_FAILURE_TOAST_COOLDOWN_MS + 1);
     });
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
@@ -161,5 +162,40 @@ describe('RestUnavailableToastHost', () => {
     expect(localStorage.getItem('chart.kisRestMode.v1')).toContain('true');
     expect(localStorage.getItem('chart.restBypassMode.v1.migrated')).toBeNull();
     expect(markSpy).not.toHaveBeenCalled();
+  });
+
+  it('says congestion, not unreachable, when the server is merely busy', () => {
+    renderWithClient({
+      schema_version: 1,
+      rest_bypass_enabled: false,
+      screener_depth_autocollect: false,
+    });
+
+    act(() => {
+      restBypassMode.useRestBypassModeStore.getState().notifyFailure('congestion', 1_000);
+    });
+
+    // 서버는 멀쩡하다 — "연결 불가" 로 표시하면 사용자의 판단(기다릴까 우회할까)이
+    // 뒤집힌다(ADR-0137).
+    const toast = screen.getByRole('status');
+    expect(toast).toHaveTextContent('시세 서버 혼잡');
+    expect(toast).not.toHaveTextContent('연결할 수 없습니다');
+    expect(toast).toHaveTextContent('대기 중');
+  });
+
+  it('keeps the unreachable copy for a real transport failure', () => {
+    renderWithClient({
+      schema_version: 1,
+      rest_bypass_enabled: false,
+      screener_depth_autocollect: false,
+    });
+
+    act(() => {
+      restBypassMode.useRestBypassModeStore.getState().notifyFailure('transport', 1_000);
+    });
+
+    const toast = screen.getByRole('status');
+    expect(toast).toHaveTextContent('시세 서버 연결 불가');
+    expect(toast).toHaveTextContent('저장 데이터로 표시할 수 있습니다');
   });
 });
