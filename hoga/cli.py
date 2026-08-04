@@ -210,9 +210,6 @@ async def _run_repair_sweep(data_dir: Path, *, dry_run: bool) -> None:
     from hoga.api import study_views  # noqa: PLC0415 — CLI-local
     from hoga.api.queries import QueryEngine  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     from hoga.live import candle_repair  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
-    from hoga.live.kis_runtime import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        ensure_kis_client_from_env,
-    )
 
     saves = study_views.load_saves(data_dir).saves
     if not saves:
@@ -238,17 +235,18 @@ async def _run_repair_sweep(data_dir: Path, *, dry_run: bool) -> None:
         )
         return
 
-    client = ensure_kis_client_from_env(data_dir)  # account 0; also registers globally
+    # PR-J(#1046) 칼 컷오버 — 소스는 키움 `ka10080` 이다(ADR-0109 의 생산자 교체).
+    from hoga.live import kiwoom_minute_candles, kiwoom_rest_runtime  # noqa: PLC0415
+
+    client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
     if client is None:
         console.print(
-            "[red]KIS credentials not set (KIS_APP_KEY/SECRET) — cannot repair[/red]"
+            "[red]키움 자격증명 미설정(KIWOOM_APP_KEY/SECRET) — 복구할 수 없습니다[/red]"
         )
         return
 
     async def _fetch(code: str, date_s: str):
-        return await client.fetch_past_minute_candles(
-            code, date_s, venue="KRX", foreground=True,
-        )
+        return await kiwoom_minute_candles.fetch_day(client, code, date_s, venue="KRX")
 
     tot_r = tot_s = tot_u = tot_e = 0
     for save in saves:

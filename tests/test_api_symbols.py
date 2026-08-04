@@ -8,7 +8,7 @@ import json
 import pytest
 
 from hoga.api import symbols
-from hoga.api.kis_master import MasterRow
+from hoga.api.kiwoom_master import MasterRow
 
 
 @pytest.fixture(autouse=True)
@@ -90,9 +90,9 @@ async def test_concurrent_gets_dedupe_to_one_fetch(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_kis_master_failure_returns_unavailable_when_no_cache(monkeypatch, tmp_path):
-    from hoga.api.kis_master import KisMasterFetchError
-    _stub_fetch(monkeypatch, raise_exc=KisMasterFetchError("mst down"))
+async def test_master_fetch_failure_returns_unavailable_when_no_cache(monkeypatch, tmp_path):
+    from hoga.api.kiwoom_master import KiwoomMasterFetchError
+    _stub_fetch(monkeypatch, raise_exc=KiwoomMasterFetchError("마스터 조회 실패"))
     path = tmp_path / "sm.json"
     resp = await symbols.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "unavailable"
@@ -212,15 +212,15 @@ def _reset_symbols_state():
 
 
 @pytest.mark.asyncio
-async def test_get_all_fetch_failed_when_kis_master_raises(
+async def test_get_all_fetch_failed_when_master_fetch_raises(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     _reset_symbols_state: None,
 ) -> None:
-    from hoga.api.kis_master import KisMasterFetchError
+    from hoga.api.kiwoom_master import KiwoomMasterFetchError
 
     async def _raise() -> list:
-        raise KisMasterFetchError("mst download failed")
+        raise KiwoomMasterFetchError("마스터 조회 실패")
     monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _raise)
 
     path = tmp_path / "sm.json"
@@ -592,7 +592,7 @@ async def test_refresh_happy_path(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_refresh_kis_failure_preserves_disk(tmp_path, monkeypatch):
-    from hoga.api.kis_master import KisMasterFetchError
+    from hoga.api.kiwoom_master import KiwoomMasterFetchError
 
     symbols_module.reset_state_for_tests()
     path = tmp_path / "sm.json"
@@ -606,7 +606,7 @@ async def test_refresh_kis_failure_preserves_disk(tmp_path, monkeypatch):
     original_content = path.read_text(encoding="utf-8")
 
     async def _boom():
-        raise KisMasterFetchError("mst down")
+        raise KiwoomMasterFetchError("마스터 조회 실패")
     monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _boom)
     resp = await symbols_module.refresh(path=path, data_dir=data_dir)
 
@@ -1029,7 +1029,7 @@ async def test_refresh_unhandled_exception_recovers_to_terminal_state(
     symbols_module.reset_state_for_tests()
 
     async def _explode():
-        raise ImportError("kis_master broken")
+        raise ImportError("kiwoom_master broken")
     monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _explode)
 
     path = tmp_path / "sm.json"

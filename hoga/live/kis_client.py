@@ -29,22 +29,12 @@ import httpx
 # Re-export facade (ADR-0050): these moved to kis_endpoints in Stage 4 but are
 # re-exported here so existing ``from hoga.live.kis_client import ...`` callers
 # and tests keep importing them from this module. Not referenced in-module.
-from hoga.live.kis_endpoints import (  # noqa: F401
-    DailyCandleFetchResult,
-    DailyInvariantViolation,
-    IndexCandleFetchResult,
+from hoga.live.kis_endpoints import (  # noqa: F401  (re-export facade)
     IndexQuoteSnapshot,
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
     KisEndpointsMixin,
     KisQuote,
-    _build_multi_price_params,
-    _fetch_multi_price,
-    _parse_index_daily_row,
-    _parse_index_minute_row,
-    _parse_market_investor_daily_row,
-    _parse_quote,
-    _prev_day_yyyymmdd,
 )
 from hoga.live.kis_errors import (
     KisApiError,

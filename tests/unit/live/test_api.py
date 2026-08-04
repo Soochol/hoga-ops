@@ -1283,7 +1283,7 @@ def test_gaps_adjacent_batches_coalesce() -> None:
 
 # ----- /api/live/past-daily-candles -----
 
-from hoga.live.kis_client import DailyCandleFetchResult, DailyInvariantViolation
+from hoga.live.candle_fetch_result import DailyCandleFetchResult, DailyInvariantViolation
 
 
 class _FakeKisForDaily:
@@ -1599,7 +1599,7 @@ def test_past_daily_empty_gap_caches_and_does_not_refetch(tmp_path, monkeypatch)
     class _EmptyKis(_FakeKisForDaily):
         async def fetch_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
-            from hoga.live.kis_client import DailyCandleFetchResult
+            from hoga.live.candle_fetch_result import DailyCandleFetchResult
 
             return DailyCandleFetchResult(candles=[], violations=[])
 
@@ -1646,7 +1646,7 @@ def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path, monkeypa
     class _EmptyTodayKis(_FakeKisForDaily):
         async def fetch_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
-            from hoga.live.kis_client import DailyCandleFetchResult
+            from hoga.live.candle_fetch_result import DailyCandleFetchResult
 
             return DailyCandleFetchResult(candles=[], violations=[])
 

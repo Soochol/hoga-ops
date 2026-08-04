@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from hoga.live import api as live_api, kis_runtime, lifecycle
 from hoga.live.api import build_router
-from hoga.live.kis_client import DailyCandleFetchResult, IndexCandleFetchResult
+from hoga.live.candle_fetch_result import DailyCandleFetchResult, IndexCandleFetchResult
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.settings import update_live_settings
 

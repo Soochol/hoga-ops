@@ -58,7 +58,7 @@ from hoga.live.api import build_router as build_live_router
 from hoga.live.candle_models import LiveCandle
 from hoga.live.candle_repair import build_saved_view_repair_hook
 from hoga.live.kis_capacity_runtime import aclose_kis_capacity_scheduler
-from hoga.live.kis_runtime import aclose_kis_client, get_kis_client
+from hoga.live.kis_runtime import aclose_kis_client
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
     get_buffer as live_get_buffer,
@@ -160,18 +160,34 @@ def allowed_origins() -> tuple[str, ...]:
     return ALLOWED_ORIGINS + extra
 
 
-async def _repair_minute_fetch(code: str, date_s: str) -> list[LiveCandle]:
-    """저장뷰 캡처-공백 복구용 KIS 과거 분봉 fetch(KRX 고정 — /study venue).
+def make_repair_minute_fetch(data_dir: Path):
+    """`data_dir` 를 닫은 리페어 fetch 를 만든다.
 
-    현재 KIS 클라이언트를 raw로 호출한다(클라이언트 내장 rate-limiter가 쿼터를
-    보호). 오프라인/무자격이면 클라이언트가 None → 빈 리스트로 복구를 스킵시킨다.
-    background 예산(foreground=False)이라 /live 포그라운드 fetch를 굶기지 않는다."""
-    client = get_kis_client()
-    if client is None:
-        return []
-    return await client.fetch_past_minute_candles(
-        code, date_s, venue="KRX", foreground=False,
-    )
+    PR-J(#1046) 이전에는 모듈 전역 KIS 클라이언트를 썼기에 인자가 필요 없었다.
+    키움 클라이언트는 `data_dir` 로 조달하므로 클로저로 묶는다.
+    """
+    async def _repair_minute_fetch(code: str, date_s: str) -> list[LiveCandle]:
+        """저장뷰 캡처-공백 복구용 과거 분봉 fetch (KRX 고정 — /study venue).
+
+        PR-J(#1046) 칼 컷오버 — 소스는 키움 `ka10080` 이다. ADR-0109 의 **생산자만**
+        바뀐다(디스크의 `kis_api` 라벨 데이터는 읽기 전용으로 존치).
+
+        `fetch_day` 를 쓰는 이유: `base_dt=D` 를 주면 D 가 응답의 **최新** 날짜라
+        앞이 잘릴 수 없다 — 최古 날짜를 떼어내는 walk 규칙이 필요 없는 자리다.
+
+        자격증명이 없으면 빈 리스트로 복구를 스킵시킨다(무자격 프로필·ADR-0134).
+        """
+        from hoga.live import (  # noqa: PLC0415 — 지연 import(순환 절단: api ↔ live)
+            kiwoom_minute_candles,
+            kiwoom_rest_runtime,
+        )
+
+        client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
+        if client is None:
+            return []
+        return await kiwoom_minute_candles.fetch_day(client, code, date_s, venue="KRX")
+
+    return _repair_minute_fetch
 
 
 def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
@@ -396,7 +412,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
         build_study_view_router(
             data_dir=data_dir,
             on_reference_saved=build_saved_view_repair_hook(
-                engine, data_dir, _repair_minute_fetch,
+                engine, data_dir, make_repair_minute_fetch(data_dir),
             ),
         )
     )

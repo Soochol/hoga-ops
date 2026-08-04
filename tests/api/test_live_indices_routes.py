@@ -5,9 +5,9 @@ from fastapi.testclient import TestClient
 
 from hoga.live import api as live_api, lifecycle
 from hoga.live.api import build_router
+from hoga.live.candle_fetch_result import IndexCandleFetchResult
 from hoga.live.candle_models import IndexCandlePoint
 from hoga.live.investor import InvestorNetPoint
-from hoga.live.kis_client import IndexCandleFetchResult
 from hoga.util.timeenc import KST
 
 
