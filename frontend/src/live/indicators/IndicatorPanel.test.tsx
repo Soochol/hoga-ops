@@ -558,15 +558,16 @@ describe('IndicatorPanel', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('backdrop click calls onClose, inside click does not', () => {
+  it('backdrop press calls onClose, inside press does not', () => {
+    // ModalShell 백드롭 닫힘은 mousedown 기준(드래그 오작동 방지 계약).
     const onClose = vi.fn();
     renderPanel({ onClose });
-    fireEvent.click(screen.getByRole('dialog'));
+    fireEvent.mouseDown(screen.getByRole('dialog'));
     expect(onClose).toHaveBeenCalledTimes(1);
     // "이동평균선" appears both as a nav button label and as the MA config h3.
     // The nav button is the first occurrence; click its parent for an inside-content check.
     const navLabel = screen.getAllByText('이동평균선')[0];
-    fireEvent.click(navLabel.parentElement!);
+    fireEvent.mouseDown(navLabel.parentElement!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

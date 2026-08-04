@@ -114,10 +114,11 @@ describe('LiveSettingsModal (2단)', () => {
     expect(closed).toBe(true);
   });
 
-  it('backdrop click calls onClose', () => {
+  it('backdrop press calls onClose', () => {
+    // ModalShell 백드롭 닫힘은 mousedown 기준(드래그 오작동 방지 계약).
     let closed = false;
     render(<LiveSettingsModal onClose={() => { closed = true; }} />);
-    fireEvent.click(screen.getByRole('dialog'));
+    fireEvent.mouseDown(screen.getByRole('dialog'));
     expect(closed).toBe(true);
   });
 });
