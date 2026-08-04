@@ -31,12 +31,28 @@ class InvestorNetPoint(BaseModel):
 
 
 class InvestorTrendEstimateRow(BaseModel):
-    """Intraday estimated foreign/institution quantity row for one slot."""
+    """Intraday estimated foreign/institution row for one slot — **두 축**.
+
+    `ka10064` 는 수량·금액을 한 응답에 주지 않는다 — `amt_qty_tp` 로 축을 고르는
+    별개의 콜이다. 한 행이 둘을 다 들고 있는 것은 소비자가 표시 단위를 서버 왕복
+    없이 토글하기 때문이다.
+
+    **단위를 이름에 박은 이유**: `amt_qty_tp="1"` 이 금액인데 그 값이 `_qty` 필드로
+    흘러 화면에 "만주" 로 그려진 적이 있다(2026-08-04 실측 확인). `int` 는 주와
+    백만원을 구분해 주지 않고, 두 축 모두 부호와 자릿수가 그럴듯해서 타입도 테스트도
+    아무것도 깨지지 않았다. 이름이 유일한 방어선이다.
+
+    수량 축은 가집계라 **천주 단위로 반올림**돼 온다(실측: -90000 · -925000).
+    금액 축이 오히려 정밀하다(백만원 단위).
+    """
 
     slot: str
-    foreign_qty: int | None
-    institution_qty: int | None
-    sum_qty: int | None
+    foreign_qty: int | None = None       # 주(株)
+    institution_qty: int | None = None   # 주(株)
+    sum_qty: int | None = None           # 주(株)
+    foreign_amt_mwon: int | None = None       # 백만원
+    institution_amt_mwon: int | None = None   # 백만원
+    sum_amt_mwon: int | None = None           # 백만원
 
 
 @dataclass(frozen=True)
