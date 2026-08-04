@@ -143,10 +143,12 @@ body {
    종가+등락률이 마지막까지 남는다). 컨테이너는 PaneLegendOverlay 의 pane 래퍼
    (containerType: inline-size — 좌우 inset 절대배치라 폭이 내용과 무관).
    문턱은 셀 1개 ≈ 7~8rem(라벨+가격+% @ text-xs) 실측 기반 근사 — 정확히 맞추는
-   것보다 "글자 반 토막"이 안 나는 것이 목적이고, overflow:hidden 백스톱은 남는다. */
-@container (max-width: 30rem) { .legend-ohlc-low { display: none; } }
-@container (max-width: 23rem) { .legend-ohlc-high { display: none; } }
-@container (max-width: 16rem) { .legend-ohlc-open { display: none; } }
+   것보다 "글자 반 토막"이 안 나는 것이 목적이고, overflow:hidden 백스톱은 남는다.
+   셀은 인라인 style(display:inline-flex)로 그려지므로 !important 없이는 이 규칙이
+   특이도에서 진다(실측 — 규칙은 서빙되는데 display 가 안 바뀌었다). */
+@container (max-width: 30rem) { .legend-ohlc-low { display: none !important; } }
+@container (max-width: 23rem) { .legend-ohlc-high { display: none !important; } }
+@container (max-width: 16rem) { .legend-ohlc-open { display: none !important; } }
 
 /* 다크 테마 스크롤바 — 전역. 토큰만 사용(DESIGN.md, 그라데이션/장식 금지).
    실제 렌더 환경은 WebKit/Chromium(Vite dev + /browse). lightweight-charts
