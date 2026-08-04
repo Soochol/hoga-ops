@@ -99,7 +99,7 @@ import type { PaneId } from '../chart/drawing/types';
 import type { PaneStretchMap } from '../chart/paneOrder';
 import type { BoundPaneSpec } from '../chart/paneSpecs';
 import { useDrawingHost } from '../chart/useDrawingHost';
-import { drawingScopeFor } from '../state/drawings';
+import { drawingBarMsFor, drawingScopeFor } from '../state/drawings';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
@@ -2069,7 +2069,7 @@ export function LiveChartRoot({
             scope={drawingScope}
             paneSeries={paneSeries}
             onChartHoverPassthrough={handleDrawingOverlayHover}
-            bucketMs={cb?.bucket_ms ?? undefined}
+            bucketMs={drawingBarMsFor(timeframe, cb?.bucket_ms ?? undefined)}
             candles={cb?.candles}
           />
           {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
