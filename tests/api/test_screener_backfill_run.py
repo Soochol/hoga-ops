@@ -109,7 +109,7 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
     monkeypatch.setattr(
         kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: client
     )
-    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda: scheduler)
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda *_a, **_k: scheduler)
     monkeypatch.setattr(kiwoom_access, "run_with_capacity", fake_run_with_capacity)
     monkeypatch.setattr(
         kiwoom_daily_candles, "fetch_daily_candles", fake_fetch_daily_candles

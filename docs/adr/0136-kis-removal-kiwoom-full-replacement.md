@@ -90,7 +90,7 @@ venue 는 `FID_COND_MRKT_DIV_CODE`(`J`/`NX`/`UN`) 대신 **종목코드 접미**
 
 - **선언적 TR 스펙 테이블 + 단일 호출기.** TR 추가 = 테이블 한 줄.
 - **단일 우선순위 큐 + TR별 토큰 버킷(5 req/s).** 큐가 옮겨야 할 기계는 **넷**이다 — 2단 우선순위·중복제거·**승격**(백그라운드 대기분을 사용자 재요청 시 끌어올림)·**양보**(user_visible 대기 시 background 미룸). 뒤 둘이 빠지면 "팬이 백필 뒤에 줄 서는" 회귀가 재현된다.
-- **계정 차원은 소멸한다** — 계정 풀 선택·health/failover·`cooldown_scope`. 키움 유량이 TR별이라 계정을 고를 이유가 없다.
+- ~~**계정 차원은 소멸한다** — 계정 풀 선택·health/failover·`cooldown_scope`. 키움 유량이 TR별이라 계정을 고를 이유가 없다.~~ **ADR-0138 이 이 조항을 supersede 한다** (2026-08-04): 유량은 TR별인 **동시에 앱키별**이었다(실측 1키 4.17 → 4키 18.4 콜/초). 아래 "거부 — 앱키 증설" 이 대가로 남겨둔 미검증 항목이 바로 이것이다. 단 health/failover 상태 기계는 되살리지 않는다 — 토큰버킷의 `available_at()` 최소값을 고르면 failover 가 따라온다.
 - **async seam**(`httpx.AsyncClient`), 기존 3모듈(`kiwoom_index_candles`·`kiwoom_rankings`·`kiwoom_stock_info`)도 이주. `to_thread` 는 요청을 워커 밖으로 내보내 거버너 페이싱을 우회한다.
 - **에러 모델은 `error_policy.py` 재사용.** 단 **유량 초과만 HTTP 429** 이고 나머지(`1504` 경로·`1511` 파라미터·`1513` 인증)는 HTTP 200 + `return_code != 0` 이므로, 분류기는 **두 축을 모두** 봐야 한다.
 - **테스트 이음매 2층**: 소비자는 큐 제출 함수 **한 곳** 몽키패치(`kis_access.run_with_capacity` 대칭), seam 자체는 `httpx.MockTransport` 주입.

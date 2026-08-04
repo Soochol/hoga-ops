@@ -68,7 +68,7 @@ def _patch_kiwoom_capacity(monkeypatch, fake_daily):
         live_api.kiwoom_rest_runtime, "ensure_rest_client",
         lambda data_dir, account_id=0: object(),
     )
-    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda: scheduler)
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda *_a, **_k: scheduler)
 
     async def fake_run_with_capacity(scheduler_arg, *, key, api_id, priority, fetch_fn, client):
         calls.append({"key": key, "api_id": api_id, "priority": priority})
@@ -391,7 +391,7 @@ def _patch_capacity_raises(monkeypatch, exc: Exception) -> None:
         live_api.kiwoom_rest_runtime, "ensure_rest_client",
         lambda data_dir, account_id=0: object(),
     )
-    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda: object())
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda *_a, **_k: object())
 
     async def raising_kiwoom(scheduler_arg, *, key, api_id, priority, fetch_fn, client):
         raise exc

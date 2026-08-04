@@ -46,7 +46,7 @@ def _patch_update_env(monkeypatch):
     monkeypatch.setattr(
         _kiwoom_runtime, "ensure_rest_client", lambda *_a, **_k: object()
     )
-    monkeypatch.setattr(_kiwoom_runtime, "ensure_scheduler", lambda: object())
+    monkeypatch.setattr(_kiwoom_runtime, "ensure_scheduler", lambda *_a, **_k: object())
     monkeypatch.setattr(_screener_mod, "_PROGRESS_MIN_INTERVAL_S", 0.0)
 
 
@@ -246,7 +246,7 @@ async def test_trigger_update_fetches_daily_rows_through_capacity_scheduler(tmp_
     monkeypatch.setattr(
         _kiwoom_runtime, "ensure_rest_client", lambda *_a, **_k: object()
     )
-    monkeypatch.setattr(_kiwoom_runtime, "ensure_scheduler", lambda: scheduler)
+    monkeypatch.setattr(_kiwoom_runtime, "ensure_scheduler", lambda *_a, **_k: scheduler)
     monkeypatch.setattr(_kiwoom_access, "run_with_capacity", fake_run_with_capacity)
     monkeypatch.setattr(_screener_mod, "_daily_fetch_one", fake_daily_fetch_one)
 

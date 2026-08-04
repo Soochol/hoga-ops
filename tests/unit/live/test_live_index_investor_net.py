@@ -43,7 +43,7 @@ class _RecordingScheduler:
         key: Hashable,
         api_id: str,
         priority: str,
-        call: Callable[[], Awaitable],
+        call: Callable[[object | None], Awaitable],
     ):
         self.calls.append(
             {
@@ -54,7 +54,7 @@ class _RecordingScheduler:
         )
         if self.raise_rate_limit:
             raise KiwoomRateLimitError("simulated 1700 유량 초과")
-        return await call()
+        return await call(None)
 
 
 @pytest.fixture

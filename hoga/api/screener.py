@@ -189,7 +189,7 @@ async def _run_update_job(data_dir: Path, plan: _UpdatePlan, *, bus) -> int:
             kiwoom_rest_runtime,
         )
 
-        scheduler = kiwoom_rest_runtime.ensure_scheduler()
+        scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
         client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
         if client is None:
             raise RuntimeError("키움 자격증명 없음 — 스크리너 갱신 불가")

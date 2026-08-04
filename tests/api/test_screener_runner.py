@@ -80,7 +80,7 @@ async def test_runner_intraday_basis_builds_overlay_and_falls_back_with_warning(
                 "low": pl.Float64, "close": pl.Float64, "volume": pl.Int64,
             }),
             fetched_at_ms=None,
-            warnings=["intraday_kis_unavailable"],
+            warnings=["intraday_credentials_missing"],
         )
 
     monkeypatch.setattr(screener_runner.screener_intraday, "build_intraday_overlay", fake_overlay)
@@ -97,7 +97,7 @@ async def test_runner_intraday_basis_builds_overlay_and_falls_back_with_warning(
 
     assert seen_codes == ["000001"]
     assert [r.code for r in res.rows] == ["000001"]
-    assert res.warnings == ["intraday_kis_unavailable", "intraday_fallback_eod"]
+    assert res.warnings == ["intraday_credentials_missing", "intraday_fallback_eod"]
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,7 @@ import { ControlBar, PanelCard, SegmentedControl, ToolbarButton } from '../ui/Pa
 import { ScreenerResultSortControl } from '../screener/ScreenerResultSortControl';
 import { DepthCoverageBanner } from '../screener/DepthCoverageBanner';
 import { sortScreenerRows } from '../screener/sortResults';
+import { intradayDegradationText } from '../screener/intradayDegradation';
 import { useLiveSettings } from '../api/liveSettings';
 import type { ScanBasis } from '../api/screener';
 
@@ -104,7 +105,9 @@ export function Screener() {
   // 내용 기반 staleness: 저장된 scanKey 와 현재 빌더 key 가 다르면 "다시 조회 필요".
   // 드로어 스캔은 scanKey null → 비교 불가 시 stale 판정하지 않는다.
   const resultsStale = lastScan?.scanKey != null && lastScan.scanKey !== scanKey;
-  const intradayFallback = lastScan?.basis === 'intraday' && (lastScan?.warnings ?? []).includes('intraday_fallback_eod');
+  // 강등 사유별 문구 — 유량 초과·자격증명 부재·파싱 오류의 처방이 각각 다르다(ADR-0137).
+  const intradayDegradation =
+    lastScan?.basis === 'intraday' ? intradayDegradationText(lastScan?.warnings) : null;
   const scopeUniverseEmpty = (lastScan?.warnings ?? []).includes('scope_universe_empty');
   // 심볼 마스터 미로드 → ETF 판정이 stocks.parquet(수동 시드, 낡을 수 있음)으로 강등.
   const etfFilterStale = (lastScan?.warnings ?? []).includes('etf_filter_stale_master_unavailable');
@@ -248,8 +251,8 @@ export function Screener() {
               {resultsStale && (
                 <InlineState tone="warn">조건 변경됨 · 다시 조회 필요</InlineState>
               )}
-              {intradayFallback && (
-                <InlineState tone="warn">장중 조회 불가 · 전일 확정 데이터로 표시 중</InlineState>
+              {intradayDegradation && (
+                <InlineState tone="warn">{intradayDegradation}</InlineState>
               )}
               {scopeUniverseEmpty && (
                 <InlineState tone="warn">종목 범위가 비어 있음 · 관심종목·히트맵에 종목을 추가하세요</InlineState>

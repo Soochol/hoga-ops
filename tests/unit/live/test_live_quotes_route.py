@@ -47,7 +47,7 @@ def _bridge_kis_seed_to_kiwoom(monkeypatch):
         return await client.fetch_multi_price(codes, venue=venue)
 
     monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_rest_client", _client)
-    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda: object())
+    monkeypatch.setattr(live_api.kiwoom_rest_runtime, "ensure_scheduler", lambda *_a, **_k: object())
     monkeypatch.setattr(live_api.kiwoom_multi_quote, "fetch_multi_price", _fetch)
 
     async def _run(scheduler, *, key, api_id, priority, fetch_fn, client):

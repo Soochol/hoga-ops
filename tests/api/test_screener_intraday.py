@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -8,6 +9,9 @@ import pytest
 
 from hoga.api import screener_intraday, screener_universe
 from hoga.api.models import ScreenerUniverse
+from hoga.live.kiwoom_errors import KiwoomRateLimitError
+
+_RATE_LIMIT_MSG = "허용된 요청 개수를 초과하였습니다[1700:유량=5, API ID=ka10095]"
 
 
 @dataclass(frozen=True)
@@ -48,8 +52,10 @@ def _patch_scheduler(monkeypatch, fake: FakeKis, calls: list[dict] | None = None
         screener_intraday.kiwoom_rest_runtime, "ensure_rest_client",
         lambda data_dir, account_id=0: sentinel,
     )
+    # 거버너는 이제 계정 풀 갱신을 위해 data_dir 을 받는다(ADR-0138).
     monkeypatch.setattr(
-        screener_intraday.kiwoom_rest_runtime, "ensure_scheduler", lambda: object()
+        screener_intraday.kiwoom_rest_runtime, "ensure_scheduler",
+        lambda data_dir=None: object(),
     )
 
     async def fake_run_with_capacity(scheduler, *, key, api_id, priority, fetch_fn, client):
@@ -156,6 +162,121 @@ async def test_build_intraday_overlay_reuses_ttl_cache(monkeypatch, tmp_path: Pa
 
     assert fake.calls == 1
     assert first.rows.to_dicts() == second.rows.to_dicts()
+
+
+# --- ADR-0137 -----------------------------------------------------------------
+
+
+def _many(n: int) -> list[str]:
+    return [f"{i:06d}" for i in range(n)]
+
+
+def _ok_quotes(codes: list[str]) -> list[Quote]:
+    return [Quote(c, price=100, open=100, high=100, low=100, volume=1) for c in codes]
+
+
+@pytest.mark.asyncio
+async def test_overlay_submits_one_capacity_request_per_chunk(monkeypatch, tmp_path: Path):
+    """회귀 봉인(ADR-0137) — 청킹은 거버너 **위**에 있어야 한다.
+
+    청킹이 `fetch_multi_price` 안에 있으면 거버너는 submit 1건만 세고 벤더는 N콜을
+    세어 유량 초과가 난다(실측: 4,295종목 → 43콜을 0.23초에 발사 → 6번째에서 1700).
+    submit 횟수가 청크 수와 같아야 TR 버킷이 실제 HTTP 콜을 페이싱한다.
+    """
+    codes = _many(250)
+    fake = FakeKis(_ok_quotes(codes))
+    calls: list[dict] = []
+    _patch_scheduler(monkeypatch, fake, calls)
+
+    overlay = await screener_intraday.build_intraday_overlay(
+        data_dir=tmp_path, codes=codes, today="20260625", now_ms=1_000,
+    )
+
+    assert len(calls) == 3, "100 + 100 + 50 → 세 번 제출돼야 한다"
+    assert all(c["api_id"] == "ka10095" for c in calls)
+    assert all(c["priority"] == "background" for c in calls)
+    # key 가 겹치면 거버너가 중복제거로 합쳐 버려 청크 하나만 실제로 나간다.
+    assert len({c["key"] for c in calls}) == 3
+    assert overlay.rows.height == 250
+
+
+@pytest.mark.asyncio
+async def test_overlay_names_the_rate_limit_instead_of_generic_failure(
+    monkeypatch, tmp_path: Path, caplog,
+):
+    """유량 초과는 '잠시 후 재시도' 가 옳은 안내다. 자격증명 부재·파싱 오류와 같은
+    한 단어(`intraday_quote_fetch_failed`)로 접히면 사용자가 처방을 알 수 없다."""
+    fake = FakeKis([])
+    _patch_scheduler(monkeypatch, fake)
+
+    async def rate_limited(*args, **kwargs):
+        raise KiwoomRateLimitError(_RATE_LIMIT_MSG, api_id="ka10095")
+
+    monkeypatch.setattr(screener_intraday.kiwoom_access, "run_with_capacity", rate_limited)
+
+    with caplog.at_level(logging.WARNING, logger="hoga.api.screener_intraday"):
+        overlay = await screener_intraday.build_intraday_overlay(
+            data_dir=tmp_path, codes=_many(120), today="20260625", now_ms=1_000,
+        )
+
+    assert overlay.rows.height == 0
+    assert overlay.warnings == ["intraday_rate_limit_upstream"]
+    # R3 — 폴백을 고른 층이 **영향**을 로그한다. 하위 층의 "ka10095 rate-limited" 만으로는
+    # 어떤 기능이 무엇으로 대체됐는지 복원할 수 없다.
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert "전일 확정 폴백" in logged
+    assert "1700/ka10095" in logged, "원인의 실체(벤더 코드)가 로그에 남아야 한다"
+
+
+@pytest.mark.asyncio
+async def test_overlay_keeps_partial_results_when_some_chunks_fail(
+    monkeypatch, tmp_path: Path,
+):
+    """R5 — 앞선 청크가 받아온 종목은 조건 평가에 그대로 쓸 수 있다. 예외 하나로
+    전량 폐기하면 500종목을 성공해 놓고도 0행이 된다(구 동작)."""
+    codes = _many(250)
+    fake = FakeKis(_ok_quotes(codes))
+    _patch_scheduler(monkeypatch, fake)
+    passthrough = screener_intraday.kiwoom_access.run_with_capacity
+
+    async def second_chunk_fails(scheduler, *, key, api_id, priority, fetch_fn, client):
+        if key[2][0] == "000100":  # 두 번째 청크의 첫 코드 — 결정적으로 고른다
+            raise KiwoomRateLimitError(_RATE_LIMIT_MSG, api_id="ka10095")
+        return await passthrough(
+            scheduler, key=key, api_id=api_id, priority=priority,
+            fetch_fn=fetch_fn, client=client,
+        )
+
+    monkeypatch.setattr(
+        screener_intraday.kiwoom_access, "run_with_capacity", second_chunk_fails
+    )
+
+    overlay = await screener_intraday.build_intraday_overlay(
+        data_dir=tmp_path, codes=codes, today="20260625", now_ms=1_000,
+    )
+
+    assert overlay.rows.height == 150, "1·3번 청크(100+50)는 살아남아야 한다"
+    assert "intraday_partial" in overlay.warnings
+    assert "intraday_rate_limit_upstream" in overlay.warnings
+
+
+@pytest.mark.asyncio
+async def test_overlay_distinguishes_missing_credentials_from_fetch_failure(
+    monkeypatch, tmp_path: Path,
+):
+    """ADR-0134 dev 무자격 프로필에서 **정상 경로**다 — 재시도해도 소용없으므로
+    일시 장애와 같은 문구를 쓰면 안 된다."""
+    monkeypatch.setattr(
+        screener_intraday.kiwoom_rest_runtime, "ensure_rest_client",
+        lambda data_dir, account_id=0: None,
+    )
+
+    overlay = await screener_intraday.build_intraday_overlay(
+        data_dir=tmp_path, codes=["000111"], today="20260625", now_ms=1_000,
+    )
+
+    assert overlay.rows.height == 0
+    assert overlay.warnings == ["intraday_credentials_missing"]
 
 
 @pytest.mark.asyncio
