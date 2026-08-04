@@ -20,7 +20,7 @@ export default function QuoteTotalsConfig() {
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">
-        총잔량 <span aria-hidden="true" className="text-fg-dimmer text-sm">ⓘ</span>
+        총잔량 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
       </h3>
       <p className="text-fg-dim text-xs mb-3">
         해당 분봉 시점의 매수·매도 호가 총잔량을 라인으로 표시합니다.

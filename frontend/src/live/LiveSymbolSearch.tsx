@@ -230,8 +230,8 @@ export function LiveSymbolSearch() {
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
         {/* min-w-0 + truncate: 헤더가 좁아지면(드로어 열림 등) 두 줄 줄바꿈 대신 한 줄 말줄임. */}
-        <span className="flex-1 min-w-0 truncate text-sm text-fg-dimmer">종목명 또는 코드 검색…</span>
-        <span className="ml-auto flex shrink-0 items-center gap-1 text-fg-dimmer text-xs">
+        <span className="flex-1 min-w-0 truncate text-sm text-fg-dim">종목명 또는 코드 검색…</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1 text-fg-dim text-xs">
           <kbd className="inline-flex items-center justify-center min-w-[17px] h-[17px] px-1 border border-border-strong rounded bg-bg-input font-data">/</kbd>
         </span>
       </button>

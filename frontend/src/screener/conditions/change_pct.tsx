@@ -16,7 +16,7 @@ function ChangePctForm({ params, onChange }: { params: ChangePctParams; onChange
       <span className="text-fg-dimmer">~</span>
       <Num label="hi" value={params.hi} onChange={(n) => onChange({ ...params, hi: n })} w="w-16" /></>
     ) : <Num value={params.pct} onChange={(n) => onChange({ ...params, pct: n })} w="w-16" />}
-    <span className="text-sm text-fg-dimmer">%</span></div>;
+    <span className="text-sm text-fg-dim">%</span></div>;
 }
 
 export const change_pct: CatalogEntry = {

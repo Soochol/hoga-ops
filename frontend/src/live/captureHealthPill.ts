@@ -17,6 +17,6 @@ export function captureHealthPillColor(severity: CaptureHealthSeverity): {
     case 'warn':
       return { bg: 'rgba(245, 158, 11, 0.10)', border: '1px solid var(--warn)', fg: 'var(--warn)' };
     case 'ok':
-      return { bg: 'transparent', border: 'none', fg: 'var(--fg-dimmer)' };
+      return { bg: 'transparent', border: 'none', fg: 'var(--fg-dim)' };
   }
 }

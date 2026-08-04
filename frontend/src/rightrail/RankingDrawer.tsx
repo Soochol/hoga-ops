@@ -94,7 +94,7 @@ function DraggableRankingRow({
       onClick={onActivate}
       onContextMenu={onContextMenu}
       leading={
-        <span className="w-5 flex-none text-right font-data tabular-nums text-xs text-fg-dimmer">
+        <span className="w-5 flex-none text-right font-data tabular-nums text-xs text-fg-dim">
           {row.rank}
         </span>
       }
@@ -161,8 +161,8 @@ export function RankingDrawer() {
         title="순위"
         actions={
           <span className="flex items-center gap-sm">
-            {marketClosed && <span className="text-xs text-fg-dimmer">장 외</span>}
-            <span className="font-data tabular-nums text-xs text-fg-dimmer">
+            {marketClosed && <span className="text-xs text-fg-dim">장 외</span>}
+            <span className="font-data tabular-nums text-xs text-fg-dim">
               {formatUpdatedAt(data?.fetchedAtMs)}
             </span>
           </span>

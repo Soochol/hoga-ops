@@ -567,7 +567,7 @@ function TotalQtyStrip({
 
 function PanelState({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-full w-full items-center justify-center bg-bg-card text-[11px] text-fg-dimmer">
+    <div className="flex h-full w-full items-center justify-center bg-bg-card text-[11px] text-fg-dim">
       <span className="font-data">{children}</span>
     </div>
   );

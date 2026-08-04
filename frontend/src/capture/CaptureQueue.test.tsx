@@ -60,12 +60,12 @@ describe('computeHeaderSummary', () => {
 });
 
 describe('CaptureQueue', () => {
-  it('renders header + Cancel All + Dismiss Done', async () => {
+  it('renders header + 전체 취소 + 완료 지우기', async () => {
     const qc = setup();
     render(<CaptureQueue />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.getByRole('button', { name: /Cancel All/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Dismiss Done/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /전체 취소/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /완료 지우기/ })).toBeTruthy();
   });
 
   it('renders one row per item across all buckets', async () => {
@@ -87,7 +87,7 @@ describe('CaptureQueue', () => {
     expect(queueList.parentElement).toHaveClass('min-h-0');
   });
 
-  it('Cancel All first click arms confirmation; second click POSTs cancel-all', async () => {
+  it('전체 취소 first click arms confirmation; second click POSTs cancel-all', async () => {
     const qc = setup();
     const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
       const s = String(url);
@@ -97,21 +97,21 @@ describe('CaptureQueue', () => {
     });
     render(<CaptureQueue />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
-    fireEvent.click(screen.getByRole('button', { name: /Cancel All/i }));
+    fireEvent.click(screen.getByRole('button', { name: /전체 취소/ }));
     const callsAfterFirstClick = fetchMock.mock.calls.filter((c) => String(c[0]).includes('/api/captures/cancel-all')).length;
     expect(callsAfterFirstClick).toBe(0);
-    expect(screen.getByText(/Click again to confirm/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Click again to confirm/i }));
+    expect(screen.getByText(/한 번 더 누르면 전체 취소/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /한 번 더 누르면 전체 취소/i }));
     await new Promise((r) => setTimeout(r, 30));
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/api/captures/cancel-all'))).toBe(true);
   });
 
-  it('shows paused banner with Refresh & Resume + Cancel All when snapshot.paused', async () => {
+  it('shows paused banner with 새로고침 후 재개 + 전체 취소 when snapshot.paused', async () => {
     const qc = setup({ ...SNAPSHOT(), paused: true });
     render(<CaptureQueue />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
     expect(screen.getByText(/Cookie expired/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Resume/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /재개/ })).toBeTruthy();
   });
 
   it('renders only first 200 rows when queue length > 200 (virtualized window)', async () => {
@@ -139,17 +139,17 @@ describe('CaptureQueue', () => {
   });
 });
 
-describe('CaptureQueue Retry Failed (ADR-0031)', () => {
-  it('renders Retry Failed button disabled when failed count is 0', async () => {
+describe('CaptureQueue 실패 재시도 (ADR-0031)', () => {
+  it('renders 실패 재시도 button disabled when failed count is 0', async () => {
     const snap = { ...SNAPSHOT(), done: [item('d1', 'done')] };  // 0 failed
     const qc = setup(snap);
     render(<CaptureQueue />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
-    const btn = screen.getByRole('button', { name: /Retry Failed/i });
+    const btn = screen.getByRole('button', { name: /실패 재시도/ });
     expect(btn.hasAttribute('disabled')).toBe(true);
   });
 
-  it('Retry Failed enabled when failed > 0, POSTs all failed item_ids', async () => {
+  it('실패 재시도 enabled when failed > 0, POSTs all failed item_ids', async () => {
     let postedBody: any = null;
     const failed1 = { ...item('f1', 'failed'), date: '20260518' };
     const failed2 = { ...item('f2', 'failed'), date: '20260519' };
@@ -172,7 +172,7 @@ describe('CaptureQueue Retry Failed (ADR-0031)', () => {
     render(<CaptureQueue />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
 
-    const btn = screen.getByRole('button', { name: /Retry Failed/i });
+    const btn = screen.getByRole('button', { name: /실패 재시도/ });
     expect(btn.hasAttribute('disabled')).toBe(false);
     fireEvent.click(btn);
     await new Promise((r) => setTimeout(r, 30));
@@ -277,7 +277,7 @@ describe('CaptureQueue dedupe banner', () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(screen.getByTestId('deduped-banner')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /Dismiss dedupe notice/i }));
+    fireEvent.click(screen.getByRole('button', { name: /중복 안내 닫기/ }));
     expect(screen.queryByTestId('deduped-banner')).toBeNull();
   });
 

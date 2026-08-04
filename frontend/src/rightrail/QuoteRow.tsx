@@ -154,11 +154,11 @@ export function QuoteRow({
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
       <span title={priceTitle} className="flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
         {showExpected && (
-          <span className="mr-0.5 text-[10px] text-fg-dimmer" data-testid={`${testId}-expected-marker`}>예</span>
+          <span className="mr-0.5 text-[10px] text-fg-dim" data-testid={`${testId}-expected-marker`}>예</span>
         )}
         {shownPrice != null ? shownPrice.toLocaleString('ko-KR') : '—'}
       </span>
-      <span className={`flex-none w-[3.5rem] text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dimmer' : priceDirClass(shownPct)}`}>
+      <span className={`flex-none w-[3.5rem] text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dim' : priceDirClass(shownPct)}`}>
         {shownPct != null ? formatPct(shownPct) : ''}
       </span>
       {trailingAction != null && (

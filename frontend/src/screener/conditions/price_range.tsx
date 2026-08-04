@@ -7,7 +7,7 @@ function PriceRangeForm({ params, onChange }: { params: PriceRangeParams; onChan
     <Num label="min" value={params.min} onChange={(n) => onChange({ ...params, min: n })} w="w-24" />
     <span className="text-fg-dimmer">~</span>
     <Num label="max" value={params.max} onChange={(n) => onChange({ ...params, max: n })} w="w-24" />
-    <span className="text-sm text-fg-dimmer">원</span></div>;
+    <span className="text-sm text-fg-dim">원</span></div>;
 }
 
 export const price_range: CatalogEntry = {

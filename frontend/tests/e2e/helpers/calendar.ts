@@ -59,7 +59,7 @@ function previousKstMonth(): { year: number; month: number } {
 
 /** 달력을 전월로 넘긴다. 종목을 다시 고르면 이번 달로 돌아오므로 그때마다 필요하다. */
 export async function previousMonth(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Previous month' }).click();
+  await page.getByRole('button', { name: '이전 달' }).click();
 }
 
 /** 전월의 선택 가능한 날짜를 빠른 순으로 n개. UI 도 전월로 넘겨 둔다.

@@ -34,7 +34,7 @@ export default function Inventory() {
   );
 
   if (isLoading) {
-    return <InventoryStateShell>Loading inventory…</InventoryStateShell>;
+    return <InventoryStateShell>불러오는 중</InventoryStateShell>;
   }
   if (rows.length === 0) {
     return <InventoryStateShell>캡처된 데이터가 없습니다.</InventoryStateShell>;

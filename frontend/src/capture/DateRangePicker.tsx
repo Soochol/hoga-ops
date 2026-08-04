@@ -198,9 +198,9 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
         </div>
       )}
       <div data-testid="picker-nav" className="flex items-center gap-1.5 font-medium text-sm font-data text-fg-dim">
-        <button type="button" aria-label="Previous month" onClick={() => shiftBy(-1)} className={navBtnCls}>‹</button>
+        <button type="button" aria-label="이전 달" onClick={() => shiftBy(-1)} className={navBtnCls}>‹</button>
         <select
-          aria-label="Year"
+          aria-label="연도"
           value={displayYear}
           onChange={(e) => setDisplayYear(Number(e.target.value))}
           className={navSelectCls}
@@ -208,7 +208,7 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
           {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
         <select
-          aria-label="Month"
+          aria-label="월"
           value={displayMonth}
           onChange={(e) => setDisplayMonth(Number(e.target.value))}
           className={navSelectCls}
@@ -217,13 +217,13 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
             <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
           ))}
         </select>
-        <button type="button" aria-label="Next month" onClick={() => shiftBy(1)} className={navBtnCls}>›</button>
+        <button type="button" aria-label="다음 달" onClick={() => shiftBy(1)} className={navBtnCls}>›</button>
         <button
           type="button"
           onClick={goToToday}
           disabled={atReference}
           className={`${navBtnCls} px-2${atReference ? ' opacity-40' : ''}`}
-        >Today</button>
+        >오늘</button>
       </div>
       <div className="flex gap-4">
         <MonthGrid code={code} year={displayYear} month={displayMonth} value={displayValue} statusByDate={statusByDate} onPick={onPick} />

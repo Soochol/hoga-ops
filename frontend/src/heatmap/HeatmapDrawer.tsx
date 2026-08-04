@@ -31,6 +31,7 @@ import { SortCycleButton } from './SortCycleButton';
 import { HeatmapSearchInput } from './HeatmapSearchInput';
 import { priceDirClass } from '../ui/priceDir';
 import { ChevronIcon } from '../ui/ChevronIcon';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
 import { filterGroups, entryMatchesQuery } from './filterGroups';
 import { sortEntries, avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from './heat';
@@ -67,7 +68,7 @@ function AnchoredMenu({ label, children }: { label: string; children: React.Reac
   return (
     <div role="menu" aria-label={label}
       className="absolute right-0 z-30 mt-1 bg-bg-card border border-border rounded shadow-lg py-1 min-w-[150px]">
-      <div className="px-3 py-1 text-xs text-fg-dimmer">{label}</div>
+      <div className="px-3 py-1 text-xs text-fg-dim">{label}</div>
       {children}
     </div>
   );
@@ -236,7 +237,7 @@ function GroupHeader(props: {
         aria-label={`${props.label} ${props.count}`} aria-expanded={!props.collapsed}
         className="flex-1 min-w-0 text-left flex items-baseline gap-1.5">
         <span className="truncate">{props.label}</span>
-        <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
+        <span className="flex-none text-xs font-normal text-fg-dim">{props.count}</span>
       </button>
       {/* 그룹 평균 등락률(비가중, 시세 도착 종목만; 전부 결측이면 미표시). 방향색만 —
           배경 틴트는 없다(섹터 스트립과 달리 드로어는 숫자만). 정렬키(avgPct)와 동일값. */}
@@ -381,7 +382,7 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, pending, folders }: {
           </select>
         </label>
       ) : (
-        <div className="text-xs text-fg-dimmer">그룹이 없습니다 — 먼저 ＋ 버튼으로 그룹을 만들어 주세요.</div>
+        <div className="text-xs text-fg-dim">그룹이 없습니다 — 먼저 ＋ 버튼으로 그룹을 만들어 주세요.</div>
       ))}
       <div className="flex justify-end gap-2">
         <button type="button" className="text-xs px-2 py-1 text-fg-dim" onClick={onClose}>닫기</button>
@@ -537,13 +538,17 @@ export function HeatmapDrawer() {
   };
 
   // v3 (ADR-0112): 그룹 삭제는 멤버 종목까지 지운다 — 멤버가 있으면 watchlist 와 같은
-  // 문법으로 confirm(빈 그룹은 즉시 삭제). 종목 수는 반드시 **필터 전 원본**(data.entries)
+  // 문법으로 확인(빈 그룹은 즉시 삭제). 종목 수는 반드시 **필터 전 원본**(data.entries)
   // 에서 센다 — 검색 중 매칭 없는 그룹은 visibleGroups 에서 통째로 빠지고, data.entries 가
-  // 멤버십의 SSOT 이므로 여기서 세야 confirm 이 실제 삭제 수를 정확히 알린다.
+  // 멤버십의 SSOT 이므로 여기서 세야 확인 문구가 실제 삭제 수를 정확히 알린다.
+  // 그 수는 확인을 띄우는 시점에 얼려 state 로 옮긴다(모달 표시 중 폴링 갱신으로 흔들리지
+  // 않게 — WatchlistDrawer 와 동일 계약).
+  const [deleteConfirm, setDeleteConfirm] =
+    useState<{ folderId: string; name: string; memberCount: number } | null>(null);
   const deleteFolderWithConfirm = (folderId: string, name: string) => {
     const memberCount = data?.entries.filter((e) => e.folder_id === folderId).length ?? 0;
-    if (memberCount > 0 &&
-        !window.confirm(`'${name}' 그룹과 종목 ${memberCount}개가 함께 삭제됩니다. 계속할까요?`)) {
+    if (memberCount > 0) {
+      setDeleteConfirm({ folderId, name, memberCount });
       return;
     }
     deleteM.mutate(folderId);
@@ -803,6 +808,17 @@ export function HeatmapDrawer() {
           initialName={renameTarget.name} busy={renameM.isPending}
           onSubmit={async (name) => { await renameM.mutateAsync({ folderId: renameTarget.id, name }); }}
           onClose={() => setRenameTarget(null)} />
+      )}
+      {deleteConfirm && (
+        <ConfirmModal
+          message={<>
+            ‘{deleteConfirm.name}’ 그룹과 종목 <b className="font-data">{deleteConfirm.memberCount}</b>개가
+            함께 삭제됩니다
+          </>}
+          confirmLabel="삭제"
+          tone="destructive"
+          onConfirm={() => { deleteM.mutate(deleteConfirm.folderId); setDeleteConfirm(null); }}
+          onClose={() => setDeleteConfirm(null)} />
       )}
     </RailDrawer>
   );

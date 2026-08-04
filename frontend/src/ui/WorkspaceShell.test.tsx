@@ -53,7 +53,8 @@ describe('WorkspaceShell primitives', () => {
       </WorkspaceState>,
     );
     expect(screen.getByTestId('state')).toHaveClass('h-full');
-    expect(screen.getByText('비어 있음')).toHaveClass('text-fg-dimmer');
+    // 빈/로딩 상태문은 text-sm(12.9px) 본문이라 --fg-dim 이다(2026-08-04 소형 텍스트 승격).
+    expect(screen.getByText('비어 있음')).toHaveClass('text-fg-dim');
     expect(screen.getByText('여기에 놓아 학습뷰 열기')).toBeInTheDocument();
   });
 

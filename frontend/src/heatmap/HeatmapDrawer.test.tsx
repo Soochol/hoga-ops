@@ -185,24 +185,27 @@ describe('HeatmapDrawer', () => {
       expect(api.reorderHeatmapFolders).toHaveBeenCalledWith(['f2', 'f1', 'f3']));
   });
 
-  it('멤버 있는 그룹 삭제는 confirm 후 진행, 취소하면 삭제 안 함 (v3, ADR-0112)', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm');
+  // 확인은 **앱 내 ConfirmModal** 이다(window.confirm 아님) — 네이티브 다이얼로그는
+  // 테마·폰트·토큰이 증발하고 종목 수를 강조할 수도 없다.
+  it('멤버 있는 그룹 삭제는 확인 모달 후 진행, 취소하면 삭제 안 함 (v3, ADR-0112)', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '반도체 1' });
 
     // 취소 → 삭제 없음
-    confirmSpy.mockReturnValueOnce(false);
     fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('종목 1개'));
+    const dialog = await screen.findByRole('dialog', { name: '삭제' });
+    expect(dialog).toHaveTextContent('종목 1개');
+    fireEvent.click(within(dialog).getByRole('button', { name: '취소' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '삭제' })).toBeNull());
     expect(api.deleteHeatmapFolder).not.toHaveBeenCalled();
 
     // 확인 → 삭제
-    confirmSpy.mockReturnValueOnce(true);
     fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
+    const confirmDialog = await screen.findByRole('dialog', { name: '삭제' });
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: '삭제' }));
     await waitFor(() => expect(api.deleteHeatmapFolder).toHaveBeenCalledWith('f2'));
-    confirmSpy.mockRestore();
   });
 
   it('검색 시 그룹 전체를 유지하고 매칭 행만 하이라이트한다', async () => {
@@ -217,8 +220,7 @@ describe('HeatmapDrawer', () => {
     expect(screen.getByTestId('heatmap-drawer-row-000002')).not.toHaveAttribute('data-matched');
   });
 
-  it('검색 필터 중 삭제 confirm 의 종목 수는 그룹 전체 멤버 수다', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  it('검색 필터 중 삭제 확인 문구의 종목 수는 그룹 전체 멤버 수다', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
     fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '에코' } });
@@ -226,20 +228,19 @@ describe('HeatmapDrawer', () => {
       expect(screen.getByTestId('heatmap-drawer-row-000001')).toHaveAttribute('data-matched'));
     fireEvent.click(screen.getByRole('button', { name: '2차전지 그룹 메뉴' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
-    // confirm 은 data.entries(SSOT)에서 센 실제 삭제될 2개를 알린다.
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('종목 2개'));
-    confirmSpy.mockRestore();
+    // 확인 문구는 data.entries(SSOT)에서 센 실제 삭제될 2개를 알린다.
+    const dialog = await screen.findByRole('dialog', { name: '삭제' });
+    expect(dialog).toHaveTextContent('종목 2개');
+    expect(api.deleteHeatmapFolder).not.toHaveBeenCalled();
   });
 
-  it('빈 그룹 삭제는 confirm 없이 즉시', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm');
+  it('빈 그룹 삭제는 확인 없이 즉시', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '빈그룹 0' });
     fireEvent.click(screen.getByRole('button', { name: '빈그룹 그룹 메뉴' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
     await waitFor(() => expect(api.deleteHeatmapFolder).toHaveBeenCalledWith('f3'));
-    expect(confirmSpy).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
+    expect(screen.queryByRole('dialog', { name: '삭제' })).toBeNull();
   });
 
   it('header 종목 추가는 그룹 셀렉트(기본=첫 그룹)로 addToHeatmapFolder 를 부른다 (v3)', async () => {

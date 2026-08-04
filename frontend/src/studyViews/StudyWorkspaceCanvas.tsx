@@ -71,7 +71,7 @@ function StudyWindowItem({
         ctx.memo ? (
           <StudyMemoPanel {...ctx.memo} onClose={() => ctx.closeWindow(win.id)} />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dimmer">
+          <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dim">
             <span className="font-data">학습뷰 불러오는 중…</span>
           </div>
         )

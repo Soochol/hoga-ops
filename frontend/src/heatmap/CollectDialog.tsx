@@ -109,7 +109,7 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
       <div className="flex flex-col gap-4 px-4 py-4">
         {/* 기간 프리셋 */}
         <div className="flex flex-col gap-2">
-          <span className="text-[10.5px] font-semibold uppercase text-fg-dimmer">기간</span>
+          <span className="text-[10.5px] font-semibold uppercase text-fg-dim">기간</span>
           <div className="flex items-center gap-2">
             {LOOKBACK_PRESETS.map((n) => (
               <button key={n} type="button" aria-pressed={mode === 'lookback' && lookback === n}
@@ -118,7 +118,7 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
                 {n}일
               </button>
             ))}
-            <label className={`ml-1 inline-flex items-center gap-1.5 text-sm ${useVisible ? 'text-fg-dimmer' : 'text-fg-dim'}`}>
+            <label className={`ml-1 inline-flex items-center gap-1.5 text-sm ${useVisible ? 'text-fg-dim' : 'text-fg-dim'}`}>
               직접
               <input type="number" inputMode="numeric" min={1} max={120} value={lookback} disabled={useVisible}
                 onChange={(e) => {
@@ -155,7 +155,7 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
         {/* 대상 그룹(멀티선택) — 그룹이 여럿일 때만 */}
         {showFolders && (
           <div className="flex flex-col gap-2">
-            <span className="text-[10.5px] font-semibold uppercase text-fg-dimmer">대상 그룹</span>
+            <span className="text-[10.5px] font-semibold uppercase text-fg-dim">대상 그룹</span>
             <div className="flex flex-wrap gap-1.5 max-h-32 overflow-auto">
               {groups.map((g) => (
                 <button key={g.id} type="button" aria-pressed={selected.has(g.id)} onClick={() => toggleFolder(g.id)}

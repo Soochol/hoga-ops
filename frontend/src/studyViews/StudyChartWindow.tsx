@@ -133,7 +133,7 @@ function StudyChartWindowInner({
         {loading ? (
           <div
             data-testid="study-page-loading"
-            className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]"
+            className="flex h-full items-center justify-center text-sm text-fg-dim"
           >
             학습뷰 불러오는 중...
           </div>

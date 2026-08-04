@@ -16,7 +16,7 @@ export default function RatioConfig() {
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">
-        호가비 <span aria-hidden="true" className="text-fg-dimmer text-sm">ⓘ</span>
+        호가비 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
       </h3>
       <p className="text-fg-dim text-xs mb-3">
         매수·매도 호가 총잔량의 불균형(우위)을 0 기준선 위아래로 표시합니다.

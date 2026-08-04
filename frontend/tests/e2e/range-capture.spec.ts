@@ -33,7 +33,7 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
 
   // 3. Start. 드레인 프레임은 **클릭 전에** 예약한다(클릭 후면 놓칠 수 있다).
   const drained1 = queueEvents.nextDrained();
-  await page.getByRole('button', { name: /Start/i }).click();
+  await page.getByRole('button', { name: /캡처 시작/ }).click();
 
   // 4. capture_queued WebSocket event (ch:'event'): 3 rows appear.
   // **행만** 센다 — `/^queue-row-/` 는 행 내부의 `queue-row-full-capture-count`·
@@ -68,18 +68,18 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   await page.getByTestId(`calendar-cell-${days2[0]}`).click();
   await page.getByTestId(`calendar-cell-${days2[2]}`).click();
   const drained2 = queueEvents.nextDrained();
-  await page.getByRole('button', { name: /Start/i }).click();
+  await page.getByRole('button', { name: /캡처 시작/ }).click();
   await drained2;
   await expect(page.locator('text=/6 of 6 done/')).toBeVisible({ timeout: 10_000 });
 
-  // 7. Cancel All — drains any leftover queued; verify it does not crash.
-  await page.getByRole('button', { name: /Cancel All/i }).click();
+  // 7. 전체 취소 — drains any leftover queued; verify it does not crash.
+  await page.getByRole('button', { name: /전체 취소/ }).click();
   // Second click confirms (two-step destructive guard).
-  await page.getByRole('button', { name: /Click again to confirm/i }).click();
+  await page.getByRole('button', { name: /한 번 더 누르면 전체 취소/ }).click();
 
-  // 8. Dismiss Done — table empties.
-  // **취소가 반영될 때까지 기다린 뒤에 누른다.** Cancel All 은 비동기라, 진행/대기 행이
-  // terminal 로 내려앉기 전에 Dismiss 를 누르면 그 행들이 그대로 남는다(CI 에서 2건
+  // 8. 완료 지우기 — table empties.
+  // **취소가 반영될 때까지 기다린 뒤에 누른다.** 전체 취소 는 비동기라, 진행/대기 행이
+  // terminal 로 내려앉기 전에 완료 지우기 를 누르면 그 행들이 그대로 남는다(CI 에서 2건
   // 잔존). 로컬은 이미 전부 done 이라 우연히 통과했다.
   //
   // **여기는 `nextDrained()` 로 바꾸면 안 된다.** 위에서 "6 of 6 done" 을 확인한 뒤라
@@ -89,6 +89,6 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   // 아니라 UI 정착이라 부하에 민감하지도 않다 — 벽시계 바운드가 맞는 자리다.
   await expect(page.getByRole('button', { name: /^Capture row .* (capturing|queued)/ }))
     .toHaveCount(0, { timeout: 15_000 });
-  await page.getByRole('button', { name: /Dismiss Done/i }).click();
+  await page.getByRole('button', { name: /완료 지우기/ }).click();
   await expect(rows).toHaveCount(0, { timeout: 10_000 });
 });
