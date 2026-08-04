@@ -56,11 +56,11 @@ describe('Settings — 사이드바 레이아웃', () => {
     await waitFor(() => expect(screen.getByText('http://test')).toBeInTheDocument());
   });
 
-  it('데이터 소스 섹션이 라이브 데이터소스 상세(KIS API 우회 등)를 렌더한다', async () => {
+  it('데이터 소스 섹션이 라이브 데이터소스 상세(REST 우회 등)를 렌더한다', async () => {
     renderWithQuery(<Settings />);
     selectSection('source');
     // DataSourceDetail(variant="live") 콘텐츠 — 상세 동작은 DataSourceDetail.test.tsx가 커버.
-    expect(await screen.findByRole('switch', { name: 'KIS API 우회' })).toBeInTheDocument();
+    expect(await screen.findByRole('switch', { name: 'REST 우회' })).toBeInTheDocument();
     expect(screen.getByText('표시 소스')).toBeInTheDocument();
     expect(screen.getByText('캡처 저장')).toBeInTheDocument();
   });

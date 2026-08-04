@@ -44,14 +44,14 @@ function MacroGroupLabel({ children }: { children: ReactNode }) {
 export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
   const { data } = useLiveSettings();
   const patch = usePatchLiveSettings();
-  const kisRestBypassEnabled = data?.rest_bypass_enabled ?? false;
+  const restBypassEnabled = data?.rest_bypass_enabled ?? false;
 
   return (
     <>
       {/* 표시 소스(읽기): 차트에 무엇이 그려지는가 — 캔들·거래소·호가체결·스크리너. */}
       <MacroGroupLabel>표시 소스</MacroGroupLabel>
       <div>
-        {/* 캔들 소스는 'KIS API 우회' 토글이 단독 결정(4옵션 캔들 라디오 폐기).
+        {/* 캔들 소스는 'REST 우회' 토글이 단독 결정(4옵션 캔들 라디오 폐기).
             live는 우회 토글, study(복기뷰)는 디스크 온리 안내문을 이 그룹에 담아
             호가·체결 그룹과 대칭을 맞춘다. */}
         <RoleSourceGroup
@@ -59,7 +59,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
           description={
             variant === 'study'
               ? '복기뷰 전용 안내입니다.'
-              : "기본은 KIS(분봉 REST+WS · 일/주/월봉 KIS 일봉)입니다. 'KIS API 우회'를 켜면 분봉은 캡처(hogaplay), 일·주·월봉은 스크리너 일봉으로 표시합니다 — 저장된 날짜만 나오고 없는 날짜는 비워지며, 오늘 실시간(WS)은 계속 표시됩니다."
+              : "기본은 시세 서버(분봉 REST+WS · 일/주/월봉 일봉)입니다. 'REST 우회'를 켜면 분봉은 캡처(hogaplay), 일·주·월봉은 스크리너 일봉으로 표시합니다 — 저장된 날짜만 나오고 없는 날짜는 비워지며, 오늘 실시간(WS)은 계속 표시됩니다."
           }
         >
           {variant === 'study' ? (
@@ -67,11 +67,11 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
               복기뷰 캔들은 저장 데이터(캡처 분봉 + 스크리너 일봉)만 사용합니다.
             </div>
           ) : (
-            <SettingsRow label="KIS API 우회" testId="kis-rest-bypass-row">
+            <SettingsRow label="REST 우회" testId="kis-rest-bypass-row">
               <ToggleSwitch
-                label="KIS API 우회"
-                checked={kisRestBypassEnabled}
-                onClick={() => patch.mutate({ rest_bypass_enabled: !kisRestBypassEnabled })}
+                label="REST 우회"
+                checked={restBypassEnabled}
+                onClick={() => patch.mutate({ rest_bypass_enabled: !restBypassEnabled })}
               />
             </SettingsRow>
           )}

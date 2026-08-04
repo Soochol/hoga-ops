@@ -47,7 +47,7 @@ export function usePatchLiveSettings() {
     // with the authoritative server value, which corrects any server-derived
     // field the patch can't predict.
     // No cancelQueries: this settings query has no background refetch to race,
-    // and cancelling it races the mount-time auto-PATCH in KisRestUnavailableToastHost.
+    // and cancelling it races the mount-time auto-PATCH in RestUnavailableToastHost.
     onMutate: (patch): { previous: LiveSettings | undefined } => {
       const previous = qc.getQueryData<LiveSettings>(LIVE_SETTINGS_KEY);
       if (previous) qc.setQueryData<LiveSettings>(LIVE_SETTINGS_KEY, { ...previous, ...patch });

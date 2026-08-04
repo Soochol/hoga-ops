@@ -12,7 +12,7 @@ import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRec
 import { useCaptureQueueSync } from './capture/useCaptureQueue';
 import { useScreenerUpdateSync } from './screener/useScreenerUpdateSync';
 import SignalAlertToastHost from './signalAlerts/SignalAlertToastHost';
-import KisRestUnavailableToastHost from './live/KisRestUnavailableToastHost';
+import RestUnavailableToastHost from './live/RestUnavailableToastHost';
 import KiwoomFullHouseToastHost from './live/KiwoomFullHouseToastHost';
 import SupervisedTaskFailureToastHost from './live/SupervisedTaskFailureToastHost';
 import DiskHeadroomToastHost from './live/DiskHeadroomToastHost';
@@ -122,7 +122,7 @@ export default function App() {
         {/* flex-col-reverse: DOM 첫 자식이 최하단. 시그널(최신 prepend)을 먼저 둬
             새 토스트가 맨 아래에서 떠오르게 하고, KIS 경고는 스택 위쪽에 둔다. */}
         <SignalAlertToastHost />
-        <KisRestUnavailableToastHost />
+        <RestUnavailableToastHost />
         <KiwoomFullHouseToastHost />
         {/* 운영 경보는 스택 위쪽(가장 오래 남는 자리) — 배경 태스크 사망은 프로세스
             재시작 외에 복구 수단이 없어 사용자가 놓치면 안 된다. 디스크 잠식도

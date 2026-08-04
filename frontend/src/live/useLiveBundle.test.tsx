@@ -12,7 +12,7 @@ import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { LIVE_SETTINGS_KEY, type LiveSettings } from '../api/liveSettings';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
-import { useKisRestModeStore } from '../state/kisRestMode';
+import { useRestBypassModeStore } from '../state/restBypassMode';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { projectVolume } from '../chart/projectors/volume';
@@ -675,7 +675,7 @@ describe('useLiveBundle', () => {
       brokerLateEntryEnabled: false,
     });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
-    useKisRestModeStore.setState({
+    useRestBypassModeStore.setState({
       lastFailureAtMs: null,
       lastToastAtMs: null,
     });
@@ -1107,9 +1107,9 @@ describe('useLiveBundle', () => {
   });
 
   it('suppresses bypass-time candle warnings but still notifies for non-bypass transport failures', async () => {
-    const realNotifyFailure = useKisRestModeStore.getState().notifyFailure;
+    const realNotifyFailure = useRestBypassModeStore.getState().notifyFailure;
     const notifyFailureSpy = vi.fn((nowMs?: number) => realNotifyFailure(nowMs));
-    useKisRestModeStore.setState({
+    useRestBypassModeStore.setState({
       lastFailureAtMs: null,
       lastToastAtMs: null,
       notifyFailure: notifyFailureSpy,
@@ -1121,15 +1121,15 @@ describe('useLiveBundle', () => {
     });
 
     expect(notifyFailureSpy).not.toHaveBeenCalled();
-    expect(useKisRestModeStore.getState().lastFailureAtMs).toBeNull();
-    expect(useKisRestModeStore.getState().lastToastAtMs).toBeNull();
+    expect(useRestBypassModeStore.getState().lastFailureAtMs).toBeNull();
+    expect(useRestBypassModeStore.getState().lastToastAtMs).toBeNull();
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
 
     await waitFor(() => {
       expect(notifyFailureSpy).toHaveBeenCalledTimes(1);
-      expect(useKisRestModeStore.getState().lastFailureAtMs).not.toBeNull();
-      expect(useKisRestModeStore.getState().lastToastAtMs).not.toBeNull();
+      expect(useRestBypassModeStore.getState().lastFailureAtMs).not.toBeNull();
+      expect(useRestBypassModeStore.getState().lastToastAtMs).not.toBeNull();
     });
   });
 
@@ -1567,7 +1567,7 @@ describe('useLiveBundle', () => {
       { ts_ms: yesterdayOpen, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 900, vol_b: 0 },
     ]);
     // unavailable 패턴 경고 → 토스트 트리거(사용자가 우회 ON 유도).
-    expect(useKisRestModeStore.getState().lastFailureAtMs).not.toBeNull();
+    expect(useRestBypassModeStore.getState().lastFailureAtMs).not.toBeNull();
   });
 
   it('shows empty candles when the KIS minute response is empty and bypass is OFF (no disk fallback)', () => {
