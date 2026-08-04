@@ -11,6 +11,13 @@ from hoga.api.screener_store import DailyBar, append_rows, last_raw_date, read_s
 from hoga.live import kiwoom_access as _kiwoom_access, kiwoom_rest_runtime as _kiwoom_runtime
 
 
+async def _fake_page_fetch(_client):
+    """페이크가 러너에 넘기는 페이지 팩토리 — 거버너 경로만 지나게 한다."""
+    from hoga.live.kiwoom_rest import Page
+
+    return Page(rows=[], cont=False, next_key="")
+
+
 @pytest.fixture(autouse=True)
 def _reset_update_job():
     _screener_mod.reset_update_job_for_tests()
@@ -237,7 +244,11 @@ async def test_trigger_update_fetches_daily_rows_through_capacity_scheduler(tmp_
         })
         return await fetch_fn(client)
 
-    async def fake_daily_fetch_one(_client, code, frm, to):
+    async def fake_daily_fetch_one(_client, code, frm, to, *, run_page=None):
+        if run_page is not None:
+            # 진짜 경로와 같은 계약: 페이지 I/O 는 러너를 지난다(ADR-0137). 이 호출이
+            # 없으면 페이크가 거버너를 건너뛰어 유량 검증이 조용히 죽는다.
+            await run_page(_fake_page_fetch, 0)
         return [DailyBar(code, datetime(2026, 6, 27).date(), 1.0, 2.0, 1.0, 2.0, 10)]
 
     monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27, 16, 0))
@@ -253,7 +264,8 @@ async def test_trigger_update_fetches_daily_rows_through_capacity_scheduler(tmp_
     assert await _screener_mod.trigger_update(tmp_path) == 1
     assert calls == [{
         "scheduler": scheduler,
-        "key": ("screener-update", "005930", "20260627", "20260627"),
+        # 끝의 0 은 **페이지 인덱스** — 거버너 단위가 walk 전체가 아니라 페이지다.
+        "key": ("screener-update", "005930", "20260627", "20260627", 0),
         "api_id": "ka10081",
         "priority": "background",
     }]
@@ -368,7 +380,11 @@ async def test_progress_events_published_per_code_with_terminal_finished(
                                      fetch_fn, client):
         return await fetch_fn(client)
 
-    async def fake_daily_fetch_one(_client, code, frm, to):
+    async def fake_daily_fetch_one(_client, code, frm, to, *, run_page=None):
+        if run_page is not None:
+            # 진짜 경로와 같은 계약: 페이지 I/O 는 러너를 지난다(ADR-0137). 이 호출이
+            # 없으면 페이크가 거버너를 건너뛰어 유량 검증이 조용히 죽는다.
+            await run_page(_fake_page_fetch, 0)
         return [DailyBar(code, datetime(2026, 6, 27).date(), 1.0, 2.0, 1.0, 2.0, 10)]
 
     async def fake_run_update(sdir, *, codes, fetch_one, trading_days, now_ms):

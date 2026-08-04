@@ -39,6 +39,18 @@ def _investor_points(from_yyyymmdd: str, to_yyyymmdd: str) -> list[InvestorNetPo
     return out
 
 
+async def _fake_page_fetch(_client):
+    """페이크 어댑터가 러너에 넘기는 페이지 팩토리.
+
+    러너는 프로덕션 코드(`run_with_capacity`)라 반드시 실행되어야 하지만, 페이크
+    클라이언트에는 `call` 이 없으므로 진짜 페이지 fetch 를 넣을 수 없다. 빈 페이지를
+    돌려주는 팩토리를 넣어 **거버너 경로만** 실제로 지나게 한다.
+    """
+    from hoga.live.kiwoom_rest import Page
+
+    return Page(rows=[], cont=False, next_key="")
+
+
 class _FakeKis:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str]] = []
@@ -49,8 +61,14 @@ class _FakeKis:
         code: str,
         from_yyyymmdd: str,
         to_yyyymmdd: str,
+        *,
+        run_page=None,
     ) -> InvestorNetFetchResult:
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+        if run_page is not None:
+            # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
+            # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
+            await run_page(_fake_page_fetch, 0)
         return InvestorNetFetchResult(
             points=_investor_points(from_yyyymmdd, to_yyyymmdd),
             violations=[],
@@ -120,7 +138,9 @@ async def test_live_investor_net_backfill_schedules_background_request(tmp_path,
     assert kis.calls == [("005930", "20240101", "20240105")]
     assert scheduler.calls == [
         {
-            "key": ("live-investor-net", "005930", "20240101", "20240105"),
+            # key 끝의 0 은 **페이지 인덱스**다 — 거버너 단위가 walk 전체가 아니라
+            # 페이지라는 뜻이고, 그것이 유량 페이싱의 전제다(ADR-0137).
+            "key": ("live-investor-net", "005930", "20240101", "20240105", 0),
             "api_id": "ka10059",
             "priority": "background",
         }
@@ -141,8 +161,14 @@ class _GatedKis(_FakeKis):
         code: str,
         from_yyyymmdd: str,
         to_yyyymmdd: str,
+        *,
+        run_page=None,
     ) -> InvestorNetFetchResult:
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+        if run_page is not None:
+            # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
+            # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
+            await run_page(_fake_page_fetch, 0)
         await self.gate.wait()
         return InvestorNetFetchResult(
             points=_investor_points(from_yyyymmdd, to_yyyymmdd),

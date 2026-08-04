@@ -1671,15 +1671,25 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
 
             async def fetch_batch(from_s: str, to_s: str):
                 async def direct_fetch(inner_from_s: str, inner_to_s: str):
-                    return await kiwoom_access.run_with_capacity(
-                        daily_scheduler,
-                        key=("index-daily", index.id, timeframe, inner_from_s, inner_to_s),
-                        api_id=kiwoom_index_rest.PERIOD_TO_API_ID[timeframe],
-                        priority="user_visible",
-                        fetch_fn=lambda c: kiwoom_index_rest.fetch_index_daily_candles(
-                            c, index, inner_from_s, inner_to_s, period=timeframe,
-                        ),
-                        client=daily_client,
+                    def _run_page(fetch_fn, page_idx: int):
+                        """페이지 1장 = 거버너 submit 1건.
+
+                        **walk 전체를 감싸던 자리다.** 감싸는 위치가 walk 밖이면
+                        커서 페이지 N장이 페이싱을 못 받는다(ADR-0137).
+                        """
+                        return kiwoom_access.run_with_capacity(
+                            daily_scheduler,
+                            key=("index-daily", index.id, timeframe,
+                                 inner_from_s, inner_to_s, page_idx),
+                            api_id=kiwoom_index_rest.PERIOD_TO_API_ID[timeframe],
+                            priority="user_visible",
+                            fetch_fn=fetch_fn,
+                            client=daily_client,
+                        )
+
+                    return await kiwoom_index_rest.fetch_index_daily_candles(
+                        daily_client, index, inner_from_s, inner_to_s,
+                        period=timeframe, run_page=_run_page,
                     )
 
                 return await fetch_index_daily_candles_windowed(
