@@ -282,7 +282,7 @@ export function StudyViewsDrawer() {
         onError: (error) => {
           renameCommittingRef.current = false;
           setRenameState((current) => current?.id === row.id
-            ? { ...current, error: error instanceof Error ? error.message : '이름 변경에 실패했습니다.' }
+            ? { ...current, error: error instanceof Error ? error.message : '이름 변경에 실패했습니다' }
             : current);
         },
       },
@@ -304,7 +304,7 @@ export function StudyViewsDrawer() {
         onError: (error) => {
           memoCommittingRef.current = false;
           setMemoState((current) => current?.id === row.id
-            ? { ...current, error: error instanceof Error ? error.message : '메모 저장에 실패했습니다.' }
+            ? { ...current, error: error instanceof Error ? error.message : '메모 저장에 실패했습니다' }
             : current);
         },
       },
@@ -577,15 +577,15 @@ export function StudyViewsDrawer() {
         {isLoading && <RailState>불러오는 중</RailState>}
         {isError && (
           <RailState tone="error">
-            <p>저장뷰를 불러오지 못했습니다.</p>
+            <p>저장뷰를 불러오지 못했습니다</p>
             <button type="button" onClick={() => refetch()} className="mt-2 underline">다시 시도</button>
           </RailState>
         )}
         {!isLoading && !isError && (data?.saves.length ?? 0) === 0 && (
-          <RailState>저장된 뷰가 없습니다.</RailState>
+          <RailState>저장된 뷰가 없습니다</RailState>
         )}
         {!isLoading && !isError && (data?.saves.length ?? 0) > 0 && visibleGroups.length === 0 && (
-          <RailState>검색 결과가 없습니다.</RailState>
+          <RailState>검색 결과가 없습니다</RailState>
         )}
         <RailDrawerBody>
           <DndContext

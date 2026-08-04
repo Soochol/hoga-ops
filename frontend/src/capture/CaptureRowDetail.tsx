@@ -142,7 +142,7 @@ function abortReasonHint(reason: string): string {
   // Hogaplay's response froze mid-stream; the captured parquet covers only
   // the data up to the freeze. Operator should retry the date.
   if (reason === 'stagnation_abort') {
-    return 'hogaplay 응답 동결로 캡처가 중단되었습니다. 재시도하세요.';
+    return 'hogaplay 응답 동결로 캡처가 중단되었습니다. 재시도하세요';
   }
   return reason;
 }

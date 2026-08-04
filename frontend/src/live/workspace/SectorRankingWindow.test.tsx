@@ -99,7 +99,7 @@ describe('SectorRankingWindow', () => {
 
     // basis 미확정 → date=null, enabled=false.
     expect(useIndexSectorRankings).toHaveBeenCalledWith(null, false, expect.any(String));
-    expect(screen.getByText('섹터 랭킹을 불러오는 중입니다.')).toBeInTheDocument();
+    expect(screen.getByText('섹터 랭킹을 불러오는 중입니다')).toBeInTheDocument();
   });
 
   it('종목 클릭은 활성 그룹 종목을 교체한다(activateLiveCode)', async () => {

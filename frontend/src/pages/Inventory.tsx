@@ -73,7 +73,7 @@ export default function Inventory() {
     return <InventoryLoadingSkeleton />;
   }
   if (rows.length === 0) {
-    return <InventoryStateShell>캡처된 데이터가 없습니다.</InventoryStateShell>;
+    return <InventoryStateShell>캡처된 데이터가 없습니다</InventoryStateShell>;
   }
 
   return (

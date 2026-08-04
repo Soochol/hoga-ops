@@ -228,14 +228,14 @@ function GapPanel({
   if (data.sparse) {
     return (
       <div className="text-xs text-fg-dim font-data" data-testid="gap-panel-sparse">
-        세션 내 데이터가 너무 적어 결손 구간을 특정할 수 없습니다.
+        세션 내 데이터가 너무 적어 결손 구간을 특정할 수 없습니다
       </div>
     );
   }
   if (data.gap_ranges.length === 0) {
     return (
       <div className="text-xs text-fg-dim font-data" data-testid="gap-panel-empty">
-        연속거래 구간에서 감지된 결손이 없습니다.
+        연속거래 구간에서 감지된 결손이 없습니다
       </div>
     );
   }
@@ -258,8 +258,8 @@ function GapPanel({
         ))}
       </ul>
       <div className="text-xs text-fg-dim leading-snug">
-        수집은 끝까지 완료됐으나 원본 아카이브에 이 구간 데이터가 없습니다.
-        재캡처해도 복구되지 않을 수 있습니다.
+        수집은 끝까지 완료됐으나 원본 아카이브에 이 구간 데이터가 없습니다
+        재캡처해도 복구되지 않을 수 있습니다
       </div>
       {confirmed && (
         <div>

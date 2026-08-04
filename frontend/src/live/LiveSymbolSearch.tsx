@@ -158,7 +158,7 @@ export function LiveSymbolSearch() {
           className="mt-5 max-h-[50vh] overflow-y-auto"
         >
           {items.length === 0 ? (
-            <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다.</div>
+            <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다</div>
           ) : showingRecent ? (
             <>
               <div className="mb-3 px-1 text-sm font-semibold text-fg">

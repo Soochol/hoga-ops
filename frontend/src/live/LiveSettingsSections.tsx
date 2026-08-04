@@ -69,7 +69,7 @@ function DayBoundaryStyleRow() {
   return (
     <SettingsRow
       label="날짜 구분선 스타일"
-      description="거래일 경계를 표시하는 세로 점선의 색상과 두께입니다."
+      description="거래일 경계를 표시하는 세로 점선의 색상과 두께입니다"
     >
       <MAStylePicker
         color={color}
@@ -92,7 +92,7 @@ function TradeHighlightColorRow() {
     <div className={`ml-4 ${enabled ? '' : 'pointer-events-none opacity-40'}`}>
       <SettingsRow
         label="강조 배경색"
-        description="대량 체결의 체결량 칸에 칠할 배경색입니다."
+        description="대량 체결의 체결량 칸에 칠할 배경색입니다"
       >
         <ColorSwatchPicker
           label="대량 체결 강조 배경색"
@@ -116,7 +116,7 @@ function ViLimitPriceLineStyleRow() {
   return (
     <SettingsRow
       label="VI/상하한가 선 스타일"
-      description="VI 가격대와 상한가·하한가 가격선을 표시하는 색상과 두께입니다."
+      description="VI 가격대와 상한가·하한가 가격선을 표시하는 색상과 두께입니다"
     >
       <MAStylePicker
         color={color}
@@ -144,7 +144,7 @@ function StudyViewsDetail() {
     <>
       <div className="mb-1 text-sm text-fg-dim">저장뷰 사이드 메뉴</div>
       <div className="mb-md text-xs text-fg-dimmer">
-        오른쪽 저장뷰 패널에서 저장뷰를 열 때 적용할 기본 분봉입니다.
+        오른쪽 저장뷰 패널에서 저장뷰를 열 때 적용할 기본 분봉입니다
         「설정된 분봉」은 복기뷰 차트에서 마지막으로 사용한 분봉으로 엽니다.
       </div>
       <div className="flex flex-wrap gap-2">

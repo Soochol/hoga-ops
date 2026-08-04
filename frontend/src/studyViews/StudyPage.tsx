@@ -48,7 +48,7 @@ function StudyDropOverlay() {
 
 function StudySearchHeader({
   label = '학습뷰',
-  description = '저장된 복기뷰를 선택하세요.',
+  description = '저장된 복기뷰를 선택하세요',
 }: {
   label?: string;
   description?: string;
@@ -279,7 +279,7 @@ export function StudyPage() {
     mutations.updateMetadata.mutate(
       { id: activeViewId, body: { memo } },
       {
-        onError: (error) => setMemoError(error instanceof Error ? error.message : '메모 저장에 실패했습니다.'),
+        onError: (error) => setMemoError(error instanceof Error ? error.message : '메모 저장에 실패했습니다'),
       },
     );
   }, [activeViewId, mutations.updateMetadata, selectedSave?.memo]);
@@ -476,7 +476,7 @@ export function StudyPage() {
             dropTargetRef={studyDropTargetRef}
             showDropOverlay={draggingEntry && overStudy}
           >
-            학습뷰를 찾을 수 없습니다.
+            학습뷰를 찾을 수 없습니다
           </StudyStateWorkspace>
         )}
       >

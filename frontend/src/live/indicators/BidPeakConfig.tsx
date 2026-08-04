@@ -38,7 +38,7 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
           <p className="text-fg-dim text-xs mb-3">
             차트에 보이는 거래일마다, 그 날 매수 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼
             수평선을 그립니다. 체결된 벽과 미체결된 벽을 각각 표시합니다.
-            분봉 차트에서만 표시됩니다.
+            분봉 차트에서만 표시됩니다
           </p>
         </>
       )}

@@ -157,7 +157,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
           {isEmpty ? (
             // F3: empty state — tells the user the input is processed but matched nothing.
             <div className="py-md px-sm font-normal text-sm text-fg-dim">
-              검색 결과가 없습니다. 종목명 또는 6자리 코드를 확인하세요.
+              검색 결과가 없습니다. 종목명 또는 6자리 코드를 확인하세요
               {isStaleByAge && fetchedAtMs !== null && (
                 <div className="mt-2 text-xs text-fg-dimmer">
                   Symbol Master가 {formatRelativeShort(fetchedAtMs)} 업데이트되었습니다 —

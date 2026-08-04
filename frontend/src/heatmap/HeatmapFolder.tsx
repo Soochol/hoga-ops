@@ -133,7 +133,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
                   // 안 바뀐 이유를 알 길이 없다(StudyViewsDrawer.commitRename 과 동일 계약).
                   setRenaming({
                     value,
-                    error: e instanceof Error ? e.message : '이름 변경에 실패했습니다.',
+                    error: e instanceof Error ? e.message : '이름 변경에 실패했습니다',
                   });
                 }
               }}

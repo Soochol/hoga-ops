@@ -208,7 +208,7 @@ export function PutCallSeriesChart({ points }: { points: PutCallSeriesPoint[] })
     return (
       <div className="text-xs text-fg-dimmer">
         추이 축적 중 — 전수 수집(5분)마다 한 점씩 쌓입니다. 서버를 재시작하면 그
-        시점부터 다시 쌓입니다.
+        시점부터 다시 쌓입니다
       </div>
     );
   }

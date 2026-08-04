@@ -103,7 +103,7 @@ export function CaptureQueue() {
       <div className="flex min-h-0 h-full flex-col gap-2">
         {notOwnedBanner}
         <EmptyState testId="queue-empty" title="큐가 비어 있습니다">
-          왼쪽에서 종목과 날짜 범위를 선택하고 캡처 시작을 누르면 캡처가 시작됩니다.
+          왼쪽에서 종목과 날짜 범위를 선택하고 캡처 시작을 누르면 캡처가 시작됩니다
         </EmptyState>
       </div>
     );

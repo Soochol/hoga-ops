@@ -203,7 +203,7 @@ function DataCollectionSection() {
         />
       </SettingsRow>
       {isError && (
-        <p className="text-xs text-error">라이브 설정을 불러오지 못했습니다. 백엔드 연결을 확인하세요.</p>
+        <p className="text-xs text-error">라이브 설정을 불러오지 못했습니다. 백엔드 연결을 확인하세요</p>
       )}
     </section>
   );
