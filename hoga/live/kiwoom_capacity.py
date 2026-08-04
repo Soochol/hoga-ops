@@ -27,7 +27,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import Awaitable, Callable, Hashable
+from collections.abc import Awaitable, Callable, Hashable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeVar
 
@@ -58,7 +58,7 @@ class _Request:
     key: Hashable = field(compare=False)
     api_id: str = field(compare=False, default="")
     priority: Priority = field(compare=False, default="background")
-    call: Callable[[], Awaitable[Any]] = field(compare=False, default=None)  # type: ignore[assignment]
+    call: Callable[[Any], Awaitable[Any]] = field(compare=False, default=None)  # type: ignore[assignment]
     future: asyncio.Future = field(compare=False, default=None)  # type: ignore[assignment]
     deferred: bool = field(compare=False, default=False)
     """양보는 **요청당 1회**. 무제한이면 user_visible 이 오래 막힐 때 background 가
@@ -66,7 +66,7 @@ class _Request:
 
 
 class _TokenBucket:
-    """TR 하나의 발사 게이트. 초당 `rate` 건."""
+    """(앱키, TR) 하나의 발사 게이트. 초당 `rate` 건."""
 
     def __init__(self, rate: float) -> None:
         self._interval = 1.0 / rate
@@ -80,8 +80,13 @@ class _TokenBucket:
             now = time.monotonic()
         self._next_at = max(now, self._next_at) + self._interval
 
+    def available_at(self) -> float:
+        """다음 발사가 가능한 시각(monotonic). 계정 선택의 정렬 키다 — 429 로
+        물린 계정은 `_next_at` 이 뒤로 밀려 자연히 후순위가 된다."""
+        return max(self._next_at, time.monotonic())
+
     def penalize(self, seconds: float) -> None:
-        """429 를 만났을 때 그 TR 만 잠시 물린다."""
+        """429 를 만났을 때 그 (앱키, TR) 만 잠시 물린다."""
         self._next_at = max(self._next_at, time.monotonic() + seconds)
 
 
@@ -102,7 +107,12 @@ class KiwoomCapacityScheduler:
     ) -> None:
         self._rate = rate_per_sec
         self._tr_rates = dict(tr_rates or {})
-        self._buckets: dict[str, _TokenBucket] = {}
+        # 버킷 키가 (앱키, TR) 인 이유는 ADR-0138 실측이다: 유량은 TR별인 **동시에**
+        # 앱키별이다. 앱키0 을 429 까지 밀어붙인 직후 앱키1 이 대기 없이 통과했다.
+        self._buckets: dict[tuple[int, str], _TokenBucket] = {}
+        # 계정 풀. 비어 있으면 계정 0 하나로 동작하고 클라이언트는 호출자가 준 것을
+        # 쓴다 — 자격증명이 없는 환경·테스트에서 이 경로가 정상이다(ADR-0134).
+        self._clients: tuple[Any, ...] = ()
         self._queue: asyncio.PriorityQueue[_Request] = asyncio.PriorityQueue()
         self._inflight: dict[Hashable, asyncio.Future] = {}
         self._queued_priority: dict[Hashable, Priority] = {}
@@ -114,8 +124,24 @@ class KiwoomCapacityScheduler:
         self._max_queued = max_queued
         self._seq = 0
         self.background_deferred_due_to_user_visible = 0
+        self._calls_by_account: dict[int, int] = {}
 
     # --- 공개 API -----------------------------------------------------------
+
+    def set_clients(self, clients: Sequence[Any]) -> None:
+        """계정 풀을 등록한다. 유량이 앱키별이라 풀 크기가 곧 처리량 배수다
+        (실측: 1키 4.17 → 2키 8.14 → 4키 18.4 콜/초, ADR-0138).
+
+        멱등이고, 같은 풀을 다시 넣어도 버킷 상태를 잃지 않는다 — 풀이 줄어들 때만
+        사라진 계정의 버킷을 버린다."""
+        self._clients = tuple(clients)
+        if self._clients:
+            live = set(self._accounts)
+            self._buckets = {k: v for k, v in self._buckets.items() if k[0] in live}
+
+    @property
+    def _accounts(self) -> tuple[int, ...]:
+        return tuple(range(len(self._clients))) if self._clients else (0,)
 
     async def submit(
         self,
@@ -123,7 +149,7 @@ class KiwoomCapacityScheduler:
         key: Hashable,
         api_id: str,
         priority: Priority,
-        call: Callable[[], Awaitable[_T]],
+        call: Callable[[Any], Awaitable[_T]],
     ) -> _T:
         """요청 하나. 같은 `key` 가 떠 있으면 **새 호출 없이** 그 결과에 조인한다."""
         self._ensure_started()
@@ -152,6 +178,10 @@ class KiwoomCapacityScheduler:
             "inflight": len(self._inflight),
             "workers": len(self._workers),
             "tr_buckets": len(self._buckets),
+            "accounts": len(self._accounts),
+            # 계정별 호출 수. 쏠림이 보이지 않으면 앱키를 늘려도 배수가 안 나는 것을
+            # 알아챌 수 없다(ADR-0138).
+            "calls_by_account": dict(sorted(self._calls_by_account.items())),
             "background_deferred_due_to_user_visible": (
                 self.background_deferred_due_to_user_visible
             ),
@@ -169,7 +199,7 @@ class KiwoomCapacityScheduler:
 
     def _make(
         self, key: Hashable, api_id: str, priority: Priority,
-        call: Callable[[], Awaitable[Any]], future: asyncio.Future,
+        call: Callable[[Any], Awaitable[Any]], future: asyncio.Future,
     ) -> _Request:
         self._seq += 1
         return _Request(
@@ -177,12 +207,26 @@ class KiwoomCapacityScheduler:
             api_id=api_id, priority=priority, call=call, future=future,
         )
 
-    def _bucket(self, api_id: str) -> _TokenBucket:
-        b = self._buckets.get(api_id)
+    def _bucket(self, account_id: int, api_id: str) -> _TokenBucket:
+        b = self._buckets.get((account_id, api_id))
         if b is None:
             b = _TokenBucket(self._tr_rates.get(api_id, self._rate) * _HEADROOM)
-            self._buckets[api_id] = b
+            self._buckets[(account_id, api_id)] = b
         return b
+
+    def _pick_account(self, api_id: str) -> int:
+        """가장 빨리 열리는 계정. 라운드로빈이 아닌 이유는 **failover 가 공짜로
+        따라오기** 때문이다 — 429 를 맞아 `penalize` 된 계정은 `available_at()` 이
+        뒤로 밀려 자동으로 후순위가 되고, 회복되면 스스로 돌아온다. KIS 시절의
+        health check·failover 상태 기계를 되살릴 필요가 없다."""
+        accounts = self._accounts
+        if len(accounts) == 1:
+            return accounts[0]
+        return min(accounts, key=lambda a: self._bucket(a, api_id).available_at())
+
+    def _client_for(self, account_id: int) -> Any | None:
+        """풀이 비었으면 None — 호출자가 넘긴 클라이언트를 쓰라는 신호다."""
+        return self._clients[account_id] if account_id < len(self._clients) else None
 
     def _should_defer(self, req: _Request) -> bool:
         """background 를 뒤로 미룰지. 미룰 때 큐에 되넣고 True 를 돌려준다."""
@@ -240,20 +284,22 @@ class KiwoomCapacityScheduler:
             # 여기서 걸리는 경우는 드물다.
             if self._should_defer(req):
                 continue
+            account = self._pick_account(req.api_id)
             self._started.add(req.key)
             try:
-                await self._bucket(req.api_id).acquire()
+                await self._bucket(account, req.api_id).acquire()
                 # 기계 ④ 양보 (2차) — **여기가 실효 지점이다.** background 가 버킷에서
-                # 자는 동안 같은 TR 의 user_visible 이 도착할 수 있다. 버킷은 TR별이라
+                # 자는 동안 같은 TR 의 user_visible 이 도착할 수 있다. 버킷은 (앱키, TR)별이라
                 # 그 대기가 곧 "인터랙티브 팬이 백필 뒤에 줄 서는" 상황이다.
                 if self._should_defer(req):
                     self._started.discard(req.key)
                     continue
-                result = await req.call()
+                self._calls_by_account[account] = self._calls_by_account.get(account, 0) + 1
+                result = await req.call(self._client_for(account))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 — future 로 전달, 워커는 살아남는다
-                self._penalize_if_rate_limited(req.api_id, exc)
+                self._penalize_if_rate_limited(account, req.api_id, exc)
                 if not req.future.done():
                     req.future.set_exception(exc)
             else:
@@ -262,16 +308,23 @@ class KiwoomCapacityScheduler:
             finally:
                 self._cleanup(req)
 
-    def _penalize_if_rate_limited(self, api_id: str, exc: BaseException) -> None:
+    def _penalize_if_rate_limited(
+        self, account_id: int, api_id: str, exc: BaseException
+    ) -> None:
         from hoga.live.kiwoom_errors import KiwoomRateLimitError  # noqa: PLC0415 — 순환 절단
 
         if isinstance(exc, KiwoomRateLimitError):
-            # 벤더가 상한을 알려줬으면 버킷을 그 값으로 교정한다.
+            # 벤더가 상한을 알려줬으면 버킷을 그 값으로 교정한다. 유량은 앱키별이므로
+            # **그 계정의 버킷만** 버린다 — 전 계정을 버리면 멀쩡한 앱키의 페이싱
+            # 상태까지 잃는다(ADR-0138).
             if exc.quota and exc.quota > 0:
                 self._tr_rates[api_id] = float(exc.quota)
-                self._buckets.pop(api_id, None)
-            self._bucket(api_id).penalize(1.0)
-            log.warning("kiwoom capacity: %s rate-limited (quota=%s)", api_id, exc.quota)
+                self._buckets.pop((account_id, api_id), None)
+            self._bucket(account_id, api_id).penalize(1.0)
+            log.warning(
+                "kiwoom capacity: %s rate-limited on account %d (quota=%s)",
+                api_id, account_id, exc.quota,
+            )
 
     def _cleanup(self, req: _Request) -> None:
         self._started.discard(req.key)

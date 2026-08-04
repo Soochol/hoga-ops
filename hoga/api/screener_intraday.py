@@ -69,6 +69,7 @@ async def _fetch_quotes_in_chunks(
     unique_codes: tuple[str, ...],
     *,
     today: str,
+    data_dir: Path,
 ) -> tuple[list[Quote], list[LiveErrorPolicy], int]:
     """`ka10095` 를 **청크마다 별도 요청으로** 제출하고 성공분·실패분을 함께 돌려준다.
 
@@ -82,7 +83,8 @@ async def _fetch_quotes_in_chunks(
     바꾸면 그 양보 기계가 청크 사이 왕복시간만큼 헛돈다.
     """
     chunks = kiwoom_multi_quote.chunk_codes(list(unique_codes))
-    scheduler = kiwoom_rest_runtime.ensure_scheduler()
+    # data_dir 을 넘겨야 거버너가 계정 풀을 갱신한다 — 풀 크기가 곧 처리량 배수다(ADR-0138).
+    scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
     results = await asyncio.gather(
         *(
             kiwoom_access.run_with_capacity(
@@ -160,7 +162,7 @@ async def build_intraday_overlay(
             return _empty(["intraday_credentials_missing"])
 
         quotes, failures, chunk_count = await _fetch_quotes_in_chunks(
-            client, unique_codes, today=today
+            client, unique_codes, today=today, data_dir=data_dir
         )
         if failures and not quotes:
             worst = failures[0]

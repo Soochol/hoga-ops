@@ -254,7 +254,7 @@ async def run_backfill(data_dir: Path) -> dict:
     client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
     if client is None:
         raise RuntimeError("키움 자격증명 없음(KIWOOM_APP_KEY/SECRET) — 백필 불가")
-    scheduler = kiwoom_rest_runtime.ensure_scheduler()
+    scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
 
     async def _daily(code: str, frm: str, to: str, *, adjust: bool, tag: str):
         """**`adjust` 극성은 어댑터가 뒤집는다.** 키움 `upd_stkpc_tp` 는 KIS 의
