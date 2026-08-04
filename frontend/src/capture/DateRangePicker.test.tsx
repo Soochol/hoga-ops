@@ -133,7 +133,7 @@ describe('DateRangePicker', () => {
       wrapper: W(qc),
     });
     await new Promise((r) => setTimeout(r, 30));
-    const today = screen.getByRole('button', { name: 'Today' }) as HTMLButtonElement;
+    const today = screen.getByRole('button', { name: '오늘' }) as HTMLButtonElement;
     expect(today.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('Next month'));
     fireEvent.click(screen.getByLabelText('Next month'));

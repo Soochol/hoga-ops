@@ -92,7 +92,7 @@ export function StockDateGroupDetail({ group }: Props) {
         </h2>
         <div className="flex flex-col items-end gap-1 min-w-0">
           <span className="text-xs text-fg-dim font-data tabular-nums">
-            {group.dates.length} dates · {fmtVolume(totalVolume)} vol · {fmtSize(group.totalSizeBytes)}
+            {group.dates.length}일치 · 거래량 {fmtVolume(totalVolume)} · {fmtSize(group.totalSizeBytes)}
           </span>
           <RecaptureActionBar
             recapturableCount={recapturableCount}
@@ -106,14 +106,16 @@ export function StockDateGroupDetail({ group }: Props) {
         <table className="w-full border-collapse font-data text-sm tabular-nums">
           <thead className="bg-bg-subtle sticky top-0">
             <tr>
-              <th className="px-2 py-2 border-b w-8" aria-label="re-capture" />
-              <SortableTh column="state"    sort={sort} onSort={onSort}>State</SortableTh>
+              {/* 헤더는 한국어(Copy tone — 사용자 문구), OHLC 만 도메인 식별자로 영어 유지.
+                  /screener 결과 표(코드·종목명·시장…)와 같은 규칙. */}
+              <th className="px-2 py-2 border-b w-8" aria-label="재캡처" />
+              <SortableTh column="state"    sort={sort} onSort={onSort}>상태</SortableTh>
               <SortableTh column="failStreak" sort={sort} onSort={onSort} title="연속 실패 횟수 — 5회 시 차단">재시도</SortableTh>
-              <SortableTh column="date"     sort={sort} onSort={onSort}>Date</SortableTh>
-              <SortableTh column="captured" sort={sort} onSort={onSort}>Captured</SortableTh>
-              <SortableTh column="volume"   sort={sort} onSort={onSort} right>Volume</SortableTh>
-              <SortableTh column="pages"    sort={sort} onSort={onSort} right>Pages</SortableTh>
-              <SortableTh column="size"     sort={sort} onSort={onSort} right>Size</SortableTh>
+              <SortableTh column="date"     sort={sort} onSort={onSort}>날짜</SortableTh>
+              <SortableTh column="captured" sort={sort} onSort={onSort}>수집 시각</SortableTh>
+              <SortableTh column="volume"   sort={sort} onSort={onSort} right>거래량</SortableTh>
+              <SortableTh column="pages"    sort={sort} onSort={onSort} right>페이지</SortableTh>
+              <SortableTh column="size"     sort={sort} onSort={onSort} right>크기</SortableTh>
               <SortableTh column="ohlc"     sort={sort} onSort={onSort} right title="종가 기준 정렬">OHLC</SortableTh>
             </tr>
           </thead>
@@ -322,7 +324,7 @@ function RowRecaptureCell({
   return (
     <button
       type="button"
-      aria-label={isInFlight ? 'Re-capturing…' : 'Re-capture this Stock-Date'}
+      aria-label={isInFlight ? '재캡처 중…' : '이 날짜 재캡처'}
       disabled={isInFlight}
       onClick={onClick}
       className={[

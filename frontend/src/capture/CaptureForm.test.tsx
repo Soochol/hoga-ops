@@ -46,7 +46,7 @@ describe('CaptureForm', () => {
     const { qc } = setup();
     render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
-    const btn = screen.getByRole('button', { name: /Start/i });
+    const btn = screen.getByRole('button', { name: /캡처 시작/ });
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -57,7 +57,7 @@ describe('CaptureForm', () => {
     fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
     await new Promise((r) => setTimeout(r, 30));
     fireEvent.click(screen.getByText('삼성전자'));
-    const btn = screen.getByRole('button', { name: /Start/i });
+    const btn = screen.getByRole('button', { name: /캡처 시작/ });
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -70,7 +70,7 @@ describe('CaptureForm', () => {
     fireEvent.click(screen.getByText('삼성전자'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
-    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    fireEvent.click(screen.getByRole('button', { name: /캡처 시작/ }));
     await new Promise((r) => setTimeout(r, 30));
     const itemsCall = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/captures/items'));
     expect(itemsCall).toBeDefined();
@@ -89,7 +89,7 @@ describe('CaptureForm', () => {
     fireEvent.click(screen.getByText('삼성전자'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
-    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    fireEvent.click(screen.getByRole('button', { name: /캡처 시작/ }));
     await new Promise((r) => setTimeout(r, 60));
     // Symbol stays selected so the user can queue another range for the same stock.
     // SymbolSearch puts "name code" in the input when a SymbolHit is selected
@@ -97,7 +97,7 @@ describe('CaptureForm', () => {
     expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
     // Date range is reset → valid is false → Start re-disables (no accidental
     // double-submit of the same range, and the picker shows a fresh slate).
-    expect(screen.getByRole('button', { name: /Start/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /캡처 시작/ })).toBeDisabled();
     expect(screen.getByTestId('calendar-cell-20260518').getAttribute('style')).not.toContain('var(--accent)');
     expect(screen.getByTestId('calendar-cell-20260520').getAttribute('style')).not.toContain('var(--accent)');
   });
@@ -140,7 +140,7 @@ describe('CaptureForm', () => {
     fireEvent.click(screen.getByText('삼성전자'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
-    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    fireEvent.click(screen.getByRole('button', { name: /캡처 시작/ }));
     await new Promise((r) => setTimeout(r, 60));
     expect(screen.getByText(/pre-18 KST/)).toBeTruthy();
   });
@@ -164,7 +164,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
     fireEvent.click(screen.getByText('삼성전자'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
-    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    fireEvent.click(screen.getByRole('button', { name: /캡처 시작/ }));
     await new Promise((r) => setTimeout(r, 60));
     expect(screen.getByText(/범위 캡처 시작 실패 — KIS 거래일 조회 일시 오류/)).toBeTruthy();
   });
@@ -186,7 +186,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
     fireEvent.click(screen.getByText('삼성전자'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
-    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    fireEvent.click(screen.getByRole('button', { name: /캡처 시작/ }));
     await new Promise((r) => setTimeout(r, 60));
     // Unknown code falls back to the server message, not an UpstreamCode hint
     expect(screen.getByText(/KRX is down/)).toBeTruthy();
@@ -214,7 +214,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
     fireEvent.click(screen.getByText('삼성전자'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
-    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    fireEvent.click(screen.getByRole('button', { name: /캡처 시작/ }));
     await new Promise((r) => setTimeout(r, 60));
     expect(screen.getByTestId('enqueue-warning').textContent).toContain('평일 기준');
   });
@@ -247,7 +247,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
     fireEvent.click(screen.getByText('삼성전자'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
-    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    fireEvent.click(screen.getByRole('button', { name: /캡처 시작/ }));
     await new Promise((r) => setTimeout(r, 60));
     expect(screen.getByText(/5회 연속 실패 — 인벤토리에서 잠금 해제 필요/)).toBeTruthy();
     expect(screen.getByText(/005930\/20260518/)).toBeTruthy();
@@ -279,7 +279,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
     fireEvent.click(screen.getByText('삼성전자'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
-    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    fireEvent.click(screen.getByRole('button', { name: /캡처 시작/ }));
     await new Promise((r) => setTimeout(r, 60));
     expect(screen.getByText(/5회 연속 실패/)).toBeTruthy();
   });

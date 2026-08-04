@@ -223,7 +223,7 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
           onClick={goToToday}
           disabled={atReference}
           className={`${navBtnCls} px-2${atReference ? ' opacity-40' : ''}`}
-        >Today</button>
+        >오늘</button>
       </div>
       <div className="flex gap-4">
         <MonthGrid code={code} year={displayYear} month={displayMonth} value={displayValue} statusByDate={statusByDate} onPick={onPick} />
