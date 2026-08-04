@@ -71,9 +71,21 @@ class UpstreamCode(StrEnum):
     vs ``code``) signals the response shape.
     """
 
-    # KIS chk-holiday trading-day fetch failure (Phase 3) — HTTP/rt_cd errors
-    # and parse failures on the calendar path. Transient; remediation = retry.
+    # 거래일 달력 **소스를 읽지 못했다**. PR-H(#1044) 이후 소스는 커밋된 정적 시드
+    # 라 이건 배포 사고이지 일시 장애가 아니다 — 재시도가 조치가 아니다.
+    #
+    # 원래는 KIS `chk-holiday` 의 HTTP/rt_cd 실패("잠시 후 재시도")를 뜻했고,
+    # #1046 ② 가 `kis_holiday_fetch_failed` 에서 값만 개명했다. **그때 의미가 같이
+    # 옮겨오지 않아** 조회 경로에 벤더가 사라진 뒤에도 소비자 카피가 "KIS 일시
+    # 오류 — 잠시 후 새로고침" 을 말했다. 아래 STALE 과 갈라 그것을 닫는다.
     TRADING_DAYS_UNAVAILABLE = "trading_days_unavailable"
+    # 달력 **커버리지가 요청 날짜에 못 미쳐 평일로 근사**했다. 소스는 멀쩡하다.
+    #
+    # 정적 시드 + 오버레이는 `ka20006`(지수 일봉) 역산이라 **원리적으로 오늘까지만**
+    # 안다 — 지수는 장이 열려야 산출되므로 미래 행이 없다(연구 2026-08-03). 그래서
+    # 커버리지 뒤가 비는 것은 장애가 아니라 소스의 성질이고, UNAVAILABLE 과 조치가
+    # 다르다: 재시도가 아니라 **오버레이 갱신**(키움 자격증명 · 스케줄러)이다.
+    TRADING_DAYS_STALE = "trading_days_stale"
     # KIS credentials absent (KIS_APP_KEY/KIS_APP_SECRET unset) — distinct from
     # FETCH_FAILED so UIs give the right remediation ("set keys" vs "retry
     # later"); same principle as DISK_WRITE_FAILED vs MASTER_FETCH_FAILED.

@@ -13,6 +13,7 @@ import type { UpstreamCode } from './types';
 // union the way the previous hand-maintained array did (4/7 coverage).
 const ALL_CODES = Object.keys({
   trading_days_unavailable: true,
+  trading_days_stale: true,
   credentials_missing: true,
   cookie_expired: true,
   cookie_missing: true,
