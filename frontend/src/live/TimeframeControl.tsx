@@ -133,8 +133,10 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
     </div>
   ) : null;
 
+  // shrink-0 + nowrap: 좁은 창 헤더에서 "1분"·"일" 라벨이 두 줄로 꺾이지 않게 —
+  // 넘치는 폭은 헤더 overflow-hidden + 접힘 정책(#762)이 처리한다.
   return (
-    <div className="flex gap-1" role="group" aria-label="LiveTimeframe">
+    <div className="flex shrink-0 gap-1" role="group" aria-label="LiveTimeframe">
       <div ref={minuteWrapRef} className="relative">
         <button
           ref={minuteButtonRef}
@@ -143,7 +145,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
           aria-label={minuteButtonLabel}
           aria-haspopup="menu"
           aria-expanded={minuteMenuOpen}
-          className="inline-flex min-h-6 items-center gap-1 rounded-[7px] font-data text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
+          className="inline-flex min-h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-[7px] font-data text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
           style={{
             padding: '4px 10px',
             // 테두리 없는 ghost(2026-07-15) — 비활성은 투명, 활성만 tint-selection+accent로 강조.
@@ -165,7 +167,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
             type="button"
             onClick={() => pickCalendar(calendar)}
             aria-pressed={active}
-            className="min-h-6 rounded-[7px] px-2 py-1 font-data text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
+            className="min-h-6 shrink-0 whitespace-nowrap rounded-[7px] px-2 py-1 font-data text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
             style={{
               // 테두리 없는 ghost(2026-07-15) — 비활성은 투명, 활성만 tint-selection+accent로 강조.
               background: active ? 'var(--tint-selection)' : 'transparent',
