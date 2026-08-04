@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { DepthRenewalForm, hhmmToTimeValue, timeValueToHhmm } from './paramForms';
+import { BreakoutForm, DepthRenewalForm, hhmmToTimeValue, timeValueToHhmm } from './paramForms';
 
 describe('기준시각 HHMM ↔ <input type="time"> 변환', () => {
   it('HHMM 정수를 0 패딩된 시각 문자열로', () => {
@@ -18,6 +18,29 @@ describe('기준시각 HHMM ↔ <input type="time"> 변환', () => {
     expect(timeValueToHhmm('15:21')).toBeNull();   // 상한 초과
     expect(timeValueToHhmm('')).toBeNull();        // 입력 지우는 중
     expect(timeValueToHhmm('1200')).toBeNull();    // 콜론 없음
+  });
+});
+
+describe('Num 범위 클램프 (BreakoutForm 경유)', () => {
+  it('blur 시 min/max 로 클램프한다 — 음수·0 lookback 이 서버 422 를 부르지 않게', () => {
+    const onChange = vi.fn();
+    render(<BreakoutForm params={{ lookback: 200, period: 500 }} onChange={onChange} />);
+    const input = screen.getByLabelText('최근 기간(일)');
+
+    fireEvent.change(input, { target: { value: '-5' } });
+    expect(onChange).toHaveBeenLastCalledWith({ lookback: -5, period: 500 }); // 타이핑 중엔 간섭 없음
+    fireEvent.blur(input, { target: { value: '-5' } });
+    expect(onChange).toHaveBeenLastCalledWith({ lookback: 1, period: 500 });  // blur 에서 min=1 로
+
+    fireEvent.blur(input, { target: { value: '5000' } });
+    expect(onChange).toHaveBeenLastCalledWith({ lookback: 1000, period: 500 }); // max=1000 으로
+  });
+
+  it('숫자가 아닌 입력은 undefined 로 흘려 폼 기본값 복원 경로를 탄다', () => {
+    const onChange = vi.fn();
+    render(<BreakoutForm params={{ lookback: 200, period: 500 }} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText('최근 기간(일)'), { target: { value: 'abc' } });
+    expect(onChange).toHaveBeenLastCalledWith({ lookback: 1, period: 500 }); // n ?? 1 폴백
   });
 });
 

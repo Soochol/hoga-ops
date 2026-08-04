@@ -12,10 +12,13 @@ function ChangePctForm({ params, onChange }: { params: ChangePctParams; onChange
         : { op, pct: params.pct ?? 5 })}
       options={[['gte', '≥'], ['lte', '≤'], ['between', '사이']]} />
     {params.op === 'between' ? (<>
-      <Num label="lo" value={params.lo} onChange={(n) => onChange({ ...params, lo: n })} w="w-16" />
-      <span className="text-fg-dimmer">~</span>
-      <Num label="hi" value={params.hi} onChange={(n) => onChange({ ...params, hi: n })} w="w-16" /></>
-    ) : <Num value={params.pct} onChange={(n) => onChange({ ...params, pct: n })} w="w-16" />}
+      <Num ariaLabel="등락률 하한(%)" min={-30} max={30}
+        value={params.lo} onChange={(n) => onChange({ ...params, lo: n })} w="w-16" />
+      <span className="text-sm text-fg-dim">~</span>
+      <Num ariaLabel="등락률 상한(%)" min={-30} max={30}
+        value={params.hi} onChange={(n) => onChange({ ...params, hi: n })} w="w-16" /></>
+    ) : <Num ariaLabel="등락률(%)" min={-30} max={30}
+      value={params.pct} onChange={(n) => onChange({ ...params, pct: n })} w="w-16" />}
     <span className="text-sm text-fg-dim">%</span></div>;
 }
 

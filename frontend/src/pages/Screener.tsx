@@ -328,10 +328,10 @@ export function Screener() {
               </ToolbarButton>
             )}
             {update.isError && (
-              <span className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패</span>
+              <span role="alert" className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패</span>
             )}
             {updateFeedback && (
-              <span className="text-sm" style={{ color: FEEDBACK_TONE_COLOR[updateFeedback.tone] }}>
+              <span role="status" className="text-sm" style={{ color: FEEDBACK_TONE_COLOR[updateFeedback.tone] }}>
                 {updateFeedback.message}
               </span>
             )}
@@ -346,19 +346,23 @@ export function Screener() {
           {/* 결과 메타 줄: 개수·기준·조회 시각 + 강등된 경고 칩 + 정렬·갱신 상태.
               개수가 없으면 "결과"라는 제목만으로는 조회가 됐는지조차 알 수 없다. */}
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            {screener.isPending ? (
-              <span className="text-sm text-fg-dim">조회 중…</span>
-            ) : lastScan ? (
-              <span data-testid="screener-result-meta" className="font-data text-sm tabular-nums text-fg">
-                결과 <span className="font-semibold">{rows.length.toLocaleString('ko-KR')}</span>건
-                <span className="text-fg-dim">
-                  {' '}· {lastScan.basis === 'intraday' ? '오늘 장중' : '전일 확정'}
-                  {scannedAtLabel && ` · ${scannedAtLabel} 조회`}
+            {/* role=status: 조회 시작·완료(결과 N건)가 스크린리더에 공지된다 — 종전엔
+                스크리너 전역에 라이브 리전이 0건이라 조회 결과가 무음이었다. */}
+            <span role="status">
+              {screener.isPending ? (
+                <span className="text-sm text-fg-dim">조회 중…</span>
+              ) : lastScan ? (
+                <span data-testid="screener-result-meta" className="font-data text-sm tabular-nums text-fg">
+                  결과 <span className="font-semibold">{rows.length.toLocaleString('ko-KR')}</span>건
+                  <span className="text-fg-dim">
+                    {' '}· {lastScan.basis === 'intraday' ? '오늘 장중' : '전일 확정'}
+                    {scannedAtLabel && ` · ${scannedAtLabel} 조회`}
+                  </span>
                 </span>
-              </span>
-            ) : (
-              <span className="text-sm text-fg-dim">조회 전</span>
-            )}
+              ) : (
+                <span className="text-sm text-fg-dim">조회 전</span>
+              )}
+            </span>
             {chipFlags.map((f) => (
               <span key={f.key} title={f.text}
                 className="max-w-[16rem] truncate rounded-md bg-bg-subtle px-1.5 py-0.5 text-2xs"
@@ -385,7 +389,7 @@ export function Screener() {
               <span className="font-semibold">시드 필요</span> 스크리너 인덱스가 아직 시드되지 않았습니다. 운영자 CLI로 일회성 시드를 수행한 뒤 다시 조회하세요
             </InlineState>
           ) : screener.isError ? (
-            <InlineState tone="error" className="text-sm">
+            <InlineState tone="error" role="alert" className="text-sm">
               <span className="font-semibold">조회 실패 — 조건을 확인하세요</span>
               {screener.error instanceof Error && screener.error.message && (
                 <span className="ml-2 text-fg-dim">{screener.error.message}</span>
