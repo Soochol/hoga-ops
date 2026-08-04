@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -206,18 +208,96 @@ def test_date_range_is_inclusive_and_empty_when_reversed() -> None:
 
 # === ka10064 장중 추정 ========================================================
 
-async def test_trend_estimate_has_no_natfor_field() -> None:
-    """가집계 TR 에는 `natfor` 가 없다 — base 만 쓰는 것이 맞다."""
-    rows = [
-        {"tm": "090000", "frgnr_invsr": "0", "orgn": "0"},
-        {"tm": "095700", "frgnr_invsr": "-62603", "orgn": "-173941"},
-    ]
-    c = _client(lambda _r: _ok("opmr_invsr_trde_chart", rows))
+# 실측 슬롯(005930, 20260804 14:31). 두 축의 비가 232,864원/주 = 당일 범위
+# (228,000~244,500) 안 — 축 배선이 뒤집히면 429만원/주가 되어 검산에서 걸린다.
+_EST_QTY = [
+    {"tm": "090000", "frgnr_invsr": "0", "orgn": "0"},
+    {"tm": "143100", "frgnr_invsr": "-912000", "orgn": "-1925000"},
+]
+_EST_AMT = [
+    {"tm": "090000", "frgnr_invsr": "0", "orgn": "0"},
+    {"tm": "143100", "frgnr_invsr": "-212372", "orgn": "-451250"},
+]
+
+
+def _estimate_client(*, seen: list[str] | None = None) -> KiwoomRestClient:
+    """`amt_qty_tp` 로 축을 갈라 응답하는 페이크. 축을 무시하고 한 벌만 돌려주면
+    "두 축이 같은 값" 이라는 없는 사실이 테스트를 통과시킨다."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        axis = json.loads(request.content)["amt_qty_tp"]
+        if seen is not None:
+            seen.append(axis)
+        return _ok("opmr_invsr_trde_chart", _EST_QTY if axis == "2" else _EST_AMT)
+
+    return _client(handler)
+
+
+async def test_trend_estimate_carries_both_axes_with_units_in_the_names() -> None:
+    """수량은 `_qty`, 금액은 `_amt_mwon` — 이 배선이 2026-08-04 까지 틀려 있었다.
+
+    당시엔 `amt_qty_tp="1"`(금액) 하나만 부르고 그 값을 `_qty` 로 실어, 화면이
+    4,512억원을 "45.1만주" 로 그렸다. 두 축 모두 부호도 자릿수도 그럴듯해서
+    타입도 테스트도 잡지 못했다 — 유일한 오라클은 두 축의 비(단가)다.
+    """
+    c = _estimate_client()
     out = await fetch_investor_trend_estimate(c, "005930")
-    assert [r.slot for r in out] == ["090000", "095700"]
-    assert out[1].foreign_qty == -62_603
-    assert out[1].institution_qty == -173_941
-    assert out[1].sum_qty == -62_603 + -173_941
+
+    assert [r.slot for r in out] == ["090000", "143100"]
+    latest = out[1]
+    assert latest.foreign_qty == -912_000
+    assert latest.institution_qty == -1_925_000
+    assert latest.sum_qty == -912_000 + -1_925_000
+    assert latest.foreign_amt_mwon == -212_372
+    assert latest.institution_amt_mwon == -451_250
+    assert latest.sum_amt_mwon == -212_372 + -451_250
+
+    unit_price = latest.foreign_amt_mwon * 1_000_000 / latest.foreign_qty
+    assert 228_000 <= unit_price <= 244_500
+    await c.aclose()
+
+
+async def test_trend_estimate_asks_the_quantity_axis_too() -> None:
+    """함정 ① 봉인 — 금액축(`1`) 하나만 부르던 것이 이 버그의 발생 지점이었다."""
+    seen: list[str] = []
+    c = _estimate_client(seen=seen)
+    await fetch_investor_trend_estimate(c, "005930")
+    assert sorted(seen) == ["1", "2"]
+    await c.aclose()
+
+
+async def test_trend_estimate_paces_each_axis_through_the_runner() -> None:
+    """축이 둘이면 대기표도 둘이다 (ADR-0137).
+
+    호출자가 이 함수 전체를 거버너 하나로 감싸면 버킷은 1 을 세고 벤더는 2 를
+    센다. `run_call` 이 축마다 불리는지가 그 계약의 관측 지점이다.
+    """
+    axes: list[str] = []
+    c = _estimate_client()
+
+    async def run_call(fetch, axis):
+        axes.append(axis)
+        return await fetch(c)
+
+    await fetch_investor_trend_estimate(c, "005930", run_call=run_call)
+    assert sorted(axes) == ["1", "2"]
+    await c.aclose()
+
+
+async def test_trend_estimate_leaves_one_sided_slots_unfilled() -> None:
+    """한 축에만 있는 슬롯은 반대 축이 None 이다 — 0 으로 채우면 "순매수 0" 이라는
+    없는 사실이 된다."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        axis = json.loads(request.content)["amt_qty_tp"]
+        rows = _EST_QTY + [{"tm": "150000", "frgnr_invsr": "-5000", "orgn": "-1000"}]
+        return _ok("opmr_invsr_trde_chart", rows if axis == "2" else _EST_AMT)
+
+    c = _client(handler)
+    out = await fetch_investor_trend_estimate(c, "005930")
+    tail = out[-1]
+    assert tail.slot == "150000"
+    assert tail.foreign_qty == -5_000
+    assert tail.foreign_amt_mwon is None
+    assert tail.sum_amt_mwon is None
     await c.aclose()
 
 
