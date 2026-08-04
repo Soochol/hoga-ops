@@ -154,7 +154,7 @@ export function QuoteRow({
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
       <span title={priceTitle} className="flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
         {showExpected && (
-          <span className="mr-0.5 text-[10px] text-fg-dim" data-testid={`${testId}-expected-marker`}>예</span>
+          <span className="mr-0.5 text-2xs text-fg-dim" data-testid={`${testId}-expected-marker`}>예</span>
         )}
         {shownPrice != null ? shownPrice.toLocaleString('ko-KR') : '—'}
       </span>

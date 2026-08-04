@@ -72,7 +72,7 @@ export function WorkspaceLiveToolbar({ onOpenSettings, captureHealth }: Props) {
         aria-label="단축키 도움말"
         title="단축키 도움말 (?)"
         onClick={openShortcutHelp}
-        icon={<span aria-hidden className="inline-flex h-[14px] w-[14px] items-center justify-center rounded border border-border-strong font-data text-[10px] leading-none">?</span>}
+        icon={<span aria-hidden className="inline-flex h-[14px] w-[14px] items-center justify-center rounded border border-border-strong font-data text-2xs leading-none">?</span>}
       >
         단축키
       </IconToolbarButton>

@@ -247,7 +247,7 @@ export function StudyDataWindowContent({
   const testId = STUDY_DATA_WINDOW_TEST_ID[kind];
   if (!save || !bundle) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dim">
+      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-xs text-fg-dim">
         <span className="font-data">학습뷰 불러오는 중…</span>
       </div>
     );

@@ -51,7 +51,7 @@ function DepthRenewalBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides 
     .map((r) => `${r.at} 이전 최대 ${r.label} 총잔량 ${fmtQty(r.pre)} → 이후 최대 ${fmtQty(r.post)}`)
     .join(' / ');
   return (
-    <span className="inline-flex items-center gap-1.5 font-data text-[10px] tabular-nums text-fg-dim"
+    <span className="inline-flex items-center gap-1.5 font-data text-2xs tabular-nums text-fg-dim"
       title={title}>
       {shown.map((r) => (
         <span key={r.label} className="inline-flex items-center gap-1">
@@ -79,7 +79,7 @@ function DepthBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides }) {
     .map((r) => `${r.label} 당일 peak ${fmtQty(r.today)} · 지난 ${r.need}일 peak ${fmtQty(r.past)}`)
     .join(' / ');
   return (
-    <span className="inline-flex items-center gap-1.5 font-data text-[10px] tabular-nums text-fg-dim" title={title}>
+    <span className="inline-flex items-center gap-1.5 font-data text-2xs tabular-nums text-fg-dim" title={title}>
       {rows.map((r) => (
         <span key={r.label} className="inline-flex items-center gap-1">
           {rows.length > 1 && <span className="text-fg-dim">{r.label}</span>}
@@ -141,7 +141,7 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
       } ${active ? 'text-accent' : 'text-fg-dim hover:text-fg'}`}
     >
       <span className="truncate">{label}</span>
-      <span className="font-data text-[10px]" aria-hidden="true">{arrow}</span>
+      <span className="font-data text-2xs" aria-hidden="true">{arrow}</span>
     </button>
   );
 }
@@ -185,7 +185,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
             : undefined}
           className={`font-data tabular-nums text-right ${r.expected_change_pct == null ? '' : priceDirClass(r.expected_change_pct)}`}
         >
-          <span className="mr-0.5 text-[10px] text-fg-dim">예</span>
+          <span className="mr-0.5 text-2xs text-fg-dim">예</span>
           {`${r.expected_price.toLocaleString('ko-KR')} (${formatPct(r.expected_change_pct ?? null)})`}
         </span>
       ) : (

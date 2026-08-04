@@ -106,11 +106,11 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
           }`}
           onPointerDown={(e) => onHandleDown(e, id, 'move')}
         >
-          <span className="select-none text-[11px] leading-none text-fg-dimmer">⠿</span>
+          <span className="select-none text-xs leading-none text-fg-dimmer">⠿</span>
           {header}
           {closable && (
             <button
-              className="ml-auto px-0.5 text-[12px] leading-none text-fg-dim hover:text-fg"
+              className="ml-auto px-0.5 text-sm leading-none text-fg-dim hover:text-fg"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => onClose(id)}
               title="창 닫기"

@@ -74,7 +74,7 @@ export function CardRestoreMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={toggle}
-        className="rounded px-2 py-0.5 text-[11px] font-medium text-fg-dim hover:bg-bg-input-hover hover:text-fg"
+        className="rounded px-2 py-0.5 text-xs font-medium text-fg-dim hover:bg-bg-input-hover hover:text-fg"
       >
         + 카드 추가
       </button>

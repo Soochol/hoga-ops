@@ -334,7 +334,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
                 title={targetLabel
                   ? '이 드로어는 포커스된 차트 창의 지표 설정을 편집합니다. 지표 설정은 창×봉마다 따로 저장됩니다'
                   : '지표 설정은 현재 보는 봉(분·일·주·월)마다 따로 저장됩니다'}
-                className="rounded-full border border-border px-2 py-0.5 text-[11px] text-fg-dim"
+                className="rounded-full border border-border px-2 py-0.5 text-xs text-fg-dim"
                 data-testid="indicator-panel-scope-badge"
               >
                 {targetLabel ? `${targetLabel} · ${currentTimeframeLabel}` : `현재: ${currentTimeframeLabel}`}

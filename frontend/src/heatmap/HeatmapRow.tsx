@@ -87,7 +87,7 @@ export function HeatmapRow({
       <span className="flex items-center justify-center gap-0.5 overflow-hidden">
         <CandleGlyph open={open} high={high} low={low} close={price} />
         {showExpected && (
-          <span className="text-[10px] text-fg-dim" data-testid={`${testId}-expected-marker`}>예상</span>
+          <span className="text-2xs text-fg-dim" data-testid={`${testId}-expected-marker`}>예상</span>
         )}
       </span>
       <span className="text-right font-data tabular-nums text-fg">

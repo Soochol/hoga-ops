@@ -81,7 +81,7 @@ export function DepthCoverageBanner({ coverage, autoCollect = false }: {
       {expanded && (
         <div className="flex flex-wrap gap-1.5 pt-1">
           {coverage.excluded.map((c) => (
-            <span key={c.code} className="rounded-sm bg-bg-input px-1.5 py-0.5 font-data text-[10.5px] text-fg-dim">
+            <span key={c.code} className="rounded-sm bg-bg-input px-1.5 py-0.5 font-data text-2xs text-fg-dim">
               {c.name} <span className="text-fg-dimmer">{c.code}</span>
             </span>
           ))}

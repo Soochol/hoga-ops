@@ -6,6 +6,7 @@
 export const TAILWIND_THEME = {
   fontSize: {
     "badge": "var(--text-badge)",
+    "2xs": "var(--text-2xs)",
     "xs": "var(--text-xs)",
     "sm": "var(--text-sm)",
     "base": "var(--text-base)",

@@ -20,14 +20,14 @@ export function timeValueToHhmm(value: string): number | null {
 }
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div className="text-[10.5px] font-semibold uppercase text-fg-dim">{children}</div>;
+  return <div className="text-2xs font-semibold uppercase text-fg-dim">{children}</div>;
 }
 export function Num({ value, onChange, label, w = 'w-20' }: {
   value: number | undefined; onChange: (n: number | undefined) => void; label?: string; w?: string;
 }) {
   return (
     <label className="inline-flex items-center gap-1.5">
-      {label && <span className="text-[10.5px] text-fg-dim">{label}</span>}
+      {label && <span className="text-2xs text-fg-dim">{label}</span>}
       <input type="number" inputMode="numeric" aria-label={label}
         value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
         className={`${w} bg-bg-input border border-border rounded-md px-2 py-1 font-data text-sm tabular-nums text-fg`} />
@@ -68,7 +68,7 @@ export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; o
       <Num label="과거 peak 대비" value={params.threshold_pct} onChange={(n) => onChange({ ...params, threshold_pct: n ?? 100 })} />
       <span className="text-sm text-fg-dim">% 이상</span>
     </div>
-    <div className="text-[10.5px] text-fg-dim">관심·히트맵 종목 중 데이터 보유 종목 대상</div>
+    <div className="text-2xs text-fg-dim">관심·히트맵 종목 중 데이터 보유 종목 대상</div>
   </div>;
 }
 
@@ -85,7 +85,7 @@ export function DepthRenewalForm({ params, onChange }: { params: DepthRenewalPar
   return <div className="flex flex-col gap-2">
     <div className="flex items-center gap-2 flex-wrap">
       <label className="inline-flex items-center gap-1.5">
-        <span className="text-[10.5px] text-fg-dim">기준 시각</span>
+        <span className="text-2xs text-fg-dim">기준 시각</span>
         <input type="time" aria-label="기준 시각" step={60}
           min={hhmmToTimeValue(RENEWAL_MIN_HHMM)} max={hhmmToTimeValue(RENEWAL_MAX_HHMM)}
           value={hhmmToTimeValue(params.start_hhmm)} onChange={(e) => onTime(e.target.value)}
@@ -96,7 +96,7 @@ export function DepthRenewalForm({ params, onChange }: { params: DepthRenewalPar
         onChange={(n) => onChange({ ...params, threshold_pct: n ?? 100 })} />
       <span className="text-sm text-fg-dim">% 이상</span>
     </div>
-    <div className="text-[10.5px] text-fg-dim">
+    <div className="text-2xs text-fg-dim">
       관심·히트맵 종목 대상 · 당일 기준(장중 조회에서만 동작) · 하루 중 한 번이라도 닿으면 계속 표시
       · 100%는 동률 포함(더 큰 것만 보려면 101 이상)
     </div>

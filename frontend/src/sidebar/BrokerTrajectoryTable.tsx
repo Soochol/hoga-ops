@@ -136,7 +136,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
                 {foreignFlags[rowIndex] && (
                   <span
                     data-testid="broker-foreign-badge"
-                    className="ml-1 inline-block rounded-sm border border-border px-[3px] align-[1px] text-[9px] leading-[12px] text-fg-dimmer"
+                    className="ml-1 inline-block rounded-sm border border-border px-[3px] align-[1px] text-badge leading-[12px] text-fg-dimmer"
                   >
                     외
                   </span>
@@ -185,7 +185,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
       {/* mt-auto = 남는 세로 공간을 전부 위로 밀어 합계행을 창 바닥에 붙인다(footer).
           sticky 와 역할이 갈린다: 여유가 있을 땐 mt-auto 가, 내용이 넘쳐 스크롤이
           생기면 sticky 가 바닥을 지킨다. */}
-      <div className="sticky bottom-0 z-10 mt-auto flex shrink-0 items-center justify-between bg-bg-card px-2.5 py-1 text-[10.5px]">
+      <div className="sticky bottom-0 z-10 mt-auto flex shrink-0 items-center justify-between bg-bg-card px-2.5 py-1 text-2xs">
         <span className="text-fg-dimmer">외국계 합계</span>
         {foreignObserved ? (
           <span data-testid="broker-foreign-sum" className={priceDirClass(foreignSum)}>
