@@ -8,7 +8,8 @@
  *
  * 설정의 열림 상태는 셸(LivePage 또는 프리뷰 페이지)이 소유하고 콜백으로 받는다.
  */
-import { WorkspaceToolbar } from '../../ui/WorkspaceShell';
+import { IconToolbarButton, WorkspaceToolbar } from '../../ui/WorkspaceShell';
+import { openShortcutHelp } from '../../ui/shortcutHelp';
 import { SettingsButton } from '../LiveToolbar';
 import { LayoutPresetMenu } from '../presets/LayoutPresetMenu';
 import { WindowAddMenu } from './WindowAddMenu';
@@ -65,6 +66,16 @@ export function WorkspaceLiveToolbar({ onOpenSettings, captureHealth }: Props) {
           차트 창에만 있으므로 "차트 창이 있어야 연다" 가 자명하게 참이다. */}
       <SettingsButton onClick={onOpenSettings} />
       <LayoutPresetMenu />
+      {/* 단축키 도움말 — `?` 키의 가시적 진입점(발견성). 도움말의 발견성을 도움말
+          단축키에만 맡기면 순환이라, 텍스트 버튼 하나를 앱 크롬에 남긴다. */}
+      <IconToolbarButton
+        aria-label="단축키 도움말"
+        title="단축키 도움말 (?)"
+        onClick={openShortcutHelp}
+        icon={<span aria-hidden className="inline-flex h-[14px] w-[14px] items-center justify-center rounded border border-border-strong font-data text-[10px] leading-none">?</span>}
+      >
+        단축키
+      </IconToolbarButton>
       {/* 전역 캡처 헬스 — 우측 끝에 밀어 배치(폐지된 상태바에서 이관). */}
       <span className="ml-auto flex shrink-0 items-center pl-1">
         <CaptureHealthIndicator health={captureHealth} />

@@ -135,6 +135,14 @@ export function Heatmap() {
 
   const updated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
+  // 장마감 + 시세 커버리지 희박(절반 미만)이면 '—' 행이 보드를 뒤덮는다 — 이게 오류가
+  // 아니라 "실시간 시세 미수신" 상태임을 한 줄로 알린다(데이터 층 무변경). 장중에는
+  // 폴링이 곧 채우므로 띄우지 않는다.
+  const quotedCount = useMemo(
+    () => codes.reduce((n, c) => n + (quoteByCode.has(c) ? 1 : 0), 0),
+    [codes, quoteByCode],
+  );
+  const showClosedSparseNotice = phase === 'closed' && codes.length > 0 && quotedCount * 2 < codes.length;
   // 헤더 "N종목" 은 표시된 종목 수(검색 중엔 매칭 그룹의 전체 종목). 빈 실폴더는 0 기여.
   const visibleCount = visibleGroups.reduce((n, g) => n + g.entries.length, 0);
   // 검색 중 실제 매칭(하이라이트) 종목 수 — visibleCount(그룹 전체)와 구분해 헤더에
@@ -147,11 +155,11 @@ export function Heatmap() {
     [visibleGroups, query, isSearching],
   );
   if (isLoading) return <HeatmapStateShell>히트맵 불러오는 중…</HeatmapStateShell>;
-  if (error) return <HeatmapStateShell tone="error">히트맵을 불러오지 못했습니다.</HeatmapStateShell>;
+  if (error) return <HeatmapStateShell tone="error">히트맵을 불러오지 못했습니다</HeatmapStateShell>;
   // 그룹이 하나라도 있으면 일반 페이지를 렌더 — v3 는 그룹이 있어야 종목을 추가할 수
   // 있으므로(ADR-0112), "그룹만 있고 종목 0" 상태에서 ＋새 그룹·툴바가 막히면 안 된다.
   if (entries.length === 0 && folders.length === 0) {
-    return <HeatmapStateShell>히트맵이 비어 있습니다.</HeatmapStateShell>;
+    return <HeatmapStateShell>히트맵이 비어 있습니다</HeatmapStateShell>;
   }
 
   return (
@@ -161,7 +169,8 @@ export function Heatmap() {
             (2026-07-23). 이전 bg-card(흰 밴드)를 걷어내 상단이 바닥에 녹아든다.
             구분선 없음(border-b 제거): 분리는 간격이 담당. */}
         <header className="flex items-center gap-3 px-3 py-2 bg-bg flex-none">
-          <span className="text-md font-semibold text-fg">히트맵</span>
+          {/* 페이지 제목 없음 — 활성 상단 nav 가 곧 페이지 라벨이다(DESIGN.md
+              "No redundant page title"). 헤더는 상태(phase·갱신 시각)와 컨트롤만. */}
           {phase && <span className="text-xs font-data text-fg-dim">{PHASE_LABEL[phase] ?? phase}</span>}
           <span className="text-xs font-data text-fg-dim">
             {updated} 갱신 · {isSearching && matchCount > 0
@@ -184,6 +193,11 @@ export function Heatmap() {
             <SortCycleButton label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
           </ControlBar>
         </header>
+        {showClosedSparseNotice && (
+          <div data-testid="heatmap-closed-notice" className="flex-none bg-bg px-3 pb-1 text-xs text-fg-dim">
+            장마감 — 시세 없는 종목의 값(—)은 다음 장 시작 후 채워집니다
+          </div>
+        )}
         <SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={scrollToFolder} />
         {showNewGroup && (
           <GroupNameModal

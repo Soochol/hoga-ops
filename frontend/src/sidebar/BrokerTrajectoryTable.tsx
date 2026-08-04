@@ -63,7 +63,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   if (series === undefined) {
     return (
       <SidebarState>
-        커서 위치 로딩 중…
+        커서 위치 불러오는 중…
       </SidebarState>
     );
   }

@@ -18,6 +18,7 @@ import SupervisedTaskFailureToastHost from './live/SupervisedTaskFailureToastHos
 import DiskHeadroomToastHost from './live/DiskHeadroomToastHost';
 import DrawingClearToastHost from './chart/DrawingClearToastHost';
 import DrawingClearConfirmHost from './chart/DrawingClearConfirmHost';
+import { ShortcutHelpHost } from './ui/ShortcutHelpModal';
 import { ToastViewport } from './ui/toast/ToastViewport';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
@@ -134,6 +135,8 @@ export default function App() {
       {/* 토스트가 아니라 모달 — 뷰포트 밖에 둔다. 그리기 메뉴와 Alt+C 가 공유하는
           단 하나의 확인 게이트(자세한 사연은 호스트 주석). */}
       <DrawingClearConfirmHost />
+      {/* 단축키 도움말 — `?` 키(전 라우트) + /live 툴바 [단축키] 버튼이 연다. */}
+      <ShortcutHelpHost />
       {settingsOpen && (
         <ModalShell
           ariaLabel="설정"

@@ -95,6 +95,9 @@ export default function MAStylePicker({
             borderTop: `${lineWidth}px ${lineStyle ?? 'solid'} ${color}`,
           }}
         />
+        {/* "누르면 열림" 표식 — dot+선 실루엣만으로는 설정 드로어의 토글(같은 우측
+            열, 비슷한 알약형)과 순간 구분이 안 된다. TimeframeControl 과 같은 ⌄. */}
+        <span aria-hidden="true" style={{ color: 'var(--fg-dimmer)', fontSize: 'var(--text-xs)', lineHeight: 1 }}>⌄</span>
       </button>
       {open && (
         <div

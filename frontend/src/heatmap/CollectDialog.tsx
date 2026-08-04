@@ -186,14 +186,14 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
             </div>
             {largeWarn && (
               <div className="mt-2 text-xs" style={{ color: 'var(--warn)' }}>
-                수집량이 많습니다 — 상류 응답이 느려 시간이 오래 걸릴 수 있습니다.
+                수집량이 많습니다 — 상류 응답이 느려 시간이 오래 걸릴 수 있습니다
               </div>
             )}
           </div>
         )}
         {(previewM.isError || collectM.isError) && (
           <div className="text-xs" style={{ color: 'var(--error)' }}>
-            {previewM.isError ? '미리보기 실패' : '수집 요청 실패'} — 잠시 후 다시 시도하세요.
+            {previewM.isError ? '미리보기 실패' : '수집 요청 실패'} — 잠시 후 다시 시도하세요
           </div>
         )}
       </div>

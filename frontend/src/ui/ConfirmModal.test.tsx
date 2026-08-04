@@ -36,9 +36,10 @@ describe('ConfirmModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onClose when the backdrop is clicked', () => {
+  it('calls onClose when the backdrop is pressed', () => {
+    // ModalShell 백드롭 닫힘은 click 이 아니라 mousedown 기준(드래그 오작동 방지 계약).
     const { onClose, onConfirm } = mount();
-    fireEvent.click(screen.getByRole('dialog'));
+    fireEvent.mouseDown(screen.getByRole('dialog'));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
   });

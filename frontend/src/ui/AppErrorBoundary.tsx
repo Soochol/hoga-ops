@@ -89,7 +89,7 @@ export default class AppErrorBoundary extends Component<Props, State> {
           <p className="text-sm">
             {stale
               ? '이 탭이 열려 있는 동안 서버가 갱신되어, 예전 화면 조각을 더 이상 불러올 수 없습니다. 새로고침하면 최신 버전으로 이어집니다.'
-              : '예기치 못한 오류로 화면 렌더링이 중단되었습니다. 아래 내용을 복사해 두시면 원인 파악에 도움이 됩니다.'}
+              : '예기치 못한 오류로 화면 렌더링이 중단되었습니다. 아래 내용을 복사해 두시면 원인 파악에 도움이 됩니다'}
           </p>
 
           <div className="text-xs font-data break-all bg-bg-subtle border border-border rounded p-3 text-error">

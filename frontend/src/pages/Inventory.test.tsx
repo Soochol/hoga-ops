@@ -48,6 +48,20 @@ describe('Inventory page', () => {
     } as ReturnType<typeof useStockDates>);
   });
 
+  it('shows a Korean loading skeleton mirroring the two-pane layout', () => {
+    vi.mocked(useStockDates).mockReturnValue({
+      data: [],
+      isLoading: true,
+    } as unknown as ReturnType<typeof useStockDates>);
+    render(<Inventory />);
+
+    // 재고 스캔은 ~10초짜리 표면 — 영어 맨 텍스트("Loading inventory…") 대신
+    // 한국어 안내 + 로드 후와 같은 grid 의 스켈레톤(레이아웃 점프 방지).
+    expect(screen.getByRole('status', { name: '캡처 재고를 불러오는 중' })).toBeInTheDocument();
+    expect(screen.getByText('캡처 재고를 불러오는 중…')).toBeInTheDocument();
+    expect(screen.queryByText(/Loading inventory/)).toBeNull();
+  });
+
   it('renders surfaced list and detail panes', () => {
     render(<Inventory />);
 

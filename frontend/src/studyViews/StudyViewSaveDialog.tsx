@@ -91,11 +91,11 @@ export function StudyViewSaveDialog({
               <p className="text-xs text-fg-dim">수집 상태 확인 중…</p>
             ) : coverage.isError ? (
               <p className="text-xs text-fg-dim">
-                수집 상태를 확인하지 못했습니다 — 저장은 그대로 진행됩니다.
+                수집 상태를 확인하지 못했습니다 — 저장은 그대로 진행됩니다
               </p>
             ) : coverage.toCollect === 0 ? (
               <p className="text-xs text-fg-dim">
-                이 기간 <span className="font-data tabular-nums">{coverage.have}</span>일 모두 수집돼 있습니다.
+                이 기간 <span className="font-data tabular-nums">{coverage.have}</span>일 모두 수집돼 있습니다
               </p>
             ) : (
               <>

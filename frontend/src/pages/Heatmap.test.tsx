@@ -90,6 +90,29 @@ it('폴더·종목·phase 배지 렌더 + 색 범례 제거됨(#6)', async () =>
   expect(screen.getByRole('button', { name: '그룹 정렬' })).toBeInTheDocument();
 });
 
+it('장마감 + 시세 커버리지 희박이면 안내 밴드, 장중·커버리지 충분이면 없음', async () => {
+  // 절반 미만 커버리지(2종목 중 0) + closed → 안내 밴드 표시.
+  vi.mocked(useLiveQuoteOverlay).mockReturnValue({
+    quoteByCode: new Map(),
+    phase: 'closed', dataUpdatedAt: 0,
+  } as ReturnType<typeof useLiveQuoteOverlay>);
+  const { unmount } = renderPage();
+  expect(await screen.findByTestId('heatmap-closed-notice')).toBeInTheDocument();
+  unmount();
+
+  // 기본(open + 전 종목 시세)에서는 안 뜬다.
+  vi.mocked(useLiveQuoteOverlay).mockReturnValue({
+    quoteByCode: new Map([
+      ['005930', { code: '005930', price: 70000, change_pct: -2, change_won: -1400 }],
+      ['000660', { code: '000660', price: 200000, change_pct: 5, change_won: 10000 }],
+    ]),
+    phase: 'open', dataUpdatedAt: 0,
+  } as ReturnType<typeof useLiveQuoteOverlay>);
+  renderPage();
+  await screen.findByTestId('heatmap-board');
+  expect(screen.queryByTestId('heatmap-closed-notice')).toBeNull();
+});
+
 it('행 클릭 → 현재 뷰로 종목 열기(jump-to-live)', async () => {
   renderPage();
   fireEvent.click(await screen.findByTestId('heatmap-row-005930'));

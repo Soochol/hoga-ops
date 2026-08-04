@@ -355,10 +355,10 @@ const signedPct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
 
 /** OHLC 한 칸: 라벨(저채도) + 가격(중립) + 직전종가 대비 %(부호색, 괄호). pct 없으면
  *  (가장 이른 봉) % 는 생략. 색·텍스트 모두 반올림값 기준(툴팁 PriceRow 선례). */
-function OhlcCell({ label, price, pct }: { label: string; price: number; pct: number | null }) {
+function OhlcCell({ label, price, pct, className }: { label: string; price: number; pct: number | null; className?: string }) {
   const r = pct != null && Number.isFinite(pct) ? Number(pct.toFixed(2)) : null;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}>
+    <span className={className} style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}>
       <span style={{ color: 'var(--fg-dim)' }}>{label}</span>
       <span style={{ color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }}>
         {formatKoreanInt(price)}원
@@ -372,13 +372,16 @@ function OhlcCell({ label, price, pct }: { label: string; price: number; pct: nu
   );
 }
 
-/** 캔들 pane 최상단 OHLC 행 — 시작/고가/저가/종가 + 직전종가 대비 %. 토글 없음(항상 표시). */
+/** 캔들 pane 최상단 OHLC 행 — 시작/고가/저가/종가 + 직전종가 대비 %. 토글 없음(항상 표시).
+ *  좁은 창에서는 행 컨테이너의 overflow:hidden 이 글자 중간을 자르는 대신, pane 래퍼
+ *  컨테이너 폭 기준으로 낮은 우선순위 셀부터 숨긴다(저가 → 고가 → 시작 — 종가+등락률이
+ *  마지막까지 남는다). 규칙은 global.css `.legend-ohlc-*` 컨테이너 쿼리. */
 function OhlcLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ohlc' }> }) {
   return (
     <>
-      <OhlcCell label="시작" price={row.open} pct={row.openPct} />
-      <OhlcCell label="고가" price={row.high} pct={row.highPct} />
-      <OhlcCell label="저가" price={row.low} pct={row.lowPct} />
+      <OhlcCell className="legend-ohlc-open" label="시작" price={row.open} pct={row.openPct} />
+      <OhlcCell className="legend-ohlc-high" label="고가" price={row.high} pct={row.highPct} />
+      <OhlcCell className="legend-ohlc-low" label="저가" price={row.low} pct={row.lowPct} />
       <OhlcCell label="종가" price={row.close} pct={row.closePct} />
     </>
   );
@@ -851,6 +854,10 @@ function PaneLegendOverlay({
               // 겹쳐 그리는 물건이라 pane 안에서의 클리핑은 계약 위반이 아니다.
               maxHeight: `calc(${paneHeights[idx]}px - ${LEGEND_INSET})`,
               overflow: 'hidden',
+              // OHLC 셀 드롭(global.css 컨테이너 쿼리)의 기준 폭. 이 래퍼는 좌우
+              // inset 절대배치라 폭이 내용과 무관 — inline-size 컨테이너로 안전하다
+              // (내용이 폭을 정하는 inline-flex 요소에 걸면 폭이 무너진다).
+              containerType: 'inline-size',
             }}
           >
             {showMoveControls && (

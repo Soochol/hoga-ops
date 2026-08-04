@@ -20,7 +20,7 @@ export default function InvestorNetConfig({ which }: Props) {
         일자별 {who}의 순매수 수량(매수 − 매도)을 막대로 표시합니다.
       </p>
       <SignColorLegend up="순매수" down="순매도" />
-      <p className="text-fg-dim text-xs mt-3">일봉(D)에서만 표시됩니다.</p>
+      <p className="text-fg-dim text-xs mt-3">일봉(D)에서만 표시됩니다</p>
     </div>
   );
 }

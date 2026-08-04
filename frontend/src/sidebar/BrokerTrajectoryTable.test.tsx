@@ -58,7 +58,7 @@ describe('netAtCursor', () => {
 describe('BrokerTrajectoryTable — render states', () => {
   it('shows loading text when series is undefined', () => {
     render(<BrokerTrajectoryTable series={undefined} cursorMs={null} />);
-    expect(screen.getByText(/커서 위치 로딩 중/)).toBeInTheDocument();
+    expect(screen.getByText(/커서 위치 불러오는 중/)).toBeInTheDocument();
   });
 
   it('shows empty text when series is null', () => {

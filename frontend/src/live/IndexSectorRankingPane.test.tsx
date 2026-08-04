@@ -196,7 +196,7 @@ describe('IndexSectorRankingPane', () => {
       />,
     );
 
-    expect(screen.getByText('일봉 랭킹 데이터를 사용할 수 없습니다.')).toBeInTheDocument();
+    expect(screen.getByText('일봉 랭킹 데이터를 사용할 수 없습니다')).toBeInTheDocument();
   });
 
   it('lets the user resize the pane height by dragging the separator', () => {

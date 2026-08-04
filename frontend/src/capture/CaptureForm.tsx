@@ -127,7 +127,10 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
         onClick={onStart}
         disabled={!valid}
         style={{
-          background: valid ? 'var(--accent)' : 'var(--bg-input)',
+          // disabled 배경은 --bg-input 이 아니라 --bg-subtle — Ledger 는
+          // --bg-input == --bg(#FDFCF8) 라 버튼 면이 통째로 사라졌다(2026-08-04
+          // 조사 #13). --bg-subtle 은 4개 테마 전부에서 바닥과 명도차를 가진다.
+          background: valid ? 'var(--accent)' : 'var(--bg-subtle)',
           color: valid ? 'var(--bg)' : 'var(--fg-dimmer)',
         }}
         className="border-none rounded-lg py-2.5 px-4.5 font-semibold text-base cursor-pointer disabled:cursor-not-allowed"

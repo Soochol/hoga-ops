@@ -6,10 +6,11 @@ describe('MAStylePicker', () => {
   it('renders trigger with color dot + line-width preview reflecting props', () => {
     render(<MAStylePicker color="#EC4899" lineWidth={3} onChange={() => {}} />);
     const trigger = screen.getByRole('button', { name: 'MA 스타일 선택' });
-    // Trigger has two aria-hidden previews inside (dot + line). Both should
-    // be painted with the current color; the line's height = lineWidth.
+    // Trigger has three aria-hidden spans (dot + line + ⌄ open-affordance).
+    // Dot and line are painted with the current color; the line's height = lineWidth.
     const previews = trigger.querySelectorAll('span[aria-hidden="true"]');
-    expect(previews).toHaveLength(2);
+    expect(previews).toHaveLength(3);
+    expect(previews[2].textContent).toBe('⌄');
     // Dot uses backgroundColor; the line preview uses border-top (so it can
     // reflect solid/dashed/dotted) with width = lineWidth.
     expect((previews[0] as HTMLElement).style.backgroundColor).toMatch(/236.*72.*153|#ec4899/i);

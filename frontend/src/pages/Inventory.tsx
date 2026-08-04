@@ -16,6 +16,42 @@ function InventoryStateShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** 로딩 스켈레톤 — 재고 스캔은 실측 ~10초짜리 표면이라 맨 텍스트 한 줄로는 죽은
+ *  화면으로 읽힌다. 로드 후와 같은 grid(좌 리스트 / 우 상세)를 미리 그려 완료
+ *  시점에 레이아웃 점프가 없게 한다. 막대는 토큰(bg-bg-subtle)만 사용. */
+function InventoryLoadingSkeleton() {
+  return (
+    <PageContainer
+      className="grid gap-md !pb-0"
+      style={{ gridTemplateColumns: 'var(--sidebar-w) 1fr' }}
+    >
+      <PanelCard
+        borderless
+        flat
+        data-testid="inventory-loading"
+        role="status"
+        aria-label="캡처 재고를 불러오는 중"
+        className="flex min-h-0 flex-col overflow-hidden"
+      >
+        <div className="px-sm py-sm text-sm text-fg-dim">캡처 재고를 불러오는 중…</div>
+        <div className="animate-pulse motion-reduce:animate-none space-y-sm px-sm" aria-hidden>
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="h-9 rounded bg-bg-subtle" />
+          ))}
+        </div>
+      </PanelCard>
+      <PanelCard borderless flat aria-hidden className="flex min-h-0 flex-col overflow-hidden">
+        <div className="animate-pulse motion-reduce:animate-none space-y-sm px-sm pt-sm">
+          <div className="h-6 w-1/3 rounded bg-bg-subtle" />
+          {Array.from({ length: 10 }, (_, i) => (
+            <div key={i} className="h-6 rounded bg-bg-subtle" />
+          ))}
+        </div>
+      </PanelCard>
+    </PageContainer>
+  );
+}
+
 export default function Inventory() {
   const { data: rows = [], isLoading } = useStockDates();
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
@@ -34,10 +70,11 @@ export default function Inventory() {
   );
 
   if (isLoading) {
-    return <InventoryStateShell>불러오는 중</InventoryStateShell>;
+    // main 의 한글 텍스트('불러오는 중')를 스켈레톤이 포섭한다 — 같은 문구 + 2-pane 자리.
+    return <InventoryLoadingSkeleton />;
   }
   if (rows.length === 0) {
-    return <InventoryStateShell>캡처된 데이터가 없습니다.</InventoryStateShell>;
+    return <InventoryStateShell>캡처된 데이터가 없습니다</InventoryStateShell>;
   }
 
   return (

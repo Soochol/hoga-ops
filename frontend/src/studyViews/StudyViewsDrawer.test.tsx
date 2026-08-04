@@ -182,8 +182,8 @@ it('renders list and no-match state', async () => {
   expect(screen.getByRole('complementary', { name: '저장뷰' })).not.toHaveClass('border-l');
   expect(screen.getByText('급등 이후')).toBeTruthy();
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), '없음');
-  expect(screen.getByText('검색 결과가 없습니다.')).toBeTruthy();
-  expect(screen.queryByText('차트 화면에서 저장할 수 있습니다.')).toBeNull();
+  expect(screen.getByText('검색 결과가 없습니다')).toBeTruthy();
+  expect(screen.queryByText('차트 화면에서 저장할 수 있습니다')).toBeNull();
 });
 
 it('clears the saved-view search with the inline clear button', async () => {
@@ -194,7 +194,7 @@ it('clears the saved-view search with the inline clear button', async () => {
 
   await userEvent.type(search, '없음');
   expect(search.value).toBe('없음');
-  expect(screen.getByText('검색 결과가 없습니다.')).toBeTruthy();
+  expect(screen.getByText('검색 결과가 없습니다')).toBeTruthy();
 
   await userEvent.click(screen.getByRole('button', { name: '검색어 지우기' }));
 
@@ -377,7 +377,7 @@ it('moves the live save action out of the drawer', () => {
   renderDrawer('/live');
 
   expect(screen.queryByRole('button', { name: '현재 뷰 저장' })).toBeNull();
-  expect(screen.queryByText('라이브 상단 툴바에서 저장할 수 있습니다.')).toBeNull();
+  expect(screen.queryByText('라이브 상단 툴바에서 저장할 수 있습니다')).toBeNull();
 });
 
 it('does not show the secondary new-save action in the drawer body', () => {
@@ -389,7 +389,7 @@ it('does not show the secondary new-save action in the drawer body', () => {
 it('does not show the load-before-save hint in the study drawer', () => {
   renderDrawer('/study');
 
-  expect(screen.queryByText('학습뷰를 불러온 뒤 저장할 수 있습니다.')).toBeNull();
+  expect(screen.queryByText('학습뷰를 불러온 뒤 저장할 수 있습니다')).toBeNull();
 });
 
 it('does not show overwrite action in the study saved-view drawer', () => {
