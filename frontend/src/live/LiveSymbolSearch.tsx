@@ -216,12 +216,12 @@ export function LiveSymbolSearch() {
   ) : null;
 
   return (
-    <div className="relative flex-1 min-w-0 max-w-[360px] font-ui">
+    <div className="relative flex-1 min-w-0 max-w-[360px] font-ui [container-type:inline-size]">
       <button
         type="button"
         aria-label="종목 검색 열기"
         onClick={() => setOpen(true)}
-        className={`flex items-center gap-2 h-7 w-full px-2.5 bg-bg-input border rounded-lg text-left ${
+        className={`flex items-center gap-2 h-7 w-full px-2.5 bg-bg-input border rounded-lg text-left overflow-hidden ${
           open ? 'border-accent' : 'border-border-strong'
         }`}
       >
@@ -231,7 +231,11 @@ export function LiveSymbolSearch() {
         </svg>
         {/* min-w-0 + truncate: 헤더가 좁아지면(드로어 열림 등) 두 줄 줄바꿈 대신 한 줄 말줄임. */}
         <span className="flex-1 min-w-0 truncate text-sm text-fg-dimmer">종목명 또는 코드 검색…</span>
-        <span className="ml-auto flex shrink-0 items-center gap-1 text-fg-dimmer text-xs">
+        {/* kbd 는 shrink-0 이라 좁은 헤더에서 버튼 밖으로 흘러 Settings 라벨과 겹쳤다 —
+            버튼 overflow-hidden 이 탈출을 막고, 반쯤 잘린 칩이 남지 않도록 컨테이너 폭
+            9rem 아래에서는 칩 자체를 숨긴다(뷰포트가 아니라 드로어 개폐가 폭을 정하므로
+            media query 가 아닌 container query). */}
+        <span className="ml-auto flex shrink-0 items-center gap-1 text-fg-dimmer text-xs [@container(max-width:9rem)]:hidden">
           <kbd className="inline-flex items-center justify-center min-w-[17px] h-[17px] px-1 border border-border-strong rounded bg-bg-input font-data">/</kbd>
         </span>
       </button>
