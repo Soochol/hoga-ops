@@ -21,6 +21,7 @@ import { useScreenerStatus } from './useScreenerStatus';
 import { useScreenerUpdateFeedback } from './useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from './ScreenerUpdateProgress';
 import { StalenessChip } from './StalenessChip';
+import { intradayDegradationText } from './intradayDegradation';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
@@ -215,6 +216,8 @@ export function ScreenerDrawer() {
 
   const selected = saves.find((s) => s.id === selectedSavedId) ?? null;
   const notSeeded = status?.status === 'not_seeded' || lastScan?.scanStatus === 'not_seeded';
+  // 강등 사유별 문구 — 페이지와 같은 매핑을 쓴다(ADR-0137 R6).
+  const intradayDegradation = intradayDegradationText(lastScan?.warnings);
   const lastScanStaleReason = (() => {
     if (!lastScan) return null;
     // 풀페이지 Screener 에서 임시 조건으로 조회한 결과 — 드로어의 저장본 선택과 신원이
@@ -488,9 +491,9 @@ export function ScreenerDrawer() {
           </RailState>
         ) : lastScan ? (
           <>
-            {(lastScan.warnings ?? []).includes('intraday_fallback_eod') && (
+            {intradayDegradation && (
               <div className="mx-md mt-sm rounded-lg border px-3 py-2 text-sm" style={{ color: 'var(--warn)' }}>
-                장중 조회 불가 · 전일 확정 데이터로 표시 중
+                {intradayDegradation}
               </div>
             )}
             {(lastScan.warnings ?? []).includes('scope_universe_empty') && (
