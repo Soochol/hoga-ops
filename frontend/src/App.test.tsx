@@ -91,11 +91,11 @@ afterEach(() => {
 
 describe('App document title', () => {
   it.each([
-    ['/heatmap', 'Heatmap'],
-    ['/screener', 'Screener'],
-    ['/inventory', 'Inventory'],
-    ['/capture', 'Capture'],
-    ['/settings', 'Settings'],
+    ['/heatmap', '히트맵'],
+    ['/screener', '스크리너'],
+    ['/inventory', '보관함'],
+    ['/capture', '캡처'],
+    ['/settings', '설정'],
   ])('sets %s to the matching top menu label', (path, expected) => {
     wrap(<div>{expected}</div>, path);
     expect(document.title).toBe(expected);
@@ -108,7 +108,7 @@ describe('App document title', () => {
 
   it('sets /study to the matching top menu label', () => {
     wrap(<div>unused</div>, '/study');
-    expect(document.title).toBe('Study');
+    expect(document.title).toBe('복기');
   });
 
   it('uses hoga-ops for routes without a side menu item', () => {
@@ -180,10 +180,10 @@ describe('App shell layout', () => {
   it('opens Settings as a centered popover without leaving the current page', async () => {
     wrap(<div>unused</div>, '/live');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: '설정' }));
 
     // 모달 껍데기(ModalShell)는 정적이라 즉시 뜬다 — 안쪽 패널만 lazy 다.
-    const dialog = screen.getByRole('dialog', { name: 'Settings' });
+    const dialog = screen.getByRole('dialog', { name: '설정' });
     expect(dialog).toHaveClass('fixed', 'inset-0', 'items-center', 'justify-center');
     expect(await within(dialog).findByText('settings panel body')).toBeInTheDocument();
     expect(screen.getByText('live page')).toBeInTheDocument();
@@ -192,13 +192,13 @@ describe('App shell layout', () => {
   it('closes the Settings popover with Escape', async () => {
     wrap(<div>unused</div>, '/live');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: '설정' }));
     // 패널이 실제로 마운트된 뒤 닫아야 "열렸다가 닫혔다"를 검증한다 — 기다리지 않으면
     // lazy 해석 전에 Escape 를 눌러 빈 모달을 닫는 셈이 된다.
     await screen.findByText('settings panel body');
     fireEvent.keyDown(document, { key: 'Escape' });
 
-    expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '설정' })).toBeNull();
     expect(screen.getByText('live page')).toBeInTheDocument();
   });
 });

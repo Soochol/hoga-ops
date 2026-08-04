@@ -101,18 +101,18 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
         setInlineError(enqueueErrorHints[code as UpstreamCode]);
         return;
       }
-      const msg = err instanceof Error ? err.message : 'Failed to enqueue';
+      const msg = err instanceof Error ? err.message : '캡처 요청 실패';
       setError(msg);
     }
   };
 
   return (
     <div className="flex flex-col gap-4 font-ui">
-      <FormField label="Symbol">
+      <FormField label="종목">
         <SymbolSearch value={symbol} onChange={setSymbol} />
       </FormField>
 
-      <FormField label="Date Range">
+      <FormField label="기간">
         <DateRangePicker
           code={symbol?.code ?? null}
           referenceYear={referenceYear}
@@ -132,7 +132,7 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
         }}
         className="border-none rounded-lg py-2.5 px-4.5 font-semibold text-base cursor-pointer disabled:cursor-not-allowed"
       >
-        ▶ Start Capture
+        ▶ 캡처 시작
       </button>
 
       {error !== null && (

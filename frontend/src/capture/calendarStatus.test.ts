@@ -62,8 +62,8 @@ describe('markerFor', () => {
 
 describe('tooltipFor', () => {
   it('joins `${date} · ${suffix}` when suffix is non-null', () => {
-    expect(tooltipFor('complete', '20260319')).toBe('20260319 · captured (complete)');
-    expect(tooltipFor('no_upstream_data', '20260319')).toBe('20260319 · no upstream data (retry on capture)');
+    expect(tooltipFor('complete', '20260319')).toBe('20260319 · 수집 완료');
+    expect(tooltipFor('no_upstream_data', '20260319')).toBe('20260319 · 업스트림 데이터 없음 (캡처 시 재시도)');
   });
 
   it('returns just `${date}` when suffix is null (`none` status)', () => {
@@ -94,8 +94,8 @@ describe('isDisabled', () => {
 describe('legendText', () => {
   it('joins the visible legend chunks in LEGEND_ORDER', () => {
     expect(legendText()).toBe(
-      'Legend: ✓ complete · ⚠ partial · ✕ broken · – no upstream data · '
-        + '✓ KIS live · ⚠ KIS live partial · 🔒 today < 16:30 KST'
+      '범례: ✓ 완료 · ⚠ 부분 · ✕ 손상 · – 업스트림 없음 · '
+        + '✓ KIS 실시간 · ⚠ KIS 실시간 부분 · 🔒 당일 16:30 이전'
     );
   });
 

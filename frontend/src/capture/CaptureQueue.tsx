@@ -81,7 +81,7 @@ export function CaptureQueue() {
   };
 
   if (queue === undefined) {
-    return <InlineState className="border-0 bg-transparent p-3">Loading queue…</InlineState>;
+    return <InlineState className="border-0 bg-transparent p-3">불러오는 중</InlineState>;
   }
 
   // ADR-0094: a read-only (non-owner) instance can't mutate the queue. Surface
@@ -131,7 +131,7 @@ export function CaptureQueue() {
             ? ghostButton('var(--error)', 'var(--error)')
             : ghostButton()
           }
-        >{cancelAllArmed ? 'Click again to confirm' : 'Cancel All'}</button>
+        >{cancelAllArmed ? '한 번 더 누르면 전체 취소' : '전체 취소'}</button>
         <button
           type="button"
           disabled={summary.failed === 0}
@@ -142,12 +142,12 @@ export function CaptureQueue() {
             if (ids.length > 0) retryItems.mutate({ item_ids: ids });
           }}
           style={summary.failed === 0 ? ghostButtonDisabled() : ghostButton()}
-        >Retry Failed</button>
+        >실패 재시도</button>
         <button
           type="button"
           onClick={() => dismissDone.mutate()}
           style={ghostButton()}
-        >Dismiss Done</button>
+        >완료 지우기</button>
       </div>
 
       <div className="h-1 bg-bg-input rounded-sm relative">
@@ -166,18 +166,18 @@ export function CaptureQueue() {
           <span className="flex-1">{summarizeDedupeReasons(lastDedupedRows)}</span>
           <button
             type="button"
-            aria-label="Dismiss dedupe notice"
+            aria-label="중복 안내 닫기"
             onClick={() => setDismissedSubmittedAt(lastAddItems.submittedAt)}
             style={ghostButton()}
-          >Dismiss</button>
+          >닫기</button>
         </InlineState>
       )}
 
       {queue.paused && (
         <InlineState role="alert" tone="warn" className="py-sm flex items-center gap-3 font-medium font-data">
           <span className="flex-1">Cookie expired · refresh .cookie on disk, then resume</span>
-          <button type="button" onClick={() => resumeQueue.mutate()} style={ghostButton()}>Refresh &amp; Resume</button>
-          <button type="button" onClick={() => cancelAll.mutate()} style={ghostButton()}>Cancel All</button>
+          <button type="button" onClick={() => resumeQueue.mutate()} style={ghostButton()}>새로고침 후 재개</button>
+          <button type="button" onClick={() => cancelAll.mutate()} style={ghostButton()}>전체 취소</button>
         </InlineState>
       )}
 

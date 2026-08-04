@@ -99,7 +99,7 @@ describe('DateRangePicker', () => {
     });
     await new Promise((r) => setTimeout(r, 30));
     expect(screen.getByText('2026.05')).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('Next month'));
+    fireEvent.click(screen.getByLabelText('다음 달'));
     expect(screen.getByText('2026.06')).toBeTruthy();
     expect(screen.getByText('2026.07')).toBeTruthy();
   });
@@ -110,7 +110,7 @@ describe('DateRangePicker', () => {
       wrapper: W(qc),
     });
     await new Promise((r) => setTimeout(r, 30));
-    fireEvent.click(screen.getByLabelText('Previous month'));
+    fireEvent.click(screen.getByLabelText('이전 달'));
     expect(screen.getByText('2025.12')).toBeTruthy();
     expect(screen.getByText('2026.01')).toBeTruthy();
   });
@@ -121,8 +121,8 @@ describe('DateRangePicker', () => {
       wrapper: W(qc),
     });
     await new Promise((r) => setTimeout(r, 30));
-    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2024' } });
-    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '11' } });
+    fireEvent.change(screen.getByLabelText('연도'), { target: { value: '2024' } });
+    fireEvent.change(screen.getByLabelText('월'), { target: { value: '11' } });
     expect(screen.getByText('2024.11')).toBeTruthy();
     expect(screen.getByText('2024.12')).toBeTruthy();
   });
@@ -133,10 +133,10 @@ describe('DateRangePicker', () => {
       wrapper: W(qc),
     });
     await new Promise((r) => setTimeout(r, 30));
-    const today = screen.getByRole('button', { name: 'Today' }) as HTMLButtonElement;
+    const today = screen.getByRole('button', { name: '오늘' }) as HTMLButtonElement;
     expect(today.disabled).toBe(true);
-    fireEvent.click(screen.getByLabelText('Next month'));
-    fireEvent.click(screen.getByLabelText('Next month'));
+    fireEvent.click(screen.getByLabelText('다음 달'));
+    fireEvent.click(screen.getByLabelText('다음 달'));
     expect(screen.getByText('2026.07')).toBeTruthy();
     expect(today.disabled).toBe(false);
     fireEvent.click(today);

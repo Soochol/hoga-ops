@@ -35,9 +35,9 @@ describe('TopNav', () => {
     const labels = screen.getAllByRole('link').map((link) => link.textContent);
 
     expect(labels).toEqual([
-      'Live', 'Study', 'Heatmap', 'Screener', 'Sentiment', 'Inventory', 'Capture',
+      '라이브', '복기', '히트맵', '스크리너', '옵션심리', '보관함', '캡처',
     ]);
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '설정' })).toBeInTheDocument();
     expect(screen.queryByText('Watchlist')).not.toBeInTheDocument();
   });
 
@@ -51,7 +51,7 @@ describe('TopNav', () => {
   it('uses text-only active styling for the current route', () => {
     render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
 
-    const liveLink = screen.getByRole('link', { name: 'Live' });
+    const liveLink = screen.getByRole('link', { name: '라이브' });
 
     expect(liveLink).toHaveClass('text-fg', 'font-bold');
     expect(liveLink.className).not.toContain('before:');
@@ -79,10 +79,10 @@ describe('TopNav', () => {
     const onOpenSettings = vi.fn();
     render(<TopNav onOpenSettings={onOpenSettings} />, { wrapper: W });
 
-    const settings = screen.getByRole('button', { name: 'Settings' });
+    const settings = screen.getByRole('button', { name: '설정' });
 
     settings.click();
     expect(onOpenSettings).toHaveBeenCalledOnce();
-    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '설정' })).toBeNull();
   });
 });

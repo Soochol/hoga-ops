@@ -21,13 +21,13 @@ export async function resetQueue(page: Page): Promise<void> {
   // 행 컨테이너만 — testid 접두사로 잡으면 행 내부 배지까지 세어진다.
   const rows = page.getByRole('button', { name: /^Capture row / });
 
-  // Cancel All 은 2단계(파괴적 동작 가드) — 첫 클릭은 확인 버튼으로 바뀐다.
-  const cancelAll = page.getByRole('button', { name: /Cancel All/i });
+  // 전체 취소 는 2단계(파괴적 동작 가드) — 첫 클릭은 확인 버튼으로 바뀐다.
+  const cancelAll = page.getByRole('button', { name: /전체 취소/ });
   if (await cancelAll.isVisible().catch(() => false)) {
     await cancelAll.click();
-    await page.getByRole('button', { name: /Click again to confirm/i }).click();
+    await page.getByRole('button', { name: /한 번 더 누르면 전체 취소/ }).click();
   }
-  const dismiss = page.getByRole('button', { name: /Dismiss Done/i });
+  const dismiss = page.getByRole('button', { name: /완료 지우기/ });
   if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
 
   await expect(rows).toHaveCount(0, { timeout: 10_000 });

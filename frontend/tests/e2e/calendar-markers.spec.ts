@@ -78,7 +78,7 @@ test('calendar-markers: complete date Start → immediately skipped/already_comp
   const cell = page.getByTestId(`calendar-cell-${date}`);
   await cell.click();
   await cell.click();   // 같은 날 두 번 = 하루짜리 범위
-  await page.getByRole('button', { name: /Start/i }).click();
+  await page.getByRole('button', { name: /캡처 시작/ }).click();
 
   // COMPLETE 는 decide_capture 가 already_complete 로 즉시 스킵한다 —
   // 업스트림에 나가지 않으므로 CI 에서도 결정론적이다.
@@ -104,7 +104,7 @@ test('calendar-markers: 보유 창 밖 source_partial 은 skipped(upstream_gap)'
   const cell = page.getByTestId(`calendar-cell-${date}`);
   await cell.click();
   await cell.click();
-  await page.getByRole('button', { name: /Start/i }).click();
+  await page.getByRole('button', { name: /캡처 시작/ }).click();
 
   await expect(page.locator('text=/skipped/i').first()).toBeVisible({ timeout: 10_000 });
 });

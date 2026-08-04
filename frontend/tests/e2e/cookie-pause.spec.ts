@@ -39,7 +39,7 @@ test('cookie-pause: 3rd request → pause banner → Resume → completes', asyn
   await page.getByTestId(`calendar-cell-${days[4]}`).click();
   // 일시정지 프레임은 **클릭 전에** 예약한다.
   const paused = queueEvents.nextPaused();
-  await page.getByRole('button', { name: /Start/i }).click();
+  await page.getByRole('button', { name: /캡처 시작/ }).click();
 
   // After ~2 captures land, the 3rd triggers pause.
   // 배너 문구는 `CaptureQueue.tsx` 의 `queue.paused` 분기 그대로다. 이전 판은
@@ -50,7 +50,7 @@ test('cookie-pause: 3rd request → pause banner → Resume → completes', asyn
   // 그 다음 배너 렌더만 짧게 단언한다.
   await paused;
   await expect(page.locator('text=/Cookie expired/i')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByRole('button', { name: /Refresh & Resume/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /새로고침 후 재개/ })).toBeVisible();
 
   // **일시정지가 정착할 때까지 기다린 뒤 재개한다.** `resume_queue` 는 `_done` 에 있는
   // `pause_origin` 취소 항목만 되살리는데, 취소가 확정되기 전에 누르면 되살릴 대상이
@@ -67,7 +67,7 @@ test('cookie-pause: 3rd request → pause banner → Resume → completes', asyn
   // `allowFailed` — 쿠키 오류를 맞은 1건은 **설계상** failed 로 남는다(아래 주석 참고).
   // 여기서만 실패 오라클을 끈다; 다른 스펙에서는 failed 가 곧 결함이다.
   const drained = queueEvents.nextDrained({ allowFailed: true });
-  await page.getByRole('button', { name: /Refresh & Resume/i }).click();
+  await page.getByRole('button', { name: /새로고침 후 재개/ }).click();
 
   // **"5 of 5 done" 은 설계상 도달 불가다.** 쿠키 오류를 맞은 항목은 terminal 이다
   // (`captures.py`: "the failing item is terminal and never sleeps awaiting a resume").
