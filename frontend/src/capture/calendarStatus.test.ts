@@ -29,8 +29,8 @@ describe('CALENDAR_STATUS table', () => {
     for (const [status, descriptor] of Object.entries(CALENDAR_STATUS)) {
       expect(typeof descriptor.disabled, status).toBe('boolean');
       expect(typeof descriptor.baseColorVar, status).toBe('string');
-      // marker is either null or one of the 5 allowed glyphs
-      expect([null, '✓', '⚠', '✕', '🔒', '–'], status).toContain(descriptor.marker);
+      // marker is either null or one of the allowed glyphs
+      expect([null, '✓', '⚠', '✕', '!', '◆', '◇', '🔒', '–'], status).toContain(descriptor.marker);
       // tooltipSuffix is null or string
       expect(['object', 'string'], status).toContain(typeof descriptor.tooltipSuffix);
       // legendLabel is null or string
@@ -52,17 +52,21 @@ describe('markerFor', () => {
     expect(markerFor('none')).toBeNull();
   });
 
-  it('invalid reuses the broken glyph (ADR-0020 — distinct via tooltip)', () => {
-    expect(markerFor('invalid')).toBe('✕');
+  it('invalid 는 보관함(DiskStateBadge)과 같은 ! 글리프 — 미완결(✕)과 구분된다', () => {
+    expect(markerFor('invalid')).toBe('!');
     expect(markerFor('client_incomplete')).toBe('✕');
-    // Distinguished by tooltip, not by marker.
     expect(tooltipFor('invalid', '20260319')).not.toBe(tooltipFor('client_incomplete', '20260319'));
+  });
+
+  it('KIS 실시간 계열은 다이아 글리프 가족 — hogaplay ✓/⚠ 와 모양으로 구분(색맹 대응)', () => {
+    expect(markerFor('complete_live')).toBe('◆');
+    expect(markerFor('partial_live')).toBe('◇');
   });
 });
 
 describe('tooltipFor', () => {
   it('joins `${date} · ${suffix}` when suffix is non-null', () => {
-    expect(tooltipFor('complete', '20260319')).toBe('20260319 · 수집 완료');
+    expect(tooltipFor('complete', '20260319')).toBe('20260319 · 완결 — 수집 완료');
     expect(tooltipFor('no_upstream_data', '20260319')).toBe('20260319 · 업스트림 데이터 없음 (캡처 시 재시도)');
   });
 
@@ -93,9 +97,10 @@ describe('isDisabled', () => {
 
 describe('legendText', () => {
   it('joins the visible legend chunks in LEGEND_ORDER', () => {
+    // 어휘는 보관함 DiskStateBadge 와 동일해야 한다: 완결/부분/미완결/손상.
     expect(legendText()).toBe(
-      '범례: ✓ 완료 · ⚠ 부분 · ✕ 손상 · – 업스트림 없음 · '
-        + '✓ KIS 실시간 · ⚠ KIS 실시간 부분 · 🔒 당일 16:30 이전'
+      '범례: ✓ 완결 · ⚠ 부분 · ✕ 미완결 · ! 손상 · – 업스트림 없음 · '
+        + '◆ KIS 실시간 · ◇ KIS 실시간 부분 · 🔒 당일 16:30 이전'
     );
   });
 

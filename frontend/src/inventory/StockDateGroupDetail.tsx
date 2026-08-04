@@ -160,7 +160,7 @@ export function StockDateGroupDetail({ group }: Props) {
                           aria-label={gapExpanded ? '결손 구간 접기' : '결손 구간 보기'}
                           aria-expanded={gapExpanded}
                           onClick={() => setExpandedGapKey(gapExpanded ? null : rowKey)}
-                          className="text-badge text-[var(--warn)] underline hover:text-fg cursor-pointer bg-transparent border-none p-0"
+                          className="text-badge text-warn underline hover:text-fg cursor-pointer bg-transparent border-none p-0"
                         >
                           결손
                         </button>
@@ -223,7 +223,7 @@ function GapPanel({
     return <div className="text-xs text-fg-dim font-data" data-testid="gap-panel-loading">결손 구간 조회 중…</div>;
   }
   if (isError || data === undefined) {
-    return <div className="text-xs text-[var(--error)] font-data">결손 구간을 불러오지 못했습니다</div>;
+    return <div className="text-xs text-error font-data">결손 구간을 불러오지 못했습니다</div>;
   }
   if (data.sparse) {
     return (
@@ -241,7 +241,7 @@ function GapPanel({
   }
   return (
     <div className="flex flex-col gap-1.5" data-testid="gap-panel">
-      <div className="text-xs font-semibold text-[var(--warn)]">
+      <div className="text-xs font-semibold text-warn">
         업스트림 결손 {data.gap_ranges.length}구간
         {confirmed && (
           <span data-testid="gap-panel-confirmed" className="ml-2 text-fg-dim font-normal">
@@ -354,7 +354,7 @@ function UnblockCell({ onClick, isPending }: { onClick: () => void; isPending: b
         'bg-transparent border-none p-0 text-badge underline',
         isPending
           ? 'text-fg-dim cursor-not-allowed'
-          : 'text-[var(--error)] hover:text-fg cursor-pointer',
+          : 'text-error hover:text-fg cursor-pointer',
       ].join(' ')}
     >
       잠금 해제

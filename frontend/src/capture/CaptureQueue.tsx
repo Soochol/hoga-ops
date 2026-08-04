@@ -8,6 +8,7 @@ import { GROUP_ORDER, getPhase } from './phase';
 import { useStockDates } from '../api/stock-dates';
 import type { EnqueueResponse, QueueItem } from '../api/types';
 import { EmptyState, InlineState } from '../ui/DataSurface';
+import { ToolbarButton } from '../ui/PageShell';
 import { computeHeaderSummary, summarizeDedupeReasons } from './queueSummary';
 
 const VIRTUALIZE_THRESHOLD = 200;
@@ -89,7 +90,7 @@ export function CaptureQueue() {
       return (
         <InlineState tone="error" role="alert" className="flex items-center gap-3 text-sm">
           <span className="flex-1">대기열을 불러오지 못했습니다 · 백엔드 연결을 확인하세요</span>
-          <button type="button" onClick={() => refetchQueue()} style={ghostButton()}>다시 시도</button>
+          <ToolbarButton onClick={() => refetchQueue()}>다시 시도</ToolbarButton>
         </InlineState>
       );
     }
@@ -142,16 +143,14 @@ export function CaptureQueue() {
         <span role="status" className="sr-only">
           {cancelAllArmed ? '전체 취소 대기 중 — 버튼을 다시 누르면 실행됩니다' : ''}
         </span>
-        <button
-          type="button"
+        {/* 공용 ToolbarButton — 종전 ghostButton() 인라인 스타일은 px 하드코딩이라
+            밀도 다이얼에서 낙오했고 시스템 버튼과 모양이 갈렸다. 무장 상태만
+            error 색을 덧입힌다(2단계 확인 어포던스). */}
+        <ToolbarButton
           onClick={handleCancelAll}
-          style={cancelAllArmed
-            ? ghostButton('var(--error)', 'var(--error)')
-            : ghostButton()
-          }
-        >{cancelAllArmed ? '한 번 더 누르면 전체 취소' : '전체 취소'}</button>
-        <button
-          type="button"
+          style={cancelAllArmed ? { color: 'var(--error)' } : undefined}
+        >{cancelAllArmed ? '한 번 더 누르면 전체 취소' : '전체 취소'}</ToolbarButton>
+        <ToolbarButton
           disabled={summary.failed === 0}
           onClick={() => {
             const ids = queue.done
@@ -159,13 +158,8 @@ export function CaptureQueue() {
               .map((i) => i.item_id);
             if (ids.length > 0) retryItems.mutate({ item_ids: ids });
           }}
-          style={summary.failed === 0 ? ghostButtonDisabled() : ghostButton()}
-        >실패 재시도</button>
-        <button
-          type="button"
-          onClick={() => dismissDone.mutate()}
-          style={ghostButton()}
-        >완료 지우기</button>
+        >실패 재시도</ToolbarButton>
+        <ToolbarButton onClick={() => dismissDone.mutate()}>완료 지우기</ToolbarButton>
       </div>
 
       <div className="h-1 bg-bg-input rounded-sm relative">
@@ -182,20 +176,18 @@ export function CaptureQueue() {
         >
           <span aria-hidden>ⓘ</span>
           <span className="flex-1">{summarizeDedupeReasons(lastDedupedRows)}</span>
-          <button
-            type="button"
+          <ToolbarButton
             aria-label="중복 안내 닫기"
             onClick={() => setDismissedSubmittedAt(lastAddItems.submittedAt)}
-            style={ghostButton()}
-          >닫기</button>
+          >닫기</ToolbarButton>
         </InlineState>
       )}
 
       {queue.paused && (
         <InlineState role="alert" tone="warn" className="py-sm flex items-center gap-3 font-medium font-data">
           <span className="flex-1">쿠키 만료 · 디스크의 .cookie 파일을 갱신한 뒤 재개하세요</span>
-          <button type="button" onClick={() => resumeQueue.mutate()} style={ghostButton()}>새로고침 후 재개</button>
-          <button type="button" onClick={() => cancelAll.mutate()} style={ghostButton()}>전체 취소</button>
+          <ToolbarButton onClick={() => resumeQueue.mutate()}>새로고침 후 재개</ToolbarButton>
+          <ToolbarButton onClick={() => cancelAll.mutate()}>전체 취소</ToolbarButton>
         </InlineState>
       )}
 
@@ -282,29 +274,3 @@ function VirtualList({
   );
 }
 
-function ghostButtonDisabled(): React.CSSProperties {
-  return { ...ghostButton(), opacity: 0.5, cursor: 'not-allowed' };
-}
-
-function ghostButton(borderColor = 'var(--border-strong)', fgColor = 'var(--fg-dim)'): React.CSSProperties {
-  // Use longhand border properties (borderWidth / borderStyle / borderColor)
-  // so callers can override borderColor without React's "shorthand and
-  // non-shorthand on the same value" warning (BUG-002 from /qa).
-  return {
-    background: 'transparent',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor,
-    color: fgColor,
-    borderRadius: 4,
-    padding: '4px 10px',
-    // Longhand, not the `font` shorthand: the shorthand hardcoded a family
-    // ("Geist Sans" — dead since 2026-07-08) and resets every font-* longhand
-    // it omits, which is how it escaped both font migrations. Family goes
-    // through the token like everywhere else.
-    fontWeight: 500,
-    fontSize: 'var(--text-xs)',
-    fontFamily: 'var(--font-ui)',
-    cursor: 'pointer',
-  };
-}

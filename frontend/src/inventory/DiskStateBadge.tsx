@@ -1,6 +1,9 @@
 import type { DiskStateValue } from '../api/types';
 
 /** 같은 어휘로 CalendarCell의 마커와 일치시킨다 (DESIGN.md status semantic 토큰).
+ *  어휘 계약: 글리프·라벨(완결 ✓/부분 ⚠/미완결 ✕/손상 !)은 캡처 달력의
+ *  calendarStatus.ts CALENDAR_STATUS 와 동일해야 한다 — 같은 종목·날짜가 두
+ *  페이지에서 다른 이름·글리프로 보이면 다른 상태로 오독된다.
  *  라벨은 표시용 한국어 — 원 상태값(DiskStateValue)은 wire·정렬 계약으로 남는다. */
 const PRESENTATION: Record<DiskStateValue, { marker: string; color: string; label: string }> = {
   complete:          { marker: '✓', color: 'var(--success)', label: '완결' },

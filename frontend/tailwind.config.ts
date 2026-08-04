@@ -46,6 +46,7 @@ export default {
         'tint-selection':  'var(--tint-selection)',
         'tint-success':    'var(--tint-success)',
         'tint-error':      'var(--tint-error)',
+        'tint-neutral':    'var(--tint-neutral)',
         'tint-success-border': 'var(--tint-success-border)',
         'tint-error-border':   'var(--tint-error-border)',
         'tint-price-up':   'var(--tint-price-up)',
