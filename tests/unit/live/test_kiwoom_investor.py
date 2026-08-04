@@ -13,9 +13,10 @@ import pytest
 from hoga.live.index_registry import RepresentativeIndex
 from hoga.live.kiwoom_investor import (
     AMT_QTY_QUANTITY,
+    date_range,
     fetch_investor_net,
     fetch_investor_trend_estimate,
-    fetch_market_investor_net,
+    fetch_market_investor_net_day,
     foreign_net,
 )
 from hoga.live.kiwoom_rest import KiwoomRestClient
@@ -163,15 +164,19 @@ async def test_market_investor_strips_venue_suffix_from_index_code() -> None:
          "native_trmt_frgnr_netprps": "-451", "orgn_netprps": "+8222"},
     ]
     c = _client(lambda _r: _ok("inds_netprps", rows))
-    pts = await fetch_market_investor_net(c, KOSPI, "20260731", "20260731")
-    assert len(pts) == 1
-    assert pts[0].foreign_net == 85_703 - 451, "여기도 natfor 계열을 합산한다"
-    assert pts[0].institution_net == 8_222
+    pt = await fetch_market_investor_net_day(c, KOSPI, "20260731")
+    assert pt is not None
+    assert pt.foreign_net == 85_703 - 451, "여기도 natfor 계열을 합산한다"
+    assert pt.institution_net == 8_222
     await c.aclose()
 
 
-async def test_market_investor_calls_once_per_calendar_day() -> None:
-    """KIS 는 시계열을 한 번에 주지만 ka10051 은 base_dt 하루치다(#1007)."""
+async def test_market_investor_day_issues_exactly_one_call() -> None:
+    """KIS 는 시계열을 한 번에 주지만 ka10051 은 base_dt 하루치다(#1007).
+
+    **1콜인 것이 계약이다** — 날짜 반복은 거버너 위(호출자)에 있어야 하고, 이 함수가
+    여러 날을 돌면 그 반복이 다시 거버너 아래로 숨는다(ADR-0137).
+    """
     seen: list[str] = []
 
     def _h(r: httpx.Request) -> httpx.Response:
@@ -180,9 +185,23 @@ async def test_market_investor_calls_once_per_calendar_day() -> None:
         return _ok("inds_netprps", [])
 
     c = _client(_h)
-    await fetch_market_investor_net(c, KOSPI, "20260801", "20260803")
-    assert seen == ["20260801", "20260802", "20260803"]
+    await fetch_market_investor_net_day(c, KOSPI, "20260801")
+    assert seen == ["20260801"]
     await c.aclose()
+
+
+async def test_market_investor_day_returns_none_on_non_trading_day() -> None:
+    """휴장일은 빈 응답이다 — 실패가 아니라 '그 날은 데이터가 없다' 는 뜻이다."""
+    c = _client(lambda _r: _ok("inds_netprps", []))
+    assert await fetch_market_investor_net_day(c, KOSPI, "20260802") is None
+    await c.aclose()
+
+
+def test_date_range_is_inclusive_and_empty_when_reversed() -> None:
+    """호출자가 이 목록만큼 submit 을 낸다 — 개수가 곧 유량이다."""
+    assert date_range("20260801", "20260803") == ["20260801", "20260802", "20260803"]
+    assert date_range("20260801", "20260801") == ["20260801"]
+    assert date_range("20260803", "20260801") == []
 
 
 # === ka10064 장중 추정 ========================================================

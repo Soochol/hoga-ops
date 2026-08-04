@@ -141,43 +141,42 @@ async def fetch_investor_net(
     return InvestorNetFetchResult(points=points, violations=violations)
 
 
-async def fetch_market_investor_net(
+async def fetch_market_investor_net_day(
     client: KiwoomRestClient,
     index: RepresentativeIndex,
-    from_yyyymmdd: str,
-    to_yyyymmdd: str,
-) -> list[InvestorNetPoint]:
-    """시장(업종) 투자자 순매수(`ka10051`).
+    date_yyyymmdd: str,
+) -> InvestorNetPoint | None:
+    """시장(업종) 투자자 순매수 **하루치**(`ka10051`). 휴장일은 None.
 
     **KIS 와 모양이 다르다**: KIS 는 일별 시계열을 한 번에 주지만 `ka10051` 은
-    `base_dt` **하루치**를 업종별로 준다(#1007). 그래서 날짜마다 한 콜이다 —
-    거버너가 TR별 버킷으로 페이싱하므로 순차로 돈다.
+    `base_dt` 하루치를 업종별로 준다(#1007). 그래서 **날짜 수만큼 콜**이다.
+
+    이 함수가 하루치인 것이 계약이다 — 날짜 반복은 반드시 거버너 **위**에 있어야
+    한다(ADR-0137). 한 submit 안에서 N일을 돌면 버킷은 1 을 세고 벤더는 N 을 세서,
+    90일 요청 하나가 유량을 90콜만큼 쓰면서 페이싱은 전혀 받지 않는다. 이전 판이
+    정확히 그랬고 주석에는 "거버너가 페이싱하므로 순차로 돈다" 고 적혀 있었다.
     """
     want = index_id_to_kiwoom_code(index.id)
-    out: list[InvestorNetPoint] = []
-    for date_s in _date_range(from_yyyymmdd, to_yyyymmdd):
-        page = await client.call("ka10051", {
-            "mrkt_tp": _mrkt_tp(index.id), "amt_qty_tp": "0",
-            "base_dt": date_s, "stex_tp": _STEX_ALL,
-        })
-        for row in page.rows:
-            # `inds_cd` 가 `'001_AL'` 처럼 venue 접미를 달고 온다(실측).
-            code = str(row.get("inds_cd") or "").split("_")[0]
-            if code != want:
-                continue
-            out.append(InvestorNetPoint(
-                t_ms=daily_anchor_ms(date_s),
-                foreign_net=foreign_net(
-                    row, base="frgnr_netprps", native="native_trmt_frgnr_netprps"
-                ),
-                institution_net=_signed(row.get("orgn_netprps")),
-            ))
-            break
-    out.sort(key=lambda p: p.t_ms)
-    return out
+    page = await client.call("ka10051", {
+        "mrkt_tp": _mrkt_tp(index.id), "amt_qty_tp": "0",
+        "base_dt": date_yyyymmdd, "stex_tp": _STEX_ALL,
+    })
+    for row in page.rows:
+        # `inds_cd` 가 `'001_AL'` 처럼 venue 접미를 달고 온다(실측).
+        code = str(row.get("inds_cd") or "").split("_")[0]
+        if code != want:
+            continue
+        return InvestorNetPoint(
+            t_ms=daily_anchor_ms(date_yyyymmdd),
+            foreign_net=foreign_net(
+                row, base="frgnr_netprps", native="native_trmt_frgnr_netprps"
+            ),
+            institution_net=_signed(row.get("orgn_netprps")),
+        )
+    return None
 
 
-def _date_range(from_yyyymmdd: str, to_yyyymmdd: str) -> list[str]:
+def date_range(from_yyyymmdd: str, to_yyyymmdd: str) -> list[str]:
     """[from, to] 달력일. 휴장일은 응답이 비어 자연히 걸러진다."""
     from datetime import timedelta  # noqa: PLC0415 — 지역 사용 1회
     start = datetime.strptime(from_yyyymmdd, "%Y%m%d")
