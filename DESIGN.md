@@ -365,6 +365,24 @@ Quiet Trading Terminal migration completed across app shell, route surfaces, rai
 ### Status dot (general)
 - 6px circle, glow via `box-shadow` for active states only
 
+### Destructive actions — 보호 사다리 (2026-08-04)
+
+파괴적 액션의 안전장치는 **위험도에 비례해 4단계 중 하나**를 쓴다 — 새 표면이 임의로
+다섯 번째 패턴을 만들지 않는다(2026-08-04 UI 조사에서 "4패턴 혼재로 누르기 전 예측
+불가"로 지적된 것을 사다리로 명문화; 지점별 실사 결과 배치 자체는 위험도와 일치했다).
+
+| 단계 | 패턴 | 기준 | 현행 사용처 |
+|---|---|---|---|
+| 1 | 즉시 실행(보호 없음) | 단건 + 재생성이 한 동작(재추가·재그리기) | 관심 1종목 제거, 히트맵 1종목 제거, 그리기 1개 삭제, 큐 1행 취소 |
+| 2 | 인라인 2단(같은 자리에서 "삭제?" 재클릭 / armed 타이머) | 목록 안 반복 작업 흐름 — 모달이 흐름을 끊으면 더 나쁨 | 프리셋 삭제(`PresetMenu` pendingDelete), 캡처 Cancel All(4초 armed) |
+| 3 | 삭제유예 + 실행취소 | 단건이지만 재생성 비용이 큼(사용자 저작물) | 저장뷰 삭제(`StudyViewsDrawer`) |
+| 4 | `ConfirmModal(tone="destructive")` | 대량 삭제 또는 부수 효과 동반(멤버 동반 삭제·수집 중단) | 조건검색 삭제, 그리기 전체 삭제, 관심 폴더·히트맵 그룹 삭제 |
+
+- `window.confirm` 은 금지 — 테마 밖 OS 다이얼로그라 온-브랜드 크롬이 아니고,
+  테스트에서 스텁 지옥이 된다(2026-08-04 에 잔존 3곳을 `ConfirmModal` 로 전환).
+- 단계를 올릴지 애매하면 "실수로 눌렀을 때 복구에 몇 동작이 드는가"로 판정한다 —
+  1동작이면 1단계, 여러 동작·재입력이면 3단계 이상.
+
 ### Modals & popovers — dismissal contract
 Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss `useEffect`.
 - **Center modal** (full-screen backdrop, fixed-position card): wrap in `ModalShell` (`frontend/src/ui/ModalShell.tsx`) — it owns the backdrop, Escape + backdrop-click dismiss, the canon card, and the title + ✕ header.
@@ -410,6 +428,7 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-07-29 | **10호가 잔량 숫자에 방향색 2벌 부여 — `--qty-ask`(매도 `--price-down` 파랑) / `--qty-bid`(매수 `--price-up` 빨강) 신설** | 그전까지 `/live`·`/study` BookPanel 의 잔량 숫자는 양쪽 다 `text-fg-dim` 한 색이라 side 정보를 색이 전혀 나르지 않았다. 색 출처는 사용자 지시로 tossinvest.com 주문 페이지 **실측** — 페이지의 `%` 텍스트를 계산색으로 그룹핑하니 세 쌍이 나왔고(본문 `#2272eb`/`#e42939`, 관심 리스트 `#3182f6`/`#f04452`, 지수바 `#de2b39`), `:root` 의 `--wts-adaptive-*` 스케일을 덤프해 본문 등락률 = **blue600/red600** 으로 등급을 확정했다. **스크린샷만으로는 어느 표면의 톤인지 구분 불가**라는 것이 이 실측의 핵심 교훈. 우리 쪽 대응 토큰은 등락률 글자를 칠하는 `--price-down`/`--price-up` 이라 거기에 별칭으로 붙였다 — Toss Light 의 파랑이 한 톤 진한 것(`#1957c2` vs `#2272eb`)은 accent-vs-price 충돌의 승인된 예외이지 드리프트가 아니다. **막대 토큰(`--bar-*`)을 재사용하지 않은 이유**: 막대는 저알파 워시(다크 28~30%)라 텍스트에 그대로 쓰면 대비가 무너진다. **뱃지 색과 축이 다르다** — 증감 뱃지는 delta 의 부호(2026-07-21 행), 잔량 숫자는 호가의 방향이라 "빨간 잔량 + 파란 −뱃지"가 정상 조합이다(테스트가 이 조합을 고정). 별칭이라 4개 테마가 각자 값으로 풀리고 같은 패널 하단 총잔량 스트립과도 자동 일치한다. |
 | 2026-07-30 | **거래원 "외국계 합계" 행 `--bg-subtle` → `--bg-card` 환원** (#955 의 거래원 부분 되돌림, 사용자 결정) | #955 가 "구분선 최소화"(2026-07-22) 결정문의 "sticky 표 헤더/합계행(체결·거래원)" 문언을 따라 합계행을 `--bg-subtle` 밴드로 올렸으나, 실제 화면에서 거래원 창 안에 이 행만 배경이 다른 것이 사용자에게 이물감으로 읽혔다. 창 본문이 `--bg-card`(`DataWindow.tsx` 데이터 창 스크롤 컨테이너)이므로 합계행도 같은 값으로 되돌려 창 전체가 한 면이 된다. **`bg-` 클래스 자체는 제거하지 않는다** — 이 행은 `sticky bottom-0` 이라 배경이 투명하면 스크롤되는 거래원 행이 뒤로 비친다("패널 배경과 동일색이어야 평시에 투명" 계약, 2026-07-29 행과 동일 논리). **범위 밖**: 체결 창 열 헤더(`TradeTickTable`)는 `--bg-subtle` 밴드 유지 — 사용자 지적은 거래원 합계행 한정. 테스트가 `bg-bg-card` + `not.toHaveClass('bg-bg-subtle')` + `sticky` 를 못박는다. |
 | 2026-07-30 | **잠정투자자 창 열 헤더(차수·외국인·기관·합산) `--bg-subtle` → `--bg-card`** — 위 거래원 결정의 연장(사용자 지적) | 같은 이유로 `/live` 잠정투자자 창에서도 헤더 행만 배경이 달라 보였다. 창 본문(`DataWindow.InvestorWindow` = `bg-bg-card`)과 같은 값으로 환원. **배경을 `thead`/`tr` 이 아니라 `th` 4개에 각각 주는 구조는 유지한다** — `border-collapse: collapse` 표에서는 `thead`/`tr` 에 준 배경이 sticky 헤더를 따라오지 않아 스크롤 시 행이 뒤로 비친다. 그래서 "밴드를 없앤다"가 `bg-` 클래스 삭제가 아니라 **값 일치**인 것은 거래원 합계행과 동일하다. 소비처는 `DataWindow` 하나뿐이라(`/study` 는 이 카드를 쓰지 않는다) 다른 배경 위에서 비칠 위험은 없다. 테스트가 4개 셀 각각에 `bg-bg-card` + `not bg-bg-subtle`, `thead` 에 `sticky` 를 못박는다. |
+| 2026-08-04 | **파괴적 액션 보호 사다리 명문화** (Components → Destructive actions) | 4패턴(즉시/인라인 2단/삭제유예+실행취소/ConfirmModal)이 문서 없이 혼재해 "누르기 전 예측 불가"로 지적됐다(2026-08-04 UI 조사). 지점별 실사 결과 배치 자체는 위험도와 일치 — 규칙 부재가 문제라 사다리로 명문화하고 `window.confirm` 금지를 못박았다. 판정 기준: 실수 복구에 드는 동작 수. |
 | 2026-08-04 | **전역 `:focus-visible` 액센트 링 도입 (`global.css`)** | 색 규율은 focus ring 을 `--accent` 소유로 명시했지만 실제로는 `focus-visible` 처리가 8개 파일뿐, 나머지 표면 전부가 브라우저 기본 아웃라인이었다(계약 미이행). `/`·`[`·`]` 단축키가 있는 키보드 친화 도구라 전역 `:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px }` 한 블록으로 이행. `:focus` 가 아니라 `:focus-visible` 이라 마우스 클릭에는 링이 뜨지 않는다. inset(−2px)인 이유: 드로어·리스트의 `overflow-hidden` 조상 아래에서 바깥 링은 잘린다. 자체 focus 처리(`focus:outline-none`+ring)는 유틸리티 특이도가 높아 기존 동작 유지. |
 
 ## App-shell & live tokens (ADR-0039, ADR-0052)
