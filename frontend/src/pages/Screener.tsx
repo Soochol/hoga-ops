@@ -168,8 +168,8 @@ export function Screener() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-fg truncate">{currentTitle}</span>
-                {editor.dirty && <span className="text-[10px] text-fg-dim">수정됨</span>}
-                {resultsStale && <span className="text-[10px]" style={{ color: 'var(--warn)' }}>다시 조회 필요</span>}
+                {editor.dirty && <span className="text-2xs text-fg-dim">수정됨</span>}
+                {resultsStale && <span className="text-2xs" style={{ color: 'var(--warn)' }}>다시 조회 필요</span>}
               </div>
               {editor.saveError && <div className="text-xs" style={{ color: 'var(--error)' }}>저장 실패: {editor.saveError.message}</div>}
             </div>

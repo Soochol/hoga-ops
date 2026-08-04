@@ -147,7 +147,7 @@ function UnitChip({ unit, onToggle }: { unit: InvestorEstimateUnit; onToggle: ()
       aria-pressed={isAmount}
       aria-label={`표시 단위 ${isAmount ? '금액' : '수량'}, 누르면 ${isAmount ? '수량' : '금액'}`}
       title={description}
-      className={`rounded border px-1.5 py-px text-[10px] leading-normal transition-colors ${
+      className={`rounded border px-1.5 py-px text-2xs leading-normal transition-colors ${
         isAmount
           ? 'border-accent text-accent'
           : 'border-border text-fg-dim hover:border-border-strong hover:text-fg'

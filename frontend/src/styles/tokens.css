@@ -148,6 +148,7 @@
   /* BEGIN AUTO-GENERATED (size + radius + layout) — regenerate via npm run gen:tokens */
   /* ───── Typography sizes (rem-based) ───── */
   --text-badge: 0.53125rem; /* 9.563px @ default; 8.5px base intent */
+  --text-2xs: 0.5625rem; /* 10.125px @ default; 9px base intent */
   --text-xs: 0.65625rem; /* 11.813px @ default; 10.5px base intent */
   --text-sm: 0.71875rem; /* 12.938px @ default; 11.5px base intent */
   --text-base: 0.8125rem; /* 14.625px @ default; 13px base intent */

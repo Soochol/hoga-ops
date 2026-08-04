@@ -64,6 +64,7 @@ The design system has a **single density dial** at `:root font-size`.
 | Token | Base intent (1.0×) | Rendered @ default (1.125×) | Use |
 |---|---|---|---|
 | `badge` | 8.5px | 9.563px | Hierarchical badges (e.g., SymbolSearch market tag) |
+| `2xs` | 9px | 10.125px | Dense chrome micro-labels (창 크롬 서브라벨·상태 칩) |
 | `xs` | 10.5px | 11.813px | Small-caps labels, badges |
 | `sm` | 11.5px | 12.938px | Table rows, secondary data values |
 | `base` | 13px | 14.625px | Body / UI default |
@@ -481,6 +482,7 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-07-30 | **잠정투자자 창 열 헤더(차수·외국인·기관·합산) `--bg-subtle` → `--bg-card`** — 위 거래원 결정의 연장(사용자 지적) | 같은 이유로 `/live` 잠정투자자 창에서도 헤더 행만 배경이 달라 보였다. 창 본문(`DataWindow.InvestorWindow` = `bg-bg-card`)과 같은 값으로 환원. **배경을 `thead`/`tr` 이 아니라 `th` 4개에 각각 주는 구조는 유지한다** — `border-collapse: collapse` 표에서는 `thead`/`tr` 에 준 배경이 sticky 헤더를 따라오지 않아 스크롤 시 행이 뒤로 비친다. 그래서 "밴드를 없앤다"가 `bg-` 클래스 삭제가 아니라 **값 일치**인 것은 거래원 합계행과 동일하다. 소비처는 `DataWindow` 하나뿐이라(`/study` 는 이 카드를 쓰지 않는다) 다른 배경 위에서 비칠 위험은 없다. 테스트가 4개 셀 각각에 `bg-bg-card` + `not bg-bg-subtle`, `thead` 에 `sticky` 를 못박는다. |
 | 2026-08-04 | **`--border`/`--border-strong` 대비 인상 검토 → 현행 유지 (사용자 결정)** | 2026-08-04 UI 조사가 입력 경계 대비 미달(WCAG 1.4.11 비텍스트 3:1 기준 — strong 1.71:1 라이트/1.49:1 다크)을 지적. 입력·팝오버 전용 `--border-strong` 1단 인상안(Ledger #C9C3B2→#AFA792=2.33:1, Obsidian #33333C→#4A4A58=2.15:1)을 A/B 실측 이미지로 비교한 뒤 **현행 유지를 선택** — "분리는 톤+간격, 선은 조용하게"가 이 시스템의 방향이고(pane 구분선을 두 번 낮춘 전례), 단일 사용자 도구라 AA 준수 압력도 없다. 입력 어포던스는 배경(`--bg-input`)·포커스 accent 테두리가 담당. **재검토 트리거**: 입력을 못 찾는 실사용 불편이 실제로 관측될 때 — 그 전까지 조사 도구가 이 수치를 다시 지적해도 재론하지 않는다. |
 | 2026-08-04 | **파괴적 액션 보호 사다리 명문화** (Components → Destructive actions) | 4패턴(즉시/인라인 2단/삭제유예+실행취소/ConfirmModal)이 문서 없이 혼재해 "누르기 전 예측 불가"로 지적됐다(2026-08-04 UI 조사). 지점별 실사 결과 배치 자체는 위험도와 일치 — 규칙 부재가 문제라 사다리로 명문화하고 `window.confirm` 금지를 못박았다. 판정 기준: 실수 복구에 드는 동작 수. |
+| 2026-08-04 | **`text-[Npx]` 하드코딩 71곳 전량 토큰화 + `text-2xs`(base 9px) 신설** | 하드코딩 텍스트 크기는 `:root font-size` 밀도 다이얼을 이탈한다(미래 Compact/Cozy 에서 그 텍스트만 안 따라옴 — 2026-08-04 UI 조사 #4). 값 분포 실측: 10px×25·11px×20·10.5px×14·12px×6·9/9.5px×4·13px×1. badge(9.56 렌더)~xs(11.81 렌더) 사이 공백이 하드코딩의 원인이라 **`text-2xs`(base 9 → 렌더 10.125px)를 신설**해 10·10.5px 무리를 흡수(기존과 시각 등가, ±0.4px). 매핑: 9/9.5→badge · 10/10.5→2xs · 11→xs · 12/13→sm. **11↔12 는 같은 파일 3곳(타이틀바 등)에서 의도된 위계라 xs/sm 으로 분리 유지** — 근사 최단 매핑(둘 다 xs)이 아니라 위계 보존이 우선. 10↔10.5 공존 1곳은 이미 0.5px 차라 병합 무해. 도그푸딩 실측으로 12.94/11.81px 렌더 확인. |
 | 2026-08-04 | **전역 `:focus-visible` 액센트 링 도입 (`global.css`)** | 색 규율은 focus ring 을 `--accent` 소유로 명시했지만 실제로는 `focus-visible` 처리가 8개 파일뿐, 나머지 표면 전부가 브라우저 기본 아웃라인이었다(계약 미이행). `/`·`[`·`]` 단축키가 있는 키보드 친화 도구라 전역 `:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px }` 한 블록으로 이행. `:focus` 가 아니라 `:focus-visible` 이라 마우스 클릭에는 링이 뜨지 않는다. inset(−2px)인 이유: 드로어·리스트의 `overflow-hidden` 조상 아래에서 바깥 링은 잘린다. 자체 focus 처리(`focus:outline-none`+ring)는 유틸리티 특이도가 높아 기존 동작 유지. |
 
 ## App-shell & live tokens (ADR-0039, ADR-0052)

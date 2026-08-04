@@ -165,7 +165,7 @@ export function PresetMenu<P>({
       {presets.length === 0 ? (
         <div className="px-3 py-1.5 text-xs text-fg-dim">저장된 프리셋이 없습니다</div>
       ) : (
-        <div className="px-3 pb-1 pt-0.5 text-[10px] text-fg-dim">
+        <div className="px-3 pb-1 pt-0.5 text-2xs text-fg-dim">
           {labels.applyHint}
         </div>
       )}
@@ -195,7 +195,7 @@ export function PresetMenu<P>({
                 });
                 setPendingDelete(null);
               }}
-              className="rounded px-2 py-1 text-[11px] text-error hover:bg-tint-error"
+              className="rounded px-2 py-1 text-xs text-error hover:bg-tint-error"
             >
               삭제?
             </button>
@@ -253,7 +253,7 @@ export function PresetMenu<P>({
             type="button"
             data-testid={`${testIdPrefix}-save-as-confirm`}
             onClick={confirmSaveAs}
-            className="rounded px-2 py-1 text-[11px] text-accent hover:bg-bg-input-hover"
+            className="rounded px-2 py-1 text-xs text-accent hover:bg-bg-input-hover"
           >
             저장
           </button>

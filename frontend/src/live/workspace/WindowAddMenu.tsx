@@ -126,12 +126,12 @@ export function WindowAddMenu() {
               <span className="flex items-center gap-1.5">
                 <span className="truncate text-xs">{WINDOW_KIND_LABEL[item.kind]}</span>
                 {inapplicable && (
-                  <span className="shrink-0 rounded-sm bg-bg-input px-1 py-px text-[9.5px] text-fg-dimmer">
+                  <span className="shrink-0 rounded-sm bg-bg-input px-1 py-px text-badge text-fg-dimmer">
                     지수 전용
                   </span>
                 )}
               </span>
-              <span className="block truncate text-[10.5px] text-fg-dim">{item.desc}</span>
+              <span className="block truncate text-2xs text-fg-dim">{item.desc}</span>
             </span>
           </button>
         );

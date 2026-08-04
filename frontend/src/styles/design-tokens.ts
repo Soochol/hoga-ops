@@ -79,6 +79,10 @@ export const SIZE_TOKENS = {
   // `text-badge` sits below text-xs to preserve hierarchy on micro-labels
   // like the SymbolSearch market tag (KOSPI/KOSDAQ). 8.5px base intent.
   'text-badge': { rem: 0.53125, baseIntentPx: 8.5, usage: 'Hierarchical badges (e.g., SymbolSearch market tag)' },
+  // badge(9.56px 렌더)와 xs(11.81px 렌더) 사이의 공백을 메우는 밀집 크롬 마이크로 라벨.
+  // 이 구간에 토큰이 없어 10px·10.5px 하드코딩 39곳이 밀도 다이얼을 이탈해
+  // 있었다(2026-08-04 토큰화 스윕에서 신설 — 렌더 10.125px 로 기존 10px 과 시각 등가).
+  'text-2xs':   { rem: 0.5625,  baseIntentPx: 9,   usage: 'Dense chrome micro-labels (창 크롬 서브라벨·상태 칩)' },
   'text-xs':    { rem: 0.65625, baseIntentPx: 10.5, usage: 'Small-caps labels, badges' },
   'text-sm':    { rem: 0.71875, baseIntentPx: 11.5, usage: 'Table rows, secondary data values' },
   'text-base':  { rem: 0.8125,  baseIntentPx: 13,   usage: 'Body / UI default' },

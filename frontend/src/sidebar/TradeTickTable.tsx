@@ -56,7 +56,7 @@ export default function TradeTickTable({
           bg-bg-card 였을 땐 창 배경과 같은 값이라 밴드가 보이지 않았고, sticky 는
           행이 비쳐 보이는 것만 막고 있었다. */}
       <div
-        className={`sticky top-0 z-10 grid ${COLS} gap-2 bg-bg-subtle px-2.5 py-1 text-[10.5px] text-fg-dim`}
+        className={`sticky top-0 z-10 grid ${COLS} gap-2 bg-bg-subtle px-2.5 py-1 text-2xs text-fg-dim`}
       >
         <span>시각</span>
         <span className="text-right">체결가</span>
