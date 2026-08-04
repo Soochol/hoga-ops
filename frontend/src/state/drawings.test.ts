@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Drawing } from '../chart/drawing/types';
 import { INITIAL_DEFAULTS } from '../chart/drawing/types';
 import { DEFAULTS_KEY, drawingScope } from '../chart/drawing/persistence';
-import { useDrawingsStore, drawingScopeFor, slotForTimeframe } from './drawings';
+import { useDrawingsStore, drawingBarMsFor, drawingScopeFor, slotForTimeframe } from './drawings';
 
 // 스토어 키는 (종목, 봉 슬롯) scope. A/B 는 서로 다른 종목의 분봉 슬롯이고,
 // A_DAILY 는 A 와 같은 종목의 일봉 슬롯 — 슬롯 격리 검증용.
@@ -71,6 +71,23 @@ describe('slotForTimeframe / drawingScopeFor', () => {
     expect(drawingScopeFor(CODE_A, '5m')).not.toBe(drawingScopeFor(CODE_A, 'D'));
     expect(drawingScopeFor(CODE_A, 'D')).not.toBe(drawingScopeFor(CODE_B, 'D'));
     expect(drawingScopeFor(null, '1m')).toBeNull();
+  });
+});
+
+describe('drawingBarMsFor', () => {
+  it('passes the bundle bucket through on minute frames', () => {
+    expect(drawingBarMsFor('1m', 60_000)).toBe(60_000);
+    expect(drawingBarMsFor('5m', 300_000)).toBe(300_000);
+    expect(drawingBarMsFor('30m', undefined)).toBeUndefined();
+  });
+
+  it('ignores the bundle bucket on D/W/M — it is the hoga range bucket (60s), not the bar pitch', () => {
+    // Regression: feeding the bundle's 60 000 to the FutureBand made a
+    // whole-band drag on the daily chart span minutes of real time, so every
+    // drawing anchored right of the last candle collapsed onto its X.
+    expect(drawingBarMsFor('D', 60_000)).toBe(86_400_000);
+    expect(drawingBarMsFor('W', 60_000)).toBe(7 * 86_400_000);
+    expect(drawingBarMsFor('M', 60_000)).toBe(30 * 86_400_000);
   });
 });
 

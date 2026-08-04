@@ -27,6 +27,30 @@ export function drawingScopeFor(code: string | null, tf: LiveTimeframe): string 
   return code == null ? null : drawingScope(code, slotForTimeframe(tf));
 }
 
+/** Nominal real-ms per BAR for the calendar timeframes. Used only as the
+ *  FutureBand extrapolation pitch (empty band right of the last candle), where
+ *  the invariant is round-trip consistency — "N bars past the last candle" ↔
+ *  `lastRealMs + N × pitch` — not calendar exactness, so W=7d and M=30d are
+ *  fine (there are no real sessions out there to collide with). */
+const CALENDAR_BAR_MS: Record<'D' | 'W' | 'M', number> = {
+  D: 86_400_000,
+  W: 7 * 86_400_000,
+  M: 30 * 86_400_000,
+};
+
+/** Bar pitch for the drawing layer's FutureBand at `tf`. Minute frames use the
+ *  bundle's aggregated bucket; D/W/M need their own bar pitch because the
+ *  bundle's `bucket_ms` stays 60 000 there (it keys the hoga range API, not the
+ *  candle bars) — feeding it to the FutureBand made a whole-band drag on the
+ *  daily chart span mere minutes of real time, collapsing every drawing
+ *  anchored in the empty right band onto the last candle's X. */
+export function drawingBarMsFor(
+  tf: LiveTimeframe,
+  bundleBucketMs: number | undefined,
+): number | undefined {
+  return isMinuteTimeframe(tf) ? bundleBucketMs : CALENDAR_BAR_MS[tf];
+}
+
 // ── Undo/Redo (ADR-0107) ─────────────────────────────────────────────────
 // Snapshot history is module-level non-reactive state (mirrors pendingTimers):
 // undo/redo are driven by keyboard + toast, not bound to any rendered UI, so
