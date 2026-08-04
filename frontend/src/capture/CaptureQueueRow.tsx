@@ -98,7 +98,7 @@ export function CaptureQueueRow({
         </span>
         {/* 표시는 한국어 라벨, data-phase 에 원값 보존 — e2e·디버깅은 원값을 본다. */}
         <span data-phase={item.phase} style={{ background: descriptor.chipColor }}
-          className="py-[0.1rem] px-xs rounded-md text-fg-dim">
+          className="py-0.5 px-xs rounded-md text-fg-dim">
           {descriptor.label}
         </span>
         <span>{item.progress?.pages_done ?? '–'}</span>

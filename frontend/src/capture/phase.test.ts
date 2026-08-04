@@ -24,12 +24,13 @@ describe('PHASE descriptor table', () => {
     expect(PHASE.queued.icon).toBe('○');
   });
 
-  it('chipColor: shared selection tint for in-progress, up tint for done, down tint for failed', () => {
+  it('chipColor: 전부 토큰 — rgba 하드코딩은 테마 4종을 못 따라간다', () => {
     expect(PHASE.capturing.chipColor).toBe('var(--tint-selection)');
     expect(PHASE.parsing.chipColor).toBe('var(--tint-selection)');
     expect(PHASE.deciding.chipColor).toBe('var(--tint-selection)');
-    expect(PHASE.done.chipColor).toContain('34,197,94');
-    expect(PHASE.failed.chipColor).toContain('244,63,94');
+    expect(PHASE.done.chipColor).toBe('var(--tint-success)');
+    expect(PHASE.failed.chipColor).toBe('var(--tint-error)');
+    expect(PHASE.queued.chipColor).toBe('var(--tint-neutral)');
   });
 
   it('group: active for in-flight, queued for waiting, terminal for resolved', () => {

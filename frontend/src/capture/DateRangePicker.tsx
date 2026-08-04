@@ -3,6 +3,7 @@ import { useCalendar } from './useCalendar';
 import { CalendarCell } from './CalendarCell';
 import type { CalendarStatus } from '../api/types';
 import { calendarHints } from '../api/upstream-hints';
+import { InlineState } from '../ui/DataSurface';
 
 export interface DateRange {
   start: string;       // YYYYMMDD
@@ -181,21 +182,12 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
 
   return (
     <div className="flex flex-col gap-2">
+      {/* 공용 InlineState — 종전 수기 인라인 스타일은 존재하지 않는 토큰
+          (--text-primary·--radius-sm·--font-size-sm)을 참조하고 있었다. */}
       {bannerCopy && (
-        <div
-          role="status"
-          style={{
-            padding: '8px 12px',
-            marginBottom: 8,
-            background: 'var(--bg-input)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm, 4px)',
-            fontSize: 'var(--font-size-sm, 0.875rem)',
-            color: 'var(--text-primary)',
-          }}
-        >
+        <InlineState role="status" className="mb-2 text-fg">
           {bannerCopy}
-        </div>
+        </InlineState>
       )}
       <div data-testid="picker-nav" className="flex items-center gap-1.5 font-medium text-sm font-data text-fg-dim">
         <button type="button" aria-label="이전 달" onClick={() => shiftBy(-1)} className={navBtnCls}>‹</button>
@@ -233,5 +225,5 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
   );
 }
 
-const navBtnCls = 'bg-transparent border border-border-strong text-fg-dim rounded-md py-[0.1rem] px-xs font-medium text-sm font-data cursor-pointer leading-none';
-const navSelectCls = 'bg-bg-input border text-fg rounded-md py-[0.1rem] px-xs font-medium text-sm font-data cursor-pointer';
+const navBtnCls = 'bg-transparent border border-border-strong text-fg-dim rounded-md py-0.5 px-xs font-medium text-sm font-data cursor-pointer leading-none';
+const navSelectCls = 'bg-bg-input border text-fg rounded-md py-0.5 px-xs font-medium text-sm font-data cursor-pointer';

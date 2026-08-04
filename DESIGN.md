@@ -159,6 +159,7 @@ The design system has a **single density dial** at `:root font-size`.
   - `--tint-selection` — active nav, active tab, primary hover, **selected list rows** (tracks `--accent`)
     - **List-row selection rule:** selected rows use the background tint **only** — never add a left accent bar (`border-left: 2px solid var(--accent)` or `shadow-[inset_2px_0_0_var(--accent)]`). Inventory (`ListRow`) is the reference; all right-rail drawer rows (watchlist / heatmap / screener / ranking via `QuoteRow`, saved views) match it. Unified 2026-07-23 — do not reintroduce the accent bar.
   - `--tint-success` / `--tint-error` — completion / error chip background
+  - `--tint-neutral` — 중립 칩 배경 (캡처 큐 대기/취소/건너뜀 phase 칩; 2026-08-04 신설 — rgba 하드코딩이 4테마를 못 따라가던 자리)
   - `--tint-success-border` / `--tint-error-border` — banner/chip borders
   - `--tint-price-up` / `--tint-price-down` — buy/sell depth bar, market chip (tracks `--price-*`)
 

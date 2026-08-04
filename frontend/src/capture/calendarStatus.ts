@@ -4,9 +4,14 @@
 // Record<CalendarStatus, _> exhaustiveness flags any miss.
 import type { CalendarStatus } from '../api/types';
 
+// 어휘 계약: 디스크 상태 4종(complete/source_partial/client_incomplete/invalid)의
+// 글리프·색·한국어 라벨은 보관함의 DiskStateBadge.PRESENTATION 과 **동일해야 한다**
+// (완결 ✓ / 부분 ⚠ / 미완결 ✕ / 손상 !). 같은 종목·날짜가 두 페이지에서 다른
+// 글리프로 보이면 사용자는 다른 상태로 오독한다. phase → CalendarStatus 매핑은
+// phase.ts 의 phaseToCalendarStatus 가 소유한다.
 export interface CalendarStatusDescriptor {
   /** Glyph rendered in the corner of the cell; null = no glyph. */
-  marker: '✓' | '⚠' | '✕' | '🔒' | '–' | null;
+  marker: '✓' | '⚠' | '✕' | '!' | '◆' | '◇' | '🔒' | '–' | null;
   /** Per-status badge color for the marker. Optional — today_locked relies
    *  on the 🔒 glyph itself and intentionally has no separate color. */
   badgeColor?: string;
@@ -29,36 +34,37 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
     badgeColor: 'var(--success)',
     baseColorVar: 'var(--fg)',
     disabled: false,
-    tooltipSuffix: '수집 완료',
-    legendLabel: '✓ 완료',
+    tooltipSuffix: '완결 — 수집 완료',
+    legendLabel: '✓ 완결',
   },
   source_partial: {
     marker: '⚠',
     badgeColor: 'var(--warn)',
     baseColorVar: 'var(--fg)',
     disabled: false,
-    tooltipSuffix: '수집됨 (원본 부분 — 데이터 구멍)',
+    tooltipSuffix: '부분 — 업스트림 결손 가능 (재캡처로 복구 안 될 수 있음)',
     legendLabel: '⚠ 부분',
   },
   client_incomplete: {
+    // 종전 범례가 이 상태를 '손상'이라 불렀다 — 보관함(DiskStateBadge)은 같은
+    // 상태를 '미완결'로 부르고 있어 같은 날짜가 두 페이지에서 다른 이름이었다.
     marker: '✕',
     badgeColor: 'var(--error)',
     baseColorVar: 'var(--fg)',
     disabled: false,
-    tooltipSuffix: '디스크에 부분 페이지 (캡처 시 이어받기)',
-    legendLabel: '✕ 손상',
+    tooltipSuffix: '미완결 — 다음 캡처에서 이어받음',
+    legendLabel: '✕ 미완결',
   },
   invalid: {
     // ADR-0020 — DiskState.INVALID reaches the wire when a Stock-Date has an
-    // error-severity invariant violation. Reuses the '✕' glyph (the data
-    // shape is broken, semantically adjacent to client_incomplete) but the
-    // tooltip distinguishes the cause from "collection interrupted".
-    marker: '✕',
+    // error-severity invariant violation. 글리프는 보관함과 동일한 '!' —
+    // 종전엔 '✕'(미완결과 동일)에 범례도 없어 구분 불가였다.
+    marker: '!',
     badgeColor: 'var(--error)',
     baseColorVar: 'var(--fg)',
     disabled: false,
-    tooltipSuffix: '데이터 형식 오류 (재캡처 필요)',
-    legendLabel: null,
+    tooltipSuffix: '손상 — 데이터 무결성 위반 (재캡처 필요)',
+    legendLabel: '! 손상',
   },
   no_upstream_data: {
     // ADR-0021 — hogaplay info.php returned 200 + empty body. The cell stays
@@ -73,26 +79,26 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
     legendLabel: '– 업스트림 없음',
   },
   complete_live: {
-    // KIS live/REST-only promotion, no hogaplay artifact. Reuses the ✓ glyph but
-    // uses the kis_live source-identity token (DESIGN.md --source-kis-live-border)
-    // instead of --success green, so it's visually distinct from a hogaplay
-    // capture. Cell stays clickable — this date is still a hogaplay target.
-    marker: '✓',
+    // KIS live/REST-only promotion, no hogaplay artifact. 글리프를 ◆(다이아)로
+    // 분화 — 종전엔 hogaplay 완결과 같은 ✓에 색만 달라 색각 이상·저대비에서
+    // 구분 불가였다. 색은 kis_live source-identity 토큰 유지.
+    // Cell stays clickable — this date is still a hogaplay target.
+    marker: '◆',
     badgeColor: 'var(--source-kis-live-border)',
     baseColorVar: 'var(--fg)',
     disabled: false,
     tooltipSuffix: 'KIS 실시간 데이터 (hogaplay 미수집)',
-    legendLabel: '✓ KIS 실시간',
+    legendLabel: '◆ KIS 실시간',
   },
   partial_live: {
-    // KIS live/REST-only promotion with session gaps. ⚠ glyph in the kis_live
-    // source-identity token.
-    marker: '⚠',
+    // KIS live/REST-only promotion with session gaps. ◇(빈 다이아) — KIS 계열은
+    // 다이아 모양 가족으로 묶는다(◆ 완결 / ◇ 부분).
+    marker: '◇',
     badgeColor: 'var(--source-kis-live-border)',
     baseColorVar: 'var(--fg)',
     disabled: false,
     tooltipSuffix: 'KIS 실시간 데이터, 부분 (hogaplay 미수집)',
-    legendLabel: '⚠ KIS 실시간 부분',
+    legendLabel: '◇ KIS 실시간 부분',
   },
   today_locked: {
     marker: '🔒',
@@ -137,6 +143,7 @@ export const LEGEND_ORDER: readonly CalendarStatus[] = [
   'complete',
   'source_partial',
   'client_incomplete',
+  'invalid',
   'no_upstream_data',
   'complete_live',
   'partial_live',

@@ -200,7 +200,7 @@ function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted:
       <span className="border border-border-strong rounded-md px-xs font-semibold text-badge text-fg-dim">{hit.market}</span>
       <span
         title={breakdown}
-        style={{ color: hit.captured_count > 0 ? 'var(--accent)' : 'var(--fg-dimmer)' }}
+        style={{ color: hit.captured_count > 0 ? 'var(--accent)' : 'var(--fg-dim)' }}
         className="font-medium text-xs font-data tabular-nums"
       >
         {countText}

@@ -13,10 +13,12 @@ export interface PhaseDescriptor {
   terminal: boolean;
 }
 
+// 칩 틴트는 전부 토큰 — rgba 하드코딩 시절(~2026-08-04)엔 4개 테마 중 이 칩만
+// 테마를 안 따라갔다. 중립 틴트가 없어서 --tint-neutral 을 신설했다(tokens.css).
 const TEAL_TINT = 'var(--tint-selection)';
-const UP_TINT = 'rgba(34,197,94,0.10)';
-const DOWN_TINT = 'rgba(244,63,94,0.10)';
-const NEUTRAL_TINT = 'rgba(148,163,184,0.10)';
+const UP_TINT = 'var(--tint-success)';
+const DOWN_TINT = 'var(--tint-error)';
+const NEUTRAL_TINT = 'var(--tint-neutral)';
 
 export const PHASE: Record<CapturePhase, PhaseDescriptor> = {
   queued:    { icon: '○', label: '대기',     chipColor: NEUTRAL_TINT, group: 'queued',   terminal: false },
