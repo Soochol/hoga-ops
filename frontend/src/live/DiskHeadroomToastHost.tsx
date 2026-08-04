@@ -48,7 +48,7 @@ export default function DiskHeadroomToastHost() {
       </div>
       <div className="mt-1 text-xs text-fg-dim">
         남은 공간 {disk?.free_pct}% ({disk?.free_gib}GiB). 가득 차면 캡처와 실시간
-        기록이 조용히 실패합니다 — `hoga prune` 으로 회수량을 확인하세요.
+        기록이 조용히 실패합니다 — `hoga prune` 으로 회수량을 확인하세요
       </div>
     </ToastCard>
   );

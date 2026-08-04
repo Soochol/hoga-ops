@@ -507,7 +507,7 @@ export function ScreenerDrawer() {
               </div>
             )}
             {lastScan.rows.length === 0 ? (
-              <RailState>조건에 맞는 종목이 없습니다.</RailState>
+              <RailState>조건에 맞는 종목이 없습니다</RailState>
             ) : (
               <DndContext
                 sensors={sensors}
@@ -539,7 +539,7 @@ export function ScreenerDrawer() {
           // 없습니다"와 구분이 안 돼, 초기화가 '결과 0건'으로 오독된다.
           <RailState>조회 중…</RailState>
         ) : (
-          <RailState>조건을 선택하고 시작하세요.</RailState>
+          <RailState>조건을 선택하고 시작하세요</RailState>
         )}
       </RailDrawerBody>
 

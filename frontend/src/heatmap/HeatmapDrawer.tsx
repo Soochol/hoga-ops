@@ -382,7 +382,7 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, pending, folders }: {
           </select>
         </label>
       ) : (
-        <div className="text-xs text-fg-dim">그룹이 없습니다 — 먼저 ＋ 버튼으로 그룹을 만들어 주세요.</div>
+        <div className="text-xs text-fg-dim">그룹이 없습니다 — 먼저 ＋ 버튼으로 그룹을 만들어 주세요</div>
       ))}
       <div className="flex justify-end gap-2">
         <button type="button" className="text-xs px-2 py-1 text-fg-dim" onClick={onClose}>닫기</button>

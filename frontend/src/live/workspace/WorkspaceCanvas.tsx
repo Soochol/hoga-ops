@@ -18,6 +18,7 @@ import { WindowFrame } from './WindowFrame';
 import { useEntryDragStore } from '../../state/entryDrag';
 import { ChartWindow } from './ChartWindow';
 import { DataWindow } from './DataWindow';
+import ChartErrorBoundary from '../../chart/ChartErrorBoundary';
 import {
   useWorkspaceStore,
   type GroupId,
@@ -203,7 +204,7 @@ export function WorkspaceCanvas() {
     <div className="flex h-full w-full items-center justify-center">
       <div className="rounded-lg bg-bg-card px-6 py-5 text-center text-sm text-fg-dim shadow-panel">
         <p className="mb-2 font-medium text-fg">창이 없습니다</p>
-        <p className="mb-3">상단 툴바의 +차트 로 차트 창을 추가하세요.</p>
+        <p className="mb-3">상단 툴바의 +차트 로 차트 창을 추가하세요</p>
         <button
           type="button"
           data-testid="workspace-empty-add-chart"
@@ -317,7 +318,13 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
       {win.kind === 'chart' ? (
         <ChartWindow win={win} symbol={symbol} />
       ) : (
-        <DataWindow win={win} symbol={symbol} />
+        /* 창 단위 격리 — 차트 창은 내부에 ChartErrorBoundary 가 있지만 데이터 창은
+           없어서 10호가·거래원 등에서 throw 하면 React 루트까지 올라가 워크스페이스
+           전체가 백지가 됐다. 경계가 창 밖(dispatch)에 있어야 DataWindow 자신의
+           훅 throw 까지 잡는다. */
+        <ChartErrorBoundary title="창 렌더링에 실패했습니다">
+          <DataWindow win={win} symbol={symbol} />
+        </ChartErrorBoundary>
       )}
     </WindowFrame>
   );

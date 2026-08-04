@@ -397,6 +397,41 @@ Quiet Trading Terminal migration completed across app shell, route surfaces, rai
 ### Status dot (general)
 - 6px circle, glow via `box-shadow` for active states only
 
+### Error surfaces — 인라인 vs 토스트 (2026-08-04)
+
+에러가 뜨는 자리는 **원인의 위치**가 정한다 — 표면을 새로 고를 때 두 갈래뿐이다.
+
+- **액션 인접 인라인** (`InlineState`·폼 아래 한 줄): 사용자가 방금 누른 액션의 실패.
+  실패의 맥락(입력값·버튼)이 화면에 있으므로 그 옆에서 말한다. 예: 캡처 시작 실패,
+  이름 변경 실패, 조회 실패. **토스트로 옮기지 않는다** — 시선을 원인에서 떼어놓는다.
+- **전역 토스트** (`ToastViewport` 호스트): 사용자 액션과 무관하게 배경에서 벌어진 일
+  — 붙어 있을 화면 요소가 없다. 예: 시그널 알림, REST 불가/혼잡, 키움 풀하우스,
+  배경 태스크 사망, 디스크 잠식, 그리기 전체 삭제 완료(실행취소 창구).
+  호스트는 `App.tsx` 의 `ToastViewport` 에 모인다(2026-08-04 현재 6개).
+
+판정이 애매하면 "이 에러의 원인이 지금 화면에 보이는가"로 가른다 — 보이면 인라인,
+안 보이면 토스트. (2026-08-04 UI 조사 #5 의 "토스트 인프라 대비 소비처 1곳" 지적은
+조사 시점 값 — 이후 #1069 등으로 배경 이벤트 호스트가 6개까지 늘었고, 남은 인라인
+에러는 전부 액션 인접이라 정책상 그 자리가 맞다.)
+
+### Destructive actions — 보호 사다리 (2026-08-04)
+
+파괴적 액션의 안전장치는 **위험도에 비례해 4단계 중 하나**를 쓴다 — 새 표면이 임의로
+다섯 번째 패턴을 만들지 않는다(2026-08-04 UI 조사에서 "4패턴 혼재로 누르기 전 예측
+불가"로 지적된 것을 사다리로 명문화; 지점별 실사 결과 배치 자체는 위험도와 일치했다).
+
+| 단계 | 패턴 | 기준 | 현행 사용처 |
+|---|---|---|---|
+| 1 | 즉시 실행(보호 없음) | 단건 + 재생성이 한 동작(재추가·재그리기) | 관심 1종목 제거, 히트맵 1종목 제거, 그리기 1개 삭제, 큐 1행 취소 |
+| 2 | 인라인 2단(같은 자리에서 "삭제?" 재클릭 / armed 타이머) | 목록 안 반복 작업 흐름 — 모달이 흐름을 끊으면 더 나쁨 | 프리셋 삭제(`PresetMenu` pendingDelete), 캡처 Cancel All(4초 armed) |
+| 3 | 삭제유예 + 실행취소 | 단건이지만 재생성 비용이 큼(사용자 저작물) | 저장뷰 삭제(`StudyViewsDrawer`) |
+| 4 | `ConfirmModal(tone="destructive")` | 대량 삭제 또는 부수 효과 동반(멤버 동반 삭제·수집 중단) | 조건검색 삭제, 그리기 전체 삭제, 관심 폴더·히트맵 그룹 삭제 |
+
+- `window.confirm` 은 금지 — 테마 밖 OS 다이얼로그라 온-브랜드 크롬이 아니고,
+  테스트에서 스텁 지옥이 된다(2026-08-04 에 잔존 3곳을 `ConfirmModal` 로 전환).
+- 단계를 올릴지 애매하면 "실수로 눌렀을 때 복구에 몇 동작이 드는가"로 판정한다 —
+  1동작이면 1단계, 여러 동작·재입력이면 3단계 이상.
+
 ### Modals & popovers — dismissal contract
 Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss `useEffect`.
 - **Center modal** (full-screen backdrop, fixed-position card): wrap in `ModalShell` (`frontend/src/ui/ModalShell.tsx`) — it owns the backdrop, Escape + backdrop-click dismiss, the canon card, and the title + ✕ header.
@@ -444,6 +479,9 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-08-04 | **소형 텍스트의 3차 색 `--fg-dimmer` → `--fg-dim` 승격 (142건/소스 71파일)** — 토큰은 비활성·장식 전용으로 축소 | 실측 대비가 **3.15:1(Obsidian) / 2.99:1(Ledger)** 로 WCAG AA 본문(4.5:1) 미달인데, **이 앱엔 AA 대형 텍스트 완화(18.66px bold/24px)를 넘는 본문 토큰이 없다** — `xs`(11.8px)·`sm`(12.9px)·`base`(14.6px) 가 전부 본문 판정이라 "3차 텍스트니까 괜찮다"가 성립하지 않았다. 게다가 DESIGN.md 는 이 미달을 관심종목 개수 **1곳만** 승인된 예외로 적어 뒀는데 실제로는 스크리너 파라미터 폼·워크스페이스 메뉴·히트맵 행·10호가 등 전면에 퍼져 **예외가 아니라 기본값**이었다. `--fg-dim` 은 6.73:1/5.68:1 로 양 테마 AA 통과. **승격 제외 4종**: (1) 비활성 요소 — WCAG 1.4.3 "Incidental" 예외가 비활성 컴포넌트를 빼 주고, 여기선 흐린 것이 *기능* 이라 올리면 비활성이 활성처럼 읽힌다, (2) 장식 글리프(`WindowFrame` 드래그 핸들 `⠿`) — 텍스트가 아니다, (3) `placeholder:` variant — 입력 힌트는 별도 축, (4) 비거래일 캘린더 셀(`baseColorVarFor`) — "선택 불가"를 색으로 말한다. **미해결로 남긴 것**: `--border` 1.20:1/1.29:1·`--border-strong` 1.71:1 이 WCAG 1.4.11(비텍스트 3:1) 미달 — 입력 경계가 사실상 안 보이지만 텍스트 축과 별개 문제다. |
 | 2026-08-04 | **상단 nav + `/capture` 전면 한글화 — 앱 셸의 언어 이원화 해소** (사용자 결정: "상단 nav 를 한글로") | 상단 nav 는 100% 영어(`Live`·`Heatmap`·`Screener`…), 우측 레일은 100% 한글(`관심`·`히트맵`·`스크리너`…)이라 **같은 앱의 두 내비게이션이 언어가 갈려 있었고**, 무엇보다 `Heatmap`(상단)과 `히트맵`(레일)이 **같은 목적지를 다른 이름으로** 부르고 있었다. Copy tone 규칙상 영어는 도메인 식별자(`hogaplay`·`kis_live`·`EGW00201`) 몫이고 라우트 라벨은 거기 해당하지 않는다 → 라벨 8개를 한글로(`라이브`·`복기`·`히트맵`·`스크리너`·`옵션심리`·`보관함`·`캡처`·`설정`). **파급 2가지가 자동**: (1) `App.tsx` 의 `STATIC_ROUTE_TITLES` 가 `nav/items.ts` 에서 파생하므로 **브라우저 탭 제목이 함께 한글화**된다(별도 표 없음), (2) 반응형 바닥의 유도 근거였던 nav 자연폭 939px 이 stale 이 된다 → 재측정 710px, 토큰은 유지(위 Responsive floor 항목). 같은 규칙으로 `/capture` 도 정리 — `Symbol`/`Date Range`/`Today`/`▶ Start Capture`/`Cancel All`/`Retry Failed`/`Dismiss Done`/`Refresh & Resume`, 캘린더 범례 7개와 툴팁 11개, 월 이동 aria-label. `hogaplay`·`KIS`·`KRX` 는 도메인 식별자/고유명사라 **유지**. `Loading inventory…`/`Loading queue…` 는 로딩 어휘 최다수인 `불러오는 중` 으로 통일. e2e 셀렉터 6개 파일이 영어 문구로 버튼을 찾고 있어 함께 이관(24개 전부 통과). |
 | 2026-07-30 | **잠정투자자 창 열 헤더(차수·외국인·기관·합산) `--bg-subtle` → `--bg-card`** — 위 거래원 결정의 연장(사용자 지적) | 같은 이유로 `/live` 잠정투자자 창에서도 헤더 행만 배경이 달라 보였다. 창 본문(`DataWindow.InvestorWindow` = `bg-bg-card`)과 같은 값으로 환원. **배경을 `thead`/`tr` 이 아니라 `th` 4개에 각각 주는 구조는 유지한다** — `border-collapse: collapse` 표에서는 `thead`/`tr` 에 준 배경이 sticky 헤더를 따라오지 않아 스크롤 시 행이 뒤로 비친다. 그래서 "밴드를 없앤다"가 `bg-` 클래스 삭제가 아니라 **값 일치**인 것은 거래원 합계행과 동일하다. 소비처는 `DataWindow` 하나뿐이라(`/study` 는 이 카드를 쓰지 않는다) 다른 배경 위에서 비칠 위험은 없다. 테스트가 4개 셀 각각에 `bg-bg-card` + `not bg-bg-subtle`, `thead` 에 `sticky` 를 못박는다. |
+| 2026-08-04 | **`--border`/`--border-strong` 대비 인상 검토 → 현행 유지 (사용자 결정)** | 2026-08-04 UI 조사가 입력 경계 대비 미달(WCAG 1.4.11 비텍스트 3:1 기준 — strong 1.71:1 라이트/1.49:1 다크)을 지적. 입력·팝오버 전용 `--border-strong` 1단 인상안(Ledger #C9C3B2→#AFA792=2.33:1, Obsidian #33333C→#4A4A58=2.15:1)을 A/B 실측 이미지로 비교한 뒤 **현행 유지를 선택** — "분리는 톤+간격, 선은 조용하게"가 이 시스템의 방향이고(pane 구분선을 두 번 낮춘 전례), 단일 사용자 도구라 AA 준수 압력도 없다. 입력 어포던스는 배경(`--bg-input`)·포커스 accent 테두리가 담당. **재검토 트리거**: 입력을 못 찾는 실사용 불편이 실제로 관측될 때 — 그 전까지 조사 도구가 이 수치를 다시 지적해도 재론하지 않는다. |
+| 2026-08-04 | **파괴적 액션 보호 사다리 명문화** (Components → Destructive actions) | 4패턴(즉시/인라인 2단/삭제유예+실행취소/ConfirmModal)이 문서 없이 혼재해 "누르기 전 예측 불가"로 지적됐다(2026-08-04 UI 조사). 지점별 실사 결과 배치 자체는 위험도와 일치 — 규칙 부재가 문제라 사다리로 명문화하고 `window.confirm` 금지를 못박았다. 판정 기준: 실수 복구에 드는 동작 수. |
+| 2026-08-04 | **전역 `:focus-visible` 액센트 링 도입 (`global.css`)** | 색 규율은 focus ring 을 `--accent` 소유로 명시했지만 실제로는 `focus-visible` 처리가 8개 파일뿐, 나머지 표면 전부가 브라우저 기본 아웃라인이었다(계약 미이행). `/`·`[`·`]` 단축키가 있는 키보드 친화 도구라 전역 `:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px }` 한 블록으로 이행. `:focus` 가 아니라 `:focus-visible` 이라 마우스 클릭에는 링이 뜨지 않는다. inset(−2px)인 이유: 드로어·리스트의 `overflow-hidden` 조상 아래에서 바깥 링은 잘린다. 자체 focus 처리(`focus:outline-none`+ring)는 유틸리티 특이도가 높아 기존 동작 유지. |
 
 ## App-shell & live tokens (ADR-0039, ADR-0052)
 

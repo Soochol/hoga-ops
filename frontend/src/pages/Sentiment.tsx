@@ -71,7 +71,7 @@ const UNAVAILABLE_COPY: Record<
 > = {
   credentials_missing: {
     title: 'KIS 자격증명이 설정되지 않았습니다',
-    body: () => '.env 에 KIS_APP_KEY / KIS_APP_SECRET 를 설정하면 수집이 시작됩니다.',
+    body: () => '.env 에 KIS_APP_KEY / KIS_APP_SECRET 를 설정하면 수집이 시작됩니다',
   },
   warming: {
     title: '체인을 수집하는 중입니다',
@@ -86,7 +86,7 @@ const UNAVAILABLE_COPY: Record<
   },
   collector_failed: {
     title: '수집이 중단됐습니다',
-    body: () => '새로고침하면 다시 시도합니다. 반복되면 서버 로그를 확인하세요.',
+    body: () => '새로고침하면 다시 시도합니다. 반복되면 서버 로그를 확인하세요',
   },
 };
 
@@ -280,7 +280,7 @@ export default function Sentiment() {
             <div className="mt-sm">
               <div className="mb-xs text-xs text-fg-dim">
                 미결제 상위 행사가 — Max Pain 과 감마 플립이 무엇에 끌려간 값인지 보여줍니다.
-                KOSPI200 은 델타가 0에 가까운 극외가에 미결제가 몰리는 특성이 있습니다.
+                KOSPI200 은 델타가 0에 가까운 극외가에 미결제가 몰리는 특성이 있습니다
               </div>
               <OiContributors dist={data.oi_distribution} underlying={data.underlying} />
             </div>
@@ -290,7 +290,7 @@ export default function Sentiment() {
         {data.gamma_exposure && (
           <Section
             title="감마 익스포저 (GEX)"
-            caveat="방향 지표가 아니라 변동성 체제 지표입니다. 양수는 움직임 억제, 음수는 증폭으로 읽습니다. 부호는 '딜러가 콜을 팔고 풋을 산다'는 관례적 가정에서 나오며 검증할 수 없습니다."
+            caveat="방향 지표가 아니라 변동성 체제 지표입니다. 양수는 움직임 억제, 음수는 증폭으로 읽습니다. 부호는 '딜러가 콜을 팔고 풋을 산다'는 관례적 가정에서 나오며 검증할 수 없습니다"
             asOf={<AsOf label="전수" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />}
           >
             <GexSummary gex={data.gamma_exposure} />
@@ -303,7 +303,7 @@ export default function Sentiment() {
         {data.iv_skew && (
           <Section
             title="내재변동성 스마일"
-            caveat="IV 절대값은 그 자체로 정보량이 적습니다 — 주식 옵션은 구조적으로 항상 풋이 비쌉니다. 자기 히스토리 대비로 읽어야 의미가 생깁니다. ATM IV 와 리스크리버설만 30초 주기로 갱신됩니다."
+            caveat="IV 절대값은 그 자체로 정보량이 적습니다 — 주식 옵션은 구조적으로 항상 풋이 비쌉니다. 자기 히스토리 대비로 읽어야 의미가 생깁니다. ATM IV 와 리스크리버설만 30초 주기로 갱신됩니다"
             asOf={
               <>
                 <AsOf label="곡선" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />

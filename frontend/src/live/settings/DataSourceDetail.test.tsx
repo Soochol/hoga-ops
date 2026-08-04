@@ -113,7 +113,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
 
     render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
 
-    expect(await screen.findByText('항시 저장 중입니다.')).toBeInTheDocument();
+    expect(await screen.findByText('항시 저장 중입니다')).toBeInTheDocument();
     // 키움 0w push 전환으로 수집 비용이 0 — 거래원(0F)처럼 스위치 자체가 없다.
     expect(screen.queryByRole('switch', { name: '프로그램 순매수 저장' })).toBeNull();
   });

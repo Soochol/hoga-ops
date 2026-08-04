@@ -36,13 +36,13 @@ export function RecaptureActionBar({
           onClick={onRecaptureAll}
           className="rounded-md px-2.5 py-1 font-semibold cursor-pointer disabled:cursor-not-allowed border bg-bg-input border-accent text-accent hover:bg-accent hover:text-bg"
         >
-          ↻ Re-capture all incomplete ({recapturableCount})
+          ↻ 미완결 전체 재캡처 ({recapturableCount})
         </button>
       )}
       {status?.kind === 'success' && (
         <div className="text-fg-dim font-data tabular-nums">
-          Queued {status.enqueued} capture{status.enqueued === 1 ? '' : 's'}
-          {status.skipped > 0 && ` (${status.skipped} skipped)`}
+          {status.enqueued}건 큐 등록
+          {status.skipped > 0 && ` (${status.skipped}건 건너뜀)`}
         </div>
       )}
       {status?.kind === 'error' && (

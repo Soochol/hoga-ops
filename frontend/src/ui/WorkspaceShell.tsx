@@ -73,7 +73,10 @@ export const IconToolbarButton = forwardRef<
       {...props}
       // 테두리 없는 ghost 버튼(2026-07-15) — 라이트에서 bg-input=툴바 bg라 보더 없이 채우면
       // 안 보이므로 투명 배경 + hover 시 배경으로 어포던스. 분리는 hover 상태가 담당.
-      className={`inline-flex items-center gap-1 rounded-md bg-transparent px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:opacity-50 ${className}`.trim()}
+      // shrink-0 + nowrap: 좁은 창 헤더에서 flex 가 버튼을 눌러 CJK 라벨이 두 줄로
+      // 꺾이던 것을 막는다 — 넘치는 폭은 헤더의 overflow-hidden + 접힘 정책(#762)이
+      // 담당한다(잘림은 접힘 임계가 처리하는 실패 모드, 줄바꿈은 아니었다).
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-transparent px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:opacity-50 ${className}`.trim()}
     >
       {icon}
       {children}

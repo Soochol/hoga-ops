@@ -124,10 +124,10 @@ export function PresetMenu<P>({
         // 다시 읽어 사용자가 무엇을 덮어쓸지 보고 판단하게 한다(메뉴는 열어 둔다).
         if (isConflict(e)) {
           refetchPresets();
-          setError('다른 곳에서 먼저 변경된 프리셋입니다. 최신 목록을 다시 불러왔습니다.');
+          setError('다른 곳에서 먼저 변경된 프리셋입니다. 최신 목록을 다시 불러왔습니다');
           return;
         }
-        failWith('프리셋 저장에 실패했습니다.')(e);
+        failWith('프리셋 저장에 실패했습니다')(e);
       },
     });
   };
@@ -138,7 +138,7 @@ export function PresetMenu<P>({
     setError(null);
     saveNew(name, capture(), {
       onSuccess: () => close(),
-      onError: failWith('프리셋 저장에 실패했습니다.'),
+      onError: failWith('프리셋 저장에 실패했습니다'),
     });
   };
 
@@ -191,7 +191,7 @@ export function PresetMenu<P>({
                 setError(null);
                 removePreset(preset.id, {
                   onSuccess: () => {},
-                  onError: failWith('프리셋 삭제에 실패했습니다.'),
+                  onError: failWith('프리셋 삭제에 실패했습니다'),
                 });
                 setPendingDelete(null);
               }}

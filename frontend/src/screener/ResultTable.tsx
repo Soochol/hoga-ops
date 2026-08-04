@@ -238,7 +238,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
         // 셸이 그보다 좁으면(반응형 바닥 부근) 가로 스크롤 밖으로 밀려 잘렸다.
         // 컬럼을 지킬 이유가 없는 콘텐츠이므로 스크롤포트 왼쪽에 붙여 항상 보이게 한다.
         <div className="flex-1 min-h-0">
-          <EmptyState align="start" className="sticky left-0">조건에 맞는 종목이 없습니다.</EmptyState>
+          <EmptyState align="start" className="sticky left-0">조건에 맞는 종목이 없습니다</EmptyState>
         </div>
       ) : virtualize ? (
         // 가상 경로 — 스크롤 요소는 **셸 자신**이다(`scrollRef`). 안쪽에 새 스크롤

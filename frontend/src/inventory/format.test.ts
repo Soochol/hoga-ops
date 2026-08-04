@@ -10,10 +10,11 @@ describe('format', () => {
     expect(fmtShortDate('20260522')).toBe('05-22');
   });
 
-  it('fmtTime: ms → ko-KR short datetime in Asia/Seoul', () => {
-    const result = fmtTime(Date.UTC(2026, 4, 22, 6, 30)); // 15:30 KST
-    expect(result).toMatch(/26/); // ko-KR short = "26. 5. 22."
-    expect(result).toMatch(/3:30/); // 15:30 KST → "PM 3:30" in ko-KR
+  it('fmtTime: ms → fixed-width "MM-DD HH:mm" in KST', () => {
+    // 고정폭 24h — 로케일 기본형(오전/오후)은 값마다 폭이 달라 tnum 열 리듬을 깬다.
+    expect(fmtTime(Date.UTC(2026, 4, 22, 6, 30))).toBe('05-22 15:30'); // 15:30 KST
+    // KST 자정 경계 — UTC 22일 20:00 = KST 23일 05:00 (날짜가 하루 넘어간다)
+    expect(fmtTime(Date.UTC(2026, 4, 22, 20, 0))).toBe('05-23 05:00');
   });
 
   it('fmtSize: bytes → "X.X MB"', () => {

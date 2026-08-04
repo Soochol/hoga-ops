@@ -58,8 +58,8 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
           title="캔들 데이터 기준"
           description={
             variant === 'study'
-              ? '복기뷰 전용 안내입니다.'
-              : "기본은 시세 서버(분봉 REST+WS · 일/주/월봉 일봉)입니다. 'REST 우회'를 켜면 분봉은 캡처(hogaplay), 일·주·월봉은 스크리너 일봉으로 표시합니다 — 저장된 날짜만 나오고 없는 날짜는 비워지며, 오늘 실시간(WS)은 계속 표시됩니다."
+              ? '복기뷰 전용 안내입니다'
+              : "기본은 시세 서버(분봉 REST+WS · 일/주/월봉 일봉)입니다 'REST 우회'를 켜면 분봉은 캡처(hogaplay), 일·주·월봉은 스크리너 일봉으로 표시합니다 — 저장된 날짜만 나오고 없는 날짜는 비워지며, 오늘 실시간(WS)은 계속 표시됩니다"
           }
         >
           {variant === 'study' ? (
@@ -104,7 +104,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
         </RoleSourceGroup>
         <RoleSourceGroup
           title="스크리너 일봉 데이터"
-          description="스크리너 갱신으로 저장되는 KIS 일봉 parquet입니다. 조건검색과 섹터 랭킹의 기준 데이터로 사용됩니다."
+          description="스크리너 갱신으로 저장되는 KIS 일봉 parquet입니다. 조건검색과 섹터 랭킹의 기준 데이터로 사용됩니다"
         >
           <div className="text-sm text-fg-dim">
             갱신은 스크리너 화면의 데이터 갱신 버튼에서 실행합니다.
@@ -122,9 +122,9 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
             쿼터를 아끼려던 잔재였고, 꺼두면 데이터가 조용히 유실됐다. */}
         <RoleSourceGroup
           title="프로그램 순매수 저장"
-          description="캡처 활성 관심그룹 종목의 프로그램 순매수 시계열을 항상 저장합니다. 거래원과 함께 키움 WebSocket으로 수신하며, 별도 켜기가 필요 없습니다."
+          description="캡처 활성 관심그룹 종목의 프로그램 순매수 시계열을 항상 저장합니다. 거래원과 함께 키움 WebSocket으로 수신하며, 별도 켜기가 필요 없습니다"
         >
-          <div className="text-sm text-fg-dim">항시 저장 중입니다.</div>
+          <div className="text-sm text-fg-dim">항시 저장 중입니다</div>
         </RoleSourceGroup>
         <RoleSourceGroup
           title="키움 실시간 수집"
@@ -157,7 +157,7 @@ function KiwoomStatusLine() {
   if (k == null) {
     return (
       <div className="mt-1 text-xs text-fg-dim" data-testid="kiwoom-status-line">
-        키움 앱키 미설정 — <code>.env</code>에 <code>KIWOOM_APP_KEY</code>를 추가하면 실시간이 활성화됩니다.
+        키움 앱키 미설정 — <code>.env</code>에 <code>KIWOOM_APP_KEY</code>를 추가하면 실시간이 활성화됩니다
       </div>
     );
   }

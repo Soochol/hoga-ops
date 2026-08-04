@@ -92,7 +92,7 @@ export function StockDateGroupDetail({ group }: Props) {
         </h2>
         <div className="flex flex-col items-end gap-1 min-w-0">
           <span className="text-xs text-fg-dim font-data tabular-nums">
-            {group.dates.length} dates · {fmtVolume(totalVolume)} vol · {fmtSize(group.totalSizeBytes)}
+            {group.dates.length}일치 · 거래량 {fmtVolume(totalVolume)} · {fmtSize(group.totalSizeBytes)}
           </span>
           <RecaptureActionBar
             recapturableCount={recapturableCount}
@@ -106,14 +106,16 @@ export function StockDateGroupDetail({ group }: Props) {
         <table className="w-full border-collapse font-data text-sm tabular-nums">
           <thead className="bg-bg-subtle sticky top-0">
             <tr>
-              <th className="px-2 py-2 border-b w-8" aria-label="re-capture" />
-              <SortableTh column="state"    sort={sort} onSort={onSort}>State</SortableTh>
+              {/* 헤더는 한국어(Copy tone — 사용자 문구), OHLC 만 도메인 식별자로 영어 유지.
+                  /screener 결과 표(코드·종목명·시장…)와 같은 규칙. */}
+              <th className="px-2 py-2 border-b w-8" aria-label="재캡처" />
+              <SortableTh column="state"    sort={sort} onSort={onSort}>상태</SortableTh>
               <SortableTh column="failStreak" sort={sort} onSort={onSort} title="연속 실패 횟수 — 5회 시 차단">재시도</SortableTh>
-              <SortableTh column="date"     sort={sort} onSort={onSort}>Date</SortableTh>
-              <SortableTh column="captured" sort={sort} onSort={onSort}>Captured</SortableTh>
-              <SortableTh column="volume"   sort={sort} onSort={onSort} right>Volume</SortableTh>
-              <SortableTh column="pages"    sort={sort} onSort={onSort} right>Pages</SortableTh>
-              <SortableTh column="size"     sort={sort} onSort={onSort} right>Size</SortableTh>
+              <SortableTh column="date"     sort={sort} onSort={onSort}>날짜</SortableTh>
+              <SortableTh column="captured" sort={sort} onSort={onSort}>수집 시각</SortableTh>
+              <SortableTh column="volume"   sort={sort} onSort={onSort} right>거래량</SortableTh>
+              <SortableTh column="pages"    sort={sort} onSort={onSort} right>페이지</SortableTh>
+              <SortableTh column="size"     sort={sort} onSort={onSort} right>크기</SortableTh>
               <SortableTh column="ohlc"     sort={sort} onSort={onSort} right title="종가 기준 정렬">OHLC</SortableTh>
             </tr>
           </thead>
@@ -226,14 +228,14 @@ function GapPanel({
   if (data.sparse) {
     return (
       <div className="text-xs text-fg-dim font-data" data-testid="gap-panel-sparse">
-        세션 내 데이터가 너무 적어 결손 구간을 특정할 수 없습니다.
+        세션 내 데이터가 너무 적어 결손 구간을 특정할 수 없습니다
       </div>
     );
   }
   if (data.gap_ranges.length === 0) {
     return (
       <div className="text-xs text-fg-dim font-data" data-testid="gap-panel-empty">
-        연속거래 구간에서 감지된 결손이 없습니다.
+        연속거래 구간에서 감지된 결손이 없습니다
       </div>
     );
   }
@@ -257,7 +259,7 @@ function GapPanel({
       </ul>
       <div className="text-xs text-fg-dim leading-snug">
         수집은 끝까지 완료됐으나 원본 아카이브에 이 구간 데이터가 없습니다.
-        재캡처해도 복구되지 않을 수 있습니다.
+        재캡처해도 복구되지 않을 수 있습니다
       </div>
       {confirmed && (
         <div>
@@ -322,7 +324,7 @@ function RowRecaptureCell({
   return (
     <button
       type="button"
-      aria-label={isInFlight ? 'Re-capturing…' : 'Re-capture this Stock-Date'}
+      aria-label={isInFlight ? '재캡처 중…' : '이 날짜 재캡처'}
       disabled={isInFlight}
       onClick={onClick}
       className={[

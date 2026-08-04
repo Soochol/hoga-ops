@@ -83,7 +83,7 @@ describe('StockDateGroupDetail — header and existing behavior', () => {
     expect(root).not.toHaveClass('rounded-lg');
     expect(screen.getByText('005930')).toBeTruthy();
     expect(screen.getByText('삼성전자')).toBeTruthy();
-    expect(screen.getByText(/2 dates/)).toBeTruthy();
+    expect(screen.getByText(/2일치/)).toBeTruthy();
   });
 
   it('renders one row per date sorted desc', () => {
@@ -116,7 +116,7 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
       ],
       '005930', qc,
     );
-    const buttons = screen.queryAllByRole('button', { name: /Re-capture this Stock-Date/i });
+    const buttons = screen.queryAllByRole('button', { name: /이 날짜 재캡처/i });
     expect(buttons.length).toBe(1);  // only the source_partial row
   });
 
@@ -124,7 +124,7 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
     setupFetch();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     renderDetail([row('005930', '삼성전자', '20260520', 'source_partial')], '005930', qc);
-    const btn = screen.getByRole('button', { name: /Re-capture this Stock-Date/i });
+    const btn = screen.getByRole('button', { name: /이 날짜 재캡처/i });
     fireEvent.click(btn);
     await waitFor(() => {
       const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
@@ -151,7 +151,7 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     renderDetail([row('005930', '삼성전자', '20260520', 'source_partial')], '005930', qc);
     await waitFor(() => {
-      const btn = screen.getByRole('button', { name: /Re-capturing…/i }) as HTMLButtonElement;
+      const btn = screen.getByRole('button', { name: /재캡처 중…/ }) as HTMLButtonElement;
       expect(btn.disabled).toBe(true);
       expect(btn.className).toContain('animate-spin');
     });
@@ -168,7 +168,7 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
       ],
       '005930', qc,
     );
-    fireEvent.click(screen.getByRole('button', { name: /Re-capture all incomplete \(2\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /미완결 전체 재캡처 \(2\)/i }));
     await waitFor(() => {
       const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
       const post = calls.find((c) =>
@@ -187,7 +187,7 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
     setupFetch();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     renderDetail([row('005930', '삼성전자', '20260520', 'complete')], '005930', qc);
-    expect(screen.queryByRole('button', { name: /Re-capture all incomplete/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /미완결 전체 재캡처/i })).toBeNull();
   });
 });
 
@@ -247,7 +247,7 @@ describe('StockDateGroupDetail 재시도 column (fail_streak)', () => {
     expect(within(tr).getByText('차단됨')).toBeTruthy();
     expect(within(tr).getByRole('button', { name: /잠금 해제/ })).toBeTruthy();
     // The normal Re-capture button should be replaced.
-    expect(within(tr).queryByRole('button', { name: /Re-capture this/i })).toBeNull();
+    expect(within(tr).queryByRole('button', { name: /이 날짜 재캡처/i })).toBeNull();
   });
 
   it('clicking 잠금 해제 POSTs to the unblock endpoint', async () => {

@@ -77,6 +77,18 @@ describe('LiveSymbolSearch', () => {
     expect(document.activeElement).toBe(screen.getByPlaceholderText('검색어를 입력해주세요'));
   });
 
+  it('clips the trigger contents and hides the kbd chip in narrow containers', () => {
+    // 드로어가 열려 헤더가 좁아지면 트리거가 24px 까지 접힌다 — overflow-hidden 이
+    // 없으면 shrink-0 인 / 칩이 버튼 밖으로 흘러 Settings 라벨과 겹친다(2026-08-04 실측).
+    renderSearch();
+    const trigger = screen.getByRole('button', { name: '종목 검색 열기' });
+    expect(trigger).toHaveClass('overflow-hidden');
+    // 반쯤 잘린 칩이 남지 않도록 컨테이너 폭 기준으로 칩을 통째로 숨긴다.
+    const kbdWrap = trigger.querySelector('kbd')?.parentElement;
+    expect(kbdWrap).toHaveClass('[@container(max-width:9rem)]:hidden');
+    expect(trigger.parentElement).toHaveClass('[container-type:inline-size]');
+  });
+
   it('renders the search popover in a body portal so app shells cannot clip it', () => {
     renderSearch();
     fireEvent.keyDown(window, { key: '/' });

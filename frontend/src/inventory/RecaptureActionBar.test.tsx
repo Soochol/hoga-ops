@@ -18,14 +18,14 @@ describe('RecaptureActionBar', () => {
     expect(container.textContent).toBe('');
   });
 
-  it('shows "Re-capture all incomplete (N)" with refresh icon when count > 0', () => {
+  it('shows "미완결 전체 재캡처 (N)" with refresh icon when count > 0', () => {
     render(<RecaptureActionBar {...baseProps} recapturableCount={3} />);
-    expect(screen.getByRole('button', { name: /Re-capture all incomplete \(3\)/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /미완결 전체 재캡처 \(3\)/i })).toBeTruthy();
   });
 
   it('button tooltip is derived from RECAPTURABLE_DISK_STATES (no hardcoded string)', () => {
     render(<RecaptureActionBar {...baseProps} recapturableCount={3} />);
-    const btn = screen.getByRole('button', { name: /Re-capture all incomplete/i });
+    const btn = screen.getByRole('button', { name: /미완결 전체 재캡처/i });
     const expected = RECAPTURABLE_DISK_STATES.map((s) => s.replace(/_/g, ' ')).join(' · ');
     expect(btn.getAttribute('title')).toBe(expected);
   });
@@ -33,13 +33,13 @@ describe('RecaptureActionBar', () => {
   it('clicking the button calls onRecaptureAll', () => {
     const onAll = vi.fn();
     render(<RecaptureActionBar {...baseProps} onRecaptureAll={onAll} />);
-    fireEvent.click(screen.getByRole('button', { name: /Re-capture all incomplete/i }));
+    fireEvent.click(screen.getByRole('button', { name: /미완결 전체 재캡처/i }));
     expect(onAll).toHaveBeenCalledTimes(1);
   });
 
   it('button is disabled while isPending', () => {
     render(<RecaptureActionBar {...baseProps} isPending={true} />);
-    const btn = screen.getByRole('button', { name: /Re-capture all incomplete/i }) as HTMLButtonElement;
+    const btn = screen.getByRole('button', { name: /미완결 전체 재캡처/i }) as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
   });
 
@@ -50,8 +50,8 @@ describe('RecaptureActionBar', () => {
         status={{ kind: 'success', enqueued: 2, skipped: 1 }}
       />,
     );
-    expect(screen.getByText(/Queued 2 capture/)).toBeTruthy();
-    expect(screen.getByText(/1 skipped/)).toBeTruthy();
+    expect(screen.getByText(/2건 큐 등록/)).toBeTruthy();
+    expect(screen.getByText(/1건 건너뜀/)).toBeTruthy();
   });
 
   it('renders error status with role=alert', () => {
@@ -73,7 +73,7 @@ describe('RecaptureActionBar', () => {
       />,
     );
     // button is gone, but the status is rendered.
-    expect(screen.queryByRole('button', { name: /Re-capture all incomplete/i })).toBeNull();
-    expect(screen.getByText(/Queued 1 capture/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /미완결 전체 재캡처/i })).toBeNull();
+    expect(screen.getByText(/1건 큐 등록/)).toBeTruthy();
   });
 });

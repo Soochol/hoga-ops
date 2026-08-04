@@ -118,7 +118,7 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
             className="font-data whitespace-nowrap rounded px-1.5 text-[10px]"
             style={{ background: pill.bg, border: pill.border, color: pill.fg }}
           >
-            과거 로딩 중 · {md}까지
+            과거 불러오는 중 · {md}까지
           </span>
         );
       })()}

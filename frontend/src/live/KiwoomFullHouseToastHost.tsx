@@ -51,7 +51,7 @@ export default function KiwoomFullHouseToastHost() {
       <div className="mt-1 text-xs text-fg-dim">
         {shown}
         {overflow > 0 ? ` 외 ${overflow}개` : ''}
-        의 실시간 수신이 대기 중입니다. 다른 창을 닫으면 자동으로 연결됩니다.
+        의 실시간 수신이 대기 중입니다. 다른 창을 닫으면 자동으로 연결됩니다
       </div>
     </ToastCard>
   );

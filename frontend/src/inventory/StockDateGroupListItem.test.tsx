@@ -20,7 +20,7 @@ describe('StockDateGroupListItem', () => {
     render(<StockDateGroupListItem group={groupForView} active={false} onClick={() => {}} />);
     expect(screen.getByText('005930')).toBeTruthy();
     expect(screen.getByText('삼성전자')).toBeTruthy();
-    expect(screen.getByText('3 dates')).toBeTruthy();
+    expect(screen.getByText('3일치')).toBeTruthy();
   });
 
   it('shows formatted last-captured date (MM-DD) and total size', () => {
@@ -46,10 +46,10 @@ describe('StockDateGroupListItem', () => {
     expect(onClick).toHaveBeenCalledWith('005930');
   });
 
-  it('shows "1 date" singular for one-date group', () => {
+  it('shows 일치 count for one-date group', () => {
     const single: StockDateGroup = { ...groupForView, dates: [{} as never] };
     render(<StockDateGroupListItem group={single} active={false} onClick={() => {}} />);
-    expect(screen.getByText('1 date')).toBeTruthy();
+    expect(screen.getByText('1일치')).toBeTruthy();
   });
 
   it('renders last-captured date in Asia/Seoul (uses fmtShortDate from lastCapturedAt)', () => {

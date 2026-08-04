@@ -54,7 +54,7 @@ export function DepthCoverageBanner({ coverage, autoCollect = false }: {
     <InlineState tone="warn" className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
         <span>
-          hogaplay 데이터 없는 종목 <span className="font-data tabular-nums">{n}</span>개는 비교에서 제외됐습니다.
+          hogaplay 데이터 없는 종목 <span className="font-data tabular-nums">{n}</span>개는 비교에서 제외됐습니다
         </span>
         <button type="button" onClick={() => setExpanded((v) => !v)}
           className="text-xs text-fg-dim underline hover:text-fg">
@@ -76,7 +76,7 @@ export function DepthCoverageBanner({ coverage, autoCollect = false }: {
         )}
       </div>
       {collectM.isError && (
-        <span className="text-xs" style={{ color: 'var(--error)' }}>수집 요청 실패 — 잠시 후 다시 시도하세요.</span>
+        <span className="text-xs" style={{ color: 'var(--error)' }}>수집 요청 실패 — 잠시 후 다시 시도하세요</span>
       )}
       {expanded && (
         <div className="flex flex-wrap gap-1.5 pt-1">

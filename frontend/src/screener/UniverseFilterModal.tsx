@@ -85,7 +85,7 @@ export function UniverseFilterModal({ universe, onChange, onClose }: {
               <SectionLabel>종목 범위</SectionLabel>
               <p className="text-xs text-fg-dim">
                 선택 시 해당 집합의 합집합에서만 조회합니다 — 미선택 시 전체 시장.
-                실시간 모니터링 리소스를 크게 줄입니다.
+                실시간 모니터링 리소스를 크게 줄입니다
               </p>
               {SCOPES.map((s) => (
                 <label key={s.id} className="flex items-center gap-2 text-sm text-fg cursor-pointer select-none">

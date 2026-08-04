@@ -111,7 +111,7 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
       </RailDrawerSection>
       {confirmingClear && (
         <RailDrawerSection className="flex flex-col gap-2 text-sm">
-          <p className="text-fg">오늘 표시 중인 알림 인박스를 비웁니다. 날짜별 기록은 그대로 남습니다.</p>
+          <p className="text-fg">오늘 표시 중인 알림 인박스를 비웁니다. 날짜별 기록은 그대로 남습니다</p>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -133,8 +133,8 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
       )}
       <RailDrawerBody>
         {isLoading && <RailState>불러오는 중…</RailState>}
-        {isError && <RailState tone="error">알림 내역을 불러오지 못했습니다.</RailState>}
-        {!isLoading && !isError && groups.length === 0 && <RailState>오늘 알림이 없습니다.</RailState>}
+        {isError && <RailState tone="error">알림 내역을 불러오지 못했습니다</RailState>}
+        {!isLoading && !isError && groups.length === 0 && <RailState>오늘 알림이 없습니다</RailState>}
         {!isLoading && !isError && groups.length > 0 && (
           <ul className="divide-y divide-border">
             {groups.map((group) => (

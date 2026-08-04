@@ -176,12 +176,12 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
         })}
         {saves.length === 0 && editing?.mode !== 'create' && (
           <EmptyState align="start" className="h-auto gap-0 px-1 py-2 text-xs text-fg-dim">
-            저장된 조건검색이 없습니다. ＋ 로 현재 조건을 저장하세요.
+            저장된 조건검색이 없습니다. ＋ 로 현재 조건을 저장하세요
           </EmptyState>
         )}
         {saves.length > 0 && visibleSaves.length === 0 && (
           <EmptyState align="start" className="h-auto gap-0 px-1 py-2 text-xs text-fg-dim">
-            검색 결과가 없습니다.
+            검색 결과가 없습니다
           </EmptyState>
         )}
       </div>

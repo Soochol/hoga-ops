@@ -214,7 +214,7 @@ describe('ScreenerDrawer', () => {
     // 조회 중임을 명시한다.
     await waitFor(() => expect(screen.queryByText('삼성전자')).not.toBeInTheDocument());
     expect(screen.getByText('조회 중…')).toBeInTheDocument();
-    expect(screen.queryByText('조건에 맞는 종목이 없습니다.')).not.toBeInTheDocument();
+    expect(screen.queryByText('조건에 맞는 종목이 없습니다')).not.toBeInTheDocument();
     expect(useScreenerPanelStore.getState().lastScan).toBeNull();
 
     await act(async () => { release?.(); });
@@ -511,7 +511,7 @@ describe('ScreenerDrawer', () => {
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
-    await waitFor(() => expect(screen.getByText('조건에 맞는 종목이 없습니다.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('조건에 맞는 종목이 없습니다')).toBeInTheDocument());
     expect(sortButton()).toBeDisabled();
   });
 
