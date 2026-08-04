@@ -129,14 +129,26 @@ Notes:
     `logging.exception()` / `exc_info=True`. So a `# noqa: BLE001` on a well-handled
     `except Exception` is dead weight, and RUF100 will say so. Fix the handler, don't
     annotate it.
-- Playwright e2e는 **2026-07-30부터 게이트**다(`17 passed / 2 skipped`). 로컬에서도
-  돈다 — `playwright.config.ts`가 CI 밖에서는 시스템 Chrome(`channel: 'chrome'`)을 쓴다
-  (Ubuntu 26.04는 Playwright가 번들 chromium 설치를 거부한다). 반복 실행 전에는 e2e
-  전용 서버·데이터를 반드시 초기화한다 — 포트 8765·5174를 kill하고 **실제로 비워질
-  때까지 기다린 뒤** `rm -rf /tmp/hoga-e2e-data`. 안 그러면 이전 실행의 캡처 큐 행이
-  남아 개수 단언이 엉킨다. **사용자 개발 서버(5173·8000)는 절대 건드리지 말 것.**
-  `workers: 1`은 필수다 — 캡처 큐·페이크 실패 카운터·디스크 픽스처가 백엔드 전역이라
-  병렬이면 서로의 상태를 센다.
+- Playwright e2e는 **2026-07-30부터 게이트**다(2026-08-04 실측 `24 passed`, 46.9s).
+  로컬에서도 돈다 — `playwright.config.ts`가 CI 밖에서는 시스템 Chrome
+  (`channel: 'chrome'`)을 쓴다 (Ubuntu 26.04는 Playwright가 번들 chromium 설치를
+  거부한다). 반복 실행 전에는 e2e 전용 서버·데이터를 반드시 초기화한다 — 포트
+  8765·5174를 kill하고 **실제로 비워질 때까지 기다린 뒤** `rm -rf /tmp/hoga-e2e-data`.
+  안 그러면 이전 실행의 캡처 큐 행이 남아 개수 단언이 엉킨다. **사용자 개발 서버
+  (5173·8000)는 절대 건드리지 말 것.** `workers: 1`은 필수다 — 캡처 큐·페이크 실패
+  카운터·디스크 픽스처가 백엔드 전역이라 병렬이면 서로의 상태를 센다.
+- **e2e 백엔드는 무자격으로 돈다 — `webServer.env`의 빈 자격증명을 지우지 말 것**
+  (#1088). `HOGA_DATA_DIR`은 **데이터만** 격리하고 `.env`는 격리하지 않는다. 워크트리엔
+  `.env`가 없어 메인 체크아웃 것을 상속하므로, 그전까지 e2e 백엔드는 **사용자 dev
+  서버와 같은 실앱키**로 토큰을 발급했다. 토큰 캐시는 data_dir 아래라 분리돼 있고 위
+  초기화 절차가 `rm -rf`를 요구하니 **매 기동이 캐시 미스**다 — 그 발급이 새 토큰을
+  찍으면 벤더가 이전 토큰을 죽인다. 결과: 병행 세션이 각자 워크트리에서 e2e를 돌리면
+  사용자 dev 서버는 **아무것도 안 했는데** `/live` 과거 캔들만 조용히 멎는다
+  (`8005:Token이 유효하지 않습니다`). 스펙이 타는 백엔드 경로는 `/api/test/*` ·
+  `/api/watchlist*` · `/api/ws` 뿐이라 자격증명이 애초에 필요 없다. 빈 문자열이 먹는
+  근거 두 가지: `_resolve_env_creds`가 `if not app_key or not app_secret` → None이고,
+  `load_dotenv(override=False)`는 truthiness가 아니라 **존재 여부**로 판단해 빈 값이
+  `.env`를 막는다. 새 벤더 자격증명을 추가하면 **이 목록에도 추가**한다.
 
 ## Design System
 
@@ -179,6 +191,10 @@ Set `KIS_APP_KEY` / `KIS_APP_SECRET` (and optionally `HOGAPLAY_COOKIE`) per `.en
 dev 에서 병행 사용하면 **머신이 달라도** 키움 WS 킥 전쟁·KIS 유량 합산 초과가 난다.
 워크트리에 `.env` 가 없으면 메인 체크아웃 것을 상속한다(`hoga/env.py` 가 경고 로그를
 1회 남긴다) — 상속을 원치 않으면 워크트리에 빈 `.env` 를 둔다.
+피해는 유량에서 그치지 않는다: **같은 앱키로 토큰을 새로 발급하면 벤더가 이전 토큰을
+죽인다**(#1088 실측). 죽은 토큰은 `expires_dt` 가 한참 남아 있어 만료 검사를 통과하므로,
+피해자는 조용히 멎는다. 그래서 **자격증명을 쥐는 프로세스를 늘리지 않는 것**이 이 관례의
+핵심이고, e2e 백엔드도 같은 이유로 무자격이다(위 CI 절).
 **브로커 분담 (ADR-0136 · #1046)**: 실시간 WS·폴링 REST 는 **전부 키움**이다.
 KIS 는 **파생(KOSPI200 옵션 심리 패널 · ADR-0135) 전용**으로 남았다 — 키움 REST
 337개 TR 에 파생 TR 이 0건이라 옮길 수 없었다.

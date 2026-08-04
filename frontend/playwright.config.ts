@@ -76,6 +76,31 @@ export default defineConfig({
       //    브라우저는 WS/POST 에 Origin 을 붙이고, 가드는 명시 목록만 믿는다
       //    (Sec-Fetch-Site 추론은 DNS rebinding 사유로 기각 — origin_guard.py).
       command: 'npx vite build && node tests/e2e/prepare-dist.mjs && cd .. && HOGA_ENABLE_TEST_ENDPOINTS=1 HOGA_RATE_LIMIT_S=0 HOGA_DATA_DIR=/tmp/hoga-e2e-data HOGA_FRONTEND_DIST=/tmp/hoga-e2e-dist HOGA_ALLOWED_ORIGINS=http://127.0.0.1:8765 uv run hoga serve --port 8765',
+      // **자격증명을 비워 띄운다(ADR-0134 무자격 관례).**
+      //
+      // `HOGA_DATA_DIR` 은 데이터만 격리하고 `.env` 는 격리하지 않는다 — 워크트리엔
+      // `.env` 가 없어 메인 체크아웃 것을 상속하므로, 이 서버는 **사용자 dev 서버와
+      // 같은 실앱키**로 토큰을 발급해 왔다. 토큰 캐시는 data_dir 아래라 분리돼 있고,
+      // 반복 실행 절차가 `rm -rf /tmp/hoga-e2e-data` 를 요구하므로 **매 기동이 캐시
+      // 미스**다. 그 발급이 새 토큰을 찍으면 벤더가 이전 토큰을 죽인다 — 2026-08-04
+      // 에 사용자 dev 서버(:8000)의 과거 캔들이 통째로 멎은 원인이 이것이다
+      // (앱키 4개 중 2개가 `8005:Token이 유효하지 않습니다` 로 전환).
+      //
+      // 스펙 14개가 타는 백엔드 경로는 `/api/test/*` · `/api/watchlist*` · `/api/ws`
+      // 뿐이라 **실벤더 경로가 하나도 없다.** 빈 값이면 `_resolve_env_creds` 가 None
+      // 을 돌려 키움/KIS 경로가 통째로 휴면한다(`if not app_key or not app_secret`).
+      // `load_dotenv(override=False)` 는 **존재 여부**로 판단하므로 빈 문자열이 .env
+      // 를 확실히 막는다(truthiness 가 아니다).
+      //
+      // account 0 만 비워도 `configured_account_ids` 가 첫 공백에서 멈추지만, 넷을
+      // 다 비운다 — 계정을 직접 지정해 부르는 경로가 생겨도 새지 않게.
+      env: {
+        KIWOOM_APP_KEY: '', KIWOOM_APP_SECRET: '',
+        KIWOOM_APP_KEY_2: '', KIWOOM_APP_SECRET_2: '',
+        KIWOOM_APP_KEY_3: '', KIWOOM_APP_SECRET_3: '',
+        KIWOOM_APP_KEY_4: '', KIWOOM_APP_SECRET_4: '',
+        KIS_APP_KEY: '', KIS_APP_SECRET: '',
+      },
       url: 'http://127.0.0.1:8765/health',
       timeout: 120_000,  // CI 첫 실행은 uv 의존성 + vite build 까지 포함(여유)
       reuseExistingServer: !process.env.CI,
