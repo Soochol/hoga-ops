@@ -164,7 +164,8 @@ export function Heatmap() {
             (2026-07-23). 이전 bg-card(흰 밴드)를 걷어내 상단이 바닥에 녹아든다.
             구분선 없음(border-b 제거): 분리는 간격이 담당. */}
         <header className="flex items-center gap-3 px-3 py-2 bg-bg flex-none">
-          <span className="text-md font-semibold text-fg">히트맵</span>
+          {/* 페이지 제목 없음 — 활성 상단 nav 가 곧 페이지 라벨이다(DESIGN.md
+              "No redundant page title"). 헤더는 상태(phase·갱신 시각)와 컨트롤만. */}
           {phase && <span className="text-xs font-data text-fg-dim">{PHASE_LABEL[phase] ?? phase}</span>}
           <span className="text-xs font-data text-fg-dimmer">
             {updated} 갱신 · {isSearching && matchCount > 0
