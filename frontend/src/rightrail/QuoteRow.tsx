@@ -129,7 +129,7 @@ export function QuoteRow({
       onClick={onClick}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
-      className={`group cursor-pointer touch-none ${leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center gap-2 border-b border-border outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
+      className={`group cursor-pointer touch-none ${leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center gap-2 border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
         flash ? 'screener-row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{

@@ -94,7 +94,7 @@ export function QuoteRowGroupMenu({ code, name, x, y, onClose }: {
           maxLength={40}
           placeholder="새 그룹 만들기"
           aria-label="새 그룹 만들기"
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-fg-dimmer"
+          className="flex-1 bg-transparent text-sm outline-none focus-visible:outline-none placeholder:text-fg-dimmer"
         />
       </div>
       {isMember && (
