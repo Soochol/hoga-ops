@@ -64,6 +64,7 @@ import { useMaSeriesRegistry } from '../indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from '../indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from '../indicators/paneLegendRegistry';
 import type { TabViewport } from '../viewportAnchor';
+import { WindowEmptyState, PICK_SYMBOL_HINT } from './WindowEmptyState';
 
 /** 빈 호가갭 배열 상수 — 경고 발행 동등성 비교가 매 렌더 새 [] 로 깨지지 않게 안정 참조. */
 const EMPTY_GAP_DATES: readonly string[] = [];
@@ -286,10 +287,13 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   }, [win.id]);
 
   if (!instrument) {
+    // 차트 창은 그룹의 주 표면이라 **행동 안내를 온전히** 진다(데이터 창은 축약판).
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-xs text-fg-dim">
-        <span className="font-data">종목 없음 · 그룹 {view.group}</span>
-      </div>
+      <WindowEmptyState
+        title={`그룹 ${view.group} · 종목 없음`}
+        hint={PICK_SYMBOL_HINT}
+        testId="chart-window-empty"
+      />
     );
   }
 

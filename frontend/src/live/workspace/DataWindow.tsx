@@ -75,6 +75,7 @@ import { buildTradeTickView } from '../tradeTicks';
 import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId } from '../liveInstrument';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
+import { WindowEmptyState, groupPendingHint } from './WindowEmptyState';
 import type { GroupId, GroupSymbol, WorkspaceWindow, WindowKind } from '../../state/workspace';
 
 export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
@@ -85,35 +86,31 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
       return <SectorRankingWindow indexId={symbol.code} />;
     }
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dim">
-        <span className="font-data">
-          {WINDOW_KIND_LABEL[win.kind]} · 지수 그룹 전용
-          <br />
-          {symbol ? `${symbol.name} 은 지수가 아닙니다` : `종목 없음 (그룹 ${win.group})`}
-        </span>
-      </div>
+      <WindowEmptyState
+        title={`${WINDOW_KIND_LABEL[win.kind]} · 지수 그룹 전용`}
+        hint={symbol
+          ? `${symbol.name} 은 지수가 아닙니다`
+          : `그룹 ${win.group} 에 지수를 지정하면 표시됩니다`}
+      />
     );
   }
   // 지수는 호가/거래원/투자자 데이터가 없다 — 구독 오염 대신 안내 카드(C2c-2c).
+  // hint 는 사유만 — 지수를 고른 것은 사용자의 선택이고, 여기서 시킬 다음 행동이 없다.
   if (symbol?.kind === 'index') {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dim">
-        <span className="font-data">
-          {WINDOW_KIND_LABEL[win.kind]} · {symbol.name}
-          <br />
-          지수는 지원하지 않습니다
-        </span>
-      </div>
+      <WindowEmptyState
+        title={`${WINDOW_KIND_LABEL[win.kind]} · ${symbol.name}`}
+        hint="지수는 지원하지 않습니다"
+      />
     );
   }
   const code = symbol?.code ?? null;
   if (!code) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dim">
-        <span className="font-data">
-          {WINDOW_KIND_LABEL[win.kind]} · 종목 없음 (그룹 {win.group})
-        </span>
-      </div>
+      <WindowEmptyState
+        title={`${WINDOW_KIND_LABEL[win.kind]} · 종목 없음`}
+        hint={groupPendingHint(win.group)}
+      />
     );
   }
   switch (win.kind) {

@@ -124,9 +124,11 @@ describe('DataWindow — sector-ranking 라우팅', () => {
     expect(screen.getByText(/삼성전자 은 지수가 아닙니다/)).toBeInTheDocument();
   });
 
-  it('종목 미지정이면 안내에 그룹 번호를 표시한다', () => {
+  it('종목 미지정이면 안내가 그룹 번호와 다음 행동을 준다', () => {
     render(<DataWindow win={sectorWin()} symbol={null} />);
-    expect(screen.getByText(/종목 없음 \(그룹 3\)/)).toBeInTheDocument();
+    expect(screen.getByText(/지수 그룹 전용/)).toBeInTheDocument();
+    // 상태만 알리면 "정상인데 비었다" 와 "고장" 을 구분할 수 없다 — 힌트가 계약이다.
+    expect(screen.getByText(/그룹 3 에 지수를 지정하면 표시됩니다/)).toBeInTheDocument();
   });
 
   it('지수 코드가 유효하지 않으면(예: 오염값) 안내로 우아하게 degrade 한다', () => {
@@ -151,9 +153,10 @@ describe('DataWindow — 체결창 라우팅', () => {
     expect(screen.queryByText('체결 데이터 없음')).not.toBeInTheDocument();
   });
 
-  it('종목 미지정이면 창 이름과 그룹 번호를 안내한다', () => {
+  it('종목 미지정이면 창 이름·상태와 다음 행동을 안내한다', () => {
     render(<DataWindow win={dataWin('trade', 4)} symbol={null} />);
-    expect(screen.getByText(/체결 · 종목 없음 \(그룹 4\)/)).toBeInTheDocument();
+    expect(screen.getByText(/체결 · 종목 없음/)).toBeInTheDocument();
+    expect(screen.getByText(/그룹 4 에 종목을 지정하면 표시됩니다/)).toBeInTheDocument();
   });
 });
 
