@@ -31,7 +31,8 @@ import {
   studyViewKindLabel,
 } from './studyViewVariant';
 import { studyActiveViewModel } from './studyActiveViewModel';
-import { PanelCard } from '../ui/PageShell';
+import { PanelCard, ToolbarButton } from '../ui/PageShell';
+import { useRightRailStore } from '../state/rightRail';
 import {
   DropOverlay,
   IconToolbarButton,
@@ -423,7 +424,18 @@ export function StudyPage() {
             dropTargetRef={studyDropTargetRef}
             showDropOverlay={draggingEntry && overStudy}
           >
-            저장된 학습뷰를 선택하세요.
+            {/* 빈 상태 = "한 줄 설명 + 행동 1개" — 저장뷰 드로어가 다음 행동인데
+                그 존재를 아는 사용자만 열 수 있었다. 버튼이 드로어를 직접 연다. */}
+            <div className="flex flex-col items-center gap-md">
+              <span>저장된 학습뷰를 선택하세요</span>
+              <ToolbarButton
+                tone="secondary"
+                className="border border-border-strong"
+                onClick={() => useRightRailStore.getState().setActivePanel('savedViews')}
+              >
+                저장뷰 열기
+              </ToolbarButton>
+            </div>
           </StudyStateWorkspace>
         )}
       >

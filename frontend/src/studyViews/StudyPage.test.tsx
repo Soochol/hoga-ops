@@ -312,7 +312,17 @@ describe('StudyPage', () => {
 
     expect(screen.getByTestId('study-page-empty')).toHaveClass('bg-bg');
     expect(screen.getByTestId('study-page-empty')).toHaveClass('text-fg');
-    expect(screen.getByText('저장된 학습뷰를 선택하세요.')).toBeTruthy();
+    expect(screen.getByText('저장된 학습뷰를 선택하세요')).toBeTruthy();
+  });
+
+  it('empty state offers a button that opens the saved-views drawer', async () => {
+    // 빈 상태 = "한 줄 설명 + 행동 1개" — 다음 행동(저장뷰 드로어)을 버튼이 직접 연다.
+    const { useRightRailStore } = await import('../state/rightRail');
+    useRightRailStore.getState().setActivePanel(null);
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '저장뷰 열기' }));
+    expect(useRightRailStore.getState().activePanel).toBe('savedViews');
   });
 
   it('does not open the symbol search dialog from the empty study page when "/" is pressed', () => {
@@ -1068,6 +1078,6 @@ describe('StudyPage', () => {
     renderPage('/study?view=missing');
 
     expect(screen.getByTestId('study-page-empty')).toBeTruthy();
-    expect(screen.getByText('저장된 학습뷰를 선택하세요.')).toBeTruthy();
+    expect(screen.getByText('저장된 학습뷰를 선택하세요')).toBeTruthy();
   });
 });
