@@ -29,16 +29,49 @@ import {
   type StudyWorkspaceWindow,
 } from '../state/studyWorkspace';
 
+/** 차트 창 타이틀바 식별 — 활성 저장뷰의 이름·코드·뷰 종류. */
+export interface StudyChartSymbol {
+  label: string;
+  code: string;
+  kindLabel: string;
+}
+
 /** 창 항목들이 공유하는 /study 컨텍스트 — StudyPage 가 useMemo 로 안정화해 주입. */
 export interface StudyItemCtx {
   save: StudyViewReference | null;
   bundle: RangeBundle | null;
+  /** 차트 창 타이틀바가 그리는 식별 행(#903 의 페이지 툴바 식별부에서 이관). */
+  symbol: StudyChartSymbol;
   /** 차트 창 배선 — 창이 헤더·셸·차트를 소유하고(#908) 페이지는 데이터만 준다.
    *  `windowId` 만 창 쪽에서 채운다(창이 자기 id 를 안다). */
   chart: Omit<StudyChartWindowProps, 'windowId'>;
   /** 메모 창 본문 props(onClose 제외 — 창 닫기와 결속). null 이면 로딩 카드. */
   memo: Omit<StudyMemoPanelProps, 'onClose'> | null;
   closeWindow: (id: string) => void;
+}
+
+/**
+ * 차트 창 타이틀바의 종목 식별 행 — `/live` `TitleBarSymbolRow` 의 /study 판.
+ *
+ * **복제가 아니라 거울상**이다. /live 판은 현재가·등락률·히트맵·수집점을 `code` 로
+ * self-fetch 하는데, 복기뷰는 과거 고정 구간이라 그걸 그대로 얹으면 과거 차트 위에
+ * **오늘의 실시간 시세**가 붙는다. 그래서 남기는 건 `· 복기뷰` 꼬리표다 — 이게
+ * "이 창은 과거다" 라는 유일한 신호라 #900 이 타이틀바 이관을 미룬 이유였다.
+ */
+function StudyTitleBarSymbolRow({ label, code, kindLabel }: StudyChartSymbol) {
+  return (
+    <span
+      data-testid="study-titlebar-symbol-row"
+      className="inline-flex min-w-0 items-center gap-1.5"
+    >
+      <span className="truncate text-sm font-medium text-fg">{label}</span>
+      {/* 코드와 뷰 종류는 한 노드에 둔다 — 페이지 툴바 시절과 같은 한 덩어리
+          문자열(`005930 · 복기뷰`)이라 읽기·검색 계약이 이관 전후로 같다. */}
+      <span className="whitespace-nowrap text-xs text-fg-dim">
+        {code} · {kindLabel}
+      </span>
+    </span>
+  );
 }
 
 /** 코어의 `windowItem` 슬롯 — 모듈 스코프 필수(인라인 정의는 리마운트). */
@@ -61,9 +94,15 @@ function StudyWindowItem({
       onFocus={onFocus}
       onClose={ctx.closeWindow}
       header={
-        <span className="truncate text-sm font-medium text-fg">
-          {STUDY_WINDOW_LABEL[win.kind]}
-        </span>
+        // 차트 창은 종목 식별 행을 타이틀바에 그린다(/live 와 같은 자리). 코드가
+        // 아직 없으면(저장뷰 미선택) 종류 라벨로 폴백해 빈 제목을 만들지 않는다.
+        win.kind === 'chart' && ctx.symbol.code ? (
+          <StudyTitleBarSymbolRow {...ctx.symbol} />
+        ) : (
+          <span className="truncate text-sm font-medium text-fg">
+            {STUDY_WINDOW_LABEL[win.kind]}
+          </span>
+        )
       }
     >
       {win.kind === 'chart' ? (
@@ -99,11 +138,18 @@ export function StudyWorkspaceCanvas({
   bundle,
   chart,
   memo,
+  symbolLabel,
+  symbolCode,
+  symbolKindLabel,
 }: {
   save: StudyViewReference | null;
   bundle: RangeBundle | null;
   chart: Omit<StudyChartWindowProps, 'windowId'>;
   memo: Omit<StudyMemoPanelProps, 'onClose'> | null;
+  /** 차트 창 타이틀바 식별 — 스칼라 3개로 받아 itemCtx 재생성 축을 늘리지 않는다. */
+  symbolLabel: string;
+  symbolCode: string;
+  symbolKindLabel: string;
 }) {
   const windows = useStudyWorkspaceStore((s) => s.windows);
   const zOrder = useStudyWorkspaceStore((s) => s.zOrder);
@@ -112,8 +158,15 @@ export function StudyWorkspaceCanvas({
   const setWindowRects = useStudyWorkspaceStore((s) => s.setWindowRects);
 
   const itemCtx = useMemo<StudyItemCtx>(
-    () => ({ save, bundle, chart, memo, closeWindow }),
-    [save, bundle, chart, memo, closeWindow],
+    () => ({
+      save,
+      bundle,
+      chart,
+      memo,
+      closeWindow,
+      symbol: { label: symbolLabel, code: symbolCode, kindLabel: symbolKindLabel },
+    }),
+    [save, bundle, chart, memo, closeWindow, symbolLabel, symbolCode, symbolKindLabel],
   );
 
   return (

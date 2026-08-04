@@ -786,6 +786,32 @@ describe('StudyPage', () => {
     expect(menu.parentElement).toBe(document.body);
   });
 
+  it('종목 식별(`이름 코드 · 복기뷰`)은 페이지 툴바가 아니라 차트 창 타이틀바에 있다', () => {
+    // `/live` 가 종목 식별을 창 타이틀바에 두는 것과 같은 자리. 다른 단언들은
+    // getByText 라 **어디에 있든** 통과하므로 위치를 여기서 못 박는다.
+    renderPage('/study?view=view-ref');
+
+    const chartFrame = screen.getByTestId('study-chart-card').closest('[data-win]') as HTMLElement;
+    const symbolRow = within(chartFrame).getByTestId('study-titlebar-symbol-row');
+    expect(symbolRow.textContent).toContain('삼성전자');
+    expect(within(symbolRow).getByText('005930 · 복기뷰')).toBeTruthy();
+    // 타이틀바(드래그 핸들 밴드) 안이어야 한다 — 컨트롤 행이면 접힘 임계(#905)가
+    // 실측 파생값이라 라벨 폭만큼 통째로 어긋난다.
+    expect(symbolRow.closest('[data-handle="move"]')).not.toBeNull();
+
+    const toolbar = screen.getByTestId('study-page-toolbar');
+    expect(toolbar.textContent).not.toContain('복기뷰');
+    expect(toolbar.textContent).not.toContain('005930');
+  });
+
+  it('데이터 창 타이틀바는 종류 라벨을 유지한다 — 식별 행은 차트 창만', () => {
+    renderPage('/study?view=view-ref');
+
+    const bookFrame = screen.getByTestId('study-detail-card-orderbook').closest('[data-win]') as HTMLElement;
+    expect(within(bookFrame).queryByTestId('study-titlebar-symbol-row')).toBeNull();
+    expect(bookFrame.textContent).toContain('10호가');
+  });
+
   it('does not offer a close control on the chart window (차트 1개 고정)', () => {
     renderPage('/study?view=view-ref');
 
