@@ -146,7 +146,11 @@ export function LiveSymbolSearch() {
           aria-controls="live-symbol-search-list"
           type="text"
           placeholder="검색어를 입력해주세요"
-          className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-dimmer"
+          // focus-visible:outline-none 은 global.css 의 전역 포커스 링을 이 input 에서만
+          // 끈다(variant 가 붙어야 특이도로 이긴다 — 맨 outline-none 은 나중에 선언된
+          // 전역 :focus-visible 과 동점이라 진다). 팔레트는 열리는 순간 여기로 포커스가
+          // 가고 캐럿이 위치를 알려 주므로 링이 없어도 키보드 사용자가 길을 잃지 않는다.
+          className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none focus-visible:outline-none placeholder:text-fg-dimmer"
           {...inputProps}
         />
       </div>
