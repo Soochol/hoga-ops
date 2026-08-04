@@ -46,11 +46,6 @@ from hoga.live.index_registry import (
     list_representative_indices,
 )
 from hoga.live.investor import InvestorTrendEstimateRow
-from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
-from hoga.live.kis_capacity_scheduler import (
-    KisCapacityCooldown,
-    KisCapacityOverloaded,
-)
 from hoga.live.kis_client import (
     KisApiError,
     KisRateLimitError,
@@ -1466,19 +1461,16 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             bid-peak-today snapshot for a code. None → /series returns null.
     """
     router = APIRouter(prefix="/api/live")
-    _kis_scheduler = ensure_kis_capacity_scheduler(data_dir) if data_dir is not None else None
-
-    def _has_kis_capacity_candidate() -> bool:
-        if data_dir is None:
-            return False
-        return kis_access.has_rest_capacity(data_dir)
 
     @router.get("/status", response_model=LiveStatus)
     async def _get_status(request: Request) -> LiveStatus:
         status = get_status()
         update: dict[str, object] = {}
-        if _kis_scheduler is not None:
-            update["kis_capacity_scheduler"] = _kis_scheduler.snapshot()
+        # 거버너 관측 표면 — PR-J(#1046)에서 KIS 스케줄러가 사라지고 키움 거버너가
+        # 대신한다. 키는 프론트 계약이라 유지한다(#1046 관측 절에서 정리).
+        snapshot = kiwoom_rest_runtime.snapshot()
+        if snapshot:
+            update["kis_capacity_scheduler"] = snapshot
         # ADR-0088: lifespan-owned task liveness (set on app.state at startup).
         runtime = getattr(request.app.state, "startup_runtime", None)
         if runtime is not None:
@@ -1500,7 +1492,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
 
     async def _collect_cache_stats(request: Request) -> dict[str, object]:
         """Per-cache observability (PR-1). Reads closure-reachable cache
-        instances — the same closure path _kis_scheduler uses above."""
+        instances — the same closure path the governor snapshot uses above."""
         from hoga.api import (  # noqa: PLC0415 — 지연 import(순환/heavy)
             today_ttl_cache,  # late import: conftest swaps TODAY_TTL
         )
@@ -1705,12 +1697,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     to,
                     fetch_batch,
                 )
-            except (KisCapacityCooldown, KisCapacityOverloaded) as e:
-                reason = (
-                    "index_kis_capacity_cooldown"
-                    if isinstance(e, KisCapacityCooldown)
-                    else "index_kis_capacity_overloaded"
-                )
+            except KiwoomCapacityOverloaded:
+                # 계정별 쿨다운(`KisCapacityCooldown`)은 사라졌다 — 키움 유량은
+                # TR별이라 "이 계정만 쉰다" 는 개념이 없다(#1015). 남는 강등 사유는
+                # 큐 과부하 하나다. `reason` 문자열은 프론트 계약이라 유지한다.
+                reason = "index_kis_capacity_overloaded"
                 return {
                     "index_id": index.id,
                     "from": from_,
@@ -1804,12 +1795,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                         "msg": f"kiwoom {_KIWOOM_INDEX_MINUTE_API_ID} fetch failed",
                     }],
                 }
-            except (KisCapacityCooldown, KisCapacityOverloaded) as e:
-                reason = (
-                    "index_kis_capacity_cooldown"
-                    if isinstance(e, KisCapacityCooldown)
-                    else "index_kis_capacity_overloaded"
-                )
+            except KiwoomCapacityOverloaded:
+                # 계정별 쿨다운(`KisCapacityCooldown`)은 사라졌다 — 키움 유량은
+                # TR별이라 "이 계정만 쉰다" 는 개념이 없다(#1015). 남는 강등 사유는
+                # 큐 과부하 하나다. `reason` 문자열은 프론트 계약이라 유지한다.
+                reason = "index_kis_capacity_overloaded"
                 return {
                     "index_id": index.id,
                     "from": from_,
@@ -1991,10 +1981,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     _index_sector_intraday_overlay: LiveIndexSectorIntradayOverlay | None = (
         LiveIndexSectorIntradayOverlay(
             data_dir=data_dir,
-            scheduler=_kis_scheduler,
+            scheduler=kiwoom_rest_runtime.ensure_scheduler(),
             quote_fetcher=_quote_fetcher,
         )
-        if data_dir is not None and _kis_scheduler is not None
+        if data_dir is not None
         else None
     )
 
@@ -2273,10 +2263,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 policy=policy,
             )
             return {"code": code, "from": from_, "to": to, "venue": policy, **out.model_dump()}
-        if _kis_scheduler is None:
-            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
-        if not _has_kis_capacity_candidate():
-            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
+        if data_dir is None or kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
+            raise HTTPException(
+                503,
+                {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom client not initialized"},
+            )
 
         out = await minute_backfill.collect_minute(
             code=code,
@@ -2314,10 +2305,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 from_label=from_,
                 to_label=to,
             )
-        if _kis_scheduler is None:
-            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS scheduler not wired"})
-        if not _has_kis_capacity_candidate():
-            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not initialized"})
+        if data_dir is None or kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
+            raise HTTPException(
+                503,
+                {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom client not initialized"},
+            )
         return await daily_backfill.collect_daily(
             code=code,
             frm=frm,

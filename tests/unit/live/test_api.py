@@ -67,14 +67,20 @@ def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> N
     with TestClient(app) as c:
         r = c.get("/api/live/status")
         assert r.status_code == 200
+        # 관측 표면의 **키는 프론트 계약이라 유지**하고 내용물만 키움 거버너로
+        # 바뀐다(PR-J·#1046). 계정 성분(`configured_account_count` 등)은 사라졌다 —
+        # 키움 유량은 TR별이라 셀 계정이 없다(#1015).
         scheduler = r.json()["kis_capacity_scheduler"]
-        assert scheduler["max_workers"] >= 4
-        assert scheduler["max_pending_requests"] == 1000
-        assert "configured_account_count" in scheduler
-        assert "healthy_account_count" in scheduler
+        # `workers` 는 **살아 있는 워커 수**다 — 옛 KIS 스냅샷의 `max_workers`(설정값)와
+        # 성격이 다르다. 첫 요청 전에는 0 이고, 그게 맞는 값이다.
+        assert isinstance(scheduler["workers"], int)
         assert "queued" in scheduler
         assert "inflight" in scheduler
-        assert "overloaded_rejections" in scheduler
+        assert "tr_buckets" in scheduler
+        assert "configured_account_count" not in scheduler
+        # 양보 기계(#1038 기계 ④)의 관측치 — 인터랙티브가 백필에 밀리지 않는지를
+        # 운영에서 보는 유일한 신호다.
+        assert "background_deferred_due_to_user_visible" in scheduler
 
 
 def test_get_live_status_includes_cache_stats(tmp_path) -> None:

@@ -41,6 +41,8 @@ from hoga.live.venue import Venue
 VENUE_SUFFIX: dict[str, str] = {"KRX": "", "NXT": "_NX", "UN": "_AL"}
 
 # 실측 상한(#1040). 넘기면 1634 로 영구 거절된다 — 재시도가 아니라 청킹이 답이다.
+API_ID = "ka10095"
+
 MAX_CODES_PER_CALL = 100
 
 
@@ -127,7 +129,7 @@ async def fetch_multi_price(
     out: list[Quote] = []
     for chunk in chunk_codes([c for c in codes if c]):
         page = await client.call(
-            "ka10095", {"stk_cd": "|".join(f"{c}{suffix}" for c in chunk)}
+            API_ID, {"stk_cd": "|".join(f"{c}{suffix}" for c in chunk)}
         )
         for row in page.rows:
             quote = parse_row(row)

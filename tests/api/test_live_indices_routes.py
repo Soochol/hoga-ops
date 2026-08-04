@@ -435,21 +435,10 @@ def _patch_capacity_raises(monkeypatch, exc: Exception) -> None:
     monkeypatch.setattr(live_api.kiwoom_access, "run_with_capacity", raising_kiwoom)
 
 
-def test_index_daily_candles_degrade_on_capacity_cooldown(tmp_path, monkeypatch) -> None:
-    from hoga.live.kis_capacity_scheduler import KisCapacityCooldown
-
-    _patch_capacity_raises(monkeypatch, KisCapacityCooldown("all accounts cooling"))
-
-    app = FastAPI()
-    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
-    res = TestClient(app).get(
-        "/api/live/index-candles?index_id=KOSPI&timeframe=D&from=20260601&to=20260619",
-    )
-
-    assert res.status_code == 200  # 500이 아니라 강등
-    body = res.json()
-    assert body["candles"] == []
-    assert [w["reason"] for w in body["data_warnings"]] == ["index_kis_capacity_cooldown"]
+# `test_index_daily_candles_degrade_on_capacity_cooldown` 은 삭제했다.
+# **계정별 쿨다운(`KisCapacityCooldown`)이라는 개념 자체가 사라졌다**(PR-J·#1046):
+# 키움 유량은 TR별이라 "이 계정만 쉰다" 가 성립하지 않는다(#1015). 남은 강등 사유는
+# 큐 과부하 하나이고, 바로 아래 `..._degrade_on_capacity_overloaded` 가 덮는다.
 
 
 def test_index_minute_candles_degrade_on_fetch_failure(tmp_path, monkeypatch) -> None:

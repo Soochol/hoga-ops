@@ -54,10 +54,10 @@ from hoga.api.ws import build_ws_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_log_dir, resolve_symbol_master_path
 from hoga.env import load_env
+from hoga.live import kiwoom_rest_runtime
 from hoga.live.api import build_router as build_live_router
 from hoga.live.candle_models import LiveCandle
 from hoga.live.candle_repair import build_saved_view_repair_hook
-from hoga.live.kis_capacity_runtime import aclose_kis_capacity_scheduler
 from hoga.live.kis_runtime import aclose_kis_client
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
@@ -252,7 +252,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
                 ),
                 stop_today_promoter=stop_today_promoter,
                 stop_live_stream=stop_live_stream,
-                aclose_kis_capacity_scheduler=aclose_kis_capacity_scheduler,
+                aclose_kis_capacity_scheduler=kiwoom_rest_runtime.aclose,
                 aclose_kis_client=aclose_kis_client,
                 get_kiwoom_capture_codes=get_kiwoom_capture_codes,
                 # ADR-0088 확장: 캡처 워커 풀과 프로그램매매 수집기도 liveness 를
