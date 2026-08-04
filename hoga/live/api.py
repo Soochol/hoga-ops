@@ -965,6 +965,7 @@ class LiveQuoteFetcher:
         today: date | None = None,
         *,
         venue: Venue = "KRX",
+        fetch_chunk_fn: kiwoom_multi_quote.ChunkFetcher | None = None,
     ) -> list[LiveQuote]:
         """code_list 의 시세를 phase 에 맞춰 반환. closed=마지막 **종가** 시세(표본이
         종가가 아니면 재조회 — is_closing_sample), open=라이브, pre_open=등락률 숨김.
@@ -986,9 +987,12 @@ class LiveQuoteFetcher:
             if refetch:
                 try:
                     for q in await kiwoom_multi_quote.fetch_multi_price(
-                        client, code_list, venue=venue
+                        client, code_list, venue=venue,
+                        fetch_chunk_fn=fetch_chunk_fn,
                     ):
                         self._last_quotes[(venue, q.code)] = _QuoteSample(q, phase, day)
+                except KiwoomCapacityOverloaded:
+                    raise   # 사유 보존 — 아래 open 경로와 같은 이유다
                 except Exception as e:  # noqa: BLE001 — 오버레이는 절대 500 금지
                     log.warning("live quotes cold fetch failed (%d codes): %s",
                                 len(code_list), e)
@@ -1009,8 +1013,14 @@ class LiveQuoteFetcher:
             return rows
         try:
             quotes = await kiwoom_multi_quote.fetch_multi_price(
-                client, code_list, venue=venue
+                client, code_list, venue=venue, fetch_chunk_fn=fetch_chunk_fn,
             )
+        except KiwoomCapacityOverloaded:
+            # **재전파한다.** 청킹이 거버너 위로 올라가면서 이 예외가 여기 안쪽에서
+            # 발생하게 됐는데, 여기서 stale 로 접으면 라우트가 붙이는
+            # `capacity_overloaded_upstream` 사유가 사라지고 `fetch_failed` 로
+            # 뭉개진다 — 과부하와 벤더 실패는 처방이 다르다(ADR-0137).
+            raise
         except Exception as e:  # noqa: BLE001 — 10초 폴링 오버레이는 절대 500 금지;
             # KIS rate-limit/api-error/네트워크 타임아웃 등 무엇이든 빈 결과로 graceful
             # (프론트는 '—' 표시). retry-exhausted 신호는 warning 으로만 남긴다.
@@ -2016,22 +2026,33 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         quote_client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
         if quote_client is None:
             return LiveQuotesResponse(phase=phase, quotes=[])
+        def _quotes_chunk_fn(chunk: list[str]):
+                    # 청크 1개 = 거버너 submit 1건. **바깥에서 fetch_and_gate 를
+                    # 통째로 감싸면 안 된다** — 거버너는 submit 진입 전에 버킷을 한 번만
+                    # 소비하므로 그 안의 청크 N개가 페이싱을 못 받는다(#1063 실측:
+                    # 43청크 0.23초 → `1700 유량=5`). 이중 감싸기도 금지다: 바깥이
+                    # ka10095 토큰을 쥔 채 안쪽이 같은 버킷을 기다려 자기를 굶긴다.
+            return kiwoom_access.run_with_capacity(
+                kiwoom_rest_runtime.ensure_scheduler(data_dir),
+                key=("quotes", quote_venue, tuple(chunk), phase),
+                api_id="ka10095",
+                priority="background",
+                client=quote_client,
+                fetch_fn=lambda c: kiwoom_multi_quote.fetch_chunk(
+                    c, chunk, venue=quote_venue,
+                ),
+            )
+
         try:
             quotes = await asyncio.wait_for(
                 asyncio.shield(
-                    kiwoom_access.run_with_capacity(
-                        kiwoom_rest_runtime.ensure_scheduler(data_dir),
-                        key=("quotes", quote_venue, tuple(sorted(code_list)), phase),
-                        api_id="ka10095",
-                        priority="background",
-                        client=quote_client,
-                        fetch_fn=lambda c: _quote_fetcher.fetch_and_gate(
-                            c,
-                            code_list,
-                            phase,
-                            today=now.date(),
-                            venue=quote_venue,
-                        ),
+                    _quote_fetcher.fetch_and_gate(
+                        quote_client,
+                        code_list,
+                        phase,
+                        today=now.date(),
+                        venue=quote_venue,
+                        fetch_chunk_fn=_quotes_chunk_fn,
                     )
                 ),
                 timeout=1.0,
@@ -2082,22 +2103,29 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
             quotes = []
         elif (tab_client := kiwoom_rest_runtime.ensure_rest_client(data_dir)) is not None:
+            def _tab_chunk_fn(chunk: list[str]):
+                """청크 1개 = 거버너 submit 1건 (`/quotes` 와 같은 이유)."""
+                return kiwoom_access.run_with_capacity(
+                    kiwoom_rest_runtime.ensure_scheduler(data_dir),
+                    key=("tab-metrics-quotes", quote_venue, tuple(chunk), phase),
+                    api_id="ka10095",
+                    priority="background",
+                    client=tab_client,
+                    fetch_fn=lambda c: kiwoom_multi_quote.fetch_chunk(
+                        c, chunk, venue=quote_venue,
+                    ),
+                )
+
             try:
                 quotes = await asyncio.wait_for(
                     asyncio.shield(
-                        kiwoom_access.run_with_capacity(
-                            kiwoom_rest_runtime.ensure_scheduler(data_dir),
-                            key=("tab-metrics-quotes", quote_venue, tuple(sorted(code_list)), phase),
-                            api_id="ka10095",
-                            priority="background",
-                            client=tab_client,
-                            fetch_fn=lambda c: _quote_fetcher.fetch_and_gate(
-                                c,
-                                code_list,
-                                phase,
-                                today=now.date(),
-                                venue=quote_venue,
-                            ),
+                        _quote_fetcher.fetch_and_gate(
+                            tab_client,
+                            code_list,
+                            phase,
+                            today=now.date(),
+                            venue=quote_venue,
+                            fetch_chunk_fn=_tab_chunk_fn,
                         )
                     ),
                     timeout=1.0,
