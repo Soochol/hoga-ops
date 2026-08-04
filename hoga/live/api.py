@@ -26,6 +26,7 @@ from hoga.live import (
     kiwoom_access,
     kiwoom_index_rest,
     kiwoom_investor,
+    kiwoom_minute_candles,
     kiwoom_multi_quote,
     kiwoom_rest_runtime,
     kiwoom_runtime,
@@ -2336,12 +2337,36 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
         venue: str | None = Query("KRX"),
+        bucket_ms: int | None = Query(None),
     ) -> dict:
+        """`bucket_ms` 는 **과거분을 벤더에서 어느 주기로 받을지**를 고른다.
+
+        미지정이면 1분이다 — 이 파라미터가 생기기 전 동작과 같아서 기존 소비자가
+        그대로 돈다. 지정하면 키움 `ka10080` 의 `tic_scope` 로 직접 요청하므로 콜당
+        커버리지가 배수로 늘어난다(10분 = 900행에 약 23 거래일, 1분의 10배).
+
+        오늘분은 이 값과 무관하게 1분이다(`collect_minute` docstring 참고).
+        """
         frm, too, today_d = _validate_past_request(code, from_, to)
         try:
             policy = parse_live_venue_policy(venue)
         except ValueError as e:
             raise HTTPException(422, {"code": LiveErrorCode.INVALID_VENUE, "message": str(e)}) from e
+        # 응답에 되싣는다 — 소비자가 **받은 봉의 해상도**를 알아야 캐시/병합을
+        # 해상도별로 가를 수 있다. 프론트는 이 값으로 placeholder 재사용 여부를
+        # 판단한다(다른 해상도를 잠깐 그리면 축이 어긋난다).
+        resolved_bucket_ms = 60_000 if bucket_ms is None else bucket_ms
+        if bucket_ms is None:
+            tic_scope = kiwoom_minute_candles.TIC_SCOPE_1MIN
+        else:
+            resolved = kiwoom_minute_candles.tic_scope_for_bucket_ms(bucket_ms)
+            if resolved is None:
+                supported = sorted(kiwoom_minute_candles.BUCKET_MS_TO_TIC_SCOPE)
+                raise HTTPException(422, {
+                    "code": LiveErrorCode.UNSUPPORTED_BUCKET_MS,
+                    "message": f"bucket_ms={bucket_ms} is not a vendor minute scope; supported: {supported}",
+                })
+            tic_scope = resolved
         if minute_backfill is None:
             raise HTTPException(
                 503,
@@ -2354,8 +2379,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 too=too,
                 today_d=today_d,
                 policy=policy,
+                tic_scope=tic_scope,
             )
-            return {"code": code, "from": from_, "to": to, "venue": policy, **out.model_dump()}
+            return {
+                "code": code, "from": from_, "to": to, "venue": policy,
+                "bucket_ms": resolved_bucket_ms, **out.model_dump(),
+            }
         if data_dir is None or kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
             raise HTTPException(
                 503,
@@ -2368,8 +2397,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             too=too,
             today_d=today_d,
             policy=policy,
+            tic_scope=tic_scope,
         )
-        return {"code": code, "from": from_, "to": to, "venue": policy, **out.model_dump()}
+        return {
+            "code": code, "from": from_, "to": to, "venue": policy,
+            "bucket_ms": resolved_bucket_ms, **out.model_dump(),
+        }
 
     @router.get("/past-daily-candles")
     async def _get_past_daily_candles(

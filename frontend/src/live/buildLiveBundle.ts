@@ -57,8 +57,8 @@ export interface BuildLiveBundleInput {
   pastBundle: RangeBundle | null;
   sseOb: readonly ObSnapshot[];
   sseTrade: readonly TradeSnapshot[];
-  /** Candles from /api/live/past-candles (KIS dailychartprice), already
-   * client-side aggregated to the display timeframe and converted to wire
+  /** Candles from /api/live/past-candles (키움 ka10080), already
+   * aggregated to the display timeframe and converted to wire
    * Candle shape. Single source of truth for the bundle's candle array
    * (ADR-0040 — Live Candle Backfill). */
   kisCandles: Candle[];

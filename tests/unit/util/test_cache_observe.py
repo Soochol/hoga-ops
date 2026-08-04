@@ -14,8 +14,10 @@ def _status(started_at_ms, *, fresh=0, errors=0, ratio_kind=None):
     cache_stats = {
         "minute_backfill": {"fresh_past_fetches": fresh, "fresh_past_fetch_errors": errors},
         "past_candles": {
-            "past": {"hit_rate": 0.9, "lookups": 100},
-            "today": {"hit_rate": 0.5, "lookups": 10},
+            # size/bars: 봉 수 예산 도입(#1008 후속)으로 stats 가 새로 싣는 필드 —
+            # bars/size 비가 tf 구성 진단축이라 summarize 가 버리면 안 된다.
+            "past": {"hit_rate": 0.9, "lookups": 100, "size": 4, "bars": 800},
+            "today": {"hit_rate": 0.5, "lookups": 10, "size": None},
         },
         "index_minute_candles": {"hit_rate": 0.8, "lookups": 20},
     }
@@ -73,6 +75,17 @@ def test_summarize_latest_uses_most_recent_snapshot():
     assert r["latest"]["index_minute_candles"]["hit_rate"] == 0.8
 
 
+def test_summarize_passes_through_past_bars_and_size():
+    """bars/size 가 화이트리스트에서 탈락하면 stats_snapshot 이 문서화한 tf-구성
+    진단(bars/size 비)을 cache-report 로 돌릴 수 없다 — 관측 계약의 핀."""
+    r = summarize([make_record(_status(1000), 1)])
+    past = r["latest"]["past_candles"]["past"]
+    assert past["size"] == 4
+    assert past["bars"] == 800
+    # today 는 size=None — None 필드는 싣지 않는다(flat/horizon 판별 오염 방지).
+    assert "size" not in r["latest"]["past_candles"]["today"]
+
+
 def test_format_report_has_gate_sections():
     kind = {"hit_rate": 0.6, "lookups": 5, "misses": 2, "hits": 3, "disk_hits": 2}
     records = [make_record(_status(1000, fresh=42, ratio_kind=kind), 1)]
@@ -80,6 +93,7 @@ def test_format_report_has_gate_sections():
     assert "분봉 디스크 영속 게이트" in text
     assert "42" in text  # the cold re-spend number surfaces
     assert "지표 LRU 사이징" in text
+    assert "bars/size=200" in text  # 800/4 — tf 구성 판별축이 리포트에 실제로 나온다
 
 
 def test_format_report_empty():

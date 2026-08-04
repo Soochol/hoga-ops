@@ -63,11 +63,15 @@ describe('useLiveRangeCacheEviction', () => {
 
   it('past-candles 는 청크와 병합본의 코드 위치가 달라도 각각 옳게 읽는다', () => {
     const queryClient = new QueryClient();
-    const openChunk = ['live', 'past-candles', '005930', '20260701', '20260729', 'AUTO'];
-    const openMerged = ['live', 'past-candles', 'merged', '005930', '20260729', 'AUTO'];
-    const goneChunk = ['live', 'past-candles', '000660', '20260701', '20260729', 'AUTO'];
-    const goneMerged = ['live', 'past-candles', 'merged', '000660', '20260729', 'AUTO'];
-    for (const key of [openChunk, openMerged, goneChunk, goneMerged]) {
+    // 실제 키 모양(bucketMs 꼬리 포함, #1008). 술어는 [2]/[3]만 보므로 꼬리 확장에
+    // 불변이어야 한다 — 이 픽스처가 구 6요소 모양이면 그 성질을 검증하지 못한다.
+    const openChunk = ['live', 'past-candles', '005930', '20260701', '20260729', 'AUTO', 600_000];
+    const openMerged = ['live', 'past-candles', 'merged', '005930', '20260729', 'AUTO', 600_000];
+    const goneChunk = ['live', 'past-candles', '000660', '20260701', '20260729', 'AUTO', 600_000];
+    const goneMerged = ['live', 'past-candles', 'merged', '000660', '20260729', 'AUTO', 600_000];
+    // 같은 종목의 다른 tf 병합본도 종목 축출을 따라간다(스코프별 키 분리의 귀결).
+    const goneOtherTf = ['live', 'past-candles', 'merged', '000660', '20260729', 'AUTO', 60_000];
+    for (const key of [openChunk, openMerged, goneChunk, goneMerged, goneOtherTf]) {
       queryClient.setQueryData(key, { seeded: true });
     }
 
@@ -81,6 +85,7 @@ describe('useLiveRangeCacheEviction', () => {
     expect(queryClient.getQueryData(openChunk)).toBeDefined();
     expect(queryClient.getQueryData(goneMerged)).toBeUndefined();
     expect(queryClient.getQueryData(goneChunk)).toBeUndefined();
+    expect(queryClient.getQueryData(goneOtherTf)).toBeUndefined();
   });
 
   it("/study 와 공유하는 ['range'] 청크는 건드리지 않는다", () => {

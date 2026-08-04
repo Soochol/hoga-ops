@@ -32,11 +32,21 @@ export interface LivePastCandlesResponse {
   from: string;
   to: string;
   venue?: LiveVenueOption;
+  /** 과거분을 벤더에서 받아온 봉 주기(ms). 서버가 되싣는 값이라 **응답이 실제로
+   * 어떤 해상도인지**를 말한다 — 요청한 값과 같지만, placeholder 재사용처럼 두
+   * 응답을 비교해야 하는 자리에서는 응답 쪽을 봐야 안전하다. 이 필드가 없는
+   * 응답은 1분(파라미터 도입 전 서버). 오늘분은 이 값과 무관하게 늘 1분이다. */
+  bucket_ms?: number;
   candles: LivePastCandle[];
   cached_dates: string[];
   fresh_dates: string[];
   data_warnings: LivePastCandlesWarning[];
   effective_sessions?: LiveEffectiveSession[];
+}
+
+/** 응답의 해상도. 필드가 없으면 1분(하위호환). */
+export function responseBucketMs(r: LivePastCandlesResponse): number {
+  return r.bucket_ms ?? 60_000;
 }
 
 interface DeltaPlan {
@@ -107,8 +117,10 @@ function sortUniqueCandles(candles: LivePastCandle[]): LivePastCandle[] {
   return Array.from(byT.values()).sort((a, b) => a.t_ms - b.t_ms);
 }
 
-function responseIdentity(code: string | null, to: string | null, venue: LiveVenueOption): string {
-  return `${code ?? ''}|${to ?? ''}|${venue}`;
+function responseIdentity(
+  code: string | null, to: string | null, venue: LiveVenueOption, bucketMs: number,
+): string {
+  return `${code ?? ''}|${to ?? ''}|${venue}|${bucketMs}`;
 }
 
 /** 탭 복귀 시 병합본을 1-샷 복원하기 위한 canonical React Query 키. 실 청크 요청
@@ -116,13 +128,18 @@ function responseIdentity(code: string | null, to: string | null, venue: LiveVen
  * 전용 네임스페이스('merged')를 써서 ① 창≤15일에서 head 청크 키와 충돌하지 않고
  * ② 팬으로 from 이 확장돼도 identity(code|to|venue)당 1개만 자기-덮어쓰므로 파편화가
  * 없다. 복원은 정확-키 getQueryData O(1) — 스캔 불필요. `['live','past-candles']`
- * prefix 에 속하므로 main.tsx 의 setQueryDefaults gcTime(2h)을 그대로 상속한다. */
+ * prefix 에 속하므로 main.tsx 의 setQueryDefaults gcTime(2h)을 그대로 상속한다.
+ *
+ * `bucketMs` 가 키에 있는 이유: 서버가 표시 tf 로 봉을 직접 내려주므로(#1008) 같은
+ * (code,to,venue) 라도 tf 마다 **다른 해상도의 병합본**이 존재한다. 빠지면 10분 뷰가
+ * 1분 병합본을 복원해 조용히 틀린 봉을 그린다. */
 export function mergedPastCandlesKey(
   code: string | null,
   to: string | null,
   venue: LiveVenueOption,
-): readonly ['live', 'past-candles', 'merged', string, string, LiveVenueOption] {
-  return ['live', 'past-candles', 'merged', code ?? '', to ?? '', venue] as const;
+  bucketMs: number,
+): readonly ['live', 'past-candles', 'merged', string, string, LiveVenueOption, number] {
+  return ['live', 'past-candles', 'merged', code ?? '', to ?? '', venue, bucketMs] as const;
 }
 
 /** 한 요청의 최대 캘린더일 폭. 백엔드 미캐시-일수 예산
@@ -211,9 +228,10 @@ export function planPastCandlesDelta(
   venue: LiveVenueOption,
   previous?: LivePastCandlesResponse,
   todayKst: string | null = null,
+  bucketMs: number = 60_000,
 ): DeltaPlan {
   const enabled = !!(code && from && to && from <= to);
-  const identity = responseIdentity(code, to, venue);
+  const identity = responseIdentity(code, to, venue, bucketMs);
   if (!enabled || !code || !from || !to) {
     return {
       enabled: false,
@@ -315,30 +333,34 @@ export function useLivePastCandles(
   to: string | null,
   venue: LiveVenueOption = 'KRX',
   todayKst: string | null = null,
+  bucketMs: number = 60_000,
 ) {
   const queryClient = useQueryClient();
   const mergedRef = useRef<{ identity: string; data: LivePastCandlesResponse } | null>(null);
   const [, bumpMergedVersion] = useReducer((x: number) => x + 1, 0);
-  const identity = responseIdentity(code, to, venue);
+  const identity = responseIdentity(code, to, venue, bucketMs);
   // 탭 복귀(code 변경으로 mergedRef 소실) 시 canonical 병합본을 1-샷 복원한다.
   // 정확-키 조회라 O(1); gcTime(2h) 내면 청크 워크백 리플레이 없이 병합 히스토리를
   // 그대로 되살린다. mergedRef 가 아직 살아 있으면(같은 탭 내 리렌더) 그쪽이 우선.
   const restored = queryClient.getQueryData<LivePastCandlesResponse>(
-    mergedPastCandlesKey(code, to, venue),
+    mergedPastCandlesKey(code, to, venue, bucketMs),
   );
   const previous = mergedRef.current?.identity === identity ? mergedRef.current.data : restored;
   const previousFrom = previous?.from;
   const previousTo = previous?.to;
   const plan = useMemo(
-    () => planPastCandlesDelta(code, from, to, venue, previous, todayKst),
-    [code, from, to, venue, previous, previousFrom, previousTo, todayKst],
+    () => planPastCandlesDelta(code, from, to, venue, previous, todayKst, bucketMs),
+    [code, from, to, venue, previous, previousFrom, previousTo, todayKst, bucketMs],
   );
 
   const query = useQuery({
-    queryKey: ['live', 'past-candles', code, plan.requestFrom, plan.requestTo, venue] as const,
+    queryKey: [
+      'live', 'past-candles', code, plan.requestFrom, plan.requestTo, venue, bucketMs,
+    ] as const,
     queryFn: ({ signal }) =>
       apiCall<LivePastCandlesResponse>(
-        `/api/live/past-candles?code=${code}&from=${plan.requestFrom}&to=${plan.requestTo}&venue=${venue}`,
+        `/api/live/past-candles?code=${code}&from=${plan.requestFrom}&to=${plan.requestTo}`
+        + `&venue=${venue}&bucket_ms=${bucketMs}`,
         { signal: withPastCandlesTimeout(signal, PAST_CANDLES_TIMEOUT_MS) },
       ),
     enabled: plan.enabled,
@@ -360,8 +382,11 @@ export function useLivePastCandles(
     // without this, LiveChartRoot's initial-view effect runs against the
     // PREVIOUS code's candle count and locks setVisibleLogicalRange with a
     // stale right edge, pushing the new code's latest candle off-screen.
+    // 해상도도 본다: tf 전환은 queryKey 를 바꾸므로 prev 가 **이전 tf 의 봉**일 수
+    // 있고, 그걸 placeholder 로 그리면 축 격자가 어긋난 채 한 프레임이 나간다.
     placeholderData: (prev) => (
-      prev && prev.code === code && (prev.venue ?? 'KRX') === venue && prev.to === to ? prev : undefined
+      prev && prev.code === code && (prev.venue ?? 'KRX') === venue && prev.to === to
+        && responseBucketMs(prev) === bucketMs ? prev : undefined
     ),
   });
 
@@ -412,8 +437,8 @@ export function useLivePastCandles(
     if (query.data && hasBlockingWarnings(query.data)) return;
     if (publishedRef.current === data) return;
     publishedRef.current = data;
-    queryClient.setQueryData(mergedPastCandlesKey(code, to, venue), data);
-  }, [data, query.data, query.isPlaceholderData, queryClient, code, to, venue]);
+    queryClient.setQueryData(mergedPastCandlesKey(code, to, venue, bucketMs), data);
+  }, [data, query.data, query.isPlaceholderData, queryClient, code, to, venue, bucketMs]);
 
   return {
     ...query,

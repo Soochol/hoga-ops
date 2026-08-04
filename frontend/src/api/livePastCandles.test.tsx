@@ -93,6 +93,8 @@ function mockApiEchoingWindow() {
       from: params.get('from')!,
       to: params.get('to')!,
       venue: (params.get('venue') ?? 'KRX') as LivePastCandlesResponse['venue'],
+      // 서버가 되싣는 값을 그대로 흉내낸다 — placeholder 재사용 판정이 이 필드를 본다.
+      bucket_ms: Number(params.get('bucket_ms') ?? 60_000),
       candles: [],
       cached_dates: [],
       fresh_dates: [],
@@ -156,7 +158,7 @@ describe('useLivePastCandles', () => {
     );
     await waitFor(() => expect(result.current.data?.candles).toHaveLength(1));
     expect(spy).toHaveBeenCalledWith(
-      '/api/live/past-candles?code=005930&from=20260501&to=20260502&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260501&to=20260502&venue=KRX&bucket_ms=60000',
       { signal: expect.any(AbortSignal) },
     );
   });
@@ -170,7 +172,7 @@ describe('useLivePastCandles', () => {
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
     expect(spy.mock.calls[0][0]).toBe(
-      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX&bucket_ms=60000',
     );
   });
 
@@ -184,9 +186,9 @@ describe('useLivePastCandles', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(3), { timeout: 3000 });
     const urls = spy.mock.calls.map((c) => c[0]);
     expect(urls).toEqual([
-      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX',
-      '/api/live/past-candles?code=005930&from=20260608&to=20260622&venue=KRX',
-      '/api/live/past-candles?code=005930&from=20260601&to=20260607&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX&bucket_ms=60000',
+      '/api/live/past-candles?code=005930&from=20260608&to=20260622&venue=KRX&bucket_ms=60000',
+      '/api/live/past-candles?code=005930&from=20260601&to=20260607&venue=KRX&bucket_ms=60000',
     ]);
     await new Promise((r) => setTimeout(r, 100));
     expect(spy).toHaveBeenCalledTimes(3);
@@ -221,8 +223,8 @@ describe('useLivePastCandles', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     const urls = spy.mock.calls.map((c) => c[0]);
     expect(urls).toEqual([
-      '/api/live/past-candles?code=005930&from=20260705&to=20260710&venue=UN',
-      '/api/live/past-candles?code=005930&from=20260710&to=20260710&venue=UN',
+      '/api/live/past-candles?code=005930&from=20260705&to=20260710&venue=UN&bucket_ms=60000',
+      '/api/live/past-candles?code=005930&from=20260710&to=20260710&venue=UN&bucket_ms=60000',
     ]);
     // 오늘-델타 응답이 기준선에 병합돼 서빙된다(청크 캔들 + 오늘 캔들).
     await waitFor(() =>
@@ -473,7 +475,7 @@ describe('useLivePastCandles', () => {
 
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     expect(spy.mock.calls[1][0]).toBe(
-      '/api/live/past-candles?code=005930&from=20260430&to=20260430&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260430&to=20260430&venue=KRX&bucket_ms=60000',
     );
     await waitFor(() => expect(result.current.data?.candles.map((c) => c.close)).toEqual([101, 102]));
     expect(result.current.data?.from).toBe('20260430');
@@ -608,7 +610,7 @@ describe('useLivePastCandles', () => {
 
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     expect(spy.mock.calls[1][0]).toBe(
-      '/api/live/past-candles?code=005930&from=20260430&to=20260503&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260430&to=20260503&venue=KRX&bucket_ms=60000',
     );
   });
 });
@@ -671,7 +673,7 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
     );
     await waitFor(() => expect(result.current.data?.from).toBe('20260601'), { timeout: 3000 });
     const published = qc.getQueryData<LivePastCandlesResponse>(
-      mergedPastCandlesKey('005930', '20260707', 'KRX'),
+      mergedPastCandlesKey('005930', '20260707', 'KRX', 60_000),
     );
     expect(published?.from).toBe('20260601');
     expect(published?.to).toBe('20260707');
@@ -699,7 +701,7 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
       })
       .forEach((q) => qc.getQueryCache().remove(q));
     // canonical 은 살아 있어야 한다.
-    expect(qc.getQueryData(mergedPastCandlesKey('005930', '20260707', 'KRX'))).toBeTruthy();
+    expect(qc.getQueryData(mergedPastCandlesKey('005930', '20260707', 'KRX', 60_000))).toBeTruthy();
 
     const second = renderHook(
       () => useLivePastCandles('005930', '20260601', '20260707', 'KRX'),
@@ -715,7 +717,7 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
     const spy = mockApiEchoingWindow();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     // canonical 을 20260623~20260707 만 커버하도록 직접 심는다(첫 청크만 받은 상태).
-    qc.setQueryData(mergedPastCandlesKey('005930', '20260707', 'KRX'), {
+    qc.setQueryData(mergedPastCandlesKey('005930', '20260707', 'KRX', 60_000), {
       code: '005930', from: '20260623', to: '20260707', venue: 'KRX',
       candles: [], cached_dates: [], fresh_dates: [], data_warnings: [],
     } satisfies LivePastCandlesResponse);
@@ -728,8 +730,8 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
     const urls = spy.mock.calls.map((c) => c[0]);
     // 첫 청크(20260623~20260707)는 복원됐으므로 재요청 없이, 그 아래부터만 워크백.
     expect(urls).toEqual([
-      '/api/live/past-candles?code=005930&from=20260608&to=20260622&venue=KRX',
-      '/api/live/past-candles?code=005930&from=20260601&to=20260607&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260608&to=20260622&venue=KRX&bucket_ms=60000',
+      '/api/live/past-candles?code=005930&from=20260601&to=20260607&venue=KRX&bucket_ms=60000',
     ]);
   });
 
@@ -737,7 +739,7 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
     const spy = mockApiEchoingWindow();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     // 다른 to 로 심어두면 이번 identity(to=20260707)와 불일치 → 무시.
-    qc.setQueryData(mergedPastCandlesKey('005930', '20260630', 'KRX'), {
+    qc.setQueryData(mergedPastCandlesKey('005930', '20260630', 'KRX', 60_000), {
       code: '005930', from: '20260601', to: '20260630', venue: 'KRX',
       candles: [], cached_dates: [], fresh_dates: [], data_warnings: [],
     } satisfies LivePastCandlesResponse);
@@ -748,7 +750,7 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
     // 복원 실패 → 최신 15일 청크부터 풀 워크백 시작.
     await waitFor(() => expect(spy).toHaveBeenCalled());
     expect(spy.mock.calls[0][0]).toBe(
-      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX&bucket_ms=60000',
     );
   });
 
@@ -764,7 +766,7 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
     );
     await waitFor(() => expect(result.current.data).toBeTruthy());
     await new Promise((r) => setTimeout(r, 40));
-    expect(qc.getQueryData(mergedPastCandlesKey('005930', '20260502', 'KRX'))).toBeUndefined();
+    expect(qc.getQueryData(mergedPastCandlesKey('005930', '20260502', 'KRX', 60_000))).toBeUndefined();
   });
 
   it('창≤15일 로드는 재발행 루프를 만들지 않는다(apiCall 1회 유지)', async () => {
@@ -777,5 +779,37 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
     await new Promise((r) => setTimeout(r, 80));
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('표시 tf 를 bucket_ms 로 실어 보낸다', async () => {
+    const spy = mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(
+      () => useLivePastCandles('005930', '20260701', '20260707', 'KRX', null, 600_000),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    expect(spy.mock.calls[0][0]).toContain('bucket_ms=600000');
+  });
+
+  it('tf 가 다르면 병합본이 섞이지 않는다', async () => {
+    const spy = mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // 1분 병합본을 심어 둔다. 10분 훅이 이걸 복원하면 **틀린 해상도**를 그린다 —
+    // 봉 개수만 달라지고 에러는 안 나므로 키 분리가 유일한 방어선이다.
+    qc.setQueryData(mergedPastCandlesKey('005930', '20260707', 'KRX', 60_000), {
+      code: '005930', from: '20260101', to: '20260707', venue: 'KRX', bucket_ms: 60_000,
+      candles: [], cached_dates: [], fresh_dates: [], data_warnings: [],
+    } satisfies LivePastCandlesResponse);
+
+    renderHook(
+      () => useLivePastCandles('005930', '20260701', '20260707', 'KRX', null, 600_000),
+      { wrapper: wrap(qc) },
+    );
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    // 1분 병합본(from=20260101)을 재사용했다면 요청 창이 그 뒤부터 시작했을 것이다.
+    expect(spy.mock.calls[0][0]).toContain('from=20260701');
+    expect(spy.mock.calls[0][0]).toContain('bucket_ms=600000');
   });
 });

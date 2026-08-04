@@ -12,18 +12,24 @@ export function keepRegularSessionCandles<T extends { t_ms: number }>(candles: r
   });
 }
 
-/** OHLCV aggregation of a sorted 1m candle stream into `bucketSeconds`-sized
+/** OHLCV aggregation of a sorted candle stream into `bucketSeconds`-sized
  * buckets, aligned to the Unix epoch.
  *
- * Inputs may arrive in either order (KIS returns DESC; our hydrate also
+ * 입력 해상도는 `bucketSeconds` **이하**면 된다 — 이미 목표 버킷으로 잘린 봉에는
+ * 멱등(재격자화만)이다. /live 분봉 경로가 이 성질에 기댄다: 과거분은 벤더가 표시 tf
+ * 로 잘라 주고(#1008) 오늘분은 1분이라, 혼합 스트림 하나가 이 함수를 한 번 지나
+ * 같은 격자로 수렴한다. 멱등성의 전제는 입력 봉 시작이 버킷 경계에 정렬돼 있다는
+ * 것 — KST 09:00 격자와 epoch-floor 가 일치하는 tf(현행 6종 전부)에서만 참이다.
+ *
+ * Inputs may arrive in either order (vendors return DESC; our hydrate also
  * de-duplicates) — the caller is expected to pre-sort ascending. We assert
  * that here only via the bucket-floor monotonicity check; out-of-order input
  * silently produces wrong open/close, so callers must respect the contract.
  *
  * Bucket time is the bucket-start in seconds (UTCTimestamp shape) — matches
- * what lightweight-charts expects. Zero-volume 1m bars are kept (they carry
- * a price snapshot even with no trades), so empty buckets are only those
- * with no source bars at all.
+ * what lightweight-charts expects. Zero-volume source bars are kept (they
+ * carry a price snapshot even with no trades), so empty buckets are only
+ * those with no source bars at all.
  */
 export interface AggregatedCandle {
   t_ms: number;

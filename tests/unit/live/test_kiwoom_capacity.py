@@ -59,7 +59,7 @@ async def test_corider_survives_another_waiters_cancellation() -> None:
     `live_candle_backfill` 이 날짜별 single-flight 에서 지키던 성질인데,
     PR-G(#1043)에서 중복제거가 거버너로 올라오면서 여기로 이사했다. 원 회귀
     (/investigate 2026-07-10): 타임프레임 전환 abort 로 한 요청이 취소되자
-    같은 (venue, code, date) 에 dedup 으로 올라탄 다른 `/past-candles` 요청까지
+    같은 dedup 키(현행: venue·code·cursor·tic_scope)에 올라탄 다른 `/past-candles` 요청까지
     CancelledError 로 죽었다. bare `await` 는 대기자 취소를 `_fut_waiter.cancel()`
     로 공유 future 까지 전파한다 — 조인 지점이 `shield` 여야 한다.
     """

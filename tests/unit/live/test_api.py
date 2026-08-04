@@ -882,7 +882,72 @@ def test_past_candles_threads_explicit_venue_to_kis_and_response(tmp_path, monke
         body = r.json()
 
     assert body["venue"] == "NXT"
-    assert fake.kwargs == [{"venue": "NXT"}]
+    # bucket_ms 미지정 = 1분(하위호환). 스코프는 venue 와 나란히 백필까지 흐른다.
+    assert fake.kwargs == [{"venue": "NXT", "tic_scope": "1"}]
+
+
+def _bucket_scope_app(tmp_path, monkeypatch):
+    """`tic_scope` 를 채록하는 past-candles 앱. bucket_ms 계약 3종이 공유한다."""
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+    t_ms = int(datetime.datetime(2026, 5, 18, 9, 0, tzinfo=kst).timestamp() * 1000)
+
+    class _ScopeFakeKis:
+        def __init__(self):
+            self.kwargs: list[dict] = []
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **kw):
+            self.kwargs.append(kw)
+            return [LiveCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
+
+    fake = _ScopeFakeKis()
+    return fake, _past_app(tmp_path, fake, monkeypatch)
+
+
+def test_past_candles_bucket_ms_selects_vendor_tic_scope(tmp_path, monkeypatch) -> None:
+    """표시 버킷이 벤더 주기로 내려간다 — 이 기능의 본체(#1008).
+
+    10분을 요청하면 `ka10080` 을 `tic_scope=10` 으로 부른다. 1분으로 받아 접는
+    현행 대비 콜당 커버리지가 10배다.
+    """
+    fake, app = _bucket_scope_app(tmp_path, monkeypatch)
+    with TestClient(app) as c:
+        r = c.get(
+            "/api/live/past-candles"
+            "?code=005930&from=20260518&to=20260518&venue=KRX&bucket_ms=600000"
+        )
+        assert r.status_code == 200
+        assert r.json()["bucket_ms"] == 600000
+
+    assert fake.kwargs == [{"venue": "KRX", "tic_scope": "10"}]
+
+
+def test_past_candles_without_bucket_ms_stays_one_minute(tmp_path, monkeypatch) -> None:
+    """파라미터 도입 전 소비자가 그대로 돈다 — 응답도 1분이라고 밝힌다."""
+    fake, app = _bucket_scope_app(tmp_path, monkeypatch)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=005930&from=20260518&to=20260518&venue=KRX")
+        assert r.status_code == 200
+        assert r.json()["bucket_ms"] == 60000
+
+    assert fake.kwargs == [{"venue": "KRX", "tic_scope": "1"}]
+
+
+def test_past_candles_rejects_unmapped_bucket_ms(tmp_path, monkeypatch) -> None:
+    """미지원 버킷은 **눈에 띄게** 실패한다.
+
+    조용히 1분으로 폴백하면 프론트 집계가 정확한 봉을 만들어 증상이 안 보이고 콜
+    수만 배로 는다 — 이 기능이 없애려던 비용이 그대로 돌아온다. 그래서 422 다.
+    """
+    fake, app = _bucket_scope_app(tmp_path, monkeypatch)
+    with TestClient(app) as c:
+        r = c.get(
+            "/api/live/past-candles"
+            "?code=005930&from=20260518&to=20260518&venue=KRX&bucket_ms=420000"
+        )
+        assert r.status_code == 422
+        assert r.json()["detail"]["code"] == "unsupported_bucket_ms"
+
+    assert fake.kwargs == [], "벤더를 만지기 전에 거절한다"
 
 
 def test_past_candles_rejects_invalid_venue_before_kis(tmp_path, monkeypatch) -> None:
@@ -991,8 +1056,8 @@ def test_past_candles_non_krx_empty_falls_back_to_krx(tmp_path, venue: str, monk
     assert body["venue"] == venue
     assert [candle["close"] for candle in body["candles"]] == [105]
     assert fake.kwargs == [
-        {"venue": venue},
-        {"venue": "KRX"},
+        {"venue": venue, "tic_scope": "1"},
+        {"venue": "KRX", "tic_scope": "1"},
     ]
     assert any(
         w["reason"] == "minute_fallback_to_krx" and w["date"] == "20260518"
