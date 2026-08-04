@@ -74,6 +74,20 @@ describe('StockDateGroupList', () => {
     expect(onSelect).toHaveBeenCalledWith('005930');
   });
 
+  it('문제만 토글 → 완결이 아닌 종목만 남고 헤더 카운트가 반영된다', () => {
+    const mixed: StockDate[] = [
+      ...rows,
+      { ...row('123450', '문제종목', '20260522', 6000), disk_state: 'source_partial' },
+    ];
+    render(<StockDateGroupList rows={mixed} selectedCode={null} onSelect={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '문제만' }));
+    expect(screen.getByText(/종목 4개 중/)).toBeTruthy();
+    expect(screen.getByText('문제종목')).toBeTruthy();
+    expect(screen.queryByText('삼성전자')).toBeNull();       // 완결 그룹은 숨김
+    fireEvent.click(screen.getByRole('button', { name: '문제만' }));   // 해제 → 전체 복귀
+    expect(screen.getByText(/종목 4개 · 캡처/)).toBeTruthy();
+  });
+
   it('clear button (×) appears when input has value and clears the search', async () => {
     render(<StockDateGroupList rows={rows} selectedCode={null} onSelect={() => {}} />);
     const search = screen.getByPlaceholderText('종목명 또는 코드…') as HTMLInputElement;

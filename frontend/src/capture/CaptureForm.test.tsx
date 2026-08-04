@@ -28,6 +28,12 @@ function setup(addItemsResp: unknown = { enqueued: [{}], deduped: [] }) {
     const s = String(url);
     if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
     if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
+    if (s.includes('/api/captures/coverage-preview')) {
+      return { ok: true, status: 200, json: async () => ({
+        dates: ['20260518', '20260519', '20260520'], codes: 1,
+        total: 3, have: 2, no_upstream: 0, to_collect: 1, est_minutes: 1, missing: [],
+      }) } as Response;
+    }
     if (s.includes('/api/captures/items')) return { ok: true, status: 201, json: async () => addItemsResp } as Response;
     if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
     return { ok: true, status: 200, json: async () => ({}) } as Response;
@@ -59,6 +65,22 @@ describe('CaptureForm', () => {
     fireEvent.click(screen.getByText('삼성전자'));
     const btn = screen.getByRole('button', { name: /캡처 시작/ });
     expect((btn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('범위 완성 시 커버리지 미리보기(보유/수집 예정)를 시작 버튼 위에 표시한다', async () => {
+    const { qc } = setup();
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByTestId('coverage-preview-line')).toBeNull();  // 범위 전엔 없음
+    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByText('삼성전자'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
+    await new Promise((r) => setTimeout(r, 60));
+    const line = screen.getByTestId('coverage-preview-line');
+    expect(line.textContent).toContain('선택 3건 중 보유 2');
+    expect(line.textContent).toContain('수집 예정 1');
   });
 
   it('Start POSTs a plain capture request without user-facing force semantics', async () => {

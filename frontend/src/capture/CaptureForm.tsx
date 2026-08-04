@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { SymbolSearch } from './SymbolSearch';
 import { DateRangePicker, type DateRange } from './DateRangePicker';
 import { useCaptureQueue } from './useCaptureQueue';
 import { useSymbols, filterSymbols } from './useSymbols';
+import { coveragePreview } from '../api/captures';
 import { enqueueErrorHints, enqueueWarningHints } from '../api/upstream-hints';
 import type { ApiError } from '../api/client';
 import type { BlockedItem, EnqueueResponse, SymbolHit, UpstreamCode } from '../api/types';
@@ -56,8 +58,22 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
     }
   }
 
-  const { addItems } = useCaptureQueue();
+  const { addItems, queue } = useCaptureQueue();
   const valid = symbol !== null && range !== null && range.end !== null;
+  // ADR-0094: 읽기 전용(비소유) 인스턴스는 큐를 변경할 수 없다 — 우측 pane 배너만
+  // 경고하고 이 버튼은 활성이던 비대칭을 닫는다(좌우 pane 이 서로를 모르던 문제).
+  const notOwned = queue?.queue_owned === false;
+
+  // 커버리지 미리보기 — 범위를 완성하면 "보유/수집 예정/예상 소요"를 시작 전에
+  // 보여준다. 히트맵 수집 다이얼로그에는 있던 미리보기가 정작 전용 폼에 없었다.
+  const previewQ = useQuery({
+    queryKey: ['capture', 'coverage-preview', symbol?.code ?? '', range?.start ?? '', range?.end ?? ''],
+    queryFn: () => coveragePreview({
+      codes: [symbol!.code], start_date: range!.start, end_date: range!.end!,
+    }),
+    enabled: valid,
+    staleTime: 60_000,
+  });
 
   const onStart = async () => {
     if (!valid) return;
@@ -122,16 +138,34 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
         />
       </FormField>
 
+      {valid && (
+        <div role="status" data-testid="coverage-preview-line"
+          className="text-xs font-data tabular-nums text-fg-dim">
+          {previewQ.isPending
+            ? '커버리지 확인 중…'
+            : previewQ.isError
+              ? '커버리지 확인 실패 — 조회 없이 시작할 수 있습니다'
+              : [
+                  `선택 ${previewQ.data.total}건 중 보유 ${previewQ.data.have}`,
+                  previewQ.data.no_upstream > 0 ? `업스트림 없음 ${previewQ.data.no_upstream}` : null,
+                  `수집 예정 ${previewQ.data.to_collect}`,
+                  previewQ.data.to_collect > 0 && previewQ.data.est_minutes > 0
+                    ? `예상 약 ${previewQ.data.est_minutes}분` : null,
+                ].filter(Boolean).join(' · ')}
+        </div>
+      )}
+
       <button
         type="button"
         onClick={onStart}
-        disabled={!valid}
+        disabled={!valid || notOwned}
+        title={notOwned ? '다른 서버 인스턴스가 캡처 큐를 소유 중입니다 — 이 인스턴스에서는 시작할 수 없습니다' : undefined}
         style={{
           // disabled 배경은 --bg-input 이 아니라 --bg-subtle — Ledger 는
           // --bg-input == --bg(#FDFCF8) 라 버튼 면이 통째로 사라졌다(2026-08-04
           // 조사 #13). --bg-subtle 은 4개 테마 전부에서 바닥과 명도차를 가진다.
-          background: valid ? 'var(--accent)' : 'var(--bg-subtle)',
-          color: valid ? 'var(--bg)' : 'var(--fg-dimmer)',
+          background: valid && !notOwned ? 'var(--accent)' : 'var(--bg-subtle)',
+          color: valid && !notOwned ? 'var(--bg)' : 'var(--fg-dimmer)',
         }}
         className="border-none rounded-lg py-2.5 px-4.5 font-semibold text-base cursor-pointer disabled:cursor-not-allowed"
       >
