@@ -103,7 +103,7 @@ async def test_runner_intraday_basis_builds_overlay_and_falls_back_with_warning(
 @pytest.mark.asyncio
 async def test_runner_intraday_bypass_skips_overlay_and_uses_eod(tmp_path, monkeypatch):
     _seed(tmp_path)
-    update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
+    update_live_settings(tmp_path, rest_bypass_enabled=True)
 
     async def fail_overlay(**kwargs):
         raise AssertionError("intraday overlay must not be built during KIS REST bypass")

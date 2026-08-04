@@ -42,7 +42,7 @@ def _empty(warnings: list[str] | None = None) -> IntradayDailyOverlay:
 
 
 def intraday_overlay_bypassed(data_dir: Path) -> bool:
-    return kis_access.kis_rest_bypass_enabled(data_dir)
+    return kis_access.rest_bypass_enabled(data_dir)
 
 
 def _date(yyyymmdd: str) -> dt.date:

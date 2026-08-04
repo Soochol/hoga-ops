@@ -157,7 +157,7 @@ async def test_existing_kis_api_meta_preserved(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_bypass_gate_returns_none_no_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(candle_repair.kis_access, "kis_rest_bypass_enabled", lambda _d: True)
+    monkeypatch.setattr(candle_repair.kis_access, "rest_bypass_enabled", lambda _d: True)
     summary = await _run(tmp_path, _fetch_ok)
     assert summary is None
     assert not (tmp_path / "parquet" / _DATE / _CODE / "kis_api").exists()

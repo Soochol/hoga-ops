@@ -9,7 +9,7 @@ from hoga.live.settings import load_live_settings, save_live_settings, update_li
 def test_live_settings_defaults(tmp_path):
     settings = load_live_settings(tmp_path)
 
-    assert settings.kis_rest_bypass_enabled is False
+    assert settings.rest_bypass_enabled is False
     assert settings.screener_depth_autocollect is False
     # kiwoom_enabled 활성화 스위치는 폐지됨(ADR-0118) — 필드 자체가 없다.
     assert not hasattr(settings, "kiwoom_enabled")
@@ -22,16 +22,16 @@ def test_update_live_settings_partial_patch_preserves_omitted_fields(tmp_path):
         tmp_path,
         LiveSettingsResponse(
             screener_depth_autocollect=True,
-            kis_rest_bypass_enabled=False,
+            rest_bypass_enabled=False,
         ),
     )
 
-    updated = update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
+    updated = update_live_settings(tmp_path, rest_bypass_enabled=True)
 
     assert updated.screener_depth_autocollect is True
-    assert updated.kis_rest_bypass_enabled is True
+    assert updated.rest_bypass_enabled is True
     on_disk = json.loads((tmp_path / "live_settings.json").read_text(encoding="utf-8"))
-    assert on_disk["kis_rest_bypass_enabled"] is True
+    assert on_disk["rest_bypass_enabled"] is True
 
 
 def test_corrupt_settings_falls_back_to_bypass_false(tmp_path):
@@ -39,7 +39,7 @@ def test_corrupt_settings_falls_back_to_bypass_false(tmp_path):
 
     settings = load_live_settings(tmp_path)
 
-    assert settings.kis_rest_bypass_enabled is False
+    assert settings.rest_bypass_enabled is False
     assert list(tmp_path.glob("live_settings.json.corrupt-*"))
 
 
@@ -73,7 +73,7 @@ def test_legacy_storage_policy_keys_are_ignored_on_load(tmp_path):
         "storage_policy": "ws_plus_rest",
         "heatmap_capture_enabled": True,
         "program_trade_storage_enabled": True,
-        "kis_rest_bypass_enabled": False,
+        "rest_bypass_enabled": False,
         "screener_depth_autocollect": True,
         "kiwoom_enabled": True,
     }))
@@ -90,7 +90,7 @@ def test_legacy_storage_policy_keys_are_ignored_on_load(tmp_path):
     assert not list(tmp_path.glob("live_settings.json.corrupt-*"))
 
     # 후속 patch 저장은 레거시 키를 다시 쓰지 않는다.
-    update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
+    update_live_settings(tmp_path, rest_bypass_enabled=True)
     on_disk = json.loads(save_path.read_text(encoding="utf-8"))
     assert "storage_policy" not in on_disk
     assert "heatmap_capture_enabled" not in on_disk

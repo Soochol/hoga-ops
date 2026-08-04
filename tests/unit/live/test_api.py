@@ -2910,8 +2910,12 @@ def test_live_settings_routes_round_trip(tmp_path):
     )
     client = TestClient(app)
 
+    # **옛 이름을 함께 싣는 것이 의도다**(PR-J·#1046 expand/contract 1단계).
+    # 프론트가 아직 `kis_rest_bypass_enabled` 를 읽으므로, 이름만 바꾸면 토글이
+    # `undefined` 를 읽어 조용히 꺼진 것처럼 보인다. 프론트가 갈아탄 뒤 지운다.
     assert client.get("/api/live/settings").json() == {
         "schema_version": 1,
+        "rest_bypass_enabled": False,
         "kis_rest_bypass_enabled": False,
         "screener_depth_autocollect": False,
     }
@@ -2923,7 +2927,7 @@ def test_live_settings_routes_round_trip(tmp_path):
 
     assert r.status_code == 200
     assert r.json()["screener_depth_autocollect"] is True
-    assert r.json()["kis_rest_bypass_enabled"] is False
+    assert r.json()["rest_bypass_enabled"] is False
     assert client.get("/api/live/settings").json()["screener_depth_autocollect"] is True
 
 
@@ -2975,13 +2979,22 @@ def test_live_settings_patch_can_set_bypass_alone(tmp_path):
 
     r = client.patch(
         "/api/live/settings",
-        json={"kis_rest_bypass_enabled": True},
+        json={"rest_bypass_enabled": True},
     )
 
     assert r.status_code == 200
     assert r.json() == {
         "schema_version": 1,
-        "kis_rest_bypass_enabled": True,
+        "rest_bypass_enabled": True,
+        "kis_rest_bypass_enabled": True,   # expand/contract 1단계 — 프론트 호환
         "screener_depth_autocollect": False,
     }
-    assert client.get("/api/live/settings").json()["kis_rest_bypass_enabled"] is True
+    assert client.get("/api/live/settings").json()["rest_bypass_enabled"] is True
+
+    # **옛 이름으로 보내도 받는다** — 프론트가 갈아타기 전까지의 계약이다.
+    r_legacy = client.patch(
+        "/api/live/settings",
+        json={"kis_rest_bypass_enabled": False},
+    )
+    assert r_legacy.status_code == 200
+    assert r_legacy.json()["rest_bypass_enabled"] is False

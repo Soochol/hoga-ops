@@ -45,7 +45,7 @@ def _bypass_app(tmp_path, fake_kis: _CountingKis) -> FastAPI:
     live_api.index_candles_cache_instance = None
     live_api.index_minute_candles_cache_instance = None
     kis_runtime.set_kis_client(fake_kis)  # type: ignore[arg-type]
-    update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
+    update_live_settings(tmp_path, rest_bypass_enabled=True)
 
     app = FastAPI()
     app.include_router(

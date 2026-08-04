@@ -102,7 +102,7 @@ def test_quotes_bypass_returns_stale_last_good_without_fetch(
         assert seed.status_code == 200
         assert seed.json()["quotes"][0]["price"] == 70_000
 
-        save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+        save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
         before = fake.quote_fetch_count
         run_with_capacity_calls = _forbid_run_with_capacity(monkeypatch)
         response = client.get("/api/live/quotes?codes=005930&venue=KRX")
@@ -118,7 +118,7 @@ def test_quotes_bypass_returns_stale_last_good_without_fetch(
 
 def test_quotes_bypass_returns_empty_without_last_good(tmp_path, monkeypatch) -> None:
     fake = _CountingKis()
-    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+    save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
     app = _app(tmp_path, fake)
     run_with_capacity_calls = _forbid_run_with_capacity(monkeypatch)
 
@@ -138,7 +138,7 @@ def test_tab_metrics_bypass_keeps_hoga_fields_without_quote_enrichment(
     monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     fake = _CountingKis()
     buf = LiveBuffer()
-    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+    save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
     app = _app(tmp_path, fake, get_buffer=lambda: buf)
     run_with_capacity_calls = _forbid_run_with_capacity(monkeypatch)
 
@@ -180,7 +180,7 @@ def test_investor_routes_bypass_degrade_without_kis_capacity(
     monkeypatch,
 ) -> None:
     fake = _CountingKis()
-    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+    save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
     app = _app(tmp_path, fake)
     run_with_capacity_calls = _forbid_run_with_capacity(monkeypatch)
 

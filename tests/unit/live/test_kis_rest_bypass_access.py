@@ -18,7 +18,7 @@ class FakeScheduler:
 
 @pytest.mark.asyncio
 async def test_run_with_capacity_blocks_before_scheduler_when_bypass_on(tmp_path):
-    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+    save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
     scheduler = FakeScheduler()
     called = False
 
@@ -57,7 +57,7 @@ async def test_run_with_capacity_blocks_representative_endpoints_when_bypass_on(
     tmp_path,
     endpoint,
 ):
-    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+    save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
     scheduler = FakeScheduler()
 
     async def fetch_fn(_kis):
@@ -81,7 +81,7 @@ async def test_run_with_capacity_blocks_user_visible_before_submit_when_bypass_o
     # Bypass is enforced before any submit regardless of priority (ADR-0083).
     # The legacy scheduler=None fallback was removed (ADR-0082 amendment): the
     # scheduler path is now the only path, so this is the sole bypass ingress.
-    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+    save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
     scheduler = FakeScheduler()
 
     async def fetch_fn(_kis):
@@ -102,7 +102,7 @@ async def test_run_with_capacity_blocks_user_visible_before_submit_when_bypass_o
 
 @pytest.mark.asyncio
 async def test_run_with_capacity_allows_scheduler_when_bypass_off(tmp_path):
-    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=False))
+    save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=False))
     scheduler = FakeScheduler()
 
     async def fetch_fn(_kis):

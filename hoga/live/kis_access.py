@@ -62,12 +62,12 @@ def _endpoint_value(endpoint: KisRestEndpoint) -> str:
     return endpoint.value
 
 
-def kis_rest_bypass_enabled(data_dir: Path) -> bool:
-    return load_live_settings(data_dir).kis_rest_bypass_enabled
+def rest_bypass_enabled(data_dir: Path) -> bool:
+    return load_live_settings(data_dir).rest_bypass_enabled
 
 
 def _raise_if_bypassed(data_dir: Path) -> None:
-    if kis_rest_bypass_enabled(data_dir):
+    if rest_bypass_enabled(data_dir):
         raise KisRestBypassedError()
 
 

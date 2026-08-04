@@ -9,7 +9,14 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.params import CODE_PATTERN
@@ -990,7 +997,33 @@ class LiveSettingsResponse(BaseModel):
     디스크의 옛 live_settings.json에 남은 키는 pydantic 기본(extra ignore)이 무시."""
 
     schema_version: int = 1
-    kis_rest_bypass_enabled: bool = False
+    # **REST 우회 토글.** 2026-08-04까지 `kis_rest_bypass_enabled` 였다(PR-J·#1046).
+    # 벤더가 키움으로 바뀌었으므로 이름에서 `kis_` 를 걷어내되 **기능은 유지**한다
+    # — 지도가 "bypass 토글은 그대로 적용하되 REST 우회 의미로" 로 확정했다.
+    #
+    # 이름 교체는 expand/contract 다:
+    #   1) 지금 — 두 이름을 **모두 읽고**, 응답에는 **둘 다 싣는다**(프론트 무변경)
+    #   2) 프론트가 새 이름으로 갈아탄 뒤
+    #   3) 옛 이름 제거
+    #
+    # `validation_alias` 가 없으면 pydantic 의 extra-ignore 가 디스크의 옛 키를
+    # **조용히 버려** 사용자의 우회 설정이 False 로 리셋된다.
+    rest_bypass_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("rest_bypass_enabled", "kis_rest_bypass_enabled"),
+    )
+
+    @model_serializer(mode="wrap")
+    def _emit_both_names(self, handler):  # type: ignore[no-untyped-def]
+        """응답에 **옛 이름도 함께** 싣는다 — expand/contract 1단계.
+
+        이게 없으면 이름을 바꾸는 순간 프론트의 우회 토글이 `undefined` 를 읽어
+        조용히 꺼진 것처럼 보인다. 프론트가 새 이름으로 갈아탄 뒤 이 직렬화기와
+        옛 키를 함께 지운다(3단계).
+        """
+        data = handler(self)
+        data["kis_rest_bypass_enabled"] = data["rest_bypass_enabled"]
+        return data
     # 스크리너 총잔량 조건에서 hogaplay 결측 종목을 발견하면 자동으로 지난 N일치 수집을
     # 큐에 적재할지. 기본 False — 스캔은 탐색적으로 반복 실행되므로 묵시적 큐 증가를 막고
     # 명시적 [수집 요청] 버튼을 1차 UX 로 둔다.
@@ -1005,7 +1038,11 @@ class LiveSettingsResponse(BaseModel):
 
 
 class LiveSettingsUpdate(BaseModel):
-    kis_rest_bypass_enabled: bool | None = None
+    # 옛 이름도 받는다(위 expand/contract 1단계) — 프론트가 갈아타기 전까지.
+    rest_bypass_enabled: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices("rest_bypass_enabled", "kis_rest_bypass_enabled"),
+    )
     screener_depth_autocollect: bool | None = None
 
 
