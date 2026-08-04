@@ -290,22 +290,33 @@ def test_enqueue_expands_date_range_to_trading_days(monkeypatch, tmp_path):
         assert body["deduped"] == []
 
 
-def test_enqueue_falls_back_to_weekdays_when_kis_credentials_missing(monkeypatch, tmp_path):
-    """자격증명이 없으면 **평일로 담고 경고를 준다** — 영원히 못 쓰게 두지 않는다.
+def test_enqueue_falls_back_to_weekdays_when_calendar_coverage_ends(monkeypatch, tmp_path):
+    """커버리지 꼬리는 **평일로 담고 경고를 준다** — 영원히 못 쓰게 두지 않는다.
 
-    KIS 거래일 목록이 없으면 범위 캡처는 503 으로 죽었다. 자격증명 미설정은 영구
-    조건이라 그건 "잘못된 날짜를 막는" 게 아니라 기능을 없애는 것이다(실측: UI 에
-    "범위 캡처 시작 실패 — KIS 자격증명 미설정", 큐에 한 건도 못 넣음).
+    거래일 목록이 없으면 범위 캡처는 503 으로 죽었다. 커버리지 부족은 dev 무자격
+    프로필에서 영구 조건이라(오버레이가 자라지 않는다) 그건 "잘못된 날짜를 막는" 게
+    아니라 기능을 없애는 것이다(실측: UI 에 "범위 캡처 시작 실패", 큐에 한 건도
+    못 넣음).
+
+    **경고 사유는 `credentials_missing` 이 아니다.** #976 당시엔 KIS 자격증명이
+    폴백의 방아쇠였지만 PR-H(#1044) 이후 달력은 자격증명을 안 쓴다 — 사용자가
+    `.env` 를 고쳐도 아무것도 바뀌지 않는 안내였다.
     """
-    from hoga.api.calendar import TradingDayUnavailableError
+    from hoga.api.calendar import TradingDayUnavailableError, weekdays_in_range
     from hoga.api.error_codes import UpstreamCode
 
     _no_workers(monkeypatch)
 
-    def _no_creds(_s, _e):
-        raise TradingDayUnavailableError(UpstreamCode.CREDENTIALS_MISSING)
+    # 실제 계약을 흉내낸다: 커버리지 안은 답하고, 넘으면 STALE 로 거절한다.
+    cov_end = "20260605"
 
-    monkeypatch.setattr("hoga.api.calendar.trading_days_in_range", _no_creds)
+    def _covered(s, e):
+        if e > cov_end:
+            raise TradingDayUnavailableError(UpstreamCode.TRADING_DAYS_STALE)
+        return weekdays_in_range(s, e)
+
+    monkeypatch.setattr("hoga.api.calendar.trading_days_in_range", _covered)
+    monkeypatch.setattr("hoga.api.calendar.coverage_end", lambda: cov_end)
     app = _build_test_app(monkeypatch, tmp_path)
     with TestClient(app) as c:
         r = c.post("/api/captures/items", json={
@@ -316,9 +327,31 @@ def test_enqueue_falls_back_to_weekdays_when_kis_credentials_missing(monkeypatch
         assert r.status_code == 201, r.text
         body = r.json()
         assert [it["date"] for it in body["enqueued"]] == ["20260605", "20260608"]
-        assert body["warning"] == UpstreamCode.CREDENTIALS_MISSING, (
+        assert body["warning"] == UpstreamCode.TRADING_DAYS_STALE, (
             "폴백은 조용하면 안 된다 — 휴장일이 섞일 수 있다는 걸 응답이 말해야 한다"
         )
+
+
+def test_enqueue_is_silent_when_coverage_reaches_end_date(monkeypatch, tmp_path):
+    """근사가 **안 걸리면 경고도 없다.**
+
+    경고가 상시 켜져 있으면 사용자가 그것을 배경 소음으로 학습하고, 진짜 근사가
+    걸린 날에도 안 읽는다. `/api/inventory/calendar` 배너가 정확히 그렇게 망가져
+    있었다(다음 달이 항상 커버리지 밖 → 항상 점등).
+    """
+    from hoga.api.calendar import weekdays_in_range
+
+    _no_workers(monkeypatch)
+    monkeypatch.setattr("hoga.api.calendar.trading_days_in_range", weekdays_in_range)
+    monkeypatch.setattr("hoga.api.calendar.coverage_end", lambda: "20260608")
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "start_date": "20260605", "end_date": "20260608",
+            "force_retry": False,
+        })
+        assert r.status_code == 201, r.text
+        assert r.json()["warning"] is None
 
 
 def test_enqueue_approximates_instead_of_failing_fast(monkeypatch, tmp_path):
@@ -357,7 +390,9 @@ def test_enqueue_approximates_instead_of_failing_fast(monkeypatch, tmp_path):
     assert [it["date"] for it in body["enqueued"]] == ["20260605", "20260608"], (
         "금~월 — 주말은 근사에서도 뺀다"
     )
-    assert body["warning"] == "credentials_missing", "근사 사실을 반드시 알린다"
+    assert body["warning"] == "trading_days_unavailable", (
+        "근사 사실을 반드시 알린다 — 사유는 소스 부재 그대로다(커버리지 부족과 조치가 다르다)"
+    )
 
 
 def test_enqueue_skips_weekend_dates(monkeypatch, tmp_path):
@@ -894,6 +929,7 @@ def test_range_expansion_clamps_tail_beyond_calendar_coverage(monkeypatch, tmp_p
     """
     from hoga.api import calendar as calendar_module
     from hoga.api.captures import _expand_trading_days_with_fallback
+    from hoga.api.error_codes import UpstreamCode
 
     calendar_module.reset_cache_for_tests()
     end_known = calendar_module.coverage_end()
@@ -904,7 +940,9 @@ def test_range_expansion_clamps_tail_beyond_calendar_coverage(monkeypatch, tmp_p
 
     days, approximated = _expand_trading_days_with_fallback(end_known, tail_end)
 
-    assert approximated is True, "근사했다는 사실은 반드시 알린다"
+    assert approximated == UpstreamCode.TRADING_DAYS_STALE, (
+        "근사했다는 사실은 반드시 알린다 — 사유는 커버리지 부족이다(소스는 멀쩡하다)"
+    )
     assert days[0] == end_known, "커버리지 안은 정확한 거래일 그대로"
     assert len(days) > 1, "꼬리도 담긴다 — 기능을 없애지 않는다"
     assert all(
@@ -919,7 +957,7 @@ def test_range_expansion_is_exact_inside_coverage() -> None:
 
     calendar_module.reset_cache_for_tests()
     days, approximated = _expand_trading_days_with_fallback("20260501", "20260508")
-    assert approximated is False
+    assert approximated is None
     assert "20260501" not in days, "근로자의날 — 정확한 달력은 이 날을 뺀다"
     assert "20260504" in days
 

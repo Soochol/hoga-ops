@@ -88,6 +88,17 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
 
     None 이 뜻하는 것도 하나로 줄었다: **파일이 덮는 범위 밖**. 그건 진짜 모르는
     것이라 재시도해도 달라지지 않는다.
+
+    **커버리지 밖은 `_last_failure_reason` 을 세우지 않는다.** 그게 사건이 아니기
+    때문이다 — 소스는 멀쩡하고, 다음 달을 모르는 것은 `ka20006` 역산의 성질이다.
+    사유를 세우면 두 가지가 동시에 깨졌다:
+
+      1. `get_month_map` 이 **미래 달마다** 사유를 실어 보내, 캡처 폼의 오른쪽
+         그리드(항상 +1개월 = 항상 커버리지 밖)가 배너를 상시 점등시켰다.
+      2. 이 전역이 스레드풀에서 **교차 오염**됐다 — 좌/우 두 달 요청이 동시에 돌아
+         커버리지 밖 달이 세운 사유를 커버리지 안 달이 `None` 으로 덮었다(그 반대도).
+         사유를 세우는 경로가 "시드 부재" 하나로 줄면 모든 스레드가 같은 값을 써서
+         경합 자체가 없어진다.
     """
     global _last_failure_reason  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
 
@@ -96,13 +107,12 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
         # 시드를 못 읽었다 = 배포 사고. 재시도 대상이 아니지만 사유는 남긴다.
         _last_failure_reason = UpstreamCode.TRADING_DAYS_UNAVAILABLE
         return None
+    _last_failure_reason = None
     end = max(days)
     prefix = f"{year:04d}{month:02d}"
-    # 그 달의 첫날이 커버리지를 넘으면 통째로 모른다.
+    # 그 달의 첫날이 커버리지를 넘으면 통째로 모른다(사유는 세우지 않는다 — 위 참조).
     if f"{prefix}01" > end:
-        _last_failure_reason = UpstreamCode.TRADING_DAYS_UNAVAILABLE
         return None
-    _last_failure_reason = None
     return {d for d in days if d.startswith(prefix)}
 
 
@@ -202,8 +212,11 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     # 넘는 꼬리(8/3까지 아는데 8/6까지 요청)를 못 잡아 **조용히 짧은 목록**을
     # 돌려준다 — 호출자는 그 사이 거래일이 원래 없었다고 읽는다.
     end_known = coverage_end()
-    if end_known is None or end > end_known:
+    if end_known is None:
+        # 소스를 못 읽었다(배포 사고) — 커버리지 부족과 조치가 다르다.
         raise TradingDayUnavailableError(UpstreamCode.TRADING_DAYS_UNAVAILABLE)
+    if end > end_known:
+        raise TradingDayUnavailableError(UpstreamCode.TRADING_DAYS_STALE)
 
     out: list[str] = []
     cur = dt.date(start_d.year, start_d.month, 1)
@@ -275,11 +288,14 @@ def reset_cache_for_tests() -> None:
 
 
 def _all_weekdays_in_month(year: int, month: int) -> set[str]:
-    """Fallback when KRX data is unavailable: treat every Mon–Fri as trading day.
+    """달력이 답하지 못하는 구간의 근사: 월~금을 전부 거래일로 친다.
 
-    Holidays mis-classify as ``status="none"`` rather than ``"holiday"``, but the
-    user sees the banner from ``CalendarResponse.reason`` and knows holiday
-    accuracy is off.
+    휴장일이 ``"holiday"`` 대신 ``"none"`` 으로 보이지만, 그건 **틀린 단정이 아니라
+    덜 아는 것**이라 "수집 안 됨" 으로 읽혀도 손해가 유계다(캡처하면 업스트림 빈
+    응답 → ADR-0021 센티넬). 반대로 모르는 날을 ``"holiday"`` 로 확정하면 진짜
+    거래일이 **선택조차 불가능**해진다 — 그쪽이 훨씬 비싸다.
+
+    근사가 실제로 쓰인 구간은 ``CalendarResponse.reason`` 이 알린다.
     """
     last_day = stdlib_calendar.monthrange(year, month)[1]
     out: set[str] = set()
@@ -344,16 +360,48 @@ def _cell_status_for(date_str: str, now: dt.datetime, trading_days: set[str],
     return "none"
 
 
+def _effective_trading_days(
+    year: int, month: int, *, today: str,
+) -> tuple[set[str], UpstreamCode | None]:
+    """그 달의 거래일 집합 + 근사를 알릴 사유. **경계에서 자른다.**
+
+    이 함수가 존재하는 이유는 `_trading_days_for` 가 월 단위라 **부분 커버 달을 못
+    가르기 때문**이다. 커버리지가 8/3 까지인 8월은 `{20260803}` 이라는 비어 있지
+    않은 집합을 돌려주고, 그러면 8/4~8/31 이 전부 "휴장" 으로 **확정**된다 —
+    `5db711f9`(#1044 회귀)가 라이브 세션 게이트에서 고친 것과 같은 함정이 달력 셀에
+    그대로 남아 있었다. 그쪽은 `_beyond_coverage` 로 막았고, 여기서는 커버리지 뒤를
+    평일로 근사해 채운다(범위 캡처가 이미 쓰는 정책과 같다 — captures.py §꼬리 근사).
+
+    사유는 **근사가 실제로 판정을 바꾼 날이 있을 때만** 낸다. 판정 기준은
+    "커버리지 밖 + 어제 이하":
+
+      - 미래 날짜는 어차피 ``"future"`` 로 그려져 거래일 여부를 주장하지 않는다.
+        여기에 사유를 붙이면 오른쪽 그리드(항상 다음 달)가 배너를 상시 점등시킨다.
+      - **오늘은 구조적으로 항상 커버리지 밖**이다. `ka20006` 은 장이 끝나야 오늘
+        행을 주므로, 오늘을 근거로 경고하면 정상 운영에서 매일 배너가 뜬다.
+
+    그래서 남는 것은 하나뿐이다: **알았어야 하는 과거 날짜를 못 안다** = 오버레이가
+    밀렸다. 그건 진짜로 알려야 하는 상태다(조치: 오버레이 갱신).
+    """
+    known = _trading_days_for(year, month)
+    if known is None and last_failure_reason() is not None:
+        # 소스 부재 — 전 구간 근사. 조치가 다르므로 사유도 다르다.
+        return _all_weekdays_in_month(year, month), UpstreamCode.TRADING_DAYS_UNAVAILABLE
+
+    end_known = coverage_end()
+    weekdays = _all_weekdays_in_month(year, month)
+    approximated = {d for d in weekdays if end_known is None or d > end_known}
+    effective = (known or set()) | approximated
+    stale = any(d < today for d in approximated)
+    return effective, UpstreamCode.TRADING_DAYS_STALE if stale else None
+
+
 def get_month_map(*, data_dir: Path, code: str, year: int, month: int) -> CalendarResponse:
-    """Build the month status map. Pure read-side. Fail-soft on KRX outage."""
+    """Build the month status map. Pure read-side. 달력 커버리지 밖은 평일 근사."""
     now = _now_kst()
-    trading_days = _trading_days_for(year, month)
-    if trading_days is None:
-        reason = last_failure_reason()
-        effective_trading_days = _all_weekdays_in_month(year, month)
-    else:
-        reason = None
-        effective_trading_days = trading_days
+    effective_trading_days, reason = _effective_trading_days(
+        year, month, today=now.strftime("%Y%m%d"),
+    )
     last_day = stdlib_calendar.monthrange(year, month)[1]
     cells: list[CalendarCell] = []
     for day in range(1, last_day + 1):

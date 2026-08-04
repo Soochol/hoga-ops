@@ -211,6 +211,7 @@ export type CaptureErrorCode =
  *  `CaptureFinishedErrorCode` alias below). */
 export type UpstreamCode =
   | 'trading_days_unavailable'
+  | 'trading_days_stale'
   | 'credentials_missing'
   | 'cookie_expired'
   | 'cookie_missing'

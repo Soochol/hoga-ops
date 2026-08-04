@@ -71,7 +71,7 @@ from hoga.live.kiwoom_rankings import (
     Market as RankingMarket,
     RankingKind,
 )
-from hoga.live.kiwoom_rest import KiwoomRestClient
+from hoga.live.kiwoom_rest import KiwoomRestClient, PageFetch
 from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
@@ -132,6 +132,12 @@ _CODE_RE = re.compile(CODE_PATTERN)
 # 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
 _KST = KST
 _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
+# 추정 수급 행의 값 필드 — 수량 3 + 금액 3. 관측시각 판정·저장·직렬화가 모두 이
+# 목록을 돈다. 축을 추가하면 여기 한 곳만 늘린다.
+_INVESTOR_ESTIMATE_VALUE_FIELDS = (
+    "foreign_qty", "institution_qty", "sum_qty",
+    "foreign_amt_mwon", "institution_amt_mwon", "sum_amt_mwon",
+)
 index_candles_cache_instance: IndexCandlesCache | None = None
 # ka10001 fetcher — 프로세스 싱글톤(httpx.Client 보유). build_router 재호출(테스트)
 # 마다 새 클라이언트가 새지 않도록 index_candles_cache_instance 와 같은 패턴.
@@ -707,11 +713,23 @@ class LiveInvestorTrendEstimateWarning(BaseModel):
 
 
 class LiveInvestorTrendEstimateRow(BaseModel):
+    """한 슬롯의 추정 수급 — **수량·금액 두 축을 함께** 싣는다.
+
+    두 축을 한 응답에 담는 이유는 관측시각 때문이다. 아래 `_InvestorEstimateObservedAtStore`
+    는 "값이 이전과 같으면 최초 관측시각을 유지" 로 차수 시각을 만든다. 축을 요청마다
+    갈아 끼우면 값이 통째로 달라져 **모든 슬롯이 새로 관측된 것으로 판정**되고, 오전
+    슬롯의 차수 시각이 축을 바꾼 순간으로 덮인다. 프론트 토글이 서버 왕복 없이 도는
+    것은 그 제약에서 따라온 결과다.
+    """
+
     slot: str
     observed_at_ms: int
-    foreign_qty: int | None
+    foreign_qty: int | None       # 주(株) — 가집계라 천주 단위 반올림
     institution_qty: int | None
     sum_qty: int | None
+    foreign_amt_mwon: int | None       # 백만원
+    institution_amt_mwon: int | None
+    sum_amt_mwon: int | None
 
 
 class LiveInvestorTrendEstimateResponse(BaseModel):
@@ -751,16 +769,14 @@ class _InvestorEstimateObservedAtStore:
             for row in rows:
                 seen_slots.add(row.slot)
                 stored = code_state.get(row.slot)
-                if stored is not None and _investor_estimate_same_quantities(stored, row):
+                if stored is not None and _investor_estimate_same_values(stored, row):
                     observed_at_ms = stored.get("observed_at_ms")
                     if isinstance(observed_at_ms, int):
                         out.append(row.model_copy(update={"observed_at_ms": observed_at_ms}))
                         continue
                 code_state[row.slot] = {
                     "observed_at_ms": fetched_at_ms,
-                    "foreign_qty": row.foreign_qty,
-                    "institution_qty": row.institution_qty,
-                    "sum_qty": row.sum_qty,
+                    **{field: getattr(row, field) for field in _INVESTOR_ESTIMATE_VALUE_FIELDS},
                 }
                 changed = True
                 out.append(row)
@@ -827,9 +843,7 @@ class _InvestorEstimateObservedAtStore:
                         continue
                     code_state[slot] = {
                         "observed_at_ms": observed_at_ms,
-                        "foreign_qty": _optional_int(slot_raw.get("foreign_qty")),
-                        "institution_qty": _optional_int(slot_raw.get("institution_qty")),
-                        "sum_qty": _optional_int(slot_raw.get("sum_qty")),
+                        **_investor_estimate_stored_values(slot_raw),
                     }
                 if code_state:
                     day_state[code] = code_state
@@ -1099,39 +1113,56 @@ def _investor_estimate_row_to_wire(
     return LiveInvestorTrendEstimateRow(
         slot=row.slot,
         observed_at_ms=observed_at_ms,
-        foreign_qty=row.foreign_qty,
-        institution_qty=row.institution_qty,
-        sum_qty=row.sum_qty,
+        **{field: getattr(row, field) for field in _INVESTOR_ESTIMATE_VALUE_FIELDS},
     )
 
 
-def _investor_estimate_has_quantity(row: LiveInvestorTrendEstimateRow) -> bool:
-    return (
-        row.foreign_qty is not None
-        or row.institution_qty is not None
-        or row.sum_qty is not None
-    )
+def _investor_estimate_has_value(row: LiveInvestorTrendEstimateRow) -> bool:
+    return any(getattr(row, field) is not None for field in _INVESTOR_ESTIMATE_VALUE_FIELDS)
 
 
-def _investor_estimate_same_quantities(
+def _investor_estimate_same_values(
     previous: LiveInvestorTrendEstimateRow | dict[str, int | None],
     current: LiveInvestorTrendEstimateRow,
 ) -> bool:
+    """두 축 **전부**를 비교한다 — 한 축만 보면 차수 시각이 틀린다.
+
+    금액은 백만원 단위라 수량(천주 반올림)보다 잘게 움직인다. 수량만 비교하면
+    금액이 갱신된 슬롯을 "그대로" 로 읽어 최초 관측시각을 계속 물고 간다.
+    """
     if isinstance(previous, LiveInvestorTrendEstimateRow):
-        return (
-            previous.foreign_qty == current.foreign_qty
-            and previous.institution_qty == current.institution_qty
-            and previous.sum_qty == current.sum_qty
+        return all(
+            getattr(previous, field) == getattr(current, field)
+            for field in _INVESTOR_ESTIMATE_VALUE_FIELDS
         )
-    return (
-        previous.get("foreign_qty") == current.foreign_qty
-        and previous.get("institution_qty") == current.institution_qty
-        and previous.get("sum_qty") == current.sum_qty
+    return all(
+        previous.get(field) == getattr(current, field)
+        for field in _INVESTOR_ESTIMATE_VALUE_FIELDS
     )
 
 
 def _optional_int(value: object) -> int | None:
     return value if isinstance(value, int) else None
+
+
+def _investor_estimate_stored_values(slot_raw: dict[str, object]) -> dict[str, int | None]:
+    """디스크에 저장된 슬롯 값을 읽는다 — **구포맷은 금액으로 이관한다**.
+
+    2026-08-04 이전 판은 `amt_qty_tp="1"`(금액, 백만원) 응답을 `foreign_qty` 등
+    수량 이름에 담아 저장했다. 그 값 자체는 멀쩡하고 **단위 라벨만 틀렸으므로**,
+    금액 축으로 옮겨 읽으면 값도 관측시각도 그대로 살아난다. 수량 이름 그대로
+    읽으면 다음 폴링의 진짜 수량과 어긋나 하루치 차수 시각이 통째로 리셋된다.
+
+    구포맷 판별은 금액 키의 부재다 — 신포맷은 값이 None 이어도 6키를 모두 쓴다.
+    """
+    if "foreign_amt_mwon" not in slot_raw:
+        return {
+            "foreign_qty": None, "institution_qty": None, "sum_qty": None,
+            "foreign_amt_mwon": _optional_int(slot_raw.get("foreign_qty")),
+            "institution_amt_mwon": _optional_int(slot_raw.get("institution_qty")),
+            "sum_amt_mwon": _optional_int(slot_raw.get("sum_qty")),
+        }
+    return {field: _optional_int(slot_raw.get(field)) for field in _INVESTOR_ESTIMATE_VALUE_FIELDS}
 
 
 def _max_observed_at(rows: dict[str, dict[str, int | None]]) -> int:
@@ -1146,7 +1177,7 @@ def _max_observed_at(rows: dict[str, dict[str, int | None]]) -> int:
 def _latest_investor_estimate_row(
     rows: list[LiveInvestorTrendEstimateRow],
 ) -> LiveInvestorTrendEstimateRow | None:
-    usable = [r for r in rows if _investor_estimate_has_quantity(r)]
+    usable = [r for r in rows if _investor_estimate_has_value(r)]
     numeric = [(int(r.slot), r) for r in usable if r.slot.isdecimal()]
     if numeric:
         return max(numeric, key=lambda pair: pair[0])[1]
@@ -1207,6 +1238,8 @@ class LiveInvestorEstimateFetcher:
         self,
         client: KiwoomRestClient,
         code: str,
+        *,
+        run_call: kiwoom_investor.EstimateCallRunner | None = None,
     ) -> LiveInvestorTrendEstimateResponse:
         trading_day = self._today_fn()
         key = (trading_day, code)
@@ -1220,7 +1253,9 @@ class LiveInvestorEstimateFetcher:
 
         task = self._inflight.get(key)
         if task is None:
-            task = asyncio.create_task(self._fetch_uncached(client, code, trading_day))
+            task = asyncio.create_task(
+                self._fetch_uncached(client, code, trading_day, run_call=run_call)
+            )
             self._inflight[key] = task
             task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
         # shield: 대기자 취소가 공유 태스크로 전파되면 같은 키에 올라탄 다른
@@ -1232,6 +1267,8 @@ class LiveInvestorEstimateFetcher:
         client: KiwoomRestClient,
         code: str,
         trading_day: str,
+        *,
+        run_call: kiwoom_investor.EstimateCallRunner | None = None,
     ) -> LiveInvestorTrendEstimateResponse:
         """PR-E(#1041) 칼 컷오버 — 소스는 키움 `ka10064`(장중투자자별매매차트)다.
 
@@ -1240,7 +1277,9 @@ class LiveInvestorEstimateFetcher:
         """
         key = (trading_day, code)
         try:
-            raw_rows = await kiwoom_investor.fetch_investor_trend_estimate(client, code)
+            raw_rows = await kiwoom_investor.fetch_investor_trend_estimate(
+                client, code, run_call=run_call
+            )
             fetched_at_ms = int(monotonic_time.time() * 1000)
             rows = [
                 _investor_estimate_row_to_wire(r, observed_at_ms=fetched_at_ms)
@@ -1307,7 +1346,7 @@ class LiveInvestorEstimateFetcher:
 
         merged = list(self._accumulator.get(key, {}).values())
         status: Literal["ok", "empty"] = (
-            "ok" if any(_investor_estimate_has_quantity(row) for row in merged) else "empty"
+            "ok" if any(_investor_estimate_has_value(row) for row in merged) else "empty"
         )
         if status == "ok":
             self._last_success_fetched_at_ms[key] = fetched_at_ms
@@ -1407,7 +1446,7 @@ def _preserve_investor_estimate_observed_at(
 ) -> LiveInvestorTrendEstimateRow:
     if previous is None:
         return current
-    if _investor_estimate_same_quantities(previous, current):
+    if _investor_estimate_same_values(previous, current):
         return current.model_copy(update={"observed_at_ms": previous.observed_at_ms})
     return current
 
@@ -2196,17 +2235,26 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         )
         if est_client is None:
             return _investor_estimate_fetcher.credentials_missing(code)
+        # 거버너가 fetch **바깥**이 아니라 **축별 콜마다** 걸린다. ka10064 는 수량·금액이
+        # 별개의 콜이라(ADR-0137) 바깥에서 한 번 감싸면 버킷은 1 을 세고 벤더는 2 를
+        # 센다. key 에 축을 넣는 것도 필수다 — 빠뜨리면 두 축이 같은 중복제거 key 로
+        # 조인해 한 축의 응답이 다른 축 자리에 앉는다.
+        scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
+
+        def _run_axis_call(fetch: PageFetch, axis: str):
+            return kiwoom_access.run_with_capacity(
+                scheduler,
+                key=("investor-trend-estimate", code, axis),
+                api_id="ka10064",
+                priority="background",
+                client=est_client,
+                fetch_fn=fetch,
+            )
+
         try:
             return await asyncio.wait_for(
                 asyncio.shield(
-                    kiwoom_access.run_with_capacity(
-                        kiwoom_rest_runtime.ensure_scheduler(data_dir),
-                        key=("investor-trend-estimate", code),
-                        api_id="ka10064",
-                        priority="background",
-                        client=est_client,
-                        fetch_fn=lambda c: _investor_estimate_fetcher.fetch(c, code),
-                    )
+                    _investor_estimate_fetcher.fetch(est_client, code, run_call=_run_axis_call),
                 ),
                 timeout=1.5,
             )

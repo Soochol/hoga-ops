@@ -258,7 +258,7 @@ function GapPanel({
         ))}
       </ul>
       <div className="text-xs text-fg-dim leading-snug">
-        수집은 끝까지 완료됐으나 원본 아카이브에 이 구간 데이터가 없습니다
+        수집은 끝까지 완료됐으나 원본 아카이브에 이 구간 데이터가 없습니다.
         재캡처해도 복구되지 않을 수 있습니다
       </div>
       {confirmed && (

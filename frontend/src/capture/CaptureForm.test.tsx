@@ -153,7 +153,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
       const s = String(url);
       if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
       if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
-      if (s.includes('/api/captures/items')) return { ok: false, status: 503, json: async () => ({ detail: { code: 'trading_days_unavailable', message: 'KIS creds not set' } }) } as Response;
+      if (s.includes('/api/captures/items')) return { ok: false, status: 503, json: async () => ({ detail: { code: 'trading_days_unavailable', message: 'calendar seed unreadable' } }) } as Response;
       if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
       return { ok: true, status: 200, json: async () => ({}) } as Response;
     });
@@ -166,7 +166,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
     fireEvent.click(screen.getByRole('button', { name: /캡처 시작/ }));
     await new Promise((r) => setTimeout(r, 60));
-    expect(screen.getByText(/범위 캡처 시작 실패 — KIS 거래일 조회 일시 오류/)).toBeTruthy();
+    expect(screen.getByText(/범위 캡처 시작 실패 — 거래일 달력을 읽지 못했습니다/)).toBeTruthy();
   });
 
   it('shows generic error when 503 code is unknown', async () => {
@@ -193,16 +193,20 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
   });
 
   it('201 이지만 warning 이 오면 알림을 띄운다 (평일 폴백)', async () => {
-    // 자격증명이 없으면 백엔드가 평일 기준으로 담고 warning 을 실어 보낸다.
-    // 성공 경로라 에러 배너가 아니라 status/warn 알림이어야 한다 — 조용히 넘기면
-    // 나중에 "왜 휴장일이 큐에 있지?" 로 돌아온다.
+    // 달력 커버리지가 종료일에 못 미치면 백엔드가 평일 기준으로 담고 warning 을
+    // 실어 보낸다. 성공 경로라 에러 배너가 아니라 status/warn 알림이어야 한다 —
+    // 조용히 넘기면 나중에 "왜 휴장일이 큐에 있지?" 로 돌아온다.
+    //
+    // 사유는 `credentials_missing` 이 아니다(PR-H #1044 이후 달력은 자격증명을 안 쓴다).
+    // `enqueueWarningHints` 는 Partial 이라 키를 바꿔도 **tsc 가 잡아 주지 않는다** —
+    // 이 런타임 단언이 유일한 그물이다.
     const { qc, fetchMock } = setup();
     fetchMock.mockImplementation(async (url: RequestInfo | URL) => {
       const s = String(url);
       if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
       if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
       if (s.includes('/api/captures/items')) return { ok: true, status: 201, json: async () => ({
-        enqueued: [{}], deduped: [], blocked: [], warning: 'credentials_missing',
+        enqueued: [{}], deduped: [], blocked: [], warning: 'trading_days_stale',
       }) } as Response;
       if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
       return { ok: true, status: 200, json: async () => ({}) } as Response;
