@@ -114,6 +114,7 @@ def test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request(
                 "volume": 123,
             }
         ],
+        "1",
     )
     monkeypatch.setattr(live_api, "PastCandlesCache", lambda data_dir: cache)
     app = _bypass_app(tmp_path, fake)

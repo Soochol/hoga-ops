@@ -695,6 +695,38 @@ describe('useLiveBundle', () => {
     expect(result.current.chartBundle).toBeNull();
   });
 
+  it('10m: 혼합 해상도 응답(과거=10분봉, 오늘=1분봉)이 한 번의 집계로 같은 격자에 수렴한다', () => {
+    // /past-candles 가 bucket_ms 로 과거분을 표시 tf 주기로 직접 주면서(#1008)
+    // 응답이 혼합 해상도가 됐다: 과거일은 이미 10분 버킷, 오늘은 1분(실시간 tail
+    // 병합 격자). aggregateCandles 는 이미 버킷된 봉에 멱등이라 두 해상도가 한
+    // 시리즈로 수렴해야 한다 — 이 성질이 깨지면 봉 개수만 달라지고 에러는 없다.
+    const d26 = 1_779_753_600_000; // 20260526 09:00 KST
+    const d27 = 1_779_840_000_000; // 20260527 09:00 KST (오늘)
+    candlesMock.candles = [
+      // 과거일 — 벤더가 이미 10분으로 자른 봉 2개.
+      { t_ms: d26, open: 100, high: 110, low: 95, close: 105, volume: 10 },
+      { t_ms: d26 + 600_000, open: 105, high: 120, low: 100, close: 118, volume: 20 },
+      // 오늘 — 1분봉. 09:00·09:01 은 같은 10분 버킷, 09:10 은 다음 버킷.
+      { t_ms: d27, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+      { t_ms: d27 + 60_000, open: 70050, high: 70200, low: 70000, close: 70150, volume: 500 },
+      { t_ms: d27 + 600_000, open: 70100, high: 70300, low: 70050, close: 70250, volume: 300 },
+    ];
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '10m', '20260527', liveFixture),
+      { wrapper: createWrapper() },
+    );
+    const candles = result.current.bundle!.candles;
+    // 4봉: 과거 2(멱등 통과) + 오늘 2(1분 3개가 10분 2버킷으로 접힘).
+    expect(candles.map((c) => c.ts_ms)).toEqual([d26, d26 + 600_000, d27, d27 + 600_000]);
+    // 이미 버킷된 과거 봉은 값이 그대로다.
+    expect(candles[0]).toMatchObject({ open: 100, high: 110, low: 95, close: 105 });
+    // 오늘 09:00 버킷은 1분 2개의 OHLCV 합성: open=첫, close=끝, high/low=극값, vol=합.
+    expect(candles[2]).toMatchObject({
+      open: 70000, high: 70200, low: 69900, close: 70150,
+    });
+    expect(candles[2].vol_a).toBe(1500);
+  });
+
   it('holds hoga series empty while the cold minute candle load is pending (UN 대량 시간점 삽입 크래시 가드)', () => {
     // 콜드: past-candles 미settle. 이때 SSE-유래 hoga 포인트가 캔들보다 먼저 커밋되면
     // 공유 timeScale에 캔들이 뒤늦게 대량 삽입되며 lwc 내부가 깨진다(2026-07-08 UN 크래시).
@@ -1067,8 +1099,10 @@ describe('useLiveBundle', () => {
     const candleCall = useRangeSpy.mock.calls.find((call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles');
     expect(candleCall?.[0]).toBe('005930');
     expect(candleCall?.[7]).toBe('hogaplay_first');
-    // KIS 분봉 쿼리는 우회 ON이면 code=null로 비활성.
-    expect(livePastCandlesSpy).toHaveBeenLastCalledWith(null, null, null, 'KRX', '20260527');
+    // 벤더 분봉 쿼리는 우회 ON이면 code=null로 비활성.
+    expect(livePastCandlesSpy).toHaveBeenLastCalledWith(
+      null, null, null, 'KRX', '20260527', 60_000,
+    );
     expect(result.chartBundle?.candles).toHaveLength(1);
   });
 
@@ -1549,7 +1583,10 @@ describe('useLiveBundle', () => {
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     // 5th arg = todayKst (=== minutePastTo === today), gating chunk freshness:
     // the today head chunk polls; past-only walk-back chunks freeze.
-    expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20250920', '20260527', 'KRX', '20260527');
+    // 6th = bucketMs — 표시 tf('1m')를 벤더 주기로 그대로 요청한다(#1008).
+    expect(livePastCandlesSpy).toHaveBeenCalledWith(
+      '005930', '20250920', '20260527', 'KRX', '20260527', 60_000,
+    );
     // 5th arg = priceRange (undefined here); 6th = todayKst, which drives the
     // 5-min refetch that advances pastMaxQrT (review C1). minutePastTo === today
     // so todayKst === to === '20260527'.

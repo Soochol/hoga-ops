@@ -10,7 +10,7 @@ from hoga.live.candle_models import LiveCandle
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import KiwoomRestError
 from hoga.live.kiwoom_minute_candles import MinutePage, MinuteWalkResult
-from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
+from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill, _date_from_t_ms
 from hoga.live.past_candles_cache import PastCandlesCache
 
 
@@ -141,7 +141,7 @@ async def test_live_minute_candle_backfill_schedules_past_minute_fetches(tmp_pat
     assert scheduler.calls == [
         {
             "key": ("live-candle-backfill", "minute-page", "NXT", "005930",
-                    "20260518"),
+                    "20260518", "1"),
             "api_id": "ka10080",
             "priority": "user_visible",
         }
@@ -181,7 +181,7 @@ async def test_collect_minute_skips_known_non_trading_past_dates(tmp_path, monke
     assert scheduler.calls == [
         {
             "key": ("live-candle-backfill", "minute-page", "KRX", "005930",
-                    "20260518"),
+                    "20260518", "1"),
             "api_id": "ka10080",
             "priority": "user_visible",
         }
@@ -303,7 +303,7 @@ async def test_budget_counts_only_uncached_dates(tmp_path, monkeypatch, kiwoom) 
         date_s = f"2026050{day}"
         cache.store_past("KRX", "005930", date_s, [
             {"t_ms": _kst_ms(date_s), "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1},
-        ])
+        ], "1")
     backfill = LiveMinuteCandleBackfill(
         data_dir=tmp_path, cache=cache, scheduler=scheduler,  # type: ignore[arg-type]
         concurrency=1, max_fresh_dates_per_collect=3,
@@ -380,12 +380,81 @@ async def test_each_walk_page_takes_its_own_governor_slot(tmp_path, monkeypatch)
     assert seen == ["20260518", "20260516", "20260514", "20260512"]
     assert len(scheduler.calls) == len(seen), "페이지마다 대기표 1장 — 여기가 계약이다"
     assert [c["key"] for c in scheduler.calls] == [
-        ("live-candle-backfill", "minute-page", "KRX", "005930", cursor)
+        ("live-candle-backfill", "minute-page", "KRX", "005930", cursor, "1")
         for cursor in seen
     ], "중복제거 key 는 구간이 아니라 커서 단위여야 겹치는 페이지가 조인된다"
     assert {c["api_id"] for c in scheduler.calls} == {"ka10080"}
     assert result.data_warnings == []
     assert result.fresh_dates == [f"2026051{d}" for d in range(2, 9)]
+
+
+@pytest.mark.asyncio
+async def test_walk_harvest_serves_the_next_pan_chunk_from_cache(
+    tmp_path, monkeypatch
+) -> None:
+    """순회분 전량 적재 — 페이지가 창을 넘겨 실어온 날짜로 다음 청크가 공짜가 된다.
+
+    넓은 `tic_scope` 에서 한 페이지는 프론트 청크(10거래일)의 2~6배를 덮는다.
+    수확 없이는 그 초과분이 폐기돼 다음 팬 청크가 **같은 페이지를 다시 사고**
+    (ADR-0120 원인 ③의 재귀), 수확하면 벤더 콜 0 으로 끝난다. 여기가 그 계약이다.
+
+    응답 격리도 같이 박는다: 수확분은 캐시에만 가고 첫 응답에는 안 실린다 —
+    새면 프론트가 요청 안 한 구간의 캔들을 받아 병합 창 계약(from/to)이 깨진다.
+    """
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    monkeypatch.setattr(
+        kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
+    )
+
+    # 10분 스코프 시나리오: 한 페이지가 요청 창(5/15~5/18)을 넘어 5/11 까지 실어온다.
+    pages = {
+        "20260518": (
+            ["20260518", "20260517", "20260516", "20260515",   # 요청 창
+             "20260514", "20260513", "20260512", "20260511"],  # 수확분
+            "20260510",
+        ),
+        # 2차 청크(5/11~5/14)가 캐시 미스라면 이 커서로 페이지를 다시 산다 —
+        # 수확이 작동하면 이 항목은 **조회되지 않는다**.
+        "20260514": (["20260514", "20260513", "20260512", "20260511"], "20260510"),
+    }
+    seen: list[str] = []
+
+    async def _page(_client, _code, cursor, **_kw) -> MinutePage:
+        seen.append(cursor)
+        complete, oldest = pages[cursor]
+        return MinutePage(complete={d: [_bar(d)] for d in complete}, oldest=oldest)
+
+    monkeypatch.setattr(kiwoom_minute_candles, "fetch_minute_page", _page)
+
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+
+    first = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 15), too=dt.date(2026, 5, 18),
+        today_d=dt.date(2026, 6, 1), policy="KRX",
+    )
+    assert seen == ["20260518"]
+    # 응답 격리: 수확분(5/11~5/14)은 첫 응답에 새지 않는다.
+    assert first.fresh_dates == ["20260515", "20260516", "20260517", "20260518"]
+    assert {_date_from_t_ms(c["t_ms"]) for c in first.candles} == {
+        "20260515", "20260516", "20260517", "20260518",
+    }
+
+    second = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 11), too=dt.date(2026, 5, 14),
+        today_d=dt.date(2026, 6, 1), policy="KRX",
+    )
+    assert seen == ["20260518"], "다음 청크는 수확 캐시로 끝난다 — 벤더 콜 0"
+    assert second.cached_dates == ["20260511", "20260512", "20260513", "20260514"]
+    assert second.fresh_dates == []
 
 
 @pytest.mark.asyncio

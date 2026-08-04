@@ -171,7 +171,7 @@ export function overlayLiveTradesOnCandles(
  * `overlayLiveTradesOnCandles`(분봉)의 캘린더 판(版) — 차이점:
  *  - 버킷 판정을 epoch-floor(`bucketStartMs`)가 아니라 `calendarBucketKey`(KST
  *    날짜/주/월)로 한다. W/M은 기간이 가변이라 floor로는 깨진다.
- *  - **vol_a는 건드리지 않는다.** KIS/스크리너 일봉의 오늘 volume은 이미 당일
+ *  - **vol_a는 건드리지 않는다.** 벤더/스크리너 일봉의 오늘 volume은 이미 당일
  *    누적치라 버퍼 qty를 더하면 이중계산 — 60초 refetch가 volume 정본을 공급한다.
  *    (새로 만드는 캔들만 best-effort로 버퍼 qty 합을 넣는다.)
  *  - 오늘 버킷이 아직 없으면(우회 모드 디스크는 어제까지, 콜드 로드) 새 캔들을
@@ -256,7 +256,7 @@ export function overlayLiveTradesOnCalendarCandles(
       high: Math.max(...group.map((t) => t.price)),
       low: Math.min(...group.map((t) => t.price)),
       close: group[group.length - 1].price,
-      // best-effort 하한(당일 누적치 아님). KIS 모드는 다음 refetch 가 정본으로
+      // best-effort 하한(당일 누적치 아님). 벤더 모드는 다음 refetch 가 정본으로
       // 교정하지만, bypass(D) 모드의 useScreenerDailyCandles 는 refetchInterval 이
       // 없어(staleTime 60s 만) 교정이 오지 않는다 → today 캔들 volume 은 버퍼 tail
       // 합계로 근사 유지된다(close/high/low 는 매 틱 정상 갱신). 의도된 한계.
@@ -313,7 +313,7 @@ export interface UseLiveBundleResult {
    *   불필요 홀드를 방지. 에러 settle도 isLoading=false라 영구 홀드 없음. */
   isSidecarLoading: boolean;
   /** 활성 타임프레임 경로(분봉=past-candles, D/W/M=past-daily-candles)의 fetch 경고.
-   * 백엔드가 KIS rate-limit 등으로 일부/전체 날짜를 못 받으면 채운다. LiveChartRoot가
+   * 백엔드가 키움 유량 초과 등으로 일부/전체 날짜를 못 받으면 채운다. LiveChartRoot가
    * 빈칸 문구 전환 + 부분 로딩 칩에 쓴다(2026-06-09). 무경고면 빈 배열. */
   pastDataWarnings: LiveDataWarning[];
   /** 캔들은 있는데 10호가 캡처가 없는 과거 거래일(YYYYMMDD 오름차순). 이 날짜들은
@@ -408,9 +408,10 @@ export function planLiveRangeRequest(args: {
   };
 }
 
-/** Orchestrate live SSE + KIS past-candles + /api/range hoga indicators into a
- * single RangeBundle for LiveChartRoot. ADR-0040 — KIS candles are the single
- * candle source via the dedicated `/api/live/past-candles` endpoint.
+/** Orchestrate live SSE + past-candles + /api/range hoga indicators into a
+ * single RangeBundle for LiveChartRoot. ADR-0040 — vendor candles are the single
+ * candle source via the dedicated `/api/live/past-candles` endpoint (Kiwoom
+ * `ka10080` since ADR-0136; KIS until then).
  *
  * ADR-0048: D/W/M timeframes route through `/api/live/past-daily-candles`
  * (direct daily backfill) instead of aggregating from 1m bars. Only the minute
@@ -443,7 +444,7 @@ export function useLiveBundle(
   const effVolumeDistributionEnabled =
     volumeDistributionEnabled || !!options.sidecarDemands?.volumeDistribution;
   const { data: liveSettings } = useLiveSettings();
-  // 캔들 소스의 유일한 분기 축(4옵션 우선순위-병합 모델 폐기). 우회 OFF=KIS만,
+  // 캔들 소스의 유일한 분기 축(4옵션 우선순위-병합 모델 폐기). 우회 OFF=벤더 REST만,
   // 우회 ON=디스크만(분봉 hogaplay / D·W·M 스크리너). 모드당 소스 1개라 병합 없음.
   const restBypassEnabled = liveSettings?.rest_bypass_enabled ?? false;
   const notifyRestFailure = useRestBypassModeStore((s) => s.notifyFailure);
@@ -466,7 +467,9 @@ export function useLiveBundle(
   // with the SSE tail (buildLiveBundle.ts:67, 72).
   const minutePastTo = todayKstYyyymmdd;
 
-  // KIS 분봉 캔들 — 우회 OFF에서만 fetch. 우회 ON이면 code=null로 비활성(요청 절약).
+  // 벤더 분봉 캔들(키움 `ka10080`) — 우회 OFF에서만 fetch. 우회 ON이면 code=null로
+  // 비활성(요청 절약). 과거분은 아래 bucketMs 인자대로 표시 tf 주기로 받고, 오늘분만
+  // 1분이다(실시간 tail 병합 격자 — collect_minute docstring).
   // (hoga 지표 쿼리 pastHoga는 이 게이트와 무관하게 rangePlan에서 별도로 발사된다.)
   const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo && !restBypassEnabled);
   const pastCandlesQuery = useLivePastCandles(
@@ -475,9 +478,13 @@ export function useLiveBundle(
     enableMinute ? minutePastTo : null,
     venue,
     todayKstYyyymmdd,
+    // 표시 tf 를 그대로 벤더 주기로 요청한다 — 콜당 커버리지가 tf 배수만큼 는다
+    // (10분 = 900행에 약 23 거래일). 캘린더 tf(D/W/M)는 이 훅을 안 타므로
+    // `isMinute` 가 아니면 값이 쓰이지 않는다.
+    isMinute ? TIMEFRAME_TO_MS[timeframe as Timeframe] : 60_000,
   );
 
-  // KIS daily past-candles — D/W/M, 우회 OFF에서만 (ADR-0048).
+  // 벤더 일봉 past-candles(키움 `ka10081`) — D/W/M, 우회 OFF에서만 (ADR-0048).
   const enableDaily = !!(code && !isMinute && !restBypassEnabled);
   const dailyPastFrom = seedFrom;
   const dailyPastTo = todayKstYyyymmdd;
@@ -495,9 +502,9 @@ export function useLiveBundle(
     enableScreenerDaily ? dailyPastTo : null,
   );
 
-  // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY. KIS
-  // investor-trade-by-stock-daily (FHPTJ04160001) walks back the requested
-  // [from, to] range by date cursor. ADR-0055.
+  // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY. Kiwoom 종목별
+  // 투자자 일별 (`ka10059`, PR-E/#1041 컷오버; KIS `FHPTJ04160001` 대체) walks back
+  // the requested [from, to] range by date cursor. ADR-0055.
   // Why daily-only, not all calendar frames: investor points are daily-anchored
   // (09:00 KST), but W/M aggregate candles into week/month segments, so most
   // daily points would fall outside axis.contains and render a near-empty pane.
@@ -564,7 +571,12 @@ export function useLiveBundle(
   // 캔들 소스 이분법 — 모드당 소스 1개라 병합 없음.
   const minuteKisCandles = useMemo<Candle[]>(() => {
     if (!isMinute) return EMPTY_CANDLES;
-    // 우회 ON: 디스크 캔들 그대로(서버 버킷팅 완료). OFF: KIS 분봉을 tf 버킷으로 집계.
+    // 우회 ON: 디스크 캔들 그대로(서버 버킷팅 완료). OFF: 벤더 응답을 tf 버킷으로 집계.
+    // 벤더 응답은 **혼합 해상도**다 — 과거분은 `tic_scope=표시 tf`(#1008, 콜당 커버리지
+    // tf 배수), 오늘분은 1분(실시간 tail 병합 격자). aggregateCandles 는 이미 버킷된
+    // 과거분에 멱등이라 한 번의 호출이 두 해상도를 같은 격자로 수렴시킨다. 이 멱등성은
+    // 매핑된 6종 tf 가 전부 KST 오프셋을 정수로 나누는 데 기댄다 — 45분처럼 나누지
+    // 못하는 tf 를 추가하려면 kiwoom_minute_candles.BUCKET_MS_TO_TIC_SCOPE 주석 참고.
     if (restBypassEnabled) return minuteDiskCandles.data?.candles ?? EMPTY_CANDLES;
     const raw = pastCandlesQuery.data?.candles ?? [];
     if (raw.length === 0) return EMPTY_CANDLES;
@@ -572,7 +584,7 @@ export function useLiveBundle(
   }, [isMinute, timeframe, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles]);
   const calendarKisCandles = useMemo<Candle[]>(() => {
     if (isMinute) return EMPTY_CANDLES;
-    // 우회 ON: 스크리너 일봉. OFF: KIS 일봉. D는 그대로, W/M은 aggregateCalendar.
+    // 우회 ON: 스크리너 일봉. OFF: 벤더 일봉. D는 그대로, W/M은 aggregateCalendar.
     const raw = restBypassEnabled
       ? screenerDailyCandlesQuery.data?.candles ?? []
       : pastDailyCandlesQuery.data?.candles ?? [];
@@ -645,9 +657,9 @@ export function useLiveBundle(
     () => ({
       mode: 'sidecar' as const,
       ...rangePlan.options,
-      // KIS candles arrive on a separate fast path, but today's promoted
+      // Vendor candles arrive on a separate fast path, but today's promoted
       // trades can exist before a matching candles.parquet. The sidecar needs
-      // the KIS candle low/high grid to build the dense 10-bin distribution
+      // the vendor candle low/high grid to build the dense 10-bin distribution
       // instead of making the sidebar fall back to the short live trade tail.
       volumeDistributionPriceRange: rangePlan.options.volumeDistributionPriceRange,
     }),
@@ -700,7 +712,7 @@ export function useLiveBundle(
     () => effectiveSessionBoundsByDate(pastCandlesQuery.data?.effective_sessions),
     [pastCandlesQuery.data?.effective_sessions],
   );
-  // Chart session follows the selected KIS Venue for minute candles. HOGA/WS
+  // Chart session follows the selected venue for minute candles. HOGA/WS
   // side remains KRX-only, so buildHogaSeries keeps the default KRX bounds.
   //
   // 예외: 우회 ON(kis_rest_bypass) 분봉은 디스크(hogaplay/range) 소스라 KRX 전용
@@ -887,9 +899,9 @@ export function useLiveBundle(
     ? pastHoga.isHistoricalDeltaFetching ||
       (sidecarEnabled && pastSidecars.isHistoricalDeltaFetching) ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching) ||
-      // 우회 ON에선 차트 캔들이 KIS가 아니라 디스크(minuteDiskCandles, plain useRange)에서
-      // 온다. 이 쿼리도 좌측 팬 re-key 시 이전 데이터를 placeholder로 보이며 더 오래된 창을
-      // fetch하므로 KIS 경로와 동일하게 isPlaceholderData && isFetching로 홀드해야 프리펜드가
+      // 우회 ON에선 차트 캔들이 벤더 REST가 아니라 디스크(minuteDiskCandles, plain useRange)
+      // 에서 온다. 이 쿼리도 좌측 팬 re-key 시 이전 데이터를 placeholder로 보이며 더 오래된 창을
+      // fetch하므로 벤더 경로와 동일하게 isPlaceholderData && isFetching로 홀드해야 프리펜드가
       // 원자적이다. 우회 OFF면 disabled → 둘 다 false라 무해(이분 조건 불필요).
       (minuteDiskCandles.isPlaceholderData && minuteDiskCandles.isFetching)
     : (pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching) ||

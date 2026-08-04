@@ -25,11 +25,11 @@ def _ts(yyyymmdd: str) -> int:
 
 
 def test_past_candles_past_hit_miss_and_eviction(tmp_path):
-    c = PastCandlesCache(tmp_path, max_past_mem_entries=2, max_past_dates_per_code=10)
-    c.store_past("KRX", "AAA", "20260102", [{"t_ms": _ts("20260102")}])
-    assert c.get_past("KRX", "AAA", "20260102") is not None  # hit
-    assert c.get_past("KRX", "AAA", "19990101") is None  # miss (unknown date)
-    assert c.get_past("KRX", "ZZZ", "20260102") is None  # miss (unknown code)
+    c = PastCandlesCache(tmp_path, max_past_mem_bars=2, max_past_bars_per_code=10)
+    c.store_past("KRX", "AAA", "20260102", [{"t_ms": _ts("20260102")}], "1")
+    assert c.get_past("KRX", "AAA", "20260102", "1") is not None  # hit
+    assert c.get_past("KRX", "AAA", "19990101", "1") is None  # miss (unknown date)
+    assert c.get_past("KRX", "ZZZ", "20260102", "1") is None  # miss (unknown code)
     past = c.stats_snapshot()["past"]
     assert past["hits"] == 1
     assert past["misses"] == 2
@@ -37,8 +37,8 @@ def test_past_candles_past_hit_miss_and_eviction(tmp_path):
 
     # Global budget = 2. Store two more dates across a second code → LRU code's
     # oldest evicted.
-    c.store_past("KRX", "AAA", "20260103", [{"t_ms": _ts("20260103")}])  # total 2
-    c.store_past("KRX", "BBB", "20260104", [{"t_ms": _ts("20260104")}])  # total 3 → evict 1
+    c.store_past("KRX", "AAA", "20260103", [{"t_ms": _ts("20260103")}], "1")  # total 2
+    c.store_past("KRX", "BBB", "20260104", [{"t_ms": _ts("20260104")}], "1")  # total 3 → evict 1
     assert c.stats_snapshot()["past"]["evictions"] == 1
 
 

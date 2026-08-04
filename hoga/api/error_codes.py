@@ -130,6 +130,10 @@ class LiveErrorCode(StrEnum):
     INVALID_INDEX_ID = "invalid_index_id"
     UNSUPPORTED_INDEX = "unsupported_index"
     UNSUPPORTED_INDEX_INVESTOR_NET = "unsupported_index_investor_net"
+    # /past-candles 의 bucket_ms 가 벤더 분봉 주기로 매핑되지 않는다
+    # (kiwoom_minute_candles.BUCKET_MS_TO_TIC_SCOPE). 조용히 1분으로 폴백하지 않는
+    # 이유는 그 함수의 docstring 참고 — 증상 없이 콜 수만 배로 늘기 때문이다.
+    UNSUPPORTED_BUCKET_MS = "unsupported_bucket_ms"
 
     # ── 조회 대상 없음 (HTTP 404) ────────────────────────────────────────────
     # 라이브 버퍼에 그 종목 데이터가 아직 없다. CaptureErrorCode.NOT_FOUND 를 재사용하지

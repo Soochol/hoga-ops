@@ -375,11 +375,11 @@ export function useViewportBackfill({
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const handler = (range: unknown) => {
       if (!canTriggerBackfill()) return;
-      // Lazy-fetch runs for every LiveTimeframe, including D/W/M. The
-      // candle backfill (/api/live/past-candles) is timeframe-independent
-      // — useLiveBundle re-aggregates the same 1m bars into D/W/M on the
-      // client. Without this, D/W/M users dragging past the leftmost bar
-      // saw nothing happen.
+      // Lazy-fetch runs for every LiveTimeframe, including D/W/M. Without
+      // this, D/W/M users dragging past the leftmost bar saw nothing happen.
+      // 분봉 tf 는 이제 timeframe-DEPENDENT 다 — /past-candles 가 bucket_ms 로
+      // 표시 tf 봉을 직접 받으므로(#1008) tf 전환은 쿼리키가 갈려 그 tf 의
+      // 워크백이 처음부터 다시 돈다. D/W/M 은 past-daily-candles 경로라 무관.
       if (axis.segments.length === 0) return;
       // 초기 캔들이 아직 0개면 트리거 금지: 빈 차트도 logical.from<0을 보고하지만
       // 그건 "팬"이 아니라 "데이터 미도착"이다. 가드 없으면 historicalFromDate가

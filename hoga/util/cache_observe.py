@@ -101,7 +101,17 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         node = latest_cs.get(name)
         if isinstance(node, dict):
             latest[name] = {
-                horizon: {"hit_rate": h.get("hit_rate"), "lookups": h.get("lookups") or 0}
+                horizon: {
+                    "hit_rate": h.get("hit_rate"),
+                    "lookups": h.get("lookups") or 0,
+                    # past_candles.past 전용 두 필드 — bars/size 비가 캐시의 tf 구성을
+                    # 말한다(1분 위주면 ~390, 상위 tf 위주면 작다). 축출 증가가 "예산
+                    # 부족"인지 "tf 구성 변화"인지는 이 비로만 갈린다
+                    # (past_candles_cache.stats_snapshot 주석). 여기서 버리면 그 진단을
+                    # cache-report 로 돌릴 수 없다.
+                    **({"size": h["size"]} if h.get("size") is not None else {}),
+                    **({"bars": h["bars"]} if h.get("bars") is not None else {}),
+                }
                 for horizon, h in node.items()
                 if isinstance(h, dict)
             }
@@ -169,6 +179,14 @@ def format_report(report: dict[str, Any]) -> str:
             else:  # horizon-split
                 inner = "  ".join(f"{h}={v['hit_rate']}({v['lookups']})" for h, v in node.items())
                 lines.append(f"    {name}: {inner}")
+                # bars/size 비 = 캐시의 tf 구성 (1분 위주 ~390, 상위 tf 위주면 작다).
+                past = node.get("past") or {}
+                if past.get("size") and past.get("bars") is not None:
+                    ratio = past["bars"] / past["size"]
+                    lines.append(
+                        f"      → past size={past['size']} bars={past['bars']} "
+                        f"bars/size={ratio:.0f} — 축출 늘 때 예산 부족 vs tf 구성 변화 판별축"
+                    )
     return "\n".join(lines)
 
 

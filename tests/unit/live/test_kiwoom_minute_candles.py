@@ -245,15 +245,20 @@ async def test_max_pages_truncation_is_never_silent() -> None:
     await c.aclose()
 
 
-async def test_walk_ignores_dates_outside_the_requested_window() -> None:
+async def test_walk_drops_newer_dates_but_harvests_older_ones() -> None:
+    """상한만 거른다 — 커서보다 새로운 날짜는 버리고(오늘 오염 방지), 창보다
+    **오래된** 온전한 날짜는 수확한다(순회분 전량 적재, ADR-0120 원인 ③)."""
     handler, _ = _pages_handler([
-        _day("20260803", 2) + _day("20260731", 2) + _day("20260728", 1),
+        _day("20260803", 2)   # 커서(20260731)보다 새로움 → 버림
+        + _day("20260731", 2)  # 요청 창 안 → 담음
+        + _day("20260730", 2)  # 창보다 오래됨·온전 → **수확**
+        + _day("20260728", 1),  # 페이지 최古 → split_page 가 떼어냄
     ])
     c = _client(handler)
     res = await walk_minute_days(
         c, "005930", newest_yyyymmdd="20260731", oldest_yyyymmdd="20260731",
     )
-    assert set(res.bars_by_date) == {"20260731"}, "커서보다 새로운 날짜는 담지 않는다"
+    assert set(res.bars_by_date) == {"20260731", "20260730"}
     await c.aclose()
 
 

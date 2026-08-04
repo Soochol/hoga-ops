@@ -246,6 +246,7 @@ export type LiveErrorCode =
   | 'invalid_index_id'
   | 'unsupported_index'
   | 'unsupported_index_investor_net'
+  | 'unsupported_bucket_ms'
   | 'no_live_data'
   | 'not_wired'
   | 'kiwoom_api_error'

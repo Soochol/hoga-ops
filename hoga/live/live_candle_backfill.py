@@ -124,9 +124,18 @@ class LiveMinuteCandleBackfill:
         too: date,
         today_d: date,
         policy: LiveVenuePolicy,
+        tic_scope: str = kiwoom_minute_candles.TIC_SCOPE_1MIN,
     ) -> LiveMinuteCandleBackfillResult:
+        """`tic_scope` 는 **과거 날짜에만** 적용된다.
+
+        오늘분은 언제나 1분으로 받는다 — 실시간 tail(WS 체결틱 1분 합성,
+        ADR-0125)과 같은 격자여야 병합이 성립하기 때문이다. 표시 버킷으로 접는
+        일은 프론트 `aggregateCandles` 가 하고, 그 집계는 이미 버킷된 과거분에
+        대해 멱등이라 두 해상도가 한 시리즈에 섞여도 결과가 같다.
+        """
         return await self._collect_minute_inner(
             code=code, frm=frm, too=too, today_d=today_d, policy=policy,
+            tic_scope=tic_scope,
         )
 
     async def _collect_minute_inner(
@@ -137,6 +146,7 @@ class LiveMinuteCandleBackfill:
         too: date,
         today_d: date,
         policy: LiveVenuePolicy,
+        tic_scope: str,
     ) -> LiveMinuteCandleBackfillResult:
         if policy != "KRX":
             primary_out = await self._collect_for_venue(
@@ -145,6 +155,7 @@ class LiveMinuteCandleBackfill:
                 frm=frm,
                 too=too,
                 today_d=today_d,
+                tic_scope=tic_scope,
             )
             dates = list(_date_iter(frm, too))
             primary_dates = _dates_for_candles(primary_out.candles)
@@ -166,6 +177,7 @@ class LiveMinuteCandleBackfill:
                         frm=run_start,
                         too=run_end,
                         today_d=today_d,
+                        tic_scope=tic_scope,
                     )
                     for run_start, run_end in _contiguous_date_ranges(missing_dates)
                 )
@@ -191,7 +203,7 @@ class LiveMinuteCandleBackfill:
                 )
             used_fallback_dates = _dates_for_candles(fallback_candles)
             for date_s in used_fallback_dates:
-                self._cache.delete_past(policy, code, date_s)
+                self._cache.delete_past(policy, code, date_s, tic_scope)
             cached_dates = sorted(
                 set(primary_out.cached_dates)
                 | {
@@ -237,6 +249,7 @@ class LiveMinuteCandleBackfill:
             frm=frm,
             too=too,
             today_d=today_d,
+            tic_scope=tic_scope,
         )
 
     async def collect_minute_cache_only(
@@ -247,6 +260,7 @@ class LiveMinuteCandleBackfill:
         too: date,
         today_d: date,
         policy: LiveVenuePolicy,
+        tic_scope: str = kiwoom_minute_candles.TIC_SCOPE_1MIN,
     ) -> LiveMinuteCandleBackfillResult:
         t0 = perf_debug.now()
         rows: list[dict] = []
@@ -257,10 +271,10 @@ class LiveMinuteCandleBackfill:
 
         for date_s in _date_iter(frm, too):
             if date_s < today_s:
-                bars = self._cache.get_past(policy, code, date_s)
+                bars = self._cache.get_past(policy, code, date_s, tic_scope)
                 session_venue = policy
                 if bars is None and policy != "KRX":
-                    bars = self._cache.get_past("KRX", code, date_s)
+                    bars = self._cache.get_past("KRX", code, date_s, tic_scope)
                     session_venue = "KRX"
                 if bars is None:
                     warnings.append(_kis_rest_bypassed_warning(date_s))
@@ -318,6 +332,7 @@ class LiveMinuteCandleBackfill:
         frm: date,
         too: date,
         today_d: date,
+        tic_scope: str,
     ) -> LiveMinuteCandleBackfillResult:
         t0 = perf_debug.now()
         today_s = today_d.strftime("%Y%m%d")
@@ -330,14 +345,14 @@ class LiveMinuteCandleBackfill:
         for date_s in _date_iter(frm, too):
             if date_s >= today_s:
                 continue
-            bars = self._cache.get_past(venue, code, date_s)
+            bars = self._cache.get_past(venue, code, date_s, tic_scope)
             if bars is not None:
                 rows[date_s] = bars
                 cached_dates.append(date_s)
                 continue
             if trading_calendar.is_trading_day(date_s) is False:
                 empty_bars: list[dict] = []
-                self._cache.store_past(venue, code, date_s, empty_bars)
+                self._cache.store_past(venue, code, date_s, empty_bars, tic_scope)
                 rows[date_s] = empty_bars
                 cached_dates.append(date_s)
                 continue
@@ -365,7 +380,7 @@ class LiveMinuteCandleBackfill:
         if pending:
             blocked = await self._walk_pending(
                 venue, code, pending, rows=rows, fresh=fresh,
-                warnings_by_date=warnings_by_date,
+                warnings_by_date=warnings_by_date, tic_scope=tic_scope,
             )
 
         candles_all: list[dict] = []
@@ -486,6 +501,7 @@ class LiveMinuteCandleBackfill:
         rows: dict[str, list[dict]],
         fresh: set[str],
         warnings_by_date: dict[str, dict],
+        tic_scope: str,
     ) -> bool:
         """미캐시 날짜들을 **한 번의 walk-back** 으로 채운다. 유량 차단이면 True.
 
@@ -500,7 +516,7 @@ class LiveMinuteCandleBackfill:
 
         t0 = perf_debug.now()
         try:
-            result = await self._walk_scheduled(venue, code, newest, oldest)
+            result = await self._walk_scheduled(venue, code, newest, oldest, tic_scope)
         except KiwoomCapacityOverloaded:
             for date_s in pending:
                 warnings_by_date[date_s] = _capacity_overloaded_warning(date_s)
@@ -529,6 +545,7 @@ class LiveMinuteCandleBackfill:
         self._apply_walk_result(
             venue, code, pending, result,
             rows=rows, fresh=fresh, warnings_by_date=warnings_by_date,
+            tic_scope=tic_scope,
         )
         return False
 
@@ -542,16 +559,26 @@ class LiveMinuteCandleBackfill:
         rows: dict[str, list[dict]],
         fresh: set[str],
         warnings_by_date: dict[str, dict],
+        tic_scope: str,
     ) -> None:
         """walk 결과를 캐시·행·경고로 흩뿌린다.
+
+        `bars_by_date` 에는 요청 창보다 오래된 **수확분**(순회분 전량 적재)이 섞여
+        있다. 전부 캐시에 넣되 응답(`rows`/`fresh`)은 `pending` 루프가 만들므로
+        수확분이 응답에 새지 않는다 — 다음 팬 청크가 그 날짜들을 캐시 히트로 얻는다.
 
         **walk 가 깨끗이 끝났으면** `[oldest, newest]` 를 전부 지나왔다는 뜻이라,
         응답에 없는 날짜는 비거래일이다 — 빈 배열로 캐시해 재요청을 막는다.
         **중간에 멈췄으면**(보유 바닥·페이지 상한) 도달한 곳 아래는 **모른다**.
         그 구간을 "데이터 없음" 으로 흘려보내면 프론트가 빈 캔들을 진실로 그린다.
+        수확분 덕에 non-clean `floor`(= 도달 증명선)가 실제 도달점까지 내려가므로
+        판정은 종전보다 덜 보수적이면서 여전히 안전하다 — floor 보다 새로운 pending
+        누락일은 "지나왔는데 없음" = 비거래일이 맞다.
         """
         for date_s, bars in result.bars_by_date.items():
-            self._cache.store_past(venue, code, date_s, [_candle_to_dict(c) for c in bars])
+            self._cache.store_past(
+                venue, code, date_s, [_candle_to_dict(c) for c in bars], tic_scope
+            )
 
         clean = not (result.exhausted or result.wedged)
         floor = pending[0] if clean else min(result.bars_by_date, default=None)
@@ -566,7 +593,7 @@ class LiveMinuteCandleBackfill:
                 fresh.add(date_s)
             elif floor is not None and date_s >= floor:
                 empty: list[dict] = []
-                self._cache.store_past(venue, code, date_s, empty)
+                self._cache.store_past(venue, code, date_s, empty, tic_scope)
                 rows[date_s] = empty
                 fresh.add(date_s)
             else:
@@ -580,6 +607,7 @@ class LiveMinuteCandleBackfill:
         code: str,
         newest: str,
         oldest: str,
+        tic_scope: str = kiwoom_minute_candles.TIC_SCOPE_1MIN,
         *,
         priority: Priority = "user_visible",
     ):
@@ -598,15 +626,23 @@ class LiveMinuteCandleBackfill:
 
             key 가 구간이 아니라 **커서** 단위인 것은 부수 이득이다: 겹치는 구간을
             보는 두 요청이 공통 페이지에서 조인된다.
+
+            **`tic_scope` 가 key 에 있어야 한다.** 같은 커서라도 스코프가 다르면
+            다른 봉인데, key 에서 빠지면 그 조인이 1분 요청과 10분 요청을 하나로
+            묶어 **먼저 온 쪽의 해상도를 양쪽에 준다**. 조인은 여기서 이득이 아니라
+            오염이다.
             """
             return await kiwoom_access.run_with_capacity(
                 self._scheduler,
-                key=("live-candle-backfill", "minute-page", venue, code, cursor),
+                key=(
+                    "live-candle-backfill", "minute-page",
+                    venue, code, cursor, tic_scope,
+                ),
                 api_id=kiwoom_minute_candles.API_ID,
                 priority=priority,
                 client=client,
                 fetch_fn=lambda c: kiwoom_minute_candles.fetch_minute_page(
-                    c, code, cursor, venue=venue,
+                    c, code, cursor, venue=venue, tic_scope=tic_scope,
                 ),
             )
 
@@ -614,6 +650,10 @@ class LiveMinuteCandleBackfill:
             return await kiwoom_minute_candles.walk_minute_days(
                 client, code,
                 newest_yyyymmdd=newest, oldest_yyyymmdd=oldest, venue=venue,
+                # `fetch_page` 주입이 실제 스코프를 쥐므로 아래 인자는 지금 경로에서
+                # 쓰이지 않는다. 그래도 넘긴다 — 주입을 걷어내는 변경이 오면 조용히
+                # 1분으로 돌아가는 대신 의도한 스코프가 남는다.
+                tic_scope=tic_scope,
                 fetch_page=_paced_page,
             )
         except Exception:
@@ -627,7 +667,12 @@ class LiveMinuteCandleBackfill:
         code: str,
         date_s: str,
     ) -> list[dict]:
-        """오늘치. `base_dt=오늘` 이면 오늘이 응답의 **최新** 이라 온전하다."""
+        """오늘치. `base_dt=오늘` 이면 오늘이 응답의 **최新** 이라 온전하다.
+
+        **`tic_scope` 를 받지 않는다 — 오늘은 언제나 1분이다.** 오늘분은 WS 체결틱
+        1분 합성 tail(ADR-0125)과 같은 시리즈에서 병합되므로 격자가 1분이어야 한다.
+        표시 버킷 집계는 프론트 `aggregateCandles` 가 과거분과 함께 처리한다.
+        """
         raw = await kiwoom_minute_candles.fetch_day(
             client, code, date_s, venue=venue,
         )
