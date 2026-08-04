@@ -67,7 +67,7 @@ vi.mock('../live/liveNavigate', () => ({
 
 import { Screener } from './Screener';
 import { runScan } from '../api/screener';
-import { listSaves, createSave, updateSave } from '../api/savedScreeners';
+import { listSaves, createSave, updateSave, deleteSave } from '../api/savedScreeners';
 import { useQuoteByCode } from '../api/liveQuotes';
 import type { SavedScreener } from '../api/savedScreeners';
 import { useScreenerPanelStore } from '../state/screenerPanel';
@@ -117,6 +117,14 @@ function sortButton() {
   return screen.getByRole('button', { name: '스크리너 결과 정렬' });
 }
 
+// 저장 목록은 2단 개편(2026-08-04)으로 select 가 됐다 — 행 클릭 대신 change 이벤트.
+// 옵션은 saves 쿼리 해소 후에 그려지므로 findByRole 로 기다린다.
+async function loadSave(name: string) {
+  const select = await screen.findByLabelText('저장한 조건검색 선택');
+  const option = await within(select).findByRole('option', { name }) as HTMLOptionElement;
+  fireEvent.change(select, { target: { value: option.value } });
+}
+
 it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () => {
   await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
@@ -129,14 +137,14 @@ it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () =
 it('renders shared top action buttons without changing the screener workflow', async () => {
   renderPage();
   // 페이지 통일(2026-07-23): flat — 그림자·카드 배경 스텝 제거, 필드(--bg)에 평평.
-  expect(screen.getByTestId('screener-saves-pane')).toHaveClass('bg-bg');
-  expect(screen.getByTestId('screener-saves-pane')).not.toHaveClass('border');
-  expect(screen.getByTestId('screener-saves-pane')).not.toHaveClass('shadow-panel');
+  // 2단 개편(2026-08-04): 저장 목록 pane 이 빌더 pane 상단 select 로 흡수됐다.
   expect(screen.getByTestId('screener-builder-pane')).toHaveClass('bg-bg');
   expect(screen.getByTestId('screener-builder-pane')).not.toHaveClass('border');
+  expect(screen.getByTestId('screener-builder-pane')).not.toHaveClass('shadow-panel');
   expect(screen.getByTestId('screener-results-pane')).toHaveClass('bg-bg');
   expect(screen.getByTestId('screener-results-pane')).not.toHaveClass('border');
   expect(await screen.findByRole('button', { name: '조회' })).toBeInTheDocument();
+  expect(screen.getByLabelText('저장한 조건검색 선택')).toBeInTheDocument();
   // secondary ToolbarButton은 테두리 없는 ghost(2026-07-15) — 투명 배경.
   expect(screen.getByRole('button', { name: '저장' })).toHaveClass('bg-transparent');
 });
@@ -325,8 +333,7 @@ it('selecting a saved screener loads it without running a scan', async () => {
     { id: 's1', name: '급등주', conditions: [], universe: {}, created_at_ms: 1, updated_at_ms: 1 }] });
   vi.mocked(runScan).mockClear();
   renderPage();
-  const item = await screen.findByText('급등주');
-  fireEvent.click(item);
+  await loadSave('급등주');
   // select = load-into-builder only; scan happens only on 조회 click (ADR/spec).
   expect(runScan).not.toHaveBeenCalled();
 });
@@ -340,7 +347,7 @@ it('toolbar save overwrites the loaded screener with the current builder', async
   vi.mocked(updateSave).mockResolvedValueOnce({ ...saved, universe: { exclude_etf: true } });
   renderPage();
 
-  fireEvent.click(await screen.findByText('급등주'));
+  await loadSave('급등주');
   fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));
   fireEvent.click(screen.getByRole('button', { name: '제외' }));
   fireEvent.click(screen.getByLabelText('ETF 제외'));
@@ -383,7 +390,7 @@ it('toolbar save-as always creates a new screener from the current builder', asy
   vi.mocked(createSave).mockResolvedValueOnce({ ...saved, id: 'copy1', name: '복사본' });
   renderPage();
 
-  fireEvent.click(await screen.findByText('급등주'));
+  await loadSave('급등주');
   fireEvent.click(screen.getByRole('button', { name: '다른 이름으로 저장' }));
   const dialog = await screen.findByRole('dialog', { name: '조건검색 저장' });
   fireEvent.change(screen.getByLabelText('조건검색 이름'), { target: { value: '복사본' } });
@@ -416,7 +423,7 @@ it('anchors a loaded screener as clean, then marks 수정됨 once the builder is
   vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [
     { id: 's1', name: '급등주', conditions: [], universe: {}, created_at_ms: 1, updated_at_ms: 1 }] });
   renderPage();
-  fireEvent.click(await screen.findByText('급등주'));        // load → anchored, clean
+  await loadSave('급등주');                                   // load → anchored, clean
   expect(screen.queryByText('수정됨')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));  // 모달 열기
   fireEvent.click(screen.getByRole('button', { name: '제외' }));      // 제외 그룹 pane
@@ -433,21 +440,23 @@ it('does not lie "clean" when the builder is edited while a create is in flight 
   vi.mocked(listSaves).mockResolvedValue({ schema_version: 1, saves: [created] });
 
   renderPage();
-  await screen.findByText('조회');                                      // 페이지 렌더 대기(항상 존재)
-  fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));  // open inline editor
-  const input = screen.getByLabelText('조건검색 이름');
-  fireEvent.change(input, { target: { value: '레이스' } });
-  fireEvent.blur(input);                                               // commit → onBeginSave + create.mutate
+  // 자동 로드(1회)가 끝나 앵커가 앉을 때까지 대기 — 이보다 먼저 새 조건검색을 누르면
+  // 늦게 도착한 자동 로드가 초안을 덮어 앵커를 되살린다(테스트가 아닌 실제 타이밍 계약).
+  const select = await screen.findByLabelText('저장한 조건검색 선택') as HTMLSelectElement;
+  await waitFor(() => expect(select.value).toBe('new1'));
+  fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));  // draft (앵커 해제)
+  fireEvent.click(screen.getByRole('button', { name: '저장' }));         // 앵커 없음 → 이름 다이얼로그
+  const dialog = await screen.findByRole('dialog', { name: '조건검색 저장' });
+  fireEvent.change(screen.getByLabelText('조건검색 이름'), { target: { value: '레이스' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: '저장' })); // commit → create.mutate (in flight)
   fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));    // 모달 열기 (create in-flight 중)
   fireEvent.click(screen.getByRole('button', { name: '제외' }));        // 제외 그룹 pane
   fireEvent.click(screen.getByLabelText('ETF 제외'));                   // edit DURING the in-flight create (bumps gen)
   await waitFor(() => expect(createSave).toHaveBeenCalled());
   resolveCreate(created);
 
+  // in-flight 편집이 살아남아 새 앵커는 dirty(수정됨)로 남아야 한다 — clean 거짓말 금지.
   expect((await screen.findAllByText('수정됨')).length).toBeGreaterThanOrEqual(1);
-  const row = screen.getAllByText('레이스').map((el) => el.closest('[role="button"]')).find(Boolean) as HTMLElement;
-  expect(row.className)
-    .not.toContain('bg-tint-selection');
 });
 
 it('starts with an empty builder when no saves exist, and 조회 stays disabled', async () => {
@@ -494,6 +503,45 @@ it('auto-load falls back to the first save when the persisted id was deleted', a
   localStorage.setItem('screenerEditor.v1', JSON.stringify({ anchorId: 'ghost' }));
   await renderPageReady();
   expect(screen.getAllByText('기본조건').length).toBeGreaterThanOrEqual(1);
+});
+
+it('조회 전에는 만료·0건과 구분되는 안내를, 조회 후에는 결과 건수를 표시한다', async () => {
+  await renderPageReady();
+  // 조회 전(또는 30분 TTL 만료 후): "조건에 맞는 종목이 없습니다"로 오독되면 안 된다.
+  expect(screen.getByText('조회 전')).toBeInTheDocument();
+  expect(screen.getByText('아직 조회하지 않았습니다')).toBeInTheDocument();
+  expect(screen.queryByText('조건에 맞는 종목이 없습니다')).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByText('조회'));
+  await screen.findByText('삼성전자');
+  expect(screen.getByTestId('screener-result-meta').textContent).toContain('결과 3건');
+  expect(screen.queryByText('아직 조회하지 않았습니다')).not.toBeInTheDocument();
+});
+
+it('셀렉터 옆 ⋯ 메뉴에서 확인 모달을 거쳐 저장본을 삭제한다', async () => {
+  vi.mocked(deleteSave).mockResolvedValueOnce(undefined as never);
+  await renderPageReady(); // 기본조건이 자동 로드되어 앵커 = default1
+  fireEvent.click(screen.getByRole('button', { name: '저장 조건 메뉴' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '삭제' }));
+  const confirm = await screen.findByRole('dialog', { name: '삭제' });
+  expect(confirm).toHaveTextContent('"기본조건" 삭제?');
+  fireEvent.click(within(confirm).getByRole('button', { name: '삭제' }));
+  await waitFor(() => expect(deleteSave).toHaveBeenCalledWith('default1'));
+});
+
+it('셀렉터 옆 ⋯ 메뉴의 이름변경은 다이얼로그로 흐른다', async () => {
+  vi.mocked(updateSave).mockResolvedValueOnce({
+    ...defaultSaves().saves[0], name: '바뀐이름',
+  });
+  await renderPageReady();
+  fireEvent.click(screen.getByRole('button', { name: '저장 조건 메뉴' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '이름변경' }));
+  const dialog = await screen.findByRole('dialog', { name: '이름변경' });
+  fireEvent.change(screen.getByLabelText('조건검색 이름'), { target: { value: '바뀐이름' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+  await waitFor(() => expect(updateSave).toHaveBeenCalledWith('default1', expect.objectContaining({
+    name: '바뀐이름',
+  })));
 });
 
 it('현재가·등락률을 라이브 quote 로 덮는다 (EOD 코퍼스 위 오버레이)', async () => {
