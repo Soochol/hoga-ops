@@ -5,6 +5,7 @@ import {
   formatAggregationSlot,
   formatQtyCompact,
   InvestorTrendEstimateCard,
+  toDescendingDisplayRows,
 } from './InvestorTrendEstimateCard';
 import type { LiveInvestorTrendEstimateResponse } from '../api/liveInvestorTrendEstimate';
 
@@ -74,6 +75,33 @@ describe('formatAggregationSlot', () => {
   });
 });
 
+describe('toDescendingDisplayRows', () => {
+  it('puts the newest round first', () => {
+    expect(toDescendingDisplayRows(rows).map((r) => r.ordinal)).toEqual(['2', '1']);
+    expect(toDescendingDisplayRows(rows).map((r) => r.time)).toEqual(['09:30', '09:20']);
+  });
+
+  // 차수 폴백(`index + 1`)은 원본 오름차순 인덱스로 계산해야 한다 — 뒤집은 뒤에
+  // 계산하면 최신 행이 1차가 되어 번호가 거꾸로 매겨진다.
+  it('numbers non-decimal slots by their ascending position, not the display position', () => {
+    const hhmmRows: LiveInvestorTrendEstimateResponse['rows'] = [
+      { ...rows[0], slot: '0920' },
+      { ...rows[1], slot: '0930' },
+    ];
+
+    expect(toDescendingDisplayRows(hhmmRows)).toEqual([
+      { row: hhmmRows[1], ordinal: '2', time: '09:30' },
+      { row: hhmmRows[0], ordinal: '1', time: '09:20' },
+    ]);
+  });
+
+  it('leaves the source array untouched', () => {
+    const source = [...rows];
+    toDescendingDisplayRows(source);
+    expect(source).toEqual(rows);
+  });
+});
+
 describe('InvestorTrendEstimateCard', () => {
   it('renders the bare table with no card chrome of its own', () => {
     render(<InvestorTrendEstimateCard query={{ data: response() }} />);
@@ -96,6 +124,18 @@ describe('InvestorTrendEstimateCard', () => {
     expect(screen.queryByText('최근 조회 09:15')).not.toBeInTheDocument();
     // 평상시(상태 없음)엔 상태 줄도 없다.
     expect(screen.queryByText('조회 중')).not.toBeInTheDocument();
+  });
+
+  // 존재 단언(`getByText('09:20')`)만으로는 오름/내림차순을 구분하지 못한다 —
+  // 순서는 행 배열의 위치로 못박아야 뒤집힘이 회귀로 잡힌다.
+  it('lists the newest round first (descending)', () => {
+    render(<InvestorTrendEstimateCard query={{ data: response() }} />);
+
+    const [, first, second] = screen.getAllByRole('row'); // [0] 은 헤더 행
+    expect(within(first).getByText('09:30')).toBeInTheDocument();
+    expect(within(first).getByText('2')).toBeInTheDocument();
+    expect(within(second).getByText('09:20')).toBeInTheDocument();
+    expect(within(second).getByText('1')).toBeInTheDocument();
   });
 
   // 2026-07-30 사용자 결정: 헤더는 창 본문(--bg-card)과 같은 배경 — 밴드 금지.
