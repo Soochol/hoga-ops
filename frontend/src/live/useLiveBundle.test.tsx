@@ -200,7 +200,7 @@ function createWrapper(settings?: Partial<LiveSettings>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(LIVE_SETTINGS_KEY, {
     schema_version: 1,
-    kis_rest_bypass_enabled: false,
+    rest_bypass_enabled: false,
     screener_depth_autocollect: false,
     ...settings,
   } satisfies LiveSettings);
@@ -1042,7 +1042,7 @@ describe('useLiveBundle', () => {
   it('keeps stored range and screener daily fallbacks enabled when bypass is enabled', () => {
     const result = renderUseLiveBundle({
       timeframe: 'D',
-      settings: { kis_rest_bypass_enabled: true },
+      settings: { rest_bypass_enabled: true },
       screenerDailyCandles: [{ t_ms: 1, open: 1, high: 2, low: 1, close: 2, volume: 100 }],
     });
 
@@ -1057,7 +1057,7 @@ describe('useLiveBundle', () => {
 
     const result = renderUseLiveBundle({
       timeframe: '1m',
-      settings: { kis_rest_bypass_enabled: true },
+      settings: { rest_bypass_enabled: true },
       rangeCandles: [
         { ts_ms: 1_779_840_000_000, open: 71_000, high: 71_300, low: 70_900, close: 71_234, vol_a: 1000, vol_b: 0 },
       ],
@@ -1098,7 +1098,7 @@ describe('useLiveBundle', () => {
 
     const { result } = renderHook(
       () => useLiveBundle('005930', '1m', '20260527', liveFixture),
-      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
     );
 
     expect(result.current.chartBundle?.candles).toHaveLength(1);
@@ -1117,7 +1117,7 @@ describe('useLiveBundle', () => {
     candlesMock.warnings = [{ reason: 'kis_api_error', msg: 'TRANSPORT/ConnectError' }];
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
-      wrapper: createWrapper({ kis_rest_bypass_enabled: true }),
+      wrapper: createWrapper({ rest_bypass_enabled: true }),
     });
 
     expect(notifyFailureSpy).not.toHaveBeenCalled();
@@ -1819,7 +1819,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
 
     const { result } = renderHook(
       () => useLiveBundle('005930', 'D', '20260527', liveFixture),
-      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
     );
 
     // 우회 ON: KIS 일봉은 code=null(미발사), 스크리너만 사용.
@@ -1887,7 +1887,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     const result = renderUseLiveBundle({
       timeframe: '1m',
       venue: 'UN',
-      settings: { kis_rest_bypass_enabled: true },
+      settings: { rest_bypass_enabled: true },
       rangeCandles: [
         { ts_ms: 1_779_840_000_000, open: 71_000, high: 71_300, low: 70_900, close: 71_234, vol_a: 1000, vol_b: 0 },
       ],
@@ -2168,7 +2168,7 @@ describe('useLiveBundle isExtending', () => {
     });
     const { result } = renderHook(
       () => useLiveBundle('005930', '1m', '20260527', liveFixture),
-      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
     );
     expect(result.current.isExtending).toBe(true);
   });
@@ -2195,7 +2195,7 @@ describe('useLiveBundle isExtending', () => {
     });
     const { result } = renderHook(
       () => useLiveBundle('005930', '1m', '20260527', liveFixture),
-      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
     );
     expect(result.current.isExtending).toBe(false);
   });

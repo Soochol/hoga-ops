@@ -26,7 +26,7 @@ describe('useLiveStatus', () => {
       watchlist_count: 3,
       kis_calls_today: 12,
       kis_rate_limit_remaining: null,
-      kis_rest_bypass_enabled: false,
+      rest_bypass_enabled: false,
     };
     vi.spyOn(client, 'apiCall').mockResolvedValue(fake);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

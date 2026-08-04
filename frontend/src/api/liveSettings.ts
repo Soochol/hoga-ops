@@ -9,12 +9,12 @@ import { apiCall } from './client';
 // push 전환으로 수집 비용이 0이 되어 거래원(0F)처럼 항시 저장한다.
 export interface LiveSettings {
   schema_version: number;
-  kis_rest_bypass_enabled: boolean;
+  rest_bypass_enabled: boolean;
   screener_depth_autocollect: boolean;
 }
 
 export type LiveSettingsPatch = {
-  kis_rest_bypass_enabled?: boolean;
+  rest_bypass_enabled?: boolean;
   screener_depth_autocollect?: boolean;
 };
 

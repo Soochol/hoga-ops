@@ -44,7 +44,7 @@ function MacroGroupLabel({ children }: { children: ReactNode }) {
 export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
   const { data } = useLiveSettings();
   const patch = usePatchLiveSettings();
-  const kisRestBypassEnabled = data?.kis_rest_bypass_enabled ?? false;
+  const kisRestBypassEnabled = data?.rest_bypass_enabled ?? false;
 
   return (
     <>
@@ -71,7 +71,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
               <ToggleSwitch
                 label="KIS API 우회"
                 checked={kisRestBypassEnabled}
-                onClick={() => patch.mutate({ kis_rest_bypass_enabled: !kisRestBypassEnabled })}
+                onClick={() => patch.mutate({ rest_bypass_enabled: !kisRestBypassEnabled })}
               />
             </SettingsRow>
           )}

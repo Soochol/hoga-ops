@@ -33,12 +33,12 @@ describe('KisRestUnavailableToastHost', () => {
   it('shows a KIS connection toast, enables bypass, and auto-dismisses the toast', async () => {
     const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      kis_rest_bypass_enabled: true,
+      rest_bypass_enabled: true,
       screener_depth_autocollect: false,
     });
     renderWithClient({
       schema_version: 1,
-      kis_rest_bypass_enabled: false,
+      rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
 
@@ -55,7 +55,7 @@ describe('KisRestUnavailableToastHost', () => {
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kis_rest_bypass_enabled: true }),
+      body: JSON.stringify({ rest_bypass_enabled: true }),
     }));
     // 우회가 켜지면 토스트 목적이 달성되므로 자동으로 닫힌다.
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
@@ -65,7 +65,7 @@ describe('KisRestUnavailableToastHost', () => {
   it('dismisses the toast via the close button without enabling bypass', () => {
     renderWithClient({
       schema_version: 1,
-      kis_rest_bypass_enabled: false,
+      rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
 
@@ -85,7 +85,7 @@ describe('KisRestUnavailableToastHost', () => {
   it('re-shows the toast on a fresh failure after the cooldown, even once dismissed', () => {
     renderWithClient({
       schema_version: 1,
-      kis_rest_bypass_enabled: false,
+      rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
 
@@ -111,7 +111,7 @@ describe('KisRestUnavailableToastHost', () => {
   it('does not render before a failure notification', () => {
     renderWithClient({
       schema_version: 1,
-      kis_rest_bypass_enabled: false,
+      rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
 
@@ -122,21 +122,21 @@ describe('KisRestUnavailableToastHost', () => {
     localStorage.setItem('chart.kisRestMode.v1', JSON.stringify({ kisRestBypassEnabled: true }));
     const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      kis_rest_bypass_enabled: true,
+      rest_bypass_enabled: true,
       screener_depth_autocollect: false,
     });
     const markSpy = vi.spyOn(kisRestMode, 'markLegacyKisRestBypassMigrated');
 
     renderWithClient({
       schema_version: 1,
-      kis_rest_bypass_enabled: false,
+      rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
 
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kis_rest_bypass_enabled: true }),
+      body: JSON.stringify({ rest_bypass_enabled: true }),
     }));
     await waitFor(() => expect(markSpy).toHaveBeenCalled());
   });
@@ -148,14 +148,14 @@ describe('KisRestUnavailableToastHost', () => {
 
     renderWithClient({
       schema_version: 1,
-      kis_rest_bypass_enabled: false,
+      rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
 
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kis_rest_bypass_enabled: true }),
+      body: JSON.stringify({ rest_bypass_enabled: true }),
     }));
     await waitFor(() => expect(localStorage.getItem('chart.kisRestMode.v1')).not.toBeNull());
     expect(localStorage.getItem('chart.kisRestMode.v1')).toContain('true');

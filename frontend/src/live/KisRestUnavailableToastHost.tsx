@@ -14,7 +14,7 @@ export default function KisRestUnavailableToastHost() {
   const lastToastAtMs = useKisRestModeStore((s) => s.lastToastAtMs);
   const toastDismissed = useKisRestModeStore((s) => s.toastDismissed);
   const dismissToast = useKisRestModeStore((s) => s.dismissToast);
-  const kisRestBypassEnabled = settings?.kis_rest_bypass_enabled ?? false;
+  const kisRestBypassEnabled = settings?.rest_bypass_enabled ?? false;
 
   // 레거시 로컬 우회 → 백엔드 마이그레이션은 마운트당 1회만 시도한다. 낙관적 업데이트가
   // settings 캐시를 잠깐 뒤집었다 롤백하면 effect가 재발화하는데, 이 가드가 없으면
@@ -22,12 +22,12 @@ export default function KisRestUnavailableToastHost() {
   // 다음 세션(remount)에 재시도한다.
   const migrationAttemptedRef = useRef(false);
   useEffect(() => {
-    if (!settings || settings.kis_rest_bypass_enabled || migrationAttemptedRef.current) return;
+    if (!settings || settings.rest_bypass_enabled || migrationAttemptedRef.current) return;
     const legacy = readLegacyKisRestBypass();
     if (legacy?.kisRestBypassEnabled) {
       migrationAttemptedRef.current = true;
       patch.mutate(
-        { kis_rest_bypass_enabled: true },
+        { rest_bypass_enabled: true },
         { onSuccess: () => markLegacyKisRestBypassMigrated() },
       );
     }
@@ -66,7 +66,7 @@ export default function KisRestUnavailableToastHost() {
         <ToggleSwitch
           label="KIS API 우회"
           checked={kisRestBypassEnabled}
-          onClick={() => patch.mutate({ kis_rest_bypass_enabled: !kisRestBypassEnabled })}
+          onClick={() => patch.mutate({ rest_bypass_enabled: !kisRestBypassEnabled })}
         />
       </div>
     </ToastCard>

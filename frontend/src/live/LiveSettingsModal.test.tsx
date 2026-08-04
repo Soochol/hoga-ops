@@ -93,7 +93,7 @@ describe('LiveSettingsModal (2단)', () => {
   it('복기뷰(study) 모달은 데이터소스 nav·상세를 유지한다', () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
       schema_version: 1,
-      kis_rest_bypass_enabled: false,
+      rest_bypass_enabled: false,
       screener_depth_autocollect: false,
     });
     render(<LiveSettingsModal variant="study" onClose={() => {}} />, {

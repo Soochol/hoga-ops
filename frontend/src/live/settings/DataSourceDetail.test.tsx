@@ -17,7 +17,7 @@ function freshQc() {
 
 const SETTINGS = {
   schema_version: 1,
-  kis_rest_bypass_enabled: false,
+  rest_bypass_enabled: false,
   screener_depth_autocollect: false,
 };
 
@@ -84,7 +84,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
   });
 
   it('KIS API 우회 토글을 backend settings로 저장한다', async () => {
-    const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, kis_rest_bypass_enabled: true });
+    const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, rest_bypass_enabled: true });
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
 
     render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
@@ -97,7 +97,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kis_rest_bypass_enabled: true }),
+      body: JSON.stringify({ rest_bypass_enabled: true }),
     }));
     await waitFor(() => expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toHaveAttribute('aria-checked', 'true'));
   });

@@ -445,7 +445,7 @@ export function useLiveBundle(
   const { data: liveSettings } = useLiveSettings();
   // 캔들 소스의 유일한 분기 축(4옵션 우선순위-병합 모델 폐기). 우회 OFF=KIS만,
   // 우회 ON=디스크만(분봉 hogaplay / D·W·M 스크리너). 모드당 소스 1개라 병합 없음.
-  const kisRestBypassEnabled = liveSettings?.kis_rest_bypass_enabled ?? false;
+  const kisRestBypassEnabled = liveSettings?.rest_bypass_enabled ?? false;
   const notifyKisRestFailure = useKisRestModeStore((s) => s.notifyFailure);
   const venue = options.venue ?? 'KRX';
 

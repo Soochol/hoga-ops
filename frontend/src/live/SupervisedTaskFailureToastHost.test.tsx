@@ -16,7 +16,7 @@ function baseStatus(overrides: Partial<LiveStatus> = {}): LiveStatus {
     kis_calls_today: 0,
     kis_rate_limit_remaining: null,
     live_set: [],
-    kis_rest_bypass_enabled: false,
+    rest_bypass_enabled: false,
     ...overrides,
   };
 }
