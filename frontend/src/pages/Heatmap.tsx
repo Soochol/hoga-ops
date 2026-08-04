@@ -130,6 +130,14 @@ export function Heatmap() {
 
   const updated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
+  // 장마감 + 시세 커버리지 희박(절반 미만)이면 '—' 행이 보드를 뒤덮는다 — 이게 오류가
+  // 아니라 "실시간 시세 미수신" 상태임을 한 줄로 알린다(데이터 층 무변경). 장중에는
+  // 폴링이 곧 채우므로 띄우지 않는다.
+  const quotedCount = useMemo(
+    () => codes.reduce((n, c) => n + (quoteByCode.has(c) ? 1 : 0), 0),
+    [codes, quoteByCode],
+  );
+  const showClosedSparseNotice = phase === 'closed' && codes.length > 0 && quotedCount * 2 < codes.length;
   // 헤더 "N종목" 은 표시된 종목 수(검색 중엔 매칭 그룹의 전체 종목). 빈 실폴더는 0 기여.
   const visibleCount = visibleGroups.reduce((n, g) => n + g.entries.length, 0);
   // 검색 중 실제 매칭(하이라이트) 종목 수 — visibleCount(그룹 전체)와 구분해 헤더에
@@ -179,6 +187,11 @@ export function Heatmap() {
             <SortCycleButton label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
           </ControlBar>
         </header>
+        {showClosedSparseNotice && (
+          <div data-testid="heatmap-closed-notice" className="flex-none bg-bg px-3 pb-1 text-xs text-fg-dimmer">
+            장마감 — 시세 없는 종목의 값(—)은 다음 장 시작 후 채워집니다
+          </div>
+        )}
         <SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={scrollToFolder} />
         {showNewGroup && (
           <GroupNameModal
