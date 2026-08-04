@@ -12,10 +12,12 @@ from typing import Any, Literal
 import duckdb
 
 from hoga.api.disk_state import DiskState, classify_from_meta
+from hoga.api.eligibility import is_terminal_partial
 from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import StockDate
 from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.api.sources import resolve_source_result
+from hoga.collector.orchestrator import now_kst
 from hoga.duck import connect_bounded
 from hoga.tables import snapshots
 from hoga.util.timeenc import hhmmssms_to_unix_ms
@@ -352,7 +354,12 @@ class QueryEngine:
         """
         meta = json.loads((code_dir / "meta.json").read_text(encoding="utf-8"))
         # StockDate has no field for classify_from_meta's warning note.
-        _state = classify_from_meta(meta).state
+        _classification = classify_from_meta(meta)
+        _state = _classification.state
+        # ADR-0093/0126/0131 — "재캡처가 무의미하다" 판정. 서버가 답해야 한다:
+        # 보유 창 만료 경로는 **오늘 날짜**가 있어야 풀리므로 클라이언트가
+        # meta 만으로 재현할 수 없다. 워커·달력과 같은 술어를 공유한다.
+        _terminal_partial = is_terminal_partial(_classification, date, now_kst())
         norm_meta, _ = normalize_session_bounds(meta)
         snap_path = code_dir / "snapshots.parquet"
         # snapshots.ts_ms is stored as HHMMSSmmm (per existing tests
@@ -442,6 +449,7 @@ class QueryEngine:
             # identical result. >=2 = confirmed upstream gap (drawer shows it +
             # gates the force-recapture affordance). Null on legacy meta.
             identical_capture_count=meta.get("identical_capture_count"),
+            upstream_gap_confirmed=_terminal_partial,
             # ADR-0020: surface the full enum so consumers can
             # see INVALID — the boolean pair above flattens it.
             disk_state=_state.value,

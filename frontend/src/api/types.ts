@@ -22,6 +22,13 @@ export type StockDate = {
    *  captures that reproduced the identical result; >= 2 = confirmed upstream
    *  gap. Null on legacy meta.json. */
   identical_capture_count?: number | null;
+  /** 이 `source_partial` 이 **재캡처로 나아지지 않는다**고 서버가 판정했는가
+   *  (eligibility.is_terminal_partial — 워커가 `upstream_gap` 으로 건너뛰는 조건).
+   *
+   *  `identical_capture_count >= 2` 로 대신 계산하면 **안 된다**. 그건 확정 경로
+   *  셋 중 하나(ADR-0093)일 뿐이고, 세션 경계 접촉(ADR-0126)·보유 창 밖 미확정
+   *  (ADR-0131)은 여기서 재현할 수 없다 — 후자는 오늘 날짜가 있어야 풀린다. */
+  upstream_gap_confirmed?: boolean;
   /** ADR-0042: consecutive failed+skipped count since last success/unblock.
    *  Joined from QueueManifest.fail_streaks at the route layer. 0 means
    *  "no recent failures"; ``>= 5`` means ``blocked``. */

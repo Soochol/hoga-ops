@@ -69,6 +69,20 @@ class StockDate(BaseModel):
     ``>= 2`` marks a confirmed upstream gap — the worker skips it (upstream_gap)
     and the inventory drawer surfaces it + offers a force-recapture. Null on
     legacy meta written before this counter."""
+    upstream_gap_confirmed: bool = False
+    """이 ``source_partial`` 이 **재캡처로 나아지지 않는다**고 판정됐는가
+    (:func:`eligibility.is_terminal_partial`). 워커가 ``upstream_gap`` 으로
+    건너뛰는 바로 그 조건이다.
+
+    ``identical_capture_count >= 2`` 로 대신할 수 없어서 필드로 싣는다. 그건
+    확정 경로 셋 중 하나(ADR-0093)일 뿐이고, 나머지 둘 — 세션 경계 접촉
+    (ADR-0126)·보유 창 밖 미확정(ADR-0131) — 은 meta 단독으로도, 카운터
+    단독으로도 클라이언트가 재현할 수 없다(후자는 **오늘 날짜**가 있어야 한다).
+
+    ``disk_state`` 를 쪼개는 대신 불리언을 더한 이유: ``disk_state ==
+    "source_partial"`` 이 결손 패널 노출·정렬 severity·재캡처 게이트를 좌우해서,
+    값을 나누면 정작 확정 행에서 상세가 사라진다. 확정 여부는 **표시 축**이지
+    상태 축이 아니다."""
     fail_streak: int = 0
     """ADR-0042: consecutive failed+skipped count since last success/unblock.
     Joined from QueueManifest.fail_streaks at the route layer. 0 means

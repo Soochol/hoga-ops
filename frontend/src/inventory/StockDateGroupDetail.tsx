@@ -127,6 +127,11 @@ export function StockDateGroupDetail({ group }: Props) {
               // WS1: only source_partial (collection completed, gaps remain =
               // likely upstream-missing) offers the gap-detail panel.
               const hasGapPanel = r.disk_state === 'source_partial';
+              // 서버 판정. 종전엔 GapPanel 이 identical_capture_count >= 2 로
+              // 자체 계산했는데 그건 확정 경로 셋 중 하나뿐이라, 세션 경계·보유
+              // 창 만료로 확정된 행은 "확정" 문구도 강제 재캡처 버튼도 못 받았다
+              // — 워커는 이미 그 행들을 건너뛰고 있었는데도.
+              const gapConfirmed = r.upstream_gap_confirmed === true;
               const gapExpanded = expandedGapKey === rowKey;
               // ADR-0042 row tint: blocked rows pick up DESIGN.md error chip
               // bg (#F43F5E @ 10%) so the row itself signals "not normal".
@@ -153,14 +158,22 @@ export function StockDateGroupDetail({ group }: Props) {
                   </td>
                   <td className="px-3 py-1.5 text-center">
                     <span className="inline-flex items-center gap-1.5">
-                      <DiskStateBadge state={r.disk_state} />
+                      <DiskStateBadge
+                        state={r.disk_state}
+                        upstreamGapConfirmed={r.upstream_gap_confirmed}
+                      />
                       {hasGapPanel && (
                         <button
                           type="button"
                           aria-label={gapExpanded ? '결손 구간 접기' : '결손 구간 보기'}
                           aria-expanded={gapExpanded}
                           onClick={() => setExpandedGapKey(gapExpanded ? null : rowKey)}
-                          className="text-badge text-warn underline hover:text-fg cursor-pointer bg-transparent border-none p-0"
+                          // 확정 행은 배지와 같은 톤으로 가라앉힌다 — ⊘ 옆에 amber
+                          // "결손" 이 남으면 배지만 바꾼 의미가 반감된다.
+                          className={[
+                            'text-badge underline hover:text-fg cursor-pointer bg-transparent border-none p-0',
+                            gapConfirmed ? 'text-fg-dim' : 'text-warn',
+                          ].join(' ')}
                         >
                           결손
                         </button>
@@ -187,6 +200,7 @@ export function StockDateGroupDetail({ group }: Props) {
                         code={r.code}
                         date={r.date}
                         identicalCaptureCount={r.identical_capture_count ?? null}
+                        confirmed={gapConfirmed}
                         isInFlight={inFlight}
                         onForceRecapture={() => handleRecaptureRow(r.date, true)}
                       />
@@ -204,20 +218,22 @@ export function StockDateGroupDetail({ group }: Props) {
 }
 
 function GapPanel({
-  code, date, identicalCaptureCount, isInFlight, onForceRecapture,
+  code, date, identicalCaptureCount, confirmed, isInFlight, onForceRecapture,
 }: {
   code: string;
   date: string;
   identicalCaptureCount: number | null;
+  /** 서버 판정(`upstream_gap_confirmed`). 여기서 다시 계산하지 않는다 — 종전의
+   *  `identical_capture_count >= 2` 는 확정 경로 셋 중 ADR-0093 하나뿐이었다. */
+  confirmed: boolean;
   isInFlight: boolean;
   onForceRecapture: () => void;
 }) {
   // WS1: lazily fetch the gap boundaries only when this row is expanded.
   const { data, isLoading, isError } = useStockDateGaps(code, date, true);
-  // ADR-0093: >= 2 completed captures with the identical result = confirmed
-  // upstream gap. The worker now skips re-captures (upstream_gap); the only way
-  // to re-verify is the force button below.
-  const confirmed = (identicalCaptureCount ?? 0) >= 2;
+  // 확정 사유를 아는 경우에만 근거를 덧붙인다. ADR-0126(세션 경계)·ADR-0131
+  // (보유 창 만료)로 확정된 행은 카운터가 1 이하라 "N회 동일" 이 성립하지 않는다.
+  const identicalReason = (identicalCaptureCount ?? 0) >= 2;
 
   if (isLoading) {
     return <div className="text-xs text-fg-dim font-data" data-testid="gap-panel-loading">결손 구간 조회 중…</div>;
@@ -241,11 +257,13 @@ function GapPanel({
   }
   return (
     <div className="flex flex-col gap-1.5" data-testid="gap-panel">
-      <div className="text-xs font-semibold text-warn">
+      <div className={`text-xs font-semibold ${confirmed ? 'text-fg-dim' : 'text-warn'}`}>
         업스트림 결손 {data.gap_ranges.length}구간
         {confirmed && (
           <span data-testid="gap-panel-confirmed" className="ml-2 text-fg-dim font-normal">
-            · {identicalCaptureCount}회 재캡처 동일 결과 — 업스트림 결손 확정
+            · {identicalReason
+              ? `${identicalCaptureCount}회 재캡처 동일 결과 — 업스트림 결손 확정`
+              : '업스트림 결손 확정 — 재캡처가 이 구간을 채울 수 없습니다'}
           </span>
         )}
       </div>
@@ -259,7 +277,9 @@ function GapPanel({
       </ul>
       <div className="text-xs text-fg-dim leading-snug">
         수집은 끝까지 완료됐으나 원본 아카이브에 이 구간 데이터가 없습니다.
-        재캡처해도 복구되지 않을 수 있습니다
+        {confirmed
+          ? ' 재캡처해도 동일한 결과가 나옵니다 — 자동 재캡처는 건너뜁니다'
+          : ' 재캡처해도 복구되지 않을 수 있습니다'}
       </div>
       {confirmed && (
         <div>

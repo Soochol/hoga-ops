@@ -95,6 +95,37 @@ def is_expired_unconfirmed_gap(
     )
 
 
+def is_terminal_partial(
+    classification: Classification, date: str, now: dt.datetime
+) -> bool:
+    """이 SOURCE_PARTIAL 이 **재캡처로 나아지지 않는** 부분 결손인가.
+
+    ``decide_capture`` 가 SOURCE_PARTIAL 을 ``upstream_gap`` 으로 건너뛰는 두
+    경로의 합집합이다:
+
+      1. :attr:`Classification.upstream_gap_confirmed` — 재캡처가 동일 갭을
+         재현했거나(ADR-0093) 갭이 세션 경계에 접한다(ADR-0126).
+      2. :func:`is_expired_unconfirmed_gap` — 아직 미확정이지만 보유 창 밖이라
+         (1)의 확정 경로가 **원리적으로 닫혀 있다**(ADR-0131).
+
+    표시 계층이 이걸 직접 조립하면 안 되는 이유가 여기 있다. 보관함의 결손
+    패널은 오래도록 ``identical_capture_count >= 2`` 만 봤는데 그건 (1)의 절반일
+    뿐이라, 세션 경계·보유 창 만료로 확정된 행은 "확정" 문구도 강제 재캡처
+    버튼도 못 받았다 — 워커는 그 행들을 이미 건너뛰고 있었는데도. 술어를 한 곳에
+    두고 소비자 셋(워커 결정·달력 셀·보관함 배지)이 같은 답을 읽는다.
+
+    INVALID 쪽 ``upstream_gap`` 경로(close_ms=0 스텁, ADR-0130)는 여기 없다.
+    그건 SOURCE_PARTIAL 이 아니라 별도 상태로 그려지는 다른 클래스다.
+    """
+    return (
+        classification.state == DiskState.SOURCE_PARTIAL
+        and (
+            classification.upstream_gap_confirmed
+            or is_expired_unconfirmed_gap(classification, date, now)
+        )
+    )
+
+
 # `regular_session_close_ms == 0` 스텁이 만드는 error 위반 집합.
 #
 # 0 은 **반드시 둘 다** 발화시킨다: open 보다 작고(close_after_open), 12–18시
