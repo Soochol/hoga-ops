@@ -21,6 +21,7 @@ export function InvestorTrendEstimateCard({ query }: Props) {
   const isError = Boolean(query.error) || data?.status === 'error';
   const isLoadingFirstFetch = query.isLoading && !data;
   const stateText = getStateText({ isLoadingFirstFetch, isError, data, hasRows });
+  const displayRows = toDescendingDisplayRows(rows);
 
   if (!hasRows) {
     return (
@@ -56,9 +57,8 @@ export function InvestorTrendEstimateCard({ query }: Props) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => {
+          {displayRows.map(({ row, ordinal, time }) => {
             const isLatest = isLatestRow(row, data?.latest ?? null);
-            const { ordinal, time } = formatAggregationSlot(row, index);
             return (
               <tr
                 key={row.slot}
@@ -80,6 +80,17 @@ export function InvestorTrendEstimateCard({ query }: Props) {
       </table>
     </div>
   );
+}
+
+/** 표시 순서를 최신 차수가 맨 위인 내림차순으로 뒤집는다(2026-08-04 사용자 결정).
+ *  응답의 `rows` 는 차수 오름차순이므로 배열을 그냥 뒤집으면 되지만, **차수 라벨을
+ *  먼저 확정한 뒤에** 뒤집어야 한다 — `formatAggregationSlot` 은 `slot` 이 숫자가
+ *  아닐 때 `index + 1` 을 차수로 쓰므로, 뒤집힌 배열에서 계산하면 최신 행이 1차가
+ *  되어 번호가 거꾸로 매겨진다. 원본 배열은 건드리지 않는다(`map` 이 새 배열). */
+export function toDescendingDisplayRows(
+  rows: LiveInvestorTrendEstimateRow[],
+): Array<{ row: LiveInvestorTrendEstimateRow; ordinal: string | null; time: string }> {
+  return rows.map((row, index) => ({ row, ...formatAggregationSlot(row, index) })).reverse();
 }
 
 function QtyCell({ value, className = 'px-1.5' }: { value: number | null; className?: string }) {
