@@ -503,3 +503,142 @@ async def test_snapshot_exposes_per_account_call_counts() -> None:
     assert sum(counts.values()) == 6
     assert set(counts) == {0, 1}
     await s.aclose()
+
+
+# === 인증 실패: 토큰 무효화 + 계정 격리 + 1회 재시도 (2026-08-04) =============
+#
+# 키움 토큰은 수명이 **두 축**이다: 시계 만료(`expires_dt`)와 벤더 측 무효화(8005).
+# 후자는 만료 시각이 한참 남았는데도 죽는다 — 같은 앱키로 어딘가에서 재발급하면
+# 이전 토큰이 무효가 된다. 앱키 4개 중 2개가 이렇게 죽어 /live 과거 캔들이 통째로
+# 멎었다(2026-08-04 실측). 재시도를 **거버너 위**에 두는 것이 요점이다: 클라이언트
+# 안에서 몰래 한 번 더 쏘면 그 콜이 TR 버킷을 안 거쳐 페이싱에서 보이지 않는다.
+
+
+class _AuthFailingClient(_FakeClient):
+    """`invalidate_token` 호출을 기록하는 계정 더블."""
+
+    def __init__(self, account_id: int) -> None:
+        super().__init__(account_id)
+        self.invalidated = 0
+
+    async def invalidate_token(self) -> None:
+        self.invalidated += 1
+
+
+def _auth_error(msg: str = "인증에 실패했습니다[8005:Token이 유효하지 않습니다]"):
+    from hoga.live.kiwoom_errors import KiwoomAuthError
+
+    return KiwoomAuthError(msg)
+
+
+async def test_auth_failure_invalidates_token_and_retries_on_healthy_account() -> None:
+    """죽은 앱키를 만나면 토큰을 버리고 **살아 있는 앱키로 요청이 완주**해야 한다.
+
+    이게 없으면 죽은 계정에 배정된 요청이 그대로 실패하고, walk 는 한 페이지만
+    실패해도 전체가 무너져 미캐시 날짜 전량이 `api_error` 가 된다.
+    """
+    s = _sched(workers=1)
+    clients = [_AuthFailingClient(0), _AuthFailingClient(1)]
+    s.set_clients(clients)
+    seen: list[int] = []
+
+    async def fn(client) -> str:
+        seen.append(client.account_id)
+        if client.account_id == 0:
+            raise _auth_error()
+        return "v"
+
+    assert await s.submit(
+        key="k", api_id="ka10001", priority="user_visible", call=fn) == "v"
+    assert seen == [0, 1], "죽은 계정에서 한 번, 살아 있는 계정에서 한 번"
+    assert clients[0].invalidated == 1, "죽은 계정의 토큰을 버려야 다음 발급이 산다"
+    assert clients[1].invalidated == 0, "멀쩡한 계정의 토큰까지 버리면 안 된다"
+    assert s._inflight == {}, "되큐 경로가 inflight 를 흘리면 안 된다"
+    await s.aclose()
+
+
+async def test_auth_retry_is_single_shot() -> None:
+    """재발급이 쿨다운에 걸렸거나 자격증명 자체가 틀리면 두 번째도 같은 자리에서
+    실패한다. 무제한 재시도면 그대로 무한 루프다."""
+    s = _sched(workers=1)
+    s.set_clients([_AuthFailingClient(0), _AuthFailingClient(1)])
+    calls = 0
+
+    async def fn(_client) -> None:
+        nonlocal calls
+        calls += 1
+        raise _auth_error()
+
+    from hoga.live.kiwoom_errors import KiwoomAuthError
+
+    with pytest.raises(KiwoomAuthError):
+        await s.submit(key="k", api_id="ka10001", priority="user_visible", call=fn)
+    assert calls == 2, "최초 1 + 재시도 1 — 그 이상이면 루프다"
+    assert s._inflight == {}
+    await s.aclose()
+
+
+async def test_auth_isolation_is_account_wide_not_per_tr() -> None:
+    """**유량과 축이 다르다.** 429 는 (앱키, TR) 이라 그 버킷만 밀면 되지만, 죽은
+    토큰은 그 계정의 **모든 TR** 을 못 쓴다. TR 버킷 하나만 밀면 같은 죽은 계정이
+    다른 TR 로 계속 뽑힌다."""
+    s = _sched(workers=1)
+    s.set_clients([_AuthFailingClient(0), _AuthFailingClient(1)])
+
+    async def fn(client) -> None:
+        if client.account_id == 0:
+            raise _auth_error()
+
+    await s.submit(key="k", api_id="ka10001", priority="user_visible", call=fn)
+
+    assert s._pick_account("ka10001") == 1
+    assert s._pick_account("ka10080") == 1, "다른 TR 로도 죽은 계정을 고르면 안 된다"
+    await s.aclose()
+
+
+async def test_all_accounts_auth_blocked_still_dispatches() -> None:
+    """전 계정이 격리돼도 `min` 은 하나를 고른다 — 데드락이 아니라 지연이고,
+    그 시도가 곧 재발급 기회다."""
+    s = _sched(workers=1)
+    s.set_clients([_AuthFailingClient(0), _AuthFailingClient(1)])
+    s._auth_blocked_until = {0: 1e18, 1: 1e18}
+
+    async def fn(client) -> str:
+        return f"ok{client.account_id}"
+
+    assert (await s.submit(
+        key="k", api_id="ka10001", priority="user_visible", call=fn)).startswith("ok")
+    await s.aclose()
+
+
+async def test_snapshot_exposes_auth_failures_and_blocked_accounts() -> None:
+    """계정별 생사가 여기 보이지 않으면 서버를 직접 뒤져야만 진단된다 — 화면에는
+    '일부 과거구간 로딩 실패' 밖에 안 뜬다."""
+    s = _sched(workers=1)
+    s.set_clients([_AuthFailingClient(0), _AuthFailingClient(1)])
+
+    async def fn(client) -> None:
+        if client.account_id == 0:
+            raise _auth_error()
+
+    await s.submit(key="k", api_id="ka10001", priority="user_visible", call=fn)
+
+    snap = s.snapshot()
+    assert snap["auth_failures_by_account"] == {0: 1}
+    assert snap["auth_blocked_accounts"] == [0]
+    await s.aclose()
+
+
+async def test_shrinking_pool_drops_auth_isolation() -> None:
+    """사라진 계정의 격리가 남아 있으면, 풀이 다시 커졌을 때 **다른 앱키가** 그
+    account_id 를 물려받아 애먼 격리를 산다."""
+    s = _sched(workers=1)
+    s.set_clients([_AuthFailingClient(0), _AuthFailingClient(1)])
+    # 격리를 직접 세운다 — 검증 대상이 `set_clients` 의 정리 규칙이고, 계정 1 이
+    # 뽑히게 만들려면 계정 0 을 먼저 밀어야 해서 경로가 되레 흐려진다.
+    s._auth_blocked_until = {1: 1e18}
+    assert s.snapshot()["auth_blocked_accounts"] == [1]
+
+    s.set_clients([_AuthFailingClient(0)])
+    assert s.snapshot()["auth_blocked_accounts"] == []
+    await s.aclose()

@@ -34,15 +34,26 @@ export interface WarningSummary {
   count: number;
   /** rate-limit 계열 경고가 하나라도 있나 (빈칸 문구 전환 트리거). */
   hasRateLimit: boolean;
+  /** 첫 경고의 벤더 원문(`msg`). 칩 툴팁 전용 — **분기 조건으로 쓰지 말 것.**
+   * 동작은 `reason` 으로만 가른다(`reason` 은 계약, `msg` 는 사람이 읽는 산문이라
+   * 벤더가 예고 없이 바꾼다).
+   *
+   * 이걸 노출하는 이유: 칩 문구는 rate-limit 여부 2분류라 원인이 전혀 안 보인다.
+   * 2026-08-04 에 키움 토큰이 벤더 측에서 무효화(8005)돼 과거 캔들이 통째로 멎었을
+   * 때, 화면만으로는 진단이 **불가능**해서 백엔드 응답을 직접 떠야 했다. */
+  firstMsg: string | null;
 }
 
 /** 경고 배열을 표시용 요약으로 접는다. null/빈 배열은 무경고. */
 export function summarizeWarnings(
   warnings: readonly LiveDataWarning[] | null | undefined,
 ): WarningSummary {
-  if (!warnings || warnings.length === 0) return { count: 0, hasRateLimit: false };
+  if (!warnings || warnings.length === 0) {
+    return { count: 0, hasRateLimit: false, firstMsg: null };
+  }
   return {
     count: warnings.length,
     hasRateLimit: warnings.some((w) => isRateLimitReason(w.reason)),
+    firstMsg: warnings.find((w) => w.msg)?.msg ?? null,
   };
 }

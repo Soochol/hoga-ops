@@ -25,6 +25,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -56,8 +57,15 @@ _ENVELOPE = frozenset({"return_code", "return_msg"})
 # 유량 초과의 벤더 신호 두 가지. HTTP 429 가 1차 신호이고 return_code 5 는 확인용이다.
 _HTTP_TOO_MANY = 429
 _RC_RATE_LIMITED = 5
-# authorization 헤더 부재. 자격증명 미설정을 인증 실패와 같은 축으로 다룬다.
-_RC_MSG_NO_AUTH = "1513"
+# 인증 실패 두 갈래. 둘 다 `KiwoomAuthError` 로 접는다 — 호출자에게는 "이 토큰으로는
+# 못 간다" 하나의 사실이고, 거버너가 그 사실에 대해 하는 일(무효화·계정 격리·재큐)이
+# 같기 때문이다.
+#   1513  authorization 헤더 부재. 자격증명 미설정이 이 모양으로 온다.
+#   8005  **토큰이 벤더 측에서 무효화됐다.** 만료와 다르다 — `expires_dt` 가 한참
+#         남아 있어도 같은 앱키로 어딘가에서 재발급하면 이전 토큰이 죽는다.
+#         만료만 보는 provider 캐시는 이걸 통과시키므로, 이 코드를 인증 실패로
+#         승격하지 않으면 죽은 토큰을 만료 시각까지(≈하루) 계속 쓴다(2026-08-04 실측).
+_RC_MSG_AUTH = ("1513", "8005")
 # **배치 크기 초과.** 벤더가 유량 초과(1700)와 똑같은 return_code 5 + 똑같은 한글
 # 문구로 돌려주므로 대괄호 코드로만 구분된다(#1040 실측). 재시도 대상이 아니다.
 _RC_MSG_BATCH_LIMIT = "1634"
@@ -157,7 +165,7 @@ def _raise_for_body(spec: TrSpec, status: int, body: dict[str, Any]) -> None:
     if status != httpx.codes.OK:
         raise KiwoomApiError(code=f"HTTP/{status}", msg=msg or f"HTTP {status}")
     if rc != 0:
-        if _RC_MSG_NO_AUTH in msg:
+        if any(code in msg for code in _RC_MSG_AUTH):
             raise KiwoomAuthError(msg)
         raise KiwoomApiError(code=rc, msg=msg)
 
@@ -203,7 +211,7 @@ class KiwoomRestClient:
 
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
-            "authorization": f"Bearer {self._token()}",
+            "authorization": f"Bearer {await self._token()}",
             "api-id": spec.api_id,
             "cont-yn": "Y" if cont else "N",
             "next-key": next_key,
@@ -288,9 +296,30 @@ class KiwoomRestClient:
             cont, next_key = True, page.next_key
         return out, True
 
-    def _token(self) -> str:
+    async def invalidate_token(self) -> None:
+        """이 계정의 캐시 토큰을 버린다 — 다음 `call` 이 재발급한다.
+
+        **거버너가 부르는 자리다**(`kiwoom_capacity`). 재시도를 여기가 아니라 거버너에
+        두는 것이 이 설계의 요점이다: 클라이언트가 몰래 한 번 더 쏘면 그 콜이 TR 버킷을
+        거치지 않아 페이싱에서 보이지 않는다 — 청킹을 거버너 아래 둬서 페이싱이 무효가
+        됐던 것과 같은 결함이다(ADR-0137).
+
+        provider 가 없거나 `invalidate` 를 모르면 조용히 no-op 이다. 자격증명 없는
+        dev 프로필(ADR-0134)과 토큰을 흉내만 내는 테스트 더블이 그 경로다.
+        """
+        invalidate = getattr(self._provider, "invalidate", None)
+        if invalidate is None:
+            return
+        # provider 는 동기 API 다(디스크 unlink + threading.Lock). 루프에서 직접 부르면
+        # 그 동안 프로세스 전체가 멈춘다.
+        await asyncio.to_thread(invalidate)
+
+    async def _token(self) -> str:
         try:
-            return self._provider.get_token()
+            # **to_thread 필수.** `get_token()` 은 캐시 히트일 땐 lock-and-return 이지만,
+            # miss 면 lock 을 쥔 채 동기 httpx POST 를 한다(timeout 10s). async 경로에서
+            # 직접 부르면 발급 한 번에 이벤트 루프가 최대 10초 멈춘다.
+            return await asyncio.to_thread(self._provider.get_token)
         # 광범위 catch 는 의도적이다 — 토큰 provider 의 어떤 실패든 도메인 예외로
         # 정규화해 호출자가 벤더 내부 예외를 몰라도 되게 한다. re-raise 하므로
         # BLE001 은 발화하지 않는다.
