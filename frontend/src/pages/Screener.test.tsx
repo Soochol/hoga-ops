@@ -514,7 +514,10 @@ it('조회 전에는 만료·0건과 구분되는 안내를, 조회 후에는 �
 
   fireEvent.click(screen.getByText('조회'));
   await screen.findByText('삼성전자');
-  expect(screen.getByTestId('screener-result-meta').textContent).toContain('결과 3건');
+  const meta = screen.getByTestId('screener-result-meta');
+  expect(meta.textContent).toContain('결과 3건');
+  // 결과 도착이 스크린리더에도 공지된다 — 메타 줄은 라이브 리전(role=status) 안에 산다.
+  expect(meta.closest('[role="status"]')).not.toBeNull();
   expect(screen.queryByText('아직 조회하지 않았습니다')).not.toBeInTheDocument();
 });
 

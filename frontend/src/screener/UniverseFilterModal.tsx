@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ScreenerScope, ScreenerUniverse } from '../api/screener';
 import { ModalShell } from '../ui/ModalShell';
 import { CheckIcon } from '../ui/CheckIcon';
@@ -12,13 +12,23 @@ const SCOPES: { id: ScreenerScope; label: string }[] = [
 type Group = 'market' | 'exclude' | 'scope';
 
 // 전역 사전필터 편집 모달. 좌측 nav 2그룹(시장/제외) + 우측 pane 전환.
-// 토글은 즉시 onChange 호출(초안 버퍼 없음); 닫기/Esc/배경은 순수 dismiss.
+// 토글은 즉시 onChange 호출(초안 버퍼 없음); 확인/Esc/배경은 순수 dismiss.
+// 취소는 열 때 스냅샷으로 되돌린다 — 실수한 토글을 저장본 재로드 없이 복구하는 유일한 길.
 export function UniverseFilterModal({ universe, onChange, onClose }: {
   universe: ScreenerUniverse;
   onChange: (u: ScreenerUniverse) => void;
   onClose: () => void;
 }) {
   const [group, setGroup] = useState<Group>('market');
+  // 열린 시점의 스냅샷(마운트 1회). 이후 prop 은 토글마다 갱신되므로 ref 로 고정한다.
+  const openedWithRef = useRef(universe);
+  const cancel = () => {
+    // 무변경 취소가 dirty 플래그를 건드리지 않도록, 실제로 달라졌을 때만 되돌린다.
+    if (JSON.stringify(universe) !== JSON.stringify(openedWithRef.current)) {
+      onChange(openedWithRef.current);
+    }
+    onClose();
+  };
   const markets = universe.markets ?? [];
   const scopes = universe.scopes ?? [];
   const toggleMarket = (m: (typeof MARKETS)[number]) => {
@@ -98,9 +108,12 @@ export function UniverseFilterModal({ universe, onChange, onClose }: {
         </div>
       </div>
 
-      <div className="flex justify-end px-4 py-3 border-t border-border">
+      <div className="flex justify-end gap-2 px-4 py-3 border-t border-border">
+        <button type="button" onClick={cancel}
+          className="px-3 py-1.5 text-sm bg-bg-input hover:bg-bg-input-hover text-fg rounded">취소</button>
         <button type="button" onClick={onClose}
-          className="px-3 py-1.5 text-sm bg-bg-input hover:bg-bg-input-hover text-fg rounded">닫기</button>
+          className="px-3 py-1.5 text-sm rounded font-semibold"
+          style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}>확인</button>
       </div>
     </ModalShell>
   );
