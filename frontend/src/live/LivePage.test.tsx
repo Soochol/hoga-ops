@@ -725,16 +725,6 @@ describe('LivePage shell', () => {
     expect(screen.getByText(/종목 없음/)).toBeInTheDocument();
   });
 
-  it('빈 차트 창은 상태만이 아니라 다음 행동을 준다', () => {
-    renderWithRouter();
-    // 하단 바에 "실시간 N종목" 이 흐르는데 화면이 비어 있으면 사용자는 정상 연결과
-    // 고장을 구분할 수 없다. 진입로(검색 / 우측 목록)와 결과(그룹의 창이 함께 채워짐)를
-    // 둘 다 말해야 한다 — 전면 오버레이가 아니라 창 안의 안내로(live-smoke 계약).
-    expect(screen.getByTestId('chart-window-empty')).toBeInTheDocument();
-    expect(screen.getByText(/검색\(\/\) 이나 우측 목록에서 종목을 고르면/)).toBeInTheDocument();
-    expect(screen.getByText(/이 그룹의 창이 함께 채워집니다/)).toBeInTheDocument();
-  });
-
   it('closes the indicator drawer when the last chart window disappears (리뷰 #3 latch)', async () => {
     renderWithRouter('/live?code=005930');
     act(() => { screen.getByTestId('live-indicators-button').click(); });

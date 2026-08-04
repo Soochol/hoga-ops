@@ -26,11 +26,8 @@ test.describe('/live smoke', () => {
     await installLiveMocks(page);
     await page.goto('/live');
 
-    // /live 는 워크스페이스(창) 모델이라 "관심종목을 선택해주세요" 라는 **전면 안내가
-    // 없다** — 창은 자유 배치이고 각자 자기 그룹의 상태를 말한다. 이 배치 계약은
-    // 2026-08-04 에도 그대로다. 바뀐 것은 내용으로, 각 창이 상태(`… · 종목 없음`)에
-    // 더해 다음 행동(차트 창=진입로, 데이터 창=축약판)을 함께 준다
-    // (`live/workspace/WindowEmptyState.tsx`, 문구 단언은 LivePage.test.tsx).
+    // **빈 상태 문구가 바뀌었다.** /live 는 워크스페이스(창) 모델이라 "관심종목을
+    // 선택해주세요" 라는 전면 안내가 없고, 창마다 "종목 없음 · <그룹>" 을 보여준다.
     await expect(page.getByText(/종목 없음/).first()).toBeVisible();
 
     // Open the watchlist panel and pick the only symbol.
