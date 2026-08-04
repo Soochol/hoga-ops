@@ -27,6 +27,20 @@ The design system has a **single density dial** at `:root font-size`.
 - ✅ CSS-rendered chrome — fonts, spacing, layout widths, line-heights (all rem-based).
 - ❌ `lightweight-charts` canvas — text and bar spacing live in `frontend/src/util/chartScale.ts` as static constants. Must be updated alongside the dial.
 - ❌ 1px borders, hairlines, small radii (2–6px), chart canvas internal coordinates — stay in px to protect anti-aliasing and pixel-grid sharpness.
+- 🚫 **타이포에 임의값 px 를 쓰지 않는다** (`text-[10px]` 류). 다이얼이 못 잡는 유일한
+  DOM 표면이라 그 텍스트만 밀도 변경에서 낙오된다 — 2026-08-04 에 71곳이 그 상태였다
+  (아래 결정로그).
+  - **맞는 크기가 없으면 토큰을 신설한다.** 하드코딩은 게으름이 아니라 **스케일 공백의
+    증상**인 경우가 많다. 71곳의 최대 무리(`10px`·`10.5px` 39곳)가 정확히 `badge`(9.56px
+    렌더)와 `xs`(11.81px 렌더) 사이 빈 구간이었고, `text-2xs`(렌더 10.125px) 신설로
+    시각 등가(±0.4px)로 흡수됐다. 공백을 놔둔 채 양옆 토큰으로 밀어내면 멀쩡한 텍스트가
+    최대 +12.5% 움직인다.
+  - **위계가 걸리면 근사 최단 매핑보다 위계가 우선.** 같은 파일에서 `11px`/`12px` 를
+    나눠 쓰고 있었다면 그건 의도된 2단이므로 `xs`/`sm` 으로 갈라 유지한다.
+  - **함정: `10.5px`·`11.5px`·`13px` 는 "토큰과 같은 값" 이 아니다.** 타이포 표의
+    **base-intent 열**을 그대로 px 로 박은 흔적인데, 실제 렌더는 ×1.125 된 값이라
+    다르다(`xs` base 10.5px → 렌더 11.81px). 표를 보고 px 를 적는 순간 다이얼에서
+    떨어져 나간다.
 
 **Future density modes (backlog):** A user-facing toggle (Compact 1.0× / Comfortable 1.125× / Cozy 1.25×) would set `:root font-size` via `[data-density="..."]`; `chartScale.ts` now derives from `RENDERED_ROOT_PX` (design-tokens.ts) but charts read it at mount, so a runtime toggle still needs a chart remount. Not in scope today.
 
