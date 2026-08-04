@@ -21,7 +21,16 @@ export default {
   server: {
     port: 5175,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true, ws: true },
+      '/api': {
+        target: 'http://127.0.0.1:8000', changeOrigin: true, ws: true,
+        // 백엔드는 상태변경 POST 의 Origin 을 :5173 만 허용한다 — 프록시 단계에서
+        // Origin 을 재작성해 통과시킨다(도그푸딩 전용 우회).
+        configure: (proxy: { on: (ev: string, cb: (req: { setHeader: (k: string, v: string) => void }) => void) => void }) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('origin', 'http://localhost:5173')
+          })
+        },
+      },
       '/health': { target: 'http://127.0.0.1:8000', changeOrigin: true },
     },
   },

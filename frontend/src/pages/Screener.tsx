@@ -23,6 +23,13 @@ import { sortScreenerRows } from '../screener/sortResults';
 import { intradayDegradationText } from '../screener/intradayDegradation';
 import { useLiveSettings } from '../api/liveSettings';
 import type { ScanBasis } from '../api/screener';
+// PROTOTYPE(throwaway) — /screener UI 리팩토링 변형. `?variant=a|b|c` 로 전환,
+// 파라미터 없으면 현행 렌더 그대로. 결론이 나면 prototype/ 디렉터리째 제거한다.
+import { PrototypeSwitcher, usePrototypeVariant } from '../screener/prototype/PrototypeSwitcher';
+import { VariantA } from '../screener/prototype/VariantA';
+import { VariantB } from '../screener/prototype/VariantB';
+import { VariantC } from '../screener/prototype/VariantC';
+import type { ScreenerViewProps } from '../screener/prototype/variantShared';
 
 type SaveDialogMode = 'save-new' | 'save-as';
 
@@ -147,6 +154,60 @@ export function Screener() {
     if (editor.anchorId) editor.saveCurrent();
     else setSaveDialog('save-new');
   };
+
+  const depthSides = {
+    ask: editor.conditions.some((c) => c.type === 'ask_depth_new_high'),
+    bid: editor.conditions.some((c) => c.type === 'bid_depth_new_high'),
+    askRenewal: editor.conditions.some((c) => c.type === 'ask_depth_renewal'),
+    bidRenewal: editor.conditions.some((c) => c.type === 'bid_depth_renewal'),
+  };
+
+  // PROTOTYPE(throwaway) — 훅 상태·핸들러를 그대로 변형에 넘긴다. 렌더만 다르다.
+  const variant = usePrototypeVariant();
+  const view: ScreenerViewProps = {
+    editor,
+    saves: savesData?.saves ?? [],
+    basis, setBasis, runScan,
+    scanPending: screener.isPending,
+    scanFailed: screener.isError,
+    scanErrorMessage: screener.error instanceof Error ? screener.error.message : null,
+    depthCoverage: screener.data?.depth_coverage ?? null,
+    autoCollect: liveSettings?.screener_depth_autocollect ?? false,
+    lastScan,
+    rows: sortedLiveRows,
+    sortMode, setSortMode,
+    notSeeded, hasConditions, resultsStale,
+    intradayDegradation, scopeUniverseEmpty, etfFilterStale, renewalNeedsIntraday,
+    status,
+    updatePending: update.isPending,
+    updateFailed: update.isError,
+    updateFeedback,
+    serverUpdating,
+    onUpdate: () => update.mutate(),
+    openLive,
+    currentTitle,
+    saveCurrent,
+    openSaveAs: () => setSaveDialog('save-as'),
+    depthValues: lastScan?.depthValues ?? null,
+    depthSides,
+  };
+  if (variant !== 'current') {
+    return (
+      <>
+        {variant === 'a' && <VariantA {...view} />}
+        {variant === 'b' && <VariantB {...view} />}
+        {variant === 'c' && <VariantC {...view} />}
+        <PrototypeSwitcher />
+        {saveDialog && (
+          <SaveNameDialog
+            initialName={saveDialogInitial}
+            onSubmit={submitSaveDialog}
+            onClose={() => setSaveDialog(null)}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <PageContainer className="grid gap-md min-h-0 !pb-0"
@@ -283,12 +344,7 @@ export function Screener() {
                 onSortChange={setSortMode}
                 embedded
                 depthValues={lastScan?.depthValues ?? undefined}
-                depthSides={{
-                  ask: editor.conditions.some((c) => c.type === 'ask_depth_new_high'),
-                  bid: editor.conditions.some((c) => c.type === 'bid_depth_new_high'),
-                  askRenewal: editor.conditions.some((c) => c.type === 'ask_depth_renewal'),
-                  bidRenewal: editor.conditions.some((c) => c.type === 'bid_depth_renewal'),
-                }}
+                depthSides={depthSides}
               />
             </>
           )}
@@ -301,6 +357,7 @@ export function Screener() {
           onClose={() => setSaveDialog(null)}
         />
       )}
+      <PrototypeSwitcher />
     </PageContainer>
   );
 }
