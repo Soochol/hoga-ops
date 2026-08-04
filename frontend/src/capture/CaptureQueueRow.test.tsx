@@ -16,7 +16,7 @@ describe('CaptureQueueRow', () => {
   it('renders date / name / phase chip (code is in aria-label, not a column)', () => {
     const { container } = render(<CaptureQueueRow item={base} symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}} />);
     expect(screen.getByText('20260518')).toBeTruthy();
-    expect(screen.getByText(/queued/i)).toBeTruthy();
+    expect(screen.getByText('대기')).toBeTruthy();
     expect(screen.getByText('삼성전자')).toBeTruthy();
     // 종목코드 칼럼은 제거됐지만 스크린리더용 aria-label 에는 남아 있다.
     expect(container.querySelector('[data-testid="queue-row-i1"]')!.getAttribute('aria-label'))
@@ -31,22 +31,22 @@ describe('CaptureQueueRow', () => {
   it('queued row action button is ✕ remove (calls onCancel)', () => {
     const onCancel = vi.fn();
     render(<CaptureQueueRow item={base} symbolName="삼성전자" onCancel={onCancel} onRetry={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /cancel|remove|✕/i }));
+    fireEvent.click(screen.getByRole('button', { name: /취소|✕/i }));
     expect(onCancel).toHaveBeenCalledWith('i1');
   });
 
   it('failed row shows ↻ retry button (calls onRetry)', () => {
     const onRetry = vi.fn();
     render(<CaptureQueueRow item={{ ...base, phase: 'failed' }} symbolName="삼성전자" onCancel={() => {}} onRetry={onRetry} />);
-    fireEvent.click(screen.getByRole('button', { name: /retry|↻/i }));
+    fireEvent.click(screen.getByRole('button', { name: /재시도|↻/i }));
     expect(onRetry).toHaveBeenCalledWith(expect.objectContaining({ item_id: 'i1' }));
   });
 
   it('done / skipped rows show no action button', () => {
     const { rerender } = render(<CaptureQueueRow item={{ ...base, phase: 'done' }} symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}} />);
-    expect(screen.queryByRole('button', { name: /cancel|retry/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /취소|재시도/i })).toBeNull();
     rerender(<CaptureQueueRow item={{ ...base, phase: 'skipped' }} symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}} />);
-    expect(screen.queryByRole('button', { name: /cancel|retry/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /취소|재시도/i })).toBeNull();
   });
 
   it('clicking the row toggles a `data-expanded` flag', () => {
@@ -74,13 +74,13 @@ describe('CaptureQueueRow attempt badge (ADR-0031)', () => {
   it('hides the attempt badge when attempt === 1', () => {
     render(<CaptureQueueRow item={{ ...base, attempt: 1 }} symbolName="삼성전자"
                            onCancel={() => {}} onRetry={() => {}} />);
-    expect(screen.queryByTitle(/Attempt/i)).toBeNull();
+    expect(screen.queryByTitle(/회차 시도/)).toBeNull();
   });
 
   it('renders ×N badge when attempt > 1', () => {
     render(<CaptureQueueRow item={{ ...base, attempt: 3 }} symbolName="삼성전자"
                            onCancel={() => {}} onRetry={() => {}} />);
-    const badge = screen.getByTitle(/Attempt 3/i);
+    const badge = screen.getByTitle(/3회차 시도/);
     expect(badge).toBeTruthy();
     expect(badge.textContent).toBe('×3');
   });
@@ -89,7 +89,7 @@ describe('CaptureQueueRow attempt badge (ADR-0031)', () => {
     render(<CaptureQueueRow item={{ ...base, force_retry: true, attempt: 2 }}
                            symbolName="삼성전자"
                            onCancel={() => {}} onRetry={() => {}} />);
-    expect(screen.getByTitle(/Attempt 2/i)).toBeTruthy();
+    expect(screen.getByTitle(/2회차 시도/)).toBeTruthy();
   });
 });
 
@@ -126,8 +126,8 @@ describe('CaptureQueueRow — inventory badge', () => {
         onRetry={() => {}}
       />,
     );
-    expect(screen.getByTitle(/Triggered from inventory re-capture/i)).toBeTruthy();
-    expect(screen.getByText('inventory')).toBeTruthy();
+    expect(screen.getByTitle(/보관함 재캡처에서 등록됨/)).toBeTruthy();
+    expect(screen.getByText('보관함')).toBeTruthy();
   });
 
   it('does not render the badge when item_id is NOT in the store', () => {
@@ -139,7 +139,7 @@ describe('CaptureQueueRow — inventory badge', () => {
         onRetry={() => {}}
       />,
     );
-    expect(screen.queryByText('inventory')).toBeNull();
+    expect(screen.queryByText('보관함')).toBeNull();
   });
 });
 

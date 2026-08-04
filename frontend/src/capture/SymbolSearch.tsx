@@ -32,6 +32,12 @@ const STATUS_COLOR: Record<SymbolsCacheStatus, string> = {
   stale: 'var(--warn)',
   unavailable: 'var(--error)',
 };
+const STATUS_TITLE: Record<SymbolsCacheStatus, string> = {
+  loading: '불러오는 중',
+  fresh: '최신',
+  stale: '오래됨',
+  unavailable: '사용 불가',
+};
 
 export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
   const { data } = useSymbols();
@@ -127,7 +133,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
         <span
           data-testid="symbol-cache-status"
           data-status={cacheStatus}
-          title={`Symbols cache: ${cacheStatus}`}
+          title={`종목 마스터 캐시: ${STATUS_TITLE[cacheStatus]}`}
           style={{ color: STATUS_COLOR[cacheStatus] }}
           className="text-sm leading-none"
         >
@@ -143,7 +149,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
               onClick={handleRefresh}
               className="mt-1.5 bg-bg-input border border-border rounded-md px-xs py-0.5 text-fg-dim hover:text-fg cursor-pointer font-[inherit] text-xs"
             >
-              Refresh
+              갱신
             </button>
           )}
         </div>
@@ -162,7 +168,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
                 <div className="mt-2 text-xs text-fg-dim">
                   Symbol Master가 {formatRelativeShort(fetchedAtMs)} 업데이트되었습니다 —
                   신규 상장 종목이 누락되었을 수 있습니다.{' '}
-                  <a href="/settings" className="underline">설정에서 Update</a>
+                  <a href="/settings" className="underline">설정에서 갱신</a>
                 </div>
               )}
             </div>
@@ -178,8 +184,8 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
 }
 
 function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted: boolean; onClick: () => void }) {
-  const breakdown = `Complete ${hit.captured_breakdown.complete} · Partial ${hit.captured_breakdown.source_partial} · Incomplete ${hit.captured_breakdown.client_incomplete} · Invalid ${hit.captured_breakdown.invalid}`;
-  const countText = hit.captured_count > 0 ? `${hit.captured_count} complete` : 'no complete data';
+  const breakdown = `완결 ${hit.captured_breakdown.complete} · 부분 ${hit.captured_breakdown.source_partial} · 미완결 ${hit.captured_breakdown.client_incomplete} · 손상 ${hit.captured_breakdown.invalid}`;
+  const countText = hit.captured_count > 0 ? `완결 ${hit.captured_count}일` : '완결 없음';
   return (
     <div
       role="option"

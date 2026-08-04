@@ -6,6 +6,8 @@ import type { CalendarStatus, CapturePhase, SkipReason } from '../api/types';
  */
 export interface PhaseDescriptor {
   icon: string;          // ○ ● ✓ ✕ ⚠
+  /** 표시용 한국어 라벨. 원값(CapturePhase)은 wire·테스트 계약이므로 여기서만 번역한다. */
+  label: string;
   chipColor: string;     // CSS color for the phase chip background
   group: 'active' | 'queued' | 'terminal';
   terminal: boolean;
@@ -17,14 +19,14 @@ const DOWN_TINT = 'rgba(244,63,94,0.10)';
 const NEUTRAL_TINT = 'rgba(148,163,184,0.10)';
 
 export const PHASE: Record<CapturePhase, PhaseDescriptor> = {
-  queued:    { icon: '○', chipColor: NEUTRAL_TINT, group: 'queued',   terminal: false },
-  deciding:  { icon: '●', chipColor: TEAL_TINT,    group: 'active',   terminal: false },
-  capturing: { icon: '●', chipColor: TEAL_TINT,    group: 'active',   terminal: false },
-  parsing:   { icon: '●', chipColor: TEAL_TINT,    group: 'active',   terminal: false },
-  done:      { icon: '✓', chipColor: UP_TINT,      group: 'terminal', terminal: true  },
-  failed:    { icon: '✕', chipColor: DOWN_TINT,    group: 'terminal', terminal: true  },
-  cancelled: { icon: '✕', chipColor: NEUTRAL_TINT, group: 'terminal', terminal: true  },
-  skipped:   { icon: '⚠', chipColor: NEUTRAL_TINT, group: 'terminal', terminal: true  },
+  queued:    { icon: '○', label: '대기',     chipColor: NEUTRAL_TINT, group: 'queued',   terminal: false },
+  deciding:  { icon: '●', label: '준비 중',  chipColor: TEAL_TINT,    group: 'active',   terminal: false },
+  capturing: { icon: '●', label: '수집 중',  chipColor: TEAL_TINT,    group: 'active',   terminal: false },
+  parsing:   { icon: '●', label: '파싱 중',  chipColor: TEAL_TINT,    group: 'active',   terminal: false },
+  done:      { icon: '✓', label: '완료',     chipColor: UP_TINT,      group: 'terminal', terminal: true  },
+  failed:    { icon: '✕', label: '실패',     chipColor: DOWN_TINT,    group: 'terminal', terminal: true  },
+  cancelled: { icon: '✕', label: '취소됨',   chipColor: NEUTRAL_TINT, group: 'terminal', terminal: true  },
+  skipped:   { icon: '⚠', label: '건너뜀',   chipColor: NEUTRAL_TINT, group: 'terminal', terminal: true  },
 };
 
 /** Fallback for wire drift — a backend phase added before the frontend's
@@ -35,6 +37,7 @@ export const PHASE: Record<CapturePhase, PhaseDescriptor> = {
  *  we don't understand). */
 const UNKNOWN_PHASE: PhaseDescriptor = {
   icon: '?',
+  label: '알 수 없음',
   chipColor: NEUTRAL_TINT,
   group: 'terminal',
   terminal: true,

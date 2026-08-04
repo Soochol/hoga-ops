@@ -60,7 +60,7 @@ describe('CaptureInlineStatus', () => {
     const qc = setup({ ...empty, active: [item('a1', 'capturing')], queued: [item('q1'), item('q2')] });
     render(<CaptureInlineStatus />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.getByRole('link', { name: /1 capturing · 2 queued/i })).toHaveAttribute('href', '/capture');
+    expect(screen.getByRole('link', { name: /수집 1 · 대기 2/ })).toHaveAttribute('href', '/capture');
     expect(screen.queryByText(/CAPTURING/)).not.toBeInTheDocument();
   });
 
@@ -68,7 +68,7 @@ describe('CaptureInlineStatus', () => {
     const qc = setup({ ...empty, paused: true, active: [item('a1', 'capturing')] });
     render(<CaptureInlineStatus />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.getByRole('link', { name: /paused/i })).toHaveAttribute('href', '/capture');
+    expect(screen.getByRole('link', { name: /일시정지/ })).toHaveAttribute('href', '/capture');
     expect(screen.queryByText(/click to resume/i)).not.toBeInTheDocument();
   });
 });

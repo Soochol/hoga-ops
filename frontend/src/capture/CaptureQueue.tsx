@@ -13,7 +13,9 @@ import { computeHeaderSummary, summarizeDedupeReasons } from './queueSummary';
 const VIRTUALIZE_THRESHOLD = 200;
 
 export function CaptureQueue() {
-  const { queue, cancelItem, cancelAll, dismissDone, resumeQueue, retryItems } = useCaptureQueue();
+  const {
+    queue, isError, refetchQueue, cancelItem, cancelAll, dismissDone, resumeQueue, retryItems,
+  } = useCaptureQueue();
   const { data: symbolsResp } = useSymbols();
   const { data: stockDates } = useStockDates();
   const nameByCode = useMemo(() => {
@@ -81,7 +83,17 @@ export function CaptureQueue() {
   };
 
   if (queue === undefined) {
-    return <InlineState className="border-0 bg-transparent p-3">불러오는 중</InlineState>;
+    // 로딩과 에러를 구분한다 — 실패가 "영구 불러오는 중"으로 위장되면 사용자는
+    // 큐가 비어 가는 중이라고 오독한다.
+    if (isError) {
+      return (
+        <InlineState tone="error" role="alert" className="flex items-center gap-3 text-sm">
+          <span className="flex-1">대기열을 불러오지 못했습니다 · 백엔드 연결을 확인하세요</span>
+          <button type="button" onClick={() => refetchQueue()} style={ghostButton()}>다시 시도</button>
+        </InlineState>
+      );
+    }
+    return <InlineState className="border-0 bg-transparent p-3">불러오는 중…</InlineState>;
   }
 
   // ADR-0094: a read-only (non-owner) instance can't mutate the queue. Surface
@@ -121,9 +133,15 @@ export function CaptureQueue() {
     <div className="flex min-h-0 h-full flex-col gap-2">
       {notOwnedBanner}
       <div className="flex items-center gap-3 px-sm">
-        <div className="flex-1 font-medium text-sm font-data text-fg-dim tabular-nums">
-          {summary.done} of {summary.total} done · {summary.failed} failed · {summary.capturing} capturing
+        {/* role=status: 완료/실패 수가 실시간으로 바뀌는 줄 — 스크린리더에도 공지. */}
+        <div role="status" className="flex-1 font-medium text-sm font-data text-fg-dim tabular-nums">
+          완료 {summary.done}/{summary.total} · 실패 {summary.failed} · 수집 중 {summary.capturing}
         </div>
+        {/* 전체 취소 2단계 확인의 무장 상태는 라벨 교체만으로는 스크린리더에 안
+            들리므로 별도 라이브 리전으로 공지한다(4초 뒤 자동 해제). */}
+        <span role="status" className="sr-only">
+          {cancelAllArmed ? '전체 취소 대기 중 — 버튼을 다시 누르면 실행됩니다' : ''}
+        </span>
         <button
           type="button"
           onClick={handleCancelAll}
@@ -175,7 +193,7 @@ export function CaptureQueue() {
 
       {queue.paused && (
         <InlineState role="alert" tone="warn" className="py-sm flex items-center gap-3 font-medium font-data">
-          <span className="flex-1">Cookie expired · refresh .cookie on disk, then resume</span>
+          <span className="flex-1">쿠키 만료 · 디스크의 .cookie 파일을 갱신한 뒤 재개하세요</span>
           <button type="button" onClick={() => resumeQueue.mutate()} style={ghostButton()}>새로고침 후 재개</button>
           <button type="button" onClick={() => cancelAll.mutate()} style={ghostButton()}>전체 취소</button>
         </InlineState>

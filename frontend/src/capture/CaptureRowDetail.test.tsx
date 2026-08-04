@@ -17,8 +17,8 @@ const base: QueueItem = {
 describe('CaptureRowDetail', () => {
   it('shows started_at_ms (formatted KST clock) and frontier_ms', () => {
     render(<CaptureRowDetail item={base} />);
-    expect(screen.getByText(/started_at/i)).toBeTruthy();
-    expect(screen.getByText(/frontier/i)).toBeTruthy();
+    expect(screen.getByText('시작')).toBeTruthy();
+    expect(screen.getByText('수집 위치')).toBeTruthy();
   });
 
   it('shows error message verbatim when item.error is set', () => {
@@ -59,7 +59,7 @@ describe('CaptureRowDetail abort_reason', () => {
         }}
       />,
     );
-    expect(screen.getByText(/abort_reason/i)).toBeTruthy();
+    expect(screen.getByText('중단 사유')).toBeTruthy();
     expect(screen.getByText(/hogaplay 응답 동결로 캡처가 중단/)).toBeTruthy();
   });
 
@@ -91,9 +91,9 @@ describe('CaptureRowDetail warnings (ADR-0020 lenient-fallback)', () => {
 
   it('omits the warnings section when item.warnings is null or empty', () => {
     render(<CaptureRowDetail item={doneBase} />);
-    expect(screen.queryByText(/warnings/i)).toBeNull();
+    expect(screen.queryByText('경고')).toBeNull();
     render(<CaptureRowDetail item={{ ...doneBase, warnings: [] }} />);
-    expect(screen.queryByText(/warnings/i)).toBeNull();
+    expect(screen.queryByText('경고')).toBeNull();
   });
 
   it('shows a Korean hint for series.cum_vol_monotonic violations', () => {
@@ -112,7 +112,7 @@ describe('CaptureRowDetail warnings (ADR-0020 lenient-fallback)', () => {
         }}
       />,
     );
-    expect(screen.getByText(/warnings/i)).toBeTruthy();
+    expect(screen.getByText('경고')).toBeTruthy();
     expect(screen.getByText(/누적 거래량이 한 차례 역행/)).toBeTruthy();
   });
 
@@ -162,7 +162,7 @@ describe('CaptureRowDetail speed line', () => {
     // 12 pages / 5s = 2.4 pages/s (base fixture)
     render(<CaptureRowDetail item={base} />);
     const speed = screen.getByTestId('queue-row-detail-speed');
-    expect(speed.textContent).toContain('2.4 pages/s');
+    expect(speed.textContent).toContain('2.4 페이지/초');
   });
 
   it('appends http p50 and 429 count when telemetry is present', () => {

@@ -38,10 +38,10 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   // 4. capture_queued WebSocket event (ch:'event'): 3 rows appear.
   // **행만** 센다 — `/^queue-row-/` 는 행 내부의 `queue-row-full-capture-count`·
   // `queue-row-throttled` 같은 배지까지 잡아 3행이 6으로 세어졌다.
-  const rows = page.getByRole('button', { name: /^Capture row / });
+  const rows = page.getByRole('button', { name: /^캡처 항목 / });
   await expect(rows).toHaveCount(3, { timeout: 5_000 });
 
-  // 5. Phase transitions visible — wait for header summary to read "3 of 3 done".
+  // 5. Phase transitions visible — wait for header summary to read "완료 3/3".
   //    업스트림 없이도 도달한다 — HOGA_ENABLE_TEST_ENDPOINTS=1 이면 FakeHogaplayClient 가
   //    결정론적 페이지를 내준다(날짜 무관).
   //
@@ -50,7 +50,7 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   //    실패하면 15초를 기다리는 대신 즉시 그 에러로 죽는다. 뒤의 단언은 이제 렌더 반영만
   //    본다 — UI 회귀는 그대로 잡히면서 바운드는 짧아도 된다.
   await drained1;
-  await expect(page.locator('text=/3 of 3 done/')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('text=/완료 3\\/3/')).toBeVisible({ timeout: 10_000 });
 
   // 6. Append a second symbol's range — multi-symbol queue test.
   // **이름이 아니라 코드로 찾는다.** 'SK' 로 검색하면 20건이 돌아오고 SK하이닉스 는
@@ -70,7 +70,7 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   const drained2 = queueEvents.nextDrained();
   await page.getByRole('button', { name: /캡처 시작/ }).click();
   await drained2;
-  await expect(page.locator('text=/6 of 6 done/')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('text=/완료 6\\/6/')).toBeVisible({ timeout: 10_000 });
 
   // 7. 전체 취소 — drains any leftover queued; verify it does not crash.
   await page.getByRole('button', { name: /전체 취소/ }).click();
@@ -82,12 +82,12 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   // terminal 로 내려앉기 전에 완료 지우기 를 누르면 그 행들이 그대로 남는다(CI 에서 2건
   // 잔존). 로컬은 이미 전부 done 이라 우연히 통과했다.
   //
-  // **여기는 `nextDrained()` 로 바꾸면 안 된다.** 위에서 "6 of 6 done" 을 확인한 뒤라
+  // **여기는 `nextDrained()` 로 바꾸면 안 된다.** 위에서 "완료 6/6" 을 확인한 뒤라
   // 큐도 활성도 이미 비어 있고, 그러면 `_finalize_item` 이 돌지 않아 드레인 프레임이
   // **아예 나오지 않는다**(captures.py: 드레인은 마지막 항목의 finalize 안에서만 발행).
   // 예약해 두면 백스톱까지 매달린다. 반대로 여기서 기다리는 일(취소 반영)은 캡처 작업이
   // 아니라 UI 정착이라 부하에 민감하지도 않다 — 벽시계 바운드가 맞는 자리다.
-  await expect(page.getByRole('button', { name: /^Capture row .* (capturing|queued)/ }))
+  await expect(page.getByRole('button', { name: /^캡처 항목 .* (수집 중|대기)/ }))
     .toHaveCount(0, { timeout: 15_000 });
   await page.getByRole('button', { name: /완료 지우기/ }).click();
   await expect(rows).toHaveCount(0, { timeout: 10_000 });

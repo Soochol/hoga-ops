@@ -49,7 +49,7 @@ test('cookie-pause: 3rd request → pause banner → Resume → completes', asyn
   // 백엔드가 멈췄다는 사실은 `capture_queue_paused` 프레임으로 받고(벽시계 아님),
   // 그 다음 배너 렌더만 짧게 단언한다.
   await paused;
-  await expect(page.locator('text=/Cookie expired/i')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('text=/쿠키 만료/')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('button', { name: /새로고침 후 재개/ })).toBeVisible();
 
   // **일시정지가 정착할 때까지 기다린 뒤 재개한다.** `resume_queue` 는 `_done` 에 있는
@@ -59,7 +59,7 @@ test('cookie-pause: 3rd request → pause banner → Resume → completes', asyn
   // **개수를 못 박지 않는다** — 일시정지 순간 몇 건이 활성이었느냐는 워커 동시성
   // (코어 수)에 좌우된다. 로컬 32코어에서는 4건, CI 에서는 2건이 취소됐다.
   // 필요한 건 "정지가 정착했다" 뿐이므로 진행 중인 행이 없어질 때까지만 기다린다.
-  await expect(page.getByRole('button', { name: /^Capture row .* capturing/ }))
+  await expect(page.getByRole('button', { name: /^캡처 항목 .* 수집 중/ }))
     .toHaveCount(0, { timeout: 15_000 });
 
   // Disable the failure-injection and click Resume.
@@ -77,6 +77,6 @@ test('cookie-pause: 3rd request → pause banner → Resume → completes', asyn
   // **CI 가 실제로 죽던 자리다.** 되살아난 4건이 각각 1,523 페이지를 도는 동안 30초
   // 예산이 먼저 끝났다. 이제 큐가 바닥났다는 사실을 프레임으로 받고, UI 는 렌더만 본다.
   await drained;
-  await expect(page.locator('text=/4 of 5 done/')).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator('text=/1 failed/')).toBeVisible();
+  await expect(page.locator('text=/완료 4\\/5/')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('text=/실패 1/')).toBeVisible();
 });

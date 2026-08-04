@@ -55,7 +55,7 @@ export function CaptureQueueRow({
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
-        aria-label={`Capture row ${item.code} ${item.date} ${item.phase}. Press Enter to ${expanded ? 'collapse' : 'expand'} details.`}
+        aria-label={`캡처 항목 ${item.code} ${item.date} ${descriptor.label} · Enter 로 상세 ${expanded ? '접기' : '펼치기'}`}
         onClick={() => setExpanded((v) => !v)}
         onKeyDown={onKeyDown}
         className="grid grid-cols-[1rem_2.6rem_4.5rem_7rem_4.5rem_2.5rem_2.5rem_minmax(6rem,1fr)_1.2rem] items-center gap-2 h-capture-row px-sm border-b font-medium text-sm font-data tabular-nums text-fg cursor-pointer outline-none"
@@ -74,10 +74,10 @@ export function CaptureQueueRow({
         <span className="flex items-center gap-1.5 min-w-0 font-normal text-sm text-fg-dim">
           <span className="truncate min-w-0">{symbolName}</span>
           {item.attempt > 1 && (
-            <StatusBadge tone="dim" title={`Attempt ${item.attempt}`} className="flex-none">×{item.attempt}</StatusBadge>
+            <StatusBadge tone="dim" title={`${item.attempt}회차 시도`} className="flex-none">×{item.attempt}</StatusBadge>
           )}
           {isFromInventory && (
-            <StatusBadge tone="dim" title="Triggered from inventory re-capture" className="flex-none">inventory</StatusBadge>
+            <StatusBadge tone="dim" title="보관함 재캡처에서 등록됨" className="flex-none">보관함</StatusBadge>
           )}
           {showSlowUpstream && (
             <span data-testid="queue-row-slow-upstream" className="flex-none">
@@ -96,8 +96,10 @@ export function CaptureQueueRow({
             </span>
           )}
         </span>
-        <span style={{ background: descriptor.chipColor }} className="py-[0.1rem] px-xs rounded-md text-fg-dim">
-          {item.phase}
+        {/* 표시는 한국어 라벨, data-phase 에 원값 보존 — e2e·디버깅은 원값을 본다. */}
+        <span data-phase={item.phase} style={{ background: descriptor.chipColor }}
+          className="py-[0.1rem] px-xs rounded-md text-fg-dim">
+          {descriptor.label}
         </span>
         <span>{item.progress?.pages_done ?? '–'}</span>
         <span>{item.progress?.events_seen ?? '–'}</span>
@@ -114,7 +116,7 @@ export function CaptureQueueRow({
           {showCancel && (
             <button
               type="button"
-              aria-label="Cancel"
+              aria-label="취소" title="취소"
               onClick={(e) => { e.stopPropagation(); onCancel(item.item_id); }}
               className="bg-transparent border-none text-fg-dim cursor-pointer text-sm p-0"
             >✕</button>
@@ -122,7 +124,7 @@ export function CaptureQueueRow({
           {showRetry && (
             <button
               type="button"
-              aria-label="Retry"
+              aria-label="재시도" title="재시도"
               onClick={(e) => { e.stopPropagation(); onRetry(item); }}
               className="bg-transparent border-none text-accent cursor-pointer text-sm p-0"
             >↻</button>

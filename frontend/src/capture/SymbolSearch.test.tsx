@@ -53,11 +53,11 @@ describe('SymbolSearch', () => {
     const input = screen.getByPlaceholderText(/종목/i);
     fireEvent.change(input, { target: { value: '삼성' } });
     await new Promise((r) => setTimeout(r, 30));
-    // "14 complete" as the visible primary text
-    expect(screen.getByText(/14 complete/)).toBeTruthy();
+    // "완결 14일" as the visible primary text
+    expect(screen.getByText(/완결 14일/)).toBeTruthy();
     // The breakdown tooltip lives on title attribute of the count.
-    const countEl = screen.getByText(/14 complete/);
-    expect(countEl.getAttribute('title')).toMatch(/Complete 14 · Partial 3 · Incomplete 2/);
+    const countEl = screen.getByText(/완결 14일/);
+    expect(countEl.getAttribute('title')).toMatch(/완결 14 · 부분 3 · 미완결 2/);
   });
 
   it('Q19: shows cache status indicator next to the input', async () => {
@@ -176,7 +176,7 @@ describe('SymbolSearch reason-aware empty state', () => {
       <SymbolSearch value={null} onChange={() => {}} />,
       { symbols: [], status: 'unavailable', fetched_at_ms: null, reason: 'master_fetch_failed' },
     ));
-    expect(screen.getByRole('button', { name: /refresh/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '갱신' })).toBeTruthy();
   });
 
   it('does NOT show Refresh button when status is fresh', () => {

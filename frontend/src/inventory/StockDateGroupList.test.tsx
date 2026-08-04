@@ -48,7 +48,8 @@ describe('StockDateGroupList', () => {
     await userEvent.type(search, '삼성');
     expect(screen.queryByText('SK하이닉스')).toBeNull();
     expect(screen.getByText('삼성전자')).toBeTruthy();
-    expect(screen.getByText('1 matches')).toBeTruthy();
+    expect(screen.getByText(/종목 3개 중/)).toBeTruthy();
+    expect(screen.getByText(/1개/)).toBeTruthy();
   });
 
   it('filters by code prefix', async () => {
@@ -77,7 +78,7 @@ describe('StockDateGroupList', () => {
     render(<StockDateGroupList rows={rows} selectedCode={null} onSelect={() => {}} />);
     const search = screen.getByPlaceholderText('종목명 또는 코드…') as HTMLInputElement;
     await userEvent.type(search, '삼성');
-    const clear = screen.getByRole('button', { name: /clear search/i });
+    const clear = screen.getByRole('button', { name: /검색 지우기/ });
     fireEvent.click(clear);
     expect(search.value).toBe('');
     expect(screen.getByText('SK하이닉스')).toBeTruthy();

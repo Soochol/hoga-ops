@@ -20,8 +20,12 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
       data-testid="stock-date-group-list-root"
       className="flex h-full flex-col min-h-0 overflow-hidden"
     >
+      {/* 검색 중에는 필터 결과가 헤더 카운트에 그대로 반영된다 — 별도의
+          "N matches" 줄과 전체 카운트가 따로 놀던 이중 표기를 통합(2026-08-04). */}
       <header className="px-3 py-2 text-xs uppercase text-fg-dim font-semibold">
-        종목 {allGroupsCount}개 · 캡처 {rows.length}건
+        {isSearching
+          ? <>종목 {allGroupsCount}개 중 <span className="text-fg">{groups.length}개</span> 표시</>
+          : <>종목 {allGroupsCount}개 · 캡처 {rows.length}건</>}
       </header>
       <div className="p-2 sticky top-0 bg-bg-subtle z-10">
         <div className="relative">
@@ -34,7 +38,7 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
           {search && (
             <button
               type="button"
-              aria-label="clear search"
+              aria-label="검색 지우기"
               onClick={() => setSearch('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-dim hover:text-fg text-sm leading-none"
             >
@@ -42,9 +46,6 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
             </button>
           )}
         </div>
-        {isSearching && (
-          <div className="text-xs text-fg-dim mt-1 font-data">{groups.length} matches</div>
-        )}
       </div>
       <div className="flex-1 overflow-y-auto p-1">
         {groups.length === 0 ? (

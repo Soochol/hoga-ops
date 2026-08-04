@@ -10,7 +10,7 @@ export function CaptureInlineStatus() {
   if (!queue.paused && activeCount === 0 && queuedCount === 0) return null;
 
   const paused = queue.paused;
-  const label = paused ? 'paused' : `${activeCount} capturing · ${queuedCount} queued`;
+  const label = paused ? '일시정지' : `수집 ${activeCount} · 대기 ${queuedCount}`;
   const dotColor = paused ? 'var(--warn)' : 'var(--accent)';
   const dotAnim = paused ? 'none' : 'capture-pulse 1.5s ease-in-out infinite';
 

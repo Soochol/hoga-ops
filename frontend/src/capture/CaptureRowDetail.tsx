@@ -33,7 +33,7 @@ function formatKstClock(unixMs: number | null): string {
 // backend telemetry (see CaptureProgress in api/types.ts). Segments render
 // only when their datum exists so legacy payloads degrade to pages/s alone.
 function speedLine(progress: CaptureProgress): string {
-  const parts = [`${(progress.pages_done / (progress.elapsed_ms / 1000)).toFixed(1)} pages/s`];
+  const parts = [`${(progress.pages_done / (progress.elapsed_ms / 1000)).toFixed(1)} 페이지/초`];
   if (progress.recent_http_p50_ms != null) {
     parts.push(`http p50 ${Math.round(progress.recent_http_p50_ms)}ms`);
   }
@@ -51,21 +51,22 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
       data-testid={`queue-row-detail-${item.item_id}`}
       className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 py-sm px-md bg-bg-subtle border-b font-normal text-sm font-data text-fg-dim"
     >
-      <span>started_at</span>
+      {/* 라벨은 표시용 한국어 — 원 필드명(started_at 등)은 wire·meta.json 계약으로 남는다. */}
+      <span>시작</span>
       <span className="text-fg tabular-nums">
         {formatKstClock(item.started_at_ms)}
       </span>
-      <span>frontier</span>
+      <span title="수집이 도달한 데이터 시각 (frontier)">수집 위치</span>
       <span className="text-fg tabular-nums">
         {formatKstClock(item.progress?.frontier_ms ?? null)}
       </span>
-      <span>enqueued_at</span>
+      <span>등록</span>
       <span className="text-fg tabular-nums">
         {formatKstClock(item.enqueued_at_ms)}
       </span>
       {item.progress != null && item.progress.elapsed_ms > 0 && (
         <>
-          <span>speed</span>
+          <span>속도</span>
           <span className="text-fg tabular-nums" data-testid="queue-row-detail-speed">
             {speedLine(item.progress)}
           </span>
@@ -73,7 +74,7 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
       )}
       {item.error !== null && (
         <>
-          <span className="text-error">error</span>
+          <span className="text-error">오류</span>
           <span className="text-error">
             <ErrorBlock error={item.error} />
           </span>
@@ -81,14 +82,14 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
       )}
       {item.result !== null && (
         <>
-          <span>result</span>
+          <span>결과</span>
           <span className="text-fg">
-            pages_written={item.result.pages_written} unique_events={item.result.unique_events}
-            {item.result.parsed ? ' parsed' : ''}
+            페이지 {item.result.pages_written} · 고유 이벤트 {item.result.unique_events}
+            {item.result.parsed ? ' · 파싱됨' : ''}
           </span>
           {item.result.abort_reason !== null && (
             <>
-              <span className="text-warn">abort_reason</span>
+              <span className="text-warn">중단 사유</span>
               <span className="text-warn">
                 {abortReasonHint(item.result.abort_reason)}
               </span>
@@ -98,7 +99,7 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
       )}
       {item.warnings != null && item.warnings.length > 0 && (
         <>
-          <span className="text-warn">warnings</span>
+          <span className="text-warn">경고</span>
           <span className="text-warn">
             <WarningsBlock warnings={item.warnings} />
           </span>
