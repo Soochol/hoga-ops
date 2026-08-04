@@ -119,7 +119,7 @@ export function WindowAddMenu() {
             title={inapplicable ? '지수 그룹에서만 내용이 표시됩니다' : undefined}
             onClick={() => add(item.kind)}
             onKeyDown={(e) => onItemKeyDown(e, index)}
-            className="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-fg-dim outline-none hover:bg-bg-input-hover hover:text-fg focus-visible:bg-bg-input-hover focus-visible:text-fg"
+            className="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-fg-dim outline-none focus-visible:outline-none hover:bg-bg-input-hover hover:text-fg focus-visible:bg-bg-input-hover focus-visible:text-fg"
           >
             <span className="shrink-0 text-fg-dimmer">{WINDOW_KIND_ICON[item.kind]}</span>
             <span className="min-w-0 flex-1">
