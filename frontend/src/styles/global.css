@@ -138,6 +138,16 @@ body {
   pointer-events: none;
 }
 
+/* 캔들 pane OHLC 레전드의 반응형 셀 드롭 — 좁은 창에서 행의 overflow:hidden 이
+   글자 중간을 자르는 대신 낮은 우선순위 셀부터 통째로 숨긴다(저가 → 고가 → 시작;
+   종가+등락률이 마지막까지 남는다). 컨테이너는 PaneLegendOverlay 의 pane 래퍼
+   (containerType: inline-size — 좌우 inset 절대배치라 폭이 내용과 무관).
+   문턱은 셀 1개 ≈ 7~8rem(라벨+가격+% @ text-xs) 실측 기반 근사 — 정확히 맞추는
+   것보다 "글자 반 토막"이 안 나는 것이 목적이고, overflow:hidden 백스톱은 남는다. */
+@container (max-width: 30rem) { .legend-ohlc-low { display: none; } }
+@container (max-width: 23rem) { .legend-ohlc-high { display: none; } }
+@container (max-width: 16rem) { .legend-ohlc-open { display: none; } }
+
 /* 다크 테마 스크롤바 — 전역. 토큰만 사용(DESIGN.md, 그라데이션/장식 금지).
    실제 렌더 환경은 WebKit/Chromium(Vite dev + /browse). lightweight-charts
    캔버스는 자체 캔버스라 영향 없음. */
