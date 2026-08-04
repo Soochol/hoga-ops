@@ -2196,9 +2196,19 @@ export function LiveChartRoot({
             pointerEvents: 'none', zIndex: 31,
           }}
         >
-          {/* 캔들은 있는데 일부 과거구간이 rate-limit 등으로 누락 → 비차단 안내. */}
+          {/* 캔들은 있는데 일부 과거구간이 rate-limit 등으로 누락 → 비차단 안내.
+              title 에 벤더 원문을 실어 원인을 손 닿는 곳에 둔다 — 칩 문구만으로는
+              'rate-limit 인가 아닌가' 밖에 알 수 없다. pointerEvents 는 이 스택의
+              컨테이너에서 none 이라 칩만 auto 로 되살려야 hover 가 산다. */}
           {cb !== null && cb.candles.length > 0 && warnSummary.count > 0 && (
-            <div data-testid="partial-load-chip" style={chipStyle}>
+            <div
+              data-testid="partial-load-chip"
+              title={warnSummary.firstMsg ?? undefined}
+              style={{
+                ...chipStyle,
+                ...(warnSummary.firstMsg ? { pointerEvents: 'auto' as const } : null),
+              }}
+            >
               {warnSummary.hasRateLimit ? '일부 과거구간 로딩 지연 (호출 한도)' : '일부 과거구간 로딩 실패'}
             </div>
           )}
