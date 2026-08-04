@@ -20,6 +20,7 @@ from hoga.live.kiwoom_multi_quote import (
     strip_venue_suffix,
 )
 from hoga.live.kiwoom_rest import KiwoomRestClient
+from hoga.live.quote_models import Quote
 
 # 실측 행(005930, 2026-08-03)
 ROW = {
@@ -106,7 +107,9 @@ async def test_fetch_chunks_and_merges() -> None:
 
     c = _client(_h)
     quotes = await fetch_multi_price(c, [f"{i:06d}" for i in range(150)])
-    assert seen == [100, 50], "상한에 맞춰 쪼개 순차 호출"
+    # 청크는 **동시 제출**이라(거버너가 큐에서 페이싱한다) 도착 순서를 단언하지
+    # 않는다 — 크기 구성만이 계약이다.
+    assert sorted(seen, reverse=True) == [100, 50], "상한에 맞춰 쪼갠다"
     assert len(quotes) == 150
     await c.aclose()
 
@@ -172,3 +175,56 @@ def test_venue_suffix_table_covers_every_venue() -> None:
 
     from hoga.live.venue import Venue
     assert set(VENUE_SUFFIX) == set(typing.get_args(Venue))
+
+
+async def test_chunks_route_through_the_injected_fetcher() -> None:
+    """**청크 N개면 러너도 N번 불린다** — 유량 페이싱의 전제다.
+
+    거버너(`kiwoom_capacity`)는 `run_with_capacity` 진입 전에 버킷을 한 번만
+    소비한다. 이 루프가 한 submit 안에 있으면 버킷은 1 을, 벤더는 청크 수만큼
+    센다 — 4,295종목(43청크)이 0.23초에 나가 6번째에서 `1700 유량=5` 였다(#1063).
+    """
+    codes = [f"{i:06d}" for i in range(MAX_CODES_PER_CALL * 2 + 1)]   # 3청크
+    seen: list[list[str]] = []
+
+    async def _runner(chunk: list[str]):
+        seen.append(chunk)
+        return [Quote(chunk[0], 100, 0.0, 0)]
+
+    out = await fetch_multi_price(None, codes, fetch_chunk_fn=_runner)  # type: ignore[arg-type]
+
+    assert [len(c) for c in seen] == [MAX_CODES_PER_CALL, MAX_CODES_PER_CALL, 1]
+    assert len(out) == 3, "청크별 결과가 하나로 합쳐진다"
+    assert [q.code for q in out] == [c[0] for c in seen], "순서는 청크 순서를 따른다"
+
+
+async def test_injected_fetcher_replaces_the_direct_call_path() -> None:
+    """주입하면 클라이언트를 **아예 쓰지 않는다** — 페이싱 밖으로 새는 콜이 없다."""
+    calls = 0
+
+    def _h(_r: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return _ok([ROW])
+
+    c = _client(_h)
+
+    async def _runner(chunk: list[str]):
+        return [Quote(chunk[0], 1, 0.0, 0)]
+
+    await fetch_multi_price(c, ["005930", "000660"], fetch_chunk_fn=_runner)
+    assert calls == 0, "주입된 러너를 우회한 직접 호출이 있으면 안 된다"
+    await c.aclose()
+
+
+async def test_empty_codes_issues_no_call() -> None:
+    """빈 목록은 청크가 0개 — 러너도 안 부른다."""
+    called = False
+
+    async def _runner(_chunk):
+        nonlocal called
+        called = True
+        return []
+
+    assert await fetch_multi_price(None, [], fetch_chunk_fn=_runner) == []  # type: ignore[arg-type]
+    assert not called
