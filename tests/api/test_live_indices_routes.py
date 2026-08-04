@@ -11,6 +11,12 @@ from hoga.live.investor import InvestorNetPoint
 from hoga.util.timeenc import KST
 
 
+async def _fake_page_fetch(_client):
+    """페이크가 러너에 넘기는 페이지 팩토리 — 거버너 경로만 지나게 한다(ADR-0137)."""
+    from hoga.live.kiwoom_rest import Page
+
+    return Page(rows=[], cont=False, next_key="")
+
 def _daily_t_ms(day: str) -> int:
     dt = datetime(
         int(day[:4]),
@@ -106,7 +112,11 @@ def test_index_candles_rejects_stock_code_as_index_id(tmp_path) -> None:
 
 
 def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> None:
-    async def fake_daily(_client, index, from_s, to_s, *, period="D"):
+    async def fake_daily(_client, index, from_s, to_s, *, period="D", run_page=None):
+        if run_page is not None:
+            # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 받기만 하고 안
+            # 부르면 거버너 경로가 통째로 죽어 유량 검증이 조용히 무력해진다.
+            await run_page(_fake_page_fetch, 0)
         assert index.id == "KOSPI"
         assert from_s == "20260601"
         assert to_s == "20260619"
@@ -147,7 +157,8 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
     # 계정 차원(cooldown_scope·data_dir)은 키움 전환과 함께 사라졌다 — 유량이
     # TR별이라 계정을 고를 이유가 없다(#1015).
     assert calls == [{
-        "key": ("index-daily", "KOSPI", "D", "20260601", "20260619"),
+        # 끝의 0 은 **페이지 인덱스** — 거버너 단위가 walk 전체가 아니라 페이지다.
+        "key": ("index-daily", "KOSPI", "D", "20260601", "20260619", 0),
         "api_id": "ka20006",
         "priority": "user_visible",
     }]
@@ -159,7 +170,9 @@ def test_index_daily_candles_reuses_cached_newer_range_for_broader_scrollback(
 ) -> None:
     calls: list[tuple[str, str]] = []
 
-    async def fake_daily(_client, index, from_s, to_s, *, period="D"):
+    async def fake_daily(_client, index, from_s, to_s, *, period="D", run_page=None):
+        if run_page is not None:
+            await run_page(_fake_page_fetch, 0)   # 계약 준수 — 위 테스트와 같은 이유
         calls.append((from_s, to_s))
         close = float(len(calls))
         return IndexCandleFetchResult(

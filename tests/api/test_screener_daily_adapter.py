@@ -15,14 +15,23 @@ from hoga.live.candle_fetch_result import DailyCandleFetchResult
 from hoga.live.candle_models import LiveCandle
 
 
+async def _fake_page_fetch(_client):
+    """페이크가 러너에 넘기는 페이지 팩토리 — 거버너 경로만 지나게 한다(ADR-0137)."""
+    from hoga.live.kiwoom_rest import Page
+
+    return Page(rows=[], cont=False, next_key="")
+
 @pytest.fixture
 def stub_daily(monkeypatch):
     """어댑터가 돌려줄 캔들을 심는다. `adjust=False`(원주가)도 함께 못 박는다."""
     def _install(candles):
         seen = {}
 
-        async def _fetch(_client, code, frm, to, *, venue="KRX", adjust=True):
+        async def _fetch(_client, code, frm, to, *, venue="KRX", adjust=True,
+                         run_page=None):
             seen["adjust"] = adjust
+            if run_page is not None:
+                await run_page(_fake_page_fetch, 0)
             return DailyCandleFetchResult(candles=candles, violations=[])
 
         monkeypatch.setattr(kiwoom_daily_candles, "fetch_daily_candles", _fetch)

@@ -333,6 +333,18 @@ def _today_kst_yyyymmdd() -> str:
     return datetime.datetime.now(kst).strftime("%Y%m%d")
 
 
+async def _fake_page_fetch(_client):
+    """페이크 어댑터가 러너에 넘기는 페이지 팩토리.
+
+    러너는 프로덕션 코드(`run_with_capacity`)라 반드시 실행되어야 하는데, 이 파일의
+    페이크 클라이언트에는 `call` 이 없어 진짜 페이지 fetch 를 넣을 수 없다. 빈 페이지를
+    돌려주는 팩토리로 **거버너 경로만** 실제로 지나게 한다(ADR-0137).
+    """
+    from hoga.live.kiwoom_rest import Page
+
+    return Page(rows=[], cont=False, next_key="")
+
+
 class _FakeKisForPast:
     """Stub KIS client returning deterministic minute bars per date."""
 
@@ -1769,7 +1781,9 @@ def _kiwoom_investor_seam(monkeypatch):
 
     _fake_kiwoom_client["client"] = None
 
-    async def _net(client, code, from_yyyymmdd, to_yyyymmdd):
+    async def _net(client, code, from_yyyymmdd, to_yyyymmdd, *, run_page=None):
+        if run_page is not None:
+            await run_page(_fake_page_fetch, 0)
         return await client.fetch_investor_net(code, from_yyyymmdd, to_yyyymmdd)
 
     async def _market_day(client, index, date_yyyymmdd):
@@ -1782,7 +1796,9 @@ def _kiwoom_investor_seam(monkeypatch):
     async def _estimate(client, code):
         return await client.fetch_investor_trend_estimate(code)
 
-    async def _daily(client, code, from_yyyymmdd, to_yyyymmdd, **kw):
+    async def _daily(client, code, from_yyyymmdd, to_yyyymmdd, *, run_page=None, **kw):
+        if run_page is not None:
+            await run_page(_fake_page_fetch, 0)
         return await client.fetch_daily_candles(code, from_yyyymmdd, to_yyyymmdd, **kw)
 
     for name, fn in (

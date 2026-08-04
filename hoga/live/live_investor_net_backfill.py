@@ -64,15 +64,25 @@ class LiveInvestorNetBackfill:
             client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
             if client is None:
                 return [], []
-            result = await kiwoom_access.run_with_capacity(
-                self._scheduler,   # 주입된 거버너 — 테스트가 갈아끼우는 이음매다
-                key=("live-investor-net", code_, from_s, to_s),
-                api_id="ka10059",
-                priority="background",
-                client=client,
-                fetch_fn=lambda c: kiwoom_investor.fetch_investor_net(
-                    c, code_, from_s, to_s
-                ),
+            def _run_page(fetch_fn, page_idx: int):
+                """페이지 1장 = 거버너 submit 1건.
+
+                **walk 전체를 감싸던 자리다.** 거버너는 submit 진입 전에 버킷을 한 번만
+                소비하므로, 바깥에서 감싸면 커서 walk 의 페이지 N장이 페이싱을 못 받는다
+                (ADR-0137). 이중 감싸기도 금지 — 바깥이 토큰을 쥔 채 안쪽이 같은 버킷을
+                기다려 자기를 굶긴다.
+                """
+                return kiwoom_access.run_with_capacity(
+                    self._scheduler,   # 주입된 거버너 — 테스트가 갈아끼우는 이음매다
+                    key=("live-investor-net", code_, from_s, to_s, page_idx),
+                    api_id="ka10059",
+                    priority="background",
+                    client=client,
+                    fetch_fn=fetch_fn,
+                )
+
+            result = await kiwoom_investor.fetch_investor_net(
+                client, code_, from_s, to_s, run_page=_run_page,
             )
             return [_investor_point_to_dict(p) for p in result.points], result.violations
 

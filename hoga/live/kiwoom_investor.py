@@ -42,7 +42,7 @@ from hoga.live.investor import (
 )
 from hoga.live.kiwoom_errors import KiwoomApiError
 from hoga.live.kiwoom_index_candles import index_id_to_kiwoom_code
-from hoga.live.kiwoom_rest import KiwoomRestClient
+from hoga.live.kiwoom_rest import KiwoomRestClient, PageRunner
 
 # **수량**축. 이름과 달리 2 가 수량이다(위 함정 ①).
 AMT_QTY_QUANTITY = "2"
@@ -93,9 +93,18 @@ def _mrkt_tp(index_id: str) -> str:
 
 
 async def fetch_investor_net(
-    client: KiwoomRestClient, code: str, from_yyyymmdd: str, to_yyyymmdd: str
+    client: KiwoomRestClient,
+    code: str,
+    from_yyyymmdd: str,
+    to_yyyymmdd: str,
+    *,
+    run_page: PageRunner | None = None,
 ) -> InvestorNetFetchResult:
-    """종목별 투자자 일별 순매수(`ka10059`). KIS `fetch_investor_net` 대체."""
+    """종목별 투자자 일별 순매수(`ka10059`). KIS `fetch_investor_net` 대체.
+
+    `run_page` 는 유량 페이싱 이음매다 — walk 는 최대 `_MAX_PAGES` 콜이고,
+    주입하지 않으면 그 전부가 한 submit 안에서 페이싱 없이 나간다(ADR-0137).
+    """
     def _covered(rows: list[dict[str, Any]], _page: Any) -> bool:
         oldest = min((str(r.get("dt") or "") for r in rows if r.get("dt")), default="")
         return bool(oldest) and oldest < from_yyyymmdd
@@ -109,6 +118,7 @@ async def fetch_investor_net(
         },
         max_pages=_MAX_PAGES,
         stop=_covered,
+        run_page=run_page,
     )
 
     points: list[InvestorNetPoint] = []
