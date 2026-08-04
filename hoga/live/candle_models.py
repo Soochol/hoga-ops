@@ -51,7 +51,7 @@ class IndexCandlePoint(BaseModel):
 def daily_anchor_ms(date_yyyymmdd: str) -> int:
     """일봉 1건의 시각 앵커 = **그날 09:00 KST**.
 
-    소스 무관 규약이다. KIS 경로(`kis_endpoints._daily_anchor_t_ms`)와 같은 값을
+    소스 무관 규약이다. 과거 KIS 경로도 같은 값을
     내야 프론트가 같은 날의 캔들·투자자 막대·지수 봉을 한 x 위치에 정렬한다 —
     앵커가 어긋나면 차트에서 하루씩 밀린 것처럼 보인다.
 

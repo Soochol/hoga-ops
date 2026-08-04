@@ -7,7 +7,8 @@ See Deep Sample Audit §C (Audit-3) for the 1-minute token cool-down and
 KIS's 6-hour same-token reissue policy.
 
 Stage 4 (2026-07-08) split the 13 endpoint fetch methods into
-``kis_endpoints.KisEndpointsMixin`` and the error types into ``kis_errors``;
+the error types into ``kis_errors``; PR-J(#1046)에서 `kis_endpoints`
+는 통째로 사라졌다 — 남은 표면은 **파생(옵션)뿐**이다.
 this file now owns the transport core (token bucket, retry ladder, _get). It
 re-exports the moved symbols so the ~60 existing ``from hoga.live.kis_client
 import ...`` sites stay unchanged (ADR-0050 single-ingress facade preserved).
@@ -29,7 +30,6 @@ import httpx
 # Re-export facade (ADR-0050): these moved to kis_endpoints in Stage 4 but are
 # re-exported here so existing ``from hoga.live.kis_client import ...`` callers
 # and tests keep importing them from this module. Not referenced in-module.
-from hoga.live.kis_endpoints import KisEndpointsMixin
 from hoga.live.kis_errors import (
     KisApiError,
     KisAuthError,  # noqa: F401 — re-export facade (ADR-0050); get_approval_key 삭제 후 in-module 미사용
@@ -227,7 +227,7 @@ class KisCredentials:
         return _BASE_REAL
 
 
-class KisClient(KisEndpointsMixin, KisOptionEndpointsMixin):
+class KisClient(KisOptionEndpointsMixin):
     def __init__(
         self,
         credentials: KisCredentials,
