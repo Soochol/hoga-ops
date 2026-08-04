@@ -1339,6 +1339,64 @@ describe('useLiveBundle', () => {
       [70_300, 100],
       [70_400, 100],
     ]);
+
+    // 반대편 계약 (2026-08-04 회귀): `chartBundle` 은 **sidecar 원본 그대로**이며
+    // 라이브 오버레이를 담지 않는다. 이 단언이 없던 동안 소비처가
+    // `chartBundle ?? bundle` 로 골라도 스위트가 초록이었고, 그래서 히트맵이 디스크
+    // 승격 주기(5분)로만 갱신되는 것을 아무도 못 잡았다 — 오버레이 소비처는 반드시
+    // `bundle` 쪽을 써야 한다(useLiveChartData.workareaDepthHeatmap).
+    expect(result.current.chartBundle?.depth_heatmap).toEqual([pastOnly, overlapStale]);
+    expect(result.current.chartBundle?.depth_heatmap).not.toEqual(
+      result.current.bundle?.depth_heatmap,
+    );
+  });
+
+  /**
+   * `chartBundle` 과 `bundle` 이 갈라지는 필드 목록을 못박는다.
+   *
+   * 왜 이 테스트가 있나 (2026-08-04 · #1060): 둘의 분리는 SSE 틱이 캔들·세그먼트
+   * 경로를 churn 하지 않게 하는 **성능** 분기다. `bundle` 은 `{...chartBundle}` 에
+   * 라이브 성분 몇 개만 덮어쓴 것이라, 나머지 필드는 **같은 참조**다. 그래서
+   * 소비처가 어느 쪽을 집든 결과가 같고 — 아래 목록의 필드만 예외다. 그 예외에서
+   * `chartBundle` 을 집으면 에러 없이 **라이브가 빠진 값**을 얻는다. 히트맵이 정확히
+   * 그렇게 2주간 디스크 승격 주기(5분)로만 갱신됐다.
+   *
+   * **이 테스트가 깨졌다면** = 라이브 오버레이 필드가 늘거나 줄었다는 뜻이다.
+   * 목록만 고치지 말고 그 필드의 **소비처가 `bundle` 쪽을 읽는지** 반드시 확인할 것.
+   * 현재 배선(2026-08-04 감사): quote_ratio·fill_strength 는 hoga pane 계열이
+   * `paneHogaBundle`/`paneRatioBundle` 로, price_level_hits 는 `PriceLevelDotsOverlay`
+   * 가 `hogaBundle`(= `bundle ?? cb`)로, depth_heatmap 은 `ChartWindow` 가
+   * `useLiveChartData.workareaDepthHeatmap` 으로 받는다.
+   */
+  it('chartBundle 과 bundle 이 갈라지는 필드는 정확히 이 4개다', () => {
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    const chart = result.current.chartBundle as unknown as Record<string, unknown>;
+    const live = result.current.bundle as unknown as Record<string, unknown>;
+    expect(chart).toBeTruthy();
+    expect(live).toBeTruthy();
+
+    const keys = new Set([...Object.keys(chart), ...Object.keys(live)]);
+    const diverging = [...keys].filter((k) => chart[k] !== live[k]).sort();
+
+    expect(diverging).toEqual([
+      'depth_heatmap',
+      'fill_strength',
+      'price_level_hits',
+      'quote_ratio',
+    ]);
+
+    // 갈라지는 필드는 위험 등급이 둘로 나뉜다 — 새 필드를 추가할 때 어느 쪽인지
+    // 알고 넣어야 한다.
+    //
+    // (a) 빈 스텁: 오배선하면 pane 이 텅 비어 **즉시** 드러난다(시끄러운 실패).
+    expect(result.current.chartBundle?.quote_ratio.points).toEqual([]);
+    expect(result.current.chartBundle?.fill_strength.points).toEqual([]);
+    // (b) 과거분 보존: 오배선해도 그럴듯하게 그려지면서 **낡는다**(조용한 실패).
+    //     히트맵이 여기 속해서 2주를 버텼다. 이쪽에 필드를 추가할 때는 소비처
+    //     배선을 테스트로 함께 봉인할 것(useLiveChartData.test.tsx 선례).
+    expect(Array.isArray(result.current.chartBundle?.price_level_hits)).toBe(true);
+    expect(Array.isArray(result.current.chartBundle?.depth_heatmap)).toBe(true);
   });
 
   it('merges sidecar program trade into the chart and live bundles', () => {
