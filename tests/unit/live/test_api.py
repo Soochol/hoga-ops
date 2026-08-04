@@ -1792,7 +1792,8 @@ def _kiwoom_investor_seam(monkeypatch):
 
     monkeypatch.setattr(kiwoom_daily_candles, "fetch_daily_candles", _daily)
 
-    async def _walk(client, code, *, newest_yyyymmdd, oldest_yyyymmdd, **_kw):
+    async def _walk(client, code, *, newest_yyyymmdd, oldest_yyyymmdd,
+                    fetch_page=None, **_kw):
         """walk-back 을 **날짜별 호출로 되돌리는** 위임.
 
         PR-G(#1043)에서 소비자가 날짜별 팬 → 구간 walk 로 바뀌었지만, 아래
@@ -1800,6 +1801,11 @@ def _kiwoom_investor_seam(monkeypatch):
         와이어가 아니다. 커서 규칙 자체는 `test_kiwoom_minute_candles.py` 가
         실측 페이지 모양으로 덮는다. 그래서 이 자리에서 구간을 날짜로 풀어
         기존 페이크(날짜당 1콜)의 의도를 그대로 보존한다.
+
+        **날짜 루프는 반드시 `fetch_page` 를 통과해야 한다.** 거버너 단위가 walk
+        구간이 아니라 **페이지(커서)** 로 내려갔기 때문이다 — 루프를 러너 밖에서
+        돌리면 중복제거·유량 페이싱이 이 페이크에서만 사라져, 싱글플라이트 계약이
+        제품과 무관하게 깨진 것처럼 보인다.
         """
         import datetime as _dt
 
@@ -1808,7 +1814,10 @@ def _kiwoom_investor_seam(monkeypatch):
         end = _dt.datetime.strptime(newest_yyyymmdd, "%Y%m%d").date()
         while cur <= end:
             date_s = cur.strftime("%Y%m%d")
-            got = await client.fetch_past_minute_candles(code, date_s, **_kw)
+            if fetch_page is not None:
+                got = (await fetch_page(date_s)).complete.get(date_s) or []
+            else:
+                got = await client.fetch_past_minute_candles(code, date_s, **_kw)
             if got:
                 bars[date_s] = got
             cur += _dt.timedelta(days=1)
@@ -1819,8 +1828,20 @@ def _kiwoom_investor_seam(monkeypatch):
     async def _day(client, code, date_yyyymmdd, **kw):
         return await client.fetch_past_minute_candles(code, date_yyyymmdd, **kw)
 
+    async def _page(client, code, cursor, **kw):
+        """커서 1개 = 날짜 1개로 읽어 기존 페이크(날짜당 1콜)에 그대로 잇는다.
+
+        이 자리가 거버너를 지나는 유일한 지점이므로, 여기로 모아야 날짜별
+        중복제거(싱글플라이트)가 제품과 같은 방식으로 재현된다.
+        """
+        got = await client.fetch_past_minute_candles(code, cursor, **kw)
+        return kiwoom_minute_candles.MinutePage(
+            complete={cursor: got} if got else {}, oldest="",
+        )
+
     monkeypatch.setattr(kiwoom_minute_candles, "walk_minute_days", _walk)
     monkeypatch.setattr(kiwoom_minute_candles, "fetch_day", _day)
+    monkeypatch.setattr(kiwoom_minute_candles, "fetch_minute_page", _page)
     yield
     _fake_kiwoom_client["client"] = None
 

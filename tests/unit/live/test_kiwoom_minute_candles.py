@@ -289,3 +289,32 @@ async def test_page_request_carries_base_dt_and_scope() -> None:
         "upd_stkpc_tp": "1", "base_dt": "20260803",
     }
     await c.aclose()
+
+
+async def test_walk_routes_every_page_through_the_injected_fetcher() -> None:
+    """주입하면 **모든** 페이지가 그 러너를 지난다 — 유량 페이싱의 전제다.
+
+    거버너(`kiwoom_capacity`)는 submit 진입 전에 버킷을 한 번만 소비한다. 한
+    페이지라도 러너를 건너뛰면 그만큼이 페이싱 밖으로 새어 `1700 유량=5` 로
+    돌아온다(2026-08-04 `ka10080` 실측).
+    """
+    pages = {
+        "20260803": MinutePage(complete={"20260803": []}, oldest="20260731"),
+        "20260731": MinutePage(complete={"20260731": []}, oldest="20260729"),
+    }
+    seen: list[str] = []
+
+    async def _fetch(cursor: str) -> MinutePage:
+        seen.append(cursor)
+        return pages[cursor]
+
+    res = await walk_minute_days(
+        None,  # type: ignore[arg-type] — 주입하면 client 경로는 죽는다
+        "005930",
+        newest_yyyymmdd="20260803", oldest_yyyymmdd="20260730",
+        fetch_page=_fetch,
+    )
+
+    assert seen == ["20260803", "20260731"], "커서 전진이 러너를 통해 일어난다"
+    assert res.pages == 2
+    assert set(res.bars_by_date) == {"20260803", "20260731"}
