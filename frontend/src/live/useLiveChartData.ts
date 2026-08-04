@@ -19,7 +19,14 @@ import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
 import { useTradeVolumePocs } from './useTradeVolumePoc';
-import type { AskPeak, BidPeak, Candle, RangeBundle, TradeVolumePocWire } from '../api/types';
+import type {
+  AskPeak,
+  BidPeak,
+  Candle,
+  DepthHeatmapPointWire,
+  RangeBundle,
+  TradeVolumePocWire,
+} from '../api/types';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -36,6 +43,7 @@ const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const EMPTY_CANDLES: readonly Candle[] = [];
 const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
 const EMPTY_TRADE_SNAPSHOTS: readonly TradeSnapshot[] = [];
+const EMPTY_DEPTH_HEATMAP: readonly DepthHeatmapPointWire[] = [];
 
 const INDEX_BUCKET_MS = {
   '1m': 60_000,
@@ -200,13 +208,33 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
       bid_peaks: dayBidPeaks,
       broker_late_entries: base.broker_late_entries ?? [],
       trade_volume_pocs: tradeVolumePocsToWire(tradeVolumePocs),
-      depth_heatmap: base.depth_heatmap ?? [],
+      // ⚠️ `base`(=chartBundle 우선) 가 아니라 병합 번들에서 가져온다 — 아래
+      // workareaDepthHeatmap 과 같은 이유다. 저장 뷰는 "지금 화면"의 스냅샷이라
+      // 오버레이가 그린 것과 같은 배열이어야 한다.
+      depth_heatmap: stockBundle.depth_heatmap ?? [],
     };
   }, [stockBundle, stockChartBundle, dayAskPeaks, dayBidPeaks, tradeVolumePocs]);
   const workareaCode = activeCode ?? (activeIndexId ? `index:${activeIndexId}` : null);
   const workareaBundle = activeIndexId ? indexBundle : stockBundle;
   const workareaChartBundle = activeIndexId ? indexBundle : stockChartBundle;
   const workareaHogaBundle = activeIndexId ? indexBundle : stockHogaBundle;
+  /**
+   * 호가 잔량 히트맵 오버레이의 소스. **반드시 병합 번들(`workareaBundle`)에서** 온다.
+   *
+   * 왜 훅이 배열째 내보내나: 소비처(ChartWindow)가 `chartBundle ?? bundle` 로 고르면
+   * 종목 뷰에서는 `chartBundle` 이 항상 non-null 이라 **sidecar 전용 배열**이 잡히고,
+   * `useLiveBundle` 의 `mergeDepthHeatmapToday`(오늘 SSE 버킷 overlay)가 통째로
+   * 버려진다 — 2026-07-20 멀티창 플립(#719) 때 그렇게 배선돼 있었다. 그 상태에서
+   * 히트맵은 디스크 승격 주기(5분)로만 갱신돼, 승격 직전에는 최신(형성 중) 캔들 포함
+   * 4~5개 버킷이 항상 비어 보였다(2026-08-04 실측: 11:21~11:24 마지막 버킷 11:20 고정
+   * → 11:25 에 5칸 동시 등장). 선택을 창 밖에서 없애 잘못 고를 여지 자체를 지운다.
+   *
+   * `chartBundle`/`bundle` 분리는 SSE 틱이 캔들·세그먼트 경로를 churn 하지 않게 하는
+   * **성능** 분기지, 데이터 분기가 아니다. 라이브 성분이 필요한 필드를 `chartBundle`
+   * 에서 뽑으면 조용히 과거분만 얻는다.
+   */
+  const workareaDepthHeatmap: readonly DepthHeatmapPointWire[] =
+    (activeIndexId ? indexBundle : stockBundle)?.depth_heatmap ?? EMPTY_DEPTH_HEATMAP;
   const workareaLoading = activeIndexId ? indexCandles.isLoading : isPastCandlesLoading;
   const indexExtending = activeIndexId ? historicalFromDate !== null && indexCandles.isFetching : false;
   const workareaDataWarnings = activeIndexId ? indexCandles.data?.data_warnings ?? [] : pastDataWarnings;
@@ -240,6 +268,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     workareaBundle,
     workareaChartBundle,
     workareaHogaBundle,
+    workareaDepthHeatmap,
     workareaLoading,
     workareaDataWarnings,
   } as const;

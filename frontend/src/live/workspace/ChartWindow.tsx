@@ -369,7 +369,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               liveTradeSnapshots={d.live.trade}
               todayKst={d.today}
               tradeVolumePocs={d.tradeVolumePocs}
-              depthHeatmap={(d.workareaChartBundle ?? d.workareaBundle)?.depth_heatmap}
+              depthHeatmap={d.workareaDepthHeatmap}
               depthDeltaToday={d.depthDeltaToday}
               onViewportCaptureReady={handleViewportCaptureReady}
               paneTogglesOverride={{ hogaPanes: d.capabilities.hogaPanes }}
