@@ -162,8 +162,18 @@ describe('DateRangePicker reason banner', () => {
       wrapper: W(qc),
     });
     await new Promise((r) => setTimeout(r, 50));
-    // calendarHints.trading_days_unavailable contains this Korean phrase
-    expect(screen.getByText(/KIS 거래일 조회 일시 오류/)).toBeTruthy();
+    // calendarHints.trading_days_unavailable = 소스를 못 읽었다(배포 사고).
+    // 재시도 안내를 하지 않는 것이 이 카피의 요점이다.
+    expect(screen.getByText(/거래일 달력을 읽지 못해/)).toBeTruthy();
+  });
+
+  it('shows the stale-calendar banner distinctly from the unreadable-source one', async () => {
+    const qc = setupCalendarWithReason('trading_days_stale');
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={() => {}} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByText(/거래일 달력이 최신이 아니라/)).toBeTruthy();
   });
 
   it('hides banner when both months have null reason', async () => {
@@ -172,7 +182,8 @@ describe('DateRangePicker reason banner', () => {
       wrapper: W(qc),
     });
     await new Promise((r) => setTimeout(r, 50));
-    // No banner copy should appear
-    expect(screen.queryByText(/휴일 표시가/)).toBeNull();
+    // 두 사유 카피가 **공통으로** 담는 문구로 확인한다. 예전에는 "휴일 표시가" 로
+    // 봤는데, 카피가 바뀌면 그 문자열은 어디에도 없어 **관측 실패가 통과로 읽힌다**.
+    expect(screen.queryByText(/근사했습니다/)).toBeNull();
   });
 });

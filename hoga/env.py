@@ -12,7 +12,9 @@ under the asyncio Lock in symbols.refresh() without blocking the event
 loop on subprocess I/O.
 
 Loaded keys (all optional — missing keys fall back to other sources):
-    KIS_APP_KEY, KIS_APP_SECRET  KIS Open API credentials (/live, 거래일 조회)
+    KIS_APP_KEY, KIS_APP_SECRET  KIS Open API credentials (파생 전용 — ADR-0136).
+                                 거래일 달력은 더 이상 여기에 의존하지 않는다
+                                 (정적 시드 + 오버레이, PR-H #1044).
     HOGAPLAY_COOKIE              hogaplay session cookie
 
 Precedence: shell env > .env > .cookie file (legacy, for HOGAPLAY_COOKIE only).
