@@ -131,7 +131,7 @@ export function WindowAddMenu() {
                   </span>
                 )}
               </span>
-              <span className="block truncate text-[10.5px] text-fg-dimmer">{item.desc}</span>
+              <span className="block truncate text-[10.5px] text-fg-dim">{item.desc}</span>
             </span>
           </button>
         );

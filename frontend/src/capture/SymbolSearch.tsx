@@ -159,7 +159,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
             <div className="py-md px-sm font-normal text-sm text-fg-dim">
               검색 결과가 없습니다. 종목명 또는 6자리 코드를 확인하세요.
               {isStaleByAge && fetchedAtMs !== null && (
-                <div className="mt-2 text-xs text-fg-dimmer">
+                <div className="mt-2 text-xs text-fg-dim">
                   Symbol Master가 {formatRelativeShort(fetchedAtMs)} 업데이트되었습니다 —
                   신규 상장 종목이 누락되었을 수 있습니다.{' '}
                   <a href="/settings" className="underline">설정에서 Update</a>

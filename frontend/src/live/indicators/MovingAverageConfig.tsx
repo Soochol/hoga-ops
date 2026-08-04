@@ -13,7 +13,7 @@ export default function MovingAverageConfig() {
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">
-        이동평균선 <span aria-hidden="true" className="text-fg-dimmer text-sm">ⓘ</span>
+        이동평균선 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
       </h3>
       <p className="text-fg-dim text-xs mb-3">
         지난 n일 동안 주가 평균값을 이은 선

@@ -81,7 +81,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
               style={{ position: 'fixed', top, left, width: anchorRect.width }}>
               {CONDITION_GROUPS.map(([label, types]) => (
                 <li key={label} role="none">
-                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase text-fg-dimmer">{label}</div>
+                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase text-fg-dim">{label}</div>
                   <ul role="none">
                     {types.map((t) => (
                       <li key={t} role="none"><button type="button" role="menuitem" aria-label={CONDITION_CATALOG[t].label} onClick={() => add(t)}
@@ -97,7 +97,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
       </div>
 
       {conditions.length > 0 && (
-        <div className="text-[10px] text-fg-dimmer text-center">모두 충족 · AND</div>
+        <div className="text-[10px] text-fg-dim text-center">모두 충족 · AND</div>
       )}
       {conditions.map((leaf) => (
         <ConditionRow key={leaf.id} leaf={leaf}

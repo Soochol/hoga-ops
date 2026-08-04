@@ -68,7 +68,7 @@ function AnchoredMenu({ label, children }: { label: string; children: React.Reac
   return (
     <div role="menu" aria-label={label}
       className="absolute right-0 z-30 mt-1 bg-bg-card border border-border rounded shadow-lg py-1 min-w-[150px]">
-      <div className="px-3 py-1 text-xs text-fg-dimmer">{label}</div>
+      <div className="px-3 py-1 text-xs text-fg-dim">{label}</div>
       {children}
     </div>
   );
@@ -237,7 +237,7 @@ function GroupHeader(props: {
         aria-label={`${props.label} ${props.count}`} aria-expanded={!props.collapsed}
         className="flex-1 min-w-0 text-left flex items-baseline gap-1.5">
         <span className="truncate">{props.label}</span>
-        <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
+        <span className="flex-none text-xs font-normal text-fg-dim">{props.count}</span>
       </button>
       {/* 그룹 평균 등락률(비가중, 시세 도착 종목만; 전부 결측이면 미표시). 방향색만 —
           배경 틴트는 없다(섹터 스트립과 달리 드로어는 숫자만). 정렬키(avgPct)와 동일값. */}
@@ -382,7 +382,7 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, pending, folders }: {
           </select>
         </label>
       ) : (
-        <div className="text-xs text-fg-dimmer">그룹이 없습니다 — 먼저 ＋ 버튼으로 그룹을 만들어 주세요.</div>
+        <div className="text-xs text-fg-dim">그룹이 없습니다 — 먼저 ＋ 버튼으로 그룹을 만들어 주세요.</div>
       ))}
       <div className="flex justify-end gap-2">
         <button type="button" className="text-xs px-2 py-1 text-fg-dim" onClick={onClose}>닫기</button>

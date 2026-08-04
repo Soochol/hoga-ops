@@ -94,7 +94,7 @@ export function WatchlistEntryPane({ selected }: { selected: Selected }) {
         <button type="button" disabled={selectedCodes.length === 0} onClick={doDelete}
           className="px-2 py-1 rounded border border-border text-xs text-fg-dim hover:text-error disabled:opacity-40">🗑 삭제</button>
         <div className="flex-1" />
-        <span className="text-xs text-fg-dimmer">직접 설정한 순</span>
+        <span className="text-xs text-fg-dim">직접 설정한 순</span>
       </div>
 
       {/* add form — v3: 실폴더 선택 시에만(미분류 추가 대상 없음) */}
@@ -124,7 +124,7 @@ export function WatchlistEntryPane({ selected }: { selected: Selected }) {
               catchingUp={catchupOneM.isPending && catchupOneM.variables === e.code} />
           ))}
         </SortableContext>
-        {entries.length === 0 && <li className="p-4 text-sm text-fg-dimmer">이 그룹에 종목이 없습니다</li>}
+        {entries.length === 0 && <li className="p-4 text-sm text-fg-dim">이 그룹에 종목이 없습니다</li>}
       </ul>
     </div>
   );

@@ -75,7 +75,7 @@ function AnchoredMenu({ label, children }: { label: string; children: React.Reac
   return (
     <div role="menu" aria-label={label}
       className="absolute right-0 z-30 mt-1 bg-bg-card border border-border rounded shadow-lg py-1 min-w-[150px]">
-      <div className="px-3 py-1 text-xs text-fg-dimmer">{label}</div>
+      <div className="px-3 py-1 text-xs text-fg-dim">{label}</div>
       {children}
     </div>
   );
@@ -214,7 +214,7 @@ function GroupHeader(props: {
         aria-label={`${props.label} ${props.count}`} aria-expanded={!props.collapsed}
         className="flex-1 min-w-0 text-left flex items-baseline gap-1.5">
         <span className="truncate">{props.label}</span>
-        <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
+        <span className="flex-none text-xs font-normal text-fg-dim">{props.count}</span>
       </button>
       {props.onSort && (
         <button type="button" aria-label={`${props.label} 정렬`}

@@ -36,7 +36,7 @@ export function InvestorTrendEstimateCard({ query }: Props) {
       {/* 상태는 평소엔 렌더하지 않는다 — "조회 중"·"조회 지연" 처럼 표가 거짓말을
           하고 있을 때만 한 줄이 생긴다. 항상 있는 크롬이면 그게 라벨이 된다. */}
       {stateText && (
-        <div className="shrink-0 px-3 pt-1.5 text-right font-data text-xs text-fg-dimmer">
+        <div className="shrink-0 px-3 pt-1.5 text-right font-data text-xs text-fg-dim">
           {stateText}
         </div>
       )}
@@ -48,7 +48,7 @@ export function InvestorTrendEstimateCard({ query }: Props) {
             배경 자체는 필수다 — 투명하면 스크롤되는 행이 뒤로 비친다.
             배경을 thead/tr 이 아니라 th 마다 주는 이유: border-collapse 표에서는
             thead/tr 배경이 sticky 헤더를 따라오지 않는다. */}
-        <thead className="sticky top-0 z-10 text-xs text-fg-dimmer">
+        <thead className="sticky top-0 z-10 text-xs text-fg-dim">
           <tr>
             <th className="w-[4.6rem] bg-bg-card py-1.5 pl-3 pr-1.5 text-left font-medium">차수</th>
             <th className="bg-bg-card px-1.5 py-1.5 text-right font-medium">외국인</th>

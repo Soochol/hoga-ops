@@ -129,7 +129,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
               <span className="truncate text-[12px] font-medium text-fg">
                 {kind === 'chart' ? title : `${KIND_LABEL[kind]} · ${title}`}
               </span>
-              {symbolCode && <span className="font-data text-[10px] text-fg-dimmer">{symbolCode}</span>}
+              {symbolCode && <span className="font-data text-[10px] text-fg-dim">{symbolCode}</span>}
             </>
           )}
         </>

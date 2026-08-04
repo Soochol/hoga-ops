@@ -10,7 +10,7 @@ export default function DepthDeltaConfig() {
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">
-        단별 잔량 증감 <span aria-hidden="true" className="text-fg-dimmer text-sm">ⓘ</span>
+        단별 잔량 증감 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
       </h3>
       <p className="text-fg-dim text-xs mb-3">
         연속된 호가 스냅샷을 같은 가격끼리 비교해, 각 호가 단에 잔량이 얼마나 새로 들어오고

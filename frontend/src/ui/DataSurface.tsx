@@ -60,7 +60,7 @@ export function DataSection({
       {collapsible ? (
         <header
           id={headerId}
-          className={`flex items-center ${headerDivider} text-xs font-semibold uppercase text-fg-dimmer`.trim()}
+          className={`flex items-center ${headerDivider} text-xs font-semibold uppercase text-fg-dim`.trim()}
         >
           <button
             type="button"
@@ -89,7 +89,7 @@ export function DataSection({
       ) : hasStaticControls ? (
         <header
           id={headerId}
-          className={`flex items-center ${headerDivider} text-xs font-semibold uppercase text-fg-dimmer`.trim()}
+          className={`flex items-center ${headerDivider} text-xs font-semibold uppercase text-fg-dim`.trim()}
         >
           {headerLeading != null && (
             <span className="flex shrink-0 items-center pl-1.5">{headerLeading}</span>
@@ -102,7 +102,7 @@ export function DataSection({
       ) : (
         <header
           id={headerId}
-          className={`${headerDivider} px-3 py-2 text-xs font-semibold uppercase text-fg-dimmer`.trim()}
+          className={`${headerDivider} px-3 py-2 text-xs font-semibold uppercase text-fg-dim`.trim()}
         >
           {title}
         </header>

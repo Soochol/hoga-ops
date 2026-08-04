@@ -216,7 +216,7 @@ export function IndexSectorRankingPane({
 
   let body: ReactNode = null;
   if (isLoading) {
-    body = <div className="p-md text-sm text-fg-dimmer">섹터 랭킹을 불러오는 중입니다.</div>;
+    body = <div className="p-md text-sm text-fg-dim">섹터 랭킹을 불러오는 중입니다.</div>;
   } else if (error) {
     body = (
       <div className="p-md text-sm" style={{ color: 'var(--danger)' }}>
@@ -224,9 +224,9 @@ export function IndexSectorRankingPane({
       </div>
     );
   } else if (ranking?.source === 'unavailable') {
-    body = <div className="p-md text-sm text-fg-dimmer">일봉 랭킹 데이터를 사용할 수 없습니다.</div>;
+    body = <div className="p-md text-sm text-fg-dim">일봉 랭킹 데이터를 사용할 수 없습니다.</div>;
   } else if (sectors.length === 0) {
-    body = <div className="p-md text-sm text-fg-dimmer">히트맵 섹터가 없습니다.</div>;
+    body = <div className="p-md text-sm text-fg-dim">히트맵 섹터가 없습니다.</div>;
   } else {
     body = (
       <div
@@ -338,7 +338,7 @@ export function IndexSectorRankingPane({
         {basisMode === 'pinned' && (
           <button
             type="button"
-            className="ml-auto text-xs text-fg-dimmer"
+            className="ml-auto text-xs text-fg-dim"
             onClick={onClearDatePin}
           >
             고정 해제

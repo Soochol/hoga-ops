@@ -163,7 +163,7 @@ export function Heatmap() {
         <header className="flex items-center gap-3 px-3 py-2 bg-bg flex-none">
           <span className="text-md font-semibold text-fg">히트맵</span>
           {phase && <span className="text-xs font-data text-fg-dim">{PHASE_LABEL[phase] ?? phase}</span>}
-          <span className="text-xs font-data text-fg-dimmer">
+          <span className="text-xs font-data text-fg-dim">
             {updated} 갱신 · {isSearching && matchCount > 0
               ? `${visibleCount}종목 중 ${matchCount} 매칭`
               : `${visibleCount}종목`}

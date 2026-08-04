@@ -226,7 +226,7 @@ export function VolumeDistributionCard({
         </div>
         <div
           data-testid="volume-distribution-price-axis"
-          className="relative shrink-0 font-data text-[10px] leading-none tabular-nums text-fg-dimmer"
+          className="relative shrink-0 font-data text-[10px] leading-none tabular-nums text-fg-dim"
           style={{ width: PRICE_AXIS_WIDTH_PX }}
         >
           {priceTicks.map(({ pct, label }) => (
@@ -256,7 +256,7 @@ export function VolumeDistributionCard({
         data-testid="volume-distribution-time-axis"
         style={{ paddingRight: PRICE_AXIS_WIDTH_PX + 4 }}
       >
-        <div className="relative h-4 border-t border-border/70 font-data text-[10px] leading-4 tabular-nums text-fg-dimmer">
+        <div className="relative h-4 border-t border-border/70 font-data text-[10px] leading-4 tabular-nums text-fg-dim">
           {timeTicks && (
             <>
               <span className="absolute left-0 top-0">{timeTicks[0]}</span>

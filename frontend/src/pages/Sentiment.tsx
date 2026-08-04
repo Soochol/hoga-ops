@@ -106,12 +106,12 @@ function Section({
     <PanelCard borderless className="p-md flex flex-col gap-sm">
       <div className="flex items-baseline justify-between gap-md">
         <h2 className="text-sm text-fg">{title}</h2>
-        <span className="text-xs text-fg-dimmer tabular-nums">{asOf}</span>
+        <span className="text-xs text-fg-dim tabular-nums">{asOf}</span>
       </div>
       {children}
       {/* 한계 설명은 설계 요구사항이라 없애면 안 되지만(테스트 고정), 데이터보다
           앞세우면 4개 카드 전부에서 반복 노이즈가 된다 — 하단 각주로 내린다. */}
-      <p className="text-xs text-fg-dimmer">{caveat}</p>
+      <p className="text-xs text-fg-dim">{caveat}</p>
     </PanelCard>
   );
 }
@@ -157,7 +157,7 @@ export default function Sentiment() {
         <PanelCard borderless className="p-md">
           <PageState>
             {copy.title}
-            {body && <div className="mt-xs text-xs text-fg-dimmer">{body}</div>}
+            {body && <div className="mt-xs text-xs text-fg-dim">{body}</div>}
           </PageState>
         </PanelCard>
       </PageContainer>
@@ -220,7 +220,7 @@ export default function Sentiment() {
               <div className="text-lg tabular-nums text-fg">
                 {data.iv_skew?.risk_reversal_25d?.toFixed(2) ?? '—'}
               </div>
-              <div className="text-xs text-fg-dimmer">+면 하방 보험이 비쌈</div>
+              <div className="text-xs text-fg-dim">+면 하방 보험이 비쌈</div>
             </div>
             <div className="ml-auto flex items-center gap-md">
               <SegmentedControl aria-label="행사가 축 범위">
@@ -244,7 +244,7 @@ export default function Sentiment() {
                   );
                 })}
               </SegmentedControl>
-              <div className="text-xs text-fg-dimmer tabular-nums">
+              <div className="text-xs text-fg-dim tabular-nums">
                 <AsOf label="전수" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />
                 {' · '}
                 <AsOf label="ATM" ms={data.atm_as_of_ms} staleMs={ATM_STALE_MS} />
@@ -318,7 +318,7 @@ export default function Sentiment() {
           </Section>
         )}
 
-        <p className="text-xs text-fg-dimmer">
+        <p className="text-xs text-fg-dim">
           시장 상태를 관측하기 위한 지표입니다. 투자 판단 도구가 아닙니다.
         </p>
       </div>

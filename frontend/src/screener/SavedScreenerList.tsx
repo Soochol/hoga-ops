@@ -116,7 +116,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
   return (
     <div ref={rootRef} className="flex h-full flex-col gap-sm min-h-0 overflow-auto p-md">
       <div className="flex items-center gap-1.5">
-        <span className="text-[10.5px] font-semibold uppercase text-fg-dimmer">저장한 조건검색</span>
+        <span className="text-[10.5px] font-semibold uppercase text-fg-dim">저장한 조건검색</span>
         <button type="button" aria-label="새 조건검색"
           onClick={() => { onNewDraft(); setEditing({ mode: 'create', initial: suggestSaveName(saves.map((s) => s.name)) }); }}
           className="ml-auto w-[22px] h-[22px] rounded-md bg-bg-input border text-fg-dim hover:text-fg">＋</button>
@@ -148,7 +148,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
               ) : (
                 <span className="truncate flex-1">{s.name}</span>
               )}
-              {isAnchor && dirty && !isRenaming && <span className="shrink-0 text-[10px] text-fg-dimmer">수정됨</span>}
+              {isAnchor && dirty && !isRenaming && <span className="shrink-0 text-[10px] text-fg-dim">수정됨</span>}
               {!isRenaming && (
                 <button type="button" aria-label="저장 조건 메뉴" aria-expanded={menu?.id === s.id}
                   onClick={(e) => {
@@ -175,12 +175,12 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
           );
         })}
         {saves.length === 0 && editing?.mode !== 'create' && (
-          <EmptyState align="start" className="h-auto gap-0 px-1 py-2 text-xs text-fg-dimmer">
+          <EmptyState align="start" className="h-auto gap-0 px-1 py-2 text-xs text-fg-dim">
             저장된 조건검색이 없습니다. ＋ 로 현재 조건을 저장하세요.
           </EmptyState>
         )}
         {saves.length > 0 && visibleSaves.length === 0 && (
-          <EmptyState align="start" className="h-auto gap-0 px-1 py-2 text-xs text-fg-dimmer">
+          <EmptyState align="start" className="h-auto gap-0 px-1 py-2 text-xs text-fg-dim">
             검색 결과가 없습니다.
           </EmptyState>
         )}

@@ -77,7 +77,10 @@ describe('RailShell primitives', () => {
     expect(screen.getByRole('button', { name: '전체 접기' })).toHaveClass('h-7');
     expect(screen.getByRole('button', { name: '전체 접기' })).toHaveClass('bg-bg-input');
     expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveClass('sticky');
-    expect(screen.getByText('2')).toHaveClass('text-fg-dimmer');
+    // 그룹 종목 수 배지. DESIGN.md 가 오래 "≈3.9:1 로 AA 미달이지만 3차 텍스트로 의도된
+    // 트레이드오프"라고 적어 뒀던 자리인데, 2026-08-04 에 소형 텍스트 전반을 --fg-dim 으로
+    // 승격하며 함께 올렸다(text-xs 는 11.8px = AA 상 본문이다).
+    expect(screen.getByText('2')).toHaveClass('text-fg-dim');
     expect(screen.getByText('급등 이후')).toHaveClass('pl-10');
   });
 });
