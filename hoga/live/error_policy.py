@@ -52,7 +52,7 @@ def classify_live_error(exc: BaseException, *, internal: bool = False) -> LiveEr
     if isinstance(exc, KisTransportError):
         return LiveErrorPolicy(
             kind="transport",
-            reason="kis_transport_error",
+            reason="transport_error",
             code=exc.msg_cd,
             message=exc.msg1,
             log_level=logging.WARNING,
@@ -63,7 +63,7 @@ def classify_live_error(exc: BaseException, *, internal: bool = False) -> LiveEr
     if isinstance(exc, KisRateLimitError):
         return LiveErrorPolicy(
             kind="rate_limit",
-            reason="kis_rate_limit",
+            reason="rate_limit_upstream",
             code="EGW00201",
             message=str(exc),
             log_level=logging.WARNING,
@@ -74,7 +74,7 @@ def classify_live_error(exc: BaseException, *, internal: bool = False) -> LiveEr
     if isinstance(exc, KisAuthError):
         return LiveErrorPolicy(
             kind="auth",
-            reason="kis_auth_error",
+            reason="auth_error",
             code="KIS_AUTH",
             message=str(exc),
             log_level=logging.WARNING,
@@ -85,7 +85,7 @@ def classify_live_error(exc: BaseException, *, internal: bool = False) -> LiveEr
     if isinstance(exc, KisApiError):
         return LiveErrorPolicy(
             kind="kis_api",
-            reason="kis_api_error",
+            reason="api_error",
             code=exc.msg_cd,
             message=exc.msg1,
             log_level=logging.WARNING,

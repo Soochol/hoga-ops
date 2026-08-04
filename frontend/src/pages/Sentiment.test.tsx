@@ -72,7 +72,7 @@ function mount(data: OptionSentiment | undefined, extra: Record<string, unknown>
 
 it('자격증명 없음과 콜드스타트를 다르게 안내한다', () => {
   // 두 상태를 같은 문구로 묶으면 "설정이 잘못됐다"와 "기다리면 된다"가 뭉개진다.
-  mount(ready({ unavailable: 'kis_credentials_missing' }));
+  mount(ready({ unavailable: 'credentials_missing' }));
   expect(screen.getByText(/KIS 자격증명이 설정되지 않았습니다/)).toBeInTheDocument();
 
   cleanup();

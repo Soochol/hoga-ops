@@ -218,7 +218,7 @@ async def test_open_failure_after_cache_returns_stale_last_good() -> None:
     assert out[0].change_pct == 1.2
     assert out[0].change_won == 750
     assert out[0].stale is True
-    assert out[0].stale_reason == "kis_fetch_failed"
+    assert out[0].stale_reason == "fetch_failed"
 
 
 async def test_pre_open_failure_after_cache_returns_stale_last_good_without_ohlc() -> None:
@@ -237,7 +237,7 @@ async def test_pre_open_failure_after_cache_returns_stale_last_good_without_ohlc
     assert out[0].high is None
     assert out[0].low is None
     assert out[0].stale is True
-    assert out[0].stale_reason == "kis_fetch_failed"
+    assert out[0].stale_reason == "fetch_failed"
 
 
 async def test_closed_cold_failure_serves_empty() -> None:

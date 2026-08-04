@@ -500,7 +500,7 @@ async def test_past_candles_partial_failure_kis_api_error(tmp_path, monkeypatch)
         # 덮으므로 그 콜이 실패하면 구간 전체가 미확보다. 일부만 성공한 척
         # 내려보내면 프론트가 구멍 뚫린 축을 진실로 그린다.
         assert [w["date"] for w in warnings] == ["20260501", "20260502", "20260503"]
-        assert {w["reason"] for w in warnings} == {"kis_api_error"}
+        assert {w["reason"] for w in warnings} == {"api_error"}
         assert body["candles"] == []
 
 
@@ -651,8 +651,8 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path, monkey
     )
     assert body["candles"] == []
     warns = {w["date"]: w["reason"] for w in body["data_warnings"]}
-    assert set(warns.values()) == {"kis_rate_limit"}
-    assert warns["20260508"] == "kis_rate_limit", "구간 전체가 같은 사유로 미확보다"
+    assert set(warns.values()) == {"rate_limit_upstream"}
+    assert warns["20260508"] == "rate_limit_upstream", "구간 전체가 같은 사유로 미확보다"
 
 
 @pytest.mark.asyncio
@@ -713,7 +713,7 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path, m
         warn_dates = [w["date"] for w in body["data_warnings"]]
         assert "20260503" not in warn_dates
         assert any(
-            w["reason"] == "kis_rate_limit" and w["date"] == "20260502"
+            w["reason"] == "rate_limit_upstream" and w["date"] == "20260502"
             for w in body["data_warnings"]
         )
 
@@ -742,7 +742,7 @@ async def test_past_candles_rate_limit_cooldown_blocks_immediate_followup(tmp_pa
     assert r1.status_code == 200
     assert r2.status_code == 200
     assert fake.calls == ["20260501"]
-    assert r1.json()["data_warnings"][0]["reason"] == "kis_rate_limit"
+    assert r1.json()["data_warnings"][0]["reason"] == "rate_limit_upstream"
     assert r2.json()["data_warnings"][0]["reason"] == "rate_limit_aborted"
 
 
@@ -1534,7 +1534,7 @@ def test_past_daily_rate_limit_surfaces_data_warning(tmp_path, monkeypatch) -> N
         warmup_calls = len(fake.calls)
         r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240501")
         body = r2.json()
-        assert any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
+        assert any(w["reason"] == "rate_limit_upstream" for w in body["data_warnings"])
         # Gap loop must break after the first EGW00201 — no further KIS
         # calls for later gap batches in the SAME request. (Client retries
         # are opaque to the fake; they don't show up as additional calls.)
@@ -2089,7 +2089,7 @@ def test_past_investor_net_rate_limit_surfaces_warning(tmp_path, monkeypatch) ->
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
         body = r.json()
-        assert any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
+        assert any(w["reason"] == "rate_limit_upstream" for w in body["data_warnings"])
 
 
 def test_past_investor_net_violation_surfaces_to_wire(tmp_path, monkeypatch) -> None:
@@ -2605,7 +2605,7 @@ async def test_investor_estimate_kis_failure_returns_previous_same_day_rows() ->
     response = await fetcher.fetch(fake, "005930")
 
     assert response.status == "error"
-    assert response.data_warning and response.data_warning.reason == "kis_rate_limit"
+    assert response.data_warning and response.data_warning.reason == "rate_limit_upstream"
     assert [r.slot for r in response.rows] == ["0900"]
 
 
@@ -2625,7 +2625,7 @@ async def test_investor_estimate_auth_failure_returns_degraded_credentials_warni
 
     assert response.status == "error"
     assert response.data_warning
-    assert response.data_warning.reason == "kis_credentials_missing"
+    assert response.data_warning.reason == "credentials_missing"
     assert response.data_warning.msg == "KIS authentication failed"
     assert response.rows == []
 
@@ -2732,7 +2732,7 @@ async def test_investor_estimate_degraded_failure_is_cached_with_previous_rows(m
     assert second_degraded.fetched_at_ms == successful.fetched_at_ms
     assert [r.slot for r in second_degraded.rows] == ["0900"]
     assert second_degraded.data_warning
-    assert second_degraded.data_warning.reason == "kis_rate_limit"
+    assert second_degraded.data_warning.reason == "rate_limit_upstream"
 
 
 @pytest.mark.asyncio
@@ -2757,11 +2757,11 @@ async def test_investor_estimate_api_and_transport_errors_preserve_previous_rows
 
     assert transport_response.status == "error"
     assert transport_response.data_warning
-    assert transport_response.data_warning.reason == "kis_api_error"
+    assert transport_response.data_warning.reason == "api_error"
     assert [r.slot for r in transport_response.rows] == ["0900"]
     assert api_response.status == "error"
     assert api_response.data_warning
-    assert api_response.data_warning.reason == "kis_api_error"
+    assert api_response.data_warning.reason == "api_error"
     assert [r.slot for r in api_response.rows] == ["0900"]
 
 
@@ -2893,7 +2893,7 @@ def test_investor_trend_estimate_route_missing_kis_returns_degraded_error(tmp_pa
     assert body["fetched_at_ms"] is None
     assert body["rows"] == []
     assert body["latest"] is None
-    assert body["data_warning"]["reason"] == "kis_credentials_missing"
+    assert body["data_warning"]["reason"] == "credentials_missing"
 
 
 def test_live_settings_routes_round_trip(tmp_path):

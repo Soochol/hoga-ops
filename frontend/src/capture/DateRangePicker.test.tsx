@@ -156,13 +156,13 @@ describe('DateRangePicker reason banner', () => {
     return new QueryClient({ defaultOptions: { queries: { retry: false } } });
   }
 
-  it('shows banner when left month has kis_holiday_fetch_failed reason', async () => {
-    const qc = setupCalendarWithReason('kis_holiday_fetch_failed');
+  it('shows banner when left month has trading_days_unavailable reason', async () => {
+    const qc = setupCalendarWithReason('trading_days_unavailable');
     render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={() => {}} />, {
       wrapper: W(qc),
     });
     await new Promise((r) => setTimeout(r, 50));
-    // calendarHints.kis_holiday_fetch_failed contains this Korean phrase
+    // calendarHints.trading_days_unavailable contains this Korean phrase
     expect(screen.getByText(/KIS 거래일 조회 일시 오류/)).toBeTruthy();
   });
 

@@ -20,7 +20,7 @@ export interface BannerInput {
    * which is 0 whenever the poller isn't running (missing KIS creds,
    * off-hours, never started). Conflating the two made /live announce
    * "관심종목이 비어 있습니다" while the watchlist page listed 9 entries —
-   * and worse, it masked the real `kis_credentials_missing` cause, since
+   * and worse, it masked the real `credentials_missing` cause, since
    * the empty-watchlist branch is checked first (diagnose 2026-05-30).
    *
    * `null` means the watchlist query hasn't resolved yet. We defer the

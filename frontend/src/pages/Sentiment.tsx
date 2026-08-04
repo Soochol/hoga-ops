@@ -69,7 +69,7 @@ const UNAVAILABLE_COPY: Record<
   string,
   { title: string; body: (chainSize: number | null) => string }
 > = {
-  kis_credentials_missing: {
+  credentials_missing: {
     title: 'KIS 자격증명이 설정되지 않았습니다',
     body: () => '.env 에 KIS_APP_KEY / KIS_APP_SECRET 를 설정하면 수집이 시작됩니다.',
   },

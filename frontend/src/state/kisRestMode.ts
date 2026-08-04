@@ -44,9 +44,9 @@ export function markLegacyKisRestBypassMigrated(): void {
 export function kisRestWarningIndicatesUnavailable(warning: KisRestWarningLike): boolean {
   const reason = warning.reason ?? '';
   const msg = warning.msg ?? '';
-  if (reason === 'kis_transport_error' || reason === 'kis_rest_unavailable') return true;
-  if (reason === 'kis_rate_limit' || reason === 'rate_limit_aborted') return true;
-  if (reason === 'kis_api_error' && msg.includes('TRANSPORT/')) return true;
+  if (reason === 'transport_error' || reason === 'kis_rest_unavailable') return true;
+  if (reason === 'rate_limit_upstream' || reason === 'rate_limit_aborted') return true;
+  if (reason === 'api_error' && msg.includes('TRANSPORT/')) return true;
   return false;
 }
 

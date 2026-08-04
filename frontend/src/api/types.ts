@@ -210,14 +210,14 @@ export type CaptureErrorCode =
  *  bodies, and as `CaptureError.code` on per-item SSE failures (via the
  *  `CaptureFinishedErrorCode` alias below). */
 export type UpstreamCode =
-  | 'kis_holiday_fetch_failed'
-  | 'kis_credentials_missing'
+  | 'trading_days_unavailable'
+  | 'credentials_missing'
   | 'cookie_expired'
   | 'cookie_missing'
   | 'hogaplay_http_error'
   | 'symbol_master_not_initialized'
   | 'disk_write_failed'
-  | 'kis_master_fetch_failed';
+  | 'master_fetch_failed';
 
 /** Mirrors hoga/api/error_codes.py::LiveErrorCode verbatim (ADR-0009 3번째 카테고리).
  *
@@ -459,7 +459,7 @@ export interface EnqueueResponse {
   /** ADR-0042: pairs rejected by the fail_streak cap. Default []. */
   blocked: BlockedItem[];
   /** 성공했지만 **품질이 떨어진 채** 진행했다. 현재 유일한 값은
-   *  `kis_credentials_missing` — KIS 거래일 목록을 못 얻어 **평일 기준**으로 담았다는
+   *  `credentials_missing` — KIS 거래일 목록을 못 얻어 **평일 기준**으로 담았다는
    *  뜻이고, 휴장일이 섞일 수 있다. 실패가 아니라 알림이다. */
   warning?: UpstreamCode | null;
 }

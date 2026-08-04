@@ -12,14 +12,14 @@ import type { UpstreamCode } from './types';
 // it here is a tsc error — the list can no longer silently drift from the
 // union the way the previous hand-maintained array did (4/7 coverage).
 const ALL_CODES = Object.keys({
-  kis_holiday_fetch_failed: true,
-  kis_credentials_missing: true,
+  trading_days_unavailable: true,
+  credentials_missing: true,
   cookie_expired: true,
   cookie_missing: true,
   hogaplay_http_error: true,
   symbol_master_not_initialized: true,
   disk_write_failed: true,
-  kis_master_fetch_failed: true,
+  master_fetch_failed: true,
 } satisfies Record<UpstreamCode, true>) as UpstreamCode[];
 
 const ALL_MAPS = {

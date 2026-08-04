@@ -420,14 +420,14 @@ class LiveMinuteCandleBackfill:
                         self._cache.store_today(venue, code, None)
                 candles_all.extend(bars)
             except KiwoomRateLimitError as e:
-                warnings.append({"date": date_s, "reason": "kis_rate_limit", "msg": str(e)})
+                warnings.append({"date": date_s, "reason": "rate_limit_upstream", "msg": str(e)})
                 self._mark_rate_limited()
                 kis_blocked = True
             except KiwoomCapacityOverloaded:
                 warnings.append(_capacity_overloaded_warning(date_s))
             except KiwoomRestError as e:
                 # `reason` 문자열은 프론트 계약이라 유지한다(#1046 에서 정리).
-                warnings.append({"date": date_s, "reason": "kis_api_error", "msg": str(e)})
+                warnings.append({"date": date_s, "reason": "api_error", "msg": str(e)})
 
         result = LiveMinuteCandleBackfillResult(
             candles=candles_all,
@@ -509,13 +509,13 @@ class LiveMinuteCandleBackfill:
             self._mark_rate_limited()
             for date_s in pending:
                 warnings_by_date[date_s] = {
-                    "date": date_s, "reason": "kis_rate_limit", "msg": str(e),
+                    "date": date_s, "reason": "rate_limit_upstream", "msg": str(e),
                 }
             return True
         except KiwoomRestError as e:
             for date_s in pending:
                 warnings_by_date[date_s] = {
-                    "date": date_s, "reason": "kis_api_error", "msg": str(e),
+                    "date": date_s, "reason": "api_error", "msg": str(e),
                 }
             return False
         self._fresh_past_fetches += 1
@@ -573,7 +573,7 @@ class LiveMinuteCandleBackfill:
                 fresh.add(date_s)
             else:
                 warnings_by_date[date_s] = {
-                    "date": date_s, "reason": "kis_api_error", "msg": msg,
+                    "date": date_s, "reason": "api_error", "msg": msg,
                 }
 
     async def _walk_scheduled(
@@ -751,8 +751,8 @@ def _fallback_blocking_warning_dates(warnings: list[dict]) -> set[str]:
     blocking_reasons = {
         "capacity_overloaded",
         "fetch_budget_exhausted",
-        "kis_api_error",
-        "kis_rate_limit",
+        "api_error",
+        "rate_limit_upstream",
         "rate_limit_aborted",
     }
     return {
@@ -781,7 +781,7 @@ def _fetch_budget_exhausted_warning(date_s: str) -> dict:
 def _kis_rest_bypassed_warning(date_s: str) -> dict:
     return {
         "date": date_s,
-        "reason": "kis_rest_bypassed",
+        "reason": "rest_bypassed",
         "msg": "KIS REST bypass is enabled; served cache-only data",
     }
 

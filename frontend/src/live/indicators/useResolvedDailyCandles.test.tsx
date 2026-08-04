@@ -154,11 +154,11 @@ describe('useResolvedDailyCandles', () => {
     expect(result.current.sourceByDate.get('20260616')).toBe('screener_daily');
   });
 
-  it('uses screener daily rows when KIS daily is empty with kis_rest_bypassed', () => {
+  it('uses screener daily rows when KIS daily is empty with rest_bypassed', () => {
     mockUseKisDaily.mockReturnValue({
       data: {
         candles: [],
-        data_warnings: [{ batch: '20260616__20260617', reason: 'kis_rest_bypassed', msg: 'cache only' }],
+        data_warnings: [{ batch: '20260616__20260617', reason: 'rest_bypassed', msg: 'cache only' }],
         code: '005930',
         from: '20260616',
         to: '20260617',

@@ -59,14 +59,14 @@ async def test_coverage_preview_trading_day_unavailable_is_503(monkeypatch, tmp_
     from hoga.api.error_codes import UpstreamCode
 
     def _boom(_s, _e):
-        raise TradingDayUnavailableError(UpstreamCode.KIS_CREDENTIALS_MISSING)
+        raise TradingDayUnavailableError(UpstreamCode.CREDENTIALS_MISSING)
 
     monkeypatch.setattr(captures, "_expand_to_trading_days", _boom)
     req = CoveragePreviewRequest(codes=[_A], start_date="20260713", end_date="20260714")
     with pytest.raises(HTTPException) as ei:
         await captures.coverage_preview_core(req, data_dir=tmp_path, now=_NOW)
     assert ei.value.status_code == 503
-    assert ei.value.detail["code"] == UpstreamCode.KIS_CREDENTIALS_MISSING
+    assert ei.value.detail["code"] == UpstreamCode.CREDENTIALS_MISSING
 
 
 @pytest.mark.asyncio

@@ -47,9 +47,9 @@ describe('kisRestMode', () => {
   });
 
   it('classifies KIS transport and unavailable warnings', () => {
-    expect(kisRestWarningIndicatesUnavailable({ reason: 'kis_api_error', msg: 'TRANSPORT/ConnectError' })).toBe(true);
-    expect(kisRestWarningIndicatesUnavailable({ reason: 'kis_transport_error', msg: 'ConnectTimeout' })).toBe(true);
-    expect(kisRestWarningIndicatesUnavailable({ reason: 'kis_rate_limit', msg: 'rate limit' })).toBe(true);
+    expect(kisRestWarningIndicatesUnavailable({ reason: 'api_error', msg: 'TRANSPORT/ConnectError' })).toBe(true);
+    expect(kisRestWarningIndicatesUnavailable({ reason: 'transport_error', msg: 'ConnectTimeout' })).toBe(true);
+    expect(kisRestWarningIndicatesUnavailable({ reason: 'rate_limit_upstream', msg: 'rate limit' })).toBe(true);
     expect(kisRestWarningIndicatesUnavailable({ reason: 'partial', msg: 'missing one date' })).toBe(false);
   });
 });

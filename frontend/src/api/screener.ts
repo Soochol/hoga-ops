@@ -126,7 +126,7 @@ export interface ScreenerStatus {
 export type ScreenerUpdateSkipReason =
   | 'no_gap'
   | 'not_seeded'
-  | 'kis_creds_missing'
+  | 'creds_missing'
   | 'calendar_unavailable';
 
 export type ScreenerUpdateResponse =

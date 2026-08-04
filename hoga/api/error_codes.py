@@ -73,24 +73,24 @@ class UpstreamCode(StrEnum):
 
     # KIS chk-holiday trading-day fetch failure (Phase 3) — HTTP/rt_cd errors
     # and parse failures on the calendar path. Transient; remediation = retry.
-    KIS_HOLIDAY_FETCH_FAILED = "kis_holiday_fetch_failed"
+    TRADING_DAYS_UNAVAILABLE = "trading_days_unavailable"
     # KIS credentials absent (KIS_APP_KEY/KIS_APP_SECRET unset) — distinct from
     # FETCH_FAILED so UIs give the right remediation ("set keys" vs "retry
-    # later"); same principle as DISK_WRITE_FAILED vs KIS_MASTER_FETCH_FAILED.
-    KIS_CREDENTIALS_MISSING = "kis_credentials_missing"
+    # later"); same principle as DISK_WRITE_FAILED vs MASTER_FETCH_FAILED.
+    CREDENTIALS_MISSING = "credentials_missing"
     COOKIE_EXPIRED = "cookie_expired"
     COOKIE_MISSING = "cookie_missing"
     HOGAPLAY_HTTP_ERROR = "hogaplay_http_error"
     SYMBOL_MASTER_NOT_INITIALIZED = "symbol_master_not_initialized"
     # Disk-write failure during a cache flush — distinguishes "the upstream
-    # source is down" (KIS_MASTER_FETCH_FAILED) from "the upstream returned data
+    # source is down" (MASTER_FETCH_FAILED) from "the upstream returned data
     # but we couldn't persist it" (full volume, EACCES, detached volume).
     # Operators see distinct reasons; UIs can surface a different remediation
     # ("free disk space" vs "check KIS credentials").
     DISK_WRITE_FAILED = "disk_write_failed"
     # KIS .mst symbol-master download/unzip/parse failure (Phase 2). The .mst is
     # a static no-auth file, so there is no credentials failure mode here.
-    KIS_MASTER_FETCH_FAILED = "kis_master_fetch_failed"
+    MASTER_FETCH_FAILED = "master_fetch_failed"
 
 
 class LiveErrorCode(StrEnum):

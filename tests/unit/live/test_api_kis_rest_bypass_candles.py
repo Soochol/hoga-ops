@@ -88,7 +88,7 @@ def test_past_candles_bypass_serves_cache_only_on_miss(tmp_path, monkeypatch) ->
         response = c.get("/api/live/past-candles?code=005930&from=20240102&to=20240102")
 
     assert response.status_code == 200
-    assert response.json()["data_warnings"][0]["reason"] == "kis_rest_bypassed"
+    assert response.json()["data_warnings"][0]["reason"] == "rest_bypassed"
     assert run_with_capacity_calls == 0
     assert fake.minute_fetch_count == 0
 
@@ -203,7 +203,7 @@ def test_past_daily_candles_bypass_serves_cache_only_on_miss(tmp_path, monkeypat
         response = c.get("/api/live/past-daily-candles?code=005930&from=20240102&to=20240102")
 
     assert response.status_code == 200
-    assert response.json()["data_warnings"][0]["reason"] == "kis_rest_bypassed"
+    assert response.json()["data_warnings"][0]["reason"] == "rest_bypassed"
     assert run_with_capacity_calls == 0
     assert fake.daily_fetch_count == 0
 
@@ -236,6 +236,6 @@ def test_index_candles_bypass_serves_cache_only_on_miss(
         )
 
     assert response.status_code == 200
-    assert response.json()["data_warnings"][0]["reason"] == "kis_rest_bypassed"
+    assert response.json()["data_warnings"][0]["reason"] == "rest_bypassed"
     assert run_with_capacity_calls == 0
     assert getattr(fake, fetch_count_attr) == 0

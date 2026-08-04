@@ -66,7 +66,7 @@ def test_cold_start_reports_warming_not_error(tmp_path) -> None:
     # "설정이 잘못됐다" 로 안내하게 된다 — 구분이 필요하다.
     client = TestClient(_app(tmp_path))
     body = client.get("/api/sentiment/option").json()
-    assert body["unavailable"] in ("warming", "kis_credentials_missing")
+    assert body["unavailable"] in ("warming", "credentials_missing")
     assert body["put_call"] is None
 
 
@@ -103,7 +103,7 @@ def test_chain_size_rides_the_warming_response(tmp_path) -> None:
     rt._chain_size = 1012  # full 스냅샷은 아직 없음 = warming
 
     body = client.get("/api/sentiment/option").json()
-    assert body["unavailable"] in ("warming", "kis_credentials_missing")
+    assert body["unavailable"] in ("warming", "credentials_missing")
     assert body["chain_size"] == 1012
     assert body["expiry"] == "202609"
 

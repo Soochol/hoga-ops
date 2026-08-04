@@ -324,7 +324,7 @@ def _compute_daily_gaps(
 def _kis_rest_bypassed_batch_warning(batch_label: str) -> dict:
     return {
         "batch": batch_label,
-        "reason": "kis_rest_bypassed",
+        "reason": "rest_bypassed",
         "msg": "KIS REST bypass is enabled; served cache-only data",
     }
 
@@ -541,7 +541,7 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
             try:
                 rows, violations = await fetch_batch(code, gap_from_s, gap_to_s)
             except _RATE_LIMIT_ERRORS as e:
-                warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), label))
+                warnings.append(_kis_error_to_warning("rate_limit_upstream", str(e), label))
                 break
             except _TRANSPORT_ERRORS as e:
                 # Subtype of the generic api-error — must precede the generic arm
@@ -549,10 +549,10 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                 # operator can tell it apart from an upstream rejection (different
                 # remediation). Skip this batch, keep walking back. The client
                 # already retried connection-level failures once (ADR-0050).
-                warnings.append(_kis_error_to_warning("kis_transport", _vendor_code(e), label))
+                warnings.append(_kis_error_to_warning("transport", _vendor_code(e), label))
                 continue
             except _API_ERRORS as e:
-                warnings.append(_kis_error_to_warning("kis_api_error", _vendor_code(e), label))
+                warnings.append(_kis_error_to_warning("api_error", _vendor_code(e), label))
                 continue
             cache.append_batch(code, gap_from, gap_to, rows)
             loaded.extend(rows)
@@ -586,11 +586,11 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                 for v in violations:
                     warnings.append(_violation_to_warning(v, today_label))
             except KisRateLimitError as e:
-                warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), today_label))
+                warnings.append(_kis_error_to_warning("rate_limit_upstream", str(e), today_label))
             except KisTransportError as e:
-                warnings.append(_kis_error_to_warning("kis_transport", e.msg_cd, today_label))
+                warnings.append(_kis_error_to_warning("transport", e.msg_cd, today_label))
             except KisApiError as e:
-                warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, today_label))
+                warnings.append(_kis_error_to_warning("api_error", e.msg_cd, today_label))
 
     # 6. Dedupe by t_ms, sort, filter to [frm, too].
     frm_ms = int(datetime.combine(frm, time(0, 0), tzinfo=_KST).timestamp() * 1000)
@@ -686,10 +686,10 @@ class LiveIndexQuotesResponse(BaseModel):
 
 
 InvestorEstimateWarningReason = Literal[
-    "kis_credentials_missing",
-    "kis_rest_bypassed",
-    "kis_rate_limit",
-    "kis_api_error",
+    "credentials_missing",
+    "rest_bypassed",
+    "rate_limit_upstream",
+    "api_error",
     "parse_error",
 ]
 
@@ -1019,7 +1019,7 @@ class LiveQuoteFetcher:
                 code_list,
                 phase,
                 today=today,
-                stale_reason="kis_fetch_failed",
+                stale_reason="fetch_failed",
             )
         for q in quotes:
             self._last_quotes[(venue, q.code)] = _QuoteSample(q, phase, day)
@@ -1031,7 +1031,7 @@ class LiveQuoteFetcher:
         phase: str,
         today: date | None = None,
         *,
-        stale_reason: str = "kis_rest_bypassed",
+        stale_reason: str = "rest_bypassed",
         venue: Venue = "KRX",
     ) -> list[LiveQuote]:
         """캐시된 마지막 시세를 stale 표시로 서빙. venue 는 캐시 키의 일부다 —
@@ -1181,7 +1181,7 @@ class LiveInvestorEstimateFetcher:
             rows=[],
             status="error",
             warning=LiveInvestorTrendEstimateWarning(
-                reason="kis_credentials_missing",
+                reason="credentials_missing",
                 msg="KIS credentials are not configured",
             ),
         )
@@ -1242,16 +1242,16 @@ class LiveInvestorEstimateFetcher:
             response = self._error_response(
                 code,
                 trading_day,
-                "kis_credentials_missing",
+                "credentials_missing",
                 "KIS authentication failed",
             )
             return self._cache_response(key, response)
         except KiwoomRateLimitError as e:
-            response = self._error_response(code, trading_day, "kis_rate_limit", str(e))
+            response = self._error_response(code, trading_day, "rate_limit_upstream", str(e))
             return self._cache_response(key, response)
         except KiwoomApiError as e:
             # KiwoomTransportError 도 이 팔이 흡수한다(KiwoomApiError 상속).
-            response = self._error_response(code, trading_day, "kis_api_error", str(e.code))
+            response = self._error_response(code, trading_day, "api_error", str(e.code))
             return self._cache_response(key, response)
         except ValidationError as e:
             response = self._error_response(code, trading_day, "parse_error", str(e))
@@ -1791,7 +1791,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     "candles": [],
                     "data_warnings": [{
                         "batch": f"{from_}__{to}",
-                        "reason": "kis_api_error",
+                        "reason": "api_error",
                         "msg": f"kiwoom {_KIWOOM_INDEX_MINUTE_API_ID} fetch failed",
                     }],
                 }
@@ -2041,7 +2041,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 code_list,
                 phase,
                 today=now.date(),
-                stale_reason="kis_capacity_timeout",
+                stale_reason="capacity_timeout",
                 venue=quote_venue,
             )
         # 계정별 쿨다운(`KisCapacityCooldown`) 분기는 사라졌다 — 그건 KIS 계정 풀의
@@ -2053,7 +2053,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 code_list,
                 phase,
                 today=now.date(),
-                stale_reason="kis_capacity_overloaded",
+                stale_reason="capacity_overloaded_upstream",
                 venue=quote_venue,
             )
         return LiveQuotesResponse(
@@ -2142,7 +2142,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             return _investor_estimate_fetcher._error_response(
                 code,
                 _investor_estimate_fetcher._today_fn(),
-                "kis_rest_bypassed",
+                "rest_bypassed",
                 "KIS REST bypass is enabled",
             )
         # PR-E(#1041) 칼 컷오버 — 소스는 키움 ka10064 다.
@@ -2169,7 +2169,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             return _investor_estimate_fetcher._error_response(
                 code,
                 _investor_estimate_fetcher._today_fn(),
-                "kis_rate_limit",
+                "rate_limit_upstream",
                 "kiwoom capacity scheduler unavailable",
             )
 

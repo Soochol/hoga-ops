@@ -1943,7 +1943,7 @@ describe('LiveChartRoot', () => {
 
   // (c) /diagnose 2026-06-09 후속: rate-limit/부분로딩 상태 표시. 백엔드 data_warnings를
   // 살려 빈칸 문구 전환 + 부분로딩 칩으로 "고장?" 오해를 없앤다.
-  const RL_WARNINGS = [{ reason: 'kis_rate_limit', msg: 'rate limit' }];
+  const RL_WARNINGS = [{ reason: 'rate_limit_upstream', msg: 'rate limit' }];
 
   it('캔들 없음 + rate-limit 경고 → 빈칸 노트가 한도 문구로 전환', () => {
     useLivePageStore.setState({ historicalFromDate: null });

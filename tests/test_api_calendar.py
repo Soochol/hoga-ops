@@ -241,7 +241,7 @@ def test_trading_days_for_returns_none_beyond_coverage(
     _stub_source(monkeypatch, _MAY_2026_TRADING_DAYS)
     assert calendar_module._trading_days_for(2026, 5) is not None
     assert calendar_module._trading_days_for(2027, 1) is None
-    assert calendar_module.last_failure_reason() == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+    assert calendar_module.last_failure_reason() == UpstreamCode.TRADING_DAYS_UNAVAILABLE
 
 
 def test_trading_days_for_needs_no_credentials(

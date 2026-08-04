@@ -47,14 +47,14 @@ it('preserves stale quote flags from the backend', async () => {
       change_pct: 1.2,
       change_won: 800,
       stale: true,
-      stale_reason: 'kis_rest_bypassed',
+      stale_reason: 'rest_bypassed',
     }],
   });
 
   const res = await getQuotes(['005930']);
 
   expect(res.quotes[0].stale).toBe(true);
-  expect(res.quotes[0].stale_reason).toBe('kis_rest_bypassed');
+  expect(res.quotes[0].stale_reason).toBe('rest_bypassed');
 });
 
 it('includes venue in the request URL and query key', async () => {
@@ -227,7 +227,7 @@ describe('useLiveQuoteOverlay', () => {
         change_pct: 1.2,
         change_won: 800,
         stale: true,
-        stale_reason: 'kis_rest_bypassed',
+        stale_reason: 'rest_bypassed',
       }],
     });
 
@@ -235,7 +235,7 @@ describe('useLiveQuoteOverlay', () => {
 
     await waitFor(() => expect(result.current.quoteByCode.get('005930')).toMatchObject({
       stale: true,
-      stale_reason: 'kis_rest_bypassed',
+      stale_reason: 'rest_bypassed',
     }));
   });
 });

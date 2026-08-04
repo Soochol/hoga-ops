@@ -70,7 +70,7 @@ async def build_intraday_overlay(
         sorted({c for c in codes if isinstance(c, str) and len(c) == _CODE_LEN})
     )
     if not unique_codes or intraday_overlay_bypassed(data_dir):
-        warnings = ["kis_rest_bypassed_intraday_overlay_skipped"] if unique_codes else None
+        warnings = ["rest_bypassed_intraday_overlay_skipped"] if unique_codes else None
         return _empty(warnings)
     key = (data_dir, today, unique_codes)
     cached = _CACHE.get(key)

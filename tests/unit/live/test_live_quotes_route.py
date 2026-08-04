@@ -619,7 +619,7 @@ def test_quotes_capacity_timeout_returns_stale_last_good(monkeypatch, tmp_path):
     assert body["quotes"][0]["price"] == 72400
     assert body["quotes"][0]["change_pct"] == 1.2
     assert body["quotes"][0]["stale"] is True
-    assert body["quotes"][0]["stale_reason"] == "kis_capacity_timeout"
+    assert body["quotes"][0]["stale_reason"] == "capacity_timeout"
 
 
 # `test_quotes_capacity_cooldown_returns_stale_last_good` 는 PR-D(#1040)에서
@@ -647,4 +647,4 @@ def test_quotes_capacity_overloaded_returns_stale_last_good(monkeypatch, tmp_pat
     body = response.json()
     assert [q["code"] for q in body["quotes"]] == ["005930", "000660"]
     assert body["quotes"][0]["stale"] is True
-    assert body["quotes"][0]["stale_reason"] == "kis_capacity_overloaded"
+    assert body["quotes"][0]["stale_reason"] == "capacity_overloaded_upstream"

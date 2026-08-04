@@ -63,7 +63,7 @@ class LiveIndexInvestorNetFetcher:
                 "to": to_label,
                 "points": [],
                 "data_warnings": [
-                    _kis_error_to_warning("kis_rate_limit", str(e), batch_label),
+                    _kis_error_to_warning("rate_limit_upstream", str(e), batch_label),
                 ],
             }
 

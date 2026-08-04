@@ -121,7 +121,7 @@ async def test_runner_intraday_bypass_skips_overlay_and_uses_eod(tmp_path, monke
     )
 
     assert [r.code for r in res.rows] == ["000001"]
-    assert "kis_rest_bypassed_intraday_overlay_skipped" in res.warnings
+    assert "rest_bypassed_intraday_overlay_skipped" in res.warnings
     assert "intraday_fallback_eod" in res.warnings
 
 

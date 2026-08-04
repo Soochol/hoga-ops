@@ -39,7 +39,7 @@ export interface LiveIndexCandle {
 export interface LiveIndexCandlesWarning {
   batch: string;
   date?: string;
-  reason: 'kis_rate_limit' | 'kis_api_error' | 'invariant_violation' | 'index_minute_depth_limited';
+  reason: 'rate_limit_upstream' | 'api_error' | 'invariant_violation' | 'index_minute_depth_limited';
   msg: string;
 }
 

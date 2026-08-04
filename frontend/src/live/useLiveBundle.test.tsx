@@ -1114,7 +1114,7 @@ describe('useLiveBundle', () => {
       lastToastAtMs: null,
       notifyFailure: notifyFailureSpy,
     });
-    candlesMock.warnings = [{ reason: 'kis_api_error', msg: 'TRANSPORT/ConnectError' }];
+    candlesMock.warnings = [{ reason: 'api_error', msg: 'TRANSPORT/ConnectError' }];
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
       wrapper: createWrapper({ rest_bypass_enabled: true }),
@@ -1553,7 +1553,7 @@ describe('useLiveBundle', () => {
     candlesMock.candles = [
       { t_ms: yesterdayOpen, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
     ];
-    candlesMock.warnings = [{ date: '20260527', reason: 'kis_api_error', msg: 'TRANSPORT/ConnectError' }];
+    candlesMock.warnings = [{ date: '20260527', reason: 'api_error', msg: 'TRANSPORT/ConnectError' }];
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
@@ -1729,15 +1729,15 @@ describe('useLiveBundle', () => {
     expect(result.current.pastDataWarnings).toEqual([]);
   });
   it('분봉: past-candles 경고를 pastDataWarnings로 노출', () => {
-    candlesMock.warnings = [{ date: '20260609', reason: 'kis_rate_limit', msg: 'rate limit' }];
+    candlesMock.warnings = [{ date: '20260609', reason: 'rate_limit_upstream', msg: 'rate limit' }];
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     expect(result.current.pastDataWarnings).toEqual([
-      { date: '20260609', reason: 'kis_rate_limit', msg: 'rate limit' },
+      { date: '20260609', reason: 'rate_limit_upstream', msg: 'rate limit' },
     ]);
   });
   it('D/W/M: past-candles(분봉) 경고가 아닌 past-daily 경고를 노출', () => {
     // 분봉 경로 경고가 세팅돼 있어도 D에선 daily 경로 경고(여기선 빈 배열)를 본다.
-    candlesMock.warnings = [{ date: '20260609', reason: 'kis_rate_limit', msg: 'minute path' }];
+    candlesMock.warnings = [{ date: '20260609', reason: 'rate_limit_upstream', msg: 'minute path' }];
     const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     expect(result.current.pastDataWarnings).toEqual([]); // daily spy의 data_warnings=[]
   });
@@ -1795,7 +1795,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
 
   it('D timeframe shows empty candles when daily KIS is empty and bypass is OFF (no screener/disk fallback)', () => {
     dailyCandlesMock.candles = [];
-    dailyCandlesMock.warnings = [{ reason: 'kis_transport', msg: 'TRANSPORT/ConnectError' }];
+    dailyCandlesMock.warnings = [{ reason: 'transport', msg: 'TRANSPORT/ConnectError' }];
 
     const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
 
@@ -1834,7 +1834,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
 
   it('W/M timeframes have no hogaplay 1m aggregation path when daily KIS returns no candles', () => {
     dailyCandlesMock.candles = [];
-    dailyCandlesMock.warnings = [{ reason: 'kis_transport', msg: 'TRANSPORT/ConnectError' }];
+    dailyCandlesMock.warnings = [{ reason: 'transport', msg: 'TRANSPORT/ConnectError' }];
 
     const { result: week } = renderHook(() => useLiveBundle('005930', 'W', '20260527', liveFixture), { wrapper });
     expect(week.current.chartBundle!.candles).toEqual([]);

@@ -113,7 +113,7 @@ describe('useDocumentTitle', () => {
       change_pct: 2.34,
       change_won: 1600,
       stale: true,
-      stale_reason: 'kis_capacity_timeout',
+      stale_reason: 'capacity_timeout',
     });
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
     expect(document.title).toBe('삼성전자 70,000 +2.34%');

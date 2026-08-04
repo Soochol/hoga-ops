@@ -12,7 +12,7 @@ export interface LiveInvestorTrendEstimateRow {
 }
 
 export interface LiveInvestorTrendEstimateWarning {
-  reason: 'kis_credentials_missing' | 'kis_rate_limit' | 'kis_api_error' | 'parse_error';
+  reason: 'credentials_missing' | 'rate_limit_upstream' | 'api_error' | 'parse_error';
   msg: string;
 }
 

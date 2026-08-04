@@ -571,7 +571,7 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
         try:
             entries = await _fetch_symbol_master()
         except KiwoomMasterFetchError:
-            _set_stale_or_unavailable(UpstreamCode.KIS_MASTER_FETCH_FAILED)
+            _set_stale_or_unavailable(UpstreamCode.MASTER_FETCH_FAILED)
             return _build_response()
 
         now_ms = int(time.time() * 1000)
@@ -604,7 +604,7 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
         return _build_response()
     except Exception:  # safety net so _state never sticks at loading()
         logger.exception("Symbol refresh failed unexpectedly")
-        _set_stale_or_unavailable(UpstreamCode.KIS_MASTER_FETCH_FAILED)
+        _set_stale_or_unavailable(UpstreamCode.MASTER_FETCH_FAILED)
         return _build_response()
 
 

@@ -1649,7 +1649,7 @@ async def enqueue_items_core(  # noqa: PLR0912, PLR0915
             # (and a process restart picks up .env edits); a fetch failure with
             # valid creds is a transient upstream problem — telling the user to
             # reconfigure keys would be wrong and wasteful.
-            if e.code == UpstreamCode.KIS_CREDENTIALS_MISSING:
+            if e.code == UpstreamCode.CREDENTIALS_MISSING:
                 message = (
                     "Trading-day list unavailable (KIS). Configure KIS_APP_KEY / "
                     "KIS_APP_SECRET in repo-root .env and try again."
@@ -1783,7 +1783,7 @@ async def enqueue_items_core(  # noqa: PLR0912, PLR0915
         deduped=deduped_rows,
         blocked=blocked_items,
         # 평일 폴백이 걸렸으면 알린다 — 담기는 했지만 휴장일이 섞일 수 있다.
-        warning=UpstreamCode.KIS_CREDENTIALS_MISSING if weekday_fallback else None,
+        warning=UpstreamCode.CREDENTIALS_MISSING if weekday_fallback else None,
     )
 
 
@@ -1838,7 +1838,7 @@ async def coverage_preview_core(
                 "message": "Provide either lookback_days or start_date+end_date.",
             })
     except TradingDayUnavailableError as e:
-        if e.code == UpstreamCode.KIS_CREDENTIALS_MISSING:
+        if e.code == UpstreamCode.CREDENTIALS_MISSING:
             message = (
                 "Trading-day list unavailable (KIS). Configure KIS_APP_KEY / "
                 "KIS_APP_SECRET in repo-root .env and try again."
