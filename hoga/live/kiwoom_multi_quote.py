@@ -26,11 +26,16 @@ KIS `fetch_multi_price`(`FHKST11300006`, 30종목/콜)의 대체다. 반환 타�
 """
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from hoga.live.kiwoom_rest import KiwoomRestClient
 from hoga.live.quote_models import Quote
 from hoga.live.venue import Venue
+
+ChunkFetcher = Callable[[list[str]], Awaitable[list[Quote]]]
+"""종목 청크 1개 → 시세 목록. `fetch_multi_price` 의 페이싱 이음매다."""
 
 # venue → 종목코드 접미. KIS 는 `FID_COND_MRKT_DIV_CODE`(J/NX/UN) 파라미터를 쓰지만
 # **키움은 코드에 접미를 붙인다**(#1008). 실측(005930, 2026-08-03):
@@ -117,22 +122,46 @@ def chunk_codes(codes: list[str], size: int = MAX_CODES_PER_CALL) -> list[list[s
     return [codes[i:i + size] for i in range(0, len(codes), size)]
 
 
-async def fetch_multi_price(
-    client: KiwoomRestClient, codes: list[str], *, venue: Venue = "KRX"
+async def fetch_chunk(
+    client: KiwoomRestClient, chunk: list[str], *, venue: Venue = "KRX"
 ) -> list[Quote]:
-    """복수 종목 현재가. 상한(100)에 맞춰 청킹해 순차 호출한다.
-
-    청크를 **병렬로 쏘지 않는다** — 거버너가 TR별 버킷으로 페이싱하므로 병렬화는
-    큐에서 일어난다. 여기서 동시 발사하면 같은 TR 버킷을 서로 밀어낸다.
-    """
+    """청크 하나 = **한 콜**. 거버너가 세는 단위와 벤더가 세는 단위가 여기서 같다."""
     suffix = VENUE_SUFFIX.get(venue, "")
-    out: list[Quote] = []
-    for chunk in chunk_codes([c for c in codes if c]):
-        page = await client.call(
-            API_ID, {"stk_cd": "|".join(f"{c}{suffix}" for c in chunk)}
-        )
-        for row in page.rows:
-            quote = parse_row(row)
-            if quote is not None:
-                out.append(quote)
-    return out
+    page = await client.call(
+        API_ID, {"stk_cd": "|".join(f"{c}{suffix}" for c in chunk)}
+    )
+    return [q for q in (parse_row(row) for row in page.rows) if q is not None]
+
+
+async def fetch_multi_price(
+    client: KiwoomRestClient,
+    codes: list[str],
+    *,
+    venue: Venue = "KRX",
+    fetch_chunk_fn: ChunkFetcher | None = None,
+) -> list[Quote]:
+    """복수 종목 현재가. 상한(100)에 맞춰 청킹한다.
+
+    ## `fetch_chunk_fn` 은 유량 페이싱 이음매다 — 기본값으로 두면 안 된다
+
+    이전 판의 주석은 "거버너가 TR별 버킷으로 페이싱하므로" 청크를 순차로 돌렸다.
+    **그 전제가 거짓이다**: 거버너(`kiwoom_capacity`)는 `run_with_capacity` 진입
+    전에 버킷을 한 번만 소비하므로, 이 루프가 한 submit 안에 있으면 버킷은 1 을,
+    벤더는 청크 수만큼 센다. 4,295종목(43청크)이 0.23초에 나가 6번째에서
+    `1700 유량=5` 로 거절당했다(#1063 실측).
+
+    그래서 **반복은 거버너 위, 실행은 거버너 안**이다. 호출자가 청크 1개를
+    `run_with_capacity` 로 감싼 러너를 주입하면 청크마다 대기표를 뽑는다. 동시
+    제출은 거버너가 흡수한다 — 버킷이 직렬화하고, 같은 TR 의 `user_visible` 이
+    오면 background 가 뒤로 밀린다.
+
+    기본값(주입 없음)은 페이싱이 없는 직접 호출이라 **테스트·단발 조사용**이다.
+    """
+    fetch = fetch_chunk_fn or (
+        lambda chunk: fetch_chunk(client, chunk, venue=venue)
+    )
+    chunks = chunk_codes([c for c in codes if c])
+    if not chunks:
+        return []
+    pages = await asyncio.gather(*(fetch(chunk) for chunk in chunks))
+    return [quote for page in pages for quote in page]

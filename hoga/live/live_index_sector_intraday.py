@@ -60,21 +60,31 @@ class LiveIndexSectorIntradayOverlay:
             client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
             if client is None:
                 return {}   # 무자격 프로필(ADR-0134) — 일봉 코퍼스로 강등된다
+            def _chunk_fn(chunk: list[str]):
+                """청크 1개 = 거버너 submit 1건.
+
+                **`fetch_and_gate` 를 통째로 감싸던 자리다.** 거버너는 submit 진입
+                전에 버킷을 한 번만 소비하므로, 바깥에서 감싸면 그 안의 청크 N개가
+                페이싱을 못 받는다(#1063 실측: 43청크 0.23초 → `1700 유량=5`).
+                쿨다운 스코프(`quotes:KRX`)는 여전히 없다 — 버킷 키는 `api_id` 이고
+                계정은 거버너가 고른다(#1015 · ADR-0138).
+                """
+                return kiwoom_access.run_with_capacity(
+                    self._scheduler,
+                    key=("index-sector-rankings-quotes", tuple(chunk), phase),
+                    api_id=kiwoom_multi_quote.API_ID,
+                    priority="background",
+                    client=client,
+                    fetch_fn=lambda c: kiwoom_multi_quote.fetch_chunk(c, chunk),
+                )
+
             quotes = await asyncio.wait_for(
                 asyncio.shield(
-                    kiwoom_access.run_with_capacity(
-                        self._scheduler,
-                        key=("index-sector-rankings-quotes", tuple(sorted(codes)), phase),
-                        # 쿨다운 스코프(`quotes:KRX`)는 사라졌다 — 키움 유량은 TR별이라
-                        # 계정을 고를 일이 없고, 버킷 키가 곧 `api_id` 다(#1015).
-                        api_id=kiwoom_multi_quote.API_ID,
-                        priority="background",
-                        client=client,
-                        fetch_fn=lambda c: self._quote_fetcher.fetch_and_gate(
-                            c,
-                            codes,
-                            phase,
-                        ),
+                    self._quote_fetcher.fetch_and_gate(
+                        client,
+                        codes,
+                        phase,
+                        fetch_chunk_fn=_chunk_fn,
                     )
                 ),
                 timeout=self._timeout_seconds,
