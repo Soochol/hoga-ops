@@ -49,7 +49,7 @@ async def run_screener_scan(
     if req.basis == "intraday":
         if screener_intraday.intraday_overlay_bypassed(data_dir):
             warnings.extend([
-                "kis_rest_bypassed_intraday_overlay_skipped",
+                "rest_bypassed_intraday_overlay_skipped",
                 "intraday_fallback_eod",
             ])
         else:

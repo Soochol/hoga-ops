@@ -273,7 +273,7 @@ async def test_catchup_all_surfaces_trading_day_unavailable(tmp_path: Path):
     body = r.json()
     results = {row["code"]: row for row in body["results"]}
     assert results["003490"]["error"] == {
-        "code": "kis_holiday_fetch_failed",
+        "code": "trading_days_unavailable",
         "message": "Trading-day list unavailable (KIS).",
     }
     assert results["003490"]["enqueued_count"] == 0

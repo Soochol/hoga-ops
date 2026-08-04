@@ -587,7 +587,7 @@ describe('WatchlistDrawer', () => {
     qc.setQueryData(['live', 'status'], {
       running: true, started_at_ms: 1, last_tick_ms: 1, cycle_lag_ms: 0,
       capture_healthy: true, capture_reason: 'healthy',
-      watchlist_count: 2, kis_calls_today: 0, kis_rate_limit_remaining: null,
+      watchlist_count: 2,
       live_set: ['005930', '000660'],
     });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
@@ -606,7 +606,7 @@ describe('WatchlistDrawer', () => {
     qc.setQueryData(['live', 'status'], {
       running: true, started_at_ms: 1, last_tick_ms: 1, cycle_lag_ms: 0,
       capture_healthy: true, capture_reason: 'healthy',
-      watchlist_count: 2, kis_calls_today: 0, kis_rate_limit_remaining: null,
+      watchlist_count: 2,
       live_set: [],  // 둘 다 live_set 밖
     });
     // activeCode = null → viewedCodes = [] → 둘 다 waiting_eod
@@ -641,7 +641,7 @@ describe('WatchlistDrawer', () => {
     qc.setQueryData(['live', 'status'], {
       running: true, started_at_ms: 1, last_tick_ms: 1, cycle_lag_ms: 0,
       capture_healthy: true, capture_reason: 'healthy',
-      watchlist_count: 4, kis_calls_today: 0, kis_rate_limit_remaining: null,
+      watchlist_count: 4,
       live_set: ['005930'],
     });
 
@@ -677,7 +677,7 @@ describe('WatchlistDrawer', () => {
     qc.setQueryData(['live', 'status'], {
       running: true, started_at_ms: 1, last_tick_ms: 1, cycle_lag_ms: 0,
       capture_healthy: true, capture_reason: 'healthy',
-      watchlist_count: 2, kis_calls_today: 0, kis_rate_limit_remaining: null,
+      watchlist_count: 2,
       live_set: [],
     });
 

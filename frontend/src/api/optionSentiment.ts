@@ -62,7 +62,7 @@ export interface PutCallSeriesPoint {
 }
 
 export interface OptionSentiment {
-  /** null 이면 정상. 'kis_credentials_missing' | 'warming' | 'collector_failed' | 'option_master_unavailable' */
+  /** null 이면 정상. 'credentials_missing' | 'warming' | 'collector_failed' | 'option_master_unavailable' */
   unavailable: string | null;
   expiry: string | null;
   /**

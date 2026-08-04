@@ -6,8 +6,9 @@ import pytest
 
 from hoga.api.heatmap import save_document
 from hoga.api.models import HeatmapDocument, HeatmapEntry
-from hoga.live.kis_client import KisClient, KisQuote
+from hoga.live.kis_client import KisClient
 from hoga.live.live_index_sector_intraday import LiveIndexSectorIntradayOverlay
+from hoga.live.quote_models import Quote
 
 
 class _FakeQuoteFetcher:
@@ -19,11 +20,11 @@ class _FakeQuoteFetcher:
         _kis: KisClient,
         code_list: list[str],
         phase: str,
-    ) -> list[KisQuote]:
+    ) -> list[Quote]:
         self.calls.append((code_list, phase))
         return [
-            KisQuote("005930", 121, 0.0),
-            KisQuote("000660", 189, 0.0),
+            Quote("005930", 121, 0.0),
+            Quote("000660", 189, 0.0),
         ]
 
 
@@ -35,20 +36,13 @@ class _RecordingScheduler:
         self,
         *,
         key: Hashable,
-        endpoint: str,
+        api_id: str,
         priority: str,
-        call: Callable[[KisClient], Awaitable],
-        cooldown_scope: Hashable | None = None,
+        call: Callable[[], Awaitable],
     ):
-        self.calls.append(
-            {
-                "key": key,
-                "endpoint": endpoint,
-                "priority": priority,
-                "cooldown_scope": cooldown_scope,
-            }
-        )
-        return await call(object())  # type: ignore[arg-type]
+        # 계정 차원(endpoint·cooldown_scope)은 PR-J(#1046)에서 사라졌다(#1015).
+        self.calls.append({"key": key, "api_id": api_id, "priority": priority})
+        return await call()
 
 
 def _seed_heatmap(tmp_path) -> None:
@@ -66,7 +60,9 @@ def _seed_heatmap(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_live_index_sector_intraday_overlay_schedules_quotes(tmp_path) -> None:
+async def test_live_index_sector_intraday_overlay_schedules_quotes(tmp_path, monkeypatch) -> None:
+    from hoga.live import kiwoom_rest_runtime
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object())
     _seed_heatmap(tmp_path)
     scheduler = _RecordingScheduler()
     quote_fetcher = _FakeQuoteFetcher()
@@ -83,8 +79,7 @@ async def test_live_index_sector_intraday_overlay_schedules_quotes(tmp_path) -> 
     assert scheduler.calls == [
         {
             "key": ("index-sector-rankings-quotes", ("000660", "005930"), "open"),
-            "endpoint": "quotes",
+            "api_id": "ka10095",
             "priority": "background",
-            "cooldown_scope": "quotes:KRX",
         }
     ]

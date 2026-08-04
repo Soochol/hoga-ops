@@ -10,8 +10,8 @@ from hoga.api.models import LiveSettingsResponse
 from hoga.live import api as live_api, kis_runtime, lifecycle
 from hoga.live.api import build_router
 from hoga.live.buffer import LiveBuffer
-from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
-from hoga.live.kis_client import InvestorNetFetchResult, KisQuote
+from hoga.live.investor import InvestorNetFetchResult, InvestorNetPoint, InvestorTrendEstimateRow
+from hoga.live.quote_models import Quote
 from hoga.live.settings import save_live_settings
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 
@@ -26,7 +26,7 @@ class _CountingKis:
     async def fetch_multi_price(self, codes, *, venue="KRX"):
         self.quote_fetch_count += 1
         quotes = {
-            "005930": KisQuote(
+            "005930": Quote(
                 "005930",
                 70_000,
                 1.2,
@@ -102,7 +102,7 @@ def test_quotes_bypass_returns_stale_last_good_without_fetch(
         assert seed.status_code == 200
         assert seed.json()["quotes"][0]["price"] == 70_000
 
-        save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+        save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
         before = fake.quote_fetch_count
         run_with_capacity_calls = _forbid_run_with_capacity(monkeypatch)
         response = client.get("/api/live/quotes?codes=005930&venue=KRX")
@@ -111,14 +111,14 @@ def test_quotes_bypass_returns_stale_last_good_without_fetch(
     body = response.json()
     assert body["quotes"][0]["code"] == "005930"
     assert body["quotes"][0]["stale"] is True
-    assert body["quotes"][0]["stale_reason"] == "kis_rest_bypassed"
+    assert body["quotes"][0]["stale_reason"] == "rest_bypassed"
     assert fake.quote_fetch_count == before
     assert run_with_capacity_calls["count"] == 0
 
 
 def test_quotes_bypass_returns_empty_without_last_good(tmp_path, monkeypatch) -> None:
     fake = _CountingKis()
-    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+    save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
     app = _app(tmp_path, fake)
     run_with_capacity_calls = _forbid_run_with_capacity(monkeypatch)
 
@@ -138,7 +138,7 @@ def test_tab_metrics_bypass_keeps_hoga_fields_without_quote_enrichment(
     monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     fake = _CountingKis()
     buf = LiveBuffer()
-    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+    save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
     app = _app(tmp_path, fake, get_buffer=lambda: buf)
     run_with_capacity_calls = _forbid_run_with_capacity(monkeypatch)
 
@@ -180,7 +180,7 @@ def test_investor_routes_bypass_degrade_without_kis_capacity(
     monkeypatch,
 ) -> None:
     fake = _CountingKis()
-    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+    save_live_settings(tmp_path, LiveSettingsResponse(rest_bypass_enabled=True))
     app = _app(tmp_path, fake)
     run_with_capacity_calls = _forbid_run_with_capacity(monkeypatch)
 
@@ -193,18 +193,18 @@ def test_investor_routes_bypass_degrade_without_kis_capacity(
     trend_body = trend.json()
     assert trend_body["rows"] == []
     assert trend_body["status"] == "error"
-    assert trend_body["data_warning"]["reason"] == "kis_rest_bypassed"
+    assert trend_body["data_warning"]["reason"] == "rest_bypassed"
 
     assert past.status_code == 200
     past_body = past.json()
     assert past_body["points"] == []
     assert past_body["fresh_batches"] == []
-    assert past_body["data_warnings"][0]["reason"] == "kis_rest_bypassed"
+    assert past_body["data_warnings"][0]["reason"] == "rest_bypassed"
 
     assert index.status_code == 200
     index_body = index.json()
     assert index_body["points"] == []
-    assert index_body["data_warnings"][0]["reason"] == "kis_rest_bypassed"
+    assert index_body["data_warnings"][0]["reason"] == "rest_bypassed"
 
     assert run_with_capacity_calls["count"] == 0
     assert fake.investor_net_fetch_count == 0

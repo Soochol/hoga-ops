@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 
-export const KIS_REST_FAILURE_TOAST_COOLDOWN_MS = 5 * 60_000;
+export const REST_FAILURE_TOAST_COOLDOWN_MS = 5 * 60_000;
 
 const STORAGE_KEY = 'chart.kisRestMode.v1';
-const MIGRATED_KEY = 'chart.kisRestMode.v1.migrated';
+const MIGRATED_KEY = 'chart.restBypassMode.v1.migrated';
 
-type KisRestWarningLike = {
+type RestWarningLike = {
   reason?: string | null;
   msg?: string | null;
 };
@@ -20,19 +20,19 @@ interface Store {
   dismissToast: () => void;
 }
 
-export function readLegacyKisRestBypass(): { kisRestBypassEnabled: boolean } | null {
+export function readLegacyRestBypass(): { restBypassEnabled: boolean } | null {
   try {
     if (localStorage.getItem(MIGRATED_KEY) === 'true') return null;
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { kisRestBypassEnabled?: unknown };
-    return parsed.kisRestBypassEnabled === true ? { kisRestBypassEnabled: true } : null;
+    const parsed = JSON.parse(raw) as { restBypassEnabled?: unknown };
+    return parsed.restBypassEnabled === true ? { restBypassEnabled: true } : null;
   } catch {
     return null;
   }
 }
 
-export function markLegacyKisRestBypassMigrated(): void {
+export function markLegacyRestBypassMigrated(): void {
   try {
     localStorage.setItem(MIGRATED_KEY, 'true');
     localStorage.removeItem(STORAGE_KEY);
@@ -41,16 +41,16 @@ export function markLegacyKisRestBypassMigrated(): void {
   }
 }
 
-export function kisRestWarningIndicatesUnavailable(warning: KisRestWarningLike): boolean {
+export function restWarningIndicatesUnavailable(warning: RestWarningLike): boolean {
   const reason = warning.reason ?? '';
   const msg = warning.msg ?? '';
-  if (reason === 'kis_transport_error' || reason === 'kis_rest_unavailable') return true;
-  if (reason === 'kis_rate_limit' || reason === 'rate_limit_aborted') return true;
-  if (reason === 'kis_api_error' && msg.includes('TRANSPORT/')) return true;
+  if (reason === 'transport_error' || reason === 'kis_rest_unavailable') return true;
+  if (reason === 'rate_limit_upstream' || reason === 'rate_limit_aborted') return true;
+  if (reason === 'api_error' && msg.includes('TRANSPORT/')) return true;
   return false;
 }
 
-export const useKisRestModeStore = create<Store>((set, get) => ({
+export const useRestBypassModeStore = create<Store>((set, get) => ({
   lastFailureAtMs: null,
   lastToastAtMs: null,
   toastDismissed: false,
@@ -58,7 +58,7 @@ export const useKisRestModeStore = create<Store>((set, get) => ({
   notifyFailure: (nowMs = Date.now()) => {
     const lastToastAtMs = get().lastToastAtMs;
     set({ lastFailureAtMs: nowMs });
-    if (lastToastAtMs != null && nowMs - lastToastAtMs < KIS_REST_FAILURE_TOAST_COOLDOWN_MS) {
+    if (lastToastAtMs != null && nowMs - lastToastAtMs < REST_FAILURE_TOAST_COOLDOWN_MS) {
       // 쿨다운 중 — 닫힌 상태를 존중해 재노출하지 않는다.
       return false;
     }

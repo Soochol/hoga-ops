@@ -633,8 +633,8 @@ describe('hasBlockingWarnings', () => {
 
   it.each([
     'capacity_overloaded',
-    'kis_api_error',
-    'kis_rate_limit',
+    'api_error',
+    'rate_limit_upstream',
     'rate_limit_aborted',
   ])('blocking 사유 %s 에 true', (reason) => {
     expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [warn(reason)] })).toBe(true);
@@ -651,7 +651,7 @@ describe('hasBlockingWarnings', () => {
     expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [] })).toBe(false);
     expect(hasBlockingWarnings({
       ...RESPONSE,
-      data_warnings: [warn('minute_fallback_to_krx'), warn('kis_rest_bypassed')],
+      data_warnings: [warn('minute_fallback_to_krx'), warn('rest_bypassed')],
     })).toBe(false);
   });
 });
@@ -755,7 +755,7 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
   it('blocking 경고 병합본은 canonical에 재발행되지 않는다', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       ...RESPONSE, from: '20260501', to: '20260502',
-      candles: [], data_warnings: [{ date: '20260501', reason: 'kis_rate_limit', msg: 'x' }],
+      candles: [], data_warnings: [{ date: '20260501', reason: 'rate_limit_upstream', msg: 'x' }],
     } satisfies LivePastCandlesResponse);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(

@@ -27,7 +27,7 @@
     - hogaplay가 건강하고 캔들을 가진 날은 hogaplay가 계속 이긴다. 부분일 병합은
       비목표 — 단, hogaplay가 INVALID면 그 캔들은 서빙되지 않으므로 복구 대상이다.
 
-게이트. ``kis_rest_bypass_enabled``(ADR-0083) ON이면 스킵한다. KIS fetch가
+게이트. ``rest_bypass_enabled``(ADR-0083) ON이면 스킵한다. KIS fetch가
 불가(자격증명 없음)하면 스킵한다. (code, date) 단위 in-flight 집합은 **프로세스
 내** 중복만 막는다(빠른 create→update·동시 저장 훅). CLI 스윕은 별도 프로세스라
 이 집합을 공유하지 않지만, 쓰기가 멱등이라 서버 가동 중 스윕을 돌려도 안전하다
@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING
 from hoga.api.calendar import is_trading_day
 from hoga.api.queries import QueryEngine
 from hoga.api.sources import resolve_candle_source
-from hoga.live import kis_access
+from hoga.live import settings as live_settings
 from hoga.live.candle_models import LiveCandle
 from hoga.tables import candles as candles_tbl
 from hoga.tables.candles import Candle
@@ -265,7 +265,7 @@ async def repair_saved_view_range(
     반환 None = 게이트에 막혀 아무것도 하지 않음(bypass ON 또는 fetch 없음).
     그 외엔 :class:`RepairSummary`. 날짜는 순차 처리한다 — 저빈도 백그라운드
     작업이라 KIS를 몰아치지 않는다."""
-    if kis_access.kis_rest_bypass_enabled(data_dir):
+    if live_settings.rest_bypass_enabled(data_dir):
         log.info("candle_repair skipped (kis_rest_bypass enabled) code=%s", code)
         return None
     if fetch is None:

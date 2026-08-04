@@ -17,7 +17,7 @@ function freshQc() {
 
 const SETTINGS = {
   schema_version: 1,
-  kis_rest_bypass_enabled: false,
+  rest_bypass_enabled: false,
   screener_depth_autocollect: false,
 };
 
@@ -50,7 +50,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(await screen.findByText('표시 소스')).toBeInTheDocument();
     expect(screen.getByText('캡처 저장')).toBeInTheDocument();
     expect(screen.getByText('캔들 데이터 기준')).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'REST 우회' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
     expect(screen.queryByRole('radio', { name: '스크리너 일봉 우선' })).toBeNull();
     expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
@@ -65,7 +65,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(screen.getByRole('radio', { name: '실시간 WS 우선' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: 'KIS API 우선' })).toBeNull();
     expect(screen.queryByRole('radio', { name: 'KIS WS 우선' })).toBeNull();
-    expect(screen.getByText(/'KIS API 우회'를 켜면 분봉은 캡처\(hogaplay\)/)).toBeInTheDocument();
+    expect(screen.getByText(/'REST 우회'를 켜면 분봉은 캡처\(hogaplay\)/)).toBeInTheDocument();
   });
 
   it('study variant는 캔들 기준 라디오 대신 디스크 온리 안내문을 표시하고 거래소를 숨긴다', async () => {
@@ -83,13 +83,13 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(screen.getByRole('radio', { name: '실시간 WS 우선' })).toBeInTheDocument();
   });
 
-  it('KIS API 우회 토글을 backend settings로 저장한다', async () => {
-    const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, kis_rest_bypass_enabled: true });
+  it('REST 우회 토글을 backend settings로 저장한다', async () => {
+    const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, rest_bypass_enabled: true });
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
 
     render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
 
-    const toggle = await screen.findByRole('switch', { name: 'KIS API 우회' });
+    const toggle = await screen.findByRole('switch', { name: 'REST 우회' });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
 
     fireEvent.click(toggle);
@@ -97,9 +97,9 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kis_rest_bypass_enabled: true }),
+      body: JSON.stringify({ rest_bypass_enabled: true }),
     }));
-    await waitFor(() => expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toHaveAttribute('aria-checked', 'true'));
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'REST 우회' })).toHaveAttribute('aria-checked', 'true'));
   });
 
   it('프로그램 순매수 저장은 토글 없이 항시 저장 안내만 보인다 (스위치 폐지 2026-07-21)', async () => {

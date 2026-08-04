@@ -186,7 +186,7 @@ describe('DailyMovingAverageOverlay', () => {
   it('projects screener fallback daily rows when KIS daily is unavailable', () => {
     mockUseResolvedDaily.mockReturnValue({
       candles: dailyCandles,
-      dataWarnings: [{ batch: '20260612__20260612', reason: 'kis_rest_bypassed', msg: 'cache only' }],
+      dataWarnings: [{ batch: '20260612__20260612', reason: 'rest_bypassed', msg: 'cache only' }],
       isLoading: false,
       error: null,
       sourceByDate: new Map([['20260612', 'screener_daily']]),

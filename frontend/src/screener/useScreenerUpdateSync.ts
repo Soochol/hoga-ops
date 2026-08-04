@@ -25,7 +25,7 @@ export const useScreenerUpdateFeedback = create<{
 export const SKIP_REASON_MESSAGES: Record<ScreenerUpdateSkipReason, string> = {
   no_gap: '이미 최신입니다',
   not_seeded: '시드되지 않음 — 운영자 CLI로 시드하세요',
-  kis_creds_missing: 'KIS 인증정보 없음 — 갱신 불가',
+  creds_missing: 'KIS 인증정보 없음 — 갱신 불가',
   calendar_unavailable: '거래일 조회 불가 — 잠시 후 다시 시도하세요',
 };
 

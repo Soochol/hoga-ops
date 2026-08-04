@@ -116,7 +116,7 @@ class OptionSentimentRuntime:
         """
         self._last_request = time.monotonic()
         if self._client_factory() is None:
-            self._unavailable = "kis_credentials_missing"
+            self._unavailable = "credentials_missing"
             return
         async with self._lock:
             if self._task is None or self._task.done():
@@ -145,7 +145,7 @@ class OptionSentimentRuntime:
             while time.monotonic() - self._last_request < _IDLE_STOP_S:
                 client = self._client_factory()
                 if client is None:
-                    self._unavailable = "kis_credentials_missing"
+                    self._unavailable = "credentials_missing"
                     await asyncio.sleep(_ATM_INTERVAL_S)
                     continue
                 try:

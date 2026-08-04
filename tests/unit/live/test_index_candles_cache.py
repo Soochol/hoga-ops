@@ -4,13 +4,13 @@ from datetime import date, datetime
 
 import pytest
 
+from hoga.live.candle_fetch_result import DailyInvariantViolation, IndexCandleFetchResult
 from hoga.live.candle_models import IndexCandlePoint
 from hoga.live.index_candles_cache import (
     IndexCandleCacheHit,
     IndexCandlesCache,
     collect_index_candles_with_cache,
 )
-from hoga.live.kis_client import DailyInvariantViolation, IndexCandleFetchResult
 from hoga.util.timeenc import KST
 
 

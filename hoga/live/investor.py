@@ -12,6 +12,9 @@ I/O 없음 — fixture로 완전 테스트 가능.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -34,3 +37,25 @@ class InvestorTrendEstimateRow(BaseModel):
     foreign_qty: int | None
     institution_qty: int | None
     sum_qty: int | None
+
+
+@dataclass(frozen=True)
+class InvestorNetInvariantViolation:
+    """A row dropped by fetch_investor_net boundary defense.
+
+    Investor rows carry no OHLC invariant, so the only drop reason is a
+    malformed/missing trading date. Surfaced to wire data_warnings.
+    """
+    date_yyyymmdd: str
+    reason: Literal["malformed_row"]
+    detail: str
+
+
+@dataclass(frozen=True)
+class InvestorNetFetchResult:
+    """Return value of fetch_investor_net.
+
+    `points` is ASC-sorted by t_ms; `violations` is the per-row drop log.
+    """
+    points: list[InvestorNetPoint]
+    violations: list[InvestorNetInvariantViolation] = field(default_factory=list)

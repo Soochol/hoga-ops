@@ -98,7 +98,7 @@ def test_rate_limit_breaks_loop_and_warns() -> None:
     ))
 
     assert out["candles"] == []
-    assert any(w["reason"] == "kis_rate_limit" for w in out["data_warnings"])
+    assert any(w["reason"] == "rate_limit_upstream" for w in out["data_warnings"])
     assert out["fresh_batches"] == []
 
 
@@ -113,7 +113,7 @@ def test_api_error_continues_with_warning() -> None:
         code="005930", frm=date(2024, 1, 1), too=date(2024, 1, 5), today_d=date(2024, 2, 1),
     ))
 
-    assert any(w["reason"] == "kis_api_error" for w in out["data_warnings"])
+    assert any(w["reason"] == "api_error" for w in out["data_warnings"])
 
 
 def test_transport_error_continues_with_distinct_warning() -> None:
@@ -135,9 +135,9 @@ def test_transport_error_continues_with_distinct_warning() -> None:
     ))
 
     assert out["candles"] == []
-    assert any(w["reason"] == "kis_transport" for w in out["data_warnings"])
+    assert any(w["reason"] == "transport" for w in out["data_warnings"])
     # Not misreported as a generic api error.
-    assert not any(w["reason"] == "kis_api_error" for w in out["data_warnings"])
+    assert not any(w["reason"] == "api_error" for w in out["data_warnings"])
 
 
 def test_output_key_is_parameterized() -> None:

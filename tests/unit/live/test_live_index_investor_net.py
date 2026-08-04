@@ -125,7 +125,7 @@ async def test_live_index_investor_net_surfaces_rate_limit_warning(tmp_path, kiw
     assert result["data_warnings"] == [
         {
             "batch": "20260619__20260619",
-            "reason": "kis_rate_limit",
+            "reason": "rate_limit_upstream",
             "msg": "simulated 1700 유량 초과",
         }
     ]

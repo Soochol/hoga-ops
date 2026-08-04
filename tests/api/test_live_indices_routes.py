@@ -5,9 +5,9 @@ from fastapi.testclient import TestClient
 
 from hoga.live import api as live_api, lifecycle
 from hoga.live.api import build_router
+from hoga.live.candle_fetch_result import IndexCandleFetchResult
 from hoga.live.candle_models import IndexCandlePoint
 from hoga.live.investor import InvestorNetPoint
-from hoga.live.kis_client import IndexCandleFetchResult
 from hoga.util.timeenc import KST
 
 
@@ -29,35 +29,36 @@ def _client() -> TestClient:
     return TestClient(app)
 
 
-def _patch_kis_capacity(monkeypatch, fake_kis):
-    scheduler = object()
-    calls = []
-    monkeypatch.setattr(live_api, "ensure_kis_capacity_scheduler", lambda data_dir: scheduler)
-    monkeypatch.setattr(live_api.kis_access, "has_rest_capacity", lambda data_dir: True)
+def _patch_kiwoom_index(monkeypatch, fake_kis):
+    """지수 분봉 소스를 **키움 fetcher** 로 심는다.
 
-    async def fake_run_with_capacity(
-        scheduler_arg,
-        *,
-        data_dir,
-        key,
-        endpoint,
-        priority,
-        fetch_fn,
-        cooldown_scope=None,
-    ):
-        calls.append({
-            "scheduler": scheduler_arg,
-            "data_dir": data_dir,
-            "key": key,
-            "endpoint": str(endpoint),
-            "priority": priority,
-            "cooldown_scope": cooldown_scope,
-        })
-        return await fetch_fn(fake_kis)
+    PR-J(#1046)에서 KIS 갈래가 사라졌다(ADR-0129 가 이미 키움 이관했고 폴백만
+    남아 있었다). 그래서 페이크도 KIS 클라이언트가 아니라 키움 fetcher 자리에
+    꽂는다. 이 파일이 보는 것은 **라우트 동작**(캐시·경고·degrade)이지 벤더
+    와이어가 아니므로, 기존 페이크의 반환값을 그대로 재사용한다.
 
-    monkeypatch.setattr(live_api.kis_access, "run_with_capacity", fake_run_with_capacity)
-    return scheduler, calls
+    라우트는 `asyncio.to_thread(fetcher.fetch, ...)` 로 부르므로 **동기** 다.
+    """
+    calls: list = []
 
+    class _Fetcher:
+        def fetch(self, index_id, from_s, to_s, *, bucket_seconds=60):
+            calls.append({"index_id": index_id, "from": from_s, "to": to_s,
+                          "bucket_seconds": bucket_seconds})
+            import asyncio as _a
+
+            from hoga.live.index_registry import get_representative_index
+            return _a.run(fake_kis.fetch_index_minute_candles(
+                get_representative_index(index_id), from_s, to_s,
+                bucket_seconds=bucket_seconds, foreground=True,
+            ))
+
+    monkeypatch.setattr(live_api, "_kiwoom_index_fetcher", _Fetcher())
+    return object(), calls
+
+
+# `_patch_kis_capacity` 헬퍼는 삭제했다 — KIS 캐퍼시티 seam 이 사라졌다(PR-J·#1046).
+# 지수 분봉은 `_patch_kiwoom_index`, 실패 주입은 `_patch_capacity_raises` 를 쓴다.
 
 def _patch_kiwoom_capacity(monkeypatch, fake_daily):
     """키움 시임 한 곳 + 어댑터 함수. PR-C(#1039) 칼 컷오버로 일/주/월봉이 키움을 쓴다."""
@@ -217,7 +218,7 @@ def test_index_candles_returns_fake_kis_minute_rows(tmp_path, monkeypatch) -> No
                 ],
             )
 
-    scheduler, calls = _patch_kis_capacity(monkeypatch, FakeKis())
+    scheduler, calls = _patch_kiwoom_index(monkeypatch, FakeKis())
 
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
@@ -238,13 +239,12 @@ def test_index_candles_returns_fake_kis_minute_rows(tmp_path, monkeypatch) -> No
             "volume": 123456,
         },
     ]
+    # 계정 차원(scheduler·data_dir·endpoint·cooldown_scope)은 PR-J(#1046)에서
+    # 사라졌다 — 키움 지수 fetcher 는 자체 페이싱을 쓴다(ADR-0129). 남은 계약은
+    # "라우트가 요청 파라미터를 그대로 흘려보내는가" 다.
     assert calls == [{
-        "scheduler": scheduler,
-        "data_dir": tmp_path,
-        "key": ("index-minute", "KOSPI", "1m", 60, "20260619", "20260619"),
-        "endpoint": "index-minute",
-        "priority": "user_visible",
-        "cooldown_scope": ("index-minute", "KOSPI", "1m"),
+        "index_id": "KOSPI", "from": "20260619", "to": "20260619",
+        "bucket_seconds": 60,
     }]
 
 
@@ -269,7 +269,7 @@ def test_index_minute_candles_repeated_request_uses_cache(tmp_path, monkeypatch)
                 violations=[],
             )
 
-    _patch_kis_capacity(monkeypatch, FakeKis())
+    _patch_kiwoom_index(monkeypatch, FakeKis())
     monkeypatch.setattr(live_api, "index_minute_candles_cache_instance", None, raising=False)
 
     app = FastAPI()
@@ -308,7 +308,7 @@ def test_index_minute_candles_warn_when_request_starts_before_returned_depth(tmp
                 violations=[],
             )
 
-    _patch_kis_capacity(monkeypatch, FakeKis())
+    _patch_kiwoom_index(monkeypatch, FakeKis())
     monkeypatch.setattr(live_api, "index_minute_candles_cache_instance", None, raising=False)
 
     app = FastAPI()
@@ -378,8 +378,6 @@ def _patch_capacity_raises(monkeypatch, exc: Exception) -> None:
     from hoga.live.index_candles_cache import IndexCandlesCache
     from hoga.live.index_minute_candles_cache import IndexMinuteCandlesCache
 
-    monkeypatch.setattr(live_api, "ensure_kis_capacity_scheduler", lambda data_dir: object())
-    monkeypatch.setattr(live_api.kis_access, "has_rest_capacity", lambda data_dir: True)
     # 모듈 전역 캐시는 다른 테스트가 채워둘 수 있다 — 캐시 히트가 나면 fetch(→capacity
     # 에러) 경로를 안 타므로 빈 캐시를 미리 심어 강등 경로를 강제한다. build_router는
     # 캐시가 None일 때만 생성하므로(is None), 미리 심은 non-None 인스턴스는 유지된다.
@@ -387,13 +385,6 @@ def _patch_capacity_raises(monkeypatch, exc: Exception) -> None:
     monkeypatch.setattr(
         live_api, "index_minute_candles_cache_instance", IndexMinuteCandlesCache(), raising=False
     )
-
-    async def raising_run_with_capacity(
-        scheduler_arg, *, data_dir, key, endpoint, priority, fetch_fn, cooldown_scope=None
-    ):
-        raise exc
-
-    monkeypatch.setattr(live_api.kis_access, "run_with_capacity", raising_run_with_capacity)
 
     # 일/주/월봉은 PR-C 로 키움을 쓴다 — 같은 강등 경로를 키움 시임에도 건다.
     monkeypatch.setattr(
@@ -408,27 +399,31 @@ def _patch_capacity_raises(monkeypatch, exc: Exception) -> None:
     monkeypatch.setattr(live_api.kiwoom_access, "run_with_capacity", raising_kiwoom)
 
 
-def test_index_daily_candles_degrade_on_capacity_cooldown(tmp_path, monkeypatch) -> None:
-    from hoga.live.kis_capacity_scheduler import KisCapacityCooldown
+# `test_index_daily_candles_degrade_on_capacity_cooldown` 은 삭제했다.
+# **계정별 쿨다운(`KisCapacityCooldown`)이라는 개념 자체가 사라졌다**(PR-J·#1046):
+# 키움 유량은 TR별이라 "이 계정만 쉰다" 가 성립하지 않는다(#1015). 남은 강등 사유는
+# 큐 과부하 하나이고, 바로 아래 `..._degrade_on_capacity_overloaded` 가 덮는다.
 
-    _patch_capacity_raises(monkeypatch, KisCapacityCooldown("all accounts cooling"))
 
-    app = FastAPI()
-    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
-    res = TestClient(app).get(
-        "/api/live/index-candles?index_id=KOSPI&timeframe=D&from=20260601&to=20260619",
+def test_index_minute_candles_degrade_on_fetch_failure(tmp_path, monkeypatch) -> None:
+    """업스트림 실패는 **500 이 아니라 200 + 경고**로 강등된다.
+
+    원래는 KIS 캐퍼시티 과부하를 재현했다. PR-J(#1046)에서 지수 분봉의 KIS 갈래가
+    사라졌으므로(ADR-0129 가 이미 키움 이관) 같은 성질을 **키움 실패**로 확인한다.
+    키움 실패는 KIS 로 떨어지지 않는다(ADR-0129 D3) — 값 경계 튐과 진단 어려움을
+    피하려는 의도적 선택이고, 대신 원인을 경고로 드러낸다.
+    """
+    from hoga.live.kiwoom_index_candles import KiwoomIndexCandlesError
+
+    class _Boom:
+        def fetch(self, *_a, **_kw):
+            raise KiwoomIndexCandlesError("upstream down")
+
+    monkeypatch.setattr(live_api, "_kiwoom_index_fetcher", _Boom())
+    # 프로세스 싱글턴 캐시가 앞선 테스트 값을 서빙한다 — 실패 경로를 보려면 비운다.
+    monkeypatch.setattr(
+        live_api, "index_minute_candles_cache_instance", None, raising=False,
     )
-
-    assert res.status_code == 200  # 500이 아니라 강등
-    body = res.json()
-    assert body["candles"] == []
-    assert [w["reason"] for w in body["data_warnings"]] == ["index_kis_capacity_cooldown"]
-
-
-def test_index_minute_candles_degrade_on_capacity_overloaded(tmp_path, monkeypatch) -> None:
-    from hoga.live.kis_capacity_scheduler import KisCapacityOverloaded
-
-    _patch_capacity_raises(monkeypatch, KisCapacityOverloaded("pending full"))
 
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
@@ -436,7 +431,7 @@ def test_index_minute_candles_degrade_on_capacity_overloaded(tmp_path, monkeypat
         "/api/live/index-candles?index_id=KOSPI&timeframe=1m&from=20260619&to=20260619",
     )
 
-    assert res.status_code == 200
+    assert res.status_code == 200, "500 이 아니라 강등"
     body = res.json()
     assert body["candles"] == []
-    assert [w["reason"] for w in body["data_warnings"]] == ["index_kis_capacity_overloaded"]
+    assert len(body["data_warnings"]) == 1

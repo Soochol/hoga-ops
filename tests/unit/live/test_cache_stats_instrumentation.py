@@ -9,9 +9,9 @@ from datetime import date, datetime, timedelta, timezone
 from hoga.api.models import AskPeak
 from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.api.today_ttl_cache import TodayTtlCache
+from hoga.live.candle_fetch_result import IndexCandleFetchResult
 from hoga.live.index_candles_cache import IndexCandlesCache
 from hoga.live.index_minute_candles_cache import IndexMinuteCandlesCache
-from hoga.live.kis_client import IndexCandleFetchResult
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.tables.snapshots import QuoteRatioRow

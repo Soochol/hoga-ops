@@ -60,7 +60,7 @@ describe('useScreenerRowsLive', () => {
         change_pct: 9.9,
         change_won: 6300,
         stale: true,
-        stale_reason: 'kis_capacity_timeout',
+        stale_reason: 'capacity_timeout',
       }],
     ]));
     const { result } = renderHook(() => useScreenerRowsLive(ROWS));

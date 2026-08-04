@@ -31,30 +31,29 @@ def _reset_queue_ownership() -> None:
 
 @pytest.fixture(autouse=True)
 def _no_real_mst_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Suite-wide network guard for the Symbol Master boot auto-refresh.
+    """부팅 자동 갱신이 **실제 네트워크를 때리지 않게** 막는 스위트 전역 가드.
 
-    app.py's lifespan schedules a REAL .mst download whenever
-    symbols.needs_boot_refresh() is true — which it is for every
-    TestClient(create_app(...)) on a machine/CI without the machine-global
-    symbol-master.json (resolve_symbol_master_path deliberately ignores
-    HOGA_DATA_DIR, so tmp_path can't sandbox it). Without this guard, dozens
-    of lifespan-running tests each fired two HTTPS downloads, could overwrite
-    the developer's real symbol-master.json, and hung teardown up to 60s on
-    the non-cancellable urllib thread.
+    `app.py` 의 lifespan 은 `symbols.needs_boot_refresh()` 가 참일 때 마스터
+    갱신을 예약하는데, 머신 전역 `symbol-master.json` 이 없는 CI/개발기에서는
+    항상 참이다(`resolve_symbol_master_path` 가 의도적으로 HOGA_DATA_DIR 를
+    무시하므로 tmp_path 로 격리되지 않는다).
 
-    Failing fast at download_master keeps the whole refresh path (status
-    transitions, error mapping) intact; tests that exercise refresh success
-    stub higher-level seams (symbols.refresh / _fetch_symbol_master) and are
-    unaffected.
+    PR-J(#1046) 이후 소스가 KIS `.mst` 정적 다운로드에서 **키움 `ka10099`** 로
+    바뀌었다. 그쪽은 자격증명이 없으면 스스로 실패하므로 다운로드 폭주는
+    사라졌지만, 자격증명이 있는 로컬에서는 여전히 실제 호출이 나간다 — 그래서
+    가드는 유지하고 막는 지점만 옮긴다.
     """
-    from hoga.api import kis_master
+    from hoga.api import kiwoom_master, symbols
 
-    def _blocked(market: str) -> bytes:
-        raise kis_master.KisMasterFetchError(
-            f"{market} .mst download blocked in tests (autouse guard)"
+    async def _blocked():
+        raise kiwoom_master.KiwoomMasterFetchError(
+            "종목 마스터 갱신은 테스트에서 차단된다(autouse 가드)"
         )
 
-    monkeypatch.setattr(kis_master, "download_master", _blocked)
+    # **소비자 이음매에 건다.** 어댑터(`kiwoom_master.fetch_symbol_master`)에 걸면
+    # 어댑터의 자기 테스트까지 막힌다 — 가드의 목적은 "앱 부팅이 네트워크를
+    # 때리지 않게" 이지 "어댑터를 못 쓰게" 가 아니다.
+    monkeypatch.setattr(symbols, "_fetch_symbol_master", _blocked)
 
     # 옵션 심리 패널(ADR-0135)의 지수선물옵션 .mst 도 같은 부류의 실 다운로드다.
     # 수집 런타임이 이걸 부르므로 같은 가드 아래 둔다.
@@ -70,8 +69,8 @@ def _no_real_mst_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _no_env_reload_on_retry(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep creds isolation honest: the user-retry path (kis_holidays →
-    kis_runtime, reload_env=True) re-reads the repo's REAL .env on a creds
+    """Keep creds isolation honest: the user-retry path (kis_runtime,
+    reload_env=True) re-reads the repo's REAL .env on a creds
     miss. In tests that would silently restore KIS_APP_KEY/SECRET that a test
     delenv'ed — and background paths (poller gate) reach it too. No-op the
     dedicated hook; tests exercising the reload behavior re-patch it."""

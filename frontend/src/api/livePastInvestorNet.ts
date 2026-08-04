@@ -7,9 +7,9 @@ import { isKrxRegularSessionNow } from '../live/liveDateTime';
 export interface LivePastInvestorNetWarning {
   batch: string;
   /** Present on per-row warnings (invariant_violation); absent on batch-level
-   * failures like kis_rate_limit / kis_api_error. */
+   * failures like rate_limit_upstream / api_error. */
   date?: string;
-  reason: 'kis_rate_limit' | 'kis_api_error' | 'invariant_violation';
+  reason: 'rate_limit_upstream' | 'api_error' | 'invariant_violation';
   msg: string;
 }
 

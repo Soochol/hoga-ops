@@ -66,7 +66,7 @@ describe('sortEntriesByChangePct', () => {
   });
 
   it('전 종목 stale 배치에서도 등락률 순서가 유지된다 (주기적 리셋 회귀 가드)', () => {
-    // 235종목 폴링에서 kis_capacity_timeout 배치가 오면 전 종목 stale — 이때 정렬키를
+    // 235종목 폴링에서 capacity_timeout 배치가 오면 전 종목 stale — 이때 정렬키를
     // 값 없음으로 접으면 order 폴백으로 리셋된다. stale 값을 그대로 써 순서를 보존한다.
     const allStale = quotes([
       { code: '005930', change_pct: 1.2, stale: true },

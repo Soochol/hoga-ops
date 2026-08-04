@@ -1,6 +1,8 @@
 # 0109 — /study 저장뷰 캡처 공백의 KIS 분봉 영구 복구 (kis_api candles.parquet)
 
-**Status:** accepted (2026-07-12)
+**Status:** **생산자 교체 (ADR-0136 · 2026-08-04)** — 저장뷰 캡처-공백 복구의 소스가 KIS 분봉 → 키움 `ka10080` 이 됐다. **결정 자체는 유효하다**(복구를 한다는 것). 디스크의 `kis_api` 라벨 데이터는 읽기 전용으로 존치한다.
+
+**Status(원):** accepted (2026-07-12)
 
 **Related:**
 - ADR-0037 — Stock-Date v2 레이아웃(`parquet/<date>/<code>/<source>/`), source 서브디렉토리

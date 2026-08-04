@@ -166,7 +166,7 @@ describe('InvestorTrendEstimateCard', () => {
     render(
       <InvestorTrendEstimateCard
         query={{
-          data: response({ status: 'error', data_warning: { reason: 'kis_api_error', msg: 'x' } }),
+          data: response({ status: 'error', data_warning: { reason: 'api_error', msg: 'x' } }),
         }}
       />,
     );

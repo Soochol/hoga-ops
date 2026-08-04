@@ -3,7 +3,7 @@ import { useWatchlist } from '../watchlist/useWatchlist';
 
 export type LiveBannerCause =
   | 'watchlist_empty'
-  | 'kis_credentials_missing'
+  | 'credentials_missing'
   | 'kis_token_expired'
   | 'realtime_unavailable';
 
@@ -12,7 +12,7 @@ export type LiveBannerCause =
  * 멤버 추가 시 lockstep(CONTEXT.md STATE_SEVERITY SSOT 규율). */
 export type LiveBannerPrimary =
   | 'watchlist_empty'
-  | 'kis_credentials_missing'
+  | 'credentials_missing'
   | 'realtime_unavailable'
   | null;
 
@@ -107,7 +107,7 @@ export function projectLiveStatus({
     // 정지+미시작이면서 offline/closed가 아닌 잔여 상태 = KIS 자격증명 문제로 간주
     // (캔들·지수 경로의 KIS 키 결측). closed는 실시간 정지가 정상이므로 제외.
     if (!status.running && status.started_at_ms == null && reason !== 'closed') {
-      return { banner: { primary: 'kis_credentials_missing', stack }, captureHealth };
+      return { banner: { primary: 'credentials_missing', stack }, captureHealth };
     }
   }
 

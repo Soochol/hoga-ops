@@ -4,7 +4,7 @@ These tests are AST-level static checks that catch the most consequential
 architectural drift before runtime:
 
 1. **ADR-0038 (write hot-path, no Parquet libs)**: writer / snapshot /
-   poller / api / lifecycle / buffer / kis_client / candle_models /
+   poller / api / lifecycle / buffer / kis_client(파생) / candle_models /
    investor must NOT
    import pyarrow or polars (transitive or direct). Promote.py is the
    only allowed Parquet importer — it's the cold-path converter.
@@ -50,6 +50,8 @@ _HOT_PATH_MODULES = (
     "hoga/live/buffer.py",
     "hoga/live/api.py",
     "hoga/live/lifecycle.py",
+    # PR-J(#1046): `kis_endpoints` 가 사라지고 파생(옵션) 전용으로 축소됐지만
+    # HTTP 계층(토큰·유량·재시도)은 그대로라 여전히 핫패스다.
     "hoga/live/kis_client.py",
     "hoga/live/candle_models.py",  # #1018 — kis_models 이사처(캔들 포트)
     "hoga/live/investor.py",       # #1018 — kis_models 이사처(투자자 수급)

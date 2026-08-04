@@ -293,7 +293,7 @@ async def test_start_update_creds_missing_reason(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda _f, _t: ["20260627"])
     monkeypatch.setattr(_kiwoom_runtime, "ensure_rest_client", lambda *_a, **_k: None)
     assert await _screener_mod.start_update(tmp_path) == {
-        "running": False, "updated": 0, "reason": "kis_creds_missing"}
+        "running": False, "updated": 0, "reason": "creds_missing"}
 
 
 # --- job 수명주기 -----------------------------------------------------------

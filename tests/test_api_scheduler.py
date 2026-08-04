@@ -103,7 +103,7 @@ async def test_daily_run_per_entry_failure_does_not_abort_loop(tmp_path: Path):
     async def flaky(req, *, data_dir, now):
         if req.code == "003490":
             raise HTTPException(status_code=503,
-                                detail={"code": "kis_holiday_fetch_failed"})
+                                detail={"code": "trading_days_unavailable"})
         from hoga.api.models import EnqueueResponse
         return EnqueueResponse(enqueued=[], deduped=[])
 
@@ -529,7 +529,7 @@ async def test_catchup_one_entry_propagates_trading_day_unavailable(tmp_path: Pa
     )
     fake_now = dt.datetime(2026, 5, 27, 19, 0, 0, tzinfo=KST)
     def boom(*args, **kwargs):
-        raise TradingDayUnavailableError(UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+        raise TradingDayUnavailableError(UpstreamCode.TRADING_DAYS_UNAVAILABLE)
     with patch("hoga.api.scheduler.latest_complete_date", return_value=None), \
          patch("hoga.api.scheduler.trading_days_in_range", side_effect=boom), \
          patch("hoga.api.scheduler.enqueue_items_core",

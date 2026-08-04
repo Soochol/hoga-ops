@@ -24,7 +24,7 @@ async def test_daily_calendar_policy_reports_unavailable_as_undecided() -> None:
     from hoga.api.error_codes import UpstreamCode
 
     def unavailable(_start: str, _end: str) -> list[str]:
-        raise TradingDayUnavailableError(UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+        raise TradingDayUnavailableError(UpstreamCode.TRADING_DAYS_UNAVAILABLE)
 
     assert await daily_run_allowed_by_calendar(unavailable, "20260605") is None
 

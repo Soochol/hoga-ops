@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from hoga.live import api as live_api, kis_runtime, lifecycle
 from hoga.live.api import build_router
-from hoga.live.kis_client import DailyCandleFetchResult, IndexCandleFetchResult
+from hoga.live.candle_fetch_result import DailyCandleFetchResult, IndexCandleFetchResult
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.settings import update_live_settings
 
@@ -45,7 +45,7 @@ def _bypass_app(tmp_path, fake_kis: _CountingKis) -> FastAPI:
     live_api.index_candles_cache_instance = None
     live_api.index_minute_candles_cache_instance = None
     kis_runtime.set_kis_client(fake_kis)  # type: ignore[arg-type]
-    update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
+    update_live_settings(tmp_path, rest_bypass_enabled=True)
 
     app = FastAPI()
     app.include_router(
@@ -82,13 +82,13 @@ def test_past_candles_bypass_serves_cache_only_on_miss(tmp_path, monkeypatch) ->
         run_with_capacity_calls += 1
         raise AssertionError("run_with_capacity must not be called during KIS REST bypass")
 
-    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", fake_run_with_capacity)
 
     with TestClient(app, raise_server_exceptions=False) as c:
         response = c.get("/api/live/past-candles?code=005930&from=20240102&to=20240102")
 
     assert response.status_code == 200
-    assert response.json()["data_warnings"][0]["reason"] == "kis_rest_bypassed"
+    assert response.json()["data_warnings"][0]["reason"] == "rest_bypassed"
     assert run_with_capacity_calls == 0
     assert fake.minute_fetch_count == 0
 
@@ -124,7 +124,7 @@ def test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request(
         run_with_capacity_calls += 1
         raise AssertionError("run_with_capacity must not be called during KIS REST bypass")
 
-    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", fake_run_with_capacity)
 
     with TestClient(app, raise_server_exceptions=False) as c:
         response = c.get(
@@ -172,7 +172,7 @@ def test_past_candles_bypass_uses_krx_today_cache_after_non_krx_negative(
         run_with_capacity_calls += 1
         raise AssertionError("run_with_capacity must not be called during KIS REST bypass")
 
-    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", fake_run_with_capacity)
 
     with TestClient(app, raise_server_exceptions=False) as c:
         response = c.get(
@@ -197,13 +197,13 @@ def test_past_daily_candles_bypass_serves_cache_only_on_miss(tmp_path, monkeypat
         run_with_capacity_calls += 1
         raise AssertionError("run_with_capacity must not be called during KIS REST bypass")
 
-    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", fake_run_with_capacity)
 
     with TestClient(app, raise_server_exceptions=False) as c:
         response = c.get("/api/live/past-daily-candles?code=005930&from=20240102&to=20240102")
 
     assert response.status_code == 200
-    assert response.json()["data_warnings"][0]["reason"] == "kis_rest_bypassed"
+    assert response.json()["data_warnings"][0]["reason"] == "rest_bypassed"
     assert run_with_capacity_calls == 0
     assert fake.daily_fetch_count == 0
 
@@ -227,7 +227,7 @@ def test_index_candles_bypass_serves_cache_only_on_miss(
         run_with_capacity_calls += 1
         raise AssertionError("run_with_capacity must not be called during KIS REST bypass")
 
-    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", fake_run_with_capacity)
 
     with TestClient(app, raise_server_exceptions=False) as c:
         response = c.get(
@@ -236,6 +236,6 @@ def test_index_candles_bypass_serves_cache_only_on_miss(
         )
 
     assert response.status_code == 200
-    assert response.json()["data_warnings"][0]["reason"] == "kis_rest_bypassed"
+    assert response.json()["data_warnings"][0]["reason"] == "rest_bypassed"
     assert run_with_capacity_calls == 0
     assert getattr(fake, fetch_count_attr) == 0

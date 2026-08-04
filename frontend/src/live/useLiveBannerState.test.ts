@@ -15,15 +15,15 @@ describe('deriveBannerState', () => {
     expect(r.primary).toBe('watchlist_empty');
   });
 
-  it('shows kis_credentials_missing when running false + watchlist > 0 + no started_at', () => {
+  it('shows credentials_missing when running false + watchlist > 0 + no started_at', () => {
     const r = deriveBannerState({
       status: { ...baseStatus, running: false, started_at_ms: null },
       watchlistSize: 2,
     });
-    expect(r.primary).toBe('kis_credentials_missing');
+    expect(r.primary).toBe('credentials_missing');
   });
 
-  it('surfaces realtime_unavailable (not kis_credentials_missing) for market-open offline', () => {
+  it('surfaces realtime_unavailable (not credentials_missing) for market-open offline', () => {
     // ADR-0118 F2: offline(시장 열림·세션 없음)은 구 false-credentials 배너가 아니라
     // 실시간 dark를 정직하게 알리는 realtime_unavailable로 표면화한다.
     const r = deriveBannerState({
@@ -36,7 +36,7 @@ describe('deriveBannerState', () => {
   // Regression (diagnose 2026-05-30): /live keyed its empty-state off
   // status.watchlist_count (poller-tracked, always 0 when the poller is down),
   // so a populated watchlist + stopped poller wrongly rendered
-  // "관심종목이 비어 있습니다" AND masked the real kis_credentials_missing cause.
+  // "관심종목이 비어 있습니다" AND masked the real credentials_missing cause.
   // The empty decision must come from the authoritative inventory size.
   it('does NOT show watchlist_empty when the watchlist has entries but the poller is down', () => {
     const r = deriveBannerState({
@@ -44,7 +44,7 @@ describe('deriveBannerState', () => {
       watchlistSize: 9, // inventory is non-empty; poller-tracked count would be 0
     });
     expect(r.primary).not.toBe('watchlist_empty');
-    expect(r.primary).toBe('kis_credentials_missing');
+    expect(r.primary).toBe('credentials_missing');
   });
 
   it('defers priority-1 banners while the watchlist size is still loading', () => {
@@ -70,7 +70,7 @@ describe('deriveBannerState', () => {
       status: { ...baseStatus, running: false, started_at_ms: null },
       watchlistSize: 0,
     });
-    // watchlist_empty wins over kis_credentials_missing per matrix ordering
+    // watchlist_empty wins over credentials_missing per matrix ordering
     expect(r.primary).toBe('watchlist_empty');
   });
 

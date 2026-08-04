@@ -9,12 +9,12 @@ import { apiCall } from './client';
 // push 전환으로 수집 비용이 0이 되어 거래원(0F)처럼 항시 저장한다.
 export interface LiveSettings {
   schema_version: number;
-  kis_rest_bypass_enabled: boolean;
+  rest_bypass_enabled: boolean;
   screener_depth_autocollect: boolean;
 }
 
 export type LiveSettingsPatch = {
-  kis_rest_bypass_enabled?: boolean;
+  rest_bypass_enabled?: boolean;
   screener_depth_autocollect?: boolean;
 };
 
@@ -47,7 +47,7 @@ export function usePatchLiveSettings() {
     // with the authoritative server value, which corrects any server-derived
     // field the patch can't predict.
     // No cancelQueries: this settings query has no background refetch to race,
-    // and cancelling it races the mount-time auto-PATCH in KisRestUnavailableToastHost.
+    // and cancelling it races the mount-time auto-PATCH in RestUnavailableToastHost.
     onMutate: (patch): { previous: LiveSettings | undefined } => {
       const previous = qc.getQueryData<LiveSettings>(LIVE_SETTINGS_KEY);
       if (previous) qc.setQueryData<LiveSettings>(LIVE_SETTINGS_KEY, { ...previous, ...patch });

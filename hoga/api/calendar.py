@@ -94,13 +94,13 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
     days = trading_days_source.trading_days(_data_dir)
     if not days:
         # 시드를 못 읽었다 = 배포 사고. 재시도 대상이 아니지만 사유는 남긴다.
-        _last_failure_reason = UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+        _last_failure_reason = UpstreamCode.TRADING_DAYS_UNAVAILABLE
         return None
     end = max(days)
     prefix = f"{year:04d}{month:02d}"
     # 그 달의 첫날이 커버리지를 넘으면 통째로 모른다.
     if f"{prefix}01" > end:
-        _last_failure_reason = UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+        _last_failure_reason = UpstreamCode.TRADING_DAYS_UNAVAILABLE
         return None
     _last_failure_reason = None
     return {d for d in days if d.startswith(prefix)}
@@ -203,14 +203,14 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     # 돌려준다 — 호출자는 그 사이 거래일이 원래 없었다고 읽는다.
     end_known = coverage_end()
     if end_known is None or end > end_known:
-        raise TradingDayUnavailableError(UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+        raise TradingDayUnavailableError(UpstreamCode.TRADING_DAYS_UNAVAILABLE)
 
     out: list[str] = []
     cur = dt.date(start_d.year, start_d.month, 1)
     while cur <= end_d:
         days = _trading_days_for(cur.year, cur.month)
         if days is None:
-            raise TradingDayUnavailableError(last_failure_reason() or UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+            raise TradingDayUnavailableError(last_failure_reason() or UpstreamCode.TRADING_DAYS_UNAVAILABLE)
         for d in sorted(days):
             if start <= d <= end:
                 out.append(d)

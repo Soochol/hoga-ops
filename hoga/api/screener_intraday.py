@@ -7,7 +7,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.live import kis_access, kiwoom_access, kiwoom_multi_quote, kiwoom_rest_runtime
+from hoga.live import kiwoom_access, kiwoom_multi_quote, kiwoom_rest_runtime, settings as live_settings
 
 _SCHEMA = {
     "code": pl.Utf8,
@@ -42,7 +42,7 @@ def _empty(warnings: list[str] | None = None) -> IntradayDailyOverlay:
 
 
 def intraday_overlay_bypassed(data_dir: Path) -> bool:
-    return kis_access.kis_rest_bypass_enabled(data_dir)
+    return live_settings.rest_bypass_enabled(data_dir)
 
 
 def _date(yyyymmdd: str) -> dt.date:
@@ -70,7 +70,7 @@ async def build_intraday_overlay(
         sorted({c for c in codes if isinstance(c, str) and len(c) == _CODE_LEN})
     )
     if not unique_codes or intraday_overlay_bypassed(data_dir):
-        warnings = ["kis_rest_bypassed_intraday_overlay_skipped"] if unique_codes else None
+        warnings = ["rest_bypassed_intraday_overlay_skipped"] if unique_codes else None
         return _empty(warnings)
     key = (data_dir, today, unique_codes)
     cached = _CACHE.get(key)

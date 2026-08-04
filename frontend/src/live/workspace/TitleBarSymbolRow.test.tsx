@@ -33,7 +33,7 @@ function renderRow(
   qc.setQueryData(['live', 'status'], {
     running: true, started_at_ms: 1, last_tick_ms: 1, cycle_lag_ms: 0,
     capture_healthy: true, capture_reason: 'healthy',
-    watchlist_count: watchlistCodes.length, kis_calls_today: 0, kis_rate_limit_remaining: null,
+    watchlist_count: watchlistCodes.length,
     live_set: liveSet,
   });
   return render(

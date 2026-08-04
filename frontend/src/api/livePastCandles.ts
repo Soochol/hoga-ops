@@ -82,8 +82,8 @@ function uniqueWarnings(warnings: LivePastCandlesWarning[]): LivePastCandlesWarn
 const BLOCKING_WARNING_REASONS = new Set([
   'capacity_overloaded',
   'fetch_budget_exhausted',
-  'kis_api_error',
-  'kis_rate_limit',
+  'api_error',
+  'rate_limit_upstream',
   'rate_limit_aborted',
 ]);
 

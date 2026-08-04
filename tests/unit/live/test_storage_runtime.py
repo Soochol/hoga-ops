@@ -321,7 +321,7 @@ async def test_storage_runtime_bypass_no_longer_stops_program_trade_collector(
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
     existing = FakeProgramTradeCollector()
-    save_live_settings(tmp_path, LiveSettings(kis_rest_bypass_enabled=True))
+    save_live_settings(tmp_path, LiveSettings(rest_bypass_enabled=True))
     state = FakeStorageState(program_trade_collector=existing)
 
     snapshot = await sync_storage_runtime(

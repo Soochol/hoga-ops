@@ -8,7 +8,7 @@ import json
 import pytest
 
 from hoga.api import symbols
-from hoga.api.kis_master import MasterRow
+from hoga.api.kiwoom_master import MasterRow
 
 
 @pytest.fixture(autouse=True)
@@ -90,9 +90,9 @@ async def test_concurrent_gets_dedupe_to_one_fetch(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_kis_master_failure_returns_unavailable_when_no_cache(monkeypatch, tmp_path):
-    from hoga.api.kis_master import KisMasterFetchError
-    _stub_fetch(monkeypatch, raise_exc=KisMasterFetchError("mst down"))
+async def test_master_fetch_failure_returns_unavailable_when_no_cache(monkeypatch, tmp_path):
+    from hoga.api.kiwoom_master import KiwoomMasterFetchError
+    _stub_fetch(monkeypatch, raise_exc=KiwoomMasterFetchError("마스터 조회 실패"))
     path = tmp_path / "sm.json"
     resp = await symbols.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "unavailable"
@@ -174,8 +174,8 @@ def test_symbols_all_response_accepts_reason() -> None:
     from hoga.api.models import SymbolsAllResponse
 
     resp = SymbolsAllResponse(symbols=[], status="unavailable", fetched_at_ms=None,
-                              reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
-    assert resp.reason == "kis_holiday_fetch_failed"
+                              reason=UpstreamCode.TRADING_DAYS_UNAVAILABLE)
+    assert resp.reason == "trading_days_unavailable"
 
     # Default is None for backward compat.
     resp_default = SymbolsAllResponse(symbols=[], status="fresh", fetched_at_ms=123)
@@ -188,8 +188,8 @@ def test_calendar_response_accepts_reason() -> None:
     from hoga.api.models import CalendarResponse
 
     resp = CalendarResponse(cells=[], as_of_ms=123,
-                            reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
-    assert resp.reason == "kis_holiday_fetch_failed"
+                            reason=UpstreamCode.TRADING_DAYS_UNAVAILABLE)
+    assert resp.reason == "trading_days_unavailable"
 
     resp_default = CalendarResponse(cells=[], as_of_ms=123)
     assert resp_default.reason is None
@@ -212,21 +212,21 @@ def _reset_symbols_state():
 
 
 @pytest.mark.asyncio
-async def test_get_all_fetch_failed_when_kis_master_raises(
+async def test_get_all_fetch_failed_when_master_fetch_raises(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     _reset_symbols_state: None,
 ) -> None:
-    from hoga.api.kis_master import KisMasterFetchError
+    from hoga.api.kiwoom_master import KiwoomMasterFetchError
 
     async def _raise() -> list:
-        raise KisMasterFetchError("mst download failed")
+        raise KiwoomMasterFetchError("마스터 조회 실패")
     monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _raise)
 
     path = tmp_path / "sm.json"
     resp = await symbols_module.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "unavailable"
-    assert resp.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
+    assert resp.reason == UpstreamCode.MASTER_FETCH_FAILED
 
 
 @pytest.mark.asyncio
@@ -270,6 +270,12 @@ async def test_spec7_no_creds_refresh_succeeds(
         return fake_rows
 
     monkeypatch.setattr(symbols_module, "kiwoom_fetch_symbol_master", _fake_fetch)
+    # autouse 가드가 소비자 이음매(`_fetch_symbol_master`)를 막아 두므로, refresh
+    # **성공** 을 보는 테스트는 그 자리를 다시 연다(가드 docstring 의 명시된 관례).
+    async def _consumer_seam():
+        return symbols_module._rows_to_hits(fake_rows)
+
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _consumer_seam)
     monkeypatch.setattr(symbols_module, "_symbols_data_dir", lambda: tmp_path)
     import hoga.live.kiwoom_rest_runtime as _krr
     monkeypatch.setattr(_krr, "ensure_rest_client", lambda *_a, **_k: object())
@@ -290,7 +296,7 @@ def test_reset_state_for_tests_clears_reason() -> None:
     T7: reset now mirrors the module-level default — boot must populate via
     load_disk_state(); if it hasn't run, state is unavailable, not loading.
     """
-    symbols_module._state = SymbolCacheState.stale(reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+    symbols_module._state = SymbolCacheState.stale(reason=UpstreamCode.TRADING_DAYS_UNAVAILABLE)
     symbols_module.reset_state_for_tests()
     assert symbols_module._state.status == "unavailable"
     assert symbols_module._state.reason == UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
@@ -314,13 +320,13 @@ def test_symbol_cache_state_factories_enforce_invariants() -> None:
     assert SymbolCacheState.fresh().reason is None
 
     # Stale and unavailable require a reason.
-    stale = SymbolCacheState.stale(reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+    stale = SymbolCacheState.stale(reason=UpstreamCode.TRADING_DAYS_UNAVAILABLE)
     assert stale.status == "stale"
-    assert stale.reason == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+    assert stale.reason == UpstreamCode.TRADING_DAYS_UNAVAILABLE
 
-    unavailable = SymbolCacheState.unavailable(reason=UpstreamCode.KIS_MASTER_FETCH_FAILED)
+    unavailable = SymbolCacheState.unavailable(reason=UpstreamCode.MASTER_FETCH_FAILED)
     assert unavailable.status == "unavailable"
-    assert unavailable.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
+    assert unavailable.reason == UpstreamCode.MASTER_FETCH_FAILED
 
     # Frozen — immutable after construction.
     with pytest.raises(Exception):  # dataclasses.FrozenInstanceError  # noqa: B017 — 광범위 예외 자체가 검증 대상
@@ -592,7 +598,7 @@ async def test_refresh_happy_path(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_refresh_kis_failure_preserves_disk(tmp_path, monkeypatch):
-    from hoga.api.kis_master import KisMasterFetchError
+    from hoga.api.kiwoom_master import KiwoomMasterFetchError
 
     symbols_module.reset_state_for_tests()
     path = tmp_path / "sm.json"
@@ -606,11 +612,11 @@ async def test_refresh_kis_failure_preserves_disk(tmp_path, monkeypatch):
     original_content = path.read_text(encoding="utf-8")
 
     async def _boom():
-        raise KisMasterFetchError("mst down")
+        raise KiwoomMasterFetchError("마스터 조회 실패")
     monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _boom)
     resp = await symbols_module.refresh(path=path, data_dir=data_dir)
 
-    assert resp.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
+    assert resp.reason == UpstreamCode.MASTER_FETCH_FAILED
     assert resp.status == "stale", "cache populated → state is stale, not unavailable"
     assert path.read_text(encoding="utf-8") == original_content
 
@@ -785,7 +791,7 @@ def test_current_status_reflects_state():
     symbols_module._state = symbols_module.SymbolCacheState.fresh()
     assert symbols_module.current_status() == "fresh"
 
-    symbols_module._state = symbols_module.SymbolCacheState.stale(reason=UpstreamCode.KIS_MASTER_FETCH_FAILED)
+    symbols_module._state = symbols_module.SymbolCacheState.stale(reason=UpstreamCode.MASTER_FETCH_FAILED)
     assert symbols_module.current_status() == "stale"
 
     symbols_module.reset_state_for_tests()  # restore
@@ -1029,7 +1035,7 @@ async def test_refresh_unhandled_exception_recovers_to_terminal_state(
     symbols_module.reset_state_for_tests()
 
     async def _explode():
-        raise ImportError("kis_master broken")
+        raise ImportError("kiwoom_master broken")
     monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _explode)
 
     path = tmp_path / "sm.json"
@@ -1039,7 +1045,7 @@ async def test_refresh_unhandled_exception_recovers_to_terminal_state(
 
     assert resp.status != "loading", "broad except must surface a terminal state"
     assert resp.status in ("stale", "unavailable")
-    assert resp.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
+    assert resp.reason == UpstreamCode.MASTER_FETCH_FAILED
     assert symbols_module._state.status != "loading", \
         "module _state must not be stranded at loading() — /info would otherwise lie"
 

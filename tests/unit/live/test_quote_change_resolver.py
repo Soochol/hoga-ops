@@ -3,8 +3,8 @@ import logging
 
 import duckdb
 
-from hoga.live.kis_client import KisQuote
 from hoga.live.quote_change_resolver import QuoteChangeResolver
+from hoga.live.quote_models import Quote
 
 
 def _write_adjusted_daily(path, rows):
@@ -30,7 +30,7 @@ def test_uses_adjusted_baseline_when_kis_change_rate_disagrees(tmp_path):
     )
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="049080", price=7770, change_pct=682.48, change_won=None)
+    q = Quote(code="049080", price=7770, change_pct=682.48, change_won=None)
     out = resolver.resolve_quote(q, phase="open")
 
     assert out.change_pct == -21.75
@@ -48,7 +48,7 @@ def test_uses_kis_previous_close_before_adjusted_daily(tmp_path):
     )
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=111, change_pct=99.0, change_won=99, previous_close=110)
+    q = Quote(code="005930", price=111, change_pct=99.0, change_won=99, previous_close=110)
     out = resolver.resolve_quote(q, phase="open")
 
     assert out.change_pct == 0.91
@@ -67,7 +67,7 @@ def test_uses_adjusted_baseline_without_warning_when_kis_matches(tmp_path):
     )
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=103, change_pct=3.0, change_won=3)
+    q = Quote(code="005930", price=103, change_pct=3.0, change_won=3)
     out = resolver.resolve_quote(q, phase="open")
 
     assert out.change_pct == 3.0
@@ -86,7 +86,7 @@ def test_recomputes_change_rate_from_adjusted_baseline_even_when_kis_diff_is_sma
     )
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=105, change_pct=2.1, change_won=2)
+    q = Quote(code="005930", price=105, change_pct=2.1, change_won=2)
     out = resolver.resolve_quote(q, phase="open")
 
     assert out.change_pct == 5.0
@@ -105,7 +105,7 @@ def test_hides_change_rate_when_adjusted_baseline_scale_mismatches_quote(tmp_pat
     )
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(
+    q = Quote(
         code="049080",
         price=6290,
         change_pct=533.43,
@@ -132,7 +132,7 @@ def test_hides_change_rate_when_adjusted_baseline_is_stale_for_today(tmp_path):
     )
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=105, change_pct=2.1, change_won=2)
+    q = Quote(code="005930", price=105, change_pct=2.1, change_won=2)
     out = resolver.resolve_quote(q, phase="open", today=dt.date(2026, 6, 30))
 
     assert out.change_pct is None
@@ -151,7 +151,7 @@ def test_friday_adjusted_baseline_is_valid_on_monday(tmp_path):
     )
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=105, change_pct=2.1, change_won=2)
+    q = Quote(code="005930", price=105, change_pct=2.1, change_won=2)
     out = resolver.resolve_quote(q, phase="open", today=dt.date(2026, 6, 29))
 
     assert out.change_pct == 5.0
@@ -173,7 +173,7 @@ def test_ignores_same_day_adjusted_row_when_selecting_baseline(tmp_path):
     )
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=110, change_pct=1.0, change_won=1)
+    q = Quote(code="005930", price=110, change_pct=1.0, change_won=1)
     out = resolver.resolve_quote(q, phase="open", today=dt.date(2026, 6, 30))
 
     assert out.change_pct == 10.0
@@ -187,7 +187,7 @@ def test_ignores_same_day_adjusted_row_when_selecting_baseline(tmp_path):
 def test_missing_adjusted_file_falls_back_to_kis_without_warning(tmp_path):
     resolver = QuoteChangeResolver(adjusted_daily_path=tmp_path / "missing.parquet")
 
-    q = KisQuote(code="005930", price=103, change_pct=3.0, change_won=3)
+    q = Quote(code="005930", price=103, change_pct=3.0, change_won=3)
     out = resolver.resolve_quote(q, phase="open")
 
     assert out.change_pct == 3.0
@@ -208,7 +208,7 @@ def test_unreadable_adjusted_file_is_logged_not_swallowed(tmp_path, caplog):
     daily.write_bytes(b"not a parquet file")
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=103, change_pct=None, change_won=None)
+    q = Quote(code="005930", price=103, change_pct=None, change_won=None)
     with caplog.at_level(logging.WARNING, logger="hoga.live.quote_change_resolver"):
         out = resolver.resolve_quote(q, phase="open")
 
@@ -229,7 +229,7 @@ def test_unreadable_adjusted_file_logs_once_per_code(tmp_path, caplog):
     daily.write_bytes(b"not a parquet file")
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=103, change_pct=None, change_won=None)
+    q = Quote(code="005930", price=103, change_pct=None, change_won=None)
     with caplog.at_level(logging.WARNING, logger="hoga.live.quote_change_resolver"):
         for _ in range(5):
             resolver.resolve_quote(q, phase="open")
@@ -241,7 +241,7 @@ def test_missing_adjusted_file_does_not_cache_absent_baseline(tmp_path):
     daily = tmp_path / "daily_adjusted.parquet"
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=103, change_pct=None, change_won=None)
+    q = Quote(code="005930", price=103, change_pct=None, change_won=None)
     before = resolver.resolve_quote(q, phase="open")
     assert before.change_pct is None
     assert before.change_pct_source == "unavailable"
@@ -267,7 +267,7 @@ def test_invalid_baseline_falls_back_to_kis_and_marks_warning(tmp_path):
     )
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=103, change_pct=3.0, change_won=3)
+    q = Quote(code="005930", price=103, change_pct=3.0, change_won=3)
     out = resolver.resolve_quote(q, phase="open")
 
     assert out.change_pct == 3.0
@@ -285,7 +285,7 @@ def test_pre_open_hides_change_fields_even_with_baseline(tmp_path):
     )
     resolver = QuoteChangeResolver(adjusted_daily_path=daily)
 
-    q = KisQuote(code="005930", price=103, change_pct=3.0, change_won=3)
+    q = Quote(code="005930", price=103, change_pct=3.0, change_won=3)
     out = resolver.resolve_quote(q, phase="pre_open")
 
     assert out.change_pct is None

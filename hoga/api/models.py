@@ -9,7 +9,13 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.params import CODE_PATTERN
@@ -990,7 +996,23 @@ class LiveSettingsResponse(BaseModel):
     디스크의 옛 live_settings.json에 남은 키는 pydantic 기본(extra ignore)이 무시."""
 
     schema_version: int = 1
-    kis_rest_bypass_enabled: bool = False
+    # **REST 우회 토글.** 2026-08-04까지 `kis_rest_bypass_enabled` 였다(PR-J·#1046).
+    # 벤더가 키움으로 바뀌었으므로 이름에서 `kis_` 를 걷어내되 **기능은 유지**한다
+    # — 지도가 "bypass 토글은 그대로 적용하되 REST 우회 의미로" 로 확정했다.
+    #
+    # 이름 교체는 expand/contract 로 했고 3단계까지 끝났다(응답 이중 노출 제거).
+    #
+    # **읽기 별칭만 영구히 남는다.** `LiveSettings` 가 이 모델의 별칭이라 이건
+    # 와이어 타입이면서 **디스크 타입**이다 — 사용자 머신의 `live_settings.json` 에
+    # 여전히 옛 키가 들어 있고, 그건 배포와 무관하게 살아 있다. 별칭을 지우면
+    # pydantic 의 extra-ignore 가 그 키를 **조용히 버려** 사용자가 켜 둔 우회
+    # 설정이 False 로 리셋된다. 디스크가 한 번 새 키로 다시 써지기 전까지는
+    # 지울 수 없고, 그 시점을 알 방법이 없으므로 남긴다.
+    rest_bypass_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("rest_bypass_enabled", "kis_rest_bypass_enabled"),
+    )
+
     # 스크리너 총잔량 조건에서 hogaplay 결측 종목을 발견하면 자동으로 지난 N일치 수집을
     # 큐에 적재할지. 기본 False — 스캔은 탐색적으로 반복 실행되므로 묵시적 큐 증가를 막고
     # 명시적 [수집 요청] 버튼을 1차 UX 로 둔다.
@@ -1005,7 +1027,9 @@ class LiveSettingsResponse(BaseModel):
 
 
 class LiveSettingsUpdate(BaseModel):
-    kis_rest_bypass_enabled: bool | None = None
+    # **순수 와이어 타입이라 별칭이 필요 없다** — 디스크에 저장되지 않는다.
+    # 프론트가 새 이름으로 갈아탔으므로(#1046 2단계) 옛 이름 수용을 거뒀다.
+    rest_bypass_enabled: bool | None = None
     screener_depth_autocollect: bool | None = None
 
 

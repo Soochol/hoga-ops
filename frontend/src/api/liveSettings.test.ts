@@ -6,7 +6,7 @@ import * as client from './client';
 
 const BASE_SETTINGS = {
   schema_version: 1,
-  kis_rest_bypass_enabled: false,
+  rest_bypass_enabled: false,
   screener_depth_autocollect: false,
 };
 
@@ -31,7 +31,7 @@ describe('liveSettings api', () => {
     const { patchLiveSettings } = await import('./liveSettings');
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      kis_rest_bypass_enabled: false,
+      rest_bypass_enabled: false,
       screener_depth_autocollect: true,
     });
 
@@ -45,20 +45,20 @@ describe('liveSettings api', () => {
     expect(result.screener_depth_autocollect).toBe(true);
   });
 
-  it('patches only kis_rest_bypass_enabled', async () => {
+  it('patches only rest_bypass_enabled', async () => {
     const { patchLiveSettings } = await import('./liveSettings');
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      kis_rest_bypass_enabled: true,
+      rest_bypass_enabled: true,
     });
 
-    const result = await patchLiveSettings({ kis_rest_bypass_enabled: true });
+    const result = await patchLiveSettings({ rest_bypass_enabled: true });
 
     expect(spy).toHaveBeenCalledWith('/api/live/settings', expect.objectContaining({
       method: 'PATCH',
-      body: JSON.stringify({ kis_rest_bypass_enabled: true }),
+      body: JSON.stringify({ rest_bypass_enabled: true }),
     }));
-    expect(result.kis_rest_bypass_enabled).toBe(true);
+    expect(result.rest_bypass_enabled).toBe(true);
   });
 });
 
@@ -86,7 +86,7 @@ describe('usePatchLiveSettings — optimistic update', () => {
     // Server may derive fields the patch did not send — server value wins.
     const server = {
       ...BASE_SETTINGS,
-      kis_rest_bypass_enabled: true,  // 패치가 보내지 않은 서버-유도 필드
+      rest_bypass_enabled: true,  // 패치가 보내지 않은 서버-유도 필드
     };
     vi.spyOn(client, 'apiCall').mockResolvedValue(server);
     const qc = new QueryClient();

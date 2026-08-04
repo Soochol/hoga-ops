@@ -56,11 +56,11 @@ describe('Settings — 사이드바 레이아웃', () => {
     await waitFor(() => expect(screen.getByText('http://test')).toBeInTheDocument());
   });
 
-  it('데이터 소스 섹션이 라이브 데이터소스 상세(KIS API 우회 등)를 렌더한다', async () => {
+  it('데이터 소스 섹션이 라이브 데이터소스 상세(REST 우회 등)를 렌더한다', async () => {
     renderWithQuery(<Settings />);
     selectSection('source');
     // DataSourceDetail(variant="live") 콘텐츠 — 상세 동작은 DataSourceDetail.test.tsx가 커버.
-    expect(await screen.findByRole('switch', { name: 'KIS API 우회' })).toBeInTheDocument();
+    expect(await screen.findByRole('switch', { name: 'REST 우회' })).toBeInTheDocument();
     expect(screen.getByText('표시 소스')).toBeInTheDocument();
     expect(screen.getByText('캡처 저장')).toBeInTheDocument();
   });
@@ -157,15 +157,15 @@ describe('Settings — Symbol Master section', () => {
 
   it('renders stale state: cache preserved, reason hint visible, button still actionable', async () => {
     const TWO_HOURS_AGO = Date.now() - 2 * 60 * 60 * 1000;
-    // kis_master_fetch_failed is the only fetch-failure reason the symbols
+    // master_fetch_failed is the only fetch-failure reason the symbols
     // backend actually emits on this surface — the previous mock used
-    // kis_holiday_fetch_failed, an impossible state here, so the reachable
+    // trading_days_unavailable, an impossible state here, so the reachable
     // hint copy went untested.
     vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
       count: 6012,
       fetched_at_ms: TWO_HOURS_AGO,
       status: 'stale',
-      reason: 'kis_master_fetch_failed',
+      reason: 'master_fetch_failed',
     });
 
     renderWithQuery(<Settings />);

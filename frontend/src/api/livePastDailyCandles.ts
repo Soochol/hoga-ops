@@ -17,9 +17,9 @@ export interface LivePastDailyCandle {
 export interface LivePastDailyCandlesWarning {
   batch: string;
   /** Present when the warning is per-row (e.g. invariant_violation); absent on
-   * batch-level failures like kis_rate_limit / kis_api_error. */
+   * batch-level failures like rate_limit_upstream / api_error. */
   date?: string;
-  reason: 'kis_rate_limit' | 'kis_api_error' | 'invariant_violation' | 'kis_rest_bypassed';
+  reason: 'rate_limit_upstream' | 'api_error' | 'invariant_violation' | 'rest_bypassed';
   msg: string;
 }
 

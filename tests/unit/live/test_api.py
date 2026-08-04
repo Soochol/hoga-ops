@@ -55,7 +55,6 @@ def test_get_live_status_returns_running_false_initially() -> None:
         body = r.json()
         assert body["running"] is False
         assert body["watchlist_count"] == 0
-        assert body["kis_calls_today"] == 0
 
 
 def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> None:
@@ -67,14 +66,20 @@ def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> N
     with TestClient(app) as c:
         r = c.get("/api/live/status")
         assert r.status_code == 200
-        scheduler = r.json()["kis_capacity_scheduler"]
-        assert scheduler["max_workers"] >= 4
-        assert scheduler["max_pending_requests"] == 1000
-        assert "configured_account_count" in scheduler
-        assert "healthy_account_count" in scheduler
+        # 관측 표면의 **키는 프론트 계약이라 유지**하고 내용물만 키움 거버너로
+        # 바뀐다(PR-J·#1046). 계정 성분(`configured_account_count` 등)은 사라졌다 —
+        # 키움 유량은 TR별이라 셀 계정이 없다(#1015).
+        scheduler = r.json()["rest_capacity_scheduler"]
+        # `workers` 는 **살아 있는 워커 수**다 — 옛 KIS 스냅샷의 `max_workers`(설정값)와
+        # 성격이 다르다. 첫 요청 전에는 0 이고, 그게 맞는 값이다.
+        assert isinstance(scheduler["workers"], int)
         assert "queued" in scheduler
         assert "inflight" in scheduler
-        assert "overloaded_rejections" in scheduler
+        assert "tr_buckets" in scheduler
+        assert "configured_account_count" not in scheduler
+        # 양보 기계(#1038 기계 ④)의 관측치 — 인터랙티브가 백필에 밀리지 않는지를
+        # 운영에서 보는 유일한 신호다.
+        assert "background_deferred_due_to_user_visible" in scheduler
 
 
 def test_get_live_status_includes_cache_stats(tmp_path) -> None:
@@ -494,7 +499,7 @@ async def test_past_candles_partial_failure_kis_api_error(tmp_path, monkeypatch)
         # 덮으므로 그 콜이 실패하면 구간 전체가 미확보다. 일부만 성공한 척
         # 내려보내면 프론트가 구멍 뚫린 축을 진실로 그린다.
         assert [w["date"] for w in warnings] == ["20260501", "20260502", "20260503"]
-        assert {w["reason"] for w in warnings} == {"kis_api_error"}
+        assert {w["reason"] for w in warnings} == {"api_error"}
         assert body["candles"] == []
 
 
@@ -645,8 +650,8 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path, monkey
     )
     assert body["candles"] == []
     warns = {w["date"]: w["reason"] for w in body["data_warnings"]}
-    assert set(warns.values()) == {"kis_rate_limit"}
-    assert warns["20260508"] == "kis_rate_limit", "구간 전체가 같은 사유로 미확보다"
+    assert set(warns.values()) == {"rate_limit_upstream"}
+    assert warns["20260508"] == "rate_limit_upstream", "구간 전체가 같은 사유로 미확보다"
 
 
 @pytest.mark.asyncio
@@ -707,7 +712,7 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path, m
         warn_dates = [w["date"] for w in body["data_warnings"]]
         assert "20260503" not in warn_dates
         assert any(
-            w["reason"] == "kis_rate_limit" and w["date"] == "20260502"
+            w["reason"] == "rate_limit_upstream" and w["date"] == "20260502"
             for w in body["data_warnings"]
         )
 
@@ -736,7 +741,7 @@ async def test_past_candles_rate_limit_cooldown_blocks_immediate_followup(tmp_pa
     assert r1.status_code == 200
     assert r2.status_code == 200
     assert fake.calls == ["20260501"]
-    assert r1.json()["data_warnings"][0]["reason"] == "kis_rate_limit"
+    assert r1.json()["data_warnings"][0]["reason"] == "rate_limit_upstream"
     assert r2.json()["data_warnings"][0]["reason"] == "rate_limit_aborted"
 
 
@@ -1283,7 +1288,7 @@ def test_gaps_adjacent_batches_coalesce() -> None:
 
 # ----- /api/live/past-daily-candles -----
 
-from hoga.live.kis_client import DailyCandleFetchResult, DailyInvariantViolation
+from hoga.live.candle_fetch_result import DailyCandleFetchResult, DailyInvariantViolation
 
 
 class _FakeKisForDaily:
@@ -1528,7 +1533,7 @@ def test_past_daily_rate_limit_surfaces_data_warning(tmp_path, monkeypatch) -> N
         warmup_calls = len(fake.calls)
         r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240501")
         body = r2.json()
-        assert any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
+        assert any(w["reason"] == "rate_limit_upstream" for w in body["data_warnings"])
         # Gap loop must break after the first EGW00201 — no further KIS
         # calls for later gap batches in the SAME request. (Client retries
         # are opaque to the fake; they don't show up as additional calls.)
@@ -1599,7 +1604,7 @@ def test_past_daily_empty_gap_caches_and_does_not_refetch(tmp_path, monkeypatch)
     class _EmptyKis(_FakeKisForDaily):
         async def fetch_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
-            from hoga.live.kis_client import DailyCandleFetchResult
+            from hoga.live.candle_fetch_result import DailyCandleFetchResult
 
             return DailyCandleFetchResult(candles=[], violations=[])
 
@@ -1646,7 +1651,7 @@ def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path, monkeypa
     class _EmptyTodayKis(_FakeKisForDaily):
         async def fetch_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
-            from hoga.live.kis_client import DailyCandleFetchResult
+            from hoga.live.candle_fetch_result import DailyCandleFetchResult
 
             return DailyCandleFetchResult(candles=[], violations=[])
 
@@ -1737,10 +1742,11 @@ def test_screener_daily_candles_runs_off_the_event_loop(tmp_path, monkeypatch) -
 
 # ----- /api/live/past-investor-net -----
 
-from hoga.live.investor import InvestorNetPoint, InvestorTrendEstimateRow
-from hoga.live.kis_endpoints import (
+from hoga.live.investor import (
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
+    InvestorNetPoint,
+    InvestorTrendEstimateRow,
 )
 
 # 투자자 3표면의 페이크 클라이언트를 라우트에 흘려보내는 홀더.
@@ -2082,7 +2088,7 @@ def test_past_investor_net_rate_limit_surfaces_warning(tmp_path, monkeypatch) ->
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
         body = r.json()
-        assert any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
+        assert any(w["reason"] == "rate_limit_upstream" for w in body["data_warnings"])
 
 
 def test_past_investor_net_violation_surfaces_to_wire(tmp_path, monkeypatch) -> None:
@@ -2598,7 +2604,7 @@ async def test_investor_estimate_kis_failure_returns_previous_same_day_rows() ->
     response = await fetcher.fetch(fake, "005930")
 
     assert response.status == "error"
-    assert response.data_warning and response.data_warning.reason == "kis_rate_limit"
+    assert response.data_warning and response.data_warning.reason == "rate_limit_upstream"
     assert [r.slot for r in response.rows] == ["0900"]
 
 
@@ -2618,7 +2624,7 @@ async def test_investor_estimate_auth_failure_returns_degraded_credentials_warni
 
     assert response.status == "error"
     assert response.data_warning
-    assert response.data_warning.reason == "kis_credentials_missing"
+    assert response.data_warning.reason == "credentials_missing"
     assert response.data_warning.msg == "KIS authentication failed"
     assert response.rows == []
 
@@ -2725,7 +2731,7 @@ async def test_investor_estimate_degraded_failure_is_cached_with_previous_rows(m
     assert second_degraded.fetched_at_ms == successful.fetched_at_ms
     assert [r.slot for r in second_degraded.rows] == ["0900"]
     assert second_degraded.data_warning
-    assert second_degraded.data_warning.reason == "kis_rate_limit"
+    assert second_degraded.data_warning.reason == "rate_limit_upstream"
 
 
 @pytest.mark.asyncio
@@ -2750,11 +2756,11 @@ async def test_investor_estimate_api_and_transport_errors_preserve_previous_rows
 
     assert transport_response.status == "error"
     assert transport_response.data_warning
-    assert transport_response.data_warning.reason == "kis_api_error"
+    assert transport_response.data_warning.reason == "api_error"
     assert [r.slot for r in transport_response.rows] == ["0900"]
     assert api_response.status == "error"
     assert api_response.data_warning
-    assert api_response.data_warning.reason == "kis_api_error"
+    assert api_response.data_warning.reason == "api_error"
     assert [r.slot for r in api_response.rows] == ["0900"]
 
 
@@ -2886,7 +2892,7 @@ def test_investor_trend_estimate_route_missing_kis_returns_degraded_error(tmp_pa
     assert body["fetched_at_ms"] is None
     assert body["rows"] == []
     assert body["latest"] is None
-    assert body["data_warning"]["reason"] == "kis_credentials_missing"
+    assert body["data_warning"]["reason"] == "credentials_missing"
 
 
 def test_live_settings_routes_round_trip(tmp_path):
@@ -2903,9 +2909,10 @@ def test_live_settings_routes_round_trip(tmp_path):
     )
     client = TestClient(app)
 
+    # 응답은 새 이름만 낸다 — 프론트가 갈아탔으므로 이중 노출을 거뒀다(3단계).
     assert client.get("/api/live/settings").json() == {
         "schema_version": 1,
-        "kis_rest_bypass_enabled": False,
+        "rest_bypass_enabled": False,
         "screener_depth_autocollect": False,
     }
 
@@ -2916,7 +2923,7 @@ def test_live_settings_routes_round_trip(tmp_path):
 
     assert r.status_code == 200
     assert r.json()["screener_depth_autocollect"] is True
-    assert r.json()["kis_rest_bypass_enabled"] is False
+    assert r.json()["rest_bypass_enabled"] is False
     assert client.get("/api/live/settings").json()["screener_depth_autocollect"] is True
 
 
@@ -2968,13 +2975,23 @@ def test_live_settings_patch_can_set_bypass_alone(tmp_path):
 
     r = client.patch(
         "/api/live/settings",
-        json={"kis_rest_bypass_enabled": True},
+        json={"rest_bypass_enabled": True},
     )
 
     assert r.status_code == 200
     assert r.json() == {
         "schema_version": 1,
-        "kis_rest_bypass_enabled": True,
+        "rest_bypass_enabled": True,
         "screener_depth_autocollect": False,
     }
-    assert client.get("/api/live/settings").json()["kis_rest_bypass_enabled"] is True
+    assert client.get("/api/live/settings").json()["rest_bypass_enabled"] is True
+
+    # 옛 이름 PATCH 는 **조용히 무시**된다(3단계). 422 가 아니라 no-op 인 것은
+    # pydantic extra-ignore 의 기존 정책이고, 레거시 클라이언트가 남아 있어도
+    # 요청이 깨지지 않는다 — 옛 storage_policy 키와 같은 취급이다.
+    r_legacy = client.patch(
+        "/api/live/settings",
+        json={"kis_rest_bypass_enabled": False},
+    )
+    assert r_legacy.status_code == 200
+    assert r_legacy.json()["rest_bypass_enabled"] is True, "옛 이름은 반영되지 않는다"

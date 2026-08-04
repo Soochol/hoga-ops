@@ -4,12 +4,12 @@ import asyncio
 
 import pytest
 
+from hoga.live.candle_fetch_result import IndexCandleFetchResult
 from hoga.live.candle_models import IndexCandlePoint
 from hoga.live.index_cold_fetch import (
     fetch_index_daily_candles_windowed,
     plan_index_cold_fetch_ranges,
 )
-from hoga.live.kis_client import IndexCandleFetchResult
 
 
 def point(t_ms: int, close: float) -> IndexCandlePoint:

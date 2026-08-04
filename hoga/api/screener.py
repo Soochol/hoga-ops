@@ -160,7 +160,7 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
     # `kis_creds_missing` 은 **프론트 계약**이라 지금 바꾸지 않는다(#1046 에서 정리).
     if kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
         log.warning("screener update: 키움 자격증명 없음, skip")
-        return "kis_creds_missing"
+        return "creds_missing"
 
     stocks_df = await asyncio.to_thread(pl.read_parquet, sdir / "stocks.parquet")
     codes = stocks_df["code"].to_list()   # 무거운 read 는 스레드로; 인메모리 추출만 루프

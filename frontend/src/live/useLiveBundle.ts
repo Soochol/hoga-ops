@@ -10,9 +10,9 @@ import { type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import { useWindowView, useWindowIndicators } from './workspace/windowView';
 import type { LiveVenueOption } from '../state/liveVenue';
 import {
-  kisRestWarningIndicatesUnavailable,
-  useKisRestModeStore,
-} from '../state/kisRestMode';
+  restWarningIndicatesUnavailable,
+  useRestBypassModeStore,
+} from '../state/restBypassMode';
 import {
   TIMEFRAME_TO_MS,
   type Timeframe,
@@ -445,8 +445,8 @@ export function useLiveBundle(
   const { data: liveSettings } = useLiveSettings();
   // 캔들 소스의 유일한 분기 축(4옵션 우선순위-병합 모델 폐기). 우회 OFF=KIS만,
   // 우회 ON=디스크만(분봉 hogaplay / D·W·M 스크리너). 모드당 소스 1개라 병합 없음.
-  const kisRestBypassEnabled = liveSettings?.kis_rest_bypass_enabled ?? false;
-  const notifyKisRestFailure = useKisRestModeStore((s) => s.notifyFailure);
+  const restBypassEnabled = liveSettings?.rest_bypass_enabled ?? false;
+  const notifyRestFailure = useRestBypassModeStore((s) => s.notifyFailure);
   const venue = options.venue ?? 'KRX';
 
   const isMinute = isMinuteTimeframe(timeframe);
@@ -468,7 +468,7 @@ export function useLiveBundle(
 
   // KIS 분봉 캔들 — 우회 OFF에서만 fetch. 우회 ON이면 code=null로 비활성(요청 절약).
   // (hoga 지표 쿼리 pastHoga는 이 게이트와 무관하게 rangePlan에서 별도로 발사된다.)
-  const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo && !kisRestBypassEnabled);
+  const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo && !restBypassEnabled);
   const pastCandlesQuery = useLivePastCandles(
     enableMinute ? code : null,
     enableMinute ? minutePastFrom : null,
@@ -478,7 +478,7 @@ export function useLiveBundle(
   );
 
   // KIS daily past-candles — D/W/M, 우회 OFF에서만 (ADR-0048).
-  const enableDaily = !!(code && !isMinute && !kisRestBypassEnabled);
+  const enableDaily = !!(code && !isMinute && !restBypassEnabled);
   const dailyPastFrom = seedFrom;
   const dailyPastTo = todayKstYyyymmdd;
   const pastDailyCandlesQuery = useLivePastDailyCandles(
@@ -488,7 +488,7 @@ export function useLiveBundle(
     venue,
   );
   // 스크리너 일봉 — D/W/M, 우회 ON 전용(디스크 소스).
-  const enableScreenerDaily = !!(code && !isMinute && kisRestBypassEnabled);
+  const enableScreenerDaily = !!(code && !isMinute && restBypassEnabled);
   const screenerDailyCandlesQuery = useScreenerDailyCandles(
     enableScreenerDaily ? code : null,
     enableScreenerDaily ? dailyPastFrom : null,
@@ -515,17 +515,17 @@ export function useLiveBundle(
   );
 
   useEffect(() => {
-    if (kisRestBypassEnabled) return;
+    if (restBypassEnabled) return;
     const warnings = isMinute
       ? pastCandlesQuery.data?.data_warnings ?? []
       : pastDailyCandlesQuery.data?.data_warnings ?? [];
-    if (warnings.some(kisRestWarningIndicatesUnavailable)) {
-      notifyKisRestFailure();
+    if (warnings.some(restWarningIndicatesUnavailable)) {
+      notifyRestFailure();
     }
   }, [
     isMinute,
-    kisRestBypassEnabled,
-    notifyKisRestFailure,
+    restBypassEnabled,
+    notifyRestFailure,
     pastCandlesQuery.data?.data_warnings,
     pastDailyCandlesQuery.data?.data_warnings,
   ]);
@@ -534,7 +534,7 @@ export function useLiveBundle(
   // 3/5/15/30분 버킷팅해 내려주므로 클라이언트 재집계 불요. sourcePref는 'hogaplay_first'
   // 고정 — store 값을 따라가면 candles.parquet 없는 kis 소스가 선택돼 빈 캔들이 되는 함정.
   // (D/W/M 우회는 스크리너 일봉만 쓰므로 이 쿼리는 분봉 전용.)
-  const minuteDiskNeeded = !!(code && isMinute && kisRestBypassEnabled);
+  const minuteDiskNeeded = !!(code && isMinute && restBypassEnabled);
   const minuteDiskOptions = useMemo(
     () => ({
       mode: 'candles' as const,
@@ -561,25 +561,25 @@ export function useLiveBundle(
   const minuteKisCandles = useMemo<Candle[]>(() => {
     if (!isMinute) return EMPTY_CANDLES;
     // 우회 ON: 디스크 캔들 그대로(서버 버킷팅 완료). OFF: KIS 분봉을 tf 버킷으로 집계.
-    if (kisRestBypassEnabled) return minuteDiskCandles.data?.candles ?? EMPTY_CANDLES;
+    if (restBypassEnabled) return minuteDiskCandles.data?.candles ?? EMPTY_CANDLES;
     const raw = pastCandlesQuery.data?.candles ?? [];
     if (raw.length === 0) return EMPTY_CANDLES;
     return aggregateCandles(raw, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000).map(kisBarToCandle);
-  }, [isMinute, timeframe, kisRestBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles]);
+  }, [isMinute, timeframe, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles]);
   const calendarKisCandles = useMemo<Candle[]>(() => {
     if (isMinute) return EMPTY_CANDLES;
     // 우회 ON: 스크리너 일봉. OFF: KIS 일봉. D는 그대로, W/M은 aggregateCalendar.
-    const raw = kisRestBypassEnabled
+    const raw = restBypassEnabled
       ? screenerDailyCandlesQuery.data?.candles ?? []
       : pastDailyCandlesQuery.data?.candles ?? [];
     const bars = raw.length === 0 ? [] : timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');
     return bars.map(kisBarToCandle);
-  }, [isMinute, timeframe, kisRestBypassEnabled, pastDailyCandlesQuery.data?.candles, screenerDailyCandlesQuery.data?.candles]);
+  }, [isMinute, timeframe, restBypassEnabled, pastDailyCandlesQuery.data?.candles, screenerDailyCandlesQuery.data?.candles]);
   const kisCandles = isMinute ? minuteKisCandles : calendarKisCandles;
   // 소스 칩용 날짜→소스 맵. 우회 OFF는 undefined → buildChartBundle 기본값(kis_live)이
   // 순수-KIS 표기를 담당(현행 동일). 우회 ON에서만 디스크 소스를 명시한다.
   const candleSourceByDate = useMemo(() => {
-    if (!kisRestBypassEnabled) return undefined;
+    if (!restBypassEnabled) return undefined;
     const sourceByDate = new Map<string, SourceName>();
     if (isMinute) {
       for (const date of candleDateSet(minuteDiskCandles.data?.candles ?? [])) {
@@ -591,7 +591,7 @@ export function useLiveBundle(
       }
     }
     return sourceByDate.size > 0 ? sourceByDate : undefined;
-  }, [kisRestBypassEnabled, isMinute, minuteDiskCandles.data, screenerDailyCandlesQuery.data]);
+  }, [restBypassEnabled, isMinute, minuteDiskCandles.data, screenerDailyCandlesQuery.data]);
   const volumeDistributionPriceRange = useMemo(
     () =>
       isMinute && effVolumeDistributionEnabled
@@ -603,7 +603,7 @@ export function useLiveBundle(
     isMinute &&
     effVolumeDistributionEnabled &&
     volumeDistributionPriceRange == null &&
-    (kisRestBypassEnabled
+    (restBypassEnabled
       ? (minuteDiskCandles.isLoading || minuteDiskCandles.isFetching)
       : (pastCandlesQuery.isLoading || pastCandlesQuery.isFetching))
   );
@@ -703,7 +703,7 @@ export function useLiveBundle(
   // (ADR-0003 "Hogaplay is a KRX-only product" · ADR-0078 venue=KIS 실시간 전용).
   // 그래서 venue=UN 이어도 확장창(08:00~20:00)이 아니라 KRX 정규창을 써야 한다 —
   // 안 그러면 KRX 캔들에 데이터 없는 확장 구간이 붙어 축이 비대칭해진다.
-  const useExtendedWindow = liveVenueUsesExtendedMinuteWindow(venue) && !kisRestBypassEnabled;
+  const useExtendedWindow = liveVenueUsesExtendedMinuteWindow(venue) && !restBypassEnabled;
   const todayChartSession = useMemo(
     () => {
       if (!isMinute) return defaultKrxSession;
@@ -1041,8 +1041,8 @@ export function useLiveBundle(
   // D/W/M은 스크리너. 우회 OFF는 KIS 경로. (다른 경로 쿼리는 disabled라 스테일 경고가
   // 새어 나오지 않도록 배타로 고른다.)
   const pastDataWarnings: LiveDataWarning[] = isMinute
-    ? (kisRestBypassEnabled ? [] : pastCandlesQuery.data?.data_warnings ?? [])
-    : kisRestBypassEnabled
+    ? (restBypassEnabled ? [] : pastCandlesQuery.data?.data_warnings ?? [])
+    : restBypassEnabled
       ? screenerDailyCandlesQuery.data?.data_warnings ?? []
       : pastDailyCandlesQuery.data?.data_warnings ?? [];
 

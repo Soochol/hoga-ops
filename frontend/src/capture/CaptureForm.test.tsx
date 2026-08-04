@@ -147,13 +147,13 @@ describe('CaptureForm', () => {
 });
 
 describe('CaptureForm enqueue 503 reason surfacing', () => {
-  it('shows enqueueErrorHints copy when 503 returns kis_holiday_fetch_failed', async () => {
+  it('shows enqueueErrorHints copy when 503 returns trading_days_unavailable', async () => {
     const { qc, fetchMock } = setup();
     fetchMock.mockImplementation(async (url: RequestInfo | URL) => {
       const s = String(url);
       if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
       if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
-      if (s.includes('/api/captures/items')) return { ok: false, status: 503, json: async () => ({ detail: { code: 'kis_holiday_fetch_failed', message: 'KIS creds not set' } }) } as Response;
+      if (s.includes('/api/captures/items')) return { ok: false, status: 503, json: async () => ({ detail: { code: 'trading_days_unavailable', message: 'KIS creds not set' } }) } as Response;
       if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
       return { ok: true, status: 200, json: async () => ({}) } as Response;
     });
@@ -202,7 +202,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
       if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
       if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
       if (s.includes('/api/captures/items')) return { ok: true, status: 201, json: async () => ({
-        enqueued: [{}], deduped: [], blocked: [], warning: 'kis_credentials_missing',
+        enqueued: [{}], deduped: [], blocked: [], warning: 'credentials_missing',
       }) } as Response;
       if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
       return { ok: true, status: 200, json: async () => ({}) } as Response;

@@ -303,7 +303,7 @@ def test_enqueue_falls_back_to_weekdays_when_kis_credentials_missing(monkeypatch
     _no_workers(monkeypatch)
 
     def _no_creds(_s, _e):
-        raise TradingDayUnavailableError(UpstreamCode.KIS_CREDENTIALS_MISSING)
+        raise TradingDayUnavailableError(UpstreamCode.CREDENTIALS_MISSING)
 
     monkeypatch.setattr("hoga.api.calendar.trading_days_in_range", _no_creds)
     app = _build_test_app(monkeypatch, tmp_path)
@@ -316,7 +316,7 @@ def test_enqueue_falls_back_to_weekdays_when_kis_credentials_missing(monkeypatch
         assert r.status_code == 201, r.text
         body = r.json()
         assert [it["date"] for it in body["enqueued"]] == ["20260605", "20260608"]
-        assert body["warning"] == UpstreamCode.KIS_CREDENTIALS_MISSING, (
+        assert body["warning"] == UpstreamCode.CREDENTIALS_MISSING, (
             "폴백은 조용하면 안 된다 — 휴장일이 섞일 수 있다는 걸 응답이 말해야 한다"
         )
 
@@ -342,7 +342,7 @@ def test_enqueue_approximates_instead_of_failing_fast(monkeypatch, tmp_path):
     _no_workers(monkeypatch)
 
     def _flaky(_s, _e):
-        raise TradingDayUnavailableError(UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+        raise TradingDayUnavailableError(UpstreamCode.TRADING_DAYS_UNAVAILABLE)
 
     monkeypatch.setattr("hoga.api.calendar.trading_days_in_range", _flaky)
     app = _build_test_app(monkeypatch, tmp_path)
@@ -357,7 +357,7 @@ def test_enqueue_approximates_instead_of_failing_fast(monkeypatch, tmp_path):
     assert [it["date"] for it in body["enqueued"]] == ["20260605", "20260608"], (
         "금~월 — 주말은 근사에서도 뺀다"
     )
-    assert body["warning"] == "kis_credentials_missing", "근사 사실을 반드시 알린다"
+    assert body["warning"] == "credentials_missing", "근사 사실을 반드시 알린다"
 
 
 def test_enqueue_skips_weekend_dates(monkeypatch, tmp_path):

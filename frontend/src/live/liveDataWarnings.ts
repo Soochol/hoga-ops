@@ -3,9 +3,9 @@
  *
  * past-candles(분봉)·past-daily-candles(D/W/M)·investor-net 응답은 모두
  * `data_warnings: { reason, msg, ... }[]` 를 내려준다. reason은 past-candles 쪽이
- * 느슨한 `string`(백엔드가 `kis_rate_limit` | `rate_limit_aborted` | `kis_api_error`
- * | `cache_write_failed` 방출), daily/investor 쪽이 `'kis_rate_limit' |
- * 'kis_api_error' | 'invariant_violation'` 유니온. 세 경로가 같은 분류를 쓰도록
+ * 느슨한 `string`(백엔드가 `rate_limit_upstream` | `rate_limit_aborted` | `api_error`
+ * | `cache_write_failed` 방출), daily/investor 쪽이 `'rate_limit_upstream' |
+ * 'api_error' | 'invariant_violation'` 유니온. 세 경로가 같은 분류를 쓰도록
  * (DRY) 여기 한 곳에서만 reason→의미 매핑을 한다.
  *
  * 소비처: useLiveBundle이 활성 타임프레임 경로의 경고를 골라 summarize하고,
@@ -20,11 +20,11 @@ export interface LiveDataWarning {
 }
 
 /** KIS 초당 한도(EGW00201)로 인한 지연/중단 경고인가?
- * - `kis_rate_limit`: 재시도(_rate_limit_backoff) 소진 후 그 날짜 fetch 실패.
+ * - `rate_limit_upstream`: 재시도(_rate_limit_backoff) 소진 후 그 날짜 fetch 실패.
  * - `rate_limit_aborted`: 앞 날짜가 한도에 막혀(`blocked`) 후속 날짜를 KIS 안 두드리고 중단.
- * 나머지(`kis_api_error`/`invariant_violation`/`cache_write_failed`)는
+ * 나머지(`api_error`/`invariant_violation`/`cache_write_failed`)는
  * rate-limit 아님. */
-const RATE_LIMIT_REASONS: ReadonlySet<string> = new Set(['kis_rate_limit', 'rate_limit_aborted']);
+const RATE_LIMIT_REASONS: ReadonlySet<string> = new Set(['rate_limit_upstream', 'rate_limit_aborted']);
 export function isRateLimitReason(reason: string): boolean {
   return RATE_LIMIT_REASONS.has(reason);
 }

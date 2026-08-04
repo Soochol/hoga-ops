@@ -1,6 +1,6 @@
 # hoga-ops
 
-Personal local-first tool to capture, store, and replay Korean stock orderbook + trade data from hogaplay.com and KIS.
+Personal local-first tool to capture, store, and replay Korean stock orderbook + trade data from hogaplay.com and 키움 (Kiwoom).
 
 See [`CONTEXT.md`](./CONTEXT.md) for the glossary, [`DESIGN.md`](./DESIGN.md) for frontend UI rules, [`CHANGELOG.md`](./CHANGELOG.md) for release history, [`docs/adr/`](./docs/adr/) for architecture decisions, and [`docs/superpowers/specs/`](./docs/superpowers/specs/) / [`docs/superpowers/plans/`](./docs/superpowers/plans/) for design specs and implementation plans.
 
@@ -20,7 +20,7 @@ The security boundary is the **network**, in one of exactly two shapes:
   fully trusted (write access included).
 
 **Never bind a public or LAN interface** (`0.0.0.0`, `192.168.*`). Anyone who
-can reach the port can enqueue captures with your hogaplay cookie and KIS
+can reach the port can enqueue captures with your hogaplay cookie and broker
 quota, stop live collection mid-session (hogaplay retains only ~18h, so the
 morning is then lost for good), and delete saved views and layout presets —
 all without credentials.
@@ -39,14 +39,14 @@ list tells the attacker's domain apart (ADR-0134).
 
 ## Current status
 
-The backend exposes capture/replay APIs plus `/live` KIS-backed endpoints. The Vite frontend is wired for replay, watchlists, screeners, heatmap, and live chart workflows, including the `/live` investor trend estimate sidebar card.
+The backend exposes capture/replay APIs plus `/live` 키움-backed endpoints (KIS 는 파생 전용 — ADR-0136). The Vite frontend is wired for replay, watchlists, screeners, heatmap, and live chart workflows, including the `/live` investor trend estimate sidebar card.
 
 ## Quickstart
 
 ```sh
 pip install -e .[dev]
 echo "k_=...; n_=..." > .cookie   # paste from your hogaplay session
-cp .env.example .env              # add KIS keys for live market data
+cp .env.example .env              # add 키움 keys for live market data
 hoga collect --code 003490 --date 20260519
 hoga parse   --code 003490 --date 20260519
 hoga serve
@@ -63,7 +63,7 @@ npm run dev
 
 ## 운영: 프로세스 감독과 헬스 체크
 
-`hoga serve` 는 포그라운드 단일 프로세스다. 앱 내부 워치독(키움 WS 재연결, KIS 용량
+`hoga serve` 는 포그라운드 단일 프로세스다. 앱 내부 워치독(키움 WS 재연결, REST 용량
 워커 자가재생성)은 **프로세스 안에서만** 동작하므로 프로세스 자체의 사망은 외부
 감독자만 덮을 수 있다. 장중에 죽으면 그날 실시간 수집이 그 시점에서 끝난다.
 
@@ -292,7 +292,7 @@ origin 단위 저장이라, 주소가 바뀌면 전원의 상태가 처음부터
 
 ## Live index checks
 
-`/live` representative index charts use `/api/live/index-candles` for `1m`, `3m`, `5m`, `10m`, `15m`, `30m`, `D`, `W`, and `M` candles. Index daily candles are fetched in 3-month windows and cached in memory; index minute candles cache exact repeated requests, while fetch depth is limited by the KIS source unit available for each timeframe.
+`/live` representative index charts use `/api/live/index-candles` for `1m`, `3m`, `5m`, `10m`, `15m`, `30m`, `D`, `W`, and `M` candles. Index daily candles are fetched in 3-month windows and cached in memory; index minute candles cache exact repeated requests, while fetch depth is limited by the 키움 source unit available for each timeframe.
 
 With the backend running, measure index candle fetch behavior from the repo root:
 

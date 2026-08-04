@@ -13,8 +13,8 @@ describe('LiveStateBanner', () => {
     expect(container.querySelector('[data-testid="live-state-banner"]')).toBeNull();
   });
 
-  it('shows kis_credentials_missing banner with action link', () => {
-    render_(<LiveStateBanner primary="kis_credentials_missing" stack={[]} />);
+  it('shows credentials_missing banner with action link', () => {
+    render_(<LiveStateBanner primary="credentials_missing" stack={[]} />);
     expect(screen.getByText(/KIS 자격증명/)).toBeInTheDocument();
     expect(screen.getByText('설정').getAttribute('href')).toBe('/settings');
   });

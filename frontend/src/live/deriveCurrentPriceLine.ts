@@ -63,7 +63,7 @@ export function resolveLiveCurrentPrice(
 ): number | null {
   if (lastClose == null) return null;
   if (liveTradePrice != null) return liveTradePrice;
-  // stale(kis_rest_bypassed 등)·0원·비유한 quote 는 배제 → 캔들 종가 폴백.
+  // stale(rest_bypassed 등)·0원·비유한 quote 는 배제 → 캔들 종가 폴백.
   if (quote != null && !isStaleLiveQuote(quote) && Number.isFinite(quote.price) && quote.price > 0) {
     return quote.price;
   }

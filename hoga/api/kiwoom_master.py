@@ -62,7 +62,7 @@ class MasterRow(NamedTuple):
 
 
 class KiwoomMasterFetchError(Exception):
-    """조회/파싱 실패. `UpstreamCode.KIS_MASTER_FETCH_FAILED` 로 매핑된다."""
+    """조회/파싱 실패. `UpstreamCode.MASTER_FETCH_FAILED` 로 매핑된다."""
 
 
 def normalize_code(raw: object) -> str:

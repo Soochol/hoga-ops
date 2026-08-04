@@ -20,8 +20,6 @@ def test_get_status_returns_not_running_initially() -> None:
     assert status.last_tick_ms is None
     assert status.cycle_lag_ms == 0
     assert status.watchlist_count == 0
-    assert status.kis_calls_today == 0
-    assert status.kis_rate_limit_remaining is None
 
 
 def test_reset_for_tests_is_idempotent() -> None:

@@ -10,10 +10,8 @@ const baseStatus: LiveStatus = {
   capture_healthy: true,
   capture_reason: 'healthy',
   watchlist_count: 0,
-  kis_calls_today: 0,
-  kis_rate_limit_remaining: null,
   live_set: [],
-  kis_rest_bypass_enabled: false,
+  rest_bypass_enabled: false,
 };
 
 function project(input: Partial<LiveStatusProjectionInput>) {
@@ -73,7 +71,7 @@ describe('projectLiveStatus', () => {
       inventory: { kind: 'watchlist', size: 2 },
     });
 
-    expect(projection.banner.primary).toBe('kis_credentials_missing');
+    expect(projection.banner.primary).toBe('credentials_missing');
   });
 
   it('uses authoritative watchlist inventory instead of status.watchlist_count', () => {
@@ -89,7 +87,7 @@ describe('projectLiveStatus', () => {
       inventory: { kind: 'watchlist', size: 9 },
     });
 
-    expect(projection.banner.primary).toBe('kis_credentials_missing');
+    expect(projection.banner.primary).toBe('credentials_missing');
   });
 
   it('defers priority banners while watchlist inventory is loading', () => {

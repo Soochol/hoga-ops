@@ -13,10 +13,8 @@ function baseStatus(disk?: DiskHeadroom | null): LiveStatus {
     capture_healthy: true,
     capture_reason: 'healthy',
     watchlist_count: 1,
-    kis_calls_today: 0,
-    kis_rate_limit_remaining: null,
     live_set: [],
-    kis_rest_bypass_enabled: false,
+    rest_bypass_enabled: false,
     disk,
   };
 }

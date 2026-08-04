@@ -300,7 +300,7 @@ def _dedupe_filter_sort(rows: list[dict], frm: date, too: date) -> list[dict]:
 def _kis_rest_bypassed_warning(batch_label: str) -> dict:
     return {
         "batch": batch_label,
-        "reason": "kis_rest_bypassed",
+        "reason": "rest_bypassed",
         "msg": "KIS REST bypass is enabled; served cache-only data",
     }
 

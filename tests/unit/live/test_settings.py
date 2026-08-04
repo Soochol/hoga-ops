@@ -9,7 +9,7 @@ from hoga.live.settings import load_live_settings, save_live_settings, update_li
 def test_live_settings_defaults(tmp_path):
     settings = load_live_settings(tmp_path)
 
-    assert settings.kis_rest_bypass_enabled is False
+    assert settings.rest_bypass_enabled is False
     assert settings.screener_depth_autocollect is False
     # kiwoom_enabled 활성화 스위치는 폐지됨(ADR-0118) — 필드 자체가 없다.
     assert not hasattr(settings, "kiwoom_enabled")
@@ -22,16 +22,16 @@ def test_update_live_settings_partial_patch_preserves_omitted_fields(tmp_path):
         tmp_path,
         LiveSettingsResponse(
             screener_depth_autocollect=True,
-            kis_rest_bypass_enabled=False,
+            rest_bypass_enabled=False,
         ),
     )
 
-    updated = update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
+    updated = update_live_settings(tmp_path, rest_bypass_enabled=True)
 
     assert updated.screener_depth_autocollect is True
-    assert updated.kis_rest_bypass_enabled is True
+    assert updated.rest_bypass_enabled is True
     on_disk = json.loads((tmp_path / "live_settings.json").read_text(encoding="utf-8"))
-    assert on_disk["kis_rest_bypass_enabled"] is True
+    assert on_disk["rest_bypass_enabled"] is True
 
 
 def test_corrupt_settings_falls_back_to_bypass_false(tmp_path):
@@ -39,7 +39,7 @@ def test_corrupt_settings_falls_back_to_bypass_false(tmp_path):
 
     settings = load_live_settings(tmp_path)
 
-    assert settings.kis_rest_bypass_enabled is False
+    assert settings.rest_bypass_enabled is False
     assert list(tmp_path.glob("live_settings.json.corrupt-*"))
 
 
@@ -73,7 +73,7 @@ def test_legacy_storage_policy_keys_are_ignored_on_load(tmp_path):
         "storage_policy": "ws_plus_rest",
         "heatmap_capture_enabled": True,
         "program_trade_storage_enabled": True,
-        "kis_rest_bypass_enabled": False,
+        "rest_bypass_enabled": False,
         "screener_depth_autocollect": True,
         "kiwoom_enabled": True,
     }))
@@ -90,8 +90,41 @@ def test_legacy_storage_policy_keys_are_ignored_on_load(tmp_path):
     assert not list(tmp_path.glob("live_settings.json.corrupt-*"))
 
     # 후속 patch 저장은 레거시 키를 다시 쓰지 않는다.
-    update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
+    update_live_settings(tmp_path, rest_bypass_enabled=True)
     on_disk = json.loads(save_path.read_text(encoding="utf-8"))
     assert "storage_policy" not in on_disk
     assert "heatmap_capture_enabled" not in on_disk
     assert "program_trade_storage_enabled" not in on_disk
+
+
+def test_legacy_disk_key_still_read(tmp_path) -> None:
+    """**디스크의 옛 키 별칭은 영구히 남아야 한다**(#1046 expand/contract 3단계).
+
+    `LiveSettings` 는 `LiveSettingsResponse` 의 별칭이라 이 모델은 와이어 타입이면서
+    **디스크 타입**이다. 사용자 머신의 `live_settings.json` 에는 여전히
+    `kis_rest_bypass_enabled` 가 들어 있고, 그건 배포와 무관하게 살아 있다.
+
+    별칭을 지우면 pydantic 의 extra-ignore 가 그 키를 **조용히 버려** 사용자가 켜 둔
+    우회 설정이 False 로 리셋된다. 디스크가 새 키로 다시 써지는 시점을 알 방법이
+    없으므로 지울 수 없다 — 이 테스트가 그 사실을 못 박는다.
+    """
+    import json
+
+    from hoga.live.settings import load_live_settings
+
+    (tmp_path / "live_settings.json").write_text(
+        json.dumps({"schema_version": 1, "kis_rest_bypass_enabled": True}),
+        encoding="utf-8",
+    )
+    assert load_live_settings(tmp_path).rest_bypass_enabled is True
+
+
+def test_new_disk_key_read(tmp_path) -> None:
+    import json
+
+    from hoga.live.settings import load_live_settings
+
+    (tmp_path / "live_settings.json").write_text(
+        json.dumps({"schema_version": 1, "rest_bypass_enabled": True}), encoding="utf-8",
+    )
+    assert load_live_settings(tmp_path).rest_bypass_enabled is True

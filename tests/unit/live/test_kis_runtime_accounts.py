@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from hoga.live import account_health, kis_access, kis_runtime
+from hoga.live import account_health, kis_runtime
 
 
 @pytest.fixture(autouse=True)
@@ -154,77 +154,7 @@ def test_ensure_token_provider_wires_account_bound_auth_callback(tmp_path):
     assert account_health.is_degraded(1) is True
 
 
-# ── kis_access seam: has_rest_capacity + run_with_capacity ───────────────────────
-
-
-def test_has_rest_capacity_accepts_injected_account0_client(tmp_path, monkeypatch):
-    for name in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_APP_KEY_2", "KIS_APP_SECRET_2"):
-        monkeypatch.delenv(name, raising=False)
-    sentinel = object()
-    kis_runtime.set_kis_client(sentinel)
-
-    assert kis_access.has_rest_capacity(tmp_path) is True
-
-
-async def test_run_with_capacity_invokes_scheduler_with_background_priority(tmp_path):
-    seen = {}
-    fake_client = object()
-
-    class _Scheduler:
-        async def submit(
-            self,
-            *,
-            key,
-            endpoint,
-            priority,
-            call,
-            cooldown_scope=None,
-        ):
-            seen["key"] = key
-            seen["endpoint"] = endpoint
-            seen["priority"] = priority
-            seen["cooldown_scope"] = cooldown_scope
-            return await call(fake_client)
-
-    async def fetch_fn(client):
-        seen["client"] = client
-        return "ok"
-
-    result = await kis_access.run_with_capacity(
-        _Scheduler(),
-        data_dir=tmp_path,
-        key=("screener", "005930"),
-        endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
-        priority="background",
-        cooldown_scope="daily",
-        fetch_fn=fetch_fn,
-    )
-
-    assert result == "ok"
-    assert seen == {
-        "key": ("screener", "005930"),
-        "endpoint": "screener-daily",
-        "priority": "background",
-        "cooldown_scope": "daily",
-        "client": fake_client,
-    }
-
-
-async def test_run_with_capacity_rejects_raw_endpoint_string(tmp_path):
-    # _endpoint_value raises before scheduler.submit, so the scheduler is never touched.
-    class _Scheduler:
-        async def submit(self, **kwargs):
-            raise AssertionError("scheduler must not be reached for a raw endpoint string")
-
-    async def fetch_fn(client):
-        return "unreachable"
-
-    with pytest.raises(TypeError, match="KisRestEndpoint"):
-        await kis_access.run_with_capacity(
-            _Scheduler(),
-            data_dir=tmp_path,
-            key=("legacy", "005930"),
-            endpoint="screener-daily",  # type: ignore[arg-type]
-            priority="background",
-            fetch_fn=fetch_fn,
-        )
+# `kis_access` seam 테스트 4개는 삭제했다 — 그 모듈이 사라졌다(PR-J·#1046).
+# 프로덕션에서 살아남은 심볼은 `rest_bypass_enabled` 하나뿐이었고
+# (`hoga/live/settings.py` 로 이사), `has_rest_capacity`·`run_with_capacity`·
+# `KisRestEndpoint` 는 **테스트만 붙잡고 있던 죽은 코드**였다.

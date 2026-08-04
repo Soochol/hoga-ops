@@ -50,8 +50,6 @@ class LiveStatus(BaseModel):
     # 프론트는 의도적으로 이 필드를 비소비(useLiveBannerState.ts 주석 참조).
     watchlist_count: int
     # poller-era 필드(wire 호환 유지): 캡처 경로가 REST를 쓰지 않으므로 0/None 고정.
-    kis_calls_today: int
-    kis_rate_limit_remaining: int | None
     # ADR-0043 / design-review B2 — last successful Today Promotion per code (epoch ms).
     today_promote_last_ms: dict[str, int] = Field(default_factory=dict)
     # WS transport info (unknown keys are safely ignored by frontend)
@@ -67,10 +65,10 @@ class LiveStatus(BaseModel):
     capture_missing_codes: list[str] = Field(default_factory=list)
     # broker_poll_* 필드는 제거됨 — 거래원이 키움 0F push 로 전환(PR-F2, ADR-0111 폐지).
     # 프론트 미소비(관측 전용)였음을 확인하고 additive 원칙대로 조용히 내렸다.
-    kis_capacity_scheduler: dict[str, object] | None = None
+    rest_capacity_scheduler: dict[str, object] | None = None
     # Per-cache hit/miss/eviction observability (PR-1). Assembled in the status route.
     cache_stats: dict[str, object] | None = None
-    kis_rest_bypass_enabled: bool = False
+    rest_bypass_enabled: bool = False
     # 감독 태스크 헬스(ADR-0088) — 각 lifespan-소유 배경 태스크의 alive 여부.
     supervised_tasks: list[dict[str, object]] = Field(default_factory=list)
     # 디스크 여유(free_pct·free_gib·low). 조회 실패·데이터 디렉터리 미주입이면 None.
@@ -101,13 +99,13 @@ class _State:
         started_at_ms: int | None = None,
         program_trade_collector=None,
         kiwoom_session=None,
-        kis_rest_bypass_enabled: bool = False,
+        rest_bypass_enabled: bool = False,
     ) -> None:
         self.started_at_ms = started_at_ms
         self.program_trade_collector = program_trade_collector
         # 키움 WS 세션 매니저(ADR-0116) — storage_runtime이 소유·정합화. 실시간 캡처 SSOT.
         self.kiwoom_session = kiwoom_session
-        self.kis_rest_bypass_enabled = kis_rest_bypass_enabled
+        self.rest_bypass_enabled = rest_bypass_enabled
 
 
 _state = _State()
@@ -276,8 +274,6 @@ def get_status() -> LiveStatus:
         last_tick_ms=last_tick_ms,
         cycle_lag_ms=0,
         watchlist_count=len(live_set),
-        kis_calls_today=0,
-        kis_rate_limit_remaining=None,
         today_promote_last_ms=get_today_promote_last_ms(),
         transport="ws",
         ws_connected=ws_connected,
@@ -286,7 +282,7 @@ def get_status() -> LiveStatus:
         capture_healthy=cap_healthy,
         capture_reason=cap_reason,
         capture_missing_codes=[],
-        kis_rest_bypass_enabled=_state.kis_rest_bypass_enabled,
+        rest_bypass_enabled=_state.rest_bypass_enabled,
         kiwoom=k,
     )
 
@@ -306,7 +302,7 @@ def reset_for_tests() -> None:
 
 def refresh_status_from_settings(data_dir: Path) -> None:
     settings = load_live_settings(data_dir)
-    _state.kis_rest_bypass_enabled = settings.kis_rest_bypass_enabled
+    _state.rest_bypass_enabled = settings.rest_bypass_enabled
 
 
 # ── Today Promoter ─────────────────────────────────────────────────────────────
