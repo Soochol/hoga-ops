@@ -8,6 +8,7 @@ import pytest
 from hoga.live import kiwoom_minute_candles, kiwoom_rest_runtime
 from hoga.live.candle_models import LiveCandle
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
+from hoga.live.kiwoom_errors import KiwoomRestError
 from hoga.live.kiwoom_minute_candles import MinuteWalkResult
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.past_candles_cache import PastCandlesCache
@@ -308,3 +309,77 @@ async def test_budget_counts_only_uncached_dates(tmp_path, monkeypatch, kiwoom) 
     assert kis.calls == [("005930", "20260508", "20260510", "KRX")], (
         "캐시된 앞구간은 walk 구간에서 빠진다"
     )
+
+
+@pytest.mark.asyncio
+async def test_transport_failure_keeps_its_own_reason(tmp_path, kiwoom) -> None:
+    """전송 실패는 `transport_error` 로 나간다 — `api_error` 로 접지 않는다.
+
+    이전 판은 `except KiwoomRestError` 팔이 전부 `api_error` 였다. 그래서 프론트가
+    진짜 전송 실패를 가려내려고 `msg` 에서 `'TRANSPORT/'` 문자열을 뒤져야 했다 —
+    벤더 거절(기다린다)과 회선 끊김(점검한다)은 처방이 다른데 같은 얼굴이었다
+    (ADR-0137).
+    """
+    import httpx
+
+    from hoga.live.kiwoom_errors import KiwoomTransportError
+
+    fake = _FakeWalk()
+
+    async def _boom(*_a, **_kw):
+        raise KiwoomTransportError(httpx.ConnectTimeout("timed out"))
+
+    fake.walk = _boom          # type: ignore[method-assign]
+    kiwoom(fake)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+
+    result = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 18),
+        too=dt.date(2026, 5, 18),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+    )
+
+    assert [w["reason"] for w in result.data_warnings] == ["transport_error"]
+    assert "TRANSPORT/" not in result.data_warnings[0]["msg"], (
+        "사유가 정확해졌으므로 프론트가 msg 를 파싱할 이유가 없다"
+    )
+
+
+def test_fallback_blocking_reasons_cover_every_rest_error_reason() -> None:
+    """**폴백 계약과 표시 계약이 같은 문자열을 공유한다.**
+
+    `_rest_error_warning` 이 내는 사유가 `_FALLBACK_BLOCKING_REASONS` 에서 빠지면,
+    막아야 할 날짜가 '안 막힌 날짜' 로 분류되어 NXT/UN → KRX 재조회가 조용히 켜진다.
+    사유를 세분화할 때 여기를 함께 넓혔는지 이 테스트가 못 박는다.
+    """
+    import httpx
+
+    from hoga.live.kiwoom_errors import (
+        KiwoomApiError,
+        KiwoomAuthError,
+        KiwoomBatchLimitError,
+        KiwoomTransportError,
+    )
+    from hoga.live.live_candle_backfill import (
+        _FALLBACK_BLOCKING_REASONS,
+        _rest_error_warning,
+    )
+
+    for exc in (
+        KiwoomTransportError(httpx.ConnectTimeout("x")),
+        KiwoomAuthError("no token"),
+        KiwoomBatchLimitError(code=5, msg="1634"),
+        KiwoomApiError(code=3, msg="rejected"),
+        KiwoomRestError("module-specific"),
+    ):
+        reason = _rest_error_warning("20260518", exc)["reason"]
+        assert reason in _FALLBACK_BLOCKING_REASONS, (
+            f"{type(exc).__name__} → {reason!r} 이 폴백 차단 집합에 없다"
+        )

@@ -10,7 +10,7 @@ import { type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import { useWindowView, useWindowIndicators } from './workspace/windowView';
 import type { LiveVenueOption } from '../state/liveVenue';
 import {
-  restWarningIndicatesUnavailable,
+  classifyRestWarning,
   useRestBypassModeStore,
 } from '../state/restBypassMode';
 import {
@@ -519,8 +519,12 @@ export function useLiveBundle(
     const warnings = isMinute
       ? pastCandlesQuery.data?.data_warnings ?? []
       : pastDailyCandlesQuery.data?.data_warnings ?? [];
-    if (warnings.some(restWarningIndicatesUnavailable)) {
-      notifyRestFailure();
+    // 여러 사유가 섞여 오면 **transport 를 우선**한다 — 서버에 닿지도 못한 사실이
+    // 혼잡보다 무겁고, 사용자 처방(저장 데이터 우회)도 그쪽에 붙어 있다.
+    const kinds = warnings.map(classifyRestWarning).filter((k) => k !== null);
+    const kind = kinds.includes('transport') ? 'transport' : kinds[0];
+    if (kind) {
+      notifyRestFailure(kind);
     }
   }, [
     isMinute,

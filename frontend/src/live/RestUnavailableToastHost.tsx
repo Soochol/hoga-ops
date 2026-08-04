@@ -8,10 +8,26 @@ import {
   useRestBypassModeStore,
 } from '../state/restBypassMode';
 
+/** 성격별 문구. **"연결 불가" 를 혼잡에 쓰지 않는다** — 서버가 멀쩡한데 죽었다고
+ * 알리면 사용자가 할 수 있는 판단(기다릴까 우회할까)이 뒤집힌다(ADR-0137). */
+const COPY = {
+  transport: {
+    title: '시세 서버 연결 불가',
+    body: '시세 서버에 연결할 수 없습니다. 저장 데이터로 표시할 수 있습니다.',
+    status: '재시도 중',
+  },
+  congestion: {
+    title: '시세 서버 혼잡',
+    body: '요청이 몰려 일부 구간을 받지 못했습니다. 잠시 후 자동으로 다시 받습니다.',
+    status: '대기 중',
+  },
+} as const;
+
 export default function RestUnavailableToastHost() {
   const { data: settings } = useLiveSettings();
   const patch = usePatchLiveSettings();
   const lastToastAtMs = useRestBypassModeStore((s) => s.lastToastAtMs);
+  const lastKind = useRestBypassModeStore((s) => s.lastKind);
   const toastDismissed = useRestBypassModeStore((s) => s.toastDismissed);
   const dismissToast = useRestBypassModeStore((s) => s.dismissToast);
   const restBypassEnabled = settings?.rest_bypass_enabled ?? false;
@@ -44,11 +60,14 @@ export default function RestUnavailableToastHost() {
   // 가시성만 계산해 ToastCard 에 내린다 — dismiss(× 또는 우회 ON) 시 카드가
   // exit 애니메이션을 재생하고 스스로 언마운트한다. 스택/위치는 ToastViewport 소유.
   const visible = lastToastAtMs != null && !toastDismissed;
+  // 성격이 없으면(구버전 상태 등) 보수적으로 연결 실패 문구 — 혼잡을 연결 불가로
+  // 읽는 쪽이 그 반대보다 덜 위험하다(사용자가 우회를 켜면 그만이다).
+  const copy = COPY[lastKind ?? 'transport'];
 
   return (
     <ToastCard visible={visible} variant="warn" role="status">
       <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-medium text-fg">시세 서버 연결 불가</div>
+        <div className="text-sm font-medium text-fg">{copy.title}</div>
         <button
           type="button"
           aria-label="닫기"
@@ -58,11 +77,11 @@ export default function RestUnavailableToastHost() {
           ✕
         </button>
       </div>
-      <div className="mt-1 text-xs text-fg-dim">
-        시세 서버에 연결할 수 없습니다. 저장 데이터로 표시할 수 있습니다.
-      </div>
+      <div className="mt-1 text-xs text-fg-dim">{copy.body}</div>
       <div className="mt-3 flex items-center justify-between gap-3">
-        <div className="text-xs text-fg-dim">{restBypassEnabled ? 'REST 우회 중' : '재시도 중'}</div>
+        <div className="text-xs text-fg-dim">
+          {restBypassEnabled ? 'REST 우회 중' : copy.status}
+        </div>
         <ToggleSwitch
           label="REST 우회"
           checked={restBypassEnabled}

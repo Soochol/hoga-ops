@@ -15,6 +15,7 @@ from hoga.live import (
     kiwoom_minute_candles,
     kiwoom_rest_runtime,
 )
+from hoga.live.error_policy import classify_live_error
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded, Priority
 from hoga.live.kiwoom_errors import KiwoomRateLimitError, KiwoomRestError
 from hoga.live.past_candles_cache import PastCandlesCache
@@ -426,8 +427,7 @@ class LiveMinuteCandleBackfill:
             except KiwoomCapacityOverloaded:
                 warnings.append(_capacity_overloaded_warning(date_s))
             except KiwoomRestError as e:
-                # `reason` 문자열은 프론트 계약이라 유지한다(#1046 에서 정리).
-                warnings.append({"date": date_s, "reason": "api_error", "msg": str(e)})
+                warnings.append(_rest_error_warning(date_s, e))
 
         result = LiveMinuteCandleBackfillResult(
             candles=candles_all,
@@ -514,9 +514,7 @@ class LiveMinuteCandleBackfill:
             return True
         except KiwoomRestError as e:
             for date_s in pending:
-                warnings_by_date[date_s] = {
-                    "date": date_s, "reason": "api_error", "msg": str(e),
-                }
+                warnings_by_date[date_s] = _rest_error_warning(date_s, e)
             return False
         self._fresh_past_fetches += 1
         if perf_debug.enabled():
@@ -747,14 +745,37 @@ def _merge_minute_fallback(
     return sorted(out, key=lambda candle: candle["t_ms"])
 
 
+def _rest_error_warning(date_s: str, exc: KiwoomRestError) -> dict:
+    """키움 REST 실패를 와이어 경고로. **사유는 `error_policy` 가 정한다.**
+
+    이전 판은 전부 `api_error` 한 단어로 접었다. 그래서 프론트가 진짜 전송 실패를
+    가려내려고 `msg` 에서 `'TRANSPORT/'` 문자열을 뒤져야 했다 — 벤더 거절과 네트워크
+    끊김은 처방이 다른데(전자는 대기, 후자는 회선 점검) 같은 얼굴이었다(ADR-0137).
+    """
+    policy = classify_live_error(exc)
+    return {"date": date_s, "reason": policy.reason, "msg": policy.message}
+
+
+# 폴백(NXT/UN → KRX)을 막는 사유들. **표시 계약과 같은 문자열을 공유하므로 사유를
+# 세분화할 때 반드시 함께 넓힌다** — `api_error` 하나가 전송·인증·배치상한을 모두
+# 덮고 있었기 때문에, 세분화만 하고 여기를 놔두면 폴백이 조용히 켜진다(막아야 할
+# 날짜가 '안 막힌 날짜' 로 분류되어 KRX 재조회가 돈다).
+_FALLBACK_BLOCKING_REASONS = frozenset({
+    "capacity_overloaded",
+    "fetch_budget_exhausted",
+    "api_error",
+    "rate_limit_upstream",
+    "rate_limit_aborted",
+    # `_rest_error_warning` 이 내는 세분화 사유들(error_policy).
+    "transport_error",
+    "auth_error",
+    "batch_limit_exceeded",
+    "unexpected_error",
+})
+
+
 def _fallback_blocking_warning_dates(warnings: list[dict]) -> set[str]:
-    blocking_reasons = {
-        "capacity_overloaded",
-        "fetch_budget_exhausted",
-        "api_error",
-        "rate_limit_upstream",
-        "rate_limit_aborted",
-    }
+    blocking_reasons = _FALLBACK_BLOCKING_REASONS
     return {
         str(warning.get("date", ""))
         for warning in warnings
