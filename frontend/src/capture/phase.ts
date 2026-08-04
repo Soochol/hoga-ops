@@ -70,7 +70,12 @@ export function phaseToCalendarStatus(
   if (phase === 'done') return 'complete';
   if (phase === 'skipped') {
     if (skipReason === 'source_partial') return 'source_partial';
-    if (skipReason === 'upstream_gap') return 'source_partial';         // ADR-0093: confirmed gap stays partial
+    // 워커가 `upstream_gap` 으로 건너뛴 순간이 곧 "확정" 이다 — 셀을 ⚠ 로 두면
+    // 사용자가 방금 무시당한 재캡처를 다시 누른다. (같은 skip_reason 을 쓰는
+    // INVALID close_ms=0 스텁(ADR-0130)은 이 매핑이 과잉 주장이지만, 다음 GET 의
+    // as_of_ms 가 패치 시각을 넘기면 `invalid` 로 정정된다 — 지금 이 자리가
+    // `source_partial` 로 똑같이 틀리는 것과 수명이 같다.)
+    if (skipReason === 'upstream_gap') return 'source_partial_confirmed';
     if (skipReason === 'no_upstream_data') return 'no_upstream_data';   // ADR-0021
     return 'complete';
   }

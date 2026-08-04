@@ -628,6 +628,12 @@ class SymbolMasterInfo(BaseModel):
 CalendarStatus = Literal[
     "complete", "source_partial", "client_incomplete", "invalid", "none",
     "weekend", "holiday", "future", "today_locked",
+    # SOURCE_PARTIAL 의 정제(refinement): 이 부분 결손은 **더 나아지지 않는다**.
+    # `source_partial` 은 "구멍이 있다" 까지만 말하는데, 그 안에는 재캡처가 채워 줄
+    # 수 있는 것과 업스트림에 영영 없는 것이 섞여 있다. 후자를 셀에서 갈라 내지
+    # 않으면 사용자가 무의미한 재캡처를 반복하고, decide_capture 는 조용히
+    # `upstream_gap` 으로 건너뛴다 — 표시와 동작이 어긋난 상태다.
+    "source_partial_confirmed",
     "no_upstream_data",   # ADR-0021
     # KIS live/REST-only promotion (no hogaplay artifact for this Stock-Date).
     # Distinct from "complete"/"source_partial" so the cell signals "WS data

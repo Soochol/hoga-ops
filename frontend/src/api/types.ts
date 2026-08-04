@@ -404,6 +404,9 @@ export interface SymbolsAllResponse {
 export type CalendarStatus =
   | 'complete'
   | 'source_partial'
+  // source_partial 의 정제 — 이 구멍은 재캡처로 채워지지 않는다고 판정된 상태
+  // (ADR-0093 동일-재현 / ADR-0126 세션 경계 / ADR-0131 보유 창 밖 미확정).
+  | 'source_partial_confirmed'
   | 'client_incomplete'
   | 'invalid'          // ADR-0020 — mirrors backend; was missing from frontend before
   | 'none'
