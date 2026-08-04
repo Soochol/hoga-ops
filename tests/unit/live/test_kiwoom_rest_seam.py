@@ -86,6 +86,40 @@ async def test_missing_authorization_maps_to_auth_error() -> None:
     await c.aclose()
 
 
+async def test_invalidated_token_8005_maps_to_auth_error() -> None:
+    """**만료가 아니라 벤더 측 무효화다.** 같은 앱키로 어딘가에서 재발급하면 이전
+    토큰이 죽는데, provider 캐시는 `expires_dt` 만 보므로 이걸 통과시킨다. 여기서
+    `KiwoomApiError` 로 흘려보내면 거버너가 토큰을 버릴 계기를 영영 못 얻어 만료
+    시각까지(≈하루) 죽은 토큰을 계속 쓴다 — /live 과거 캔들이 통째로 멎었던 실제
+    경로다(2026-08-04).
+    """
+    body = {"return_code": 3,
+            "return_msg": "인증에 실패했습니다[8005:Token이 유효하지 않습니다]"}
+    c = _client(lambda _r: httpx.Response(200, json=body))
+    with pytest.raises(KiwoomAuthError):
+        await c.call("ka10001", {"stk_cd": "A"})
+    await c.aclose()
+
+
+async def test_invalidate_token_delegates_to_provider() -> None:
+    """거버너가 부르는 자리. provider 가 `invalidate` 를 모르면 조용히 no-op 이어야
+    한다 — 자격증명 없는 dev 프로필(ADR-0134)과 테스트 더블이 그 경로다."""
+    calls: list[str] = []
+
+    class _ProvWithInvalidate(_Prov):
+        def invalidate(self) -> None:
+            calls.append("invalidate")
+
+    c = KiwoomRestClient(_ProvWithInvalidate(), transport=httpx.MockTransport(lambda _r: _ok("x", [])))
+    await c.invalidate_token()
+    assert calls == ["invalidate"]
+    await c.aclose()
+
+    bare = _client(lambda _r: _ok("x", []))
+    await bare.invalidate_token()  # invalidate 없는 provider → no-op, 예외 없음
+    await bare.aclose()
+
+
 async def test_nonzero_return_code_is_api_error() -> None:
     body = {"return_code": 3, "return_msg": "잘못된 요청입니다[1504:...]"}
     c = _client(lambda _r: httpx.Response(200, json=body))

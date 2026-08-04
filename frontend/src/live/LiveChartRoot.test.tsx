@@ -1985,6 +1985,25 @@ describe('LiveChartRoot', () => {
     expect(screen.getByTestId('partial-load-chip').textContent).toContain('일부 과거구간');
   });
 
+  it('부분로딩 칩 title 에 벤더 원문이 실린다(원인이 화면에서 닿아야 한다)', () => {
+    // 칩 문구는 rate-limit 여부 2분류라 원인이 안 보인다. 키움 토큰이 벤더 측에서
+    // 무효화(8005)돼 과거 캔들이 통째로 멎었을 때 화면만으로는 진단이 불가능했다
+    // (2026-08-04). 그때 필요했던 문자열이 여기 실려야 한다.
+    useLivePageStore.setState({ historicalFromDate: null });
+    const warnings = [
+      { reason: 'api_error', msg: '인증에 실패했습니다[8005:Token이 유효하지 않습니다]' },
+    ];
+    render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
+        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={warnings} />,
+      { wrapper },
+    );
+    const chip = screen.getByTestId('partial-load-chip');
+    expect(chip.getAttribute('title')).toContain('8005');
+    expect(chip.textContent).toContain('실패');
+    expect(chip.style.pointerEvents).toBe('auto');
+  });
+
   it('캔들 있음 + 경고 없음 → 부분로딩 칩 미표시(회귀가드)', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(

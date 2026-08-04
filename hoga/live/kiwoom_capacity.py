@@ -6,8 +6,15 @@
 독립을 실증했다 — `ka10080` 을 429 까지 밀어붙인 **직후 대기 없이** `ka10081` 을
 호출하니 즉시 통과했다(#1015). 그래서 게이트는 앱키가 아니라 **TR** 이다.
 
-KIS 스케줄러(303줄) 대비 **계정 차원이 통째로 사라진다** — 계정 풀 선택·health/
-failover·`cooldown_scope`. 키움은 유량이 TR별이라 계정을 고를 이유가 없다.
+첫 판은 여기서 **계정 차원이 통째로 사라진다**고 봤다 — 유량이 TR별이면 계정을 고를
+이유가 없기 때문이다. 그 뒤 두 번 되돌아왔고, 둘 다 실측이 이유였다:
+
+    ADR-0138    유량은 TR별인 **동시에 앱키별**이다 → 버킷 키가 (앱키, TR) 이 된다
+    2026-08-04  토큰은 계정 단위로 죽는다(8005) → 계정 단위 격리가 필요하다
+
+그래도 KIS 의 health check·failover 상태 기계는 되살리지 않았다. 둘 다 **`_available_at`
+정렬 하나**에 얹혀 있다 — 물린 계정은 뒤로 밀리고 회복되면 스스로 돌아온다.
+
 반면 **우선순위 차원은 하나도 줄지 않는다**: 인터랙티브가 백필에 밀리는 문제는
 벤더와 무관한 성질이다.
 
@@ -46,6 +53,12 @@ _HEADROOM = 0.8
 
 _PRIORITY_ORDER: dict[Priority, int] = {"user_visible": 0, "background": 10}
 
+# 인증 실패한 계정을 후보에서 미뤄 두는 시간.
+# **토큰 재발급 쿨다운(`kiwoom_token_provider._REISSUE_COOLDOWN_MS` = 60s)과 맞춘다.**
+# 더 짧으면 격리가 풀린 계정이 아직 쿨다운에 걸려 재발급에 실패하고, 실패→격리→해제→
+# 재실패를 돌며 멀쩡한 앱키의 처리량만 갉아먹는다.
+_AUTH_BLOCK_SECONDS = 60.0
+
 
 class KiwoomCapacityOverloaded(RuntimeError):
     """큐가 상한을 넘었다 — 신규 요청 거절."""
@@ -63,6 +76,13 @@ class _Request:
     deferred: bool = field(compare=False, default=False)
     """양보는 **요청당 1회**. 무제한이면 user_visible 이 오래 막힐 때 background 가
     큐를 맴돌며 워커를 태운다."""
+    auth_retried: bool = field(compare=False, default=False)
+    """인증 실패 재시도도 **요청당 1회**. 재발급이 쿨다운에 걸렸거나 자격증명 자체가
+    틀렸으면 두 번째도 같은 자리에서 실패한다 — 무제한이면 그대로 무한 루프다."""
+    requeued: bool = field(compare=False, default=False)
+    """이번 순회가 이 요청을 큐로 되돌렸나. `_cleanup` 이 inflight 항목을 **떨어뜨리지
+    않도록** 하는 표식이다 — 떨어뜨리면 같은 key 의 새 요청이 조인할 future 를 잃고
+    중복 호출이 된다. 큐에서 꺼낼 때마다 초기화된다."""
 
 
 class _TokenBucket:
@@ -125,6 +145,12 @@ class KiwoomCapacityScheduler:
         self._seq = 0
         self.background_deferred_due_to_user_visible = 0
         self._calls_by_account: dict[int, int] = {}
+        # 인증 실패로 격리된 계정의 해제 시각(monotonic). 버킷 penalize 와 **따로** 두는
+        # 이유는 축이 다르기 때문이다: 유량은 (앱키, TR)별이라 버킷을 밀면 되지만,
+        # 죽은 토큰은 그 계정의 **모든 TR** 을 못 쓴다. TR 버킷 하나만 밀면 같은 죽은
+        # 계정이 다른 TR 로 계속 뽑힌다.
+        self._auth_blocked_until: dict[int, float] = {}
+        self._auth_failures_by_account: dict[int, int] = {}
 
     # --- 공개 API -----------------------------------------------------------
 
@@ -138,6 +164,11 @@ class KiwoomCapacityScheduler:
         if self._clients:
             live = set(self._accounts)
             self._buckets = {k: v for k, v in self._buckets.items() if k[0] in live}
+            # 격리 상태도 함께 버린다 — 사라진 계정의 차단이 남아 있으면, 나중에 풀이
+            # 다시 커졌을 때 **다른 앱키가** 그 account_id 를 물려받아 애먼 격리를 산다.
+            self._auth_blocked_until = {
+                a: t for a, t in self._auth_blocked_until.items() if a in live
+            }
 
     @property
     def _accounts(self) -> tuple[int, ...]:
@@ -182,6 +213,14 @@ class KiwoomCapacityScheduler:
             # 계정별 호출 수. 쏠림이 보이지 않으면 앱키를 늘려도 배수가 안 나는 것을
             # 알아챌 수 없다(ADR-0138).
             "calls_by_account": dict(sorted(self._calls_by_account.items())),
+            # 계정별 인증 실패 누계와 **현재 격리 중인 계정**. 토큰이 죽으면 화면에는
+            # "일부 과거구간 로딩 실패" 밖에 안 뜨고 원인은 벤더 msg 안에 있다 —
+            # 계정별 생사가 여기 보이지 않으면 서버를 직접 뒤져야만 진단된다
+            # (2026-08-04 조사에서 실제로 그랬다).
+            "auth_failures_by_account": dict(sorted(self._auth_failures_by_account.items())),
+            "auth_blocked_accounts": sorted(
+                a for a, until in self._auth_blocked_until.items() if until > time.monotonic()
+            ),
             "background_deferred_due_to_user_visible": (
                 self.background_deferred_due_to_user_visible
             ),
@@ -214,15 +253,26 @@ class KiwoomCapacityScheduler:
             self._buckets[(account_id, api_id)] = b
         return b
 
+    def _available_at(self, account_id: int, api_id: str) -> float:
+        """이 계정이 이 TR 을 다음에 쏠 수 있는 시각 — **유량과 인증 중 늦은 쪽**."""
+        return max(
+            self._bucket(account_id, api_id).available_at(),
+            self._auth_blocked_until.get(account_id, 0.0),
+        )
+
     def _pick_account(self, api_id: str) -> int:
         """가장 빨리 열리는 계정. 라운드로빈이 아닌 이유는 **failover 가 공짜로
         따라오기** 때문이다 — 429 를 맞아 `penalize` 된 계정은 `available_at()` 이
         뒤로 밀려 자동으로 후순위가 되고, 회복되면 스스로 돌아온다. KIS 시절의
-        health check·failover 상태 기계를 되살릴 필요가 없다."""
+        health check·failover 상태 기계를 되살릴 필요가 없다.
+
+        인증 실패도 같은 원리에 얹는다(`_available_at`) — 토큰이 죽은 계정은 정렬에서
+        뒤로 밀리고 격리가 풀리면 스스로 복귀한다. **전 계정이 격리돼도 `min` 은 하나를
+        고르므로 데드락이 아니다** — 느려질 뿐이고, 그 시도가 재발급 기회가 된다."""
         accounts = self._accounts
         if len(accounts) == 1:
             return accounts[0]
-        return min(accounts, key=lambda a: self._bucket(a, api_id).available_at())
+        return min(accounts, key=lambda a: self._available_at(a, api_id))
 
     def _client_for(self, account_id: int) -> Any | None:
         """풀이 비었으면 None — 호출자가 넘긴 클라이언트를 쓰라는 신호다."""
@@ -278,6 +328,7 @@ class KiwoomCapacityScheduler:
     async def _worker(self) -> None:
         while True:
             req = await self._queue.get()
+            req.requeued = False
             if req.future.done():
                 continue
             # 기계 ④ 양보 (1차) — dequeue 직후. 우선순위 큐가 대개 먼저 걸러내므로
@@ -300,6 +351,8 @@ class KiwoomCapacityScheduler:
                 raise
             except Exception as exc:  # noqa: BLE001 — future 로 전달, 워커는 살아남는다
                 self._penalize_if_rate_limited(account, req.api_id, exc)
+                if await self._recover_if_auth_failure(account, req, exc):
+                    continue
                 if not req.future.done():
                     req.future.set_exception(exc)
             else:
@@ -326,8 +379,55 @@ class KiwoomCapacityScheduler:
                 api_id, account_id, exc.quota,
             )
 
+    async def _recover_if_auth_failure(
+        self, account_id: int, req: _Request, exc: BaseException
+    ) -> bool:
+        """인증 실패면 토큰을 버리고 계정을 격리한 뒤 **요청을 1회 되큐한다**.
+
+        되큐했으면 True — 호출자는 future 를 건드리지 않고 다음 순회로 넘어간다.
+
+        재시도가 **거버너 위**에 있는 것이 요점이다. 클라이언트 안에서 몰래 한 번 더
+        쏘면 그 콜은 TR 버킷을 거치지 않아 페이싱에서 보이지 않는다(ADR-0137). 여기서
+        되큐하면 재시도도 대기표를 뽑고, 격리 덕에 **살아 있는 앱키로 자동 failover**
+        된다 — 계정 선택이 `_available_at` 정렬 하나로 끝나므로 별도 상태 기계가 없다.
+        """
+        from hoga.live.kiwoom_errors import KiwoomAuthError  # noqa: PLC0415 — 순환 절단
+
+        if not isinstance(exc, KiwoomAuthError):
+            return False
+
+        self._auth_failures_by_account[account_id] = (
+            self._auth_failures_by_account.get(account_id, 0) + 1
+        )
+        self._auth_blocked_until[account_id] = time.monotonic() + _AUTH_BLOCK_SECONDS
+        client = self._client_for(account_id)
+        invalidate = getattr(client, "invalidate_token", None)
+        if invalidate is not None:
+            try:
+                await invalidate()
+            except Exception:
+                # 무효화 실패가 원래 인증 오류를 가리면 안 된다 — 격리는 이미 걸렸고,
+                # 되큐 여부만 아래에서 정한다. logging.exception 이라 BLE001 은
+                # 발화하지 않는다.
+                log.exception("kiwoom capacity: token invalidate failed on account %d", account_id)
+        log.warning(
+            "kiwoom capacity: auth failure on account %d (%s) — isolated %.0fs, retry=%s",
+            account_id, req.api_id, _AUTH_BLOCK_SECONDS, not req.auth_retried,
+        )
+
+        if req.auth_retried or req.future.done():
+            return False
+        req.auth_retried = True
+        req.requeued = True
+        self._queue.put_nowait(req)
+        return True
+
     def _cleanup(self, req: _Request) -> None:
         self._started.discard(req.key)
+        # 되큐된 요청은 **아직 살아 있다** — inflight 를 떨어뜨리면 같은 key 의 새 요청이
+        # 조인할 future 를 잃고 중복 호출이 된다(기계 ②가 뚫린다).
+        if req.requeued:
+            return
         if self._inflight.get(req.key) is req.future:
             self._inflight.pop(req.key, None)
             self._queued_priority.pop(req.key, None)
