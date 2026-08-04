@@ -20,7 +20,7 @@ export default function DailyMovingAverageConfig() {
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">
-        일봉 이동평균선 <span aria-hidden="true" className="text-fg-dimmer text-sm">ⓘ</span>
+        일봉 이동평균선 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
       </h3>
       <p className="text-fg-dim text-xs mb-3">
         일봉 종가 기준 이평선을 분봉 차트에 투영 · 분봉 차트에서만 표시됩니다

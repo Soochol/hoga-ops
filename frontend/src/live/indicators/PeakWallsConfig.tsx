@@ -30,7 +30,7 @@ export default function PeakWallsConfig() {
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">
-        당일 최대벽 <span aria-hidden="true" className="text-fg-dimmer text-sm">ⓘ</span>
+        당일 최대벽 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
       </h3>
       <p className="text-fg-dim text-xs mb-3">
         차트에 보이는 거래일마다, 그 날 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼

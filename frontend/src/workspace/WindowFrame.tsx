@@ -110,7 +110,7 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
           {header}
           {closable && (
             <button
-              className="ml-auto px-0.5 text-[12px] leading-none text-fg-dimmer hover:text-fg"
+              className="ml-auto px-0.5 text-[12px] leading-none text-fg-dim hover:text-fg"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => onClose(id)}
               title="창 닫기"

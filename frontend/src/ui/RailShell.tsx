@@ -120,7 +120,7 @@ export function RailGroupHeader({
     >
       {leading}
       <span className="min-w-0 flex-1 truncate">{children}</span>
-      {count !== undefined && <span className="text-xs font-normal text-fg-dimmer">{count}</span>}
+      {count !== undefined && <span className="text-xs font-normal text-fg-dim">{count}</span>}
     </button>
   );
 }

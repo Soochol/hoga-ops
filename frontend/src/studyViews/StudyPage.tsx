@@ -60,7 +60,7 @@ function StudySearchHeader({
     <WorkspaceHeader className="min-h-12 px-4">
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold">{label}</div>
-        <div className="text-xs text-[var(--fg-dimmer)]">{description}</div>
+        <div className="text-xs text-fg-dim">{description}</div>
       </div>
     </WorkspaceHeader>
   );
@@ -554,7 +554,7 @@ export function StudyPage() {
           <WorkspaceToolbar testId="study-page-toolbar">
             <div className="min-w-0 truncate text-xs">
               <span className="font-semibold text-fg">{headerLabel}</span>
-              <span className="text-[var(--fg-dimmer)]">
+              <span className="text-fg-dim">
                 {' '}{headerCode} · {headerKindLabel}
               </span>
             </div>

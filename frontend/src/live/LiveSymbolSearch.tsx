@@ -230,12 +230,12 @@ export function LiveSymbolSearch() {
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
         {/* min-w-0 + truncate: 헤더가 좁아지면(드로어 열림 등) 두 줄 줄바꿈 대신 한 줄 말줄임. */}
-        <span className="flex-1 min-w-0 truncate text-sm text-fg-dimmer">종목명 또는 코드 검색…</span>
+        <span className="flex-1 min-w-0 truncate text-sm text-fg-dim">종목명 또는 코드 검색…</span>
         {/* kbd 는 shrink-0 이라 좁은 헤더에서 버튼 밖으로 흘러 Settings 라벨과 겹쳤다 —
             버튼 overflow-hidden 이 탈출을 막고, 반쯤 잘린 칩이 남지 않도록 컨테이너 폭
             9rem 아래에서는 칩 자체를 숨긴다(뷰포트가 아니라 드로어 개폐가 폭을 정하므로
             media query 가 아닌 container query). */}
-        <span className="ml-auto flex shrink-0 items-center gap-1 text-fg-dimmer text-xs [@container(max-width:9rem)]:hidden">
+        <span className="ml-auto flex shrink-0 items-center gap-1 text-fg-dim text-xs [@container(max-width:9rem)]:hidden">
           <kbd className="inline-flex items-center justify-center min-w-[17px] h-[17px] px-1 border border-border-strong rounded bg-bg-input font-data">/</kbd>
         </span>
       </button>

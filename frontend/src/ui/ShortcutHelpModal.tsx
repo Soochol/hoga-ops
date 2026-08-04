@@ -47,7 +47,7 @@ function Row({ keys, desc }: { keys: string[]; desc: string }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase text-fg-dimmer">{title}</h3>
+      <h3 className="text-xs font-semibold uppercase text-fg-dim">{title}</h3>
       <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5">
         {children}
       </div>

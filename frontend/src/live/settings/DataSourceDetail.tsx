@@ -23,7 +23,7 @@ function RoleSourceGroup({
   return (
     <section className="border-t border-border pt-3 first:border-t-0 first:pt-0">
       <div className="mb-1 text-sm font-medium text-fg">{title}</div>
-      <div className="mb-2 text-xs text-fg-dimmer">{description}</div>
+      <div className="mb-2 text-xs text-fg-dim">{description}</div>
       {children}
     </section>
   );
@@ -34,7 +34,7 @@ function RoleSourceGroup({
  * 하위 그룹이 시각적으로 더 도드라진다. */
 function MacroGroupLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="text-xs font-semibold text-fg-dimmer">{children}</div>
+    <div className="text-xs font-semibold text-fg-dim">{children}</div>
   );
 }
 
@@ -134,7 +134,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
         </RoleSourceGroup>
       </div>
 
-      <div className="text-xs text-fg-dimmer">
+      <div className="text-xs text-fg-dim">
         차트 상단 칩은 실제 렌더링에 사용된 source를 표시합니다.
       </div>
     </>
@@ -148,7 +148,7 @@ function KiwoomStatusLine() {
   const { data } = useLiveStatus();
   if (data === undefined) {
     return (
-      <div className="mt-1 text-xs text-fg-dimmer" data-testid="kiwoom-status-line">
+      <div className="mt-1 text-xs text-fg-dim" data-testid="kiwoom-status-line">
         상태 확인 중…
       </div>
     );
@@ -156,7 +156,7 @@ function KiwoomStatusLine() {
   const k = data.kiwoom;
   if (k == null) {
     return (
-      <div className="mt-1 text-xs text-fg-dimmer" data-testid="kiwoom-status-line">
+      <div className="mt-1 text-xs text-fg-dim" data-testid="kiwoom-status-line">
         키움 앱키 미설정 — <code>.env</code>에 <code>KIWOOM_APP_KEY</code>를 추가하면 실시간이 활성화됩니다
       </div>
     );

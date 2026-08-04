@@ -128,17 +128,17 @@ export function WindowListMenu({
       className="min-w-[248px] rounded border border-border bg-bg-card py-1 shadow-overlay z-50"
       style={{ position: 'fixed', left, top }}
     >
-      <div className="px-3 pb-1.5 pt-0.5 text-[11px] text-fg-dimmer">
+      <div className="px-3 pb-1.5 pt-0.5 text-[11px] text-fg-dim">
         <span>{summary}</span>
       </div>
 
       {flatRows.length === 0 ? (
-        <div className="px-3 py-2 text-xs text-fg-dimmer">열린 창이 없습니다</div>
+        <div className="px-3 py-2 text-xs text-fg-dim">열린 창이 없습니다</div>
       ) : (
         sections.map((section) => (
           <div key={section.key}>
             {section.heading && (
-              <div className="flex items-center gap-1.5 border-t border-border px-3 pb-1 pt-1.5 text-[10.5px] text-fg-dimmer first:border-t-0">
+              <div className="flex items-center gap-1.5 border-t border-border px-3 pb-1 pt-1.5 text-[10.5px] text-fg-dim first:border-t-0">
                 {section.dotColor && (
                   <span
                     aria-hidden

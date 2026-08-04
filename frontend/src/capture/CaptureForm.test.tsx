@@ -117,10 +117,10 @@ describe('CaptureForm', () => {
     expect(screen.queryByText(/force/i)).toBeNull();
   });
 
-  it('Legend lists the new "no upstream data" entry', () => {
+  it('Legend lists the new "업스트림 없음" entry', () => {
     const { qc } = setup({});
     render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
-    expect(screen.getByText(/– no upstream data/)).toBeTruthy();
+    expect(screen.getByText(/– 업스트림 없음/)).toBeTruthy();
   });
 
   it('shows today_too_early error inline when backend rejects', async () => {

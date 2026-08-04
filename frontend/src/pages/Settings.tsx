@@ -130,7 +130,7 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
           {selected === 'data' && <DataCollectionSection />}
           {selected === 'symbols' && <SymbolMasterSection />}
           {selected === 'roadmap' && (
-            <p className="text-xs text-fg-dimmer">
+            <p className="text-xs text-fg-dim">
               편집 가능한 설정은 v1+1에서 `/api/config` 라우트와 함께 제공 예정.
             </p>
           )}
@@ -174,7 +174,7 @@ function ThemeSection() {
           </button>
         ))}
       </SegmentedControl>
-      <p className="text-xs text-fg-dimmer">{THEME_HINT[themePreference]}</p>
+      <p className="text-xs text-fg-dim">{THEME_HINT[themePreference]}</p>
     </section>
   );
 }

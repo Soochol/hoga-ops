@@ -64,9 +64,9 @@ export function QuoteRowGroupMenu({ code, name, x, y, onClose }: {
       className="bg-bg-card border border-border rounded shadow-lg z-30 py-1 min-w-[200px]"
       style={{ position: 'fixed', left, top }}
     >
-      <div className="px-3 py-1 text-xs text-fg-dimmer">관심 그룹에 추가</div>
+      <div className="px-3 py-1 text-xs text-fg-dim">관심 그룹에 추가</div>
       {folders.length === 0 && (
-        <div className="px-3 py-1.5 text-sm text-fg-dimmer">그룹이 없습니다 — 아래에서 만드세요</div>
+        <div className="px-3 py-1.5 text-sm text-fg-dim">그룹이 없습니다 — 아래에서 만드세요</div>
       )}
       {folders.map((f) => {
         const checked = member.has(f.id);

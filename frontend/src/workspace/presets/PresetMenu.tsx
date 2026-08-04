@@ -163,9 +163,9 @@ export function PresetMenu<P>({
         </div>
       )}
       {presets.length === 0 ? (
-        <div className="px-3 py-1.5 text-xs text-fg-dimmer">저장된 프리셋이 없습니다</div>
+        <div className="px-3 py-1.5 text-xs text-fg-dim">저장된 프리셋이 없습니다</div>
       ) : (
-        <div className="px-3 pb-1 pt-0.5 text-[10px] text-fg-dimmer">
+        <div className="px-3 pb-1 pt-0.5 text-[10px] text-fg-dim">
           {labels.applyHint}
         </div>
       )}

@@ -288,7 +288,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
 
   if (!instrument) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-md bg-bg-subtle/40 text-xs text-fg-dimmer">
+      <div className="flex h-full w-full flex-col items-center justify-center gap-md bg-bg-subtle/40 text-xs text-fg-dim">
         <span className="font-data">종목 없음 · 그룹 {view.group}</span>
         {/* 빈 상태 = "한 줄 설명 + 행동 1개" — 다음 행동(헤더 검색)이 있는데 빈 창은
             그 존재를 알려주지 않았다. focusLiveSearch 는 헤더 검색의 기존 채널(＋ 버튼·
@@ -298,7 +298,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           onClick={focusLiveSearch}
           className="rounded-lg border border-border-strong px-3 py-[7px] text-sm text-fg-dim hover:bg-bg-input-hover hover:text-fg"
         >
-          종목 검색 <kbd className="font-data text-fg-dimmer">/</kbd>
+          종목 검색 <kbd className="font-data text-fg-dim">/</kbd>
         </button>
       </div>
     );

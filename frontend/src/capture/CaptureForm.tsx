@@ -101,7 +101,7 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
         setInlineError(enqueueErrorHints[code as UpstreamCode]);
         return;
       }
-      const msg = err instanceof Error ? err.message : '큐 등록 실패';
+      const msg = err instanceof Error ? err.message : '캡처 요청 실패';
       setError(msg);
     }
   };
@@ -112,7 +112,7 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
         <SymbolSearch value={symbol} onChange={setSymbol} />
       </FormField>
 
-      <FormField label="날짜 범위">
+      <FormField label="기간">
         <DateRangePicker
           code={symbol?.code ?? null}
           referenceYear={referenceYear}

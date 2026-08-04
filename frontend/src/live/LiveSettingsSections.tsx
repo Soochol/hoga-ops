@@ -143,7 +143,7 @@ function StudyViewsDetail() {
   return (
     <>
       <div className="mb-1 text-sm text-fg-dim">저장뷰 사이드 메뉴</div>
-      <div className="mb-md text-xs text-fg-dimmer">
+      <div className="mb-md text-xs text-fg-dim">
         오른쪽 저장뷰 패널에서 저장뷰를 열 때 적용할 기본 분봉입니다
         「설정된 분봉」은 복기뷰 차트에서 마지막으로 사용한 분봉으로 엽니다.
       </div>

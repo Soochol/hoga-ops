@@ -139,7 +139,7 @@ export default function App() {
       <ShortcutHelpHost />
       {settingsOpen && (
         <ModalShell
-          ariaLabel="Settings"
+          ariaLabel="설정"
           width="w-[min(720px,calc(100vw-48px))]"
           height="h-[min(560px,calc(100vh-80px))]"
           onClose={() => setSettingsOpen(false)}

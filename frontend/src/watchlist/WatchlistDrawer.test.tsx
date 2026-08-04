@@ -450,8 +450,6 @@ describe('WatchlistDrawer', () => {
   it('그룹 헤더 ⋯ → 그룹 삭제 deletes the folder (고아 확인 후, v3)', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const deleteSpy = vi.spyOn(watchlistApi, 'deleteFolder').mockResolvedValue();
-    // v3 파괴적 삭제(ADR-0070 P6): 고아가 생기면 확인 — 테스트는 확인 수락.
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
@@ -461,8 +459,28 @@ describe('WatchlistDrawer', () => {
     expect(deleteItem.className).toContain('text-error');
     expect(deleteItem.previousElementSibling?.getAttribute('role')).toBe('separator');
     fireEvent.click(deleteItem);
+    // v3 파괴적 삭제(ADR-0070 P6): 고아가 생기면 **앱 내 ConfirmModal** 로 확인한다.
+    // window.confirm 이 아니어야 한다 — 네이티브 다이얼로그는 테마·폰트·토큰이 전부
+    // 증발하고 숫자 강조도 못 한다. 확인 전에는 DELETE 가 나가지 않는다.
+    const dialog = await screen.findByRole('dialog', { name: '삭제' });
+    expect(dialog).toHaveTextContent('관심종목에서 빠집니다');
+    expect(deleteSpy).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: '삭제' }));
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('f_0000000a'));
-    confirmSpy.mockRestore();
+  });
+
+  it('그룹 삭제 확인에서 취소하면 DELETE 가 나가지 않는다', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const deleteSpy = vi.spyOn(watchlistApi, 'deleteFolder').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /그룹 삭제/ }));
+    const dialog = await screen.findByRole('dialog', { name: '삭제' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '취소' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '삭제' })).toBeNull());
+    expect(deleteSpy).not.toHaveBeenCalled();
   });
 
   it('그룹 헤더 ⋯ → 종목 추가 opens the add popover', async () => {

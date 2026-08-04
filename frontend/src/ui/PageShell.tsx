@@ -126,7 +126,7 @@ export function DefinitionRow({
 }) {
   return (
     <div className={`grid grid-cols-[120px_1fr] gap-3 items-center ${className}`.trim()}>
-      <span className="text-xs uppercase text-fg-dimmer">{label}</span>
+      <span className="text-xs uppercase text-fg-dim">{label}</span>
       <span className="font-data text-xs">{value}</span>
     </div>
   );

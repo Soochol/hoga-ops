@@ -8,10 +8,10 @@ const SIDE: Record<HighOffPeakSide, string> = { within: '이내', outside: '이�
 function HighOffPeakForm({ params, onChange }: { params: HighOffPeakParams; onChange: (p: HighOffPeakParams) => void }) {
   return <div className="flex items-center gap-2 flex-wrap">
     <Num label="기간 (N)" value={params.period} onChange={(n) => onChange({ ...params, period: n ?? 1 })} />
-    <span className="text-sm text-fg-dimmer">일</span>
-    <span className="text-[10.5px] text-fg-dimmer">고점 대비 −</span>
+    <span className="text-sm text-fg-dim">일</span>
+    <span className="text-[10.5px] text-fg-dim">고점 대비 −</span>
     <Num value={params.pct} onChange={(n) => onChange({ ...params, pct: n ?? 0 })} w="w-16" />
-    <span className="text-sm text-fg-dimmer">%</span>
+    <span className="text-sm text-fg-dim">%</span>
     <Select label="이내/이외" value={params.side}
       onChange={(side) => onChange({ ...params, side })}
       options={[['within', '이내'], ['outside', '이외']]} />

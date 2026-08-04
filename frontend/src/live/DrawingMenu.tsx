@@ -102,7 +102,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
             <span aria-hidden="true" className="w-4 text-center font-data">{spec.glyph}</span>
             <span>{spec.label}</span>
             {spec.shortcut && (
-              <span className="ml-auto font-data text-[10px] text-fg-dimmer">
+              <span className="ml-auto font-data text-[10px] text-fg-dim">
                 ⌥{spec.shortcut.key.toUpperCase()}
               </span>
             )}
@@ -158,7 +158,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
       >
         <span aria-hidden="true" className="w-4 text-center">✕</span>
         <span>모두 지우기</span>
-        <span className="ml-auto font-data text-[10px] text-fg-dimmer">⌥C</span>
+        <span className="ml-auto font-data text-[10px] text-fg-dim">⌥C</span>
       </button>
     </div>
   ) : null;

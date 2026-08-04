@@ -49,7 +49,7 @@ export function WatchlistGroupPicker({ code, name, x, y, onClose }: {
       data-testid="watchlist-group-picker"
       className="bg-bg-card border border-border rounded shadow-lg z-30 py-1 min-w-[200px]"
       style={{ position: 'fixed', left, top }}>
-      <div className="px-3 py-1 text-xs text-fg-dimmer">내 관심 그룹</div>
+      <div className="px-3 py-1 text-xs text-fg-dim">내 관심 그룹</div>
       {folders.map((f) => {
         const checked = member.has(f.id);
         return (

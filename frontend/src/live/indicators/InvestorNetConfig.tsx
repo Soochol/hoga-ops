@@ -14,13 +14,13 @@ export default function InvestorNetConfig({ which }: Props) {
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">
-        {label} <span aria-hidden="true" className="text-fg-dimmer text-sm">ⓘ</span>
+        {label} <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
       </h3>
       <p className="text-fg-dim text-xs mb-3">
         일자별 {who}의 순매수 수량(매수 − 매도)을 막대로 표시합니다.
       </p>
       <SignColorLegend up="순매수" down="순매도" />
-      <p className="text-fg-dimmer text-xs mt-3">일봉(D)에서만 표시됩니다</p>
+      <p className="text-fg-dim text-xs mt-3">일봉(D)에서만 표시됩니다</p>
     </div>
   );
 }

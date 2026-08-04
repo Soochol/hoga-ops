@@ -466,7 +466,7 @@ export function ScreenerDrawer() {
           <RailState tone="warn" className="p-0">시드 필요 — 운영자 CLI로 시드 후 시작하세요</RailState>
         )}
         {lastScan && !screener.isError && (
-          <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase text-fg-dimmer">
+          <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase text-fg-dim">
             <div className="min-w-0 flex-1 truncate">
               결과 {lastScan.rows.length} · {lastScan.savedName ?? '임시 조건'}
               {lastScanStaleReason && (

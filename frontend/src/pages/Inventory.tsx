@@ -70,6 +70,7 @@ export default function Inventory() {
   );
 
   if (isLoading) {
+    // main 의 한글 텍스트('불러오는 중')를 스켈레톤이 포섭한다 — 같은 문구 + 2-pane 자리.
     return <InventoryLoadingSkeleton />;
   }
   if (rows.length === 0) {

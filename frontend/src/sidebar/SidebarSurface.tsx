@@ -18,7 +18,7 @@ export function SidebarState({
   className?: string;
 }) {
   return (
-    <div className={`grid h-full place-items-center text-xs text-fg-dimmer ${className}`.trim()}>
+    <div className={`grid h-full place-items-center text-xs text-fg-dim ${className}`.trim()}>
       {children}
     </div>
   );

@@ -165,7 +165,7 @@ function SignalAlertRow({ group }: { group: SignalAlertGroup }) {
       >
         {/* 좌: 시각 · 종목명 · 코드 (· ×N 반복 배지) */}
         <div className="flex min-w-0 items-center gap-2 text-sm text-fg">
-          <span className="shrink-0 tabular-nums text-xs text-fg-dimmer">{formatTime(group.latestTMs)}</span>
+          <span className="shrink-0 tabular-nums text-xs text-fg-dim">{formatTime(group.latestTMs)}</span>
           <span className="min-w-0 truncate">{group.name}</span>
           {repeated && (
             <span className="shrink-0 rounded-sm bg-bg-input px-1 text-badge font-data tabular-nums text-fg-dim">
@@ -178,7 +178,7 @@ function SignalAlertRow({ group }: { group: SignalAlertGroup }) {
           {group.peakRatioPct.toFixed(1)}%
         </span>
         {/* 좌 아래: 매도 총잔량(최신) — 부차 정보 */}
-        <div className="col-start-1 text-xs text-fg-dimmer tabular-nums">
+        <div className="col-start-1 text-xs text-fg-dim tabular-nums">
           매도 총잔량 {group.latestValue.toLocaleString()}
         </div>
       </button>

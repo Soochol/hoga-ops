@@ -125,7 +125,7 @@ export function WorkspaceState({
   dropTargetRef?: RefObject<HTMLDivElement>;
   showDropOverlay?: boolean;
 }) {
-  const toneClass = tone === 'error' ? 'text-error' : 'text-fg-dimmer';
+  const toneClass = tone === 'error' ? 'text-error' : 'text-fg-dim';
   return (
     <WorkspaceRoot testId={testId} className={className}>
       <div ref={dropTargetRef} data-testid="study-drop-target" className="relative h-full">

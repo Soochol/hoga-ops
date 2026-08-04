@@ -39,7 +39,7 @@ export function UniverseFilterModal({ universe, onChange, onClose }: {
     <ModalShell ariaLabel="사전필터" title="사전필터" width="w-[480px]" onClose={onClose}>
       <div className="flex">
         <nav className="w-[160px] py-2 border-r border-border" aria-label="필터 그룹">
-          <div className="text-fg-dimmer text-xs uppercase px-4 pb-2">필터 그룹</div>
+          <div className="text-fg-dim text-xs uppercase px-4 pb-2">필터 그룹</div>
           {NAV.map((n) => (
             <button key={n.id} type="button" aria-current={group === n.id} data-active={n.active}
               onClick={() => setGroup(n.id)}
@@ -83,7 +83,7 @@ export function UniverseFilterModal({ universe, onChange, onClose }: {
           ) : (
             <div className="flex flex-col gap-sm">
               <SectionLabel>종목 범위</SectionLabel>
-              <p className="text-xs text-fg-dimmer">
+              <p className="text-xs text-fg-dim">
                 선택 시 해당 집합의 합집합에서만 조회합니다 — 미선택 시 전체 시장.
                 실시간 모니터링 리소스를 크게 줄입니다
               </p>

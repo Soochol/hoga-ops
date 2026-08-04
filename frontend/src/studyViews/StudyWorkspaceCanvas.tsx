@@ -70,13 +70,14 @@ function StudyWindowItem({
         <StudyChartWindow {...ctx.chart} windowId={win.id} />
       ) : (
         /* 창 단위 격리(/live WorkspaceCanvas 와 동일) — 데이터·메모 창의 throw 가
-           워크스페이스 전체를 백지로 만들지 않게 한다. 차트 창은 내부 경계 보유. */
+           워크스페이스 전체를 백지로 만들지 않게 한다. 차트 창은 내부 경계 보유.
+           로딩 텍스트 색은 main 의 fg-dimmer→fg-dim 승격(대비 AA)을 따른다. */
         <ChartErrorBoundary title="창 렌더링에 실패했습니다">
           {win.kind === 'memo' ? (
             ctx.memo ? (
               <StudyMemoPanel {...ctx.memo} onClose={() => ctx.closeWindow(win.id)} />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dimmer">
+              <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dim">
                 <span className="font-data">학습뷰 불러오는 중…</span>
               </div>
             )

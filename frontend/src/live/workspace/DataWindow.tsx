@@ -85,7 +85,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
       return <SectorRankingWindow indexId={symbol.code} />;
     }
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
+      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dim">
         <span className="font-data">
           {WINDOW_KIND_LABEL[win.kind]} · 지수 그룹 전용
           <br />
@@ -97,7 +97,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
   // 지수는 호가/거래원/투자자 데이터가 없다 — 구독 오염 대신 안내 카드(C2c-2c).
   if (symbol?.kind === 'index') {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
+      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dim">
         <span className="font-data">
           {WINDOW_KIND_LABEL[win.kind]} · {symbol.name}
           <br />
@@ -109,7 +109,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
   const code = symbol?.code ?? null;
   if (!code) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dimmer">
+      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-[11px] text-fg-dim">
         <span className="font-data">
           {WINDOW_KIND_LABEL[win.kind]} · 종목 없음 (그룹 {win.group})
         </span>
@@ -151,7 +151,7 @@ function useGroupCursor(group: GroupId): { cursorMs: number | null; timeframe: L
 /** 매물대·프로그램의 연동 대기 카드 — 같은 그룹에 차트 창이 없을 때. */
 function LinkPendingCard({ kind, group }: { kind: WindowKind; group: GroupId }) {
   return (
-    <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dimmer">
+    <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-[11px] text-fg-dim">
       <span className="font-data">
         {WINDOW_KIND_LABEL[kind]} · 차트 창 연동 대기
         <br />
@@ -303,7 +303,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       {showAvailableHint && (
         <div
           data-testid="orderbook-available-hint"
-          className="px-3 py-1 font-data text-[11px] text-fg-dimmer"
+          className="px-3 py-1 font-data text-[11px] text-fg-dim"
         >
           다음 가용: {formatKstClock(availableFrom)}
         </div>
