@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { loadConfig, type AppConfig } from '../config';
+import { apiCall } from '../api/client';
 import { getSymbolMasterInfo, refreshSymbols } from '../api/symbols';
 import { SYMBOLS_QUERY_KEY } from '../capture/useSymbols';
 import { symbolMasterSettingsHints } from '../api/upstream-hints';
@@ -11,8 +12,13 @@ import { PageContainer } from '../layout/PageContainer';
 import { DefinitionRow, SegmentedControl, ToolbarButton } from '../ui/PageShell';
 import { THEME_PREFERENCE_OPTIONS, useThemePrefsStore, type ThemePreference } from '../state/themePrefs';
 
-const VERSION = 'v0.1.0';
 const SYMBOLS_INFO_QUERY_KEY = ['symbols', 'info'] as const;
+const HEALTH_QUERY_KEY = ['health'] as const;
+
+/** /health 응답 — 리포 루트 VERSION 파일이 버전의 단일 진실(#998)이라 프론트에
+ *  버전을 다시 하드코딩하지 않는다(이전의 'v0.1.0' 상수는 실제 0.12.x 와 어긋난
+ *  채 표시되고 있었다). commit 은 "지금 뜬 코드가 그 코드인가"에 답한다. */
+type HealthInfo = { status: string; version: string; commit?: string };
 
 type SectionId = 'general' | 'theme' | 'source' | 'data' | 'symbols' | 'roadmap';
 
@@ -53,6 +59,14 @@ export default function Settings() {
 export function SettingsPanel({ onClose }: { onClose?: () => void }) {
   const [selected, setSelected] = useState<SectionId>('general');
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const healthQuery = useQuery({
+    queryKey: HEALTH_QUERY_KEY,
+    queryFn: () => apiCall<HealthInfo>('/health'),
+    staleTime: Infinity, // 버전은 프로세스 수명 동안 불변 — 재조회 무의미
+  });
+  const versionText = healthQuery.data
+    ? `v${healthQuery.data.version}${healthQuery.data.commit ? ` (${healthQuery.data.commit})` : ''}`
+    : '…';
   useEffect(() => {
     let cancelled = false;
     loadConfig().then((c) => {
@@ -108,7 +122,7 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
           {selected === 'general' && (
             <>
               <DefinitionRow label="API URL" value={config?.api_url ?? '…'} />
-              <DefinitionRow label="Version" value={VERSION} />
+              <DefinitionRow label="Version" value={versionText} />
             </>
           )}
           {selected === 'theme' && <ThemeSection />}
