@@ -57,35 +57,8 @@ def _patch_kiwoom_index(monkeypatch, fake_kis):
     return object(), calls
 
 
-def _patch_kis_capacity(monkeypatch, fake_kis):
-    scheduler = object()
-    calls = []
-    monkeypatch.setattr(live_api, "ensure_kis_capacity_scheduler", lambda data_dir: scheduler)
-    monkeypatch.setattr(live_api.kis_access, "has_rest_capacity", lambda data_dir: True)
-
-    async def fake_run_with_capacity(
-        scheduler_arg,
-        *,
-        data_dir,
-        key,
-        endpoint,
-        priority,
-        fetch_fn,
-        cooldown_scope=None,
-    ):
-        calls.append({
-            "scheduler": scheduler_arg,
-            "data_dir": data_dir,
-            "key": key,
-            "endpoint": str(endpoint),
-            "priority": priority,
-            "cooldown_scope": cooldown_scope,
-        })
-        return await fetch_fn(fake_kis)
-
-    monkeypatch.setattr(live_api.kis_access, "run_with_capacity", fake_run_with_capacity)
-    return scheduler, calls
-
+# `_patch_kis_capacity` 헬퍼는 삭제했다 — KIS 캐퍼시티 seam 이 사라졌다(PR-J·#1046).
+# 지수 분봉은 `_patch_kiwoom_index`, 실패 주입은 `_patch_capacity_raises` 를 쓴다.
 
 def _patch_kiwoom_capacity(monkeypatch, fake_daily):
     """키움 시임 한 곳 + 어댑터 함수. PR-C(#1039) 칼 컷오버로 일/주/월봉이 키움을 쓴다."""
@@ -405,8 +378,6 @@ def _patch_capacity_raises(monkeypatch, exc: Exception) -> None:
     from hoga.live.index_candles_cache import IndexCandlesCache
     from hoga.live.index_minute_candles_cache import IndexMinuteCandlesCache
 
-    monkeypatch.setattr(live_api, "ensure_kis_capacity_scheduler", lambda data_dir: object())
-    monkeypatch.setattr(live_api.kis_access, "has_rest_capacity", lambda data_dir: True)
     # 모듈 전역 캐시는 다른 테스트가 채워둘 수 있다 — 캐시 히트가 나면 fetch(→capacity
     # 에러) 경로를 안 타므로 빈 캐시를 미리 심어 강등 경로를 강제한다. build_router는
     # 캐시가 None일 때만 생성하므로(is None), 미리 심은 non-None 인스턴스는 유지된다.
@@ -414,13 +385,6 @@ def _patch_capacity_raises(monkeypatch, exc: Exception) -> None:
     monkeypatch.setattr(
         live_api, "index_minute_candles_cache_instance", IndexMinuteCandlesCache(), raising=False
     )
-
-    async def raising_run_with_capacity(
-        scheduler_arg, *, data_dir, key, endpoint, priority, fetch_fn, cooldown_scope=None
-    ):
-        raise exc
-
-    monkeypatch.setattr(live_api.kis_access, "run_with_capacity", raising_run_with_capacity)
 
     # 일/주/월봉은 PR-C 로 키움을 쓴다 — 같은 강등 경로를 키움 시임에도 건다.
     monkeypatch.setattr(

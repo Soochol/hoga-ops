@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING
 from hoga.api.calendar import is_trading_day
 from hoga.api.queries import QueryEngine
 from hoga.api.sources import resolve_candle_source
-from hoga.live import kis_access
+from hoga.live import settings as live_settings
 from hoga.live.candle_models import LiveCandle
 from hoga.tables import candles as candles_tbl
 from hoga.tables.candles import Candle
@@ -265,7 +265,7 @@ async def repair_saved_view_range(
     반환 None = 게이트에 막혀 아무것도 하지 않음(bypass ON 또는 fetch 없음).
     그 외엔 :class:`RepairSummary`. 날짜는 순차 처리한다 — 저빈도 백그라운드
     작업이라 KIS를 몰아치지 않는다."""
-    if kis_access.rest_bypass_enabled(data_dir):
+    if live_settings.rest_bypass_enabled(data_dir):
         log.info("candle_repair skipped (kis_rest_bypass enabled) code=%s", code)
         return None
     if fetch is None:

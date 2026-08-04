@@ -62,3 +62,16 @@ def update_live_settings(
     )
     save_live_settings(data_dir, settings)
     return settings
+
+
+def rest_bypass_enabled(data_dir: Path) -> bool:
+    """REST 우회 토글이 켜져 있나.
+
+    2026-08-04까지 `live_settings.rest_bypass_enabled` 였다(PR-J·#1046). 그 모듈은
+    KIS 계정 라우팅 seam 이었는데 **프로덕션에서 살아남은 심볼이 이것 하나뿐**이라
+    (나머지는 테스트만 붙잡고 있었다) 설정을 읽는 함수를 설정 모듈로 되돌린다.
+
+    벤더와 무관한 정책 스위치다 — 우회하면 업스트림을 아예 만지지 않고 캐시만
+    서빙한다. 어느 브로커냐는 이 판단에 들어오지 않는다.
+    """
+    return load_live_settings(data_dir).rest_bypass_enabled

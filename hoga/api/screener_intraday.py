@@ -7,7 +7,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.live import kis_access, kiwoom_access, kiwoom_multi_quote, kiwoom_rest_runtime
+from hoga.live import kiwoom_access, kiwoom_multi_quote, kiwoom_rest_runtime, settings as live_settings
 
 _SCHEMA = {
     "code": pl.Utf8,
@@ -42,7 +42,7 @@ def _empty(warnings: list[str] | None = None) -> IntradayDailyOverlay:
 
 
 def intraday_overlay_bypassed(data_dir: Path) -> bool:
-    return kis_access.rest_bypass_enabled(data_dir)
+    return live_settings.rest_bypass_enabled(data_dir)
 
 
 def _date(yyyymmdd: str) -> dt.date:

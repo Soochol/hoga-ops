@@ -87,7 +87,7 @@ from hoga.live.venue import LiveVenuePolicy, Venue, parse_live_venue_policy, quo
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.timeenc import KST
 
-from . import kis_access
+from . import settings as live_settings
 from .buffer import LiveBuffer
 from .index_sector_rankings import (
     IndexSectorRankingResponse,
@@ -1590,7 +1590,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             or kiwoom_client is None
             # bypass 는 과도기에 "REST 우회" 로 읽는다 — 벤더가 바뀌어도 사용자가
             # 보는 동작(캐시로 강등)은 같다. 토글 자체는 PR-J 에서 사라진다.
-            or kis_access.rest_bypass_enabled(data_dir)
+            or live_settings.rest_bypass_enabled(data_dir)
         ):
             return snapshot()
         scheduler = kiwoom_rest_runtime.ensure_scheduler()
@@ -1651,7 +1651,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     503,
                     {"code": LiveErrorCode.NOT_WIRED, "message": "index-candles cache not wired (data_dir missing)"},
                 )
-            if kis_access.rest_bypass_enabled(data_dir):
+            if live_settings.rest_bypass_enabled(data_dir):
                 return _collect_index_daily_candles_cache_only(
                     cache=index_candles_cache_instance,
                     key=(index.id, timeframe),
@@ -1738,7 +1738,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
 
             # REST 우회 토글 — **가용성 검사보다 앞에 온다.** 우회 중에는 업스트림을
             # 아예 만지지 않는 것이 계약이라, fetcher 미배선으로 503 을 내면 안 된다.
-            if kis_access.rest_bypass_enabled(data_dir):
+            if live_settings.rest_bypass_enabled(data_dir):
                 return _collect_index_minute_candles_cache_only(
                     cache=index_minute_candles_cache_instance,
                     key=cache_key,
@@ -1850,7 +1850,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     "message": f"{index.id} does not support market investor net",
                 },
             )
-        if data_dir is not None and kis_access.rest_bypass_enabled(data_dir):
+        if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
             return {
                 "index_id": index.id,
                 "from": from_,
@@ -2003,7 +2003,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         code_list = [c for c in codes.split(",") if _CODE_RE.match(c)]
         if not code_list:
             return LiveQuotesResponse(phase=phase, quotes=[])
-        if data_dir is not None and kis_access.rest_bypass_enabled(data_dir):
+        if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
             return LiveQuotesResponse(
                 phase=phase,
                 quotes=_quote_fetcher.stale_last_good(
@@ -2079,7 +2079,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             return LiveTabMetricsResponse(phase=phase, metrics=[])
 
         quotes: list[LiveQuote] = []
-        if data_dir is not None and kis_access.rest_bypass_enabled(data_dir):
+        if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
             quotes = []
         elif (tab_client := kiwoom_rest_runtime.ensure_rest_client(data_dir)) is not None:
             try:
@@ -2138,7 +2138,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 422,
                 {"code": LiveErrorCode.INVALID_CODE, "message": "code must be 6 digits"},
             )
-        if data_dir is not None and kis_access.rest_bypass_enabled(data_dir):
+        if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
             return _investor_estimate_fetcher._error_response(
                 code,
                 _investor_estimate_fetcher._today_fn(),
@@ -2254,7 +2254,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 503,
                 {"code": LiveErrorCode.NOT_WIRED, "message": "past-candles cache not wired (data_dir missing)"},
             )
-        if data_dir is not None and kis_access.rest_bypass_enabled(data_dir):
+        if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
             out = await minute_backfill.collect_minute_cache_only(
                 code=code,
                 frm=frm,
@@ -2295,7 +2295,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 503,
                 {"code": LiveErrorCode.NOT_WIRED, "message": "past-daily-candles cache not wired (data_dir missing)"},
             )
-        if data_dir is not None and kis_access.rest_bypass_enabled(data_dir):
+        if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
             return await daily_backfill.collect_daily_cache_only(
                 code=code,
                 frm=frm,
@@ -2362,7 +2362,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if (
             data_dir is not None
             and investor_cache_instance is not None
-            and kis_access.rest_bypass_enabled(data_dir)
+            and live_settings.rest_bypass_enabled(data_dir)
         ):
             return _collect_daily_series_cache_only(
                 cache=investor_cache_instance,
