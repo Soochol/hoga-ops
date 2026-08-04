@@ -179,18 +179,20 @@ Set `KIS_APP_KEY` / `KIS_APP_SECRET` (and optionally `HOGAPLAY_COOKIE`) per `.en
 dev 에서 병행 사용하면 **머신이 달라도** 키움 WS 킥 전쟁·KIS 유량 합산 초과가 난다.
 워크트리에 `.env` 가 없으면 메인 체크아웃 것을 상속한다(`hoga/env.py` 가 경고 로그를
 1회 남긴다) — 상속을 원치 않으면 워크트리에 빈 `.env` 를 둔다.
-Symbol search uses the static KIS `.mst` files — no credentials required.
-거래일 조회는 KIS Open API를 사용합니다. 자격증명이 없으면 **범위 캡처 enqueue 는
-평일 기준으로 담고 응답에 `warning: kis_credentials_missing` 을 실어 보냅니다**
-(2026-07-31, UI 에 "평일 기준으로 담았습니다" 알림). 휴장일이 섞이면 그 날짜는 업스트림
-빈 응답 → ADR-0021 센티넬로 끝납니다.
+**브로커 분담 (ADR-0136 · #1046)**: 실시간 WS·폴링 REST 는 **전부 키움**이다.
+KIS 는 **파생(KOSPI200 옵션 심리 패널 · ADR-0135) 전용**으로 남았다 — 키움 REST
+337개 TR 에 파생 TR 이 0건이라 옮길 수 없었다.
 
-**일시 장애(`kis_holiday_fetch_failed`)는 폴백하지 않고 503 으로 실패**합니다 — 그때는
-잠시 후 재시도가 옳은 안내이고, 추측한 날짜 목록으로 진행할 이유가 없습니다.
-(이전 판은 "자격증명이 없으면 평일 폴백 · 캡처 동작에 영향 없음" 이라고 적었지만
-실측하니 enqueue 가 503 으로 죽어 **캡처를 아예 걸 수 없었습니다** — 그래서 고쳤습니다.)
-`/live` 실시간 스트림(KIS WebSocket)은 `KIS_APP_KEY`/`KIS_APP_SECRET` 미설정 시 오프라인으로 시작하며
-프론트엔드에 "KIS 자격증명이 설정되지 않았습니다" 배너를 표시합니다.
+- **종목 검색**: 키움 `ka10099`. 커밋된 시드 스냅샷(`hoga/api/kiwoom_master_seed.json`)
+  이 있어 **자격증명 없이도 검색이 산다**. 최신화만 런타임이 한다.
+- **거래일 달력**: 커밋된 정적 시드(`hoga/api/trading_days_seed.txt`, 키움 `ka20006`
+  역산). **조회 경로에 벤더가 없어 자격증명 없이도 정확하다.** 시드 범위 밖은
+  `None`(모름)이고, 스케줄러가 오버레이를 하루씩 민다.
+  - 범위 캡처는 커버리지 안은 정확한 거래일, **그 뒤 꼬리만 평일 근사** + 경고다
+    (경계에서 자른다 — 전 구간 차단도 전 구간 근사도 아니다).
+- **`/live` 실시간 스트림**: 키움 WS. `KIWOOM_APP_KEY`/`KIWOOM_APP_SECRET` 미설정 시
+  오프라인으로 시작한다.
+- **KIS 키**: 없으면 **옵션 심리 패널만** 빈다. 나머지는 전부 정상이다.
 
 **Frontend** — Vite's HMR is on by default:
 

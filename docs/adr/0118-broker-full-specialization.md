@@ -1,6 +1,8 @@
 # 0118 — 브로커 완전 특화: 실시간 WS=키움 전담, 폴링 REST=KIS 전담, KIS WS 삭제
 
-**Status:** accepted (2026-07-17)
+**Status:** **REST 절 폐기 (ADR-0136 · 2026-08-04)** — "실시간 WS=키움 / 폴링 REST=KIS" 분담에서 **REST 도 키움**이 됐다. WS 특화 결정은 그대로 유효하다. KIS 는 파생(옵션·ADR-0135) 전용으로 남는다.
+
+**Status(원):** accepted (2026-07-17)
 
 **Supersedes:**
 - ADR-0096 (UN venue 하이브리드) — 시간대 하이브리드 게이트가 "상시 병합 + 시간외단일가

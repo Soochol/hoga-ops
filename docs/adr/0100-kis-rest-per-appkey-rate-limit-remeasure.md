@@ -1,6 +1,8 @@
 # 0100 — KIS REST 유량 앱키별 독립 재실측과 계정별 토큰버킷 복원
 
-**Status:** accepted (2026-07-10)
+**Status:** **superseded by ADR-0136** (2026-08-04) — KIS 계정 풀·앱키별 유량 축이 소멸했다. 키움 유량은 **TR별 5 req/s** 라 고를 계정이 없다(#1015). 원문은 KIS 시절 실측 기록으로 남긴다.
+
+**Status(원):** accepted (2026-07-10)
 
 **Related:**
 - ADR-0082 (KIS capacity scheduler / account pool) — 원 per-appkey 운영 가정 복원; 2026-07-08 Amendment("명의 단위 한도") 폐기.
