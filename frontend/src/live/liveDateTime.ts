@@ -147,26 +147,32 @@ export const STEP_CANDLE_TARGET = 50;
 const TRADING_DAYS_PER_WEEK = 5;
 const TRADING_DAYS_PER_MONTH = 21;
 
-/** 좌측 팬/줌 백필 한 스텝의 거래일 폭 — 전 타임프레임 단일 소스(ADR-0105).
+/** 좌측 팬/줌 백필 한 스텝의 거래일 폭 — 전 타임프레임 단일 소스(ADR-0105,
+ * 2026-08-05 개정).
  *
  * 스텝 날짜 계산은 전 타임프레임이 `subtractWeekdaysKst`(주말 스킵) 단일 경로를
  * 쓴다 — 거래일이 주식 데이터의 자연 단위라(일봉은 거래일에만 존재), 스텝당
- * 캔들 산출량이 주말 위치와 무관하게 일정해진다(1m = 5×390 = 1,950봉 고정).
+ * 캔들 산출량이 주말 위치와 무관하게 일정해진다.
  *
- * - 분봉(1m~30m): 5거래일. 백엔드 날짜-병렬 배치 1회로 첫 커밋 ~1.5-2.5s이면서
- *   딥 팬 총시간은 순차(1거래일 스텝) 대비 3~5배 단축(실측 2026-07-11). 초기
- *   로드 `INITIAL_MINUTE_TRADING_DAYS=5`와 동일 단위. 5거래일 ≈ 7~9캘린더일
- *   < 청크 캡 15일·백엔드 신선예산 12일이라 스텝당 요청은 항상 청크 1개.
+ * - 분봉(1m~30m): **5거래일 × tf분** (1m=5, 10m=50, 30m=150). /past-candles 가
+ *   표시 tf 주기로 봉을 직접 받게 되면서(#1091, ka10080 tic_scope) 벤더 페이지
+ *   (900행)의 커버리지가 tf 에 비례한다 — 스텝을 같이 비례시키면 **스텝당 벤더
+ *   페이지 수가 전 tf 균일**(1분 환산 1,950봉 ≈ 2.2페이지)해져, 넓은 tf 딥 팬의
+ *   프론트↔백엔드 왕복이 tf 배수만큼 준다. 1m 은 종전 값 그대로(회귀 없음).
+ *   ⚠️ 세 상수가 맞물린 불변식이 있다 — 셋 다 tf분(m) 배로 함께 스케일된다:
+ *   스텝 5m×dispatch 2 = 14m 캘린더일 ≤ 청크 `pastChunkCalendarDays`(15m),
+ *   10m 거래일 ≤ 백엔드 신선예산(12m). 하나만 바꾸면 조용히 깨진다
+ *   (MAX_BATCH_STEPS_PER_DISPATCH 주석 참고).
  * - D/W/M: 캔들 STEP_CANDLE_TARGET(50)개 환산. D=50거래일, W=50주×5거래일,
  *   M=50개월×21거래일. D=50평일=70캘린더일(기존과 동치), W=250평일=350캘린더일
  *   (기존과 동치), M=1050평일≈1470캘린더일(기존 1550의 의도된 근사). */
 export const STEP_TRADING_DAYS: Record<LiveTimeframe, number> = {
   '1m': 5,
-  '3m': 5,
-  '5m': 5,
-  '10m': 5,
-  '15m': 5,
-  '30m': 5,
+  '3m': 5 * 3,
+  '5m': 5 * 5,
+  '10m': 5 * 10,
+  '15m': 5 * 15,
+  '30m': 5 * 30,
   D: STEP_CANDLE_TARGET,
   W: STEP_CANDLE_TARGET * TRADING_DAYS_PER_WEEK,
   M: STEP_CANDLE_TARGET * TRADING_DAYS_PER_MONTH,
@@ -221,10 +227,12 @@ function stepBackFrom(baseYyyymmdd: string, tf: LiveTimeframe, steps = 1): strin
  * 5×1일 순차의 실측 차가 3.2~5.7배였다(2026-07-11). 즉 스텝을 묶으면 같은 KIS
  * 쿼터로 왕복 횟수만 절반이 된다. prepend 커밋도 절반이라 render 측 비용도 준다.
  *
- * 상한이 2인 이유(세 상수가 맞물린 불변식 — 하나라도 바뀌면 여기를 재계산):
- *   2스텝 = 10평일 = **14캘린더일** ≤ `PAST_CHUNK_CALENDAR_DAYS`(15) → 요청이 항상
- *   청크 1개로 나가고, 10거래일 ≤ 백엔드 `max_fresh_dates_per_collect`(12) →
- *   fetch_budget_exhausted 경고 없이 한 collect에서 완결된다. 3스텝(15평일=21캘린더일)
+ * 상한이 2인 이유(세 상수가 맞물린 불변식 — 하나라도 바뀌면 여기를 재계산).
+ *   전부 tf분(m) 배로 함께 스케일된다(ADR-0105 2026-08-05 개정 — 1m 은 m=1 로
+ *   종전과 동일):
+ *   2스텝 = 10m평일 = **14m캘린더일** ≤ 청크 `pastChunkCalendarDays`(15m) → 요청이
+ *   항상 청크 1개로 나가고, 10m거래일 ≤ 백엔드 신선예산(12m, tic_scope 배) →
+ *   fetch_budget_exhausted 경고 없이 한 collect에서 완결된다. 3스텝(15m평일=21m캘린더일)
  *   은 두 제약을 동시에 깨서 청크 분할 + 예산 유예로 오히려 느려진다.
  *
  * coverage_gap fill은 제외한다(항상 1스텝): 종료 조건이 예산이 아니라 날짜 수렴이라,

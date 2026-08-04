@@ -86,15 +86,20 @@ class LiveMinuteCandleBackfill:
         self._scheduler = scheduler
         self._sem = asyncio.Semaphore(concurrency)
         self._rate_limit_cooldown_s = rate_limit_cooldown_s
-        # 한 collect 호출이 KIS에서 새로 가져올 수 있는 날짜 수 상한.
-        # 기준선을 잃은 프론트가 수백 일 창을 통째로 재요청하면(2026-07-07
-        # 실측 최대 243일/25분) foreground로 KIS 예산을 독점해 다른 종목이
-        # 굶는다. 초과분은 fetch_budget_exhausted 경고(blocking)로 유예 —
-        # 프론트가 박제하지 않으므로 다음 사이클에 이어서 받는다.
-        # 불변식: 이 값(12)은 프론트 청크 폭(PAST_CHUNK_CALENDAR_DAYS=15캘린더일
-        # ≈ 11거래일)보다 커야 한다 — 그래야 한 청크 요청이 항상 예산 안에서
-        # 완결된다. 이 아래로 낮추면 청크가 예산 경고를 받아 60s 주기로만
-        # 전진한다(기능은 유지, 속도 저하).
+        # 한 collect 호출이 벤더에서 새로 가져올 수 있는 날짜 수 상한 — **1분
+        # 기준값**. 실효 예산은 `_fresh_budget_for(tic_scope)` 가 tic_scope 분 수를
+        # 곱해 낸다: 예산의 실체는 "collect당 벤더 콜 상한(~5페이지)"인데 페이지
+        # 커버리지가 tic_scope 에 비례하므로(#1091), 날짜 단위 상수를 고정하면 넓은
+        # 스코프에서 예산이 실제 비용의 1/m 로 조여져 dispatch(10m 거래일)가 경고를
+        # 받는다. 스텝·청크와 함께 m 배로 스케일되는 3-상수 불변식의 한 축이다
+        # (liveDateTime.ts MAX_BATCH_STEPS_PER_DISPATCH 주석, ADR-0105 개정).
+        #
+        # 원 목적(그대로 유효): 기준선을 잃은 프론트가 수백 일 창을 통째로
+        # 재요청하면(2026-07-07 실측 최대 243일/25분) foreground로 벤더 예산을
+        # 독점해 다른 종목이 굶는다. 초과분은 fetch_budget_exhausted 경고(blocking)
+        # 로 유예 — 프론트가 박제하지 않으므로 다음 사이클에 이어서 받는다.
+        # 불변식: 실효 예산(12m 거래일)은 프론트 실효 청크 폭(15m 캘린더일 ≈ 11m
+        # 거래일)보다 커야 한다 — 그래야 한 청크 요청이 항상 예산 안에서 완결된다.
         self._max_fresh_dates_per_collect = max(1, int(max_fresh_dates_per_collect))
         self._inflight: dict[
             tuple[Venue, str, str],
@@ -108,6 +113,20 @@ class LiveMinuteCandleBackfill:
         # the PR-6 disk-persistence ROI reads directly off it.
         self._fresh_past_fetches = 0
         self._fresh_past_fetch_errors = 0
+
+    def _fresh_budget_for(self, tic_scope: str) -> int:
+        """collect당 신선-날짜 예산 = 1분 기준값 × tic_scope 분.
+
+        예산의 실체는 벤더 **콜** 상한이다: 페이지가 tic_scope 에 비례해 넓어지므로
+        (900행 ≈ 2.35×m 거래일) 날짜 수를 m 배로 늘려야 콜 수 상한(~5페이지)이
+        유지된다. tic_scope 는 `BUCKET_MS_TO_TIC_SCOPE` 산출값이라 항상 숫자
+        문자열이지만, 방어적으로 파싱 실패 시 1분 예산으로 떨어진다(조여질지언정
+        넓어지지는 않는 방향)."""
+        try:
+            scope_minutes = max(1, int(tic_scope))
+        except ValueError:
+            scope_minutes = 1
+        return self._max_fresh_dates_per_collect * scope_minutes
 
     def stats_snapshot(self) -> dict[str, object]:
         return {
@@ -359,12 +378,13 @@ class LiveMinuteCandleBackfill:
             pending.append(date_s)
 
         deferred = 0
-        if len(pending) > self._max_fresh_dates_per_collect:
+        fresh_budget = self._fresh_budget_for(tic_scope)
+        if len(pending) > fresh_budget:
             # 최신 날짜 우선(차트는 우측=최신부터 보인다). 유예분은 blocking
             # 경고 → 비-KRX 폴백의 covered 처리 + 프론트 비박제까지 한 사유로
             # 일관 처리된다.
-            overflow = pending[: -self._max_fresh_dates_per_collect]
-            pending = pending[-self._max_fresh_dates_per_collect :]
+            overflow = pending[:-fresh_budget]
+            pending = pending[-fresh_budget:]
             deferred = len(overflow)
             for date_s in overflow:
                 warnings_by_date[date_s] = _fetch_budget_exhausted_warning(date_s)
