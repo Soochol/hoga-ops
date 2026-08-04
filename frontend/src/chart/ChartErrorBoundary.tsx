@@ -1,6 +1,10 @@
 import { Component, type ReactNode } from 'react';
 
-type Props = { children: ReactNode };
+type Props = {
+  children: ReactNode;
+  /** 폴백 제목. 기본은 차트 문구 — 데이터 창(10호가·거래원 등)을 감쌀 때 창 문구로 교체. */
+  title?: string;
+};
 type State = { error: Error | null };
 
 /**
@@ -39,7 +43,7 @@ export default class ChartErrorBoundary extends Component<Props, State> {
       return (
         <div className="grid place-items-center h-full bg-bg-card text-fg-dim p-6">
           <div className="max-w-md text-center space-y-3">
-            <div className="text-fg font-semibold">차트 렌더링에 실패했습니다</div>
+            <div className="text-fg font-semibold">{this.props.title ?? '차트 렌더링에 실패했습니다'}</div>
             <div className="text-xs font-data break-all bg-bg-subtle border rounded p-2">
               {this.state.error.message}
             </div>
