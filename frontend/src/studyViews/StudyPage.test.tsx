@@ -856,7 +856,7 @@ describe('StudyPage', () => {
     renderPage('/study?view=view-ref');
 
     const orderbookCard = screen.getByTestId('study-detail-card-orderbook');
-    expect(within(orderbookCard).getByText('커서 위치 로딩 중…')).toBeTruthy();
+    expect(within(orderbookCard).getByText('커서 위치 불러오는 중…')).toBeTruthy();
     expect(within(orderbookCard).queryByText('호가 데이터 없음')).toBeNull();
   });
 
@@ -869,9 +869,9 @@ describe('StudyPage', () => {
 
     const orderbookCard = screen.getByTestId('study-detail-card-orderbook');
     const brokersCard = screen.getByTestId('study-detail-card-brokers');
-    expect(within(orderbookCard).getByText('커서 위치 로딩 중…')).toBeTruthy();
+    expect(within(orderbookCard).getByText('커서 위치 불러오는 중…')).toBeTruthy();
     expect(within(orderbookCard).queryByText('호가 데이터 없음')).toBeNull();
-    expect(within(brokersCard).getByText('커서 위치 로딩 중…')).toBeTruthy();
+    expect(within(brokersCard).getByText('커서 위치 불러오는 중…')).toBeTruthy();
     expect(within(brokersCard).queryByText('거래원 정보 없음')).toBeNull();
   });
 

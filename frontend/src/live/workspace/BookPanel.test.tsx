@@ -230,7 +230,7 @@ describe('BookPanel', () => {
         lastPrice={null}
       />,
     );
-    expect(screen.getByText('커서 위치 로딩 중…')).toBeInTheDocument();
+    expect(screen.getByText('커서 위치 불러오는 중…')).toBeInTheDocument();
   });
 
   it('순간 증감 뱃지(#750)를 각 단 잔량 옆에 그린다', () => {

@@ -77,7 +77,7 @@ export default function BookPanel({
   limits = null,
   vi = null,
 }: Props) {
-  if (snapshot === undefined) return <PanelState>커서 위치 로딩 중…</PanelState>;
+  if (snapshot === undefined) return <PanelState>커서 위치 불러오는 중…</PanelState>;
   if (snapshot === null) return <PanelState>호가 데이터 없음</PanelState>;
 
   const asksDesc = [...snapshot.ask].reverse(); // 높은 가격이 위
