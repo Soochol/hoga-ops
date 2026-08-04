@@ -29,6 +29,7 @@ import { WatchlistAddForm } from './WatchlistAddForm';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { TrashIcon } from '../ui/TrashIcon';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
 import { useLiveVenueStore } from '../state/liveVenue';
@@ -542,13 +543,16 @@ export function WatchlistDrawer() {
 
   // v3 폴더 삭제는 파괴적(ADR-0070 P6): 이 폴더에만 있는 코드는 관심종목에서 빠진다.
   // 고아가 생기면 명시적으로 확인(ADR-0065 정신 — 조용한 유실 금지).
+  // 고아 수는 **확인을 띄우는 시점에 얼려서** state 에 담는다 — 모달이 떠 있는 동안
+  // 폴링으로 `data` 가 갱신되면 다시 센 값이 흔들려 사용자가 읽은 숫자와 어긋난다.
+  const [deleteConfirm, setDeleteConfirm] = useState<{ folderId: string; orphanCount: number } | null>(null);
   const deleteFolderWithConfirm = (folderId: string) => {
     const entries = data?.entries ?? [];
     const inThis = new Set(entries.filter((e) => e.folder_id === folderId).map((e) => e.code));
     const inOthers = new Set(entries.filter((e) => e.folder_id !== folderId).map((e) => e.code));
     const orphans = [...inThis].filter((c) => !inOthers.has(c));
-    if (orphans.length > 0 &&
-        !window.confirm(`이 폴더에만 있는 ${orphans.length}종목이 관심종목에서 빠집니다(데이터 수집 중단). 계속할까요?`)) {
+    if (orphans.length > 0) {
+      setDeleteConfirm({ folderId, orphanCount: orphans.length });
       return;
     }
     deleteM.mutate(folderId);
@@ -787,6 +791,17 @@ export function WatchlistDrawer() {
           initialName={renameTarget.name} busy={renameM.isPending}
           onSubmit={async (name) => { await renameM.mutateAsync({ folderId: renameTarget.id, name }); }}
           onClose={() => setRenameTarget(null)} />
+      )}
+      {deleteConfirm && (
+        <ConfirmModal
+          message={<>
+            이 폴더에만 있는 <b className="font-data">{deleteConfirm.orphanCount}</b>종목이
+            관심종목에서 빠집니다(데이터 수집 중단)
+          </>}
+          confirmLabel="삭제"
+          tone="destructive"
+          onConfirm={() => { deleteM.mutate(deleteConfirm.folderId); setDeleteConfirm(null); }}
+          onClose={() => setDeleteConfirm(null)} />
       )}
     </RailDrawer>
   );

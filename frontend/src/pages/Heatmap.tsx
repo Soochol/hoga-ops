@@ -22,6 +22,7 @@ import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 import { PageContainer } from '../layout/PageContainer';
 import { ControlBar, PageState, PanelCard, ToolbarButton } from '../ui/PageShell';
+import { ConfirmModal } from '../ui/ConfirmModal';
 
 const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장중', closed: '장마감' };
 
@@ -82,6 +83,9 @@ export function Heatmap() {
   // 단일 종목 수집 스코프(행 메뉴 '지난 N일 수집'). null 이면 전체/그룹 다이얼로그.
   const [collectOne, setCollectOne] = useState<{ code: string; name: string } | null>(null);
   const [menu, setMenu] = useState<RowMenu | null>(null);
+  // 그룹 삭제 확인 대기(멤버가 있는 그룹만). 종목 수는 띄우는 시점 값으로 얼린다.
+  const [deleteConfirm, setDeleteConfirm] =
+    useState<{ folderId: string; name: string; memberCount: number } | null>(null);
   // 수집 다이얼로그 스코프 — 각 그룹(폴더)의 코드 목록. 전체 히트맵/그룹 단위 선택.
   const collectScopes = useMemo(
     () => groups.map((g) => ({ id: g.folder.id, name: g.folder.name, codes: g.entries.map((e) => e.code) })),
@@ -106,13 +110,14 @@ export function Heatmap() {
   // 돌려줘 실패 시 보드가 입력을 열어 둔 채 사유를 띄운다.
   const onRenameFolder = (folderId: string, name: string) =>
     renameFolderM.mutateAsync({ folderId, name });
-  // v3 (ADR-0112): 그룹 삭제는 멤버 종목까지 지운다 — 드로어와 같은 문법으로 confirm.
+  // v3 (ADR-0112): 그룹 삭제는 멤버 종목까지 지운다 — 드로어와 같은 문법으로 확인.
   // 종목 수는 **필터 전 원본**(entries)에서 센다: 검색 중엔 화면 그룹이 부분집합이라
-  // visibleGroups 로 세면 실제 삭제량보다 적게 알린다.
+  // visibleGroups 로 세면 실제 삭제량보다 적게 알린다. 그 수는 확인을 띄우는 시점에
+  // 얼려 state 로 옮긴다(모달 표시 중 폴링 갱신으로 흔들리지 않게 — 드로어와 동일 계약).
   const onDeleteFolder = (folderId: string, name: string) => {
     const memberCount = entries.filter((e) => e.folder_id === folderId).length;
-    if (memberCount > 0
-        && !window.confirm(`'${name}' 그룹과 종목 ${memberCount}개가 함께 삭제됩니다. 계속할까요?`)) {
+    if (memberCount > 0) {
+      setDeleteConfirm({ folderId, name, memberCount });
       return;
     }
     deleteFolderM.mutate(folderId);
@@ -218,6 +223,18 @@ export function Heatmap() {
             onRemove={() => removeM.mutate({ code: menu.code, folderId: menu.folderId })}
             onCollect={() => setCollectOne({ code: menu.code, name: menu.name })}
             onClose={() => setMenu(null)}
+          />
+        )}
+        {deleteConfirm && (
+          <ConfirmModal
+            message={<>
+              ‘{deleteConfirm.name}’ 그룹과 종목 <b className="font-data">{deleteConfirm.memberCount}</b>개가
+              함께 삭제됩니다
+            </>}
+            confirmLabel="삭제"
+            tone="destructive"
+            onConfirm={() => { deleteFolderM.mutate(deleteConfirm.folderId); setDeleteConfirm(null); }}
+            onClose={() => setDeleteConfirm(null)}
           />
         )}
       </PanelCard>
