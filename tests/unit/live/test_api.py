@@ -1772,8 +1772,12 @@ def _kiwoom_investor_seam(monkeypatch):
     async def _net(client, code, from_yyyymmdd, to_yyyymmdd):
         return await client.fetch_investor_net(code, from_yyyymmdd, to_yyyymmdd)
 
-    async def _market(client, index, from_yyyymmdd, to_yyyymmdd):
-        return await client.fetch_market_investor_net(index, from_yyyymmdd, to_yyyymmdd)
+    async def _market_day(client, index, date_yyyymmdd):
+        # ka10051 은 하루치 TR 이다(ADR-0137) — 페이크 클라이언트는 아직 구간 API 라
+        # 여기서 하루로 좁혀 준다. 날짜 반복은 거버너 위(호출자)가 소유한다.
+        points = await client.fetch_market_investor_net(
+            index, date_yyyymmdd, date_yyyymmdd)
+        return points[0] if points else None
 
     async def _estimate(client, code):
         return await client.fetch_investor_trend_estimate(code)
@@ -1783,7 +1787,7 @@ def _kiwoom_investor_seam(monkeypatch):
 
     for name, fn in (
         ("fetch_investor_net", _net),
-        ("fetch_market_investor_net", _market),
+        ("fetch_market_investor_net_day", _market_day),
         ("fetch_investor_trend_estimate", _estimate),
     ):
         monkeypatch.setattr(live_api.kiwoom_investor, name, fn)

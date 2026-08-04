@@ -330,17 +330,18 @@ def test_index_investor_net_returns_market_rows_for_kospi(tmp_path, monkeypatch)
 
     어댑터가 **평평한 리스트**를 준다(날짜당 한 콜이라 불변식 위반 개념이 없다).
     """
-    async def fake_market_investor_net(_client, index, from_s, to_s):
+    # ka10051 은 하루치 TR 이다 — 날짜 반복은 거버너 위(호출자)가 소유한다(ADR-0137).
+    async def fake_market_investor_net_day(_client, index, date_s):
         assert index.id == "KOSPI"
-        assert from_s == "20260619"
-        assert to_s == "20260619"
-        return [InvestorNetPoint(t_ms=1, foreign_net=-3519, institution_net=17184)]
+        assert date_s == "20260619"
+        return InvestorNetPoint(t_ms=1, foreign_net=-3519, institution_net=17184)
 
     monkeypatch.setattr(
         live_api.kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
     )
     monkeypatch.setattr(
-        live_api.kiwoom_investor, "fetch_market_investor_net", fake_market_investor_net
+        live_api.kiwoom_investor, "fetch_market_investor_net_day",
+        fake_market_investor_net_day,
     )
 
     app = FastAPI()
