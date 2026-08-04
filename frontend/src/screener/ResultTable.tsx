@@ -165,7 +165,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       rowRef={measureRef} style={style}
       onClick={(e) => onActivate(r.code, r.name, e)} onKeyDown={onKeyDown}
       columns={COLS}
-      className="cursor-pointer outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
+      className="cursor-pointer outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
       <span className="font-data tabular-nums text-fg-dim">{r.code}</span>
       <span className="flex min-w-0 items-center gap-2">
         <span className="truncate">{r.name}</span>

@@ -164,7 +164,7 @@ export function WindowListMenu({
                     data-testid={`${testId}-focus-${row.id}`}
                     onClick={() => focus(row.id)}
                     onKeyDown={(e) => onRowKeyDown(e, index)}
-                    className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-1.5 text-left outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
+                    className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-1.5 text-left outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
                   >
                     {row.icon && <span className="shrink-0 text-fg-dimmer">{row.icon}</span>}
                     <span className="min-w-0 flex-1 truncate text-xs text-fg">

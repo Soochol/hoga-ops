@@ -33,7 +33,7 @@ export function SectorTempStrip({ groups, quoteByCode, onJump }: SectorTempStrip
           key={folder.id}
           type="button"
           onClick={() => onJump(folder.id)}
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-dim hover:text-fg outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--accent)]"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-dim hover:text-fg outline-none focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--accent)]"
           style={{ background: heatBg(avg, STRIP_ALPHA) }}
           aria-label={`${folder.name} 평균 ${avg > 0 ? '+' : ''}${avg.toFixed(1)}% — 카드로 이동`}
         >
