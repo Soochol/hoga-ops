@@ -121,7 +121,7 @@ const DEFAULT_BUNDLE: RangeBundle = {
   to_date: '20260527',
   bucket_ms: 60_000,
   segments: [
-    { date: '20260527', session_open_ms: 1748275200000, session_close_ms: 1748298600000, source: 'kis_live' },
+    { date: '20260527', session_open_ms: 1748275200000, session_close_ms: 1748298600000, source: 'kiwoom_live' },
   ],
   candles: [],
   quote_ratio: { bucket_ms: 60_000, points: [] },

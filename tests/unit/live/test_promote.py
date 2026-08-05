@@ -20,7 +20,7 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     from hoga.live.promote import promote_one
     from hoga.util.timeenc import hhmmssms_to_unix_ms
 
-    live_root = tmp_path / "live"
+    live_root = tmp_path / "live_kiwoom"
     jsonl_path = live_root / "20260527" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     # 2 cycles worth — ADR-0049: t_ms must be a real Unix ms inside the
@@ -50,17 +50,17 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     parquet_root = tmp_path / "parquet"
     await promote_one(jsonl_path, parquet_root, code="005930", date="20260527")
 
-    target = parquet_root / "20260527" / "005930" / "kis_live"
+    target = parquet_root / "20260527" / "005930" / "kiwoom_live" / "KRX"
     assert (target / "snapshots.parquet").exists()
     assert (target / "trades.parquet").exists()
     assert (target / "brokers.parquet").exists()
     meta = json.loads((target / "meta.json").read_text())
-    assert meta["source"] == "kis_live"
+    assert meta["source"] == "kiwoom_live"
     assert meta["code"] == "005930"
     assert meta["date"] == "20260527"
     assert meta["row_counts"] == {"snapshots": 2, "trades": 2, "brokers": 2, "fills": 0}
     # ADR-0003 HHMMSSmmm session bounds — required so build_range_bundle can
-    # compose RangeSegments from kis_live promoted Parquet without KeyError.
+    # compose RangeSegments from kiwoom_live promoted Parquet without KeyError.
     # Discovered via /investigate 2026-05-28 against /api/range 003490 fallback.
     assert meta["regular_session_open_ms"] == 90000000
     assert meta["regular_session_close_ms"] == 153000000
@@ -69,7 +69,7 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     assert snaps.height == 2
     assert "ask_p1" in snaps.columns and "bid_q10" in snaps.columns
     # Canonical hogaplay column names (tot_ask/tot_bid), required so
-    # snapshots.query_at SELECTs succeed against kis_live parquet.
+    # snapshots.query_at SELECTs succeed against kiwoom_live parquet.
     assert "tot_ask" in snaps.columns and "tot_bid" in snaps.columns
     assert "ask_d1" in snaps.columns and "bid_d10" in snaps.columns
 
@@ -94,14 +94,14 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     assert meta["row_counts"]["brokers"] == 2
 
     # The promoted parquet must be readable via query_day_series — this is the
-    # bug the schema unification closes (kis_live previously stored a wide
+    # bug the schema unification closes (kiwoom_live previously stored a wide
     # schema that query_day_series can't read).
     entries = query_day_series(duckdb.connect(), path=target / "brokers.parquet")
     assert entries, "query_day_series must produce entries from KIS-promoted parquet"
 
 
 def test_parse_jsonl_converts_t_ms_to_hhmmssms(tmp_path: Path) -> None:
-    """ADR-0049 — kis_live Promotion writes ts_ms as HHMMSSmmm (not Unix ms).
+    """ADR-0049 — kiwoom_live Promotion writes ts_ms as HHMMSSmmm (not Unix ms).
 
     Live Snapshot t_ms is Unix ms per ADR-0003. Promotion writes it to ts_ms
     column which the schema (ADR-0010) defines as HHMMSSmmm packed decimal.
@@ -219,17 +219,17 @@ async def test_promote_idempotent_skips_if_meta_exists(tmp_path: Path) -> None:
     from hoga.live.promote import promote_one
 
     parquet_root = tmp_path / "parquet"
-    target = parquet_root / "20260527" / "005930" / "kis_live"
+    target = parquet_root / "20260527" / "005930" / "kiwoom_live" / "KRX"
     target.mkdir(parents=True)
     # ADR-0115: a FINALIZED meta (collection_complete=True) is the skip condition.
     (target / "meta.json").write_text(
         json.dumps({
-            "source": "kis_live", "code": "005930", "preserved": True,
+            "source": "kiwoom_live", "code": "005930", "preserved": True,
             "collection_complete": True,
         })
     )
 
-    live_root = tmp_path / "live"
+    live_root = tmp_path / "live_kiwoom"
     jsonl_path = live_root / "20260527" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     jsonl_path.write_text(json.dumps({"t_ms": 1, "kind": "ob", "payload": {}}) + "\n")
@@ -247,7 +247,7 @@ async def test_promote_tolerates_partial_last_line(tmp_path: Path) -> None:
     from hoga.live.promote import promote_one
     from hoga.util.timeenc import hhmmssms_to_unix_ms
 
-    jsonl_path = tmp_path / "live" / "20260527" / "KRX" / "005930.jsonl"
+    jsonl_path = tmp_path / "live_kiwoom" / "20260527" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     # ADR-0049: in-window Unix ms so promote normalizes (not midnight_race_skip).
     t = hhmmssms_to_unix_ms("20260527", 90000000)  # 09:00:00.000 KST
@@ -265,7 +265,7 @@ async def test_promote_tolerates_partial_last_line(tmp_path: Path) -> None:
 
     await promote_one(jsonl_path, tmp_path / "parquet", code="005930", date="20260527")
     snaps = pl.read_parquet(
-        tmp_path / "parquet" / "20260527" / "005930" / "kis_live" / "snapshots.parquet"
+        tmp_path / "parquet" / "20260527" / "005930" / "kiwoom_live" / "KRX" / "snapshots.parquet"
     )
     assert snaps.height == 1  # partial line discarded
 
@@ -276,7 +276,7 @@ async def test_promote_missing_jsonl_is_noop(tmp_path: Path) -> None:
     from hoga.live.promote import promote_one
 
     await promote_one(
-        tmp_path / "live" / "20260527" / "KRX" / "999999.jsonl",
+        tmp_path / "live_kiwoom" / "20260527" / "KRX" / "999999.jsonl",
         tmp_path / "parquet",
         code="999999",
         date="20260527",
@@ -289,7 +289,7 @@ async def test_promote_missing_jsonl_is_noop(tmp_path: Path) -> None:
 async def test_promote_pending_walks_live_root_and_archives(tmp_path: Path) -> None:
     from hoga.live.promote import promote_pending
 
-    live_root = tmp_path / "live"
+    live_root = tmp_path / "live_kiwoom"
     for code in ("005930", "000660"):
         jsonl = live_root / "20260527" / "KRX" / f"{code}.jsonl"
         jsonl.parent.mkdir(parents=True, exist_ok=True)
@@ -305,7 +305,7 @@ async def test_promote_pending_walks_live_root_and_archives(tmp_path: Path) -> N
 
     parquet_root = tmp_path / "parquet"
     for code in ("005930", "000660"):
-        assert (parquet_root / "20260527" / code / "kis_live" / "meta.json").exists()
+        assert (parquet_root / "20260527" / code / "kiwoom_live" / "KRX" / "meta.json").exists()
         # archive movement
         assert (live_root / "_archive" / "20260527" / "KRX" / f"{code}.jsonl").exists()
         assert not (live_root / "20260527" / "KRX" / f"{code}.jsonl").exists()
@@ -316,7 +316,7 @@ async def test_promote_pending_skips_archive_directory(tmp_path: Path) -> None:
     """The _archive subdir under live_root must NOT be traversed."""
     from hoga.live.promote import promote_pending
 
-    live_root = tmp_path / "live"
+    live_root = tmp_path / "live_kiwoom"
     archive_jsonl = live_root / "_archive" / "20260101" / "001234.jsonl"
     archive_jsonl.parent.mkdir(parents=True)
     archive_jsonl.write_text("ignored")
@@ -331,13 +331,13 @@ async def test_promote_pending_skips_archive_directory(tmp_path: Path) -> None:
 async def test_archive_cleanup_removes_files_older_than_7d(tmp_path: Path) -> None:
     from hoga.live.promote import cleanup_archive
 
-    old_path = tmp_path / "live" / "_archive" / "20260101" / "005930.jsonl"
+    old_path = tmp_path / "live_kiwoom" / "_archive" / "20260101" / "005930.jsonl"
     old_path.parent.mkdir(parents=True)
     old_path.write_text("old")
     eight_days_ago = time.time() - 8 * 86400
     os.utime(old_path, (eight_days_ago, eight_days_ago))
 
-    recent_path = tmp_path / "live" / "_archive" / "20260520" / "000660.jsonl"
+    recent_path = tmp_path / "live_kiwoom" / "_archive" / "20260520" / "000660.jsonl"
     recent_path.parent.mkdir(parents=True)
     recent_path.write_text("recent")
 
@@ -359,7 +359,7 @@ async def test_promote_writes_fills_parquet_only_when_fill_lines_exist(tmp_path:
     from hoga.live.promote import promote_one
     from hoga.util.timeenc import hhmmssms_to_unix_ms
 
-    live_root = tmp_path / "live"
+    live_root = tmp_path / "live_kiwoom"
     jsonl_path = live_root / "20260605" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     base_t = hhmmssms_to_unix_ms("20260605", 90000000)
@@ -373,7 +373,7 @@ async def test_promote_writes_fills_parquet_only_when_fill_lines_exist(tmp_path:
 
     parquet_root = tmp_path / "parquet"
     await promote_one(jsonl_path, parquet_root, code="005930", date="20260605")
-    target = parquet_root / "20260605" / "005930" / "kis_live"
+    target = parquet_root / "20260605" / "005930" / "kiwoom_live" / "KRX"
     assert (target / "fills.parquet").exists()
     meta = json.loads((target / "meta.json").read_text())
     assert meta["row_counts"]["fills"] == 2
@@ -444,7 +444,7 @@ async def test_promote_legacy_jsonl_without_fill_writes_no_fills_parquet(tmp_pat
     from hoga.live.promote import promote_one
     from hoga.util.timeenc import hhmmssms_to_unix_ms
 
-    jsonl_path = tmp_path / "live" / "20260527" / "KRX" / "005930.jsonl"
+    jsonl_path = tmp_path / "live_kiwoom" / "20260527" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     base_t = hhmmssms_to_unix_ms("20260527", 90000000)
     jsonl_path.write_text(json.dumps({"t_ms": base_t, "kind": "trade", "payload": {
@@ -453,7 +453,7 @@ async def test_promote_legacy_jsonl_without_fill_writes_no_fills_parquet(tmp_pat
 
     parquet_root = tmp_path / "parquet"
     await promote_one(jsonl_path, parquet_root, code="005930", date="20260527")
-    target = parquet_root / "20260527" / "005930" / "kis_live"
+    target = parquet_root / "20260527" / "005930" / "kiwoom_live" / "KRX"
     assert not (target / "fills.parquet").exists()
     assert (target / "trades.parquet").exists()
 
@@ -495,7 +495,7 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
     assert len(trades) == 1
     assert trades[0].price == 26850
     assert len(broker_rows) == 2  # 1 buy + 1 sell
-    assert meta["source"] == "kis_live"
+    assert meta["source"] == "kiwoom_live"
     assert meta["code"] == "003490"
     assert meta["row_counts"]["snapshots"] == 1
     assert meta["row_counts"]["trades"] == 1
@@ -577,7 +577,7 @@ async def test_promote_skips_empty_candles_parquet(tmp_path: Path) -> None:
 
 
 def test_parse_jsonl_synthesizes_monotonic_seq_per_kind(tmp_path: Path) -> None:
-    """kis_live has no native `seq` but snapshots/trades/brokers schemas all
+    """kiwoom_live has no native `seq` but snapshots/trades/brokers schemas all
     declare one (Int32). Promotion must synthesize a monotonic counter per
     kind so reader-side SELECT (snapshots.query_at, trades selectors,
     brokers.query_day_series) doesn't BinderException at runtime.
@@ -621,7 +621,7 @@ def test_parse_jsonl_synthesizes_monotonic_seq_per_kind(tmp_path: Path) -> None:
 
 
 def test_promoted_snapshots_query_at_succeeds(tmp_path: Path) -> None:
-    """End-to-end seam test: promoted kis_live snapshots.parquet must be
+    """End-to-end seam test: promoted kiwoom_live snapshots.parquet must be
     readable via snapshots.query_at without DuckDB BinderException.
     Locks the bug where ts_ms-only dicts produced a parquet missing the
     `seq` column that query_at SELECTs.
@@ -636,7 +636,7 @@ def test_promoted_snapshots_query_at_succeeds(tmp_path: Path) -> None:
 
     date = "20260528"
     t = hhmmssms_to_unix_ms(date, 90000000)
-    jsonl = tmp_path / "live" / date / "KRX" / "005930.jsonl"
+    jsonl = tmp_path / "live_kiwoom" / date / "KRX" / "005930.jsonl"
     jsonl.parent.mkdir(parents=True)
     jsonl.write_text(json.dumps({
         "t_ms": t, "kind": "ob",
@@ -650,7 +650,7 @@ def test_promoted_snapshots_query_at_succeeds(tmp_path: Path) -> None:
     parquet_root = tmp_path / "parquet"
     asyncio.run(promote_one(jsonl, parquet_root, code="005930", date=date))
 
-    snapshots_path = parquet_root / date / "005930" / "kis_live" / "snapshots.parquet"
+    snapshots_path = parquet_root / date / "005930" / "kiwoom_live" / "KRX" / "snapshots.parquet"
     con = duckdb.connect()
     # If `seq` column is missing, this raises BinderException.
     snap = query_at(con, path=snapshots_path, t_ms=200000000)
@@ -684,7 +684,7 @@ def test_promote_one_archive_move_regression(tmp_path: Path) -> None:
 
     kst = timezone(timedelta(hours=9))
     yesterday = (datetime.now(kst) - timedelta(days=1)).strftime("%Y%m%d")
-    jsonl = tmp_path / "live" / yesterday / "KRX" / "003490.jsonl"
+    jsonl = tmp_path / "live_kiwoom" / yesterday / "KRX" / "003490.jsonl"
     jsonl.parent.mkdir(parents=True, exist_ok=True)
     jsonl.write_text(json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -694,10 +694,10 @@ def test_promote_one_archive_move_regression(tmp_path: Path) -> None:
     asyncio.run(promote_pending(tmp_path))
 
     # parquet 생성
-    assert (tmp_path / "parquet" / yesterday / "003490" / "kis_live" / "meta.json").exists()
+    assert (tmp_path / "parquet" / yesterday / "003490" / "kiwoom_live" / "KRX" / "meta.json").exists()
     # archive 이동 — 핵심 회귀
     assert not jsonl.exists()
-    assert (tmp_path / "live" / "_archive" / yesterday / "KRX" / "003490.jsonl").exists()
+    assert (tmp_path / "live_kiwoom" / "_archive" / yesterday / "KRX" / "003490.jsonl").exists()
 
 
 @pytest.mark.asyncio
@@ -713,7 +713,7 @@ async def test_promote_pending_skips_today(tmp_path: Path) -> None:
     yesterday = (datetime.now(kst) - timedelta(days=1)).strftime("%Y%m%d")
 
     # 오늘 jsonl (skip 대상)
-    today_jsonl = tmp_path / "live" / today / "KRX" / "003490.jsonl"
+    today_jsonl = tmp_path / "live_kiwoom" / today / "KRX" / "003490.jsonl"
     today_jsonl.parent.mkdir(parents=True, exist_ok=True)
     today_jsonl.write_text(json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -721,7 +721,7 @@ async def test_promote_pending_skips_today(tmp_path: Path) -> None:
     }) + "\n")
 
     # 어제 jsonl (정상 promote 대상)
-    yesterday_jsonl = tmp_path / "live" / yesterday / "KRX" / "003490.jsonl"
+    yesterday_jsonl = tmp_path / "live_kiwoom" / yesterday / "KRX" / "003490.jsonl"
     yesterday_jsonl.parent.mkdir(parents=True, exist_ok=True)
     yesterday_jsonl.write_text(json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -732,14 +732,14 @@ async def test_promote_pending_skips_today(tmp_path: Path) -> None:
 
     # 오늘은 live/에 그대로
     assert today_jsonl.exists()
-    assert not (tmp_path / "live" / "_archive" / today / "KRX" / "003490.jsonl").exists()
+    assert not (tmp_path / "live_kiwoom" / "_archive" / today / "KRX" / "003490.jsonl").exists()
     # 오늘 parquet도 안 만들어짐 (promote_pending이 건드리지 않음)
-    assert not (tmp_path / "parquet" / today / "003490" / "kis_live").exists()
+    assert not (tmp_path / "parquet" / today / "003490" / "kiwoom_live").exists()
 
     # 어제는 archive로 이동 + parquet 생성
     assert not yesterday_jsonl.exists()
-    assert (tmp_path / "live" / "_archive" / yesterday / "KRX" / "003490.jsonl").exists()
-    assert (tmp_path / "parquet" / yesterday / "003490" / "kis_live" / "meta.json").exists()
+    assert (tmp_path / "live_kiwoom" / "_archive" / yesterday / "KRX" / "003490.jsonl").exists()
+    assert (tmp_path / "parquet" / yesterday / "003490" / "kiwoom_live" / "KRX" / "meta.json").exists()
 
 
 # === ADR-0115 — completeness fields (analyze_gaps + time-based collection_complete) ===
@@ -771,7 +771,7 @@ def test_build_meta_complete_for_dense_past_stream() -> None:
     from hoga.live.promote import _build_meta
 
     snaps = _dense_snapshots()
-    meta = _build_meta("005930", "20200101", snaps, [], 0, source="kis_live")
+    meta = _build_meta("005930", "20200101", snaps, [], 0, source="kiwoom_live")
     assert meta["collection_complete"] is True
     assert meta["is_partial"] is False
     assert meta["gap_ranges"] == []
@@ -783,11 +783,11 @@ def test_build_meta_partial_on_late_head() -> None:
     from hoga.live.promote import _build_meta
 
     late = [s for s in _dense_snapshots() if s.ts_ms >= 130000000]
-    meta = _build_meta("005930", "20200101", late, [], 0, source="kis_live")
+    meta = _build_meta("005930", "20200101", late, [], 0, source="kiwoom_live")
     assert meta["collection_complete"] is True
     assert meta["is_partial"] is True
     assert meta["gap_ranges"], "expected a head gap range"
-    # The completeness fields route kis_live through the SAME classifier hogaplay uses.
+    # The completeness fields route kiwoom_live through the SAME classifier hogaplay uses.
     assert classify_from_meta(meta).state == DiskState.SOURCE_PARTIAL
 
 
@@ -795,7 +795,7 @@ def test_build_meta_dense_classifies_complete() -> None:
     from hoga.api.disk_state import DiskState, classify_from_meta
     from hoga.live.promote import _build_meta
 
-    meta = _build_meta("005930", "20200101", _dense_snapshots(), [], 0, source="kis_live")
+    meta = _build_meta("005930", "20200101", _dense_snapshots(), [], 0, source="kiwoom_live")
     assert classify_from_meta(meta).state == DiskState.COMPLETE
 
 
@@ -817,13 +817,13 @@ async def test_promote_one_reparses_when_not_finalized(tmp_path: Path) -> None:
     intraday meta left at False is re-parsed so the batch can finalize it."""
     from hoga.live.promote import promote_one
 
-    target = tmp_path / "parquet" / "20260527" / "005930" / "kis_live"
+    target = tmp_path / "parquet" / "20260527" / "005930" / "kiwoom_live" / "KRX"
     target.mkdir(parents=True)
     # Stale intraday meta: not finalized.
     (target / "meta.json").write_text(json.dumps({
-        "source": "kis_live", "collection_complete": False, "is_partial": True,
+        "source": "kiwoom_live", "collection_complete": False, "is_partial": True,
     }))
-    jsonl = tmp_path / "live" / "20260527" / "KRX" / "005930.jsonl"
+    jsonl = tmp_path / "live_kiwoom" / "20260527" / "KRX" / "005930.jsonl"
     jsonl.parent.mkdir(parents=True)
     jsonl.write_text(json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -840,13 +840,13 @@ async def test_promote_one_reparses_when_not_finalized(tmp_path: Path) -> None:
 async def test_promote_one_skips_finalized(tmp_path: Path) -> None:
     from hoga.live.promote import promote_one
 
-    target = tmp_path / "parquet" / "20260527" / "005930" / "kis_live"
+    target = tmp_path / "parquet" / "20260527" / "005930" / "kiwoom_live" / "KRX"
     target.mkdir(parents=True)
     (target / "meta.json").write_text(json.dumps({
-        "source": "kis_live", "collection_complete": True, "is_partial": False,
+        "source": "kiwoom_live", "collection_complete": True, "is_partial": False,
         "row_counts": {"snapshots": 999},
     }))
-    jsonl = tmp_path / "live" / "20260527" / "KRX" / "005930.jsonl"
+    jsonl = tmp_path / "live_kiwoom" / "20260527" / "KRX" / "005930.jsonl"
     jsonl.parent.mkdir(parents=True)
     jsonl.write_text(json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -876,7 +876,7 @@ async def test_promote_one_parses_off_the_event_loop(tmp_path: Path) -> None:
     from hoga.live import promote as promote_mod
     from hoga.util.timeenc import hhmmssms_to_unix_ms
 
-    jsonl_path = tmp_path / "live" / "20260527" / "KRX" / "005930.jsonl"
+    jsonl_path = tmp_path / "live_kiwoom" / "20260527" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     t = hhmmssms_to_unix_ms("20260527", 90000000)
     jsonl_path.write_text(json.dumps({"t_ms": t, "kind": "trade", "payload": {

@@ -28,6 +28,9 @@ function readStorage(): { sourcePreference: SourcePreference } | null {
     const parsed = JSON.parse(raw) as { sourcePreference: string };
     const legacy: Record<string, SourcePreference> = {
       hogaplay: 'hogaplay_first',
+      // 소스 이름을 정책으로 저장하던 시절의 값들. `kis_live` 는 소스에서 제거됐지만
+      // (ADR-0118 계층 삭제 · 잔존 데이터 아카이브) 저장된 값은 남아 있을 수 있어
+      // 이행 규칙을 **유지**한다 — 지우면 그 사용자가 기본값으로 튕긴다.
       kis_live: 'kis_ws_first',
       // kis_api_first는 옵션에서 제거(2026-07-17) — 저장된 옛 값은 기본값으로 강등.
       kis_api_first: 'hogaplay_first',

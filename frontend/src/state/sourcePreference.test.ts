@@ -34,6 +34,8 @@ describe('useSourcePreferenceStore', () => {
     useSourcePreferenceStore.getState().hydrateFromStorage();
     expect(useSourcePreferenceStore.getState().sourcePreference).toBe('hogaplay_first');
 
+    // ⚠ 저장된 값은 여전히 'kis_live' 다 — 소스에서 제거됐어도(ADR-0118 계층 삭제)
+    // 그 값을 쓰던 사용자의 localStorage 는 그대로다. 이행 규칙을 지우면 기본값으로 튕긴다.
     localStorage.setItem('chart.sourcePreference.v1', JSON.stringify({ sourcePreference: 'kis_live' }));
     useSourcePreferenceStore.getState().hydrateFromStorage();
     expect(useSourcePreferenceStore.getState().sourcePreference).toBe('kis_ws_first');

@@ -419,10 +419,10 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512&venue=KRX"
-            "&bucket_ms=60000&source_pref=kis_live&mode=sidecar"
+            "&bucket_ms=60000&source_pref=kiwoom_live&mode=sidecar"
         )
     assert r.status_code == 200, r.text
-    assert captured == ["kis_live"]
+    assert captured == ["kiwoom_live"]
 
 
 def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> None:
@@ -594,7 +594,7 @@ def test_parser_output_visible_as_hogaplay_source(app_client: TestClient) -> Non
 
     Regression: when parser wrote to the flat `{date}/{code}/` path (pre v2
     layout fix), `_resolve_source` ignored it (only scans subdirs). With
-    `kis_live` co-existing the resolver fell through to kis_live, whose
+    `kiwoom_live` co-existing the resolver fell through to kiwoom_live, whose
     candles.parquet doesn't exist by design → empty chart. This test fails
     if parser ever regresses to the flat layout.
 

@@ -32,11 +32,11 @@ def test_classify_stock_date_returns_per_source_states(tmp_path: Path) -> None:
         },
     )
     _write_meta(
-        sd_dir / "kis_live" / "meta.json",
+        sd_dir / "kiwoom_live" / "KRX" / "meta.json",
         {
-            "source": "kis_live",
+            "source": "kiwoom_live",
             "row_counts": {"snapshots": 100},
-            # A legacy kis_live meta (pre-ADR-0115) lacks collection_complete /
+            # A legacy kiwoom_live meta (pre-ADR-0115) lacks collection_complete /
             # is_partial; classify_from_meta treats absence as the conservative
             # CLIENT_INCOMPLETE default. New promotions DO carry them (see
             # test_check_disk_state_* below and tests/unit/live/test_promote.py).
@@ -44,7 +44,7 @@ def test_classify_stock_date_returns_per_source_states(tmp_path: Path) -> None:
     )
 
     states = {k: v.state for k, v in classify_stock_date(sd_dir).items()}
-    assert set(states.keys()) == {"hogaplay", "kis_live"}
+    assert set(states.keys()) == {"hogaplay", "kiwoom_live"}
     assert states["hogaplay"] == DiskState.COMPLETE
 
 
@@ -59,18 +59,18 @@ def _COMPLETE_META(source: str) -> dict:
 
 
 def test_check_disk_state_source_none_aggregates(tmp_path: Path) -> None:
-    """ADR-0115: default (source=None) aggregates — a COMPLETE kis_live promotes
+    """ADR-0115: default (source=None) aggregates — a COMPLETE kiwoom_live promotes
     the Stock-Date to COMPLETE even with no hogaplay artifact."""
     sd_dir = tmp_path / "parquet" / "20260527" / "005930"
-    _write_meta(sd_dir / "kis_live" / "meta.json", _COMPLETE_META("kis_live"))
+    _write_meta(sd_dir / "kiwoom_live" / "KRX" / "meta.json", _COMPLETE_META("kiwoom_live"))
     assert check_disk_state(tmp_path, "005930", "20260527").state == DiskState.COMPLETE
 
 
 def test_check_disk_state_source_hogaplay_ignores_kis(tmp_path: Path) -> None:
-    """ADR-0115: source='hogaplay' ignores a kis_live-only COMPLETE → NONE, so
+    """ADR-0115: source='hogaplay' ignores a kiwoom_live-only COMPLETE → NONE, so
     the capture pipeline still collects hogaplay for that date."""
     sd_dir = tmp_path / "parquet" / "20260527" / "005930"
-    _write_meta(sd_dir / "kis_live" / "meta.json", _COMPLETE_META("kis_live"))
+    _write_meta(sd_dir / "kiwoom_live" / "KRX" / "meta.json", _COMPLETE_META("kiwoom_live"))
     assert check_disk_state(
         tmp_path, "005930", "20260527", source="hogaplay",
     ).state == DiskState.NONE
@@ -80,7 +80,7 @@ def test_check_disk_state_source_hogaplay_sees_hogaplay(tmp_path: Path) -> None:
     """source='hogaplay' still returns a real hogaplay COMPLETE."""
     sd_dir = tmp_path / "parquet" / "20260527" / "005930"
     _write_meta(sd_dir / "hogaplay" / "meta.json", _COMPLETE_META("hogaplay"))
-    _write_meta(sd_dir / "kis_live" / "meta.json", _COMPLETE_META("kis_live"))
+    _write_meta(sd_dir / "kiwoom_live" / "KRX" / "meta.json", _COMPLETE_META("kiwoom_live"))
     assert check_disk_state(
         tmp_path, "005930", "20260527", source="hogaplay",
     ).state == DiskState.COMPLETE
@@ -132,10 +132,10 @@ def test_classify_stock_date_invalid_json_yields_INVALID(tmp_path: Path) -> None
 
 def test_aggregate_takes_best_of_sources() -> None:
     assert aggregate_disk_state(
-        {"hogaplay": DiskState.COMPLETE, "kis_live": DiskState.NONE}
+        {"hogaplay": DiskState.COMPLETE, "kiwoom_live": DiskState.NONE}
     ) == DiskState.COMPLETE
     assert aggregate_disk_state(
-        {"hogaplay": DiskState.INVALID, "kis_live": DiskState.COMPLETE}
+        {"hogaplay": DiskState.INVALID, "kiwoom_live": DiskState.COMPLETE}
     ) == DiskState.COMPLETE
     assert aggregate_disk_state({"hogaplay": DiskState.SOURCE_PARTIAL}) == DiskState.SOURCE_PARTIAL
 

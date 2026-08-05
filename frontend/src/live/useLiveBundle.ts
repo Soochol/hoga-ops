@@ -593,7 +593,7 @@ export function useLiveBundle(
     return bars.map(kisBarToCandle);
   }, [isMinute, timeframe, restBypassEnabled, pastDailyCandlesQuery.data?.candles, screenerDailyCandlesQuery.data?.candles]);
   const kisCandles = isMinute ? minuteKisCandles : calendarKisCandles;
-  // 소스 칩용 날짜→소스 맵. 우회 OFF는 undefined → buildChartBundle 기본값(kis_live)이
+  // 소스 칩용 날짜→소스 맵. 우회 OFF는 undefined → buildChartBundle 기본값(kiwoom_live)이
   // 순수-KIS 표기를 담당(현행 동일). 우회 ON에서만 디스크 소스를 명시한다.
   const candleSourceByDate = useMemo(() => {
     if (!restBypassEnabled) return undefined;

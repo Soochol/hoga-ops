@@ -34,7 +34,7 @@ def _trade(ts_ms: int, price: int = 25000, side: int = 1, seq: int = 1) -> Trade
 @pytest.fixture
 def ratio_fixture(tmp_path):
     """snapshots.parquet 1개짜리 최소 engine (오늘/과거 공용)."""
-    code, date, source = "005930", "20260707", "kis_live"
+    code, date, source = "005930", "20260707", "kiwoom_live"
     d = tmp_path / date / code / source
     d.mkdir(parents=True)
     snapshots_write_parquet([_ob(90000000), _ob(90060000, seq=2)], d / "snapshots.parquet")
@@ -51,7 +51,7 @@ def ratio_fixture(tmp_path):
 @pytest.fixture
 def fill_fixture(tmp_path):
     """trades.parquet 1개짜리 최소 engine (fill_strength가 trades로 폴백)."""
-    code, date, source = "005930", "20260707", "kis_live"
+    code, date, source = "005930", "20260707", "kiwoom_live"
     d = tmp_path / date / code / source
     d.mkdir(parents=True)
     trades_write_parquet(
@@ -70,7 +70,7 @@ def fill_fixture(tmp_path):
 @pytest.fixture
 def peak_fixture(tmp_path):
     """snapshots.parquet + trades.parquet — peak-dual 오늘 경로에 필요한 최소 세트."""
-    code, date, source = "005930", "20260707", "kis_live"
+    code, date, source = "005930", "20260707", "kiwoom_live"
     d = tmp_path / date / code / source
     d.mkdir(parents=True)
     snapshots_write_parquet([_ob(90000000), _ob(90060000, seq=2)], d / "snapshots.parquet")
@@ -129,7 +129,7 @@ def test_today_fill_strength_none_result_is_not_cached(tmp_path):
     """빈 code_dir(체결 없음, ADR-0043 유효 무데이터) → None은 TTL에 캐시하면 안 된다:
     시가 직후 15초 내 fills/trades.parquet가 새로 생길 수 있어 stale None이 최대 TTL만큼
     새 파일을 가릴 수 있다."""
-    code, date, source = "005930", "20260707", "kis_live"
+    code, date, source = "005930", "20260707", "kiwoom_live"
     d = tmp_path / date / code / source
     d.mkdir(parents=True)  # no fills.parquet, no trades.parquet
 

@@ -83,7 +83,7 @@ const bundle: RangeBundle = {
       date: '20260619',
       session_open_ms: sessionOpenMs,
       session_close_ms: sessionOpenMs + 23_400_000,
-      source: 'kis_live',
+      source: 'kiwoom_live',
     },
   ],
   candles: [

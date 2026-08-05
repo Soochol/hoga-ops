@@ -17,27 +17,27 @@ def test_brokers_response_has_source_field() -> None:
         BrokerSeriesResponse(date="20260528", brokers=[], source="invalid")  # type: ignore[arg-type]
 
 
-def test_brokers_source_pref_prefers_kis_live(seed_brokers):
-    client = seed_brokers(date="20260528", code="005930", with_kis_live=True)
+def test_brokers_source_pref_prefers_kiwoom_live(seed_brokers):
+    client = seed_brokers(date="20260528", code="005930", with_kiwoom_live=True)
     r = client.get("/api/brokers/series", params={"venue": "KRX", 
-        "code": "005930", "date": "20260528", "source_pref": "kis_live",
+        "code": "005930", "date": "20260528", "source_pref": "kiwoom_live",
     })
     assert r.status_code == 200
-    assert r.json()["source"] == "kis_live"
+    assert r.json()["source"] == "kiwoom_live"
 
 
 def test_brokers_source_pref_falls_back_to_hogaplay(seed_brokers):
-    # Only hogaplay seeded — kis_live missing.
-    client = seed_brokers(date="20260528", code="005930", with_kis_live=False)
+    # Only hogaplay seeded — kiwoom_live missing.
+    client = seed_brokers(date="20260528", code="005930", with_kiwoom_live=False)
     r = client.get("/api/brokers/series", params={"venue": "KRX", 
-        "code": "005930", "date": "20260528", "source_pref": "kis_live",
+        "code": "005930", "date": "20260528", "source_pref": "kiwoom_live",
     })
     assert r.status_code == 200
     assert r.json()["source"] == "hogaplay"  # fallback (ADR-0039)
 
 
 def test_brokers_source_pref_default_is_hogaplay(seed_brokers):
-    client = seed_brokers(date="20260528", code="005930", with_kis_live=False)
+    client = seed_brokers(date="20260528", code="005930", with_kiwoom_live=False)
     r = client.get("/api/brokers/series", params={"venue": "KRX", 
         "code": "005930", "date": "20260528",
         # no source_pref → default "hogaplay"
@@ -47,7 +47,7 @@ def test_brokers_source_pref_default_is_hogaplay(seed_brokers):
 
 
 def test_brokers_source_pref_invalid_returns_422(seed_brokers):
-    client = seed_brokers(date="20260528", code="005930", with_kis_live=False)
+    client = seed_brokers(date="20260528", code="005930", with_kiwoom_live=False)
     r = client.get("/api/brokers/series", params={"venue": "KRX", 
         "code": "005930", "date": "20260528", "source_pref": "garbage",
     })

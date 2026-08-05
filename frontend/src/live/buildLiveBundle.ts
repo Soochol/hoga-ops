@@ -894,7 +894,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
         date: d,
         session_open_ms: bounds.open_ms,
         session_close_ms: bounds.close_ms,
-        source: candleSourceByDate?.get(d) ?? 'kis_live',
+        source: candleSourceByDate?.get(d) ?? 'kiwoom_live',
       };
     });
 
@@ -912,7 +912,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
       date: todayDate,
       session_open_ms: todaySession.open_ms,
       session_close_ms: todaySession.close_ms,
-      source: candleSourceByDate?.get(todayDate) ?? 'kis_live',
+      source: candleSourceByDate?.get(todayDate) ?? 'kiwoom_live',
     });
   }
 

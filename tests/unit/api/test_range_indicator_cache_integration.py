@@ -31,7 +31,7 @@ from hoga.util.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
 DATE = "20260529"
 FUTURE = "20260601"  # > DATE, so DATE counts as a completed past day
 CODE = "005930"
-SRC = "kis_live"
+SRC = "kiwoom_live"
 CLOSE_FULL = 153000000
 DAY_START = hhmmssms_to_unix_ms(DATE, 0)
 B3, B5 = 180_000, 300_000
@@ -42,7 +42,10 @@ def _unix(h: int, m: int, s: int = 0) -> int:
 
 
 def _engine_with_day(tmp_path: Path) -> QueryEngine:
-    code_dir = tmp_path / "parquet" / DATE / CODE / SRC
+    # 경로 조립은 정본 헬퍼에 맡긴다 — venue 축이 있는 소스는 세그먼트가 붙는다.
+    from hoga.api.sources import source_venue_dir
+
+    code_dir = source_venue_dir(tmp_path / "parquet" / DATE / CODE, SRC, "KRX")
     code_dir.mkdir(parents=True, exist_ok=True)
     code_dir.joinpath("meta.json").write_text(json.dumps({
         "source": SRC, "code": CODE, "date": DATE,

@@ -61,15 +61,15 @@ def test_indicators_mem_vs_disk_hit(tmp_path):
         imb_max_bid=0, imb_max_ask=0,
     )]
     writer = PastIndicatorsCache(tmp_path)
-    writer.store_ratio("AAA", "20260102", "kis_live", rows)
-    assert writer.get_ratio("AAA", "20260102", "kis_live") is not None  # mem hit
+    writer.store_ratio("AAA", "20260102", "kiwoom_live", rows)
+    assert writer.get_ratio("AAA", "20260102", "kiwoom_live") is not None  # mem hit
     wsnap = writer.stats_snapshot()["ratio"]
     assert wsnap["hits"] == 1 and wsnap["disk_hits"] == 0 and wsnap["stores"] == 1
 
     # Fresh instance over the same dir → served from disk, not memory.
     reader = PastIndicatorsCache(tmp_path)
-    assert reader.get_ratio("AAA", "20260102", "kis_live") is not None
-    assert reader.get_ratio("AAA", "19990101", "kis_live") is None  # true miss
+    assert reader.get_ratio("AAA", "20260102", "kiwoom_live") is not None
+    assert reader.get_ratio("AAA", "19990101", "kiwoom_live") is None  # true miss
     rsnap = reader.stats_snapshot()["ratio"]
     assert rsnap["hits"] == 1 and rsnap["disk_hits"] == 1 and rsnap["misses"] == 1
 
@@ -81,11 +81,11 @@ def test_indicators_peak_accounted_on_has_not_get(tmp_path):
         date="20260102", price=100, qty=5, t_ms=tms,
         max_price=100, max_qty=5, max_t_ms=tms,
     )
-    c.store_ask_peak("AAA", "20260102", "kis_live", 60_000, peak)
+    c.store_ask_peak("AAA", "20260102", "kiwoom_live", 60_000, peak)
     # has_ (real lookup) then get_ (mem re-read) — the bundle.py pattern.
-    assert c.has_ask_peak("AAA", "20260102", "kis_live", 60_000) is True
-    _ = c.get_ask_peak("AAA", "20260102", "kis_live", 60_000)
-    assert c.has_ask_peak("AAA", "20260102", "kis_live", 30_000) is False  # miss
+    assert c.has_ask_peak("AAA", "20260102", "kiwoom_live", 60_000) is True
+    _ = c.get_ask_peak("AAA", "20260102", "kiwoom_live", 60_000)
+    assert c.has_ask_peak("AAA", "20260102", "kiwoom_live", 30_000) is False  # miss
     snap = c.stats_snapshot()["ask_peak"]
     # get_ must NOT add a lookup: exactly 2 lookups from the two has_ calls.
     assert snap["lookups"] == 2

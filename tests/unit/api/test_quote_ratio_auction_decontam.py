@@ -68,10 +68,10 @@ def _write_snaps(path: Path, snaps: list[tuple[int, int, int, bool]]) -> None:
 
 
 def _engine(tmp_path: Path, snaps: list[tuple[int, int, int, bool]], close_ms: int) -> QueryEngine:
-    code_dir = tmp_path / "parquet" / DATE / CODE / "kis_live"
+    code_dir = tmp_path / "parquet" / DATE / CODE / "kiwoom_live" / "KRX"
     code_dir.mkdir(parents=True, exist_ok=True)
     meta = {
-        "source": "kis_live", "code": CODE, "date": DATE,
+        "source": "kiwoom_live", "code": CODE, "date": DATE,
         "regular_session_open_ms": 90000000,
         "regular_session_close_ms": close_ms,
         "collection_complete": True, "is_partial": False,
@@ -84,7 +84,7 @@ def _engine(tmp_path: Path, snaps: list[tuple[int, int, int, bool]], close_ms: i
 def _slice(engine: QueryEngine, bucket_ms: int, close_ms: int):
     return build_quote_ratio_slice(
         engine, code=CODE, date=DATE, bucket_ms=bucket_ms,
-        source="kis_live", session_close_ms=close_ms,
+        source="kiwoom_live", session_close_ms=close_ms,
     )
 
 
@@ -227,10 +227,10 @@ def _write_multi(path: Path, snaps: list[tuple[int, int, int]]) -> None:
 
 
 def _engine_multi(tmp_path: Path, snaps: list[tuple[int, int, int]], close_ms: int) -> QueryEngine:
-    code_dir = tmp_path / "parquet" / DATE / CODE / "kis_live"
+    code_dir = tmp_path / "parquet" / DATE / CODE / "kiwoom_live" / "KRX"
     code_dir.mkdir(parents=True, exist_ok=True)
     meta = {
-        "source": "kis_live", "code": CODE, "date": DATE,
+        "source": "kiwoom_live", "code": CODE, "date": DATE,
         "regular_session_open_ms": 90000000,
         "regular_session_close_ms": close_ms,
         "collection_complete": True, "is_partial": False,
@@ -270,7 +270,7 @@ def test_quote_ratio_slice_intra_max_via_cache_reaggregation(tmp_path: Path) -> 
     cache = PastIndicatorsCache(tmp_path / "cache")
     qr = build_quote_ratio_slice(
         engine, code=CODE, date=DATE, bucket_ms=BUCKET_3M,
-        source="kis_live", session_close_ms=CLOSE_FULL,
+        source="kiwoom_live", session_close_ms=CLOSE_FULL,
         cache=cache, today_kst="20260530",  # date != today → cacheable 재집계 경로
     )
     assert len(qr.points) == 1

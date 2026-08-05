@@ -781,7 +781,7 @@ def test_build_volume_distribution_slice_uses_supplied_price_range_without_candl
             engine,
             code="005930",
             date="20260512",
-            source="kis_live",
+            source="kiwoom_live",
             session_open_ms=90_000_000,
             session_close_ms=153_000_000,
             range_count=10,
@@ -826,8 +826,11 @@ def test_build_range_bundle_trade_source_fallback_skips_kis_api(tmp_path):
         "pages_collected": 1,
         "total_unique_events": 1,
     }
-    for source in ("kis_live", "kis_api"):
-        source_dir = tmp_path / "parquet" / date / code / source
+    from hoga.api.sources import source_venue_dir
+
+    for source in ("kiwoom_live", "kis_api"):
+        # 정본 헬퍼 — venue 축이 있는 소스는 세그먼트가 붙는다.
+        source_dir = source_venue_dir(tmp_path / "parquet" / date / code, source, "KRX")
         source_dir.mkdir(parents=True)
         (source_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     (tmp_path / "parquet" / date / code / "kis_api" / "trades.parquet").touch()
@@ -872,12 +875,12 @@ def test_build_range_bundle_trade_source_fallback_skips_kis_api(tmp_path):
             volume_distribution_price_max=70_100,
         )
 
-    assert rb.segments[0].source == "kis_live"
+    assert rb.segments[0].source == "kiwoom_live"
     assert rb.volume_distributions == [profile]
-    assert dist_builder.call_args.kwargs["source"] == "kis_live"
+    assert dist_builder.call_args.kwargs["source"] == "kiwoom_live"
     assert dist_builder.call_args.kwargs["price_min"] == 69_900
     assert dist_builder.call_args.kwargs["price_max"] == 70_100
-    assert poc_builder.call_args.kwargs["source"] == "kis_live"
+    assert poc_builder.call_args.kwargs["source"] == "kiwoom_live"
 
 
 def test_range_volume_distribution_uses_first_single_price_book_cutoff(tmp_path):

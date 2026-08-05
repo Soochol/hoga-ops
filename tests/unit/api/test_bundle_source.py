@@ -17,15 +17,15 @@ def test_resolve_source_prefers_explicit(tmp_path: Path) -> None:
         "regular_session_open_ms": 90000000,
         "regular_session_close_ms": 153000000,
     }))
-    (sd_dir / "kis_live").mkdir()
-    (sd_dir / "kis_live" / "meta.json").write_text(json.dumps({
-        "source": "kis_live",
+    (sd_dir / "kiwoom_live" / "KRX").mkdir(parents=True)
+    (sd_dir / "kiwoom_live" / "KRX" / "meta.json").write_text(json.dumps({
+        "source": "kiwoom_live",
     }))
 
     engine = QueryEngine(tmp_path)
     try:
         assert _resolve_source(engine, "20260527", "005930", "hogaplay") == "hogaplay"
-        assert _resolve_source(engine, "20260527", "005930", "kis_live") == "kis_live"
+        assert _resolve_source(engine, "20260527", "005930", "kiwoom_live") == "kiwoom_live"
     finally:
         engine.close()
 
@@ -36,13 +36,13 @@ def test_resolve_source_fallback(tmp_path: Path) -> None:
     from hoga.api.queries import QueryEngine
 
     sd_dir = tmp_path / "parquet" / "20260527" / "005930"
-    (sd_dir / "kis_live").mkdir(parents=True)
-    (sd_dir / "kis_live" / "meta.json").write_text(json.dumps({"source": "kis_live"}))
+    (sd_dir / "kiwoom_live" / "KRX").mkdir(parents=True)
+    (sd_dir / "kiwoom_live" / "KRX" / "meta.json").write_text(json.dumps({"source": "kiwoom_live"}))
 
     engine = QueryEngine(tmp_path)
     try:
-        # Prefer hogaplay but it's not present → fallback to kis_live
-        assert _resolve_source(engine, "20260527", "005930", "hogaplay") == "kis_live"
+        # Prefer hogaplay but it's not present → fallback to kiwoom_live
+        assert _resolve_source(engine, "20260527", "005930", "hogaplay") == "kiwoom_live"
     finally:
         engine.close()
 
@@ -52,7 +52,7 @@ def test_resolve_source_prefers_kis_api_when_policy_requests_it(tmp_path: Path) 
     from hoga.api.queries import QueryEngine
 
     sd_dir = tmp_path / "parquet" / "20260622" / "005930"
-    for source in ("hogaplay", "kis_live", "kis_api"):
+    for source in ("hogaplay", "kiwoom_live", "kis_api"):
         (sd_dir / source).mkdir(parents=True, exist_ok=True)
         (sd_dir / source / "meta.json").write_text(json.dumps({
             "collection_complete": True,
@@ -79,10 +79,10 @@ def test_list_stock_dates_in_range_finds_any_source(tmp_path: Path) -> None:
                     "regular_session_open_ms": 90000000,
                     "regular_session_close_ms": 153000000})
     )
-    # kis_live layout
-    (tmp_path / "parquet" / "20260521" / "005930" / "kis_live").mkdir(parents=True)
-    (tmp_path / "parquet" / "20260521" / "005930" / "kis_live" / "meta.json").write_text(
-        json.dumps({"source": "kis_live"})
+    # kiwoom_live layout
+    (tmp_path / "parquet" / "20260521" / "005930" / "kiwoom_live" / "KRX").mkdir(parents=True)
+    (tmp_path / "parquet" / "20260521" / "005930" / "kiwoom_live" / "KRX" / "meta.json").write_text(
+        json.dumps({"source": "kiwoom_live"})
     )
 
     engine = QueryEngine(tmp_path)

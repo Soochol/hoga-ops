@@ -108,7 +108,7 @@ describe('buildLiveBundle', () => {
     expect(bundle.broker_late_entries).toEqual([]);
   });
 
-  it('today-only: SSE + candles produce a single today segment tagged kis_live', () => {
+  it('today-only: SSE + candles produce a single today segment tagged kiwoom_live', () => {
     const bundle = buildLiveBundle({
       code: '005930',
       todayDate: TODAY,
@@ -126,7 +126,7 @@ describe('buildLiveBundle', () => {
       bucketMs: 60_000,
     });
     expect(bundle.segments).toEqual([
-      { date: TODAY, session_open_ms: TODAY_OPEN, session_close_ms: TODAY_CLOSE, source: 'kis_live' },
+      { date: TODAY, session_open_ms: TODAY_OPEN, session_close_ms: TODAY_CLOSE, source: 'kiwoom_live' },
     ]);
     expect(bundle.candles).toEqual([
       { ts_ms: TODAY_OPEN, open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 1000, vol_b: 0 },
@@ -161,9 +161,9 @@ describe('buildLiveBundle', () => {
     });
     // Today segment is present via the SSE orderbook signal (candle-driven policy
     // no longer reads pastBundle.segments; today survives on live signal). Its
-    // source now follows the candle policy → kis_live, not the hoga segment tag.
+    // source now follows the candle policy → kiwoom_live, not the hoga segment tag.
     expect(bundle.segments.length).toBe(1);
-    expect(bundle.segments[0].source).toBe('kis_live');
+    expect(bundle.segments[0].source).toBe('kiwoom_live');
     expect(bundle.quote_ratio.points[0].ask_total).toBe(500);
   });
 
@@ -201,7 +201,7 @@ describe('buildLiveBundle', () => {
       kisCandles: [],
       bucketMs: 60_000,
     });
-    expect(bundle.segments[0].source).toBe('kis_live');
+    expect(bundle.segments[0].source).toBe('kiwoom_live');
   });
 
   it('pastBundle.candles is ignored; kisCandles is the candle source', () => {
@@ -235,7 +235,7 @@ describe('buildLiveBundle', () => {
       to_date: TODAY,
       segments: [
         { date: yesterday, session_open_ms: Y_OPEN, session_close_ms: Y_OPEN + 6.5 * 3600 * 1000, source: 'hogaplay' },
-        { date: TODAY, session_open_ms: TODAY_OPEN, session_close_ms: TODAY_CLOSE, source: 'kis_live' },
+        { date: TODAY, session_open_ms: TODAY_OPEN, session_close_ms: TODAY_CLOSE, source: 'kiwoom_live' },
       ],
       program_trade: {
         points: [
@@ -351,8 +351,8 @@ describe('buildLiveBundle', () => {
     // 5/8 + 5/20 + 5/26, ascending — one per candle date.
     expect(dates).toEqual(['20260508', '20260520', '20260526']);
     // Source follows the candle policy (buildLiveBundle passes no
-    // candleSourceByDate here → default kis_live for every candle date).
-    expect(bundle.segments.map((s) => s.source)).toEqual(['kis_live', 'kis_live', 'kis_live']);
+    // candleSourceByDate here → default kiwoom_live for every candle date).
+    expect(bundle.segments.map((s) => s.source)).toEqual(['kiwoom_live', 'kiwoom_live', 'kiwoom_live']);
   });
 });
 
@@ -819,7 +819,7 @@ function makeRangeBundle(qrPoints: QuoteRatioPoint[]): RangeBundle {
       date: '20260527',
       session_open_ms: 1779840000000,
       session_close_ms: 1779863400000,
-      source: 'kis_live',
+      source: 'kiwoom_live',
     }],
     candles: [],
     quote_ratio: { bucket_ms: MINUTE_MS, points: qrPoints },
@@ -1016,7 +1016,7 @@ describe('buildLiveBundle session-end filter (ADR-0049 / spec §3)', () => {
         date: TODAY,
         session_open_ms: TODAY_OPEN,
         session_close_ms: TODAY_CLOSE,
-        source: 'kis_live',
+        source: 'kiwoom_live',
       }],
       quote_ratio: {
         bucket_ms: 60_000,
@@ -1050,7 +1050,7 @@ describe('buildLiveBundle session-end filter (ADR-0049 / spec §3)', () => {
         date: TODAY,
         session_open_ms: TODAY_OPEN,
         session_close_ms: TODAY_CLOSE,
-        source: 'kis_live',
+        source: 'kiwoom_live',
       }],
       quote_ratio: {
         bucket_ms: 60_000,

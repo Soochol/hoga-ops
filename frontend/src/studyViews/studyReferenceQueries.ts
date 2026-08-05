@@ -63,7 +63,7 @@ export function studyReferenceSidecarRangeOptions(
 
 /** 디스크 캔들(mode=candles). sourcePref는 store 값이 아니라 'hogaplay_first' 고정 —
  * store가 'kis_ws_first'/'completeness_first'면 실시간 WS 소스가 선택되는데
- * kis_live/kiwoom_live는 candles.parquet을 보유하지 않아(ADR-0040/0043) 빈 캔들이 된다.
+ * kiwoom_live 는 캔들을 보유하지만(ADR-0125) venue 축이 있어 축 없는 소스와 다르다.
  * 'hogaplay_first'면 백엔드 resolve_candle_source가 hogaplay → kis_api 복구본(ADR-0109/0121)
  * 순으로 캔들을 고른다(kis_api는 복구 캔들을 보유). 복기뷰 캔들은 항상 디스크 저장분만 쓴다. */
 export function studyReferenceCandleRangeOptions(save: StudyViewReference | null) {

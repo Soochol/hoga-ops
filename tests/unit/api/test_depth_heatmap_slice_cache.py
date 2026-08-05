@@ -47,7 +47,7 @@ def _write_snapshots(path: Path, ts_list: list[int]) -> None:
 
 
 def _engine(tmp_path: Path) -> QueryEngine:
-    code_dir = tmp_path / "parquet" / DATE / CODE / "kis_live"
+    code_dir = tmp_path / "parquet" / DATE / CODE / "kiwoom_live" / "KRX"
     code_dir.mkdir(parents=True)
     (code_dir / "meta.json").write_text(json.dumps({
         "regular_session_open_ms": 90_000_000,
@@ -64,7 +64,7 @@ def _engine(tmp_path: Path) -> QueryEngine:
 
 def _cache_file(tmp_path: Path, bucket_ms: int = 60_000) -> Path:
     return (
-        tmp_path / "kis-past-indicators" / CODE / "kis_live" / f"{DATE}.depth.{bucket_ms}.json"
+        tmp_path / "kis-past-indicators" / CODE / "kiwoom_live" / f"{DATE}.depth.{bucket_ms}.json"
     )
 
 
@@ -73,7 +73,7 @@ def test_minimal_call_applies_disk_cache_gate(tmp_path: Path) -> None:
     try:
         pts = build_depth_heatmap_slice(
             engine, code=CODE, date=DATE, bucket_ms=60_000,
-            source="kis_live", session_close_ms=CLOSE_MS,
+            source="kiwoom_live", session_close_ms=CLOSE_MS,
         )
     finally:
         engine.close()
@@ -87,11 +87,11 @@ def test_minimal_call_result_equals_explicit(tmp_path: Path) -> None:
     try:
         minimal = build_depth_heatmap_slice(
             engine, code=CODE, date=DATE, bucket_ms=60_000,
-            source="kis_live", session_close_ms=CLOSE_MS,
+            source="kiwoom_live", session_close_ms=CLOSE_MS,
         )
         explicit = build_depth_heatmap_slice(
             engine, code=CODE, date=DATE, bucket_ms=60_000,
-            source="kis_live", session_close_ms=CLOSE_MS,
+            source="kiwoom_live", session_close_ms=CLOSE_MS,
             cache=engine.indicators_cache, today_kst=today_kst,
         )
     finally:
@@ -104,7 +104,7 @@ def test_explicit_none_cache_preserves_bypass(tmp_path: Path) -> None:
     try:
         build_depth_heatmap_slice(
             engine, code=CODE, date=DATE, bucket_ms=60_000,
-            source="kis_live", session_close_ms=CLOSE_MS,
+            source="kiwoom_live", session_close_ms=CLOSE_MS,
             cache=None, today_kst=None,
         )
     finally:
@@ -128,11 +128,11 @@ def test_cache_hit_avoids_requery(tmp_path: Path, monkeypatch) -> None:
     try:
         first = build_depth_heatmap_slice(
             engine, code=CODE, date=DATE, bucket_ms=60_000,
-            source="kis_live", session_close_ms=CLOSE_MS,
+            source="kiwoom_live", session_close_ms=CLOSE_MS,
         )
         second = build_depth_heatmap_slice(
             engine, code=CODE, date=DATE, bucket_ms=60_000,
-            source="kis_live", session_close_ms=CLOSE_MS,
+            source="kiwoom_live", session_close_ms=CLOSE_MS,
         )
     finally:
         engine.close()

@@ -1,5 +1,5 @@
 """ADR-0115 — backfill_live_meta: retro-fit completeness fields onto already
-promoted kis_live/kis_api meta.json files."""
+promoted kiwoom_live/kis_api meta.json files."""
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -44,8 +44,8 @@ def _stale_meta(src_dir: Path) -> None:
     }))
 
 
-def test_backfill_finalizes_past_kis_live(tmp_path: Path) -> None:
-    src = tmp_path / "parquet" / "20260715" / "005930" / "kis_live"
+def test_backfill_finalizes_past_kiwoom_live(tmp_path: Path) -> None:
+    src = tmp_path / "parquet" / "20260715" / "005930" / "kiwoom_live" / "KRX"
     _stale_meta(src)
     _write_dense_snapshots(src / "snapshots.parquet")
 
@@ -66,7 +66,7 @@ def test_backfill_finalizes_past_kis_live(tmp_path: Path) -> None:
 
 
 def test_backfill_is_idempotent(tmp_path: Path) -> None:
-    src = tmp_path / "parquet" / "20260715" / "005930" / "kis_live"
+    src = tmp_path / "parquet" / "20260715" / "005930" / "kiwoom_live" / "KRX"
     _stale_meta(src)
     _write_dense_snapshots(src / "snapshots.parquet")
     backfill_live_meta(tmp_path, now=_NOW)
@@ -76,7 +76,7 @@ def test_backfill_is_idempotent(tmp_path: Path) -> None:
 
 def test_backfill_skips_today(tmp_path: Path) -> None:
     """Today's Stock-Date is owned by the Today Promoter — never touched."""
-    src = tmp_path / "parquet" / "20260716" / "005930" / "kis_live"
+    src = tmp_path / "parquet" / "20260716" / "005930" / "kiwoom_live" / "KRX"
     _stale_meta(src)
     _write_dense_snapshots(src / "snapshots.parquet")
     res = backfill_live_meta(tmp_path, now=_NOW)
@@ -86,7 +86,7 @@ def test_backfill_skips_today(tmp_path: Path) -> None:
 
 
 def test_backfill_dry_run_writes_nothing(tmp_path: Path) -> None:
-    src = tmp_path / "parquet" / "20260715" / "005930" / "kis_live"
+    src = tmp_path / "parquet" / "20260715" / "005930" / "kiwoom_live" / "KRX"
     _stale_meta(src)
     _write_dense_snapshots(src / "snapshots.parquet")
     res = backfill_live_meta(tmp_path, dry_run=True, now=_NOW)

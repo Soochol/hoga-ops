@@ -299,7 +299,7 @@ def check_disk_state(
         # 우선순위 = sources._POLICY_ORDER 기본(hogaplay_first)과 동기 유지(import는
         # 순환이라 불가 — sources가 disk_state를 import). kiwoom_live는 kis_live 인접.
         winning = next(
-            (per_source[src] for src in ("hogaplay", "kis_live", "kiwoom_live", "kis_api")
+            (per_source[src] for src in ("hogaplay", "kiwoom_live", "kis_api")
              if src in per_source and per_source[src].state == aggregated),
             None,
         )

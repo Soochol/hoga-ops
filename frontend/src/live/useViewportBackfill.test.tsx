@@ -22,7 +22,7 @@ function bundleWithCandles(): RangeBundle {
     from_date: '20260709',
     to_date: '20260709',
     bucket_ms: 60_000,
-    segments: [{ date: '20260709', session_open_ms: 0, session_close_ms: 1, source: 'kis_live' }],
+    segments: [{ date: '20260709', session_open_ms: 0, session_close_ms: 1, source: 'kiwoom_live' }],
     candles: [{ ts_ms: 1_000, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
     quote_ratio: { bucket_ms: 60_000, points: [] },
     fill_strength: { bucket_ms: 60_000, points: [] },

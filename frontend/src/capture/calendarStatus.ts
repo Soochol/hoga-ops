@@ -108,10 +108,10 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
   complete_live: {
     // KIS live/REST-only promotion, no hogaplay artifact. 글리프를 ◆(다이아)로
     // 분화 — 종전엔 hogaplay 완결과 같은 ✓에 색만 달라 색각 이상·저대비에서
-    // 구분 불가였다. 색은 kis_live source-identity 토큰 유지.
+    // 구분 불가였다. 색은 캡처 배지 정체성 토큰.
     // Cell stays clickable — this date is still a hogaplay target.
     marker: '◆',
-    badgeColor: 'var(--source-kis-live-border)',
+    badgeColor: 'var(--source-capture-border)',
     baseColorVar: 'var(--fg)',
     disabled: false,
     tooltipSuffix: 'KIS 실시간 데이터 (hogaplay 미수집)',
@@ -121,7 +121,7 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
     // KIS live/REST-only promotion with session gaps. ◇(빈 다이아) — KIS 계열은
     // 다이아 모양 가족으로 묶는다(◆ 완결 / ◇ 부분).
     marker: '◇',
-    badgeColor: 'var(--source-kis-live-border)',
+    badgeColor: 'var(--source-capture-border)',
     baseColorVar: 'var(--fg)',
     disabled: false,
     tooltipSuffix: 'KIS 실시간 데이터, 부분 (hogaplay 미수집)',

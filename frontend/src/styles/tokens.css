@@ -143,8 +143,10 @@
 
   /* Source identity (ADR-0039) — provenance, not UI/status/price. Hand-edited (color refs, not size).
      원래 소스별 bg/border 8개였으나 SourceChip 제거(2026-07-31)로 7개가 죽어 정리했다.
-     kis_live border만 남는다 — calendarStatus.ts 의 캡처 배지 색이 쓴다. */
-  --source-kis-live-border: var(--accent);
+     하나만 남는다 — calendarStatus.ts 의 캡처 배지 색이 쓴다.
+     이름에서 벤더를 뺐다: kis_live 는 소스에서 제거됐고(ADR-0118 계층 삭제) 이 색은
+     특정 소스가 아니라 **캡처 배지**의 정체성이다. */
+  --source-capture-border: var(--accent);
 
   /* BEGIN AUTO-GENERATED (size + radius + layout) — regenerate via npm run gen:tokens */
   /* ───── Typography sizes (rem-based) ───── */

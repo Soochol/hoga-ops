@@ -9,7 +9,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_daily_run_calls_promote_before_enqueue(tmp_path: Path) -> None:
-    """Promotion must happen first so kis_live data is on disk when hogaplay
+    """Promotion must happen first so kiwoom_live data is on disk when hogaplay
     enqueue starts the same day."""
     from hoga.api.scheduler import _daily_run
 

@@ -315,7 +315,7 @@ describe('hoga data gaps', () => {
     const bundle: any = {
       bucket_ms: 60_000,
       segments: [
-        { date: '20260518', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000, source: 'kis_live' },
+        { date: '20260518', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000, source: 'kiwoom_live' },
       ],
       candles: [
         candle(sessionOpenMs),

@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 # 필요해 별도 함수로 분리했다(ADR-0121: resolve_candle_source) — kis_api가 호가를
 # 서빙하지 않듯 kis_live/kiwoom_live는 캔들을 서빙하지 않으므로, 두 차원의 승자가
 # 한 Stock-Date에서 갈릴 수 있다.
-SourceName = Literal["hogaplay", "kis_live", "kiwoom_live", "kis_api"]
+SourceName = Literal["hogaplay", "kiwoom_live", "kis_api"]
 
 #: source 가 **어느 venue 를 덮는가**. 디렉터리 축 유무가 아니라 **커버리지**다.
 #:
@@ -48,7 +48,6 @@ SourceName = Literal["hogaplay", "kis_live", "kiwoom_live", "kis_api"]
 SOURCE_VENUES: dict[SourceName, frozenset[Venue]] = {
     # 정규장 KRX 업스트림(전체 디렉터리의 78%). NXT 시간대를 원리적으로 못 준다.
     "hogaplay": frozenset({"KRX"}),
-    "kis_live": frozenset({"KRX"}),   # 삭제된 계층 — 잔존 데이터만
     "kiwoom_live": frozenset({"KRX", "NXT", "UN"}),
     "kis_api": frozenset({"KRX"}),    # 캔들 전용 복구본(ADR-0109)
 }
@@ -78,7 +77,6 @@ def source_venue_dir(stock_date_dir: Path, source: str, venue: Venue) -> Path:
 MissingReason = Literal["stock_date_missing", "source_missing", "venue_unsupported"]
 SourcePolicy = Literal[
     "hogaplay",
-    "kis_live",
     "kiwoom_live",
     "kis_api",
     "hogaplay_first",
@@ -115,17 +113,16 @@ CANDLE_BEARING_SOURCES: frozenset[SourceName] = frozenset(
 )
 
 _POLICY_ORDER: dict[str, tuple[SourceName, ...]] = {
-    "hogaplay": ("hogaplay", "kis_live", "kiwoom_live", "kis_api"),
-    "hogaplay_first": ("hogaplay", "kis_live", "kiwoom_live", "kis_api"),
-    "kis_live": ("kis_live", "kiwoom_live", "kis_api", "hogaplay"),
-    "kis_ws_first": ("kis_live", "kiwoom_live", "kis_api", "hogaplay"),
-    "kiwoom_live": ("kiwoom_live", "kis_live", "kis_api", "hogaplay"),
-    "kiwoom_ws_first": ("kiwoom_live", "kis_live", "kis_api", "hogaplay"),
-    "kis_api": ("kis_api", "kis_live", "kiwoom_live", "hogaplay"),
-    "kis_api_first": ("kis_api", "kis_live", "kiwoom_live", "hogaplay"),
+    "hogaplay": ("hogaplay", "kiwoom_live", "kis_api"),
+    "hogaplay_first": ("hogaplay", "kiwoom_live", "kis_api"),
+    "kis_ws_first": ("kiwoom_live", "kis_api", "hogaplay"),
+    "kiwoom_live": ("kiwoom_live", "kis_api", "hogaplay"),
+    "kiwoom_ws_first": ("kiwoom_live", "kis_api", "hogaplay"),
+    "kis_api": ("kis_api", "kiwoom_live", "hogaplay"),
+    "kis_api_first": ("kis_api", "kiwoom_live", "hogaplay"),
     # 완결성 등급이 1차 키이므로 이 사다리는 **동급 타이브레이크**로만 쓰인다
     # (둘 다 COMPLETE·둘 다 PARTIAL이면 WS 우선). WS-first 순서와 동일.
-    "completeness_first": ("kis_live", "kiwoom_live", "kis_api", "hogaplay"),
+    "completeness_first": ("kiwoom_live", "kis_api", "hogaplay"),
 }
 
 # 캔들 차원은 완결성 타이브레이크를 적용하지 않는다(사용자 결정 2026-07-23):

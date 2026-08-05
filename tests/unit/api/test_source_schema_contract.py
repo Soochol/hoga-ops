@@ -1,6 +1,6 @@
 """Cross-source schema contract tests (ADR-0037 invariant).
 
-Both `hogaplay` parser and `kis_live` Today/Daily Promotion must produce
+Both `hogaplay` parser and `kiwoom_live` Today/Daily Promotion must produce
 `snapshots.parquet` and `trades.parquet` files whose column names satisfy
 the read-path queries in `hoga/api/bundle.py`. These tests pin the
 contract so a future schema drift on either side fails CI loudly instead
@@ -8,11 +8,11 @@ of silently corrupting `/api/range` responses.
 
 Historical context — the 2026-05-28 incident:
   - hogaplay parser wrote snapshots with column `ts_ms` (canonical).
-  - kis_live promote wrote snapshots with column `t_ms` (drifted).
+  - kiwoom_live promote wrote snapshots with column `t_ms` (drifted).
   - read path queried `ts_ms`.
   - Bug stayed hidden because the source-aware data slice was broken
     elsewhere (fell back to hogaplay top-level parquet which happened to
-    have `ts_ms`). Once the source-aware fix landed, kis_live's `t_ms`
+    have `ts_ms`). Once the source-aware fix landed, kiwoom_live's `t_ms`
     schema was exposed and DuckDB raised BinderException.
 """
 from __future__ import annotations
@@ -46,8 +46,8 @@ READ_PATH_SNAPSHOT_COLUMNS = {
 READ_PATH_TRADE_COLUMNS = {"ts_ms", "price", "qty", "side"}
 
 
-def test_kis_live_promote_snapshot_columns_match_read_path(tmp_path: Path) -> None:
-    """kis_live Today/Daily Promotion output must contain every column the
+def test_kiwoom_live_promote_snapshot_columns_match_read_path(tmp_path: Path) -> None:
+    """kiwoom_live Today/Daily Promotion output must contain every column the
     bundle's snapshot query references (ts_ms + 10-level bid_q/ask_q)."""
     jsonl = tmp_path / "in.jsonl"
     jsonl.write_text(json.dumps({
@@ -74,14 +74,14 @@ def test_kis_live_promote_snapshot_columns_match_read_path(tmp_path: Path) -> No
     actual_cols = set(pq.read_table(out).column_names)
     missing = READ_PATH_SNAPSHOT_COLUMNS - actual_cols
     assert not missing, (
-        f"kis_live promote snapshot missing columns required by build_quote_ratio_slice: "
+        f"kiwoom_live promote snapshot missing columns required by build_quote_ratio_slice: "
         f"{missing}. Read path queries {READ_PATH_SNAPSHOT_COLUMNS}, "
         f"promote produced {actual_cols}."
     )
 
 
-def test_kis_live_promote_trade_columns_match_read_path(tmp_path: Path) -> None:
-    """kis_live Today/Daily Promotion trade output must contain every column
+def test_kiwoom_live_promote_trade_columns_match_read_path(tmp_path: Path) -> None:
+    """kiwoom_live Today/Daily Promotion trade output must contain every column
     the bundle's fill-strength + volume-profile queries reference."""
     jsonl = tmp_path / "in.jsonl"
     jsonl.write_text(json.dumps({
@@ -108,7 +108,7 @@ def test_kis_live_promote_trade_columns_match_read_path(tmp_path: Path) -> None:
     actual_cols = set(pq.read_table(out).column_names)
     missing = READ_PATH_TRADE_COLUMNS - actual_cols
     assert not missing, (
-        f"kis_live promote trade missing columns: {missing}. "
+        f"kiwoom_live promote trade missing columns: {missing}. "
         f"Read path queries {READ_PATH_TRADE_COLUMNS}, "
         f"promote produced {actual_cols}."
     )
@@ -129,9 +129,9 @@ def test_hogaplay_snapshot_schema_matches_read_path() -> None:
     )
 
 
-def test_hogaplay_and_kis_live_share_read_path_columns(tmp_path: Path) -> None:
+def test_hogaplay_and_kiwoom_live_share_read_path_columns(tmp_path: Path) -> None:
     """Both sources go through the same canonical PARQUET_SCHEMA writer, so
-    a kis_live-promoted parquet must expose the read-path columns even
+    a kiwoom_live-promoted parquet must expose the read-path columns even
     though KIS REST is delta-free (depth deltas / tot deltas synthesized
     as 0). This locks the writer contract: both sources land in the same
     column shape on disk.
@@ -152,19 +152,19 @@ def test_hogaplay_and_kis_live_share_read_path_columns(tmp_path: Path) -> None:
     )
     out = tmp_path / "snapshots.parquet"
     write_snapshots_parquet(snapshots, out)
-    kis_live_cols = set(pq.read_table(out).column_names)
+    kiwoom_live_cols = set(pq.read_table(out).column_names)
 
-    shared_required = hogaplay_cols & kis_live_cols
+    shared_required = hogaplay_cols & kiwoom_live_cols
     missing_from_shared = READ_PATH_SNAPSHOT_COLUMNS - shared_required
     assert not missing_from_shared, (
         f"Columns required by read path not present in BOTH sources: "
         f"{missing_from_shared}. hogaplay={hogaplay_cols}, "
-        f"kis_live={kis_live_cols}."
+        f"kiwoom_live={kiwoom_live_cols}."
     )
 
 
-def test_kis_live_snapshots_query_at_round_trip(tmp_path: Path) -> None:
-    """/api/orderbook hover spot path: snapshots.query_at against a kis_live
+def test_kiwoom_live_snapshots_query_at_round_trip(tmp_path: Path) -> None:
+    """/api/orderbook hover spot path: snapshots.query_at against a kiwoom_live
     promoted parquet must return a fully-populated ApiOrderbookSnapshot —
     no BinderException, no None on a row that's present.
 
@@ -195,7 +195,7 @@ def test_kis_live_snapshots_query_at_round_trip(tmp_path: Path) -> None:
 
     parquet_root = tmp_path / "parquet"
     asyncio.run(promote_one(jsonl, parquet_root, code="005930", date=_DATE))
-    snapshots_path = parquet_root / _DATE / "005930" / "kis_live" / "snapshots.parquet"
+    snapshots_path = parquet_root / _DATE / "005930" / "kiwoom_live" / "KRX" / "snapshots.parquet"
 
     con = duckdb.connect()
     try:
@@ -209,7 +209,7 @@ def test_kis_live_snapshots_query_at_round_trip(tmp_path: Path) -> None:
     assert snap.tot_bid == 95085 and snap.tot_ask == 102768
 
 
-def test_kis_live_trades_full_schema_round_trip(tmp_path: Path) -> None:
+def test_kiwoom_live_trades_full_schema_round_trip(tmp_path: Path) -> None:
     """trades.parquet must expose every canonical PARQUET_SCHEMA column,
     not just the four (ts_ms/price/qty/side) current bundle.py readers use.
 
@@ -240,7 +240,7 @@ def test_kis_live_trades_full_schema_round_trip(tmp_path: Path) -> None:
 
     parquet_root = tmp_path / "parquet"
     asyncio.run(promote_one(jsonl, parquet_root, code="005930", date=_DATE))
-    trades_path = parquet_root / _DATE / "005930" / "kis_live" / "trades.parquet"
+    trades_path = parquet_root / _DATE / "005930" / "kiwoom_live" / "KRX" / "trades.parquet"
 
     canonical_cols = [f.name for f in TRADES_PARQUET_SCHEMA]
     select_clause = ", ".join(canonical_cols)
@@ -258,8 +258,8 @@ def test_kis_live_trades_full_schema_round_trip(tmp_path: Path) -> None:
     assert [r[seq_idx] for r in rows] == [1, 2]
 
 
-def test_read_path_columns_round_trip_through_kis_live_parquet(tmp_path: Path) -> None:
-    """Integration smoke: write a kis_live snapshot via the canonical writer
+def test_read_path_columns_round_trip_through_kiwoom_live_parquet(tmp_path: Path) -> None:
+    """Integration smoke: write a kiwoom_live snapshot via the canonical writer
     (snapshots.write_parquet → PARQUET_SCHEMA-enforced pyarrow table), then
     verify a DuckDB query mimicking build_quote_ratio_slice can SELECT the
     column set without BinderException."""
