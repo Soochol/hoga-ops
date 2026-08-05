@@ -295,6 +295,35 @@ export const MOCK_KRX_SECTORS: MockKrxSector[] = [
   { name: '의약품', value: 21044.87, changePct: -0.71 },
 ];
 
+/** 증시 주변 자금 (조원) — 키움 TR 없음. 원천 = 금융투자협회(KOFIA), 공공데이터포털
+ *  "금융위원회_금융투자협회종합통계정보" 오픈 API (일 단위, T+2 지연 공시).
+ *  20일 시계열, 마지막 값 = 08/03 기준 (오늘 08/05 의 T+2). */
+export interface MockFundSeries {
+  label: string;
+  values: number[]; // 조원
+}
+
+export const MOCK_MARKET_FUNDS: { asOf: string; series: MockFundSeries[] } = {
+  asOf: '08/03',
+  series: [
+    {
+      label: '고객예탁금',
+      values: [51.2, 51.8, 51.4, 52.1, 52.6, 52.3, 53.0, 53.4, 52.9, 53.7,
+        54.1, 53.8, 54.4, 54.0, 54.6, 55.1, 54.7, 54.8, 55.3, 54.8],
+    },
+    {
+      label: '신용융자',
+      values: [19.8, 19.9, 20.0, 19.9, 20.1, 20.2, 20.1, 20.3, 20.4, 20.3,
+        20.5, 20.4, 20.6, 20.5, 20.4, 20.3, 20.4, 20.5, 20.4, 20.3],
+    },
+    {
+      label: 'CMA',
+      values: [87.4, 87.6, 87.5, 87.8, 87.7, 87.9, 88.0, 87.8, 88.1, 88.0,
+        88.2, 88.1, 88.3, 88.2, 88.0, 88.1, 88.2, 88.0, 88.2, 88.1],
+    },
+  ],
+};
+
 export const MOCK_OPTION_SENTIMENT = {
   pcVolumeRatio: 0.87,
   pcOiRatio: 1.12,

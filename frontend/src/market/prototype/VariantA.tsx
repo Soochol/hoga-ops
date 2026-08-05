@@ -10,7 +10,7 @@ import { PanelCard } from '../../ui/PageShell';
 import { priceDirClass } from '../../ui/priceDir';
 import { heatBg } from '../../heatmap/heat';
 import {
-  MOCK_AS_OF, MOCK_BREADTH, MOCK_INDICES, MOCK_KRX_SECTORS,
+  MOCK_AS_OF, MOCK_BREADTH, MOCK_INDICES, MOCK_KRX_SECTORS, MOCK_MARKET_FUNDS,
   MOCK_NET_TREND, MOCK_OPTION_SENTIMENT, MOCK_PROGRAM_TREND, MOCK_SECTORS,
   MOCK_STREAKS, MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE, MOCK_TREND_DATES,
   mockIndividualDaily, type MockRankRow,
@@ -259,6 +259,45 @@ function NetTrendCard() {
   );
 }
 
+/** 계열 색 — 남은 MA 슬롯 사용 (수급 --ma-3/4 · 프로그램 --ma-6/7 과 안 겹치게) */
+const FUND_COLORS = ['var(--ma-1)', 'var(--ma-2)', 'var(--ma-8)'];
+
+function FundsCard() {
+  return (
+    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
+      <h2 className="text-sm text-fg">
+        증시 주변 자금{' '}
+        <span className="text-2xs text-fg-dim">조원 · {MOCK_MARKET_FUNDS.asOf} 기준(T+2)</span>
+      </h2>
+      <div className="flex flex-col gap-xs">
+        {MOCK_MARKET_FUNDS.series.map((s, i) => {
+          const last = s.values[s.values.length - 1];
+          const prev = s.values[s.values.length - 2];
+          const delta = Number((last - prev).toFixed(1));
+          return (
+            <div key={s.label} className="grid grid-cols-[4.6rem_1fr_auto] items-center gap-sm">
+              <span className="flex items-center gap-2xs text-xs text-fg-dim">
+                <span className="inline-block h-[2px] w-[10px]" style={{ background: FUND_COLORS[i] }} />
+                {s.label}
+              </span>
+              <Sparkline points={s.values} width={90} height={22} strokeVar={FUND_COLORS[i]} />
+              <span className="text-right font-data text-sm tabular-nums">
+                <span className="font-semibold text-fg">{last.toFixed(1)}조</span>{' '}
+                <span className={priceDirClass(delta)}>
+                  {delta > 0 ? '+' : ''}{delta.toFixed(1)}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-2xs text-fg-dim">
+        키움 TR 없음 — 금융투자협회(KOFIA) 공시, 공공데이터포털 오픈 API. 일 1회 · T+2 지연.
+      </p>
+    </PanelCard>
+  );
+}
+
 function RankCard({ title, rows }: { title: string; rows: MockRankRow[] }) {
   return (
     <PanelCard borderless flat className="flex flex-col gap-xs p-md">
@@ -298,10 +337,11 @@ export function VariantA() {
         <SectorCard />
       </div>
       <NetTrendCard />
-      <div className="grid grid-cols-3 gap-xs">
+      <div className="grid grid-cols-4 gap-xs">
         <ProgramCard />
         <StreakCard />
         <BreadthCard />
+        <FundsCard />
       </div>
       <div className="grid grid-cols-3 gap-xs">
         <RankCard title="상승률 상위" rows={MOCK_TOP_GAINERS} />
