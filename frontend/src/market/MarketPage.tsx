@@ -29,6 +29,14 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 import type { LiveIndexId } from '../live/liveInstrument';
 import { PageContainer } from '../layout/PageContainer';
+// PROTOTYPE(throwaway) — 레이아웃 변형 평가용 import. 확정 시 제거.
+import {
+  LayoutSwitcher,
+  VariantCentered,
+  VariantSplit,
+  VariantZones,
+} from './layoutPrototype/LayoutVariants';
+import { useLayoutVariant } from './layoutPrototype/layoutVariantState';
 import { PanelCard, SegmentedControl } from '../ui/PageShell';
 import { priceDirClass } from '../ui/priceDir';
 import {
@@ -94,7 +102,7 @@ function EmptyNote({ children }: { children: React.ReactNode }) {
 
 const MARKET_KEY_BY_INDEX: Record<string, string> = { KOSPI: '0', KOSDAQ: '1' };
 
-function IndexCards() {
+export function IndexCards() {
   const quotes = useMarketIndexQuotes();
   const sectors = useMarketSectors();
 
@@ -175,7 +183,7 @@ function IndexCard({
 
 const MARKET_LABELS: Record<string, string> = { KOSPI: '코스피', KOSDAQ: '코스닥' };
 
-function InvestorCard() {
+export function InvestorCard() {
   const [mode, setMode] = useState<'intraday' | 'daily'>('intraday');
   const flow = useMarketInvestorFlow();
   const data = flow.data;
@@ -300,7 +308,7 @@ function DailyFlow({ data }: { data: ReturnType<typeof useMarketInvestorFlow>['d
 
 // ── 섹터 온도 (KRX 업종) ─────────────────────────────────────────────────
 
-function SectorCard() {
+export function SectorCard() {
   const sectors = useMarketSectors();
   const kospi = sectors.data?.markets['0']?.sectors ?? [];
   const kosdaq = sectors.data?.markets['1']?.sectors ?? [];
@@ -334,7 +342,7 @@ function SectorCard() {
 
 // ── 프로그램 매매 ────────────────────────────────────────────────────────
 
-function ProgramCard() {
+export function ProgramCard() {
   const [axis, setAxis] = useState<ProgramAxis>('intraday');
   const program = useMarketProgram(axis);
   const markets = program.data?.markets ?? {};
@@ -393,7 +401,7 @@ function ProgramCard() {
 
 // ── 순매수 상위 (주체별 2카드) ───────────────────────────────────────────
 
-function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
+export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
   const jump = useJumpToLive();
   const streaks = useMarketStreaks();
   const rows = streaks.data?.[actor] ?? [];
@@ -436,7 +444,7 @@ function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
 
 // ── 시장 폭 · 증시 주변 자금 ─────────────────────────────────────────────
 
-function BreadthCard() {
+export function BreadthCard() {
   const breadth = useMarketBreadth();
   const markets = breadth.data?.markets ?? {};
   return (
@@ -461,7 +469,7 @@ function BreadthCard() {
   );
 }
 
-function FundsCard() {
+export function FundsCard() {
   const funds = useMarketFunds();
   const data = funds.data;
   const series = data?.series ?? [];
@@ -517,7 +525,7 @@ function diffs(values: (number | null)[]): (number | null)[] {
 
 // ── 순위 3종 ──────────────────────────────────────────────────────────────
 
-function RankCard({
+export function RankCard({
   title,
   kind,
   direction,
@@ -559,10 +567,10 @@ function RankCard({
   );
 }
 
-export function MarketPage() {
+/** 현행 배치 — 레이아웃 프로토타입의 대조군. */
+export function CurrentLayout() {
   return (
-    <PageContainer>
-      <div className="flex h-full min-h-0 flex-col gap-xs overflow-y-auto">
+    <div className="flex h-full min-h-0 flex-col gap-xs overflow-y-auto">
         <IndexCards />
         <div className="grid grid-cols-2 gap-xs">
           <InvestorCard />
@@ -580,7 +588,21 @@ export function MarketPage() {
           <RankCard title="하락률 상위" kind="change" direction="down" />
           <RankCard title="거래대금 상위" kind="value" direction="up" />
         </div>
-      </div>
+    </div>
+  );
+}
+
+export function MarketPage() {
+  // PROTOTYPE(throwaway) — 레이아웃 변형 평가 중 (?variant=a|b|c, layoutPrototype/).
+  // 확정되면 승자를 CurrentLayout 자리에 접고 이 분기와 layoutPrototype/ 을 지운다.
+  const variant = useLayoutVariant();
+  return (
+    <PageContainer>
+      {variant === 'current' && <CurrentLayout />}
+      {variant === 'a' && <VariantCentered />}
+      {variant === 'b' && <VariantZones />}
+      {variant === 'c' && <VariantSplit />}
+      <LayoutSwitcher />
     </PageContainer>
   );
 }
