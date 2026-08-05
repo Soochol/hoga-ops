@@ -51,13 +51,16 @@ export const MOCK_INDICES: MockIndex[] = [
     id: 'KOSDAQ', label: '코스닥', value: 812.36, change: -3.34, changePct: -0.41,
     spark: synthSpark(815.7, 812.36, 3.1, 4.1), advance: 743, decline: 690, flat: 112,
   },
+  // 지수 상품 카드는 등락종목수를 달지 않는다(#1100 결정) — 코스피200 은 벤더에 값이
+  // 아예 없고(ka20003 어느 mrkt_tp 에도 201 행 없음, ka20001 도 미제공), 코스닥150 은
+  // 값이 있지만 "등락종목수는 시장 전체 지수의 개념" 이라는 규칙에 맞춰 함께 뺀다.
   {
     id: 'KOSPI200', label: '코스피200', value: 428.17, change: 4.03, changePct: 0.95,
-    spark: synthSpark(424.1, 428.17, 1.4, 2.2), advance: 141, decline: 48, flat: 11,
+    spark: synthSpark(424.1, 428.17, 1.4, 2.2), advance: null, decline: null, flat: null,
   },
   {
     id: 'KOSDAQ150', label: '코스닥150', value: 1421.88, change: -9.12, changePct: -0.64,
-    spark: synthSpark(1431.0, 1421.88, 5.2, 5.7), advance: 61, decline: 82, flat: 7,
+    spark: synthSpark(1431.0, 1421.88, 5.2, 5.7), advance: null, decline: null, flat: null,
   },
 ];
 
