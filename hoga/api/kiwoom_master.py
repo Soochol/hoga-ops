@@ -59,6 +59,11 @@ class MasterRow(NamedTuple):
     name: str
     market: Market
     security_type: SecurityType
+    #: NXT(넥스트레이드) 상장 여부. ``None`` = **모름**(판별 불가), ``False`` = 미상장.
+    #: 이 둘을 합치면 안 된다 — ADR-0140 §4 의 판정 규칙이 "meta 부재 = 모름, 결손으로
+    #: 단정 금지" 를 요구하고, 거래일 달력이 커버리지 밖을 ``None`` 으로 두는 것과 같은
+    #: 규율이다. 구 시드(schema 3, 4-tuple)를 읽으면 여기가 ``None`` 이 된다.
+    nxt_enabled: bool | None = None
 
 
 class KiwoomMasterFetchError(Exception):
@@ -84,7 +89,14 @@ def parse_row(row: dict[str, Any], market: Market) -> MasterRow | None:
     name = str(row.get("name") or "").strip()
     if not code or not name:
         return None
-    return MasterRow(code=code, name=name, market=market, security_type=security_type)
+    # `nxtEnable` 은 ka10099 가 **이미 주는 필드**인데 그동안 버렸다(#1106 — 응답 15필드
+    # 중 4개만 썼다). 값 도메인은 'Y'/'N' 실측(전체 606/4,295, ETF·ETN 은 전량 N).
+    raw_nxt = row.get("nxtEnable")
+    nxt_enabled = None if raw_nxt is None else str(raw_nxt).strip() == "Y"
+    return MasterRow(
+        code=code, name=name, market=market, security_type=security_type,
+        nxt_enabled=nxt_enabled,
+    )
 
 
 def parse_market(rows: list[dict[str, Any]], market: Market) -> list[MasterRow]:
@@ -128,7 +140,15 @@ def load_seed() -> list[MasterRow]:
     except (OSError, ValueError, KeyError):
         logging.getLogger(__name__).exception("종목 마스터 시드를 읽지 못했다: %s", SEED_PATH)
         return []
-    return [
-        MasterRow(code=c, name=n, market=m, security_type=t)  # type: ignore[arg-type]
-        for c, n, m, t in rows
-    ]
+    # 행은 schema 3 에서 4-tuple, schema 4 부터 5-tuple(nxt_enabled)이다. 짧은 행은
+    # **`False` 가 아니라 `None`(모름)** 으로 읽는다 — 구 시드가 "전 종목 NXT 미상장"
+    # 이라고 거짓 증언하면 완결성 판정이 통째로 뒤집힌다.
+    out: list[MasterRow] = []
+    for r in rows:
+        if len(r) == 4:  # noqa: PLR2004 — schema 3 (nxt_enabled 이전)
+            c, n, m, t = r
+            out.append(MasterRow(c, n, m, t))  # type: ignore[arg-type]
+        else:
+            c, n, m, t, x = r[:5]
+            out.append(MasterRow(c, n, m, t, x))  # type: ignore[arg-type]
+    return out
