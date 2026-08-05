@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-_RANGE = "/api/range?code=003490&from=20260519&to=20260519&bucket_ms=60000&mode=sidecar"
+_RANGE = "/api/range?code=003490&from=20260519&to=20260519&bucket_ms=60000&mode=sidecar&venue=KRX"
 
 
 def test_large_range_response_is_gzipped(app_client: TestClient) -> None:

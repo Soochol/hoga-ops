@@ -131,7 +131,9 @@ def _has_served_candles(engine: QueryEngine, code: str, date_s: str) -> bool:
 
     이미 복구된 날(kis_api가 캔들로 승리)은 자연히 non-empty가 되어 멱등 스킵된다.
     """
-    source = resolve_candle_source(engine, date_s, code, _SOURCE_PREF)
+    # ⚠ "KRX" 고정 — ADR-0109 캔들 복구는 KRX 정규장 공백을 메우는 배치이고,
+    # NXT 캔들 복구는 이 지도의 범위 밖이다(ADR-0140 열린 항목).
+    source = resolve_candle_source(engine, date_s, code, _SOURCE_PREF, "KRX")
     if source is None:
         return False
     candles_path = engine.parquet_dir(date_s, code, source) / "candles.parquet"

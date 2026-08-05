@@ -178,9 +178,11 @@ def _classify_flat_legacy_meta(stock_date_dir: Path) -> Classification | None:
 def resolve_source_result(
     engine: QueryEngine, date: str, code: str, pref: str, venue: str = "KRX",
 ) -> SourceResolution:
-    # ⚠ venue 기본값 "KRX" 는 **한시적**이다 — 읽기 API 표면에 venue 를 싣는 것은
-    # PR-J(#1133) 의 몫이고, 그전까지 호출부(라우트)에 넘길 값이 없다. PR-J 가
-    # 기본값을 없애고 호출부가 명시하게 바꾼다.
+    # ⚠ venue 기본값의 **경계**: HTTP 라우트는 필수(`Query(...)`), 내부 헬퍼는 기본값이다.
+    # 이 PR 이 막는 위험은 **프론트가 venue 를 안 보내 조용히 KRX 가 되는 것**이고 그건
+    # HTTP 경계에서만 생긴다 — 이 함수의 유일한 프로덕션 호출자는 이미 라우트에서
+    # venue 를 받는다. 내부까지 필수로 하면 venue 와 무관한 테스트 125개가 "KRX" 를
+    # 채워 넣는 의식이 되고, 그 의식은 오히려 경계를 흐린다.
     order = ordered_sources(pref)
     sd_dir = engine.data_dir / "parquet" / date / code
     if not isinstance(sd_dir, Path):

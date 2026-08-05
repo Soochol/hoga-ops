@@ -260,6 +260,9 @@ def _range_query_string(
         ("code", code),
         ("from", from_date),
         ("to", to_date),
+        # `/api/range` 는 venue 를 필수로 받는다(ADR-0140). 이 측정 도구는 KRX
+        # 정규장 응답 크기를 재는 것이라 KRX 고정이면 충분하다.
+        ("venue", "KRX"),
     ]
     for key, value in kwargs.items():
         if key in {"code", "from_date", "to_date"} or value is None:
