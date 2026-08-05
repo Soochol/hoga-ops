@@ -12,6 +12,7 @@ def test_router_exposes_the_market_surfaces():
     r = build_router(data_dir=Path("/tmp"))
     assert sorted(x.path for x in r.routes) == [
         "/api/market/breadth",
+        "/api/market/funds",
         "/api/market/program",
         "/api/market/sectors",
         "/api/market/streaks",

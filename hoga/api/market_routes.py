@@ -27,6 +27,7 @@ from typing import Any
 from fastapi import APIRouter
 
 from hoga.live import kiwoom_access, market_overview
+from hoga.live.market_funds_runtime import MarketFundsCache
 
 log = logging.getLogger(__name__)
 
@@ -178,6 +179,8 @@ def build_router(*, data_dir: Path) -> APIRouter:
     daily_program_cache = _TtlCache(TTL_PROGRAM_S)
     streaks_cache = _TtlCache(TTL_STREAKS_S)
     breadth_cache = _TtlCache(TTL_BREADTH_S)
+    # 증시 주변 자금은 벤더가 다르다(KOFIA) — 키움 거버너·TTL 축과 분리해 자체 캐시를 쓴다.
+    funds_cache = MarketFundsCache()
 
     def _seam() -> tuple[Any, Any] | None:
         """(거버너, 클라이언트). 무자격이면 None — 라우트는 빈 응답을 돌려준다."""
@@ -273,6 +276,16 @@ def build_router(*, data_dir: Path) -> APIRouter:
         """
 
         return await breadth_cache.get(lambda: _collect_breadth(_walk)) or {"markets": {}}
+
+    @router.get("/funds")
+    async def get_funds() -> dict[str, Any]:
+        """증시 주변 자금 — 예탁금·신용융자·CMA (KOFIA, 이 페이지의 유일한 제3 벤더).
+
+        `KOFIA_API_KEY` 가 없으면 `unavailable="credentials_missing"` 로 이 카드만
+        비고 나머지 표면은 정상 동작한다(ADR-0134). 기준일(`as_of`)은 **응답에서**
+        오므로 화면은 "T+2" 를 고정 문구로 박으면 안 된다.
+        """
+        return await funds_cache.get()
 
     @router.get("/streaks")
     async def get_streaks() -> dict[str, Any]:
