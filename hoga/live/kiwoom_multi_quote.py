@@ -31,19 +31,17 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from hoga.live.kiwoom_rest import KiwoomRestClient
+
+# venue → 종목코드 접미의 정본은 `kiwoom_venue`(#1124 — 방향이 반대인 동명 상수 2벌 통합).
+# 응답의 `stk_cd` 는 접미를 **그대로 에코**하므로 파싱 시 벗겨야 소비자 키와 맞는다.
+# 캔들 모듈 둘이 이 기능 모듈에서 상수만 빌려 가던 구조라 재수출로 호환을 남긴다.
+from hoga.live.kiwoom_venue import VENUE_SUFFIX
 from hoga.live.quote_models import Quote
 from hoga.live.venue import Venue
 
 ChunkFetcher = Callable[[list[str]], Awaitable[list[Quote]]]
 """종목 청크 1개 → 시세 목록. `fetch_multi_price` 의 페이싱 이음매다."""
 
-# venue → 종목코드 접미. KIS 는 `FID_COND_MRKT_DIV_CODE`(J/NX/UN) 파라미터를 쓰지만
-# **키움은 코드에 접미를 붙인다**(#1008). 실측(005930, 2026-08-03):
-#   005930     KRX  239,500  거래량 27,393,575
-#   005930_NX  NXT  240,500  거래량 18,346,108
-#   005930_AL  통합 240,500  거래량 45,739,907  ≈ KRX + NXT (산술 확인)
-# 응답의 `stk_cd` 는 접미를 **그대로 에코**하므로 파싱 시 벗겨야 소비자 키와 맞는다.
-VENUE_SUFFIX: dict[str, str] = {"KRX": "", "NXT": "_NX", "UN": "_AL"}
 
 # 실측 상한(#1040). 넘기면 1634 로 영구 거절된다 — 재시도가 아니라 청킹이 답이다.
 API_ID = "ka10095"
