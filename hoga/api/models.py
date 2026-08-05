@@ -620,6 +620,10 @@ class SymbolHit(BaseModel):
     name: str
     market: Literal["KOSPI", "KOSDAQ"]
     security_type: Literal["stock", "etf", "etn"] = "stock"
+    #: NXT 상장 여부. ``None`` = **모름**(판별 불가), ``False`` = 미상장 — 둘을 합치면
+    #: 안 된다(ADR-0140 §4). 프론트가 "이 시장에 없음"을 표시하려면 이 값이 필요하다
+    #: (#1132) — 없으면 빈 시세와 수집 장애를 구분할 수 없다.
+    nxt_enabled: bool | None = None
     captured_count: int                 # complete only — headline number (spec §11 Q18)
     captured_breakdown: dict[str, int]  # {"complete": N, "source_partial": M, "client_incomplete": K, "invalid": J}
 

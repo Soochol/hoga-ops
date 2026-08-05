@@ -457,11 +457,56 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
     def _sync_parse_and_write() -> None:
         for venue, jsonl_path in pairs:
             _promote_one_venue(data_dir, today, code, venue, jsonl_path)
+        _write_source_meta(data_dir, today, code, [v for v, _ in pairs])
 
     await asyncio.to_thread(_sync_parse_and_write)
     # skip(None)은 위 early-return에서 걸러졌으므로 여기 도달 = 실승격.
     _record_today_promote_success(code)
     return today
+
+
+def _nxt_enabled_now(code: str) -> bool | None:
+    """지금 마스터가 아는 NXT 상장 여부. ``None`` = 모름(마스터 미로드·미상 종목).
+
+    **캡처 시점 값을 박아 두는 것이 요점**이다(ADR-0140 §4) — 넥스트레이드는 종목을
+    단계적으로 늘리므로 *현재* 플래그로 과거일을 판정하면 오판한다.
+    """
+    from hoga.api import symbols as _symbols  # noqa: PLC0415 — 순환 절단(지연)
+
+    try:
+        for hit in _symbols.search(code, limit=5):
+            if hit.code == code:
+                return hit.nxt_enabled
+    except Exception:  # noqa: BLE001 — 마스터 미로드는 "모름"이지 승격 실패가 아니다
+        return None
+    return None
+
+
+def _write_source_meta(data_dir: Path, date: str, code: str, venues: list[str]) -> None:
+    """source 레벨 `kiwoom_live/meta.json` — **venue 축 자체를 설명한다**(ADR-0140 §4).
+
+    venue 레벨 meta 는 각 venue 의 완결성을 담지만, **NXT 가 없는 날엔 그 파일도 없다**
+    — "없음의 이유"를 적을 자리가 사라진다. 그래서 venue 밖 한 단계 위에 둔다.
+
+    `nxt_enabled` 는 **캡처 시점 스냅샷**이다. 기존 meta 가
+    `regular_session_open_ms` 를 캡처 시점 값으로 박아 두는 것과 같은 규율.
+    """
+    nxt = _nxt_enabled_now(code)
+    expected = ["KRX"] if nxt is False else sorted({"KRX", *venues})
+    target = data_dir / "parquet" / date / code / "kiwoom_live"
+    target.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(target / "meta.json", {
+        "source": "kiwoom_live",
+        "code": code,
+        "date": date,
+        # None = 모름. **False(미상장)와 합치면 안 된다** — 판정 규칙이 "meta 부재/모름
+        # 이면 결손으로 단정 금지"를 요구한다.
+        "nxt_enabled": nxt,
+        # 이 날 이 종목에 **있어야 할** venue 목록. 완결 판정(PR-G)이 이걸 기준으로
+        # "전부 닫혔는가"를 본다.
+        "expected_venues": expected,
+        "captured_venues": sorted(venues),
+    }, indent=2)
 
 
 def _kiwoom_jsonl_paths(data_dir: Path, date: str, code: str) -> list[tuple[str, Path]]:

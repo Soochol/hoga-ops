@@ -426,7 +426,9 @@ def test_write_strips_captured_breakdown(tmp_path):
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert "captured_count" not in payload["entries"][0]
     assert "captured_breakdown" not in payload["entries"][0]
-    assert set(payload["entries"][0].keys()) == {"code", "name", "market", "security_type"}
+    assert set(payload["entries"][0].keys()) == {
+        "code", "name", "market", "security_type", "nxt_enabled",
+    }
 
 
 def test_write_creates_parent_dir(tmp_path):
@@ -747,11 +749,13 @@ def test_boot_autofetch_skipped_when_cache_fresh(tmp_path, monkeypatch):
 
     symbols_module.reset_state_for_tests()
 
-    # Write a valid v2 disk file so load_disk_state sets status=fresh.
+    # **현재 스키마**로 써야 status=fresh 다. 구 스키마는 그 자체로 재다운로드 사유이고
+    # (v4 부터 nxt_enabled 가 있다 — ADR-0140 §4), 그게 승격의 의도다. 이 테스트가
+    # 검증하는 것은 "스키마가 최신인데도 불필요하게 재요청하지 않는다" 이다.
     sm_path = tmp_path / "symbol-master.json"
     sm_path.write_text(
         json.dumps({
-            "schema_version": 3,
+            "schema_version": symbols_module.SCHEMA_VERSION,
             "fetched_at_ms": 1747900000000,
             "source": "kis_mst",
             "entries": [{"code": "005930", "name": "삼성전자", "market": "KOSPI"}],
