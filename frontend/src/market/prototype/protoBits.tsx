@@ -176,16 +176,66 @@ export function NetTrendLegend({
   );
 }
 
-/** 일자별 순매수 그룹 막대 — 외국인·기관 2계열, 날짜당 나란히, 0 기준 상하.
- *  누적 라인(NetTrendChart)과 달리 "어느 날 얼마나"의 일 단위 강도를 보인다. */
+/** 개인 계열 색 — 수급 3주체 라인용 (--ma-8 슬레이트, 개인은 통상 역방향이라 음소거 톤) */
+export const INDIVIDUAL_COLOR = 'var(--ma-8)';
+
+/** 다계열 누적 라인 — 슬롯/일별 delta 배열을 누적해 그린다. 0 기준선 공유.
+ *  장중 3주체(개인·외국인·기관) 누적 흐름 등 계열 수가 가변인 자리에 쓴다. */
+export function CumLinesChart({
+  series,
+  width = 300,
+  height = 88,
+}: {
+  series: Array<{ color: string; daily: number[] }>;
+  width?: number;
+  height?: number;
+}) {
+  const cums = series.map(({ daily }) => {
+    let acc = 0;
+    return daily.map((v) => (acc += v));
+  });
+  const all = [...cums.flat(), 0];
+  const min = Math.min(...all);
+  const max = Math.max(...all);
+  const span = max - min || 1;
+  const n = cums[0]?.length ?? 0;
+  if (n < 2) return null;
+  const px = (i: number) => (i / (n - 1)) * (width - 4) + 2;
+  const py = (v: number) => height - 3 - ((v - min) / span) * (height - 6);
+  const path = (s: number[]) =>
+    s.map((v, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+  return (
+    <svg
+      width="100%"
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      className="block"
+    >
+      <line x1="2" x2={width - 2} y1={py(0)} y2={py(0)} stroke="var(--border-strong)" strokeDasharray="2 3" />
+      {cums.map((s, i) => (
+        <path key={i} d={path(s)} fill="none" stroke={series[i].color} strokeWidth="1.5" strokeLinejoin="round" />
+      ))}
+    </svg>
+  );
+}
+
+/** 일자별 순매수 그룹 막대 — 2계열, 날짜당 나란히, 0 기준 상하.
+ *  누적 라인(NetTrendChart)과 달리 "어느 날 얼마나"의 일 단위 강도를 보인다.
+ *  기본색 = 외국인/기관, aColor/bColor 로 프로그램(차익/비차익) 재사용. */
 export function DailyNetBars({
   foreignDaily,
   institutionDaily,
   height = 72,
+  aColor = NET_TREND_COLORS.foreign,
+  bColor = NET_TREND_COLORS.institution,
 }: {
   foreignDaily: number[];
   institutionDaily: number[];
   height?: number;
+  aColor?: string;
+  bColor?: string;
 }) {
   const n = foreignDaily.length;
   const width = 300;
@@ -216,8 +266,8 @@ export function DailyNetBars({
       className="block"
     >
       <line x1="0" x2={width} y1={mid} y2={mid} stroke="var(--border-strong)" />
-      {foreignDaily.map((v, i) => bar(v, i * slot + 1, NET_TREND_COLORS.foreign, `f${i}`))}
-      {institutionDaily.map((v, i) => bar(v, i * slot + 1 + bw + 0.5, NET_TREND_COLORS.institution, `i${i}`))}
+      {foreignDaily.map((v, i) => bar(v, i * slot + 1, aColor, `f${i}`))}
+      {institutionDaily.map((v, i) => bar(v, i * slot + 1 + bw + 0.5, bColor, `i${i}`))}
     </svg>
   );
 }

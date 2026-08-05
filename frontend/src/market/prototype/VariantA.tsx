@@ -6,19 +6,54 @@
 // 정보 위계: "지금 시장이 어디에 있나"(지수) → "누가 사나"(수급) → "무엇이
 // 움직이나"(섹터·무버). 한눈 파악 우선, 스크롤 최소.
 // ============================================================================
-import { PanelCard } from '../../ui/PageShell';
+import { useState } from 'react';
+import { PanelCard, SegmentedControl } from '../../ui/PageShell';
 import { priceDirClass } from '../../ui/priceDir';
 import { heatBg } from '../../heatmap/heat';
 import {
-  MOCK_AS_OF, MOCK_BREADTH, MOCK_INDICES, MOCK_KRX_SECTORS, MOCK_MARKET_FUNDS,
-  MOCK_NET_TREND, MOCK_OPTION_SENTIMENT, MOCK_PROGRAM_TREND, MOCK_SECTORS,
-  MOCK_STREAKS, MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE, MOCK_TREND_DATES,
+  MOCK_AS_OF, MOCK_BREADTH, MOCK_INDICES, MOCK_INTRADAY_INVESTOR, MOCK_INTRADAY_SLOTS,
+  MOCK_KRX_SECTORS, MOCK_MARKET_FUNDS, MOCK_NET_TREND, MOCK_OPTION_SENTIMENT,
+  MOCK_PERIOD_NET, MOCK_PROGRAM_DAILY20, MOCK_PROGRAM_TREND, MOCK_SECTORS,
+  MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE, MOCK_TREND_DATES,
   mockIndividualDaily, type MockRankRow,
 } from './mockData';
 import {
-  AdvanceDeclineBar, BreadthTiles, DailyNetBars, NetTrendChart, NetTrendLegend, PctText,
+  AdvanceDeclineBar, BreadthTiles, CumLinesChart, DailyNetBars, INDIVIDUAL_COLOR,
+  NET_TREND_COLORS, NetTrendChart, NetTrendLegend, PROGRAM_COLORS, PctText,
   ProgramTrendChart, ProgramTrendLegend, Sparkline, fmtSigned,
 } from './protoBits';
+
+/** 카드 헤더용 밀도 우선 모드 토글 — SegmentedControl 위에 2xs 세그먼트. */
+function ModeSwitch<T extends string>({
+  value,
+  onChange,
+  options,
+  label,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: ReadonlyArray<readonly [T, string]>;
+  label: string;
+}) {
+  return (
+    <SegmentedControl aria-label={label}>
+      {options.map(([key, text]) => {
+        const on = value === key;
+        return (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(key)}
+            className={`whitespace-nowrap px-2 py-[2px] font-data text-2xs tabular-nums ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
+          >
+            {text}
+          </button>
+        );
+      })}
+    </SegmentedControl>
+  );
+}
 
 function IndexCard({ idx }: { idx: (typeof MOCK_INDICES)[number] }) {
   return (
@@ -52,12 +87,64 @@ function IndexCard({ idx }: { idx: (typeof MOCK_INDICES)[number] }) {
 }
 
 function InvestorCard() {
+  const [mode, setMode] = useState<'intraday' | 'daily'>('intraday');
   return (
     <PanelCard borderless flat className="flex flex-col gap-sm p-md">
-      <h2 className="text-sm text-fg">
-        투자자 수급 일별 흐름{' '}
-        <span className="text-2xs text-fg-dim">20거래일 일별 순매수 · 억원 · 오늘 = 잠정 (ka10051 일자별)</span>
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs">
+        <h2 className="text-sm text-fg">
+          투자자 수급{' '}
+          <span className="text-2xs text-fg-dim">
+            {mode === 'intraday'
+              ? '당일 누적 · 30분 · 억원 · 잠정 (ka10064)'
+              : '20거래일 일별 순매수 · 억원 · 오늘 = 잠정 (ka10051)'}
+          </span>
+        </h2>
+        <ModeSwitch
+          value={mode}
+          onChange={setMode}
+          options={[['intraday', '당일'], ['daily', '일별']] as const}
+          label="수급 표시 구간"
+        />
+      </div>
+      {mode === 'intraday' && (
+        <div className="grid grid-cols-2 gap-lg">
+          {MOCK_INTRADAY_INVESTOR.map((t) => {
+            const sum = (s: number[]) => s.reduce((a, v) => a + v, 0);
+            const actors = [
+              ['개인', INDIVIDUAL_COLOR, t.individual],
+              ['외국인', NET_TREND_COLORS.foreign, t.foreign],
+              ['기관', NET_TREND_COLORS.institution, t.institution],
+            ] as const;
+            return (
+              <div key={t.market} className="flex flex-col gap-2xs">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-semibold text-fg-dim">
+                    {t.market === 'KOSPI' ? '코스피' : '코스닥'}
+                  </span>
+                  <span className="flex items-center gap-md font-data text-2xs tabular-nums">
+                    {actors.map(([label, color, s]) => (
+                      <span key={label} className="flex items-center gap-2xs">
+                        <span className="inline-block h-[2px] w-[10px]" style={{ background: color }} />
+                        <span className="text-fg-dim">{label}</span>
+                        <span className={priceDirClass(sum(s))}>{fmtSigned(sum(s))}</span>
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                <CumLinesChart
+                  series={actors.map(([, color, daily]) => ({ color, daily: [...daily] }))}
+                  height={96}
+                />
+                <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
+                  <span>{MOCK_INTRADAY_SLOTS[0]}</span>
+                  <span>{MOCK_INTRADAY_SLOTS[MOCK_INTRADAY_SLOTS.length - 1]}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {mode === 'daily' && (
       <div className="grid grid-cols-2 gap-lg">
         {MOCK_NET_TREND.map((t) => {
           const individual = mockIndividualDaily(t);
@@ -115,6 +202,7 @@ function InvestorCard() {
           );
         })}
       </div>
+      )}
       <p className="text-2xs text-fg-dim">
         옵션 심리 — P/C(거래량) {MOCK_OPTION_SENTIMENT.pcVolumeRatio.toFixed(2)} · P/C(미결제){' '}
         {MOCK_OPTION_SENTIMENT.pcOiRatio.toFixed(2)} · max pain {MOCK_OPTION_SENTIMENT.maxPain.toFixed(1)}
@@ -161,47 +249,118 @@ function SectorCard() {
 }
 
 function ProgramCard() {
+  const [mode, setMode] = useState<'intraday' | 'daily'>('intraday');
   return (
-    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
-      <h2 className="text-sm text-fg">
-        프로그램 매매 <span className="text-2xs text-fg-dim">당일 누적 · 억원 (ka90005)</span>
-      </h2>
-      {MOCK_PROGRAM_TREND.map((p) => (
-        <div key={p.market} className="flex flex-col gap-2xs">
-          <div className="flex items-baseline justify-between">
-            <span className="text-xs font-semibold text-fg-dim">
-              {p.market === 'KOSPI' ? '코스피' : '코스닥'}
-              {'  '}
-              <span className={`font-data tabular-nums ${priceDirClass(p.totalEok)}`}>
-                {fmtSigned(p.totalEok)}
+    <PanelCard borderless flat className="flex flex-col gap-sm p-sm">
+      <div className="flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs">
+        <h2 className="text-sm text-fg">
+          프로그램{' '}
+          <span className="text-2xs text-fg-dim">
+            {mode === 'intraday' ? '당일 누적 · 억원 (ka90005)' : '20일 일별 · 억원 (ka90010)'}
+          </span>
+        </h2>
+        <ModeSwitch
+          value={mode}
+          onChange={setMode}
+          options={[['intraday', '당일'], ['daily', '일별']] as const}
+          label="프로그램 표시 구간"
+        />
+      </div>
+      {mode === 'intraday' &&
+        MOCK_PROGRAM_TREND.map((p) => (
+          <div key={p.market} className="flex flex-col gap-2xs">
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs font-semibold text-fg-dim">
+                {p.market === 'KOSPI' ? '코스피' : '코스닥'}
+                {'  '}
+                <span className={`font-data tabular-nums ${priceDirClass(p.totalEok)}`}>
+                  {fmtSigned(p.totalEok)}
+                </span>
               </span>
-            </span>
-            <ProgramTrendLegend arbDaily={p.arbDaily} nonArbDaily={p.nonArbDaily} />
+              <ProgramTrendLegend arbDaily={p.arbDaily} nonArbDaily={p.nonArbDaily} />
+            </div>
+            <ProgramTrendChart arbDaily={p.arbDaily} nonArbDaily={p.nonArbDaily} height={56} />
           </div>
-          <ProgramTrendChart arbDaily={p.arbDaily} nonArbDaily={p.nonArbDaily} height={64} />
-        </div>
-      ))}
+        ))}
+      {mode === 'daily' &&
+        MOCK_PROGRAM_DAILY20.map((p) => {
+          const total = [...p.arbDaily, ...p.nonArbDaily].reduce((a, v) => a + v, 0);
+          return (
+            <div key={p.market} className="flex flex-col gap-2xs">
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs font-semibold text-fg-dim">
+                  {p.market === 'KOSPI' ? '코스피' : '코스닥'}
+                  {'  '}
+                  <span className={`font-data tabular-nums ${priceDirClass(total)}`}>
+                    {fmtSigned(total)}
+                  </span>
+                </span>
+                <ProgramTrendLegend arbDaily={p.arbDaily} nonArbDaily={p.nonArbDaily} />
+              </div>
+              <DailyNetBars
+                foreignDaily={p.arbDaily}
+                institutionDaily={p.nonArbDaily}
+                aColor={PROGRAM_COLORS.arb}
+                bColor={PROGRAM_COLORS.nonArb}
+                height={56}
+              />
+              <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
+                <span>{MOCK_TREND_DATES[0]}</span>
+                <span>{MOCK_TREND_DATES[MOCK_TREND_DATES.length - 1]}</span>
+              </div>
+            </div>
+          );
+        })}
     </PanelCard>
   );
 }
 
-function StreakCard() {
+const PERIOD_OPTIONS = [
+  ['streak', '연속'],
+  ['5', '5일'],
+  ['10', '10일'],
+  ['20', '20일'],
+] as const;
+type PeriodKey = (typeof PERIOD_OPTIONS)[number][0];
+
+function PeriodNetCard() {
+  const [period, setPeriod] = useState<PeriodKey>('streak');
+  const netOf = (r: (typeof MOCK_PERIOD_NET)[number]) =>
+    period === '5' ? r.net5 : period === '10' ? r.net10 : r.net20;
+  const rows =
+    period === 'streak'
+      ? [...MOCK_PERIOD_NET].sort((a, b) => b.streakDays - a.streakDays || b.streakNet - a.streakNet)
+      : [...MOCK_PERIOD_NET].sort((a, b) => netOf(b) - netOf(a));
   return (
-    <PanelCard borderless flat className="flex flex-col gap-xs p-md">
-      <h2 className="text-sm text-fg">
-        연속 순매수 <span className="text-2xs text-fg-dim">기관·외국인 (ka10131)</span>
-      </h2>
+    <PanelCard borderless flat className="flex flex-col gap-xs p-sm">
+      <div className="flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs">
+        <h2 className="text-sm text-fg">
+          순매수 상위{' '}
+          <span className="text-2xs text-fg-dim">
+            {period === 'streak' ? '연속 (ka10131)' : `${period}일 누적 (ka10034·ka90009)`}
+          </span>
+        </h2>
+        <ModeSwitch value={period} onChange={setPeriod} options={PERIOD_OPTIONS} label="순매수 집계 기간" />
+      </div>
       <ol className="flex flex-col">
-        {MOCK_STREAKS.map((r) => (
+        {rows.slice(0, 8).map((r) => (
           <li
             key={`${r.code}-${r.actor}`}
-            className="grid grid-cols-[2.6rem_1fr_2.4rem_4.2rem] items-center gap-sm border-b border-grid py-2xs last:border-b-0"
+            className="grid grid-cols-[2.4rem_1fr_2.6rem_4rem] items-center gap-xs border-b border-grid py-2xs last:border-b-0"
           >
             <span className="text-2xs text-fg-dim">{r.actor}</span>
             <span className="truncate text-sm text-fg">{r.name}</span>
-            <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">{r.days}일</span>
-            <span className={`text-right font-data text-sm tabular-nums ${priceDirClass(r.netEok)}`}>
-              {fmtSigned(r.netEok)}
+            {period === 'streak' ? (
+              <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">
+                {r.streakDays}일
+              </span>
+            ) : (
+              <PctText pct={r.changePct} className="text-right text-2xs" />
+            )}
+            <span
+              className={`text-right font-data text-sm tabular-nums ${priceDirClass(period === 'streak' ? r.streakNet : netOf(r))}`}
+            >
+              {fmtSigned(period === 'streak' ? r.streakNet : netOf(r))}
             </span>
           </li>
         ))}
@@ -260,7 +419,7 @@ function NetTrendCard() {
 }
 
 /** 계열 색 — 남은 MA 슬롯 사용 (수급 --ma-3/4 · 프로그램 --ma-6/7 과 안 겹치게) */
-const FUND_COLORS = ['var(--ma-1)', 'var(--ma-2)', 'var(--ma-8)'];
+const FUND_COLORS = ['var(--ma-1)', 'var(--ma-2)', 'var(--ma-5)'];
 
 function FundsCard() {
   return (
@@ -339,7 +498,7 @@ export function VariantA() {
       <NetTrendCard />
       <div className="grid grid-cols-4 gap-xs">
         <ProgramCard />
-        <StreakCard />
+        <PeriodNetCard />
         <BreadthCard />
         <FundsCard />
       </div>

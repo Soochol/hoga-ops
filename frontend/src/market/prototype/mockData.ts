@@ -295,6 +295,79 @@ export const MOCK_KRX_SECTORS: MockKrxSector[] = [
   { name: '의약품', value: 21044.87, changePct: -0.71 },
 ];
 
+/** 장중 30분 슬롯 라벨 (MOCK_PROGRAM_TREND 의 11개 값과 정렬) */
+export const MOCK_INTRADAY_SLOTS = [
+  '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:21',
+];
+
+export interface MockIntradayInvestor {
+  market: 'KOSPI' | 'KOSDAQ';
+  /** 슬롯별 순매수 (억원, 누적 아님) — 합계 = MOCK_INVESTOR_NET 당일 잠정과 일치 */
+  individual: number[];
+  foreign: number[];
+  institution: number[];
+}
+
+/** 장중 투자자별 매매 (ka10064 — 시장 스코프 시각별 시계열) */
+export const MOCK_INTRADAY_INVESTOR: MockIntradayInvestor[] = [
+  {
+    market: 'KOSPI',
+    individual: [-180, -420, -310, -560, -240, -90, -380, -510, -290, -240, -83],
+    foreign: [240, 380, 190, 520, 310, 60, 290, 430, 250, 160, 60],
+    institution: [-60, 40, 120, 40, -70, 30, 90, 80, 40, 80, 23],
+  },
+  {
+    market: 'KOSDAQ',
+    individual: [90, 180, 60, 210, 140, -40, 120, 160, 80, 60, 15],
+    foreign: [-60, -120, -30, -140, -90, 20, -80, -110, -50, -30, 6],
+    institution: [-30, -60, -30, -70, -50, 20, -40, -50, -30, -30, -21],
+  },
+];
+
+/** 프로그램 매매 일자별 20거래일 (ka90010) — MOCK_TREND_DATES 와 정렬 */
+export const MOCK_PROGRAM_DAILY20: Array<{
+  market: 'KOSPI' | 'KOSDAQ';
+  arbDaily: number[];
+  nonArbDaily: number[];
+}> = [
+  {
+    market: 'KOSPI',
+    arbDaily: [420, -310, 180, 520, -240, 390, 110, -480, 260, 610, -190, 340, 90, -260, 430, 180, -120, 510, 280, 1870],
+    nonArbDaily: [1240, 860, -540, 1620, 910, -380, 1180, 1930, 740, -290, 1080, 620, -410, 890, 1310, 560, -230, 970, 1440, 5220],
+  },
+  {
+    market: 'KOSDAQ',
+    arbDaily: [60, -40, 30, 80, -50, 40, 20, -60, 30, 70, -30, 40, 10, -40, 50, 20, -20, 60, 30, 110],
+    nonArbDaily: [-280, 210, -410, -160, 290, -520, -230, 120, -340, -180, 240, -390, -150, 180, -420, -260, 90, -310, -190, -1240],
+  },
+];
+
+export interface MockPeriodNetRow {
+  code: string;
+  name: string;
+  actor: '외국인' | '기관';
+  streakDays: number;
+  streakNet: number; // 연속 구간 누적 (억원)
+  net5: number;
+  net10: number;
+  net20: number;
+  changePct: number;
+}
+
+/** 기간 순매수 상위 — 연속(ka10131) · 기간별(ka10034 외인 / ka90009 외인·기관) */
+export const MOCK_PERIOD_NET: MockPeriodNetRow[] = [
+  { code: '005930', name: '삼성전자', actor: '외국인', streakDays: 7, streakNet: 12410, net5: 9840, net10: 14210, net20: 18630, changePct: 1.61 },
+  { code: '000660', name: 'SK하이닉스', actor: '외국인', streakDays: 5, streakNet: 8320, net5: 8320, net10: 11840, net20: 21470, changePct: 2.72 },
+  { code: '042660', name: '한화오션', actor: '기관', streakDays: 6, streakNet: 2140, net5: 1980, net10: 2890, net20: 3120, changePct: 12.86 },
+  { code: '005380', name: '현대차', actor: '외국인', streakDays: 4, streakNet: 1890, net5: 2110, net10: 1540, net20: -890, changePct: 0.31 },
+  { code: '034020', name: '두산에너빌리티', actor: '기관', streakDays: 4, streakNet: 1530, net5: 1710, net10: 2440, net20: 4180, changePct: 8.44 },
+  { code: '196170', name: '알테오젠', actor: '기관', streakDays: 3, streakNet: 980, net5: 1240, net10: 2010, net20: 2670, changePct: 9.71 },
+  { code: '035420', name: 'NAVER', actor: '외국인', streakDays: 3, streakNet: 760, net5: 890, net10: -420, net20: 1130, changePct: -0.24 },
+  { code: '373220', name: 'LG에너지솔루션', actor: '외국인', streakDays: 2, streakNet: 640, net5: 1480, net10: 3210, net20: 2890, changePct: 0.29 },
+  { code: '003230', name: '삼양식품', actor: '기관', streakDays: 3, streakNet: 410, net5: 520, net10: 780, net20: 1340, changePct: 0.88 },
+  { code: '012450', name: '한화에어로스페이스', actor: '기관', streakDays: 2, streakNet: 380, net5: 940, net10: 1870, net20: 3560, changePct: 1.94 },
+];
+
 /** 증시 주변 자금 (조원) — 키움 TR 없음. 원천 = 금융투자협회(KOFIA), 공공데이터포털
  *  "금융위원회_금융투자협회종합통계정보" 오픈 API (일 단위, T+2 지연 공시).
  *  20일 시계열, 마지막 값 = 08/03 기준 (오늘 08/05 의 T+2). */
