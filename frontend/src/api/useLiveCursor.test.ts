@@ -18,6 +18,7 @@ import {
 } from './useLiveCursor';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
+import type { LiveVenueOption } from '../state/liveVenue';
 
 // Mock the low-level fetch helper used by useSpot fetchers.
 vi.mock('./client', async (orig) => {
@@ -52,7 +53,7 @@ describe('useLiveOrderbookAtCursor', () => {
 
   it('returns undefined and does not fetch when cursorMs is null', async () => {
     const { result } = renderHook(() =>
-      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
+      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
     expect(result.current).toBeUndefined();
     expect(apiGet).not.toHaveBeenCalled();
@@ -60,7 +61,7 @@ describe('useLiveOrderbookAtCursor', () => {
 
   it('waits for sidebarCursorMs instead of immediate cursorMs', async () => {
     renderHook(() =>
-      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
+      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
 
     act(() => useLiveCursorStore.getState().setCursor(1_779_930_001_234));
@@ -76,7 +77,7 @@ describe('useLiveOrderbookAtCursor', () => {
 
   it('fetches once when sidebarCursorMs becomes set', async () => {
     const { result, rerender } = renderHook(() =>
-      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
+      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
     act(() => {
       useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000);  // 2026-05-28 10:00:00 KST, exact 1m boundary
@@ -90,13 +91,31 @@ describe('useLiveOrderbookAtCursor', () => {
     expect(url).toContain('t=1779930000000');
     expect(url).toContain('bucket_ms=60000');
     expect(url).toContain('source_pref=hogaplay_first');
+    // venue 는 백엔드 필수 파라미터다(ADR-0140) — 빠지면 라우트가 422 를 내고
+    // 10호가 창이 호버 내내 "호가 데이터 없음" 으로 남는다. 실제로 그렇게
+    // 깨져 있었다(이 훅만 venue 전파에서 누락).
+    expect(url).toContain('venue=KRX');
     // T14b: result is LiveOrderbookSpot, assert via .snapshot
     await waitFor(() => expect(result.current?.snapshot).toBeDefined());
   });
 
+  it('venue change reissues the query', async () => {
+    const { rerender } = renderHook(
+      ({ venue }: { venue: LiveVenueOption }) =>
+        useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue }),
+      { initialProps: { venue: 'KRX' as LiveVenueOption } },
+    );
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    rerender({ venue: 'UN' });
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
+    const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+    expect(url).toContain('venue=UN');
+  });
+
   it('client-side bucket alignment collapses within-minute hover to one fetch', async () => {
     renderHook(() =>
-      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
+      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
@@ -107,7 +126,7 @@ describe('useLiveOrderbookAtCursor', () => {
 
   it('source_pref change reissues the query', async () => {
     renderHook(() =>
-      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
+      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
@@ -135,7 +154,7 @@ describe('useLiveOrderbookAtCursor', () => {
       throw new Error('unexpected url: ' + url);
     });
     renderHook(() =>
-      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
+      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
     act(() => useLiveCursorStore.getState().setSidebarCursor(pastDayCursorMs));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
@@ -161,7 +180,7 @@ describe('useLiveBrokersAtCursor', () => {
   });
 
   it('does not fetch when cursorMs null', () => {
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m' }));
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }));
     expect(apiGet).not.toHaveBeenCalled();
   });
 
@@ -170,13 +189,13 @@ describe('useLiveBrokersAtCursor', () => {
     // /api/brokers/series has no per-cursor parquet there (ADR-0044). The
     // timeframe gate (null on calendar frames) keeps the fetch dormant — the
     // isSpot gate in LiveSidebar only suppresses display, not the fetch.
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: null }));
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: null, venue: 'KRX' }));
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     expect(apiGet).not.toHaveBeenCalled();
   });
 
   it('fetches once when sidebarCursorMs set, key independent of sidebarCursorMs value', async () => {
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m' }));
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }));
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     // Moving cursor within the same day must not refetch — the day series
@@ -186,10 +205,26 @@ describe('useLiveBrokersAtCursor', () => {
   });
 
   it('source_pref change reissues', async () => {
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m' }));
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }));
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_ws_first'));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
+  });
+
+  it('sends the required venue param and reissues when it changes', async () => {
+    // venue 누락 = 백엔드 422(ADR-0140) → 거래원 창이 호버 내내 "거래원 정보
+    // 없음". 회귀 가드다.
+    const { rerender } = renderHook(
+      ({ venue }: { venue: LiveVenueOption }) =>
+        useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue }),
+      { initialProps: { venue: 'KRX' as LiveVenueOption } },
+    );
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    expect((apiGet as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('venue=KRX');
+    rerender({ venue: 'UN' });
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
+    expect((apiGet as ReturnType<typeof vi.fn>).mock.calls[1][0]).toContain('venue=UN');
   });
 });
