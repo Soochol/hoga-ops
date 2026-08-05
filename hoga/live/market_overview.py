@@ -72,7 +72,10 @@ class IndexBreadth:
     아니다 — 나중에 코스피200 값이 생겨도 화면 규칙이 흔들리지 않는다.
     """
 
-    __slots__ = ("code", "name", "value", "change_pct", "rising", "falling", "flat", "upper", "lower")
+    __slots__ = (
+        "code", "name", "value", "change_pct", "rising", "falling", "flat", "upper", "lower",
+        "trade_value_eok", "listed_count",
+    )
 
     def __init__(self, row: dict[str, Any]) -> None:
         self.code = str(row.get("stk_cd") or "")
@@ -84,6 +87,13 @@ class IndexBreadth:
         self.flat = signed_int(row.get("stdns"))
         self.upper = signed_int(row.get("upl"))
         self.lower = signed_int(row.get("lst"))
+        # `trde_prica` 는 **백만원**이다(2026-08-05 실측: 코스피 종합 25,657,754 =
+        # 25.66조 — 이 페이지의 다른 금액축과 맞추려고 억원으로 정규화하고 **이름에
+        # 단위를 박는다**. 이 파일 계열에서 단위 오표기가 네 번째다).
+        self.trade_value_eok = _mwon_to_eok(signed_int(row.get("trde_prica")))
+        # `flo_stk_num` 은 상장주식수가 **아니라 상장 종목 수**다(코스피 943 · 코스닥
+        # 1821 — 상승675+하락197+보합43=915 와 맞물린다. 주식수라면 자릿수가 다르다).
+        self.listed_count = signed_int(row.get("flo_stk_num"))
 
     @property
     def is_whole_market(self) -> bool:
