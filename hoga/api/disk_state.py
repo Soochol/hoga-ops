@@ -383,7 +383,7 @@ def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
     for src_dir in stock_date_dir.iterdir():
         if not src_dir.is_dir():
             continue
-        meta_path = _source_meta_path(src_dir)
+        meta_path = source_meta_path(src_dir)
         if meta_path is None:
             continue
         out[src_dir.name] = _META_CLASSIFY_CACHE.get_or_load(
@@ -392,7 +392,7 @@ def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
     return out
 
 
-def _source_meta_path(src_dir: Path) -> Path | None:
+def source_meta_path(src_dir: Path) -> Path | None:
     """이 소스의 **완결성 meta** 경로. 없으면 ``None``.
 
     ⚠ venue 축이 있는 소스(`kiwoom_live`)는 meta 가 **두 종류**다(ADR-0140):
