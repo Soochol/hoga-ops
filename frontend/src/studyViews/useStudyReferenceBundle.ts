@@ -2,7 +2,7 @@ import { useStudyChartIndicators } from './useStudyChartIndicators';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import type { LiveVenueOption } from '../state/liveVenue';
+import { useLiveVenueStore } from '../state/liveVenue';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { LiveDataWarning } from '../live/liveDataWarnings';
 import type { LiveEffectiveSession } from '../api/livePastCandles';
@@ -33,13 +33,15 @@ function mergeStudyRangeBundles(
 // KIS 지연 칩(LiveDataWarning)으로 표기하면 오해를 준다(디스크는 지연 개념이 없음).
 const EMPTY_WARNINGS: LiveDataWarning[] = [];
 
-// 복기뷰는 hogaplay 정규장 캡처(KRX)만 쓴다 — venue는 KRX 고정. 공유
-// live.venue.v1 스토어를 읽지 않아, /live에서 NXT/통합으로 바꿔도 study는 불변.
-// venue는 캔들 소스엔 무영향이고 세션 경계 폴백 렌더링에만 관여한다.
-const STUDY_VENUE: LiveVenueOption = 'KRX';
-
 export function useStudyReferenceBundle(save: StudyViewReference | null) {
-  const venue = STUDY_VENUE;
+  // 복기뷰가 **공유 venue 스토어를 읽는다**(ADR-0140 §7). 여기 있던 `STUDY_VENUE =
+  // 'KRX'` 고정은 "복기는 hogaplay 정규장 캡처만 쓴다"는 사실에서 나온 것이었는데,
+  // PR-D 가 디스크에 `kiwoom_live/{venue}/` 를 만들면서 고를 대상이 생겼다.
+  //
+  // ⚠ hogaplay 는 여전히 KRX 전용이라 **NXT·통합이 비는 날이 있다**. 그건 장애가
+  // 아니라 그 소스의 커버 범위이고, 어느 날에 무엇이 있는지는 보관함의 시장 배지가
+  // 말한다(같은 `expected_venues` 판정을 공유한다).
+  const venue = useLiveVenueStore((s) => s.venue);
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
   // 지표는 차트 창이 소유한다(#904) — 전역을 읽으면 차트가 그릴 지표와 여기서
   // 받아오는 데이터가 어긋난다.
@@ -60,9 +62,11 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       depthHeatmapEnabled,
       volumeDistributionEnabled,
       volumeDistributionRangeCount,
+      venue,
     }),
     [
       save,
+      venue,
       brokerLateEntryEnabled,
       brokerLateEntryStartHHMM,
       sourcePref,

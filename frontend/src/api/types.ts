@@ -6,6 +6,15 @@ import type { SignalAlertEvent } from './signalAlerts';
  *  `none`은 inventory에 등장하지 않는다 (meta.json 없으면 행 자체가 없음). */
 export type DiskStateValue = 'complete' | 'source_partial' | 'client_incomplete' | 'invalid';
 
+/** 한 venue 의 디스크 상태 — 보관함 날짜 행의 venue 배지 하나 (ADR-0140 §7).
+ *  **목록에 없는 venue 는 '없어야 정상'**(미상장)이고, 있는데 `disk_state` 가
+ *  null 이면 '기대됐으나 없음'이다. 자리 유무가 그 둘을 가른다. */
+export type StockDateVenue = {
+  venue: string;
+  disk_state: DiskStateValue | null;
+  file_size_bytes: number;
+};
+
 export type StockDate = {
   date: string; code: string; name: string;
   regular_session_open_ms: number; regular_session_close_ms: number;
@@ -32,6 +41,10 @@ export type StockDate = {
   /** ADR-0042: consecutive failed+skipped count since last success/unblock.
    *  Joined from QueueManifest.fail_streaks at the route layer. 0 means
    *  "no recent failures"; ``>= 5`` means ``blocked``. */
+  /** `kiwoom_live` 의 venue 별 상태 (ADR-0140 §7). **빈 배열 = venue 축 없는 행**
+   *  (hogaplay 전용 캡처이거나 마이그레이션 전 평면 레이아웃) — 아무것도 안 그린다.
+   *  행의 주 `disk_state` 는 hogaplay 것이라 이것과 별개다(커버 구간이 다르다). */
+  venues?: StockDateVenue[];
   fail_streak: number;
   /** ADR-0042: ``fail_streak >= 5``. Renders a 차단됨 badge + 잠금 해제
    *  button on the inventory row; enqueue is rejected with HTTP 409 until
