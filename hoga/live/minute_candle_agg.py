@@ -147,7 +147,14 @@ class MinuteCandleAggregator:
             if key[0] not in codes:
                 del self._codes[key]
 
-    def reset(self) -> None:
+    def reset(self, venue: str | None = None) -> None:
         """일경계 초기화 — 진행 중 봉이 밤을 넘겨 다음 거래일을 오염시키지 않게.
-        게이트 닫힘 순간 호출(다운샘플러 reset과 동일 위치)."""
-        self._codes.clear()
+        게이트 닫힘 순간 호출(다운샘플러 reset과 동일 위치).
+
+        ``venue`` 를 주면 **그 시장만** 버린다 — 저장 창이 venue 별로 갈렸다
+        (ADR-0140 §3). 다운샘플러 `reset` 과 같은 규율이다."""
+        if venue is None:
+            self._codes.clear()
+            return
+        for key in [k for k in self._codes if k[1] == venue]:
+            del self._codes[key]
