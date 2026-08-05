@@ -84,8 +84,9 @@ def test_program_kospi200_scale_differs_between_the_two_trs():
     assert b["kospi200"] == 1037.95
     # 둘이 같은 자릿수여야 한다 — 어긋나면 파서를 잘못 붙인 것이다.
     assert abs(a["kospi200"] - b["kospi200"]) < 10
-    assert a["arb_net"] == 20885
-    assert a["non_arb_net"] == 324718
+    # 금액은 백만원 → 억원 정규화 + 필드명에 단위(2026-08-05 실측: 함의 주가 검증).
+    assert a["arb_net_eok"] == 208.85
+    assert a["non_arb_net_eok"] == 3247.18
     assert a["basis"] == 2.80
 
 
@@ -103,10 +104,28 @@ def test_one_streak_response_fills_both_actor_cards():
     assert len(inst) == 1
     assert inst[0]["code"] == "035420"  # `_AL` venue 접미 제거
     assert inst[0]["streak_days"] == 1
-    assert inst[0]["streak_net_amt"] == 97544
+    # 백만원 → 억원: 97,544백만 = 975.44억 (÷수량 428,739주 = 227,514원/주 ≈ 실주가)
+    assert inst[0]["streak_net_eok"] == 975.44
+    assert inst[0]["streak_net_qty_shares"] == 428739
     assert inst[0]["period_change_pct"] == 10.84
     # 연속일수가 없는 주체는 그 카드에서 빠진다
     assert frgn == []
+
+
+def test_negative_streaks_are_net_selling_and_excluded():
+    """음수 연속일수 = 연속 순매도 — "순매수 상위" 카드에 섞이면 안 된다.
+
+    실화면(2026-08-05)에서 `-2일 · —` 행이 노출됐던 버그의 고정.
+    """
+    rows = [
+        {"stk_cd": "017670_AL", "stk_nm": "SK텔레콤",
+         "frgnr_cont_netprps_dys": "-1", "frgnr_cont_netprps_amt": "-2373"},
+        {"stk_cd": "005930_AL", "stk_nm": "삼성전자",
+         "frgnr_cont_netprps_dys": "+7", "frgnr_cont_netprps_amt": "+1241000"},
+    ]
+    got = parse_streaks(rows, actor="외국인")
+    assert [r["name"] for r in got] == ["삼성전자"]
+    assert got[0]["streak_net_eok"] == 12410.0
 
 
 def test_truncated_count_says_so():
@@ -215,7 +234,7 @@ def test_kosdaq_daily_index_columns_are_not_trusted():
     dropped = parse_program_trend(rows, kospi200_scaled=False, trust_index_columns=False)[0]
 
     # 순매수 3열은 어느 쪽이든 살아 있다 — 막는 것은 지수·베이시스뿐이다.
-    assert kept["arb_net"] == dropped["arb_net"] == 100
-    assert kept["total_net"] == dropped["total_net"] == 300
+    assert kept["arb_net_eok"] == dropped["arb_net_eok"] == 1.0
+    assert kept["total_net_eok"] == dropped["total_net_eok"] == 3.0
     assert kept["kospi200"] == 1000.03 and kept["basis"] == 345.27
     assert dropped["kospi200"] is None and dropped["basis"] is None

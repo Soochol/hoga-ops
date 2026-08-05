@@ -66,9 +66,10 @@ export type ProgramAxis = 'intraday' | 'daily';
 
 export interface ProgramPoint {
   t: string;
-  arb_net: number | null;
-  non_arb_net: number | null;
-  total_net: number | null;
+  /** 억원 — 벤더는 백만원으로 주고 백엔드가 정규화한다(단위 오표기 3회차의 재발 방지). */
+  arb_net_eok: number | null;
+  non_arb_net_eok: number | null;
+  total_net_eok: number | null;
   kospi200: number | null;
   basis: number | null;
 }
@@ -94,14 +95,20 @@ export interface StreakRow {
   code: string;
   name: string;
   actor: string;
+  /** 항상 양수 — 음수(연속 순매도)는 백엔드가 거른다. */
   streak_days: number;
-  streak_net_amt: number | null;
-  streak_net_qty: number | null;
+  /** 억원 (벤더 백만원 → 정규화) */
+  streak_net_eok: number | null;
+  streak_net_qty_shares: number | null;
   period_change_pct: number | null;
 }
 
-/** 한 응답이 두 카드를 채운다 — 백엔드가 ka10131 한 콜로 주체를 갈라 준다(#1096). */
-export type StreaksResponse = Record<string, StreakRow[]>;
+/** 한 응답이 두 카드를 채운다 — 백엔드가 ka10131 한 콜로 주체를 갈라 준다(#1096).
+ *  ETF·ETN 은 백엔드가 제외하고, 마스터 미로드면 `warnings` 에 실린다. */
+export interface StreaksResponse {
+  warnings?: string[];
+  [actor: string]: StreakRow[] | string[] | undefined;
+}
 
 export function useMarketStreaks() {
   return useQuery({
