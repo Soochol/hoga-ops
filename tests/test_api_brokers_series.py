@@ -9,7 +9,7 @@ def test_brokers_series_happy_path_returns_per_broker_trajectories(
 ) -> None:
     """Tiny fixture (003490/20260519) has at least one broker snapshot —
     the response shape is well-formed and ordering invariant holds."""
-    r = app_client.get("/api/brokers/series?code=003490&date=20260519")
+    r = app_client.get("/api/brokers/series?code=003490&date=20260519&venue=KRX")
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["date"] == "20260519"
@@ -38,7 +38,7 @@ def test_brokers_series_returns_empty_response_for_unknown_stock_date(
     for /api/range and removes the console-noise pathway the frontend's
     useSpot.catch logged on every hover over an uncaptured candle.
     """
-    r = app_client.get("/api/brokers/series?code=999999&date=20990101")
+    r = app_client.get("/api/brokers/series?code=999999&date=20990101&venue=KRX")
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["date"] == "20990101"

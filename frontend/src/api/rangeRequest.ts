@@ -1,5 +1,6 @@
 import type { RangeBundle, Timeframe } from './types';
 import { TIMEFRAME_TO_MS } from './types';
+import type { LiveVenueOption } from '../state/liveVenue';
 import type { SourcePreference } from '../state/sourcePreference';
 
 export type RangeMode = 'full' | 'hoga' | 'sidecar' | 'candles';
@@ -28,6 +29,9 @@ export type RangeBundleRequestInput = {
   priceRange?: { min: number; max: number };
   todayKst?: string | null;
   sourcePref: SourcePreference;
+  /** 어느 거래소의 과거 시계열인가. **쿼리 키에도 들어가야 한다** — 안 들어가면
+   *  venue 를 바꿔도 캐시가 안 갈려 이전 venue 데이터가 그대로 보인다(ADR-0140). */
+  venue: LiveVenueOption;
   options?: RangeRequestOptions;
 };
 
@@ -54,6 +58,10 @@ export type RangeQueryKey = readonly [
   boolean | null,
   boolean | null,
   boolean | null,
+  // venue 는 **맨 끝**이다 — 중간에 넣으면 기존 인덱스가 전부 밀려, 키를 인덱스로
+  // 읽는 소비자(RANGE_QUERY_KEY_*_INDEX)와 계약 테스트가 위치만으로 깨진다.
+  // 키 안의 순서는 캐시 식별에 의미가 없다.
+  LiveVenueOption,
 ];
 
 export const RANGE_QUERY_KEY_FROM_DATE_INDEX = 2;
@@ -120,6 +128,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
     depthDeltaEnabled,
+    input.venue,  // 맨 끝(위 타입 주석 참조)
   ];
 
   const params = new URLSearchParams();
@@ -144,6 +153,9 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addParam(params, 'trade_volume_poc_bins', tradeVolumePocBins);
   addParam(params, 'source_pref', input.sourcePref);
   addParam(params, 'mode', mode);
+  // venue 는 **마지막**에 붙인다 — 기대 URL 문자열이 뒤에 이어 붙이는 형태라
+  // 순서를 바꾸면 계약 테스트가 위치만으로 깨진다(쿼리스트링 순서는 의미 없음).
+  addParam(params, 'venue', input.venue);
 
   return {
     enabled,
