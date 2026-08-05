@@ -10,13 +10,13 @@ import { PanelCard } from '../../ui/PageShell';
 import { priceDirClass } from '../../ui/priceDir';
 import { heatBg } from '../../heatmap/heat';
 import {
-  MOCK_AS_OF, MOCK_BREADTH, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_KRX_SECTORS,
+  MOCK_AS_OF, MOCK_BREADTH, MOCK_INDICES, MOCK_KRX_SECTORS,
   MOCK_NET_TREND, MOCK_OPTION_SENTIMENT, MOCK_PROGRAM_TREND, MOCK_SECTORS,
-  MOCK_STREAKS, MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE,
-  type MockRankRow,
+  MOCK_STREAKS, MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE, MOCK_TREND_DATES,
+  mockIndividualDaily, type MockRankRow,
 } from './mockData';
 import {
-  AdvanceDeclineBar, BreadthTiles, NetBar, NetTrendChart, NetTrendLegend, PctText,
+  AdvanceDeclineBar, BreadthTiles, DailyNetBars, NetTrendChart, NetTrendLegend, PctText,
   ProgramTrendChart, ProgramTrendLegend, Sparkline, fmtSigned,
 } from './protoBits';
 
@@ -52,29 +52,68 @@ function IndexCard({ idx }: { idx: (typeof MOCK_INDICES)[number] }) {
 }
 
 function InvestorCard() {
-  const max = Math.max(
-    ...MOCK_INVESTOR_NET.flatMap((m) => [m.individual, m.foreign, m.institution].map(Math.abs)),
-  );
   return (
     <PanelCard borderless flat className="flex flex-col gap-sm p-md">
-      <h2 className="text-sm text-fg">투자자 수급 <span className="text-2xs text-fg-dim">당일 잠정 · 억원</span></h2>
+      <h2 className="text-sm text-fg">
+        투자자 수급 일별 흐름{' '}
+        <span className="text-2xs text-fg-dim">20거래일 일별 순매수 · 억원 · 오늘 = 잠정 (ka10051 일자별)</span>
+      </h2>
       <div className="grid grid-cols-2 gap-lg">
-        {MOCK_INVESTOR_NET.map((m) => (
-          <div key={m.market} className="flex flex-col gap-xs">
-            <span className="text-xs font-semibold text-fg-dim">{m.market === 'KOSPI' ? '코스피' : '코스닥'}</span>
-            {([['개인', m.individual], ['외국인', m.foreign], ['기관', m.institution]] as const).map(
-              ([label, v]) => (
-                <div key={label} className="grid grid-cols-[3.5rem_1fr_4.5rem] items-center gap-sm">
-                  <span className="text-xs text-fg-dim">{label}</span>
-                  <NetBar value={v} max={max} />
-                  <span className={`text-right font-data text-sm tabular-nums ${priceDirClass(v)}`}>
-                    {fmtSigned(v)}
-                  </span>
-                </div>
-              ),
-            )}
-          </div>
-        ))}
+        {MOCK_NET_TREND.map((t) => {
+          const individual = mockIndividualDaily(t);
+          const last5 = MOCK_TREND_DATES.length - 5;
+          return (
+            <div key={t.market} className="flex flex-col gap-xs">
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs font-semibold text-fg-dim">
+                  {t.market === 'KOSPI' ? '코스피' : '코스닥'}
+                </span>
+                <NetTrendLegend
+                  foreignDaily={t.foreignDaily}
+                  institutionDaily={t.institutionDaily}
+                  showIndex={false}
+                />
+              </div>
+              <DailyNetBars foreignDaily={t.foreignDaily} institutionDaily={t.institutionDaily} />
+              <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
+                <span>{MOCK_TREND_DATES[0]}</span>
+                <span>{MOCK_TREND_DATES[MOCK_TREND_DATES.length - 1]}</span>
+              </div>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border text-2xs text-fg-dim">
+                    <th className="py-2xs text-left font-medium">날짜</th>
+                    <th className="py-2xs text-right font-medium">개인</th>
+                    <th className="py-2xs text-right font-medium">외국인</th>
+                    <th className="py-2xs text-right font-medium">기관</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {MOCK_TREND_DATES.slice(last5).map((d, j) => {
+                    const i = last5 + j;
+                    const today = i === MOCK_TREND_DATES.length - 1;
+                    return (
+                      <tr key={d} className="border-b border-grid last:border-b-0">
+                        <td className="py-2xs font-data text-xs text-fg-dim tabular-nums">
+                          {d}
+                          {today && <span className="text-2xs"> 잠정</span>}
+                        </td>
+                        {[individual[i], t.foreignDaily[i], t.institutionDaily[i]].map((v, k) => (
+                          <td
+                            key={k}
+                            className={`py-2xs text-right font-data text-xs tabular-nums ${priceDirClass(v)} ${today ? 'font-semibold' : ''}`}
+                          >
+                            {fmtSigned(v)}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
       </div>
       <p className="text-2xs text-fg-dim">
         옵션 심리 — P/C(거래량) {MOCK_OPTION_SENTIMENT.pcVolumeRatio.toFixed(2)} · P/C(미결제){' '}

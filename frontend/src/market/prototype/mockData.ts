@@ -172,6 +172,17 @@ export interface MockNetTrend {
   indexClose: number[];
 }
 
+/** MOCK_NET_TREND 와 같은 20거래일 라벨 (과거→오늘, 오늘 = 08/05 잠정) */
+export const MOCK_TREND_DATES = [
+  '07/09', '07/10', '07/13', '07/14', '07/15', '07/16', '07/17', '07/20', '07/21', '07/22',
+  '07/23', '07/24', '07/27', '07/28', '07/29', '07/30', '07/31', '08/03', '08/04', '08/05',
+];
+
+/** 개인 일별 = -(외국인+기관) 근사 (3주체 합 ≈ 0) — 표 표시용 파생 */
+export function mockIndividualDaily(t: MockNetTrend): number[] {
+  return t.foreignDaily.map((f, i) => -(f + t.institutionDaily[i]));
+}
+
 /** 20일 일별 순매수 목업 — 앞 15일 합성 + 뒤 5일은 5d 목업과 동일 값. */
 function synthDailyNet(seed: number, scale: number, tail: number[]): number[] {
   const head: number[] = [];

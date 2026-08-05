@@ -176,6 +176,52 @@ export function NetTrendLegend({
   );
 }
 
+/** 일자별 순매수 그룹 막대 — 외국인·기관 2계열, 날짜당 나란히, 0 기준 상하.
+ *  누적 라인(NetTrendChart)과 달리 "어느 날 얼마나"의 일 단위 강도를 보인다. */
+export function DailyNetBars({
+  foreignDaily,
+  institutionDaily,
+  height = 72,
+}: {
+  foreignDaily: number[];
+  institutionDaily: number[];
+  height?: number;
+}) {
+  const n = foreignDaily.length;
+  const width = 300;
+  const maxAbs = Math.max(...foreignDaily.map(Math.abs), ...institutionDaily.map(Math.abs)) || 1;
+  const mid = height / 2;
+  const slot = width / n;
+  const bw = Math.max((slot - 2) / 2, 1.5);
+  const bar = (v: number, x: number, color: string, key: string) => {
+    const bh = (Math.abs(v) / maxAbs) * (mid - 3);
+    return (
+      <rect
+        key={key}
+        x={x}
+        y={v >= 0 ? mid - bh : mid}
+        width={bw}
+        height={Math.max(bh, 0.75)}
+        fill={color}
+      />
+    );
+  };
+  return (
+    <svg
+      width="100%"
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      className="block"
+    >
+      <line x1="0" x2={width} y1={mid} y2={mid} stroke="var(--border-strong)" />
+      {foreignDaily.map((v, i) => bar(v, i * slot + 1, NET_TREND_COLORS.foreign, `f${i}`))}
+      {institutionDaily.map((v, i) => bar(v, i * slot + 1 + bw + 0.5, NET_TREND_COLORS.institution, `i${i}`))}
+    </svg>
+  );
+}
+
 /** 프로그램 매매 시리즈 색 — 차익 --ma-6(시안) · 비차익 --ma-7(노랑).
  *  수급 추세의 외국인/기관(--ma-3/--ma-4)과 슬롯이 겹치지 않게 확장 슬롯 사용. */
 export const PROGRAM_COLORS = { arb: 'var(--ma-6)', nonArb: 'var(--ma-7)' } as const;
