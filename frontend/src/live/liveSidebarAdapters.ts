@@ -23,7 +23,7 @@ export function filterObByVenue(
   ob: readonly ObSnapshot[],
   selectedVenue: LiveVenueOption,
 ): readonly ObSnapshot[] {
-  return ob.filter((f) => liveVenueAcceptsFrame(selectedVenue, f.venue, f.t_ms));
+  return ob.filter((f) => liveVenueAcceptsFrame(selectedVenue, f.venue));
 }
 
 /**
@@ -37,7 +37,7 @@ export function filterTradeByVenue(
   trade: readonly TradeSnapshot[],
   selectedVenue: LiveVenueOption,
 ): readonly TradeSnapshot[] {
-  return trade.filter((f) => liveVenueAcceptsFrame(selectedVenue, f.venue, f.t_ms));
+  return trade.filter((f) => liveVenueAcceptsFrame(selectedVenue, f.venue));
 }
 
 const EMPTY_LEVEL: OrderbookLevel = { price: 0, qty: 0 };

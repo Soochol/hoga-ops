@@ -1,6 +1,7 @@
 import type { QuoteRatioPoint, FillStrengthPoint, OrderbookLevel } from '../api/types';
 import { quoteImbalance } from '../util/imbalance';
 import { isAfterRegularOpen } from '../util/tradingDay';
+import type { LiveFrameVenue } from './liveVenuePolicy';
 
 /** One live OB snapshot as it crosses the SSE seam (SR-1). The chart reads
  * t_ms + total_*_qty; LiveSidebar reads asks/bids too (optional because the
@@ -18,7 +19,7 @@ export interface ObSnapshot {
   expected_price?: number;
   expected_qty?: number;
   /** 이 스냅샷을 실어온 시장(#524 시분할). 백엔드 태그; 구백엔드는 부재(=KRX 해석). */
-  venue?: 'KRX' | 'NXT';
+  venue?: LiveFrameVenue;
   [field: string]: unknown;
 }
 
@@ -38,7 +39,7 @@ export interface TradeSnapshot {
   trades: TradeEvent[];
   kind?: string;
   /** 이 스냅샷을 실어온 시장(#524 시분할). 백엔드 태그; 구백엔드는 부재(=KRX 해석). */
-  venue?: 'KRX' | 'NXT';
+  venue?: LiveFrameVenue;
   [field: string]: unknown;
 }
 

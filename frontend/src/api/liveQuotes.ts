@@ -189,8 +189,8 @@ function withTickPrice(quote: LiveQuote, tick: LiveTickSample | undefined): Live
  *
  *  withTickPrice 안에 넣지 않는 이유: 그 함수는 체결 틱 부재 시 첫 줄에서 반환하는데,
  *  동시호가 중엔 체결이 없어 예상가가 영원히 도달하지 못한다. 표시 조건도 phase 에
- *  걸지 않는다 — pre_open 은 KRX 선택에서만 나오고 UN(시간대 자동)은 같은 시각에
- *  open 이라, phase 게이트면 UN 에서 안 뜬다. 백엔드 3중 게이트가 이미 SSOT 이므로
+ *  걸지 않는다 — pre_open 은 KRX 선택에서만 나오고 NXT·UN 은 같은 시각에
+ *  open 이라, phase 게이트면 그 둘에서 안 뜬다. 백엔드 3중 게이트가 이미 SSOT 이므로
  *  표본 존재 = 표시 조건이다.
  *
  *  예상 등락률 기준가는 referenceClose(폴링 역산 previous_close → baseline 폴백)를

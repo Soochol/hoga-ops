@@ -17,15 +17,20 @@ describe('useLiveVenueStore', () => {
     expect(localStorage.getItem('live.venue.v1')).toContain('UN');
   });
 
-  it('migrates a persisted NXT venue to 시간대 자동(UN) on hydration (#523)', () => {
+  it('keeps a persisted NXT venue as NXT (ADR-0140 §5 — 이행 규칙 제거)', () => {
+    // ⚠ 회귀 가드. #523 이 NXT 를 옵션에서 빼면서 넣은 `'NXT' → 'UN'` 이행 규칙이
+    // 남아 있으면, 사용자가 NXT 를 골라도 다음 로드에 조용히 UN 으로 되돌아간다.
+    // 되돌아간 화면은 데이터가 나오므로(통합은 NXT 를 포함한다) **고장으로 보이지도
+    // 않는다** — 사용자는 자기가 잘못 눌렀다고 생각한다.
     localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'NXT' }));
     useLiveVenueStore.getState().hydrateFromStorage();
-    expect(useLiveVenueStore.getState().venue).toBe('UN');
+    expect(useLiveVenueStore.getState().venue).toBe('NXT');
   });
 
-  it('rejects NXT at runtime via setVenue (제거된 옵션)', () => {
-    useLiveVenueStore.getState().setVenue('NXT' as LiveVenueOption);
-    expect(useLiveVenueStore.getState().venue).toBe('KRX');
+  it('accepts NXT at runtime via setVenue (부활한 옵션)', () => {
+    useLiveVenueStore.getState().setVenue('NXT');
+    expect(useLiveVenueStore.getState().venue).toBe('NXT');
+    expect(localStorage.getItem('live.venue.v1')).toContain('NXT');
   });
 
   it('rejects unknown values at runtime', () => {
@@ -57,7 +62,7 @@ describe('useLiveVenueStore', () => {
     expect(useLiveVenueStore.getState().venue).toBe('KRX');
   });
 
-  it('exposes the requested UI labels (NXT 제거 후 KRX/시간대 자동)', () => {
-    expect(LIVE_VENUE_OPTIONS.map((v) => LIVE_VENUE_LABELS[v])).toEqual(['KRX', '시간대 자동']);
+  it('exposes the three venue options in order (KRX/NXT/통합)', () => {
+    expect(LIVE_VENUE_OPTIONS.map((v) => LIVE_VENUE_LABELS[v])).toEqual(['KRX', 'NXT', '통합']);
   });
 });

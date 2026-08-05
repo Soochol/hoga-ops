@@ -38,7 +38,7 @@ export function freshLiveTradePrice(
         ev.price <= 0 ||
         !Number.isFinite(ev.qty) ||
         ev.qty <= 0 ||
-        !liveVenueAcceptsFrame(venue, snapshot.venue, tMs)
+        !liveVenueAcceptsFrame(venue, snapshot.venue)
       ) {
         continue;
       }

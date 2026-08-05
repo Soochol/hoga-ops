@@ -8,6 +8,22 @@ import {
   regularSessionOpenMs,
 } from './liveDateTime';
 
+/**
+ * 백엔드가 프레임에 실어 보내는 **시장 태그**. 스냅샷·WS 틱의 `venue` 필드 타입이다.
+ *
+ * 선택 옵션(`LiveVenueOption`)과 값이 같지만 **다른 것**이다: 하나는 사용자가 고른
+ * 것이고 하나는 데이터가 어디서 왔는지다. 지금은 세 값이 일치하지만(그래서
+ * `liveVenueAcceptsFrame` 이 단순 비교다) 같은 타입으로 묶으면 그 우연을 계약으로
+ * 굳혀 버린다.
+ *
+ * ⚠ **명명 타입인 것이 요점이다.** 이 유니온은 인라인 리터럴로 6개 파일에 흩어져
+ * 있었다(`liveVenuePolicy` · `liveTickOverlay`×2 · `bucketHogaSeries`×2 ·
+ * `depthDelta`×2). `'UN'` 을 추가할 때 하나를 빠뜨려도 **타입 에러가 안 난다** —
+ * 좁은 쪽이 넓은 쪽에 할당 가능하고, `liveTickOverlay` 는 `as` 캐스팅이라 검사
+ * 자체가 없다. 그러면 UN 프레임이 런타임에 조용히 걸러진다.
+ */
+export type LiveFrameVenue = 'KRX' | 'NXT' | 'UN';
+
 export function liveVenueDisplayLabel(venue: LiveVenueOption): string {
   return LIVE_VENUE_LABELS[venue];
 }
@@ -78,61 +94,32 @@ export function liveVenueRefetchInterval(venue: LiveVenueOption): 60_000 | false
 
 /**
  * venue 정책 **SSOT 술어** — 프레임(체결/호가 스냅샷, 캔들 오버레이 체결, WS 틱)의
- * 시장 태그(tagVenue)가 선택된 venue 구성에 속해 표시·반영돼도 되는지 판정한다.
+ * 시장 태그(`tagVenue`)가 선택된 venue 에 속해 표시·반영돼도 되는지 판정한다.
  * 호가·체결 필터(`filterObByVenue`/`filterTradeByVenue`), 캔들 오버레이
- * (`overlayLiveTrades*`), 현재가 라인, WS 틱 오버레이가 **모두 이 하나를 공유**한다
- * (#523 — ADR-0096 시간 게이트를 venue 태그 매칭으로 대체).
+ * (`overlayLiveTrades*`), 현재가 라인, WS 틱 오버레이가 **모두 이 하나를 공유**한다.
  *
- * 판정은 **프레임 자기 t_ms** 기준이라 latest·cursor 모두에 올바르다:
- *  - **KRX venue**: KRX 태그만(태그 부재=구백엔드 KRX 하위호환).
- *  - **자동(UN) venue**: 프레임 시각의 시분할 구독 venue(`liveSubscriptionVenueForMs`
- *    — 08:50~15:31 KRX, 그 밖 NXT)와 태그가 **일치할 때만**. 백엔드가 시분할 구독
- *    하므로 정상 데이터는 시점당 한 시장만 오지만(#524), 전역·혼재 표시 버퍼엔
- *    교차 클라이언트가 주입한 off-venue 프레임이 섞일 수 있어 t_ms 기준으로 배제한다.
- *    무태그(구백엔드)는 KRX로 승격돼 구독창 안에서만 수용된다.
+ * **태그 직결이다 — 시각을 안 본다**(ADR-0140 §5). 예전엔 UN 에서
+ * `tag === liveSubscriptionVenueForMs(tMs)` 로 판정했다. 백엔드가 시분할 구독이라
+ * "이 시각엔 이 시장만 정상"이라는 전제가 성립했고, 그 전제로 off-venue 오염을
+ * 걸렀다. PR-F 가 세 venue 를 동시 구독하면서 그 전제가 깨졌다 — 이제 같은 시각에
+ * 세 시장 프레임이 **정상적으로** 도착한다. 시각 판정을 남겨 두면 정상 데이터의
+ * 2/3 을 오염으로 오인해 버린다.
  *
- * (이전 `liveVenueAllowsTradeOverlay`는 UN에서 KRX·NXT 양시장을 무조건 수용했으나,
- * 정상 데이터엔 결과가 같고 off-venue 오염만 더 엄격히 배제하도록 통일했다. 이로써
- * 호가 필터/오버레이 두 규칙이 하나로 합쳐진다.)
+ * 그래서 `tMs` 인자를 없앴다. 시그니처에서 지운 것이 요점이다 — 남겨 두면 호출부가
+ * 계속 넘기고, 언젠가 누군가 다시 쓴다.
  *
- * tagVenue는 TradeSnapshot/ObSnapshot.venue(백엔드 태그). undefined면 구백엔드로 간주.
+ * - **KRX**: KRX 태그만. 태그 부재는 구백엔드 하위호환으로 KRX 승격.
+ * - **NXT**: NXT 태그만.
+ * - **UN**: UN 태그만. ⚠ KRX·NXT 의 합집합이 **아니다** — 키움 `_AL` 이 거래소가
+ *   병합한 별도 스트림이라 자기 태그를 달고 온다. 합집합으로 받으면 같은 체결이
+ *   KRX·NXT·UN 세 벌로 세어져 거래량이 부풀고, 호가는 두 시장 잔량이 가격대별로
+ *   섞인 채 `_AL` 과 겹쳐 이중 계상된다.
  */
 export function liveVenueAcceptsFrame(
   selectedVenue: LiveVenueOption,
-  tagVenue: 'KRX' | 'NXT' | undefined,
-  tMs: number,
+  tagVenue: LiveFrameVenue | undefined,
 ): boolean {
-  const tag = tagVenue ?? 'KRX';
-  if (selectedVenue === 'KRX') return tag === 'KRX';
-  return tag === liveSubscriptionVenueForMs(tMs);
-}
-
-/**
- * 상태바 "호가 {KRX|NXT}" 배지가 반영할 현재 호가 수신 시장(#523). 백엔드 시분할
- * 구독(정규장=KRX, 그 밖 NXT)을 시계로 근사한다. KRX venue는 항상 KRX(배지 없음 —
- * liveVenueKeepsHogaKrx=false). warmup/drain 경계(±수분)의 근사 오차는 표시상 무해.
- */
-export function liveHogaVenueNow(
-  selectedVenue: LiveVenueOption,
-  nowMs: number = Date.now(),
-): 'KRX' | 'NXT' {
-  if (selectedVenue === 'KRX') return 'KRX';
-  return isKrxRegularSessionNow(nowMs) ? 'KRX' : 'NXT';
-}
-
-/**
- * 프레임의 **시분할 구독 venue** — 백엔드 `target_ws_venue`(session_gate.py)의 프론트
- * 미러. 08:50(KRX 워밍업)~15:31(drain 마진) KRX, 그 밖 NXT.
- *
- * `liveHogaVenueNow`(정규장 09:00~15:30, 배지용)와 **경계가 다르다**: 실제 구독 경계
- * (08:50)를 써야 08:50~09:00 KRX 개장동시호가 프레임을 NXT로 오분류하지 않는다. 호가
- * 버퍼 venue 필터(`filterObByVenue`)가 프레임 자기 t_ms로 판정할 때 쓴다.
- */
-export function liveSubscriptionVenueForMs(tMs: number): 'KRX' | 'NXT' {
-  const open = regularSessionOpenMs(realMsToYyyymmdd(tMs)); // 09:00 KST
-  const krxStart = open - 10 * 60_000; // 08:50 워밍업
-  const krxEnd = open + (6 * 60 + 31) * 60_000; // 15:31 drain 마진
-  return tMs >= krxStart && tMs < krxEnd ? 'KRX' : 'NXT';
+  return (tagVenue ?? 'KRX') === selectedVenue;
 }
 
 export function initialVisibleMinuteBarsFor(

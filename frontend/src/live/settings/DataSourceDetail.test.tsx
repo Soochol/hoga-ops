@@ -33,13 +33,15 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
     render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
 
-    expect(screen.getByLabelText('KRX')).toBeChecked();
-    expect(screen.getByLabelText('시간대 자동')).toBeInTheDocument();
-    expect(screen.queryByLabelText('NXT')).toBeNull();   // NXT venue 제거(#523)
+    // 라벨 문구가 아니라 **data-testid 의 원값**으로 잡는다 — 문구는 바뀌지만
+    // 저장 키('KRX'/'NXT'/'UN')는 계약이다(#1083 규율).
+    expect(screen.getByTestId('live-venue-KRX')).toBeChecked();
+    expect(screen.getByTestId('live-venue-NXT')).toBeInTheDocument();  // NXT 부활(ADR-0140 §5)
+    expect(screen.getByTestId('live-venue-UN')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText('시간대 자동'));
-    expect(useLiveVenueStore.getState().venue).toBe('UN');
-    expect(localStorage.getItem('live.venue.v1')).toContain('UN');
+    fireEvent.click(screen.getByTestId('live-venue-NXT'));
+    expect(useLiveVenueStore.getState().venue).toBe('NXT');
+    expect(localStorage.getItem('live.venue.v1')).toContain('NXT');
   });
 
   it('상세를 캔들/호가체결/스크리너 일봉 + 표시/캡처 매크로 그룹으로 구조화한다 (live)', async () => {

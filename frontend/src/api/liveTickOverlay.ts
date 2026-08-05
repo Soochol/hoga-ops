@@ -23,7 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { subscribeLive } from './ws';
 import type { LiveSnapshotEntry } from './types';
-import { liveVenueAcceptsFrame } from '../live/liveVenuePolicy';
+import { liveVenueAcceptsFrame, type LiveFrameVenue } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 /** 트레일링 스로틀 창. liveSeries.ts 의 LIVE_FLUSH_MS 와 같은 값·같은 이유:
@@ -115,11 +115,11 @@ function sameSample(a: LiveTickSample | undefined, b: LiveTickSample): boolean {
 function tradeSample(entry: LiveSnapshotEntry, venue: LiveVenueOption): LiveTickSample | null {
   if (entry.kind !== 'trade') return null;
   const tMs = (entry as { t_ms?: unknown }).t_ms;
-  const tagVenue = (entry as { venue?: 'KRX' | 'NXT' }).venue;
-  // t_ms 는 trade 프레임에 항상 실리지만(kiwoom_frames._parse_trade), 없으면 venue
-  // 판정이 불가하므로 보수적으로 배제한다 — 소스측 filterTradeByVenue 가 술어를
-  // 무조건 거는 것과 정합(느슨한 우회로를 남기지 않는다).
-  if (typeof tMs !== 'number' || !liveVenueAcceptsFrame(venue, tagVenue, tMs)) return null;
+  const tagVenue = (entry as { venue?: LiveFrameVenue }).venue;
+  // t_ms 는 trade 프레임에 항상 실리지만(kiwoom_frames._parse_trade), 없으면 샘플의
+  // 시각을 채울 수 없으므로 배제한다. (venue 판정은 더는 t_ms 를 안 쓴다 —
+  // ADR-0140 §5 태그 직결. 이 가드가 남은 이유는 샘플 자체 때문이다.)
+  if (typeof tMs !== 'number' || !liveVenueAcceptsFrame(venue, tagVenue)) return null;
   const trades = (entry as { trades?: unknown }).trades;
   if (!Array.isArray(trades) || trades.length === 0) return null;
   const price = (trades[trades.length - 1] as { price?: unknown } | undefined)?.price;
@@ -149,8 +149,8 @@ function expectedSignal(
 ): LiveExpectedSample | 'clear' | null {
   if (entry.kind !== 'ob') return null;
   const tMs = (entry as { t_ms?: unknown }).t_ms;
-  const tagVenue = (entry as { venue?: 'KRX' | 'NXT' }).venue;
-  if (typeof tMs !== 'number' || !liveVenueAcceptsFrame(venue, tagVenue, tMs)) return null;
+  const tagVenue = (entry as { venue?: LiveFrameVenue }).venue;
+  if (typeof tMs !== 'number' || !liveVenueAcceptsFrame(venue, tagVenue)) return null;
   const e = entry as { expected_price?: unknown; expected_qty?: unknown };
   const price = positiveNumber(e.expected_price);
   const qty = positiveNumber(e.expected_qty);

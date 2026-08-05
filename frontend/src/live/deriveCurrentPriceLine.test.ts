@@ -126,17 +126,34 @@ describe('freshLiveTradePrice', () => {
     expect(freshLiveTradePrice(trades, 'KRX', NOW)).toBeNull();
   });
 
-  it('UN venue accepts an NXT-tagged trade during NXT hours (#523)', () => {
-    const afterHoursMs = Date.UTC(2026, 4, 18, 8, 0, 0); // KST 17:00 — NXT 시간대
-    const trades = [tradeSnap(70500, afterHoursMs, { venue: 'NXT' })];
-    expect(freshLiveTradePrice(trades, 'UN', afterHoursMs + 1000)).toBe(70500);
+  it('NXT venue accepts an NXT-tagged trade — 정규장 시각에도 (ADR-0140 §5)', () => {
+    // 예전 UN 규칙에선 시각이 판정에 들어가 10:00 의 NXT 태그가 거절됐다. NXT 는
+    // 정규장에도 열려 있으므로 이제 현재가 라인이 그 체결을 따라간다.
+    const sessionMs = Date.UTC(2026, 4, 18, 1, 0, 0);   // KST 10:00 정규장
+    const afterHoursMs = Date.UTC(2026, 4, 18, 8, 0, 0); // KST 17:00 애프터마켓
+    for (const at of [sessionMs, afterHoursMs]) {
+      expect(freshLiveTradePrice([tradeSnap(70500, at, { venue: 'NXT' })], 'NXT', at + 1000))
+        .toBe(70500);
+    }
   });
 
-  it('UN hybrid fallback (untagged 구백엔드): KRX trade fresh only in regular session', () => {
-    const sessionMs = Date.UTC(2026, 4, 18, 1, 0, 0); // KST 10:00 — 정규장
-    expect(freshLiveTradePrice([tradeSnap(70500, sessionMs)], 'UN', sessionMs + 1000)).toBe(70500);
-    const afterHoursMs = Date.UTC(2026, 4, 18, 8, 0, 0); // KST 17:00 — 태그 없으면 차단
-    expect(freshLiveTradePrice([tradeSnap(70500, afterHoursMs)], 'UN', afterHoursMs + 1000)).toBeNull();
+  it('UN venue takes only UN-tagged trades — KRX·NXT 합집합이 아니다', () => {
+    const at = Date.UTC(2026, 4, 18, 1, 0, 0); // KST 10:00
+    expect(freshLiveTradePrice([tradeSnap(70500, at, { venue: 'UN' })], 'UN', at + 1000))
+      .toBe(70500);
+    // `_AL` 이 이미 병합본이라, KRX·NXT 를 함께 받으면 같은 체결이 중복 반영된다.
+    expect(freshLiveTradePrice([tradeSnap(70500, at, { venue: 'KRX' })], 'UN', at + 1000))
+      .toBeNull();
+    expect(freshLiveTradePrice([tradeSnap(70500, at, { venue: 'NXT' })], 'UN', at + 1000))
+      .toBeNull();
+  });
+
+  it('untagged 구백엔드 프레임은 KRX 로 승격된다 — 시각 무관', () => {
+    const afterHoursMs = Date.UTC(2026, 4, 18, 8, 0, 0); // KST 17:00
+    expect(freshLiveTradePrice([tradeSnap(70500, afterHoursMs)], 'KRX', afterHoursMs + 1000))
+      .toBe(70500);
+    expect(freshLiveTradePrice([tradeSnap(70500, afterHoursMs)], 'UN', afterHoursMs + 1000))
+      .toBeNull();
   });
 
   it('returns null for an empty buffer', () => {
