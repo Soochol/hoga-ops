@@ -160,3 +160,42 @@ def test_expected_sample_count_is_the_denominator_of_coverage():
 
     assert expected_sample_count(session_minutes=390, poll_interval_ms=60_000) == 390
     assert expected_sample_count(session_minutes=390, poll_interval_ms=300_000) == 78
+
+
+# ── 급등·급락 임계 (#1103 후속) ──────────────────────────────────────────
+
+def _jump(rate: str) -> dict:
+    return {"stk_cd": "x", "jmp_rt": rate}
+
+
+def test_threshold_filters_the_vendor_noise_floor():
+    """벤더 하한이 1% 라 그대로 세면 시장의 37% 가 '급등' 이 된다 — 임계가 의미를 만든다."""
+    from hoga.live.market_overview import JUMP_RATE_THRESHOLD_PCT, count_above_threshold
+
+    rows = [_jump("+9.36"), _jump("+3.00"), _jump("+2.99"), _jump("+1.01")]
+    assert JUMP_RATE_THRESHOLD_PCT == 3.0
+    assert count_above_threshold(rows) == 2  # 3.00 은 포함, 2.99 는 제외
+
+
+def test_threshold_uses_absolute_value_so_plunge_counts_too():
+    """급락은 음수로 온다 — 부호는 flu_tp 가 이미 갈랐다."""
+    from hoga.live.market_overview import count_above_threshold
+
+    assert count_above_threshold([_jump("-4.42"), _jump("-3.60"), _jump("-0.62")]) == 2
+
+
+def test_early_stop_when_the_page_tail_falls_below_threshold():
+    """응답이 내림차순이라 꼬리가 임계 아래면 다음 페이지는 볼 필요가 없다."""
+    from hoga.live.market_overview import below_threshold
+
+    assert below_threshold([_jump("+9.36"), _jump("+1.01")]) is True   # 꼬리 1.01 < 3
+    assert below_threshold([_jump("+9.36"), _jump("+3.50")]) is False  # 꼬리 3.50 ≥ 3 → 더 본다
+    assert below_threshold([]) is True                                  # 빈 페이지면 끝
+
+
+def test_unparseable_rate_does_not_stop_the_walk():
+    """값을 못 읽으면 조기 종료 판단을 하지 않는다 — 과소 집계보다 한 페이지 더가 낫다."""
+    from hoga.live.market_overview import below_threshold, count_above_threshold
+
+    assert below_threshold([_jump("+9.36"), {"stk_cd": "x"}]) is False
+    assert count_above_threshold([{"stk_cd": "x"}]) == 0

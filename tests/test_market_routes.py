@@ -103,18 +103,36 @@ async def test_breadth_reports_truncation_not_just_a_count():
     """조용한 절사 금지 — 상한에 닿았으면 응답이 그 사실을 말해야 한다(#1099)."""
     from hoga.api.market_routes import _collect_breadth
 
-    async def _walk(api_id, body, *, key):  # noqa: ANN001, ARG001
-        # ka10019(급등락)만 커서가 안 끝나는 상황을 재현한다
+    async def _walk(api_id, body, *, key, stop=None):  # noqa: ANN001, ARG001
+        # 급등락은 임계 이상만 세고, 신고저는 전량 센다
         if api_id == "ka10019":
-            return ([{"stk_cd": str(i)} for i in range(1000)], True)
+            rows = [{"stk_cd": str(i), "jmp_rt": "+9.0"} for i in range(3)]
+            rows += [{"stk_cd": f"lo{i}", "jmp_rt": "+1.2"} for i in range(197)]
+            return (rows, False)
         return ([{"stk_cd": str(i)} for i in range(45)], False)
 
     out = await _collect_breadth(_walk)
     kospi = out["markets"]["KOSPI"]
     assert kospi["new_high_52w"] == {"count": 45, "truncated": False}
-    assert kospi["surge"] == {"count": 1000, "truncated": True}
-    assert kospi["plunge"]["truncated"] is True
+    # 200행을 받았지만 임계(3%) 이상은 3개뿐 — 벤더 하한(1%)이 아니라 우리 임계가 센다
+    assert kospi["surge"] == {"count": 3, "truncated": False}
+    assert kospi["plunge"]["count"] == 3
     assert set(out["markets"]) == {"KOSPI", "KOSDAQ"}
+
+
+@pytest.mark.asyncio
+async def test_breadth_still_reports_truncation_when_it_happens():
+    """임계 조기 종료가 절사를 없애지만, 일어나면 여전히 말해야 한다(#1099)."""
+    from hoga.api.market_routes import _collect_breadth
+
+    async def _walk(api_id, body, *, key, stop=None):  # noqa: ANN001, ARG001
+        # 전 행이 임계 이상이라 조기 종료가 안 걸리고 상한에 닿은 상황
+        if api_id == "ka10019":
+            return ([{"stk_cd": str(i), "jmp_rt": "+9.0"} for i in range(1000)], True)
+        return ([{"stk_cd": str(i)} for i in range(45)], False)
+
+    out = await _collect_breadth(_walk)
+    assert out["markets"]["KOSPI"]["surge"] == {"count": 1000, "truncated": True}
 
 
 @pytest.mark.asyncio
@@ -122,7 +140,7 @@ async def test_breadth_is_dormant_without_credentials():
     """무자격이면 walk 가 None — 그 시장은 통째로 빠진다(빈 카운트를 지어내지 않는다)."""
     from hoga.api.market_routes import _collect_breadth
 
-    async def _walk(_api_id, _body, *, key):  # noqa: ANN001, ARG001
+    async def _walk(_api_id, _body, *, key, stop=None):  # noqa: ANN001, ARG001
         return None
 
     assert await _collect_breadth(_walk) == {"markets": {}}

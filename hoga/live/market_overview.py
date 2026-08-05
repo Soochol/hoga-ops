@@ -179,6 +179,39 @@ def expected_sample_count(*, session_minutes: int, poll_interval_ms: int) -> int
     return max(int(session_minutes * per_minute), 0)
 
 
+# 급등·급락으로 셀 최소 변동폭(%). **벤더 하한(1%)이 너무 낮다** — 실측(2026-08-05)에서
+# 코스피 1,000+ / 코스닥 1,000+ 가 잡혀 "시장의 37%가 급등" 이라는 무의미한 수가 나왔다.
+# 같은 응답의 분포가 임계를 정해 준다(1페이지 200행 기준): ≥1% 200 · ≥2% 69 · ≥3% 26 ·
+# ≥5% 5. 60분 창에서 3% 는 실제 움직임이고, 두 자리 수라 날마다 유의미하게 변한다.
+JUMP_RATE_THRESHOLD_PCT = 3.0
+
+
+def jump_rate_abs(row: dict[str, Any]) -> float | None:
+    """`jmp_rt` 의 절대값(%). 부호는 `flu_tp`(급등/급락)가 이미 갈랐다."""
+    v = decimal_price(row.get("jmp_rt"))
+    return None if v is None else abs(v)
+
+
+def below_threshold(rows: list[dict[str, Any]], *, threshold: float = JUMP_RATE_THRESHOLD_PCT) -> bool:
+    """이 페이지의 **마지막 행**이 임계 아래인가 — 그러면 다음 페이지는 볼 필요가 없다.
+
+    응답이 `jmp_rt` **내림차순**이라는 실측(급등 9.36→1.01, 급락 -4.42→-0.62, 양 방향
+    모두 확인)에 기댄 조기 종료다. 정렬이 깨지면 과소 집계가 되므로, 이 함수를 쓰는
+    쪽은 그 가정이 **응답 구조에 대한 것**임을 알고 있어야 한다.
+    """
+    if not rows:
+        return True
+    last = jump_rate_abs(rows[-1])
+    return last is not None and last < threshold
+
+
+def count_above_threshold(
+    rows: list[dict[str, Any]], *, threshold: float = JUMP_RATE_THRESHOLD_PCT
+) -> int:
+    """임계 이상만 센다. 조기 종료해도 마지막 페이지엔 임계 미만이 섞여 있다."""
+    return sum(1 for r in rows if (v := jump_rate_abs(r)) is not None and v >= threshold)
+
+
 class BreadthCount:
     """목록을 세어 만든 카운트 + **절사 여부**.
 

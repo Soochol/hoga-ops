@@ -232,19 +232,23 @@ async def _collect_breadth(walk: Any) -> dict[str, Any]:
         bucket: dict[str, Any] = {}
         for api_id, axis_key, axis_val, name in _BREADTH_QUERIES:
             base = _KA10016_BASE if api_id == "ka10016" else _KA10019_BASE
+            # ka10019 는 `jmp_rt` **내림차순**이라 임계 아래로 떨어지면 다음 페이지가
+            # 필요 없다 — 의미도 살고(1,000+ 대신 두 자리) 콜도 준다. ka10016 은
+            # 임계 개념이 없어 전량 센다.
+            is_jump = api_id == "ka10019"
             got = await walk(
                 api_id,
                 {"mrkt_tp": mrkt_tp, axis_key: axis_val, **base},
                 key=("market-breadth", api_id, mrkt_tp, axis_val),
+                stop=(lambda rows, _page: market_overview.below_threshold(rows)) if is_jump else None,
             )
             if got is None:
                 continue
             rows, truncated = got
-            bucket[name] = market_overview.count_rows(
-                rows,
-                pages_used=market_overview.MAX_BREADTH_PAGES if truncated else 1,
-                cont=truncated,
-            ).as_dict()
+            count = (
+                market_overview.count_above_threshold(rows) if is_jump else len(rows)
+            )
+            bucket[name] = {"count": count, "truncated": truncated}
         if bucket:
             out["markets"][label] = bucket
     return out
@@ -314,7 +318,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
         return got or {"axis": axis, "markets": {}}
 
     async def _walk(
-        api_id: str, body: dict[str, str], *, key: tuple
+        api_id: str, body: dict[str, str], *, key: tuple, stop: Any = None
     ) -> tuple[list[dict[str, Any]], bool] | None:
         """커서를 따라가는 호출. `(rows, truncated)` — 절사 여부가 값과 동급이다.
 
@@ -340,6 +344,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
             api_id,
             body,
             max_pages=market_overview.MAX_BREADTH_PAGES,
+            stop=stop,
             run_page=_run_page,
         )
 
