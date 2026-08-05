@@ -173,6 +173,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const spotOrderbook = useLiveOrderbookAtCursor({
     code: isSpot ? code : null,
     timeframe: spotTimeframe,
+    venue,
   });
   // ob/trade 는 useLiveSeries 가 선택 venue 로 소스에서 이미 필터한다(강제 경계) —
   // 창에서 재필터하지 않는다. 호가·체결강도·체결 미니리스트가 같은 venue 를 본다.
@@ -335,12 +336,13 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const spotSeries = useLiveBrokersAtCursor({
     code: scope.kind === 'minute-cursor' ? code : null,
     timeframe: scope.minuteTimeframe,
+    venue,
   });
   // latest 모드는 "당일 전체 누적" 이어야 한다(ADR-0044 2026-07-09 개정이 매물대에
   // 명시한 의미론 — 거래원에만 빠져 있었다). 승격된 당일 파케이를 본체로 삼고,
   // 승격 지연(≤약 5분 10초)으로 비는 꼬리만 WS 버퍼(15분)로 잇는다. 스팟 모드일
   // 때는 code=null 로 잠재워 불필요한 fetch 를 막는다.
-  const todaySeries = useLiveBrokersToday(scope.kind === 'inactive' ? code : null);
+  const todaySeries = useLiveBrokersToday(scope.kind === 'inactive' ? code : null, venue);
   const liveTail = useMemo(() => aggregateBrokerSeries(live.broker), [live.broker]);
   const latestSeries = useMemo(
     () => mergeBrokerSeriesWithLiveTail(todaySeries, liveTail),
