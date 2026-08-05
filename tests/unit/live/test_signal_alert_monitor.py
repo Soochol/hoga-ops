@@ -15,9 +15,9 @@ def test_emits_at_default_100_percent_after_start(tmp_path: Path) -> None:
     monitor = SignalAlertMonitor(tmp_path, publish=published.append, date_fn=date_fn)
     monitor.set_targets({"005930"})
 
-    assert monitor.ingest_orderbook("005930", "삼성전자", 10_00_00, 1_000, "ws") is None
-    assert monitor.ingest_orderbook("005930", "삼성전자", 11_01_00, 999, "ws") is None
-    event = monitor.ingest_orderbook("005930", "삼성전자", 11_02_00, 1_000, "ws")
+    assert monitor.ingest_orderbook("005930", "삼성전자", "KRX", 10_00_00, 1_000, "ws") is None
+    assert monitor.ingest_orderbook("005930", "삼성전자", "KRX", 11_01_00, 999, "ws") is None
+    event = monitor.ingest_orderbook("005930", "삼성전자", "KRX", 11_02_00, 1_000, "ws")
 
     assert event is not None
     assert event.seq == 1
@@ -41,8 +41,8 @@ def test_custom_95_percent_threshold(tmp_path: Path) -> None:
     monitor = SignalAlertMonitor(tmp_path, publish=lambda _event: None, date_fn=date_fn)
     monitor.set_targets({"005930"})
 
-    monitor.ingest_orderbook("005930", "삼성전자", 10_00_00, 1_000, "rest")
-    event = monitor.ingest_orderbook("005930", "삼성전자", 11_00_30, 950, "rest")
+    monitor.ingest_orderbook("005930", "삼성전자", "KRX", 10_00_00, 1_000, "rest")
+    event = monitor.ingest_orderbook("005930", "삼성전자", "KRX", 11_00_30, 950, "rest")
 
     assert event is not None
     assert event.source == "rest"
@@ -52,19 +52,19 @@ def test_ignores_non_targets_and_missing_baseline(tmp_path: Path) -> None:
     monitor = SignalAlertMonitor(tmp_path, publish=lambda _event: None, date_fn=date_fn)
     monitor.set_targets({"005930"})
 
-    assert monitor.ingest_orderbook("000660", "SK하이닉스", 10_00_00, 5_000, "ws") is None
-    assert monitor.ingest_orderbook("005930", "삼성전자", 11_00_00, 5_000, "ws") is None
+    assert monitor.ingest_orderbook("000660", "SK하이닉스", "KRX", 10_00_00, 5_000, "ws") is None
+    assert monitor.ingest_orderbook("005930", "삼성전자", "KRX", 11_00_00, 5_000, "ws") is None
 
 
 def test_rearm_suppresses_repeated_alerts(tmp_path: Path) -> None:
     monitor = SignalAlertMonitor(tmp_path, publish=lambda _event: None, date_fn=date_fn)
     monitor.set_targets({"005930"})
 
-    monitor.ingest_orderbook("005930", "삼성전자", 10_00_00, 1_000, "ws")
-    first = monitor.ingest_orderbook("005930", "삼성전자", 11_00_00, 1_000, "ws")
-    duplicate = monitor.ingest_orderbook("005930", "삼성전자", 11_00_10, 1_010, "ws")
-    monitor.ingest_orderbook("005930", "삼성전자", 11_01_00, 800, "ws")
-    second = monitor.ingest_orderbook("005930", "삼성전자", 11_02_00, 1_000, "ws")
+    monitor.ingest_orderbook("005930", "삼성전자", "KRX", 10_00_00, 1_000, "ws")
+    first = monitor.ingest_orderbook("005930", "삼성전자", "KRX", 11_00_00, 1_000, "ws")
+    duplicate = monitor.ingest_orderbook("005930", "삼성전자", "KRX", 11_00_10, 1_010, "ws")
+    monitor.ingest_orderbook("005930", "삼성전자", "KRX", 11_01_00, 800, "ws")
+    second = monitor.ingest_orderbook("005930", "삼성전자", "KRX", 11_02_00, 1_000, "ws")
 
     assert first is not None
     assert duplicate is None
@@ -74,11 +74,11 @@ def test_rearm_suppresses_repeated_alerts(tmp_path: Path) -> None:
 def test_set_targets_removes_stale_state(tmp_path: Path) -> None:
     monitor = SignalAlertMonitor(tmp_path, publish=lambda _event: None, date_fn=date_fn)
     monitor.set_targets({"005930"})
-    monitor.ingest_orderbook("005930", "삼성전자", 10_00_00, 1_000, "ws")
+    monitor.ingest_orderbook("005930", "삼성전자", "KRX", 10_00_00, 1_000, "ws")
 
     monitor.set_targets({"000660"})
 
-    assert monitor.ingest_orderbook("005930", "삼성전자", 11_00_00, 1_000, "ws") is None
+    assert monitor.ingest_orderbook("005930", "삼성전자", "KRX", 11_00_00, 1_000, "ws") is None
 
 
 def test_ingest_uses_cached_settings(tmp_path: Path, monkeypatch) -> None:
@@ -90,8 +90,8 @@ def test_ingest_uses_cached_settings(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(monitor_module, "load_signal_alert_settings", fail_load)
 
-    monitor.ingest_orderbook("005930", "삼성전자", 10_00_00, 1_000, "ws")
-    event = monitor.ingest_orderbook("005930", "삼성전자", 11_00_00, 1_000, "ws")
+    monitor.ingest_orderbook("005930", "삼성전자", "KRX", 10_00_00, 1_000, "ws")
+    event = monitor.ingest_orderbook("005930", "삼성전자", "KRX", 11_00_00, 1_000, "ws")
 
     assert event is not None
 
@@ -100,8 +100,8 @@ def test_target_name_map_overrides_tick_name(tmp_path: Path) -> None:
     monitor = SignalAlertMonitor(tmp_path, publish=lambda _event: None, date_fn=date_fn)
     monitor.set_targets({"005930": "삼성전자"})
 
-    monitor.ingest_orderbook("005930", "005930", 10_00_00, 1_000, "ws")
-    event = monitor.ingest_orderbook("005930", "005930", 11_00_00, 1_000, "ws")
+    monitor.ingest_orderbook("005930", "005930", "KRX", 10_00_00, 1_000, "ws")
+    event = monitor.ingest_orderbook("005930", "005930", "KRX", 11_00_00, 1_000, "ws")
 
     assert event is not None
     assert event.name == "삼성전자"

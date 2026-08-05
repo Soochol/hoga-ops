@@ -361,7 +361,7 @@ async def test_on_tick_updates_today_ask_peak_state(tmp_path):
     }))
     await stream.on_tick(_ask_peak_ob_tick(now + 5_000))
 
-    assert stream.ask_peak_snapshot("005930") == {
+    assert stream.ask_peak_snapshot("005930", "KRX") == {
         "date": "20260616",
         "coverage": "partial",
         "traded_prices": [101],
@@ -400,7 +400,7 @@ async def test_on_tick_updates_today_bid_peak_state(tmp_path):
     }))
     await stream.on_tick(_bid_peak_ob_tick(now + 5_000))
 
-    assert stream.bid_peak_snapshot("005930") == {
+    assert stream.bid_peak_snapshot("005930", "KRX") == {
         "date": "20260619",
         "coverage": "partial",
         "traded_prices": [70_000],
@@ -453,7 +453,7 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_ask_peak_state(tmp_pa
         "total_ask_qty": 14, "total_bid_qty": 4,
     }))
 
-    assert stream.ask_peak_snapshot("005930") == {
+    assert stream.ask_peak_snapshot("005930", "KRX") == {
         "date": "20260616",
         "coverage": "partial",
         "traded_prices": [101],
@@ -503,7 +503,7 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_bid_peak_state(tmp_pa
         "total_ask_qty": 1_000, "total_bid_qty": 17_800,
     }))
 
-    assert stream.bid_peak_snapshot("005930") == {
+    assert stream.bid_peak_snapshot("005930", "KRX") == {
         "date": "20260619",
         "coverage": "partial",
         "traded_prices": [70_000],
@@ -540,7 +540,7 @@ async def test_on_tick_orderbook_populates_untraded_peak_arrays_without_trades(t
     now = _kst_ms(9, 10)
     await stream.on_tick(_ask_peak_ob_tick(now))
 
-    assert stream.ask_peak_snapshot("005930") == {
+    assert stream.ask_peak_snapshot("005930", "KRX") == {
         "date": "20260616",
         "coverage": "partial",
         "traded_prices": [],
@@ -583,7 +583,7 @@ async def test_on_tick_continuous_trade_reclassifies_earlier_wall_but_not_later_
         _ask_peak_ob_tick_with_front_qtys(now + 2_000, ask_101=8, ask_102=4)
     )
 
-    assert stream.ask_peak_snapshot("005930") == {
+    assert stream.ask_peak_snapshot("005930", "KRX") == {
         "date": "20260616",
         "coverage": "partial",
         "traded_prices": [101],
@@ -626,7 +626,7 @@ async def test_on_tick_does_not_create_ask_peak_for_inactive_code(tmp_path):
     now = _kst_ms(9, 10)
     await stream.on_tick(_ask_peak_ob_tick(now))
 
-    assert stream.ask_peak_snapshot("005930") is None
+    assert stream.ask_peak_snapshot("005930", "KRX") is None
 
 
 async def test_on_tick_ignores_malformed_ask_peak_levels(tmp_path):
@@ -640,7 +640,7 @@ async def test_on_tick_ignores_malformed_ask_peak_levels(tmp_path):
         "total_ask_qty": 0, "total_bid_qty": 0,
     }))
 
-    assert stream.ask_peak_snapshot("005930") is None
+    assert stream.ask_peak_snapshot("005930", "KRX") is None
 
 
 async def test_on_tick_ignores_auction_or_post_close_ask_peak_books(tmp_path):
@@ -671,7 +671,7 @@ async def test_on_tick_ignores_auction_or_post_close_ask_peak_books(tmp_path):
     }))
     await stream.on_tick(_ask_peak_ob_tick(_kst_ms(15, 31)))
 
-    assert stream.ask_peak_snapshot("005930") is None
+    assert stream.ask_peak_snapshot("005930", "KRX") is None
 
 
 async def test_on_tick_ignores_one_sided_collapsed_ask_peak_book(tmp_path):
@@ -697,7 +697,7 @@ async def test_on_tick_ignores_one_sided_collapsed_ask_peak_book(tmp_path):
         "total_bid_qty": 1_000,
     }))
 
-    assert stream.ask_peak_snapshot("005930") is None
+    assert stream.ask_peak_snapshot("005930", "KRX") is None
 
 
 async def test_run_flush_loop_drains_resets_and_reopen_has_no_ghost_carry(
@@ -829,9 +829,9 @@ async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverag
     ]
     live_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
 
-    stream.seed_ask_peak_from_live_file(code="005930", date="20260616", live_root=live_root)
+    stream.seed_ask_peak_from_live_file(code="005930", venue="KRX", date="20260616", live_root=live_root)
 
-    assert stream.ask_peak_snapshot("005930") == {
+    assert stream.ask_peak_snapshot("005930", "KRX") == {
         "date": "20260616",
         "coverage": "full",
         "traded_prices": [10_100],
@@ -893,9 +893,9 @@ async def test_seed_bid_peak_from_live_file_loads_full_day_peak_and_full_coverag
     ]
     live_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
 
-    stream.seed_bid_peak_from_live_file(code="005930", date="20260619", live_root=live_root)
+    stream.seed_bid_peak_from_live_file(code="005930", venue="KRX", date="20260619", live_root=live_root)
 
-    assert stream.bid_peak_snapshot("005930") == {
+    assert stream.bid_peak_snapshot("005930", "KRX") == {
         "date": "20260619",
         "coverage": "full",
         "traded_prices": [70_000],
@@ -1183,8 +1183,8 @@ async def test_flush_per_code_isolation_on_append_failure(tmp_path, monkeypatch)
                if d["kind"] == "fill"]
     assert b_fills[-1]["payload"]["buy_qty"] == 7
     # B는 commit돼 합이 0으로(다음 윈도 새 합), A는 보존(5)
-    assert stream._ds._codes["000660"].buy_qty == 0
-    assert stream._ds._codes["005930"].buy_qty == 5   # A 보존 → 다음 윈도 롤
+    assert stream._ds._codes[("000660", "KRX")].buy_qty == 0
+    assert stream._ds._codes[("005930", "KRX")].buy_qty == 5   # A 보존 → 다음 윈도 롤
 
 
 def _broker_tick(t_ms, buy_top, sell_top):

@@ -1498,8 +1498,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     get_status: Callable[[], LiveStatus],
     get_buffer: Callable[[], LiveBuffer] | None = None,
     on_control: Callable[[str], Awaitable[None]] | None = None,
-    get_today_ask_peak: Callable[[str], dict | None] | None = None,
-    get_today_bid_peak: Callable[[str], dict | None] | None = None,
+    get_today_ask_peak: Callable[[str, str], dict | None] | None = None,
+    get_today_bid_peak: Callable[[str, str], dict | None] | None = None,
     *,
     get_vi_status: Callable[[str], dict | None] | None = None,
     data_dir: Path | None = None,
@@ -2012,11 +2012,14 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             "session_open_ms": session_open_ms,
             "session_close_ms": None,
             "is_open": True,
+            # ⚠ venue 를 **리터럴로 못박는다** — 이 라우트(`_get_series`)엔 아직 venue
+            # 파라미터가 없다. 읽기 API 표면에 venue 를 싣는 것은 PR-J 의 몫이고
+            # (ADR-0140 열린 항목), 기본값으로 숨기면 그때 고칠 자리를 못 찾는다.
             "ask_peak_today": (
-                get_today_ask_peak(code) if get_today_ask_peak is not None else None
+                get_today_ask_peak(code, "KRX") if get_today_ask_peak is not None else None
             ),
             "bid_peak_today": (
-                get_today_bid_peak(code) if get_today_bid_peak is not None else None
+                get_today_bid_peak(code, "KRX") if get_today_bid_peak is not None else None
             ),
         }
 
