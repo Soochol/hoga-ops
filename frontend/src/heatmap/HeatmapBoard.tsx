@@ -6,7 +6,6 @@ import {
 import { arrayMove } from '@dnd-kit/sortable';
 import type { LiveQuote } from '../api/liveQuotes';
 import { HeatmapFolder, type RowMenuOpener } from './HeatmapFolder';
-import { visibleFolderGroups } from './visibleGroups';
 import { makePctOf, sortEntries, type HeatmapGroup, type SortMode } from './heat';
 import { useCopyDragIntent } from './useCopyDragIntent';
 
@@ -33,6 +32,10 @@ export interface HeatmapBoardProps {
   flowByFolder?: Map<string, number[]>;
   /** 검색 쿼리 — 매칭 종목 행 하이라이트용(폴더로 통과). */
   query?: string;
+  /** 이 그룹의 '＋종목' 팝오버를 자동으로 연다(새 그룹 생성 직후). null=없음. */
+  autoAddFolderId?: string | null;
+  /** 위 자동 열기가 소비됐음을 페이지에 알린다(표식 1회성 소각). */
+  onAutoAddOpened?: () => void;
 }
 
 /** 행(entry) 드래그는 형제 행과 그룹 드롭존만 본다. 드로어의 typeAwareCollision 과 같은
@@ -45,7 +48,10 @@ const entryCollision: CollisionDetection = (args) => {
   return closestCenter({ ...args, droppableContainers: same });
 };
 
-/** 신문형 멀티칼럼 보드. 빈 그룹만 제외. columnWidth 로 가용 폭만큼
+/** 신문형 멀티칼럼 보드. **빈 그룹도 렌더한다** — 예전엔 visibleFolderGroups 가 걸러냈는데,
+ *  종목을 넣는 표면(그룹 헤더의 ＋종목·그룹 드롭존)이 그 그룹 카드 안에만 있어 갓 만든
+ *  그룹이 화면에서 사라지고 채울 길이 없는 데드엔드가 됐다(드로어만 빈 그룹을 보여주던
+ *  비대칭). 빈 카드는 헤더 + 한 줄 안내로 끝나 밀도 비용도 낮다. columnWidth 로 가용 폭만큼
  *  칼럼 수가 자동 결정된다(순수 CSS 메이슨리, 레이아웃 JS 없음). columnWidth 는 행 그리드의 측정
  *  min-content(합성 하니스 실측 ≈15.7rem — 이름+캔들 2.5rem+현재가+칩; 20px root 시절 ≈314px 실측을
  *  rem 환산, rem 기준이라 root 크기와 무관) 위로
@@ -60,8 +66,7 @@ const entryCollision: CollisionDetection = (args) => {
  *  그래서 드래그가 구조적으로 "그룹 내"에 갇혀 있었다. 그룹 간 이동/복제를 드래그로 하려면
  *  컨텍스트가 하나여야 한다. multicol 이 블록을 칼럼에 흩뿌려도 폴더 블록은 break-inside-avoid
  *  라 한 칼럼 안에 온전히 있고, dnd-kit 은 좌표로 충돌을 재므로 칼럼을 넘는 드래그도 동작한다. */
-export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder, onMove, onCopy, onRowMenu, onRenameFolder, onDeleteFolder, onRowDragState, flowByFolder, query }: HeatmapBoardProps) {
-  const visible = visibleFolderGroups(groups);
+export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder, onMove, onCopy, onRowMenu, onRenameFolder, onDeleteFolder, onRowDragState, flowByFolder, query, autoAddFolderId, onAutoAddOpened }: HeatmapBoardProps) {
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬/이동)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [dragging, setDragging] = useState(false);
@@ -88,7 +93,7 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
     // 같은 그룹 형제 행 위 = 그룹 내 재정렬. ordered 는 현재 화면 순서(manual=entry.order).
     if (over.type === 'entry' && to === from) {
       if (!onReorder) return;
-      const group = visible.find((g) => g.folder.id === from);
+      const group = groups.find((g) => g.folder.id === from);
       if (!group) return;
       const ordered = sortEntries(group.entries, sortMode, makePctOf(quoteByCode)).map((e) => e.code);
       const fromIdx = ordered.indexOf(code);
@@ -106,7 +111,7 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
 
   const board = (
     <div style={{ columnWidth: '16.5rem', columnGap: '0.5rem' }}>
-      {visible.map((g) => (
+      {groups.map((g) => (
         <HeatmapFolder
           key={g.folder.id}
           folder={g.folder}
@@ -122,6 +127,8 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
           copyIntent={copyIntent}
           onRenameFolder={onRenameFolder}
           onDeleteFolder={onDeleteFolder}
+          autoOpenAdd={autoAddFolderId === g.folder.id}
+          onAutoOpenAdd={onAutoAddOpened}
         />
       ))}
     </div>

@@ -696,7 +696,8 @@ export function HeatmapDrawer() {
               const folder = g.folder;
               const key = folder.id;
               // 빈 그룹도 표시 — 새 그룹 직후 종목 추가로 채울 수 있어야 하기 때문
-              // (/heatmap 보드의 visibleFolderGroups 는 빈 폴더 숨김 → 의도적 비대칭).
+              // (/heatmap 보드도 이제 같다 — 예전의 '보드만 빈 폴더 숨김' 비대칭은 갓 만든
+              //  그룹을 채울 표면을 없애 데드엔드였다).
               // 검색 중엔 접기 무시 — 매칭된 행이 보여야 한다(collapsed Set 은 안 건드림).
               const isCollapsed = !isSearching && collapsed.has(key);
               const rows = sortEntries(g.entries, sortMode, pctOf);
