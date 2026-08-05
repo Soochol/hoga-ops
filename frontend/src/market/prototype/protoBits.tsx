@@ -272,6 +272,75 @@ export function DailyNetBars({
   );
 }
 
+/** 일별 콤보 차트 — 일별 그룹 막대(강도) + 누적 라인(방향)을 한 프레임에.
+ *  막대는 일별 스케일, 누적 라인은 자체 스케일로 정규화(이중 축) — 막대가 라인을
+ *  깔고 라인이 위에 얹힌다. 같은 계열 = 같은 색(막대 반투명, 라인 불투명). */
+export function ComboNetChart({
+  aDaily,
+  bDaily,
+  aColor = NET_TREND_COLORS.foreign,
+  bColor = NET_TREND_COLORS.institution,
+  height = 96,
+}: {
+  aDaily: number[];
+  bDaily: number[];
+  aColor?: string;
+  bColor?: string;
+  height?: number;
+}) {
+  const n = aDaily.length;
+  const width = 300;
+  // 막대: 일별 스케일 (0 중앙)
+  const maxAbs = Math.max(...aDaily.map(Math.abs), ...bDaily.map(Math.abs)) || 1;
+  const mid = height / 2;
+  const slot = width / n;
+  const bw = Math.max((slot - 2) / 2, 1.5);
+  const bar = (v: number, x: number, color: string, key: string) => {
+    const bh = (Math.abs(v) / maxAbs) * (mid - 3);
+    return (
+      <rect
+        key={key}
+        x={x}
+        y={v >= 0 ? mid - bh : mid}
+        width={bw}
+        height={Math.max(bh, 0.75)}
+        fill={color}
+        opacity="0.45"
+      />
+    );
+  };
+  // 누적 라인: 두 계열 공용 자체 스케일
+  const cum = (daily: number[]) => {
+    let acc = 0;
+    return daily.map((v) => (acc += v));
+  };
+  const aCum = cum(aDaily);
+  const bCum = cum(bDaily);
+  const all = [...aCum, ...bCum, 0];
+  const cMin = Math.min(...all);
+  const cSpan = Math.max(...all) - cMin || 1;
+  const px = (i: number) => i * slot + slot / 2;
+  const py = (v: number) => height - 3 - ((v - cMin) / cSpan) * (height - 6);
+  const path = (s: number[]) =>
+    s.map((v, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+  return (
+    <svg
+      width="100%"
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      className="block"
+    >
+      <line x1="0" x2={width} y1={mid} y2={mid} stroke="var(--border-strong)" />
+      {aDaily.map((v, i) => bar(v, i * slot + 1, aColor, `a${i}`))}
+      {bDaily.map((v, i) => bar(v, i * slot + 1 + bw + 0.5, bColor, `b${i}`))}
+      <path d={path(aCum)} fill="none" stroke={aColor} strokeWidth="1.5" strokeLinejoin="round" />
+      <path d={path(bCum)} fill="none" stroke={bColor} strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** 프로그램 매매 시리즈 색 — 차익 --ma-6(시안) · 비차익 --ma-7(노랑).
  *  수급 추세의 외국인/기관(--ma-3/--ma-4)과 슬롯이 겹치지 않게 확장 슬롯 사용. */
 export const PROGRAM_COLORS = { arb: 'var(--ma-6)', nonArb: 'var(--ma-7)' } as const;

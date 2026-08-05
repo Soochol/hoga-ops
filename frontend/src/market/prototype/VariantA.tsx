@@ -18,7 +18,7 @@ import {
   mockIndividualDaily, type MockRankRow,
 } from './mockData';
 import {
-  AdvanceDeclineBar, BreadthTiles, CumLinesChart, DailyNetBars, INDIVIDUAL_COLOR,
+  AdvanceDeclineBar, BreadthTiles, ComboNetChart, CumLinesChart, INDIVIDUAL_COLOR,
   NET_TREND_COLORS, NetTrendChart, NetTrendLegend, PROGRAM_COLORS, PctText,
   ProgramTrendChart, ProgramTrendLegend, Sparkline, fmtSigned,
 } from './protoBits';
@@ -161,7 +161,7 @@ function InvestorCard() {
                   showIndex={false}
                 />
               </div>
-              <DailyNetBars foreignDaily={t.foreignDaily} institutionDaily={t.institutionDaily} />
+              <ComboNetChart aDaily={t.foreignDaily} bDaily={t.institutionDaily} />
               <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
                 <span>{MOCK_TREND_DATES[0]}</span>
                 <span>{MOCK_TREND_DATES[MOCK_TREND_DATES.length - 1]}</span>
@@ -297,9 +297,9 @@ function ProgramCard() {
                 </span>
                 <ProgramTrendLegend arbDaily={p.arbDaily} nonArbDaily={p.nonArbDaily} />
               </div>
-              <DailyNetBars
-                foreignDaily={p.arbDaily}
-                institutionDaily={p.nonArbDaily}
+              <ComboNetChart
+                aDaily={p.arbDaily}
+                bDaily={p.nonArbDaily}
                 aColor={PROGRAM_COLORS.arb}
                 bColor={PROGRAM_COLORS.nonArb}
                 height={56}
