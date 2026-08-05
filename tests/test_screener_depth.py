@@ -38,7 +38,11 @@ def _ob(*, ts_ms: int, ask_q: tuple[int, ...], bid_q: tuple[int, ...]) -> Orderb
 
 def _write_snap(data_dir: Path, *, date: str, code: str, source: str,
                 obs: list[Orderbook]) -> None:
-    d = data_dir / "parquet" / date / code / source
+    # 경로 조립은 **정본 헬퍼**에 맡긴다 — 픽스처가 손으로 조립하면 레이아웃이
+    # 바뀔 때마다(ADR-0037 소스 축 → ADR-0140 venue 축) 여기부터 어긋난다.
+    from hoga.api.sources import source_venue_dir
+
+    d = source_venue_dir(data_dir / "parquet" / date / code, source, "KRX")
     d.mkdir(parents=True, exist_ok=True)
     (d / "meta.json").write_text(json.dumps({
         "name": code, "regular_session_open_ms": _OPEN,

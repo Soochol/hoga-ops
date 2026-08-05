@@ -52,10 +52,15 @@ def resolve_source_dir(stock_date_dir: Path, source: str, venue: str = "KRX") ->
     only if the source subdir doesn't exist AND the flat dir has a
     meta.json — this preserves backward compatibility with test fixtures
     that build the flat layout directly.
-    """
-    from hoga.api.sources import resolve_source_venue_dir  # noqa: PLC0415 — 순환 절단
 
-    sub = resolve_source_venue_dir(stock_date_dir, source, venue)
+    ⚠ 이 폴백은 **ADR-0037**(소스 축) 시절 유산이고 ADR-0140 의 venue 축 폴백과
+    **다른 것**이다. 후자는 PR-D2 에서 삭제됐다(마이그레이션 완료). 여기 것은
+    `{stock_date_dir}/meta.json` 이라는 더 옛 모양을 덮으며, 테스트 픽스처가
+    그 모양을 직접 만들기 때문에 살아 있다 — 함께 지우지 말 것(#1140 명시).
+    """
+    from hoga.api.sources import source_venue_dir  # noqa: PLC0415 — 순환 절단
+
+    sub = source_venue_dir(stock_date_dir, source, venue)
     if sub.exists():
         return sub
     if (stock_date_dir / "meta.json").exists():

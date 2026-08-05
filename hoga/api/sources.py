@@ -57,27 +57,6 @@ def source_venue_dir(stock_date_dir: Path, source: str, venue: Venue) -> Path:
     return base / venue if SOURCE_HAS_VENUE.get(cast(SourceName, source), False) else base
 
 
-def resolve_source_venue_dir(stock_date_dir: Path, source: str, venue: Venue) -> Path:
-    """읽기 경로 — venue 디렉터리가 없으면 마이그레이션 전 `{source}/` 로 폴백.
-
-    ⚠ **한시적이다. PR-D2 가 이 함수를 통째로 삭제한다.**
-
-    ADR-0140 §3 은 하위호환 분기를 기각했다 — *"경계가 날짜가 아니라 '있느냐'라
-    배포 이후에도 두 모양이 영구히 섞인다"*. 그 기각은 **영구** 분기를 전제한
-    것이고, 여기 폴백은 **코드와 데이터가 동시에 바뀔 수 없어서 생기는 창**만
-    덮는다: 머지 → 마이그레이션 스크립트 실행 → 이 함수 삭제.
-
-    폴백 조건을 "venue 디렉터리 부재"가 아니라 **"부재 AND 구 경로에 meta.json 존재"**
-    로 좁힌다 — 그냥 부재면 새 레이아웃에서 아직 안 쌓인 venue(예: 미상장 종목의
-    NXT)까지 구 경로로 흘러 KRX 데이터를 NXT 로 읽는다.
-    """
-    canonical = source_venue_dir(stock_date_dir, source, venue)
-    if canonical.exists():
-        return canonical
-    legacy = stock_date_dir / source
-    if canonical != legacy and (legacy / "meta.json").exists():
-        return legacy
-    return canonical
 MissingReason = Literal["stock_date_missing", "source_missing"]
 SourcePolicy = Literal[
     "hogaplay",
@@ -233,7 +212,7 @@ def resolve_source_result(
             winner = cast(SourceName, ranked[0][2])
             return SourceResolution(
                 source=winner,
-                path=resolve_source_venue_dir(sd_dir, winner, venue),
+                path=source_venue_dir(sd_dir, winner, venue),
                 classification=per_source[winner],
             )
         # healthy 없음(전부 INVALID/부재) → 아래 공통 폴백으로 진행.
@@ -242,7 +221,7 @@ def resolve_source_result(
             if source in healthy:
                 return SourceResolution(
                     source=source,
-                    path=resolve_source_venue_dir(sd_dir, source, venue),
+                    path=source_venue_dir(sd_dir, source, venue),
                     classification=per_source[source],
                 )
 
@@ -250,7 +229,7 @@ def resolve_source_result(
     if source in per_source:
         return SourceResolution(
             source=source,
-            path=resolve_source_venue_dir(sd_dir, source, venue),
+            path=source_venue_dir(sd_dir, source, venue),
             classification=per_source[source],
         )
     return SourceResolution(
@@ -300,6 +279,6 @@ def resolve_candle_source(
         classification = per_source.get(source)
         if classification is None or classification.state == DiskState.INVALID:
             continue
-        if (resolve_source_venue_dir(sd_dir, source, venue) / "candles.parquet").exists():
+        if (source_venue_dir(sd_dir, source, venue) / "candles.parquet").exists():
             return source
     return None
