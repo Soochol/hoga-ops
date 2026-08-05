@@ -95,6 +95,55 @@ _KA10019_BASE = {
 }
 
 
+# 정규장 09:00–15:30 = 390분. 커버리지 분모의 근거이고, 수집 게이트
+# (`ws_capture_window`)와 같은 창이다.
+_SESSION_MINUTES = 390
+
+
+def _investor_flow_payload(data_dir: Path) -> dict[str, Any]:
+    """장중 수급 — 저장된 표본을 읽어 3주체 누적 시계열 + 커버리지로.
+
+    **읽기 경로는 벤더를 부르지 않는다.** 표본은 수집기가 이미 찍어 뒀고, 소급 조회가
+    불가능한 데이터라 여기서 다시 부를 수도 없다(#1105).
+
+    잠정/확정은 **확정 파일의 존재로 파생**한다 — 플래그를 저장하지 않는다(#1115).
+    """
+    from hoga.collector.orchestrator import now_kst  # noqa: PLC0415
+    from hoga.live.investor_flow_collector import POLL_INTERVAL_S  # noqa: PLC0415
+    from hoga.live.investor_flow_store import InvestorFlowStore, compute_coverage  # noqa: PLC0415
+
+    date = now_kst().strftime("%Y%m%d")
+    store = InvestorFlowStore(data_dir)
+    samples = store.load_samples(date)
+    poll_ms = int(POLL_INTERVAL_S * 1000)
+
+    series: dict[str, list[dict[str, Any]]] = {}
+    for s in samples:
+        got = market_overview.market_investor_row(s.rows)
+        if got is None:
+            continue
+        label, values = got
+        series.setdefault(label, []).append({"t_ms": s.sampled_at_ms, **values})
+
+    cov = compute_coverage(samples, poll_interval_ms=poll_ms)
+    return {
+        "date": date,
+        # 단위는 수집 시 요청이 정했다 — 이름에 박아 화면이 축을 못 헷갈리게 한다.
+        "unit": "amt_eok",
+        "confirmed": store.is_confirmed(date),
+        "coverage": {
+            "first_sample_ms": cov.first_sample_ms,
+            "last_sample_ms": cov.last_sample_ms,
+            "sample_count": cov.sample_count,
+            "expected_count": market_overview.expected_sample_count(
+                session_minutes=_SESSION_MINUTES, poll_interval_ms=poll_ms
+            ),
+            "gap_ranges": cov.gap_ranges,
+        },
+        "markets": series,
+    }
+
+
 async def _collect_sectors(call: Any) -> dict[str, Any]:
     """지수 값 + 등락종목수 + KRX 업종 (ka20003, 시장별 1콜).
 
@@ -286,6 +335,15 @@ def build_router(*, data_dir: Path) -> APIRouter:
         오므로 화면은 "T+2" 를 고정 문구로 박으면 안 된다.
         """
         return await funds_cache.get()
+
+    @router.get("/investor-flow")
+    async def get_investor_flow() -> dict[str, Any]:
+        """장중 수급 — 수집기가 적재한 표본(#1120)을 읽는다. 벤더를 부르지 않는다.
+
+        커버리지가 값과 동급이다: 수집이 죽으면 차트가 **짧은 선을 사실처럼** 그린다.
+        재시작 공백은 `gap_ranges` 로 정직하게 드러나고 **메울 수는 없다**(#1105).
+        """
+        return await asyncio.to_thread(_investor_flow_payload, data_dir)
 
     @router.get("/streaks")
     async def get_streaks() -> dict[str, Any]:

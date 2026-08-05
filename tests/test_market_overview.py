@@ -123,3 +123,40 @@ def test_complete_count_is_not_truncated():
     done = count_rows(rows, pages_used=1, cont=False)
     assert done.count == 45
     assert done.truncated is False
+
+
+def test_market_investor_row_picks_the_whole_market_only():
+    """28~32행 중 종합 행 하나만 — 업종 행은 이 표면이 쓰지 않는다."""
+    from hoga.live.market_overview import market_investor_row
+
+    rows = [
+        {"inds_cd": "002_AL", "ind_netprps": "-8891", "frgnr_netprps": "+6861", "orgn_netprps": "+1636"},
+        {"inds_cd": "001_AL", "ind_netprps": "-8787", "frgnr_netprps": "+6473", "orgn_netprps": "+1893"},
+    ]
+    got = market_investor_row(rows)
+    assert got is not None
+    label, values = got
+    assert label == "KOSPI"
+    assert values == {"individual": -8787, "foreign": 6473, "institution": 1893}
+
+
+def test_market_investor_row_is_none_without_a_whole_market_row():
+    from hoga.live.market_overview import market_investor_row
+
+    assert market_investor_row([{"inds_cd": "005_AL", "ind_netprps": "1"}]) is None
+
+
+def test_kosdaq_row_is_labelled():
+    from hoga.live.market_overview import market_investor_row
+
+    got = market_investor_row([{"inds_cd": "101_AL", "ind_netprps": "+4244",
+                                "frgnr_netprps": "-3355", "orgn_netprps": "-892"}])
+    assert got is not None and got[0] == "KOSDAQ"
+
+
+def test_expected_sample_count_is_the_denominator_of_coverage():
+    """화면의 '표본 42/78' 에서 분모 — 없으면 42 가 많은지 적은지 알 수 없다."""
+    from hoga.live.market_overview import expected_sample_count
+
+    assert expected_sample_count(session_minutes=390, poll_interval_ms=60_000) == 390
+    assert expected_sample_count(session_minutes=390, poll_interval_ms=300_000) == 78

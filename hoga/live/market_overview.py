@@ -142,6 +142,43 @@ def parse_streaks(rows: list[dict[str, Any]], *, actor: str) -> list[dict[str, A
     return out
 
 
+# ka10051 주체 필드 — 값의 **단위는 요청의 `amt_qty_tp` 가 정한다**(#1117).
+# 수집기는 `"0"`(금액, 억원)으로 찍으므로 여기서 나오는 값은 억원이다. 필드 이름에
+# 단위를 박는 이유는 2026-08-04 의 단위 뒤바뀜 버그 때문이다.
+INVESTOR_FIELDS: dict[str, str] = {
+    "individual": "ind_netprps",
+    "foreign": "frgnr_netprps",
+    "institution": "orgn_netprps",
+}
+
+# 시장 전체 행 — 업종 행과 구분한다(`_AL` venue 접미가 붙어 온다).
+WHOLE_MARKET_INDS = {"001_AL": "KOSPI", "101_AL": "KOSDAQ"}
+
+
+def market_investor_row(rows: list[dict[str, Any]]) -> tuple[str, dict[str, int | None]] | None:
+    """ka10051 응답에서 **시장 전체 행 하나**를 뽑아 3주체 값으로. 없으면 None.
+
+    28~32행 중 업종 행은 버린다 — 카드가 쓰는 것은 종합(KOSPI/KOSDAQ) 뿐이다.
+    업종별 수급은 저장은 하되(소급 조회 불가라 버리면 영원히 없다) 이 표면은 안 쓴다.
+    """
+    for r in rows:
+        label = WHOLE_MARKET_INDS.get(str(r.get("inds_cd") or ""))
+        if label is None:
+            continue
+        return label, {k: signed_int(r.get(f)) for k, f in INVESTOR_FIELDS.items()}
+    return None
+
+
+def expected_sample_count(*, session_minutes: int, poll_interval_ms: int) -> int:
+    """세션 길이 ÷ 폴 주기. 화면의 "표본 42/78" 에서 분모다.
+
+    커버리지가 값과 동급인 이유는 수집이 죽으면 차트가 **짧은 선을 사실처럼**
+    그리기 때문이다(ADR-0064). 분모가 없으면 42 가 많은지 적은지 알 수 없다.
+    """
+    per_minute = 60_000 / max(poll_interval_ms, 1)
+    return max(int(session_minutes * per_minute), 0)
+
+
 class BreadthCount:
     """목록을 세어 만든 카운트 + **절사 여부**.
 

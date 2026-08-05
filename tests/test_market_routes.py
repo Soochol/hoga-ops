@@ -13,6 +13,7 @@ def test_router_exposes_the_market_surfaces():
     assert sorted(x.path for x in r.routes) == [
         "/api/market/breadth",
         "/api/market/funds",
+        "/api/market/investor-flow",
         "/api/market/program",
         "/api/market/sectors",
         "/api/market/streaks",
@@ -125,3 +126,43 @@ async def test_breadth_is_dormant_without_credentials():
         return None
 
     assert await _collect_breadth(_walk) == {"markets": {}}
+
+
+@pytest.mark.asyncio
+async def test_investor_flow_reads_stored_samples_without_calling_the_vendor(tmp_path):
+    """읽기 경로는 벤더를 부르지 않는다 — 표본은 수집기가 이미 찍었고 소급 조회는 불가다."""
+    import datetime as dt
+
+    from hoga.api.market_routes import _investor_flow_payload
+    from hoga.collector.orchestrator import now_kst
+    from hoga.live.investor_flow_store import IntradaySample, InvestorFlowStore
+
+    date = now_kst().strftime("%Y%m%d")
+    store = InvestorFlowStore(tmp_path)
+    for i, frgn in enumerate(("+6473", "+7697")):
+        store.append_sample(date, IntradaySample(
+            sampled_at_ms=1_000 + i * 60_000,
+            request={"mrkt_tp": "0", "amt_qty_tp": "0", "base_dt": date, "stex_tp": "3"},
+            rows=[{"inds_cd": "001_AL", "ind_netprps": "-8787",
+                   "frgnr_netprps": frgn, "orgn_netprps": "+1893"}],
+        ))
+
+    got = _investor_flow_payload(tmp_path)
+    assert got["unit"] == "amt_eok"          # 단위를 이름에 박는다(#1117)
+    assert got["confirmed"] is False          # 확정 파일이 없으니 잠정(파생)
+    assert [p["foreign"] for p in got["markets"]["KOSPI"]] == [6473, 7697]
+    cov = got["coverage"]
+    assert cov["sample_count"] == 2
+    assert cov["expected_count"] == 390       # 390분 ÷ 60초
+    assert cov["gap_ranges"] == []
+    assert isinstance(dt.datetime.strptime(got["date"], "%Y%m%d"), dt.datetime)
+
+
+@pytest.mark.asyncio
+async def test_investor_flow_empty_day_is_empty_not_error(tmp_path):
+    from hoga.api.market_routes import _investor_flow_payload
+
+    got = _investor_flow_payload(tmp_path)
+    assert got["markets"] == {}
+    assert got["coverage"]["sample_count"] == 0
+    assert got["confirmed"] is False
