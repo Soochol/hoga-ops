@@ -101,3 +101,47 @@ describe('stockSeriesDiffs (자금 차트 절벽 버그의 고정)', () => {
     expect(stockSeriesDiffs([100, 101, 99])).toEqual([0, 1, -2]);
   });
 });
+
+describe('SessionLinesChart (세션 시간 비례 x축)', () => {
+  it('부분 커버리지는 부분 선이다 — 표본을 전폭으로 늘리지 않는다', async () => {
+    const { SessionLinesChart } = await import('./marketBits');
+    // 14:28~14:29 표본 2개 (실화면에서 전폭을 채우던 사례)
+    const sec = (h: number, m: number) => h * 3600 + m * 60;
+    const { container } = render(
+      <SessionLinesChart
+        series={[{ color: 'red', points: [
+          { sec: sec(14, 28), v: 10 },
+          { sec: sec(14, 29), v: 12 },
+        ] }]}
+      />,
+    );
+    const d = container.querySelector('path[stroke="red"]')?.getAttribute('d') ?? '';
+    const xs = [...d.matchAll(/[ML]([\d.]+),/g)].map((m) => Number(m[1]));
+    // 세션(09:00–15:30) 중 14:28 은 약 84% 지점 — viewBox 300 기준 250 근처여야 한다.
+    expect(xs[0]).toBeGreaterThan(240);
+    expect(xs[1] - xs[0]).toBeLessThan(3); // 1분 = 전폭이 아니라 ~0.77px
+  });
+
+  it('null 값은 선을 이어 그리지 않고 건너뛴다', async () => {
+    const { SessionLinesChart } = await import('./marketBits');
+    const { container } = render(
+      <SessionLinesChart
+        series={[{ color: 'red', points: [
+          { sec: 9 * 3600, v: 1 },
+          { sec: 10 * 3600, v: null },
+          { sec: 11 * 3600, v: 3 },
+        ] }]}
+      />,
+    );
+    const d = container.querySelector('path[stroke="red"]')?.getAttribute('d') ?? '';
+    expect((d.match(/[ML]/g) ?? []).length).toBe(2); // null 은 점 자체가 없다
+  });
+
+  it('유효 점이 2개 미만이면 그리지 않는다', async () => {
+    const { SessionLinesChart } = await import('./marketBits');
+    const { container } = render(
+      <SessionLinesChart series={[{ color: 'red', points: [{ sec: 9 * 3600, v: 1 }] }]} />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+});

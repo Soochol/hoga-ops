@@ -151,6 +151,83 @@ export function ComboNetChart({
   );
 }
 
+/** 세션 시간 비례 라인 차트 — 장중 누적 시계열 전용.
+ *
+ * **x 가 표본 인덱스가 아니라 세션 시각(09:00–15:30)에 비례한다.** 인덱스 비례로
+ * 그리면 표본 4개가 전폭으로 늘어나 "하루치 흐름" 처럼 읽힌다(실화면에서 14:28~14:29
+ * 구간이 전폭을 채웠다, 2026-08-05). 시간 비례면 부분 커버리지가 **부분 선**으로
+ * 보이고, 재시작 공백도 선의 빈 구간으로 정직하게 드러난다 — 커버리지 철학(#1105)의
+ * 시각화 판이다.
+ *
+ * 값은 **이미 누적**이라고 가정하고 그대로 그린다(ka90005·수집 표본 모두 벤더 누적).
+ * `vector-effect: non-scaling-stroke` 로 초광폭 스트레치에서 선 굵기를 지킨다. */
+export function SessionLinesChart({
+  series,
+  sessionStartSec = 9 * 3600,
+  sessionEndSec = 15.5 * 3600,
+  height = 96,
+}: {
+  series: { color: string; points: { sec: number; v: number | null }[] }[];
+  sessionStartSec?: number;
+  sessionEndSec?: number;
+  height?: number;
+}) {
+  const width = 300;
+  const span = sessionEndSec - sessionStartSec || 1;
+  const finiteVals = series.flatMap((s) => s.points.map((p) => p.v)).filter(
+    (v): v is number => v !== null && Number.isFinite(v),
+  );
+  if (finiteVals.length < 2) return null;
+  const min = Math.min(...finiteVals, 0);
+  const max = Math.max(...finiteVals, 0);
+  const vspan = max - min || 1;
+  const px = (sec: number) =>
+    1 + ((Math.min(Math.max(sec, sessionStartSec), sessionEndSec) - sessionStartSec) / span) * (width - 2);
+  const py = (v: number) => height - 3 - ((v - min) / vspan) * (height - 6);
+  const path = (pts: { sec: number; v: number | null }[]) => {
+    let d = '';
+    for (const p of pts) {
+      if (p.v === null) continue;
+      d += `${d ? 'L' : 'M'}${px(p.sec).toFixed(1)},${py(p.v).toFixed(1)} `;
+    }
+    return d.trim();
+  };
+  return (
+    <svg
+      width="100%"
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      className="block"
+    >
+      <line x1="1" x2={width - 1} y1={py(0)} y2={py(0)} stroke="var(--border-strong)" strokeDasharray="2 3" />
+      {series.map((s, i) => (
+        <path
+          key={i}
+          d={path(s.points)}
+          fill="none"
+          stroke={s.color}
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+    </svg>
+  );
+}
+
+/** 세션축의 고정 시간 라벨 — 표본 범위가 아니라 **세션**을 말한다. */
+export function SessionAxisLabels() {
+  return (
+    <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
+      <span>09:00</span>
+      <span>12:00</span>
+      <span>15:30</span>
+    </div>
+  );
+}
+
 /** 값 없이 색 견본 + 라벨만. 합계는 호출부가 계산해 넘긴다. */
 export function LegendItem({
   color,

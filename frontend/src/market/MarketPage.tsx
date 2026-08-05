@@ -38,6 +38,8 @@ import {
   CumLinesChart,
   LegendItem,
   PctText,
+  SessionAxisLabels,
+  SessionLinesChart,
   Sparkline,
 } from './marketBits';
 import { SERIES_COLORS, fmtSigned, stockSeriesDiffs, wonToJo } from './marketFormat';
@@ -175,6 +177,12 @@ function IndexCard({
 
 const MARKET_LABELS: Record<string, string> = { KOSPI: '코스피', KOSDAQ: '코스닥' };
 
+/** epoch ms → KST 자정 기준 초. 세션축(09:00–15:30) x 위치 계산용. */
+function kstSecOfDay(tMs: number): number {
+  const kst = new Date(tMs + 9 * 3600_000);
+  return kst.getUTCHours() * 3600 + kst.getUTCMinutes() * 60 + kst.getUTCSeconds();
+}
+
 export function InvestorCard() {
   const [mode, setMode] = useState<'intraday' | 'daily'>('intraday');
   const flow = useMarketInvestorFlow();
@@ -240,19 +248,16 @@ function IntradayFlow({
                 <LegendItem color={SERIES_COLORS.institution} label="기관" value={last?.institution ?? null} />
               </span>
             </div>
-            {/* 벤더가 **누적**을 주므로 그대로 그린다 — 여기서 다시 누적하면 이중이다.
-                CumLinesChart 는 delta 를 받으므로 첫 점만 값, 이후는 차분으로 넘긴다. */}
-            <CumLinesChart
+            {/* 벤더 누적을 그대로, x 는 세션 시간 비례 — 표본 4개가 전폭으로 늘어나
+                "하루치 흐름" 처럼 읽히던 왜곡 제거. 부분 커버리지는 부분 선이다. */}
+            <SessionLinesChart
               series={actors.map(([, color, vals]) => ({
                 color,
-                values: vals.map((v, i) => (i === 0 ? v : (v ?? 0) - (vals[i - 1] ?? 0))),
+                points: points.map((pt, i) => ({ sec: kstSecOfDay(pt.t_ms), v: vals[i] })),
               }))}
               height={96}
             />
-            <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
-              <span>{points[0] ? new Date(points[0].t_ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
-              <span>{last ? new Date(last.t_ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
-            </div>
+            <SessionAxisLabels />
           </div>
         );
       })}
@@ -360,10 +365,17 @@ export function ProgramCard() {
       ) : (
         Object.entries(markets).map(([label, points]) => {
           // 벤더가 최신 우선 역순으로 준다 — 시간축으로 그리려면 뒤집는다.
-          const asc = [...points].reverse();
-          const arb = asc.map((p) => p.arb_net_eok);
-          const nonArb = asc.map((p) => p.non_arb_net_eok);
+          // 일별은 20일만(프로토타입 확정) — 100일 막대는 콤보에서도 좁아진다.
+          const asc = axis === 'daily' ? [...points].reverse().slice(-20) : [...points].reverse();
           const total = asc[asc.length - 1]?.total_net_eok ?? null;
+          // 당일(분 단위 ~330점)은 **누적 라인만** — 막대를 겹치면 1px 줄무늬
+          // 노이즈가 된다(실화면, 2026-08-05). 막대+라인 콤보는 일별(20점)의 문법.
+          const isIntraday = axis === 'intraday';
+          const hasValues = asc.some((p) => p.arb_net_eok !== null || p.non_arb_net_eok !== null);
+          const secOf = (t: string, i: number) =>
+            isIntraday && t.length === 6
+              ? Number(t.slice(0, 2)) * 3600 + Number(t.slice(2, 4)) * 60 + Number(t.slice(4))
+              : i;
           return (
             <div key={label} className="flex flex-col gap-2xs">
               <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
@@ -378,11 +390,28 @@ export function ProgramCard() {
                   <LegendItem color={SERIES_COLORS.nonArb} label="비차익" />
                 </span>
               </div>
-              <ComboNetChart
-                a={{ color: SERIES_COLORS.arb, values: arb }}
-                b={{ color: SERIES_COLORS.nonArb, values: nonArb }}
-                height={56}
-              />
+              {!hasValues ? (
+                <EmptyNote>프로그램 값이 아직 없습니다.</EmptyNote>
+              ) : isIntraday ? (
+                <>
+                  <SessionLinesChart
+                    series={[
+                      { color: SERIES_COLORS.arb,
+                        points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.arb_net_eok })) },
+                      { color: SERIES_COLORS.nonArb,
+                        points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.non_arb_net_eok })) },
+                    ]}
+                    height={56}
+                  />
+                  <SessionAxisLabels />
+                </>
+              ) : (
+                <ComboNetChart
+                  a={{ color: SERIES_COLORS.arb, values: asc.map((p) => p.arb_net_eok) }}
+                  b={{ color: SERIES_COLORS.nonArb, values: asc.map((p) => p.non_arb_net_eok) }}
+                  height={56}
+                />
+              )}
             </div>
           );
         })
@@ -461,19 +490,32 @@ export function BreadthCard() {
   );
 }
 
-export function FundsCard() {
+const FUND_SPANS = [
+  ['20', '20일'],
+  ['60', '60일'],
+  ['120', '120일'],
+] as const;
+type FundSpan = (typeof FUND_SPANS)[number][0];
+
+function FundsCard() {
+  const [span, setSpan] = useState<FundSpan>('60');
   const funds = useMarketFunds();
   const data = funds.data;
-  const series = data?.series ?? [];
+  // 잔고(스톡) 지표라 "기간" = 시작 대비 증감의 창이다 — 토글이 곧 해석의 창.
+  const series = (data?.series ?? []).slice(-Number(span));
   const last = series[series.length - 1];
   const asOf = data?.as_of;
   return (
     <PanelCard borderless flat className="flex flex-col gap-xs p-sm">
-      <CardHeader
-        title="증시 주변 자금"
-        // 기준일은 **응답에서** 온다 — "T+2" 를 고정 문구로 박지 않는다(#1098).
-        hint={asOf ? `조원 · ${asOf.slice(4, 6)}/${asOf.slice(6)} 기준` : '조원'}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs">
+        <h2 className="text-sm text-fg">
+          증시 주변 자금{' '}
+          <span className="text-2xs text-fg-dim">
+            {asOf ? `조원 · ${asOf.slice(4, 6)}/${asOf.slice(6)} 기준` : '조원'}
+          </span>
+        </h2>
+        <ModeSwitch value={span} onChange={setSpan} options={FUND_SPANS} label="자금 집계 기간" />
+      </div>
       {data?.unavailable === 'credentials_missing' ? (
         <EmptyNote>KOFIA 인증키가 설정되지 않았습니다(.env: KOFIA_API_KEY).</EmptyNote>
       ) : series.length === 0 ? (
@@ -488,6 +530,10 @@ export function FundsCard() {
             ]}
             height={72}
           />
+          <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
+            <span>{series[0] ? `${series[0].date.slice(4, 6)}/${series[0].date.slice(6)}` : ''}</span>
+            <span>{last ? `${last.date.slice(4, 6)}/${last.date.slice(6)}` : ''}</span>
+          </div>
           <div className="flex flex-col">
             {(
               [
