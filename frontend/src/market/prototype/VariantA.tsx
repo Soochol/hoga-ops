@@ -19,7 +19,7 @@ import {
 } from './mockData';
 import {
   AdvanceDeclineBar, BreadthTiles, ComboNetChart, CumLinesChart, INDIVIDUAL_COLOR,
-  NET_TREND_COLORS, NetTrendChart, NetTrendLegend, PROGRAM_COLORS, PctText,
+  NET_TREND_COLORS, NetTrendLegend, PROGRAM_COLORS, PctText,
   ProgramTrendChart, ProgramTrendLegend, Sparkline, fmtSigned,
 } from './protoBits';
 
@@ -158,10 +158,13 @@ function InvestorCard() {
                 <NetTrendLegend
                   foreignDaily={t.foreignDaily}
                   institutionDaily={t.institutionDaily}
-                  showIndex={false}
                 />
               </div>
-              <ComboNetChart aDaily={t.foreignDaily} bDaily={t.institutionDaily} />
+              <ComboNetChart
+                aDaily={t.foreignDaily}
+                bDaily={t.institutionDaily}
+                overlay={t.indexClose}
+              />
               <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
                 <span>{MOCK_TREND_DATES[0]}</span>
                 <span>{MOCK_TREND_DATES[MOCK_TREND_DATES.length - 1]}</span>
@@ -390,33 +393,8 @@ function BreadthCard() {
   );
 }
 
-function NetTrendCard() {
-  return (
-    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
-      <h2 className="text-sm text-fg">
-        수급 추세 <span className="text-2xs text-fg-dim">기관·외국인 20일 누적 순매수 · 억원 · 지수 대조</span>
-      </h2>
-      <div className="grid grid-cols-2 gap-lg">
-        {MOCK_NET_TREND.map((t) => (
-          <div key={t.market} className="flex flex-col gap-2xs">
-            <div className="flex items-baseline justify-between">
-              <span className="text-xs font-semibold text-fg-dim">
-                {t.market === 'KOSPI' ? '코스피' : '코스닥'}
-              </span>
-              <NetTrendLegend foreignDaily={t.foreignDaily} institutionDaily={t.institutionDaily} />
-            </div>
-            <NetTrendChart
-              foreignDaily={t.foreignDaily}
-              institutionDaily={t.institutionDaily}
-              indexClose={t.indexClose}
-              height={104}
-            />
-          </div>
-        ))}
-      </div>
-    </PanelCard>
-  );
-}
+// 수급 추세 카드는 2026-08-05 삭제 — 콤보 차트(일별 막대 + 누적 라인 + 지수
+// 오버레이)가 투자자 수급 카드 일별 모드로 흡수했다(사용자 확정).
 
 /** 계열 색 — 남은 MA 슬롯 사용 (수급 --ma-3/4 · 프로그램 --ma-6/7 과 안 겹치게) */
 const FUND_COLORS = ['var(--ma-1)', 'var(--ma-2)', 'var(--ma-5)'];
@@ -495,7 +473,6 @@ export function VariantA() {
         <InvestorCard />
         <SectorCard />
       </div>
-      <NetTrendCard />
       <div className="grid grid-cols-4 gap-xs">
         <ProgramCard />
         <PeriodNetCard />

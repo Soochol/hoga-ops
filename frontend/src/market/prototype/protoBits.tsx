@@ -280,12 +280,15 @@ export function ComboNetChart({
   bDaily,
   aColor = NET_TREND_COLORS.foreign,
   bColor = NET_TREND_COLORS.institution,
+  overlay,
   height = 96,
 }: {
   aDaily: number[];
   bDaily: number[];
   aColor?: string;
   bColor?: string;
+  /** 지수 종가 등 대조 시계열 — 자체 스케일 흐린 선 (수급 vs 가격 다이버전스용) */
+  overlay?: number[];
   height?: number;
 }) {
   const n = aDaily.length;
@@ -323,6 +326,16 @@ export function ComboNetChart({
   const py = (v: number) => height - 3 - ((v - cMin) / cSpan) * (height - 6);
   const path = (s: number[]) =>
     s.map((v, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+  let overlayPath: string | null = null;
+  if (overlay && overlay.length > 1) {
+    const oMin = Math.min(...overlay);
+    const oSpan = Math.max(...overlay) - oMin || 1;
+    const opy = (v: number) => height - 3 - ((v - oMin) / oSpan) * (height - 6);
+    const opx = (i: number) => (i / (overlay.length - 1)) * (width - slot) + slot / 2;
+    overlayPath = overlay
+      .map((v, i) => `${i === 0 ? 'M' : 'L'}${opx(i).toFixed(1)},${opy(v).toFixed(1)}`)
+      .join(' ');
+  }
   return (
     <svg
       width="100%"
@@ -335,6 +348,9 @@ export function ComboNetChart({
       <line x1="0" x2={width} y1={mid} y2={mid} stroke="var(--border-strong)" />
       {aDaily.map((v, i) => bar(v, i * slot + 1, aColor, `a${i}`))}
       {bDaily.map((v, i) => bar(v, i * slot + 1 + bw + 0.5, bColor, `b${i}`))}
+      {overlayPath && (
+        <path d={overlayPath} fill="none" stroke={NET_TREND_COLORS.index} strokeWidth="1" opacity="0.45" />
+      )}
       <path d={path(aCum)} fill="none" stroke={aColor} strokeWidth="1.5" strokeLinejoin="round" />
       <path d={path(bCum)} fill="none" stroke={bColor} strokeWidth="1.5" strokeLinejoin="round" />
     </svg>
