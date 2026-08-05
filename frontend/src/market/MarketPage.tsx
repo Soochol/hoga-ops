@@ -12,6 +12,10 @@
  * 자금 카드가 빈 것은 **키가 없어서**다. 셋을 같은 빈 화면으로 보이면 진단이 흐려진다.
  */
 import { useState } from 'react';
+// PROTOTYPE(throwaway) — 시장 폭 지표 시안 (?breadth=a|b|c, breadthPrototype/).
+import { BreadthSwitcher } from './breadthPrototype/BreadthSwitcher';
+import { BreadthCurrent, BreadthVariantA, BreadthVariantB, BreadthVariantC, BreadthVariantD, BreadthVariantE, BreadthVariantF } from './breadthPrototype/BreadthVariants';
+import { useBreadthVariant } from './breadthPrototype/breadthVariantState';
 import { useLiveIndexCandles } from '../api/liveIndices';
 import { useMarketIndexQuotes } from '../api/marketIndexQuotes';
 import {
@@ -637,6 +641,12 @@ export function MarketPage() {
   // 차트가 납작해지던 문제의 답(프로토타입 A 승자, 2026-08-05 사용자 확정.
   // 3변형은 prototype/market-layout-variants-2026-08-05 브랜치 보존).
   // 업종 온도(세로로 긴 리스트)는 우측 열, 좌측은 수급 + 보조 2×2 로 높이를 맞춘다.
+  const bv = useBreadthVariant();
+  const PROTO_BY_VARIANT = {
+    a: BreadthVariantA, b: BreadthVariantB, c: BreadthVariantC,
+    d: BreadthVariantD, e: BreadthVariantE, f: BreadthVariantF,
+  } as const;
+  const BreadthProto = bv === 'current' ? BreadthCurrent : PROTO_BY_VARIANT[bv];
   return (
     <PageContainer>
       {/* 간격도 분리 수단이다 — 이전 `gap-xs`(4.5px)는 헤더 밑줄과 함께 써도 카드가
@@ -656,7 +666,7 @@ export function MarketPage() {
           </div>
           <div className="flex flex-col gap-md">
             <SectorCard />
-            <BreadthCard />
+            <BreadthProto />
           </div>
         </div>
         <div className="grid grid-cols-3 gap-md">
@@ -665,6 +675,7 @@ export function MarketPage() {
           <RankCard title="거래대금 상위" kind="value" direction="up" />
         </div>
       </div>
+      <BreadthSwitcher />
     </PageContainer>
   );
 }
