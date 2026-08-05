@@ -14,8 +14,17 @@ const POP_W = 320;
  *  모서리·multicol 패킹용)과 CSS multicolumn 단편화가 absolute 팝오버를 잘라먹던 버그를
  *  카드 경계 밖으로 탈출시켜 해소(특히 1~2종목짜리 짧은 폴더에서 아래·왼쪽이 잘렸다).
  *  위치는 useClampedFixedPosition(WatchlistRowMenu 와 공용)으로 뷰포트 안에 보정. */
-export function FolderAddButton({ folderId }: { folderId: string }) {
-  const [open, setOpen] = useState(false);
+export function FolderAddButton({ folderId, autoOpen, onAutoOpened }: {
+  folderId: string;
+  /** 새 그룹 직후 페이지가 켠다 — 마운트 시점에만 읽는다(아래 useState 초기값). */
+  autoOpen?: boolean;
+  /** 자동 열기를 소비했음을 알린다. 페이지가 표식을 태워, 검색 필터로 이 카드가
+   *  언마운트→재마운트될 때 팝오버가 되살아나는 것을 막는다. */
+  onAutoOpened?: () => void;
+}) {
+  // autoOpen 은 **초기값으로만** 읽는다. effect 로 열면 리렌더가 한 번 더 돌고, 무엇보다
+  // 아래 앵커 측정이 그 커밋에서야 일어나 스크롤/레이아웃과 순서가 엇갈린다.
+  const [open, setOpen] = useState(!!autoOpen);
   const [picked, setPicked] = useState<SymbolHit | null>(null);
   const { addToFolder, isPending } = useAddToFolder();
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -24,12 +33,22 @@ export function FolderAddButton({ folderId }: { folderId: string }) {
   const [anchor, setAnchor] = useState({ left: 0, top: 0 });
   useLayoutEffect(() => {
     if (!open) return;
+    // 측정 **전에** 스크롤한다. 갓 만든 그룹은 보드 밖에 있을 수 있는데, 스크롤을 페이지가
+    // 맡으면 자식 effect(측정)가 부모보다 먼저 돌아 스크롤 전 좌표로 앵커가 굳는다 —
+    // 팝오버가 카드에서 멀리 떨어져 뜬다(실측). 한 effect 안에 두면 순서가 코드로 남는다.
+    // 자동 열기는 'center' — 새 그룹은 보드 끝에 붙어 'nearest' 로는 뷰포트 맨 아래에
+    // 걸치고 팝오버가 그 위를 덮는다. 사용자가 직접 누른 경우엔 버튼이 이미 보이므로
+    // 'nearest'(사실상 no-op)로 화면을 흔들지 않는다. jsdom 미구현 → ?.()
+    btnRef.current?.scrollIntoView?.({ block: autoOpen ? 'center' : 'nearest' });
     const r = btnRef.current?.getBoundingClientRect();
     if (r) setAnchor({ left: r.right - POP_W, top: r.bottom + 4 });
-  }, [open]);
+  }, [open, autoOpen]);
   const { ref: popRef, left, top } = useClampedFixedPosition<HTMLDivElement>(anchor.left, anchor.top);
 
   const close = useCallback(() => { setOpen(false); setPicked(null); }, []);
+
+  // 자동 열기 1회 소비 통지 — 마운트 때 열렸으면 페이지의 표식을 태운다.
+  useEffect(() => { if (autoOpen) onAutoOpened?.(); }, [autoOpen, onAutoOpened]);
 
   // 접근성: 열릴 때 검색 입력으로 포커스 이동(GroupNameModal·WatchlistEditModal 의
   // autoFocus 관례). 포털이라 Tab 순서가 시각 순서와 끊기므로 명시적 포커스가 필요하다.

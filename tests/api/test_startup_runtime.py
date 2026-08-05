@@ -154,6 +154,11 @@ async def test_startup_runtime_can_opt_into_live_and_symbol_refresh(tmp_path: Pa
     assert not any(call[0] == "promoter" for call in calls)
     assert ("symbols-load", symbols_path) in calls
     assert ("symbols-refresh", symbols_path, tmp_path) in calls
+    # 순서가 계약이다: 심볼 마스터 디스크 로드 → 라이브 기동 → 마스터 최신화(네트워크).
+    # 로드가 라이브보다 뒤면 부팅 첫 sync 가 coverage 의 fail-open(무필터) 경로를 타서
+    # 저장셋 크기가 캐시 상태에 따라 달라진다 — 그 크기는 키움 WS 슬롯 예산의 입력이다.
+    names = [call[0] for call in calls]
+    assert names.index("symbols-load") < names.index("live") < names.index("symbols-refresh")
 
 
 @pytest.mark.asyncio

@@ -86,14 +86,14 @@ describe('/heatmap 그룹 삭제 확인', () => {
     expect(deleteHeatmapFolder).not.toHaveBeenCalled();
   });
 
-  // 드로어에 있는 "빈 그룹은 확인 없이 즉시 삭제" 짝은 **페이지에 없다**: 보드의
-  // `visibleFolderGroups` 가 빈 폴더를 걸러내므로(heat.ts 의 의도적 비대칭 — 드로어는
-  // "새 그룹 직후 종목 추가" 흐름 때문에 표시한다) 헤더 자체가 렌더되지 않아 우클릭
-  // 메뉴에 도달할 UI 경로가 없다. onDeleteFolder 의 memberCount===0 분기는 드로어와의
-  // 대칭·방어용으로 남아 있을 뿐이라 여기서 단언하면 없는 경로를 검증하게 된다.
-  it('빈 그룹은 보드에 렌더되지 않아 페이지에서는 삭제 진입 자체가 없다', async () => {
+  // 보드가 빈 그룹도 렌더하게 되면서(새 그룹 직후 종목을 넣을 표면이 그 카드뿐) 드로어의
+  // "빈 그룹은 확인 없이 즉시 삭제" 짝이 페이지에도 실재하는 경로가 됐다. 지울 종목이
+  // 없으니 확인은 마찰일 뿐 — 두 표면이 같은 규칙을 쓰는지 여기서 못 박는다.
+  it('빈 그룹은 확인 없이 즉시 삭제된다', async () => {
     renderPage();
     await screen.findByText('삼성전자');
-    expect(screen.queryByText('빈그룹')).toBeNull();
+    await openDeleteFor('빈그룹');
+    await waitFor(() => expect(deleteHeatmapFolder).toHaveBeenCalledWith('f2'));
+    expect(screen.queryByRole('dialog', { name: '삭제' })).toBeNull();
   });
 });

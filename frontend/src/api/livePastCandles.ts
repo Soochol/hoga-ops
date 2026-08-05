@@ -142,12 +142,20 @@ export function mergedPastCandlesKey(
   return ['live', 'past-candles', 'merged', code ?? '', to ?? '', venue, bucketMs] as const;
 }
 
-/** 한 요청의 최대 캘린더일 폭. 백엔드 미캐시-일수 예산
+/** 한 요청의 최대 캘린더일 폭 — **1분 기준값**. 백엔드 미캐시-일수 예산
  * (max_fresh_dates_per_collect=12 거래일)보다 작은 ~11거래일이라 청크는
  * 항상 예산 안에서 완결된다. 기준선(mergedRef)이 리마운트·날짜 롤오버로
  * 사라졌을 때 수백 일 창을 통째로 재요청하던 것이 분봉 기아의
  * 근본원인(2026-07-07 조사) — 청크 워크백으로 근절한다. */
 export const PAST_CHUNK_CALENDAR_DAYS = 15;
+
+/** 실효 청크 폭 = 15 × tf분. 스텝·백엔드 예산과 함께 tf분(m) 배로 스케일되는
+ * 3-상수 불변식의 한 축이다(liveDateTime.ts MAX_BATCH_STEPS_PER_DISPATCH 주석,
+ * ADR-0105 2026-08-05 개정). 이것만 1분 값으로 두면 넓은 tf 의 dispatch(14m
+ * 캘린더일)가 청크에 잘려 워크백이 갈라진다. 1m(bucketMs=60000)은 종전 그대로. */
+export function pastChunkCalendarDays(bucketMs: number): number {
+  return PAST_CHUNK_CALENDAR_DAYS * Math.max(1, Math.round(bucketMs / 60_000));
+}
 
 /** 서버가 예산 내로 응답하므로 정상 요청은 수 초에 끝난다. 30s는 서버
  * 포화·행 상태에서 무한 로딩을 끊는 백스톱 — abort되면 React Query
@@ -280,8 +288,9 @@ export function planPastCandlesDelta(
     sameIdentity &&
     from < previous.from
   );
+  const chunkDays = pastChunkCalendarDays(bucketMs);
   if (!canReusePrevious) {
-    const chunkFloor = addDays(to, -(PAST_CHUNK_CALENDAR_DAYS - 1));
+    const chunkFloor = addDays(to, -(chunkDays - 1));
     return {
       enabled: true,
       requestFrom: from < chunkFloor ? chunkFloor : from,
@@ -292,7 +301,7 @@ export function planPastCandlesDelta(
     };
   }
   const requestTo = addDays(previous.from, -1);
-  const chunkFloor = addDays(requestTo, -(PAST_CHUNK_CALENDAR_DAYS - 1));
+  const chunkFloor = addDays(requestTo, -(chunkDays - 1));
   return {
     enabled: true,
     requestFrom: from < chunkFloor ? chunkFloor : from,

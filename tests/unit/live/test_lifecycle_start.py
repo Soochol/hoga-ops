@@ -67,15 +67,47 @@ def test_compute_capture_candidates_filters_unknown_codes(
 
 
 def test_compute_capture_candidates_cold_cache_keeps_all(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path, monkeypatch, caplog,
 ) -> None:
-    """symbol-master cold cache(빈 결과)면 무필터 폴백 — 캡처 중단보다 노이즈 선호."""
+    """symbol-master cold cache(빈 결과)면 무필터 폴백 — 캡처 중단보다 노이즈 선호.
+
+    다만 **생략 사실은 반드시 로그로 남는다**: fail-open 은 저장셋 크기를 캐시 상태에
+    종속시키고 그 크기가 키움 WS 슬롯 예산의 입력이라, 조용하면 같은 설정이 실행마다
+    다른 수집 대상을 만든 걸 사후에 알 수 없다.
+    """
+    import logging
+
     from hoga.api import symbols
     from hoga.live.coverage import _compute_capture_candidates
 
     _write_watchlist(tmp_path, ["005930", "999999"])
     monkeypatch.setattr(symbols, "search", lambda q, limit=10_000: [])
-    assert _compute_capture_candidates(tmp_path) == ["005930", "999999"]
+    with caplog.at_level(logging.WARNING):
+        assert _compute_capture_candidates(tmp_path) == ["005930", "999999"]
+    assert any("symbol_master_cold" in r.message for r in caplog.records)
+
+
+def test_compute_heatmap_codes_cold_cache_keeps_all_and_warns(
+    tmp_path: Path, monkeypatch, caplog,
+) -> None:
+    """히트맵 표면도 같은 fail-open + 관측 계약을 따른다(watchlist 표면과 대칭)."""
+    import logging
+
+    from hoga.api import symbols
+    from hoga.live.coverage import _compute_heatmap_codes
+
+    (tmp_path / "heatmap.json").write_text(json.dumps({
+        "schema_version": 1,
+        "folders": [{"id": "f1", "name": "F1"}],
+        "entries": [
+            {"code": "005930", "name": "005930", "folder_id": "f1"},
+            {"code": "999999", "name": "999999", "folder_id": "f1"},
+        ],
+    }))
+    monkeypatch.setattr(symbols, "search", lambda q, limit=10_000: [])
+    with caplog.at_level(logging.WARNING):
+        assert _compute_heatmap_codes(tmp_path) == ("005930", "999999")
+    assert any("symbol_master_cold" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio

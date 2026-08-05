@@ -325,6 +325,51 @@ async def test_budget_counts_only_uncached_dates(tmp_path, monkeypatch, kiwoom) 
 
 
 @pytest.mark.asyncio
+async def test_fresh_budget_scales_with_tic_scope(tmp_path, monkeypatch, kiwoom) -> None:
+    """신선 예산은 tic_scope 분 수에 비례한다 (3-상수 불변식, ADR-0105 개정).
+
+    예산의 실체는 "collect당 벤더 콜 상한"이고 페이지 커버리지가 scope 에
+    비례하므로, 날짜 예산을 고정하면 넓은 tf 의 dispatch(10m 거래일)가
+    fetch_budget_exhausted 경고를 받아 60s 주기 저속 전진으로 퇴행한다 —
+    에러가 아니라 발견이 늦는 종류라 여기 핀으로 박는다.
+    """
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kiwoom(_FakeWalk())  # 벤더 seam 배선(반환값 불필요 — walk 가 fake 를 탄다)
+    scheduler = _RecordingScheduler()
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path, cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        concurrency=1, max_fresh_dates_per_collect=3,
+    )
+
+    # 9일 요청: 1분 예산(3)이면 6일이 유예되지만, tic_scope=5 예산(15)엔 전부 든다.
+    result = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 1),
+        too=dt.date(2026, 5, 9),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+        tic_scope="5",
+    )
+    assert result.data_warnings == [], "5분 스코프 예산(3×5=15) 안이라 유예 없음"
+    assert len(result.fresh_dates) == 9
+
+    # 대조군: 같은 창을 1분 스코프로 — 예산 3이라 6일이 유예된다.
+    result_1m = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 11),
+        too=dt.date(2026, 5, 19),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+        tic_scope="1",
+    )
+    deferred = [w for w in result_1m.data_warnings if w["reason"] == "fetch_budget_exhausted"]
+    assert len(deferred) == 6, "1분 스코프는 종전 예산 그대로 (회귀 없음)"
+
+
+@pytest.mark.asyncio
 async def test_each_walk_page_takes_its_own_governor_slot(tmp_path, monkeypatch) -> None:
     """**페이지 N장이면 거버너 submit 도 N건이다.**
 

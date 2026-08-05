@@ -18,6 +18,11 @@ is **(code, date, source)** — bucket_ms is NOT in the key (re-aggregation cove
 it) but `source` IS (a day has both hogaplay and kis_live slices, chosen by
 `_resolve_source`; serving the wrong one would be a silent data swap).
 
+⚠️ 이 "1분 정본, 키에 tf 없음" 원칙을 **캔들 캐시(past_candles_cache)에 이식하지
+말 것** — 그쪽은 키에 tic_scope 가 있는 것이 옳다. 두 캐시가 반대인 이유는
+소스 비용 구조다(여긴 디스크=재집계 공짜, 캔들은 벤더 유량=잘게 받으면 콜 배수).
+ADR-0139 참고.
+
 Past-only by construction: the caller gates `date < today_kst` before touching
 this cache. Today's snapshots are still being promoted (ADR-0043), so today must
 recompute live and is never persisted here — no today/TTL layer (unlike
