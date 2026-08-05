@@ -11,10 +11,10 @@ import { PanelCard } from '../../ui/PageShell';
 import { priceDirClass } from '../../ui/priceDir';
 import { heatBg } from '../../heatmap/heat';
 import {
-  MOCK_AS_OF, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_SECTORS,
+  MOCK_AS_OF, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_NET_TREND, MOCK_SECTORS,
   MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE, type MockRankRow,
 } from './mockData';
-import { PctText, fmtSigned } from './protoBits';
+import { NetTrendChart, NetTrendLegend, PctText, fmtSigned } from './protoBits';
 
 /** 대형 목업 지수 차트 — 시가 기준선 + 방향색 라인/틴트 면. */
 function BigIndexChart({ points }: { points: number[] }) {
@@ -88,7 +88,9 @@ function MoverList({ title, rows }: { title: string; rows: MockRankRow[] }) {
 export function VariantC() {
   const [selectedId, setSelectedId] = useState('KOSPI');
   const idx = MOCK_INDICES.find((i) => i.id === selectedId) ?? MOCK_INDICES[0];
-  const net = MOCK_INVESTOR_NET.find((m) => m.market === (idx.id === 'KOSDAQ' || idx.id === 'KOSDAQ150' ? 'KOSDAQ' : 'KOSPI'));
+  const netMarket = idx.id === 'KOSDAQ' || idx.id === 'KOSDAQ150' ? 'KOSDAQ' : 'KOSPI';
+  const net = MOCK_INVESTOR_NET.find((m) => m.market === netMarket);
+  const trend = MOCK_NET_TREND.find((t) => t.market === netMarket);
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[13rem_1fr_17rem] gap-xs">
@@ -171,6 +173,21 @@ export function VariantC() {
                   </div>
                 ),
               )}
+            </div>
+          )}
+          {trend && (
+            <div className="flex flex-col gap-2xs border-t border-grid pt-sm">
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs text-fg-dim">기관·외국인 20일 누적 추세</span>
+                <NetTrendLegend foreignDaily={trend.foreignDaily} institutionDaily={trend.institutionDaily} />
+              </div>
+              <NetTrendChart
+                foreignDaily={trend.foreignDaily}
+                institutionDaily={trend.institutionDaily}
+                indexClose={trend.indexClose}
+                width={720}
+                height={120}
+              />
             </div>
           )}
         </PanelCard>

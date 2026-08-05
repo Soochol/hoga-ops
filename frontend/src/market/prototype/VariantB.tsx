@@ -9,11 +9,11 @@
 import { heatBg, heatHeaderBg } from '../../heatmap/heat';
 import { priceDirClass } from '../../ui/priceDir';
 import {
-  MOCK_AS_OF, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_OPTION_SENTIMENT,
+  MOCK_AS_OF, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_NET_TREND, MOCK_OPTION_SENTIMENT,
   MOCK_SECTORS, MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE, MOCK_VOLUME_SURGE,
   type MockRankRow,
 } from './mockData';
-import { PctText, Sparkline, fmtSigned } from './protoBits';
+import { NetTrendChart, NetTrendLegend, PctText, Sparkline, fmtSigned } from './protoBits';
 
 function TickerStrip() {
   return (
@@ -164,9 +164,31 @@ export function VariantB() {
               </table>
             </div>
           ))}
+          <div className="mt-sm" />
+          <ColumnHeader title="20일 누적 추세" avgPct={null} />
+          {MOCK_NET_TREND.map((t) => (
+            <div key={t.market} className="border-b border-grid px-sm py-xs last:border-b-0">
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs font-semibold text-fg-dim">
+                  {t.market === 'KOSPI' ? '코스피' : '코스닥'}
+                </span>
+                <NetTrendLegend
+                  foreignDaily={t.foreignDaily}
+                  institutionDaily={t.institutionDaily}
+                  showIndex={false}
+                />
+              </div>
+              <NetTrendChart
+                foreignDaily={t.foreignDaily}
+                institutionDaily={t.institutionDaily}
+                indexClose={t.indexClose}
+                height={64}
+              />
+            </div>
+          ))}
           <p className="px-sm py-xs text-2xs text-fg-dim">
-            5일 추세 스파크 + 당일 잠정. 순매수 = 외국인·기관 ka10051, 잠정
-            단위·축 규칙은 잠정투자자 카드와 동일.
+            5일 스파크 + 당일 잠정 + 20일 누적(흐린 선 = 지수). 순매수 =
+            외국인·기관 ka10051, 잠정 단위·축 규칙은 잠정투자자 카드와 동일.
           </p>
         </section>
       </div>

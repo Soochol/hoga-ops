@@ -163,6 +163,39 @@ export const MOCK_SECTORS: MockSector[] = [
   { name: '게임', changePct: -1.87, spark: synthSpark(0, -1.87, 0.4, 10.2), leaders: ['위메이드', '카카오게임즈'] },
 ];
 
+export interface MockNetTrend {
+  market: 'KOSPI' | 'KOSDAQ';
+  /** 최근 20거래일 일별 순매수 (억원, 과거→오늘; 마지막 5일은 MOCK_INVESTOR_NET 의 5d 와 일치) */
+  foreignDaily: number[];
+  institutionDaily: number[];
+  /** 같은 20일의 지수 종가 (누적 수급 vs 지수 대조 오버레이용) */
+  indexClose: number[];
+}
+
+/** 20일 일별 순매수 목업 — 앞 15일 합성 + 뒤 5일은 5d 목업과 동일 값. */
+function synthDailyNet(seed: number, scale: number, tail: number[]): number[] {
+  const head: number[] = [];
+  for (let i = 0; i < 15; i++) {
+    head.push(Math.round((Math.sin(i * 1.7 + seed) + Math.sin(i * 0.61 + seed * 3.1) * 0.6) * scale));
+  }
+  return [...head, ...tail];
+}
+
+export const MOCK_NET_TREND: MockNetTrend[] = [
+  {
+    market: 'KOSPI',
+    foreignDaily: synthDailyNet(1.1, 2400, MOCK_INVESTOR_NET[0].foreign5d),
+    institutionDaily: synthDailyNet(4.2, 900, MOCK_INVESTOR_NET[0].institution5d),
+    indexClose: synthSpark(3092, 3187.45, 22, 6.5).filter((_, i) => i % 2 === 0),
+  },
+  {
+    market: 'KOSDAQ',
+    foreignDaily: synthDailyNet(2.7, 700, MOCK_INVESTOR_NET[1].foreign5d),
+    institutionDaily: synthDailyNet(5.9, 350, MOCK_INVESTOR_NET[1].institution5d),
+    indexClose: synthSpark(838, 812.36, 7, 7.8).filter((_, i) => i % 2 === 0),
+  },
+];
+
 export const MOCK_OPTION_SENTIMENT = {
   pcVolumeRatio: 0.87,
   pcOiRatio: 1.12,

@@ -10,11 +10,13 @@ import { PanelCard } from '../../ui/PageShell';
 import { priceDirClass } from '../../ui/priceDir';
 import { heatBg } from '../../heatmap/heat';
 import {
-  MOCK_AS_OF, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_OPTION_SENTIMENT,
+  MOCK_AS_OF, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_NET_TREND, MOCK_OPTION_SENTIMENT,
   MOCK_SECTORS, MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE,
   type MockRankRow,
 } from './mockData';
-import { AdvanceDeclineBar, NetBar, PctText, Sparkline, fmtSigned } from './protoBits';
+import {
+  AdvanceDeclineBar, NetBar, NetTrendChart, NetTrendLegend, PctText, Sparkline, fmtSigned,
+} from './protoBits';
 
 function IndexCard({ idx }: { idx: (typeof MOCK_INDICES)[number] }) {
   return (
@@ -101,6 +103,34 @@ function SectorCard() {
   );
 }
 
+function NetTrendCard() {
+  return (
+    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
+      <h2 className="text-sm text-fg">
+        수급 추세 <span className="text-2xs text-fg-dim">기관·외국인 20일 누적 순매수 · 억원 · 지수 대조</span>
+      </h2>
+      <div className="grid grid-cols-2 gap-lg">
+        {MOCK_NET_TREND.map((t) => (
+          <div key={t.market} className="flex flex-col gap-2xs">
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs font-semibold text-fg-dim">
+                {t.market === 'KOSPI' ? '코스피' : '코스닥'}
+              </span>
+              <NetTrendLegend foreignDaily={t.foreignDaily} institutionDaily={t.institutionDaily} />
+            </div>
+            <NetTrendChart
+              foreignDaily={t.foreignDaily}
+              institutionDaily={t.institutionDaily}
+              indexClose={t.indexClose}
+              height={104}
+            />
+          </div>
+        ))}
+      </div>
+    </PanelCard>
+  );
+}
+
 function RankCard({ title, rows }: { title: string; rows: MockRankRow[] }) {
   return (
     <PanelCard borderless flat className="flex flex-col gap-xs p-md">
@@ -139,6 +169,7 @@ export function VariantA() {
         <InvestorCard />
         <SectorCard />
       </div>
+      <NetTrendCard />
       <div className="grid grid-cols-3 gap-xs">
         <RankCard title="상승률 상위" rows={MOCK_TOP_GAINERS} />
         <RankCard title="하락률 상위" rows={MOCK_TOP_LOSERS} />
