@@ -10,6 +10,14 @@ FID 인덱스가 키움 쪽에서 바뀌면 여기 한 곳만 고친다. 파서(
 """
 from __future__ import annotations
 
+# 구독 코드 venue 접미 ↔ venue 태그의 정본은 `kiwoom_venue` 다 — 키움은 0D payload 에
+# 거래소 필드가 없어(0B 엔 9081 있음) 호가 venue 를 **구독한 코드 접미**로 부여한다
+# (실측 2026-07-16). 이 모듈이 자체 사본 `{"_NX": "NXT"}` 를 들고 있었고
+# `kiwoom_multi_quote` 에 **방향이 반대인 동명 상수**가 따로 있어, `split_venue`
+# ("005930_AL") 이 `("005930_AL", "KRX")` 를 돌려줬다(#1124). 기존 소비자
+# (`from . import kiwoom_fields as K` → `K.split_venue`)를 위해 재수출한다.
+from .kiwoom_venue import VENUE_SUFFIX, apply_venue, split_venue  # noqa: F401
+
 # 실시간 타입 코드 (키움 REAL row의 "type").
 TYPE_TRADE = "0B"  # 주식체결 → SnapshotKind.TRADE
 TYPE_ORDERBOOK = "0D"  # 주식호가잔량 → SnapshotKind.OB
@@ -107,28 +115,3 @@ PRG_BUY_QTY = "206"  # 프로그램 매수수량 (누적, 주)
 PRG_BUY_AMT = "208"  # 프로그램 매수금액 (누적, 백만원)
 PRG_NET_QTY = "210"  # 순매수수량 (= 206-202)
 PRG_NET_AMT = "212"  # 순매수금액 (= 208-204, 백만원)
-
-# 구독 코드 venue 접미 → venue 태그. 키움은 0D payload에 거래소 필드가 없어(0B엔 9081
-# 있음) 호가 venue를 **구독한 코드 접미**로 부여한다(실측 2026-07-16). _NX=NXT 확정.
-# _AL(통합)은 정규장 스모크로 KRX·NXT 구분 방식 확정 전까지 PR-1에서 미사용.
-VENUE_SUFFIX: dict[str, str] = {"_NX": "NXT"}
-
-
-def split_venue(item: str) -> tuple[str, str]:
-    """REAL row의 item("005930" 또는 "005930_NX") → (bare_code, venue).
-
-    알려진 venue 접미가 없으면 KRX. item은 키움이 구독 코드를 그대로 에코한 값이다.
-    """
-    for suffix, venue in VENUE_SUFFIX.items():
-        if item.endswith(suffix):
-            return item[: -len(suffix)], venue
-    return item, "KRX"
-
-
-def apply_venue(code: str, venue: str) -> str:
-    """bare code + venue → 구독 wire 코드(split_venue 역). NXT면 _NX 접미, 그 외 무접미.
-
-    매니저가 target_ws_venue로 파생한 venue를 구독 코드에 실어 시간대 스왑한다
-    (ADR-0118 §2 — venue 태깅 = 구독 코드 접미). apply_venue∘split_venue = 항등.
-    """
-    return f"{code}_NX" if venue == "NXT" else code
