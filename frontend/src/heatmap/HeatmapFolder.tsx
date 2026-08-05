@@ -45,6 +45,10 @@ export interface HeatmapFolderProps {
   /** 그룹 삭제. 미전달이면 메뉴의 '그룹 삭제'가 빠진다. 파괴적이므로(멤버 종목 동반 삭제)
    *  confirm 은 호출측 책임. */
   onDeleteFolder?: (folderId: string, name: string) => void;
+  /** 헤더의 '＋종목' 팝오버를 자동으로 연다(새 그룹 생성 직후 — 보드가 지정). */
+  autoOpenAdd?: boolean;
+  /** 위 자동 열기 소비 통지(보드 → 페이지로 되돌아가 표식을 태운다). */
+  onAutoOpenAdd?: () => void;
 }
 
 /** 그룹 블록: 헤더(폴더명 + 평균 등락률 칩) + 정렬된 행들. break-inside-avoid
@@ -59,7 +63,7 @@ export interface HeatmapFolderProps {
  *
  *  간격: 그룹 간 mb-xs(4.5px, 밀도 우선). 그룹 내부는 헤더-첫행·행간 모두 0으로 붙여
  *  관심종목 패널 리스트와 같은 촘촘한 연속 리스트를 이룬다(구분은 border-b). */
-export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, autoOpenAdd, onAutoOpenAdd }: HeatmapFolderProps) {
   const pctOf = makePctOf(quoteByCode);
   const sorted = sortEntries(entries, sortMode, pctOf);
   const avg = avgPct(entries, pctOf);
@@ -95,7 +99,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
     );
   });
 
-  const body = canSort ? (
+  const body = entries.length === 0 ? <EmptyGroupHint /> : canSort ? (
     <SortableContext items={sorted.map((e) => entrySortableId(folderId, e.code))}
       strategy={verticalListSortingStrategy}>
       {rows}
@@ -160,7 +164,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
               {avg > 0 ? '+' : ''}{avg.toFixed(1)}%
             </span>
           )}
-          <FolderAddButton folderId={folder.id} />
+          <FolderAddButton folderId={folder.id} autoOpen={autoOpenAdd} onAutoOpened={onAutoOpenAdd} />
         </span>
       </div>
       {body}
@@ -173,6 +177,18 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
           onClose={() => setMenu(null)} />
       )}
     </FolderDropZone>
+  );
+}
+
+/** 빈 그룹의 본문 한 줄 — 보드가 빈 그룹도 렌더하게 되면서(HeatmapBoard 주석) 헤더만 남아
+ *  카드가 정체불명으로 납작해지는 것을 막고, 채우는 두 경로(헤더 ＋종목 · 다른 그룹에서
+ *  드래그)를 그 자리에서 알린다. 표시 전용이라 클릭 표적을 새로 만들지 않는다 — 실제
+ *  진입점은 바로 위 헤더 버튼 하나로 유지(중복 트리거 = 팝오버 2개). */
+function EmptyGroupHint() {
+  return (
+    <div data-testid="heatmap-folder-empty" className="px-2 py-1 text-xs text-fg-dimmer">
+      종목 없음 · ＋종목 또는 드래그로 추가
+    </div>
   );
 }
 

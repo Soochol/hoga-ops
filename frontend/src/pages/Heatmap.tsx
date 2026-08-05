@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { useHeatmapGroupFlow } from '../api/heatmapGroupFlow';
 import {
@@ -79,6 +79,13 @@ export function Heatmap() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   const [showNewGroup, setShowNewGroup] = useState(false);
+  // 방금 만든 그룹 — 재조회로 카드가 나타나는 순간 '＋종목' 팝오버가 스스로 열리고
+  // 그 그룹으로 스크롤된다(FolderAddButton 이 마운트 시 소비). 새 그룹은 비어 있어 헤더
+  // 한 줄로만 붙으므로, 만들기 직후 사용자가 스스로 찾아 눌러야 하면 "그룹은 만들었는데
+  // 종목을 못 넣는" 흐름이 된다. 표식은 소비 통지(onAutoOpened)로 즉시 태운다 — 남겨두면
+  // 검색 필터로 카드가 재마운트될 때 팝오버가 되살아난다.
+  const [autoAddFolderId, setAutoAddFolderId] = useState<string | null>(null);
+  const clearAutoAdd = useCallback(() => setAutoAddFolderId(null), []);
   const [showCollect, setShowCollect] = useState(false);
   // 단일 종목 수집 스코프(행 메뉴 '지난 N일 수집'). null 이면 전체/그룹 다이얼로그.
   const [collectOne, setCollectOne] = useState<{ code: string; name: string } | null>(null);
@@ -204,7 +211,12 @@ export function Heatmap() {
             title="새 그룹 만들기"
             submitLabel="만들기"
             busy={createFolderM.isPending}
-            onSubmit={async (name) => { await createFolderM.mutateAsync(name); }}
+            onSubmit={async (name) => {
+              const folder = await createFolderM.mutateAsync(name);
+              // 아직 목록엔 없다(HEATMAP_KEY 무효화 → 재조회 후 등장). 표식을 미리 걸어 두면
+              // 그 카드가 마운트되는 순간 자기 팝오버를 연다 — 페이지가 등장을 감시할 필요가 없다.
+              setAutoAddFolderId(folder.id);
+            }}
             onClose={() => setShowNewGroup(false)}
           />
         )}
@@ -226,7 +238,8 @@ export function Heatmap() {
           onReorder={isSearching ? undefined : onReorder} onRowMenu={onRowMenu}
           onMove={onDragMove} onCopy={onDragCopy}
           onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder}
-          onRowDragState={setIsRowDragging} flowByFolder={flowByFolder} query={query} />
+          onRowDragState={setIsRowDragging} flowByFolder={flowByFolder} query={query}
+          autoAddFolderId={autoAddFolderId} onAutoAddOpened={clearAutoAdd} />
         {/* 제거는 menu.folderId(우클릭한 행이 속한 그룹) 스코프 — 같은 종목이 다른 그룹에도
             등록돼 있으면 그 등록은 건드리지 않는다. '그룹으로 이동' 항목은 넘기지 않는다:
             실폴더를 전부 나열하는 구조라 그룹이 수십 개면 메뉴가 화면을 덮었고, 이동은

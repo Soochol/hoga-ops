@@ -11,8 +11,8 @@ export interface HeatmapGroup {
 }
 
 /** 폴더·종목을 표시용 그룹으로 묶는다. 폴더는 `.order`순, 그룹 내 종목도 `.order`순.
- *  빈 폴더 포함(드로어가 "새 그룹 직후 종목 추가" 흐름을 보여야 함 — 보드는
- *  visibleFolderGroups 가 빈 그룹을 걸러낸다). 순수(비파괴). */
+ *  빈 폴더 포함 — 드로어도 보드도 "새 그룹 직후 종목 추가" 흐름을 보여야 한다(보드가
+ *  빈 그룹을 숨기던 시절엔 갓 만든 그룹을 채울 표면이 사라졌다). 순수(비파괴). */
 export function groupHeatmapEntries(
   folders: HeatmapFolder[],
   entries: HeatmapEntry[],
