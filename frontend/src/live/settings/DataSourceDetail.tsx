@@ -81,7 +81,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
         {variant !== 'study' && (
           <RoleSourceGroup
             title="거래소"
-            description="KRX는 정규장만 봅니다. 시간대 자동은 정규장엔 KRX를, 장 전후엔 NXT를 따릅니다 — 두 시장을 합쳐 보여주지는 않습니다. 우회 ON 시 캔들엔 무효(저장 데이터는 KRX 정규장)."
+            description="KRX는 정규장(09:00–15:30), NXT는 프리·애프터마켓을 포함한 08:00–20:00을 봅니다. 통합은 거래소가 병합해 내보내는 단일 호가라, 두 시장을 화면에서 더한 것이 아닙니다."
           >
             {/* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */}
             <div className="flex flex-wrap gap-2 pb-2">

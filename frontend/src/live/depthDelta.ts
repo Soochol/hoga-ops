@@ -1,4 +1,5 @@
 import type { OrderbookLevel } from '../api/types';
+import type { LiveFrameVenue } from './liveVenuePolicy';
 
 /** 한 가격 단의 잔량 증감 누적. `inQty`/`outQty` 는 **둘 다 양수 크기**다(부호 없음) —
  *  순증감은 `netDeltaQty()` 한 곳에서만 유도한다. 값에 부호를 싣지 않는 이유: 색 선택과
@@ -137,8 +138,8 @@ export function makeDeltaPoint(
 /** 두 스냅샷을 이어서 diff 해도 되는가 — 같은 거래소(venue)여야 한다.
  *  KRX 호가장과 NXT 호가장은 별개 장부라 교차 diff 는 무의미하다(#524 시분할). */
 export function sameDeltaChain(
-  prev: { venue?: 'KRX' | 'NXT' },
-  cur: { venue?: 'KRX' | 'NXT' },
+  prev: { venue?: LiveFrameVenue },
+  cur: { venue?: LiveFrameVenue },
 ): boolean {
   return prev.venue === cur.venue;
 }

@@ -403,30 +403,29 @@ describe('overlayLiveTradesOnCandles', () => {
     expect(out[1]).toMatchObject({ high: 70150, close: 70150, vol_a: 1007 });
   });
 
-  it('UN hybrid (ADR-0096): merges regular-session KRX trades, drops NXT-hours trades', () => {
+  it('UN: UN 태그만 캔들에 얹는다 — 시각이 아니라 태그가 정한다 (ADR-0140 §5)', () => {
     // 1779840000000 = 2026-05-27 KST 09:00 (정규장 개장 버킷)
     const last = { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 };
+    const tradeAt = (tMs: number, venue?: 'KRX' | 'NXT' | 'UN') => ({
+      t_ms: tMs, kind: 'trade' as const, venue,
+      trades: [{ t_ms: tMs, price: 70150, qty: 7, side: 1 }],
+    });
 
-    const inSession = overlayLiveTradesOnCandles([last], [
-      {
-        t_ms: 1779840030000,
-        kind: 'trade',
-        trades: [{ t_ms: 1779840030000, price: 70150, qty: 7, side: 1 }],
-      },
-    ], 60_000, 'UN');
+    // 정규장 시각의 UN 체결 — 예전 규칙에선 시각상 KRX 여야 해서 거절됐다.
+    const inSession = overlayLiveTradesOnCandles([last], [tradeAt(1779840030000, 'UN')], 60_000, 'UN');
     expect(inSession[0]).toMatchObject({ close: 70150, vol_a: 1007 });
 
-    // KST 17:00 — NXT 전용 시간대의 KRX 체결은 통합 캔들에 섞지 않는다 (통합 REST가 정본).
+    // KST 17:00 애프터마켓의 UN 체결도 같은 규칙으로 얹힌다 — 시각 무관.
     const afterMs = 1779840000000 + 8 * 3600 * 1000;
-    const candles = [{ ...last, ts_ms: afterMs }];
-    const afterHours = overlayLiveTradesOnCandles(candles, [
-      {
-        t_ms: afterMs + 30_000,
-        kind: 'trade',
-        trades: [{ t_ms: afterMs + 30_000, price: 70150, qty: 7, side: 1 }],
-      },
-    ], 60_000, 'UN');
-    expect(afterHours).toBe(candles);
+    const afterCandles = [{ ...last, ts_ms: afterMs }];
+    const afterHours = overlayLiveTradesOnCandles(afterCandles, [tradeAt(afterMs + 30_000, 'UN')], 60_000, 'UN');
+    expect(afterHours[0]).toMatchObject({ close: 70150 });
+
+    // ⚠ KRX 태그는 UN 캔들에 섞지 않는다 — `_AL` 이 이미 병합본이라 이중 계상이 된다.
+    // 얹을 것이 없으면 입력 배열을 **그대로** 돌려준다(참조 동일성으로 확인).
+    const untouched = [last];
+    const krxTag = overlayLiveTradesOnCandles(untouched, [tradeAt(1779840030000, 'KRX')], 60_000, 'UN');
+    expect(krxTag).toBe(untouched);
   });
 });
 
@@ -435,7 +434,7 @@ describe('overlayLiveTradesOnCalendarCandles', () => {
   const BASE = 1779840000000;
   const DAY = 86400000;
   const lastCandle = () => ({ ts_ms: BASE, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 });
-  const snap = (tMs: number, price: number, qty: number, venue?: 'KRX' | 'NXT') => ({
+  const snap = (tMs: number, price: number, qty: number, venue?: 'KRX' | 'NXT' | 'UN') => ({
     t_ms: tMs,
     kind: 'trade' as const,
     ...(venue ? { venue } : {}),
@@ -503,16 +502,18 @@ describe('overlayLiveTradesOnCalendarCandles', () => {
     expect(nextMonth[1]).toMatchObject({ ts_ms: 1780272000000 });
   });
 
-  it('UN venue: accepts NXT-tagged trades in their own (post-close) session window', () => {
+  it('NXT venue: 정규장 시각의 NXT 체결도 당일 일봉에 반영한다 (ADR-0140 §5)', () => {
     const candles = [lastCandle()];
-    // 장후 NXT 시간대(16:00 = BASE 09:00 + 7h)의 NXT 체결은 당일 일봉에 반영된다.
-    // 정규장 시각의 NXT 태그는 off-venue라 배제되므로(엄격 통일 규칙 — 정책 SSOT
-    // liveVenueAcceptsFrame) NXT 자기 시장 시각으로 수용을 검증한다.
-    const un = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 7 * 3600_000, 70150, 7, 'NXT')], 'D', 'UN');
-    expect(un[0]).toMatchObject({ close: 70150 });
-    // 대조: 정규장 시각(09:00:30)의 NXT 태그는 교차오염이라 배제 → close 불변
-    const off = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 30_000, 70150, 7, 'NXT')], 'D', 'UN');
-    expect(off[0]).toMatchObject({ close: 70050 });
+    // 예전 규칙에선 정규장 시각(09:00:30)의 NXT 태그가 "교차오염"이라 배제됐다.
+    // NXT 는 정규장에도 열려 있으므로 이제 정상 데이터다.
+    const inSession = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 30_000, 70150, 7, 'NXT')], 'D', 'NXT');
+    expect(inSession[0]).toMatchObject({ close: 70150 });
+    // 애프터마켓(16:00)도 같은 규칙.
+    const after = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 7 * 3600_000, 70150, 7, 'NXT')], 'D', 'NXT');
+    expect(after[0]).toMatchObject({ close: 70150 });
+    // 대조: KRX 태그는 NXT 일봉에 안 섞인다 → close 불변
+    const krx = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 30_000, 70150, 7, 'KRX')], 'D', 'NXT');
+    expect(krx[0]).toMatchObject({ close: 70050 });
   });
 
   it('D: appended new-day candles stay ts_ms-ascending even if buffer trades are out of order', () => {

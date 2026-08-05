@@ -543,29 +543,29 @@ describe('WS 틱 등락률 오버레이', () => {
       expect(result.current.quoteByCode.get('005930')?.expected_price).toBeUndefined();
     });
 
-    it('UN(시간대 자동) 선택 + 개장동시호가(08:55 KST) KRX 프레임은 수용한다', async () => {
-      // 2026-05-18(월) 08:55 KST — liveSubscriptionVenueForMs 의 KRX 구간(08:50~) 안.
-      const kst0855 = Date.UTC(2026, 4, 17, 23, 55, 0);
-      mockQuotes([{ code: '005930', price: 244500, change_pct: null, change_won: null, baseline_price: 255000 }]);
-      const hook = renderHook(() => useLiveQuoteOverlay(['005930'], 'UN'), { wrapper: wrap() });
-      await waitFor(() => expect(hook.result.current.quoteByCode.size).toBeGreaterThan(0));
-      await waitFor(() => expect(handlers.has('005930')).toBe(true));
-
-      pushOb('005930', { venue: 'KRX', expected_price: 249000, expected_qty: 100 }, kst0855);
-
-      expect(hook.result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
-    });
-
-    it('UN 선택이라도 08:50 이전(NXT 시간대) KRX 태그 프레임은 배제한다', async () => {
-      // 08:30 KST — 구독 venue 가 NXT 인 구간. 백엔드는 이때 KRX 를 구독하지 않지만,
-      // 정책 게이트가 프레임 t_ms 로 일관되게 판정함을 고정한다.
+    it('선택 venue 와 태그가 같으면 시각과 무관하게 수용한다 (ADR-0140 §5)', async () => {
+      // 08:30 KST — 예전 시분할 규칙에선 "NXT 시간대"라 KRX 태그가 배제되던 구간.
+      // 동시 구독이 되면서 이 시각의 KRX 프레임도 정상 데이터다.
       const kst0830 = Date.UTC(2026, 4, 17, 23, 30, 0);
       mockQuotes([{ code: '005930', price: 244500, change_pct: null, change_won: null, baseline_price: 255000 }]);
-      const hook = renderHook(() => useLiveQuoteOverlay(['005930'], 'UN'), { wrapper: wrap() });
+      const hook = renderHook(() => useLiveQuoteOverlay(['005930'], 'KRX'), { wrapper: wrap() });
       await waitFor(() => expect(hook.result.current.quoteByCode.size).toBeGreaterThan(0));
       await waitFor(() => expect(handlers.has('005930')).toBe(true));
 
       pushOb('005930', { venue: 'KRX', expected_price: 249000, expected_qty: 100 }, kst0830);
+
+      expect(hook.result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
+    });
+
+    it('UN 선택에 KRX 태그 프레임은 배제한다 — 합집합이 아니다', async () => {
+      // `_AL` 은 거래소 병합본이라 자기 태그로 온다. KRX 를 함께 받으면 이중 계상.
+      const kst1000 = Date.UTC(2026, 4, 18, 1, 0, 0);
+      mockQuotes([{ code: '005930', price: 244500, change_pct: null, change_won: null, baseline_price: 255000 }]);
+      const hook = renderHook(() => useLiveQuoteOverlay(['005930'], 'UN'), { wrapper: wrap() });
+      await waitFor(() => expect(hook.result.current.quoteByCode.size).toBeGreaterThan(0));
+      await waitFor(() => expect(handlers.has('005930')).toBe(true));
+
+      pushOb('005930', { venue: 'KRX', expected_price: 249000, expected_qty: 100 }, kst1000);
 
       expect(hook.result.current.quoteByCode.get('005930')?.expected_price).toBeUndefined();
     });
