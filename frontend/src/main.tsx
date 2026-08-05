@@ -34,6 +34,8 @@ const Inventory = lazy(() => import('./pages/Inventory'));
 const Screener = lazy(() => import('./pages/Screener').then((m) => ({ default: m.Screener })));
 const Capture = lazy(() => import('./pages/Capture'));
 const Sentiment = lazy(() => import('./pages/Sentiment'));
+// PROTOTYPE(throwaway) — 시장 종합 변형 평가 라우트 (pages/Market.tsx 참조)
+const Market = lazy(() => import('./pages/Market'));
 const Settings = lazy(() => import('./pages/Settings'));
 
 
@@ -99,6 +101,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="screener" element={<Suspense fallback={null}><Screener /></Suspense>} />
             <Route path="capture" element={<Suspense fallback={null}><Capture /></Suspense>} />
             <Route path="sentiment" element={<Suspense fallback={null}><Sentiment /></Suspense>} />
+            <Route path="market" element={<Suspense fallback={null}><Market /></Suspense>} />
             <Route path="settings" element={<Suspense fallback={null}><Settings /></Suspense>} />
           </Route>
         </Routes>

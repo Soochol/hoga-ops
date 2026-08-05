@@ -39,7 +39,9 @@ export const THEME_PREFERENCE_OPTIONS: readonly ThemePreference[] = [
 const STORAGE_KEY = 'ui.themePreference.v1';
 
 /** Route prefixes that stay dark under `auto`. Everything else goes light. */
-const OBSIDIAN_ROUTE_PREFIXES = ['/live', '/heatmap'];
+// PROTOTYPE(throwaway) — '/market'(시장 종합 변형 평가)은 실시간 모니터링
+// 표면이라 /live·/heatmap 과 같은 Obsidian 쪽에 둔다. 변형 확정 시 재검토.
+const OBSIDIAN_ROUTE_PREFIXES = ['/live', '/heatmap', '/market'];
 
 /**
  * Resolve a preference + current pathname to the theme that should be applied.
