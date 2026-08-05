@@ -5,7 +5,7 @@ import type { LiveIndexId } from '../live/liveInstrument';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
-import type { InvestorNetPoint } from './types';
+import type { InvestorNetPoint, InvestorNetUnit } from './types';
 
 export type LiveIndexInvestorScope = 'market' | 'index' | 'none';
 
@@ -56,6 +56,8 @@ export interface LiveIndexInvestorNetResponse {
   index_id: LiveIndexId;
   from: string;
   to: string;
+  /** 'amt_eok' — 지수/시장 순매수는 **금액(억원)** 이다(#1119). 구백엔드는 미포함. */
+  unit?: InvestorNetUnit;
   points: InvestorNetPoint[];
   data_warnings: LiveIndexCandlesWarning[];
 }

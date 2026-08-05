@@ -238,3 +238,13 @@ def test_kosdaq_daily_index_columns_are_not_trusted():
     assert kept["total_net_eok"] == dropped["total_net_eok"] == 3.0
     assert kept["kospi200"] == 1000.03 and kept["basis"] == 345.27
     assert dropped["kospi200"] is None and dropped["basis"] is None
+
+
+def test_index_investor_net_result_declares_amt_eok_unit():
+    """#1119: 지수 경로는 금액(억원)을 담는다 — 응답이 스스로 말해야 한다."""
+    from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
+
+    got = LiveIndexInvestorNetFetcher._result(
+        type("I", (), {"id": "KOSPI"})(), "20260801", "20260805", points=[], warnings=[],
+    )
+    assert got["unit"] == "amt_eok"

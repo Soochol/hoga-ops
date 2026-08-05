@@ -6,7 +6,11 @@
 
 ## 실측이 잡은 함정 셋 (#1041, 005930 · 2026-08-03)
 
-**① `amt_qty_tp` 는 이름 순서가 직관과 반대다.**
+**① `amt_qty_tp` 는 코드표·단위가 TR 마다 다르다.** ka10064 는 이름 순서가 직관과
+반대이고(아래), **ka10051 은 표 자체가 다르다**: `0`=금액(**억원**) · `1`=`2`=수량(천주)
+(2026-08-05 실측, 두 시장 교차 대조). ka90005/ka10131 은 파라미터가 아예 무시되고
+금액(**백만원**)·수량이 한 응답에 온다. 한 TR 의 표를 다른 TR 에 옮기면 조용히 틀린다 —
+이 파일에서만 단위 사고가 세 번 났다(#1119).
 
     amt_qty_tp=2  →  외국인 -3,923,675   ← **수량(주)**
     amt_qty_tp=1  →  외국인   -952,097   ← 금액(백만원)
@@ -55,6 +59,8 @@ EstimateCallRunner = Callable[[PageFetch, str], Awaitable[Page]]
 
 # **수량**축. 이름과 달리 2 가 수량이다(위 함정 ①).
 AMT_QTY_QUANTITY = "2"
+# ka10051 전용 — 금액(억원) 축. ka10064 의 표(1=금액)와 다르다(위 함정 ①).
+KA10051_AMT_EOK = "0"
 # **금액**축(백만원). 1 이 금액이다 — 직관과 반대라 상수로 못 박는다.
 AMT_QTY_AMOUNT = "1"
 # 필수지만 응답에 영향이 없다(함정 ②). 벤더가 요구하므로 채워 보낼 뿐이다.
@@ -193,7 +199,9 @@ async def fetch_market_investor_net_day(
     """
     want = index_id_to_kiwoom_code(index.id)
     page = await client.call("ka10051", {
-        "mrkt_tp": _mrkt_tp(index.id), "amt_qty_tp": "0",
+        # 금액(억원) 축 — 시장 순매수는 금액이 표시 관례다. 이 선택이 응답의
+        # unit="amt_eok" 로 노출된다(#1119: 모델 주석이 "수량" 이라 조용히 거짓이던 자리).
+        "mrkt_tp": _mrkt_tp(index.id), "amt_qty_tp": KA10051_AMT_EOK,
         "base_dt": date_yyyymmdd, "stex_tp": _STEX_ALL,
     })
     for row in page.rows:
