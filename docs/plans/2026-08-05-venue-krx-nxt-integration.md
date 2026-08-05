@@ -48,9 +48,12 @@
 
 `split_venue("005930_AL")` → `("005930_AL", "KRX")` — 접미가 안 벗겨지고 venue가 오분류된다.
 
-- 두 상수를 하나로 합친다(정본 위치 결정 필요 — `hoga/live/venue.py`가 브로커 중립 도메인이나
-  wire 인코딩은 벤더 소관이므로 `kiwoom_*` 중 하나)
-- `split_venue`가 `_AL` → `UN` 을 인식
+- **정본 = 새 모듈 `hoga/live/kiwoom_venue.py`** (키움 wire venue 인코딩 전용). 후보 소거:
+  `venue.py` 는 docstring 이 wire 인코딩을 **명시적으로 배제**하고, `kiwoom_fields` 는 *WS FID* 전용인데
+  접미는 REST(`stk_cd`)에도 실리며, `kiwoom_multi_quote` 는 **기능 모듈에 상수가 얹힌 꼴**이다
+  (캔들 모듈 둘이 멀티쿼트가 필요해서가 아니라 상수만 빌리려고 import 한다)
+- `kiwoom_fields`·`kiwoom_multi_quote`·`kiwoom_daily_candles`·`kiwoom_minute_candles` 가 전부 여기서 import
+- `split_venue` 가 `_AL` → `UN` 을 인식. ⚠ 접미 매칭 순서 — `""`(KRX)는 모든 문자열에 매치되므로 **마지막**
 - `WsTick.venue` 가 `"UN"` 을 가질 수 있게 되므로 타입·소비자 점검
 
 **검증:** 단위 테스트에서 `split_venue ∘ apply_venue = 항등`을 세 venue 전부에 대해.
@@ -143,7 +146,10 @@ live_kiwoom/{date}/{venue}/{code}.jsonl
 - `liveVenueAcceptsFrame` 태그 직결(**`tMs` 인자 제거**) — 소비자 **7곳/4파일** 동시 파급:
   `liveSidebarAdapters.ts:26·40` · `useLiveBundle.ts:122·214` · `liveTickOverlay.ts:122·153` ·
   `deriveCurrentPriceLine.ts:41`
-- `tagVenue` 타입에 `'UN'` 추가
+- **`tagVenue` 를 명명 타입으로 승격** — 지금은 같은 유니온이 인라인 리터럴로 **4곳**에 흩어져 있다
+  (`liveVenuePolicy.ts:102` · `liveTickOverlay.ts:118·152` · `livePastCandles.ts:253`). `'UN'` 추가 시 하나를
+  빠뜨리면 **타입 에러가 안 나고** `as` 캐스팅이라 런타임에 UN 프레임이 조용히 걸러진다
+  → `export type LiveFrameVenue = 'KRX' | 'NXT' | 'UN'` 신설 + **`as` 캐스팅 제거**(스냅샷 타입에 실제 선언)
 - `liveSubscriptionVenueForMs` · `liveHogaVenueNow` · 상태바 호가 배지 제거
 - `DataSourceDetail` 설명문 반전
 - 통합 호가는 `_AL` 직결, 교차 시 **경고 없음**
@@ -153,6 +159,13 @@ live_kiwoom/{date}/{venue}/{code}.jsonl
 
 **검증:** typecheck 3프로젝트 + vitest + e2e. UI 문구 변경은 e2e 셀렉터를 깨뜨리므로 문구 대신
 `data-*` 원값 셀렉터를 쓴다.
+
+## 선행 결정 하나가 남아 있다 — [#1132](https://github.com/Soochol/hoga-ops/issues/1132)
+
+**히트맵·스크리너는 전역 `useLiveVenueStore` 를 이미 공유한다**(`Heatmap.tsx:39` · `useScreenerRowsLive.ts:35` ·
+`useScreenerMonitor.ts:54`). 즉 PR-H 가 3옵션을 켜는 순간 **아무도 결정하지 않았는데 두 화면의 동작이 바뀐다.**
+히트맵 272종 중 **98종(36%)은 NXT 데이터가 없어** 셀이 비는데, 히트맵은 "잔량이 없다"와 "시장에 없다"를
+구분할 수단이 없다. **PR-H 착수 전에 #1132 를 해소한다.**
 
 ## PR-I — 보관함·`/study` venue 축
 

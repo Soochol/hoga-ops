@@ -251,7 +251,9 @@ LIVE_VENUE_LABELS  = { KRX: 'KRX', NXT: 'NXT', UN: '통합' }
 2. **`VENUE_SUFFIX`가 둘인데 서로 다르다.** `kiwoom_fields.py:114`는 `{"_NX":"NXT"}`로
    **`_AL`이 없어** `split_venue("005930_AL")`가 `("005930_AL","KRX")`를 돌려준다 — 접미가
    안 벗겨지고 venue가 오분류된다. `kiwoom_multi_quote.py:46`에는 제대로 있다. **같은 이름의
-   다른 진실이 둘**이므로 근본 해결은 두 상수 통합이다.
+   다른 진실이 둘**이므로 근본 해결은 통합이고, 정본은 **새 모듈 `hoga/live/kiwoom_venue.py`** 다
+   (`venue.py`는 docstring이 wire 인코딩을 배제하고, `kiwoom_fields`는 WS 전용인데 접미는 REST에도
+   실리며, `kiwoom_multi_quote`는 기능 모듈에 상수가 얹힌 꼴이다).
 3. **15:35 완결 확정**이 NXT·AL 저장을 4.5시간 앞질러 거짓 COMPLETE를 만든다(§6).
 
 ### 검증 — 미검증 랜딩 금지
@@ -264,6 +266,10 @@ KRX 쪽 출력에 영향을 주지 않았다는 직접 증거다.
 
 ## 열린 항목
 
+- **히트맵·스크리너에서 NXT·통합의 의미** — 두 화면은 전역 `useLiveVenueStore` 를 이미 공유하므로
+  3옵션이 켜지는 순간 **결정 없이 동작이 바뀐다.** 히트맵 272종 중 98종은 NXT 데이터가 없고, 히트맵은
+  "잔량이 없다"와 "시장에 없다"를 구분할 수단이 없다. venue 가 전역이어야 하는지 자체가 명시적으로
+  결정된 적이 없다 → [#1132](https://github.com/Soochol/hoga-ops/issues/1132).
 - **연결 창이 이제 진짜 상한이다.** `ws_connection_window`의 `08:00–20:00`은 구독 스왑
   스케줄로 들어온 값이지 검증된 NXT 운영시간이 아니다. 이 창 밖 틱은 저장 이전에 수신 자체가
   안 된다.
