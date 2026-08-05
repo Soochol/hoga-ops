@@ -53,8 +53,8 @@ from datetime import datetime
 from typing import Any
 
 from hoga.live.candle_models import LiveCandle
-from hoga.live.kiwoom_multi_quote import VENUE_SUFFIX
 from hoga.live.kiwoom_rest import KiwoomRestClient
+from hoga.live.kiwoom_venue import VENUE_SUFFIX
 from hoga.live.venue import Venue
 from hoga.util.timeenc import KST
 
