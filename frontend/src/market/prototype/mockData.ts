@@ -196,6 +196,94 @@ export const MOCK_NET_TREND: MockNetTrend[] = [
   },
 ];
 
+// ── 극대화판 추가 4종 (2026-08-05) ──────────────────────────────────────────
+//   프로그램 매매 추이  → ka90005(시간대별)·ka90010(일자별)·ka90003(상위50)
+//   기관·외인 연속매매  → ka10131(연속매매현황)·ka10035(외인연속순매매상위)
+//   시장 폭(breadth)    → ka10016(신고저가)·ka10017(상하한가)·ka10019(가격급등락)
+//   KRX 전업종지수      → ka20003(전업종지수)·ka20002(업종별주가)
+// 전부 백엔드 미배선 — 채택 시 유량 예산 안에서 폴링 주기를 정해야 한다.
+
+export interface MockProgramTrend {
+  market: 'KOSPI' | 'KOSDAQ';
+  /** 30분 슬롯별 순매수 (억원, 09:00→현재) — 차익/비차익 분리 (ka90005) */
+  arbDaily: number[];
+  nonArbDaily: number[];
+  totalEok: number;
+}
+
+export const MOCK_PROGRAM_TREND: MockProgramTrend[] = [
+  {
+    market: 'KOSPI',
+    arbDaily: [310, -180, 420, 150, -90, 260, 380, -120, 210, 340, 190],
+    nonArbDaily: [820, 640, -310, 910, 530, -240, 760, 1120, 480, -180, 690],
+    totalEok: 7070,
+  },
+  {
+    market: 'KOSDAQ',
+    arbDaily: [40, -60, 80, -30, 50, -70, 30, 60, -40, 20, 30],
+    nonArbDaily: [-210, 180, -340, -120, 240, -410, -180, 90, -260, -150, -80],
+    totalEok: -1130,
+  },
+];
+
+export interface MockStreakRow {
+  code: string;
+  name: string;
+  actor: '외국인' | '기관';
+  days: number;
+  netEok: number;
+  changePct: number;
+}
+
+/** 기관·외국인 연속 순매수 현황 (ka10131) — 연속일수 내림차순 */
+export const MOCK_STREAKS: MockStreakRow[] = [
+  { code: '005930', name: '삼성전자', actor: '외국인', days: 7, netEok: 12410, changePct: 1.61 },
+  { code: '042660', name: '한화오션', actor: '기관', days: 6, netEok: 2140, changePct: 12.86 },
+  { code: '000660', name: 'SK하이닉스', actor: '외국인', days: 5, netEok: 8320, changePct: 2.72 },
+  { code: '034020', name: '두산에너빌리티', actor: '기관', days: 4, netEok: 1530, changePct: 8.44 },
+  { code: '005380', name: '현대차', actor: '외국인', days: 4, netEok: 1890, changePct: 0.31 },
+  { code: '196170', name: '알테오젠', actor: '기관', days: 3, netEok: 980, changePct: 9.71 },
+  { code: '035420', name: 'NAVER', actor: '외국인', days: 3, netEok: 760, changePct: -0.24 },
+  { code: '003230', name: '삼양식품', actor: '기관', days: 3, netEok: 410, changePct: 0.88 },
+];
+
+export interface MockBreadth {
+  market: 'KOSPI' | 'KOSDAQ';
+  newHigh52: number;
+  newLow52: number;
+  upperLimit: number;
+  lowerLimit: number;
+  surge: number; // 가격 급등 (ka10019)
+  plunge: number;
+}
+
+export const MOCK_BREADTH: MockBreadth[] = [
+  { market: 'KOSPI', newHigh52: 38, newLow52: 6, upperLimit: 2, lowerLimit: 0, surge: 14, plunge: 5 },
+  { market: 'KOSDAQ', newHigh52: 41, newLow52: 23, upperLimit: 7, lowerLimit: 1, surge: 26, plunge: 18 },
+];
+
+export interface MockKrxSector {
+  name: string;
+  value: number;
+  changePct: number;
+}
+
+/** KRX 전업종지수 (ka20003) — 자체 히트맵 폴더("섹터 온도")와 다른 객관 업종 축 */
+export const MOCK_KRX_SECTORS: MockKrxSector[] = [
+  { name: '운수장비', value: 2841.12, changePct: 2.14 },
+  { name: '전기전자', value: 8412.33, changePct: 1.92 },
+  { name: '기계', value: 1954.08, changePct: 1.43 },
+  { name: '증권', value: 812.44, changePct: 1.08 },
+  { name: '철강금속', value: 5233.91, changePct: 0.81 },
+  { name: '금융업', value: 1121.37, changePct: 0.52 },
+  { name: '음식료품', value: 4188.02, changePct: 0.21 },
+  { name: '유통업', value: 488.13, changePct: -0.12 },
+  { name: '건설업', value: 92.44, changePct: -0.28 },
+  { name: '서비스업', value: 1544.71, changePct: -0.33 },
+  { name: '화학', value: 6120.55, changePct: -0.42 },
+  { name: '의약품', value: 21044.87, changePct: -0.71 },
+];
+
 export const MOCK_OPTION_SENTIMENT = {
   pcVolumeRatio: 0.87,
   pcOiRatio: 1.12,

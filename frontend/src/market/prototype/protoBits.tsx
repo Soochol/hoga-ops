@@ -176,6 +176,122 @@ export function NetTrendLegend({
   );
 }
 
+/** 프로그램 매매 시리즈 색 — 차익 --ma-6(시안) · 비차익 --ma-7(노랑).
+ *  수급 추세의 외국인/기관(--ma-3/--ma-4)과 슬롯이 겹치지 않게 확장 슬롯 사용. */
+export const PROGRAM_COLORS = { arb: 'var(--ma-6)', nonArb: 'var(--ma-7)' } as const;
+
+/** 프로그램 매매 당일 누적 추이 — 차익/비차익 2계열 (ka90005 시간대별). */
+export function ProgramTrendChart({
+  arbDaily,
+  nonArbDaily,
+  width = 300,
+  height = 88,
+}: {
+  arbDaily: number[];
+  nonArbDaily: number[];
+  width?: number;
+  height?: number;
+}) {
+  const cum = (daily: number[]) => {
+    let acc = 0;
+    return daily.map((v) => (acc += v));
+  };
+  const a = cum(arbDaily);
+  const n = cum(nonArbDaily);
+  const all = [...a, ...n, 0];
+  const min = Math.min(...all);
+  const max = Math.max(...all);
+  const span = max - min || 1;
+  const len = a.length;
+  const px = (i: number) => (i / (len - 1)) * (width - 4) + 2;
+  const py = (v: number) => height - 3 - ((v - min) / span) * (height - 6);
+  const path = (s: number[]) =>
+    s.map((v, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+  return (
+    <svg
+      width="100%"
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      className="block"
+    >
+      <line x1="2" x2={width - 2} y1={py(0)} y2={py(0)} stroke="var(--border-strong)" strokeDasharray="2 3" />
+      <path d={path(a)} fill="none" stroke={PROGRAM_COLORS.arb} strokeWidth="1.5" strokeLinejoin="round" />
+      <path d={path(n)} fill="none" stroke={PROGRAM_COLORS.nonArb} strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function ProgramTrendLegend({
+  arbDaily,
+  nonArbDaily,
+}: {
+  arbDaily: number[];
+  nonArbDaily: number[];
+}) {
+  const sum = (s: number[]) => s.reduce((x, v) => x + v, 0);
+  const aSum = sum(arbDaily);
+  const nSum = sum(nonArbDaily);
+  return (
+    <div className="flex items-center gap-md font-data text-2xs tabular-nums">
+      <span className="flex items-center gap-2xs">
+        <span className="inline-block h-[2px] w-[10px]" style={{ background: PROGRAM_COLORS.arb }} />
+        <span className="text-fg-dim">차익</span>
+        <span className={priceDirClass(aSum)}>{fmtSigned(aSum)}</span>
+      </span>
+      <span className="flex items-center gap-2xs">
+        <span className="inline-block h-[2px] w-[10px]" style={{ background: PROGRAM_COLORS.nonArb }} />
+        <span className="text-fg-dim">비차익</span>
+        <span className={priceDirClass(nSum)}>{fmtSigned(nSum)}</span>
+      </span>
+    </div>
+  );
+}
+
+/** 시장 폭(breadth) 스탯 타일 한 벌 — 신고/신저·상한/하한·급등/급락 (ka10016/17/19).
+ *  방향 의미가 있는 시장 데이터라 카운트 숫자에 price 방향색을 쓴다. */
+export function BreadthTiles({
+  newHigh52,
+  newLow52,
+  upperLimit,
+  lowerLimit,
+  surge,
+  plunge,
+}: {
+  newHigh52: number;
+  newLow52: number;
+  upperLimit: number;
+  lowerLimit: number;
+  surge: number;
+  plunge: number;
+}) {
+  const tiles: Array<[string, number, 'up' | 'down']> = [
+    ['52주 신고', newHigh52, 'up'],
+    ['52주 신저', newLow52, 'down'],
+    ['상한', upperLimit, 'up'],
+    ['하한', lowerLimit, 'down'],
+    ['급등', surge, 'up'],
+    ['급락', plunge, 'down'],
+  ];
+  return (
+    <div className="grid grid-cols-6 gap-2xs">
+      {tiles.map(([label, count, dir]) => (
+        <div
+          key={label}
+          className="flex flex-col items-center rounded-sm px-2xs py-2xs"
+          style={{ background: 'var(--bg-subtle)' }}
+        >
+          <span className={`font-data text-md font-semibold tabular-nums ${dir === 'up' ? 'text-price-up' : 'text-price-down'}`}>
+            {count}
+          </span>
+          <span className="text-2xs text-fg-dim">{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** 부호 있는 수평 순매수 막대 (0 중앙 기준) — 투자자 수급용. */
 export function NetBar({ value, max }: { value: number; max: number }) {
   const ratio = Math.min(Math.abs(value) / (max || 1), 1);

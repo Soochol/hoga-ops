@@ -9,11 +9,15 @@
 import { heatBg, heatHeaderBg } from '../../heatmap/heat';
 import { priceDirClass } from '../../ui/priceDir';
 import {
-  MOCK_AS_OF, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_NET_TREND, MOCK_OPTION_SENTIMENT,
-  MOCK_SECTORS, MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE, MOCK_VOLUME_SURGE,
+  MOCK_AS_OF, MOCK_BREADTH, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_KRX_SECTORS,
+  MOCK_NET_TREND, MOCK_OPTION_SENTIMENT, MOCK_PROGRAM_TREND, MOCK_SECTORS,
+  MOCK_STREAKS, MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE, MOCK_VOLUME_SURGE,
   type MockRankRow,
 } from './mockData';
-import { NetTrendChart, NetTrendLegend, PctText, Sparkline, fmtSigned } from './protoBits';
+import {
+  BreadthTiles, NetTrendChart, NetTrendLegend, PctText, ProgramTrendChart,
+  ProgramTrendLegend, Sparkline, fmtSigned,
+} from './protoBits';
 
 function TickerStrip() {
   return (
@@ -115,6 +119,23 @@ export function VariantB() {
           <div className="mt-sm" />
           <ColumnHeader title="거래량 급증" avgPct={avg(MOCK_VOLUME_SURGE)} />
           <DenseRankRows rows={MOCK_VOLUME_SURGE.slice(0, 6)} />
+          <div className="mt-sm" />
+          <ColumnHeader title="연속 순매수 (ka10131)" avgPct={null} />
+          <ol className="flex flex-col">
+            {MOCK_STREAKS.map((r) => (
+              <li
+                key={`${r.code}-${r.actor}`}
+                className="grid grid-cols-[2.4rem_1fr_2.2rem_3.8rem] items-center gap-xs border-b border-grid px-sm py-2xs last:border-b-0"
+              >
+                <span className="text-2xs text-fg-dim">{r.actor}</span>
+                <span className="truncate text-sm text-fg">{r.name}</span>
+                <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">{r.days}일</span>
+                <span className={`text-right font-data text-sm tabular-nums ${priceDirClass(r.netEok)}`}>
+                  {fmtSigned(r.netEok)}
+                </span>
+              </li>
+            ))}
+          </ol>
         </section>
 
         {/* 열 3 — 섹터 온도 */}
@@ -132,6 +153,25 @@ export function VariantB() {
                   <PctText pct={s.changePct} className="text-right text-sm" />
                 </div>
                 <div className="truncate text-2xs text-fg-dim">{s.leaders.join(' · ')}</div>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-sm" />
+          <ColumnHeader
+            title="KRX 업종 (ka20003)"
+            avgPct={MOCK_KRX_SECTORS.reduce((a, s) => a + s.changePct, 0) / MOCK_KRX_SECTORS.length}
+          />
+          <ol className="flex flex-col">
+            {MOCK_KRX_SECTORS.map((s) => (
+              <li
+                key={s.name}
+                className="grid grid-cols-[1fr_5rem_4rem] items-center gap-xs border-b border-grid px-sm py-2xs last:border-b-0"
+              >
+                <span className="truncate text-sm text-fg">{s.name}</span>
+                <span className="text-right font-data text-sm text-fg-dim tabular-nums">
+                  {s.value.toLocaleString('ko-KR', { minimumFractionDigits: 2 })}
+                </span>
+                <PctText pct={s.changePct} className="text-right text-sm" />
               </li>
             ))}
           </ol>
@@ -184,6 +224,33 @@ export function VariantB() {
                 indexClose={t.indexClose}
                 height={64}
               />
+            </div>
+          ))}
+          <div className="mt-sm" />
+          <ColumnHeader title="프로그램 매매 (ka90005)" avgPct={null} />
+          {MOCK_PROGRAM_TREND.map((p) => (
+            <div key={p.market} className="border-b border-grid px-sm py-xs last:border-b-0">
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs font-semibold text-fg-dim">
+                  {p.market === 'KOSPI' ? '코스피' : '코스닥'}
+                  {'  '}
+                  <span className={`font-data tabular-nums ${priceDirClass(p.totalEok)}`}>
+                    {fmtSigned(p.totalEok)}
+                  </span>
+                </span>
+                <ProgramTrendLegend arbDaily={p.arbDaily} nonArbDaily={p.nonArbDaily} />
+              </div>
+              <ProgramTrendChart arbDaily={p.arbDaily} nonArbDaily={p.nonArbDaily} height={52} />
+            </div>
+          ))}
+          <div className="mt-sm" />
+          <ColumnHeader title="시장 폭 (ka10016·17·19)" avgPct={null} />
+          {MOCK_BREADTH.map((b) => (
+            <div key={b.market} className="border-b border-grid px-sm py-xs last:border-b-0">
+              <div className="mb-2xs text-xs font-semibold text-fg-dim">
+                {b.market === 'KOSPI' ? '코스피' : '코스닥'}
+              </div>
+              <BreadthTiles {...b} />
             </div>
           ))}
           <p className="px-sm py-xs text-2xs text-fg-dim">

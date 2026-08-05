@@ -10,12 +10,14 @@ import { PanelCard } from '../../ui/PageShell';
 import { priceDirClass } from '../../ui/priceDir';
 import { heatBg } from '../../heatmap/heat';
 import {
-  MOCK_AS_OF, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_NET_TREND, MOCK_OPTION_SENTIMENT,
-  MOCK_SECTORS, MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE,
+  MOCK_AS_OF, MOCK_BREADTH, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_KRX_SECTORS,
+  MOCK_NET_TREND, MOCK_OPTION_SENTIMENT, MOCK_PROGRAM_TREND, MOCK_SECTORS,
+  MOCK_STREAKS, MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE,
   type MockRankRow,
 } from './mockData';
 import {
-  AdvanceDeclineBar, NetBar, NetTrendChart, NetTrendLegend, PctText, Sparkline, fmtSigned,
+  AdvanceDeclineBar, BreadthTiles, NetBar, NetTrendChart, NetTrendLegend, PctText,
+  ProgramTrendChart, ProgramTrendLegend, Sparkline, fmtSigned,
 } from './protoBits';
 
 function IndexCard({ idx }: { idx: (typeof MOCK_INDICES)[number] }) {
@@ -85,20 +87,107 @@ function InvestorCard() {
 function SectorCard() {
   return (
     <PanelCard borderless flat className="flex flex-col gap-sm p-md">
-      <h2 className="text-sm text-fg">섹터 온도 <span className="text-2xs text-fg-dim">그룹 평균 등락</span></h2>
-      <div className="grid grid-cols-2 gap-x-md gap-y-2xs">
-        {MOCK_SECTORS.map((s) => (
-          <div
-            key={s.name}
-            className="grid grid-cols-[1fr_auto_auto] items-center gap-sm rounded-sm px-sm py-2xs"
-            style={{ background: heatBg(s.changePct, 0.22) }}
-          >
-            <span className="truncate text-sm text-fg">{s.name}</span>
-            <Sparkline points={s.spark} width={44} height={14} />
-            <PctText pct={s.changePct} className="w-[3.8rem] text-right text-sm" />
-          </div>
-        ))}
+      <h2 className="text-sm text-fg">
+        섹터 온도 <span className="text-2xs text-fg-dim">좌 관심 폴더 · 우 KRX 업종(ka20003)</span>
+      </h2>
+      <div className="grid grid-cols-2 gap-x-md">
+        <div className="flex flex-col gap-2xs">
+          {MOCK_SECTORS.map((s) => (
+            <div
+              key={s.name}
+              className="grid grid-cols-[1fr_auto_auto] items-center gap-sm rounded-sm px-sm py-2xs"
+              style={{ background: heatBg(s.changePct, 0.22) }}
+            >
+              <span className="truncate text-sm text-fg">{s.name}</span>
+              <Sparkline points={s.spark} width={44} height={14} />
+              <PctText pct={s.changePct} className="w-[3.8rem] text-right text-sm" />
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col gap-2xs">
+          {MOCK_KRX_SECTORS.map((s) => (
+            <div
+              key={s.name}
+              className="grid grid-cols-[1fr_auto] items-center gap-sm rounded-sm px-sm py-2xs"
+              style={{ background: heatBg(s.changePct, 0.22) }}
+            >
+              <span className="truncate text-sm text-fg">{s.name}</span>
+              <PctText pct={s.changePct} className="w-[3.8rem] text-right text-sm" />
+            </div>
+          ))}
+        </div>
       </div>
+    </PanelCard>
+  );
+}
+
+function ProgramCard() {
+  return (
+    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
+      <h2 className="text-sm text-fg">
+        프로그램 매매 <span className="text-2xs text-fg-dim">당일 누적 · 억원 (ka90005)</span>
+      </h2>
+      {MOCK_PROGRAM_TREND.map((p) => (
+        <div key={p.market} className="flex flex-col gap-2xs">
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs font-semibold text-fg-dim">
+              {p.market === 'KOSPI' ? '코스피' : '코스닥'}
+              {'  '}
+              <span className={`font-data tabular-nums ${priceDirClass(p.totalEok)}`}>
+                {fmtSigned(p.totalEok)}
+              </span>
+            </span>
+            <ProgramTrendLegend arbDaily={p.arbDaily} nonArbDaily={p.nonArbDaily} />
+          </div>
+          <ProgramTrendChart arbDaily={p.arbDaily} nonArbDaily={p.nonArbDaily} height={64} />
+        </div>
+      ))}
+    </PanelCard>
+  );
+}
+
+function StreakCard() {
+  return (
+    <PanelCard borderless flat className="flex flex-col gap-xs p-md">
+      <h2 className="text-sm text-fg">
+        연속 순매수 <span className="text-2xs text-fg-dim">기관·외국인 (ka10131)</span>
+      </h2>
+      <ol className="flex flex-col">
+        {MOCK_STREAKS.map((r) => (
+          <li
+            key={`${r.code}-${r.actor}`}
+            className="grid grid-cols-[2.6rem_1fr_2.4rem_4.2rem] items-center gap-sm border-b border-grid py-2xs last:border-b-0"
+          >
+            <span className="text-2xs text-fg-dim">{r.actor}</span>
+            <span className="truncate text-sm text-fg">{r.name}</span>
+            <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">{r.days}일</span>
+            <span className={`text-right font-data text-sm tabular-nums ${priceDirClass(r.netEok)}`}>
+              {fmtSigned(r.netEok)}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </PanelCard>
+  );
+}
+
+function BreadthCard() {
+  return (
+    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
+      <h2 className="text-sm text-fg">
+        시장 폭 <span className="text-2xs text-fg-dim">종목수 (ka10016·17·19)</span>
+      </h2>
+      {MOCK_BREADTH.map((b) => (
+        <div key={b.market} className="flex flex-col gap-2xs">
+          <span className="text-xs font-semibold text-fg-dim">
+            {b.market === 'KOSPI' ? '코스피' : '코스닥'}
+          </span>
+          <BreadthTiles {...b} />
+        </div>
+      ))}
+      <p className="text-2xs text-fg-dim">
+        신고·신저 격차가 등락종목수(TR 공백)의 대용 지표 — 격차 축소는 추세 약화 신호.
+      </p>
     </PanelCard>
   );
 }
@@ -170,6 +259,11 @@ export function VariantA() {
         <SectorCard />
       </div>
       <NetTrendCard />
+      <div className="grid grid-cols-3 gap-xs">
+        <ProgramCard />
+        <StreakCard />
+        <BreadthCard />
+      </div>
       <div className="grid grid-cols-3 gap-xs">
         <RankCard title="상승률 상위" rows={MOCK_TOP_GAINERS} />
         <RankCard title="하락률 상위" rows={MOCK_TOP_LOSERS} />

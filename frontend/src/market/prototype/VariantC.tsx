@@ -11,10 +11,14 @@ import { PanelCard } from '../../ui/PageShell';
 import { priceDirClass } from '../../ui/priceDir';
 import { heatBg } from '../../heatmap/heat';
 import {
-  MOCK_AS_OF, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_NET_TREND, MOCK_SECTORS,
+  MOCK_AS_OF, MOCK_BREADTH, MOCK_INDICES, MOCK_INVESTOR_NET, MOCK_KRX_SECTORS,
+  MOCK_NET_TREND, MOCK_PROGRAM_TREND, MOCK_SECTORS, MOCK_STREAKS,
   MOCK_TOP_GAINERS, MOCK_TOP_LOSERS, MOCK_TOP_VALUE, type MockRankRow,
 } from './mockData';
-import { NetTrendChart, NetTrendLegend, PctText, fmtSigned } from './protoBits';
+import {
+  BreadthTiles, NetTrendChart, NetTrendLegend, PctText, ProgramTrendChart,
+  ProgramTrendLegend, fmtSigned,
+} from './protoBits';
 
 /** 대형 목업 지수 차트 — 시가 기준선 + 방향색 라인/틴트 면. */
 function BigIndexChart({ points }: { points: number[] }) {
@@ -91,6 +95,8 @@ export function VariantC() {
   const netMarket = idx.id === 'KOSDAQ' || idx.id === 'KOSDAQ150' ? 'KOSDAQ' : 'KOSPI';
   const net = MOCK_INVESTOR_NET.find((m) => m.market === netMarket);
   const trend = MOCK_NET_TREND.find((t) => t.market === netMarket);
+  const program = MOCK_PROGRAM_TREND.find((p) => p.market === netMarket);
+  const breadth = MOCK_BREADTH.find((b) => b.market === netMarket);
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[13rem_1fr_17rem] gap-xs">
@@ -120,6 +126,19 @@ export function VariantC() {
         <h2 className="mt-sm text-xs font-semibold uppercase text-fg-dim">섹터</h2>
         <ul className="flex flex-col">
           {MOCK_SECTORS.map((s) => (
+            <li
+              key={s.name}
+              className="grid grid-cols-[1fr_3.6rem] items-center gap-xs rounded-sm px-sm py-2xs"
+              style={{ background: heatBg(s.changePct, 0.18) }}
+            >
+              <span className="truncate text-sm text-fg">{s.name}</span>
+              <PctText pct={s.changePct} className="text-right text-sm" />
+            </li>
+          ))}
+        </ul>
+        <h2 className="mt-sm text-xs font-semibold uppercase text-fg-dim">KRX 업종</h2>
+        <ul className="flex flex-col">
+          {MOCK_KRX_SECTORS.map((s) => (
             <li
               key={s.name}
               className="grid grid-cols-[1fr_3.6rem] items-center gap-xs rounded-sm px-sm py-2xs"
@@ -191,10 +210,53 @@ export function VariantC() {
             </div>
           )}
         </PanelCard>
+
+        <div className="grid grid-cols-2 gap-xs">
+          <PanelCard borderless flat className="flex flex-col gap-sm p-md">
+            <h2 className="text-sm text-fg">
+              프로그램 매매 <span className="text-2xs text-fg-dim">당일 누적 · 억원 (ka90005)</span>
+            </h2>
+            {program && (
+              <>
+                <div className="flex items-baseline justify-between">
+                  <span className={`font-data text-md font-semibold tabular-nums ${priceDirClass(program.totalEok)}`}>
+                    {fmtSigned(program.totalEok)}
+                  </span>
+                  <ProgramTrendLegend arbDaily={program.arbDaily} nonArbDaily={program.nonArbDaily} />
+                </div>
+                <ProgramTrendChart arbDaily={program.arbDaily} nonArbDaily={program.nonArbDaily} height={84} />
+              </>
+            )}
+          </PanelCard>
+          <PanelCard borderless flat className="flex flex-col gap-sm p-md">
+            <h2 className="text-sm text-fg">
+              시장 폭 <span className="text-2xs text-fg-dim">종목수 (ka10016·17·19)</span>
+            </h2>
+            {breadth && <BreadthTiles {...breadth} />}
+            <p className="text-2xs text-fg-dim">
+              신고·신저 격차 = 등락종목수(TR 공백)의 대용 지표.
+            </p>
+          </PanelCard>
+        </div>
       </div>
 
       {/* 우 — 해당 시장 무버 */}
       <PanelCard borderless flat className="flex min-h-0 flex-col gap-md overflow-y-auto p-sm">
+        <div className="flex flex-col gap-2xs">
+          <h3 className="text-xs font-semibold uppercase text-fg-dim">연속 순매수</h3>
+          <ol className="flex flex-col">
+            {MOCK_STREAKS.slice(0, 6).map((r) => (
+              <li
+                key={`${r.code}-${r.actor}`}
+                className="grid grid-cols-[2.4rem_1fr_2.2rem] items-center gap-xs border-b border-grid py-2xs last:border-b-0"
+              >
+                <span className="text-2xs text-fg-dim">{r.actor}</span>
+                <span className="truncate text-sm text-fg">{r.name}</span>
+                <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">{r.days}일</span>
+              </li>
+            ))}
+          </ol>
+        </div>
         <MoverList title="상승률 상위" rows={MOCK_TOP_GAINERS} />
         <MoverList title="하락률 상위" rows={MOCK_TOP_LOSERS} />
         <div className="flex flex-col gap-2xs">
