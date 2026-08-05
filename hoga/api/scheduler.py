@@ -300,6 +300,18 @@ async def run_trading_stage(data_dir: Path) -> bool:
         )
     except Exception:
         log.exception("daily run: depth_daily sweep failed; continuing")
+
+    # 장중 잠정 표본 → 확정본 수렴(#1115). **멱등 마커는 확정 파일의 존재**라 별도
+    # 상태를 두지 않고, 확정본이 없는 최근 거래일만 채운다 — 오늘 실패해도 내일 런이
+    # 자동으로 주워 간다. 여기(거래일 게이트 뒤)에 있는 것이 중요하다: 휴장일에
+    # 확정본을 만들면 그날이 영원히 "확정된 빈 날" 이 된다.
+    try:
+        from hoga.live import investor_flow_runtime  # noqa: PLC0415
+        filled = await investor_flow_runtime.confirm_recent(data_dir, now=now)
+        if filled:
+            log.info("daily run: investor-flow confirmed days=%d", filled)
+    except Exception:
+        log.exception("daily run: investor-flow confirm failed; continuing")
     return True
 
 
@@ -453,4 +465,17 @@ def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
     ]
     if startup_catchup_enabled_from_env():
         tasks.append(asyncio.create_task(_catchup_run(data_dir), name="watchlist-catchup"))
+    # investor-flow 수집기(#1105/#1120). WS 가 아니라 스케줄러 소유인 이유: 페이지·라이브
+    # 개방 여부와 무관하게 돌아야 하기 때문이다(화면 수요에 묶으면 시계열이 "누가 보고
+    # 있었는가" 의 함수가 된다). 무자격이면 **태스크를 만들지 않는다** — 만들면 health 에
+    # 영원히 "도는 중인데 아무것도 안 하는" 거짓 행이 남는다(ADR-0134).
+    #
+    # ⚠ 퍼페추얼 루프다 — `ONE_SHOT_TASK_NAMES` 에 넣으면 정상 종료로 오인돼 deep health
+    # 가 영구 503 이 되고 워치독이 멀쩡한 서버를 재시작한다(ADR-0064).
+    from hoga.live import investor_flow_runtime  # noqa: PLC0415 — 지연 import(순환 절단)
+    collector = investor_flow_runtime.make_collector(data_dir)
+    if collector is not None:
+        collector.start()
+        if collector.task is not None:
+            tasks.append(collector.task)
     return tasks
