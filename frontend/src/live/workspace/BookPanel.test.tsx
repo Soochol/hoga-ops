@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import BookPanel from './BookPanel';
+import BookPanel, { bookMidPrice } from './BookPanel';
 import { EMPTY_TRADE_SUMMARY } from '../liveSidebarAdapters';
 import type { OrderbookSnapshot } from '../../api/types';
 
@@ -64,19 +64,75 @@ describe('BookPanel', () => {
     expect(summary!.children).toHaveLength(11);
   });
 
-  it('매도/매수 경계선을 3열 모두 같은 y 에 그린다 — 한 줄로 이어져야 한다', () => {
-    // 좌(체결강도 행 상단)·중앙(매수 1호가)·우(매수 1호가 바) 셋 중 하나라도
-    // 빠지면 선이 끊겨 보인다. 요약 divider 도 같은 border 토큰을 쓰게 되어
-    // (2026-07-22 구분선 최소화 C안: strong→border 완화) 클래스 선택자로는
-    // 경계선만 못 세므로 전용 마커(data-book-divider)로 센다. 톤 일관은
-    // 클래스 검증으로 함께 못박는다.
+  it('3열 공통 경계선을 두 줄 × 3열 = 6개 그린다 — 한 줄씩 이어져야 한다', () => {
+    // 두 줄이다: ① 매도↔`중` ② `중`↔매수. 각 줄이 좌·중앙·우 셋을 모두 가져야
+    // 끊기지 않는다. 요약 divider 도 같은 border 토큰을 쓰게 되어(2026-07-22
+    // 구분선 최소화 C안: strong→border 완화) 클래스 선택자로는 경계선만 못 세므로
+    // 전용 마커(data-book-divider)로 센다. 톤 일관은 클래스 검증으로 함께 못박는다.
     const { container } = renderPanel();
     const grid = container.querySelector('.grid')!;
     const dividers = grid.querySelectorAll('[data-book-divider]');
-    expect(dividers).toHaveLength(3);
+    expect(dividers).toHaveLength(6);
     dividers.forEach((el) => {
       expect(el).toHaveClass('border-t');
       expect(el).toHaveClass('border-border');
+    });
+  });
+
+  describe('`중` 행 (ADR-0140 §7.1)', () => {
+    it('매도10과 매수10 사이에 중간값을 그린다', () => {
+      // 매도1 251,500 · 매수1 251,000 → 중간값 251,250. 기준가 255,000 대비 −1.47%.
+      renderPanel();
+      const mid = screen.getByTestId('book-mid-row');
+      expect(mid).toHaveTextContent('중');
+      expect(mid).toHaveTextContent('251,250');
+      expect(mid).toHaveTextContent('-1.47%');
+    });
+
+    it('한 수식이 정상·lock·역전을 분기 없이 덮는다', () => {
+      // 통합(UN) venue 에서 lock·역전은 오류가 아니라 정상 상태다 — 서로 다른
+      // 거래소의 주문은 자동으로 만나지 않는다.
+      const L = (price: number) => [{ price, qty: 1 }];
+      expect(bookMidPrice(L(1_320_000), L(1_318_000))).toBe(1_319_000); // 정상
+      expect(bookMidPrice(L(1_685_000), L(1_685_000))).toBe(1_685_000); // lock
+      expect(bookMidPrice(L(1_319_000), L(1_320_000))).toBe(1_319_500); // 역전
+    });
+
+    it('호가 단위 밖 값을 그대로 낸다 — `중` 뱃지가 주문 불가 표시다', () => {
+      // 호가단위 1,000원인데 중간값은 500원 자리다. 키움 앱도 그대로 띄운다.
+      const L = (price: number) => [{ price, qty: 1 }];
+      expect(bookMidPrice(L(1_686_000), L(1_685_000))).toBe(1_685_500);
+    });
+
+    it('사다리 한쪽이 비면 대시로 남긴다 — 행은 유지(정렬 계약)', () => {
+      const s = snap();
+      const { container } = renderPanel({ snapshot: { ...s, bid: [] } });
+      expect(bookMidPrice(s.ask, [])).toBeNull();
+      expect(screen.getByTestId('book-mid-row')).toHaveTextContent('−');
+      // 행이 사라지면 좌우와 어긋난다.
+      expect(container.querySelectorAll('[data-testid="book-mid-row"]')).toHaveLength(1);
+    });
+
+    it('교차해도 경고·색을 넣지 않는다 — 값만 바뀐다', () => {
+      // 상시 교차하는 종목(80%)에선 경고가 늘 켜져 없는 문제를 찾게 만든다.
+      const s = snap();
+      const crossed = { ...s, ask: [{ price: 250_500, qty: 1 }, ...s.ask], bid: s.bid };
+      renderPanel({ snapshot: crossed });
+      const mid = screen.getByTestId('book-mid-row');
+      expect(mid).toHaveTextContent('250,750'); // (250,500 + 251,000) / 2
+      expect(mid.textContent).not.toMatch(/교차|경고|⚠/);
+    });
+
+    it('3열이 모두 22행이다 — 하단 바닥 정렬 계약', () => {
+      // 중앙에만 `중` 행을 넣으면 좌우가 1행씩 짧아져 하단이 어긋난다(조용한 시각 결함).
+      const trades = Array.from({ length: 9 }, () => ({ price: 251_500, qty: 1, side: 1 as const }));
+      const { container } = renderPanel({ trades });
+      const [left, center, right] = Array.from(container.querySelector('.grid')!.children);
+      expect(left.children).toHaveLength(22); // 여백1 + 매도10 + 중1 + 체결강도1 + 체결9
+      expect(center.children).toHaveLength(22); // 여백1 + 매도10 + 중1 + 매수10
+      // 우측은 요약 11행이 래퍼 하나에 들어 있어 자식 수 = 1 + 중1 + 매수바10 = 12.
+      expect(right.children).toHaveLength(12);
+      expect((right.children[0] as HTMLElement).style.height).toBe('242px'); // 11 × 22
     });
   });
 
@@ -177,7 +233,7 @@ describe('BookPanel', () => {
     expect(label.className).toContain('whitespace-nowrap');
   });
 
-  it('체결 리스트는 9행에서 자른다 — 3열 바닥 정렬(좌 21행 = 중앙 21행)', () => {
+  it('체결 리스트는 9행에서 자른다 — 3열 바닥 정렬(좌 22행 = 중앙 22행)', () => {
     const trades = Array.from({ length: 12 }, (_, i) => ({
       price: 251_500, qty: 1_000 + i, side: 1 as const,
     }));
