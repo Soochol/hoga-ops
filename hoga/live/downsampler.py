@@ -68,11 +68,21 @@ class TickDownsampler:
             if key[0] not in codes:
                 del self._codes[key]
 
-    def reset(self) -> None:
+    def reset(self, venue: str | None = None) -> None:
         """일경계 초기화 — carry는 '같은 날 조용한 종목'용이지 익일용이 아니다
         (리뷰 C1 벡터 2). 게이트가 닫히는 순간 호출해 last_ob/last_broker가 밤을
-        넘겨 다음 거래일 첫 flush를 어제 종가 호가창으로 오염시키는 것을 막는다."""
-        self._codes.clear()
+        넘겨 다음 거래일 첫 flush를 어제 종가 호가창으로 오염시키는 것을 막는다.
+
+        ``venue`` 를 주면 **그 시장만** 버린다(ADR-0140 §3). 저장 창이 venue 별로
+        갈리면서(KRX 15:30 / NXT·UN 20:00) 전체 reset 은 **아직 열려 있는 시장의
+        carry 까지 지운다** — 15:30 에 KRX 를 닫으면서 NXT 의 last_ob 를 날리면,
+        NXT 의 조용한 종목이 다음 flush 에서 행을 못 만든다.
+        """
+        if venue is None:
+            self._codes.clear()
+            return
+        for key in [k for k in self._codes if k[1] == venue]:
+            del self._codes[key]
 
     def flush(
         self, *, now_ms: int, phase: str, fill_t_ms: int | None = None

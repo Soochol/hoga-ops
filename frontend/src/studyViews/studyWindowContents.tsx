@@ -60,7 +60,14 @@ function useStudyCursorScope(save: StudyViewReference) {
 
 function BookContent({ save, bundle }: ContentProps) {
   const { cursorScope, detailCursorMs, minuteTimeframe, volumeDistributionDate } = useStudyCursorScope(save);
-  const spotOrderbook = useLiveOrderbookAtCursor({ code: save.code, timeframe: minuteTimeframe });
+  const spotOrderbook = useLiveOrderbookAtCursor({
+    code: save.code,
+    timeframe: minuteTimeframe,
+    // ⚠ 복기는 아직 KRX 고정 — `/study` 거래소 선택기 부활은 PR-I(#1131)다.
+    // studyReferenceQueries 의 /api/range 호출과 같은 값이어야 카드와 차트가
+    // 같은 시장을 본다.
+    venue: 'KRX',
+  });
   const orderbookSnapshot = resolveOrderbookCardSnapshot({
     scope: cursorScope,
     spotSnapshot: spotOrderbook?.snapshot,
@@ -126,7 +133,12 @@ function BookContent({ save, bundle }: ContentProps) {
 
 function BrokerContent({ save }: ContentProps) {
   const { cursorScope, minuteTimeframe } = useStudyCursorScope(save);
-  const spotBrokers = useLiveBrokersAtCursor({ code: save.code, timeframe: minuteTimeframe });
+  const spotBrokers = useLiveBrokersAtCursor({
+    code: save.code,
+    timeframe: minuteTimeframe,
+    // ⚠ 복기는 아직 KRX 고정 — 위 BookContent 와 같은 근거(PR-I #1131).
+    venue: 'KRX',
+  });
   const brokerCard = resolveBrokerCardProps({
     scope: cursorScope,
     spotSeries: spotBrokers,

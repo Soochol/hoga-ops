@@ -722,8 +722,11 @@ describe('StudyPage', () => {
 
     renderPage('/study?view=view-ref');
 
-    expect(useLiveOrderbookAtCursorMock).toHaveBeenCalledWith({ code: '005930', timeframe: '5m' });
-    expect(useLiveBrokersAtCursorMock).toHaveBeenCalledWith({ code: '005930', timeframe: '5m' });
+    // venue 는 백엔드 필수(ADR-0140) — 복기는 KRX 고정이라 studyReferenceQueries
+    // 의 /api/range 호출과 같은 값을 넘겨야 카드와 차트가 같은 시장을 본다.
+    const spotArgs = { code: '005930', timeframe: '5m', venue: 'KRX' };
+    expect(useLiveOrderbookAtCursorMock).toHaveBeenCalledWith(spotArgs);
+    expect(useLiveBrokersAtCursorMock).toHaveBeenCalledWith(spotArgs);
     expect(screen.getByTestId('study-reference-detail-panel')).toBeTruthy();
     const orderbookCard = screen.getByTestId('study-detail-card-orderbook');
     const brokersCard = screen.getByTestId('study-detail-card-brokers');

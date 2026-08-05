@@ -45,10 +45,22 @@ _KST = KST
 # after 15:35 KST finalizes today's meta to collection_complete=True.
 _SESSION_FINALIZE_HHMM: tuple[int, int] = (15, 35)
 
+# venue 별 마감 + 5분 settle (ADR-0140 §6). **15:35 로 통일하면 NXT 가 거짓
+# COMPLETE 가 된다** — NXT·UN 은 20:00 까지 거래하므로 그 시점의 "완결"은 4.5시간치
+# 데이터를 빼놓고 끝났다고 말하는 것이다. 그 거짓말은 조용하다: 행은 ✓ 로 보이고,
+# 완결 기반 소비자(보관함 배지·재캡처 게이트)가 전부 그걸 믿는다.
+_VENUE_FINALIZE_HHMM: dict[str, tuple[int, int]] = {
+    "KRX": _SESSION_FINALIZE_HHMM,  # 15:30 마감 + 5분
+    "NXT": (20, 5),                 # 20:00 마감 + 5분
+    "UN": (20, 5),
+}
+
 _log = logging.getLogger(__name__)
 
 
-def _collection_finished(date: str, *, now: datetime | None = None) -> bool:
+def _collection_finished(
+    date: str, *, venue: str = "KRX", now: datetime | None = None,
+) -> bool:
     """Time-based completeness verdict for a live (kis_live/kis_api) promotion.
 
     A live stream has no ``_progress.json`` cursor (that's hogaplay's finished
@@ -62,6 +74,9 @@ def _collection_finished(date: str, *, now: datetime | None = None) -> bool:
       can't make the hogaplay worker skip today as ``already_complete``.
     - ``date > today_kst`` → False (conservative; e.g. a midnight-race jsonl).
 
+    ``venue`` 가 오늘의 마감 시각을 정한다(ADR-0140 §6) — KRX 15:35 · NXT·UN 20:05.
+    모르는 venue 는 KRX 기준으로 떨어진다(보수적: 더 이른 마감이 아니라 **기존 동작**).
+
     ``now`` is injectable for tests; production reads the KST wall clock.
     """
     now = now or datetime.now(_KST)
@@ -70,7 +85,8 @@ def _collection_finished(date: str, *, now: datetime | None = None) -> bool:
         return True
     if date > today:
         return False
-    return (now.hour, now.minute) >= _SESSION_FINALIZE_HHMM
+    finalize = _VENUE_FINALIZE_HHMM.get(venue, _SESSION_FINALIZE_HHMM)
+    return (now.hour, now.minute) >= finalize
 
 
 def _completeness_fields(
@@ -297,6 +313,7 @@ def _consume_complete_lines(state: _JsonlParseState, jsonl_path: Path, *, code: 
 
 def _parse_jsonl_incremental(
     jsonl_path: Path, *, code: str, date: str, source: str = "kis_live",
+    venue: str = "KRX",
 ) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], list[Candle], dict]:
     """Today Promotion용 증분 파서 — 전량 파서와 결과 동등(패리티 테스트 고정)."""
     key = (source, code, date, str(jsonl_path))
@@ -314,7 +331,7 @@ def _parse_jsonl_incremental(
     _consume_complete_lines(state, jsonl_path, code=code, date=date)
     meta = _build_meta(
         code, date, state.snapshots, state.trades, state.broker_snapshot_count,
-        fill_count=len(state.fills), source=source,
+        fill_count=len(state.fills), source=source, venue=venue,
     )
     return (state.snapshots, state.trades, state.broker_rows, state.fills,
             state.candles, meta)
@@ -393,6 +410,7 @@ def _build_meta(
     fill_count: int = 0,
     *,
     source: str = "kis_live",
+    venue: str = "KRX",
 ) -> dict:
     meta = {
         "source": source,
@@ -412,7 +430,7 @@ def _build_meta(
         # .ts_ms is already HHMMSSmmm (entity native); cast to HogaMs at this seam.
         **_completeness_fields(
             [HogaMs(s.ts_ms) for s in snapshots],
-            collection_complete=_collection_finished(date),
+            collection_complete=_collection_finished(date, venue=venue),
         ),
     }
     if source == "kis_api":
@@ -510,24 +528,20 @@ def _write_source_meta(data_dir: Path, date: str, code: str, venues: list[str]) 
 
 
 def _kiwoom_jsonl_paths(data_dir: Path, date: str, code: str) -> list[tuple[str, Path]]:
-    """(venue, jsonl_path) 목록 — venue 세그먼트 레이아웃 우선.
+    """(venue, jsonl_path) 목록 — `live_kiwoom/{date}/{venue}/{code}.jsonl`.
 
-    ⚠ **한시적 폴백**: venue 디렉터리가 하나도 없을 때만 옛 평면 경로
-    `{date}/{code}.jsonl` 을 KRX 로 받는다. JSONL 은 보유 2일짜리 과도 트리라
-    날짜 경계 컷오버면 충분하고(ADR-0140 §3), PR-D2 가 이 함수를 단순화한다.
+    평면 폴백은 PR-D2 에서 삭제됐다(마이그레이션 완료). 남겨 뒀다면 ADR-0140 §3 이
+    하위호환 분기를 기각한 이유가 그대로 되살아난다 — **경계가 날짜가 아니라
+    "있느냐"라 두 모양이 영구히 섞이고, 그 분기가 조립부마다 남는다.**
     """
     root = data_dir / "live_kiwoom" / date
     if not root.is_dir():
         return []
-    out = [
+    return [
         (d.name, d / f"{code}.jsonl")
         for d in sorted(root.iterdir())
         if d.is_dir() and (d / f"{code}.jsonl").exists()
     ]
-    if out:
-        return out
-    legacy = root / f"{code}.jsonl"
-    return [("KRX", legacy)] if legacy.exists() else []
 
 
 def _promote_one_venue(
@@ -543,6 +557,9 @@ def _promote_one_venue(
         code=code,
         date=date,
         source="kiwoom_live",
+        # 완결 시각이 venue 마다 다르다(ADR-0140 §6) — 여기서 안 넘기면 NXT 가
+        # KRX 기준 15:35 에 거짓 COMPLETE 가 된다.
+        venue=venue,
     )
     target.mkdir(parents=True, exist_ok=True)
     _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
@@ -667,13 +684,9 @@ async def promote_pending(data_dir: Path) -> None:
                 continue
             if date_dir.name == today:  # ADR-0043 — owned by Today Promotion
                 continue
-            # venue 세그먼트 레이아웃이면 그 디렉터리들을, 아니면 평면(=KRX)을 훑는다.
-            # ⚠ 평면 폴백은 **한시적** — JSONL 은 보유 2일짜리 과도 트리라 날짜 경계
-            # 컷오버면 충분하고(ADR-0140 §3), PR-D2 가 이 분기를 지운다.
-            venue_dirs = [d for d in sorted(date_dir.iterdir()) if d.is_dir()]
-            scans = ([(d.name, d) for d in venue_dirs] if venue_dirs
-                     else [("KRX", date_dir)])
-            for venue, scan_dir in scans:
+            # venue 디렉터리만 훑는다 — 평면 폴백은 PR-D2 에서 삭제(마이그레이션 완료).
+            for venue_dir in [d for d in sorted(date_dir.iterdir()) if d.is_dir()]:
+                venue, scan_dir = venue_dir.name, venue_dir
                 for jsonl in scan_dir.iterdir():
                     if jsonl.suffix != ".jsonl" or not jsonl.is_file():
                         continue
@@ -682,10 +695,7 @@ async def promote_pending(data_dir: Path) -> None:
                         jsonl, parquet_root, code=code, date=date_dir.name,
                         source=source, venue=venue,
                     )
-                    arch_target = (
-                        archive_root / date_dir.name / venue / jsonl.name
-                        if venue_dirs else archive_root / date_dir.name / jsonl.name
-                    )
+                    arch_target = archive_root / date_dir.name / venue / jsonl.name
                     arch_target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(str(jsonl), str(arch_target))
 

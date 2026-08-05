@@ -17,6 +17,11 @@ from hoga.live.writer import LiveWriter
 KST = timezone(timedelta(hours=9))
 
 
+# 저장이 열린 venue 집합(ADR-0140 §3). 예전엔 `_gate_open = True` 불리언이었다 —
+# 저장 창이 KRX 09:00–15:30 / NXT·UN 08:00–20:00 로 갈리면서 집합이 됐다.
+_ALL_OPEN = frozenset({"KRX", "NXT", "UN"})
+
+
 def _kst_ms(hour: int, minute: int = 0, second: int = 0) -> int:
     return int(datetime(2026, 6, 16, hour, minute, second, tzinfo=KST).timestamp() * 1000)
 
@@ -35,7 +40,7 @@ async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path):
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
     # 저장 경로 게이트는 flush 루프가 유지하는 플래그(리뷰 R2) — 루프 없이
     # on_tick만 단위 테스트하므로 플래그를 직접 연다.
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     now = int(time.time() * 1000)   # 벽시계 — buffer eviction 컷오프 안쪽
     await stream.on_tick(_trade_tick(now, qty=5, side=1))
@@ -61,7 +66,7 @@ async def test_prev_close_reaches_display_but_not_storage(tmp_path):
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     now = int(time.time() * 1000)
     tick = _trade_tick(now, qty=5, side=1)
@@ -93,7 +98,7 @@ async def test_candle_synthesized_and_written_on_minute_seal(tmp_path):
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260616", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     t0 = _kst_ms(10, 0, 5)
     for t, price, qty, cum in [(t0, 100, 5, 5), (t0 + 1000, 105, 3, 8), (t0 + 2000, 98, 2, 10)]:
@@ -124,7 +129,7 @@ async def test_candle_not_synthesized_for_nxt(tmp_path):
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260616", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     t0 = _kst_ms(10, 0, 5)
     tick = WsTick(code="005930", t_ms=t0, kind=SnapshotKind.TRADE, venue="NXT", payload={
@@ -142,7 +147,7 @@ async def test_drain_seals_final_in_progress_candle(tmp_path):
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260616", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     t0 = _kst_ms(15, 30, 1)   # 종가 근처 마지막 봉
     tick = WsTick(code="005930", t_ms=t0, kind=SnapshotKind.TRADE, payload={
@@ -182,7 +187,7 @@ async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_p
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     now = int(time.time() * 1000)
     tick = WsTick(code="005930", t_ms=now, kind=SnapshotKind.PROGRAM, payload={
@@ -220,7 +225,7 @@ async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_pat
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    assert stream._gate_open is False   # 기본값: 루프 첫 판정 전엔 ingest 안 함(R2)
+    assert stream._open_venues == frozenset()  # 기본값: 루프 첫 판정 전엔 ingest 안 함(R2)
 
     now = int(time.time() * 1000)
     await stream.on_tick(_trade_tick(now, qty=5, side=1))
@@ -239,63 +244,73 @@ def _nxt_trade_tick(t_ms, qty, side):
     })
 
 
-async def test_on_tick_nxt_venue_displays_but_is_never_stored(tmp_path):
-    """성역 격리(#524): NXT 틱은 표시(buffer)엔 들어가고 venue 태그도 실리지만,
-    저장 게이트가 열려 있어도(정규장) 다운샘플러/저장엔 절대 안 들어간다 —
-    KRX 정규장 캡처를 byte-for-byte 불변으로 유지."""
+async def test_on_tick_nxt_venue_is_stored_in_its_own_file(tmp_path):
+    """NXT 틱은 표시에도 가고 **자기 venue 파일에 저장된다**(ADR-0140 §2·§3).
+
+    여기 있던 `..._displays_but_is_never_stored` 는 PR-F 이후 **엉뚱한 이유로 통과**
+    하고 있었다: 성역 가드는 이미 없어졌는데, PR-D 가 파일을 venue 별로 갈라 놔서
+    "NXT 가 저장 안 됨"이 아니라 "NXT 가 **KRX 파일에** 없음"만 보고 있었다.
+    그 제목은 거짓이었다 — 여기서 바로잡는다.
+    """
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True  # 저장 게이트 열림(정규장) — 그래도 NXT는 격리돼야 함
+    stream._open_venues = _ALL_OPEN
     now = int(time.time() * 1000)
     await stream.on_tick(_nxt_trade_tick(now, qty=5, side=1))
 
     series = await buf.get_series("005930")
-    assert len(series["trades"]) == 1              # 표시엔 들어감
-    assert series["trades"][0]["venue"] == "NXT"   # venue 태그 전달(프론트 구분용)
+    assert len(series["trades"]) == 1
+    assert series["trades"][0]["venue"] == "NXT"
 
     await stream.flush_once(now_ms=now + 10_000)
-    jsonl = tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl"
-    stored = jsonl.read_text() if jsonl.exists() else ""
-    assert '"kind": "trade"' not in stored          # 저장 경로엔 NXT 미기록
-    assert '"kind": "fill"' not in stored           # 흐름 집계에도 미반영
+    nxt = (tmp_path / "live" / "20260605" / "NXT" / "005930.jsonl").read_text()
+    assert '"buy_qty": 5' in nxt
+    # KRX 파일은 안 생긴다 — 두 시장이 서로 다른 파일로 간다.
+    assert not (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").exists()
 
 
-async def test_on_tick_krx_still_stored_alongside_nxt_isolation(tmp_path):
-    """대조군: 동일 조건에서 KRX 틱은 기존대로 저장된다(격리가 KRX를 막지 않음)."""
+async def test_on_tick_krx_and_nxt_flows_stay_in_separate_files(tmp_path):
+    """혼합 스트림: 두 시장의 흐름 집계가 **각자 파일로** 갈린다 — 합산되지 않는다."""
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
     now = int(time.time() * 1000)
-    await stream.on_tick(_trade_tick(now, qty=7, side=1))  # KRX(기본 venue)
-    await stream.flush_once(now_ms=now + 10_000)
-    stored = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
-    assert '"buy_qty": 7' in stored
-    assert '"kind": "trade"' in stored
-
-
-async def test_on_tick_mixed_krx_and_nxt_stores_only_krx_flow(tmp_path):
-    """혼합: 같은 스트림에 KRX·NXT 틱이 섞여 들어와도 저장 흐름 집계는 KRX만 반영한다
-    (경계 스왑 찰나에 두 venue가 겹쳐도 캡처는 KRX 전용, #524 성역 격리)."""
-    buf = LiveBuffer()
-    writer = LiveWriter(tmp_path / "live")
-    stream = LiveStream(buffer=buf, writer=writer,
-                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
-    now = int(time.time() * 1000)
-    await stream.on_tick(_trade_tick(now, qty=7, side=1))         # KRX 매수 7
-    await stream.on_tick(_nxt_trade_tick(now, qty=99, side=1))    # NXT 매수 99 — 저장 제외
+    await stream.on_tick(_trade_tick(now, qty=7, side=1))       # KRX 매수 7
+    await stream.on_tick(_nxt_trade_tick(now, qty=99, side=1))  # NXT 매수 99
     await stream.flush_once(now_ms=now + 10_000)
 
-    stored = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
-    assert '"buy_qty": 7' in stored     # KRX만 집계
-    assert '"buy_qty": 106' not in stored  # NXT 99가 섞이지 않음
-    # 표시엔 둘 다(KRX+NXT) 있고 각 venue 태그가 붙는다.
+    day = tmp_path / "live" / "20260605"
+    krx = (day / "KRX" / "005930.jsonl").read_text()
+    assert '"buy_qty": 7' in krx
+    assert '"buy_qty": 99' in (day / "NXT" / "005930.jsonl").read_text()
+    assert '"buy_qty": 106' not in krx  # 합산되면 여기서 잡힌다
     series = await buf.get_series("005930")
-    assert {t["venue"] for t in series["trades"]} == {"KRX", "NXT"}
+    assert {tr["venue"] for tr in series["trades"]} == {"KRX", "NXT"}
+
+
+async def test_ingest_gate_is_per_venue(tmp_path):
+    """저장 게이트가 venue 별이다 — KRX 가 닫혀도(15:30 이후) NXT 는 계속 저장된다."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._open_venues = frozenset({"NXT", "UN"})  # 15:30~20:00 구간
+    now = int(time.time() * 1000)
+    await stream.on_tick(_trade_tick(now, qty=7, side=1))       # KRX — 게이트 밖
+    await stream.on_tick(_nxt_trade_tick(now, qty=99, side=1))  # NXT — 게이트 안
+    await stream.flush_once(now_ms=now + 10_000)
+
+    day = tmp_path / "live" / "20260605"
+    assert '"buy_qty": 99' in (day / "NXT" / "005930.jsonl").read_text()
+    assert not (day / "KRX" / "005930.jsonl").exists()  # KRX 는 안 쌓인다
+    # 표시는 무게이트 — 둘 다 화면엔 나온다.
+    series = await buf.get_series("005930")
+    assert {tr["venue"] for tr in series["trades"]} == {"KRX", "NXT"}
+
 
 
 def _ob_tick(t_ms, tot_ask):
@@ -740,7 +755,10 @@ async def test_run_flush_loop_drains_resets_and_reopen_has_no_ghost_carry(
             return False
         return calls["n"] > 6                                # ⑦+ reopen
 
-    monkeypatch.setattr(session_gate_mod, "ws_capture_window", gate)
+    # 새 이음매는 venue 집합이다(ADR-0140 §3). bool 스텁만 두면 KRX 만 스텁되고
+    # NXT·UN 은 실제 달력을 타 테스트가 의도한 상태가 안 나온다.
+    monkeypatch.setattr(session_gate_mod, "venue_capture_windows",
+                        lambda ms: _ALL_OPEN if gate(ms) else frozenset())
 
     jsonl_path = tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl"
     task = asyncio.create_task(stream.run_flush_loop())
@@ -777,7 +795,7 @@ async def test_on_tick_drops_codes_outside_active_set(tmp_path):
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
     stream.set_active_codes({"000660"})              # 005930은 Live Set 밖
 
     now = int(time.time() * 1000)
@@ -973,7 +991,7 @@ async def test_flush_once_labels_fill_with_previous_flush_time(tmp_path):
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     base = (int(time.time() * 1000) // 10_000) * 10_000
     await stream.flush_once(now_ms=base)              # 빈 flush — 윈도 시작 래치
@@ -1007,7 +1025,10 @@ async def test_run_flush_loop_evaluates_gate_off_event_loop(tmp_path, monkeypatc
         seen.append(threading.current_thread() is threading.main_thread())
         return False
 
-    monkeypatch.setattr(session_gate_mod, "ws_capture_window", gate)
+    # 새 이음매는 venue 집합이다(ADR-0140 §3). bool 스텁만 두면 KRX 만 스텁되고
+    # NXT·UN 은 실제 달력을 타 테스트가 의도한 상태가 안 나온다.
+    monkeypatch.setattr(session_gate_mod, "venue_capture_windows",
+                        lambda ms: _ALL_OPEN if gate(ms) else frozenset())
     stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
     task = asyncio.create_task(stream.run_flush_loop())
@@ -1031,7 +1052,7 @@ async def test_flush_date_change_resets_stale_state(tmp_path):
     date = {"v": "20260605"}
     stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
                         date_fn=lambda: date["v"], phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
     now = int(time.time() * 1000)
     await stream.on_tick(_ob_tick(now, tot_ask=111))     # 상태형 carry 스테이징
     await stream.flush_once(now_ms=now)                  # D일: ob 기록 + carry 보존
@@ -1059,7 +1080,10 @@ async def test_drain_resets_day_state(tmp_path, monkeypatch):
             stream._ds.ingest(_ob_tick(now, tot_ask=111))
             return True            # ①open: flush로 _last_flush_date 래치
         return False               # ②+ closed: drain 후 리셋
-    monkeypatch.setattr(session_gate_mod, "ws_capture_window", gate)
+    # 새 이음매는 venue 집합이다(ADR-0140 §3). bool 스텁만 두면 KRX 만 스텁되고
+    # NXT·UN 은 실제 달력을 타 테스트가 의도한 상태가 안 나온다.
+    monkeypatch.setattr(session_gate_mod, "venue_capture_windows",
+                        lambda ms: _ALL_OPEN if gate(ms) else frozenset())
     task = asyncio.create_task(stream.run_flush_loop())
     try:
         for _ in range(80):
@@ -1083,7 +1107,7 @@ async def test_flush_failure_preserves_window_sum(tmp_path, monkeypatch):
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     fail = {"on": True}
     orig_append = writer.append
@@ -1115,7 +1139,7 @@ async def test_flush_preserves_tick_arriving_during_append(tmp_path, monkeypatch
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     orig_append = writer.append
     # 벽시계 파생 now 금지(보조 방어선). 상수라 분 위상이 고정된다 — 아래 주입
@@ -1164,7 +1188,7 @@ async def test_flush_per_code_isolation_on_append_failure(tmp_path, monkeypatch)
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     orig_append = writer.append
 
@@ -1211,7 +1235,7 @@ async def test_broker_names_canonical_on_display_but_raw_in_storage(tmp_path):
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     now = int(time.time() * 1000)
     # 실측 별칭(2026-07-21 018260): 스트림은 짧은/도시접미 형태를 쓴다.
@@ -1237,7 +1261,7 @@ async def test_broker_unknown_alias_passes_through_unchanged(tmp_path):
     buf = LiveBuffer()
     stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     now = int(time.time() * 1000)
     await stream.on_tick(_broker_tick(
@@ -1253,7 +1277,7 @@ async def test_broker_malformed_top_entries_do_not_crash_display(tmp_path):
     buf = LiveBuffer()
     stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    stream._gate_open = True
+    stream._open_venues = _ALL_OPEN
 
     now = int(time.time() * 1000)
     await stream.on_tick(_broker_tick(

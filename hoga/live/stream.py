@@ -21,7 +21,7 @@ from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
 from .lifecycle import get_signal_alert_monitor
 from .minute_candle_agg import MS_PER_MINUTE, MinuteCandleAggregator
-from .session_gate import market_phase, ws_capture_window_async
+from .session_gate import market_phase, venue_capture_windows_async
 from .snapshot import LiveSnapshot, SnapshotKind
 from .ticks import WsTick
 from .writer import LiveWriter
@@ -121,7 +121,9 @@ class LiveStream:
         self._last_flush_date: str | None = None  # R1: 미관측 일경계 백스톱
         # R2: 게이트 판정은 flush 루프가 1Hz로 유지 — on_tick은 이 플래그만 읽는다
         # (per-tick 달력 평가는 fetch 실패 모드에서 틱당 동기 네트워크 콜이 됨).
-        self._gate_open: bool = False
+        # 저장이 열린 venue 집합 — 예전엔 불리언 하나였다(ADR-0140 §3).
+        # KRX 09:00–15:30 / NXT·UN 08:00–20:00 이라 한 값으로는 못 담는다.
+        self._open_venues: frozenset[str] = frozenset()
         # 키 = **(bare code, venue)**. 다운샘플러·캔들 합성기와 같은 이유 —
         # venue 를 빼면 최대벽이 두 시장 합산이 된다(ADR-0140 §2).
         self._ask_peak_by_code: dict[tuple[str, str], TodayAskPeakState] = {}
@@ -400,8 +402,8 @@ class LiveStream:
         # 파일로 가게 됐고, PR-C 가 집계 자료구조를 `(code, venue)` 로 키잉해 메모리에서도
         # 안 섞이게 했다. 이제 격리는 **경로와 키**가 하고, 구독 시각이 아니다.
         #
-        # ⚠ 저장 **창**은 아직 정규장 09:00–15:30 하나다(`_gate_open`). NXT·UN 은 그
-        # 겹치는 구간만 저장된다 — 08:00–20:00 전 구간 저장은 PR-G 다.
+        # 저장 **창**은 venue 별로 갈린다(`_open_venues`, ADR-0140 §3):
+        # KRX 09:00–15:30 · NXT·UN 08:00–20:00.
         self._ingest_ask_peak(tick)
         self._ingest_bid_peak(tick)
         if tick.kind is SnapshotKind.OB:
@@ -437,7 +439,7 @@ class LiveStream:
         # 넘기는 것을 차단(리뷰 C1 벡터 1). 판정은 flush 루프가 유지하는
         # 플래그(리뷰 R2 — per-tick 달력 평가 금지); 닫힘 직후 ≤10s의 잔여
         # ingest는 전환 drain이 마감 당일로 귀속한다.
-        if self._gate_open:
+        if tick.venue in self._open_venues:
             self._ds.ingest(tick)
             # 캔들 합성도 같은 게이트·KRX 격리 안에서 raw 틱을 받는다(다운샘플
             # 이전이라 per-tick 가격·cum_volume 정확). trade가 아니면 no-op.
@@ -511,12 +513,37 @@ class LiveStream:
         게이트가 닫히는 전환 순간 drain flush 1회(마지막 부분 윈도를 **마감 당일**
         날짜로 기록) 후 다운샘플러를 reset — 흐름 합·carry가 밤을 넘겨 다음
         거래일 JSONL을 오염시키지 않게 한다(리뷰 C1)."""
-        was_open = False
+        was_open: frozenset[str] = frozenset()
         while True:
             # 캘린더 게이트는 콜드/네거티브 캐시에서 동기 KIS HTTP(timeout 15s)를
             # 부른다 — async 진입점이 to_thread 격리를 봉인(blocking 계약이 시그니처에).
-            open_now = await ws_capture_window_async(_now_ms())
-            self._gate_open = open_now  # R2: on_tick의 ingest 게이트 플래그 갱신
+            open_now = await venue_capture_windows_async(_now_ms())
+            # ── venue 별 닫힘 전환 drain (ADR-0140 §3) ────────────────────────
+            #
+            # 저장 창이 갈리면서 닫힘이 **두 번** 일어난다: KRX 15:30, NXT·UN 20:00.
+            # 예전 판은 전환이 하루 한 번이라 `flush_once()` 한 방 + 전체 reset 이면
+            # 됐다. 지금 그러면 15:30 에 **아직 열려 있는 NXT 의 carry 까지 지운다** —
+            # NXT 의 조용한 종목이 다음 flush 에서 행을 못 만든다.
+            #
+            # 그래서 닫힌 venue 만 골라 버린다. drain flush 자체는 여전히 한 번인데,
+            # `flush_once` 가 열린·닫힌 venue 를 가리지 않고 전부 내보내기 때문이다 —
+            # 닫히는 시장의 마지막 부분 윈도를 그 순간에 확정하는 것이 목적이고,
+            # 열려 있는 시장은 어차피 다음 주기에 다시 flush 된다.
+            closed = was_open - open_now
+            if closed:
+                try:
+                    # seal_candles_all: 진행 중 마지막 봉(종가 동시호가)을 잃지 않게.
+                    await self.flush_once(seal_candles_all=True)
+                except Exception:  # noqa: BLE001
+                    _log.exception("live.stream.drain_flush_failed venues=%s", sorted(closed))
+                for venue in closed:
+                    self._ds.reset(venue)
+                    self._candle_agg.reset(venue)
+                _log.info("live.stream.gate_closed_drained venues=%s still_open=%s",
+                          sorted(closed), sorted(open_now))
+            # R2: on_tick의 ingest 게이트 갱신. **drain 뒤에** 갱신해야 그 flush 가
+            # 닫히는 시장의 마지막 윈도를 온전히 담는다.
+            self._open_venues = open_now
             if open_now:
                 try:
                     await self.flush_once()
@@ -528,22 +555,17 @@ class LiveStream:
                     _next_window_delay_s(time.time(), FLUSH_INTERVAL_S)
                 )
             else:
-                if was_open:  # open→closed 전환: drain + 상태 초기화
-                    try:
-                        # seal_candles_all: 진행 중 마지막 봉(종가 동시호가)을 잃지 않게.
-                        await self.flush_once(seal_candles_all=True)
-                    except Exception:  # noqa: BLE001
-                        _log.exception("live.stream.drain_flush_failed")
-                    self._ds.reset()
-                    self._candle_agg.reset()
-                    # 일경계 상태 리셋(spec 2026-06-08 §2.4): _last_flush_date를
-                    # None으로 둬 다음 개장 첫 flush가 어제 날짜와 비교해 R1
-                    # 경고를 내지 않게(#15), last_flush_ms도 None으로 둬 재개방
-                    # 첫 윈도 fill 라벨이 now−FLUSH_INTERVAL로 폴백(ship 스킵분).
+                if closed:
+                    # 전 venue 가 닫힌 순간에만 일경계 상태를 리셋한다(spec
+                    # 2026-06-08 §2.4): _last_flush_date를 None으로 둬 다음 개장 첫
+                    # flush가 어제 날짜와 비교해 R1 경고를 내지 않게(#15), last_flush_ms도
+                    # None으로 둬 재개방 첫 윈도 fill 라벨이 now−FLUSH_INTERVAL로 폴백.
                     # R1 백스톱은 보존: drain 없이 날짜가 바뀌는 진짜 케이스
                     # (suspend/시계점프)에선 _last_flush_date가 남아 경고가 정상 발화.
+                    #
+                    # ⚠ KRX 만 닫힌 15:30 에 이걸 하면 안 된다 — NXT 가 계속 flush 하는데
+                    # 라벨 기준이 사라져 그 뒤 fill 윈도가 전부 어긋난다.
                     self._last_flush_date = None
                     self.last_flush_ms = None
-                    _log.info("live.stream.gate_closed_drained")
                 await asyncio.sleep(IDLE_INTERVAL_S)
             was_open = open_now
