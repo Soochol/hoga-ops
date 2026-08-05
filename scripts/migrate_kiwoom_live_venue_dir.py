@@ -50,6 +50,41 @@ class _Plan:
     source_meta: list[Path] = field(default_factory=list)
 
 
+def _plan_jsonl(live_root: Path, *, reverse: bool) -> list[tuple[Path, Path]]:
+    """`live_kiwoom/{date}/{code}.jsonl` → `live_kiwoom/{date}/KRX/{code}.jsonl`.
+
+    ADR-0140 §3 은 JSONL 을 *"보유 2일짜리 과도 트리라 날짜 경계 컷오버면 충분"* 으로
+    보고 마이그레이션 대상에서 뺐다. 실제로는 **PR-D2 를 당일에 하려면 옮겨야 한다** —
+    당일 JSONL 은 D1 배포 전에 평면으로 쓰인 것이 그대로 남아 있고, 폴백을 지우면
+    승격·아카이브 경로가 그걸 못 본다(실측 2026-08-05: 273 파일).
+
+    parquet 쪽과 같은 규율: venue 디렉터리가 이미 있으면 **안 건드린다**.
+    """
+    moves: list[tuple[Path, Path]] = []
+    if not live_root.is_dir():
+        return moves
+    for date_dir in sorted(live_root.iterdir()):
+        if not date_dir.is_dir() or not date_dir.name.isdigit():
+            continue  # `_archive` 등 날짜가 아닌 디렉터리는 건너뛴다
+        venue_dir = date_dir / VENUE
+        if reverse:
+            if venue_dir.is_dir():
+                moves.extend(
+                    (f, date_dir / f.name)
+                    for f in sorted(venue_dir.iterdir())
+                    if f.suffix == ".jsonl" and f.is_file()
+                )
+            continue
+        if any(d.is_dir() for d in date_dir.iterdir()):
+            continue  # 이미 마이그레이션됨
+        moves.extend(
+            (f, venue_dir / f.name)
+            for f in sorted(date_dir.iterdir())
+            if f.suffix == ".jsonl" and f.is_file()
+        )
+    return moves
+
+
 def _plan(parquet_root: Path, *, reverse: bool) -> _Plan:
     """옮길 목록. 이미 목표 모양이면 안 옮긴다(멱등 — docstring 이 약속한 그것).
 
@@ -115,7 +150,7 @@ def _print_plan(
               f"이미 venue 쪽이 정본이다. {action}")
 
 
-def _apply_moves(moves: list[tuple[Path, Path]], parquet_root: Path) -> int | None:
+def _apply_moves(moves: list[tuple[Path, Path]], data_dir: Path) -> int | None:
     """이동 실행. 대상이 이미 있으면 **멈춘다**(None) — 데이터를 잃느니 사람이 보게 한다.
 
     `Path.rename` 은 POSIX 에서 대상을 조용히 덮어쓴다. `_plan` 이 이미 걸러내지만,
@@ -125,7 +160,7 @@ def _apply_moves(moves: list[tuple[Path, Path]], parquet_root: Path) -> int | No
     for src, dst in moves:
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists():
-            print(f"\n중단 — 대상이 이미 있다: {dst.relative_to(parquet_root)}")
+            print(f"\n중단 — 대상이 이미 있다: {dst.relative_to(data_dir)}")
             return None
         src.rename(dst)  # 같은 파일시스템 — 원자적 이동
         moved += 1
@@ -161,14 +196,19 @@ def main(argv: list[str] | None = None) -> int:
     parquet_root = data_dir / "parquet"
 
     plan = _plan(parquet_root, reverse=args.reverse)
-    moves = plan.moves
+    # JSONL 도 같은 축으로 옮긴다 — 폴백을 지우려면 당일 평면 JSONL 이 남아 있으면
+    # 안 된다(ADR-0140 §3 의 "날짜 경계 컷오버" 는 당일 실행을 못 덮는다).
+    jsonl_moves = _plan_jsonl(data_dir / "live_kiwoom", reverse=args.reverse)
+    moves = plan.moves + jsonl_moves
     _print_plan(plan, parquet_root, reverse=args.reverse, prune_stale=args.prune_stale)
+    if jsonl_moves:
+        print(f"JSONL : 파일 {len(jsonl_moves):,}개 (live_kiwoom/)")
     if not moves and not (args.prune_stale and plan.stale):
         print("옮길 것이 없다 — 이미 목표 모양이거나 데이터가 없다(멱등).")
         return 0
 
     for src, dst in moves[:PREVIEW]:
-        print(f"  예) {src.relative_to(parquet_root)}  →  {dst.relative_to(parquet_root)}")
+        print(f"  예) {src.relative_to(data_dir)}  →  {dst.relative_to(data_dir)}")
     if len(moves) > PREVIEW:
         print(f"  … 외 {len(moves) - PREVIEW:,}개")
 
@@ -176,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\ndry-run 이다. 실제로 옮기려면 --apply 를 붙여라.")
         return 0
 
-    moved = _apply_moves(moves, parquet_root)
+    moved = _apply_moves(moves, data_dir)
     if moved is None:
         return 1
     pruned = 0

@@ -11,7 +11,7 @@ from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 async def test_promote_kiwoom_today_writes_kiwoom_live_parquet(tmp_path):
     today = _today_kst_yyyymmdd()  # promote_kiwoom_today가 오늘 KST를 읽으므로 동일 날짜로 시딩
-    jsonl_path = tmp_path / "live_kiwoom" / today / "005930.jsonl"
+    jsonl_path = tmp_path / "live_kiwoom" / today / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     base_t = hhmmssms_to_unix_ms(today, 90000000)  # 09:00:00.000 KST
     lines = []
@@ -62,7 +62,7 @@ async def test_promote_kiwoom_today_records_promote_success_in_lifecycle(tmp_pat
     /api/live/status.today_promote_last_ms가 영구 빈 dict(관측성 갭)로 고착된다.
     """
     today = _today_kst_yyyymmdd()
-    jsonl_path = tmp_path / "live_kiwoom" / today / "005930.jsonl"
+    jsonl_path = tmp_path / "live_kiwoom" / today / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     t = hhmmssms_to_unix_ms(today, 90000000)  # 09:00:00.000 KST
     jsonl_path.write_text(json.dumps({"t_ms": t, "kind": "ob", "payload": {
@@ -101,7 +101,7 @@ async def test_promote_pending_promotes_live_kiwoom_to_kiwoom_live(tmp_path):
     from hoga.live.promote import promote_pending
 
     # 과거일(오늘 아님) live_kiwoom JSONL 시딩.
-    jsonl = tmp_path / "live_kiwoom" / "20260527" / "005930.jsonl"
+    jsonl = tmp_path / "live_kiwoom" / "20260527" / "KRX" / "005930.jsonl"
     jsonl.parent.mkdir(parents=True)
     jsonl.write_text(_json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -115,5 +115,5 @@ async def test_promote_pending_promotes_live_kiwoom_to_kiwoom_live(tmp_path):
     assert (target / "meta.json").exists()
     assert _json.loads((target / "meta.json").read_text())["source"] == "kiwoom_live"
     # 아카이브 이동(live_kiwoom/_archive).
-    assert (tmp_path / "live_kiwoom" / "_archive" / "20260527" / "005930.jsonl").exists()
+    assert (tmp_path / "live_kiwoom" / "_archive" / "20260527" / "KRX" / "005930.jsonl").exists()
     assert not jsonl.exists()
