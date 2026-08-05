@@ -5,9 +5,7 @@ import pytest
 
 from hoga.api import calendar as cal
 from hoga.live.session_gate import (
-    in_krx_warmup_window,
     is_auction_window,
-    target_ws_venue,
     ws_capture_window,
     ws_capture_window_async,
     ws_connection_window,
@@ -82,17 +80,6 @@ def test_connection_window_strictly_wider_than_capture_window(monkeypatch):
             assert ws_connection_window(t) is True
 
 
-def test_target_venue_krx_only_around_regular_session_with_margins():
-    """구독 venue: 정규장을 워밍(08:50)~drain 마진(15:31)으로 완전 포함해 KRX,
-    그 밖(연결 창 내 NXT 시간대)은 NXT."""
-    assert target_ws_venue(_ms(2026, 5, 27, 8, 30)) == "NXT"   # 장전 NXT
-    assert target_ws_venue(_ms(2026, 5, 27, 8, 50)) == "KRX"   # 워밍 시작
-    assert target_ws_venue(_ms(2026, 5, 27, 9, 0)) == "KRX"    # 개장(캡처 시작 시 KRX 준비 완료)
-    assert target_ws_venue(_ms(2026, 5, 27, 15, 30)) == "KRX"  # 마감 순간까지 KRX(drain 보존)
-    assert target_ws_venue(_ms(2026, 5, 27, 15, 31)) == "NXT"  # drain 마진 후 NXT 스왑
-    assert target_ws_venue(_ms(2026, 5, 27, 18, 0)) == "NXT"   # 장후 NXT
-
-
 def test_is_auction_window_covers_open_and_close_single_price():
     """동시호가 창: 장전 08:30–09:00, 장마감 15:20–15:30 KST. 순수 시계.
     경계: 시작 포함, 끝 배제. 연속거래·NXT 세션 시각은 False(예상체결 게이트)."""
@@ -110,13 +97,3 @@ def test_is_auction_window_covers_open_and_close_single_price():
     assert is_auction_window(_ms(2026, 5, 27, 15, 30)) is False  # 마감(배제)
     # NXT 애프터마켓 시간대
     assert is_auction_window(_ms(2026, 5, 27, 16, 30)) is False
-
-
-def test_krx_warmup_window_is_0850_to_0900():
-    """08:50–09:00 KRX 워밍 창(ADR-0118 §5 저장셋 등록 완결 술어). 순수 시계 —
-    경계: 08:50 포함, 09:00 배제(개장). target_ws_venue의 KRX 시작과 정렬."""
-    assert in_krx_warmup_window(_ms(2026, 5, 27, 8, 49)) is False  # 워밍 직전(NXT)
-    assert in_krx_warmup_window(_ms(2026, 5, 27, 8, 50)) is True   # 워밍 시작(경계 포함)
-    assert in_krx_warmup_window(_ms(2026, 5, 27, 8, 59)) is True   # 워밍 중
-    assert in_krx_warmup_window(_ms(2026, 5, 27, 9, 0)) is False   # 개장 — 창 종료
-    assert in_krx_warmup_window(_ms(2026, 5, 27, 10, 0)) is False  # 정규장 중

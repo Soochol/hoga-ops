@@ -83,7 +83,7 @@ def _ensure_kiwoom_session(
         data_dir=data_dir,
         date_fn=date_fn,
         gate_fn=lambda: ws_connection_window(now_ms_fn()),
-        now_fn=now_ms_fn,  # venue 스왑·warmup 술어의 시각원(워치독과 공유)
+        now_fn=now_ms_fn,  # 표시 장부 유예·재배정의 시각원(워치독과 공유)
     )
     state.kiwoom_session = mgr
     return mgr
@@ -125,10 +125,19 @@ async def sync_storage_runtime(
     capacity = KIWOOM_PER_ACCOUNT_MAX * n_kiwoom
     capture_candidates = _compute_capture_candidates(data_dir)
     heatmap_codes = _compute_heatmap_codes(data_dir)
+    # capacity 는 **등록 수** 예산이다 — venue 동시 구독(ADR-0140 §2)에서 NXT 상장
+    # 종목 하나가 등록 3개(KRX·NXT·UN)를 쓴다. 종목 수로 절단하면 예산의 3배를 배정하고
+    # 키움이 계정당 200 에서 거부한다.
+    from hoga.api import symbols as _symbols  # noqa: PLC0415 — 순환 절단
+
+    from .coverage import venue_weight  # noqa: PLC0415 — 지연(위 kiwoom_runtime 과 같은 규율)
+
+    nxt_map = _symbols.nxt_enabled_by_code()
     targets = plan_storage_targets(
         capture_candidates,
         heatmap_candidates=heatmap_codes,
         kiwoom_capacity=capacity,
+        weight=lambda code: venue_weight(code, nxt_map),
     )
     # 확정 저장셋 크기를 매 sync 마다 남긴다 — 이 숫자는 키움 WS 슬롯 예산·디스크 용량
     # 산술의 입력이라 "지금 몇 종목을 수집 중인가"가 사후 확인 가능해야 한다. 초과분

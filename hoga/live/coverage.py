@@ -7,6 +7,7 @@ KIS WebSocket 계층은 ADR-0118 PR-G에서 삭제됐다 — 실시간 호가·�
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,10 +29,104 @@ class LiveStorageTargets:
     kiwoom_targets: tuple[str, ...] = ()
 
 
-def partition_kiwoom(codes: list[str], n: int) -> list[list[str]]:
-    """키움 계정별 disjoint 분할 — 계정 k = codes[k*200:(k+1)*200] (앱키당 200).
-    초과분(200×n 넘는 종목)은 어느 계정에도 안 담긴다(호출자 책임)."""
-    return [codes[k * KIWOOM_PER_ACCOUNT_MAX:(k + 1) * KIWOOM_PER_ACCOUNT_MAX] for k in range(n)]
+# ── venue 구독 파생 (ADR-0140 §2·§5, PR-F) ────────────────────────────────────
+#
+# 시분할(시각→venue 1개)을 폐지하고 **세 venue 를 동시에** 구독한다. 한 종목이
+# 차지하는 wire 등록 수가 1 또는 3 으로 갈리므로, 슬롯 회계가 "종목 수"에서
+# **"등록 수"**로 바뀐다 — 이 파일이 그 환산의 정본이다.
+#
+#     NXT 상장   → ("KRX", "NXT", "UN")   3 등록
+#     NXT 미상장 → ("KRX",)               1 등록
+#
+# 실측 2026-08-05: 저장셋 274 종목(관심 23 + 히트맵 271, 중복 20) 중 NXT 상장 176 ·
+# 미상장 98 → **626 등록**. 계정당 200 이므로 **앱키 4개**가 필요하다(274 종목 시절엔
+# 2개로 충분했다). 모자라면 plan_storage_targets 가 초과분을 드롭하고 경고한다.
+_ALL_VENUES: tuple[str, ...] = ("KRX", "NXT", "UN")
+_KRX_ONLY: tuple[str, ...] = ("KRX",)
+
+
+def subscription_venues(
+    code: str, nxt_map: Mapping[str, bool | None] | None,
+) -> tuple[str, ...]:
+    """이 종목에 구독할 venue 들. ``nxt_map`` 은 `symbols.nxt_enabled_by_code()`.
+
+    **모름은 미상장이 아니다 — 구독한다**(fail-open). 근거는 두 실패의 비대칭이다:
+
+    - 모름을 미상장으로 보면 → NXT 에 실제로 상장된 종목의 그날 데이터가 **영구 결손**
+      이다. 지나간 장은 다시 안 온다(ADR-0140 §8 "저장은 끄는 것이 더 위험하다").
+    - 모름을 상장으로 보면 → 미상장 코드에 `_NX`/`_AL` 을 구독해 **슬롯 2개를 낭비**
+      한다. 다음 마스터 갱신에 회수된다.
+
+    실무에서 이 fail-open 이 비싸지 않은 이유: 마스터 시드가 **커밋돼 있어**
+    (`kiwoom_master_seed.json`, 4,274행) 자격증명 없이도 로드된다. 실측 저장셋 274
+    종목의 "모름"은 **0건**이었다. `nxt_map is None`(마스터 완전 미로드)은 부팅 1회뿐이고,
+    그 창에서는 전 종목이 3배를 쓰므로 용량 경고가 뜬다 — 조용하지 않다.
+
+    ⚠ 키움은 **미상장 코드에도 `rc=0` ACK 를 준다**(#1127 실측). 그래서 잘못된 구독은
+    등록 완결 술어로는 안 잡히고, 오직 "틱이 안 온다"로만 드러난다. 파생을 여기서
+    정확히 하는 것이 유일한 방어선이다.
+    """
+    if nxt_map is None:
+        return _ALL_VENUES  # 마스터 미로드 — 전량 fail-open(용량 경고로 드러난다)
+    return _KRX_ONLY if nxt_map.get(code) is False else _ALL_VENUES
+
+
+def venue_weight(code: str, nxt_map: Mapping[str, bool | None] | None) -> int:
+    """이 종목이 차지하는 wire 등록 수 — 슬롯 예산의 단위."""
+    return len(subscription_venues(code, nxt_map))
+
+
+def partition_kiwoom(
+    codes: list[str],
+    n: int,
+    *,
+    weight: Callable[[str], int] | None = None,
+) -> list[list[str]]:
+    """키움 계정별 disjoint 분할 — **wire 등록 수**가 계정당 200 을 넘지 않게 순차로 채운다.
+
+    ``weight`` 미지정(=모두 1)이면 예전 슬라이싱과 **결과가 동일**하다: 코드 0~199 가
+    계정 0, 200~399 가 계정 1 … . 시분할 시절엔 종목 1개 = 등록 1개라 그 가정이 맞았다.
+
+    한 종목의 등록들은 **쪼갤 수 없다**(같은 연결이 KRX·NXT·UN 을 함께 받아야 표시·저장
+    라우팅이 한 stream 으로 모인다). 그래서 경계에서 계정당 최대 2 슬롯이 놀 수 있다 —
+    bin-packing 최적화는 하지 않는다. 낭비 상한이 `n×2` 로 작고, 순서를 흔들면
+    관심종목 우선(plan_storage_targets)이 깨진다.
+
+    초과분(용량 넘는 종목)은 어느 계정에도 안 담긴다(호출자 책임 — `_sync_locked` 경고).
+    """
+    w = weight or (lambda _code: 1)
+    parts: list[list[str]] = [[] for _ in range(n)]
+    account, used = 0, 0
+    for code in codes:
+        cost = w(code)
+        while account < n and used + cost > KIWOOM_PER_ACCOUNT_MAX:
+            account += 1
+            used = 0
+        if account >= n:
+            break  # 용량 소진 — 남은 코드는 드롭(호출자가 경고)
+        parts[account].append(code)
+        used += cost
+    return parts
+
+
+def _fit_within_capacity(
+    codes: tuple[str, ...], capacity: int, weight: Callable[[str], int],
+) -> tuple[str, ...]:
+    """등록 수 합이 ``capacity`` 를 넘지 않는 앞부분. 순서(관심종목 우선)를 보존한다.
+
+    비싼 종목 하나에서 멈추지 않고 **계속 훑는다** — 뒤의 싼 종목(KRX 전용, 1 등록)은
+    아직 들어갈 수 있다. 여기서 break 하면 NXT 상장 종목 하나가 뒤의 미상장 종목
+    수십 개를 통째로 밀어낸다.
+    """
+    taken: list[str] = []
+    used = 0
+    for code in codes:
+        cost = weight(code)
+        if used + cost > capacity:
+            continue
+        taken.append(code)
+        used += cost
+    return tuple(taken)
 
 
 def plan_storage_targets(
@@ -39,6 +134,7 @@ def plan_storage_targets(
     *,
     heatmap_candidates: tuple[str, ...] = (),
     kiwoom_capacity: int = 0,
+    weight: Callable[[str], int] | None = None,
 ) -> LiveStorageTargets:
     """저장셋 = 관심종목 + 히트맵, 키움 WS 전담(ADR-0118 PR-G 칼 컷오버).
 
@@ -60,11 +156,17 @@ def plan_storage_targets(
     if kiwoom_capacity > 0:
         # 컷오버: 관심종목 먼저(우선) + 히트맵 = 저장셋.
         storage_set = candidates + heatmap
-        kiwoom_targets = storage_set[:kiwoom_capacity]
+        # capacity 는 **등록 수** 예산(200×앱키수)이다 — 종목 수가 아니다(PR-F).
+        # weight 미지정이면 종목당 1 이라 예전 슬라이싱과 동일하다.
+        w = weight or (lambda _code: 1)
+        kiwoom_targets = _fit_within_capacity(storage_set, kiwoom_capacity, w)
         dropped = len(storage_set) - len(kiwoom_targets)
         if dropped > 0:  # 초과분은 미수집 — 계좌 추가로 대응(폴백 없음)
-            _log.warning("live.storage.storage_set_over_kiwoom_capacity dropped=%d cap=%d",
-                         dropped, kiwoom_capacity)
+            _log.warning(
+                "live.storage.storage_set_over_kiwoom_capacity dropped=%d cap=%d "
+                "regs=%d — venue 동시 구독은 NXT 상장 종목당 등록 3개를 쓴다(앱키 추가로 대응)",
+                dropped, kiwoom_capacity, sum(w(c) for c in storage_set),
+            )
     else:
         kiwoom_targets = ()
     return LiveStorageTargets(

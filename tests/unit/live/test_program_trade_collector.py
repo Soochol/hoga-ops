@@ -41,7 +41,7 @@ def _collector(tmp_path, *, date="20260720", should_collect=True):
 
 @pytest.mark.asyncio
 async def test_drains_latch_into_store(tmp_path):
-    program_trade_latch.update("005930", _payload())
+    program_trade_latch.update("005930", _payload(), venue="KRX")
     collector = _collector(tmp_path)
 
     await collector.run_once()
@@ -66,10 +66,10 @@ async def test_derives_delta_from_cumulative_net_across_flushes(tmp_path):
     diff 로 파생한다 — F3 권고. 첫 flush 는 기준이 없어 None."""
     collector = _collector(tmp_path)
 
-    program_trade_latch.update("005930", _payload(net_qty=50, net_amount=2_500_000))
+    program_trade_latch.update("005930", _payload(net_qty=50, net_amount=2_500_000), venue="KRX")
     await collector.run_once()
     program_trade_latch.update(
-        "005930", _payload(t_ms=1_784_522_045_000, net_qty=80, net_amount=4_100_000))
+        "005930", _payload(t_ms=1_784_522_045_000, net_qty=80, net_amount=4_100_000), venue="KRX")
     await collector.run_once()
 
     rows = collector.store.load("005930", "20260720").rows
@@ -88,10 +88,10 @@ async def test_delta_baseline_resets_on_new_trading_day(tmp_path):
         should_collect_fn=lambda _now_ms: True,
     )
 
-    program_trade_latch.update("005930", _payload(net_qty=1_000_000))
+    program_trade_latch.update("005930", _payload(net_qty=1_000_000), venue="KRX")
     await collector.run_once()
     current["d"] = "20260721"
-    program_trade_latch.update("005930", _payload(net_qty=10))
+    program_trade_latch.update("005930", _payload(net_qty=10), venue="KRX")
     await collector.run_once()
 
     rows = collector.store.load("005930", "20260721").rows
@@ -102,7 +102,7 @@ async def test_delta_baseline_resets_on_new_trading_day(tmp_path):
 async def test_skips_when_market_window_closed_but_keeps_latch(tmp_path):
     """게이트 닫힘이면 병합하지 않는다 — latch 는 비우지 않아 개장 후 첫 사이클이
     마지막 스냅샷을 병합한다."""
-    program_trade_latch.update("005930", _payload())
+    program_trade_latch.update("005930", _payload(), venue="KRX")
     collector = _collector(tmp_path, should_collect=False)
 
     await collector.run_once()
@@ -117,10 +117,10 @@ async def test_skips_when_market_window_closed_but_keeps_latch(tmp_path):
 
 @pytest.mark.asyncio
 async def test_per_code_failure_stays_local(tmp_path):
-    program_trade_latch.update("005930", _payload())
+    program_trade_latch.update("005930", _payload(), venue="KRX")
     bad = _payload()
     bad["t_ms"] = "not-a-number"  # _to_row 에서 int() 실패 유도
-    program_trade_latch.update("000660", bad)
+    program_trade_latch.update("000660", bad, venue="KRX")
     collector = _collector(tmp_path)
 
     await collector.run_once()

@@ -358,14 +358,16 @@ class LiveStream:
         # 재생성되므로 표시·저장 모두 입구에서 드롭.
         if self._active_codes is not None and tick.code not in self._active_codes:
             return
-        # 프로그램매매(0w)는 KRX 틱만 두 소비자로 fan-out한다:
+        # 프로그램매매(0w)는 두 소비자로 fan-out한다:
         # ① 표시 buffer → /api/live/series + WS push, ② latch →
         # ProgramTradeCollector 30초 drain → program_trade_store. 일반 ingest
         # 경로 전에 return하므로 JSONL/downsampler 저장에는 들어가지 않는다.
+        #
+        # KRX 전용 가드는 ADR-0140 §2 에서 걷혔다. latch 는 code 로만 키잉되므로
+        # **여기서 venue 를 함께 넘긴다** — 안 그러면 세 시장의 프로그램 순매수가 같은
+        # 칸에 덮어써서 마지막 도착분만 남는다(값이 틀리는 게 아니라 시장이 섞인다).
         if tick.kind is SnapshotKind.PROGRAM:
-            if tick.venue != "KRX":
-                return
-            program_trade_latch.update(tick.code, dict(tick.payload))
+            program_trade_latch.update(tick.code, dict(tick.payload), venue=tick.venue)
             payload = {
                 **tick.payload,
                 "phase": self._phase_fn(),
@@ -385,15 +387,21 @@ class LiveStream:
         if tick.kind is SnapshotKind.BROKER:
             payload = _canonicalize_broker_payload(payload)
         snap = LiveSnapshot(t_ms=tick.t_ms, kind=tick.kind, payload=payload)
-        # 표시 경로는 §11에 따라 무게이트 — KRX/NXT 모두 항상 publish. 시분할 스왑이
-        # KRX를 정규장에만 구독하므로 KRX 틱이 장전에 도착해 유령 캔들을 만들 일은 없다.
+        # 표시 경로는 §11에 따라 무게이트 — 세 venue 모두 항상 publish.
         await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
-        # ── 성역 격리(#524): 저장·집계·피크·시그널은 KRX 전용 ──────────────────
-        # NXT 틱은 표시(위 publish)만 하고 여기서 리턴 — KRX 정규장 캡처 경로를
-        # byte-for-byte 불변으로 유지한다(정규장엔 KRX만 구독되므로 이 가드는
-        # 방어적이며, 경계 스왑 타이밍 오차에도 NXT가 저장에 새지 않게 봉인).
-        if tick.venue != "KRX":
-            return
+        # ── 성역 격리(#524)는 여기서 끝난다 (ADR-0140 §2, PR-F) ────────────────
+        #
+        # `if tick.venue != "KRX": return` 이 있던 자리다. 그 한 줄이 저장·집계·피크·
+        # 시그널을 KRX 전용으로 봉인했고, **시분할 구독이 그 봉인의 짝**이었다(정규장엔
+        # KRX 만 구독하니 가드는 방어적 이중화였다).
+        #
+        # 봉인이 필요했던 이유는 저장에 venue 축이 없어서였다 — NXT 행이 들어오면 KRX
+        # 파일에 섞였다. PR-D 가 `kiwoom_live/{venue}/` 를 만들어 두 시장이 서로 다른
+        # 파일로 가게 됐고, PR-C 가 집계 자료구조를 `(code, venue)` 로 키잉해 메모리에서도
+        # 안 섞이게 했다. 이제 격리는 **경로와 키**가 하고, 구독 시각이 아니다.
+        #
+        # ⚠ 저장 **창**은 아직 정규장 09:00–15:30 하나다(`_gate_open`). NXT·UN 은 그
+        # 겹치는 구간만 저장된다 — 08:00–20:00 전 구간 저장은 PR-G 다.
         self._ingest_ask_peak(tick)
         self._ingest_bid_peak(tick)
         if tick.kind is SnapshotKind.OB:

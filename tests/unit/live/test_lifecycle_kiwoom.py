@@ -15,7 +15,7 @@ def _kiwoom_status(**overrides):
         "subscribed_count": 2,
         "subscribed_codes": ["005930", "000660"],
         "last_tick_ms": 1_770_000_000_000,
-        "warmup_incomplete": False,
+        "registration_incomplete": False,
         "accounts": [
             {"account_id": 0, "connected": True, "sub_expected": 2,
              "sub_acked": 2, "kicked_by_peer": False, "last_tick_ms": 1_770_000_000_000},
@@ -71,11 +71,11 @@ def test_get_status_degraded_accounts_from_kicked_peers():
     assert st.degraded_accounts == [1]
 
 
-def test_get_status_warmup_incomplete_reason():
+def test_get_status_registration_incomplete_reason():
     lifecycle.reset_for_tests()
     lifecycle._state = _State(
-        kiwoom_session=_FakeKiwoomSession(warmup_incomplete=True)
+        kiwoom_session=_FakeKiwoomSession(registration_incomplete=True)
     )
     st = lifecycle.get_status()
     assert st.capture_healthy is False
-    assert st.capture_reason == "warmup_incomplete"
+    assert st.capture_reason == "registration_incomplete"

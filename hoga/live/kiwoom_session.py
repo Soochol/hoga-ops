@@ -19,7 +19,12 @@ from pathlib import Path
 
 from . import kiwoom_runtime
 from .buffer import LiveBuffer
-from .coverage import KIWOOM_PER_ACCOUNT_MAX, partition_kiwoom
+from .coverage import (
+    KIWOOM_PER_ACCOUNT_MAX,
+    partition_kiwoom,
+    subscription_venues,
+    venue_weight,
+)
 from .kiwoom_fields import apply_venue
 from .kiwoom_vi_capture import KiwoomViCapture, replay_today as replay_vi_today
 from .kiwoom_vi_state import KiwoomViState
@@ -28,6 +33,23 @@ from .snapshot import LiveSnapshot
 from .ticks import WsTick
 
 _log = logging.getLogger(__name__)
+
+
+def _nxt_map() -> dict[str, bool | None] | None:
+    """마스터의 NXT 상장 표 — 구독 파생·슬롯 회계의 입력(ADR-0140 §2).
+
+    지연 import 로 순환(api.symbols → live)을 끊는다. 마스터 미로드면 ``None`` =
+    "전부 모름"이고, `subscription_venues` 가 fail-open 으로 세 venue 를 다 구독한다.
+    커밋된 시드가 있어 자격증명 없이도 로드되므로 실제로 None 이 되는 창은 부팅 1회뿐이다.
+    """
+    from hoga.api import symbols as _symbols  # noqa: PLC0415 — 순환 절단(지연)
+
+    try:
+        return _symbols.nxt_enabled_by_code()
+    except Exception:  # noqa: BLE001 — 마스터 조회 실패는 "모름"이지 세션 정지가 아니다
+        _log.warning("live.kiwoom.nxt_map_unavailable — 전 종목 fail-open 구독", exc_info=True)
+        return None
+
 
 # 표시(온디맨드) 구독 해제 유예 — 참조 0 후 이 시간 지나야 회수(탭 재열람 churn 흡수).
 _DISPLAY_GRACE_MS = 60_000
@@ -85,7 +107,8 @@ class KiwoomSessionManager:
         self._data_dir = data_dir
         self._date_fn = date_fn
         self._gate_fn = gate_fn
-        # venue 파생·warmup 술어의 시각원(테스트 주입). 실경로는 벽시계.
+        # 표시 장부 유예·재배정의 시각원(테스트 주입). 실경로는 벽시계.
+        # venue 파생은 더는 시각을 안 본다(ADR-0140 §2 — 시분할 폐지).
         self._now_fn = now_fn or _default_now_ms
         # 연결당 등록 상한(실측 200). 슬롯 산술·만석 판정의 SSOT(테스트 주입).
         self._per_account_max = per_account_max or KIWOOM_PER_ACCOUNT_MAX
@@ -103,8 +126,8 @@ class KiwoomSessionManager:
         # sync(멤버십)·watchdog_pass(venue/재빌드)·stop의 _conns/구독 변이 직렬화 —
         # update_codes의 다중 await(배치 REG 페이싱)가 서로 인터리브하지 않게 한다.
         self._lock = asyncio.Lock()
-        # 08:50–09:00 워밍 창에 저장셋 등록 미완이면 True(status 진단 표면화).
-        self._warmup_incomplete = False
+        # 저장셋 등록 미완이면 True(status 진단 표면화). 창 특례 없이 상시 감시(PR-F).
+        self._registration_incomplete = False
         # ── 표시(온디맨드) 참조 카운트 장부(ADR-0118 PR-C, #685) ──
         # (code,venue) → _DisplayEntry(refs·owner·released_at). 저장셋은 conn.codes로
         # 암묵 표현(레이어드). refs·owner·released_at을 한 항목으로 묶어 불변식 구조화.
@@ -130,13 +153,18 @@ class KiwoomSessionManager:
         if not codes or n_accounts <= 0:
             await self._stop_locked()
             return
-        parts = partition_kiwoom(codes, n_accounts)
+        # 분할 단위는 종목이 아니라 **wire 등록 수**다(PR-F) — NXT 상장 종목은 3개를 쓴다.
+        nxt_map = _nxt_map()
+        parts = partition_kiwoom(codes, n_accounts, weight=lambda c: venue_weight(c, nxt_map))
         dropped = len(codes) - sum(len(p) for p in parts)
         if dropped > 0:
-            _log.warning("live.kiwoom.targets_over_capacity dropped=%d cap=%d",
-                         dropped, n_accounts * 200)
+            _log.warning(
+                "live.kiwoom.targets_over_capacity dropped=%d cap=%d regs=%d — "
+                "venue 동시 구독은 NXT 상장 종목당 등록 3개를 쓴다(앱키 추가로 대응)",
+                dropped, n_accounts * KIWOOM_PER_ACCOUNT_MAX,
+                sum(venue_weight(c, nxt_map) for c in codes),
+            )
         wanted = {k: part for k, part in enumerate(parts) if part}
-        now_ms = self._now_fn()
         # teardown: 더는 필요 없는 계정(빈 파티션 포함).
         for account_id in list(self._conns):
             if account_id not in wanted:
@@ -160,11 +188,11 @@ class KiwoomSessionManager:
             members.update(part)
             self._storage_members.update(part)
         # 저장 멤버십 변화로 표시 커버가 바뀔 수 있어 재배정 후 현재 창 venue로 reconcile.
-        self._reassign_display(now_ms)
+        self._reassign_display()
         for account_id in wanted:
             conn = self._conns.get(account_id)
             if conn is not None:
-                await self._reconcile(conn, now_ms)
+                await self._reconcile(conn)
 
     async def watchdog_pass(self, now_ms: int) -> None:
         """워치독 1패스(ADR-0118 §5, KIS live-stream-watchdog 후계). 실행 순서(괄호는
@@ -172,7 +200,7 @@ class KiwoomSessionManager:
         1) 죽은 conn 재빌드(저장셋 멤버십 보존; ADR ①)
         2) 시간대 venue 스왑 reconcile(ADR ②)
         3) 미확인 구독 표적 재구독(ADR ④)
-        4) 08:50–09:00 저장셋 등록 완결 술어(ADR ③) — 재구독 뒤에 둬야 잔여 미확인 판정이
+        4) 저장셋 등록 완결 술어(ADR ③, 상시) — 재구독 뒤에 둬야 잔여 미확인 판정이
            정확하다(방금 재송신한 건은 이미 반영).
         표시(온디맨드) 장부도 여기 합류(PR-C): 유예 만료 sweep + 커버 전이 재배정을
         reconcile 전에 수행해 킥 복구·venue 스왑이 표시 구독까지 재파생 재등록한다.
@@ -181,11 +209,11 @@ class KiwoomSessionManager:
         async with self._lock:
             await self._rebuild_dead_locked()
             self._sweep_display(now_ms)     # 유예 만료 표시키 회수
-            self._reassign_display(now_ms)  # 커버 전이(스왑·저장변화) 재배정
+            self._reassign_display()  # 커버 전이(저장셋 변화·연결 재빌드) 재배정
             for conn in list(self._conns.values()):
-                await self._reconcile(conn, now_ms)
+                await self._reconcile(conn)
             await self._resubscribe_missing_locked()
-            self._check_warmup_locked(now_ms)
+            self._check_registration_locked()
 
     async def _rebuild_dead_locked(self) -> None:
         """죽은 conn(킥 정지·ws/flush 태스크 사망) teardown 후 재빌드 — 저장셋 멤버십
@@ -203,23 +231,26 @@ class KiwoomSessionManager:
             if built is not None:
                 self._conns[account_id] = built
 
-    async def _reconcile(self, conn: _KiwoomConn, now_ms: int) -> None:
-        """conn 구독을 현재 시각의 target venue로 재파생 정합(ADR-0118 §2 파생 집합).
+    async def _reconcile(self, conn: _KiwoomConn) -> None:
+        """conn 구독을 파생 집합으로 정합(ADR-0140 §2 — 시분할 폐지, 동시 구독).
 
-        기대 wire = (저장셋 bare × 현재 venue) ∪ (이 연결에 배정된 표시키 중 저장 미커버분).
-        표시키는 (code,venue) 그대로 apply_venue — 저장은 현재 창 venue 단일이지만 표시는
-        열람 옵션이 요구하는 venue(UN=KRX∪NXT). 클라이언트 현재 wire와 다를 때만
-        update_codes diff(remove-before-add: 키당 200 상한). bare 저장 멤버십(conn.codes)은
-        불변 — 표시는 별도 장부(레이어드)."""
-        from .session_gate import AUTO_VENUE, target_ws_venue  # noqa: PLC0415 — 순환/kis import 회피(lazy)
+        기대 wire = (저장셋 bare × 그 종목의 venue 전부) ∪ (이 연결에 배정된 표시키 중
+        저장 미커버분). 종목의 venue 는 `subscription_venues` 가 정한다 — NXT 상장이면
+        {KRX,NXT,UN}, 미상장이면 {KRX}.
 
-        venue = target_ws_venue(now_ms)
-        desired = {apply_venue(c, venue) for c in conn.codes}
+        **시각 인자를 안 쓴다.** 예전엔 `target_ws_venue(now)` 로 창마다 venue 를 갈아
+        끼웠고, 그래서 08:50·15:31 스왑 경계에 구독이 통째로 교체됐다. 이제 파생이 시각과
+        무관하므로 정합화는 멤버십 변화에만 반응한다.
+
+        클라이언트 현재 wire와 다를 때만 update_codes diff(remove-before-add: 키당 200
+        상한). bare 저장 멤버십(conn.codes)은 불변 — 표시는 별도 장부(레이어드)."""
+        nxt_map = _nxt_map()
+        desired = {
+            apply_venue(c, v) for c in conn.codes for v in subscription_venues(c, nxt_map)
+        }
         for (code, v), entry in self._display.items():
-            if entry.owner == conn.account_id and not self._covered_by_storage(code, v, now_ms):
-                # AUTO는 현재 venue로 해석(apply_venue에 "AUTO"를 넘기면 bare=KRX로 잘못
-                # 파생 — NXT 시간대에 오구독). 명시적 KRX/NXT는 그대로.
-                desired.add(apply_venue(code, venue if v == AUTO_VENUE else v))
+            if entry.owner == conn.account_id and not self._covered_by_storage(code, v):
+                desired.add(apply_venue(code, v))
         if desired != conn.client.expected_codes:
             await conn.client.update_codes(sorted(desired))
 
@@ -235,25 +266,31 @@ class KiwoomSessionManager:
             except Exception:  # noqa: BLE001 — conn별 격리
                 _log.exception("live.kiwoom.resubscribe_failed account=%d", conn.account_id)
 
-    def _check_warmup_locked(self, now_ms: int) -> None:
-        """08:50–09:00 KRX 워밍 창에 저장셋 등록 완결을 확인(ADR-0118 §5 유일한 저장
-        리스크 창). 미완이면 warmup_incomplete 플래그 + 경고(재시도는 ④가 이미 수행 —
-        여기선 09:00 전 미완을 가시화). 창 밖이면 플래그 해제."""
-        from .session_gate import in_krx_warmup_window  # noqa: PLC0415
+    def _check_registration_locked(self) -> None:
+        """저장셋 등록 완결을 매 패스 확인. 미완이면 플래그 + 경고(재시도는 ④가 이미 수행).
 
-        if not in_krx_warmup_window(now_ms):
-            self._warmup_incomplete = False
-            return
+        **08:50–09:00 창 특례에서 연결 창 전체로 넓혔다**(ADR-0140 §2). 그 창은 KRX
+        venue 스왑이 개장 직전에 일어난다는 사실에서 나온 것이었다 — 스왑이 없어졌으니
+        "개장 전 10분"이 특별할 이유도 없다. 반대로 NXT·UN 은 08:00–20:00 내내 열려
+        있어 등록 미완의 대가를 아무 때나 치른다. 그래서 상시 감시로 바꾼다.
+
+        워치독은 연결이 살아 있을 때만 돌므로 창 판정을 따로 하지 않는다 — 연결이
+        없으면 `self._conns` 가 비어 pending 도 비고, 플래그는 자연히 내려간다.
+
+        ⚠ **ACK 는 유효성을 보증하지 못한다.** 키움은 미상장 코드에도 `rc=0` 을 준다
+        (#1127 실측) — 잘못 파생된 구독은 여기서 "완결"로 보이고 틱만 안 온다. 그래서
+        이 술어는 **전송 유실**만 잡는다. 파생 정확성은 `subscription_venues` 가 책임진다.
+        """
         pending = {
             conn.account_id: conn.client.sub_missing()
             for conn in self._conns.values()
             if conn.client.sub_missing()
         }
-        self._warmup_incomplete = bool(pending)
+        self._registration_incomplete = bool(pending)
         if pending:
             total = sum(len(m) for m in pending.values())
             _log.warning(
-                "live.kiwoom.warmup_incomplete accounts=%s missing=%d — 09:00 전 저장셋 "
+                "live.kiwoom.registration_incomplete accounts=%s missing=%d — 저장셋 "
                 "등록 미완, 재구독 재시도 중", sorted(pending), total,
             )
 
@@ -269,7 +306,6 @@ class KiwoomSessionManager:
         시 자동 배정한다. 하나라도 보류되면 False 반환 — ws.py가 요청 탭에 만석 이벤트
         (토스트)를 보낸다. _lock으로 sync·watchdog와 직렬화."""
         async with self._lock:
-            now_ms = self._now_fn()
             rejected = False
             touched: set[int] = set()
             for v in venues:
@@ -277,11 +313,11 @@ class KiwoomSessionManager:
                 entry = self._display.setdefault(key, _DisplayEntry())
                 entry.refs.add(ref)
                 entry.released_at = None  # 유예 취소
-                if self._covered_by_storage(code, v, now_ms):
+                if self._covered_by_storage(code, v):
                     continue  # 이미 저장 구독 — 슬롯 불요
                 if entry.owner is not None and entry.owner in self._conns:
                     continue  # 이미 등록됨(다른 탭)
-                account = self._pick_account(now_ms)
+                account = self._pick_account()
                 if account is None:
                     # 만석 — 등록은 못 하지만 **참조는 남긴다**(owner=None = 미배정).
                     # 참조를 롤백하고 항목을 지우면 _reassign_display 가 재배정할 근거가
@@ -296,7 +332,7 @@ class KiwoomSessionManager:
             for account in touched:
                 conn = self._conns.get(account)
                 if conn is not None:
-                    await self._reconcile(conn, now_ms)
+                    await self._reconcile(conn)
             if rejected:
                 _log.warning(
                     "live.kiwoom.on_demand_full_house code=%s venues=%s — 전 연결 슬롯 "
@@ -317,59 +353,67 @@ class KiwoomSessionManager:
                 if not entry.refs:
                     entry.released_at = now_ms  # 유예 시작(sweep이 유예 후 회수)
 
-    def _covered_by_storage(self, code: str, venue: str, now_ms: int) -> bool:
-        """(code,venue)가 이미 저장 구독에 커버되나 — 저장은 현재 창 venue 단일이라
-        venue==현재창 AND code∈저장셋일 때만. 커버되면 표시 슬롯 불요(틱=저장 경로).
+    def _covered_by_storage(self, code: str, venue: str) -> bool:
+        """(code,venue)가 이미 저장 구독에 커버되나 — 커버되면 표시 슬롯 불요(틱=저장 경로).
 
-        AUTO(열람 옵션 미지정)는 정의상 항상 현재 창 venue라 code∈저장셋이면 커버 —
-        스왑 후에도 저장 구독을 따라가 이중구독이 생기지 않는다."""
-        from .session_gate import AUTO_VENUE, target_ws_venue  # noqa: PLC0415
+        **시각 무관이 됐다**(ADR-0140 §2). 예전 판은 `eff == target_ws_venue(now)` 였는데,
+        AUTO 를 해석하고 나면 양변이 같은 함수 호출이라 사실상 **`code ∈ 저장셋` 만 보는
+        항등식**이었다. 시분할이 사라진 지금은 진짜 venue 비교를 한다 — 저장셋 종목이라도
+        NXT 미상장이면 (code,"NXT") 는 커버되지 않는다(그리고 그런 표시 요청은 애초에
+        틱이 없으므로 슬롯만 태운다 — 파생이 막는다).
 
-        eff = target_ws_venue(now_ms) if venue == AUTO_VENUE else venue
-        return eff == target_ws_venue(now_ms) and code in self._storage_members
+        **시각 인자가 통째로 사라진 것**이 이 변경의 파급이다 — `_free_slots` ·
+        `_pick_account` · `_reassign_display` · `_reconcile` 까지 연쇄로 시각과 무관해졌다.
+        표시 장부에서 시각이 남은 곳은 유예 클록(`_sweep_display`) 하나뿐이다."""
+        return code in self._storage_members and venue in subscription_venues(code, _nxt_map())
 
     def _storage_free(self, conn: _KiwoomConn) -> int:
-        """저장분만 제외한 잔여 슬롯(표시 미차감) — _free_slots·status 용량 공용 SSOT."""
-        return max(0, self._per_account_max - len(conn.codes))
+        """저장분만 제외한 잔여 슬롯(표시 미차감) — _free_slots·status 용량 공용 SSOT.
 
-    def _free_slots(self, account_id: int, now_ms: int) -> int:
+        **등록 수 기준**이다(PR-F) — 저장셋 종목 1개가 NXT 상장이면 등록 3개를 쓴다.
+        종목 수로 세면 계정당 최대 600 등록을 시도하고 키움이 200 에서 거부한다."""
+        nxt_map = _nxt_map()
+        used = sum(venue_weight(c, nxt_map) for c in conn.codes)
+        return max(0, self._per_account_max - used)
+
+    def _free_slots(self, account_id: int) -> int:
         conn = self._conns.get(account_id)
         if conn is None:
             return 0
         display_used = sum(
             1 for (c, v), e in self._display.items()
-            if e.owner == account_id and not self._covered_by_storage(c, v, now_ms)
+            if e.owner == account_id and not self._covered_by_storage(c, v)
         )
         return max(0, self._storage_free(conn) - display_used)
 
-    def _pick_account(self, now_ms: int) -> int | None:
+    def _pick_account(self) -> int | None:
         """표시 슬롯 배정 연결 = 잔여 슬롯 최다(만석이면 None)."""
         best: int | None = None
         best_free = 0
         for account_id in self._conns:
-            free = self._free_slots(account_id, now_ms)
+            free = self._free_slots(account_id)
             if free > best_free:
                 best, best_free = account_id, free
         return best
 
-    def _reassign_display(self, now_ms: int) -> None:
+    def _reassign_display(self) -> None:
         """표시키의 저장 커버 전이(venue 스왑·저장셋 변화·연결 재빌드)를 재평가한다.
         커버되면 slot 반납, 미커버·미소유면 잔여 슬롯 최다 연결에 재배정(만석이면 다음
         패스 재시도). 참조 0(유예) 키는 sweep에 위임."""
         for (code, venue), entry in list(self._display.items()):
             if not entry.refs:
                 continue  # 참조 0(유예) — sweep 위임
-            if self._covered_by_storage(code, venue, now_ms):
+            if self._covered_by_storage(code, venue):
                 entry.owner = None  # 저장 커버 → 표시 슬롯 반납
                 continue
             if entry.owner is None or entry.owner not in self._conns:
-                account = self._pick_account(now_ms)
+                account = self._pick_account()
                 if account is not None:
                     entry.owner = account
 
     def _sweep_display(self, now_ms: int) -> None:
         """참조 0이 유예 지난 표시키 회수. 만석 임계 근처면 유예 0(즉시)."""
-        grace = 0 if self._total_free_slots(now_ms) <= _NEAR_FULL_SLACK else _DISPLAY_GRACE_MS
+        grace = 0 if self._total_free_slots() <= _NEAR_FULL_SLACK else _DISPLAY_GRACE_MS
         for key, entry in list(self._display.items()):
             if entry.refs:
                 entry.released_at = None  # 재구독됨 — 유예 취소
@@ -377,8 +421,8 @@ class KiwoomSessionManager:
             if entry.released_at is not None and now_ms - entry.released_at >= grace:
                 del self._display[key]
 
-    def _total_free_slots(self, now_ms: int) -> int:
-        return sum(self._free_slots(a, now_ms) for a in self._conns)
+    def _total_free_slots(self) -> int:
+        return sum(self._free_slots(a) for a in self._conns)
 
     def _make_conn_on_tick(
         self, stream: object, members: set[str]
@@ -483,7 +527,7 @@ class KiwoomSessionManager:
             "last_tick_ms": last_tick,
             "last_recv_ms": last_recv,
             # 08:50–09:00 워밍 창 저장셋 등록 미완 여부(ADR-0118 §5 진단 표면).
-            "warmup_incomplete": self._warmup_incomplete,
+            "registration_incomplete": self._registration_incomplete,
             # 표시(온디맨드) 등록 수(PR-C 진단·프론트 배지). 저장 커버분 제외한 실등록.
             "on_demand_count": sum(1 for e in self._display.values() if e.owner is not None),
             # 표시 슬롯 총 용량(전 연결 잔여 = Σ(상한−저장)) — 프론트 만석 배지 "count/cap".
@@ -522,7 +566,6 @@ class KiwoomSessionManager:
                                  exc_info=True)
 
     def _default_build_conn(self, account_id: int, codes: list[str]) -> _KiwoomConn | None:
-        from .session_gate import target_ws_venue  # noqa: PLC0415 — lazy(kis import 회피)
         from .stream import LiveStream  # noqa: PLC0415 — 순환 import 회피
         from .writer import LiveWriter  # noqa: PLC0415
 
@@ -553,9 +596,11 @@ class KiwoomSessionManager:
             # VI 는 계정 0 전용(시장 전체 스트림 중복 방지 — __init__ 주석).
             on_vi_row=self._on_vi_row if account_id == 0 else None,
         )
-        # 초기 구독 wire = 저장셋 × 현재 창 venue(파생 집합). 이후 스왑은 watchdog reconcile.
-        venue = target_ws_venue(self._now_fn())
-        wire = [apply_venue(c, venue) for c in codes]
+        # 초기 구독 wire = 저장셋 × 종목별 venue(ADR-0140 §2 파생 집합). 시각 무관 —
+        # 예전엔 `target_ws_venue(now)` 로 현재 창 venue 하나를 골랐고 스왑을 watchdog
+        # reconcile 이 따라갔다. 이제 갈아 끼울 것이 없어 초기 wire 가 곧 최종 wire 다.
+        nxt_map = _nxt_map()
+        wire = [apply_venue(c, v) for c in codes for v in subscription_venues(c, nxt_map)]
         return _KiwoomConn(
             account_id=account_id,
             stream=stream,

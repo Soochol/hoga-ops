@@ -20,13 +20,17 @@ from hoga.live.buffer import LiveBuffer
 logger = logging.getLogger(__name__)
 
 _PING_TIMEOUT_S = 30.0
-_VALID_VENUES = ("KRX", "NXT")
+# UN 은 **자체 venue** 다 — `_AL` 직결이라 {KRX,NXT} 합성이 아니다(ADR-0140 §5).
+# 옛 {KRX,NXT} 도 계속 받는다(둘 다 구독하는 뜻으로 그대로 유효).
+_VALID_VENUES = ("KRX", "NXT", "UN")
 
 
 def _parse_venues(raw: object) -> set[str] | None:
-    """구독 메시지의 venues 옵션 → {KRX,NXT} 부분집합. 미지정/불량이면 None
-    (lifecycle이 현재 창 venue 1개로 기본 — 구 프론트 하위호환). KRX=KRX옵션,
-    NXT=NXT옵션, {KRX,NXT}=UN옵션(ADR-0118 §4 3옵션 직결)."""
+    """구독 메시지의 venues 옵션 → {KRX,NXT,UN} 부분집합. 미지정/불량이면 None.
+
+    None 이면 lifecycle 이 **그 종목이 가진 venue 전부**로 기본한다(ADR-0140 §2 —
+    AUTO 센티넬의 후계). 실측 기준 프론트는 이 필드를 아직 안 보내므로 전 요청이
+    그 경로를 탄다 — PR-H 가 3옵션을 직결하면 명시 경로로 바뀐다."""
     if not isinstance(raw, list):
         return None
     venues = {v for v in raw if v in _VALID_VENUES}

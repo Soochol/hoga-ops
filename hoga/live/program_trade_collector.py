@@ -129,6 +129,21 @@ class ProgramTradeCollector:
             return
 
         latched = program_trade_latch.drain()
+        # 사이드카 저장소는 아직 venue 축이 없다 — `kis-program-trade/{code}/{date}.json`
+        # 은 동결된 경로이고, 축을 넣으면 저장소·읽기 API·프론트 카드가 함께 움직여야
+        # 한다(PR-G). 그때까지 **KRX 만 병합**한다.
+        #
+        # 표시 경로는 이미 세 venue 를 다 받는다(stream 이 buffer 로 publish) — 신고된
+        # "프리마켓 프로그램 빈 창"은 그쪽에서 해소된다. 여기서 거르는 것은 **과거
+        # 시계열 저장**뿐이고, 버리는 양을 로그로 남겨 이관 잔여가 조용하지 않게 한다.
+        deferred = sorted({v for (_c, v) in latched if v != "KRX"})
+        if deferred:
+            log.info(
+                "program_trade.collector.venue_deferred venues=%s dropped=%d — "
+                "사이드카 저장소 venue 축은 PR-G(표시 경로는 이미 수신 중)",
+                deferred, sum(1 for (_c, v) in latched if v != "KRX"),
+            )
+        latched = {c: p for (c, v), p in latched.items() if v == "KRX"}
         self.status.targets = tuple(sorted(latched))
         for code, payload in latched.items():
             try:

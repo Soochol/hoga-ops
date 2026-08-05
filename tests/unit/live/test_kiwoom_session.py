@@ -3,8 +3,15 @@ dead 재빌드·warmup 술어·재구독). fake conn 주입 + 시각 주입(결�
 import asyncio
 from datetime import datetime
 
+import pytest
+
 from hoga.live.kiwoom_session import KiwoomSessionManager, _KiwoomConn
 from hoga.util.timeenc import KST
+
+
+@pytest.fixture(autouse=True)
+def _pin_master(krx_only_master):
+    """이 모듈의 주제는 venue 파생이 아니다 — 마스터를 KRX 전용으로 고정한다."""
 
 
 def _ms(hour: int, minute: int) -> int:
@@ -201,57 +208,7 @@ async def test_watchdog_rebuilds_dead_conn():
     await mgr.stop()
 
 
-async def test_watchdog_swaps_to_nxt_venue():
-    """PR-B ②: NXT 창으로 시각이 넘어가면 워치독이 구독 코드를 _NX 접미로 스왑한다
-    (기대 등록 = 저장셋 × venue). bare 멤버십은 불변(active_codes 무영향)."""
-    now = {"ms": _KRX_MS}
-    mgr, _ = _fake_manager(now_fn=lambda: now["ms"])
-    await mgr.sync(("005930", "000660"), n_accounts=1)
-    client = mgr._conns[0].client
-    assert client.expected_codes == {"005930", "000660"}  # KRX 창: wire=bare
-    # 15:31 이후 → NXT 창. 워치독이 스왑.
-    now["ms"] = _NXT_MS
-    await mgr.watchdog_pass(now["ms"])
-    assert client.expected_codes == {"005930_NX", "000660_NX"}
-    # 멤버십(bare)은 불변 → active_codes/저장셋 무영향.
-    assert set(mgr.active_codes()) == {"005930", "000660"}
-    await mgr.stop()
 
-
-async def test_watchdog_swaps_back_to_krx_and_is_idempotent():
-    """스왑 왕복 + 동일 venue 재호출 no-op(파생 집합 재수렴, 불필요한 update 없음)."""
-    now = {"ms": _NXT_MS}
-    mgr, _ = _fake_manager(now_fn=lambda: now["ms"])
-    await mgr.sync(("005930",), n_accounts=1)
-    client = mgr._conns[0].client
-    # NXT에서 시작(빌드가 venue 적용) — reconcile로 _NX 수렴.
-    await mgr.watchdog_pass(now["ms"])
-    assert client.expected_codes == {"005930_NX"}
-    n_updates = len(client.updated)
-    # 같은 venue 재패스 → no-op.
-    await mgr.watchdog_pass(now["ms"])
-    assert len(client.updated) == n_updates
-    # KRX 복귀 스왑.
-    now["ms"] = _KRX_MS
-    await mgr.watchdog_pass(now["ms"])
-    assert client.expected_codes == {"005930"}
-    await mgr.stop()
-
-
-async def test_watchdog_kick_during_swap_rebuilds_and_rederives():
-    """PR-B: 스왑 시각에 킥된 conn은 재빌드(멤버십 보존) 후 현재 창 venue로 재파생."""
-    now = {"ms": _KRX_MS}
-    mgr, built = _fake_manager(now_fn=lambda: now["ms"])
-    await mgr.sync(("005930",), n_accounts=1)
-    assert len(built) == 1
-    mgr._conns[0].client.kicked_by_peer = True  # 킥 정지
-    now["ms"] = _NXT_MS  # NXT 창으로 스왑 경계
-    await mgr.watchdog_pass(now["ms"])
-    assert len(built) == 2  # 재빌드
-    assert not mgr._conns[0].client.kicked_by_peer
-    # 재빌드 후 NXT venue로 재파생.
-    assert mgr._conns[0].client.expected_codes == {"005930_NX"}
-    await mgr.stop()
 
 
 async def test_watchdog_resubscribes_missing():
@@ -266,26 +223,6 @@ async def test_watchdog_resubscribes_missing():
     await mgr.stop()
 
 
-async def test_watchdog_warmup_incomplete_sets_flag_and_warns(caplog):
-    """PR-B ③: 08:50–09:00 워밍 창에 저장셋 등록 미완이면 warmup_incomplete 플래그 +
-    경고 로그(유일한 저장 리스크 창). 재구독이 수렴 못 하는 persistent 실패를 모의."""
-    mgr, _ = _fake_manager(now_fn=lambda: _WARMUP_MS, persist_missing=True)
-    await mgr.sync(("005930", "000660"), n_accounts=1)
-    mgr._conns[0].client._missing = {"000660"}  # 재구독해도 안 풀리는 미확인
-    with caplog.at_level("WARNING"):
-        await mgr.watchdog_pass(_WARMUP_MS)
-    assert mgr.status()["warmup_incomplete"] is True
-    assert any("warmup_incomplete" in r.getMessage() for r in caplog.records)
-    await mgr.stop()
-
-
-async def test_watchdog_warmup_complete_clears_flag():
-    """워밍 창에서 등록 완결(미확인 0)이면 플래그가 서지 않는다."""
-    mgr, _ = _fake_manager(now_fn=lambda: _WARMUP_MS)
-    await mgr.sync(("005930",), n_accounts=1)  # 미확인 없음
-    await mgr.watchdog_pass(_WARMUP_MS)
-    assert mgr.status()["warmup_incomplete"] is False
-    await mgr.stop()
 
 
 async def test_active_codes_excludes_kicked_account():
@@ -299,4 +236,68 @@ async def test_active_codes_excludes_kicked_account():
     # 계정 0(200종목)만, 계정 1(50종목)은 제외.
     assert len(codes) == 200
     assert mgr.status()["subscribed_count"] == 200
+    await mgr.stop()
+
+
+async def test_watchdog_reconcile_is_time_invariant():
+    """시분할 폐지(ADR-0140 §2): 시각이 바뀌어도 파생 집합이 **안 바뀐다**.
+
+    여기 있던 `test_watchdog_swaps_to_nxt_venue` · `..._swaps_back_to_krx...` ·
+    `..._kick_during_swap...` 셋을 대체한다. 그 셋은 08:50/15:31 경계에서 구독이 통째로
+    갈아 끼워지는 것을 검증했는데, 갈아 끼울 것 자체가 사라졌다. 남은 위험은 반대쪽이다 —
+    **어딘가 시각 의존이 남아 조용히 재구독을 유발하는 것**이라 그걸 못박는다.
+    """
+    now = {"ms": _KRX_MS}
+    mgr, _ = _fake_manager(now_fn=lambda: now["ms"])
+    await mgr.sync(("005930", "000660"), n_accounts=1)
+    client = mgr._conns[0].client
+    assert client.expected_codes == {"005930", "000660"}
+    n_updates = len(client.updated)
+
+    for ms in (_NXT_MS, _WARMUP_MS, _KRX_MS):  # 옛 스왑 경계를 전부 넘나든다
+        now["ms"] = ms
+        await mgr.watchdog_pass(ms)
+        assert client.expected_codes == {"005930", "000660"}
+    assert len(client.updated) == n_updates  # 재구독 0 — no-op 이어야 한다
+    assert set(mgr.active_codes()) == {"005930", "000660"}
+    await mgr.stop()
+
+
+async def test_watchdog_rebuilds_kicked_conn_and_rederives():
+    """킥된 conn 은 재빌드(멤버십 보존) 후 같은 파생 집합으로 복귀한다.
+
+    스왑 경계와 무관해졌으므로 킥 복구만 남긴다(옛 `..._kick_during_swap_...`)."""
+    mgr, built = _fake_manager()
+    await mgr.sync(("005930",), n_accounts=1)
+    assert len(built) == 1
+    mgr._conns[0].client.kicked_by_peer = True
+    await mgr.watchdog_pass(_NXT_MS)
+    assert len(built) == 2
+    assert not mgr._conns[0].client.kicked_by_peer
+    assert mgr._conns[0].client.expected_codes == {"005930"}
+    await mgr.stop()
+
+
+async def test_watchdog_registration_incomplete_sets_flag_and_warns(caplog):
+    """등록 미완은 **상시** 감시한다(ADR-0140 §2 — 08:50–09:00 창 특례 폐지).
+
+    옛 판은 워밍 창 밖이면 플래그를 그냥 내렸다. 그 창은 KRX venue 스왑이 개장 직전에
+    일어난다는 사실에서 나온 것이라 스왑과 함께 근거를 잃었고, NXT·UN 은 08:00–20:00
+    내내 열려 있어 등록 미완의 대가를 아무 때나 치른다."""
+    mgr, _ = _fake_manager(now_fn=lambda: _NXT_MS, persist_missing=True)
+    await mgr.sync(("005930", "000660"), n_accounts=1)
+    mgr._conns[0].client._missing = {"000660"}  # 재구독해도 안 풀리는 미확인
+    with caplog.at_level("WARNING"):
+        await mgr.watchdog_pass(_NXT_MS)  # ← 옛 워밍 창 **밖** 시각
+    assert mgr.status()["registration_incomplete"] is True
+    assert any("registration_incomplete" in r.getMessage() for r in caplog.records)
+    await mgr.stop()
+
+
+async def test_watchdog_registration_complete_clears_flag():
+    """등록 완결(미확인 0)이면 플래그가 서지 않는다 — 시각 무관."""
+    mgr, _ = _fake_manager(now_fn=lambda: _NXT_MS)
+    await mgr.sync(("005930",), n_accounts=1)
+    await mgr.watchdog_pass(_NXT_MS)
+    assert mgr.status()["registration_incomplete"] is False
     await mgr.stop()

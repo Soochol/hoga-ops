@@ -261,9 +261,9 @@ def get_status() -> LiveStatus:
     if k is None or k["connected_accounts"] == 0:
         cap_healthy = False
         cap_reason = "closed" if _market_clock_closed_for_capture(now_ms) else "offline"
-    elif k.get("warmup_incomplete"):
+    elif k.get("registration_incomplete"):
         cap_healthy = False
-        cap_reason = "warmup_incomplete"
+        cap_reason = "registration_incomplete"
     else:
         cap_healthy = True
         cap_reason = "healthy"
@@ -450,18 +450,25 @@ async def stop_live_stream() -> None:
 
 # ── ADR-0067: 보는종목 view 진입점 ─────────────────────────────────────────────
 
-def _resolve_view_venues(venues: set[str] | None) -> set[str]:
-    """뷰 구독 venue 해석 — 미지정(프론트 기본)이면 AUTO 센티넬 1개.
+def _resolve_view_venues(code: str, venues: set[str] | None) -> set[str]:
+    """뷰 구독 venue 해석 — 미지정(프론트 기본)이면 **그 종목이 가진 venue 전부**.
 
-    AUTO는 구독 순간의 venue를 동결하지 않고 매 reconcile 패스에서 target_ws_venue(now)로
-    해석된다 — 08:50 KRX 워밍업 스왑을 넘어 (code,NXT)가 죽은 채 남아 KRX 저장 구독과
-    이중 스트림되던 아침 동시호가 깜빡임을 제거한다. 명시적 {KRX}/{NXT}/{KRX,NXT}(열람
-    옵션 직결)는 그대로 고정(pin)된다."""
+    AUTO 센티넬의 후계다(ADR-0140 §2). AUTO 는 "시점의 target_ws_venue(now)를 추종"이라는
+    뜻이었고 시분할이 사라지며 의미를 잃었다. 대체값을 KRX 하나로 두면 **회귀**다 —
+    프론트는 실측 기준 `venues` 를 아예 안 보내므로(전 요청이 이 경로다) 18:00 에
+    열람하면 KRX 는 닫혀 있어 화면이 멎는다.
+
+    그래서 "전부"로 간다. 저장셋 종목은 어차피 저장 구독이 세 venue 를 다 덮으므로
+    `_covered_by_storage` 가 슬롯을 안 쓴다. 저장셋 밖 종목만 최대 3 슬롯을 쓰는데,
+    그건 사용자가 지금 보고 있는 소수다.
+
+    명시적 {KRX}/{NXT}/{UN}(열람 옵션 직결, PR-H)은 그대로 고정(pin)된다."""
     if venues:
         return venues
-    from .session_gate import AUTO_VENUE  # noqa: PLC0415
+    from .coverage import subscription_venues  # noqa: PLC0415 — 순환 절단(지연)
+    from .kiwoom_session import _nxt_map  # noqa: PLC0415
 
-    return {AUTO_VENUE}
+    return set(subscription_venues(code, _nxt_map()))
 
 
 async def on_view_subscribe(
@@ -476,7 +483,7 @@ async def on_view_subscribe(
     session = _state.kiwoom_session
     if session is None:
         return True
-    return await session.on_view_subscribe(code, _resolve_view_venues(venues), ref=ref or code)
+    return await session.on_view_subscribe(code, _resolve_view_venues(code, venues), ref=ref or code)
 
 
 async def on_view_unsubscribe(
@@ -487,7 +494,7 @@ async def on_view_unsubscribe(
     session = _state.kiwoom_session
     if session is None:
         return
-    await session.on_view_unsubscribe(code, _resolve_view_venues(venues), ref=ref or code)
+    await session.on_view_unsubscribe(code, _resolve_view_venues(code, venues), ref=ref or code)
 
 
 async def refresh_live_stream(*, data_dir: Path) -> None:
