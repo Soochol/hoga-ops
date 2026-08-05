@@ -20,7 +20,8 @@
 | **E** | `nxtEnable` 마스터 확장 + source 레벨 meta | D | — | — |
 | **F** | 동시 구독 + 시분할 폐지 | C·E | ⚠⚠ | ✅ |
 | **G** | 저장 창 확대 + venue별 완결 판정 | D·E·F | ⚠⚠ | ✅ |
-| **H** | 프론트 3옵션 + `liveVenueAcceptsFrame` 재정의 | F | — | — |
+| **J** | API 표면 venue 전파(`/api/range`·거래원·투자자) | D | — | — |
+| **H** | 프론트 3옵션 + `liveVenueAcceptsFrame` 재정의 | F·**J** | — | — |
 | **I** | 보관함·`/study` venue 축 | D·E·H | — | — |
 
 ---
@@ -139,6 +140,51 @@ live_kiwoom/{date}/{venue}/{code}.jsonl
 종료 ④ 15:35에 COMPLETE 가 **뜨지 않고** NXT 마감 후에 뜸 ⑤ 디스크 증가가 추정치(639~727MB)
 범위.
 
+## PR-J — API 표면 venue 전파 (`/api/range`·거래원·투자자)
+
+**저장에 venue 축이 생기면 읽기 API 가 "어느 venue 를 읽을지"를 받아야 한다.** 지금은 그
+파라미터가 아예 없다 — `/api/range` 에 `source_pref` 는 있는데 venue 는 없다([routes.py:334]).
+
+### 왜 별도 PR 인가 — 하나가 지표 6~7개를 실어 나른다
+
+`/api/range` 가 매물대(`trade_volume_poc`·`volume_distribution`) · 최대벽(`ask_peaks`·`bid_peaks`) ·
+프로그램매매 · depth 히트맵 · 잔량 증감 · 거래원 늦은 진입을 **한 번에** 실어 온다. PR-D 에
+얹으면 저장 마이그레이션 PR 이 지표 7개 표면까지 건드리게 된다.
+
+### ⚠ 안 하면 생기는 일 — "지원 안 됨"이 아니라 **조용히 틀린 차트**
+
+실시간 꼬리는 `useLiveBundle` → `liveVenueAcceptsFrame` 으로 venue 필터가 걸리고, 과거 본체는
+`/api/range` 를 타서 KRX 로 고정된다. → **한 차트 안에서 앞부분 KRX + 꼬리 NXT.**
+
+### 대상
+
+| 모듈 | 현재 venue |
+|---|---|
+| `api/range.ts` ↔ `/api/range` | **0** — 지표 6~7개 |
+| `api/brokerSeries.ts` | **0** — ⚠ #1112 가 *"거래원은 venue 선택기를 따른다"* 고 결정했는데 API 가 안 받는다 |
+| `livePastInvestorNet.ts` · `liveInvestorTrendEstimate.ts` | **0** |
+| `liveRankings.ts` | 0 — venue 축 필요 여부 판단 |
+
+### venue 가 **필요 없는** 것 (구조적 — 손대지 않는다)
+
+`liveStockLimits`(상한가·하한가는 종목 단위, 실물 앱에서 KRX·NXT 동일값 확인) ·
+`liveViStatus`(**NXT 엔 VI 가 없다**) · `marketIndexQuotes`·`indexSectorRankings`·`optionSentiment`
+(종목 venue 무관) · `screenerDailyCandles`(KIS 일봉, venue 축 없음).
+
+### 규율
+
+- venue 는 **필수 파라미터**로 둔다. 기본값 `"KRX"` 는 호출자가 빠뜨렸을 때 조용히 KRX 를 주는
+  silent 실패이고, 이 플랜이 일관되게 기각해 온 형태다(PR-D 의 경로 헬퍼 필수 인자와 같은 규율).
+  호출자는 전부 우리가 통제한다
+- ⚠ **기존 엔드포인트 기본값 재검토** — `live/api.py:2061·2145·2339·2412` 가 `Query("KRX")` 로
+  조용한 기본값을 갖는다. 새 것만 필수로 하면 규율이 갈린다
+- **프론트 쿼리 키에 venue 포함** — `livePastCandles` 가 이미 그렇게 한다(`[code, from, to, venue]`).
+  안 넣으면 venue 를 바꿔도 캐시가 안 갈려 **이전 venue 데이터가 그대로 보인다**
+- `_resolved_parquet_dir` 가 venue 를 받아 `sources.py` 사다리에 넘김
+
+**검증:** venue 를 바꿔 가며 같은 종목·날짜를 조회해 **세 응답이 서로 다름**을 확인(같으면 전파가
+안 된 것). 미상장 종목에 NXT 를 요청하면 빈 응답 + 사유(#1109 판정 규칙).
+
 ## PR-H — 프론트 3옵션 + `liveVenueAcceptsFrame` 재정의
 
 - `LIVE_VENUE_OPTIONS = ['KRX','NXT','UN']`, 라벨 `{KRX,NXT,통합}` — **'시간대 자동' 삭제**
@@ -165,7 +211,7 @@ live_kiwoom/{date}/{venue}/{code}.jsonl
 **히트맵·스크리너는 전역 `useLiveVenueStore` 를 이미 공유한다**(`Heatmap.tsx:39` · `useScreenerRowsLive.ts:35` ·
 `useScreenerMonitor.ts:54`). 즉 PR-H 가 3옵션을 켜는 순간 **아무도 결정하지 않았는데 두 화면의 동작이 바뀐다.**
 히트맵 272종 중 **98종(36%)은 NXT 데이터가 없어** 셀이 비는데, 히트맵은 "잔량이 없다"와 "시장에 없다"를
-구분할 수단이 없다. **PR-H 착수 전에 #1132 를 해소한다.**
+구분할 수단이 없다. **PR-H 착수 전에 #1132 를 해소한다.** (PR-H 는 PR-J 도 선행으로 갖는다 — 위 참조.)
 
 ## PR-I — 보관함·`/study` venue 축
 
