@@ -105,6 +105,10 @@ live_kiwoom/{date}/{venue}/{code}.jsonl
   함께. bump 없이 배포하면 ETN `Q` 접두 때 캐시가 이원화됐던 자리를 반복한다
 - `kiwoom_live/meta.json` 신설: `nxt_enabled`(캡처 시점 as-of) · `expected_venues`
 - 판별 실패 기본값은 **"모름"이지 "미상장"이 아니다**
+- ⚠ **`SymbolHit` + `/api/symbols/all` 까지 확장** — #1132 가 "미상장을 히트맵·스크리너에 명시"로
+  결정했으므로 프론트가 종목별 `nxt_enabled` 를 알아야 한다. 지금 wire 에는 없다
+  (`models.py:618` — `code·name·market·security_type·captured_*` 뿐). 기본값은 `False` 가 아니라
+  **판별 불가를 뜻하는 값**이어야 한다(`bool | None` 검토)
 
 **검증:** 시드 왕복 + 미상장 판정 규칙 단위 테스트(4경우 전부).
 
@@ -164,6 +168,7 @@ live_kiwoom/{date}/{venue}/{code}.jsonl
 | `api/brokerSeries.ts` | **0** — ⚠ #1112 가 *"거래원은 venue 선택기를 따른다"* 고 결정했는데 API 가 안 받는다 |
 | `livePastInvestorNet.ts` · `liveInvestorTrendEstimate.ts` | **0** |
 | `liveRankings.ts` | 0 — venue 축 필요 여부 판단 |
+| `/api/heatmap/group-flow` | **받지만 무시** — 주석 그대로 *"프론트 계약 호환용 … 미사용"*. 프론트는 쿼리 키에 넣으므로 **캐시만 3벌** 생기고 응답은 동일. #1132 의 전역 유지 결정으로 **정합성 문제**가 됐다(히트맵 셀은 venue별 시세인데 그룹 헤더 흐름만 KRX 고정) |
 
 ### venue 가 **필요 없는** 것 (구조적 — 손대지 않는다)
 
@@ -206,12 +211,16 @@ live_kiwoom/{date}/{venue}/{code}.jsonl
 **검증:** typecheck 3프로젝트 + vitest + e2e. UI 문구 변경은 e2e 셀렉터를 깨뜨리므로 문구 대신
 `data-*` 원값 셀렉터를 쓴다.
 
-## 선행 결정 하나가 남아 있다 — [#1132](https://github.com/Soochol/hoga-ops/issues/1132)
+## 히트맵·스크리너 — [#1132](https://github.com/Soochol/hoga-ops/issues/1132) 해소됨
 
-**히트맵·스크리너는 전역 `useLiveVenueStore` 를 이미 공유한다**(`Heatmap.tsx:39` · `useScreenerRowsLive.ts:35` ·
-`useScreenerMonitor.ts:54`). 즉 PR-H 가 3옵션을 켜는 순간 **아무도 결정하지 않았는데 두 화면의 동작이 바뀐다.**
-히트맵 272종 중 **98종(36%)은 NXT 데이터가 없어** 셀이 비는데, 히트맵은 "잔량이 없다"와 "시장에 없다"를
-구분할 수단이 없다. **PR-H 착수 전에 #1132 를 해소한다.** (PR-H 는 PR-J 도 선행으로 갖는다 — 위 참조.)
+**venue 는 전역 유지**(`/live` 선택이 히트맵·스크리너까지 지배 — 현행 그대로, 변경 0). **미상장 98종은
+"이 시장에 없음"을 명시**한다(빈 값과 장애를 구분하고, 보관함 뱃지와 같은 판정을 공유).
+
+⚠ 이 티켓이 전제했던 것 중 **셋이 틀렸음**이 조사에서 드러났다: 히트맵은 depth 가 아니라 **시세(등락률)
+히트맵**이고, **스크리너 조건은 venue 를 안 쓰며**(일봉 parquet 판정, venue 는 결과 행 실시간 오버레이에만),
+**UN 은 이미 동작 중**이라 3옵션이 추가하는 건 NXT 단독뿐이다.
+
+파생 요구 둘은 PR-E(`SymbolHit` 확장)와 PR-J(`group-flow` 실제 구현)로 편입했다.
 
 ## PR-I — 보관함·`/study` venue 축
 
