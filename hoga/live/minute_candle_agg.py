@@ -59,7 +59,9 @@ class MinuteCandleAggregator:
 
     def __init__(self) -> None:
         # code → {minute_index → _Bar}. minute_index = unix_ms // 60_000.
-        self._codes: dict[str, dict[int, _Bar]] = {}
+        # 키 = **(bare code, venue)**. 다운샘플러와 같은 이유 — venue 를 빼면
+        # KRX·NXT 체결이 한 봉에 섞인다(ADR-0140 §2).
+        self._codes: dict[tuple[str, str], dict[int, _Bar]] = {}
 
     def ingest(self, tick: WsTick) -> None:
         if tick.kind is not SnapshotKind.TRADE:
@@ -69,7 +71,7 @@ class MinuteCandleAggregator:
             return
         cum = tick.payload.get("cum_volume")
         cum_val = int(cum) if isinstance(cum, int) and cum > 0 else None
-        bars = self._codes.setdefault(tick.code, {})
+        bars = self._codes.setdefault((tick.code, tick.venue), {})
         for tr in trades:
             price = int(tr.get("price", 0) or 0)
             qty = int(tr.get("qty", 0) or 0)
@@ -92,7 +94,9 @@ class MinuteCandleAggregator:
                     bar.first_qty = qty
                 bar.last_cum = cum_val
 
-    def flush(self, *, now_ms: int, seal_all: bool = False) -> dict[str, list[LiveSnapshot]]:
+    def flush(
+        self, *, now_ms: int, seal_all: bool = False
+    ) -> dict[tuple[str, str], list[LiveSnapshot]]:
         """완성(봉인) 봉만 반환 — **제거하지 않는다**(durability: commit이 뺀다).
 
         봉인 기준: 봉의 분 인덱스 < 현재 분(now_ms 기준). ``seal_all``이면 진행 중
@@ -100,8 +104,8 @@ class MinuteCandleAggregator:
 
         LiveSnapshot.t_ms는 분 시작 Unix ms. payload는 OHLCV(원 단위)."""
         cutoff = now_ms // MS_PER_MINUTE
-        out: dict[str, list[LiveSnapshot]] = {}
-        for code, bars in self._codes.items():
+        out: dict[tuple[str, str], list[LiveSnapshot]] = {}
+        for key, bars in self._codes.items():
             snaps: list[LiveSnapshot] = []
             for minute in sorted(bars):
                 if not seal_all and minute >= cutoff:
@@ -119,28 +123,29 @@ class MinuteCandleAggregator:
                     },
                 ))
             if snaps:
-                out[code] = snaps
+                out[key] = snaps
         return out
 
-    def commit(self, code: str, *, minutes: list[int]) -> None:
+    def commit(self, code: str, venue: str, *, minutes: list[int]) -> None:
         """append 성공 후 봉인 봉을 제거한다(다운샘플러 commit_code와 동형).
 
         봉이 서로 독립(봉 자기완결적 거래량)이라 baseline을 다시 셈할 필요가 없다 —
         해당 분 버킷만 지우면 된다. evict된 코드엔 no-op."""
-        bars = self._codes.get(code)
+        bars = self._codes.get((code, venue))
         if bars is None:
             return
         for minute in minutes:
             bars.pop(minute, None)
         if not bars:
-            del self._codes[code]
+            del self._codes[(code, venue)]
 
     def set_active_codes(self, codes: set[str]) -> None:
         """Live Set 밖으로 밀려난 코드의 미봉인 봉 제거(다운샘플러와 동일 규율) —
         구독 해제된 종목이 유령 봉을 남기지 않게 한다."""
-        for code in list(self._codes):
-            if code not in codes:
-                del self._codes[code]
+        # 멤버십은 **종목 단위** — 코드가 떠나면 그 종목의 모든 venue 봉을 버린다.
+        for key in list(self._codes):
+            if key[0] not in codes:
+                del self._codes[key]
 
     def reset(self) -> None:
         """일경계 초기화 — 진행 중 봉이 밤을 넘겨 다음 거래일을 오염시키지 않게.

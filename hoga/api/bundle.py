@@ -109,9 +109,10 @@ def _empty_volume_profile() -> VolumeProfile:
     return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
 
-def _resolve_source(engine: QueryEngine, date: str, code: str, pref: str) -> str:
+def _resolve_source(engine: QueryEngine, date: str, code: str, pref: str,
+                    venue: str = "KRX") -> str:
     """Backward-compatible source-name helper for older unit tests."""
-    return resolve_source_result(engine, date, code, pref).source
+    return resolve_source_result(engine, date, code, pref, venue).source
 
 
 def _resolve_trade_indicator_source(
@@ -1364,6 +1365,11 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     to_date: str,
     bucket_ms: int,
     source_pref: str = "hogaplay",  # ADR-0039
+    # 이 번들이 매물대·최대벽·프로그램·depth 히트맵·잔량 증감·거래원 늦은 진입의
+    # 과거 시계열을 한꺼번에 실어 나른다. **필수는 HTTP 라우트 쪽**이다(`/api/range`
+    # 의 `Query(...)`) — 프론트가 빠뜨리면 실시간 꼬리와 다른 시장이 한 차트에 섞인다.
+    # 여기는 우리 코드만 부르므로 기본값을 둔다(경계 설명은 sources.resolve_source_result).
+    venue: str = "KRX",
     broker_late_entries_enabled: bool = True,
     broker_late_entry_start_hhmm: int = 930,
     volume_distribution_bins: int | None = None,
@@ -1515,7 +1521,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         # kiwoom_live/kis_live가 호가로 이겨도 캔들은 hogaplay 또는 ADR-0109
         # 복구본(kis_api)에서 온다. 이 분리가 없으면 캔들 미보유 승자가 같은
         # Stock-Date의 실제 캔들을 통째로 가린다.
-        candle_source = resolve_candle_source(engine, d, code, source_pref)
+        candle_source = resolve_candle_source(engine, d, code, source_pref, venue)
         needs_trade_price_range = volume_distribution_bins is not None or include_trade_volume_pocs
         needs_raw_candles = not hoga_only and (not sidecar_only or needs_trade_price_range)
         raw_candles = (

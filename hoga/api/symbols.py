@@ -206,7 +206,11 @@ _state: SymbolCacheState = SymbolCacheState.unavailable(
     reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
 )
 _refresh_coordinator: _RefreshCoordinator[SymbolsAllResponse] = _RefreshCoordinator()
-SCHEMA_VERSION = 3
+# v4: `nxt_enabled` 추가(ADR-0140 §4·#1127). **하한(_MIN)은 3 그대로** — v3 캐시는
+# 그 필드만 없을 뿐 코드 체계가 같아 그대로 읽히고(nxt_enabled=None=모름),
+# `needs_boot_refresh()` 가 배경 재다운로드를 예약해 자연히 채워진다. 하한까지
+# 올리면 오프라인 부팅에서 캐시를 통째로 버리는 과잉무효화가 된다.
+SCHEMA_VERSION = 4
 # 로더가 받아들이는 가장 오래된 스키마.
 #
 # **v3 에서 하한을 올렸다(PR-I·#1045).** v2 는 KIS `.mst` 산이라 ETN 코드에 `Q`
@@ -295,6 +299,9 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int, int] | None:
                 name=e["name"],
                 market=e["market"],
                 security_type=e.get("security_type", "stock"),
+                # 구 캐시엔 이 키가 없다 → **모름**(None). `False`(미상장)로 읽으면
+                # 캐시 하나가 "전 종목 NXT 미상장"이라 거짓 증언한다.
+                nxt_enabled=e.get("nxt_enabled"),
                 captured_count=0,
                 captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
             )
@@ -321,7 +328,8 @@ def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> 
         "fetched_at_ms": fetched_at_ms,
         "source": "kis_mst",
         "entries": [
-            {"code": e.code, "name": e.name, "market": e.market, "security_type": e.security_type}
+            {"code": e.code, "name": e.name, "market": e.market,
+             "security_type": e.security_type, "nxt_enabled": e.nxt_enabled}
             for e in entries
         ],
     }
@@ -336,6 +344,7 @@ def _rows_to_hits(rows) -> list[SymbolHit]:
             name=r.name,
             market=r.market,  # type: ignore[arg-type]
             security_type=r.security_type,
+            nxt_enabled=r.nxt_enabled,
             captured_count=0,
             captured_breakdown=dict(empty),
         )

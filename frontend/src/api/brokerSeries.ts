@@ -1,3 +1,4 @@
+import type { LiveVenueOption } from '../state/liveVenue';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
@@ -15,12 +16,15 @@ import type { BrokerSeriesResponse } from './types';
 export function useBrokerSeriesForDay(
   code: string | null,
   date: string | null,
+  /** 거래원은 별도 정책 없이 **venue 선택기를 따른다**(#1112). 쿼리 키에도 넣어야
+   *  venue 를 바꿨을 때 캐시가 갈린다. */
+  venue: LiveVenueOption,
 ) {
   return useQuery({
-    queryKey: ['brokers/series', code, date] as const,
+    queryKey: ['brokers/series', code, date, venue] as const,
     queryFn: () =>
       apiCall<BrokerSeriesResponse>(
-        `/api/brokers/series?code=${code}&date=${date}`,
+        `/api/brokers/series?code=${code}&date=${date}&venue=${venue}`,
       ),
     enabled: code !== null && date !== null,
     staleTime: Infinity,

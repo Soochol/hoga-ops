@@ -33,7 +33,7 @@ describe('useBrokerSeriesForDay', () => {
   it('disabled when code is null', () => {
     const spy = vi.spyOn(client, 'apiCall');
     const { result } = renderHook(
-      () => useBrokerSeriesForDay(null, '20260519'),
+      () => useBrokerSeriesForDay(null, '20260519', 'KRX'),
       { wrapper: makeWrapper() },
     );
     expect(result.current.isLoading).toBe(false);
@@ -43,7 +43,7 @@ describe('useBrokerSeriesForDay', () => {
   it('disabled when date is null', () => {
     const spy = vi.spyOn(client, 'apiCall');
     const { result } = renderHook(
-      () => useBrokerSeriesForDay('005930', null),
+      () => useBrokerSeriesForDay('005930', null, 'KRX'),
       { wrapper: makeWrapper() },
     );
     expect(result.current.isLoading).toBe(false);
@@ -53,12 +53,12 @@ describe('useBrokerSeriesForDay', () => {
   it('calls /api/brokers/series with correct query string', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeResponse);
     const { result } = renderHook(
-      () => useBrokerSeriesForDay('005930', '20260519'),
+      () => useBrokerSeriesForDay('005930', '20260519', 'KRX'),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(spy).toHaveBeenCalledWith(
-      '/api/brokers/series?code=005930&date=20260519',
+      '/api/brokers/series?code=005930&date=20260519&venue=KRX',
     );
     expect(result.current.data).toEqual(fakeResponse);
   });
@@ -70,7 +70,7 @@ describe('useBrokerSeriesForDay', () => {
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     );
     const { rerender } = renderHook(
-      () => useBrokerSeriesForDay('005930', '20260519'),
+      () => useBrokerSeriesForDay('005930', '20260519', 'KRX'),
       { wrapper },
     );
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));

@@ -32,7 +32,7 @@ def test_state_last_wins_and_flow_sums():
     ds.ingest(_tr("005930", 1600, qty=3, side=-1))
     ds.ingest(_tr("005930", 1700, qty=4, side=1))
     out = ds.flush(now_ms=10_000, phase="regular")
-    snaps = {s.kind: s for s in out["005930"]}
+    snaps = {s.kind: s for s in out[("005930", "KRX")]}
     assert snaps[SnapshotKind.OB].payload["total_ask_qty"] == 222
     assert snaps[SnapshotKind.FILL].payload == {
         "buy_qty": 9, "sell_qty": 3, "phase": "regular",
@@ -49,7 +49,7 @@ def test_flush_emits_price_grouped_trade_snapshot_for_volume_distribution():
     ds.ingest(_tr("005930", 1800, qty=99, side=0))
 
     out = ds.flush(now_ms=20_000, phase="regular", fill_t_ms=10_000)
-    snaps = {s.kind: s for s in out["005930"]}
+    snaps = {s.kind: s for s in out[("005930", "KRX")]}
 
     assert snaps[SnapshotKind.TRADE].t_ms == 10_000
     assert sorted(snaps[SnapshotKind.TRADE].payload["trades"], key=lambda t: (t["price"], t["side"])) == [
@@ -58,13 +58,13 @@ def test_flush_emits_price_grouped_trade_snapshot_for_volume_distribution():
     ]
 
     ds.commit_code(
-        "005930",
+        "005930", "KRX",
         buy_qty=9,
         sell_qty=3,
         trades=snaps[SnapshotKind.TRADE].payload["trades"],
     )
     out2 = ds.flush(now_ms=30_000, phase="regular", fill_t_ms=20_000)
-    assert all(s.kind is not SnapshotKind.TRADE for s in out2["005930"])
+    assert all(s.kind is not SnapshotKind.TRADE for s in out2[("005930", "KRX")])
 
 
 def test_side_zero_excluded_from_fill():
@@ -72,7 +72,7 @@ def test_side_zero_excluded_from_fill():
     ds = TickDownsampler()
     ds.ingest(_tr("005930", 1000, qty=100, side=0))
     out = ds.flush(now_ms=10_000, phase="regular")
-    fill = next(s for s in out["005930"] if s.kind is SnapshotKind.FILL)
+    fill = next(s for s in out[("005930", "KRX")] if s.kind is SnapshotKind.FILL)
     assert fill.payload["buy_qty"] == 0 and fill.payload["sell_qty"] == 0
 
 
@@ -82,7 +82,7 @@ def test_state_carry_when_no_new_tick():
     ds.ingest(_ob("005930", 1000, tot_ask=111))
     ds.flush(now_ms=10_000, phase="regular")
     out2 = ds.flush(now_ms=20_000, phase="regular")   # 새 tick 없음
-    ob = next(s for s in out2["005930"] if s.kind is SnapshotKind.OB)
+    ob = next(s for s in out2[("005930", "KRX")] if s.kind is SnapshotKind.OB)
     assert ob.payload["total_ask_qty"] == 111
     assert ob.t_ms == 20_000
 
@@ -94,9 +94,9 @@ def test_flow_resets_each_window():
     ds = TickDownsampler()
     ds.ingest(_tr("005930", 1000, qty=5, side=1))
     ds.flush(now_ms=10_000, phase="regular")
-    ds.commit_code("005930", buy_qty=5, sell_qty=0)    # append 성공 → 빼기
+    ds.commit_code("005930", "KRX", buy_qty=5, sell_qty=0)    # append 성공 → 빼기
     out2 = ds.flush(now_ms=20_000, phase="regular")
-    fill = next(s for s in out2["005930"] if s.kind is SnapshotKind.FILL)
+    fill = next(s for s in out2[("005930", "KRX")] if s.kind is SnapshotKind.FILL)
     assert fill.payload["buy_qty"] == 0                # commit 후 0 (강수량계)
 
 
@@ -106,11 +106,11 @@ def test_flush_does_not_reset_until_commit():
     ds = TickDownsampler()
     ds.ingest(_tr("005930", 1000, qty=5, side=1))
     out1 = ds.flush(now_ms=10_000, phase="regular")
-    assert next(s for s in out1["005930"]
+    assert next(s for s in out1[("005930", "KRX")]
                 if s.kind is SnapshotKind.FILL).payload["buy_qty"] == 5
     # commit 안 함(append 실패 시뮬) → 다음 flush가 같은 합을 다시 본다(보존)
     out2 = ds.flush(now_ms=20_000, phase="regular")
-    assert next(s for s in out2["005930"]
+    assert next(s for s in out2[("005930", "KRX")]
                 if s.kind is SnapshotKind.FILL).payload["buy_qty"] == 5
 
 
@@ -121,9 +121,9 @@ def test_commit_code_subtracts_only_committed_amount():
     ds.ingest(_tr("005930", 1000, qty=5, side=1))
     ds.flush(now_ms=10_000, phase="regular")           # 스냅샷 buy=5
     ds.ingest(_tr("005930", 1500, qty=3, side=1))      # await 창에 도착(buy=8)
-    ds.commit_code("005930", buy_qty=5, sell_qty=0)    # 본 5만 뺀다
+    ds.commit_code("005930", "KRX", buy_qty=5, sell_qty=0)    # 본 5만 뺀다
     out2 = ds.flush(now_ms=20_000, phase="regular")
-    fill = next(s for s in out2["005930"] if s.kind is SnapshotKind.FILL)
+    fill = next(s for s in out2[("005930", "KRX")] if s.kind is SnapshotKind.FILL)
     assert fill.payload["buy_qty"] == 3                # 8 − 5 = 3 (await 틱 보존)
 
 
@@ -132,7 +132,7 @@ def test_commit_code_noop_for_evicted_code():
     ds = TickDownsampler()
     ds.ingest(_tr("005930", 1000, qty=5, side=1))
     ds.set_active_codes({"000660"})                    # 005930 제거
-    ds.commit_code("005930", buy_qty=5, sell_qty=0)    # 예외 없이 no-op
+    ds.commit_code("005930", "KRX", buy_qty=5, sell_qty=0)    # 예외 없이 no-op
 
 
 def test_evicted_code_stops_emitting():
@@ -157,10 +157,10 @@ def test_broker_state_last_wins_and_carries():
     ds.ingest(_broker("005930", 1000, "A증권"))
     ds.ingest(_broker("005930", 2000, "B증권"))      # 마지막이 이김
     out = ds.flush(now_ms=10_000, phase="regular")
-    br = next(s for s in out["005930"] if s.kind is SnapshotKind.BROKER)
+    br = next(s for s in out[("005930", "KRX")] if s.kind is SnapshotKind.BROKER)
     assert br.payload["sell_top"][0]["name"] == "B증권"
     out2 = ds.flush(now_ms=20_000, phase="regular")  # carry
-    br2 = next(s for s in out2["005930"] if s.kind is SnapshotKind.BROKER)
+    br2 = next(s for s in out2[("005930", "KRX")] if s.kind is SnapshotKind.BROKER)
     assert br2.payload["sell_top"][0]["name"] == "B증권"
     assert br2.t_ms == 20_000
 
@@ -174,7 +174,7 @@ def test_fill_stamped_with_window_start_label():
     ds.ingest(_ob("005930", 1000, tot_ask=111))
     ds.ingest(_tr("005930", 1500, qty=5, side=1))
     out = ds.flush(now_ms=20_000, phase="regular", fill_t_ms=10_000)
-    snaps = {s.kind: s for s in out["005930"]}
+    snaps = {s.kind: s for s in out[("005930", "KRX")]}
     assert snaps[SnapshotKind.FILL].t_ms == 10_000   # 윈도 시작
     assert snaps[SnapshotKind.OB].t_ms == 20_000     # 상태형은 마감 시각
 
@@ -184,7 +184,7 @@ def test_multi_code_sums_are_isolated():
     ds.ingest(_tr("005930", 1000, qty=5, side=1))
     ds.ingest(_tr("000660", 1100, qty=7, side=-1))
     out = ds.flush(now_ms=10_000, phase="regular")
-    f1 = next(s for s in out["005930"] if s.kind is SnapshotKind.FILL)
-    f2 = next(s for s in out["000660"] if s.kind is SnapshotKind.FILL)
+    f1 = next(s for s in out[("005930", "KRX")] if s.kind is SnapshotKind.FILL)
+    f2 = next(s for s in out[("000660", "KRX")] if s.kind is SnapshotKind.FILL)
     assert (f1.payload["buy_qty"], f1.payload["sell_qty"]) == (5, 0)
     assert (f2.payload["buy_qty"], f2.payload["sell_qty"]) == (0, 7)

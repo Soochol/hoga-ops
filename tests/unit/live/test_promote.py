@@ -421,7 +421,7 @@ async def test_promote_kiwoom_today_persists_price_grouped_trades_for_distributi
 
     await promote_mod.promote_kiwoom_today(tmp_path, code=code)
 
-    target = tmp_path / "parquet" / date / code / "kiwoom_live"
+    target = tmp_path / "parquet" / date / code / "kiwoom_live" / "KRX"
     assert (target / "trades.parquet").exists()
     assert (target / "fills.parquet").exists()
     assert not (target / "candles.parquet").exists()
@@ -546,7 +546,7 @@ async def test_promote_writes_kiwoom_candles_parquet(tmp_path: Path) -> None:
 
     await promote_one(jsonl, root, code="005930", date=date, source="kiwoom_live")
 
-    cpath = root / date / "005930" / "kiwoom_live" / "candles.parquet"
+    cpath = root / date / "005930" / "kiwoom_live" / "KRX" / "candles.parquet"
     assert cpath.exists()
     got = candles_tbl.read_parquet(cpath)
     assert len(got) == 1
@@ -571,7 +571,7 @@ async def test_promote_skips_empty_candles_parquet(tmp_path: Path) -> None:
 
     await promote_one(jsonl, root, code="005930", date=date, source="kiwoom_live")
 
-    target = root / date / "005930" / "kiwoom_live"
+    target = root / date / "005930" / "kiwoom_live" / "KRX"
     assert (target / "trades.parquet").exists()
     assert not (target / "candles.parquet").exists()   # 빈 캔들 → 파일 없음
 

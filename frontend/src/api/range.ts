@@ -13,6 +13,7 @@ import {
   type RangeQueryKey,
   type RangeRequestOptions,
 } from './rangeRequest';
+import { useLiveVenueStore } from '../state/liveVenue';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { SourcePreference } from '../state/sourcePreference';
 import { useLivePromotionStore } from '../state/livePromotion';
@@ -584,6 +585,10 @@ export function useRange(
 ) {
   const storedSourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const sourcePref = sourcePrefOverride ?? storedSourcePref;
+  // venue 는 **전역 선택기**를 따른다(#1132) — `/live` 에서 고른 시장이 히트맵·
+  // 스크리너까지 지배하는 것과 같은 규율. 쿼리 키에도 들어가므로 venue 를 바꾸면
+  // 캐시가 갈린다(안 갈리면 이전 venue 데이터가 그대로 보인다).
+  const venue = useLiveVenueStore((s) => s.venue);
   return useQuery(rangeBundleQueryOptions({
     code,
     from,
@@ -592,6 +597,7 @@ export function useRange(
     priceRange,
     todayKst,
     sourcePref,
+    venue,
     options,
   }));
 }
@@ -609,13 +615,14 @@ function useLiveRangeDelta(
 ) {
   const storedSourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const sourcePref = sourcePrefOverride ?? storedSourcePref;
+  const venue = useLiveVenueStore((s) => s.venue);  // 전역 선택기(#1132)
   const queryClient = useQueryClient();
   const mergedRef = useRef<{ identity: string; data: RangeBundle; updatedAtMs: number } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [, forceRerender] = useReducer((value: number) => value + 1, 0);
   const baseInput = useMemo<RangeBundleRequestInput>(
-    () => ({ code, from, to, timeframe, priceRange, todayKst, sourcePref, options }),
-    [code, from, to, timeframe, priceRange, todayKst, sourcePref, options],
+    () => ({ code, from, to, timeframe, priceRange, todayKst, sourcePref, venue, options }),
+    [code, from, to, timeframe, priceRange, todayKst, sourcePref, venue, options],
   );
   const merged = mergedRef.current;
   const identity = liveRangeDeltaIdentity(baseInput);

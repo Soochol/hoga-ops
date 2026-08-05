@@ -13,6 +13,7 @@ from hoga.api.disk_state import (
     classify_stock_date,
     completeness_rank,
 )
+from hoga.live.venue import Venue
 
 if TYPE_CHECKING:
     from hoga.api.queries import QueryEngine
@@ -32,6 +33,51 @@ if TYPE_CHECKING:
 # 서빙하지 않듯 kis_live/kiwoom_live는 캔들을 서빙하지 않으므로, 두 차원의 승자가
 # 한 Stock-Date에서 갈릴 수 있다.
 SourceName = Literal["hogaplay", "kis_live", "kiwoom_live", "kis_api"]
+
+#: source 가 **venue 축을 갖는가**. NXT·통합이 생길 수 있는 source 는 `kiwoom_live`
+#: 뿐이다 — hogaplay 는 정규장 KRX 업스트림(전체 디렉터리의 78%)이고, kis_live 는
+#: 삭제된 계층, kis_api 는 캔들 전용이다(ADR-0140 §3). 읽기 규칙을 여기 한 곳에
+#: 봉인해 조립부마다 재구현되지 않게 한다.
+SOURCE_HAS_VENUE: dict[SourceName, bool] = {
+    "hogaplay": False,
+    "kis_live": False,
+    "kiwoom_live": True,
+    "kis_api": False,
+}
+
+
+def source_venue_dir(stock_date_dir: Path, source: str, venue: Venue) -> Path:
+    """정본 경로 `{code}/{source}[/{venue}]` — **쓰기는 항상 이걸 쓴다.**
+
+    venue 축이 없는 source 는 세그먼트를 붙이지 않는다. venue 를 **필수 인자**로 둔
+    이유: 기본값을 주면 호출부가 빠뜨렸을 때 조용히 KRX 를 쓰고, 그게 곧 두 시장이
+    한 파일에 섞이는 경로다(ADR-0140 §3 — 빠뜨렸을 때 즉시 터지게).
+    """
+    base = stock_date_dir / source
+    return base / venue if SOURCE_HAS_VENUE.get(cast(SourceName, source), False) else base
+
+
+def resolve_source_venue_dir(stock_date_dir: Path, source: str, venue: Venue) -> Path:
+    """읽기 경로 — venue 디렉터리가 없으면 마이그레이션 전 `{source}/` 로 폴백.
+
+    ⚠ **한시적이다. PR-D2 가 이 함수를 통째로 삭제한다.**
+
+    ADR-0140 §3 은 하위호환 분기를 기각했다 — *"경계가 날짜가 아니라 '있느냐'라
+    배포 이후에도 두 모양이 영구히 섞인다"*. 그 기각은 **영구** 분기를 전제한
+    것이고, 여기 폴백은 **코드와 데이터가 동시에 바뀔 수 없어서 생기는 창**만
+    덮는다: 머지 → 마이그레이션 스크립트 실행 → 이 함수 삭제.
+
+    폴백 조건을 "venue 디렉터리 부재"가 아니라 **"부재 AND 구 경로에 meta.json 존재"**
+    로 좁힌다 — 그냥 부재면 새 레이아웃에서 아직 안 쌓인 venue(예: 미상장 종목의
+    NXT)까지 구 경로로 흘러 KRX 데이터를 NXT 로 읽는다.
+    """
+    canonical = source_venue_dir(stock_date_dir, source, venue)
+    if canonical.exists():
+        return canonical
+    legacy = stock_date_dir / source
+    if canonical != legacy and (legacy / "meta.json").exists():
+        return legacy
+    return canonical
 MissingReason = Literal["stock_date_missing", "source_missing"]
 SourcePolicy = Literal[
     "hogaplay",
@@ -130,8 +176,13 @@ def _classify_flat_legacy_meta(stock_date_dir: Path) -> Classification | None:
 
 
 def resolve_source_result(
-    engine: QueryEngine, date: str, code: str, pref: str,
+    engine: QueryEngine, date: str, code: str, pref: str, venue: str = "KRX",
 ) -> SourceResolution:
+    # ⚠ venue 기본값의 **경계**: HTTP 라우트는 필수(`Query(...)`), 내부 헬퍼는 기본값이다.
+    # 이 PR 이 막는 위험은 **프론트가 venue 를 안 보내 조용히 KRX 가 되는 것**이고 그건
+    # HTTP 경계에서만 생긴다 — 이 함수의 유일한 프로덕션 호출자는 이미 라우트에서
+    # venue 를 받는다. 내부까지 필수로 하면 venue 와 무관한 테스트 125개가 "KRX" 를
+    # 채워 넣는 의식이 되고, 그 의식은 오히려 경계를 흐린다.
     order = ordered_sources(pref)
     sd_dir = engine.data_dir / "parquet" / date / code
     if not isinstance(sd_dir, Path):
@@ -182,7 +233,7 @@ def resolve_source_result(
             winner = cast(SourceName, ranked[0][2])
             return SourceResolution(
                 source=winner,
-                path=sd_dir / winner,
+                path=resolve_source_venue_dir(sd_dir, winner, venue),
                 classification=per_source[winner],
             )
         # healthy 없음(전부 INVALID/부재) → 아래 공통 폴백으로 진행.
@@ -191,7 +242,7 @@ def resolve_source_result(
             if source in healthy:
                 return SourceResolution(
                     source=source,
-                    path=sd_dir / source,
+                    path=resolve_source_venue_dir(sd_dir, source, venue),
                     classification=per_source[source],
                 )
 
@@ -199,7 +250,7 @@ def resolve_source_result(
     if source in per_source:
         return SourceResolution(
             source=source,
-            path=sd_dir / source,
+            path=resolve_source_venue_dir(sd_dir, source, venue),
             classification=per_source[source],
         )
     return SourceResolution(
@@ -215,7 +266,7 @@ def resolve_source(engine: QueryEngine, date: str, code: str, pref: str) -> Sour
 
 
 def resolve_candle_source(
-    engine: QueryEngine, date: str, code: str, pref: str,
+    engine: QueryEngine, date: str, code: str, pref: str, venue: str = "KRX",
 ) -> SourceName | None:
     """이 (date, code)의 캔들을 서빙할 Source — 없으면 ``None``.
 
@@ -249,6 +300,6 @@ def resolve_candle_source(
         classification = per_source.get(source)
         if classification is None or classification.state == DiskState.INVALID:
             continue
-        if (sd_dir / source / "candles.parquet").exists():
+        if (resolve_source_venue_dir(sd_dir, source, venue) / "candles.parquet").exists():
             return source
     return None

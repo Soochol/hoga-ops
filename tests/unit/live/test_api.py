@@ -252,7 +252,7 @@ async def test_get_live_series_returns_buffered_arrays(tmp_path) -> None:
 
 
 def test_get_live_series_includes_today_ask_peak_from_getter() -> None:
-    def fake_peak(code: str) -> dict | None:
+    def fake_peak(code, venue):
         assert code == "005930"
         return {
             "date": "20260616",
@@ -284,7 +284,7 @@ def test_get_live_series_includes_today_ask_peak_from_getter() -> None:
 
 
 def test_get_live_series_includes_today_bid_peak_from_getter() -> None:
-    def fake_peak(code: str) -> dict | None:
+    def fake_peak(code, venue):
         assert code == "005930"
         return {
             "date": "20260619",

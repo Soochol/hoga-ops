@@ -25,7 +25,7 @@ def test_orderbook_source_pref_prefers_kis_live(seed_orderbook):
     # seed_orderbook: project fixture that writes snapshots.parquet under
     # both data/parquet/{date}/{code}/hogaplay/ and .../kis_live/
     client = seed_orderbook(date="20260528", code="005930", with_kis_live=True)
-    r = client.get("/api/orderbook", params={
+    r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "kis_live"
     })
     assert r.status_code == 200
@@ -35,7 +35,7 @@ def test_orderbook_source_pref_prefers_kis_live(seed_orderbook):
 def test_orderbook_source_pref_falls_back_to_hogaplay(seed_orderbook):
     # Only hogaplay seeded — kis_live missing.
     client = seed_orderbook(date="20260528", code="005930", with_kis_live=False)
-    r = client.get("/api/orderbook", params={
+    r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "kis_live"
     })
     assert r.status_code == 200
@@ -44,7 +44,7 @@ def test_orderbook_source_pref_falls_back_to_hogaplay(seed_orderbook):
 
 def test_orderbook_source_pref_default_is_hogaplay(seed_orderbook):
     client = seed_orderbook(date="20260528", code="005930", with_kis_live=False)
-    r = client.get("/api/orderbook", params={
+    r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": "005930", "date": "20260528", "t": 1779930000000,
         # no source_pref → default "hogaplay"
     })
@@ -54,7 +54,7 @@ def test_orderbook_source_pref_default_is_hogaplay(seed_orderbook):
 
 def test_orderbook_source_pref_invalid_returns_422(seed_orderbook):
     client = seed_orderbook(date="20260528", code="005930", with_kis_live=False)
-    r = client.get("/api/orderbook", params={
+    r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "garbage"
     })
     assert r.status_code == 422
@@ -71,7 +71,7 @@ def test_orderbook_returns_empty_response_when_source_dir_missing(
     empty-bundle semantics /api/range adopted for the same reason.
     """
     client = TestClient(create_app(data_dir=tmp_path / "data"))
-    r = client.get("/api/orderbook", params={
+    r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": "005930", "date": "20260319", "t": 1779930000000,
     })
     assert r.status_code == 200, r.text
@@ -89,7 +89,7 @@ def test_orderbook_returns_empty_response_when_source_dir_missing_kis_live_pref(
     a fallback. resolve_source returns the pref unchanged when no source
     dir exists on disk (per sources.py:46)."""
     client = TestClient(create_app(data_dir=tmp_path / "data"))
-    r = client.get("/api/orderbook", params={
+    r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": "005930", "date": "20260319", "t": 1779930000000,
         "source_pref": "kis_live",
     })

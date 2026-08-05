@@ -34,6 +34,7 @@ def test_orderbook_at_returns_latest(app_client: TestClient) -> None:
     r = app_client.get(
         "/api/orderbook",
         params={
+            "venue": "KRX",
             "code": "003490",
             "date": "20260519",
             "t": hhmmssms_to_unix_ms("20260519", 90020000),
@@ -51,6 +52,7 @@ def test_orderbook_before_any_data(app_client: TestClient) -> None:
     r = app_client.get(
         "/api/orderbook",
         params={
+            "venue": "KRX",
             "code": "003490",
             "date": "20260519",
             "t": hhmmssms_to_unix_ms("20260519", 80000000),
@@ -91,6 +93,7 @@ def test_orderbook_wire_shape(app_client: TestClient) -> None:
     r = app_client.get(
         "/api/orderbook",
         params={
+            "venue": "KRX",
             "code": "003490",
             "date": "20260519",
             "t": hhmmssms_to_unix_ms("20260519", 90020000),
@@ -110,7 +113,7 @@ def test_orderbook_ts_ms_is_unix(app_client: TestClient) -> None:
     t_noon = hhmmssms_to_unix_ms("20260519", 120000000)  # 12:00 KST on 2026-05-19
     r = app_client.get(
         "/api/orderbook",
-        params={"code": "003490", "date": "20260519", "t": t_noon},
+        params={"venue": "KRX","code": "003490", "date": "20260519", "t": t_noon},
     )
     assert r.status_code == 200
     payload = r.json()
@@ -126,7 +129,7 @@ def test_orderbook_out_of_day_cursor_returns_400(app_client: TestClient) -> None
     bad_t = hhmmssms_to_unix_ms("20260520", 120000000)
     r = app_client.get(
         "/api/orderbook",
-        params={"code": "003490", "date": "20260519", "t": bad_t},
+        params={"venue": "KRX","code": "003490", "date": "20260519", "t": bad_t},
     )
     assert r.status_code == 400
 
@@ -140,6 +143,7 @@ def test_orderbook_bucket_ms_returns_bucket_close(app_client: TestClient) -> Non
     r = app_client.get(
         "/api/orderbook",
         params={
+            "venue": "KRX",
             "code": "003490",
             "date": "20260519",
             "t": t_bucket_start,
@@ -161,7 +165,7 @@ def test_orderbook_without_bucket_ms_returns_prior_close(
     t_bucket_start = hhmmssms_to_unix_ms("20260519", 90000000)
     r = app_client.get(
         "/api/orderbook",
-        params={"code": "003490", "date": "20260519", "t": t_bucket_start},
+        params={"venue": "KRX","code": "003490", "date": "20260519", "t": t_bucket_start},
     )
     assert r.status_code == 200
     snap = r.json()["snapshot"]
@@ -173,7 +177,7 @@ def test_orderbook_invalid_bucket_ms_returns_400(app_client: TestClient) -> None
     t = hhmmssms_to_unix_ms("20260519", 90000000)
     r = app_client.get(
         "/api/orderbook",
-        params={"code": "003490", "date": "20260519", "t": t, "bucket_ms": 12345},
+        params={"venue": "KRX", "code": "003490", "date": "20260519", "t": t, "bucket_ms": 12345},
     )
     assert r.status_code == 400
 
