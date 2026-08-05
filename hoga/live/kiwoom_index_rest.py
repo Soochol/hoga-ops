@@ -95,14 +95,31 @@ async def fetch_index_price(
     )
 
 
+# 마감 후 응답의 **첫 행** `tm_n` 은 시각이 아니라 `'888888'` 센티넬이다 — 그 행의
+# 값은 정상적인 **장 마감 확정치**다(2026-08-05 실측: tm_n 888888 / cur_prc_n +6598.26,
+# 이어지는 행이 153040·153030…). 데이터가 깨진 것이 아니라 "시각 없음" 의 벤더 표기다.
+_TM_CLOSED_SENTINEL = "888888"
+
+
 def _tm_to_ms(hhmmss: str) -> int:
-    """`'152000'` → 오늘 15:20:00 KST 의 epoch ms. 형식이 어긋나면 현재 시각."""
+    """`'152000'` → 오늘 15:20:00 KST 의 epoch ms. 형식이 어긋나면 **현재 시각**.
+
+    ⚠ **범위까지 검사한다.** 길이·숫자만 보던 이전 판은 `'888888'`(위 센티넬)을
+    통과시켜 `now.replace(hour=88)` 에서 `ValueError` 를 냈고, 그 예외가 라우트의
+    `except (KeyError, ValueError, TypeError)` 에 잡혀 **모든 지수가 조용히 드롭**됐다.
+    증상은 자격증명 문제처럼 보였다 — 장 마감 후 재기동한 서버에서 하단 시장지표 바와
+    `/market` 지수 카드가 통째로 비었다(last-good 캐시가 콜드라 가려 주지도 못한다).
+
+    센티넬 행의 값은 유효하므로 **버리지 않는다** — 시각만 수신 시각으로 대체한다.
+    이는 KIS 경로가 `t_ms` 를 수신 시각으로 채우던 원래 계약과 같다.
+    """
     now = datetime.now(KST)
     if len(hhmmss) != 6 or not hhmmss.isdigit():  # noqa: PLR2004 — HHMMSS 길이
         return int(now.timestamp() * 1000)
-    stamped = now.replace(
-        hour=int(hhmmss[0:2]), minute=int(hhmmss[2:4]), second=int(hhmmss[4:6]), microsecond=0
-    )
+    hh, mm, ss = int(hhmmss[0:2]), int(hhmmss[2:4]), int(hhmmss[4:6])
+    if not (0 <= hh <= 23 and 0 <= mm <= 59 and 0 <= ss <= 59):  # noqa: PLR2004 — 시분초 범위
+        return int(now.timestamp() * 1000)
+    stamped = now.replace(hour=hh, minute=mm, second=ss, microsecond=0)
     return int(stamped.timestamp() * 1000)
 
 
