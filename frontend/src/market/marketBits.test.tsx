@@ -87,3 +87,17 @@ describe('Sparkline 색 기준 (DESIGN.md CandleGlyph 규칙)', () => {
     expect(container.querySelector('path')?.getAttribute('stroke')).toBe('var(--price-up)');
   });
 });
+
+describe('stockSeriesDiffs (자금 차트 절벽 버그의 고정)', () => {
+  it('선행 null 구간에서 첫 실값이 0→값 절벽을 만들지 않는다', async () => {
+    const { stockSeriesDiffs } = await import('./marketFormat');
+    // CMA 실사례: 83일 null 뒤 104조 — 이전 코드는 여기서 +104조 점프를 그렸다.
+    const got = stockSeriesDiffs([null, null, 104, 105, null, 107]);
+    expect(got).toEqual([0, 0, 0, 1, 0, 2]);  // 첫 실값 d=0 · null 건너뛴 차는 실값 간 차
+  });
+
+  it('전부 실값이면 평범한 인접 차', async () => {
+    const { stockSeriesDiffs } = await import('./marketFormat');
+    expect(stockSeriesDiffs([100, 101, 99])).toEqual([0, 1, -2]);
+  });
+});

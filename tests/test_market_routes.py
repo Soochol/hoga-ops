@@ -75,7 +75,7 @@ async def test_surfaces_are_dormant_without_credentials(monkeypatch, tmp_path):
     program = await by_path["/api/market/program"].endpoint()
 
     assert sectors == {"markets": {}}
-    assert streaks == {"외국인": [], "기관": []}
+    assert streaks == {"외국인": [], "기관": [], "warnings": []}
     assert program == {"axis": "intraday", "markets": {}}
 
 

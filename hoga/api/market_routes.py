@@ -398,12 +398,27 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 key=("market-streaks",),
             )
             if rows is None:
-                return {"외국인": [], "기관": []}
+                return {"외국인": [], "기관": [], "warnings": []}
+            # ETF·ETN 제외 — 순위 드로어와 같은 방식(심볼 마스터 기반). KODEX 레버리지
+            # 류가 상위를 채우면 "누가 무엇을 사나" 라는 카드의 질문에 답이 안 된다.
+            # 마스터 미로드면 못 거른 채 경고를 실어 보낸다(조용한 실패 금지).
+            from hoga.api import symbols  # noqa: PLC0415
+
+            warnings: list[str] = []
+            drop = symbols.all_etf_etn_codes()
+            if drop is None:
+                warnings.append("etf_filter_unavailable")
+            else:
+                rows = [r for r in rows
+                        if str(r.get("stk_cd") or "").split("_")[0] not in drop]
             return {
-                actor: market_overview.parse_streaks(rows, actor=actor)
-                for actor in ("외국인", "기관")
+                "warnings": warnings,
+                **{
+                    actor: market_overview.parse_streaks(rows, actor=actor)
+                    for actor in ("외국인", "기관")
+                },
             }
 
-        return await streaks_cache.get(_fetch) or {"외국인": [], "기관": []}
+        return await streaks_cache.get(_fetch) or {"외국인": [], "기관": [], "warnings": []}
 
     return router

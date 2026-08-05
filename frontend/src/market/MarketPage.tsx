@@ -29,14 +29,6 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 import type { LiveIndexId } from '../live/liveInstrument';
 import { PageContainer } from '../layout/PageContainer';
-// PROTOTYPE(throwaway) — 레이아웃 변형 평가용 import. 확정 시 제거.
-import {
-  LayoutSwitcher,
-  VariantCentered,
-  VariantSplit,
-  VariantZones,
-} from './layoutPrototype/LayoutVariants';
-import { useLayoutVariant } from './layoutPrototype/layoutVariantState';
 import { PanelCard, SegmentedControl } from '../ui/PageShell';
 import { priceDirClass } from '../ui/priceDir';
 import {
@@ -48,7 +40,7 @@ import {
   PctText,
   Sparkline,
 } from './marketBits';
-import { SERIES_COLORS, fmtSigned, wonToJo } from './marketFormat';
+import { SERIES_COLORS, fmtSigned, stockSeriesDiffs, wonToJo } from './marketFormat';
 
 /** 카드 헤더의 밀도 우선 토글 — 좁은 카드에서 줄바꿈되도록 헤더가 flex-wrap 이다. */
 function ModeSwitch<T extends string>({
@@ -369,9 +361,9 @@ export function ProgramCard() {
         Object.entries(markets).map(([label, points]) => {
           // 벤더가 최신 우선 역순으로 준다 — 시간축으로 그리려면 뒤집는다.
           const asc = [...points].reverse();
-          const arb = asc.map((p) => p.arb_net);
-          const nonArb = asc.map((p) => p.non_arb_net);
-          const total = asc[asc.length - 1]?.total_net ?? null;
+          const arb = asc.map((p) => p.arb_net_eok);
+          const nonArb = asc.map((p) => p.non_arb_net_eok);
+          const total = asc[asc.length - 1]?.total_net_eok ?? null;
           return (
             <div key={label} className="flex flex-col gap-2xs">
               <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
@@ -404,7 +396,7 @@ export function ProgramCard() {
 export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
   const jump = useJumpToLive();
   const streaks = useMarketStreaks();
-  const rows = streaks.data?.[actor] ?? [];
+  const rows = (streaks.data?.[actor] ?? []) as import('../api/market').StreakRow[];
   const accent = actor === '외국인' ? SERIES_COLORS.foreign : SERIES_COLORS.institution;
   return (
     <PanelCard borderless flat className="flex flex-col gap-xs p-sm">
@@ -429,9 +421,9 @@ export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
                   {r.streak_days}일
                 </span>
                 <span
-                  className={`text-right font-data text-sm tabular-nums ${r.streak_net_amt === null ? 'text-fg-dim' : priceDirClass(r.streak_net_amt)}`}
+                  className={`text-right font-data text-sm tabular-nums ${r.streak_net_eok === null ? 'text-fg-dim' : priceDirClass(r.streak_net_eok)}`}
                 >
-                  {fmtSigned(r.streak_net_amt)}
+                  {fmtSigned(r.streak_net_eok)}
                 </span>
               </button>
             </li>
@@ -490,9 +482,9 @@ export function FundsCard() {
         <>
           <CumLinesChart
             series={[
-              { color: SERIES_COLORS.deposit, values: diffs(series.map((r) => wonToJo(r.deposit_won))) },
-              { color: SERIES_COLORS.credit, values: diffs(series.map((r) => wonToJo(r.credit_won))) },
-              { color: SERIES_COLORS.cma, values: diffs(series.map((r) => wonToJo(r.cma_won))) },
+              { color: SERIES_COLORS.deposit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.deposit_won))) },
+              { color: SERIES_COLORS.credit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.credit_won))) },
+              { color: SERIES_COLORS.cma, values: stockSeriesDiffs(series.map((r) => wonToJo(r.cma_won))) },
             ]}
             height={72}
           />
@@ -516,11 +508,6 @@ export function FundsCard() {
       )}
     </PanelCard>
   );
-}
-
-/** 잔고(스톡) 계열 → 기간 시작 대비 증감의 delta 배열. 누적하면 level - start 가 된다. */
-function diffs(values: (number | null)[]): (number | null)[] {
-  return values.map((v, i) => (i === 0 ? 0 : (v ?? 0) - (values[i - 1] ?? 0)));
 }
 
 // ── 순위 3종 ──────────────────────────────────────────────────────────────
@@ -567,42 +554,36 @@ export function RankCard({
   );
 }
 
-/** 현행 배치 — 레이아웃 프로토타입의 대조군. */
-export function CurrentLayout() {
+export function MarketPage() {
+  // 레이아웃 = 중앙 고정 폭(1680px) + 행 재균형 — 초광폭에서 카드가 무한 확장돼
+  // 차트가 납작해지던 문제의 답(프로토타입 A 승자, 2026-08-05 사용자 확정.
+  // 3변형은 prototype/market-layout-variants-2026-08-05 브랜치 보존).
+  // 업종 온도(세로로 긴 리스트)는 우측 열, 좌측은 수급 + 보조 2×2 로 높이를 맞춘다.
   return (
-    <div className="flex h-full min-h-0 flex-col gap-xs overflow-y-auto">
+    <PageContainer>
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1680px] flex-col gap-xs overflow-y-auto">
         <IndexCards />
-        <div className="grid grid-cols-2 gap-xs">
-          <InvestorCard />
-          <SectorCard />
-        </div>
-        <div className="grid grid-cols-[1.15fr_1fr_1fr_1.05fr_1.2fr] gap-xs">
-          <ProgramCard />
-          <ActorNetCard actor="외국인" />
-          <ActorNetCard actor="기관" />
-          <BreadthCard />
-          <FundsCard />
+        <div className="grid grid-cols-[2fr_1fr] gap-xs">
+          <div className="flex flex-col gap-xs">
+            <InvestorCard />
+            <div className="grid grid-cols-2 gap-xs">
+              <ProgramCard />
+              <FundsCard />
+              <ActorNetCard actor="외국인" />
+              <ActorNetCard actor="기관" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-xs">
+            <SectorCard />
+            <BreadthCard />
+          </div>
         </div>
         <div className="grid grid-cols-3 gap-xs">
           <RankCard title="상승률 상위" kind="change" direction="up" />
           <RankCard title="하락률 상위" kind="change" direction="down" />
           <RankCard title="거래대금 상위" kind="value" direction="up" />
         </div>
-    </div>
-  );
-}
-
-export function MarketPage() {
-  // PROTOTYPE(throwaway) — 레이아웃 변형 평가 중 (?variant=a|b|c, layoutPrototype/).
-  // 확정되면 승자를 CurrentLayout 자리에 접고 이 분기와 layoutPrototype/ 을 지운다.
-  const variant = useLayoutVariant();
-  return (
-    <PageContainer>
-      {variant === 'current' && <CurrentLayout />}
-      {variant === 'a' && <VariantCentered />}
-      {variant === 'b' && <VariantZones />}
-      {variant === 'c' && <VariantSplit />}
-      <LayoutSwitcher />
+      </div>
     </PageContainer>
   );
 }

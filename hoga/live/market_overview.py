@@ -95,6 +95,16 @@ def parse_index_sectors(rows: list[dict[str, Any]]) -> list[IndexBreadth]:
     return [IndexBreadth(r) for r in rows]
 
 
+def _mwon_to_eok(v: int | None) -> float | None:
+    """백만원 → 억원. ka90005/ka90010/ka10131 의 금액 단위는 **백만원**이다
+    (2026-08-05 실측 — NAVER 금액 129,866 ÷ 수량 609,980주 = 212,900원/주로 실주가와
+    일치. 억원이면 주당 2,129만원이 되어 불가능). ka10051(억원)과 화면 축을 맞추기
+    위해 여기서 정규화하고, **필드 이름에 단위를 박는다** — 이 페이지에서만 단위
+    오표기가 세 번째였다(ka10064 백만원 · ka10051 억원 · 여기 백만원).
+    """
+    return None if v is None else v / 100
+
+
 def parse_program_trend(
     rows: list[dict[str, Any]],
     *,
@@ -118,9 +128,9 @@ def parse_program_trend(
         out.append(
             {
                 "t": str(r.get("cntr_tm") or ""),
-                "arb_net": signed_int(r.get("dfrt_trde_netprps")),
-                "non_arb_net": signed_int(r.get("ndiffpro_trde_netprps")),
-                "total_net": signed_int(r.get("all_netprps")),
+                "arb_net_eok": _mwon_to_eok(signed_int(r.get("dfrt_trde_netprps"))),
+                "non_arb_net_eok": _mwon_to_eok(signed_int(r.get("ndiffpro_trde_netprps"))),
+                "total_net_eok": _mwon_to_eok(signed_int(r.get("all_netprps"))),
                 "kospi200": (
                     None if not trust_index_columns
                     else scaled_price(r.get("kospi200")) if kospi200_scaled
@@ -138,7 +148,9 @@ def parse_streaks(rows: list[dict[str, Any]], *, actor: str) -> list[dict[str, A
     out: list[dict[str, Any]] = []
     for r in rows:
         days = signed_int(r.get(f"{prefix}_cont_netprps_dys"))
-        if not days:
+        # **양수만** — 음수 연속일수는 연속 순매도라 "순매수 상위" 카드에 섞이면
+        # 안 된다(실화면에서 -2일 · 금액 — 행이 노출됐다, 2026-08-05).
+        if days is None or days <= 0:
             continue
         out.append(
             {
@@ -146,9 +158,10 @@ def parse_streaks(rows: list[dict[str, Any]], *, actor: str) -> list[dict[str, A
                 "name": str(r.get("stk_nm") or ""),
                 "actor": actor,
                 "streak_days": days,
-                # 단위는 요청의 amt_qty_tp 가 정한다 — 이름에 박아 축을 못 헷갈리게 한다.
-                "streak_net_amt": signed_int(r.get(f"{prefix}_cont_netprps_amt")),
-                "streak_net_qty": signed_int(r.get(f"{prefix}_cont_netprps_qty")),
+                # ⚠ 벤더 금액 단위는 백만원(_mwon_to_eok 근거) — amt_qty_tp 는 이
+                # TR 에서 **무시된다**(0/1 응답 동일, 양축이 한 응답에 온다).
+                "streak_net_eok": _mwon_to_eok(signed_int(r.get(f"{prefix}_cont_netprps_amt"))),
+                "streak_net_qty_shares": signed_int(r.get(f"{prefix}_cont_netprps_qty")),
                 "period_change_pct": decimal_price(r.get("prid_stkpc_flu_rt")),
             }
         )
