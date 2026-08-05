@@ -399,37 +399,66 @@ function BreadthCard() {
 /** 계열 색 — 남은 MA 슬롯 사용 (수급 --ma-3/4 · 프로그램 --ma-6/7 과 안 겹치게) */
 const FUND_COLORS = ['var(--ma-1)', 'var(--ma-2)', 'var(--ma-5)'];
 
+const FUND_SPANS = [
+  ['20', '20일'],
+  ['60', '60일'],
+  ['120', '120일'],
+] as const;
+type FundSpan = (typeof FUND_SPANS)[number][0];
+
 function FundsCard() {
+  const [span, setSpan] = useState<FundSpan>('20');
+  const n = Number(span);
+  const windows = MOCK_MARKET_FUNDS.series.map((s) => {
+    const vals = s.values.slice(-n);
+    // 잔고(스톡) → 기간 시작 대비 증감의 누적선. diff 를 누적하면 level - start.
+    const diffs = vals.map((v, i) => (i === 0 ? 0 : Number((v - vals[i - 1]).toFixed(2))));
+    return {
+      label: s.label,
+      last: vals[vals.length - 1],
+      periodDelta: Number((vals[vals.length - 1] - vals[0]).toFixed(1)),
+      diffs,
+    };
+  });
   return (
-    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
-      <h2 className="text-sm text-fg">
-        증시 주변 자금{' '}
-        <span className="text-2xs text-fg-dim">조원 · {MOCK_MARKET_FUNDS.asOf} 기준(T+2)</span>
-      </h2>
-      <div className="flex flex-col gap-xs">
-        {MOCK_MARKET_FUNDS.series.map((s, i) => {
-          const last = s.values[s.values.length - 1];
-          const prev = s.values[s.values.length - 2];
-          const delta = Number((last - prev).toFixed(1));
-          return (
-            <div key={s.label} className="grid grid-cols-[4.6rem_1fr_auto] items-center gap-sm">
-              <span className="flex items-center gap-2xs text-xs text-fg-dim">
-                <span className="inline-block h-[2px] w-[10px]" style={{ background: FUND_COLORS[i] }} />
-                {s.label}
-              </span>
-              <Sparkline points={s.values} width={90} height={22} strokeVar={FUND_COLORS[i]} />
-              <span className="text-right font-data text-sm tabular-nums">
-                <span className="font-semibold text-fg">{last.toFixed(1)}조</span>{' '}
-                <span className={priceDirClass(delta)}>
-                  {delta > 0 ? '+' : ''}{delta.toFixed(1)}
-                </span>
-              </span>
-            </div>
-          );
-        })}
+    <PanelCard borderless flat className="flex flex-col gap-xs p-sm">
+      <div className="flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs">
+        <h2 className="text-sm text-fg">
+          증시 주변 자금{' '}
+          <span className="text-2xs text-fg-dim">조원 · {MOCK_MARKET_FUNDS.asOf} 기준(T+2)</span>
+        </h2>
+        <ModeSwitch value={span} onChange={setSpan} options={FUND_SPANS} label="자금 집계 기간" />
+      </div>
+      <CumLinesChart
+        series={windows.map((w, i) => ({ color: FUND_COLORS[i], daily: w.diffs }))}
+        height={88}
+      />
+      <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
+        <span>-{span}일</span>
+        <span>{MOCK_MARKET_FUNDS.asOf}</span>
+      </div>
+      <div className="flex flex-col">
+        {windows.map((w, i) => (
+          <div
+            key={w.label}
+            className="grid grid-cols-[1fr_auto_auto] items-center gap-sm border-b border-grid py-2xs last:border-b-0"
+          >
+            <span className="flex items-center gap-2xs text-xs text-fg-dim">
+              <span className="inline-block h-[2px] w-[10px]" style={{ background: FUND_COLORS[i] }} />
+              {w.label}
+            </span>
+            <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">
+              {w.last.toFixed(1)}조
+            </span>
+            <span className={`w-[3.4rem] text-right font-data text-sm tabular-nums ${priceDirClass(w.periodDelta)}`}>
+              {w.periodDelta > 0 ? '+' : ''}{w.periodDelta.toFixed(1)}
+            </span>
+          </div>
+        ))}
       </div>
       <p className="text-2xs text-fg-dim">
-        키움 TR 없음 — 금융투자협회(KOFIA) 공시, 공공데이터포털 오픈 API. 일 1회 · T+2 지연.
+        선 = 기간 시작 대비 누적 증감. 키움 TR 없음 — KOFIA 공시, 공공데이터포털 오픈 API ·
+        일 1회 · T+2 지연.
       </p>
     </PanelCard>
   );

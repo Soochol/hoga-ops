@@ -376,24 +376,28 @@ export interface MockFundSeries {
   values: number[]; // 조원
 }
 
+/** 잔고 레벨 합성 — 120거래일, 드리프트 + 파동, 끝값 고정 (결정적) */
+function synthLevel(start: number, end: number, wobble: number, seed: number): number[] {
+  const n = 120;
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const drift = start + (end - start) * t;
+    const w =
+      Math.sin(t * Math.PI * 5.3 + seed) * wobble +
+      Math.sin(t * Math.PI * 17.1 + seed * 2.3) * wobble * 0.4;
+    out.push(Number((drift + w).toFixed(1)));
+  }
+  out[n - 1] = end;
+  return out;
+}
+
 export const MOCK_MARKET_FUNDS: { asOf: string; series: MockFundSeries[] } = {
   asOf: '08/03',
   series: [
-    {
-      label: '고객예탁금',
-      values: [51.2, 51.8, 51.4, 52.1, 52.6, 52.3, 53.0, 53.4, 52.9, 53.7,
-        54.1, 53.8, 54.4, 54.0, 54.6, 55.1, 54.7, 54.8, 55.3, 54.8],
-    },
-    {
-      label: '신용융자',
-      values: [19.8, 19.9, 20.0, 19.9, 20.1, 20.2, 20.1, 20.3, 20.4, 20.3,
-        20.5, 20.4, 20.6, 20.5, 20.4, 20.3, 20.4, 20.5, 20.4, 20.3],
-    },
-    {
-      label: 'CMA',
-      values: [87.4, 87.6, 87.5, 87.8, 87.7, 87.9, 88.0, 87.8, 88.1, 88.0,
-        88.2, 88.1, 88.3, 88.2, 88.0, 88.1, 88.2, 88.0, 88.2, 88.1],
-    },
+    { label: '고객예탁금', values: synthLevel(47.2, 54.8, 0.9, 1.7) },
+    { label: '신용융자', values: synthLevel(18.4, 20.3, 0.25, 4.9) },
+    { label: 'CMA', values: synthLevel(84.6, 88.1, 0.5, 8.2) },
   ],
 };
 
