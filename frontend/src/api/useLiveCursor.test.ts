@@ -132,7 +132,7 @@ describe('useLiveOrderbookAtCursor', () => {
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
       if (url.includes('/api/orderbook')) {
-        return { snapshot: { ts_ms: 2, asks: [], bids: [] }, available_from: null, source: 'kis_live' };
+        return { snapshot: { ts_ms: 2, asks: [], bids: [] }, available_from: null, source: 'kiwoom_live' };
       }
       throw new Error('unexpected url: ' + url);
     });

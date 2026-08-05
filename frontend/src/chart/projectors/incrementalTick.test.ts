@@ -24,7 +24,7 @@ function build(nowOffsetMin: number) {
     const open = BASE + d * DAY;
     const close = open + SESSION;
     axisSegs.push({ date: `d${d}`, sessionOpenMs: open, sessionCloseMs: close });
-    snakeSegs.push({ date: `d${d}`, session_open_ms: open, session_close_ms: close, source: 'kis_live' as const });
+    snakeSegs.push({ date: `d${d}`, session_open_ms: open, session_close_ms: close, source: 'kiwoom_live' as const });
     // 과거일은 풀 세션, today(d===2)는 nowOffsetMin까지만.
     const lastMin = d < 2 ? 389 : nowOffsetMin;
     for (let m = 0; m <= lastMin; m++) {

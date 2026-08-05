@@ -88,7 +88,7 @@ async def test_promote_kiwoom_today_noop_when_no_jsonl(tmp_path):
     # live_kiwoom JSONL 부재 → no-op(파일 안 만듦). KIS live_kiwoom 경로와 격리.
     result = await promote_kiwoom_today(tmp_path, code="005930")
     today = _today_kst_yyyymmdd()
-    assert not (tmp_path / "parquet" / today / "005930" / "kiwoom_live").exists()
+    assert not (tmp_path / "parquet" / today / "005930" / "kiwoom_live" / "KRX").exists()
     # skip은 None 반환 — 승격 루프가 promotion_completed를 발행하지 않도록(스퓨리어스 리페치 금지).
     assert result is None
 

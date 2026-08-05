@@ -22,7 +22,7 @@ from hoga.tables.trades import FillStrengthRow
 
 CODE = "005930"
 DATE = "20260529"
-SRC = "kis_live"
+SRC = "kiwoom_live"
 
 RATIO = [QuoteRatioRow(bucket_intra_ms=0, bid_total=10, ask_total=20,
                        bid_max=900, ask_max=800, imb_max_bid=100, imb_max_ask=2),
@@ -62,7 +62,7 @@ def test_path_layout_is_code_source_date_kind(tmp_path: Path) -> None:
 def test_source_is_part_of_the_key(tmp_path: Path) -> None:
     # Same (code, date), different source → independent entries (no silent swap).
     c = PastIndicatorsCache(tmp_path)
-    c.store_ratio(CODE, DATE, "kis_live", RATIO)
+    c.store_ratio(CODE, DATE, "kiwoom_live", RATIO)
     assert c.get_ratio(CODE, DATE, "hogaplay") is None
 
 
@@ -326,11 +326,11 @@ def test_mem_overlay_bounded_falls_back_to_disk(tmp_path: Path) -> None:
             bid_max=10, ask_max=20, imb_max_bid=1, imb_max_ask=2,
         )]
         rows_by_date[date_s] = rows
-        cache.store_ratio("005930", date_s, "kis_live", rows)
+        cache.store_ratio("005930", date_s, "kiwoom_live", rows)
 
     assert len(cache._mem_ratio) == 2  # 상한 유지
     # 축출된 첫 날짜도 디스크에서 그대로 읽힌다.
-    got = cache.get_ratio("005930", "20260601", "kis_live")
+    got = cache.get_ratio("005930", "20260601", "kiwoom_live")
     assert got == rows_by_date["20260601"]
 
 
@@ -392,9 +392,9 @@ def test_depth_version_mismatch_is_a_miss(tmp_path: Path) -> None:
 def test_depth_mem_overlay_bounded_falls_back_to_disk(tmp_path: Path) -> None:
     cache = PastIndicatorsCache(tmp_path, mem_max_depth_entries=2)
     for date_s in ("20260601", "20260602", "20260603"):
-        cache.store_depth("005930", date_s, "kis_live", 60_000, _DEPTH)
+        cache.store_depth("005930", date_s, "kiwoom_live", 60_000, _DEPTH)
     assert len(cache._mem_depth) == 2  # 전용 상한 유지(공용 512 아님)
-    assert cache.get_depth("005930", "20260601", "kis_live", 60_000) == _DEPTH  # 디스크 복원
+    assert cache.get_depth("005930", "20260601", "kiwoom_live", 60_000) == _DEPTH  # 디스크 복원
 
 
 # ── volume_distribution (체결 분포) ──────────────────────────────────────────
@@ -502,8 +502,14 @@ def test_continuous_before_persists_and_close_ms_is_part_of_key(tmp_path: Path) 
 
 
 def _write_source_meta(tmp_path: Path, code: str, date: str, source: str, mtime_s: float) -> None:
-    """Create parquet/<date>/<code>/<source>/meta.json with a controlled mtime."""
-    meta = tmp_path / "parquet" / date / code / source / "meta.json"
+    """Create the source's meta.json with a controlled mtime.
+
+    경로 조립은 **정본 헬퍼**에 맡긴다 — 손으로 조립하면 venue 축이 있는 소스
+    (`kiwoom_live`)에서 세그먼트가 빠져 무효화 판정이 파일을 못 찾는다.
+    """
+    from hoga.api.sources import source_venue_dir
+
+    meta = source_venue_dir(tmp_path / "parquet" / date / code, source, "KRX") / "meta.json"
     meta.parent.mkdir(parents=True, exist_ok=True)
     meta.write_text("{}", encoding="utf-8")
     os.utime(meta, (mtime_s, mtime_s))

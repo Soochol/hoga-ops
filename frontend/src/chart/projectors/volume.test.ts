@@ -57,7 +57,7 @@ describe('VOLUME_SPEC', () => {
 
   it('토글 off 시 체결강도 누적 시리즈는 빈 데이터', () => {
     const bundle = {
-      segments: [{ session_open_ms: 0, session_close_ms: 3_600_000, date: '20260527', source: 'kis_live' }],
+      segments: [{ session_open_ms: 0, session_close_ms: 3_600_000, date: '20260527', source: 'kiwoom_live' }],
       fill_strength: {
         points: [{ t: 120_000, buy_qty: 100, sell_qty: 20, bucketIndex: 1, session_open_ms: 0, session_close_ms: 3_600_000 }],
       },
@@ -77,8 +77,8 @@ describe('VOLUME_SPEC', () => {
     const past1 = { ts_ms: day0Open + 60_000, open: 101, close: 102, high: 103, low: 100, vol_a: 2, vol_b: 0 };
     const today = { ts_ms: day1Open, open: 102, close: 103, high: 104, low: 101, vol_a: 3, vol_b: 0 };
     const segments = [
-      { date: '20260518', session_open_ms: day0Open, session_close_ms: day0Open + 23_400_000, source: 'kis_live' },
-      { date: '20260519', session_open_ms: day1Open, session_close_ms: day1Open + 23_400_000, source: 'kis_live' },
+      { date: '20260518', session_open_ms: day0Open, session_close_ms: day0Open + 23_400_000, source: 'kiwoom_live' },
+      { date: '20260519', session_open_ms: day1Open, session_close_ms: day1Open + 23_400_000, source: 'kiwoom_live' },
     ];
     const calls: number[] = [];
     const countingAxis = {

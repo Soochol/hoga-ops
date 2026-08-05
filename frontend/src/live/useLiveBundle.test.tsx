@@ -685,7 +685,7 @@ describe('useLiveBundle', () => {
   it('builds a today-only bundle when historicalFromDate is null', () => {
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
     expect(result.current.bundle!.segments.length).toBe(1);
-    expect(result.current.bundle!.segments[0].source).toBe('kis_live');
+    expect(result.current.bundle!.segments[0].source).toBe('kiwoom_live');
     expect(result.current.bundle!.candles.length).toBe(1);
     expect(result.current.bundle!.quote_ratio.points.length).toBe(1);
   });

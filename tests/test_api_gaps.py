@@ -121,7 +121,7 @@ def test_gaps_route_rejects_non_hogaplay_source(tmp_path: Path) -> None:
     client = TestClient(create_app(data_dir=tmp_path))
     resp = client.get(
         "/api/gaps",
-        params={"code": "003490", "date": "20260707", "source": "kis_live"},
+        params={"code": "003490", "date": "20260707", "source": "kiwoom_live"},
     )
     assert resp.status_code == 400
 

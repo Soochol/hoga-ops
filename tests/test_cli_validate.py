@@ -316,22 +316,22 @@ def test_validate_reports_violations_in_source_scoped_layout(tmp_path, monkeypat
     assert result.exit_code == 0, result.stdout
     assert "meta.close_after_open" in result.stdout
     # Label carries the Source so a violation is attributable when a Stock-Date
-    # has several (hogaplay + kis_live).
+    # has several (hogaplay + kiwoom_live).
     assert "20260518/003490/hogaplay" in _flat(result.stdout)
 
 
 def test_validate_does_not_mask_one_source_with_a_clean_sibling(tmp_path, monkeypatch):
-    """Each Source is its own row — a clean kis_live must not hide a broken
+    """Each Source is its own row — a clean kiwoom_live must not hide a broken
     hogaplay for the same Stock-Date."""
     monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
     _seed_v2(tmp_path, "20260518", "003490",
              _healthy() | {"regular_session_close_ms": 0}, source="hogaplay")
-    _seed_v2(tmp_path, "20260518", "003490", _healthy(), source="kis_live")
+    _seed_v2(tmp_path, "20260518", "003490", _healthy(), source="kiwoom_live")
 
     result = CliRunner().invoke(app, ["validate"])
     assert result.exit_code == 0, result.stdout
     assert "20260518/003490/hogaplay" in _flat(result.stdout)
-    assert "20260518/003490/kis_live" not in _flat(result.stdout)
+    assert "20260518/003490/kiwoom_live" not in _flat(result.stdout)
     assert "1 of 2 Stock-Date sources have violations" in _flat(result.stdout)
 
 

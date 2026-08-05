@@ -87,9 +87,9 @@ def _write_brokers(path: Path, rows: list[dict]) -> None:
 
 @pytest.fixture
 def seed_brokers(tmp_path: Path):
-    """Factory fixture: returns a callable (date, code, *, with_kis_live) -> TestClient.
+    """Factory fixture: returns a callable (date, code, *, with_kiwoom_live) -> TestClient.
 
-    Seeds a minimal hogaplay (and optionally kis_live) source dir under
+    Seeds a minimal hogaplay (and optionally kiwoom_live) source dir under
     tmp_path/data/parquet/{date}/{code}/{source}/ so that the /api/brokers/series
     route can resolve the source and read brokers.parquet without a 404.
     """
@@ -97,7 +97,7 @@ def seed_brokers(tmp_path: Path):
         date: str,
         code: str,
         *,
-        with_kis_live: bool,
+        with_kiwoom_live: bool,
     ) -> TestClient:
         # HHMMSSmmm encoding: 100000000 = 10:00:00.000 KST
         row = _broker_row(100000000)
@@ -107,9 +107,9 @@ def seed_brokers(tmp_path: Path):
         _write_meta(hp_dir / "meta.json", source="hogaplay", code=code, date=date)
         _write_brokers(hp_dir / "brokers.parquet", [row])
 
-        if with_kis_live:
-            kl_dir = tmp_path / "data" / "parquet" / date / code / "kis_live"
-            _write_meta(kl_dir / "meta.json", source="kis_live", code=code, date=date)
+        if with_kiwoom_live:
+            kl_dir = tmp_path / "data" / "parquet" / date / code / "kiwoom_live" / "KRX"
+            _write_meta(kl_dir / "meta.json", source="kiwoom_live", code=code, date=date)
             _write_brokers(kl_dir / "brokers.parquet", [row])
 
         app = create_app(data_dir=tmp_path / "data")
@@ -120,9 +120,9 @@ def seed_brokers(tmp_path: Path):
 
 @pytest.fixture
 def seed_orderbook(tmp_path: Path):
-    """Factory fixture: returns a callable (date, code, *, with_kis_live) -> TestClient.
+    """Factory fixture: returns a callable (date, code, *, with_kiwoom_live) -> TestClient.
 
-    Seeds a minimal hogaplay (and optionally kis_live) source dir under
+    Seeds a minimal hogaplay (and optionally kiwoom_live) source dir under
     tmp_path/data/parquet/{date}/{code}/{source}/ so that the /api/orderbook
     route can resolve the source and read snapshots.parquet without a 404.
     """
@@ -130,7 +130,7 @@ def seed_orderbook(tmp_path: Path):
         date: str,
         code: str,
         *,
-        with_kis_live: bool,
+        with_kiwoom_live: bool,
     ) -> TestClient:
         # HHMMSSmmm encoding: 100000000 = 10:00:00.000 KST
         row = _snap(100000000)
@@ -140,9 +140,9 @@ def seed_orderbook(tmp_path: Path):
         _write_meta(hp_dir / "meta.json", source="hogaplay", code=code, date=date)
         _write_snapshots(hp_dir / "snapshots.parquet", [row])
 
-        if with_kis_live:
-            kl_dir = tmp_path / "data" / "parquet" / date / code / "kis_live"
-            _write_meta(kl_dir / "meta.json", source="kis_live", code=code, date=date)
+        if with_kiwoom_live:
+            kl_dir = tmp_path / "data" / "parquet" / date / code / "kiwoom_live" / "KRX"
+            _write_meta(kl_dir / "meta.json", source="kiwoom_live", code=code, date=date)
             _write_snapshots(kl_dir / "snapshots.parquet", [row])
 
         app = create_app(data_dir=tmp_path / "data")

@@ -78,10 +78,10 @@ def test_gate_per_source_hogaplay_complete(tmp_data_dir: Path) -> None:
 
 
 def test_gate_per_source_hogaplay_partial_but_kis_complete(tmp_data_dir: Path) -> None:
-    """핵심: aggregate=COMPLETE(kis_live)여도 hogaplay가 partial이면 삭제 금지 (ADR-0075)."""
+    """핵심: aggregate=COMPLETE(kiwoom_live)여도 hogaplay가 partial이면 삭제 금지 (ADR-0075)."""
     _write_meta_source(tmp_data_dir, "005930", "20260605", "hogaplay",
                        collection_complete=True, is_partial=True)   # SOURCE_PARTIAL
-    _write_meta_source(tmp_data_dir, "005930", "20260605", "kis_live",
+    _write_meta_source(tmp_data_dir, "005930", "20260605", "kiwoom_live",
                        collection_complete=True, is_partial=False)  # COMPLETE
     assert _is_complete_hogaplay(tmp_data_dir, "005930", "20260605") is False
 

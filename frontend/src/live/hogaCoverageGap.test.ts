@@ -3,7 +3,7 @@ import { hogaCoverageGapDates, hogaCoverageGapTitle } from './hogaCoverageGap';
 import type { RangeSegment } from '../api/types';
 
 function seg(date: string): RangeSegment {
-  return { date, session_open_ms: 0, session_close_ms: 1, source: 'kis_live' };
+  return { date, session_open_ms: 0, session_close_ms: 1, source: 'kiwoom_live' };
 }
 
 describe('hogaCoverageGapDates', () => {

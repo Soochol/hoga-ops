@@ -83,7 +83,7 @@ const DEFAULT_BUNDLE: RangeBundle = {
   to_date: '20260527',
   bucket_ms: 60_000,
   segments: [
-    { date: '20260527', session_open_ms: 1748275200000, session_close_ms: 1748298600000, source: 'kis_live' },
+    { date: '20260527', session_open_ms: 1748275200000, session_close_ms: 1748298600000, source: 'kiwoom_live' },
   ],
   candles: [],
   quote_ratio: { bucket_ms: 60_000, points: [] },
@@ -298,7 +298,7 @@ describe('LiveChartRoot', () => {
       ...DEFAULT_BUNDLE,
       from_date: '20260619',
       to_date: '20260619',
-      segments: [{ date: '20260619', session_open_ms: open, session_close_ms: open + 23_400_000, source: 'kis_live' }],
+      segments: [{ date: '20260619', session_open_ms: open, session_close_ms: open + 23_400_000, source: 'kiwoom_live' }],
       candles: [
         { ts_ms: open, open: 100, high: 110, low: 90, close: 105, vol_a: 1, vol_b: 0 },
         { ts_ms: open + 60_000, open: 105, high: 115, low: 100, close: 112, vol_a: 1, vol_b: 0 },
@@ -377,7 +377,7 @@ describe('LiveChartRoot', () => {
       ...DEFAULT_BUNDLE,
       from_date: '20260619',
       to_date: '20260619',
-      segments: [{ date: '20260619', session_open_ms: realMs, session_close_ms: realMs + 23400000, source: 'kis_live' }],
+      segments: [{ date: '20260619', session_open_ms: realMs, session_close_ms: realMs + 23400000, source: 'kiwoom_live' }],
       candles: [{ ts_ms: realMs, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
     };
 
@@ -461,7 +461,7 @@ describe('LiveChartRoot', () => {
       ...DEFAULT_BUNDLE,
       from_date: '20260619',
       to_date: '20260619',
-      segments: [{ date: '20260619', session_open_ms: realMs, session_close_ms: realMs + 23400000, source: 'kis_live' }],
+      segments: [{ date: '20260619', session_open_ms: realMs, session_close_ms: realMs + 23400000, source: 'kiwoom_live' }],
       candles: [{ ts_ms: realMs, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
     };
 
@@ -895,7 +895,7 @@ describe('LiveChartRoot', () => {
         date: kstDateFromMsForTest(open),
         session_open_ms: open,
         session_close_ms: open + sessionLen,
-        source: 'kis_live' as const,
+        source: 'kiwoom_live' as const,
       };
     });
     const candles = segments.map((s) => ({
@@ -2047,7 +2047,7 @@ const TODAY_ONLY_BUNDLE: RangeBundle = {
   to_date: '20260527',
   bucket_ms: 60_000,
   segments: [
-    { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' },
+    { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kiwoom_live' },
   ],
   candles: [{ ts_ms: TODAY_OPEN_MS + 60_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 }],
   quote_ratio: { bucket_ms: 60_000, points: [] },
@@ -2066,8 +2066,8 @@ const TWO_SEGMENT_BUNDLE: RangeBundle = {
   to_date: '20260527',
   bucket_ms: 60_000,
   segments: [
-    { date: '20260526', session_open_ms: YESTERDAY_OPEN_MS, session_close_ms: YESTERDAY_CLOSE_MS, source: 'kis_live' },
-    { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' },
+    { date: '20260526', session_open_ms: YESTERDAY_OPEN_MS, session_close_ms: YESTERDAY_CLOSE_MS, source: 'kiwoom_live' },
+    { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kiwoom_live' },
   ],
   candles: [
     { ts_ms: YESTERDAY_OPEN_MS + 60_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 },
@@ -3907,7 +3907,7 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
       date: `2026052${7 + i}`,
       session_open_ms: TODAY_OPEN_MS + i * DAY,
       session_close_ms: TODAY_CLOSE_MS + i * DAY,
-      source: 'kis_live' as const,
+      source: 'kiwoom_live' as const,
     }));
     const candles = segments.map((s) => ({
       ts_ms: s.session_open_ms,

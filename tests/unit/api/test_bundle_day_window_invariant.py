@@ -32,7 +32,7 @@ DAY_END = DAY_START + 86_400_000
 
 def _meta_dict() -> dict:
     return {
-        "source": "kis_live",
+        "source": "kiwoom_live",
         "code": CODE,
         "date": DATE,
         "regular_session_open_ms": 90000000,
@@ -77,14 +77,14 @@ def _write_trade_parquet(path: Path, unix_ms_list: list[int]) -> None:
 
 
 @pytest.fixture
-def kis_live_fixture(tmp_path: Path) -> Path:
-    """A kis_live Source dir with a few rows spanning 09:00-10:00:30 KST.
+def kiwoom_live_fixture(tmp_path: Path) -> Path:
+    """A kiwoom_live Source dir with a few rows spanning 09:00-10:00:30 KST.
 
     Returns the data_dir (parent of parquet/) so callers can construct
     QueryEngine(data_dir) — established pattern from
     tests/unit/api/test_bundle_source.py:27.
     """
-    code_dir = tmp_path / "parquet" / DATE / CODE / "kis_live"
+    code_dir = tmp_path / "parquet" / DATE / CODE / "kiwoom_live" / "KRX"
     code_dir.mkdir(parents=True, exist_ok=True)
     (code_dir / "meta.json").write_text(json.dumps(_meta_dict()))
     sample_unix = [
@@ -97,11 +97,11 @@ def kis_live_fixture(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_quote_ratio_t_within_day_window(kis_live_fixture: Path) -> None:
+def test_quote_ratio_t_within_day_window(kiwoom_live_fixture: Path) -> None:
     """All quote_ratio.points[*].t must fall in [DAY_START, DAY_END)."""
-    engine = QueryEngine(kis_live_fixture)
+    engine = QueryEngine(kiwoom_live_fixture)
     qr = build_quote_ratio_slice(
-        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kis_live",
+        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kiwoom_live",
     )
     assert len(qr.points) > 0, "fixture should produce at least one point"
     for p in qr.points:
@@ -111,11 +111,11 @@ def test_quote_ratio_t_within_day_window(kis_live_fixture: Path) -> None:
         )
 
 
-def test_fill_strength_t_within_day_window(kis_live_fixture: Path) -> None:
+def test_fill_strength_t_within_day_window(kiwoom_live_fixture: Path) -> None:
     """All fill_strength.points[*].t must fall in [DAY_START, DAY_END)."""
-    engine = QueryEngine(kis_live_fixture)
+    engine = QueryEngine(kiwoom_live_fixture)
     fs = build_fill_strength_slice(
-        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kis_live",
+        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kiwoom_live",
     )
     assert len(fs.points) > 0, "fixture should produce at least one point"
     for p in fs.points:
@@ -131,7 +131,7 @@ def test_quote_ratio_breaks_when_writer_skips_encoding(tmp_path: Path) -> None:
     If we deliberately write Unix ms (NOT HHMMSSmmm) into ts_ms — the exact
     bug ADR-0049 fixes — the day-window assertion must fail.
     """
-    code_dir = tmp_path / "parquet" / DATE / CODE / "kis_live"
+    code_dir = tmp_path / "parquet" / DATE / CODE / "kiwoom_live" / "KRX"
     code_dir.mkdir(parents=True, exist_ok=True)
     (code_dir / "meta.json").write_text(json.dumps(_meta_dict()))
     sample_unix = [
@@ -154,7 +154,7 @@ def test_quote_ratio_breaks_when_writer_skips_encoding(tmp_path: Path) -> None:
 
     engine = QueryEngine(tmp_path)
     qr = build_quote_ratio_slice(
-        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kis_live",
+        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kiwoom_live",
     )
     # All resulting t values should be outside the day window because Unix ms
     # decoded-as-HHMMSSmmm lands in year 2046.
@@ -165,23 +165,23 @@ def test_quote_ratio_breaks_when_writer_skips_encoding(tmp_path: Path) -> None:
     )
 
 
-def test_fill_strength_prefers_fills_parquet(kis_live_fixture: Path) -> None:
+def test_fill_strength_prefers_fills_parquet(kiwoom_live_fixture: Path) -> None:
     """fills.parquet이 있으면 trades.parquet 대신 fills 기준 집계를 반환한다.
 
-    kis_live_fixture에는 이미 trades.parquet(side=1, qty=10, 3행 →
+    kiwoom_live_fixture에는 이미 trades.parquet(side=1, qty=10, 3행 →
     버킷 [(10, 0) @09:00, (20, 0) @10:00])이 있다. 그 위에
     fills.parquet(buy 15/sell 5, ts=09:00:00) 1장을 추가로 쓴다.
     build_fill_strength_slice가 fills를 우선해야 하므로
     결과는 trades 기반 첫 버킷 (10, 0)이 아닌 fills 기반 (15, 5) 단일 포인트.
     """
-    code_dir = kis_live_fixture / "parquet" / DATE / CODE / "kis_live"
+    code_dir = kiwoom_live_fixture / "parquet" / DATE / CODE / "kiwoom_live" / "KRX"
     # Fill의 ts_ms는 HHMMSSmmm 인코딩 — 09:00:00.000 = 90000000
     fill = Fill(ts_ms=90000000, seq=1, buy_qty=15, sell_qty=5)
     write_fills_parquet([fill], code_dir / "fills.parquet")
 
-    engine = QueryEngine(kis_live_fixture)
+    engine = QueryEngine(kiwoom_live_fixture)
     fs = build_fill_strength_slice(
-        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kis_live",
+        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kiwoom_live",
     )
     # fills 1장 → 정확히 1 포인트. trades(2버킷)와 concat-병합하는 구현이
     # 우연히 첫 버킷 검사를 통과하는 구멍을 점 개수로 차단.
@@ -195,16 +195,16 @@ def test_fill_strength_prefers_fills_parquet(kis_live_fixture: Path) -> None:
     )
 
 
-def test_fill_strength_falls_back_to_trades_when_no_fills(kis_live_fixture: Path) -> None:
+def test_fill_strength_falls_back_to_trades_when_no_fills(kiwoom_live_fixture: Path) -> None:
     """fills.parquet이 없으면 trades.parquet 기반 집계로 폴백한다(회귀 가드).
 
-    kis_live_fixture는 fills.parquet 없이 trades.parquet만 갖는다
+    kiwoom_live_fixture는 fills.parquet 없이 trades.parquet만 갖는다
     (side=1, qty=10 × [09:00:00, 10:00:00, 10:00:30] 3행).
     60초 버킷 집계의 정확값을 고정: 09:00 버킷 (10, 0), 10:00 버킷 (20, 0).
     """
-    engine = QueryEngine(kis_live_fixture)
+    engine = QueryEngine(kiwoom_live_fixture)
     fs = build_fill_strength_slice(
-        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kis_live",
+        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kiwoom_live",
     )
     assert [(p.buy_qty, p.sell_qty) for p in fs.points] == [(10, 0), (20, 0)], (
         "trades.parquet 폴백 집계가 기대값과 다름"

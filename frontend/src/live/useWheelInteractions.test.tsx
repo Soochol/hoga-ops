@@ -55,7 +55,7 @@ function makeBundle(candleCount: number): RangeBundle {
         date: '20260608',
         session_open_ms: 1_780_000_000_000,
         session_close_ms: 1_780_023_400_000,
-        source: 'kis_live',
+        source: 'kiwoom_live',
       },
     ],
     candles: Array.from({ length: candleCount }, (_, i) => ({

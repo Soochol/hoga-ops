@@ -74,7 +74,7 @@ describe('useTradeVolumePocs', () => {
       '20260625',
       '005930',
       [{ ts_ms: atKst(9, 1), open: 100, high: 120, low: 100, close: 110, vol_a: 0, vol_b: 0 }],
-      [{ date: '20260625', session_open_ms: atKst(9, 0), session_close_ms: atKst(15, 30), source: 'kis_live' }],
+      [{ date: '20260625', session_open_ms: atKst(9, 0), session_close_ms: atKst(15, 30), source: 'kiwoom_live' }],
     ));
 
     expect(result.current).toHaveLength(1);
@@ -101,7 +101,7 @@ describe('useTradeVolumePocs', () => {
       '20260625',
       '005930',
       [{ ts_ms: atKst(9, 1), open: 100, high: 120, low: 100, close: 110, vol_a: 0, vol_b: 0 }],
-      [{ date: '20260625', session_open_ms: atKst(9, 0), session_close_ms: atKst(15, 30), source: 'kis_live' }],
+      [{ date: '20260625', session_open_ms: atKst(9, 0), session_close_ms: atKst(15, 30), source: 'kiwoom_live' }],
       [
         book(atKst(14, 59), true),
         book(atKst(15, 5), false),

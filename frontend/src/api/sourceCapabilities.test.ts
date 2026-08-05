@@ -11,12 +11,15 @@ describe('sourceCapabilities', () => {
   it('defines a display label for every read source', () => {
     // 리뷰 C2: 백엔드 SourceName에 kiwoom_live 추가 시 프론트 표기 누락이 렌더 크래시로
     // 이어졌다. `Record<SourceName, _>` 가 컴파일 타임에 전수를 강제하고, 이 단언이
-    // 라벨 문구까지 고정한다. kis_api 항목은 유지 — 소스 유니온의 전수 표기가 목적이다.
+    // 라벨 문구까지 고정한다.
+    //
+    // `kis_live` 는 빠졌다 — ADR-0118 이 KIS WS 계층을 삭제했고 잔존 데이터도
+    // `_archive/kis_live/` 로 이관됐다. `kis_api` 는 **유지**된다: 이름은 KIS 지만
+    // 생산자는 이미 키움이고(ADR-0109 복구 캔들, #1046 칼 컷오버) 경로가 동결이다.
     expect(SOURCE_CAPABILITIES).toEqual({
       hogaplay: expect.objectContaining({ label: 'hogaplay' }),
-      kis_live: expect.objectContaining({ label: 'KIS WS' }),
-      kis_api: expect.objectContaining({ label: 'KIS API' }),
       kiwoom_live: expect.objectContaining({ label: '키움 WS' }),
+      kis_api: expect.objectContaining({ label: 'KIS API' }),
       screener_daily: expect.objectContaining({ label: '스크리너' }),
     });
   });
@@ -30,9 +33,9 @@ describe('sourceCapabilities', () => {
     ]);
     expect(SOURCE_PREFERENCE_PRIMARY_SOURCE).toEqual({
       hogaplay_first: 'hogaplay',
-      kis_ws_first: 'kis_live',
-      // 완결성 동급이면 WS 타이브레이크라 대표 소스도 kis_live.
-      completeness_first: 'kis_live',
+      kis_ws_first: 'kiwoom_live',
+      // 완결성 동급이면 WS 타이브레이크라 대표 소스도 kiwoom_live.
+      completeness_first: 'kiwoom_live',
     });
   });
 

@@ -39,7 +39,7 @@ describe('computeTradeVolumePoc', () => {
       date: '20260624',
       session_open_ms: atKst(9, 0),
       session_close_ms: atKst(15, 30),
-      source: 'kis_live' as const,
+      source: 'kiwoom_live' as const,
     };
 
     const poc = computeTradeVolumePoc([
@@ -92,7 +92,7 @@ describe('computeTradeVolumePoc', () => {
         date: '20260624',
         session_open_ms: atKst(9, 0),
         session_close_ms: atKst(15, 30),
-        source: 'kis_live',
+        source: 'kiwoom_live',
       },
     });
 
@@ -146,7 +146,7 @@ describe('computeTradeVolumePoc', () => {
       date: '20260624',
       session_open_ms: atKst(9, 0),
       session_close_ms: atKst(15, 30),
-      source: 'kis_live' as const,
+      source: 'kiwoom_live' as const,
     };
     const poc = computeTradeVolumePoc([
       trade(atKst(9, 1), 100, 10),
@@ -172,7 +172,7 @@ describe('computeTradeVolumePoc', () => {
       date: '20260624',
       session_open_ms: atKst(9, 0),
       session_close_ms: atKst(15, 30),
-      source: 'kis_live' as const,
+      source: 'kiwoom_live' as const,
     };
     const poc = computeTradeVolumePoc([
       trade(atKst(9, 1), 100, 20),
@@ -198,7 +198,7 @@ describe('computeTradeVolumePoc', () => {
       date: '20260624',
       session_open_ms: atKst(9, 0),
       session_close_ms: atKst(15, 30),
-      source: 'kis_live' as const,
+      source: 'kiwoom_live' as const,
     };
     const poc = computeTradeVolumePoc([
       trade(atKst(9, 1), 100, 20),
@@ -254,7 +254,7 @@ describe('IncrementalTradeVolumePoc', () => {
     date: '20260624',
     session_open_ms: atKst(9, 0),
     session_close_ms: atKst(15, 30),
-    source: 'kis_live' as const,
+    source: 'kiwoom_live' as const,
   };
 
   // batch distribution 분기의 오라클 — 증분 결과와 라인 단위로 같아야 한다.
@@ -379,7 +379,7 @@ describe('computeCandleVolumePocs', () => {
       date: '20260624',
       session_open_ms: atKst(9, 0),
       session_close_ms: atKst(15, 30),
-      source: 'kis_live',
+      source: 'kiwoom_live',
     }], { rangeCount: 2 });
 
     expect(pocs).toHaveLength(1);

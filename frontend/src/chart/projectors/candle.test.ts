@@ -82,8 +82,8 @@ describe('projectCandle', () => {
     const past1 = { ts_ms: day0Open + 60_000, open: 101, close: 102, high: 103, low: 100, vol_a: 1, vol_b: 0 };
     const today = { ts_ms: day1Open, open: 102, close: 103, high: 104, low: 101, vol_a: 1, vol_b: 0 };
     const segments = [
-      { date: '20260518', session_open_ms: day0Open, session_close_ms: day0Open + 23_400_000, source: 'kis_live' },
-      { date: '20260519', session_open_ms: day1Open, session_close_ms: day1Open + 23_400_000, source: 'kis_live' },
+      { date: '20260518', session_open_ms: day0Open, session_close_ms: day0Open + 23_400_000, source: 'kiwoom_live' },
+      { date: '20260519', session_open_ms: day1Open, session_close_ms: day1Open + 23_400_000, source: 'kiwoom_live' },
     ];
     const calls: number[] = [];
     const countingAxis = {
@@ -113,8 +113,8 @@ describe('projectCandle', () => {
     const past1 = { ts_ms: day0Open + 60_000, open: 101, close: 102, high: 103, low: 100, vol_a: 1, vol_b: 0 };
     const today = { ts_ms: day1Open, open: 102, close: 103, high: 104, low: 101, vol_a: 1, vol_b: 0 };
     const segments = [
-      { date: '20260518', session_open_ms: day0Open, session_close_ms: day0Open + 23_400_000, source: 'kis_live' },
-      { date: '20260519', session_open_ms: day1Open, session_close_ms: day1Open + 23_400_000, source: 'kis_live' },
+      { date: '20260518', session_open_ms: day0Open, session_close_ms: day0Open + 23_400_000, source: 'kiwoom_live' },
+      { date: '20260519', session_open_ms: day1Open, session_close_ms: day1Open + 23_400_000, source: 'kiwoom_live' },
     ];
     // Fresh theme names ('thm-*') keep the module-level themed-token cache empty
     // for these keys, so the stub — not another test's cached fallbacks — drives

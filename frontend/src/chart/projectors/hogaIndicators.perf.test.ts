@@ -34,7 +34,7 @@ function makeAxisAndSegments(days: number) {
     const open = BASE + d * DAY;
     const close = open + SESSION;
     axisSegs.push({ date: `d${d}`, sessionOpenMs: open, sessionCloseMs: close });
-    bundleSegs.push({ date: `d${d}`, session_open_ms: open, session_close_ms: close, source: 'kis_live' as const });
+    bundleSegs.push({ date: `d${d}`, session_open_ms: open, session_close_ms: close, source: 'kiwoom_live' as const });
   }
   return { axis: createVirtualAxis(axisSegs), bundleSegs };
 }
@@ -180,7 +180,7 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
       const todayQr = bundle.quote_ratio.points.filter((p: any) => p.t >= todayOpen);
       const todayFs = bundle.fill_strength.points.filter((p: any) => p.t >= todayOpen);
       const todayBundle: any = {
-        segments: [{ date: `d${days - 1}`, session_open_ms: todayOpen, session_close_ms: todayClose, source: 'kis_live' }],
+        segments: [{ date: `d${days - 1}`, session_open_ms: todayOpen, session_close_ms: todayClose, source: 'kiwoom_live' }],
         bucket_ms: BUCKET_MS,
         quote_ratio: { bucket_ms: BUCKET_MS, points: todayQr },
         fill_strength: { bucket_ms: BUCKET_MS, points: todayFs },

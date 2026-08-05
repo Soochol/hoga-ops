@@ -16,10 +16,6 @@ export const SOURCE_CAPABILITIES: Record<SourceName, SourceCapability> = {
     source: 'hogaplay',
     label: 'hogaplay',
   },
-  kis_live: {
-    source: 'kis_live',
-    label: 'KIS WS',
-  },
   kis_api: {
     source: 'kis_api',
     label: 'KIS API',
@@ -40,12 +36,17 @@ export const SOURCE_PREFERENCE_OPTIONS = [
   'completeness_first',
 ] as const satisfies readonly SourcePreference[];
 
-// completeness_first의 대표 소스는 kis_live — 완결성 동급(둘 다 완결/둘 다 미완결)일
-// 때의 타이브레이크가 실시간 WS 우선이라, 칩/기본 표시도 WS를 대표로 둔다.
+// 실시간 WS 대표 소스는 **키움**이다 — KIS WS 계층은 ADR-0118 에서 삭제됐고
+// `kis_live` 는 소스에서도 빠졌다(잔존 데이터는 `_archive/kis_live/` 로 이관).
+// 완결성 동급 타이브레이크가 WS 우선이라 칩·기본 표시도 WS 를 대표로 둔다.
+//
+// ⚠ 정책 **키** `kis_ws_first` 는 그대로다 — `chart.sourcePreference.v1` 로 저장된
+// 사용자 설정이라 이름을 바꾸면 마이그레이션이 필요하다. 라벨은 이미 벤더 중립
+// ('실시간 WS 우선')이라 사용자에겐 보이지 않는 이름이다.
 export const SOURCE_PREFERENCE_PRIMARY_SOURCE: Record<SourcePreference, SourceName> = {
   hogaplay_first: 'hogaplay',
-  kis_ws_first: 'kis_live',
-  completeness_first: 'kis_live',
+  kis_ws_first: 'kiwoom_live',
+  completeness_first: 'kiwoom_live',
 };
 
 // getSourceCapability(런타임 소스 문자열 → capability, 미지 소스 폴백 포함)는

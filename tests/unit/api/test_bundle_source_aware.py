@@ -6,12 +6,13 @@ import polars as pl
 
 from hoga.api.bundle import build_range_bundle
 from hoga.api.queries import QueryEngine
+from hoga.api.sources import source_venue_dir
 
 
 def _write_meta(path: Path, **kwargs) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     default = {
-        "source": "kis_live",
+        "source": "kiwoom_live",
         "code": "003490",
         "date": "20260527",
         "promoted_at": "2026-05-28T09:00:00+00:00",
@@ -67,10 +68,10 @@ def _snap(t_hhmmssms: int, total_bid: int, total_ask: int) -> dict:
 
 
 def test_dual_source_5_27_scenario(tmp_path: Path) -> None:
-    """5/27 시나리오: 손상된 top-level hogaplay + 정상 kis_live/.
+    """5/27 시나리오: 손상된 top-level hogaplay + 정상 kiwoom_live/.
 
-    Expected: source preference가 hogaplay여도 hogaplay/ 가 없으므로 kis_live
-    fallback. 그리고 슬라이스가 kis_live/snapshots.parquet 만 읽음 (top-level
+    Expected: source preference가 hogaplay여도 hogaplay/ 가 없으므로 kiwoom_live
+    fallback. 그리고 슬라이스가 kiwoom_live/snapshots.parquet 만 읽음 (top-level
     snapshots.parquet은 안 읽힘 — 손상된 hogaplay 잔재).
     """
     code = "003490"
@@ -86,18 +87,19 @@ def test_dual_source_5_27_scenario(tmp_path: Path) -> None:
         "regular_session_close_ms": 0,  # 손상값 (invariant 위반)
     }))
     _write_snapshots(sd_dir / "snapshots.parquet", [
-        _snap(90000000, 99999, 99999)  # 손상 데이터 — kis_live와 다른 값
+        _snap(90000000, 99999, 99999)  # 손상 데이터 — kiwoom_live와 다른 값
     ])
     _write_empty_candles(sd_dir / "candles.parquet")
     _write_empty_trades(sd_dir / "trades.parquet")
 
-    # 정상 kis_live/ 서브디렉터리
-    _write_meta(sd_dir / "kis_live" / "meta.json")
-    _write_snapshots(sd_dir / "kis_live" / "snapshots.parquet", [
+    # 정상 kiwoom_live/ 서브디렉터리
+    kw = source_venue_dir(sd_dir, "kiwoom_live", "KRX")
+    _write_meta(kw / "meta.json")
+    _write_snapshots(kw / "snapshots.parquet", [
         _snap(100000000, 12345, 67890),  # 진짜 데이터
     ])
-    _write_empty_candles(sd_dir / "kis_live" / "candles.parquet")
-    _write_empty_trades(sd_dir / "kis_live" / "trades.parquet")
+    _write_empty_candles(kw / "candles.parquet")
+    _write_empty_trades(kw / "trades.parquet")
 
     engine = QueryEngine(tmp_path)
     bundle = build_range_bundle(
@@ -107,10 +109,10 @@ def test_dual_source_5_27_scenario(tmp_path: Path) -> None:
     )
 
     assert len(bundle.segments) == 1
-    assert bundle.segments[0].source == "kis_live"  # fallback 발동
+    assert bundle.segments[0].source == "kiwoom_live"  # fallback 발동
     points = bundle.quote_ratio.points
     assert len(points) >= 1
-    # kis_live 데이터가 노출됨 (top-level 손상 데이터 99999 아니라 12345)
+    # kiwoom_live 데이터가 노출됨 (top-level 손상 데이터 99999 아니라 12345)
     assert any(p.bid_total == 12345 for p in points)
     assert not any(p.bid_total == 99999 for p in points)
 
@@ -159,23 +161,24 @@ def test_source_pref_strict_when_pref_present_but_sparse(tmp_path: Path) -> None
     _write_empty_candles(sd_dir / "hogaplay" / "candles.parquet")
     _write_empty_trades(sd_dir / "hogaplay" / "trades.parquet")
 
-    # 정상 kis_live/ (sparse — 1건만)
-    _write_meta(sd_dir / "kis_live" / "meta.json")
-    _write_snapshots(sd_dir / "kis_live" / "snapshots.parquet", [
+    # 정상 kiwoom_live/ (sparse — 1건만)
+    kw = source_venue_dir(sd_dir, "kiwoom_live", "KRX")
+    _write_meta(kw / "meta.json")
+    _write_snapshots(kw / "snapshots.parquet", [
         _snap(165000000, 55555, 66666),
     ])
-    _write_empty_candles(sd_dir / "kis_live" / "candles.parquet")
-    _write_empty_trades(sd_dir / "kis_live" / "trades.parquet")
+    _write_empty_candles(kw / "candles.parquet")
+    _write_empty_trades(kw / "trades.parquet")
 
     engine = QueryEngine(tmp_path)
     bundle = build_range_bundle(
         engine, code=code, from_date=date, to_date=date,
-        bucket_ms=60_000, source_pref="kis_live",
+        bucket_ms=60_000, source_pref="kiwoom_live",
         mode="hoga",
     )
 
-    # kis_live가 있으니 그것만 — sparse(1건)여도
-    assert bundle.segments[0].source == "kis_live"
+    # kiwoom_live가 있으니 그것만 — sparse(1건)여도
+    assert bundle.segments[0].source == "kiwoom_live"
     bid_totals = [p.bid_total for p in bundle.quote_ratio.points]
     assert 55555 in bid_totals
     assert 10000 not in bid_totals  # hogaplay 데이터는 안 섞임
@@ -187,21 +190,22 @@ def test_source_pref_fallback_when_pref_missing(tmp_path: Path) -> None:
     date = "20260527"
     sd_dir = tmp_path / "parquet" / date / code
 
-    # kis_live/ 만 존재 (hogaplay/ 없음)
-    _write_meta(sd_dir / "kis_live" / "meta.json")
-    _write_snapshots(sd_dir / "kis_live" / "snapshots.parquet", [
+    # kiwoom_live/ 만 존재 (hogaplay/ 없음)
+    kw = source_venue_dir(sd_dir, "kiwoom_live", "KRX")
+    _write_meta(kw / "meta.json")
+    _write_snapshots(kw / "snapshots.parquet", [
         _snap(100000000, 33333, 44444),
     ])
-    _write_empty_candles(sd_dir / "kis_live" / "candles.parquet")
-    _write_empty_trades(sd_dir / "kis_live" / "trades.parquet")
+    _write_empty_candles(kw / "candles.parquet")
+    _write_empty_trades(kw / "trades.parquet")
 
     engine = QueryEngine(tmp_path)
     bundle = build_range_bundle(
         engine, code=code, from_date=date, to_date=date,
-        bucket_ms=60_000, source_pref="hogaplay", mode="hoga",  # 없으니 kis_live fallback
+        bucket_ms=60_000, source_pref="hogaplay", mode="hoga",  # 없으니 kiwoom_live fallback
     )
 
-    assert bundle.segments[0].source == "kis_live"
+    assert bundle.segments[0].source == "kiwoom_live"
     assert any(p.bid_total == 33333 for p in bundle.quote_ratio.points)
 
 
@@ -212,10 +216,11 @@ def test_source_pref_kis_api_first_resolves_but_suppresses_orderflow(tmp_path: P
     date = "20260622"
     sd_dir = tmp_path / "parquet" / date / code
 
-    _write_meta(sd_dir / "kis_live" / "meta.json", source="kis_live", date=date)
-    _write_snapshots(sd_dir / "kis_live" / "snapshots.parquet", [_snap(100000000, 11111, 22222)])
-    _write_empty_candles(sd_dir / "kis_live" / "candles.parquet")
-    _write_empty_trades(sd_dir / "kis_live" / "trades.parquet")
+    kw = source_venue_dir(sd_dir, "kiwoom_live", "KRX")
+    _write_meta(kw / "meta.json", source="kiwoom_live", date=date)
+    _write_snapshots(kw / "snapshots.parquet", [_snap(100000000, 11111, 22222)])
+    _write_empty_candles(kw / "candles.parquet")
+    _write_empty_trades(kw / "trades.parquet")
 
     _write_meta(sd_dir / "kis_api" / "meta.json", source="kis_api", date=date, sampling_ms=30000)
     _write_snapshots(sd_dir / "kis_api" / "snapshots.parquet", [_snap(100000000, 33333, 44444)])

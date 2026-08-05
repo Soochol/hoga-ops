@@ -21,29 +21,29 @@ def test_orderbook_response_has_source_field() -> None:
         OrderbookResponse(available_from=None, snapshot=None, source="invalid")  # type: ignore[arg-type]
 
 
-def test_orderbook_source_pref_prefers_kis_live(seed_orderbook):
+def test_orderbook_source_pref_prefers_kiwoom_live(seed_orderbook):
     # seed_orderbook: project fixture that writes snapshots.parquet under
-    # both data/parquet/{date}/{code}/hogaplay/ and .../kis_live/
-    client = seed_orderbook(date="20260528", code="005930", with_kis_live=True)
+    # both data/parquet/{date}/{code}/hogaplay/ and .../kiwoom_live/
+    client = seed_orderbook(date="20260528", code="005930", with_kiwoom_live=True)
     r = client.get("/api/orderbook", params={"venue": "KRX", 
-        "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "kis_live"
+        "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "kiwoom_live"
     })
     assert r.status_code == 200
-    assert r.json()["source"] == "kis_live"
+    assert r.json()["source"] == "kiwoom_live"
 
 
 def test_orderbook_source_pref_falls_back_to_hogaplay(seed_orderbook):
-    # Only hogaplay seeded — kis_live missing.
-    client = seed_orderbook(date="20260528", code="005930", with_kis_live=False)
+    # Only hogaplay seeded — kiwoom_live missing.
+    client = seed_orderbook(date="20260528", code="005930", with_kiwoom_live=False)
     r = client.get("/api/orderbook", params={"venue": "KRX", 
-        "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "kis_live"
+        "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "kiwoom_live"
     })
     assert r.status_code == 200
     assert r.json()["source"] == "hogaplay"  # fallback (ADR-0039)
 
 
 def test_orderbook_source_pref_default_is_hogaplay(seed_orderbook):
-    client = seed_orderbook(date="20260528", code="005930", with_kis_live=False)
+    client = seed_orderbook(date="20260528", code="005930", with_kiwoom_live=False)
     r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": "005930", "date": "20260528", "t": 1779930000000,
         # no source_pref → default "hogaplay"
@@ -53,7 +53,7 @@ def test_orderbook_source_pref_default_is_hogaplay(seed_orderbook):
 
 
 def test_orderbook_source_pref_invalid_returns_422(seed_orderbook):
-    client = seed_orderbook(date="20260528", code="005930", with_kis_live=False)
+    client = seed_orderbook(date="20260528", code="005930", with_kiwoom_live=False)
     r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "garbage"
     })
@@ -81,7 +81,7 @@ def test_orderbook_returns_empty_response_when_source_dir_missing(
     assert body["source"] == "hogaplay"
 
 
-def test_orderbook_returns_empty_response_when_source_dir_missing_kis_live_pref(
+def test_orderbook_returns_empty_response_when_source_dir_missing_kiwoom_live_pref(
     tmp_path: Path,
 ) -> None:
     """Source preference echoed back even when no data exists — chip should
@@ -91,7 +91,7 @@ def test_orderbook_returns_empty_response_when_source_dir_missing_kis_live_pref(
     client = TestClient(create_app(data_dir=tmp_path / "data"))
     r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": "005930", "date": "20260319", "t": 1779930000000,
-        "source_pref": "kis_live",
+        "source_pref": "kiwoom_live",
     })
     assert r.status_code == 200, r.text
-    assert r.json()["source"] == "kis_live"
+    assert r.json()["source"] == "kiwoom_live"

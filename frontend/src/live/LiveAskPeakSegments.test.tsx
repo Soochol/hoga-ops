@@ -235,7 +235,7 @@ describe('styleVisibleMaxAskPeakSegments', () => {
 
 describe('buildAskPeakOverlaySegments', () => {
   it('buildBidPeakOverlaySegments renders untraded line only when larger than baseline', () => {
-    const segments = [{ date: '20260619', session_open_ms: 1_000, session_close_ms: 2_000, source: 'kis_live' as const }];
+    const segments = [{ date: '20260619', session_open_ms: 1_000, session_close_ms: 2_000, source: 'kiwoom_live' as const }];
     const peakMs = Date.UTC(2026, 5, 19, 0, 1);
     const candles = [{ ts_ms: peakMs, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 0, vol_b: 0 }];
     const peaks: BidPeak[] = [{
@@ -273,7 +273,7 @@ describe('buildAskPeakOverlaySegments', () => {
   });
 
   it('buildBidPeakOverlaySegments renders today bid untraded family independently of the intraday low gate', () => {
-    const segments = [{ date: '20260619', session_open_ms: 1_000, session_close_ms: 2_000, source: 'kis_live' as const }];
+    const segments = [{ date: '20260619', session_open_ms: 1_000, session_close_ms: 2_000, source: 'kiwoom_live' as const }];
     const candles = [
       { ts_ms: Date.UTC(2026, 5, 19, 0, 1), open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 0, vol_b: 0 },
       { ts_ms: Date.UTC(2026, 5, 19, 0, 2), open: 69950, high: 70000, low: 69800, close: 69900, vol_a: 0, vol_b: 0 },

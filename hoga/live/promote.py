@@ -312,7 +312,7 @@ def _consume_complete_lines(state: _JsonlParseState, jsonl_path: Path, *, code: 
 
 
 def _parse_jsonl_incremental(
-    jsonl_path: Path, *, code: str, date: str, source: str = "kis_live",
+    jsonl_path: Path, *, code: str, date: str, source: str = "kiwoom_live",
     venue: str = "KRX",
 ) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], list[Candle], dict]:
     """Today Promotion용 증분 파서 — 전량 파서와 결과 동등(패리티 테스트 고정)."""
@@ -342,7 +342,7 @@ def _parse_jsonl_to_records(
     *,
     code: str,
     date: str,
-    source: str = "kis_live",
+    source: str = "kiwoom_live",
 ) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], list[Candle], dict]:
     """Parse one Live Capture JSONL into typed table records + meta.
 
@@ -409,7 +409,7 @@ def _build_meta(
     code: str, date: str, snapshots: list, trades: list, broker_snapshot_count: int,
     fill_count: int = 0,
     *,
-    source: str = "kis_live",
+    source: str = "kiwoom_live",
     venue: str = "KRX",
 ) -> dict:
     meta = {
@@ -581,7 +581,7 @@ async def promote_one(
     *,
     code: str,
     date: str,
-    source: str = "kis_live",
+    source: str = "kiwoom_live",
     venue: str = "KRX",
 ) -> None:
     """Convert one JSONL file to Parquet artifacts under `parquet/{date}/{code}/{source}/`.
@@ -653,11 +653,13 @@ async def promote_one(
     )
 
 
-# 일배치 승격 대상 (JSONL 루트, 승격 소스). live=KIS WS, live_kiwoom=키움 WS(ADR-0116).
-# 키움을 누락하면 크래시/이탈로 남은 과거일 live_kiwoom JSONL이 영영 미승격+디스크
-# 무한 증가하고, kiwoom_live가 read-path 소스라 완결 플래그가 ✕로 고착된다(리뷰 Major).
+# 일배치 승격 대상 (JSONL 루트, 승격 소스). 실시간 WS 는 키움 하나다(ADR-0118 —
+# KIS WS 계층 삭제). 누락하면 크래시/이탈로 남은 과거일 JSONL 이 영영 미승격 + 디스크
+# 무한 증가하고, 완결 플래그가 ✕로 고착된다(리뷰 Major).
+#
+# `("live", "kis_live")` 를 뺐다 — KIS WS 시절 루트다. 실측 2026-08-05 기준 그 아래
+# 미승격 JSONL 이 **0건**이고(아카이브도 0), 소스 자체가 이 커밋에서 사라진다.
 _PROMOTE_ROOTS: tuple[tuple[str, str], ...] = (
-    ("live", "kis_live"),
     ("live_kiwoom", "kiwoom_live"),
 )
 

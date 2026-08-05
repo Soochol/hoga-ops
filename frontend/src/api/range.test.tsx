@@ -832,7 +832,7 @@ describe('mergeRangeBundles', () => {
       code: '005930',
       from_date: '20260706',
       to_date: '20260706',
-      segments: [{ date: '20260706', session_open_ms: 1, session_close_ms: 4, source: 'kis_live' }],
+      segments: [{ date: '20260706', session_open_ms: 1, session_close_ms: 4, source: 'kiwoom_live' }],
       candles: [{ ts_ms: 1, open: 20, high: 20, low: 20, close: 20, vol_a: 2, vol_b: 0 }],
       quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 20, ask_total: 19, bid_max: 6, ask_max: 5, imb_max_bid: 1, imb_max_ask: 0 }] },
       fill_strength: { bucket_ms: 60_000, points: [{ t: 1, buy_qty: 20, sell_qty: 2 }] },

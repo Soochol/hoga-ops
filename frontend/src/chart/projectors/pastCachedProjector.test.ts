@@ -30,7 +30,7 @@ function makeAxisAndBundle(nDays: number, extraTodayPoints: QRSeed[] = []) {
     const open = BASE + d * DAY;
     const close = open + SESSION;
     axisSegs.push({ date: `d${d}`, sessionOpenMs: open, sessionCloseMs: close });
-    snakeSegs.push({ date: `d${d}`, session_open_ms: open, session_close_ms: close, source: 'kis_live' as const });
+    snakeSegs.push({ date: `d${d}`, session_open_ms: open, session_close_ms: close, source: 'kiwoom_live' as const });
     points.push({ t: open, bid_total: 100, ask_total: 100, bid_max: 120, ask_max: 130, imb_max_bid: 40, imb_max_ask: 160 });
     points.push({ t: open + 3_600_000, bid_total: 100, ask_total: 200, bid_max: 150, ask_max: 260, imb_max_bid: 30, imb_max_ask: 300 }); // sell-heavy
     points.push({ t: open + 9000 * 1000, bid_total: 5000, ask_total: 50, bid_max: 5200, ask_max: 90, imb_max_bid: 6000, imb_max_ask: 20 }); // 극단값(outlier clamp 대상)
@@ -61,8 +61,8 @@ function makeBoundaryGapBundle() {
   const bundle: any = {
     bucket_ms: 60_000,
     segments: [
-      { date: 'd0', session_open_ms: day0Open, session_close_ms: day0Open + SESSION, source: 'kis_live' as const },
-      { date: 'd1', session_open_ms: day1Open, session_close_ms: day1Open + SESSION, source: 'kis_live' as const },
+      { date: 'd0', session_open_ms: day0Open, session_close_ms: day0Open + SESSION, source: 'kiwoom_live' as const },
+      { date: 'd1', session_open_ms: day1Open, session_close_ms: day1Open + SESSION, source: 'kiwoom_live' as const },
     ],
     candles: [
       { ts_ms: day0Open + SESSION - 60_000, open: 1, high: 1, low: 1, close: 1, vol_a: 0, vol_b: 0 },
@@ -456,7 +456,7 @@ function makeCumulativeBundle(nDays: number, extraToday: number[] = []) {
     const open = BASE + d * DAY;
     const close = open + SESSION;
     axisSegs.push({ date: `d${d}`, sessionOpenMs: open, sessionCloseMs: close });
-    snakeSegs.push({ date: `d${d}`, session_open_ms: open, session_close_ms: close, source: 'kis_live' as const });
+    snakeSegs.push({ date: `d${d}`, session_open_ms: open, session_close_ms: close, source: 'kiwoom_live' as const });
     fs.push({ t: open + 3_600_000, buy_qty: 300, sell_qty: 120 }); // open 이후 → zero anchor
     fs.push({ t: open + 2 * 3_600_000, buy_qty: 80, sell_qty: 400 });
     fs.push({ t: close - 5 * 60_000, buy_qty: 50, sell_qty: 50 }); // 동시호가창
