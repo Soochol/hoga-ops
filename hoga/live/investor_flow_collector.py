@@ -42,7 +42,7 @@ MARKETS: tuple[str, ...] = ("0", "1")
 # 금액 축(억원). 수량 축은 "1"(천주) — TR 마다 코드표가 다르니(ka10064 는 1=금액)
 # 이 상수를 다른 TR 에 옮기지 말 것(#1117).
 AMT_QTY_AMOUNT_EOK = "0"
-_STEX_ALL = "3"
+STEX_ALL = "3"
 
 
 class InvestorFlowCollectorStatus:
@@ -139,7 +139,7 @@ class InvestorFlowCollector:
                         "mrkt_tp": mrkt_tp,
                         "amt_qty_tp": AMT_QTY_AMOUNT_EOK,
                         "base_dt": date,
-                        "stex_tp": _STEX_ALL,
+                        "stex_tp": STEX_ALL,
                     },
                     rows=rows,
                 ),
@@ -169,7 +169,7 @@ def make_kiwoom_fetch(scheduler: Any, client: Any) -> Callable[[str, str], Await
             "mrkt_tp": mrkt_tp,
             "amt_qty_tp": AMT_QTY_AMOUNT_EOK,
             "base_dt": date,
-            "stex_tp": _STEX_ALL,
+            "stex_tp": STEX_ALL,
         }
         try:
             page = await kiwoom_access.run_with_capacity(
