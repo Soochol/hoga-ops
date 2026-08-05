@@ -467,6 +467,29 @@ def _prune_dated_dirs(root: Path, *, cutoff: str, execute: bool) -> tuple[int, i
     return n, size
 
 
+def _prune_dated_files(root: Path, *, cutoff: str, execute: bool, suffix: str) -> tuple[int, int]:
+    """``<YYYYMMDD><suffix>`` **파일** 레이아웃에서 cutoff 이전 날짜 파일을 지운다.
+
+    `_prune_dated_dirs` 의 파일판이다 — 하루가 디렉터리가 아니라 파일 하나인 트리
+    (investor-flow 장중 표본 JSONL)를 위한 것. 이름이 날짜가 아닌 파일은 건드리지
+    않는다(손상 격리본 `*.corrupt-*` 등이 그 자리에 있을 수 있다).
+    """
+    if not root.is_dir():
+        return 0, 0
+    n = size = 0
+    for path in sorted(root.iterdir()):
+        if not path.is_file() or not path.name.endswith(suffix):
+            continue
+        stem = path.name[: -len(suffix)]
+        if not stem.isdigit() or stem >= cutoff:
+            continue
+        n += 1
+        size += path.stat().st_size
+        if execute:
+            path.unlink()
+    return n, size
+
+
 def _remove_empty_dirs_under(root: Path) -> None:
     """깊은 곳부터 비어 버린 디렉터리를 정리한다(root 자신은 유지)."""
     for path in sorted(root.rglob("*"), key=lambda p: -len(p.parts)):
@@ -489,6 +512,13 @@ def prune_derived(
     )
     by_tree["timing"] = _prune_dated_dirs(
         data_dir / "timing", cutoff=cutoff, execute=execute,
+    )
+    # investor-flow: **장중 표본만** 편입한다(#1115). 확정본(`daily/`)은 하루 60행뿐이고
+    # 벤더 권위 기록이라 영구 보관이다. 장중 표본은 소급 복구가 불가능하지만 소비자가
+    # 아직 없어, 180일은 보존 정책이라기보다 "과거 장중 형태에 쓸모가 있는가" 를 판정할
+    # **유예 기간**이다 — 그 안에 쓸모가 확인되면 압축 아카이브를 원본에서 만들면 된다.
+    by_tree["investor-flow-intraday"] = _prune_dated_files(
+        data_dir / "investor-flow" / "intraday", cutoff=cutoff, execute=execute, suffix=".jsonl",
     )
     return DerivedPruneResult(by_tree=by_tree)
 

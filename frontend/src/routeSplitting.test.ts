@@ -32,6 +32,7 @@ describe('초기 번들 코드 분할', () => {
       './pages/Screener',
       './pages/Capture',
       './pages/Sentiment',
+      './pages/Market',
       './pages/Settings',
     ];
     const statics = staticImportSources(MAIN);
