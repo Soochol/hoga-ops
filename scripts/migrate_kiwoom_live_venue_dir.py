@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 SOURCE = "kiwoom_live"
@@ -38,11 +39,41 @@ VENUE = "KRX"
 PREVIEW = 3  # dry-run 에 보여줄 예시 개수
 
 
-def _plan(parquet_root: Path, *, reverse: bool) -> list[tuple[Path, Path]]:
-    """옮길 (src, dst) 목록. 이미 목표 모양이면 비운다(멱등)."""
-    moves: list[tuple[Path, Path]] = []
+@dataclass
+class _Plan:
+    """옮길 것과 **못 옮기는 것**. 후자를 조용히 버리지 않는 것이 이 구조의 요점이다."""
+
+    moves: list[tuple[Path, Path]] = field(default_factory=list)
+    #: 이미 마이그레이션된 디렉터리에 남은 평면 parquet — venue 쪽이 정본이라 겹친다.
+    stale: list[Path] = field(default_factory=list)
+    #: 마이그레이션된 디렉터리의 평면 `meta.json` — **source 레벨 meta 다**(ADR-0140 §4).
+    source_meta: list[Path] = field(default_factory=list)
+
+
+def _plan(parquet_root: Path, *, reverse: bool) -> _Plan:
+    """옮길 목록. 이미 목표 모양이면 안 옮긴다(멱등 — docstring 이 약속한 그것).
+
+    ⚠ **이 함수가 한 번 틀렸다.** 예전 판은 *"이미 옮긴 디렉터리는 파일이 venue 아래에만
+    있다"* 고 **가정**하고 평면 파일을 전부 옮겼다. D1 이 머지돼 앱이 새 레이아웃으로
+    쓰기 시작하자 그 가정이 깨졌다 — 실측 2026-08-05 기준 **273 Stock-Date 가 두 모양을
+    같은 파일명으로** 갖고 있었다. `Path.rename` 은 POSIX 에서 대상을 **조용히 덮어쓰므로**
+    그대로 돌렸다면:
+
+    - 새 승격이 쓴 `KRX/*.parquet` **1,365 개**가 옛 평면본으로 되돌아가고
+    - 평면 `meta.json` 이 `KRX/meta.json` 위로 옮겨져 **source 레벨 meta 와 venue 레벨
+      meta 를 한 번에 파괴**한다(PR-E 가 `kiwoom_live/meta.json` 에 `expected_venues` ·
+      `nxt_enabled` 를 둔다 — 그건 잔재가 아니라 정본이다)
+
+    판별은 **venue 디렉터리 존재 여부** 하나로 충분하다:
+
+    - `KRX/` 가 있다 → 이미 마이그레이션됨. 평면 parquet 는 잔재(`stale`), 평면
+      `meta.json` 은 source 레벨 정본(`source_meta`) — **둘 다 안 건드린다**
+    - `KRX/` 가 없다 → 미마이그레이션. 평면 `meta.json` 은 그 시절의 venue meta 이므로
+      함께 옮긴다
+    """
+    plan = _Plan()
     if not parquet_root.is_dir():
-        return moves
+        return plan
     for date_dir in sorted(parquet_root.iterdir()):
         if not date_dir.is_dir():
             continue
@@ -56,13 +87,60 @@ def _plan(parquet_root: Path, *, reverse: bool) -> list[tuple[Path, Path]]:
                     continue
                 for f in sorted(venue_dir.iterdir()):
                     if f.is_file():
-                        moves.append((f, src_dir / f.name))
-            else:
-                # 이미 옮긴 디렉터리는 파일이 venue 아래에만 있다.
-                loose = [f for f in sorted(src_dir.iterdir()) if f.is_file()]
+                        plan.moves.append((f, src_dir / f.name))
+                continue
+            loose = [f for f in sorted(src_dir.iterdir()) if f.is_file()]
+            if any(d.is_dir() for d in src_dir.iterdir()):
+                # 이미 마이그레이션됨 — 평면에 남은 것은 옮길 대상이 아니다.
                 for f in loose:
-                    moves.append((f, venue_dir / f.name))
-    return moves
+                    (plan.source_meta if f.name == "meta.json" else plan.stale).append(f)
+                continue
+            plan.moves.extend((f, venue_dir / f.name) for f in loose)
+    return plan
+
+
+def _print_plan(
+    plan: _Plan, parquet_root: Path, *, reverse: bool, prune_stale: bool,
+) -> None:
+    """계획 요약. **못 옮기는 것도 반드시 찍는다** — 조용한 스킵은 조용한 결손이 된다."""
+    print(f"데이터: {parquet_root}")
+    print(f"방향  : {'KRX/ → 상위(되돌림)' if reverse else '상위 → KRX/'}")
+    print(f"대상  : 파일 {len(plan.moves):,}개")
+    if plan.source_meta:
+        print(f"보존  : source 레벨 meta.json {len(plan.source_meta):,}개 — "
+              f"venue 밖 정본이라 안 옮긴다(ADR-0140 §4)")
+    if plan.stale:
+        action = "삭제한다(--prune-stale)" if prune_stale else "삭제하려면 --prune-stale"
+        print(f"잔재  : 평면 parquet {len(plan.stale):,}개 — "
+              f"이미 venue 쪽이 정본이다. {action}")
+
+
+def _apply_moves(moves: list[tuple[Path, Path]], parquet_root: Path) -> int | None:
+    """이동 실행. 대상이 이미 있으면 **멈춘다**(None) — 데이터를 잃느니 사람이 보게 한다.
+
+    `Path.rename` 은 POSIX 에서 대상을 조용히 덮어쓴다. `_plan` 이 이미 걸러내지만,
+    그 판별이 뚫렸을 때 조용히 지나가면 안 되는 종류의 실수라 여기서 한 번 더 막는다.
+    """
+    moved = 0
+    for src, dst in moves:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            print(f"\n중단 — 대상이 이미 있다: {dst.relative_to(parquet_root)}")
+            return None
+        src.rename(dst)  # 같은 파일시스템 — 원자적 이동
+        moved += 1
+    return moved
+
+
+def _cleanup_empty_venue_dirs(parquet_root: Path) -> None:
+    """되돌림 후 빈 venue 디렉터리 청소(정방향은 상위가 안 비므로 불필요)."""
+    for date_dir in parquet_root.iterdir():
+        if not date_dir.is_dir():
+            continue
+        for code_dir in date_dir.iterdir():
+            venue_dir = code_dir / SOURCE / VENUE
+            if venue_dir.is_dir() and not any(venue_dir.iterdir()):
+                venue_dir.rmdir()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -71,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="기본: hoga.config.resolve_data_dir()")
     ap.add_argument("--apply", action="store_true", help="실제로 옮긴다(없으면 dry-run)")
     ap.add_argument("--reverse", action="store_true", help="KRX/ → 상위로 되돌린다")
+    ap.add_argument("--prune-stale", action="store_true",
+                    help="이미 마이그레이션된 디렉터리에 남은 평면 parquet 삭제(되돌릴 수 없다)")
     args = ap.parse_args(argv)
 
     if args.data_dir is None:
@@ -80,12 +160,10 @@ def main(argv: list[str] | None = None) -> int:
         data_dir = args.data_dir
     parquet_root = data_dir / "parquet"
 
-    moves = _plan(parquet_root, reverse=args.reverse)
-    direction = "KRX/ → 상위(되돌림)" if args.reverse else "상위 → KRX/"
-    print(f"데이터: {parquet_root}")
-    print(f"방향  : {direction}")
-    print(f"대상  : 파일 {len(moves):,}개")
-    if not moves:
+    plan = _plan(parquet_root, reverse=args.reverse)
+    moves = plan.moves
+    _print_plan(plan, parquet_root, reverse=args.reverse, prune_stale=args.prune_stale)
+    if not moves and not (args.prune_stale and plan.stale):
         print("옮길 것이 없다 — 이미 목표 모양이거나 데이터가 없다(멱등).")
         return 0
 
@@ -98,21 +176,18 @@ def main(argv: list[str] | None = None) -> int:
         print("\ndry-run 이다. 실제로 옮기려면 --apply 를 붙여라.")
         return 0
 
-    moved = 0
-    for src, dst in moves:
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        src.rename(dst)  # 같은 파일시스템 — 원자적 이동
-        moved += 1
-    # 되돌림 후 빈 venue 디렉터리 청소(정방향은 상위가 안 비므로 불필요).
+    moved = _apply_moves(moves, parquet_root)
+    if moved is None:
+        return 1
+    pruned = 0
+    if args.prune_stale:
+        for f in plan.stale:
+            f.unlink()
+            pruned += 1
     if args.reverse:
-        for date_dir in parquet_root.iterdir():
-            if not date_dir.is_dir():
-                continue
-            for code_dir in date_dir.iterdir():
-                venue_dir = code_dir / SOURCE / VENUE
-                if venue_dir.is_dir() and not any(venue_dir.iterdir()):
-                    venue_dir.rmdir()
-    print(f"\n완료 — 파일 {moved:,}개 이동.")
+        _cleanup_empty_venue_dirs(parquet_root)
+    print(f"\n완료 — 파일 {moved:,}개 이동"
+          + (f" · 잔재 {pruned:,}개 삭제." if pruned else "."))
     return 0
 
 
