@@ -31,6 +31,7 @@ import {
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
 import { aggregateCandles, aggregateCalendar, calendarBucketKey } from './aggregateCandles';
+import { collapseClosingAuction } from './collapseClosingAuction';
 import {
   regularSessionOpenMs,
   regularSessionCloseMs,
@@ -693,13 +694,23 @@ export function useLiveBundle(
     sidecarEnabled ? rangePlan.todayKst : null,
     sidecarRangeOptions,
   );
-  const liveCandles = useMemo<Candle[]>(
-    () =>
-      isMinute
-        ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs, venue)
-        : overlayLiveTradesOnCalendarCandles(kisCandles, live.trade, timeframe as 'D' | 'W' | 'M', venue),
-    [isMinute, timeframe, kisCandles, live.trade, bucketMs, venue],
+  const effectiveSessionByDate = useMemo(
+    () => effectiveSessionBoundsByDate(pastCandlesQuery.data?.effective_sessions),
+    [pastCandlesQuery.data?.effective_sessions],
   );
+  const liveCandles = useMemo<Candle[]>(() => {
+    const overlaid = isMinute
+      ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs, venue)
+      : overlayLiveTradesOnCalendarCandles(kisCandles, live.trade, timeframe as 'D' | 'W' | 'M', venue);
+    // 마감 동시호가 봉 접기 — REST 원본과 실시간 오버레이를 **둘 다 지난 뒤** 건다.
+    // kisCandles 단계에서 접으면 그 뒤 오버레이가 평탄화되지 않은 봉을 다시 세울 수
+    // 있다. 여기가 bundle.candles 로 넘어가는 최종 배열이라(아래 buildChartBundle),
+    // 차트·거래량·MA·툴팁·레전드가 전부 같은 봉을 본다.
+    // KRX 분봉 한정 — 근거는 collapseClosingAuction 의 호출 계약 절 참조.
+    return isMinute && venue === 'KRX'
+      ? collapseClosingAuction(overlaid, effectiveSessionByDate)
+      : overlaid;
+  }, [isMinute, timeframe, kisCandles, live.trade, bucketMs, venue, effectiveSessionByDate]);
 
   const defaultKrxSession = useMemo(
     () =>
@@ -707,10 +718,6 @@ export function useLiveBundle(
         ? { open_ms: live.initial.session_open_ms, close_ms: live.initial.session_close_ms ?? regularSessionCloseMs(todayKstYyyymmdd) }
         : { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) },
     [live.initial, todayKstYyyymmdd],
-  );
-  const effectiveSessionByDate = useMemo(
-    () => effectiveSessionBoundsByDate(pastCandlesQuery.data?.effective_sessions),
-    [pastCandlesQuery.data?.effective_sessions],
   );
   // Chart session follows the selected venue for minute candles. HOGA/WS
   // side remains KRX-only, so buildHogaSeries keeps the default KRX bounds.
