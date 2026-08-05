@@ -1,7 +1,7 @@
 /** 시장 종합 그리기 조각 — 목업이 감추던 "없음" 의 처리를 고정한다 (#1102). */
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { AdvanceDeclineBar, BreadthTile, PctText } from './marketBits';
+import { AdvanceDeclineBar, BreadthTile, PctText, Sparkline } from './marketBits';
 import { fmtSigned, wonToJo } from './marketFormat';
 
 describe('PctText', () => {
@@ -56,5 +56,34 @@ describe('포맷터', () => {
   it('wonToJo 는 원(raw)을 조로 — KOFIA 는 원으로 준다 (#1098)', () => {
     expect(wonToJo(102825552619394)).toBeCloseTo(102.83, 1);
     expect(wonToJo(null)).toBeNull();
+  });
+});
+
+describe('Sparkline', () => {
+  it('점이 2개 미만이면 그리지 않는다 — 한 점짜리 선은 거짓 정보다', () => {
+    const { container: c0 } = render(<Sparkline points={[]} />);
+    const { container: c1 } = render(<Sparkline points={[100]} />);
+    expect(c0.firstChild).toBeNull();
+    expect(c1.firstChild).toBeNull();
+  });
+
+  it('시작→끝 방향으로 색이 갈린다', () => {
+    const { container: up } = render(<Sparkline points={[100, 110]} />);
+    const { container: down } = render(<Sparkline points={[110, 100]} />);
+    expect(up.querySelector('path')?.getAttribute('stroke')).toBe('var(--price-up)');
+    expect(down.querySelector('path')?.getAttribute('stroke')).toBe('var(--price-down)');
+  });
+});
+
+describe('Sparkline 색 기준 (DESIGN.md CandleGlyph 규칙)', () => {
+  it('baseline(당일 시가) 기준이라 큰 숫자와 색이 갈릴 수 있다 — 그게 의도다', () => {
+    // 시가 120 → 현재 110: 장중은 하락(파랑). 전일 종가가 100 이었다면 숫자는 상승(빨강).
+    const { container } = render(<Sparkline points={[118, 110]} baseline={120} />);
+    expect(container.querySelector('path')?.getAttribute('stroke')).toBe('var(--price-down)');
+  });
+
+  it('baseline 이 없으면 첫 점을 쓴다', () => {
+    const { container } = render(<Sparkline points={[100, 110]} />);
+    expect(container.querySelector('path')?.getAttribute('stroke')).toBe('var(--price-up)');
   });
 });

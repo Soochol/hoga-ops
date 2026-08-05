@@ -172,6 +172,49 @@ export function LegendItem({
   );
 }
 
+/** 초소형 라인 스파크라인 — 당일 장중 흐름.
+ *
+ * **색 = 마지막 값 vs `baseline`(당일 시가).** 히트맵 `CandleGlyph` 와 같은 규칙이다
+ * (DESIGN.md "Price-direction candle glyph": 색은 **종가 vs 시가** strict). 카드의 큰
+ * 숫자는 *전일 대비* 라 시간창이 달라 **선과 숫자의 색이 갈릴 수 있는데, 그것이 의도**다
+ * — 갭 상승 후 밀린 날은 "전일보단 위, 오늘은 아래" 가 사실이고 두 색이 그걸 말한다.
+ * `baseline` 이 없으면 첫 점을 쓴다.
+ *
+ * 값이 2개 미만이면 그리지 않는다(한 점짜리 선은 거짓 정보다). */
+export function Sparkline({
+  points,
+  baseline,
+  width = 110,
+  height = 40,
+}: {
+  points: number[];
+  baseline?: number;
+  width?: number;
+  height?: number;
+}) {
+  if (points.length < 2) return null;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const px = (i: number) => (i / (points.length - 1)) * (width - 2) + 1;
+  const py = (v: number) => height - 2 - ((v - min) / span) * (height - 4);
+  const d = points
+    .map((v, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`)
+    .join(' ');
+  const dir = points[points.length - 1] - (baseline ?? points[0]);
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+      <path
+        d={d}
+        fill="none"
+        stroke={dir >= 0 ? 'var(--price-up)' : 'var(--price-down)'}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** 시장 폭 타일 — `truncated` 면 카운트가 **하한**이므로 `+` 를 붙인다(#1099). */
 export function BreadthTile({
   label,

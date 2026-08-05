@@ -12,6 +12,7 @@
  * 자금 카드가 빈 것은 **키가 없어서**다. 셋을 같은 빈 화면으로 보이면 진단이 흐려진다.
  */
 import { useState } from 'react';
+import { useLiveIndexCandles } from '../api/liveIndices';
 import { useMarketIndexQuotes } from '../api/marketIndexQuotes';
 import {
   useMarketBreadth,
@@ -25,6 +26,8 @@ import {
 import { useLiveRankings } from '../api/liveRankings';
 import { heatBg } from '../heatmap/heat';
 import { useJumpToLive } from '../live/useJumpToLive';
+import { todayKstYyyymmdd } from '../live/liveDateTime';
+import type { LiveIndexId } from '../live/liveInstrument';
 import { PageContainer } from '../layout/PageContainer';
 import { PanelCard, SegmentedControl } from '../ui/PageShell';
 import { priceDirClass } from '../ui/priceDir';
@@ -35,6 +38,7 @@ import {
   CumLinesChart,
   LegendItem,
   PctText,
+  Sparkline,
 } from './marketBits';
 import { SERIES_COLORS, fmtSigned, wonToJo } from './marketFormat';
 
@@ -106,38 +110,64 @@ function IndexCards() {
 
   return (
     <div className="grid grid-cols-4 gap-xs">
-      {rows.slice(0, 4).map((q) => {
-        // 등락종목수는 종합지수(코스피·코스닥)에만 붙는다 — 지수 상품은 부재가 정상(#1100).
-        const mkey = MARKET_KEY_BY_INDEX[q.id];
-        const breadth = mkey ? sectors.data?.markets[mkey]?.index : undefined;
-        return (
-          <PanelCard key={q.id} borderless flat className="flex flex-col gap-sm p-md">
-            <div className="flex items-baseline justify-between">
-              <span className="text-xs font-semibold uppercase text-fg-dim">{q.label}</span>
-              {breadth?.rising != null && breadth.falling != null && (
-                <span className="font-data text-2xs text-fg-dim tabular-nums">
-                  <span className="text-price-up">▲{breadth.rising}</span>
-                  {' · '}
-                  <span className="text-price-down">▼{breadth.falling}</span>
-                </span>
-              )}
-            </div>
-            <div className="flex flex-col">
-              <span className={`font-data text-xl font-semibold tabular-nums ${priceDirClass(q.change)}`}>
-                {q.value.toLocaleString('ko-KR', { minimumFractionDigits: 2 })}
-              </span>
-              <span className={`font-data text-sm tabular-nums ${priceDirClass(q.change)}`}>
-                {q.change > 0 ? '+' : ''}
-                {q.change.toFixed(2)} <PctText pct={q.changeRate} />
-              </span>
-            </div>
-            {breadth && (
-              <AdvanceDeclineBar rising={breadth.rising} falling={breadth.falling} flat={breadth.flat} />
-            )}
-          </PanelCard>
-        );
-      })}
+      {rows.slice(0, 4).map((q) => (
+        <IndexCard key={q.id} quote={q} sectors={sectors.data} />
+      ))}
     </div>
+  );
+}
+
+/** 지수 카드 1장. **카드가 컴포넌트여야** 분봉 훅을 카드마다 부를 수 있다 —
+ *  리스트 안에서 훅을 부르면 순서 규칙을 깬다. */
+function IndexCard({
+  quote,
+  sectors,
+}: {
+  quote: ReturnType<typeof useMarketIndexQuotes>['data'] extends (infer T)[] | undefined ? T : never;
+  sectors: ReturnType<typeof useMarketSectors>['data'];
+}) {
+  const today = todayKstYyyymmdd();
+  // 당일 1분봉 — 종가 배열이 곧 스파크라인이다. 지수당 1콜이고 ka20005 는 자기
+  // 버킷(5 req/s)을 쓰므로 4장이 다른 표면과 경합하지 않는다.
+  const candles = useLiveIndexCandles(quote.id as LiveIndexId, '1m', today, today);
+  const bars = candles.data?.candles ?? [];
+  const closes = bars.map((c) => c.close);
+  // 당일 시가 — 색 기준. 큰 숫자(전일 대비)와 색이 갈릴 수 있고 그게 의도다.
+  const dayOpen = bars[0]?.open;
+
+  // 등락종목수는 종합지수(코스피·코스닥)에만 붙는다 — 지수 상품은 부재가 정상(#1100).
+  const mkey = MARKET_KEY_BY_INDEX[quote.id];
+  const breadth = mkey ? sectors?.markets[mkey]?.index : undefined;
+
+  return (
+    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs font-semibold uppercase text-fg-dim">{quote.label}</span>
+        {breadth?.rising != null && breadth.falling != null && (
+          <span className="font-data text-2xs text-fg-dim tabular-nums">
+            <span className="text-price-up">▲{breadth.rising}</span>
+            {' · '}
+            <span className="text-price-down">▼{breadth.falling}</span>
+          </span>
+        )}
+      </div>
+      <div className="flex items-end justify-between gap-sm">
+        <div className="flex flex-col">
+          <span className={`font-data text-xl font-semibold tabular-nums ${priceDirClass(quote.change)}`}>
+            {quote.value.toLocaleString('ko-KR', { minimumFractionDigits: 2 })}
+          </span>
+          <span className={`font-data text-sm tabular-nums ${priceDirClass(quote.change)}`}>
+            {quote.change > 0 ? '+' : ''}
+            {quote.change.toFixed(2)} <PctText pct={quote.changeRate} />
+          </span>
+        </div>
+        {/* 분봉이 아직 없거나 실패하면 그냥 안 그린다 — 한 점짜리 선은 거짓 정보다. */}
+        <Sparkline points={closes} baseline={dayOpen} />
+      </div>
+      {breadth && (
+        <AdvanceDeclineBar rising={breadth.rising} falling={breadth.falling} flat={breadth.flat} />
+      )}
+    </PanelCard>
   );
 }
 
