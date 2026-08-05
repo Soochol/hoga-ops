@@ -7,6 +7,7 @@
 // 움직이나"(섹터·무버). 한눈 파악 우선, 스크롤 최소.
 // ============================================================================
 import { useState } from 'react';
+import { useJumpToLive } from '../../live/useJumpToLive';
 import { PanelCard, SegmentedControl } from '../../ui/PageShell';
 import { priceDirClass } from '../../ui/priceDir';
 import { heatBg } from '../../heatmap/heat';
@@ -327,6 +328,7 @@ const PERIOD_OPTIONS = [
 type PeriodKey = (typeof PERIOD_OPTIONS)[number][0];
 
 function PeriodNetCard() {
+  const jump = useJumpToLive();
   const [period, setPeriod] = useState<PeriodKey>('streak');
   const netOf = (r: (typeof MOCK_PERIOD_NET)[number]) =>
     period === '5' ? r.net5 : period === '10' ? r.net10 : r.net20;
@@ -347,24 +349,28 @@ function PeriodNetCard() {
       </div>
       <ol className="flex flex-col">
         {rows.slice(0, 8).map((r) => (
-          <li
-            key={`${r.code}-${r.actor}`}
-            className="grid grid-cols-[2.4rem_1fr_2.6rem_4rem] items-center gap-xs border-b border-grid py-2xs last:border-b-0"
-          >
-            <span className="text-2xs text-fg-dim">{r.actor}</span>
-            <span className="truncate text-sm text-fg">{r.name}</span>
-            {period === 'streak' ? (
-              <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">
-                {r.streakDays}일
-              </span>
-            ) : (
-              <PctText pct={r.changePct} className="text-right text-2xs" />
-            )}
-            <span
-              className={`text-right font-data text-sm tabular-nums ${priceDirClass(period === 'streak' ? r.streakNet : netOf(r))}`}
+          <li key={`${r.code}-${r.actor}`} className="border-b border-grid last:border-b-0">
+            <button
+              type="button"
+              onClick={(e) => jump(r.code, r.name, e)}
+              title={`${r.name} 라이브 차트로 (ctrl/⌘ = 새 탭)`}
+              className="grid w-full grid-cols-[2.4rem_1fr_2.6rem_4rem] items-center gap-xs py-2xs text-left hover:bg-bg-input-hover"
             >
-              {fmtSigned(period === 'streak' ? r.streakNet : netOf(r))}
-            </span>
+              <span className="text-2xs text-fg-dim">{r.actor}</span>
+              <span className="truncate text-sm text-fg">{r.name}</span>
+              {period === 'streak' ? (
+                <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">
+                  {r.streakDays}일
+                </span>
+              ) : (
+                <PctText pct={r.changePct} className="text-right text-2xs" />
+              )}
+              <span
+                className={`text-right font-data text-sm tabular-nums ${priceDirClass(period === 'streak' ? r.streakNet : netOf(r))}`}
+              >
+                {fmtSigned(period === 'streak' ? r.streakNet : netOf(r))}
+              </span>
+            </button>
           </li>
         ))}
       </ol>
@@ -465,21 +471,26 @@ function FundsCard() {
 }
 
 function RankCard({ title, rows }: { title: string; rows: MockRankRow[] }) {
+  const jump = useJumpToLive();
   return (
     <PanelCard borderless flat className="flex flex-col gap-xs p-md">
       <h2 className="text-sm text-fg">{title}</h2>
       <ol className="flex flex-col">
         {rows.slice(0, 6).map((r) => (
-          <li
-            key={r.code}
-            className="grid grid-cols-[1.2rem_1fr_5.5rem_4.2rem] items-center gap-sm border-b border-grid py-2xs last:border-b-0"
-          >
-            <span className="font-data text-2xs text-fg-dim tabular-nums">{r.rank}</span>
-            <span className="truncate text-sm text-fg">{r.name}</span>
-            <span className="text-right font-data text-sm text-fg tabular-nums">
-              {r.price.toLocaleString('ko-KR')}
-            </span>
-            <PctText pct={r.changePct} className="text-right text-sm" />
+          <li key={r.code} className="border-b border-grid last:border-b-0">
+            <button
+              type="button"
+              onClick={(e) => jump(r.code, r.name, e)}
+              title={`${r.name} 라이브 차트로 (ctrl/⌘ = 새 탭)`}
+              className="grid w-full grid-cols-[1.2rem_1fr_5.5rem_4.2rem] items-center gap-sm py-2xs text-left hover:bg-bg-input-hover"
+            >
+              <span className="font-data text-2xs text-fg-dim tabular-nums">{r.rank}</span>
+              <span className="truncate text-sm text-fg">{r.name}</span>
+              <span className="text-right font-data text-sm text-fg tabular-nums">
+                {r.price.toLocaleString('ko-KR')}
+              </span>
+              <PctText pct={r.changePct} className="text-right text-sm" />
+            </button>
           </li>
         ))}
       </ol>
