@@ -122,10 +122,21 @@ async def sync_storage_runtime(
     """Plan targets and sync the WS capture runtimes."""
     from . import kiwoom_runtime  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     n_kiwoom = len(kiwoom_runtime.configured_account_ids(data_dir))
+    capacity = KIWOOM_PER_ACCOUNT_MAX * n_kiwoom
+    capture_candidates = _compute_capture_candidates(data_dir)
+    heatmap_codes = _compute_heatmap_codes(data_dir)
     targets = plan_storage_targets(
-        _compute_capture_candidates(data_dir),
-        heatmap_candidates=_compute_heatmap_codes(data_dir),
-        kiwoom_capacity=KIWOOM_PER_ACCOUNT_MAX * n_kiwoom,
+        capture_candidates,
+        heatmap_candidates=heatmap_codes,
+        kiwoom_capacity=capacity,
+    )
+    # 확정 저장셋 크기를 매 sync 마다 남긴다 — 이 숫자는 키움 WS 슬롯 예산·디스크 용량
+    # 산술의 입력이라 "지금 몇 종목을 수집 중인가"가 사후 확인 가능해야 한다. 초과분
+    # 경고(plan_storage_targets)는 잘렸을 때만 뜨므로 정상 경로의 크기를 못 알려준다.
+    log.info(
+        "live.storage.targets watchlist=%d heatmap=%d kiwoom_targets=%d capacity=%d accounts=%d",
+        len(capture_candidates), len(heatmap_codes),
+        len(targets.kiwoom_targets), capacity, n_kiwoom,
     )
 
     # 프로그램매매 사이드카(호가 아님 — 별도 데이터 계열). 설정 스위치는 폐지
