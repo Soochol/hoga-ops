@@ -383,13 +383,51 @@ def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
     for src_dir in stock_date_dir.iterdir():
         if not src_dir.is_dir():
             continue
-        meta_path = src_dir / "meta.json"
-        if not meta_path.exists():
+        meta_path = source_meta_path(src_dir)
+        if meta_path is None:
             continue
         out[src_dir.name] = _META_CLASSIFY_CACHE.get_or_load(
             meta_path, _classify_meta_file,
         )
     return out
+
+
+def source_meta_path(src_dir: Path) -> Path | None:
+    """이 소스의 **완결성 meta** 경로. 없으면 ``None``.
+
+    ⚠ venue 축이 있는 소스(`kiwoom_live`)는 meta 가 **두 종류**다(ADR-0140):
+
+        kiwoom_live/meta.json        source 레벨 — `expected_venues`·`nxt_enabled`
+        kiwoom_live/{venue}/meta.json  venue 레벨 — `collection_complete`·`is_partial`
+
+    완결성은 **venue 레벨**에만 있다. 이 구분을 놓치면 두 가지가 동시에 깨진다
+    (실측 2026-08-05, 마이그레이션 직후 477 Stock-Date 중):
+
+    - **397건**: venue 세그먼트만 있어 `{source}/meta.json` 이 없다 → 소스가 사다리에
+      **아예 안 보인다**
+    - **80건**: source 레벨 meta 를 venue meta 로 오독해 `collection_complete` 부재를
+      미완결로 읽는다 → **CLIENT_INCOMPLETE 오분류**
+
+    venue 가 여럿이면 **가장 심한 상태**를 그 소스의 상태로 삼는다 — 한 시장이 부분
+    결손인데 다른 시장이 완결이라고 소스 전체를 완결로 부를 수는 없다. `KRX` 를 먼저
+    보는 이유는 사다리 소비자가 대부분 KRX 를 읽기 때문이고, 정렬은 결정성 때문이다.
+    """
+    direct = src_dir / "meta.json"
+    venue_metas = sorted(
+        d / "meta.json" for d in src_dir.iterdir()
+        if d.is_dir() and (d / "meta.json").exists()
+    )
+    if not venue_metas:
+        return direct if direct.exists() else None
+    if len(venue_metas) == 1:
+        return venue_metas[0]
+    worst, worst_path = None, venue_metas[0]
+    for path in venue_metas:
+        state = _META_CLASSIFY_CACHE.get_or_load(path, _classify_meta_file).state
+        rank = _AGGREGATE_PRIORITY.index(state) if state in _AGGREGATE_PRIORITY else -1
+        if worst is None or rank > worst:
+            worst, worst_path = rank, path
+    return worst_path
 
 
 # Severity ordering for cross-source aggregation. COMPLETE wins so a single

@@ -18,6 +18,7 @@ import { apiGet } from './client';
 import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe } from './types';
 import type { OrderbookSnapshot, BrokerSeriesEntry, SourceName } from './types';
 import type { MinuteTimeframe } from '../state/livePage';
+import type { LiveVenueOption } from '../state/liveVenue';
 import { unixMsToKSTDate } from '../util/time';
 
 // ─── Spot 캐시 튜닝 ───────────────────────────────────────────────────────────
@@ -48,7 +49,13 @@ const BROKER_TODAY_SPOT_CAPACITY = 1;
 
 // ─── Shared param type ────────────────────────────────────────────────────────
 
-interface Params {
+/** 거래소 선택 — 백엔드가 **필수**로 요구한다(ADR-0140: 기본값은 곧 "빠뜨리면
+ *  조용히 KRX"). 훅 쪽도 같은 이유로 기본값을 두지 않고 호출부가 명시한다 —
+ *  `/live` 는 venue 선택기(useLiveVenueStore), `/study` 는 'KRX' 고정.
+ *  캐시 키에도 넣어야 venue 를 바꿨을 때 이전 venue 응답이 남지 않는다. */
+type VenueParam = { venue: LiveVenueOption };
+
+interface Params extends VenueParam {
   code: string | null;
   timeframe: MinuteTimeframe | null;
 }
@@ -90,11 +97,11 @@ export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefin
 
   const key =
     p.code && date && alignedT !== null && bucketMs !== null
-      ? `live|ob|${p.code}|${date}|${alignedT}|${bucketMs}|${sourcePref}`
+      ? `live|ob|${p.code}|${date}|${alignedT}|${bucketMs}|${sourcePref}|${p.venue}`
       : null;
   const { data } = useSpot<LiveOrderbookSpot>(key, () =>
     apiGet<OrderbookResponse>(
-      `/api/orderbook?code=${p.code}&date=${date}&t=${alignedT}&bucket_ms=${bucketMs}&source_pref=${sourcePref}`,
+      `/api/orderbook?code=${p.code}&date=${date}&t=${alignedT}&bucket_ms=${bucketMs}&source_pref=${sourcePref}&venue=${p.venue}`,
     ).then((r) => ({
       snapshot: r.snapshot,
       available_from: r.available_from,
@@ -106,7 +113,7 @@ export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefin
 
 // ─── Task 12: useLiveBrokersAtCursor ─────────────────────────────────────────
 
-interface BrokersParams {
+interface BrokersParams extends VenueParam {
   code: string | null;
   /** Minute timeframe, or null on D/W/M. Gates the fetch: /api/brokers/series
    *  is parquet-backed only on minute frames (ADR-0044). LiveChartRoot
@@ -144,13 +151,13 @@ export function useLiveBrokersAtCursor(
   // same for any t within (code, date).
   const key =
     p.code && date && p.timeframe !== null
-      ? `live|br|${p.code}|${date}|${sourcePref}`
+      ? `live|br|${p.code}|${date}|${sourcePref}|${p.venue}`
       : null;
   const { data } = useSpot<BrokerSeriesEntry[]>(
     key,
     () =>
       apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
-        `/api/brokers/series?code=${p.code}&date=${date}&source_pref=${sourcePref}`,
+        `/api/brokers/series?code=${p.code}&date=${date}&source_pref=${sourcePref}&venue=${p.venue}`,
       ).then((r) => r.brokers),
     SPOT_DEBOUNCE_MS,
     BROKER_SERIES_SPOT_CAPACITY,
@@ -181,7 +188,10 @@ const TODAY_SERIES_REFRESH_MS = 60_000;
  *
  * code=null 이면 fetch 하지 않는다 — 스팟 모드일 때 호출부가 이걸로 잠재운다.
  */
-export function useLiveBrokersToday(code: string | null): BrokerSeriesEntry[] | undefined {
+export function useLiveBrokersToday(
+  code: string | null,
+  venue: LiveVenueOption,
+): BrokerSeriesEntry[] | undefined {
   const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   // 렌더 중 Date.now() 는 impure — 최초 1회 lazy init 후 인터벌로만 진행시킨다.
   // 스탬프가 날짜 파생의 근거이므로 자정 롤오버도 같이 따라간다.
@@ -192,12 +202,12 @@ export function useLiveBrokersToday(code: string | null): BrokerSeriesEntry[] | 
   }, []);
 
   const date = unixMsToKSTDate(stampMs);
-  const key = code ? `live|br-today|${code}|${date}|${sourcePref}|${stampMs}` : null;
+  const key = code ? `live|br-today|${code}|${date}|${sourcePref}|${venue}|${stampMs}` : null;
   const { data } = useSpot<BrokerSeriesEntry[]>(
     key,
     () =>
       apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
-        `/api/brokers/series?code=${code}&date=${date}&source_pref=${sourcePref}`,
+        `/api/brokers/series?code=${code}&date=${date}&source_pref=${sourcePref}&venue=${venue}`,
       ).then((r) => r.brokers),
     SPOT_DEBOUNCE_MS,
     BROKER_TODAY_SPOT_CAPACITY,
