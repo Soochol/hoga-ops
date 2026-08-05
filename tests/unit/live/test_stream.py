@@ -163,10 +163,15 @@ async def test_drain_seals_final_in_progress_candle(tmp_path):
 
 
 async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_path):
-    """KRX PROGRAM은 latch와 표시 buffer에 가지만 JSONL 저장에는 들어가지 않는다.
+    """PROGRAM 은 latch 와 표시 buffer 에 가지만 JSONL 저장에는 들어가지 않는다.
 
-    NXT venue 는 latch·표시 buffer 어디에도 안 남는다 — 프로그램 수급은 KRX
-    집계 데이터다.
+    **NXT 도 이제 둘 다 간다**(ADR-0140 §2 — `venue != "KRX"` 가드 삭제). 그래서 신고된
+    "프리마켓 프로그램 빈 창"이 채워진다.
+
+    ⚠ 그 대가로 latch 가 **(code, venue) 로 키잉돼야** 한다 — bare code 키잉이던 시절엔
+    가드가 KRX 만 들여보내 안전했지만, 열린 지금은 세 시장이 같은 칸을 last-wins 로
+    덮어쓴다. 값이 아니라 **시장이 섞이므로** 결과가 그럴듯해서 화면에서 안 드러난다.
+    이 테스트가 그 키잉을 못박는다.
     """
     from hoga.live import program_trade_latch
 
@@ -191,8 +196,9 @@ async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_p
     await stream.on_tick(nxt)
 
     latched = program_trade_latch.drain()
-    assert set(latched) == {"005930"}          # KRX 만 latch
-    assert latched["005930"]["net_qty"] == 50
+    assert set(latched) == {("005930", "KRX"), ("000660", "NXT")}  # venue 별로 분리
+    assert latched[("005930", "KRX")]["net_qty"] == 50
+    assert latched[("000660", "NXT")]["net_qty"] == 1
     display_entry = await asyncio.wait_for(display_q.get(), timeout=1.0)
     assert display_entry == {
         **tick.payload,
@@ -200,7 +206,8 @@ async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_p
         "phase": "regular",
         "venue": "KRX",
     }
-    assert nxt_display_q.empty()
+    nxt_entry = await asyncio.wait_for(nxt_display_q.get(), timeout=1.0)
+    assert nxt_entry["venue"] == "NXT"  # 표시 fan-out 도 열렸다
     await stream.flush_once(now_ms=now + 10_000)
     assert not (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").exists()  # 저장 미진입
     program_trade_latch.reset_for_tests()

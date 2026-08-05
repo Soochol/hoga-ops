@@ -658,6 +658,24 @@ def all_etf_etn_codes() -> frozenset[str] | None:
     return frozenset(h.code for h in _cache if h.security_type in ("etf", "etn"))
 
 
+def nxt_enabled_by_code() -> dict[str, bool | None] | None:
+    """``code`` → NXT 상장 여부. 마스터 미로드면 ``None``.
+
+    **키의 부재와 값 ``None`` 을 둘 다 "모름"으로 읽어야 한다** — 마스터에 없는 코드
+    (신규 상장·스코프 밖)는 키가 없고, 있는데 `nxtEnable` 을 못 받은 행은 값이 None
+    이다. 둘 다 `False`(미상장 확정)와 구분된다. `all_etf_etn_codes` 와 같은 규율:
+    판정 불가를 빈 결과로 뭉개면 호출처가 fail-open 인지 fail-closed 인지 못 고른다.
+
+    구독 파생(`live.coverage.subscription_venues`)이 종목당 호출하므로 **맵을 한 번
+    만들어 넘긴다** — `search()` 를 코드마다 부르면 4천 행 스캔이 종목 수만큼 반복된다.
+
+    _cache(≈4천행) 1회 순회 — 호출은 정합화 패스당 1회(30s)라 저빈도.
+    """
+    if not _cache:
+        return None
+    return {h.code: h.nxt_enabled for h in _cache}
+
+
 def all_listed_rows() -> list[tuple[str, str, str, bool]] | None:
     """마스터 전체를 ``(code, name, market, is_etf)`` 로. 미로드면 ``None``.
 

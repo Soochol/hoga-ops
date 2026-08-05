@@ -13,16 +13,25 @@ from __future__ import annotations
 
 from typing import Any
 
-# code → 마지막 0w payload (kiwoom_frames._parse_program 이 만든 dict).
-_latest: dict[str, dict[str, Any]] = {}
+# (code, venue) → 마지막 0w payload (kiwoom_frames._parse_program 이 만든 dict).
+#
+# ⚠ **venue 가 키에 있어야 한다**(ADR-0140 §2, PR-F). 예전엔 bare code 로만 키잉했고
+# 그래도 안전했던 유일한 이유는 `stream.on_tick` 의 PROGRAM `venue != "KRX"` 가드가
+# 애초에 KRX 만 들여보냈기 때문이다. 그 가드를 걷는 순간 세 시장의 프로그램 순매수가
+# 같은 칸을 놓고 last-wins 로 덮어쓴다 — **값이 틀리는 게 아니라 시장이 섞이므로**
+# 결과가 그럴듯해서 화면에서 구분되지 않는다.
+#
+# ADR-0140 §2 는 bare-code 키잉 지뢰를 넷으로 셌는데(PR-C 가 처리), 이 latch 는 다섯
+# 번째다 — **다른 가드**가 가리고 있어 그 목록에 안 들어갔다.
+_latest: dict[tuple[str, str], dict[str, Any]] = {}
 
 
-def update(code: str, payload: dict[str, Any]) -> None:
-    """stream.on_tick 이 PROGRAM 틱마다 호출 — 최신값 교체(last-wins)."""
-    _latest[code] = payload
+def update(code: str, payload: dict[str, Any], *, venue: str) -> None:
+    """stream.on_tick 이 PROGRAM 틱마다 호출 — 최신값 교체(last-wins, venue 별)."""
+    _latest[(code, venue)] = payload
 
 
-def drain() -> dict[str, dict[str, Any]]:
+def drain() -> dict[tuple[str, str], dict[str, Any]]:
     """collector 가 주기마다 호출 — 쌓인 최신값을 비우며 반환.
 
     비우는 이유: 장외·정지 구간에 같은 스냅샷을 매 주기 재병합하지 않기 위해서다

@@ -155,44 +155,17 @@ async def ws_connection_window_async(now_ms: int) -> bool:
     return await asyncio.to_thread(ws_connection_window, now_ms)
 
 
-# 시분할 구독 venue 경계 — 저장 게이트(정규장 09:00–15:30)를 KRX가 완전히 덮도록
-# 개장 전 워밍(08:50)과 마감 후 drain 마진(15:31)을 둔다. 이 창 밖(연결 창 내)은 NXT.
-#   08:00 ─ 08:50 : NXT     (장전 NXT 세션)
-#   08:50 ─ 15:31 : KRX     (정규장 캡처를 워밍~drain 마진으로 완전 포함)
-#   15:31 ─ 20:00 : NXT     (장후 NXT 세션)
-# 저장은 여전히 ws_capture_window(정규장)만 — KRX 구독이 08:50/15:31로 넓어도
-# _gate_open(정규장)이 저장을 09:00–15:30로 고정하므로 캡처 데이터는 불변.
-_KRX_WARMUP_MIN = 8 * 60 + 50   # 08:50 — 개장(09:00) 전 KRX 구독 준비
-_KRX_DRAIN_MARGIN_MIN = 15 * 60 + 31  # 15:31 — 마감(15:30) drain flush 보존 후 스왑
-
-
-# 표시 원장의 "auto"(열람 옵션 미지정=현재 실시간 시장) 센티넬 venue. 실제 venue가
-# 아니라 "시점의 target_ws_venue(now)를 추종한다"는 의도 — 08:50 스왑을 넘어 동결되지
-# 않게 한다(프론트가 venues를 안 보내는 기본 경로). apply_venue에 넘기기 전 반드시
-# target_ws_venue(now)로 해석해야 한다(AUTO는 KRX/NXT가 아님).
-AUTO_VENUE = "AUTO"
-
-
-def target_ws_venue(now_ms: int) -> str:
-    """이 시각에 구독해야 할 venue("KRX"/"NXT"). 순수 시계 — 거래일 여부는
-    연결 게이트가 이미 강제하므로 여기선 시각만 본다(정규장 캡처 경계와 동일한
-    pure-clock 기준, market_phase와 일관)."""
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KST)
-    minutes = kst.hour * 60 + kst.minute
-    return "KRX" if _KRX_WARMUP_MIN <= minutes < _KRX_DRAIN_MARGIN_MIN else "NXT"
-
-
-_MARKET_OPEN_MIN = 9 * 60  # 09:00 KST — 정규장 개장(저장 게이트 시작)
-
-
-def in_krx_warmup_window(now_ms: int) -> bool:
-    """08:50–09:00 KRX 워밍 창(ADR-0118 §5). 순수 시계.
-
-    KRX venue 스왑 시작(_KRX_WARMUP_MIN=08:50)과 개장(09:00) 사이 — 이 창 안에
-    저장셋 등록 ACK가 완결돼야 정규장 첫 틱부터 무손실 캡처다. 키움 워치독이 이
-    술어로 09:00 전 미완 등록을 감지해 재구독+경고한다(유일한 저장 리스크 창).
-    09:00(개장)은 배제 — 그 순간부터는 정규 캡처 게이트가 별도로 커버한다.
-    """
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KST)
-    minutes = kst.hour * 60 + kst.minute
-    return _KRX_WARMUP_MIN <= minutes < _MARKET_OPEN_MIN
+# ── 시분할 구독은 폐지됐다 (ADR-0140 §2, PR-F) ────────────────────────────────
+#
+# 여기 있던 `target_ws_venue(now)` · `in_krx_warmup_window(now)` · `AUTO_VENUE` 는
+# **"한 시각엔 한 venue 만 구독한다"**는 전제 위에 서 있었다:
+#
+#     08:00─08:50 NXT │ 08:50─15:31 KRX │ 15:31─20:00 NXT
+#
+# 그 전제가 필요했던 이유는 슬롯이 아니라 **저장 성역**이었다 — NXT 틱이 KRX 정규장
+# 캡처에 새지 않게 하려고 아예 구독을 갈아 끼웠다. ADR-0140 이 저장에 venue 축을
+# 주면서(PR-D) 두 시장이 서로 다른 디렉터리로 가게 됐고, 격리를 구독 시각으로 흉내
+# 낼 이유가 사라졌다.
+#
+# 이제 구독 파생은 **시각이 아니라 종목**이 정한다 — `live.coverage.subscription_venues`.
+# 저장 창(venue 별 09:00–15:30 / 08:00–20:00)은 PR-G 가 별도로 다룬다.

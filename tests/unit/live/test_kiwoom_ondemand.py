@@ -6,11 +6,17 @@ KiwoomOnDemandSession(별도 세션) 삭제 후, 온디맨드 표시 구독은 K
 import asyncio
 from datetime import datetime
 
+import pytest
+
 from hoga.live.kiwoom_session import KiwoomSessionManager, _KiwoomConn
-from hoga.live.session_gate import AUTO_VENUE
 from hoga.live.snapshot import SnapshotKind
 from hoga.live.ticks import WsTick
 from hoga.util.timeenc import KST
+
+
+@pytest.fixture(autouse=True)
+def _pin_master(krx_only_master):
+    """이 모듈의 주제는 venue 파생이 아니다 — 마스터를 KRX 전용으로 고정한다."""
 
 
 def _ms(hour: int, minute: int) -> int:
@@ -270,34 +276,39 @@ async def test_un_view_nonstorage_code_adds_both_venues():
     await mgr.stop()
 
 
-# ── AUTO(열람 옵션 미지정) venue 추종 — 아침 동시호가 깜빡임 회귀 ───────────
+# ── 열람 옵션 미지정 기본값 — AUTO 센티넬의 후계 (ADR-0140 §2) ──────────────
 
-async def test_auto_view_tracks_venue_swap_no_double_subscribe():
-    """회귀(아침 동시호가 10호가 깜빡임): 08:50 이전 AUTO로 연 비저장 표시키가 스왑 후
-    (Z,NXT)에 동결돼 KRX 저장과 이중 스트림되던 것 제거. AUTO는 target_ws_venue를 추종 —
-    Z_NX 를 버리고 Z 로 재구독(둘 다 아님 = 단일 venue 불변식 복원)."""
-    now = {"ms": _ms(8, 40)}  # 장전 NXT
+async def test_default_view_venues_are_all_venues_of_the_code(nxt_listed_master):
+    """미지정 기본값 = **그 종목이 가진 venue 전부**. 해석은 lifecycle 이 한다.
+
+    옛 AUTO 센티넬("시점의 target_ws_venue 를 추종")을 대체한다. 여기 있던
+    `test_auto_view_tracks_venue_swap_no_double_subscribe` 는 08:50 스왑을 넘길 때
+    (Z,NXT)가 동결돼 이중 스트림되던 회귀를 막던 것인데, **스왑이 사라져 그 회귀가
+    구조적으로 불가능**해졌다.
+
+    대체값을 KRX 하나로 두면 안 되는 이유가 이 테스트의 요점이다 — 프론트는 실측 기준
+    `venues` 를 아예 안 보내므로 전 요청이 이 경로이고, 18:00 에 열람하면 KRX 는 닫혀
+    있어 화면이 멎는다.
+    """
+    from hoga.live.lifecycle import _resolve_view_venues
+
+    assert _resolve_view_venues("Z", None) == {"KRX", "NXT", "UN"}
+    assert _resolve_view_venues("Z", {"NXT"}) == {"NXT"}  # 명시는 고정(pin)
+
+
+async def test_default_view_venues_krx_only_when_not_nxt_listed(krx_only_master):
+    """NXT 미상장 종목의 기본값은 KRX 하나 — 없는 시장을 구독해 슬롯을 태우지 않는다."""
+    from hoga.live.lifecycle import _resolve_view_venues
+
+    assert _resolve_view_venues("Z", None) == {"KRX"}
+
+
+async def test_storage_member_needs_no_display_slot():
+    """저장셋 멤버를 열람하면 저장 구독이 커버 — 표시 슬롯/이중구독 0. 시각 무관."""
     mgr = _mgr()
-    mgr._now_fn = lambda: now["ms"]
-    await mgr.sync(("A",), n_accounts=1)  # A = 저장셋
-    await mgr.on_view_subscribe("Z", {AUTO_VENUE}, ref="tab1")  # Z 비저장, AUTO
-    assert "Z_NX" in _wire(mgr) and "Z" not in _wire(mgr)  # NXT 추종
-    # 08:50 KRX 워밍업 경계를 넘김 → 표시키가 KRX 로 이동.
-    now["ms"] = _ms(8, 55)
-    await mgr.watchdog_pass(now["ms"])
-    wire = _wire(mgr)
-    assert "Z" in wire and "Z_NX" not in wire  # 이중구독 없이 KRX 단일로 스왑
-    await mgr.stop()
-
-
-async def test_auto_view_storage_member_needs_no_display_slot():
-    """AUTO 로 연 코드가 (스왑 후) 저장셋 멤버면 저장 구독이 커버 — 표시 슬롯/이중구독 0."""
-    now = {"ms": _ms(8, 55)}  # KRX 창(A = 저장셋 = 현재 venue 커버)
-    mgr = _mgr()
-    mgr._now_fn = lambda: now["ms"]
     await mgr.sync(("A",), n_accounts=1)
     n_updates = len(mgr._conns[0].client.updated)
-    accepted = await mgr.on_view_subscribe("A", {AUTO_VENUE}, ref="tab1")
+    accepted = await mgr.on_view_subscribe("A", {"KRX"}, ref="tab1")
     assert accepted is True
     assert _wire(mgr) == {"A"}  # A_NX 등 추가 없음
     assert len(mgr._conns[0].client.updated) == n_updates  # 재구독 없음
