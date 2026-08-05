@@ -354,18 +354,27 @@ export interface MockPeriodNetRow {
   changePct: number;
 }
 
-/** 기간 순매수 상위 — 연속(ka10131) · 기간별(ka10034 외인 / ka90009 외인·기관) */
+/** 기간 순매수 상위 — 연속(ka10131) · 기간별(ka10034 외인 / ka90009 외인·기관).
+ *  주체별 카드 2장으로 나눠 쓰므로 각 주체 8행씩 채운다. */
 export const MOCK_PERIOD_NET: MockPeriodNetRow[] = [
+  // 외국인
   { code: '005930', name: '삼성전자', actor: '외국인', streakDays: 7, streakNet: 12410, net5: 9840, net10: 14210, net20: 18630, changePct: 1.61 },
   { code: '000660', name: 'SK하이닉스', actor: '외국인', streakDays: 5, streakNet: 8320, net5: 8320, net10: 11840, net20: 21470, changePct: 2.72 },
-  { code: '042660', name: '한화오션', actor: '기관', streakDays: 6, streakNet: 2140, net5: 1980, net10: 2890, net20: 3120, changePct: 12.86 },
   { code: '005380', name: '현대차', actor: '외국인', streakDays: 4, streakNet: 1890, net5: 2110, net10: 1540, net20: -890, changePct: 0.31 },
-  { code: '034020', name: '두산에너빌리티', actor: '기관', streakDays: 4, streakNet: 1530, net5: 1710, net10: 2440, net20: 4180, changePct: 8.44 },
-  { code: '196170', name: '알테오젠', actor: '기관', streakDays: 3, streakNet: 980, net5: 1240, net10: 2010, net20: 2670, changePct: 9.71 },
   { code: '035420', name: 'NAVER', actor: '외국인', streakDays: 3, streakNet: 760, net5: 890, net10: -420, net20: 1130, changePct: -0.24 },
   { code: '373220', name: 'LG에너지솔루션', actor: '외국인', streakDays: 2, streakNet: 640, net5: 1480, net10: 3210, net20: 2890, changePct: 0.29 },
+  { code: '105560', name: 'KB금융', actor: '외국인', streakDays: 6, streakNet: 3120, net5: 2740, net10: 4410, net20: 6820, changePct: 1.12 },
+  { code: '051910', name: 'LG화학', actor: '외국인', streakDays: 2, streakNet: 540, net5: 720, net10: -1340, net20: -2210, changePct: -0.42 },
+  { code: '009540', name: 'HD한국조선해양', actor: '외국인', streakDays: 4, streakNet: 1420, net5: 1680, net10: 2960, net20: 4530, changePct: 3.18 },
+  // 기관
+  { code: '042660', name: '한화오션', actor: '기관', streakDays: 6, streakNet: 2140, net5: 1980, net10: 2890, net20: 3120, changePct: 12.86 },
+  { code: '034020', name: '두산에너빌리티', actor: '기관', streakDays: 4, streakNet: 1530, net5: 1710, net10: 2440, net20: 4180, changePct: 8.44 },
+  { code: '196170', name: '알테오젠', actor: '기관', streakDays: 3, streakNet: 980, net5: 1240, net10: 2010, net20: 2670, changePct: 9.71 },
   { code: '003230', name: '삼양식품', actor: '기관', streakDays: 3, streakNet: 410, net5: 520, net10: 780, net20: 1340, changePct: 0.88 },
   { code: '012450', name: '한화에어로스페이스', actor: '기관', streakDays: 2, streakNet: 380, net5: 940, net10: 1870, net20: 3560, changePct: 1.94 },
+  { code: '010140', name: '삼성중공업', actor: '기관', streakDays: 5, streakNet: 1180, net5: 1340, net10: 2210, net20: 2980, changePct: 7.92 },
+  { code: '000270', name: '기아', actor: '기관', streakDays: 2, streakNet: 620, net5: 810, net10: 1520, net20: -430, changePct: 0.64 },
+  { code: '207940', name: '삼성바이오로직스', actor: '기관', streakDays: 3, streakNet: 890, net5: 1120, net10: 640, net20: 1780, changePct: -0.38 },
 ];
 
 /** 증시 주변 자금 (조원) — 키움 TR 없음. 원천 = 금융투자협회(KOFIA), 공공데이터포털

@@ -319,44 +319,56 @@ function ProgramCard() {
   );
 }
 
+// 세그먼트 라벨은 '일' 을 뺀 숫자만 — 주체별 2카드로 쪼개며 카드 폭이 절반이 됐고,
+// 기간 단위는 헤더 서브텍스트가 이미 말한다("N일 누적").
 const PERIOD_OPTIONS = [
   ['streak', '연속'],
-  ['5', '5일'],
-  ['10', '10일'],
-  ['20', '20일'],
+  ['5', '5'],
+  ['10', '10'],
+  ['20', '20'],
 ] as const;
 type PeriodKey = (typeof PERIOD_OPTIONS)[number][0];
 
-function PeriodNetCard() {
+/** 주체별 순매수 상위 — 외국인·기관 각 1장. 주체가 카드 제목이 되므로 행에서
+ *  actor 열이 사라지고, 그 자리를 등락률(기간 모드)·연속일수(연속 모드)가 쓴다. */
+function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
   const jump = useJumpToLive();
   const [period, setPeriod] = useState<PeriodKey>('streak');
   const netOf = (r: (typeof MOCK_PERIOD_NET)[number]) =>
     period === '5' ? r.net5 : period === '10' ? r.net10 : r.net20;
+  const pool = MOCK_PERIOD_NET.filter((r) => r.actor === actor);
   const rows =
     period === 'streak'
-      ? [...MOCK_PERIOD_NET].sort((a, b) => b.streakDays - a.streakDays || b.streakNet - a.streakNet)
-      : [...MOCK_PERIOD_NET].sort((a, b) => netOf(b) - netOf(a));
+      ? [...pool].sort((a, b) => b.streakDays - a.streakDays || b.streakNet - a.streakNet)
+      : [...pool].sort((a, b) => netOf(b) - netOf(a));
+  const accent = actor === '외국인' ? NET_TREND_COLORS.foreign : NET_TREND_COLORS.institution;
   return (
     <PanelCard borderless flat className="flex flex-col gap-xs p-sm">
       <div className="flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs">
-        <h2 className="text-sm text-fg">
-          순매수 상위{' '}
+        <h2 className="flex items-center gap-2xs text-sm text-fg">
+          {/* 색 견본 = 수급·추세 차트의 같은 주체 계열색 — 카드 간 주체 동일성 앵커 */}
+          <span className="inline-block h-[2px] w-[10px]" style={{ background: accent }} />
+          {actor} 순매수{' '}
           <span className="text-2xs text-fg-dim">
             {period === 'streak' ? '연속 (ka10131)' : `${period}일 누적 (ka10034·ka90009)`}
           </span>
         </h2>
-        <ModeSwitch value={period} onChange={setPeriod} options={PERIOD_OPTIONS} label="순매수 집계 기간" />
+        <ModeSwitch
+          value={period}
+          onChange={setPeriod}
+          options={PERIOD_OPTIONS}
+          label={`${actor} 순매수 집계 기간`}
+        />
       </div>
       <ol className="flex flex-col">
         {rows.slice(0, 8).map((r) => (
-          <li key={`${r.code}-${r.actor}`} className="border-b border-grid last:border-b-0">
+          <li key={r.code} className="border-b border-grid last:border-b-0">
             <button
               type="button"
               onClick={(e) => jump(r.code, r.name, e)}
               title={`${r.name} 라이브 차트로 (ctrl/⌘ = 새 탭)`}
-              className="grid w-full grid-cols-[2.4rem_1fr_2.6rem_4rem] items-center gap-xs py-2xs text-left hover:bg-bg-input-hover"
+              className="grid w-full grid-cols-[1fr_2.6rem_3.8rem] items-center gap-xs py-2xs text-left hover:bg-bg-input-hover"
             >
-              <span className="text-2xs text-fg-dim">{r.actor}</span>
               <span className="truncate text-sm text-fg">{r.name}</span>
               {period === 'streak' ? (
                 <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">
@@ -513,9 +525,12 @@ export function VariantA() {
         <InvestorCard />
         <SectorCard />
       </div>
-      <div className="grid grid-cols-4 gap-xs">
+      {/* 5열 — 차트를 담은 카드(프로그램·자금)에 폭을 더 주고 목록 카드는 좁게.
+          순매수는 주체별 2장(2026-08-05 사용자 확정). */}
+      <div className="grid grid-cols-[1.15fr_1fr_1fr_1.05fr_1.2fr] gap-xs">
         <ProgramCard />
-        <PeriodNetCard />
+        <ActorNetCard actor="외국인" />
+        <ActorNetCard actor="기관" />
         <BreadthCard />
         <FundsCard />
       </div>
