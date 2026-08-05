@@ -186,8 +186,16 @@ export interface InvestorFlowCoverage {
   gap_ranges: { start_ms: number; end_ms: number }[];
 }
 
+export interface InvestorFlowDailyRow {
+  date: string;
+  markets: Record<string, { individual: number | null; foreign: number | null; institution: number | null }>;
+}
+
 export interface InvestorFlowResponse {
   date: string;
+  /** 확정본이 있는 날만. **비어 있는 것이 정상 시작 상태**다 — 장중 표본과 달리
+   *  확정본은 뒤늦게도 채워진다(`base_dt` 랜덤 액세스). */
+  daily: InvestorFlowDailyRow[];
   /** `amt_eok` — 단위가 이름에 박혀 있다(#1117 의 단위 뒤바뀜 재발 방지). */
   unit: string;
   /** 확정 파일 존재로 파생된다 — 저장된 플래그가 아니다(#1115). */
