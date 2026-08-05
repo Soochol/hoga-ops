@@ -1,11 +1,14 @@
 import type { StudyViewReference } from '../api/studyViews';
 import { rangeBundleQueryOptions } from '../api/range';
 import { screenerDailyCandlesQueryOptions } from '../api/screenerDailyCandles';
+import type { LiveVenueOption } from '../state/liveVenue';
 import type { SourcePreference } from '../state/sourcePreference';
 import { studyReferenceQueryInputs } from './studyReferenceBundleModel';
 
 export type StudyReferenceQuerySettings = {
   sourcePref: SourcePreference;
+  /** 복기 거래소 — 공유 `live.venue.v1` 스토어(ADR-0140 §7). */
+  venue: LiveVenueOption;
   brokerLateEntryEnabled: boolean;
   brokerLateEntryStartHHMM: number;
   volumeDistributionEnabled: boolean;
@@ -26,8 +29,7 @@ export function studyReferenceHogaRangeOptions(
     timeframe: inputs.range.timeframe,
     todayKst: null,
     sourcePref: settings.sourcePref,
-    // ⚠ 복기는 아직 KRX 고정 — `/study` 거래소 선택기 부활은 PR-I(#1131)다.
-    venue: 'KRX' as const,
+    venue: settings.venue,
     options: {
       mode: 'hoga',
     },
@@ -46,8 +48,7 @@ export function studyReferenceSidecarRangeOptions(
     timeframe: inputs.range.timeframe,
     todayKst: null,
     sourcePref: settings.sourcePref,
-    // ⚠ 복기는 아직 KRX 고정 — `/study` 거래소 선택기 부활은 PR-I(#1131)다.
-    venue: 'KRX' as const,
+    venue: settings.venue,
     options: {
       mode: 'sidecar',
       brokerLateEntriesEnabled: settings.brokerLateEntryEnabled,
@@ -74,6 +75,10 @@ export function studyReferenceCandleRangeOptions(save: StudyViewReference | null
     timeframe: inputs.candles.timeframe,
     todayKst: null,
     sourcePref: 'hogaplay_first',
+    // ⚠ 캔들만 KRX 고정이다 — 위 sourcePref 고정과 같은 이유다. 이 쿼리는 **디스크
+    // 저장 캔들 전용**이고 그 승자는 hogaplay → kis_api 복구본인데, 둘 다 venue 축이
+    // 없다(`SOURCE_HAS_VENUE`). venue 를 넘기면 축 없는 소스에 축을 요구해 쿼리 키만
+    // 3벌로 갈리고 응답은 같다.
     venue: 'KRX' as const,
     options: {
       mode: 'candles',

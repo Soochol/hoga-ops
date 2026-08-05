@@ -146,12 +146,14 @@ describe('useStudyReferenceBundle', () => {
     });
   });
 
-  it('uses the shared study reference query plan (no venue in settings) and subscribes 4 disk queries', () => {
+  it('passes the shared venue into the study query plan and subscribes 4 disk queries', () => {
     renderHook(() => useStudyReferenceBundle(save));
 
-    // settings에 venue가 없다 — 캔들은 rangeCandles(venue 무관)로만 로드된다.
+    // settings 에 venue 가 실린다(ADR-0140 §7) — 캔들 쿼리만 KRX 고정이고
+    // 그건 studyReferenceQueries 안에서 처리한다(디스크 캔들 소스는 venue 축이 없다).
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(save, {
       sourcePref: 'kis_ws_first',
+      venue: 'UN',
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
@@ -188,11 +190,13 @@ describe('useStudyReferenceBundle', () => {
     expect(result.current.pastDataWarnings).toEqual([]);
   });
 
-  it('pins venue to KRX regardless of the shared live venue store', () => {
-    // beforeEach가 스토어를 UN로 세팅했지만 study는 KRX 고정(공유 스토어 무시).
-    useLiveVenueStore.setState({ venue: 'UN' });
-    const { result } = renderHook(() => useStudyReferenceBundle(save));
-    expect(result.current.venue).toBe('KRX');
+  it('follows the shared live venue store (KRX 고정 해제 — ADR-0140 §7)', () => {
+    // 숨겼던 이유("복기는 hogaplay 정규장 캡처만 쓴다")가 PR-D 의 venue 세그먼트로
+    // 사라졌다. 이제 /live 에서 고른 거래소를 복기도 따른다.
+    useLiveVenueStore.setState({ venue: 'NXT' });
+    expect(renderHook(() => useStudyReferenceBundle(save)).result.current.venue).toBe('NXT');
+    useLiveVenueStore.setState({ venue: 'KRX' });
+    expect(renderHook(() => useStudyReferenceBundle(save)).result.current.venue).toBe('KRX');
   });
 
   it('merges sidecar overlays into the hoga study bundle without waiting on sidecar loading', () => {

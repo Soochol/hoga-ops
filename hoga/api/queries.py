@@ -14,7 +14,7 @@ import duckdb
 from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.eligibility import is_terminal_partial
 from hoga.api.invariants import normalize_session_bounds
-from hoga.api.models import StockDate
+from hoga.api.models import StockDate, StockDateVenue
 from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.api.sources import resolve_source_result
 from hoga.collector.orchestrator import now_kst
@@ -99,6 +99,48 @@ class _CachedStockDate:
 
 class StockDateNotFound(LookupError):
     """No parquet directory for (date, code)."""
+
+
+def _venue_states(sd_dir: Path) -> list[StockDateVenue]:
+    """`kiwoom_live` 의 venue 별 디스크 상태 (ADR-0140 §7). 없으면 빈 목록.
+
+    **자리 목록은 `expected_venues` 가 정한다** — `kiwoom_live/meta.json` 에 PR-E 가
+    캡처 시점 스냅샷으로 박아 둔 값이다. *현재* 마스터로 판정하면 안 된다:
+    넥스트레이드가 종목을 단계적으로 늘리므로, 오늘 상장된 종목의 과거일에 NXT 자리가
+    생겨 **그날은 결손이 아닌데 결손으로 보인다**.
+
+    자리는 있는데 `disk_state` 가 None = "기대됐으나 없음"이고, 자리 자체가 없으면
+    "이 시장에 상장 안 됨"이다. 그 둘을 모양으로 가르는 것이 이 함수의 목적이다.
+
+    비용: `kiwoom_live/` 가 있는 행에서만 파일을 읽는다(실측 2026-08-05 기준 전체
+    17,877 행 중 2,696 = 15%). 그마저도 mtime 캐시 미스 경로 안이다.
+    """
+    source_dir = sd_dir / "kiwoom_live"
+    if not source_dir.is_dir():
+        return []
+    try:
+        source_meta = json.loads((source_dir / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []  # 마이그레이션 전 평면 레이아웃이거나 손상 — venue 축 없음
+    expected = source_meta.get("expected_venues")
+    if not isinstance(expected, list) or not expected:
+        return []
+    out: list[StockDateVenue] = []
+    for venue in expected:
+        if not isinstance(venue, str):
+            continue
+        venue_dir = source_dir / venue
+        state: str | None = None
+        size = 0
+        try:
+            meta = json.loads((venue_dir / "meta.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            meta = None  # 기대됐으나 아직 없음 — 자리는 남기고 내용을 비운다
+        if meta is not None:
+            state = classify_from_meta(meta).state.value
+            size = sum(p.stat().st_size for p in venue_dir.iterdir() if p.is_file())
+        out.append(StockDateVenue(venue=venue, disk_state=state, file_size_bytes=size))
+    return out
 
 
 class QueryEngine:
@@ -455,6 +497,10 @@ class QueryEngine:
             # ADR-0020: surface the full enum so consumers can
             # see INVALID — the boolean pair above flattens it.
             disk_state=_state.value,
+            # ⚠ `code_dir` 이 아니라 Stock-Date 디렉터리에서 읽는다. code_dir 은
+            # **승자 소스** 디렉터리(`hogaplay/` 이거나 평면)라 레이아웃에 따라
+            # 깊이가 다르다 — 경로를 직접 조립해 그 분기를 없앤다.
+            venues=_venue_states(self.data_dir / "parquet" / date / code),
         )
 
     def get_meta(self, date: str, code: str, source: str = "hogaplay") -> dict[str, Any]:

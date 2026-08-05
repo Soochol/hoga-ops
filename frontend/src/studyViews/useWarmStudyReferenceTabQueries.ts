@@ -6,6 +6,7 @@ import type { StudyTab } from '../state/studyTabs';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { referenceStudyView } from './studyViewVariant';
 import { studyReferenceQueryOptions } from './studyReferenceQueries';
+import { useLiveVenueStore } from '../state/liveVenue';
 
 export type StudyTabQueryStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -38,6 +39,8 @@ export function useWarmStudyReferenceTabQueries({
     volumeDistributionEnabled,
     volumeDistributionRangeCount,
   } = useStudyChartIndicators();
+  // 워밍 쿼리도 같은 venue 여야 한다 — 다르면 탭 전환 시 캐시가 안 맞아 재fetch 된다.
+  const venue = useLiveVenueStore((s) => s.venue);
 
   const warmTabIds = useMemo(() => {
     const ids = new Set(activatedTabIds);
@@ -55,6 +58,7 @@ export function useWarmStudyReferenceTabQueries({
       depthHeatmapEnabled,
       volumeDistributionEnabled,
       volumeDistributionRangeCount,
+      venue,
     };
     return tabs.flatMap((tab) => {
       if (!warmTabIds.has(tab.id)) return [];
@@ -78,7 +82,7 @@ export function useWarmStudyReferenceTabQueries({
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
     volumeDistributionEnabled,
-    volumeDistributionRangeCount,
+    volumeDistributionRangeCount, venue,
     warmTabIds,
   ]);
 

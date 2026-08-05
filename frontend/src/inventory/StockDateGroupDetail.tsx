@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import type { StockDateGroup } from './types';
 import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume, fmtClock, fmtGapDuration } from './format';
-import { DiskStateBadge, isRecapturable } from './DiskStateBadge';
+import { DiskStateBadge, VenueStateCell, isRecapturable } from './DiskStateBadge';
 import { sortDates, nextSortState, type SortKey, type SortState } from './sortDates';
 import { useInventoryRecapture } from './useInventoryRecapture';
 import { useInventoryUnblock } from './useInventoryUnblock';
@@ -11,7 +11,7 @@ import { useCaptureQueue } from '../capture/useCaptureQueue';
 import { StatusBadge } from '../ui/StatusBadge';
 
 /** Columns spanned by an expanded gap-detail row (matches the 9-col table). */
-const TABLE_COLSPAN = 9;
+const TABLE_COLSPAN = 10;  // venue 열 추가(ADR-0140 §7)
 
 type Props = {
   group: StockDateGroup | null;
@@ -111,6 +111,9 @@ export function StockDateGroupDetail({ group }: Props) {
               <th className="px-2 py-2 border-b w-8" aria-label="재캡처" />
               <SortableTh column="state"    sort={sort} onSort={onSort}>상태</SortableTh>
               <SortableTh column="failStreak" sort={sort} onSort={onSort} title="연속 실패 횟수 — 5회 시 차단">재시도</SortableTh>
+              {/* 정렬 불가 — venue 상태는 여러 값의 묶음이라 한 축으로 못 세운다.
+                  행 정렬은 hogaplay 주 상태(`state`)가 계속 담당한다. */}
+              <th className="px-3 py-2 border-b text-left font-normal text-fg-dim" title="kiwoom_live 시장별 상태 — 자리가 없으면 그 시장에 미상장">시장</th>
               <SortableTh column="date"     sort={sort} onSort={onSort}>날짜</SortableTh>
               <SortableTh column="captured" sort={sort} onSort={onSort}>수집 시각</SortableTh>
               <SortableTh column="volume"   sort={sort} onSort={onSort} right>거래량</SortableTh>
@@ -186,6 +189,7 @@ export function StockDateGroupDetail({ group }: Props) {
                   >
                     <FailStreakCell failStreak={r.fail_streak} blocked={r.blocked} />
                   </td>
+                  <td className="px-3 py-1.5"><VenueStateCell venues={r.venues} /></td>
                   <td className="px-3 py-1.5">{fmtDate(r.date)}</td>
                   <td className="px-3 py-1.5 text-fg-dim">{fmtTime(r.captured_at)}</td>
                   <td className="px-3 py-1.5 text-right">{r.total_volume.toLocaleString('ko-KR')}</td>

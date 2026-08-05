@@ -70,7 +70,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(screen.getByText(/'REST 우회'를 켜면 분봉은 캡처\(hogaplay\)/)).toBeInTheDocument();
   });
 
-  it('study variant는 캔들 기준 라디오 대신 디스크 온리 안내문을 표시하고 거래소를 숨긴다', async () => {
+  it('study variant는 캔들 기준 라디오 대신 디스크 온리 안내문을 표시한다', async () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
 
     render(<DataSourceDetail variant="study" />, { wrapper: wrap(freshQc()) });
@@ -78,11 +78,24 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(await screen.findByTestId('study-candle-source-note')).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
     expect(screen.queryByText('KIS 캔들 거래소')).toBeNull();
-    expect(screen.queryByLabelText('KRX')).toBeNull();
-    expect(screen.queryByLabelText('NXT')).toBeNull();
     // 호가·체결 기준은 study에서도 유지(사이드카가 소비).
     expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: '실시간 WS 우선' })).toBeInTheDocument();
+  });
+
+  it('study variant도 거래소 선택기를 노출한다 (ADR-0140 §7 — 숨김 해제)', async () => {
+    // 숨겼던 이유는 "복기는 hogaplay 정규장 캡처(KRX)만 쓰므로 선택이 무의미"였다.
+    // PR-D 가 디스크에 `kiwoom_live/{venue}/` 를 만들면서 고를 대상이 생겼다.
+    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
+
+    render(<DataSourceDetail variant="study" />, { wrapper: wrap(freshQc()) });
+
+    for (const v of ['KRX', 'NXT', 'UN']) {
+      expect(await screen.findByTestId(`live-venue-${v}`)).toBeInTheDocument();
+    }
+    // study 안내문은 hogaplay 가 KRX 전용이라는 사실을 말해야 한다 — 빈 날을
+    // 장애로 오해하지 않게.
+    expect(screen.getByText(/hogaplay는 KRX 전용/)).toBeInTheDocument();
   });
 
   it('REST 우회 토글을 backend settings로 저장한다', async () => {

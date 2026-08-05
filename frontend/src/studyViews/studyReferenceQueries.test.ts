@@ -19,6 +19,7 @@ const save: StudyViewReference = {
 
 const settings = {
   sourcePref: 'hogaplay_first' as const,
+  venue: 'KRX' as const,
   brokerLateEntryEnabled: true,
   brokerLateEntryStartHHMM: 1000,
   volumeDistributionEnabled: true,

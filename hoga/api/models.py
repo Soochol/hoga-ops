@@ -24,6 +24,24 @@ from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
 
 
+class StockDateVenue(BaseModel):
+    """한 venue 의 디스크 상태 — 보관함 날짜 행의 venue 배지 하나에 대응한다.
+
+    **목록에 없는 venue 는 '없어야 정상'이다.** 미상장 종목의 NXT 를 빈 배지로
+    그리면 결손처럼 읽힌다 — 자리 자체를 안 만드는 것이 '정상적으로 없음'을
+    모양으로 말하는 방법이다(ADR-0140 §7). 그래서 이 목록은 `expected_venues`
+    (`kiwoom_live/meta.json`, PR-E)로 만든다.
+    """
+
+    venue: str
+    """"KRX" | "NXT" | "UN"."""
+    disk_state: str | None = None
+    """이 venue 의 `DiskStateValue`. ``None`` = **기대됐으나 아직 없음** —
+    배지 자리는 있고 내용이 비어 있다. 그 구분이 요점이다: 자리가 없으면
+    '이 시장에 상장 안 됨'이고, 자리가 비면 '있어야 하는데 없음'이다."""
+    file_size_bytes: int = 0
+
+
 class StockDate(BaseModel):
     """Inventory entry: one captured Stock-Date with its boundaries.
 
@@ -91,6 +109,17 @@ class StockDate(BaseModel):
     """ADR-0042: ``fail_streak >= 5``. Renders a 차단됨 badge + 잠금 해제
     button on the inventory row; enqueue requests for this (Code, Stock-Date)
     are rejected with HTTP 409 until the user clears the counter."""
+    venues: list[StockDateVenue] = Field(default_factory=list)
+    """이 Stock-Date 의 `kiwoom_live` venue 별 디스크 상태 (ADR-0140 §7).
+
+    **빈 목록 = venue 축이 없는 행**이다 — `kiwoom_live` 가 없거나(hogaplay 전용
+    캡처) 마이그레이션 전 평면 레이아웃이다. 프론트는 빈 목록에 아무것도 그리지
+    않는다(현행 화면 그대로).
+
+    이 행의 주 상태(`disk_state`)는 여전히 **hogaplay** 것이다 — 인벤토리 행은
+    `_find_winning_meta` 가 고른 hogaplay/평면 meta 로 만든다. 여기 실리는 것은
+    같은 (날짜, 종목)에 대해 `kiwoom_live` 가 별도로 가진 상태이고, 두 소스는
+    커버 구간이 다르다(hogaplay=KRX 정규장, kiwoom_live=venue 별 창)."""
 
 
 class OrderbookResponse(BaseModel):

@@ -76,21 +76,24 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
             </SettingsRow>
           )}
         </RoleSourceGroup>
-        {/* 복기뷰는 hogaplay 정규장 캡처(KRX)만 쓰므로 거래소 선택이 무의미 — 숨긴다
-            (useStudyReferenceBundle도 'KRX' 하드코딩). */}
-        {variant !== 'study' && (
-          <RoleSourceGroup
-            title="거래소"
-            description="KRX는 정규장(09:00–15:30), NXT는 프리·애프터마켓을 포함한 08:00–20:00을 봅니다. 통합은 거래소가 병합해 내보내는 단일 호가라, 두 시장을 화면에서 더한 것이 아닙니다."
-          >
-            {/* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */}
-            <div className="flex flex-wrap gap-2 pb-2">
-              {LIVE_VENUE_OPTIONS.map((opt) => (
-                <LiveVenueRadio key={opt} value={opt} />
-              ))}
-            </div>
-          </RoleSourceGroup>
-        )}
+        {/* 복기뷰의 거래소 선택기가 **부활했다**(ADR-0140 §7). 숨겼던 이유는
+            "hogaplay 정규장 캡처(KRX)만 쓰므로 선택이 무의미"였는데, PR-D 가
+            디스크에 `kiwoom_live/{venue}/` 를 만들면서 고를 대상이 생겼다. */}
+        <RoleSourceGroup
+          title="거래소"
+          description={
+            variant === 'study'
+              ? 'KRX는 정규장(09:00–15:30), NXT는 프리·애프터마켓을 포함한 08:00–20:00을 봅니다. 복기 데이터의 상당 부분은 hogaplay 캡처인데 hogaplay는 KRX 전용이라, NXT·통합이 비어 있는 날이 있습니다 — 보관함의 시장 배지로 어느 날에 무엇이 있는지 확인하세요.'
+              : 'KRX는 정규장(09:00–15:30), NXT는 프리·애프터마켓을 포함한 08:00–20:00을 봅니다. 통합은 거래소가 병합해 내보내는 단일 호가라, 두 시장을 화면에서 더한 것이 아닙니다.'
+          }
+        >
+          {/* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */}
+          <div className="flex flex-wrap gap-2 pb-2">
+            {LIVE_VENUE_OPTIONS.map((opt) => (
+              <LiveVenueRadio key={opt} value={opt} />
+            ))}
+          </div>
+        </RoleSourceGroup>
         <RoleSourceGroup
           title="호가·체결 데이터 기준"
           description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다. 캔들과 독립된 소스입니다. 실시간 WS(호가·체결)는 키움 WS가 전담 수집합니다(ADR-0118). '완결성 우선'은 두 소스 중 그날 데이터가 더 완결한 쪽을 자동 선택하며, 완결도가 같으면 실시간 WS를 씁니다(주로 과거일에서 갈리고, 장중 당일은 아직 완결 전이라 WS로 수렴)."
