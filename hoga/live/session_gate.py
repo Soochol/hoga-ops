@@ -155,6 +155,50 @@ async def ws_connection_window_async(now_ms: int) -> bool:
     return await asyncio.to_thread(ws_connection_window, now_ms)
 
 
+# ── venue 별 **저장** 창 (ADR-0140 §3, PR-G) ──────────────────────────────────
+#
+# 저장 게이트가 하나(정규장 09:00–15:30)에서 **venue 별**로 갈린다:
+#
+#     KRX    09:00 ─ 15:30   정규장 그대로 — 기존 캡처와 byte-for-byte 동일
+#     NXT·UN 08:00 ─ 20:00   연결 창 전체 — 프리·애프터마켓이 처음으로 디스크에 남는다
+#
+# KRX 창을 안 넓힌 이유: 15:30 이후 KRX 는 **틱이 없다**. 게이트를 열어 두면
+# 다운샘플러 carry 가 유령 스냅샷만 쓴다(`ws_capture_window` docstring 이 15:30 에
+# 닫는 이유로 든 바로 그것). NXT 는 반대로 그 시간에 진짜 거래가 있다.
+#
+# ⚠ 연결 창이 이제 **진짜 상한**이다. 08:00–20:00 은 구독 스왑 스케줄로 들어온 값이지
+# 검증된 NXT 운영시간이 아니다(ADR-0140 열린 항목). 이 창 밖 틱은 저장 이전에 수신
+# 자체가 안 된다.
+
+
+def venue_capture_windows(now_ms: int) -> frozenset[str]:
+    """이 시각에 **저장**이 열린 venue 집합. 비거래일이면 빈 집합.
+
+    `ws_capture_window` 의 venue 인식판이다. 그 함수는 KRX 전용 답을 주는 것으로
+    남는다 — hogaplay 워커·달력이 계속 쓴다.
+
+    ⚠ BLOCKING: `ws_capture_window` 와 같은 이유(캘린더 캐시 미스 시 동기 HTTP)로
+    이벤트 루프에서 직접 호출 금지. 코루틴은 `venue_capture_windows_async` 를 await.
+    """
+    open_venues: set[str] = set()
+    # KRX: **`ws_capture_window` 를 그대로 위임**한다 — 조건을 다시 쓰지 않는다.
+    # `should_run_now` 만으로는 부족하다: 그건 `market_phase != "closed"` 일 뿐이라
+    # 장전 동시호가(08:30–09:00)에도 True 다. 기존 KRX 캡처와 byte-for-byte 동일하려면
+    # 판정이 한 곳에서 나와야 한다.
+    if ws_capture_window(now_ms):
+        open_venues.add("KRX")
+    # NXT·UN: 연결 창 전체. `should_run_now` 는 정규장 밖이면 False 라 08~09·15:30~20 을
+    # 못 담는다 — 그래서 거래일 판정을 따로 하는 `ws_connection_window` 를 쓴다.
+    if ws_connection_window(now_ms):
+        open_venues.update(("NXT", "UN"))
+    return frozenset(open_venues)
+
+
+async def venue_capture_windows_async(now_ms: int) -> frozenset[str]:
+    """venue_capture_windows 의 non-blocking 진입점 — to_thread 봉인."""
+    return await asyncio.to_thread(venue_capture_windows, now_ms)
+
+
 # ── 시분할 구독은 폐지됐다 (ADR-0140 §2, PR-F) ────────────────────────────────
 #
 # 여기 있던 `target_ws_venue(now)` · `in_krx_warmup_window(now)` · `AUTO_VENUE` 는

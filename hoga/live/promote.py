@@ -45,10 +45,22 @@ _KST = KST
 # after 15:35 KST finalizes today's meta to collection_complete=True.
 _SESSION_FINALIZE_HHMM: tuple[int, int] = (15, 35)
 
+# venue 별 마감 + 5분 settle (ADR-0140 §6). **15:35 로 통일하면 NXT 가 거짓
+# COMPLETE 가 된다** — NXT·UN 은 20:00 까지 거래하므로 그 시점의 "완결"은 4.5시간치
+# 데이터를 빼놓고 끝났다고 말하는 것이다. 그 거짓말은 조용하다: 행은 ✓ 로 보이고,
+# 완결 기반 소비자(보관함 배지·재캡처 게이트)가 전부 그걸 믿는다.
+_VENUE_FINALIZE_HHMM: dict[str, tuple[int, int]] = {
+    "KRX": _SESSION_FINALIZE_HHMM,  # 15:30 마감 + 5분
+    "NXT": (20, 5),                 # 20:00 마감 + 5분
+    "UN": (20, 5),
+}
+
 _log = logging.getLogger(__name__)
 
 
-def _collection_finished(date: str, *, now: datetime | None = None) -> bool:
+def _collection_finished(
+    date: str, *, venue: str = "KRX", now: datetime | None = None,
+) -> bool:
     """Time-based completeness verdict for a live (kis_live/kis_api) promotion.
 
     A live stream has no ``_progress.json`` cursor (that's hogaplay's finished
@@ -62,6 +74,9 @@ def _collection_finished(date: str, *, now: datetime | None = None) -> bool:
       can't make the hogaplay worker skip today as ``already_complete``.
     - ``date > today_kst`` → False (conservative; e.g. a midnight-race jsonl).
 
+    ``venue`` 가 오늘의 마감 시각을 정한다(ADR-0140 §6) — KRX 15:35 · NXT·UN 20:05.
+    모르는 venue 는 KRX 기준으로 떨어진다(보수적: 더 이른 마감이 아니라 **기존 동작**).
+
     ``now`` is injectable for tests; production reads the KST wall clock.
     """
     now = now or datetime.now(_KST)
@@ -70,7 +85,8 @@ def _collection_finished(date: str, *, now: datetime | None = None) -> bool:
         return True
     if date > today:
         return False
-    return (now.hour, now.minute) >= _SESSION_FINALIZE_HHMM
+    finalize = _VENUE_FINALIZE_HHMM.get(venue, _SESSION_FINALIZE_HHMM)
+    return (now.hour, now.minute) >= finalize
 
 
 def _completeness_fields(
@@ -297,6 +313,7 @@ def _consume_complete_lines(state: _JsonlParseState, jsonl_path: Path, *, code: 
 
 def _parse_jsonl_incremental(
     jsonl_path: Path, *, code: str, date: str, source: str = "kis_live",
+    venue: str = "KRX",
 ) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], list[Candle], dict]:
     """Today Promotion용 증분 파서 — 전량 파서와 결과 동등(패리티 테스트 고정)."""
     key = (source, code, date, str(jsonl_path))
@@ -314,7 +331,7 @@ def _parse_jsonl_incremental(
     _consume_complete_lines(state, jsonl_path, code=code, date=date)
     meta = _build_meta(
         code, date, state.snapshots, state.trades, state.broker_snapshot_count,
-        fill_count=len(state.fills), source=source,
+        fill_count=len(state.fills), source=source, venue=venue,
     )
     return (state.snapshots, state.trades, state.broker_rows, state.fills,
             state.candles, meta)
@@ -393,6 +410,7 @@ def _build_meta(
     fill_count: int = 0,
     *,
     source: str = "kis_live",
+    venue: str = "KRX",
 ) -> dict:
     meta = {
         "source": source,
@@ -412,7 +430,7 @@ def _build_meta(
         # .ts_ms is already HHMMSSmmm (entity native); cast to HogaMs at this seam.
         **_completeness_fields(
             [HogaMs(s.ts_ms) for s in snapshots],
-            collection_complete=_collection_finished(date),
+            collection_complete=_collection_finished(date, venue=venue),
         ),
     }
     if source == "kis_api":
@@ -539,6 +557,9 @@ def _promote_one_venue(
         code=code,
         date=date,
         source="kiwoom_live",
+        # 완결 시각이 venue 마다 다르다(ADR-0140 §6) — 여기서 안 넘기면 NXT 가
+        # KRX 기준 15:35 에 거짓 COMPLETE 가 된다.
+        venue=venue,
     )
     target.mkdir(parents=True, exist_ok=True)
     _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
