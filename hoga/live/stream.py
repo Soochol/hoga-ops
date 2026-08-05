@@ -122,8 +122,10 @@ class LiveStream:
         # R2: 게이트 판정은 flush 루프가 1Hz로 유지 — on_tick은 이 플래그만 읽는다
         # (per-tick 달력 평가는 fetch 실패 모드에서 틱당 동기 네트워크 콜이 됨).
         self._gate_open: bool = False
-        self._ask_peak_by_code: dict[str, TodayAskPeakState] = {}
-        self._bid_peak_by_code: dict[str, TodayBidPeakState] = {}
+        # 키 = **(bare code, venue)**. 다운샘플러·캔들 합성기와 같은 이유 —
+        # venue 를 빼면 최대벽이 두 시장 합산이 된다(ADR-0140 §2).
+        self._ask_peak_by_code: dict[tuple[str, str], TodayAskPeakState] = {}
+        self._bid_peak_by_code: dict[tuple[str, str], TodayBidPeakState] = {}
         self._ask_peak_date: str | None = None
 
     def set_active_codes(self, codes: set[str]) -> None:
@@ -131,10 +133,11 @@ class LiveStream:
         self._active_codes = set(codes)
         self._ds.set_active_codes(codes)
         self._candle_agg.set_active_codes(self._active_codes)
-        for code in set(self._ask_peak_by_code) - self._active_codes:
-            del self._ask_peak_by_code[code]
-        for code in set(self._bid_peak_by_code) - self._active_codes:
-            del self._bid_peak_by_code[code]
+        # 멤버십은 **종목 단위** — 코드가 떠나면 그 종목의 모든 venue 피크를 버린다.
+        for key in [k for k in self._ask_peak_by_code if k[0] not in self._active_codes]:
+            del self._ask_peak_by_code[key]
+        for key in [k for k in self._bid_peak_by_code if k[0] not in self._active_codes]:
+            del self._bid_peak_by_code[key]
 
     def _reset_ask_peak_if_date_changed(self) -> None:
         date = self._date_fn()
@@ -146,17 +149,17 @@ class LiveStream:
             self._bid_peak_by_code.clear()
             self._ask_peak_date = date
 
-    def _ask_peak_state(self, code: str) -> TodayAskPeakState:
+    def _ask_peak_state(self, code: str, venue: str) -> TodayAskPeakState:
         self._reset_ask_peak_if_date_changed()
-        return self._ask_peak_by_code.setdefault(code, TodayAskPeakState())
+        return self._ask_peak_by_code.setdefault((code, venue), TodayAskPeakState())
 
-    def _bid_peak_state(self, code: str) -> TodayBidPeakState:
+    def _bid_peak_state(self, code: str, venue: str) -> TodayBidPeakState:
         self._reset_ask_peak_if_date_changed()
-        return self._bid_peak_by_code.setdefault(code, TodayBidPeakState())
+        return self._bid_peak_by_code.setdefault((code, venue), TodayBidPeakState())
 
-    def ask_peak_snapshot(self, code: str) -> dict | None:
+    def ask_peak_snapshot(self, code: str, venue: str) -> dict | None:
         self._reset_ask_peak_if_date_changed()
-        state = self._ask_peak_by_code.get(code)
+        state = self._ask_peak_by_code.get((code, venue))
         if state is None:
             return None
         snap = state.snapshot()
@@ -164,9 +167,9 @@ class LiveStream:
             return None
         return {"date": self._ask_peak_date, **snap}
 
-    def bid_peak_snapshot(self, code: str) -> dict | None:
+    def bid_peak_snapshot(self, code: str, venue: str) -> dict | None:
         self._reset_ask_peak_if_date_changed()
-        state = self._bid_peak_by_code.get(code)
+        state = self._bid_peak_by_code.get((code, venue))
         if state is None:
             return None
         snap = state.snapshot()
@@ -174,12 +177,14 @@ class LiveStream:
             return None
         return {"date": self._ask_peak_date, **snap}
 
-    def seed_ask_peak_from_live_file(self, *, code: str, date: str, live_root: Path) -> None:
+    def seed_ask_peak_from_live_file(
+        self, *, code: str, venue: str, date: str, live_root: Path
+    ) -> None:
         """Replay today's persisted JSONL into this stream's ask-peak state."""
         path = live_root / date / f"{code}.jsonl"
         if not path.exists():
             return
-        state = self._ask_peak_state(code)
+        state = self._ask_peak_state(code, venue)
         loaded = False
 
         try:
@@ -210,12 +215,14 @@ class LiveStream:
         if loaded:
             state.coverage = "full"
 
-    def seed_bid_peak_from_live_file(self, *, code: str, date: str, live_root: Path) -> None:
+    def seed_bid_peak_from_live_file(
+        self, *, code: str, venue: str, date: str, live_root: Path
+    ) -> None:
         """Replay today's persisted JSONL into this stream's bid-peak state."""
         path = live_root / date / f"{code}.jsonl"
         if not path.exists():
             return
-        state = self._bid_peak_state(code)
+        state = self._bid_peak_state(code, venue)
         loaded = False
 
         try:
@@ -261,7 +268,7 @@ class LiveStream:
                 except (KeyError, TypeError, ValueError):
                     continue
                 if state is None:
-                    state = self._ask_peak_state(tick.code)
+                    state = self._ask_peak_state(tick.code, tick.venue)
                 trade_t_ms = trade.get("t_ms")
                 trade_seq = trade.get("seq")
                 state.ingest_trade(
@@ -289,7 +296,7 @@ class LiveStream:
             )
             if not _is_continuous_book(valid_asks, valid_bids):
                 return
-            self._ask_peak_state(tick.code).ingest_orderbook(
+            self._ask_peak_state(tick.code, tick.venue).ingest_orderbook(
                 t_ms=tick.t_ms,
                 asks=valid_asks,
             )
@@ -309,7 +316,7 @@ class LiveStream:
                 except (KeyError, TypeError, ValueError):
                     continue
                 if state is None:
-                    state = self._bid_peak_state(tick.code)
+                    state = self._bid_peak_state(tick.code, tick.venue)
                 trade_t_ms = trade.get("t_ms")
                 trade_seq = trade.get("seq")
                 state.ingest_trade(
@@ -337,7 +344,7 @@ class LiveStream:
                 return
             if not _is_continuous_book(valid_asks, valid_bids):
                 return
-            self._bid_peak_state(tick.code).ingest_orderbook(
+            self._bid_peak_state(tick.code, tick.venue).ingest_orderbook(
                 t_ms=tick.t_ms,
                 bids=valid_bids,
             )
@@ -412,6 +419,7 @@ class LiveStream:
                 if monitor is not None:
                     monitor.ingest_orderbook(
                         code=tick.code,
+                        venue=tick.venue,
                         name=tick.code,
                         t_ms=tick.t_ms,
                         total_ask_qty=total_ask,
@@ -457,7 +465,10 @@ class LiveStream:
         # 디스크 오류가 다른 코드의 윈도를 폐기하지 않는다(현재는 첫 실패가
         # flush_once 전체를 중단). flush는 더 이상 리셋하지 않으므로 commit이
         # 유일한 합 차감 경로다.
-        for code, snaps in flushed.items():
+        # ⚠ writer 는 아직 venue 를 모른다 — JSONL 경로에 venue 세그먼트를 넣는 것은
+        # PR-D 의 몫이다(ADR-0140 §3). 이 PR 시점엔 `stream.on_tick` 의 KRX 가드가
+        # 살아 있어 KRX 틱만 흐르므로 한 파일에 두 venue 가 섞일 수 없다.
+        for (code, venue), snaps in flushed.items():
             try:
                 await self._writer.append(date, code, snaps)
             except OSError:
@@ -467,7 +478,7 @@ class LiveStream:
             trade = next((s for s in snaps if s.kind is SnapshotKind.TRADE), None)
             if fill is not None:
                 self._ds.commit_code(
-                    code, buy_qty=fill.payload["buy_qty"],
+                    code, venue, buy_qty=fill.payload["buy_qty"],
                     sell_qty=fill.payload["sell_qty"],
                     trades=trade.payload["trades"] if trade is not None else None,
                 )
@@ -476,13 +487,15 @@ class LiveStream:
         # 봉이 다음 flush로 롤된다. seal_candles_all은 게이트 닫힘 drain에서 진행 중
         # 마지막 봉(종가 동시호가)까지 봉인하기 위함.
         candle_flushed = self._candle_agg.flush(now_ms=now_ms, seal_all=seal_candles_all)
-        for code, snaps in candle_flushed.items():
+        for (code, venue), snaps in candle_flushed.items():
             try:
                 await self._writer.append(date, code, snaps)
             except OSError:
                 _log.exception("live.stream.candle_append_failed code=%s", code)
                 continue  # commit 안 함 → 봉 보존 → 다음 flush 재시도
-            self._candle_agg.commit(code, minutes=[s.t_ms // MS_PER_MINUTE for s in snaps])
+            self._candle_agg.commit(
+                code, venue, minutes=[s.t_ms // MS_PER_MINUTE for s in snaps]
+            )
         await self._writer.fsync_all()
         self.last_flush_ms = now_ms
 

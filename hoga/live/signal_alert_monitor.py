@@ -58,7 +58,10 @@ class SignalAlertMonitor:
         self._settings = load_signal_alert_settings(data_dir).sell_total_renewal
         self._targets: set[str] = set()
         self._target_names: dict[str, str] = {}
-        self._state: dict[str, _CodeState] = {}
+        # 키 = **(bare code, venue)**. venue 를 빼면 KRX·NXT 의 총잔량이 한 상태에
+        # 섞여 baseline·발동 판정이 두 시장 합산이 된다(ADR-0140 §2). 타깃 멤버십은
+        # 종목 단위라 `_targets` 는 bare code 그대로다.
+        self._state: dict[tuple[str, str], _CodeState] = {}
 
     def refresh_settings(self) -> SellTotalRenewalSettings:
         self._settings = load_signal_alert_settings(self._data_dir).sell_total_renewal
@@ -71,14 +74,16 @@ class SignalAlertMonitor:
         else:
             self._targets = set(targets)
             self._target_names = {code: self._target_names.get(code, code) for code in targets}
+        # 종목이 타깃에서 빠지면 그 종목의 **모든 venue 상태**를 함께 버린다.
         self._state = {
-            code: state for code, state in self._state.items() if code in self._targets
+            key: state for key, state in self._state.items() if key[0] in self._targets
         }
 
     def ingest_orderbook(
         self,
         code: str,
         name: str,
+        venue: str,
         t_ms: int,
         total_ask_qty: int,
         source: SignalAlertSource,
@@ -91,10 +96,10 @@ class SignalAlertMonitor:
             return None
 
         date = self._date_fn(t_ms)
-        state = self._state.get(code)
+        state = self._state.get((code, venue))
         if state is None or state.date != date:
             state = _CodeState(date=date)
-            self._state[code] = state
+            self._state[(code, venue)] = state
 
         hhmm = _hhmm_from_ms(t_ms)
         candidate = int(total_ask_qty)

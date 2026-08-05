@@ -182,7 +182,7 @@ def get_signal_alert_monitor() -> SignalAlertMonitor | None:
     return _signal_alert_monitor
 
 
-def get_today_ask_peak(code: str) -> dict | None:
+def get_today_ask_peak(code: str, venue: str) -> dict | None:
     """Return today's ask-peak snapshot for a captured code (키움 스트림).
 
     실시간 캡처=키움 전담(ADR-0118 PR-G)이므로 키움 세션의 살아있는 스트림(코드-disjoint
@@ -194,13 +194,13 @@ def get_today_ask_peak(code: str) -> dict | None:
         snapshot = getattr(stream, "ask_peak_snapshot", None)
         if snapshot is None:
             continue
-        result = snapshot(code)
+        result = snapshot(code, venue)
         if result is not None:
             return result
     return None
 
 
-def get_today_bid_peak(code: str) -> dict | None:
+def get_today_bid_peak(code: str, venue: str) -> dict | None:
     """Return today's bid-peak snapshot for a captured code (키움 스트림)."""
     session = _state.kiwoom_session
     if session is None:
@@ -209,7 +209,7 @@ def get_today_bid_peak(code: str) -> dict | None:
         snapshot = getattr(stream, "bid_peak_snapshot", None)
         if snapshot is None:
             continue
-        result = snapshot(code)
+        result = snapshot(code, venue)
         if result is not None:
             return result
     return None

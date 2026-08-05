@@ -40,7 +40,7 @@ def test_get_today_ask_peak_returns_matching_stream_snapshot() -> None:
     lifecycle.reset_for_tests()
 
     class _FakeStream:
-        def ask_peak_snapshot(self, code: str) -> dict | None:
+        def ask_peak_snapshot(self, code: str, venue: str) -> dict | None:
             return {"date": "20260616", "code": code, "all_qty": 9000}
 
     class _FakeKiwoom:
@@ -49,7 +49,7 @@ def test_get_today_ask_peak_returns_matching_stream_snapshot() -> None:
 
     lifecycle._state = _State(kiwoom_session=_FakeKiwoom())
 
-    assert lifecycle.get_today_ask_peak("005930") == {
+    assert lifecycle.get_today_ask_peak("005930", "KRX") == {
         "date": "20260616",
         "code": "005930",
         "all_qty": 9000,
@@ -66,7 +66,7 @@ def test_get_today_ask_peak_skips_non_matching_or_legacy_streams() -> None:
         def __init__(self, owned: set[str]) -> None:
             self._owned = owned
 
-        def ask_peak_snapshot(self, code: str) -> dict | None:
+        def ask_peak_snapshot(self, code: str, venue: str) -> dict | None:
             if code not in self._owned:
                 return None  # 코드-disjoint: 비소유 코드는 None
             return {"date": "20260616", "code": code, "all_qty": 9000}
@@ -78,13 +78,13 @@ def test_get_today_ask_peak_skips_non_matching_or_legacy_streams() -> None:
 
     lifecycle._state = _State(kiwoom_session=_FakeKiwoom())
 
-    assert lifecycle.get_today_ask_peak("005930") is None
-    assert lifecycle.get_today_ask_peak("000660") == {
+    assert lifecycle.get_today_ask_peak("005930", "KRX") is None
+    assert lifecycle.get_today_ask_peak("000660", "KRX") == {
         "date": "20260616",
         "code": "000660",
         "all_qty": 9000,
     }
-    assert lifecycle.get_today_ask_peak("373220") is None
+    assert lifecycle.get_today_ask_peak("373220", "KRX") is None
 
 
 def test_get_today_ask_peak_none_when_kiwoom_off() -> None:
@@ -93,7 +93,7 @@ def test_get_today_ask_peak_none_when_kiwoom_off() -> None:
 
     lifecycle.reset_for_tests()
     lifecycle._state = _State()  # kiwoom_session None
-    assert lifecycle.get_today_ask_peak("005930") is None
+    assert lifecycle.get_today_ask_peak("005930", "KRX") is None
 
 
 def test_get_today_bid_peak_returns_matching_stream_snapshot() -> None:
@@ -103,7 +103,7 @@ def test_get_today_bid_peak_returns_matching_stream_snapshot() -> None:
     lifecycle.reset_for_tests()
 
     class _FakeStream:
-        def bid_peak_snapshot(self, code: str) -> dict | None:
+        def bid_peak_snapshot(self, code: str, venue: str) -> dict | None:
             return {"date": "20260619", "code": code, "all_qty": 12_000}
 
     class _FakeKiwoom:
@@ -112,7 +112,7 @@ def test_get_today_bid_peak_returns_matching_stream_snapshot() -> None:
 
     lifecycle._state = _State(kiwoom_session=_FakeKiwoom())
 
-    assert lifecycle.get_today_bid_peak("005930") == {
+    assert lifecycle.get_today_bid_peak("005930", "KRX") == {
         "date": "20260619",
         "code": "005930",
         "all_qty": 12_000,
