@@ -193,12 +193,16 @@ async def _collect_sectors(call: Any) -> dict[str, Any]:
             "index": next(
                 ({"code": b.code, "name": b.name, "value": b.value,
                   "change_pct": b.change_pct, "rising": b.rising, "falling": b.falling,
-                  "flat": b.flat, "upper": b.upper, "lower": b.lower}
+                  "flat": b.flat, "upper": b.upper, "lower": b.lower,
+                  "trade_value_eok": b.trade_value_eok, "listed_count": b.listed_count}
                  for b in parsed if b.is_whole_market),
                 None,
             ),
+            # 업종 행에도 거래대금을 싣는다 — 규모별(대형/중형/소형) 쏠림과 업종
+            # 분산도가 이 필드 위에 선다. `listed_count` 는 종합 행에만 의미가 있다.
             "sectors": [
-                {"code": b.code, "name": b.name, "value": b.value, "change_pct": b.change_pct}
+                {"code": b.code, "name": b.name, "value": b.value,
+                 "change_pct": b.change_pct, "trade_value_eok": b.trade_value_eok}
                 for b in parsed if not b.is_whole_market
             ],
         }

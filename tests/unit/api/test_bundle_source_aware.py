@@ -268,8 +268,10 @@ def test_candle_less_orderflow_winner_does_not_hide_repaired_candles(tmp_path: P
          "vol_a": 1, "vol_b": 0},
     ])
     # kiwoom_live: healthy 하지만 캔들 미보유 티어 (ADR-0040).
-    _write_meta(sd / "kiwoom_live" / "meta.json", source="kiwoom_live", code=code, date=date)
-    _write_snapshots(sd / "kiwoom_live" / "snapshots.parquet", [_snap(90000000, 10, 20)])
+    # venue 세그먼트가 정본이다(ADR-0140 §3) — 완결성 meta 는 venue 레벨에 산다.
+    kw = sd / "kiwoom_live" / "KRX"
+    _write_meta(kw / "meta.json", source="kiwoom_live", code=code, date=date)
+    _write_snapshots(kw / "snapshots.parquet", [_snap(90000000, 10, 20)])
     # kis_api: ADR-0109 복구본.
     _write_meta(sd / "kis_api" / "meta.json", source="kis_api", code=code, date=date,
                 created_from="kis_minute_repair")

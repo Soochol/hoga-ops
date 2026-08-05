@@ -14,6 +14,7 @@ from hoga.api.sources import (
     resolve_candle_source,
     resolve_source,
     resolve_source_result,
+    source_venue_dir,
 )
 
 
@@ -24,13 +25,13 @@ def _make_engine(tmp_path: Path) -> MagicMock:
 
 
 def _seed_source(tmp_path: Path, date: str, code: str, source: str) -> None:
-    sd = tmp_path / "parquet" / date / code / source
+    sd = source_venue_dir(tmp_path / "parquet" / date / code, source, "KRX")
     sd.mkdir(parents=True)
     (sd / "meta.json").write_text('{"collection_complete": true, "is_partial": false}')
 
 
 def _seed_invalid_source(tmp_path: Path, date: str, code: str, source: str) -> None:
-    sd = tmp_path / "parquet" / date / code / source
+    sd = source_venue_dir(tmp_path / "parquet" / date / code, source, "KRX")
     sd.mkdir(parents=True)
     (sd / "meta.json").write_text("{")
 
@@ -78,7 +79,8 @@ def test_resolve_source_honors_kiwoom_live(tmp_path: Path) -> None:
 
     result = resolve_source_result(engine, "20260716", "005930", "hogaplay_first")
     assert result.source == "kiwoom_live"
-    assert result.path == tmp_path / "parquet" / "20260716" / "005930" / "kiwoom_live"
+    # venue 세그먼트가 정본이다 — 평면 폴백은 PR-D2 에서 삭제됐다.
+    assert result.path == tmp_path / "parquet" / "20260716" / "005930" / "kiwoom_live" / "KRX"
     assert result.classification is not None
     assert result.classification.state == DiskState.COMPLETE
     # kiwoom_ws_first 정책은 명시적으로 kiwoom_live를 최우선.
@@ -165,7 +167,9 @@ def test_ordered_sources_rejects_unknown_policy(bad: str) -> None:
 
 def _seed_candles(tmp_path: Path, date: str, code: str, source: str) -> None:
     """이미 seed된 Source에 candles.parquet 존재를 표식(내용은 무관 — 존재만 본다)."""
-    (tmp_path / "parquet" / date / code / source / "candles.parquet").write_bytes(b"")
+    d = source_venue_dir(tmp_path / "parquet" / date / code, source, "KRX")
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "candles.parquet").write_bytes(b"")
 
 
 def test_resolve_candle_source_skips_candle_less_realtime_winner(tmp_path: Path) -> None:
@@ -280,7 +284,7 @@ def test_kiwoom_live_without_candle_file_skipped(tmp_path: Path) -> None:
 
 def _seed_partial(tmp_path: Path, date: str, code: str, source: str) -> None:
     """SOURCE_PARTIAL — 수집은 끝났으나 갭 존재."""
-    sd = tmp_path / "parquet" / date / code / source
+    sd = source_venue_dir(tmp_path / "parquet" / date / code, source, "KRX")
     sd.mkdir(parents=True)
     (sd / "meta.json").write_text('{"collection_complete": true, "is_partial": true}')
 

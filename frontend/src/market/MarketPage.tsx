@@ -12,10 +12,10 @@
  * 자금 카드가 빈 것은 **키가 없어서**다. 셋을 같은 빈 화면으로 보이면 진단이 흐려진다.
  */
 import { useState } from 'react';
+import { BreadthCard } from './BreadthCard';
 import { useLiveIndexCandles } from '../api/liveIndices';
 import { useMarketIndexQuotes } from '../api/marketIndexQuotes';
 import {
-  useMarketBreadth,
   useMarketFunds,
   useMarketInvestorFlow,
   useMarketProgram,
@@ -29,11 +29,10 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 import type { LiveIndexId } from '../live/liveInstrument';
 import { PageContainer } from '../layout/PageContainer';
-import { PanelCard, SegmentedControl } from '../ui/PageShell';
+import { CARD_HEADER_RULE, CardHeader, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
 import { priceDirClass } from '../ui/priceDir';
 import {
   AdvanceDeclineBar,
-  BreadthTile,
   ComboNetChart,
   CumLinesChart,
   LegendItem,
@@ -43,54 +42,6 @@ import {
   Sparkline,
 } from './marketBits';
 import { SERIES_COLORS, fmtSigned, stockSeriesDiffs, wonToJo } from './marketFormat';
-
-/** 카드 헤더의 밀도 우선 토글 — 좁은 카드에서 줄바꿈되도록 헤더가 flex-wrap 이다. */
-function ModeSwitch<T extends string>({
-  value,
-  onChange,
-  options,
-  label,
-}: {
-  value: T;
-  onChange: (v: T) => void;
-  options: ReadonlyArray<readonly [T, string]>;
-  label: string;
-}) {
-  return (
-    <SegmentedControl aria-label={label}>
-      {options.map(([key, text]) => {
-        const on = value === key;
-        return (
-          <button
-            key={key}
-            type="button"
-            aria-pressed={on}
-            onClick={() => onChange(key)}
-            className={`whitespace-nowrap px-2 py-[2px] font-data text-2xs tabular-nums ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
-          >
-            {text}
-          </button>
-        );
-      })}
-    </SegmentedControl>
-  );
-}
-
-function CardHeader({ title, hint, right }: { title: string; hint?: string; right?: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs">
-      <h2 className="text-sm text-fg">
-        {title} {hint && <span className="text-2xs text-fg-dim">{hint}</span>}
-      </h2>
-      {right}
-    </div>
-  );
-}
-
-/** 빈 상태 — **왜 비었는지**를 말한다. 같은 회색 박스로 뭉뚱그리지 않는다. */
-function EmptyNote({ children }: { children: React.ReactNode }) {
-  return <p className="py-sm text-center text-xs text-fg-dim">{children}</p>;
-}
 
 // ── 지수 카드 ─────────────────────────────────────────────────────────────
 
@@ -104,16 +55,16 @@ export function IndexCards() {
   const rows = quotes.data ?? [];
   if (rows.length === 0) {
     return (
-      <PanelCard borderless flat className="p-md">
+      <MarketCard className="p-md">
         {/* 원인을 단정하지 않는다 — "자격증명" 으로 못박았다가 실제 원인(마감 후
             tm_n 센티넬 파싱 실패)을 오래 못 찾았다(2026-08-05). */}
         <EmptyNote>지수 시세를 받지 못했습니다. 잠시 후 다시 시도합니다.</EmptyNote>
-      </PanelCard>
+      </MarketCard>
     );
   }
 
   return (
-    <div className="grid grid-cols-4 gap-xs">
+    <div className="grid grid-cols-4 gap-md">
       {rows.slice(0, 4).map((q) => (
         <IndexCard key={q.id} quote={q} sectors={sectors.data} />
       ))}
@@ -144,8 +95,8 @@ function IndexCard({
   const breadth = mkey ? sectors?.markets[mkey]?.index : undefined;
 
   return (
-    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
-      <div className="flex items-baseline justify-between">
+    <MarketCard className="flex flex-col gap-sm p-md">
+      <div className={`flex items-baseline justify-between ${CARD_HEADER_RULE}`}>
         <span className="text-xs font-semibold uppercase text-fg-dim">{quote.label}</span>
         {breadth?.rising != null && breadth.falling != null && (
           <span className="font-data text-2xs text-fg-dim tabular-nums">
@@ -171,7 +122,7 @@ function IndexCard({
       {breadth && (
         <AdvanceDeclineBar rising={breadth.rising} falling={breadth.falling} flat={breadth.flat} />
       )}
-    </PanelCard>
+    </MarketCard>
   );
 }
 
@@ -192,7 +143,7 @@ export function InvestorCard() {
   const cov = data?.coverage;
 
   return (
-    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
+    <MarketCard className="flex flex-col gap-sm p-md">
       <CardHeader
         title="투자자 수급"
         hint={
@@ -214,7 +165,7 @@ export function InvestorCard() {
       />
       {mode === 'intraday' && <IntradayFlow data={data} loading={flow.isLoading} />}
       {mode === 'daily' && <DailyFlow data={data} />}
-    </PanelCard>
+    </MarketCard>
   );
 }
 
@@ -312,7 +263,7 @@ export function SectorCard() {
   const kospi = sectors.data?.markets['0']?.sectors ?? [];
   const kosdaq = sectors.data?.markets['1']?.sectors ?? [];
   return (
-    <PanelCard borderless flat className="flex flex-col gap-sm p-md">
+    <MarketCard className="flex flex-col gap-sm p-md">
       <CardHeader title="업종 온도" hint="KRX 업종지수 등락률" />
       {kospi.length === 0 && kosdaq.length === 0 ? (
         <EmptyNote>업종 데이터를 받지 못했습니다.</EmptyNote>
@@ -335,7 +286,7 @@ export function SectorCard() {
           ))}
         </div>
       )}
-    </PanelCard>
+    </MarketCard>
   );
 }
 
@@ -346,7 +297,7 @@ export function ProgramCard() {
   const program = useMarketProgram(axis);
   const markets = program.data?.markets ?? {};
   return (
-    <PanelCard borderless flat className="flex flex-col gap-sm p-sm">
+    <MarketCard className="flex flex-col gap-sm p-sm">
       <CardHeader
         title="프로그램"
         hint={axis === 'intraday' ? '당일 누적 · 억원' : '일별 · 억원'}
@@ -418,7 +369,7 @@ export function ProgramCard() {
           );
         })
       )}
-    </PanelCard>
+    </MarketCard>
   );
 }
 
@@ -430,8 +381,8 @@ export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
   const rows = (streaks.data?.[actor] ?? []) as import('../api/market').StreakRow[];
   const accent = actor === '외국인' ? SERIES_COLORS.foreign : SERIES_COLORS.institution;
   return (
-    <PanelCard borderless flat className="flex flex-col gap-xs p-sm">
-      <h2 className="flex items-center gap-2xs text-sm text-fg">
+    <MarketCard className="flex flex-col gap-xs p-sm">
+      <h2 className={`flex items-center gap-2xs text-sm text-fg ${CARD_HEADER_RULE}`}>
         <span className="inline-block h-[2px] w-[10px]" style={{ background: accent }} />
         {actor} 순매수 <span className="text-2xs text-fg-dim">연속 · 억원</span>
       </h2>
@@ -461,36 +412,11 @@ export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
           ))}
         </ol>
       )}
-    </PanelCard>
+    </MarketCard>
   );
 }
 
 // ── 시장 폭 · 증시 주변 자금 ─────────────────────────────────────────────
-
-export function BreadthCard() {
-  const breadth = useMarketBreadth();
-  const markets = breadth.data?.markets ?? {};
-  return (
-    <PanelCard borderless flat className="flex flex-col gap-sm p-sm">
-      <CardHeader title="시장 폭" hint="종목수" />
-      {Object.keys(markets).length === 0 ? (
-        <EmptyNote>시장 폭 데이터를 받지 못했습니다.</EmptyNote>
-      ) : (
-        Object.entries(markets).map(([label, b]) => (
-          <div key={label} className="flex flex-col gap-2xs">
-            <span className="text-xs font-semibold text-fg-dim">{MARKET_LABELS[label] ?? label}</span>
-            <div className="grid grid-cols-4 gap-2xs">
-              <BreadthTile label="52주 신고" count={b.new_high_52w?.count ?? null} truncated={b.new_high_52w?.truncated} dir="up" />
-              <BreadthTile label="52주 신저" count={b.new_low_52w?.count ?? null} truncated={b.new_low_52w?.truncated} dir="down" />
-              <BreadthTile label="급등" count={b.surge?.count ?? null} truncated={b.surge?.truncated} dir="up" />
-              <BreadthTile label="급락" count={b.plunge?.count ?? null} truncated={b.plunge?.truncated} dir="down" />
-            </div>
-          </div>
-        ))
-      )}
-    </PanelCard>
-  );
-}
 
 const FUND_SPANS = [
   ['20', '20일'],
@@ -508,8 +434,8 @@ function FundsCard() {
   const last = series[series.length - 1];
   const asOf = data?.as_of;
   return (
-    <PanelCard borderless flat className="flex flex-col gap-xs p-sm">
-      <div className="flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs">
+    <MarketCard className="flex flex-col gap-xs p-sm">
+      <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
         <h2 className="text-sm text-fg">
           증시 주변 자금{' '}
           <span className="text-2xs text-fg-dim">
@@ -554,7 +480,7 @@ function FundsCard() {
           </div>
         </>
       )}
-    </PanelCard>
+    </MarketCard>
   );
 }
 
@@ -573,8 +499,8 @@ export function RankCard({
   const q = useLiveRankings({ kind, market: 'all', direction, excludeEtf: true });
   const rows = q.data?.rows ?? [];
   return (
-    <PanelCard borderless flat className="flex flex-col gap-xs p-md">
-      <h2 className="text-sm text-fg">{title}</h2>
+    <MarketCard className="flex flex-col gap-xs p-md">
+      <h2 className={`text-sm text-fg ${CARD_HEADER_RULE}`}>{title}</h2>
       {rows.length === 0 ? (
         <EmptyNote>{q.data && !q.data.marketOpen ? '장 마감 — 순위는 장중에만 갱신됩니다.' : '순위를 받지 못했습니다.'}</EmptyNote>
       ) : (
@@ -598,7 +524,7 @@ export function RankCard({
           ))}
         </ol>
       )}
-    </PanelCard>
+    </MarketCard>
   );
 }
 
@@ -609,24 +535,27 @@ export function MarketPage() {
   // 업종 온도(세로로 긴 리스트)는 우측 열, 좌측은 수급 + 보조 2×2 로 높이를 맞춘다.
   return (
     <PageContainer>
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1680px] flex-col gap-xs overflow-y-auto">
+      {/* 간격도 분리 수단이다 — 이전 `gap-xs`(4.5px)는 헤더 밑줄과 함께 써도 카드가
+          붙어 보였다. 카드 사이 `md`, 성격이 다른 좌우 열 사이만 `xl`
+          (DESIGN.md 가 "Major section dividers" 로 정의한 그 값). */}
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1680px] flex-col gap-md overflow-y-auto">
         <IndexCards />
-        <div className="grid grid-cols-[2fr_1fr] gap-xs">
-          <div className="flex flex-col gap-xs">
+        <div className="grid grid-cols-[2fr_1fr] gap-x-xl gap-y-md">
+          <div className="flex flex-col gap-md">
             <InvestorCard />
-            <div className="grid grid-cols-2 gap-xs">
+            <div className="grid grid-cols-2 gap-md">
               <ProgramCard />
               <FundsCard />
               <ActorNetCard actor="외국인" />
               <ActorNetCard actor="기관" />
             </div>
           </div>
-          <div className="flex flex-col gap-xs">
+          <div className="flex flex-col gap-md">
             <SectorCard />
             <BreadthCard />
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-xs">
+        <div className="grid grid-cols-3 gap-md">
           <RankCard title="상승률 상위" kind="change" direction="up" />
           <RankCard title="하락률 상위" kind="change" direction="down" />
           <RankCard title="거래대금 상위" kind="value" direction="up" />
