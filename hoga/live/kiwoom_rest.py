@@ -48,6 +48,12 @@ PATH_CHART = "/api/dostk/chart"
 PATH_STKINFO = "/api/dostk/stkinfo"
 PATH_SECT = "/api/dostk/sect"
 PATH_RKINFO = "/api/dostk/rkinfo"
+# 경로는 계열 이름으로 짐작하면 틀린다 — 벤더가 `1504:해당 URI에서는 지원하는 API ID가
+# 아닙니다` 로 알려 주므로 실측이 유일한 근거다(2026-08-05, #1095·#1096). 프로그램매매는
+# `rkinfo`·`stkinfo`·`sect`·`chart` 전부 거절하고 `mrkcond` 만 통과했고, "기관·외국인"
+# 계열도 한 경로가 아니다: ka10131 은 `frgnistt`, ka90009 는 `rkinfo` 다.
+PATH_MRKCOND = "/api/dostk/mrkcond"
+PATH_FRGNISTT = "/api/dostk/frgnistt"
 
 ResponseShape = Literal["list", "flat"]
 
@@ -119,6 +125,31 @@ TR: dict[str, TrSpec] = {
     "ka20001": TrSpec("ka20001", PATH_SECT, "inds_cur_prc_tm", required=("inds_cd", "mrkt_tp")),
     "ka10051": TrSpec("ka10051", PATH_SECT, "inds_netprps",
                       required=("mrkt_tp", "amt_qty_tp", "base_dt", "stex_tp")),
+    # 전업종지수 — 업종 값뿐 아니라 **등락종목수**(rising/fall/stdns/upl/lst)를 준다.
+    # `inds_cd` 는 필수지만 응답은 그 시장 전체 행이다(001/101 종합 행 포함).
+    "ka20003": TrSpec("ka20003", PATH_SECT, "all_inds_idex",
+                      required=("mrkt_tp", "inds_cd")),
+    # 시장 종합 — 프로그램매매(경로가 mrkcond 다) · 연속매매 · 시장 폭
+    # ka90005/ka90010 은 래퍼·필드가 **동일하고 축만** 다르다(시각 vs 일자).
+    # ⚠ 같은 이름의 `kospi200` 이 ka90005 는 ×100 정수, ka90010 은 소수점이다.
+    "ka90005": TrSpec("ka90005", PATH_MRKCOND, "prm_trde_trnsn", cursor=True,
+                      required=("date", "amt_qty_tp", "mrkt_tp", "min_tic_tp", "stex_tp")),
+    "ka90010": TrSpec("ka90010", PATH_MRKCOND, "prm_trde_trnsn", cursor=True,
+                      required=("date", "amt_qty_tp", "mrkt_tp", "min_tic_tp", "stex_tp")),
+    "ka10131": TrSpec("ka10131", PATH_FRGNISTT, "orgn_frgnr_cont_trde_prst",
+                      required=("dt", "mrkt_tp", "netslmt_tp", "stk_inds_tp",
+                                "amt_qty_tp", "stex_tp")),
+    # 시장 폭 — 둘 다 **카운트가 아니라 목록**이라 행을 세야 한다. ka10019 는 200행에서
+    # 커서가 안 끝난다(절사 정책은 호출부 소관, #1099).
+    # ka10016 은 실측(코스피 45행)에서 cont-yn=N 이었지만 **커서를 허용한다** —
+    # 시장·조건에 따라 100행을 넘길 수 있고, `call` 로 1페이지만 세면 조용히
+    # undercount 가 된다(카운트가 곧 화면 값이라 더 위험하다).
+    "ka10016": TrSpec("ka10016", PATH_STKINFO, "ntl_pric", cursor=True,
+                      required=("mrkt_tp", "ntl_tp", "high_low_close_tp", "stk_cnd",
+                                "trde_qty_tp", "crd_cnd", "updown_incls", "dt", "stex_tp")),
+    "ka10019": TrSpec("ka10019", PATH_STKINFO, "pric_jmpflu", cursor=True,
+                      required=("mrkt_tp", "flu_tp", "tm_tp", "tm", "trde_qty_tp",
+                                "stk_cnd", "crd_cnd", "pric_cnd", "updown_incls", "stex_tp")),
 }
 
 

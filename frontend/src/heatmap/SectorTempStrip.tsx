@@ -1,7 +1,6 @@
 import type { LiveQuote } from '../api/liveQuotes';
 import type { HeatmapFolder } from '../api/heatmap';
 import { avgPct, heatBg, makePctOf, type HeatmapGroup } from './heat';
-import { visibleFolderGroups } from './visibleGroups';
 
 /** 스트립 칩 배경 농도(작은 칩이라 행 칩보다 옅게, 헤더 밴드보단 진하게). */
 const STRIP_ALPHA = 0.55;
@@ -15,10 +14,12 @@ export interface SectorTempStripProps {
 
 /** 가시 섹터의 평균 등락칩을 한 줄(wrap)로 — 시장 온도 한눈 스캔.
  *  정렬은 **뜨거운 순(avg 내림차순) · 표시 전용**이며 카드 본문 sortMode/order를
- *  바꾸지 않는다(spec invariant: 정렬 계약 보존). 빈 폴더·avg 결측 섹터는 제외. */
+ *  바꾸지 않는다(spec invariant: 정렬 계약 보존). avg 결측 섹터는 제외 — 빈 폴더는
+ *  entries 가 없어 avg 가 항상 null 이므로 이 필터 하나로 함께 빠진다(보드는 빈 폴더도
+ *  렌더하지만, 온도가 없는 칩을 스트립에 올릴 수는 없다). */
 export function SectorTempStrip({ groups, quoteByCode, onJump }: SectorTempStripProps) {
   const pctOf = makePctOf(quoteByCode);
-  const chips = visibleFolderGroups(groups)
+  const chips = groups
     .map((g) => ({ folder: g.folder, avg: avgPct(g.entries, pctOf) }))
     .filter((c): c is { folder: HeatmapFolder; avg: number } => c.avg !== null)
     .sort((a, b) => b.avg - a.avg);
