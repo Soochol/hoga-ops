@@ -105,7 +105,9 @@ export function IndexCards() {
   if (rows.length === 0) {
     return (
       <PanelCard borderless flat className="p-md">
-        <EmptyNote>지수 시세를 받지 못했습니다 — 키움 자격증명을 확인하세요.</EmptyNote>
+        {/* 원인을 단정하지 않는다 — "자격증명" 으로 못박았다가 실제 원인(마감 후
+            tm_n 센티넬 파싱 실패)을 오래 못 찾았다(2026-08-05). */}
+        <EmptyNote>지수 시세를 받지 못했습니다. 잠시 후 다시 시도합니다.</EmptyNote>
       </PanelCard>
     );
   }
