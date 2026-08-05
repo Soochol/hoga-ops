@@ -40,15 +40,20 @@ class LiveWriter:
         self,
         date: str,
         code: str,
+        venue: str,
         snapshots: Iterable[LiveSnapshot],
     ) -> None:
-        """Append the given snapshots to `<root>/{date}/{code}.jsonl`."""
+        """Append the given snapshots to `<root>/{date}/{venue}/{code}.jsonl`.
+
+        venue 세그먼트는 ADR-0140 §3 — 두 시장이 한 파일에 섞이면 되돌릴 수 없다.
+        venue 를 **필수 인자**로 둔 이유는 기본값이 곧 그 섞임의 경로이기 때문이다.
+        """
         # Materialize once outside the lock to keep the critical section short.
         lines = "".join(s.to_jsonl() + "\n" for s in snapshots)
         if not lines:
             return
-        async with self._lock_for(code):
-            target = self._root / date / f"{code}.jsonl"
+        async with self._lock_for(f"{code}|{venue}"):
+            target = self._root / date / venue / f"{code}.jsonl"
             target.parent.mkdir(parents=True, exist_ok=True)
             await asyncio.to_thread(self._append_sync, target, lines)
 

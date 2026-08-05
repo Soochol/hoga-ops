@@ -36,6 +36,7 @@ import polars as pl
 
 from hoga.api import depth_daily
 from hoga.api.models import DepthCoverage, DepthCoverageCode, DepthPeakValue
+from hoga.api.sources import resolve_source_venue_dir
 from hoga.duck import connect_bounded
 from hoga.tables import snapshots as snapshots_tbl
 
@@ -115,7 +116,8 @@ def _existing_today_snapshots(day_dir: Path, codes: set[str]) -> list[tuple[str,
     found: list[tuple[str, Path]] = []
     for code in sorted(codes):
         for source in _TODAY_SOURCES:
-            snap = day_dir / code / source / "snapshots.parquet"
+            # ⚠ "KRX" 리터럴 — 스크리너 depth 는 아직 venue 개념이 없다(PR-J).
+            snap = resolve_source_venue_dir(day_dir / code, source, "KRX") / "snapshots.parquet"
             if snap.exists():
                 found.append((code, snap))
     return found

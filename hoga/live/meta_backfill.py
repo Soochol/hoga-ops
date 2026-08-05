@@ -22,6 +22,7 @@ from pathlib import Path
 
 import polars as pl
 
+from hoga.api.sources import resolve_source_venue_dir
 from hoga.live.promote import _completeness_fields
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.timeenc import KST, HogaMs
@@ -106,7 +107,8 @@ def backfill_live_meta(
             if not code_dir.is_dir():
                 continue
             for source in _LIVE_SOURCES:
-                meta_path = code_dir / source / "meta.json"
+                src_dir = resolve_source_venue_dir(code_dir, source, "KRX")
+                meta_path = src_dir / "meta.json"
                 if not meta_path.exists():
                     continue
                 scanned += 1
@@ -122,7 +124,7 @@ def backfill_live_meta(
                 if meta.get("collection_complete") is True:
                     skipped += 1
                     continue
-                fields = _recompute_fields(code_dir / source / "snapshots.parquet")
+                fields = _recompute_fields(src_dir / "snapshots.parquet")
                 if dry_run:
                     updated += 1
                     continue

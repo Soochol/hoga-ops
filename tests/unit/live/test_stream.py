@@ -43,7 +43,7 @@ async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path):
     assert len(series["trades"]) == 1
 
     await stream.flush_once(now_ms=now + 10_000)     # 10초 경계 flush
-    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    jsonl = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
     assert '"kind": "fill"' in jsonl
     assert '"buy_qty": 5' in jsonl
     assert '"kind": "trade"' in jsonl               # 매물대용 10초 가격 집계
@@ -72,7 +72,7 @@ async def test_prev_close_reaches_display_but_not_storage(tmp_path):
     assert series["trades"][0]["prev_close"] == 96000   # 표시: 보존
 
     await stream.flush_once(now_ms=now + 10_000)
-    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    jsonl = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
     assert "prev_close" not in jsonl                    # 저장: 미유출
 
 
@@ -106,7 +106,7 @@ async def test_candle_synthesized_and_written_on_minute_seal(tmp_path):
 
     # 같은 분(10:00) flush → 아직 미봉인.
     await stream.flush_once(now_ms=t0 + 5_000)
-    jsonl_path = tmp_path / "live" / "20260616" / "005930.jsonl"
+    jsonl_path = tmp_path / "live" / "20260616" / "KRX" / "005930.jsonl"
     assert _candle_lines(jsonl_path.read_text()) == []
 
     # 다음 분(10:01) flush → 10:00 봉 봉인·기록.
@@ -132,7 +132,7 @@ async def test_candle_not_synthesized_for_nxt(tmp_path):
     })
     await stream.on_tick(tick)
     await stream.flush_once(now_ms=_kst_ms(10, 1, 5))
-    jsonl_path = tmp_path / "live" / "20260616" / "005930.jsonl"
+    jsonl_path = tmp_path / "live" / "20260616" / "KRX" / "005930.jsonl"
     assert not jsonl_path.exists() or _candle_lines(jsonl_path.read_text()) == []
 
 
@@ -149,7 +149,7 @@ async def test_drain_seals_final_in_progress_candle(tmp_path):
         "trades": [{"t_ms": t0, "price": 200, "qty": 7, "side": 1, "side_source": "kiwoom_ws"}],
     })
     await stream.on_tick(tick)
-    jsonl_path = tmp_path / "live" / "20260616" / "005930.jsonl"
+    jsonl_path = tmp_path / "live" / "20260616" / "KRX" / "005930.jsonl"
 
     # 일반 flush(같은 분)면 미봉인.
     await stream.flush_once(now_ms=t0 + 2_000)
@@ -202,7 +202,7 @@ async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_p
     }
     assert nxt_display_q.empty()
     await stream.flush_once(now_ms=now + 10_000)
-    assert not (tmp_path / "live" / "20260605" / "005930.jsonl").exists()  # 저장 미진입
+    assert not (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").exists()  # 저장 미진입
     program_trade_latch.reset_for_tests()
 
 
@@ -221,7 +221,7 @@ async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_pat
     assert len(series["trades"]) == 1
 
     await stream.flush_once(now_ms=now + 10_000)     # 다운샘플러 비어 있음
-    jsonl_path = tmp_path / "live" / "20260605" / "005930.jsonl"
+    jsonl_path = tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl"
     assert not jsonl_path.exists()                   # 저장 경로엔 아무것도 안 감
 
 
@@ -249,7 +249,7 @@ async def test_on_tick_nxt_venue_displays_but_is_never_stored(tmp_path):
     assert series["trades"][0]["venue"] == "NXT"   # venue 태그 전달(프론트 구분용)
 
     await stream.flush_once(now_ms=now + 10_000)
-    jsonl = tmp_path / "live" / "20260605" / "005930.jsonl"
+    jsonl = tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl"
     stored = jsonl.read_text() if jsonl.exists() else ""
     assert '"kind": "trade"' not in stored          # 저장 경로엔 NXT 미기록
     assert '"kind": "fill"' not in stored           # 흐름 집계에도 미반영
@@ -265,7 +265,7 @@ async def test_on_tick_krx_still_stored_alongside_nxt_isolation(tmp_path):
     now = int(time.time() * 1000)
     await stream.on_tick(_trade_tick(now, qty=7, side=1))  # KRX(기본 venue)
     await stream.flush_once(now_ms=now + 10_000)
-    stored = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    stored = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
     assert '"buy_qty": 7' in stored
     assert '"kind": "trade"' in stored
 
@@ -283,7 +283,7 @@ async def test_on_tick_mixed_krx_and_nxt_stores_only_krx_flow(tmp_path):
     await stream.on_tick(_nxt_trade_tick(now, qty=99, side=1))    # NXT 매수 99 — 저장 제외
     await stream.flush_once(now_ms=now + 10_000)
 
-    stored = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    stored = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
     assert '"buy_qty": 7' in stored     # KRX만 집계
     assert '"buy_qty": 106' not in stored  # NXT 99가 섞이지 않음
     # 표시엔 둘 다(KRX+NXT) 있고 각 venue 태그가 붙는다.
@@ -735,7 +735,7 @@ async def test_run_flush_loop_drains_resets_and_reopen_has_no_ghost_carry(
 
     monkeypatch.setattr(session_gate_mod, "ws_capture_window", gate)
 
-    jsonl_path = tmp_path / "live" / "20260605" / "005930.jsonl"
+    jsonl_path = tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl"
     task = asyncio.create_task(stream.run_flush_loop())
     try:
         # drain 기록까지 폴링.
@@ -778,7 +778,7 @@ async def test_on_tick_drops_codes_outside_active_set(tmp_path):
     series = await buf.get_series("005930")
     assert series["trades"] == []                    # 표시 ring 재생성 금지
     await stream.flush_once(now_ms=now + 10_000)     # 저장 경로에도 부활 없음
-    assert not (tmp_path / "live" / "20260605" / "005930.jsonl").exists()
+    assert not (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").exists()
 
 
 async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverage(tmp_path):
@@ -973,7 +973,7 @@ async def test_flush_once_labels_fill_with_previous_flush_time(tmp_path):
     await stream.on_tick(_trade_tick(base + 1_000, qty=5, side=1))
     await stream.flush_once(now_ms=base + 10_000)     # 윈도 [base, base+10s) 마감
 
-    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    jsonl = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
     fills = [d for d in map(json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
     assert fills[0]["t_ms"] == base                   # 윈도 시작 라벨
     assert fills[0]["payload"]["buy_qty"] == 5
@@ -1028,10 +1028,10 @@ async def test_flush_date_change_resets_stale_state(tmp_path):
     now = int(time.time() * 1000)
     await stream.on_tick(_ob_tick(now, tot_ask=111))     # 상태형 carry 스테이징
     await stream.flush_once(now_ms=now)                  # D일: ob 기록 + carry 보존
-    assert (tmp_path / "live" / "20260605" / "005930.jsonl").exists()
+    assert (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").exists()
     date["v"] = "20260606"                               # 미관측 일경계 시뮬레이션
     await stream.flush_once(now_ms=now + 1_000)          # 백스톱: 기록 전 reset
-    assert not (tmp_path / "live" / "20260606" / "005930.jsonl").exists()
+    assert not (tmp_path / "live" / "20260606" / "KRX" / "005930.jsonl").exists()
 
 
 async def test_drain_resets_day_state(tmp_path, monkeypatch):
@@ -1081,10 +1081,10 @@ async def test_flush_failure_preserves_window_sum(tmp_path, monkeypatch):
     fail = {"on": True}
     orig_append = writer.append
 
-    async def flaky_append(date, code, snaps):
+    async def flaky_append(date, code, venue, snaps):
         if fail["on"]:
             raise OSError("disk full")
-        return await orig_append(date, code, snaps)
+        return await orig_append(date, code, venue, snaps)
 
     monkeypatch.setattr(writer, "append", flaky_append)
 
@@ -1094,7 +1094,7 @@ async def test_flush_failure_preserves_window_sum(tmp_path, monkeypatch):
     # 다음 윈도: append 정상화 → 보존된 5가 기록돼야(손실 0)
     fail["on"] = False
     await stream.flush_once(now_ms=now + 20_000)
-    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    jsonl = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
     fills = [d for d in map(json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
     assert any(f["payload"]["buy_qty"] == 5 for f in fills), \
         f"실패 윈도의 합 5가 다음 윈도로 롤되지 않음: {[f['payload'] for f in fills]}"
@@ -1116,7 +1116,7 @@ async def test_flush_preserves_tick_arriving_during_append(tmp_path, monkeypatch
     now = 1_780_617_600_000
     injected = False
 
-    async def slow_append(date, code, snaps):
+    async def slow_append(date, code, venue, snaps):
         # append await 도중 새 틱 도착을 시뮬레이션(인터리브 강제).
         #
         # 주입 가드가 flake의 1차 방어선이다. flush_once는 append를 두 벌 부른다 —
@@ -1130,17 +1130,17 @@ async def test_flush_preserves_tick_arriving_during_append(tmp_path, monkeypatch
         if not injected and any(snapshot.kind == SnapshotKind.FILL for snapshot in snaps):
             injected = True
             await stream.on_tick(_trade_tick(now + 5_000, qty=3, side=1))
-        return await orig_append(date, code, snaps)
+        return await orig_append(date, code, venue, snaps)
 
     monkeypatch.setattr(writer, "append", slow_append)
 
     await stream.on_tick(_trade_tick(now + 100, qty=5, side=1))   # 윈도1 buy=5
     await stream.flush_once(now_ms=now + 10_000)   # flush buy=5 → await 중 buy=8 → commit -5 → 3
     # 다음 윈도: 보존된 3이 기록(await 창 틱 손실 없음)
-    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    jsonl = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
     fills = [d for d in map(json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
     await stream.flush_once(now_ms=now + 20_000)
-    jsonl2 = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    jsonl2 = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
     fills2 = [d for d in map(json.loads, jsonl2.splitlines()) if d["kind"] == "fill"]
     second_flush_fills = fills2[len(fills):]
     assert len(second_flush_fills) == 1
@@ -1161,10 +1161,10 @@ async def test_flush_per_code_isolation_on_append_failure(tmp_path, monkeypatch)
 
     orig_append = writer.append
 
-    async def selective_append(date, code, snaps):
+    async def selective_append(date, code, venue, snaps):
         if code == "005930":            # A만 실패
             raise OSError("disk full for A")
-        return await orig_append(date, code, snaps)   # B 성공
+        return await orig_append(date, code, venue, snaps)   # B 성공
 
     monkeypatch.setattr(writer, "append", selective_append)
 
@@ -1177,7 +1177,7 @@ async def test_flush_per_code_isolation_on_append_failure(tmp_path, monkeypatch)
     await stream.flush_once(now_ms=now + 10_000)   # A append 실패, B 성공
 
     # B는 기록됨(A 실패가 B를 안 버림)
-    b_jsonl = tmp_path / "live" / "20260605" / "000660.jsonl"
+    b_jsonl = tmp_path / "live" / "20260605" / "KRX" / "000660.jsonl"
     assert b_jsonl.exists()
     b_fills = [d for d in map(json.loads, b_jsonl.read_text().splitlines())
                if d["kind"] == "fill"]
@@ -1220,7 +1220,7 @@ async def test_broker_names_canonical_on_display_but_raw_in_storage(tmp_path):
     assert series["brokers"][0]["buy_top"][0]["qty"] == 100   # 수량은 불변
 
     await stream.flush_once(now_ms=now + 10_000)
-    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    jsonl = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
     assert "미래에셋증권" not in jsonl      # 저장: 원시 유지
     assert "미래에셋" in jsonl
 
