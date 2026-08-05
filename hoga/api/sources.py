@@ -34,30 +34,48 @@ if TYPE_CHECKING:
 # 한 Stock-Date에서 갈릴 수 있다.
 SourceName = Literal["hogaplay", "kis_live", "kiwoom_live", "kis_api"]
 
-#: source 가 **venue 축을 갖는가**. NXT·통합이 생길 수 있는 source 는 `kiwoom_live`
-#: 뿐이다 — hogaplay 는 정규장 KRX 업스트림(전체 디렉터리의 78%)이고, kis_live 는
-#: 삭제된 계층, kis_api 는 캔들 전용이다(ADR-0140 §3). 읽기 규칙을 여기 한 곳에
-#: 봉인해 조립부마다 재구현되지 않게 한다.
-SOURCE_HAS_VENUE: dict[SourceName, bool] = {
-    "hogaplay": False,
-    "kis_live": False,
-    "kiwoom_live": True,
-    "kis_api": False,
+#: source 가 **어느 venue 를 덮는가**. 디렉터리 축 유무가 아니라 **커버리지**다.
+#:
+#: ⚠ 예전엔 `SOURCE_HAS_VENUE: dict[SourceName, bool]` 이었고, 그게 두 가지를 하나로
+#: 뭉갰다 — *"venue 축이 없다"* 와 *"아무 venue 에나 유효하다"*. hogaplay 는 전자가
+#: 아니라 **KRX 정규장 전용**인데 `False` 가 후자로 읽혀, NXT 를 요청해도 사다리
+#: 1순위로 이기고 **KRX 데이터를 NXT 라고 돌려줬다**(실측 2026-08-05: 최근 6일 720건
+#: 중 494건 = 69%). 빈 응답은 정직하지만 그건 조용히 틀린 답이었다.
+#:
+#: 집합으로 두면 두 사실이 한 값에서 나온다:
+#:   - 디렉터리 축 — 원소가 둘 이상이면 `{source}/{venue}/`, 하나면 평면
+#:   - 사다리 자격 — 요청 venue 를 안 덮는 source 는 후보에서 빠진다
+SOURCE_VENUES: dict[SourceName, frozenset[Venue]] = {
+    # 정규장 KRX 업스트림(전체 디렉터리의 78%). NXT 시간대를 원리적으로 못 준다.
+    "hogaplay": frozenset({"KRX"}),
+    "kis_live": frozenset({"KRX"}),   # 삭제된 계층 — 잔존 데이터만
+    "kiwoom_live": frozenset({"KRX", "NXT", "UN"}),
+    "kis_api": frozenset({"KRX"}),    # 캔들 전용 복구본(ADR-0109)
 }
+
+
+def source_covers_venue(source: str, venue: Venue) -> bool:
+    """이 source 가 그 venue 를 서빙할 수 있나. 모르는 source 는 보수적으로 KRX 전용.
+
+    사다리 후보를 거르는 술어다. 안 걸면 KRX 전용 source 가 NXT 요청을 이기고
+    **다른 시장 데이터를 그 시장 것처럼** 돌려준다.
+    """
+    return venue in SOURCE_VENUES.get(cast(SourceName, source), frozenset({"KRX"}))
 
 
 def source_venue_dir(stock_date_dir: Path, source: str, venue: Venue) -> Path:
     """정본 경로 `{code}/{source}[/{venue}]` — **쓰기는 항상 이걸 쓴다.**
 
-    venue 축이 없는 source 는 세그먼트를 붙이지 않는다. venue 를 **필수 인자**로 둔
-    이유: 기본값을 주면 호출부가 빠뜨렸을 때 조용히 KRX 를 쓰고, 그게 곧 두 시장이
-    한 파일에 섞이는 경로다(ADR-0140 §3 — 빠뜨렸을 때 즉시 터지게).
+    venue 를 하나만 덮는 source 는 세그먼트를 붙이지 않는다(축이 없으므로).
+    venue 를 **필수 인자**로 둔 이유: 기본값을 주면 호출부가 빠뜨렸을 때 조용히
+    KRX 를 쓰고, 그게 곧 두 시장이 한 파일에 섞이는 경로다(ADR-0140 §3).
     """
     base = stock_date_dir / source
-    return base / venue if SOURCE_HAS_VENUE.get(cast(SourceName, source), False) else base
+    covered = SOURCE_VENUES.get(cast(SourceName, source), frozenset({"KRX"}))
+    return base / venue if len(covered) > 1 else base
 
 
-MissingReason = Literal["stock_date_missing", "source_missing"]
+MissingReason = Literal["stock_date_missing", "source_missing", "venue_unsupported"]
 SourcePolicy = Literal[
     "hogaplay",
     "kis_live",
@@ -154,6 +172,18 @@ def _classify_flat_legacy_meta(stock_date_dir: Path) -> Classification | None:
     return classify_from_meta(meta)
 
 
+def _venue_unsupported(source: SourceName) -> SourceResolution:
+    """이 venue 를 줄 수 있는 source 가 없다 — 빈 응답 + 사유.
+
+    "장애" 와 "이 시장엔 원래 없음" 을 호출부가 가를 수 있어야 한다. 사유 없이
+    비우면 둘이 같아 보이고, 그러면 사용자는 재시도할지 포기할지 모른다.
+    """
+    return SourceResolution(
+        source=source, path=None, classification=None,
+        missing_reason="venue_unsupported",
+    )
+
+
 def resolve_source_result(
     engine: QueryEngine, date: str, code: str, pref: str, venue: str = "KRX",
 ) -> SourceResolution:
@@ -162,16 +192,18 @@ def resolve_source_result(
     # HTTP 경계에서만 생긴다 — 이 함수의 유일한 프로덕션 호출자는 이미 라우트에서
     # venue 를 받는다. 내부까지 필수로 하면 venue 와 무관한 테스트 125개가 "KRX" 를
     # 채워 넣는 의식이 되고, 그 의식은 오히려 경계를 흐린다.
-    order = ordered_sources(pref)
+    # venue 를 못 덮는 source 는 **후보가 아니다**. 안 거르면 KRX 전용 source 가
+    # NXT 요청을 사다리 순위로 이기고 다른 시장 데이터를 그 시장 것처럼 돌려준다.
+    venue_v = cast(Venue, venue)
+    order = tuple(s for s in ordered_sources(pref) if source_covers_venue(s, venue_v))
+    if not order:
+        # 이 venue 를 덮는 source 가 정책 사다리에 하나도 없다 — 빈 응답이 정답이고,
+        # 사유를 실어 호출부가 "장애" 와 "이 시장엔 원래 없음" 을 가를 수 있게 한다.
+        return _venue_unsupported(ordered_sources(pref)[0])
     sd_dir = engine.data_dir / "parquet" / date / code
-    if not isinstance(sd_dir, Path):
-        return SourceResolution(
-            source=order[0],
-            path=None,
-            classification=None,
-            missing_reason="stock_date_missing",
-        )
-    if not sd_dir.exists():
+    # `isinstance` 를 먼저 본다 — 테스트 더블(MagicMock)엔 `.exists()` 가 없다.
+    # 단락 평가라 순서가 계약이다.
+    if not isinstance(sd_dir, Path) or not sd_dir.exists():
         return SourceResolution(
             source=order[0],
             path=None,
@@ -185,6 +217,10 @@ def resolve_source_result(
     # the requested first Source wins, and QueryEngine resolves it to sd_dir.
     flat_classification = _classify_flat_legacy_meta(sd_dir)
     if not per_source and flat_classification is not None:
+        # ⚠ 평면 레이아웃은 **venue 축이 생기기 전** 데이터라 정의상 KRX 다.
+        # NXT·통합 요청에 이걸 돌려주면 위 사다리 필터를 뒷문으로 우회한다.
+        if venue_v != "KRX":
+            return _venue_unsupported(order[0])
         return SourceResolution(
             source=order[0],
             path=sd_dir,
@@ -212,7 +248,7 @@ def resolve_source_result(
             winner = cast(SourceName, ranked[0][2])
             return SourceResolution(
                 source=winner,
-                path=source_venue_dir(sd_dir, winner, venue),
+                path=source_venue_dir(sd_dir, winner, venue_v),
                 classification=per_source[winner],
             )
         # healthy 없음(전부 INVALID/부재) → 아래 공통 폴백으로 진행.
@@ -221,7 +257,7 @@ def resolve_source_result(
             if source in healthy:
                 return SourceResolution(
                     source=source,
-                    path=source_venue_dir(sd_dir, source, venue),
+                    path=source_venue_dir(sd_dir, source, venue_v),
                     classification=per_source[source],
                 )
 
@@ -229,7 +265,7 @@ def resolve_source_result(
     if source in per_source:
         return SourceResolution(
             source=source,
-            path=source_venue_dir(sd_dir, source, venue),
+            path=source_venue_dir(sd_dir, source, venue_v),
             classification=per_source[source],
         )
     return SourceResolution(
@@ -262,8 +298,12 @@ def resolve_candle_source(
     # 캔들 차원은 완결성 타이브레이크 대상이 아니다 — completeness_first는 캔들에서
     # 오늘 기본(hogaplay 우선) 사다리로 되돌린다(_CANDLE_POLICY_ALIAS).
     candle_pref = _CANDLE_POLICY_ALIAS.get(pref, pref)
+    # 캔들 후보도 같은 규율로 좁힌다 — `CANDLE_BEARING_SOURCES` 는 "캔들을 갖는가",
+    # `source_covers_venue` 는 "그 시장을 갖는가". 둘 다 만족해야 후보다.
+    venue_v = cast(Venue, venue)
     candle_order: tuple[SourceName, ...] = tuple(
-        s for s in ordered_sources(candle_pref) if s in CANDLE_BEARING_SOURCES
+        s for s in ordered_sources(candle_pref)
+        if s in CANDLE_BEARING_SOURCES and source_covers_venue(s, venue_v)
     )
     if not candle_order:
         return None
@@ -279,6 +319,6 @@ def resolve_candle_source(
         classification = per_source.get(source)
         if classification is None or classification.state == DiskState.INVALID:
             continue
-        if (source_venue_dir(sd_dir, source, venue) / "candles.parquet").exists():
+        if (source_venue_dir(sd_dir, source, venue_v) / "candles.parquet").exists():
             return source
     return None

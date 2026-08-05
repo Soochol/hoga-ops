@@ -9,7 +9,7 @@
  →  parquet/{date}/{code}/kiwoom_live/KRX/snapshots.parquet
 
 **`kiwoom_live` 만 옮긴다.** hogaplay(전체의 78%)·kis_live·kis_api 는 venue 축이
-없다(`SOURCE_HAS_VENUE`).
+없다(`SOURCE_VENUES` — 각 소스가 덮는 venue 집합).
 
 ## 안전 규율
 
