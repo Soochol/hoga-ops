@@ -42,8 +42,8 @@ from typing import Any
 
 from hoga.live.candle_fetch_result import DailyCandleFetchResult, DailyInvariantViolation
 from hoga.live.candle_models import LiveCandle, daily_anchor_ms
-from hoga.live.kiwoom_multi_quote import VENUE_SUFFIX
 from hoga.live.kiwoom_rest import KiwoomRestClient, PageRunner
+from hoga.live.kiwoom_venue import VENUE_SUFFIX
 from hoga.live.venue import Venue
 
 API_ID = "ka10081"
