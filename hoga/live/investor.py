@@ -19,15 +19,22 @@ from pydantic import BaseModel
 
 
 class InvestorNetPoint(BaseModel):
-    """One trading day's foreign/institution net-buy quantity for a code.
+    """One trading day's foreign/institution net-buy for a code or an index.
 
     Net-buy is signed: positive = net buy, negative = net sell. ``t_ms`` anchors
     at 09:00 KST of the trading day — the same anchor ``Candle`` uses — so the
     frontend aligns investor bars to the daily candle of the same day.
+
+    ⚠ **값의 축·단위는 소스 TR 이 정한다** (#1119). 종목 경로(`ka10059`,
+    `AMT_QTY_QUANTITY`)는 **수량(주)**, 지수/시장 경로(`ka10051`, 금액 축)는
+    **금액(억원)** 을 담는다 — 이전 주석은 "수량" 으로 단정해 지수 경로가 조용히
+    거짓이 됐다. 두 경로의 응답이 `unit` 필드로 자기 단위를 말한다
+    (`qty_shares` / `amt_eok`). 시장 순매수를 금액으로 두는 것은 의도다: "외국인
+    3,000억 순매수" 가 시장 관례이고 시장 전체 '주' 합산은 표시 가치가 없다.
     """
     t_ms: int             # epoch ms (UTC) — 09:00 KST anchor
-    foreign_net: int      # 외국인 순매수 수량
-    institution_net: int  # 기관계 순매수 수량
+    foreign_net: int      # 외국인 순매수 — 단위는 응답의 unit 필드가 정한다
+    institution_net: int  # 기관계 순매수 — 상동
 
 
 class InvestorTrendEstimateRow(BaseModel):

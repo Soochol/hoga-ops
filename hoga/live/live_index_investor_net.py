@@ -109,6 +109,8 @@ class LiveIndexInvestorNetFetcher:
             "index_id": index.id,
             "from": from_label,
             "to": to_label,
+            # 값의 단위 — 종목 경로(qty_shares)와 다르다(#1119). 프론트 라벨의 진실원.
+            "unit": "amt_eok",
             # 종목별(ka10059)과 달리 불변식 위반 개념이 없어 리스트를 그대로 준다.
             "points": [_investor_point_to_dict(p) for p in points],
             "data_warnings": warnings,
