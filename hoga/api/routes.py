@@ -66,7 +66,7 @@ def _validate_source_policy(value: str) -> str:
 
 
 def _resolved_parquet_dir(
-    engine: QueryEngine, date: str, code: str, source_pref: str
+    engine: QueryEngine, date: str, code: str, source_pref: str, venue: str
 ) -> tuple[Path | None, SourceName]:
     """Resolve source preference per ADR-0044 and return (parquet_dir, resolved_source).
 
@@ -81,7 +81,7 @@ def _resolved_parquet_dir(
     doesn't honor source_pref and keeps strict 404 semantics. /api/meta
     is the same.
     """
-    resolution = resolve_source_result(engine, date, code, source_pref)
+    resolution = resolve_source_result(engine, date, code, source_pref, venue)
     if resolution.source == "kis_api":
         # 2026-07-17 정책: kis_api는 캔들 전용(ADR-0109 복구) — 호가·체결 스팟
         # 라우트(/api/orderbook·/api/brokers/series)는 더는 서빙하지 않는다(빈 200).
@@ -237,6 +237,8 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         t: int = Query(...),
         bucket_ms: int | None = Query(None),
         source_pref: str = Query("hogaplay"),
+        # venue 는 **필수**다(ADR-0140) — 기본값은 곧 "빠뜨리면 조용히 KRX" 다.
+        venue: str = Query(...),
     ) -> OrderbookResponse:
         # ADR-0044: hover spot path honors source_pref via resolve_source +
         # ADR-0039 preference+fallback semantics. The resolved source is
@@ -248,7 +250,7 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         # labels at t. Without bucket_ms the legacy "latest ≤ t" semantics
         # apply, so the parameter is backward-compatible.
         source_pref = _validate_source_policy(source_pref)
-        sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref)
+        sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref, venue)
         if sd_dir is None:
             return OrderbookResponse(available_from=None, snapshot=None, source=source)
         path = sd_dir / "snapshots.parquet"
@@ -304,12 +306,14 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         code: Code,
         date: StockDate,
         source_pref: str = Query("hogaplay"),
+        # venue 는 **필수**다(ADR-0140) — 기본값은 곧 "빠뜨리면 조용히 KRX" 다.
+        venue: str = Query(...),
     ) -> BrokerSeriesResponse:
         # ADR-0044: hover spot path honors source_pref via resolve_source +
         # ADR-0039 preference+fallback semantics. The resolved source is
         # echoed back so LiveStatusBar's chip can reflect fallback honestly.
         source_pref = _validate_source_policy(source_pref)
-        sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref)
+        sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref, venue)
         if sd_dir is None:
             return BrokerSeriesResponse(date=date, brokers=[], source=source)
         path = sd_dir / "brokers.parquet"
@@ -338,6 +342,11 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         to_date: str = Query(..., alias="to"),
         bucket_ms: int = Query(...),
         source_pref: str = Query("hogaplay"),
+        # venue 는 **필수**다(ADR-0140). 기본값을 주면 호출자가 빠뜨렸을 때 조용히
+        # KRX 를 읽고, 그게 곧 "실시간 꼬리는 NXT 인데 과거 본체는 KRX" 인 섞인
+        # 차트다 — 이 한 라우트가 매물대·최대벽·프로그램·depth 히트맵·잔량 증감·
+        # 거래원 늦은 진입 **지표 6~7개**의 과거 시계열을 실어 나른다.
+        venue: str = Query(...),
         broker_late_entries_enabled: bool = Query(True),
         broker_late_entry_start_hhmm: int = Query(930),
         volume_distribution_bins: int | None = Query(None, ge=5, le=30),
@@ -394,6 +403,7 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                 to_date=to_date,
                 bucket_ms=bucket_ms,
                 source_pref=source_pref,
+                venue=venue,
                 broker_late_entries_enabled=broker_late_entries_enabled,
                 broker_late_entry_start_hhmm=broker_late_entry_start_hhmm,
                 volume_distribution_bins=volume_distribution_bins,

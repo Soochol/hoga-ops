@@ -192,6 +192,7 @@ def test_volume_distribution_cutoff_requires_single_stock_date(tmp_path: Path) -
     resp = client.get(
         "/api/range",
         params={
+            "venue": "KRX",
             "code": "005930",
             "from": "20260624",
             "to": "20260625",
@@ -241,6 +242,7 @@ def test_volume_distribution_cutoff_requires_sidecar_mode(tmp_path: Path) -> Non
     resp = client.get(
         "/api/range",
         params={
+            "venue": "KRX",
             "code": "005930",
             "from": "20260625",
             "to": "20260625",
@@ -265,6 +267,7 @@ def test_volume_distribution_cutoff_rejects_epoch_outside_stock_date(
     resp = client.get(
         "/api/range",
         params={
+            "venue": "KRX",
             "code": "005930",
             "from": "20260625",
             "to": "20260625",
@@ -289,6 +292,7 @@ def test_volume_distribution_cutoff_sidecar_route_returns_cutoff_profile(
     resp = client.get(
         "/api/range",
         params={
+            "venue": "KRX",
             "code": "005930",
             "from": "20260625",
             "to": "20260625",

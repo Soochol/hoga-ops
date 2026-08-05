@@ -71,7 +71,7 @@ def test_range_kis_api_serves_candles_but_suppresses_orderflow(tmp_path: Path) -
     }
 
     # 캔들 요청: kis_api 캔들은 계속 서빙된다(ADR-0109 복구 경로 보존).
-    r = client.get("/api/range", params={**params, "mode": "candles"})
+    r = client.get("/api/range", params={"venue": "KRX", **params, "mode": "candles"})
     assert r.status_code == 200, r.text
     body = r.json()
     assert len(body["candles"]) == 2
@@ -79,7 +79,7 @@ def test_range_kis_api_serves_candles_but_suppresses_orderflow(tmp_path: Path) -
 
     # 지표 요청(mode=hoga): 스냅샷이 디스크에 있어도 호가비·체결강도는 빈 배열 —
     # kis_api는 호가·체결 소스가 아니다(게이트).
-    r = client.get("/api/range", params={**params, "mode": "hoga"})
+    r = client.get("/api/range", params={"venue": "KRX", **params, "mode": "hoga"})
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["quote_ratio"]["points"] == []
@@ -94,7 +94,7 @@ def test_resolved_parquet_dir_returns_none_for_kis_api(tmp_path: Path) -> None:
     _seed_kis_api_only(data_dir)
     engine = QueryEngine(data_dir)
     try:
-        path, source = _resolved_parquet_dir(engine, _DATE, _CODE, "hogaplay")
+        path, source = _resolved_parquet_dir(engine, _DATE, _CODE, "hogaplay", "KRX")
     finally:
         engine.close()
     assert source == "kis_api"
@@ -106,7 +106,7 @@ def test_orderbook_route_empty_200_for_kis_api_only_date(tmp_path: Path) -> None
     data_dir = tmp_path / "data"
     _seed_kis_api_only(data_dir)
     client = TestClient(create_app(data_dir=data_dir))
-    r = client.get("/api/orderbook", params={
+    r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": _CODE, "date": _DATE,
         "t": hhmmssms_to_unix_ms(_DATE, 92000000),
     })

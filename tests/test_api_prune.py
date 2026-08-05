@@ -662,3 +662,29 @@ def test_resolve_derived_retention_days_env(monkeypatch: pytest.MonkeyPatch) -> 
     assert resolve_derived_retention_days() == DERIVED_RETENTION_DAYS_DEFAULT
     monkeypatch.setenv("HOGA_DERIVED_RETENTION_DAYS", "30")
     assert resolve_derived_retention_days() == 30
+
+
+def test_prune_derived_includes_investor_flow_intraday_only(tmp_data_dir: Path) -> None:
+    """장중 표본은 파생 보존(180일)에 편입, **확정본은 영구**다 (#1115).
+
+    확정본이 함께 지워지면 잠정→확정 축이 무너진다 — 확정 파일의 **존재가 곧 확정
+    마커**이므로, 그 파일이 사라지면 그날이 영구히 '잠정' 으로 읽힌다.
+    """
+    from hoga.api.prune import prune_derived
+
+    intraday = tmp_data_dir / "investor-flow" / "intraday"
+    daily = tmp_data_dir / "investor-flow" / "daily"
+    intraday.mkdir(parents=True)
+    daily.mkdir(parents=True)
+    (intraday / "20250101.jsonl").write_text("{}\n", encoding="utf-8")          # 오래됨
+    (intraday / "20260612.jsonl").write_text("{}\n", encoding="utf-8")          # 창 안
+    (intraday / "20250101.jsonl.corrupt-x").write_text("x", encoding="utf-8")   # 격리본
+    (daily / "20250101.json").write_text("{}", encoding="utf-8")                # 오래된 확정본
+
+    res = prune_derived(tmp_data_dir, retention_days=180, now=_NOW, execute=True)
+
+    assert res.by_tree["investor-flow-intraday"][0] == 1
+    assert not (intraday / "20250101.jsonl").exists()
+    assert (intraday / "20260612.jsonl").exists()
+    assert (intraday / "20250101.jsonl.corrupt-x").exists()  # 날짜 이름이 아니면 안 건드린다
+    assert (daily / "20250101.json").exists()                # 확정본은 영구

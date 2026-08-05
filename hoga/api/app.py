@@ -33,6 +33,7 @@ from hoga.api.heatmap_routes import build_router as build_heatmap_router
 from hoga.api.live_layout_preset_routes import (
     build_router as build_live_layout_preset_router,
 )
+from hoga.api.market_routes import build_router as build_market_router
 from hoga.api.origin_guard import OriginGuardMiddleware
 from hoga.api.prune import disk_headroom
 from hoga.api.queries import QueryEngine
@@ -408,6 +409,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus))
     app.include_router(build_signal_alert_router(data_dir=data_dir))
     app.include_router(build_sentiment_router(data_dir=data_dir))
+    app.include_router(build_market_router(data_dir=data_dir))
     app.include_router(
         build_study_view_router(
             data_dir=data_dir,

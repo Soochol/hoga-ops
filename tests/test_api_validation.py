@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
     "endpoint",
     [
         "/api/meta",
-        "/api/orderbook?t=0",
+        "/api/orderbook?t=0&venue=KRX",
         "/api/candles",
     ],
 )

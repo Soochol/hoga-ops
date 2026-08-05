@@ -1922,6 +1922,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 "index_id": index.id,
                 "from": from_,
                 "to": to,
+                "unit": "amt_eok",
                 "points": [],
                 "data_warnings": [
                     _kis_rest_bypassed_batch_warning(f"{from_}__{to}"),
@@ -2488,12 +2489,15 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         signed (+ buy / − sell). Today's row is provisional until ~15:40 (가집계).
         """
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
+        # 종목 경로의 축은 **수량(주)** (ka10059, AMT_QTY_QUANTITY). 지수 경로(amt_eok)와
+        # 다르므로 응답이 스스로 말한다(#1119).
+        unit = {"unit": "qty_shares"}
         if (
             data_dir is not None
             and investor_cache_instance is not None
             and live_settings.rest_bypass_enabled(data_dir)
         ):
-            return _collect_daily_series_cache_only(
+            return unit | _collect_daily_series_cache_only(
                 cache=investor_cache_instance,
                 output_key="points",
                 code=code,
@@ -2514,7 +2518,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 503,
                 {"code": LiveErrorCode.NOT_WIRED, "message": "past-investor-net cache not wired (data_dir missing)"},
             )
-        return await investor_net_backfill.collect(
+        return unit | await investor_net_backfill.collect(
             code=code,
             frm=frm,
             too=too,

@@ -604,7 +604,10 @@ export interface LiveSnapshotEntry {
 /** One trading day's foreign/institution net-buy quantity. Mirrors
  *  hoga/live/kis_models.py::InvestorNetPoint. Net is signed: + = net buy,
  *  − = net sell. t_ms anchors at 09:00 KST — the same anchor as daily candles. */
+/** 값의 단위는 **응답의 unit 필드가 정한다** (#1119) — 종목 경로는 qty_shares(주),
+ * 지수 경로는 amt_eok(억원). 같은 모양이라 타입은 하나지만 물리량이 다르다. */
 export type InvestorNetPoint = { t_ms: number; foreign_net: number; institution_net: number };
+export type InvestorNetUnit = 'qty_shares' | 'amt_eok';
 
 export type ProgramTradePoint = {
   t: number;

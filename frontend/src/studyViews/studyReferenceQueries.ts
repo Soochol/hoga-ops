@@ -26,6 +26,8 @@ export function studyReferenceHogaRangeOptions(
     timeframe: inputs.range.timeframe,
     todayKst: null,
     sourcePref: settings.sourcePref,
+    // ⚠ 복기는 아직 KRX 고정 — `/study` 거래소 선택기 부활은 PR-I(#1131)다.
+    venue: 'KRX' as const,
     options: {
       mode: 'hoga',
     },
@@ -44,6 +46,8 @@ export function studyReferenceSidecarRangeOptions(
     timeframe: inputs.range.timeframe,
     todayKst: null,
     sourcePref: settings.sourcePref,
+    // ⚠ 복기는 아직 KRX 고정 — `/study` 거래소 선택기 부활은 PR-I(#1131)다.
+    venue: 'KRX' as const,
     options: {
       mode: 'sidecar',
       brokerLateEntriesEnabled: settings.brokerLateEntryEnabled,
@@ -70,6 +74,7 @@ export function studyReferenceCandleRangeOptions(save: StudyViewReference | null
     timeframe: inputs.candles.timeframe,
     todayKst: null,
     sourcePref: 'hogaplay_first',
+    venue: 'KRX' as const,
     options: {
       mode: 'candles',
       brokerLateEntriesEnabled: false,

@@ -68,6 +68,7 @@ describe('depthHeatmapEnabled queryKey', () => {
     to: '20260512',
     timeframe: '1m',
     sourcePref: 'kis_ws_first',
+    venue: 'KRX',
     options: { mode: 'hoga' },
   };
 

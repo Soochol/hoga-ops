@@ -66,6 +66,30 @@ const BAR_INSET = 3;
 /** 요약 패널 행 수 = 상한가 1 + 매도 10. 매수 바 정렬의 근거라 상수로 못박는다. */
 const SUMMARY_ROWS = 11;
 
+/**
+ * 매도1·매수1의 중간값 — `중` 행(ADR-0140 §7.1).
+ *
+ * **분기가 없다.** 한 수식이 세 경우를 다 덮는다:
+ *  - 정상(매도1 > 매수1) → 둘 사이 값
+ *  - lock(매도1 = 매수1) → 그 가격 자체
+ *  - 역전(매도1 < 매수1) → 여전히 둘 사이 값
+ *
+ * 마지막 둘은 단일 거래소에선 불가능하지만 통합(UN) venue 에서는 정상 상태다 —
+ * 서로 다른 거래소의 주문은 자동으로 만나지 않는다(전체 시간의 17%, 종목에 따라 80%).
+ *
+ * 호가 단위 밖 값이 나올 수 있다(1,319,000/1,320,000 → 1,319,500). **주문 가능한
+ * 호가가 아니라는 표시가 `중` 뱃지**이고, 이는 키움 앱이 이미 쓰는 규약이다.
+ */
+export function bookMidPrice(
+  ask: readonly { price: number }[],
+  bid: readonly { price: number }[],
+): number | null {
+  const bestAsk = ask[0]?.price ?? 0;
+  const bestBid = bid[0]?.price ?? 0;
+  if (bestAsk <= 0 || bestBid <= 0) return null;
+  return (bestAsk + bestBid) / 2;
+}
+
 export default function BookPanel({
   snapshot,
   baselinePrice,
@@ -115,6 +139,8 @@ export default function BookPanel({
                 badge={deltaBadges?.get(`a:${l.price}`) ?? null}
               />
             ))}
+            {/* `중` 행의 좌측 빈칸(3열 공통 y). 22행 정렬 계약의 일부다. */}
+            <div data-book-divider="" className="border-t border-border" style={{ height: ROW_H }} />
             {/* 매도↔매수 경계선(3열 공통 y). 좌측은 체결강도 행 상단이 그 y라
                 여기에 얹는다 — 중앙 PriceCell·우측 QtyBar 의 topDivider 와 같은
                 `border` 톤이라야 한 줄로 이어져 보인다(2026-07-22 구분선 최소화
@@ -135,9 +161,10 @@ export default function BookPanel({
                   : `${summary.fillStrengthPct.toFixed(2)}%`}
               </span>
             </div>
-            {/* 9행 = 3열 바닥 정렬: 좌측(여백1+매도10+체결강도1+체결9) = 중앙(여백1+
-                호가20) = 우측(요약11+매수10) = 21행. 11행이던 시절 좌측만 2행
-                삐져나와 하단이 어긋났다. */}
+            {/* 9행 = 3열 바닥 정렬: 좌측(여백1+매도10+중1+체결강도1+체결9) = 중앙(여백1+
+                매도10+중1+매수10) = 우측(요약11+중1+매수10) = **22행**. 11행이던 시절
+                좌측만 2행 삐져나와 하단이 어긋났다. `중` 행(ADR-0140 §7.1)이 들어오며
+                21→22 가 됐다 — **중앙에만 넣으면 좌우가 1행씩 짧아져 하단이 어긋난다.** */}
             {trades.slice(0, 9).map((t, i) => (
               <div key={i} className="flex items-center justify-between px-2" style={{ height: ROW_H }}>
                 <span
@@ -169,6 +196,10 @@ export default function BookPanel({
                 markers={priceMarkers(l.price, summary)}
               />
             ))}
+            <MidPriceRow
+              price={bookMidPrice(snapshot.ask, snapshot.bid)}
+              baselinePrice={baselinePrice}
+            />
             {bids.map((l, i) => (
               <PriceCell
                 key={`pb-${i}`}
@@ -228,6 +259,8 @@ export default function BookPanel({
                   라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 — 11행 계약. */}
               <SummaryRow label="250일" value={fmtHighLow(limits)} />
             </div>
+            {/* `중` 행의 우측 빈칸(3열 공통 y). 22행 정렬 계약의 일부다. */}
+            <div data-book-divider="" className="border-t border-border" style={{ height: ROW_H }} />
             {bids.map((l, i) => (
               <QtyBar
                 key={`b-${i}`}
@@ -296,6 +329,56 @@ function priceMarkers(price: number, summary: LiveTradeSummary): { label: string
   if (summary.dayLow !== null && price === summary.dayLow) out.push({ label: '저', bg: 'bg-price-down' });
   if (summary.dayOpen !== null && price === summary.dayOpen) out.push({ label: '시', bg: 'bg-fg-dim' });
   return out;
+}
+
+/**
+ * `중` 행 — 매도10과 매수10 사이 한 행(ADR-0140 §7.1). 값은 `bookMidPrice`.
+ *
+ * `중` 뱃지가 **"주문 가능한 호가가 아니다"** 를 뜻한다 — 중간값은 호가 단위 밖일 수
+ * 있다(호가단위 1,000원인데 1,319,500). 키움 앱이 쓰는 규약을 그대로 따른다.
+ *
+ * 교차(매수1 ≥ 매도1)에도 **경고·색·문구를 넣지 않는다.** 교차는 데이터 오류가 아니라
+ * 서로 다른 거래소의 주문이 자동으로 만나지 않는다는 구조 그 자체이고, 상시 교차하는
+ * 종목에선 경고가 늘 켜져 **없는 문제를 찾게 만든다**(ADR-0140 §7.1).
+ *
+ * 상단 `border-t` 는 매도 블록과의 분리선(3열 공통 y) — 좌우 빈칸도 같은 선을 갖는다.
+ * 하단 분리는 첫 매수 행의 `topDivider` 가 이미 담당한다.
+ */
+function MidPriceRow({
+  price,
+  baselinePrice,
+}: {
+  price: number | null;
+  baselinePrice: number | null;
+}) {
+  const color = price !== null ? dirClass(price, baselinePrice) : 'text-fg-dim';
+  const pct =
+    price !== null && baselinePrice !== null && baselinePrice > 0
+      ? ((price - baselinePrice) / baselinePrice) * 100
+      : null;
+  return (
+    <div
+      data-testid="book-mid-row"
+      data-book-divider=""
+      data-mid-price={price ?? ''}
+      className="flex items-baseline justify-center gap-1.5 border-t border-border px-2"
+      style={{ height: ROW_H }}
+    >
+      <span className="rounded-[3px] bg-bg-subtle px-[3px] py-px font-ui text-badge font-semibold leading-none text-fg-dim">
+        중
+      </span>
+      <span className={`font-data text-[0.75rem] tabular-nums ${color}`}>
+        {price !== null ? price.toLocaleString('ko-KR') : '−'}
+      </span>
+      {/* 폭 계약은 PriceCell 과 동일(7ch) — 등락률 유무로 가격 x 가 흔들리지 않는다. */}
+      <span
+        className={`font-data text-badge tabular-nums text-left opacity-70 ${color}`}
+        style={{ minWidth: '7ch' }}
+      >
+        {pct !== null ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%` : ''}
+      </span>
+    </div>
+  );
 }
 
 function PriceCell({
