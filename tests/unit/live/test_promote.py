@@ -21,7 +21,7 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     live_root = tmp_path / "live"
-    jsonl_path = live_root / "20260527" / "005930.jsonl"
+    jsonl_path = live_root / "20260527" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     # 2 cycles worth — ADR-0049: t_ms must be a real Unix ms inside the
     # 20260527 KST day window so the writer normalizes it to HHMMSSmmm.
@@ -230,7 +230,7 @@ async def test_promote_idempotent_skips_if_meta_exists(tmp_path: Path) -> None:
     )
 
     live_root = tmp_path / "live"
-    jsonl_path = live_root / "20260527" / "005930.jsonl"
+    jsonl_path = live_root / "20260527" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     jsonl_path.write_text(json.dumps({"t_ms": 1, "kind": "ob", "payload": {}}) + "\n")
 
@@ -247,7 +247,7 @@ async def test_promote_tolerates_partial_last_line(tmp_path: Path) -> None:
     from hoga.live.promote import promote_one
     from hoga.util.timeenc import hhmmssms_to_unix_ms
 
-    jsonl_path = tmp_path / "live" / "20260527" / "005930.jsonl"
+    jsonl_path = tmp_path / "live" / "20260527" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     # ADR-0049: in-window Unix ms so promote normalizes (not midnight_race_skip).
     t = hhmmssms_to_unix_ms("20260527", 90000000)  # 09:00:00.000 KST
@@ -276,7 +276,7 @@ async def test_promote_missing_jsonl_is_noop(tmp_path: Path) -> None:
     from hoga.live.promote import promote_one
 
     await promote_one(
-        tmp_path / "live" / "20260527" / "999999.jsonl",
+        tmp_path / "live" / "20260527" / "KRX" / "999999.jsonl",
         tmp_path / "parquet",
         code="999999",
         date="20260527",
@@ -291,7 +291,7 @@ async def test_promote_pending_walks_live_root_and_archives(tmp_path: Path) -> N
 
     live_root = tmp_path / "live"
     for code in ("005930", "000660"):
-        jsonl = live_root / "20260527" / f"{code}.jsonl"
+        jsonl = live_root / "20260527" / "KRX" / f"{code}.jsonl"
         jsonl.parent.mkdir(parents=True, exist_ok=True)
         jsonl.write_text(json.dumps({
             "t_ms": 1, "kind": "ob",
@@ -307,8 +307,8 @@ async def test_promote_pending_walks_live_root_and_archives(tmp_path: Path) -> N
     for code in ("005930", "000660"):
         assert (parquet_root / "20260527" / code / "kis_live" / "meta.json").exists()
         # archive movement
-        assert (live_root / "_archive" / "20260527" / f"{code}.jsonl").exists()
-        assert not (live_root / "20260527" / f"{code}.jsonl").exists()
+        assert (live_root / "_archive" / "20260527" / "KRX" / f"{code}.jsonl").exists()
+        assert not (live_root / "20260527" / "KRX" / f"{code}.jsonl").exists()
 
 
 @pytest.mark.asyncio
@@ -360,7 +360,7 @@ async def test_promote_writes_fills_parquet_only_when_fill_lines_exist(tmp_path:
     from hoga.util.timeenc import hhmmssms_to_unix_ms
 
     live_root = tmp_path / "live"
-    jsonl_path = live_root / "20260605" / "005930.jsonl"
+    jsonl_path = live_root / "20260605" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     base_t = hhmmssms_to_unix_ms("20260605", 90000000)
     lines = [
@@ -398,7 +398,7 @@ async def test_promote_kiwoom_today_persists_price_grouped_trades_for_distributi
     code = "005930"
     monkeypatch.setattr(promote_mod, "_today_kst_yyyymmdd", lambda: date)
 
-    jsonl_path = tmp_path / "live_kiwoom" / date / f"{code}.jsonl"
+    jsonl_path = tmp_path / "live_kiwoom" / date / "KRX" / f"{code}.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     base_t = hhmmssms_to_unix_ms(date, 90000000)
     rows = [
@@ -444,7 +444,7 @@ async def test_promote_legacy_jsonl_without_fill_writes_no_fills_parquet(tmp_pat
     from hoga.live.promote import promote_one
     from hoga.util.timeenc import hhmmssms_to_unix_ms
 
-    jsonl_path = tmp_path / "live" / "20260527" / "005930.jsonl"
+    jsonl_path = tmp_path / "live" / "20260527" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     base_t = hhmmssms_to_unix_ms("20260527", 90000000)
     jsonl_path.write_text(json.dumps({"t_ms": base_t, "kind": "trade", "payload": {
@@ -636,7 +636,7 @@ def test_promoted_snapshots_query_at_succeeds(tmp_path: Path) -> None:
 
     date = "20260528"
     t = hhmmssms_to_unix_ms(date, 90000000)
-    jsonl = tmp_path / "live" / date / "005930.jsonl"
+    jsonl = tmp_path / "live" / date / "KRX" / "005930.jsonl"
     jsonl.parent.mkdir(parents=True)
     jsonl.write_text(json.dumps({
         "t_ms": t, "kind": "ob",
@@ -684,7 +684,7 @@ def test_promote_one_archive_move_regression(tmp_path: Path) -> None:
 
     kst = timezone(timedelta(hours=9))
     yesterday = (datetime.now(kst) - timedelta(days=1)).strftime("%Y%m%d")
-    jsonl = tmp_path / "live" / yesterday / "003490.jsonl"
+    jsonl = tmp_path / "live" / yesterday / "KRX" / "003490.jsonl"
     jsonl.parent.mkdir(parents=True, exist_ok=True)
     jsonl.write_text(json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -697,7 +697,7 @@ def test_promote_one_archive_move_regression(tmp_path: Path) -> None:
     assert (tmp_path / "parquet" / yesterday / "003490" / "kis_live" / "meta.json").exists()
     # archive 이동 — 핵심 회귀
     assert not jsonl.exists()
-    assert (tmp_path / "live" / "_archive" / yesterday / "003490.jsonl").exists()
+    assert (tmp_path / "live" / "_archive" / yesterday / "KRX" / "003490.jsonl").exists()
 
 
 @pytest.mark.asyncio
@@ -713,7 +713,7 @@ async def test_promote_pending_skips_today(tmp_path: Path) -> None:
     yesterday = (datetime.now(kst) - timedelta(days=1)).strftime("%Y%m%d")
 
     # 오늘 jsonl (skip 대상)
-    today_jsonl = tmp_path / "live" / today / "003490.jsonl"
+    today_jsonl = tmp_path / "live" / today / "KRX" / "003490.jsonl"
     today_jsonl.parent.mkdir(parents=True, exist_ok=True)
     today_jsonl.write_text(json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -721,7 +721,7 @@ async def test_promote_pending_skips_today(tmp_path: Path) -> None:
     }) + "\n")
 
     # 어제 jsonl (정상 promote 대상)
-    yesterday_jsonl = tmp_path / "live" / yesterday / "003490.jsonl"
+    yesterday_jsonl = tmp_path / "live" / yesterday / "KRX" / "003490.jsonl"
     yesterday_jsonl.parent.mkdir(parents=True, exist_ok=True)
     yesterday_jsonl.write_text(json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -732,13 +732,13 @@ async def test_promote_pending_skips_today(tmp_path: Path) -> None:
 
     # 오늘은 live/에 그대로
     assert today_jsonl.exists()
-    assert not (tmp_path / "live" / "_archive" / today / "003490.jsonl").exists()
+    assert not (tmp_path / "live" / "_archive" / today / "KRX" / "003490.jsonl").exists()
     # 오늘 parquet도 안 만들어짐 (promote_pending이 건드리지 않음)
     assert not (tmp_path / "parquet" / today / "003490" / "kis_live").exists()
 
     # 어제는 archive로 이동 + parquet 생성
     assert not yesterday_jsonl.exists()
-    assert (tmp_path / "live" / "_archive" / yesterday / "003490.jsonl").exists()
+    assert (tmp_path / "live" / "_archive" / yesterday / "KRX" / "003490.jsonl").exists()
     assert (tmp_path / "parquet" / yesterday / "003490" / "kis_live" / "meta.json").exists()
 
 
@@ -823,7 +823,7 @@ async def test_promote_one_reparses_when_not_finalized(tmp_path: Path) -> None:
     (target / "meta.json").write_text(json.dumps({
         "source": "kis_live", "collection_complete": False, "is_partial": True,
     }))
-    jsonl = tmp_path / "live" / "20260527" / "005930.jsonl"
+    jsonl = tmp_path / "live" / "20260527" / "KRX" / "005930.jsonl"
     jsonl.parent.mkdir(parents=True)
     jsonl.write_text(json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -846,7 +846,7 @@ async def test_promote_one_skips_finalized(tmp_path: Path) -> None:
         "source": "kis_live", "collection_complete": True, "is_partial": False,
         "row_counts": {"snapshots": 999},
     }))
-    jsonl = tmp_path / "live" / "20260527" / "005930.jsonl"
+    jsonl = tmp_path / "live" / "20260527" / "KRX" / "005930.jsonl"
     jsonl.parent.mkdir(parents=True)
     jsonl.write_text(json.dumps({
         "t_ms": 1, "kind": "ob",
@@ -876,7 +876,7 @@ async def test_promote_one_parses_off_the_event_loop(tmp_path: Path) -> None:
     from hoga.live import promote as promote_mod
     from hoga.util.timeenc import hhmmssms_to_unix_ms
 
-    jsonl_path = tmp_path / "live" / "20260527" / "005930.jsonl"
+    jsonl_path = tmp_path / "live" / "20260527" / "KRX" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     t = hhmmssms_to_unix_ms("20260527", 90000000)
     jsonl_path.write_text(json.dumps({"t_ms": t, "kind": "trade", "payload": {
