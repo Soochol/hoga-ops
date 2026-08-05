@@ -220,6 +220,16 @@ async def start_app_runtime(
     try:
         runtime.scheduler_tasks = deps.start_scheduler(data_dir)
 
+        # **심볼 마스터 로드가 라이브 기동보다 먼저다 — 순서가 계약이다.**
+        # `coverage._compute_heatmap_codes`/`_compute_capture_candidates`는 심볼 마스터
+        # 캐시가 비면 필터를 통째로 생략한다(fail-open). 라이브를 먼저 띄우면 부팅 첫
+        # sync가 항상 그 무필터 경로를 타서, 같은 설정이 부팅 시점의 캐시 상태에 따라
+        # 다른 저장셋을 만든다 — 그 크기는 키움 WS 슬롯 예산의 입력이다. 디스크 로드는
+        # 순수 디스크 읽기(네트워크 없음)라 여기서 앞당겨도 새 실패 모드가 없고, 파일이
+        # 없으면 커밋된 시드로 부팅하므로 자격증명 없이도 캐시가 찬다.
+        symbol_master_path = deps.resolve_symbol_master_path()
+        deps.load_symbol_disk_state(path=symbol_master_path, data_dir=data_dir)
+
         if live_startup_enabled_from_env(deps.env):
             await deps.start_live_stream(data_dir=data_dir)
 
@@ -233,8 +243,8 @@ async def start_app_runtime(
                 interval_s=today_promoter_interval_from_env(deps.env),
             )
 
-        symbol_master_path = deps.resolve_symbol_master_path()
-        deps.load_symbol_disk_state(path=symbol_master_path, data_dir=data_dir)
+        # 마스터 최신화(네트워크)는 라이브 뒤에 그대로 둔다 — 디스크/시드 로드와 달리
+        # 벤더 호출이라 기동을 붙잡으면 안 된다. 부팅 저장셋은 위의 디스크 로드분으로 정해진다.
         if deps.needs_symbol_boot_refresh():
             runtime.scheduler_tasks.append(
                 asyncio.create_task(

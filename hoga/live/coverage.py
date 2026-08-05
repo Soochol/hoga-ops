@@ -91,6 +91,11 @@ def _compute_capture_candidates(data_dir: Path) -> list[str]:
         dropped = tuple(code for code in all_enabled if code not in known)
         if dropped:
             _log.warning("live.capture.codes_unknown dropped=%r", list(dropped))
+    else:
+        _log.warning(
+            "live.capture.symbol_master_cold kept=%d surface=watchlist — 필터 생략(fail-open)",
+            len(candidates),
+        )
     return candidates
 
 
@@ -98,12 +103,23 @@ def _compute_heatmap_codes(data_dir: Path) -> tuple[str, ...]:
     """Heatmap codes for Kiwoom WS capture (ADR-0116; 유일 저장 경로).
 
     Document order preserved; symbol-master filter mirrors
-    _compute_capture_candidates (cold cache keeps all)."""
+    _compute_capture_candidates (cold cache keeps all).
+
+    fail-open은 의도된 설계지만 **저장셋 크기를 캐시 상태에 종속시킨다** — 같은 설정이
+    실행 시점마다 다른 수집 대상을 만들 수 있으므로 생략 사실을 반드시 로그로 남긴다.
+    실서버에서 캐시가 빌 수 있는 창은 부팅 1회뿐이다(`load_disk_state`가 커밋된 시드로라도
+    채우고 `refresh`는 성공 시에만 `_cache`를 재바인딩한다). 그 창은 startup_runtime이
+    심볼 마스터를 라이브 기동보다 먼저 로드해 닫는다 — 이 로그가 뜨면 그 순서가 깨진 것이다.
+    """
     from hoga.api.heatmap import load_heatmap  # noqa: PLC0415
 
     codes = list(dict.fromkeys(entry.code for entry in load_heatmap(data_dir)))
     known = _known_symbol_codes()
     if not known:
+        _log.warning(
+            "live.capture.symbol_master_cold kept=%d surface=heatmap — 필터 생략(fail-open)",
+            len(codes),
+        )
         return tuple(codes)
     dropped = [code for code in codes if code not in known]
     if dropped:
