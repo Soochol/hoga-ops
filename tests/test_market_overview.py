@@ -199,3 +199,23 @@ def test_unparseable_rate_does_not_stop_the_walk():
 
     assert below_threshold([_jump("+9.36"), {"stk_cd": "x"}]) is False
     assert count_above_threshold([{"stk_cd": "x"}]) == 0
+
+
+def test_kosdaq_daily_index_columns_are_not_trusted():
+    """일별 축 + 코스닥의 kospi200·basis 는 실측상 틀린 값이다 — 흘리지 않는다.
+
+    근거(2026-08-05): 과거일 값이 코스피 응답과 **완전히 동일**하고(08/04 1000.03 ·
+    08/03 986.72) basis 가 345·275 로 불가능한 크기였다. 장중 축은 시장별로 옳다.
+    """
+    rows = [{"cntr_tm": "20260804000000", "dfrt_trde_netprps": "+100",
+             "ndiffpro_trde_netprps": "+200", "all_netprps": "+300",
+             "kospi200": "+1000.03", "basis": "345.27"}]
+
+    kept = parse_program_trend(rows, kospi200_scaled=False)[0]
+    dropped = parse_program_trend(rows, kospi200_scaled=False, trust_index_columns=False)[0]
+
+    # 순매수 3열은 어느 쪽이든 살아 있다 — 막는 것은 지수·베이시스뿐이다.
+    assert kept["arb_net"] == dropped["arb_net"] == 100
+    assert kept["total_net"] == dropped["total_net"] == 300
+    assert kept["kospi200"] == 1000.03 and kept["basis"] == 345.27
+    assert dropped["kospi200"] is None and dropped["basis"] is None

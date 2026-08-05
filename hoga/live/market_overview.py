@@ -95,11 +95,23 @@ def parse_index_sectors(rows: list[dict[str, Any]]) -> list[IndexBreadth]:
     return [IndexBreadth(r) for r in rows]
 
 
-def parse_program_trend(rows: list[dict[str, Any]], *, kospi200_scaled: bool) -> list[dict[str, Any]]:
+def parse_program_trend(
+    rows: list[dict[str, Any]],
+    *,
+    kospi200_scaled: bool,
+    trust_index_columns: bool = True,
+) -> list[dict[str, Any]]:
     """ka90005(시각축)·ka90010(일자축) 공용 파서 — **스케일만 인자로 갈린다**.
 
     응답 스키마가 동일해 파서를 나누면 중복이 되지만, `kospi200` 스케일이 달라 그
     한 축은 반드시 호출부가 정해야 한다. 실수 여지를 줄이려고 기본값을 두지 않는다.
+
+    `trust_index_columns=False` 면 `kospi200`·`basis` 를 `None` 으로 접는다.
+    **일별 축 + 코스닥에서 그 두 열이 실제로 틀리기 때문이다**(2026-08-05 실측):
+    과거일 값이 코스피 응답과 **완전히 동일**하고(08/04 1000.03 · 08/03 986.72 양쪽
+    같음) `basis` 가 345·275 로 불가능한 크기다. 장중 축(ka90005)은 시장별로 올바르다
+    (코스피 1046 / 코스닥 1361 ≈ KOSDAQ150). 즉 같은 이름의 열이 두 TR 에서 의미가
+    다르고, 틀린 쪽을 그대로 흘리면 나중 소비자가 조용히 쓰레기를 그린다.
     """
     out: list[dict[str, Any]] = []
     for r in rows:
@@ -110,10 +122,11 @@ def parse_program_trend(rows: list[dict[str, Any]], *, kospi200_scaled: bool) ->
                 "non_arb_net": signed_int(r.get("ndiffpro_trde_netprps")),
                 "total_net": signed_int(r.get("all_netprps")),
                 "kospi200": (
-                    scaled_price(r.get("kospi200")) if kospi200_scaled
+                    None if not trust_index_columns
+                    else scaled_price(r.get("kospi200")) if kospi200_scaled
                     else decimal_price(r.get("kospi200"))
                 ),
-                "basis": decimal_price(r.get("basis")),
+                "basis": decimal_price(r.get("basis")) if trust_index_columns else None,
             }
         )
     return out

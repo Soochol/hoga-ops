@@ -221,7 +221,12 @@ async def _collect_program(call: Any, api_id: str, *, scaled: bool, axis: str) -
         )
         if rows is None:
             continue
-        out["markets"][label] = market_overview.parse_program_trend(rows, kospi200_scaled=scaled)
+        out["markets"][label] = market_overview.parse_program_trend(
+            rows,
+            kospi200_scaled=scaled,
+            # 일별 축 + 코스닥의 kospi200·basis 는 실측상 틀린 값이다(파서 독스트링).
+            trust_index_columns=scaled or label == "KOSPI",
+        )
     return out
 
 
