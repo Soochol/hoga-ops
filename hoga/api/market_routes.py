@@ -100,7 +100,17 @@ _KA10019_BASE = {
 _SESSION_MINUTES = 390
 
 
-def _investor_flow_payload(data_dir: Path) -> dict[str, Any]:
+def _recent_dates(today: str, *, days: int) -> list[str]:
+    """오늘부터 거슬러 달력일 목록(오래된 순). 확정본이 없는 날은 호출부가 건너뛰므로
+    휴장일을 여기서 거를 필요가 없다 — 파일 존재가 곧 거래일 판정이다."""
+    import datetime as _dt  # noqa: PLC0415
+
+    base = _dt.datetime.strptime(today, "%Y%m%d")
+    out = [(base - _dt.timedelta(days=i)).strftime("%Y%m%d") for i in range(days)]
+    return sorted(out)
+
+
+def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str, Any]:
     """장중 수급 — 저장된 표본을 읽어 3주체 누적 시계열 + 커버리지로.
 
     **읽기 경로는 벤더를 부르지 않는다.** 표본은 수집기가 이미 찍어 뒀고, 소급 조회가
@@ -125,8 +135,29 @@ def _investor_flow_payload(data_dir: Path) -> dict[str, Any]:
         label, values = got
         series.setdefault(label, []).append({"t_ms": s.sampled_at_ms, **values})
 
+    # 일별(확정) 이력 — 확정본이 있는 날만. **비어 있는 것이 정상 시작 상태**다:
+    # 장중 표본은 소급 백필이 불가능하지만 확정본은 `base_dt` 랜덤 액세스라 뒤늦게도
+    # 채워진다(일일 배치의 캐치업). 화면은 "확정 이력이 쌓이는 중" 을 말해야 한다.
+    daily: list[dict[str, Any]] = []
+    for d in _recent_dates(date, days=daily_days):
+        confirmed = store.load_confirmed(d)
+        if confirmed is None:
+            continue
+        got = market_overview.market_investor_row(confirmed.rows)
+        by_market: dict[str, Any] = {}
+        for label in market_overview.WHOLE_MARKET_INDS.values():
+            picked = market_overview.market_investor_row(
+                [r for r in confirmed.rows
+                 if market_overview.WHOLE_MARKET_INDS.get(str(r.get("inds_cd") or "")) == label]
+            )
+            if picked is not None:
+                by_market[label] = picked[1]
+        if got is not None or by_market:
+            daily.append({"date": d, "markets": by_market})
+
     cov = compute_coverage(samples, poll_interval_ms=poll_ms)
     return {
+        "daily": daily,
         "date": date,
         # 단위는 수집 시 요청이 정했다 — 이름에 박아 화면이 축을 못 헷갈리게 한다.
         "unit": "amt_eok",

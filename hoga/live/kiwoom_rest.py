@@ -141,7 +141,10 @@ TR: dict[str, TrSpec] = {
                                 "amt_qty_tp", "stex_tp")),
     # 시장 폭 — 둘 다 **카운트가 아니라 목록**이라 행을 세야 한다. ka10019 는 200행에서
     # 커서가 안 끝난다(절사 정책은 호출부 소관, #1099).
-    "ka10016": TrSpec("ka10016", PATH_STKINFO, "ntl_pric",
+    # ka10016 은 실측(코스피 45행)에서 cont-yn=N 이었지만 **커서를 허용한다** —
+    # 시장·조건에 따라 100행을 넘길 수 있고, `call` 로 1페이지만 세면 조용히
+    # undercount 가 된다(카운트가 곧 화면 값이라 더 위험하다).
+    "ka10016": TrSpec("ka10016", PATH_STKINFO, "ntl_pric", cursor=True,
                       required=("mrkt_tp", "ntl_tp", "high_low_close_tp", "stk_cnd",
                                 "trde_qty_tp", "crd_cnd", "updown_incls", "dt", "stex_tp")),
     "ka10019": TrSpec("ka10019", PATH_STKINFO, "pric_jmpflu", cursor=True,

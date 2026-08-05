@@ -11,7 +11,6 @@ export const WORKSPACE_NAV_ITEMS = [
   { to: '/heatmap', label: '히트맵' },
   { to: '/screener', label: '스크리너' },
   { to: '/sentiment', label: '옵션심리' },
-  // PROTOTYPE(throwaway) — 시장 종합 변형 평가 중 (pages/Market.tsx)
   { to: '/market', label: '시장 종합' },
   { to: '/inventory', label: '보관함' },
   { to: '/capture', label: '캡처' },

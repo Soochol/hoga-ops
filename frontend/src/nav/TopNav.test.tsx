@@ -35,7 +35,6 @@ describe('TopNav', () => {
     const labels = screen.getAllByRole('link').map((link) => link.textContent);
 
     expect(labels).toEqual([
-      // '시장 종합' 은 PROTOTYPE(throwaway) 라우트 — 변형 확정 시 승자와 함께 재승인
       '라이브', '복기', '히트맵', '스크리너', '옵션심리', '시장 종합', '보관함', '캡처',
     ]);
     expect(screen.getByRole('button', { name: '설정' })).toBeInTheDocument();
