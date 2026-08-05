@@ -450,35 +450,67 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
     유일한 이벤트 소스가 됨 — None은 스퓨리어스 리페치를 막는다).
     """
     today = _today_kst_yyyymmdd()
-    jsonl_path = data_dir / "live_kiwoom" / today / f"{code}.jsonl"
-    target = data_dir / "parquet" / today / code / "kiwoom_live"
-    if not jsonl_path.exists():
+    pairs = _kiwoom_jsonl_paths(data_dir, today, code)
+    if not pairs:
         return None
 
     def _sync_parse_and_write() -> None:
-        snapshots, trades, broker_rows, fills, candles, meta = _parse_jsonl_incremental(
-            jsonl_path,
-            code=code,
-            date=today,
-            source="kiwoom_live",
-        )
-        target.mkdir(parents=True, exist_ok=True)
-        _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
-        _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
-        _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
-        _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
-        # 실시간 합성 캔들(ADR-0040/0121/0124 개정): kiwoom_live가 캔들 보유 소스가
-        # 된다. **비어있을 때는 쓰지 않는다** — resolve_candle_source(ADR-0121)가
-        # candles.parquet의 *존재*로 승자를 판정하므로, 빈 파일을 남기면 캔들 0개인
-        # kiwoom_live가 hogaplay를 가리는 거짓 승자가 된다.
-        if candles:
-            _atomic_write_table(write_candles_parquet, candles, target / "candles.parquet")
-        atomic_write_json(target / "meta.json", meta, indent=2)
+        for venue, jsonl_path in pairs:
+            _promote_one_venue(data_dir, today, code, venue, jsonl_path)
 
     await asyncio.to_thread(_sync_parse_and_write)
     # skip(None)은 위 early-return에서 걸러졌으므로 여기 도달 = 실승격.
     _record_today_promote_success(code)
     return today
+
+
+def _kiwoom_jsonl_paths(data_dir: Path, date: str, code: str) -> list[tuple[str, Path]]:
+    """(venue, jsonl_path) 목록 — venue 세그먼트 레이아웃 우선.
+
+    ⚠ **한시적 폴백**: venue 디렉터리가 하나도 없을 때만 옛 평면 경로
+    `{date}/{code}.jsonl` 을 KRX 로 받는다. JSONL 은 보유 2일짜리 과도 트리라
+    날짜 경계 컷오버면 충분하고(ADR-0140 §3), PR-D2 가 이 함수를 단순화한다.
+    """
+    root = data_dir / "live_kiwoom" / date
+    if not root.is_dir():
+        return []
+    out = [
+        (d.name, d / f"{code}.jsonl")
+        for d in sorted(root.iterdir())
+        if d.is_dir() and (d / f"{code}.jsonl").exists()
+    ]
+    if out:
+        return out
+    legacy = root / f"{code}.jsonl"
+    return [("KRX", legacy)] if legacy.exists() else []
+
+
+def _promote_one_venue(
+    data_dir: Path, date: str, code: str, venue: str, jsonl_path: Path
+) -> None:
+    """한 venue 의 JSONL → `parquet/{date}/{code}/kiwoom_live/{venue}/`."""
+    from hoga.api.sources import source_venue_dir  # noqa: PLC0415 — 순환 절단(지연)
+
+    target = source_venue_dir(data_dir / "parquet" / date / code, "kiwoom_live", venue)
+
+    snapshots, trades, broker_rows, fills, candles, meta = _parse_jsonl_incremental(
+        jsonl_path,
+        code=code,
+        date=date,
+        source="kiwoom_live",
+    )
+    target.mkdir(parents=True, exist_ok=True)
+    _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
+    _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
+    _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
+    _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
+    # 실시간 합성 캔들(ADR-0040/0121/0124 개정): kiwoom_live가 캔들 보유 소스가
+    # 된다. **비어있을 때는 쓰지 않는다** — resolve_candle_source(ADR-0121)가
+    # candles.parquet의 *존재*로 승자를 판정하므로, 빈 파일을 남기면 캔들 0개인
+    # kiwoom_live가 hogaplay를 가리는 거짓 승자가 된다.
+    if candles:
+        _atomic_write_table(write_candles_parquet, candles, target / "candles.parquet")
+    atomic_write_json(target / "meta.json", meta, indent=2)
 
 
 async def promote_one(
@@ -488,6 +520,7 @@ async def promote_one(
     code: str,
     date: str,
     source: str = "kis_live",
+    venue: str = "KRX",
 ) -> None:
     """Convert one JSONL file to Parquet artifacts under `parquet/{date}/{code}/{source}/`.
 
@@ -497,7 +530,9 @@ async def promote_one(
     See ADR-0038 (deferred batch promotion) and ADR-0043 (sister Today
     Promotion that this helper coexists with).
     """
-    target = parquet_root / date / code / source
+    from hoga.api.sources import source_venue_dir  # noqa: PLC0415 — 순환 절단(지연)
+
+    target = source_venue_dir(parquet_root / date / code, source, venue)
     meta_path = target / "meta.json"
     if meta_path.exists():
         # Skip ONLY a finalized promotion. A meta left by an intraday cycle whose
@@ -587,16 +622,27 @@ async def promote_pending(data_dir: Path) -> None:
                 continue
             if date_dir.name == today:  # ADR-0043 — owned by Today Promotion
                 continue
-            for jsonl in date_dir.iterdir():
-                if jsonl.suffix != ".jsonl" or not jsonl.is_file():
-                    continue
-                code = jsonl.stem
-                await promote_one(
-                    jsonl, parquet_root, code=code, date=date_dir.name, source=source,
-                )
-                arch_target = archive_root / date_dir.name / jsonl.name
-                arch_target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(jsonl), str(arch_target))
+            # venue 세그먼트 레이아웃이면 그 디렉터리들을, 아니면 평면(=KRX)을 훑는다.
+            # ⚠ 평면 폴백은 **한시적** — JSONL 은 보유 2일짜리 과도 트리라 날짜 경계
+            # 컷오버면 충분하고(ADR-0140 §3), PR-D2 가 이 분기를 지운다.
+            venue_dirs = [d for d in sorted(date_dir.iterdir()) if d.is_dir()]
+            scans = ([(d.name, d) for d in venue_dirs] if venue_dirs
+                     else [("KRX", date_dir)])
+            for venue, scan_dir in scans:
+                for jsonl in scan_dir.iterdir():
+                    if jsonl.suffix != ".jsonl" or not jsonl.is_file():
+                        continue
+                    code = jsonl.stem
+                    await promote_one(
+                        jsonl, parquet_root, code=code, date=date_dir.name,
+                        source=source, venue=venue,
+                    )
+                    arch_target = (
+                        archive_root / date_dir.name / venue / jsonl.name
+                        if venue_dirs else archive_root / date_dir.name / jsonl.name
+                    )
+                    arch_target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(jsonl), str(arch_target))
 
 
 async def cleanup_archive(data_dir: Path, retention_days: int = 7) -> None:

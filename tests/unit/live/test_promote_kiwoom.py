@@ -36,7 +36,7 @@ async def test_promote_kiwoom_today_writes_kiwoom_live_parquet(tmp_path):
     # (promote_today와 대칭 계약). None이면 skip이라 프론트 리페치 금지.
     assert result == today
 
-    target = tmp_path / "parquet" / today / "005930" / "kiwoom_live"
+    target = tmp_path / "parquet" / today / "005930" / "kiwoom_live" / "KRX"
     assert (target / "snapshots.parquet").exists()
     assert (target / "trades.parquet").exists()
     meta = json.loads((target / "meta.json").read_text())
@@ -111,7 +111,7 @@ async def test_promote_pending_promotes_live_kiwoom_to_kiwoom_live(tmp_path):
 
     await promote_pending(tmp_path)
 
-    target = tmp_path / "parquet" / "20260527" / "005930" / "kiwoom_live"
+    target = tmp_path / "parquet" / "20260527" / "005930" / "kiwoom_live" / "KRX"
     assert (target / "meta.json").exists()
     assert _json.loads((target / "meta.json").read_text())["source"] == "kiwoom_live"
     # 아카이브 이동(live_kiwoom/_archive).

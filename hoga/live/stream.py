@@ -465,12 +465,9 @@ class LiveStream:
         # 디스크 오류가 다른 코드의 윈도를 폐기하지 않는다(현재는 첫 실패가
         # flush_once 전체를 중단). flush는 더 이상 리셋하지 않으므로 commit이
         # 유일한 합 차감 경로다.
-        # ⚠ writer 는 아직 venue 를 모른다 — JSONL 경로에 venue 세그먼트를 넣는 것은
-        # PR-D 의 몫이다(ADR-0140 §3). 이 PR 시점엔 `stream.on_tick` 의 KRX 가드가
-        # 살아 있어 KRX 틱만 흐르므로 한 파일에 두 venue 가 섞일 수 없다.
         for (code, venue), snaps in flushed.items():
             try:
-                await self._writer.append(date, code, snaps)
+                await self._writer.append(date, code, venue, snaps)
             except OSError:
                 _log.exception("live.stream.append_failed code=%s", code)
                 continue  # commit 안 함 → 합 보존 → 다음 윈도 롤
@@ -489,7 +486,7 @@ class LiveStream:
         candle_flushed = self._candle_agg.flush(now_ms=now_ms, seal_all=seal_candles_all)
         for (code, venue), snaps in candle_flushed.items():
             try:
-                await self._writer.append(date, code, snaps)
+                await self._writer.append(date, code, venue, snaps)
             except OSError:
                 _log.exception("live.stream.candle_append_failed code=%s", code)
                 continue  # commit 안 함 → 봉 보존 → 다음 flush 재시도

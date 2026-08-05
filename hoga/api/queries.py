@@ -44,7 +44,7 @@ def _is_non_trading_day(date_yyyymmdd: str) -> bool:
     return is_trading_day(date_yyyymmdd) is False
 
 
-def resolve_source_dir(stock_date_dir: Path, source: str) -> Path:
+def resolve_source_dir(stock_date_dir: Path, source: str, venue: str = "KRX") -> Path:
     """Resolve the on-disk parquet dir for one source.
 
     Tries ``{stock_date_dir}/{source}/`` first (post-migration layout per
@@ -53,7 +53,9 @@ def resolve_source_dir(stock_date_dir: Path, source: str) -> Path:
     meta.json — this preserves backward compatibility with test fixtures
     that build the flat layout directly.
     """
-    sub = stock_date_dir / source
+    from hoga.api.sources import resolve_source_venue_dir  # noqa: PLC0415 — 순환 절단
+
+    sub = resolve_source_venue_dir(stock_date_dir, source, venue)
     if sub.exists():
         return sub
     if (stock_date_dir / "meta.json").exists():
