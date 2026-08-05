@@ -243,10 +243,10 @@ class PastIndicatorsCache:
         """
         # ⚠ "KRX" 리터럴 — 이 캐시는 아직 venue 개념이 없다(PR-J). 292·367 행의
         # `kis-past-indicators` 트리는 parquet 트리가 아니라 venue 축이 없다.
-        from hoga.api.sources import resolve_source_venue_dir  # noqa: PLC0415
+        from hoga.api.sources import source_venue_dir  # noqa: PLC0415
 
         meta = (
-            resolve_source_venue_dir(self._data_dir / "parquet" / date / code, source, "KRX")
+            source_venue_dir(self._data_dir / "parquet" / date / code, source, "KRX")
             / "meta.json"
         )
         try:

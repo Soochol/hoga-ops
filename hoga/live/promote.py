@@ -510,24 +510,20 @@ def _write_source_meta(data_dir: Path, date: str, code: str, venues: list[str]) 
 
 
 def _kiwoom_jsonl_paths(data_dir: Path, date: str, code: str) -> list[tuple[str, Path]]:
-    """(venue, jsonl_path) 목록 — venue 세그먼트 레이아웃 우선.
+    """(venue, jsonl_path) 목록 — `live_kiwoom/{date}/{venue}/{code}.jsonl`.
 
-    ⚠ **한시적 폴백**: venue 디렉터리가 하나도 없을 때만 옛 평면 경로
-    `{date}/{code}.jsonl` 을 KRX 로 받는다. JSONL 은 보유 2일짜리 과도 트리라
-    날짜 경계 컷오버면 충분하고(ADR-0140 §3), PR-D2 가 이 함수를 단순화한다.
+    평면 폴백은 PR-D2 에서 삭제됐다(마이그레이션 완료). 남겨 뒀다면 ADR-0140 §3 이
+    하위호환 분기를 기각한 이유가 그대로 되살아난다 — **경계가 날짜가 아니라
+    "있느냐"라 두 모양이 영구히 섞이고, 그 분기가 조립부마다 남는다.**
     """
     root = data_dir / "live_kiwoom" / date
     if not root.is_dir():
         return []
-    out = [
+    return [
         (d.name, d / f"{code}.jsonl")
         for d in sorted(root.iterdir())
         if d.is_dir() and (d / f"{code}.jsonl").exists()
     ]
-    if out:
-        return out
-    legacy = root / f"{code}.jsonl"
-    return [("KRX", legacy)] if legacy.exists() else []
 
 
 def _promote_one_venue(
@@ -667,13 +663,9 @@ async def promote_pending(data_dir: Path) -> None:
                 continue
             if date_dir.name == today:  # ADR-0043 — owned by Today Promotion
                 continue
-            # venue 세그먼트 레이아웃이면 그 디렉터리들을, 아니면 평면(=KRX)을 훑는다.
-            # ⚠ 평면 폴백은 **한시적** — JSONL 은 보유 2일짜리 과도 트리라 날짜 경계
-            # 컷오버면 충분하고(ADR-0140 §3), PR-D2 가 이 분기를 지운다.
-            venue_dirs = [d for d in sorted(date_dir.iterdir()) if d.is_dir()]
-            scans = ([(d.name, d) for d in venue_dirs] if venue_dirs
-                     else [("KRX", date_dir)])
-            for venue, scan_dir in scans:
+            # venue 디렉터리만 훑는다 — 평면 폴백은 PR-D2 에서 삭제(마이그레이션 완료).
+            for venue_dir in [d for d in sorted(date_dir.iterdir()) if d.is_dir()]:
+                venue, scan_dir = venue_dir.name, venue_dir
                 for jsonl in scan_dir.iterdir():
                     if jsonl.suffix != ".jsonl" or not jsonl.is_file():
                         continue
@@ -682,10 +674,7 @@ async def promote_pending(data_dir: Path) -> None:
                         jsonl, parquet_root, code=code, date=date_dir.name,
                         source=source, venue=venue,
                     )
-                    arch_target = (
-                        archive_root / date_dir.name / venue / jsonl.name
-                        if venue_dirs else archive_root / date_dir.name / jsonl.name
-                    )
+                    arch_target = archive_root / date_dir.name / venue / jsonl.name
                     arch_target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(str(jsonl), str(arch_target))
 

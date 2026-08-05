@@ -38,6 +38,10 @@ export interface MarketIndexRow {
   flat: number | null;
   upper: number | null;
   lower: number | null;
+  /** 거래대금 **억원** (ka20003 `trde_prica` 는 백만원 — 이름에 단위를 박는다). */
+  trade_value_eok: number | null;
+  /** 상장 **종목 수** (주식수 아님 — 코스피 943 · 코스닥 1821). 종합 행에만 의미. */
+  listed_count: number | null;
 }
 
 export interface MarketSectorRow {
@@ -45,6 +49,8 @@ export interface MarketSectorRow {
   name: string;
   value: number | null;
   change_pct: number | null;
+  /** 거래대금 **억원**. 규모별(대형/중형/소형) 쏠림과 업종 분산도가 이 위에 선다. */
+  trade_value_eok: number | null;
 }
 
 export interface MarketSectorsResponse {

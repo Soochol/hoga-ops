@@ -281,6 +281,9 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
     expect(vi.mocked(useLiveOrderbookAtCursor)).toHaveBeenLastCalledWith({
       code: '005930',
       timeframe: '1m',
+      // venue 는 백엔드 필수(ADR-0140) — 창의 venue 선택을 그대로 넘겨야 한다.
+      // 빠지면 라우트가 422 라 호버 내내 "호가 데이터 없음" 이 뜬다.
+      venue: 'KRX',
     });
   });
 
@@ -292,6 +295,7 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
     expect(vi.mocked(useLiveOrderbookAtCursor)).toHaveBeenLastCalledWith({
       code: null,
       timeframe: null,
+      venue: 'KRX',
     });
   });
 
@@ -303,6 +307,7 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
     expect(vi.mocked(useLiveOrderbookAtCursor)).toHaveBeenLastCalledWith({
       code: null,
       timeframe: null,
+      venue: 'KRX',
     });
   });
 });
