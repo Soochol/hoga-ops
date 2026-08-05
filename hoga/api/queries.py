@@ -87,6 +87,10 @@ class _ParquetStats:
     price_min: int = 0
     price_max: int = 0
     total_volume: int = 0
+    # 캔들에서 유도한 시가·종가 — meta 에 `today_open`/`today_close` 가 없는 소스
+    # (kiwoom_live)용. hogaplay 는 meta 값이 우선이라 여긴 안 쓰인다.
+    open_price: int = 0
+    close_price: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +108,27 @@ class _CachedStockDate:
 
 class StockDateNotFound(LookupError):
     """No parquet directory for (date, code)."""
+
+
+def _row_name(meta: dict, code: str) -> str:
+    """행에 표시할 종목명. meta 에 없으면 심볼 마스터, 그것도 없으면 코드.
+
+    `name` 은 hogaplay 파서가 상단 정보 TSV 에서 뽑아 넣는 값이라 `kiwoom_live`
+    meta 엔 없다. 코드로 폴백하면 710 행이 이름 없이 뜨므로(#1149 실측) 마스터를
+    한 번 더 본다 — 마스터는 커밋된 시드가 있어 자격증명 없이도 산다.
+    """
+    name = meta.get("name")
+    if isinstance(name, str) and name:
+        return name
+    from hoga.api import symbols as _symbols  # noqa: PLC0415 — 순환 절단(지연)
+
+    try:
+        for hit in _symbols.search(code, limit=5):
+            if hit.code == code:
+                return hit.name
+    except Exception:  # noqa: BLE001 — 마스터 미로드는 이름 없음이지 행 실패가 아니다
+        return code
+    return code
 
 
 class QueryEngine:
@@ -255,13 +280,23 @@ class QueryEngine:
         """Find the meta.json to use for inventory display.
 
         Returns the hogaplay/meta.json if present, else the flat-layout
-        meta.json (pre-migration), else None. kis_live is intentionally
-        EXCLUDED — its snapshots.parquet uses `t_ms` (Unix ms) while
-        the inventory readers assume hogaplay's `ts_ms` (HHMMSSmmm) and
-        the underlying `_compute_stock_date` shape that ApiCandle /
-        snapshot path emit. A kis_live-only Stock-Date is therefore
-        invisible to the Inventory page; users see kis_live data on
-        /live and (via Source Preference) on /replay instead.
+        meta.json (pre-migration), else the kiwoom_live venue meta, else None.
+
+        **kis_live 는 의도적으로 제외**된다 — snapshots.parquet 이 `t_ms`(Unix ms)를
+        쓰는데 인벤토리 리더는 hogaplay 의 `ts_ms`(HHMMSSmmm)를 가정한다. kis_live 전용
+        Stock-Date 는 인벤토리에 안 보이고, 사용자는 /live 와 (소스 선호로) /replay 에서
+        본다.
+
+        ⚠ **kiwoom_live 는 그 제외 사유가 없다**(#1149). 실측 결과 컬럼 66개가 hogaplay
+        와 **완전히 동일**하다(`ts_ms` 포함) — 그냥 목록에 안 들어가 있었을 뿐이고, 그
+        탓에 kiwoom_live 만 있는 **710 Stock-Date 가 보관함에서 통째로 안 보였다**.
+
+        hogaplay 뒤에 두는 이유: hogaplay 는 상단 정보 TSV 에서 종목명·OHLC·상하한가를
+        가져와 meta 가 더 풍부하다. kiwoom_live 는 그 필드가 없어 캔들·마스터에서
+        유도해야 한다(`_row_name`·`_compute_stock_date`). 둘 다 있으면 풍부한 쪽이 낫다.
+
+        hogaplay 는 **KRX 정규장만** 커버하므로 NXT 프리·애프터마켓 데이터는 원리적으로
+        짝이 없다 — 저장 창이 넓어질수록(PR-G) 이 폴백에 걸리는 행이 늘어난다.
         """
         candidate = code_dir / "hogaplay" / "meta.json"
         if candidate.exists():
@@ -269,6 +304,13 @@ class QueryEngine:
         flat = code_dir / "meta.json"
         if flat.exists():
             return flat
+        # venue 축을 아는 해석은 disk_state 가 SSOT 다 — 여기서 다시 조립하면
+        # `{source}/meta.json`(source 레벨, PR-E)을 venue meta 로 오독한다.
+        kiwoom = code_dir / "kiwoom_live"
+        if kiwoom.is_dir():
+            from hoga.api.disk_state import source_meta_path  # noqa: PLC0415 — 순환 절단
+
+            return source_meta_path(kiwoom)
         return None
 
     def _batch_parquet_stats(
@@ -338,11 +380,50 @@ class QueryEngine:
                 st.price_max = int(hi)
                 st.total_volume = int(vol)
 
+            # 시가·종가는 **별도 best-effort 쿼리**다. 위 집계에 컬럼을 더하면
+            # `open`/`ts_ms` 없는 파케이 하나가 배치 전체를 실패시키고, 그러면
+            # 행별 경로도 같은 이유로 실패해 **행이 통째로 사라진다**. 이 값은
+            # meta 에 OHLC 가 없는 소스(kiwoom_live)에만 쓰이는 부가 정보라
+            # 실패해도 0 으로 두고 넘어가는 것이 맞다.
+            try:
+                ohlc = self.conn.execute(
+                    "SELECT filename, arg_min(open, ts_ms), arg_max(close, ts_ms) "
+                    "FROM read_parquet(?, filename=true) GROUP BY filename",
+                    [[str(p) for p in cand_paths]],
+                ).fetchall()
+            except Exception:  # noqa: BLE001 — 부가 정보다. 나머지 통계는 살린다
+                log.debug("inventory: batched candle open/close unavailable")
+            else:
+                for filename, op, cl in ohlc:
+                    st = _stats_for(Path(filename).parent)
+                    st.open_price = int(op) if op is not None else 0
+                    st.close_price = int(cl) if cl is not None else 0
+
         # 배치가 답을 준 디렉터리만 "계산됨" 으로 표시한다. 여기 없는 디렉터리는
         # 호출부에서 stats=None 이 되어 행별 쿼리를 그대로 탄다.
         for d in code_dirs:
             out.setdefault(d, _ParquetStats())
         return out
+
+    def _candle_open_close(self, candles_path: Path) -> tuple[int, int]:
+        """캔들의 시가·종가. 실패하면 ``(0, 0)`` — **행을 죽이지 않는다**.
+
+        meta 에 `today_open`/`today_close` 가 없는 소스(kiwoom_live)에만 쓰이는 부가
+        정보다. `open`/`ts_ms` 컬럼이 없는 파케이가 있어도 나머지 통계는 살아야 하므로
+        가격 집계 쿼리와 **분리**했다(합치면 한 파일의 스키마 불일치가 행을 통째로
+        사라지게 한다 — 실측된 회귀다).
+        """
+        try:
+            row = self.conn.execute(
+                "SELECT arg_min(open, ts_ms), arg_max(close, ts_ms) FROM read_parquet(?)",
+                [str(candles_path)],
+            ).fetchone()
+        except Exception:  # noqa: BLE001 — 부가 정보다
+            return (0, 0)
+        if row is None:
+            return (0, 0)
+        return (int(row[0]) if row[0] is not None else 0,
+                int(row[1]) if row[1] is not None else 0)
 
     def _compute_stock_date(
         self, date: str, code: str, code_dir: Path,
@@ -390,10 +471,13 @@ class QueryEngine:
 
         # Price range + total volume from candles.parquet.
         candles_path = code_dir / "candles.parquet"
+        open_price = close_price = 0
         if stats is not None:
             price_min = stats.price_min
             price_max = stats.price_max
             total_volume = stats.total_volume
+            open_price = stats.open_price
+            close_price = stats.close_price
         elif candles_path.exists():
             row = self.conn.execute(
                 "SELECT MIN(low), MAX(high), "
@@ -401,6 +485,7 @@ class QueryEngine:
                 "FROM read_parquet(?)",
                 [str(candles_path)],
             ).fetchone()
+            open_price, close_price = self._candle_open_close(candles_path)
             if row is None or row[0] is None:
                 price_min = 0
                 price_max = 0
@@ -426,7 +511,7 @@ class QueryEngine:
         return StockDate(
             date=date,
             code=code,
-            name=meta["name"],
+            name=_row_name(meta, code),
             regular_session_open_ms=open_ms,
             regular_session_close_ms=close_ms,
             data_window_first_ms=first_ms,
@@ -435,12 +520,16 @@ class QueryEngine:
             price_max=price_max,
             captured_at=captured_at,
             total_volume=total_volume,
-            pages_collected=int(meta["pages_collected"]),
+            # hogaplay 전용 개념 — 그 소스가 페이지 단위로 긁기 때문이다.
+            # kiwoom_live 는 WS push 라 페이지가 없다(0).
+            pages_collected=int(meta.get("pages_collected", 0)),
             file_size_bytes=file_size_bytes,
-            today_open=int(meta["today_open"]),
-            today_high=int(meta["today_high"]),
-            today_low=int(meta["today_low"]),
-            today_close=int(meta["today_close"]),
+            # meta 에 없으면 **캔들에서 유도**한다(kiwoom_live). 0 으로 두면 화면에
+            # "0원" 이 뜨는데, 그건 없는 값이 아니라 **틀린 값**이다.
+            today_open=int(meta.get("today_open", open_price)),
+            today_high=int(meta.get("today_high", price_max)),
+            today_low=int(meta.get("today_low", price_min)),
+            today_close=int(meta.get("today_close", close_price)),
             # Single source of truth for meta → completeness bits.
             # The DiskState enum normalizes the rule "if collection
             # didn't finish, is_partial is True regardless of what
