@@ -86,6 +86,17 @@ def _resolved_parquet_dir(
         # 2026-07-17 정책: kis_api는 캔들 전용(ADR-0109 복구) — 호가·체결 스팟
         # 라우트(/api/orderbook·/api/brokers/series)는 더는 서빙하지 않는다(빈 200).
         return None, resolution.source
+    # ⚠ 경로 **존재**까지 본다. 위 docstring 이 약속하는 계약인데 구현이 안 따라가고
+    # 있었다 — venue 축이 생기기 전엔 `resolve_source_result` 가 meta.json 을 가진
+    # source 에만 경로를 줘서 디렉터리가 늘 존재했다. 지금은 분류가 **source 단위**
+    # (venue 중 가장 심한 상태)라 `kiwoom_live` 가 healthy 로 뽑히고, 경로엔 없는
+    # venue 세그먼트가 붙는다.
+    #
+    # 실측 2026-08-06: `venue=UN` 으로 NXT 미상장 종목(028670 팬오션)을 호버하면
+    # `kiwoom_live/UN/` 이 없는데 그대로 DuckDB 로 넘어가 **`/api/orderbook` ·
+    # `/api/brokers/series` 가 500** 이었다. 정상적으로 없는 것을 장애로 답한 셈이다.
+    if resolution.path is not None and not resolution.path.is_dir():
+        return None, resolution.source
     return resolution.path, resolution.source
 
 
