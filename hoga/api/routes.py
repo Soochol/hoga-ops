@@ -69,6 +69,10 @@ def _resolved_parquet_dir(
     /api/candles continues to use the simpler _parquet_path because it
     doesn't honor source_pref and keeps strict 404 semantics. /api/meta
     is the same.
+
+    ⚠ 그 "strict 404" 는 **디렉터리 층에만** 걸린다. `/api/candles` 도 파케이
+    **파일** 부재는 빈 200 으로 답한다 — 부재는 0행의 다른 이름이고, 0행 파일이
+    남아 있는 경우가 이미 빈 200 이라 그래야 응답이 디스크 모양에 안 흔들린다.
     """
     # `kis_api` 억제 분기는 제거됐다(2026-08-07) — 그 소스 자체가 사라져 승자가 될 수
     # 없다. 남은 둘은 호가·체결을 정상 서빙한다.
@@ -317,7 +321,32 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
 
     @router.get("/candles", response_model=CandlesResponse)
     def candles(code: Code, date: StockDate) -> CandlesResponse:
+        """캡처된 Stock-Date 의 1분봉 전량.
+
+        **404 는 "미캡처", 빈 200 은 "캡처됐고 캔들 0개"** — 두 층이 다른 사실을
+        말한다. 앞 층은 ADR-0051 이 못박은 계약 그대로 `_parquet_path` 가 낸다
+        (`/api/meta` 와 함께 스팟 라우트의 200-empty 와 **의도된 비대칭**).
+
+        뒤 층이 이 가드다. 파일 부재는 장애가 아니라 정상 상태이기 때문이다 —
+        writer 계약이 **"0행이면 파일을 안 남긴다"** 이고(`live/promote.
+        _atomic_write_table`), 그 docstring 이 부재 처리를 리더의 몫으로 넘긴다.
+
+        가드 없이는 **같은 논리 상태가 디스크 모양에 따라 갈렸다**(실측 2026-08-07,
+        캔들 0개인 hogaplay Stock-Date): 0행 파일이 남아 있으면 `200 {"candles":[]}`,
+        같은 0개인데 파일이 없으면 DuckDB `IOException` 으로 **500**. 응답이 어느
+        writer 세대가 그 디렉터리를 만들었는지에 달려 있던 셈이다. 그래서 파일 층을
+        404 로 올리지 **않는다** — 그러면 0행이면 200, 없으면 404 라는 새 비대칭이
+        같은 자리에 생긴다.
+
+        스팟 라우트 두 개(`/api/orderbook`·`/api/brokers/series`)가 같은 결손에서
+        같은 이유로 500 이었고 #1176 이 `_spot_table_path` 로 고쳤다. 그 헬퍼를
+        재사용하지 않는 이유는 규약이 다르기 때문이다 — 저쪽은 디렉터리 부재도 빈
+        200 이고, 여기는 그게 404 다.
+        """
         path = _parquet_path(engine, date, code, "candles.parquet")
+        # 디렉터리·meta.json 이 있어도 파케이 파일은 없을 수 있다(0행 → 파일 없음).
+        if not path.is_file():
+            return CandlesResponse(candles=[])
         rows = candles_tbl.query_all(engine.conn, path=path)
         rows = [
             r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
