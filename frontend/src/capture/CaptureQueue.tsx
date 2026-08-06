@@ -13,7 +13,13 @@ import { computeHeaderSummary, summarizeDedupeReasons } from './queueSummary';
 
 const VIRTUALIZE_THRESHOLD = 200;
 
-export function CaptureQueue() {
+export interface CaptureQueueProps {
+  /** 행을 고르면 그 종목을 좌측 "캡처 요청" 폼에 선택시킨다(Capture.tsx 가 배선).
+   *  큐만 단독으로 쓰는 테스트에서는 생략 가능. */
+  onPickSymbol?: (code: string) => void;
+}
+
+export function CaptureQueue({ onPickSymbol }: CaptureQueueProps = {}) {
   const {
     queue, isError, refetchQueue, cancelItem, cancelAll, dismissDone, resumeQueue, retryItems,
   } = useCaptureQueue();
@@ -203,6 +209,7 @@ export function CaptureQueue() {
               fullCaptureCountByKey={fullCaptureCountByKey}
               onCancel={cancelItem.mutate}
               onRetry={onRetry}
+              onPickSymbol={onPickSymbol}
             />
           : allRows.map((row) => (
               <CaptureQueueRow
@@ -212,6 +219,7 @@ export function CaptureQueue() {
                 fullCaptureCount={fullCaptureCountByKey.get(`${row.code}|${row.date}`)}
                 onCancel={cancelItem.mutate}
                 onRetry={onRetry}
+                onPickSymbol={onPickSymbol}
               />
             ))}
       </div>
@@ -220,13 +228,14 @@ export function CaptureQueue() {
 }
 
 function VirtualList({
-  rows, nameByCode, fullCaptureCountByKey, onCancel, onRetry,
+  rows, nameByCode, fullCaptureCountByKey, onCancel, onRetry, onPickSymbol,
 }: {
   rows: QueueItem[];
   nameByCode: Map<string, string>;
   fullCaptureCountByKey: Map<string, number | null>;
   onCancel: (itemId: string) => void;
   onRetry: (item: QueueItem) => void;
+  onPickSymbol?: (code: string) => void;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const v = useVirtualizer({
@@ -265,6 +274,7 @@ function VirtualList({
                 fullCaptureCount={fullCaptureCountByKey.get(`${row.code}|${row.date}`)}
                 onCancel={onCancel}
                 onRetry={onRetry}
+                onPickSymbol={onPickSymbol}
               />
             </div>
           );

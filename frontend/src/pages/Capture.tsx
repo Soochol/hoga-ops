@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { CaptureForm } from '../capture/CaptureForm';
+import { CaptureForm, type SymbolPick } from '../capture/CaptureForm';
 import { CaptureQueue } from '../capture/CaptureQueue';
 import VerticalSplitter from '../layout/VerticalSplitter';
 import { PageContainer } from '../layout/PageContainer';
@@ -42,6 +42,12 @@ export default function Capture() {
   const initialCode = codeParam ?? activeLiveCode;
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftPct, setLeftPct] = useState<number>(loadInitialPct);
+  // 큐 → 폼 종목 전달. seq 를 부모가 매기는 이유는 "같은 종목 재선택"도 이벤트로
+  // 전달되어야 하기 때문 — code 만 담으면 상태가 안 바뀌어 폼이 반응하지 않는다.
+  const [picked, setPicked] = useState<SymbolPick | null>(null);
+  const onPickSymbol = useCallback((code: string) => {
+    setPicked((prev) => ({ code, seq: (prev?.seq ?? 0) + 1 }));
+  }, []);
 
   useEffect(() => {
     try {
@@ -78,7 +84,7 @@ export default function Capture() {
           `overflow-hidden` 이 폼 하단을 조용히 먹고 자체 스크롤바도 뜨지 않는다. */}
       <PanelCard as="section" borderless flat data-testid="capture-form-pane" className="flex min-h-0 flex-col overflow-hidden">
         <DataSection title="캡처 요청" flushHeader className="flex min-h-0 flex-1 flex-col" contentClassName="min-h-0 flex-1 overflow-y-auto p-md">
-          <CaptureForm referenceYear={year} referenceMonth={month} initialCode={initialCode} />
+          <CaptureForm referenceYear={year} referenceMonth={month} initialCode={initialCode} picked={picked} />
         </DataSection>
       </PanelCard>
       <VerticalSplitter
@@ -95,7 +101,7 @@ export default function Capture() {
           큐 리스트(overflow-x:auto)가 가로 스크롤로 받아낸다 — 페이지 오버플로 방지. */}
       <PanelCard as="section" borderless flat data-testid="capture-queue-pane" className="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <DataSection title="캡처 대기열" flushHeader className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col p-md">
-          <CaptureQueue />
+          <CaptureQueue onPickSymbol={onPickSymbol} />
         </DataSection>
       </PanelCard>
     </PageContainer>
