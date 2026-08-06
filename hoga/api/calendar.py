@@ -347,9 +347,13 @@ def _cell_status_for(date_str: str, now: dt.datetime, trading_days: set[str],
     # hogaplay is the canonical capture source — show its state directly (this
     # also covers the sentinel / raw / legacy-flat fallbacks, all hogaplay-only
     # artifacts). Only when there is NO hogaplay artifact at all do we consider a
-    # KIS live/REST promotion, surfacing it with a distinct *_live status so the
+    # live/REST promotion, surfacing it with a distinct *_live status so the
     # cell reads "WS data present, hogaplay not collected" rather than a
     # misleading hogaplay-framed ✕ (client_incomplete = "resume on capture").
+    #
+    # 승격 소스는 **벤더 중립**으로 부른다. 이 자리를 `kis`라 부르던 시절의 이름이
+    # 프론트 라벨까지 새어 "KIS 실시간 데이터" 툴팁이 됐고, ADR-0136 이후로도 남아
+    # 키움 데이터를 KIS라 부르고 있었다(calendarStatus.ts complete_live 참조).
     hp = check_disk_state(data_dir, code, date_str, source="hogaplay")
     if hp.state != DiskState.NONE:
         # 부분 결손 중 "재캡처가 무의미하다고 판정된" 것만 갈라 낸다. 나머지
@@ -357,10 +361,10 @@ def _cell_status_for(date_str: str, now: dt.datetime, trading_days: set[str],
         if is_terminal_partial(hp, date_str, now):
             return "source_partial_confirmed"
         return _disk_state_to_status(hp.state)
-    kis = check_disk_state(data_dir, code, date_str).state  # aggregate: kis_live/kis_api
-    if kis == DiskState.COMPLETE:
+    live = check_disk_state(data_dir, code, date_str).state  # aggregate: kiwoom_live/kis_api
+    if live == DiskState.COMPLETE:
         return "complete_live"
-    if kis == DiskState.SOURCE_PARTIAL:
+    if live == DiskState.SOURCE_PARTIAL:
         return "partial_live"
     return "none"
 

@@ -348,9 +348,9 @@ def depth_daily_sweep(
 def backfill_live_meta_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),
 ) -> None:
-    """이미 승격된 KIS live/REST meta.json 에 완결성 필드를 소급 기록한다.
+    """이미 승격된 실시간/REST meta.json 에 완결성 필드를 소급 기록한다.
 
-    변경 이전에 승격된 kis_live/kis_api Stock-Date 는 collection_complete/
+    변경 이전에 승격된 Stock-Date(meta_backfill._LIVE_SOURCES) 는 collection_complete/
     is_partial/gap_ranges 가 없어 캘린더에서 영구 ✕ 로 남는다. 이 스윕은
     snapshots.parquet 의 ts_ms 로 갭 분석을 재계산해 그 세 필드를 채운다
     (과거 날짜만; 오늘은 Today Promoter 가 15:35 에 최종화). 멱등.

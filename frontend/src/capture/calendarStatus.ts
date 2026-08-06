@@ -106,26 +106,32 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
     legendLabel: '– 업스트림 없음',
   },
   complete_live: {
-    // KIS live/REST-only promotion, no hogaplay artifact. 글리프를 ◆(다이아)로
-    // 분화 — 종전엔 hogaplay 완결과 같은 ✓에 색만 달라 색각 이상·저대비에서
-    // 구분 불가였다. 색은 캡처 배지 정체성 토큰.
+    // hogaplay 산출물이 전혀 없고 실시간 승격본만 있는 날(calendar.py
+    // _cell_status_for). 글리프를 ◆(다이아)로 분화 — 종전엔 hogaplay 완결과 같은
+    // ✓에 색만 달라 색각 이상·저대비에서 구분 불가였다. 색은 캡처 배지 정체성 토큰.
     // Cell stays clickable — this date is still a hogaplay target.
+    //
+    // 라벨에 **벤더명을 박지 않는다**. 이 자리는 한 번 갈렸다: 도입 당시 승격
+    // 소스는 `kis_live`(KIS WS) 하나뿐이라 "KIS 실시간"이라 불렀는데, ADR-0136이
+    // 실시간을 전부 키움으로 옮기고 `kis_live`가 삭제된 뒤에도(2026-08-06
+    // b2a8f551) 문구만 남아 **키움 데이터를 KIS라 부르고 있었다**. 상태의 뜻은
+    // "hogaplay가 아닌 실시간 승격본"이지 특정 벤더가 아니다.
     marker: '◆',
     badgeColor: 'var(--source-capture-border)',
     baseColorVar: 'var(--fg)',
     disabled: false,
-    tooltipSuffix: 'KIS 실시간 데이터 (hogaplay 미수집)',
-    legendLabel: '◆ KIS 실시간',
+    tooltipSuffix: '실시간 승격 데이터 (hogaplay 미수집)',
+    legendLabel: '◆ 실시간 승격',
   },
   partial_live: {
-    // KIS live/REST-only promotion with session gaps. ◇(빈 다이아) — KIS 계열은
-    // 다이아 모양 가족으로 묶는다(◆ 완결 / ◇ 부분).
+    // 같은 승격본에 세션 결손이 있는 경우. ◇(빈 다이아) — 승격 계열은 다이아
+    // 모양 가족으로 묶는다(◆ 완결 / ◇ 부분). 벤더 중립 근거는 complete_live 참조.
     marker: '◇',
     badgeColor: 'var(--source-capture-border)',
     baseColorVar: 'var(--fg)',
     disabled: false,
-    tooltipSuffix: 'KIS 실시간 데이터, 부분 (hogaplay 미수집)',
-    legendLabel: '◇ KIS 실시간 부분',
+    tooltipSuffix: '실시간 승격 데이터, 부분 (hogaplay 미수집)',
+    legendLabel: '◇ 실시간 승격 부분',
   },
   today_locked: {
     marker: '🔒',

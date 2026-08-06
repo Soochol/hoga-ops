@@ -72,7 +72,7 @@ def test_resolve_source_uses_ordered_policy(tmp_path: Path) -> None:
 
 def test_resolve_source_honors_kiwoom_live(tmp_path: Path) -> None:
     # 히트맵 종목: 키움 WS 승격본만 존재(종목 소유권 단일). hogaplay_first 정책에서도
-    # hogaplay/kis_live 부재 시 kiwoom_live로 해석돼야 한다(ADR-0116).
+    # hogaplay 부재 시 kiwoom_live로 해석돼야 한다(ADR-0116).
     _seed_source(tmp_path, "20260716", "005930", "kiwoom_live")
     engine = _make_engine(tmp_path)
 
@@ -159,7 +159,7 @@ def test_ordered_sources_rejects_unknown_policy(bad: str) -> None:
 # --- 캔들 차원 사다리 (ADR-0121) ------------------------------------------
 #
 # 회귀 배경: 호가 승자와 캔들 승자를 한 사다리로 정하면, 캔들을 보유하지 않는
-# 실시간 WS 승격본(kis_live/kiwoom_live)이 이겼을 때 같은 Stock-Date의 실제
+# 실시간 WS 승격본이 이겼을 때 같은 Stock-Date의 실제
 # 캔들(hogaplay 또는 ADR-0109 복구본)이 통째로 가려진다. /study 저장뷰의
 # 마지막 날 분봉이 사라지던 원인.
 
@@ -293,7 +293,7 @@ def test_completeness_first_both_complete_prefers_ws(tmp_path: Path) -> None:
     _seed_source(tmp_path, "20260622", "005930", "kiwoom_live")   # COMPLETE
     engine = _make_engine(tmp_path)
 
-    # 둘 다 완결 → 동급 → WS-first 타이브레이크로 kis_live.
+    # 둘 다 완결 → 동급 → WS-first 타이브레이크로 kiwoom_live.
     assert resolve_source(engine, "20260622", "005930", "completeness_first") == "kiwoom_live"
 
 
@@ -341,7 +341,7 @@ def test_completeness_first_excludes_invalid_even_if_more_recent_tier(tmp_path: 
 def test_completeness_first_candle_dimension_keeps_hogaplay_first(tmp_path: Path) -> None:
     """캔들은 완결성 타이브레이크 대상이 아니다 — 오늘 기본(hogaplay 우선) 유지.
 
-    호가 승자는 WS(kis_live)여도, 캔들은 hogaplay가 kis_api 복구본을 앞선다
+    호가 승자는 WS(kiwoom_live)여도, 캔들은 hogaplay가 kis_api 복구본을 앞선다
     (completeness_first의 WS-first 사다리가 캔들엔 그대로 새면 kis_api가 앞설 위험).
     """
     _seed_source(tmp_path, "20260622", "005930", "hogaplay")   # COMPLETE + 캔들 보유

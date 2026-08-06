@@ -220,7 +220,7 @@ def decide_capture(
     (``find_ineligible_dates`` 가 now 를 인자로 받는 것과 같은 관례).
     """
     # source="hogaplay": the worker collects hogaplay, so a COMPLETE
-    # kis_live/kis_api promotion (lower-fidelity synthesized data) must NOT
+    # kiwoom_live/kis_api promotion (lower-fidelity synthesized data) must NOT
     # mark this Stock-Date "already_complete" and suppress hogaplay collection.
     classification = check_disk_state(data_dir, code, date, source="hogaplay")
     disk = classification.state

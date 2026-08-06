@@ -11,8 +11,8 @@ Intra-Bar Max(``ask_max``, ADR-0076)를 하루로 collapse한 값이며 동시�
 pane에서 눈으로 검증할 수 있어야 하기 때문이다.
 
 v1은 스크리너 비교 기준이 hogaplay이므로 스윕도 hogaplay 소스만 집계한다(``src``
-컬럼은 두어 추후 kis_live/kis_api 폴백 여지를 남긴다). "당일" peak는 depth_daily가
-아니라 스캔 시점에 라이브 parquet(kis_live/kis_api)에서 직접 산출한다 — 그 경로는
+컬럼은 두어 추후 승격본 폴백 여지를 남긴다). "당일" peak는 depth_daily가
+아니라 스캔 시점에 실시간 승격본 parquet에서 직접 산출한다 — 그 경로는
 screener_runner가 담당한다.
 """
 # PEP 236: __future__ import 는 "첫 문장" 이어야 하지만 **모듈 docstring 은 예외**로
