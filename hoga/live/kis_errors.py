@@ -28,6 +28,22 @@ class KisAuthError(RuntimeError):
     """Token issue failed or cool-down breached."""
 
 
+class KisAuthTransient(KisAuthError):
+    """**일시** 인증 실패 — 쿨다운·전송 오류·5xx. 기다리면 풀린다.
+
+    `KisAuthError` 의 하위 타입이라 기존 `except KisAuthError` 는 그대로 잡는다.
+    갈라 두는 이유는 **REST-degraded latch 를 켜지 말아야 하기 때문**이다:
+    그 latch 는 프로세스 재시작까지 영구이고(`account_health` 모듈 docstring —
+    "토큰 ~24h 캐시라 발급 실패 드묾" 이 그 정당화다), 켜지면 그 계정이 background
+    REST 라우팅에서 빠지며 로그가 `check KIS_APP_KEY_N` 이라고 **원인을 오진**한다.
+
+    쿨다운은 드물지 않다 — 8005/EGW00121 revoke 복구 경로가 정확히 그것을 유발한다
+    (거버너가 토큰을 버리고 60초 격리 후 되큐하는데, 격리 60초와 발급 쿨다운 60초가
+    맞춰진 경계값이다). 분류가 없으면 revoke 한 번이 계정을 프로세스 수명 동안
+    degraded 로 만든다.
+    """
+
+
 class KisRateLimitError(RuntimeError):
     """msg_cd == 'EGW00201'.
 

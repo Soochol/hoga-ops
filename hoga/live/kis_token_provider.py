@@ -27,7 +27,7 @@ from pathlib import Path
 
 import httpx
 
-from hoga.live.kis_client import KisAuthError, KisCredentials
+from hoga.live.kis_client import KisAuthError, KisAuthTransient, KisCredentials
 from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
@@ -37,6 +37,10 @@ log = logging.getLogger(__name__)
 # hanging/failing KIS auth endpoint is also throttled to one blocking POST per
 # minute instead of retrying a 10s timeout on every cache miss.
 _REISSUE_COOLDOWN_MS = 60_000
+
+_HTTP_OK = 200
+#: 이 이상은 벤더 쪽 문제 — 일시 실패로 분류해 latch 를 켜지 않는다.
+_HTTP_SERVER_ERROR = 500
 
 
 def _key_fingerprint(app_key: str) -> str:
@@ -105,6 +109,10 @@ class KisTokenProvider:
             # 예외는 토큰 에러를 가리지 않도록 삼킨다.
             try:
                 return self._issue_token()
+            except KisAuthTransient:
+                # 일시 실패는 latch 대상이 아니다 — 쿨다운·5xx·전송 오류가 계정을
+                # 재시작까지 degraded 로 만들면 안 된다(KisAuthTransient docstring).
+                raise
             except Exception:
                 if self._on_issue_failure is not None:
                     try:
@@ -142,22 +150,34 @@ class KisTokenProvider:
             self._last_issued_monotonic_ms is not None
             and now_ms - self._last_issued_monotonic_ms < _REISSUE_COOLDOWN_MS
         ):
-            raise KisAuthError(
+            # 일시 실패다 — 기다리면 풀린다. `KisAuthError` 로 던지면 아래 latch 가
+            # 켜져 이 계정이 재시작까지 background REST 에서 빠진다.
+            raise KisAuthTransient(
                 "token reissue cooldown: KIS allows 1 issuance per minute"
             )
         # Mark the ATTEMPT before the POST: on a hanging/failing auth endpoint
         # the next 60s of cache misses fail fast on the cooldown above instead
         # of each paying a fresh 10s blocking POST.
         self._last_issued_monotonic_ms = now_ms
-        resp = self._client.post(
-            "/oauth2/tokenP",
-            json={
-                "grant_type": "client_credentials",
-                "appkey": self._creds.app_key,
-                "appsecret": self._creds.app_secret,
-            },
-        )
-        if resp.status_code != 200:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
+        try:
+            resp = self._client.post(
+                "/oauth2/tokenP",
+                json={
+                    "grant_type": "client_credentials",
+                    "appkey": self._creds.app_key,
+                    "appsecret": self._creds.app_secret,
+                },
+            )
+        except httpx.HTTPError as e:
+            # 네트워크 순간 끊김이 계정을 영구 degraded 로 만들면 안 된다.
+            raise KisAuthTransient(f"token issue transport failed: {e}") from e
+        if resp.status_code >= _HTTP_SERVER_ERROR:
+            # 5xx = 벤더 쪽 — 키가 틀린 게 아니다.
+            raise KisAuthTransient(
+                f"token issue failed: HTTP {resp.status_code} {resp.text[:200]}"
+            )
+        if resp.status_code != _HTTP_OK:
+            # 4xx 는 **영구**로 남긴다 — 키/시크릿 오설정이면 latch 가 맞는 대응이다.
             raise KisAuthError(
                 f"token issue failed: HTTP {resp.status_code} {resp.text[:200]}"
             )

@@ -33,6 +33,7 @@ import httpx
 from hoga.live.kis_errors import (
     KisApiError,
     KisAuthError,  # noqa: F401 — re-export facade (ADR-0050); get_approval_key 삭제 후 in-module 미사용
+    KisAuthTransient,  # noqa: F401 — re-export facade (ADR-0050); token provider 가 쓴다
     KisRateLimitError,
     KisTransportError,
 )
