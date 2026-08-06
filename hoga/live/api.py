@@ -1487,6 +1487,9 @@ class RankingsResponse(BaseModel):
     rows: list[RankingRowModel]
     market_open: bool
     fetched_at_ms: int
+    #: 이 순위를 뽑은 거래소(KRX/NXT/UN). NXT 는 유동성이 얕아 상위 종목이 KRX 와
+    #: 크게 다르다 — 화면이 **무엇을 보고 있는지** 알 수 있어야 한다.
+    venue: str = "KRX"
     source: Literal["kiwoom"] = "kiwoom"
     # 비치명 경고(스크리너 ScreenerResponse.warnings 와 같은 관용구). 현재 유일한
     # 값은 "etf_filter_unavailable" — exclude_etf 를 요청했으나 심볼 마스터가
@@ -2579,6 +2582,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         market: RankingMarket = Query("all"),
         direction: RankingDirection = Query("up"),
         exclude_etf: bool = Query(False),
+        # 순위 TR 은 `stex_tp`(거래소구분)로 시장을 가른다 — `mrkt_tp`(코스피/코스닥)와
+        # 직교하는 별개 축이다. 기본값을 두는 이유는 구 프론트가 이 값을 안 보내기
+        # 때문이고, 그 경우 예전과 같은 KRX 순위가 나온다.
+        venue: str = Query("KRX"),
     ) -> RankingsResponse:
         """시장 전체 순위 (키움 rkinfo 4종, kind 별 api-id 분기, TTL ~8s 캐시).
 
@@ -2598,7 +2605,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if kiwoom_rankings_fetcher_instance is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom credentials not configured"})
         try:
-            snap = await kiwoom_rankings_fetcher_instance.get(kind, market, direction)
+            snap = await kiwoom_rankings_fetcher_instance.get(kind, market, direction, venue)
         except KiwoomRankingsError as e:
             raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_API_ERROR, "message": str(e)}) from e
         except httpx.HTTPError as e:
@@ -2624,6 +2631,9 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             ],
             market_open=snap.market_open,
             fetched_at_ms=snap.fetched_at_ms,
+            # 요청 venue 가 아니라 **스냅샷이 들고 있는 값**을 되싣는다 — 둘이 갈릴
+            # 여지를 남기지 않는다(캐시 히트가 다른 venue 를 줬다면 여기서 드러난다).
+            venue=snap.venue,
             warnings=warnings,
         )
 

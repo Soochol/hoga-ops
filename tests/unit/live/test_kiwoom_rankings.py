@@ -377,3 +377,63 @@ def test_rankings_route_503_without_credentials(monkeypatch, tmp_path, _hermetic
 def test_rankings_route_422_on_bad_kind(monkeypatch, tmp_path, _hermetic_kiwoom_env):
     r = _route_client(tmp_path).get("/api/live/rankings", params={"kind": "bogus"})
     assert r.status_code == 422
+
+
+# --- venue (거래소구분 stex_tp) — ADR-0140 -----------------------------------
+
+
+def test_stex_tp_follows_venue():
+    """`stex_tp` 는 벤더가 세 값을 지원한다 — `1`=KRX · `2`=NXT · `3`=통합.
+
+    ⚠ 예전엔 `"1"` 하드코딩이었고 근거가 *"기존 캡처가 KRX 기준"* 이었다. 그건
+    **venue 축이 생기기 전** 이야기라 더는 유효하지 않다.
+
+    `mrkt_tp`(코스피/코스닥)와 **직교하는 별개 축**이라는 것도 함께 못박는다 —
+    한쪽을 바꿔도 다른 쪽이 안 흔들려야 한다.
+    """
+    for venue, expected in (("KRX", "1"), ("NXT", "2"), ("UN", "3")):
+        for kind in ("change", "surge", "volume", "value"):
+            body = _build_body(kind, "kosdaq", "up", venue)
+            assert body["stex_tp"] == expected, f"{kind}/{venue}"
+            assert body["mrkt_tp"] == "101", "시장 축이 거래소 축에 흔들렸다"
+
+
+def test_unknown_venue_falls_back_to_krx():
+    """모르는 venue 는 **기존 동작**(KRX)으로 떨어진다."""
+    assert _build_body("change", "all", "up", "???")["stex_tp"] == "1"
+
+
+def test_cache_key_includes_venue():
+    """⚠ 회귀 가드 — venue 가 캐시 키에 없으면 NXT 요청이 TTL(30s) 안에서 **KRX 순위**를
+    그대로 받는다. 값이 그럴듯해 화면에서 안 드러나는 종류의 실패다."""
+    import asyncio
+
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json as _json
+        seen.append(_json.loads(request.content)["stex_tp"])
+        return httpx.Response(200, json={"return_code": 0, "pred_pre_flu_rt_upper": []})
+
+    f = _fetcher(handler)
+
+    async def go():
+        a = await f.get("change", "all", "up", "KRX")
+        b = await f.get("change", "all", "up", "NXT")
+        return a, b
+
+    a, b = asyncio.run(go())
+
+    assert seen == ["1", "2"], f"두 번째 요청이 캐시에 먹혔다: {seen}"
+    assert (a.venue, b.venue) == ("KRX", "NXT")
+
+
+def test_snapshot_echoes_the_venue_it_used():
+    """스냅샷이 자기 venue 를 들고 있어야 라우트가 **받은 것**을 되실을 수 있다."""
+    import asyncio
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"return_code": 0, "pred_pre_flu_rt_upper": []})
+
+    snap = asyncio.run(_fetcher(handler).get("change", "all", "up", "UN"))
+    assert snap.venue == "UN"

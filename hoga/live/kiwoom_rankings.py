@@ -62,7 +62,11 @@ Direction = Literal["up", "down"]
 # 실콜로 zero-pad 여부 최종확정 필요(research §검증 필요 1).
 _MARKET_CODE: dict[Market, str] = {"all": "000", "kospi": "001", "kosdaq": "101"}
 
-_STEX_KRX = "1"  # 거래소구분: KRX 고정(기존 캡처 기준)
+#: 거래소구분 `stex_tp` — 벤더가 세 값을 지원한다(스펙: docs/research/
+#: 2026-07-22-kiwoom-ranking-tr-spec.md §26). 예전엔 `"1"`(KRX) 하드코딩이었고
+#: 근거가 *"기존 캡처가 KRX 기준"* 이었는데, 그건 **venue 축이 생기기 전** 이야기라
+#: 더는 유효하지 않다(ADR-0140).
+_STEX_BY_VENUE: dict[str, str] = {"KRX": "1", "NXT": "2", "UN": "3"}
 
 
 class KiwoomRankingsError(RuntimeError):
@@ -89,6 +93,10 @@ class RankingSnapshot:
     rows: tuple[RankingRow, ...]
     market_open: bool
     fetched_at_ms: int
+    #: 이 순위를 뽑은 거래소. 응답에 되싣어 프론트가 **받은 것이 무엇인지** 알게 한다
+    #: — 요청 venue 를 그대로 믿으면 폴백이 생겼을 때 조용히 어긋난다.
+    #: 기본값이라 맨 끝이다(dataclass 는 기본값 뒤에 비기본값을 못 둔다).
+    venue: str = "KRX"
 
 
 @dataclass(frozen=True)
@@ -159,9 +167,16 @@ def parse_rankings(kind: RankingKind, body: dict) -> tuple[RankingRow, ...]:
     return tuple(rows)
 
 
-def _build_body(kind: RankingKind, market: Market, direction: Direction) -> dict[str, str]:
-    """kind 별 요청 body. 조건 파라미터는 전체(0) 기본값 — 필터는 mrkt_tp 만."""
+def _build_body(
+    kind: RankingKind, market: Market, direction: Direction, venue: str = "KRX",
+) -> dict[str, str]:
+    """kind 별 요청 body. 조건 파라미터는 전체(0) 기본값 — 필터는 mrkt_tp·stex_tp.
+
+    `mrkt_tp`(코스피/코스닥)와 `stex_tp`(KRX/NXT/통합)는 **다른 축**이다 — 둘 다
+    필터이고 서로 직교한다. 모르는 venue 는 KRX 로 떨어진다(기존 동작 보존).
+    """
     mrkt = _MARKET_CODE[market]
+    stex = _STEX_BY_VENUE.get(venue, "1")
     if kind == "change":  # ka10027 전일대비등락률상위
         return {
             "mrkt_tp": mrkt,
@@ -172,7 +187,7 @@ def _build_body(kind: RankingKind, market: Market, direction: Direction) -> dict
             "updown_incls": "1",
             "pric_cnd": "0",
             "trde_prica_cnd": "0",
-            "stex_tp": _STEX_KRX,
+            "stex_tp": stex,
         }
     if kind == "surge":  # ka10023 거래량급증
         return {
@@ -183,7 +198,7 @@ def _build_body(kind: RankingKind, market: Market, direction: Direction) -> dict
             "trde_qty_tp": "0",
             "stk_cnd": "0",
             "pric_tp": "0",
-            "stex_tp": _STEX_KRX,
+            "stex_tp": stex,
         }
     if kind == "volume":  # ka10030 당일거래량상위
         return {
@@ -195,13 +210,13 @@ def _build_body(kind: RankingKind, market: Market, direction: Direction) -> dict
             "pric_tp": "0",
             "trde_prica_tp": "0",
             "mrkt_open_tp": "0",
-            "stex_tp": _STEX_KRX,
+            "stex_tp": stex,
         }
     # value — ka10032 거래대금상위 (정렬 파라미터 없음)
     return {
         "mrkt_tp": mrkt,
         "mang_stk_incls": "0",
-        "stex_tp": _STEX_KRX,
+        "stex_tp": stex,
     }
 
 
@@ -240,7 +255,7 @@ class KiwoomRankingsFetcher:
         self._provider = token_provider
         self._client = httpx.Client(base_url=base_url, transport=_transport, timeout=10.0)
         # (kind, market, direction) → (snapshot, cached_at_ms)
-        self._cache: dict[tuple[str, str, str], tuple[RankingSnapshot, int]] = {}
+        self._cache: dict[tuple[str, str, str, str], tuple[RankingSnapshot, int]] = {}
         self._flight = SingleFlight()
         self._now = _now  # 테스트 주입용 시각 소스
 
@@ -251,10 +266,13 @@ class KiwoomRankingsFetcher:
         return self._now() if self._now is not None else datetime.now(_KST)
 
     async def get(
-        self, kind: RankingKind, market: Market, direction: Direction
+        self, kind: RankingKind, market: Market, direction: Direction,
+        venue: str = "KRX",
     ) -> RankingSnapshot:
         # direction 은 change 에서만 의미 — 캐시 키를 갈라 상승/하락을 각각 캐시한다.
-        key = (kind, market, direction if kind == "change" else "-")
+        # ⚠ venue 도 키에 있어야 한다. 없으면 NXT 요청이 30초 TTL 안에서 KRX 순위를
+        # 그대로 받는다 — 값이 그럴듯해 화면에서 안 드러난다.
+        key = (kind, market, direction if kind == "change" else "-", venue)
         now_ms = int(time.time() * 1000)
         hit = self._cache.get(key)
         if hit is not None and now_ms - hit[1] < _CACHE_TTL_MS:
@@ -271,26 +289,27 @@ class KiwoomRankingsFetcher:
                 prev_rows = hit[0].rows if hit is not None else ()
                 snap = RankingSnapshot(
                     kind=kind, market=market, direction=direction,
-                    rows=prev_rows, market_open=False, fetched_at_ms=now_ms,
+                    rows=prev_rows, market_open=False, fetched_at_ms=now_ms, venue=venue,
                 )
                 self._cache[key] = (snap, now_ms)
                 return snap
-            rows = await asyncio.to_thread(self._fetch_sync, kind, market, direction)
+            rows = await asyncio.to_thread(self._fetch_sync, kind, market, direction, venue)
             snap = RankingSnapshot(
                 kind=kind, market=market, direction=direction,
-                rows=rows, market_open=market_open, fetched_at_ms=now_ms,
+                rows=rows, market_open=market_open, fetched_at_ms=now_ms, venue=venue,
             )
             self._cache[key] = (snap, now_ms)
             return snap
 
     def _fetch_sync(
-        self, kind: RankingKind, market: Market, direction: Direction
+        self, kind: RankingKind, market: Market, direction: Direction,
+        venue: str = "KRX",
     ) -> tuple[RankingRow, ...]:
         spec = _KIND_SPEC[kind]
         token = self._provider.get_token()
         resp = self._client.post(
             _RKINFO_PATH,
-            json=_build_body(kind, market, direction),
+            json=_build_body(kind, market, direction, venue),
             headers={
                 "Content-Type": "application/json;charset=UTF-8",
                 "authorization": f"Bearer {token}",
