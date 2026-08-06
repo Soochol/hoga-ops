@@ -21,7 +21,6 @@ import {
 import * as client from './client';
 import type { RangeBundle } from './types';
 import type { RangeBundleRequestInput } from './rangeRequest';
-import { useSourcePreferenceStore } from '../state/sourcePreference';
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -80,7 +79,7 @@ describe('buildRangeBundleRequest', () => {
       timeframe: '1m',
       priceRange: { min: 100, max: 200 },
       todayKst: '20260512',
-      sourcePref: 'kis_ws_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: {
         mode: 'full',
@@ -99,7 +98,7 @@ describe('buildRangeBundleRequest', () => {
         + '&volume_distribution_bins=12'
         + '&volume_distribution_price_min=69900&volume_distribution_price_max=70100'
         + '&trade_volume_poc_bins=12'
-        + '&source_pref=kis_ws_first&mode=full&venue=KRX',
+        + '&source_pref=kiwoom_live&mode=full&venue=KRX',
     );
     expect(request.queryKey).toEqual([
       'range',
@@ -115,7 +114,7 @@ describe('buildRangeBundleRequest', () => {
       69900,
       70100,
       12,
-      'kis_ws_first',
+      'kiwoom_live',
       'full',
       null,
       null,
@@ -134,14 +133,14 @@ describe('buildRangeBundleRequest', () => {
       from: '20260512',
       to: '20260512',
       timeframe: '1m',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: { mode: 'hoga' },
     });
 
     expect(request.url).toBe(
       '/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000'
-        + '&source_pref=hogaplay_first&mode=hoga&venue=KRX',
+        + '&source_pref=kiwoom_live&mode=hoga&venue=KRX',
     );
     expect(request.queryKey[14]).toBe('hoga');
     // venue 가 키의 맨 끝이라 옵션 게이트는 뒤에서 둘째다(ADR-0140).
@@ -154,14 +153,14 @@ describe('buildRangeBundleRequest', () => {
       from: '20260512',
       to: '20260512',
       timeframe: '1m',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: { mode: 'sidecar' },
     });
 
     expect(request.url).toBe(
       '/api/range?code=005930&from=20260512&to=20260512'
-        + '&bucket_ms=60000&source_pref=hogaplay_first&mode=sidecar&venue=KRX',
+        + '&bucket_ms=60000&source_pref=kiwoom_live&mode=sidecar&venue=KRX',
     );
     expect(request.queryKey[14]).toBe('sidecar');
     // venue 가 키의 맨 끝이라 옵션 게이트는 뒤에서 둘째다(ADR-0140).
@@ -174,7 +173,7 @@ describe('buildRangeBundleRequest', () => {
       from: '20260512',
       to: '20260512',
       timeframe: '1m',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: {
         mode: 'sidecar',
@@ -203,7 +202,7 @@ describe('buildRangeBundleRequest', () => {
       from: '20260625',
       to: '20260705',
       timeframe: '3m',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: { mode: 'candles' },
     });
@@ -211,7 +210,7 @@ describe('buildRangeBundleRequest', () => {
     expect(request.enabled).toBe(true);
     expect(request.url).toBe(
       '/api/range?code=005930&from=20260625&to=20260705'
-        + '&bucket_ms=180000&source_pref=hogaplay_first&mode=candles&venue=KRX',
+        + '&bucket_ms=180000&source_pref=kiwoom_live&mode=candles&venue=KRX',
     );
     expect(request.queryKey[14]).toBe('candles');
     // venue 가 키의 맨 끝이라 옵션 게이트는 뒤에서 둘째다(ADR-0140).
@@ -224,7 +223,7 @@ describe('buildRangeBundleRequest', () => {
       from: '20260625',
       to: '20260625',
       timeframe: '1m',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: {
         mode: 'sidecar',
@@ -242,7 +241,7 @@ describe('buildRangeBundleRequest', () => {
       from: '20260512',
       to: '20260512',
       timeframe: '1m',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: { mode: 'full', brokerLateEntriesEnabled: false },
     });
@@ -257,12 +256,12 @@ describe('buildRangeBundleRequest', () => {
       from: '20260512',
       to: '20260512',
       timeframe: null,
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
     });
 
     expect(request.enabled).toBe(false);
-    expect(request.url).toBe('/api/range?from=20260512&to=20260512&source_pref=hogaplay_first&venue=KRX');
+    expect(request.url).toBe('/api/range?from=20260512&to=20260512&source_pref=kiwoom_live&venue=KRX');
     expect(request.queryKey).toEqual([
       'range',
       null,
@@ -277,7 +276,7 @@ describe('buildRangeBundleRequest', () => {
       undefined,
       undefined,
       null,
-      'hogaplay_first',
+      'kiwoom_live',
       null,
       null,
       null,
@@ -296,14 +295,14 @@ describe('buildRangeBundleRequest', () => {
       from: '20260512',
       to: '20260512',
       timeframe: '1m',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
     });
 
     expect(request.enabled).toBe(false);
     expect(request.url).toBe(
       '/api/range?code=005930&from=20260512&to=20260512'
-        + '&bucket_ms=60000&source_pref=hogaplay_first&venue=KRX',
+        + '&bucket_ms=60000&source_pref=kiwoom_live&venue=KRX',
     );
     expect(request.queryKey[14]).toBe(null);
     // venue 가 키의 맨 끝이라 옵션 게이트는 뒤에서 둘째다(ADR-0140).
@@ -325,7 +324,7 @@ describe('planSidecarRangeDelta', () => {
     to: '20260706',
     timeframe: '1m',
     todayKst: '20260706',
-    sourcePref: 'hogaplay_first' as const,
+    sourcePref: 'kiwoom_live' as const,
     venue: 'KRX' as const,
     options: {
       mode: 'sidecar' as const,
@@ -347,7 +346,7 @@ describe('planSidecarRangeDelta', () => {
       to: '20260706',
       timeframe: '1m',
       todayKst: '20260706',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: {
         mode: 'sidecar',
@@ -418,7 +417,7 @@ describe('planSidecarRangeDelta', () => {
       to: '20260706',
       timeframe: '1m',
       todayKst: '20260706',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: { mode: 'sidecar', volumeDistributionBins: 10 },
     }, previous, planSidecarRangeDelta({
@@ -460,7 +459,7 @@ describe('planSidecarRangeDelta', () => {
       to: '20260707',
       timeframe: '1m',
       todayKst: '20260707',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: { mode: 'sidecar', volumeDistributionBins: 10 },
     }, previous, planSidecarRangeDelta({
@@ -485,7 +484,7 @@ describe('planSidecarRangeDelta', () => {
       to: '20260624',
       timeframe: '1m',
       todayKst: '20260706',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: {
         mode: 'sidecar',
@@ -499,12 +498,12 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.requestInput.to).toBe('20260624');
   });
 
-  it('seeds only the most-recent chunk when source preference changed', () => {
+  it('seeds only the most-recent chunk when venue changed', () => {
+    // 소스 선호 옵션 폐지(2026-08-07) 후 identity 를 바꾸는 사용자 축은 venue 다.
     const plan = planSidecarRangeDelta({
       ...previousRequest,
       from: '20260624',
-      sourcePref: 'kis_ws_first',
-    venue: 'KRX',
+      venue: 'NXT',
     }, previous, previousIdentity);
 
     expect(plan.enabled).toBe(true);
@@ -618,7 +617,7 @@ describe('planHogaRangeDelta', () => {
     to: '20260706',
     timeframe: '1m',
     todayKst: '20260706',
-    sourcePref: 'hogaplay_first' as const,
+    sourcePref: 'kiwoom_live' as const,
     venue: 'KRX' as const,
     options: { mode: 'hoga' as const },
   };
@@ -665,11 +664,11 @@ describe('planHogaRangeDelta', () => {
   });
 
   it('seeds only the most-recent chunk when hoga identity changes', () => {
+    // identity 축은 venue 다 — 소스 선호 옵션 폐지(2026-08-07).
     const plan = planHogaRangeDelta({
       ...previousRequest,
       from: '20260624',
-      sourcePref: 'kis_ws_first',
-    venue: 'KRX',
+      venue: 'NXT',
     }, previous, previousIdentity);
 
     expect(plan.enabled).toBe(true);
@@ -910,7 +909,7 @@ describe('rangeBundleQueryOptions', () => {
       to: '20260618',
       timeframe: '5m',
       todayKst: null,
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: {
         mode: 'full',
@@ -935,7 +934,7 @@ describe('rangeBundleQueryOptions', () => {
       undefined,
       undefined,
       12,
-      'hogaplay_first',
+      'kiwoom_live',
       'full',
       null,
       null,
@@ -951,7 +950,7 @@ describe('rangeBundleQueryOptions', () => {
     const queryFn = options.queryFn as (context: { signal: AbortSignal }) => Promise<RangeBundle>;
     await queryFn({ signal });
     expect(spy).toHaveBeenCalledWith(
-      '/api/range?code=005930&from=20260616&to=20260618&bucket_ms=300000&volume_distribution_bins=12&trade_volume_poc_bins=12&source_pref=hogaplay_first&mode=full&venue=KRX',
+      '/api/range?code=005930&from=20260616&to=20260618&bucket_ms=300000&volume_distribution_bins=12&trade_volume_poc_bins=12&source_pref=kiwoom_live&mode=full&venue=KRX',
       { signal },
     );
   });
@@ -961,7 +960,6 @@ describe('useRange', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
-    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
   });
 
   it('disabled when any input is null', () => {
@@ -1020,7 +1018,6 @@ describe('useRange', () => {
 
   it('threads sourcePref into the query string and key', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({} as RangeBundle);
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
 
     renderHook(
       () => useRange('005930', '20260520', '20260520', '1m', undefined, undefined, { mode: 'full' }),
@@ -1028,12 +1025,11 @@ describe('useRange', () => {
     );
     await waitFor(() => expect(client.apiCall).toHaveBeenCalled());
     const calledWith = (client.apiCall as ReturnType<typeof vi.spyOn>).mock.calls[0][0] as string;
-    expect(calledWith).toContain('source_pref=kis_ws_first');
+    expect(calledWith).toContain('source_pref=kiwoom_live');
   });
 
   it('allows a caller to override the global source preference for one range query', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({} as RangeBundle);
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
 
     renderHook(
       () => useRange(
@@ -1044,13 +1040,13 @@ describe('useRange', () => {
         undefined,
         undefined,
         { mode: 'full' },
-        'hogaplay_first',
+        'kiwoom_live',
       ),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(client.apiCall).toHaveBeenCalled());
     const calledWith = (client.apiCall as ReturnType<typeof vi.spyOn>).mock.calls[0][0] as string;
-    expect(calledWith).toContain('source_pref=hogaplay_first');
+    expect(calledWith).toContain('source_pref=kiwoom_live');
   });
 
   it('omits volume_distribution_bins when not requested', async () => {
@@ -1144,7 +1140,6 @@ describe('useRangeSidecarDelta', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
-    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
   });
 
   it('fetches only missing left sidecar dates and does not full-refetch after merge', async () => {
@@ -1174,7 +1169,7 @@ describe('useRangeSidecarDelta', () => {
           mode: 'sidecar',
           volumeDistributionBins: 10,
           volumeDistributionPriceRange: { min: 303000, max: 325000 },
-        }, 'hogaplay_first'),
+        }, 'kiwoom_live'),
       { wrapper, initialProps: { from: '20260629' } },
     );
 
@@ -1186,7 +1181,7 @@ describe('useRangeSidecarDelta', () => {
       '/api/range?code=005930&from=20260624&to=20260628&bucket_ms=60000'
         + '&volume_distribution_bins=10'
         + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
-        + '&source_pref=hogaplay_first&mode=sidecar&venue=KRX',
+        + '&source_pref=kiwoom_live&mode=sidecar&venue=KRX',
     );
     await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
     expect(result.current.data?.to_date).toBe('20260706');
@@ -1195,7 +1190,7 @@ describe('useRangeSidecarDelta', () => {
       '/api/range?code=005930&from=20260624&to=20260706&bucket_ms=60000'
         + '&volume_distribution_bins=10'
         + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
-        + '&source_pref=hogaplay_first&mode=sidecar&venue=KRX',
+        + '&source_pref=kiwoom_live&mode=sidecar&venue=KRX',
     );
   });
 
@@ -1220,7 +1215,7 @@ describe('useRangeSidecarDelta', () => {
         useRangeSidecarDelta('005930', '20260601', today, '1m', undefined, today, {
           mode: 'sidecar',
           volumeDistributionBins: 10,
-        }, 'hogaplay_first'),
+        }, 'kiwoom_live'),
       { wrapper },
     );
 
@@ -1269,7 +1264,7 @@ describe('useRangeSidecarDelta', () => {
     const options = { mode: 'sidecar' as const, volumeDistributionBins: 10 };
     const { result, rerender } = renderHook(
       ({ from }: { from: string }) =>
-        useRangeSidecarDelta('005930', from, today, '1m', undefined, today, options, 'hogaplay_first'),
+        useRangeSidecarDelta('005930', from, today, '1m', undefined, today, options, 'kiwoom_live'),
       { wrapper: makeWrapper(), initialProps: { from: '20260629' } },
     );
 
@@ -1307,11 +1302,11 @@ describe('useRangeSidecarDelta', () => {
     const options = { mode: 'sidecar' as const, volumeDistributionBins: 10 };
     const identity = planSidecarRangeDelta({
       code: '005930', from: '20260629', to: today, timeframe: '1m', todayKst: today,
-      sourcePref: 'hogaplay_first', venue: 'KRX', options,
+      sourcePref: 'kiwoom_live', venue: 'KRX', options,
     }).identity;
 
     const view = renderHook(
-      () => useRangeSidecarDelta('005930', '20260629', today, '1m', undefined, today, options, 'hogaplay_first'),
+      () => useRangeSidecarDelta('005930', '20260629', today, '1m', undefined, today, options, 'kiwoom_live'),
       { wrapper },
     );
     // 시드 [0630,0706] + 타일 [0629,0629] 워크백 → 딥 from_date 20260629.
@@ -1328,7 +1323,7 @@ describe('useRangeSidecarDelta', () => {
 
     // 리마운트: mergedRef 소실 → canonical O(1) 복원으로 즉시 딥, 통짜 재요청 없음.
     const view2 = renderHook(
-      () => useRangeSidecarDelta('005930', '20260629', today, '1m', undefined, today, options, 'hogaplay_first'),
+      () => useRangeSidecarDelta('005930', '20260629', today, '1m', undefined, today, options, 'kiwoom_live'),
       { wrapper },
     );
     await waitFor(() => expect(view2.result.current.data?.from_date).toBe('20260629'));
@@ -1347,7 +1342,7 @@ describe('useRangeSidecarDelta', () => {
     const options = { mode: 'sidecar' as const, volumeDistributionBins: 10 };
     const yesterdayIdentity = planSidecarRangeDelta({
       code: '005930', from: '20260620', to: '20260705', timeframe: '1m', todayKst: '20260705',
-      sourcePref: 'hogaplay_first', venue: 'KRX', options,
+      sourcePref: 'kiwoom_live', venue: 'KRX', options,
     }).identity;
     qc.setQueryData(mergedLiveRangeKey(yesterdayIdentity), {
       ...fakeBundle, code: '005930', from_date: '20260620', to_date: '20260705', bucket_ms: 60_000,
@@ -1361,7 +1356,7 @@ describe('useRangeSidecarDelta', () => {
     );
 
     renderHook(
-      () => useRangeSidecarDelta('005930', '20260620', '20260706', '1m', undefined, '20260706', options, 'hogaplay_first'),
+      () => useRangeSidecarDelta('005930', '20260620', '20260706', '1m', undefined, '20260706', options, 'kiwoom_live'),
       { wrapper },
     );
 
@@ -1384,7 +1379,7 @@ describe('useRangeSidecarDelta', () => {
         useRangeSidecarDelta('005930', '20260601', '20260706', '1m', undefined, '20260706', {
           mode: 'sidecar',
           volumeDistributionBins: 10,
-        }, 'hogaplay_first'),
+        }, 'kiwoom_live'),
       { wrapper },
     );
 
@@ -1425,7 +1420,7 @@ describe('useRangeSidecarDelta', () => {
     const options = { mode: 'sidecar' as const, volumeDistributionBins: 10, volumeDistributionPriceRange: price };
     const { result, rerender } = renderHook(
       ({ from }: { from: string }) =>
-        useRangeSidecarDelta('005930', from, today, '1m', undefined, today, options, 'hogaplay_first'),
+        useRangeSidecarDelta('005930', from, today, '1m', undefined, today, options, 'kiwoom_live'),
       { wrapper: makeWrapper(), initialProps: { from: '20260629' } },
     );
 
@@ -1471,7 +1466,7 @@ describe('useRangeSidecarDelta', () => {
       ({ from, price }: { from: string; price: { min: number; max: number } }) =>
         useRangeSidecarDelta('005930', from, today, '1m', undefined, today, {
           mode: 'sidecar', volumeDistributionBins: 10, volumeDistributionPriceRange: price,
-        }, 'hogaplay_first'),
+        }, 'kiwoom_live'),
       { wrapper: makeWrapper(), initialProps: { from: '20260629', price: P1 } },
     );
 
@@ -1526,7 +1521,7 @@ describe('useRangeSidecarDelta', () => {
     );
     const { result, rerender } = renderHook(
       ({ from }: { from: string }) =>
-        useRangeSidecarDelta('005930', from, '20260706', '1m', undefined, '20260706', options, 'hogaplay_first'),
+        useRangeSidecarDelta('005930', from, '20260706', '1m', undefined, '20260706', options, 'kiwoom_live'),
       { wrapper, initialProps: { from: '20260629' } },
     );
 
@@ -1539,7 +1534,7 @@ describe('useRangeSidecarDelta', () => {
       to: '20260628',
       timeframe: '1m',
       todayKst: '20260706',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options,
     });
@@ -1550,13 +1545,13 @@ describe('useRangeSidecarDelta', () => {
     const todaySidecarUrl = '/api/range?code=005930&from=20260706&to=20260706&bucket_ms=60000'
       + '&volume_distribution_bins=10'
       + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
-      + '&source_pref=hogaplay_first&mode=sidecar';
+      + '&source_pref=kiwoom_live&mode=sidecar';
     expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(todaySidecarUrl);
     expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(
       '/api/range?code=005930&from=20260624&to=20260706&bucket_ms=60000'
         + '&volume_distribution_bins=10'
         + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
-        + '&source_pref=hogaplay_first&mode=sidecar&venue=KRX',
+        + '&source_pref=kiwoom_live&mode=sidecar&venue=KRX',
     );
     expect(result.current.data?.volume_distributions.map((d) => d.date)).toEqual(['20260624', '20260629']);
   });
@@ -1589,7 +1584,7 @@ describe('useRangeSidecarDelta', () => {
       to: '20260706',
       timeframe: '1m',
       todayKst: '20260706',
-      sourcePref: 'hogaplay_first',
+      sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options,
     });
@@ -1602,7 +1597,7 @@ describe('useRangeSidecarDelta', () => {
 
     const { result } = renderHook(
       () =>
-        useRangeSidecarDelta('005930', '20260624', '20260706', '1m', undefined, '20260706', options, 'hogaplay_first'),
+        useRangeSidecarDelta('005930', '20260624', '20260706', '1m', undefined, '20260706', options, 'kiwoom_live'),
       { wrapper },
     );
 
@@ -1611,13 +1606,13 @@ describe('useRangeSidecarDelta', () => {
       '/api/range?code=005930&from=20260624&to=20260628&bucket_ms=60000'
         + '&volume_distribution_bins=10'
         + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
-        + '&source_pref=hogaplay_first&mode=sidecar&venue=KRX',
+        + '&source_pref=kiwoom_live&mode=sidecar&venue=KRX',
     );
     expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(
       '/api/range?code=005930&from=20260624&to=20260706&bucket_ms=60000'
         + '&volume_distribution_bins=10'
         + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
-        + '&source_pref=hogaplay_first&mode=sidecar&venue=KRX',
+        + '&source_pref=kiwoom_live&mode=sidecar&venue=KRX',
     );
     expect(result.current.data?.volume_distributions.map((d) => d.date)).toEqual(['20260624', '20260629']);
   });
@@ -1652,7 +1647,7 @@ describe('useRangeSidecarDelta', () => {
         useRangeSidecarDelta('005930', '20260629', to, '1m', undefined, to, {
           mode: 'sidecar',
           volumeDistributionBins: 10,
-        }, 'hogaplay_first'),
+        }, 'kiwoom_live'),
       { wrapper, initialProps: { to: '20260706' } },
     );
 
@@ -1673,7 +1668,6 @@ describe('useRangeHogaDelta', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
-    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
   });
 
   it('fetches only missing left hoga dates without immediate today refresh after merge', async () => {
@@ -1707,7 +1701,7 @@ describe('useRangeHogaDelta', () => {
     );
     const { result, rerender } = renderHook(
       ({ from }: { from: string }) =>
-        useRangeHogaDelta('005930', from, '20260706', '1m', undefined, '20260706', options, 'hogaplay_first'),
+        useRangeHogaDelta('005930', from, '20260706', '1m', undefined, '20260706', options, 'kiwoom_live'),
       { wrapper, initialProps: { from: '20260629' } },
     );
 
@@ -1717,14 +1711,14 @@ describe('useRangeHogaDelta', () => {
     await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
     expect(spy.mock.calls.map(([url]) => String(url))).toContain(
       '/api/range?code=005930&from=20260624&to=20260628&bucket_ms=60000'
-        + '&source_pref=hogaplay_first&mode=hoga&venue=KRX',
+        + '&source_pref=kiwoom_live&mode=hoga&venue=KRX',
     );
     const todayHogaUrl = '/api/range?code=005930&from=20260706&to=20260706&bucket_ms=60000'
-      + '&source_pref=hogaplay_first&mode=hoga';
+      + '&source_pref=kiwoom_live&mode=hoga';
     expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(todayHogaUrl);
     expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(
       '/api/range?code=005930&from=20260624&to=20260706&bucket_ms=60000'
-        + '&source_pref=hogaplay_first&mode=hoga&venue=KRX',
+        + '&source_pref=kiwoom_live&mode=hoga&venue=KRX',
     );
     expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([1, 2]);
   });
@@ -1760,7 +1754,7 @@ describe('useRangeHogaDelta', () => {
     const wrapper = makeWrapper();
     const { result, rerender } = renderHook(
       ({ from }: { from: string }) =>
-        useRangeHogaDelta('005930', from, '20260706', '1m', undefined, '20260706', { mode: 'hoga' }, 'hogaplay_first'),
+        useRangeHogaDelta('005930', from, '20260706', '1m', undefined, '20260706', { mode: 'hoga' }, 'kiwoom_live'),
       { wrapper, initialProps: { from: '20260629' } },
     );
 
@@ -1849,7 +1843,7 @@ describe('rangePlaceholderData', () => {
     undefined,
     undefined,
     null,
-    'hogaplay_first',
+    'kiwoom_live',
     'full',
     null,
     null,
@@ -1876,7 +1870,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       undefined,
       null,
-      'hogaplay_first',
+      'kiwoom_live',
       'full',
       null,
       null,
@@ -1906,7 +1900,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       undefined,
       null,
-      'hogaplay_first',
+      'kiwoom_live',
       'full',
       null,
       null,
@@ -1936,7 +1930,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       undefined,
       null,
-      'hogaplay_first',
+      'kiwoom_live',
       'sidecar',
       1_772_000_001_000,
       null,
@@ -1961,7 +1955,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       undefined,
       null,
-      'hogaplay_first',
+      'kiwoom_live',
       'sidecar',
       null,
       null,
@@ -1981,7 +1975,6 @@ describe('좌측 팬 중 range 캐시 사본 누적', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
-    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
   });
 
   it('팬 스텝마다 재발행해도 지배당한 사본은 남지 않고 최심 복원원은 유지된다', async () => {
@@ -2010,7 +2003,7 @@ describe('좌측 팬 중 range 캐시 사본 누적', () => {
         useRangeSidecarDelta('005930', from, today, '1m', undefined, today, {
           mode: 'sidecar',
           volumeDistributionBins: 10,
-        }, 'hogaplay_first'),
+        }, 'kiwoom_live'),
       { wrapper, initialProps: { from: steps[0] } },
     );
 

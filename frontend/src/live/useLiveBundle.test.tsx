@@ -11,7 +11,6 @@ import {
 import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { LIVE_SETTINGS_KEY, type LiveSettings } from '../api/liveSettings';
 import { useLivePageStore } from '../state/livePage';
-import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { type RestFailureKind, useRestBypassModeStore } from '../state/restBypassMode';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { createVirtualAxis } from '../util/virtualAxis';
@@ -675,7 +674,6 @@ describe('useLiveBundle', () => {
       programTradeEnabled: true,
       brokerLateEntryEnabled: false,
     });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
     useRestBypassModeStore.setState({
       lastFailureAtMs: null,
       lastToastAtMs: null,
@@ -1092,7 +1090,6 @@ describe('useLiveBundle', () => {
   it('uses disk range candles for minute when KIS REST bypass is enabled', () => {
     candlesMock.candles = [];
     // store sourcePref가 무엇이든 캔들 쿼리는 'hogaplay_first' 고정(아래 검증).
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
 
     const result = renderUseLiveBundle({
       timeframe: '1m',
@@ -1925,7 +1922,6 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       candleTimeframe: '1m',
       historicalFromDate: null,
     });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
   });
 
   it('D timeframe calls daily hook with non-null code, minute hook with null code', () => {
@@ -2122,7 +2118,6 @@ describe('useLiveBundle extension atomization gate', () => {
 	    rangeMock.isFetching = false;
 	    rangeMock.isHistoricalDeltaFetching = false;
 	    useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
   });
 
   const liveWithOb = (tMs: number): LiveSeriesData => ({
@@ -2269,7 +2264,6 @@ describe('useLiveBundle isExtending', () => {
       candleTimeframe: '1m',
       historicalFromDate: null,
     });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
   });
 
   it('is true during a historical extension (placeholderData + isFetching, historicalFromDate set)', () => {

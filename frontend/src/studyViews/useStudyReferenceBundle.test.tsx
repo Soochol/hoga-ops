@@ -23,7 +23,6 @@ vi.mock('./studyReferenceQueries', () => ({
 
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { useLiveVenueStore } from '../state/liveVenue';
-import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
 
 const save: StudyViewReference = {
@@ -132,7 +131,6 @@ describe('useStudyReferenceBundle', () => {
     screenerDailyFixture = [];
     useQueryMock.mockImplementation(queryResultFor);
     useLiveVenueStore.setState({ venue: 'UN' });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
     // 쿼리 키를 정하는 지표는 차트 창 소유다(#904) — 전역이 아니라 창 버킷.
     const chartId = useStudyWorkspaceStore.getState().windows.find((w) => w.kind === 'chart')!.id;
     useStudyWorkspaceStore.getState().resetChartIndicators(chartId);
@@ -152,7 +150,7 @@ describe('useStudyReferenceBundle', () => {
     // settings 에 venue 가 실린다(ADR-0140 §7) — 캔들 쿼리만 KRX 고정이고
     // 그건 studyReferenceQueries 안에서 처리한다(디스크 캔들 소스는 venue 축이 없다).
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(save, {
-      sourcePref: 'kis_ws_first',
+      sourcePref: 'kiwoom_live',
       venue: 'UN',
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,

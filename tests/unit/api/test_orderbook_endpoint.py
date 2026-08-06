@@ -52,13 +52,14 @@ def test_orderbook_source_pref_default_is_hogaplay(seed_orderbook):
     assert r.json()["source"] == "hogaplay"
 
 
-def test_orderbook_source_pref_invalid_returns_422(seed_orderbook):
+def test_orderbook_unknown_source_pref_is_accepted(seed_orderbook):
     client = seed_orderbook(date="20260528", code="005930", with_kiwoom_live=False)
     r = client.get("/api/orderbook", params={"venue": "KRX", 
         "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "garbage"
     })
-    assert r.status_code == 422
-    assert r.json()["detail"]["code"] == "invalid_source_pref"
+    # 소스 선호 옵션 폐지(2026-08-07) — 정책 문자열은 무시된다. 구 URL·저장된
+    # 설정이 도착해도 422 로 화면을 깨지 않고 단일 사다리로 조용히 수렴한다.
+    assert r.status_code == 200
 
 
 def test_orderbook_returns_empty_response_when_source_dir_missing(
@@ -78,7 +79,8 @@ def test_orderbook_returns_empty_response_when_source_dir_missing(
     body = r.json()
     assert body["snapshot"] is None
     assert body["available_from"] is None
-    assert body["source"] == "hogaplay"
+    # 사다리 첫 후보를 에코한다 — 옵션 폐지(2026-08-07) 후 항상 kiwoom_live 다.
+    assert body["source"] == "kiwoom_live"
 
 
 def test_orderbook_returns_empty_response_when_source_dir_missing_kiwoom_live_pref(

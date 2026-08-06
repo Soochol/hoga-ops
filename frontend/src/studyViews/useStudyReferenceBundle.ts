@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { useLiveVenueStore } from '../state/liveVenue';
-import { useSourcePreferenceStore } from '../state/sourcePreference';
+import { ORDERFLOW_SOURCE_PREF } from '../state/sourcePreference';
 import type { LiveDataWarning } from '../live/liveDataWarnings';
 import type { LiveEffectiveSession } from '../api/livePastCandles';
 import type { StudyViewReference } from '../api/studyViews';
@@ -42,7 +42,7 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
   // 아니라 그 소스의 커버 범위이고, 어느 날에 무엇이 있는지는 보관함의 시장 배지가
   // 말한다(같은 `expected_venues` 판정을 공유한다).
   const venue = useLiveVenueStore((s) => s.venue);
-  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
+  const sourcePref = ORDERFLOW_SOURCE_PREF;
   // 지표는 차트 창이 소유한다(#904) — 전역을 읽으면 차트가 그릴 지표와 여기서
   // 받아오는 데이터가 어긋난다.
   const {

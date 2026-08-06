@@ -42,21 +42,16 @@ def test_source_name_literal_includes_all_sources() -> None:
     assert set(get_args(SourceName)) == {"hogaplay", "kiwoom_live", "kis_api"}
 
 
-# ⚠ 정책 **키**는 그대로 둔다 — `chart.sourcePreference.v1` 로 저장된 사용자 설정이라
-# 이름을 바꾸면 마이그레이션이 필요하다. 가리키는 사다리에서만 kis_live 가 빠진다.
-@pytest.mark.parametrize(("policy", "expected"), [
-        ("hogaplay", ("hogaplay", "kiwoom_live", "kis_api")),
-        ("hogaplay_first", ("hogaplay", "kiwoom_live", "kis_api")),
-        ("kis_ws_first", ("kiwoom_live", "kis_api", "hogaplay")),
-        ("kiwoom_live", ("kiwoom_live", "kis_api", "hogaplay")),
-        ("kiwoom_ws_first", ("kiwoom_live", "kis_api", "hogaplay")),
-        ("kis_api", ("kis_api", "kiwoom_live", "hogaplay")),
-        ("kis_api_first", ("kis_api", "kiwoom_live", "hogaplay")),
-        ("completeness_first", ("kiwoom_live", "kis_api", "hogaplay")),
-    ],
-)
-def test_ordered_sources_maps_legacy_and_policy_names(policy, expected) -> None:
-    assert ordered_sources(policy) == expected
+# 소스 선호 옵션 폐지(2026-08-07) — 어떤 정책 문자열이 와도 **같은 사다리**다.
+# 구 정책 키를 그대로 넣는 것이 요점이다: 저장된 설정(`chart.sourcePreference.v1`)이나
+# 구 URL 이 도착해도 예외 없이 새 사다리로 수렴해야 한다(사용자 화면이 깨지지 않는다).
+@pytest.mark.parametrize("policy", [
+    "hogaplay", "hogaplay_first", "kis_ws_first", "kiwoom_live",
+    "kiwoom_ws_first", "kis_api", "kis_api_first", "completeness_first",
+    "", "kis_ws", "HOGAPLAY", "모르는정책",
+])
+def test_every_policy_string_maps_to_the_single_ladder(policy) -> None:
+    assert ordered_sources(policy) == ("kiwoom_live", "hogaplay", "kis_api")
 
 
 def test_resolve_source_uses_ordered_policy(tmp_path: Path) -> None:
@@ -65,9 +60,9 @@ def test_resolve_source_uses_ordered_policy(tmp_path: Path) -> None:
     _seed_source(tmp_path, "20260622", "005930", "kis_api")
     engine = _make_engine(tmp_path)
 
-    assert resolve_source(engine, "20260622", "005930", "hogaplay_first") == "hogaplay"
-    assert resolve_source(engine, "20260622", "005930", "kis_ws_first") == "kiwoom_live"
-    assert resolve_source(engine, "20260622", "005930", "kis_api_first") == "kis_api"
+    # 셋 다 있으면 **항상 kiwoom_live** — 정책 문자열이 승자를 못 바꾼다(옵션 폐지).
+    for pref in ("hogaplay_first", "kis_ws_first", "kis_api_first"):
+        assert resolve_source(engine, "20260622", "005930", pref) == "kiwoom_live"
 
 
 def test_resolve_source_honors_kiwoom_live(tmp_path: Path) -> None:
@@ -82,7 +77,6 @@ def test_resolve_source_honors_kiwoom_live(tmp_path: Path) -> None:
     assert result.path == tmp_path / "parquet" / "20260716" / "005930" / "kiwoom_live" / "KRX"
     assert result.classification is not None
     assert result.classification.state == DiskState.COMPLETE
-    # kiwoom_ws_first 정책은 명시적으로 kiwoom_live를 최우선.
     assert resolve_source(engine, "20260716", "005930", "kiwoom_ws_first") == "kiwoom_live"
 
 
@@ -122,7 +116,7 @@ def test_resolve_source_result_skips_invalid_preferred_source(tmp_path: Path) ->
 def test_resolve_source_returns_first_policy_source_when_none_exist(tmp_path: Path) -> None:
     engine = _make_engine(tmp_path)
 
-    assert resolve_source(engine, "20260622", "005930", "kis_api_first") == "kis_api"
+    assert resolve_source(engine, "20260622", "005930", "kis_api_first") == "kiwoom_live"
 
 
 def test_resolve_source_result_reports_missing_stock_date(tmp_path: Path) -> None:
@@ -130,7 +124,8 @@ def test_resolve_source_result_reports_missing_stock_date(tmp_path: Path) -> Non
 
     result = resolve_source_result(engine, "20260622", "005930", "kis_api_first")
 
-    assert result.source == "kis_api"
+    # 사다리 첫 후보를 에코한다 — 정책 문자열과 무관하게 kiwoom_live 다(옵션 폐지).
+    assert result.source == "kiwoom_live"
     assert result.path is None
     assert result.classification is None
     assert result.missing_reason == "stock_date_missing"
@@ -144,16 +139,10 @@ def test_resolve_source_result_preserves_legacy_flat_layout(tmp_path: Path) -> N
 
     result = resolve_source_result(engine, "20260622", "005930", "kis_api_first")
 
-    assert result.source == "kis_api"
+    assert result.source == "kiwoom_live"
     assert result.path == sd
     assert result.classification is not None
     assert result.classification.state == DiskState.COMPLETE
-
-
-@pytest.mark.parametrize("bad", ["", "kis_ws", "HOGAPLAY"])
-def test_ordered_sources_rejects_unknown_policy(bad: str) -> None:
-    with pytest.raises(ValueError, match="unknown source policy"):
-        ordered_sources(bad)
 
 
 # --- 캔들 차원 사다리 (ADR-0121) ------------------------------------------
@@ -239,15 +228,22 @@ def test_kiwoom_live_wins_candle_when_hogaplay_absent(tmp_path: Path) -> None:
     assert resolve_candle_source(engine, "20260723", "005930", "hogaplay_first") == "kiwoom_live"
 
 
-def test_hogaplay_still_beats_kiwoom_candle_when_both_present(tmp_path: Path) -> None:
-    """hogaplay 우선: hogaplay 틱 캔들(고화질)이 kiwoom_live 합성봉을 이긴다."""
+def test_kiwoom_candle_wins_over_hogaplay_regardless_of_policy(tmp_path: Path) -> None:
+    """캔들도 단일 사다리 — 정책 문자열이 승자를 못 바꾼다(2026-08-07 옵션 폐지).
+
+    **이 성질은 뒤집힌 것이다.** 예전엔 `hogaplay_first` 에서 hogaplay 틱 캔들(고화질)이
+    kiwoom_live 합성봉을 이겼다. 캔들만 다른 사다리를 쓰면 같은 화면에서 캔들과 호가가
+    서로 다른 업스트림이 되고, venue 를 바꿀 때 그 조합이 또 달라진다 — 옵션을 없앤
+    이유가 그대로 캔들에도 적용된다.
+    """
     _seed_source(tmp_path, "20260723", "005930", "hogaplay")
     _seed_candles(tmp_path, "20260723", "005930", "hogaplay")
     _seed_source(tmp_path, "20260723", "005930", "kiwoom_live")
     _seed_candles(tmp_path, "20260723", "005930", "kiwoom_live")
     engine = _make_engine(tmp_path)
 
-    assert resolve_candle_source(engine, "20260723", "005930", "hogaplay_first") == "hogaplay"
+    for pref in ("hogaplay_first", "kis_ws_first", "completeness_first"):
+        assert resolve_candle_source(engine, "20260723", "005930", pref) == "kiwoom_live"
 
 
 def test_ws_first_prefers_kiwoom_candle_over_hogaplay(tmp_path: Path) -> None:
@@ -297,16 +293,25 @@ def test_completeness_first_both_complete_prefers_ws(tmp_path: Path) -> None:
     assert resolve_source(engine, "20260622", "005930", "completeness_first") == "kiwoom_live"
 
 
-def test_completeness_first_picks_complete_hogaplay_over_partial_ws(tmp_path: Path) -> None:
+def test_partial_ws_still_wins_over_complete_hogaplay(tmp_path: Path) -> None:
+    """⚠ **의도된 트레이드오프** — 완결성 등급 정렬 폐지(2026-08-07).
+
+    예전엔 완결성이 1차 키라 부분 결손인 kiwoom_live 대신 완결한 hogaplay 를 골랐다.
+    그 방식은 KRX 에서만 소스가 갈리고(NXT 는 후보가 하나뿐) **어떤 날은 venue 대칭이고
+    어떤 날은 아니게** 만들었다 — 사용자는 그게 언제인지 알 수 없었다.
+
+    잃는 것은 실재한다(실측 2026-08-06: 키움 54분 vs hogaplay 401분인 날). 그래서 자동
+    교체 대신 **소스 배지**가 승자와 완결 상태를 보여 준다 — 무엇을 보고 있는지 알리는
+    쪽을 택했다.
+    """
     _seed_source(tmp_path, "20260622", "005930", "hogaplay")   # COMPLETE
     _seed_partial(tmp_path, "20260622", "005930", "kiwoom_live")  # SOURCE_PARTIAL
     engine = _make_engine(tmp_path)
 
-    # WS가 사다리 앞이지만 완결성 등급이 hogaplay보다 낮으므로 hogaplay 채택.
     result = resolve_source_result(engine, "20260622", "005930", "completeness_first")
-    assert result.source == "hogaplay"
+    assert result.source == "kiwoom_live"
     assert result.classification is not None
-    assert result.classification.state == DiskState.COMPLETE
+    assert result.classification.state == DiskState.SOURCE_PARTIAL
 
 
 def test_completeness_first_picks_complete_ws_over_partial_hogaplay(tmp_path: Path) -> None:

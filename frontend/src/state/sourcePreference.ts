@@ -1,69 +1,30 @@
-import { create } from 'zustand';
-import {
-  SOURCE_PREFERENCE_OPTIONS,
-  type SourcePreference,
-} from '../api/sourceCapabilities';
-
 /**
- * Orderflow Source Preference (ADR-0039) — global per-user setting that drives
- * source selection for hoga/orderbook/trade-derived read paths such as
- * `/api/range`, `/api/orderbook`, and `/api/brokers/series`.
+ * 소스 선호 — **옵션 폐지(2026-08-07)**. 남은 것은 상수 하나다.
  *
- * Storage key stays `chart.sourcePreference.v1` for backward compatibility.
+ * 예전엔 사용자가 설정에서 셋 중 하나를 골랐다(hogaplay 우선 · 실시간 WS 우선 ·
+ * 완결성 우선). 그 선택지가 **venue 비교를 깨뜨린다**는 것이 폐지 이유다: hogaplay 는
+ * KRX 만 덮으므로, 그것이 1순위인 정책에서는 KRX 만 hogaplay 로 계산되고 NXT·통합은
+ * 키움으로 계산된다 — 시장을 토글하면 소스도 함께 바뀌어, 값 차이가 시장 차이인지
+ * 업스트림 차이인지 알 수 없다. 실측(2026-08-06, 010060·475150·028670):
+ * `KRX=hogaplay  NXT=kiwoom_live  UN=kiwoom_live`.
+ *
+ * 정답이 하나뿐이면 그건 옵션이 아니라 동작이다. 백엔드 사다리는
+ * `hoga/api/sources.py::ORDERFLOW_LADDER` 하나로 고정됐고 **정책 문자열을 무시**한다.
+ *
+ * 값을 아직 보내는 이유: `source_pref` 는 URL·쿼리 키에 **위치로** 박혀 있어
+ * (`rangeRequest.ts` 의 인덱스 상수들) 빼면 그 인덱스가 전부 밀린다. 배관 제거는 별도
+ * 단계로 미루고, 지금은 값이 하나로 고정된 것으로 충분하다 — 백엔드가 무시하므로
+ * 무엇을 보내든 결과가 같다.
+ *
+ * 저장돼 있던 사용자 설정(`chart.sourcePreference.v1`)은 **읽지 않는다.** 대부분은 고른
+ * 적 없는 기본값이었고, 이관하면 새 정책이 아무에게도 적용되지 않는다.
  */
-export { SOURCE_PREFERENCE_OPTIONS as SOURCE_OPTIONS, type SourcePreference };
+export const ORDERFLOW_SOURCE_PREF = 'kiwoom_live';
 
-const STORAGE_KEY = 'chart.sourcePreference.v1';
-
-interface Store {
-  sourcePreference: SourcePreference;
-  setSourcePreference: (value: SourcePreference) => void;
-  hydrateFromStorage: () => void;
-}
-
-function readStorage(): { sourcePreference: SourcePreference } | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { sourcePreference: string };
-    const legacy: Record<string, SourcePreference> = {
-      hogaplay: 'hogaplay_first',
-      // 소스 이름을 정책으로 저장하던 시절의 값들. `kis_live` 는 소스에서 제거됐지만
-      // (ADR-0118 계층 삭제 · 잔존 데이터 아카이브) 저장된 값은 남아 있을 수 있어
-      // 이행 규칙을 **유지**한다 — 지우면 그 사용자가 기본값으로 튕긴다.
-      kis_live: 'kis_ws_first',
-      // kis_api_first는 옵션에서 제거(2026-07-17) — 저장된 옛 값은 기본값으로 강등.
-      kis_api_first: 'hogaplay_first',
-    };
-    const value = legacy[parsed.sourcePreference] ?? parsed.sourcePreference;
-    if (SOURCE_PREFERENCE_OPTIONS.includes(value as SourcePreference)) {
-      return { sourcePreference: value as SourcePreference };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function persist(state: { sourcePreference: SourcePreference }): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // localStorage may be unavailable — silent fallback.
-  }
-}
-
-export const useSourcePreferenceStore = create<Store>((set, _get) => ({
-  sourcePreference: readStorage()?.sourcePreference ?? 'hogaplay_first',
-
-  setSourcePreference: (value) => {
-    if (!SOURCE_PREFERENCE_OPTIONS.includes(value)) return;
-    set({ sourcePreference: value });
-    persist({ sourcePreference: value });
-  },
-
-  hydrateFromStorage: () => {
-    const stored = readStorage();
-    if (stored) set({ sourcePreference: stored.sourcePreference });
-  },
-}));
+/** 배관에 남은 타입.
+ *
+ * 리터럴 하나로 좁히지 **않는다** — 이 값은 이제 URL·쿼리 키의 자리를 채우는 문자열일
+ * 뿐이고 백엔드가 무시한다. 좁히면 그 자리 구조를 검증하는 테스트들이 임의 문자열을
+ * 못 쓰게 되는데, 그건 정책 의미가 아니라 **배관 모양**을 보는 테스트라 제약할 이유가
+ * 없다. 타입째 사라지는 것은 배관 제거 단계다. */
+export type SourcePreference = string;

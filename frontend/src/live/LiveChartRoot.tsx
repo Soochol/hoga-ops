@@ -23,6 +23,7 @@ import { FoldedPaneNotice } from './FoldedPaneNotice';
 import { HogaMissingNotice } from './HogaMissingNotice';
 import { deriveHogaMissingNotice } from './hogaMissingNotice';
 import { CandleEmptyState } from './CandleEmptyState';
+import { deriveSourceBadge } from './sourceBadge';
 import type { CandleEmptyState as CandleEmptyStateValue } from './candleEmptyState';
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
@@ -440,6 +441,9 @@ export function LiveChartRoot({
   // 읽히면 무엇을 고쳐야 할지 알 수 없고, 실제로 고칠 수 있는 쪽은 캔들이다
   // (벤더가 과거를 다시 준다). 호가 결손은 소급 복구가 안 되므로 나중에 말해도 된다.
   const showHogaMissing = !candleEmpty && hogaMissingText;
+  // 어느 소스로 그려졌나 — 기본(키움)만이면 침묵한다. 옵션을 없앤 대가로 주는
+  // "알 권리" 이고, 완결성 자동 교체를 폐지했기에 특히 필요하다(모듈 주석).
+  const sourceBadge = useMemo(() => deriveSourceBadge(cb?.segments), [cb?.segments]);
   // Load identity for the per-view chart remount and the reveal cover. The
   // theme segment forces a full chart rebuild if the theme ever changes while
   // this stays mounted — module-resolved series colors and axis-lifetime
@@ -1991,6 +1995,16 @@ export function LiveChartRoot({
       {/* 캔들이 아예 없을 때 — 빈 중앙을 쓴다(가릴 것이 없다). 행동 버튼이 있어야 해서
           호가 안내와 달리 포인터를 받는다(버튼만; 컨테이너는 통과시킨다). */}
       <CandleEmptyState state={candleEmpty ?? null} onRetry={onRetryCandles} />
+      {/* 소스 배지 — 같은 모서리 스택. 캔들이 없으면 말할 소스도 없다. */}
+      {!candleEmpty && (
+        <HogaMissingNotice
+          text={sourceBadge}
+          timeAxisVisible={timeAxisVisible}
+          stacked={foldedPaneCount > 0 || !!showHogaMissing}
+          testId="source-badge"
+          ariaLabel={`이 차트의 일부 구간은 ${sourceBadge} 데이터로 그려졌습니다.`}
+        />
+      )}
       {chart && cb && axis.segments.length > 0 && (
         <>
           {candleAlwaysOnTop && (

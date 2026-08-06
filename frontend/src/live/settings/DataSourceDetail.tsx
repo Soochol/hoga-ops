@@ -1,5 +1,4 @@
 import { type ReactNode } from 'react';
-import { SOURCE_OPTIONS } from '../../state/sourcePreference';
 import {
   LIVE_VENUE_LABELS,
   LIVE_VENUE_OPTIONS,
@@ -9,7 +8,6 @@ import {
 import { useLiveSettings, usePatchLiveSettings } from '../../api/liveSettings';
 import { useLiveStatus } from '../../api/liveStatus';
 import { SettingsRow, ToggleSwitch } from './SettingsRow';
-import SourcePreferenceRadio from './SourcePreferenceRadio';
 
 function RoleSourceGroup({
   title,
@@ -94,17 +92,11 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
             ))}
           </div>
         </RoleSourceGroup>
-        <RoleSourceGroup
-          title="호가·체결 데이터 기준"
-          description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다. 캔들과 독립된 소스입니다. 실시간 WS(호가·체결)는 키움 WS가 전담 수집합니다(ADR-0118). '완결성 우선'은 두 소스 중 그날 데이터가 더 완결한 쪽을 자동 선택하며, 완결도가 같으면 실시간 WS를 씁니다(주로 과거일에서 갈리고, 장중 당일은 아직 완결 전이라 WS로 수렴)."
-        >
-          {/* pb-2: 라디오가 다음 그룹 구분선에 붙지 않도록 하단 여백(거래소 그룹과 동일). */}
-          <div className="flex flex-col gap-2 pb-2">
-            {SOURCE_OPTIONS.map((opt) => (
-              <SourcePreferenceRadio key={opt} value={opt} />
-            ))}
-          </div>
-        </RoleSourceGroup>
+        {/* 「호가·체결 데이터 기준」 라디오 3종은 폐지됐다(2026-08-07).
+            셋 중 둘(hogaplay 우선·완결성 우선)이 venue 비교를 깨뜨렸다 — KRX 만
+            hogaplay 로, NXT·통합은 키움으로 계산돼 시장을 토글하면 소스도 함께
+            바뀌었다. 정답이 하나면 그건 옵션이 아니라 동작이라, 사다리를 키움
+            고정으로 두고 선택지를 없앴다(`sources.ORDERFLOW_LADDER`). */}
         <RoleSourceGroup
           title="스크리너 일봉 데이터"
           description="스크리너 갱신으로 저장되는 KIS 일봉 parquet입니다. 조건검색과 섹터 랭킹의 기준 데이터로 사용됩니다"

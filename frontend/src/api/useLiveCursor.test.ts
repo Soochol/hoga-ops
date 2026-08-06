@@ -17,7 +17,6 @@ import {
   useLiveBrokersAtCursor,
 } from './useLiveCursor';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
-import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 // Mock the low-level fetch helper used by useSpot fetchers.
@@ -41,7 +40,6 @@ import { apiGet } from './client';
 describe('useLiveOrderbookAtCursor', () => {
   beforeEach(() => {
     useLiveCursorStore.getState().resetCursor();
-    useSourcePreferenceStore.getState().setSourcePreference('hogaplay_first');
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
       if (url.includes('/api/orderbook')) {
@@ -90,7 +88,7 @@ describe('useLiveOrderbookAtCursor', () => {
     expect(url).toContain('date=20260528');
     expect(url).toContain('t=1779930000000');
     expect(url).toContain('bucket_ms=60000');
-    expect(url).toContain('source_pref=hogaplay_first');
+    expect(url).toContain('source_pref=kiwoom_live');
     // venue 는 백엔드 필수 파라미터다(ADR-0140) — 빠지면 라우트가 422 를 내고
     // 10호가 창이 호버 내내 "호가 데이터 없음" 으로 남는다. 실제로 그렇게
     // 깨져 있었다(이 훅만 venue 전파에서 누락).
@@ -124,24 +122,6 @@ describe('useLiveOrderbookAtCursor', () => {
     expect(apiGet).toHaveBeenCalledTimes(1);  // bucket-aligned: same key, LRU hit
   });
 
-  it('source_pref change reissues the query', async () => {
-    renderHook(() =>
-      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
-    );
-    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
-    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
-    (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
-      if (url.includes('/api/orderbook')) {
-        return { snapshot: { ts_ms: 2, asks: [], bids: [] }, available_from: null, source: 'kiwoom_live' };
-      }
-      throw new Error('unexpected url: ' + url);
-    });
-    act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_ws_first'));
-    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
-    const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
-    expect(url).toContain('source_pref=kis_ws_first');
-  });
-
   it('hover on past-date candle uses date derived from cursorMs (regression guard)', async () => {
     // Simulates hovering on a 2026-04-15 candle in scroll-back mode.
     // cursorMs = 2026-04-15 10:30:00 KST (UTC 01:30:00) = 1776216600000
@@ -169,7 +149,6 @@ describe('useLiveOrderbookAtCursor', () => {
 describe('useLiveBrokersAtCursor', () => {
   beforeEach(() => {
     useLiveCursorStore.getState().resetCursor();
-    useSourcePreferenceStore.getState().setSourcePreference('hogaplay_first');
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
       if (url.includes('/api/brokers/series')) {
@@ -202,14 +181,6 @@ describe('useLiveBrokersAtCursor', () => {
     // is whole-day; the sidebar projects per-row net at cursor client-side.
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_840_000));  // +14 min, same day
     expect(apiGet).toHaveBeenCalledTimes(1);
-  });
-
-  it('source_pref change reissues', async () => {
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }));
-    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
-    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
-    act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_ws_first'));
-    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
   });
 
   it('sends the required venue param and reissues when it changes', async () => {

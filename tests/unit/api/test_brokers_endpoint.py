@@ -46,10 +46,11 @@ def test_brokers_source_pref_default_is_hogaplay(seed_brokers):
     assert r.json()["source"] == "hogaplay"
 
 
-def test_brokers_source_pref_invalid_returns_422(seed_brokers):
+def test_brokers_unknown_source_pref_is_accepted(seed_brokers):
     client = seed_brokers(date="20260528", code="005930", with_kiwoom_live=False)
     r = client.get("/api/brokers/series", params={"venue": "KRX", 
         "code": "005930", "date": "20260528", "source_pref": "garbage",
     })
-    assert r.status_code == 422
-    assert r.json()["detail"]["code"] == "invalid_source_pref"
+    # 소스 선호 옵션 폐지(2026-08-07) — 정책 문자열은 무시된다. 구 URL·저장된
+    # 설정이 도착해도 422 로 화면을 깨지 않고 단일 사다리로 조용히 수렴한다.
+    assert r.status_code == 200
