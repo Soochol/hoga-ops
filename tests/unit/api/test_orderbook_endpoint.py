@@ -14,7 +14,7 @@ from hoga.api.models import OrderbookResponse
 def test_orderbook_response_has_source_field() -> None:
     resp = OrderbookResponse(available_from=None, snapshot=None, source="hogaplay")
     assert resp.source == "hogaplay"
-    assert OrderbookResponse(available_from=None, snapshot=None, source="kis_api").source == "kis_api"
+    assert OrderbookResponse(available_from=None, snapshot=None, source="hogaplay").source == "hogaplay"
     # Type narrowed to SourceName Literal — wrong values rejected by Pydantic
     from pydantic import ValidationError
     with pytest.raises(ValidationError):

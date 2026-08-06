@@ -59,7 +59,6 @@ from hoga.api.sources import (
     source_covers_venue,
 )
 from hoga.api.today_ttl_cache import TODAY_TTL
-from hoga.live.candle_repair import REPAIR_MARKER
 from hoga.live.program_trade_store import ProgramTradeStore, is_significant_gap_event
 from hoga.live.venue import Venue
 from hoga.tables import (
@@ -133,7 +132,6 @@ def _resolve_trade_indicator_source(
 ) -> str:
     """Pick the first policy source with price-level trades for trade indicators.
 
-    kis_api는 제외(2026-07-17): 캔들 전용 소스라 체결 지표의 폴백으로도 안 쓴다.
 
     ⚠ 후보를 **`source_covers_venue` 로 거른다**(#1133). 이 함수는 사다리
     (`resolve_source_result`)를 쓰지 않고 `ordered_sources` 를 직접 순회하므로,
@@ -149,8 +147,6 @@ def _resolve_trade_indicator_source(
     candidates.extend(source for source in ordered_sources(source_pref) if source not in candidates)
     candidates = [s for s in candidates if source_covers_venue(s, venue)]
     for source in candidates:
-        if source == "kis_api":
-            continue
         try:
             source_dir = engine.parquet_dir(date, code, source, venue=venue)
         except (FileNotFoundError, StockDateNotFound):
@@ -280,27 +276,6 @@ def build_candles_slice(
         r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
         for r in rows
     ]
-
-
-def _is_repaired_candle_partition(
-    engine: QueryEngine, date: str, code: str, winner_meta: dict,
-) -> bool:
-    """kis_api 캔들 파티션이 ADR-0109 복구본인가(≠ 레거시 rest30 캡처).
-
-    호가 승자가 kis_api면 이미 읽은 ``winner_meta``를 재사용하고, 승자가 갈렸을
-    때만(kiwoom_live가 호가로 이긴 날) kis_api meta를 추가로 읽는다.
-
-    venue="KRX" 고정 — `kis_api` 는 `SOURCE_VENUES` 상 KRX 만 덮는 소스다(캔들 전용
-    복구본). 그 소스에 venue 축이 없으므로 여기서 KRX 는 폴백이 아니라 사실이다.
-    """
-    if winner_meta.get("created_from") == REPAIR_MARKER:
-        return True
-    meta_path = engine.parquet_dir(date, code, "kis_api", venue="KRX") / "meta.json"
-    try:
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, ValueError, OSError):
-        return False
-    return meta.get("created_from") == REPAIR_MARKER
 
 
 def build_broker_late_entries_slice(
@@ -1503,7 +1478,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     depth_heatmap: list[DepthHeatmapPoint] = []
     depth_delta: list[DepthDeltaPoint] = []
     included_dates: list[str] = []
-    repaired_candle_dates: list[str] = []
 
     # Indicator cache (호가비·체결강도)의 과거/오늘 게이트(ADR-0043/0090)는 각
     # 슬라이스 빌더가 자가-해석한다(WS3) — 루프는 캐시 정책을 알 필요 없음.
@@ -1521,12 +1495,8 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         # `venue_unsupported` 도 아니고 **다른 시장 데이터가 그 시장 것처럼** 나간다.
         resolution = resolve_source_result(engine, d, code, source_pref, venue)
         source = resolution.source
-        # 2026-07-17 정책: kis_api는 캔들 전용(ADR-0109 복구 candles.parquet)이다 —
-        # 호가·체결 계열(호가비·체결강도·peak·vdist·거래원·depth heatmap)은 kis_api를
-        # 더는 서빙하지 않는다(rest30 캡처 제거와 동시 폐지; 캔들 사다리는 tail 유지).
-        # kis_api는 사다리 꼬리라 이 소스가 이겼다 = 다른 소스가 없다 → 차원 억제가
-        # 필터된 사다리와 동치다(kis_api_first는 프론트 옵션에서 제거됨).
-        orderflow_ok = source != "kis_api"
+        # `orderflow_ok` 게이트는 폐지됐다(2026-08-07) — 호가·체결을 서빙하지 않는
+        # 유일한 소스가 `kis_api` 였고 그 소스가 사라졌다. 남은 둘은 둘 다 서빙한다.
         if resolution.path is not None:
             try:
                 meta = json.loads((resolution.path / "meta.json").read_text(encoding="utf-8"))
@@ -1584,8 +1554,8 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             ))
 
         # 캔들 승자는 호가 승자와 독립이다(소스별 보유 차원이 다름 — ADR-0040).
-        # 실시간 승격본이 호가로 이겨도 캔들은 hogaplay 또는 ADR-0109
-        # 복구본(kis_api)에서 올 수 있다. 이 분리가 없으면 캔들 미보유 승자가 같은
+        # 실시간 승격본이 호가로 이겨도 캔들은 hogaplay 에서 올 수 있다.
+        # 이 분리가 없으면 캔들 미보유 승자가 같은
         # Stock-Date의 실제 캔들을 통째로 가린다.
         candle_source = resolve_candle_source(engine, d, code, source_pref, venue)
         needs_trade_price_range = volume_distribution_bins is not None or include_trade_volume_pocs
@@ -1633,7 +1603,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         qr_d = (
             QuoteRatio(bucket_ms=bucket_ms, points=[])
-            if sidecar_only or candles_only or not orderflow_ok
+            if sidecar_only or candles_only
             else build_quote_ratio_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
                 session_open_ms=norm_meta["regular_session_open_ms"],
@@ -1642,13 +1612,13 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         )
         fs_d = (
             FillStrength(bucket_ms=bucket_ms, points=[])
-            if sidecar_only or candles_only or not orderflow_ok
+            if sidecar_only or candles_only
             else build_fill_strength_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
             )
         )
         continuous_before_needed = (
-            needs_trade_price_range and not hoga_only and not candles_only and orderflow_ok
+            needs_trade_price_range and not hoga_only and not candles_only
         )
         continuous_before_ms = (
             _first_trailing_single_price_book_hhmmssms(
@@ -1662,7 +1632,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             if continuous_before_needed
             else None
         )
-        if (include_ask_peaks or include_bid_peaks) and orderflow_ok:
+        if include_ask_peaks or include_bid_peaks:
             ap_d, bp_d = build_ask_bid_peak_slices(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
                 session_open_ms=norm_meta["regular_session_open_ms"],
@@ -1684,7 +1654,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 price_range=price_range,
                 continuous_before_ms=continuous_before_ms,
             )
-            if include_trade_volume_pocs and orderflow_ok
+            if include_trade_volume_pocs
             else None
         )
         segments.append(RangeSegment(
@@ -1695,14 +1665,9 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             venue=venue,
         ))
         included_dates.append(d)
-        if candle_source == "kis_api" and _is_repaired_candle_partition(engine, d, code, meta):
-            # 이 거래일 캔들은 hogaplay 공백을 KIS 분봉으로 복구한 것 —
-            # 프론트 배지용(호가 기반 지표는 없음). hoga.live.candle_repair 참조.
-            # 캔들 승자 기준이라 호가를 kiwoom_live가 이긴 날도 정확히 잡힌다.
-            repaired_candle_dates.append(d)
         if (
             not hoga_only and not cutoff_sidecar and not candles_only
-            and broker_late_entries_enabled and orderflow_ok
+            and broker_late_entries_enabled
         ):
             broker_late_entries.extend(
                 build_broker_late_entries_slice(
@@ -1719,7 +1684,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         fill_pts.extend(fs_d.points)
         if (
             not hoga_only and not candles_only
-            and volume_distribution_bins is not None and orderflow_ok
+            and volume_distribution_bins is not None
         ):
             profile = build_volume_distribution_slice(
                 engine,
@@ -1743,7 +1708,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             bid_peaks.append(_without_all_peak_rankings(bp_d))
         if tvp_d is not None:
             trade_volume_pocs.append(tvp_d)
-        if include_depth_heatmap and orderflow_ok:
+        if include_depth_heatmap:
             depth_heatmap.extend(
                 build_depth_heatmap_slice(
                     engine,
@@ -1756,7 +1721,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     session_close_ms=meta["regular_session_close_ms"],
                 )
             )
-        if include_depth_delta and orderflow_ok:
+        if include_depth_delta:
             depth_delta.extend(
                 build_depth_delta_slice(
                     engine,
@@ -1823,5 +1788,4 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             if include_program_trade
             else ProgramTradeSeries(points=[])
         ),
-        repaired_candle_dates=repaired_candle_dates,
     )

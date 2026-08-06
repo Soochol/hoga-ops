@@ -1,6 +1,5 @@
 import type { SourceName } from './types';
 
-// SOURCE_CAPABILITIES 의 kis_api 항목은 유지 — 소스 유니온의 전수 표기를 여기서 소유한다.
 
 export interface SourceCapability {
   source: SourceName;
@@ -13,10 +12,6 @@ export const SOURCE_CAPABILITIES: Record<SourceName, SourceCapability> = {
   hogaplay: {
     source: 'hogaplay',
     label: 'hogaplay',
-  },
-  kis_api: {
-    source: 'kis_api',
-    label: 'KIS API',
   },
   kiwoom_live: {
     source: 'kiwoom_live',

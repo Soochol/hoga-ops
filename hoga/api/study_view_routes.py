@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -12,17 +11,15 @@ from hoga.api import study_views
 from hoga.api.models import (
     StudyViewListRow,
     StudyViewMetadataUpdateRequest,
-    StudyViewReference,
     StudyViewReferenceWriteRequest,
     StudyViewsFile,
 )
 
 log = logging.getLogger(__name__)
 
-# 저장뷰가 생성/갱신될 때 호출되는 훅. 앱은 여기에 KIS 분봉 캡처-공백 복구를
-# 건다(:mod:`hoga.live.candle_repair`). study_views 계층은 KIS를 몰라도 되도록
-# 콜백으로 주입한다 — 실패는 저장을 절대 깨지 않는다(격리 try/except).
-OnReferenceSaved = Callable[[StudyViewReference], None]
+# `OnReferenceSaved` 훅은 제거됐다(2026-08-07). 유일한 소비자가 저장뷰 캡처-공백
+# 캔들 복구였고, 그 기능을 `kis_api` 네임스페이스와 함께 접었다 — 복구본이 메우던
+# 것은 캔들뿐이고 캔들은 벤더가 과거를 다시 준다(`sources.SourceName` 주석).
 
 
 def _not_found(save_id: str) -> HTTPException:
@@ -35,19 +32,8 @@ def _not_found(save_id: str) -> HTTPException:
     )
 
 
-def build_router(
-    *, data_dir: Path, on_reference_saved: OnReferenceSaved | None = None
-) -> APIRouter:
+def build_router(*, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/study-views", tags=["study-views"])
-
-    def _notify_saved(save: StudyViewReference) -> None:
-        if on_reference_saved is None:
-            return
-        try:
-            on_reference_saved(save)
-        except Exception:
-            # 복구 스케줄 실패가 저장 응답을 깨면 안 된다 — 저장은 이미 성공했다.
-            log.exception("on_reference_saved hook failed id=%s", save.id)
 
     @router.get("/saves", response_model=StudyViewsFile)
     async def list_saves() -> StudyViewsFile:
@@ -62,7 +48,6 @@ def build_router(
             id=uuid.uuid4().hex,
             now_ms=now_ms,
         )
-        _notify_saved(save)
         return save
 
     @router.get("/saves/{save_id}", response_model=StudyViewListRow)
@@ -100,7 +85,6 @@ def build_router(
             )
         except study_views.StudyViewNotFoundError as e:
             raise _not_found(save_id) from e
-        _notify_saved(save)
         return save
 
     @router.delete("/saves/{save_id}", status_code=204)

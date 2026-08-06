@@ -22,17 +22,24 @@ if TYPE_CHECKING:
 # 소스에서 제거됐다(2026-08-06 · 잔존 데이터는 `_archive/kis_live/`). 종목 소유권 단일
 # 원칙(한 종목 실시간 소스 하나)이라 한 stock-date엔 실시간 승격본이 하나만 존재한다.
 #
-# kis_api(2026-07-17 정책): **캔들 전용 소스**다. rest30 REST 호가 캡처가 제거되면서
-# 호가·체결 계열(orderflow — /api/orderbook·/api/brokers/series·range의 호가/체결
-# 차원)은 kis_api를 더는 서빙하지 않는다(소비 지점에서 억제 — bundle.orderflow_ok,
-# routes._resolved_parquet_dir). 이 사다리에 kis_api tail을 유지하는 이유는 캔들:
-# ADR-0109 복구 분봉(kis_api/candles.parquet)이 hogaplay 공백일에 이겨야 서빙된다.
+# **`kis_api` 는 제거됐다(2026-08-07).** ADR-0109 캔들 복구본의 네임스페이스였는데,
+# 실측으로 남길 이유가 사라졌다:
+#
+#   - 882 파티션 전부 캔들만 보유(snapshots 0) — 호가 차원은 2026-07-17 에 이미 폐지
+#   - 그중 실제로 서빙되던 것은 263 Stock-Date(나머지 619 는 다른 소스에 가려짐)
+#   - 그 263 일은 **캔들 말고 아무것도 없다**(호가·체결·거래원 전부 0)
+#   - 캔들은 벤더가 과거를 다시 주므로, REST 우회 OFF(기본)에서는 키움 `ka10080` 으로
+#     그대로 온다 — 디스크 복구본이 필요한 것은 우회 ON 일 때뿐이었다
+#
+# 즉 "소급 불가라 지키던 데이터" 가 아니라 **다시 받을 수 있는 캐시**였다. 이름이
+# 이미 거짓이기도 했다 — 생산자는 PR-J(#1046)에서 키움 `ka10080` 으로 바뀌었는데
+# 라벨만 `kis_api` 로 남아 있었다(경로에 벤더명을 박은 대가).
 #
 # 이 사다리는 **호가·체결 차원의 승자**를 정한다. 캔들 차원은 대칭인 반대 필터가
-# 필요해 별도 함수로 분리했다(ADR-0121: resolve_candle_source) — kis_api가 호가를
-# 서빙하지 않고 실시간 승격본은 캔들을 **항상 보유하진** 않으므로(합성 실패일 —
-# CANDLE_BEARING_SOURCES 주석 참조), 두 차원의 승자가 한 Stock-Date에서 갈릴 수 있다.
-SourceName = Literal["hogaplay", "kiwoom_live", "kis_api"]
+# 필요해 별도 함수로 분리했다(ADR-0121: resolve_candle_source) — 실시간 승격본은
+# 캔들을 **항상 보유하진** 않으므로(합성 실패일 — CANDLE_BEARING_SOURCES 주석 참조),
+# 두 차원의 승자가 한 Stock-Date에서 갈릴 수 있다.
+SourceName = Literal["hogaplay", "kiwoom_live"]
 
 #: source 가 **어느 venue 를 덮는가**. 디렉터리 축 유무가 아니라 **커버리지**다.
 #:
@@ -49,7 +56,6 @@ SOURCE_VENUES: dict[SourceName, frozenset[Venue]] = {
     # 정규장 KRX 업스트림(전체 디렉터리의 78%). NXT 시간대를 원리적으로 못 준다.
     "hogaplay": frozenset({"KRX"}),
     "kiwoom_live": frozenset({"KRX", "NXT", "UN"}),
-    "kis_api": frozenset({"KRX"}),    # 캔들 전용 복구본(ADR-0109)
 }
 
 
@@ -102,6 +108,7 @@ def source_venue_dir(stock_date_dir: Path, source: str, venue: Venue) -> Path:
 
 
 MissingReason = Literal["stock_date_missing", "source_missing", "venue_unsupported"]
+# 구 정책 문자열들 — 값은 무시되지만(옵션 폐지) 저장된 설정·구 URL 이 여전히 보낸다.
 SourcePolicy = Literal[
     "hogaplay",
     "kiwoom_live",
@@ -118,25 +125,25 @@ SourcePolicy = Literal[
 # 이 상수가 사다리와 **분리돼 있는** 이유는 삭제된 `kis_live`(KIS WS 승격본)가 남긴
 # 교훈이다: 그 소스는 캔들을 쓰지 않았는데(ADR-0040/0043 — 캔들 차원은 Live Candle
 # Backfill이 따로 서빙했다) 캔들 사다리엔 남아 있어, "건강한 승자가 이겼는데 그
-# 승자에겐 캔들이 없다"가 성립했다. 그러면 같은 Stock-Date의 hogaplay 캔들과
-# ADR-0109 복구본(kis_api)이 **동시에** 가려진다. 사다리는 소스 우선순위(정책)를
-# 표현하고, 이 상수는 소스가 그 차원을 보유하는지(물리적 사실)를 표현한다 — 두 축을
-# 섞으면 정책이 디스크 레이아웃에 오염된다.
+# 승자에겐 캔들이 없다"가 성립했다. 그러면 같은 Stock-Date 의 다른 소스 캔들이
+# 가려진다. 사다리는 소스 우선순위(정책)를 표현하고, 이 상수는 소스가 그 차원을
+# 보유하는지(물리적 사실)를 표현한다 — 두 축을 섞으면 정책이 디스크 레이아웃에
+# 오염된다.
 #
 # **kiwoom_live는 예외적으로 캔들을 보유한다**(ADR-0125가 ADR-0040/0043 개정):
 # 키움 WS 체결 틱에서 수신 시점에 1분봉을 합성해 kiwoom_live/candles.parquet으로
-# 승격한다(hoga/live/minute_candle_agg.py). 그래서 이 집합에 포함된다. 파일 존재
-# 판정(resolve_candle_source)이 캔들 없는 날의 kiwoom_live를 자연히 걸러내므로,
-# 캔들을 합성하지 못한 날엔 여전히 hogaplay/kis_api가 이긴다.
-CANDLE_BEARING_SOURCES: frozenset[SourceName] = frozenset(
-    {"hogaplay", "kis_api", "kiwoom_live"}
-)
+# 승격한다(hoga/live/minute_candle_agg.py). 파일 존재 판정(resolve_candle_source)이
+# 캔들 없는 날의 kiwoom_live를 자연히 걸러내므로, 합성하지 못한 날엔 hogaplay가 이긴다.
+#
+# 지금은 두 소스 모두 캔들을 가져 집합이 사다리와 같지만, **두 축은 여전히 별개**다 —
+# 캔들 없는 소스가 다시 생기면 이 집합만 줄어든다(사다리는 그대로).
+CANDLE_BEARING_SOURCES: frozenset[SourceName] = frozenset({"hogaplay", "kiwoom_live"})
 
 #: **단일 사다리** — 소스 선호 옵션 폐지(2026-08-07).
 #:
 #: 예전엔 정책별로 순서가 갈렸고(`hogaplay_first`·`kis_ws_first`·`completeness_first`)
 #: 사용자가 설정에서 골랐다. 그 선택지가 **venue 비교를 깨뜨린다**는 것이 폐지 이유다:
-#: hogaplay·kis_api 는 KRX 만 덮으므로(`SOURCE_VENUES`), 그 둘이 1순위인 정책에서는
+#: hogaplay 는 KRX 만 덮으므로(`SOURCE_VENUES`), 그것이 1순위인 정책에서는
 #: KRX 는 hogaplay 로, NXT·통합은 kiwoom_live 로 계산된다 — venue 를 토글하면 시장과
 #: 소스가 **동시에** 바뀌어, 값 차이가 시장 차이인지 업스트림 차이인지 알 수 없다.
 #: 실측(2026-08-06, 010060·475150·028670): `KRX=hogaplay  NXT=kiwoom_live  UN=kiwoom_live`.
@@ -148,20 +155,16 @@ CANDLE_BEARING_SOURCES: frozenset[SourceName] = frozenset(
 #: 순서의 근거: 수집 주력이 이미 키움이다(실측 2026-08: hogaplay 0~25건/일 vs
 #: kiwoom_live 247~273건/일, 8/5 는 hogaplay 0건). hogaplay 는 **kiwoom_live 가 없는
 #: 과거 구간의 폴백**으로 남고, 그 구간은 애초에 NXT 데이터가 없어 대칭이 훼손되지 않는다.
-#: kis_api 는 캔들 전용이라 꼬리 그대로다(ADR-0109 복구본).
 #:
 #: 치르는 값: hogaplay 아카이브가 30배 촘촘해(하루 71,453행 vs 2,404행) 과거 KRX 지표가
 #: 달라진다 — 실측 중앙 0.7% / 90분위 8.8% / 최대 101.5%. 차이는 **잔량이 급변한 분**에
 #: 몰린다. 사용자 결정으로 비교 가능성을 택했다.
-ORDERFLOW_LADDER: tuple[SourceName, ...] = ("kiwoom_live", "hogaplay", "kis_api")
+ORDERFLOW_LADDER: tuple[SourceName, ...] = ("kiwoom_live", "hogaplay")
 
 # 캔들 차원도 **같은 사다리**를 쓴다(2026-08-07). 예전엔 정책별 별칭(`_CANDLE_POLICY_ALIAS`)
 # 으로 캔들만 hogaplay 우선으로 되돌렸는데, 그 별칭이 존재한 이유는 `completeness_first`
-# 의 WS-first 순서가 kis_api 를 hogaplay 앞에 놓는 것이었다. 단일 사다리에서 kis_api 는
-# 꼬리이므로(`ORDERFLOW_LADDER`) 그 우려가 사라져 별칭도 함께 제거했다.
-#
-# ADR-0109 복구본이 hogaplay 공백일에 이기는 성질은 순서가 아니라 **파일 존재 판정**이
-# 지킨다 — `resolve_candle_source` 가 `candles.parquet` 이 실제로 있는 첫 후보를 고른다.
+# 의 WS-first 순서가 kis_api 를 hogaplay 앞에 놓는 것이었다. 그 소스가 사라져 별칭도
+# 함께 제거했다. 승자는 `resolve_candle_source` 가 `candles.parquet` 존재로 정한다.
 
 
 @dataclass(frozen=True, slots=True)

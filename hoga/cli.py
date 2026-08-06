@@ -206,112 +206,6 @@ def screener_backfill() -> None:
           f"impact(changed_codes={rep['impact']['changed_codes']})")
 
 
-async def _run_repair_sweep(data_dir: Path, *, dry_run: bool) -> None:
-    from hoga.api import study_views  # noqa: PLC0415 — CLI-local
-    from hoga.api.queries import QueryEngine  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
-    from hoga.live import candle_repair  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
-
-    saves = study_views.load_saves(data_dir).saves
-    if not saves:
-        console.print("[yellow]no saved study views[/yellow]")
-        return
-    engine = QueryEngine(data_dir)
-
-    if dry_run:
-        total_gap = 0
-        for save in saves:
-            gaps = candle_repair.scan_saved_view_gaps(
-                engine, code=save.code,
-                from_date=save.range.from_date, to_date=save.range.to_date,
-            )
-            total_gap += len(gaps)
-            if gaps:
-                console.print(
-                    f"  {save.code} {save.range.from_date}-{save.range.to_date}: "
-                    f"{len(gaps)} gap day(s): {', '.join(gaps)}"
-                )
-        console.print(
-            f"[green]dry-run[/green] {len(saves)} view(s), {total_gap} gap day(s) total"
-        )
-        return
-
-    # PR-J(#1046) 칼 컷오버 — 소스는 키움 `ka10080` 이다(ADR-0109 의 생산자 교체).
-    from hoga.live import (  # noqa: PLC0415
-        kiwoom_access,
-        kiwoom_minute_candles,
-        kiwoom_rest_runtime,
-    )
-
-    client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
-    if client is None:
-        console.print(
-            "[red]키움 자격증명 미설정(KIWOOM_APP_KEY/SECRET) — 복구할 수 없습니다[/red]"
-        )
-        return
-
-    # 서버와 같은 거버너를 탄다 — CLI 라고 예외를 두면 이 명령이 유량 페이싱과
-    # 토큰 revoke 복구(PR #1088) 밖에서 도는데, 복구는 날짜 수만큼 콜을 낸다.
-    scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
-
-    async def _fetch(code: str, date_s: str):
-        return await kiwoom_access.run_with_capacity(
-            scheduler,
-            key=("repair-minute", code, date_s),
-            api_id=kiwoom_minute_candles.API_ID,
-            priority="background",
-            client=client,
-            fetch_fn=lambda c: kiwoom_minute_candles.fetch_day(
-                c, code, date_s, venue="KRX"
-            ),
-        )
-
-    tot_r = tot_s = tot_u = tot_e = 0
-    for save in saves:
-        summary = await candle_repair.repair_saved_view_range(
-            engine, data_dir,
-            code=save.code, from_date=save.range.from_date, to_date=save.range.to_date,
-            fetch=_fetch,
-        )
-        if summary is None:
-            console.print("[yellow]repair gated off (kis_rest_bypass enabled)[/yellow]")
-            return
-        tot_r += len(summary.repaired)
-        tot_s += len(summary.skipped)
-        tot_u += len(summary.unavailable)
-        tot_e += len(summary.errors)
-        if summary.repaired or summary.unavailable or summary.errors:
-            console.print(
-                f"  {save.code} {save.range.from_date}-{save.range.to_date}: "
-                f"repaired={summary.repaired} unavailable={summary.unavailable} "
-                f"errors={summary.errors}"
-            )
-    console.print(
-        f"[green]repair done[/green] repaired={tot_r} skipped={tot_s} "
-        f"unavailable={tot_u} errors={tot_e}"
-    )
-
-
-@app.command(name="repair-study-candles")
-def repair_study_candles(
-    dry_run: bool = typer.Option(False, "--dry-run", help="공백만 리포트하고 쓰지 않음"),
-) -> None:
-    """저장된 /study 뷰들의 hogaplay 캡처 공백을 KIS 분봉으로 1회 복구.
-
-    저장뷰가 실제로 가리키는 (종목, 구간)의 과거 거래일 중 캔들이 비는 날만 KIS
-    과거 분봉으로 메워 kis_api/candles.parquet에 박제한다. 멱등(이미 있으면 스킵).
-    KIS_APP_KEY/SECRET 필요. --dry-run은 KIS 미접근으로 공백만 보고한다.
-    """
-    import asyncio  # noqa: PLC0415 — CLI-local
-
-    load_env()  # ADR-0008: KIS 자격증명을 .env에서 로드
-    data_dir = resolve_data_dir()
-    try:
-        asyncio.run(_run_repair_sweep(data_dir, dry_run=dry_run))
-    except Exception as e:
-        console.print(f"[red]repair-study-candles failed: {e}[/red]")
-        raise typer.Exit(code=1) from e
-
-
 @app.command(name="depth-daily-sweep")
 def depth_daily_sweep(
     dry_run: bool = typer.Option(False, "--dry-run", help="스캔 대상만 세고 쓰지 않음"),
@@ -365,9 +259,9 @@ def depth_daily_sweep(
 def backfill_live_meta_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),
 ) -> None:
-    """이미 승격된 실시간/REST meta.json 에 완결성 필드를 소급 기록한다.
+    """이미 승격된 KIS live/REST meta.json 에 완결성 필드를 소급 기록한다.
 
-    변경 이전에 승격된 Stock-Date(meta_backfill._LIVE_SOURCES) 는 collection_complete/
+    변경 이전에 승격된 kis_live/kis_api Stock-Date 는 collection_complete/
     is_partial/gap_ranges 가 없어 캘린더에서 영구 ✕ 로 남는다. 이 스윕은
     snapshots.parquet 의 ts_ms 로 갭 분석을 재계산해 그 세 필드를 채운다
     (과거 날짜만; 오늘은 Today Promoter 가 15:35 에 최종화). 멱등.

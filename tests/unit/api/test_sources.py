@@ -37,9 +37,9 @@ def _seed_invalid_source(tmp_path: Path, date: str, code: str, source: str) -> N
 
 
 def test_source_name_literal_includes_all_sources() -> None:
-    # KIS WS 계층 삭제(ADR-0118) 후 실시간 소스는 키움 하나다 — `kis_live` 는
-    # 소스에서 빠졌다(잔존 데이터는 `_archive/kis_live/` 로 이관).
-    assert set(get_args(SourceName)) == {"hogaplay", "kiwoom_live", "kis_api"}
+    # KIS WS 계층 삭제(ADR-0118) 후 실시간 소스는 키움 하나이고, 캔들 복구본
+    # 네임스페이스(`kis_api`)도 제거됐다(2026-08-07 — 근거는 sources.SourceName 주석).
+    assert set(get_args(SourceName)) == {"hogaplay", "kiwoom_live"}
 
 
 # 소스 선호 옵션 폐지(2026-08-07) — 어떤 정책 문자열이 와도 **같은 사다리**다.
@@ -51,16 +51,15 @@ def test_source_name_literal_includes_all_sources() -> None:
     "", "kis_ws", "HOGAPLAY", "모르는정책",
 ])
 def test_every_policy_string_maps_to_the_single_ladder(policy) -> None:
-    assert ordered_sources(policy) == ("kiwoom_live", "hogaplay", "kis_api")
+    assert ordered_sources(policy) == ("kiwoom_live", "hogaplay")
 
 
 def test_resolve_source_uses_ordered_policy(tmp_path: Path) -> None:
     _seed_source(tmp_path, "20260622", "005930", "hogaplay")
     _seed_source(tmp_path, "20260622", "005930", "kiwoom_live")
-    _seed_source(tmp_path, "20260622", "005930", "kis_api")
     engine = _make_engine(tmp_path)
 
-    # 셋 다 있으면 **항상 kiwoom_live** — 정책 문자열이 승자를 못 바꾼다(옵션 폐지).
+    # 둘 다 있으면 **항상 kiwoom_live** — 정책 문자열이 승자를 못 바꾼다(옵션 폐지).
     for pref in ("hogaplay_first", "kis_ws_first", "kis_api_first"):
         assert resolve_source(engine, "20260622", "005930", pref) == "kiwoom_live"
 
@@ -81,34 +80,36 @@ def test_resolve_source_honors_kiwoom_live(tmp_path: Path) -> None:
 
 
 def test_resolve_source_falls_back_to_second_source(tmp_path: Path) -> None:
-    _seed_source(tmp_path, "20260622", "005930", "kis_api")
+    # 사다리 1순위(kiwoom_live)가 없으면 2순위(hogaplay)가 이긴다.
+    _seed_source(tmp_path, "20260622", "005930", "hogaplay")
     engine = _make_engine(tmp_path)
 
-    assert resolve_source(engine, "20260622", "005930", "hogaplay_first") == "kis_api"
+    assert resolve_source(engine, "20260622", "005930", "hogaplay_first") == "hogaplay"
 
 
 def test_resolve_source_result_carries_path_and_classification(tmp_path: Path) -> None:
-    _seed_source(tmp_path, "20260622", "005930", "kis_api")
+    _seed_source(tmp_path, "20260622", "005930", "hogaplay")
     engine = _make_engine(tmp_path)
 
     result = resolve_source_result(engine, "20260622", "005930", "hogaplay_first")
 
-    assert result.source == "kis_api"
-    assert result.path == tmp_path / "parquet" / "20260622" / "005930" / "kis_api"
+    assert result.source == "hogaplay"
+    assert result.path == tmp_path / "parquet" / "20260622" / "005930" / "hogaplay"
     assert result.classification is not None
     assert result.classification.state == DiskState.COMPLETE
     assert result.missing_reason is None
 
 
 def test_resolve_source_result_skips_invalid_preferred_source(tmp_path: Path) -> None:
-    _seed_invalid_source(tmp_path, "20260622", "005930", "hogaplay")
-    _seed_source(tmp_path, "20260622", "005930", "kis_api")
+    # 사다리 1순위가 INVALID 면 건너뛴다 — "부패 데이터는 서빙 안 함" 계약.
+    _seed_invalid_source(tmp_path, "20260622", "005930", "kiwoom_live")
+    _seed_source(tmp_path, "20260622", "005930", "hogaplay")
     engine = _make_engine(tmp_path)
 
     result = resolve_source_result(engine, "20260622", "005930", "hogaplay_first")
 
-    assert result.source == "kis_api"
-    assert result.path == tmp_path / "parquet" / "20260622" / "005930" / "kis_api"
+    assert result.source == "hogaplay"
+    assert result.path == tmp_path / "parquet" / "20260622" / "005930" / "hogaplay"
     assert result.classification is not None
     assert result.classification.state == DiskState.COMPLETE
 
@@ -161,16 +162,14 @@ def _seed_candles(tmp_path: Path, date: str, code: str, source: str) -> None:
 
 
 def test_resolve_candle_source_skips_candle_less_realtime_winner(tmp_path: Path) -> None:
-    """kiwoom_live가 호가로 이겨도 캔들은 복구본(kis_api)에서 온다."""
-    _seed_invalid_source(tmp_path, "20260720", "042660", "hogaplay")
+    """kiwoom_live 가 호가로 이겨도 캔들 미보유면 캔들은 hogaplay 에서 온다."""
+    _seed_source(tmp_path, "20260720", "042660", "kiwoom_live")   # 호가 승자·캔들 미보유
+    _seed_source(tmp_path, "20260720", "042660", "hogaplay")
     _seed_candles(tmp_path, "20260720", "042660", "hogaplay")
-    _seed_source(tmp_path, "20260720", "042660", "kiwoom_live")   # 캔들 미보유 티어
-    _seed_source(tmp_path, "20260720", "042660", "kis_api")
-    _seed_candles(tmp_path, "20260720", "042660", "kis_api")
     engine = _make_engine(tmp_path)
 
     assert resolve_source(engine, "20260720", "042660", "hogaplay_first") == "kiwoom_live"
-    assert resolve_candle_source(engine, "20260720", "042660", "hogaplay_first") == "kis_api"
+    assert resolve_candle_source(engine, "20260720", "042660", "hogaplay_first") == "hogaplay"
 
 
 def test_resolve_candle_source_prefers_healthy_hogaplay(tmp_path: Path) -> None:
@@ -178,21 +177,23 @@ def test_resolve_candle_source_prefers_healthy_hogaplay(tmp_path: Path) -> None:
     _seed_source(tmp_path, "20260716", "042660", "hogaplay")
     _seed_candles(tmp_path, "20260716", "042660", "hogaplay")
     _seed_source(tmp_path, "20260716", "042660", "kiwoom_live")
-    _seed_source(tmp_path, "20260716", "042660", "kis_api")
-    _seed_candles(tmp_path, "20260716", "042660", "kis_api")
     engine = _make_engine(tmp_path)
 
     assert resolve_candle_source(engine, "20260716", "042660", "hogaplay_first") == "hogaplay"
 
 
 def test_resolve_candle_source_skips_healthy_source_without_candle_file(tmp_path: Path) -> None:
-    """캔들 없이 끝난 hogaplay 캡처가 healthy로 남아도 복구본을 가리지 않는다."""
-    _seed_source(tmp_path, "20260611", "009540", "hogaplay")       # candles.parquet 없음
-    _seed_source(tmp_path, "20260611", "009540", "kis_api")
-    _seed_candles(tmp_path, "20260611", "009540", "kis_api")
+    """캔들 없이 끝난 캡처가 healthy 로 남아도 캔들 가진 소스를 가리지 않는다.
+
+    사다리 1순위(kiwoom_live)가 healthy 인데 `candles.parquet` 이 없으면 건너뛰고
+    2순위로 간다 — 승자 선정이 **파일 존재**를 본다는 성질이다.
+    """
+    _seed_source(tmp_path, "20260611", "009540", "kiwoom_live")    # candles.parquet 없음
+    _seed_source(tmp_path, "20260611", "009540", "hogaplay")
+    _seed_candles(tmp_path, "20260611", "009540", "hogaplay")
     engine = _make_engine(tmp_path)
 
-    assert resolve_candle_source(engine, "20260611", "009540", "hogaplay_first") == "kis_api"
+    assert resolve_candle_source(engine, "20260611", "009540", "hogaplay_first") == "hogaplay"
 
 
 def test_resolve_candle_source_none_when_no_candle_bearing_source(tmp_path: Path) -> None:
@@ -219,7 +220,7 @@ def test_resolve_candle_source_none_for_missing_stock_date(tmp_path: Path) -> No
 
 
 def test_kiwoom_live_wins_candle_when_hogaplay_absent(tmp_path: Path) -> None:
-    """hogaplay INVALID·kis_api 없음 → 실시간 합성 kiwoom_live 캔들이 서빙된다."""
+    """hogaplay INVALID → 실시간 합성 kiwoom_live 캔들이 서빙된다."""
     _seed_invalid_source(tmp_path, "20260723", "005930", "hogaplay")
     _seed_source(tmp_path, "20260723", "005930", "kiwoom_live")
     _seed_candles(tmp_path, "20260723", "005930", "kiwoom_live")
@@ -258,14 +259,13 @@ def test_ws_first_prefers_kiwoom_candle_over_hogaplay(tmp_path: Path) -> None:
 
 
 def test_kiwoom_live_without_candle_file_skipped(tmp_path: Path) -> None:
-    """캔들 합성 못한 kiwoom_live(파일 부재)는 걸러지고 kis_api 복구본이 이긴다."""
-    _seed_invalid_source(tmp_path, "20260723", "005930", "hogaplay")
+    """캔들 합성 못한 kiwoom_live(파일 부재)는 걸러지고 hogaplay 가 이긴다."""
     _seed_source(tmp_path, "20260723", "005930", "kiwoom_live")   # candles.parquet 없음
-    _seed_source(tmp_path, "20260723", "005930", "kis_api")
-    _seed_candles(tmp_path, "20260723", "005930", "kis_api")
+    _seed_source(tmp_path, "20260723", "005930", "hogaplay")
+    _seed_candles(tmp_path, "20260723", "005930", "hogaplay")
     engine = _make_engine(tmp_path)
 
-    assert resolve_candle_source(engine, "20260723", "005930", "hogaplay_first") == "kis_api"
+    assert resolve_candle_source(engine, "20260723", "005930", "hogaplay_first") == "hogaplay"
 
 
 # --- 완결성 우선 정책 (completeness_first, ADR-0039) ------------------------
@@ -343,18 +343,9 @@ def test_completeness_first_excludes_invalid_even_if_more_recent_tier(tmp_path: 
     assert result.classification.state == DiskState.COMPLETE
 
 
-def test_completeness_first_candle_dimension_keeps_hogaplay_first(tmp_path: Path) -> None:
-    """캔들은 완결성 타이브레이크 대상이 아니다 — 오늘 기본(hogaplay 우선) 유지.
+# `test_completeness_first_candle_dimension_keeps_hogaplay_first` 는 제거됐다
+# (2026-08-07). 검증하던 것이 "캔들 사다리에서 hogaplay 가 kis_api 복구본을 앞선다"
+# 인데, 그 복구본 소스가 사라져 비교 대상이 없다. 캔들 승자는 이제
+# `test_kiwoom_candle_wins_over_hogaplay_regardless_of_policy` 가 고정한다.
 
-    호가 승자는 WS(kiwoom_live)여도, 캔들은 hogaplay가 kis_api 복구본을 앞선다
-    (completeness_first의 WS-first 사다리가 캔들엔 그대로 새면 kis_api가 앞설 위험).
-    """
-    _seed_source(tmp_path, "20260622", "005930", "hogaplay")   # COMPLETE + 캔들 보유
-    _seed_candles(tmp_path, "20260622", "005930", "hogaplay")
-    _seed_source(tmp_path, "20260622", "005930", "kiwoom_live")   # 호가 승자(캔들 미보유)
-    _seed_source(tmp_path, "20260622", "005930", "kis_api")    # 복구 캔들 보유
-    _seed_candles(tmp_path, "20260622", "005930", "kis_api")
-    engine = _make_engine(tmp_path)
 
-    assert resolve_source(engine, "20260622", "005930", "completeness_first") == "kiwoom_live"
-    assert resolve_candle_source(engine, "20260622", "005930", "completeness_first") == "hogaplay"

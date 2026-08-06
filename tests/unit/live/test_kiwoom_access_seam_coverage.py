@@ -63,33 +63,16 @@ def _stub_runtime(monkeypatch, client):
     monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda *_a, **_k: object())
 
 
-# ── ka10080: 저장뷰 캔들 복구 (사용자 트리거 · N콜) ────────────────────────
-
-async def test_saved_view_repair_goes_through_the_seam(monkeypatch, seam_spy, tmp_path):
-    """저장뷰 저장마다 도는 경로다 — 셋 중 유량 영향이 가장 크다."""
-    from hoga.api.app import make_repair_minute_fetch
-
-    client = _FakeClient(rows=[])
-    _stub_runtime(monkeypatch, client)
-
-    fetch = make_repair_minute_fetch(tmp_path)
-    await fetch("005930", "20260806")
-
-    assert [s["api_id"] for s in seam_spy] == ["ka10080"]
-    # 훅이 loop.create_task 로 도는 백그라운드라 사용자 조작에 양보해야 한다(ADR-0087)
-    assert seam_spy[0]["priority"] == "background"
-    assert seam_spy[0]["key"] == ("repair-minute", "005930", "20260806")
-
-
-async def test_saved_view_repair_is_dormant_without_credentials(monkeypatch, seam_spy, tmp_path):
-    """무자격이면 seam 도 타지 않는다 — 빈 결과로 복구를 건너뛴다(ADR-0134)."""
-    from hoga.api.app import make_repair_minute_fetch
-    from hoga.live import kiwoom_rest_runtime
-
-    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: None)
-
-    assert await make_repair_minute_fetch(tmp_path)("005930", "20260806") == []
-    assert seam_spy == []
+# ── ka10080: 저장뷰 캔들 복구 → **경로 삭제됨**(2026-08-07) ──────────────────
+#
+# `make_repair_minute_fetch` 를 검증하던 두 테스트가 여기 있었다. 그 경로는 ADR-0109
+# 캔들 복구본(`kis_api`)을 만드는 유일한 생산자였고, 소스와 함께 기능을 접으면서
+# 사라졌다 — 근거는 `sources.SourceName` 주석(복구본이 메우던 것은 캔들뿐이고
+# 캔들은 벤더가 과거를 다시 준다).
+#
+# #1173 이 이 경로의 seam 우회를 막 고친 직후라 아깝지만, 고친 코드가 지워지는 것이
+# 문제가 아니라 **그 경로가 필요 없어진 것**이다. 나머지 두 seam(ka10081·ka20006)은
+# 그대로 남아 아래에서 계속 검증된다.
 
 
 # ── ka20006: 거래일 오버레이 갱신 ──────────────────────────────────────────

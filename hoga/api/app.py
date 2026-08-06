@@ -57,8 +57,6 @@ from hoga.config import Config, resolve_data_dir, resolve_log_dir, resolve_symbo
 from hoga.env import load_env
 from hoga.live import kiwoom_rest_runtime
 from hoga.live.api import build_router as build_live_router
-from hoga.live.candle_models import LiveCandle
-from hoga.live.candle_repair import build_saved_view_repair_hook
 from hoga.live.kis_runtime import aclose_kis_client
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
@@ -159,54 +157,6 @@ def allowed_origins() -> tuple[str, ...]:
         if o.strip()
     )
     return ALLOWED_ORIGINS + extra
-
-
-def make_repair_minute_fetch(data_dir: Path):
-    """`data_dir` 를 닫은 리페어 fetch 를 만든다.
-
-    PR-J(#1046) 이전에는 모듈 전역 KIS 클라이언트를 썼기에 인자가 필요 없었다.
-    키움 클라이언트는 `data_dir` 로 조달하므로 클로저로 묶는다.
-    """
-    async def _repair_minute_fetch(code: str, date_s: str) -> list[LiveCandle]:
-        """저장뷰 캡처-공백 복구용 과거 분봉 fetch (KRX 고정 — /study venue).
-
-        PR-J(#1046) 칼 컷오버 — 소스는 키움 `ka10080` 이다. ADR-0109 의 **생산자만**
-        바뀐다(디스크의 `kis_api` 라벨 데이터는 읽기 전용으로 존치).
-
-        `fetch_day` 를 쓰는 이유: `base_dt=D` 를 주면 D 가 응답의 **최新** 날짜라
-        앞이 잘릴 수 없다 — 최古 날짜를 떼어내는 walk 규칙이 필요 없는 자리다.
-
-        자격증명이 없으면 빈 리스트로 복구를 스킵시킨다(무자격 프로필·ADR-0134).
-
-        **거버너를 통과시킨다.** 이 콜은 저장뷰 저장마다 도는 사용자 트리거 경로라
-        직접 호출하면 잃는 것이 셋이었다: ① `ka10080` 버킷을 안 거쳐 유량 페이싱에서
-        보이지 않고 ② 토큰 revoke(8005) 자동복구를 못 받고(복구가 거버너 소유다,
-        PR #1088) ③ 테스트의 seam 몽키패치가 안 먹는다.
-
-        `priority="background"`: 이 훅은 `loop.create_task` 로 떠서 응답을 막지 않으므로
-        사용자가 기다리는 콜에 양보하는 쪽이 맞다(ADR-0087).
-        """
-        from hoga.live import (  # noqa: PLC0415 — 지연 import(순환 절단: api ↔ live)
-            kiwoom_access,
-            kiwoom_minute_candles,
-            kiwoom_rest_runtime,
-        )
-
-        client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
-        if client is None:
-            return []
-        return await kiwoom_access.run_with_capacity(
-            kiwoom_rest_runtime.ensure_scheduler(data_dir),
-            key=("repair-minute", code, date_s),
-            api_id=kiwoom_minute_candles.API_ID,
-            priority="background",
-            client=client,
-            fetch_fn=lambda c: kiwoom_minute_candles.fetch_day(
-                c, code, date_s, venue="KRX"
-            ),
-        )
-
-    return _repair_minute_fetch
 
 
 def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
@@ -428,14 +378,10 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     app.include_router(build_signal_alert_router(data_dir=data_dir))
     app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(build_market_router(data_dir=data_dir))
-    app.include_router(
-        build_study_view_router(
-            data_dir=data_dir,
-            on_reference_saved=build_saved_view_repair_hook(
-                engine, data_dir, make_repair_minute_fetch(data_dir),
-            ),
-        )
-    )
+    # 저장뷰 캡처-공백 자동 복구 훅은 제거됐다(2026-08-07) — 복구본 네임스페이스
+    # (`kis_api`)와 함께 기능을 접었다. 근거는 `sources.SourceName` 주석: 복구본이
+    # 메우던 것은 **캔들뿐**이고 캔들은 벤더가 과거를 다시 준다(우회 OFF 기본 경로).
+    app.include_router(build_study_view_router(data_dir=data_dir))
     app.include_router(build_live_layout_preset_router(data_dir=data_dir))
     app.include_router(build_study_layout_preset_router(data_dir=data_dir))
     app.include_router(
