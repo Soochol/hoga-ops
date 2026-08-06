@@ -604,6 +604,21 @@ export type RangeDateWarning = {
   warnings: ViolationWire[];
 };
 
+/** 읽을 데이터가 **없어서** 빠진 거래일 + 사유 (#1133).
+ *
+ * `RangeExcludedDate` 와 다른 것이다 — 저쪽은 데이터가 있는데 불변식을 어겨 버린 날,
+ * 이쪽은 애초에 없는 날이다. 이 구분이 UI 문구를 가른다("문제가 있다" vs "원래 없다").
+ *
+ * venue 축이 이 필드를 필요하게 만들었다: NXT·통합은 `kiwoom_live` 가 저장을 시작한
+ * 날부터만 존재하므로 그 이전 구간은 **정상적으로** 빈다. 사유가 없으면 프론트는 빈
+ * 배열을 장애와 구별할 수 없어 아무 설명 없는 빈 pane 을 그린다. */
+export type RangeMissingDate = {
+  date: string;
+  /** `hoga/api/sources.py::MissingReason` + 조립점의 `meta_unreadable`. 미지의 값이
+   *  와도 렌더가 깨지지 않도록 소비처는 일반 문구로 폴백한다. */
+  reason: 'venue_unsupported' | 'source_missing' | 'stock_date_missing' | 'meta_unreadable' | string;
+};
+
 /** One live snapshot frame payload (ws.ts ch:'live' data). Mirrors the
  *  LiveBuffer entry: hoga/live/buffer.py — t_ms + kind are guaranteed;
  *  per-kind fields (orderbook/trade/broker) remain open pending a
@@ -734,6 +749,8 @@ export type RangeBundle = {
   /** ADR-0020 invariant outcomes surfaced by hoga/api/models.py::RangeBundle. */
   excluded_dates?: RangeExcludedDate[];
   data_warnings?: RangeDateWarning[];
+  /** 읽을 것이 없어 빠진 거래일 + 사유 (#1133). 구백엔드는 부재 → optional. */
+  missing_dates?: RangeMissingDate[];
   volume_distributions: DayVolumeDistribution[];
   /** ADR-0055: daily foreign/institution net-buy bars across the requested
    *  range (FHPTJ04160001 date-cursor walk-back).

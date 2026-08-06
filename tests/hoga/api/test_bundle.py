@@ -837,7 +837,7 @@ def test_build_range_bundle_trade_source_fallback_skips_kis_api(tmp_path):
 
     engine = _engine_with_meta_for_dates([date])
     engine.data_dir = tmp_path
-    engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path / "parquet" / d / c / src
+    engine.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path / "parquet" / d / c / src
 
     profile = DayVolumeDistribution(
         date=date,
@@ -1147,7 +1147,7 @@ def test_build_range_bundle_skips_invalid_and_surfaces_in_excluded():
         "20260518": _meta(close_ms=0),
         "20260521": _meta(),
     }
-    eng.get_meta.side_effect = lambda date, _code, _source="hogaplay": metas[date]
+    eng.get_meta.side_effect = lambda date, _code, _source="hogaplay", *, venue="KRX": metas[date]
 
     patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
@@ -1269,7 +1269,7 @@ def test_build_range_bundle_excludes_real_5_18_003490_case():
         "20260520": _meta(),
         "20260518": _meta(close_ms=0, complete=False),
     }
-    eng.get_meta.side_effect = lambda date, _code, _source="hogaplay": metas[date]
+    eng.get_meta.side_effect = lambda date, _code, _source="hogaplay", *, venue="KRX": metas[date]
 
     patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
@@ -1320,7 +1320,7 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
     (tmp_path / "candles.parquet").touch()
 
     eng = _engine_with_meta_for_dates([FIXTURE_DATE])
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
     eng.indicators_cache = None  # ask_peak 캐시 미사용(MagicMock 회피); per-day 계산만 검증
 
@@ -1366,7 +1366,7 @@ def test_range_bundle_includes_depth_heatmap_when_enabled(monkeypatch, tmp_path)
     (tmp_path / "candles.parquet").touch()
 
     eng = _engine_with_meta_for_dates([FIXTURE_DATE])
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
     eng.indicators_cache = None
 
@@ -1409,7 +1409,7 @@ def test_range_bundle_omits_depth_heatmap_when_disabled(monkeypatch, tmp_path) -
     (tmp_path / "candles.parquet").touch()
 
     eng = _engine_with_meta_for_dates([FIXTURE_DATE])
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
     eng.indicators_cache = None
 
@@ -1503,7 +1503,7 @@ def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monk
     (tmp_path / "candles.parquet").touch()
 
     eng = _engine_with_meta_for_dates([FIXTURE_DATE])
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
     eng.indicators_cache = None  # ask_peak 캐시 미사용(MagicMock 회피); per-day 계산만 검증
 
@@ -1548,7 +1548,7 @@ def test_build_range_bundle_ask_peaks_per_day(monkeypatch, tmp_path) -> None:
         dirs[d] = dd
 
     eng = _engine_with_meta_for_dates(["20260610", "20260611"])
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": dirs[d]
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": dirs[d]
     eng.conn = duckdb.connect()
     eng.indicators_cache = None  # ask_peak 캐시 미사용(MagicMock 회피); per-day 계산만 검증
 
@@ -1584,7 +1584,7 @@ def test_build_ask_peak_slice_caches_past_days(tmp_path) -> None:
     snapshots_write_parquet([ob], tmp_path / "snapshots.parquet")
     cache = PastIndicatorsCache(tmp_path / "cachedir")
     eng = MagicMock()
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
 
     p1 = build_ask_peak_slice(eng, code="005930", date="20260610", bucket_ms=60_000,
@@ -1601,7 +1601,7 @@ def test_build_ask_peak_slice_caches_past_days(tmp_path) -> None:
     assert p2 == p1
 
     # 오늘 날짜는 cacheable 아님 → 캐시에 저장하지 않는다(매번 재계산해 ratchet seed 갱신).
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     build_ask_peak_slice(eng, code="005930", date="20260613", bucket_ms=60_000,
                          source="hogaplay", cache=cache, today_kst="20260613")
     assert not cache.has_ask_peak("005930", "20260613", "hogaplay", 60_000)
@@ -1627,7 +1627,7 @@ def test_build_ask_peak_slice_cache_key_is_bucket_ms_aware(tmp_path) -> None:
     snapshots_write_parquet([ob], tmp_path / "snapshots.parquet")
     cache = PastIndicatorsCache(tmp_path / "cachedir")
     eng = MagicMock()
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
 
     build_ask_peak_slice(eng, code="005930", date="20260610", bucket_ms=60_000,
@@ -1657,7 +1657,7 @@ def test_build_ask_peak_slice_wires_intra_max(tmp_path) -> None:
                     bid_p=bp, bid_q=bq, bid_d=z, tot_ask=1009, tot_ask_d=0, tot_bid=1000, tot_bid_d=0)
     snapshots_write_parquet([spike, rep], tmp_path / "snapshots.parquet")
     eng = MagicMock()
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
 
     p = build_ask_peak_slice(
@@ -1695,7 +1695,7 @@ def test_build_ask_peak_slice_wires_all_price_peak(tmp_path) -> None:
     snapshots_write_parquet([ob], tmp_path / "snapshots.parquet")
     trades_write_parquet([tr], tmp_path / "trades.parquet")
     eng = MagicMock()
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
 
     p = build_ask_peak_slice(
@@ -1756,7 +1756,7 @@ def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
     snapshots_write_parquet([ob1, ob2], tmp_path / "snapshots.parquet")
     trades_write_parquet(trades, tmp_path / "trades.parquet")
     eng = MagicMock()
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
 
     p = build_ask_peak_slice(
@@ -1994,7 +1994,7 @@ def test_build_bid_peak_slice_wires_untraded_peak(tmp_path) -> None:
     snapshots_write_parquet([ob], tmp_path / "snapshots.parquet")
     trades_write_parquet([tr], tmp_path / "trades.parquet")
     eng = MagicMock()
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
 
     p = build_bid_peak_slice(
@@ -2240,7 +2240,7 @@ def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
     snapshots_write_parquet([ob1, ob2], tmp_path / "snapshots.parquet")
     trades_write_parquet(trades, tmp_path / "trades.parquet")
     eng = MagicMock()
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
 
     p = build_bid_peak_slice(
@@ -2340,7 +2340,7 @@ def test_build_range_bundle_includes_bid_peaks(monkeypatch, tmp_path) -> None:
     FIXTURE_DATE = "20260613"
     monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: FIXTURE_DATE)
     eng = _engine_with_meta_for_dates([FIXTURE_DATE])
-    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
     eng.indicators_cache = None
     bid = BidPeak(

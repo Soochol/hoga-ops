@@ -343,7 +343,7 @@ def depth_daily_sweep(
                         continue
                     if codes is not None and code_dir.name not in codes:
                         continue
-                    src_dir = depth_daily.resolve_source_dir(code_dir, depth_daily.HOGAPLAY)
+                    src_dir = depth_daily.resolve_source_dir(code_dir, depth_daily.HOGAPLAY, "KRX")
                     if (src_dir / "meta.json").exists():
                         n += 1
         console.print(f"[green]dry-run[/green] {n} hogaplay stock-date(s) in scope")

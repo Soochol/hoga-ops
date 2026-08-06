@@ -857,6 +857,46 @@ describe('mergeRangeBundles', () => {
     expect(merged.volume_distributions).toEqual(next.volume_distributions);
     expect(merged.program_trade?.points).toEqual(next.program_trade?.points);
   });
+
+  // #1133 — 도그푸딩 실측으로 잡은 결함. `...next` 스프레드만으로는 결손 사유가
+  // **팬 한 번에 사라진다**: 8/1~8/7 요청이 `missing_dates=[8/5]` 를 주고, 이어지는
+  // 7/31 단일 청크가 `[]` 를 주면서 앞의 것을 덮었다. 화면에서는 안내가 떴다가
+  // 조용히 없어지므로 "가끔 안 뜬다" 로만 보인다 — 단위 테스트 없이는 못 잡는다.
+  it('결손 사유는 next 가 덮지 않은 날짜를 보존한다', () => {
+    const previous: RangeBundle = {
+      ...fakeBundle,
+      from_date: '20260801',
+      to_date: '20260807',
+      segments: [{ date: '20260806', session_open_ms: 1, session_close_ms: 2, source: 'kiwoom_live' }],
+      missing_dates: [{ date: '20260805', reason: 'source_missing' }],
+    };
+    const next: RangeBundle = {
+      ...fakeBundle,
+      from_date: '20260731',
+      to_date: '20260731',
+      segments: [],
+      missing_dates: [],
+    };
+
+    expect(mergeRangeBundles(previous, next).missing_dates)
+      .toEqual([{ date: '20260805', reason: 'source_missing' }]);
+  });
+
+  it('next 가 덮은 날짜의 결손 사유는 next 것으로 갈린다', () => {
+    // 그 날짜를 다시 읽었으면 최신 판정이 옳다 — 재캡처로 결손이 해소된 경우가 그렇다.
+    const previous: RangeBundle = {
+      ...fakeBundle,
+      segments: [],
+      missing_dates: [{ date: '20260806', reason: 'source_missing' }],
+    };
+    const next: RangeBundle = {
+      ...fakeBundle,
+      segments: [{ date: '20260806', session_open_ms: 1, session_close_ms: 2, source: 'kiwoom_live' }],
+      missing_dates: [],
+    };
+
+    expect(mergeRangeBundles(previous, next).missing_dates).toEqual([]);
+  });
 });
 
 describe('rangeBundleQueryOptions', () => {

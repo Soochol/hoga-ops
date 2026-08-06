@@ -37,6 +37,7 @@ from hoga.api.models import (
     ExcludedDate,
     FillStrength,
     FillStrengthPoint,
+    MissingDate,
     ProgramTradePoint,
     ProgramTradeSeries,
     QuoteRatio,
@@ -51,10 +52,16 @@ from hoga.api.models import (
 from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.slice_coalescer import SLICE_COALESCER
-from hoga.api.sources import ordered_sources, resolve_candle_source, resolve_source_result
+from hoga.api.sources import (
+    ordered_sources,
+    resolve_candle_source,
+    resolve_source_result,
+    source_covers_venue,
+)
 from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.live.candle_repair import REPAIR_MARKER
 from hoga.live.program_trade_store import ProgramTradeStore, is_significant_gap_event
+from hoga.live.venue import Venue
 from hoga.tables import (
     brokers as brokers_tbl,
     candles as candles_tbl,
@@ -122,18 +129,30 @@ def _resolve_trade_indicator_source(
     code: str,
     source_pref: str,
     selected_source: str,
+    venue: Venue = "KRX",
 ) -> str:
     """Pick the first policy source with price-level trades for trade indicators.
 
     kis_api는 제외(2026-07-17): 캔들 전용 소스라 체결 지표의 폴백으로도 안 쓴다.
+
+    ⚠ 후보를 **`source_covers_venue` 로 거른다**(#1133). 이 함수는 사다리
+    (`resolve_source_result`)를 쓰지 않고 `ordered_sources` 를 직접 순회하므로,
+    사다리가 하는 venue 필터를 **여기서 다시 해야 한다**. 안 걸었을 때 실측
+    (2026-08-07): venue=NXT 요청이 hogaplay 를 체결 지표 소스로 골랐고, 매물대·
+    거래량 POC 가 KRX 데이터로 계산됐다 — `source_venue_dir` 이 venue 축 없는
+    source 엔 세그먼트를 안 붙여 경로가 그대로 존재했기 때문이다.
+
+    "사다리를 안 쓰는 재선택 경로" 가 이 파일에 또 생기면 같은 필터가 또 필요하다.
+    그래서 `source_venue_dir` 쪽에도 구조적 가드(`VenueNotCoveredError`)를 뒀다.
     """
     candidates = [selected_source]
     candidates.extend(source for source in ordered_sources(source_pref) if source not in candidates)
+    candidates = [s for s in candidates if source_covers_venue(s, venue)]
     for source in candidates:
         if source == "kis_api":
             continue
         try:
-            source_dir = engine.parquet_dir(date, code, source)
+            source_dir = engine.parquet_dir(date, code, source, venue=venue)
         except (FileNotFoundError, StockDateNotFound):
             continue
         if not isinstance(source_dir, Path):
@@ -245,7 +264,7 @@ def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiC
 
 
 def build_candles_slice(
-    engine: QueryEngine, *, code: str, date: str, source: str = "hogaplay"
+    engine: QueryEngine, *, code: str, date: str, source: str = "hogaplay", venue: Venue = "KRX"
 ) -> list[ApiCandle]:
     # ADR-0040 / ADR-0043: a live promotion may have no candles.parquet — the
     # candle dimension can be served separately by Live Candle Backfill.
@@ -253,7 +272,7 @@ def build_candles_slice(
     # candles; days where synthesis failed still land here.) Return empty list
     # rather than raising so /api/range can still serve hoga indicators +
     # segments for live-source Stock-Dates.
-    path = engine.parquet_dir(date, code, source) / "candles.parquet"
+    path = engine.parquet_dir(date, code, source, venue=venue) / "candles.parquet"
     if not path.exists():
         return []
     rows = candles_tbl.query_all(engine.conn, path=path)
@@ -270,10 +289,13 @@ def _is_repaired_candle_partition(
 
     호가 승자가 kis_api면 이미 읽은 ``winner_meta``를 재사용하고, 승자가 갈렸을
     때만(kiwoom_live가 호가로 이긴 날) kis_api meta를 추가로 읽는다.
+
+    venue="KRX" 고정 — `kis_api` 는 `SOURCE_VENUES` 상 KRX 만 덮는 소스다(캔들 전용
+    복구본). 그 소스에 venue 축이 없으므로 여기서 KRX 는 폴백이 아니라 사실이다.
     """
     if winner_meta.get("created_from") == REPAIR_MARKER:
         return True
-    meta_path = engine.parquet_dir(date, code, "kis_api") / "meta.json"
+    meta_path = engine.parquet_dir(date, code, "kis_api", venue="KRX") / "meta.json"
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError, OSError):
@@ -287,6 +309,7 @@ def build_broker_late_entries_slice(
     code: str,
     date: str,
     source: str,
+    venue: Venue = "KRX",
     start_hhmm: int,
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
     today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
@@ -298,19 +321,19 @@ def build_broker_late_entries_slice(
     무관하지만 최종 events 는 종속). ``[]`` 도 유효 캐시값. 오늘은 재계산(ADR-0043)."""
     cache = _resolve_cache(engine, cache)
     today_kst = _resolve_today_kst(today_kst)
-    path = engine.parquet_dir(date, code, source) / "brokers.parquet"
+    path = engine.parquet_dir(date, code, source, venue=venue) / "brokers.parquet"
     if not path.exists():
         return []
     threshold_ms = _hhmm_to_hhmmssms(start_hhmm)  # invalid hhmm 은 캐시 이전에 raise
     cacheable = cache is not None and today_kst is not None and date < today_kst
     if cacheable:
-        cached = cache.get_broker_late(code, date, source, start_hhmm)  # type: ignore[union-attr]
+        cached = cache.get_broker_late(code, date, source, start_hhmm, venue=venue)  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
     # 오늘자: short-TTL 프로세스 캐시(ADR-0090). ``[]`` 도 유효 캐시값.
     is_today = today_kst is not None and date == today_kst
     # threshold_ms is derived from start_hhmm, so start_hhmm alone keys the compute.
-    broker_key = ("broker_late", code, date, source, start_hhmm)
+    broker_key = ("broker_late", code, date, source, venue, start_hhmm)
     if is_today:
         hit, cached = TODAY_TTL.lookup(broker_key)
         if hit:
@@ -333,7 +356,7 @@ def build_broker_late_entries_slice(
         for row in rows
     ]
     if cacheable:
-        cache.store_broker_late(code, date, source, start_hhmm, events)  # type: ignore[union-attr]
+        cache.store_broker_late(code, date, source, start_hhmm, events, venue=venue)  # type: ignore[union-attr]
     elif is_today:
         TODAY_TTL.put(broker_key, events)
     return events
@@ -346,6 +369,7 @@ def build_quote_ratio_slice(
     date: str,
     bucket_ms: int = 1000,
     source: str = "hogaplay",
+    venue: Venue = "KRX",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
@@ -361,7 +385,7 @@ def build_quote_ratio_slice(
     # table can exclude the auction book from a straddling bucket — ADR-0029), and
     # re-bases the native ms-from-midnight bucket into Unix ms (the table query is
     # date-agnostic, so it cannot).
-    path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    path_obj = engine.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
     if not path_obj.exists():
         # ADR-0043: today promotion (promote_kiwoom_today) writes empty records
         # as unlink → missing file is the valid "no data" state, not an error.
@@ -372,21 +396,21 @@ def build_quote_ratio_slice(
         # in test_indicator_reaggregate). The 1m rows carry the SAME
         # session_open_ms/session_close_ms auction boundary, so the (0,0) auction
         # sentinel (opening + closing) is preserved across re-aggregation.
-        rows_1m = cache.get_ratio(code, date, source)  # type: ignore[union-attr]
+        rows_1m = cache.get_ratio(code, date, source, venue=venue)  # type: ignore[union-attr]
         if rows_1m is None:
             rows_1m = SLICE_COALESCER.run(
-                ("ratio", code, date, source),
+                ("ratio", code, date, source, venue),
                 lambda: snapshots_tbl.query_bucketed_ratio(
                     engine.conn, path=path_obj, bucket_ms=_ONE_MINUTE_MS,
                     session_open_ms=session_open_ms,
                     session_close_ms=session_close_ms,
                 ),
             )
-            cache.store_ratio(code, date, source, rows_1m)  # type: ignore[union-attr]
+            cache.store_ratio(code, date, source, rows_1m, venue=venue)  # type: ignore[union-attr]
         rows = reaggregate_ratio(rows_1m, bucket_ms)
     else:
         is_today = today_kst is not None and date == today_kst
-        ttl_key = ("ratio", code, date, source, bucket_ms, session_open_ms, session_close_ms)
+        ttl_key = ("ratio", code, date, source, venue, bucket_ms, session_open_ms, session_close_ms)
         hit, cached = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
         if hit:
             rows = cached
@@ -451,6 +475,7 @@ def build_volume_distribution_slice(
     code: str,
     date: str,
     source: str,
+    venue: Venue = "KRX",
     session_open_ms: int,
     session_close_ms: int,
     range_count: int,
@@ -474,7 +499,7 @@ def build_volume_distribution_slice(
     합성하면 cutoff variant도 캐시 가능(현재 미구현)."""
     cache = _resolve_cache(engine, cache)
     today_kst = _resolve_today_kst(today_kst)
-    code_dir = engine.parquet_dir(date, code, source)
+    code_dir = engine.parquet_dir(date, code, source, venue=venue)
     candles_path = code_dir / "candles.parquet"
     trades_path = code_dir / "trades.parquet"
     if not trades_path.exists():
@@ -495,14 +520,14 @@ def build_volume_distribution_slice(
     )
     if cacheable:
         cached = cache.get_volume_distribution(  # type: ignore[union-attr]
-            code, date, source, range_count, price_min, price_max
+            code, date, source, range_count, price_min, price_max, venue=venue,
         )
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
     # 오늘자 & cutoff 없는 요청만 short-TTL(ADR-0090) — cutoff variant는 과거일과
     # 동일하게 캐시 제외(카디널리티). 키=coalescer 키로 정합 보장.
     is_today = today_kst is not None and date == today_kst and cutoff_ms is None
-    vdist_key = ("vdist", code, date, source, range_count, price_min, price_max, cutoff_ms)
+    vdist_key = ("vdist", code, date, source, venue, range_count, price_min, price_max, cutoff_ms)
     if is_today:
         hit, cached = TODAY_TTL.lookup(vdist_key)
         if hit:
@@ -568,7 +593,7 @@ def build_volume_distribution_slice(
     )
     if cacheable:
         cache.store_volume_distribution(  # type: ignore[union-attr]
-            code, date, source, range_count, price_min, price_max, result
+            code, date, source, range_count, price_min, price_max, result, venue=venue,
         )
     elif is_today:
         TODAY_TTL.put(vdist_key, result)
@@ -582,6 +607,7 @@ def build_fill_strength_slice(
     date: str,
     bucket_ms: int = 60_000,
     source: str = "hogaplay",
+    venue: Venue = "KRX",
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
     today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> FillStrength:
@@ -596,21 +622,21 @@ def build_fill_strength_slice(
     # fills가 있으면 우선, 없으면(=hogaplay·레거시 승격본) trades 폴백
     # (_query_fill_rows). fill_strength is a pure SUM GROUP BY, so re-aggregating
     # the cached 1m sums up to bucket_ms is exact (reaggregate_fill).
-    code_dir = engine.parquet_dir(date, code, source)
+    code_dir = engine.parquet_dir(date, code, source, venue=venue)
     if _indicator_cacheable(cache, today_kst, date, bucket_ms):
-        rows_1m = cache.get_fill(code, date, source)  # type: ignore[union-attr]
+        rows_1m = cache.get_fill(code, date, source, venue=venue)  # type: ignore[union-attr]
         if rows_1m is None:
             rows_1m = SLICE_COALESCER.run(
-                ("fill", code, date, source),
+                ("fill", code, date, source, venue),
                 lambda: _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS),
             )
             if rows_1m is None:
                 return FillStrength(bucket_ms=bucket_ms, points=[])
-            cache.store_fill(code, date, source, rows_1m)  # type: ignore[union-attr]
+            cache.store_fill(code, date, source, rows_1m, venue=venue)  # type: ignore[union-attr]
         rows = reaggregate_fill(rows_1m, bucket_ms)
     else:
         is_today = today_kst is not None and date == today_kst
-        ttl_key = ("fill", code, date, source, bucket_ms)
+        ttl_key = ("fill", code, date, source, venue, bucket_ms)
         hit, cached = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
         if hit:
             rows = cached
@@ -649,6 +675,7 @@ def build_ask_peak_slice(
     date: str,
     bucket_ms: int,
     source: str = "hogaplay",
+    venue: Venue = "KRX",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = None,
@@ -662,14 +689,14 @@ def build_ask_peak_slice(
     (``session_open_ms``/``session_close_ms``, native HHMMSSmmm)로 동시호가 배제 —
     캐시 키에 ``bucket_ms``가 포함되므로 분봉 전환 시 재계산된다."""
     cacheable = cache is not None and today_kst is not None and date != today_kst
-    if cacheable and cache.has_ask_peak(code, date, source, bucket_ms):  # type: ignore[union-attr]
-        return cache.get_ask_peak(code, date, source, bucket_ms)  # type: ignore[union-attr]
+    if cacheable and cache.has_ask_peak(code, date, source, bucket_ms, venue=venue):  # type: ignore[union-attr]
+        return cache.get_ask_peak(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
     peak = _compute_ask_peak(
         engine, code=code, date=date, source=source, bucket_ms=bucket_ms,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
     if cacheable:
-        cache.store_ask_peak(code, date, source, bucket_ms, peak)  # type: ignore[union-attr]
+        cache.store_ask_peak(code, date, source, bucket_ms, peak, venue=venue)  # type: ignore[union-attr]
     return peak
 
 
@@ -761,12 +788,13 @@ def _compute_ask_peak(
     code: str,
     date: str,
     source: str,
+    venue: Venue = "KRX",
     bucket_ms: int,
     session_open_ms: int | None,
     session_close_ms: int | None,
 ) -> AskPeak | None:
     try:
-        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+        path_obj = engine.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):
         return None
     if not path_obj.exists():
@@ -801,20 +829,21 @@ def build_bid_peak_slice(
     date: str,
     bucket_ms: int,
     source: str = "hogaplay",
+    venue: Venue = "KRX",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = None,
     today_kst: str | None = None,
 ) -> BidPeak | None:
     cacheable = cache is not None and today_kst is not None and date != today_kst
-    if cacheable and cache.has_bid_peak(code, date, source, bucket_ms):  # type: ignore[union-attr]
-        return cache.get_bid_peak(code, date, source, bucket_ms)  # type: ignore[union-attr]
+    if cacheable and cache.has_bid_peak(code, date, source, bucket_ms, venue=venue):  # type: ignore[union-attr]
+        return cache.get_bid_peak(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
     peak = _compute_bid_peak(
         engine, code=code, date=date, source=source, bucket_ms=bucket_ms,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
     if cacheable:
-        cache.store_bid_peak(code, date, source, bucket_ms, peak)  # type: ignore[union-attr]
+        cache.store_bid_peak(code, date, source, bucket_ms, peak, venue=venue)  # type: ignore[union-attr]
     return peak
 
 
@@ -824,12 +853,13 @@ def _compute_bid_peak(
     code: str,
     date: str,
     source: str,
+    venue: Venue = "KRX",
     bucket_ms: int,
     session_open_ms: int | None,
     session_close_ms: int | None,
 ) -> BidPeak | None:
     try:
-        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+        path_obj = engine.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):
         return None
     if not path_obj.exists():
@@ -880,6 +910,7 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
     date: str,
     bucket_ms: int,
     source: str = "hogaplay",
+    venue: Venue = "KRX",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
@@ -891,21 +922,21 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
         cache is not None
         and today_kst is not None
         and date != today_kst
-        and cache.has_ask_peak(code, date, source, bucket_ms)
+        and cache.has_ask_peak(code, date, source, bucket_ms, venue=venue)
     )
     bid_cached = (
         cache is not None
         and today_kst is not None
         and date != today_kst
-        and cache.has_bid_peak(code, date, source, bucket_ms)
+        and cache.has_bid_peak(code, date, source, bucket_ms, venue=venue)
     )
-    ask = cache.get_ask_peak(code, date, source, bucket_ms) if ask_cached and cache is not None else None
-    bid = cache.get_bid_peak(code, date, source, bucket_ms) if bid_cached and cache is not None else None
+    ask = cache.get_ask_peak(code, date, source, bucket_ms, venue=venue) if ask_cached and cache is not None else None
+    bid = cache.get_bid_peak(code, date, source, bucket_ms, venue=venue) if bid_cached and cache is not None else None
     if ask_cached and bid_cached:
         return ask, bid
 
     try:
-        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+        path_obj = engine.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):
         return ask, bid
     if not path_obj.exists():
@@ -950,7 +981,7 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
     # (not just concurrent ones) for a short TTL, to collapse symbol-switch
     # polling bursts that the single-flight above cannot dedupe.
     is_today = today_kst is not None and date == today_kst
-    ttl_key = ("peak_dual", code, date, source, bucket_ms, session_open_ms, session_close_ms)
+    ttl_key = ("peak_dual", code, date, source, venue, bucket_ms, session_open_ms, session_close_ms)
     hit, cached_rows = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
     if hit:
         ask_row, bid_row = cached_rows
@@ -958,7 +989,7 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
         # 키는 TTL 키를 미러(kind 프리픽스 + 세션 경계): 경계가 다른 동시 호출이
         # flight를 공유하면 다른 결과를 받게 되므로 경계도 키에 포함한다.
         ask_row, bid_row = SLICE_COALESCER.run(
-            ("peak_dual", code, date, source, bucket_ms, session_open_ms, session_close_ms),
+            ("peak_dual", code, date, source, venue, bucket_ms, session_open_ms, session_close_ms),
             lambda: snapshots_tbl.query_day_ask_bid_peak_dual(
                 engine.conn,
                 path=path_obj,
@@ -976,9 +1007,9 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
         bid = _bid_peak_from_dual_row(date, bid_row)
     if cache is not None and today_kst is not None and date != today_kst:
         if not ask_cached:
-            cache.store_ask_peak(code, date, source, bucket_ms, ask)
+            cache.store_ask_peak(code, date, source, bucket_ms, ask, venue=venue)
         if not bid_cached:
-            cache.store_bid_peak(code, date, source, bucket_ms, bid)
+            cache.store_bid_peak(code, date, source, bucket_ms, bid, venue=venue)
     return ask, bid
 
 
@@ -988,6 +1019,7 @@ def build_trade_volume_poc_slice(
     code: str,
     date: str,
     source: str,
+    venue: Venue = "KRX",
     session_open_ms: int,
     session_close_ms: int,
     range_count: int,
@@ -999,7 +1031,7 @@ def build_trade_volume_poc_slice(
 ) -> TradeVolumePoc | None:
     cache = _resolve_cache(engine, cache)
     today_kst = _resolve_today_kst(today_kst)
-    code_dir = engine.parquet_dir(date, code, source)
+    code_dir = engine.parquet_dir(date, code, source, venue=venue)
     trades_path = code_dir / "trades.parquet"
     if price_range is None or not trades_path.exists():
         return None
@@ -1007,13 +1039,13 @@ def build_trade_volume_poc_slice(
     cacheable = cache is not None and today_kst is not None and date < today_kst
     if cacheable:
         cached = cache.get_trade_volume_poc(
-            code, date, source, range_count, price_min, price_max,
+            code, date, source, range_count, price_min, price_max, venue=venue,
         )
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
     # 오늘자: short-TTL 프로세스 캐시(ADR-0090). None 결과도 유효 캐시값.
     is_today = today_kst is not None and date == today_kst
-    poc_key = ("poc", code, date, source, range_count, price_min, price_max)
+    poc_key = ("poc", code, date, source, venue, range_count, price_min, price_max)
     if is_today:
         hit, cached = TODAY_TTL.lookup(poc_key)
         if hit:
@@ -1034,7 +1066,7 @@ def build_trade_volume_poc_slice(
     if row is None:
         if cacheable:
             cache.store_trade_volume_poc(
-                code, date, source, range_count, price_min, price_max, None,
+                code, date, source, range_count, price_min, price_max, None, venue=venue,
             )
         elif is_today:
             TODAY_TTL.put(poc_key, None)
@@ -1050,7 +1082,7 @@ def build_trade_volume_poc_slice(
     )
     if cacheable:
         cache.store_trade_volume_poc(
-            code, date, source, range_count, price_min, price_max, poc,
+            code, date, source, range_count, price_min, price_max, poc, venue=venue,
         )
     elif is_today:
         TODAY_TTL.put(poc_key, poc)
@@ -1064,6 +1096,7 @@ def build_depth_heatmap_slice(
     date: str,
     bucket_ms: int,
     source: str = "hogaplay",
+    venue: Venue = "KRX",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
@@ -1089,14 +1122,14 @@ def build_depth_heatmap_slice(
     cache = _resolve_cache(engine, cache)
     today_kst = _resolve_today_kst(today_kst)
     try:
-        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+        path_obj = engine.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):
         return []
     if not path_obj.exists():
         return []
     cacheable = _indicator_cacheable(cache, today_kst, date, bucket_ms)
     if cacheable:
-        cached = cache.get_depth(code, date, source, bucket_ms)  # type: ignore[union-attr]
+        cached = cache.get_depth(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
     # ADR-0090: 오늘자는 디스크 캐시 금지(프로모션 중)라 형제 지표(ratio/fill/peak)처럼
@@ -1104,7 +1137,7 @@ def build_depth_heatmap_slice(
     # ~1.5MB로 크지만 TODAY_TTL은 오늘 항목만 보유하고 put마다 만료분을 청소하므로
     # 정상 뷰의 정상상태는 (code, bucket_ms)당 1건이다. 키=coalescer 키로 정합 보장.
     is_today = today_kst is not None and date == today_kst
-    depth_key = ("depth", code, date, source, bucket_ms)
+    depth_key = ("depth", code, date, source, venue, bucket_ms)
     if is_today:
         hit, cached = TODAY_TTL.lookup(depth_key)
         if hit:
@@ -1132,7 +1165,7 @@ def build_depth_heatmap_slice(
             )
         )
     if cacheable:
-        cache.store_depth(code, date, source, bucket_ms, out)  # type: ignore[union-attr]
+        cache.store_depth(code, date, source, bucket_ms, out, venue=venue)  # type: ignore[union-attr]
     elif is_today:
         TODAY_TTL.put(depth_key, out)
     return out
@@ -1145,6 +1178,7 @@ def build_depth_delta_slice(
     date: str,
     bucket_ms: int,
     source: str = "hogaplay",
+    venue: Venue = "KRX",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
@@ -1161,18 +1195,18 @@ def build_depth_delta_slice(
     cache = _resolve_cache(engine, cache)
     today_kst = _resolve_today_kst(today_kst)
     try:
-        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+        path_obj = engine.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):
         return []
     if not path_obj.exists():
         return []
     cacheable = _indicator_cacheable(cache, today_kst, date, bucket_ms)
     if cacheable:
-        cached = cache.get_depth_delta(code, date, source, bucket_ms)  # type: ignore[union-attr]
+        cached = cache.get_depth_delta(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
     is_today = today_kst is not None and date == today_kst
-    delta_key = ("depth_delta", code, date, source, bucket_ms)
+    delta_key = ("depth_delta", code, date, source, venue, bucket_ms)
     if is_today:
         hit, cached = TODAY_TTL.lookup(delta_key)
         if hit:
@@ -1199,7 +1233,7 @@ def build_depth_delta_slice(
             )
         )
     if cacheable:
-        cache.store_depth_delta(code, date, source, bucket_ms, out)  # type: ignore[union-attr]
+        cache.store_depth_delta(code, date, source, bucket_ms, out, venue=venue)  # type: ignore[union-attr]
     elif is_today:
         TODAY_TTL.put(delta_key, out)
     return out
@@ -1211,6 +1245,7 @@ def _first_trailing_single_price_book_hhmmssms(
     code: str,
     date: str,
     source: str,
+    venue: Venue = "KRX",
     session_close_ms: int,
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
     today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
@@ -1225,7 +1260,7 @@ def _first_trailing_single_price_book_hhmmssms(
     today_kst = _resolve_today_kst(today_kst)
     cacheable = cache is not None and today_kst is not None and date < today_kst
     if cacheable:
-        cached = cache.get_continuous_before(code, date, source, int(session_close_ms))  # type: ignore[union-attr]
+        cached = cache.get_continuous_before(code, date, source, int(session_close_ms), venue=venue)  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
     # 오늘자: short-TTL 프로세스 캐시(ADR-0090). "경계 없음"(None)은 장중 흔한
@@ -1234,9 +1269,9 @@ def _first_trailing_single_price_book_hhmmssms(
     # (test_today_fill_strength_none_result_is_not_cached 선례).
     is_today = today_kst is not None and date == today_kst
     if is_today:
-        snapshots_path = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+        snapshots_path = engine.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
         is_today = snapshots_path.exists()
-    cont_key = ("continuous", code, date, source, int(session_close_ms))
+    cont_key = ("continuous", code, date, source, venue, int(session_close_ms))
     if is_today:
         hit, cached = TODAY_TTL.lookup(cont_key)
         if hit:
@@ -1248,7 +1283,7 @@ def _first_trailing_single_price_book_hhmmssms(
         ),
     )
     if cacheable:
-        cache.store_continuous_before(code, date, source, int(session_close_ms), result)  # type: ignore[union-attr]
+        cache.store_continuous_before(code, date, source, int(session_close_ms), result, venue=venue)  # type: ignore[union-attr]
     elif is_today:
         TODAY_TTL.put(cont_key, result)
     return result
@@ -1260,9 +1295,10 @@ def _compute_first_trailing_single_price_book_hhmmssms(
     code: str,
     date: str,
     source: str,
+    venue: Venue = "KRX",
     session_close_ms: int,
 ) -> int | None:
-    code_dir = engine.parquet_dir(date, code, source)
+    code_dir = engine.parquet_dir(date, code, source, venue=venue)
     snapshots_path = code_dir / "snapshots.parquet"
     if not snapshots_path.exists():
         return None
@@ -1300,11 +1336,16 @@ def _empty_range_bundle(
     bucket_ms: int,
     *,
     excluded: list[ExcludedDate],
+    missing: list[MissingDate] | None = None,
 ) -> RangeBundle:
     """Empty RangeBundle for the no-captured-data and all-INVALID branches
     (spec 2026-05-27 §4.3). Mirrors the success-path shape with empty series
     arrays; excluded_dates carries any invariant-gated dates so frontend can
-    surface DataWarning UX."""
+    surface DataWarning UX.
+
+    ``missing`` 은 **이 분기에서 특히 중요하다** — 전 구간이 비는 응답이야말로
+    프론트가 "왜" 를 물어야 하는 자리다(#1133). NXT·통합을 저장 시작 이전 날짜로
+    조회하면 여기로 떨어진다."""
     return RangeBundle(
         code=code,
         from_date=from_date,
@@ -1318,6 +1359,7 @@ def _empty_range_bundle(
         volume_profile_by_day=[],
         excluded_dates=excluded,
         data_warnings=[],
+        missing_dates=missing or [],
         ask_peaks=[],
         bid_peaks=[],
         broker_late_entries=[],
@@ -1443,6 +1485,9 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     # warn-only → include + surface under data_warnings.
     excluded: list[ExcludedDate] = []
     warnings_list: list[DateWarning] = []
+    # 읽을 것이 없어 건너뛴 날 + 사유(#1133). `excluded` 와 나눠 두는 이유는 모델 주석 참조 —
+    # "데이터가 틀렸다" 와 "데이터가 없다" 를 UI 가 다르게 말해야 한다.
+    missing: list[MissingDate] = []
     segments: list[RangeSegment] = []
     candles: list[ApiCandle] = []
     ratio_pts: list[QuoteRatioPoint] = []
@@ -1470,7 +1515,11 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         date_fill_before = len(fill_pts)
         date_excluded_before = len(excluded)
         date_warnings_before = len(warnings_list)
-        resolution = resolve_source_result(engine, d, code, source_pref)
+        # ⚠ `venue` 를 넘기는 것이 **load-bearing** 이다(#1133). 안 넘기면 사다리가
+        # 기본 "KRX" 로 승자를 뽑아, `source_covers_venue` 가 걸러 냈어야 할
+        # KRX 전용 소스(hogaplay)가 NXT·통합 요청을 이긴다 — 그러면 빈 응답도
+        # `venue_unsupported` 도 아니고 **다른 시장 데이터가 그 시장 것처럼** 나간다.
+        resolution = resolve_source_result(engine, d, code, source_pref, venue)
         source = resolution.source
         # 2026-07-17 정책: kis_api는 캔들 전용(ADR-0109 복구 candles.parquet)이다 —
         # 호가·체결 계열(호가비·체결강도·peak·vdist·거래원·depth heatmap)은 kis_api를
@@ -1482,6 +1531,15 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             try:
                 meta = json.loads((resolution.path / "meta.json").read_text(encoding="utf-8"))
             except (FileNotFoundError, ValueError, OSError):
+                # ⚠ `path is not None` 이 "경로가 존재한다" 는 뜻이 **아니다**(#1133).
+                # 사다리는 승자 source 를 정하고 `source_venue_dir` 로 경로를 **조립**할
+                # 뿐이라, venue 디렉터리가 없어도 not-None 인 경로가 나온다 — NXT 를
+                # 저장 시작 이전 날짜로 조회하는 통상 케이스가 정확히 이 모양이다.
+                # 그래서 사유를 디렉터리 존재로 가른다: 없으면 결손, 있으면 손상.
+                missing.append(MissingDate(
+                    date=d,
+                    reason="source_missing" if not resolution.path.exists() else "meta_unreadable",
+                ))
                 if perf_debug.enabled():
                     log.warning(
                         "hoga_perf range_date status=skip_meta code=%s date=%s source=%s mode=%s "
@@ -1491,8 +1549,14 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 continue
         else:
             try:
-                meta = engine.get_meta(d, code, source)
+                meta = engine.get_meta(d, code, source, venue=venue)
             except (FileNotFoundError, StockDateNotFound):
+                # NXT·통합을 저장 시작 이전 날짜로 조회하면 **여기로 온다** — 사다리가
+                # 이미 사유를 판정해 뒀으므로 그대로 싣는다. 이 한 줄이 없으면 프론트는
+                # 빈 배열만 받아 "장애" 와 "이 시장엔 원래 없음" 을 가를 수 없다.
+                missing.append(MissingDate(
+                    date=d, reason=resolution.missing_reason or "source_missing",
+                ))
                 if perf_debug.enabled():
                     log.warning(
                         "hoga_perf range_date status=skip_meta code=%s date=%s source=%s mode=%s "
@@ -1527,7 +1591,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         needs_trade_price_range = volume_distribution_bins is not None or include_trade_volume_pocs
         needs_raw_candles = not hoga_only and (not sidecar_only or needs_trade_price_range)
         raw_candles = (
-            build_candles_slice(engine, code=code, date=d, source=candle_source)
+            build_candles_slice(engine, code=code, date=d, source=candle_source, venue=venue)
             if needs_raw_candles and candle_source is not None
             else []
         )
@@ -1560,6 +1624,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     code=code,
                     source_pref=source_pref,
                     selected_source=source,
+                    venue=venue,
                 )
                 if needs_trade_price_range
                 else source
@@ -1570,7 +1635,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             QuoteRatio(bucket_ms=bucket_ms, points=[])
             if sidecar_only or candles_only or not orderflow_ok
             else build_quote_ratio_slice(
-                engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+                engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
                 session_open_ms=norm_meta["regular_session_open_ms"],
                 session_close_ms=meta["regular_session_close_ms"],
             )
@@ -1579,7 +1644,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             FillStrength(bucket_ms=bucket_ms, points=[])
             if sidecar_only or candles_only or not orderflow_ok
             else build_fill_strength_slice(
-                engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+                engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
             )
         )
         continuous_before_needed = (
@@ -1591,6 +1656,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 code=code,
                 date=d,
                 source=trade_indicator_source,
+                venue=venue,
                 session_close_ms=int(meta["regular_session_close_ms"]),
             )
             if continuous_before_needed
@@ -1598,7 +1664,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         )
         if (include_ask_peaks or include_bid_peaks) and orderflow_ok:
             ap_d, bp_d = build_ask_bid_peak_slices(
-                engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+                engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
                 session_open_ms=norm_meta["regular_session_open_ms"],
                 session_close_ms=meta["regular_session_close_ms"],
             )
@@ -1611,7 +1677,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             bp_d = None
         tvp_d = (
             build_trade_volume_poc_slice(
-                engine, code=code, date=d, source=trade_indicator_source,
+                engine, code=code, date=d, source=trade_indicator_source, venue=venue,
                 session_open_ms=norm_meta["regular_session_open_ms"],
                 session_close_ms=meta["regular_session_close_ms"],
                 range_count=trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS,
@@ -1626,6 +1692,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             session_open_ms=hhmmssms_to_unix_ms(d, norm_meta["regular_session_open_ms"]),
             session_close_ms=hhmmssms_to_unix_ms(d, meta["regular_session_close_ms"]),
             source=source,
+            venue=venue,
         ))
         included_dates.append(d)
         if candle_source == "kis_api" and _is_repaired_candle_partition(engine, d, code, meta):
@@ -1643,6 +1710,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     code=code,
                     date=d,
                     source=source,
+                    venue=venue,
                     start_hhmm=broker_late_entry_start_hhmm,
                 )
             )
@@ -1658,6 +1726,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 code=code,
                 date=d,
                 source=trade_indicator_source,
+                venue=venue,
                 session_open_ms=int(norm_meta["regular_session_open_ms"]),
                 session_close_ms=int(meta["regular_session_close_ms"]),
                 range_count=volume_distribution_bins,
@@ -1682,6 +1751,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     date=d,
                     bucket_ms=bucket_ms,
                     source=source,
+                    venue=venue,
                     session_open_ms=norm_meta["regular_session_open_ms"],
                     session_close_ms=meta["regular_session_close_ms"],
                 )
@@ -1694,6 +1764,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     date=d,
                     bucket_ms=bucket_ms,
                     source=source,
+                    venue=venue,
                     session_open_ms=norm_meta["regular_session_open_ms"],
                     session_close_ms=meta["regular_session_close_ms"],
                 )
@@ -1720,7 +1791,9 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         # Spec 2026-05-27 §4.3: every in-range date is INVALID → return an
         # empty bundle with excluded_dates populated, so frontend can render
         # DataWarning UX without 404 round-trips.
-        return _empty_range_bundle(code, from_date, to_date, bucket_ms, excluded=excluded)
+        return _empty_range_bundle(
+            code, from_date, to_date, bucket_ms, excluded=excluded, missing=missing,
+        )
 
     return RangeBundle(
         code=code,
@@ -1736,6 +1809,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         volume_profile_by_day=[],
         excluded_dates=excluded,
         data_warnings=warnings_list,
+        missing_dates=missing,
         ask_peaks=ask_peaks,
         bid_peaks=bid_peaks,
         broker_late_entries=broker_late_entries,

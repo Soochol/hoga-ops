@@ -17,11 +17,13 @@ import {
   TIMEFRAME_TO_MS,
   type Timeframe,
   type RangeBundle,
+  type RangeMissingDate,
   type Candle,
   type InvestorNetPoint,
   type SourceName,
 } from '../api/types';
 import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
+import { deriveCandleEmptyState, type CandleEmptyState } from './candleEmptyState';
 import type { DepthDeltaPoint } from './depthDelta';
 import {
   combineDepthDeltaBackendLive,
@@ -282,6 +284,13 @@ export interface UseLiveBundleResult {
    * across the slower full sidecar range so those panes can paint from
    * `mode=hoga` without being re-keyed when volume-distribution sidecars land. */
   hogaBundle: RangeBundle | null;
+  /** 호가 결손 사유 — `hogaBundle` 이 null 이어도 살아 있어야 해서 별도 필드다(#1133).
+   *  근거는 반환부 주석. */
+  hogaMissingDates: readonly RangeMissingDate[];
+  /** 캔들이 없을 때 왜 없는지 + 사용자가 할 수 있는 일. 캔들이 있으면 `null`(#1133 후속). */
+  candleEmpty: CandleEmptyState | null;
+  /** 활성 캔들 쿼리 재조회 — 빈 상태의 "다시 시도" 가 쓴다. */
+  refetchCandles: () => void;
   /** 오늘의 단별 잔량 증감 버킷(분봉). 과거일 소스가 없는 **오늘 전용** 지표라
    * RangeBundle 이 아니라 별도 필드로 나간다 — 자세한 근거는 `HogaSeries.depth_delta_today`. */
   depthDeltaToday: readonly DepthDeltaPoint[];
@@ -995,6 +1004,10 @@ export function useLiveBundle(
             fill_strength: committedHogaSeries.fill_strength,
             broker_late_entries: brokerLateEntryEnabled ? chartBundle.broker_late_entries : [],
             program_trade: { points: [] },
+            // 결손 사유는 **호가 응답에만** 있다(#1133) — 스프레드 원본인 chartBundle 은
+            // 캔들 경로(벤더 REST)라 이 필드가 없다. 그래서 명시적으로 실어 올린다.
+            // 안 하면 호가 pane 이 비는 바로 그 상황에서 이유가 사라진다.
+            missing_dates: pastHoga.data?.missing_dates ?? [],
           }
         : null,
     [
@@ -1006,10 +1019,22 @@ export function useLiveBundle(
       committedHogaSeries,
       brokerLateEntryEnabled,
       brokerLateEntryEnabled ? chartBundle?.broker_late_entries : null,
+      pastHoga.data?.missing_dates,
     ],
   );
 
   // Clamp is a minute-path concern only; the daily endpoint has no 250d cap.
+  // 지금 캔들을 담당하는 쿼리 하나 — 빈 상태 판별의 입력(#1133 후속).
+  // 축이 둘이다: 타임프레임(분봉/캘린더) × REST 우회(벤더/디스크). 넷 중 하나만 산다.
+  const activeCandlesQuery = restBypassEnabled
+    ? (isMinute ? minuteDiskCandles : screenerDailyCandlesQuery)
+    : (isMinute ? pastCandlesQuery : pastDailyCandlesQuery);
+  const activeCandlesError = activeCandlesQuery.error;
+  const activeCandlesLoading = activeCandlesQuery.isLoading;
+  // 빈 상태의 "다시 시도" — 활성 쿼리 하나만 다시 쏜다(전부 refetch 하면 벤더 유량을
+  // 무관한 쿼리까지 태운다). 캔들 소스가 바뀌면 이 참조도 따라 바뀐다.
+  const refetchCandles = activeCandlesQuery.refetch;
+
   const clampEngaged = isMinute
     && historicalFromDate != null
     && historicalFromDate <= earliestAllowedMinute;
@@ -1052,6 +1077,32 @@ export function useLiveBundle(
     bundle,
     chartBundle,
     hogaBundle,
+    /**
+     * 호가 결손 사유 — **번들과 따로 내보낸다**(#1133).
+     *
+     * `hogaBundle` 은 `chartBundle ? {...} : null` 이라 **캔들이 없으면 통째로 null**
+     * 이고, 그러면 안에 실린 사유도 함께 사라진다. 그런데 사유는 데이터가 없을 때
+     * 존재하는 값이라 정작 필요한 순간에 그릇이 없는 셈이다 — 자격증명 미설정·벤더
+     * 장애로 캔들이 안 오면 "왜 비었는지" 를 말할 수단이 함께 증발했다.
+     *
+     * 메타데이터를 데이터와 같은 경로로 흘린 대가라, 경로를 가른 것이 수정이다.
+     */
+    hogaMissingDates: pastHoga.data?.missing_dates ?? [],
+    /**
+     * 캔들이 **왜** 없나 — 원인 4종 판별(#1133 후속). 로직은 `candleEmptyState.ts`.
+     *
+     * ⚠ **활성 캔들 소스의 에러만** 본다. 타임프레임(분봉/캘린더)과 REST 우회 설정에
+     * 따라 캔들이 오는 쿼리가 넷으로 갈리는데, 아래 `error` 필드처럼 전부 합치면 지금
+     * 캔들을 담당하지 않는 쿼리의 실패가 엉뚱한 빈 상태를 띄운다.
+     */
+    candleEmpty: deriveCandleEmptyState({
+      error: activeCandlesError,
+      hasCandles: (chartBundle?.candles.length ?? 0) > 0,
+      isLoading: activeCandlesLoading,
+      restBypassEnabled,
+      hasInstrument: !!code,
+    }),
+    refetchCandles,
     /** 오늘의 단별 잔량 증감 버킷(세션 누적). 과거일 소스가 없어(설계 §5) RangeBundle 에
      *  싣지 않고 도메인 그대로 내보낸다 — wire 왕복도, 백엔드 플래그도 필요 없다. */
     depthDeltaToday,

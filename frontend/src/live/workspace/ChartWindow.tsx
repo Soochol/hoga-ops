@@ -354,6 +354,9 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               bundle={d.workareaBundle}
               chartBundle={d.workareaChartBundle}
               hogaPaneBundle={d.workareaHogaBundle}
+              hogaMissingDates={d.workareaHogaMissingDates}
+              candleEmpty={d.workareaCandleEmpty}
+              onRetryCandles={d.refetchCandles}
               clampEngaged={d.clampEngaged}
               isPastCandlesLoading={d.workareaLoading}
               isHogaLoading={d.activeIndexId ? false : d.isHogaLoading}

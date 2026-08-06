@@ -64,7 +64,7 @@ def _engine(tmp_path: Path) -> QueryEngine:
 
 def _cache_file(tmp_path: Path, bucket_ms: int = 60_000) -> Path:
     return (
-        tmp_path / "kis-past-indicators" / CODE / "kiwoom_live" / f"{DATE}.depth.{bucket_ms}.json"
+        tmp_path / "kis-past-indicators" / CODE / "kiwoom_live" / "KRX" / f"{DATE}.depth.{bucket_ms}.json"
     )
 
 

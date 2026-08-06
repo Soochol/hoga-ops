@@ -42,7 +42,7 @@ def ratio_fixture(tmp_path):
     class FakeEngine:
         conn = duckdb.connect()
 
-        def parquet_dir(self, dd, cc, ss):
+        def parquet_dir(self, dd, cc, ss, *, venue="KRX"):
             return tmp_path / dd / cc / ss
 
     return FakeEngine(), code, date, source
@@ -61,7 +61,7 @@ def fill_fixture(tmp_path):
     class FakeEngine:
         conn = duckdb.connect()
 
-        def parquet_dir(self, dd, cc, ss):
+        def parquet_dir(self, dd, cc, ss, *, venue="KRX"):
             return tmp_path / dd / cc / ss
 
     return FakeEngine(), code, date, source
@@ -79,7 +79,7 @@ def peak_fixture(tmp_path):
     class FakeEngine:
         conn = duckdb.connect()
 
-        def parquet_dir(self, dd, cc, ss):
+        def parquet_dir(self, dd, cc, ss, *, venue="KRX"):
             return tmp_path / dd / cc / ss
 
     return FakeEngine(), code, date, source
@@ -136,7 +136,7 @@ def test_today_fill_strength_none_result_is_not_cached(tmp_path):
     class FakeEngine:
         conn = duckdb.connect()
 
-        def parquet_dir(self, dd, cc, ss):
+        def parquet_dir(self, dd, cc, ss, *, venue="KRX"):
             return tmp_path / dd / cc / ss
 
     engine = FakeEngine()

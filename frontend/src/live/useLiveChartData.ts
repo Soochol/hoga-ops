@@ -99,6 +99,9 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     bundle,
     chartBundle,
     hogaBundle,
+    hogaMissingDates,
+    candleEmpty,
+    refetchCandles,
     depthDeltaToday,
     clampEngaged,
     isPastCandlesLoading,
@@ -266,6 +269,13 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     workareaBundle,
     workareaChartBundle,
     workareaHogaBundle,
+    /** 호가 결손 사유 — 번들과 **따로** 흘린다(#1133). 지수 워크에어리어는 호가장이
+     *  없어 결손이라는 개념 자체가 없으므로 빈 배열이다(`depthDeltaToday` 와 같은 규율). */
+    workareaHogaMissingDates: activeIndexId ? [] : hogaMissingDates,
+    /** 캔들 빈 상태 — 지수 워크에어리어는 캔들 파이프라인이 달라(indexBundle) 이
+     *  판별의 대상이 아니다. `workareaHogaMissingDates` 와 같은 규율. */
+    workareaCandleEmpty: activeIndexId ? null : candleEmpty,
+    refetchCandles,
     workareaDepthHeatmap,
     workareaLoading,
     workareaDataWarnings,

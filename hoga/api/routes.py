@@ -44,9 +44,12 @@ def _parquet_path(
 
     Raises HTTP 404 if the Stock-Date isn't captured. Centralises the
     try/except pattern repeated across every per-Stock-Date handler.
+
+    venue="KRX" 는 폴백이 아니라 **사실**이다 — 이 헬퍼를 쓰는 per-Stock-Date
+    라우트들은 venue 축이 없다(#1133 에서 명시화).
     """
     try:
-        return engine.parquet_dir(date, code) / filename
+        return engine.parquet_dir(date, code, venue="KRX") / filename
     except StockDateNotFound as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 

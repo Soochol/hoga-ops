@@ -196,6 +196,113 @@ describe('LiveChartRoot', () => {
     expect(screen.getByTestId('live-chart-root')).toBeTruthy();
   });
 
+  // 배선 테스트 — 문구 결정(hogaMissingNotice.test)과 표시(HogaMissingNotice.test)는
+  // 각각 따로 검증한다. 여기서 보는 것은 **번들의 사유가 화면까지 도달하는가** 하나다.
+  // #1133 의 원인이 정확히 이 종류였다: 값은 정확히 계산됐는데 소비자가 다른 경로를
+  // 봐서 도달하지 않았다.
+  it('호가 결손 사유가 번들에서 화면까지 이어진다', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={{ ...DEFAULT_BUNDLE, missing_dates: [{ date: '20260527', reason: 'source_missing' }] }}
+        venue="NXT"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('hoga-missing-notice')).toHaveTextContent('NXT 호가 기록 없음');
+  });
+
+  // #1133 후속 — 이 테스트가 prop 경로의 **존재 이유**다. 사유를 번들에만 실으면
+  // 캔들이 없는 순간(자격증명 미설정·벤더 장애) 번들이 null 이 되어 안내가 함께
+  // 사라진다. 정작 "왜 비었나" 를 물어야 할 상황에서 답이 없어지는 셈이다.
+  it('캔들 번들이 없어도 결손 사유는 표시된다', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={null}
+        hogaMissingDates={[{ date: '20260527', reason: 'source_missing' }]}
+        venue="NXT"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('hoga-missing-notice')).toHaveTextContent('NXT 호가 기록 없음');
+  });
+
+  it('prop 이 없으면 번들에서 읽는다 — 구 호출부 하위호환', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={{ ...DEFAULT_BUNDLE, missing_dates: [{ date: '20260527', reason: 'venue_unsupported' }] }}
+        venue="UN"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('hoga-missing-notice')).toHaveTextContent('통합 호가 기록 없음');
+  });
+
+  // 둘 다 참일 수 있다(캔들도 없고 호가 기록도 없음). 그때 무엇을 말하느냐가 계약이다 —
+  // 차트 자체가 없는데 "호가 기록 없음" 부터 읽히면 무엇을 고쳐야 할지 알 수 없고,
+  // 실제로 고칠 수 있는 쪽은 캔들이다(벤더가 과거를 다시 준다).
+  it('캔들이 없으면 캔들 결손만 말한다', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={null}
+        hogaMissingDates={[{ date: '20260527', reason: 'source_missing' }]}
+        candleEmpty={{ text: '벤더 연결이 설정되지 않아 캔들을 받지 못했다', action: 'settings', actionLabel: '설정 열기' }}
+        venue="NXT"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('candle-empty-state')).toHaveTextContent('벤더 연결');
+    expect(screen.queryByTestId('hoga-missing-notice')).toBeNull();
+  });
+
+  it('캔들이 있으면 호가 결손을 말한다', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        hogaMissingDates={[{ date: '20260527', reason: 'source_missing' }]}
+        candleEmpty={null}
+        venue="NXT"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('hoga-missing-notice')).toHaveTextContent('NXT 호가 기록 없음');
+    expect(screen.queryByTestId('candle-empty-state')).toBeNull();
+  });
+
+  it('결손이 없으면 안내가 뜨지 않는다', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        venue="NXT"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.queryByTestId('hoga-missing-notice')).toBeNull();
+  });
+
   it('prevents the browser image context menu inside the chart area', () => {
     render(
       <LiveChartRoot

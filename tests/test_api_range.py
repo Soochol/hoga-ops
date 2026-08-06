@@ -301,7 +301,7 @@ def test_api_range_surfaces_excluded_dates_on_wire(app_client: TestClient) -> No
         ))
         stack.enter_context(patch(
             "hoga.api.queries.QueryEngine.get_meta",
-            side_effect=lambda date, _code, _source="hogaplay": metas[date],
+            side_effect=lambda date, _code, _source="hogaplay", *, venue="KRX": metas[date],
         ))
         for pcm in _stub_slice_builders():
             stack.enter_context(pcm)

@@ -136,7 +136,7 @@ def _has_served_candles(engine: QueryEngine, code: str, date_s: str) -> bool:
     source = resolve_candle_source(engine, date_s, code, _SOURCE_PREF, "KRX")
     if source is None:
         return False
-    candles_path = engine.parquet_dir(date_s, code, source) / "candles.parquet"
+    candles_path = engine.parquet_dir(date_s, code, source, venue="KRX") / "candles.parquet"
     return len(candles_tbl.query_all(engine.conn, path=candles_path)) > 0
 
 

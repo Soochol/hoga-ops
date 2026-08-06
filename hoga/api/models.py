@@ -768,6 +768,28 @@ class DateWarning(BaseModel):
     warnings: list[ViolationModel]
 
 
+class MissingDate(BaseModel):
+    """번들에 **데이터가 없어서** 빠진 거래일과 그 사유 (#1133).
+
+    `ExcludedDate` 와 다른 것이다 — 저쪽은 데이터가 있는데 불변식을 어겨 **버린** 날이고,
+    이쪽은 애초에 읽을 것이 **없는** 날이다. 둘을 한 필드에 섞으면 UI 가 "고장" 과
+    "원래 없음" 을 가를 수 없다.
+
+    이 필드가 필요한 이유는 venue 축 때문이다. NXT·통합은 그 시장을 서빙할 수 있는
+    source(`kiwoom_live`)가 저장을 시작한 날부터만 존재하므로, 그 이전 구간은 **정상적으로**
+    빈다. 사유 없이 빈 배열만 보내면 프론트는 그것을 장애와 구별할 수 없고, 실제로
+    빈 pane 을 그대로 렌더해 사용자에게 아무 설명도 못 했다.
+
+    `reason` 값은 `sources.MissingReason` 을 그대로 싣는다:
+      - `venue_unsupported` — 이 venue 를 줄 수 있는 source 가 정책 사다리에 없다
+      - `source_missing`    — 사다리 승자의 디렉터리가 그 날 없다(NXT 미기록의 통상 형태)
+      - `stock_date_missing` — 그 날 그 종목 자체가 캡처되지 않았다
+      - `meta_unreadable`   — 경로는 있는데 meta.json 을 읽지 못했다(손상)
+    """
+    date: str
+    reason: str
+
+
 class PriceLevelHit(BaseModel):
     """One exact trade at a calculated VI or limit-up/down price level."""
 
@@ -878,6 +900,8 @@ class RangeBundle(BaseModel):
     volume_profile_by_day: list[VolumeProfile]
     excluded_dates: list[ExcludedDate] = []
     data_warnings: list[DateWarning] = []
+    # 읽을 데이터가 없어 빠진 거래일 + 사유(#1133). 기본 []라 기존 클라 무영향.
+    missing_dates: list[MissingDate] = Field(default_factory=list)
     # 거래일별 매도 최대벽(연속거래만) — 범위 내 데이터 있는 각 거래일당 1개. 프론트가 각 항목을
     # 그날 segment x-구간의 수평 세그먼트로 그린다. 오늘 항목은 클라 ratchet이 live.ob로 갱신.
     # D·W·M/무데이터는 빈 리스트. 기본 []라 기존 클라 무영향.
