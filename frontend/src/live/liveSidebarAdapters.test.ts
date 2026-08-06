@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  filterByVenueTag,
   filterObByVenue,
   filterTradeByVenue,
   latestOrderbookSnapshot,
@@ -304,3 +305,30 @@ describe('latestTradeSummary', () => {
     expect(s.dayLow).toBe(240_000);
   });
 });
+
+describe('filterByVenueTag (거래원·프로그램)', () => {
+  const frame = (venue: LiveFrameVenue | undefined, net: number) => ({ venue, net });
+
+  it('선택 venue 의 프레임만 남긴다', () => {
+    const input = [frame('KRX', 1), frame('NXT', 2), frame('UN', 3)];
+
+    expect(filterByVenueTag(input, 'NXT').map((f) => f.net)).toEqual([2]);
+    expect(filterByVenueTag(input, 'UN').map((f) => f.net)).toEqual([3]);
+  });
+
+  it('⚠ 회귀 가드 — 마지막 도착 프레임이 화면을 차지하면 안 된다', () => {
+    // 이게 신고된 증상이다: 호버(스팟) 중엔 venue 별로 정상인데 벗어나면(LATEST)
+    // 한 venue 로만 나왔다. 스팟은 파케이를 venue 별로 읽고 LATEST 는 WS 버퍼를
+    // 쓰는데, 버퍼는 세 시장이 **시간순으로 섞여** 있어 마지막 프레임이 이긴다.
+    const buffer = [frame('KRX', 1), frame('NXT', 2), frame('UN', 9)]; // UN 이 마지막
+
+    expect(filterByVenueTag(buffer, 'KRX').map((f) => f.net)).toEqual([1]);
+  });
+
+  it('무태그(구백엔드)는 KRX 로 승격된다', () => {
+    const input = [frame(undefined, 7)];
+
+    expect(filterByVenueTag(input, 'KRX')).toHaveLength(1);
+    expect(filterByVenueTag(input, 'NXT')).toHaveLength(0);
+  });
+})

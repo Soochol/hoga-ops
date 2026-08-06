@@ -6,7 +6,7 @@ import type { LiveSnapshotEntry } from './types';
 import type { AskPeakCandidate } from './types';
 import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
 import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
-import { filterObByVenue, filterTradeByVenue } from '../live/liveSidebarAdapters';
+import { filterByVenueTag, filterObByVenue, filterTradeByVenue } from '../live/liveSidebarAdapters';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -185,14 +185,25 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
   // (LiveSnapshotBuffer.get) useMemo 가 재계산을 건너뛰어 소비처 memo 도 유지된다.
   const ob = useMemo(() => filterObByVenue(rawOb, venue), [rawOb, venue]);
   const trade = useMemo(() => filterTradeByVenue(rawTrade, venue), [rawTrade, venue]);
+  // ⚠ broker·program 도 **같은 필터를 타야 한다.** 여기가 빠져 있어서 거래원·프로그램이
+  // 호버(스팟) 중엔 venue 별로 나오는데 벗어나면(LATEST) 마지막 도착 프레임의 venue
+  // 하나로만 나왔다 — 스팟은 파케이를 venue 별로 읽고, LATEST 는 이 버퍼를 쓴다.
+  const rawBroker = bufferVisible
+    ? readKind(bufferRef.current, 'broker', tick)
+    : EMPTY_BROKER_SNAPSHOTS;
+  const rawProgram = bufferVisible
+    ? readKind(bufferRef.current, 'program', tick)
+    : EMPTY_PROGRAM_SNAPSHOTS;
+  const broker = useMemo(() => filterByVenueTag(rawBroker, venue), [rawBroker, venue]);
+  const program = useMemo(() => filterByVenueTag(rawProgram, venue), [rawProgram, venue]);
   return {
     initial: currentInitial,
     isLoading: initial.isLoading,
     error: initial.error,
     ob,
     trade,
-    broker: bufferVisible ? readKind(bufferRef.current, 'broker', tick) : EMPTY_BROKER_SNAPSHOTS,
-    program: bufferVisible ? readKind(bufferRef.current, 'program', tick) : EMPTY_PROGRAM_SNAPSHOTS,
+    broker,
+    program,
   };
 }
 
