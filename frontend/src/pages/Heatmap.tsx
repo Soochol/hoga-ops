@@ -239,6 +239,7 @@ export function Heatmap() {
           onMove={onDragMove} onCopy={onDragCopy}
           onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder}
           onRowDragState={setIsRowDragging} flowByFolder={flowByFolder} query={query}
+          captureMarkers={data?.capture_markers}
           autoAddFolderId={autoAddFolderId} onAutoAddOpened={clearAutoAdd} />
         {/* 제거는 menu.folderId(우클릭한 행이 속한 그룹) 스코프 — 같은 종목이 다른 그룹에도
             등록돼 있으면 그 등록은 건드리지 않는다. '그룹으로 이동' 항목은 넘기지 않는다:

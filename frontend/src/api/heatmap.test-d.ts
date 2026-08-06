@@ -28,23 +28,20 @@ void _heatmapEntryNullFolder;
 const _heatmapResponse: HeatmapResponse = {
   folders: [],
   entries: [_heatmapEntry],
+  capture_markers: { '005930': '20260806' },
+  next_run_at_ms: 0,
 };
 void _heatmapResponse;
 
+// ADR-0142: 히트맵도 캡처 대상이 됐지만 마커는 **entry 가 아니라 code 키 맵**에 산다.
+// entry identity 가 (folder_id, code) 라 entry 에 실으면 한 종목이 3그룹에 있을 때 값이
+// 3벌로 갈라지는데, 그 마커가 가리키는 캡처는 (code,date) 하나뿐이기 때문이다.
 const _heatmapEntryWithCaptureMarker: HeatmapEntry = {
   code: '005930',
   name: '삼성전자',
-  // @ts-expect-error Heatmap wire entries do not carry Watchlist capture markers.
-  registered_at_kst_date: '20260601',
+  // @ts-expect-error 마커는 entry 가 아니라 HeatmapResponse.capture_markers 에 실린다.
+  last_success_date: '20260806',
   folder_id: 'f_a',
   order: 0,
 };
 void _heatmapEntryWithCaptureMarker;
-
-const _heatmapResponseWithNextRun: HeatmapResponse = {
-  folders: [],
-  entries: [],
-  // @ts-expect-error Heatmap has no scheduler boundary field.
-  next_run_at_ms: 0,
-};
-void _heatmapResponseWithNextRun;

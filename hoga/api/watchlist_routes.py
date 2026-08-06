@@ -32,7 +32,7 @@ from hoga.api.models import (
     WatchlistResponse,
 )
 from hoga.api.params import CODE_PATTERN
-from hoga.api.scheduler import catchup_one_entry, seconds_until_next_17_kst
+from hoga.api.scheduler import catchup_one_entry, next_run_at_ms
 from hoga.api.watchlist import (
     FolderNotFoundError,
     NotInWatchlistError,
@@ -65,9 +65,9 @@ CodePathParam = Annotated[str, PathParam(pattern=CODE_PATTERN)]
 
 
 def _next_run_at_ms(now: dt.datetime) -> int:
-    secs = seconds_until_next_17_kst(now)
-    target = now + dt.timedelta(seconds=secs)
-    return int(target.timestamp() * 1000)
+    # 계산 본체는 scheduler.next_run_at_ms — 히트맵 라우트도 같은 함수를 쓴다
+    # (ADR-0142: 하나의 일일 런이 두 목록을 적재하므로 두 화면의 값이 같아야 한다).
+    return next_run_at_ms(now)
 
 
 def _project(doc: WatchlistDocument, *, next_run_at_ms: int) -> WatchlistResponse:

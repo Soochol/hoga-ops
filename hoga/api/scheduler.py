@@ -24,7 +24,7 @@ from hoga.api.disk_state import latest_complete_date
 from hoga.api.eligibility import find_ineligible_dates
 from hoga.api.models import EnqueueRequest, EnqueueResponse, WatchlistEntry
 from hoga.api.watchlist import load_watchlist, set_last_success
-from hoga.collector.orchestrator import next_kst_day, now_kst
+from hoga.collector.orchestrator import now_kst
 from hoga.util.atomic_write import atomic_write_json
 
 log = logging.getLogger(__name__)
@@ -44,6 +44,16 @@ def seconds_until_next_17_kst(now: dt.datetime) -> float:
 _DAILY_TRIGGER_HOUR = 17
 # 폴링 주기. 단발 sleep 대신 짧게 반복 확인하는 이유는 _daily_loop docstring 참고.
 _DAILY_POLL_INTERVAL_S = 60.0
+
+
+def next_run_at_ms(now: dt.datetime) -> int:
+    """다음 17:00 KST 경계의 Unix-ms (ADR-0003).
+
+    관심목록·히트맵 두 라우트가 **같은 함수**를 쓴다 — 하나의 일일 런이 두 목록을
+    적재하므로(ADR-0142) 두 화면이 다른 시각을 표시하면 그 자체가 버그다. 각자
+    계산하던 시절엔 식이 갈라질 여지가 있었다.
+    """
+    return int((now + dt.timedelta(seconds=seconds_until_next_17_kst(now))).timestamp() * 1000)
 
 
 def _scheduler_state_path(data_dir: Path) -> Path:
@@ -236,6 +246,30 @@ async def _daily_run(data_dir: Path) -> bool:
     return await run_trading_stage(data_dir)
 
 
+def daily_enqueue_codes(data_dir: Path) -> list[str]:
+    """오늘 캡처할 종목 = 관심종목 ∪ 히트맵, 관심종목 우선·중복 제거 (ADR-0142).
+
+    두 스토어는 겹친다 — 같은 종목이 양쪽에 있어도 디스크 Stock-Date 는 하나이므로
+    **코드 단위로 dedup 해야** 한다. dedup 이 없어도 ``enqueue_items_core`` 가 같은
+    (code,date) 를 deduped 로 되돌리긴 하지만, 그건 큐의 방어이지 계획의 정확성이
+    아니다 — 로그의 "N종목 적재"가 실제 종목 수와 어긋난다.
+
+    순서가 관심종목 먼저인 이유: 큐는 FIFO 이고 hogaplay 업스트림 보유가 ~18시간이라
+    (271종목 기준 동시성 3 에서 전량 소진에 ~2.3시간) **뒤로 밀린 종목일수록 유실
+    위험이 크다**. 관심종목이 사용자가 실제로 매매를 보는 목록이므로 앞에 둔다.
+    이는 라이브 저장셋의 우선순위(coverage.plan_storage_targets)와도 같은 순서다.
+
+    히트맵은 그룹 단위 on/off 가 없다 — 등록 = 캡처 대상이다(사용자 결정). 폴더의
+    ``capture_enabled`` 는 관심종목에서도 hogaplay 캡처가 아니라 **실시간 WS 저장셋**
+    을 고르는 플래그라(capture_ordered_codes) 여기서 읽지 않는다.
+    """
+    from hoga.api.heatmap import load_heatmap  # noqa: PLC0415 — 지연 import(순환 절단)
+
+    codes = [e.code for e in load_watchlist(data_dir)]
+    codes.extend(e.code for e in load_heatmap(data_dir))
+    return list(dict.fromkeys(codes))
+
+
 async def run_trading_stage(data_dir: Path) -> bool:
     """거래일 게이트와 그 뒤 단계(enqueue·스크리너·depth_daily). 확정이면 True.
 
@@ -251,23 +285,28 @@ async def run_trading_stage(data_dir: Path) -> bool:
         # 업스트림 장애). 마커를 안 찍고 False 를 돌려 다음 틱에 재시도시킨다.
         log.warning(
             "daily run: trading-day verdict unavailable for %s (KIS chk-holiday) — "
-            "will retry on the next tick; today's watchlist enqueue has NOT run yet",
+            "will retry on the next tick; today's capture enqueue has NOT run yet",
             today,
         )
         return False
     if not verdict:
         log.info("daily run: %s is not a trading day, skipping", today)
         return True
-    for entry in load_watchlist(data_dir):
+    codes = daily_enqueue_codes(data_dir)
+    # 종목 수를 남긴다 — 히트맵이 캡처 대상이 된 뒤(ADR-0142) 이 값은 사용자가 종목을
+    # 등록하는 대로 커지고, 큐 소진 시간(≈ N×90초÷동시성)과 하루 디스크 사용량
+    # (≈ N×150MB)이 여기에 선형이다. 실측 271종목 = ~2.3시간 · ~35GB/day.
+    log.info("daily run: enqueueing %d code(s) for %s", len(codes), today)
+    for code in codes:
         try:
             resp = await enqueue_items_core(
-                EnqueueRequest(code=entry.code, dates=[today]),
+                EnqueueRequest(code=code, dates=[today]),
                 data_dir=data_dir,
                 now=now,
             )
             _log_blocked(resp, context="daily")
         except Exception:  # one bad entry mustn't kill the run
-            log.exception("daily enqueue failed for %s/%s", entry.code, today)
+            log.exception("daily enqueue failed for %s/%s", code, today)
 
     # Screener daily gap update (local import avoids an import cycle). A
     # screener failure must not kill the rest of the daily run.
@@ -321,18 +360,28 @@ async def catchup_one_entry(
     data_dir: Path,
     now: dt.datetime,
 ) -> EnqueueResponse:
-    """Backfill one Watchlist entry. Used by:
+    """Reconcile one Watchlist entry's marker, then enqueue TODAY only. Used by:
     - _catchup_run (startup)
     - POST /api/watchlist/{code}/catchup (per-row)
     - POST /api/watchlist/catchup (run-all)
 
-    Reconciles last_success_date with the disk first (idempotent), then
-    enqueues the trading-day gap up to today (Q14-trimmed). Returns
-    EnqueueResponse(enqueued=[], deduped=[]) on no-gap or fully-Q14-trimmed
-    cases. Raises :class:`TradingDayUnavailableError` when the KIS calendar is
-    unavailable — swallowing it here made the routes' error envelope
-    unreachable, so a KIS outage reported per-entry SUCCESS (enqueued=0,
-    error=None) and the gap silently persisted.
+    **Same-day only since ADR-0142** (was: every trading day from the entry's
+    floor up to today). Two reasons the unbounded backfill had to go:
+
+    1. hogaplay upstream retains roughly 18 hours, so almost every date the old
+       walk-back produced was already unfetchable — it enqueued work that could
+       only fail, burning fail_streak on dates that were never coming back.
+    2. The heatmap joined the daily run (ADR-0142) with ~271 codes. An
+       unbounded per-code backfill across that set makes a first-run queue in
+       the thousands, which at ~90s/item cannot drain within the retention
+       window it is racing.
+
+    Past gaps are the 수집 다이얼로그's job (explicit range, coverage preview
+    first). Returns EnqueueResponse(enqueued=[], deduped=[]) when today is not
+    a trading day or is Q14-trimmed. Raises :class:`TradingDayUnavailableError`
+    when the KIS calendar is unavailable — swallowing it here made the routes'
+    error envelope unreachable, so a KIS outage reported per-entry SUCCESS
+    (enqueued=0, error=None) and the gap silently persisted.
     """
     today = now.strftime("%Y%m%d")
 
@@ -351,16 +400,18 @@ async def catchup_one_entry(
     latest = latest_complete_date(data_dir, entry.code)
     if latest != entry.last_success_date:
         await set_last_success(data_dir, code=entry.code, date=latest)
-    floor = latest or entry.registered_at_kst_date
 
-    # Step 2: compute candidate dates. to_thread: cold-month KIS fetch is
-    # blocking sync HTTP — keep it off the event loop. A
-    # TradingDayUnavailableError propagates to the caller (routes map it to
-    # their error envelope / 503; _catchup_run logs per entry).
-    start = next_kst_day(floor)
-    if start > today:
-        return EnqueueResponse(enqueued=[], deduped=[])
-    candidates = await trading_days_for_enqueue(trading_days_in_range, start, today)
+    # Step 2: today, if it is a trading day. Kept as a calendar call (rather
+    # than just [today]) because the answer still has to come from the calendar
+    # — enqueueing a holiday produces a permanently-failing item and a phantom
+    # gap in the inventory. A TradingDayUnavailableError propagates to the
+    # caller (routes map it to their error envelope / 503; _catchup_run logs
+    # per entry) instead of being read as "not a trading day".
+    #
+    # entry.registered_at_kst_date is no longer read here — it was only ever
+    # the backfill floor. The field stays on the model: it is on disk in every
+    # watchlist.json and is still shown as the registration date.
+    candidates = await trading_days_for_enqueue(trading_days_in_range, today, today)
 
     # Step 3: Q14 pre-trim.
     too_early = set(find_ineligible_dates(candidate_dates=candidates, now=now))
@@ -377,9 +428,12 @@ async def catchup_one_entry(
 
 
 async def _catchup_run(data_dir: Path) -> None:
-    """Backfill every Watchlist entry on startup. Each entry is handled
-    by catchup_one_entry; per-entry exceptions are logged. The startup
-    sweep never aborts because one entry failed.
+    """Reconcile + enqueue today for every Watchlist entry on startup. Each
+    entry is handled by catchup_one_entry; per-entry exceptions are logged. The
+    startup sweep never aborts because one entry failed.
+
+    Watchlist only — the heatmap has no catch-up path (ADR-0142). Its codes are
+    picked up by the 17:00 daily run; a restart does not re-sweep them.
     """
     now = now_kst()
     for entry in load_watchlist(data_dir):

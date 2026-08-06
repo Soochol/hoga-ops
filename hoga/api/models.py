@@ -1232,14 +1232,30 @@ class HeatmapFolderView(BaseModel):
 
 
 class HeatmapDocument(BaseModel):
-    """On-disk heatmap.json (v3, ADR-0112). Same envelope discipline as
+    """On-disk heatmap.json (v4, ADR-0142). Same envelope discipline as
     WatchlistDocument (ADR-0065 applied independently); entries are
-    HeatmapEntry (no capture fields, folder_id required). Folders reuse
-    WatchlistFolder."""
+    HeatmapEntry (folder_id required). Folders reuse WatchlistFolder.
 
-    schema_version: int = 3
+    v4 adds ``capture_markers`` — the heatmap became a daily-capture target
+    (ADR-0142), so it needs the "latest COMPLETE on disk" marker the watchlist
+    keeps on its entries. It canNOT live on ``HeatmapEntry``: entry identity is
+    ``(folder_id, code)``, so a Code in three groups would carry three markers
+    that drift apart, while the capture itself is keyed ``(code, date)``. A
+    code-keyed side table is the only shape that matches the thing it tracks.
+
+    ``registered_at_kst_date`` has NO counterpart here — the watchlist kept it
+    solely as the catch-up backfill floor, and catch-up is same-day only since
+    ADR-0142. Absent marker = never captured, which is exactly what the UI
+    shows for a freshly added Code.
+    """
+
+    schema_version: int = 4
     folders: list[WatchlistFolder] = Field(default_factory=list)
     entries: list[HeatmapEntry] = Field(default_factory=list)
+    capture_markers: dict[
+        Annotated[str, Field(pattern=CODE_PATTERN)],
+        Annotated[str, Field(pattern=r"^\d{8}$")],
+    ] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _no_dangling_folder_id(self) -> HeatmapDocument:
@@ -1269,10 +1285,21 @@ class HeatmapDocument(BaseModel):
 
 
 class HeatmapResponse(BaseModel):
-    """GET /api/heatmap. No next_run_at_ms — the heatmap has no scheduler."""
+    """GET /api/heatmap.
+
+    ``capture_markers`` is code-keyed while ``entries`` is per-registration —
+    the wire mirrors the store rather than exploding the marker onto every row,
+    so the frontend cannot accidentally render two different "last collected"
+    values for one Code shown in two groups (ADR-0142).
+
+    ``next_run_at_ms`` is shared with the watchlist: since ADR-0142 the same
+    17:00 KST daily run enqueues both lists, so the heatmap has a next run.
+    """
 
     folders: list[HeatmapFolderView] = Field(default_factory=list)
     entries: list[HeatmapEntry]
+    capture_markers: dict[str, str] = Field(default_factory=dict)
+    next_run_at_ms: int
 
 
 # --- Watchlist manual catch-up (see spec 2026-05-27) -----------------------
