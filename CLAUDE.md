@@ -85,10 +85,18 @@ caches?.keys?.().then((keys) => keys.forEach((key) => caches.delete(key)));
 location.reload();
 ```
 
-## CI and local verification
+## Local verification
 
-`.github/workflows/ci.yml` gates every PR. Run the **same commands locally** — CI runs
-nothing you can't reproduce:
+**CI 는 2026-08-06 에 제거됐다** (`.github/workflows/ci.yml` 삭제 + main ruleset 의
+required status checks 3개 해제). 이유는 품질 판단이 아니라 처리량이었다 — 병행 세션이
+6개까지 늘면서 PR 당 4 job × 6 = 24 job 이 GitHub 호스티드 러너를 두고 경쟁했고,
+처리량(시간당 ~11 job)이 요구량에 못 미쳐 큐가 줄지 않았다. 각 run 에서 마지막까지
+남은 job(주로 `backend`)이 러너를 못 받은 채 `timeout-minutes` 에 걸려 취소되기를
+반복했다 — 실측: 70분간 실제 실행된 13 job 중 `backend` 는 **0건**. 모든 세션의 PR 이
+동시에 막혔다.
+
+**따라서 머지 전 검증은 이제 전적으로 로컬 수동 실행이다.** 아무도 대신 돌려주지
+않으므로 PR 을 열기 전에 아래를 직접 통과시킨다:
 
 ```bash
 cd frontend && npm run typecheck && npx vitest run && npx vite build
@@ -97,6 +105,12 @@ cd frontend && npm run typecheck && npx vitest run && npx vite build
 ```bash
 uv run --extra dev ruff check . && uv run --extra dev pytest -q -m 'not wallclock'
 ```
+
+**로컬 실행으로 대체되지 않는 것이 하나 있다.** CI 의 `pull_request` 트리거는 PR 브랜치가
+아니라 **base 와 합친 머지 커밋**을 체크아웃했다. 그래서 "각자는 초록인데 합치면 깨지는"
+교차 PR 충돌이 머지 **전에** 드러났다(#734 가 그 사고였다). 내 워크트리에서 돌리는
+검증은 원리적으로 이걸 볼 수 없다. 병행 세션이 많을수록 위험이 커지므로, 같은 파일을
+건드리는 PR 이 떠 있는지 확인하고 **머지 직전 `git fetch origin main` 후 재검증**한다.
 
 Notes:
 
@@ -110,10 +124,13 @@ Notes:
   that runs without jsdom and reports a full suite of false `document is not defined`
   failures.
 - `@pytest.mark.wallclock` marks the backend tests that depend on elapsed time. They run
-  locally by default; CI runs them in a separate non-blocking job because they measure
-  scheduling jitter, not behavior. Before adding a new one, try to express the property
-  deterministically (call counts) instead — that's what PR #516 did for the frontend.
-- `ruff check` is gated as of 2026-07-30. It was 2,056 violations before: config tuning
+  locally by default — 위 `-m 'not wallclock'` 명령은 이들을 뺀다. 스케줄링 지터를
+  재는 것이라 간헐 실패가 정상이므로, 실패해도 머지를 막을 근거로 삼지 않는다(CI 가
+  있던 시절에도 별도 non-blocking 잡이었다). Before adding a new one, try to express the
+  property deterministically (call counts) instead — that's what PR #516 did for the frontend.
+- `ruff check` 는 **0 violations 를 유지한다**(2026-07-30 정리 완료, 그전엔 2,056건).
+  이제 이를 강제하는 자동 게이트가 없으므로 위 백엔드 명령을 직접 돌려서 지킨다.
+  정리 경위: config tuning
   (`ruff.toml`) took it to 662, safe autofix to 314, and real fixes (E402 import blockers,
   B905 explicit `strict=`) plus reasoned `noqa` sealing to 0. **Nothing was disabled in
   `hoga/`** — the relaxations are in `tests/` and thresholds, and each carries a comment
@@ -129,8 +146,9 @@ Notes:
     `logging.exception()` / `exc_info=True`. So a `# noqa: BLE001` on a well-handled
     `except Exception` is dead weight, and RUF100 will say so. Fix the handler, don't
     annotate it.
-- Playwright e2e는 **2026-07-30부터 게이트**다(2026-08-04 실측 `24 passed`, 46.9s).
-  로컬에서도 돈다 — `playwright.config.ts`가 CI 밖에서는 시스템 Chrome
+- Playwright e2e는 **PR 전에 로컬에서 직접 돌린다**(2026-08-04 실측 `24 passed`, 46.9s).
+  2026-07-30 부터 CI 게이트였으나 CI 제거와 함께 수동 절차가 됐다 — 프론트를 만졌으면
+  건너뛰지 말 것. `playwright.config.ts`가 CI 밖에서는 시스템 Chrome
   (`channel: 'chrome'`)을 쓴다 (Ubuntu 26.04는 Playwright가 번들 chromium 설치를
   거부한다). 반복 실행 전에는 e2e 전용 서버·데이터를 반드시 초기화한다 — 포트
   8765·5174를 kill하고 **실제로 비워질 때까지 기다린 뒤** `rm -rf /tmp/hoga-e2e-data`.
