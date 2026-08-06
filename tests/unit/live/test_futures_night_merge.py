@@ -46,8 +46,12 @@ class _FakeWs:
         self.running_codes: tuple[str, ...] | None = None
         self.closed = False
 
-    async def ensure_running(self, codes):
+    async def ensure_running(self, codes, *, session_day=None):
         self.running_codes = codes
+        self.session_day = session_day
+
+    def night_series(self, code):
+        return ()
 
     def latest(self, code):
         return self._ticks.get(code)
@@ -70,6 +74,8 @@ def runtime(monkeypatch):
     rt._master = MASTER
     rt._master_at = float("inf")  # TTL 만료 방지 — 다운로드로 새지 않게
     monkeypatch.setattr(fr.time, "monotonic", lambda: 0.0)
+    # 세션 날짜는 봉 리셋 기준일 뿐이라 여기선 고정한다(캘린더 디스크 접근 회피).
+    monkeypatch.setattr(fr, "spark_date", lambda _t: "20260806")
     return rt
 
 

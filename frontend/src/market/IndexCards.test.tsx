@@ -85,7 +85,10 @@ function mockApi(
     session?: string;
     unavailable?: string | null;
   },
-  futuresCandles: Record<string, { closes: number[]; day_open: number | null }> = {},
+  futuresCandles: Record<
+    string,
+    { closes: number[]; day_open: number | null; session?: string }
+  > = {},
 ) {
   vi.spyOn(client, 'apiCall').mockImplementation((async (url: string) => {
     if (url.startsWith('/api/live/index-quotes')) return { quotes: SPOT_QUOTES };
@@ -252,7 +255,7 @@ describe('IndexCards 스파크라인 소스 분리', () => {
   it('선물 모드는 선물 분봉을 그린다 — 현물 분봉을 재사용하지 않는다', async () => {
     // 현물은 2점(900→901), 선물은 4점. path 의 좌표 개수로 소스가 갈린다.
     mockApi({ quotes: [futuresQuote()] }, {
-      KOSPI200_F: { closes: [1013.35, 1000, 990, 981.15], day_open: 1017.15 },
+      KOSPI200_F: { closes: [1013.35, 1000, 990, 981.15], day_open: 1017.15, session: 'day' },
     });
     renderCards();
 
@@ -276,6 +279,37 @@ describe('IndexCards 스파크라인 소스 분리', () => {
     await screen.findByText('982.92');
     await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
     // 현물 분봉으로 대신 채우면 여기서 걸린다
+    expect(sparkPath(cardByLabel('KOSPI 200 F'))).toBeNull();
+  });
+
+  it('야간엔 야간 시리즈를 그린다 — 그림과 값의 소스가 같아야 한다', async () => {
+    // 백엔드가 소스를 맞춰 보낸다(값=야간 → 그림=야간). 프론트는 받은 대로 그린다.
+    mockApi(
+      { session: 'night', quotes: [futuresQuote({ data_session: 'night', value: 1004.95 })] },
+      { KOSPI200_F: { closes: [1000, 1002, 1005, 1004.95], day_open: null, session: 'night' } },
+    );
+    renderCards();
+
+    await screen.findByText('982.92');
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
+    await waitFor(() => expect(sparkPath(cardByLabel('KOSPI 200 F'))).not.toBeNull());
+
+    expect(sparkPath(cardByLabel('KOSPI 200 F'))?.match(/L/g)).toHaveLength(3);
+    // 야간 실시간이므로 낡음 배지는 없다
+    expect(within(cardByLabel('KOSPI 200 F')).queryByText(/주간 마감값/)).toBeNull();
+  });
+
+  it('야간 봉이 아직 부족하면 아무것도 그리지 않는다', async () => {
+    // 야간 개장 직후 — 백엔드가 시리즈를 아예 안 준다. 주간 그림으로 폴백하면
+    // 값은 야간인데 그림은 주간이라, 주간 하락이 야간에 일어난 것으로 읽힌다.
+    mockApi(
+      { session: 'night', quotes: [futuresQuote({ data_session: 'night', value: 1004.95 })] },
+      {},
+    );
+    renderCards();
+
+    await screen.findByText('982.92');
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
     expect(sparkPath(cardByLabel('KOSPI 200 F'))).toBeNull();
   });
 });

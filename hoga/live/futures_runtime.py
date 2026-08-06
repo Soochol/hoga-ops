@@ -120,6 +120,23 @@ def spark_date(t_ms: int) -> str:
     return ref.strftime("%Y%m%d")
 
 
+#: 스파크라인 최소 점 수. 야간 봉이 이보다 적으면 주간 모양으로 폴백한다 —
+#: 야간 개장 직후(18:00~18:10)가 그 구간이다. 한 점짜리 선은 거짓 정보다.
+_MIN_SPARK_POINTS = 2
+
+
+@dataclass(frozen=True)
+class SparkSeries:
+    """스파크라인 1개분 + **어느 세션 모양인지**.
+
+    세션을 실어야 화면이 시세 배지와 그림이 어긋나지 않았는지 말할 수 있다 —
+    값은 야간인데 그림이 주간이면 사용자는 그 하락이 야간에 일어난 줄로 읽는다.
+    """
+    closes: tuple[float, ...]
+    day_open: float | None
+    session: FuturesSession
+
+
 @dataclass(frozen=True)
 class FuturesCard:
     """카드 1장분 — 정체성 + 값 + **그 값이 어느 세션 것인지**."""
@@ -251,15 +268,23 @@ class FuturesQuotesRuntime:
             from hoga.live.kis_futures_ws import KisFuturesNightWs  # noqa: PLC0415
 
             self._ws = KisFuturesNightWs()
-        await self._ws.ensure_running(codes)
+        # 세션 날짜는 봉 리셋 기준이다 — `spark_date` 와 같은 규칙(새벽은 전날)을 써야
+        # 저녁·새벽 봉이 한 세션으로 이어진다.
+        now_ms = int(dt.datetime.now(KST).timestamp() * 1000)
+        session_day = await asyncio.to_thread(spark_date, now_ms)
+        await self._ws.ensure_running(codes, session_day=session_day)
         return {code: tick for code in codes if (tick := self._ws.latest(code)) is not None}
 
-    async def sparks(self) -> dict[str, tuple[tuple[float, ...], float | None]]:
-        """라인업의 당일 5분봉 종가 — `{카드 id: (closes, day_open)}`.
+    async def sparks(self) -> dict[str, SparkSeries]:
+        """라인업의 5분봉 종가 — `{카드 id: SparkSeries}`.
 
         quotes 와 **캐시를 나눈 이유**는 갱신 축이 다르기 때문이다: 시세는 20초마다
         의미가 바뀌지만 5분봉은 5분에 한 번만 늘어난다. 한 캐시에 묶으면 분봉 3콜이
         시세 주기로 끌려 올라간다.
+
+        **소스는 종목마다 갈린다** — 시세 카드와 정확히 같은 규칙이다. 야간 봉이
+        충분히 쌓인 종목은 야간 모양을, 무음인 종목은 그날 주간장 모양을 그린다.
+        섞으면 값은 야간인데 그림은 주간인 카드가 생긴다.
         """
         client = self._client_factory()
         if client is None:
@@ -272,22 +297,35 @@ class FuturesQuotesRuntime:
         now_ms = int(dt.datetime.now(KST).timestamp() * 1000)
         date = await asyncio.to_thread(spark_date, now_ms)
 
-        async def one(item: FuturesLineupItem):
+        async def one(item: FuturesLineupItem) -> tuple[str, SparkSeries] | None:
             try:
                 row = near_month(master, item.product)
             except KisFuturesMasterFetchError:
                 return None
+
+            # **그림의 소스를 값의 소스와 강제로 일치시킨다.** 판정 기준은 시세 카드와
+            # 똑같이 "틱이 왔는가" 다(`snapshot` 의 `data_session`).
+            #
+            # 틱이 있는데 봉이 아직 2개가 안 되는 구간(야간 개장 직후 ~10분)에
+            # 주간 그림으로 폴백하면, 값은 야간인데 그림은 주간인 카드가 된다 —
+            # 사용자는 그날 주간 하락을 **야간에 일어난 것**으로 읽는다. 그래서
+            # 그 구간은 아무것도 그리지 않는다(없는 편이 거짓보다 낫다).
+            if self._ws is not None and self._ws.latest(row.code) is not None:
+                night = self._ws.night_series(row.code)
+                if len(night) < _MIN_SPARK_POINTS:
+                    return None
+                # 기준선을 주지 않는다 — 야간 시가가 곧 첫 점이라 Sparkline 이 알아서
+                # 쓴다. 주간 시가를 기준선으로 주면 야간 등락을 주간 대비로 색칠한다.
+                return item.id, SparkSeries(night, None, "night")
+
             try:
                 spark = await client.fetch_futures_spark(row, date_yyyymmdd=date)
             except Exception as e:  # noqa: BLE001 — 스파크라인은 장식이다. 카드를 죽이지 않는다.
                 log.debug("선물 스파크라인 실패 id=%s: %s", item.id, e)
                 return None
-            return None if spark is None else (item.id, spark)
+            if spark is None:
+                return None
+            return item.id, SparkSeries(spark.closes, spark.day_open, "day")
 
         results = await asyncio.gather(*(one(i) for i in LINEUP))
-        return {
-            item_id: (spark.closes, spark.day_open)
-            for got in results
-            if got is not None
-            for item_id, spark in [got]
-        }
+        return {item_id: series for got in results if got is not None for item_id, series in [got]}

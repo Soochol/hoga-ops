@@ -307,8 +307,14 @@ class _FuturesRuntimeHolder:
             return None
         return {
             "series": {
-                item_id: {"closes": list(closes), "day_open": day_open}
-                for item_id, (closes, day_open) in series.items()
+                item_id: {
+                    "closes": list(s.closes),
+                    "day_open": s.day_open,
+                    # 종목마다 다르다 — 야간 봉이 쌓인 카드는 야간 모양, 무음인 카드는
+                    # 그날 주간장 모양이다. 시세의 `data_session` 과 짝을 이룬다.
+                    "session": s.session,
+                }
+                for item_id, s in series.items()
             }
         }
 

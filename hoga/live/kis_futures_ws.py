@@ -45,6 +45,16 @@ _IDLE_STOP_S = 600.0
 _RECV_IDLE_TIMEOUT_S = 180.0
 _RECONNECT_BACKOFF_S = (1.0, 2.0, 5.0, 10.0, 30.0)
 
+#: 야간 스파크라인 봉 간격(분). 주간 REST 분봉과 같은 5분이라 두 모양이 같은 축으로 읽힌다.
+#: 18:00–05:00 = 660분이므로 최대 132봉 — 스파크라인 폭(110px)에 충분히 들어간다.
+NIGHT_BUCKET_MIN = 5
+
+#: 야간 세션 시작(분). 버킷 키의 원점이다 — 아래 `_bucket_of` 참조.
+_NIGHT_START_MIN = 18 * 60
+_DAY_MIN = 24 * 60
+#: `bsop_hour` 에서 실제로 읽는 앞자리 수(HHMM). 뒤 초 단위는 버킷에 무관하다.
+_HHMM_LEN = 4
+
 #: `H0MFCNT0` 응답 필드 순서(KIS 공식 예제 `krx_ngt_futures_ccnl` 의 columns).
 #: 인덱스 상수로 흩뿌리면 벤더가 필드를 추가할 때 조용히 어긋나므로 표로 둔다.
 _COLUMNS: tuple[str, ...] = (
@@ -73,6 +83,22 @@ class NightTick:
 
 class KisFuturesWsUnavailable(Exception):
     """승인키 발급 실패 등 — 야간 경로만 죽고 REST 카드는 살아야 한다."""
+
+
+def _bucket_of(bsop_hour: str) -> int | None:
+    """벤더 시각 `HHMMSS` → **야간 세션 시작(18:00) 기준** 버킷 인덱스.
+
+    **자정을 넘기 때문에 시계 그대로 정렬하면 안 된다.** 18:00 은 `180000`, 02:00 은
+    `020000` 이라 문자열로도 분(minute)으로도 새벽이 저녁보다 **앞**에 온다. 그대로
+    쓰면 스파크라인이 좌우 반전되는데, 우상향이 우하향으로 보일 뿐 **에러가 아니라서**
+    눈으로만 잡힌다. 그래서 원점을 18:00 으로 옮겨 단조 증가하게 만든다.
+
+        18:00 → 0 · 23:50 → 70 · 02:00 → 96 · 04:59 → 131   (5분 버킷)
+    """
+    if len(bsop_hour) < _HHMM_LEN or not bsop_hour[:_HHMM_LEN].isdigit():
+        return None
+    minute = int(bsop_hour[:2]) * 60 + int(bsop_hour[2:4])
+    return ((minute - _NIGHT_START_MIN) % _DAY_MIN) // NIGHT_BUCKET_MIN
 
 
 def _f(row: dict[str, str], key: str) -> float | None:
@@ -121,6 +147,12 @@ class KisFuturesNightWs:
         self._task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         self._ticks: dict[str, NightTick] = {}
+        #: 종목 → {버킷 인덱스: 그 버킷의 마지막 체결가}. dict 라 같은 버킷에 여러 틱이
+        #: 와도 마지막이 이긴다(= 봉의 종가). 최대 132봉 × 3종목이라 메모리는 무시할 수준.
+        self._bars: dict[str, dict[int, float]] = {}
+        #: 이 버킷들이 속한 야간 세션의 기준 거래일. 바뀌면 통째로 비운다 —
+        #: 안 그러면 어제 저녁 봉과 오늘 저녁 봉이 같은 선에 이어 붙는다.
+        self._session_day: str | None = None
         self._codes: tuple[str, ...] = ()
         self._last_request = 0.0
         self._unavailable: str | None = None
@@ -132,15 +164,34 @@ class KisFuturesNightWs:
     def latest(self, code: str) -> NightTick | None:
         return self._ticks.get(code)
 
-    async def ensure_running(self, codes: tuple[str, ...]) -> None:
-        """세션이 돌고 있게 만든다. 구독 종목이 바뀌면(롤오버) 재연결한다."""
+    def night_series(self, code: str) -> tuple[float, ...]:
+        """이 종목의 야간 5분봉 종가 — **시간순**. 틱이 없었으면 빈 튜플.
+
+        키가 18:00 원점이라 정수 정렬이 곧 시간순이다(`_bucket_of` 참조).
+        """
+        bars = self._bars.get(code)
+        if not bars:
+            return ()
+        return tuple(bars[k] for k in sorted(bars))
+
+    async def ensure_running(self, codes: tuple[str, ...], *, session_day: str) -> None:
+        """세션이 돌고 있게 만든다.
+
+        구독 종목이 바뀌면(롤오버) 재연결하고, 야간 세션이 바뀌면 봉을 비운다.
+        """
         self._last_request = time.monotonic()
         async with self._lock:
+            if self._session_day != session_day:
+                # 새 야간 세션 — 어제 봉을 이어 붙이면 자정에 없던 갭이 생긴다.
+                self._session_day = session_day
+                self._bars.clear()
+                self._ticks.clear()
             if self._codes != codes:
                 # 롤오버로 근월물이 바뀌었다 — 옛 구독은 영원히 무음이 되므로 다시 연다.
                 self._codes = codes
                 await self._stop_locked()
                 self._ticks.clear()
+                self._bars.clear()
             if self._task is None or self._task.done():
                 self._task = asyncio.create_task(self._loop())
 
@@ -221,6 +272,7 @@ class KisFuturesNightWs:
             code = row.get("futs_shrn_iscd", "")
             if not code or price is None or price <= 0:
                 continue
+            bsop_hour = row.get("bsop_hour", "")
             self._ticks[code] = NightTick(
                 code=code,
                 price=price,
@@ -230,6 +282,11 @@ class KisFuturesNightWs:
                 open_interest=int(_f(row, "hts_otst_stpl_qty") or 0),
                 oi_change=int(_f(row, "otst_stpl_qty_icdc") or 0),
                 market_basis=_f(row, "mrkt_basis"),
-                bsop_hour=row.get("bsop_hour", ""),
+                bsop_hour=bsop_hour,
                 t_ms=int(time.time() * 1000),
             )
+            # 스파크라인용 5분 버킷. **벤더 시각으로 담는다** — 수신 시각을 쓰면
+            # 재연결 직후 몰려 들어오는 밀린 틱이 전부 같은 버킷에 뭉친다.
+            bucket = _bucket_of(bsop_hour)
+            if bucket is not None:
+                self._bars.setdefault(code, {})[bucket] = price

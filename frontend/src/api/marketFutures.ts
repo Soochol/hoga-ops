@@ -99,12 +99,23 @@ function mapQuote(wire: FuturesQuoteWire): FuturesQuote {
 export interface FuturesSpark {
   /** 시간순(과거→최신) 5분봉 종가. */
   closes: number[];
-  /** 당일 시가 — 스파크라인 색 기준선. */
+  /** 시가 — 스파크라인 색 기준선. 야간 시리즈는 null(첫 점이 곧 야간 시가). */
   dayOpen: number | null;
+  /**
+   * 이 **그림**이 어느 세션 것인지. quote 의 `dataSession` 과 짝이다.
+   *
+   * 종목마다 다르다 — 야간 봉이 쌓인 카드는 `night`, 무음인 카드는 그날 주간장
+   * 모양이라 `day` 다. 둘이 어긋난 채 그리면 사용자는 주간 하락을 야간에 일어난
+   * 것으로 읽는다.
+   */
+  session: FuturesSession;
 }
 
 interface FuturesCandlesResponseWire {
-  series: Record<string, { closes: number[]; day_open: number | null }>;
+  series: Record<
+    string,
+    { closes: number[]; day_open: number | null; session: FuturesSession }
+  >;
 }
 
 /** 선물 스파크라인 — 카드 id → 종가 배열.
@@ -121,7 +132,7 @@ export function useMarketFuturesCandles() {
       return Object.fromEntries(
         Object.entries(r.series ?? {}).map(([id, s]) => [
           id,
-          { closes: s.closes ?? [], dayOpen: s.day_open },
+          { closes: s.closes ?? [], dayOpen: s.day_open, session: s.session },
         ]),
       );
     },
