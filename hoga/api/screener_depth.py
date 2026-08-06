@@ -2,7 +2,7 @@
 
 **과거 N일 peak 대비** (``ask_depth_new_high`` / ``bid_depth_new_high``):
 당일 총잔량(10단계 합) 분봉 peak ≥ (threshold_pct/100) × 지난 N거래일 hogaplay peak.
-당일 값은 오늘 WS/REST(kis_live/kis_api) 데이터에서, 과거 값은 hogaplay 캡처의
+당일 값은 오늘 실시간 승격본(kiwoom_live) 데이터에서, 과거 값은 hogaplay 캡처의
 depth_daily 집계에서 온다(요구사항: 당일=실시간, 과거=hogaplay).
 
 **기준시각 돌파** (``ask_depth_renewal`` / ``bid_depth_renewal``, 당일 전용):
@@ -56,10 +56,9 @@ _RENEWAL_TYPES = (RENEWAL_ASK_TYPE, RENEWAL_BID_TYPE)
 # 조회로 흘러 KeyError 로 죽는다 — 그래서 여기서 import 하게 했다.
 DEPTH_TYPES = (*_PEAK_TYPES, *_RENEWAL_TYPES)
 _DEPTH_TYPES = DEPTH_TYPES
-# 당일 값 소스: 관심종목은 KIS WS 승격(kis_live), 히트맵은 키움 WS 승격(kiwoom_live,
-# ADR-0116). REST30 승격(kis_api)은 캡처와 함께 제거됨(2026-07-17 — api 폴백 없음).
-# 종목 소유권 단일이라 코드별로 하나만 존재.
-# 실시간 승격 소스 — KIS WS 계층 삭제(ADR-0118) 후 키움 하나다.
+# 당일 값 소스 — 실시간 승격본 하나뿐이다. REST30 승격(kis_api)은 캡처와 함께
+# 제거됐고(2026-07-17 — api 폴백 없음), KIS WS 계층은 ADR-0118 에서 삭제됐다.
+# 종목 소유권 단일이라 코드별로 하나만 존재한다.
 _TODAY_SOURCES = ("kiwoom_live",)
 _KRX_OPEN_MS = 90_000_000    # 09:00:00.000 (HHMMSSmmm)
 _KRX_CLOSE_MS = 153_000_000  # 15:30:00.000
@@ -140,9 +139,9 @@ def _fold_peaks(
 def _today_peaks(
     data_dir: Path, codes: set[str], today: str,
 ) -> dict[str, tuple[int | None, int | None]]:
-    """오늘 live parquet(kis_live/kiwoom_live)의 code별 (ask,bid) 당일 peak.
+    """오늘 실시간 승격본 parquet(``_TODAY_SOURCES``)의 code별 (ask,bid) 당일 peak.
 
-    두 소스가 모두 있으면 각 side 최댓값을 취한다. 표준 KRX 세션 경계로 재사용 —
+    소스가 여럿이면 각 side 최댓값을 취한다. 표준 KRX 세션 경계로 재사용 —
     장중이라 마감 상한은 무해하고 개장 동시호가는 하한이 배제한다.
 
     **배치 1쿼리 + 단건 폴백.** 종목당 개별 쿼리는 유니버스 전체에서 ~478 쿼리가 되고

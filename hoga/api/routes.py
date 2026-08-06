@@ -215,7 +215,7 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         A ``source_partial`` Stock-Date whose collection completed still has
         these gaps → the upstream archive is missing them (re-capture won't
         recover). Only ``hogaplay`` snapshots use HHMMSSmmm ts encoding; other
-        sources (kis_live stores Unix ms) are rejected 400.
+        sources (live promotions store Unix ms) are rejected 400.
         """
         if source != "hogaplay":
             raise HTTPException(

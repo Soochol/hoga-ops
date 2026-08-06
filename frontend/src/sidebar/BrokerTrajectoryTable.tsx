@@ -165,7 +165,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
                     <span
                       aria-hidden
                       data-testid="broker-net-bar"
-                      className="ml-auto mt-[1px] block h-[2px] rounded-[1px]"
+                      className="ml-auto mt-[1px] block h-[2px] rounded-sm"
                       style={{
                         width: `${(Math.abs(net) / maxAbsNet) * 100}%`,
                         background: net > 0 ? 'var(--price-up)' : 'var(--price-down)',

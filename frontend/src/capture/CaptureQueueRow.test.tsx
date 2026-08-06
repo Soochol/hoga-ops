@@ -57,6 +57,40 @@ describe('CaptureQueueRow', () => {
     expect(row.getAttribute('data-expanded')).toBe('true');
   });
 
+  it('clicking the row also pushes the symbol to the capture form (and still expands)', () => {
+    const onPickSymbol = vi.fn();
+    const { container } = render(<CaptureQueueRow item={base} symbolName="삼성전자"
+                           onCancel={() => {}} onRetry={() => {}} onPickSymbol={onPickSymbol} />);
+    const row = container.querySelector('[data-testid="queue-row-i1"]')!;
+    fireEvent.click(row);
+    expect(onPickSymbol).toHaveBeenCalledWith('005930');
+    // 선택은 상세 펼치기를 대체하지 않는다 — 두 동작이 함께 일어난다.
+    expect(row.getAttribute('data-expanded')).toBe('true');
+    // 접을 때도 다시 선택된다: 폼에서 다른 종목을 고른 뒤 이 행을 눌러 되돌리는
+    // 흐름이 "행이 펼쳐져 있는지"에 좌우되면 안 된다.
+    fireEvent.click(row);
+    expect(onPickSymbol).toHaveBeenCalledTimes(2);
+  });
+
+  it('keyboard Enter also picks the symbol', () => {
+    const onPickSymbol = vi.fn();
+    const { container } = render(<CaptureQueueRow item={base} symbolName="삼성전자"
+                           onCancel={() => {}} onRetry={() => {}} onPickSymbol={onPickSymbol} />);
+    fireEvent.keyDown(container.querySelector('[data-testid="queue-row-i1"]')!, { key: 'Enter' });
+    expect(onPickSymbol).toHaveBeenCalledWith('005930');
+  });
+
+  it('cancel / retry buttons do not pick the symbol (stopPropagation)', () => {
+    const onPickSymbol = vi.fn();
+    const { rerender } = render(<CaptureQueueRow item={base} symbolName="삼성전자"
+                           onCancel={() => {}} onRetry={() => {}} onPickSymbol={onPickSymbol} />);
+    fireEvent.click(screen.getByRole('button', { name: /취소|✕/i }));
+    rerender(<CaptureQueueRow item={{ ...base, phase: 'failed' }} symbolName="삼성전자"
+                           onCancel={() => {}} onRetry={() => {}} onPickSymbol={onPickSymbol} />);
+    fireEvent.click(screen.getByRole('button', { name: /재시도|↻/i }));
+    expect(onPickSymbol).not.toHaveBeenCalled();
+  });
+
   it('keyboard Enter expands the row; aria-expanded reflects state', () => {
     const { container } = render(<CaptureQueueRow item={base} symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}} />);
     const row = container.querySelector('[data-testid="queue-row-i1"]')!;

@@ -247,10 +247,12 @@ def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiC
 def build_candles_slice(
     engine: QueryEngine, *, code: str, date: str, source: str = "hogaplay"
 ) -> list[ApiCandle]:
-    # ADR-0040 / ADR-0043: kis_live promotion never writes candles.parquet —
-    # the candle dimension is served separately by Live Candle Backfill.
-    # Return empty list rather than raising so /api/range can still serve
-    # hoga indicators + segments for kis_live-source Stock-Dates.
+    # ADR-0040 / ADR-0043: a live promotion may have no candles.parquet — the
+    # candle dimension can be served separately by Live Candle Backfill.
+    # (ADR-0125 revised this for kiwoom_live, which synthesizes its own minute
+    # candles; days where synthesis failed still land here.) Return empty list
+    # rather than raising so /api/range can still serve hoga indicators +
+    # segments for live-source Stock-Dates.
     path = engine.parquet_dir(date, code, source) / "candles.parquet"
     if not path.exists():
         return []
@@ -590,8 +592,8 @@ def build_fill_strength_slice(
     # no-data guard, and re-bases the native ms-from-midnight bucket into
     # Unix ms (the table queries are date-agnostic, so they cannot).
     #
-    # 그릴링 Q4: kis_live 신형은 fills.parquet(10초 구간합)이 체결강도 소스.
-    # fills가 있으면 우선, 없으면(=hogaplay·레거시 kis_live) trades 폴백
+    # 그릴링 Q4: 신형 실시간 승격본은 fills.parquet(10초 구간합)이 체결강도 소스.
+    # fills가 있으면 우선, 없으면(=hogaplay·레거시 승격본) trades 폴백
     # (_query_fill_rows). fill_strength is a pure SUM GROUP BY, so re-aggregating
     # the cached 1m sums up to bucket_ms is exact (reaggregate_fill).
     code_dir = engine.parquet_dir(date, code, source)
@@ -1518,8 +1520,8 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             ))
 
         # 캔들 승자는 호가 승자와 독립이다(소스별 보유 차원이 다름 — ADR-0040).
-        # kiwoom_live/kis_live가 호가로 이겨도 캔들은 hogaplay 또는 ADR-0109
-        # 복구본(kis_api)에서 온다. 이 분리가 없으면 캔들 미보유 승자가 같은
+        # 실시간 승격본이 호가로 이겨도 캔들은 hogaplay 또는 ADR-0109
+        # 복구본(kis_api)에서 올 수 있다. 이 분리가 없으면 캔들 미보유 승자가 같은
         # Stock-Date의 실제 캔들을 통째로 가린다.
         candle_source = resolve_candle_source(engine, d, code, source_pref, venue)
         needs_trade_price_range = volume_distribution_bins is not None or include_trade_volume_pocs

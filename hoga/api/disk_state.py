@@ -220,7 +220,7 @@ def latest_complete_date(data_dir: Path, code: str) -> str | None:
 
     Gated to ``source="hogaplay"``: this helper drives the hogaplay capture
     pipeline's catch-up floor and Watchlist markers, so a COMPLETE
-    ``kis_live``/``kis_api`` promotion (lower-fidelity synthesized data) must
+    ``kiwoom_live``/``kis_api`` promotion (lower-fidelity synthesized data) must
     NOT advance the floor and skip hogaplay collection for that date.
     """
     parquet_root = data_dir / "parquet"
@@ -271,7 +271,7 @@ def check_disk_state(
     ``source`` restricts the per-source lookup to a single Source (e.g.
     ``"hogaplay"``) instead of aggregating across all of them. The capture
     pipeline (eligibility, catch-up floor, coverage preview, fail_streak)
-    passes ``"hogaplay"`` so a COMPLETE ``kis_live``/``kis_api`` promotion —
+    passes ``"hogaplay"`` so a COMPLETE ``kiwoom_live``/``kis_api`` promotion —
     lower-fidelity synthesized data — cannot mark a Stock-Date as
     "already captured" and suppress hogaplay collection. When the restricted
     source has no meta, we fall through to the sentinel/legacy/raw steps, all
@@ -297,7 +297,7 @@ def check_disk_state(
         # violations, so surface the winning source's Classification directly —
         # no second meta.json read (be-capture-03).
         # 우선순위 = sources._POLICY_ORDER 기본(hogaplay_first)과 동기 유지(import는
-        # 순환이라 불가 — sources가 disk_state를 import). kiwoom_live는 kis_live 인접.
+        # 순환이라 불가 — sources가 disk_state를 import). 아래 튜플은 SourceName 전수다.
         winning = next(
             (per_source[src] for src in ("hogaplay", "kiwoom_live", "kis_api")
              if src in per_source and per_source[src].state == aggregated),
@@ -361,7 +361,7 @@ def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
     """Return per-source :class:`Classification` for a Stock-Date directory.
 
     Walks `<stock_date_dir>/*/meta.json` — each immediate subdirectory is a
-    Source (e.g. `hogaplay`, `kis_live` per ADR-0037). Subdirs without a
+    Source (e.g. `hogaplay`, `kiwoom_live` per ADR-0037). Subdirs without a
     `meta.json` are skipped. Invalid JSON yields ``Classification(INVALID)``
     (no violations — the JSON didn't parse) for that source.
 

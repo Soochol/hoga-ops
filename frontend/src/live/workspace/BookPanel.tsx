@@ -364,7 +364,7 @@ function MidPriceRow({
       className="flex items-baseline justify-center gap-1.5 border-t border-border px-2"
       style={{ height: ROW_H }}
     >
-      <span className="rounded-[3px] bg-bg-subtle px-[3px] py-px font-ui text-badge font-semibold leading-none text-fg-dim">
+      <span className="rounded-sm bg-bg-subtle px-[3px] py-px font-ui text-badge font-semibold leading-none text-fg-dim">
         중
       </span>
       <span className={`font-data text-[0.75rem] tabular-nums ${color}`}>
@@ -421,7 +421,7 @@ function PriceCell({
             {markers.map((m) => (
               <span
                 key={m.label}
-                className={`flex items-center justify-center rounded-[3px] px-[3px] py-px font-ui text-badge font-semibold leading-none text-white ${m.bg}`}
+                className={`flex items-center justify-center rounded-sm px-[3px] py-px font-ui text-badge font-semibold leading-none text-white ${m.bg}`}
               >
                 {m.label}
               </span>

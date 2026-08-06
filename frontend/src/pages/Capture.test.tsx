@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Capture from './Capture';
@@ -104,6 +104,45 @@ describe('Capture page', () => {
 
     // prefill 은 /api/symbols/all resolve 가 게이트(CaptureForm 의 render-adjust 패턴)라
     // 고정 sleep 대신 값이 반영될 때까지 폴링한다.
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
+    });
+  });
+
+  // 큐(우측) → 폼(좌측) 방향의 유일한 연결. 두 pane 은 형제라 서로를 직접 못 보고,
+  // 이 페이지가 seq 를 매겨 "선택 이벤트"로 내려보낸다.
+  it('큐 행을 클릭하면 좌측 캡처 요청 폼에 그 종목이 선택된다', async () => {
+    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
+      const s = String(url);
+      if (s.includes('/api/symbols/all')) {
+        return { ok: true, status: 200, json: async () => ({
+          symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', captured_count: 0,
+                      captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } }],
+          status: 'fresh', fetched_at_ms: 1,
+        }) } as Response;
+      }
+      if (s.includes('/api/captures/queue')) {
+        return { ok: true, status: 200, json: async () => ({
+          active: [], queued: [], paused: false, max_concurrent: 3,
+          done: [{
+            item_id: 'i1', code: '005930', date: '20260518', phase: 'done',
+            force_retry: false, pause_origin: false, enqueued_at_ms: 1, started_at_ms: null,
+            progress: null, result: null, error: null, skip_reason: null, attempt: 1,
+          }],
+        }) } as Response;
+      }
+      if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(<Capture />, { wrapper: W(qc) });
+
+    const row = await screen.findByTestId('queue-row-i1');
+    expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toBe('');
+
+    fireEvent.click(row);
+
     await waitFor(() => {
       expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
     });

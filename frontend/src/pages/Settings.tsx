@@ -78,13 +78,13 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
   }, []);
 
   // 카드 크롬 없이 다이얼로그를 edge-to-edge로 채운다. nav↔콘텐츠 분리는 보더가 아니라
-  // bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15 borderless 규칙). rounded-[6px]는
+  // bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15 borderless 규칙). rounded-lg는
   // ModalShell 다이얼로그 반경에 맞춰 코너를 클립한다(ModalShell 전역 overflow는
   // MAStylePicker 드롭다운을 잘라먹으므로 국소 처리).
   return (
     <section
       data-testid="settings-page-primary"
-      className="grid h-full min-h-[20rem] grid-cols-[176px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card text-sm"
+      className="grid h-full min-h-[20rem] grid-cols-[176px_minmax(0,1fr)] overflow-hidden rounded-lg bg-bg-card text-sm"
     >
       <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="설정 카테고리">
         {SECTIONS.map(({ id, label }) => (

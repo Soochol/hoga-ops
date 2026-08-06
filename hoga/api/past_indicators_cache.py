@@ -15,7 +15,7 @@ This branch keeps KIS minute/day candle caches in memory only; legacy
 Stored at 1-minute granularity; coarser timeframes re-aggregate on read
 (`indicator_reaggregate`, proven equal to a direct `bucket_ms=N` query). The key
 is **(code, date, source)** — bucket_ms is NOT in the key (re-aggregation covers
-it) but `source` IS (a day has both hogaplay and kis_live slices, chosen by
+it) but `source` IS (a day can hold both hogaplay and promotion slices, chosen by
 `_resolve_source`; serving the wrong one would be a silent data swap).
 
 ⚠️ 이 "1분 정본, 키에 tf 없음" 원칙을 **캔들 캐시(past_candles_cache)에 이식하지

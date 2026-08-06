@@ -47,6 +47,8 @@ export const TAILWIND_THEME = {
     "app-floor": "var(--app-floor-min-h)",
   },
   borderRadius: {
+    "DEFAULT": "var(--radius-md)",
+    "none": "var(--radius-none)",
     "sm": "var(--radius-sm)",
     "md": "var(--radius-md)",
     "lg": "var(--radius-lg)",

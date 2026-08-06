@@ -132,9 +132,9 @@ export function LiveSymbolSearch() {
       role="dialog"
       aria-label="종목 검색"
       style={{ boxShadow: 'var(--shadow-modal)' }}
-      className="fixed left-1/2 top-[12vh] z-50 w-[min(960px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border border-border-strong bg-bg-card p-4 font-ui"
+      className="fixed left-1/2 top-[12vh] z-50 w-[min(960px,calc(100vw-32px))] -translate-x-1/2 rounded-lg border border-border-strong bg-bg-card p-4 font-ui"
     >
-      <div className="flex items-center gap-2.5 h-11 px-3 rounded-xl bg-bg-input">
+      <div className="flex items-center gap-2.5 h-11 px-3 rounded-lg bg-bg-input">
         <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dimmer w-[18px] h-[18px] shrink-0">
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />

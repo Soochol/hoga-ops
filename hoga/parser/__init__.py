@@ -107,9 +107,9 @@ def parse_stock_date(
 
     Writes under the `hogaplay/` subdir per the ADR-0037 v2 layout. The
     flat `{date}/{code}/` path is invisible to `_resolve_source` once a
-    second source (`kis_live`) co-exists on the same day — the resolver
-    only scans subdirectories, so a flat-layout capture silently falls
-    through to `kis_live`, whose candles.parquet doesn't exist by design.
+    second source (a live promotion) co-exists on the same day — the resolver
+    only scans subdirectories, so a flat-layout capture silently falls through
+    to that promotion, which may carry no candles.parquet at all.
     """
     raw_dir = data_dir / "raw" / date / code
     out_dir = data_dir / "parquet" / date / code / "hogaplay"

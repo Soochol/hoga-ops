@@ -1045,7 +1045,7 @@ async def _finalize_item(state: QueueItemState) -> None:
         )
         try:
             # source="hogaplay": this gates the hogaplay worker's fail_streak
-            # reset and Watchlist last_success marker. A COMPLETE kis_live/kis_api
+            # reset and Watchlist last_success marker. A COMPLETE kiwoom_live/kis_api
             # promotion in the same Stock-Date dir must NOT mask a hogaplay
             # partial failure into a spurious done→reset + marker bump.
             done_complete = (
@@ -1877,7 +1877,7 @@ async def coverage_preview_core(
         for code in req.codes:
             for date in dates:
                 # source="hogaplay": bulk coverage is about hogaplay collection;
-                # a kis_live-only COMPLETE date must stay in the "to collect" set.
+                # a promotion-only COMPLETE date must stay in the "to collect" set.
                 st = check_disk_state(data_dir, code, date, source="hogaplay").state
                 if st == DiskState.COMPLETE:
                     have += 1

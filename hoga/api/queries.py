@@ -324,10 +324,9 @@ class QueryEngine:
         Returns the hogaplay/meta.json if present, else the flat-layout
         meta.json (pre-migration), else the kiwoom_live venue meta, else None.
 
-        **kis_live 는 의도적으로 제외**된다 — snapshots.parquet 이 `t_ms`(Unix ms)를
-        쓰는데 인벤토리 리더는 hogaplay 의 `ts_ms`(HHMMSSmmm)를 가정한다. kis_live 전용
-        Stock-Date 는 인벤토리에 안 보이고, 사용자는 /live 와 (소스 선호로) /replay 에서
-        본다.
+        삭제된 `kis_live` 는 **의도적으로 제외했었다** — snapshots.parquet 이
+        `t_ms`(Unix ms)를 쓰는데 인벤토리 리더는 hogaplay 의 `ts_ms`(HHMMSSmmm)를
+        가정하기 때문이다. 그 소스는 이제 없다(2026-08-06 제거 · `_archive/kis_live/`).
 
         ⚠ **kiwoom_live 는 그 제외 사유가 없다**(#1149). 실측 결과 컬럼 66개가 hogaplay
         와 **완전히 동일**하다(`ts_ms` 포함) — 그냥 목록에 안 들어가 있었을 뿐이고, 그

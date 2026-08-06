@@ -20,6 +20,25 @@ function formatBlockedMessage(items: BlockedItem[]): string {
   return `5회 연속 실패 — 인벤토리에서 잠금 해제 필요 (${pairs})`;
 }
 
+/** 큐 행 클릭이 폼으로 밀어 넣는 종목 선택. `code` 만으로는 부족하다 — 사용자가
+ *  폼에서 다른 종목으로 바꾼 뒤 큐의 **같은 행**을 다시 누르면 code 가 그대로라
+ *  변화가 없어 반영되지 않는다. seq 는 "값"이 아니라 "이벤트"임을 표현한다. */
+export interface SymbolPick {
+  code: string;
+  seq: number;
+}
+
+/** 6자리 코드를 심볼 캐시로 해석한다. 캐시에 없으면(미검증 코드) 이름 자리를
+ *  비운 placeholder 를 돌려줘 폼이 최소한 코드는 물고 있게 한다. */
+function resolveSymbol(symbols: SymbolHit[], rawCode: string): SymbolHit | null {
+  const code = rawCode.trim();
+  if (!/^\d{6}$/.test(code)) return null;
+  return filterSymbols(symbols, code, 1).find((h) => h.code === code) ?? {
+    code, name: '—', market: 'KOSPI', captured_count: 0,
+    captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
+  };
+}
+
 export interface CaptureFormProps {
   /** Reference month for DateRangePicker's left grid. Defaults to current KST month. */
   referenceYear: number;
@@ -28,9 +47,14 @@ export interface CaptureFormProps {
    *  routes here with ?code=…). Resolved against the symbol cache for the real
    *  name/market; an unverified code still prefills as a placeholder. */
   initialCode?: string | null;
+  /** 우측 캡처 대기열의 행을 클릭했을 때 선택된 종목. 각 seq 는 정확히 한 번만
+   *  소비된다 — 소비 후 사용자가 폼에서 고른 종목을 덮어쓰지 않는다. */
+  picked?: SymbolPick | null;
 }
 
-export function CaptureForm({ referenceYear, referenceMonth, initialCode = null }: CaptureFormProps) {
+export function CaptureForm({
+  referenceYear, referenceMonth, initialCode = null, picked = null,
+}: CaptureFormProps) {
   const [symbol, setSymbol] = useState<SymbolHit | null>(null);
   const [range, setRange] = useState<DateRange | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,14 +72,18 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
   const [prefilledCode, setPrefilledCode] = useState<string | null>(null);
   if (initialCode && initialCode !== prefilledCode && symbolsData !== undefined) {
     setPrefilledCode(initialCode);
-    const code = initialCode.trim();
-    if (/^\d{6}$/.test(code)) {
-      const hit = filterSymbols(symbolsData.symbols ?? [], code, 1).find((h) => h.code === code);
-      setSymbol(hit ?? {
-        code, name: '—', market: 'KOSPI', captured_count: 0,
-        captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
-      });
-    }
+    const hit = resolveSymbol(symbolsData.symbols ?? [], initialCode);
+    if (hit !== null) setSymbol(hit);
+  }
+
+  // 대기열 행 클릭 → 종목 필드 반영. initialCode 와 같은 render-phase 패턴이지만
+  // 판정 기준이 code 가 아니라 seq 다(위 SymbolPick 주석 참고). 심볼 캐시가 아직
+  // 안 왔으면 seq 를 소비하지 않고 넘어가 도착 후 자동으로 적용된다.
+  const [appliedPickSeq, setAppliedPickSeq] = useState(0);
+  if (picked !== null && picked.seq !== appliedPickSeq && symbolsData !== undefined) {
+    setAppliedPickSeq(picked.seq);
+    const hit = resolveSymbol(symbolsData.symbols ?? [], picked.code);
+    if (hit !== null) setSymbol(hit);
   }
 
   const { addItems, queue } = useCaptureQueue();

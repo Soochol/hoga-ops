@@ -801,6 +801,9 @@ def test_repeated_classification_parses_each_meta_once(tmp_path: Path, monkeypat
     from hoga.api.disk_state import classify_stock_date, reset_classify_cache_for_tests
 
     reset_classify_cache_for_tests()
+    # `kis_live` 는 소스에서 삭제됐지만 픽스처로는 **유효**하다 — classify_stock_date 는
+    # SourceName 목록이 아니라 **디스크의 서브디렉터리**를 훑으므로, 아카이브 잔재처럼
+    # 모르는 이름이 섞여도 한 번씩만 파싱해야 한다는 게 이 단언의 요지다.
     sd = _seed_stock_date(tmp_path, sources=("hogaplay", "kis_live", "kiwoom_live", "kis_api"))
     counter = _count_meta_reads(monkeypatch)
 
