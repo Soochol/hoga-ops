@@ -22,6 +22,8 @@ import { usePaneFolding } from './usePaneFolding';
 import { FoldedPaneNotice } from './FoldedPaneNotice';
 import { HogaMissingNotice } from './HogaMissingNotice';
 import { deriveHogaMissingNotice } from './hogaMissingNotice';
+import { CandleEmptyState } from './CandleEmptyState';
+import type { CandleEmptyState as CandleEmptyStateValue } from './candleEmptyState';
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import {
@@ -235,6 +237,11 @@ interface Props {
    * 쓸모가 없다 — 자격증명 미설정·벤더 장애로 캔들이 안 오는 경우가 정확히 그렇다.
    * 미지정이면 번들에서 읽어(구 호출부·`/study` 하위호환) 동작이 이전과 같다. */
   hogaMissingDates?: readonly RangeMissingDate[];
+  /** 캔들이 없을 때의 빈 상태(#1133 후속). 판별은 `useLiveBundle` 이 한다 — 활성 캔들
+   *  쿼리가 타임프레임·우회 설정에 따라 넷으로 갈려 여기서는 고를 수 없다. */
+  candleEmpty?: CandleEmptyStateValue | null;
+  /** 빈 상태의 "다시 시도". 미지정이면 버튼을 숨긴다. */
+  onRetryCandles?: () => void;
   /** Optional pane-specific bundle for ratio display when the source is already display-locked. */
   ratioBundle?: RangeBundle | null;
   clampEngaged: boolean;
@@ -360,6 +367,8 @@ export function LiveChartRoot({
   chartBundle,
   hogaPaneBundle,
   hogaMissingDates,
+  candleEmpty,
+  onRetryCandles,
   ratioBundle,
   clampEngaged,
   isPastCandlesLoading,
@@ -427,6 +436,10 @@ export function LiveChartRoot({
       }),
     [missingDates, paneHogaBundle?.quote_ratio.points.length, venue],
   );
+  // 캔들이 없으면 **캔들 결손만** 말한다. 차트 자체가 없는데 "호가 기록 없음" 부터
+  // 읽히면 무엇을 고쳐야 할지 알 수 없고, 실제로 고칠 수 있는 쪽은 캔들이다
+  // (벤더가 과거를 다시 준다). 호가 결손은 소급 복구가 안 되므로 나중에 말해도 된다.
+  const showHogaMissing = !candleEmpty && hogaMissingText;
   // Load identity for the per-view chart remount and the reveal cover. The
   // theme segment forces a full chart rebuild if the theme ever changes while
   // this stays mounted — module-resolved series colors and axis-lifetime
@@ -1971,10 +1984,13 @@ export function LiveChartRoot({
       <FoldedPaneNotice count={foldedPaneCount} timeAxisVisible={timeAxisVisible} />
       {/* 호가 pane 이 빈 이유 — 같은 모서리에 쌓는다(둘 다 "덜 보여주고 있다" 는 말). */}
       <HogaMissingNotice
-        text={hogaMissingText}
+        text={showHogaMissing ? hogaMissingText : null}
         timeAxisVisible={timeAxisVisible}
         stacked={foldedPaneCount > 0}
       />
+      {/* 캔들이 아예 없을 때 — 빈 중앙을 쓴다(가릴 것이 없다). 행동 버튼이 있어야 해서
+          호가 안내와 달리 포인터를 받는다(버튼만; 컨테이너는 통과시킨다). */}
+      <CandleEmptyState state={candleEmpty ?? null} onRetry={onRetryCandles} />
       {chart && cb && axis.segments.length > 0 && (
         <>
           {candleAlwaysOnTop && (

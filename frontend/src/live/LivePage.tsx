@@ -20,6 +20,7 @@ import {
   targetChartWindow,
 } from './workspace/WorkspaceIndicatorDrawer';
 import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';
+import { registerSettingsModalOpener } from './settingsModalControls';
 import { registerCollectDialogOpener, type CollectTarget } from './workspace/collectDialogControls';
 import { liveOpenCodesKey, useLiveRangeCacheEviction } from './useLiveRangeCacheEviction';
 
@@ -100,6 +101,9 @@ export function LivePage() {
   const [indicatorTargetId, setIndicatorTargetId] = useState<string | null>(null);
   useEffect(() => registerIndicatorDrawerOpener(setIndicatorTargetId), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 차트 창의 캔들 빈 상태가 "설정 열기" 를 요청하는 경로(#1133 후속). 트리거는 캔버스
+  // 안에 있고 모달은 셸 소유라, 지표 드로어와 같은 모듈 채널 idiom 을 쓴다.
+  useEffect(() => registerSettingsModalOpener(() => setSettingsOpen(true)), []);
   // 지난 N일 hogaplay 수집(히트맵 CollectDialog 재사용) — 대상 종목은 **차트 창
   // 헤더의 수집 버튼**이 실어 보낸다. 전역 툴바에 있던 시절엔 "활성 그룹의 종목"
   // 이라 다른 종목을 수집하려면 그 창을 먼저 활성화해야 했다.

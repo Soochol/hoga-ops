@@ -23,6 +23,7 @@ import {
   type SourceName,
 } from '../api/types';
 import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
+import { deriveCandleEmptyState, type CandleEmptyState } from './candleEmptyState';
 import type { DepthDeltaPoint } from './depthDelta';
 import {
   combineDepthDeltaBackendLive,
@@ -286,6 +287,10 @@ export interface UseLiveBundleResult {
   /** 호가 결손 사유 — `hogaBundle` 이 null 이어도 살아 있어야 해서 별도 필드다(#1133).
    *  근거는 반환부 주석. */
   hogaMissingDates: readonly RangeMissingDate[];
+  /** 캔들이 없을 때 왜 없는지 + 사용자가 할 수 있는 일. 캔들이 있으면 `null`(#1133 후속). */
+  candleEmpty: CandleEmptyState | null;
+  /** 활성 캔들 쿼리 재조회 — 빈 상태의 "다시 시도" 가 쓴다. */
+  refetchCandles: () => void;
   /** 오늘의 단별 잔량 증감 버킷(분봉). 과거일 소스가 없는 **오늘 전용** 지표라
    * RangeBundle 이 아니라 별도 필드로 나간다 — 자세한 근거는 `HogaSeries.depth_delta_today`. */
   depthDeltaToday: readonly DepthDeltaPoint[];
@@ -1019,6 +1024,17 @@ export function useLiveBundle(
   );
 
   // Clamp is a minute-path concern only; the daily endpoint has no 250d cap.
+  // 지금 캔들을 담당하는 쿼리 하나 — 빈 상태 판별의 입력(#1133 후속).
+  // 축이 둘이다: 타임프레임(분봉/캘린더) × REST 우회(벤더/디스크). 넷 중 하나만 산다.
+  const activeCandlesQuery = restBypassEnabled
+    ? (isMinute ? minuteDiskCandles : screenerDailyCandlesQuery)
+    : (isMinute ? pastCandlesQuery : pastDailyCandlesQuery);
+  const activeCandlesError = activeCandlesQuery.error;
+  const activeCandlesLoading = activeCandlesQuery.isLoading;
+  // 빈 상태의 "다시 시도" — 활성 쿼리 하나만 다시 쏜다(전부 refetch 하면 벤더 유량을
+  // 무관한 쿼리까지 태운다). 캔들 소스가 바뀌면 이 참조도 따라 바뀐다.
+  const refetchCandles = activeCandlesQuery.refetch;
+
   const clampEngaged = isMinute
     && historicalFromDate != null
     && historicalFromDate <= earliestAllowedMinute;
@@ -1072,6 +1088,21 @@ export function useLiveBundle(
      * 메타데이터를 데이터와 같은 경로로 흘린 대가라, 경로를 가른 것이 수정이다.
      */
     hogaMissingDates: pastHoga.data?.missing_dates ?? [],
+    /**
+     * 캔들이 **왜** 없나 — 원인 4종 판별(#1133 후속). 로직은 `candleEmptyState.ts`.
+     *
+     * ⚠ **활성 캔들 소스의 에러만** 본다. 타임프레임(분봉/캘린더)과 REST 우회 설정에
+     * 따라 캔들이 오는 쿼리가 넷으로 갈리는데, 아래 `error` 필드처럼 전부 합치면 지금
+     * 캔들을 담당하지 않는 쿼리의 실패가 엉뚱한 빈 상태를 띄운다.
+     */
+    candleEmpty: deriveCandleEmptyState({
+      error: activeCandlesError,
+      hasCandles: (chartBundle?.candles.length ?? 0) > 0,
+      isLoading: activeCandlesLoading,
+      restBypassEnabled,
+      hasInstrument: !!code,
+    }),
+    refetchCandles,
     /** 오늘의 단별 잔량 증감 버킷(세션 누적). 과거일 소스가 없어(설계 §5) RangeBundle 에
      *  싣지 않고 도메인 그대로 내보낸다 — wire 왕복도, 백엔드 플래그도 필요 없다. */
     depthDeltaToday,
