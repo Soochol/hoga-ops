@@ -22,7 +22,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { SIZE_TOKENS, FIXED_PX_TOKENS, RENDERED_ROOT_PX, type SizeToken } from '../src/styles/design-tokens.ts';
+import {
+  SIZE_TOKENS, FIXED_PX_TOKENS, RENDERED_ROOT_PX,
+  type SizeToken, type FixedPxToken,
+} from '../src/styles/design-tokens.ts';
 
 /** e.g. 18px root → "1.125" — used in comments/table headers. */
 const DENSITY_LABEL = (RENDERED_ROOT_PX / 16).toString();
@@ -120,6 +123,23 @@ function emitTailwindTheme(): string {
     const klass = classify(name);
     groups[klass.tailwindGroup][klass.tailwindKey] = `var(--${name})`;
   }
+  // `DEFAULT` must be emitted, not left out: Tailwind fills an absent DEFAULT
+  // with its own rem-based value, which silently re-opens the dial escape that
+  // ADR-0011 forbids. The isDefault flag names the owning rung in the token
+  // table so the mapping can't drift out of the single source of truth.
+  // 넓힌 타입으로 읽는다 — `as const satisfies` 리터럴 유니온에서는 플래그를 안 단
+  // 멤버에 `isDefault` 프로퍼티 자체가 없어 직접 접근이 타입 에러다.
+  const radii: Record<string, FixedPxToken> = FIXED_PX_TOKENS;
+  const defaults = Object.entries(radii).filter(([, t]) => t.isDefault);
+  if (defaults.length !== 1) {
+    throw new Error(
+      `borderRadius needs exactly one isDefault token, found ${defaults.length}` +
+        ` (${defaults.map(([n]) => n).join(', ') || 'none'}) — a bare \`rounded\` would` +
+        ' otherwise fall back to Tailwind\'s rem-based default and follow the density dial.',
+    );
+  }
+  groups.borderRadius.DEFAULT = `var(--${defaults[0][0]})`;
+
   for (const name of Object.keys(FIXED_PX_TOKENS)) {
     if (name === 'radius-full') {
       groups.borderRadius.full = `var(--${name})`;
