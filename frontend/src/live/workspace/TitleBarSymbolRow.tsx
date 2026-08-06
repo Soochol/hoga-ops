@@ -6,7 +6,7 @@
  * 타이틀바는 창 데이터 파이프라인(useLiveChartData)의 **부모**라 번들 파생값에
  * 직접 못 닿으므로:
  *  - 현재가·등락률·히트맵·수집상태는 `code` 만으로 전역 캐시 훅에서 self-fetch,
- *  - 경고칩(호가 미수집·과거 로딩)만 windowWarnings 채널을 `windowId` 로 구독한다.
+ *  - 경고칩(과거 로딩)만 windowWarnings 채널을 `windowId` 로 구독한다.
  *
  * 현재가는 candles 폴백이 없어(타이틀바 스코프 밖) quote.price 를 직접 쓴다 —
  * 장중 실시간 시세면 채워지고, 없으면(장전·오프라인) 미표시한다.
@@ -24,7 +24,6 @@ import { QuoteChange } from '../../rightrail/QuoteChange';
 import { CollectionDot } from '../CollectionDot';
 import { deriveCollectionView } from '../collectionStatus';
 import { captureHealthPillColor } from '../captureHealthPill';
-import { hogaCoverageGapTitle } from '../hogaCoverageGap';
 import { formatKoreanInt } from '../../util/koreanNumber';
 import { useWindowWarnings } from './windowWarningsSource';
 
@@ -78,7 +77,7 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
     liveConnection: live,
   });
 
-  const { hogaGapDates, backfillEarliestDate } = useWindowWarnings(windowId);
+  const { backfillEarliestDate } = useWindowWarnings(windowId);
 
   return (
     <span
@@ -119,19 +118,6 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
             style={{ background: pill.bg, border: pill.border, color: pill.fg }}
           >
             과거 불러오는 중 · {md}까지
-          </span>
-        );
-      })()}
-      {hogaGapDates.length > 0 && (() => {
-        const gapPill = captureHealthPillColor('warn');
-        return (
-          <span
-            data-testid="hoga-coverage-gap-chip"
-            title={hogaCoverageGapTitle(hogaGapDates)}
-            className="font-data whitespace-nowrap rounded px-1.5 text-2xs"
-            style={{ background: gapPill.bg, border: gapPill.border, color: gapPill.fg }}
-          >
-            호가 미수집 {hogaGapDates.length}일
           </span>
         );
       })()}

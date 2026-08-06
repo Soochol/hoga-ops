@@ -193,7 +193,6 @@ vi.mock('./useLiveBundle', () => ({
       clampEngaged: false,
       isPastCandlesLoading: false,
       pastDataWarnings: [],
-      hogaCoverageGapDates: [],
     };
   },
 }));
