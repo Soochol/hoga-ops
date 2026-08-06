@@ -137,6 +137,44 @@ def test_past_indicator_cache_does_not_leak_across_venues(tmp_path: Path) -> Non
     assert (store / "NXT" / f"{DATE}.ratio.json").exists()
 
 
+def test_trade_indicator_source_stays_inside_the_requested_venue(tmp_path: Path) -> None:
+    """⚠ 체결 지표 소스 재선택은 **사다리를 안 탄다** — 실측 2026-08-07 로 뚫린 구멍.
+
+    `_resolve_trade_indicator_source` 는 `resolve_source_result` 가 아니라
+    `ordered_sources` 를 직접 순회한다. 그래서 사다리의 venue 필터가 적용되지 않아
+    venue=NXT 요청이 hogaplay(KRX 전용)를 골랐고, 매물대·거래량 POC 가 KRX 데이터로
+    계산됐다. `source_venue_dir` 이 venue 축 없는 source 엔 세그먼트를 안 붙여
+    `{code}/hogaplay` 가 그대로 존재했기 때문에 존재 검사도 통과했다.
+
+    "사다리가 미리 거른다" 는 방어가 **사다리를 안 쓰는 경로**에서 무너지는 형태라,
+    같은 모양의 재선택 코드가 또 생기면 다시 뚫린다 — 그래서 `source_venue_dir` 에도
+    구조적 가드를 뒀고 이 테스트는 호출부 쪽 절반을 고정한다.
+    """
+    from hoga.api.bundle import _resolve_trade_indicator_source
+
+    for rel in ("hogaplay", "kiwoom_live/KRX"):  # NXT 는 일부러 만들지 않는다
+        d = tmp_path / "parquet" / DATE / CODE / rel
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(json.dumps({
+            "regular_session_open_ms": OPEN_MS,
+            "regular_session_close_ms": CLOSE_MS,
+            "collection_complete": True,
+            "is_partial": False,
+        }))
+        pq.write_table(
+            pa.table({"ts_ms": [_hms_native(9, 0, 10)], "seq": [1],
+                      "price": [100], "qty": [1], "side": [1]}),
+            d / "trades.parquet",
+        )
+    eng = QueryEngine(tmp_path)
+    common = {"date": DATE, "code": CODE, "source_pref": "hogaplay",
+              "selected_source": "kiwoom_live"}
+
+    # KRX 는 그대로. NXT 에서 hogaplay 로 넘어가면 **다른 시장 체결**을 쓰는 것이다.
+    assert _resolve_trade_indicator_source(eng, venue="KRX", **common) == "kiwoom_live"
+    assert _resolve_trade_indicator_source(eng, venue="NXT", **common) == "kiwoom_live"
+
+
 def test_krx_only_source_does_not_win_an_nxt_request(tmp_path: Path) -> None:
     """hogaplay 는 NXT 를 원리적으로 못 준다 — 사다리에서 빠져야 한다(빈 응답이 정답).
 

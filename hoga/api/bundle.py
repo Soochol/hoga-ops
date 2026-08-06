@@ -52,7 +52,12 @@ from hoga.api.models import (
 from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.slice_coalescer import SLICE_COALESCER
-from hoga.api.sources import ordered_sources, resolve_candle_source, resolve_source_result
+from hoga.api.sources import (
+    ordered_sources,
+    resolve_candle_source,
+    resolve_source_result,
+    source_covers_venue,
+)
 from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.live.candle_repair import REPAIR_MARKER
 from hoga.live.program_trade_store import ProgramTradeStore, is_significant_gap_event
@@ -130,12 +135,19 @@ def _resolve_trade_indicator_source(
 
     kis_api는 제외(2026-07-17): 캔들 전용 소스라 체결 지표의 폴백으로도 안 쓴다.
 
-    폴백 후보를 **요청 venue 안에서** 고른다 — venue 를 안 넘기면 이 함수가 KRX
-    디렉터리의 존재를 보고 소스를 뽑아, 정작 읽는 쪽은 그 소스의 NXT 파케이가
-    없어 빈 결과가 된다(#1133).
+    ⚠ 후보를 **`source_covers_venue` 로 거른다**(#1133). 이 함수는 사다리
+    (`resolve_source_result`)를 쓰지 않고 `ordered_sources` 를 직접 순회하므로,
+    사다리가 하는 venue 필터를 **여기서 다시 해야 한다**. 안 걸었을 때 실측
+    (2026-08-07): venue=NXT 요청이 hogaplay 를 체결 지표 소스로 골랐고, 매물대·
+    거래량 POC 가 KRX 데이터로 계산됐다 — `source_venue_dir` 이 venue 축 없는
+    source 엔 세그먼트를 안 붙여 경로가 그대로 존재했기 때문이다.
+
+    "사다리를 안 쓰는 재선택 경로" 가 이 파일에 또 생기면 같은 필터가 또 필요하다.
+    그래서 `source_venue_dir` 쪽에도 구조적 가드(`VenueNotCoveredError`)를 뒀다.
     """
     candidates = [selected_source]
     candidates.extend(source for source in ordered_sources(source_pref) if source not in candidates)
+    candidates = [s for s in candidates if source_covers_venue(s, venue)]
     for source in candidates:
         if source == "kis_api":
             continue

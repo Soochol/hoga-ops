@@ -17,6 +17,7 @@ import pytest
 from hoga.api.queries import QueryEngine
 from hoga.api.sources import (
     SOURCE_VENUES,
+    VenueNotCoveredError,
     resolve_candle_source,
     resolve_source_result,
     source_covers_venue,
@@ -70,6 +71,25 @@ def test_directory_axis_follows_coverage(tmp_path):
     assert source_venue_dir(tmp_path, "hogaplay", "KRX") == tmp_path / "hogaplay"
     assert (source_venue_dir(tmp_path, "kiwoom_live", "NXT")
             == tmp_path / "kiwoom_live" / "NXT")
+
+
+def test_uncovered_combination_raises_instead_of_returning_krx(tmp_path):
+    """⚠ 회귀 가드 — 커버리지 밖 조합은 **조용한 KRX 경로**였다(실측 2026-08-07).
+
+    `hogaplay` 는 venue 를 하나만 덮어 세그먼트가 안 붙는다. 그 규칙이 "NXT 를 물으면
+    KRX 경로를 준다" 로 새고 있었다 — 경로가 실제로 존재하므로 호출부는 성공한 줄 안다.
+
+    빈 결과가 아니라 예외인 이유: 데이터 부재가 아니라 **호출부의 venue 필터 누락**이다.
+    삼키면 다시 조용해진다.
+    """
+    for venue in ("NXT", "UN"):
+        with pytest.raises(VenueNotCoveredError):
+            source_venue_dir(tmp_path, "hogaplay", venue)
+        with pytest.raises(VenueNotCoveredError):
+            source_venue_dir(tmp_path, "kis_api", venue)
+    # 모르는 source 는 보수적으로 KRX 전용 — 같은 규칙이 적용된다.
+    with pytest.raises(VenueNotCoveredError):
+        source_venue_dir(tmp_path, "???", "NXT")
 
 
 # ── 사다리 필터 ──────────────────────────────────────────────────────────────

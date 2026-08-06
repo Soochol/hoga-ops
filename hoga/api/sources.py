@@ -54,6 +54,16 @@ SOURCE_VENUES: dict[SourceName, frozenset[Venue]] = {
 }
 
 
+class VenueNotCoveredError(ValueError):
+    """그 source 가 못 덮는 venue 로 경로를 조립하려 했다 — **프로그래밍 오류**다.
+
+    데이터 부재(`source_missing`)와 다르다. 저쪽은 "있을 수 있는데 그날 없다" 이고
+    이건 "원리적으로 있을 수 없는 조합" 이라, 빈 결과로 삼키면 안 되고 호출부의
+    venue 필터 누락을 드러내야 한다. `ValueError` 를 상속해 기존 광범위 핸들러가
+    잡던 자리는 그대로 잡는다.
+    """
+
+
 def source_covers_venue(source: str, venue: Venue) -> bool:
     """이 source 가 그 venue 를 서빙할 수 있나. 모르는 source 는 보수적으로 KRX 전용.
 
@@ -69,9 +79,26 @@ def source_venue_dir(stock_date_dir: Path, source: str, venue: Venue) -> Path:
     venue 를 하나만 덮는 source 는 세그먼트를 붙이지 않는다(축이 없으므로).
     venue 를 **필수 인자**로 둔 이유: 기본값을 주면 호출부가 빠뜨렸을 때 조용히
     KRX 를 쓰고, 그게 곧 두 시장이 한 파일에 섞이는 경로다(ADR-0140 §3).
+
+    ⚠ **커버리지 밖 조합은 예외다**(#1133). 그전엔 `source_venue_dir(sd, "hogaplay",
+    "NXT")` 가 `sd/hogaplay` 를 **조용히** 돌려줬다 — hogaplay 는 venue 를 하나만
+    덮어 세그먼트가 안 붙기 때문이다. 즉 NXT 를 물었는데 KRX 경로가 나왔다.
+
+    "사다리가 미리 거르니 도달하지 않는다" 는 방어가 실제로 뚫렸다(실측 2026-08-07):
+    `_resolve_trade_indicator_source` 는 사다리가 아니라 `ordered_sources` 전체를
+    순회해 체결 지표 소스를 재선택하는데, 거기엔 venue 필터가 없어 venue=NXT 요청이
+    hogaplay 를 골랐다 — 매물대·거래량 POC 가 KRX 데이터로 계산됐다.
+
+    그래서 방어를 **경로 조립 지점**으로 내린다. 호출부마다 필터를 기억해야 하는
+    규율은 한 곳만 빠뜨려도 조용히 틀리지만, 여기서 던지면 시끄럽게 틀린다.
     """
-    base = stock_date_dir / source
     covered = SOURCE_VENUES.get(cast(SourceName, source), frozenset({"KRX"}))
+    if venue not in covered:
+        raise VenueNotCoveredError(
+            f"source {source!r} does not cover venue {venue!r} "
+            f"(covers {sorted(covered)}) — 호출부가 사다리의 venue 필터를 우회했다",
+        )
+    base = stock_date_dir / source
     return base / venue if len(covered) > 1 else base
 
 
