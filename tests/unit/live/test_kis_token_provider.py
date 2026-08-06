@@ -56,12 +56,17 @@ def test_issue_token_failure_raises(tmp_path: Path) -> None:
 
 
 def test_issue_failure_invokes_on_issue_failure_callback(tmp_path: Path) -> None:
-    """토큰 발급 실패 시 on_issue_failure 콜백을 1회 호출하고 에러를 전파한다.
+    """**영구** 발급 실패 시 on_issue_failure 콜백을 1회 호출하고 에러를 전파한다.
 
     kis_runtime binds this callback to an account id so scheduler/account pool
     health can mark that account REST-degraded.
+
+    응답을 500 → **401** 로 바꿨다: 실패 분류 도입 후 5xx 는 `KisAuthTransient`(벤더 쪽
+    문제)라 latch 대상이 아니다. 이 테스트가 고정하려는 것은 "영구 실패가 latch 를
+    켠다" 이므로 4xx(키 오설정)가 옳은 자극이다 — 일시 실패가 latch 를 켜지 **않는**
+    쪽은 `test_token_failure_classification.py` 가 본다.
     """
-    transport = httpx.MockTransport(lambda req: httpx.Response(500, text="boom"))
+    transport = httpx.MockTransport(lambda req: httpx.Response(401, text="invalid appkey"))
     fired = {"n": 0}
     provider = KisTokenProvider(
         _creds(), tmp_path / "token.json",

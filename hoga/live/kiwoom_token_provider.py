@@ -32,9 +32,27 @@ _BASE_REAL = "https://api.kiwoom.com"
 # 발급 시도(성공 아닌) 시점에 마킹해 장애 엔드포인트에서 10s POST 반복을 막는다.
 _REISSUE_COOLDOWN_MS = 60_000
 
+_HTTP_OK = 200
+#: 이 이상은 벤더 쪽 문제 — 일시 실패로 분류한다(키가 틀린 게 아니다).
+_HTTP_SERVER_ERROR = 500
+
 
 class KiwoomAuthError(RuntimeError):
     """키움 토큰 발급/인증 실패."""
+
+
+class KiwoomAuthTransient(KiwoomAuthError):
+    """**일시** 인증 실패 — 쿨다운·전송 오류·5xx. 기다리면 풀린다.
+
+    하위 타입이라 기존 `except KiwoomAuthError` 는 그대로 잡는다 —
+    **오늘 동작은 바뀌지 않는다**(이 provider 에는 `on_issue_failure` latch 를
+    배선한 곳이 없어, 지금은 거버너의 60초 격리 + 1회 되큐로 흘러 이미 옳게 처리된다).
+
+    그래도 갈라 두는 이유 둘: ① 로그·진단에서 "인증 실패" 와 "페이싱" 이 구분된다
+    ② KIS 쪽은 같은 분류가 **실제 버그를 고친다**(`KisAuthTransient` 참조 —
+    거기선 쿨다운이 계정을 재시작까지 REST-degraded 로 latch 했다). 나중에 키움에도
+    latch 를 붙일 때 준비가 돼 있다.
+    """
 
 
 def _key_fingerprint(app_key: str) -> str:
@@ -96,6 +114,10 @@ class KiwoomTokenProvider:
                 return self._token
             try:
                 return self._issue_token()
+            except KiwoomAuthTransient:
+                # 일시 실패는 latch 대상이 아니다 — KIS 와 같은 계약을 유지한다
+                # (지금 이 provider 엔 콜백이 배선돼 있지 않지만, 붙는 순간 옳게 동작).
+                raise
             except Exception:
                 if self._on_issue_failure is not None:
                     try:
@@ -120,18 +142,27 @@ class KiwoomTokenProvider:
             self._last_issued_monotonic_ms is not None
             and now_ms - self._last_issued_monotonic_ms < _REISSUE_COOLDOWN_MS
         ):
-            raise KiwoomAuthError("token reissue cooldown")
+            # 페이싱 문제다 — 인증 실패가 아니다.
+            raise KiwoomAuthTransient("token reissue cooldown")
         self._last_issued_monotonic_ms = now_ms
-        resp = self._client.post(
-            "/oauth2/token",
-            json={
-                "grant_type": "client_credentials",
-                "appkey": self._creds.app_key,
-                "secretkey": self._creds.app_secret,
-            },
-            headers={"Content-Type": "application/json;charset=UTF-8"},
-        )
-        if resp.status_code != 200:  # noqa: PLR2004
+        try:
+            resp = self._client.post(
+                "/oauth2/token",
+                json={
+                    "grant_type": "client_credentials",
+                    "appkey": self._creds.app_key,
+                    "secretkey": self._creds.app_secret,
+                },
+                headers={"Content-Type": "application/json;charset=UTF-8"},
+            )
+        except httpx.HTTPError as e:
+            raise KiwoomAuthTransient(f"token issue transport failed: {e}") from e
+        if resp.status_code >= _HTTP_SERVER_ERROR:
+            raise KiwoomAuthTransient(
+                f"token issue HTTP {resp.status_code} {resp.text[:200]}"
+            )
+        if resp.status_code != _HTTP_OK:
+            # 4xx 는 **영구** — 키/시크릿 오설정이면 재시도해도 같다.
             raise KiwoomAuthError(f"token issue HTTP {resp.status_code} {resp.text[:200]}")
         body = resp.json()
         token = body.get("token") or body.get("access_token")
