@@ -132,6 +132,48 @@ describe('CaptureForm', () => {
     expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
   });
 
+  it('큐에서 고른 종목(picked)을 종목 필드에 반영한다', async () => {
+    const { qc } = setup();
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} picked={{ code: '005930', seq: 1 }} />,
+      { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
+  });
+
+  // seq 가 존재하는 이유 그 자체를 고정하는 테스트: code 만 비교했다면 두 번째
+  // 선택이 "값이 안 바뀌었다"로 조용히 무시된다.
+  it('같은 종목을 큐에서 다시 골라도(seq 증가) 다시 반영한다', async () => {
+    const { qc } = setup();
+    const { rerender } = render(
+      <CaptureForm referenceYear={2026} referenceMonth={5} picked={{ code: '005930', seq: 1 }} />,
+      { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    const input = screen.getByPlaceholderText(/종목/i) as HTMLInputElement;
+    expect(input.value).toContain('삼성전자');
+
+    // 사용자가 폼에서 종목을 지운 상태 — 선택이 해제된다.
+    fireEvent.change(input, { target: { value: '' } });
+    expect(input.value).toBe('');
+
+    rerender(<CaptureForm referenceYear={2026} referenceMonth={5} picked={{ code: '005930', seq: 2 }} />);
+    await new Promise((r) => setTimeout(r, 30));
+    expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
+  });
+
+  it('picked 는 seq 당 한 번만 소비된다 — 사용자의 이후 선택을 덮어쓰지 않는다', async () => {
+    const { qc } = setup();
+    const { rerender } = render(
+      <CaptureForm referenceYear={2026} referenceMonth={5} picked={{ code: '005930', seq: 1 }} />,
+      { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    const input = screen.getByPlaceholderText(/종목/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '' } });
+    // 같은 seq 로 리렌더가 여러 번 일어나도(부모의 무관한 상태 변경) 재적용 없음.
+    rerender(<CaptureForm referenceYear={2026} referenceMonth={6} picked={{ code: '005930', seq: 1 }} />);
+    await new Promise((r) => setTimeout(r, 30));
+    expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toBe('');
+  });
+
   it('does not render force retry controls', async () => {
     const { qc } = setup();
     render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
