@@ -93,7 +93,7 @@ export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, side
     : 'fixed inset-0 bg-black/50 flex items-center justify-center z-[60]';
   const cardClass = isDrawer
     ? `bg-bg-card border-l border-border-strong shadow-overlay ${width} h-full max-w-[95vw] flex flex-col transition-transform duration-150 ease-out ${shown ? 'translate-x-0' : 'translate-x-full'}`
-    : `bg-bg-card border border-border-strong rounded-[6px] shadow-overlay ${width} ${height ?? ''} max-w-[90vw] flex flex-col`;
+    : `bg-bg-card border border-border-strong rounded-lg shadow-overlay ${width} ${height ?? ''} max-w-[90vw] flex flex-col`;
 
   return (
     <div

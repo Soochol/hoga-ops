@@ -14,4 +14,4 @@ export const WORKSPACE_DRAWER_WIDTH_CLASS = 'w-[min(760px,100vw)]';
 /** 드로어 내부 마스터-디테일 셸: 좌측 nav 240px + 우측 디테일. 두 드로어가
  *  동일한 nav 폭을 써야 전환 시 nav가 점프하지 않는다. */
 export const WORKSPACE_DRAWER_SHELL_CLASS =
-  'grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card';
+  'grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden rounded-lg bg-bg-card';
