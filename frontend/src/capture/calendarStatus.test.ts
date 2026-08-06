@@ -66,9 +66,20 @@ describe('markerFor', () => {
     expect(tooltipFor('invalid', '20260319')).not.toBe(tooltipFor('client_incomplete', '20260319'));
   });
 
-  it('KIS 실시간 계열은 다이아 글리프 가족 — hogaplay ✓/⚠ 와 모양으로 구분(색맹 대응)', () => {
+  it('실시간 승격 계열은 다이아 글리프 가족 — hogaplay ✓/⚠ 와 모양으로 구분(색맹 대응)', () => {
     expect(markerFor('complete_live')).toBe('◆');
     expect(markerFor('partial_live')).toBe('◇');
+  });
+
+  it('승격 계열 라벨은 승격 소스의 벤더명을 담지 않는다', () => {
+    // 라벨이 소스 벤더를 특정하면 소스가 바뀔 때 조용히 거짓말이 된다 — 실제로
+    // `kis_live` 삭제 후에도 "KIS 실시간"이 남아 키움 데이터를 KIS라 불렀다.
+    // ("hogaplay 미수집"은 예외로 남는다 — 그건 승격 소스 이름이 아니라 "무엇을
+    //  못 받았는지" 라는 사실 진술이고, hogaplay 는 이 달력의 기준 소스다.)
+    for (const s of ['complete_live', 'partial_live'] as const) {
+      expect(CALENDAR_STATUS[s].tooltipSuffix, s).not.toMatch(/KIS|키움|kiwoom/i);
+      expect(CALENDAR_STATUS[s].legendLabel, s).not.toMatch(/KIS|키움|kiwoom/i);
+    }
   });
 });
 
@@ -119,7 +130,7 @@ describe('legendText', () => {
     // 어휘는 보관함 DiskStateBadge 와 동일해야 한다: 완결/부분/미완결/손상.
     expect(legendText()).toBe(
       '범례: ✓ 완결 · ⚠ 부분 · ⊘ 부분 확정 · ✕ 미완결 · ! 손상 · – 업스트림 없음 · '
-        + '◆ KIS 실시간 · ◇ KIS 실시간 부분 · 🔒 당일 16:30 이전'
+        + '◆ 실시간 승격 · ◇ 실시간 승격 부분 · 🔒 당일 16:30 이전'
     );
   });
 

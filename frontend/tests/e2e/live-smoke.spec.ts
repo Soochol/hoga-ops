@@ -20,7 +20,7 @@ test.use({ channel: 'chrome' });
  *         signal that the invariant-outcomes path is wired end-to-end.
  */
 test.describe('/live smoke', () => {
-  test('S1: empty state → select symbol → chart root mounts with kis_live header', async ({
+  test('S1: empty state → select symbol → chart root mounts with source header', async ({
     page,
   }) => {
     await installLiveMocks(page);

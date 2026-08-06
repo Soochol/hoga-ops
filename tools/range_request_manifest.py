@@ -16,9 +16,10 @@ from hoga.api.models import validate_bucket_ms
 from hoga.api.params import CODE_PATTERN
 from hoga.util.timeenc import unix_ms_to_hhmmssms
 
+# hoga.api.sources.SourcePolicy 와 동기 유지 — 여기에만 있는 값은 백엔드가 거부한다
+# (삭제된 `kis_live` 가 그렇게 남아 있었다).
 SourcePolicy = Literal[
     "hogaplay",
-    "kis_live",
     "kiwoom_live",
     "kis_api",
     "hogaplay_first",

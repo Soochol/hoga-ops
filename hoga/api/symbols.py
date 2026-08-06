@@ -387,8 +387,8 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
                 if not code_dir.is_dir():
                     continue
                 # source="hogaplay": the breakdown buckets mirror the capture
-                # calendar's hogaplay-framed states, so a COMPLETE kis_live/kis_api
-                # promotion must not inflate the "complete" count. kis_live-only
+                # calendar's hogaplay-framed states, so a COMPLETE kiwoom_live/kis_api
+                # promotion must not inflate the "complete" count. promotion-only
                 # Stock-Dates resolve to NONE here (surfaced separately as *_live
                 # on the calendar), matching the display axis.
                 st = check_disk_state(

@@ -44,8 +44,13 @@ def eng(tmp_path):
 # ── 커버리지 선언 ────────────────────────────────────────────────────────────
 
 def test_krx_only_sources_do_not_cover_nxt():
-    """hogaplay·kis_api 는 KRX 전용이다 — 축이 없는 게 아니라 그 시장만 준다."""
-    for source in ("hogaplay", "kis_live", "kis_api"):
+    """hogaplay·kis_api 는 KRX 전용이다 — 축이 없는 게 아니라 그 시장만 준다.
+
+    삭제된 `kis_live` 가 이 루프에 남아 있었는데, SOURCE_VENUES 에 없는 이름이라
+    실제로는 아래 `test_unknown_source_is_conservatively_krx_only` 와 같은 fallback
+    분기를 재검증할 뿐이었다 — **선언된 커버리지를 검증하지 않았다.**
+    """
+    for source in ("hogaplay", "kis_api"):
         assert source_covers_venue(source, "KRX")
         assert not source_covers_venue(source, "NXT")
         assert not source_covers_venue(source, "UN")
