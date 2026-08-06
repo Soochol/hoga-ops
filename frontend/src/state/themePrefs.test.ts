@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  DEFAULT_THEME_PREFERENCE,
   effectiveTheme,
+  OBSIDIAN_ROUTE_PREFIXES,
   THEME_PREFERENCE_OPTIONS,
   useThemePrefsStore,
   type ThemePreference,
 } from './themePrefs';
+// vite 의 `?raw` 로 소스 텍스트를 인라인한다 — routeSplitting.test.ts 와 같은 방식
+// (`node:fs` 는 이 프로젝트의 타입 범위 밖이다).
+import INDEX_HTML from '../../index.html?raw';
 
 const STORAGE_KEY = 'ui.themePreference.v1';
 
@@ -16,10 +21,13 @@ beforeEach(() => {
 afterEach(() => localStorage.clear());
 
 describe('effectiveTheme', () => {
-  it('maps auto → obsidian on live/heatmap, ledger elsewhere', () => {
+  it('maps auto → obsidian on live/heatmap/market, ledger elsewhere', () => {
     expect(effectiveTheme('auto', '/live')).toBe('obsidian');
     expect(effectiveTheme('auto', '/live/anything')).toBe('obsidian');
     expect(effectiveTheme('auto', '/heatmap')).toBe('obsidian');
+    // '/market' 은 목록에 있는데 이 테스트에도 index.html 에도 없었다 — 커버리지
+    // 구멍이 드리프트 위치와 정확히 일치했다.
+    expect(effectiveTheme('auto', '/market')).toBe('obsidian');
     expect(effectiveTheme('auto', '/study')).toBe('ledger');
     expect(effectiveTheme('auto', '/screener')).toBe('ledger');
     expect(effectiveTheme('auto', '/settings')).toBe('ledger');
@@ -44,8 +52,12 @@ describe('effectiveTheme', () => {
 });
 
 describe('useThemePrefsStore', () => {
-  it('defaults to auto with an empty store', () => {
-    expect(useThemePrefsStore.getState().themePreference).toBe('auto');
+  it('falls back to DEFAULT_THEME_PREFERENCE when nothing is stored', () => {
+    // 저장값이 없을 때 스토어가 무엇으로 시작하는지는 모듈 로드 시점에 한 번
+    // 정해지므로(beforeEach 가 덮어쓴다) 상수 자체를 못박는다. 라우트별 테마
+    // 전환을 없앤 결정이라 `auto` 로 되돌아가면 그 결정이 조용히 풀린다.
+    expect(DEFAULT_THEME_PREFERENCE).toBe('toss-light');
+    expect(THEME_PREFERENCE_OPTIONS).toContain(DEFAULT_THEME_PREFERENCE);
   });
 
   it('persists a set preference and rejects invalid values', () => {
@@ -66,6 +78,43 @@ describe('useThemePrefsStore', () => {
     useThemePrefsStore.setState({ themePreference: 'ledger' });
     useThemePrefsStore.getState().hydrateFromStorage(); // no valid value → no change
     expect(useThemePrefsStore.getState().themePreference).toBe('ledger');
+  });
+
+  /**
+   * index.html 의 첫 페인트 부트스트랩은 이 모듈을 import 할 수 없다(모듈 그래프
+   * 로드 전에 돌아야 FOUC·잘못된 테마 차트 캐시를 막는다). 그래서 기본값과 auto
+   * 라우트 맵이 **복제**돼 있고, 실제로 한 번 어긋났다 — `OBSIDIAN_ROUTE_PREFIXES`
+   * 에 '/market' 이 추가됐는데 index.html 은 안 따라가서, auto 로 /market 에
+   * 진입하면 ledger 로 칠했다가 obsidian 으로 뒤집혔다.
+   *
+   * 복제를 없앨 수 없으니 이탈을 실패로 만든다.
+   */
+  describe('index.html 첫 페인트 부트스트랩 동기', () => {
+    it('기본 선호값이 DEFAULT_THEME_PREFERENCE 와 같다', () => {
+      // 부트스트랩엔 기본값이 **두 군데** 있다. 3항 연산자(저장값 없음)와 유효성
+      // 폴백(저장값이 깨짐). 둘을 따로 잡는다 — 처음엔 `pref = '…'` 하나로만
+      // 훑었더니 3항 쪽을 놓쳐서, 기본값을 auto 로 되돌려도 테스트가 통과했다.
+      const ternary = INDEX_HTML.match(/themePreference\s*:\s*'([a-z-]+)'/);
+      const fallback = INDEX_HTML.match(/pref\s*=\s*'([a-z-]+)'/);
+      expect(ternary, '저장값 없음 분기를 찾지 못했다').not.toBeNull();
+      expect(fallback, '유효성 폴백 분기를 찾지 못했다').not.toBeNull();
+      expect(ternary![1]).toBe(DEFAULT_THEME_PREFERENCE);
+      expect(fallback![1]).toBe(DEFAULT_THEME_PREFERENCE);
+    });
+
+    it('auto 다크 라우트 목록이 OBSIDIAN_ROUTE_PREFIXES 와 같다', () => {
+      const line = INDEX_HTML.split('\n').find((l) => l.includes('var dark ='));
+      expect(line, 'index.html 의 `var dark =` 줄을 찾지 못했다').toBeDefined();
+      const routes = [...line!.matchAll(/'(\/[a-z]+)\/?'/g)].map((m) => m[1]);
+      expect([...new Set(routes)].sort()).toEqual([...OBSIDIAN_ROUTE_PREFIXES].sort());
+    });
+
+    it('허용 선호값 목록이 THEME_PREFERENCE_OPTIONS 와 같다', () => {
+      const line = INDEX_HTML.split('\n').find((l) => l.includes("pref !== 'obsidian'"));
+      expect(line).toBeDefined();
+      const opts = [...line!.matchAll(/pref !== '([a-z-]+)'/g)].map((m) => m[1]);
+      expect(opts.sort()).toEqual([...THEME_PREFERENCE_OPTIONS].sort());
+    });
   });
 
   it('exposes exactly the five options', () => {
