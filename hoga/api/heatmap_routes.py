@@ -123,7 +123,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
     @router.get("/group-flow", response_model=HeatmapGroupFlowResponse)
     async def get_heatmap_group_flow(
         date: str | None = Query(default=None, description="거래일 YYYYMMDD. 미지정=오늘(KST)."),
-        # venue 는 프론트 계약 호환용(현재 소스는 키움 단일이라 미사용).
+        # 셀이 venue 별 시세이므로 그룹 흐름도 같은 venue 를 읽어야 한다(ADR-0140).
         venue: str = Query(default="KRX"),
     ) -> HeatmapGroupFlowResponse:
         now = dt.datetime.now(_KST)
@@ -138,7 +138,9 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
             if basis > now.date():
                 raise HTTPException(status_code=422, detail={
                     "code": "date_in_future", "message": "date is in the future"})
-        key = (str(data_dir), basis.strftime("%Y%m%d"))
+        # ⚠ 캐시 키에 venue 가 있어야 한다 — 없으면 첫 요청의 venue 결과가
+        # 다른 venue 요청에 그대로 돌아간다(버스트 병합 창 안에서).
+        key = (str(data_dir), basis.strftime("%Y%m%d"), venue)
         now_ms = int(time.time() * 1000)
         cached, at = _flow_cache.get(key), _flow_cache_at.get(key)
         if cached is not None and at is not None and now_ms - at <= _FLOW_BURST_COALESCE_MS:
@@ -148,7 +150,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
             cached, at = _flow_cache.get(key), _flow_cache_at.get(key)
             if cached is not None and at is not None and now_ms - at <= _FLOW_BURST_COALESCE_MS:
                 return cached
-            resp = await asyncio.to_thread(build_group_flow, data_dir, basis, now_ms=now_ms)
+            resp = await asyncio.to_thread(build_group_flow, data_dir, basis, now_ms=now_ms, venue=venue)
             _flow_cache[key] = resp
             _flow_cache_at[key] = now_ms
             return resp

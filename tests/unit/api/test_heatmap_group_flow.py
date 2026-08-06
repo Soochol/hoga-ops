@@ -54,7 +54,7 @@ def _seed_daily(tmp_path: Path) -> None:
 
 
 def _write_candles(tmp_path: Path, code: str, records: list[tuple[int, float]]) -> None:
-    root = tmp_path / "live_kiwoom" / BASIS.strftime("%Y%m%d")
+    root = tmp_path / "live_kiwoom" / BASIS.strftime("%Y%m%d") / "KRX"
     root.mkdir(parents=True, exist_ok=True)
     with (root / f"{code}.jsonl").open("w", encoding="utf-8") as fh:
         for t_ms, close in records:
@@ -105,7 +105,7 @@ def test_group_flow_null_when_no_candles_or_no_baseline(tmp_path: Path) -> None:
 def test_group_flow_tolerates_torn_last_line(tmp_path: Path) -> None:
     _seed_heatmap(tmp_path)
     _seed_daily(tmp_path)
-    root = tmp_path / "live_kiwoom" / BASIS.strftime("%Y%m%d")
+    root = tmp_path / "live_kiwoom" / BASIS.strftime("%Y%m%d") / "KRX"
     root.mkdir(parents=True, exist_ok=True)
     good = json.dumps({"t_ms": _ms(9, 3), "kind": "candle",
                        "payload": {"open": 105, "high": 105, "low": 105, "close": 105, "volume": 1}})
@@ -223,7 +223,7 @@ def _fresh(tmp_path: Path) -> Path:
     from hoga.api.heatmap_group_flow import reset_tail_cache_for_tests
 
     reset_tail_cache_for_tests()
-    p = tmp_path / "live_kiwoom" / "20260619" / "005930.jsonl"
+    p = tmp_path / "live_kiwoom" / "20260619" / "KRX" / "005930.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
