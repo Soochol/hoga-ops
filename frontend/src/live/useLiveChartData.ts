@@ -106,7 +106,6 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     isExtending,
     isSidecarLoading,
     pastDataWarnings,
-    hogaCoverageGapDates,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
   } = useLiveBundle(activeCode, timeframe, today, live, { investorNetEnabled, venue, sidecarDemands });
@@ -255,7 +254,6 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     isDailyMaLoading,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
-    hogaCoverageGapDates,
     dayAskPeaks,
     todayAllPriceAskPeak,
     dayBidPeaks,
