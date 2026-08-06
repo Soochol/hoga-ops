@@ -36,6 +36,11 @@ TTL_SECTORS_S = 30.0      # 지수·등락종목수: 화면 최상단
 TTL_PROGRAM_S = 60.0      # 100행 ≈ 100분이라 자기 백필 — 주기는 신선도 문제일 뿐
 TTL_STREAKS_S = 300.0     # 연속일수는 일 단위 축
 TTL_BREADTH_S = 300.0     # 52주 신고·신저는 느리게 움직인다
+# 선물: 지수 카드와 같은 줄에 서므로 `/live/index-quotes`(20s)와 신선도를 맞춘다.
+# 벤더가 KIS 라 키움 거버너와 무관하고, 라인업이 3콜뿐이라 유량도 제약이 아니다.
+TTL_FUTURES_S = 20.0
+# 선물 스파크라인: 5분봉이라 그보다 자주 물어봐야 얻는 게 없다.
+TTL_FUTURES_SPARK_S = 60.0
 
 _MARKETS = ("0", "1")  # 코스피 · 코스닥 — 별도 콜이다
 _STEX_ALL = "3"
@@ -263,6 +268,155 @@ async def _collect_breadth(walk: Any) -> dict[str, Any]:
     return out
 
 
+class _FuturesRuntimeHolder:
+    """KIS 선물 런타임의 **지연 생성** + 마지막 관측 상태 보관.
+
+    지연 생성인 이유는 `_seam` 이 키움에 대해 하는 판단과 같다 — `hoga.live.*` 는
+    heavy import 라 `build_router` 시점에 끌어오면 무자격 환경(테스트·e2e)에서도
+    KIS 스택 전체가 로드된다.
+
+    **세션·사유를 따로 들고 있는 이유**가 더 중요하다. `_TtlCache` 는 실패해도
+    last-good 을 축출하지 않으므로(규약 3) 벤더가 저하되면 캐시는 옛 quotes 를 계속
+    돌려준다. 그때 세션까지 옛것이면 화면이 "야간인데 주간 마감본" 을 말하지 못하고
+    낡은 값을 실시간처럼 그린다 — 값은 낡아도 되지만 **낡았다는 사실은 최신**이어야 한다.
+    """
+
+    def __init__(self, data_dir: Path | None) -> None:
+        self._data_dir = data_dir
+        self._runtime: Any = None
+        self.session = "closed"
+        self.unavailable: str | None = None
+
+    def _ensure(self) -> Any:
+        if self._runtime is None:
+            from hoga.live.futures_runtime import FuturesQuotesRuntime  # noqa: PLC0415
+            from hoga.live.kis_runtime import ensure_kis_client_from_env  # noqa: PLC0415
+
+            data_dir = self._data_dir
+
+            def factory() -> Any:
+                return ensure_kis_client_from_env(data_dir) if data_dir is not None else None
+
+            self._runtime = FuturesQuotesRuntime(factory)
+        return self._runtime
+
+    async def collect_sparks(self) -> dict[str, Any] | None:
+        """스파크라인. 비면 None — 시세와 마찬가지로 last-good 을 덮지 않는다."""
+        series = await self._ensure().sparks()
+        if not series:
+            return None
+        return {
+            "series": {
+                item_id: {
+                    "closes": list(s.closes),
+                    "day_open": s.day_open,
+                    # 종목마다 다르다 — 야간 봉이 쌓인 카드는 야간 모양, 무음인 카드는
+                    # 그날 주간장 모양이다. 시세의 `data_session` 과 짝을 이룬다.
+                    "session": s.session,
+                    # 야간만 실린다(주간은 REST 로 소급 조회되므로 "놓친 구간" 이 없다).
+                    # 스파크라인엔 축이 없어 앞이 잘린 선을 화면만으로는 못 가린다.
+                    "coverage": None
+                    if s.coverage is None
+                    else {
+                        "first_hhmm": s.coverage.first_hhmm,
+                        "observed_buckets": s.coverage.observed_buckets,
+                        "gap_count": s.coverage.gap_count,
+                    },
+                }
+                for item_id, s in series.items()
+            }
+        }
+
+    async def collect(self) -> dict[str, Any] | None:
+        """한 번 수집. **quotes 가 비면 None** — last-good 을 덮지 않기 위해서다."""
+        snap = await self._ensure().snapshot()
+        self.session = snap.session
+        self.unavailable = snap.unavailable
+        if not snap.cards:
+            return None
+        return {
+            "quotes": [
+                {
+                    "id": c.item.id,
+                    "underlying_id": c.item.underlying_id,
+                    "label": c.item.label,
+                    "code": c.quote.code,
+                    "expiry": c.quote.expiry,
+                    "days_left": c.quote.days_left,
+                    "last_trade_date": c.quote.last_trade_date,
+                    "value": c.quote.value,
+                    "change": c.quote.change,
+                    "change_rate": c.quote.change_rate,
+                    "prev_close": c.quote.prev_close,
+                    "volume": c.quote.volume,
+                    "open_interest": c.quote.open_interest,
+                    "oi_change": c.quote.oi_change,
+                    # 시장 베이시스(선물−기초자산). 이론 베이시스(`basis`)가 아니다 —
+                    # 둘을 바꾸면 부호까지 뒤집힌다(kis_futures_endpoints docstring).
+                    "market_basis": c.quote.market_basis,
+                    "disparity": c.quote.disparity,
+                    # **종목마다 다르다.** 야간 유동성이 상품별로 갈려서, 같은 순간에
+                    # KOSPI200 은 night 이고 코스닥150 은 day(주간 마감본)일 수 있다.
+                    "data_session": c.data_session,
+                    "t_ms": c.quote.t_ms,
+                }
+                for c in snap.cards
+            ],
+        }
+
+
+def _register_futures_routes(router: APIRouter, *, data_dir: Path | None) -> None:
+    """선물 표면 2개(시세·스파크라인)를 등록한다.
+
+    `build_router` 에서 떼어낸 이유는 길이 때문만이 아니다 — 이 두 라우트는 벤더가
+    **KIS** 라 키움 시임(`_seam`)·거버너·유량 버킷과 아무 것도 공유하지 않는다.
+    나란히 두면 `_call` 을 쓰지 않는 라우트가 키움 헬퍼 사이에 끼어 읽기 어려워진다.
+    """
+    # `/live/index-quotes`(키움 칼 컷오버, #1039)에 섞지 않고 표면을 따로 두는 이유:
+    # 한 응답에 두 벤더를 담으면 "어느 쪽이 늦었나" 가 응답에서 사라진다.
+    futures_cache = _TtlCache(TTL_FUTURES_S)
+    # 분봉은 5분에 한 번만 늘어난다 — 시세(20s)와 한 캐시에 묶으면 3콜이 시세
+    # 주기로 끌려 올라간다.
+    futures_spark_cache = _TtlCache(TTL_FUTURES_SPARK_S)
+    futures_runtime = _FuturesRuntimeHolder(data_dir)
+
+    @router.get("/futures-quotes")
+    async def get_futures_quotes() -> dict[str, Any]:
+        """지수선물 근월물 시세 (KIS `FHMIF10000000`) — 지수 카드의 선물 토글.
+
+        **키움에는 파생 TR 이 0건이라 대체 경로가 없다**(337개 전수 조사). 그래서
+        ADR-0136 의 "실시간·폴링은 전부 키움" 분담에서 이 표면만 KIS 로 남는다 —
+        옵션 심리 패널(ADR-0135)과 같은 이유다.
+
+        최상위 `session`(지금 열린 세션)과 각 quote 의 `data_session`(그 값이 속한
+        세션)이 **다를 수 있고, 종목마다도 다르다**. 야간에 REST 는 주간 마감본을
+        주고 WS 틱은 유동성 있는 종목에만 온다 — 실측(2026-08-07 00:36, 40초)에서
+        KOSPI200 48틱 / 코스닥150 0틱 / VKOSPI 0틱이었다. 화면은 카드마다 그 차이를
+        말해야 한다. 안 그러면 6시간 전 값을 실시간으로 읽는다.
+        """
+        got = await futures_cache.get(futures_runtime.collect)
+        # 세션·사유는 **항상 최신 관측**으로 덮는다. quotes 는 last-good 일 수 있다.
+        head = {
+            "session": futures_runtime.session,
+            "unavailable": futures_runtime.unavailable,
+        }
+        return {**(got or {"quotes": []}), **head}
+
+    @router.get("/futures-candles")
+    async def get_futures_candles() -> dict[str, Any]:
+        """선물 카드 스파크라인 — 당일 **5분봉** 종가 (KIS `FHKIF03020200`).
+
+        5분인 이유는 취향이 아니라 상한이다: 이 TR 은 102건까지만 주므로 1분봉이면
+        13:54~15:45 만 와서 스파크라인이 하루의 1/4을 그린다. 5분봉은 83건으로
+        08:45~15:45 전 구간을 덮는다(2026-08-06 실측).
+
+        **주간 데이터뿐이다.** 야간 틱은 이 REST 에 오지 않으므로, 야간에는 그날
+        주간장의 모양을 그린다 — 시세 카드가 "주간 마감값" 배지를 다는 것과 같은 상태다.
+        """
+        got = await futures_spark_cache.get(futures_runtime.collect_sparks)
+        return got or {"series": {}}
+
+
 def build_router(*, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -274,6 +428,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
     breadth_cache = _TtlCache(TTL_BREADTH_S)
     # 증시 주변 자금은 벤더가 다르다(KOFIA) — 키움 거버너·TTL 축과 분리해 자체 캐시를 쓴다.
     funds_cache = MarketFundsCache()
+    _register_futures_routes(router, data_dir=data_dir)
 
     def _seam() -> tuple[Any, Any] | None:
         """(거버너, 클라이언트). 무자격이면 None — 라우트는 빈 응답을 돌려준다."""

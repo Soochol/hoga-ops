@@ -13,6 +13,9 @@ def test_router_exposes_the_market_surfaces():
     assert sorted(x.path for x in r.routes) == [
         "/api/market/breadth",
         "/api/market/funds",
+        # 선물 2개만 벤더가 KIS 다 — 키움에 파생 TR 이 0건이라 대체 경로가 없다(ADR-0141).
+        "/api/market/futures-candles",
+        "/api/market/futures-quotes",
         "/api/market/investor-flow",
         "/api/market/program",
         "/api/market/sectors",
