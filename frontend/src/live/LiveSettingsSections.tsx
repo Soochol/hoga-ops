@@ -192,7 +192,7 @@ export default function LiveSettingsSections({ variant = 'live', onClose }: { va
 
   // 지표 드로어와 동일한 크롬(ADR-0116, 우측 드로어): 전폭 헤더 바·푸터 없이 nav+콘텐츠가
   // 드로어를 edge-to-edge로 채우고, 섹션 제목과 닫기 X는 콘텐츠 헤더가 담당.
-  // nav↔콘텐츠 분리는 bg-subtle↔bg-card 톤 스텝. rounded-[6px]는 ModalShell 반경에 맞춰 클립.
+  // nav↔콘텐츠 분리는 bg-subtle↔bg-card 톤 스텝. rounded-lg는 ModalShell 반경에 맞춰 클립.
   return (
     <div
       data-testid="live-settings-drawer-shell"

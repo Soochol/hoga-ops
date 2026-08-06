@@ -72,6 +72,18 @@ export type FixedPxToken = Readonly<{
   px: number;
   /** Short human-readable purpose. */
   usage: string;
+  /**
+   * Marks the rung that the *bare* utility resolves to (`rounded`, no suffix).
+   * Exactly one radius token may set it — the generator enforces that.
+   *
+   * Why this exists: without a `DEFAULT` key Tailwind keeps its own built-in
+   * value for the bare utility, and that value is **rem-based**. `rounded` was
+   * therefore the single most-used radius in the app (143 call sites) *and* the
+   * only one outside the token system — rendering 4.5px at the 18px dial and
+   * moving with it, which ADR-0011 exists to prevent. A hole in the map is not
+   * a neutral omission; the framework fills it.
+   */
+  isDefault?: true;
 }>;
 
 export const SIZE_TOKENS = {
@@ -125,9 +137,21 @@ export const FIXED_PX_TOKENS = {
   // Radii intentionally stay in absolute px (ADR-0011). They do not scale with
   // the density dial — sub-pixel radii blur on standard displays and small
   // radii visually changing is more disruptive than helpful.
-  'radius-sm':   { px: 2,    usage: 'Rarely used' },
-  'radius-md':   { px: 4,    usage: 'Presets, small buttons' },
-  'radius-lg':   { px: 6,    usage: 'Cards, inputs, buttons (default)' },
+  // `tailwind.config.ts` 는 borderRadius 를 `extend` 가 아니라 **교체**한다(Tailwind
+  // 기본 스케일의 rem 기반 xl/2xl/3xl 을 도달 불가로 만들기 위해). 교체 스케일에는
+  // `none` 이 반드시 있어야 한다 — 없으면 `rounded-none`·`rounded-r-none` 이 에러가
+  // 아니라 **CSS 미생성**으로 조용히 사라지고, 한쪽만 둥근 막대(BookPanel 잔량 바)가
+  // 양쪽 다 둥글어진다.
+  'radius-none': { px: 0,    usage: 'Explicit square corners — `rounded-none` and its per-corner variants' },
+  'radius-sm':   { px: 2,    usage: 'Hairline bars, dense badges' },
+  // `isDefault` → bare `rounded`. 4px (not 6) because the 143 existing bare
+  // call sites were rendering at Tailwind's 4.5px: snapping to `md` moves them
+  // 0.5px (visually equivalent) while snapping to `lg` would round every one of
+  // them by +33%. Same reasoning as the `text-2xs` decision (2026-08-04) —
+  // close the hole at the value that is already on screen, don't restyle the
+  // app as a side effect of fixing a leak.
+  'radius-md':   { px: 4,    usage: 'Default (bare `rounded`) — chips, small buttons, presets', isDefault: true },
+  'radius-lg':   { px: 6,    usage: 'Cards, modals, inputs, larger panels' },
   'radius-full': { px: 9999, usage: 'Status dots, avatars' },
 } as const satisfies Record<string, FixedPxToken>;
 

@@ -54,7 +54,7 @@ export default function MovingAverageRow({ index, config, canRemove, onChange, o
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
         aria-label={`기간${index + 1} 길이`}
-        className="w-[72px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums"
+        className="w-[72px] text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums"
       />
       {canRemove ? (
         <button

@@ -177,7 +177,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
           setAnchorRect(buttonRef.current?.getBoundingClientRect() ?? null);
           setOpen((prev) => !prev);
         }}
-        className="inline-flex min-h-6 items-center gap-1 rounded-[7px] px-2 py-1 text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
+        className="inline-flex min-h-6 items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
         style={{
           // 테두리 없는 ghost — 비활성은 투명, 활성 도구가 있을 때만 강조
           // (봉 컨트롤과 같은 문법, 2026-07-15 결정).
