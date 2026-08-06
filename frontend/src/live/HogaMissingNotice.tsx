@@ -41,6 +41,8 @@ export function HogaMissingNotice({
   text,
   timeAxisVisible = true,
   stacked = false,
+  testId = 'hoga-missing-notice',
+  ariaLabel,
 }: {
   /** `deriveHogaMissingNotice` 결과. `null` 이면 렌더하지 않는다. */
   text: string | null;
@@ -48,6 +50,11 @@ export function HogaMissingNotice({
   timeAxisVisible?: boolean;
   /** 아래에 `FoldedPaneNotice` 가 떠 있으면 한 칸 밀어 올린다. */
   stacked?: boolean;
+  /** 같은 크롬을 쓰는 다른 알림(소스 배지)이 자기 셀렉터를 갖도록. */
+  testId?: string;
+  /** 스크린리더 문구. 미지정이면 결손 안내용 기본 문장을 쓴다 — 크롬은 공유해도
+   *  **말하는 내용은 알림마다 달라야** 한다(배지는 "왜 비었나" 가 아니다). */
+  ariaLabel?: string;
 }) {
   if (!text) return null;
   const base = timeAxisVisible ? `${TIME_AXIS_PX}px + var(--space-2xs)` : 'var(--space-xs)';
@@ -56,11 +63,11 @@ export function HogaMissingNotice({
   const bottom = stacked ? `calc(${base} + var(--space-xl))` : `calc(${base})`;
   return (
     <div
-      data-testid="hoga-missing-notice"
+      data-testid={testId}
       style={{ ...noticeStyle, bottom }}
       // 마우스를 올릴 수 없으니(pointerEvents:none) 스크린리더용으로만 남긴다.
       // 여기서만 "왜" 를 길게 말한다 — 시각 문구는 한 줄이어야 차트를 안 가린다.
-      aria-label={`${text}. 이 구간은 호가 지표를 만들 데이터가 없어 캔들만 표시됩니다.`}
+      aria-label={ariaLabel ?? `${text}. 이 구간은 호가 지표를 만들 데이터가 없어 캔들만 표시됩니다.`}
     >
       {text}
     </div>
