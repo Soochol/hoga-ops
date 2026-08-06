@@ -269,8 +269,13 @@ class FuturesQuotesRuntime:
             return {}
         if self._ws is None:
             from hoga.live.kis_futures_ws import KisFuturesNightWs  # noqa: PLC0415
+            from hoga.live.kis_runtime import (  # noqa: PLC0415
+                ensure_kis_approval_provider_from_env,
+            )
 
-            self._ws = KisFuturesNightWs()
+            # 승인키는 REST 토큰과 다른 자격이라 provider 도 따로다. 팩토리로 넘겨
+            # 무자격 환경에서 httpx 클라이언트를 만들지 않는다.
+            self._ws = KisFuturesNightWs(ensure_kis_approval_provider_from_env)
         # 세션 날짜는 봉 리셋 기준이다 — `spark_date` 와 같은 규칙(새벽은 전날)을 써야
         # 저녁·새벽 봉이 한 세션으로 이어진다.
         now_ms = int(dt.datetime.now(KST).timestamp() * 1000)

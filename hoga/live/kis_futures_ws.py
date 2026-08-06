@@ -16,35 +16,33 @@
 
 종목코드는 주간과 같은 마스터 단축코드(`A01609`)다. KIS 공식 예제의 `101W9000` 은
 `SUBSCRIBE SUCCESS` 를 받고도 0틱이다 — 구독 응답만 보면 성공으로 읽히므로 주의.
+
+**이 모듈은 도메인만 본다.** 소켓 수명·구독·PINGPONG·재연결은 `KisWsClient` 가 지고
+(키움이 전송을 `KiwoomWsClient` 로, 수명을 `KiwoomSessionManager` 로 나눈 것과 같은
+경계), 여기 남는 것은 프레임 필드 해석 · 틱 캐시 · 5분 버킷 · 관측 구간이다.
+승인키는 `KisApprovalProvider` 가 캐시·쿨다운·실패 분류를 맡는다.
 """
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import datetime as dt
-import json
 import logging
-import os
 import time
-import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
+
+from hoga.live.kis_approval_provider import KisApprovalProvider
+from hoga.live.kis_ws_client import KisWsClient
 
 log = logging.getLogger(__name__)
 
-_WS_URL = "ws://ops.koreainvestment.com:21000"
-_APPROVAL_URL = "https://openapi.koreainvestment.com:9443/oauth2/Approval"
 _TR_ID = "H0MFCNT0"
 
-#: 실시간 프레임 모양: `0|TR_ID|건수|payload`. 이보다 짧으면 우리 프레임이 아니다.
-_FRAME_PARTS = 4
-
 #: 마지막 요청 후 이만큼 조용하면 세션을 닫는다 — 아무도 안 보는 야간에 WS 슬롯을
-#: 쥐고 있을 이유가 없다(옵션 심리 런타임과 같은 판단).
+#: 쥐고 있을 이유가 없다(옵션 심리 런타임과 같은 판단). 전송 계층은 취소될 때까지
+#: 도는 것만 알고, **유휴 판단은 이 층이 한다**(키움 SessionManager 와 같은 분담).
 _IDLE_STOP_S = 600.0
-#: recv 가 이만큼 조용하면 죽은 소켓으로 보고 재연결한다. 무음이 정상인 표면이라
-#: **틱 부재로는 판정할 수 없어** PINGPONG 을 살아있음의 근거로 쓴다(벤더가 주기 송신).
-_RECV_IDLE_TIMEOUT_S = 180.0
-_RECONNECT_BACKOFF_S = (1.0, 2.0, 5.0, 10.0, 30.0)
 
 #: 야간 스파크라인 봉 간격(분). 주간 REST 분봉과 같은 5분이라 두 모양이 같은 축으로 읽힌다.
 #: 18:00–05:00 = 660분이므로 최대 132봉 — 스파크라인 폭(110px)에 충분히 들어간다.
@@ -80,10 +78,6 @@ class NightTick:
     #: 벤더 시각 `HHMMSS`. 수신 시각이 아니라 **체결 시각**이다.
     bsop_hour: str
     t_ms: int
-
-
-class KisFuturesWsUnavailable(Exception):
-    """승인키 발급 실패 등 — 야간 경로만 죽고 REST 카드는 살아야 한다."""
 
 
 @dataclass(frozen=True)
@@ -160,39 +154,21 @@ def _f(row: dict[str, str], key: str) -> float | None:
         return None
 
 
-def fetch_approval_key() -> str:
-    """WS 승인키. **블로킹** — to_thread 로 부를 것.
-
-    OAuth 토큰(`KisTokenProvider`)과 **다른 자격이다** — REST 는 Bearer 토큰,
-    WS 는 approval_key 다. PR-J(#1046)에서 `get_approval_key` 가 지워져 여기서 되살린다.
-    """
-    app_key = os.environ.get("KIS_APP_KEY") or ""
-    app_secret = os.environ.get("KIS_APP_SECRET") or ""
-    if not app_key or not app_secret:
-        raise KisFuturesWsUnavailable("KIS 자격증명 없음")
-    body = json.dumps(
-        {"grant_type": "client_credentials", "appkey": app_key, "secretkey": app_secret}
-    ).encode()
-    req = urllib.request.Request(  # noqa: S310 — 고정 https 상수
-        _APPROVAL_URL, data=body, headers={"content-type": "application/json"}
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:  # noqa: S310 — 위와 같음
-            key = json.loads(r.read()).get("approval_key")
-    except Exception as e:  # 발급 실패를 야간 전용 신호로 번역한다(재발생하므로 BLE001 무관)
-        raise KisFuturesWsUnavailable(f"approval_key 발급 실패: {e}") from e
-    if not key:
-        raise KisFuturesWsUnavailable("approval_key 가 응답에 없다")
-    return str(key)
-
-
 class KisFuturesNightWs:
-    """야간 틱 캐시. `ensure_running(codes)` 가 세션을 깨우고 `latest(code)` 가 읽는다.
+    """야간 선물 도메인 — 틱 캐시 · 5분 버킷 · 관측 구간.
+
+    `ensure_running(codes, session_day=…)` 이 세션을 깨우고 `latest`/`night_series`/
+    `night_coverage` 가 읽는다. **전송은 `KisWsClient` 에 위임**하고 이 층은 유휴
+    정지·세션 리셋·프레임 해석만 한다(키움에서 `KiwoomSessionManager` 가 맡는 역할).
 
     프로세스 싱글턴을 전제로 한다 — WS 슬롯을 두 벌 쥐면 벤더가 한쪽을 끊는다.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, approval_factory: Callable[[], KisApprovalProvider | None]) -> None:
+        # 팩토리로 받는 이유: 무자격 환경에서 provider(=httpx 클라이언트)를 만들지
+        # 않고, .env 가 나중에 채워지면 다음 요청에서 정상 기동한다.
+        self._approval_factory = approval_factory
+        self._client: KisWsClient | None = None
         self._task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         self._ticks: dict[str, NightTick] = {}
@@ -209,9 +185,39 @@ class KisFuturesNightWs:
         self._last_request = 0.0
         self._unavailable: str | None = None
 
+    # ── 관측성 (전송 계층 것을 그대로 노출 — ADR-0116 규율 3) ──
+
     @property
     def unavailable(self) -> str | None:
+        """영구 휴면 사유. 전송 계층이 세운 것을 우선한다(자격증명 부재 등)."""
+        if self._client is not None and self._client.unavailable:
+            return self._client.unavailable
         return self._unavailable
+
+    @property
+    def connected(self) -> bool:
+        return self._client is not None and self._client.connected
+
+    @property
+    def last_tick_ms(self) -> int | None:
+        return self._client.last_tick_ms if self._client else None
+
+    @property
+    def last_recv_ms(self) -> int | None:
+        return self._client.last_recv_ms if self._client else None
+
+    @property
+    def sub_expected(self) -> int:
+        return self._client.sub_expected if self._client else 0
+
+    @property
+    def sub_acked(self) -> int:
+        return self._client.sub_acked if self._client else 0
+
+    def sub_missing(self) -> list[str]:
+        return self._client.sub_missing() if self._client else list(self._codes)
+
+    # ── 도메인 읽기 ──
 
     def latest(self, code: str) -> NightTick | None:
         return self._ticks.get(code)
@@ -254,6 +260,8 @@ class KisFuturesNightWs:
             # 새 연결이거나 세션이 감긴 뒤 — 새 구간을 시작한다.
             self._observed.append([b, b])
 
+    # ── 수명 ──
+
     async def ensure_running(self, codes: tuple[str, ...], *, session_day: str) -> None:
         """세션이 돌고 있게 만든다.
 
@@ -288,67 +296,32 @@ class KisFuturesNightWs:
                 await task
 
     async def _loop(self) -> None:
-        attempt = 0
-        while time.monotonic() - self._last_request < _IDLE_STOP_S:
-            try:
-                await self._session()
-                attempt = 0  # 정상 종료(유휴)면 백오프를 리셋한다
-            except asyncio.CancelledError:
-                raise
-            except KisFuturesWsUnavailable as e:
-                self._unavailable = str(e)
-                log.warning("야간 WS 사용 불가: %s", e)
-                return  # 자격 문제는 재시도해도 같다
-            except Exception as e:  # noqa: BLE001 — 전송 계층 실패는 재연결로 흡수한다
-                wait = _RECONNECT_BACKOFF_S[min(attempt, len(_RECONNECT_BACKOFF_S) - 1)]
-                attempt += 1
-                log.warning("야간 WS 재연결 %.0fs 후: %s", wait, e)
-                await asyncio.sleep(wait)
+        """유휴 정지까지 전송 계층을 돌린다.
 
-    async def _session(self) -> None:
-        import websockets  # noqa: PLC0415 — 지연 import(야간에만 필요)
-
-        key = await asyncio.to_thread(fetch_approval_key)
-        async with websockets.connect(_WS_URL, ping_interval=None, max_size=None) as ws:
-            for code in self._codes:
-                await ws.send(
-                    json.dumps(
-                        {
-                            "header": {
-                                "approval_key": key,
-                                "custtype": "P",
-                                "tr_type": "1",
-                                "content-type": "utf-8",
-                            },
-                            "body": {"input": {"tr_id": _TR_ID, "tr_key": code}},
-                        }
-                    )
-                )
-            self._unavailable = None
-            # 구독이 끝난 순간부터 관측이 시작된다 — 새 구간을 여는 지점이다.
-            self._observed.append([_now_bucket()] * 2)
-            log.info("야간 WS 구독 %d종목: %s", len(self._codes), ",".join(self._codes))
-
-            while time.monotonic() - self._last_request < _IDLE_STOP_S:
-                # 무음이 정상인 표면이라 recv 타임아웃을 죽음으로 보면 안 된다 —
-                # 벤더 PINGPONG 이 오지 않을 때만 죽은 소켓으로 판정한다.
-                raw = await asyncio.wait_for(ws.recv(), timeout=_RECV_IDLE_TIMEOUT_S)
-                self._mark_observed()
-                if isinstance(raw, bytes):
-                    raw = raw.decode("utf-8", "replace")
-                if raw.startswith("{"):
-                    msg = json.loads(raw)
-                    if msg.get("header", {}).get("tr_id") == "PINGPONG":
-                        await ws.send(raw)
-                    continue
-                self._ingest(raw)
-
-    def _ingest(self, raw: str) -> None:
-        parts = raw.split("|")
-        if len(parts) < _FRAME_PARTS or parts[1] != _TR_ID:
+        재연결·백오프·실패 분류는 `KisWsClient.run()` 안에 있다 — 이 루프는 **유휴
+        판단만** 한다. 무자격이면 전송이 조용히 반환하므로 여기서 루프를 끊는다
+        (안 끊으면 30초 폴링마다 헛발질한다).
+        """
+        approval = self._approval_factory()
+        if approval is None:
+            self._unavailable = "credentials_missing"
             return
-        # 한 프레임에 여러 건이 올 수 있다(parts[2] = 건수). 마지막 건이 최신이다.
-        fields = parts[3].split("^")
+        client = KisWsClient(approval, tr_id=_TR_ID, on_frame=self._on_frame)
+        self._client = client
+        while time.monotonic() - self._last_request < _IDLE_STOP_S:
+            await client.run(self._codes)
+            if client.unavailable:
+                return  # 재시도해도 같다(자격증명 부재)
+            # run() 이 예외 없이 돌아오는 경로는 없지만, 있더라도 뜨거운 루프는 막는다.
+            await asyncio.sleep(1.0)
+
+    def _on_frame(self, _tr_id: str, payload: str) -> None:
+        """데이터 프레임 1개 — `^` 구분 필드를 도메인 값으로 읽는다.
+
+        한 프레임에 여러 건이 올 수 있다(전송 계층은 봉투만 벗긴다).
+        """
+        self._mark_observed()
+        fields = payload.split("^")
         stride = len(_COLUMNS)
         for start in range(0, len(fields) - stride + 1, stride):
             row = dict(zip(_COLUMNS, fields[start : start + stride], strict=False))

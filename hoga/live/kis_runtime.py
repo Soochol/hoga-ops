@@ -21,11 +21,15 @@ import threading
 from pathlib import Path
 
 from . import account_health
+from .kis_approval_provider import KisApprovalProvider
 from .kis_client import KisClient, KisCredentials, _TokenBucket
 from .kis_token_provider import KisTokenProvider
 
 _kis_clients: dict[int, KisClient] = {}
 _kis_token_providers: dict[int, KisTokenProvider] = {}
+# WS 승인키 provider. **계정 축이 없다** — 야간 WS(ADR-0141)는 단일 연결이고, WS 슬롯을
+# 계정마다 늘리는 설계가 아니다(그건 키움 쪽 다중계정 슬롯의 문제다).
+_kis_approval_provider: KisApprovalProvider | None = None
 _lock = threading.Lock()
 
 # KIS REST 유량제한은 '앱키(계정) 단위'로 독립 집행된다 — 실측 2026-07-10(ADR-0100:
@@ -201,6 +205,22 @@ def ensure_kis_token_provider_from_env(
         data_dir = resolve_data_dir()
     provider = ensure_kis_token_provider(_token_cache_path(data_dir, 0), creds, 0)
     return provider, creds
+
+
+def ensure_kis_approval_provider_from_env() -> KisApprovalProvider | None:
+    """WS 승인키 provider 싱글턴. 무자격이면 None(야간 경로만 휴면).
+
+    REST 토큰 provider 와 **다른 자격**이라 별 싱글턴이다 — 같이 묶으면 REST 가 살아
+    있는데 WS 만 죽은 상태를 표현할 수 없다.
+    """
+    global _kis_approval_provider  # noqa: PLW0603 — 프로세스 싱글턴(모듈 규약)
+    creds = _resolve_env_creds(0)
+    if creds is None:
+        return None
+    with _lock:
+        if _kis_approval_provider is None:
+            _kis_approval_provider = KisApprovalProvider(creds)
+        return _kis_approval_provider
 
 
 def ensure_kis_client_for_account(account_id: int, data_dir: Path) -> KisClient | None:

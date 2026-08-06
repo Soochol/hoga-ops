@@ -28,7 +28,7 @@ def _frame(code: str, hhmmss: str, price: str) -> str:
     fields[_COLUMNS.index("futs_shrn_iscd")] = code
     fields[_COLUMNS.index("bsop_hour")] = hhmmss
     fields[_COLUMNS.index("futs_prpr")] = price
-    return "0|H0MFCNT0|001|" + "^".join(fields)
+    return "^".join(fields)
 
 
 # ── 버킷 키: 자정 경계 ──────────────────────────────────────────────────────
@@ -58,27 +58,27 @@ def test_bucket_rejects_garbage() -> None:
 # ── 버킷 누적 ──────────────────────────────────────────────────────────────
 
 def test_series_is_time_ordered_across_midnight() -> None:
-    ws = KisFuturesNightWs()
+    ws = KisFuturesNightWs(lambda: None)
     # 일부러 뒤죽박죽 순서로 넣는다 — 수신 순서에 기대면 안 된다.
-    ws._ingest(_frame("A01609", "020000", "1010.0"))  # 새벽
-    ws._ingest(_frame("A01609", "180000", "1000.0"))  # 저녁(먼저 일어난 일)
-    ws._ingest(_frame("A01609", "235000", "1005.0"))
+    ws._on_frame("H0MFCNT0", _frame("A01609", "020000", "1010.0"))  # 새벽
+    ws._on_frame("H0MFCNT0", _frame("A01609", "180000", "1000.0"))  # 저녁(먼저 일어난 일)
+    ws._on_frame("H0MFCNT0", _frame("A01609", "235000", "1005.0"))
     assert ws.night_series("A01609") == (1000.0, 1005.0, 1010.0)
 
 
 def test_last_tick_in_bucket_wins() -> None:
     """한 버킷의 값은 그 구간의 **종가**다."""
-    ws = KisFuturesNightWs()
-    ws._ingest(_frame("A01609", "180000", "1000.0"))
-    ws._ingest(_frame("A01609", "180230", "1001.0"))
-    ws._ingest(_frame("A01609", "180459", "1002.0"))
+    ws = KisFuturesNightWs(lambda: None)
+    ws._on_frame("H0MFCNT0", _frame("A01609", "180000", "1000.0"))
+    ws._on_frame("H0MFCNT0", _frame("A01609", "180230", "1001.0"))
+    ws._on_frame("H0MFCNT0", _frame("A01609", "180459", "1002.0"))
     assert ws.night_series("A01609") == (1002.0,)
 
 
 def test_series_is_per_code() -> None:
-    ws = KisFuturesNightWs()
-    ws._ingest(_frame("A01609", "180000", "1000.0"))
-    ws._ingest(_frame("A06609", "180000", "1380.0"))
+    ws = KisFuturesNightWs(lambda: None)
+    ws._on_frame("H0MFCNT0", _frame("A01609", "180000", "1000.0"))
+    ws._on_frame("H0MFCNT0", _frame("A06609", "180000", "1380.0"))
     assert ws.night_series("A01609") == (1000.0,)
     assert ws.night_series("A06609") == (1380.0,)
     assert ws.night_series("A04608") == ()
@@ -86,9 +86,9 @@ def test_series_is_per_code() -> None:
 
 async def test_new_session_day_clears_bars() -> None:
     """어제 저녁 봉을 오늘 것에 이어 붙이면 자정에 없던 갭이 생긴다."""
-    ws = KisFuturesNightWs()
+    ws = KisFuturesNightWs(lambda: None)
     await ws.ensure_running(("A01609",), session_day="20260806")
-    ws._ingest(_frame("A01609", "180000", "1000.0"))
+    ws._on_frame("H0MFCNT0", _frame("A01609", "180000", "1000.0"))
     assert ws.night_series("A01609") == (1000.0,)
 
     await ws.ensure_running(("A01609",), session_day="20260807")
@@ -98,9 +98,9 @@ async def test_new_session_day_clears_bars() -> None:
 
 async def test_same_session_day_keeps_bars() -> None:
     """폴링마다 ensure_running 이 불린다 — 그때마다 지우면 봉이 안 쌓인다."""
-    ws = KisFuturesNightWs()
+    ws = KisFuturesNightWs(lambda: None)
     await ws.ensure_running(("A01609",), session_day="20260806")
-    ws._ingest(_frame("A01609", "180000", "1000.0"))
+    ws._on_frame("H0MFCNT0", _frame("A01609", "180000", "1000.0"))
     await ws.ensure_running(("A01609",), session_day="20260806")
     assert ws.night_series("A01609") == (1000.0,)
     await ws.aclose()
@@ -188,13 +188,13 @@ async def test_no_ws_falls_back_to_daytime(runtime):
 # 주간에도 하루 2봉). 그래서 "WS 가 연결돼 있었는가" 를 따로 추적한다.
 
 def _ws_with_observed(ranges: list[list[int]]) -> KisFuturesNightWs:
-    ws = KisFuturesNightWs()
+    ws = KisFuturesNightWs(lambda: None)
     ws._observed = ranges
     return ws
 
 
 def test_coverage_none_before_any_observation() -> None:
-    assert KisFuturesNightWs().night_coverage() is None
+    assert KisFuturesNightWs(lambda: None).night_coverage() is None
 
 
 def test_coverage_from_session_open_is_clean() -> None:
@@ -250,9 +250,11 @@ def test_observed_is_not_the_same_as_bar_count() -> None:
 
     이 구분이 없으면 저유동성 종목이 영원히 "누락" 으로 찍힌다.
     """
-    ws = _ws_with_observed([[0, 40]])
-    ws._ingest(_frame("A04608", "180000", "73.5"))
-    ws._ingest(_frame("A04608", "230000", "73.5"))
+    ws = KisFuturesNightWs(lambda: None)
+    ws._on_frame("H0MFCNT0", _frame("A04608", "180000", "73.5"))
+    ws._on_frame("H0MFCNT0", _frame("A04608", "230000", "73.5"))
+    # 프레임 주입이 _mark_observed 를 부르므로 관측 구간은 **뒤에** 고정한다.
+    ws._observed = [[0, 40]]
 
     assert len(ws.night_series("A04608")) == 2
     cov = ws.night_coverage()
@@ -262,7 +264,7 @@ def test_observed_is_not_the_same_as_bar_count() -> None:
 
 
 async def test_new_session_clears_observation() -> None:
-    ws = KisFuturesNightWs()
+    ws = KisFuturesNightWs(lambda: None)
     await ws.ensure_running(("A01609",), session_day="20260806")
     ws._observed = [[0, 40]]
     await ws.ensure_running(("A01609",), session_day="20260807")

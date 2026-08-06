@@ -169,8 +169,8 @@ def test_ws_tick_parsing_uses_named_columns() -> None:
     fields[_COLUMNS.index("mrkt_basis")] = "22.03"
     fields[_COLUMNS.index("hts_otst_stpl_qty")] = "159000"
 
-    ws = KisFuturesNightWs()
-    ws._ingest("0|H0MFCNT0|001|" + "^".join(fields))
+    ws = KisFuturesNightWs(lambda: None)
+    ws._on_frame("H0MFCNT0", "^".join(fields))
 
     tick = ws.latest("A01609")
     assert tick is not None
@@ -181,17 +181,17 @@ def test_ws_tick_parsing_uses_named_columns() -> None:
     assert tick.bsop_hour == "235027"
 
 
-def test_ws_ignores_other_tr_and_empty_price() -> None:
+def test_empty_price_is_not_a_tick() -> None:
+    """가격이 빈 프레임(체결 없음) — 0 으로 채우면 카드가 0 을 그린다.
+
+    TR 필터는 전송 계층 책임이라 여기서 시험하지 않는다(`test_kis_ws_client`).
+    """
     from hoga.live.kis_futures_ws import _COLUMNS, KisFuturesNightWs
 
-    ws = KisFuturesNightWs()
-    # 다른 TR 프레임
-    ws._ingest("0|H0IFCNT0|001|" + "^".join(["A01609"] + [""] * (len(_COLUMNS) - 1)))
-    assert ws.latest("A01609") is None
-    # 가격이 빈 프레임(체결 없음) — 0 으로 채우면 카드가 0 을 그린다
+    ws = KisFuturesNightWs(lambda: None)
     fields = [""] * len(_COLUMNS)
     fields[_COLUMNS.index("futs_shrn_iscd")] = "A01609"
-    ws._ingest("0|H0MFCNT0|001|" + "^".join(fields))
+    ws._on_frame("H0MFCNT0", "^".join(fields))
     assert ws.latest("A01609") is None
 
 
