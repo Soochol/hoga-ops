@@ -7,6 +7,7 @@
  * 503 이고, 드로어가 에러 상태를 렌더한다. */
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
+import { useLiveVenueStore } from '../state/liveVenue';
 
 export type RankingKind = 'change' | 'surge' | 'volume' | 'value';
 export type RankingMarket = 'all' | 'kospi' | 'kosdaq';
@@ -27,6 +28,8 @@ interface RankingsResponseWire {
   rows: RankingRow[];
   market_open: boolean;
   fetched_at_ms: number;
+  /** 이 순위를 뽑은 거래소. 구버전 백엔드는 이 키가 없으므로 옵셔널(→ 'KRX'). */
+  venue?: string;
   /** 비치명 경고. 구버전 백엔드는 이 키가 없으므로 옵셔널. */
   warnings?: string[];
 }
@@ -35,6 +38,8 @@ export interface RankingsView {
   rows: RankingRow[];
   marketOpen: boolean;
   fetchedAtMs: number;
+  /** 이 순위를 뽑은 거래소. NXT 는 유동성이 얕아 상위가 KRX 와 크게 다르다. */
+  venue: string;
   /** exclude_etf 를 요청했으나 심볼 마스터 미로드로 걸러내지 못했다. 드로어가
    *  배지를 띄운다 — 이게 없으면 사용자에겐 "토글이 안 먹는" 상태로만 보인다. */
   etfFilterUnavailable: boolean;
@@ -49,16 +54,24 @@ export function useLiveRankings(params: {
   excludeEtf: boolean;
 }) {
   const { kind, market, direction, excludeEtf } = params;
+  // 순위도 거래소 선택기를 따른다(ADR-0140). 순위 TR 은 `stex_tp`(거래소구분)로
+  // 시장을 가르는데 그동안 KRX 로 하드코딩돼 있었다 — 셀은 venue 별인데 순위만
+  // KRX 고정이면 한 화면에서 두 기준이 섞인다.
+  const venue = useLiveVenueStore((s) => s.venue);
   return useQuery({
-    queryKey: ['live-rankings', kind, market, direction, excludeEtf],
+    // ⚠ venue 가 **쿼리 키에도** 있어야 한다 — 없으면 venue 를 바꿔도 캐시가 안 갈려
+    // 이전 거래소 순위가 그대로 보인다.
+    queryKey: ['live-rankings', kind, market, direction, excludeEtf, venue],
     queryFn: async ({ signal }): Promise<RankingsView> => {
-      const q = new URLSearchParams({ kind, market, direction });
+      const q = new URLSearchParams({ kind, market, direction, venue });
       if (excludeEtf) q.set('exclude_etf', 'true');
       const res = await apiCall<RankingsResponseWire>(`/api/live/rankings?${q}`, { signal });
       return {
         rows: res.rows,
         marketOpen: res.market_open,
         fetchedAtMs: res.fetched_at_ms,
+        // 응답이 되싣은 값을 쓴다 — 요청 venue 를 그대로 믿지 않는다.
+        venue: res.venue ?? 'KRX',
         etfFilterUnavailable: res.warnings?.includes('etf_filter_unavailable') ?? false,
       };
     },
