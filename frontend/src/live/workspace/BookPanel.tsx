@@ -343,6 +343,15 @@ function priceMarkers(price: number, summary: LiveTradeSummary): { label: string
  *
  * 상단 `border-t` 는 매도 블록과의 분리선(3열 공통 y) — 좌우 빈칸도 같은 선을 갖는다.
  * 하단 분리는 첫 매수 행의 `topDivider` 가 이미 담당한다.
+ *
+ * ⚠ `중` 뱃지는 **`PriceCell` 의 시/고/저 칩과 같은 방식**으로 가격 span 안에
+ * `absolute right-full` 로 얹는다 — 뱃지가 flex 아이템이면 폭을 차지해 가격 숫자가
+ * 다른 호가 행보다 오른쪽으로 밀린다(실측 정수 mid +10.5px). 소수 mid 는 `.5` 가
+ * 늘린 폭이 중앙정렬에서 되밀어 +4.9px 로 **작게 보였을 뿐** 같은 결함이었다.
+ * 뺀 뒤에는 flex 내용물이 PriceCell 과 동일(가격 + gap + 7ch 등락률)해 **정수 mid 는
+ * x 가 정확히 일치**한다. 소수 mid 만 `.5` 폭의 절반(≈5px)만큼 왼쪽에 남는데, 이걸
+ * 없애려면 모든 호가 행에 소수 자리를 예약해야 해서 가격축 전체가 움직인다 —
+ * 한 행의 5px 잔차보다 비싸다.
  */
 function MidPriceRow({
   price,
@@ -364,10 +373,10 @@ function MidPriceRow({
       className="flex items-baseline justify-center gap-1.5 border-t border-border px-2"
       style={{ height: ROW_H }}
     >
-      <span className="rounded-sm bg-bg-subtle px-[3px] py-px font-ui text-badge font-semibold leading-none text-fg-dim">
-        중
-      </span>
-      <span className={`font-data text-[0.75rem] tabular-nums ${color}`}>
+      <span className={`relative font-data text-[0.75rem] tabular-nums ${color}`}>
+        <span className="absolute right-full top-1/2 mr-1 -translate-y-1/2 rounded-sm bg-bg-subtle px-[3px] py-px font-ui text-badge font-semibold leading-none text-fg-dim">
+          중
+        </span>
         {price !== null ? price.toLocaleString('ko-KR') : '−'}
       </span>
       {/* 폭 계약은 PriceCell 과 동일(7ch) — 등락률 유무로 가격 x 가 흔들리지 않는다. */}
