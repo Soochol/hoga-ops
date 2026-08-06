@@ -24,7 +24,8 @@ def test_resolve_source_prefers_explicit(tmp_path: Path) -> None:
 
     engine = QueryEngine(tmp_path)
     try:
-        assert _resolve_source(engine, "20260527", "005930", "hogaplay") == "hogaplay"
+        # 정책 문자열은 승자를 못 바꾼다(옵션 폐지) — 둘 다 있으면 사다리 1순위가 이긴다.
+        assert _resolve_source(engine, "20260527", "005930", "hogaplay") == "kiwoom_live"
         assert _resolve_source(engine, "20260527", "005930", "kiwoom_live") == "kiwoom_live"
     finally:
         engine.close()
@@ -63,7 +64,7 @@ def test_resolve_source_prefers_kis_api_when_policy_requests_it(tmp_path: Path) 
 
     engine = QueryEngine(tmp_path)
     try:
-        assert _resolve_source(engine, "20260622", "005930", "kis_api_first") == "kis_api"
+        assert _resolve_source(engine, "20260622", "005930", "kis_api_first") == "kiwoom_live"
     finally:
         engine.close()
 

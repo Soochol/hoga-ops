@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
-import { useSourcePreferenceStore } from '../state/sourcePreference';
+import { ORDERFLOW_SOURCE_PREF } from '../state/sourcePreference';
 import type { SourcePreference } from '../state/sourcePreference';
 import { useSpot } from './useSpot';
 import { apiGet } from './client';
@@ -87,7 +87,7 @@ export interface LiveOrderbookSpot {
  */
 export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefined {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
-  const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
+  const sourcePref: SourcePreference = ORDERFLOW_SOURCE_PREF;
   const bucketMs = p.timeframe ? TIMEFRAME_TO_MS[p.timeframe as Timeframe] : null;
   const alignedT =
     cursorMs !== null && bucketMs !== null
@@ -143,7 +143,7 @@ export function useLiveBrokersAtCursor(
   p: BrokersParams,
 ): BrokerSeriesEntry[] | undefined {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
-  const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
+  const sourcePref: SourcePreference = ORDERFLOW_SOURCE_PREF;
   const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
   // Key gates on cursor presence AND a minute timeframe — no fetch in latest
   // mode, and never on D/W/M (no per-cursor parquet; LiveChartRoot publishes
@@ -192,7 +192,7 @@ export function useLiveBrokersToday(
   code: string | null,
   venue: LiveVenueOption,
 ): BrokerSeriesEntry[] | undefined {
-  const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
+  const sourcePref: SourcePreference = ORDERFLOW_SOURCE_PREF;
   // 렌더 중 Date.now() 는 impure — 최초 1회 lazy init 후 인터벌로만 진행시킨다.
   // 스탬프가 날짜 파생의 근거이므로 자정 롤오버도 같이 따라간다.
   const [stampMs, setStampMs] = useState(() => Date.now());

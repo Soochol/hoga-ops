@@ -13,6 +13,7 @@ def test_brokers_series_happy_path_returns_per_broker_trajectories(
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["date"] == "20260519"
+    # 이 픽스처엔 hogaplay 만 있다 — 사다리 1순위(kiwoom_live)가 없으면 그 다음이 이긴다.
     assert body["source"] == "hogaplay"
     assert isinstance(body["brokers"], list)
     assert body["brokers"]
@@ -43,4 +44,5 @@ def test_brokers_series_returns_empty_response_for_unknown_stock_date(
     body = r.json()
     assert body["date"] == "20990101"
     assert body["brokers"] == []
-    assert body["source"] == "hogaplay"
+    # 사다리 첫 후보를 에코한다 — 옵션 폐지(2026-08-07) 후 항상 kiwoom_live.
+    assert body["source"] == "kiwoom_live"

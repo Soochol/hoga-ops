@@ -209,18 +209,18 @@ def test_source_pref_fallback_when_pref_missing(tmp_path: Path) -> None:
     assert any(p.bid_total == 33333 for p in bundle.quote_ratio.points)
 
 
-def test_source_pref_kis_api_first_resolves_but_suppresses_orderflow(tmp_path: Path) -> None:
-    """kis_api는 캔들 전용(2026-07-17 정책): kis_api_first(레거시 pref)로 kis_api가
-    이겨도 segment만 방출되고 호가·체결 지표는 빈 배열(스냅샷이 디스크에 있어도)."""
+def test_kis_api_winner_resolves_but_suppresses_orderflow(tmp_path: Path) -> None:
+    """kis_api 는 캔들 전용(2026-07-17 정책): 사다리에서 이겨도 segment 만 방출되고
+    호가·체결 지표는 빈 배열이다(스냅샷이 디스크에 있어도).
+
+    시드에서 kiwoom_live 를 뺀 이유: 소스 선호 옵션 폐지(2026-08-07) 후 `kis_api_first`
+    같은 정책으로 kis_api 를 **앞세울 방법이 없다**. kis_api 는 단일 사다리의 꼬리라,
+    이 성질을 확인하려면 앞 후보가 없어야 한다 — 그 상황이 실제로 kis_api 가 이기는
+    유일한 경로이기도 하다(ADR-0109 복구본만 있는 날).
+    """
     code = "003490"
     date = "20260622"
     sd_dir = tmp_path / "parquet" / date / code
-
-    kw = source_venue_dir(sd_dir, "kiwoom_live", "KRX")
-    _write_meta(kw / "meta.json", source="kiwoom_live", date=date)
-    _write_snapshots(kw / "snapshots.parquet", [_snap(100000000, 11111, 22222)])
-    _write_empty_candles(kw / "candles.parquet")
-    _write_empty_trades(kw / "trades.parquet")
 
     _write_meta(sd_dir / "kis_api" / "meta.json", source="kis_api", date=date, sampling_ms=30000)
     _write_snapshots(sd_dir / "kis_api" / "snapshots.parquet", [_snap(100000000, 33333, 44444)])
@@ -235,7 +235,7 @@ def test_source_pref_kis_api_first_resolves_but_suppresses_orderflow(tmp_path: P
             to_date=date,
             bucket_ms=60_000,
             mode="hoga",
-            source_pref="kis_api_first",
+            source_pref="kis_api_first",  # 무시된다 — 사다리는 하나뿐이다
         )
     finally:
         engine.close()

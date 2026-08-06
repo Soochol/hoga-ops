@@ -26,7 +26,7 @@ from hoga.api.models import (
 )
 from hoga.api.params import CODE_PATTERN, Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
-from hoga.api.sources import SourceName, ordered_sources, resolve_source_result
+from hoga.api.sources import SourceName, resolve_source_result
 from hoga.tables import brokers as brokers_tbl, candles as candles_tbl, snapshots as snapshots_tbl
 from hoga.util.timeenc import (
     hhmmssms_to_unix_ms,
@@ -52,20 +52,6 @@ def _parquet_path(
         return engine.parquet_dir(date, code, venue="KRX") / filename
     except StockDateNotFound as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-
-
-def _validate_source_policy(value: str) -> str:
-    try:
-        ordered_sources(value)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "invalid_source_pref",
-                "message": str(e),
-            },
-        ) from e
-    return value
 
 
 def _resolved_parquet_dir(
@@ -263,7 +249,6 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         # snapshot inside [t, t + bucket_ms) — the same snapshot the indicator
         # labels at t. Without bucket_ms the legacy "latest ≤ t" semantics
         # apply, so the parameter is backward-compatible.
-        source_pref = _validate_source_policy(source_pref)
         sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref, venue)
         if sd_dir is None:
             return OrderbookResponse(available_from=None, snapshot=None, source=source)
@@ -326,7 +311,6 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         # ADR-0044: hover spot path honors source_pref via resolve_source +
         # ADR-0039 preference+fallback semantics. The resolved source is
         # echoed back so LiveStatusBar's chip can reflect fallback honestly.
-        source_pref = _validate_source_policy(source_pref)
         sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref, venue)
         if sd_dir is None:
             return BrokerSeriesResponse(date=date, brokers=[], source=source)
@@ -407,7 +391,6 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                 400,
                 "broker_late_entry_start_hhmm must be between 900 and 1520",
             )
-        source_pref = _validate_source_policy(source_pref)
         t0 = perf_debug.now()
         try:
             bundle = build_range_bundle(
