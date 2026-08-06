@@ -2001,7 +2001,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         return latest
 
     @router.get("/series")
-    async def _get_series(code: str, date: str) -> dict:
+    async def _get_series(code: str, date: str, venue: str = Query("KRX")) -> dict:
         if get_buffer is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live buffer not wired"})
         buf = get_buffer()
@@ -2015,14 +2015,18 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             "session_open_ms": session_open_ms,
             "session_close_ms": None,
             "is_open": True,
-            # ⚠ venue 를 **리터럴로 못박는다** — 이 라우트(`_get_series`)엔 아직 venue
-            # 파라미터가 없다. 읽기 API 표면에 venue 를 싣는 것은 PR-J 의 몫이고
-            # (ADR-0140 열린 항목), 기본값으로 숨기면 그때 고칠 자리를 못 찾는다.
+            # 최대벽은 스트림이 **(code, venue)** 로 키잉해 들고 있다(ADR-0140 §2).
+            # 여기서 "KRX" 를 못박고 있었던 탓에 NXT·통합을 골라도 KRX 벽이 떴다 —
+            # 그 자리를 표시하려고 남겨 둔 주석이 PR-J 에서 안 걷혔다.
+            #
+            # ⚠ `venue` 기본값이 "KRX" 인 것은 다른 라우트와 규율이 다르다. 이 라우트는
+            # 표시 버퍼 hydrate 용이고 프레임마다 venue 태그가 실려 프론트가 거르므로,
+            # 필수화하면 구 프론트가 통째로 빈 화면이 된다. 최대벽만 venue 를 탄다.
             "ask_peak_today": (
-                get_today_ask_peak(code, "KRX") if get_today_ask_peak is not None else None
+                get_today_ask_peak(code, venue) if get_today_ask_peak is not None else None
             ),
             "bid_peak_today": (
-                get_today_bid_peak(code, "KRX") if get_today_bid_peak is not None else None
+                get_today_bid_peak(code, venue) if get_today_bid_peak is not None else None
             ),
         }
 

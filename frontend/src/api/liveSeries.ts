@@ -105,10 +105,12 @@ const EMPTY_PROGRAM_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.f
 export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesData {
   const date = unixMsToKSTDate(Date.now());
   const initial = useQuery({
-    queryKey: ['live', 'series', code, date],
+    // ⚠ venue 가 **쿼리 키에도** 있어야 한다 — 없으면 venue 를 바꿔도 캐시가 안
+    // 갈려 이전 venue 의 최대벽이 그대로 보인다(livePastCandles 와 같은 규율).
+    queryKey: ['live', 'series', code, date, venue],
     queryFn: () =>
       apiCall<LiveSeriesResponse>(
-        `/api/live/series?code=${encodeURIComponent(code)}&date=${date}`,
+        `/api/live/series?code=${encodeURIComponent(code)}&date=${date}&venue=${venue}`,
       ),
     enabled: !!code,
     staleTime: 60_000,
