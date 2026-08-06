@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime as dt
 import json
 import logging
 import os
@@ -85,6 +86,44 @@ class KisFuturesWsUnavailable(Exception):
     """승인키 발급 실패 등 — 야간 경로만 죽고 REST 카드는 살아야 한다."""
 
 
+@dataclass(frozen=True)
+class NightCoverage:
+    """야간 봉을 **어느 구간에서 관측했는지**. 봉 유무와 별개다.
+
+    **왜 봉 간격으로 갭을 못 세는가** — 거래가 없는 5분 구간에는 애초에 봉이 없다
+    (VKOSPI 는 주간에도 하루 2봉이다). 봉 간격을 갭으로 읽으면 저유동성 종목은
+    대부분이 "누락" 으로 찍히고 그 경고는 즉시 무의미해진다.
+
+    구분 가능한 것은 **WS 가 연결돼 있었는가** 다. 연결 중인데 봉이 없으면 거래가
+    없었던 것(정상)이고, 연결이 없던 구간이 진짜 누락이다. 재시작·유휴 정지가 여기
+    드러난다 — 스파크라인엔 축이 없어서 짧아진 선을 화면만 보고는 구별할 수 없다.
+    """
+    #: 관측을 시작한 버킷. 0 이면 야간 개장(18:00)부터 온전히 봤다는 뜻이다.
+    first_bucket: int
+    last_bucket: int
+    #: 관측한 버킷 수(구간 길이의 합). 실제 봉 수보다 크거나 같다.
+    observed_buckets: int
+    #: 관측이 끊긴 횟수. 재시작·유휴 정지마다 1 늘어난다.
+    gap_count: int
+
+    @property
+    def first_hhmm(self) -> str:
+        """관측 시작 시각 `HHMM`. 버킷 원점이 18:00 이라 되돌릴 때 자정을 감아야 한다."""
+        minute = (_NIGHT_START_MIN + self.first_bucket * NIGHT_BUCKET_MIN) % _DAY_MIN
+        return f"{minute // 60:02d}{minute % 60:02d}"
+
+
+def _merge_ranges(ranges: list[list[int]]) -> list[tuple[int, int]]:
+    """[start, end] 목록을 정렬·병합. 재연결이 잦으면 인접 구간이 쪼개져 들어온다."""
+    out: list[tuple[int, int]] = []
+    for start, end in sorted((r[0], r[1]) for r in ranges):
+        if out and start <= out[-1][1] + 1:
+            out[-1] = (out[-1][0], max(out[-1][1], end))
+        else:
+            out.append((start, end))
+    return out
+
+
 def _bucket_of(bsop_hour: str) -> int | None:
     """벤더 시각 `HHMMSS` → **야간 세션 시작(18:00) 기준** 버킷 인덱스.
 
@@ -98,6 +137,16 @@ def _bucket_of(bsop_hour: str) -> int | None:
     if len(bsop_hour) < _HHMM_LEN or not bsop_hour[:_HHMM_LEN].isdigit():
         return None
     minute = int(bsop_hour[:2]) * 60 + int(bsop_hour[2:4])
+    return ((minute - _NIGHT_START_MIN) % _DAY_MIN) // NIGHT_BUCKET_MIN
+
+
+def _now_bucket() -> int:
+    """현재 KST 시각의 버킷. 관측 구간을 늘릴 때 쓴다(틱 시각이 아니라 **벽시계**다 —
+    무음이어도 관측은 진행되기 때문이다)."""
+    from hoga.util.timeenc import KST  # noqa: PLC0415 — 순환 import 회피
+
+    now = dt.datetime.now(KST)
+    minute = now.hour * 60 + now.minute
     return ((minute - _NIGHT_START_MIN) % _DAY_MIN) // NIGHT_BUCKET_MIN
 
 
@@ -153,6 +202,9 @@ class KisFuturesNightWs:
         #: 이 버킷들이 속한 야간 세션의 기준 거래일. 바뀌면 통째로 비운다 —
         #: 안 그러면 어제 저녁 봉과 오늘 저녁 봉이 같은 선에 이어 붙는다.
         self._session_day: str | None = None
+        #: 관측 구간 `[[시작 버킷, 끝 버킷], …]`. **종목별이 아니라 세션 공통**이다 —
+        #: 한 소켓으로 전 종목을 구독하므로 연결 여부는 종목과 무관하다.
+        self._observed: list[list[int]] = []
         self._codes: tuple[str, ...] = ()
         self._last_request = 0.0
         self._unavailable: str | None = None
@@ -174,6 +226,34 @@ class KisFuturesNightWs:
             return ()
         return tuple(bars[k] for k in sorted(bars))
 
+    def night_coverage(self) -> NightCoverage | None:
+        """관측 구간 요약. 아직 아무것도 못 봤으면 None.
+
+        종목 인자가 없는 것이 의도다 — 연결은 소켓 단위라 전 종목이 같은 구간을 공유한다.
+        """
+        merged = _merge_ranges(self._observed)
+        if not merged:
+            return None
+        return NightCoverage(
+            first_bucket=merged[0][0],
+            last_bucket=merged[-1][1],
+            observed_buckets=sum(end - start + 1 for start, end in merged),
+            gap_count=len(merged) - 1,
+        )
+
+    def _mark_observed(self) -> None:
+        """지금 이 순간을 관측한 것으로 기록한다.
+
+        **틱 시각이 아니라 벽시계로 늘린다** — 무음이어도 연결돼 있으면 관측은 진행된
+        것이고, 그게 "거래 없음" 과 "우리가 못 봄" 을 가르는 유일한 근거다.
+        """
+        b = _now_bucket()
+        if self._observed and b >= self._observed[-1][1]:
+            self._observed[-1][1] = b
+        else:
+            # 새 연결이거나 세션이 감긴 뒤 — 새 구간을 시작한다.
+            self._observed.append([b, b])
+
     async def ensure_running(self, codes: tuple[str, ...], *, session_day: str) -> None:
         """세션이 돌고 있게 만든다.
 
@@ -186,6 +266,7 @@ class KisFuturesNightWs:
                 self._session_day = session_day
                 self._bars.clear()
                 self._ticks.clear()
+                self._observed.clear()
             if self._codes != codes:
                 # 롤오버로 근월물이 바뀌었다 — 옛 구독은 영원히 무음이 되므로 다시 연다.
                 self._codes = codes
@@ -244,12 +325,15 @@ class KisFuturesNightWs:
                     )
                 )
             self._unavailable = None
+            # 구독이 끝난 순간부터 관측이 시작된다 — 새 구간을 여는 지점이다.
+            self._observed.append([_now_bucket()] * 2)
             log.info("야간 WS 구독 %d종목: %s", len(self._codes), ",".join(self._codes))
 
             while time.monotonic() - self._last_request < _IDLE_STOP_S:
                 # 무음이 정상인 표면이라 recv 타임아웃을 죽음으로 보면 안 된다 —
                 # 벤더 PINGPONG 이 오지 않을 때만 죽은 소켓으로 판정한다.
                 raw = await asyncio.wait_for(ws.recv(), timeout=_RECV_IDLE_TIMEOUT_S)
+                self._mark_observed()
                 if isinstance(raw, bytes):
                     raw = raw.decode("utf-8", "replace")
                 if raw.startswith("{"):

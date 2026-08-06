@@ -116,15 +116,24 @@ class _FakeClient:
 
 
 class _FakeWs:
-    def __init__(self, ticks: set[str], series: dict[str, tuple[float, ...]]) -> None:
+    def __init__(
+        self,
+        ticks: set[str],
+        series: dict[str, tuple[float, ...]],
+        observed: list[list[int]] | None = None,
+    ) -> None:
         self._ticks = ticks
         self._series = series
+        self._observed = observed if observed is not None else [[0, 40]]
 
     def latest(self, code):
         return object() if code in self._ticks else None
 
     def night_series(self, code):
         return self._series.get(code, ())
+
+    def night_coverage(self):
+        return _ws_with_observed(self._observed).night_coverage()
 
 
 @pytest.fixture
@@ -171,3 +180,105 @@ async def test_no_ws_falls_back_to_daytime(runtime):
     runtime._ws = None
     got = await runtime.sparks()
     assert {s.session for s in got.values()} == {"day"}
+
+
+# ── 커버리지: 관측 구간 ─────────────────────────────────────────────────────
+#
+# 봉 유무로는 갭을 셀 수 없다 — 거래 없는 구간엔 애초에 봉이 없기 때문이다(VKOSPI 는
+# 주간에도 하루 2봉). 그래서 "WS 가 연결돼 있었는가" 를 따로 추적한다.
+
+def _ws_with_observed(ranges: list[list[int]]) -> KisFuturesNightWs:
+    ws = KisFuturesNightWs()
+    ws._observed = ranges
+    return ws
+
+
+def test_coverage_none_before_any_observation() -> None:
+    assert KisFuturesNightWs().night_coverage() is None
+
+
+def test_coverage_from_session_open_is_clean() -> None:
+    cov = _ws_with_observed([[0, 40]]).night_coverage()
+    assert cov is not None
+    assert cov.first_bucket == 0
+    assert cov.first_hhmm == "1800"  # 야간 개장부터 봤다
+    assert cov.observed_buckets == 41
+    assert cov.gap_count == 0
+
+
+def test_late_start_is_reported_as_first_hhmm() -> None:
+    """02:00 부터만 봤다면 화면이 그 사실을 말해야 한다 — 그림만으로는 구별 불가."""
+    cov = _ws_with_observed([[96, 100]]).night_coverage()
+    assert cov is not None
+    assert cov.first_hhmm == "0200"
+    assert cov.gap_count == 0
+
+
+def test_restart_shows_up_as_gap() -> None:
+    """재시작·유휴 정지로 관측이 끊기면 구간이 둘로 갈린다."""
+    cov = _ws_with_observed([[0, 20], [60, 80]]).night_coverage()
+    assert cov is not None
+    assert cov.first_bucket == 0
+    assert cov.last_bucket == 80
+    assert cov.observed_buckets == 21 + 21  # 끊긴 구간은 세지 않는다
+    assert cov.gap_count == 1
+
+
+def test_adjacent_ranges_merge_not_counted_as_gap() -> None:
+    """재연결이 잦으면 인접 구간이 쪼개져 들어온다 — 그건 끊김이 아니다."""
+    cov = _ws_with_observed([[0, 10], [11, 20], [21, 30]]).night_coverage()
+    assert cov is not None
+    assert cov.gap_count == 0
+    assert cov.observed_buckets == 31
+
+
+def test_coverage_hhmm_wraps_past_midnight() -> None:
+    """버킷 원점이 18:00 이라 되돌릴 때 자정을 감아야 한다."""
+    def _first(bucket: int) -> str:
+        cov = _ws_with_observed([[bucket, bucket]]).night_coverage()
+        assert cov is not None
+        return cov.first_hhmm
+
+    assert _first(0) == "1800"
+    assert _first(70) == "2350"
+    assert _first(96) == "0200"
+    assert _first(131) == "0455"
+
+
+def test_observed_is_not_the_same_as_bar_count() -> None:
+    """무음 구간도 관측한 것이다 — 봉 2개뿐이어도 커버리지는 온전할 수 있다.
+
+    이 구분이 없으면 저유동성 종목이 영원히 "누락" 으로 찍힌다.
+    """
+    ws = _ws_with_observed([[0, 40]])
+    ws._ingest(_frame("A04608", "180000", "73.5"))
+    ws._ingest(_frame("A04608", "230000", "73.5"))
+
+    assert len(ws.night_series("A04608")) == 2
+    cov = ws.night_coverage()
+    assert cov is not None
+    assert cov.observed_buckets == 41  # 봉은 2개지만 41버킷을 봤다
+    assert cov.gap_count == 0
+
+
+async def test_new_session_clears_observation() -> None:
+    ws = KisFuturesNightWs()
+    await ws.ensure_running(("A01609",), session_day="20260806")
+    ws._observed = [[0, 40]]
+    await ws.ensure_running(("A01609",), session_day="20260807")
+    assert ws.night_coverage() is None
+    await ws.aclose()
+
+
+async def test_coverage_rides_along_night_series(runtime):
+    """야간 시리즈에만 실린다 — 주간은 REST 로 소급 조회되므로 개념이 없다."""
+    ws = _FakeWs({"A01609"}, {"A01609": (1000.0, 1005.0, 1010.0)}, observed=[[96, 100]])
+    runtime._ws = ws
+    got = await runtime.sparks()
+
+    cov = got["KOSPI200_F"].coverage
+    assert cov is not None
+    assert cov.first_hhmm == "0200"
+    # 주간 시리즈에는 없다
+    assert got["KOSDAQ150_F"].session == "day"
+    assert got["KOSDAQ150_F"].coverage is None

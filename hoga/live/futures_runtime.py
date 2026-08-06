@@ -135,6 +135,9 @@ class SparkSeries:
     closes: tuple[float, ...]
     day_open: float | None
     session: FuturesSession
+    #: 야간 시리즈의 관측 구간. **주간은 None** — REST 는 날짜를 지정해 언제든 다시
+    #: 받을 수 있어서 "놓친 구간" 이라는 개념이 없다. 야간만 재구성이 불가능하다.
+    coverage: Any = None
 
 
 @dataclass(frozen=True)
@@ -316,7 +319,11 @@ class FuturesQuotesRuntime:
                     return None
                 # 기준선을 주지 않는다 — 야간 시가가 곧 첫 점이라 Sparkline 이 알아서
                 # 쓴다. 주간 시가를 기준선으로 주면 야간 등락을 주간 대비로 색칠한다.
-                return item.id, SparkSeries(night, None, "night")
+                #
+                # 커버리지를 함께 싣는다. 스파크라인엔 축이 없어서 18:00 부터 8시간을
+                # 그린 선과 02:00 부터 10분을 그린 선이 화면에서 구별되지 않는다 —
+                # 재시작·유휴 정지로 앞이 잘렸다는 사실은 응답이 말해야 한다.
+                return item.id, SparkSeries(night, None, "night", self._ws.night_coverage())
 
             try:
                 spark = await client.fetch_futures_spark(row, date_yyyymmdd=date)

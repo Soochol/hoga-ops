@@ -96,6 +96,15 @@ function mapQuote(wire: FuturesQuoteWire): FuturesQuote {
   };
 }
 
+export interface FuturesSparkCoverage {
+  /** 관측을 시작한 시각 `HHMM`. `"1800"` 이면 야간 개장부터 온전히 봤다는 뜻. */
+  firstHhmm: string;
+  /** 관측한 5분 버킷 수. 실제 봉 수보다 크거나 같다(무음 구간 포함). */
+  observedBuckets: number;
+  /** 관측이 끊긴 횟수 — 서버 재시작·유휴 정지마다 1 늘어난다. */
+  gapCount: number;
+}
+
 export interface FuturesSpark {
   /** 시간순(과거→최신) 5분봉 종가. */
   closes: number[];
@@ -109,12 +118,30 @@ export interface FuturesSpark {
    * 것으로 읽는다.
    */
   session: FuturesSession;
+  /**
+   * 야간 시리즈의 관측 구간. **주간은 null** — REST 는 날짜를 지정해 다시 받을 수
+   * 있어서 "놓친 구간" 개념이 없다.
+   *
+   * 야간 봉은 프로세스 메모리에만 있고 소급 조회 경로가 없다. 스파크라인엔 축이
+   * 없어서 18:00 부터 8시간을 그린 선과 02:00 부터 10분을 그린 선이 화면에서
+   * 구별되지 않으므로, 앞이 잘렸다는 사실을 이 값으로 말한다.
+   */
+  coverage: FuturesSparkCoverage | null;
 }
 
 interface FuturesCandlesResponseWire {
   series: Record<
     string,
-    { closes: number[]; day_open: number | null; session: FuturesSession }
+    {
+      closes: number[];
+      day_open: number | null;
+      session: FuturesSession;
+      coverage: {
+        first_hhmm: string;
+        observed_buckets: number;
+        gap_count: number;
+      } | null;
+    }
   >;
 }
 
@@ -132,7 +159,18 @@ export function useMarketFuturesCandles() {
       return Object.fromEntries(
         Object.entries(r.series ?? {}).map(([id, s]) => [
           id,
-          { closes: s.closes ?? [], dayOpen: s.day_open, session: s.session },
+          {
+            closes: s.closes ?? [],
+            dayOpen: s.day_open,
+            session: s.session,
+            coverage: s.coverage
+              ? {
+                  firstHhmm: s.coverage.first_hhmm,
+                  observedBuckets: s.coverage.observed_buckets,
+                  gapCount: s.coverage.gap_count,
+                }
+              : null,
+          },
         ]),
       );
     },

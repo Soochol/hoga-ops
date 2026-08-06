@@ -87,7 +87,12 @@ function mockApi(
   },
   futuresCandles: Record<
     string,
-    { closes: number[]; day_open: number | null; session?: string }
+    {
+      closes: number[];
+      day_open: number | null;
+      session?: string;
+      coverage?: { first_hhmm: string; observed_buckets: number; gap_count: number } | null;
+    }
   > = {},
 ) {
   vi.spyOn(client, 'apiCall').mockImplementation((async (url: string) => {
@@ -297,6 +302,85 @@ describe('IndexCards 스파크라인 소스 분리', () => {
     expect(sparkPath(cardByLabel('KOSPI 200 F'))?.match(/L/g)).toHaveLength(3);
     // 야간 실시간이므로 낡음 배지는 없다
     expect(within(cardByLabel('KOSPI 200 F')).queryByText(/주간 마감값/)).toBeNull();
+  });
+
+  it('야간 그림이 앞이 잘렸으면 시작 시각을 말한다', async () => {
+    // 02:00 부터만 관측 — 스파크라인엔 축이 없어서 8시간짜리 선과 10분짜리 선이
+    // 화면에서 똑같이 카드를 채운다. 글자로만 구별할 수 있다.
+    mockApi(
+      { session: 'night', quotes: [futuresQuote({ data_session: 'night', value: 1004.95 })] },
+      {
+        KOSPI200_F: {
+          closes: [1000, 1002, 1005],
+          day_open: null,
+          session: 'night',
+          coverage: { first_hhmm: '0200', observed_buckets: 5, gap_count: 0 },
+        },
+      },
+    );
+    renderCards();
+
+    await screen.findByText('982.92');
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
+    expect(within(cardByLabel('KOSPI 200 F')).getByText(/02:00~/)).toBeTruthy();
+  });
+
+  it('관측이 끊겼으면 끊긴 횟수도 말한다', async () => {
+    mockApi(
+      { session: 'night', quotes: [futuresQuote({ data_session: 'night', value: 1004.95 })] },
+      {
+        KOSPI200_F: {
+          closes: [1000, 1002, 1005],
+          day_open: null,
+          session: 'night',
+          coverage: { first_hhmm: '1800', observed_buckets: 40, gap_count: 2 },
+        },
+      },
+    );
+    renderCards();
+
+    await screen.findByText('982.92');
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
+    expect(within(cardByLabel('KOSPI 200 F')).getByText(/끊김 2곳/)).toBeTruthy();
+  });
+
+  it('18:00부터 끊김 없이 봤으면 아무 말도 하지 않는다', async () => {
+    // 정상을 알리는 문구는 소음이다 — 온전할 때 조용해야 경고가 의미를 갖는다.
+    mockApi(
+      { session: 'night', quotes: [futuresQuote({ data_session: 'night', value: 1004.95 })] },
+      {
+        KOSPI200_F: {
+          closes: [1000, 1002, 1005],
+          day_open: null,
+          session: 'night',
+          coverage: { first_hhmm: '1800', observed_buckets: 40, gap_count: 0 },
+        },
+      },
+    );
+    renderCards();
+
+    await screen.findByText('982.92');
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
+    const card = cardByLabel('KOSPI 200 F');
+    expect(within(card).queryByText(/~/)).toBeNull();
+    expect(within(card).queryByText(/끊김/)).toBeNull();
+  });
+
+  it('주간 그림에는 커버리지를 붙이지 않는다', async () => {
+    // 주간은 REST 로 날짜를 지정해 다시 받을 수 있어서 "놓친 구간" 개념이 없다.
+    mockApi({ quotes: [futuresQuote()] }, {
+      KOSPI200_F: {
+        closes: [1013.35, 1000, 981.15],
+        day_open: 1017.15,
+        session: 'day',
+        coverage: null,
+      },
+    });
+    renderCards();
+
+    await screen.findByText('982.92');
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
+    expect(within(cardByLabel('KOSPI 200 F')).queryByText(/~/)).toBeNull();
   });
 
   it('야간 봉이 아직 부족하면 아무것도 그리지 않는다', async () => {

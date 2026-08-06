@@ -101,15 +101,40 @@ function fmtBasis(n: number | null): string {
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}`;
 }
 
-/** 선물 카드의 부가 정보 한 줄 — 베이시스·만기. 선물을 보는 이유 자체다. */
+/** `"0200"` → `"02:00"`. */
+function fmtHhmm(hhmm: string): string {
+  return hhmm.length === 4 ? `${hhmm.slice(0, 2)}:${hhmm.slice(2)}` : hhmm;
+}
+
+/** 야간 스파크라인이 **무엇을 덮는지**. 온전하면 null — 조용해도 되는 상태다.
+ *
+ *  스파크라인은 x 를 시각이 아니라 **인덱스**로 잡는다(`marketBits.Sparkline`).
+ *  그래서 18:00 부터 8시간을 그린 선과 02:00 부터 10분을 그린 선이 화면에서
+ *  똑같이 카드를 채운다 — 앞이 잘렸다는 사실은 글자로만 말할 수 있다.
+ *
+ *  야간 봉은 프로세스 메모리에만 있고 소급 조회 경로가 없어서(WS 는 "지금부터" 만
+ *  준다) 재시작·유휴 정지로 잘린 구간은 **복구가 아니라 고백**이 유일한 대응이다. */
+function coverageNote(spark: FuturesSpark | undefined): string | null {
+  if (!spark || spark.session !== 'night' || !spark.coverage) return null;
+  const { firstHhmm, gapCount } = spark.coverage;
+  // 18:00 부터 끊김 없이 봤으면 굳이 말하지 않는다 — 정상을 알리는 문구는 소음이다.
+  if (firstHhmm === '1800' && gapCount === 0) return null;
+  const from = `${fmtHhmm(firstHhmm)}~`;
+  return gapCount > 0 ? `${from} 끊김 ${gapCount}곳` : from;
+}
+
+/** 선물 카드의 부가 정보 한 줄 — 베이시스·만기·그림 커버리지. 선물을 보는 이유 자체다. */
 function FuturesMeta({
   future,
   snapshot,
+  spark,
 }: {
   future: FuturesQuote;
   snapshot: FuturesQuotesSnapshot | undefined;
+  spark: FuturesSpark | undefined;
 }) {
   const stale = stalenessNote(future, snapshot);
+  const coverage = coverageNote(spark);
   return (
     <div className="flex flex-wrap items-baseline gap-x-xs font-data text-2xs tabular-nums text-fg-dim">
       <span>
@@ -120,6 +145,14 @@ function FuturesMeta({
       </span>
       {future.daysLeft != null && <span>· D-{future.daysLeft}</span>}
       {stale && <span className="text-fg-dimmer">· {stale}</span>}
+      {coverage && (
+        <span
+          className="text-fg-dimmer"
+          title="야간 그림이 덮는 구간. 서버 재시작·유휴 정지로 앞이 잘리면 복구할 수 없다."
+        >
+          · {coverage}
+        </span>
+      )}
     </div>
   );
 }
@@ -213,7 +246,7 @@ function FuturesOnlyCard({
         </div>
         {spark && <Sparkline points={spark.closes} baseline={spark.dayOpen ?? undefined} />}
       </div>
-      <FuturesMeta future={future} snapshot={snapshot} />
+      <FuturesMeta future={future} snapshot={snapshot} spark={spark} />
     </MarketCard>
   );
 }
@@ -302,7 +335,7 @@ function IndexCard({
             )
           : <Sparkline points={closes} baseline={dayOpen} />}
       </div>
-      {showFutures && <FuturesMeta future={future} snapshot={snapshot} />}
+      {showFutures && <FuturesMeta future={future} snapshot={snapshot} spark={futureSpark} />}
       {!showFutures && breadth && (
         <AdvanceDeclineBar rising={breadth.rising} falling={breadth.falling} flat={breadth.flat} />
       )}

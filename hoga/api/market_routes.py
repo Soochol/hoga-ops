@@ -313,6 +313,15 @@ class _FuturesRuntimeHolder:
                     # 종목마다 다르다 — 야간 봉이 쌓인 카드는 야간 모양, 무음인 카드는
                     # 그날 주간장 모양이다. 시세의 `data_session` 과 짝을 이룬다.
                     "session": s.session,
+                    # 야간만 실린다(주간은 REST 로 소급 조회되므로 "놓친 구간" 이 없다).
+                    # 스파크라인엔 축이 없어 앞이 잘린 선을 화면만으로는 못 가린다.
+                    "coverage": None
+                    if s.coverage is None
+                    else {
+                        "first_hhmm": s.coverage.first_hhmm,
+                        "observed_buckets": s.coverage.observed_buckets,
+                        "gap_count": s.coverage.gap_count,
+                    },
                 }
                 for item_id, s in series.items()
             }
