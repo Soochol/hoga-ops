@@ -1,15 +1,19 @@
 """FastAPI router for /api/heatmap.
 
 The Heatmap is an independent monitoring list (ADR-0068). This router mirrors
-/api/watchlist's folder/entry CRUD but deliberately OMITS:
-  - the catch-up routes — the heatmap drives no hogaplay captures;
-  - ``next_run_at_ms`` — the heatmap has no scheduler.
-Since ADR-0097 the heatmap DOES feed the REST 30s recorder (never the KIS WS
-subscription — heatmap codes are REST-only extras), so every route that can
-change the entry SET calls ``refresh_live_stream`` to resync storage targets —
-including delete-folder, which since v3 (ADR-0112) deletes the folder's member
-entries too. Folder-shape routes (rename/reorder/move) leave the set intact
-and stay hook-free.
+/api/watchlist's folder/entry CRUD but deliberately OMITS the catch-up routes:
+since ADR-0142 the heatmap IS a daily capture target, but catch-up is same-day
+only and the 17:00 run already covers it — a per-row "collect today" button
+would just race the scheduler. Past gaps go through the 수집 다이얼로그.
+
+``next_run_at_ms`` IS served (ADR-0142) — the same 17:00 KST boundary the
+watchlist reports, because one daily run now enqueues both lists.
+
+Heatmap codes also feed the Kiwoom WS storage set (ADR-0116/0118), so every
+route that can change the entry SET calls ``refresh_live_stream`` to resync
+storage targets — including delete-folder, which since v3 (ADR-0112) deletes
+the folder's member entries too. Folder-shape routes (rename/reorder/move)
+leave the set intact and stay hook-free.
 v3 (ADR-0112): there is no 미분류 — the only add surface is the folder-scoped
 member add (POST /folders/{id}/members); the folder-less POST "" is gone.
 """
@@ -60,6 +64,7 @@ from hoga.api.models import (
     WatchlistFolder,
 )
 from hoga.api.params import CODE_PATTERN
+from hoga.api.scheduler import next_run_at_ms
 from hoga.live.lifecycle import refresh_live_stream
 
 log = logging.getLogger(__name__)
@@ -118,7 +123,14 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
     @router.get("", response_model=HeatmapResponse)
     async def get_heatmap() -> HeatmapResponse:
         doc = load_document(data_dir)
-        return HeatmapResponse(folders=_folder_views(doc.folders), entries=doc.entries)
+        # next_run_at_ms 는 관심목록과 **같은 함수**를 쓴다(ADR-0142: 하나의 17:00 런이
+        # 두 목록을 함께 적재하므로 두 화면이 다른 시각을 말하면 그 자체로 버그다).
+        return HeatmapResponse(
+            folders=_folder_views(doc.folders),
+            entries=doc.entries,
+            capture_markers=doc.capture_markers,
+            next_run_at_ms=next_run_at_ms(dt.datetime.now(tz=ZoneInfo("Asia/Seoul"))),
+        )
 
     @router.get("/group-flow", response_model=HeatmapGroupFlowResponse)
     async def get_heatmap_group_flow(

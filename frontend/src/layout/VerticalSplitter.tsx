@@ -112,7 +112,7 @@ export default function VerticalSplitter({
     >
       <div
         aria-hidden
-        className="w-[2px] rounded-[1px] bg-[var(--border)] transition-[background-color,width] duration-150 hover:w-1 hover:bg-[var(--accent)] group-focus-visible:w-1 group-focus-visible:bg-[var(--accent)]"
+        className="w-[2px] rounded-sm bg-[var(--border)] transition-[background-color,width] duration-150 hover:w-1 hover:bg-[var(--accent)] group-focus-visible:w-1 group-focus-visible:bg-[var(--accent)]"
       />
     </div>
   );

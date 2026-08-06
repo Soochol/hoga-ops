@@ -7,7 +7,9 @@ import { persistJson, readJsonObject } from './persist';
  * - `obsidian`   — the dark trading-terminal theme (default).
  * - `ledger`     — the light paper/research theme (ivory + banker's green).
  * - `toss-light` — the Toss Securities benchmark light theme (white + toss blue).
- *                  Manual-select only: `auto` never resolves to it (see below).
+ *                  **The default preference** (2026-08-07). Still never produced
+ *                  by `auto` — being the default and being auto-reachable are
+ *                  different things (see below).
  * - `toss-dark`  — the Toss Securities benchmark dark theme (near-black + toss blue).
  *                  Manual-select only, same as toss-light.
  * - `auto`       — pick per route: the chart-heavy live surfaces stay dark, the
@@ -38,9 +40,29 @@ export const THEME_PREFERENCE_OPTIONS: readonly ThemePreference[] = [
 
 const STORAGE_KEY = 'ui.themePreference.v1';
 
+/**
+ * Preference used when nothing is stored (2026-08-07, 사용자 결정).
+ *
+ * Was `auto`, which picks a theme *per route* — so a single nav click
+ * (히트맵 → 스크리너) flipped the whole app between dark and light. An explicit
+ * default removes the route branch entirely: one theme everywhere.
+ *
+ * The cost is documented and accepted: Toss Light's accent and `--price-down`
+ * are both blue (measured ΔE 17.3, vs 80.8 in Ledger and 139.2 in Obsidian).
+ * The separation rests on a convention — accent rides solid fills (buttons,
+ * active tab, focus, crosshair), down-price rides text and borders. See the
+ * Toss Light note in DESIGN.md before touching either token.
+ *
+ * ⚠️ `index.html` duplicates this value in its first-paint bootstrap (it must
+ * run before any module loads). themePrefs.test.ts fails if the two diverge.
+ */
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'toss-light';
+
 /** Route prefixes that stay dark under `auto`. Everything else goes light. */
 // '/market'(시장 종합)은 장중 모니터링 표면이라 /live·/heatmap 과 같은 Obsidian 쪽이다.
-const OBSIDIAN_ROUTE_PREFIXES = ['/live', '/heatmap', '/market'];
+// export 인 이유는 소비처가 있어서가 아니라 **테스트가 index.html 의 복제본과
+// 대조**하기 때문이다(themePrefs.test.ts). 이 목록만 고치면 첫 페인트가 어긋난다.
+export const OBSIDIAN_ROUTE_PREFIXES = ['/live', '/heatmap', '/market'];
 
 /**
  * Resolve a preference + current pathname to the theme that should be applied.
@@ -70,7 +92,7 @@ interface Store {
 }
 
 export const useThemePrefsStore = create<Store>((set) => ({
-  themePreference: readStorage() ?? 'auto',
+  themePreference: readStorage() ?? DEFAULT_THEME_PREFERENCE,
 
   setThemePreference: (value) => {
     if (!THEME_PREFERENCE_OPTIONS.includes(value)) return;

@@ -20,10 +20,14 @@ export interface CaptureQueueRowProps {
   onCancel: (itemId: string) => void;
   /** Retry the failed item; CaptureQueue routes this through the retryItems mutation (ADR-0031). */
   onRetry: (item: QueueItem) => void;
+  /** 행을 고르면 좌측 "캡처 요청" 폼의 종목 필드로 이 행의 종목을 밀어 넣는다.
+   *  상세 펼치기와 **동시에** 일어난다 — 큐에서 본 종목을 다시 캡처하려고 좌측에서
+   *  같은 이름을 재검색하던 왕복을 없애기 위한 것. 생략하면 종전대로 펼치기만 한다. */
+  onPickSymbol?: (code: string) => void;
 }
 
 export function CaptureQueueRow({
-  item, symbolName, fullCaptureCount, onCancel, onRetry,
+  item, symbolName, fullCaptureCount, onCancel, onRetry, onPickSymbol,
 }: CaptureQueueRowProps) {
   const [expanded, setExpanded] = useState(false);
   const isFromInventory = useInventoryRecaptureOrigins((s) => s.ids.has(item.item_id));
@@ -40,10 +44,15 @@ export function CaptureQueueRow({
     && httpP50 !== null && httpP50 > 300;
   const showThrottled = !descriptor.terminal && throttledPages > 0;
 
+  const onActivate = () => {
+    setExpanded((v) => !v);
+    onPickSymbol?.(item.code);
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      setExpanded((v) => !v);
+      onActivate();
     }
   };
 
@@ -55,8 +64,8 @@ export function CaptureQueueRow({
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
-        aria-label={`캡처 항목 ${item.code} ${item.date} ${descriptor.label} · Enter 로 상세 ${expanded ? '접기' : '펼치기'}`}
-        onClick={() => setExpanded((v) => !v)}
+        aria-label={`캡처 항목 ${item.code} ${item.date} ${descriptor.label} · Enter 로 상세 ${expanded ? '접기' : '펼치기'}${onPickSymbol ? ' · 캡처 요청에 이 종목 선택' : ''}`}
+        onClick={onActivate}
         onKeyDown={onKeyDown}
         className="grid grid-cols-[1rem_2.6rem_4.5rem_7rem_4.5rem_2.5rem_2.5rem_minmax(6rem,1fr)_1.2rem] items-center gap-2 h-capture-row px-sm border-b font-medium text-sm font-data tabular-nums text-fg cursor-pointer outline-none"
       >

@@ -48,6 +48,8 @@ import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 
 function makeData(): HeatmapResponse {
   return {
+    capture_markers: {},
+    next_run_at_ms: 0,
     folders: [
       { id: 'f1', name: '2차전지', order: 0 },
       { id: 'f2', name: '반도체', order: 1 },
@@ -263,7 +265,7 @@ describe('HeatmapDrawer', () => {
   });
 
   it('그룹이 없으면 header 종목 추가는 안내를 보이고 추가 버튼이 비활성', async () => {
-    api.getHeatmap.mockResolvedValue({ folders: [], entries: [] });
+    api.getHeatmap.mockResolvedValue({ folders: [], entries: [], capture_markers: {}, next_run_at_ms: 0 });
     wrap(<HeatmapDrawer />);
     await screen.findByText('히트맵이 비어 있습니다');
     fireEvent.click(screen.getByTestId('heatmap-header-add'));
@@ -339,7 +341,7 @@ describe('HeatmapDrawer', () => {
   });
 
   it('shows an empty state when the heatmap has no folders or entries', async () => {
-    api.getHeatmap.mockResolvedValue({ folders: [], entries: [] });
+    api.getHeatmap.mockResolvedValue({ folders: [], entries: [], capture_markers: {}, next_run_at_ms: 0 });
     wrap(<HeatmapDrawer />);
     expect(await screen.findByText('히트맵이 비어 있습니다')).toBeInTheDocument();
   });

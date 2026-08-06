@@ -177,8 +177,17 @@ def make_repair_minute_fetch(data_dir: Path):
         앞이 잘릴 수 없다 — 최古 날짜를 떼어내는 walk 규칙이 필요 없는 자리다.
 
         자격증명이 없으면 빈 리스트로 복구를 스킵시킨다(무자격 프로필·ADR-0134).
+
+        **거버너를 통과시킨다.** 이 콜은 저장뷰 저장마다 도는 사용자 트리거 경로라
+        직접 호출하면 잃는 것이 셋이었다: ① `ka10080` 버킷을 안 거쳐 유량 페이싱에서
+        보이지 않고 ② 토큰 revoke(8005) 자동복구를 못 받고(복구가 거버너 소유다,
+        PR #1088) ③ 테스트의 seam 몽키패치가 안 먹는다.
+
+        `priority="background"`: 이 훅은 `loop.create_task` 로 떠서 응답을 막지 않으므로
+        사용자가 기다리는 콜에 양보하는 쪽이 맞다(ADR-0087).
         """
         from hoga.live import (  # noqa: PLC0415 — 지연 import(순환 절단: api ↔ live)
+            kiwoom_access,
             kiwoom_minute_candles,
             kiwoom_rest_runtime,
         )
@@ -186,7 +195,16 @@ def make_repair_minute_fetch(data_dir: Path):
         client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
         if client is None:
             return []
-        return await kiwoom_minute_candles.fetch_day(client, code, date_s, venue="KRX")
+        return await kiwoom_access.run_with_capacity(
+            kiwoom_rest_runtime.ensure_scheduler(data_dir),
+            key=("repair-minute", code, date_s),
+            api_id=kiwoom_minute_candles.API_ID,
+            priority="background",
+            client=client,
+            fetch_fn=lambda c: kiwoom_minute_candles.fetch_day(
+                c, code, date_s, venue="KRX"
+            ),
+        )
 
     return _repair_minute_fetch
 

@@ -61,7 +61,7 @@ _log = logging.getLogger(__name__)
 def _collection_finished(
     date: str, *, venue: str = "KRX", now: datetime | None = None,
 ) -> bool:
-    """Time-based completeness verdict for a live (kis_live/kis_api) promotion.
+    """Time-based completeness verdict for a live (kiwoom_live/kis_api) promotion.
 
     A live stream has no ``_progress.json`` cursor (that's hogaplay's finished
     flag), so "did collection finish" is decided by the clock instead:
@@ -458,8 +458,8 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
     """키움 WS 승격 (ADR-0116) — live_kiwoom JSONL → parquet/{date}/{code}/kiwoom_live.
 
     유일한 today-promotion 경로다 — KIS판 promote_today(상시 no-op)와 REST 캡처
-    승격 promote_api_today는 모두 제거됨. 실시간 WS라 kis_live처럼 sampling 메타
-    없음(_build_meta의 kis_api 분기 밖). 별도 루트(live_kiwoom)라 잔존 KIS live
+    승격 promote_api_today는 모두 제거됨. 실시간 WS라 sampling 메타 없음
+    (_build_meta의 kis_api 분기 밖). 별도 루트(live_kiwoom)라 잔존 KIS live
     JSONL과 무충돌.
 
     계약: 실승격 시 승격 날짜(YYYYMMDD), skip(이번 사이클 jsonl
@@ -587,8 +587,8 @@ async def promote_one(
     """Convert one JSONL file to Parquet artifacts under `parquet/{date}/{code}/{source}/`.
 
     Idempotent: if `meta.json` already exists at the target, skip.
-    ``source`` = "kis_live"(기본) 또는 "kiwoom_live"(ADR-0116 일배치 승격). 실시간 WS라
-    양쪽 모두 sampling 메타 없음(_build_meta의 kis_api 분기 밖).
+    ``source`` = "kiwoom_live"(기본 · ADR-0116 일배치 승격). 실시간 WS라 sampling
+    메타 없음(_build_meta의 kis_api 분기 밖).
     See ADR-0038 (deferred batch promotion) and ADR-0043 (sister Today
     Promotion that this helper coexists with).
     """
@@ -636,7 +636,7 @@ async def promote_one(
         _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
         # 실시간 합성 캔들(kiwoom_live). 비어있으면 쓰지 않는다(위 today-promotion과 동일 —
         # 빈 candles.parquet이 resolve_candle_source의 존재 판정에서 거짓 승자가 됨).
-        # kis_live/hogaplay JSONL엔 candle kind가 없어 candles=[] → 기존 소스 동작 불변.
+        # 구형·hogaplay JSONL엔 candle kind가 없어 candles=[] → 기존 소스 동작 불변.
         if candles:
             _atomic_write_table(write_candles_parquet, candles, target / "candles.parquet")
         # meta.json 은 **마지막**이자 원자적으로. 이 파일의 존재가 "승격 완료" 의

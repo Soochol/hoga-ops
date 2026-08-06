@@ -77,7 +77,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
           </button>
           {menuOpen && anchorRect && (
             <ul ref={menuRef} role="menu"
-              className="bg-bg-card border border-border-strong rounded-[6px] shadow-overlay overflow-hidden z-50"
+              className="bg-bg-card border border-border-strong rounded-lg shadow-overlay overflow-hidden z-50"
               style={{ position: 'fixed', top, left, width: anchorRect.width }}>
               {CONDITION_GROUPS.map(([label, types]) => (
                 <li key={label} role="none">

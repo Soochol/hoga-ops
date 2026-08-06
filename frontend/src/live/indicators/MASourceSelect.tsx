@@ -23,7 +23,7 @@ export default function MASourceSelect({ value, onChange, ...rest }: Props) {
       aria-label={rest['aria-label'] ?? 'MA 소스'}
       value={value}
       onChange={(e) => onChange(e.target.value as MASource)}
-      className="text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1"
+      className="text-sm bg-bg-input border border-border rounded-md px-2 py-1"
     >
       {OPTIONS.map(([v, label]) => (
         <option key={v} value={v}>{label}</option>

@@ -30,8 +30,12 @@ from hoga.util.timeenc import KST, HogaMs
 _log = logging.getLogger(__name__)
 
 # Live sources whose meta this sweep repairs. hogaplay is excluded — its parser
-# already writes the completeness fields at capture time. kiwoom_live(ADR-0116)는
-# kis_live와 동일하게 승격 후 메타 복구가 필요하다.
+# already writes the completeness fields at capture time. 승격 소스는 승격 후 메타
+# 복구가 필요하다(kiwoom_live: ADR-0116).
+#
+# `kis_live`는 소스에서 제거됐지만(2026-08-06) 목록에 **남긴다** — 이 스윕은 디스크에
+# 실재하는 디렉터리만 훑는 소급 복구라, 아카이브를 되돌린 사용자나 아직 옮기지 않은
+# 배포본에서 옛 디렉터리를 만나도 그대로 고쳐 준다. 없으면 그냥 건너뛴다.
 _LIVE_SOURCES: tuple[str, ...] = ("kis_live", "kiwoom_live", "kis_api")
 # 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
 _KST = KST
@@ -88,7 +92,7 @@ def _recompute_fields(
 def backfill_live_meta(
     data_dir: Path, *, dry_run: bool = False, now: datetime | None = None,
 ) -> BackfillResult:
-    """Sweep ``parquet/{date}/{code}/{kis_live,kis_api}/meta.json`` and add the
+    """Sweep ``parquet/{date}/{code}/{_LIVE_SOURCES}/meta.json`` and add the
     completeness fields to any past-date meta that lacks a finalized
     ``collection_complete``. Idempotent: a meta already at
     ``collection_complete=True`` is skipped.

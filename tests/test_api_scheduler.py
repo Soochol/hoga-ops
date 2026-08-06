@@ -154,7 +154,12 @@ async def test_daily_run_logs_blocked_watchlist_date(tmp_path: Path, caplog):
 
 
 @pytest.mark.asyncio
-async def test_catchup_enqueues_gap_since_last_success(tmp_path: Path):
+async def test_catchup_enqueues_today_even_when_the_marker_is_days_behind(tmp_path: Path):
+    """마커가 4일 뒤처져 있어도 적재 대상은 오늘 하루다 (ADR-0142 당일치기).
+
+    예전 명제는 "마커 다음날부터 오늘까지의 갭을 채운다" 였다. hogaplay 보유가
+    ~18시간이라 그 갭의 대부분은 애초에 받을 수 없는 날짜였고, 실패만 쌓았다.
+    """
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse
     await _seed(tmp_path, code="003490", name="대한항공",
@@ -164,17 +169,19 @@ async def test_catchup_enqueues_gap_since_last_success(tmp_path: Path):
 
     with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
          patch("hoga.api.scheduler.trading_days_in_range",
-               return_value=["20260525", "20260526"]), \
+               return_value=["20260526"]) as trading, \
          patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
          patch("hoga.api.scheduler.enqueue_items_core",
                new_callable=AsyncMock,
                return_value=EnqueueResponse(enqueued=[], deduped=[])) as enq:
         await scheduler._catchup_run(tmp_path)
 
+    # 마커(20260522)가 아니라 오늘로 캘린더를 묻는다 — 갭을 걷지 않는다.
+    trading.assert_called_with("20260526", "20260526")
     assert enq.await_count == 1
     call_req = enq.await_args.kwargs["req"] if "req" in enq.await_args.kwargs else enq.await_args.args[0]
     assert call_req.code == "003490"
-    assert call_req.dates == ["20260525", "20260526"]
+    assert call_req.dates == ["20260526"]
 
 
 @pytest.mark.asyncio
@@ -202,7 +209,13 @@ async def test_catchup_pretrims_today_when_too_early(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_catchup_uses_registered_at_when_no_last_success(tmp_path: Path):
+async def test_catchup_asks_only_for_today_never_walks_back(tmp_path: Path):
+    """ADR-0142: 당일치기. 등록일이 6일 전이어도 캘린더 질의는 오늘 하루뿐이다.
+
+    이 단언이 곧 회귀 방지선이다 — 예전엔 registered_at_kst_date 를 floor 로
+    ("20260521", "20260526") 을 물었고, 히트맵 271종목이 같은 경로를 타면 첫 런에서
+    큐가 수천 건이 된다(hogaplay 보유 ~18시간 안에 소진 불가).
+    """
     from hoga.api import scheduler
     from hoga.api.models import EnqueueResponse
     await _seed(tmp_path, code="003490", name="대한항공",
@@ -211,21 +224,26 @@ async def test_catchup_uses_registered_at_when_no_last_success(tmp_path: Path):
 
     with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
          patch("hoga.api.scheduler.trading_days_in_range",
-               return_value=["20260521", "20260522"]) as trading, \
+               return_value=["20260526"]) as trading, \
          patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
          patch("hoga.api.scheduler.enqueue_items_core",
                new_callable=AsyncMock,
                return_value=EnqueueResponse(enqueued=[], deduped=[])) as enq:
         await scheduler._catchup_run(tmp_path)
 
-    # next_kst_day(20260520) = 20260521
-    trading.assert_called_with("20260521", "20260526")
+    trading.assert_called_with("20260526", "20260526")
     assert enq.await_count == 1
+    assert enq.await_args.args[0].dates == ["20260526"]
 
 
 @pytest.mark.asyncio
-async def test_catchup_skips_entry_with_empty_range(tmp_path: Path):
-    """If last_success >= today, the gap is empty — no enqueue."""
+async def test_catchup_skips_when_today_is_not_a_trading_day(tmp_path: Path):
+    """휴장일이면 적재 대상이 없다 — 캘린더가 빈 목록을 주는 경로.
+
+    ADR-0142 이전에는 "last_success >= today 면 갭이 비어 건너뛴다" 가 이 자리의
+    명제였다. 당일치기에서는 마커가 이미 오늘이어도 오늘을 다시 넣는다(중복은 큐의
+    dedup 이 흡수한다) — 건너뛰는 유일한 이유가 휴장으로 좁혀졌다.
+    """
     from hoga.api import scheduler, watchlist
     await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260526")
@@ -234,12 +252,11 @@ async def test_catchup_skips_entry_with_empty_range(tmp_path: Path):
 
     with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
          patch("hoga.api.scheduler.trading_days_in_range",
-               return_value=["20260526"]), \
+               return_value=[]), \
          patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
          patch("hoga.api.scheduler.enqueue_items_core",
                new_callable=AsyncMock) as enq:
         await scheduler._catchup_run(tmp_path)
-    # Gap is [next_day(20260526)=20260527 .. 20260526] which is empty.
     assert enq.await_count == 0
 
 
@@ -428,8 +445,8 @@ def test_startup_catchup_enabled_accepts_true_only(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_catchup_one_entry_returns_empty_when_no_gap(tmp_path: Path):
-    """When last_success >= today, returns empty EnqueueResponse without calling enqueue."""
+async def test_catchup_one_entry_returns_empty_on_a_holiday(tmp_path: Path):
+    """휴장일이면 enqueue 없이 빈 EnqueueResponse (ADR-0142 당일치기)."""
     from hoga.api import scheduler
     from hoga.api.models import EnqueueResponse, WatchlistEntry
     entry = WatchlistEntry(
@@ -439,6 +456,7 @@ async def test_catchup_one_entry_returns_empty_when_no_gap(tmp_path: Path):
     )
     fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)
     with patch("hoga.api.scheduler.latest_complete_date", return_value=None), \
+         patch("hoga.api.scheduler.trading_days_in_range", return_value=[]), \
          patch("hoga.api.scheduler.enqueue_items_core",
                new_callable=AsyncMock) as enq:
         result = await scheduler.catchup_one_entry(
@@ -450,8 +468,12 @@ async def test_catchup_one_entry_returns_empty_when_no_gap(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_catchup_one_entry_reconciles_then_backfills(tmp_path: Path):
-    """If disk has newer COMPLETE date, marker advances first, then backfill uses new floor."""
+async def test_catchup_one_entry_reconciles_marker_then_enqueues_today(tmp_path: Path):
+    """디스크에 더 최신 COMPLETE 가 있으면 마커가 먼저 그리로 맞춰지고, 적재는 오늘치.
+
+    reconcile 절반은 ADR-0142 이후에도 그대로 남는다 — 결손 표시가 디스크와 어긋나지
+    않으려면 필요하다. 사라진 건 그 마커를 floor 로 삼아 갭을 걷던 뒷절반뿐이다.
+    """
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse, WatchlistEntry
     await _seed(tmp_path, code="003490", name="대한항공",
@@ -468,7 +490,7 @@ async def test_catchup_one_entry_reconciles_then_backfills(tmp_path: Path):
     with patch("hoga.api.scheduler.latest_complete_date",
                return_value="20260524"), \
          patch("hoga.api.scheduler.trading_days_in_range",
-               return_value=["20260525", "20260526", "20260527"]), \
+               return_value=["20260527"]) as trading, \
          patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
          patch("hoga.api.scheduler.enqueue_items_core",
                new_callable=AsyncMock,
@@ -476,13 +498,14 @@ async def test_catchup_one_entry_reconciles_then_backfills(tmp_path: Path):
         result = await scheduler.catchup_one_entry(
             entry, data_dir=tmp_path, now=fake_now,
         )
-    # bump_last_success was called with date=20260524
+    # reconcile: 마커가 디스크 진실(20260524)로 맞춰졌다.
     entries = watchlist.load_watchlist(tmp_path)
     assert entries[0].last_success_date == "20260524"
-    # trading_days_in_range called from next_day(20260524) = 20260525.
+    # 적재는 오늘 하루 — 마커(20260524)는 floor 로 쓰이지 않는다.
+    trading.assert_called_with("20260527", "20260527")
     enq.assert_awaited_once()
     call_req = enq.await_args.kwargs.get("req") or enq.await_args.args[0]
-    assert call_req.dates == ["20260525", "20260526", "20260527"]
+    assert call_req.dates == ["20260527"]
     assert isinstance(result, EnqueueResponse)
 
 
@@ -781,3 +804,57 @@ def test_markers_do_not_overwrite_each_other(tmp_path: Path):
 
     scheduler.write_last_daily_run_date(tmp_path, "20260527")
     assert scheduler.read_last_trading_stage_date(tmp_path) == "20260526"
+
+
+# --- daily enqueue set = watchlist ∪ heatmap (ADR-0142) ----------------------
+
+def _write_heatmap(tmp_path: Path, codes: list[str]) -> None:
+    import json
+    (tmp_path / "heatmap.json").write_text(json.dumps({
+        "schema_version": 4,
+        "folders": [{"id": "f_0000000a", "name": "반도체", "order": 0}],
+        "entries": [{"code": c, "name": c, "folder_id": "f_0000000a", "order": i}
+                    for i, c in enumerate(codes)],
+        "capture_markers": {},
+    }, ensure_ascii=False), encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_daily_enqueue_codes_is_watchlist_first_then_heatmap(tmp_path: Path):
+    """관심종목 먼저, 히트맵 뒤, 중복은 1회.
+
+    순서가 계약인 이유: 큐는 FIFO 이고 hogaplay 보유가 ~18시간이라 뒤로 밀린 종목일수록
+    유실 위험이 크다. 사용자가 실제로 매매를 보는 관심종목이 앞에 서야 한다.
+    """
+    from hoga.api import scheduler
+    await _seed(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
+    _write_heatmap(tmp_path, ["000660", "005930"])   # 005930 은 양쪽에 있다
+    assert scheduler.daily_enqueue_codes(tmp_path) == ["005930", "000660"]
+
+
+def test_daily_enqueue_codes_dedupes_a_code_registered_in_two_groups(tmp_path: Path):
+    """히트맵 entry 는 (folder_id, code) 라 한 종목이 여러 그룹에 있다 — 코드로 접는다.
+
+    큐도 같은 (code,date) 를 deduped 로 되돌리지만 그건 큐의 방어이지 계획의 정확성이
+    아니다: dedup 없이는 "N종목 적재" 로그가 실제 종목 수와 어긋난다.
+    """
+    import json
+
+    from hoga.api import scheduler
+    (tmp_path / "heatmap.json").write_text(json.dumps({
+        "schema_version": 4,
+        "folders": [{"id": "f_0000000a", "name": "반도체", "order": 0},
+                    {"id": "f_0000000b", "name": "AI", "order": 1}],
+        "entries": [
+            {"code": "005930", "name": "삼성전자", "folder_id": "f_0000000a", "order": 0},
+            {"code": "005930", "name": "삼성전자", "folder_id": "f_0000000b", "order": 0},
+        ],
+        "capture_markers": {},
+    }, ensure_ascii=False), encoding="utf-8")
+    assert scheduler.daily_enqueue_codes(tmp_path) == ["005930"]
+
+
+def test_daily_enqueue_codes_survives_a_missing_heatmap(tmp_path: Path):
+    """heatmap.json 이 없어도 관심종목 적재는 돈다(신규 머신)."""
+    from hoga.api import scheduler
+    assert scheduler.daily_enqueue_codes(tmp_path) == []

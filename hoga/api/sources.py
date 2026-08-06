@@ -18,9 +18,10 @@ from hoga.live.venue import Venue
 if TYPE_CHECKING:
     from hoga.api.queries import QueryEngine
 
-# kiwoom_live: 키움 WS 승격본(ADR-0116). kis_live와 같은 실시간 WS 티어라 우선순위도
-# kis_live 인접(뒤). 종목 소유권 단일 원칙(한 종목 실시간 소스 하나)이라 보통 한
-# stock-date엔 kis_live/kiwoom_live 중 하나만 존재 — 순서는 전환기 이중구독 시에만 유효.
+# kiwoom_live: 키움 WS 승격본(ADR-0116). **유일한 실시간 WS 티어**다 — ADR-0136이
+# 실시간·폴링을 전부 키움으로 옮겼고, 같은 티어를 공유하던 KIS WS 승격본 `kis_live`는
+# 소스에서 제거됐다(2026-08-06 · 잔존 데이터는 `_archive/kis_live/`). 종목 소유권 단일
+# 원칙(한 종목 실시간 소스 하나)이라 한 stock-date엔 실시간 승격본이 하나만 존재한다.
 #
 # kis_api(2026-07-17 정책): **캔들 전용 소스**다. rest30 REST 호가 캡처가 제거되면서
 # 호가·체결 계열(orderflow — /api/orderbook·/api/brokers/series·range의 호가/체결
@@ -30,8 +31,8 @@ if TYPE_CHECKING:
 #
 # 이 사다리는 **호가·체결 차원의 승자**를 정한다. 캔들 차원은 대칭인 반대 필터가
 # 필요해 별도 함수로 분리했다(ADR-0121: resolve_candle_source) — kis_api가 호가를
-# 서빙하지 않듯 kis_live/kiwoom_live는 캔들을 서빙하지 않으므로, 두 차원의 승자가
-# 한 Stock-Date에서 갈릴 수 있다.
+# 서빙하지 않고 실시간 승격본은 캔들을 **항상 보유하진** 않으므로(합성 실패일 —
+# CANDLE_BEARING_SOURCES 주석 참조), 두 차원의 승자가 한 Stock-Date에서 갈릴 수 있다.
 SourceName = Literal["hogaplay", "kiwoom_live", "kis_api"]
 
 #: source 가 **어느 venue 를 덮는가**. 디렉터리 축 유무가 아니라 **커버리지**다.
@@ -96,12 +97,13 @@ _COMPLETENESS_POLICIES: frozenset[str] = frozenset({"completeness_first"})
 
 # 캔들 차원 후보 — candles.parquet을 실제로 쓰는 Source만.
 #
-# **kis_live는 캔들을 쓰지 않는다**(ADR-0040/0043: KIS 실시간 승격본의 캔들 차원은
-# Live Candle Backfill이 따로 서빙). kis_live를 캔들 사다리에 남겨두면 "건강한
-# 승자가 이겼는데 그 승자에겐 캔들이 없다"가 성립해, 같은 Stock-Date의 hogaplay
-# 캔들과 ADR-0109 복구본(kis_api)이 **동시에** 가려진다. 사다리는 소스 우선순위
-# (정책)를 표현하고, 이 상수는 소스가 그 차원을 보유하는지(물리적 사실)를 표현한다
-# — 두 축을 섞으면 정책이 디스크 레이아웃에 오염된다.
+# 이 상수가 사다리와 **분리돼 있는** 이유는 삭제된 `kis_live`(KIS WS 승격본)가 남긴
+# 교훈이다: 그 소스는 캔들을 쓰지 않았는데(ADR-0040/0043 — 캔들 차원은 Live Candle
+# Backfill이 따로 서빙했다) 캔들 사다리엔 남아 있어, "건강한 승자가 이겼는데 그
+# 승자에겐 캔들이 없다"가 성립했다. 그러면 같은 Stock-Date의 hogaplay 캔들과
+# ADR-0109 복구본(kis_api)이 **동시에** 가려진다. 사다리는 소스 우선순위(정책)를
+# 표현하고, 이 상수는 소스가 그 차원을 보유하는지(물리적 사실)를 표현한다 — 두 축을
+# 섞으면 정책이 디스크 레이아웃에 오염된다.
 #
 # **kiwoom_live는 예외적으로 캔들을 보유한다**(ADR-0125가 ADR-0040/0043 개정):
 # 키움 WS 체결 틱에서 수신 시점에 1분봉을 합성해 kiwoom_live/candles.parquet으로

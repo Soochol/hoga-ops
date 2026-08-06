@@ -1,11 +1,13 @@
 # E2E specs — 상태와 실행 방법
 
-## 지금 상태 (2026-07-31)
+## 지금 상태 (2026-08-06)
 
-**게이트다.** `.github/workflows/ci.yml` 의 `e2e` 잡이 `continue-on-error` 없이
-머지를 막는다. **19 passed / 0 skipped / 0 failed**, 잡 소요 ~1.5분.
+**수동 절차다.** 2026-07-31~08-06 사이에는 `ci.yml` 의 `e2e` 잡이 머지를 막는
+게이트였지만, CI 제거와 함께 자동 강제는 사라졌다(경위는 루트 `CLAUDE.md` 의
+"Local verification"). **프론트를 만졌으면 PR 전에 직접 돌린다** — 아무도 대신
+돌려주지 않는다. 기준선: **19 passed / 0 skipped / 0 failed**, ~1.5분.
 
-**로컬에서도 돈다.** `playwright.config.ts` 가 CI 밖에서는 시스템 Chrome
+**로컬에서 돈다.** `playwright.config.ts` 가 CI 밖에서는 시스템 Chrome
 (`channel: 'chrome'`)을 쓴다 — Ubuntu 26.04 는 Playwright 가 번들 chromium 설치를
 거부하기 때문이다. 이전 판 주석은 "CI 가 유일한 판정 경로" 라고 적었지만, 스펙 11개 중
 7개는 **이미** 시스템 Chrome 을 쓰고 있었다.

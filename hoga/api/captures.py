@@ -1045,7 +1045,7 @@ async def _finalize_item(state: QueueItemState) -> None:
         )
         try:
             # source="hogaplay": this gates the hogaplay worker's fail_streak
-            # reset and Watchlist last_success marker. A COMPLETE kis_live/kis_api
+            # reset and Watchlist last_success marker. A COMPLETE kiwoom_live/kis_api
             # promotion in the same Stock-Date dir must NOT mask a hogaplay
             # partial failure into a spurious done→reset + marker bump.
             done_complete = (
@@ -1112,16 +1112,24 @@ async def _finalize_item(state: QueueItemState) -> None:
     # so the marker can never disagree with the fail_streak counter or the
     # calendar UI by construction. ``phase="done"`` alone is insufficient (it is
     # reachable with stagnation_abort / lenient-fallback violations — see above).
+    #
+    # ADR-0142: the heatmap is a capture target too, and a Code can be on both
+    # lists — so BOTH markers advance off the same predicate. Each store gets
+    # its own try/except: they hold separate locks and either can be absent for
+    # a given Code (each bump no-ops when the Code isn't in that store), so one
+    # failing must not skip the other.
     if state.phase == "done" and done_complete:
-        try:
-            await watchlist.bump_last_success(
-                _require_data_dir(), code=state.code, date=state.date,
-            )
-        except Exception:  # never let watchlist break the queue
-            logging.getLogger(__name__).exception(
-                "watchlist bump_last_success failed for %s/%s",
-                state.code, state.date,
-            )
+        from hoga.api import heatmap  # noqa: PLC0415 — 지연 import(순환 절단)
+        for store in (watchlist, heatmap):
+            try:
+                await store.bump_last_success(
+                    _require_data_dir(), code=state.code, date=state.date,
+                )
+            except Exception:  # never let a marker store break the queue
+                logging.getLogger(__name__).exception(
+                    "%s bump_last_success failed for %s/%s",
+                    store.__name__, state.code, state.date,
+                )
 
 
 async def _handle_cookie_expired(state: QueueItemState) -> None:
@@ -1877,7 +1885,7 @@ async def coverage_preview_core(
         for code in req.codes:
             for date in dates:
                 # source="hogaplay": bulk coverage is about hogaplay collection;
-                # a kis_live-only COMPLETE date must stay in the "to collect" set.
+                # a promotion-only COMPLETE date must stay in the "to collect" set.
                 st = check_disk_state(data_dir, code, date, source="hogaplay").state
                 if st == DiskState.COMPLETE:
                     have += 1

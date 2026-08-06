@@ -210,12 +210,12 @@ export function VolumeDistributionCard({
                 >
                   <div
                     data-testid="volume-distribution-track"
-                    className="h-full overflow-hidden rounded-[1px]"
+                    className="h-full overflow-hidden rounded-sm"
                     style={{ background: 'var(--grid)' }}
                   >
                     <div
                       data-testid={isMax ? 'volume-distribution-max-bar' : 'volume-distribution-bar'}
-                      className="h-full rounded-[1px]"
+                      className="h-full rounded-sm"
                       style={{ width, backgroundColor: isMax ? maxColor : color, opacity: isMax ? 1 : 0.78 }}
                     />
                   </div>

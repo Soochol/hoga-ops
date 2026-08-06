@@ -69,6 +69,8 @@ import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 
 function makeData(): HeatmapResponse {
   return {
+    capture_markers: {},
+    next_run_at_ms: 0,
     folders: [
       { id: 'f1', name: '2차전지', order: 0 },
       { id: 'f2', name: '반도체', order: 1 },
@@ -150,6 +152,8 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
   it('같은 그룹 형제 행 위에 드롭 → reorderHeatmapEntries(folderId, 재배열된 codes)', async () => {
     // manual 정렬(beforeEach) + 한 그룹에 종목 2개 → 그룹 내 재정렬 활성.
     api.getHeatmap.mockResolvedValue({
+      capture_markers: {},
+      next_run_at_ms: 0,
       folders: [{ id: 'f1', name: '2차전지', order: 0 }],
       entries: [
         { code: '000001', name: '에코프로', folder_id: 'f1', order: 0 },
@@ -167,6 +171,8 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
   it('desc(라이브) 정렬 모드에선 그룹 내 재정렬 비활성 (형제 위 드롭도 no-op)', async () => {
     useHeatmapPrefsStore.setState({ sortMode: 'desc', groupSort: 'manual' });
     api.getHeatmap.mockResolvedValue({
+      capture_markers: {},
+      next_run_at_ms: 0,
       folders: [{ id: 'f1', name: '2차전지', order: 0 }],
       entries: [
         { code: '000001', name: '에코프로', folder_id: 'f1', order: 0 },

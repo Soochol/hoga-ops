@@ -171,9 +171,10 @@
   --space-3xl: 3rem; /* 54px @ default; 48px base intent */
 
   /* ───── Border radius (intentionally fixed px — see ADR-0011) ───── */
-  --radius-sm: 2px; /* Rarely used */
-  --radius-md: 4px; /* Presets, small buttons */
-  --radius-lg: 6px; /* Cards, inputs, buttons (default) */
+  --radius-none: 0px; /* Explicit square corners — `rounded-none` and its per-corner variants */
+  --radius-sm: 2px; /* Hairline bars, dense badges */
+  --radius-md: 4px; /* Default (bare `rounded`) — chips, small buttons, presets */
+  --radius-lg: 6px; /* Cards, modals, inputs, larger panels */
   --radius-full: 9999px; /* Status dots, avatars */
 
   /* ───── Layout (rem-based; rendered px @ 18px root = default density) ───── */

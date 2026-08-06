@@ -236,7 +236,11 @@ async def _run_repair_sweep(data_dir: Path, *, dry_run: bool) -> None:
         return
 
     # PR-J(#1046) 칼 컷오버 — 소스는 키움 `ka10080` 이다(ADR-0109 의 생산자 교체).
-    from hoga.live import kiwoom_minute_candles, kiwoom_rest_runtime  # noqa: PLC0415
+    from hoga.live import (  # noqa: PLC0415
+        kiwoom_access,
+        kiwoom_minute_candles,
+        kiwoom_rest_runtime,
+    )
 
     client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
     if client is None:
@@ -245,8 +249,21 @@ async def _run_repair_sweep(data_dir: Path, *, dry_run: bool) -> None:
         )
         return
 
+    # 서버와 같은 거버너를 탄다 — CLI 라고 예외를 두면 이 명령이 유량 페이싱과
+    # 토큰 revoke 복구(PR #1088) 밖에서 도는데, 복구는 날짜 수만큼 콜을 낸다.
+    scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
+
     async def _fetch(code: str, date_s: str):
-        return await kiwoom_minute_candles.fetch_day(client, code, date_s, venue="KRX")
+        return await kiwoom_access.run_with_capacity(
+            scheduler,
+            key=("repair-minute", code, date_s),
+            api_id=kiwoom_minute_candles.API_ID,
+            priority="background",
+            client=client,
+            fetch_fn=lambda c: kiwoom_minute_candles.fetch_day(
+                c, code, date_s, venue="KRX"
+            ),
+        )
 
     tot_r = tot_s = tot_u = tot_e = 0
     for save in saves:
@@ -348,9 +365,9 @@ def depth_daily_sweep(
 def backfill_live_meta_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),
 ) -> None:
-    """이미 승격된 KIS live/REST meta.json 에 완결성 필드를 소급 기록한다.
+    """이미 승격된 실시간/REST meta.json 에 완결성 필드를 소급 기록한다.
 
-    변경 이전에 승격된 kis_live/kis_api Stock-Date 는 collection_complete/
+    변경 이전에 승격된 Stock-Date(meta_backfill._LIVE_SOURCES) 는 collection_complete/
     is_partial/gap_ranges 가 없어 캘린더에서 영구 ✕ 로 남는다. 이 스윕은
     snapshots.parquet 의 ts_ms 로 갭 분석을 재계산해 그 세 필드를 채운다
     (과거 날짜만; 오늘은 Today Promoter 가 15:35 에 최종화). 멱등.

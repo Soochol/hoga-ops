@@ -23,13 +23,19 @@ beforeEach(() => {
 });
 
 describe('heatmap api client (independent of watchlist, ADR-0068)', () => {
-  it('getHeatmap hits /api/heatmap and carries no next_run_at_ms', async () => {
-    const fake: HeatmapResponse = { folders: [], entries: [] };
+  it('getHeatmap hits /api/heatmap and carries capture markers + next run', async () => {
+    // ADR-0142: 히트맵이 일일 캡처 대상이 되면서 두 필드가 생겼다. 마커는 code 키 맵이다
+    // — entry 배열과 나란히 오지, entry 안에 들어오지 않는다.
+    const fake: HeatmapResponse = {
+      folders: [], entries: [],
+      capture_markers: { '005930': '20260806' },
+      next_run_at_ms: 1_754_000_000_000,
+    };
     vi.mocked(apiCall).mockResolvedValueOnce(fake);
     const r = await getHeatmap();
     expect(apiCall).toHaveBeenCalledWith('/api/heatmap');
     expect(r).toEqual(fake);
-    expect('next_run_at_ms' in r).toBe(false);
+    expect(r.capture_markers['005930']).toBe('20260806');
   });
 
   it('exposes no folder-less add (v3, ADR-0112 — the only add is folder-scoped)', async () => {
