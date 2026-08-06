@@ -14,6 +14,13 @@
 import { useState } from 'react';
 import { BreadthCard } from './BreadthCard';
 import { useLiveIndexCandles } from '../api/liveIndices';
+import {
+  useMarketFutures,
+  useMarketFuturesCandles,
+  type FuturesQuote,
+  type FuturesQuotesSnapshot,
+  type FuturesSpark,
+} from '../api/marketFutures';
 import { useMarketIndexQuotes } from '../api/marketIndexQuotes';
 import {
   useMarketFunds,
@@ -29,6 +36,7 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 import type { LiveIndexId } from '../live/liveInstrument';
 import { PageContainer } from '../layout/PageContainer';
+import { persistJson, readJsonObject } from '../state/persist';
 import { CARD_HEADER_RULE, CardHeader, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
 import { priceDirClass } from '../ui/priceDir';
 import {
@@ -47,9 +55,80 @@ import { SERIES_COLORS, fmtSigned, stockSeriesDiffs, wonToJo } from './marketFor
 
 const MARKET_KEY_BY_INDEX: Record<string, string> = { KOSPI: '0', KOSDAQ: '1' };
 
+/** 카드가 현물을 보여주는가 선물을 보여주는가. */
+type CardMode = 'spot' | 'futures';
+
+const CARD_MODE_KEY = 'market.indexCardMode.v1';
+const CARD_MODES: ReadonlyArray<readonly [CardMode, string]> = [
+  ['spot', '현물'],
+  ['futures', '선물'],
+];
+
+/** 카드별 현물/선물 선택 — 카드마다 독립이고 새로고침을 넘어 유지된다.
+ *
+ *  **저장할 때 반드시 다시 읽어 병합한다.** 카드마다 훅 인스턴스가 따로라, 마운트
+ *  시점의 스냅샷을 들고 쓰면 마지막에 누른 카드가 다른 카드의 선택을 덮어쓴다. */
+function useCardMode(id: string): [CardMode, (next: CardMode) => void] {
+  const [mode, setMode] = useState<CardMode>(() =>
+    readJsonObject(CARD_MODE_KEY)[id] === 'futures' ? 'futures' : 'spot',
+  );
+  const update = (next: CardMode) => {
+    setMode(next);
+    persistJson(CARD_MODE_KEY, { ...readJsonObject(CARD_MODE_KEY), [id]: next });
+  };
+  return [mode, update];
+}
+
+/** 이 카드의 값이 지금 세션의 것이 아니면 그 사실을 문구로. null 이면 최신이다.
+ *
+ *  **카드마다 따로 판정한다.** 야간엔 유동성에 따라 종목별로 갈리기 때문이다 —
+ *  KOSPI200 은 WS 틱이 붙어 실시간인데 코스닥150 은 무음이라 주간 마감본일 수 있다.
+ *  스냅샷 하나로 판정하면 둘 중 하나는 반드시 틀린 배지를 단다. */
+function stalenessNote(
+  future: FuturesQuote,
+  snapshot: FuturesQuotesSnapshot | undefined,
+): string | null {
+  if (!snapshot || snapshot.session === future.dataSession) return null;
+  return snapshot.session === 'night' ? '주간 마감값' : '장 마감';
+}
+
+/** 베이시스·괴리율용 소수 2자리 부호 표기.
+ *
+ *  `fmtSigned` 를 쓰면 안 된다 — 그쪽은 `Math.round` 라 베이시스 −1.77 이 −2 가 되어
+ *  콘탱고/백워데이션의 크기 정보가 통째로 죽는다. */
+function fmtBasis(n: number | null): string {
+  if (n == null) return '—';
+  return `${n > 0 ? '+' : ''}${n.toFixed(2)}`;
+}
+
+/** 선물 카드의 부가 정보 한 줄 — 베이시스·만기. 선물을 보는 이유 자체다. */
+function FuturesMeta({
+  future,
+  snapshot,
+}: {
+  future: FuturesQuote;
+  snapshot: FuturesQuotesSnapshot | undefined;
+}) {
+  const stale = stalenessNote(future, snapshot);
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-xs font-data text-2xs tabular-nums text-fg-dim">
+      <span>
+        베이시스{' '}
+        <span className={priceDirClass(future.marketBasis ?? 0)}>
+          {fmtBasis(future.marketBasis)}
+        </span>
+      </span>
+      {future.daysLeft != null && <span>· D-{future.daysLeft}</span>}
+      {stale && <span className="text-fg-dimmer">· {stale}</span>}
+    </div>
+  );
+}
+
 export function IndexCards() {
   const quotes = useMarketIndexQuotes();
   const sectors = useMarketSectors();
+  const futures = useMarketFutures();
+  const futuresSparks = useMarketFuturesCandles();
 
   if (quotes.isLoading) return null;
   const rows = quotes.data ?? [];
@@ -63,12 +142,79 @@ export function IndexCards() {
     );
   }
 
+  const snapshot = futures.data;
+  const futureByUnderlying = new Map(
+    (snapshot?.quotes ?? [])
+      .filter((f): f is FuturesQuote & { underlyingId: string } => f.underlyingId !== null)
+      .map((f) => [f.underlyingId, f]),
+  );
+  // 토글 짝이 없는 선물(VKOSPI)은 단독 카드다 — 현물 지수 카드가 없기 때문이다.
+  const soloFutures = (snapshot?.quotes ?? []).filter((f) => f.underlyingId === null);
+  // Tailwind 는 런타임에 조합한 클래스명을 만들지 못한다 — 두 리터럴을 그대로 둔다.
+  const cols = soloFutures.length > 0 ? 'grid-cols-5' : 'grid-cols-4';
+
   return (
-    <div className="grid grid-cols-4 gap-md">
-      {rows.slice(0, 4).map((q) => (
-        <IndexCard key={q.id} quote={q} sectors={sectors.data} />
+    <div className={`grid ${cols} gap-md`}>
+      {rows.slice(0, 4).map((q) => {
+        const future = futureByUnderlying.get(q.id);
+        return (
+          <IndexCard
+            key={q.id}
+            quote={q}
+            sectors={sectors.data}
+            future={future}
+            snapshot={snapshot}
+            futureSpark={future ? futuresSparks.data?.[future.id] : undefined}
+          />
+        );
+      })}
+      {soloFutures.map((f) => (
+        <FuturesOnlyCard
+          key={f.id}
+          future={f}
+          snapshot={snapshot}
+          spark={futuresSparks.data?.[f.id]}
+        />
       ))}
     </div>
+  );
+}
+
+/** 대응 현물이 없는 선물 카드(VKOSPI). 토글이 없다 — 바꿀 짝이 없기 때문이다. */
+function FuturesOnlyCard({
+  future,
+  snapshot,
+  spark,
+}: {
+  future: FuturesQuote;
+  snapshot: FuturesQuotesSnapshot | undefined;
+  spark: FuturesSpark | undefined;
+}) {
+  return (
+    <MarketCard className="flex flex-col gap-sm p-md">
+      <div className={`flex items-baseline justify-between ${CARD_HEADER_RULE}`}>
+        <span className="text-xs font-semibold uppercase text-fg-dim">{future.label}</span>
+      </div>
+      <div className="flex items-end justify-between gap-sm">
+        <div className="flex flex-col">
+          <span
+            className={`font-data text-xl font-semibold tabular-nums ${priceDirClass(future.change)}`}
+          >
+            {future.value.toLocaleString('ko-KR', { minimumFractionDigits: 2 })}
+          </span>
+          {/* 5열이 되면 마지막 카드가 우측 레일에 가려 가장 좁아진다 — nowrap 이 없으면
+              거기서만 등락값이 두 줄로 접힌다. 좁아지면 스파크라인이 줄어야 한다. */}
+          <span
+            className={`whitespace-nowrap font-data text-sm tabular-nums ${priceDirClass(future.change)}`}
+          >
+            {future.change > 0 ? '+' : ''}
+            {future.change.toFixed(2)} <PctText pct={future.changeRate} />
+          </span>
+        </div>
+        {spark && <Sparkline points={spark.closes} baseline={spark.dayOpen ?? undefined} />}
+      </div>
+      <FuturesMeta future={future} snapshot={snapshot} />
+    </MarketCard>
   );
 }
 
@@ -77,10 +223,19 @@ export function IndexCards() {
 function IndexCard({
   quote,
   sectors,
+  future,
+  snapshot,
+  futureSpark,
 }: {
   quote: ReturnType<typeof useMarketIndexQuotes>['data'] extends (infer T)[] | undefined ? T : never;
   sectors: ReturnType<typeof useMarketSectors>['data'];
+  /** 대응 선물. 없으면 토글 자체를 그리지 않는다(코스피·코스닥 종합엔 선물이 없다). */
+  future: FuturesQuote | undefined;
+  snapshot: FuturesQuotesSnapshot | undefined;
+  /** 선물 모드의 스파크라인. 현물 분봉(키움)과 벤더가 달라 별도로 들어온다. */
+  futureSpark: FuturesSpark | undefined;
 }) {
+  const [mode, setMode] = useCardMode(quote.id);
   const today = todayKstYyyymmdd();
   // 당일 1분봉 — 종가 배열이 곧 스파크라인이다. 지수당 1콜이고 ka20005 는 자기
   // 버킷(5 req/s)을 쓰므로 4장이 다른 표면과 경합하지 않는다.
@@ -91,13 +246,25 @@ function IndexCard({
   const dayOpen = bars[0]?.open;
 
   // 등락종목수는 종합지수(코스피·코스닥)에만 붙는다 — 지수 상품은 부재가 정상(#1100).
+  // 그래서 헤더 우측이 비는 카드가 정확히 선물이 있는 카드다. 토글이 그 자리를 쓴다.
   const mkey = MARKET_KEY_BY_INDEX[quote.id];
   const breadth = mkey ? sectors?.markets[mkey]?.index : undefined;
 
+  // 선물 값이 아직 없으면 현물로 되돌린다 — 토글은 눌리는데 카드가 비는 상태를
+  // 만들지 않는다. 저장된 선택은 건드리지 않으므로 데이터가 오면 알아서 복귀한다.
+  const showFutures = future != null && mode === 'futures';
+  const shown = showFutures
+    ? { value: future.value, change: future.change, changeRate: future.changeRate }
+    : { value: quote.value, change: quote.change, changeRate: quote.changeRate };
+
   return (
     <MarketCard className="flex flex-col gap-sm p-md">
-      <div className={`flex items-baseline justify-between ${CARD_HEADER_RULE}`}>
-        <span className="text-xs font-semibold uppercase text-fg-dim">{quote.label}</span>
+      <div
+        className={`flex flex-wrap items-baseline justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}
+      >
+        <span className="text-xs font-semibold uppercase text-fg-dim">
+          {showFutures ? future.label : quote.label}
+        </span>
         {breadth?.rising != null && breadth.falling != null && (
           <span className="font-data text-2xs text-fg-dim tabular-nums">
             <span className="text-price-up">▲{breadth.rising}</span>
@@ -105,21 +272,38 @@ function IndexCard({
             <span className="text-price-down">▼{breadth.falling}</span>
           </span>
         )}
+        {future != null && (
+          <ModeSwitch
+            label={`${quote.label} 현물/선물`}
+            value={mode}
+            onChange={setMode}
+            options={CARD_MODES}
+          />
+        )}
       </div>
       <div className="flex items-end justify-between gap-sm">
         <div className="flex flex-col">
-          <span className={`font-data text-xl font-semibold tabular-nums ${priceDirClass(quote.change)}`}>
-            {quote.value.toLocaleString('ko-KR', { minimumFractionDigits: 2 })}
+          <span className={`font-data text-xl font-semibold tabular-nums ${priceDirClass(shown.change)}`}>
+            {shown.value.toLocaleString('ko-KR', { minimumFractionDigits: 2 })}
           </span>
-          <span className={`font-data text-sm tabular-nums ${priceDirClass(quote.change)}`}>
-            {quote.change > 0 ? '+' : ''}
-            {quote.change.toFixed(2)} <PctText pct={quote.changeRate} />
+          <span
+            className={`whitespace-nowrap font-data text-sm tabular-nums ${priceDirClass(shown.change)}`}
+          >
+            {shown.change > 0 ? '+' : ''}
+            {shown.change.toFixed(2)} <PctText pct={shown.changeRate} />
           </span>
         </div>
-        {/* 분봉이 아직 없거나 실패하면 그냥 안 그린다 — 한 점짜리 선은 거짓 정보다. */}
-        <Sparkline points={closes} baseline={dayOpen} />
+        {/* 분봉이 아직 없거나 실패하면 그냥 안 그린다 — 한 점짜리 선은 거짓 정보다.
+            모드마다 **다른 소스**를 쓴다: 현물은 키움 ka20005(1분봉), 선물은
+            KIS FHKIF03020200(5분봉). 선물 모드에 현물 분봉을 그리면 더 나쁜 거짓말이다. */}
+        {showFutures
+          ? futureSpark && (
+              <Sparkline points={futureSpark.closes} baseline={futureSpark.dayOpen ?? undefined} />
+            )
+          : <Sparkline points={closes} baseline={dayOpen} />}
       </div>
-      {breadth && (
+      {showFutures && <FuturesMeta future={future} snapshot={snapshot} />}
+      {!showFutures && breadth && (
         <AdvanceDeclineBar rising={breadth.rising} falling={breadth.falling} flat={breadth.flat} />
       )}
     </MarketCard>
