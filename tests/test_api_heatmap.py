@@ -1,8 +1,10 @@
-"""Heatmap independent-store + route tests (ADR-0068, amended by ADR-0097/0112).
+"""Heatmap independent-store + route tests (ADR-0068, amended by 0097/0112/0142).
 
 Mirrors the watchlist suite but asserts the SEPARATION invariants:
   - the heatmap store/routes never touch watchlist.json;
-  - HeatmapEntry carries no capture fields;
+  - HeatmapEntry carries no capture fields — since ADR-0142 the heatmap DOES
+    drive captures, but the marker lives in a code-keyed ``capture_markers``
+    side table, never on the (folder_id, code)-keyed entry;
   - entry-SET mutations resync storage targets (ADR-0097) while folder-shape
     mutations (rename/reorder/move) do not — delete-folder resyncs since v3
     (it deletes member entries too, ADR-0112);
@@ -126,7 +128,7 @@ def test_migrate_v2_null_entries_land_in_uncat_real_folder(tmp_path: Path):
                   {"code": "003490", "name": "대한항공", "folder_id": None, "order": 1},
               ])
     doc = load_document(tmp_path)
-    assert doc.schema_version == 3
+    assert doc.schema_version == 4
     assert [(f.id, f.name) for f in doc.folders] == [
         ("f_0000000a", "반도체"), ("f_00000000", "미분류")]
     by_code = {e.code: e for e in doc.entries}
@@ -165,7 +167,7 @@ def test_migrate_v1_folderless_file_rescues_all_entries(tmp_path: Path):
     ]}, ensure_ascii=False), encoding="utf-8")
     from hoga.api.heatmap import load_document
     doc = load_document(tmp_path)
-    assert doc.schema_version == 3
+    assert doc.schema_version == 4
     assert [(f.id, f.name) for f in doc.folders] == [("f_00000000", "미분류")]
     assert [(e.code, e.folder_id, e.order) for e in doc.entries] == [
         ("005930", "f_00000000", 0), ("035720", "f_00000000", 1)]
@@ -178,7 +180,7 @@ def test_migrate_v2_without_nulls_is_clean_version_bump(tmp_path: Path):
               entries=[{"code": "005930", "name": "삼성전자",
                         "folder_id": "f_0000000a", "order": 0}])
     doc = load_document(tmp_path)
-    assert doc.schema_version == 3
+    assert doc.schema_version == 4
     assert [f.id for f in doc.folders] == ["f_0000000a"]  # no 미분류 minted
 
 
@@ -187,7 +189,7 @@ def test_future_schema_version_halts_loudly(tmp_path: Path):
 
     from hoga.api.heatmap import UnsupportedHeatmapSchema, load_document
     (tmp_path / "heatmap.json").write_text(
-        json.dumps({"schema_version": 4, "folders": [], "entries": []}))
+        json.dumps({"schema_version": 5, "folders": [], "entries": []}))
     with pytest.raises(UnsupportedHeatmapSchema):
         load_document(tmp_path)
 
@@ -210,14 +212,22 @@ def _fake_hit(code: str = "003490", name: str = "대한항공"):
     )
 
 
-def test_get_empty_heatmap_has_no_next_run(tmp_path: Path):
+def test_get_empty_heatmap_reports_the_shared_next_run(tmp_path: Path):
     r = TestClient(_app(tmp_path)).get("/api/heatmap")
     assert r.status_code == 200
     body = r.json()
     assert body["entries"] == []
     assert body["folders"] == []
-    # No scheduler → no next_run_at_ms (distinct from /api/watchlist).
-    assert "next_run_at_ms" not in body
+    assert body["capture_markers"] == {}
+    # ADR-0142: 히트맵도 17:00 일일 런의 적재 대상이므로 next_run_at_ms 가 있다.
+    # 값은 관심목록 라우트와 **같은 함수**(scheduler.next_run_at_ms)에서 나온다 —
+    # 두 화면이 다른 시각을 말하면 그 자체가 버그이므로 그 함수와 대조한다.
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    from hoga.api.scheduler import next_run_at_ms
+    expected = next_run_at_ms(_dt.datetime.now(tz=ZoneInfo("Asia/Seoul")))
+    assert abs(body["next_run_at_ms"] - expected) < 2000
 
 
 def test_heatmap_folder_wire_drops_member_codes(tmp_path: Path):
@@ -569,3 +579,106 @@ def test_seed_does_not_mutate_watchlist(tmp_path: Path):
     before = (tmp_path / "watchlist.json").read_text()
     seed_from_watchlist_if_absent(tmp_path)
     assert (tmp_path / "watchlist.json").read_text() == before
+
+
+# --- capture markers (ADR-0142) ---------------------------------------------
+
+def _write_v4(tmp_path: Path, *, entries: list[dict], markers: dict | None = None) -> None:
+    import json
+    (tmp_path / "heatmap.json").write_text(json.dumps({
+        "schema_version": 4,
+        "folders": [{"id": "f_0000000a", "name": "반도체", "order": 0},
+                    {"id": "f_0000000b", "name": "AI", "order": 1}],
+        "entries": entries,
+        "capture_markers": markers or {},
+    }, ensure_ascii=False), encoding="utf-8")
+
+
+def test_v3_file_migrates_to_v4_with_empty_markers(tmp_path: Path):
+    """v3→v4 는 순수 필드 추가 — 디스크를 훑어 마커를 시드하지 않는다.
+
+    시드했다면 load 마다 271회 stat 이 붙는다. 마커 부재는 이미 '수집 이력 없음'
+    이라는 옳은 의미라 backfill 이 필요 없다.
+    """
+    from hoga.api.heatmap import load_document
+    _write_v2(tmp_path,
+              folders=[{"id": "f_0000000a", "name": "반도체", "order": 0}],
+              entries=[{"code": "005930", "name": "삼성전자",
+                        "folder_id": "f_0000000a", "order": 0}])
+    doc = load_document(tmp_path)
+    assert doc.schema_version == 4
+    assert doc.capture_markers == {}
+
+
+def test_malformed_markers_are_dropped_not_quarantined(tmp_path: Path):
+    """마커 한 줄이 깨져도 그룹·종목은 살아남는다 (ADR-0065 우선순위).
+
+    마커는 디스크에서 재계산 가능하고 그룹 구성은 아니다 — 복구 가능한 것을 지키려고
+    복구 불가능한 것을 corrupt 백업으로 보내면 정확히 거꾸로다.
+    """
+    from hoga.api.heatmap import load_document
+    _write_v4(tmp_path,
+              entries=[{"code": "005930", "name": "삼성전자",
+                        "folder_id": "f_0000000a", "order": 0}],
+              markers={"005930": "20260806", "BAD!!": "20260806",
+                       "000660": "not-a-date", "035720": 20260806})
+    doc = load_document(tmp_path)
+    assert doc.capture_markers == {"005930": "20260806"}   # 나쁜 3줄만 탈락
+    assert [e.code for e in doc.entries] == ["005930"]     # 종목은 무사
+    assert len(doc.folders) == 2                           # 그룹도 무사
+
+
+@pytest.mark.asyncio
+async def test_marker_is_shared_across_groups_not_forked(tmp_path: Path):
+    """한 종목이 두 그룹에 등록돼도 마커는 하나다 — 이 설계의 존재 이유.
+
+    entry 에 마커를 얹었다면 이 시나리오에서 값이 2벌로 갈라졌을 것이고, 두 값이
+    가리키는 실제 캡처는 (code,date) 하나뿐이라 어느 쪽이 진실인지 말할 수 없다.
+    """
+    from hoga.api import heatmap
+    _write_v4(tmp_path, entries=[
+        {"code": "005930", "name": "삼성전자", "folder_id": "f_0000000a", "order": 0},
+        {"code": "005930", "name": "삼성전자", "folder_id": "f_0000000b", "order": 0},
+    ])
+    await heatmap.bump_last_success(tmp_path, code="005930", date="20260806")
+    assert heatmap.load_capture_markers(tmp_path) == {"005930": "20260806"}
+
+    # 한 그룹에서만 빼면 다른 등록이 남아 있으므로 마커도 남는다.
+    await heatmap.remove_entry(tmp_path, code="005930", folder_id="f_0000000a")
+    assert heatmap.load_capture_markers(tmp_path) == {"005930": "20260806"}
+    # 마지막 등록까지 빠지면 save 경로가 고아 마커를 걷어낸다.
+    await heatmap.remove_entry(tmp_path, code="005930", folder_id="f_0000000b")
+    assert heatmap.load_capture_markers(tmp_path) == {}
+
+
+@pytest.mark.asyncio
+async def test_delete_folder_prunes_markers_of_orphaned_codes(tmp_path: Path):
+    """그룹 삭제도 마커를 정리한다 — remove 계열마다 정리 코드를 두지 않고
+    save_document 한 곳에 맡긴 덕분에 자동으로 따라온다."""
+    from hoga.api import heatmap
+    _write_v4(tmp_path, entries=[
+        {"code": "005930", "name": "삼성전자", "folder_id": "f_0000000a", "order": 0},
+        {"code": "000660", "name": "SK하이닉스", "folder_id": "f_0000000b", "order": 0},
+    ], markers={"005930": "20260806", "000660": "20260806"})
+    await heatmap.delete_folder(tmp_path, folder_id="f_0000000a")
+    assert heatmap.load_capture_markers(tmp_path) == {"000660": "20260806"}
+
+
+@pytest.mark.asyncio
+async def test_add_seeds_marker_from_disk_for_a_new_code(tmp_path: Path):
+    """이미 캡처가 있는 종목을 새로 넣으면 '미수집'으로 보이지 않는다."""
+    from hoga.api import heatmap
+    _write_v4(tmp_path, entries=[])
+    with patch("hoga.api.disk_state.latest_complete_date", return_value="20260805"):
+        await heatmap.add_entry_to_folder(
+            tmp_path, code="005930", name="삼성전자", folder_id="f_0000000a")
+    assert heatmap.load_capture_markers(tmp_path) == {"005930": "20260805"}
+
+
+def test_get_heatmap_serves_markers(tmp_path: Path):
+    _write_v4(tmp_path,
+              entries=[{"code": "005930", "name": "삼성전자",
+                        "folder_id": "f_0000000a", "order": 0}],
+              markers={"005930": "20260806"})
+    body = TestClient(_app(tmp_path)).get("/api/heatmap").json()
+    assert body["capture_markers"] == {"005930": "20260806"}

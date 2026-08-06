@@ -2026,3 +2026,85 @@ def test_enospc_is_classified_as_disk_full_not_internal_error() -> None:
     other = OSError(_errno.EACCES, "permission denied")
     assert _exception_to_error_code(other) is CaptureErrorCode.INTERNAL_ERROR
     assert _exception_to_error_code(RuntimeError("x")) is CaptureErrorCode.INTERNAL_ERROR
+
+
+@pytest.mark.asyncio
+async def test_finalize_item_done_bumps_both_marker_stores(tmp_path):
+    """ADR-0142: 한 캡처가 관심목록·히트맵 마커를 **둘 다** 전진시킨다.
+
+    한 종목이 양쪽 목록에 있을 수 있고 디스크 Stock-Date 는 하나다. 훅이 한쪽만
+    올리면 다른 화면이 영구히 뒤처진 것처럼 보인다 — 실제로는 수집됐는데도.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from hoga.api import captures, heatmap, watchlist
+    captures.reset_state_for_tests()
+    captures._data_dir = tmp_path
+    _fid = (await watchlist.create_folder(tmp_path, name="기본")).id
+    await watchlist.add_member(tmp_path, code="005930", name="삼성전자",
+                               today_kst_date="20260526", folder_id=_fid)
+    _hfid = (await heatmap.create_folder(tmp_path, name="반도체")).id
+    await heatmap.add_entry_to_folder(tmp_path, code="005930", name="삼성전자",
+                                      folder_id=_hfid)
+    meta = tmp_path / "parquet" / "20260526" / "005930" / "meta.json"
+    meta.parent.mkdir(parents=True, exist_ok=True)
+    meta.write_text(json.dumps({
+        "collection_complete": True,
+        "is_partial": False,
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_100_000,
+    }))
+
+    state = captures.QueueItemState(
+        item_id="x", code="005930", date="20260526",
+        force_retry=False, enqueued_at_ms=0, attempt=1,
+    )
+    state.phase = "done"
+
+    with patch("hoga.api.captures.watchlist.bump_last_success",
+               new_callable=AsyncMock) as wl_bump, \
+         patch("hoga.api.heatmap.bump_last_success",
+               new_callable=AsyncMock) as hm_bump:
+        await captures._finalize_item(state)
+
+    wl_bump.assert_awaited_once_with(tmp_path, code="005930", date="20260526")
+    hm_bump.assert_awaited_once_with(tmp_path, code="005930", date="20260526")
+
+
+@pytest.mark.asyncio
+async def test_finalize_item_watchlist_bump_failure_still_bumps_heatmap(tmp_path):
+    """두 스토어는 각자 예외 경계를 갖는다 — 한쪽 실패가 다른 쪽을 건너뛰면 안 된다.
+
+    락도 다르고 종목이 한쪽에만 있을 수도 있어, 하나의 try 로 묶으면 첫 실패가
+    두 번째 스토어를 조용히 삼킨다.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from hoga.api import captures, heatmap
+    captures.reset_state_for_tests()
+    captures._data_dir = tmp_path
+    _hfid = (await heatmap.create_folder(tmp_path, name="반도체")).id
+    await heatmap.add_entry_to_folder(tmp_path, code="005930", name="삼성전자",
+                                      folder_id=_hfid)
+    meta = tmp_path / "parquet" / "20260526" / "005930" / "meta.json"
+    meta.parent.mkdir(parents=True, exist_ok=True)
+    meta.write_text(json.dumps({
+        "collection_complete": True,
+        "is_partial": False,
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_100_000,
+    }))
+
+    state = captures.QueueItemState(
+        item_id="x", code="005930", date="20260526",
+        force_retry=False, enqueued_at_ms=0, attempt=1,
+    )
+    state.phase = "done"
+
+    with patch("hoga.api.captures.watchlist.bump_last_success",
+               new_callable=AsyncMock, side_effect=OSError("disk gone")), \
+         patch("hoga.api.heatmap.bump_last_success",
+               new_callable=AsyncMock) as hm_bump:
+        await captures._finalize_item(state)   # 큐를 죽이지 않는다
+
+    hm_bump.assert_awaited_once_with(tmp_path, code="005930", date="20260526")

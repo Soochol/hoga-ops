@@ -6,6 +6,7 @@ import type { HeatmapEntry, HeatmapFolder as HeatmapFolderModel } from '../api/h
 import type { LiveQuote } from '../api/liveQuotes';
 import { HeatmapRow } from './HeatmapRow';
 import { entryMatchesQuery } from './filterGroups';
+import { captureLagTitle } from './captureLag';
 import { sortEntries, avgPct, heatHeaderBg, makePctOf, type SortMode } from './heat';
 import { folderDroppableId, entrySortableId } from '../watchlist/dragHandlers';
 import type { JumpModifiers } from '../live/useJumpToLive';
@@ -45,6 +46,13 @@ export interface HeatmapFolderProps {
   /** 그룹 삭제. 미전달이면 메뉴의 '그룹 삭제'가 빠진다. 파괴적이므로(멤버 종목 동반 삭제)
    *  confirm 은 호출측 책임. */
   onDeleteFolder?: (folderId: string, name: string) => void;
+  /** code → 마지막 캡처 성공일(YYYYMMDD). 헤더의 '미수집 N' 칩과 행 툴팁이 쓴다
+   *  (ADR-0142). 미전달이면 캡처 표시가 통째로 빠진다 — 단독 렌더/테스트용. */
+  captureMarkers?: Record<string, string>;
+  /** 이 그룹에서 캡처가 뒤처진 코드(보드가 전체 마커로 한 번 계산해 내려준다).
+   *  그룹마다 재계산하지 않는 이유: 기준일은 **보드 전체 마커의 최댓값**이라
+   *  그룹 안에서만 보면 기준이 그룹마다 달라진다. */
+  laggingCodes?: ReadonlySet<string>;
   /** 헤더의 '＋종목' 팝오버를 자동으로 연다(새 그룹 생성 직후 — 보드가 지정). */
   autoOpenAdd?: boolean;
   /** 위 자동 열기 소비 통지(보드 → 페이지로 되돌아가 표식을 태운다). */
@@ -63,12 +71,17 @@ export interface HeatmapFolderProps {
  *
  *  간격: 그룹 간 mb-xs(4.5px, 밀도 우선). 그룹 내부는 헤더-첫행·행간 모두 0으로 붙여
  *  관심종목 패널 리스트와 같은 촘촘한 연속 리스트를 이룬다(구분은 border-b). */
-export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, autoOpenAdd, onAutoOpenAdd }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, captureMarkers, laggingCodes, autoOpenAdd, onAutoOpenAdd }: HeatmapFolderProps) {
   const pctOf = makePctOf(quoteByCode);
   const sorted = sortEntries(entries, sortMode, pctOf);
   const avg = avgPct(entries, pctOf);
   const folderId = folder.id;
   const canSort = !!dragEnabled && !!sortEnabled;
+  // 검색 중에도 그룹 전체 기준으로 센다(entries 는 필터되지 않고 행 하이라이트만
+  // 바뀌므로 sorted 가 아니라 entries 를 세도 같지만, 의도를 명시해 둔다).
+  const laggingInGroup = laggingCodes
+    ? entries.reduce((n, e) => n + (laggingCodes.has(e.code) ? 1 : 0), 0)
+    : 0;
   const [renaming, setRenaming] = useState<{ value: string; error: string | null } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const hasGroupMenu = !!onRenameFolder || !!onDeleteFolder;
@@ -89,6 +102,11 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
       ariaLabel: `${e.name} ${e.code} 차트 열기`,
       testId: `heatmap-row-${e.code}`,
       onContextMenu: ctxFor?.(e.code, e.name),
+      // 캡처 상태는 행에 자리를 만들지 않고 툴팁으로만 싣는다 — 히트맵 행은 밀도가
+      // 1차 정책이라(HeatmapRow 주석) 271행 × 날짜 배지는 칼럼을 못 낸다. 그룹 헤더
+      // 칩이 "몇 개 뒤처졌나"를, 이 툴팁이 "이 종목은 언제였나"를 답한다.
+      captureTitle: captureMarkers ? captureLagTitle(captureMarkers, e.code) : undefined,
+      captureLagging: laggingCodes?.has(e.code) ?? false,
     };
     if (!dragEnabled) {
       return <HeatmapRow key={e.code} {...common} onClick={(ev) => onPick(e.code, e.name, ev)} />;
@@ -159,6 +177,19 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
           {flowSeries !== undefined && <GroupFlowSparkline series={flowSeries} />}
         </span>
         <span className="flex items-center gap-2 flex-none">
+          {laggingInGroup > 0 && (
+            /* 캡처 결손 칩 — 결손이 있을 때만 존재한다(정상은 아무것도 그리지 않는다).
+               색은 --error 계열: DESIGN.md 색 규율에서 캡처 성공/실패는 상태 semantic 이고,
+               시세 색(적/청)과 절대 섞이면 안 되는 축이다. 그래서 등락률 칩 옆에 서도
+               의미가 뒤섞이지 않는다. */
+            <span
+              className="text-2xs font-data tabular-nums text-error"
+              data-testid={`heatmap-folder-lag-${folderId}`}
+              title={`이 그룹에서 ${laggingInGroup}종목이 최신 수집일보다 뒤처졌습니다`}
+            >
+              미수집 {laggingInGroup}
+            </span>
+          )}
           {avg !== null && (
             <span className="text-xs font-data tabular-nums text-fg-dim">
               {avg > 0 ? '+' : ''}{avg.toFixed(1)}%

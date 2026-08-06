@@ -16,7 +16,14 @@ export interface HeatmapEntry {
 export interface HeatmapResponse {
   folders: HeatmapFolder[];
   entries: HeatmapEntry[];
-  // watchlist 와 달리 next_run_at_ms 없음 — 히트맵은 스케줄러 비구동.
+  /** code → 마지막으로 캡처에 성공한 거래일(YYYYMMDD). 키가 없으면 수집 이력 없음.
+   *  **entry 가 아니라 code 로 키잉된다** (ADR-0142): 한 종목이 여러 그룹에 등록되므로
+   *  entry 에 실으면 같은 종목의 값이 그룹 수만큼 갈라진다. 정작 캡처는 (code,date)
+   *  하나뿐이다. */
+  capture_markers: Record<string, string>;
+  /** 다음 17:00 KST 일일 런. ADR-0142 로 히트맵도 그 런의 적재 대상이 되어 생겼다
+   *  (관심목록과 같은 백엔드 함수에서 나온다). */
+  next_run_at_ms: number;
 }
 
 export function getHeatmap(): Promise<HeatmapResponse> {

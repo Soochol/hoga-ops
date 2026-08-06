@@ -67,3 +67,44 @@ it('평면 보드(L3-B) 좌측 스파인 + 헤더 평균 틴트(#3): 폴더는 �
   expect(header).not.toHaveClass('bg-bg-input');
   expect(header.style.background).toBe(heatHeaderBg(5)); // (2+8)/2 = +5%
 });
+
+// --- 캡처 결손 표시 (ADR-0142) ---------------------------------------------
+
+it('뒤처진 종목이 있으면 헤더에 미수집 칩, 그 행만 --error 로 낮춘다', () => {
+  render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
+    sortMode="manual" onPick={() => {}}
+    captureMarkers={{ '005930': '20260806', '000660': '20260804' }}
+    laggingCodes={new Set(['000660'])} />);
+
+  const chip = screen.getByTestId('heatmap-folder-lag-f1');
+  expect(chip).toHaveTextContent('미수집 1');
+  // 상태 semantic 색 — 시세 색(등락 적/청)과 섞이면 안 되는 축이다(DESIGN.md 색 규율).
+  expect(chip).toHaveClass('text-error');
+
+  expect(screen.getByText('SK하이닉스')).toHaveAttribute('data-capture-lagging');
+  expect(screen.getByText('삼성전자')).not.toHaveAttribute('data-capture-lagging');
+});
+
+it('결손이 없으면 칩 자체를 그리지 않는다 — 정상은 침묵한다', () => {
+  render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
+    sortMode="manual" onPick={() => {}}
+    captureMarkers={{ '005930': '20260806', '000660': '20260806' }}
+    laggingCodes={new Set()} />);
+  expect(screen.queryByTestId('heatmap-folder-lag-f1')).toBeNull();
+});
+
+it('마커를 안 넘기면 캡처 표시가 통째로 빠진다(단독 렌더/기존 호출부 무영향)', () => {
+  render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
+    sortMode="manual" onPick={() => {}} />);
+  expect(screen.queryByTestId('heatmap-folder-lag-f1')).toBeNull();
+  expect(screen.getByText('삼성전자')).not.toHaveAttribute('title');
+});
+
+it('행 툴팁이 마지막 수집일을 말한다', () => {
+  render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
+    sortMode="manual" onPick={() => {}}
+    captureMarkers={{ '005930': '20260806' }}
+    laggingCodes={new Set(['000660'])} />);
+  expect(screen.getByText('삼성전자')).toHaveAttribute('title', '마지막 수집 08/06');
+  expect(screen.getByText('SK하이닉스')).toHaveAttribute('title', '수집 이력 없음');
+});

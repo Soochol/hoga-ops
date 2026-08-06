@@ -31,6 +31,12 @@ export interface HeatmapRowProps {
   /** 검색 매칭 행 하이라이트 — 그룹 전체를 보여주되 이 행만 강조(배경 틴트).
    *  QuoteRow active 선례와 동일(좌측 accent 바 없이 배경만). */
   matched?: boolean;
+  /** 마지막 캡처 성공일 툴팁 문구(ADR-0142). 행에 **칼럼을 만들지 않는다** — 이 행은
+   *  밀도가 1차 정책이라 271행 × 날짜 셀을 감당할 폭이 없다. */
+  captureTitle?: string;
+  /** 캡처가 최신 수집일보다 뒤처진 행 — 종목명을 --error 로 낮춘다(점 하나를 더
+   *  그리면 4칼럼 그리드에 5번째 트랙이 필요하다). */
+  captureLagging?: boolean;
 }
 
 /** 칼럼형 행: 종목명 │ 캔들 │ 현재가 │ 등락률. 등락은 배경 워시 없이 priceDirClass
@@ -45,6 +51,7 @@ export interface HeatmapRowProps {
 export function HeatmapRow({
   name, price, pct, open, high, low, expectedPrice, expectedPct, onClick, ariaLabel, testId,
   sortableRef, sortableStyle, dragListeners, dragging, onContextMenu, matched,
+  captureTitle, captureLagging,
 }: HeatmapRowProps) {
   const sign = (n: number) => (n > 0 ? '+' : '');
   const draggable = !!dragListeners;
@@ -81,7 +88,11 @@ export function HeatmapRow({
     >
       {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
-      <span className="truncate text-xs text-fg-dim">{name}</span>
+      <span
+        className={`truncate text-xs ${captureLagging ? 'text-error' : 'text-fg-dim'}`}
+        title={captureTitle}
+        data-capture-lagging={captureLagging ? '' : undefined}
+      >{name}</span>
       {/* 당일 캔들 셀 — CandleGlyph 가 null 이어도 이 span 이 칼럼을 점유해 정렬 유지.
           예상 표시 중엔 '예상' 마커(text-fg-dimmer, DepthBadge 급 크기)가 캔들 옆에 붙는다. */}
       <span className="flex items-center justify-center gap-0.5 overflow-hidden">
