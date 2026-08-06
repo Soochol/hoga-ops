@@ -7,7 +7,7 @@ import type {
   ProgramTradeSeries,
 } from '../api/types';
 import { isContinuousBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
-import { liveVenueAcceptsFrame } from './liveVenuePolicy';
+import { liveVenueAcceptsFrame, type LiveFrameVenue } from './liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 type RawSnapshot = Record<string, unknown>;
@@ -38,6 +38,27 @@ export function filterTradeByVenue(
   selectedVenue: LiveVenueOption,
 ): readonly TradeSnapshot[] {
   return trade.filter((f) => liveVenueAcceptsFrame(selectedVenue, f.venue));
+}
+
+/**
+ * 선택 venue로 라이브 `broker`·`program` 버퍼를 거른다 — 호가·체결 필터의 나머지 둘.
+ *
+ * ⚠ **이 둘만 빠져 있었다.** `ob`·`trade` 는 소스에서 걸러졌는데 `broker`·`program`
+ * 은 버퍼에서 그대로 나갔다. 프레임엔 venue 태그가 실려 있었고(`stream.on_tick` 이
+ * `payload["venue"]` 를 박는다) 읽는 쪽만 안 봤다.
+ *
+ * 증상이 특이했다 — **호버(스팟) 중엔 정상, 벗어나면(LATEST) 한 venue 로만** 나왔다.
+ * 스팟은 파케이를 venue 별로 읽지만(`useLiveBrokersToday`), LATEST 는 WS 버퍼를 쓰기
+ * 때문이다. 버퍼는 세 시장이 시간순으로 섞여 있어 **마지막에 도착한 프레임의 venue**
+ * 가 화면을 차지한다. 값이 그럴듯해 "가끔 이상한 값" 으로만 보인다.
+ *
+ * 페이로드 모양이 kind 마다 달라 제네릭으로 둔다 — 판정은 `venue` 태그 하나뿐이다.
+ */
+export function filterByVenueTag<T extends { venue?: LiveFrameVenue }>(
+  frames: readonly T[],
+  selectedVenue: LiveVenueOption,
+): readonly T[] {
+  return frames.filter((f) => liveVenueAcceptsFrame(selectedVenue, f.venue));
 }
 
 const EMPTY_LEVEL: OrderbookLevel = { price: 0, qty: 0 };
