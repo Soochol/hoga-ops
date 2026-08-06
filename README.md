@@ -208,13 +208,7 @@ systemctl --user daemon-reload && systemctl --user enable --now hoga-ops-backup.
 
 복구는 반대 방향 rsync 한 번이다 — 절차는 `deploy/hoga-ops-backup.sh` 주석에.
 
-### main 브랜치 보호 (CI 를 실제 게이트로)
-
-`.github/workflows/ci.yml` 은 PR 마다 돌지만, **required status check 가 없으면
-아무것도 강제하지 않는다** — red CI 인 PR 도 머지되고 main 직접 푸시도 통과한다.
-이 리포는 에이전트가 병렬 워크트리에서 `gh pr merge` 를 부르는 운영이라, 사람이
-매번 체크 상태를 확인한다는 가정이 유일한 방어였다. 실제로 스테일 베이스 머지가
-main 에 착지한 기능을 revert 한 전례가 있다(clean ≠ up-to-date).
+### main 브랜치 보호
 
 룰셋 정의는 `deploy/github-ruleset-main.json` 에 있다. 적용:
 
@@ -222,12 +216,18 @@ main 에 착지한 기능을 revert 한 전례가 있다(clean ≠ up-to-date).
 gh api -X POST repos/Soochol/hoga-ops/rulesets --input deploy/github-ruleset-main.json
 ```
 
-거는 것: PR 필수(승인 0명) · `frontend`·`backend`·`e2e (playwright)` 통과 필수 ·
-**브랜치가 main 과 최신** 필수 · 강제푸시/삭제 차단. `backend (wallclock)` 는
-스케줄링 지터를 재는 비차단 잡이라 의도적으로 뺐다.
+거는 것: PR 필수(승인 0명) · 강제푸시/삭제 차단. **자동 상태 체크는 걸지 않는다** —
+2026-08-06 에 CI 를 제거하면서 `frontend`·`backend`·`e2e (playwright)` required check
+3개를 해제했다(경위는 `CLAUDE.md` 의 "Local verification").
 
-되돌리기(긴급 머지 등)는 한 줄이다 — `gh api repos/Soochol/hoga-ops/rulesets` 로
-id 를 찾아 `gh api -X DELETE .../rulesets/<id>`.
+**따라서 지금 main 을 지키는 건 사람과 에이전트의 규율뿐이다.** 이 리포는 에이전트가
+병렬 워크트리에서 `gh pr merge` 를 부르는 운영이라, 머지 전에 로컬 검증을 실제로
+돌렸는지가 유일한 방어다. 스테일 베이스 머지가 main 에 착지한 기능을 revert 한 전례가
+있다(clean ≠ up-to-date) — `git fetch origin main` 후 재검증을 빠뜨리지 말 것.
+
+체크를 되살리려면 위 JSON 에 `required_status_checks` 규칙을 다시 넣고 워크플로를
+복구한다. 룰셋 통째로 걷어내려면 `gh api repos/Soochol/hoga-ops/rulesets` 로 id 를
+찾아 `gh api -X DELETE .../rulesets/<id>`.
 
 ### 업그레이드 러닝북
 
