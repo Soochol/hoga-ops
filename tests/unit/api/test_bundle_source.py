@@ -48,12 +48,12 @@ def test_resolve_source_fallback(tmp_path: Path) -> None:
         engine.close()
 
 
-def test_resolve_source_prefers_kis_api_when_policy_requests_it(tmp_path: Path) -> None:
+def test_policy_string_cannot_override_the_ladder(tmp_path: Path) -> None:
     from hoga.api.bundle import _resolve_source
     from hoga.api.queries import QueryEngine
 
     sd_dir = tmp_path / "parquet" / "20260622" / "005930"
-    for source in ("hogaplay", "kiwoom_live", "kis_api"):
+    for source in ("hogaplay", "kiwoom_live"):
         (sd_dir / source).mkdir(parents=True, exist_ok=True)
         (sd_dir / source / "meta.json").write_text(json.dumps({
             "collection_complete": True,
@@ -106,15 +106,15 @@ def test_list_stock_dates_in_range_excludes_non_trading_day(tmp_path: Path) -> N
 
     # 20260710 = 금요일(거래일), 20260711 = 토요일(비거래일 유령 파티션)
     for date in ("20260710", "20260711"):
-        d = tmp_path / "parquet" / date / "005930" / "kis_api"
+        d = tmp_path / "parquet" / date / "005930" / "hogaplay"
         d.mkdir(parents=True)
-        (d / "meta.json").write_text(json.dumps({"source": "kis_api"}))
+        (d / "meta.json").write_text(json.dumps({"source": "hogaplay"}))
 
     engine = QueryEngine(tmp_path)
     try:
         dates = engine.list_stock_dates_in_range(
             code="005930", from_date="20260701", to_date="20260731",
-            source_pref="kis_api",
+            source_pref="hogaplay",
         )
         assert dates == ["20260710"]  # 토요일 20260711 배제
     finally:

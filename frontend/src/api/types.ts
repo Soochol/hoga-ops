@@ -119,7 +119,7 @@ export type OrderbookSnapshot = {
 /** Capture source that produced a segment. Orderflow sources mirror
  * hoga/api/sources.py::SourceName (kiwoom_live=키움 WS, ADR-0116); screener_daily is a
  * chart-only daily corpus. 표기 라벨은 api/sourceCapabilities.ts 가 소유한다. */
-export type SourceName = 'hogaplay' | 'kiwoom_live' | 'kis_api' | 'screener_daily';
+export type SourceName = 'hogaplay' | 'kiwoom_live' | 'screener_daily';
 
 /** GET /api/orderbook response envelope. */
 export type OrderbookResponse = {
@@ -772,8 +772,4 @@ export type RangeBundle = {
   depth_heatmap?: DepthHeatmapPointWire[];
   depth_delta?: DepthDeltaPointWire[];
   broker_late_entries: BrokerLateEntryEvent[];
-  /** hogaplay 캡처 공백을 KIS 분봉으로 복구한 거래일(YYYYMMDD). 승리 소스가 kis_api +
-   *  meta.created_from == 'kis_minute_repair'인 날. 백엔드 진단용 필드로, 현재 UI
-   *  소비자는 없다. Optional in TS라 기존 fixture 무영향(hoga/live/candle_repair.py). */
-  repaired_candle_dates?: string[];
 };

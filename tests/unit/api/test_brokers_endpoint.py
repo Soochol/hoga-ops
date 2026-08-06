@@ -10,7 +10,7 @@ from hoga.api.models import BrokerSeriesResponse
 def test_brokers_response_has_source_field() -> None:
     resp = BrokerSeriesResponse(date="20260528", brokers=[], source="hogaplay")
     assert resp.source == "hogaplay"
-    assert BrokerSeriesResponse(date="20260528", brokers=[], source="kis_api").source == "kis_api"
+    assert BrokerSeriesResponse(date="20260528", brokers=[], source="hogaplay").source == "hogaplay"
     # Type narrowed to SourceName Literal — wrong values rejected by Pydantic
     from pydantic import ValidationError
     with pytest.raises(ValidationError):

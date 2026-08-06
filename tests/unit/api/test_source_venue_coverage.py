@@ -45,13 +45,12 @@ def eng(tmp_path):
 # ── 커버리지 선언 ────────────────────────────────────────────────────────────
 
 def test_krx_only_sources_do_not_cover_nxt():
-    """hogaplay·kis_api 는 KRX 전용이다 — 축이 없는 게 아니라 그 시장만 준다.
+    """hogaplay 는 KRX 전용이다 — 축이 없는 게 아니라 그 시장만 준다.
 
-    삭제된 `kis_live` 가 이 루프에 남아 있었는데, SOURCE_VENUES 에 없는 이름이라
-    실제로는 아래 `test_unknown_source_is_conservatively_krx_only` 와 같은 fallback
-    분기를 재검증할 뿐이었다 — **선언된 커버리지를 검증하지 않았다.**
+    `kis_live`(계층 삭제)·`kis_api`(2026-08-07 제거)는 소스 유니온에 없지만, 모르는
+    이름은 보수적으로 KRX 전용이라 같은 결과가 나온다 — 그 폴백까지 함께 고정한다.
     """
-    for source in ("hogaplay", "kis_api"):
+    for source in ("hogaplay", "kis_live", "kis_api"):
         assert source_covers_venue(source, "KRX")
         assert not source_covers_venue(source, "NXT")
         assert not source_covers_venue(source, "UN")
@@ -86,7 +85,7 @@ def test_uncovered_combination_raises_instead_of_returning_krx(tmp_path):
         with pytest.raises(VenueNotCoveredError):
             source_venue_dir(tmp_path, "hogaplay", venue)
         with pytest.raises(VenueNotCoveredError):
-            source_venue_dir(tmp_path, "kis_api", venue)
+            source_venue_dir(tmp_path, "kis_api", venue)  # 모르는 이름 → KRX 전용 폴백
     # 모르는 source 는 보수적으로 KRX 전용 — 같은 규칙이 적용된다.
     with pytest.raises(VenueNotCoveredError):
         source_venue_dir(tmp_path, "???", "NXT")
@@ -166,6 +165,6 @@ def test_candle_ladder_serves_a_covering_source_for_nxt(tmp_path, eng):
 def test_krx_path_is_unchanged_by_the_filter(tmp_path, eng):
     """KRX 요청은 모든 source 가 후보라 **동작이 그대로**여야 한다(회귀 없음)."""
     sd = tmp_path / "parquet" / "20260804" / "000660"
-    _seed(sd, "kis_api", candles=True)
+    _seed(sd, "hogaplay", candles=True)
 
-    assert resolve_candle_source(eng, "20260804", "000660", "hogaplay_first", "KRX") == "kis_api"
+    assert resolve_candle_source(eng, "20260804", "000660", "hogaplay_first", "KRX") == "hogaplay"

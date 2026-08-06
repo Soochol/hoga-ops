@@ -70,11 +70,9 @@ def _resolved_parquet_dir(
     doesn't honor source_pref and keeps strict 404 semantics. /api/meta
     is the same.
     """
+    # `kis_api` 억제 분기는 제거됐다(2026-08-07) — 그 소스 자체가 사라져 승자가 될 수
+    # 없다. 남은 둘은 호가·체결을 정상 서빙한다.
     resolution = resolve_source_result(engine, date, code, source_pref, venue)
-    if resolution.source == "kis_api":
-        # 2026-07-17 정책: kis_api는 캔들 전용(ADR-0109 복구) — 호가·체결 스팟
-        # 라우트(/api/orderbook·/api/brokers/series)는 더는 서빙하지 않는다(빈 200).
-        return None, resolution.source
     # ⚠ 경로 **존재**까지 본다. 위 docstring 이 약속하는 계약인데 구현이 안 따라가고
     # 있었다 — venue 축이 생기기 전엔 `resolve_source_result` 가 meta.json 을 가진
     # source 에만 경로를 줘서 디렉터리가 늘 존재했다. 지금은 분류가 **source 단위**
