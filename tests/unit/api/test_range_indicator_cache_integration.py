@@ -195,5 +195,5 @@ def test_cache_file_written_for_past_day(tmp_path: Path) -> None:
     engine = _engine_with_day(tmp_path)
     _ratio(engine, B3, cache=engine.indicators_cache, today=FUTURE)
     _fill(engine, B3, cache=engine.indicators_cache, today=FUTURE)
-    assert (tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json").exists()
-    assert (tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.fill.json").exists()
+    assert (tmp_path / "kis-past-indicators" / CODE / SRC / "KRX" / f"{DATE}.ratio.json").exists()
+    assert (tmp_path / "kis-past-indicators" / CODE / SRC / "KRX" / f"{DATE}.fill.json").exists()

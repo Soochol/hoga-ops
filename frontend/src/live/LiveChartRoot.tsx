@@ -20,6 +20,8 @@ import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 import { usePaneFolding } from './usePaneFolding';
 import { FoldedPaneNotice } from './FoldedPaneNotice';
+import { HogaMissingNotice } from './HogaMissingNotice';
+import { deriveHogaMissingNotice } from './hogaMissingNotice';
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import {
@@ -41,7 +43,7 @@ import {
 import { useActivePrefs, useChartPrefsStore, type ChartViewPrefs } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
-import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle, type DepthHeatmapPointWire } from '../api/types';
+import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle, type RangeMissingDate, type DepthHeatmapPointWire } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
 import { minuteRestoreGeometry, minuteRightOffsetBars } from './minuteViewportPolicy';
@@ -226,6 +228,13 @@ interface Props {
   /** Quote/ratio/fill panes read this hoga-only bundle so their first paint and
    * tick path are independent from slower full sidecar slices. */
   hogaPaneBundle?: RangeBundle | null;
+  /** 호가 결손 사유 — **번들과 별도 경로**다(#1133).
+   *
+   * 번들에도 같은 값이 실려 있지만(`RangeBundle.missing_dates`) 그 그릇은 캔들이
+   * 없으면 통째로 null 이 된다. 사유는 데이터가 없을 때 존재하는 값이라 그때 사라지면
+   * 쓸모가 없다 — 자격증명 미설정·벤더 장애로 캔들이 안 오는 경우가 정확히 그렇다.
+   * 미지정이면 번들에서 읽어(구 호출부·`/study` 하위호환) 동작이 이전과 같다. */
+  hogaMissingDates?: readonly RangeMissingDate[];
   /** Optional pane-specific bundle for ratio display when the source is already display-locked. */
   ratioBundle?: RangeBundle | null;
   clampEngaged: boolean;
@@ -350,6 +359,7 @@ export function LiveChartRoot({
   bundle,
   chartBundle,
   hogaPaneBundle,
+  hogaMissingDates,
   ratioBundle,
   clampEngaged,
   isPastCandlesLoading,
@@ -404,6 +414,19 @@ export function LiveChartRoot({
   const hogaBundle = bundle ?? cb;
   const paneHogaBundle = hogaPaneBundle ?? hogaBundle;
   const paneRatioBundle = ratioBundle ?? paneHogaBundle;
+  // 호가 pane 이 빈 **이유**(#1133). prop 을 먼저 보고 번들로 폴백하는 순서가 요점이다 —
+  // 번들은 캔들이 없으면 통째로 null 이라, 정작 "왜 비었나" 를 물어야 할 상황에서
+  // 사유가 함께 사라진다(자격증명 미설정·벤더 장애). prop 은 그 그릇 밖에 있다.
+  const missingDates = hogaMissingDates ?? paneHogaBundle?.missing_dates;
+  const hogaMissingText = useMemo(
+    () =>
+      deriveHogaMissingNotice({
+        missingDates,
+        venue,
+        hasAnyHogaPoints: (paneHogaBundle?.quote_ratio.points.length ?? 0) > 0,
+      }),
+    [missingDates, paneHogaBundle?.quote_ratio.points.length, venue],
+  );
   // Load identity for the per-view chart remount and the reveal cover. The
   // theme segment forces a full chart rebuild if the theme ever changes while
   // this stays mounted — module-resolved series colors and axis-lifetime
@@ -1946,6 +1969,12 @@ export function LiveChartRoot({
       {/* 접힌 지표 알림 — 설정이 꺼진 것으로 오해하지 않도록. 차트 마운트 여부와
           무관하게 접힘이 있으면 띄운다. */}
       <FoldedPaneNotice count={foldedPaneCount} timeAxisVisible={timeAxisVisible} />
+      {/* 호가 pane 이 빈 이유 — 같은 모서리에 쌓는다(둘 다 "덜 보여주고 있다" 는 말). */}
+      <HogaMissingNotice
+        text={hogaMissingText}
+        timeAxisVisible={timeAxisVisible}
+        stacked={foldedPaneCount > 0}
+      />
       {chart && cb && axis.segments.length > 0 && (
         <>
           {candleAlwaysOnTop && (

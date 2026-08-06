@@ -17,6 +17,7 @@ import {
   TIMEFRAME_TO_MS,
   type Timeframe,
   type RangeBundle,
+  type RangeMissingDate,
   type Candle,
   type InvestorNetPoint,
   type SourceName,
@@ -282,6 +283,9 @@ export interface UseLiveBundleResult {
    * across the slower full sidecar range so those panes can paint from
    * `mode=hoga` without being re-keyed when volume-distribution sidecars land. */
   hogaBundle: RangeBundle | null;
+  /** 호가 결손 사유 — `hogaBundle` 이 null 이어도 살아 있어야 해서 별도 필드다(#1133).
+   *  근거는 반환부 주석. */
+  hogaMissingDates: readonly RangeMissingDate[];
   /** 오늘의 단별 잔량 증감 버킷(분봉). 과거일 소스가 없는 **오늘 전용** 지표라
    * RangeBundle 이 아니라 별도 필드로 나간다 — 자세한 근거는 `HogaSeries.depth_delta_today`. */
   depthDeltaToday: readonly DepthDeltaPoint[];
@@ -995,6 +999,10 @@ export function useLiveBundle(
             fill_strength: committedHogaSeries.fill_strength,
             broker_late_entries: brokerLateEntryEnabled ? chartBundle.broker_late_entries : [],
             program_trade: { points: [] },
+            // 결손 사유는 **호가 응답에만** 있다(#1133) — 스프레드 원본인 chartBundle 은
+            // 캔들 경로(벤더 REST)라 이 필드가 없다. 그래서 명시적으로 실어 올린다.
+            // 안 하면 호가 pane 이 비는 바로 그 상황에서 이유가 사라진다.
+            missing_dates: pastHoga.data?.missing_dates ?? [],
           }
         : null,
     [
@@ -1006,6 +1014,7 @@ export function useLiveBundle(
       committedHogaSeries,
       brokerLateEntryEnabled,
       brokerLateEntryEnabled ? chartBundle?.broker_late_entries : null,
+      pastHoga.data?.missing_dates,
     ],
   );
 
@@ -1052,6 +1061,17 @@ export function useLiveBundle(
     bundle,
     chartBundle,
     hogaBundle,
+    /**
+     * 호가 결손 사유 — **번들과 따로 내보낸다**(#1133).
+     *
+     * `hogaBundle` 은 `chartBundle ? {...} : null` 이라 **캔들이 없으면 통째로 null**
+     * 이고, 그러면 안에 실린 사유도 함께 사라진다. 그런데 사유는 데이터가 없을 때
+     * 존재하는 값이라 정작 필요한 순간에 그릇이 없는 셈이다 — 자격증명 미설정·벤더
+     * 장애로 캔들이 안 오면 "왜 비었는지" 를 말할 수단이 함께 증발했다.
+     *
+     * 메타데이터를 데이터와 같은 경로로 흘린 대가라, 경로를 가른 것이 수정이다.
+     */
+    hogaMissingDates: pastHoga.data?.missing_dates ?? [],
     /** 오늘의 단별 잔량 증감 버킷(세션 누적). 과거일 소스가 없어(설계 §5) RangeBundle 에
      *  싣지 않고 도메인 그대로 내보낸다 — wire 왕복도, 백엔드 플래그도 필요 없다. */
     depthDeltaToday,

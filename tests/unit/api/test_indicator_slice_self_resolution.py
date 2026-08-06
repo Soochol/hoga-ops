@@ -64,7 +64,7 @@ def _engine(tmp_path: Path) -> QueryEngine:
 
 
 def _cache_file(tmp_path: Path) -> Path:
-    return tmp_path / "kis-past-indicators" / CODE / "kiwoom_live" / f"{DATE}.ratio.json"
+    return tmp_path / "kis-past-indicators" / CODE / "kiwoom_live" / "KRX" / f"{DATE}.ratio.json"
 
 
 def test_minimal_call_applies_disk_cache_gate(tmp_path: Path) -> None:

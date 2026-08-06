@@ -696,6 +696,33 @@ describe('useLiveBundle', () => {
     expect(result.current.chartBundle).toBeNull();
   });
 
+  // #1133 — 결손 사유는 **호가 응답에만** 있다. hogaBundle 은 캔들 경로(chartBundle)를
+  // 스프레드해 만들어지므로, 명시적으로 옮기지 않으면 호가 pane 이 비는 바로 그
+  // 상황에서 이유가 사라진다. 이 배선이 끊기면 화면은 아무 설명 없는 빈 pane 이 된다.
+  it('호가 응답의 결손 사유가 hogaBundle 로 옮겨진다', () => {
+    // mockImplementation 을 쓰는 이유: beforeEach 가 같은 방식으로 재설정하므로
+    // 다음 테스트로 새지 않는다(mockReturnValue 는 섞이면 우선순위를 헷갈리게 한다).
+    useRangeHogaDeltaSpy.mockImplementation(() => rangeResult({
+      ...fallbackRangeBundle(),
+      missing_dates: [{ date: '20260527', reason: 'source_missing' }],
+    }));
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper() },
+    );
+    expect(result.current.hogaBundle?.missing_dates).toEqual([
+      { date: '20260527', reason: 'source_missing' },
+    ]);
+  });
+
+  it('결손이 없으면 빈 배열이다 — undefined 로 새지 않는다', () => {
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper() },
+    );
+    expect(result.current.hogaBundle?.missing_dates).toEqual([]);
+  });
+
   it('10m: 혼합 해상도 응답(과거=10분봉, 오늘=1분봉)이 한 번의 집계로 같은 격자에 수렴한다', () => {
     // /past-candles 가 bucket_ms 로 과거분을 표시 tf 주기로 직접 주면서(#1008)
     // 응답이 혼합 해상도가 됐다: 과거일은 이미 10분 버킷, 오늘은 1분(실시간 tail

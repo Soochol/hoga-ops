@@ -49,6 +49,7 @@ from hoga.api.models import (
     DepthHeatmapPoint,
     TradeVolumePoc,
 )
+from hoga.live.venue import Venue
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 from hoga.util.atomic_write import atomic_write_json
@@ -121,14 +122,14 @@ class PastIndicatorsCache:
         # In-memory hot cache (avoids re-reading disk within a process).
         # WS4: dict당 LRU 상한 — 축출돼도 디스크 read-through로 값은 보존되므로
         # 관측 가능 동작은 불변, 장수명 프로세스의 메모리만 유계가 된다.
-        self._mem_ratio: OrderedDict[tuple[str, str, str], list[QuoteRatioRow]] = OrderedDict()
-        self._mem_fill: OrderedDict[tuple[str, str, str], list[FillStrengthRow]] = OrderedDict()
+        self._mem_ratio: OrderedDict[tuple[str, str, str, str], list[QuoteRatioRow]] = OrderedDict()
+        self._mem_fill: OrderedDict[tuple[str, str, str, str], list[FillStrengthRow]] = OrderedDict()
         # None is a valid cached result for empty/no-data days, so has_/get_
         # remain separate for peak caches.
-        self._mem_ask_peak: OrderedDict[tuple[str, str, str, int], AskPeak | None] = OrderedDict()
-        self._mem_bid_peak: OrderedDict[tuple[str, str, str, int], BidPeak | None] = OrderedDict()
+        self._mem_ask_peak: OrderedDict[tuple[str, str, str, str, int], AskPeak | None] = OrderedDict()
+        self._mem_bid_peak: OrderedDict[tuple[str, str, str, str, int], BidPeak | None] = OrderedDict()
         self._mem_trade_volume_poc: OrderedDict[
-            tuple[str, str, str, int, int, int], TradeVolumePoc | None
+            tuple[str, str, str, str, int, int, int], TradeVolumePoc | None
         ] = OrderedDict()
         # depth_heatmap 은 (code, date, source, bucket_ms) 결과를 그대로 캐시한다.
         # ratio/fill 처럼 1m 저장 후 재집계하지 않는 이유: depth 대표 선택이
@@ -136,23 +137,23 @@ class PastIndicatorsCache:
         # coarse 대표를 정확히 복원하려면 선택 근거(is_pre)를 함께 저장해야 하기
         # 때문. bucket_ms 별 결과 캐시가 단순·정확하다.
         self._mem_depth: OrderedDict[
-            tuple[str, str, str, int], list[DepthHeatmapPoint]
+            tuple[str, str, str, str, int], list[DepthHeatmapPoint]
         ] = OrderedDict()
         # depth_delta 는 증감 있는 가격만 담아 depth 보다 훨씬 작다(희소).
         # 공용 512 LRU 편승 — depth 처럼 전용 상한 불필요.
         self._mem_depth_delta: OrderedDict[
-            tuple[str, str, str, int], list[DepthDeltaPoint]
+            tuple[str, str, str, str, int], list[DepthDeltaPoint]
         ] = OrderedDict()
         # 체결 분포(단일 모델|None)·거래원 지각진입(리스트)·연속거래 상한(스칼라).
         # 전부 소형이라 공용 512 LRU 편승(depth 처럼 전용 상한 불필요).
         self._mem_vdist: OrderedDict[
-            tuple[str, str, str, int, int, int], DayVolumeDistribution | None
+            tuple[str, str, str, str, int, int, int], DayVolumeDistribution | None
         ] = OrderedDict()
         self._mem_broker_late: OrderedDict[
-            tuple[str, str, str, int], list[BrokerLateEntryEvent]
+            tuple[str, str, str, str, int], list[BrokerLateEntryEvent]
         ] = OrderedDict()
         self._mem_continuous_before: OrderedDict[
-            tuple[str, str, str, int], int | None
+            tuple[str, str, str, str, int], int | None
         ] = OrderedDict()
         # Capture-freshness guard (2026-07-23). A cached indicator slice is only
         # valid for the exact capture it was computed from, yet a re-capture
@@ -165,7 +166,7 @@ class PastIndicatorsCache:
         # capture, shared by every kind of the Stock-Date. Disk staleness is gated
         # in _read/_read_model_cache; mem staleness is gated by _sync_generation,
         # which purges these dicts on a token change.
-        self._gen: dict[tuple[str, str, str], int] = {}
+        self._gen: dict[tuple[str, str, str, str], int] = {}
         self._all_mem_dicts: tuple[OrderedDict, ...] = (
             self._mem_ratio, self._mem_fill, self._mem_ask_peak, self._mem_bid_peak,
             self._mem_trade_volume_poc, self._mem_depth, self._mem_depth_delta,
@@ -233,20 +234,24 @@ class PastIndicatorsCache:
             od.move_to_end(key)
             return od[key]
 
-    def _capture_mtime_ms(self, code: str, date: str, source: str) -> int:
-        """Capture identity for a Stock-Date source: meta.json mtime in ms.
+    def _capture_mtime_ms(
+        self, code: str, date: str, source: str, *, venue: Venue = "KRX",
+    ) -> int:
+        """Capture identity for a Stock-Date source+venue: meta.json mtime in ms.
 
-        meta.json is rewritten by every capture of ``(date, code, source)``, so a
-        re-capture strictly advances this. Returns 0 when meta is absent (legacy
+        meta.json is rewritten by every capture of ``(date, code, source, venue)``,
+        so a re-capture strictly advances this. Returns 0 when meta is absent (legacy
         flat layout; tests with no parquet on disk) — callers read 0 as "unknown,
         don't invalidate" so a missing source never nukes an otherwise-valid cache.
+
+        venue 축은 #1133 에서 들어왔다. 그전엔 `"KRX"` 리터럴이라, 같은 (code, date,
+        source) 의 NXT 재캡처가 KRX 의 mtime 을 정체성으로 삼았다 — 캐시가 venue 를
+        구별하게 된 지금 그 리터럴은 무효화를 통째로 어긋나게 한다.
         """
-        # ⚠ "KRX" 리터럴 — 이 캐시는 아직 venue 개념이 없다(PR-J). 292·367 행의
-        # `kis-past-indicators` 트리는 parquet 트리가 아니라 venue 축이 없다.
         from hoga.api.sources import source_venue_dir  # noqa: PLC0415
 
         meta = (
-            source_venue_dir(self._data_dir / "parquet" / date / code, source, "KRX")
+            source_venue_dir(self._data_dir / "parquet" / date / code, source, venue)
             / "meta.json"
         )
         try:
@@ -257,31 +262,39 @@ class PastIndicatorsCache:
     def _is_stale(self, path: Path, fetched_at_ms: object) -> bool:
         """True when the source capture is newer than this cache artifact.
 
-        Derives (code, date, source) from the cache ``path`` layout
-        (kis-past-indicators/<code>/<source>/<date>.<suffix>.json) so both disk
-        readers share one gate without threading the key through. Lenient on any
-        surprise (unparseable path, missing meta → token 0, missing timestamp):
-        returns False so a cache we cannot prove stale is never discarded."""
+        Derives (code, date, source, venue) from the cache ``path`` layout
+        (kis-past-indicators/<code>/<source>[/<venue>]/<date>.<suffix>.json) so both
+        disk readers share one gate without threading the key through. venue 세그먼트는
+        `source_venue_dir` 규율대로 **여러 venue 를 덮는 source 에만** 있다 — 없으면
+        그 source 는 정의상 KRX 전용이다. Lenient on any surprise (unparseable path,
+        missing meta → token 0, missing timestamp): returns False so a cache we cannot
+        prove stale is never discarded."""
         try:
             rel = path.relative_to(self._data_dir / "kis-past-indicators")
             code, source = rel.parts[0], rel.parts[1]
+            venue = cast("Venue", rel.parts[2]) if len(rel.parts) > 3 else "KRX"  # noqa: PLR2004 — code/source/venue/file
             date = path.name.split(".", 1)[0]
         except (ValueError, IndexError):
             return False
-        tok = self._capture_mtime_ms(code, date, source)
+        tok = self._capture_mtime_ms(code, date, source, venue=venue)
         if tok == 0 or not isinstance(fetched_at_ms, (int, float)):
             return False
         return tok > int(fetched_at_ms)
 
-    def _sync_generation(self, code: str, date: str, source: str) -> None:
-        """Evict in-memory entries for ``(code, date, source)`` when its capture
+    def _sync_generation(self, code: str, date: str, source: str, *, venue: Venue = "KRX") -> None:
+        """Evict in-memory entries for ``(code, date, source, venue)`` when its capture
         token advanced since they were memoized. One stat() per Stock-Date lookup;
         a prefix purge only on the (rare) re-capture. Disk artifacts are gated
         independently in _read/_read_model_cache, so a cold process is correct
         without this — this keeps a long-lived engine correct across a re-capture
-        too (the incident's /live server held the stale slice in mem)."""
-        key = (code, date, source)
-        tok = self._capture_mtime_ms(code, date, source)
+        too (the incident's /live server held the stale slice in mem).
+
+        ⚠ prefix 길이는 **키의 공통 머리 길이와 같아야 한다**(#1133 에서 3→4). venue 가
+        키에 들어온 뒤에도 `k[:3]` 이면 한 venue 의 재캡처가 다른 venue 의 메모리
+        항목까지 쓸어 간다 — 정확성은 유지되지만(디스크 read-through) 재캡처마다
+        무관한 시장의 캐시를 버린다."""
+        key = (code, date, source, venue)
+        tok = self._capture_mtime_ms(code, date, source, venue=venue)
         with self._lock:
             prev = self._gen.get(key)
             if prev == tok:
@@ -292,23 +305,36 @@ class PastIndicatorsCache:
             for od in self._all_mem_dicts:
                 # list(od) 로 스냅샷을 뜬 뒤 지운다 — 순회 중 삭제는 같은 스레드에서도
                 # 위험하고, 락 밖이면 다른 스레드의 삽입이 순회를 깨뜨렸다.
-                for k in [k for k in list(od) if k[:3] == key]:
+                for k in [k for k in list(od) if k[:4] == key]:
                     od.pop(k, None)
 
-    def _path(self, code: str, date: str, source: str, kind: Kind) -> Path:
-        return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{kind}.json"
+    def _store_dir(self, code: str, source: str, venue: Venue) -> Path:
+        """이 (code, source, venue) 의 캐시 디렉터리.
+
+        parquet 트리와 **같은 규율**(`source_venue_dir`)을 쓴다 — venue 를 하나만
+        덮는 source(hogaplay·kis_api)는 세그먼트가 없고, 여럿을 덮는 source
+        (kiwoom_live)만 `{source}/{venue}/` 가 된다. 규율을 공유하는 덕에 기존
+        hogaplay 캐시 파일은 경로가 그대로라 무효화되지 않는다. kiwoom_live 의 구
+        파일만 새 경로에서 미스가 되어 한 번 재계산된다(값은 KRX 로 동일).
+        """
+        from hoga.api.sources import source_venue_dir  # noqa: PLC0415 — 순환 절단
+
+        return source_venue_dir(self._data_dir / "kis-past-indicators" / code, source, venue)
+
+    def _path(self, code: str, date: str, source: str, kind: Kind, *, venue: Venue = "KRX") -> Path:
+        return self._store_dir(code, source, venue) / f"{date}.{kind}.json"
 
     # ── ratio (호가비) ─────────────────────────────────────────────────────────
 
-    def get_ratio(self, code: str, date: str, source: str) -> list[QuoteRatioRow] | None:
-        self._sync_generation(code, date, source)
-        key = (code, date, source)
+    def get_ratio(self, code: str, date: str, source: str, *, venue: Venue = "KRX") -> list[QuoteRatioRow] | None:
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue)
         stats = self._stats["ratio"]
         hit = self._mem_hit(self._mem_ratio, key)
         if hit is not None:
             stats.record_hit()
             return hit
-        tuples = self._read(code, date, source, "ratio")
+        tuples = self._read(code, date, source, "ratio", venue=venue)
         if tuples is None:
             stats.record_miss()
             return None
@@ -323,28 +349,30 @@ class PastIndicatorsCache:
         self._mem_put(self._mem_ratio, key, rows, stats)
         return rows
 
-    def store_ratio(self, code: str, date: str, source: str, rows: list[QuoteRatioRow]) -> None:
+    def store_ratio(
+        self, code: str, date: str, source: str, rows: list[QuoteRatioRow], *, venue: Venue = "KRX",
+    ) -> None:
         tuples = [
             [r.bucket_intra_ms, r.bid_total, r.ask_total,
              r.bid_max, r.ask_max, r.imb_max_bid, r.imb_max_ask]
             for r in rows
         ]
-        self._write(code, date, source, "ratio", tuples)
+        self._write(code, date, source, "ratio", tuples, venue=venue)
         stats = self._stats["ratio"]
         stats.record_store()
-        self._mem_put(self._mem_ratio, (code, date, source), rows, stats)
+        self._mem_put(self._mem_ratio, (code, date, source, venue), rows, stats)
 
     # ── fill (체결강도) ────────────────────────────────────────────────────────
 
-    def get_fill(self, code: str, date: str, source: str) -> list[FillStrengthRow] | None:
-        self._sync_generation(code, date, source)
-        key = (code, date, source)
+    def get_fill(self, code: str, date: str, source: str, *, venue: Venue = "KRX") -> list[FillStrengthRow] | None:
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue)
         stats = self._stats["fill"]
         hit = self._mem_hit(self._mem_fill, key)
         if hit is not None:
             stats.record_hit()
             return hit
-        triples = self._read(code, date, source, "fill")
+        triples = self._read(code, date, source, "fill", venue=venue)
         if triples is None:
             stats.record_miss()
             return None
@@ -355,12 +383,14 @@ class PastIndicatorsCache:
         self._mem_put(self._mem_fill, key, rows, stats)
         return rows
 
-    def store_fill(self, code: str, date: str, source: str, rows: list[FillStrengthRow]) -> None:
+    def store_fill(
+        self, code: str, date: str, source: str, rows: list[FillStrengthRow], *, venue: Venue = "KRX",
+    ) -> None:
         triples = [[r.bucket_intra_ms, r.buy_qty, r.sell_qty] for r in rows]
-        self._write(code, date, source, "fill", triples)
+        self._write(code, date, source, "fill", triples, venue=venue)
         stats = self._stats["fill"]
         stats.record_store()
-        self._mem_put(self._mem_fill, (code, date, source), rows, stats)
+        self._mem_put(self._mem_fill, (code, date, source, venue), rows, stats)
 
     # ── ask/bid peak (매도/매수 최대벽) ───────────────────────────────────────
 
@@ -369,12 +399,12 @@ class PastIndicatorsCache:
         code: str,
         date: str,
         source: str,
-        suffix: str,
+        suffix: str, *, venue: Venue = "KRX",
     ) -> Path:
-        return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{suffix}.json"
+        return self._store_dir(code, source, venue) / f"{date}.{suffix}.json"
 
-    def _peak_path(self, code: str, date: str, source: str, kind: Literal["ask_peak", "bid_peak"], bucket_ms: int) -> Path:  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
-        return self._model_path(code, date, source, f"{kind}.{bucket_ms}")
+    def _peak_path(self, code: str, date: str, source: str, kind: Literal["ask_peak", "bid_peak"], bucket_ms: int, *, venue: Venue = "KRX") -> Path:  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+        return self._model_path(code, date, source, f"{kind}.{bucket_ms}", venue=venue)
 
     def _poc_path(
         self,
@@ -383,7 +413,7 @@ class PastIndicatorsCache:
         source: str,
         range_count: int,
         price_min: int,
-        price_max: int,
+        price_max: int, *, venue: Venue = "KRX",
     ) -> Path:
         return self._model_path(
             code,
@@ -432,15 +462,15 @@ class PastIndicatorsCache:
         except OSError:
             _log.warning("past_indicators_cache.write_failed path=%s", path, exc_info=True)
 
-    def has_ask_peak(self, code: str, date: str, source: str, bucket_ms: int) -> bool:
-        self._sync_generation(code, date, source)
-        key = (code, date, source, bucket_ms)
+    def has_ask_peak(self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX") -> bool:
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue, bucket_ms)
         stats = self._stats["ask_peak"]
         if key in self._mem_ask_peak:
             stats.record_hit()
             return True
         value = self._read_model_cache(
-            self._peak_path(code, date, source, "ask_peak", bucket_ms),
+            self._peak_path(code, date, source, "ask_peak", bucket_ms, venue=venue),
             AskPeak,
             kind="ask_peak",
         )
@@ -451,15 +481,17 @@ class PastIndicatorsCache:
         self._mem_put(self._mem_ask_peak, key, value, stats)  # type: ignore[arg-type]
         return True
 
-    def get_ask_peak(self, code: str, date: str, source: str, bucket_ms: int) -> AskPeak | None:
+    def get_ask_peak(
+        self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX",
+    ) -> AskPeak | None:
         # Lookup accounted on has_ask_peak (the guarding call); get_ is a mem re-read.
-        self._sync_generation(code, date, source)
-        key = (code, date, source, bucket_ms)
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue, bucket_ms)
         cached = self._mem_hit_allowing_none(self._mem_ask_peak, key)
         if cached is not _CACHE_MISS:
             return cached
         value = self._read_model_cache(
-            self._peak_path(code, date, source, "ask_peak", bucket_ms),
+            self._peak_path(code, date, source, "ask_peak", bucket_ms, venue=venue),
             AskPeak,
             kind="ask_peak",
         )
@@ -470,24 +502,24 @@ class PastIndicatorsCache:
         return cast("AskPeak | None", value)
 
     def store_ask_peak(
-        self, code: str, date: str, source: str, bucket_ms: int, peak: AskPeak | None
+        self, code: str, date: str, source: str, bucket_ms: int, peak: AskPeak | None, *, venue: Venue = "KRX"
     ) -> None:
         stats = self._stats["ask_peak"]
         stats.record_store()
-        self._mem_put(self._mem_ask_peak, (code, date, source, bucket_ms), peak, stats)
+        self._mem_put(self._mem_ask_peak, (code, date, source, venue, bucket_ms), peak, stats)
         self._write_model_cache(
-            self._peak_path(code, date, source, "ask_peak", bucket_ms), peak, kind="ask_peak"
+            self._peak_path(code, date, source, "ask_peak", bucket_ms, venue=venue), peak, kind="ask_peak"
         )
 
-    def has_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> bool:
-        self._sync_generation(code, date, source)
-        key = (code, date, source, bucket_ms)
+    def has_bid_peak(self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX") -> bool:
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue, bucket_ms)
         stats = self._stats["bid_peak"]
         if key in self._mem_bid_peak:
             stats.record_hit()
             return True
         value = self._read_model_cache(
-            self._peak_path(code, date, source, "bid_peak", bucket_ms),
+            self._peak_path(code, date, source, "bid_peak", bucket_ms, venue=venue),
             BidPeak,
             kind="bid_peak",
         )
@@ -498,15 +530,17 @@ class PastIndicatorsCache:
         self._mem_put(self._mem_bid_peak, key, value, stats)  # type: ignore[arg-type]
         return True
 
-    def get_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> BidPeak | None:
+    def get_bid_peak(
+        self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX",
+    ) -> BidPeak | None:
         # Lookup accounted on has_bid_peak (the guarding call); get_ is a mem re-read.
-        self._sync_generation(code, date, source)
-        key = (code, date, source, bucket_ms)
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue, bucket_ms)
         cached = self._mem_hit_allowing_none(self._mem_bid_peak, key)
         if cached is not _CACHE_MISS:
             return cached
         value = self._read_model_cache(
-            self._peak_path(code, date, source, "bid_peak", bucket_ms),
+            self._peak_path(code, date, source, "bid_peak", bucket_ms, venue=venue),
             BidPeak,
             kind="bid_peak",
         )
@@ -516,13 +550,13 @@ class PastIndicatorsCache:
         return cast("BidPeak | None", value)
 
     def store_bid_peak(
-        self, code: str, date: str, source: str, bucket_ms: int, peak: BidPeak | None
+        self, code: str, date: str, source: str, bucket_ms: int, peak: BidPeak | None, *, venue: Venue = "KRX"
     ) -> None:
         stats = self._stats["bid_peak"]
         stats.record_store()
-        self._mem_put(self._mem_bid_peak, (code, date, source, bucket_ms), peak, stats)
+        self._mem_put(self._mem_bid_peak, (code, date, source, venue, bucket_ms), peak, stats)
         self._write_model_cache(
-            self._peak_path(code, date, source, "bid_peak", bucket_ms), peak, kind="bid_peak"
+            self._peak_path(code, date, source, "bid_peak", bucket_ms, venue=venue), peak, kind="bid_peak"
         )
 
     # ── trade_volume_poc ─────────────────────────────────────────────────────
@@ -534,17 +568,17 @@ class PastIndicatorsCache:
         source: str,
         range_count: int,
         price_min: int,
-        price_max: int,
+        price_max: int, *, venue: Venue = "KRX",
     ) -> TradeVolumePoc | None | object:
-        self._sync_generation(code, date, source)
-        key = (code, date, source, range_count, price_min, price_max)
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue, range_count, price_min, price_max)
         stats = self._stats["poc"]
         cached = self._mem_hit_allowing_none(self._mem_trade_volume_poc, key)
         if cached is not _CACHE_MISS:
             stats.record_hit()
             return cached
         value = self._read_model_cache(
-            self._poc_path(code, date, source, range_count, price_min, price_max),
+            self._poc_path(code, date, source, range_count, price_min, price_max, venue=venue),
             TradeVolumePoc,
             kind="poc",
         )
@@ -563,25 +597,25 @@ class PastIndicatorsCache:
         range_count: int,
         price_min: int,
         price_max: int,
-        poc: TradeVolumePoc | None,
+        poc: TradeVolumePoc | None, *, venue: Venue = "KRX",
     ) -> None:
-        key = (code, date, source, range_count, price_min, price_max)
+        key = (code, date, source, venue, range_count, price_min, price_max)
         stats = self._stats["poc"]
         stats.record_store()
         self._mem_put(self._mem_trade_volume_poc, key, poc, stats)
         self._write_model_cache(
-            self._poc_path(code, date, source, range_count, price_min, price_max),
+            self._poc_path(code, date, source, range_count, price_min, price_max, venue=venue),
             poc,
             kind="poc",
         )
 
     # ── depth_heatmap (호가 잔량 히트맵) ─────────────────────────────────────────
 
-    def _depth_path(self, code: str, date: str, source: str, bucket_ms: int) -> Path:
-        return self._model_path(code, date, source, f"depth.{bucket_ms}")
+    def _depth_path(self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX") -> Path:
+        return self._model_path(code, date, source, f"depth.{bucket_ms}", venue=venue)
 
     def _mem_put_depth(
-        self, key: tuple[str, str, str, int], value: list[DepthHeatmapPoint]
+        self, key: tuple[str, str, str, str, int], value: list[DepthHeatmapPoint]
     ) -> None:
         stats = self._stats["depth"]
         od = self._mem_depth
@@ -593,19 +627,19 @@ class PastIndicatorsCache:
                 stats.record_eviction()
 
     def get_depth(
-        self, code: str, date: str, source: str, bucket_ms: int
+        self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX"
     ) -> list[DepthHeatmapPoint] | object:
         """Cached depth-heatmap points for a completed past Stock-Date, or
         ``_CACHE_MISS``. An empty list is a valid cached result (no-data day),
         so the sentinel — not ``[]`` — signals a miss (mirrors get_trade_volume_poc)."""
-        self._sync_generation(code, date, source)
-        key = (code, date, source, bucket_ms)
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue, bucket_ms)
         stats = self._stats["depth"]
         hit = self._mem_hit(self._mem_depth, key)
         if hit is not None:
             stats.record_hit()
             return hit
-        path = self._depth_path(code, date, source, bucket_ms)
+        path = self._depth_path(code, date, source, bucket_ms, venue=venue)
         if not path.exists():
             stats.record_miss()
             return _CACHE_MISS
@@ -635,45 +669,52 @@ class PastIndicatorsCache:
         return points
 
     def store_depth(
-        self, code: str, date: str, source: str, bucket_ms: int, points: list[DepthHeatmapPoint]
+        self,
+        code: str,
+        date: str,
+        source: str,
+        bucket_ms: int,
+        points: list[DepthHeatmapPoint],
+        *,
+        venue: Venue = "KRX",
     ) -> None:
         stats = self._stats["depth"]
         stats.record_store()
-        self._mem_put_depth((code, date, source, bucket_ms), points)
+        self._mem_put_depth((code, date, source, venue, bucket_ms), points)
         payload = {
             "version": KIND_VERSIONS["depth"],
             "points": [p.model_dump(mode="json") for p in points],
             "fetched_at_ms": int(time.time() * 1000),
         }
         try:
-            atomic_write_json(self._depth_path(code, date, source, bucket_ms), payload)
+            atomic_write_json(self._depth_path(code, date, source, bucket_ms, venue=venue), payload)
         except OSError:
             _log.warning(
                 "past_indicators_cache.write_failed path=%s",
-                self._depth_path(code, date, source, bucket_ms),
+                self._depth_path(code, date, source, bucket_ms, venue=venue),
                 exc_info=True,
             )
 
     # ── depth_delta (단별 잔량 증감) ─────────────────────────────────────────────
 
-    def _depth_delta_path(self, code: str, date: str, source: str, bucket_ms: int) -> Path:
-        return self._model_path(code, date, source, f"depth_delta.{bucket_ms}")
+    def _depth_delta_path(self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX") -> Path:
+        return self._model_path(code, date, source, f"depth_delta.{bucket_ms}", venue=venue)
 
     def get_depth_delta(
-        self, code: str, date: str, source: str, bucket_ms: int
+        self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX"
     ) -> list[DepthDeltaPoint] | object:
         """완료 과거일의 단별 잔량 증감 포인트, 또는 ``_CACHE_MISS``.
 
         get_depth 와 완전 대칭 — 빈 리스트도 유효 결과(무데이터 일자)라 센티넬로
         미스를 구분한다."""
-        self._sync_generation(code, date, source)
-        key = (code, date, source, bucket_ms)
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue, bucket_ms)
         stats = self._stats["depth_delta"]
         hit = self._mem_hit(self._mem_depth_delta, key)
         if hit is not None:
             stats.record_hit()
             return hit
-        path = self._depth_delta_path(code, date, source, bucket_ms)
+        path = self._depth_delta_path(code, date, source, bucket_ms, venue=venue)
         if not path.exists():
             stats.record_miss()
             return _CACHE_MISS
@@ -703,49 +744,65 @@ class PastIndicatorsCache:
         return points
 
     def store_depth_delta(
-        self, code: str, date: str, source: str, bucket_ms: int, points: list[DepthDeltaPoint]
+        self, code: str, date: str, source: str, bucket_ms: int, points: list[DepthDeltaPoint], *, venue: Venue = "KRX"
     ) -> None:
         stats = self._stats["depth_delta"]
         stats.record_store()
-        self._mem_put(self._mem_depth_delta, (code, date, source, bucket_ms), points, stats)
+        self._mem_put(self._mem_depth_delta, (code, date, source, venue, bucket_ms), points, stats)
         payload = {
             "version": KIND_VERSIONS["depth_delta"],
             "points": [p.model_dump(mode="json") for p in points],
             "fetched_at_ms": int(time.time() * 1000),
         }
         try:
-            atomic_write_json(self._depth_delta_path(code, date, source, bucket_ms), payload)
+            atomic_write_json(self._depth_delta_path(code, date, source, bucket_ms, venue=venue), payload)
         except OSError:
             _log.warning(
                 "past_indicators_cache.write_failed path=%s",
-                self._depth_delta_path(code, date, source, bucket_ms),
+                self._depth_delta_path(code, date, source, bucket_ms, venue=venue),
                 exc_info=True,
             )
 
     # ── volume_distribution (체결 분포) ──────────────────────────────────────────
 
     def _vdist_path(
-        self, code: str, date: str, source: str, range_count: int, price_min: int, price_max: int
+        self,
+        code: str,
+        date: str,
+        source: str,
+        range_count: int,
+        price_min: int,
+        price_max: int,
+        *,
+        venue: Venue = "KRX",
     ) -> Path:
         return self._model_path(
-            code, date, source, f"volume_distribution.{range_count}.{price_min}.{price_max}"
+            code, date, source, f"volume_distribution.{range_count}.{price_min}.{price_max}", venue=venue
         )
 
     def get_volume_distribution(
-        self, code: str, date: str, source: str, range_count: int, price_min: int, price_max: int
+        self,
+        code: str,
+        date: str,
+        source: str,
+        range_count: int,
+        price_min: int,
+        price_max: int,
+        *,
+        venue: Venue = "KRX",
     ) -> DayVolumeDistribution | None | object:
         """Cached체결 분포 for a completed past Stock-Date, or ``_CACHE_MISS``.
         None(무데이터일)도 유효 캐시값이라 센티널로 미스를 구분(POC와 동일).
         ``source`` 는 호출부가 넘긴 trade_indicator_source — 키 정합 유지."""
-        self._sync_generation(code, date, source)
-        key = (code, date, source, range_count, price_min, price_max)
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue, range_count, price_min, price_max)
         stats = self._stats["vdist"]
         cached = self._mem_hit_allowing_none(self._mem_vdist, key)
         if cached is not _CACHE_MISS:
             stats.record_hit()
             return cached
         value = self._read_model_cache(
-            self._vdist_path(code, date, source, range_count, price_min, price_max),
+            self._vdist_path(code, date, source, range_count, price_min, price_max, venue=venue),
             DayVolumeDistribution,
             kind="vdist",
         )
@@ -764,14 +821,14 @@ class PastIndicatorsCache:
         range_count: int,
         price_min: int,
         price_max: int,
-        value: DayVolumeDistribution | None,
+        value: DayVolumeDistribution | None, *, venue: Venue = "KRX",
     ) -> None:
-        key = (code, date, source, range_count, price_min, price_max)
+        key = (code, date, source, venue, range_count, price_min, price_max)
         stats = self._stats["vdist"]
         stats.record_store()
         self._mem_put(self._mem_vdist, key, value, stats)
         self._write_model_cache(
-            self._vdist_path(code, date, source, range_count, price_min, price_max),
+            self._vdist_path(code, date, source, range_count, price_min, price_max, venue=venue),
             value,
             kind="vdist",
         )
@@ -782,8 +839,8 @@ class PastIndicatorsCache:
     # 그 매핑이 바뀌면 캐시된 events 가 스테일해지므로 KIND_VERSIONS["broker_late"] 를
     # 범프해야 한다(bucketing/대표 semantics 변경과 동일 정책).
 
-    def _broker_late_path(self, code: str, date: str, source: str, start_hhmm: int) -> Path:
-        return self._model_path(code, date, source, f"broker_late.{start_hhmm}")
+    def _broker_late_path(self, code: str, date: str, source: str, start_hhmm: int, *, venue: Venue = "KRX") -> Path:
+        return self._model_path(code, date, source, f"broker_late.{start_hhmm}", venue=venue)
 
     def _read_model_list_cache(
         self, path: Path, model_type: type[_ModelT], *, payload_key: str, kind: str
@@ -825,17 +882,17 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.write_failed path=%s", path, exc_info=True)
 
     def get_broker_late(
-        self, code: str, date: str, source: str, start_hhmm: int
+        self, code: str, date: str, source: str, start_hhmm: int, *, venue: Venue = "KRX"
     ) -> list[BrokerLateEntryEvent] | object:
-        self._sync_generation(code, date, source)
-        key = (code, date, source, start_hhmm)
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue, start_hhmm)
         stats = self._stats["broker_late"]
         hit = self._mem_hit(self._mem_broker_late, key)
         if hit is not None:
             stats.record_hit()
             return hit
         value = self._read_model_list_cache(
-            self._broker_late_path(code, date, source, start_hhmm),
+            self._broker_late_path(code, date, source, start_hhmm, venue=venue),
             BrokerLateEntryEvent,
             payload_key="events",
             kind="broker_late",
@@ -848,14 +905,21 @@ class PastIndicatorsCache:
         return value  # type: ignore[return-value]
 
     def store_broker_late(
-        self, code: str, date: str, source: str, start_hhmm: int, events: list[BrokerLateEntryEvent]
+        self,
+        code: str,
+        date: str,
+        source: str,
+        start_hhmm: int,
+        events: list[BrokerLateEntryEvent],
+        *,
+        venue: Venue = "KRX",
     ) -> None:
-        key = (code, date, source, start_hhmm)
+        key = (code, date, source, venue, start_hhmm)
         stats = self._stats["broker_late"]
         stats.record_store()
         self._mem_put(self._mem_broker_late, key, events, stats)
         self._write_model_list_cache(
-            self._broker_late_path(code, date, source, start_hhmm),
+            self._broker_late_path(code, date, source, start_hhmm, venue=venue),
             events,
             payload_key="events",
             kind="broker_late",
@@ -866,20 +930,22 @@ class PastIndicatorsCache:
     # 결과 자체가 아니라 두 지표의 선행 의존값(snapshots+trades 2-스캔). 과거일은
     # 불변이라 한 번 계산해 재사용. None(경계 없음)도 유효 캐시값 → 센티널로 미스 구분.
 
-    def _continuous_before_path(self, code: str, date: str, source: str, session_close_ms: int) -> Path:
-        return self._model_path(code, date, source, f"continuous_before.{session_close_ms}")
+    def _continuous_before_path(
+        self, code: str, date: str, source: str, session_close_ms: int, *, venue: Venue = "KRX",
+    ) -> Path:
+        return self._model_path(code, date, source, f"continuous_before.{session_close_ms}", venue=venue)
 
     def get_continuous_before(
-        self, code: str, date: str, source: str, session_close_ms: int
+        self, code: str, date: str, source: str, session_close_ms: int, *, venue: Venue = "KRX"
     ) -> int | None | object:
-        self._sync_generation(code, date, source)
-        key = (code, date, source, session_close_ms)
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue, session_close_ms)
         stats = self._stats["continuous_before"]
         cached = self._mem_hit_allowing_none(self._mem_continuous_before, key)
         if cached is not _CACHE_MISS:
             stats.record_hit()
             return cached
-        path = self._continuous_before_path(code, date, source, session_close_ms)
+        path = self._continuous_before_path(code, date, source, session_close_ms, venue=venue)
         if not path.exists():
             stats.record_miss()
             return _CACHE_MISS
@@ -903,9 +969,9 @@ class PastIndicatorsCache:
         return value
 
     def store_continuous_before(
-        self, code: str, date: str, source: str, session_close_ms: int, value: int | None
+        self, code: str, date: str, source: str, session_close_ms: int, value: int | None, *, venue: Venue = "KRX"
     ) -> None:
-        key = (code, date, source, session_close_ms)
+        key = (code, date, source, venue, session_close_ms)
         stats = self._stats["continuous_before"]
         stats.record_store()
         self._mem_put(self._mem_continuous_before, key, value, stats)
@@ -916,19 +982,19 @@ class PastIndicatorsCache:
         }
         try:
             atomic_write_json(
-                self._continuous_before_path(code, date, source, session_close_ms), payload
+                self._continuous_before_path(code, date, source, session_close_ms, venue=venue), payload
             )
         except OSError:
             _log.warning(
                 "past_indicators_cache.write_failed path=%s",
-                self._continuous_before_path(code, date, source, session_close_ms),
+                self._continuous_before_path(code, date, source, session_close_ms, venue=venue),
                 exc_info=True,
             )
 
     # ── disk I/O ──────────────────────────────────────────────────────────────
 
-    def _read(self, code: str, date: str, source: str, kind: Kind) -> list[list[int]] | None:
-        p = self._path(code, date, source, kind)
+    def _read(self, code: str, date: str, source: str, kind: Kind, *, venue: Venue = "KRX") -> list[list[int]] | None:
+        p = self._path(code, date, source, kind, venue=venue)
         if not p.exists():
             return None
         try:
@@ -945,8 +1011,10 @@ class PastIndicatorsCache:
         rows = body.get("rows")
         return rows if isinstance(rows, list) else None
 
-    def _write(self, code: str, date: str, source: str, kind: Kind, rows: list[list[int]]) -> None:
-        path = self._path(code, date, source, kind)
+    def _write(
+        self, code: str, date: str, source: str, kind: Kind, rows: list[list[int]], *, venue: Venue = "KRX",
+    ) -> None:
+        path = self._path(code, date, source, kind, venue=venue)
         payload = {
             "version": KIND_VERSIONS[kind], "rows": rows,
             "fetched_at_ms": int(time.time() * 1000),

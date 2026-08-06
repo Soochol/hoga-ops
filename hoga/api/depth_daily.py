@@ -78,8 +78,12 @@ class SweepResult:
 def compute_stock_date_peak(
     con, code_dir: Path, source: str,
 ) -> snapshots_tbl.DailyDepthPeak | None:
-    """스톡데이트 1개(한 소스)의 당일 총잔량 peak. 메타/스냅샷 부재·유효행 0 → None."""
-    src_dir = resolve_source_dir(code_dir, source)
+    """스톡데이트 1개(한 소스)의 당일 총잔량 peak. 메타/스냅샷 부재·유효행 0 → None.
+
+    venue="KRX" 고정 — 이 배치(스크리너 일별 총잔량 peak)는 venue 축이 없다.
+    NXT·통합 peak 는 이 지도의 범위 밖이다(#1133 에서 명시화).
+    """
+    src_dir = resolve_source_dir(code_dir, source, "KRX")
     meta_path = src_dir / "meta.json"
     snap_path = src_dir / "snapshots.parquet"
     if not meta_path.exists() or not snap_path.exists():
@@ -157,7 +161,7 @@ def sweep(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 �
                 if codes is not None and code not in codes:
                     continue
                 for source in sources:
-                    src_dir = resolve_source_dir(code_dir, source)
+                    src_dir = resolve_source_dir(code_dir, source, "KRX")  # venue 축 없음(위 참조)
                     meta_path = src_dir / "meta.json"
                     if not meta_path.exists():
                         continue

@@ -24,6 +24,19 @@ CODE = "005930"
 DATE = "20260529"
 SRC = "kiwoom_live"
 
+
+def _store_dir(tmp_path: Path, code: str = CODE, source: str = SRC, venue: str = "KRX") -> Path:
+    """캐시 트리의 (code, source, venue) 디렉터리 — **정본 헬퍼로 조립**한다.
+
+    손으로 `/ code / source` 를 붙이면 venue 축이 있는 소스(`kiwoom_live`)에서
+    세그먼트가 빠진다. 캐시 트리는 #1133 부터 parquet 트리와 같은
+    `source_venue_dir` 규율을 쓴다 — venue 하나짜리 소스는 세그먼트 없음.
+    """
+    from hoga.api.sources import source_venue_dir
+
+    return source_venue_dir(tmp_path / "kis-past-indicators" / code, source, venue)  # type: ignore[arg-type]
+
+
 RATIO = [QuoteRatioRow(bucket_intra_ms=0, bid_total=10, ask_total=20,
                        bid_max=900, ask_max=800, imb_max_bid=100, imb_max_ask=2),
          QuoteRatioRow(bucket_intra_ms=60_000, bid_total=0, ask_total=0,
@@ -56,7 +69,7 @@ def test_persists_to_disk_across_instances(tmp_path: Path) -> None:
 
 def test_path_layout_is_code_source_date_kind(tmp_path: Path) -> None:
     PastIndicatorsCache(tmp_path).store_ratio(CODE, DATE, SRC, RATIO)
-    assert (tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json").exists()
+    assert (_store_dir(tmp_path) / f"{DATE}.ratio.json").exists()
 
 
 def test_source_is_part_of_the_key(tmp_path: Path) -> None:
@@ -69,7 +82,7 @@ def test_source_is_part_of_the_key(tmp_path: Path) -> None:
 def test_corrupt_file_is_a_miss(tmp_path: Path) -> None:
     c = PastIndicatorsCache(tmp_path)
     c.store_ratio(CODE, DATE, SRC, RATIO)
-    p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
+    p = _store_dir(tmp_path) / f"{DATE}.ratio.json"
     p.write_text("{ not json", encoding="utf-8")
     PastIndicatorsCache(tmp_path)  # cold instance bypasses memory
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) is None
@@ -78,7 +91,7 @@ def test_corrupt_file_is_a_miss(tmp_path: Path) -> None:
 def test_version_mismatch_is_a_miss(tmp_path: Path) -> None:
     c = PastIndicatorsCache(tmp_path)
     c.store_ratio(CODE, DATE, SRC, RATIO)
-    p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
+    p = _store_dir(tmp_path) / f"{DATE}.ratio.json"
     body = json.loads(p.read_text())
     body["version"] = 999
     p.write_text(json.dumps(body), encoding="utf-8")
@@ -96,7 +109,7 @@ def test_ratio_disk_payload_is_seven_tuples(tmp_path: Path) -> None:
     """디스크 직렬화는 [bucket_intra_ms, bid_total, ask_total, bid_max, ask_max,
     imb_max_bid, imb_max_ask] 7-tuple — Intra-Bar Max 필드를 보존(ADR-0076)."""
     PastIndicatorsCache(tmp_path).store_ratio(CODE, DATE, SRC, RATIO)
-    p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
+    p = _store_dir(tmp_path) / f"{DATE}.ratio.json"
     body = json.loads(p.read_text())
     assert body["rows"][0] == [0, 10, 20, 900, 800, 100, 2]
     assert body["rows"][1] == [60_000, 0, 0, 0, 0, 0, 0]
@@ -109,13 +122,13 @@ def test_schema_version_bumped_to_6_invalidates_peak_candidate_cache(tmp_path: P
     from hoga.api import past_indicators_cache as mod
     assert mod.KIND_VERSIONS["ratio"] == 6
     assert mod.KIND_VERSIONS["ask_peak"] == 6
-    p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
+    p = _store_dir(tmp_path) / f"{DATE}.ratio.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"version": 1, "rows": [[0, 10, 20]], "fetched_at_ms": 0}),
                  encoding="utf-8")
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) is None
 
-    ask_path = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ask_peak.60000.json"
+    ask_path = _store_dir(tmp_path) / f"{DATE}.ask_peak.60000.json"
     ask_path.write_text(json.dumps({
         "version": 2,
         "value": {
@@ -138,7 +151,7 @@ def test_schema_version_bumped_to_6_invalidates_price_based_peak_classification_
     assert mod.KIND_VERSIONS["ask_peak"] == 6
     assert mod.KIND_VERSIONS["bid_peak"] == 6
 
-    peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
+    peak_dir = _store_dir(tmp_path)
     peak_dir.mkdir(parents=True, exist_ok=True)
     stale_peak = {
         "version": 3,
@@ -169,7 +182,7 @@ def test_schema_version_bumped_to_6_invalidates_raw_peak_event_rank_cache(tmp_pa
     assert mod.KIND_VERSIONS["ask_peak"] == 6
     assert mod.KIND_VERSIONS["bid_peak"] == 6
 
-    peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
+    peak_dir = _store_dir(tmp_path)
     peak_dir.mkdir(parents=True, exist_ok=True)
     stale_peak = {
         "version": 4,
@@ -263,7 +276,7 @@ def test_ask_bid_peak_cache_survives_new_cache_instance(tmp_path: Path) -> None:
 
 
 def test_peak_cache_loads_version_6_payload_without_ranked_untraded_arrays(tmp_path: Path) -> None:
-    peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
+    peak_dir = _store_dir(tmp_path)
     peak_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": 6,
@@ -377,12 +390,12 @@ def test_depth_bucket_ms_is_part_of_the_key(tmp_path: Path) -> None:
 
 def test_depth_path_layout(tmp_path: Path) -> None:
     PastIndicatorsCache(tmp_path).store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
-    assert (tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.depth.60000.json").exists()
+    assert (_store_dir(tmp_path) / f"{DATE}.depth.60000.json").exists()
 
 
 def test_depth_version_mismatch_is_a_miss(tmp_path: Path) -> None:
     PastIndicatorsCache(tmp_path).store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
-    p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.depth.60000.json"
+    p = _store_dir(tmp_path) / f"{DATE}.depth.60000.json"
     body = json.loads(p.read_text(encoding="utf-8"))
     body["version"] = -1
     p.write_text(json.dumps(body), encoding="utf-8")
@@ -433,7 +446,7 @@ def test_vdist_persists_and_price_range_is_part_of_key(tmp_path: Path) -> None:
 def test_vdist_path_layout(tmp_path: Path) -> None:
     PastIndicatorsCache(tmp_path).store_volume_distribution(*_VD_KEY, _VDIST)
     assert (
-        tmp_path / "kis-past-indicators" / CODE / SRC
+        _store_dir(tmp_path)
         / f"{DATE}.volume_distribution.10.70000.71000.json"
     ).exists()
 
@@ -466,7 +479,7 @@ def test_broker_late_persists_and_hhmm_is_part_of_key(tmp_path: Path) -> None:
 
 def test_broker_late_version_mismatch_is_a_miss(tmp_path: Path) -> None:
     PastIndicatorsCache(tmp_path).store_broker_late(CODE, DATE, SRC, 930, _BROKER)
-    p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.broker_late.930.json"
+    p = _store_dir(tmp_path) / f"{DATE}.broker_late.930.json"
     body = json.loads(p.read_text(encoding="utf-8"))
     body["version"] = -1
     p.write_text(json.dumps(body), encoding="utf-8")
@@ -516,7 +529,7 @@ def _write_source_meta(tmp_path: Path, code: str, date: str, source: str, mtime_
 
 
 def _cache_fetched_at_ms(tmp_path: Path, code: str, date: str, source: str, kind: str) -> int:
-    p = tmp_path / "kis-past-indicators" / code / source / f"{date}.{kind}.json"
+    p = _store_dir(tmp_path, code, source) / f"{date}.{kind}.json"
     return int(json.loads(p.read_text(encoding="utf-8"))["fetched_at_ms"])
 
 

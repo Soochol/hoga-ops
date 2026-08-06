@@ -507,6 +507,16 @@ export function mergeRangeBundles(previous: RangeBundle, next: RangeBundle): Ran
       rangeInvariantKey,
       (a, b) => rangeInvariantKey(a).localeCompare(rangeInvariantKey(b)),
     ),
+    // ⚠ `...next` 만으로는 **결손 사유가 팬 한 번에 사라진다**(#1133). 실측: 8/1~8/7
+    // 요청이 `missing_dates=[8/5]` 를 주고, 이어지는 7/31 단일 청크가 `[]` 를 주면서
+    // 스프레드가 앞의 것을 덮었다 — 화면에서는 안내가 떴다가 조용히 없어진다.
+    // `excluded_dates`·`data_warnings` 와 같은 날짜별 병합이라 규칙도 그대로 쓴다:
+    // next 가 덮은 날짜(`nextDates`)만 previous 에서 빼고 나머지는 보존한다.
+    missing_dates: uniqueBy(
+      [...outsideCoveredDates(previous.missing_dates ?? [], nextDates), ...(next.missing_dates ?? [])],
+      (m) => `${m.date}|${m.reason}`,
+      (a, b) => a.date.localeCompare(b.date),
+    ),
     ask_peaks: uniqueBy(
       [...outsideCoveredDates(previous.ask_peaks, nextDates), ...next.ask_peaks],
       (p) => p.date,

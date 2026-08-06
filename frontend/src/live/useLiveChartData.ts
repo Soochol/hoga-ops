@@ -99,6 +99,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     bundle,
     chartBundle,
     hogaBundle,
+    hogaMissingDates,
     depthDeltaToday,
     clampEngaged,
     isPastCandlesLoading,
@@ -266,6 +267,9 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     workareaBundle,
     workareaChartBundle,
     workareaHogaBundle,
+    /** 호가 결손 사유 — 번들과 **따로** 흘린다(#1133). 지수 워크에어리어는 호가장이
+     *  없어 결손이라는 개념 자체가 없으므로 빈 배열이다(`depthDeltaToday` 와 같은 규율). */
+    workareaHogaMissingDates: activeIndexId ? [] : hogaMissingDates,
     workareaDepthHeatmap,
     workareaLoading,
     workareaDataWarnings,

@@ -196,6 +196,74 @@ describe('LiveChartRoot', () => {
     expect(screen.getByTestId('live-chart-root')).toBeTruthy();
   });
 
+  // 배선 테스트 — 문구 결정(hogaMissingNotice.test)과 표시(HogaMissingNotice.test)는
+  // 각각 따로 검증한다. 여기서 보는 것은 **번들의 사유가 화면까지 도달하는가** 하나다.
+  // #1133 의 원인이 정확히 이 종류였다: 값은 정확히 계산됐는데 소비자가 다른 경로를
+  // 봐서 도달하지 않았다.
+  it('호가 결손 사유가 번들에서 화면까지 이어진다', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={{ ...DEFAULT_BUNDLE, missing_dates: [{ date: '20260527', reason: 'source_missing' }] }}
+        venue="NXT"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('hoga-missing-notice')).toHaveTextContent('NXT 호가 기록 없음');
+  });
+
+  // #1133 후속 — 이 테스트가 prop 경로의 **존재 이유**다. 사유를 번들에만 실으면
+  // 캔들이 없는 순간(자격증명 미설정·벤더 장애) 번들이 null 이 되어 안내가 함께
+  // 사라진다. 정작 "왜 비었나" 를 물어야 할 상황에서 답이 없어지는 셈이다.
+  it('캔들 번들이 없어도 결손 사유는 표시된다', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={null}
+        hogaMissingDates={[{ date: '20260527', reason: 'source_missing' }]}
+        venue="NXT"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('hoga-missing-notice')).toHaveTextContent('NXT 호가 기록 없음');
+  });
+
+  it('prop 이 없으면 번들에서 읽는다 — 구 호출부 하위호환', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={{ ...DEFAULT_BUNDLE, missing_dates: [{ date: '20260527', reason: 'venue_unsupported' }] }}
+        venue="UN"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('hoga-missing-notice')).toHaveTextContent('통합 호가 기록 없음');
+  });
+
+  it('결손이 없으면 안내가 뜨지 않는다', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        venue="NXT"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.queryByTestId('hoga-missing-notice')).toBeNull();
+  });
+
   it('prevents the browser image context menu inside the chart area', () => {
     render(
       <LiveChartRoot

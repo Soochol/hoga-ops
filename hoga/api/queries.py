@@ -19,6 +19,7 @@ from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.api.sources import resolve_source_result
 from hoga.collector.orchestrator import now_kst
 from hoga.duck import connect_bounded
+from hoga.live.venue import Venue
 from hoga.tables import snapshots
 from hoga.util.timeenc import hhmmssms_to_unix_ms
 
@@ -44,7 +45,7 @@ def _is_non_trading_day(date_yyyymmdd: str) -> bool:
     return is_trading_day(date_yyyymmdd) is False
 
 
-def resolve_source_dir(stock_date_dir: Path, source: str, venue: str = "KRX") -> Path:
+def resolve_source_dir(stock_date_dir: Path, source: str, venue: Venue) -> Path:
     """Resolve the on-disk parquet dir for one source.
 
     Tries ``{stock_date_dir}/{source}/`` first (post-migration layout per
@@ -57,13 +58,24 @@ def resolve_source_dir(stock_date_dir: Path, source: str, venue: str = "KRX") ->
     **다른 것**이다. 후자는 PR-D2 에서 삭제됐다(마이그레이션 완료). 여기 것은
     `{stock_date_dir}/meta.json` 이라는 더 옛 모양을 덮으며, 테스트 픽스처가
     그 모양을 직접 만들기 때문에 살아 있다 — 함께 지우지 말 것(#1140 명시).
+
+    ⚠ **`venue` 에 기본값을 주지 말 것**(#1133). 예전엔 `= "KRX"` 였고, 그 하나가
+    `/api/range` 의 venue 선택 전체를 무력화했다 — `QueryEngine.parquet_dir` 이
+    venue 를 안 받아 여기로 떨어졌고, 호가 파생 지표 9종이 NXT·통합 요청에도
+    **KRX 파케이를 읽었다**(실측 2026-08-06 287840 12:08 버킷: 디스크 NXT 총잔량
+    ask 701 / bid 825 인데 응답은 KRX 의 154 / 141). 필수 인자면 그 누락이
+    타입 에러가 된다.
+
+    평면 레이아웃 폴백에도 venue 가드가 있다 — 평면은 **venue 축이 생기기 전**
+    데이터라 정의상 KRX 이고, NXT·통합 요청에 돌려주면 `sources.resolve_source_result`
+    가 같은 이유로 막아 둔 뒷문이 여기서 다시 열린다.
     """
     from hoga.api.sources import source_venue_dir  # noqa: PLC0415 — 순환 절단
 
     sub = source_venue_dir(stock_date_dir, source, venue)
     if sub.exists():
         return sub
-    if (stock_date_dir / "meta.json").exists():
+    if venue == "KRX" and (stock_date_dir / "meta.json").exists():
         return stock_date_dir  # legacy flat layout
     return sub  # return the not-existing source path for the error to surface naturally
 
@@ -220,16 +232,24 @@ class QueryEngine:
             self._indicators_cache = cache
         return cache
 
-    def parquet_dir(self, date: str, code: str, source: str = "hogaplay") -> Path:
+    def parquet_dir(self, date: str, code: str, source: str = "hogaplay", *, venue: Venue) -> Path:
+        """이 (Stock-Date, source, venue) 의 파케이 디렉터리.
+
+        ⚠ **`venue` 는 키워드 전용 필수다**(#1133). `source` 뒤에 위치 인자로 두면
+        기존 호출부가 조용히 통과하고, 그게 정확히 이 버그의 모양이었다 —
+        시그니처에 venue 가 아예 없어 `resolve_source_dir` 의 기본값 "KRX" 로
+        떨어졌고, `/api/range` 의 호가 파생 지표 9종이 venue 선택과 무관하게 KRX
+        파케이를 읽었다. 필수 키워드면 누락이 런타임 오답이 아니라 타입 에러다.
+        """
         sd_dir = self.data_dir / "parquet" / date / code
         if not sd_dir.exists():
             raise StockDateNotFound(f"{date}/{code}")
-        resolved = resolve_source_dir(sd_dir, source)
+        resolved = resolve_source_dir(sd_dir, source, venue)
         # Verify a meta.json actually lives at the resolved path. Bare existence
         # of the Stock-Date dir isn't enough — could be an empty post-migration
         # shell without the requested source.
         if not (resolved / "meta.json").exists():
-            raise StockDateNotFound(f"{date}/{code}/{source}")
+            raise StockDateNotFound(f"{date}/{code}/{source}/{venue}")
         return resolved
 
     def list_stock_dates(self) -> list[StockDate]:  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
@@ -596,12 +616,21 @@ class QueryEngine:
             venues=_venue_states(self.data_dir / "parquet" / date / code),
         )
 
-    def get_meta(self, date: str, code: str, source: str = "hogaplay") -> dict[str, Any]:
-        path = self.parquet_dir(date, code, source) / "meta.json"
+    def get_meta(
+        self, date: str, code: str, source: str = "hogaplay", *, venue: Venue = "KRX",
+    ) -> dict[str, Any]:
+        """이 (Stock-Date, source, venue) 의 **완결성 meta**.
+
+        venue 기본값이 살아 있는 이유는 `parquet_dir` 과 다르다 — 이걸 부르는
+        표면(`/api/stock-dates` 계열 메타 라우트)은 아직 venue 축이 없고, 거기서
+        KRX 는 폴백이 아니라 **사실**이다. 지표 경로처럼 venue 선택을 받는 호출부는
+        반드시 명시한다(#1133).
+        """
+        path = self.parquet_dir(date, code, source, venue=venue) / "meta.json"
         return json.loads(path.read_text(encoding="utf-8"))
 
     def compute_gap_ranges(
-        self, date: str, code: str, source: str = "hogaplay",
+        self, date: str, code: str, source: str = "hogaplay", *, venue: Venue = "KRX",
     ) -> tuple[list[tuple[int, int]], bool, Literal["meta", "computed"]]:
         """Return ``(gap_ranges_hoga, sparse, origin)`` for one Stock-Date source.
 
@@ -621,7 +650,7 @@ class QueryEngine:
         )
         from hoga.util.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
-        meta = self.get_meta(date, code, source)
+        meta = self.get_meta(date, code, source, venue=venue)
         close_ms = meta.get("regular_session_close_ms")
         if "gap_ranges" in meta and isinstance(meta["gap_ranges"], list):
             ranges = [
@@ -636,7 +665,7 @@ class QueryEngine:
         # Legacy meta (pre-WS1) — recompute from the snapshot stream.
         if not isinstance(close_ms, int):
             return [], False, "computed"
-        snap_path = self.parquet_dir(date, code, source) / "snapshots.parquet"
+        snap_path = self.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
         if not snap_path.exists():
             return [], False, "computed"
         rows = self.conn.execute(
