@@ -104,6 +104,37 @@ describe('BookPanel', () => {
       expect(bookMidPrice(L(1_686_000), L(1_685_000))).toBe(1_685_500);
     });
 
+    it('소수 중간값을 표시 경로까지 그대로 낸다 — 저가주에선 상시다', () => {
+      // 실측 2026-08-06 KRX 스냅샷 80,199 건 중 4.88% 가 .5 이고, 종목별로는
+      // 100130 99.0% · 018880 93.5% · 003530 82.7% 로 **저가주에선 거의 매 틱**이다
+      // (호가단위가 1원·5원이라 1틱 스프레드의 합이 홀수). 위 테스트들은 함수만
+      // 보는데, 조용히 틀려지는 자리는 `toLocaleString` 이 소수를 자르는 표시 경로다.
+      const L = (price: number) => [{ price, qty: 1 }];
+      expect(bookMidPrice(L(4_475), L(4_470))).toBe(4_472.5); // 5원 단위(003530 실측)
+      expect(bookMidPrice(L(1_000), L(999))).toBe(999.5); // 2,000원 미만 = 1원 단위
+      const s = snap();
+      renderPanel({
+        snapshot: { ...s, ask: [{ price: 4_475, qty: 1 }], bid: [{ price: 4_470, qty: 1 }] },
+        baselinePrice: 4_330,
+      });
+      const mid = screen.getByTestId('book-mid-row');
+      expect(mid).toHaveTextContent('4,472.5');
+      expect(mid).toHaveTextContent('+3.29%'); // 등락률도 소수 기준으로 계산된다
+    });
+
+    it('`중` 뱃지는 레이아웃 밖에 얹는다 — 가격 x 가 호가 행과 어긋나지 않게', () => {
+      // 뱃지가 flex 아이템이면 폭(≈15px)+gap 만큼 가격 숫자가 오른쪽으로 밀린다
+      // (실측 정수 mid +10.5px). `PriceCell` 의 시/고/저 칩과 같은 규약 — 칩 유무가
+      // 가격 위치를 바꾸지 않는다. jsdom 은 레이아웃을 계산하지 않으므로 여기서
+      // 지킬 수 있는 건 **구조**뿐이다(픽셀 확인은 실브라우저 몫).
+      renderPanel();
+      const badge = screen.getByText('중');
+      expect(badge).toHaveClass('absolute');
+      // 기준 요소(= 가격 span)가 relative 여야 right-full 이 가격 왼쪽에 붙는다.
+      expect(badge.parentElement).toHaveClass('relative');
+      expect(badge.parentElement).toHaveTextContent('251,250');
+    });
+
     it('사다리 한쪽이 비면 대시로 남긴다 — 행은 유지(정렬 계약)', () => {
       const s = snap();
       const { container } = renderPanel({ snapshot: { ...s, bid: [] } });
