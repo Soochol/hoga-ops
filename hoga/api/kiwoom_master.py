@@ -107,15 +107,26 @@ def parse_market(rows: list[dict[str, Any]], market: Market) -> list[MasterRow]:
     return out
 
 
-async def fetch_symbol_master(client) -> list[MasterRow]:
+async def fetch_symbol_master(client, *, run_call=None) -> list[MasterRow]:
     """두 시장 전부. `client` 는 `KiwoomRestClient`.
 
     타입 힌트를 붙이지 않은 이유: `hoga/api` 가 `hoga/live` 를 모듈 레벨로
     import 하면 순환이 생긴다(`live.api` 가 `api.calendar` 를 쓴다).
+
+    `run_call` 은 **시장 1콜을 감쌀 러너**다(거버너 이음매) — `(fetch_fn, market)` 을
+    받아 결과를 돌려준다. 없으면 직접 호출한다.
+
+    **왜 루프 안에서 감싸는가** — 시장이 둘이라 콜도 둘이다. 함수 전체를 한 submit
+    으로 감싸면 버킷은 1 을 세고 벤더는 2 를 센다(ADR-0137 "페이지 1장 = submit 1건",
+    `market_routes._walk` 가 같은 이유로 `run_page` 를 받는다).
     """
     rows: list[MasterRow] = []
     for market, mrkt_tp in MARKET_PARAM.items():
-        page = await client.call(API_ID, {"mrkt_tp": mrkt_tp})
+        body = {"mrkt_tp": mrkt_tp}
+        if run_call is None:
+            page = await client.call(API_ID, body)
+        else:
+            page = await run_call(lambda c, b=body: c.call(API_ID, b), market)
         rows.extend(parse_market(page.rows, market))  # type: ignore[arg-type]
     return rows
 

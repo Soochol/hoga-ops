@@ -25,6 +25,7 @@ from fastapi import APIRouter, Query
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.kiwoom_master import (
+    API_ID as KIWOOM_MASTER_API_ID,
     KiwoomMasterFetchError,
     fetch_symbol_master as kiwoom_fetch_symbol_master,
     load_seed as _load_master_seed,
@@ -359,12 +360,30 @@ async def _fetch_symbol_master() -> list[SymbolHit]:
     `ka10099` 는 인증이 필요하므로 그 성질이 **시드 스냅샷**으로 옮겨간다:
     자격증명이 없으면 여기서 실패하고, 부팅은 커밋된 시드로 이뤄진다.
     """
-    from hoga.live import kiwoom_rest_runtime  # noqa: PLC0415 — 순환 절단(api ↔ live)
+    from hoga.live import kiwoom_access, kiwoom_rest_runtime  # noqa: PLC0415 — 순환 절단
 
-    client = kiwoom_rest_runtime.ensure_rest_client(_symbols_data_dir())
+    data_dir = _symbols_data_dir()
+    client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
     if client is None:
         raise KiwoomMasterFetchError("키움 자격증명 없음 — 마스터를 갱신할 수 없다")
-    rows = await kiwoom_fetch_symbol_master(client)
+
+    # 거버너를 통과시킨다 — 저빈도지만 목적은 토큰 revoke(8005) 자동복구다
+    # (복구가 거버너 소유, PR #1088). 우회하면 갱신이 조용히 멈추고 검색이 커밋된
+    # 시드에 고정된다 — 신규 상장이 안 보이는데 화면에는 증상이 없다.
+    scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
+
+    async def _run_call(fetch_fn, market):
+        # 시장마다 1 submit — 버킷과 벤더가 같은 수를 세게(ADR-0137).
+        return await kiwoom_access.run_with_capacity(
+            scheduler,
+            key=("symbol-master", market),
+            api_id=KIWOOM_MASTER_API_ID,
+            priority="background",
+            client=client,
+            fetch_fn=fetch_fn,
+        )
+
+    rows = await kiwoom_fetch_symbol_master(client, run_call=_run_call)
     return _rows_to_hits(rows)
 
 
