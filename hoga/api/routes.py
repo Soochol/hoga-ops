@@ -87,6 +87,30 @@ def _resolved_parquet_dir(
     return resolution.path, resolution.source
 
 
+def _spot_table_path(sd_dir: Path, filename: str) -> Path | None:
+    """스팟 라우트용 테이블 경로 — **파일이 없으면 None**(빈 200 으로 이어진다).
+
+    디렉터리 존재(`_resolved_parquet_dir`)만으로는 부족하다. writer 의 계약이
+    **"0행이면 파일을 안 남긴다"** 이기 때문이다 — `live/promote._atomic_write_table`
+    이 DuckDB 의 0행 parquet 문제를 피하려고 unlink 하고, 그 docstring 이 부재 처리를
+    명시적으로 **리더의 몫**으로 넘긴다. 그래서 파일 부재는 장애가 아니라 **정상
+    상태**다: 거래원 첫 스냅샷이 붙기 전의 종목은 `brokers.parquet` 이 아예 없다.
+
+    실측 2026-08-07: 08:00 대에 `009150` 을 호버하면 `kiwoom_live/UN/` 은 있는데
+    `brokers.parquet` 만 없어 **`/api/brokers/series` 가 500** 이었다. 같은 순간
+    `meta.json` 은 `row_counts.brokers: 0` 으로 "0건"이라 정직하게 말하고 있었다.
+    08:04 에 거래원이 붙자 같은 요청이 200 이 됐다 — 즉 **매일 아침 전 종목이
+    지나는 창**이지 특정 종목의 결함이 아니다.
+
+    이 층은 위 `_resolved_parquet_dir` 의 디렉터리 층과 같은 교훈의 한 칸 아래다.
+    #1133 이 디렉터리 층을 고치면서 파일 층은 범위 밖으로 남겼고, 그게 여기서 터졌다.
+    번들 경로(`api/bundle.py`)는 호출 지점마다 `.exists()` 로 이미 지키고 있었다 —
+    이 헬퍼는 스팟 경로에 같은 규약을 준다.
+    """
+    path = sd_dir / filename
+    return path if path.is_file() else None
+
+
 def _cursor_to_native(date: str, unix_ms: int) -> int:
     """Translate a request **Cursor** (Unix-ms, ADR-0003) into the native
     HHMMSSmmm encoding the snapshot/trade/broker tables store.
@@ -250,7 +274,10 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref, venue)
         if sd_dir is None:
             return OrderbookResponse(available_from=None, snapshot=None, source=source)
-        path = sd_dir / "snapshots.parquet"
+        # 디렉터리가 있어도 파일은 없을 수 있다(0행 → 파일 없음, `_spot_table_path`).
+        path = _spot_table_path(sd_dir, "snapshots.parquet")
+        if path is None:
+            return OrderbookResponse(available_from=None, snapshot=None, source=source)
         if bucket_ms is not None:
             try:
                 validate_bucket_ms(bucket_ms)
@@ -312,7 +339,11 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref, venue)
         if sd_dir is None:
             return BrokerSeriesResponse(date=date, brokers=[], source=source)
-        path = sd_dir / "brokers.parquet"
+        # 디렉터리가 있어도 파일은 없을 수 있다(0행 → 파일 없음, `_spot_table_path`).
+        # 장 초반 거래원 첫 스냅샷 전이 그 창이다 — 결함이 아니라 빈 사이드바다.
+        path = _spot_table_path(sd_dir, "brokers.parquet")
+        if path is None:
+            return BrokerSeriesResponse(date=date, brokers=[], source=source)
         raw_entries = brokers_tbl.query_day_series_cached(engine.conn, path=path)
         # Convert each point's ts_ms from HH:MM:SS.ms-encoded to Unix ms,
         # mirroring the /api/brokers and /api/candles handlers.
