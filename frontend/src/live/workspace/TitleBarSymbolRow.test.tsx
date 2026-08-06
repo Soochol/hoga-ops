@@ -97,18 +97,10 @@ describe('TitleBarSymbolRow', () => {
     expect(screen.queryByTestId('titlebar-change')).toBeNull();
   });
 
-  it('shows the 호가 미수집 chip from published windowWarnings', () => {
-    renderRow({ code: '005930', windowId: 'w1' });
-    act(() => {
-      publishWindowWarnings('w1', { hogaGapDates: ['20260520', '20260521'], backfillEarliestDate: null });
-    });
-    expect(screen.getByTestId('hoga-coverage-gap-chip').textContent).toContain('호가 미수집 2일');
-  });
-
   it('shows the 과거 불러오는 중 chip from published backfillEarliestDate', () => {
     renderRow({ code: '005930', windowId: 'w1' });
     act(() => {
-      publishWindowWarnings('w1', { hogaGapDates: [], backfillEarliestDate: '20260527' });
+      publishWindowWarnings('w1', { backfillEarliestDate: '20260527' });
     });
     expect(screen.getByTestId('past-backfill-progress-chip').textContent).toContain('5/27까지');
   });

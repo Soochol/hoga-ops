@@ -49,7 +49,6 @@ import {
 } from './liveVenuePolicy';
 import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
 import { mergeDepthHeatmapToday } from './depthHeatmapWire';
-import { hogaCoverageGapDates as computeHogaCoverageGapDates } from './hogaCoverageGap';
 import { mergeProgramTradeSeriesWithLiveTail } from './programTradeLiveTail';
 
 const EMPTY_INVESTOR_POINTS: InvestorNetPoint[] = [];
@@ -317,11 +316,6 @@ export interface UseLiveBundleResult {
    * 백엔드가 키움 유량 초과 등으로 일부/전체 날짜를 못 받으면 채운다. LiveChartRoot가
    * 빈칸 문구 전환 + 부분 로딩 칩에 쓴다(2026-06-09). 무경고면 빈 배열. */
   pastDataWarnings: LiveDataWarning[];
-  /** 캔들은 있는데 10호가 캡처가 없는 과거 거래일(YYYYMMDD 오름차순). 이 날짜들은
-   * 최대벽·매물대·호가비 등 캡처 기반 지표가 빠지므로 LiveStatusBar가 warn 칩으로
-   * 드러낸다. 분봉 전용(D/W/M은 호가 pane이 없어 빈 배열), hoga 번들 미로드 시에도
-   * 빈 배열(판정 유보 — 로딩 중 거짓 경고 방지). */
-  hogaCoverageGapDates: string[];
   /** Coverage-gap 백필(A안): 활성 range 지표(hoga + 활성 sidecar)가 도달한 가장 최근
    * from_date(YYYYMMDD). 캔들이 병합 캐시로 더 과거까지 복원돼도 지표가 이 날짜까지만
    * 있으면, useViewportBackfill이 viewport 좌단이 이보다 과거일 때 range 창을 확장한다.
@@ -1020,21 +1014,6 @@ export function useLiveBundle(
     && historicalFromDate != null
     && historicalFromDate <= earliestAllowedMinute;
 
-  // 캔들 대비 10호가 캡처 공백일 — 화면에 실제로 보이는 chartBundle(hold 반영)과
-  // mode=hoga 응답의 세그먼트를 비교한다. 분봉 외 타임프레임은 hoga 쿼리가
-  // disabled(data undefined)라 자연히 빈 배열이지만 isMinute 게이트로 의도를 명시.
-  const hogaCoverageGapDates = useMemo(
-    () =>
-      isMinute
-        ? computeHogaCoverageGapDates(
-            chartBundle?.segments,
-            pastHoga.data?.segments ?? null,
-            todayKstYyyymmdd,
-          )
-        : [],
-    [isMinute, chartBundle?.segments, pastHoga.data?.segments, todayKstYyyymmdd],
-  );
-
   // Coverage-gap 백필(A안) 신호. 캔들은 병합 캐시로 수개월 복원되는데 range 지표는
   // 요청 창(기본 5거래일)만 커버해, viewport가 지표 커버리지 밖 구간을 보면
   // useViewportBackfill이 whitespace 없이도 range 창을 확장하도록 돕는다.
@@ -1093,7 +1072,6 @@ export function useLiveBundle(
     isSidecarLoading: sidecarWaitingForCandlePriceRange
       || (sidecarEnabled && pastSidecars.isPending && pastSidecars.data == null),
     pastDataWarnings,
-    hogaCoverageGapDates,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
   };

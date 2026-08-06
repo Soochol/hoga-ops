@@ -68,7 +68,6 @@ const BUNDLE_RESULT = {
   isExtending: false,
   isSidecarLoading: false,
   pastDataWarnings: [],
-  hogaCoverageGapDates: [],
   indicatorCoverageFromDate: null,
   rangeWindowFromDate: null,
 };

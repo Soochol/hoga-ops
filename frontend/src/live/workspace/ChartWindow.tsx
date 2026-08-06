@@ -66,9 +66,6 @@ import { useDailyMaSeriesRegistry } from '../indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from '../indicators/paneLegendRegistry';
 import type { TabViewport } from '../viewportAnchor';
 
-/** 빈 호가갭 배열 상수 — 경고 발행 동등성 비교가 매 렌더 새 [] 로 깨지지 않게 안정 참조. */
-const EMPTY_GAP_DATES: readonly string[] = [];
-
 export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const timeframe = win.chart?.timeframe ?? '1m';
   const byTimeframe = win.chart?.indicators.byTimeframe;
@@ -253,8 +250,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   }, [view.code, view.timeframe, liveSaveBundle, activeLabel, capabilities.studySave]);
 
   // 캔들 레전드 최상단 종목 식별 행 입력(#865 후속). 지수(view.code=null)는 종목
-  // 행 없음. 백필 진행 게이트(isExtending·historicalFromDate·segments)는 여기서
-  // 타이틀바 종목 행 경고칩(호가 미수집·과거 로딩) 발행 — 번들 파생값은 타이틀바
+  // 행 없음. 타이틀바 종목 행 경고칩(과거 로딩) 발행 — 번들 파생값은 타이틀바
   // (WindowFrame, 이 창의 부모) 스코프 밖이라 windowWarnings 채널로 올린다. 현재가·
   // 등락률·히트맵은 타이틀바가 code 로 self-fetch 하므로 여기 싣지 않는다. 백필 진행
   // 게이트(extending·historicalFromDate·segments)는 여기서 판정해 결과 날짜만 넘긴다.
@@ -265,17 +261,13 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   useEffect(() => {
     const segs = d.workareaBundle?.segments;
     const next: WindowWarnings = {
-      hogaGapDates: d.activeIndexId ? EMPTY_GAP_DATES : (d.hogaCoverageGapDates ?? EMPTY_GAP_DATES),
       backfillEarliestDate:
         extending && view.historicalFromDate != null && segs && segs.length > 0
           ? segs[0].date
           : null,
     };
     const prev = lastWarningsRef.current;
-    const same = prev !== null
-      && prev.backfillEarliestDate === next.backfillEarliestDate
-      && prev.hogaGapDates.length === next.hogaGapDates.length
-      && prev.hogaGapDates.every((v, i) => v === next.hogaGapDates[i]);
+    const same = prev !== null && prev.backfillEarliestDate === next.backfillEarliestDate;
     if (!same) {
       lastWarningsRef.current = next;
       publishWindowWarnings(win.id, next);
