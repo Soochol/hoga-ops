@@ -199,8 +199,17 @@ def _code_bucket_pct(
     return out
 
 
-def build_group_flow(data_dir: Path, basis: dt.date, *, now_ms: int) -> HeatmapGroupFlowResponse:
-    """순수 계산(스레드 안전). 무거운 디스크 IO 포함 — 라우트가 to_thread 로 감싼다."""
+def build_group_flow(
+    data_dir: Path, basis: dt.date, *, now_ms: int, venue: str = "KRX",
+) -> HeatmapGroupFlowResponse:
+    """순수 계산(스레드 안전). 무거운 디스크 IO 포함 — 라우트가 to_thread 로 감싼다.
+
+    ⚠ ``venue`` 는 **장식이 아니다.** 예전엔 평면 경로 `live_kiwoom/{date}/{code}.jsonl`
+    을 읽었는데, PR-D 가 JSONL 을 `{date}/{venue}/{code}.jsonl` 로 옮긴 뒤 그 경로가
+    **존재하지 않게 됐다** — 실측 2026-08-06 기준 39개 그룹 전부 `pct: null` 이었다.
+    라우트가 venue 를 받아 놓고 "미사용" 으로 버리던 사이에 스파크라인이 통째로 죽어
+    있었고, 값이 없는 것과 그룹이 조용한 것이 화면에서 같아 보여 안 드러났다.
+    """
     doc = load_document(data_dir)
     folder_names = {f.id: f.name for f in doc.folders}
     folder_orders = {f.id: f.order for f in doc.folders}
@@ -220,7 +229,9 @@ def build_group_flow(data_dir: Path, basis: dt.date, *, now_ms: int) -> HeatmapG
         if prev is not None and float(prev["close"]) > 0:
             prev_close_of[code] = float(prev["close"])
 
-    live_root = data_dir / "live_kiwoom" / basis.strftime("%Y%m%d")
+    # venue 세그먼트가 정본이다(ADR-0140 §3). 히트맵 셀은 venue 별 시세인데 그룹
+    # 헤더만 KRX 고정이면 한 화면에서 두 기준이 섞인다.
+    live_root = data_dir / "live_kiwoom" / basis.strftime("%Y%m%d") / venue
 
     out_groups: list[HeatmapGroupFlow] = []
     for folder_id, folder_name, order, entries in groups:

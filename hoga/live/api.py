@@ -1487,6 +1487,9 @@ class RankingsResponse(BaseModel):
     rows: list[RankingRowModel]
     market_open: bool
     fetched_at_ms: int
+    #: 이 순위를 뽑은 거래소(KRX/NXT/UN). NXT 는 유동성이 얕아 상위 종목이 KRX 와
+    #: 크게 다르다 — 화면이 **무엇을 보고 있는지** 알 수 있어야 한다.
+    venue: str = "KRX"
     source: Literal["kiwoom"] = "kiwoom"
     # 비치명 경고(스크리너 ScreenerResponse.warnings 와 같은 관용구). 현재 유일한
     # 값은 "etf_filter_unavailable" — exclude_etf 를 요청했으나 심볼 마스터가
@@ -1998,7 +2001,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         return latest
 
     @router.get("/series")
-    async def _get_series(code: str, date: str) -> dict:
+    async def _get_series(code: str, date: str, venue: str = Query("KRX")) -> dict:
         if get_buffer is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live buffer not wired"})
         buf = get_buffer()
@@ -2012,14 +2015,18 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             "session_open_ms": session_open_ms,
             "session_close_ms": None,
             "is_open": True,
-            # ⚠ venue 를 **리터럴로 못박는다** — 이 라우트(`_get_series`)엔 아직 venue
-            # 파라미터가 없다. 읽기 API 표면에 venue 를 싣는 것은 PR-J 의 몫이고
-            # (ADR-0140 열린 항목), 기본값으로 숨기면 그때 고칠 자리를 못 찾는다.
+            # 최대벽은 스트림이 **(code, venue)** 로 키잉해 들고 있다(ADR-0140 §2).
+            # 여기서 "KRX" 를 못박고 있었던 탓에 NXT·통합을 골라도 KRX 벽이 떴다 —
+            # 그 자리를 표시하려고 남겨 둔 주석이 PR-J 에서 안 걷혔다.
+            #
+            # ⚠ `venue` 기본값이 "KRX" 인 것은 다른 라우트와 규율이 다르다. 이 라우트는
+            # 표시 버퍼 hydrate 용이고 프레임마다 venue 태그가 실려 프론트가 거르므로,
+            # 필수화하면 구 프론트가 통째로 빈 화면이 된다. 최대벽만 venue 를 탄다.
             "ask_peak_today": (
-                get_today_ask_peak(code, "KRX") if get_today_ask_peak is not None else None
+                get_today_ask_peak(code, venue) if get_today_ask_peak is not None else None
             ),
             "bid_peak_today": (
-                get_today_bid_peak(code, "KRX") if get_today_bid_peak is not None else None
+                get_today_bid_peak(code, venue) if get_today_bid_peak is not None else None
             ),
         }
 
@@ -2575,6 +2582,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         market: RankingMarket = Query("all"),
         direction: RankingDirection = Query("up"),
         exclude_etf: bool = Query(False),
+        # 순위 TR 은 `stex_tp`(거래소구분)로 시장을 가른다 — `mrkt_tp`(코스피/코스닥)와
+        # 직교하는 별개 축이다. 기본값을 두는 이유는 구 프론트가 이 값을 안 보내기
+        # 때문이고, 그 경우 예전과 같은 KRX 순위가 나온다.
+        venue: str = Query("KRX"),
     ) -> RankingsResponse:
         """시장 전체 순위 (키움 rkinfo 4종, kind 별 api-id 분기, TTL ~8s 캐시).
 
@@ -2594,7 +2605,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if kiwoom_rankings_fetcher_instance is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom credentials not configured"})
         try:
-            snap = await kiwoom_rankings_fetcher_instance.get(kind, market, direction)
+            snap = await kiwoom_rankings_fetcher_instance.get(kind, market, direction, venue)
         except KiwoomRankingsError as e:
             raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_API_ERROR, "message": str(e)}) from e
         except httpx.HTTPError as e:
@@ -2620,6 +2631,9 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             ],
             market_open=snap.market_open,
             fetched_at_ms=snap.fetched_at_ms,
+            # 요청 venue 가 아니라 **스냅샷이 들고 있는 값**을 되싣는다 — 둘이 갈릴
+            # 여지를 남기지 않는다(캐시 히트가 다른 venue 를 줬다면 여기서 드러난다).
+            venue=snap.venue,
             warnings=warnings,
         )
 
