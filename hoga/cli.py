@@ -236,7 +236,11 @@ async def _run_repair_sweep(data_dir: Path, *, dry_run: bool) -> None:
         return
 
     # PR-J(#1046) 칼 컷오버 — 소스는 키움 `ka10080` 이다(ADR-0109 의 생산자 교체).
-    from hoga.live import kiwoom_minute_candles, kiwoom_rest_runtime  # noqa: PLC0415
+    from hoga.live import (  # noqa: PLC0415
+        kiwoom_access,
+        kiwoom_minute_candles,
+        kiwoom_rest_runtime,
+    )
 
     client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
     if client is None:
@@ -245,8 +249,21 @@ async def _run_repair_sweep(data_dir: Path, *, dry_run: bool) -> None:
         )
         return
 
+    # 서버와 같은 거버너를 탄다 — CLI 라고 예외를 두면 이 명령이 유량 페이싱과
+    # 토큰 revoke 복구(PR #1088) 밖에서 도는데, 복구는 날짜 수만큼 콜을 낸다.
+    scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
+
     async def _fetch(code: str, date_s: str):
-        return await kiwoom_minute_candles.fetch_day(client, code, date_s, venue="KRX")
+        return await kiwoom_access.run_with_capacity(
+            scheduler,
+            key=("repair-minute", code, date_s),
+            api_id=kiwoom_minute_candles.API_ID,
+            priority="background",
+            client=client,
+            fetch_fn=lambda c: kiwoom_minute_candles.fetch_day(
+                c, code, date_s, venue="KRX"
+            ),
+        )
 
     tot_r = tot_s = tot_u = tot_e = 0
     for save in saves:

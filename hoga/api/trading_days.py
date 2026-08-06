@@ -168,17 +168,30 @@ async def refresh_overlay(data_dir: Path) -> int:
     가장 크게 다른 점이다(그쪽은 조회가 곧 원격 호출이라 장애가 곧 조회 실패였다).
 
     자격증명이 없으면 0 을 돌려준다. dev 무자격 프로필(ADR-0134)에서 정상 경로다.
+
+    저빈도(일 1회 1콜)라 유량 이득은 없지만 **거버너를 통과한다** — 목적은 토큰
+    revoke(8005) 자동복구다(복구가 거버너 소유, PR #1088). 우회하면 죽은 토큰으로
+    실패하고도 재발급이 안 걸려 **오버레이가 조용히 멈춘다**: 조회는 시드로 계속
+    답하므로 화면에는 아무 증상이 없다.
     """
     from datetime import datetime  # noqa: PLC0415 — 갱신 경로 전용
 
-    from hoga.live import kiwoom_rest_runtime  # noqa: PLC0415 — 순환 절단
+    from hoga.live import kiwoom_access, kiwoom_rest_runtime  # noqa: PLC0415 — 순환 절단
     from hoga.util.timeenc import KST  # noqa: PLC0415
 
     client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
     if client is None:
         return 0
     today = datetime.now(KST).strftime("%Y%m%d")
-    page = await client.call("ka20006", {"inds_cd": "001", "base_dt": today})
+    body = {"inds_cd": "001", "base_dt": today}
+    page = await kiwoom_access.run_with_capacity(
+        kiwoom_rest_runtime.ensure_scheduler(data_dir),
+        key=("trading-days-overlay", today),
+        api_id="ka20006",
+        priority="background",
+        client=client,
+        fetch_fn=lambda c: c.call("ka20006", body),
+    )
     got = [str(r.get("dt") or "") for r in page.rows if r.get("dt")]
     if not got:
         return 0
