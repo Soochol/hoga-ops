@@ -83,7 +83,11 @@ export default function Capture() {
           `overflow-y-auto` 스크롤러가 콘텐츠 높이(약 573px)에서 줄지 않아, 패널의
           `overflow-hidden` 이 폼 하단을 조용히 먹고 자체 스크롤바도 뜨지 않는다. */}
       <PanelCard as="section" borderless flat data-testid="capture-form-pane" className="flex min-h-0 flex-col overflow-hidden">
-        <DataSection title="캡처 요청" flushHeader className="flex min-h-0 flex-1 flex-col" contentClassName="min-h-0 flex-1 overflow-y-auto p-md">
+        {/* 헤더 밑줄을 켠 채로 둔다(`flushHeader` 제거, 2026-08-07) — pane 이
+            `PanelCard borderless flat` 이라 테두리·그림자·톤 스텝이 전부 꺼져 있고,
+            좌우 pane 을 갈라 주는 게 스플리터 12px 뿐이었다. `/market` 이 같은
+            문제(평면 카드는 분리 수단이 없다)에 낸 답과 같은 선이다. */}
+        <DataSection title="캡처 요청" className="flex min-h-0 flex-1 flex-col" contentClassName="min-h-0 flex-1 overflow-y-auto p-md">
           <CaptureForm referenceYear={year} referenceMonth={month} initialCode={initialCode} picked={picked} />
         </DataSection>
       </PanelCard>
@@ -100,7 +104,7 @@ export default function Capture() {
           큐 행의 최소폭이 패널 축소를 막지 않게 한다. 패널이 행보다 좁아지면
           큐 리스트(overflow-x:auto)가 가로 스크롤로 받아낸다 — 페이지 오버플로 방지. */}
       <PanelCard as="section" borderless flat data-testid="capture-queue-pane" className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <DataSection title="캡처 대기열" flushHeader className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col p-md">
+        <DataSection title="캡처 대기열" className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col p-md">
           <CaptureQueue onPickSymbol={onPickSymbol} />
         </DataSection>
       </PanelCard>
