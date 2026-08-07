@@ -218,12 +218,15 @@ export function SessionLinesChart({
 }
 
 /** 세션축의 고정 시간 라벨 — 표본 범위가 아니라 **세션**을 말한다. */
-export function SessionAxisLabels() {
+export function SessionAxisLabels({ end = '15:30' }: { end?: string } = {}) {
   return (
     <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
       <span>09:00</span>
       <span>12:00</span>
-      <span>15:30</span>
+      {/* 파생은 15:45 다 — 주식 마감을 기본값으로 두되 축이 다른 시장은 넘겨받는다.
+          하드코딩된 라벨과 실제 `sessionEndSec` 이 어긋나면 선은 15:45 까지 그려지는데
+          눈금은 15:30 이라고 말한다(= 조용히 거짓말). */}
+      <span>{end}</span>
     </div>
   );
 }

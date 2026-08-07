@@ -190,6 +190,59 @@ class InvestorFlowResponse(BaseModel):
     markets: dict[str, list[InvestorFlowPoint]] = Field(default_factory=dict)
 
 
+class DerivFlowPoint(BaseModel):
+    """파생 표본 하나 — 3주체 순매수.
+
+    **두 축을 함께 싣는다.** `contracts` 는 벤더 원값(계약)이고 국내 HTS 의 표준 축이며,
+    `amount_eok` 는 화면이 주식 카드와 같은 축을 쓰기 위한 파생값이다. 억원 환산은
+    단위 판정이 서야만 가능하므로 **미확정이면 `amount_eok` 가 통째로 null** 이다 —
+    이때 계약 축은 멀쩡하다.
+    """
+
+    t_ms: int
+    individual: float | None = None
+    foreign: float | None = None
+    institution: float | None = None
+    individual_qty: float | None = None
+    foreign_qty: float | None = None
+    institution_qty: float | None = None
+
+
+class DerivFlowUnits(BaseModel):
+    """단위 판정 — 벤더가 말해 주지 않아 값에서 역산한 결과(`deriv_flow_units`).
+
+    화면이 "단위 미확정" 을 말할 수 있어야 하므로 이유까지 그대로 내보낸다. 숨기면
+    억원 축이 빈 이유를 아무도 모른다.
+    """
+
+    quantity: str | None = None
+    amount: str | None = None
+    resolved: bool = False
+    reason: str = ""
+
+
+class DerivFlowProduct(BaseModel):
+    label: str
+    iscd: str
+    #: `futures` · `call` · `put`
+    family: str
+    points: list[DerivFlowPoint] = Field(default_factory=list)
+    coverage: InvestorFlowCoverage
+
+
+class DerivFlowResponse(BaseModel):
+    date: str
+    #: 억원 축이 살아 있으면 `amt_eok`, 단위 미확정이면 null. 이름에 단위를 박는
+    #: 규약(#1117)을 따르되 **null 이 가능한 것**이 이 표면의 차이다.
+    unit: str | None = None
+    units: DerivFlowUnits
+    #: 파생 세션(초, KST 자정 기준) — 주식과 다르다(09:00–15:45). 화면이 x축을
+    #: 하드코딩하지 않게 응답이 말한다.
+    session_start_sec: int
+    session_end_sec: int
+    products: dict[str, DerivFlowProduct] = Field(default_factory=dict)
+
+
 class SectorFlowRow(InvestorValues):
     """업종 1행 — 3주체 순매수(억원) + 지수 레벨·등락률.
 
@@ -431,6 +484,118 @@ def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str,
             "gap_ranges": cov.gap_ranges,
         },
         "markets": series,
+    }
+
+
+#: 파생 응답에서 3주체를 뽑는 필드 쌍 — (대금, 수량). 12주체 중 셋만 쓴다:
+#: 화면이 그 셋을 그리고, 나머지 9종은 필드명이 불규칙하다(`pe_fund_ntby_vol` 처럼
+#: `_qty` 가 아닌 것이 섞인다).
+_DERIV_ACTOR_FIELDS: tuple[tuple[str, str, str], ...] = (
+    ("individual", "prsn_ntby_tr_pbmn", "prsn_ntby_qty"),
+    ("foreign", "frgn_ntby_tr_pbmn", "frgn_ntby_qty"),
+    ("institution", "orgn_ntby_tr_pbmn", "orgn_ntby_qty"),
+)
+
+
+def _deriv_num(row: dict[str, Any], key: str) -> float | None:
+    v = row.get(key)
+    if v is None or str(v).strip() == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _deriv_flow_payload(data_dir: Path) -> dict[str, Any]:
+    """파생 투자자 수급 — 저장된 표본을 상품별 시계열로. **벤더를 부르지 않는다.**
+
+    표본은 수집기가 이미 찍어 뒀고, 소급 조회가 불가능한 데이터라 여기서 다시 부를
+    수도 없다(주식 `/investor-flow` 와 같은 성질).
+
+    **단위는 저장하지 않고 매번 역산한다.** 판정 로직이 바뀌면 과거 표본도 새 판정으로
+    다시 읽혀야 하는데, 저장해 두면 그날의 옛 판정이 화석으로 남는다. 역산 비용은
+    선물 표본 하나를 보는 것뿐이다.
+
+    판정은 **그날의 마지막 선물 표본**으로 한다 — 누적이 가장 많이 쌓인 표본이라
+    자릿수 검사가 가장 확실하다(장 초반 표본으로 재면 임계에 못 미쳐 보류가 된다).
+
+    ⚠ 그렇게 얻은 판정 하나를 **그날 전 이력에 소급 적용한다**(표본마다 따로 재지
+    않는다). 이게 자기치유의 근거다: 09:05 표본은 그 시점엔 판정이 안 서지만, 10시에
+    이 라우트를 부르면 마지막 표본 기준으로 확정된 단위가 09:05 점에도 걸려 억원 축이
+    통째로 살아난다. **"표본별로 판정을 캐시" 하는 최적화를 하면 이 성질이 조용히
+    깨진다** — 장 초반 점들이 영영 null 로 굳는다.
+    """
+    from hoga.collector.orchestrator import now_kst  # noqa: PLC0415
+    from hoga.live.deriv_flow_collector import POLL_INTERVAL_S  # noqa: PLC0415
+    from hoga.live.deriv_flow_products import BY_KEY, PRODUCTS, UNIT_PROBE_KEY  # noqa: PLC0415
+    from hoga.live.deriv_flow_store import (  # noqa: PLC0415
+        GAP_MIN_JUMP_INTERVALS,
+        DerivFlowStore,
+        expected_sample_count,
+    )
+    from hoga.live.deriv_flow_units import AMOUNT_UNITS, UnitVerdict, infer_units  # noqa: PLC0415
+    from hoga.live.session_gate import DERIV_CLOSE_MIN, DERIV_OPEN_MIN  # noqa: PLC0415
+
+    date = now_kst().strftime("%Y%m%d")
+    samples = DerivFlowStore(data_dir).load_samples(date)
+    poll_ms = int(POLL_INTERVAL_S * 1000)
+
+    by_product: dict[str, list[Any]] = {}
+    for s in samples:
+        by_product.setdefault(s.product, []).append(s)
+
+    # 단위 판정 — 마지막 선물 표본 하나.
+    probe = BY_KEY[UNIT_PROBE_KEY]
+    verdict = UnitVerdict(None, None, None, 0, "표본 없음 — 판정 보류")
+    probe_samples = by_product.get(UNIT_PROBE_KEY) or []
+    if probe_samples and probe.multiplier_won is not None:
+        verdict = infer_units(probe_samples[-1].row, multiplier_won=probe.multiplier_won)
+    to_eok = AMOUNT_UNITS[verdict.amount] / 1e8 if verdict.amount else None
+
+    products: dict[str, Any] = {}
+    for product in PRODUCTS:
+        rows = by_product.get(product.key) or []
+        points: list[dict[str, Any]] = []
+        for s in rows:
+            pt: dict[str, Any] = {"t_ms": s.sampled_at_ms}
+            for name, amt_key, qty_key in _DERIV_ACTOR_FIELDS:
+                amt = _deriv_num(s.row, amt_key)
+                pt[name] = None if (amt is None or to_eok is None) else amt * to_eok
+                pt[f"{name}_qty"] = _deriv_num(s.row, qty_key)
+            points.append(pt)
+        ts = sorted(s.sampled_at_ms for s in rows)
+        gaps = [
+            {"start_ms": prev, "end_ms": cur}
+            for prev, cur in zip(ts, ts[1:], strict=False)
+            if cur - prev > poll_ms * GAP_MIN_JUMP_INTERVALS
+        ]
+        products[product.key] = {
+            "label": product.label,
+            "iscd": product.iscd,
+            "family": product.family,
+            "points": points,
+            "coverage": {
+                "first_sample_ms": ts[0] if ts else None,
+                "last_sample_ms": ts[-1] if ts else None,
+                "sample_count": len(ts),
+                "expected_count": expected_sample_count(poll_interval_ms=poll_ms),
+                "gap_ranges": gaps,
+            },
+        }
+
+    return {
+        "date": date,
+        "unit": "amt_eok" if verdict.amount else None,
+        "units": {
+            "quantity": verdict.quantity,
+            "amount": verdict.amount,
+            "resolved": verdict.resolved,
+            "reason": verdict.reason,
+        },
+        "session_start_sec": DERIV_OPEN_MIN * 60,
+        "session_end_sec": DERIV_CLOSE_MIN * 60,
+        "products": products,
     }
 
 
@@ -873,6 +1038,25 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
         재시작 공백은 `gap_ranges` 로 정직하게 드러나고 **메울 수는 없다**(#1105).
         """
         return await asyncio.to_thread(_investor_flow_payload, data_dir)
+
+    @router.get("/deriv-flow")
+    async def get_deriv_flow() -> DerivFlowResponse:
+        """파생 투자자 수급 — 수집기가 적재한 표본(KIS `FHPTJ04030000`)을 읽는다.
+        벤더를 부르지 않는다.
+
+        `/investor-flow` 와 두 가지가 다르다:
+
+        - **세션이 15:45 까지다**(주식 15:30). x축을 화면이 하드코딩하지 않게
+          `session_*_sec` 로 응답이 말한다.
+        - **`unit` 이 null 일 수 있다.** 벤더가 대금 단위를 말해 주지 않아 값에서
+          역산하는데(`deriv_flow_units`), 장 초반처럼 판정이 안 서면 억원 축이 통째로
+          빈다. 그때도 계약 축(`*_qty`)은 멀쩡하다 — 화면은 `units.reason` 을 그대로
+          보여 주면 된다. 억지로 환산하면 그게 #1117 이다.
+
+        **KIS 키가 없으면 통째로 빈다**(ADR-0134) — 파생 투자자 수급은 KIS 만 주고
+        (키움 REST 337 TR 중 파생 투자자 TR 0건) 이 TR 은 모의투자 미지원이다.
+        """
+        return await asyncio.to_thread(_deriv_flow_payload, data_dir)
 
     @router.get("/streaks")
     async def get_streaks() -> StreaksResponse:

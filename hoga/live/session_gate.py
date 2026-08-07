@@ -199,6 +199,48 @@ async def venue_capture_windows_async(now_ms: int) -> frozenset[str]:
     return await asyncio.to_thread(venue_capture_windows, now_ms)
 
 
+# ── 파생(선물·옵션) 수집 창 ──────────────────────────────────────────────────
+#
+# **주식보다 15분 늦게 닫는다** — KRX 파생 정규장은 09:00–15:45 다(주식 15:30).
+# `ws_capture_window` 를 그대로 쓰면 마감 15분이 통째로 빈다. 그 15분은 버려도 되는
+# 구간이 아니다: 최종 정산에 걸리는 포지션 조정이 몰리는 자리라 투자자 수급의 하루
+# 마지막 모양이 거기서 바뀐다.
+#
+# `should_run_now` 를 못 쓰는 이유는 `ws_connection_window` 와 같다 — 그 함수는
+# `market_phase`(주식 시계)가 'closed' 면 False 라 15:30~15:45 를 못 담는다. 그래서
+# 거래일 판정만 SSOT 에서 받고 시계는 여기서 연다.
+#
+# 최종거래일(월물 만기)의 조기 마감은 반영하지 않는다 — 그날은 15:45 이후 표본이
+# 안 올 뿐이고, 없는 표본은 커버리지가 그대로 드러낸다(억지로 메우지 않는 것이
+# investor-flow 계약이다).
+#: **밑줄 없는 public 상수다** — 커버리지 분모(`deriv_flow_store.SESSION_MINUTES`)와
+#: 응답의 x축(`/api/market/deriv-flow`)이 같은 창을 말해야 하는데, 두 곳에 숫자를
+#: 다시 적으면 창을 조정할 때 조용히 갈린다. 게이트가 SSOT 다.
+DERIV_OPEN_MIN = 9 * 60             # 09:00 KST
+DERIV_CLOSE_MIN = 15 * 60 + 45      # 15:45 KST
+
+
+def _within_deriv_clock(t_ms: int) -> bool:
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
+    return DERIV_OPEN_MIN <= (kst.hour * 60 + kst.minute) < DERIV_CLOSE_MIN
+
+
+def deriv_capture_window(now_ms: int) -> bool:
+    """파생 수집 게이트: 거래일 && 09:00–15:45 KST.
+
+    ⚠ BLOCKING: 거래일 판정이 캐시 미스 시 동기 KIS HTTP 를 칠 수 있다 — 이벤트
+    루프에서 직접 호출 금지, 코루틴은 ``deriv_capture_window_async`` 를 await.
+    """
+    if not _within_deriv_clock(now_ms):
+        return False
+    return is_trading_day_now(now_ms)
+
+
+async def deriv_capture_window_async(now_ms: int) -> bool:
+    """deriv_capture_window 의 non-blocking 진입점 — to_thread 봉인."""
+    return await asyncio.to_thread(deriv_capture_window, now_ms)
+
+
 # ── 시분할 구독은 폐지됐다 (ADR-0140 §2, PR-F) ────────────────────────────────
 #
 # 여기 있던 `target_ws_venue(now)` · `in_krx_warmup_window(now)` · `AUTO_VENUE` 는

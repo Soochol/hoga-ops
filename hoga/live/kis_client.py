@@ -38,6 +38,7 @@ from hoga.live.kis_errors import (
     KisTransportError,
 )
 from hoga.live.kis_futures_endpoints import KisFuturesEndpointsMixin
+from hoga.live.kis_investor_endpoints import KisInvestorEndpointsMixin
 from hoga.live.kis_option_endpoints import KisOptionEndpointsMixin
 from hoga.util.timeenc import KST  # noqa: F401  (re-export facade)
 
@@ -229,7 +230,7 @@ class KisCredentials:
         return _BASE_REAL
 
 
-class KisClient(KisOptionEndpointsMixin, KisFuturesEndpointsMixin):
+class KisClient(KisOptionEndpointsMixin, KisFuturesEndpointsMixin, KisInvestorEndpointsMixin):
     def __init__(
         self,
         credentials: KisCredentials,

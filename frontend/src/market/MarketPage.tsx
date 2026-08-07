@@ -13,6 +13,7 @@
  */
 import { useState } from 'react';
 import { SectorFlowCard } from './SectorFlowCard';
+import { InvestorCard } from './InvestorFlowCard';
 import { useLiveIndexCandles } from '../api/liveIndices';
 import {
   useMarketFutures,
@@ -24,7 +25,6 @@ import {
 import { useMarketIndexQuotes } from '../api/marketIndexQuotes';
 import {
   useMarketFunds,
-  useMarketInvestorFlow,
   useMarketProgram,
   useMarketSectors,
   useMarketStreaks,
@@ -50,7 +50,7 @@ import {
   SessionLinesChart,
   Sparkline,
 } from './marketBits';
-import { SERIES_COLORS, fmtSigned, stockSeriesDiffs, wonToJo } from './marketFormat';
+import { MARKET_LABELS, SERIES_COLORS, fmtSigned, stockSeriesDiffs, wonToJo } from './marketFormat';
 
 // ── 지수 카드 ─────────────────────────────────────────────────────────────
 
@@ -341,136 +341,6 @@ function IndexCard({
         </div>
       ) : null}
     </MarketCard>
-  );
-}
-
-// ── 투자자 수급 ───────────────────────────────────────────────────────────
-
-const MARKET_LABELS: Record<string, string> = { KOSPI: '코스피', KOSDAQ: '코스닥' };
-
-/** epoch ms → KST 자정 기준 초. 세션축(09:00–15:30) x 위치 계산용. */
-function kstSecOfDay(tMs: number): number {
-  const kst = new Date(tMs + 9 * 3600_000);
-  return kst.getUTCHours() * 3600 + kst.getUTCMinutes() * 60 + kst.getUTCSeconds();
-}
-
-export function InvestorCard() {
-  const [mode, setMode] = useState<'intraday' | 'daily'>('intraday');
-  const flow = useMarketInvestorFlow();
-  const data = flow.data;
-  const cov = data?.coverage;
-
-  return (
-    <MarketCard className="flex flex-col gap-sm p-md">
-      <CardHeader
-        title="투자자 수급"
-        hint={
-          mode === 'intraday'
-            ? `당일 누적 · 억원 · 잠정${cov ? ` · 표본 ${cov.sample_count}/${cov.expected_count ?? '—'}` : ''}`
-            : '일별 확정 · 억원'
-        }
-        right={
-          <ModeSwitch
-            value={mode}
-            onChange={setMode}
-            options={[
-              ['intraday', '당일'],
-              ['daily', '일별'],
-            ] as const}
-            label="수급 표시 구간"
-          />
-        }
-      />
-      {mode === 'intraday' && <IntradayFlow data={data} loading={flow.isLoading} />}
-      {mode === 'daily' && <DailyFlow data={data} />}
-    </MarketCard>
-  );
-}
-
-function IntradayFlow({
-  data,
-  loading,
-}: {
-  data: ReturnType<typeof useMarketInvestorFlow>['data'];
-  loading: boolean;
-}) {
-  if (loading) return null;
-  const markets = data?.markets ?? {};
-  if (Object.keys(markets).length === 0) {
-    // 수집기가 아직 표본을 안 남겼거나 장 시작 전이다 — "실패" 가 아니다.
-    return <EmptyNote>오늘 표본이 아직 없습니다. 장중 수집이 시작되면 채워집니다.</EmptyNote>;
-  }
-  return (
-    <div className="grid grid-cols-2 gap-lg">
-      {Object.entries(markets).map(([label, points]) => {
-        const actors = [
-          ['개인', SERIES_COLORS.individual, points.map((p) => p.individual)],
-          ['외국인', SERIES_COLORS.foreign, points.map((p) => p.foreign)],
-          ['기관', SERIES_COLORS.institution, points.map((p) => p.institution)],
-        ] as const;
-        const last = points[points.length - 1];
-        return (
-          <div key={label} className="flex flex-col gap-2xs">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
-              <span className="text-xs font-semibold text-fg-dim">{MARKET_LABELS[label] ?? label}</span>
-              <span className="flex items-center gap-md font-data text-2xs tabular-nums">
-                <LegendItem color={SERIES_COLORS.individual} label="개인" value={last?.individual ?? null} />
-                <LegendItem color={SERIES_COLORS.foreign} label="외국인" value={last?.foreign ?? null} />
-                <LegendItem color={SERIES_COLORS.institution} label="기관" value={last?.institution ?? null} />
-              </span>
-            </div>
-            {/* 벤더 누적을 그대로, x 는 세션 시간 비례 — 표본 4개가 전폭으로 늘어나
-                "하루치 흐름" 처럼 읽히던 왜곡 제거. 부분 커버리지는 부분 선이다. */}
-            <SessionLinesChart
-              series={actors.map(([, color, vals]) => ({
-                color,
-                points: points.map((pt, i) => ({ sec: kstSecOfDay(pt.t_ms), v: vals[i] })),
-              }))}
-              height={96}
-            />
-            <SessionAxisLabels />
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function DailyFlow({ data }: { data: ReturnType<typeof useMarketInvestorFlow>['data'] }) {
-  const daily = data?.daily ?? [];
-  if (daily.length === 0) {
-    // 장중 표본과 달리 확정본은 뒤늦게도 채워진다(base_dt 랜덤 액세스) — "쌓이는 중" 이다.
-    return <EmptyNote>확정 이력이 아직 없습니다. 장 마감 뒤 일일 배치가 하루씩 채웁니다.</EmptyNote>;
-  }
-  return (
-    <div className="grid grid-cols-2 gap-lg">
-      {Object.values(MARKET_LABELS).map((_, idx) => {
-        const key = idx === 0 ? 'KOSPI' : 'KOSDAQ';
-        const foreign = daily.map((d) => d.markets[key]?.foreign ?? null);
-        const inst = daily.map((d) => d.markets[key]?.institution ?? null);
-        return (
-          <div key={key} className="flex flex-col gap-2xs">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
-              <span className="text-xs font-semibold text-fg-dim">{MARKET_LABELS[key]}</span>
-              <span className="flex items-center gap-md font-data text-2xs tabular-nums">
-                <LegendItem color={SERIES_COLORS.foreign} label="외국인" />
-                <LegendItem color={SERIES_COLORS.institution} label="기관" />
-              </span>
-            </div>
-            <ComboNetChart
-              a={{ color: SERIES_COLORS.foreign, values: foreign }}
-              b={{ color: SERIES_COLORS.institution, values: inst }}
-            />
-            <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
-              <span>{daily[0]?.date.slice(4, 6)}/{daily[0]?.date.slice(6)}</span>
-              <span>
-                {daily[daily.length - 1]?.date.slice(4, 6)}/{daily[daily.length - 1]?.date.slice(6)}
-              </span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
