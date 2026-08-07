@@ -120,14 +120,16 @@ describe('projectLiveStatus', () => {
     expect(projection.banner.stack).toEqual(['kis_token_expired']);
   });
 
+  // 백엔드가 실제로 내는 reason 전수(lifecycle.py 의 Literal)와 1:1. 여기 없는 값을
+  // 백엔드가 내보내면 CaptureReason union 이 늘고 CAPTURE_REASON_VIEW 가 컴파일
+  // 에러를 내므로, 이 표가 조용히 뒤처지지 않는다. 마지막 행은 union 밖 폴백 —
+  // 원문 라벨 + error 가 사고가 아니라 설계임을 못 박는다.
   it.each([
     ['healthy', true, 'ok', 'LIVE●', true],
     ['offline', false, 'ok', '오프라인', false],
     ['closed', false, 'ok', '장 마감', false],
-    ['reconnecting', false, 'warn', '재연결 중...', false],
-    ['subscribing', false, 'warn', '구독 중...', false],
-    ['sub_failed', false, 'error', '구독 실패', false],
-    ['stale', false, 'error', '수신 끊김', false],
+    ['registration_incomplete', false, 'error', '구독 등록 미완', false],
+    ['some_future_reason', false, 'error', 'some_future_reason', false],
   ] as const)('projects capture reason %s', (reason, healthy, severity, label, showDot) => {
     const projection = project({
       status: {

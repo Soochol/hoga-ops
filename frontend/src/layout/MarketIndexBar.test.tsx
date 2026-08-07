@@ -76,7 +76,7 @@ describe('MarketIndexBar', () => {
 
   it('renders 실시간 coverage chip = KIS WS + 키움 WS when kiwoom present', async () => {
     mockByUrl({
-      running: true, live_set: ['a', 'b', 'c'], capture_reason: 'ok',
+      running: true, live_set: ['a', 'b', 'c'], capture_reason: 'healthy',
       kiwoom: { enabled: true, accounts_configured: 2, connected_accounts: 2, subscribed_count: 40, last_tick_ms: null, accounts: [] },
     });
     renderBar();
@@ -87,7 +87,7 @@ describe('MarketIndexBar', () => {
 
   it('paints coverage count with --warn when a kiwoom account is disconnected', async () => {
     mockByUrl({
-      running: true, live_set: [], capture_reason: 'ok',
+      running: true, live_set: [], capture_reason: 'healthy',
       kiwoom: { enabled: true, accounts_configured: 4, connected_accounts: 2, subscribed_count: 100, last_tick_ms: null, accounts: [] },
     });
     renderBar();
@@ -96,7 +96,7 @@ describe('MarketIndexBar', () => {
   });
 
   it('hides coverage chip when kiwoom is absent (unwired)', async () => {
-    mockByUrl({ running: true, live_set: ['a'], capture_reason: 'ok' });
+    mockByUrl({ running: true, live_set: ['a'], capture_reason: 'healthy' });
     renderBar();
     await screen.findByTestId('market-index-bar');
     expect(screen.queryByTestId('kiwoom-coverage-chip')).not.toBeInTheDocument();
