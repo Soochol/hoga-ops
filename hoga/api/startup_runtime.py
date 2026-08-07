@@ -50,6 +50,9 @@ class StartupRuntimeDeps:
     get_kiwoom_capture_codes: Callable[[], Sequence[str]] | None = None
     # 키움 세션 워치독 30s 루프 스포너(ADR-0118 §5). 기본 None — 미주입이면 미기동.
     start_kiwoom_watchdog: Callable[..., Awaitable[TaskOrNone]] | None = None
+    #: 0J/0U 업종·지수 오버레이 브로드캐스트. 워치독과 같은 수명이다 — 키움 세션이
+    #: 없으면 매 패스 no-op 이라 무자격 dev 에서도 안전하다.
+    start_sector_broadcast: Callable[..., Awaitable[TaskOrNone]] | None = None
     # 캡처 워커 풀 태스크 접근자. 풀은 lifespan 이 start_app_runtime **전에** 띄워
     # captures._workers 에 담으므로 런타임이 핸들을 소유하지 않는다 — 매 호출 때 모듈
     # 속성을 다시 읽어야 하니 리스트가 아니라 콜러블로 받는다. 미주입이면 목록에서 생략.
@@ -120,6 +123,7 @@ class AppStartupRuntime:
     today_promoter_task: TaskOrNone
     deps: StartupRuntimeDeps
     kiwoom_watchdog_task: TaskOrNone = None
+    sector_broadcast_task: TaskOrNone = None
 
     def supervised_task_health(self) -> list[dict[str, object]]:
         """Honest alive/dead snapshot of each lifespan-owned background task.
@@ -166,6 +170,9 @@ class AppStartupRuntime:
         tasks: list[tuple[str, TaskOrNone]] = [
             *((t.get_name(), t) for t in self.scheduler_tasks),
             ("kiwoom-session-watchdog", self.kiwoom_watchdog_task),
+            # 오버레이라 죽어도 화면이 안 비므로 **무증상**이다 — health 에 실어야
+            # 조용한 죽음이 보인다(그게 이 목록의 취지다).
+            ("kiwoom-sector-broadcast", self.sector_broadcast_task),
             ("today-promoter", self.today_promoter_task),
         ]
         if self.deps.get_capture_worker_tasks is not None:
@@ -190,6 +197,7 @@ class AppStartupRuntime:
         """Stop runtime-owned background work in shutdown order."""
         await self.deps.stop_today_promoter(self.today_promoter_task)
         await self.deps.stop_today_promoter(self.kiwoom_watchdog_task)
+        await self.deps.stop_today_promoter(self.sector_broadcast_task)
         await self.deps.stop_live_stream()
 
         for task in self.scheduler_tasks:
@@ -235,6 +243,9 @@ async def start_app_runtime(
 
         if deps.start_kiwoom_watchdog is not None:
             runtime.kiwoom_watchdog_task = await deps.start_kiwoom_watchdog()
+
+        if deps.start_sector_broadcast is not None:
+            runtime.sector_broadcast_task = await deps.start_sector_broadcast()
 
         if today_promoter_enabled_from_env(deps.env):
             runtime.today_promoter_task = await deps.start_today_promoter(

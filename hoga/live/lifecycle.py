@@ -540,6 +540,59 @@ async def start_kiwoom_session_watchdog(
     return asyncio.create_task(loop(), name="kiwoom-session-watchdog")
 
 
+#: 업종·지수 실시간 브로드캐스트 주기. **틱마다 보내지 않는 이유**가 이 상수다:
+#: 0J 는 지수 상품 기준 초당 ~1틱이고 구독이 68코드라 그대로 흘리면 탭마다 초당 수십
+#: 프레임이 된다. 화면은 1초 해상도면 충분하므로(사람이 읽는 숫자다) 여기서 묶는다.
+_SECTOR_BROADCAST_INTERVAL_S = 1.0
+
+#: 브로드캐스트가 싣는 필드 — 화면이 실제로 쓰는 것만. 전체 스냅샷을 보내면 시고저·
+#: 누적거래량까지 매초 나가는데 어느 카드도 그걸 안 쓴다.
+_SECTOR_WIRE_FIELDS = (
+    "value", "change", "change_pct", "trade_value_eok",
+    "rising", "falling", "flat", "upper", "lower",
+)
+
+
+async def start_sector_broadcast(
+    publish: Callable[[dict], None],
+    *,
+    interval_s: float = _SECTOR_BROADCAST_INTERVAL_S,
+) -> asyncio.Task:
+    """0J/0U 업종·지수 스냅샷을 **변경분만** 1초 주기로 프론트에 밀어 준다.
+
+    폴링(`/api/market/sectors`, 30s)을 대체하지 않는다 — 그쪽이 baseline 이고 이건
+    그 위의 오버레이다. 그래서 이 태스크가 죽어도 화면은 30초 갱신으로 되돌아갈 뿐
+    비지 않는다. 반대로 말하면 **죽어도 무증상**이라, 살아 있는지는 `sector_health`
+    카운터로만 보인다.
+
+    **변경분만 보내는 것이 load-bearing 이다.** 68코드를 매초 통째로 보내면 장 마감
+    후처럼 아무것도 안 변하는 구간에도 초당 한 프레임이 나간다. 값 비교로 걸러 두면
+    조용한 시장에서는 트래픽이 0 이 된다.
+    """
+
+    last: dict[str, dict] = {}
+
+    async def loop() -> None:
+        while True:
+            try:
+                session = _state.kiwoom_session
+                if session is not None:
+                    snap = session.sector_snapshot()
+                    changed: dict[str, dict] = {}
+                    for code, row in snap.items():
+                        wire = {k: row.get(k) for k in _SECTOR_WIRE_FIELDS if row.get(k) is not None}
+                        if wire and wire != last.get(code):
+                            changed[code] = wire
+                            last[code] = wire
+                    if changed:
+                        publish({"type": "market_sector_tick", "sectors": changed})
+            except Exception:  # noqa: BLE001 — 오버레이 실패가 폴링까지 죽이면 안 된다
+                _log.exception("live.kiwoom.sector_broadcast_failed")
+            await asyncio.sleep(interval_s)
+
+    return asyncio.create_task(loop(), name="kiwoom-sector-broadcast")
+
+
 def start_trading_calendar_refresher(
     data_dir,
     *,

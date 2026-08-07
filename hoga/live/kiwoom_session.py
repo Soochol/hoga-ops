@@ -26,9 +26,11 @@ from .coverage import (
     venue_weight,
 )
 from .kiwoom_fields import apply_venue
+from .kiwoom_sector_frames import merge_tick, parse_sector_row
 from .kiwoom_vi_capture import KiwoomViCapture, replay_today as replay_vi_today
 from .kiwoom_vi_state import KiwoomViState
 from .kiwoom_ws_client import KiwoomWsClient
+from .sector_registry import SECTOR_CODES
 from .snapshot import LiveSnapshot
 from .ticks import WsTick
 
@@ -117,6 +119,12 @@ class KiwoomSessionManager:
         # 같은 이벤트가 중복). raw 채록(capture)과 표시용 상태(state)로 팬아웃.
         self._vi_capture = KiwoomViCapture(data_dir)
         self._vi_state = KiwoomViState()
+        # 0J/0U 업종·지수 — VI 와 같은 이유로 계정 0 에만 배선한다. 저장 축이 없어
+        # 웜스타트 리플레이도 없다: 재시작하면 다음 틱까지 비고, 그동안 화면은 폴링
+        # baseline 으로 그려진다(그래서 비어도 결손이 아니다).
+        self._sector_snapshots: dict[str, dict] = {}
+        self._sector_tick_count = 0
+        self._sector_last_ms: int | None = None
         # 재시작(dev 핫리로드 포함) 시 인메모리 상태가 비면 /api/live/vi-status가 다음
         # 이벤트까지 null — 당일 채록 파일을 리플레이해 웜스타트(없으면 조용히 0건).
         replayed = replay_vi_today(data_dir, self._now_fn(), self._vi_state.on_row)
@@ -463,6 +471,47 @@ class KiwoomSessionManager:
         """종목의 최신 VI 이벤트 상태(없으면 None) — /api/live/vi-status 소스."""
         return self._vi_state.get(code)
 
+    def _on_sector_row(self, row: dict, now_ms: int) -> None:
+        """계정 0 클라이언트의 0J/0U 훅 — 업종코드별 최신 스냅샷을 병합해 얹는다.
+
+        **저장하지 않는다.** 이 표면은 표시 전용이고(`/market` 오버레이) 폴링
+        baseline(`ka20003`, 30s)이 항상 아래에 깔려 있어, 프로세스가 죽어도 화면은
+        폴링으로 되돌아갈 뿐 결손이 남지 않는다.
+
+        병합이 필드 단위인 이유는 `merge_tick` 주석 참조 — 0J 와 0U 가 서로 다른
+        축을 주므로 통째로 교체하면 상대의 값을 지운다.
+        """
+        tick = parse_sector_row(row)
+        if tick is None:
+            return
+        self._sector_snapshots[tick.code] = merge_tick(
+            self._sector_snapshots.get(tick.code), tick
+        )
+        self._sector_tick_count += 1
+        self._sector_last_ms = now_ms
+
+    def sector_snapshot(self) -> dict[str, dict]:
+        """업종코드 → 최신 병합 스냅샷. `/market` 오버레이 소스.
+
+        **얕은 사본을 준다** — 호출자가 직렬화하는 동안 recv 루프가 같은 dict 를
+        갱신하면 "dictionary changed size during iteration" 이 난다.
+        """
+        return dict(self._sector_snapshots)
+
+    def sector_health(self) -> dict:
+        """실시간이 실제로 흐르는가 — 조용한 0틱을 드러내는 관측 창구.
+
+        REG ACK 는 코드 유효성을 검사하지 않으므로(쓰레기 코드도 rc=0) "구독했다" 는
+        아무것도 보장하지 않는다. 오버레이 구조상 틱이 0 이면 화면은 조용히 30초
+        폴링으로 강등되는데, 그게 **무증상**이라 이 카운터가 유일한 신호다.
+        """
+        return {
+            "subscribed_codes": len(SECTOR_CODES),
+            "codes_with_data": len(self._sector_snapshots),
+            "tick_count": self._sector_tick_count,
+            "last_tick_ms": self._sector_last_ms,
+        }
+
     def active_codes(self) -> list[str]:
         """수집 살아있는 계정의 구독 종목 합집합(승격 루프·화질 도트용). 킥 정지·태스크
         사망 계정은 제외(리뷰: 죽은 계정 종목이 realtime●·'저장 중'으로 오표시됐다).
@@ -533,6 +582,9 @@ class KiwoomSessionManager:
             # 표시 슬롯 총 용량(전 연결 잔여 = Σ(상한−저장)) — 프론트 만석 배지 "count/cap".
             "on_demand_capacity": sum(self._storage_free(c) for c in self._conns.values()),
             "accounts": accounts,
+            # 0J/0U 오버레이가 실제로 흐르는가. **화면만 봐서는 알 수 없다** —
+            # 틱이 0 이어도 폴링 baseline 이 그려 주므로 무증상으로 강등된다.
+            "sector": self.sector_health(),
         }
 
     async def stop(self) -> None:
@@ -595,6 +647,9 @@ class KiwoomSessionManager:
             invalidate_fn=prov.invalidate,  # LOGIN 거부 시 캐시 토큰 무효화(리뷰 Major)
             # VI 는 계정 0 전용(시장 전체 스트림 중복 방지 — __init__ 주석).
             on_vi_row=self._on_vi_row if account_id == 0 else None,
+            # 0J/0U 도 같은 이유로 계정 0 전용. 계정마다 걸면 같은 업종 틱을 4번 받아
+            # 병합·카운터가 4배로 뛴다(슬롯은 안 먹지만 프레임 처리는 실비용이다).
+            on_sector_row=self._on_sector_row if account_id == 0 else None,
         )
         # 초기 구독 wire = 저장셋 × 종목별 venue(ADR-0140 §2 파생 집합). 시각 무관 —
         # 예전엔 `target_ws_venue(now)` 로 현재 창 venue 하나를 골랐고 스왑을 watchdog
