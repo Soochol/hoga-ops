@@ -80,20 +80,57 @@ def test_connection_window_strictly_wider_than_capture_window(monkeypatch):
             assert ws_connection_window(t) is True
 
 
-def test_is_auction_window_covers_open_and_close_single_price():
-    """동시호가 창: 장전 08:30–09:00, 장마감 15:20–15:30 KST. 순수 시계.
-    경계: 시작 포함, 끝 배제. 연속거래·NXT 세션 시각은 False(예상체결 게이트)."""
+def test_is_auction_window_krx_covers_open_and_close_single_price():
+    """KRX 동시호가 창: 장전 08:30–09:00, 장마감 15:20–15:30 KST. 순수 시계.
+    경계: 시작 포함, 끝 배제. 연속거래·NXT 단일가 시각은 False(예상체결 게이트)."""
     # 장전 동시호가
-    assert is_auction_window(_ms(2026, 5, 27, 8, 29)) is False  # 창 직전
-    assert is_auction_window(_ms(2026, 5, 27, 8, 30)) is True   # 시작(포함)
-    assert is_auction_window(_ms(2026, 5, 27, 8, 55)) is True
-    assert is_auction_window(_ms(2026, 5, 27, 9, 0)) is False   # 개장(배제) — 연속거래 시작
+    assert is_auction_window(_ms(2026, 5, 27, 8, 29), "KRX") is False  # 창 직전
+    assert is_auction_window(_ms(2026, 5, 27, 8, 30), "KRX") is True   # 시작(포함)
+    assert is_auction_window(_ms(2026, 5, 27, 8, 55), "KRX") is True
+    assert is_auction_window(_ms(2026, 5, 27, 9, 0), "KRX") is False   # 개장(배제) — 연속거래 시작
     # 연속거래 중
-    assert is_auction_window(_ms(2026, 5, 27, 12, 0)) is False
+    assert is_auction_window(_ms(2026, 5, 27, 12, 0), "KRX") is False
     # 장마감 동시호가
-    assert is_auction_window(_ms(2026, 5, 27, 15, 19)) is False  # 창 직전
-    assert is_auction_window(_ms(2026, 5, 27, 15, 20)) is True   # 시작(포함)
-    assert is_auction_window(_ms(2026, 5, 27, 15, 25)) is True
-    assert is_auction_window(_ms(2026, 5, 27, 15, 30)) is False  # 마감(배제)
-    # NXT 애프터마켓 시간대
-    assert is_auction_window(_ms(2026, 5, 27, 16, 30)) is False
+    assert is_auction_window(_ms(2026, 5, 27, 15, 19), "KRX") is False  # 창 직전
+    assert is_auction_window(_ms(2026, 5, 27, 15, 20), "KRX") is True   # 시작(포함)
+    assert is_auction_window(_ms(2026, 5, 27, 15, 25), "KRX") is True
+    assert is_auction_window(_ms(2026, 5, 27, 15, 30), "KRX") is False  # 마감(배제)
+    # NXT 단일가 창은 KRX 창이 아니다 — 그 시각 KRX 는 이미 닫혔다
+    assert is_auction_window(_ms(2026, 5, 27, 15, 35), "KRX") is False
+    # NXT 애프터마켓 접속매매 시간대
+    assert is_auction_window(_ms(2026, 5, 27, 16, 30), "KRX") is False
+
+
+def test_is_auction_window_nxt_covers_after_market_opening_call_only():
+    """NXT 단일가는 애프터마켓 시가 15:30–15:40 **하나뿐**이다.
+
+    프리마켓(08:00–08:50)·애프터마켓(15:40–20:00)은 접속매매고, KRX 단일가 동안
+    (08:50–09:00:30 · 15:20–15:30)은 NXT 가 거래정지다 — 증권사 안내 4곳 일치
+    (2026-08-07 확인). 그 밖의 시각을 열면 NXT 가 접속매매 중에 흘리는 예상체결값이
+    화면에 샌다(2026-07-22 실측).
+    """
+    assert is_auction_window(_ms(2026, 5, 27, 15, 29), "NXT") is False  # 창 직전(거래정지)
+    assert is_auction_window(_ms(2026, 5, 27, 15, 30), "NXT") is True   # 시작(포함)
+    assert is_auction_window(_ms(2026, 5, 27, 15, 39), "NXT") is True
+    assert is_auction_window(_ms(2026, 5, 27, 15, 40), "NXT") is False  # 체결 시점(배제) — 접속매매 시작
+    # KRX 단일가 창은 NXT 창이 아니다 — 그 시각 NXT 는 거래정지다
+    assert is_auction_window(_ms(2026, 5, 27, 8, 55), "NXT") is False
+    assert is_auction_window(_ms(2026, 5, 27, 15, 25), "NXT") is False
+    # NXT 프리마켓·애프터마켓 접속매매
+    assert is_auction_window(_ms(2026, 5, 27, 8, 10), "NXT") is False
+    assert is_auction_window(_ms(2026, 5, 27, 16, 30), "NXT") is False
+
+
+def test_is_auction_window_un_covers_both_markets_windows():
+    """통합(`_AL`)은 병합 스트림이라 KRX·NXT 두 시장의 단일가 창을 모두 갖는다."""
+    assert is_auction_window(_ms(2026, 5, 27, 8, 55), "UN") is True    # KRX 시가
+    assert is_auction_window(_ms(2026, 5, 27, 15, 25), "UN") is True   # KRX 종가
+    assert is_auction_window(_ms(2026, 5, 27, 15, 35), "UN") is True   # NXT 애프터 시가
+    assert is_auction_window(_ms(2026, 5, 27, 12, 0), "UN") is False   # 연속거래
+    assert is_auction_window(_ms(2026, 5, 27, 16, 30), "UN") is False  # 애프터 접속매매
+
+
+def test_is_auction_window_unknown_venue_is_closed():
+    """모르는 venue 는 닫힘 — 단일가 시각을 모르는 시장에 창을 열면 값이 샌다."""
+    assert is_auction_window(_ms(2026, 5, 27, 8, 55), "KOSDAQ_ATS") is False
+    assert is_auction_window(_ms(2026, 5, 27, 15, 35), "") is False

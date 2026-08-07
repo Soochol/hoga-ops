@@ -67,10 +67,14 @@ export interface LiveTickSample {
 
 /** 한 코드의 최신 동시호가 예상체결 표본 (키움 0D FID 23/24).
  *
- *  백엔드가 이미 3중 게이트(venue==KRX AND is_auction_window(프레임 t_ms) AND 값>0,
+ *  백엔드가 이미 2중 게이트(is_auction_window(프레임 t_ms, venue) AND 값>0,
  *  kiwoom_frames._parse_orderbook)를 걸어 실을지 말지를 결정하므로, 프론트는 시계를
  *  보지 않는다 — 필드가 실려 오면 동시호가고, 안 실려 오면 아니다. 초 단위로
- *  흔들리는 창 경계를 프론트가 두 번째 시계로 추적하지 않기 위한 설계다. */
+ *  흔들리는 창 경계를 프론트가 두 번째 시계로 추적하지 않기 위한 설계다.
+ *
+ *  ⚠ **창은 venue 마다 다르다** — KRX 08:30–09:00·15:20–15:30 / NXT 15:30–15:40
+ *  (애프터마켓 시가단일가) / 통합 셋 전부. 그래서 "예상체결 = 오전·오후 KRX 창"
+ *  이라는 가정으로 이 값을 다루면 안 된다. 표는 백엔드 `session_gate` 가 소유한다. */
 export interface LiveExpectedSample {
   /** 예상 체결가. */
   price: number;
