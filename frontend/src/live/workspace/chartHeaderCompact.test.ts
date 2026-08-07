@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { RENDERED_ROOT_PX } from '../../styles/design-tokens';
 import {
   HEADER_FOLD_NONE,
   HEADER_LABEL_MIN_WIDTH_PX,
@@ -23,25 +24,30 @@ describe('nextHeaderFold', () => {
 
   // 임계 아래에서 마지막 액션 버튼이 overflow-hidden 에 예고 없이 잘려 사라진다
   // (#762 원 실측: 2버튼 시절 250px 에서 41px 스필). 1단계는 그 무성 손실을 막고,
-  // 봉 버튼은 아직 살려둔다 — 300px 는 두 임계 사이(258 ≤ w < 424).
+  // 봉 버튼은 아직 살려둔다 — 300px 는 두 임계 사이(240 ≤ w < 384).
   it('folds action labels first, keeping the timeframe buttons', () => {
     const fold = nextHeaderFold(300, HEADER_FOLD_NONE);
     expect(fold.compactActions).toBe(true);
     expect(fold.compactTimeframe).toBe(false);
   });
 
-  // 액션 4버튼 실측(2026-07-21): 라벨 펼침 414px · 아이콘만 241px · 완전 접힘
-  // 141px. 창은 MIN_W=160px 까지 좁아지므로 2단계까지 접어야 잘림이 0 이 된다.
+  // 액션 4버튼 실측(2026-08-07, 다이얼 1.0×): 라벨 펼침 382px · 아이콘만 235px.
+  // 창은 MIN_W=160px 까지 좁아지므로 2단계까지 접어야 잘림이 0 이 된다.
+  // (2026-07-21 · 1.125× 시절: 414 / 241 / 완전 접힘 141.)
   it('folds the timeframe buttons too once even icons would not fit', () => {
     expect(nextHeaderFold(200, HEADER_FOLD_NONE)).toEqual(BOTH_FOLDED);
     expect(nextHeaderFold(160, HEADER_FOLD_NONE)).toEqual(BOTH_FOLDED);
   });
 
-  // 임계는 버튼 수·라벨 길이에 종속이라 헤더 구성이 바뀌면 함께 움직여야 한다.
-  // 2버튼 시절 값(344/232)을 4버튼에 그대로 뒀다가 71px 부족으로 무성 잘림이 났다.
+  // 임계는 버튼 수·라벨 길이 **그리고 밀도 다이얼**에 종속이라 어느 하나가 바뀌면 함께
+  // 움직여야 한다. 2버튼 시절 값(344/232)을 4버튼에 그대로 뒀다가 71px 부족으로 무성
+  // 잘림이 났고(#767), 같은 PR 이 2단계 need 주석(213)은 안 고쳐 2026-08-07 까지
+  // 남아 있었다 — 임계 258 이 실요구 254.25 위 3.75px 여유로 우연히 살아 있어서
+  // 무증상이었다. **여유가 근거처럼 보이는 것이 이 계열 버그의 공통 서명이다.**
   it('keeps thresholds above the measured requirement for the current button set', () => {
-    const MEASURED_LABEL_WIDTH_PX = 414;
-    const MEASURED_ICON_WIDTH_PX = 241;
+    // 2026-08-07 실측 @1.0× · 30분 라벨(최장). 다이얼을 움직이면 여기도 재측정한다.
+    const MEASURED_LABEL_WIDTH_PX = 382;
+    const MEASURED_ICON_WIDTH_PX = 235;
     expect(HEADER_LABEL_MIN_WIDTH_PX).toBeGreaterThanOrEqual(MEASURED_LABEL_WIDTH_PX);
     expect(HEADER_TIMEFRAME_FOLD_WIDTH_PX).toBeGreaterThanOrEqual(MEASURED_ICON_WIDTH_PX);
   });
@@ -142,8 +148,11 @@ describe('/study 접힘 불변식 (#905 실측 고정)', () => {
   it('완전 접힘이 창 최소 폭(MIN_W)에 들어간다', () => {
     // 창을 MIN_W 까지 좁혀도 헤더가 잘리면 안 된다. 임계로는 보장되지 않는 축이다 —
     // 더 접을 단계가 없으므로 이 여유가 음수면 사용자가 잘림을 그대로 본다.
-    // 컨테이너 패딩(px-1 = 0.25rem × 2, 기본 밀도 18px 기준 9px)을 뺀 값과 비교.
-    const containerPaddingPx = 9;
+    // 컨테이너 패딩(px-1 = 0.25rem × 2)을 뺀 값과 비교. rem 이라 다이얼을 따라가므로
+    // 마법수로 두지 않고 다이얼에서 유도한다 — 2026-08-07 다이얼 1.125×→1.0× 에서
+    // 9px→8px 로 움직였고, 이 단언은 `≤` 라 **틀린 값이어도 더 관대해질 뿐 실패하지
+    // 않는다**(즉 마법수였다면 조용히 부정확해졌을 자리다).
+    const containerPaddingPx = 0.25 * 2 * RENDERED_ROOT_PX;
     expect(STUDY_HEADER_NEED.bothFolded).toBeLessThanOrEqual(MIN_W - containerPaddingPx);
   });
 

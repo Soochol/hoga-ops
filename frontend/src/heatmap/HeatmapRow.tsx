@@ -61,8 +61,16 @@ export function HeatmapRow({
   // 예상가가 가격 셀을 덮어도 확정 종가가 글리프로 남는다. 개장 동시호가엔 OHLC 가
   // null(hidden_pre_open)이라 CandleGlyph 가 스스로 미렌더 → 마커만 남는다.
   // 두 시간창을 시계로 가르지 않고 **OHLC 유무**로 가른다(데이터 주도).
-  // 폭: 셀 1.9rem(34px @기본밀도) ⊃ 캔들 10px + gap 2px + '예상' 18px = 30px 필요.
-  // **종전 2.5rem(45px)은 15px 이 놀고 있었다** — 아래 그리드 주석 참조.
+  // 폭(2026-08-07 `/browse` 실측 @1.0×): 셀 **30.39px** ⊃ 캔들 10 + gap 2 + '예상' 16
+  // = **28px 필요**, 여유 2.39px.
+  // ⚠ **이 열은 다이얼에 대해 비선형이다** — 배정 폭(rem)과 '예상' 텍스트(text-2xs)는
+  // 다이얼을 따라가지만 `CandleGlyph` 의 폭은 **고정 px**(W 상수, SVG viewBox)라 안
+  // 줄어든다. 그래서 다이얼을 내릴수록 여유가 빠르게 잠식된다: 1.125× 에서는 34px
+  // 배정에 여유 4px, 1.0× 에서는 30.39px 배정에 여유 2.39px 다. 다음 한 칸을 내리면
+  // 여기가 먼저 터지므로 **이 셀을 실측하고 내릴 것** — 게다가 셀이 `overflow-hidden`
+  // 이라 넘쳐도 **에러 없이 잘리기만 한다**(무성 회귀). 다른 열은 배정·필요가 함께
+  // 줄어 비율이 보존된다; 이 열만 분자에 고정 px 가 섞여 있다.
+  // **종전 2.5rem 은 15px 이 놀고 있었다** — 아래 그리드 주석 참조.
   const showExpected = expectedPrice != null;
   const shownPrice = showExpected ? expectedPrice : price;
   const shownPct = showExpected ? (expectedPct ?? null) : pct;
@@ -86,6 +94,9 @@ export function HeatmapRow({
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } }}
       style={matched ? { ...baseStyle, background: 'var(--tint-selection)' } : baseStyle}
       /* 열 폭은 **실측 필요폭 + 여유**로 다시 잡았다(2026-08-07, 보드 276행 전수).
+         아래 px 수치는 전부 **당시 밀도 1.125× 실측**이다 — 같은 날 다이얼이 1.0× 로
+         내려갔으므로 배정·필요가 **함께** ×0.889 됐다고 읽을 것(비율 보존이라 잘림·
+         넘침 결론은 그대로다). 유일한 예외가 글리프 열이며 그 이유는 위 주석에 있다.
          종전 `2.5rem_3.2rem_4.25rem` 은 내용과 무관하게 정해져 있었다:
            글리프 45px 배정 / 30px 필요(캔들 10 + gap 2 + '예상' 18)  → 15px 유휴
            가격   58px 배정 / 62px 필요(7자리 "1,551,000" 6종목)      → **4px 넘침**

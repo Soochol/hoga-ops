@@ -1,5 +1,6 @@
 import type { Time } from 'lightweight-charts';
 import { LABEL_BOX_X_PAD_PX, LABEL_BOX_Y_PAD_PX, LABEL_FONT_PX, LABEL_GAP_PX } from './AskPeakSegmentsPrimitive';
+import { RENDERED_ROOT_PX, SIZE_TOKENS } from '../styles/design-tokens';
 
 /**
  * 고저 극값 라벨(CONTEXT.md `High/Low Extreme Labels`)의 **순수 기하**. 좌표계는 캔들
@@ -41,8 +42,13 @@ export const LABEL_BOX_RADIUS_PX = 3;
 export const DOT_RADIUS_PX = 3;
 export const DOT_RING_PX = 1.5;
 export const LEADER_OPACITY = 0.45;
-/** `--text-xs`(0.65625rem) × `:root` 18px = 11.81px. 루트 폰트는 tokens.css 의 고정 한 다이얼. */
-export const HIGHLOW_FONT_PX = 11.8;
+/**
+ * 캔버스는 CSS rem 을 못 읽으므로 `--text-xs` 를 px 로 환산해 둔다. **손으로 계산한
+ * 숫자를 박지 말 것** — 2026-08-07 다이얼 변경(18→16px) 전까지 여기엔 `11.8` 이
+ * 상수로 박혀 있었고, 다이얼이 움직여도 타입 에러도 테스트 실패도 없이 이 라벨만
+ * 옛 밀도에 남는 상태였다. 파생식이면 다이얼이 곧 진실이다.
+ */
+export const HIGHLOW_FONT_PX = SIZE_TOKENS['text-xs'].rem * RENDERED_ROOT_PX;
 export const HIGHLOW_FONT_WEIGHT = 600;
 /** 폭 근사 — canvas measureText 를 못 쓰는 경로(레이아웃 단위 테스트) 폴백. */
 const LABEL_CHAR_WIDTH_PX = 6.6;

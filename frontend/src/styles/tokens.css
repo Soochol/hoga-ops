@@ -7,12 +7,12 @@
 [data-theme='dark'],
 [data-theme='obsidian'] {
   /* ───── Scale dial (single source for default density) ─────
-     :root font-size is the ONE dial. 18px = 1.125× default; 16px would be 1.0×.
+     :root font-size is the ONE dial. 16px = 1.0× default (was 18px = 1.125×).
      MUST mirror RENDERED_ROOT_PX in design-tokens.ts (generator comments +
      chart canvas constants derive from it).
      All rem-based tokens (--text-*, --space-*, layout tokens) follow automatically.
      Chart canvas options in util/chartScale.ts are NOT reactive — see DESIGN.md Scale Factor. */
-  font-size: 18px;
+  font-size: 16px;
 
   /* ───── Typography · Font families (theme-independent) ─────
      ONE family for prose and data alike — Pretendard carries Latin + Hangul.
@@ -150,25 +150,25 @@
 
   /* BEGIN AUTO-GENERATED (size + radius + layout) — regenerate via npm run gen:tokens */
   /* ───── Typography sizes (rem-based) ───── */
-  --text-badge: 0.53125rem; /* 9.563px @ default; 8.5px base intent */
-  --text-2xs: 0.5625rem; /* 10.125px @ default; 9px base intent */
-  --text-xs: 0.65625rem; /* 11.813px @ default; 10.5px base intent */
-  --text-sm: 0.71875rem; /* 12.938px @ default; 11.5px base intent */
-  --text-base: 0.8125rem; /* 14.625px @ default; 13px base intent */
-  --text-md: 0.875rem; /* 15.75px @ default; 14px base intent */
-  --text-lg: 1rem; /* 18px @ default; 16px base intent */
-  --text-xl: 1.375rem; /* 24.75px @ default; 22px base intent */
-  --text-2xl: 2rem; /* 36px @ default; 32px base intent */
+  --text-badge: 0.53125rem; /* 8.5px @ default; 8.5px base intent */
+  --text-2xs: 0.5625rem; /* 9px @ default; 9px base intent */
+  --text-xs: 0.65625rem; /* 10.5px @ default; 10.5px base intent */
+  --text-sm: 0.71875rem; /* 11.5px @ default; 11.5px base intent */
+  --text-base: 0.8125rem; /* 13px @ default; 13px base intent */
+  --text-md: 0.875rem; /* 14px @ default; 14px base intent */
+  --text-lg: 1rem; /* 16px @ default; 16px base intent */
+  --text-xl: 1.375rem; /* 22px @ default; 22px base intent */
+  --text-2xl: 2rem; /* 32px @ default; 32px base intent */
 
   /* ───── Spacing (rem-based; 4px base unit) ───── */
-  --space-2xs: 0.125rem; /* 2.25px @ default; 2px base intent */
-  --space-xs: 0.25rem; /* 4.5px @ default; 4px base intent */
-  --space-sm: 0.5rem; /* 9px @ default; 8px base intent */
-  --space-md: 0.75rem; /* 13.5px @ default; 12px base intent */
-  --space-lg: 1rem; /* 18px @ default; 16px base intent */
-  --space-xl: 1.5rem; /* 27px @ default; 24px base intent */
-  --space-2xl: 2rem; /* 36px @ default; 32px base intent */
-  --space-3xl: 3rem; /* 54px @ default; 48px base intent */
+  --space-2xs: 0.125rem; /* 2px @ default; 2px base intent */
+  --space-xs: 0.25rem; /* 4px @ default; 4px base intent */
+  --space-sm: 0.5rem; /* 8px @ default; 8px base intent */
+  --space-md: 0.75rem; /* 12px @ default; 12px base intent */
+  --space-lg: 1rem; /* 16px @ default; 16px base intent */
+  --space-xl: 1.5rem; /* 24px @ default; 24px base intent */
+  --space-2xl: 2rem; /* 32px @ default; 32px base intent */
+  --space-3xl: 3rem; /* 48px @ default; 48px base intent */
 
   /* ───── Border radius (intentionally fixed px — see ADR-0011) ───── */
   --radius-none: 0px; /* Explicit square corners — `rounded-none` and its per-corner variants */
@@ -177,20 +177,20 @@
   --radius-lg: 6px; /* Cards, modals, inputs, larger panels */
   --radius-full: 9999px; /* Status dots, avatars */
 
-  /* ───── Layout (rem-based; rendered px @ 18px root = default density) ───── */
-  --h-toolbar: 2rem; /* 36px @ default; 32px base intent — Workspace toolbar row — ui/WorkspaceShell.tsx WorkspaceToolbar, 소비처는 /live 의 WorkspaceLiveToolbar. 밀도 개편(2026-07-23) 60→32, 한 줄 버튼 행 */
-  --list-row-min-h: 1.5625rem; /* 28.125px @ default; 25px base intent — Shared list row min-height — watchlist/ranking/screener-result rows align (≈28px @ default density, matching the watchlist row). Heatmap rows opt out for max density. */
-  --list-group-header-min-h: 1.8125rem; /* 32.625px @ default; 29px base intent — Shared list group-header min-height — watchlist/heatmap group headers align (≈32px @ default density, matching the watchlist group header) */
-  --h-capture-row: 2.25rem; /* 40.5px @ default; 36px base intent — Single row in the capture queue */
-  --h-live-header: 2rem; /* 36px @ default; 32px base intent — Workspace header row — ui/WorkspaceShell.tsx WorkspaceHeader, 소비처는 /study 의 StudyPage 뿐 */
-  --h-top-nav: 2rem; /* 36px @ default; 32px base intent — Global top navigation row */
-  --h-bottom-bar: 1.5rem; /* 27px @ default; 24px base intent — Global market-index bottom bar row */
-  --sidebar-w: 20rem; /* 360px @ default; 320px base intent — /inventory master-detail 좌열 폭 (pages/Inventory.tsx) */
-  --dropdown-min-w: 20rem; /* 360px @ default; 320px base intent — Combobox / search dropdown minimum width */
-  --watchlist-panel-w: 17.5rem; /* 315px @ default; 280px base intent — Global Watchlist Panel (Right Rail) width */
-  --rail-w: 3rem; /* 54px @ default; 48px base intent — Right Rail icon column width (fixed) */
-  --app-floor-min-w: 57rem; /* 1026px @ default; 912px base intent — App shell responsive floor — below this the shell stops compressing and scrolls horizontally */
-  --app-floor-min-h: 39rem; /* 702px @ default; 624px base intent — App shell vertical floor — /live windows scale with the canvas, so the canvas needs a readable height floor (ADR-0122) */
+  /* ───── Layout (rem-based; rendered px @ 16px root = default density) ───── */
+  --h-toolbar: 2rem; /* 32px @ default; 32px base intent — Workspace toolbar row — ui/WorkspaceShell.tsx WorkspaceToolbar, 소비처는 /live 의 WorkspaceLiveToolbar. 밀도 개편(2026-07-23) 60→32, 한 줄 버튼 행 */
+  --list-row-min-h: 1.5625rem; /* 25px @ default; 25px base intent — Shared list row min-height — watchlist/ranking/screener-result rows align (25px @ the 1.0× dial; was ≈28px at 1.125×, which is the watchlist row it was matched to). Heatmap rows opt out for max density. */
+  --list-group-header-min-h: 1.8125rem; /* 29px @ default; 29px base intent — Shared list group-header min-height — watchlist/heatmap group headers align (29px @ the 1.0× dial; was ≈32px at 1.125×) */
+  --h-capture-row: 2.25rem; /* 36px @ default; 36px base intent — Single row in the capture queue */
+  --h-live-header: 2rem; /* 32px @ default; 32px base intent — Workspace header row — ui/WorkspaceShell.tsx WorkspaceHeader, 소비처는 /study 의 StudyPage 뿐 */
+  --h-top-nav: 2rem; /* 32px @ default; 32px base intent — Global top navigation row */
+  --h-bottom-bar: 1.5rem; /* 24px @ default; 24px base intent — Global market-index bottom bar row */
+  --sidebar-w: 20rem; /* 320px @ default; 320px base intent — /inventory master-detail 좌열 폭 (pages/Inventory.tsx) */
+  --dropdown-min-w: 20rem; /* 320px @ default; 320px base intent — Combobox / search dropdown minimum width */
+  --watchlist-panel-w: 17.5rem; /* 280px @ default; 280px base intent — Global Watchlist Panel (Right Rail) width */
+  --rail-w: 3rem; /* 48px @ default; 48px base intent — Right Rail icon column width (fixed) */
+  --app-floor-min-w: 57rem; /* 912px @ default; 912px base intent — App shell responsive floor — below this the shell stops compressing and scrolls horizontally */
+  --app-floor-min-h: 39rem; /* 624px @ default; 624px base intent — App shell vertical floor — /live windows scale with the canvas, so the canvas needs a readable height floor (ADR-0122) */
 /* END AUTO-GENERATED */
 }
 
