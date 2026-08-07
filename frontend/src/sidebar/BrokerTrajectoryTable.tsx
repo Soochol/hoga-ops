@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { BrokerSeriesEntry, BrokerSeriesPoint } from '../api/types';
-import {
-  realMsToYyyymmdd,
-  regularSessionCloseMs,
-  regularSessionOpenMs,
-} from '../live/liveDateTime';
+import { realMsToYyyymmdd } from '../live/liveDateTime';
+import { liveVenueSessionBoundsMs } from '../live/liveVenuePolicy';
+import type { LiveVenueOption } from '../state/liveVenue';
 import { brokerDisplayShort, isForeignBroker } from './brokerDisplayNames';
 import { priceDirClass } from '../ui/priceDir';
 import { hoverMsFromClientX } from './sparklineHover';
@@ -19,10 +17,24 @@ export const GAP_THRESHOLD_MS = 30_000;
 type Props = {
   series: BrokerSeriesEntry[] | null | undefined;
   cursorMs: number | null;
+  /**
+   * 표시 세션 창을 고르는 거래소 — 점 클립과 x축 도메인 **양쪽**이 이 값을 탄다
+   * (`liveVenueSessionBoundsMs`: KRX 09:00–15:30 · NXT·UN 08:00–20:00).
+   *
+   * **required 다.** 기본값 `'KRX'` 로 두면 소비처가 빠뜨려도 조용히 정규장으로
+   * 잘려 애프터마켓·프리마켓 거래원이 사라진다 — 증상이 "데이터가 없다" 로 보여
+   * 표시층을 의심하지 않게 되는 실패다(2026-08-07 오진). `useLiveSeries` 가 venue 를
+   * required 로 둔 것과 같은 근거.
+   *
+   * 넘길 값은 **해석된 effective venue** 다(선택값 아님) — 축은 데이터가 실제로 사는
+   * venue 를 따라야 한다. NXT 미상장 종목 + UN 선택이면 effective=KRX 이고 데이터도
+   * 정규장뿐이라, 08:00–20:00 축은 빈 공간만 만든다.
+   */
+  venue: LiveVenueOption;
   gapThresholdMs?: number;
 };
 
-export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
+export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
   // 스파크라인 열 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
   // 크로스헤어(cursorMs)로 복귀한다. 모든 행이 같은 dayRange 를 쓰므로 어느
   // 행에서 호버하든 세로 커서선이 전 행에 정렬되고 순매수 열이 함께 갱신된다.
@@ -36,29 +48,31 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   const rows = useMemo(
     () =>
       (series ?? [])
-        .map(clipEntryToRegularSession)
+        .map((entry) => clipEntryToVenueSession(entry, venue))
         .filter((entry) => entry.points.length > 0),
-    [series],
+    [series, venue],
   );
   // Common time domain across all displayed brokers — keeps cursor marker
   // X positions aligned across rows.
+  //
+  // ⚠ 클립과 **같은 경계**를 써야 한다. 클립만 venue 를 타면 애프터마켓 점은 살아나도
+  // 축이 09:00–15:30 이라 toX() 가 그 점들을 viewBox 밖(x > 60)으로 밀어낸다 —
+  // 데이터는 있는데 안 보이는, 더 찾기 어려운 상태가 된다.
   const dayRange = useMemo(() => {
     if (rows.length === 0) return null;
     let first = Infinity;
     let last = -Infinity;
     for (const e of rows) {
       for (const p of e.points) {
-        const date = realMsToYyyymmdd(p.ts_ms);
-        const open = regularSessionOpenMs(date);
-        const close = regularSessionCloseMs(date);
-        if (open < first) first = open;
-        if (close > last) last = close;
+        const { open_ms, close_ms } = liveVenueSessionBoundsMs(realMsToYyyymmdd(p.ts_ms), venue);
+        if (open_ms < first) first = open_ms;
+        if (close_ms > last) last = close_ms;
       }
     }
     return Number.isFinite(first) && Number.isFinite(last) && last > first
       ? { first, last }
       : null;
-  }, [rows]);
+  }, [rows, venue]);
 
   if (series === undefined) {
     return (
@@ -201,13 +215,33 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   );
 }
 
-function clipEntryToRegularSession(entry: BrokerSeriesEntry): BrokerSeriesEntry {
+/**
+ * 궤적 점을 **선택 거래소의 표시 세션 창**으로 자른다.
+ *
+ * 경위: #245(2026-06-25) 가 "clip broker trajectory to regular session" 으로 들어왔고,
+ * 당시엔 `/live` 가 KRX 전용이라 옳았다 — 마감 후 잔여 스냅샷이 x축을 늘려 궤적을
+ * 찌그러뜨렸다. ADR-0140 이 venue 축을 주면서 이 못이 **애프터마켓·프리마켓 거래원
+ * 전체를 버리는** 쪽으로 뒤집혔다: 경계가 09:00–15:30 하드코딩이라 어느 venue 를
+ * 골라도 08:00–20:00 구간이 화면에 못 왔다(실측 2026-08-07: 파케이 NXT·UN 은
+ * 08:01:30–16:54:40 까지 있는데 표시층에서 버려졌다).
+ *
+ * 지금은 `liveVenueSessionBoundsMs` 를 타므로 **#245 의 원래 목적이 KRX 선택에서
+ * 그대로 보존되고**(09:00–15:30 클립 유지) 확장 venue 만 08:00–20:00 로 열린다.
+ *
+ * ⚠ 여기만 고치면 안 된다 — 위 `dayRange` 가 같은 경계를 써야 한다.
+ *
+ * `final_net` 은 원본을 남긴다(정렬·매수/매도 경계용). 확장 venue 에서는 클립이
+ * 아무것도 버리지 않으므로 표시 숫자와 정렬 기준이 자연히 일치한다. KRX 선택에서는
+ * 조회 자체가 venue=KRX 라 애프터마켓 점이 애초에 오지 않아 역시 갈리지 않는다.
+ */
+function clipEntryToVenueSession(
+  entry: BrokerSeriesEntry,
+  venue: LiveVenueOption,
+): BrokerSeriesEntry {
   const firstPoint = entry.points[0];
   if (!firstPoint) return entry;
-  const date = realMsToYyyymmdd(firstPoint.ts_ms);
-  const open = regularSessionOpenMs(date);
-  const close = regularSessionCloseMs(date);
-  const points = entry.points.filter((p) => p.ts_ms >= open && p.ts_ms <= close);
+  const { open_ms, close_ms } = liveVenueSessionBoundsMs(realMsToYyyymmdd(firstPoint.ts_ms), venue);
+  const points = entry.points.filter((p) => p.ts_ms >= open_ms && p.ts_ms <= close_ms);
   return points.length === entry.points.length ? entry : { ...entry, points };
 }
 

@@ -145,7 +145,9 @@ function BrokerContent({ save }: ContentProps) {
     inactiveSeries: null,
     inactiveCursorMs: null,
   });
-  return <BrokerTrajectoryTable series={brokerCard.series} cursorMs={brokerCard.cursorMs} />;
+  // 표시 세션 창도 위 조회와 같은 KRX 고정 — 복기 데이터가 hogaplay KRX 캡처라
+  // venue 컨텍스트가 없다. 조회만 KRX 고정하고 축을 08:00–20:00 로 열면 우측이 빈다.
+  return <BrokerTrajectoryTable series={brokerCard.series} cursorMs={brokerCard.cursorMs} venue="KRX" />;
 }
 
 function VdistContent({ save, bundle }: ContentProps) {

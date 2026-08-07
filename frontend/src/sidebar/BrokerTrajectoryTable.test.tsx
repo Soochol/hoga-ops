@@ -57,17 +57,17 @@ describe('netAtCursor', () => {
 
 describe('BrokerTrajectoryTable — render states', () => {
   it('shows loading text when series is undefined', () => {
-    render(<BrokerTrajectoryTable series={undefined} cursorMs={null} />);
+    render(<BrokerTrajectoryTable series={undefined} cursorMs={null} venue="KRX" />);
     expect(screen.getByText(/커서 위치 불러오는 중/)).toBeInTheDocument();
   });
 
   it('shows empty text when series is null', () => {
-    render(<BrokerTrajectoryTable series={null} cursorMs={null} />);
+    render(<BrokerTrajectoryTable series={null} cursorMs={null} venue="KRX" />);
     expect(screen.getByText(/거래원 정보 없음/)).toBeInTheDocument();
   });
 
   it('shows empty text when series is []', () => {
-    render(<BrokerTrajectoryTable series={[]} cursorMs={null} />);
+    render(<BrokerTrajectoryTable series={[]} cursorMs={null} venue="KRX" />);
     expect(screen.getByText(/거래원 정보 없음/)).toBeInTheDocument();
   });
 
@@ -75,7 +75,7 @@ describe('BrokerTrajectoryTable — render states', () => {
     const series: BrokerSeriesEntry[] = Array.from({ length: 12 }, (_, i) =>
       entry(`B${i}`, [{ ts_ms: 100 + i, net: 100 - i }]),
     );
-    render(<BrokerTrajectoryTable series={series} cursorMs={null} />);
+    render(<BrokerTrajectoryTable series={series} cursorMs={null} venue="KRX" />);
     expect(screen.getAllByTestId('broker-row')).toHaveLength(12);
   });
 
@@ -83,7 +83,7 @@ describe('BrokerTrajectoryTable — render states', () => {
     const series: BrokerSeriesEntry[] = [
       entry('신한투자증권', [{ ts_ms: 100, net: -100 }]),
     ];
-    render(<BrokerTrajectoryTable series={series} cursorMs={null} />);
+    render(<BrokerTrajectoryTable series={series} cursorMs={null} venue="KRX" />);
     // Compact label visible in the row.
     expect(screen.getByText('신한투자')).toBeInTheDocument();
     // Canonical name accessible via title attribute for disambiguation.
@@ -92,19 +92,22 @@ describe('BrokerTrajectoryTable — render states', () => {
 });
 
 describe('BrokerTrajectoryTable — sparkline', () => {
-  it('clips after-close broker points to the regular-session x domain', () => {
-    // 2026-06-25 09:00~15:30 KST.
-    const open = Date.UTC(2026, 5, 25, 0, 0, 0);
-    const close = open + 6.5 * 3600_000;
+  // 2026-06-25 KST. KRX 정규장 09:00~15:30 · 확장(NXT·UN) 08:00~20:00.
+  const OPEN = Date.UTC(2026, 5, 25, 0, 0, 0);
+  const CLOSE = OPEN + 6.5 * 3600_000;
+  const AFTER_CLOSE = CLOSE + 60 * 60_000; // 16:30 — 애프터마켓
+  const PRE_OPEN = OPEN - 59 * 60_000; // 08:01 — 프리마켓
+
+  it('KRX 선택은 마감 후 점을 정규장 x 도메인으로 계속 자른다(#245 원 목적 보존)', () => {
     const series: BrokerSeriesEntry[] = [
       entry('A', [
-        { ts_ms: open, net: 10 },
-        { ts_ms: close, net: 20 },
-        { ts_ms: close + 60 * 60_000, net: 999 },
+        { ts_ms: OPEN, net: 10 },
+        { ts_ms: CLOSE, net: 20 },
+        { ts_ms: AFTER_CLOSE, net: 999 },
       ]),
     ];
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={close + 60 * 60_000} />,
+      <BrokerTrajectoryTable series={series} cursorMs={AFTER_CLOSE} venue="KRX" />,
     );
 
     const points = Array.from(container.querySelectorAll('polyline')).map((line) =>
@@ -112,7 +115,55 @@ describe('BrokerTrajectoryTable — sparkline', () => {
     );
     expect(points).toContain('0,8 60,0');
     expect(screen.getByText('+20')).toBeInTheDocument();
+    // 커서(16:30)가 15:30 축 밖 — KRX 에서는 마커가 없는 것이 맞다.
     expect(container.querySelector('[data-testid="cursor-marker"]')).toBeNull();
+  });
+
+  // ↑↓ 같은 입력에 정반대 기댓값. venue 만으로 갈리므로 클립이 실제로 venue 를
+  // 보는지에 대한 판별자다(둘 다 통과하는 구현은 하나뿐).
+  it('확장 venue(UN)는 애프터마켓 점을 살리고 x 축을 20:00 까지 연다', () => {
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [
+        { ts_ms: OPEN, net: 10 },
+        { ts_ms: CLOSE, net: 20 },
+        { ts_ms: AFTER_CLOSE, net: 999 },
+      ]),
+    ];
+    const { container } = render(
+      <BrokerTrajectoryTable series={series} cursorMs={AFTER_CLOSE} venue="UN" />,
+    );
+
+    // 애프터마켓 값이 표시된다 — 예전엔 클립돼 15:30 의 +20 에서 멎었다.
+    expect(screen.getByText('+999')).toBeInTheDocument();
+    // 커서(16:30)가 08:00–20:00 축 안 — 마커가 그려져야 한다.
+    expect(container.querySelector('[data-testid="cursor-marker"]')).not.toBeNull();
+  });
+
+  it('확장 venue(NXT)는 프리마켓 점을 살린다', () => {
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [
+        { ts_ms: PRE_OPEN, net: 5 },
+        { ts_ms: OPEN + 30 * 60_000, net: 40 },
+      ]),
+    ];
+    render(
+      <BrokerTrajectoryTable series={series} cursorMs={PRE_OPEN} venue="NXT" />,
+    );
+    expect(screen.getByText('+5')).toBeInTheDocument();
+  });
+
+  it('KRX 선택은 프리마켓 점을 잘라 커서 시점이 관측 전으로 남는다', () => {
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [
+        { ts_ms: PRE_OPEN, net: 5 },
+        { ts_ms: OPEN + 30 * 60_000, net: 40 },
+      ]),
+    ];
+    render(
+      <BrokerTrajectoryTable series={series} cursorMs={PRE_OPEN} venue="KRX" />,
+    );
+    // 08:01 점이 없으니 그 시각은 "아직 등장 전" — 진짜 0 과 구분되는 —.
+    expect(screen.getByTestId('broker-net-preobs')).toBeInTheDocument();
   });
 
   it('renders a dashed polyline when a gap exceeds GAP_THRESHOLD_MS', () => {
@@ -125,7 +176,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       ]),
     ];
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={null} />,
+      <BrokerTrajectoryTable series={series} cursorMs={null} venue="KRX" />,
     );
     const dashed = container.querySelectorAll('polyline[stroke-dasharray]');
     expect(dashed.length).toBeGreaterThanOrEqual(1);
@@ -140,7 +191,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       ]),
     ];
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={null} />,
+      <BrokerTrajectoryTable series={series} cursorMs={null} venue="KRX" />,
     );
 
     const dashed = container.querySelector('polyline[stroke-dasharray]');
@@ -157,7 +208,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       ]),
     ];
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={-500} />,    // before regular-session open
+      <BrokerTrajectoryTable series={series} cursorMs={-500} venue="KRX" />,    // before regular-session open
     );
     const cursorLines = container.querySelectorAll('[data-testid="cursor-marker"]');
     expect(cursorLines.length).toBe(0);
@@ -171,7 +222,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       ]),
     ];
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} venue="KRX" />,
     );
     const cursorLines = container.querySelectorAll('[data-testid="cursor-marker"]');
     expect(cursorLines.length).toBeGreaterThanOrEqual(1);
@@ -188,7 +239,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       ]),
     ];
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} venue="KRX" />,
     );
     const root = container.firstElementChild as HTMLElement;
     // 창 밖(초기): 외부 크로스헤어 존중 + 순매수 값 표시.
@@ -212,7 +263,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       ]),
     ];
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} venue="KRX" />,
     );
     const marker = container.querySelector('[data-testid="cursor-marker"]');
     // 가는 회색 점선 — accent 가 아니라 회색 톤으로 데이터 라인과 분리.
@@ -231,7 +282,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       entry('hidden', [{ ts_ms: 100_000, net: 1 }]),
     ];
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={30_000_000} />,
+      <BrokerTrajectoryTable series={series} cursorMs={30_000_000} venue="KRX" />,
     );
 
     expect(screen.getAllByTestId('broker-row')).toHaveLength(13);
@@ -247,7 +298,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       ]),
     ];
     const { container, rerender } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={2_000} />,
+      <BrokerTrajectoryTable series={series} cursorMs={2_000} venue="KRX" />,
     );
     const polyline = container.querySelector('polyline:not([stroke-dasharray])');
     const marker = container.querySelector('[data-testid="cursor-marker"]');
@@ -256,7 +307,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
     const pointsBefore = polyline!.getAttribute('points');
     const markerBefore = marker!.getAttribute('x1');
 
-    rerender(<BrokerTrajectoryTable series={series} cursorMs={4_000} />);
+    rerender(<BrokerTrajectoryTable series={series} cursorMs={4_000} venue="KRX" />);
 
     expect(polyline!.getAttribute('points')).toBe(pointsBefore);
     expect(marker!.getAttribute('x1')).not.toBe(markerBefore);
@@ -278,13 +329,13 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       ]),
     ];
     const { container, rerender } = render(
-      <BrokerTrajectoryTable series={series1} cursorMs={2_000} />,
+      <BrokerTrajectoryTable series={series1} cursorMs={2_000} venue="KRX" />,
     );
     const polyline = container.querySelector('polyline:not([stroke-dasharray])');
     expect(polyline).not.toBeNull();
     const pointsBefore = polyline!.getAttribute('points');
 
-    rerender(<BrokerTrajectoryTable series={series2} cursorMs={2_000} />);
+    rerender(<BrokerTrajectoryTable series={series2} cursorMs={2_000} venue="KRX" />);
 
     expect(polyline!.getAttribute('points')).not.toBe(pointsBefore);
     expect(container.querySelector('[data-testid="cursor-marker"]')).not.toBeNull();
@@ -306,14 +357,14 @@ describe('BrokerTrajectoryTable — 0선·커서 도트·규모 바·관측 전 
 
   it('renders a zero baseline in every sparkline', () => {
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} venue="KRX" />,
     );
     expect(container.querySelectorAll('[data-testid="zero-baseline"]')).toHaveLength(3);
   });
 
   it('renders a cursor value dot only where the trajectory exists at the cursor', () => {
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} venue="KRX" />,
     );
     // A·B는 궤적 범위 안(1s~5s), C는 첫 관측(4s) 이전이라 도트 없음.
     expect(container.querySelectorAll('[data-testid="cursor-value-dot"]')).toHaveLength(2);
@@ -321,7 +372,7 @@ describe('BrokerTrajectoryTable — 0선·커서 도트·규모 바·관측 전 
 
   it('renders magnitude strips proportional to |net| across rows', () => {
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} venue="KRX" />,
     );
     const bars = container.querySelectorAll<HTMLElement>('[data-testid="broker-net-bar"]');
     expect(bars).toHaveLength(2);   // C는 관측 전이라 바 없음
@@ -333,7 +384,7 @@ describe('BrokerTrajectoryTable — 0선·커서 도트·규모 바·관측 전 
   });
 
   it('shows an em-dash (not 0) when the cursor precedes the first observation', () => {
-    render(<BrokerTrajectoryTable series={series} cursorMs={3_000} />);
+    render(<BrokerTrajectoryTable series={series} cursorMs={3_000} venue="KRX" />);
     const preobs = screen.getAllByTestId('broker-net-preobs');
     expect(preobs).toHaveLength(1);
     expect(preobs[0]).toHaveTextContent('—');
@@ -342,7 +393,7 @@ describe('BrokerTrajectoryTable — 0선·커서 도트·규모 바·관측 전 
 
 describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', () => {
   it('열 헤더 라벨을 렌더하지 않는다 (2026-07-29 사용자 요청)', () => {
-    render(<BrokerTrajectoryTable series={[entry('A', [{ ts_ms: 1_000, net: 5 }])]} cursorMs={null} />);
+    render(<BrokerTrajectoryTable series={[entry('A', [{ ts_ms: 1_000, net: 5 }])]} cursorMs={null} venue="KRX" />);
     for (const label of ['거래원', '당일 궤적', '순매수(주)', '순매도']) {
       expect(screen.queryByText(label)).toBeNull();
     }
@@ -355,7 +406,7 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
       entry('C', [{ ts_ms: 1_000, net: -30 }], 'sell'),
       entry('D', [{ ts_ms: 1_000, net: -90 }], 'sell'),
     ];
-    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} venue="KRX" />);
     expect(screen.getAllByTestId('broker-sell-divider')).toHaveLength(1);
   });
 
@@ -364,7 +415,7 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
       entry('A', [{ ts_ms: 1_000, net: 100 }]),
       entry('B', [{ ts_ms: 1_000, net: 20 }]),
     ];
-    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} venue="KRX" />);
     expect(screen.queryByTestId('broker-sell-divider')).toBeNull();
   });
 
@@ -374,7 +425,7 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
       entry('A', [{ ts_ms: 1_000, net: -10 }], 'sell'),
       entry('B', [{ ts_ms: 1_000, net: -90 }], 'sell'),
     ];
-    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} venue="KRX" />);
     expect(screen.queryByTestId('broker-sell-divider')).toBeNull();
   });
 
@@ -384,7 +435,7 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
       entry('JP모간', [{ ts_ms: 1_000, net: 200 }]),
       entry('모건스탠리증권', [{ ts_ms: 1_000, net: -50 }], 'sell'),
     ];
-    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} venue="KRX" />);
     expect(screen.getAllByTestId('broker-foreign-badge')).toHaveLength(2);
     // 국내(키움 +500)는 제외 — 200 + (-50) = 150.
     expect(screen.getByTestId('broker-foreign-sum')).toHaveTextContent('+150');
@@ -392,7 +443,7 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
 
   it('shows an em-dash for the foreign total when no foreign desk is observed', () => {
     const series: BrokerSeriesEntry[] = [entry('키움증권', [{ ts_ms: 1_000, net: 500 }])];
-    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} venue="KRX" />);
     expect(screen.queryByTestId('broker-foreign-badge')).toBeNull();
     expect(screen.getByTestId('broker-foreign-sum')).toHaveTextContent('—');
   });
@@ -402,7 +453,7 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
       entry('JP모간', [{ ts_ms: 1_000, net: 200 }]),
       entry('골드만', [{ ts_ms: 9_000, net: 999 }]),   // 커서(2_000) 시점엔 등장 전
     ];
-    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} venue="KRX" />);
     expect(screen.getByTestId('broker-foreign-sum')).toHaveTextContent('+200');
   });
 
@@ -412,7 +463,7 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
   // 빈 공간이 생겼다.
   it('pins the foreign total row to the window floor as a footer', () => {
     const series: BrokerSeriesEntry[] = [entry('JP모간', [{ ts_ms: 1_000, net: 200 }])];
-    const { container } = render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    const { container } = render(<BrokerTrajectoryTable series={series} cursorMs={2_000} venue="KRX" />);
 
     const totalRow = screen.getByText('외국계 합계').parentElement;
     expect(totalRow).toHaveClass('mt-auto');   // 여유 공간을 위로 밀어낸다(짧을 때)
@@ -430,7 +481,7 @@ describe('BrokerTrajectoryTable — 표 크롬(순매도 경계·외국계)', ()
   // sticky 라 배경 클래스 자체는 남아야 한다(투명하면 스크롤 행이 뒤로 비친다).
   it('keeps the foreign total row on the window body background (no tone band)', () => {
     const series: BrokerSeriesEntry[] = [entry('JP모간', [{ ts_ms: 1_000, net: 200 }])];
-    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} />);
+    render(<BrokerTrajectoryTable series={series} cursorMs={2_000} venue="KRX" />);
     const totalRow = screen.getByText('외국계 합계').parentElement;
     expect(totalRow).toHaveClass('bg-bg-card');
     expect(totalRow).not.toHaveClass('bg-bg-subtle');

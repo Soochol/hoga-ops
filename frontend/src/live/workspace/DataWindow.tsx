@@ -71,6 +71,7 @@ import {
   volumeDistributionClosePointsFromCandles,
 } from '../continuousTradeVolumeDistribution';
 import { realMsToYyyymmdd, subtractDaysKst } from '../liveDateTime';
+import { useEffectiveVenue } from '../useEffectiveVenue';
 import { buildTradeTickView } from '../tradeTicks';
 import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId } from '../liveInstrument';
@@ -333,6 +334,10 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // (useLiveBrokersAtCursor) · 당일 누적(useLiveBrokersToday). 하나만 어긋나면
   // 병합 시리즈에서 시장이 섞인다.
   const venue = useLiveVenueStore((s) => s.venue);
+  // 표시층(클립·x축)은 **해석된** venue 를 쓴다 — 데이터가 실제로 사는 곳을 따라야
+  // 한다. 훅들엔 선택값이 그대로 가는데, 두 값이 갈리는 경우는 NXT 미상장 종목 +
+  // UN·NXT 선택 하나뿐이다(그 비대칭은 별건).
+  const effectiveVenue = useEffectiveVenue(code, venue);
   const live = useLiveSeries(code, venue);
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
@@ -374,7 +379,11 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   });
   return (
     <div className="h-full overflow-auto bg-bg-card">
-      <BrokerTrajectoryTable series={card.series} cursorMs={card.cursorMs} />
+      {/* venue 는 **해석된 effective** 를 넘긴다 — 표는 이 값으로 점 클립과 x축 창을
+          함께 고른다(KRX 09:00–15:30 · NXT·UN 08:00–20:00). 선택값을 그대로 넘기면
+          NXT 미상장 종목 + UN 선택에서 데이터는 정규장뿐인데 축만 20:00 까지 벌어져
+          우측 절반이 빈다. ChartWindow 가 같은 규율로 useEffectiveVenue 를 쓴다. */}
+      <BrokerTrajectoryTable series={card.series} cursorMs={card.cursorMs} venue={effectiveVenue} />
     </div>
   );
 }
