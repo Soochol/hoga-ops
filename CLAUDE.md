@@ -168,6 +168,72 @@ Notes:
   `load_dotenv(override=False)`는 truthiness가 아니라 **존재 여부**로 판단해 빈 값이
   `.env`를 막는다. 새 벤더 자격증명을 추가하면 **이 목록에도 추가**한다.
 
+## API wire 계약 (BE↔FE 손 미러)
+
+ADR-0004 는 프론트 타입이 백엔드 wire model 을 **손으로 미러**하는 것을 계약 표면으로
+삼는다(codegen 은 명시적으로 기각). 그 미러의 드리프트를
+`tests/unit/api/test_rest_wire_schema_contract.py` 가 **네 층**으로 막는다 — 라우트나
+enum 을 건드리면 이 파일도 같이 본다.
+
+1. **필드 이름** — `EXPECTED_REST_WIRE_FIELDS` 스냅샷
+2. **enum 값** — BE `Literal` 멤버를 프론트 union **소스 파일과 직접 대조**(등록된 쌍)
+3. **wire model 존재** — `-> dict` 라우트 금지. 동결선은 **비어 있다**(비워 둘 것)
+4. **JSONResponse body** — Response 를 직접 만드는 라우트도 등록 필요
+
+2층이 왜 따로 필요한가: 손 미러에서 **값 드리프트는 타입이 원리적으로 못 잡는다**.
+#1183 이 그 사고였다 — 백엔드가 `capture_reason` 값 4개를 뺐는데 프론트 라벨 표는
+1년 가까이 그대로였고, 정작 새로 생긴 값은 매핑이 없어 영문 원문으로 화면에 떴다.
+
+### 새 라우트
+
+반환형에 **pydantic 모델을 적는다**. `-> dict` 는 3층이 막고, 동결선에 추가하는 것은
+출구가 아니다. 진짜 JSON 이 아니면(파일·스트림·204) Response 계열로 적는다.
+`JSONResponse` 를 직접 만들어야 하면(동적 status code·커스텀 헤더) body 를 모델로
+만들거나 모델로 검증한 뒤 `JSON_RESPONSE_ROUTES` 에 등록한다.
+
+### ⚠ `response_model` 은 500 이 아니라 **조용히 필드를 버린다**
+
+FastAPI 는 선언되지 않은 키를 스트립한다. 모델이 불완전하면 에러 없이 프론트가 읽던
+값이 사라지고 증상은 한참 뒤에 온다 — 이 리포가 반복해서 다룬 실패 유형이다.
+그래서 모델을 새로 입힐 때:
+
+- 생산 함수의 키를 **전수로** 읽고 프론트 소비면(`frontend/src/api/*.ts`)과 대조한다.
+  프론트 미러가 곧 계약 문서다 — 거기서 `Record<string, unknown>` 로 받는 부분은
+  shape 이 애초에 선언된 적이 없으니 **좁히지 말 것**(좁히면 미러만 늘고 스트립 위험이
+  생긴다. `/api/live/series` 가 그 예로, 최상위 키만 계약이고 `extra="allow"` 다).
+- **실서버 응답으로 검증**한다. 워크트리 백엔드는 무자격이라 폴백 빈 응답만 나와서
+  스트립을 못 잰다 — 사용자 dev 서버(:8000)를 GET 으로 읽어 `model_validate` →
+  `model_dump` → 키 집합 재귀 비교가 가장 강한 검사다.
+- **부재와 null 은 다른 계약이다.** 벤더가 못 준 키를 **빼서** 보내는 라우트에만
+  `response_model_exclude_none=True` 를 건다(예: `/api/market/breadth`,
+  `/api/screener/update` 의 판별 유니온). 정당한 null 을 지우면 "모른다" 와 "0" 이
+  구별되지 않는다(예: `/api/screener/status` 의 `days_behind`).
+- 기존 라우트 테스트가 통과한다고 안심하지 말 것 — 대부분 엔드포인트 **함수를 직접**
+  불러 `response_model` 단계를 건너뛴다. 폴백·부분 payload 를 모델에 넣는 테스트를
+  따로 둔다(무자격 폴백은 dev·e2e 의 **정상 경로**라 여기서 깨지면 그 환경이 전부 500).
+- `from` 은 파이썬 예약어다 → `from_` + `Field(alias="from")`. **alias 를 지워도
+  파이썬은 멀쩡히 돈다**(필드명만 바뀜) → wire 키를 직접 재는 테스트를 같이 둔다.
+
+### enum 을 늘릴 때
+
+BE `Literal` 에 값을 추가하면 FE union 도 **같은 PR 에서** 고친다(ADR-0004). 등록된
+쌍이면 2층이 실패로 알려 주고, 이름이 같은 새 쌍을 만들면 등록 누락 감사가 등록을
+요구한다. 이름이 다르거나 필드 인라인 `Literal` 인 쌍은 감사가 못 보므로 **손으로**
+`WIRE_ENUM_MIRRORS` 에 넣는다.
+
+**자동 발견은 하지 않는다** — 이름 규칙 매칭은 오탐과 누락이 둘 다 조용하다(실측으로
+기각, #1199). **항상 빨간 가드는 무시되기 시작해 메커니즘 전체를 죽인다.** 의도적
+비대칭은 `INTENTIONALLY_UNMIRRORED` 에 **사유와 함께** 넣는다(예: `SourceName` 은 FE 가
+두 개념의 합집합).
+
+### 가드를 고칠 때
+
+TS union 파서가 덜 읽으면 대조가 "프론트에 없는 값" 을 전량 보고한다 — **파서 결함이
+드리프트로 위장한다.** 그래서 파서 자체의 회귀 테스트가 따로 있으니 같이 본다.
+
+**가드를 손대면 red-check 을 눈으로 볼 것** — 한쪽에 가짜 값을 넣어 실패 메시지를
+확인한 뒤 되돌린다. 한 번도 빨개진 적 없는 가드는 아무것도 증명하지 못한다.
+
 ## Design System
 
 Always read `DESIGN.md` at the repo root before making any visual or UI decisions in the frontend.
