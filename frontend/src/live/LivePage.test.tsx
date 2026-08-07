@@ -124,13 +124,16 @@ vi.mock('../api/liveSeries', () => ({
   }),
 }));
 
+// ⚠ 이 목의 인자 자리는 **실제 시그니처와 자릿수까지 같아야 한다** — 테스트가 위치로
+// 값을 집어내므로, 훅에 인자가 하나 늘면 여기도 같이 늘려야 조용히 엉뚱한 값을 재지 않는다
+// (`_sessionOpenMs` 가 그 자리다: todayKst 뒤, code 앞).
 vi.mock('./useDayAskPeaks', () => ({
-  useTodayAllPriceAskPeak: (ob: unknown, _seeds: unknown, _today: unknown, _code: unknown, todayAskPeak: unknown) => {
+  useTodayAllPriceAskPeak: (ob: unknown, _seeds: unknown, _today: unknown, _sessionOpenMs: unknown, _code: unknown, todayAskPeak: unknown) => {
     livePageMocks.allPriceObArgs.push(ob);
     livePageMocks.allPriceTodayArgs.push(todayAskPeak);
     return null;
   },
-  useDayAskPeaks: (ob: unknown, trade: unknown, seeds: unknown, _today: unknown, _code: unknown, todayAskPeak: unknown) => {
+  useDayAskPeaks: (ob: unknown, trade: unknown, seeds: unknown, _today: unknown, _sessionOpenMs: unknown, _code: unknown, todayAskPeak: unknown) => {
     livePageMocks.dayAskPeakObArgs.push(ob);
     livePageMocks.dayAskPeakTradeArgs.push(trade);
     livePageMocks.dayAskPeakTodayArgs.push(todayAskPeak);

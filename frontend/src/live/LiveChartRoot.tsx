@@ -48,7 +48,7 @@ import type { LiveVenueOption } from '../state/liveVenue';
 import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
 import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle, type RangeMissingDate, type DepthHeatmapPointWire } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
-import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
+import { initialVisibleMinuteBarsFor, liveVenueSessionBoundsMs } from './liveVenuePolicy';
 import { minuteRestoreGeometry, minuteRightOffsetBars } from './minuteViewportPolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
@@ -1363,6 +1363,13 @@ export function LiveChartRoot({
   // 훅 수명 동안 인스턴스 고정(useDayAskPeaks 선례). cutoff pref 를 껐다 켜도 append-only
   // prefix-guard 가 누락분을 자가 회수하고, 종목 전환(버퍼 리셋)은 참조 불일치로 전체
   // 재소비한다. batch 는 매 틱 ob/trade 를 재스캔했으나 증분은 델타만 소비한다(ADR-0106).
+  // cutoff 재계산판 최대벽의 유효-스냅샷 하한 — useLiveChartData 의 peakSessionOpenMs 와
+  // 같은 정의(선택 venue 의 개장). 두 경로가 갈리면 같은 벽이 cutoff 유무에 따라 다르게
+  // 걸러진다.
+  const peakSessionOpenMs = useMemo(
+    () => liveVenueSessionBoundsMs(todayKst, venue).open_ms,
+    [todayKst, venue],
+  );
   const askDayPeakSourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (askDayPeakSourceRef.current === null) askDayPeakSourceRef.current = new IncrementalPeakWallSource('ask');
   const askTodayAllSourceRef = useRef<IncrementalPeakWallSource | null>(null);
@@ -1379,6 +1386,7 @@ export function LiveChartRoot({
         liveTradeSnapshots,
         historicalAskSeeds,
         todayKst,
+        peakSessionOpenMs,
         todayAskPeakInput,
         askVisibleTimeCutoffForRender!.tMs,
       )
@@ -1393,6 +1401,7 @@ export function LiveChartRoot({
       askVisibleTimeCutoffForRender?.tMs,
       todayAskPeakInput,
       todayKst,
+      peakSessionOpenMs,
     ],
   );
   const renderTodayAllPriceAskPeak = useMemo(
@@ -1402,6 +1411,7 @@ export function LiveChartRoot({
         liveObSnapshots,
         historicalAskSeeds,
         todayKst,
+        peakSessionOpenMs,
         todayAskPeakInput,
         askVisibleTimeCutoffForRender!.tMs,
       )
@@ -1415,6 +1425,7 @@ export function LiveChartRoot({
       todayAllPriceAskPeak,
       todayAskPeakInput,
       todayKst,
+      peakSessionOpenMs,
     ],
   );
   const renderDayBidPeaks = useMemo(
@@ -1425,6 +1436,7 @@ export function LiveChartRoot({
         liveTradeSnapshots,
         historicalBidSeeds,
         todayKst,
+        peakSessionOpenMs,
         todayBidPeakInput,
         bidVisibleTimeCutoffForRender!.tMs,
       )
@@ -1439,6 +1451,7 @@ export function LiveChartRoot({
       bidVisibleTimeCutoffForRender?.tMs,
       todayBidPeakInput,
       todayKst,
+      peakSessionOpenMs,
     ],
   );
   const renderTodayAllPriceBidPeak = useMemo(
@@ -1448,6 +1461,7 @@ export function LiveChartRoot({
         liveObSnapshots,
         historicalBidSeeds,
         todayKst,
+        peakSessionOpenMs,
         todayBidPeakInput,
         bidVisibleTimeCutoffForRender!.tMs,
       )
@@ -1460,6 +1474,7 @@ export function LiveChartRoot({
       bidVisibleTimeCutoffForRender?.tMs,
       todayBidPeakInput,
       todayKst,
+      peakSessionOpenMs,
       todayAllPriceBidPeak,
     ],
   );

@@ -3,6 +3,10 @@ import { foldAskPeak, reduceDayAskPeak, type RatchetState } from './computeDayAs
 import type { ObSnapshot } from './bucketHogaSeries';
 
 const t = (h: number, m = 0) => Date.UTC(2026, 5, 13, h - 9, m); // KST 시각의 unix ms
+// 개장 하한(09:00 KST) — 종전엔 술어 안에 박혀 있던 값이라 테스트가 넘길 필요가
+// 없었다. 지금은 필수 인자다: venue 별 확장 세션(NXT 08:00)을 표현하려면 값이
+// 밖에서 와야 하기 때문. 여기서 09:00 을 넘기는 것은 **기존 동작 그대로**라는 뜻이다.
+const OPEN_MS = t(9);
 
 // 깊은(연속거래) 호가창: asks 길이 10, 레벨4+ qty>0
 function deepOb(t_ms: number, asks: Array<[number, number]>): ObSnapshot {
@@ -21,21 +25,21 @@ const FRESH: RatchetState = { peak: null, tradingDay: -1, lastTMs: -1 };
 describe('foldAskPeak', () => {
   it('seed-only: 버퍼 빈, seed 유지', () => {
     const seed = { price: 25100, qty: 5000, t_ms: t(9) };
-    const s = foldAskPeak(FRESH, seed, noAsks(t(9, 1)));
+    const s = foldAskPeak(FRESH, seed, noAsks(t(9, 1)), OPEN_MS);
     expect(s.peak).toEqual(seed);
   });
 
   it('버퍼 신기록이 seed 초과 → 교체', () => {
     const seed = { price: 25100, qty: 5000, t_ms: t(9) };
     const ob = deepOb(t(10), [[26000, 9000], [25000, 10], ...Array(8).fill([1, 1])] as Array<[number, number]>);
-    const s = foldAskPeak(FRESH, seed, ob);
+    const s = foldAskPeak(FRESH, seed, ob, OPEN_MS);
     expect(s.peak).toEqual({ price: 26000, qty: 9000, t_ms: t(10) });
   });
 
   it('단조: 큰 값 뒤 작은 값 무시', () => {
     const seed = null;
-    let s = foldAskPeak(FRESH, seed, deepOb(t(10), [[26000, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>));
-    s = foldAskPeak(s, seed, deepOb(t(11), [[25000, 100], ...Array(9).fill([1, 1])] as Array<[number, number]>));
+    let s = foldAskPeak(FRESH, seed, deepOb(t(10), [[26000, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>), OPEN_MS);
+    s = foldAskPeak(s, seed, deepOb(t(11), [[25000, 100], ...Array(9).fill([1, 1])] as Array<[number, number]>), OPEN_MS);
     expect(s.peak!.qty).toBe(9000);
   });
 
@@ -48,7 +52,7 @@ describe('foldAskPeak', () => {
       bids: [{ price: 24000, qty: 1 }, { price: 23950, qty: 1 }, { price: 23900, qty: 1 },
              ...Array(7).fill({ price: 0, qty: 0 })],
     };
-    const s = foldAskPeak(FRESH, seed, collapsed);
+    const s = foldAskPeak(FRESH, seed, collapsed, OPEN_MS);
     expect(s.peak).toBeNull(); // 99999 무시
   });
 
@@ -56,17 +60,17 @@ describe('foldAskPeak', () => {
     // 08:55 개장 동시호가: 10레벨 누적이라 isContinuousBook은 통과하지만(레벨4+ qty>0),
     // 시각 게이트(isAfterRegularOpen)로 배제 — 보통 그날 최대 누적이라 게이트 없으면 가로챈다.
     const preOpen = deepOb(t(8, 55), [[24000, 99999], ...Array(9).fill([1, 1])] as Array<[number, number]>);
-    const s = foldAskPeak(FRESH, null, preOpen);
+    const s = foldAskPeak(FRESH, null, preOpen, OPEN_MS);
     expect(s.peak).toBeNull(); // 개장 99999 무시
     // 이어지는 09:10 연속거래의 실제 벽은 반영.
-    const s2 = foldAskPeak(s, null, deepOb(t(9, 10), [[25000, 300], ...Array(9).fill([1, 1])] as Array<[number, number]>));
+    const s2 = foldAskPeak(s, null, deepOb(t(9, 10), [[25000, 300], ...Array(9).fill([1, 1])] as Array<[number, number]>), OPEN_MS);
     expect(s2.peak).toEqual({ price: 25000, qty: 300, t_ms: t(9, 10) });
   });
 
   it('동률은 먼저 것 유지', () => {
     const seed = { price: 25500, qty: 7000, t_ms: t(9) };
     const ob = deepOb(t(10), [[26000, 7000], ...Array(9).fill([1, 1])] as Array<[number, number]>);
-    const s = foldAskPeak(FRESH, seed, ob);
+    const s = foldAskPeak(FRESH, seed, ob, OPEN_MS);
     expect(s.peak!.price).toBe(25500); // 동률 비교체
   });
 
@@ -74,15 +78,15 @@ describe('foldAskPeak', () => {
     const seed = { price: 25100, qty: 5000, t_ms: t(9) };
     let s: RatchetState = { peak: { price: 99, qty: 99999, t_ms: t(9) - 86_400_000 },
                             tradingDay: 0, lastTMs: t(9) - 86_400_000 };
-    s = foldAskPeak(s, seed, noAsks(t(9, 1)));
+    s = foldAskPeak(s, seed, noAsks(t(9, 1)), OPEN_MS);
     expect(s.peak).toEqual(seed); // 어제 99999 버리고 오늘 seed로
   });
 
   it('증분 멱등: 이미 fold한 tMs 이하 재공급 무시', () => {
     const seed = null;
     const ob = deepOb(t(10), [[26000, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>);
-    let s = foldAskPeak(FRESH, seed, ob);
-    s = foldAskPeak(s, seed, ob); // 같은 tMs
+    let s = foldAskPeak(FRESH, seed, ob, OPEN_MS);
+    s = foldAskPeak(s, seed, ob, OPEN_MS); // 같은 tMs
     expect(s.peak!.qty).toBe(9000);
   });
 });
@@ -93,29 +97,29 @@ describe('reduceDayAskPeak (배치 reducer — 당일 peak 규칙 전체 소유)
 
   it('빈 배치: seed가 하한 → peak=seed', () => {
     const seed = { price: 25100, qty: 5000, t_ms: t(9) };
-    expect(reduceDayAskPeak(FRESH, seed, []).peak).toEqual(seed);
-    expect(reduceDayAskPeak(FRESH, null, []).peak).toBeNull();
+    expect(reduceDayAskPeak(FRESH, seed, [], OPEN_MS).peak).toEqual(seed);
+    expect(reduceDayAskPeak(FRESH, null, [], OPEN_MS).peak).toBeNull();
   });
 
   it('배치 내 최대 단계를 집계', () => {
     const obs = [mk(t(10), 26000, 3000), mk(t(10, 1), 25500, 8000), mk(t(10, 2), 25800, 4000)];
-    expect(reduceDayAskPeak(FRESH, null, obs).peak).toEqual({ price: 25500, qty: 8000, t_ms: t(10, 1) });
+    expect(reduceDayAskPeak(FRESH, null, obs, OPEN_MS).peak).toEqual({ price: 25500, qty: 8000, t_ms: t(10, 1) });
   });
 
   it('seed 하한: 배치보다 큰 seed가 늦게 와도 반영', () => {
     const seed = { price: 24000, qty: 9000, t_ms: t(9) };
-    expect(reduceDayAskPeak(FRESH, seed, [mk(t(10), 26000, 6000)]).peak).toEqual(seed); // 9000 > 6000
+    expect(reduceDayAskPeak(FRESH, seed, [mk(t(10), 26000, 6000)], OPEN_MS).peak).toEqual(seed); // 9000 > 6000
   });
 
   it('seed 동률은 더 이른 seed 유지(strict >)', () => {
     const seed = { price: 24000, qty: 6000, t_ms: t(9) };
     // seed(09:00)와 배치(10:00) qty 동률 → 먼저 도달한 seed 유지
-    expect(reduceDayAskPeak(FRESH, seed, [mk(t(10), 26000, 6000)]).peak!.price).toBe(24000);
+    expect(reduceDayAskPeak(FRESH, seed, [mk(t(10), 26000, 6000)], OPEN_MS).peak!.price).toBe(24000);
   });
 
   it('배치 간 단조: 이전 상태 이어받아 더 작은 후속 배치는 무시', () => {
-    let s = reduceDayAskPeak(FRESH, null, [mk(t(10), 26000, 9000)]);
-    s = reduceDayAskPeak(s, null, [mk(t(11), 25000, 100)]);
+    let s = reduceDayAskPeak(FRESH, null, [mk(t(10), 26000, 9000)], OPEN_MS);
+    s = reduceDayAskPeak(s, null, [mk(t(11), 25000, 100)], OPEN_MS);
     expect(s.peak!.qty).toBe(9000);
   });
 });

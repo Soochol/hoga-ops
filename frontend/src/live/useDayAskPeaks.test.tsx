@@ -22,6 +22,8 @@ const byDate = (peaks: readonly AskPeak[]) => {
   return out;
 };
 const atKst = (hh: number, mm = 0) => Date.UTC(2026, 5, 13, hh - 9, mm);
+// 개장 하한(09:00 KST) — 필수 인자화 경위는 computeDayAskPeak.test 의 같은 상수 참조.
+const OPEN_MS = atKst(9);
 
 const todayAskPeak = (overrides: Partial<LiveTodayAskPeak> = {}): LiveTodayAskPeak => ({
   date: '20260613',
@@ -51,7 +53,7 @@ describe('useDayAskPeaks', () => {
     ];
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
-        useDayAskPeaks(ob, trades, seeds, '20260613', '005930'),
+        useDayAskPeaks(ob, trades, seeds, '20260613', OPEN_MS, '005930'),
       { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
     );
     let m = byDate(result.current);
@@ -77,7 +79,7 @@ describe('useDayAskPeaks', () => {
     ];
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
-        useDayAskPeaks(ob, trades, seeds, '20260613', '005930'),
+        useDayAskPeaks(ob, trades, seeds, '20260613', OPEN_MS, '005930'),
       { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
     );
     expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
@@ -96,7 +98,7 @@ describe('useDayAskPeaks', () => {
     ];
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
-        useDayAskPeaks(ob, trades, seeds, '20260613', '005930'),
+        useDayAskPeaks(ob, trades, seeds, '20260613', OPEN_MS, '005930'),
       { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
     );
     const t = atKst(9, 20);
@@ -123,8 +125,13 @@ describe('useDayAskPeaks', () => {
       all_t_ms: 4,
     });
 
+    // ⚠ 하한이 0 인 이유: 이 케이스는 t_ms 를 **작은 정수**(3·4·5)로 쓴다. 종전에 이게
+    // 통과한 건 우연이었다 — epoch 0 이 곧 1970-01-01 **09:00 KST** 라, 09:00 고정 하한이
+    // `kstMinuteOfDay(5) === 540` 로 만족돼 버렸다. 하한이 인자가 된 지금 2026년 09:00 을
+    // 넘기면 이 스냅샷들은 정당하게 배제된다. 시각 체계를 바꾸는 대신 이 테스트가 재는
+    // 것(백엔드 payload → traded triple 조립)에 맞춰 하한을 열어 둔다.
     const { result } = renderHook(
-      () => useDayAskPeaks([deep(5, 15000)], [], seeds, '20260613', '005930', restPeak),
+      () => useDayAskPeaks([deep(5, 15000)], [], seeds, '20260613', 0, '005930', restPeak),
     );
 
     const m = byDate(result.current);
@@ -154,7 +161,7 @@ describe('useDayAskPeaks', () => {
     });
 
     const { result } = renderHook(
-      () => useDayAskPeaks([], [], [], '20260613', '005930', restPeak),
+      () => useDayAskPeaks([], [], [], '20260613', OPEN_MS, '005930', restPeak),
     );
 
     expect(result.current).toHaveLength(1);
@@ -180,6 +187,7 @@ describe('useDayAskPeaks', () => {
       [trade(atKst(9, 11), [{ t_ms: atKst(9, 11), side: 1, price: 26000, qty: 10 }])],
       [],
       '20260613',
+      OPEN_MS,
       '005930',
     ));
 
@@ -214,7 +222,7 @@ describe('useDayAskPeaks', () => {
     });
 
     const { result } = renderHook(
-      () => useDayAskPeaks([deep(5, 15000)], [], [], '20260613', '005930', restPeak),
+      () => useDayAskPeaks([deep(5, 15000)], [], [], '20260613', OPEN_MS, '005930', restPeak),
     );
 
     expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
@@ -224,7 +232,7 @@ describe('useDayAskPeaks', () => {
     const restPeak = todayAskPeak();
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
-        useDayAskPeaks(ob, trades, [], '20260613', '005930', restPeak),
+        useDayAskPeaks(ob, trades, [], '20260613', OPEN_MS, '005930', restPeak),
       { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
     );
 
@@ -249,7 +257,7 @@ describe('useDayAskPeaks', () => {
   it('retroactively promotes a previously seen wall once that price trades later', () => {
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
-        useDayAskPeaks(ob, trades, [], '20260613', '005930'),
+        useDayAskPeaks(ob, trades, [], '20260613', OPEN_MS, '005930'),
       { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
     );
 
@@ -275,7 +283,7 @@ describe('useDayAskPeaks', () => {
     const restPeak = todayAskPeak();
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
-        useDayAskPeaks(ob, trades, [], '20260613', '005930', restPeak),
+        useDayAskPeaks(ob, trades, [], '20260613', OPEN_MS, '005930', restPeak),
       { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
     );
 
@@ -292,7 +300,7 @@ describe('useDayAskPeaks', () => {
     const sameSecond = atKst(9, 20);
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
-        useDayAskPeaks(ob, trades, [], '20260613', '005930', restPeak),
+        useDayAskPeaks(ob, trades, [], '20260613', OPEN_MS, '005930', restPeak),
       { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
     );
 
@@ -325,6 +333,7 @@ describe('useDayAskPeaks', () => {
       ],
       [],
       '20260613',
+      OPEN_MS,
       '005930',
       null,
       [],
@@ -352,7 +361,7 @@ describe('useDayAskPeaks', () => {
     });
 
     const { result } = renderHook(
-      () => useDayAskPeaks([], [], [], '20260613', '005930', restPeak),
+      () => useDayAskPeaks([], [], [], '20260613', OPEN_MS, '005930', restPeak),
     );
 
     expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
@@ -362,7 +371,7 @@ describe('useDayAskPeaks', () => {
     const restPeak = todayAskPeak();
     const { result, rerender } = renderHook(
       ({ ob }: { ob: ObSnapshot[] }) =>
-        useTodayAllPriceAskPeak(ob, [], '20260613', '005930', restPeak),
+        useTodayAllPriceAskPeak(ob, [], '20260613', OPEN_MS, '005930', restPeak),
       { initialProps: { ob: [] as ObSnapshot[] } },
     );
 
@@ -394,7 +403,7 @@ describe('useDayAskPeaks', () => {
       ],
     });
     const { result } = renderHook(
-      () => useTodayAllPriceAskPeak([], [], '20260613', '005930', restPeak),
+      () => useTodayAllPriceAskPeak([], [], '20260613', OPEN_MS, '005930', restPeak),
     );
 
     expect(result.current).toMatchObject({
@@ -415,6 +424,7 @@ describe('useDayAskPeaks', () => {
       ],
       [],
       '20260613',
+      OPEN_MS,
       '005930',
     ));
 
@@ -436,7 +446,7 @@ describe('useDayAskPeaks', () => {
     });
 
     const { result } = renderHook(
-      () => useTodayAllPriceAskPeak([], [], '20260613', '005930', restPeak),
+      () => useTodayAllPriceAskPeak([], [], '20260613', OPEN_MS, '005930', restPeak),
     );
 
     expect(result.current).toMatchObject({
@@ -472,7 +482,7 @@ describe('useDayAskPeaks', () => {
     };
     const { result, rerender } = renderHook(
       ({ ob }: { ob: ObSnapshot[] }) =>
-        useTodayAllPriceAskPeak(ob, [], '20260613', '005930', restPeak),
+        useTodayAllPriceAskPeak(ob, [], '20260613', OPEN_MS, '005930', restPeak),
       { initialProps: { ob: [] as ObSnapshot[] } },
     );
 
@@ -501,7 +511,7 @@ describe('useDayAskPeaks', () => {
     };
     const { result, rerender } = renderHook(
       ({ ob }: { ob: ObSnapshot[] }) =>
-        useTodayAllPriceAskPeak(ob, [], '20260613', '005930', restPeak),
+        useTodayAllPriceAskPeak(ob, [], '20260613', OPEN_MS, '005930', restPeak),
       { initialProps: { ob: [] as ObSnapshot[] } },
     );
 

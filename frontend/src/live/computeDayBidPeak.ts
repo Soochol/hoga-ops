@@ -17,13 +17,16 @@ type BidPriceFilter = (price: number) => boolean;
 export const FRESH_RATCHET: RatchetState = { peak: null, tradingDay: -1, lastTMs: -1 };
 
 /** seed로 시작한 단조 ratchet에 한 ObSnapshot을 폴드. 공용 술어 isIndicatorEligibleBook을
- *  통과하는 스냅샷만 — 연속거래(isContinuousBook) AND 정규장 개장(isAfterRegularOpen, 09:00↑;
- *  개장 동시호가 배제, 백엔드 _book_indicator_eligible_sql과 동일). 거래일 경계에서 리셋·재시드,
- *  동률 비교체(먼저 도달 유지), 이미 본 tMs는 멱등. ob.bids가 없으면(totals-only) 후보는 seed뿐. */
+ *  통과하는 스냅샷만 — 연속거래(isContinuousBook) AND `sessionOpenMs` 이후(개장 동시호가
+ *  배제, 백엔드 _book_indicator_eligible_sql과 동일). 거래일 경계에서 리셋·재시드,
+ *  동률 비교체(먼저 도달 유지), 이미 본 tMs는 멱등. ob.bids가 없으면(totals-only) 후보는 seed뿐.
+ *
+ *  `sessionOpenMs` 는 **선택 venue 의 개장**이다 — foldAskPeak 주석 참조(대칭 규약). */
 export function foldBidPeak(
   prev: RatchetState,
   seed: DayPeak | null,
   ob: ObSnapshot,
+  sessionOpenMs: number,
   allowPrice?: BidPriceFilter,
 ): RatchetState {
   const day = tradingDayOf(ob.t_ms);
@@ -34,7 +37,7 @@ export function foldBidPeak(
   }
   if (ob.t_ms <= state.lastTMs) return state; // 멱등(증분)
   let best = state.peak;
-  if (isIndicatorEligibleBook(ob) && ob.bids) {
+  if (isIndicatorEligibleBook(ob, sessionOpenMs) && ob.bids) {
     for (const lv of ob.bids) {
       if (allowPrice && !allowPrice(lv.price)) continue;
       if (lv.qty > 0 && (best === null || lv.qty > best.qty)) {
@@ -54,10 +57,11 @@ export function reduceDayBidPeak(
   prev: RatchetState,
   seed: DayPeak | null,
   obs: ReadonlyArray<ObSnapshot>,
+  sessionOpenMs: number,
   allowPrice?: BidPriceFilter,
 ): RatchetState {
   let s = prev;
-  for (const ob of obs) s = foldBidPeak(s, seed, ob, allowPrice);
+  for (const ob of obs) s = foldBidPeak(s, seed, ob, sessionOpenMs, allowPrice);
   if (seed && (s.peak === null || seed.qty > s.peak.qty)) {
     s = { ...s, peak: seed };
   }

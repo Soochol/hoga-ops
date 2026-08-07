@@ -15,15 +15,8 @@ export function kstMinuteOfDay(ms: number): number {
   return Math.floor((ms + KST_OFFSET_MS) / 60_000) % 1440;
 }
 
-/** KRX 정규장 개장(09:00) 분. */
-export const KRX_OPEN_MIN = 9 * 60;
-
-/** KRX 정규장 개장(09:00) 이후인가(KST). 공용 술어 isIndicatorEligibleBook의 개장 하한 —
- *  백엔드 _book_indicator_eligible_sql의 session_open 하한과 동일 목적으로 개장 동시호가를
- *  배제한다(호가비·총잔량·히트맵·매도/매수 최대벽 공용). 개장 동시호가는 hogaplay 실측상
- *  3호가로 붕괴해 isContinuousBook이 이미 배제하지만(2026-07-11), 이 하한은 라이브 KIS WS가
- *  개장 전 10레벨 호가를 밀어줄 가능성(미실측)에 대한 구조적 안전망이다. 마감측은
- *  isContinuousBook(3레벨 붕괴)+마감 상한(sessionClose/lastContinuousMs)이 맡는다. */
-export function isAfterRegularOpen(ms: number): boolean {
-  return kstMinuteOfDay(ms) >= KRX_OPEN_MIN;
-}
+// `isAfterRegularOpen`(09:00 KST 고정) / `KRX_OPEN_MIN` 은 여기 있었고 삭제됐다.
+// 개장 하한은 이제 `isIndicatorEligibleBook(s, sessionOpenMs)` 의 **필수 인자**다 —
+// 시각을 함수 안에 박아 두면 venue 별 확장 세션(NXT/통합 08:00–20:00)에서 프리마켓
+// 호가가 통째로 배제된다. 되살리지 말 것: 상수로 부활하는 순간 호출부가 그걸 기본값
+// 자리에 넣고 싶어지고, 그게 정확히 이 버그를 되돌리는 경로다.

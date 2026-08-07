@@ -43,6 +43,10 @@ function pushTopK(top: AskPeakCandidate[], candidate: AskPeakCandidate): void {
  *  없음 — 매 호출 새 top-3 배열이지만, 이벤트 객체는 공유). */
 export class IncrementalPeakWallSource {
   private readonly side: 'ask' | 'bid';
+  /** 선택 venue 의 개장(유효 스냅샷 하한). 생성자가 아니라 update() 인자로 받는다 —
+   *  호출부가 이 인스턴스를 useRef 로 훅 수명 내내 고정하므로, venue 전환을 인스턴스
+   *  교체로 표현할 수 없다. 값이 바뀌면 accumulate() 가 누적을 버린다. */
+  private sessionOpenMs = Number.NaN;
   private obLength = 0;
   private lastObRef: ObSnapshot | null = null;
   private tradeLength = 0;
@@ -64,9 +68,10 @@ export class IncrementalPeakWallSource {
   update(
     ob: ReadonlyArray<ObSnapshot>,
     trade: ReadonlyArray<TradeSnapshot>,
+    sessionOpenMs: number,
     extras: readonly AskPeakCandidate[] = [],
   ): PeakWallClassification {
-    this.accumulate(ob, trade);
+    this.accumulate(ob, trade, sessionOpenMs);
     return this.classify(extras);
   }
 
@@ -79,15 +84,28 @@ export class IncrementalPeakWallSource {
     trade: ReadonlyArray<TradeSnapshot>,
     extras: readonly AskPeakCandidate[],
     cutoffMs: number,
+    sessionOpenMs: number,
   ): PeakWallClassification {
-    this.accumulate(ob, trade);
+    this.accumulate(ob, trade, sessionOpenMs);
     return this.classifyAsOf(extras, cutoffMs);
   }
 
   private accumulate(
     ob: ReadonlyArray<ObSnapshot>,
     trade: ReadonlyArray<TradeSnapshot>,
+    sessionOpenMs: number,
   ): void {
+    // 개장 하한이 바뀌면(venue 전환 KRX 09:00 ↔ NXT 08:00) 유효 스냅샷 집합 자체가
+    // 달라지므로 누적을 통째로 버린다 — IncrementalHogaBucketer 의 리셋 트리거와 같은
+    // 등급이다. 안 그러면 이전 venue 기준으로 걸러진 벽이 그대로 남는다.
+    if (this.sessionOpenMs !== sessionOpenMs) {
+      this.sessionOpenMs = sessionOpenMs;
+      this.reset();
+      this.obLength = 0;
+      this.tradeLength = 0;
+      this.lastObRef = null;
+      this.lastTradeRef = null;
+    }
     if (!this.canAppendOb(ob) || !this.canAppendTrade(trade)) {
       this.reset();
       this.consumeOb(ob);
@@ -126,7 +144,7 @@ export class IncrementalPeakWallSource {
 
   private consumeOb(snapshots: ReadonlyArray<ObSnapshot>): void {
     for (const snapshot of snapshots) {
-      if (!isIndicatorEligibleBook(snapshot)) continue;
+      if (!isIndicatorEligibleBook(snapshot, this.sessionOpenMs)) continue;
       const levels = this.side === 'ask' ? snapshot.asks : snapshot.bids;
       if (!levels) continue;
       for (const level of levels) {

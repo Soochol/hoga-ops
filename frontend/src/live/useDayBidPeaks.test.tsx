@@ -18,6 +18,8 @@ const deep = (
 
 const byDate = (peaks: readonly BidPeak[]) => Object.fromEntries(peaks.map((p) => [p.date, p]));
 const atKst = (hh: number, mm = 0) => Date.UTC(2026, 5, 13, hh - 9, mm);
+// 개장 하한(09:00 KST) — 필수 인자화 경위는 computeDayAskPeak.test 의 같은 상수 참조.
+const OPEN_MS = atKst(9);
 const candle = (t_ms: number, low: number, high: number): Candle => ({
   ts_ms: t_ms,
   open: high,
@@ -55,6 +57,7 @@ describe('useDayBidPeaks', () => {
       [trade(atKst(9, 21), [{ t_ms: atKst(9, 21), side: 1, price: 23900, qty: 10 }])],
       [],
       '20260613',
+      OPEN_MS,
       '005930',
     ));
 
@@ -80,7 +83,7 @@ describe('useDayBidPeaks', () => {
       [],
       [],
       [],
-      '20260613',
+      '20260613', OPEN_MS,
       '005930',
       restPeak,
       [candle(atKst(10, 42), 23700, 23900)],
@@ -106,7 +109,7 @@ describe('useDayBidPeaks', () => {
       [],
       [],
       [],
-      '20260613',
+      '20260613', OPEN_MS,
       '005930',
       restPeak,
     ));
@@ -130,6 +133,7 @@ describe('useDayBidPeaks', () => {
       [trade(atKst(9, 11), [{ t_ms: atKst(9, 11), side: 1, price: 23900, qty: 10 }])],
       [],
       '20260613',
+      OPEN_MS,
       '005930',
     ));
 
@@ -157,7 +161,7 @@ describe('useDayBidPeaks', () => {
   it('retroactively promotes a previously observed bid wall once that price trades later', () => {
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
-        useDayBidPeaks(ob, trades, [], '20260613', '005930'),
+        useDayBidPeaks(ob, trades, [], '20260613', OPEN_MS, '005930'),
       { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
     );
 
@@ -199,7 +203,7 @@ describe('useTodayAllPriceBidPeak', () => {
     const { result } = renderHook(() => useTodayAllPriceBidPeak(
       [],
       [seed],
-      '20260613',
+      '20260613', OPEN_MS,
       '005930',
       todayBidPeak({ all_price: 23800, all_qty: 12000, all_t_ms: atKst(9, 11) }),
     ));
@@ -230,7 +234,7 @@ describe('useTodayAllPriceBidPeak', () => {
     const { result } = renderHook(() => useTodayAllPriceBidPeak(
       [],
       [seed],
-      '20260613',
+      '20260613', OPEN_MS,
       '005930',
       null,
     ));
@@ -253,7 +257,7 @@ describe('useTodayAllPriceBidPeak', () => {
 
     const { result, rerender } = renderHook(
       ({ ob, todayKst, code }: { ob: ObSnapshot[]; todayKst: string; code: string }) =>
-        useTodayAllPriceBidPeak(ob, [], todayKst, code, null),
+        useTodayAllPriceBidPeak(ob, [], todayKst, OPEN_MS, code, null),
       { initialProps: { ob: [] as ObSnapshot[], todayKst: '20260613', code: '005930' } },
     );
 
@@ -285,7 +289,7 @@ describe('useTodayAllPriceBidPeak', () => {
     const { result } = renderHook(() => useTodayAllPriceBidPeak(
       [],
       [],
-      '20260613',
+      '20260613', OPEN_MS,
       '005930',
       restPeak,
     ));
@@ -308,6 +312,7 @@ describe('useTodayAllPriceBidPeak', () => {
       ],
       [],
       '20260613',
+      OPEN_MS,
       '005930',
     ));
 
@@ -329,7 +334,7 @@ describe('useTodayAllPriceBidPeak', () => {
     });
 
     const { result } = renderHook(
-      () => useTodayAllPriceBidPeak([], [], '20260613', '005930', restPeak),
+      () => useTodayAllPriceBidPeak([], [], '20260613', OPEN_MS, '005930', restPeak),
     );
 
     expect(result.current).toMatchObject({
