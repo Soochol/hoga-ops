@@ -95,12 +95,24 @@ function useCardModes(): [Record<string, CardMode>, (id: string, next: CardMode)
  *  **카드마다 따로 판정한다.** 야간엔 유동성에 따라 종목별로 갈리기 때문이다 —
  *  KOSPI200 은 WS 틱이 붙어 실시간인데 코스닥150 은 무음이라 주간 마감본일 수 있다.
  *  스냅샷 하나로 판정하면 둘 중 하나는 반드시 틀린 배지를 단다. */
-function stalenessNote(
+function sessionNote(
   future: FuturesQuote,
   snapshot: FuturesQuotesSnapshot | undefined,
 ): string | null {
-  if (!snapshot || snapshot.session === future.dataSession) return null;
-  return snapshot.session === 'night' ? '주간 마감값' : '장 마감';
+  if (!snapshot) return null;
+  if (snapshot.session !== future.dataSession) {
+    return snapshot.session === 'night' ? '주간 마감값' : '장 마감';
+  }
+  // 값이 최신이다. 그래도 **야간은 알린다.**
+  //
+  // 원래는 여기서 무조건 침묵했다 — "정상을 알리는 문구는 소음" 이라는 판단(#1164)
+  // 이었는데, 그 판단은 커버리지 경고처럼 **예외를 알리는** 정보에만 맞다. 어느
+  // 세션의 값인가는 예외가 아니라 **상태**이고, 상태를 예외 채널로만 표현하면 정상
+  // 상태가 화면에서 통째로 사라진다. 실제로 그랬다: 야간 실시간일 때 라벨도 배지도
+  // 주간과 똑같아서, 사용자가 값을 외우고 있지 않으면 구별할 방법이 없었다.
+  //
+  // 주간은 여전히 침묵한다 — 그쪽이 기본 상태라 알릴 것이 없다.
+  return future.dataSession === 'night' ? '야간' : null;
 }
 
 /** 베이시스·괴리율용 소수 2자리 부호 표기.
@@ -144,7 +156,7 @@ function FuturesMeta({
   snapshot: FuturesQuotesSnapshot | undefined;
   spark: FuturesSpark | undefined;
 }) {
-  const stale = stalenessNote(future, snapshot);
+  const stale = sessionNote(future, snapshot);
   const coverage = coverageNote(spark);
   return (
     <div className="flex flex-wrap items-baseline gap-x-xs font-data text-2xs tabular-nums text-fg-dim">
