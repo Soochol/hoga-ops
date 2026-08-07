@@ -59,17 +59,22 @@ const KOSDAQ150_F = futuresQuote({
   market_basis: -5.82,
 });
 
+/** 죽은 KIS 선물(2026-08-07). 백엔드 라인업에서 뺐지만, 되살아나도 카드가 서지 않는지
+ *  프론트 쪽에서도 못 박는다 — 이 상품은 거래량 0 이라 값이 정산가에 굳어 있다. */
 const VKOSPI_F = futuresQuote({
   id: 'VKOSPI_F',
   underlying_id: null,
   label: 'VKOSPI F',
   code: 'A04608',
   value: 73.5,
-  change: 2.15,
-  change_rate: 3.01,
+  change: 0,
+  change_rate: 0,
   market_basis: -3.67,
-  days_left: 6,
+  days_left: 5,
 });
+
+/** 변동성지수 — 키움 ka20003 의 `603` 행이 최상위 `volatility` 로 온다. */
+const VOLATILITY = { code: '603', name: '변동성지수', value: 75.97, change_pct: -1.56 };
 
 /** 현물 분봉 — 선물 모드가 이걸 그리면 안 된다는 것을 보이려고 값을 확실히 구분한다. */
 const SPOT_CANDLES = {
@@ -94,6 +99,7 @@ function mockApi(
       coverage?: { first_hhmm: string; observed_buckets: number; gap_count: number } | null;
     }
   > = {},
+  volatility: { code: string; name: string; value: number | null; change_pct: number | null } | null = null,
 ) {
   vi.spyOn(client, 'apiCall').mockImplementation((async (url: string) => {
     if (url.startsWith('/api/live/index-quotes')) return { quotes: SPOT_QUOTES };
@@ -105,7 +111,7 @@ function mockApi(
       };
     }
     if (url.startsWith('/api/market/futures-candles')) return { series: futuresCandles };
-    if (url.startsWith('/api/market/sectors')) return { markets: {} };
+    if (url.startsWith('/api/market/sectors')) return { markets: {}, volatility };
     if (url.startsWith('/api/live/index-candles')) return SPOT_CANDLES;
     return {};
   }) as unknown as typeof client.apiCall);
@@ -404,26 +410,45 @@ describe('IndexCards VKOSPI 단독 카드', () => {
     localStorage.clear();
   });
 
-  it('대응 현물이 없는 선물은 토글 없는 단독 카드로 붙는다', async () => {
-    mockApi({ quotes: [futuresQuote(), VKOSPI_F] });
+  it('변동성지수는 토글 없는 단독 카드로 붙는다', async () => {
+    mockApi({ quotes: [futuresQuote()] }, {}, VOLATILITY);
     renderCards();
 
-    expect(await screen.findByText('VKOSPI F')).toBeTruthy();
-    expect(screen.getByText('73.50')).toBeTruthy();
+    expect(await screen.findByText('VKOSPI')).toBeTruthy();
+    expect(screen.getByText('75.97')).toBeTruthy();
     // 바꿀 짝이 없으므로 토글이 없어야 한다
-    expect(screen.queryByLabelText('VKOSPI F 현물/선물')).toBeNull();
+    expect(screen.queryByLabelText('VKOSPI 현물/선물')).toBeNull();
   });
 
-  it('단독 선물이 없으면 4열, 있으면 5열이다', async () => {
+  it('변동성지수가 없으면 4열, 있으면 5열이다', async () => {
     mockApi({ quotes: [futuresQuote()] });
     const { container, unmount } = renderCards();
     await screen.findByText('982.92');
     expect(container.querySelector('.grid-cols-4')).toBeTruthy();
     unmount();
 
-    mockApi({ quotes: [futuresQuote(), VKOSPI_F] });
+    mockApi({ quotes: [futuresQuote()] }, {}, VOLATILITY);
     const second = renderCards();
-    await screen.findByText('VKOSPI F');
+    await screen.findByText('VKOSPI');
     expect(second.container.querySelector('.grid-cols-5')).toBeTruthy();
+  });
+
+  it('값이 없으면 —, 등락률만 그린다 (등락폭을 역산하지 않는다)', async () => {
+    mockApi({ quotes: [futuresQuote()] }, {}, { ...VOLATILITY, value: null });
+    renderCards();
+
+    await screen.findByText('VKOSPI');
+    expect(screen.getByText('—')).toBeTruthy();
+  });
+
+  it('죽은 VKOSPI 선물이 응답에 남아 있어도 카드가 서지 않는다', async () => {
+    // 라인업에서 뺐지만(2026-08-07) 벤더 응답이 되살아나는 경로를 프론트에서도 막는다 —
+    // 거래량 0 이라 값이 정산가에 굳은 상품이 실시간 카드처럼 보이면 안 된다.
+    mockApi({ quotes: [futuresQuote(), VKOSPI_F] });
+    const { container } = renderCards();
+
+    await screen.findByText('982.92');
+    expect(screen.queryByText('VKOSPI F')).toBeNull();
+    expect(container.querySelector('.grid-cols-4')).toBeTruthy();
   });
 });
