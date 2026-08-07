@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { useOptionSentiment } from '../api/optionSentiment';
-import { PageContainer } from '../layout/PageContainer';
+import { PAGE_MAX_W, PageContainer } from '../layout/PageContainer';
 import { useNowMs } from '../util/useNowMs';
 // 카드 크롬은 `/market` 이 SSOT 다(marketCardBits 상단 주석 — "한 곳에서만 정한다").
 // `src/ui/` 로 승격하지 않고 그대로 읽어 쓴다: 승격은 MarketCard 리네임으로
@@ -179,7 +179,7 @@ function StatTile({
 function StateCard({ children }: { children: React.ReactNode }) {
   return (
     <PageContainer>
-      <div className="mx-auto w-full max-w-[1680px]">
+      <div className={`mx-auto w-full ${PAGE_MAX_W}`}>
         <MarketCard className="p-md">{children}</MarketCard>
       </div>
     </PageContainer>
@@ -238,7 +238,7 @@ export default function Sentiment() {
     <PageContainer>
       {/* `/market` 과 같은 프레임: 중앙 고정 폭 + 카드 사이 `md`, 성격이 다른 좌우
           열 사이만 `xl`(DESIGN.md 의 "Major section dividers"). */}
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1680px] flex-col gap-md overflow-y-auto">
+      <div className={`mx-auto flex h-full min-h-0 w-full ${PAGE_MAX_W} flex-col gap-md overflow-y-auto`}>
         {/* 10초 요약 — 스크롤 없이 상단만 보고 시장 상태가 잡히게 핵심 수치를 모은다.
             상세·해석 한계는 아래 카드가 담당한다. 5타일인 이유는 /market 지수 행과
             같은 리듬을 쓰기 위해서다 — 25델타 RR 은 ATM IV 의 보조 줄로 접었다. */}
