@@ -2002,7 +2002,10 @@ export function LiveChartRoot({
           timeAxisVisible={timeAxisVisible}
           stacked={foldedPaneCount > 0 || !!showHogaMissing}
           testId="source-badge"
-          ariaLabel={`이 차트의 일부 구간은 ${sourceBadge} 데이터로 그려졌습니다.`}
+          // 배지가 소스만 내던 시절엔 "…데이터로 그려졌습니다" 가 맞았는데, 이제 결손
+          // 크기도 실린다("키움 WS · 결손 5시간 31분"). 문장에 끼우면 어색해지므로
+          // 레이블은 상태를 가리키는 형태로 둔다.
+          ariaLabel={`이 차트의 데이터 상태: ${sourceBadge}`}
         />
       )}
       {chart && cb && axis.segments.length > 0 && (
