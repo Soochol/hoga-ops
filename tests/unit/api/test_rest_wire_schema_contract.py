@@ -5,11 +5,13 @@ mirrors TypeScript types by hand. These snapshots make Watchlist/Heatmap REST
 field changes loud, especially where the two domains look similar but differ
 in capture/scheduler fields.
 
-두 층을 지킨다:
+세 층을 지킨다:
 
 1. **필드 이름** — ``EXPECTED_REST_WIRE_FIELDS`` 스냅샷.
 2. **enum 값** — ``WIRE_ENUM_MIRRORS`` 가 백엔드 ``Literal`` 멤버를 프론트 union
    **소스 파일과 직접 대조**한다.
+3. **wire model 존재 여부** — ``UNCLOTHED_ROUTE_BASELINE`` 이 ``-> dict`` 라우트를
+   동결한다. 1·2번은 wire model 이 있어야 볼 수 있는데, 없는 라우트가 실재한다.
 
 2번이 왜 따로 필요한가: 손 미러에서 값 드리프트는 **타입이 원리적으로 못 잡는다**.
 #1183 이 그 사고였다 — 백엔드가 ``capture_reason`` 값 4개를 뺐는데 프론트 라벨 표는
@@ -17,11 +19,18 @@ in capture/scheduler fields.
 프론트 안에서 union↔테이블을 exhaustive 로 묶어도 그건 **프론트 내부** lockstep 일
 뿐이라, 백엔드만 늘어나는 방향은 여전히 무증상이다. 이 대조가 그 방향을 막는다.
 
+3번이 왜 필요한가: 반환형이 ``dict`` 면 FastAPI 가 검증할 shape 이 없어서 1·2번
+가드가 **원리적으로 볼 수 없다**. ADR-0004 의 "Wire Model = 소비자가 받는 것" 전제가
+거기선 성립하지 않는다 — 그 라우트의 wire shape 은 어디에도 선언돼 있지 않다.
+실측 108개 라우트 중 27개가 그렇다. 한 번에 입히는 건 다중 PR 캠페인이라(아래 참조),
+우선 **늘지 못하게** 동결한다.
+
 ADR-0004 가 기각한 codegen 이 아니다 — 손 미러를 유지하고 어긋남만 검출한다.
 같은 ADR 의 "both must be updated in the same PR" 이 이 테스트가 강제하는 규칙이다.
 """
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 from typing import Literal, get_args, get_origin
@@ -257,4 +266,141 @@ def test_intentionally_unmirrored_entries_are_still_real_pairs() -> None:
     assert not stale, (
         f"INTENTIONALLY_UNMIRRORED 항목이 더는 실재 쌍이 아니다: {sorted(stale)}. "
         "한쪽이 사라졌거나 이름이 바뀌었으니 항목을 지울 것."
+    )
+
+
+# ── wire model 없는 라우트 동결 (ratchet) ─────────────────────────────────────
+
+_ROUTE_METHODS = frozenset({"get", "post", "put", "delete", "patch"})
+# JSON body 를 pydantic 으로 낼 수 없는(또는 낼 필요 없는) 반환형 — 애초에 대상이 아니다.
+_NON_MODEL_RETURNS = frozenset({
+    "None", "Response", "JSONResponse", "FileResponse",
+    "StreamingResponse", "PlainTextResponse",
+})
+
+# 라우트 키는 **(method, path, 모듈)** 이다. (method, path) 만 쓰면 안 된다 — 실측
+# 21건이 충돌한다(라우터 prefix 를 뗀 상대 경로라 `/status` 같은 이름이 여러 모듈에
+# 산다). 모듈까지 넣으면 충돌 0이고, 함수명 변경에는 여전히 강하다.
+RouteKey = tuple[str, str, str]
+
+# **동결선**: 지금 wire model 없이 사는 프로덕션 라우트. 이 목록은 **줄어들기만** 해야
+# 한다 — 새 항목이 필요해졌다면 그건 무계약 라우트를 새로 추가했다는 뜻이다.
+#
+# 왜 지금 다 안 입히는가: `response_model` 을 잘못 좁히면 **500 이 아니라 조용히 필드를
+# 버린다**(FastAPI 가 선언 안 된 키를 스트립한다). 즉 이 세션이 내내 다룬 바로 그 병을
+# 새로 만든다. 라우트마다 생산 함수의 키를 전수로 읽고 프론트 소비면을 확인해야 해서
+# 다중 PR 캠페인이다. 그동안 늘지 않게 막는 것이 이 동결선의 역할이다.
+UNCLOTHED_ROUTE_BASELINE: frozenset[RouteKey] = frozenset({
+    ("POST", "/control", "api"),
+    ("GET", "/index-candles", "api"),
+    ("GET", "/index-investor-net", "api"),
+    ("GET", "/past-candles", "api"),
+    ("GET", "/past-daily-candles", "api"),
+    ("GET", "/past-investor-net", "api"),
+    ("GET", "/screener-daily-candles", "api"),
+    ("GET", "/series", "api"),
+    ("GET", "/snapshot", "api"),
+    ("GET", "/vi-status", "api"),
+    ("POST", "/cancel-all", "captures"),
+    ("POST", "/items/{code}/{date}/unblock", "captures"),
+    ("POST", "/items/{item_id}/cancel", "captures"),
+    ("POST", "/queue/resume", "captures"),
+    ("GET", "/breadth", "market_routes"),
+    ("GET", "/funds", "market_routes"),
+    ("GET", "/futures-candles", "market_routes"),
+    ("GET", "/futures-quotes", "market_routes"),
+    ("GET", "/investor-flow", "market_routes"),
+    ("GET", "/program", "market_routes"),
+    ("GET", "/sectors", "market_routes"),
+    ("GET", "/streaks", "market_routes"),
+    ("GET", "/status", "screener"),
+    ("POST", "/update", "screener"),
+})
+
+# 영구 제외 — 동결선과 달리 "언젠가 입힌다" 가 아니다.
+INTENTIONALLY_UNCLOTHED: dict[RouteKey, str] = {
+    ("POST", "/add-stockdate", "test_routes"): "e2e 전용",
+    ("POST", "/cookie_expire_at", "test_routes"): "e2e 전용",
+    ("POST", "/seed-trading-days", "test_routes"): "e2e 전용",
+}
+# 위 셋의 공통 사유: `HOGA_ENABLE_TEST_ENDPOINTS=1` 에서만 붙는 픽스처 주입 엔드포인트다.
+# 프론트 프로덕션 코드가 소비하지 않으므로 BE↔FE 미러 계약의 대상이 아니다.
+
+
+def _iter_routes() -> list[tuple[RouteKey, str, str]]:
+    """``hoga/`` 의 모든 라우트 → (키, 반환 애노테이션, 명시 response_model).
+
+    **ast 정적 파싱이다 — 앱을 만들지 않는다.** ``default_app()`` 은 `.env` 를 읽어
+    테스트 환경을 오염시키므로(실측 사고 있음) 라우트를 세자고 부를 이유가 없다.
+    """
+    routes: list[tuple[RouteKey, str, str]] = []
+    for py in sorted((_REPO_ROOT / "hoga").rglob("*.py")):
+        tree = ast.parse(py.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            for dec in node.decorator_list:
+                func = dec.func if isinstance(dec, ast.Call) else dec
+                if not (isinstance(func, ast.Attribute) and func.attr in _ROUTE_METHODS):
+                    continue
+                path, explicit = "", ""
+                if isinstance(dec, ast.Call):
+                    if dec.args and isinstance(dec.args[0], ast.Constant):
+                        path = str(dec.args[0].value)
+                    for kw in dec.keywords:
+                        if kw.arg == "response_model":
+                            explicit = ast.unparse(kw.value)
+                annotation = ast.unparse(node.returns) if node.returns else "<none>"
+                routes.append(((func.attr.upper(), path, py.stem), annotation, explicit))
+    return routes
+
+
+def _unclothed_routes() -> set[RouteKey]:
+    """wire model 이 없는 라우트 — 반환형이 ``dict`` 계열이거나 아예 없는 것.
+
+    ``list[SymbolHit]`` 은 **계약이 있다**(FastAPI 가 모델 리스트로 검증한다) — 초기
+    분류에서 이걸 무계약으로 셌다가 바로잡았다. ``dict[str, str]`` 은 값 타입이 있어도
+    키가 자유라 shape 계약이 아니므로 무계약으로 친다.
+    """
+    out: set[RouteKey] = set()
+    for key, annotation, explicit in _iter_routes():
+        if explicit and explicit != "None":
+            continue
+        if annotation in _NON_MODEL_RETURNS:
+            continue
+        if annotation in {"<none>", "dict"} or annotation.startswith("dict["):
+            out.add(key)
+    return out
+
+
+def test_no_new_routes_without_a_wire_model() -> None:
+    """새 라우트는 wire model 을 갖고 태어나야 한다 (ADR-0004).
+
+    반환형이 ``dict`` 면 응답 shape 이 **어디에도 선언되지 않는다**. 프론트는 그걸
+    손으로 미러하는데, 위 두 층의 가드는 pydantic 모델이 있어야 볼 수 있으니 그 미러는
+    아무 보호도 못 받는다.
+    """
+    unaccounted = _unclothed_routes() - UNCLOTHED_ROUTE_BASELINE - set(INTENTIONALLY_UNCLOTHED)
+
+    assert not unaccounted, (
+        f"wire model 없는 라우트가 새로 생겼다: {sorted(unaccounted)}. "
+        "출구는 둘이다 — (1) pydantic 응답 모델을 선언한다(ADR-0004 권장), "
+        "(2) 진짜 JSON 이 아니면 Response 계열로 반환형을 적는다. "
+        "동결선(UNCLOTHED_ROUTE_BASELINE)에 추가하는 것은 출구가 아니다."
+    )
+
+
+def test_unclothed_baseline_has_no_fossils() -> None:
+    """동결선은 줄어들기만 한다 — 고쳐졌거나 사라진 라우트의 항목은 지워야 한다.
+
+    화석을 남겨 두면 같은 (method, path, 모듈) 이 나중에 **새 무계약 라우트로** 되살아났을
+    때 동결선이 그걸 조용히 통과시킨다.
+    """
+    now_unclothed = _unclothed_routes()
+    fossils = (UNCLOTHED_ROUTE_BASELINE | set(INTENTIONALLY_UNCLOTHED)) - now_unclothed
+
+    assert not fossils, (
+        f"동결선에 화석이 남았다: {sorted(fossils)}. 해당 라우트가 wire model 을 갖췄거나 "
+        "사라졌다는 뜻이니 목록에서 지울 것 — 남겨 두면 같은 경로가 무계약으로 되살아나도 "
+        "통과한다."
     )
