@@ -299,16 +299,10 @@ RouteKey = tuple[str, str, str]
 # 새로 만든다. 라우트마다 생산 함수의 키를 전수로 읽고 프론트 소비면을 확인해야 해서
 # 다중 PR 캠페인이다. 그동안 늘지 않게 막는 것이 이 동결선의 역할이다.
 UNCLOTHED_ROUTE_BASELINE: frozenset[RouteKey] = frozenset({
-    ("POST", "/control", "api"),
-    ("GET", "/index-candles", "api"),
-    ("GET", "/index-investor-net", "api"),
-    ("GET", "/past-candles", "api"),
-    ("GET", "/past-daily-candles", "api"),
-    ("GET", "/past-investor-net", "api"),
-    ("GET", "/screener-daily-candles", "api"),
+    # `/series` 만 남긴다 — 실측 **키 경로 114개 · 464KB** 로 배치 2 안에서 안전하게
+    # 모델화하기엔 크다. 차트 초기 hydration 이 통째로 걸린 응답이라 키 하나가
+    # 조용히 빠지면 찾기 어렵다. 별도 배치로 남긴다.
     ("GET", "/series", "api"),
-    ("GET", "/snapshot", "api"),
-    ("GET", "/vi-status", "api"),
     ("POST", "/cancel-all", "captures"),
     ("POST", "/items/{code}/{date}/unblock", "captures"),
     ("POST", "/items/{item_id}/cancel", "captures"),

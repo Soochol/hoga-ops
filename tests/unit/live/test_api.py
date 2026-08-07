@@ -3204,3 +3204,55 @@ def test_live_settings_patch_can_set_bypass_alone(tmp_path):
     )
     assert r_legacy.status_code == 200
     assert r_legacy.json()["rest_bypass_enabled"] is True, "옛 이름은 반영되지 않는다"
+
+
+# ── wire model 계약 (ADR-0004 · 동결선 배치 2) ────────────────────────────────
+
+
+def test_from_is_a_wire_key_not_a_python_identifier():
+    """`from` 은 파이썬 예약어라 필드명이 `from_` 이지만 **wire 는 `from`** 이다.
+
+    alias 를 지워도 파이썬 코드는 멀쩡히 돌아가므로(필드명만 바뀐다) 이 단언이 없으면
+    프론트 쿼리 키가 조용히 깨진다 — 과거 캔들·수급 네 라우트가 전부 이 키를 쓴다.
+    """
+    from hoga.live.api import (
+        LiveIndexCandlesResponse,
+        LivePastCandlesResponse,
+        LivePastDailyCandlesResponse,
+        LivePastInvestorNetResponse,
+        ScreenerDailyCandlesResponse,
+    )
+
+    cases = [
+        (LivePastCandlesResponse, {"code": "005930", "from": "20260101", "to": "20260102"}),
+        (LivePastDailyCandlesResponse, {"code": "005930", "from": "20260101", "to": "20260102"}),
+        (ScreenerDailyCandlesResponse,
+         {"code": "005930", "from": "20260101", "to": "20260102", "source": "screener_daily"}),
+        (LivePastInvestorNetResponse,
+         {"code": "005930", "from": "20260101", "to": "20260102", "unit": "qty_shares"}),
+        (LiveIndexCandlesResponse,
+         {"index_id": "KOSPI", "from": "20260101", "to": "20260102", "timeframe": "D"}),
+    ]
+    for model, payload in cases:
+        dumped = model.model_validate(payload).model_dump(by_alias=True)
+        assert "from" in dumped, f"{model.__name__} 이 wire 키 `from` 을 잃었다"
+        assert "from_" not in dumped, f"{model.__name__} 이 파이썬 필드명을 wire 로 흘렸다"
+
+
+def test_snapshot_model_tolerates_partial_buffer_entries():
+    """부분 스냅샷이 **500 이 되면 안 된다**.
+
+    버퍼는 스트림이 만든 dict 를 그대로 보관하고, 그 dict 는 부분적일 수 있다
+    (호가만 온 순간 등). 모델을 필수 필드로 선언했다가 실제로 여기서 깨졌다 —
+    실서버 응답은 정상 스트림이라 완전했기 때문에 그 검사로는 안 잡혔고, 이 층위의
+    테스트가 잡았다.
+    """
+    from hoga.live.api import LiveSnapshotResponse
+
+    got = LiveSnapshotResponse.model_validate(
+        {"code": "005930", "orderbook": {"total_bid_qty": 1000}, "recent_trades": [{"price": 100}]}
+    ).model_dump(exclude_none=True)
+
+    # 부재는 부재로 나간다 — `exclude_none` 이 라우트에 걸려 있는 이유다.
+    assert got["orderbook"] == {"total_bid_qty": 1000, "asks": [], "bids": []}
+    assert got["recent_trades"] == [{"price": 100}]
