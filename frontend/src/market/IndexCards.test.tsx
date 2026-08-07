@@ -240,13 +240,28 @@ describe('IndexCards 현물/선물 토글', () => {
     expect(screen.getByText(/장 마감/)).toBeTruthy();
   });
 
+  it('야간 실시간이면 야간이라고 말한다', async () => {
+    // **정상일 때 침묵하면 정상 상태가 화면에서 사라진다.** 배지가 어긋남에만 반응하던
+    // 동안 야간 실시간 카드는 라벨도 배지도 주간과 완전히 같았고, 사용자가 값을 외우고
+    // 있지 않으면 구별할 방법이 없었다(2026-08-07 실제 혼동 — "주간선물만 보인다").
+    mockApi({ quotes: [futuresQuote({ data_session: 'night' })], session: 'night' });
+    renderCards();
+
+    await userEvent.click(within(await screen.findByLabelText('KOSPI 200 현물/선물')).getByText('선물'));
+    const card = cardByLabel('KOSPI 200 F');
+    expect(within(card).getByText(/야간/)).toBeTruthy();
+    expect(within(card).queryByText(/주간 마감값/)).toBeNull();
+  });
+
   it('주간 중에는 배지를 달지 않는다', async () => {
+    // 주간은 **기본 상태**라 알릴 것이 없다 — 야간과 달리 여기서 말을 걸면 소음이다.
     mockApi({ quotes: [futuresQuote()], session: 'day' });
     renderCards();
 
     await userEvent.click(within(await screen.findByLabelText('KOSPI 200 현물/선물')).getByText('선물'));
     expect(screen.queryByText(/주간 마감값/)).toBeNull();
     expect(screen.queryByText(/장 마감/)).toBeNull();
+    expect(screen.queryByText(/야간/)).toBeNull();
   });
 
   it('야간엔 배지가 카드마다 갈린다 — WS 틱이 붙은 종목만 실시간이다', async () => {
@@ -264,9 +279,14 @@ describe('IndexCards 현물/선물 토글', () => {
     await userEvent.click(within(await screen.findByLabelText('KOSPI 200 현물/선물')).getByText('선물'));
     await userEvent.click(within(toggleFor('KOSDAQ 150')).getByText('선물'));
 
-    // 야간 실시간인 카드엔 배지가 없고, 무음인 카드에만 붙는다
-    expect(within(cardByLabel('KOSPI 200 F')).queryByText(/주간 마감값/)).toBeNull();
-    expect(within(cardByLabel('KOSDAQ 150 F')).getByText(/주간 마감값/)).toBeTruthy();
+    // 야간 실시간인 카드엔 '야간', 무음인 카드엔 '주간 마감값' — **한 카드가 둘 다
+    // 달면 안 된다.** 두 문구는 같은 판정의 양쪽 가지라 동시에 참일 수 없다.
+    const live = cardByLabel('KOSPI 200 F');
+    const stale = cardByLabel('KOSDAQ 150 F');
+    expect(within(live).getByText(/야간/)).toBeTruthy();
+    expect(within(live).queryByText(/주간 마감값/)).toBeNull();
+    expect(within(stale).getByText(/주간 마감값/)).toBeTruthy();
+    expect(within(stale).queryByText(/야간/)).toBeNull();
   });
 });
 
