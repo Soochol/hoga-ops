@@ -159,6 +159,9 @@ type Store = Persisted & {
   setWindowRects: (updates: readonly { id: string; rect: WorkspaceRect }[]) => void;
   setWindowGroup: (id: string, group: GroupId) => void;
   setGroupSymbol: (group: GroupId, symbol: GroupSymbol) => void;
+  /** 실명이 아직 안 붙은(`name === code`) 주식 그룹 종목을 심볼 마스터 실명으로
+   *  보강한다. `resolve` 가 undefined 를 주면 그 그룹은 그대로 둔다. */
+  backfillSymbolNames: (resolve: (code: string) => string | undefined) => void;
 
   // ── 차트 창 지표 쓰기 경로 (ADR-0119 C2c-2a, #712 창 소유 설정) ──
   /** 대상 창의 "현재 봉" 버킷에 patch 를 누적한다(livePage patchIndicators 미러 —
@@ -629,6 +632,33 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       const affected = state.windows.filter((w) => w.group === group).map((w) => w.id);
       persistFromState({ ...state, groupSymbols });
       return { groupSymbols, chartRuntime: clearedChartRuntime(state.chartRuntime, affected) };
+    });
+  },
+
+  /** 라벨 수정 전용 — `setGroupSymbol` 과 달리 **chartRuntime 을 건드리지 않는다**.
+   *
+   *  종목 교체(setGroupSymbol)는 fresh-view 라 백필 from-date·분봉 기억을 리셋하지만,
+   *  실명 보강은 같은 종목의 표시 문자열만 바꾸는 것이다. 여기서 리셋하면 심볼 마스터
+   *  응답이 도착하는 임의의 시점에 진행 중이던 과거 백필이 조용히 처음으로 되감긴다.
+   *
+   *  판정은 `name === code` 하나로 한다 — 라벨 없이 저장된 값의 유일한 서명이다
+   *  (liveNavigate 의 `label ?? code` 폴백). 지수는 code 가 곧 사람이 읽는 id 라
+   *  심볼 마스터에 없고, 보강 대상도 아니므로 건너뛴다. */
+  backfillSymbolNames: (resolve) => {
+    set((state) => {
+      let groupSymbols: Partial<Record<GroupId, GroupSymbol>> | null = null;
+      for (const [key, symbol] of Object.entries(state.groupSymbols)) {
+        if (!symbol || symbol.kind === 'index' || symbol.name !== symbol.code) continue;
+        const name = resolve(symbol.code);
+        if (!name || name === symbol.code) continue;
+        groupSymbols ??= { ...state.groupSymbols };
+        groupSymbols[Number(key) as GroupId] = { ...symbol, name };
+      }
+      // 보강할 게 없으면 참조를 그대로 둔다 — persist·재렌더 낭비 회피(매 심볼 마스터
+      // 재검증마다 불리는 경로다).
+      if (!groupSymbols) return {};
+      persistFromState({ ...state, groupSymbols });
+      return { groupSymbols };
     });
   },
 

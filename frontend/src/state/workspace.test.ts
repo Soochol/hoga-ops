@@ -282,3 +282,63 @@ describe('레거시 마이그레이션 하이드레이션(#713, PR-C)', () => {
     expect(book!.rect.x + book!.rect.w).toBeLessThanOrEqual(1);
   });
 });
+
+// 창 헤더가 `종목코드(종목코드)` 로 나오던 버그의 치유 지점. 이름 없이 저장된 값
+// (`liveNavigate` 의 `label ?? code` 폴백)의 유일한 서명이 `name === code` 다.
+describe('backfillSymbolNames', () => {
+  const RESOLVE = (code: string) => ({ '000660': 'SK하이닉스', '005930': '삼성전자' }[code]);
+
+  function seed(groupSymbols: Record<number, { code: string; name: string; kind?: 'stock' | 'index' }>) {
+    useWorkspaceStore.setState({
+      windows: [chart('w1', 1)],
+      zOrder: ['w1'],
+      groupSymbols,
+      chartRuntime: { w1: { historicalFromDate: '20260101', lastMinuteHistoricalFromDate: null } },
+    });
+  }
+
+  it('name === code 인 그룹만 실명으로 보강한다', () => {
+    seed({ 1: { code: '000660', name: '000660' }, 2: { code: '005930', name: '삼성전자' } });
+    useWorkspaceStore.getState().backfillSymbolNames(RESOLVE);
+    const { groupSymbols } = useWorkspaceStore.getState();
+    expect(groupSymbols[1]).toEqual({ code: '000660', name: 'SK하이닉스' });
+    expect(groupSymbols[2]).toEqual({ code: '005930', name: '삼성전자' });
+  });
+
+  it('마스터에 없는 코드는 그대로 둔다', () => {
+    seed({ 1: { code: '999999', name: '999999' } });
+    useWorkspaceStore.getState().backfillSymbolNames(RESOLVE);
+    expect(useWorkspaceStore.getState().groupSymbols[1]).toEqual({ code: '999999', name: '999999' });
+  });
+
+  it('지수는 건너뛴다 — code 가 곧 사람이 읽는 id 라 심볼 마스터 대상이 아니다', () => {
+    seed({ 1: { code: 'KOSPI', name: 'KOSPI', kind: 'index' } });
+    useWorkspaceStore.getState().backfillSymbolNames(() => '엉뚱한이름');
+    expect(useWorkspaceStore.getState().groupSymbols[1]).toEqual({
+      code: 'KOSPI', name: 'KOSPI', kind: 'index',
+    });
+  });
+
+  it('보강할 게 없으면 groupSymbols 참조를 그대로 둔다(재렌더·persist 낭비 회피)', () => {
+    seed({ 1: { code: '005930', name: '삼성전자' } });
+    const before = useWorkspaceStore.getState().groupSymbols;
+    useWorkspaceStore.getState().backfillSymbolNames(RESOLVE);
+    expect(useWorkspaceStore.getState().groupSymbols).toBe(before);
+  });
+
+  // setGroupSymbol 은 종목 교체(fresh-view)라 chartRuntime 을 리셋하지만, 실명 보강은
+  // 같은 종목의 라벨 수정이다. 여기서 리셋하면 심볼 마스터 응답이 도착하는 임의의
+  // 시점에 진행 중이던 과거 백필이 조용히 처음으로 되감긴다.
+  it('chartRuntime 을 리셋하지 않는다', () => {
+    seed({ 1: { code: '000660', name: '000660' } });
+    useWorkspaceStore.getState().backfillSymbolNames(RESOLVE);
+    expect(useWorkspaceStore.getState().chartRuntime.w1).toEqual({ historicalFromDate: '20260101', lastMinuteHistoricalFromDate: null });
+  });
+
+  it('보강 결과를 영속화한다 — 다음 새로고침에 오염된 값이 되살아나지 않는다', () => {
+    seed({ 1: { code: '000660', name: '000660' } });
+    useWorkspaceStore.getState().backfillSymbolNames(RESOLVE);
+    const saved = JSON.parse(sessionStorage.getItem(WORKSPACE_STORAGE_KEY) ?? '{}');
+    expect(saved.groupSymbols[1]).toEqual({ code: '000660', name: 'SK하이닉스' });
+  });
+});
