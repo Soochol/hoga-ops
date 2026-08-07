@@ -10,8 +10,11 @@ import {
 import * as liveQuotes from '../api/liveQuotes';
 
 function mockPhase(phase: 'pre_open' | 'open' | 'closed' | undefined) {
-  vi.spyOn(liveQuotes, 'useQuotes').mockReturnValue(
-    { data: phase ? { phase, quotes: [] } : undefined } as unknown as ReturnType<typeof liveQuotes.useQuotes>,
+  // 저수준 `useQuotes` 가 아니라 `useLiveQuoteOverlay` 를 모킹한다 — 훅이 그쪽으로
+  // 바뀐 이유는 useScreenerMonitor 주석 참조(드로어와 같은 훅을 타야 queryKey 가
+  // 일치해 캐시가 실제로 공유된다).
+  vi.spyOn(liveQuotes, 'useLiveQuoteOverlay').mockReturnValue(
+    { quoteByCode: new Map(), phase, dataUpdatedAt: 0 } as unknown as liveQuotes.LiveQuoteOverlay,
   );
 }
 

@@ -21,8 +21,17 @@ vi.mock('./studyReferenceQueries', () => ({
   studyReferenceQueryOptions: studyReferenceQueryOptionsMock,
 }));
 
+// 유효 venue 해석은 심볼 마스터를 `useQuery` 로 읽는데, 이 파일은 그 훅을 통째로
+// 모킹해 호출 **횟수와 순서**를 단언한다 — 실제 해석을 태우면 심볼 조회가 그 카운트에
+// 끼어든다. 기본은 항등(선택값 그대로)이고, 강등이 흐르는지는 아래 전용 테스트가
+// 반환값을 바꿔서 잰다.
+vi.mock('../live/useEffectiveVenue', () => ({
+  useEffectiveVenue: vi.fn((_code: string | null | undefined, venue: string) => venue),
+}));
+
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
 
 // 소스 선호는 이제 설정(`live_settings.krx_prefer_hogaplay`)에서 온다. 설정이 로딩 중이면
@@ -129,6 +138,9 @@ function queryResultFor(options: UseQueryOptions): Partial<UseQueryResult> {
 describe('useStudyReferenceBundle', () => {
   beforeEach(() => {
     useQueryMock.mockReset();
+    // 해석 모킹을 **항등으로 복원**한다 — 강등을 재는 테스트가 `mockReturnValue` 로
+    // 덮으면 그 값이 다음 테스트까지 남아 "공유 스토어를 따른다" 단언이 거짓 실패한다.
+    vi.mocked(useEffectiveVenue).mockImplementation((_code, venue) => venue);
     studyReferenceQueryOptionsMock.mockReset();
     studyReferenceQueryOptionsMock.mockReturnValue({
       rangeHoga: rangeHogaOptions,
@@ -175,6 +187,22 @@ describe('useStudyReferenceBundle', () => {
     expect(useQueryMock).toHaveBeenNthCalledWith(4, screenerDailyOptions);
     // KIS 훅은 하나도 호출되지 않는다(디스크 온리 계약).
     expect(useQueryMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('선택값이 아니라 **해석된** venue 를 싣는다 (NXT 미상장 → KRX 강등)', () => {
+    // `studyReferenceQueries` 는 순수 함수라 `rangeBundleQueryOptions` 를 직접 만들고,
+    // 그래서 `useRange` 안의 해석(#1214)을 타지 않는다 — 해석이 여기서 빠지면 통합을
+    // 고른 복기 뷰가 NXT 미상장 종목에서 **빈 200** 을 받는다.
+    useLiveVenueStore.setState({ venue: 'UN' });
+    vi.mocked(useEffectiveVenue).mockReturnValue('KRX');
+
+    renderHook(() => useStudyReferenceBundle(save));
+
+    expect(useEffectiveVenue).toHaveBeenCalledWith(save.code, 'UN');
+    expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(
+      save,
+      expect.objectContaining({ venue: 'KRX' }),
+    );
   });
 
   it('renders minute candles from the disk (mode=candles) query', () => {
