@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Literal, NamedTuple
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from hoga.api import symbols
 from hoga.api.error_codes import LiveErrorCode
@@ -1539,6 +1539,40 @@ class LiveViStatusResponse(BaseModel):
     vi: dict | None = None
 
 
+class LiveSeriesResponse(BaseModel):
+    """GET /api/live/series — 차트 초기 hydration(실측 464KB · 키 경로 114개).
+
+    **이 응답의 계약은 최상위에만 있다.** 네 배열(snapshots·trades·brokers·programs)은
+    프론트가 ``Array<Record<string, unknown>>`` 로 받아 그대로 버퍼에 넘긴다 — 즉
+    항목 shape 은 애초에 선언된 적이 없고, 스트림이 소유한다. 여기서 새로 좁히면
+    미러가 한 벌 더 생기고 **조용한 스트립 위험만 늘어난다**. peak 두 개도 같은
+    이유다(파생 구조라 커버리지에 따라 조건부 필드가 붙는다).
+
+    그래서 이 모델이 고정하는 것은 **최상위 키 집합과 그 타입**이다. 그것만으로도
+    "필드가 사라지거나 이름이 바뀌면 안다" 는 계약이 선다.
+
+    ``extra="allow"`` 는 안전장치다. 이 라우트는 버퍼 dict 를 ``**series`` 로 펼쳐
+    조립하므로 스트림이 키를 늘리면 여기 선언이 뒤처질 수 있는데, 그때 **조용히
+    버리는 대신 그대로 통과**시킨다. 이 작업 전체가 막으려던 실패가 바로 그 스트립이라,
+    아직 모르는 키에 대해서도 같은 원칙을 적용한다.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    code: str
+    date: str
+    # 장 중이면 close 가 아직 없다 — 정당한 null 이라 지우지 않는다.
+    session_open_ms: int | None = None
+    session_close_ms: int | None = None
+    is_open: bool = False
+    snapshots: list[dict] = Field(default_factory=list)
+    trades: list[dict] = Field(default_factory=list)
+    brokers: list[dict] = Field(default_factory=list)
+    programs: list[dict] = Field(default_factory=list)
+    ask_peak_today: dict | None = None
+    bid_peak_today: dict | None = None
+
+
 class LiveCandleRow(BaseModel):
     """OHLCV 한 봉. 분·일·지수·스크리너 네 경로가 같은 shape 을 공유한다."""
 
@@ -2180,7 +2214,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         return latest
 
     @router.get("/series")
-    async def _get_series(code: str, date: str, venue: str = Query("KRX")) -> dict:
+    async def _get_series(code: str, date: str, venue: str = Query("KRX")) -> LiveSeriesResponse:
         if get_buffer is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live buffer not wired"})
         buf = get_buffer()
