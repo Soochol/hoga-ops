@@ -21,6 +21,7 @@ from . import kiwoom_runtime
 from .buffer import LiveBuffer
 from .coverage import (
     KIWOOM_PER_ACCOUNT_MAX,
+    KIWOOM_SECTOR_RESERVE,
     partition_kiwoom,
     subscription_venues,
     venue_weight,
@@ -103,6 +104,7 @@ class KiwoomSessionManager:
         gate_fn: Callable[[], bool] | None = None,
         now_fn: Callable[[], int] | None = None,
         per_account_max: int | None = None,
+        sector_reserve: int | None = None,
         _build_conn: Callable[[int, list[str]], _KiwoomConn] | None = None,
     ) -> None:
         self._buffer = buffer
@@ -114,17 +116,26 @@ class KiwoomSessionManager:
         self._now_fn = now_fn or _default_now_ms
         # 연결당 등록 상한(실측 200). 슬롯 산술·만석 판정의 SSOT(테스트 주입).
         self._per_account_max = per_account_max or KIWOOM_PER_ACCOUNT_MAX
+        # 업종 구독 예약. 주입 가능한 이유는 테스트가 작은 상한(3)을 쓰기 때문이다 —
+        # 상수 66 을 그대로 빼면 저장셋이 통째로 드롭된다.
+        self._sector_reserve = (
+            KIWOOM_SECTOR_RESERVE if sector_reserve is None else sector_reserve
+        )
         self._build = _build_conn or self._default_build_conn
         # 1h VI — 계정 0 conn 에만 배선한다(시장 전체 스트림이라 계정마다 받으면
         # 같은 이벤트가 중복). raw 채록(capture)과 표시용 상태(state)로 팬아웃.
         self._vi_capture = KiwoomViCapture(data_dir)
         self._vi_state = KiwoomViState()
-        # 0J/0U 업종·지수 — VI 와 같은 이유로 계정 0 에만 배선한다. 저장 축이 없어
+        # 0J/0U 업종·지수 — 시장 전체 스트림이라 **한 계정에만** 배선한다. 저장 축이 없어
         # 웜스타트 리플레이도 없다: 재시작하면 다음 틱까지 비고, 그동안 화면은 폴링
         # baseline 으로 그려진다(그래서 비어도 결손이 아니다).
         self._sector_snapshots: dict[str, dict] = {}
         self._sector_tick_count = 0
         self._sector_last_ms: int | None = None
+        # 업종 구독을 태우는 계정. **마지막 계정**이다 — 파티셔너가 앞에서부터 채우므로
+        # 뒤쪽이 한가하고, `coverage._account_cap` 이 거기에만 예약을 건다. 계정 0 에
+        # 걸었다가 저장셋 199/200 에 부딪혀 `rc=105115` 로 조용히 죽었다(2026-08-07).
+        self._sector_account: int = 0
         # 재시작(dev 핫리로드 포함) 시 인메모리 상태가 비면 /api/live/vi-status가 다음
         # 이벤트까지 null — 당일 채록 파일을 리플레이해 웜스타트(없으면 조용히 0건).
         replayed = replay_vi_today(data_dir, self._now_fn(), self._vi_state.on_row)
@@ -163,7 +174,11 @@ class KiwoomSessionManager:
             return
         # 분할 단위는 종목이 아니라 **wire 등록 수**다(PR-F) — NXT 상장 종목은 3개를 쓴다.
         nxt_map = _nxt_map()
-        parts = partition_kiwoom(codes, n_accounts, weight=lambda c: venue_weight(c, nxt_map))
+        parts = partition_kiwoom(
+            codes, n_accounts,
+            weight=lambda c: venue_weight(c, nxt_map),
+            last_account_reserve=self._sector_reserve,
+        )
         dropped = len(codes) - sum(len(p) for p in parts)
         if dropped > 0:
             _log.warning(
@@ -172,7 +187,12 @@ class KiwoomSessionManager:
                 dropped, n_accounts * KIWOOM_PER_ACCOUNT_MAX,
                 sum(venue_weight(c, nxt_map) for c in codes),
             )
+        # 업종 구독은 **마지막 계정**이 태운다(빈 파티션이어도 그 계정은 살아 있어야
+        # 하므로 아래 wanted 에 강제로 넣는다 — 저장셋이 적은 날 그 conn 이 안 만들어지면
+        # 업종 스트림이 통째로 없어진다).
+        self._sector_account = n_accounts - 1
         wanted = {k: part for k, part in enumerate(parts) if part}
+        wanted.setdefault(self._sector_account, [])
         # teardown: 더는 필요 없는 계정(빈 파티션 포함).
         for account_id in list(self._conns):
             if account_id not in wanted:
@@ -382,7 +402,10 @@ class KiwoomSessionManager:
         종목 수로 세면 계정당 최대 600 등록을 시도하고 키움이 200 에서 거부한다."""
         nxt_map = _nxt_map()
         used = sum(venue_weight(c, nxt_map) for c in conn.codes)
-        return max(0, self._per_account_max - used)
+        # 업종 구독분은 `conn.codes` 밖에 등록되므로 여기서 빼 주지 않으면 표시(온디맨드)
+        # 배정이 그 자리를 먹는다 — 파티셔너 예약만으로는 반쪽이다(양쪽에 걸어야 한다).
+        reserve = self._sector_reserve if conn.account_id == self._sector_account else 0
+        return max(0, self._per_account_max - used - reserve)
 
     def _free_slots(self, account_id: int) -> int:
         conn = self._conns.get(account_id)
@@ -647,9 +670,11 @@ class KiwoomSessionManager:
             invalidate_fn=prov.invalidate,  # LOGIN 거부 시 캐시 토큰 무효화(리뷰 Major)
             # VI 는 계정 0 전용(시장 전체 스트림 중복 방지 — __init__ 주석).
             on_vi_row=self._on_vi_row if account_id == 0 else None,
-            # 0J/0U 도 같은 이유로 계정 0 전용. 계정마다 걸면 같은 업종 틱을 4번 받아
-            # 병합·카운터가 4배로 뛴다(슬롯은 안 먹지만 프레임 처리는 실비용이다).
-            on_sector_row=self._on_sector_row if account_id == 0 else None,
+            # 0J/0U 는 **마지막 계정** 하나만 태운다. 계정마다 걸면 같은 틱을 4번 받고,
+            # 무엇보다 **슬롯을 4배로 먹는다**(코드당 1개 — 2026-08-07 실측).
+            on_sector_row=(
+                self._on_sector_row if account_id == self._sector_account else None
+            ),
         )
         # 초기 구독 wire = 저장셋 × 종목별 venue(ADR-0140 §2 파생 집합). 시각 무관 —
         # 예전엔 `target_ws_venue(now)` 로 현재 창 venue 하나를 골랐고 스왑을 watchdog

@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pytest
 
+from hoga.live.coverage import KIWOOM_SECTOR_RESERVE
 from hoga.live.kiwoom_session import KiwoomSessionManager, _KiwoomConn
 from hoga.util.timeenc import KST
 
@@ -104,10 +105,12 @@ async def test_sync_partitions_across_accounts():
     mgr, built = _fake_manager()
     codes = tuple(f"{i:06d}" for i in range(250))  # 200 + 50 → 2계정
     await mgr.sync(codes, n_accounts=4)
-    # 계정 0=200, 1=50, 2·3=빈파티션 → conn 미생성.
-    assert sorted(a for a, _ in built) == [0, 1]
+    # 계정 0=200, 1=50, 2=빈파티션(미생성). **계정 3 은 파티션이 비어도 생성된다** —
+    # 업종(0J/0U) 구독을 태우는 연결이라, 저장셋이 적은 날 그 conn 이 없으면 업종
+    # 스트림이 통째로 사라진다(2026-08-07 회귀).
+    assert sorted(a for a, _ in built) == [0, 1, 3]
     assert set(mgr.active_codes()) == set(codes)
-    assert mgr.connected_accounts == 2
+    assert mgr.connected_accounts == 3  # +1 = 업종 구독 캐리어(마지막 계정)
     await mgr.stop()
 
 
@@ -116,7 +119,8 @@ async def test_sync_over_capacity_drops_and_warns():
     codes = tuple(f"{i:06d}" for i in range(850))  # 800 상한 초과(4×200)
     await mgr.sync(codes, n_accounts=4)
     # 4계정 × 200 = 800만 담김.
-    assert len(mgr.active_codes()) == 800
+    # 마지막 계정은 업종 예약(66)만큼 저장셋을 덜 담는다 — 800 이 아니라 734.
+    assert len(mgr.active_codes()) == 800 - KIWOOM_SECTOR_RESERVE
     await mgr.stop()
 
 
@@ -145,9 +149,9 @@ async def test_sync_empty_targets_tears_down():
 async def test_sync_shrinking_accounts_tears_down_extra():
     mgr, _ = _fake_manager()
     await mgr.sync(tuple(f"{i:06d}" for i in range(250)), n_accounts=4)  # 계정 0,1
-    assert set(mgr._conns) == {0, 1}
+    assert set(mgr._conns) == {0, 1, 3}  # 3 = 업종 캐리어(빈 파티션이어도 생성)
     await mgr.sync(tuple(f"{i:06d}" for i in range(100)), n_accounts=4)  # 계정 0만
-    assert set(mgr._conns) == {0}
+    assert set(mgr._conns) == {0, 3}  # 3 은 업종 캐리어라 계속 산다
 
 
 async def test_status_snapshot_shape():
@@ -155,12 +159,14 @@ async def test_status_snapshot_shape():
     await mgr.sync(tuple(f"{i:06d}" for i in range(250)), n_accounts=4)  # 계정 0,1
     st = mgr.status()
     assert st["enabled"] is True
-    assert st["accounts_configured"] == 2
-    assert st["connected_accounts"] == 2  # FakeClient.connected=True
+    # 업종 캐리어(계정 3)가 빈 파티션으로 살아 있어 계정이 하나 더 잡힌다.
+    assert st["accounts_configured"] == 3
+    assert st["connected_accounts"] == 3  # FakeClient.connected=True
     assert st["subscribed_count"] == 250
     assert set(st["subscribed_codes"]) == set(f"{i:06d}" for i in range(250))
-    assert [a["account_id"] for a in st["accounts"]] == [0, 1]
+    assert [a["account_id"] for a in st["accounts"]] == [0, 1, 3]
     assert st["accounts"][0]["sub_expected"] == 200
+    assert st["accounts"][2]["sub_expected"] == 0  # 캐리어는 저장셋이 없어도 된다
     await mgr.stop()
 
 
@@ -177,9 +183,9 @@ async def test_capture_streams_excludes_dead_conns():
     active_codes 규율과 동일, 유령 저장 방지)."""
     mgr, _ = _fake_manager()
     await mgr.sync(tuple(f"{i:06d}" for i in range(250)), n_accounts=4)  # 계정 0,1
-    assert mgr.capture_streams() == [mgr._conns[0].stream, mgr._conns[1].stream]
+    assert mgr.capture_streams()[:2] == [mgr._conns[0].stream, mgr._conns[1].stream]
     mgr._conns[1].client.kicked_by_peer = True  # 계정 1 킥 정지
-    assert mgr.capture_streams() == [mgr._conns[0].stream]  # 1 제외
+    assert mgr._conns[1].stream not in mgr.capture_streams()  # 1 제외
     await mgr.stop()
 
 
