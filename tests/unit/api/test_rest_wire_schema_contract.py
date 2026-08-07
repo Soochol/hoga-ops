@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Literal, get_args, get_origin
 
 from hoga.api import events, models as m, sources
+from hoga.live import futures_runtime
 from hoga.live.lifecycle import LiveStatus
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -123,6 +124,13 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     ),
     # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
     "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
+    # 감사가 못 보던 쌍이었다: BE 정의가 `hoga.live.futures_runtime` 인데 그 모듈이
+    # `_AUDITED_BACKEND_MODULES` 에 없었다(#1185 가 남긴 "명시 목록" 한계). market
+    # 라우트에 wire model 을 입히다가 발견해 모듈과 함께 등록했다.
+    "FuturesSession": (
+        frozenset(get_args(futures_runtime.FuturesSession)),
+        "frontend/src/api/marketFutures.ts",
+    ),
 }
 
 
@@ -196,7 +204,7 @@ INTENTIONALLY_UNMIRRORED: dict[str, str] = {
 
 # 감사 대상 백엔드 모듈 — 명시 목록이다(registry 철학과 같다). 여기 없는 모듈의
 # Literal 별칭은 감사되지 않으므로, 새 wire enum 을 다른 모듈에 두면 추가할 것.
-_AUDITED_BACKEND_MODULES = (m, sources, events)
+_AUDITED_BACKEND_MODULES = (m, sources, events, futures_runtime)
 
 
 def _backend_literal_alias_names() -> set[str]:
@@ -305,14 +313,6 @@ UNCLOTHED_ROUTE_BASELINE: frozenset[RouteKey] = frozenset({
     ("POST", "/items/{code}/{date}/unblock", "captures"),
     ("POST", "/items/{item_id}/cancel", "captures"),
     ("POST", "/queue/resume", "captures"),
-    ("GET", "/breadth", "market_routes"),
-    ("GET", "/funds", "market_routes"),
-    ("GET", "/futures-candles", "market_routes"),
-    ("GET", "/futures-quotes", "market_routes"),
-    ("GET", "/investor-flow", "market_routes"),
-    ("GET", "/program", "market_routes"),
-    ("GET", "/sectors", "market_routes"),
-    ("GET", "/streaks", "market_routes"),
     ("GET", "/status", "screener"),
     ("POST", "/update", "screener"),
 })
