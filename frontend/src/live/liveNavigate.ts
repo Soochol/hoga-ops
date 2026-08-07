@@ -26,7 +26,6 @@ export function activateLiveInstrument(instrument: LiveInstrument): void {
     timeframe: page.candleTimeframe,
     historicalFromDate: null,
     lastMinuteHistoricalFromDate: null,
-    viewport: null,
   });
 }
 
@@ -76,9 +75,20 @@ export function mirrorActiveGroupToLivePage(
   // projectActiveView 는 종목 없음(instrument=null)일 때 activeCode 를 '' 로 쓴다
   // (livePage.ts). 가드도 같은 정규화(`?? ''`)로 비교하지 않으면 null↔'' 비대칭에
   // 걸려 종목 없는 활성 그룹에서 매 전환마다 재투영·persist 가 반복된다(리뷰 #1).
+  //
+  // **`label` 은 일부러 비교에서 뺀다** — write-only 슬롯 부패가 아니라 의도된 배제다.
+  // 이유는 셋:
+  //  1. 심볼 마스터 실명 보강(backfillSymbolNames)은 종목이 아니라 **라벨만** 바꾼다.
+  //     label 을 비교에 넣으면 그 착지가 재투영을 트리거해 set·persist·지표 재투영이
+  //     한 번 더 돈다 — 바뀐 게 문자열 하나뿐인데.
+  //  2. **`activeInstrument` 는 런타임 리더가 0곳이다**(전수 확인). /live 차트 창은
+  //     전부 `WindowViewContext.Provider` 안이라 창 자신의 값을 보고, 창 밖 소비자
+  //     (관심종목 하트·검색 하이라이트)가 읽는 건 `activeCode` 다.
+  //  3. 영속된 label 의 유일한 소비자는 `workspaceMigration.groupOneSymbol` 의 레거시
+  //     시드인데, 그 시드가 심는 `name` 은 backfillSymbolNames 가 다시 치유한다.
+  // 남는 staleness 는 유계다 — 다음 실전이(종목·봉 교체)에서 같이 따라온다.
   if (
     (page.activeCode ?? '') === (code ?? '') &&
-    (page.activeInstrument?.label ?? null) === (instrument?.label ?? null) &&
     (page.activeInstrument?.kind ?? null) === (instrument?.kind ?? null) &&
     page.candleTimeframe === focusedTimeframe
   ) {
@@ -90,6 +100,5 @@ export function mirrorActiveGroupToLivePage(
     timeframe: focusedTimeframe,
     historicalFromDate: null,
     lastMinuteHistoricalFromDate: null,
-    viewport: null,
   });
 }

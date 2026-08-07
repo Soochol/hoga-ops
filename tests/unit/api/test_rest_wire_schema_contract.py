@@ -4,10 +4,41 @@ ADR-0004 intentionally ships Pydantic wire models verbatim while the frontend
 mirrors TypeScript types by hand. These snapshots make Watchlist/Heatmap REST
 field changes loud, especially where the two domains look similar but differ
 in capture/scheduler fields.
+
+세 층을 지킨다:
+
+1. **필드 이름** — ``EXPECTED_REST_WIRE_FIELDS`` 스냅샷.
+2. **enum 값** — ``WIRE_ENUM_MIRRORS`` 가 백엔드 ``Literal`` 멤버를 프론트 union
+   **소스 파일과 직접 대조**한다.
+3. **wire model 존재 여부** — ``UNCLOTHED_ROUTE_BASELINE`` 이 ``-> dict`` 라우트를
+   동결한다. 1·2번은 wire model 이 있어야 볼 수 있는데, 없는 라우트가 실재한다.
+
+2번이 왜 따로 필요한가: 손 미러에서 값 드리프트는 **타입이 원리적으로 못 잡는다**.
+#1183 이 그 사고였다 — 백엔드가 ``capture_reason`` 값 4개를 뺐는데 프론트 라벨 표는
+1년 가까이 그대로였고, 정작 새로 생긴 값은 매핑이 없어 영문 원문으로 노출됐다.
+프론트 안에서 union↔테이블을 exhaustive 로 묶어도 그건 **프론트 내부** lockstep 일
+뿐이라, 백엔드만 늘어나는 방향은 여전히 무증상이다. 이 대조가 그 방향을 막는다.
+
+3번이 왜 필요한가: 반환형이 ``dict`` 면 FastAPI 가 검증할 shape 이 없어서 1·2번
+가드가 **원리적으로 볼 수 없다**. ADR-0004 의 "Wire Model = 소비자가 받는 것" 전제가
+거기선 성립하지 않는다 — 그 라우트의 wire shape 은 어디에도 선언돼 있지 않다.
+실측 108개 라우트 중 27개가 그렇다. 한 번에 입히는 건 다중 PR 캠페인이라(아래 참조),
+우선 **늘지 못하게** 동결한다.
+
+ADR-0004 가 기각한 codegen 이 아니다 — 손 미러를 유지하고 어긋남만 검출한다.
+같은 ADR 의 "both must be updated in the same PR" 이 이 테스트가 강제하는 규칙이다.
 """
 from __future__ import annotations
 
-from hoga.api import models as m
+import ast
+import re
+from pathlib import Path
+from typing import Literal, get_args, get_origin
+
+from hoga.api import events, models as m, sources
+from hoga.live.lifecycle import LiveStatus
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "WatchlistFolderView": frozenset({"id", "name", "order", "capture_enabled"}),
@@ -61,3 +92,315 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
     # 마커는 코드 키 맵으로만 실린다.
     assert "capture_markers" in heatmap_response_fields
     assert "capture_markers" not in heatmap_entry_fields
+
+
+# ── enum 값 미러 (BE Literal ↔ FE union) ──────────────────────────────────────
+
+# 등록된 쌍: 프론트 타입명 → (백엔드 Literal 멤버, 프론트 소스 파일).
+#
+# **등록된 쌍만 값이 대조된다.** 다만 "등록을 잊는" 실패 모드는 아래
+# ``test_same_named_literal_unions_are_registered_or_excused`` 가 따로 막는다 —
+# 이름이 같은 BE Literal ↔ FE union 을 발견하면 여기 등록하거나
+# ``INTENTIONALLY_UNMIRRORED`` 에 사유를 적으라고 요구한다.
+#
+# 백엔드 ``Literal`` 116개 중 대부분은 ``type: Literal["capture_progress"]`` 같은 단일값
+# 판별자라 드리프트 여지가 없어서, 여러 값을 갖고 프론트가 그 값으로 분기·라벨링하는
+# 것만 고른다. 숫자 Literal(``pct: Literal[10, 20, 30]``)은 대상이 아니다.
+#
+# 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
+# 넓히면 된다.
+WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "CaptureReason": (
+        frozenset(get_args(LiveStatus.model_fields["capture_reason"].annotation)),
+        "frontend/src/api/liveStatus.ts",
+    ),
+    "CapturePhase": (frozenset(get_args(m.CapturePhase)), "frontend/src/api/types.ts"),
+    "SkipReason": (frozenset(get_args(m.SkipReason)), "frontend/src/api/types.ts"),
+    "CalendarStatus": (frozenset(get_args(m.CalendarStatus)), "frontend/src/api/types.ts"),
+    "SignalAlertSource": (
+        frozenset(get_args(m.SignalAlertSource)),
+        "frontend/src/api/signalAlerts.ts",
+    ),
+    # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
+    "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
+}
+
+
+def _ts_union_members(ts_path: Path, type_name: str) -> frozenset[str]:
+    """``export type X = 'a' | 'b';`` 의 문자열 리터럴 집합.
+
+    한 줄·여러 줄 정의를 모두 받는다 — 줄 단위 정규식이면 여러 줄 union(``CapturePhase``)
+    을 조용히 덜 읽는다.
+
+    **주석을 잘라내기 전에 지운다.** 순서를 뒤집으면 주석 속 세미콜론에서 정의가
+    조기 종료된다 — ``CalendarStatus`` 의 ``// ADR-0020 — mirrors backend; was
+    missing…`` 이 실제로 그랬고, 멤버 16개 중 5개만 읽혔다. 그 상태로도 위 대조
+    테스트는 "프론트에 없는 값" 을 무더기로 보고할 뿐 파서 탓임을 말해 주지 않는다.
+    """
+    src = ts_path.read_text(encoding="utf-8")
+    head = re.search(rf"^export type {re.escape(type_name)}\s*=", src, re.M)
+    assert head is not None, (
+        f"{ts_path.relative_to(_REPO_ROOT)} 에 `export type {type_name}` 이 없다. "
+        "프론트에서 타입을 지웠거나 이름을 바꿨다면 WIRE_ENUM_MIRRORS 도 같이 고칠 것."
+    )
+    # 선언 이후 전체에서 주석을 걷어낸 뒤 첫 세미콜론까지가 union 본문이다. 뒤쪽까지
+    # 주석이 지워지지만 어차피 잘라 버리는 구간이라 무해하다(wire enum 값에 `//` 를
+    # 품은 리터럴은 없다 — 있으면 이 파서를 고쳐야 한다).
+    rest = re.sub(r"/\*.*?\*/", "", src[head.end():], flags=re.S)
+    body = re.sub(r"//[^\n]*", "", rest).split(";", 1)[0]
+    return frozenset(re.findall(r"'([^']*)'", body))
+
+
+def test_wire_enum_members_match_frontend_union() -> None:
+    for type_name, (backend_members, ts_relpath) in WIRE_ENUM_MIRRORS.items():
+        ts_path = _REPO_ROOT / ts_relpath
+        frontend_members = _ts_union_members(ts_path, type_name)
+        missing_in_frontend = backend_members - frontend_members
+        stale_in_frontend = frontend_members - backend_members
+        assert frontend_members == backend_members, (
+            f"{type_name} 의 BE Literal 과 FE union 이 갈렸다. "
+            f"프론트에 없는 값={sorted(missing_in_frontend)} "
+            f"프론트에만 남은 값={sorted(stale_in_frontend)}. "
+            f"{ts_relpath} 의 union 과 그 값을 소비하는 라벨·분기 표를 같은 PR 에서 "
+            "함께 고칠 것(ADR-0004)."
+        )
+
+
+def test_wire_enum_mirror_parser_reads_multiline_unions() -> None:
+    """파서 자체의 회귀 — 여러 줄 + 줄 주석이 섞인 union 을 온전히 읽는가.
+
+    이 검사가 없으면 파서가 조용히 덜 읽어도 위 테스트가 통과해 버린다(백엔드에만
+    있는 값을 "프론트에 없다" 가 아니라 아예 비교 대상에서 빠뜨리는 식이 아니라,
+    빈 집합끼리 맞아떨어지는 경우가 문제다).
+    """
+    members = _ts_union_members(_REPO_ROOT / "frontend/src/api/types.ts", "CalendarStatus")
+
+    assert "complete" in members  # 첫 줄
+    assert "partial_live" in members  # 마지막 줄
+    assert "source_partial_confirmed" in members  # 주석 바로 다음 줄
+    assert len(members) > 10  # 여러 줄을 실제로 다 읽었다는 하한
+
+
+# ── 등록 누락 감사 ────────────────────────────────────────────────────────────
+
+# 이름이 같은 BE Literal ↔ FE union 인데 **일부러 대조하지 않는** 쌍. 값과 함께 사유를
+# 남긴다 — 사유가 없으면 다음 사람이 "불일치네" 하고 한쪽을 고쳐 버린다.
+INTENTIONALLY_UNMIRRORED: dict[str, str] = {
+    "SourceName": (
+        "FE 는 두 개념의 합집합이다: BE 오더플로 Literal(hogaplay·kiwoom_live)에 "
+        "차트 전용 'screener_daily' 를 더했다. 그 값은 /api/live/screener-daily-candles "
+        "가 내는데 그 라우트는 반환형이 `-> dict` 라 wire model 자체가 없다. 동일성으로 "
+        "묶으면 영구히 빨간 테스트가 되고, FE 에서 screener_daily 를 지우면 차트가 깨진다."
+    ),
+}
+
+# 감사 대상 백엔드 모듈 — 명시 목록이다(registry 철학과 같다). 여기 없는 모듈의
+# Literal 별칭은 감사되지 않으므로, 새 wire enum 을 다른 모듈에 두면 추가할 것.
+_AUDITED_BACKEND_MODULES = (m, sources, events)
+
+
+def _backend_literal_alias_names() -> set[str]:
+    """감사 대상 모듈의 **모듈 레벨 문자열 Literal 별칭** 이름들.
+
+    필드 인라인 Literal(``capture_reason`` 처럼 모델 안에 직접 쓴 것)은 이름이 없어서
+    이 감사에 안 걸린다 — 그런 쌍은 여전히 손으로 등록해야 한다. 그래서 이 감사는
+    누락을 **줄이는** 장치지 없애는 장치가 아니다.
+    """
+    names: set[str] = set()
+    for mod in _AUDITED_BACKEND_MODULES:
+        for name in dir(mod):
+            if name.startswith("_"):
+                continue
+            value = getattr(mod, name)
+            if get_origin(value) is not Literal:
+                continue
+            args = get_args(value)
+            # 단일값 판별자는 드리프트 여지가 없고, 숫자 Literal 은 TS 문자열 union 과
+            # 짝이 아니다. 둘 다 감사에서 뺀다.
+            if len(args) > 1 and all(isinstance(a, str) for a in args):
+                names.add(name)
+    return names
+
+
+def _frontend_string_union_names() -> set[str]:
+    """``frontend/src/api/*.ts`` 의 문자열 union ``export type`` 이름들."""
+    names: set[str] = set()
+    for ts_path in sorted((_REPO_ROOT / "frontend/src/api").glob("*.ts")):
+        src = ts_path.read_text(encoding="utf-8")
+        for type_name in re.findall(r"^export type (\w+)\s*=", src, re.M):
+            if _ts_union_members(ts_path, type_name):
+                names.add(type_name)
+    return names
+
+
+def test_same_named_literal_unions_are_registered_or_excused() -> None:
+    """이름이 같은 BE Literal ↔ FE union 은 등록하거나 사유를 남겨야 한다.
+
+    값 대조(``WIRE_ENUM_MIRRORS``)의 최대 약점은 **등록을 잊는 것**이다. 잊으면 그 쌍은
+    조용히 무방비인데, 테스트는 여전히 초록이라 보호받는 줄 안다. 이 감사가 그 침묵을
+    깬다 — 이름을 맞춰 놓고 등록만 안 한 흔한 경우를 잡는다.
+
+    이름이 다른 쌍과 필드 인라인 Literal 은 여전히 못 본다. 완전한 그물이 아니라는
+    뜻이고, 그래서 위 registry 의 "등록된 쌍만 대조된다" 는 단서는 그대로 유효하다.
+    """
+    candidates = _backend_literal_alias_names() & _frontend_string_union_names()
+    unaccounted = candidates - set(WIRE_ENUM_MIRRORS) - set(INTENTIONALLY_UNMIRRORED)
+
+    assert not unaccounted, (
+        f"BE Literal 과 이름이 같은 FE union 이 등록되지 않았다: {sorted(unaccounted)}. "
+        "값을 대조하려면 WIRE_ENUM_MIRRORS 에 추가하고, 일부러 안 맞추는 것이라면 "
+        "INTENTIONALLY_UNMIRRORED 에 **사유와 함께** 넣을 것."
+    )
+
+
+def test_intentionally_unmirrored_entries_are_still_real_pairs() -> None:
+    """제외 목록이 화석이 되지 않게 — 양쪽에 실재하는 쌍만 남는다.
+
+    한쪽 타입이 사라진 뒤에도 제외 항목이 남아 있으면, 그 이름이 나중에 **다른 의미로**
+    되살아났을 때 아무 사유도 없이 감사를 통과해 버린다.
+    """
+    stale = set(INTENTIONALLY_UNMIRRORED) - (
+        _backend_literal_alias_names() & _frontend_string_union_names()
+    )
+
+    assert not stale, (
+        f"INTENTIONALLY_UNMIRRORED 항목이 더는 실재 쌍이 아니다: {sorted(stale)}. "
+        "한쪽이 사라졌거나 이름이 바뀌었으니 항목을 지울 것."
+    )
+
+
+# ── wire model 없는 라우트 동결 (ratchet) ─────────────────────────────────────
+
+_ROUTE_METHODS = frozenset({"get", "post", "put", "delete", "patch"})
+# JSON body 를 pydantic 으로 낼 수 없는(또는 낼 필요 없는) 반환형 — 애초에 대상이 아니다.
+_NON_MODEL_RETURNS = frozenset({
+    "None", "Response", "JSONResponse", "FileResponse",
+    "StreamingResponse", "PlainTextResponse",
+})
+
+# 라우트 키는 **(method, path, 모듈)** 이다. (method, path) 만 쓰면 안 된다 — 실측
+# 21건이 충돌한다(라우터 prefix 를 뗀 상대 경로라 `/status` 같은 이름이 여러 모듈에
+# 산다). 모듈까지 넣으면 충돌 0이고, 함수명 변경에는 여전히 강하다.
+RouteKey = tuple[str, str, str]
+
+# **동결선**: 지금 wire model 없이 사는 프로덕션 라우트. 이 목록은 **줄어들기만** 해야
+# 한다 — 새 항목이 필요해졌다면 그건 무계약 라우트를 새로 추가했다는 뜻이다.
+#
+# 왜 지금 다 안 입히는가: `response_model` 을 잘못 좁히면 **500 이 아니라 조용히 필드를
+# 버린다**(FastAPI 가 선언 안 된 키를 스트립한다). 즉 이 세션이 내내 다룬 바로 그 병을
+# 새로 만든다. 라우트마다 생산 함수의 키를 전수로 읽고 프론트 소비면을 확인해야 해서
+# 다중 PR 캠페인이다. 그동안 늘지 않게 막는 것이 이 동결선의 역할이다.
+UNCLOTHED_ROUTE_BASELINE: frozenset[RouteKey] = frozenset({
+    ("POST", "/control", "api"),
+    ("GET", "/index-candles", "api"),
+    ("GET", "/index-investor-net", "api"),
+    ("GET", "/past-candles", "api"),
+    ("GET", "/past-daily-candles", "api"),
+    ("GET", "/past-investor-net", "api"),
+    ("GET", "/screener-daily-candles", "api"),
+    ("GET", "/series", "api"),
+    ("GET", "/snapshot", "api"),
+    ("GET", "/vi-status", "api"),
+    ("POST", "/cancel-all", "captures"),
+    ("POST", "/items/{code}/{date}/unblock", "captures"),
+    ("POST", "/items/{item_id}/cancel", "captures"),
+    ("POST", "/queue/resume", "captures"),
+    ("GET", "/breadth", "market_routes"),
+    ("GET", "/funds", "market_routes"),
+    ("GET", "/futures-candles", "market_routes"),
+    ("GET", "/futures-quotes", "market_routes"),
+    ("GET", "/investor-flow", "market_routes"),
+    ("GET", "/program", "market_routes"),
+    ("GET", "/sectors", "market_routes"),
+    ("GET", "/streaks", "market_routes"),
+    ("GET", "/status", "screener"),
+    ("POST", "/update", "screener"),
+})
+
+# 영구 제외 — 동결선과 달리 "언젠가 입힌다" 가 아니다.
+INTENTIONALLY_UNCLOTHED: dict[RouteKey, str] = {
+    ("POST", "/add-stockdate", "test_routes"): "e2e 전용",
+    ("POST", "/cookie_expire_at", "test_routes"): "e2e 전용",
+    ("POST", "/seed-trading-days", "test_routes"): "e2e 전용",
+}
+# 위 셋의 공통 사유: `HOGA_ENABLE_TEST_ENDPOINTS=1` 에서만 붙는 픽스처 주입 엔드포인트다.
+# 프론트 프로덕션 코드가 소비하지 않으므로 BE↔FE 미러 계약의 대상이 아니다.
+
+
+def _iter_routes() -> list[tuple[RouteKey, str, str]]:
+    """``hoga/`` 의 모든 라우트 → (키, 반환 애노테이션, 명시 response_model).
+
+    **ast 정적 파싱이다 — 앱을 만들지 않는다.** ``default_app()`` 은 `.env` 를 읽어
+    테스트 환경을 오염시키므로(실측 사고 있음) 라우트를 세자고 부를 이유가 없다.
+    """
+    routes: list[tuple[RouteKey, str, str]] = []
+    for py in sorted((_REPO_ROOT / "hoga").rglob("*.py")):
+        tree = ast.parse(py.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            for dec in node.decorator_list:
+                func = dec.func if isinstance(dec, ast.Call) else dec
+                if not (isinstance(func, ast.Attribute) and func.attr in _ROUTE_METHODS):
+                    continue
+                path, explicit = "", ""
+                if isinstance(dec, ast.Call):
+                    if dec.args and isinstance(dec.args[0], ast.Constant):
+                        path = str(dec.args[0].value)
+                    for kw in dec.keywords:
+                        if kw.arg == "response_model":
+                            explicit = ast.unparse(kw.value)
+                annotation = ast.unparse(node.returns) if node.returns else "<none>"
+                routes.append(((func.attr.upper(), path, py.stem), annotation, explicit))
+    return routes
+
+
+def _unclothed_routes() -> set[RouteKey]:
+    """wire model 이 없는 라우트 — 반환형이 ``dict`` 계열이거나 아예 없는 것.
+
+    ``list[SymbolHit]`` 은 **계약이 있다**(FastAPI 가 모델 리스트로 검증한다) — 초기
+    분류에서 이걸 무계약으로 셌다가 바로잡았다. ``dict[str, str]`` 은 값 타입이 있어도
+    키가 자유라 shape 계약이 아니므로 무계약으로 친다.
+    """
+    out: set[RouteKey] = set()
+    for key, annotation, explicit in _iter_routes():
+        if explicit and explicit != "None":
+            continue
+        if annotation in _NON_MODEL_RETURNS:
+            continue
+        if annotation in {"<none>", "dict"} or annotation.startswith("dict["):
+            out.add(key)
+    return out
+
+
+def test_no_new_routes_without_a_wire_model() -> None:
+    """새 라우트는 wire model 을 갖고 태어나야 한다 (ADR-0004).
+
+    반환형이 ``dict`` 면 응답 shape 이 **어디에도 선언되지 않는다**. 프론트는 그걸
+    손으로 미러하는데, 위 두 층의 가드는 pydantic 모델이 있어야 볼 수 있으니 그 미러는
+    아무 보호도 못 받는다.
+    """
+    unaccounted = _unclothed_routes() - UNCLOTHED_ROUTE_BASELINE - set(INTENTIONALLY_UNCLOTHED)
+
+    assert not unaccounted, (
+        f"wire model 없는 라우트가 새로 생겼다: {sorted(unaccounted)}. "
+        "출구는 둘이다 — (1) pydantic 응답 모델을 선언한다(ADR-0004 권장), "
+        "(2) 진짜 JSON 이 아니면 Response 계열로 반환형을 적는다. "
+        "동결선(UNCLOTHED_ROUTE_BASELINE)에 추가하는 것은 출구가 아니다."
+    )
+
+
+def test_unclothed_baseline_has_no_fossils() -> None:
+    """동결선은 줄어들기만 한다 — 고쳐졌거나 사라진 라우트의 항목은 지워야 한다.
+
+    화석을 남겨 두면 같은 (method, path, 모듈) 이 나중에 **새 무계약 라우트로** 되살아났을
+    때 동결선이 그걸 조용히 통과시킨다.
+    """
+    now_unclothed = _unclothed_routes()
+    fossils = (UNCLOTHED_ROUTE_BASELINE | set(INTENTIONALLY_UNCLOTHED)) - now_unclothed
+
+    assert not fossils, (
+        f"동결선에 화석이 남았다: {sorted(fossils)}. 해당 라우트가 wire model 을 갖췄거나 "
+        "사라졌다는 뜻이니 목록에서 지울 것 — 남겨 두면 같은 경로가 무계약으로 되살아나도 "
+        "통과한다."
+    )

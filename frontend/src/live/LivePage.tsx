@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { useLivePageStore } from '../state/livePage';
@@ -53,16 +53,39 @@ export function LivePage() {
   // 그 노드 밖(다른 창·워크스페이스 배경·nav)이 전부 사각지대로 남는다.
   useDrawingToolContextMenuReset();
 
+  // 심볼 마스터 = 그룹 종목 실명의 단일 출처. 시드가 캐시를 읽어야 하므로 훅 순서상
+  // 시드 effect 보다 먼저 부른다(staleTime 1일이라 재방문이면 대개 이미 따뜻하다).
+  const { data: symbolsData } = useSymbols();
+  const symbolNameOf = useCallback(
+    (code: string) => symbolsData?.symbols.find((s) => s.code === code)?.name,
+    [symbolsData],
+  );
+
   // 1회 시드: URL ?code=/?index= 딥링크는 활성 그룹 종목을 그 종목으로 교체한다.
   // 딥링크가 없으면 live.workspace.v1 의 groupSymbols 복원이 그대로 화면이 된다
   // (구 live.page.v1 복원 분기는 폐지 — 워크스페이스가 종목 SSOT).
+  //
+  // 실명을 심볼 마스터에서 뽑아 넘긴다 — 안 넘기면 activateLiveCode 의 `label ?? code`
+  // 폴백이 종목명 자리에 코드를 저장해 창 헤더가 `005930(005930)` 이 된다. 마스터가
+  // 아직 로딩 중이면 undefined → 종전대로 코드로 시드되고, 아래 보강 effect 가 응답
+  // 도착 시점에 고친다(시드는 1회뿐이라 스스로는 못 되돌아온다).
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current) return;
     seeded.current = true;
-    if (queryCode) { activateLiveCode(queryCode); return; }
+    if (queryCode) { activateLiveCode(queryCode, symbolNameOf(queryCode)); return; }
     if (isLiveIndexId(queryIndex)) activateLiveInstrument(indexInstrument(queryIndex, queryIndex));
-  }, [queryCode, queryIndex]);
+  }, [queryCode, queryIndex, symbolNameOf]);
+
+  // 실명 보강 — 시드가 놓친 경우 + 검색창의 "6자리 코드 + Enter"(드롭다운이 비어
+  // 있을 때만 타는 경로라 마스터 로딩 중에 발화한다) + 이름 없는 드롭이 남긴 값,
+  // 그리고 **이미 sessionStorage 에 저장돼 있던 오염된 값**까지 한 곳에서 치유한다.
+  // 표시 시점 보강이 아니라 스토어 보강이라 창 헤더·창 목록·지표 드로어·수집 버튼이
+  // 전부 같은 실명을 본다.
+  useEffect(() => {
+    if (!symbolsData) return;
+    useWorkspaceStore.getState().backfillSymbolNames(symbolNameOf);
+  }, [symbolsData, symbolNameOf]);
 
   const { data: status } = useLiveStatus();
   const liveStatus = useLiveStatusProjection(status);
@@ -109,14 +132,12 @@ export function LivePage() {
   // 이라 다른 종목을 수집하려면 그 창을 먼저 활성화해야 했다.
   const [collectTarget, setCollectTarget] = useState<CollectTarget | null>(null);
   useEffect(() => registerCollectDialogOpener(setCollectTarget), []);
-  // 딥링크(?code=) 시드는 name=code 라, 수집 다이얼로그 제목은 상태바와 동일
-  // 소스(심볼 마스터)에서 실명을 보강한다.
-  const { data: symbolsData } = useSymbols();
+  // 제목 실명 보강 — 스토어 보강(위 backfillSymbolNames)이 붙은 뒤로는 대개
+  // collectTarget.name 이 이미 실명이지만, 심볼 마스터가 아직 안 온 순간에 다이얼로그가
+  // 열리면 코드가 실려 온다. 그 창을 메우는 폴백으로 남긴다(같은 출처라 값은 항상 일치).
   const collectSymbolName = useMemo(
-    () => (collectTarget
-      ? symbolsData?.symbols.find((s) => s.code === collectTarget.code)?.name ?? collectTarget.name
-      : undefined),
-    [symbolsData, collectTarget],
+    () => (collectTarget ? symbolNameOf(collectTarget.code) ?? collectTarget.name : undefined),
+    [symbolNameOf, collectTarget],
   );
 
   // Shift+숫자 = 포커스 차트 창의 timeframe 슬롯(스펙 §2 — 창별 배선).

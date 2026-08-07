@@ -28,6 +28,9 @@ const livePageMocks = vi.hoisted(() => {
   return {
     liveOb,
     liveTrade,
+    // 심볼 마스터 스텁의 가변 상태 — undefined 면 "아직 로딩 중"(콜드 스타트).
+    // 실명 보강 테스트가 로딩→도착 전이를 재현하려면 가변이어야 한다.
+    symbolsResult: { data: undefined as { symbols: Array<{ code: string; name: string; market: string }> } | undefined },
     indicatorPanelProps: [] as Array<{ timeframe: LiveTimeframe }>,
     liveChartRootProps: [] as Array<{
       code?: string | null;
@@ -221,11 +224,9 @@ vi.mock('../capture/useSymbols', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../capture/useSymbols')>();
   return {
     ...actual,
-    // 심볼 마스터 스텁 — 000660만 실명 해석. 005930은 목록에 없어 미해석 폴백
+    // 심볼 마스터 스텁 — 기본은 000660만 실명 해석. 005930은 목록에 없어 미해석 폴백
     // (탭 타이틀 테스트의 document.title === '005930' 단언)을 그대로 유지한다.
-    useSymbols: () => ({
-      data: { symbols: [{ code: '000660', name: 'SK하이닉스', market: 'KOSPI' }] },
-    } as unknown as ReturnType<typeof actual.useSymbols>),
+    useSymbols: () => livePageMocks.symbolsResult as unknown as ReturnType<typeof actual.useSymbols>,
   };
 });
 
@@ -277,17 +278,22 @@ function seedWorkspace(
   });
 }
 
-function renderWithRouter(initial = '/live') {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+/** 매 호출이 **새 엘리먼트**를 만든다 — rerender 로 같은 마운트를 유지한 채 훅
+ *  응답 변화를 흘려보낼 때 필요하다(같은 엘리먼트 참조면 React 가 재렌더를 건너뛴다). */
+function liveTree(initial = '/live', qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  return (
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[initial]}>
         <Routes>
           <Route path="/live" element={<LivePage />} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+}
+
+function renderWithRouter(initial = '/live') {
+  return render(liveTree(initial));
 }
 
 describe('LivePage shell', () => {
@@ -315,6 +321,9 @@ describe('LivePage shell', () => {
     livePageMocks.currentStudySaveSource = null;
     livePageMocks.dayBidPeaksResult = null;
     livePageMocks.tradeVolumePocsResult = [];
+    livePageMocks.symbolsResult.data = {
+      symbols: [{ code: '000660', name: 'SK하이닉스', market: 'KOSPI' }],
+    };
     // 단일 뷰 모델(ADR-0113): 마운트 시드는 복원된 activeInstrument를 읽으므로
     // 매 테스트마다 page 스토어의 subject를 리셋해 격리한다.
     useLivePageStore.setState({
@@ -423,6 +432,48 @@ describe('LivePage shell', () => {
     renderWithRouter('/live?code=000660');
     // 종목 식별은 창 타이틀바(TitleBarSymbolRow)가 노출한다.
     expect(screen.getByTestId('titlebar-symbol-row').textContent).toContain('000660');
+  });
+
+  // 창 헤더가 `종목명(종목코드)` 가 아니라 `종목코드(종목코드)` 로 나오던 버그.
+  // 딥링크 시드가 activateLiveCode 를 label 없이 불러 `label ?? code` 폴백이
+  // 종목명 자리에 코드를 저장했고, 그걸 되돌리는 경로가 아무 데도 없었다.
+  describe('deep-link seed resolves the real symbol name', () => {
+    it('seeds the group symbol with the master name when the master is already warm', async () => {
+      renderWithRouter('/live?code=000660');
+      await waitFor(() => expect(useWorkspaceStore.getState().groupSymbols[1]).toEqual({
+        code: '000660',
+        name: 'SK하이닉스',
+      }));
+      expect(screen.getByTestId('titlebar-symbol-row').textContent)
+        .toContain('SK하이닉스(000660)');
+    });
+
+    it('backfills the name when the master arrives after the one-shot seed', async () => {
+      // 콜드 스타트 — 시드 시점엔 해석할 이름이 없다. 시드는 1회뿐이라 스스로는
+      // 못 되돌아오고, 보강 effect 만이 이걸 고칠 수 있다.
+      livePageMocks.symbolsResult.data = undefined;
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const view = render(liveTree('/live?code=000660', qc));
+      await waitFor(() => expect(useWorkspaceStore.getState().groupSymbols[1]?.name).toBe('000660'));
+
+      // 마스터 도착 — 같은 마운트에서 응답만 바뀐다(언마운트하면 시드가 다시 돌아
+      // 보강 경로가 아니라 시드 경로를 재는 테스트가 된다).
+      livePageMocks.symbolsResult.data = {
+        symbols: [{ code: '000660', name: 'SK하이닉스', market: 'KOSPI' }],
+      };
+      view.rerender(liveTree('/live?code=000660', qc));
+      await waitFor(() => expect(useWorkspaceStore.getState().groupSymbols[1]?.name).toBe('SK하이닉스'));
+      expect(screen.getByTestId('titlebar-symbol-row').textContent)
+        .toContain('SK하이닉스(000660)');
+    });
+
+    it('heals a poisoned name restored from a previous session', async () => {
+      // sessionStorage 하이드레이션으로 이미 오염된 값이 실려 온 경우 — 딥링크가
+      // 없어도 보강 effect 가 고친다(표시 시점 보강이 아니라 스토어 보강인 이유).
+      useWorkspaceStore.setState({ groupSymbols: { 1: { code: '000660', name: '000660' } } });
+      renderWithRouter('/live');
+      await waitFor(() => expect(useWorkspaceStore.getState().groupSymbols[1]?.name).toBe('SK하이닉스'));
+    });
   });
 
   it('reads active index from ?index= query param without setting activeCode', async () => {
