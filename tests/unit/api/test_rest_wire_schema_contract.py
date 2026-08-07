@@ -140,7 +140,33 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
         frozenset(get_args(futures_runtime.FuturesSession)),
         "frontend/src/api/marketFutures.ts",
     ),
+    # **필드 인라인 Literal ↔ 이름 다른 FE union** — 위 감사가 원리적으로 못 보는
+    # 조합이라 손으로 등록한다. BE 는 모델 안에 직접 쓴 `timeframe` 필드고, FE 는
+    # `LiveTimeframe`(이름도 다르고 파일도 `api/` 밖이다).
+    #
+    # ⚠ FE 에 `Timeframe`(types.ts)이라는 **다른 타입**이 따로 있다 — 분봉 6개 전용
+    # (`TIMEFRAME_TO_MS` 의 키)이라 여기 짝이 아니다. 이름 규칙으로 자동 매칭했다면
+    # 그쪽을 짚어 상시 빨간 테스트가 됐을 것이고, 그게 자동 발견을 안 하는 이유다.
+    "LiveTimeframe": (
+        frozenset(get_args(m.StudyViewReference.model_fields["timeframe"].annotation)),
+        "frontend/src/state/livePage.ts",
+    ),
 }
+
+
+def _strip_ts_comments(src: str) -> str:
+    """블록·줄 주석 제거. **잘라내기 전에** 부르는 것이 중요하다(호출부 주석 참조)."""
+    return re.sub(r"//[^\n]*", "", re.sub(r"/\*.*?\*/", "", src, flags=re.S))
+
+
+def _ts_const_array_members(src: str, const_name: str) -> frozenset[str]:
+    """``export const ARR = ['a', 'b'] as const;`` 의 문자열 리터럴 집합."""
+    head = re.search(rf"^export const {re.escape(const_name)}\s*=", src, re.M)
+    if head is None:
+        return frozenset()
+    # 배열이므로 첫 `]` 까지가 본문이다(세미콜론은 `as const` 뒤에 온다).
+    body = _strip_ts_comments(src[head.end():]).split("]", 1)[0]
+    return frozenset(re.findall(r"'([^']*)'", body))
 
 
 def _ts_union_members(ts_path: Path, type_name: str) -> frozenset[str]:
@@ -153,6 +179,11 @@ def _ts_union_members(ts_path: Path, type_name: str) -> frozenset[str]:
     조기 종료된다 — ``CalendarStatus`` 의 ``// ADR-0020 — mirrors backend; was
     missing…`` 이 실제로 그랬고, 멤버 16개 중 5개만 읽혔다. 그 상태로도 위 대조
     테스트는 "프론트에 없는 값" 을 무더기로 보고할 뿐 파서 탓임을 말해 주지 않는다.
+
+    ``export type X = (typeof ARR)[number]`` 형태도 읽는다 — 값이 **배열 상수**에 있고
+    타입 선언엔 리터럴이 하나도 없어서, 이 갈래가 없으면 빈 집합을 돌려주고 대조가
+    "프론트에 없는 값" 을 전량 보고한다(= 파서 탓인데 드리프트처럼 보인다).
+    프론트에서 흔한 관용구다(값 배열이 런타임에도 필요할 때).
     """
     src = ts_path.read_text(encoding="utf-8")
     head = re.search(rf"^export type {re.escape(type_name)}\s*=", src, re.M)
@@ -163,9 +194,14 @@ def _ts_union_members(ts_path: Path, type_name: str) -> frozenset[str]:
     # 선언 이후 전체에서 주석을 걷어낸 뒤 첫 세미콜론까지가 union 본문이다. 뒤쪽까지
     # 주석이 지워지지만 어차피 잘라 버리는 구간이라 무해하다(wire enum 값에 `//` 를
     # 품은 리터럴은 없다 — 있으면 이 파서를 고쳐야 한다).
-    rest = re.sub(r"/\*.*?\*/", "", src[head.end():], flags=re.S)
-    body = re.sub(r"//[^\n]*", "", rest).split(";", 1)[0]
-    return frozenset(re.findall(r"'([^']*)'", body))
+    body = _strip_ts_comments(src[head.end():]).split(";", 1)[0]
+    inline = frozenset(re.findall(r"'([^']*)'", body))
+    if inline:
+        return inline
+    indirect = re.search(r"\(\s*typeof\s+(\w+)\s*\)\s*\[\s*number\s*\]", body)
+    if indirect is not None:
+        return _ts_const_array_members(src, indirect.group(1))
+    return frozenset()
 
 
 def test_wire_enum_members_match_frontend_union() -> None:
@@ -196,6 +232,21 @@ def test_wire_enum_mirror_parser_reads_multiline_unions() -> None:
     assert "partial_live" in members  # 마지막 줄
     assert "source_partial_confirmed" in members  # 주석 바로 다음 줄
     assert len(members) > 10  # 여러 줄을 실제로 다 읽었다는 하한
+
+
+def test_wire_enum_mirror_parser_reads_as_const_arrays() -> None:
+    """``export type X = (typeof ARR)[number]`` 도 읽는가.
+
+    타입 선언 자체엔 리터럴이 **하나도 없다** — 값은 배열 상수가 갖는다. 이 갈래가
+    없으면 파서가 빈 집합을 돌려주고, 대조 테스트는 "프론트에 없는 값" 을 9개 전부
+    보고한다. 즉 **파서 탓인데 드리프트처럼 보인다** — 위 여러 줄 케이스와 같은 함정이라
+    같은 방식으로 고정한다.
+    """
+    members = _ts_union_members(_REPO_ROOT / "frontend/src/state/livePage.ts", "LiveTimeframe")
+
+    assert "1m" in members
+    assert "M" in members  # 배열 마지막 원소
+    assert len(members) == 9  # LIVE_TIMEFRAMES 의 실제 길이
 
 
 # ── 등록 누락 감사 ────────────────────────────────────────────────────────────
