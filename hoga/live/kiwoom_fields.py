@@ -85,11 +85,12 @@ OB_ASK_QTY = [str(f) for f in range(61, 71)]  # 매도잔량 1~10
 OB_BID_QTY = [str(f) for f in range(71, 81)]  # 매수잔량 1~10
 OB_TOTAL_ASK_QTY = "121"
 OB_TOTAL_BID_QTY = "125"
-# 예상체결가/예상체결량 — KRX 동시호가(단일가) 개념. 파서가 **venue!=NXT AND 시각
-# 게이트(session_gate.is_auction_window: 08:30–09:00·15:20–15:30 KST) AND 값>0** 일 때만
-# payload 에 싣는다. NXT 만 막는 이유는 연속/애프터마켓·마감동시호가 창에도 예상체결값을
-# 흘리는 것이 실측됐기 때문이고(2026-07-22), UN(`_AL`)은 통합 화면에서 이 신호가 통째로
-# 사라지던 결함 때문에 열려 있다 — 근거는 `kiwoom_frames._parse_orderbook` 주석에 있다.
+# 예상체결가/예상체결량 — 동시호가(단일가) 개념. 파서가 **venue 별 시각 게이트
+# (session_gate.is_auction_window) AND 값>0** 일 때만 payload 에 싣는다. 창이 venue
+# 마다 다르다: KRX 08:30–09:00·15:20–15:30 / NXT 15:30–15:40(애프터마켓 시가단일가)
+# / UN(`_AL`) 셋 전부. 값>0 만으론 부족한 이유는 NXT 가 접속매매 중에도 예상체결값을
+# 흘리기 때문이다(2026-07-22 실측) — 근거는 `session_gate` 창 표와
+# `kiwoom_frames._parse_orderbook` 주석에 있다.
 # 200/201(예상체결대비/등락률)은 미소비.
 OB_EXPECTED_PRICE = "23"  # 예상체결가, 부호=등락방향(abs)
 OB_EXPECTED_QTY = "24"  # 예상체결량

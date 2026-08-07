@@ -154,36 +154,52 @@ def test_orderbook_expected_fill_dropped_outside_auction_window():
     assert "expected_qty" not in t.payload
 
 
-def test_orderbook_expected_fill_dropped_for_nxt_even_in_window():
-    # NXT 는 동시호가 창(15:25)이어도 예상체결을 싣지 않는다 — 연속/애프터마켓·마감
-    # 동시호가 창에도 값을 흘리는 것이 실측됐고(2026-07-22) NXT 의 단일가 국면 시각을
-    # 우리가 모르므로(ADR-0140 §6.1) 시각 게이트로는 가를 수 없다. venue 로 막는
-    # 유일한 갈래다 — 게이트가 `!= "NXT"` 인 이유.
+def test_orderbook_expected_fill_present_for_nxt_in_after_market_call():
+    # NXT 애프터마켓 시가단일가(15:30–15:40)는 **싣는다**. 그 10분은 호가접수만 되고
+    # 체결은 15:40 부터라 예상체결이 유일한 신호인데, venue 블랙리스트(`!= "NXT"`)가
+    # 그걸 지워서 NXT 를 고른 사용자는 한 번도 못 봤다.
     row = {"type": "0D", "name": "주식호가잔량", "item": "000020_NX",
-           "values": {**REAL_0D_KRX["values"], "21": "152500", "23": "+6480", "24": "12345"}}
+           "values": {**REAL_0D_KRX["values"], "21": "153500", "23": "+6480", "24": "12345"}}
     t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert t.venue == "NXT"
-    assert "expected_price" not in t.payload
-    assert "expected_qty" not in t.payload
-
-
-def test_orderbook_expected_fill_present_for_un_in_window():
-    # 통합(`_AL`)은 동시호가 창에서 예상체결을 **싣는다**. 예전 `venue == "KRX"` 게이트가
-    # 이걸 지워서, 통합을 고른 사용자는 08:50–09:00 에 예상체결을 한 번도 못 봤다 —
-    # 그 창엔 체결이 없어 예상체결이 유일한 신호인데도 화면이 비었다.
-    row = {"type": "0D", "name": "주식호가잔량", "item": "000020_AL",
-           "values": {**REAL_0D_KRX["values"], "21": "152500", "23": "+6480", "24": "12345"}}
-    t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
-    assert t is not None
-    assert t.venue == "UN"
     assert t.payload["expected_price"] == 6480
     assert t.payload["expected_qty"] == 12345
 
 
+def test_orderbook_expected_fill_dropped_for_nxt_outside_its_own_window():
+    # 차단의 원래 사유는 살아 있다 — NXT 는 접속매매 중에도 예상체결값을 흘린다
+    # (2026-07-22 실측). KRX 종가단일가(15:25)는 NXT 가 **거래정지**인 시각이고,
+    # 연속거래(13:56)·프리마켓 접속매매(08:10)도 마찬가지다. 창이 좁아진 것이지 열린
+    # 게 아니다. (애프터 접속매매 16:30 은 픽스처 now_ms 기준 미래라 `future_tick_dropped`
+    # 가드가 먼저 잡는다 — 이 테스트가 재는 축이 아니므로 뺐다.)
+    for hhmmss in ("152500", "135622", "081000", "152900"):
+        row = {"type": "0D", "name": "주식호가잔량", "item": "000020_NX",
+               "values": {**REAL_0D_KRX["values"], "21": hhmmss, "23": "+6480", "24": "12345"}}
+        t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
+        assert t is not None
+        assert t.venue == "NXT"
+        assert "expected_price" not in t.payload, hhmmss
+        assert "expected_qty" not in t.payload, hhmmss
+
+
+def test_orderbook_expected_fill_present_for_un_in_both_markets_windows():
+    # 통합(`_AL`)은 병합 스트림이라 두 시장의 단일가 창을 모두 갖는다 — KRX 종가
+    # (15:25)와 NXT 애프터 시가(15:35). 예전 `venue == "KRX"` 게이트가 전자를 지워서
+    # 통합을 고른 사용자는 08:50–09:00 에도 예상체결을 못 봤다.
+    for hhmmss in ("152500", "153500"):
+        row = {"type": "0D", "name": "주식호가잔량", "item": "000020_AL",
+               "values": {**REAL_0D_KRX["values"], "21": hhmmss, "23": "+6480", "24": "12345"}}
+        t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
+        assert t is not None
+        assert t.venue == "UN"
+        assert t.payload["expected_price"] == 6480, hhmmss
+        assert t.payload["expected_qty"] == 12345, hhmmss
+
+
 def test_orderbook_expected_fill_dropped_for_un_outside_window():
-    # 시각 게이트는 UN 에도 그대로 걸린다 — venue 조건만 완화했지 창을 넓힌 게 아니다.
-    # `_AL` 이 NXT 류 오염값을 흘리더라도 노출이 하루 20분으로 한정되는 근거다.
+    # 시각 게이트는 UN 에도 그대로 걸린다 — 창을 venue 별로 갈랐지 없앤 게 아니다.
+    # `_AL` 이 오염값을 흘리더라도 노출이 하루 30분으로 한정되는 근거다.
     row = {"type": "0D", "name": "주식호가잔량", "item": "000020_AL",
            "values": {**REAL_0D_KRX["values"], "23": "+6480", "24": "12345"}}  # 13:56 연속거래
     t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
