@@ -3256,3 +3256,41 @@ def test_snapshot_model_tolerates_partial_buffer_entries():
     # 부재는 부재로 나간다 — `exclude_none` 이 라우트에 걸려 있는 이유다.
     assert got["orderbook"] == {"total_bid_qty": 1000, "asks": [], "bids": []}
     assert got["recent_trades"] == [{"price": 100}]
+
+
+def test_series_response_never_strips_unknown_keys():
+    """`/series` 는 **모르는 키도 통과**시킨다 (`extra="allow"`).
+
+    이 라우트는 버퍼 dict 를 `**series` 로 펼쳐 조립하므로, 스트림이 키를 늘리면
+    모델 선언이 뒤처질 수 있다. 그때 조용히 버리면 차트 초기 hydration 이 이유 없이
+    반쪽이 된다 — 이 작업 전체가 막으려던 실패가 정확히 그것이라, 아직 모르는 키에도
+    같은 원칙을 적용한다.
+
+    또한 네 배열(snapshots·trades·brokers·programs) 항목은 **opaque** 다. 프론트가
+    `Array<Record<string, unknown>>` 로 받아 그대로 버퍼에 넘기므로 항목 shape 은
+    선언된 적이 없고, 여기서 좁히면 미러만 한 벌 늘고 스트립 위험이 생긴다.
+    """
+    from hoga.live.api import LiveSeriesResponse
+
+    got = LiveSeriesResponse.model_validate(
+        {
+            "code": "005930",
+            "date": "20260807",
+            "session_open_ms": 1,
+            "session_close_ms": None,
+            "is_open": True,
+            "snapshots": [{"t_ms": 1, "kind": "orderbook", "미래필드": 7}],
+            "trades": [],
+            "brokers": [],
+            "programs": [],
+            "ask_peak_today": {"date": "20260807", "coverage": "partial"},
+            "bid_peak_today": None,
+            "아직_모르는_최상위_키": {"nested": True},
+        }
+    ).model_dump()
+
+    assert got["아직_모르는_최상위_키"] == {"nested": True}, "미지 최상위 키가 사라졌다"
+    assert got["snapshots"][0]["미래필드"] == 7, "배열 항목이 opaque 하게 보존되지 않았다"
+    # 장 중이면 close 가 없다 — 정당한 null 이므로 지우지 않는다.
+    assert got["session_close_ms"] is None
+    assert got["bid_peak_today"] is None
