@@ -402,6 +402,37 @@ describe('IndexCards 스파크라인 소스 분리', () => {
     await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
     expect(sparkPath(cardByLabel('KOSPI 200 F'))).toBeNull();
   });
+
+  it('현물↔선물 토글이 카드 높이를 바꾸지 않는다 — 마지막 줄 자리를 늘 잡는다', async () => {
+    // 지수 상품은 등락종목수가 없어(#1100) 현물 모드에 마지막 줄이 통째로 비는데,
+    // 선물 모드에선 베이시스 한 줄이 생긴다. 카드가 `items-stretch` 그리드라 그 차이가
+    // **행 전체를 밀어** 아래 카드들이 위아래로 튄다(실측 2026-08-07: 아래 섹션 y
+    // 201 → 213). 그래서 현물 모드에도 같은 마크업을 invisible 로 깔아 자리를 잡는다.
+    //
+    // jsdom 은 레이아웃을 계산하지 않아 픽셀 높이로는 못 잰다 — **자식 수**로 고정한다.
+    // placeholder 를 지우면 현물 쪽이 하나 줄어 이 테스트가 깨진다.
+    mockApi({ quotes: [futuresQuote(), KOSDAQ150_F] });
+    renderCards();
+    await screen.findByText('982.92');
+
+    const spotKids = cardByLabel('KOSDAQ 150').children.length;
+    await userEvent.click(within(toggleFor('KOSDAQ 150')).getByText('선물'));
+    const futuresKids = cardByLabel('KOSDAQ 150 F').children.length;
+
+    expect(spotKids).toBe(futuresKids);
+  });
+
+  it('자리를 채우는 placeholder 는 스크린리더에서 빠진다', async () => {
+    // 보이지 않는 베이시스 문구가 낭독되면 현물 카드가 선물 값을 말하는 셈이 된다.
+    mockApi({ quotes: [futuresQuote(), KOSDAQ150_F] });
+    renderCards();
+    await screen.findByText('982.92');
+
+    const card = cardByLabel('KOSDAQ 150');
+    const hidden = card.querySelector('[aria-hidden="true"]');
+    expect(hidden).toBeTruthy();
+    expect(hidden?.className).toContain('invisible');
+  });
 });
 
 describe('IndexCards VKOSPI 단독 카드', () => {

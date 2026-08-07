@@ -15,6 +15,15 @@ import { ChevronIcon } from './ChevronIcon';
  * 않으면(대부분의 호출부) 기존 정적 헤더 그대로라 렌더가 불변한다. 접힘 시 본문은
  * unmount(SSE 틱마다 도는 테이블 재렌더 정지 = 성능 이득). 높이는 스냅(무애니메이션),
  * chevron 회전만 150ms.
+ *
+ * **헤더 밑줄은 끌 수 없다 — 옵션이 아니라 계약이다(2026-08-07).** 예전엔 `flushHeader`
+ * 로 뺄 수 있었고 근거는 "헤더가 본문과 같은 톤으로 흐르는 부유 카드 스타일" 이었다.
+ * 그런데 감싸는 pane 들이 나중에 `PanelCard borderless flat` 으로 바뀌면서 그 전제가
+ * 죽었다 — `flat` 이 배경을 `--bg` 로 맞추고 `shadow-panel` 을 지우며 `borderless` 가
+ * 테두리를 지우고, 다크는 `--bg === --bg-card` 라 톤 스텝도 0이다. 밑줄까지 없으면
+ * **남는 분리 수단이 0**이 된다. `/capture`(#1194) 와 `/screener` 가 정확히 그
+ * 상태였으므로 셋 다 되살리고 옵션 자체를 지웠다. 다시 필요해지면 "부유 카드 안에서만"
+ * 이라는 조건과 함께 되살릴 것 — 조건 없이 두면 같은 사고가 반복된다.
  */
 export function DataSection({
   title,
@@ -27,7 +36,6 @@ export function DataSection({
   toggleTestId,
   headerLeading,
   headerTrailing,
-  flushHeader = false,
 }: {
   title: ReactNode;
   children: ReactNode;
@@ -42,19 +50,10 @@ export function DataSection({
   headerLeading?: ReactNode;
   /** 헤더 우측에 나란히 놓이는 컨트롤(숨김 버튼 등). 넘기지 않으면 렌더 불변. */
   headerTrailing?: ReactNode;
-  /** 헤더 밑 구분선(border-b) 제거. 기본은 구분선 유지.
-   *
-   *  **부유 카드(`bg-bg-card` + `shadow-panel`) 안에서만 쓸 것.** 원래 근거가 "헤더가
-   *  본문과 같은 톤으로 흐르는 부유 카드 스타일" 이었는데, 감싸는 pane 이 `flat` 으로
-   *  바뀌면 그 전제가 사라진다 — 배경·그림자·테두리가 전부 꺼진 표면에서 밑줄까지
-   *  없애면 남는 분리 수단이 0이 된다. `/capture` 가 정확히 그 상태였고 2026-08-07 에
-   *  제거했다. 현재 유일한 호출부는 `/screener` 결과 섹션이다. */
-  flushHeader?: boolean;
 }) {
   const headerId = useId();
   const label = typeof title === 'string' ? title : undefined;
   const collapsible = typeof onToggleCollapse === 'function';
-  const headerDivider = flushHeader ? '' : 'border-b border-border';
   const hasStaticControls = headerLeading != null || headerTrailing != null;
   return (
     <section
@@ -65,7 +64,7 @@ export function DataSection({
       {collapsible ? (
         <header
           id={headerId}
-          className={`flex items-center ${headerDivider} text-xs font-semibold uppercase text-fg-dim`.trim()}
+          className="flex items-center border-b border-border text-xs font-semibold uppercase text-fg-dim"
         >
           <button
             type="button"
@@ -94,7 +93,7 @@ export function DataSection({
       ) : hasStaticControls ? (
         <header
           id={headerId}
-          className={`flex items-center ${headerDivider} text-xs font-semibold uppercase text-fg-dim`.trim()}
+          className="flex items-center border-b border-border text-xs font-semibold uppercase text-fg-dim"
         >
           {headerLeading != null && (
             <span className="flex shrink-0 items-center pl-1.5">{headerLeading}</span>
@@ -107,7 +106,7 @@ export function DataSection({
       ) : (
         <header
           id={headerId}
-          className={`${headerDivider} px-3 py-2 text-xs font-semibold uppercase text-fg-dim`.trim()}
+          className="border-b border-border px-3 py-2 text-xs font-semibold uppercase text-fg-dim"
         >
           {title}
         </header>

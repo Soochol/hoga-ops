@@ -61,7 +61,8 @@ export function HeatmapRow({
   // 예상가가 가격 셀을 덮어도 확정 종가가 글리프로 남는다. 개장 동시호가엔 OHLC 가
   // null(hidden_pre_open)이라 CandleGlyph 가 스스로 미렌더 → 마커만 남는다.
   // 두 시간창을 시계로 가르지 않고 **OHLC 유무**로 가른다(데이터 주도).
-  // 폭: 셀 2.5rem(45px @기본밀도) ⊃ 캔들 10px + gap + '예상' ~20px.
+  // 폭: 셀 1.9rem(34px @기본밀도) ⊃ 캔들 10px + gap 2px + '예상' 18px = 30px 필요.
+  // **종전 2.5rem(45px)은 15px 이 놀고 있었다** — 아래 그리드 주석 참조.
   const showExpected = expectedPrice != null;
   const shownPrice = showExpected ? expectedPrice : price;
   const shownPct = showExpected ? (expectedPct ?? null) : pct;
@@ -84,12 +85,28 @@ export function HeatmapRow({
       onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } }}
       style={matched ? { ...baseStyle, background: 'var(--tint-selection)' } : baseStyle}
-      className={`grid grid-cols-[minmax(4rem,1fr)_2.5rem_3.2rem_4.25rem] gap-1.5 px-2 py-px items-center text-sm outline-none focus-visible:outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
+      /* 열 폭은 **실측 필요폭 + 여유**로 다시 잡았다(2026-08-07, 보드 276행 전수).
+         종전 `2.5rem_3.2rem_4.25rem` 은 내용과 무관하게 정해져 있었다:
+           글리프 45px 배정 / 30px 필요(캔들 10 + gap 2 + '예상' 18)  → 15px 유휴
+           가격   58px 배정 / 62px 필요(7자리 "1,551,000" 6종목)      → **4px 넘침**
+           등락률 77px 배정 / 43px 필요("+12.03")                     → 34px 유휴
+         그 결과 이름은 81px 만 받아 4종목이 잘렸다. 재배분 뒤 이름 110px,
+         **잘림 4→1 · 가격 넘침 6→0**, 칼럼 수(7)와 스크롤(1.02화면)은 그대로다.
+         — 폭 부족이 아니라 배분 오류였으므로 columnWidth 를 키우지 않았다(키우면
+         2200px 보드에서 7열→6열, 스크롤 1.02→1.31화면).
+         남는 1개는 LIG디펜스앤에어로스페이스(14자) 하나뿐이다. 이걸 마저 없애려면
+         columnWidth 를 키워야 하는데 그게 위의 7→6열 비용이라, 여기서 멈춘다. */
+      className={`grid grid-cols-[minmax(4rem,1fr)_1.9rem_3.5rem_2.9rem] gap-1.5 px-2 py-px items-center text-sm outline-none focus-visible:outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
     >
       {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
       <span
         className={`truncate text-xs ${captureLagging ? 'text-error' : 'text-fg-dim'}`}
+        // title 은 캡처 지연 안내 전용으로 둔다. 잘린 이름을 읽게 하려고 `?? name`
+        // 폴백을 넣어 봤다가 되돌렸다 — ① `HeatmapFolder.test` 의 "마커를 안 넘기면
+        // 캡처 표시가 통째로 빠진다" 계약을 깨고, ② 무엇보다 **276행 전부에 호버
+        // 툴팁이 생긴다**. 아래 폭 재배분으로 잘림이 1행까지 줄었는데, 그 1행을
+        // 위해 275행에 툴팁을 켜는 건 남는 거래가 아니다.
         title={captureTitle}
         data-capture-lagging={captureLagging ? '' : undefined}
       >{name}</span>

@@ -244,7 +244,7 @@ export function Screener() {
     : null;
 
   return (
-    <PageContainer className="grid gap-md min-h-0 !pb-0"
+    <PageContainer centered className="grid gap-md min-h-0 !pb-0"
       style={{ gridTemplateColumns: '23rem minmax(0, 1fr)' }}>
       <PanelCard borderless flat data-testid="screener-builder-pane" className="flex min-h-0 flex-col overflow-hidden">
         <div className="flex flex-col gap-sm p-md pb-0">
@@ -342,7 +342,11 @@ export function Screener() {
             길면 섹션이 콘텐츠 높이(1,000행 = 28,000px)로 자라고, 부모(`overflow:hidden`,
             644px)가 그걸 **잘라낸다**. 즉 아래쪽 행은 스크롤로도 도달할 수 없었다.
             이걸 넣어야 셸(`overflow-auto`)이 유계 높이를 받아 내부 스크롤이 산다. */}
-        <DataSection title="결과" flushHeader className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col gap-sm p-md">
+        {/* 헤더 밑줄 유지 — pane 이 `borderless flat` 이라 이 선이 좌측 조건검색
+            pane 과 갈라 주는 유일한 경계다(#1194 가 /capture·/inventory 에서 고친 것과
+            같은 문제). 좌측 pane 은 저장 컨트롤 밑에 이미 `border-t` 를 손으로 긋고
+            있었으므로, 종전엔 **한 페이지 안에서 한쪽만 선을 켜 둔 상태**였다. */}
+        <DataSection title="결과" className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col gap-sm p-md">
           {/* 결과 메타 줄: 개수·기준·조회 시각 + 강등된 경고 칩 + 정렬·갱신 상태.
               개수가 없으면 "결과"라는 제목만으로는 조회가 됐는지조차 알 수 없다. */}
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">

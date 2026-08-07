@@ -36,7 +36,7 @@ import { heatBg } from '../heatmap/heat';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 import type { LiveIndexId } from '../live/liveInstrument';
-import { PageContainer } from '../layout/PageContainer';
+import { PAGE_MAX_W, PageContainer } from '../layout/PageContainer';
 import { persistJson, readJsonObject } from '../state/persist';
 import { CARD_HEADER_RULE, CardHeader, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
 import { priceDirClass } from '../ui/priceDir';
@@ -322,10 +322,24 @@ function IndexCard({
             )
           : <Sparkline points={closes} baseline={dayOpen} />}
       </div>
-      {showFutures && <FuturesMeta future={future} snapshot={snapshot} spark={futureSpark} />}
-      {!showFutures && breadth && (
+      {/* 카드 마지막 줄 — **모드가 바뀌어도 높이가 변하면 안 된다.**
+          지수 상품(코스피200·코스닥150)은 등락종목수가 없어서(#1100) 현물 모드에 이
+          줄이 통째로 비는데, 선물 모드에선 베이시스 한 줄이 생긴다. 그 차이만큼 카드가
+          자라고 **그리드 행 전체가 위아래로 튄다** — 토글을 누를 때마다 아래 카드들이
+          밀린다. 그래서 현물 모드에서도 같은 마크업을 `invisible` 로 깔아 자리를 잡는다.
+
+          `min-height` 상수를 박지 않은 이유: 그 줄의 높이는 폰트·줌·`text-2xs` 의
+          line-height 가 정하므로 하드코딩하면 사용자 줌에서 어긋난다. 같은 컴포넌트를
+          그대로 재사용하면 정의상 높이가 일치한다. */}
+      {showFutures ? (
+        <FuturesMeta future={future} snapshot={snapshot} spark={futureSpark} />
+      ) : breadth ? (
         <AdvanceDeclineBar rising={breadth.rising} falling={breadth.falling} flat={breadth.flat} />
-      )}
+      ) : future != null ? (
+        <div aria-hidden="true" className="invisible">
+          <FuturesMeta future={future} snapshot={snapshot} spark={futureSpark} />
+        </div>
+      ) : null}
     </MarketCard>
   );
 }
@@ -742,7 +756,7 @@ export function MarketPage() {
       {/* 간격도 분리 수단이다 — 이전 `gap-xs`(4.5px)는 헤더 밑줄과 함께 써도 카드가
           붙어 보였다. 카드 사이 `md`, 성격이 다른 좌우 열 사이만 `xl`
           (DESIGN.md 가 "Major section dividers" 로 정의한 그 값). */}
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1680px] flex-col gap-md overflow-y-auto">
+      <div className={`mx-auto flex h-full min-h-0 w-full ${PAGE_MAX_W} flex-col gap-md overflow-y-auto`}>
         <IndexCards />
         <div className="grid grid-cols-[2fr_1fr] gap-x-xl gap-y-md">
           <div className="flex flex-col gap-md">

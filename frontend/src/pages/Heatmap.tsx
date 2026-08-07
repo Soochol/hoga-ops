@@ -170,7 +170,7 @@ export function Heatmap() {
   }
 
   return (
-    <PageContainer className="min-h-0 !pb-0">
+    <PageContainer centered="board" className="min-h-0 !pb-0">
       <PanelCard borderless flat data-testid="heatmap-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
         {/* 헤더·섹터 스트립 배경은 카드 본문과 동일한 --bg(회색 바닥색) — flat 통일
             (2026-07-23). 이전 bg-card(흰 밴드)를 걷어내 상단이 바닥에 녹아든다.
@@ -272,7 +272,7 @@ export function Heatmap() {
 
 function HeatmapStateShell({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'error' }) {
   return (
-    <PageContainer className="min-h-0 !pb-0">
+    <PageContainer centered="board" className="min-h-0 !pb-0">
       <PanelCard borderless flat data-testid="heatmap-page-primary">
         <PageState tone={tone}>{children}</PageState>
       </PanelCard>
