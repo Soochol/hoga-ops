@@ -234,3 +234,82 @@ async def test_volatility_is_none_when_the_row_is_absent():
 
     got = await _collect_sectors(call)
     assert got["volatility"] is None
+
+
+# ── wire model 계약 (ADR-0004) ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dormant_payloads_satisfy_their_wire_models(monkeypatch, tmp_path):
+    """무자격 응답이 wire model 검증을 **통과**해야 한다 — 안 그러면 500 이다.
+
+    위 라우트 테스트들은 엔드포인트 함수를 직접 부르므로 FastAPI 의 response_model
+    단계를 건너뛴다. 즉 dict 단언만으로는 모델과의 정합을 못 본다. 무자격은
+    dev·워크트리·e2e 의 **정상 경로**라 여기서 깨지면 그 환경 전체가 500 이 된다.
+    """
+    from hoga.api import market_routes as mr
+    from hoga.live import kiwoom_rest_runtime
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: None)
+    r = build_router(data_dir=tmp_path)
+    by_path = {x.path: x for x in r.routes}
+
+    for path, model in (
+        ("/api/market/sectors", mr.MarketSectorsResponse),
+        ("/api/market/streaks", mr.StreaksResponse),
+        ("/api/market/program", mr.ProgramResponse),
+        ("/api/market/breadth", mr.BreadthResponse),
+        ("/api/market/investor-flow", mr.InvestorFlowResponse),
+    ):
+        payload = await by_path[path].endpoint()
+        model.model_validate(payload)  # 예외 없이 통과하는 것이 계약이다
+
+
+def test_literal_fallback_dicts_satisfy_their_wire_models():
+    """업스트림 예외 시 쓰이는 `or {...}` 리터럴 폴백도 모델을 통과해야 한다.
+
+    이 경로는 캐시가 last-good 조차 못 가진 상태에서만 열려서 위 무자격 테스트로는
+    안 닿는다 — `_collect_*` 는 벤더가 없어도 정상 dict 를 만들기 때문이다.
+    빠뜨리기 쉬운 자리라 리터럴을 그대로 박아 고정한다.
+    """
+    from hoga.api import market_routes as mr
+
+    # `/sectors` 폴백엔 `volatility` 키가 아예 없다 — 모델 기본값이 채워 준다.
+    sectors = mr.MarketSectorsResponse.model_validate({"markets": {}})
+    assert sectors.volatility is None
+
+    mr.ProgramResponse.model_validate({"axis": "intraday", "markets": {}})
+    mr.BreadthResponse.model_validate({"markets": {}})
+    mr.StreaksResponse.model_validate({"외국인": [], "기관": [], "warnings": []})
+    mr.FuturesQuotesResponse.model_validate({"quotes": [], "session": "closed", "unavailable": None})
+    mr.FuturesCandlesResponse.model_validate({"series": {}})
+
+
+def test_streaks_wire_keys_stay_korean():
+    """주체 키는 wire 에서 **한글 그대로**다 — alias 는 파이썬 쪽 사정일 뿐이다.
+
+    FastAPI 가 응답을 `by_alias=True` 로 직렬화하므로 프론트 계약은 변하지 않는다.
+    이 단언이 없으면 누군가 alias 를 지워도 파이썬 테스트는 전부 통과한다.
+    """
+    from hoga.api.market_routes import StreaksResponse
+
+    dumped = StreaksResponse.model_validate(
+        {"외국인": [], "기관": [], "warnings": ["etf_filter_unavailable"]}
+    ).model_dump(by_alias=True)
+
+    assert set(dumped) == {"외국인", "기관", "warnings"}
+
+
+def test_breadth_omits_absent_axes_rather_than_nulling_them():
+    """벤더가 못 준 축은 **키가 빠진다** — `null` 로 실리면 FE 의 `?:` 계약이 깨진다.
+
+    라우트에 `response_model_exclude_none=True` 를 건 이유가 이것이고, 그 옵션은
+    라우트 데코레이터에 있어서 모델만 봐서는 알 수 없다. 여기서 직렬화까지 재 둔다.
+    """
+    from hoga.api.market_routes import BreadthResponse
+
+    got = BreadthResponse.model_validate(
+        {"markets": {"KOSPI": {"surge": {"count": 3, "truncated": False}}}}
+    ).model_dump(exclude_none=True)
+
+    assert got["markets"]["KOSPI"] == {"surge": {"count": 3, "truncated": False}}

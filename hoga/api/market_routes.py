@@ -25,11 +25,242 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
 from hoga.live import kiwoom_access, market_overview
 from hoga.live.market_funds_runtime import MarketFundsCache
 
 log = logging.getLogger(__name__)
+
+
+# ── Wire models (ADR-0004) ────────────────────────────────────────────────────
+#
+# 라우터 전용이라 `hoga/api/models.py` 가 아니라 여기 산다 — `lifecycle.py::LiveStatus`
+# 와 같은 선례다. 라우트 바로 위에 있어야 응답과 계약을 한 화면에서 대조할 수 있다.
+#
+# **수집 함수는 여전히 dict 를 만든다.** 라우트 애노테이션만 바꿔서 FastAPI 가 검증·
+# 직렬화하게 한다 — 수집기를 모델 생성으로 바꾸면 캐시·파서까지 번지는데, 이번 작업의
+# 계약은 "wire shape 을 선언한다" 지 "내부를 리팩터한다" 가 아니다.
+#
+# ⚠ **기본값 규칙**: 어느 한 분기에서라도 빠질 수 있는 키는 반드시 기본값을 준다.
+# 여기 라우트들은 벤더 실패 시 `or {...}` 폴백 dict 를 돌려주는데, 그 폴백에 없는
+# 키가 모델에서 필수면 ValidationError 로 500 이 난다. 폴백이 곧 정상 경로다(무자격
+# 환경에서는 항상 그 길로 간다).
+#
+# `session` 류를 `Literal` 로 좁히지 않은 것은 의도다. 값 계약은
+# `futures_runtime.FuturesSession` ↔ FE `marketFutures.ts` 쌍이 이미 갖고 있고,
+# 그 lockstep 은 `tests/unit/api/test_rest_wire_schema_contract.py` 의
+# `WIRE_ENUM_MIRRORS` 가 강제한다. 여기서 다시 좁히면 미러가 3벌이 되고, 무엇보다
+# `futures_runtime` 을 상단에서 import 하게 되는데 그건 이 파일이 일부러 피하는
+# heavy import 다(KIS 스택 전체).
+
+
+class MarketIndexRow(BaseModel):
+    """종합지수 행 — 등락종목수는 여기에만 실린다(#1100)."""
+
+    code: str
+    name: str
+    value: float | None = None
+    change_pct: float | None = None
+    rising: int | None = None
+    falling: int | None = None
+    flat: int | None = None
+    upper: int | None = None
+    lower: int | None = None
+    trade_value_eok: float | None = None
+    listed_count: int | None = None
+
+
+class MarketSectorRow(BaseModel):
+    code: str
+    name: str
+    value: float | None = None
+    change_pct: float | None = None
+    trade_value_eok: float | None = None
+
+
+class MarketVolatility(BaseModel):
+    code: str
+    name: str
+    value: float | None = None
+    change_pct: float | None = None
+
+
+class MarketSideBundle(BaseModel):
+    index: MarketIndexRow | None = None
+    sectors: list[MarketSectorRow] = Field(default_factory=list)
+
+
+class MarketSectorsResponse(BaseModel):
+    # 키는 mrkt_tp("0"=코스피 · "1"=코스닥) — 동적이라 dict 로 남긴다.
+    markets: dict[str, MarketSideBundle] = Field(default_factory=dict)
+    # 벤더 실패 폴백(`{"markets": {}}`)엔 이 키가 없었다. 기본값이 `null` 을 채워
+    # 넣으므로 **폴백 응답이 오히려 FE 타입에 맞아진다**(FE 는 필수 필드로 선언).
+    volatility: MarketVolatility | None = None
+
+
+class ProgramPoint(BaseModel):
+    t: str
+    arb_net_eok: float | None = None
+    non_arb_net_eok: float | None = None
+    total_net_eok: float | None = None
+    # 일별 축 + 코스닥에서 벤더 값이 틀려 파서가 접는다 — 그래서 정상적으로 null 이다.
+    kospi200: float | None = None
+    basis: float | None = None
+
+
+class ProgramResponse(BaseModel):
+    axis: str
+    markets: dict[str, list[ProgramPoint]] = Field(default_factory=dict)
+
+
+class BreadthCountRow(BaseModel):
+    """`truncated` 가 값과 동급이다 — 상한에 닿았으면 count 는 하한이다(#1099).
+
+    이름이 `market_overview.BreadthCount` 와 다른 것은 의도다. 그쪽은 파서 내부
+    자료구조고 이쪽은 wire model 이라, 같은 이름이면 import 두 개가 서로를 가린다.
+    """
+
+    count: int
+    truncated: bool
+
+
+class BreadthBucket(BaseModel):
+    # 벤더 호출이 실패한 축은 **키 자체가 빠진다**. 라우트에
+    # `response_model_exclude_none=True` 를 붙여 그 부재를 보존한다 — 기본 직렬화면
+    # `null` 이 새로 실려서 FE 의 `?:`(부재) 계약과 어긋난다.
+    new_high_52w: BreadthCountRow | None = None
+    new_low_52w: BreadthCountRow | None = None
+    surge: BreadthCountRow | None = None
+    plunge: BreadthCountRow | None = None
+
+
+class BreadthResponse(BaseModel):
+    markets: dict[str, BreadthBucket] = Field(default_factory=dict)
+
+
+class FundsRow(BaseModel):
+    date: str
+    # 원(raw). 세 계열의 최신일이 어긋나므로 없는 값은 null 이다(0 으로 채우면 거짓말).
+    deposit_won: int | None = None
+    credit_won: int | None = None
+    cma_won: int | None = None
+
+
+class FundsResponse(BaseModel):
+    unavailable: str | None = None
+    as_of: str | None = None
+    series: list[FundsRow] = Field(default_factory=list)
+
+
+class InvestorValues(BaseModel):
+    """3주체 순매수. 단위는 요청의 `amt_qty_tp` 가 정했다 — 여기 값은 억원(#1117)."""
+
+    individual: int | None = None
+    foreign: int | None = None
+    institution: int | None = None
+
+
+class InvestorFlowPoint(InvestorValues):
+    t_ms: int
+
+
+class GapRange(BaseModel):
+    start_ms: int
+    end_ms: int
+
+
+class InvestorFlowCoverage(BaseModel):
+    first_sample_ms: int | None = None
+    last_sample_ms: int | None = None
+    sample_count: int = 0
+    expected_count: int | None = None
+    gap_ranges: list[GapRange] = Field(default_factory=list)
+
+
+class InvestorFlowDailyRow(BaseModel):
+    date: str
+    markets: dict[str, InvestorValues] = Field(default_factory=dict)
+
+
+class InvestorFlowResponse(BaseModel):
+    date: str
+    daily: list[InvestorFlowDailyRow] = Field(default_factory=list)
+    unit: str
+    confirmed: bool
+    coverage: InvestorFlowCoverage
+    markets: dict[str, list[InvestorFlowPoint]] = Field(default_factory=dict)
+
+
+class StreakRow(BaseModel):
+    code: str
+    name: str
+    actor: str
+    streak_days: int
+    streak_net_eok: float | None = None
+    streak_net_qty_shares: int | None = None
+    period_change_pct: float | None = None
+
+
+class StreaksResponse(BaseModel):
+    """주체 키가 **한글**이라 alias 로 받는다.
+
+    한글 식별자는 파이썬 문법상 되지만 쓰지 않는다. alias 로 충분한 이유가 둘 있다:
+    pydantic v2 는 dict 입력을 **alias 로** 검증하고(수집 함수가 `"외국인"` 키로
+    만든다), FastAPI 는 응답 모델을 **`by_alias=True`** 로 직렬화한다. 즉 wire 는
+    바이트 단위로 그대로다.
+    """
+
+    warnings: list[str] = Field(default_factory=list)
+    foreign_investor: list[StreakRow] = Field(default_factory=list, alias="외국인")
+    institution: list[StreakRow] = Field(default_factory=list, alias="기관")
+
+
+class FuturesQuoteRow(BaseModel):
+    id: str
+    underlying_id: str | None = None
+    label: str
+    code: str
+    expiry: str
+    days_left: int | None = None
+    last_trade_date: str | None = None
+    value: float
+    change: float
+    change_rate: float
+    prev_close: float
+    volume: int
+    open_interest: int
+    oi_change: int
+    # 시장 베이시스(선물−기초자산). 이론 베이시스가 아니다 — 부호까지 다르다.
+    market_basis: float | None = None
+    disparity: float | None = None
+    # 이 값이 속한 세션. 최상위 `session`(지금 열린 세션)과 다를 수 있고 종목마다 다르다.
+    data_session: str
+    t_ms: int
+
+
+class FuturesQuotesResponse(BaseModel):
+    quotes: list[FuturesQuoteRow] = Field(default_factory=list)
+    session: str
+    unavailable: str | None = None
+
+
+class FuturesSparkCoverage(BaseModel):
+    first_hhmm: str
+    observed_buckets: int
+    gap_count: int
+
+
+class FuturesSpark(BaseModel):
+    closes: list[float] = Field(default_factory=list)
+    day_open: float | None = None
+    session: str
+    # 야간 시리즈에만 실린다 — 주간은 REST 소급 조회가 되므로 "놓친 구간" 이 없다.
+    coverage: FuturesSparkCoverage | None = None
+
+
+class FuturesCandlesResponse(BaseModel):
+    series: dict[str, FuturesSpark] = Field(default_factory=dict)
 
 # TTL 은 벤더 갱신 주기와 화면 위치가 정한다(#1099) — 유량이 정하지 않는다.
 TTL_SECTORS_S = 30.0      # 지수·등락종목수: 화면 최상단
@@ -400,7 +631,7 @@ def _register_futures_routes(router: APIRouter, *, data_dir: Path | None) -> Non
     futures_runtime = _FuturesRuntimeHolder(data_dir)
 
     @router.get("/futures-quotes")
-    async def get_futures_quotes() -> dict[str, Any]:
+    async def get_futures_quotes() -> FuturesQuotesResponse:
         """지수선물 근월물 시세 (KIS `FHMIF10000000`) — 지수 카드의 선물 토글.
 
         **키움에는 파생 TR 이 0건이라 대체 경로가 없다**(337개 전수 조사). 그래서
@@ -422,7 +653,7 @@ def _register_futures_routes(router: APIRouter, *, data_dir: Path | None) -> Non
         return {**(got or {"quotes": []}), **head}
 
     @router.get("/futures-candles")
-    async def get_futures_candles() -> dict[str, Any]:
+    async def get_futures_candles() -> FuturesCandlesResponse:
         """선물 카드 스파크라인 — 당일 **5분봉** 종가 (KIS `FHKIF03020200`).
 
         5분인 이유는 취향이 아니라 상한이다: 이 TR 은 102건까지만 주므로 1분봉이면
@@ -475,7 +706,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
         return list(getattr(page, "rows", []) or [])
 
     @router.get("/sectors")
-    async def get_sectors() -> dict[str, Any]:
+    async def get_sectors() -> MarketSectorsResponse:
         """지수 값 + **등락종목수** + KRX 업종 (ka20003, 시장별 1콜).
 
         등락종목수는 종합지수(001/101)에만 싣는다(#1100) — 지수 상품(코스피200·
@@ -485,7 +716,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
         return await sectors_cache.get(lambda: _collect_sectors(_call)) or {"markets": {}}
 
     @router.get("/program")
-    async def get_program(axis: str = "intraday") -> dict[str, Any]:
+    async def get_program(axis: str = "intraday") -> ProgramResponse:
         """프로그램 매매 추이. `axis=intraday`(ka90005) | `daily`(ka90010).
 
         ⚠ 두 TR 은 응답 스키마가 같고 **`kospi200` 스케일만 다르다** — 파서에
@@ -531,8 +762,8 @@ def build_router(*, data_dir: Path) -> APIRouter:
             run_page=_run_page,
         )
 
-    @router.get("/breadth")
-    async def get_breadth() -> dict[str, Any]:
+    @router.get("/breadth", response_model_exclude_none=True)
+    async def get_breadth() -> BreadthResponse:
         """시장 폭 — 52주 신고·신저(ka10016), 급등·급락(ka10019).
 
         **둘 다 카운트를 주지 않고 목록을 준다**(#1096) — 행을 세야 한다. ka10019 는
@@ -546,7 +777,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
         return await breadth_cache.get(lambda: _collect_breadth(_walk)) or {"markets": {}}
 
     @router.get("/funds")
-    async def get_funds() -> dict[str, Any]:
+    async def get_funds() -> FundsResponse:
         """증시 주변 자금 — 예탁금·신용융자·CMA (KOFIA, 이 페이지의 유일한 제3 벤더).
 
         `KOFIA_API_KEY` 가 없으면 `unavailable="credentials_missing"` 로 이 카드만
@@ -556,7 +787,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
         return await funds_cache.get()
 
     @router.get("/investor-flow")
-    async def get_investor_flow() -> dict[str, Any]:
+    async def get_investor_flow() -> InvestorFlowResponse:
         """장중 수급 — 수집기가 적재한 표본(#1120)을 읽는다. 벤더를 부르지 않는다.
 
         커버리지가 값과 동급이다: 수집이 죽으면 차트가 **짧은 선을 사실처럼** 그린다.
@@ -565,7 +796,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
         return await asyncio.to_thread(_investor_flow_payload, data_dir)
 
     @router.get("/streaks")
-    async def get_streaks() -> dict[str, Any]:
+    async def get_streaks() -> StreaksResponse:
         """연속 순매수 — **한 콜이 외국인·기관 두 카드**를 채운다(ka10131, #1096)."""
 
         async def _fetch() -> dict[str, Any]:
