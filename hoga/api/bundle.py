@@ -1376,6 +1376,38 @@ def build_program_trade_series(engine: QueryEngine, *, code: str, dates: list[st
     return ProgramTradeSeries(points=points)
 
 
+def _segment_gap_ms(date: str, meta: dict) -> int | None:
+    """세그먼트의 정규장 결손 총량(ms). **판독 불가면 `None`(= 정보 없음)**.
+
+    `0`(결손 없음)과 `None` 을 가르는 것이 계약이다 — 합치면 정보가 없는 상태가
+    "완전함" 으로 둔갑해 배지가 조용해진다.
+
+    ⚠ `gap_ranges` 의 값은 **HHMMSSmmm packed-decimal**(ADR-0010/0049)이라 그대로
+    빼면 안 된다. `111030017 - 90000000` 은 시간 차이가 아니다(2.7배 부풀려진다).
+    두 끝을 각각 Unix ms 로 디코딩한 뒤 뺀다.
+
+    ⚠ 여기서 잡는 것은 **모양이 깨진 경우**(키 누락·숫자 아님)뿐이다. `hhmmssms_to_unix_ms`
+    는 시각 범위를 검증하지 않아 `99:99:99.999` 도 통과한다 — 즉 `None` 은 "값이
+    이상하다" 가 아니라 "판독 불가" 를 뜻한다. writer 가 인코딩을 보장하므로(ADR-0049)
+    실무상 차이는 없다.
+    """
+    gaps = meta.get("gap_ranges")
+    if gaps is None:
+        return None
+    total = 0
+    for g in gaps:
+        try:
+            start = hhmmssms_to_unix_ms(date, int(g["start_ms"]))
+            end = hhmmssms_to_unix_ms(date, int(g["end_ms"]))
+        except (KeyError, TypeError, ValueError):
+            # 한 구간이라도 못 읽으면 총량이 과소집계된다 — 조용히 작은 수를 주느니
+            # "모른다" 가 정직하다.
+            return None
+        if end > start:
+            total += end - start
+    return total
+
+
 def build_range_bundle(  # noqa: PLR0912, PLR0915
     engine: QueryEngine,
     *,
@@ -1663,6 +1695,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             session_close_ms=hhmmssms_to_unix_ms(d, meta["regular_session_close_ms"]),
             source=source,
             venue=venue,
+            gap_ms=_segment_gap_ms(d, meta),
         ))
         included_dates.append(d)
         if (

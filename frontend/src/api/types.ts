@@ -581,6 +581,12 @@ export type RangeSegment = {
   session_open_ms: number; // Unix ms
   session_close_ms: number;
   source?: SourceName;     // ADR-0037, ADR-0039; absent in legacy responses
+  /** 이 세그먼트를 그린 소스의 정규장 결손 총량(ms).
+   *
+   *  ⚠ `null`/`undefined`(정보 없음)와 `0`(결손 없음)은 **다르다**. `?? 0` 으로 합치면
+   *  정보가 없는 상태가 "완전함" 으로 둔갑해 배지가 조용해진다 — 이 리포가 이미 겪은
+   *  계약 드리프트 패턴이다(#1183). 판단하는 쪽이 셋을 각각 다뤄야 한다. */
+  gap_ms?: number | null;
 };
 
 export type Timeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m';

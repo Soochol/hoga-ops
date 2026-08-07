@@ -733,6 +733,19 @@ class RangeSegment(BaseModel):
     session_close_ms: int
     source: str = "hogaplay"  # ADR-0039: which source subdir this segment came from
 
+    #: 이 세그먼트를 그린 소스의 **정규장 결손 총량(ms)**. 소스 배지가 읽는다.
+    #:
+    #: `None` 과 `0` 은 다르다 — **`None` = 정보 없음**(구 백엔드 응답·meta 판독 실패),
+    #: **`0` = 결손 없음**. 프론트에서 `?? 0` 으로 합치지 말 것: 그러면 정보가 없는
+    #: 상태가 "완전함"으로 둔갑해 배지가 조용해진다(계약 드리프트 무증상화, #1183).
+    #:
+    #: **`is_partial` 이 아니라 크기를 싣는 이유**: 그 필드는 이진값이라 3분 구멍과
+    #: 4시간 구멍을 구분하지 못한다. 실측(2026-08-07, 겹치는 2,134칸): hogaplay 가
+    #: "결손 있음" 으로 찍힌 992칸의 **중앙 결손이 688초(정규장의 2.9%)** 이고 그 중
+    #: 26.8%는 5분 이하인데, 그 칸들에서 hogaplay 는 **100%** 더 촘촘하다
+    #: (중앙 24,005행 vs 2,402행). 등급만 보고 자동 전환하면 21,603행을 버린다.
+    gap_ms: int | None = None
+
 
 class ViolationModel(BaseModel):
     """Wire-shape mirror of :class:`hoga.api.invariants.Violation` (ADR-0020).
