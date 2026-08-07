@@ -85,12 +85,33 @@ describe('Capture page', () => {
 
   // 행 트랙을 비워두면 grid-auto-rows:auto 가 되고 콘텐츠 높이가 바닥이 된다 — 창을
   // 줄여도 두 패널이 짧아지지 않고 뷰포트 밖으로 잘렸다(#730 과 같은 축 비대칭).
-  it('constrains the splitter grid row track so the panes can shorten', async () => {
+  it('constrains the grid row track so the panes can shorten', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = render(<Capture />, { wrapper: W(qc) });
     await screen.findByTestId('queue-empty');
 
     expect(container.firstElementChild).toHaveClass('grid-rows-[minmax(0,1fr)]');
+  });
+
+  // 열 트랙(2026-08-07, 드래그 스플리터 폐지). jsdom 은 grid 를 계산하지 않으므로 이건
+  // **폭 검증이 아니라 트랙 문자열 회귀 가드**다 — 실제 폭은 브라우저 실측으로 잡았고
+  // 유도 과정은 Capture.tsx 주석에 있다. 이 단언이 막는 것 두 가지:
+  //   ① 폼 하한을 `auto` 로 되돌리는 것 — 폼 안 overflow-y-auto 때문에 min 이 0으로
+  //      풀려 960px 뷰포트에서 폼이 260px 로 짜부러진다.
+  //   ② 큐 하한(38.5rem)을 지우는 것 — 1fr 의 min 은 0이라 좁아질 때 큐가 전부 흡수해
+  //      취소(×) 열이 가로 스크롤 뒤로 밀린다.
+  // 못 보는 것: 값이 여전히 **옳은지**. 달력 트랙(`repeat(7,2rem)`)이나 큐 행 그리드
+  // 폭이 바뀌면 이 테스트는 통과한 채로 값만 낡는다 — 그때는 다시 실측할 것.
+  it('폼 열은 상·하한이 박힌 고정 트랙이고 큐 열이 남은 폭을 가져간다', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(<Capture />, { wrapper: W(qc) });
+    await screen.findByTestId('queue-empty');
+
+    expect(container.firstElementChild).toHaveClass(
+      'grid-cols-[minmax(32rem,37rem)_minmax(38.5rem,1fr)]',
+    );
+    // 드래그 스플리터는 제거됐다(VerticalSplitter 삭제).
+    expect(screen.queryByRole('separator')).toBeNull();
   });
 
   it('prefills the symbol from the active live stock when capture has no code query', async () => {
