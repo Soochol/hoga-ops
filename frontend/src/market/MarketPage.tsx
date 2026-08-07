@@ -67,17 +67,27 @@ const CARD_MODES: ReadonlyArray<readonly [CardMode, string]> = [
 
 /** 카드별 현물/선물 선택 — 카드마다 독립이고 새로고침을 넘어 유지된다.
  *
- *  **저장할 때 반드시 다시 읽어 병합한다.** 카드마다 훅 인스턴스가 따로라, 마운트
- *  시점의 스냅샷을 들고 쓰면 마지막에 누른 카드가 다른 카드의 선택을 덮어쓴다. */
-function useCardMode(id: string): [CardMode, (next: CardMode) => void] {
-  const [mode, setMode] = useState<CardMode>(() =>
-    readJsonObject(CARD_MODE_KEY)[id] === 'futures' ? 'futures' : 'spot',
+ *  **한 벌을 부모가 들고 있는다.** 카드마다 `useState` 를 두면 두 가지가 따라온다:
+ *  ① 저장할 때 마운트 시점 스냅샷을 쓰면 마지막에 누른 카드가 다른 카드의 선택을
+ *  덮어쓴다(그래서 원래는 저장 때마다 병합했다). ② 더 중요한 쪽 — 어느 카드도 모드를
+ *  모르는 부모가 **분봉 폴링을 켤지 끌지 판정할 수 없다.** 그 판정은 모든 카드의
+ *  모드를 동시에 봐야 나온다. 부모 단일 state 는 ①을 원리적으로 없애고 ②를 가능하게 한다.
+ *
+ *  저장은 여전히 **다시 읽어 병합**한다 — 이 state 는 지금 화면에 있는 카드만 알고
+ *  있어서, 통째로 쓰면 다른 화면·이전 버전이 남긴 선택을 지운다. */
+function useCardModes(): [Record<string, CardMode>, (id: string, next: CardMode) => void] {
+  const [modes, setModes] = useState<Record<string, CardMode>>(() =>
+    Object.fromEntries(
+      Object.entries(readJsonObject(CARD_MODE_KEY))
+        .filter(([, v]) => v === 'futures')
+        .map(([id]) => [id, 'futures' as CardMode]),
+    ),
   );
-  const update = (next: CardMode) => {
-    setMode(next);
+  const setMode = (id: string, next: CardMode) => {
+    setModes((prev) => ({ ...prev, [id]: next }));
     persistJson(CARD_MODE_KEY, { ...readJsonObject(CARD_MODE_KEY), [id]: next });
   };
-  return [mode, update];
+  return [modes, setMode];
 }
 
 /** 이 카드의 값이 지금 세션의 것이 아니면 그 사실을 문구로. null 이면 최신이다.
@@ -162,7 +172,23 @@ export function IndexCards() {
   const quotes = useMarketIndexQuotes();
   const sectors = useMarketSectors();
   const futures = useMarketFutures();
-  const futuresSparks = useMarketFuturesCandles();
+  const [modes, setMode] = useCardModes();
+
+  const snapshot = futures.data;
+  const futureByUnderlying = new Map(
+    (snapshot?.quotes ?? [])
+      .filter((f): f is FuturesQuote & { underlyingId: string } => f.underlyingId !== null)
+      .map((f) => [f.underlyingId, f]),
+  );
+
+  // 분봉은 **선물을 실제로 그리는 카드가 하나라도 있을 때만** 부른다. 판정은 카드의
+  // `showFutures` 와 같은 식이어야 한다 — 저장된 선택이 `futures` 여도 선물 값이 아직
+  // 없으면 카드는 현물을 그리므로(아래 `IndexCard` 주석), 그때 분봉을 부르면 아무도
+  // 안 보는 응답을 60초마다 받는다.
+  const anyFutures = (quotes.data ?? []).some(
+    (q) => modes[q.id] === 'futures' && futureByUnderlying.has(q.id),
+  );
+  const futuresSparks = useMarketFuturesCandles(anyFutures);
 
   if (quotes.isLoading) return null;
   const rows = quotes.data ?? [];
@@ -176,12 +202,6 @@ export function IndexCards() {
     );
   }
 
-  const snapshot = futures.data;
-  const futureByUnderlying = new Map(
-    (snapshot?.quotes ?? [])
-      .filter((f): f is FuturesQuote & { underlyingId: string } => f.underlyingId !== null)
-      .map((f) => [f.underlyingId, f]),
-  );
   // 변동성지수는 현물 지수 카드도 선물 토글도 없는 단독 카드다. 소스는 **키움
   // ka20003 의 업종행 603** 이다 — 예전엔 KIS 선물(A04608)이었는데 그 상품은 당일
   // 거래량 0·미결제 54계약이라 값이 정산가에 굳어 장중 내내 안 움직였다(2026-08-07).
@@ -201,6 +221,8 @@ export function IndexCards() {
             future={future}
             snapshot={snapshot}
             futureSpark={future ? futuresSparks.data?.[future.id] : undefined}
+            mode={modes[q.id] ?? 'spot'}
+            onModeChange={(next) => setMode(q.id, next)}
           />
         );
       })}
@@ -246,6 +268,8 @@ function IndexCard({
   future,
   snapshot,
   futureSpark,
+  mode,
+  onModeChange,
 }: {
   quote: ReturnType<typeof useMarketIndexQuotes>['data'] extends (infer T)[] | undefined ? T : never;
   sectors: ReturnType<typeof useMarketSectors>['data'];
@@ -254,8 +278,10 @@ function IndexCard({
   snapshot: FuturesQuotesSnapshot | undefined;
   /** 선물 모드의 스파크라인. 현물 분봉(키움)과 벤더가 달라 별도로 들어온다. */
   futureSpark: FuturesSpark | undefined;
+  /** 선택은 **부모가 들고 있다** — 분봉 폴링을 켤지가 카드 전체의 모드에 달려서다. */
+  mode: CardMode;
+  onModeChange: (next: CardMode) => void;
 }) {
-  const [mode, setMode] = useCardMode(quote.id);
   const today = todayKstYyyymmdd();
   // 당일 1분봉 — 종가 배열이 곧 스파크라인이다. 지수당 1콜이고 ka20005 는 자기
   // 버킷(5 req/s)을 쓰므로 4장이 다른 표면과 경합하지 않는다.
@@ -273,6 +299,21 @@ function IndexCard({
   // 선물 값이 아직 없으면 현물로 되돌린다 — 토글은 눌리는데 카드가 비는 상태를
   // 만들지 않는다. 저장된 선택은 건드리지 않으므로 데이터가 오면 알아서 복귀한다.
   const showFutures = future != null && mode === 'futures';
+
+  // **그림의 세션이 값의 세션과 다르면 그리지 않는다.** 백엔드는 야간 봉이 아직
+  // 부족한 구간에 시리즈를 아예 주지 않지만(#1164), `/api/market/futures-candles` 의
+  // TTL 캐시는 빈 수집으로 last-good 을 축출하지 않으므로 **직전 주간 시리즈를 계속
+  // 내보낸다**. 그대로 그리면 값은 야간 상승인데 그림은 그날 주간 하락선이 되고,
+  // 낡음 배지는 값 기준(`dataSession`)이라 이 어긋남에 침묵한다.
+  //
+  // 반대 방향도 같은 창으로 생긴다 — 시세 캐시 20초 · 분봉 캐시 60초라 세션이 바뀌는
+  // 순간 값이 먼저 주간으로 돌아오고 그림만 야간으로 남는다. 그때 야간 커버리지 문구가
+  // 주간 값 카드에 붙지 않도록 `FuturesMeta` 에도 같은 값을 넘긴다.
+  //
+  // 응답은 이미 진실을 말하고 있었다(`session`) — 읽지 않는 쪽이 결함이었다.
+  const sparkInSync =
+    future != null && futureSpark?.session === future.dataSession ? futureSpark : undefined;
+
   const shown = showFutures
     ? { value: future.value, change: future.change, changeRate: future.changeRate }
     : { value: quote.value, change: quote.change, changeRate: quote.changeRate };
@@ -296,7 +337,7 @@ function IndexCard({
           <ModeSwitch
             label={`${quote.label} 현물/선물`}
             value={mode}
-            onChange={setMode}
+            onChange={onModeChange}
             options={CARD_MODES}
           />
         )}
@@ -317,8 +358,8 @@ function IndexCard({
             모드마다 **다른 소스**를 쓴다: 현물은 키움 ka20005(1분봉), 선물은
             KIS FHKIF03020200(5분봉). 선물 모드에 현물 분봉을 그리면 더 나쁜 거짓말이다. */}
         {showFutures
-          ? futureSpark && (
-              <Sparkline points={futureSpark.closes} baseline={futureSpark.dayOpen ?? undefined} />
+          ? sparkInSync && (
+              <Sparkline points={sparkInSync.closes} baseline={sparkInSync.dayOpen ?? undefined} />
             )
           : <Sparkline points={closes} baseline={dayOpen} />}
       </div>
@@ -332,12 +373,12 @@ function IndexCard({
           line-height 가 정하므로 하드코딩하면 사용자 줌에서 어긋난다. 같은 컴포넌트를
           그대로 재사용하면 정의상 높이가 일치한다. */}
       {showFutures ? (
-        <FuturesMeta future={future} snapshot={snapshot} spark={futureSpark} />
+        <FuturesMeta future={future} snapshot={snapshot} spark={sparkInSync} />
       ) : breadth ? (
         <AdvanceDeclineBar rising={breadth.rising} falling={breadth.falling} flat={breadth.flat} />
       ) : future != null ? (
         <div aria-hidden="true" className="invisible">
-          <FuturesMeta future={future} snapshot={snapshot} spark={futureSpark} />
+          <FuturesMeta future={future} snapshot={snapshot} spark={sparkInSync} />
         </div>
       ) : null}
     </MarketCard>
