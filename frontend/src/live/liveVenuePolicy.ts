@@ -93,6 +93,37 @@ export function liveVenueRefetchInterval(venue: LiveVenueOption): 60_000 | false
 }
 
 /**
+ * **선택 venue → 이 종목의 유효 venue.** 사용자가 고른 값과 실제로 조회·판정에 쓸
+ * 값을 가르는 유일 지점이다.
+ *
+ * NXT 미상장 종목에 통합(UN)은 **정의상 KRX 와 같다** — 합칠 상대 시장이 없다.
+ * 그런데 백엔드는 그 종목에 `_AL` 을 구독하지 않으므로(`coverage.subscription_venues`
+ * 가 `("KRX",)` 를 준다) UN 태그 프레임이 **한 건도 생기지 않는다**. 게이트
+ * (`liveVenueAcceptsFrame`)는 UN 태그만 받으니 KRX 프레임을 전부 버리고, 결과는
+ * 10호가·체결·거래원·틱 등락률이 통째로 빈 화면이다(실측 2026-08-07: WS 15초간
+ * 005930 은 UN 프레임 75/585 건, 000440 은 **0 건**).
+ *
+ * 그래서 여기서 UN 을 KRX 로 되돌린다. 프레임 수용 술어는 그대로 둔 채 **입력 venue
+ * 만** 코드별로 정규화하는 것이라 태그 직결 설계(ADR-0140 §5)를 깨지 않는다.
+ *
+ * 규칙이 좁은 이유:
+ *
+ * - **`null`/`undefined`(모름)는 강등하지 않는다.** 백엔드가 모름을 fail-open 으로
+ *   세 venue 전부 구독하므로(`coverage.py` — "모름은 미상장이 아니다") UN 프레임이
+ *   실제로 존재한다. 프론트만 강등하면 있는 데이터를 버린다. 심볼 마스터 도착 전
+ *   창에서도 전 코드가 모름이라 **오늘과 동일하게** 동작한다.
+ * - **NXT 선택은 건드리지 않는다.** 미상장 종목에 NXT 를 고른 것은 명시적 선택이고,
+ *   그때 빈 화면은 정직한 표시다(#1132). UN 만이 "합친 결과를 달라"는 요청이라
+ *   해석의 여지가 있다.
+ */
+export function effectiveLiveVenue(
+  selectedVenue: LiveVenueOption,
+  nxtEnabled: boolean | null | undefined,
+): LiveVenueOption {
+  return selectedVenue === 'UN' && nxtEnabled === false ? 'KRX' : selectedVenue;
+}
+
+/**
  * venue 정책 **SSOT 술어** — 프레임(체결/호가 스냅샷, 캔들 오버레이 체결, WS 틱)의
  * 시장 태그(`tagVenue`)가 선택된 venue 에 속해 표시·반영돼도 되는지 판정한다.
  * 호가·체결 필터(`filterObByVenue`/`filterTradeByVenue`), 캔들 오버레이

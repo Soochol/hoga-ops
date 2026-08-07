@@ -7,6 +7,7 @@ import type { AskPeakCandidate } from './types';
 import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
 import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
 import { filterByVenueTag, filterObByVenue, filterTradeByVenue } from '../live/liveSidebarAdapters';
+import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -101,16 +102,24 @@ const EMPTY_PROGRAM_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.f
  * global·mixed KRX+NXT buffer and silently ignore the user's venue selection
  * (execution-window-datasource-policy). broker/initial are venue-agnostic;
  * program은 백엔드 stream 경계에서 KRX-only로 강제된다.
+ *
+ * 인자는 **사용자 선택**이고, 실제로 쓰는 값은 `effectiveLiveVenue` 로 이 종목에
+ * 맞게 해석한 `effective` 다(NXT 미상장 종목의 UN → KRX). 호출부가 선택값을 그대로
+ * 넘겨도 되도록 해석을 여기서 삼킨다 — 소비 표면이 다섯 곳(DataWindow 의 호가·체결·
+ * 거래원·매물대·프로그램)이라 각자 해석하게 두면 한 곳이 빠진다.
  */
 export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesData {
   const date = unixMsToKSTDate(Date.now());
+  // ⚠ 이 값이 **세 곳에 같이** 들어가야 한다: queryKey · REST URL · 아래 프레임 필터.
+  // 하나라도 선택값이 남으면 캐시 키와 표시 내용이 갈린다.
+  const effective = useEffectiveVenue(code, venue);
   const initial = useQuery({
     // ⚠ venue 가 **쿼리 키에도** 있어야 한다 — 없으면 venue 를 바꿔도 캐시가 안
     // 갈려 이전 venue 의 최대벽이 그대로 보인다(livePastCandles 와 같은 규율).
-    queryKey: ['live', 'series', code, date, venue],
+    queryKey: ['live', 'series', code, date, effective],
     queryFn: () =>
       apiCall<LiveSeriesResponse>(
-        `/api/live/series?code=${encodeURIComponent(code)}&date=${date}&venue=${venue}`,
+        `/api/live/series?code=${encodeURIComponent(code)}&date=${date}&venue=${effective}`,
       ),
     enabled: !!code,
     staleTime: 60_000,
@@ -185,8 +194,8 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
     : EMPTY_TRADE_SNAPSHOTS;
   // venue 필터를 소스에서 강제한다. readKind 는 내용 불변 시 stable-ref 를 주므로
   // (LiveSnapshotBuffer.get) useMemo 가 재계산을 건너뛰어 소비처 memo 도 유지된다.
-  const ob = useMemo(() => filterObByVenue(rawOb, venue), [rawOb, venue]);
-  const trade = useMemo(() => filterTradeByVenue(rawTrade, venue), [rawTrade, venue]);
+  const ob = useMemo(() => filterObByVenue(rawOb, effective), [rawOb, effective]);
+  const trade = useMemo(() => filterTradeByVenue(rawTrade, effective), [rawTrade, effective]);
   // ⚠ broker·program 도 **같은 필터를 타야 한다.** 여기가 빠져 있어서 거래원·프로그램이
   // 호버(스팟) 중엔 venue 별로 나오는데 벗어나면(LATEST) 마지막 도착 프레임의 venue
   // 하나로만 나왔다 — 스팟은 파케이를 venue 별로 읽고, LATEST 는 이 버퍼를 쓴다.
@@ -196,8 +205,8 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
   const rawProgram = bufferVisible
     ? readKind(bufferRef.current, 'program', tick)
     : EMPTY_PROGRAM_SNAPSHOTS;
-  const broker = useMemo(() => filterByVenueTag(rawBroker, venue), [rawBroker, venue]);
-  const program = useMemo(() => filterByVenueTag(rawProgram, venue), [rawProgram, venue]);
+  const broker = useMemo(() => filterByVenueTag(rawBroker, effective), [rawBroker, effective]);
+  const program = useMemo(() => filterByVenueTag(rawProgram, effective), [rawProgram, effective]);
   return {
     initial: currentInitial,
     isLoading: initial.isLoading,

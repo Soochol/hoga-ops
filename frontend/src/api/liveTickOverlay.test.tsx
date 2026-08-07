@@ -13,6 +13,7 @@ import { useLiveQuoteOverlay, type LiveQuote } from './liveQuotes';
 import { MAX_TICK_SUBSCRIBED_CODES } from './liveTickOverlay';
 import * as client from './client';
 import * as ws from './ws';
+import { seedSymbolMaster, symbolHit } from '../live/seedSymbolMaster';
 
 /** 코드별로 붙은 live 핸들러 — 테스트에서 틱을 밀어 넣는 통로. */
 const handlers = new Map<string, (d: unknown) => void>();
@@ -20,6 +21,7 @@ const unsubSpy = vi.fn();
 
 function wrap() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  seedSymbolMaster(qc);
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
@@ -221,6 +223,7 @@ describe('WS 틱 등락률 오버레이', () => {
         }],
       });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     );
@@ -257,6 +260,7 @@ describe('WS 틱 등락률 오버레이', () => {
         }],
       });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     );
@@ -628,5 +632,72 @@ describe('WS 틱 등락률 오버레이', () => {
       vi.advanceTimersByTime(200);
     });
     expect(hook.result.current.quoteByCode.get('005930')?.price).toBe(249000);
+  });
+
+  it('통합 선택에서 NXT 미상장 종목만 KRX 프레임을 받아들인다', async () => {
+    // 결함 재현(2026-08-07): 백엔드는 NXT 미상장 종목에 `_AL` 을 구독하지 않아
+    // UN 태그 프레임이 **0건**이다(실측 WS 15초: 005930 은 585건, 000440 은 0건).
+    // 게이트가 선택값 UN 으로 고정돼 있으면 유일하게 도착하는 KRX 프레임을 전부
+    // 버려 10호가·체결·등락률이 통째로 빈다.
+    mockQuotes([
+      { code: '000440', price: 11800, change_pct: 0, change_won: 0 },
+      { code: '005930', price: 232500, change_pct: 0.87, change_won: 2000 },
+    ]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc, [symbolHit('000440', false), symbolHit('005930', true)]);
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => useLiveQuoteOverlay(['000440', '005930'], 'UN'),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.quoteByCode.get('000440')?.price).toBe(11800));
+
+    // 둘 다에 **KRX 태그** 체결을 민다(pushTrade 는 venue 를 안 실어 KRX 로 승격).
+    pushTrade('000440', 12000);
+    pushTrade('005930', 999999);
+
+    // 미상장 종목: 유효 venue 가 KRX 라 반영된다.
+    expect(result.current.quoteByCode.get('000440')?.price).toBe(12000);
+    // 상장 종목: 선택대로 UN 이라 KRX 태그는 여전히 거부된다 — 이 종목엔 진짜
+    // UN 프레임이 따로 오므로 합집합으로 받으면 체결이 이중 계상된다.
+    expect(result.current.quoteByCode.get('005930')?.price).toBe(232500);
+  });
+
+  it('통합 선택에서 REST 요청이 유효 venue 별로 갈린다', async () => {
+    // phase 때문에 REST 도 갈라야 한다: `_quote_phase` 가 UN 을 08:00–20:00 내내
+    // open 으로 보므로, 동시호가에 체결이 없는 종목이 "전일종가=현재가"로 응답돼
+    // 등락률 0.00% 로 박제된다. KRX 로 물으면 pre_open → hidden_pre_open 이다.
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc, [symbolHit('000440', false), symbolHit('005930', true)]);
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    renderHook(() => useLiveQuoteOverlay(['000440', '005930'], 'UN'), { wrapper });
+
+    await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2));
+    const urls = spy.mock.calls.map((c) => String(c[0]));
+    expect(urls).toEqual(expect.arrayContaining([
+      expect.stringContaining('codes=005930&venue=UN'),
+      expect.stringContaining('codes=000440&venue=KRX'),
+    ]));
+  });
+
+  it('강등 대상이 없으면 요청 수가 늘지 않는다', async () => {
+    // 회귀 가드: fallback 쿼리는 codes 가 비면 enabled:false 라 네트워크를 안 탄다.
+    // 이게 깨지면 KRX 선택만 해도 전 화면의 시세 요청이 두 배가 된다.
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc, [symbolHit('000440', false), symbolHit('005930', true)]);
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    renderHook(() => useLiveQuoteOverlay(['000440', '005930'], 'KRX'), { wrapper });
+
+    await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThanOrEqual(1));
+    expect(spy.mock.calls.length).toBe(1);
+    expect(String(spy.mock.calls[0][0])).toContain('venue=KRX');
   });
 });

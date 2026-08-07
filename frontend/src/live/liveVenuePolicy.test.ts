@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  effectiveLiveVenue,
   initialVisibleMinuteBarsFor,
   isLiveVenueSessionNow,
   liveVenueAcceptsFrame,
@@ -77,6 +78,36 @@ describe('liveVenuePolicy', () => {
     expect(liveVenueAcceptsFrame('KRX', undefined)).toBe(true);
     expect(liveVenueAcceptsFrame('NXT', undefined)).toBe(false);
     expect(liveVenueAcceptsFrame('UN', undefined)).toBe(false);
+  });
+
+  describe('effectiveLiveVenue', () => {
+    it('NXT 미상장 종목의 통합(UN)만 KRX 로 되돌린다', () => {
+      // 합칠 상대 시장이 없으므로 통합 = KRX 다. 백엔드가 그 종목에 `_AL` 을
+      // 구독하지 않아 UN 태그 프레임이 0건이고, 게이트가 KRX 프레임을 전부 버려
+      // 10호가·체결·틱 등락률이 통째로 비던 것을 여기서 끊는다.
+      expect(effectiveLiveVenue('UN', false)).toBe('KRX');
+    });
+
+    it('모름(null·undefined)은 강등하지 않는다', () => {
+      // 백엔드가 모름을 fail-open 으로 세 venue 전부 구독하므로(coverage.py) UN
+      // 프레임이 실제로 존재한다. 프론트만 강등하면 있는 데이터를 버린다.
+      // 심볼 마스터 도착 전 창이 이 경우라, 여기서 강등하면 첫 렌더가 회귀한다.
+      expect(effectiveLiveVenue('UN', null)).toBe('UN');
+      expect(effectiveLiveVenue('UN', undefined)).toBe('UN');
+    });
+
+    it('NXT 상장 종목의 통합은 그대로 통합이다', () => {
+      expect(effectiveLiveVenue('UN', true)).toBe('UN');
+    });
+
+    it('UN 이 아닌 선택은 nxt_enabled 와 무관하게 항등이다', () => {
+      // NXT 선택 + 미상장의 빈 화면은 명시적 선택의 정직한 결과다(#1132) —
+      // 해석의 여지가 있는 건 "합친 결과를 달라"는 UN 뿐이다.
+      for (const nxt of [true, false, null, undefined] as const) {
+        expect(effectiveLiveVenue('KRX', nxt)).toBe('KRX');
+        expect(effectiveLiveVenue('NXT', nxt)).toBe('NXT');
+      }
+    });
   });
 
 });

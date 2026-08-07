@@ -395,6 +395,11 @@ export interface SymbolHit {
   code: string;
   name: string;
   market: 'KOSPI' | 'KOSDAQ';
+  /** NXT 상장 여부. `false` = 미상장, `null`/부재 = **모름**(판별 불가) — 둘을 합치면
+   *  안 된다(ADR-0140 §4). 백엔드는 처음부터 이 필드를 보냈으나 이 미러가 빠뜨려
+   *  프론트에서 소비가 불가능했다. 용도는 `effectiveLiveVenue` 하나다: 미상장 종목의
+   *  통합(UN) 선택을 KRX 로 해석해 실시간 표면이 비지 않게 한다. */
+  nxt_enabled?: boolean | null;
   captured_count: number;                              // complete-only headline
   captured_breakdown: {
     complete: number;

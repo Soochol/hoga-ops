@@ -3,9 +3,11 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { getQuotes, liveQuotesQueryKey, useQuoteByCode, useLiveQuoteOverlay, quotesRefetchInterval } from './liveQuotes';
 import * as client from './client';
+import { seedSymbolMaster } from '../live/seedSymbolMaster';
 
 function wrap() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  seedSymbolMaster(qc);
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
@@ -152,6 +154,7 @@ describe('useQuoteByCode', () => {
         }],
       });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     );
@@ -203,6 +206,7 @@ describe('useLiveQuoteOverlay', () => {
         quotes: [],
       });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     );
@@ -260,6 +264,7 @@ describe('포커스 복귀 재조회 (마감 후 동결 방지)', () => {
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
     });
+    seedSymbolMaster(qc);
     return ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     );
