@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import {
+  LIVE_VENUE_HELP,
   LIVE_VENUE_LABELS,
   LIVE_VENUE_OPTIONS,
   useLiveVenueStore,
@@ -82,7 +83,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
           description={
             variant === 'study'
               ? 'KRX는 정규장(09:00–15:30), NXT는 프리·애프터마켓을 포함한 08:00–20:00을 봅니다. 복기 데이터의 상당 부분은 hogaplay 캡처인데 hogaplay는 KRX 전용이라, NXT·통합이 비어 있는 날이 있습니다 — 보관함의 시장 배지로 어느 날에 무엇이 있는지 확인하세요.'
-              : 'KRX는 정규장(09:00–15:30), NXT는 프리·애프터마켓을 포함한 08:00–20:00을 봅니다. 통합은 거래소가 병합해 내보내는 단일 호가라, 두 시장을 화면에서 더한 것이 아닙니다.'
+              : LIVE_VENUE_HELP
           }
         >
           {/* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */}

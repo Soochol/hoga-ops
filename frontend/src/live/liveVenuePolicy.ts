@@ -36,6 +36,20 @@ export function liveVenueUsesExtendedMinuteWindow(venue: LiveVenueOption): boole
   return venue !== 'KRX';
 }
 
+/**
+ * 거래소별 표시 세션 창의 **사람이 읽는 라벨**(`09:00–15:30` / `08:00–20:00`).
+ *
+ * 시각 자체는 `liveVenueSessionBoundsMs` 가 진실 소스이고 여기는 그 분기를 그대로
+ * 타서 문자열만 붙인다 — 전환 비용(x축이 정규장에서 08:00–20:00 로 리플로우된다)을
+ * 고르기 **전에** 알리려고 거래소 선택기가 옵션마다 이 라벨을 병기한다.
+ *
+ * ⚠ 시각을 손으로 다시 적지 말 것. 세션 창이 바뀌면 `liveVenueSessionBoundsMs` 와
+ * 이 라벨이 조용히 갈리고, 갈린 쪽이 **선택 화면**이라 사용자가 먼저 본다.
+ */
+export function liveVenueSessionWindowLabel(venue: LiveVenueOption): string {
+  return liveVenueUsesExtendedMinuteWindow(venue) ? '08:00–20:00' : '09:00–15:30';
+}
+
 function isKstWeekday(yyyymmdd: string): boolean {
   const y = parseInt(yyyymmdd.slice(0, 4), 10);
   const m = parseInt(yyyymmdd.slice(4, 6), 10);

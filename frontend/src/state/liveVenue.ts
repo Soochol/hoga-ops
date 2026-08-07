@@ -17,6 +17,19 @@ export const LIVE_VENUE_LABELS: Record<LiveVenueOption, string> = {
   UN: '통합',
 };
 
+/**
+ * 거래소 3옵션이 무엇인지 설명하는 한 문단 — **진입점이 둘이라 여기서만 정한다**.
+ * 설정 모달의 「거래소」 그룹(`DataSourceDetail`, /live·/study 공용)과 /live 툴바의
+ * 거래소 선택기 팝오버(`LiveVenuePicker`)가 같은 문자열을 쓴다. 복제해 두면 한쪽만
+ * 고쳐져 같은 개념이 화면마다 다르게 설명된다.
+ *
+ * /study 는 이 문단 대신 hogaplay 캡처 공백을 덧붙인 자기 문구를 쓴다 —
+ * 복기 데이터에는 KRX 전용 캡처가 섞여 있어 설명해야 할 것이 하나 더 있다.
+ */
+export const LIVE_VENUE_HELP =
+  'KRX는 정규장(09:00–15:30), NXT는 프리·애프터마켓을 포함한 08:00–20:00을 봅니다. '
+  + '통합은 거래소가 병합해 내보내는 단일 호가라, 두 시장을 화면에서 더한 것이 아닙니다.';
+
 const STORAGE_KEY = 'live.venue.v1';
 
 interface Store {
