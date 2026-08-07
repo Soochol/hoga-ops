@@ -7,6 +7,7 @@ import {
   liveVenueKeepsHogaKrx,
   liveVenueRefetchInterval,
   liveVenueSessionBoundsMs,
+  liveVenueSessionWindowLabel,
 } from './liveVenuePolicy';
 
 const MON_OPEN_MS = Date.UTC(2026, 4, 18, 0, 0, 0);
@@ -29,6 +30,19 @@ describe('liveVenuePolicy', () => {
     expect(initialVisibleMinuteBarsFor('1m', 'UN')).toBe(300);
     expect(liveVenueKeepsHogaKrx('UN')).toBe(true);
     expect(liveVenueKeepsHogaKrx('KRX')).toBe(false);
+  });
+
+  it('derives the session-window label from the same branch as the bounds', () => {
+    // 라벨과 bounds 가 갈리면 사용자는 **선택 화면**에서 먼저 틀린 값을 본다.
+    // 두 함수를 같은 날짜로 맞대어 두어 한쪽만 고쳐지는 걸 막는다.
+    for (const venue of ['KRX', 'NXT', 'UN'] as const) {
+      const { open_ms, close_ms } = liveVenueSessionBoundsMs('20260518', venue);
+      const label = liveVenueSessionWindowLabel(venue);
+      const fmt = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', {
+        timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit',
+      });
+      expect(label).toBe(`${fmt(open_ms)}–${fmt(close_ms)}`);
+    }
   });
 
   it('owns the user-facing venue labels used by chart chrome', () => {

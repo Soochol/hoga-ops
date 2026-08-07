@@ -1,14 +1,15 @@
 /**
  * WorkspaceLiveToolbar — 워크스페이스 상단 고정 툴바 (ADR-0119 C2c-2c).
  *
- * **워크스페이스와 앱의 것만 남는다.** 창 추가·레이아웃 프리셋(워크스페이스
- * 관리)과 설정(앱 전역). 차트 하나에 걸리는 것 — 봉·그리기·보조지표·저장뷰·수집 —
- * 은 전부 그 차트 창의 헤더로 이관됐다(#758 및 후속). 그 결과 이 툴바에는 "어느
- * 창/그룹에 걸리나" 를 추론해야 하는 항목이 하나도 남지 않았다.
+ * **워크스페이스와 앱의 것만 남는다.** 거래소(앱 전역)·창 추가·레이아웃 프리셋
+ * (워크스페이스 관리)·설정(앱 전역). 차트 하나에 걸리는 것 — 봉·그리기·보조지표·
+ * 저장뷰·수집 — 은 전부 그 차트 창의 헤더로 이관됐다(#758 및 후속). 그 결과 이
+ * 툴바에는 "어느 창/그룹에 걸리나" 를 추론해야 하는 항목이 하나도 남지 않았다.
  *
  * 설정의 열림 상태는 셸(LivePage 또는 프리뷰 페이지)이 소유하고 콜백으로 받는다.
  */
 import { IconToolbarButton, WorkspaceToolbar } from '../../ui/WorkspaceShell';
+import { LiveVenuePicker } from '../LiveVenuePicker';
 import { openShortcutHelp } from '../../ui/shortcutHelp';
 import { SettingsButton } from '../LiveToolbar';
 import { LayoutPresetMenu } from '../presets/LayoutPresetMenu';
@@ -53,6 +54,11 @@ function CaptureHealthIndicator({ health }: { health: CaptureHealthView }) {
 export function WorkspaceLiveToolbar({ onOpenSettings, captureHealth }: Props) {
   return (
     <WorkspaceToolbar testId="workspace-live-toolbar" className="flex-nowrap">
+      {/* 거래소 — 툴바 맨 앞. venue 는 창이 아니라 앱 전역(관심종목·히트맵·타이틀바가
+          같은 값을 읽는다)이라 창 관련 항목보다 앞이다. 설정 모달의 「거래소」 라디오는
+          그대로 남는다 — 그쪽은 /study 도 렌더하고 거기엔 이 툴바가 없다. */}
+      <LiveVenuePicker />
+      <span className="mx-1 h-[14px] w-px shrink-0 bg-border-strong" />
       {/* 창 목록 — 죽어 있던 "N창 · 그룹 X" 라벨의 후계. 개수만 알리던 텍스트를
           열린 창으로 점프·닫기 하는 진입점으로 승격했다(개수는 트리거 뱃지가 계승). */}
       <LiveWindowListMenu />
