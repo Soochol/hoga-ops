@@ -27,10 +27,27 @@ from http import HTTPStatus
 from pathlib import Path
 
 from fastapi import FastAPI
+from pydantic import BaseModel
 from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse, Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
+
+
+class ConfigJsonResponse(BaseModel):
+    """GET /config.json 의 wire model — 프론트 부팅 설정.
+
+    필드가 하나뿐이라 모델이 과해 보이지만, **이 한 필드가 틀리면 화면이 통째로
+    죽는다**. 실제로 그랬다(2026-08-03 — `_same_origin_config` docstring 참조):
+    프론트가 읽는 키는 `api_url` 이고, 이름이나 타입이 조용히 바뀌면 접속자 전원의
+    브라우저가 엉뚱한 호스트로 API 를 쏜다. `curl /health` 는 그걸 못 본다.
+
+    라우트가 `JSONResponse` 를 직접 반환하는 것은 `cache-control` 헤더 때문이라
+    `response_model` 이 적용되지 않는다(FastAPI 는 Response 를 그대로 흘린다).
+    그래서 **body 를 이 모델로 만들어** 생산 시점에 계약을 건다.
+    """
+
+    api_url: str
 
 
 def _is_spa_route(path: str) -> bool:
@@ -113,6 +130,11 @@ def mount_frontend(app: FastAPI, dist: Path) -> None:
         """
         # 부팅 설정은 절대 캐시하지 않는다 — 배포로 값이 바뀌었는데 옛 값이
         # 살아 있으면 전 사용자가 엉뚱한 호스트로 API 를 쏜다.
-        return JSONResponse({"api_url": ""}, headers={"cache-control": _REVALIDATE})
+        # body 를 wire model 로 만든다 — 라우트가 Response 를 직접 반환하므로
+        # `response_model` 이 안 걸린다(모델 docstring 참조).
+        return JSONResponse(
+            ConfigJsonResponse(api_url="").model_dump(),
+            headers={"cache-control": _REVALIDATE},
+        )
 
     app.mount("/", SpaStaticFiles(directory=dist, html=True), name="frontend")

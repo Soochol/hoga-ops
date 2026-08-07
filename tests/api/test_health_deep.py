@@ -177,3 +177,55 @@ def test_deep_health_env_optout_queue_is_not_a_failure(
     resp = client.get("/health?deep=1")
     assert resp.status_code == 200
     assert resp.json()["queue"] == {"owned": False, "disabled_by_env": True}
+
+
+# ── wire model 계약 (ADR-0004 · 4층) ─────────────────────────────────────────
+
+
+def test_health_body_satisfies_its_wire_model_in_all_three_shapes(tmp_path):
+    """세 형태 모두 `HealthResponse` 를 통과해야 한다.
+
+    이 라우트는 `status_code=503 if degraded` 로 상태 코드를 body 에 따라 바꾸므로
+    `JSONResponse` 를 직접 만들어야 하고, 그러면 **`response_model` 이 걸리지 않는다**.
+    그래서 생산 지점에서 `model_validate` 로 계약을 건다 — 검증만 하고 body 는 원본을
+    그대로 내보내므로 wire 바이트는 변하지 않는다.
+
+    여기서 재는 것은 "그 validate 가 실제로 세 형태를 다 받아 주는가" 다. 한 형태라도
+    거부되면 그 경로는 **500** 이 되는데, 감독자가 무는 엔드포인트라 500 은 곧
+    재시작 루프다.
+    """
+    from hoga.api.app import HealthResponse
+
+    client, app = _client(tmp_path)
+
+    # ① 얕은 형태
+    shallow = client.get("/health")
+    assert shallow.status_code == 200
+    HealthResponse.model_validate(shallow.json())
+    assert set(shallow.json()) == {"status", "version", "commit"}, "얕은 응답이 커졌다"
+
+    # ② deep + lifespan 밖(부팅 중) — startup_runtime 미주입
+    booting = client.get("/health?deep=1")
+    assert booting.status_code == 200
+    HealthResponse.model_validate(booting.json())
+    assert booting.json()["checks"] == {"supervised_tasks": "unknown"}
+
+    # ③ deep + runtime 있음
+    app.state.startup_runtime = _Runtime(list(_RUNNING))
+    deep = client.get("/health?deep=1")
+    HealthResponse.model_validate(deep.json())
+    assert {"dead_tasks", "queue", "disk", "supervised_tasks"} <= set(deep.json())
+
+
+def test_config_json_body_comes_from_its_wire_model():
+    """`/config.json` 의 `api_url` 은 틀리면 **화면이 통째로 죽는** 값이다.
+
+    2026-08-03 에 실제로 그랬다(`_same_origin_config` docstring). 라우트가
+    `JSONResponse` 를 직접 반환하는 것은 `cache-control` 헤더 때문이라
+    `response_model` 이 안 걸리므로, body 를 모델로 만들어 계약을 건다.
+    """
+    from hoga.api.frontend_static import ConfigJsonResponse
+
+    body = ConfigJsonResponse(api_url="").model_dump()
+
+    assert body == {"api_url": ""}, "프론트 부팅 설정의 wire shape 이 바뀌었다"
