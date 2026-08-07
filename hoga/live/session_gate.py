@@ -273,6 +273,27 @@ async def deriv_capture_window_async(now_ms: int) -> bool:
     return await asyncio.to_thread(deriv_capture_window, now_ms)
 
 
+def deriv_after_close(now_ms: int) -> bool:
+    """거래일인데 파생 정규장이 **이미 끝났는가**.
+
+    수집 창과 짝이다: 창이 닫힌 뒤에도 벤더는 그날 누적을 계속 답하므로, 창만 보고
+    멈추면 **그날이 통째로 사라진다**(파생엔 일별 확정 TR 이 없어 소급 경로가 0이다).
+    마감 후 1회 스냅샷의 게이트가 이 술어다.
+
+    ⚠ BLOCKING: 거래일 판정이 캐시 미스 시 동기 KIS HTTP 를 칠 수 있다 — 코루틴은
+    ``deriv_after_close_async`` 를 await.
+    """
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KST)
+    if (kst.hour * 60 + kst.minute) < DERIV_CLOSE_MIN:
+        return False
+    return is_trading_day_now(now_ms)
+
+
+async def deriv_after_close_async(now_ms: int) -> bool:
+    """deriv_after_close 의 non-blocking 진입점 — to_thread 봉인."""
+    return await asyncio.to_thread(deriv_after_close, now_ms)
+
+
 # ── 시분할 구독은 폐지됐다 (ADR-0140 §2, PR-F) ────────────────────────────────
 #
 # 여기 있던 `target_ws_venue(now)` · `in_krx_warmup_window(now)` · `AUTO_VENUE` 는
