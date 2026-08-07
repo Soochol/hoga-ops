@@ -11,12 +11,16 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { act } from 'react';
+import { act, createElement, type ReactNode } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   useLiveOrderbookAtCursor,
   useLiveBrokersAtCursor,
+  useLiveBrokersToday,
 } from './useLiveCursor';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
+import { seedSymbolMaster, symbolHit } from '../live/seedSymbolMaster';
+import type { SymbolHit } from './types';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 // 소스 선호는 이제 설정(`live_settings.krx_prefer_hogaplay`)에서 온다. 설정이 로딩 중이면
@@ -45,6 +49,39 @@ vi.mock('./client', async (orig) => {
 
 import { apiGet } from './client';
 
+// ─── 렌더 헬퍼 ────────────────────────────────────────────────────────────────
+
+/**
+ * `QueryClientProvider` 로 감싼 `renderHook`.
+ *
+ * 세 훅이 `useEffectiveVenue` → `capture/useSymbols`(react-query)를 타므로
+ * provider 없이는 렌더가 던진다. 심볼 마스터는 **항상 시딩한다** — 안 그러면
+ * `useSymbols` 가 실제로 `/api/symbols/all` 을 fetch 해서 apiGet 호출 횟수를
+ * 세는 아래 단언들이 어긋난다(`seedSymbolMaster` docstring 이 같은 함정을 설명).
+ *
+ * `symbols` 기본값은 빈 배열 = **전 코드 "모름"**. 모름은 강등하지 않으므로
+ * (`effectiveLiveVenue`) 해석이 항등이 되고, 해석 도입 이전 케이스들이 그대로
+ * 유효하다. 코드별 해석을 보는 테스트만 `symbolHit(code, nxt)` 을 실어 넘긴다.
+ *
+ * QueryClient 는 호출마다 새로 만든다 — 캐시가 테스트 간에 새면 한 테스트의
+ * 시딩이 다른 테스트의 "모름" 전제를 덮는다.
+ */
+function renderSpotHook<R, P = undefined>(
+  cb: (props: P) => R,
+  opts?: { initialProps?: P; symbols?: SymbolHit[] },
+) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  seedSymbolMaster(qc, opts?.symbols ?? []);
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client: qc }, children);
+  return renderHook(cb, { wrapper, initialProps: opts?.initialProps as P });
+}
+
+/** NXT 미상장 종목(실측 003490 대한항공, `nxt_enabled=false`). */
+const NXT_UNLISTED = '003490';
+/** NXT 상장 종목(실측 000100 유한양행, `nxt_enabled=true`). */
+const NXT_LISTED = '000100';
+
 // ─── Task 10: useLiveOrderbookAtCursor ───────────────────────────────────────
 
 describe('useLiveOrderbookAtCursor', () => {
@@ -60,7 +97,7 @@ describe('useLiveOrderbookAtCursor', () => {
   });
 
   it('returns undefined and does not fetch when cursorMs is null', async () => {
-    const { result } = renderHook(() =>
+    const { result } = renderSpotHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
     expect(result.current).toBeUndefined();
@@ -68,7 +105,7 @@ describe('useLiveOrderbookAtCursor', () => {
   });
 
   it('waits for sidebarCursorMs instead of immediate cursorMs', async () => {
-    renderHook(() =>
+    renderSpotHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
 
@@ -84,7 +121,7 @@ describe('useLiveOrderbookAtCursor', () => {
   });
 
   it('fetches once when sidebarCursorMs becomes set', async () => {
-    const { result, rerender } = renderHook(() =>
+    const { result, rerender } = renderSpotHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
     act(() => {
@@ -108,7 +145,7 @@ describe('useLiveOrderbookAtCursor', () => {
   });
 
   it('venue change reissues the query', async () => {
-    const { rerender } = renderHook(
+    const { rerender } = renderSpotHook(
       ({ venue }: { venue: LiveVenueOption }) =>
         useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue }),
       { initialProps: { venue: 'KRX' as LiveVenueOption } },
@@ -122,7 +159,7 @@ describe('useLiveOrderbookAtCursor', () => {
   });
 
   it('client-side bucket alignment collapses within-minute hover to one fetch', async () => {
-    renderHook(() =>
+    renderSpotHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
@@ -143,7 +180,7 @@ describe('useLiveOrderbookAtCursor', () => {
       }
       throw new Error('unexpected url: ' + url);
     });
-    renderHook(() =>
+    renderSpotHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
     act(() => useLiveCursorStore.getState().setSidebarCursor(pastDayCursorMs));
@@ -169,7 +206,7 @@ describe('useLiveBrokersAtCursor', () => {
   });
 
   it('does not fetch when cursorMs null', () => {
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }));
+    renderSpotHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }));
     expect(apiGet).not.toHaveBeenCalled();
   });
 
@@ -178,13 +215,13 @@ describe('useLiveBrokersAtCursor', () => {
     // /api/brokers/series has no per-cursor parquet there (ADR-0044). The
     // timeframe gate (null on calendar frames) keeps the fetch dormant — the
     // isSpot gate in LiveSidebar only suppresses display, not the fetch.
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: null, venue: 'KRX' }));
+    renderSpotHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: null, venue: 'KRX' }));
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     expect(apiGet).not.toHaveBeenCalled();
   });
 
   it('fetches once when sidebarCursorMs set, key independent of sidebarCursorMs value', async () => {
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }));
+    renderSpotHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }));
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     // Moving cursor within the same day must not refetch — the day series
@@ -196,7 +233,7 @@ describe('useLiveBrokersAtCursor', () => {
   it('sends the required venue param and reissues when it changes', async () => {
     // venue 누락 = 백엔드 422(ADR-0140) → 거래원 창이 호버 내내 "거래원 정보
     // 없음". 회귀 가드다.
-    const { rerender } = renderHook(
+    const { rerender } = renderSpotHook(
       ({ venue }: { venue: LiveVenueOption }) =>
         useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue }),
       { initialProps: { venue: 'KRX' as LiveVenueOption } },
@@ -207,5 +244,153 @@ describe('useLiveBrokersAtCursor', () => {
     rerender({ venue: 'UN' });
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
     expect((apiGet as ReturnType<typeof vi.fn>).mock.calls[1][0]).toContain('venue=UN');
+  });
+});
+
+// ─── 코드별 유효 venue 해석 (#1209 후속) ──────────────────────────────────────
+
+/**
+ * 세 스팟 훅은 **선택값이 아니라 해석한 venue** 로 조회한다.
+ *
+ * 고치기 전에는 선택값을 그대로 백엔드에 보냈고, NXT 미상장 종목에 통합(UN)을
+ * 고르면 거래원 창과 호가 스팟이 통째로 비었다 — 백엔드가 그 조합의 파케이
+ * 디렉터리를 **만든 적이 없기 때문**이다(`live/coverage.subscription_venues` 가
+ * 미상장 종목에 `("KRX",)` 만 준다). 부재는 500 이 아니라 빈 200 이라 증상이
+ * 조용하다. 실측 2026-08-07 dev :8000, 003490(`nxt_enabled=false`):
+ * `/api/brokers/series` 가 KRX → 16 브로커 / 14,583 점, UN → **0**.
+ *
+ * 표시층(BrokerTrajectoryTable)과 `useLiveSeries`·ChartWindow 는 이미 해석된
+ * 값을 쓰고 있었다. 즉 이 가드는 **훅이 그 규칙에서 이탈하는 방향**을 막는다 —
+ * 백엔드가 UN 을 흡수하기 시작해도(그럴 계획 없음) 이 단언은 계속 유효하다.
+ */
+describe('코드별 유효 venue 해석', () => {
+  beforeEach(() => {
+    useLiveCursorStore.getState().resetCursor();
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
+      if (url.includes('/api/brokers/series')) {
+        return { date: '20260528', brokers: [], source: 'kiwoom_live' };
+      }
+      if (url.includes('/api/orderbook')) {
+        return { snapshot: { ts_ms: 1, asks: [], bids: [] }, available_from: null, source: 'kiwoom_live' };
+      }
+      throw new Error('unexpected url: ' + url);
+    });
+  });
+
+  /** 지금까지 apiGet 이 받은 URL 전량. */
+  const urls = (): string[] =>
+    (apiGet as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+
+  /** 커서 훅을 깨우고 첫 요청 URL 을 돌려준다. */
+  async function firstUrl(): Promise<string> {
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    return urls()[0];
+  }
+
+  it('useLiveBrokersAtCursor: UN + NXT 미상장 → KRX 로 강등해 조회한다', async () => {
+    renderSpotHook(
+      () => useLiveBrokersAtCursor({ code: NXT_UNLISTED, timeframe: '1m', venue: 'UN' }),
+      { symbols: [symbolHit(NXT_UNLISTED, false)] },
+    );
+    const url = await firstUrl();
+    expect(url).toContain('venue=KRX');
+    expect(url).not.toContain('venue=UN');
+  });
+
+  it('useLiveBrokersAtCursor: UN + NXT 상장 → UN 그대로', async () => {
+    renderSpotHook(
+      () => useLiveBrokersAtCursor({ code: NXT_LISTED, timeframe: '1m', venue: 'UN' }),
+      { symbols: [symbolHit(NXT_LISTED, true)] },
+    );
+    expect(await firstUrl()).toContain('venue=UN');
+  });
+
+  it('useLiveBrokersAtCursor: UN + 마스터에 없는 코드(모름) → UN 그대로', async () => {
+    // 모름을 강등하면 백엔드가 fail-open 으로 실제 구독한 UN 데이터를 버린다
+    // (`subscription_venues` 의 "모름은 미상장이 아니다"). 심볼 마스터 도착 전
+    // 창이 이 경로다.
+    renderSpotHook(() =>
+      useLiveBrokersAtCursor({ code: NXT_UNLISTED, timeframe: '1m', venue: 'UN' }),
+    );
+    expect(await firstUrl()).toContain('venue=UN');
+  });
+
+  it('useLiveBrokersAtCursor: NXT + NXT 미상장 → NXT 그대로(강등은 UN 에만)', async () => {
+    // #1132 — 미상장 종목에 NXT 를 고른 것은 명시적 선택이고, 그때 빈 창은
+    // 정직한 표시다. 여기서 KRX 로 바꾸면 사용자가 요청하지 않은 시장을 보여준다.
+    renderSpotHook(
+      () => useLiveBrokersAtCursor({ code: NXT_UNLISTED, timeframe: '1m', venue: 'NXT' }),
+      { symbols: [symbolHit(NXT_UNLISTED, false)] },
+    );
+    expect(await firstUrl()).toContain('venue=NXT');
+  });
+
+  it('캐시 키도 해석된 값을 쓴다 — 미상장 종목에서 KRX↔UN 토글이 재요청을 안 낸다', async () => {
+    // useSpot 의 LRU 는 훅 인스턴스별이라(useSpot.ts) 같은 인스턴스 안의 토글은
+    // 키가 같을 때만 캐시 히트다. 키가 선택값으로 잡혀 있으면 KRX 와 UN 이 서로
+    // 다른 키가 되어 **같은 응답을 두 벌 받는다** — URL 만 고치고 키를 놓치면
+    // 이 단언이 깨져야 한다.
+    //
+    // ⚠ "rerender 직후 호출 횟수를 즉시 재는" 판은 **위양성**이다. useSpot 이
+    // 30ms 디바운스 뒤에 fetch 하므로 그 시점엔 무엇을 넣어도 1 이다(첫 판이
+    // 실제로 red-check 에서 안 빨개졌다). 그래서 **대조군을 같은 렌더에 함께**
+    // 마운트한다: 두 훅의 디바운스 타이머는 같은 커밋에서 같은 시각에 걸리므로,
+    // 대조군의 요청이 도착했다는 것이 곧 "날 거였으면 이미 났다"는 배리어다 —
+    // 벽시계 상수로 기다리지 않는다.
+    const { rerender } = renderSpotHook(
+      ({ venue }: { venue: LiveVenueOption }) => {
+        // 피험군: 미상장 → 해석 후 KRX·UN 모두 KRX. 키가 안 바뀌어야 한다.
+        useLiveBrokersAtCursor({ code: NXT_UNLISTED, timeframe: '1m', venue });
+        // 대조군: 상장 → UN 이 UN 으로 남아 키가 갈리고 반드시 재요청한다.
+        useLiveBrokersAtCursor({ code: NXT_LISTED, timeframe: '1m', venue });
+      },
+      {
+        initialProps: { venue: 'KRX' as LiveVenueOption },
+        symbols: [symbolHit(NXT_UNLISTED, false), symbolHit(NXT_LISTED, true)],
+      },
+    );
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
+
+    rerender({ venue: 'UN' });
+    await waitFor(() =>
+      expect(urls().filter((u) => u.includes(`code=${NXT_LISTED}`))).toHaveLength(2),
+    );
+    // 배리어 통과 시점 — 미상장 종목은 최초 KRX 1건뿐이어야 한다.
+    expect(urls().filter((u) => u.includes(`code=${NXT_UNLISTED}`))).toHaveLength(1);
+  });
+
+  it('useLiveOrderbookAtCursor: UN + NXT 미상장 → KRX 로 강등해 조회한다', async () => {
+    // BrokerWindow 와 같은 결함이 BookWindow 스팟 경로에도 있었다. 실측 동일
+    // 종목·같은 날: `/api/orderbook` 이 KRX → 스냅샷, UN → `null`.
+    renderSpotHook(
+      () => useLiveOrderbookAtCursor({ code: NXT_UNLISTED, timeframe: '1m', venue: 'UN' }),
+      { symbols: [symbolHit(NXT_UNLISTED, false)] },
+    );
+    const url = await firstUrl();
+    expect(url).toContain('/api/orderbook');
+    expect(url).toContain('venue=KRX');
+  });
+
+  it('useLiveBrokersToday: UN + NXT 미상장 → KRX 로 강등해 조회한다', async () => {
+    // latest 모드(커서 없음)의 경로 — `/live` 를 열자마자 보이는 기본 상태라
+    // 셋 중 사용자에게 가장 먼저 드러나는 창이다.
+    renderSpotHook(() => useLiveBrokersToday(NXT_UNLISTED, 'UN'), {
+      symbols: [symbolHit(NXT_UNLISTED, false)],
+    });
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(url).toContain('/api/brokers/series');
+    expect(url).toContain('venue=KRX');
+  });
+
+  it('useLiveBrokersToday: UN + NXT 상장 → UN 그대로', async () => {
+    renderSpotHook(() => useLiveBrokersToday(NXT_LISTED, 'UN'), {
+      symbols: [symbolHit(NXT_LISTED, true)],
+    });
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    expect((apiGet as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('venue=UN');
   });
 });

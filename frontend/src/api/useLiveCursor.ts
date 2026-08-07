@@ -11,6 +11,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
+import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
 import { useSpot } from './useSpot';
 import { apiGet } from './client';
@@ -48,10 +49,30 @@ const BROKER_TODAY_SPOT_CAPACITY = 1;
 
 // ─── Shared param type ────────────────────────────────────────────────────────
 
-/** 거래소 선택 — 백엔드가 **필수**로 요구한다(ADR-0140: 기본값은 곧 "빠뜨리면
- *  조용히 KRX"). 훅 쪽도 같은 이유로 기본값을 두지 않고 호출부가 명시한다 —
- *  `/live` 는 venue 선택기(useLiveVenueStore), `/study` 는 'KRX' 고정.
- *  캐시 키에도 넣어야 venue 를 바꿨을 때 이전 venue 응답이 남지 않는다. */
+/** **사용자 선택** venue — 백엔드가 **필수**로 요구한다(ADR-0140: 기본값은 곧
+ *  "빠뜨리면 조용히 KRX"). 훅 쪽도 같은 이유로 기본값을 두지 않고 호출부가
+ *  명시한다 — `/live` 는 venue 선택기(useLiveVenueStore), `/study` 는 'KRX' 고정.
+ *
+ *  ⚠ 이 값은 **그대로 쓰이지 않는다.** 아래 훅들이 `useEffectiveVenue` 로 코드별
+ *  유효 venue 를 해석한 뒤 URL·캐시 키에 넣는다. `useLiveSeries` 가 같은 이유로
+ *  같은 일을 하고, 그 docstring 이 규칙을 명문화했다 — "호출부가 선택값을 그대로
+ *  넘겨도 되도록 해석을 여기서 삼킨다. 소비 표면이 여러 곳이라 각자 해석하게
+ *  두면 한 곳이 빠진다."
+ *
+ *  그 "빠진 한 곳"이 실제로 이 파일이었다(#1209 후속). NXT 미상장 종목에 통합(UN)
+ *  을 고르면 백엔드는 `kiwoom_live/UN/` 을 **만든 적이 없다** — 구독 파생
+ *  (`live/coverage.subscription_venues`)이 미상장 종목에 `("KRX",)` 만 주기
+ *  때문이다. `_resolved_parquet_dir` 은 그 부재를 500 이 아니라 **빈 200** 으로
+ *  정직하게 답하므로(#1133), 해석 없이 UN 을 그대로 보내면 창이 조용히 빈다.
+ *  실측 2026-08-07 (003490 대한항공, `nxt_enabled=false`, dev :8000):
+ *  `/api/brokers/series` 가 `venue=KRX` → 16 브로커 / 14,583 점, `venue=UN` → **0**.
+ *  `/api/orderbook` 도 같은 종목에서 KRX 는 스냅샷, UN 은 `null` 이었다.
+ *
+ *  강등은 UN 에만 걸린다 — `venue=NXT` 의 빈 결과는 버그가 아니라 명시적 선택에
+ *  대한 정직한 표시다(#1132, `effectiveLiveVenue` 주석).
+ *
+ *  캐시 키에도 **해석한 값**이 들어가야 한다. 선택값으로 키를 잡으면 UN 과 KRX 가
+ *  같은 응답을 서로 다른 키에 두 벌 담아, 토글할 때마다 같은 데이터를 다시 받는다. */
 type VenueParam = { venue: LiveVenueOption };
 
 interface Params extends VenueParam {
@@ -86,6 +107,9 @@ export interface LiveOrderbookSpot {
  */
 export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefined {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
+  // 선택값이 아니라 이 종목의 **유효** venue 로 조회한다 — 근거는 VenueParam.
+  // code=null 이면 해석이 항등이라 무조건 불러도 안전하다(훅 순서 고정).
+  const venue = useEffectiveVenue(p.code, p.venue);
   const sourcePref = useOrderflowSourcePref();
   const bucketMs = p.timeframe ? TIMEFRAME_TO_MS[p.timeframe as Timeframe] : null;
   const alignedT =
@@ -96,11 +120,11 @@ export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefin
 
   const key =
     p.code && date && alignedT !== null && bucketMs !== null && sourcePref
-      ? `live|ob|${p.code}|${date}|${alignedT}|${bucketMs}|${sourcePref}|${p.venue}`
+      ? `live|ob|${p.code}|${date}|${alignedT}|${bucketMs}|${sourcePref}|${venue}`
       : null;
   const { data } = useSpot<LiveOrderbookSpot>(key, () =>
     apiGet<OrderbookResponse>(
-      `/api/orderbook?code=${p.code}&date=${date}&t=${alignedT}&bucket_ms=${bucketMs}&source_pref=${sourcePref}&venue=${p.venue}`,
+      `/api/orderbook?code=${p.code}&date=${date}&t=${alignedT}&bucket_ms=${bucketMs}&source_pref=${sourcePref}&venue=${venue}`,
     ).then((r) => ({
       snapshot: r.snapshot,
       available_from: r.available_from,
@@ -142,6 +166,8 @@ export function useLiveBrokersAtCursor(
   p: BrokersParams,
 ): BrokerSeriesEntry[] | undefined {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
+  // 선택값이 아니라 이 종목의 **유효** venue — 근거는 VenueParam.
+  const venue = useEffectiveVenue(p.code, p.venue);
   const sourcePref = useOrderflowSourcePref();
   const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
   // Key gates on cursor presence AND a minute timeframe — no fetch in latest
@@ -150,13 +176,13 @@ export function useLiveBrokersAtCursor(
   // same for any t within (code, date).
   const key =
     p.code && date && p.timeframe !== null && sourcePref
-      ? `live|br|${p.code}|${date}|${sourcePref}|${p.venue}`
+      ? `live|br|${p.code}|${date}|${sourcePref}|${venue}`
       : null;
   const { data } = useSpot<BrokerSeriesEntry[]>(
     key,
     () =>
       apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
-        `/api/brokers/series?code=${p.code}&date=${date}&source_pref=${sourcePref}&venue=${p.venue}`,
+        `/api/brokers/series?code=${p.code}&date=${date}&source_pref=${sourcePref}&venue=${venue}`,
       ).then((r) => r.brokers),
     SPOT_DEBOUNCE_MS,
     BROKER_SERIES_SPOT_CAPACITY,
@@ -189,8 +215,10 @@ const TODAY_SERIES_REFRESH_MS = 60_000;
  */
 export function useLiveBrokersToday(
   code: string | null,
-  venue: LiveVenueOption,
+  selectedVenue: LiveVenueOption,
 ): BrokerSeriesEntry[] | undefined {
+  // 선택값이 아니라 이 종목의 **유효** venue — 근거는 VenueParam.
+  const venue = useEffectiveVenue(code, selectedVenue);
   const sourcePref = useOrderflowSourcePref();
   // 렌더 중 Date.now() 는 impure — 최초 1회 lazy init 후 인터벌로만 진행시킨다.
   // 스탬프가 날짜 파생의 근거이므로 자정 롤오버도 같이 따라간다.

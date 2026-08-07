@@ -1,6 +1,6 @@
 /** 지수 카드의 현물↔선물 토글.
  *
- * **주 회귀 가드 둘.**
+ * **주 회귀 가드 셋.**
  *
  * ① **localStorage 병합.** 카드마다 `useCardMode` 인스턴스가 따로라, 저장할 때
  *    마운트 시점 스냅샷을 쓰면 마지막에 누른 카드가 다른 카드의 선택을 덮어쓴다.
@@ -9,6 +9,10 @@
  * ② **낡음 배지.** KIS REST 는 야간장 중에도 주간 마감 스냅샷(15:45 동결)을 준다.
  *    `session !== dataSession` 을 화면이 말하지 않으면 밤 11시에 6시간 전 값을
  *    실시간으로 읽는다.
+ *
+ * ③ **그림과 값의 세션 짝.** 시세와 분봉은 **표면도 캐시도 따로**라(20초 · 60초)
+ *    한쪽만 세션이 바뀌는 창이 양방향으로 열린다. 배지(②)는 값만 보므로 이 어긋남에
+ *    침묵한다 — 그림이 조용히 거짓말하는 경로다. 두 방향을 각각 못 박는다.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -120,6 +124,15 @@ function mockApi(
 /** 카드 안의 스파크라인 path. 없으면 null. */
 function sparkPath(card: HTMLElement): string | null {
   return card.querySelector('svg path')?.getAttribute('d') ?? null;
+}
+
+/** 표면별 호출 횟수. **벽시계 대신 호출 횟수로 재는 이유**는 폴링 주기를 기다리면
+ *  테스트가 60초짜리가 되거나 타이머 조작에 의존하기 때문이다(#977). 게이트는
+ *  "부르는가/안 부르는가" 라 첫 호출만 봐도 판정된다. */
+function callCount(prefix: string): number {
+  return vi
+    .mocked(client.apiCall)
+    .mock.calls.filter(([url]) => typeof url === 'string' && url.startsWith(prefix)).length;
 }
 
 /** 라벨 텍스트로 카드 루트를 찾는다. */
@@ -390,8 +403,8 @@ describe('IndexCards 스파크라인 소스 분리', () => {
   });
 
   it('야간 봉이 아직 부족하면 아무것도 그리지 않는다', async () => {
-    // 야간 개장 직후 — 백엔드가 시리즈를 아예 안 준다. 주간 그림으로 폴백하면
-    // 값은 야간인데 그림은 주간이라, 주간 하락이 야간에 일어난 것으로 읽힌다.
+    // 야간 개장 직후 — 백엔드 수집이 빈다. **다만 이 케이스(응답에 키가 아예 없음)는
+    // 실제로는 거의 오지 않는다** — 아래 캐시 last-good 테스트가 진짜 창을 잰다.
     mockApi(
       { session: 'night', quotes: [futuresQuote({ data_session: 'night', value: 1004.95 })] },
       {},
@@ -401,6 +414,51 @@ describe('IndexCards 스파크라인 소스 분리', () => {
     await screen.findByText('982.92');
     await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
     expect(sparkPath(cardByLabel('KOSPI 200 F'))).toBeNull();
+  });
+
+  it('값은 야간인데 캐시가 주간 그림을 계속 주면 그리지 않는다', async () => {
+    // **실측된 창**(2026-08-07 19:13): quotes 는 전부 `night` 인데 candles 는 주간
+    // 83봉이 그대로 왔다. 백엔드 `sparks()` 는 야간 봉이 2개 미만이면 아무것도 주지
+    // 않지만, 라우트의 `_TtlCache` 가 빈 수집으로 last-good 을 축출하지 않아서
+    // **직전 주간 시리즈를 계속 내보낸다**. 위 테스트의 "키가 없다" 는 전제가 실제와
+    // 다르고, 그래서 그 가드만으로는 이 창이 열려 있었다.
+    //
+    // 그리면 값은 야간 +1.08% 상승인데 그림은 주간 −0.83% 하락선이 되고, 낡음 배지는
+    // 값 기준이라 침묵한다 — 경고 없는 거짓 그림이 가장 나쁜 형태다.
+    mockApi(
+      { session: 'night', quotes: [futuresQuote({ data_session: 'night', value: 1004.95 })] },
+      { KOSPI200_F: { closes: [1013.35, 1000, 990, 981.15], day_open: 1017.15, session: 'day' } },
+    );
+    renderCards();
+
+    await screen.findByText('982.92');
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
+    await screen.findByText('1,004.95');
+    expect(sparkPath(cardByLabel('KOSPI 200 F'))).toBeNull();
+  });
+
+  it('그림만 야간으로 남고 값이 주간으로 돌아오면 야간 커버리지를 말하지 않는다', async () => {
+    // 반대 방향의 같은 창 — 시세 캐시 20초 · 분봉 캐시 60초라 세션 전환 순간에
+    // 값이 먼저 주간으로 돌아온다. 그때 야간 커버리지 문구("02:00~")가 주간 값 카드에
+    // 붙으면, 주간 그림이 야간 관측 구간을 덮는다고 말하는 셈이다.
+    mockApi(
+      { session: 'day', quotes: [futuresQuote({ data_session: 'day' })] },
+      {
+        KOSPI200_F: {
+          closes: [1000, 1002, 1005],
+          day_open: null,
+          session: 'night',
+          coverage: { first_hhmm: '0200', observed_buckets: 5, gap_count: 0 },
+        },
+      },
+    );
+    renderCards();
+
+    await screen.findByText('982.92');
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
+    const card = cardByLabel('KOSPI 200 F');
+    expect(sparkPath(card)).toBeNull();
+    expect(within(card).queryByText(/02:00~/)).toBeNull();
   });
 
   it('현물↔선물 토글이 카드 높이를 바꾸지 않는다 — 마지막 줄 자리를 늘 잡는다', async () => {
@@ -432,6 +490,61 @@ describe('IndexCards 스파크라인 소스 분리', () => {
     const hidden = card.querySelector('[aria-hidden="true"]');
     expect(hidden).toBeTruthy();
     expect(hidden?.className).toContain('invisible');
+  });
+});
+
+describe('IndexCards 선물 분봉 폴링 게이트', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('모든 카드가 현물이면 선물 분봉을 아예 부르지 않는다', async () => {
+    mockApi({ quotes: [futuresQuote(), KOSDAQ150_F] });
+    renderCards();
+
+    // 토글이 그려졌다 = 시세는 도착했다. 그래도 분봉은 부를 이유가 없다 —
+    // 현물 모드 카드는 키움 분봉을 그리므로 이 응답을 볼 곳이 아예 없다.
+    await screen.findByLabelText('KOSPI 200 현물/선물');
+    expect(callCount('/api/market/futures-candles')).toBe(0);
+  });
+
+  it('시세는 현물 모드에서도 계속 부른다 — 토글 존재와 야간 WS 가 여기 달렸다', async () => {
+    // **이 쿼리에 같은 게이트를 달면 안 된다.** 선물이 있는지(=토글을 그릴지)를
+    // 정하는 게 이 응답이라 끄면 토글이 영영 안 뜨고, 백엔드는 시세 수집 안에서만
+    // 야간 WS 를 열기 때문에(`_night_ticks`) 야간 봉도 영영 안 쌓인다.
+    mockApi({ quotes: [futuresQuote()] });
+    renderCards();
+
+    await screen.findByLabelText('KOSPI 200 현물/선물');
+    expect(callCount('/api/market/futures-quotes')).toBeGreaterThan(0);
+  });
+
+  it('선물로 바꾸면 그때 분봉을 부른다', async () => {
+    mockApi(
+      { quotes: [futuresQuote()] },
+      { KOSPI200_F: { closes: [1013.35, 1000, 981.15], day_open: 1017.15, session: 'day' } },
+    );
+    renderCards();
+
+    await screen.findByText('982.92');
+    expect(callCount('/api/market/futures-candles')).toBe(0);
+
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
+    await waitFor(() => expect(callCount('/api/market/futures-candles')).toBe(1));
+    // 켜졌으면 실제로 그려져야 한다 — 게이트가 데이터를 막아버리면 안 된다.
+    await waitFor(() => expect(sparkPath(cardByLabel('KOSPI 200 F'))).not.toBeNull());
+  });
+
+  it('저장된 선택이 선물이어도 선물 값이 없으면 부르지 않는다', async () => {
+    // 이때 카드는 현물로 그려지고 토글도 안 붙는다(위 describe). 판정을 저장된
+    // 선택만으로 하면 아무도 안 보는 응답을 60초마다 받는다.
+    localStorage.setItem('market.indexCardMode.v1', JSON.stringify({ KOSPI200: 'futures' }));
+    mockApi({ quotes: [], unavailable: 'credentials_missing' });
+    renderCards();
+
+    await screen.findByText('982.92');
+    expect(callCount('/api/market/futures-candles')).toBe(0);
   });
 });
 

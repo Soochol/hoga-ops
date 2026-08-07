@@ -43,6 +43,7 @@ import {
 } from '../../api/useLiveCursor';
 import { useScreenerDailyCandles, prevCloseBeforeDate } from '../../api/screenerDailyCandles';
 import { useLiveVenueStore } from '../../state/liveVenue';
+import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { TIMEFRAME_TO_MS, type RangeSegment, type Timeframe } from '../../api/types';
@@ -162,6 +163,10 @@ function LinkPendingCard({ kind, group }: { kind: WindowKind; group: GroupId }) 
 }
 
 function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
+  // 아래로 넘기는 것은 **선택값**이다. WS 꼬리(useLiveSeries)도 파케이 스팟
+  // (useLiveOrderbookAtCursor)도 각자 `useEffectiveVenue` 로 같은 해석을 하므로
+  // 데이터 경로에서는 미리 풀지 않는다 — 해석 지점이 둘로 갈리면 한쪽만 고쳐지는
+  // 게 이 파일이 이미 겪은 실패다(useLiveCursor 의 VenueParam 주석).
   const venue = useLiveVenueStore((s) => s.venue);
   const live = useLiveSeries(code, venue);
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
@@ -327,10 +332,24 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
 }
 
 function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
-  // broker 는 venue 무관이지만 useLiveSeries 시그니처가 venue 를 요구한다(ob/trade
-  // 소스 필터 강제). broker 버퍼는 필터되지 않고 원본 그대로 온다.
+  // venue 는 시그니처 요구가 아니라 **실제 필터 키**다. 아래 세 경로가 같은 venue 를
+  // 타야 한다: WS 꼬리(live.broker) · 스팟(useLiveBrokersAtCursor) · 당일 누적
+  // (useLiveBrokersToday). 하나만 어긋나면 병합 시리즈에서 시장이 섞인다.
+  //
+  // **데이터 경로에는 선택값을 넘긴다** — 세 훅이 각자 `useEffectiveVenue` 로
+  // 종목별 유효 venue 를 해석하기 때문이다(WS 꼬리는 liveSeries.ts 의
+  // filterByVenueTag, 나머지 둘은 URL·캐시 키). 예전엔 훅 두 개가 선택값을 그대로
+  // 백엔드에 보내서, NXT 미상장 종목 + UN 선택이면 창이 통째로 비었다(#1209 후속,
+  // 근거·실측은 useLiveCursor 의 VenueParam 주석).
+  //
+  // 표시층만 예외다 — 아래 `effectiveVenue` 는 prop 이라 훅이 삼킬 자리가 없어
+  // 호출부가 해석해 넘긴다(#1209).
   const venue = useLiveVenueStore((s) => s.venue);
   const live = useLiveSeries(code, venue);
+  // 표시 창(클립·x축)은 **유효** venue 로 정한다 — 선택값 그대로면 NXT 미상장 종목에
+  // 통합을 고른 화면이 데이터는 KRX(15:30 까지)인데 축만 20:00 까지 늘어난다.
+  // useLiveSeries 는 같은 해석을 내부에서 삼키므로(프레임 필터) 여기서만 다시 구한다.
+  const effectiveVenue = useEffectiveVenue(code, venue);
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const spotSeries = useLiveBrokersAtCursor({
@@ -371,7 +390,11 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   });
   return (
     <div className="h-full overflow-auto bg-bg-card">
-      <BrokerTrajectoryTable series={card.series} cursorMs={card.cursorMs} />
+      <BrokerTrajectoryTable
+        series={card.series}
+        cursorMs={card.cursorMs}
+        venue={effectiveVenue}
+      />
     </div>
   );
 }
@@ -566,8 +589,9 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const linked = link !== null && link.code === code;
-  // program(0w) WS 실시간 꼬리 — venue 는 useLiveSeries 시그니처 요구일 뿐 program 은
-  // venue 무관(백엔드가 KRX 만 발행, 내부 필터 없음). 5분 주기 번들의 program_trade
+  // program(0w) WS 실시간 꼬리 — `live.program` 도 선택 venue 로 걸러져 온다
+  // (liveSeries.ts 의 filterByVenueTag). 백엔드의 KRX-only 발행 강제는 ADR-0140 §2 에서
+  // 걷혔고, 지금은 세 venue 모두 venue 태그를 달고 publish 된다. 5분 주기 번들의 program_trade
   // (REST 본체)에 이 꼬리를 이어 거래원·10호가와 같은 즉시성으로 갱신한다 — 예전엔
   // 번들만 봐서 최대 5분 지연됐다.
   const venue = useLiveVenueStore((s) => s.venue);

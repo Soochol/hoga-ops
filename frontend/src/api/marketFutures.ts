@@ -148,9 +148,22 @@ interface FuturesCandlesResponseWire {
 /** 선물 스파크라인 — 카드 id → 종가 배열.
  *
  * 시세와 훅을 나눈 이유는 갱신 축이 다르기 때문이다: 시세는 20초마다 의미가 바뀌지만
- * 5분봉은 5분에 한 번만 늘어난다. 한 쿼리로 묶으면 분봉이 시세 주기로 끌려 올라간다. */
-export function useMarketFuturesCandles() {
+ * 5분봉은 5분에 한 번만 늘어난다. 한 쿼리로 묶으면 분봉이 시세 주기로 끌려 올라간다.
+ *
+ * **`enabled` 는 필수 인자다.** 기본값 `true` 를 주면 게이트를 빠뜨린 호출처가 조용히
+ * 옛 동작(항상 폴링)으로 돌아가고, 그건 증상이 없어서 아무도 못 찾는다.
+ *
+ * 시세 쪽(`useMarketFutures`)에는 같은 게이트를 **달면 안 된다** — 토글을 그릴지
+ * 정하는 것이 그 응답이고(선물이 없는 카드엔 토글이 안 붙는다), 야간 WS 를 깨우는
+ * 것도 그 폴링이다(백엔드 `_night_ticks` 가 시세 수집 안에서만 WS 를 연다). 끄면
+ * 야간 봉이 영영 안 쌓인다.
+ *
+ * `refetchInterval` 대신 `enabled` 를 쓰는 이유: 함수형 `refetchInterval` 이 `false`
+ * 를 돌려주면 타이머가 사라져 **스스로 되살아나지 못한다**(#1182). `enabled` 는 매
+ * 렌더 재평가되므로 토글을 누른 그 렌더에 바로 켜진다. */
+export function useMarketFuturesCandles(enabled: boolean) {
   return useQuery({
+    enabled,
     queryKey: ['market-futures-candles'],
     queryFn: async ({ signal }): Promise<Record<string, FuturesSpark>> => {
       const r = await apiCall<FuturesCandlesResponseWire>('/api/market/futures-candles', {
