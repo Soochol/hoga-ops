@@ -207,6 +207,47 @@ INVESTOR_FIELDS: dict[str, str] = {
 WHOLE_MARKET_INDS = {"001_AL": "KOSPI", "101_AL": "KOSDAQ"}
 
 
+def parse_sector_investor_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """ka10051 응답 전체 → 업종별 3주체 순매수. **종합 행은 맨 앞에 남긴다.**
+
+    종합을 빼지 않는 이유는 화면이 그것을 기준선으로 쓰기 때문이다 — 업종 하나가
+    +300 인 게 큰지는 시장 전체가 얼마인지를 봐야 안다.
+
+    ## 스케일이 ka20003 과 다르다 — 이 함수의 존재 이유
+
+        ka10051  cur_prc "-77903"  flu_rt "-282"   ← 소수점 **제거**(암묵 2자리)
+        ka20003  cur_prc "-796.27" flu_rt "-0.67"  ← 소수점 **포함**
+
+    같은 이름의 필드가 TR 마다 100배 다르다(2026-08-07 실측: 코스닥 종합 지수 779.03
+    · 등락률 -2.82%). `decimal_price` 로 읽으면 지수가 77,903 이 되고 등락률이
+    -282% 가 된다. 레벨은 부호도 벗겨야 한다(접두 부호 = 등락 방향).
+
+    순매수 금액(`*_netprps`)은 **억원 정수**라 스케일 변환이 없다 — 같은 응답 안에서
+    필드마다 규칙이 갈리므로 한 헬퍼로 뭉뚱그리면 안 된다.
+    """
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        raw_code = str(r.get("inds_cd") or "")
+        if not raw_code:
+            continue
+        level = scaled_price(r.get("cur_prc"))
+        pct = signed_int(r.get("flu_rt"))
+        row = {
+            # `_AL`(SOR) venue 접미를 벗긴다 — 업종엔 거래소 개념이 없고, 붙은 채 두면
+            # ka20003 의 업종코드(`001`)와 조인이 안 된다.
+            "code": raw_code.replace("_AL", ""),
+            "name": str(r.get("inds_nm") or ""),
+            "value": None if level is None else abs(level),
+            "change_pct": None if pct is None else pct / 100,
+            **{k: signed_int(r.get(f)) for k, f in INVESTOR_FIELDS.items()},
+        }
+        if raw_code in WHOLE_MARKET_INDS:
+            out.insert(0, row)
+        else:
+            out.append(row)
+    return out
+
+
 def market_investor_row(rows: list[dict[str, Any]]) -> tuple[str, dict[str, int | None]] | None:
     """ka10051 응답에서 **시장 전체 행 하나**를 뽑아 3주체 값으로. 없으면 None.
 

@@ -291,31 +291,3 @@ export function Sparkline({
     </svg>
   );
 }
-
-/** 시장 폭 타일 — `truncated` 면 카운트가 **하한**이므로 `+` 를 붙인다(#1099). */
-export function BreadthTile({
-  label,
-  count,
-  truncated,
-  dir,
-}: {
-  label: string;
-  count: number | null;
-  truncated?: boolean;
-  dir: 'up' | 'down';
-}) {
-  return (
-    <div
-      className="flex flex-col items-center rounded-sm px-2xs py-2xs"
-      style={{ background: 'var(--bg-subtle)' }}
-      title={truncated ? '집계 상한에 도달해 실제 종목수는 이보다 많습니다' : undefined}
-    >
-      <span
-        className={`font-data text-md font-semibold tabular-nums ${dir === 'up' ? 'text-price-up' : 'text-price-down'}`}
-      >
-        {count === null ? '—' : `${count.toLocaleString('ko-KR')}${truncated ? '+' : ''}`}
-      </span>
-      <span className="text-2xs text-fg-dim">{label}</span>
-    </div>
-  );
-}

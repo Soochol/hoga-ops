@@ -12,7 +12,7 @@
  * 자금 카드가 빈 것은 **키가 없어서**다. 셋을 같은 빈 화면으로 보이면 진단이 흐려진다.
  */
 import { useState } from 'react';
-import { BreadthCard } from './BreadthCard';
+import { SectorFlowCard } from './SectorFlowCard';
 import { useLiveIndexCandles } from '../api/liveIndices';
 import {
   useMarketFutures,
@@ -756,7 +756,7 @@ export function MarketPage() {
           </div>
           <div className="flex flex-col gap-md">
             <SectorCard />
-            <BreadthCard />
+            <SectorFlowCard />
           </div>
         </div>
         <div className="grid grid-cols-3 gap-md">

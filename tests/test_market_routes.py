@@ -18,6 +18,7 @@ def test_router_exposes_the_market_surfaces():
         "/api/market/futures-quotes",
         "/api/market/investor-flow",
         "/api/market/program",
+        "/api/market/sector-flow",
         "/api/market/sectors",
         "/api/market/streaks",
     ]
@@ -104,40 +105,39 @@ async def test_program_axes_do_not_share_a_cache(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_breadth_reports_truncation_not_just_a_count():
-    """조용한 절사 금지 — 상한에 닿았으면 응답이 그 사실을 말해야 한다(#1099)."""
+async def test_breadth_counts_52w_only():
+    """급등락(ka10019)은 뺐다 — 시장 폭 카드가 업종 수급으로 교체되며 소비자가 0 이 됐다.
+
+    이 테스트가 지키는 것은 "안 부른다" 다. ka10019 는 이 라우터에서 가장 무거운 콜
+    (페이지 walk × 2시장)이라 되살아나면 조용히 5분마다 돈다.
+    """
     from hoga.api.market_routes import _collect_breadth
 
+    called: list[str] = []
+
     async def _walk(api_id, body, *, key, stop=None):  # noqa: ANN001, ARG001
-        # 급등락은 임계 이상만 세고, 신고저는 전량 센다
-        if api_id == "ka10019":
-            rows = [{"stk_cd": str(i), "jmp_rt": "+9.0"} for i in range(3)]
-            rows += [{"stk_cd": f"lo{i}", "jmp_rt": "+1.2"} for i in range(197)]
-            return (rows, False)
+        called.append(api_id)
         return ([{"stk_cd": str(i)} for i in range(45)], False)
 
     out = await _collect_breadth(_walk)
     kospi = out["markets"]["KOSPI"]
     assert kospi["new_high_52w"] == {"count": 45, "truncated": False}
-    # 200행을 받았지만 임계(3%) 이상은 3개뿐 — 벤더 하한(1%)이 아니라 우리 임계가 센다
-    assert kospi["surge"] == {"count": 3, "truncated": False}
-    assert kospi["plunge"]["count"] == 3
+    assert kospi["new_low_52w"] == {"count": 45, "truncated": False}
+    assert set(kospi) == {"new_high_52w", "new_low_52w"}
+    assert set(called) == {"ka10016"}
     assert set(out["markets"]) == {"KOSPI", "KOSDAQ"}
 
 
 @pytest.mark.asyncio
 async def test_breadth_still_reports_truncation_when_it_happens():
-    """임계 조기 종료가 절사를 없애지만, 일어나면 여전히 말해야 한다(#1099)."""
+    """조용한 절사 금지 — 상한에 닿았으면 카운트는 **하한**이다(#1099)."""
     from hoga.api.market_routes import _collect_breadth
 
-    async def _walk(api_id, body, *, key, stop=None):  # noqa: ANN001, ARG001
-        # 전 행이 임계 이상이라 조기 종료가 안 걸리고 상한에 닿은 상황
-        if api_id == "ka10019":
-            return ([{"stk_cd": str(i), "jmp_rt": "+9.0"} for i in range(1000)], True)
-        return ([{"stk_cd": str(i)} for i in range(45)], False)
+    async def _walk(_api_id, _body, *, key, stop=None):  # noqa: ANN001, ARG001
+        return ([{"stk_cd": str(i)} for i in range(1000)], True)
 
     out = await _collect_breadth(_walk)
-    assert out["markets"]["KOSPI"]["surge"] == {"count": 1000, "truncated": True}
+    assert out["markets"]["KOSPI"]["new_high_52w"] == {"count": 1000, "truncated": True}
 
 
 @pytest.mark.asyncio
@@ -260,6 +260,7 @@ async def test_dormant_payloads_satisfy_their_wire_models(monkeypatch, tmp_path)
         ("/api/market/program", mr.ProgramResponse),
         ("/api/market/breadth", mr.BreadthResponse),
         ("/api/market/investor-flow", mr.InvestorFlowResponse),
+        ("/api/market/sector-flow", mr.SectorFlowResponse),
     ):
         payload = await by_path[path].endpoint()
         model.model_validate(payload)  # 예외 없이 통과하는 것이 계약이다
@@ -309,7 +310,54 @@ def test_breadth_omits_absent_axes_rather_than_nulling_them():
     from hoga.api.market_routes import BreadthResponse
 
     got = BreadthResponse.model_validate(
-        {"markets": {"KOSPI": {"surge": {"count": 3, "truncated": False}}}}
+        {"markets": {"KOSPI": {"new_high_52w": {"count": 3, "truncated": False}}}}
     ).model_dump(exclude_none=True)
 
-    assert got["markets"]["KOSPI"] == {"surge": {"count": 3, "truncated": False}}
+    # 신저 축은 키 자체가 빠진다 — `null` 로 실리면 FE 의 `?:` 계약이 깨진다.
+    assert got["markets"]["KOSPI"] == {"new_high_52w": {"count": 3, "truncated": False}}
+
+
+@pytest.mark.asyncio
+async def test_sector_flow_reads_latest_sample_per_market_without_calling_the_vendor(tmp_path):
+    """읽기 경로에 벤더가 없다 — ka10051 표본에 업종 행이 처음부터 들어 있었다.
+
+    시장이 한 파일에 번갈아 쌓이므로 **시장별 마지막** 표본을 각각 집어야 한다.
+    통째로 마지막 한 줄만 보면 한 시장이 통째로 빈다.
+    """
+    from hoga.api.market_routes import _sector_flow_payload
+    from hoga.collector.orchestrator import now_kst
+    from hoga.live.investor_flow_store import IntradaySample, InvestorFlowStore
+
+    date = now_kst().strftime("%Y%m%d")
+    store = InvestorFlowStore(tmp_path)
+
+    def sample(ms, mrkt, code, name, ind):
+        return IntradaySample(
+            sampled_at_ms=ms,
+            request={"mrkt_tp": mrkt, "amt_qty_tp": "0", "base_dt": date, "stex_tp": "3"},
+            rows=[{"inds_cd": f"{code}_AL", "inds_nm": name, "cur_prc": "-77903",
+                   "flu_rt": "-282", "ind_netprps": ind, "frgnr_netprps": "-1",
+                   "orgn_netprps": "+1"}],
+        )
+
+    store.append_sample(date, sample(1_000, "0", "001", "종합(KOSPI)", "+100"))
+    store.append_sample(date, sample(2_000, "1", "101", "종합(KOSDAQ)", "+200"))
+    store.append_sample(date, sample(3_000, "0", "001", "종합(KOSPI)", "+300"))  # 코스피 최신
+
+    got = _sector_flow_payload(tmp_path)
+
+    assert got["unit"] == "amt_eok"          # 단위를 필드로 말한다(#1117)
+    assert got["sampled_at_ms"] == 3_000
+    assert set(got["markets"]) == {"KOSPI", "KOSDAQ"}
+    assert got["markets"]["KOSPI"][0]["individual"] == 300   # 마지막 표본
+    assert got["markets"]["KOSDAQ"][0]["individual"] == 200  # 덮이지 않았다
+
+
+@pytest.mark.asyncio
+async def test_sector_flow_empty_day_is_empty_not_error(tmp_path):
+    """수집기가 아직 안 돌았으면 빈 markets — 크래시가 아니다(ADR-0134)."""
+    from hoga.api.market_routes import _sector_flow_payload
+
+    got = _sector_flow_payload(tmp_path)
+    assert got["markets"] == {}
+    assert got["sampled_at_ms"] is None
