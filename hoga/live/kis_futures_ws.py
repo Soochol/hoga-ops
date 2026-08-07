@@ -75,6 +75,8 @@ class NightTick:
     open_interest: int
     oi_change: int
     market_basis: float | None
+    #: 괴리율(%). `_COLUMNS` 의 `dprt` — 야간에 REST 없이 카드를 세울 때 필요하다.
+    disparity: float | None
     #: 벤더 시각 `HHMMSS`. 수신 시각이 아니라 **체결 시각**이다.
     bsop_hour: str
     t_ms: int
@@ -339,6 +341,7 @@ class KisFuturesNightWs:
                 open_interest=int(_f(row, "hts_otst_stpl_qty") or 0),
                 oi_change=int(_f(row, "otst_stpl_qty_icdc") or 0),
                 market_basis=_f(row, "mrkt_basis"),
+                disparity=_f(row, "dprt"),
                 bsop_hour=bsop_hour,
                 t_ms=int(time.time() * 1000),
             )

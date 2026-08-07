@@ -177,6 +177,10 @@ class FuturesQuotesRuntime:
         self._master: list[FuturesMasterRow] | None = None
         self._master_at = 0.0
         self._master_lock = asyncio.Lock()
+        #: 종목별 마지막 성공 REST 시세. **야간에 REST 실패를 견디기 위한 것**이고,
+        #: 쓰이는 것은 정적 메타데이터(만기·최종거래일·남은 일수)뿐이다 — 값은 틱이
+        #: 덮어쓴다(`snapshot` 참조). 그 필드들은 하루 단위로만 바뀌어 낡아도 무해하다.
+        self._last_quotes: dict[str, FuturesQuote] = {}
         # 야간 WS 는 필요할 때 처음 만든다 — 주간에만 도는 프로세스가 websockets 를
         # import 할 이유가 없다.
         self._ws: Any = None
@@ -231,14 +235,30 @@ class FuturesQuotesRuntime:
         # 야간 실시간은 WS 에서만 오므로, 아래에서 종목별로 덮어쓴다.
         quotes = await client.fetch_futures_quotes(rows)
         by_code = {q.code: q for q in quotes}
+        self._last_quotes.update(by_code)
         ticks = await self._night_ticks(session, tuple(r.code for r in rows))
 
         cards: list[FuturesCard] = []
         for item, row in zip(items, rows, strict=True):
-            quote = by_code.get(row.code)
-            if quote is None:
-                continue
             tick = ticks.get(row.code)
+            quote = by_code.get(row.code)
+            if quote is None and tick is not None:
+                # **야간 틱이 있으면 REST 실패를 견딘다.** 야간 REST 는 어차피 주간
+                # 마감본(15:45 동결)이라 값으로서 아무 정보가 없는데, 그게 안 왔다는
+                # 이유로 살아 있는 실시간 값까지 버리면 **카드가 통째로 사라진다** —
+                # 화면에서는 토글이 없어져 "선물 기능이 사라진" 것으로 보인다.
+                # 실측(2026-08-07 21:4x, 25초 간격 6회): 부분 실패 4회, 빠지는 종목은
+                # 매번 달랐다(무작위 — 종목 특성이 아니다).
+                #
+                # 이때 쓰는 것은 옛 값이 아니라 **정적 메타데이터**뿐이다. 값·등락·
+                # 거래량·미결제·베이시스·괴리율은 아래에서 틱이 전부 덮어쓰고, 남는 것은
+                # 만기·최종거래일·남은 일수뿐이라 하루 단위로만 바뀐다.
+                quote = self._last_quotes.get(row.code)
+            if quote is None:
+                # 틱도 없고 REST 도 없다 — 값을 지어내지 않는다. 주간 부분 실패가 여기다:
+                # 그쪽은 REST 가 유일한 실시간 소스라, 옛 값을 최신인 척 그리는 것보다
+                # 카드를 비우는 편이 정직하다(다음 폴링이면 대개 복구된다).
+                continue
             if tick is None:
                 # 야간이어도 틱이 없으면 주간 마감본이 **옳은 값**이다. 유동성이 낮은
                 # 상품은 야간 내내 무음일 수 있다(실측: 코스닥150·VKOSPI).
@@ -252,10 +272,15 @@ class FuturesQuotesRuntime:
                         value=tick.price,
                         change=tick.change,
                         change_rate=tick.change_rate,
+                        # **전일 종가는 틱에서 되계산한다.** REST 것을 그대로 두면
+                        # last-good 을 쓴 경로에서 어제 값이 남을 수 있고, 그러면
+                        # 등락과 기준선이 서로 다른 날을 가리킨다.
+                        prev_close=tick.price - tick.change,
                         volume=tick.volume,
                         open_interest=tick.open_interest,
                         oi_change=tick.oi_change,
                         market_basis=tick.market_basis,
+                        disparity=tick.disparity,
                         t_ms=tick.t_ms,
                     ),
                     "night",
