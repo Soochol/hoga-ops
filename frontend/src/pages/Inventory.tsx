@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import { useStockDates } from '../api/stock-dates';
 import { StockDateGroupList } from '../inventory/StockDateGroupList';
@@ -67,18 +67,29 @@ export default function Inventory() {
   };
   const unfilteredGroups = useStockDateGroups(rows, '');
 
-  useEffect(() => {
-    if (unfilteredGroups.length === 0) return;
-    // ?code= 가 없거나 존재하지 않는 종목이면 첫 그룹으로 폴백.
-    if (selectedCode !== null && unfilteredGroups.some((g) => g.code === selectedCode)) return;
-    setSelectedCode(unfilteredGroups[0].code);
+  /**
+   * 실제로 열려 있는 종목. `?code=` 가 없거나 존재하지 않는 종목을 가리키면 첫
+   * 그룹으로 폴백한다.
+   *
+   * **effect 로 state 를 맞추지 않고 파생한다.** 종전엔 `useEffect` 가 폴백 값을
+   * `setSelectedCode` 로 써 넣었는데, 그건 한 프레임 늦다 — 첫 렌더는 `selectedCode`
+   * 가 null 이라 `selectGroup` 이 null 을 돌려주고 상세 패널이 "종목을 선택하세요" 를
+   * 그렸다가 다음 렌더에 바뀐다. 파생이면 그 깜빡임이 구조적으로 없고
+   * `react-hooks/set-state-in-effect` 도 같이 풀린다. 사용자 클릭 경로(`selectCode`)
+   * 는 그대로 state + URL 을 쓴다.
+   */
+  const effectiveCode = useMemo(() => {
+    if (selectedCode !== null && unfilteredGroups.some((g) => g.code === selectedCode)) {
+      return selectedCode;
+    }
+    return unfilteredGroups[0]?.code ?? null;
   }, [unfilteredGroups, selectedCode]);
 
   // Resolve the detail group here (single owner of default-to-first), so the
   // detail panel takes a ready group instead of re-grouping the same rows.
   const selectedGroup = useMemo(
-    () => selectGroup(unfilteredGroups, selectedCode),
-    [unfilteredGroups, selectedCode],
+    () => selectGroup(unfilteredGroups, effectiveCode),
+    [unfilteredGroups, effectiveCode],
   );
 
   if (isLoading) {
@@ -112,7 +123,7 @@ export default function Inventory() {
       style={{ gridTemplateColumns: 'var(--sidebar-w) 1fr' }}
     >
       <PanelCard borderless flat data-testid="inventory-list-pane" className="flex min-h-0 flex-col overflow-hidden">
-        <StockDateGroupList rows={rows} selectedCode={selectedCode} onSelect={selectCode} />
+        <StockDateGroupList rows={rows} selectedCode={effectiveCode} onSelect={selectCode} />
       </PanelCard>
       <PanelCard borderless flat data-testid="inventory-detail-pane" className="flex min-h-0 flex-col overflow-hidden">
         <StockDateGroupDetail group={selectedGroup} />

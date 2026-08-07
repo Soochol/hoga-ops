@@ -42,8 +42,13 @@ export function DataSection({
   headerLeading?: ReactNode;
   /** 헤더 우측에 나란히 놓이는 컨트롤(숨김 버튼 등). 넘기지 않으면 렌더 불변. */
   headerTrailing?: ReactNode;
-  /** 헤더 밑 구분선(border-b) 제거 — 헤더가 본문과 같은 톤으로 흐르는 부유 카드 스타일
-   *  (예: /capture 캡처 요청·대기열). 기본은 구분선 유지. */
+  /** 헤더 밑 구분선(border-b) 제거. 기본은 구분선 유지.
+   *
+   *  **부유 카드(`bg-bg-card` + `shadow-panel`) 안에서만 쓸 것.** 원래 근거가 "헤더가
+   *  본문과 같은 톤으로 흐르는 부유 카드 스타일" 이었는데, 감싸는 pane 이 `flat` 으로
+   *  바뀌면 그 전제가 사라진다 — 배경·그림자·테두리가 전부 꺼진 표면에서 밑줄까지
+   *  없애면 남는 분리 수단이 0이 된다. `/capture` 가 정확히 그 상태였고 2026-08-07 에
+   *  제거했다. 현재 유일한 호출부는 `/screener` 결과 섹션이다. */
   flushHeader?: boolean;
 }) {
   const headerId = useId();

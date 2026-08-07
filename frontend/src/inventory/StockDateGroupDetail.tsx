@@ -85,12 +85,17 @@ export function StockDateGroupDetail({ group }: Props) {
       data-testid="stock-date-group-detail-root"
       className="flex h-full flex-col min-h-0 overflow-hidden"
     >
-      <header className="px-4 py-3 flex items-baseline justify-between gap-4">
+      {/* 밑줄이 이 패널의 **유일한 경계다** — pane 이 `PanelCard borderless flat` 이라
+          테두리·그림자·톤 스텝이 전부 꺼져 있고, 좌측 리스트와 갈라 주는 건 gap 뿐이었다.
+          `/market` 이 같은 문제에 낸 답(`CARD_HEADER_RULE`)과 같은 선이다. */}
+      <header className="flex items-baseline justify-between gap-4 border-b border-border px-4 py-3">
         <h2 className="text-md font-semibold shrink-0">
           <span className="text-accent font-data">{group.code}</span>{' '}
           <span className="text-fg">{group.name}</span>
         </h2>
-        <div className="flex flex-col items-end gap-1 min-w-0">
+        {/* 메타와 재캡처 버튼을 한 줄로 — 세로로 쌓으면 헤더가 2행이 되어 표가 그만큼
+            밀린다. 좁은 pane 에서는 wrap 이 받아낸다. */}
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-md gap-y-2xs">
           <span className="text-xs text-fg-dim font-data tabular-nums">
             {group.dates.length}일치 · 거래량 {fmtVolume(totalVolume)} · {fmtSize(group.totalSizeBytes)}
           </span>

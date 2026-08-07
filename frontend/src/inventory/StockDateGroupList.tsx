@@ -32,7 +32,9 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
     >
       {/* 검색·필터 중에는 결과가 헤더 카운트에 그대로 반영된다 — 별도의
           "N matches" 줄과 전체 카운트가 따로 놀던 이중 표기를 통합(2026-08-04). */}
-      <header className="flex items-center gap-2 px-3 py-2 text-xs uppercase text-fg-dim font-semibold">
+      {/* 밑줄이 이 패널의 유일한 경계다 — pane 이 `borderless flat` 이라 테두리·그림자가
+          전부 꺼져 있다(`/market` 의 `CARD_HEADER_RULE` 과 같은 선). */}
+      <header className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs uppercase text-fg-dim font-semibold">
         <span className="min-w-0 flex-1 truncate">
           {isFiltering
             ? <>종목 {allGroupsCount}개 중 <span className="text-fg">{groups.length}개</span> 표시</>
