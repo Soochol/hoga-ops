@@ -146,3 +146,51 @@ A 가 사용자 시그널을 직접 해소하고 ADR-0044 의 원래 의도를 �
 - 캡처 파이프라인이 *빈 dir 을 적극 생성* 하는 다른 경로가 발견됨 — parser
   fix 외에 promote.py / migrate.py 도 같은 패턴 가능. 발견 시 본 ADR + parser
   fix 가 가정한 invariant ("미캡처 = 디스크 부재") 가 깨지므로 재평가.
+
+## Amendment (2026-08-07) — `/api/candles` 의 404 는 **디렉터리 층**에만 걸린다
+
+**트리거:** 위 "Future signal to revisit" 마지막 줄("캡처 파이프라인이 빈 dir 을
+적극 생성하는 다른 경로가 발견됨 — promote.py / migrate.py 도 같은 패턴 가능")과
+같은 계열의 발견. 다만 문제는 빈 **dir** 이 아니라 **없는 파일**이었다.
+
+`live/promote._atomic_write_table` 의 계약은 **"0행이면 파일을 안 남긴다"**
+(`path.unlink(missing_ok=True)`) 이고, 그 docstring 이 부재 처리를 명시적으로
+리더의 몫으로 넘긴다. 이 계약을 스팟 라우트 두 개가 안 지켜 500 이 났고 #1176 이
+`_spot_table_path` 로 고쳤다. `/api/candles` 는 헬퍼(`_parquet_path`)와 규약(404)이
+달라 그때 범위 밖으로 남겼고, 이 개정이 그 층을 마저 덮는다.
+
+**실측 2026-08-07** (`hogaplay/` + `meta.json` 만 있는 Stock-Date, 캔들 0개):
+
+| 디스크 모양 | 그때 응답 |
+|---|---|
+| 0행 `candles.parquet` **존재** | `200 {"candles": []}` |
+| `candles.parquet` **부재** | **500** (DuckDB `IOException: No files found ...`) |
+| Stock-Date 미캡처 | `404` |
+
+즉 **같은 논리 상태(캔들 0개)가 어느 writer 세대가 그 디렉터리를 만들었는지에
+따라 갈렸다** — hogaplay 파서는 0행이어도 파일을 쓰고(`parser/__init__.py`),
+promote 는 안 쓴다.
+
+**개정:** `/api/candles` 는 파케이 **파일** 부재를 `200 {"candles": []}` 로 답한다.
+본 ADR 의 404 는 **`StockDateNotFound`(미캡처 (date, code)) 층에 한정**되며 그
+층은 바뀌지 않는다.
+
+- **본 ADR 위반이 아니다.** 위 Trade-off 절의 *"`/api/candles` 를 200-empty 로
+  바꾸려 하면 본 ADR 위반"* 은 **미캡처를 200 으로 바꾸는 것**을 막는 문장이다.
+  그 404 는 바이트 하나 안 바뀐다 — 회귀 테스트가 핀으로 고정한다.
+- **파일 층을 404 로 올리지 않는 이유**: 그러면 0행이면 200, 0행인데 파일이
+  없으면 404 라는 **새 비대칭이 같은 자리에 생긴다**. 위 표의 첫 줄을 404 로
+  바꾸는 선택지는 없다(0행 parquet 은 정상적으로 읽히는 정직한 빈 결과다).
+- **`/api/meta` 는 무영향.** meta.json 의 존재는 `QueryEngine.parquet_dir` 이
+  이미 보증하므로 "있는 디렉터리, 없는 파일" 상태가 성립하지 않는다.
+- **`_spot_table_path` 를 재사용하지 않는다.** 스팟 라우트는 디렉터리 부재도 빈
+  200 이고 여기는 그게 404 다 — 이름과 규약이 그 비대칭에 묶여 있다.
+
+**Invariant 추가:**
+
+- (Invariant-51.4) `/api/candles` 의 404 는 **오직** `StockDateNotFound` 에서만
+  나온다. 해석된 디렉터리 안의 `candles.parquet` 부재는 빈 200 이다. 다시 말해
+  "캔들 0개" 는 디스크 모양과 무관하게 항상 `200 {"candles": []}` 다.
+
+**회귀 테스트:** [test_candles_missing_parquet_file.py](../../tests/unit/api/test_candles_missing_parquet_file.py)
+— 위 표 세 줄을 그대로 핀으로 고정한다.
