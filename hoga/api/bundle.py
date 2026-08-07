@@ -1345,7 +1345,17 @@ def _empty_range_bundle(
     )
 
 
-def build_program_trade_series(engine: QueryEngine, *, code: str, dates: list[str]) -> ProgramTradeSeries:
+def build_program_trade_series(
+    engine: QueryEngine, *, code: str, dates: list[str], venue: str
+) -> ProgramTradeSeries:
+    """선택 venue 의 프로그램 순매수 시계열.
+
+    `venue` 는 **필수**다 — 기본값을 두면 호출부가 빠뜨렸을 때 조용히 KRX 답을 주고,
+    NXT·통합 화면은 15:30 에 멎은 시계열을 자기 시장 것으로 믿는다. 그 침묵이 정확히
+    이 축이 없던 시절의 증상이었다.
+
+    venue 축 이전 파일은 store 가 KRX 에 한해 폴백해 읽는다(`read_path`).
+    """
     data_dir = getattr(engine, "data_dir", None)
     if not isinstance(data_dir, Path):
         return ProgramTradeSeries(points=[])
@@ -1353,7 +1363,7 @@ def build_program_trade_series(engine: QueryEngine, *, code: str, dates: list[st
     points: list[ProgramTradePoint] = []
     for date in dates:
         # 읽기 전용 — mtime 캐시로 과거일 JSON 재파싱 제거(today 는 mtime 변경 시 재로드).
-        day = store.load_cached(code, date)
+        day = store.load_cached(code, date, venue)
         # 임계 재검증 — 0w drain 초기(PR-F4 직후)에 매 드레인마다 쌓인 30초 간격
         # 오염 이벤트가 gap_risk 오탐을 만들지 않도록 저장분도 같은 술어로 거른다.
         gap_times = {
@@ -1817,7 +1827,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         depth_delta=depth_delta,
         volume_distributions=volume_distributions,
         program_trade=(
-            build_program_trade_series(engine, code=code, dates=included_dates)
+            build_program_trade_series(engine, code=code, dates=included_dates, venue=venue)
             if include_program_trade
             else ProgramTradeSeries(points=[])
         ),
