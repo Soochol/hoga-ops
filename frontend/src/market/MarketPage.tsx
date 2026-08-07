@@ -36,7 +36,7 @@ import { heatBg } from '../heatmap/heat';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 import type { LiveIndexId } from '../live/liveInstrument';
-import { PageContainer } from '../layout/PageContainer';
+import { PAGE_MAX_W, PageContainer } from '../layout/PageContainer';
 import { persistJson, readJsonObject } from '../state/persist';
 import { CARD_HEADER_RULE, CardHeader, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
 import { priceDirClass } from '../ui/priceDir';
@@ -756,7 +756,7 @@ export function MarketPage() {
       {/* 간격도 분리 수단이다 — 이전 `gap-xs`(4.5px)는 헤더 밑줄과 함께 써도 카드가
           붙어 보였다. 카드 사이 `md`, 성격이 다른 좌우 열 사이만 `xl`
           (DESIGN.md 가 "Major section dividers" 로 정의한 그 값). */}
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1680px] flex-col gap-md overflow-y-auto">
+      <div className={`mx-auto flex h-full min-h-0 w-full ${PAGE_MAX_W} flex-col gap-md overflow-y-auto`}>
         <IndexCards />
         <div className="grid grid-cols-[2fr_1fr] gap-x-xl gap-y-md">
           <div className="flex flex-col gap-md">

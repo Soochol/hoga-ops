@@ -9,7 +9,7 @@ import { PageState, PanelCard } from '../ui/PageShell';
 
 function InventoryStateShell({ children }: { children: ReactNode }) {
   return (
-    <PageContainer className="grid grid-cols-[minmax(0,42rem)] content-start !pb-0">
+    <PageContainer centered className="grid grid-cols-[minmax(0,42rem)] content-start !pb-0">
       <PanelCard borderless flat data-testid="inventory-page-primary">
         <PageState>{children}</PageState>
       </PanelCard>
@@ -23,6 +23,7 @@ function InventoryStateShell({ children }: { children: ReactNode }) {
 function InventoryLoadingSkeleton() {
   return (
     <PageContainer
+      centered
       className="grid gap-md !pb-0"
       style={{ gridTemplateColumns: 'var(--sidebar-w) 1fr' }}
     >
@@ -119,6 +120,7 @@ export default function Inventory() {
 
   return (
     <PageContainer
+      centered
       className="grid gap-md !pb-0"
       style={{ gridTemplateColumns: 'var(--sidebar-w) 1fr' }}
     >
