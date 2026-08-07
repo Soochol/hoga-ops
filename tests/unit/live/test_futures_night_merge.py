@@ -63,7 +63,7 @@ class _FakeWs:
 def _tick(code: str, price: float) -> NightTick:
     return NightTick(
         code=code, price=price, change=23.8, change_rate=2.43, volume=18248,
-        open_interest=159000, oi_change=-100, market_basis=22.03,
+        open_interest=159000, oi_change=-100, market_basis=22.03, disparity=-0.4,
         bsop_hour="235027", t_ms=999,
     )
 
@@ -142,19 +142,58 @@ async def test_closed_session_does_not_open_ws(runtime, monkeypatch):
     assert all(c.data_session == "day" for c in snap.cards)
 
 
-async def test_missing_rest_quote_drops_card_even_with_tick(runtime, monkeypatch):
-    """REST 가 그 종목을 못 주면 카드를 만들지 않는다 — 틱만으로는 만기·괴리율이 없다."""
+class _PartialClient:
+    """A06609 만 빼고 준다 — 실측된 무작위 부분 실패를 재현한다."""
+
+    async def fetch_futures_quotes(self, rows, *, foreground=False):
+        return [_quote(r.code, 100.0) for r in rows if r.code != "A06609"]
+
+
+async def test_missing_rest_quote_drops_card_when_never_seen(runtime, monkeypatch):
+    """REST 를 **한 번도 못 받은** 종목은 틱이 있어도 카드를 만들지 않는다.
+
+    만기·최종거래일은 틱에 없고 REST 에만 있다. 지어내면 화면이 롤오버 임박을
+    거짓으로 말하므로, 그 종목은 아직 세울 수 없다.
+    """
     monkeypatch.setattr(fr, "futures_session", lambda _t: "night")
-
-    class _PartialClient:
-        async def fetch_futures_quotes(self, rows, *, foreground=False):
-            return [_quote(r.code, 100.0) for r in rows if r.code != "A06609"]
-
     runtime._client_factory = lambda: _PartialClient()
     runtime._ws = _FakeWs({"A06609": _tick("A06609", 1384.4)})
 
     snap = await runtime.snapshot()
     assert "KOSDAQ150_F" not in {c.item.id for c in snap.cards}
+
+
+async def test_night_tick_survives_rest_failure_once_seen(runtime, monkeypatch):
+    """**야간엔 REST 가 빠져도 틱이 있으면 카드가 산다.**
+
+    야간 REST 는 주간 마감본(15:45 동결)이라 값으로서 아무 정보가 없다. 그게 안 왔다는
+    이유로 살아 있는 실시간 값까지 버리면 카드가 통째로 사라지고, 화면에서는 토글이
+    없어져 **"선물 기능이 사라진" 것으로 보인다**(2026-08-07 사용자 신고).
+
+    실측(21:4x, 25초 간격 6회): 부분 실패 4회 · 빠지는 종목은 매번 달랐다.
+    """
+    monkeypatch.setattr(fr, "futures_session", lambda _t: "night")
+    runtime._ws = _FakeWs({"A06609": _tick("A06609", 1384.4)})
+
+    # 1회차 — REST 가 정상이라 정적 메타데이터를 확보한다.
+    await runtime.snapshot()
+
+    # 2회차 — 같은 종목이 REST 에서 빠진다.
+    runtime._client_factory = lambda: _PartialClient()
+    snap = await runtime.snapshot()
+
+    by_id = {c.item.id: c for c in snap.cards}
+    assert "KOSDAQ150_F" in by_id
+    card = by_id["KOSDAQ150_F"]
+    # 값은 **틱**이다 — 옛 REST 값(100.0)이 남으면 낡은 값을 최신인 척 그리는 것이다.
+    assert card.quote.value == 1384.4
+    assert card.data_session == "night"
+    # 정적 메타데이터만 이전 것에서 온다.
+    assert card.quote.expiry == "202609"
+    # 괴리율은 이제 틱이 싣는다(WS `_COLUMNS` 의 `dprt`).
+    assert card.quote.disparity == -0.4
+    # 전일 종가는 틱에서 되계산 — 등락과 기준선이 다른 날을 가리키면 안 된다.
+    assert card.quote.prev_close == pytest.approx(1384.4 - 23.8)
 
 
 def test_ws_tick_parsing_uses_named_columns() -> None:
