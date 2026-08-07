@@ -14,7 +14,7 @@ import {
   type RangeRequestOptions,
 } from './rangeRequest';
 import { useLiveVenueStore } from '../state/liveVenue';
-import { ORDERFLOW_SOURCE_PREF } from '../state/sourcePreference';
+import { useOrderflowSourcePref } from '../state/sourcePreference';
 import type { SourcePreference } from '../state/sourcePreference';
 import { useLivePromotionStore } from '../state/livePromotion';
 
@@ -593,7 +593,7 @@ export function useRange(
   options?: RangeRequestOptions,
   sourcePrefOverride?: SourcePreference,
 ) {
-  const storedSourcePref: SourcePreference = ORDERFLOW_SOURCE_PREF;
+  const storedSourcePref = useOrderflowSourcePref();
   const sourcePref = sourcePrefOverride ?? storedSourcePref;
   // venue 는 **전역 선택기**를 따른다(#1132) — `/live` 에서 고른 시장이 히트맵·
   // 스크리너까지 지배하는 것과 같은 규율. 쿼리 키에도 들어가므로 venue 를 바꾸면
@@ -623,7 +623,7 @@ function useLiveRangeDelta(
   sourcePrefOverride?: SourcePreference,
   mode: LiveRangeDeltaMode = 'sidecar',
 ) {
-  const storedSourcePref: SourcePreference = ORDERFLOW_SOURCE_PREF;
+  const storedSourcePref = useOrderflowSourcePref();
   const sourcePref = sourcePrefOverride ?? storedSourcePref;
   const venue = useLiveVenueStore((s) => s.venue);  // 전역 선택기(#1132)
   const queryClient = useQueryClient();

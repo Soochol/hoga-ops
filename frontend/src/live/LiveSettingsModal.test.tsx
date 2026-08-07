@@ -95,6 +95,7 @@ describe('LiveSettingsModal (2단)', () => {
       schema_version: 1,
       rest_bypass_enabled: false,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
     render(<LiveSettingsModal variant="study" onClose={() => {}} />, {
       wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
@@ -102,8 +103,8 @@ describe('LiveSettingsModal (2단)', () => {
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
     // study는 캔들 라디오 대신 디스크 온리 안내문, 표시/캡처 매크로 그룹은 유지.
     expect(screen.getByTestId('study-candle-source-note')).toBeTruthy();
-    // 「호가·체결 데이터 기준」 은 폐지됐다(2026-08-07) — 나머지 그룹은 유지.
-    expect(screen.queryByText('호가·체결 데이터 기준')).toBeNull();
+    // 「호가·체결 데이터 기준」 은 라디오 3종이 폐지된 뒤 옵트인 토글로 돌아왔다.
+    expect(screen.getByText('호가·체결 데이터 기준')).toBeTruthy();
     expect(screen.getByText('표시 소스')).toBeTruthy();
     expect(screen.getByText('캡처 저장')).toBeTruthy();
   });

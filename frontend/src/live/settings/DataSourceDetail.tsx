@@ -44,6 +44,8 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
   const { data } = useLiveSettings();
   const patch = usePatchLiveSettings();
   const restBypassEnabled = data?.rest_bypass_enabled ?? false;
+  const krxPreferHogaplay = data?.krx_prefer_hogaplay ?? false;
+  const venue = useLiveVenueStore((s) => s.venue);
 
   return (
     <>
@@ -93,11 +95,31 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
             ))}
           </div>
         </RoleSourceGroup>
-        {/* 「호가·체결 데이터 기준」 라디오 3종은 폐지됐다(2026-08-07).
-            셋 중 둘(hogaplay 우선·완결성 우선)이 venue 비교를 깨뜨렸다 — KRX 만
-            hogaplay 로, NXT·통합은 키움으로 계산돼 시장을 토글하면 소스도 함께
-            바뀌었다. 정답이 하나면 그건 옵션이 아니라 동작이라, 사다리를 키움
-            고정으로 두고 선택지를 없앴다(`sources.ORDERFLOW_LADDER`). */}
+        {/* 「호가·체결 데이터 기준」 라디오 3종은 폐지됐다(2026-08-07 오전) — 셋 중 둘이
+            venue 비교를 깨뜨렸다. 같은 날 오후에 **옵트인 토글 하나로** 돌아왔다:
+            폐지 근거였던 "hogaplay 는 죽어가는 폴백"을 ADR-0142 가 뒤집었기 때문이다
+            (271종목/일 복원). 라디오가 아니라 토글인 이유 = 기본은 여전히 비교
+            가능성이고, 해상도는 사용자가 명시적으로 고르는 것이다. */}
+        <RoleSourceGroup
+          title="호가·체결 데이터 기준"
+          description="KRX에서 캡처 아카이브(hogaplay)를 우선 사용합니다 같은 시간대를 훨씬 촘촘하게(실측 최대 145배) 볼 수 있지만, NXT·통합은 키움으로 계산되므로 시장 간 지표 비교가 어긋납니다 적용된 날짜는 차트에 소스 배지로 표시됩니다"
+        >
+          <SettingsRow label="KRX에서 hogaplay 우선" testId="krx-prefer-hogaplay-row">
+            <ToggleSwitch
+              label="KRX에서 hogaplay 우선"
+              checked={krxPreferHogaplay}
+              onClick={() => patch.mutate({ krx_prefer_hogaplay: !krxPreferHogaplay })}
+            />
+          </SettingsRow>
+          {/* 비활성화하지 **않는다** — 설정은 지속되는 값이고 거래소는 자주 바뀌므로,
+              NXT 를 볼 때마다 회색이면 고장으로 읽힌다. 대신 지금 적용되지 않는다는
+              사실만 알린다. */}
+          {krxPreferHogaplay && venue !== 'KRX' && (
+            <div className="mt-1 text-xs text-fg-dim" data-testid="krx-prefer-hogaplay-inactive">
+              현재 거래소({LIVE_VENUE_LABELS[venue]})에는 적용되지 않습니다 — hogaplay는 KRX 전용입니다.
+            </div>
+          )}
+        </RoleSourceGroup>
         <RoleSourceGroup
           title="스크리너 일봉 데이터"
           description="스크리너 갱신으로 저장되는 KIS 일봉 parquet입니다. 조건검색과 섹터 랭킹의 기준 데이터로 사용됩니다"

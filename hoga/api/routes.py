@@ -262,7 +262,7 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         date: StockDate,
         t: int = Query(...),
         bucket_ms: int | None = Query(None),
-        source_pref: str = Query("hogaplay"),
+        source_pref: str = Query(""),
         # venue 는 **필수**다(ADR-0140) — 기본값은 곧 "빠뜨리면 조용히 KRX" 다.
         venue: str = Query(...),
     ) -> OrderbookResponse:
@@ -358,7 +358,7 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
     def brokers_series(
         code: Code,
         date: StockDate,
-        source_pref: str = Query("hogaplay"),
+        source_pref: str = Query(""),
         # venue 는 **필수**다(ADR-0140) — 기본값은 곧 "빠뜨리면 조용히 KRX" 다.
         venue: str = Query(...),
     ) -> BrokerSeriesResponse:
@@ -397,7 +397,7 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         from_date: str = Query(..., alias="from"),
         to_date: str = Query(..., alias="to"),
         bucket_ms: int = Query(...),
-        source_pref: str = Query("hogaplay"),
+        source_pref: str = Query(""),
         # venue 는 **필수**다(ADR-0140). 기본값을 주면 호출자가 빠뜨렸을 때 조용히
         # KRX 를 읽고, 그게 곧 "실시간 꼬리는 NXT 인데 과거 본체는 KRX" 인 섞인
         # 차트다 — 이 한 라우트가 매물대·최대벽·프로그램·depth 히트맵·잔량 증감·

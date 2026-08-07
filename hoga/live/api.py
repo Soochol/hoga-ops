@@ -1807,6 +1807,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             data_dir,
             rest_bypass_enabled=req.rest_bypass_enabled,
             screener_depth_autocollect=req.screener_depth_autocollect,
+            krx_prefer_hogaplay=req.krx_prefer_hogaplay,
         )
         try:
             await refresh_live_stream(data_dir=data_dir)

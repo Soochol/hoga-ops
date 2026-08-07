@@ -3123,6 +3123,7 @@ def test_live_settings_routes_round_trip(tmp_path):
         "schema_version": 1,
         "rest_bypass_enabled": False,
         "screener_depth_autocollect": False,
+        "krx_prefer_hogaplay": False,
     }
 
     r = client.patch(
@@ -3192,6 +3193,7 @@ def test_live_settings_patch_can_set_bypass_alone(tmp_path):
         "schema_version": 1,
         "rest_bypass_enabled": True,
         "screener_depth_autocollect": False,
+        "krx_prefer_hogaplay": False,
     }
     assert client.get("/api/live/settings").json()["rest_bypass_enabled"] is True
 

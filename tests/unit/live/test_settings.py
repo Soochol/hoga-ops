@@ -34,6 +34,28 @@ def test_update_live_settings_partial_patch_preserves_omitted_fields(tmp_path):
     assert on_disk["rest_bypass_enabled"] is True
 
 
+def test_unrelated_patch_preserves_krx_prefer_hogaplay(tmp_path):
+    """**`update_live_settings` 는 모델을 필드별로 재조립한다** — 새 필드를 거기에
+    추가하지 않으면 무관한 PATCH 가 그 값을 조용히 기본값으로 되돌린다.
+
+    타입 에러가 나지 않는 종류의 누락이라(모든 필드에 기본값이 있다) 이 테스트가
+    유일한 그물이다. `LiveSettings` 에 필드를 추가할 때마다 여기에 한 줄 늘릴 것.
+    """
+    save_live_settings(tmp_path, LiveSettingsResponse(krx_prefer_hogaplay=True))
+
+    updated = update_live_settings(tmp_path, rest_bypass_enabled=True)
+
+    assert updated.krx_prefer_hogaplay is True, "무관한 PATCH 가 소스 선호를 리셋했다"
+    assert updated.rest_bypass_enabled is True
+    on_disk = json.loads((tmp_path / "live_settings.json").read_text(encoding="utf-8"))
+    assert on_disk["krx_prefer_hogaplay"] is True
+
+
+def test_krx_prefer_hogaplay_defaults_off(tmp_path):
+    """기본은 키움 고정 사다리 — #1172 의 비교 가능성이 기본값으로 남는다."""
+    assert load_live_settings(tmp_path).krx_prefer_hogaplay is False
+
+
 def test_corrupt_settings_falls_back_to_bypass_false(tmp_path):
     (tmp_path / "live_settings.json").write_text("{broken", encoding="utf-8")
 

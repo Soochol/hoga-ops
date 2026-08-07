@@ -24,9 +24,12 @@ def test_resolve_source_prefers_explicit(tmp_path: Path) -> None:
 
     engine = QueryEngine(tmp_path)
     try:
-        # 정책 문자열은 승자를 못 바꾼다(옵션 폐지) — 둘 다 있으면 사다리 1순위가 이긴다.
-        assert _resolve_source(engine, "20260527", "005930", "hogaplay") == "kiwoom_live"
+        # 기본(빈 문자열·폐지된 옛 정책)은 사다리 1순위가 이긴다.
+        assert _resolve_source(engine, "20260527", "005930", "") == "kiwoom_live"
         assert _resolve_source(engine, "20260527", "005930", "kiwoom_live") == "kiwoom_live"
+        assert _resolve_source(engine, "20260527", "005930", "hogaplay_first") == "kiwoom_live"
+        # `"hogaplay"` 만 승자를 바꾼다 — 설정 `krx_prefer_hogaplay` 의 옵트인 토큰.
+        assert _resolve_source(engine, "20260527", "005930", "hogaplay") == "hogaplay"
     finally:
         engine.close()
 

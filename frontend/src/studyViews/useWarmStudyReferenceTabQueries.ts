@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import type { StudyViewReference } from '../api/studyViews';
 import type { StudyTab } from '../state/studyTabs';
-import { ORDERFLOW_SOURCE_PREF } from '../state/sourcePreference';
+import { useOrderflowSourcePref } from '../state/sourcePreference';
 import { referenceStudyView } from './studyViewVariant';
 import { studyReferenceQueryOptions } from './studyReferenceQueries';
 import { useLiveVenueStore } from '../state/liveVenue';
@@ -28,7 +28,7 @@ export function useWarmStudyReferenceTabQueries({
   activatedTabIds,
   saves,
 }: UseWarmStudyReferenceTabQueriesArgs): Record<string, StudyTabQueryStatus> {
-  const sourcePref = ORDERFLOW_SOURCE_PREF;
+  const sourcePref = useOrderflowSourcePref();
   // 지표는 차트 창이 소유한다(#904) — 전역을 읽으면 차트가 그릴 지표와 여기서
   // 받아오는 데이터가 어긋난다.
   const {
