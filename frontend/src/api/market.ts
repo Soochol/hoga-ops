@@ -162,14 +162,14 @@ export interface BreadthCount {
   truncated: boolean;
 }
 
+/** 급등·급락은 응답에서 빠졌다 — 그 둘을 쓰던 시장 폭 카드가 업종 수급으로 교체됐다.
+ *  되살릴 때는 백엔드 `_BREADTH_QUERIES` 의 ka10019 두 줄부터다. */
 export interface BreadthResponse {
   markets: Record<
     string,
     {
       new_high_52w?: BreadthCount;
       new_low_52w?: BreadthCount;
-      surge?: BreadthCount;
-      plunge?: BreadthCount;
     }
   >;
 }
@@ -180,6 +180,43 @@ export function useMarketBreadth() {
     queryFn: () => apiCall<BreadthResponse>('/api/market/breadth'),
     refetchInterval: () => pollWhileOpen(5 * 60_000),
     staleTime: 4 * 60_000,
+  });
+}
+
+// ── 업종별 투자자 순매수 ─────────────────────────────────────────────────
+
+export interface SectorFlowRow {
+  code: string;
+  name: string;
+  /** 업종 지수 레벨. `ka10051` 은 ka20003 과 **스케일이 달라**(소수점 제거) 백엔드가
+   *  ÷100 해서 준다 — 화면은 그 사실을 몰라도 된다. */
+  value: number | null;
+  change_pct: number | null;
+  /** 억원. `null` 은 "0" 이 아니라 **벤더가 말하지 않았다**는 뜻이다. */
+  individual: number | null;
+  foreign: number | null;
+  institution: number | null;
+}
+
+export interface SectorFlowResponse {
+  date: string;
+  /** `amt_eok` — 단위를 이름이 아니라 필드로 말한다(#1117). */
+  unit: string;
+  /** 표본 시각. 수집기가 죽으면 카드는 마지막 표본을 계속 그리므로, **언제 것인지**를
+   *  화면이 말할 수 있어야 멎은 걸 알아챈다. 표본이 없으면 null. */
+  sampled_at_ms: number | null;
+  /** 시장 → 업종 행. **종합 행이 맨 앞**이다(화면의 기준선). */
+  markets: Record<string, SectorFlowRow[]>;
+}
+
+export function useMarketSectorFlow() {
+  return useQuery({
+    queryKey: ['market', 'sector-flow'],
+    queryFn: () => apiCall<SectorFlowResponse>('/api/market/sector-flow'),
+    // 수집기가 60초로 찍으므로 그보다 자주 물어도 새 표본이 없다 — investor-flow 와
+    // 같은 축이다(같은 TR 의 같은 표본을 읽는다).
+    refetchInterval: () => pollWhileOpen(60_000),
+    staleTime: 30_000,
   });
 }
 

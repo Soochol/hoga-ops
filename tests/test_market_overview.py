@@ -273,3 +273,44 @@ def test_index_investor_net_result_declares_amt_eok_unit():
         type("I", (), {"id": "KOSPI"})(), "20260801", "20260805", points=[], warnings=[],
     )
     assert got["unit"] == "amt_eok"
+
+
+def test_sector_investor_rows_use_ka10051_scale_not_ka20003():
+    """같은 이름의 필드가 TR 마다 100배 다르다 — 스케일을 섞으면 지수가 77,903 이 된다.
+
+    실측(2026-08-07 장중 저장 표본): 코스닥 종합의 `cur_prc="-77903"` 는 779.03 이고
+    `flu_rt="-282"` 는 -2.82% 다. 순매수 금액은 억원 정수라 변환이 없다 —
+    **한 응답 안에서 필드마다 규칙이 갈린다.**
+    """
+    from hoga.live.market_overview import parse_sector_investor_rows
+
+    rows = [
+        {"inds_cd": "103_AL", "inds_nm": "일반서비스", "cur_prc": "-83812", "flu_rt": "-220",
+         "ind_netprps": "+249", "frgnr_netprps": "-133", "orgn_netprps": "-128"},
+        {"inds_cd": "101_AL", "inds_nm": "종합(KOSDAQ)", "cur_prc": "-77903", "flu_rt": "-282",
+         "ind_netprps": "+3453", "frgnr_netprps": "-2435", "orgn_netprps": "-1129"},
+    ]
+    got = parse_sector_investor_rows(rows)
+
+    # 종합이 맨 앞으로 온다 — 화면이 기준선으로 쓴다.
+    assert [r["code"] for r in got] == ["101", "103"]
+    whole = got[0]
+    assert whole["value"] == 779.03          # 부호 벗김 + ÷100
+    assert whole["change_pct"] == -2.82      # ÷100, 부호 유지
+    assert whole["individual"] == 3453       # 억원 정수 — 변환 없음
+    assert whole["foreign"] == -2435
+    assert got[1]["name"] == "일반서비스"
+
+
+def test_sector_investor_rows_strip_venue_suffix():
+    """`_AL` 이 붙은 채 두면 ka20003 의 업종코드(`001`)와 조인이 안 된다."""
+    from hoga.live.market_overview import parse_sector_investor_rows
+
+    got = parse_sector_investor_rows([
+        {"inds_cd": "013_AL", "inds_nm": "전기/전자", "cur_prc": "+123456", "flu_rt": "+150"},
+    ])
+    assert got[0]["code"] == "013"
+    assert got[0]["value"] == 1234.56
+    assert got[0]["change_pct"] == 1.5
+    # 값이 없는 주체는 None — 0 으로 채우면 "안 샀다" 가 된다.
+    assert got[0]["individual"] is None
