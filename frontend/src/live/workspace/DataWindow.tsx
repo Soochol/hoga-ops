@@ -328,6 +328,11 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
 }
 
 function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
+  // venue 는 시그니처 요구가 아니라 **실제 필터 키**다 — `live.broker` 는 선택 venue
+  // (종목별로 해석한 effective)로 걸러져 도착한다(liveSeries.ts 의 filterByVenueTag).
+  // 아래 세 경로가 같은 venue 를 타야 한다: WS 꼬리(live.broker) · 스팟
+  // (useLiveBrokersAtCursor) · 당일 누적(useLiveBrokersToday). 하나만 어긋나면
+  // 병합 시리즈에서 시장이 섞인다.
   const venue = useLiveVenueStore((s) => s.venue);
   const live = useLiveSeries(code, venue);
   // 표시 창(클립·x축)은 **유효** venue 로 정한다 — 선택값 그대로면 NXT 미상장 종목에
@@ -573,8 +578,9 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const linked = link !== null && link.code === code;
-  // program(0w) WS 실시간 꼬리 — venue 는 useLiveSeries 시그니처 요구일 뿐 program 은
-  // venue 무관(백엔드가 KRX 만 발행, 내부 필터 없음). 5분 주기 번들의 program_trade
+  // program(0w) WS 실시간 꼬리 — `live.program` 도 선택 venue 로 걸러져 온다
+  // (liveSeries.ts 의 filterByVenueTag). 백엔드의 KRX-only 발행 강제는 ADR-0140 §2 에서
+  // 걷혔고, 지금은 세 venue 모두 venue 태그를 달고 publish 된다. 5분 주기 번들의 program_trade
   // (REST 본체)에 이 꼬리를 이어 거래원·10호가와 같은 즉시성으로 갱신한다 — 예전엔
   // 번들만 봐서 최대 5분 지연됐다.
   const venue = useLiveVenueStore((s) => s.venue);
