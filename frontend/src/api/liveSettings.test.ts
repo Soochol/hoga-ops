@@ -114,4 +114,53 @@ describe('usePatchLiveSettings — optimistic update', () => {
     // Optimistic true was rolled back to the original false.
     expect(qc.getQueryData(LIVE_SETTINGS_KEY)).toEqual(BASE_SETTINGS);
   });
+
+  /**
+   * 탭 전역 설정. 이 설정의 진실은 **서버**라 값을 복제하지 않고 "다시 읽어라"는
+   * 핑만 보낸다. 그래서 검사 대상은 저장된 문자열의 내용이 아니라
+   * **매 PATCH 마다 값이 달라지는가**다 — 같은 값을 다시 쓰면 storage 이벤트가
+   * 발생하지 않아, 두 번째 변경부터 다른 탭이 조용히 못 받는다.
+   */
+  it('성공한 PATCH 마다 매번 다른 핑 값을 쓴다 (같은 값이면 storage 이벤트가 안 뜬다)', async () => {
+    const { usePatchLiveSettings } = await import('./liveSettings');
+    vi.spyOn(client, 'apiCall').mockResolvedValue(BASE_SETTINGS);
+    // ⚠ 시계를 **고정한다**. 안 그러면 두 PATCH 가 다른 ms 에 떨어지는 것만으로
+    // 값이 갈려서, 카운터를 지워도 테스트가 통과한다(실측: 지웠을 때 같은 ms 라
+    // 우연히 잡혔지만, 느린 머신에서는 조용히 위양성이 된다).
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    const qc = new QueryClient();
+    localStorage.clear();
+
+    const { result } = renderHook(() => usePatchLiveSettings(), { wrapper: makeWrapper(qc) });
+    await act(async () => {
+      await result.current.mutateAsync({ screener_depth_autocollect: true });
+    });
+    const first = localStorage.getItem('live.settings.ping.v1');
+    await act(async () => {
+      await result.current.mutateAsync({ screener_depth_autocollect: false });
+    });
+    const second = localStorage.getItem('live.settings.ping.v1');
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBe(first);
+    // 이 파일엔 공용 afterEach 가 없다(각 테스트가 자기 spy 를 새로 만든다).
+    // 고정 시계만은 명시적으로 되돌린다 — 뒤 테스트로 새면 진단이 어려워진다.
+    vi.restoreAllMocks();
+  });
+
+  it('실패한 PATCH 는 핑을 쓰지 않는다', async () => {
+    const { usePatchLiveSettings } = await import('./liveSettings');
+    vi.spyOn(client, 'apiCall').mockRejectedValue(new Error('boom'));
+    const qc = new QueryClient();
+    localStorage.clear();
+
+    const { result } = renderHook(() => usePatchLiveSettings(), { wrapper: makeWrapper(qc) });
+    await act(async () => {
+      await result.current.mutateAsync({ screener_depth_autocollect: true }).catch(() => {});
+    });
+
+    // 서버가 안 받은 변경을 다른 탭에 알리면, 그 탭은 멀쩡한 캐시를 버리고
+    // 같은 값을 다시 받아온다(무해하지만 거짓 신호다).
+    expect(localStorage.getItem('live.settings.ping.v1')).toBeNull();
+  });
 });

@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { LIVE_VENUE_LABELS, LIVE_VENUE_OPTIONS, useLiveVenueStore, type LiveVenueOption } from './liveVenue';
+import {
+  LIVE_VENUE_LABELS,
+  LIVE_VENUE_OPTIONS,
+  subscribeToLiveVenueStorage,
+  useLiveVenueStore,
+  type LiveVenueOption,
+} from './liveVenue';
 
 describe('useLiveVenueStore', () => {
   beforeEach(() => {
@@ -64,5 +70,46 @@ describe('useLiveVenueStore', () => {
 
   it('exposes the three venue options in order (KRX/NXT/통합)', () => {
     expect(LIVE_VENUE_OPTIONS.map((v) => LIVE_VENUE_LABELS[v])).toEqual(['KRX', 'NXT', '통합']);
+  });
+
+  /** 거래소는 탭 전역이다(2026-08-07 사용자 결정) — 탭별 비교는 포기하고
+   *  한 탭에서 바꾸면 열려 있는 다른 탭도 리로드 없이 따라오게 한다. */
+  describe('subscribeToLiveVenueStorage', () => {
+    it('다른 탭의 선택을 반영하고, 해제하면 더 이상 반영하지 않는다', () => {
+      const unsubscribe = subscribeToLiveVenueStorage();
+
+      // 저장 → 이벤트 순서. 구독은 event.newValue 가 아니라 저장소를 다시 읽으므로
+      // 이벤트만 쏘면 아무 일도 일어나지 않는다.
+      localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'NXT' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'live.venue.v1' }));
+      expect(useLiveVenueStore.getState().venue).toBe('NXT');
+
+      unsubscribe();
+      localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'UN' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'live.venue.v1' }));
+      expect(useLiveVenueStore.getState().venue).toBe('NXT'); // 그대로
+    });
+
+    it('다른 키의 storage 이벤트는 무시한다', () => {
+      const unsubscribe = subscribeToLiveVenueStorage();
+
+      localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'UN' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'ui.themePreference.v1' }));
+
+      expect(useLiveVenueStore.getState().venue).toBe('KRX'); // beforeEach 값
+      unsubscribe();
+    });
+
+    it('다른 탭이 쓴 미지 값은 통과시키지 않는다', () => {
+      // 저장소를 다시 읽는 설계의 이득: 초기화와 같은 검증(migrateStoredVenue)을
+      // 그대로 탄다. newValue 를 믿었다면 손으로 편집된 값이 store 에 들어온다.
+      const unsubscribe = subscribeToLiveVenueStorage();
+
+      localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'BAD' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'live.venue.v1' }));
+
+      expect(useLiveVenueStore.getState().venue).toBe('KRX');
+      unsubscribe();
+    });
   });
 });
