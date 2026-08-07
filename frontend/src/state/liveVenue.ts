@@ -28,7 +28,10 @@ export const LIVE_VENUE_LABELS: Record<LiveVenueOption, string> = {
  */
 export const LIVE_VENUE_HELP =
   'KRX는 정규장(09:00–15:30), NXT는 프리·애프터마켓을 포함한 08:00–20:00을 봅니다. '
-  + '통합은 거래소가 병합해 내보내는 단일 호가라, 두 시장을 화면에서 더한 것이 아닙니다.';
+  + '통합은 거래소가 병합해 내보내는 단일 호가라, 두 시장을 화면에서 더한 것이 아닙니다. '
+  // 탭 전역이라는 사실을 여기서 알린다 — 탭마다 다를 것으로 기대하고 두 탭을
+  // 띄운 사용자는, 알리지 않으면 한쪽이 "저절로 바뀌었다"고 읽는다.
+  + '선택은 열려 있는 모든 탭에 함께 적용됩니다.';
 
 const STORAGE_KEY = 'live.venue.v1';
 
@@ -86,3 +89,27 @@ export const useLiveVenueStore = create<Store>((set) => ({
     if (stored) set({ venue: stored.venue });
   },
 }));
+
+/**
+ * 다른 탭의 거래소 선택을 이 탭에 반영한다 — 거래소는 **탭 전역**이다
+ * (2026-08-07 사용자 결정). 이전에는 저장은 공유(localStorage)인데 읽는 시점이
+ * 모듈 로드 한 번뿐이라, 먼저 띄워 둔 탭만 옛 거래소로 남았다.
+ *
+ * 트레이드오프는 명시적으로 받아들인 것이다: 탭을 나눠 KRX 와 NXT 를 나란히
+ * 비교하는 사용법은 이제 불가능하다(한 탭에서 바꾸면 전부 따라온다). 대신 툴바
+ * 선택기(#1179)로 한 탭 안에서 전환한다.
+ *
+ * 테마 선호(`state/themePrefs.ts`)와 같은 모양이다 — 에코 루프 없음(`storage` 는
+ * 쓴 탭에서 발생하지 않고 `hydrateFromStorage` 는 읽기만 한다), `event.newValue`
+ * 대신 저장소를 다시 읽어 초기화와 같은 검증(`migrateStoredVenue`)을 태운다.
+ *
+ * Returns an unsubscribe function (useEffect cleanup shape).
+ */
+export function subscribeToLiveVenueStorage(): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== STORAGE_KEY) return;
+    useLiveVenueStore.getState().hydrateFromStorage();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}
