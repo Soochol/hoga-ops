@@ -1,8 +1,9 @@
 /** GET /api/live/rankings — 우측 RightRail "순위" 드로어(특징주).
  *
  * 백엔드가 (kind,market,direction) TTL~8s 로 키움 rkinfo 콜을 코얼레스하므로
- * 프론트는 10s 폴링만 한다. 폴링은 응답의 market_open 이 true 일 때만 계속되고,
- * 장외(false)엔 열 때 1회 조회 후 멈춘다(그릴링 결정 9) — refetchInterval 을
+ * 프론트는 10s 폴링만 한다. 폴링 주기는 응답의 market_open 이 정하고, 장외엔 60s
+ * 하트비트로 낮춘다(그릴링 결정 9 의 "장외엔 아끼자" 를 지키는 최소 주기 —
+ * 완전히 멈추면 장이 열려도 못 깨어난다) — refetchInterval 을
  * market_open 으로 게이트해 프론트에 장운영 시계를 두지 않는다. 자격증명 부재 시
  * 503 이고, 드로어가 에러 상태를 렌더한다. */
 import { useQuery } from '@tanstack/react-query';
@@ -46,6 +47,8 @@ export interface RankingsView {
 }
 
 export const RANKINGS_REFETCH_MS = 10_000;
+/** 장외 하트비트 — 게이트를 살려 두기 위한 최소 주기다(0 이나 false 가 아니다). */
+export const RANKINGS_OFF_HOURS_MS = 60_000;
 
 export function useLiveRankings(params: {
   kind: RankingKind;
@@ -75,8 +78,14 @@ export function useLiveRankings(params: {
         etfFilterUnavailable: res.warnings?.includes('etf_filter_unavailable') ?? false,
       };
     },
-    // 장중이면 10s 폴링, 장외면 첫 응답(market_open=false) 뒤 멈춘다.
-    refetchInterval: (query) => (query.state.data?.marketOpen ? RANKINGS_REFETCH_MS : false),
+    // 장중이면 10s, 장외면 60s 하트비트. **`false` 로 완전히 멈추면 안 된다** —
+    // 함수형 `refetchInterval` 은 `false` 를 반환하는 순간 타이머가 사라지고,
+    // 타이머가 없으면 fetch 도 재평가도 없어 **장이 열려도 스스로 못 깨어난다**
+    // (2026-08-07 실측 · `api/market.ts` 의 `pollWhileOpen` 과 같은 함정).
+    // 장외 폴링을 아끼려던 원 의도(그릴링 결정 9)는 60s 하트비트로 지킨다 —
+    // 백엔드가 TTL~8s 로 코얼레스하므로 유휴 요청은 캐시 응답이다.
+    refetchInterval: (query) =>
+      query.state.data?.marketOpen ? RANKINGS_REFETCH_MS : RANKINGS_OFF_HOURS_MS,
     staleTime: 8_000,
   });
 }

@@ -99,10 +99,19 @@ def test_holiday_closes_all_sessions(monkeypatch):
 
 def test_lineup_excludes_mini() -> None:
     """미니는 계약 승수가 달라 정규와 나란히 두면 거래량·OI 가 합산으로 오독된다."""
-    assert {i.product for i in LINEUP} == {"kospi200", "kosdaq150", "vkospi"}
+    assert {i.product for i in LINEUP} == {"kospi200", "kosdaq150"}
 
 
-def test_only_vkospi_has_no_underlying_card() -> None:
-    """토글 짝이 없는 카드는 VKOSPI 뿐 — 나머지는 현물 카드와 쌍을 이룬다."""
-    solo = [i.id for i in LINEUP if i.underlying_id is None]
-    assert solo == ["VKOSPI_F"]
+def test_lineup_excludes_vkospi_futures() -> None:
+    """VKOSPI 선물은 뺐다 — 거래량 0 이라 값이 정산가에 굳는다(2026-08-07).
+
+    실측(2026-08-07): 미결제 54계약 · 당일 거래량 0 · `futs_prpr` == `futs_prdy_clpr`
+    == 73.50 · 등락 0.00 · 5분봉 TR 은 `rt_cd=0` 정상처리로 **0봉**. 화면의 변동성
+    카드는 키움 ka20003 의 업종행 `603`(같은 시각 75.97 · -1.56%)이 대신한다.
+    """
+    assert "vkospi" not in {i.product for i in LINEUP}
+
+
+def test_every_card_has_an_underlying() -> None:
+    """VKOSPI 를 뺀 뒤로는 토글 짝 없는 카드가 없다 — 전부 현물과 쌍을 이룬다."""
+    assert [i.id for i in LINEUP if i.underlying_id is None] == []

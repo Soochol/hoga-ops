@@ -5,9 +5,10 @@
  *
  *     sectors 30s · program 60s · streaks/breadth 5m · funds 6h · investor-flow 60s
  *
- * 장중이 아니면 폴링을 멈춘다(`refetchInterval: false`) — 표시 전용 표면은 결손이
- * 생기지 않으므로 마감 후에도 last-good 이 그대로 서빙된다. 반대로 장중 수급은
- * **서버가 무조건 적재**하므로 프론트 폴링 정지가 데이터에 구멍을 내지 않는다.
+ * 장중이 아니면 폴링을 **60초 하트비트로 늦춘다**(멈추지는 않는다 — `pollWhileOpen`
+ * 의 주석 참조: `false` 는 스스로 되살아나지 못한다). 표시 전용 표면은 결손이
+ * 생기지 않으므로 마감 후에도 last-good 이 그대로 서빙되고, 장중 수급은 **서버가
+ * 무조건 적재**하므로 프론트 폴링 주기가 데이터에 구멍을 내지 않는다.
  */
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
@@ -21,8 +22,24 @@ export function isMarketHours(now: Date = new Date()): boolean {
   return mins >= 9 * 60 && mins <= 15 * 60 + 30;
 }
 
-function pollWhileOpen(ms: number): number | false {
-  return isMarketHours() ? ms : false;
+/** 장외 하트비트. **`false` 를 쓰면 안 된다** — 그러면 장이 열려도 못 깨어난다.
+ *
+ *  TanStack Query 의 함수형 `refetchInterval` 은 **스스로 재평가되지 않는다**:
+ *  `false` 를 반환한 순간 타이머가 안 걸리고 → fetch 가 없고 → fetch 완료 훅
+ *  (`onQueryUpdate`)이 안 와서 함수가 다시 불릴 일이 없다. 재평가 트리거는
+ *  `onSubscribe` · `setOptions`(= 컴포넌트 리렌더) · fetch 완료 셋뿐인데, 이 앱은
+ *  전역 `refetchOnWindowFocus`/`refetchOnReconnect` 가 꺼져 있고(`main.tsx`)
+ *  수급·프로그램·연속·순위 카드는 게이트 쿼리가 **단독**이라 리렌더를 줄 사람이 없다.
+ *  결과: 09:00 이전에 연 탭(전날부터 켜 둔 탭 포함)은 장이 열려도 영원히 멎는다.
+ *  2026-08-07 실측 — 장외 마운트 후 시각을 장중으로 돌려도 150초간 fetch 0회.
+ *
+ *  그래서 장외에도 타이머를 살려 둔다. 백엔드가 TTL 로 코얼레스하므로 유휴 요청은
+ *  캐시 응답이고, 09:00 이 지나면 첫 하트비트에서 정상 주기로 자기 전환한다.
+ */
+const OFF_HOURS_HEARTBEAT_MS = 60_000;
+
+function pollWhileOpen(ms: number): number {
+  return isMarketHours() ? ms : OFF_HOURS_HEARTBEAT_MS;
 }
 
 // ── 지수 · 등락종목수 · KRX 업종 ──────────────────────────────────────────
@@ -53,8 +70,20 @@ export interface MarketSectorRow {
   trade_value_eok: number | null;
 }
 
+/** VKOSPI(변동성지수). 업종 배열이 아니라 **최상위**로 온다 — 업종이 아니기 때문이다
+ *  (섞여 있으면 업종 온도 리스트에 한 줄로 뜨고 업종 분산 계산까지 오염된다).
+ *  소스는 KIS 선물이 아니라 키움 ka20003 의 `603` 행이다 — 그 선물(`A04608`)은
+ *  당일 거래량 0·미결제 54계약이라 정산가가 굳어 장중 내내 움직이지 않는다. */
+export interface MarketVolatility {
+  code: string;
+  name: string;
+  value: number | null;
+  change_pct: number | null;
+}
+
 export interface MarketSectorsResponse {
   markets: Record<string, { index: MarketIndexRow | null; sectors: MarketSectorRow[] }>;
+  volatility: MarketVolatility | null;
 }
 
 export function useMarketSectors() {

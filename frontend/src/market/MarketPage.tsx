@@ -28,6 +28,7 @@ import {
   useMarketProgram,
   useMarketSectors,
   useMarketStreaks,
+  type MarketVolatility,
   type ProgramAxis,
 } from '../api/market';
 import { useLiveRankings } from '../api/liveRankings';
@@ -181,10 +182,12 @@ export function IndexCards() {
       .filter((f): f is FuturesQuote & { underlyingId: string } => f.underlyingId !== null)
       .map((f) => [f.underlyingId, f]),
   );
-  // 토글 짝이 없는 선물(VKOSPI)은 단독 카드다 — 현물 지수 카드가 없기 때문이다.
-  const soloFutures = (snapshot?.quotes ?? []).filter((f) => f.underlyingId === null);
+  // 변동성지수는 현물 지수 카드도 선물 토글도 없는 단독 카드다. 소스는 **키움
+  // ka20003 의 업종행 603** 이다 — 예전엔 KIS 선물(A04608)이었는데 그 상품은 당일
+  // 거래량 0·미결제 54계약이라 값이 정산가에 굳어 장중 내내 안 움직였다(2026-08-07).
+  const volatility = sectors.data?.volatility ?? null;
   // Tailwind 는 런타임에 조합한 클래스명을 만들지 못한다 — 두 리터럴을 그대로 둔다.
-  const cols = soloFutures.length > 0 ? 'grid-cols-5' : 'grid-cols-4';
+  const cols = volatility ? 'grid-cols-5' : 'grid-cols-4';
 
   return (
     <div className={`grid ${cols} gap-md`}>
@@ -201,52 +204,36 @@ export function IndexCards() {
           />
         );
       })}
-      {soloFutures.map((f) => (
-        <FuturesOnlyCard
-          key={f.id}
-          future={f}
-          snapshot={snapshot}
-          spark={futuresSparks.data?.[f.id]}
-        />
-      ))}
+      {volatility && <VolatilityCard row={volatility} />}
     </div>
   );
 }
 
-/** 대응 현물이 없는 선물 카드(VKOSPI). 토글이 없다 — 바꿀 짝이 없기 때문이다. */
-function FuturesOnlyCard({
-  future,
-  snapshot,
-  spark,
-}: {
-  future: FuturesQuote;
-  snapshot: FuturesQuotesSnapshot | undefined;
-  spark: FuturesSpark | undefined;
-}) {
+/** 변동성지수(VKOSPI) 카드. 현물 토글도 스파크라인도 없다 — ka20003 은 지수 **레벨과
+ *  등락률만** 주고, 등락폭을 등락률에서 역산하면 표시용 근사를 진짜 값처럼 보이게 한다.
+ *  없는 것을 만들어 채우느니 있는 두 값만 보여준다. */
+function VolatilityCard({ row }: { row: MarketVolatility }) {
   return (
     <MarketCard className="flex flex-col gap-sm p-md">
       <div className={`flex items-baseline justify-between ${CARD_HEADER_RULE}`}>
-        <span className="text-xs font-semibold uppercase text-fg-dim">{future.label}</span>
+        <span className="text-xs font-semibold uppercase text-fg-dim">VKOSPI</span>
       </div>
-      <div className="flex items-end justify-between gap-sm">
-        <div className="flex flex-col">
-          <span
-            className={`font-data text-xl font-semibold tabular-nums ${priceDirClass(future.change)}`}
-          >
-            {future.value.toLocaleString('ko-KR', { minimumFractionDigits: 2 })}
-          </span>
-          {/* 5열이 되면 마지막 카드가 우측 레일에 가려 가장 좁아진다 — nowrap 이 없으면
-              거기서만 등락값이 두 줄로 접힌다. 좁아지면 스파크라인이 줄어야 한다. */}
-          <span
-            className={`whitespace-nowrap font-data text-sm tabular-nums ${priceDirClass(future.change)}`}
-          >
-            {future.change > 0 ? '+' : ''}
-            {future.change.toFixed(2)} <PctText pct={future.changeRate} />
-          </span>
-        </div>
-        {spark && <Sparkline points={spark.closes} baseline={spark.dayOpen ?? undefined} />}
+      <div className="flex flex-col">
+        <span
+          className={`font-data text-xl font-semibold tabular-nums ${priceDirClass(row.change_pct ?? 0)}`}
+        >
+          {row.value === null
+            ? '—'
+            : row.value.toLocaleString('ko-KR', { minimumFractionDigits: 2 })}
+        </span>
+        {/* 5열이 되면 마지막 카드가 우측 레일에 가려 가장 좁아진다 — nowrap 이 없으면
+            거기서만 등락률이 두 줄로 접힌다. */}
+        <span
+          className={`whitespace-nowrap font-data text-sm tabular-nums ${priceDirClass(row.change_pct ?? 0)}`}
+        >
+          <PctText pct={row.change_pct} />
+        </span>
       </div>
-      <FuturesMeta future={future} snapshot={snapshot} spark={spark} />
     </MarketCard>
   );
 }
