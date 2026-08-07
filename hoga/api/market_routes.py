@@ -180,13 +180,25 @@ def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str,
     }
 
 
+#: VKOSPI(변동성지수)의 ka20003 업종코드. **업종이 아니라 지수**라서 업종 배열에
+#: 남겨 두면 두 곳에서 틀린다: 업종 온도 리스트에 한 줄로 섞이고, 업종 분산·쏠림
+#: 계산이 변동성지수를 업종으로 세어 왜곡된다. 그래서 최상위로 승격해서 뺀다.
+_VKOSPI_SECTOR_CODE = "603"
+
+
 async def _collect_sectors(call: Any) -> dict[str, Any]:
-    """지수 값 + 등락종목수 + KRX 업종 (ka20003, 시장별 1콜).
+    """지수 값 + 등락종목수 + KRX 업종 + **변동성지수** (ka20003, 시장별 1콜).
 
     등락종목수는 **종합지수 행에만** 싣는다(#1100) — 업종 행에는 화면이 쓰지 않아
     싣지 않고, 지수 상품(코스피200·코스닥150)은 표시 규칙상 대상이 아니다.
+
+    `volatility`(VKOSPI)는 **코스피 응답의 업종행 하나**(`603`)에서 온다. 화면에서는
+    시장 구분 없는 단독 카드라 최상위로 올린다 — 벤더가 KIS 선물(`A04608`)이 아니라
+    키움이라는 점이 중요하다. 그 선물은 미결제 54계약·당일 거래량 0 이라 정산가가
+    현재가로 굳어 장중 내내 움직이지 않았다(2026-08-07 실측). 같은 값을 이 TR 이
+    이미 30초마다 싣고 있었다.
     """
-    out: dict[str, Any] = {"markets": {}}
+    out: dict[str, Any] = {"markets": {}, "volatility": None}
     for mrkt_tp in _MARKETS:
         inds_cd = "001" if mrkt_tp == "0" else "101"
         rows = await call("ka20003", {"mrkt_tp": mrkt_tp, "inds_cd": inds_cd},
@@ -208,9 +220,16 @@ async def _collect_sectors(call: Any) -> dict[str, Any]:
             "sectors": [
                 {"code": b.code, "name": b.name, "value": b.value,
                  "change_pct": b.change_pct, "trade_value_eok": b.trade_value_eok}
-                for b in parsed if not b.is_whole_market
+                for b in parsed
+                if not b.is_whole_market and b.code != _VKOSPI_SECTOR_CODE
             ],
         }
+        vkospi = next((b for b in parsed if b.code == _VKOSPI_SECTOR_CODE), None)
+        if vkospi is not None:
+            out["volatility"] = {
+                "code": vkospi.code, "name": vkospi.name,
+                "value": vkospi.value, "change_pct": vkospi.change_pct,
+            }
     return out
 
 

@@ -24,6 +24,7 @@ import websockets
 
 from . import kiwoom_fields as K
 from .kiwoom_frames import parse_real_message
+from .sector_registry import SECTOR_CODES
 from .ticks import WsTick  # 포트 계약 타입(공유)
 
 _log = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ class KiwoomWsClient:
         max_consecutive_kicks: int = 5,
         invalidate_fn: Callable[[], None] | None = None,
         on_vi_row: Callable[[dict, int], None] | None = None,
+        on_sector_row: Callable[[dict, int], None] | None = None,
         _connect: Callable[[str], Awaitable[_WsLike]] | None = None,
     ) -> None:
         self._token_fn = token_fn
@@ -95,6 +97,11 @@ class KiwoomWsClient:
         # 전체 스트림이라 **연결 하나에만** 설정해야 중복 기록이 없다(session 이 계정
         # 0 에만 배선). 훅·REG 실패는 본 캡처를 해치지 않는다(best-effort).
         self._on_vi_row = on_vi_row
+        # 0J/0U 업종·지수 관측 훅. VI 와 같은 규율이다 — 시장 전체 스트림이라 **연결
+        # 하나에만** 설정해야 중복이 없고(session 이 계정 0 에만 배선), REG·훅 실패가
+        # 본 캡처를 해치지 않는다. VI 와 다른 점은 item 이 빈 문자열이 아니라 업종코드
+        # 목록이라는 것뿐이고, 슬롯은 마찬가지로 먹지 않는다(2026-08-07 실측).
+        self._on_sector_row = on_sector_row
         self._date_fn = date_fn
         self._url = url
         self._types = list(types)
@@ -207,6 +214,7 @@ class KiwoomWsClient:
                 self._consecutive_kicks = 0
                 await self._register_all(ws, list(self._codes))
                 await self._register_vi(ws)
+                await self._register_sectors(ws)
             _log.info("live.kiwoom.connected codes=%d acked=%d",
                       len(self._codes), len(self._acked))
             # drain: recv 루프가 연결 종료(예외)로 끝날 때까지 대기 → run()이 재연결.
@@ -291,6 +299,50 @@ class KiwoomWsClient:
             _log.warning("live.kiwoom.vi_reg_rate_limited_persist")
         except Exception as e:  # noqa: BLE001 — 관측 실패로 세션을 죽이지 않는다
             _log.warning("live.kiwoom.vi_reg_failed err=%r", e)
+
+    async def _register_sectors(self, ws: _WsLike) -> None:
+        """0J/0U 업종·지수 구독(on_sector_row 설정 시).
+
+        VI(`_register_vi`)와 같은 규율이다: 세션마다 다시 REG 하고, 관측 전용이라
+        실패는 경고만 남기고 세션을 잇는다. `_acked`/`sub_rejected`(종목 구독 진단)를
+        오염하지 않도록 `_reg_batch` 를 타지 않는다 — 그쪽 카운터가 흔들리면 종목
+        구독 워치독이 엉뚱한 재구독을 돈다. 호출자가 `_sub_lock` 보유.
+
+        **배치로 나눠 보낸다.** REG 유량은 연결당 ~5/s 라 68개를 한 방에 보내는 것과
+        나누는 것의 차이는 없지만, 거부가 났을 때 어느 구간인지 로그로 남는다.
+        `grp_no` 를 종목(1)·VI(1)와 다르게 두어 REMOVE 가 서로를 건드리지 않게 한다.
+        """
+        if self._on_sector_row is None:
+            return
+        codes = list(SECTOR_CODES)
+        for i in range(0, len(codes), _REG_BATCH):
+            chunk = codes[i:i + _REG_BATCH]
+            msg = json.dumps({
+                "trnm": "REG", "grp_no": "3", "refresh": "1",
+                "data": [{"item": chunk, "type": [K.TYPE_SECTOR_INDEX, K.TYPE_SECTOR_UPDOWN]}],
+            })
+            try:
+                ok = False
+                for attempt in range(3):
+                    ack = await self._send_and_wait(ws, msg, "REG")
+                    rc = ack.get("return_code")
+                    if rc == _RC_OK:
+                        ok = True
+                        break
+                    if rc == _RC_RATE_LIMIT:
+                        await asyncio.sleep(1.0 + attempt)
+                        continue
+                    _log.warning("live.kiwoom.sector_reg_rejected rc=%s msg=%s n=%d",
+                                 rc, ack.get("return_msg"), len(chunk))
+                    return
+                if not ok:
+                    _log.warning("live.kiwoom.sector_reg_rate_limited_persist n=%d", len(chunk))
+                    return
+                await asyncio.sleep(_REG_PACING_S)
+            except Exception as e:  # noqa: BLE001 — 관측 실패로 세션을 죽이지 않는다
+                _log.warning("live.kiwoom.sector_reg_failed err=%r", e)
+                return
+        _log.info("live.kiwoom.sectors_registered n=%d", len(codes))
 
     async def _reg_batch(self, ws: _WsLike, chunk: list[str], *, tr: str) -> bool:
         """1배치 REG/REMOVE 송신 + ACK 대기. rc=OK면 True. 유량 rc는 백오프 재시도,
@@ -388,6 +440,7 @@ class KiwoomWsClient:
             return
         if trnm == "REAL":
             self._capture_vi_rows(msg, now_ms)
+            self._capture_sector_rows(msg, now_ms)
             date = self._date_fn()
             for tick in parse_real_message(msg, date=date, now_ms=now_ms):
                 self.last_tick_ms = now_ms
@@ -414,6 +467,28 @@ class KiwoomWsClient:
                     self._on_vi_row(row, now_ms)
                 except Exception:  # noqa: BLE001 — 관측 실패가 recv 루프를 못 죽이게
                     _log.warning("live.kiwoom.vi_hook_failed", exc_info=True)
+
+    def _capture_sector_rows(self, msg: dict, now_ms: int) -> None:
+        """REAL 안의 0J/0U row 를 관측 훅에 raw 로 전달 — VI 와 같은 분리다.
+
+        `parse_real_message`(종목 파서)는 이 두 타입을 모른 채 지나가므로, 업종 관측이
+        종목 틱 경로의 카운터·저장을 건드리지 않는다. **`last_tick_ms` 도 갱신하지
+        않는다** — 그 값은 "종목 틱이 살아 있는가" 를 재는 워치독 입력이라, 업종 틱이
+        섞이면 종목 구독이 통째로 죽어도 워치독이 건강하다고 읽는다.
+        """
+        if self._on_sector_row is None:
+            return
+        data = msg.get("data")
+        if not isinstance(data, list):
+            return
+        for row in data:
+            if isinstance(row, dict) and row.get("type") in (
+                K.TYPE_SECTOR_INDEX, K.TYPE_SECTOR_UPDOWN
+            ):
+                try:
+                    self._on_sector_row(row, now_ms)
+                except Exception:  # noqa: BLE001 — 관측 실패가 recv 루프를 못 죽이게
+                    _log.warning("live.kiwoom.sector_hook_failed", exc_info=True)
 
     async def _echo(self, raw: str | bytes) -> None:
         if self._ws is not None:

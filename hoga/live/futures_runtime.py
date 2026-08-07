@@ -50,6 +50,13 @@ class FuturesLineupItem:
 #: 화면 라인업. 미니(`kospi200_mini`)는 일부러 뺐다 — 계약 승수가 달라 정규와
 #: 거래량·미결제를 나란히 두면 합산으로 오독된다. 마스터 파서는 미니도 읽으므로
 #: 필요해지면 여기 한 줄만 늘리면 된다.
+#:
+#: **VKOSPI 선물(`A04608`)도 뺐다 — 상품이 죽어 있다.** 2026-08-07 실측: 미결제
+#: 54계약 · 당일 거래량 0 이라 벤더가 정산가를 현재가로 되돌려주고(`futs_prpr` =
+#: `futs_prdy_clpr` = 73.50, 등락 0.00), 5분봉 TR 은 `rt_cd=0` 정상처리로 **0봉**을
+#: 준다(스파크라인이 빈 이유 — 에러가 아니다). 롤오버해도 같다. 화면의 변동성 카드는
+#: 키움 ka20003 의 업종행 `603`(같은 시각 75.97 · -1.56%)이 대신한다 — 실시간·폴링은
+#: 키움이라는 ADR-0136 분담과도 맞다.
 LINEUP: tuple[FuturesLineupItem, ...] = (
     FuturesLineupItem(
         id="KOSPI200_F", product="kospi200", label="KOSPI 200 F", underlying_id="KOSPI200"
@@ -57,8 +64,6 @@ LINEUP: tuple[FuturesLineupItem, ...] = (
     FuturesLineupItem(
         id="KOSDAQ150_F", product="kosdaq150", label="KOSDAQ 150 F", underlying_id="KOSDAQ150"
     ),
-    # VKOSPI 는 현물 지수 카드가 없다(`index_registry` 에 없음) — 토글 짝 없는 단독 카드다.
-    FuturesLineupItem(id="VKOSPI_F", product="vkospi", label="VKOSPI F", underlying_id=None),
 )
 
 # 선물 거래시간(KST). 주간은 주식보다 15분 길고, 야간은 자정을 넘는다.

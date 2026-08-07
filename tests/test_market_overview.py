@@ -9,6 +9,7 @@ from hoga.live.market_overview import (
     MAX_BREADTH_PAGES,
     count_rows,
     decimal_price,
+    index_level,
     parse_index_sectors,
     parse_program_trend,
     parse_streaks,
@@ -52,6 +53,30 @@ def test_index_breadth_from_real_row():
     # 종합지수만 등락종목수를 붙일 자격이 있다(업종은 화면에 안 쓴다)
     assert kospi.is_whole_market is True
     assert food.is_whole_market is False
+
+
+def test_falling_index_level_is_not_negative():
+    """지수 **레벨**은 부호를 벗긴다 — 등락률과 달리 접두 부호는 값이 아니라 방향이다.
+
+    이 가드가 없어서 하락 중인 지수·업종의 값이 통째로 음수로 나갔다(2026-08-07 실측:
+    코스닥 종합 -796.27 · 업종 32개 음수). 기존 픽스처가 **상승(+) 케이스만**
+    담고 있어 파서가 부호를 그대로 흘리는 것을 아무도 못 봤다.
+    """
+    rows = [
+        {"stk_cd": "101", "stk_nm": "종합(KOSDAQ)", "cur_prc": "-796.27", "flu_rt": "-0.67"},
+        {"stk_cd": "011", "stk_nm": "금속", "cur_prc": "-6655.93", "flu_rt": "-1.55"},
+        {"stk_cd": "603", "stk_nm": "변동성지수", "cur_prc": "-75.97", "flu_rt": "-1.56"},
+    ]
+    parsed = parse_index_sectors(rows)
+    assert [b.value for b in parsed] == [796.27, 6655.93, 75.97]
+    # 등락률은 부호가 곧 값이다 — 같이 벗기면 하락이 상승으로 뒤집힌다.
+    assert [b.change_pct for b in parsed] == [-0.67, -1.55, -1.56]
+
+
+def test_index_level_helper_strips_sign_but_keeps_none():
+    assert index_level("-796.27") == 796.27
+    assert index_level("+6613.59") == 6613.59
+    assert index_level("") is None
 
 
 def test_kosdaq_index_is_also_whole_market():

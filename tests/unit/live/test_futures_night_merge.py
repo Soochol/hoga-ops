@@ -100,9 +100,9 @@ async def test_silent_products_keep_daytime_close(runtime, monkeypatch):
     snap = await runtime.snapshot()
     by_id = {c.item.id: c for c in snap.cards}
 
-    for card_id in ("KOSDAQ150_F", "VKOSPI_F"):
-        assert by_id[card_id].data_session == "day"
-        assert by_id[card_id].quote.value > 0  # REST 주간 마감본이 남아 있다
+    # VKOSPI 는 라인업에서 빠졌다(2026-08-07) — 남은 무음 종목은 코스닥150 이다.
+    assert by_id["KOSDAQ150_F"].data_session == "day"
+    assert by_id["KOSDAQ150_F"].quote.value > 0  # REST 주간 마감본이 남아 있다
 
 
 async def test_daytime_ignores_ws_and_closes_it(runtime, monkeypatch):
@@ -127,7 +127,9 @@ async def test_night_subscribes_current_near_month_codes(runtime, monkeypatch):
     runtime._ws = ws
 
     await runtime.snapshot()
-    assert ws.running_codes == ("A01609", "A06609", "A04608")
+    # A04608(VKOSPI 선물)은 라인업에서 빠져 구독하지 않는다(2026-08-07) — 야간 틱이 0 인
+    # 상품이라 슬롯만 먹었다.
+    assert ws.running_codes == ("A01609", "A06609")
 
 
 async def test_closed_session_does_not_open_ws(runtime, monkeypatch):

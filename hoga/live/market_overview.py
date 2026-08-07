@@ -58,6 +58,21 @@ def decimal_price(v: Any) -> float | None:
         return None
 
 
+def index_level(v: Any) -> float | None:
+    """지수 **레벨**(ka20003 `cur_prc`) — 부호를 벗긴다.
+
+    키움은 지수 레벨에도 **등락 방향 부호를 접두로** 실어 보낸다(하락이면 `-796.27`).
+    등락률(`flu_rt`)과 달리 레벨의 부호는 값이 아니라 방향 표시이므로, 그대로 읽으면
+    하락 중인 지수·업종의 값이 통째로 음수가 된다(2026-08-07 실측: 코스닥 종합
+    -796.27, 업종 32개 음수). 화면이 `change_pct` 만 쓰고 있어 드러나지 않았을 뿐이다.
+
+    `ka20001` 경로는 `kiwoom_index_rest` 가 `parse_price`(부호 제거) / `_signed`(부호
+    유지)로 이미 갈라 두었다 — 여기가 그 규율의 ka20003 쪽 짝이다.
+    """
+    n = decimal_price(v)
+    return None if n is None else abs(n)
+
+
 def scaled_price(v: Any, *, scale: int = 100) -> float | None:
     """소수점이 **제거되어** 오는 가격(ka10051·ka90005). 암묵 2자리를 되돌린다."""
     n = signed_int(v)
@@ -80,7 +95,8 @@ class IndexBreadth:
     def __init__(self, row: dict[str, Any]) -> None:
         self.code = str(row.get("stk_cd") or "")
         self.name = str(row.get("stk_nm") or "")
-        self.value = decimal_price(row.get("cur_prc"))
+        # 레벨은 부호를 벗기고(`index_level`), 등락률은 부호가 곧 값이라 그대로 둔다.
+        self.value = index_level(row.get("cur_prc"))
         self.change_pct = decimal_price(row.get("flu_rt"))
         self.rising = signed_int(row.get("rising"))
         self.falling = signed_int(row.get("fall"))

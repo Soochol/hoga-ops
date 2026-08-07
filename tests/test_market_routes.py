@@ -77,7 +77,9 @@ async def test_surfaces_are_dormant_without_credentials(monkeypatch, tmp_path):
     streaks = await by_path["/api/market/streaks"].endpoint()
     program = await by_path["/api/market/program"].endpoint()
 
-    assert sectors == {"markets": {}}
+    # `volatility` 는 **키가 있고 값이 None** 이다 — 키를 빼면 프론트가 "아직 안 온 것"과
+    # "무자격이라 없는 것"을 구별하지 못한다(카드가 조용히 사라진다).
+    assert sectors == {"markets": {}, "volatility": None}
     assert streaks == {"외국인": [], "기관": [], "warnings": []}
     assert program == {"axis": "intraday", "markets": {}}
 
@@ -187,3 +189,48 @@ async def test_investor_flow_empty_day_is_empty_not_error(tmp_path):
     assert got["markets"] == {}
     assert got["coverage"]["sample_count"] == 0
     assert got["confirmed"] is False
+
+
+@pytest.mark.asyncio
+async def test_volatility_is_promoted_out_of_the_sector_list():
+    """VKOSPI(`603`)는 업종 배열이 아니라 최상위 `volatility` 로 나간다 (2026-08-07).
+
+    업종행으로 두면 두 곳에서 틀린다: 업종 온도 리스트에 "변동성지수" 가 한 줄로
+    섞이고, 업종 분산·쏠림 계산이 그것을 업종으로 세어 왜곡된다. 소스가 키움
+    ka20003 이라는 점이 이 승격의 근거다 — 예전 카드가 쓰던 KIS 선물(A04608)은
+    당일 거래량 0 이라 값이 정산가에 굳어 장중 내내 움직이지 않았다.
+    """
+    from hoga.api.market_routes import _collect_sectors
+
+    kospi = [
+        {"stk_cd": "001", "stk_nm": "종합(KOSPI)", "cur_prc": "-6292.97", "flu_rt": "-0.21"},
+        {"stk_cd": "005", "stk_nm": "음식료/담배", "cur_prc": "+4759.72", "flu_rt": "+1.69"},
+        {"stk_cd": "603", "stk_nm": "변동성지수", "cur_prc": "-75.97", "flu_rt": "-1.56"},
+    ]
+    kosdaq = [{"stk_cd": "101", "stk_nm": "종합(KOSDAQ)", "cur_prc": "+802.99", "flu_rt": "+0.16"}]
+
+    async def call(_api_id, params, *, key=None):  # noqa: ARG001
+        return kospi if params["mrkt_tp"] == "0" else kosdaq
+
+    got = await _collect_sectors(call)
+
+    assert got["volatility"] == {
+        "code": "603", "name": "변동성지수",
+        "value": 75.97,          # 레벨은 부호를 벗긴다
+        "change_pct": -1.56,     # 등락률은 부호가 곧 값이다
+    }
+    assert [s["code"] for s in got["markets"]["0"]["sectors"]] == ["005"]
+    assert got["markets"]["0"]["index"]["value"] == 6292.97
+
+
+@pytest.mark.asyncio
+async def test_volatility_is_none_when_the_row_is_absent():
+    """`603` 이 없는 날에도 키는 남는다 — 없는 것과 아직 안 온 것을 화면이 구별한다."""
+    from hoga.api.market_routes import _collect_sectors
+
+    async def call(_api_id, params, *, key=None):  # noqa: ARG001
+        return [{"stk_cd": "001", "stk_nm": "종합(KOSPI)", "cur_prc": "+6292.97",
+                 "flu_rt": "+0.21"}]
+
+    got = await _collect_sectors(call)
+    assert got["volatility"] is None
