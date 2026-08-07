@@ -97,10 +97,10 @@ class KiwoomWsClient:
         # 전체 스트림이라 **연결 하나에만** 설정해야 중복 기록이 없다(session 이 계정
         # 0 에만 배선). 훅·REG 실패는 본 캡처를 해치지 않는다(best-effort).
         self._on_vi_row = on_vi_row
-        # 0J/0U 업종·지수 관측 훅. VI 와 같은 규율이다 — 시장 전체 스트림이라 **연결
-        # 하나에만** 설정해야 중복이 없고(session 이 계정 0 에만 배선), REG·훅 실패가
-        # 본 캡처를 해치지 않는다. VI 와 다른 점은 item 이 빈 문자열이 아니라 업종코드
-        # 목록이라는 것뿐이고, 슬롯은 마찬가지로 먹지 않는다(2026-08-07 실측).
+        # 0J/0U 업종·지수 관측 훅. 시장 전체 스트림이라 **연결 하나에만** 설정한다
+        # (session 이 마지막 계정에 배선). REG·훅 실패는 본 캡처를 해치지 않는다.
+        # ⚠ VI 와 달리 item 이 업종코드 목록이라 **슬롯을 먹는다** — 그래서 그 계정에
+        # `coverage.KIWOOM_SECTOR_RESERVE` 만큼 자리가 예약돼 있어야 한다.
         self._on_sector_row = on_sector_row
         self._date_fn = date_fn
         self._url = url
@@ -212,9 +212,13 @@ class KiwoomWsClient:
                 self.connected = True
                 self._attempt = 0
                 self._consecutive_kicks = 0
+                # **업종을 먼저 등록한다.** 예약(`coverage.KIWOOM_SECTOR_RESERVE`)이
+                # 틀어져 자리가 모자라면 뒤엣것이 밀리는데, 종목이 밀리면
+                # `sub_rejected`·워치독이 시끄럽게 드러내는 반면 업종은 조용히 죽는다
+                # (화면이 폴링 baseline 으로 그려져 무증상 — 2026-08-07 그렇게 놓쳤다).
+                await self._register_sectors(ws)
                 await self._register_all(ws, list(self._codes))
                 await self._register_vi(ws)
-                await self._register_sectors(ws)
             _log.info("live.kiwoom.connected codes=%d acked=%d",
                       len(self._codes), len(self._acked))
             # drain: recv 루프가 연결 종료(예외)로 끝날 때까지 대기 → run()이 재연결.

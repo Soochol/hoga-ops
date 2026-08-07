@@ -13,6 +13,7 @@ import pytest
 
 from hoga.live.coverage import (
     KIWOOM_PER_ACCOUNT_MAX,
+    KIWOOM_SECTOR_RESERVE,
     partition_kiwoom,
     plan_storage_targets,
     subscription_venues,
@@ -61,27 +62,52 @@ def test_partition_without_weight_matches_old_slicing():
     parts = partition_kiwoom(codes, 3)
     assert parts[0] == codes[:200]
     assert parts[1] == codes[200:400]
-    assert parts[2] == codes[400:]
+    # 마지막 계정은 업종 구독(0J/0U) 예약분만큼 상한이 낮다 — `_account_cap`.
+    assert parts[2] == codes[400:400 + (KIWOOM_PER_ACCOUNT_MAX - KIWOOM_SECTOR_RESERVE)]
 
 
 def test_partition_counts_registrations_not_codes():
-    """NXT 상장 종목은 3 등록을 쓰므로 계정 하나에 **67 종목**까지만 담긴다(3×67=201>200).
+    """NXT 상장 종목은 3 등록을 쓰므로 계정 하나에 **66 종목**까지만 담긴다(3×67=201>200).
 
     종목 수로 세면 200 종목 × 3 = 600 등록을 한 연결에 밀어 넣고 키움이 거부한다.
+    마지막 계정은 업종 예약(66) 때문에 상한이 134 라 44 종목만 담긴다(3×45=135>134).
     """
     codes = [f"{i:06d}" for i in range(200)]
     parts = partition_kiwoom(codes, 3, weight=lambda _c: 3)
-    assert [len(p) for p in parts] == [66, 66, 66]
-    for part in parts:
-        assert sum(3 for _ in part) <= KIWOOM_PER_ACCOUNT_MAX
+    assert [len(p) for p in parts] == [66, 66, 44]
+    for i, part in enumerate(parts):
+        cap = KIWOOM_PER_ACCOUNT_MAX - (KIWOOM_SECTOR_RESERVE if i == len(parts) - 1 else 0)
+        assert sum(3 for _ in part) <= cap
+
+
+def test_last_account_reserves_room_for_sector_subscriptions():
+    """업종 구독(0J/0U)은 **슬롯을 먹는다** — 예약이 없으면 조용히 거부된다.
+
+    2026-08-07 실측: 저장셋이 계정 0 을 199/200 까지 채운 상태에서 업종 50개 배치가
+    `rc=105115` 로 거부됐고, 화면은 폴링 baseline 으로 그려져 **아무 증상이 없었다**
+    (`tick_count: 0`). 배수는 코드당 1개다(업종 66개 등록 후 종목이 130 에서 막혔다).
+    """
+    codes = [f"{i:06d}" for i in range(1000)]
+    parts = partition_kiwoom(codes, 4)
+    assert len(parts[0]) == KIWOOM_PER_ACCOUNT_MAX
+    assert len(parts[-1]) == KIWOOM_PER_ACCOUNT_MAX - KIWOOM_SECTOR_RESERVE
+    # 예약분이 `sector_registry` 목록과 어긋나면 다시 거부된다 — 목록이 늘면 여기서 깨진다.
+    from hoga.live.sector_registry import SECTOR_CODES
+
+    assert len(SECTOR_CODES) == KIWOOM_SECTOR_RESERVE
 
 
 def test_partition_drops_overflow_beyond_capacity():
-    """용량을 넘는 종목은 어느 계정에도 안 담긴다 — 호출자가 경고한다(조용히 안 삼킨다)."""
+    """용량을 넘는 종목은 어느 계정에도 안 담긴다 — 호출자가 경고한다(조용히 안 삼킨다).
+
+    계정이 하나면 그것이 곧 마지막 계정이라 업종 예약이 걸린다 — 예산은 200 이 아니라
+    `200 − 66 = 134` 다.
+    """
     codes = [f"{i:06d}" for i in range(200)]
     parts = partition_kiwoom(codes, 1, weight=lambda _c: 3)
-    assert sum(len(p) for p in parts) == 66  # 200 등록 예산 / 3
-    assert len(codes) - 66 == 134  # 드롭
+    budget = KIWOOM_PER_ACCOUNT_MAX - KIWOOM_SECTOR_RESERVE
+    assert sum(len(p) for p in parts) == budget // 3
+    assert len(codes) - budget // 3 == 156  # 드롭
 
 
 def test_partition_keeps_a_codes_venues_on_one_connection():

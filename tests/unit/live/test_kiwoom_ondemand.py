@@ -77,7 +77,7 @@ class _FakeBuffer:
         self.published.append((code, list(snapshots)))
 
 
-def _mgr(*, per_account_max=200, buffer=None):
+def _mgr(*, per_account_max=200, buffer=None, sector_reserve=0):
     async def _idle():
         try:
             await asyncio.Event().wait()
@@ -100,6 +100,8 @@ def _mgr(*, per_account_max=200, buffer=None):
         date_fn=lambda: "20260716",
         now_fn=lambda: _KRX_MS,
         per_account_max=per_account_max,
+        # 온디맨드 슬롯 산술 테스트라 업종 예약은 0 — 예약 자체는 파티션 테스트가 본다.
+        sector_reserve=sector_reserve,
         _build_conn=build,
     )
 

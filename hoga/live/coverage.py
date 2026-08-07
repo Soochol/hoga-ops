@@ -20,6 +20,12 @@ _log = logging.getLogger(__name__)
 KIWOOM_WS_MAX_REGISTRATIONS = 200
 KIWOOM_PER_ACCOUNT_MAX = KIWOOM_WS_MAX_REGISTRATIONS
 
+# 업종·지수(0J/0U) 구독분 예약 — **마지막 계정에만** 건다(`_account_cap`).
+# 값은 `sector_registry.SECTOR_CODES` 길이여야 하는데, 여기서 import 하면 순환이
+# 생긴다(sector_registry → 없음, 하지만 coverage 는 저수준이라 방향을 지킨다).
+# 대신 테스트가 두 값의 일치를 못 박는다 — 목록이 늘어나면 그 테스트가 먼저 깨진다.
+KIWOOM_SECTOR_RESERVE = 66
+
 
 @dataclass(frozen=True)
 class LiveStorageTargets:
@@ -81,6 +87,7 @@ def partition_kiwoom(
     n: int,
     *,
     weight: Callable[[str], int] | None = None,
+    last_account_reserve: int = KIWOOM_SECTOR_RESERVE,
 ) -> list[list[str]]:
     """키움 계정별 disjoint 분할 — **wire 등록 수**가 계정당 200 을 넘지 않게 순차로 채운다.
 
@@ -99,7 +106,7 @@ def partition_kiwoom(
     account, used = 0, 0
     for code in codes:
         cost = w(code)
-        while account < n and used + cost > KIWOOM_PER_ACCOUNT_MAX:
+        while account < n and used + cost > _account_cap(account, n, last_account_reserve):
             account += 1
             used = 0
         if account >= n:
@@ -107,6 +114,29 @@ def partition_kiwoom(
         parts[account].append(code)
         used += cost
     return parts
+
+
+def _account_cap(account: int, n: int, reserve: int = KIWOOM_SECTOR_RESERVE) -> int:
+    """이 계정이 **저장셋에** 쓸 수 있는 상한.
+
+    마지막 계정만 낮다 — 업종·지수 구독(0J/0U)이 거기 얹히기 때문이다. 그 구독은
+    **슬롯을 먹는다**: 코드당 1개, 타입 수와 무관(2026-08-07 실측 — 업종 66개 등록 후
+    종목이 130 에서 `rc=105115` 로 막혔다).
+
+    예약을 안 걸었다가 실제로 터졌다: 저장셋이 계정 0 을 199/200 까지 채운 뒤 업종
+    50개 배치가 거부됐고, 결과는 `tick_count: 0` 의 **조용한 실패**였다(화면은 폴링
+    baseline 으로 그려져 아무 증상이 없다).
+
+    마지막 계정을 고르는 이유는 파티셔너가 **앞에서부터 채우기** 때문이다 — 저장셋이
+    용량을 다 쓰지 않는 한 뒤쪽이 항상 한가하다. 다 쓰는 날엔 이 상한이 저장셋을
+    그만큼 밀어내는데, 그게 옳다: 밀린 종목은 `targets_over_capacity` 경고로 드러나지만
+    업종 구독 실패는 조용하다.
+    """
+    # 예약이 상한을 삼키면 저장셋이 통째로 드롭된다 — 최소 1 자리는 남긴다(테스트가
+    # 작은 상한을 주입하는 경로 방어).
+    if account != n - 1:
+        return KIWOOM_PER_ACCOUNT_MAX
+    return max(1, KIWOOM_PER_ACCOUNT_MAX - reserve)
 
 
 def _fit_within_capacity(
