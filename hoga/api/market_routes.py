@@ -519,6 +519,12 @@ def _deriv_flow_payload(data_dir: Path) -> dict[str, Any]:
 
     판정은 **그날의 마지막 선물 표본**으로 한다 — 누적이 가장 많이 쌓인 표본이라
     자릿수 검사가 가장 확실하다(장 초반 표본으로 재면 임계에 못 미쳐 보류가 된다).
+
+    ⚠ 그렇게 얻은 판정 하나를 **그날 전 이력에 소급 적용한다**(표본마다 따로 재지
+    않는다). 이게 자기치유의 근거다: 09:05 표본은 그 시점엔 판정이 안 서지만, 10시에
+    이 라우트를 부르면 마지막 표본 기준으로 확정된 단위가 09:05 점에도 걸려 억원 축이
+    통째로 살아난다. **"표본별로 판정을 캐시" 하는 최적화를 하면 이 성질이 조용히
+    깨진다** — 장 초반 점들이 영영 null 로 굳는다.
     """
     from hoga.collector.orchestrator import now_kst  # noqa: PLC0415
     from hoga.live.deriv_flow_collector import POLL_INTERVAL_S  # noqa: PLC0415
