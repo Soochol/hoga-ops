@@ -7,6 +7,7 @@ import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { useLiveVenueStore } from '../state/liveVenue';
 import type { StudyTab } from '../state/studyTabs';
 import { useWarmStudyReferenceTabQueries } from './useWarmStudyReferenceTabQueries';
+import { seedSymbolMaster, symbolHit } from '../live/seedSymbolMaster';
 
 // 소스 선호는 이제 설정(`live_settings.krx_prefer_hogaplay`)에서 온다. 설정이 로딩 중이면
 // `useOrderflowSourcePref()` 가 undefined 를 주고 쿼리가 비활성화되는데(콜드 마운트 차트
@@ -225,4 +226,41 @@ describe('useWarmStudyReferenceTabQueries', () => {
     await waitFor(() => expect(signals.get('000660')).toBeInstanceOf(AbortSignal));
     expect(signals.get('005930')?.aborted).toBe(false);
   });
+
+  it('탭마다 **그 종목의** 유효 venue 로 조회한다', async () => {
+    // 활성 탭 하나로 해석하면 다른 종목의 워밍이 엉뚱한 venue 로 나가 캐시 키가
+    // 어긋난다 — 재fetch 를 막으려던 워밍이 정확히 재fetch 를 만든다.
+    useLiveVenueStore.setState({ venue: 'UN' });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(client, [symbolHit('005930', true), symbolHit('000660', false)]);
+    const saves = [
+      save('view-a', '005930', '삼성전자'),
+      save('view-b', '000660', 'SK하이닉스'),
+    ];
+    const tabs = [
+      tab('tab-a', 'view-a', '005930', '삼성전자'),
+      tab('tab-b', 'view-b', '000660', 'SK하이닉스'),
+    ];
+
+    renderHook(
+      () => useWarmStudyReferenceTabQueries({
+        tabs,
+        activeTabId: 'tab-a',
+        activatedTabIds: ['tab-b'],
+        saves,
+      }),
+      { wrapper: wrapper(client) },
+    );
+
+    await waitFor(() => {
+      const urls = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
+      // NXT 상장 종목은 선택값(UN) 그대로.
+      expect(urls.some((u) => u.includes('code=005930') && u.includes('venue=UN'))).toBe(true);
+      // 미상장 종목은 KRX 로 강등된다 — UN 요청이 **한 건도** 나가면 안 된다
+      // (백엔드에 `kiwoom_live/UN/` 이 없어 빈 200 이 온다).
+      expect(urls.some((u) => u.includes('code=000660') && u.includes('venue=KRX'))).toBe(true);
+      expect(urls.some((u) => u.includes('code=000660') && u.includes('venue=UN'))).toBe(false);
+    });
+  });
+
 });

@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { useLiveVenueStore } from '../state/liveVenue';
+import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
 import type { LiveDataWarning } from '../live/liveDataWarnings';
 import type { LiveEffectiveSession } from '../api/livePastCandles';
@@ -41,7 +42,13 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
   // ⚠ hogaplay 는 여전히 KRX 전용이라 **NXT·통합이 비는 날이 있다**. 그건 장애가
   // 아니라 그 소스의 커버 범위이고, 어느 날에 무엇이 있는지는 보관함의 시장 배지가
   // 말한다(같은 `expected_venues` 판정을 공유한다).
-  const venue = useLiveVenueStore((s) => s.venue);
+  //
+  // 선택값이 아니라 **이 종목에 대한 해석값**을 쓴다. `studyReferenceQueries` 는 순수
+  // 함수라 `rangeBundleQueryOptions` 를 직접 만들고, 그래서 `useRange` 안의 해석
+  // (#1214)을 타지 않는다 — 해석은 여기서 해 넣어야 한다. 안 하면 NXT 미상장 종목에
+  // 통합을 고른 복기 뷰가 **빈 200** 을 받는다(`kiwoom_live/UN/` 이 애초에 안 생긴다).
+  const selectedVenue = useLiveVenueStore((s) => s.venue);
+  const venue = useEffectiveVenue(save?.code, selectedVenue);
   const sourcePref = useOrderflowSourcePref();
   // 지표는 차트 창이 소유한다(#904) — 전역을 읽으면 차트가 그릴 지표와 여기서
   // 받아오는 데이터가 어긋난다.

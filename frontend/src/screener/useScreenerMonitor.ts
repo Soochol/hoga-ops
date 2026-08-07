@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useQuotes } from '../api/liveQuotes';
+import { useLiveQuoteOverlay } from '../api/liveQuotes';
 import { useLiveVenueStore } from '../state/liveVenue';
 
 /** 스코프 유니버스(관심∪히트맵)면 15초, 전체 시장이면 30초. 서버 intraday overlay TTL
@@ -52,9 +52,15 @@ export interface ScreenerMonitorStatus {
 export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonitorStatus {
   const { active, selectedId, periodMs, disabled, resultCodes, hasResults, scanOnce, onAutoStop } = args;
   const venue = useLiveVenueStore((s) => s.venue);
-  // 드로어 내부 useScreenerRowsLive 와 동일 queryKey(codes+venue) → react-query 캐시
-  // 공유, 추가 요청 0. 장 상태만 읽는다.
-  const phase = useQuotes(resultCodes, venue).data?.phase;
+  // 드로어 내부 `useScreenerRowsLive` 와 캐시를 공유해 추가 요청을 만들지 않는다.
+  // 장 상태만 읽는다.
+  //
+  // ⚠ **저수준 `useQuotes` 를 직접 부르면 안 된다.** 그쪽은 `useQuoteByCode` →
+  // `useLiveQuoteOverlay` 를 타는데, 거기서 `partitionCodesByEffectiveVenue` 가 NXT
+  // 미상장 종목을 떼어내 `primary` 로만 요청한다 — 즉 코드 집합이 달라져 queryKey 가
+  // 갈리고, 주장하던 "추가 요청 0" 이 조용히 거짓이 된다(스크리너 결과에 미상장이
+  // 섞이는 건 흔하다: 심볼 마스터의 86%). 같은 훅을 타야 같은 키가 나온다.
+  const phase = useLiveQuoteOverlay(resultCodes, venue).phase;
 
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
