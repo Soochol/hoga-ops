@@ -11,11 +11,15 @@ export interface LiveSettings {
   schema_version: number;
   rest_bypass_enabled: boolean;
   screener_depth_autocollect: boolean;
+  /** KRX 호가·체결을 hogaplay 우선으로 읽을지. 기본 false(키움 고정 사다리).
+   *  경위는 `state/sourcePreference.ts` 와 `hoga/api/sources.py` 주석에. */
+  krx_prefer_hogaplay: boolean;
 }
 
 export type LiveSettingsPatch = {
   rest_bypass_enabled?: boolean;
   screener_depth_autocollect?: boolean;
+  krx_prefer_hogaplay?: boolean;
 };
 
 export const LIVE_SETTINGS_KEY = ['live', 'settings'] as const;

@@ -36,11 +36,13 @@ describe('RestUnavailableToastHost', () => {
       schema_version: 1,
       rest_bypass_enabled: true,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
     renderWithClient({
       schema_version: 1,
       rest_bypass_enabled: false,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
 
     act(() => {
@@ -68,6 +70,7 @@ describe('RestUnavailableToastHost', () => {
       schema_version: 1,
       rest_bypass_enabled: false,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
 
     act(() => {
@@ -88,6 +91,7 @@ describe('RestUnavailableToastHost', () => {
       schema_version: 1,
       rest_bypass_enabled: false,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
 
     act(() => {
@@ -114,6 +118,7 @@ describe('RestUnavailableToastHost', () => {
       schema_version: 1,
       rest_bypass_enabled: false,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
 
     expect(screen.queryByRole('status')).toBeNull();
@@ -125,6 +130,7 @@ describe('RestUnavailableToastHost', () => {
       schema_version: 1,
       rest_bypass_enabled: true,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
     const markSpy = vi.spyOn(restBypassMode, 'markLegacyRestBypassMigrated');
 
@@ -132,6 +138,7 @@ describe('RestUnavailableToastHost', () => {
       schema_version: 1,
       rest_bypass_enabled: false,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
 
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
@@ -151,6 +158,7 @@ describe('RestUnavailableToastHost', () => {
       schema_version: 1,
       rest_bypass_enabled: false,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
 
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
@@ -169,6 +177,7 @@ describe('RestUnavailableToastHost', () => {
       schema_version: 1,
       rest_bypass_enabled: false,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
 
     act(() => {
@@ -188,6 +197,7 @@ describe('RestUnavailableToastHost', () => {
       schema_version: 1,
       rest_bypass_enabled: false,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     });
 
     act(() => {

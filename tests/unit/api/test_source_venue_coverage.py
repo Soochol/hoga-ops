@@ -168,3 +168,44 @@ def test_krx_path_is_unchanged_by_the_filter(tmp_path, eng):
     _seed(sd, "hogaplay", candles=True)
 
     assert resolve_candle_source(eng, "20260804", "000660", "hogaplay_first", "KRX") == "hogaplay"
+
+
+# ── 옵트인 사다리 × venue (설정 `krx_prefer_hogaplay`) ───────────────────────
+#
+# 기능 계약 전체가 이 표 안에 있다. 요점은 **venue 분기를 따로 쓰지 않았다**는 것 —
+# 사다리를 뒤집기만 하면 `source_covers_venue` 필터가 NXT·통합에서 hogaplay 를
+# 자동으로 떨어뜨린다. 그래서 설정 이름이 `krx_` 로 시작해도 정직하다.
+
+@pytest.mark.parametrize(("venue", "expected"), [
+    ("KRX", "hogaplay"),      # 옵트인이 실제로 뒤집는 유일한 시장
+    ("NXT", "kiwoom_live"),   # hogaplay 가 후보에서 걸러진다
+    ("UN", "kiwoom_live"),    # 〃
+])
+def test_hogaplay_pref_flips_krx_only(tmp_path, eng, venue, expected):
+    sd = tmp_path / "parquet" / "20260806" / "000660"
+    _seed(sd, "hogaplay")
+    for v in ("KRX", "NXT", "UN"):
+        _seed(sd, "kiwoom_live", v)
+
+    assert resolve_source_result(eng, "20260806", "000660", "hogaplay", venue).source == expected
+
+
+def test_hogaplay_pref_falls_back_when_hogaplay_absent(tmp_path, eng):
+    """옵트인을 켜도 hogaplay 가 없는 Stock-Date 는 kiwoom_live 로 떨어진다.
+
+    8/4 이후 hogaplay 는 관심종목만 잡혔다 — 대부분의 종목이 이 경로를 탄다.
+    """
+    sd = tmp_path / "parquet" / "20260806" / "000660"
+    _seed(sd, "kiwoom_live", "KRX")
+
+    assert resolve_source_result(eng, "20260806", "000660", "hogaplay", "KRX").source == "kiwoom_live"
+
+
+def test_hogaplay_pref_flips_candles_too(tmp_path, eng):
+    """캔들 차원도 같은 사다리를 쓴다 — KRX 에서 383개 vs 48개의 차이."""
+    sd = tmp_path / "parquet" / "20260806" / "000660"
+    _seed(sd, "hogaplay", candles=True)
+    _seed(sd, "kiwoom_live", "KRX", candles=True)
+
+    assert resolve_candle_source(eng, "20260806", "000660", "hogaplay", "KRX") == "hogaplay"
+    assert resolve_candle_source(eng, "20260806", "000660", "", "KRX") == "kiwoom_live"

@@ -22,6 +22,16 @@ import * as client from './client';
 import type { RangeBundle } from './types';
 import type { RangeBundleRequestInput } from './rangeRequest';
 
+// 소스 선호는 이제 설정(`live_settings.krx_prefer_hogaplay`)에서 온다. 설정이 로딩 중이면
+// `useOrderflowSourcePref()` 가 undefined 를 주고 쿼리가 비활성화되는데(콜드 마운트 차트
+// 스왑 방지), 이 파일이 보는 것은 그 게이트가 아니므로 해소된 기본값으로 고정한다.
+// 게이트 자체는 sourcePreference.test.ts 가 검증한다.
+vi.mock("../state/sourcePreference", async (orig) => ({
+  ...(await orig<typeof import("../state/sourcePreference")>()),
+  useOrderflowSourcePref: () => "kiwoom_live",
+}));
+
+
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return ({ children }: { children: ReactNode }) => (

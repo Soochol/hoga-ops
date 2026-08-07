@@ -28,7 +28,8 @@ export type RangeBundleRequestInput = {
   timeframe: Timeframe | null;
   priceRange?: { min: number; max: number };
   todayKst?: string | null;
-  sourcePref: SourcePreference;
+  /** undefined = 설정 로딩 중 → `enabled=false`. 기본값으로 메우지 않는다. */
+  sourcePref: SourcePreference | undefined;
   /** 어느 거래소의 과거 시계열인가. **쿼리 키에도 들어가야 한다** — 안 들어가면
    *  venue 를 바꿔도 캐시가 안 갈려 이전 venue 데이터가 그대로 보인다(ADR-0140). */
   venue: LiveVenueOption;
@@ -49,7 +50,9 @@ export type RangeQueryKey = readonly [
   number | undefined,
   number | undefined,
   number | null,
-  SourcePreference,
+  // 설정 로딩 중이면 undefined — 그 사이 `enabled=false` 라 이 키로 조회되지는 않지만,
+  // 키 자체는 만들어지므로 타입에 포함한다.
+  SourcePreference | undefined,
   RangeMode | null,
   number | null,
   boolean | null,
@@ -103,7 +106,11 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   const volumeDistributionPriceRange = options.volumeDistributionPriceRange ?? null;
   const volumeDistributionCutoffMs = options.volumeDistributionCutoffMs ?? null;
   const mode = options.mode ?? null;
-  const enabled = !!(input.code && input.from && input.to && bucketMs && mode);
+  // `sourcePref` 가 undefined = 설정 로딩 중. 기본값으로 메우고 조회하면 옵션을 켜 둔
+  // 사용자가 kiwoom 키로 한 번, hogaplay 키로 또 한 번 조회해 차트가 갈아끼워진다
+  // (`source_pref` 가 쿼리 키에 있다). 정해질 때까지 기다린다 — 설정은 캐시되므로
+  // 세션당 한 번뿐이다.
+  const enabled = !!(input.code && input.from && input.to && bucketMs && mode && input.sourcePref);
 
   const queryKey: RangeQueryKey = [
     'range',

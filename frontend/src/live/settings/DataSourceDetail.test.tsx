@@ -19,6 +19,7 @@ const SETTINGS = {
   schema_version: 1,
   rest_bypass_enabled: false,
   screener_depth_autocollect: false,
+  krx_prefer_hogaplay: false,
 };
 
 describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
@@ -55,9 +56,13 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(screen.getByRole('switch', { name: 'REST 우회' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
     expect(screen.queryByRole('radio', { name: '스크리너 일봉 우선' })).toBeNull();
-    // 「호가·체결 데이터 기준」 그룹은 폐지(2026-08-07) — 소스 선호 옵션 3종이
-    // venue 비교를 깨뜨려 사다리를 키움 고정으로 두고 선택지를 없앴다.
-    expect(screen.queryByText('호가·체결 데이터 기준')).toBeNull();
+    // 「호가·체결 데이터 기준」 그룹은 **라디오 3종이 폐지되고 옵트인 토글 하나로**
+    // 돌아왔다(2026-08-07 오후). 라디오가 venue 비교를 깨뜨린 사실은 그대로이므로
+    // 기본은 키움 고정이고, hogaplay 는 사용자가 명시적으로 켤 때만 이긴다.
+    expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
+    expect(
+      screen.getByRole('switch', { name: 'KRX에서 hogaplay 우선' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('스크리너 일봉 데이터')).toBeInTheDocument();
     // 저장 방식 라디오(storage_policy)는 폐지(2026-07-17: 관심종목=KIS WS·히트맵=키움 WS 고정).
     expect(screen.queryByText('데이터 저장 방식')).toBeNull();
@@ -79,8 +84,9 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(await screen.findByTestId('study-candle-source-note')).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
     expect(screen.queryByText('KIS 캔들 거래소')).toBeNull();
-    // 호가·체결 기준 그룹은 study 에서도 사라졌다(폐지는 전역).
-    expect(screen.queryByText('호가·체결 데이터 기준')).toBeNull();
+    // 호가·체결 기준 그룹은 study 에서도 보인다 — 오히려 복기뷰가 과거 데이터를 보는
+    // 화면이라 이 토글이 더 쓸모 있다. 폐지된 것은 라디오 3종이지 그룹이 아니다.
+    expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '실시간 WS 우선' })).toBeNull();
   });
 
@@ -116,6 +122,54 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
       body: JSON.stringify({ rest_bypass_enabled: true }),
     }));
     await waitFor(() => expect(screen.getByRole('switch', { name: 'REST 우회' })).toHaveAttribute('aria-checked', 'true'));
+  });
+
+  it('KRX hogaplay 우선 토글을 backend settings로 저장한다', async () => {
+    const apiCall = vi
+      .spyOn(apiClient, 'apiCall')
+      .mockResolvedValue({ ...SETTINGS, krx_prefer_hogaplay: true });
+    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
+
+    render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
+
+    const toggle = await screen.findByRole('switch', { name: 'KRX에서 hogaplay 우선' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ krx_prefer_hogaplay: true }),
+    }));
+  });
+
+  it('토글이 켜져 있어도 KRX가 아니면 적용 안 됨을 알린다 (비활성화하지 않는다)', async () => {
+    // 회색 처리하지 않는 이유: 설정은 지속되는 값이고 거래소는 자주 바뀌므로,
+    // NXT 를 볼 때마다 disabled 면 고장으로 읽힌다. 사실만 알린다.
+    // getLiveSettings spy 는 안 먹는다 — useLiveSettings 의 queryFn 이 같은 모듈의
+    // 함수를 내부 참조로 잡는다. apiCall 은 import 경계를 넘으므로 교체가 먹는다.
+    vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, krx_prefer_hogaplay: true });
+    useLiveVenueStore.setState({ venue: 'NXT' });
+
+    render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
+
+    const hint = await screen.findByTestId('krx-prefer-hogaplay-inactive');
+    expect(hint).toBeInTheDocument();
+    // 토글 자체는 살아 있다 — 끌 수 있어야 한다.
+    expect(screen.getByRole('switch', { name: 'KRX에서 hogaplay 우선' })).not.toBeDisabled();
+  });
+
+  it('KRX에서는 적용 안 됨 안내가 뜨지 않는다', async () => {
+    // getLiveSettings spy 는 안 먹는다 — useLiveSettings 의 queryFn 이 같은 모듈의
+    // 함수를 내부 참조로 잡는다. apiCall 은 import 경계를 넘으므로 교체가 먹는다.
+    vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, krx_prefer_hogaplay: true });
+    useLiveVenueStore.setState({ venue: 'KRX' });
+
+    render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
+
+    await screen.findByRole('switch', { name: 'KRX에서 hogaplay 우선' });
+    expect(screen.queryByTestId('krx-prefer-hogaplay-inactive')).toBeNull();
   });
 
   it('프로그램 순매수 저장은 토글 없이 항시 저장 안내만 보인다 (스위치 폐지 2026-07-21)', async () => {

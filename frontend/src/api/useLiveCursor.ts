@@ -11,8 +11,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
-import { ORDERFLOW_SOURCE_PREF } from '../state/sourcePreference';
-import type { SourcePreference } from '../state/sourcePreference';
+import { useOrderflowSourcePref } from '../state/sourcePreference';
 import { useSpot } from './useSpot';
 import { apiGet } from './client';
 import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe } from './types';
@@ -87,7 +86,7 @@ export interface LiveOrderbookSpot {
  */
 export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefined {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
-  const sourcePref: SourcePreference = ORDERFLOW_SOURCE_PREF;
+  const sourcePref = useOrderflowSourcePref();
   const bucketMs = p.timeframe ? TIMEFRAME_TO_MS[p.timeframe as Timeframe] : null;
   const alignedT =
     cursorMs !== null && bucketMs !== null
@@ -96,7 +95,7 @@ export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefin
   const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
 
   const key =
-    p.code && date && alignedT !== null && bucketMs !== null
+    p.code && date && alignedT !== null && bucketMs !== null && sourcePref
       ? `live|ob|${p.code}|${date}|${alignedT}|${bucketMs}|${sourcePref}|${p.venue}`
       : null;
   const { data } = useSpot<LiveOrderbookSpot>(key, () =>
@@ -143,14 +142,14 @@ export function useLiveBrokersAtCursor(
   p: BrokersParams,
 ): BrokerSeriesEntry[] | undefined {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
-  const sourcePref: SourcePreference = ORDERFLOW_SOURCE_PREF;
+  const sourcePref = useOrderflowSourcePref();
   const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
   // Key gates on cursor presence AND a minute timeframe — no fetch in latest
   // mode, and never on D/W/M (no per-cursor parquet; LiveChartRoot publishes
   // sidebar cursor on all frames). The key omits sidebarCursorMs — the day series is the
   // same for any t within (code, date).
   const key =
-    p.code && date && p.timeframe !== null
+    p.code && date && p.timeframe !== null && sourcePref
       ? `live|br|${p.code}|${date}|${sourcePref}|${p.venue}`
       : null;
   const { data } = useSpot<BrokerSeriesEntry[]>(
@@ -192,7 +191,7 @@ export function useLiveBrokersToday(
   code: string | null,
   venue: LiveVenueOption,
 ): BrokerSeriesEntry[] | undefined {
-  const sourcePref: SourcePreference = ORDERFLOW_SOURCE_PREF;
+  const sourcePref = useOrderflowSourcePref();
   // 렌더 중 Date.now() 는 impure — 최초 1회 lazy init 후 인터벌로만 진행시킨다.
   // 스탬프가 날짜 파생의 근거이므로 자정 롤오버도 같이 따라간다.
   const [stampMs, setStampMs] = useState(() => Date.now());
@@ -202,7 +201,8 @@ export function useLiveBrokersToday(
   }, []);
 
   const date = unixMsToKSTDate(stampMs);
-  const key = code ? `live|br-today|${code}|${date}|${sourcePref}|${venue}|${stampMs}` : null;
+  const key =
+    code && sourcePref ? `live|br-today|${code}|${date}|${sourcePref}|${venue}|${stampMs}` : null;
   const { data } = useSpot<BrokerSeriesEntry[]>(
     key,
     () =>

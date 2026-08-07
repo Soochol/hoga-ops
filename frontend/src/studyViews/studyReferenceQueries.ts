@@ -6,7 +6,8 @@ import type { SourcePreference } from '../state/sourcePreference';
 import { studyReferenceQueryInputs } from './studyReferenceBundleModel';
 
 export type StudyReferenceQuerySettings = {
-  sourcePref: SourcePreference;
+  /** undefined = 설정 로딩 중 → `rangeBundleQueryOptions` 가 `enabled=false` 로 막는다. */
+  sourcePref: SourcePreference | undefined;
   /** 복기 거래소 — 공유 `live.venue.v1` 스토어(ADR-0140 §7). */
   venue: LiveVenueOption;
   brokerLateEntryEnabled: boolean;

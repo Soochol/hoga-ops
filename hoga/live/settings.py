@@ -46,7 +46,14 @@ def update_live_settings(
     *,
     rest_bypass_enabled: bool | None = None,
     screener_depth_autocollect: bool | None = None,
+    krx_prefer_hogaplay: bool | None = None,
 ) -> LiveSettings:
+    """PATCH 병합 — **필드를 하나씩 재조립한다.**
+
+    ⚠ `LiveSettings` 에 필드를 추가하면 **여기에도 반드시 줄을 추가**해야 한다.
+    빠뜨려도 타입 에러가 나지 않고, 무관한 PATCH(예: `rest_bypass_enabled` 토글)가
+    그 필드를 조용히 기본값으로 되돌린다. 회귀 테스트가 이 계약을 지킨다.
+    """
     previous = load_live_settings(data_dir)
     settings = LiveSettings(
         rest_bypass_enabled=(
@@ -58,6 +65,11 @@ def update_live_settings(
             previous.screener_depth_autocollect
             if screener_depth_autocollect is None
             else bool(screener_depth_autocollect)
+        ),
+        krx_prefer_hogaplay=(
+            previous.krx_prefer_hogaplay
+            if krx_prefer_hogaplay is None
+            else bool(krx_prefer_hogaplay)
         ),
     )
     save_live_settings(data_dir, settings)

@@ -1103,6 +1103,23 @@ class LiveSettingsResponse(BaseModel):
     # 큐에 적재할지. 기본 False — 스캔은 탐색적으로 반복 실행되므로 묵시적 큐 증가를 막고
     # 명시적 [수집 요청] 버튼을 1차 UX 로 둔다.
     screener_depth_autocollect: bool = False
+
+    # **KRX 호가·체결을 hogaplay 우선으로.** 기본 False(=키움 고정 사다리).
+    #
+    # #1172 가 2026-08-07 에 소스 선호 옵션을 폐지했는데 이건 그 결정과 정면으로 만난다.
+    # 되살리는 근거는 **폐지 근거의 사실 기반이 같은 날 뒤집혔다**는 것이다: 사다리
+    # 주석은 "hogaplay 0~25건/일, 죽어가는 폴백" 을 전제했는데, ADR-0142 가 같은 날
+    # hogaplay 를 271종목/일 로 되돌렸다.
+    #
+    # 폐지 사유 자체(venue 토글 시 시장과 소스가 함께 바뀌어 비교가 깨진다)는 여전히
+    # 유효하므로 **기본값으로 되돌리지 않고 옵트인으로 둔다** — 기본은 비교 가능성,
+    # 옵트인은 해상도, 그리고 소스 배지가 무엇을 보고 있는지 알린다.
+    #
+    # 이름이 `krx_` 인 이유: hogaplay 는 KRX 만 덮으므로(`SOURCE_VENUES`) NXT·통합에는
+    # 원리적으로 적용되지 않는다. `resolve_source_result` 가 사다리 정렬 **뒤에**
+    # venue 필터를 걸어 자동으로 걸러낸다 — 별도 분기가 필요 없다.
+    krx_prefer_hogaplay: bool = False
+
     # 키움 WS 실시간 활성화 스위치는 폐지(ADR-0118, 2026-07-18). 실시간=키움 WS 유일
     # 소스이므로 '쓸지 말지'는 선택지가 아니다 — 활성화는 오직 자격증명 존재(n_kiwoom>0)
     # 로 게이트된다(키 있으면 항상 ON). 옛 live_settings.json의 kiwoom_enabled 키는
@@ -1117,6 +1134,7 @@ class LiveSettingsUpdate(BaseModel):
     # 프론트가 새 이름으로 갈아탔으므로(#1046 2단계) 옛 이름 수용을 거뒀다.
     rest_bypass_enabled: bool | None = None
     screener_depth_autocollect: bool | None = None
+    krx_prefer_hogaplay: bool | None = None
 
 
 SignalAlertSource = Literal["ws", "rest"]

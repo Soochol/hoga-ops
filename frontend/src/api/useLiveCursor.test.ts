@@ -19,6 +19,16 @@ import {
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import type { LiveVenueOption } from '../state/liveVenue';
 
+// 소스 선호는 이제 설정(`live_settings.krx_prefer_hogaplay`)에서 온다. 설정이 로딩 중이면
+// `useOrderflowSourcePref()` 가 undefined 를 주고 쿼리가 비활성화되는데(콜드 마운트 차트
+// 스왑 방지), 이 파일이 보는 것은 그 게이트가 아니므로 해소된 기본값으로 고정한다.
+// 게이트 자체는 sourcePreference.test.ts 가 검증한다.
+vi.mock("../state/sourcePreference", async (orig) => ({
+  ...(await orig<typeof import("../state/sourcePreference")>()),
+  useOrderflowSourcePref: () => "kiwoom_live",
+}));
+
+
 // Mock the low-level fetch helper used by useSpot fetchers.
 vi.mock('./client', async (orig) => {
   const actual = await orig<typeof import('./client')>();

@@ -22,6 +22,7 @@ function makeWrapper(bypass = false) {
       schema_version: 1,
       rest_bypass_enabled: bypass,
       screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
     } satisfies LiveSettings);
     return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
   };

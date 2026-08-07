@@ -385,7 +385,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
         from_date,
         to_date,
         bucket_ms,
-        source_pref="hogaplay",
+        source_pref="",
         broker_late_entries_enabled=True,
         broker_late_entry_start_hhmm=None,
         volume_distribution_bins=None,
@@ -425,8 +425,15 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
     assert captured == ["kiwoom_live"]
 
 
-def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> None:
-    """source_pref defaults to 'hogaplay' when not provided (ADR-0039)."""
+def test_api_range_source_pref_defaults_to_empty(app_client: TestClient) -> None:
+    """`source_pref` 를 안 보내면 빈 문자열 = **기본 사다리**(키움 우선).
+
+    2026-08-07 오후까지 기본값이 `"hogaplay"` 였다(ADR-0039 시절 잔재). 소스 선호
+    옵션이 폐지되며 백엔드가 정책 문자열을 무시하게 되어 그 값은 무해했는데,
+    옵트인 토글(`krx_prefer_hogaplay`)이 `"hogaplay"` 를 인식 토큰으로 되살리면서
+    **파라미터를 생략한 모든 호출이 hogaplay 우선이 되는** 문제로 바뀌었다.
+    빈 문자열은 "지정 안 함" 을 뜻하고 `ordered_sources` 가 기본 사다리로 수렴시킨다.
+    """
     captured: list[str] = []
 
     def _stub(
@@ -437,7 +444,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
         from_date,
         to_date,
         bucket_ms,
-        source_pref="hogaplay",
+        source_pref="",
         broker_late_entries_enabled=True,
         broker_late_entry_start_hhmm=None,
         volume_distribution_bins=None,
@@ -474,7 +481,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
             "&mode=sidecar"
         )
     assert r.status_code == 200, r.text
-    assert captured == ["hogaplay"]
+    assert captured == [""]
 
 
 def test_api_range_omits_volume_distribution_by_default(app_client: TestClient) -> None:

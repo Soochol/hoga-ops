@@ -42,16 +42,22 @@ def test_source_name_literal_includes_all_sources() -> None:
     assert set(get_args(SourceName)) == {"hogaplay", "kiwoom_live"}
 
 
-# 소스 선호 옵션 폐지(2026-08-07) — 어떤 정책 문자열이 와도 **같은 사다리**다.
-# 구 정책 키를 그대로 넣는 것이 요점이다: 저장된 설정(`chart.sourcePreference.v1`)이나
-# 구 URL 이 도착해도 예외 없이 새 사다리로 수렴해야 한다(사용자 화면이 깨지지 않는다).
+# 인식하는 토큰은 `"hogaplay"` 하나뿐이고(옵트인 토글), 나머지는 전부 기본 사다리로
+# **조용히 수렴**한다. 구 정책 키를 그대로 넣는 것이 요점이다: 저장된 설정이나 구 URL 이
+# 도착해도 예외 없이 수렴해야 한다(사용자 화면이 깨지지 않는다).
+# `"HOGAPLAY"` 대문자가 목록에 있는 것도 계약이다 — 정확히 일치할 때만 뒤집는다.
 @pytest.mark.parametrize("policy", [
-    "hogaplay", "hogaplay_first", "kis_ws_first", "kiwoom_live",
+    "hogaplay_first", "kis_ws_first", "kiwoom_live",
     "kiwoom_ws_first", "kis_api", "kis_api_first", "completeness_first",
     "", "kis_ws", "HOGAPLAY", "모르는정책",
 ])
-def test_every_policy_string_maps_to_the_single_ladder(policy) -> None:
+def test_unknown_policy_strings_converge_to_default_ladder(policy) -> None:
     assert ordered_sources(policy) == ("kiwoom_live", "hogaplay")
+
+
+def test_hogaplay_token_flips_the_ladder() -> None:
+    """설정 `krx_prefer_hogaplay` 가 켜지면 프론트가 이 토큰을 보낸다."""
+    assert ordered_sources("hogaplay") == ("hogaplay", "kiwoom_live")
 
 
 def test_resolve_source_uses_ordered_policy(tmp_path: Path) -> None:
@@ -59,9 +65,18 @@ def test_resolve_source_uses_ordered_policy(tmp_path: Path) -> None:
     _seed_source(tmp_path, "20260622", "005930", "kiwoom_live")
     engine = _make_engine(tmp_path)
 
-    # 둘 다 있으면 **항상 kiwoom_live** — 정책 문자열이 승자를 못 바꾼다(옵션 폐지).
+    # 둘 다 있으면 기본은 kiwoom_live — 폐지된 옛 정책 문자열은 승자를 못 바꾼다.
+    # 승자를 바꾸는 유일한 토큰은 `"hogaplay"` 뿐이다(아래 테스트).
     for pref in ("hogaplay_first", "kis_ws_first", "kis_api_first"):
         assert resolve_source(engine, "20260622", "005930", pref) == "kiwoom_live"
+
+
+def test_hogaplay_pref_wins_when_both_sources_exist(tmp_path: Path) -> None:
+    _seed_source(tmp_path, "20260622", "005930", "hogaplay")
+    _seed_source(tmp_path, "20260622", "005930", "kiwoom_live")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_source(engine, "20260622", "005930", "hogaplay") == "hogaplay"
 
 
 def test_resolve_source_honors_kiwoom_live(tmp_path: Path) -> None:

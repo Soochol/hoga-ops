@@ -201,6 +201,7 @@ function createWrapper(settings?: Partial<LiveSettings>) {
     schema_version: 1,
     rest_bypass_enabled: false,
     screener_depth_autocollect: false,
+    krx_prefer_hogaplay: false,
     ...settings,
   } satisfies LiveSettings);
   return ({ children }: { children: ReactNode }) => (

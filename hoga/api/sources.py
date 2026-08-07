@@ -161,6 +161,20 @@ CANDLE_BEARING_SOURCES: frozenset[SourceName] = frozenset({"hogaplay", "kiwoom_l
 #: 몰린다. 사용자 결정으로 비교 가능성을 택했다.
 ORDERFLOW_LADDER: tuple[SourceName, ...] = ("kiwoom_live", "hogaplay")
 
+#: **옵트인 사다리** — 설정 `krx_prefer_hogaplay` 가 켜졌을 때만 쓴다(2026-08-07 재도입).
+#:
+#: 위 폐지 결정을 되돌리는 게 아니라 **전제 변화에 대한 재조정**이다. `ORDERFLOW_LADDER`
+#: 주석의 사실 기반은 "hogaplay 0~25건/일, 죽어가는 폴백" 인데, ADR-0142 가 같은 날
+#: hogaplay 를 271종목/일 로 되돌렸다. 폐지 사유(venue 토글 시 시장과 소스가 함께 바뀐다)
+#: 는 여전히 유효하므로 **기본값이 아니라 옵션**으로 둔다 — 기본은 비교 가능성,
+#: 옵트인은 해상도(실측 최대 145배: 000660/20260806 은 294행 vs 42,573~82,525행).
+#:
+#: `krx_` 접두사가 정확한 이유: `resolve_source_result` 가 이 순서를 매긴 **뒤에**
+#: `source_covers_venue` 로 거르는데 `SOURCE_VENUES["hogaplay"] == {"KRX"}` 이므로,
+#: NXT·통합에서는 후보가 `kiwoom_live` 하나만 남아 이 사다리가 저절로 무의미해진다.
+#: venue 분기를 따로 쓰지 않는다.
+HOGAPLAY_FIRST_LADDER: tuple[SourceName, ...] = ("hogaplay", "kiwoom_live")
+
 # 캔들 차원도 **같은 사다리**를 쓴다(2026-08-07). 예전엔 정책별 별칭(`_CANDLE_POLICY_ALIAS`)
 # 으로 캔들만 hogaplay 우선으로 되돌렸는데, 그 별칭이 존재한 이유는 `completeness_first`
 # 의 WS-first 순서가 kis_api 를 hogaplay 앞에 놓는 것이었다. 그 소스가 사라져 별칭도
@@ -183,14 +197,17 @@ class SourceResolution:
 
 
 def ordered_sources(policy: str = "") -> tuple[SourceName, ...]:
-    """소스 사다리 — **정책과 무관하게 하나**다(2026-08-07). 근거는 `ORDERFLOW_LADDER`.
+    """소스 사다리 — 기본 `ORDERFLOW_LADDER`, `"hogaplay"` 하나만 뒤집는다.
 
-    인자를 남긴 이유는 배관 제거를 별도 단계로 미뤘기 때문이다(`source_pref` 가 20개
-    파일·123줄에 퍼져 있다). 값을 무시하되 **검증도 하지 않는다** — 옵션이 사라졌으니
-    "모르는 정책" 이라는 개념 자체가 없고, 구 URL·저장된 설정이 오면 조용히 새 사다리로
-    수렴하는 편이 사용자에게 낫다.
+    2026-08-07 오전에 정책 인자를 **무시**하도록 바꿨다가(옵션 폐지) 같은 날 오후에
+    옵트인 하나를 되살렸다. 경위는 `HOGAPLAY_FIRST_LADDER` 주석에 있다.
+
+    **여전히 검증하지 않는다.** 인식하는 토큰은 `"hogaplay"` 뿐이고 나머지는 전부
+    조용히 기본 사다리로 수렴한다 — 폐지된 옛 정책 문자열(`kis_ws_first` ·
+    `completeness_first`)이 구 URL·저장된 설정에 남아 있을 수 있는데, 그걸 400 으로
+    거절하는 것보다 기본값으로 수렴시키는 편이 사용자에게 낫다.
     """
-    return ORDERFLOW_LADDER
+    return HOGAPLAY_FIRST_LADDER if policy == "hogaplay" else ORDERFLOW_LADDER
 
 
 def _classify_flat_legacy_meta(stock_date_dir: Path) -> Classification | None:
