@@ -16,7 +16,19 @@ function currentKstMonth(): { year: number; month: number } {
 }
 
 const STORAGE_KEY = 'capture.leftPct';
-const DEFAULT_LEFT_PCT = 60;
+/**
+ * 폼:큐 기본 분할. **60 → 45 (2026-08-07).**
+ *
+ * 페이지를 `PAGE_MAX_W` 중앙 고정으로 담으면서 필요해진 값이다. 2560px 전폭일 땐
+ * 60% 도 충분했지만 1680 으로 좁히면 큐 pane 이 656px 가 되고, 큐 행 스크롤러가
+ * 658/629 로 넘쳐 **취소(×) 열 ~29px 가 가로 스크롤 뒤로 밀린다**(101행 전부, 실측).
+ * 폼은 2개월 달력이라 필요 폭이 ~740px 로 고정이므로 60% 를 받을 이유가 없다 —
+ * 45% 면 폼 738 / 큐 903 이고 오버플로가 0이다.
+ *
+ * ⚠ 이 값은 `localStorage` 에 저장되므로 **기존 사용자에게는 적용되지 않는다**(저장된
+ * 60 이 이긴다). 스플리터를 한 번 움직이거나 더블클릭 리셋하면 이 값으로 온다.
+ */
+const DEFAULT_LEFT_PCT = 45;
 const MIN_PCT = 25;
 const MAX_PCT = 75;
 
@@ -76,6 +88,7 @@ export default function Capture() {
     // 고친 것과 같은 축 비대칭(#730)이 여기서는 세로로 나타난 것.
     <PageContainer
       ref={containerRef}
+      centered
       className="grid grid-rows-[minmax(0,1fr)] gap-0 bg-bg text-fg !pb-0"
       style={{ gridTemplateColumns: `${leftPct}fr 12px ${100 - leftPct}fr` }}
     >

@@ -244,7 +244,7 @@ export function Screener() {
     : null;
 
   return (
-    <PageContainer className="grid gap-md min-h-0 !pb-0"
+    <PageContainer centered className="grid gap-md min-h-0 !pb-0"
       style={{ gridTemplateColumns: '23rem minmax(0, 1fr)' }}>
       <PanelCard borderless flat data-testid="screener-builder-pane" className="flex min-h-0 flex-col overflow-hidden">
         <div className="flex flex-col gap-sm p-md pb-0">
