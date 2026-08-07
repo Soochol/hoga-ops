@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { BrokerSeriesEntry, BrokerSeriesPoint } from '../api/types';
-import {
-  realMsToYyyymmdd,
-  regularSessionCloseMs,
-  regularSessionOpenMs,
-} from '../live/liveDateTime';
+import { realMsToYyyymmdd } from '../live/liveDateTime';
+import { liveVenueSessionBoundsMs } from '../live/liveVenuePolicy';
+import type { LiveVenueOption } from '../state/liveVenue';
 import { brokerDisplayShort, isForeignBroker } from './brokerDisplayNames';
 import { priceDirClass } from '../ui/priceDir';
 import { hoverMsFromClientX } from './sparklineHover';
@@ -19,10 +17,18 @@ export const GAP_THRESHOLD_MS = 30_000;
 type Props = {
   series: BrokerSeriesEntry[] | null | undefined;
   cursorMs: number | null;
+  /** 표시 창(클립·x축)을 정하는 거래소. **필수 인자다** — 기본값을 두면 인자를 잊은
+   *  호출부가 조용히 KRX 시계로 판정돼 NXT 창이 도로 닫힌다. 이 표가 venue 를 안
+   *  본 것이 애프터마켓 거래원 동결의 원인이었다(#245 의 정규장 클립).
+   *
+   *  /live 는 **유효 venue**(`useEffectiveVenue`)를 넘긴다 — 선택값을 그대로 넘기면
+   *  NXT 미상장 종목에 통합을 고른 화면이 데이터는 KRX(15:30 까지)인데 축만 20:00
+   *  까지 늘어나 궤적이 좌측에 찌그러진다. /study 는 KRX 고정이다(#1131). */
+  venue: LiveVenueOption;
   gapThresholdMs?: number;
 };
 
-export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
+export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
   // 스파크라인 열 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
   // 크로스헤어(cursorMs)로 복귀한다. 모든 행이 같은 dayRange 를 쓰므로 어느
   // 행에서 호버하든 세로 커서선이 전 행에 정렬되고 순매수 열이 함께 갱신된다.
@@ -36,12 +42,15 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   const rows = useMemo(
     () =>
       (series ?? [])
-        .map(clipEntryToRegularSession)
+        .map((entry) => clipEntryToVenueSession(entry, venue))
         .filter((entry) => entry.points.length > 0),
-    [series],
+    [series, venue],
   );
   // Common time domain across all displayed brokers — keeps cursor marker
   // X positions aligned across rows.
+  //
+  // ⚠ 클립과 **같은 창**을 써야 한다. 축만 정규장으로 두면 클립을 넓혀도 애프터마켓
+  // 점이 그려질 자리가 없다 — 두 곳이 이 표의 표시 창을 함께 정한다.
   const dayRange = useMemo(() => {
     if (rows.length === 0) return null;
     let first = Infinity;
@@ -49,16 +58,15 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
     for (const e of rows) {
       for (const p of e.points) {
         const date = realMsToYyyymmdd(p.ts_ms);
-        const open = regularSessionOpenMs(date);
-        const close = regularSessionCloseMs(date);
-        if (open < first) first = open;
-        if (close > last) last = close;
+        const { open_ms, close_ms } = liveVenueSessionBoundsMs(date, venue);
+        if (open_ms < first) first = open_ms;
+        if (close_ms > last) last = close_ms;
       }
     }
     return Number.isFinite(first) && Number.isFinite(last) && last > first
       ? { first, last }
       : null;
-  }, [rows]);
+  }, [rows, venue]);
 
   if (series === undefined) {
     return (
@@ -201,13 +209,28 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   );
 }
 
-function clipEntryToRegularSession(entry: BrokerSeriesEntry): BrokerSeriesEntry {
+/** 표시 창 밖 관측을 버린다 — 창은 **venue 가 정한다**(KRX 09:00–15:30 · NXT·통합
+ *  08:00–20:00).
+ *
+ *  #245 가 이 클립을 넣은 이유는 유효하다: 마감 후 잔여 스냅샷이 x축을 늘려 정규장
+ *  궤적을 찌그러뜨렸다. 다만 그때는 KRX 전용이라 창을 상수로 박았고, ADR-0140 이
+ *  venue 축을 준 뒤로는 그 상수가 **NXT 애프터마켓 거래원을 통째로 버렸다** — 데이터는
+ *  파케이·WS 양쪽에 다 도착하는데 이 한 줄에서 폐기됐다(2026-08-07 실측: 상위 6개
+ *  브로커가 일제히 15:29:11 에 동결, 브로커당 최대 938 점 폐기).
+ *
+ *  ⚠ `final_net` 은 클립하지 않고 원본을 남긴다(`{ ...entry, points }`). 정렬·순매도
+ *  경계가 그 값을 쓰므로, 창을 좁히면 **행 순서는 창 밖 값으로 움직이는데 숫자는
+ *  창 경계에서 멈추는** 화면이 된다. 창이 venue 와 맞는 한 이 비대칭은 드러나지
+ *  않지만, 창을 다시 좁히려는 사람은 이걸 먼저 봐야 한다. */
+function clipEntryToVenueSession(
+  entry: BrokerSeriesEntry,
+  venue: LiveVenueOption,
+): BrokerSeriesEntry {
   const firstPoint = entry.points[0];
   if (!firstPoint) return entry;
   const date = realMsToYyyymmdd(firstPoint.ts_ms);
-  const open = regularSessionOpenMs(date);
-  const close = regularSessionCloseMs(date);
-  const points = entry.points.filter((p) => p.ts_ms >= open && p.ts_ms <= close);
+  const { open_ms, close_ms } = liveVenueSessionBoundsMs(date, venue);
+  const points = entry.points.filter((p) => p.ts_ms >= open_ms && p.ts_ms <= close_ms);
   return points.length === entry.points.length ? entry : { ...entry, points };
 }
 
