@@ -97,7 +97,14 @@ afterEach(() => {
 });
 
 function renderPage() {
-  const qc = new QueryClient();
+  // ⚠ `retry: false` 는 필수다. 이 파일은 `liveSettings` 를 모킹하지 않는데
+  // `Screener` 가 `useLiveSettings()` 를 쓴다 — 기본 재시도(3회)가 붙으면 그 실패
+  // 쿼리가 백오프 타이머를 물고 늘어져 `renderPageReady` 의 "조회 버튼 enabled" 대기가
+  // 간헐적으로 타임아웃한다(실측 2026-08-07: 전체 스위트에서 2회 중 1회 실패, 단독
+  // 실행은 3회 전부 통과 — 부하에 따라 갈리는 전형적 서명).
+  //
+  // 리포 관례도 이쪽이다: `retry: false` 216곳 vs 기본값 36곳.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={qc}><MemoryRouter><Screener /></MemoryRouter></QueryClientProvider>);
 }
 
