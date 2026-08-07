@@ -21,8 +21,14 @@ from hoga.util.timeenc import KST, hhmmssms_to_unix_ms
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+#: 2 = venue 축 도입(경로 `{code}/{venue}/{date}.json` + `venue` 필드). 스탬프일 뿐
+#: 무효화에 쓰이지 않는다 — 읽기는 버전을 보지 않고 레거시(v1) 파일을 그대로 받는다.
+SCHEMA_VERSION = 2
 SOURCE = "kis_program_trade"  # 동결 — 모듈 docstring 참조
+
+#: venue 축 이전(v1) 파일이 담고 있던 시장. collector 가 KRX 태그만 병합했으므로
+#: 레거시 파일은 **정의상 전부 KRX** 다 — 폴백을 이 venue 에만 여는 근거다.
+LEGACY_VENUE = "KRX"
 
 # 갭 판정 최소 시간 점프(폴 주기 배수). 0w drain 은 30초마다 새 행 1개짜리 배치를
 # 만들므로 "이전 최신 행이 새 배치에 없음"은 정상 상태다 — 시각이 폴 주기를 이만큼
@@ -72,6 +78,11 @@ class ProgramTradeDayFile(BaseModel):
     source: str = SOURCE
     code: str
     date: str
+    #: 이 파일이 담은 시장. **모델 기본값은 레거시 파일 해석용**이다 — v1 파일엔 이
+    #: 키가 없고 그 내용은 전부 KRX 였다. 저장소 API(`path`·`load`·`merge_response`)
+    #: 쪽 인자에는 기본값을 두지 않는다: 거기서의 기본값은 곧 두 시장이 한 파일에
+    #: 섞이는 경로다(JSONL writer 가 venue 를 필수로 둔 것과 같은 이유, ADR-0140 §3).
+    venue: str = LEGACY_VENUE
     poll_interval_ms: int = 30_000
     rows: list[ProgramTradeStoredRow] = Field(default_factory=list)
     gap_events: list[dict[str, int | str]] = Field(default_factory=list)
@@ -84,19 +95,51 @@ class ProgramTradeStore:
         self._data_dir = data_dir
         self._poll_interval_ms = poll_interval_ms
 
-    def path(self, code: str, date: str) -> Path:
+    def path(self, code: str, date: str, venue: str) -> Path:
+        """쓰기 경로 — venue 축이 들어간 자리. **기본값 없음**이 요점이다(ADR-0140 §3).
+
+        `{code}/{venue}/{date}.json` 순서인 이유: 레거시가 `{code}/{date}.json` 이라
+        code 아래에 축을 끼우는 것이 변경이 가장 작고, 종목 단위로 도는 소비자가
+        디렉터리 구조를 그대로 쓴다.
+        """
+        return self._data_dir / "kis-program-trade" / code / venue / f"{date}.json"
+
+    def _legacy_path(self, code: str, date: str) -> Path:
+        """venue 축 이전(v1) 경로. **읽기 전용** — 쓰기는 언제나 새 경로로 간다."""
         return self._data_dir / "kis-program-trade" / code / f"{date}.json"
 
-    def load(self, code: str, date: str) -> ProgramTradeDayFile:
-        path = self.path(code, date)
+    def read_path(self, code: str, date: str, venue: str) -> Path:
+        """실제로 읽을 파일 — 새 경로 우선, 없으면 KRX 에 한해 레거시.
+
+        레거시를 KRX 에만 여는 근거는 `LEGACY_VENUE` 주석 참조(그 파일들은 정의상
+        KRX 뿐이라, NXT·통합으로 읽으면 다른 시장의 값을 그 시장 것으로 답하게 된다).
+
+        쓰기는 폴백하지 않으므로 KRX 당일 파일은 **첫 병합에서 새 경로로 옮겨 앉는다**
+        — 레거시를 읽어 새 경로에 통째로 쓰는 셈이라 별도 마이그레이션이 필요 없고,
+        과거일은 레거시에 남은 채로 계속 읽힌다.
+        """
+        path = self.path(code, date, venue)
+        if path.exists():
+            return path
+        if venue == LEGACY_VENUE:
+            legacy = self._legacy_path(code, date)
+            if legacy.exists():
+                return legacy
+        return path
+
+    def load(self, code: str, date: str, venue: str) -> ProgramTradeDayFile:
+        path = self.read_path(code, date, venue)
         if not path.exists():
             return ProgramTradeDayFile(
                 code=code,
                 date=date,
+                venue=venue,
                 poll_interval_ms=self._poll_interval_ms,
             )
         try:
-            return ProgramTradeDayFile.model_validate(json.loads(path.read_text(encoding="utf-8")))
+            loaded = ProgramTradeDayFile.model_validate(
+                json.loads(path.read_text(encoding="utf-8"))
+            )
         except (OSError, json.JSONDecodeError, ValidationError) as e:
             stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
             backup = path.with_name(f"{path.name}.corrupt-{stamp}")
@@ -108,25 +151,35 @@ class ProgramTradeStore:
             return ProgramTradeDayFile(
                 code=code,
                 date=date,
+                venue=venue,
                 poll_interval_ms=self._poll_interval_ms,
             )
+        # 레거시 파일은 `venue` 키가 없어 모델 기본값(KRX)이 들어온다. 요청 venue 로
+        # 덮어써 **쓰기 경로가 읽은 자리와 갈리지 않게** 한다 — 안 하면 v1 을 읽은
+        # 뒤의 `_write` 가 파일 안 값(KRX)을 따라가 요청 venue 와 어긋날 수 있다.
+        return loaded.model_copy(update={"venue": venue})
 
-    def load_cached(self, code: str, date: str) -> ProgramTradeDayFile:
+    def load_cached(self, code: str, date: str, venue: str) -> ProgramTradeDayFile:
         """읽기 전용 소비자용 mtime 검증 캐시 load. 절대 쓰기 경로에서 쓰지 말 것 —
         캐시가 stale write 를 막지 못한다(merge_response 는 uncached load() 사용).
-        반환 모델은 참조 공유이므로 소비자는 변형하지 말 것."""
-        path = self.path(code, date)
-        return _LOAD_CACHE.get_or_load(path, lambda _p: self.load(code, date))
+        반환 모델은 참조 공유이므로 소비자는 변형하지 말 것.
+
+        캐시 키는 **실제로 읽을 경로**다(`read_path`) — 새 경로 키로 캐시하면 레거시를
+        읽고도 존재하지 않는 파일의 mtime 을 검증하게 돼 무효화가 성립하지 않는다.
+        """
+        path = self.read_path(code, date, venue)
+        return _LOAD_CACHE.get_or_load(path, lambda _p: self.load(code, date, venue))
 
     def merge_response(
         self,
         *,
         code: str,
         date: str,
+        venue: str,
         rows: list[ProgramTradeByStockRow],
         observed_at_ms: int,
     ) -> ProgramTradeDayFile:
-        current = self.load(code, date)
+        current = self.load(code, date, venue)
         incoming = sorted(rows, key=lambda r: r.bsop_hour)
         if not incoming:
             return current
@@ -147,6 +200,7 @@ class ProgramTradeStore:
                 current = ProgramTradeDayFile(
                     code=code,
                     date=date,
+                    venue=venue,
                     poll_interval_ms=self._poll_interval_ms,
                 )
                 previous_latest = None
@@ -192,10 +246,12 @@ class ProgramTradeStore:
         return current
 
     def _write(self, day: ProgramTradeDayFile) -> None:
-        atomic_write_json(self.path(day.code, day.date), day.model_dump())
+        # 언제나 **새 경로**다 — 레거시를 읽어 왔더라도 그쪽에 되쓰지 않는다.
+        atomic_write_json(self.path(day.code, day.date, day.venue), day.model_dump())
 
     def _quarantine(self, day: ProgramTradeDayFile) -> None:
-        path = self.path(day.code, day.date)
+        # 격리 대상은 방금 읽은 파일이므로 레거시일 수 있다 — `read_path` 로 잡는다.
+        path = self.read_path(day.code, day.date, day.venue)
         if not path.exists():
             return
         stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
