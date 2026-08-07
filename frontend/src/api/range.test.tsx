@@ -21,6 +21,9 @@ import {
 import * as client from './client';
 import type { RangeBundle } from './types';
 import type { RangeBundleRequestInput } from './rangeRequest';
+import type { SymbolHit } from './types';
+import { useLiveVenueStore } from '../state/liveVenue';
+import { seedSymbolMaster, symbolHit } from '../live/seedSymbolMaster';
 
 // 소스 선호는 이제 설정(`live_settings.krx_prefer_hogaplay`)에서 온다. 설정이 로딩 중이면
 // `useOrderflowSourcePref()` 가 undefined 를 주고 쿼리가 비활성화되는데(콜드 마운트 차트
@@ -34,6 +37,13 @@ vi.mock("../state/sourcePreference", async (orig) => ({
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  seedSymbolMaster(qc);  // 심볼 요청이 apiCall 모킹 큐를 먹지 않게 (makeWrapper 주석 참조)
+  // 심볼 마스터를 **반드시** 시딩한다 — range 훅이 코드별 유효 venue 를 해석하려고
+  // `capture/useSymbols` 를 타는데, 시딩하지 않으면 `/api/symbols/all` 요청이 이
+  // 파일의 `apiCall` 모킹 큐를 한 칸 먹어 range 단언이 심볼 URL 을 보게 된다
+  // (seedSymbolMaster docstring 이 예고한 함정). 빈 배열 = 전 코드 '모름' 이라
+  // 해석은 항등이고, 종전 동작이 그대로 유지된다.
+  seedSymbolMaster(qc);
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
@@ -1306,6 +1316,7 @@ describe('useRangeSidecarDelta', () => {
     };
     const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => Promise.resolve(bundleFor(url)));
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);  // 심볼 요청이 apiCall 모킹 큐를 먹지 않게 (makeWrapper 주석 참조)
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     );
@@ -1349,6 +1360,7 @@ describe('useRangeSidecarDelta', () => {
     // 날짜 롤오버(to 20260705→20260706)는 identity 를 깨므로 어제 병합본을 초기
     // previous 로 집지 않는다 — 콜드 시드부터 시작해야 stale 어제 데이터가 새어들지 않는다.
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);  // 심볼 요청이 apiCall 모킹 큐를 먹지 않게 (makeWrapper 주석 참조)
     const options = { mode: 'sidecar' as const, volumeDistributionBins: 10 };
     const yesterdayIdentity = planSidecarRangeDelta({
       code: '005930', from: '20260620', to: '20260705', timeframe: '1m', todayKst: '20260705',
@@ -1526,6 +1538,7 @@ describe('useRangeSidecarDelta', () => {
       return Promise.resolve(first);
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);  // 심볼 요청이 apiCall 모킹 큐를 먹지 않게 (makeWrapper 주석 참조)
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     );
@@ -1600,6 +1613,7 @@ describe('useRangeSidecarDelta', () => {
     });
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(delta);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);  // 심볼 요청이 apiCall 모킹 큐를 먹지 않게 (makeWrapper 주석 참조)
     qc.setQueryData(previousRequest.queryKey, previous);
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
@@ -1706,6 +1720,7 @@ describe('useRangeHogaDelta', () => {
       return Promise.resolve(first);
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);  // 심볼 요청이 apiCall 모킹 큐를 먹지 않게 (makeWrapper 주석 참조)
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     );
@@ -2002,6 +2017,7 @@ describe('좌측 팬 중 range 캐시 사본 누적', () => {
     vi.spyOn(client, 'apiCall').mockImplementation((url) => Promise.resolve(bundleFor(url)));
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);  // 심볼 요청이 apiCall 모킹 큐를 먹지 않게 (makeWrapper 주석 참조)
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     );
@@ -2036,5 +2052,79 @@ describe('좌측 팬 중 range 캐시 사본 누적', () => {
     expect(wideCopies.length).toBe(1);
     // 그리고 남은 한 벌은 반드시 최심(=팬 끝까지 확장된) 복원원이어야 한다.
     expect(wideCopies[0].from_date).toBe('20260601');
+  });
+});
+
+// ── 종목별 유효 venue 해석 (#1213 자매 — 스팟 훅이 아니라 range 계열) ──────────
+//
+// `/live` 의 venue 해석은 `effectiveLiveVenue` 한 곳이다(UN + NXT 미상장 → KRX).
+// 이 훅들은 전역 선택값을 그대로 URL·queryKey 에 넣고 있었다. 백엔드는 흡수하지
+// 않는다 — NXT 미상장 종목엔 `kiwoom_live/UN/` 이 애초에 안 생겨 **빈 200** 이
+// 오고, 에러가 아니라 정상 빈 응답이라 화면이 조용히 빈다.
+describe('range 훅 — 종목별 유효 venue 해석', () => {
+  function seededWrapper(hits: SymbolHit[]) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc, hits);
+    return ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    // zustand 는 모듈 상태라 앞 테스트의 선택이 남는다 — 명시적으로 되돌린다.
+    useLiveVenueStore.setState({ venue: 'KRX' });
+  });
+
+  it('useRange: NXT 미상장 + 통합 선택이면 KRX 로 조회한다', async () => {
+    useLiveVenueStore.setState({ venue: 'UN' });
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    const { result } = renderHook(
+      () => useRange('003490', '20260807', '20260807', '1m', undefined, undefined, { mode: 'full' }),
+      { wrapper: seededWrapper([symbolHit('003490', false)]) },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(spy.mock.calls[0][0]).toContain('venue=KRX');
+  });
+
+  it('useRange: NXT 상장 종목이면 통합 선택을 그대로 쓴다', async () => {
+    useLiveVenueStore.setState({ venue: 'UN' });
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    const { result } = renderHook(
+      () => useRange('005930', '20260807', '20260807', '1m', undefined, undefined, { mode: 'full' }),
+      { wrapper: seededWrapper([symbolHit('005930', true)]) },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(spy.mock.calls[0][0]).toContain('venue=UN');
+  });
+
+  it('useRange: nxt_enabled 를 모르면 강등하지 않는다', async () => {
+    // 백엔드가 모름을 fail-open 으로 세 venue 전부 구독하므로 UN 프레임이 실제로
+    // 존재한다(coverage.py). 프론트만 강등하면 있는 데이터를 버린다.
+    useLiveVenueStore.setState({ venue: 'UN' });
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    const { result } = renderHook(
+      () => useRange('005930', '20260807', '20260807', '1m', undefined, undefined, { mode: 'full' }),
+      { wrapper: seededWrapper([symbolHit('005930', null)]) },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(spy.mock.calls[0][0]).toContain('venue=UN');
+  });
+
+  it('useRangeSidecarDelta: 델타 경로도 같은 해석을 탄다', async () => {
+    // 델타는 `liveRangeDeltaIdentity`(queryKey 파생)까지 venue 를 물고 가므로,
+    // 선택값이 남으면 venue 를 바꿔도 병합본이 이전 시장 데이터를 유지한다.
+    useLiveVenueStore.setState({ venue: 'UN' });
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    renderHook(
+      () => useRangeSidecarDelta('003490', '20260807', '20260807', '1m', undefined, '20260807', {
+        mode: 'sidecar',
+        volumeDistributionBins: 10,
+        volumeDistributionPriceRange: { min: 1, max: 2 },
+      }, 'kiwoom_live'),
+      { wrapper: seededWrapper([symbolHit('003490', false)]) },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls.every((c) => String(c[0]).includes('venue=KRX'))).toBe(true);
   });
 });
