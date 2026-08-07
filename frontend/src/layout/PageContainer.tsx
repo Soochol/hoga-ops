@@ -8,8 +8,10 @@ import { forwardRef, type CSSProperties, type ReactNode } from 'react';
  * never repeat their own name (matches the /live header decision). Full-bleed pages (the
  * /live chart workspace) do NOT use this; they own their grid.
  *
- * forwardRef so a page that needs the frame element (e.g. Capture's splitter
- * drag math) can read it.
+ * forwardRef so a page that needs the frame element can read it. **현재 이 ref 를 쓰는
+ * 페이지는 없다** — 유일 소비처였던 `/capture` 스플리터의 clientX → % 변환이 2026-08-07
+ * 스플리터 제거와 함께 사라졌다. 계약은 `PageContainer.test.tsx` 가 지키고 있으므로
+ * forwardRef 는 존치하되, 되살아난 소비처가 생기면 여기에 적을 것.
  */
 /**
  * 페이지 콘텐츠 최대 폭 — **앱 전체에서 이 값 하나만 쓴다.**

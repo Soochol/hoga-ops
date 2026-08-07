@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { CaptureForm, type SymbolPick } from '../capture/CaptureForm';
 import { CaptureQueue } from '../capture/CaptureQueue';
-import VerticalSplitter from '../layout/VerticalSplitter';
 import { PageContainer } from '../layout/PageContainer';
 import { useLivePageStore } from '../state/livePage';
 import { PanelCard } from '../ui/PageShell';
@@ -15,45 +14,36 @@ function currentKstMonth(): { year: number; month: number } {
   return { year: kst.getFullYear(), month: kst.getMonth() + 1 };
 }
 
-const STORAGE_KEY = 'capture.leftPct';
 /**
- * 폼:큐 기본 분할. **60 → 45 (2026-08-07).**
+ * 폼:큐 열 트랙. **드래그 스플리터 + 비율 배분 폐지 (2026-08-07).**
  *
- * 페이지를 `PAGE_MAX_W` 중앙 고정으로 담으면서 필요해진 값이다. 2560px 전폭일 땐
- * 60% 도 충분했지만 1680 으로 좁히면 큐 pane 이 656px 가 되고, 큐 행 스크롤러가
- * 658/629 로 넘쳐 **취소(×) 열 ~29px 가 가로 스크롤 뒤로 밀린다**(101행 전부, 실측).
- * 폼은 2개월 달력이라 필요 폭이 ~740px 로 고정이므로 60% 를 받을 이유가 없다 —
- * 45% 면 폼 738 / 큐 903 이고 오버플로가 0이다.
+ * 리사이저를 없앤 근거는 **왼쪽이 폭에서 얻을 게 없다**는 것이다 — 달력이
+ * `grid-cols-[repeat(7,2rem)]` 고정 트랙이라 2개월을 나란히 놓아도 488px 에서 멈추고,
+ * 폼 콘텐츠의 `max-content` 는 566(+ pane 패딩 24 = **590**)에서 더 늘지 않는다.
+ * 그래서 스플리터는 "정답이 하나뿐인 문제"를 사용자에게 떠넘기고 있었고, 1920 이상에서
+ * 실제로 폼 740 / 큐 904 로 **폼이 150px 를 빈 여백으로 들고 있었다**(실측).
  *
- * ⚠ 이 값은 `localStorage` 에 저장되므로 **기존 사용자에게는 적용되지 않는다**(저장된
- * 60 이 이긴다). 스플리터를 한 번 움직이거나 더블클릭 리셋하면 이 값으로 온다.
+ * 두 값의 출처(모두 실측):
+ * - 왼쪽 `32rem`(512) = 달력 488 + 패딩 24. **하한을 `auto` 로 두면 안 된다** — 폼 안에
+ *   `overflow-y-auto` 스크롤러가 있어 트랙의 `auto` min 이 min-content 가 아니라 0으로
+ *   풀리고, 960px 뷰포트에서 폼이 **260px 까지 짜부러진다**(실측).
+ * - 왼쪽 `37rem`(592) = 폼 콘텐츠 max-content + 패딩. 그 위는 여백이므로 상한.
+ * - 오른쪽 `38.5rem`(616) ≥ 큐 행 min-content 589 + 패딩 24 = 613. 이 하한이 있어야
+ *   좁아질 때 **폼이 먼저 양보**한다(1fr 의 min 은 0이라 이게 없으면 큐가 전부 흡수해
+ *   취소(×) 열이 가로 스크롤 뒤로 밀린다 — 60→45 조정이 막으려던 바로 그 증상).
+ *
+ * 결과(전 뷰포트 오버플로 0): 1920+ 폼 592/큐 1052(종전 740/904), 1280 580/616,
+ * 960(앱 floor 근처) 512/616.
+ *
+ * rem 으로 적는 이유는 밀도 다이얼 때문이다 — px 하드코딩은 1.0× 에서 무증상이라
+ * 다이얼을 움직이는 순간 한꺼번에 드러난다(#1208).
  */
-const DEFAULT_LEFT_PCT = 45;
-const MIN_PCT = 25;
-const MAX_PCT = 75;
-
-function loadInitialPct(): number {
-  try {
-    const v = Number(localStorage.getItem(STORAGE_KEY));
-    if (Number.isFinite(v) && v >= MIN_PCT && v <= MAX_PCT) return v;
-  } catch {
-    /* SSR / privacy mode — fall through */
-  }
-  return DEFAULT_LEFT_PCT;
-}
-
-function clamp(pct: number): number {
-  return Math.max(MIN_PCT, Math.min(MAX_PCT, pct));
-}
-
 export default function Capture() {
   const { year, month } = currentKstMonth();
   const [searchParams] = useSearchParams();
   const codeParam = searchParams.get('code');
   const activeLiveCode = useLivePageStore((s) => s.activeCode);
   const initialCode = codeParam ?? activeLiveCode;
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [leftPct, setLeftPct] = useState<number>(loadInitialPct);
   // 큐 → 폼 종목 전달. seq 를 부모가 매기는 이유는 "같은 종목 재선택"도 이벤트로
   // 전달되어야 하기 때문 — code 만 담으면 상태가 안 바뀌어 폼이 반응하지 않는다.
   const [picked, setPicked] = useState<SymbolPick | null>(null);
@@ -61,58 +51,28 @@ export default function Capture() {
     setPicked((prev) => ({ code, seq: (prev?.seq ?? 0) + 1 }));
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, String(leftPct));
-    } catch {
-      /* ignore */
-    }
-  }, [leftPct]);
-
-  const onDrag = (clientX: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const pct = ((clientX - rect.left) / rect.width) * 100;
-    setLeftPct(clamp(pct));
-  };
-
-  const onNudge = (direction: -1 | 1, magnitude: 'small' | 'large') => {
-    const step = magnitude === 'small' ? 1 : 5;
-    setLeftPct((p) => clamp(p + direction * step));
-  };
-
   return (
-    // grid-rows-[minmax(0,1fr)]: 열은 스플리터가 fr 로 잡아주지만 행은 비워두면
+    // grid-rows-[minmax(0,1fr)]: 열은 위 트랙이 잡아주지만 행은 비워두면
     // `grid-auto-rows: auto` 가 되고, auto 트랙은 콘텐츠가 원하는 만큼 커진다. 그래서
     // 창 높이를 줄여도 두 패널이 더 짧아지지 않고 뷰포트 밖으로 잘렸다 — /live 에서
     // 고친 것과 같은 축 비대칭(#730)이 여기서는 세로로 나타난 것.
     <PageContainer
-      ref={containerRef}
       centered
-      className="grid grid-rows-[minmax(0,1fr)] gap-0 bg-bg text-fg !pb-0"
-      style={{ gridTemplateColumns: `${leftPct}fr 12px ${100 - leftPct}fr` }}
+      className="grid grid-rows-[minmax(0,1fr)] grid-cols-[minmax(32rem,37rem)_minmax(38.5rem,1fr)] gap-md bg-bg text-fg !pb-0"
     >
       {/* min-h-0: 큐 쪽(아래 DataSection)과 같은 이유 — 이게 없으면 폼의
           `overflow-y-auto` 스크롤러가 콘텐츠 높이(약 573px)에서 줄지 않아, 패널의
           `overflow-hidden` 이 폼 하단을 조용히 먹고 자체 스크롤바도 뜨지 않는다. */}
       <PanelCard as="section" borderless flat data-testid="capture-form-pane" className="flex min-h-0 flex-col overflow-hidden">
         {/* 헤더 밑줄을 켠 채로 둔다(`flushHeader` 제거, 2026-08-07) — pane 이
-            `PanelCard borderless flat` 이라 테두리·그림자·톤 스텝이 전부 꺼져 있고,
-            좌우 pane 을 갈라 주는 게 스플리터 12px 뿐이었다. `/market` 이 같은
-            문제(평면 카드는 분리 수단이 없다)에 낸 답과 같은 선이다. */}
+            `PanelCard borderless flat` 이라 테두리·그림자·톤 스텝이 전부 꺼져 있어
+            좌우 pane 을 갈라 줄 수단이 이 밑줄뿐이다(스플리터를 없앤 뒤로는 12px gap 도
+            선이 아니라 빈 틈이다). `/market` 이 같은 문제(평면 카드는 분리 수단이 없다)에
+            낸 답과 같은 선이다. */}
         <DataSection title="캡처 요청" className="flex min-h-0 flex-1 flex-col" contentClassName="min-h-0 flex-1 overflow-y-auto p-md">
           <CaptureForm referenceYear={year} referenceMonth={month} initialCode={initialCode} picked={picked} />
         </DataSection>
       </PanelCard>
-      <VerticalSplitter
-        ariaLabel={`패널 크기 조정 (${Math.round(leftPct)}% / ${Math.round(100 - leftPct)}%)`}
-        ariaValueNow={Math.round(leftPct)}
-        ariaValueMin={MIN_PCT}
-        ariaValueMax={MAX_PCT}
-        onDrag={onDrag}
-        onReset={() => setLeftPct(DEFAULT_LEFT_PCT)}
-        onNudge={onNudge}
-      />
       {/* min-w-0: grid item 의 기본 min-width:auto(=콘텐츠 min-content) 를 풀어,
           큐 행의 최소폭이 패널 축소를 막지 않게 한다. 패널이 행보다 좁아지면
           큐 리스트(overflow-x:auto)가 가로 스크롤로 받아낸다 — 페이지 오버플로 방지. */}
