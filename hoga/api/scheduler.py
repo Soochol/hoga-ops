@@ -567,4 +567,21 @@ def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
                 name="deriv-flow-catchup",
             )
         )
+    # 야간선물 keeper — 위 둘과 **같은 이유로** 스케줄러 소유다. 야간 봉은 WS 로만 오고
+    # 소급 조회 경로가 0이라, 화면 수요에 묶으면 그림이 시장이 아니라 "누가 언제 봤는가"
+    # 를 기록한다(실측: 18:00 개장인데 관측 시작 19:10 = 사람이 페이지 연 시각).
+    #
+    # 다만 이쪽만 **opt-in 이다.** 위 둘은 REST 라 최악이 유량 합산이지만, 여기는 WS
+    # 슬롯이라 키를 상속한 워크트리·e2e 백엔드가 매일 밤 사용자 dev 서버와 킥 전쟁을
+    # 벌인다(#1088 유형 · 증상이 조용하다). 지금까지는 lazy 가 그걸 우연히 막고 있었다.
+    #
+    # ⚠ 퍼페추얼 루프다 — `ONE_SHOT_TASK_NAMES` 에 넣으면 안 된다(ADR-0064).
+    from hoga.live import futures_runtime  # noqa: PLC0415 — 지연 import(순환 절단)
+    if futures_runtime.night_keeper_enabled_from_env() and futures_runtime.is_available(data_dir):
+        tasks.append(
+            asyncio.create_task(
+                futures_runtime.run_night_keeper(data_dir),
+                name="futures-night-keeper",
+            )
+        )
     return tasks

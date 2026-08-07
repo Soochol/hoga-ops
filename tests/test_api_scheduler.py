@@ -425,6 +425,64 @@ async def test_start_scheduler_can_opt_into_startup_catchup(
                 await t
 
 
+@pytest.mark.asyncio
+async def test_start_scheduler_can_opt_into_night_futures_keeper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """야간 keeper 는 **플래그 + 자격** 둘 다 있어야 뜬다.
+
+    기본 꺼짐은 위 `..._spawns_only_daily_loop_by_default` 의 태스크 목록 단언이 이미
+    못박는다(keeper 가 무조건 뜨면 그 목록이 깨진다). 여기서 재는 것은 켰을 때 실제로
+    뜨는가와, **무자격이면 켜도 안 뜨는가** 다 — 후자를 빼면 health 에 "도는 중인데
+    아무것도 안 하는" 거짓 행이 영원히 남는다(ADR-0134).
+    """
+    import asyncio
+
+    from hoga.api import scheduler
+    from hoga.live import futures_runtime
+
+    daily_loop_entered = asyncio.Event()
+    keeper_entered = asyncio.Event()
+
+    async def fake_daily_loop(data_dir):
+        daily_loop_entered.set()
+        await asyncio.sleep(3600)
+
+    async def fake_keeper(data_dir, **kwargs):
+        keeper_entered.set()
+        await asyncio.sleep(3600)
+
+    monkeypatch.delenv("HOGA_STARTUP_CATCHUP_ENABLED", raising=False)
+    monkeypatch.setenv("HOGA_NIGHT_FUTURES_KEEPER", "true")
+    monkeypatch.setattr(futures_runtime, "run_night_keeper", fake_keeper)
+
+    # 무자격 — 플래그가 켜져 있어도 태스크를 만들지 않는다.
+    monkeypatch.setattr(futures_runtime, "is_available", lambda _d: False)
+    with patch("hoga.api.scheduler._daily_loop", side_effect=fake_daily_loop):
+        tasks = scheduler.start_scheduler(tmp_path)
+        await asyncio.wait_for(daily_loop_entered.wait(), timeout=1.0)
+        assert "futures-night-keeper" not in [t.get_name() for t in tasks]
+        for t in tasks:
+            t.cancel()
+        for t in tasks:
+            with pytest.raises((asyncio.CancelledError, BaseException)):
+                await t
+
+    # 자격이 있으면 뜬다.
+    daily_loop_entered.clear()
+    monkeypatch.setattr(futures_runtime, "is_available", lambda _d: True)
+    with patch("hoga.api.scheduler._daily_loop", side_effect=fake_daily_loop):
+        tasks = scheduler.start_scheduler(tmp_path)
+        await asyncio.wait_for(keeper_entered.wait(), timeout=1.0)
+        assert "futures-night-keeper" in [t.get_name() for t in tasks]
+        for t in tasks:
+            t.cancel()
+        for t in tasks:
+            with pytest.raises((asyncio.CancelledError, BaseException)):
+                await t
+
+
 def test_startup_catchup_enabled_defaults_to_false(monkeypatch):
     from hoga.api import scheduler
 

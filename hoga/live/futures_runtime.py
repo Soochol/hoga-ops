@@ -17,6 +17,7 @@ import datetime as dt
 import logging
 import time
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, Literal
 
 from hoga.api.kis_futures_master import (
@@ -288,6 +289,41 @@ class FuturesQuotesRuntime:
         await self._ws.ensure_running(codes, session_day=session_day)
         return {code: tick for code in codes if (tick := self._ws.latest(code)) is not None}
 
+    async def ensure_night_stream(self) -> bool:
+        """야간이면 WS 를 깨워 두고, 아니면 닫는다. **REST 는 건드리지 않는다.**
+
+        스케줄러 keeper 가 부른다. `snapshot()` 을 대신 부르면 안 되는 이유는 야간
+        REST 가 주간 마감본에 동결돼 있어서다(모듈 docstring) — 아무도 안 보는 밤에
+        60초마다 의미 없는 시세 TR 을 태우게 된다.
+
+        돌아오는 값은 "야간 스트림을 유지했는가". 세션 밖·무자격·마스터 실패가 모두
+        False 이고, **셋 다 정상 경로**다(로그 수준이 다른 이유).
+        """
+        now_ms = int(dt.datetime.now(KST).timestamp() * 1000)
+        session = await asyncio.to_thread(futures_session, now_ms)
+        if session != "night":
+            # 세션 밖 — 슬롯을 붙들지 않는다. codes 가 비면 `_night_ticks` 가 닫는다.
+            await self._night_ticks(session, ())
+            return False
+        if self._client_factory() is None:
+            return False
+        try:
+            master = await self._ensure_master()
+        except KisFuturesMasterFetchError as e:
+            log.warning("야간 keeper: 선물 마스터 실패: %s", e)
+            return False
+
+        codes: list[str] = []
+        for item in LINEUP:
+            try:
+                codes.append(near_month(master, item.product).code)
+            except KisFuturesMasterFetchError:
+                continue
+        if not codes:
+            return False
+        await self._night_ticks(session, tuple(codes))
+        return True
+
     async def sparks(self) -> dict[str, SparkSeries]:
         """라인업의 5분봉 종가 — `{카드 id: SparkSeries}`.
 
@@ -346,3 +382,117 @@ class FuturesQuotesRuntime:
 
         results = await asyncio.gather(*(one(i) for i in LINEUP))
         return {item_id: series for got in results if got is not None for item_id, series in [got]}
+
+
+# ── 프로세스 싱글턴 배선 ────────────────────────────────────────────────────
+
+_RUNTIME: FuturesQuotesRuntime | None = None
+
+
+def ensure_runtime(data_dir: Path | None) -> FuturesQuotesRuntime:
+    """이 프로세스의 유일한 런타임.
+
+    **싱글턴이 규율이 아니라 요구사항이다.** 이 런타임이 야간 WS 를 소유하는데
+    `KisFuturesNightWs` 는 슬롯을 두 벌 쥐면 벤더가 한쪽을 끊는다. 라우트 홀더와
+    스케줄러 keeper 가 각자 만들면 **한 프로세스 안에서** 킥 전쟁이 나고, 증상은
+    "틱이 가끔 끊긴다" 라서 원인에 도달하기 어렵다.
+
+    `data_dir` 은 **첫 호출이 이긴다** — 한 프로세스에 데이터 디렉터리는 하나다.
+    """
+    global _RUNTIME  # noqa: PLW0603 — 프로세스 싱글턴은 모듈 상태가 유일한 자리다
+    if _RUNTIME is None:
+
+        def factory() -> Any:
+            if data_dir is None:
+                return None
+            from hoga.live.kis_runtime import ensure_kis_client_from_env  # noqa: PLC0415
+
+            return ensure_kis_client_from_env(data_dir)
+
+        _RUNTIME = FuturesQuotesRuntime(factory)
+    return _RUNTIME
+
+
+async def aclose_runtime() -> None:
+    """종료 시 야간 WS 를 닫는다. 런타임이 만들어진 적 없으면 아무 일도 하지 않는다.
+
+    **graceful shutdown 에서 닫는 것이 keeper 와 짝이다.** keeper 는 야간 내내 소켓을
+    열어두므로, 안 닫고 내려가면 재시작 직후 옛 소켓이 잠시 살아 있어 새 프로세스와
+    슬롯을 다툰다 — 이 표면에서 가장 아픈 실패(킥 전쟁)를 우리 손으로 만드는 셈이다.
+    lazy 시절엔 10분 유휴 정지가 이걸 대충 가려줬다.
+    """
+    if _RUNTIME is not None:
+        await _RUNTIME.aclose()
+
+
+def reset_runtime_for_tests() -> None:
+    """싱글턴을 비운다. **테스트 전용** — 프로덕션에서 부르면 옛 런타임이 WS 를 쥔 채
+    남아 두 벌이 된다(`ensure_runtime` 의 킥 전쟁 그대로)."""
+    global _RUNTIME  # noqa: PLW0603
+    _RUNTIME = None
+
+
+# ── 야간 keeper (스케줄러 소유) ─────────────────────────────────────────────
+
+#: keeper 가 세션을 다시 확인하는 주기. `KisFuturesNightWs._IDLE_STOP_S`(600초)보다
+#: 충분히 짧아야 한다 — keeper 의 호출이 곧 유휴 타이머 갱신이기 때문이다. 유휴 정지
+#: 자체는 **지우지 않는다**: 주간 동작(아무도 안 보면 닫힘)은 그대로 두고, 야간에만
+#: keeper 가 계속 두드려서 무의미해지게 하는 것이 이 설계다.
+_KEEPER_TICK_S = 60.0
+
+
+def night_keeper_enabled_from_env() -> bool:
+    """야간 keeper 를 띄울지. **기본은 꺼짐**이고 prod `.env` 에서만 켠다.
+
+    **왜 opt-in 인가** — 워크트리·e2e 백엔드는 `.env` 가 없으면 메인 체크아웃 것을
+    상속한다(ADR-0134). 지금까지는 야간 WS 가 화면 수요에 묶여 있어서, 아무도 그
+    워크트리의 `/market` 을 안 보는 한 슬롯을 열지 않았다 — **lazy 가 우연히 사고를
+    막고 있었다.** keeper 는 그 우연한 보호를 없애므로, 키를 상속한 모든 프로세스가
+    매일 밤 KIS WS 를 연다. REST 유량 초과와 달리 WS 슬롯 경합은 **킥 전쟁이라 양쪽이
+    다 죽고**(#1088 과 같은 유형), 증상이 조용해서 피해자가 알아채지 못한다.
+
+    같은 파일의 `HOGA_STARTUP_CATCHUP_ENABLED` 와 같은 관례다.
+    """
+    import os  # noqa: PLC0415 — 이 함수 하나가 유일한 사용처다
+
+    return os.environ.get("HOGA_NIGHT_FUTURES_KEEPER") == "true"
+
+
+def is_available(data_dir: Path) -> bool:
+    """KIS 자격이 있어 keeper 가 의미 있는가. 스케줄러가 태스크 생성 여부를 정한다.
+
+    무자격이면 태스크를 **아예 안 만든다** — 만들면 health 에 "도는 중인데 아무것도
+    안 하는" 거짓 행이 영원히 남는다(투자자 수급 수집기와 같은 판단, ADR-0134).
+    """
+    from hoga.live.kis_runtime import configured_account_ids  # noqa: PLC0415
+
+    return bool(configured_account_ids(data_dir))
+
+
+async def run_night_keeper(
+    data_dir: Path,
+    *,
+    tick_s: float = _KEEPER_TICK_S,
+    sleep: Any = None,
+) -> None:
+    """야간 세션 동안 WS 를 상시 유지한다 — **화면 수요와 무관하게**.
+
+    이 태스크가 있어야 야간 봉이 18:00 부터 쌓인다. 없으면 시계열이 "누가 보고
+    있었는가" 의 함수가 된다(`scheduler.start_scheduler` 가 투자자 수급 수집기에 대해
+    적어둔 것과 같은 이유). 실측 2026-08-07: 18:00 개장인데 관측 시작이 19:10 —
+    정확히 사람이 페이지를 연 시각이었다.
+
+    **퍼페추얼 루프다** — 정상 반환이 곧 조용한 죽음이므로 `ONE_SHOT_TASK_NAMES` 에
+    넣으면 안 된다(ADR-0064). 그래서 어떤 예외도 루프를 끊지 못하게 한다.
+    """
+    sleep_fn = sleep if sleep is not None else asyncio.sleep
+    runtime = ensure_runtime(data_dir)
+    while True:
+        try:
+            await runtime.ensure_night_stream()
+        except asyncio.CancelledError:
+            # 종료 경로다 — 삼키면 프로세스가 안 내려간다.
+            raise
+        except Exception:
+            log.exception("야간 keeper 틱 실패; 루프는 계속한다")
+        await sleep_fn(tick_s)

@@ -401,6 +401,68 @@ async def test_startup_runtime_spawns_and_stops_kiwoom_watchdog(tmp_path: Path) 
         task.cancel()  # 페이크 stop은 기록만 — 누수 방지 정리
 
 
+async def test_stop_closes_night_futures_ws_after_cancelling_scheduler(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """야간선물 WS 는 **스케줄러 태스크를 취소한 뒤에** 닫아야 한다.
+
+    keeper 는 야간 내내 소켓을 열어두므로 종료 시 명시적으로 닫아야 하는데, 순서가
+    뒤집히면 아무 소용이 없다 — 먼저 닫으면 keeper 의 다음 틱이 곧바로 다시 열어서
+    소켓이 종료를 넘어 살아남고, 재시작 직후 새 프로세스와 슬롯을 다툰다(킥 전쟁).
+    """
+    from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
+    from hoga.live import futures_runtime
+
+    calls: list[Any] = []
+    order: list[str] = []
+
+    started = asyncio.Event()
+
+    async def keeper_like() -> None:
+        # **실제로 돌기 시작한 뒤에** 취소해야 의미가 있다. 시작 전에 취소하면 코루틴이
+        # 한 번도 스케줄되지 않아 except 절에 닿지 못하고, 순서를 못 재면서 통과한다.
+        started.set()
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            order.append("scheduler-cancelled")
+            raise
+
+    async def fake_aclose() -> None:
+        order.append("ws-closed")
+
+    monkeypatch.setattr(futures_runtime, "aclose_runtime", fake_aclose)
+
+    async def start_today_promoter(**_kwargs: Any) -> asyncio.Task | None:
+        return None
+
+    runtime = await start_app_runtime(
+        tmp_path,
+        deps=StartupRuntimeDeps(
+            env={},
+            start_scheduler=lambda _d: [
+                asyncio.create_task(keeper_like(), name="futures-night-keeper")
+            ],
+            start_live_stream=lambda *, data_dir: _record_async(calls, "live", data_dir),
+            start_today_promoter=start_today_promoter,
+            stop_today_promoter=lambda task: _record_async(calls, "stop", task),
+            stop_live_stream=lambda: _record_async(calls, "stop-live", None),
+            aclose_kis_capacity_scheduler=lambda: _record_async(calls, "close-cap", None),
+            aclose_kis_client=lambda: _record_async(calls, "close-kis", None),
+            load_symbol_disk_state=lambda **_k: None,
+            needs_symbol_boot_refresh=lambda: False,
+            refresh_symbols=lambda **_k: _record_async(calls, "refresh", None),
+            resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+        ),
+    )
+
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+    await runtime.stop()
+
+    assert order == ["scheduler-cancelled", "ws-closed"]
+
+
 async def _record_async(calls: list[Any], name: str, value: Any) -> None:
     calls.append((name, value))
 

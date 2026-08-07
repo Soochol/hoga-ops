@@ -211,6 +211,12 @@ class AppStartupRuntime:
             except Exception:
                 log.exception("scheduler task crashed during shutdown")
 
+        # 야간선물 WS — 스케줄러 태스크를 취소한 **뒤에** 닫는다. 먼저 닫으면 keeper 의
+        # 다음 틱이 곧바로 다시 열어서 소켓이 종료를 넘어 살아남는다.
+        from hoga.live.futures_runtime import aclose_runtime  # noqa: PLC0415 — 지연(순환)
+
+        await aclose_runtime()
+
         await self.deps.aclose_kis_capacity_scheduler()
         await self.deps.aclose_kis_client()
 
