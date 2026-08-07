@@ -93,6 +93,9 @@ export function LiveSymbolSearch() {
     onSelect: selectItem,
     onEnterEmpty: (q) => {
       const t = q.trim();
+      // 여기는 **드롭다운이 비었을 때만** 탄다(useCombobox) — 즉 심볼 마스터가 아직
+      // 로딩 중인 순간이라 넘길 실명이 없다. name=code 로 들어간 값은 LivePage 의
+      // backfillSymbolNames 가 마스터 도착 시점에 고친다.
       if (/^\d{6}$/.test(t)) { activateLiveCode(t); setQuery(''); return true; }
       return false;
     },

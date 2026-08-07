@@ -36,7 +36,6 @@ import {
   stockInstrument,
   type LiveInstrument,
 } from '../live/liveInstrument';
-import type { TabViewport } from '../live/viewportAnchor';
 export type { MASource };
 
 // Re-export so existing imports from `./livePage` keep working — single
@@ -134,7 +133,6 @@ export type ActiveViewProjection = {
   /** 탭이 들고 온 분봉 창 기억. 생략(undefined) 시 레거시 derive 폴백
    *  (분봉이면 historicalFromDate, 아니면 null). */
   lastMinuteHistoricalFromDate?: string | null;
-  viewport?: TabViewport | null;
 };
 
 /**
@@ -158,7 +156,6 @@ type Store = Persisted & IndicatorSettings & {
   indicatorTimeframe: LiveTimeframe;
   /** 페이지가 현재 봉을 공급한다(/live=candleTimeframe·/study=activeTab.timeframe). */
   setIndicatorTimeframe: (tf: LiveTimeframe) => void;
-  activeViewport: TabViewport | null;
   /** 직전 분봉 뷰에서 팬으로 넓힌 historicalFromDate의 런타임 기억.
    *  분봉을 떠날 때 저장되고, 분봉 복귀 시 LiveChartRoot가 초기 뷰 배치 직후
    *  이 값으로 extendHistoricalRange를 1-샷 dispatch해 지표·캔들 커버리지를
@@ -166,8 +163,7 @@ type Store = Persisted & IndicatorSettings & {
    *  historicalFromDate=null 리셋 — 초기 뷰 배치·번들 atomize 게이트가
    *  "fresh (code,tf) 로드 = null" 불변식에 기대기 때문. 종목/탭 전환 시 초기화.
    *  persist 블롭(live.page.v1)에 직렬화는 되지만 readStorage 화이트리스트가
-   *  무시하므로 재수화되지 않는다(activeViewport와 같은 관례) — "런타임 전용"은
-   *  읽기 경로 기준. */
+   *  무시하므로 재수화되지 않는다 — "런타임 전용"은 읽기 경로 기준. */
   lastMinuteHistoricalFromDate: string | null;
   projectActiveView: (view: ActiveViewProjection) => void;
   setActiveCode: (code: string | null) => void;
@@ -345,7 +341,6 @@ export const useLivePageStore = create<Store>((set, get) => {
     paneStretch: initialIndicatorsV2.paneStretch,
     indicatorsByTimeframe: initialIndicatorsV2.byTimeframe,
     indicatorTimeframe: initialPage.candleTimeframe,
-    activeViewport: null,
     lastMinuteHistoricalFromDate: null,
 
     // 지표 도메인 변이 setter 45종 — 시맨틱 SSOT 는 indicatorOps.ts (ADR-0119
@@ -410,7 +405,7 @@ export const useLivePageStore = create<Store>((set, get) => {
       persistIndicatorsV2({ paneOrder: s.paneOrder, paneStretch: s.paneStretch, byTimeframe });
     },
 
-    projectActiveView: ({ instrument, code, timeframe, historicalFromDate, lastMinuteHistoricalFromDate, viewport }) => {
+    projectActiveView: ({ instrument, code, timeframe, historicalFromDate, lastMinuteHistoricalFromDate }) => {
       // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
       // (belt-and-suspenders; callers already pass validated timeframes).
       const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
@@ -431,7 +426,6 @@ export const useLivePageStore = create<Store>((set, get) => {
         lastMinuteHistoricalFromDate: lastMinuteHistoricalFromDate !== undefined
           ? lastMinuteHistoricalFromDate
           : (isMinuteTimeframe(tf) ? historicalFromDate : null),
-        activeViewport: viewport ?? null,
       };
       // /live 의 ambient 지표 봉은 candleTimeframe 을 따른다 — 같은 원자적 쓰기로 투영.
       set({ ...next, ...projectIndicatorsFor(tf) });
@@ -445,7 +439,6 @@ export const useLivePageStore = create<Store>((set, get) => {
         activeCode: code,
         historicalFromDate: null,
         lastMinuteHistoricalFromDate: null,
-        activeViewport: null,
       });
       persist({ ...get(), activeInstrument, activeCode: code, historicalFromDate: null });
     },
@@ -468,7 +461,6 @@ export const useLivePageStore = create<Store>((set, get) => {
         lastMinuteHistoricalFromDate: isMinuteTimeframe(cur.candleTimeframe)
           ? cur.historicalFromDate ?? cur.lastMinuteHistoricalFromDate
           : cur.lastMinuteHistoricalFromDate,
-        activeViewport: null,
       };
       set({ ...next, ...projectIndicatorsFor(tf) });
       persist({ ...get(), ...next });
@@ -482,7 +474,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     },
 
     resetHistoricalRange: () => {
-      set({ historicalFromDate: null, lastMinuteHistoricalFromDate: null, activeViewport: null });
+      set({ historicalFromDate: null, lastMinuteHistoricalFromDate: null });
       persist({ ...get(), historicalFromDate: null });
     },
 
@@ -494,7 +486,6 @@ export const useLivePageStore = create<Store>((set, get) => {
       set({
         ...merged,
         lastMinuteTimeframe,
-        activeViewport: null,
         ...projectIndicatorsFor(merged.candleTimeframe),
       });
     },
