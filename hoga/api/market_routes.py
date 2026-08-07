@@ -131,8 +131,6 @@ class BreadthBucket(BaseModel):
     # `null` 이 새로 실려서 FE 의 `?:`(부재) 계약과 어긋난다.
     new_high_52w: BreadthCountRow | None = None
     new_low_52w: BreadthCountRow | None = None
-    surge: BreadthCountRow | None = None
-    plunge: BreadthCountRow | None = None
 
 
 class BreadthResponse(BaseModel):
@@ -190,6 +188,31 @@ class InvestorFlowResponse(BaseModel):
     confirmed: bool
     coverage: InvestorFlowCoverage
     markets: dict[str, list[InvestorFlowPoint]] = Field(default_factory=dict)
+
+
+class SectorFlowRow(InvestorValues):
+    """업종 1행 — 3주체 순매수(억원) + 지수 레벨·등락률.
+
+    `InvestorValues` 를 상속하는 이유는 같은 TR(ka10051)의 같은 세 필드이기 때문이다.
+    단위도 같다(요청의 `amt_qty_tp="0"` → 억원).
+
+    ⚠ `value`·`change_pct` 는 **ka20003 과 스케일이 다르다** — 파서가 ÷100 하고
+    레벨의 방향 부호를 벗겨서 준다(`parse_sector_investor_rows`).
+    """
+
+    code: str
+    name: str
+    value: float | None = None
+    change_pct: float | None = None
+
+
+class SectorFlowResponse(BaseModel):
+    date: str
+    unit: str
+    # 표본이 아직 없는 날은 null — 화면이 "언제 것인지" 를 말해야 멎은 걸 알아챈다.
+    sampled_at_ms: int | None = None
+    # 시장 라벨("KOSPI"/"KOSDAQ") → 업종 행. **종합 행이 맨 앞**이다(화면의 기준선).
+    markets: dict[str, list[SectorFlowRow]] = Field(default_factory=dict)
 
 
 class StreakRow(BaseModel):
@@ -274,6 +297,8 @@ TTL_FUTURES_S = 20.0
 TTL_FUTURES_SPARK_S = 60.0
 
 _MARKETS = ("0", "1")  # 코스피 · 코스닥 — 별도 콜이다
+#: `mrkt_tp` → 화면 라벨. 투자자 표면이 이 라벨로 키잉한다(`market_investor_row` 와 동일).
+_MARKET_LABELS = {"0": "KOSPI", "1": "KOSDAQ"}
 _STEX_ALL = "3"
 
 
@@ -314,20 +339,18 @@ class _TtlCache:
 # 시장 폭 질의 표 — `(api_id, 고정 파라미터, 가변 축, 출력 이름)`. 표로 두는 이유는
 # 네 카운트가 파라미터 하나만 다른 같은 모양이라, 코드로 펼치면 build_router 가
 # 읽을 수 없게 길어지기 때문이다.
+#: 급등·급락(ka10019) 두 줄은 뺐다 — 소비하던 시장 폭 카드가 업종 수급으로 교체되며
+#: 화면 소비자가 0 이 됐다. 이 라우터에서 가장 무거운 콜이었다(`jmp_rt` 내림차순
+#: 페이지 walk × 2시장). 되살릴 때는 `_KA10019_BASE` 와 `_collect_breadth` 의 임계
+#: 조기종료(`is_jump`)를 함께 되살려야 한다 — 그게 없으면 1,000행을 그냥 센다.
 _BREADTH_QUERIES: tuple[tuple[str, str, str, str], ...] = (
     ("ka10016", "ntl_tp", "1", "new_high_52w"),
     ("ka10016", "ntl_tp", "2", "new_low_52w"),
-    ("ka10019", "flu_tp", "1", "surge"),
-    ("ka10019", "flu_tp", "2", "plunge"),
 )
 
 _KA10016_BASE = {
     "high_low_close_tp": "1", "stk_cnd": "0", "trde_qty_tp": "00000",
     "crd_cnd": "0", "updown_incls": "0", "dt": "250", "stex_tp": _STEX_ALL,
-}
-_KA10019_BASE = {
-    "tm_tp": "1", "tm": "60", "trde_qty_tp": "00000", "stk_cnd": "0",
-    "crd_cnd": "0", "pric_cnd": "0", "updown_incls": "1", "stex_tp": _STEX_ALL,
 }
 
 
@@ -417,6 +440,50 @@ def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str,
 _VKOSPI_SECTOR_CODE = "603"
 
 
+def _sector_flow_payload(data_dir: Path) -> dict[str, Any]:
+    """업종별 투자자 순매수 — 저장된 **최신 표본 1개**를 시장별로 읽는다.
+
+    **읽기 경로는 벤더를 부르지 않는다.** ka10051 이 이미 60초마다 업종 행 전부를
+    싣고 있었고 수집기가 그대로 저장해 왔다(#1105 가 종합 행만 소비했을 뿐이다).
+    그래서 이 표면을 여는 데 새 벤더 호출이 0 이다.
+
+    시계열이 아니라 **스냅샷**인 이유: 업종 30개 × 3주체를 시각축으로 그리면 읽을 수
+    없다. 카드가 답하는 질문은 "지금 어느 업종에 누가 들어와 있나" 이고 그건 최신
+    표본 하나로 답해진다.
+
+    호출부가 60초 TTL 캐시로 감싼다 — `load_samples` 가 하루치를 통째로 파싱하는데
+    (오늘 313행 4MB) 수집 주기도 60초라 그보다 자주 읽어 봐야 같은 답이다.
+    """
+    from hoga.collector.orchestrator import now_kst  # noqa: PLC0415
+    from hoga.live.investor_flow_store import InvestorFlowStore  # noqa: PLC0415
+
+    date = now_kst().strftime("%Y%m%d")
+    samples = InvestorFlowStore(data_dir).load_samples(date)
+
+    # 시장별 마지막 표본. 두 시장이 한 파일에 번갈아 쌓이므로 뒤에서부터 덮어쓴다.
+    latest: dict[str, Any] = {}
+    for s in samples:
+        mrkt = str(s.request.get("mrkt_tp") or "")
+        if mrkt in _MARKETS:
+            latest[mrkt] = s
+
+    markets: dict[str, Any] = {}
+    sampled_at: int | None = None
+    for mrkt, s in latest.items():
+        markets[_MARKET_LABELS[mrkt]] = market_overview.parse_sector_investor_rows(s.rows)
+        sampled_at = max(sampled_at or 0, s.sampled_at_ms)
+
+    return {
+        "date": date,
+        # 단위를 이름이 아니라 필드로 말한다(#1117 규약) — 억원.
+        "unit": "amt_eok",
+        # 데이터 나이를 화면이 말할 수 있어야 한다. 수집기가 죽으면 카드는 마지막
+        # 표본을 계속 그리는데, 그게 언제 것인지 없으면 멎은 걸 알 수 없다.
+        "sampled_at_ms": sampled_at,
+        "markets": markets,
+    }
+
+
 async def _collect_sectors(call: Any) -> dict[str, Any]:
     """지수 값 + 등락종목수 + KRX 업종 + **변동성지수** (ka20003, 시장별 1콜).
 
@@ -490,29 +557,25 @@ async def _collect_program(call: Any, api_id: str, *, scaled: bool, axis: str) -
 
 
 async def _collect_breadth(walk: Any) -> dict[str, Any]:
-    """시장 폭 4카운트 × 2시장. `walk` 는 `(rows, truncated)` 를 주는 커서 호출."""
+    """52주 신고·신저 2카운트 × 2시장. `walk` 는 `(rows, truncated)` 를 주는 커서 호출.
+
+    ka10016 은 임계 개념이 없어 전량 센다 — 급등락(ka10019)이 쓰던 `jmp_rt` 내림차순
+    조기종료는 그 쿼리와 함께 빠졌다(`_BREADTH_QUERIES` 주석 참조).
+    """
     out: dict[str, Any] = {"markets": {}}
     for mrkt_tp, label in (("001", "KOSPI"), ("101", "KOSDAQ")):
         bucket: dict[str, Any] = {}
         for api_id, axis_key, axis_val, name in _BREADTH_QUERIES:
-            base = _KA10016_BASE if api_id == "ka10016" else _KA10019_BASE
-            # ka10019 는 `jmp_rt` **내림차순**이라 임계 아래로 떨어지면 다음 페이지가
-            # 필요 없다 — 의미도 살고(1,000+ 대신 두 자리) 콜도 준다. ka10016 은
-            # 임계 개념이 없어 전량 센다.
-            is_jump = api_id == "ka10019"
             got = await walk(
                 api_id,
-                {"mrkt_tp": mrkt_tp, axis_key: axis_val, **base},
+                {"mrkt_tp": mrkt_tp, axis_key: axis_val, **_KA10016_BASE},
                 key=("market-breadth", api_id, mrkt_tp, axis_val),
-                stop=(lambda rows, _page: market_overview.below_threshold(rows)) if is_jump else None,
+                stop=None,
             )
             if got is None:
                 continue
             rows, truncated = got
-            count = (
-                market_overview.count_above_threshold(rows) if is_jump else len(rows)
-            )
-            bucket[name] = {"count": count, "truncated": truncated}
+            bucket[name] = {"count": len(rows), "truncated": truncated}
         if bucket:
             out["markets"][label] = bucket
     return out
@@ -667,7 +730,7 @@ def _register_futures_routes(router: APIRouter, *, data_dir: Path | None) -> Non
         return got or {"series": {}}
 
 
-def build_router(*, data_dir: Path) -> APIRouter:
+def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트 조립점: 문장 수는 라우트 개수의 함수다
     router = APIRouter(prefix="/api/market", tags=["market"])
 
     sectors_cache = _TtlCache(TTL_SECTORS_S)
@@ -764,17 +827,33 @@ def build_router(*, data_dir: Path) -> APIRouter:
 
     @router.get("/breadth", response_model_exclude_none=True)
     async def get_breadth() -> BreadthResponse:
-        """시장 폭 — 52주 신고·신저(ka10016), 급등·급락(ka10019).
+        """52주 신고·신저 (ka10016).
 
-        **둘 다 카운트를 주지 않고 목록을 준다**(#1096) — 행을 세야 한다. ka10019 는
-        200행에서 커서가 안 끝나므로 상한이 필요한데, **끊었다는 사실을 응답이 말한다**
-        (`truncated`). 조용한 절사는 "전부 셌다" 로 읽힌다(#1099).
+        **카운트를 주지 않고 목록을 준다**(#1096) — 행을 세야 하고, 상한에 닿았으면
+        `truncated` 로 말한다. 조용한 절사는 "전부 셌다" 로 읽힌다(#1099).
 
-        상·하한 종목수는 여기 없다 — `/sectors` 의 `upper`/`lower` 가 ka20003 에서
-        이미 온다(그래서 ka10017 은 배선하지 않았다).
+        **급등·급락(ka10019)은 뺐다.** 그 두 값을 쓰던 시장 폭 카드가 업종 수급으로
+        교체되면서 소비자가 0 이 됐다. ka10019 는 이 라우터에서 가장 무거운 콜이었다 —
+        `jmp_rt` 내림차순 페이지 walk 를 시장마다 도는데, 아무도 안 보는 숫자를 위해
+        5분마다 그걸 돌 이유가 없다. 상·하한 종목수는 원래 여기 없었고 `/sectors` 의
+        `upper`/`lower`(ka20003)가 답한다.
         """
 
         return await breadth_cache.get(lambda: _collect_breadth(_walk)) or {"markets": {}}
+
+    @router.get("/sector-flow")
+    async def get_sector_flow() -> SectorFlowResponse:
+        """업종별 투자자 순매수 — 저장된 최신 표본(ka10051, 벤더 호출 없음).
+
+        수집기가 60초마다 찍어 온 표본에 업종 행이 처음부터 들어 있었다 — 종합 행만
+        소비하고 나머지를 흘려보내고 있었을 뿐이다(#1105 의 파서 주석이 그렇게 적어
+        두었다). 그래서 이 표면은 **새 벤더 호출이 0** 이다.
+
+        **TTL 캐시를 두지 않는다** — 형제인 `/investor-flow` 와 같은 규율이다. 저 캐시는
+        벤더 유량을 아끼는 장치인데 여기는 벤더가 없다. 디스크 파싱 비용(하루치 313행)은
+        `to_thread` 로 이벤트 루프 밖에 두고, 호출 빈도는 프론트 폴링(60초)이 정한다.
+        """
+        return await asyncio.to_thread(_sector_flow_payload, data_dir)
 
     @router.get("/funds")
     async def get_funds() -> FundsResponse:
