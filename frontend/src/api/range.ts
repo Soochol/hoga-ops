@@ -14,6 +14,7 @@ import {
   type RangeRequestOptions,
 } from './rangeRequest';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
 import type { SourcePreference } from '../state/sourcePreference';
 import { useLivePromotionStore } from '../state/livePromotion';
@@ -598,7 +599,14 @@ export function useRange(
   // venue 는 **전역 선택기**를 따른다(#1132) — `/live` 에서 고른 시장이 히트맵·
   // 스크리너까지 지배하는 것과 같은 규율. 쿼리 키에도 들어가므로 venue 를 바꾸면
   // 캐시가 갈린다(안 갈리면 이전 venue 데이터가 그대로 보인다).
-  const venue = useLiveVenueStore((s) => s.venue);
+  //
+  // 다만 **선택값이 아니라 이 종목에 대한 해석값**을 쓴다. 규율이 바뀐 게 아니라
+  // (여전히 선택기를 따른다) 해석 단계가 빠져 있었다: NXT 미상장 종목에 통합(UN)을
+  // 고르면 백엔드에 `kiwoom_live/UN/` 이 애초에 안 생겨(`coverage.subscription_venues`
+  // 가 `("KRX",)`) **빈 200** 이 온다. 실측 2026-08-07 `003490`: KRX 프로그램 708 점
+  // 대 UN **0**. 에러가 아니라 정상 빈 응답이라 화면이 조용히 빈다.
+  const selectedVenue = useLiveVenueStore((s) => s.venue);
+  const venue = useEffectiveVenue(code, selectedVenue);
   return useQuery(rangeBundleQueryOptions({
     code,
     from,
@@ -625,7 +633,11 @@ function useLiveRangeDelta(
 ) {
   const storedSourcePref = useOrderflowSourcePref();
   const sourcePref = sourcePrefOverride ?? storedSourcePref;
-  const venue = useLiveVenueStore((s) => s.venue);  // 전역 선택기(#1132)
+  // 전역 선택기(#1132)를 **종목별로 해석해서** 쓴다 — 근거는 `useRange` 의 같은 자리.
+  // 여기선 `identity` 까지 따라간다: `liveRangeDeltaIdentity` 가 queryKey 파생이라
+  // 선택값이 남으면 venue 를 바꿔도 델타 병합본이 이전 시장 데이터를 물고 있는다.
+  const selectedVenue = useLiveVenueStore((s) => s.venue);
+  const venue = useEffectiveVenue(code, selectedVenue);
   const queryClient = useQueryClient();
   const mergedRef = useRef<{ identity: string; data: RangeBundle; updatedAtMs: number } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
