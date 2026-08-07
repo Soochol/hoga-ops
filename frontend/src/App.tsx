@@ -24,7 +24,11 @@ import { useSectorTickEvents } from './api/useSectorTickEvents';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
-import { effectiveTheme, useThemePrefsStore } from './state/themePrefs';
+import {
+  effectiveTheme,
+  subscribeToThemePreferenceStorage,
+  useThemePrefsStore,
+} from './state/themePrefs';
 
 /*
  * 드로어·설정 모달은 **조건부 마운트**라 lazy 로 내린다.
@@ -98,6 +102,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', effectiveTheme(themePreference, pathname));
   }, [themePreference, pathname]);
+  // 테마는 브라우저 탭 **전역**이다 — 다른 탭에서 바꾸면 이 탭도 리로드 없이 따라온다.
+  // 여기가 유일한 구독 지점인 이유: App 은 전 라우트를 감싸는 레이아웃 라우트라
+  // (main.tsx 의 `<Route element={<App />}>`) `/live` 딥링크 탭도 이 아래에 뜬다.
+  useEffect(() => subscribeToThemePreferenceStorage(), []);
 
   return (
     <div

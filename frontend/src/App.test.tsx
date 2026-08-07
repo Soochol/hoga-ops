@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import type { ReactNode } from 'react';
 import App from './App';
 import { useRightRailStore } from './state/rightRail';
+import { DEFAULT_THEME_PREFERENCE, useThemePrefsStore } from './state/themePrefs';
 
 vi.mock('./api/eventStream', () => ({
   useEventStream: () => {},
@@ -200,5 +201,56 @@ describe('App shell layout', () => {
 
     expect(screen.queryByRole('dialog', { name: '설정' })).toBeNull();
     expect(screen.getByText('live page')).toBeInTheDocument();
+  });
+});
+
+/**
+ * 테마는 사용자 단위 설정이므로 **열려 있는 탭 전체**에 걸린다. 저장소(localStorage)는
+ * 원래부터 탭 공유였지만 각 탭은 그 값을 첫 페인트에 한 번 읽을 뿐이라, `/live` 딥링크로
+ * 먼저 띄워 둔 탭(liveNavigate.ts 의 window.open)은 리로드 전까지 옛 테마였다.
+ *
+ * 배선이 App 에 있다는 것 자체가 검증 대상이다 — App 은 전 라우트를 감싸는 레이아웃
+ * 라우트라 여기 한 곳이면 모든 탭이 덮인다.
+ */
+describe('App 테마 — 브라우저 탭 전역', () => {
+  afterEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-theme');
+    useThemePrefsStore.setState({ themePreference: DEFAULT_THEME_PREFERENCE });
+  });
+
+  it('다른 탭이 선호를 바꾸면 리로드 없이 data-theme 가 따라온다', () => {
+    useThemePrefsStore.setState({ themePreference: 'toss-light' });
+    wrap(<div>unused</div>, '/study');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('toss-light');
+
+    // 다른 탭의 쓰기를 재현한다. 저장소가 먼저 바뀌고 이벤트가 뒤따르는 순서가
+    // 실제와 같아야 한다 — 구독은 event.newValue 가 아니라 저장소를 다시 읽는다.
+    localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: 'obsidian' }));
+    fireEvent(window, new StorageEvent('storage', { key: 'ui.themePreference.v1' }));
+
+    expect(document.documentElement.getAttribute('data-theme')).toBe('obsidian');
+  });
+
+  it('auto 는 탭마다 자기 경로로 풀린다 (공유되는 것은 선호값이지 결과 테마가 아니다)', () => {
+    useThemePrefsStore.setState({ themePreference: 'ledger' });
+    wrap(<div>unused</div>, '/live');
+
+    localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: 'auto' }));
+    fireEvent(window, new StorageEvent('storage', { key: 'ui.themePreference.v1' }));
+
+    // 이 탭은 /live 라 obsidian. 같은 이벤트를 받은 /study 탭은 ledger 로 푼다.
+    expect(document.documentElement.getAttribute('data-theme')).toBe('obsidian');
+  });
+
+  it('언마운트하면 구독을 놓는다', () => {
+    useThemePrefsStore.setState({ themePreference: 'toss-light' });
+    const { unmount } = wrap(<div>unused</div>, '/study');
+    unmount();
+
+    localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: 'obsidian' }));
+    fireEvent(window, new StorageEvent('storage', { key: 'ui.themePreference.v1' }));
+
+    expect(useThemePrefsStore.getState().themePreference).toBe('toss-light');
   });
 });
