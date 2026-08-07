@@ -20,6 +20,7 @@ import DrawingClearToastHost from './chart/DrawingClearToastHost';
 import DrawingClearConfirmHost from './chart/DrawingClearConfirmHost';
 import { ShortcutHelpHost } from './ui/ShortcutHelpModal';
 import { ToastViewport } from './ui/toast/ToastViewport';
+import { useSectorTickEvents } from './api/useSectorTickEvents';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
@@ -68,6 +69,8 @@ const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
 export default function App() {
   useEventStream();
   useSignalAlertEvents();
+  // 지수·업종 실시간 오버레이. 하단 지수 바가 전 페이지에 있으므로 루트가 소유자다.
+  useSectorTickEvents();
   useInventoryRecaptureOriginsCleanup();
   // Single owner of the capture-queue push subscription (was fanned out across
   // ~5 useCaptureQueue mounts); the read side now only reads the shared cache.

@@ -69,6 +69,7 @@ from hoga.live.lifecycle import (
     get_vi_status as live_get_vi_status,
     start_kiwoom_session_watchdog,
     start_live_stream,
+    start_sector_broadcast,
     start_today_promoter,
     start_trading_calendar_refresher,
     stop_live_stream,
@@ -213,6 +214,10 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
                 start_scheduler=start_scheduler,
                 start_live_stream=start_live_stream,
                 start_kiwoom_watchdog=start_kiwoom_session_watchdog,
+                # 0J/0U 오버레이 — signal alert·today promoter 와 같은 bus.publish 주입.
+                start_sector_broadcast=functools.partial(
+                    start_sector_broadcast, bus.publish,
+                ),
                 # Inject the event bus so a real Today Promotion fires a
                 # promotion_completed event (WS 푸시 승격 무효화). Same
                 # bus.publish injection shape as configure_signal_alert_monitor.

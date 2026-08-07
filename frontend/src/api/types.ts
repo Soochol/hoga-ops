@@ -1,3 +1,4 @@
+import type { SectorTickEvent } from './sectorTickOverlay';
 import type { SignalAlertEvent } from './signalAlerts';
 
 // Mirrors hoga/api/models.py — keep in sync by hand.
@@ -319,6 +320,10 @@ export type PushEvent =
   // 사용자에게는 "지금 실시간이 안 오는 이유 + 창을 닫으면 풀린다"만 알리면 된다.
   // 이 이벤트를 소비하지 않으면 해당 탭은 멈춘 차트만 보여 준다(무증상 실패).
   | { type: 'kiwoom_full_house'; code: string }
+  // 키움 0J/0U 업종·지수 실시간 오버레이(1초 배칭·변경분만). 폴링 캐시 위에 얹히므로
+  // 이 이벤트를 소비하지 않아도 화면은 30초 갱신으로 정상 동작한다 — 즉 **누락이
+  // 무증상**이라, 흐르고 있는지는 /api/live/status 의 kiwoom.sector 로만 보인다.
+  | SectorTickEvent
   | SignalAlertEvent
   | (CaptureEventBase & { type: 'capture_progress'; progress: CaptureProgress })
   | (CaptureEventBase & { type: 'capture_phase' })
