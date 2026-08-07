@@ -413,6 +413,7 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
 
     store = ProgramTradeStore(tmp_path)
     store.merge_response(
+        venue="KRX",
         code="005930",
         date="20260512",
         observed_at_ms=100,
@@ -455,6 +456,41 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
     ]
 
 
+def test_build_program_trade_series_reads_the_requested_venue(tmp_path):
+    """읽기가 venue 를 탄다 — 축이 없던 시절엔 NXT·통합 화면이 15:30 에 멎은 KRX
+    시계열을 자기 시장 것으로 받았다."""
+    from unittest.mock import MagicMock
+
+    from hoga.api.bundle import build_program_trade_series
+    from hoga.live.program_trade_store import ProgramTradeByStockRow, ProgramTradeStore
+
+    def _row(hhmmss: str, net_qty: int) -> ProgramTradeByStockRow:
+        return ProgramTradeByStockRow(
+            code="005930", bsop_hour=hhmmss, t_ms=0, price=70_000,
+            net_qty=net_qty, net_amount=net_qty * 1000,
+            buy_qty=None, sell_qty=None, buy_amount=None, sell_amount=None,
+            delta_qty=None, delta_amount=None,
+        )
+
+    store = ProgramTradeStore(tmp_path)
+    store.merge_response(venue="KRX", code="005930", date="20260807",
+                         rows=[_row("100000", 11)], observed_at_ms=1)
+    # 애프터마켓 — KRX 창은 닫혔고 NXT 만 열려 있는 시간대.
+    store.merge_response(venue="NXT", code="005930", date="20260807",
+                         rows=[_row("170000", 77)], observed_at_ms=2)
+
+    engine = MagicMock()
+    engine.data_dir = tmp_path
+
+    krx = build_program_trade_series(engine, code="005930", dates=["20260807"], venue="KRX")
+    nxt = build_program_trade_series(engine, code="005930", dates=["20260807"], venue="NXT")
+    un = build_program_trade_series(engine, code="005930", dates=["20260807"], venue="UN")
+
+    assert [p.net_qty for p in krx.points] == [11]
+    assert [p.net_qty for p in nxt.points] == [77]
+    assert un.points == []  # 저장된 적 없는 venue 는 빈 시계열(KRX 로 새지 않는다)
+
+
 def test_build_program_trade_series_filters_legacy_polluted_gap_events(tmp_path):
     """PR-F4 직후 0w drain 이 매 30초 배치마다 쌓은 오염 gap_events(임계 이하 점프)는
     읽기 경로에서 걸러 gap_risk 오탐을 만들지 않는다 — 실제 수집 공백(임계 초과)만 남긴다."""
@@ -466,6 +502,7 @@ def test_build_program_trade_series_filters_legacy_polluted_gap_events(tmp_path)
     store = ProgramTradeStore(tmp_path)
     for i, hhmmss in enumerate(["090000", "090030", "090500"]):
         store.merge_response(
+            venue="KRX",
             code="005930",
             date="20260721",
             rows=[
@@ -488,7 +525,7 @@ def test_build_program_trade_series_filters_legacy_polluted_gap_events(tmp_path)
         )
 
     # 수정 전 코드가 남긴 오염 이벤트를 주입 — 30초 점프(정상 드레인 주기)도 갭으로 기록됐었다.
-    path = tmp_path / "kis-program-trade" / "005930" / "20260721.json"
+    path = tmp_path / "kis-program-trade" / "005930" / "KRX" / "20260721.json"
     body = json.loads(path.read_text())
     body["gap_events"].insert(
         0,
@@ -498,7 +535,7 @@ def test_build_program_trade_series_filters_legacy_polluted_gap_events(tmp_path)
 
     mock_engine = MagicMock()
     mock_engine.data_dir = tmp_path
-    series = build_program_trade_series(mock_engine, code="005930", dates=["20260721"])
+    series = build_program_trade_series(mock_engine, code="005930", dates=["20260721"], venue="KRX")
 
     assert [p.gap_risk for p in series.points] == [False, False, True]
 
@@ -608,7 +645,11 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
     assert rb.trade_volume_pocs == [poc]
     qr_builder.assert_not_called()
     fs_builder.assert_not_called()
-    program_builder.assert_called_once_with(mock_engine, code="005930", dates=["20260512"])
+    # venue 가 읽기 경로까지 흐르는지 — 빠지면 NXT·통합 화면이 KRX 시계열을 자기
+    # 시장 것으로 믿는다(사이드카에 venue 축이 없던 시절의 증상).
+    program_builder.assert_called_once_with(
+        mock_engine, code="005930", dates=["20260512"], venue="KRX"
+    )
 
 
 def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_path):

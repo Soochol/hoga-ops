@@ -3,8 +3,15 @@
 원래는 KIS REST(FHPPG04650101)를 30초 폴링하던 수집기였으나, 0w push 전환으로
 "fetch" 가 사라지고 **drain** 만 남았다: stream.on_tick 이 program_trade_latch 에
 남긴 종목별 최신 0w 스냅샷을 30초 주기로 store.merge_response 에 병합한다.
-루프·게이트(ws_capture_window)·store·이상탐지·상태 관측은 REST 시절 그대로 —
-저장 해상도(30초)와 디스크 IO 패턴이 불변이라 소비(/api/range)·프론트도 무변경.
+루프·store·이상탐지·상태 관측은 REST 시절 그대로 — 저장 해상도(30초)와 디스크 IO
+패턴이 불변이다.
+
+**게이트는 venue 별로 갈렸다**(ADR-0140 §3). 예전엔 `ws_capture_window`(KRX
+09:00–15:30) 하나로 닫고 KRX 태그만 병합했다 — 사이드카 저장소에 venue 축이
+없어서였다. 그 결과 애프터마켓 프로그램 순매수가 **어디에도 남지 않았고**, 화면은
+표시 링(15분)이 닿는 동안만 값을 보였다(2026-08-07 실측: 사이드카 15:29:37 종료 대
+WS 링 최근 15분 = 약 3시간 공백). 이제 `venue_capture_windows` 가 여는 창
+(KRX 09:00–15:30 · NXT·UN 08:00–20:00)만큼 venue 별 파일로 남는다.
 
 targets 관측은 latch 에 실제로 남은 코드 집합으로 대체됐다(구독 SSOT 는 키움
 세션이 소유하므로 여기서 관심종목을 재계산하지 않는다).
@@ -13,7 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +30,7 @@ from hoga.util.timeenc import KST
 from . import program_trade_latch
 from .error_policy import classify_live_error, format_live_error
 from .program_trade_store import ProgramTradeByStockRow, ProgramTradeStore
-from .session_gate import ws_capture_window
+from .session_gate import venue_capture_windows_async
 
 log = logging.getLogger(__name__)
 
@@ -49,21 +56,29 @@ class ProgramTradeCollector:
         data_dir: Path,
         date_fn: Callable[[], str],
         now_ms_fn: Callable[[], int],
-        should_collect_fn: Callable[[int], bool] = ws_capture_window,
+        # **async 다** — 캘린더 캐시 미스 시 동기 HTTP 를 칠 수 있어 이벤트 루프에서
+        # 직접 부르면 안 된다(session_gate 의 blocking 계약). 예전 sync
+        # `should_collect_fn` 은 그 계약을 어기고 있었다.
+        open_venues_fn: Callable[[int], Awaitable[frozenset[str]]] = venue_capture_windows_async,
         poll_interval_s: float = 30.0,
     ) -> None:
         self.data_dir = data_dir
         self.store = ProgramTradeStore(data_dir, poll_interval_ms=int(poll_interval_s * 1000))
         self._date_fn = date_fn
         self._now_ms_fn = now_ms_fn
-        self._should_collect_fn = should_collect_fn
+        self._open_venues_fn = open_venues_fn
         self._poll_interval_s = poll_interval_s
         self.status = ProgramTradeCollectorStatus()
         self._task: asyncio.Task | None = None
-        # delta 파생용 — code → (net_qty, net_amount) 직전 flush 값. 211/213(이벤트
-        # 증감)은 재전송·유실에 취약해 미소비하고(F3 권고), flush 간 누적 diff 로
+        # delta 파생용 — (code, venue) → (net_qty, net_amount) 직전 flush 값. 211/213
+        # (이벤트 증감)은 재전송·유실에 취약해 미소비하고(F3 권고), flush 간 누적 diff 로
         # REST 30초의 icdc 의미(주기 증감)를 재현한다. 날짜가 바뀌면 리셋.
-        self._last_net: dict[str, tuple[int | None, int | None]] = {}
+        #
+        # ⚠ 키에 venue 가 **반드시** 들어간다. code 만으로 키잉하면 세 시장의 누적이
+        # 한 칸을 공유해 delta 가 "직전 도착 시장과의 차이" 가 된다 — 값이 틀리는 게
+        # 아니라 **다른 시장 사이의 뺄셈**이라 부호까지 뒤집힌다(latch 가 code 키였을
+        # 때 프로그램 순매수가 겪은 것과 같은 형태의 섞임, ADR-0140 §2).
+        self._last_net: dict[tuple[str, str], tuple[int | None, int | None]] = {}
         self._last_date: str | None = None
 
     @property
@@ -124,33 +139,30 @@ class ProgramTradeCollector:
             # 새 거래일 — 전일 누적 대비 delta 를 만들면 첫 행이 음수 폭주한다.
             self._last_net = {}
             self._last_date = date
-        if not self._should_collect_fn(observed_at_ms):
+        open_venues = await self._open_venues_fn(observed_at_ms)
+        if not open_venues:
             self.status.last_cycle_ms = observed_at_ms
             return
 
-        latched = program_trade_latch.drain()
-        # 사이드카 저장소는 아직 venue 축이 없다 — `kis-program-trade/{code}/{date}.json`
-        # 은 동결된 경로이고, 축을 넣으면 저장소·읽기 API·프론트 카드가 함께 움직여야
-        # 한다(PR-G). 그때까지 **KRX 만 병합**한다.
+        # latch 는 (code, venue) 로 키잉돼 있고 저장소도 이제 그 축을 가진다 — 창이
+        # 열린 venue 를 **각자의 파일로** 병합한다.
         #
-        # 표시 경로는 이미 세 venue 를 다 받는다(stream 이 buffer 로 publish) — 신고된
-        # "프리마켓 프로그램 빈 창"은 그쪽에서 해소된다. 여기서 거르는 것은 **과거
-        # 시계열 저장**뿐이고, 버리는 양을 로그로 남겨 이관 잔여가 조용하지 않게 한다.
-        deferred = sorted({v for (_c, v) in latched if v != "KRX"})
-        if deferred:
-            log.info(
-                "program_trade.collector.venue_deferred venues=%s dropped=%d — "
-                "사이드카 저장소 venue 축은 PR-G(표시 경로는 이미 수신 중)",
-                deferred, sum(1 for (_c, v) in latched if v != "KRX"),
-            )
-        latched = {c: p for (c, v), p in latched.items() if v == "KRX"}
-        self.status.targets = tuple(sorted(latched))
-        for code, payload in latched.items():
+        # drain 은 창 밖 venue 프레임도 함께 비운다(전량 drain). 그 자리는 저장하지
+        # 않는 것이 맞고(창 = 저장 여부의 정의), 남겨 두면 창이 열리는 순간 몇 시간
+        # 묵은 값이 그 시각의 관측인 척 들어간다.
+        latched = {
+            (code, venue): payload
+            for (code, venue), payload in program_trade_latch.drain().items()
+            if venue in open_venues
+        }
+        self.status.targets = tuple(sorted({code for (code, _venue) in latched}))
+        for (code, venue), payload in latched.items():
             try:
-                row = self._to_row(code, payload)
+                row = self._to_row(code, venue, payload)
                 self.store.merge_response(
                     code=code,
                     date=date,
+                    venue=venue,
                     rows=[row],
                     observed_at_ms=observed_at_ms,
                 )
@@ -168,18 +180,21 @@ class ProgramTradeCollector:
 
         self.status.last_cycle_ms = observed_at_ms
 
-    def _to_row(self, code: str, payload: dict) -> ProgramTradeByStockRow:
+    def _to_row(self, code: str, venue: str, payload: dict) -> ProgramTradeByStockRow:
         """0w latch payload(kiwoom_frames._parse_program 산출) → store Row.
 
         bsop_hour(store 병합 키)는 틱 수신 t_ms 의 KST HHMMSS — REST 가 KIS 응답의
         집계시각을 쓰던 자리를 수신 시각이 대신한다(0w 에 시각 FID 없음).
+
+        `venue` 는 delta 상태 키에만 쓰인다(행 자체는 파일이 venue 를 들고 있다) —
+        근거는 `_last_net` 주석.
         """
         t_ms = int(payload["t_ms"])
         bsop_hour = datetime.fromtimestamp(t_ms / 1000, KST).strftime("%H%M%S")
         net_qty = payload.get("net_qty")
         net_amount = payload.get("net_amount")
-        prev_qty, prev_amount = self._last_net.get(code, (None, None))
-        self._last_net[code] = (net_qty, net_amount)
+        prev_qty, prev_amount = self._last_net.get((code, venue), (None, None))
+        self._last_net[(code, venue)] = (net_qty, net_amount)
         return ProgramTradeByStockRow(
             code=code,
             bsop_hour=bsop_hour,
