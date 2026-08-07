@@ -240,28 +240,13 @@ describe('IndexCards 현물/선물 토글', () => {
     expect(screen.getByText(/장 마감/)).toBeTruthy();
   });
 
-  it('야간 실시간이면 야간이라고 말한다', async () => {
-    // **정상일 때 침묵하면 정상 상태가 화면에서 사라진다.** 배지가 어긋남에만 반응하던
-    // 동안 야간 실시간 카드는 라벨도 배지도 주간과 완전히 같았고, 사용자가 값을 외우고
-    // 있지 않으면 구별할 방법이 없었다(2026-08-07 실제 혼동 — "주간선물만 보인다").
-    mockApi({ quotes: [futuresQuote({ data_session: 'night' })], session: 'night' });
-    renderCards();
-
-    await userEvent.click(within(await screen.findByLabelText('KOSPI 200 현물/선물')).getByText('선물'));
-    const card = cardByLabel('KOSPI 200 F');
-    expect(within(card).getByText(/야간/)).toBeTruthy();
-    expect(within(card).queryByText(/주간 마감값/)).toBeNull();
-  });
-
-  it('주간 중에는 배지를 달지 않는다', async () => {
-    // 주간은 **기본 상태**라 알릴 것이 없다 — 야간과 달리 여기서 말을 걸면 소음이다.
+  it('주간 중에는 낡음 배지를 달지 않는다', async () => {
     mockApi({ quotes: [futuresQuote()], session: 'day' });
     renderCards();
 
     await userEvent.click(within(await screen.findByLabelText('KOSPI 200 현물/선물')).getByText('선물'));
     expect(screen.queryByText(/주간 마감값/)).toBeNull();
     expect(screen.queryByText(/장 마감/)).toBeNull();
-    expect(screen.queryByText(/야간/)).toBeNull();
   });
 
   it('야간엔 배지가 카드마다 갈린다 — WS 틱이 붙은 종목만 실시간이다', async () => {
@@ -279,14 +264,84 @@ describe('IndexCards 현물/선물 토글', () => {
     await userEvent.click(within(await screen.findByLabelText('KOSPI 200 현물/선물')).getByText('선물'));
     await userEvent.click(within(toggleFor('KOSDAQ 150')).getByText('선물'));
 
-    // 야간 실시간인 카드엔 '야간', 무음인 카드엔 '주간 마감값' — **한 카드가 둘 다
-    // 달면 안 된다.** 두 문구는 같은 판정의 양쪽 가지라 동시에 참일 수 없다.
-    const live = cardByLabel('KOSPI 200 F');
-    const stale = cardByLabel('KOSDAQ 150 F');
-    expect(within(live).getByText(/야간/)).toBeTruthy();
-    expect(within(live).queryByText(/주간 마감값/)).toBeNull();
-    expect(within(stale).getByText(/주간 마감값/)).toBeTruthy();
-    expect(within(stale).queryByText(/야간/)).toBeNull();
+    expect(within(cardByLabel('KOSPI 200 F')).queryByText(/주간 마감값/)).toBeNull();
+    expect(within(cardByLabel('KOSDAQ 150 F')).getByText(/주간 마감값/)).toBeTruthy();
+  });
+});
+
+/** 라벨 옆 세션 칩.
+ *
+ * **낡음 배지와 축이 다르다.** 저쪽은 "지금 세션과 어긋났는가"(예외)를, 이쪽은
+ * "무슨 값인가"(상태)를 말한다. 상태를 예외 채널로만 표현하면 정상 상태가 화면에서
+ * 사라진다 — 야간 실시간일 때 라벨도 배지도 주간과 똑같아서 값을 외우지 않으면 구별할
+ * 수 없었던 것이 그 결과였다(2026-08-07 "야간선물은 언제 등장해? 주간선물만 보이는데").
+ */
+describe('IndexCards 세션 칩', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  /** 칩이 **라벨 옆**에 있는지. `getByText` 만으로는 카드 어디에 있든 통과한다. */
+  function chipNextToLabel(cardLabel: string, text: string): HTMLElement {
+    const chip = within(cardByLabel(cardLabel)).getByText(text);
+    expect(chip.parentElement?.textContent).toContain(cardLabel);
+    return chip;
+  }
+
+  it('야간 값이면 라벨 옆에 야간이 붙는다', async () => {
+    mockApi({ quotes: [futuresQuote({ data_session: 'night' })], session: 'night' });
+    renderCards();
+
+    await userEvent.click(within(await screen.findByLabelText('KOSPI 200 현물/선물')).getByText('선물'));
+    expect(chipNextToLabel('KOSPI 200 F', '야간')).toBeTruthy();
+  });
+
+  it('주간 값이면 라벨 옆에 주간이 붙는다', async () => {
+    // **주간도 표시한다** — 침묵하면 "표시가 없는 것" 과 "주간인 것" 이 같아 보인다.
+    mockApi({ quotes: [futuresQuote()], session: 'day' });
+    renderCards();
+
+    await userEvent.click(within(await screen.findByLabelText('KOSPI 200 현물/선물')).getByText('선물'));
+    expect(chipNextToLabel('KOSPI 200 F', '주간')).toBeTruthy();
+  });
+
+  it('장 마감 중에도 값이 주간이면 주간이라고 말한다', async () => {
+    // 칩은 **값의 세션**이지 지금 세션이 아니다. 낡았다는 사실은 낡음 배지가 따로 말한다.
+    mockApi({ quotes: [futuresQuote()], session: 'closed' });
+    renderCards();
+
+    await userEvent.click(within(await screen.findByLabelText('KOSPI 200 현물/선물')).getByText('선물'));
+    const card = cardByLabel('KOSPI 200 F');
+    expect(chipNextToLabel('KOSPI 200 F', '주간')).toBeTruthy();
+    expect(within(card).getByText(/장 마감/)).toBeTruthy();
+  });
+
+  it('칩은 카드마다 갈린다 — 야간에 무음인 종목은 주간이다', async () => {
+    mockApi({
+      session: 'night',
+      quotes: [
+        futuresQuote({ data_session: 'night' }),
+        { ...KOSDAQ150_F, data_session: 'day' },
+      ],
+    });
+    renderCards();
+
+    await userEvent.click(within(await screen.findByLabelText('KOSPI 200 현물/선물')).getByText('선물'));
+    await userEvent.click(within(toggleFor('KOSDAQ 150')).getByText('선물'));
+
+    expect(chipNextToLabel('KOSPI 200 F', '야간')).toBeTruthy();
+    expect(chipNextToLabel('KOSDAQ 150 F', '주간')).toBeTruthy();
+  });
+
+  it('현물 모드에는 칩이 없다 — 현물 지수엔 세션 구분이 없다', async () => {
+    mockApi({ quotes: [futuresQuote({ data_session: 'night' })], session: 'night' });
+    renderCards();
+
+    await screen.findByText('982.92');
+    const card = cardByLabel('KOSPI 200');
+    expect(within(card).queryByText('야간')).toBeNull();
+    expect(within(card).queryByText('주간')).toBeNull();
   });
 });
 
@@ -343,9 +398,13 @@ describe('IndexCards 스파크라인 소스 분리', () => {
     expect(within(cardByLabel('KOSPI 200 F')).queryByText(/주간 마감값/)).toBeNull();
   });
 
-  it('야간 그림이 앞이 잘렸으면 시작 시각을 말한다', async () => {
-    // 02:00 부터만 관측 — 스파크라인엔 축이 없어서 8시간짜리 선과 10분짜리 선이
-    // 화면에서 똑같이 카드를 채운다. 글자로만 구별할 수 있다.
+  it('커버리지가 와도 화면에 시각을 쓰지 않는다', async () => {
+    // 2026-08-07 사용자 요청으로 뺐다. 응답(`coverage`)은 계속 오므로 **표시만**
+    // 없앤 것이고, 이 테스트가 그 결정을 못박는다 — 안 그리면 조용히 되살아난다.
+    //
+    // 원래 근거는 "스파크라인엔 축이 없어 8시간짜리 선과 10분짜리 선이 똑같이 카드를
+    // 채운다" 였는데, keeper(#1218)를 켜면 관측이 항상 18:00 부터라 문구가 사실상
+    // 안 뜬다. 필요해지면 응답이 그대로 있으니 되살릴 수 있다.
     mockApi(
       { session: 'night', quotes: [futuresQuote({ data_session: 'night', value: 1004.95 })] },
       {
@@ -353,46 +412,7 @@ describe('IndexCards 스파크라인 소스 분리', () => {
           closes: [1000, 1002, 1005],
           day_open: null,
           session: 'night',
-          coverage: { first_hhmm: '0200', observed_buckets: 5, gap_count: 0 },
-        },
-      },
-    );
-    renderCards();
-
-    await screen.findByText('982.92');
-    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
-    expect(within(cardByLabel('KOSPI 200 F')).getByText(/02:00~/)).toBeTruthy();
-  });
-
-  it('관측이 끊겼으면 끊긴 횟수도 말한다', async () => {
-    mockApi(
-      { session: 'night', quotes: [futuresQuote({ data_session: 'night', value: 1004.95 })] },
-      {
-        KOSPI200_F: {
-          closes: [1000, 1002, 1005],
-          day_open: null,
-          session: 'night',
-          coverage: { first_hhmm: '1800', observed_buckets: 40, gap_count: 2 },
-        },
-      },
-    );
-    renderCards();
-
-    await screen.findByText('982.92');
-    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
-    expect(within(cardByLabel('KOSPI 200 F')).getByText(/끊김 2곳/)).toBeTruthy();
-  });
-
-  it('18:00부터 끊김 없이 봤으면 아무 말도 하지 않는다', async () => {
-    // 정상을 알리는 문구는 소음이다 — 온전할 때 조용해야 경고가 의미를 갖는다.
-    mockApi(
-      { session: 'night', quotes: [futuresQuote({ data_session: 'night', value: 1004.95 })] },
-      {
-        KOSPI200_F: {
-          closes: [1000, 1002, 1005],
-          day_open: null,
-          session: 'night',
-          coverage: { first_hhmm: '1800', observed_buckets: 40, gap_count: 0 },
+          coverage: { first_hhmm: '0200', observed_buckets: 5, gap_count: 2 },
         },
       },
     );
@@ -401,25 +421,9 @@ describe('IndexCards 스파크라인 소스 분리', () => {
     await screen.findByText('982.92');
     await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
     const card = cardByLabel('KOSPI 200 F');
+    expect(within(card).queryByText(/02:00/)).toBeNull();
     expect(within(card).queryByText(/~/)).toBeNull();
     expect(within(card).queryByText(/끊김/)).toBeNull();
-  });
-
-  it('주간 그림에는 커버리지를 붙이지 않는다', async () => {
-    // 주간은 REST 로 날짜를 지정해 다시 받을 수 있어서 "놓친 구간" 개념이 없다.
-    mockApi({ quotes: [futuresQuote()] }, {
-      KOSPI200_F: {
-        closes: [1013.35, 1000, 981.15],
-        day_open: 1017.15,
-        session: 'day',
-        coverage: null,
-      },
-    });
-    renderCards();
-
-    await screen.findByText('982.92');
-    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
-    expect(within(cardByLabel('KOSPI 200 F')).queryByText(/~/)).toBeNull();
   });
 
   it('야간 봉이 아직 부족하면 아무것도 그리지 않는다', async () => {

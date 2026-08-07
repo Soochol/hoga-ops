@@ -95,24 +95,25 @@ function useCardModes(): [Record<string, CardMode>, (id: string, next: CardMode)
  *  **카드마다 따로 판정한다.** 야간엔 유동성에 따라 종목별로 갈리기 때문이다 —
  *  KOSPI200 은 WS 틱이 붙어 실시간인데 코스닥150 은 무음이라 주간 마감본일 수 있다.
  *  스냅샷 하나로 판정하면 둘 중 하나는 반드시 틀린 배지를 단다. */
-function sessionNote(
+function stalenessNote(
   future: FuturesQuote,
   snapshot: FuturesQuotesSnapshot | undefined,
 ): string | null {
-  if (!snapshot) return null;
-  if (snapshot.session !== future.dataSession) {
-    return snapshot.session === 'night' ? '주간 마감값' : '장 마감';
-  }
-  // 값이 최신이다. 그래도 **야간은 알린다.**
-  //
-  // 원래는 여기서 무조건 침묵했다 — "정상을 알리는 문구는 소음" 이라는 판단(#1164)
-  // 이었는데, 그 판단은 커버리지 경고처럼 **예외를 알리는** 정보에만 맞다. 어느
-  // 세션의 값인가는 예외가 아니라 **상태**이고, 상태를 예외 채널로만 표현하면 정상
-  // 상태가 화면에서 통째로 사라진다. 실제로 그랬다: 야간 실시간일 때 라벨도 배지도
-  // 주간과 똑같아서, 사용자가 값을 외우고 있지 않으면 구별할 방법이 없었다.
-  //
-  // 주간은 여전히 침묵한다 — 그쪽이 기본 상태라 알릴 것이 없다.
-  return future.dataSession === 'night' ? '야간' : null;
+  if (!snapshot || snapshot.session === future.dataSession) return null;
+  return snapshot.session === 'night' ? '주간 마감값' : '장 마감';
+}
+
+/** 이 값이 **어느 세션의 것인지** — 라벨 옆에 늘 붙는다.
+ *
+ *  `stalenessNote` 와 축이 다르다. 저쪽은 "지금 세션과 어긋났는가"(예외)를 말하고,
+ *  이쪽은 "무슨 값인가"(상태)를 말한다. 상태를 예외 채널로만 표현하면 정상 상태가
+ *  화면에서 통째로 사라진다 — 야간 실시간일 때 라벨도 배지도 주간과 똑같아서 값을
+ *  외우지 않으면 구별할 수 없었던 것이 그 결과였다(2026-08-07).
+ *
+ *  `closed` 는 '주간' 으로 읽는다 — 장 마감 중 카드가 들고 있는 값이 그날 주간
+ *  마감본이기 때문이다. 그 값이 낡았다는 사실은 `stalenessNote` 가 따로 말한다. */
+function sessionLabel(session: FuturesQuote['dataSession']): string {
+  return session === 'night' ? '야간' : '주간';
 }
 
 /** 베이시스·괴리율용 소수 2자리 부호 표기.
@@ -124,40 +125,21 @@ function fmtBasis(n: number | null): string {
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}`;
 }
 
-/** `"0200"` → `"02:00"`. */
-function fmtHhmm(hhmm: string): string {
-  return hhmm.length === 4 ? `${hhmm.slice(0, 2)}:${hhmm.slice(2)}` : hhmm;
-}
-
-/** 야간 스파크라인이 **무엇을 덮는지**. 온전하면 null — 조용해도 되는 상태다.
+/** 선물 카드의 부가 정보 한 줄 — 베이시스·만기. 선물을 보는 이유 자체다.
  *
- *  스파크라인은 x 를 시각이 아니라 **인덱스**로 잡는다(`marketBits.Sparkline`).
- *  그래서 18:00 부터 8시간을 그린 선과 02:00 부터 10분을 그린 선이 화면에서
- *  똑같이 카드를 채운다 — 앞이 잘렸다는 사실은 글자로만 말할 수 있다.
- *
- *  야간 봉은 프로세스 메모리에만 있고 소급 조회 경로가 없어서(WS 는 "지금부터" 만
- *  준다) 재시작·유휴 정지로 잘린 구간은 **복구가 아니라 고백**이 유일한 대응이다. */
-function coverageNote(spark: FuturesSpark | undefined): string | null {
-  if (!spark || spark.session !== 'night' || !spark.coverage) return null;
-  const { firstHhmm, gapCount } = spark.coverage;
-  // 18:00 부터 끊김 없이 봤으면 굳이 말하지 않는다 — 정상을 알리는 문구는 소음이다.
-  if (firstHhmm === '1800' && gapCount === 0) return null;
-  const from = `${fmtHhmm(firstHhmm)}~`;
-  return gapCount > 0 ? `${from} 끊김 ${gapCount}곳` : from;
-}
-
-/** 선물 카드의 부가 정보 한 줄 — 베이시스·만기·그림 커버리지. 선물을 보는 이유 자체다. */
+ *  **야간 그림의 커버리지(`02:00~`·`끊김 2곳`)는 여기서 뺐다**(2026-08-07, 사용자
+ *  요청). 원래는 스파크라인에 축이 없어 "8시간짜리 선과 10분짜리 선이 똑같이 카드를
+ *  채운다" 는 것을 글자로 고백하는 장치였는데, 스케줄러 keeper(#1218)를 켜면 관측이
+ *  항상 18:00 부터라 그 문구가 사실상 뜨지 않는다. 응답(`spark.coverage`)은 계속
+ *  오므로 필요해지면 되살릴 수 있다. */
 function FuturesMeta({
   future,
   snapshot,
-  spark,
 }: {
   future: FuturesQuote;
   snapshot: FuturesQuotesSnapshot | undefined;
-  spark: FuturesSpark | undefined;
 }) {
-  const stale = sessionNote(future, snapshot);
-  const coverage = coverageNote(spark);
+  const stale = stalenessNote(future, snapshot);
   return (
     <div className="flex flex-wrap items-baseline gap-x-xs font-data text-2xs tabular-nums text-fg-dim">
       <span>
@@ -167,15 +149,9 @@ function FuturesMeta({
         </span>
       </span>
       {future.daysLeft != null && <span>· D-{future.daysLeft}</span>}
-      {stale && <span className="text-fg-dimmer">· {stale}</span>}
-      {coverage && (
-        <span
-          className="text-fg-dimmer"
-          title="야간 그림이 덮는 구간. 서버 재시작·유휴 정지로 앞이 잘리면 복구할 수 없다."
-        >
-          · {coverage}
-        </span>
-      )}
+      {/* `text-fg-dimmer` 를 쓰지 않는다 — 소형 텍스트에는 WCAG AA 미달이다(DESIGN.md
+          텍스트 대비 규칙). 이 줄은 전부 `2xs` 라 예외 없이 대상이다. */}
+      {stale && <span>· {stale}</span>}
     </div>
   );
 }
@@ -319,8 +295,7 @@ function IndexCard({
   // 낡음 배지는 값 기준(`dataSession`)이라 이 어긋남에 침묵한다.
   //
   // 반대 방향도 같은 창으로 생긴다 — 시세 캐시 20초 · 분봉 캐시 60초라 세션이 바뀌는
-  // 순간 값이 먼저 주간으로 돌아오고 그림만 야간으로 남는다. 그때 야간 커버리지 문구가
-  // 주간 값 카드에 붙지 않도록 `FuturesMeta` 에도 같은 값을 넘긴다.
+  // 순간 값이 먼저 주간으로 돌아오고 그림만 야간으로 남는다. 그쪽도 그리지 않는다.
   //
   // 응답은 이미 진실을 말하고 있었다(`session`) — 읽지 않는 쪽이 결함이었다.
   const sparkInSync =
@@ -335,8 +310,13 @@ function IndexCard({
       <div
         className={`flex flex-wrap items-baseline justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}
       >
-        <span className="text-xs font-semibold uppercase text-fg-dim">
+        <span className="inline-flex items-baseline gap-2xs text-xs font-semibold uppercase text-fg-dim">
           {showFutures ? future.label : quote.label}
+          {/* 세션 칩 — **선물 모드에만** 붙는다. 현물 지수는 주간뿐이라 물음 자체가 없다.
+              굵기를 낮춰 라벨과 위계를 가른다(같은 색이면 이름의 일부로 읽힌다). */}
+          {showFutures && (
+            <span className="text-2xs font-normal">{sessionLabel(future.dataSession)}</span>
+          )}
         </span>
         {breadth?.rising != null && breadth.falling != null && (
           <span className="font-data text-2xs text-fg-dim tabular-nums">
@@ -385,12 +365,12 @@ function IndexCard({
           line-height 가 정하므로 하드코딩하면 사용자 줌에서 어긋난다. 같은 컴포넌트를
           그대로 재사용하면 정의상 높이가 일치한다. */}
       {showFutures ? (
-        <FuturesMeta future={future} snapshot={snapshot} spark={sparkInSync} />
+        <FuturesMeta future={future} snapshot={snapshot} />
       ) : breadth ? (
         <AdvanceDeclineBar rising={breadth.rising} falling={breadth.falling} flat={breadth.flat} />
       ) : future != null ? (
         <div aria-hidden="true" className="invisible">
-          <FuturesMeta future={future} snapshot={snapshot} spark={sparkInSync} />
+          <FuturesMeta future={future} snapshot={snapshot} />
         </div>
       ) : null}
     </MarketCard>
