@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import get_args
+from typing import Literal, get_args, get_origin
 
-from hoga.api import models as m
+from hoga.api import events, models as m, sources
 from hoga.live.lifecycle import LiveStatus
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -89,9 +89,12 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 
 # 등록된 쌍: 프론트 타입명 → (백엔드 Literal 멤버, 프론트 소스 파일).
 #
-# **등록된 쌍만 보호된다.** 새 BE Literal ↔ FE union 쌍을 만들면 여기 추가해야 한다 —
-# 자동 발견은 하지 않는다(이름 규칙 매칭은 오탐·누락이 둘 다 조용하다). 백엔드
-# ``Literal`` 116개 중 대부분은 ``type: Literal["capture_progress"]`` 같은 단일값
+# **등록된 쌍만 값이 대조된다.** 다만 "등록을 잊는" 실패 모드는 아래
+# ``test_same_named_literal_unions_are_registered_or_excused`` 가 따로 막는다 —
+# 이름이 같은 BE Literal ↔ FE union 을 발견하면 여기 등록하거나
+# ``INTENTIONALLY_UNMIRRORED`` 에 사유를 적으라고 요구한다.
+#
+# 백엔드 ``Literal`` 116개 중 대부분은 ``type: Literal["capture_progress"]`` 같은 단일값
 # 판별자라 드리프트 여지가 없어서, 여러 값을 갖고 프론트가 그 값으로 분기·라벨링하는
 # 것만 고른다. 숫자 Literal(``pct: Literal[10, 20, 30]``)은 대상이 아니다.
 #
@@ -109,6 +112,8 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
         frozenset(get_args(m.SignalAlertSource)),
         "frontend/src/api/signalAlerts.ts",
     ),
+    # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
+    "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
 }
 
 
@@ -165,3 +170,91 @@ def test_wire_enum_mirror_parser_reads_multiline_unions() -> None:
     assert "partial_live" in members  # 마지막 줄
     assert "source_partial_confirmed" in members  # 주석 바로 다음 줄
     assert len(members) > 10  # 여러 줄을 실제로 다 읽었다는 하한
+
+
+# ── 등록 누락 감사 ────────────────────────────────────────────────────────────
+
+# 이름이 같은 BE Literal ↔ FE union 인데 **일부러 대조하지 않는** 쌍. 값과 함께 사유를
+# 남긴다 — 사유가 없으면 다음 사람이 "불일치네" 하고 한쪽을 고쳐 버린다.
+INTENTIONALLY_UNMIRRORED: dict[str, str] = {
+    "SourceName": (
+        "FE 는 두 개념의 합집합이다: BE 오더플로 Literal(hogaplay·kiwoom_live)에 "
+        "차트 전용 'screener_daily' 를 더했다. 그 값은 /api/live/screener-daily-candles "
+        "가 내는데 그 라우트는 반환형이 `-> dict` 라 wire model 자체가 없다. 동일성으로 "
+        "묶으면 영구히 빨간 테스트가 되고, FE 에서 screener_daily 를 지우면 차트가 깨진다."
+    ),
+}
+
+# 감사 대상 백엔드 모듈 — 명시 목록이다(registry 철학과 같다). 여기 없는 모듈의
+# Literal 별칭은 감사되지 않으므로, 새 wire enum 을 다른 모듈에 두면 추가할 것.
+_AUDITED_BACKEND_MODULES = (m, sources, events)
+
+
+def _backend_literal_alias_names() -> set[str]:
+    """감사 대상 모듈의 **모듈 레벨 문자열 Literal 별칭** 이름들.
+
+    필드 인라인 Literal(``capture_reason`` 처럼 모델 안에 직접 쓴 것)은 이름이 없어서
+    이 감사에 안 걸린다 — 그런 쌍은 여전히 손으로 등록해야 한다. 그래서 이 감사는
+    누락을 **줄이는** 장치지 없애는 장치가 아니다.
+    """
+    names: set[str] = set()
+    for mod in _AUDITED_BACKEND_MODULES:
+        for name in dir(mod):
+            if name.startswith("_"):
+                continue
+            value = getattr(mod, name)
+            if get_origin(value) is not Literal:
+                continue
+            args = get_args(value)
+            # 단일값 판별자는 드리프트 여지가 없고, 숫자 Literal 은 TS 문자열 union 과
+            # 짝이 아니다. 둘 다 감사에서 뺀다.
+            if len(args) > 1 and all(isinstance(a, str) for a in args):
+                names.add(name)
+    return names
+
+
+def _frontend_string_union_names() -> set[str]:
+    """``frontend/src/api/*.ts`` 의 문자열 union ``export type`` 이름들."""
+    names: set[str] = set()
+    for ts_path in sorted((_REPO_ROOT / "frontend/src/api").glob("*.ts")):
+        src = ts_path.read_text(encoding="utf-8")
+        for type_name in re.findall(r"^export type (\w+)\s*=", src, re.M):
+            if _ts_union_members(ts_path, type_name):
+                names.add(type_name)
+    return names
+
+
+def test_same_named_literal_unions_are_registered_or_excused() -> None:
+    """이름이 같은 BE Literal ↔ FE union 은 등록하거나 사유를 남겨야 한다.
+
+    값 대조(``WIRE_ENUM_MIRRORS``)의 최대 약점은 **등록을 잊는 것**이다. 잊으면 그 쌍은
+    조용히 무방비인데, 테스트는 여전히 초록이라 보호받는 줄 안다. 이 감사가 그 침묵을
+    깬다 — 이름을 맞춰 놓고 등록만 안 한 흔한 경우를 잡는다.
+
+    이름이 다른 쌍과 필드 인라인 Literal 은 여전히 못 본다. 완전한 그물이 아니라는
+    뜻이고, 그래서 위 registry 의 "등록된 쌍만 대조된다" 는 단서는 그대로 유효하다.
+    """
+    candidates = _backend_literal_alias_names() & _frontend_string_union_names()
+    unaccounted = candidates - set(WIRE_ENUM_MIRRORS) - set(INTENTIONALLY_UNMIRRORED)
+
+    assert not unaccounted, (
+        f"BE Literal 과 이름이 같은 FE union 이 등록되지 않았다: {sorted(unaccounted)}. "
+        "값을 대조하려면 WIRE_ENUM_MIRRORS 에 추가하고, 일부러 안 맞추는 것이라면 "
+        "INTENTIONALLY_UNMIRRORED 에 **사유와 함께** 넣을 것."
+    )
+
+
+def test_intentionally_unmirrored_entries_are_still_real_pairs() -> None:
+    """제외 목록이 화석이 되지 않게 — 양쪽에 실재하는 쌍만 남는다.
+
+    한쪽 타입이 사라진 뒤에도 제외 항목이 남아 있으면, 그 이름이 나중에 **다른 의미로**
+    되살아났을 때 아무 사유도 없이 감사를 통과해 버린다.
+    """
+    stale = set(INTENTIONALLY_UNMIRRORED) - (
+        _backend_literal_alias_names() & _frontend_string_union_names()
+    )
+
+    assert not stale, (
+        f"INTENTIONALLY_UNMIRRORED 항목이 더는 실재 쌍이 아니다: {sorted(stale)}. "
+        "한쪽이 사라졌거나 이름이 바뀌었으니 항목을 지울 것."
+    )
