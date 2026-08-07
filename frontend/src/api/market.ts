@@ -292,3 +292,62 @@ export function useMarketInvestorFlow() {
     staleTime: 30_000,
   });
 }
+
+// ── 파생 수급 (선물·옵션, KIS) ────────────────────────────────────────────
+
+export interface DerivFlowPoint {
+  t_ms: number;
+  /** 억원. **단위 판정이 안 서면 전부 null** 이고 그때도 `*_qty` 는 산다. */
+  individual: number | null;
+  foreign: number | null;
+  institution: number | null;
+  /** 계약. 국내 HTS 의 표준 축이고 단위 판정과 무관하게 늘 유효하다. */
+  individual_qty: number | null;
+  foreign_qty: number | null;
+  institution_qty: number | null;
+}
+
+export interface DerivFlowUnits {
+  /** `contract` 또는 null(미확정) */
+  quantity: string | null;
+  /** `won` · `thousand_won` · `million_won` 또는 null(미확정) */
+  amount: string | null;
+  resolved: boolean;
+  /** 왜 확정됐는지 / 왜 못 했는지. 화면이 그대로 보여 준다. */
+  reason: string;
+}
+
+export interface DerivFlowProduct {
+  label: string;
+  iscd: string;
+  /** `futures` · `call` · `put` */
+  family: string;
+  points: DerivFlowPoint[];
+  coverage: InvestorFlowCoverage;
+}
+
+export interface DerivFlowResponse {
+  date: string;
+  /**
+   * `amt_eok` 또는 **null**. 주식 쪽(`InvestorFlowResponse.unit`)과 달리 null 이
+   * 가능하다 — 벤더가 파생 대금 단위를 말해 주지 않아 값에서 역산하는데, 장 초반처럼
+   * 판정이 안 서면 억원 축이 통째로 빈다. 억지로 환산하면 그게 #1117 이다.
+   */
+  unit: string | null;
+  units: DerivFlowUnits;
+  /** 파생 세션은 09:00–15:45 다(주식 15:30). x축을 하드코딩하지 말 것. */
+  session_start_sec: number;
+  session_end_sec: number;
+  /** 상품 키(`F001`·`OC01`…) → 시계열. 표본이 없어도 **골격은 온다**. */
+  products: Record<string, DerivFlowProduct>;
+}
+
+export function useMarketDerivFlow() {
+  return useQuery({
+    queryKey: ['market', 'deriv-flow'],
+    queryFn: () => apiCall<DerivFlowResponse>('/api/market/deriv-flow'),
+    // 수집기가 60초로 찍으므로 그보다 자주 물어도 새 표본이 없다 — 주식 쪽과 같다.
+    refetchInterval: () => pollWhileOpen(60_000),
+    staleTime: 30_000,
+  });
+}

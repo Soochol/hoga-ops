@@ -16,6 +16,10 @@ export const SERIES_COLORS = {
   cma: 'var(--ma-5)',
 } as const;
 
+/** 백엔드 시장 키 → 화면 라벨. 수급 카드와 프로그램 카드가 공유한다 —
+ *  컴포넌트 파일에 두면 fast-refresh 가 모듈째 갈아 끼우고, 두 곳에 적으면 갈린다. */
+export const MARKET_LABELS: Record<string, string> = { KOSPI: '코스피', KOSDAQ: '코스닥' };
+
 export function fmtPct(pct: number | null | undefined): string {
   if (pct == null) return '—';
   return `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`;
