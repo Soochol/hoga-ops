@@ -46,3 +46,17 @@ def make_collector(data_dir: Path) -> DerivFlowCollector | None:
         now_ms_fn=lambda: int(now_kst().timestamp() * 1000),
         fetch_fn=make_kis_fetch(client),
     )
+
+
+async def catch_up_after_close(data_dir: Path) -> int:
+    """마감 후 그날 최종 누적이 없으면 1회 담는다. 무자격이면 0.
+
+    **부팅 시와 일일 배치에서 부른다.** 수집 창(09:00–15:45)만 있으면 장중에 서버가
+    안 떠 있던 날이 통째로 사라지는데, 파생엔 소급 조회 경로가 없어서(일별 확정 TR 에
+    파생 시장구분이 없다) 그 손실이 영구다. 벤더는 마감 후에도 당일 누적을 답하므로
+    **묻기만 하면 살릴 수 있다.**
+    """
+    collector = make_collector(data_dir)
+    if collector is None:
+        return 0
+    return await collector.catch_up_after_close()

@@ -34,7 +34,7 @@ from hoga.live.deriv_flow_products import BY_KEY, PRODUCTS, UNIT_PROBE_KEY
 from hoga.live.deriv_flow_store import DerivFlowStore, DerivSample, rows_equal
 from hoga.live.deriv_flow_units import UnitVerdict, infer_units
 from hoga.live.error_policy import classify_live_error, format_live_error
-from hoga.live.session_gate import deriv_capture_window_async
+from hoga.live.session_gate import deriv_after_close_async, deriv_capture_window_async
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +65,7 @@ class DerivFlowCollector:
         now_ms_fn: Callable[[], int],
         fetch_fn: Callable[[str, str], Awaitable[dict[str, Any] | None]],
         should_collect_fn: Callable[[int], Awaitable[bool]] = deriv_capture_window_async,
+        after_close_fn: Callable[[int], Awaitable[bool]] = deriv_after_close_async,
         poll_interval_s: float = POLL_INTERVAL_S,
     ) -> None:
         self.store = DerivFlowStore(data_dir)
@@ -72,6 +73,7 @@ class DerivFlowCollector:
         self._now_ms_fn = now_ms_fn
         self._fetch_fn = fetch_fn
         self._should_collect_fn = should_collect_fn
+        self._after_close_fn = after_close_fn
         self._poll_interval_s = poll_interval_s
         self.status = DerivFlowCollectorStatus()
         self._task: asyncio.Task | None = None
@@ -142,6 +144,63 @@ class DerivFlowCollector:
                 ),
             )
             self.status.last_written_at_ms = now_ms
+
+    async def catch_up_after_close(self) -> int:
+        """마감 후 그날 **최종 누적을 1회** 담는다. 담은 줄 수를 돌려준다.
+
+        **이게 없으면 그날이 통째로 사라진다.** 벤더는 15:45 이후에도 당일 누적을
+        계속 답하는데(2026-08-07 15:59 실측: 7상품 전부 정상 응답) 수집 창이 닫혀 있어
+        우리가 묻지 않는다. 그리고 파생엔 **일별 확정 TR 이 없다** — `FHPTJ04040000` 의
+        시장구분은 KSP/KSQ 뿐이라 주식처럼 `base_dt` 로 소급할 방법이 0이다.
+
+        그래서 이 경로가 생기는 구멍은 실제로 자주 열린다:
+        - 장중에 서버가 안 떠 있었던 날(배포·재시작·정전)
+        - 기능이 장 마감 뒤에 배포된 날 — **지금이 그 경우다**
+
+        **멱등은 "이미 담았나" 가 아니라 값 비교로 잡는다** — 마감 직후 값이 아직
+        움직이기 때문이다(2026-08-07 실측: 15:59 에 선물 외국인 +2,369계약이던 것이
+        16시대에 +3,913계약으로 갱신됐다. 최종 정산이 반영되는 중이다).
+
+        "마감 후 표본이 하나라도 있으면 건너뛴다" 로 두면 **가장 이른 스냅샷이 그날의
+        최종본으로 굳어 버린다.** 그래서 매번 조회하고 직전 표본과 값이 같을 때만 쓰지
+        않는다(장중 폴과 같은 중복 억제). 부팅·일일 루프가 겹쳐 돌아도 저장은 실제
+        변화 횟수만큼이고, 읽기 경로는 마지막 표본을 최종값으로 쓴다.
+
+        날짜가 넘어가면 자동으로 멈춘다 — 새 날짜는 아직 마감 전이라 게이트가 닫힌다.
+
+        `sampled_at_ms` 는 **실제 관측 시각**을 남긴다(마감 시각으로 위조하지 않는다).
+        관측하지 않은 시각을 적으면 커버리지가 거짓말을 하고, 차트는 세션 밖 점을
+        clamp 해서 15:45 에 붙이므로 표시상 손해도 없다.
+        """
+        now_ms = self._now_ms_fn()
+        if not await self._after_close_fn(now_ms):
+            return 0
+        date = self._date_fn()
+
+        written = 0
+        for product in PRODUCTS:
+            row = await self._fetch_fn(product.iscd, product.key)
+            if row is None:
+                continue
+            if product.key == UNIT_PROBE_KEY:
+                self._probe_units(row)
+            if rows_equal(self.store.last_sample(date, product.key), row):
+                self.status.skipped_duplicates += 1
+                continue
+            self.store.append_sample(
+                date,
+                DerivSample(
+                    sampled_at_ms=now_ms,
+                    product=product.key,
+                    request={"fid_input_iscd": product.iscd, "fid_input_iscd_2": product.key},
+                    row=row,
+                ),
+            )
+            written += 1
+        if written:
+            self.status.last_written_at_ms = now_ms
+            log.info("deriv_flow.catchup.captured date=%s rows=%d", date, written)
+        return written
 
     def _probe_units(self, row: dict[str, Any]) -> None:
         """선물 표본으로 단위를 역산해 상태에 싣는다.

@@ -76,6 +76,7 @@ class StartupRuntimeDeps:
 ONE_SHOT_TASK_NAMES: frozenset[str] = frozenset({
     "watchlist-catchup",      # scheduler.start_scheduler — 부팅 캐치업 1회 스윕
     "symbols-boot-refresh",   # start_app_runtime — 심볼 마스터 1회 갱신
+    "deriv-flow-catchup",     # scheduler.start_scheduler — 파생 마감 후 스냅샷 1회
 })
 
 

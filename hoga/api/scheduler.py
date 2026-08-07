@@ -351,6 +351,18 @@ async def run_trading_stage(data_dir: Path) -> bool:
             log.info("daily run: investor-flow confirmed days=%d", filled)
     except Exception:
         log.exception("daily run: investor-flow confirm failed; continuing")
+
+    # 파생은 확정 TR 이 없어서(일별 TR 의 시장구분에 파생이 빠져 있다) 위와 같은
+    # 수렴을 못 한다 — 대신 **마감 후 최종 누적을 1회 담는 것**이 그 역할이다.
+    # 벤더는 15:45 이후에도 당일 누적을 답하므로 묻기만 하면 살릴 수 있고, 안 담으면
+    # 장중에 서버가 안 떠 있던 날이 **영구히** 사라진다.
+    try:
+        from hoga.live import deriv_flow_runtime  # noqa: PLC0415
+        rows = await deriv_flow_runtime.catch_up_after_close(data_dir)
+        if rows:
+            log.info("daily run: deriv-flow closing snapshot rows=%d", rows)
+    except Exception:
+        log.exception("daily run: deriv-flow catch-up failed; continuing")
     return True
 
 
@@ -542,4 +554,17 @@ def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
         deriv.start()
         if deriv.task is not None:
             tasks.append(deriv.task)
+        # **부팅 catch-up 은 일일 루프로 대체되지 않는다.** 기능이 장 마감 뒤에
+        # 배포되거나 서버가 마감 후 재시작되면 그날 표본이 0인 채로 다음 일일 런까지
+        # 기다리게 되고, 그 사이 화면은 "표본이 아직 없습니다" 를 정직하게 말하지만
+        # 데이터는 벤더에 여전히 살아 있다. 지금 담으면 살고 내일이면 죽는다.
+        #
+        # ⚠ one-shot 이다 — `ONE_SHOT_TASK_NAMES` 에 이름을 등록해야 완료가
+        # "dead" 로 오인되지 않는다(ADR-0064).
+        tasks.append(
+            asyncio.create_task(
+                deriv_flow_runtime.catch_up_after_close(data_dir),
+                name="deriv-flow-catchup",
+            )
+        )
     return tasks
