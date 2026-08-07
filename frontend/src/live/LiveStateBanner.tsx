@@ -9,7 +9,6 @@ interface Props {
 
 const COPY: Record<BannerCause, { title: string; severity: 'error' | 'warn' | 'info' }> = {
   watchlist_empty: { title: '관심종목을 먼저 추가해주세요', severity: 'info' },
-  credentials_missing: { title: 'KIS 자격증명이 설정되지 않았습니다', severity: 'error' },
   kis_token_expired: { title: 'KIS 토큰이 만료되었습니다', severity: 'warn' },
   realtime_unavailable: { title: '실시간 미가동 — 호가·체결 스트림이 연결되지 않았습니다 (캔들·지수는 정상)', severity: 'warn' },
 };
@@ -25,9 +24,8 @@ export function LiveStateBanner({ primary, stack }: Props) {
 
   return (
     <div data-testid="live-state-banner" className="flex flex-col">
-      {primary === 'credentials_missing' && (
-        <BannerRow cause="credentials_missing" actionTo="/settings" actionLabel="설정" />
-      )}
+      {/* `credentials_missing` 행은 도달 불가 판정으로 내렸다 — 자세한 근거는
+          liveStatusProjection.ts 의 삭제된 분기 자리 주석 참조. */}
       {primary === 'realtime_unavailable' && (
         <BannerRow cause="realtime_unavailable" actionTo="/settings" actionLabel="설정" />
       )}

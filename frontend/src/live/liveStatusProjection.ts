@@ -3,7 +3,6 @@ import { useWatchlist } from '../watchlist/useWatchlist';
 
 export type LiveBannerCause =
   | 'watchlist_empty'
-  | 'credentials_missing'
   | 'kis_token_expired'
   | 'realtime_unavailable';
 
@@ -12,7 +11,6 @@ export type LiveBannerCause =
  * 멤버 추가 시 lockstep(CONTEXT.md STATE_SEVERITY SSOT 규율). */
 export type LiveBannerPrimary =
   | 'watchlist_empty'
-  | 'credentials_missing'
   | 'realtime_unavailable'
   | null;
 
@@ -46,8 +44,7 @@ export interface CaptureHealthView {
  */
 export interface LiveStatusProjectionInput {
   status:
-    | (Pick<LiveStatus, 'running' | 'started_at_ms' | 'cycle_lag_ms' | 'capture_healthy' | 'watchlist_count'>
-      & { capture_reason: string })
+    | (Pick<LiveStatus, 'capture_healthy'> & { capture_reason: string })
     | null
     | undefined;
   inventory: InventoryState;
@@ -147,11 +144,15 @@ export function projectLiveStatus({
     if (reason === 'offline') {
       return { banner: { primary: 'realtime_unavailable', stack }, captureHealth };
     }
-    // 정지+미시작이면서 offline/closed가 아닌 잔여 상태 = KIS 자격증명 문제로 간주
-    // (캔들·지수 경로의 KIS 키 결측). closed는 실시간 정지가 정상이므로 제외.
-    if (!status.running && status.started_at_ms == null && reason !== 'closed') {
-      return { banner: { primary: 'credentials_missing', stack }, captureHealth };
-    }
+    // 여기 있던 `credentials_missing` 분기는 **도달 불가라서** 내렸다. 조건이
+    // `!running && started_at_ms == null && reason ∉ {offline, closed}` 였는데,
+    // offline/closed 가 아닌 모든 reason(healthy·registration_incomplete)은
+    // `connected_accounts > 0` 을 함의하고 그건 `running=true` 를 함의한다
+    // (lifecycle.py::get_status) — 즉 `!running` 을 영영 만족하지 못한다.
+    //
+    // 원래 의도(캔들·지수 경로의 KIS 키 결측 표면화)는 이 자리에서 이미 실패하고
+    // 있었다. 다시 필요하면 capture_reason 을 우회 추론하지 말고 백엔드가 그
+    // 사실을 직접 실어 보내야 한다 — 그게 이 분기가 죽은 진짜 이유다.
   }
 
   return { banner: { primary: null, stack }, captureHealth };

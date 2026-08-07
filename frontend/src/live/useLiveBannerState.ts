@@ -20,8 +20,10 @@ export interface BannerInput {
    * which is 0 whenever the poller isn't running (missing KIS creds,
    * off-hours, never started). Conflating the two made /live announce
    * "관심종목이 비어 있습니다" while the watchlist page listed 9 entries —
-   * and worse, it masked the real `credentials_missing` cause, since
-   * the empty-watchlist branch is checked first (diagnose 2026-05-30).
+   * and worse, it masked the real cause, since the empty-watchlist branch
+   * is checked first (diagnose 2026-05-30). 그때 가려졌던 배너가
+   * `credentials_missing` 이었고 그 분기는 이후 도달 불가로 제거됐지만, 재고
+   * 출처를 헷갈리면 안 된다는 교훈 자체는 그대로 유효하다.
    *
    * `null` means the watchlist query hasn't resolved yet. We defer the
    * priority-1 banners until the real size is known so first paint can't
@@ -39,12 +41,12 @@ export interface BannerState {
 /** Pure derivation of banner state from inputs — testable without React. */
 export function deriveBannerState({ status, watchlistSize, tokenExpired = false }: BannerInput): BannerState {
   return projectLiveStatus({
+    // 투영이 실제로 읽는 건 capture_healthy·capture_reason 둘뿐이다. 예전엔
+    // running·started_at_ms·watchlist_count 도 실어 보냈는데, 그것들을 보던 유일한
+    // 소비자가 도달 불가로 제거된 `credentials_missing` 분기였다.
     status: status && {
-      ...status,
-      started_at_ms: status.started_at_ms ?? null,
       capture_healthy: status.running,
       capture_reason: status.capture_reason ?? 'unknown',
-      watchlist_count: 0,
     },
     inventory: { kind: 'watchlist', size: watchlistSize },
     tokenExpired,

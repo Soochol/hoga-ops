@@ -27,13 +27,7 @@ describe('projectLiveStatus', () => {
     // ADR-0118: 실시간=키움 전담. 시장 열림(offline≠closed)인데 세션이 없으면 호가·체결이
     // 조용히 멈춘다 — F2가 이 dark 상태를 배너로 표면화. (구 false-credentials 배너는 아님.)
     const projection = project({
-      status: {
-        ...baseStatus,
-        running: false,
-        started_at_ms: null,
-        capture_healthy: false,
-        capture_reason: 'offline',
-      },
+      status: { ...baseStatus, capture_healthy: false, capture_reason: 'offline' },
       inventory: { kind: 'watchlist', size: 2 },
     });
 
@@ -46,59 +40,42 @@ describe('projectLiveStatus', () => {
   it('keeps market-closed capture neutral (no realtime_unavailable banner)', () => {
     // closed = 장 마감이라 실시간 정지는 정상 — 배너 없음(offline과 구분).
     const projection = project({
-      status: {
-        ...baseStatus,
-        running: false,
-        started_at_ms: null,
-        capture_healthy: false,
-        capture_reason: 'closed',
-      },
+      status: { ...baseStatus, capture_healthy: false, capture_reason: 'closed' },
       inventory: { kind: 'watchlist', size: 2 },
     });
 
     expect(projection.banner.primary).toBeNull();
   });
 
-  it('shows missing KIS credentials for a non-empty watchlist and stopped non-offline capture', () => {
+  it('never raises a banner for registration_incomplete (구 credentials_missing 분기 제거)', () => {
+    // 이 자리에 `credentials_missing` 분기가 있었다. 조건이 `!running && ...` 이었는데
+    // offline/closed 가 아닌 reason 은 connected_accounts>0 ⇒ running=true 를 함의해
+    // 영영 걸리지 않았다. 그 사실을 실행으로 못 박는다 — pill 은 error 로 경고하되
+    // 배너는 뜨지 않는 것이 현재의 의도된 동작이다.
     const projection = project({
-      status: {
-        ...baseStatus,
-        running: false,
-        started_at_ms: null,
-        capture_healthy: false,
-        capture_reason: 'missing_credentials',
-      },
+      status: { ...baseStatus, capture_healthy: false, capture_reason: 'registration_incomplete' },
       inventory: { kind: 'watchlist', size: 2 },
     });
 
-    expect(projection.banner.primary).toBe('credentials_missing');
+    expect(projection.banner.primary).toBeNull();
+    expect(projection.captureHealth.severity).toBe('error');
   });
 
   it('uses authoritative watchlist inventory instead of status.watchlist_count', () => {
+    // 요지는 재고 출처다: status.watchlist_count 가 0 이어도 배너는 inventory(9)를 본다.
+    // 그래서 watchlist_empty 로 새지 않고 offline 배너가 그대로 뜬다.
     const projection = project({
-      status: {
-        ...baseStatus,
-        running: false,
-        started_at_ms: null,
-        watchlist_count: 0,
-        capture_healthy: false,
-        capture_reason: 'missing_credentials',
-      },
+      status: { ...baseStatus, capture_healthy: false, capture_reason: 'offline' },
       inventory: { kind: 'watchlist', size: 9 },
     });
 
-    expect(projection.banner.primary).toBe('credentials_missing');
+    expect(projection.banner.primary).toBe('realtime_unavailable');
   });
 
   it('defers priority banners while watchlist inventory is loading', () => {
+    // size 를 알았다면 realtime_unavailable 이 떴을 입력 — 로딩 중(null)이라 보류된다.
     const projection = project({
-      status: {
-        ...baseStatus,
-        running: false,
-        started_at_ms: null,
-        capture_healthy: false,
-        capture_reason: 'missing_credentials',
-      },
+      status: { ...baseStatus, capture_healthy: false, capture_reason: 'offline' },
       inventory: { kind: 'watchlist', size: null },
     });
 
