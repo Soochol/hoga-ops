@@ -194,14 +194,31 @@ def _parse_orderbook(
         "total_ask_qty": _qty(values, K.OB_TOTAL_ASK_QTY),
         "total_bid_qty": _qty(values, K.OB_TOTAL_BID_QTY),
     }
-    # 예상체결가/량 — **venue==KRX AND 시각 게이트(is_auction_window) AND 값>0** 일 때만
-    # 싣는다. 예상체결은 KRX 동시호가(단일가) 개념이라 KRX 프레임으로 한정한다: NXT 는
-    # 연속/애프터마켓에도 예상체결값을 흘려(실측 2026-07-22) 평시에도 노출됐고, 마감
-    # 동시호가 창(15:20–15:30)에도 NXT 화면엔 뜨면 안 되므로 시각만으론 부족하다.
+    # 예상체결가/량 — **venue!=NXT AND 시각 게이트(is_auction_window) AND 값>0** 일 때만
+    # 싣는다. 이 필드는 parquet 스키마에 없어(`tables.snapshots.PARQUET_SCHEMA`) 저장이
+    # 아니라 **표시 전용**이고, 소비자는 프론트 `expectedSignal` 하나다.
+    #
+    # venue 조건이 `== "KRX"` 였다가 **`!= "NXT"` 로 완화됐다**(#1180 후속). 세 갈래를
+    # 따로 판단한 결과다:
+    #
+    # - **KRX**: 원래 동작 — 예상체결은 KRX 동시호가(단일가) 개념이다.
+    # - **NXT**: 계속 차단. 연속/애프터마켓에도 예상체결값을 흘리는 것이 **실측됐고**
+    #   (2026-07-22) 마감 동시호가 창에도 NXT 화면엔 뜨면 안 되므로 시각만으론 부족하다.
+    #   NXT 의 단일가 국면 시각을 우리가 모른다는 것도 그대로다(ADR-0140 §6.1).
+    # - **UN(`_AL`)**: 열었다. 통합을 고른 사용자가 동시호가 예상체결을 **한 번도 못
+    #   보던** 것이 결함이었다 — 그 창엔 체결이 없어 예상체결이 유일한 신호인데,
+    #   KRX 한정 게이트가 UN 프레임에서 그걸 지웠다. `_AL` 은 거래소가 병합한 스트림이고
+    #   KRX 동시호가(08:30–09:00·15:20–15:30) 중 NXT 는 **연속거래 중**이라, 그 창에서
+    #   병합 스트림의 예상체결 필드에 실릴 값은 KRX 단일가 계산뿐이다.
+    #
+    # ⚠ 마지막 문단은 **추론이고 미실측이다.** `_AL` 이 0 을 싣는다면 아래 `>0` 게이트에
+    # 걸려 오늘과 동일하고(무해), NXT 류 오염값을 싣는다면 노출이 하루 20분으로 한정된다.
+    # 되돌리려면 이 조건 한 줄을 `== "KRX"` 로 되돌리면 된다.
+    #
     # 키 미포함 규약(요약·OHLC 동형): 소비자는 "미수신"과 "진짜 0"을 구분할 필요가 없다.
     exp_price = _price(values, K.OB_EXPECTED_PRICE)
     exp_qty = _qty(values, K.OB_EXPECTED_QTY)
-    if venue == "KRX" and is_auction_window(t_ms) and exp_price > 0 and exp_qty > 0:
+    if venue != "NXT" and is_auction_window(t_ms) and exp_price > 0 and exp_qty > 0:
         payload["expected_price"] = exp_price
         payload["expected_qty"] = exp_qty
     return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload, venue=venue)

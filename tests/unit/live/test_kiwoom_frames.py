@@ -155,13 +155,40 @@ def test_orderbook_expected_fill_dropped_outside_auction_window():
 
 
 def test_orderbook_expected_fill_dropped_for_nxt_even_in_window():
-    # NXT 는 동시호가 창(15:25)이어도 예상체결을 싣지 않는다 — 예상체결은 KRX 개념이고
-    # NXT 는 마감 동시호가 창에도 값을 흘리므로 venue==KRX 로 한정(실측 2026-07-22).
+    # NXT 는 동시호가 창(15:25)이어도 예상체결을 싣지 않는다 — 연속/애프터마켓·마감
+    # 동시호가 창에도 값을 흘리는 것이 실측됐고(2026-07-22) NXT 의 단일가 국면 시각을
+    # 우리가 모르므로(ADR-0140 §6.1) 시각 게이트로는 가를 수 없다. venue 로 막는
+    # 유일한 갈래다 — 게이트가 `!= "NXT"` 인 이유.
     row = {"type": "0D", "name": "주식호가잔량", "item": "000020_NX",
            "values": {**REAL_0D_KRX["values"], "21": "152500", "23": "+6480", "24": "12345"}}
     t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
     assert t is not None
     assert t.venue == "NXT"
+    assert "expected_price" not in t.payload
+    assert "expected_qty" not in t.payload
+
+
+def test_orderbook_expected_fill_present_for_un_in_window():
+    # 통합(`_AL`)은 동시호가 창에서 예상체결을 **싣는다**. 예전 `venue == "KRX"` 게이트가
+    # 이걸 지워서, 통합을 고른 사용자는 08:50–09:00 에 예상체결을 한 번도 못 봤다 —
+    # 그 창엔 체결이 없어 예상체결이 유일한 신호인데도 화면이 비었다.
+    row = {"type": "0D", "name": "주식호가잔량", "item": "000020_AL",
+           "values": {**REAL_0D_KRX["values"], "21": "152500", "23": "+6480", "24": "12345"}}
+    t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
+    assert t is not None
+    assert t.venue == "UN"
+    assert t.payload["expected_price"] == 6480
+    assert t.payload["expected_qty"] == 12345
+
+
+def test_orderbook_expected_fill_dropped_for_un_outside_window():
+    # 시각 게이트는 UN 에도 그대로 걸린다 — venue 조건만 완화했지 창을 넓힌 게 아니다.
+    # `_AL` 이 NXT 류 오염값을 흘리더라도 노출이 하루 20분으로 한정되는 근거다.
+    row = {"type": "0D", "name": "주식호가잔량", "item": "000020_AL",
+           "values": {**REAL_0D_KRX["values"], "23": "+6480", "24": "12345"}}  # 13:56 연속거래
+    t = parse_real_row(row, date=DATE, now_ms=NOW_MS)
+    assert t is not None
+    assert t.venue == "UN"
     assert "expected_price" not in t.payload
     assert "expected_qty" not in t.payload
 
