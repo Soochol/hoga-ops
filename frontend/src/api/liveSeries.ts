@@ -97,11 +97,25 @@ const EMPTY_PROGRAM_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.f
  * Returns parallel arrays per kind plus the initial response metadata so
  * panes can compute session bounds for chart timeframes.
  *
- * `venue` is **required**: ob/trade are filtered at this source boundary
- * (filterObByVenue/filterTradeByVenue) so consumers can't accidentally read the
- * global·mixed KRX+NXT buffer and silently ignore the user's venue selection
- * (execution-window-datasource-policy). broker/initial are venue-agnostic;
- * program은 백엔드 stream 경계에서 KRX-only로 강제된다.
+ * `venue` is **required**: 네 kind 가 **전부** 이 소스 경계에서 걸러진다 — ob·trade 는
+ * filterObByVenue/filterTradeByVenue, broker·program 은 filterByVenueTag(아래 197~209).
+ * 소비처가 global·mixed KRX+NXT 버퍼를 실수로 읽어 사용자의 venue 선택을 조용히
+ * 무시하는 것을 막는다(execution-window-datasource-policy).
+ *
+ * program 의 백엔드 KRX-only 발행 강제는 **ADR-0140 §2 에서 걷혔다**. `stream.on_tick`
+ * 은 broker·program 모두 `payload["venue"]` 태그를 실어 세 venue 를 전부 publish 하므로
+ * (표시 경로 무게이트), venue 판정은 전부 여기서 한다.
+ *
+ * ⚠ **`initial` 만 예외로 필터되지 않는다.** REST 응답의 네 배열은 혼재 버퍼 원본
+ * 그대로 나온다 — `/api/live/series` 의 `venue` 쿼리는 최대벽(ask/bid_peak_today)에만
+ * 걸린다(라우트가 그 이유를 주석으로 밝힌다: 프레임마다 태그가 실려 프론트가 거르므로
+ * 필수화하면 구 프론트가 빈 화면이 된다). 그래서 hydrate 를 거쳐 위 필터를 타는
+ * ob·trade·broker·program 과 달리, `initial.brokers` 등을 **직접** 읽으면 세 시장이
+ * 섞인 값을 본다.
+ *
+ * 필터 판정은 태그 **정확 일치**다(liveVenueAcceptsFrame). 따라서 KRX 선택이면 15:30
+ * 이후 KRX 태그 프레임이 없어 broker·program 소비처가 정규장 마지막 값에서 멎는다
+ * — 실측 2026-08-07 005930 WS 링 거래원: KRX 0건 · NXT 52 · UN 52.
  *
  * 인자는 **사용자 선택**이고, 실제로 쓰는 값은 `effectiveLiveVenue` 로 이 종목에
  * 맞게 해석한 `effective` 다(NXT 미상장 종목의 UN → KRX). 호출부가 선택값을 그대로
