@@ -5,8 +5,9 @@ import { mirrorActiveGroupToLivePage } from './liveNavigate';
 /**
  * 미러 가드(workspace 활성 그룹 → livePage 레거시 투영)의 경계.
  *
- * `projectActiveView` 는 원자적 **뷰 교체**라 historicalFromDate·activeViewport 를
- * 리셋하고 지표를 재투영한다. 그래서 "무엇이 뷰 교체인가" 를 가드가 정한다 —
+ * `projectActiveView` 는 원자적 **뷰 교체**라 historicalFromDate·
+ * lastMinuteHistoricalFromDate 를 리셋하고 지표를 재투영한다. 그래서 "무엇이
+ * 뷰 교체인가" 를 가드가 정한다 —
  * 종목·kind·봉은 교체이고, **라벨 변화는 교체가 아니다**(심볼 마스터 실명 보강이
  * 라벨만 바꾼다).
  */
