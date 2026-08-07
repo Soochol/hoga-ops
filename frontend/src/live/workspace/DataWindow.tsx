@@ -43,6 +43,7 @@ import {
 } from '../../api/useLiveCursor';
 import { useScreenerDailyCandles, prevCloseBeforeDate } from '../../api/screenerDailyCandles';
 import { useLiveVenueStore } from '../../state/liveVenue';
+import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { TIMEFRAME_TO_MS, type RangeSegment, type Timeframe } from '../../api/types';
@@ -327,10 +328,12 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
 }
 
 function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
-  // broker 는 venue 무관이지만 useLiveSeries 시그니처가 venue 를 요구한다(ob/trade
-  // 소스 필터 강제). broker 버퍼는 필터되지 않고 원본 그대로 온다.
   const venue = useLiveVenueStore((s) => s.venue);
   const live = useLiveSeries(code, venue);
+  // 표시 창(클립·x축)은 **유효** venue 로 정한다 — 선택값 그대로면 NXT 미상장 종목에
+  // 통합을 고른 화면이 데이터는 KRX(15:30 까지)인데 축만 20:00 까지 늘어난다.
+  // useLiveSeries 는 같은 해석을 내부에서 삼키므로(프레임 필터) 여기서만 다시 구한다.
+  const effectiveVenue = useEffectiveVenue(code, venue);
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const spotSeries = useLiveBrokersAtCursor({
@@ -371,7 +374,11 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   });
   return (
     <div className="h-full overflow-auto bg-bg-card">
-      <BrokerTrajectoryTable series={card.series} cursorMs={card.cursorMs} />
+      <BrokerTrajectoryTable
+        series={card.series}
+        cursorMs={card.cursorMs}
+        venue={effectiveVenue}
+      />
     </div>
   );
 }
