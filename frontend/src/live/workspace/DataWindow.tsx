@@ -339,7 +339,7 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // **데이터 경로에는 선택값을 넘긴다** — 세 훅이 각자 `useEffectiveVenue` 로
   // 종목별 유효 venue 를 해석하기 때문이다(WS 꼬리는 liveSeries.ts 의
   // filterByVenueTag, 나머지 둘은 URL·캐시 키). 예전엔 훅 두 개가 선택값을 그대로
-  // 백엔드에 보내서, NXT 미상장 종목 + UN 선택이면 창이 통째로 비었다(#1211 후속,
+  // 백엔드에 보내서, NXT 미상장 종목 + UN 선택이면 창이 통째로 비었다(#1209 후속,
   // 근거·실측은 useLiveCursor 의 VenueParam 주석).
   //
   // 표시층만 예외다 — 아래 `effectiveVenue` 는 prop 이라 훅이 삼킬 자리가 없어

@@ -59,7 +59,7 @@ const BROKER_TODAY_SPOT_CAPACITY = 1;
  *  넘겨도 되도록 해석을 여기서 삼킨다. 소비 표면이 여러 곳이라 각자 해석하게
  *  두면 한 곳이 빠진다."
  *
- *  그 "빠진 한 곳"이 실제로 이 파일이었다(#1211 후속). NXT 미상장 종목에 통합(UN)
+ *  그 "빠진 한 곳"이 실제로 이 파일이었다(#1209 후속). NXT 미상장 종목에 통합(UN)
  *  을 고르면 백엔드는 `kiwoom_live/UN/` 을 **만든 적이 없다** — 구독 파생
  *  (`live/coverage.subscription_venues`)이 미상장 종목에 `("KRX",)` 만 주기
  *  때문이다. `_resolved_parquet_dir` 은 그 부재를 500 이 아니라 **빈 200** 으로
