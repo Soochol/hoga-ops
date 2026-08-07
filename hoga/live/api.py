@@ -1452,6 +1452,184 @@ def _preserve_investor_estimate_observed_at(
     return current
 
 
+# ── 과거·지수·스냅샷 wire models (ADR-0004 · 동결선 배치 2) ────────────────────
+#
+# 수집·조립 함수는 그대로 dict 를 만든다. 라우트 애노테이션만 바꿔 FastAPI 가 검증·
+# 직렬화하게 한다 — `response_model` 은 선언 안 된 키를 **에러 없이 버리므로**, 모델은
+# 실응답에서 관측한 키를 그대로 옮긴 것이다(추측 금지).
+#
+# ⚠ `data_warnings` 항목은 **일부러 `dict` 로 남긴다.** shape 이 라우트마다 다르고
+# (`{date,reason,msg}` vs `{batch,date?,reason,msg}`), 진단용이라 앞으로도 갈린다.
+# 모델로 좁히면 (a) 없는 키에 `null` 이 새로 실려 FE 의 `?:` 계약과 어긋나거나
+# (b) 좁힌 shape 밖의 키가 조용히 사라진다. 둘 다 이 작업이 막으려는 실패다.
+
+
+class LiveControlResponse(BaseModel):
+    """POST /api/live/control — ack. `ok` 가 bool 이 아니라 문자열인 것은 기존 wire 다."""
+
+    action: str
+    ok: str
+
+
+# `/snapshot` 계열은 **모든 필드가 optional** 이다. 버퍼는 스트림이 만든 dict 를
+# 그대로 보관하는데 그 dict 가 부분적일 수 있다 — 실서버 응답은 정상 스트림이라
+# 완전했지만, 기존 단위 테스트가 `{"total_bid_qty": 1000}` 같은 부분 호가를 넣어
+# 그 사실을 이미 문서화하고 있었다. 필수로 선언했다가 그 케이스에서 **500** 이 났다.
+#
+# 부분 dict 를 허용하면 없는 키에 `null` 이 새로 실리므로 라우트에
+# `response_model_exclude_none=True` 를 건다 — 부재가 그대로 부재로 나간다.
+class LiveOrderbookLevel(BaseModel):
+    price: int | None = None
+    qty: int | None = None
+
+
+class LiveSnapshotOrderbook(BaseModel):
+    code: str | None = None
+    venue: str | None = None
+    asks: list[LiveOrderbookLevel] = Field(default_factory=list)
+    bids: list[LiveOrderbookLevel] = Field(default_factory=list)
+    total_ask_qty: int | None = None
+    total_bid_qty: int | None = None
+
+
+class LiveBrokerTop(BaseModel):
+    name: str | None = None
+    qty: int | None = None
+
+
+class LiveSnapshotBrokers(BaseModel):
+    code: str | None = None
+    venue: str | None = None
+    buy_top: list[LiveBrokerTop] = Field(default_factory=list)
+    sell_top: list[LiveBrokerTop] = Field(default_factory=list)
+
+
+class LiveRecentTrade(BaseModel):
+    t_ms: int | None = None
+    price: int | None = None
+    qty: int | None = None
+    # +1/−1. 벤더 원값이 아니라 스트림이 파생한 부호다.
+    side: int | None = None
+    side_source: str | None = None
+
+
+class LiveSnapshotResponse(BaseModel):
+    """GET /api/live/snapshot — 버퍼 최신 스냅샷.
+
+    호가·거래원이 없는 순간(개장 직후·미구독)이 정상이라 둘 다 optional 이다.
+    """
+
+    code: str | None = None
+    t_ms: int | None = None
+    phase: str | None = None
+    orderbook: LiveSnapshotOrderbook | None = None
+    brokers: LiveSnapshotBrokers | None = None
+    recent_trades: list[LiveRecentTrade] = Field(default_factory=list)
+
+
+class LiveViStatusResponse(BaseModel):
+    """GET /api/live/vi-status — 이벤트가 없거나 키움 미배선이면 ``vi=null``.
+
+    `vi` 를 모델로 좁히지 않는다: shape 을 소유한 곳이 `kiwoom_vi_state.parse_vi_row`
+    이고 legend 가 실측으로 확정된 자리라(2026-07-21), 여기서 한 벌 더 선언하면
+    미러가 3벌이 된다.
+    """
+
+    code: str
+    vi: dict | None = None
+
+
+class LiveCandleRow(BaseModel):
+    """OHLCV 한 봉. 분·일·지수·스크리너 네 경로가 같은 shape 을 공유한다."""
+
+    t_ms: int
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+
+class LiveEffectiveSession(BaseModel):
+    date: str
+    venue: str
+    open_ms: int
+    close_ms: int
+
+
+class LivePastCandlesResponse(BaseModel):
+    code: str
+    # `from` 은 파이썬 예약어라 alias 로 받는다 — wire 는 그대로 `from` 이다
+    # (FastAPI 가 `by_alias=True` 로 직렬화한다).
+    from_: str = Field(alias="from")
+    to: str
+    venue: str | None = None
+    bucket_ms: int | None = None
+    candles: list[LiveCandleRow] = Field(default_factory=list)
+    cached_dates: list[str] = Field(default_factory=list)
+    fresh_dates: list[str] = Field(default_factory=list)
+    data_warnings: list[dict] = Field(default_factory=list)
+    effective_sessions: list[LiveEffectiveSession] = Field(default_factory=list)
+
+
+class LivePastDailyCandlesResponse(BaseModel):
+    code: str
+    from_: str = Field(alias="from")
+    to: str
+    venue: str | None = None
+    candles: list[LiveCandleRow] = Field(default_factory=list)
+    cached_batches: list[str] = Field(default_factory=list)
+    fresh_batches: list[str] = Field(default_factory=list)
+    data_warnings: list[dict] = Field(default_factory=list)
+
+
+class ScreenerDailyCandlesResponse(BaseModel):
+    code: str
+    from_: str = Field(alias="from")
+    to: str
+    source: str
+    candles: list[LiveCandleRow] = Field(default_factory=list)
+    data_warnings: list[dict] = Field(default_factory=list)
+
+
+class LiveInvestorNetPoint(BaseModel):
+    """단위는 **응답의 `unit` 이 정한다**(#1119) — 종목 경로 qty_shares(주),
+    지수 경로 amt_eok(억원). 같은 모양인데 물리량이 다르다."""
+
+    t_ms: int
+    foreign_net: float
+    institution_net: float
+
+
+class LivePastInvestorNetResponse(BaseModel):
+    code: str
+    from_: str = Field(alias="from")
+    to: str
+    unit: str
+    points: list[LiveInvestorNetPoint] = Field(default_factory=list)
+    cached_batches: list[str] = Field(default_factory=list)
+    fresh_batches: list[str] = Field(default_factory=list)
+    data_warnings: list[dict] = Field(default_factory=list)
+
+
+class LiveIndexCandlesResponse(BaseModel):
+    index_id: str
+    from_: str = Field(alias="from")
+    to: str
+    timeframe: str
+    candles: list[LiveCandleRow] = Field(default_factory=list)
+    data_warnings: list[dict] = Field(default_factory=list)
+
+
+class LiveIndexInvestorNetResponse(BaseModel):
+    index_id: str
+    from_: str = Field(alias="from")
+    to: str
+    unit: str
+    points: list[LiveInvestorNetPoint] = Field(default_factory=list)
+    data_warnings: list[dict] = Field(default_factory=list)
+
+
 class StockLimitsResponse(BaseModel):
     """GET /api/live/stock-limits — 키움 ka10001 부분집합(kiwoom_stock_info)."""
 
@@ -1701,7 +1879,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         timeframe: Literal["1m", "3m", "5m", "10m", "15m", "30m", "D", "W", "M"] = Query(...),
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
-    ) -> dict:
+    ) -> LiveIndexCandlesResponse:
         index = _validate_index_range(index_id, from_, to)
         if data_dir is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not wired"})
@@ -1910,7 +2088,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         index_id: str = Query(...),
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
-    ) -> dict:
+    ) -> LiveIndexInvestorNetResponse:
         index = _validate_index_range(index_id, from_, to)
         if index.investor_scope != "market":
             raise HTTPException(
@@ -1978,14 +2156,15 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         return rankings.model_dump()
 
     @router.post("/control")
-    async def _post_control(req: ControlRequest) -> dict[str, str]:
+    async def _post_control(req: ControlRequest) -> LiveControlResponse:
         if on_control is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live control not wired (Stage 8)"})
         await on_control(req.action)
         return {"action": req.action, "ok": "true"}
 
-    @router.get("/snapshot")
-    async def _get_snapshot(code: str) -> dict:
+    # 부분 스냅샷의 부재를 부재로 내보낸다(모델 주석 참조).
+    @router.get("/snapshot", response_model_exclude_none=True)
+    async def _get_snapshot(code: str) -> LiveSnapshotResponse:
         if get_buffer is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "live buffer not wired"})
         buf = get_buffer()
@@ -2349,7 +2528,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         to: str = Query(...),
         venue: str | None = Query("KRX"),
         bucket_ms: int | None = Query(None),
-    ) -> dict:
+    ) -> LivePastCandlesResponse:
         """`bucket_ms` 는 **과거분을 벤더에서 어느 주기로 받을지**를 고른다.
 
         미지정이면 1분이다 — 이 파라미터가 생기기 전 동작과 같아서 기존 소비자가
@@ -2421,7 +2600,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
         venue: str | None = Query("KRX"),
-    ) -> dict:
+    ) -> LivePastDailyCandlesResponse:
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
         try:
             policy = parse_live_venue_policy(venue)
@@ -2462,7 +2641,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         code: str = Query(...),
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
-    ) -> dict:
+    ) -> ScreenerDailyCandlesResponse:
         frm, too, _today_d = _validate_past_request(code, from_, to, max_days=None)
         if data_dir is None:
             raise HTTPException(
@@ -2487,7 +2666,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         code: str = Query(...),
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
-    ) -> dict:
+    ) -> LivePastInvestorNetResponse:
         """Daily foreign/institution net-buy quantities across [from, to].
 
         KIS investor-trade-by-stock-daily (FHPTJ04160001) supports date-cursor
@@ -2533,7 +2712,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         )
 
     @router.get("/vi-status")
-    async def _get_vi_status(code: str = Query(...)) -> dict:
+    async def _get_vi_status(code: str = Query(...)) -> LiveViStatusResponse:
         """종목의 최신 VI 이벤트 상태(키움 1h). 이벤트 없음/미배선이면 vi=null.
 
         legend·shape 는 kiwoom_vi_state.parse_vi_row(실측 확정 2026-07-21,
