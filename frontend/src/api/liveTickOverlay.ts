@@ -173,6 +173,7 @@ export interface LiveTickOverlayMaps {
 export function useLiveTickPrices(
   codes: string[],
   venue: LiveVenueOption,
+  resolveVenue?: (code: string) => LiveVenueOption,
 ): LiveTickOverlayMaps {
   // 구독 집합은 정렬·dedup 한 문자열 키에서 파생해, 리스트 재정렬이나 매 렌더의
   // 새 배열 identity 가 전 종목 재구독(unsubscribe → subscribe 왕복)을 부르지
@@ -196,6 +197,13 @@ export function useLiveTickPrices(
 
   useEffect(() => {
     if (subscribed.length === 0) return;
+    // 코드별 유효 venue. 미지정이면 항등(=선택 venue 그대로)이라 기존 동작과 같다.
+    //
+    // **구독은 파티션하지 않는다.** 구독 메시지엔 venue 가 실리지 않고(백엔드가
+    // `coverage.subscription_venues` 로 파생한다) 문제는 게이트뿐이라, 코드당 구독은
+    // 하나로 두고 판정만 코드별로 바꾼다. venue 별로 나눠 두 번 구독하면 프레임이
+    // 두 배로 들어오고 accum 리셋 경계가 갈린다.
+    const venueFor = (code: string): LiveVenueOption => resolveVenue?.(code) ?? venue;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const flush = () => {
       timer = null;
@@ -209,7 +217,7 @@ export function useLiveTickPrices(
     const unsubs = subscribed.map((code) =>
       subscribeLive(code, (entry: LiveSnapshotEntry) => {
         if (entry.kind === 'ob') {
-          const signal = expectedSignal(entry, venue);
+          const signal = expectedSignal(entry, venueFor(code));
           if (signal === null) return;
           if (signal === 'clear') {
             if (expectedAccumRef.current.delete(code)) scheduleFlush();
@@ -223,7 +231,7 @@ export function useLiveTickPrices(
           scheduleFlush();
           return;
         }
-        const sample = tradeSample(entry, venue);
+        const sample = tradeSample(entry, venueFor(code));
         if (sample === null) return;
         // venue 게이트를 통과한 체결 = 단일가가 맺혔다는 뜻 — 예상 표본을 폐기한다
         // (데이터 주도 전환의 종료 신호 ①). sameSample 로 표본 갱신을 건너뛰는
@@ -261,8 +269,10 @@ export function useLiveTickPrices(
       expectedSnapshotRef.current = new Map();
     };
     // venue 를 deps 에 넣어 토글 시 재구독하며 accum 을 리셋한다 — 이전 venue 로
-    // 누적된 off-venue 체결가가 새 선택에 남지 않는다.
-  }, [subscribed, venue]);
+    // 누적된 off-venue 체결가가 새 선택에 남지 않는다. `resolveVenue` 도 같은 이유로
+    // deps 다 — 심볼 마스터가 늦게 도착하면 해석이 바뀌므로 그때 한 번 재구독해
+    // 낡은 게이트로 걸러진 누적본을 버린다(안정 identity 라 그 1회로 끝난다).
+  }, [subscribed, venue, resolveVenue]);
 
   return { prices: snapshotRef.current, expected: expectedSnapshotRef.current };
 }

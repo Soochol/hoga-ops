@@ -34,6 +34,7 @@ import {
 import { indexInstrument, isLiveIndexId, stockInstrument } from '../liveInstrument';
 import { focusLiveSearch } from '../liveSearchFocus';
 import { useLiveVenueStore } from '../../state/liveVenue';
+import { useEffectiveVenue } from '../useEffectiveVenue';
 import {
   groupTargetChartWindow,
   useWorkspaceStore,
@@ -118,7 +119,16 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
 function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const view = useWindowView(); // 창의 값(Provider 안)
   const ind = useWindowIndicators();
-  const venue = useLiveVenueStore((s) => s.venue);
+  const selectedVenue = useLiveVenueStore((s) => s.venue);
+  // 차트 계통의 venue 해석은 **여기 한 곳**이다. 아래 `useLiveChartData` 와
+  // `<LiveChartRoot venue=…>` 가 이 값을 그대로 물려받아, 캔들 오버레이 게이트
+  // (`overlayLiveTrades*`)·현재가 라인(`freshLiveTradePrice`)·분봉 세션창·동시호가
+  // 오버레이가 전부 같은 값을 본다. 내려보내지 않고 각자 스토어를 읽게 두면
+  // `useLiveSeries` 가 KRX 로 통과시킨 프레임을 캔들 오버레이가 UN 기준으로 다시
+  // 걸러 **이중 필터로 전멸**한다.
+  //
+  // 지수 창(`view.code` 가 KOSPI 등)은 심볼 마스터에 없어 해석이 항등이다.
+  const venue = useEffectiveVenue(view.code, selectedVenue);
   // 그룹 차트 링크 발행자 게이트(ADR-0119 PR-D) — 그룹당 하나(z-최상위 차트 창).
   const isGroupLink = useWorkspaceStore(
     (s) => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id,

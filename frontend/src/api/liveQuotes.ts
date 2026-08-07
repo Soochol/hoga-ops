@@ -8,6 +8,7 @@ import {
   type LiveExpectedSample,
   type LiveTickSample,
 } from './liveTickOverlay';
+import { useEffectiveVenueResolver } from '../live/useEffectiveVenue';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 export interface LiveQuote {
@@ -59,6 +60,36 @@ export function quotesRefetchInterval(phase: string | undefined): number {
 
 function uniqueSortedCodes(codes: string[]): string[] {
   return [...new Set(codes)].sort();
+}
+
+/**
+ * 코드 목록을 **유효 venue 가 선택값과 같은 것**(primary)과 **강등된 것**(fallback)으로
+ * 가른다. `/api/live/quotes` 는 요청당 venue 가 하나뿐이라, 코드별 해석을 REST 까지
+ * 밀려면 요청 자체를 갈라야 한다.
+ *
+ * 왜 REST 도 갈라야 하나 — UN 으로 물어도 키움은 미상장 종목에 KRX 값을 정상 반환하므로
+ * (실측 `000440_AL` → price 11800) 값 자체는 온다. 갈리는 건 **phase** 다:
+ * `_quote_phase` 가 UN/NXT 를 08:00–20:00 내내 `open` 으로 보므로, 08:50–09:00 동시호가에
+ * 아직 체결이 없는 종목이 "전일종가 = 현재가"로 응답돼 **등락률 0.00% 로 박제**된다.
+ * KRX 로 물으면 그 구간이 `pre_open` 이라 `hidden_pre_open` 으로 정직하게 비고, 그 자리를
+ * 예상체결 오버레이가 채운다 — 사용자가 신고한 바로 그 증상이다.
+ *
+ * 반환 배열은 **입력 순서를 보존**한다. 정렬·dedup 은 queryKey 쪽 관심사다.
+ */
+export function partitionCodesByEffectiveVenue(
+  codes: string[],
+  selectedVenue: LiveVenueOption,
+  resolveVenue: (code: string) => LiveVenueOption,
+): { primary: string[]; fallback: string[]; fallbackVenue: LiveVenueOption } {
+  const primary: string[] = [];
+  const fallback: string[] = [];
+  for (const code of codes) {
+    (resolveVenue(code) === selectedVenue ? primary : fallback).push(code);
+  }
+  // 현재 해석 규칙(`effectiveLiveVenue`)의 강등 대상은 KRX 하나뿐이다. 규칙이 늘어
+  // 강등 venue 가 여러 갈래가 되면 이 반환 모양(단일 fallbackVenue)이 먼저 깨진다 —
+  // 그때 훅을 갈래 수만큼 늘릴지 요청을 코드별로 쪼갤지 다시 정할 것.
+  return { primary, fallback, fallbackVenue: 'KRX' };
 }
 
 export function getQuotes(codes: string[], venue: LiveVenueOption = 'KRX'): Promise<LiveQuotesResponse> {
@@ -244,16 +275,35 @@ function withLastGoodChangeFields(current: LiveQuote, previous: LiveQuote | unde
  *  + null-가드 + 쿼리 메타(phase·신선도)를 한 곳에 모아, 셋 다 필요한 소비자(관심맵)가
  *  인라인으로 Map 을 다시 만들지 않게 한다. Map 만 필요하면 useQuoteByCode(thin view). */
 export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'KRX'): LiveQuoteOverlay {
-  const q = useQuotes(codes, venue);
+  // 코드별 유효 venue 해석기. identity 가 안정적이라(useEffectiveVenue 참조) 아래
+  // useMemo·useEffect deps 에 그대로 넣을 수 있다.
+  const resolveVenue = useEffectiveVenueResolver(venue);
+  const codesKey = uniqueSortedCodes(codes).join(',');
+  const { primary, fallback, fallbackVenue } = useMemo(
+    () => partitionCodesByEffectiveVenue(codes, venue, resolveVenue),
+    // codes 배열 identity 는 매 렌더 바뀔 수 있어 정렬 키로 잡는다 — queryKey 와 같은 규율.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [codesKey, venue, resolveVenue],
+  );
+  // 훅 **개수는 고정 2개**다(React 규칙). 강등 대상이 없으면 두 번째는 codes 가 빈
+  // 배열이라 `enabled:false` 로 잠자고, 네트워크도 타지 않는다 — UN 이 아닌 선택이나
+  // 전 종목 NXT 상장인 목록에서는 오늘과 요청 수가 같다.
+  const q = useQuotes(primary, venue);
+  const qFallback = useQuotes(fallback, fallbackVenue);
   // WS 체결 틱 오버레이. 10초 폴링만으로는 (1) 창이 hidden 이면 react-query 인터벌이
   // 통째로 멈추고(refetchIntervalInBackground 기본 false + main.tsx 의
   // refetchOnWindowFocus:false), (2) 주기 자체가 틱으로 움직이는 차트·호가와 어긋난다.
   // 폴링은 그대로 남는다 — 기준가 공급자이자 WS 단절·체결 공백의 폴백이다.
-  const { prices: tickPrices, expected: expectedFills } = useLiveTickPrices(codes, venue);
+  //
+  // 틱은 **파티션하지 않고** 해석기를 넘긴다 — 구독은 코드당 하나면 충분하고 게이트만
+  // 코드별이면 되기 때문이다(useLiveTickPrices 주석).
+  const { prices: tickPrices, expected: expectedFills } = useLiveTickPrices(
+    codes, venue, resolveVenue,
+  );
   const lastGoodByCodeRef = useRef(new Map<string, LiveQuote>());
   // 구독 코드 집합의 안정 키. 스크리너·관심종목처럼 목록이 갈리는 소비자에서
   // last-good 캐시가 "한때 봤던 모든 코드" 로 단조 증가하던 걸 여기서 끊는다.
-  const subscribedKey = uniqueSortedCodes(codes).join(',');
+  const subscribedKey = codesKey;
   // 요청 목록에서 빠진 코드의 last-good 을 버린다. 기준은 **요청 목록**이지 응답이
   // 아니다 — 응답에서 일시적으로 빠진 코드는 다음 폴링에 돌아오고 그때 폴백 근거가
   // 필요하다. 렌더가 아니라 effect 에서 하는 이유: ref 변형은 렌더 부수효과다.
@@ -266,8 +316,12 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
     }
   }, [subscribedKey]);
   const quoteByCode = useMemo(() => {
-    const currentQuotes = q.data?.quotes;
-    if (currentQuotes == null) return new Map<string, LiveQuote>();
+    // 두 응답을 이어 붙인다 — 코드 집합이 서로소(파티션)라 충돌이 없다. 한쪽만
+    // 도착한 상태에서도 도착분은 즉시 표시한다(둘 다 없을 때만 빈 Map).
+    const primaryQuotes = q.data?.quotes;
+    const fallbackQuotes = qFallback.data?.quotes;
+    if (primaryQuotes == null && fallbackQuotes == null) return new Map<string, LiveQuote>();
+    const currentQuotes = [...(primaryQuotes ?? []), ...(fallbackQuotes ?? [])];
     // TTL 판정용 시계 읽기는 useMemo 당 1회. 프레임이 끊긴 뒤의 재평가 계기는
     // 10초 REST 폴링(q.data 교체)이라, 만료 표본은 폴링 주기 안에 청소된다.
     const nowMs = Date.now();
@@ -288,8 +342,18 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
       );
     }
     return next;
-  }, [q.data, tickPrices, expectedFills]);
-  return { quoteByCode, phase: q.data?.phase, dataUpdatedAt: q.dataUpdatedAt };
+  }, [q.data, qFallback.data, tickPrices, expectedFills]);
+  return {
+    quoteByCode,
+    // phase 는 **primary 것**이다. 두 응답의 phase 가 갈릴 수 있지만(08:50–09:00 에
+    // UN=open · KRX=pre_open) 합성하지 않는다 — 응답 레벨 phase 를 코드 집합에 걸쳐
+    // 하나로 뭉개면 반드시 한쪽에 거짓이 된다(ADR-0141 이 지수 카드에서 겪은 것과
+    // 같은 함정). 코드별 진실은 이미 quote 레벨(`change_pct_source`)에 있고, 이
+    // 필드의 실제 용도는 히트맵의 폴링 주기·상태 표시라 선택 venue 기준이 맞다.
+    // primary 가 비었을 때만(전 코드가 강등) fallback 으로 채운다.
+    phase: q.data?.phase ?? qFallback.data?.phase,
+    dataUpdatedAt: Math.max(q.dataUpdatedAt, qFallback.dataUpdatedAt),
+  };
 }
 
 /** codes 의 Live Quote 를 코드→quote 조회 Map 으로 묶는다 — useLiveQuoteOverlay 의
