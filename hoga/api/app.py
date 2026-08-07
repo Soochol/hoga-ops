@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from hoga.api import (
     calendar as calendar_module,
@@ -138,6 +139,34 @@ def _read_git_commit() -> str:
 
 APP_VERSION: str = _read_app_version()
 APP_COMMIT: str = _read_git_commit()
+
+
+class HealthResponse(BaseModel):
+    """GET /health 의 wire model — 얕은·부팅중·deep 세 형태를 한 모델로 담는다.
+
+    소비자가 사람만이 아니다: 감독자가 `?deep=1` 의 **status code** 로 재시작을
+    판정하고, 업그레이드 러닝북이 `version`·`commit` 으로 배포 성공을 판정한다.
+
+    **검증만 하고 body 는 원본을 그대로 내보낸다**(`model_validate` 후 원래 dict 를
+    `JSONResponse` 에 넘긴다). 이 라우트는 `status_code=503 if degraded` 로 상태
+    코드를 body 에 따라 바꾸므로 `JSONResponse` 를 직접 만들어야 하고, 그러면
+    `response_model` 이 걸리지 않는다. 모델을 통과시킨 dict 를 다시 덤프하면
+    세 형태의 키 구성이 미묘하게 달라질 수 있어서, **바이트를 못 바꾸는 쪽**을 골랐다.
+
+    중첩 필드(`queue`·`disk`·`supervised_tasks`)는 `dict`/`list[dict]` 로 둔다 —
+    각각 `queue_ownership_state()`·`disk_headroom()`·`supervised_task_health()` 가
+    소유한 shape 이라 여기서 한 벌 더 선언하면 미러만 늘어난다.
+    """
+
+    status: str
+    version: str
+    commit: str
+    # 아래는 형태별로만 실린다. 얕은 응답엔 셋 다 없다.
+    checks: dict | None = None          # 부팅 중(lifespan 밖) — 판정 근거 없음
+    dead_tasks: list[str] | None = None
+    queue: dict | None = None
+    disk: dict | None = None
+    supervised_tasks: list[dict] | None = None
 
 
 def allowed_origins() -> tuple[str, ...]:
@@ -324,17 +353,19 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
         # 업그레이드 성공 판정은 commit 으로 한다: VERSION 은 손으로 올리는 값이라
         # 갱신을 빠뜨리면 '항상 같은 값' 이 되어 검증이 무신호가 된다.
         if not deep:
-            return JSONResponse(
-                {"status": "ok", "version": APP_VERSION, "commit": APP_COMMIT},
-            )
+            shallow = {"status": "ok", "version": APP_VERSION, "commit": APP_COMMIT}
+            HealthResponse.model_validate(shallow)  # 계약 검사 — body 는 원본 그대로 나간다
+            return JSONResponse(shallow)
         runtime = getattr(app.state, "startup_runtime", None)
         if runtime is None:
             # lifespan 밖(부팅 중·종료 중·테스트) — 판정 근거가 없다. 감독자가
             # 부팅 중을 실패로 오해하지 않도록 200 + 미확정을 명시한다.
-            return JSONResponse({
+            booting = {
                 "status": "ok", "version": APP_VERSION, "commit": APP_COMMIT,
                 "checks": {"supervised_tasks": "unknown"},
-            })
+            }
+            HealthResponse.model_validate(booting)
+            return JSONResponse(booting)
         tasks = runtime.supervised_task_health()
         dead = [t["name"] for t in tasks if t.get("state") == "dead"]
         # 큐 소유권(#998): 비소유 부팅은 이전엔 deep 어디에도 안 드러났다 —
@@ -363,6 +394,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
             },
             "supervised_tasks": tasks,
         }
+        HealthResponse.model_validate(body)
         return JSONResponse(body, status_code=503 if degraded else 200)
 
     app.include_router(build_router(engine))

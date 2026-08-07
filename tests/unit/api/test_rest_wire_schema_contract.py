@@ -5,13 +5,16 @@ mirrors TypeScript types by hand. These snapshots make Watchlist/Heatmap REST
 field changes loud, especially where the two domains look similar but differ
 in capture/scheduler fields.
 
-세 층을 지킨다:
+네 층을 지킨다:
 
 1. **필드 이름** — ``EXPECTED_REST_WIRE_FIELDS`` 스냅샷.
 2. **enum 값** — ``WIRE_ENUM_MIRRORS`` 가 백엔드 ``Literal`` 멤버를 프론트 union
    **소스 파일과 직접 대조**한다.
 3. **wire model 존재 여부** — ``-> dict`` 라우트를 금지한다. 1·2번은 wire model 이
    있어야 볼 수 있어서, 없는 라우트는 두 층 모두의 사각지대다.
+4. **JSONResponse body** — 3번은 ``Response`` 계열을 대상 밖으로 두는데, 그중 일부는
+   진짜 JSON body 를 만든다. ``response_model`` 이 Response 를 그대로 흘리므로 그
+   body 도 사각지대다. 그런 라우트는 등록과 사유를 요구한다.
 
 2번이 왜 따로 필요한가: 손 미러에서 값 드리프트는 **타입이 원리적으로 못 잡는다**.
 #1183 이 그 사고였다 — 백엔드가 ``capture_reason`` 값 4개를 뺐는데 프론트 라벨 표는
@@ -24,6 +27,12 @@ in capture/scheduler fields.
 거기선 성립하지 않는다 — 그 라우트의 wire shape 은 어디에도 선언돼 있지 않다.
 처음 쟀을 때 108개 중 27개가 그랬고, 네 배치에 걸쳐 **전부 해소했다**. 동결선은 이제
 비어 있고, 그래서 이 층은 "모든 라우트는 계약을 갖고 태어난다" 를 강제한다.
+
+4번이 왜 필요한가: 그 두 라우트(``/health``·``/config.json``)는 status code 를 바꾸거나
+헤더를 붙이려고 ``JSONResponse`` 를 직접 만든다 — 정당한 이유라 ``response_model`` 로
+바꿀 수 없다. 대신 body 를 모델로 만들거나 모델로 검증하게 하고, 이 층이 그 등록을
+요구한다. ``/config.json`` 의 ``api_url`` 은 틀리면 **화면이 통째로 죽는** 값이다(실제
+사고 2026-08-03).
 
 ADR-0004 가 기각한 codegen 이 아니다 — 손 미러를 유지하고 어긋남만 검출한다.
 같은 ADR 의 "both must be updated in the same PR" 이 이 테스트가 강제하는 규칙이다.
@@ -316,13 +325,13 @@ INTENTIONALLY_UNCLOTHED: dict[RouteKey, str] = {
 # 프론트 프로덕션 코드가 소비하지 않으므로 BE↔FE 미러 계약의 대상이 아니다.
 
 
-def _iter_routes() -> list[tuple[RouteKey, str, str]]:
+def _iter_routes() -> list[tuple[RouteKey, str, str, ast.AST]]:
     """``hoga/`` 의 모든 라우트 → (키, 반환 애노테이션, 명시 response_model).
 
     **ast 정적 파싱이다 — 앱을 만들지 않는다.** ``default_app()`` 은 `.env` 를 읽어
     테스트 환경을 오염시키므로(실측 사고 있음) 라우트를 세자고 부를 이유가 없다.
     """
-    routes: list[tuple[RouteKey, str, str]] = []
+    routes: list[tuple[RouteKey, str, str, ast.AST]] = []
     for py in sorted((_REPO_ROOT / "hoga").rglob("*.py")):
         tree = ast.parse(py.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -340,7 +349,9 @@ def _iter_routes() -> list[tuple[RouteKey, str, str]]:
                         if kw.arg == "response_model":
                             explicit = ast.unparse(kw.value)
                 annotation = ast.unparse(node.returns) if node.returns else "<none>"
-                routes.append(((func.attr.upper(), path, py.stem), annotation, explicit))
+                routes.append(
+                    ((func.attr.upper(), path, py.stem), annotation, explicit, node)
+                )
     return routes
 
 
@@ -352,7 +363,7 @@ def _unclothed_routes() -> set[RouteKey]:
     키가 자유라 shape 계약이 아니므로 무계약으로 친다.
     """
     out: set[RouteKey] = set()
-    for key, annotation, explicit in _iter_routes():
+    for key, annotation, explicit, _node in _iter_routes():
         if explicit and explicit != "None":
             continue
         if annotation in _NON_MODEL_RETURNS:
@@ -392,4 +403,71 @@ def test_unclothed_baseline_has_no_fossils() -> None:
         f"동결선에 화석이 남았다: {sorted(fossils)}. 해당 라우트가 wire model 을 갖췄거나 "
         "사라졌다는 뜻이니 목록에서 지울 것 — 남겨 두면 같은 경로가 무계약으로 되살아나도 "
         "통과한다."
+    )
+
+
+# ── JSONResponse 를 직접 만드는 라우트 (4층) ─────────────────────────────────
+#
+# 3층은 `Response` 계열 반환형을 **대상 밖**으로 둔다 — 파일·스트림·204 가 대부분이라
+# 모델을 요구할 자리가 아니기 때문이다. 그런데 그중 일부는 진짜 JSON body 를 만든다.
+# `response_model` 은 Response 를 그대로 흘리므로 그 body 는 **어느 층도 못 본다**.
+#
+# 실측(2026-08-07): Response 계열 22개 중 20개는 본문 없음(204/None), 2개만 JSON body.
+# 그 둘은 `JSONResponse` 를 쓸 **정당한 이유**가 있다 — `/health` 는 body 에 따라
+# status code 를 503 으로 바꾸고, `/config.json` 은 `cache-control` 헤더를 붙인다.
+# 그래서 `response_model` 로 바꾸는 대신 **body 를 모델로 만들거나 모델로 검증**한다.
+#
+# ⚠ 이 감지는 **구문적**이다. 함수 본문에서 `JSONResponse(...)` 호출을 찾을 뿐이라,
+# 다른 곳에서 만든 Response 를 변수로 반환하거나 `ORJSONResponse` 같은 다른 클래스를
+# 쓰면 못 본다. 그런 라우트를 추가하면 이 술어부터 고쳐야 한다.
+JSON_RESPONSE_ROUTES: dict[RouteKey, str] = {
+    ("GET", "/health", "app"): "HealthResponse (validate-then-pass — status code 를 바꿔야 해서)",
+    ("GET", "/config.json", "frontend_static"): "ConfigJsonResponse (cache-control 헤더 때문에)",
+}
+
+
+def _routes_constructing_json_response() -> set[RouteKey]:
+    """본문에서 ``JSONResponse(...)`` 를 만드는 라우트."""
+    found: set[RouteKey] = set()
+    for key, annotation, explicit, node in _iter_routes():
+        if (explicit and explicit != "None") or annotation not in _NON_MODEL_RETURNS:
+            continue
+        for call in ast.walk(node):
+            if not isinstance(call, ast.Call):
+                continue
+            name = (
+                call.func.id if isinstance(call.func, ast.Name)
+                else call.func.attr if isinstance(call.func, ast.Attribute)
+                else ""
+            )
+            if name == "JSONResponse":
+                found.add(key)
+                break
+    return found
+
+
+def test_json_response_routes_declare_a_wire_model() -> None:
+    """JSON body 를 만드는 Response 라우트는 모델을 통해야 한다.
+
+    등록만으로는 부족하고 **실제로 모델을 쓰는지**가 핵심인데, 그건 여기서 구문으로
+    강제할 수 없다. 대신 등록 자체를 요구해서 "이 라우트의 body 계약은 어디 있나" 를
+    사람이 한 번은 답하게 만든다 — 사유 문자열이 그 답이다.
+    """
+    unaccounted = _routes_constructing_json_response() - set(JSON_RESPONSE_ROUTES)
+
+    assert not unaccounted, (
+        f"JSONResponse 로 JSON body 를 만드는 라우트가 등록되지 않았다: {sorted(unaccounted)}. "
+        "`response_model` 은 Response 를 그대로 흘리므로 이 body 는 어느 가드 층도 보지 "
+        "못한다. body 를 wire model 로 만들거나(권장) 모델로 검증한 뒤, "
+        "JSON_RESPONSE_ROUTES 에 **어떤 모델을 쓰는지** 적을 것."
+    )
+
+
+def test_json_response_registry_has_no_fossils() -> None:
+    """등록만 남고 라우트가 사라지면 지운다 — 화석은 같은 경로의 재등장을 가려 준다."""
+    fossils = set(JSON_RESPONSE_ROUTES) - _routes_constructing_json_response()
+
+    assert not fossils, (
+        f"JSON_RESPONSE_ROUTES 에 화석이 남았다: {sorted(fossils)}. "
+        "라우트가 사라졌거나 JSONResponse 를 더는 만들지 않는다는 뜻이니 항목을 지울 것."
     )
