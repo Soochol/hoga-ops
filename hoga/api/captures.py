@@ -156,6 +156,40 @@ def _is_local_disk_failure(exc: BaseException) -> bool:
     return exc.errno in (errno.ENOSPC, errno.EDQUOT, errno.EROFS)
 
 
+# ── 큐 조작 ack wire models (ADR-0004 · 동결선 배치 3) ────────────────────────
+#
+# 프론트는 이 넷을 `apiAction`(반환 `Promise<void>`)으로 부르므로 **본문을 읽지
+# 않는다**. 그래도 shape 을 선언하는 이유는 ADR-0004 가 "Wire Model = 소비자가 받는
+# 것" 을 계약 표면으로 삼기 때문이다 — 지금 소비자가 없다고 wire 가 없는 건 아니고,
+# 나중에 읽기 시작할 때 계약이 이미 있어야 한다.
+
+
+class CaptureUnblockResponse(BaseModel):
+    """POST /items/{code}/{date}/unblock — `action` 이 unblocked | noop 로 갈린다."""
+
+    code: str
+    date: str
+    fail_streak: int
+    action: str
+
+
+class CaptureCancelResponse(BaseModel):
+    """POST /items/{item_id}/cancel — 큐에서 뺐으면 cancelled, 실행 중이면 신호 전달."""
+
+    status: str
+    item_id: str
+
+
+class CaptureCancelAllResponse(BaseModel):
+    status: str
+    drained_count: int
+    was_paused: bool
+
+
+class CaptureResumeResponse(BaseModel):
+    status: str
+
+
 @dataclass
 class QueueItemState:
     """Mutable server-side state for one queue item. Not a Wire Model."""
@@ -2002,7 +2036,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     async def unblock_item(
         code: str = FPath(pattern=CODE_PATTERN),
         date: str = FPath(pattern=r"^\d{8}$"),
-    ) -> dict:
+    ) -> CaptureUnblockResponse:
         """ADR-0042: zero the fail_streak counter for (code, date).
 
         Idempotent. Returns ``action: "unblocked"`` when a key was cleared,
@@ -2037,7 +2071,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         )
 
     @router.post("/items/{item_id}/cancel", status_code=202)
-    async def cancel_item(item_id: str) -> dict:
+    async def cancel_item(item_id: str) -> CaptureCancelResponse:
         _require_queue_ownership()  # ADR-0094
         async with _lock:
             # Queued case — drop from _queue, mark cancelled, push to _done.
@@ -2070,12 +2104,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         raise HTTPException(status_code=404, detail={"code": CaptureErrorCode.NOT_FOUND})
 
     @router.post("/cancel-all", status_code=202)
-    async def cancel_all_route() -> dict:
+    async def cancel_all_route() -> CaptureCancelAllResponse:
         _require_queue_ownership()  # ADR-0094
         return await cancel_all()
 
     @router.post("/queue/resume", status_code=200)
-    async def resume_route() -> dict:
+    async def resume_route() -> CaptureResumeResponse:
         _require_queue_ownership()  # ADR-0094
         await resume_queue()
         return {"status": "resumed"}

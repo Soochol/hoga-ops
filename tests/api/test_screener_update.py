@@ -507,3 +507,44 @@ async def test_shutdown_update_job_cancels_and_publishes(tmp_path: Path, monkeyp
     assert _screener_mod._progress is None
     assert bus.events[-1] == {"type": "screener_update_finished",
                               "updated": 0, "total": 1, "reason": "cancelled"}
+
+
+# ── wire model 계약 (ADR-0004 · 동결선 배치 4) ────────────────────────────────
+
+
+def test_update_response_keeps_the_discriminated_union_shape():
+    """프론트는 `/screener/update` 를 **판별 유니온**으로 받는다:
+
+        {running: true, done, total} | {running: false, updated: 0, reason}
+
+    한 pydantic 모델로 두 가지를 담으므로 반대편 가지의 필드가 전부 optional 인데,
+    기본 직렬화면 그것들이 `null` 로 실려 유니온 판별이 깨진다. 라우트의
+    `response_model_exclude_none=True` 가 그걸 막는다 — **모델만 봐서는 안 보이는
+    설정**이라 여기서 결과를 직접 잰다.
+    """
+    from hoga.api.screener import ScreenerUpdateResponse
+
+    for payload in (
+        {"running": True, "done": 3, "total": 10},
+        {"running": False, "updated": 0, "reason": "no_gap"},
+    ):
+        got = ScreenerUpdateResponse.model_validate(payload).model_dump(exclude_none=True)
+        assert got == payload, "다른 가지의 키가 새어 나오면 프론트 유니온 판별이 깨진다"
+
+
+def test_status_response_keeps_meaningful_nulls():
+    """`days_behind: null`(신선도 불명)과 `updating: null`(갱신 job 없음)은 **값 있는
+    null** 이다 — 지우면 "모른다" 와 "0" 을 구별할 수 없다.
+
+    그래서 status 라우트에는 `exclude_none` 을 걸지 않았다. 반대 방향의 회귀
+    (누군가 update 를 따라 여기에도 붙이는 것)를 막는다.
+    """
+    from hoga.api.screener import ScreenerStatusResponse
+
+    got = ScreenerStatusResponse.model_validate(
+        {"status": "ok", "last_raw_date": "20260806", "days_behind": None, "updating": None}
+    ).model_dump()
+
+    assert got["days_behind"] is None
+    assert got["updating"] is None
+    assert "status" in got
