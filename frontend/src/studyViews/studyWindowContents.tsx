@@ -145,7 +145,14 @@ function BrokerContent({ save }: ContentProps) {
     inactiveSeries: null,
     inactiveCursorMs: null,
   });
-  return <BrokerTrajectoryTable series={brokerCard.series} cursorMs={brokerCard.cursorMs} />;
+  // 표시 창도 KRX 정규장 고정 — 위 조회와 같은 근거다(복기는 hogaplay KRX 캡처).
+  return (
+    <BrokerTrajectoryTable
+      series={brokerCard.series}
+      cursorMs={brokerCard.cursorMs}
+      venue="KRX"
+    />
+  );
 }
 
 function VdistContent({ save, bundle }: ContentProps) {
