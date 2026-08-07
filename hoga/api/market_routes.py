@@ -767,15 +767,12 @@ class _FuturesRuntimeHolder:
 
     def _ensure(self) -> Any:
         if self._runtime is None:
-            from hoga.live.futures_runtime import FuturesQuotesRuntime  # noqa: PLC0415
-            from hoga.live.kis_runtime import ensure_kis_client_from_env  # noqa: PLC0415
+            # **프로세스 싱글턴을 공유한다 — 여기서 새로 만들면 안 된다.** 이 런타임이
+            # 야간 WS 를 소유하는데 슬롯을 두 벌 쥐면 벤더가 한쪽을 끊는다. 스케줄러
+            # keeper 도 같은 인스턴스를 쓰므로, 배선은 `futures_runtime` 한 곳에 있다.
+            from hoga.live.futures_runtime import ensure_runtime  # noqa: PLC0415
 
-            data_dir = self._data_dir
-
-            def factory() -> Any:
-                return ensure_kis_client_from_env(data_dir) if data_dir is not None else None
-
-            self._runtime = FuturesQuotesRuntime(factory)
+            self._runtime = ensure_runtime(self._data_dir)
         return self._runtime
 
     async def collect_sparks(self) -> dict[str, Any] | None:
