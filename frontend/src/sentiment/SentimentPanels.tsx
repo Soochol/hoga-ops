@@ -7,6 +7,7 @@ import type {
   PutCallRatio,
   PutCallSeriesPoint,
 } from '../api/optionSentiment';
+import { fmtCompact } from './sentimentFormat';
 import {
   AXIS_H,
   CHART_W,
@@ -31,14 +32,6 @@ import {
  * (파랑). KRX 관습(상승=빨강)과 방향 베팅이 일치해 직관적이다. `--accent` 는 UI
  * 상태 전용이므로 기준선·호버 가이드라인에만 쓴다.
  */
-
-export function fmtCompact(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1e12) return `${(n / 1e12).toFixed(1)}조`;
-  if (abs >= 1e8) return `${(n / 1e8).toFixed(1)}억`;
-  if (abs >= 1e4) return `${(n / 1e4).toFixed(1)}만`;
-  return n.toFixed(0);
-}
 
 /** x축 눈금 밴드. 모든 차트가 같은 도메인을 쓰므로 라벨이 세로로 정렬된다. */
 function StrikeAxis({ domain, y }: { domain: StrikeDomain; y: number }) {
@@ -182,12 +175,14 @@ export function PutCallPanel({ pc }: { pc: PutCallRatio }) {
   return (
     <div className="flex gap-lg">
       {rows.map(([label, value, sub]) => (
-        <div key={label} className="flex-1">
+        <div key={label} className="min-w-0 flex-1">
           <div className="text-xs text-fg-dim">{label}</div>
-          <div className="text-2xl tabular-nums text-fg">
+          {/* 숫자는 전부 font-data(tnum 결속) — /market 카드와 같은 위계
+              (값 xl semibold · 보조 2xs). 좁은 열에서 2xl 은 줄바꿈을 만든다. */}
+          <div className="font-data text-xl font-semibold tabular-nums text-fg">
             {value === null ? '—' : value.toFixed(3)}
           </div>
-          <div className="text-xs text-fg-dim tabular-nums">{sub}</div>
+          <div className="truncate font-data text-2xs text-fg-dim tabular-nums">{sub}</div>
         </div>
       ))}
     </div>
@@ -204,6 +199,10 @@ export function PutCallPanel({ pc }: { pc: PutCallRatio }) {
  */
 export function PutCallSeriesChart({ points }: { points: PutCallSeriesPoint[] }) {
   const H = 110;
+  // x 가 시각이라 **행사가 축과 정렬 의무가 없다** — 그래서 CHART_W(720)를 빌려 쓰지
+  // 않는다. 이 차트는 좁은 우측 열에 사는데, viewBox 폭이 720 이면 렌더 스케일이
+  // 0.5 배로 떨어져 10px 라벨이 5~7px 로 뭉개진다. 좁은 열에 맞는 자기 폭을 쓴다.
+  const W = 360;
   if (points.length < 2) {
     return (
       <div className="text-xs text-fg-dim">
@@ -215,7 +214,7 @@ export function PutCallSeriesChart({ points }: { points: PutCallSeriesPoint[] })
   const t0 = points[0].t_ms;
   const t1 = points[points.length - 1].t_ms;
   const tSpan = t1 - t0 || 1;
-  const x = (t: number) => PAD_L + ((t - t0) / tSpan) * (CHART_W - PAD_L - PAD_R);
+  const x = (t: number) => PAD_L + ((t - t0) / tSpan) * (W - PAD_L - PAD_R);
   const vals = points
     .flatMap((p) => [p.volume_ratio, p.oi_ratio])
     .filter((v): v is number => v !== null);
@@ -238,17 +237,29 @@ export function PutCallSeriesChart({ points }: { points: PutCallSeriesPoint[] })
     new Date(ms).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' });
 
   return (
-    <svg viewBox={`0 0 ${CHART_W} ${H + AXIS_H}`} className="w-full" role="img" aria-label="P/C 비율 당일 추이">
+    <svg viewBox={`0 0 ${W} ${H + AXIS_H}`} className="w-full" role="img" aria-label="P/C 비율 당일 추이">
       <line
         x1={PAD_L}
-        x2={CHART_W - PAD_R}
+        x2={W - PAD_R}
         y1={y(1)}
         y2={y(1)}
         stroke="var(--grid)"
         strokeWidth={1}
         strokeDasharray="2 3"
       />
-      <text x={CHART_W - PAD_R} y={y(1) - 3} fontSize={10} fill="var(--fg-dimmer)" textAnchor="end">
+      {/* 비율이 1.0 근처면 이 라벨을 거래량 곡선이 관통해 읽을 수 없게 된다(실측).
+          글자 뒤에 배경색 후광을 깔아 선 위에서도 읽히게 한다 — 카드가 flat 이라
+          `--bg` 가 곧 카드 배경이다. */}
+      <text
+        x={W - PAD_R}
+        y={y(1) - 3}
+        fontSize={10}
+        fill="var(--fg-dimmer)"
+        textAnchor="end"
+        stroke="var(--bg)"
+        strokeWidth={3}
+        paintOrder="stroke"
+      >
         1.0 균형
       </text>
       {volPath && <path d={volPath} fill="none" stroke="var(--fg)" strokeWidth={1.5} />}
@@ -263,7 +274,7 @@ export function PutCallSeriesChart({ points }: { points: PutCallSeriesPoint[] })
       </g>
       <g fontSize={10} fill="var(--fg-dimmer)">
         <text x={PAD_L} y={H + 13}>{fmtT(t0)}</text>
-        <text x={CHART_W - PAD_R} y={H + 13} textAnchor="end">{fmtT(t1)}</text>
+        <text x={W - PAD_R} y={H + 13} textAnchor="end">{fmtT(t1)}</text>
       </g>
     </svg>
   );
@@ -512,11 +523,15 @@ export function GexSummary({ gex }: { gex: GammaExposure }) {
     <div className="flex gap-lg">
       <div>
         <div className="text-xs text-fg-dim">총 GEX (1% 이동당)</div>
-        <div className="text-lg tabular-nums text-fg">{fmtCompact(gex.total)}원</div>
+        <div className="font-data text-lg font-semibold tabular-nums text-fg">
+          {fmtCompact(gex.total)}원
+        </div>
       </div>
       <div>
         <div className="text-xs text-fg-dim">감마 플립</div>
-        <div className="text-lg tabular-nums text-fg">{gex.flip_strike ?? '—'}</div>
+        <div className="font-data text-lg font-semibold tabular-nums text-fg">
+          {gex.flip_strike ?? '—'}
+        </div>
       </div>
     </div>
   );
@@ -545,26 +560,28 @@ export function OiContributors({
   if (sum === 0) return null;
 
   return (
-    <table className="w-full text-xs tabular-nums">
+    // 행 구분선은 `--grid`(카드 내부 리스트 구분) — /market 의 순위·자금 리스트와 같은
+    // 문법이라 페이지가 달라도 표가 같은 물건으로 읽힌다.
+    <table className="w-full font-data text-xs tabular-nums">
       <thead>
-        <tr className="text-fg-dim">
-          <th className="text-left font-normal">행사가</th>
-          <th className="text-right font-normal">ATM 대비</th>
-          <th className="text-right font-normal">콜 OI</th>
-          <th className="text-right font-normal">풋 OI</th>
-          <th className="text-right font-normal">비중</th>
+        <tr className="text-2xs text-fg-dim">
+          <th className="pb-2xs text-left font-normal">행사가</th>
+          <th className="pb-2xs text-right font-normal">ATM 대비</th>
+          <th className="pb-2xs text-right font-normal">콜 OI</th>
+          <th className="pb-2xs text-right font-normal">풋 OI</th>
+          <th className="pb-2xs text-right font-normal">비중</th>
         </tr>
       </thead>
       <tbody>
         {top.map((s) => (
-          <tr key={s.strike} className="text-fg">
-            <td className="text-left">{s.strike.toFixed(1)}</td>
-            <td className="text-right text-fg-dim">
+          <tr key={s.strike} className="border-b border-grid text-fg last:border-b-0">
+            <td className="py-2xs text-left">{s.strike.toFixed(1)}</td>
+            <td className="py-2xs text-right text-fg-dim">
               {underlying ? `${(((s.strike - underlying) / underlying) * 100).toFixed(1)}%` : '—'}
             </td>
-            <td className="text-right">{s.call_oi.toLocaleString()}</td>
-            <td className="text-right">{s.put_oi.toLocaleString()}</td>
-            <td className="text-right text-fg-dim">{((s.total / sum) * 100).toFixed(1)}%</td>
+            <td className="py-2xs text-right">{s.call_oi.toLocaleString()}</td>
+            <td className="py-2xs text-right">{s.put_oi.toLocaleString()}</td>
+            <td className="py-2xs text-right text-fg-dim">{((s.total / sum) * 100).toFixed(1)}%</td>
           </tr>
         ))}
       </tbody>
