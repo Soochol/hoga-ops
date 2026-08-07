@@ -163,6 +163,10 @@ function LinkPendingCard({ kind, group }: { kind: WindowKind; group: GroupId }) 
 }
 
 function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
+  // 아래로 넘기는 것은 **선택값**이다. WS 꼬리(useLiveSeries)도 파케이 스팟
+  // (useLiveOrderbookAtCursor)도 각자 `useEffectiveVenue` 로 같은 해석을 하므로
+  // 데이터 경로에서는 미리 풀지 않는다 — 해석 지점이 둘로 갈리면 한쪽만 고쳐지는
+  // 게 이 파일이 이미 겪은 실패다(useLiveCursor 의 VenueParam 주석).
   const venue = useLiveVenueStore((s) => s.venue);
   const live = useLiveSeries(code, venue);
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
@@ -328,11 +332,18 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
 }
 
 function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
-  // venue 는 시그니처 요구가 아니라 **실제 필터 키**다 — `live.broker` 는 선택 venue
-  // (종목별로 해석한 effective)로 걸러져 도착한다(liveSeries.ts 의 filterByVenueTag).
-  // 아래 세 경로가 같은 venue 를 타야 한다: WS 꼬리(live.broker) · 스팟
-  // (useLiveBrokersAtCursor) · 당일 누적(useLiveBrokersToday). 하나만 어긋나면
-  // 병합 시리즈에서 시장이 섞인다.
+  // venue 는 시그니처 요구가 아니라 **실제 필터 키**다. 아래 세 경로가 같은 venue 를
+  // 타야 한다: WS 꼬리(live.broker) · 스팟(useLiveBrokersAtCursor) · 당일 누적
+  // (useLiveBrokersToday). 하나만 어긋나면 병합 시리즈에서 시장이 섞인다.
+  //
+  // **데이터 경로에는 선택값을 넘긴다** — 세 훅이 각자 `useEffectiveVenue` 로
+  // 종목별 유효 venue 를 해석하기 때문이다(WS 꼬리는 liveSeries.ts 의
+  // filterByVenueTag, 나머지 둘은 URL·캐시 키). 예전엔 훅 두 개가 선택값을 그대로
+  // 백엔드에 보내서, NXT 미상장 종목 + UN 선택이면 창이 통째로 비었다(#1209 후속,
+  // 근거·실측은 useLiveCursor 의 VenueParam 주석).
+  //
+  // 표시층만 예외다 — 아래 `effectiveVenue` 는 prop 이라 훅이 삼킬 자리가 없어
+  // 호출부가 해석해 넘긴다(#1209).
   const venue = useLiveVenueStore((s) => s.venue);
   const live = useLiveSeries(code, venue);
   // 표시 창(클립·x축)은 **유효** venue 로 정한다 — 선택값 그대로면 NXT 미상장 종목에
