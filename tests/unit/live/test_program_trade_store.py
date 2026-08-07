@@ -30,12 +30,14 @@ def test_program_trade_store_merges_rows_idempotently_and_sorts(tmp_path):
     store = ProgramTradeStore(tmp_path)
 
     first = store.merge_response(
+        venue="KRX",
         code="005930",
         date="20260625",
         rows=[row("090030", 3000), row("090000", 1000)],
         observed_at_ms=1,
     )
     second = store.merge_response(
+        venue="KRX",
         code="005930",
         date="20260625",
         rows=[row("090030", 3333), row("090100", 5000)],
@@ -50,9 +52,10 @@ def test_program_trade_store_merges_rows_idempotently_and_sorts(tmp_path):
         hhmmssms_to_unix_ms("20260625", 90030000),
         hhmmssms_to_unix_ms("20260625", 90100000),
     ]
-    body = json.loads((tmp_path / "kis-program-trade" / "005930" / "20260625.json").read_text())
-    assert body["schema_version"] == 1
+    body = json.loads((tmp_path / "kis-program-trade" / "005930" / "KRX" / "20260625.json").read_text())
+    assert body["schema_version"] == 2  # venue 축 도입
     assert body["source"] == "kis_program_trade"
+    assert body["venue"] == "KRX"
     assert body["rows"][1]["observed_at_ms"] == 2
 
 
@@ -61,6 +64,7 @@ def test_program_trade_store_marks_gap_only_when_rolling_window_has_no_overlap(t
 
     store = ProgramTradeStore(tmp_path)
     store.merge_response(
+        venue="KRX",
         code="005930",
         date="20260625",
         rows=[row("090000", 1000), row("090030", 2000)],
@@ -68,12 +72,14 @@ def test_program_trade_store_marks_gap_only_when_rolling_window_has_no_overlap(t
     )
 
     overlapped = store.merge_response(
+        venue="KRX",
         code="005930",
         date="20260625",
         rows=[row("090030", 2000), row("090100", 3000)],
         observed_at_ms=2,
     )
     gapped = store.merge_response(
+        venue="KRX",
         code="005930",
         date="20260625",
         rows=[row("090300", 4000), row("090330", 5000)],
@@ -100,6 +106,7 @@ def test_program_trade_store_single_row_drain_chain_records_no_gap(tmp_path):
     result = None
     for i, hhmmss in enumerate(["090000", "090030", "090100", "090130", "090200"]):
         result = store.merge_response(
+        venue="KRX",
             code="005930",
             date="20260721",
             rows=[row(hhmmss, (i + 1) * 1000)],
@@ -120,9 +127,11 @@ def test_program_trade_store_records_gap_after_multi_minute_outage(tmp_path):
 
     store = ProgramTradeStore(tmp_path)
     store.merge_response(
+        venue="KRX",
         code="005930", date="20260721", rows=[row("090000", 1000)], observed_at_ms=1
     )
     resumed = store.merge_response(
+        venue="KRX",
         code="005930", date="20260721", rows=[row("090500", 2000)], observed_at_ms=2
     )
 
@@ -155,6 +164,7 @@ def test_program_trade_store_ignores_stale_response(tmp_path):
 
     store = ProgramTradeStore(tmp_path)
     store.merge_response(
+        venue="KRX",
         code="005930",
         date="20260625",
         rows=[row("090300", 3000), row("090330", 3300)],
@@ -162,6 +172,7 @@ def test_program_trade_store_ignores_stale_response(tmp_path):
     )
 
     result = store.merge_response(
+        venue="KRX",
         code="005930",
         date="20260625",
         rows=[row("090000", 1000), row("090030", 2000)],
@@ -185,6 +196,7 @@ def test_program_trade_store_quarantines_future_sidecar_and_accepts_current_rows
 
     store = ProgramTradeStore(tmp_path)
     store.merge_response(
+        venue="KRX",
         code="005930",
         date="20260626",
         rows=[row("152801", 15_280_100), row("180242", 18_024_200)],
@@ -192,6 +204,7 @@ def test_program_trade_store_quarantines_future_sidecar_and_accepts_current_rows
     )
 
     result = store.merge_response(
+        venue="KRX",
         code="005930",
         date="20260626",
         rows=[row("131155", 13_115_500), row("131544", 13_154_400)],
@@ -200,7 +213,7 @@ def test_program_trade_store_quarantines_future_sidecar_and_accepts_current_rows
 
     assert [p.bsop_hour for p in result.rows] == ["131155", "131544"]
     assert result.anomaly_events == []
-    backups = list((tmp_path / "kis-program-trade" / "005930").glob("20260626.json.poisoned-*"))
+    backups = list((tmp_path / "kis-program-trade" / "005930" / "KRX").glob("20260626.json.poisoned-*"))
     assert len(backups) == 1
     backed_up = json.loads(backups[0].read_text())
     assert [p["bsop_hour"] for p in backed_up["rows"]] == ["152801", "180242"]
@@ -213,16 +226,17 @@ def test_load_cached_hits_unchanged_and_reloads_after_write(tmp_path):
 
     store = ProgramTradeStore(tmp_path)
     obs = int(datetime(2026, 6, 26, 10, 0, 0, tzinfo=KST).timestamp() * 1000)
-    store.merge_response(code="005930", date="20260626", rows=[row("100000", 1_000)], observed_at_ms=obs)
+    store.merge_response(venue="KRX", code="005930", date="20260626", rows=[row("100000", 1_000)], observed_at_ms=obs)
 
-    a = store.load_cached("005930", "20260626")
-    b = store.load_cached("005930", "20260626")
+    a = store.load_cached("005930", "20260626", "KRX")
+    b = store.load_cached("005930", "20260626", "KRX")
     assert a is b, "미변경 파일 2회째는 캐시 히트(동일 객체)"
     assert [p.bsop_hour for p in a.rows] == ["100000"]
 
     # merge_response 가 파일을 갱신(mtime 변경) → load_cached 는 새 데이터 반영.
-    store.merge_response(code="005930", date="20260626", rows=[row("110000", 2_000)], observed_at_ms=obs + 1)
-    c = store.load_cached("005930", "20260626")
+    store.merge_response(venue="KRX", code="005930", date="20260626",
+                         rows=[row("110000", 2_000)], observed_at_ms=obs + 1)
+    c = store.load_cached("005930", "20260626", "KRX")
     assert [p.bsop_hour for p in c.rows] == ["100000", "110000"]
 
 
@@ -235,10 +249,104 @@ def test_load_cached_does_not_poison_writer_path(tmp_path):
 
     store = ProgramTradeStore(tmp_path)
     obs = int(datetime(2026, 6, 26, 10, 0, 0, tzinfo=KST).timestamp() * 1000)
-    store.merge_response(code="005930", date="20260626", rows=[row("100000", 1_000)], observed_at_ms=obs)
-    store.load_cached("005930", "20260626")  # 캐시 예열
+    store.merge_response(venue="KRX", code="005930", date="20260626", rows=[row("100000", 1_000)], observed_at_ms=obs)
+    store.load_cached("005930", "20260626", "KRX")  # 캐시 예열
 
     result = store.merge_response(
+        venue="KRX",
         code="005930", date="20260626", rows=[row("110000", 2_000)], observed_at_ms=obs + 1
     )
     assert [p.bsop_hour for p in result.rows] == ["100000", "110000"], "writer 는 기존 행 위에 병합"
+
+
+# ── venue 축 (ADR-0140 §3) ────────────────────────────────────────────────────
+
+
+def test_venues_are_stored_in_separate_files(tmp_path):
+    """세 시장이 한 파일에 섞이지 않는다 — 섞이면 되돌릴 수 없다."""
+    from hoga.live.program_trade_store import ProgramTradeStore
+
+    store = ProgramTradeStore(tmp_path)
+    obs = int(datetime(2026, 6, 26, 10, 0, 0, tzinfo=KST).timestamp() * 1000)
+    store.merge_response(venue="KRX", code="005930", date="20260626",
+                         rows=[row("100000", 1_000)], observed_at_ms=obs)
+    store.merge_response(venue="NXT", code="005930", date="20260626",
+                         rows=[row("160000", 7_000)], observed_at_ms=obs)
+
+    krx = store.load("005930", "20260626", "KRX")
+    nxt = store.load("005930", "20260626", "NXT")
+    assert [p.bsop_hour for p in krx.rows] == ["100000"]
+    assert [p.bsop_hour for p in nxt.rows] == ["160000"]
+    assert krx.venue == "KRX" and nxt.venue == "NXT"
+
+
+def _write_legacy(tmp_path, *, code="005930", date="20260626", bsop_hour="100000"):
+    """venue 축 이전(v1) 파일을 손으로 만든다 — `{code}/{date}.json`, venue 키 없음."""
+    legacy = tmp_path / "kis-program-trade" / code / f"{date}.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps({
+        "schema_version": 1,
+        "source": "kis_program_trade",
+        "code": code,
+        "date": date,
+        "poll_interval_ms": 30_000,
+        "rows": [{
+            **row(bsop_hour, 1_000).model_dump(),
+            "date": date,
+            "observed_at_ms": 1,
+        }],
+    }), encoding="utf-8")
+    return legacy
+
+
+def test_legacy_file_is_read_as_krx_only(tmp_path):
+    """v1 파일은 정의상 KRX 다 — NXT·통합으로 읽으면 다른 시장 값을 그 시장 것으로
+    답하게 되므로 폴백을 KRX 에만 연다."""
+    from hoga.live.program_trade_store import ProgramTradeStore
+
+    _write_legacy(tmp_path)
+    store = ProgramTradeStore(tmp_path)
+
+    assert [p.bsop_hour for p in store.load("005930", "20260626", "KRX").rows] == ["100000"]
+    assert store.load("005930", "20260626", "NXT").rows == []
+    assert store.load("005930", "20260626", "UN").rows == []
+
+
+def test_legacy_krx_file_migrates_on_first_merge(tmp_path):
+    """레거시를 읽어 **새 경로**에 쓴다 — 별도 마이그레이션 없이 당일 파일이 옮겨 앉고
+    과거일은 레거시에 남은 채 계속 읽힌다."""
+    from hoga.live.program_trade_store import ProgramTradeStore
+
+    legacy = _write_legacy(tmp_path)
+    store = ProgramTradeStore(tmp_path)
+    obs = int(datetime(2026, 6, 26, 11, 0, 0, tzinfo=KST).timestamp() * 1000)
+
+    merged = store.merge_response(venue="KRX", code="005930", date="20260626",
+                                  rows=[row("110000", 2_000)], observed_at_ms=obs)
+
+    # 레거시 행 위에 병합됐다(읽기 폴백이 살아 있다는 뜻).
+    assert [p.bsop_hour for p in merged.rows] == ["100000", "110000"]
+    # 쓰기는 새 경로로만 간다 — 레거시 파일은 손대지 않는다.
+    new_path = tmp_path / "kis-program-trade" / "005930" / "KRX" / "20260626.json"
+    assert new_path.exists()
+    assert json.loads(new_path.read_text())["venue"] == "KRX"
+    assert json.loads(legacy.read_text())["rows"][0]["bsop_hour"] == "100000"
+    # 새 경로가 생긴 뒤로는 그쪽이 이긴다.
+    assert store.read_path("005930", "20260626", "KRX") == new_path
+
+
+def test_load_cached_validates_the_file_it_actually_read(tmp_path):
+    """캐시 키가 **실제로 읽은 경로**여야 한다 — 새 경로 키로 캐시하면 레거시를 읽고도
+    존재하지 않는 파일의 mtime 을 검증하게 돼 무효화가 성립하지 않는다."""
+    from hoga.live.program_trade_store import ProgramTradeStore
+
+    legacy = _write_legacy(tmp_path)
+    store = ProgramTradeStore(tmp_path)
+    assert [p.bsop_hour for p in store.load_cached("005930", "20260626", "KRX").rows] == ["100000"]
+
+    # 레거시 파일이 바뀌면 캐시가 무효화돼야 한다.
+    body = json.loads(legacy.read_text())
+    body["rows"][0]["bsop_hour"] = "133000"
+    legacy.write_text(json.dumps(body), encoding="utf-8")
+
+    assert [p.bsop_hour for p in store.load_cached("005930", "20260626", "KRX").rows] == ["133000"]
