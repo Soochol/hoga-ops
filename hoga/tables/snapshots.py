@@ -7,6 +7,7 @@ Each event type 2 row is a full state snapshot. In-memory the entity uses
 
 from __future__ import annotations
 
+import os
 from bisect import bisect_right
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Sequence
@@ -18,6 +19,7 @@ from typing import Any
 import duckdb
 import polars as pl
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
@@ -313,22 +315,51 @@ _SELECT: str = ", ".join(_QUERY_COLS)
 
 @dataclass(frozen=True)
 class _SnapshotQueryIndex:
+    """검색용 스칼라 배열 + 원본 arrow 테이블.
+
+    행 전체를 파이썬 튜플로 미리 만들지 **않는다**. 읽기 경로가 실제로 쓰는 것은
+    (a) 위치를 찾기 위한 스칼라 배열 셋과 (b) 최종 선택된 **단 한 행**뿐이고,
+    후자는 :func:`_row_at` 이 그 시점에 arrow 에서 꺼낸다. 75k 행 × 66컬럼을
+    미리 변환하면 그 변환 자체가 GIL 을 잡아 읽기 경로 전체를 직렬화한다
+    (2026-08-07 실측: 파케이 읽기 4.1ms vs `to_pylist()` 857ms, 8스레드 스케일 0.99x).
+    """
+
     mtime_ns: int
     size: int
     ts_values: tuple[int, ...]
     intra_values: tuple[int, ...]
     continuous_values: tuple[bool, ...]
-    rows: tuple[tuple, ...]
+    #: ``ts_ms`` 와 함께 대표행 선정 키를 이룬다(옛 ``rows[pos][1]`` 자리).
+    seq_values: tuple[int, ...]
+    table: pa.Table
+
+
+def _row_at(index: _SnapshotQueryIndex, pos: int) -> tuple:
+    """``pos`` 행을 ``_QUERY_COLS`` 순서의 파이썬 튜플로 꺼낸다.
+
+    호출 1회당 66개 스칼라만 변환하므로 전량 변환과 달리 상수 시간에 가깝다.
+    반환 형태는 옛 ``index.rows[pos]`` 와 동일해 `_row_to_api_snapshot` 계약이 유지된다.
+    """
+    return tuple(index.table.column(name)[pos].as_py() for name in _QUERY_COLS)
 
 
 _QUERY_AT_CACHE_MAX = 32
 _query_at_cache: OrderedDict[str, _SnapshotQueryIndex] = OrderedDict()
 _query_at_cache_lock = Lock()
 
+# 경로별 빌드 락(single-flight). 캐시 미스가 동시에 N개 들어와도 빌드는 1회다 —
+# 예전에는 락이 **조회에만** 걸려 있어 같은 파일을 N 스레드가 각자 빌드했고, GIL
+# 직렬화까지 겹쳐 지연이 N배로 쌓였다(2026-08-07 프로덕션 16.5초 3연발).
+#
+# 이 락은 **최적화일 뿐 정확성의 근거가 아니다**: LRU 에서 밀려난 락을 다른 스레드가
+# 아직 쥐고 있어도 최악의 결과는 "중복 빌드 1회" 이고, 결과 동일성은 캐시(mtime+size)가
+# 보장한다. 그래서 락 사전은 상한만 두고 자유롭게 evict 한다.
+_QUERY_AT_BUILD_LOCKS_MAX = 128
+_query_at_build_locks: OrderedDict[str, Lock] = OrderedDict()
+_query_at_build_locks_guard = Lock()
 
-def _load_query_index(path: Path) -> _SnapshotQueryIndex:
-    stat = path.stat()
-    key = str(path)
+
+def _cached_query_index(key: str, stat: os.stat_result) -> _SnapshotQueryIndex | None:
     with _query_at_cache_lock:
         cached = _query_at_cache.get(key)
         if (
@@ -338,32 +369,74 @@ def _load_query_index(path: Path) -> _SnapshotQueryIndex:
         ):
             _query_at_cache.move_to_end(key)
             return cached
+    return None
 
+
+def _query_index_build_lock(key: str) -> Lock:
+    with _query_at_build_locks_guard:
+        lock = _query_at_build_locks.get(key)
+        if lock is None:
+            lock = Lock()
+            _query_at_build_locks[key] = lock
+        _query_at_build_locks.move_to_end(key)
+        while len(_query_at_build_locks) > _QUERY_AT_BUILD_LOCKS_MAX:
+            _query_at_build_locks.popitem(last=False)
+        return lock
+
+
+def _deep_qty_sum(table: pa.Table, indexes: tuple[int, ...]) -> pa.ChunkedArray:
+    """호가 심도 4~10단 수량 합. 컬럼 단위 arrow 연산이라 GIL 을 잡지 않는다."""
+    total = table.column(_QUERY_COLS[indexes[0]])
+    for i in indexes[1:]:
+        total = pc.add(total, table.column(_QUERY_COLS[i]))
+    return total
+
+
+def _build_query_index(path: Path, stat: os.stat_result) -> _SnapshotQueryIndex:
+    """검색 배열만 만든다 — 행 튜플(75k × 66컬럼)은 만들지 않는다.
+
+    파이썬으로 넘기는 컬럼은 검색에 실제로 필요한 3개(``ts_ms``·``seq``·연속성)뿐이고,
+    가장 무거운 심도 수량 합산(컬럼 14개)은 arrow 안에서 끝낸다.
+    numpy 는 이 프로젝트 의존성이 아니므로 쓰지 않는다.
+    """
     table = pq.read_table(path, columns=list(_QUERY_COLS))
-    cols = [table.column(name).to_pylist() for name in _QUERY_COLS]
-    rows = tuple(zip(*cols, strict=True))
-    ts_values = tuple(row[0] for row in rows)
-    intra_values = tuple(_hhmmssms_to_intra_ms(row[0]) for row in rows)
-    continuous_values = tuple(
-        sum(row[i] for i in _ASK_DEEP_Q_INDEXES) > 0
-        and sum(row[i] for i in _BID_DEEP_Q_INDEXES) > 0
-        for row in rows
+    ts_values: tuple[int, ...] = tuple(table.column("ts_ms").to_pylist())
+    continuous_arrow = pc.and_(
+        pc.greater(_deep_qty_sum(table, _ASK_DEEP_Q_INDEXES), 0),
+        pc.greater(_deep_qty_sum(table, _BID_DEEP_Q_INDEXES), 0),
     )
-    index = _SnapshotQueryIndex(
+    return _SnapshotQueryIndex(
         mtime_ns=stat.st_mtime_ns,
         size=stat.st_size,
         ts_values=ts_values,
-        intra_values=intra_values,
-        continuous_values=continuous_values,
-        rows=rows,
+        # HHMMSSmmm 은 packed-decimal 이라 뺄셈이 비선형이다. 스칼라 헬퍼를 그대로
+        # 재사용해 SQL 판(`hhmmssms_to_intra_ms_sql`)과의 동치를 유지한다.
+        intra_values=tuple(_hhmmssms_to_intra_ms(ts) for ts in ts_values),
+        continuous_values=tuple(continuous_arrow.to_pylist()),
+        seq_values=tuple(table.column("seq").to_pylist()),
+        table=table,
     )
 
-    with _query_at_cache_lock:
-        _query_at_cache[key] = index
-        _query_at_cache.move_to_end(key)
-        while len(_query_at_cache) > _QUERY_AT_CACHE_MAX:
-            _query_at_cache.popitem(last=False)
-    return index
+
+def _load_query_index(path: Path) -> _SnapshotQueryIndex:
+    stat = path.stat()
+    key = str(path)
+    cached = _cached_query_index(key, stat)
+    if cached is not None:
+        return cached
+
+    with _query_index_build_lock(key):
+        # double-checked: 먼저 락을 잡은 스레드가 이미 채워 넣었을 수 있다.
+        cached = _cached_query_index(key, stat)
+        if cached is not None:
+            return cached
+        index = _build_query_index(path, stat)
+        with _query_at_cache_lock:
+            _query_at_cache[key] = index
+            _query_at_cache.move_to_end(key)
+            while len(_query_at_cache) > _QUERY_AT_CACHE_MAX:
+                _query_at_cache.popitem(last=False)
+        return index
 
 
 def _row_to_api_snapshot(row: tuple) -> ApiOrderbookSnapshot:
@@ -456,8 +529,7 @@ def query_at(
     pos = bisect_right(index.ts_values, t_ms) - 1
     if pos < 0:
         return None
-    row = index.rows[pos]
-    return _row_to_api_snapshot(row) if row is not None else None
+    return _row_to_api_snapshot(_row_at(index, pos))
 
 
 def query_time_bounds(con: duckdb.DuckDBPyConnection, *, path: Path) -> tuple[int, int] | None:
@@ -1572,7 +1644,7 @@ def query_bucket_representative(
         index, session_close_ms=session_close_ms
     )
     pos = bisect_right(index.ts_values, hi_native) - 1
-    best_row: tuple[Any, ...] | None = None
+    best_pos: int | None = None
     best_key: tuple[int, int] | None = None
     while pos >= 0 and index.ts_values[pos] >= lo_native:
         if best_key is not None and index.ts_values[pos] < best_key[0]:
@@ -1582,15 +1654,16 @@ def query_bucket_representative(
             pos,
             last_continuous_ms=last_continuous_ms,
         ):
-            row = index.rows[pos]
-            key = (int(row[0]), int(row[1]))
+            # 정렬 키(ts_ms, seq)는 스칼라 배열로 충분하다 — 행 전체를 꺼내는 것은
+            # 승자가 확정된 뒤 한 번뿐이다.
+            key = (int(index.ts_values[pos]), int(index.seq_values[pos]))
             if best_key is None or key > best_key:
                 best_key = key
-                best_row = row
+                best_pos = pos
         pos -= 1
-    if best_row is None:
+    if best_pos is None:
         return None
-    return _row_to_api_snapshot(best_row)
+    return _row_to_api_snapshot(_row_at(index, best_pos))
 
 
 def query_bucket_representatives(

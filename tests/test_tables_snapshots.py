@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -8,6 +11,7 @@ import polars as pl
 import pyarrow.parquet as pq
 import pytest
 
+from hoga.tables import snapshots
 from hoga.tables.snapshots import (
     PARQUET_SCHEMA,
     PARSERS,
@@ -186,6 +190,70 @@ def test_query_at_uses_path_index_without_duckdb_for_repeated_cursor_reads(
     assert second is not None
     assert first.ts_ms == 90001000
     assert second.ts_ms == 90002000
+
+
+def test_query_index_build_is_single_flight_across_threads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """동시에 들어온 캐시 미스는 빌드를 **1회만** 유발한다.
+
+    예전에는 캐시 락이 조회에만 걸려 있어 같은 파일을 N 스레드가 각자 빌드했다.
+    빌드 구간은 GIL 을 잡으므로 중복이 그대로 지연으로 쌓였다 — 2026-08-07 프로덕션에서
+    `/api/orderbook` 세 요청이 16.5초를 함께 기다린 뒤 나란히 끝난 것이 그 서명이다.
+
+    단언은 **호출 횟수**다(경과 시간 비율이 아니다). sleep 은 다른 스레드가 락 앞에
+    도달할 창을 열 뿐이라, 경합이 안 나면 캐시 히트로 역시 1회가 되어 위양성이 없다.
+    """
+    obs = [
+        PARSERS[2](_ob_parts(ts_ms=90000000 + i * 1000, seq=i)) for i in range(1, 21)
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+
+    snapshots._query_at_cache.clear()
+    with snapshots._query_at_build_locks_guard:
+        snapshots._query_at_build_locks.clear()
+
+    builds: list[Path] = []
+    original_build = snapshots._build_query_index
+
+    def counting_build(
+        path: Path, stat: os.stat_result
+    ) -> snapshots._SnapshotQueryIndex:
+        builds.append(path)
+        time.sleep(0.05)  # 나머지 스레드가 빌드 락에 도달할 창
+        return original_build(path, stat)
+
+    monkeypatch.setattr(snapshots, "_build_query_index", counting_build)
+
+    barrier = threading.Barrier(4)
+    results: list[object] = []
+
+    def worker() -> None:
+        barrier.wait()
+        results.append(snapshots._load_query_index(out))
+
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(builds) == 1, f"중복 빌드 {len(builds)}회 — single-flight 락이 깨졌다"
+    assert len(results) == 4
+    assert all(result is results[0] for result in results)
+
+
+def test_query_index_keeps_arrow_table_instead_of_materialized_rows() -> None:
+    """인덱스는 행 튜플을 미리 만들지 않는다.
+
+    75k 행 × 66컬럼을 `to_pylist()` 로 미리 펼치면 그 변환이 GIL 을 잡아 읽기 경로가
+    통째로 직렬화된다(2026-08-07 실측: 파케이 읽기 4.1ms vs 변환 857ms, 8스레드 0.99x).
+    행은 승자가 정해진 뒤 `_row_at` 이 하나만 꺼낸다.
+    """
+    fields = set(snapshots._SnapshotQueryIndex.__dataclass_fields__)
+    assert "rows" not in fields
+    assert "table" in fields
 
 
 def test_query_time_bounds(tmp_path: Path) -> None:
