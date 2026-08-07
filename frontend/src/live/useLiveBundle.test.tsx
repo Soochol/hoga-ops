@@ -695,6 +695,63 @@ describe('useLiveBundle', () => {
     expect(result.current.chartBundle).toBeNull();
   });
 
+  // 호가 지표 **배선** 테스트 — 술어 단위 테스트로는 못 잡는 결함을 잡는다.
+  //
+  // 원래 사고: 캔들 경로는 venue 별 확장창(08:00–20:00)을 받는데 호가 빌더만
+  // `defaultKrxSession`(09:00–15:30)을 받아서, NXT/통합 선택 시 애프터마켓
+  // (15:40–20:00)과 프리마켓(08:00–08:50)의 총잔량·호가비·히트맵·증감이 통째로
+  // 0-센티넬이 됐다. 10호가 창과 pane 레전드에는 값이 찍히는데 **라인만** 사라져서
+  // "데이터가 안 온다"로 오진하기 쉬웠다.
+  //
+  // `bucketDepthDelta` 주석은 이미 "통합(UN) 차트에서는 세션이 20:00 까지라 NXT
+  // 시간대가 그대로 살아난다"고 약속하고 있었다 — 약속을 지키는 건 술어가 아니라
+  // **호출부의 인자**다. 그래서 단언 대상은 빌더 출력이지 술어가 아니다.
+  const nxtSessionSnapshots = () => {
+    const open0900 = 1779840000000;                   // 20260527 09:00 KST
+    return {
+      preMarket: open0900 - 30 * 60_000,              // 08:30 — NXT 프리마켓
+      regular: open0900 + 60_000,                     // 09:01 — 정규장(대조군)
+      afterMarket: open0900 + 6.5 * 3600_000 + 30 * 60_000, // 16:00 — NXT 애프터마켓
+    };
+  };
+  const bucketsWithQty = (points: readonly { t: number; bid_total: number }[]) =>
+    points.filter((p) => p.bid_total > 0).map((p) => p.t);
+
+  it('venue=NXT 는 확장창 경계를 호가 빌더까지 배선한다 — 프리·애프터마켓이 산다', () => {
+    const { preMarket, regular, afterMarket } = nxtSessionSnapshots();
+    const live: LiveSeriesData = {
+      ...liveFixture,
+      ob: [
+        { t_ms: preMarket, total_ask_qty: 10, total_bid_qty: 11, kind: 'ob', venue: 'NXT' },
+        { t_ms: regular, total_ask_qty: 20, total_bid_qty: 21, kind: 'ob', venue: 'NXT' },
+        { t_ms: afterMarket, total_ask_qty: 30, total_bid_qty: 31, kind: 'ob', venue: 'NXT' },
+      ],
+    };
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', live, { venue: 'NXT' }),
+      { wrapper: createWrapper() },
+    );
+    expect(bucketsWithQty(result.current.bundle!.quote_ratio.points))
+      .toEqual([preMarket, regular, afterMarket]);
+  });
+
+  it('venue=KRX 는 정규장 경계 그대로 — 확장 구간을 배제한다(회귀 방어)', () => {
+    const { preMarket, regular, afterMarket } = nxtSessionSnapshots();
+    const live: LiveSeriesData = {
+      ...liveFixture,
+      ob: [
+        { t_ms: preMarket, total_ask_qty: 10, total_bid_qty: 11, kind: 'ob' },
+        { t_ms: regular, total_ask_qty: 20, total_bid_qty: 21, kind: 'ob' },
+        { t_ms: afterMarket, total_ask_qty: 30, total_bid_qty: 31, kind: 'ob' },
+      ],
+    };
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', live),
+      { wrapper: createWrapper() },
+    );
+    expect(bucketsWithQty(result.current.bundle!.quote_ratio.points)).toEqual([regular]);
+  });
+
   // #1133 — 결손 사유는 **호가 응답에만** 있다. hogaBundle 은 캔들 경로(chartBundle)를
   // 스프레드해 만들어지므로, 명시적으로 옮기지 않으면 호가 pane 이 비는 바로 그
   // 상황에서 이유가 사라진다. 이 배선이 끊기면 화면은 아무 설명 없는 빈 pane 이 된다.

@@ -174,7 +174,14 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
   // bound for that search (load-bearing — 2026-06-03 structural-boundary spec).
   // Known limitation: close_ms falls back to 15:30 on half-days, so the today-live
   // half-day tail stays uncleaned; backend (past dates) uses the exact per-date close.
-  const sseBuckets = bucketHogaSeries(sseOb, sseTrade, bucketMs, todaySession.close_ms);
+  //
+  // ⚠ `todaySession` 은 **선택 venue 의 세션**이어야 한다(호출부 계약). KRX 면
+  // 09:00–15:30, NXT/통합이면 08:00–20:00. 종전엔 여기로 KRX 정규장이 고정 유입돼
+  // NXT 프리·애프터마켓 호가가 전부 0-센티넬이 됐다 — 캔들 축은 확장창인데 호가만
+  // 정규장이라, 화면상 "캔들은 있고 라인만 없는" 상태로 나타났다.
+  const sseBuckets = bucketHogaSeries(
+    sseOb, sseTrade, bucketMs, todaySession.close_ms, todaySession.open_ms,
+  );
   const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
   const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > pastMaxFsT);
 
@@ -182,10 +189,10 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
     quote_ratio: { bucket_ms: bucketMs, points: [...validPastQR, ...incrementalQR] },
     fill_strength: { bucket_ms: bucketMs, points: [...validPastFS, ...incrementalFS] },
     depth_heatmap_today: depthHeatmapEnabled
-      ? bucketDepthHeatmap(sseOb, bucketMs, todaySession.close_ms)
+      ? bucketDepthHeatmap(sseOb, bucketMs, todaySession.close_ms, todaySession.open_ms)
       : [],
     depth_delta_today: depthDeltaEnabled
-      ? bucketDepthDelta(sseOb, bucketMs, todaySession.close_ms)
+      ? bucketDepthDelta(sseOb, bucketMs, todaySession.close_ms, todaySession.open_ms)
       : [],
   };
 }
@@ -202,6 +209,7 @@ export function bucketDepthHeatmap(
   ob: readonly ObSnapshot[],
   bucketMs: number,
   sessionCloseMs: number = Number.POSITIVE_INFINITY,
+  sessionOpenMs: number = Number.NEGATIVE_INFINITY,
 ): DepthHeatmapPoint[] {
   const obSorted = [...ob].sort((a, b) => a.t_ms - b.t_ms);
   let lastContinuousMs = Number.NEGATIVE_INFINITY;
@@ -217,10 +225,10 @@ export function bucketDepthHeatmap(
   const order: number[] = [];
   for (const s of obSorted) {
     // ADR-0062 v2/v3 (동시호가 배제 통일): 시간 상한 + 공용 술어 isIndicatorEligibleBook
-    // (구조 + 개장 09:00 하한) — 장중 VI 붕괴책과 개장 동시호가를 depth 대표에서도 배제
+    // (구조 + 개장 하한) — 장중 VI 붕괴책과 개장 동시호가를 depth 대표에서도 배제
     // (quote 경로·incremental builder·매도벽과 동일 규칙, parity 유지). 완전-동시호가
     // 버킷은 통째로 드롭 = 빈 컬럼(백엔드 WHERE 사전 필터 드롭과 파리티).
-    if (s.t_ms > lastContinuousMs || !isIndicatorEligibleBook(s)) continue;
+    if (s.t_ms > lastContinuousMs || !isIndicatorEligibleBook(s, sessionOpenMs)) continue;
     if (!s.asks || !s.bids) continue;
     const t = bucketStartMs(s.t_ms, bucketMs);
     const curTotal = s.total_bid_qty + s.total_ask_qty;
@@ -257,6 +265,7 @@ export function bucketDepthDelta(
   ob: readonly ObSnapshot[],
   bucketMs: number,
   sessionCloseMs: number = Number.POSITIVE_INFINITY,
+  sessionOpenMs: number = Number.NEGATIVE_INFINITY,
 ): DepthDeltaPoint[] {
   const obSorted = [...ob].sort((a, b) => a.t_ms - b.t_ms);
   let lastContinuousMs = Number.NEGATIVE_INFINITY;
@@ -270,13 +279,16 @@ export function bucketDepthDelta(
   // (증감은 과거일 소스가 없어 이 버퍼가 유일한 입력이라 출력 전체가 유령이 된다).
   // 세션 상한으로 닫으면 KRX 차트에서는 조용히 비고(레전드 행도 hasDepthDelta 로 사라짐),
   // 통합(UN) 차트에서는 세션이 20:00 까지라 NXT 시간대가 그대로 살아난다.
+  // ⚠ 이 문장은 오래도록 **약속만** 이었다 — 호출부가 KRX 정규장을 고정으로 넘겨서
+  // UN/NXT 에서도 상한이 15:30 이었다. 지금은 `todaySession` 이 선택 venue 를 타므로
+  // 실제로 성립한다. 경계를 다시 손보면 이 문장이 참인지 **실측으로** 확인할 것.
   if (lastContinuousMs === Number.NEGATIVE_INFINITY) lastContinuousMs = sessionCloseMs;
 
   const byBucket = new Map<number, { ask: DeltaAcc; bid: DeltaAcc; askTick: number; bidTick: number }>();
   const order: number[] = [];
   let prev: ObSnapshot | null = null;
   for (const s of obSorted) {
-    if (s.t_ms > lastContinuousMs || !isIndicatorEligibleBook(s) || !s.asks || !s.bids) {
+    if (s.t_ms > lastContinuousMs || !isIndicatorEligibleBook(s, sessionOpenMs) || !s.asks || !s.bids) {
       prev = null;
       continue;
     }
@@ -328,6 +340,9 @@ function bucketStartMs(tMs: number, bucketMs: number): number {
 class IncrementalHogaBucketer {
   private bucketMs = 0;
   private sessionCloseMs = Number.POSITIVE_INFINITY;
+  // 개장 하한. sessionCloseMs 와 **같은 등급의 리셋 트리거**다 — venue 를 바꾸면
+  // (KRX 09:00 ↔ NXT 08:00) 유효 스냅샷 집합 자체가 달라지므로 누적 상태를 버려야 한다.
+  private sessionOpenMs = Number.NEGATIVE_INFINITY;
   // 계산 여부 플래그. bucketMs·sessionCloseMs 와 **같은 등급의 리셋 트리거**다 —
   // 꺼져 있던 동안 그 지표의 버킷을 안 쌓았으므로, 켜지는 순간 누적 상태가 반쪽이라
   // 전체 재빌드로 다시 채워야 한다.
@@ -373,6 +388,7 @@ class IncrementalHogaBucketer {
     trade: readonly TradeSnapshot[],
     bucketMs: number,
     sessionCloseMs: number,
+    sessionOpenMs: number,
     depthHeatmapEnabled: boolean,
     depthDeltaEnabled: boolean,
   ): {
@@ -385,7 +401,7 @@ class IncrementalHogaBucketer {
     // 배열만" 보고 오라클과 같은 답을 내므로 정합이 구조적으로 보장된다 — 빠른
     // 경로가 감당 못 하는 입력에서 **틀린 값** 대신 **느린 값**이 나오게 하는 장치다.
     const rebuild = () => {
-      this.reset(bucketMs, sessionCloseMs, depthHeatmapEnabled, depthDeltaEnabled);
+      this.reset(bucketMs, sessionCloseMs, sessionOpenMs, depthHeatmapEnabled, depthDeltaEnabled);
       const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
       const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
       this.appendOb(obSorted);
@@ -397,6 +413,7 @@ class IncrementalHogaBucketer {
     if (
       this.bucketMs !== bucketMs ||
       this.sessionCloseMs !== sessionCloseMs ||
+      this.sessionOpenMs !== sessionOpenMs ||
       this.depthHeatmapEnabled !== depthHeatmapEnabled ||
       this.depthDeltaEnabled !== depthDeltaEnabled
     ) {
@@ -540,11 +557,13 @@ class IncrementalHogaBucketer {
   private reset(
     bucketMs: number,
     sessionCloseMs: number,
+    sessionOpenMs: number,
     depthHeatmapEnabled: boolean,
     depthDeltaEnabled: boolean,
   ) {
     this.bucketMs = bucketMs;
     this.sessionCloseMs = sessionCloseMs;
+    this.sessionOpenMs = sessionOpenMs;
     this.depthHeatmapEnabled = depthHeatmapEnabled;
     this.depthDeltaEnabled = depthDeltaEnabled;
     this.obLength = 0;
@@ -630,17 +649,18 @@ class IncrementalHogaBucketer {
     for (const s of obs) {
       const t = bucketStartMs(s.t_ms, this.bucketMs);
       // ADR-0062 v2/v3 (동시호가 배제 통일): bucketHogaSeries와 동일하게 시간 상한 +
-      // 공용 술어 isIndicatorEligibleBook(구조 + 개장 09:00 하한)을 요구해 장중 VI
+      // 공용 술어 isIndicatorEligibleBook(구조 + 개장 하한)을 요구해 장중 VI
       // 붕괴책과 개장 동시호가를 대표선정에서 배제한다(parity 계약 유지). 배제 버킷은
       // 아래 else의 0-센티넬로 방출. depth 래칫은 이 게이트 안쪽이라 개장전 자동 드롭.
       if (this.depthDeltaEnabled) {
-        const deltaEligible = s.t_ms <= deltaThreshold && isIndicatorEligibleBook(s) && !!s.asks && !!s.bids;
+        const deltaEligible = s.t_ms <= deltaThreshold
+          && isIndicatorEligibleBook(s, this.sessionOpenMs) && !!s.asks && !!s.bids;
         // 증감 체인 차단 — bucketDepthDelta 의 `prev = null; continue;` 와 **같은 조건**을
         // 한 곳에 모은다. 배제 구간(동시호가·VI·개장전)이나 book 없는 totals-only 틱을
         // 가로지르는 diff 는 관측되지 않은 구간의 변화를 한 버킷에 몰아넣기 때문이다.
         if (!deltaEligible) this.prevDeltaBook = null;
       }
-      if (s.t_ms <= threshold && isIndicatorEligibleBook(s)) {
+      if (s.t_ms <= threshold && isIndicatorEligibleBook(s, this.sessionOpenMs)) {
         const prev = this.quoteByBucket.get(t);
         const bid_max = Math.max(prev?.bid_max ?? 0, s.total_bid_qty);
         const ask_max = Math.max(prev?.ask_max ?? 0, s.total_ask_qty);
@@ -799,7 +819,7 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
     }
 
     const sseBuckets = bucketer.update(
-      sseOb, sseTrade, bucketMs, todaySession.close_ms,
+      sseOb, sseTrade, bucketMs, todaySession.close_ms, todaySession.open_ms,
       depthHeatmapEnabled, depthDeltaEnabled,
     );
     const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > cachedPastMaxQrT);

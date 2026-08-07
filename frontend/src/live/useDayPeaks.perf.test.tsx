@@ -3,7 +3,9 @@ import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import * as bucketHogaSeries from './bucketHogaSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 
-const base = Date.UTC(2026, 5, 23, 0, 0, 0); // 09:00 KST → isAfterRegularOpen 통과
+const base = Date.UTC(2026, 5, 23, 0, 0, 0); // 09:00 KST
+// 개장 하한 — 필수 인자화 경위는 computeDayAskPeak.test 의 같은 상수 참조.
+const OPEN_MS = base;
 
 function mkOb(i: number): ObSnapshot {
   return {
@@ -34,12 +36,12 @@ describe('live day peak performance (incremental, deterministic)', () => {
     const src = new IncrementalPeakWallSource('ask');
     const ob: ObSnapshot[] = Array.from({ length: 2000 }, (_unused, i) => mkOb(i));
 
-    src.update(ob, [], []);
+    src.update(ob, [], OPEN_MS, []);
     const afterFull = spy.mock.calls.length;
     expect(afterFull).toBe(2000); // 첫 소비 = 전체 1회 패스(스냅샷당 1회)
 
     // prefix 참조가 그대로인 append-only 갱신(+1 스냅샷).
-    src.update([...ob, mkOb(2000)], [], []);
+    src.update([...ob, mkOb(2000)], [], OPEN_MS, []);
     expect(spy.mock.calls.length - afterFull).toBe(1); // 델타 1개만 소비
 
     spy.mockRestore();
@@ -51,13 +53,13 @@ describe('live day peak performance (incremental, deterministic)', () => {
     const spy = vi.spyOn(bucketHogaSeries, 'isIndicatorEligibleBook');
     const src = new IncrementalPeakWallSource('bid');
     const ob: ObSnapshot[] = Array.from({ length: 500 }, (_unused, i) => mkOb(i));
-    src.update(ob, [], []);
+    src.update(ob, [], OPEN_MS, []);
     const afterFirst = spy.mock.calls.length;
     expect(afterFirst).toBe(500);
 
     // 새 배열(참조 불일치) → reset 후 전체 재소비.
     const replaced: ObSnapshot[] = Array.from({ length: 500 }, (_unused, i) => mkOb(i));
-    src.update(replaced, [], []);
+    src.update(replaced, [], OPEN_MS, []);
     expect(spy.mock.calls.length - afterFirst).toBe(500);
 
     spy.mockRestore();
@@ -72,19 +74,19 @@ describe('live day peak performance (incremental, deterministic)', () => {
     const ob: ObSnapshot[] = Array.from({ length: 1000 }, (_unused, i) => mkOb(i));
     const cutoff = base + 500 * 1000; // 중간 지점(팬 백)
 
-    src.updateAsOf(ob, [], [], cutoff);
+    src.updateAsOf(ob, [], [], cutoff, OPEN_MS);
     const afterFull = spy.mock.calls.length;
     expect(afterFull).toBe(1000); // 첫 소비 = 전체 1회
 
     // cutoff 밖 틱 append(스크롤백 실사용) — 델타 1개만 소비, cutoff 는 재스캔 유발 안 함.
     // 라이브 버퍼는 append-only 로 참조가 안정하므로 append 배열을 1회 만들어 재사용한다.
     const obPlus = [...ob, mkOb(1000)];
-    src.updateAsOf(obPlus, [], [], cutoff);
+    src.updateAsOf(obPlus, [], [], cutoff, OPEN_MS);
     expect(spy.mock.calls.length - afterFull).toBe(1);
 
     // cutoff 를 옮겨도(팬) 재소비 없음 — classify 만 다시 돌 뿐 consumeOb 는 호출 안 됨.
     const afterAppend = spy.mock.calls.length;
-    src.updateAsOf(obPlus, [], [], base + 200 * 1000);
+    src.updateAsOf(obPlus, [], [], base + 200 * 1000, OPEN_MS);
     expect(spy.mock.calls.length - afterAppend).toBe(0);
 
     spy.mockRestore();
@@ -97,13 +99,34 @@ describe('live day peak performance (incremental, deterministic)', () => {
 
     const incremental = new IncrementalPeakWallSource('ask');
     for (let n = 1; n <= ob.length; n += 50) {
-      incremental.update(ob.slice(0, n), trade.slice(0, n), []);
+      incremental.update(ob.slice(0, n), trade.slice(0, n), OPEN_MS, []);
     }
-    const incrementalResult = incremental.update(ob, trade, []);
+    const incrementalResult = incremental.update(ob, trade, OPEN_MS, []);
 
     const cold = new IncrementalPeakWallSource('ask');
-    const coldResult = cold.update(ob, trade, []);
+    const coldResult = cold.update(ob, trade, OPEN_MS, []);
 
     expect(incrementalResult).toEqual(coldResult);
+  });
+
+  // venue 전환(KRX 09:00 ↔ NXT 08:00). 인스턴스는 훅 수명 내내 useRef 로 고정되므로
+  // 전환을 인스턴스 교체로 표현할 수 없다 — accumulate 가 하한 변경을 보고 누적을 버려야
+  // 한다. 안 버리면 이전 하한으로 걸러진 벽 집합이 그대로 남는다.
+  it('개장 하한이 바뀌면 누적을 버리고 콜드 소스와 같아진다 (venue 전환)', () => {
+    const preOpenMs = base - 30 * 60_000; // 이 하한이면 아래 스냅샷이 전부 유효
+    const ob: ObSnapshot[] = Array.from({ length: 40 }, (_unused, i) => mkOb(i));
+    const spy = vi.spyOn(bucketHogaSeries, 'isIndicatorEligibleBook');
+
+    const src = new IncrementalPeakWallSource('ask');
+    src.update(ob, [], OPEN_MS, []);
+    const afterWarm = spy.mock.calls.length;
+
+    // 하한만 바뀐 같은 입력 — 델타가 없어도 전량 재소비되어야 한다.
+    const switched = src.update(ob, [], preOpenMs, []);
+    expect(spy.mock.calls.length - afterWarm).toBe(ob.length);
+    spy.mockRestore();
+
+    const cold = new IncrementalPeakWallSource('ask');
+    expect(switched).toEqual(cold.update(ob, [], preOpenMs, []));
   });
 });

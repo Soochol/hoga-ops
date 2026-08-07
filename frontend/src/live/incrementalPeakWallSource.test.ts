@@ -22,6 +22,8 @@ import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 
 const TODAY = '20260613';
 const atKst = (hh: number, mm = 0, ss = 0) => Date.UTC(2026, 5, 13, hh - 9, mm, ss);
+// 개장 하한(09:00 KST). 필수 인자가 된 이유는 computeDayAskPeak.test 의 같은 상수 주석 참조.
+const OPEN_MS = atKst(9);
 
 // isContinuousBook(딥 레벨 qty>0)과 isAfterRegularOpen(09:00↑)을 통과하는 스냅샷.
 function ob(t_ms: number, asks: Array<{ price: number; qty: number }>): ObSnapshot {
@@ -98,9 +100,9 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
       const obSlice = obs.slice(0, cut);
       const tradeSlice = trades.slice(0, Math.min(cut, trades.length));
       const incremental = deriveDayAskPeaksIncremental(
-        source, obSlice, tradeSlice, ASK_SEEDS, TODAY, BACKEND,
+        source, obSlice, tradeSlice, ASK_SEEDS, TODAY, OPEN_MS, BACKEND,
       );
-      const batch = deriveDayAskPeaks(obSlice, tradeSlice, ASK_SEEDS, TODAY, '005930', BACKEND);
+      const batch = deriveDayAskPeaks(obSlice, tradeSlice, ASK_SEEDS, TODAY, OPEN_MS, '005930', BACKEND);
       expect(incremental).toEqual(batch);
     }
   });
@@ -112,9 +114,9 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
       const obSlice = obs.slice(0, cut);
       const tradeSlice = trades.slice(0, Math.min(cut, trades.length));
       const incremental = deriveDayBidPeaksIncremental(
-        source, obSlice, tradeSlice, BID_SEEDS, TODAY, null,
+        source, obSlice, tradeSlice, BID_SEEDS, TODAY, OPEN_MS, null,
       );
-      const batch = deriveDayBidPeaks(obSlice, tradeSlice, BID_SEEDS, TODAY, '005930', null);
+      const batch = deriveDayBidPeaks(obSlice, tradeSlice, BID_SEEDS, TODAY, OPEN_MS, '005930', null);
       expect(incremental).toEqual(batch);
     }
   });
@@ -124,8 +126,8 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
     const source = new IncrementalPeakWallSource('ask');
     for (const cut of [0, 80, 200]) {
       const obSlice = obs.slice(0, cut);
-      const incremental = deriveTodayAllPriceAskPeakIncremental(source, obSlice, ASK_SEEDS, TODAY, BACKEND);
-      const batch = deriveTodayAllPriceAskPeak(obSlice, ASK_SEEDS, TODAY, '005930', BACKEND);
+      const incremental = deriveTodayAllPriceAskPeakIncremental(source, obSlice, ASK_SEEDS, TODAY, OPEN_MS, BACKEND);
+      const batch = deriveTodayAllPriceAskPeak(obSlice, ASK_SEEDS, TODAY, OPEN_MS, '005930', BACKEND);
       expect(incremental).toEqual(batch);
     }
   });
@@ -135,8 +137,8 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
     const source = new IncrementalPeakWallSource('bid');
     for (const cut of [0, 80, 200]) {
       const obSlice = obs.slice(0, cut);
-      const incremental = deriveTodayAllPriceBidPeakIncremental(source, obSlice, BID_SEEDS, TODAY, null);
-      const batch = deriveTodayAllPriceBidPeak(obSlice, BID_SEEDS, TODAY, '005930', null);
+      const incremental = deriveTodayAllPriceBidPeakIncremental(source, obSlice, BID_SEEDS, TODAY, OPEN_MS, null);
+      const batch = deriveTodayAllPriceBidPeak(obSlice, BID_SEEDS, TODAY, OPEN_MS, '005930', null);
       expect(incremental).toEqual(batch);
     }
   });
@@ -147,8 +149,8 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
     const obs = [ob(T, [{ price: 26000, qty: 50000 }])];
     const trades = [tradeSnap(T, [{ t_ms: T, side: 1, price: 26000, qty: 100 }])];
     const source = new IncrementalPeakWallSource('ask');
-    const incremental = deriveDayAskPeaksIncremental(source, obs, trades, ASK_SEEDS, TODAY, null);
-    const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, '005930', null);
+    const incremental = deriveDayAskPeaksIncremental(source, obs, trades, ASK_SEEDS, TODAY, OPEN_MS, null);
+    const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, OPEN_MS, '005930', null);
     expect(incremental).toEqual(batch);
     // 경계가 실제로 물리는지(판별성) 보증: T 시각 체결이 벽을 traded로 만들어 오늘 벽이 출력에 있어야 함.
     const today = incremental.find((p) => p.date === TODAY);
@@ -173,8 +175,8 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
       tradeSnap(T1, [{ t_ms: T1, side: 1, price: 30000, qty: 100 }]),
     ];
     const source = new IncrementalPeakWallSource('ask');
-    const incremental = deriveDayAskPeaksIncremental(source, obs, trades, ASK_SEEDS, TODAY, null);
-    const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, '005930', null);
+    const incremental = deriveDayAskPeaksIncremental(source, obs, trades, ASK_SEEDS, TODAY, OPEN_MS, null);
+    const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, OPEN_MS, '005930', null);
     expect(incremental).toEqual(batch);
     const today = incremental.find((p) => p.date === TODAY);
     expect(today?.qty).toBe(40000); // 올바른 페어링이면 벽 B
@@ -183,8 +185,8 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
   it('backend가 null이어도(seed 폴백 경로) 동일하다', () => {
     const { obs } = genStream(5, 100);
     const source = new IncrementalPeakWallSource('ask');
-    const incremental = deriveTodayAllPriceAskPeakIncremental(source, obs, ASK_SEEDS, TODAY, null);
-    const batch = deriveTodayAllPriceAskPeak(obs, ASK_SEEDS, TODAY, '005930', null);
+    const incremental = deriveTodayAllPriceAskPeakIncremental(source, obs, ASK_SEEDS, TODAY, OPEN_MS, null);
+    const batch = deriveTodayAllPriceAskPeak(obs, ASK_SEEDS, TODAY, OPEN_MS, '005930', null);
     expect(incremental).toEqual(batch);
   });
 
@@ -192,20 +194,20 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
     const a = genStream(11, 150);
     const b = genStream(22, 90); // 완전히 다른 스트림 = 종목 전환 모사
     const source = new IncrementalPeakWallSource('ask');
-    deriveDayAskPeaksIncremental(source, a.obs, a.trades, ASK_SEEDS, TODAY, BACKEND);
-    const incremental = deriveDayAskPeaksIncremental(source, b.obs, b.trades, ASK_SEEDS, TODAY, BACKEND);
-    const batch = deriveDayAskPeaks(b.obs, b.trades, ASK_SEEDS, TODAY, '005930', BACKEND);
+    deriveDayAskPeaksIncremental(source, a.obs, a.trades, ASK_SEEDS, TODAY, OPEN_MS, BACKEND);
+    const incremental = deriveDayAskPeaksIncremental(source, b.obs, b.trades, ASK_SEEDS, TODAY, OPEN_MS, BACKEND);
+    const batch = deriveDayAskPeaks(b.obs, b.trades, ASK_SEEDS, TODAY, OPEN_MS, '005930', BACKEND);
     expect(incremental).toEqual(batch);
   });
 
   it('배열이 줄어들어도(버퍼 리셋) 리셋 폴백으로 배치와 동일하다', () => {
     const { obs, trades } = genStream(33, 200);
     const source = new IncrementalPeakWallSource('ask');
-    deriveDayAskPeaksIncremental(source, obs, trades, ASK_SEEDS, TODAY, BACKEND);
+    deriveDayAskPeaksIncremental(source, obs, trades, ASK_SEEDS, TODAY, OPEN_MS, BACKEND);
     const shrunkOb = obs.slice(0, 50);
     const shrunkTrade = trades.slice(0, 20);
-    const incremental = deriveDayAskPeaksIncremental(source, shrunkOb, shrunkTrade, ASK_SEEDS, TODAY, BACKEND);
-    const batch = deriveDayAskPeaks(shrunkOb, shrunkTrade, ASK_SEEDS, TODAY, '005930', BACKEND);
+    const incremental = deriveDayAskPeaksIncremental(source, shrunkOb, shrunkTrade, ASK_SEEDS, TODAY, OPEN_MS, BACKEND);
+    const batch = deriveDayAskPeaks(shrunkOb, shrunkTrade, ASK_SEEDS, TODAY, OPEN_MS, '005930', BACKEND);
     expect(incremental).toEqual(batch);
   });
 });
@@ -235,10 +237,10 @@ describe('IncrementalPeakWallSource — cutoff(as-of) 증분 = 배치 cutoff (AD
     const cuts = cutoffCandidates(obs);
     for (const cutoffMs of [...cuts, ...cuts.slice().reverse()]) {
       const incremental = deriveDayAskPeaksIncrementalAsOf(
-        source, obs, trades, ASK_SEEDS, TODAY, BACKEND, cutoffMs,
+        source, obs, trades, ASK_SEEDS, TODAY, OPEN_MS, BACKEND, cutoffMs,
       );
       const batch = deriveDayAskPeaks(
-        obs, trades, ASK_SEEDS, TODAY, '005930', BACKEND, [], { date: TODAY, tMs: cutoffMs },
+        obs, trades, ASK_SEEDS, TODAY, OPEN_MS, '005930', BACKEND, [], { date: TODAY, tMs: cutoffMs },
       );
       expect(incremental).toEqual(batch);
     }
@@ -250,10 +252,10 @@ describe('IncrementalPeakWallSource — cutoff(as-of) 증분 = 배치 cutoff (AD
     const cuts = cutoffCandidates(obs);
     for (const cutoffMs of [...cuts, ...cuts.slice().reverse()]) {
       const incremental = deriveDayBidPeaksIncrementalAsOf(
-        source, obs, trades, BID_SEEDS, TODAY, null, cutoffMs,
+        source, obs, trades, BID_SEEDS, TODAY, OPEN_MS, null, cutoffMs,
       );
       const batch = deriveDayBidPeaks(
-        obs, trades, BID_SEEDS, TODAY, '005930', null, [], { date: TODAY, tMs: cutoffMs },
+        obs, trades, BID_SEEDS, TODAY, OPEN_MS, '005930', null, [], { date: TODAY, tMs: cutoffMs },
       );
       expect(incremental).toEqual(batch);
     }
@@ -264,10 +266,10 @@ describe('IncrementalPeakWallSource — cutoff(as-of) 증분 = 배치 cutoff (AD
     const askSource = new IncrementalPeakWallSource('ask');
     const bidSource = new IncrementalPeakWallSource('bid');
     for (const cutoffMs of cutoffCandidates(obs)) {
-      expect(deriveTodayAllPriceAskPeakIncrementalAsOf(askSource, obs, ASK_SEEDS, TODAY, BACKEND, cutoffMs))
-        .toEqual(deriveTodayAllPriceAskPeak(obs, ASK_SEEDS, TODAY, '005930', BACKEND, { date: TODAY, tMs: cutoffMs }));
-      expect(deriveTodayAllPriceBidPeakIncrementalAsOf(bidSource, obs, BID_SEEDS, TODAY, null, cutoffMs))
-        .toEqual(deriveTodayAllPriceBidPeak(obs, BID_SEEDS, TODAY, '005930', null, { date: TODAY, tMs: cutoffMs }));
+      expect(deriveTodayAllPriceAskPeakIncrementalAsOf(askSource, obs, ASK_SEEDS, TODAY, OPEN_MS, BACKEND, cutoffMs))
+        .toEqual(deriveTodayAllPriceAskPeak(obs, ASK_SEEDS, TODAY, OPEN_MS, '005930', BACKEND, { date: TODAY, tMs: cutoffMs }));
+      expect(deriveTodayAllPriceBidPeakIncrementalAsOf(bidSource, obs, BID_SEEDS, TODAY, OPEN_MS, null, cutoffMs))
+        .toEqual(deriveTodayAllPriceBidPeak(obs, BID_SEEDS, TODAY, OPEN_MS, '005930', null, { date: TODAY, tMs: cutoffMs }));
     }
   });
 
@@ -280,10 +282,10 @@ describe('IncrementalPeakWallSource — cutoff(as-of) 증분 = 배치 cutoff (AD
       const tradeSlice = trades.slice(0, Math.min(n, trades.length));
       const cutoffMs = obSlice[obSlice.length - 1].t_ms; // live edge
       const incremental = deriveDayAskPeaksIncrementalAsOf(
-        source, obSlice, tradeSlice, ASK_SEEDS, TODAY, BACKEND, cutoffMs,
+        source, obSlice, tradeSlice, ASK_SEEDS, TODAY, OPEN_MS, BACKEND, cutoffMs,
       );
       const batch = deriveDayAskPeaks(
-        obSlice, tradeSlice, ASK_SEEDS, TODAY, '005930', BACKEND, [], { date: TODAY, tMs: cutoffMs },
+        obSlice, tradeSlice, ASK_SEEDS, TODAY, OPEN_MS, '005930', BACKEND, [], { date: TODAY, tMs: cutoffMs },
       );
       expect(incremental).toEqual(batch);
     }
@@ -297,8 +299,8 @@ describe('IncrementalPeakWallSource — cutoff(as-of) 증분 = 배치 cutoff (AD
     const source = new IncrementalPeakWallSource('ask');
     // cutoff 가 터치 직전 → 미체결, 터치 시각 이상 → 체결. 두 경우 모두 배치와 일치.
     for (const cutoffMs of [Twall, Ttouch - 1, Ttouch, Ttouch + 1]) {
-      const incremental = deriveDayAskPeaksIncrementalAsOf(source, obs, trades, ASK_SEEDS, TODAY, null, cutoffMs);
-      const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, '005930', null, [], { date: TODAY, tMs: cutoffMs });
+      const incremental = deriveDayAskPeaksIncrementalAsOf(source, obs, trades, ASK_SEEDS, TODAY, OPEN_MS, null, cutoffMs);
+      const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, OPEN_MS, '005930', null, [], { date: TODAY, tMs: cutoffMs });
       expect(incremental).toEqual(batch);
     }
   });

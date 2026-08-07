@@ -49,10 +49,11 @@ export function rankPeakCandidates(
 export function toWallEventsFromOrderbooks(
   orderbooks: ReadonlyArray<ObSnapshot>,
   side: 'ask' | 'bid',
+  sessionOpenMs: number,
 ): AskPeakCandidate[] {
   const bySnapshot = new Map<string, AskPeakCandidate>();
   for (const orderbook of orderbooks) {
-    if (!isIndicatorEligibleBook(orderbook)) continue;
+    if (!isIndicatorEligibleBook(orderbook, sessionOpenMs)) continue;
     const levels = side === 'ask' ? orderbook.asks : orderbook.bids;
     if (!levels) continue;
     for (const level of levels) {

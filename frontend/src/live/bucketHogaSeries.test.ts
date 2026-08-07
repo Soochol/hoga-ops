@@ -275,10 +275,13 @@ describe('bucketHogaSeries', () => {
   });
 
   it('excludes a pre-open (opening-auction) snapshot even when its book looks continuous (ADR-0062 v3)', () => {
-    // 공용 술어 isIndicatorEligibleBook의 개장(09:00 KST) 하한을 직접 검증한다.
+    // 공용 술어 isIndicatorEligibleBook의 개장 하한을 직접 검증한다.
     // 개장 전 10레벨 연속북(라이브 KIS WS 가정 — 구조 술어를 통과)이라도 시각 하한이
     // 배제해 그 버킷은 (0,0) 센티넬, 개장 후 스냅샷만 대표가 된다(백엔드
     // _book_indicator_eligible_sql의 session_open 하한과 파리티).
+    //
+    // 하한은 이제 **인자로 온다** — 09:00 은 KRX 의 값일 뿐이고, NXT/통합이면 08:00 이다.
+    // 여기서 openMs 를 명시적으로 넘기는 것이 그 계약을 그대로 드러낸다.
     const BUCKET = 60_000;
     // 1_700_007_000_000 ≈ 2023-11-15 09:10:00 KST. 09:00 KST = 그보다 600_000ms 이전.
     const openMs = 1_700_007_000_000 - 600_000;
@@ -288,7 +291,7 @@ describe('bucketHogaSeries', () => {
       cont(preOpen, 500, 400),    // 10레벨 연속북이지만 개장 전 → 배제 → (0,0)
       cont(inSession, 22, 12),    // 정규장 → 대표
     ];
-    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, inSession + 3_600_000);
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, inSession + 3_600_000, openMs);
     expect(quoteRatioPoints).toEqual([
       { t: preOpen - (preOpen % BUCKET), ask_total: 0, bid_total: 0, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0 },
       { t: inSession - (inSession % BUCKET), ask_total: 22, bid_total: 12, bid_max: 12, ask_max: 22, imb_max_bid: 12, imb_max_ask: 22 },

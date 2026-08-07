@@ -1,6 +1,5 @@
 import type { QuoteRatioPoint, FillStrengthPoint, OrderbookLevel } from '../api/types';
 import { quoteImbalance } from '../util/imbalance';
-import { isAfterRegularOpen } from '../util/tradingDay';
 import type { LiveFrameVenue } from './liveVenuePolicy';
 
 /** One live OB snapshot as it crosses the SSE seam (SR-1). The chart reads
@@ -57,12 +56,22 @@ export function isContinuousBook(s: ObSnapshot): boolean {
 
 /** 호가 파생 지표(호가비·총잔량·히트맵·매도/매수 최대벽) 공용 '유효 스냅샷' 술어 (ADR-0062 v3).
  * 백엔드 `_book_indicator_eligible_sql`의 구조+개장 하한과 글자 그대로 같은 정의:
- * 연속거래 호가창(3호가 붕괴 아님, `isContinuousBook`) AND 정규장 개장(09:00) 이후
- * (`isAfterRegularOpen`). 마감 상한(`<= sessionClose` / `lastContinuousMs`)은 백엔드
- * session_close 대응으로 각 버킷 경계에서 따로 적용한다 — 미래 틱에 의존하는 이 상한만
- * 지표별로 두고, 미래 무관한 구조+개장은 이 한 술어로 통일한다(peak 래칫도 공유). */
-export function isIndicatorEligibleBook(s: ObSnapshot): boolean {
-  return isContinuousBook(s) && isAfterRegularOpen(s.t_ms);
+ * 연속거래 호가창(3호가 붕괴 아님, `isContinuousBook`) AND `sessionOpenMs` 이후.
+ * 마감 상한(`<= sessionClose` / `lastContinuousMs`)은 백엔드 session_close 대응으로 각
+ * 버킷 경계에서 따로 적용한다 — 미래 틱에 의존하는 이 상한만 지표별로 두고, 미래 무관한
+ * 구조+개장은 이 한 술어로 통일한다(peak 래칫도 공유).
+ *
+ * ⚠ **`sessionOpenMs` 에 기본값을 주지 말 것**(#1133 과 같은 함정). 종전엔 이 하한이
+ * `isAfterRegularOpen`(09:00 KST 고정)으로 함수 **안에** 박혀 있었고, 그게 정확히
+ * 이 술어를 쓰는 지표 전부를 NXT/통합의 확장 세션에서 죽이는 원인이었다 —
+ * 프리마켓(08:00–08:50)은 하한이, 애프터마켓(15:40–20:00)은 짝이 되는 close 상한이
+ * 잘랐다. 기본값을 두면 호출부가 빠뜨렸을 때 **조용히 KRX 정규장으로 되돌아가고**,
+ * 증상은 "10호가·레전드에는 값이 있는데 라인만 없음"이라 데이터 결손으로 오진된다.
+ *
+ * 백엔드 술어는 처음부터 `session_open_ms`/`session_close_ms` 를 **인자로** 받았다.
+ * 비대칭은 이쪽에 있었고, 필수 인자로 바꾼 지금이 두 정의가 실제로 같아진 상태다. */
+export function isIndicatorEligibleBook(s: ObSnapshot, sessionOpenMs: number): boolean {
+  return isContinuousBook(s) && s.t_ms >= sessionOpenMs;
 }
 
 /** Bucket label = floor(t_ms / bucketMs) * bucketMs (bucket start). Matches
@@ -72,12 +81,17 @@ export function isIndicatorEligibleBook(s: ObSnapshot): boolean {
  * FillStrength: flow — sum qty in bucket. Only side=1 (buy) and side=-1 (sell)
  * contribute. side=0 (mid, classifier fallback) and side=2 (auction) are
  * intentionally excluded — same semantics as ADR-0029's auction-window hide
- * and the replay viewer's existing FillStrength projector. */
+ * and the replay viewer's existing FillStrength projector.
+ *
+ * `sessionOpenMs`/`sessionCloseMs` 기본값은 **"경계 없음"**이지 KRX 정규장이 아니다 —
+ * 생략하면 순수 구조 술어만 남는다(백엔드가 두 바운드를 `None` 으로 두는 것과 같은 의미).
+ * /live 호출부는 항상 venue 별 실제 경계를 넘긴다. */
 export function bucketHogaSeries(
   ob: readonly ObSnapshot[],
   trade: readonly TradeSnapshot[],
   bucketMs: number,
   sessionCloseMs: number = Number.POSITIVE_INFINITY,
+  sessionOpenMs: number = Number.NEGATIVE_INFINITY,
 ): { quoteRatioPoints: QuoteRatioPoint[]; fillStrengthPoints: FillStrengthPoint[] } {
   if (bucketMs <= 0) throw new Error(`bucketMs must be positive, got ${bucketMs}`);
 
@@ -106,8 +120,8 @@ export function bucketHogaSeries(
   // boundary connector handling stay intact. Mirrors query_bucketed_ratio's
   // CASE WHEN is_pre on the past-date path.
   // ADR-0062 v2/v3 (동시호가 배제 통일): 대표선정에 시간 상한(lastContinuousMs)뿐 아니라
-  // 공용 술어 isIndicatorEligibleBook = per-snapshot isContinuousBook AND isAfterRegularOpen을
-  // 요구한다 — **장중 VI 단일가 붕괴책**(구조)과 **개장 동시호가**(v3, 09:00 하한)를 대표·
+  // 공용 술어 isIndicatorEligibleBook = per-snapshot isContinuousBook AND 개장 하한을
+  // 요구한다 — **장중 VI 단일가 붕괴책**(구조)과 **개장 동시호가**(v3)를 대표·
   // Intra-Bar Max 누적에서 배제(백엔드 _book_indicator_eligible_sql·매도벽과 동일). VI-only·
   // 개장전 버킷은 아래 else의 0-센티넬로 방출되고, 연속거래가 섞인 버킷은 연속 스냅샷이
   // 대표가 된다. asks/bids 미동반(totals-only) 스냅샷은 isContinuousBook이 true라 기존
@@ -116,7 +130,7 @@ export function bucketHogaSeries(
   const seenPre = new Set<number>();
   for (const s of obSorted) {
     const t = Math.floor(s.t_ms / bucketMs) * bucketMs;
-    if (s.t_ms <= lastContinuousMs && isIndicatorEligibleBook(s)) {
+    if (s.t_ms <= lastContinuousMs && isIndicatorEligibleBook(s, sessionOpenMs)) {
       // pre-auction: last continuous wins (close = bid_total/ask_total). Intra-Bar
       // Max fields accumulate over the SAME continuous-snapshot set (s.t_ms <=
       // lastContinuousMs) so 동시호가 is excluded identically and bid_max ≥ bid_total

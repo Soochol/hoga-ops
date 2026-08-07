@@ -17,14 +17,18 @@ type AskPriceFilter = (price: number) => boolean;
 export const FRESH_RATCHET: RatchetState = { peak: null, tradingDay: -1, lastTMs: -1 };
 
 /** seed로 시작한 단조 ratchet에 한 ObSnapshot을 폴드. 공용 술어 isIndicatorEligibleBook을
- *  통과하는 스냅샷만 — 연속거래(isContinuousBook, 마감·VI 3호가 붕괴 배제) AND 정규장 개장
- *  (isAfterRegularOpen, 09:00↑, 개장 동시호가 배제; 백엔드 _book_indicator_eligible_sql과 동일).
+ *  통과하는 스냅샷만 — 연속거래(isContinuousBook, 마감·VI 3호가 붕괴 배제) AND `sessionOpenMs`
+ *  이후(개장 동시호가 배제; 백엔드 _book_indicator_eligible_sql과 동일).
  *  거래일 경계에서 리셋·재시드, 동률 비교체(먼저 도달 유지), 이미 본 tMs는 멱등.
- *  ob.asks가 없으면(totals-only) 후보는 seed뿐. */
+ *  ob.asks가 없으면(totals-only) 후보는 seed뿐.
+ *
+ *  `sessionOpenMs` 는 **선택 venue 의 개장**이다(KRX 09:00 / NXT·통합 08:00). 종전엔 09:00
+ *  고정이라 NXT 프리마켓 최대벽이 통째로 배제됐다 — 총잔량과 같은 원인이었다. */
 export function foldAskPeak(
   prev: RatchetState,
   seed: DayPeak | null,
   ob: ObSnapshot,
+  sessionOpenMs: number,
   allowPrice?: AskPriceFilter,
 ): RatchetState {
   const day = tradingDayOf(ob.t_ms);
@@ -35,7 +39,7 @@ export function foldAskPeak(
   }
   if (ob.t_ms <= state.lastTMs) return state; // 멱등(증분)
   let best = state.peak;
-  if (isIndicatorEligibleBook(ob) && ob.asks) {
+  if (isIndicatorEligibleBook(ob, sessionOpenMs) && ob.asks) {
     for (const lv of ob.asks) {
       if (allowPrice && !allowPrice(lv.price)) continue;
       if (lv.qty > 0 && (best === null || lv.qty > best.qty)) {
@@ -55,10 +59,11 @@ export function reduceDayAskPeak(
   prev: RatchetState,
   seed: DayPeak | null,
   obs: ReadonlyArray<ObSnapshot>,
+  sessionOpenMs: number,
   allowPrice?: AskPriceFilter,
 ): RatchetState {
   let s = prev;
-  for (const ob of obs) s = foldAskPeak(s, seed, ob, allowPrice);
+  for (const ob of obs) s = foldAskPeak(s, seed, ob, sessionOpenMs, allowPrice);
   if (seed && (s.peak === null || seed.qty > s.peak.qty)) {
     s = { ...s, peak: seed };
   }

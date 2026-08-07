@@ -722,8 +722,15 @@ export function useLiveBundle(
         : { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) },
     [live.initial, todayKstYyyymmdd],
   );
-  // Chart session follows the selected venue for minute candles. HOGA/WS
-  // side remains KRX-only, so buildHogaSeries keeps the default KRX bounds.
+  // Chart session follows the selected venue for minute candles — **호가 지표도
+  // 같은 세션을 쓴다**(아래 hogaSeries).
+  //
+  // 종전 주석은 "HOGA/WS side remains KRX-only, so buildHogaSeries keeps the default
+  // KRX bounds" 였다. 그 전제는 venue 축이 호가·WS 로 확장되면서 죽었는데 결정만 남아,
+  // NXT/통합에서 총잔량·호가비·히트맵·증감이 정규장 밖(프리 08:00–08:50 · 애프터
+  // 15:40–20:00)에서 통째로 0-센티넬이 됐다. 캔들 축은 확장창이라 **캔들만 있고 라인은
+  // 없는** 화면이 나왔고, 10호가 창과 pane 레전드에는 값이 찍혀서 데이터 결손으로
+  // 오진하기 쉬웠다.
   //
   // 예외: 우회 ON(kis_rest_bypass) 분봉은 디스크(hogaplay/range) 소스라 KRX 전용
   // (ADR-0003 "Hogaplay is a KRX-only product" · ADR-0078 venue=KIS 실시간 전용).
@@ -845,7 +852,10 @@ export function useLiveBundle(
   const hogaSeries = useMemo<HogaSeries>(
     () =>
       hogaSeriesBuilderRef.current!({
-        todaySession: defaultKrxSession,
+        // 캔들과 **같은** 세션을 쓴다 — 경계를 여기서 다시 조립하지 않는다(진실 소스 하나).
+        // `todayChartSession` 이 venue 분기(확장창 08:00–20:00)와 우회 ON 예외(KRX 정규창)를
+        // 이미 삼켰으므로, 여기서 갈라지면 축과 지표가 다시 어긋난다.
+        todaySession: todayChartSession,
         pastBundle: pastHoga.data ?? null,
         sseOb: isMinute ? live.ob : [],
         sseTrade: isMinute ? live.trade : [],
@@ -858,7 +868,7 @@ export function useLiveBundle(
         depthDeltaEnabled,
       }),
     [
-      defaultKrxSession, pastHoga.data, isMinute, live.ob, live.trade, bucketMs,
+      todayChartSession, pastHoga.data, isMinute, live.ob, live.trade, bucketMs,
       depthHeatmapEnabled, depthDeltaEnabled,
     ],
   );

@@ -30,6 +30,7 @@ import type {
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
 import type { LiveVenueOption } from '../state/liveVenue';
+import { liveVenueSessionBoundsMs } from './liveVenuePolicy';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import { instrumentLabel, type LiveInstrument } from './liveInstrument';
 import { useLiveIndexCandles, useLiveIndexInvestorNet } from '../api/liveIndices';
@@ -143,6 +144,12 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const activeLabel = activeInstrument ? instrumentLabel(activeInstrument) : activeCode;
   // 상태바 현재가용 fresh 체결가 — 타임프레임 무관(live.trade 는 code 단위 구독).
   const liveTradePrice = freshLiveTradePrice(live.trade, venue, Date.now());
+  // 최대벽 래칫의 유효-스냅샷 하한 — 캔들·호가 지표와 **같은 venue 세션**을 쓴다.
+  // 종전엔 술어 안에 09:00 이 박혀 있어 NXT 프리마켓(08:00–08:50) 벽이 배제됐다.
+  const peakSessionOpenMs = useMemo(
+    () => liveVenueSessionBoundsMs(today, venue).open_ms,
+    [today, venue],
+  );
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const askPeakSeeds = (stockChartBundle ?? stockBundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
@@ -152,6 +159,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     askPeakTrade,
     askPeakSeeds,
     today,
+    peakSessionOpenMs,
     activeCode,
     liveInitial?.ask_peak_today ?? null,
     askPeakCandles,
@@ -160,6 +168,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     askPeakOb,
     askPeakSeeds,
     today,
+    peakSessionOpenMs,
     activeCode,
     liveInitial?.ask_peak_today ?? null,
   );
@@ -172,6 +181,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     bidPeakTrade,
     bidPeakSeeds,
     today,
+    peakSessionOpenMs,
     activeCode,
     liveInitial?.bid_peak_today ?? null,
     bidPeakCandles,
@@ -180,6 +190,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     bidPeakOb,
     bidPeakSeeds,
     today,
+    peakSessionOpenMs,
     activeCode,
     liveInitial?.bid_peak_today ?? null,
   );

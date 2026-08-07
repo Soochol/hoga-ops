@@ -141,6 +141,7 @@ function mergedBidFamilies(
   ob: ReadonlyArray<ObSnapshot>,
   trade: ReadonlyArray<TradeSnapshot>,
   todayBidPeak: LiveTodayBidPeak | null,
+  sessionOpenMs: number,
   visibleTimeCutoff: VisibleTimeCutoff | null = null,
 ): PeakFamilies {
   const backend = backendPeakFamilies(todayBidPeak);
@@ -164,7 +165,7 @@ function mergedBidFamilies(
       : candidates;
   const touchTicks = toTouchTicksFromTrades(filteredTrade);
   const sourceEvents = uniqueCandidates([
-    ...toWallEventsFromOrderbooks(filteredOb, 'bid'),
+    ...toWallEventsFromOrderbooks(filteredOb, 'bid', sessionOpenMs),
     ...filterCandidates(backend.all),
     ...filterCandidates(backend.traded),
     ...filterCandidates(backend.untraded),
@@ -212,6 +213,7 @@ export function deriveDayBidPeaks(
   trade: ReadonlyArray<TradeSnapshot>,
   seeds: readonly BidPeak[],
   todayKst: string,
+  sessionOpenMs: number,
   code: string | null,
   todayBidPeak: LiveTodayBidPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
@@ -219,7 +221,7 @@ export function deriveDayBidPeaks(
 ): BidPeak[] {
   void code;
   void todayCandles;
-  const families = mergedBidFamilies(ob, trade, todayBidPeak, visibleTimeCutoff);
+  const families = mergedBidFamilies(ob, trade, todayBidPeak, sessionOpenMs, visibleTimeCutoff);
   const out = seeds.filter((peak) => peak.date !== todayKst);
   const traded = families.traded[0];
   if (!traded) return out;
@@ -233,10 +235,11 @@ export function deriveDayBidPeaksIncremental(
   trade: ReadonlyArray<TradeSnapshot>,
   seeds: readonly BidPeak[],
   todayKst: string,
+  sessionOpenMs: number,
   todayBidPeak: LiveTodayBidPeak | null,
 ): BidPeak[] {
   const backend = backendPeakFamilies(todayBidPeak);
-  const classified = source.update(ob, trade, [
+  const classified = source.update(ob, trade, sessionOpenMs, [
     ...backend.all,
     ...backend.traded,
     ...backend.untraded,
@@ -274,6 +277,7 @@ export function deriveDayBidPeaksIncrementalAsOf(
   trade: ReadonlyArray<TradeSnapshot>,
   seeds: readonly BidPeak[],
   todayKst: string,
+  sessionOpenMs: number,
   todayBidPeak: LiveTodayBidPeak | null,
   cutoffMs: number,
 ): BidPeak[] {
@@ -282,7 +286,7 @@ export function deriveDayBidPeaksIncrementalAsOf(
     ...backend.all,
     ...backend.traded,
     ...backend.untraded,
-  ], cutoffMs);
+  ], cutoffMs, sessionOpenMs);
   const families = bidFamiliesFromClassifiedCutoff(classified);
   const out = seeds.filter((peak) => peak.date !== todayKst);
   const traded = families.traded[0];
@@ -297,6 +301,7 @@ export function deriveTodayAllPriceBidPeakIncrementalAsOf(
   ob: ReadonlyArray<ObSnapshot>,
   seeds: readonly BidPeak[],
   todayKst: string,
+  sessionOpenMs: number,
   todayBidPeak: LiveTodayBidPeak | null,
   cutoffMs: number,
 ): BidPeak | null {
@@ -305,7 +310,7 @@ export function deriveTodayAllPriceBidPeakIncrementalAsOf(
   const classified = source.updateAsOf(ob, EMPTY_TRADES, [
     ...backend.all,
     ...(todayBidPeak === null && todaySeed ? [todaySeed] : []),
-  ], cutoffMs);
+  ], cutoffMs, sessionOpenMs);
   const all = classified.all[0];
   if (!all) return null;
   return attachFamilies(
@@ -323,6 +328,7 @@ export function useDayBidPeaks(
   trade: ReadonlyArray<TradeSnapshot>,
   seeds: readonly BidPeak[],
   todayKst: string,
+  sessionOpenMs: number,
   code: string | null,
   todayBidPeak: LiveTodayBidPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
@@ -332,8 +338,8 @@ export function useDayBidPeaks(
   const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (sourceRef.current === null) sourceRef.current = new IncrementalPeakWallSource('bid');
   return useMemo(
-    () => deriveDayBidPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, todayBidPeak),
-    [ob, trade, seeds, todayKst, todayBidPeak],
+    () => deriveDayBidPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak),
+    [ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak],
   );
 }
 
@@ -341,6 +347,7 @@ export function deriveTodayAllPriceBidPeak(
   ob: ReadonlyArray<ObSnapshot>,
   seeds: readonly BidPeak[],
   todayKst: string,
+  sessionOpenMs: number,
   code: string | null,
   todayBidPeak: LiveTodayBidPeak | null = null,
   visibleTimeCutoff: VisibleTimeCutoff | null = null,
@@ -356,7 +363,7 @@ export function deriveTodayAllPriceBidPeak(
     ? ob.filter((snapshot) => snapshot.t_ms <= visibleTimeCutoff.tMs)
     : ob;
   const allCandidates = mergeRankedCandidates(
-    toWallEventsFromOrderbooks(filteredOb, 'bid'),
+    toWallEventsFromOrderbooks(filteredOb, 'bid', sessionOpenMs),
     filterCandidates(backend.all),
     todayBidPeak === null && todaySeed ? [todaySeed] : [],
   );
@@ -379,11 +386,12 @@ export function deriveTodayAllPriceBidPeakIncremental(
   ob: ReadonlyArray<ObSnapshot>,
   seeds: readonly BidPeak[],
   todayKst: string,
+  sessionOpenMs: number,
   todayBidPeak: LiveTodayBidPeak | null,
 ): BidPeak | null {
   const backend = backendPeakFamilies(todayBidPeak);
   const todaySeed = historicalTodaySeed(seeds, todayKst);
-  const classified = source.update(ob, EMPTY_TRADES, [
+  const classified = source.update(ob, EMPTY_TRADES, sessionOpenMs, [
     ...backend.all,
     ...(todayBidPeak === null && todaySeed ? [todaySeed] : []),
   ]);
@@ -403,6 +411,7 @@ export function useTodayAllPriceBidPeak(
   ob: ReadonlyArray<ObSnapshot>,
   seeds: readonly BidPeak[],
   todayKst: string,
+  sessionOpenMs: number,
   code: string | null,
   todayBidPeak: LiveTodayBidPeak | null = null,
 ): BidPeak | null {
@@ -410,7 +419,7 @@ export function useTodayAllPriceBidPeak(
   const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (sourceRef.current === null) sourceRef.current = new IncrementalPeakWallSource('bid');
   return useMemo(
-    () => deriveTodayAllPriceBidPeakIncremental(sourceRef.current!, ob, seeds, todayKst, todayBidPeak),
-    [ob, seeds, todayKst, todayBidPeak],
+    () => deriveTodayAllPriceBidPeakIncremental(sourceRef.current!, ob, seeds, todayKst, sessionOpenMs, todayBidPeak),
+    [ob, seeds, todayKst, sessionOpenMs, todayBidPeak],
   );
 }

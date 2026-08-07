@@ -82,6 +82,43 @@ describe('증분 버킷터 — 슬라이딩 버퍼 패리티', () => {
     });
   }
 
+  // venue 전환(KRX 09:00 ↔ NXT 08:00)은 **유효 스냅샷 집합 자체**를 바꾸므로
+  // sessionCloseMs 와 같은 등급의 리셋 트리거다. 누적을 안 버리면 이전 venue 하한으로
+  // 걸러진 결과가 그대로 남아, 프리마켓 구간이 "한 번 비면 계속 비는" 상태가 된다.
+  it('개장 하한이 바뀌면 누적을 버리고 오라클과 다시 일치한다 (venue 전환)', () => {
+    const preOpen = OPEN - 30 * 60_000;  // 08:30 — KRX 기준 배제, NXT 기준 유효
+    const inSession = OPEN + 60_000;     // 09:01 — 양쪽 모두 유효
+    const ob: ObSnapshot[] = [
+      { t_ms: preOpen, total_ask_qty: 700, total_bid_qty: 600,
+        asks: lvls(700, false), bids: lvls(600, false) },
+      { t_ms: inSession, total_ask_qty: 22, total_bid_qty: 12,
+        asks: lvls(22, false), bids: lvls(12, false) },
+    ];
+    // ⚠ **close_ms 는 같게 둔다.** 리셋 트리거는 open/close 둘 다인데, close 까지 같이
+    // 바꾸면 close 트리거가 먼저 걸려 이 테스트가 open 트리거를 전혀 증명하지 못한다
+    // (초안이 그랬고, 리셋 코드를 지워도 통과했다). open 만 움직여야 격리된다.
+    const krx = { ...base, sseOb: ob, sseTrade: [] };
+    const nxt = {
+      ...base,
+      todaySession: { open_ms: preOpen - 30 * 60_000, close_ms: CLOSE },
+      sseOb: ob,
+      sseTrade: [],
+    };
+    const build = createIncrementalHogaSeriesBuilder();
+
+    // KRX 로 예열 → 08:30 은 0-센티넬.
+    const asKrx = build(krx);
+    expect(asKrx.quote_ratio.points[0]).toMatchObject({ bid_total: 0, ask_total: 0 });
+
+    // 같은 인스턴스에 NXT 세션을 넘기면 08:30 이 되살아나야 한다(누적 폐기 확인).
+    const asNxt = build(nxt);
+    expect(asNxt.quote_ratio.points[0]).toMatchObject({ bid_total: 600, ask_total: 700 });
+    expect(asNxt).toEqual(buildHogaSeries(nxt));
+
+    // 되돌아가도 대칭으로 성립한다.
+    expect(build(krx)).toEqual(buildHogaSeries(krx));
+  });
+
   it('버킷 앞부분이 축출되면 러닝 맥스가 오라클처럼 내려간다', () => {
     // 이 단언이 "인덱스만 보정" 구현을 직접 반증한다 — 그런 구현은 5000 을 계속 든다.
     const spike: ObSnapshot = {
