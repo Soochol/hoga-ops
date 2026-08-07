@@ -12,7 +12,7 @@
  * 자금 카드가 빈 것은 **키가 없어서**다. 셋을 같은 빈 화면으로 보이면 진단이 흐려진다.
  */
 import { useState } from 'react';
-import { BreadthCard } from './BreadthCard';
+import { SectorFlowPrototype } from './prototype/SectorFlowPrototype';
 import { useLiveIndexCandles } from '../api/liveIndices';
 import {
   useMarketFutures,
@@ -756,7 +756,9 @@ export function MarketPage() {
           </div>
           <div className="flex flex-col gap-md">
             <SectorCard />
-            <BreadthCard />
+            {/* PROTOTYPE — 시장 폭 카드를 업종 수급으로 갈아 끼우는 3변형(?variant=A|B|C).
+                판정 후 승자만 접고 이 분기와 prototype/ 디렉터리는 main 에서 지운다. */}
+            <SectorFlowPrototype />
           </div>
         </div>
         <div className="grid grid-cols-3 gap-md">
