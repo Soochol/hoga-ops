@@ -13,6 +13,7 @@ from typing import TypeVar
 
 import polars as pl
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from hoga.api import screener_runner, screener_saves, screener_store
 from hoga.api.calendar import trading_days_in_range
@@ -312,6 +313,57 @@ def _save_not_found(save_id: str) -> HTTPException:
         404, {"code": "save_not_found", "message": f"No saved screener {save_id}"})
 
 
+# ── wire models (ADR-0004 · 동결선 배치 4) ────────────────────────────────────
+
+
+class ScreenerUpdatingProgress(BaseModel):
+    done: int
+    total: int
+    started_ms: int
+
+
+class ScreenerStatusResponse(BaseModel):
+    """GET /api/screener/status — 두 형태를 한 모델로 받는다.
+
+    시드 전이면 ``{"status": "not_seeded"}`` 만 나오고, 시드 후엔 status.json 의
+    필드가 합쳐진다. 그래서 `status` 외 전부 optional 이다.
+
+    **`exclude_none` 을 쓰지 않는다.** `days_behind: null`(신선도 불명)과
+    `updating: null`(갱신 job 없음)은 **값이 있는 null** 이라 지우면 뜻이 사라진다 —
+    프론트도 `days_behind?: number | null` 로 그 구분을 받는다. 대신 시드 전 응답에
+    null 필드가 몇 개 붙는데, 프론트 타입이 전부 optional 이라 무해하다.
+    """
+
+    status: str
+    schema_version: int | None = None
+    last_raw_date: str | None = None
+    last_built_ms: int | None = None
+    universe_size: int | None = None
+    derive_ms: int | None = None
+    days_behind: int | None = None
+    updating: ScreenerUpdatingProgress | None = None
+
+
+class ScreenerUpdateResponse(BaseModel):
+    """POST /api/screener/update — 프론트가 **판별 유니온**으로 받는 응답이다:
+
+    ``{running: true, done, total} | {running: false, updated: 0, reason}``
+
+    그래서 라우트에 ``response_model_exclude_none=True`` 가 **필수**다. 기본 직렬화면
+    양쪽 가지의 키가 전부 실려(`updated: null` 등) 유니온 판별이 깨진다.
+
+    `reason` 을 Literal 로 좁히지 않은 것은 백엔드에 해당 타입 별칭이 아예 없기
+    때문이다(`_plan_update` 가 문자열을 직접 반환한다). 좁히려면 BE 에 Literal 을
+    새로 만들고 미러 registry 에 등록해야 하는데, 그건 이 배치의 범위가 아니다.
+    """
+
+    running: bool
+    done: int | None = None
+    total: int | None = None
+    updated: int | None = None
+    reason: str | None = None
+
+
 def build_router(*, data_dir: Path, bus=None) -> APIRouter:
     global _module_bus  # noqa: PLW0603
     _module_bus = bus   # 스케줄러발 trigger_update(bus 미전달)도 같은 버스로 발행
@@ -326,7 +378,7 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
             key, lambda: screener_runner.run_screener_scan(data_dir=data_dir, req=req))
 
     @router.get("/status")
-    def status() -> dict:
+    def status() -> ScreenerStatusResponse:
         s = screener_store.read_status(sdir / "status.json")
         if s is None:
             return {"status": "not_seeded"}
@@ -357,8 +409,9 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
             ),
         }
 
-    @router.post("/update")
-    async def update() -> dict:
+    # 판별 유니온이라 exclude_none 이 필수다(모델 docstring 참조).
+    @router.post("/update", response_model_exclude_none=True)
+    async def update() -> ScreenerUpdateResponse:
         return await start_update(data_dir, bus=bus)
 
     @router.post("/saves", status_code=201, response_model=SavedScreener)

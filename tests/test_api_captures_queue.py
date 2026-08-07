@@ -2108,3 +2108,35 @@ async def test_finalize_item_watchlist_bump_failure_still_bumps_heatmap(tmp_path
         await captures._finalize_item(state)   # 큐를 죽이지 않는다
 
     hm_bump.assert_awaited_once_with(tmp_path, code="005930", date="20260526")
+
+
+# ── 큐 조작 ack wire model 계약 (ADR-0004 · 동결선 배치 3) ────────────────────
+
+
+def test_queue_action_acks_keep_their_wire_shape():
+    """네 ack 의 shape 을 고정한다.
+
+    프론트는 이들을 `apiAction`(반환 `Promise<void>`)으로 부르므로 **본문을 읽지
+    않는다** — 즉 깨져도 프론트 타입체크가 안 잡는다. 그래서 여기서 잰다.
+    실제 라우트가 만드는 dict 를 그대로 모델에 넣어 키 보존을 확인한다.
+    """
+    from hoga.api.captures import (
+        CaptureCancelAllResponse,
+        CaptureCancelResponse,
+        CaptureResumeResponse,
+        CaptureUnblockResponse,
+    )
+
+    cases = [
+        (CaptureUnblockResponse,
+         {"code": "005930", "date": "20260526", "fail_streak": 0, "action": "unblocked"}),
+        (CaptureUnblockResponse,
+         {"code": "005930", "date": "20260526", "fail_streak": 0, "action": "noop"}),
+        (CaptureCancelResponse, {"status": "cancelled", "item_id": "item-1"}),
+        (CaptureCancelResponse, {"status": "cancel_signal_delivered", "item_id": "item-1"}),
+        (CaptureCancelAllResponse,
+         {"status": "cancel_all_delivered", "drained_count": 3, "was_paused": False}),
+        (CaptureResumeResponse, {"status": "resumed"}),
+    ]
+    for model, payload in cases:
+        assert model.model_validate(payload).model_dump() == payload

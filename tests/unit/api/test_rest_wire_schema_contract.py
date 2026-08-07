@@ -303,12 +303,6 @@ UNCLOTHED_ROUTE_BASELINE: frozenset[RouteKey] = frozenset({
     # 모델화하기엔 크다. 차트 초기 hydration 이 통째로 걸린 응답이라 키 하나가
     # 조용히 빠지면 찾기 어렵다. 별도 배치로 남긴다.
     ("GET", "/series", "api"),
-    ("POST", "/cancel-all", "captures"),
-    ("POST", "/items/{code}/{date}/unblock", "captures"),
-    ("POST", "/items/{item_id}/cancel", "captures"),
-    ("POST", "/queue/resume", "captures"),
-    ("GET", "/status", "screener"),
-    ("POST", "/update", "screener"),
 })
 
 # 영구 제외 — 동결선과 달리 "언젠가 입힌다" 가 아니다.
