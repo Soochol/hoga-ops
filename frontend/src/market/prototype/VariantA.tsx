@@ -12,6 +12,8 @@ import { useState } from 'react';
 import { LegendItem, SessionLinesChart } from '../marketBits';
 import { CardHeader, MarketCard } from '../marketCardBits';
 import { SERIES_COLORS } from '../marketFormat';
+import { TABS, type Selection } from './ProductTabs';
+import { useTabStyle } from './PrototypeSwitcher';
 import {
   ACTORS,
   DERIV_FLOW,
@@ -20,21 +22,14 @@ import {
   EXPECTED_COUNT,
   PRODUCTS,
   SAMPLE_COUNT,
-  STOCK_MARKETS,
   toEok,
   upTo,
   type ProductKey,
 } from './fixture';
 
-type Selection = ProductKey | 'KSP' | 'KSQ';
-
-const CHIPS: { key: Selection; label: string; group: string }[] = [
-  ...STOCK_MARKETS.map((m) => ({ key: m.key as Selection, label: m.label, group: '주식' })),
-  ...PRODUCTS.map((p) => ({ key: p.key as Selection, label: p.label, group: '파생' })),
-];
-
 export function VariantA() {
   const [sel, setSel] = useState<Selection>('F001');
+  const Tabs = TABS[useTabStyle()];
   const isStock = sel === 'KSP' || sel === 'KSQ';
   const product = PRODUCTS.find((p) => p.key === sel);
 
@@ -55,27 +50,9 @@ export function VariantA() {
         }
       />
 
-      {/* 선택기 — 9칩. 좁은 카드에서 두 줄로 꺾이는 것을 감수한다(그게 A 의 비용이다). */}
-      <div className="flex flex-wrap gap-2xs">
-        {CHIPS.map((c, i) => {
-          const prevGroup = CHIPS[i - 1]?.group;
-          return (
-            <span key={c.key} className="flex items-center gap-2xs">
-              {prevGroup && prevGroup !== c.group && (
-                <span className="mx-2xs h-3 w-px bg-border-strong" aria-hidden="true" />
-              )}
-              <button
-                type="button"
-                onClick={() => setSel(c.key)}
-                className={`whitespace-nowrap rounded-sm px-2xs py-[1px] text-2xs ${
-                  sel === c.key ? 'bg-fg text-bg' : 'bg-bg-elev text-fg-dim hover:text-fg'
-                }`}
-              >
-                {c.label}
-              </button>
-            </span>
-          );
-        })}
+      {/* 선택기 — 시안 4종을 ↑/↓ 로 갈아 끼운다(`?tabs=T0|T1|T2|T3`). */}
+      <div>
+        <Tabs value={sel} onChange={setSel} />
       </div>
 
       {isStock ? (

@@ -5,6 +5,7 @@
  */
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router';
+import { TAB_STYLES, TAB_STYLE_NAMES, type TabStyle } from './ProductTabs';
 
 export const VARIANTS = [
   { key: 'A', name: '상품 선택기 (현행 골격 · 억원 축)' },
@@ -23,17 +24,31 @@ export function useVariant(): VariantKey {
   return (VARIANTS.some((v) => v.key === raw) ? raw : 'A') as VariantKey;
 }
 
+/** 선택기 시안은 **두 번째 축**이다 — 변형 A 안에서만 의미가 있으므로 variant 사이클에
+ *  섞지 않는다. 섞으면 목록이 7개가 되고 "레이아웃 판단" 과 "컨트롤 판단" 이 한 줄에서
+ *  뒤엉킨다. ↑/↓ 로 돈다. */
+export function useTabStyle(): TabStyle {
+  const [params] = useSearchParams();
+  const raw = params.get('tabs')?.toUpperCase();
+  return (TAB_STYLES.some((t) => t === raw) ? raw : 'T1') as TabStyle;
+}
+
 export function PrototypeSwitcher() {
   const [params, setParams] = useSearchParams();
   const current = useVariant();
+  const tab = useTabStyle();
   const idx = VARIANTS.findIndex((v) => v.key === current);
+  const tabIdx = TAB_STYLES.indexOf(tab);
 
-  const go = (delta: number) => {
-    const next = VARIANTS[(idx + delta + VARIANTS.length) % VARIANTS.length].key;
+  const set = (key: string, value: string) => {
     const p = new URLSearchParams(params);
-    p.set('variant', next);
+    p.set(key, value);
     setParams(p, { replace: true });
   };
+  const go = (delta: number) =>
+    set('variant', VARIANTS[(idx + delta + VARIANTS.length) % VARIANTS.length].key);
+  const goTab = (delta: number) =>
+    set('tabs', TAB_STYLES[(tabIdx + delta + TAB_STYLES.length) % TAB_STYLES.length]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -41,6 +56,8 @@ export function PrototypeSwitcher() {
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       if (e.key === 'ArrowLeft') go(-1);
       if (e.key === 'ArrowRight') go(1);
+      if (e.key === 'ArrowUp') goTab(-1);
+      if (e.key === 'ArrowDown') goTab(1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -49,7 +66,7 @@ export function PrototypeSwitcher() {
   if (import.meta.env.PROD) return null;
 
   return (
-    <div className="fixed bottom-12 left-1/2 z-50 -translate-x-1/2">
+    <div className="fixed bottom-12 left-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-1">
       <div className="flex items-center gap-2 rounded-full bg-fg px-2 py-1 text-bg shadow-lg">
         <button type="button" onClick={() => go(-1)} className="px-2 py-0.5 text-sm">
           ←
@@ -61,6 +78,23 @@ export function PrototypeSwitcher() {
           →
         </button>
       </div>
+      {/* 선택기 시안 줄 — A 에서만 화면에 걸린다.
+          배경은 `bg-fg/80` 이 아니라 `bg-fg` 다: `--fg` 가 `<alpha-value>` 없이 등록된
+          CSS 변수라 opacity modifier 가 무효가 되고, 배경이 통째로 사라져 `text-bg`
+          글씨만 남는다(= 밝은 배경 위 흰 글씨 = 안 보임). */}
+      {current === 'A' && (
+        <div className="flex items-center gap-2 rounded-full bg-fg px-2 py-0.5 text-bg shadow-lg">
+          <button type="button" onClick={() => goTab(-1)} className="px-2 text-xs">
+            ↑
+          </button>
+          <span className="min-w-[16rem] text-center font-data text-[11px] tabular-nums">
+            {tab} — {TAB_STYLE_NAMES[tab]}
+          </span>
+          <button type="button" onClick={() => goTab(1)} className="px-2 text-xs">
+            ↓
+          </button>
+        </div>
+      )}
     </div>
   );
 }
