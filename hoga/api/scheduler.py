@@ -532,4 +532,14 @@ def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
         collector.start()
         if collector.task is not None:
             tasks.append(collector.task)
+    # deriv-flow 수집기 — 위와 같은 이유로 스케줄러 소유이고, 같은 이유로 무자격이면
+    # 태스크를 만들지 않는다. **벤더가 다르다**: 파생 투자자 수급은 KIS 만 준다
+    # (ADR-0136 · 키움 REST 337 TR 중 파생 투자자 TR 0건). 그래서 키움 키만 있는
+    # 환경에서는 이쪽만 조용히 빈다 — 옵션 심리 패널과 같은 처지이고 버그가 아니다.
+    from hoga.live import deriv_flow_runtime  # noqa: PLC0415 — 지연 import(순환 절단)
+    deriv = deriv_flow_runtime.make_collector(data_dir)
+    if deriv is not None:
+        deriv.start()
+        if deriv.task is not None:
+            tasks.append(deriv.task)
     return tasks

@@ -12,6 +12,9 @@ def test_router_exposes_the_market_surfaces():
     r = build_router(data_dir=Path("/tmp"))
     assert sorted(x.path for x in r.routes) == [
         "/api/market/breadth",
+        # 파생 투자자 수급도 KIS 전용이다 — 키움 337 TR 중 파생 투자자 TR 이 0건이라
+        # 대체 경로가 없고, 원천 TR 은 모의투자 미지원이다.
+        "/api/market/deriv-flow",
         "/api/market/funds",
         # 선물 2개만 벤더가 KIS 다 — 키움에 파생 TR 이 0건이라 대체 경로가 없다(ADR-0141).
         "/api/market/futures-candles",
@@ -260,6 +263,7 @@ async def test_dormant_payloads_satisfy_their_wire_models(monkeypatch, tmp_path)
         ("/api/market/program", mr.ProgramResponse),
         ("/api/market/breadth", mr.BreadthResponse),
         ("/api/market/investor-flow", mr.InvestorFlowResponse),
+        ("/api/market/deriv-flow", mr.DerivFlowResponse),
         ("/api/market/sector-flow", mr.SectorFlowResponse),
     ):
         payload = await by_path[path].endpoint()
