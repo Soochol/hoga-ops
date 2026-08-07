@@ -30,26 +30,58 @@ def market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed
     return "closed"
 
 
-# 정규장 동시호가(단일가매매) 창 — 장전 08:30–09:00, 장마감 15:20–15:30 KST.
-# 예상체결가/량(0D FID 23/24) 표시·저장 게이트. 값>0 만으론 부족함이 실측으로 확인됨:
-# NXT 는 연속/애프터마켓에도 예상체결값을 계산해 흘려 평시에도 노출됐다(2026-07-22).
-# 이 시계 창을 AND 로 걸어 창 밖 프레임의 예상체결을 표시·저장 양쪽에서 버린다.
-# ⚠ 장중 VI 단일가는 불규칙 시각이라 이 스케줄 창에 없다 — 필요 시 VI 이벤트로 별도 판정.
-_PREOPEN_AUCTION_MIN = (8 * 60 + 30, 9 * 60)          # [08:30, 09:00)
-_CLOSING_AUCTION_MIN = (15 * 60 + 20, 15 * 60 + 30)   # [15:20, 15:30)
+# 동시호가(단일가매매) 창 — **venue 마다 다르다**. 예상체결가/량(0D FID 23/24) 표시
+# 게이트. 값>0 만으론 부족함이 실측으로 확인됐다: NXT 는 연속/애프터마켓 접속매매
+# 중에도 예상체결값을 계산해 흘려 평시에도 노출됐다(2026-07-22). 이 시계 창을 AND 로
+# 걸어 창 밖 프레임의 예상체결을 버린다.
+#
+#   KRX     장전 08:30–09:00 · 장마감 15:20–15:30
+#   NXT     애프터마켓 시가단일가 15:30–15:40   ← 그 하나뿐이다
+#   UN(_AL) 위 셋 전부 (병합 스트림이라 어느 쪽 단일가든 실릴 수 있다)
+#
+# NXT 시각의 근거(증권사 안내 4곳 일치, 2026-08-07 확인): 08:00–08:50 프리마켓과
+# 15:40–20:00 애프터마켓은 **접속매매**라 단일가가 없고, 08:50–09:00:30 · 15:20–15:30
+# 은 KRX 단일가 동안 NXT 가 거래정지다. 15:30–15:40 만 "호가접수만 가능, 체결은 15:40
+# 부터" 인 단일가 구간이다 — KRX 동시호가와 동형(접수 창 → 종료 시점 체결)이라 그
+# 10분이 예상체결이 나오는 유일한 NXT 구간이다.
+#
+# 이 표가 생기기 전엔 NXT 를 venue 블랙리스트로 통째 막았다(ADR-0140 §6.1: "단일가
+# 국면 시각을 우리가 모른다"). 그래서 NXT·통합 사용자는 15:30–15:40 예상체결을 **한
+# 번도 못 봤다** — 체결이 없는 창이라 예상체결이 유일한 신호인데도 화면이 비었다.
+# 시각을 알아낸 지금은 venue 축이 아니라 이 시계 표가 그 역할을 대신한다.
+#
+# ⚠ 장중 VI 단일가는 불규칙 시각이라 이 스케줄 창에 없다 — 필요 시 VI 이벤트로 별도
+#   판정. (NXT 에는 VI 자체가 없다 — ADR-0140 §6.1 실물 확인.)
+_PREOPEN_AUCTION_MIN = (8 * 60 + 30, 9 * 60)              # [08:30, 09:00)  KRX 시가
+_CLOSING_AUCTION_MIN = (15 * 60 + 20, 15 * 60 + 30)       # [15:20, 15:30)  KRX 종가
+_NXT_AFTER_AUCTION_MIN = (15 * 60 + 30, 15 * 60 + 40)     # [15:30, 15:40)  NXT 애프터 시가
+
+_AUCTION_WINDOWS_BY_VENUE: dict[str, tuple[tuple[int, int], ...]] = {
+    "KRX": (_PREOPEN_AUCTION_MIN, _CLOSING_AUCTION_MIN),
+    "NXT": (_NXT_AFTER_AUCTION_MIN,),
+    "UN": (_PREOPEN_AUCTION_MIN, _CLOSING_AUCTION_MIN, _NXT_AFTER_AUCTION_MIN),
+}
 
 
-def is_auction_window(t_ms: int) -> bool:
-    """정규장 동시호가(단일가) 시각인지 — 순수 KST 시계(캘린더 무관, TZ 안전).
+def is_auction_window(t_ms: int, venue: str) -> bool:
+    """이 venue 의 동시호가(단일가) 시각인지 — 순수 KST 시계(캘린더 무관, TZ 안전).
 
     market_phase 는 09:00–15:30 을 통째로 'regular' 로 보고 08:30–09:00 을 'closed' 로
     봐 동시호가를 구분하지 못하므로, 예상체결 게이트 전용의 별도 술어를 둔다.
+
+    ``venue`` 는 필수 인자다. 기본값을 두면 인자를 잊은 호출부가 조용히 KRX 시계로
+    판정돼 NXT 창이 도로 닫힌다 — 폐지된 기본값이 지뢰가 된 #1201 과 같은 형태.
+
+    모르는 venue 는 **False**(닫힘)다. 단일가 시각을 모르는 시장에 창을 열면 NXT 가
+    그랬듯 접속매매 중의 예상체결값이 화면에 샌다 — 새 venue 를 추가하면 그 시장의
+    단일가 시각을 확인해 위 표에 넣어야 신호가 켜진다.
     """
+    windows = _AUCTION_WINDOWS_BY_VENUE.get(venue)
+    if not windows:
+        return False
     kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
     minutes = kst.hour * 60 + kst.minute
-    lo1, hi1 = _PREOPEN_AUCTION_MIN
-    lo2, hi2 = _CLOSING_AUCTION_MIN
-    return lo1 <= minutes < hi1 or lo2 <= minutes < hi2
+    return any(lo <= minutes < hi for lo, hi in windows)
 
 
 def is_trading_day_now(t_ms: int) -> bool:
