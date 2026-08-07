@@ -5,7 +5,10 @@ import type { SymbolHit } from '../api/types';
 import { useAddToFolder } from './useAddToFolder';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 
-// w-64 = 16rem = 288px @ 18px root. 우측 정렬용 초기 추정폭 — 클램프가 실측으로 보정한다.
+// w-64 = 16rem = 256px @ 16px root(2026-08-07 다이얼 1.0×; 그전 18px 에선 288px).
+// 우측 정렬용 **초기 추정폭**이라 다이얼과 함께 안 움직여도 무해하다 —
+// useClampedFixedPosition 이 마운트 후 실측으로 덮으므로 과대 추정은 첫 프레임의
+// 정렬 오차로만 남는다. 그래서 rem 파생으로 바꾸지 않고 상수로 둔다.
 const POP_W = 320;
 
 /** 폴더 헤더의 ＋종목: SymbolSearch 팝오버 → useAddToFolder(code, folderId).

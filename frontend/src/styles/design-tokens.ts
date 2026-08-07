@@ -36,9 +36,12 @@
  * dial (`:root { font-size }`) in tokens.css. The generator uses it for
  * "rendered @ default" comments/tables; `util/chartScale.ts` derives the
  * canvas font/offset from it (lightweight-charts can't read CSS rem).
- * 18px = 1.125× of the 16px base intent (2026-07-15, was 20px = 1.25×).
+ * 16px = 1.0× of the 16px base intent — the "Compact" density DESIGN.md had
+ * parked in its backlog (2026-08-07; was 18px = 1.125× since 2026-07-15, and
+ * 20px = 1.25× before that). At 1.0× the rendered px equals `baseIntentPx`,
+ * so the two columns of the typography table now coincide.
  */
-export const RENDERED_ROOT_PX = 18;
+export const RENDERED_ROOT_PX = 16;
 
 /**
  * Font stack for `<canvas>` surfaces — lightweight-charts axis/legend text and
@@ -79,8 +82,8 @@ export type FixedPxToken = Readonly<{
    * Why this exists: without a `DEFAULT` key Tailwind keeps its own built-in
    * value for the bare utility, and that value is **rem-based**. `rounded` was
    * therefore the single most-used radius in the app (143 call sites) *and* the
-   * only one outside the token system — rendering 4.5px at the 18px dial and
-   * moving with it, which ADR-0011 exists to prevent. A hole in the map is not
+   * only one outside the token system — rendering 4.5px at the then-18px dial
+   * and moving with it, which ADR-0011 exists to prevent. A hole in the map is not
    * a neutral omission; the framework fills it.
    */
   isDefault?: true;
@@ -91,9 +94,12 @@ export const SIZE_TOKENS = {
   // `text-badge` sits below text-xs to preserve hierarchy on micro-labels
   // like the SymbolSearch market tag (KOSPI/KOSDAQ). 8.5px base intent.
   'text-badge': { rem: 0.53125, baseIntentPx: 8.5, usage: 'Hierarchical badges (e.g., SymbolSearch market tag)' },
-  // badge(9.56px 렌더)와 xs(11.81px 렌더) 사이의 공백을 메우는 밀집 크롬 마이크로 라벨.
-  // 이 구간에 토큰이 없어 10px·10.5px 하드코딩 39곳이 밀도 다이얼을 이탈해
-  // 있었다(2026-08-04 토큰화 스윕에서 신설 — 렌더 10.125px 로 기존 10px 과 시각 등가).
+  // badge 와 xs 사이의 공백을 메우는 밀집 크롬 마이크로 라벨. 이 구간에 토큰이 없어
+  // 10px·10.5px 하드코딩 39곳이 밀도 다이얼을 이탈해 있었다(2026-08-04 토큰화 스윕에서
+  // 신설). 신설 당시 다이얼은 1.125× 라 badge 9.56 / 2xs 10.125 / xs 11.81px 로 렌더됐고
+  // 하드코딩 10px 과 시각 등가였다 — 그 등가는 **그때 밀도의 성질**이다. 2026-08-07 에
+  // 다이얼이 1.0× 로 내려가 지금은 8.5 / 9 / 10.5px 다. 세 토큰의 **간격 비율**은 rem
+  // 이 보존하므로 위계는 그대로다.
   'text-2xs':   { rem: 0.5625,  baseIntentPx: 9,   usage: 'Dense chrome micro-labels (창 크롬 서브라벨·상태 칩)' },
   'text-xs':    { rem: 0.65625, baseIntentPx: 10.5, usage: 'Small-caps labels, badges' },
   'text-sm':    { rem: 0.71875, baseIntentPx: 11.5, usage: 'Table rows, secondary data values' },
@@ -115,11 +121,12 @@ export const SIZE_TOKENS = {
 
   // ── layout — heights ──────────────────────────────────────────
   'h-toolbar':          { rem: 2,       baseIntentPx: 32, usage: 'Workspace toolbar row — ui/WorkspaceShell.tsx WorkspaceToolbar, 소비처는 /live 의 WorkspaceLiveToolbar. 밀도 개편(2026-07-23) 60→32, 한 줄 버튼 행' },
-  'list-row-min-h':     { rem: 1.5625,  baseIntentPx: 25, usage: 'Shared list row min-height — watchlist/ranking/screener-result rows align (≈28px @ default density, matching the watchlist row). Heatmap rows opt out for max density.' },
-  'list-group-header-min-h': { rem: 1.8125, baseIntentPx: 29, usage: 'Shared list group-header min-height — watchlist/heatmap group headers align (≈32px @ default density, matching the watchlist group header)' },
+  'list-row-min-h':     { rem: 1.5625,  baseIntentPx: 25, usage: 'Shared list row min-height — watchlist/ranking/screener-result rows align (25px @ the 1.0× dial; was ≈28px at 1.125×, which is the watchlist row it was matched to). Heatmap rows opt out for max density.' },
+  'list-group-header-min-h': { rem: 1.8125, baseIntentPx: 29, usage: 'Shared list group-header min-height — watchlist/heatmap group headers align (29px @ the 1.0× dial; was ≈32px at 1.125×)' },
   'h-capture-row':      { rem: 2.25,    baseIntentPx: 36, usage: 'Single row in the capture queue' },
   // 이름과 달리 /live 는 이 밴드를 쓰지 않는다(LiveStatusBar 폐지). 유일한 소비처는
-  // /study 의 StudyPage 헤더이고, 그마저 min-h-12 를 얹어 실효 높이는 54px 다.
+  // /study 의 StudyPage 헤더이고, 그마저 min-h-12(3rem)를 얹어 실효 높이는 이 토큰이
+  // 아니라 48px 다(1.125× 시절엔 54px — 둘 다 rem 이라 함께 움직인다).
   'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: 'Workspace header row — ui/WorkspaceShell.tsx WorkspaceHeader, 소비처는 /study 의 StudyPage 뿐' },
   'h-top-nav':          { rem: 2,       baseIntentPx: 32, usage: 'Global top navigation row' },
   'h-bottom-bar':       { rem: 1.5,     baseIntentPx: 24, usage: 'Global market-index bottom bar row' },
