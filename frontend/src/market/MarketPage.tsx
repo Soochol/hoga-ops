@@ -13,6 +13,7 @@
  */
 import { useState } from 'react';
 import { SectorFlowCard } from './SectorFlowCard';
+import { DerivFlowPrototype } from './prototype/DerivFlowPrototype';
 import { useLiveIndexCandles } from '../api/liveIndices';
 import {
   useMarketFutures,
@@ -746,7 +747,10 @@ export function MarketPage() {
         <IndexCards />
         <div className="grid grid-cols-[2fr_1fr] gap-x-xl gap-y-md">
           <div className="flex flex-col gap-md">
-            <InvestorCard />
+            {/* PROTOTYPE — 투자자 수급 카드 자리에 파생 7종 3변형(?variant=A|B|C)과
+                현행(CURRENT)을 갈아 끼운다. 판정 후 승자만 접고 이 분기와
+                prototype/ 디렉터리는 main 에서 지운다. */}
+            <DerivFlowPrototype current={<InvestorCard />} />
             <div className="grid grid-cols-2 gap-md">
               <ProgramCard />
               <FundsCard />
