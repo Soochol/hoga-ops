@@ -20,12 +20,12 @@ The design system has a **single density dial** at `:root font-size`.
 | Term | Meaning |
 |---|---|
 | **Base intent (1.0×)** | The pixel target captured in token rem values, calibrated against a 16px root. Reflects the original 2026-05-20 design intent. |
-| **Default density (1.125×)** | What the app renders at browser zoom 100%. `:root { font-size: 18px }` lifts every rem-based token by 1.125×. |
+| **Default density (1.0×)** | What the app renders at browser zoom 100%. `:root { font-size: 16px }` — since 2026-08-07 the default *is* the base intent, so rendered px equals `baseIntentPx` and the two columns of the token tables coincide. (Was 1.125× / 18px from 2026-07-15.) |
 | **Scale dial** | The `:root font-size` declaration in `frontend/src/styles/tokens.css`. Changing it shifts all CSS sizing uniformly. |
 
 **Scope of the dial:**
 - ✅ CSS-rendered chrome — fonts, spacing, layout widths, line-heights (all rem-based).
-- ❌ `lightweight-charts` canvas — text and bar spacing live in `frontend/src/util/chartScale.ts` as static constants. Must be updated alongside the dial.
+- ❌ `lightweight-charts` canvas — canvas cannot read CSS rem, so the constants live in TS. They *derive* from `RENDERED_ROOT_PX` (`util/chartScale.ts`, `chart/highLowLabelLayout.ts`) so a dial change reaches them, but charts read them at mount — a runtime toggle still needs a remount. **Two canvas constants stay deliberately pinned and do not follow the dial**: `CHART_LAYOUT_OPTIONS.fontSize` (12, see the note at that constant) and `AskPeakSegmentsPrimitive.LABEL_FONT_PX` (11). When adding a canvas text size, derive it — do not hand-compute the px.
 - ❌ 1px borders, hairlines, small radii (2–6px), chart canvas internal coordinates — stay in px to protect anti-aliasing and pixel-grid sharpness.
 - 🚫 **타이포에 임의값 px 를 쓰지 않는다** (`text-[10px]` 류). 다이얼이 못 잡는 유일한
   DOM 표면이라 그 텍스트만 밀도 변경에서 낙오된다 — 2026-08-04 에 71곳이 그 상태였다
@@ -37,12 +37,14 @@ The design system has a **single density dial** at `:root font-size`.
     최대 +12.5% 움직인다.
   - **위계가 걸리면 근사 최단 매핑보다 위계가 우선.** 같은 파일에서 `11px`/`12px` 를
     나눠 쓰고 있었다면 그건 의도된 2단이므로 `xs`/`sm` 으로 갈라 유지한다.
-  - **함정: `10.5px`·`11.5px`·`13px` 는 "토큰과 같은 값" 이 아니다.** 타이포 표의
-    **base-intent 열**을 그대로 px 로 박은 흔적인데, 실제 렌더는 ×1.125 된 값이라
-    다르다(`xs` base 10.5px → 렌더 11.81px). 표를 보고 px 를 적는 순간 다이얼에서
-    떨어져 나간다.
+  - **함정 (2026-08-07 에 성격이 바뀌었다 — 더 위험해졌다):** 1.125× 시절에는 표의
+    **base-intent 열**을 px 로 박으면 렌더값과 어긋나(`xs` base 10.5px → 렌더 11.81px)
+    화면에서 바로 티가 났다. 다이얼이 1.0× 가 된 지금은 **두 열이 같은 값**이라
+    `text-[10.5px]` 를 박아도 오늘은 아무 증상이 없다. 규칙은 그대로다 — 다이얼이
+    다시 움직이는 순간(아래 density 모드) 그 텍스트만 조용히 낙오하고, 이번엔 **직전
+    화면과 비교할 근거조차 없다**. 값이 맞아 보이는 것은 우연이지 허가가 아니다.
 
-**Future density modes (backlog):** A user-facing toggle (Compact 1.0× / Comfortable 1.125× / Cozy 1.25×) would set `:root font-size` via `[data-density="..."]`; `chartScale.ts` now derives from `RENDERED_ROOT_PX` (design-tokens.ts) but charts read it at mount, so a runtime toggle still needs a chart remount. Not in scope today.
+**Future density modes (backlog):** A user-facing toggle would set `:root font-size` via `[data-density="..."]`. The app now ships at what that backlog called **Compact (1.0× / 16px)**; the remaining rungs are Comfortable (1.125× / 18px — the default until 2026-08-07) and Cozy (1.25× / 20px — the default until 2026-07-15). Both have shipped before, so the ladder is measured, not hypothetical. Blocker unchanged: canvas constants derive from `RENDERED_ROOT_PX` but charts read them at mount, so a runtime toggle needs a chart remount. Not in scope today.
 
 ## Aesthetic Direction
 
@@ -50,7 +52,7 @@ The design system has a **single density dial** at `:root font-size`.
 - **Decoration level:** Minimal-intentional — typography does the work. Single accent color. No patterns, textures, gradients, or decorative blobs.
 - **Mood:** Serious. Information-first. The product should feel like a precision tool, not a SaaS dashboard. Closer in spirit to Linear than to a Y Combinator startup landing page.
 - **Reference points:** TradingView (chart syntax), Linear (UI restraint), Vercel (typography), Bloomberg (data density — but without the 1990s color palette).
-- **Density posture:** Ships at a comfortable density (1.125× of base intent), a notch denser than typical-SaaS sizing (was 1.25× until 2026-07-15). The original 1.0× intent (`denser than typical SaaS`, Bloomberg-leaning) is preserved in the token system and reachable through a future Compact density toggle. The product DNA is "Linear-like restraint" at the chosen density, not "must always be small."
+- **Density posture:** Ships at **1.0× — the original base intent** (`denser than typical SaaS`, Bloomberg-leaning), reached 2026-08-07 by walking the dial down 1.25× (until 2026-07-15) → 1.125× (until 2026-08-07) → 1.0×. The looser rungs stay reachable through a future density toggle. The product DNA is "Linear-like restraint" at the chosen density, not "must always be small" — the dial is the knob for that judgement, and it has now been turned three times, so treat it as tunable rather than settled.
 
 ## Typography
 
@@ -75,17 +77,17 @@ The design system has a **single density dial** at `:root font-size`.
 - **Scale (rem-based, single dial at `:root font-size`):**
 
 <!-- BEGIN AUTO: tokens-typography -->
-| Token | Base intent (1.0×) | Rendered @ default (1.125×) | Use |
+| Token | Base intent (1.0×) | Rendered @ default (1×) | Use |
 |---|---|---|---|
-| `badge` | 8.5px | 9.563px | Hierarchical badges (e.g., SymbolSearch market tag) |
-| `2xs` | 9px | 10.125px | Dense chrome micro-labels (창 크롬 서브라벨·상태 칩) |
-| `xs` | 10.5px | 11.813px | Small-caps labels, badges |
-| `sm` | 11.5px | 12.938px | Table rows, secondary data values |
-| `base` | 13px | 14.625px | Body / UI default |
-| `md` | 14px | 15.75px | Section / page headings |
-| `lg` | 16px | 18px | Brand text |
-| `xl` | 22px | 24.75px | Current price (price strip) |
-| `2xl` | 32px | 36px | Future hero numerics |
+| `badge` | 8.5px | 8.5px | Hierarchical badges (e.g., SymbolSearch market tag) |
+| `2xs` | 9px | 9px | Dense chrome micro-labels (창 크롬 서브라벨·상태 칩) |
+| `xs` | 10.5px | 10.5px | Small-caps labels, badges |
+| `sm` | 11.5px | 11.5px | Table rows, secondary data values |
+| `base` | 13px | 13px | Body / UI default |
+| `md` | 14px | 14px | Section / page headings |
+| `lg` | 16px | 16px | Brand text |
+| `xl` | 22px | 22px | Current price (price strip) |
+| `2xl` | 32px | 32px | Future hero numerics |
 <!-- END AUTO: tokens-typography -->
 
 ## Color
@@ -242,27 +244,27 @@ The design system has a **single density dial** at `:root font-size`.
 
 ## Spacing
 
-- **Base unit:** 4px (base intent); 4.5px (rendered @ default density)
-- **Density:** Comfortable at default density (1.125×) — capable of reaching Bloomberg-density via a future Compact mode (1.0× = base intent). Density is a spectrum, not a fixed point. The token system holds both; default rendering picks one.
+- **Base unit:** 4px (base intent = rendered, since the dial is 1.0× as of 2026-08-07; was 4.5px rendered at 1.125×)
+- **Density:** Bloomberg-leaning — the dial sits at base intent (1.0×). Density is a spectrum, not a fixed point: the token system holds the whole ladder and the dial picks a rung. Looser rungs (1.125×, 1.25×) have both shipped as defaults before.
 - **Scale (rem-based, single dial):**
 
 <!-- BEGIN AUTO: tokens-spacing -->
-| Token | Base intent (1.0×) | Rendered @ default (1.125×) | Use |
+| Token | Base intent (1.0×) | Rendered @ default (1×) | Use |
 |---|---|---|---|
-| `2xs` | 2px | 2.25px | Hairline gaps |
-| `xs` | 4px | 4.5px | Pane gap, tight stacking |
-| `sm` | 8px | 9px | Card padding inside, gap between sidebar cards |
-| `md` | 12px | 13.5px | Card padding default |
-| `lg` | 16px | 18px | Section spacing, nav item padding |
-| `xl` | 24px | 27px | Major section dividers |
-| `2xl` | 32px | 36px | (rarely used) |
-| `3xl` | 48px | 54px | (rarely used) |
+| `2xs` | 2px | 2px | Hairline gaps |
+| `xs` | 4px | 4px | Pane gap, tight stacking |
+| `sm` | 8px | 8px | Card padding inside, gap between sidebar cards |
+| `md` | 12px | 12px | Card padding default |
+| `lg` | 16px | 16px | Section spacing, nav item padding |
+| `xl` | 24px | 24px | Major section dividers |
+| `2xl` | 32px | 32px | (rarely used) |
+| `3xl` | 48px | 48px | (rarely used) |
 <!-- END AUTO: tokens-spacing -->
 
-- **Card padding:** 12–14px standard. Sidebar cards 12px. Pane bodies 4–6px (info density priority) (base intent — rendered ×1.125 at default density).
-- **Pane gap:** 8px between chart panes (base intent — rendered ×1.125 at default density).
-- **Sidebar width:** 320px base intent / 360px rendered (token: `--sidebar-w`). 유일한 소비처는 `/inventory` 의 master-detail 좌열(`pages/Inventory.tsx`) — 이름과 달리 사이드바 컴포넌트의 폭이 아니다. *(2026-07-29: `usage` 문자열이 가리키던 "replay viewer 의 Cursor Sidebar" 는 실재하지 않아 실제 소비처로 고쳤다.)*
-- **Top nav height:** 32px base intent / 36px rendered (token: --h-top-nav).
+- **Card padding:** 12–14px standard. Sidebar cards 12px. Pane bodies 4–6px (info density priority) (base intent — equals rendered at the current 1.0× dial).
+- **Pane gap:** 8px between chart panes (base intent — equals rendered at the current 1.0× dial).
+- **Sidebar width:** 320px base intent = 320px rendered (token: `--sidebar-w`). 유일한 소비처는 `/inventory` 의 master-detail 좌열(`pages/Inventory.tsx`) — 이름과 달리 사이드바 컴포넌트의 폭이 아니다. *(2026-07-29: `usage` 문자열이 가리키던 "replay viewer 의 Cursor Sidebar" 는 실재하지 않아 실제 소비처로 고쳤다.)*
+- **Top nav height:** 32px base intent = 32px rendered (token: --h-top-nav).
 
 ## Layout
 
@@ -273,12 +275,12 @@ The design system has a **single density dial** at `:root font-size`.
 - **Workspace canvas (`/live`·`/study`):** 고정 grid 가 아니라 **자유 배치 창 캔버스**(ADR-0119, #706) — 창마다 프랙셔널 rect 를 갖고 자석 스냅 엔진이 배치한다. 창 사이 **2px 틈은 좌표가 아니라 렌더 인셋**이다(`frontend/src/workspace/WindowFrame.tsx` `GAP = 2`; 보이는 카드가 바깥 rect 에서 `GAP/2` 물러나 그려진다) — 스냅 좌표계는 틈에 영향받지 않으므로 간격을 바꿔도 스냅 불변식은 그대로다. *(History: 여기엔 Replay Viewer workarea `grid-template-columns: 1fr 12px <sidebarPx>` (chart + splitter + Cursor Sidebar) 와 `localStorage['replay.layout']` 기술이 있었다 — `state/replayLayout.ts` 와 `sidebar/CursorSidebar.tsx` 는 둘 다 이제 존재하지 않는다(전자는 이전에, 후자는 #916 에서 삭제). ADR-0022 의 트레이드오프는 역사로만 유효. 2026-07-29 정정.)*
 - **Chart pane stack (`/live` 차트 창):** CSS grid 가 아니라 **lightweight-charts pane** 을 `setStretchFactor(spec.stretch)` 로 배분한다. 순서와 기본 stretch 는 `frontend/src/chart/paneSpecs.ts` 가 SSOT — candle 1.4 / volume 0.3 / quote-totals 0.4 / ratio 0.4 / fill-strength 0.4 / program-trade 0.35, 그리고 D 전용 투자자 pane 2개(각 0.3). 사용자 조정값(Pane Stretch, #703)이 스펙 기본값을 덮고, 높이가 모자라면 `usePaneFolding` 이 하위 pane 부터 접는다. 어떤 pane 이 뜨는지는 `paneSpecsForTimeframe.ts` 의 게이트(분봉 전용 호가 pane, D 전용 투자자 pane)가 정한다. *(History: `grid-template-rows: 1fr 0.5fr 1fr 0.6fr` (candles+vol / ratio / intensity / fill) — Replay Viewer 4-pane 시절. 2026-07-29 정정.)*
 - **Max content width:** No cap. App fills the viewport (desktop-only).
-- **Responsive floor (`--app-floor-min-w`, 2026-07-21):** the app has **one floor for every route**: `57rem` (1026px @ default density, 912px base intent). Above it the shell compresses fluidly; below it the shell stops compressing and `#root` scrolls horizontally (`global.css`). There is **no zoom-detection code anywhere** — browser zoom *is* effective-viewport narrowing, so the width response covers zoom for free (`visualViewport.scale` branching is prohibited: it double-counts window resize vs zoom and doubles the test matrix).
+- **Responsive floor (`--app-floor-min-w`, 2026-07-21):** the app has **one floor for every route**: `57rem` (912px @ the current 1.0× dial; was 1026px at 1.125×). **The floor is rem-based, so it moved with the 2026-08-07 dial change** — the shell now compresses ~114px further before it stops. That is the intended coupling (a denser shell needs less width), not a regression. Above it the shell compresses fluidly; below it the shell stops compressing and `#root` scrolls horizontally (`global.css`). There is **no zoom-detection code anywhere** — browser zoom *is* effective-viewport narrowing, so the width response covers zoom for free (`visualViewport.scale` branching is prohibited: it double-counts window resize vs zoom and doubles the test matrix).
   - **Why a single global value:** the floor is set by the **shell chrome every route shares**, not by page content. Content-light routes (`/settings`, `/capture`) would reflow narrower, but the chrome breaks first, so per-page floors add complexity with no gain. `App.tsx` wraps every route via `<Outlet/>`, so one declaration reaches all pages and a new route can't forget it.
-    - 유도 실측(2026-07-21, 기본 밀도): TopNav 자연폭 939px + `--rail-w` 54px = **993px**, 토큰이 33px 여유를 더해 1026px. **이 993px 은 2026-08-04 nav 한글화로 stale 이다** — 같은 절차로 재측정하니 자연폭 **710px**(−229px), 필요폭 **764px** 로 줄었다(라벨 글자 수가 준다: `Screener` 8자 → `스크리너` 4자). **토큰은 그대로 57rem 을 유지한다**: 바닥은 nav 하나가 아니라 전 라우트가 공유하는 셸 크롬이 정하는데, nav 가 더 이상 병목이 아니게 됐을 뿐 *다음* 병목이 무엇인지는 측정된 바 없다. 내리려면 그 병목부터 실측할 것 — 지금 내리면 근거 없이 다른 크롬을 압축하게 된다.
+    - 유도 실측(2026-07-21, **당시 밀도 1.125×**): TopNav 자연폭 939px + `--rail-w` 54px = **993px**, 토큰이 33px 여유를 더해 1026px. 이 993px 은 두 번 stale 이 됐다 — ① 2026-08-04 nav 한글화로 같은 절차 재측정 시 자연폭 **710px**(−229px)·필요폭 **764px**(`Screener` 8자 → `스크리너` 4자), ② **2026-08-07 다이얼 1.125×→1.0× 로 위 수치가 전부 옛 밀도 기준이 됐다**(크롬이 rem 기반이라 대략 ×0.889 이지만, 폰트 폭은 선형이 아니므로 추정치를 적지 않는다 — 필요하면 재측정할 것). **토큰은 그대로 57rem 을 유지한다**: 바닥은 nav 하나가 아니라 전 라우트가 공유하는 셸 크롬이 정하는데, nav 가 더 이상 병목이 아니게 됐을 뿐 *다음* 병목이 무엇인지는 측정된 바 없다. 내리려면 그 병목부터 실측할 것 — 지금 내리면 근거 없이 다른 크롬을 압축하게 된다.
   - **Why rem, not px:** everything the floor protects (nav, rail, panel widths) is rem-based, so the floor must track the density dial — at a future Cozy 1.25× the chrome needs proportionally more room. This is why the floor is *not* on the fixed-px list (which covers hairlines and small radii only).
   - **Why the scroll owner is `#root`:** if the document scrolls, the shell's `100vh` and the horizontal scrollbar trigger each other (scrollbar begets scrollbar). The shell is `h-full min-w-app-floor`, never `w-screen` — `100vw` includes the vertical scrollbar width, which would make the shell wider than the viewport at every width below the floor. Guarded by `App.test.tsx`.
-  - **세로 바닥 (`--app-floor-min-h`, ADR-0122):** 폭과 **대칭**으로 `39rem` (702px @ default density, 624px base intent). `/live` 창은 캔버스 비율로 스케일하므로 캔버스가 계속 낮아지면 호가 단수가 조용히 잘린다 — 바닥 아래에서는 높이도 동결하고 `#root` 가 세로 스크롤을 갖는다. 줌인은 양축을 함께 줄이므로 가로 바닥만으로는 반쪽이다(실측: 줌 200% 에서 폭은 여유였고 **높이가 먼저** 하한에 부딪혔다). 셸은 `min-h-app-floor min-w-app-floor` 를 함께 건다(`App.tsx`).
+  - **세로 바닥 (`--app-floor-min-h`, ADR-0122):** 폭과 **대칭**으로 `39rem` (624px @ 현재 1.0× 다이얼; 1.125× 시절엔 702px). `/live` 창은 캔버스 비율로 스케일하므로 캔버스가 계속 낮아지면 호가 단수가 조용히 잘린다 — 바닥 아래에서는 높이도 동결하고 `#root` 가 세로 스크롤을 갖는다. 줌인은 양축을 함께 줄이므로 가로 바닥만으로는 반쪽이다(실측: 줌 200% 에서 폭은 여유였고 **높이가 먼저** 하한에 부딪혔다). 셸은 `min-h-app-floor min-w-app-floor` 를 함께 건다(`App.tsx`).
   - **Re-deriving the floor:** measure the chrome, don't guess. `document.querySelector('nav').firstElementChild` → set `width:max-content` → read `getBoundingClientRect().width`, add the rail. Bump the token when the nav gains items. **라벨 텍스트가 바뀔 때도 재측정 대상이다** — 항목 수가 그대로여도 폭은 움직인다(2026-08-04 한글화가 그 사례).
 - Dense tool panels use one outer surface with internal dividers; avoid nested cards inside sidebars, drawers, modals, and detail panels. (Exception: `/live`·`/study` 상세 지표 카드는 승인된 예외 — Migration Status 참조.)
 - **Border radius:** 고정 px **폐쇄 5단**(ADR-0011 — 다이얼을 따라가지 않는다).
@@ -359,7 +361,9 @@ Quiet Trading Terminal migration completed across app shell, route surfaces, rai
 ## Components — Design Tokens for Specific Patterns
 
 > **Scale note:** All px values in this section are **1.0× base intent**.
-> Default rendering = × 1.125. See [Scale Factor](#scale-factor).
+> Default rendering = × 1.0 as of 2026-08-07, so these px values *are* what ships
+> today. That equality is a property of the current dial, not a permanent fact —
+> see [Scale Factor](#scale-factor) before copying any of them into code.
 
 ### Tabs (`/study` — `ChartTabBar`)
 - Height: 32px
@@ -517,21 +521,24 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-08-07 | **`borderRadius.DEFAULT` 누락 복구 — bare `rounded` 143곳이 토큰 밖 4.5px 였다** | `tokens.generated.ts` 가 `sm/md/lg/full` 만 주입하고 **`DEFAULT` 키를 안 냈다** → Tailwind 가 자기 기본값 `0.25rem` 으로 채웠고, root 18px 이라 **4.5px** 로 렌더됐다. 피해 둘: ① 토큰 밖 5번째 반경이 생겨 한 화면에 4px·4.5px·6px 이 공존(실측 `/screener` 버튼 28개에 (반경×높이) 조합 13종, `/heatmap` 은 4.5px 39개와 0px 40개) ② rem 기반이라 **고정 px 이어야 할 값이 밀도 다이얼을 따라 움직였다**(ADR-0011 위반 — root 22px 로 밀면 4.5→5.5px). `design-tokens.ts` 에 `isDefault` 플래그를 두고 생성기가 "정확히 하나" 를 강제하도록 해 복구. **값은 `md`(4px)** — 143곳이 이미 4.5px 로 렌더 중이라 `md` 는 0.5px(시각 등가), `lg` 는 +33%(전 화면 재스타일)다. `text-2xs` 결정(2026-08-04)과 같은 원칙: **구멍은 이미 화면에 있는 값으로 막고, 누수 수정의 부산물로 앱을 재디자인하지 않는다.** `radius-lg` 의 "(default)" 주석은 `md` 로 이관. 덤으로 값이 완전히 같던 임의값 6곳(`rounded-[4px]`×2→`md`, `rounded-[6px]`×4→`lg`)을 토큰화 — 특히 후자는 주석이 "ModalShell 반경에 맞춰"라고 적힌 채 **숫자로만 결합**돼 있었다. `rounded-xl`(13.5px, 다이얼 추종) 2곳도 함께 `lg` 로 — 종목 검색 팔레트인데, **트리거 버튼(`bg-bg-input rounded-lg`)을 눌러 열면 같은 검색 입력면이 13.5px 로 바뀌고** 결과 행은 이미 `rounded-lg` 였다(한 컴포넌트 안에서 갈림). 컨테이너도 `role="dialog"`+`shadow-modal`+`border-border-strong`+`bg-bg-card` 로 `ModalShell` 과 구조가 같은데 **앱에서 유일하게 13.5px 인 다이얼로그**였다. 실측 검증: 4개 라우트 231개 버튼에서 4.5px **0건** · root 22px 에서도 반경 불변 · **빌드 CSS 전수에 rem 기반 반경 0개**(`.rounded`→`var(--radius-md)`, `.rounded-t-md`·`sm`·`md`·`lg`·`full` 전부 토큰). 나머지 임의 반경 12곳도 최근접 토큰으로 스냅(사용자 결정): `[7px]`×5 툴바 알약 4종→`lg` · `[3px]`×2 BookPanel 배지→`sm` · `[1px]`×4 헤어라인→`sm` · `[6px]`×1→`lg`. `[3px]` 은 `sm`(2)·`md`(4) **등거리**라 위계로 갈랐다 — BookPanel 이 이미 `rounded-md` 를 쓰고 있어 배지를 `md` 로 올리면 파일 안 2단이 뭉개진다(`text-2xs` 때의 "위계 우선" 규칙). `[1px]`→`sm` 의 시각 영향은 실측했다: **2px 두께 막대에서 r=1px 와 r=2px 는 픽셀 동일**(CSS Backgrounds §5.5 — 한 변의 반경 합이 변 길이를 넘으면 비례 축소, 2+2>2 → ×0.5 → 1px). 두꺼워지는 경우(스플리터 hover `w-1`, vdist 막대)만 모서리가 1px 더 깎인다. ⚠️ 마지막 `[6px]` 1곳(`live/workspaceDrawer.ts`)은 **`--include='*.tsx'` 스캔 밖이라 1차에서 놓쳤다** — 반경/토큰 스윕은 `.ts` 까지 훑을 것(2026-08-04 `--fg-dimmer` 스윕이 같은 데 걸렸다). **영구 차단까지 완료(사용자 결정)**: `tailwind.config.ts` 에서 borderRadius 만 `extend` 밖으로 빼 **`theme.borderRadius` 로 교체**했다 — `extend` 는 Tailwind 기본 스케일과 *병합*이라 `xl`(0.75rem)·`2xl`·`3xl` 이 해석 가능한 채로 남고, 누가 한 번 쓰면 rem 누수가 재발한다(실제로 그 구멍으로 `rounded-xl` 이 검색 팔레트에 들어왔었다). 교체의 전제 조건 하나: **스케일에 없는 키는 에러가 아니라 CSS 미생성**이라 `radius-none` 토큰을 먼저 신설해야 했다 — 없으면 `rounded-none`·`rounded-r-none` 이 조용히 사라져 `BookPanel` 의 **한쪽만 둥근 잔량 바가 양쪽 다 둥글어진다**(무경고 시각 버그). 검증은 빌드로 했다: 임시 파일에 `rounded-xl`·`2xl`·`3xl` 을 **명시적으로 쓴 뒤 빌드했더니 셋 다 CSS 에 나오지 않았고**, `rounded-none`·`-r-none`·`-t-md` 는 전부 살아 토큰으로 해석됐다. 최종 실측: 전 반경 유틸이 root 18px·22px 에서 **동일**(다이얼 이탈 0), `rounded-md rounded-r-none` = TL/BL 4px·TR/BR 0px 정상. 결과적으로 앱 전체 반경이 `0 / 2 / 4 / 6 / full` **5단으로 폐쇄**됐다 — 새 단이 필요하면 임의값이 아니라 design-tokens.ts 에 추가해야 하고, 그게 이 교체의 요점이다. |
 | 2026-08-07 | **테마 기본값 `auto` → `toss-light` + 첫 페인트 부트스트랩 동기 버그 수정 (사용자 결정)** | `auto` 는 테마를 **라우트마다** 고른다(`/live`·`/heatmap`·`/market`=Obsidian, 나머지=Ledger). 그래서 상단 nav 를 **한 번 누르는 것**(히트맵→스크리너)이 화면 전체를 다크↔라이트로 뒤집었다. 명시적 기본값은 라우트 분기를 통째로 없앤다 — 한 테마로 고정. `auto` 는 설정에 옵션으로 남는다. **대가는 문서화·수용**: Toss Light 의 accent 와 `--price-down` 이 둘 다 파랑이고, 실측 지각 거리 **ΔE 17.3** 으로 Ledger(80.8)·Obsidian(139.2)의 약 1/5 이다. 분리는 관례가 떠받친다 — accent 는 솔리드 채움(버튼·활성탭·포커스·크로스헤어), 하락색은 텍스트·테두리. 이 충돌이 이제 옵트인이 아니라 **기본 경험**이므로 두 토큰을 건드리기 전에 위 Toss Light 노트를 볼 것. 함께 고친 **기존 버그**: `index.html` 부트스트랩이 `effectiveTheme` 와 이미 어긋나 있었다 — `OBSIDIAN_ROUTE_PREFIXES` 가 `/market` 을 얻었는데 부트스트랩 목록은 안 따라가서, `auto` 로 `/market` 에 진입하면 **ledger 로 칠했다가 obsidian 으로 뒤집혔다**(그 블록이 막으려던 FOUC·잘못된 테마 차트 캐시 그 자체). 기존 테스트도 `/market` 을 단언하지 않아 **커버리지 구멍이 드리프트 위치와 정확히 일치**했다. 부트스트랩은 모듈 그래프보다 먼저 돌아야 하므로 복제를 없앨 수 없다 → **`themePrefs.test.ts` 가 `index.html?raw` 를 파싱해 기본값·라우트 맵·허용 선호값 3가지를 대조**하고 이탈하면 실패한다. 가드는 4가지 이탈 시나리오로 역실험해 전부 잡는 것을 확인했다(첫 시도는 3항 연산자 기본값을 놓쳐 통과했다 — **통과하는 가드는 아무것도 증명하지 않는다**). **재검토 트리거**: 장중 `/live` 10호가에서 파란 크로스헤어가 파란 하락 잔량 위에 겹쳐 읽기 어려우면 — 장 마감 상태라 그 표면은 이번에 확인하지 못했다. |
 | 2026-08-07 | **`/live` 툴바에 거래소 선택기 신설 — 트리거가 현재 값 + 세션 창을 인다 (`거래소 통합 08:00–20:00`), 팝오버로 선택 (사용자 결정)** | venue 상태(`live.venue.v1`)는 이미 전역이었고 관심종목·히트맵·타이틀바가 읽고 있었는데, **변경 수단이 설정 모달 → 데이터 소스 → 거래소 라디오 하나뿐**이라 클릭 4번 깊이에 묻혀 있었다. `?variant=` 4변형을 실데이터 위에서 A/B — **A** 현행 · **B** 툴바 상시 세그먼트 `KRX│NXT│통합` · **C** 요약 pill + 팝오버 · **D** TopNav 전역 배지 + `V` 키. **판정 C**(조합 요구 없음). 프로토타입이 확정한 사실: (1) **판정축은 클릭 수가 아니라 "세션 창이 고르기 전에 보이는가"** 다 — 전환의 실제 비용은 x축이 09:00–15:30 → 08:00–20:00 으로 리플로우되고 NXT 호가 공백 경고가 붙는 **뷰 전체의 교체**이고, 그걸 미리 알리는 정도가 C(선택지마다 병기) > B(`title` 툴팁뿐) > D(없음) 로 갈렸다. (2) **툴바에 앵커되는 팝오버는 body 포털이어야 한다** — `WorkspaceToolbar` 의 `backdrop-blur` 가 `position: fixed` 의 컨테이닝 블록 겸 스택 컨텍스트를 만들어 `left/top` 이 툴바 기준으로 잡히고 `z-50` 도 툴바 안에서만 유효하다(**DOM 엔 있는데 화면엔 없음**; absolute 는 애초에 `overflow-x-auto` 에 잘린다). (3) 포털 패널은 `useDismissablePopover` 의 anchor-contains 예외 밖이라 `onMouseDown` 전파를 끊어야 한다 — 안 끊으면 mousedown 이 먼저 닫아 그 버튼의 click 이 영영 안 온다. **차트 창 헤더는 후보에서 제외**(#759 결정 1 — 앱 전역 값을 창 헤더에 두면 "이 창의 설정" 으로 읽힌다). 설정 모달의 「거래소」 라디오는 **유지** — `DataSourceDetail` 이 /study 도 렌더하고 거기엔 이 툴바가 없다. 전체 변형은 throwaway 브랜치 `prototype/live-venue-control-2026-08-07`(커밋 `2d6932e6`)에 1차 출처로 보존. **재검토 트리거**: 거래소가 4개 이상으로 늘거나, 툴바 폭이 좁아져 pill 라벨의 세션 창이 잘릴 때. |
+| 2026-08-07 | **기본 밀도 1.125×(18px) → 1.0×(16px) — 백로그의 "Compact" 도달 (사용자 요청: 전체 UI 폰트 1–2px 축소, 안 A 선택)** | 요청은 "폰트"였고 대안 두 개를 제시했다 — **A** 다이얼 하향(폰트+간격+레이아웃 동시 −11%) · **B** `text-*` 토큰만 축소(글자만 작아지고 여백 유지 → 더 헐거워짐). 사용자가 A 선택. 다이얼 한 값으로 끝난 이유는 2026-08-04 스윕이 `text-[Npx]` 하드코딩 71곳을 전량 토큰화해 뒀기 때문이다 — **다이얼 밖으로 새는 타이포가 0곳**이라 `RENDERED_ROOT_PX` 18→16 + `npm run gen:tokens` 로 전 표면이 따라왔다(본문 14.63→13 · 표 행 12.94→11.5 · 헤딩 15.75→14 · 마이크로라벨 10.13→9). 도그푸딩 실측으로 root 16px·토큰 8개 전부 base intent 일치 확인. **부수 변경 3건**: ① `rightOffset` 이 다이얼 파생이라 14→12 bars(차트 우측 여백), ② 반응형 바닥이 rem 이라 1026→912px(셸이 114px 더 압축된 뒤 멈춤 — 밀도가 낮아졌으니 의도된 결합), ③ 헤더 접힘 임계 재측정(아래). **다이얼을 내리면 "px 를 손으로 박은 자리" 가 전부 드러난다** — 이번에 셋이 걸렸다: (1) `HIGHLOW_FONT_PX = 11.8` 은 `--text-xs × 18` 을 손계산한 캔버스 상수라 다이얼을 따라가지 못했다 → 파생식으로 교체, (2) 차트 헤더 접힘 임계(424·258·303·202·104)는 전부 1.125× 실측 px 라 그대로 두면 **라벨이 들어갈 폭에서도 접히는 무성 회귀** → `/browse` 로 #905 절차 재측정, (3) `chartScale.test.ts` 의 `not.toBe(round(12 × DENSITY))` 는 DENSITY=1 에서 핀 값 12 와 파생값 12 가 붕괴해 **항상 빨간 단언**이 됐다 → 밀도 조건 뒤로 물려 다이얼이 1 이 아닐 때 자동 부활(가드 red-check 실측 완료). **재측정이 stale 상수 하나를 덤으로 잡았다**: 2단계 임계 주석의 "213px" 는 **2버튼 시절 값**이었다(git 확정 — 213 을 쓴 #763 이 저장·수집 버튼을 더한 #767 의 조상). #767 은 1단계만 344→424 로 고치고 2단계는 방치했다 — *바로 그 실수를 경고하는 문장을 같은 파일에 쓰면서*. 무증상이었던 이유는 임계 258 이 4버튼 실요구 254.25 위 3.75px 여유로 **우연히** 살아 있었기 때문이다. 새 실측(1.0× / 30분 라벨): `/live` 펴짐 382 → 임계 **384**, 1단계접힘 235 → **240**; `/study` 272 / 185 / 98. 절차 검증은 **옛 밀도 동시 측정**으로 했다 — 같은 방법을 root 18px 로 돌리니 414.25 / 300.75 / 201.75 / 104.25 가 나와 기록된 415 / 303 / 202 / 104 를 1px 안에서 재현했다. **비례 환산은 쓰지 않았다**: 실측 비율이 0.904 로 ×0.889 와 달라 환산했으면 6px 틀렸을 값이고, 이 파일은 이미 3px 차로 무성 잘림을 낸 전례를 갖고 있다. **함정 하나가 새로 생겼다(문서화함)**: 1.0× 에서는 토큰 표의 base-intent 열과 렌더 열이 **같은 값**이라, `text-[10.5px]` 같은 하드코딩이 오늘은 아무 증상을 안 낸다. 1.125× 시절엔 즉시 어긋나 보이던 실수가 이제 **다이얼이 다시 움직일 때까지 잠복**한다 — 규칙(임의값 px 금지)은 그대로지만 근거가 "값이 다르다" 에서 "값이 같아 보이는 건 우연이다" 로 바뀌었다. 비선형 지점 하나는 남겨 두고 경고를 달았다: `/heatmap` 캔들 셀은 배정(rem)이 줄어도 분자의 `CandleGlyph` 폭이 고정 px 라 여유가 4px→2.39px 로 잠식됐다(실측 30.39 ⊃ 10+2+16=28). `overflow-hidden` 이라 넘쳐도 조용히 잘리므로, **다음 한 칸을 내리려면 여기부터 실측**해야 한다. |
 
 ## App-shell & live tokens (ADR-0039, ADR-0052)
 
 Layout and source-identity tokens beyond the core scale. The Right Rail tokens (ADR-0052) are app-shell-wide (every route); the live tokens are `/live`-scoped. These layout widths/heights live in `design-tokens.ts` `SIZE_TOKENS` (ADR-0012); this hand-maintained table mirrors them for reference (no auto-marker yet):
 
-| Token | Base intent (1.0×) | Rendered @ default (1.125×) | Use |
+| Token | Base intent (1.0×) | Rendered @ default (1×) | Use |
 |---|---|---|---|
-| `--rail-w` | 48px | 54px | Right Rail icon column width (app shell, all routes; fixed — does not collapse) |
-| `--watchlist-panel-w` | 280px | 315px | Watchlist Panel width — opened from the Right Rail (global) |
-| `--h-top-nav` | 32px | 36px | Global top navigation row |
-| `--h-live-header` | 32px | 36px | Workspace header row — `WorkspaceShell.WorkspaceHeader`. **이름과 달리 유일한 소비처는 `/study`** (`StudyPage.tsx`); `/live` 는 상태바 폐지 후 이 밴드를 쓰지 않는다. 그나마 `/study` 호출부가 `min-h-12` 를 얹어 실효 높이는 54px 다(`min-height` 가 인라인 `height` 를 이긴다 — #900 의 "54px 원인은 버튼이 아니라 2줄 식별부") |
-| `--h-toolbar` | 32px | 36px | Workspace toolbar row — `WorkspaceShell.WorkspaceToolbar`, 소비처는 `/live` 의 `WorkspaceLiveToolbar` (창 추가·설정·프리셋·캡처헬스 한 줄 버튼 행). 밀도 개편(2026-07-23)으로 60→32px |
-| `--h-bottom-bar` | 24px | 27px | Global market-index bottom bar row (하단 시장지표 스트립; 데이터 없으면 행 자체가 접힘) |
-| `--app-floor-min-w` | 912px | 1026px | App shell 가로 바닥 — 아래로는 압축을 멈추고 `#root` 가 가로 스크롤 (Layout → Responsive floor) |
-| `--app-floor-min-h` | 624px | 702px | App shell 세로 바닥 (ADR-0122) — 아래로는 높이 동결 + 세로 스크롤 |
+| `--rail-w` | 48px | 48px | Right Rail icon column width (app shell, all routes; fixed — does not collapse) |
+| `--watchlist-panel-w` | 280px | 280px | Watchlist Panel width — opened from the Right Rail (global) |
+| `--h-top-nav` | 32px | 32px | Global top navigation row |
+| `--h-live-header` | 32px | 32px | Workspace header row — `WorkspaceShell.WorkspaceHeader`. **이름과 달리 유일한 소비처는 `/study`** (`StudyPage.tsx`); `/live` 는 상태바 폐지 후 이 밴드를 쓰지 않는다. 그나마 `/study` 호출부가 `min-h-12`(3rem = 48px @ 1×) 를 얹어 실효 높이는 48px 다(`min-height` 가 인라인 `height` 를 이긴다 — #900 의 "원인은 버튼이 아니라 2줄 식별부"; 다이얼 1.125× 시절엔 같은 구조가 54px 였다) |
+| `--h-toolbar` | 32px | 32px | Workspace toolbar row — `WorkspaceShell.WorkspaceToolbar`, 소비처는 `/live` 의 `WorkspaceLiveToolbar` (창 추가·설정·프리셋·캡처헬스 한 줄 버튼 행). 밀도 개편(2026-07-23)으로 60→32px |
+| `--h-bottom-bar` | 24px | 24px | Global market-index bottom bar row (하단 시장지표 스트립; 데이터 없으면 행 자체가 접힘) |
+| `--app-floor-min-w` | 912px | 912px | App shell 가로 바닥 — 아래로는 압축을 멈추고 `#root` 가 가로 스크롤 (Layout → Responsive floor) |
+| `--app-floor-min-h` | 624px | 624px | App shell 세로 바닥 (ADR-0122) — 아래로는 높이 동결 + 세로 스크롤 |
+
+> 두 열이 같은 값인 것은 **2026-08-07 부터 기본 밀도가 1.0× 이기 때문**이다(우연이 아니라 정의상). 열을 합치지 않는 이유는 density 모드가 부활하면 다시 갈라지고, 그때 "base intent 가 무엇이었나" 가 필요하기 때문이다.
 
 **소비처 없는 토큰은 정의째 삭제한다** — 정의만 남은 토큰은 "이 값이 화면에 나타난다"고 오독되기 때문. 2026-07-29 (#916) 에 `--h-pricestrip`(시세 스트립 폐지)·`--h-tab`·`--h-tab-secondary`·`--h-orderbook-row`·`--combobox-min-w` 5개를 삭제했다. 판정은 `--token-name` grep 만으로 하지 말 것 — `TAILWIND_THEME` 이 토큰을 유틸리티로도 매핑하므로(`--h-tab` → `className="h-tab"`) **CSS 변수명과 Tailwind 클래스명 양쪽**을 봐야 한다. 삭제해도 Tailwind 기본 스케일이 승계하지 않는 이름이라 무음 회귀는 없다(`font-mono` 별칭을 남긴 이유와 대비 — 그쪽은 기본 스택이 승계한다). `usage` 문자열은 `npm run gen:tokens` 로 `tokens.css` 주석에 그대로 찍히므로, 고칠 때는 `design-tokens.ts` 를 고치고 재생성해야 한다.
 

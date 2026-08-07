@@ -22,7 +22,7 @@ import type {
 } from 'lightweight-charts';
 import { CANVAS_FONT_STACK, RENDERED_ROOT_PX } from '../styles/design-tokens';
 
-/** Default density multiplier (18px root / 16px base intent = 1.125). */
+/** Default density multiplier (16px root / 16px base intent = 1.0 as of 2026-08-07; was 1.125). */
 const DENSITY = RENDERED_ROOT_PX / 16;
 
 /**
@@ -49,7 +49,8 @@ export const CHART_LAYOUT_OPTIONS: DeepPartial<LayoutOptions> = {
 
 /**
  * `rightOffset` scales from the library default 12 with the dial
- * (12 × 1.125 → 14 bars). `barSpacing` uses default spacing.
+ * (12 × 1.0 → 12 bars as of 2026-08-07; was 14 at the 1.125× dial).
+ * `barSpacing` uses default spacing.
  */
 export const CHART_TIMESCALE_OPTIONS: DeepPartial<TimeScaleOptions> = {
   rightOffset: Math.round(12 * DENSITY),
