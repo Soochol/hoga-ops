@@ -3,6 +3,7 @@ import {
   DEFAULT_THEME_PREFERENCE,
   effectiveTheme,
   OBSIDIAN_ROUTE_PREFIXES,
+  subscribeToThemePreferenceStorage,
   THEME_PREFERENCE_OPTIONS,
   useThemePrefsStore,
   type ThemePreference,
@@ -114,6 +115,40 @@ describe('useThemePrefsStore', () => {
       expect(line).toBeDefined();
       const opts = [...line!.matchAll(/pref !== '([a-z-]+)'/g)].map((m) => m[1]);
       expect(opts.sort()).toEqual([...THEME_PREFERENCE_OPTIONS].sort());
+    });
+  });
+
+  /**
+   * 탭 전역 동기. `storage` 는 **쓰지 않은 탭에서만** 발생하므로, 이 구독은 원리적으로
+   * 자기 자신의 쓰기를 되받지 않는다(에코 없음). 여기서는 그 이벤트가 실제로 저장소를
+   * 다시 읽게 만드는지, 그리고 해제가 먹는지를 본다.
+   */
+  describe('subscribeToThemePreferenceStorage', () => {
+    it('다른 탭의 쓰기를 반영하고, 해제하면 더 이상 반영하지 않는다', () => {
+      const unsubscribe = subscribeToThemePreferenceStorage();
+
+      // 순서가 중요하다: hydrateFromStorage 는 event.newValue 가 아니라 저장소를
+      // 다시 읽으므로, 값을 먼저 써 두지 않으면 이벤트만 쏴도 아무 일이 없다.
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ themePreference: 'obsidian' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
+      expect(useThemePrefsStore.getState().themePreference).toBe('obsidian');
+
+      unsubscribe();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ themePreference: 'ledger' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
+      expect(useThemePrefsStore.getState().themePreference).toBe('obsidian'); // 그대로
+    });
+
+    it('다른 키의 storage 이벤트는 무시한다', () => {
+      // 키 필터가 없으면 모든 스토어의 쓰기(watchlist·workspace·live.page…)마다
+      // hydrate 가 돌고, 그때 우연히 테마 키에 남아 있던 값이 되살아난다.
+      const unsubscribe = subscribeToThemePreferenceStorage();
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ themePreference: 'obsidian' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'live.page.v1' }));
+
+      expect(useThemePrefsStore.getState().themePreference).toBe('auto'); // beforeEach 값
+      unsubscribe();
     });
   });
 

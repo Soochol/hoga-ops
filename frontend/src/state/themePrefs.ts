@@ -105,3 +105,36 @@ export const useThemePrefsStore = create<Store>((set) => ({
     if (stored) set({ themePreference: stored });
   },
 }));
+
+/**
+ * Mirror another tab's preference change into this tab — the theme is a global
+ * per-user setting, so it should be global across the user's *open tabs* too.
+ *
+ * The value already lives in localStorage, which every tab shares. What was
+ * missing is that a tab only ever *reads* it twice: the index.html bootstrap at
+ * first paint, and this store's initializer at module load. So a tab opened
+ * before the change (the `/live` deep links open in new tabs — see
+ * live/liveNavigate.ts) kept painting the old theme until it was reloaded.
+ *
+ * No echo loop: `storage` fires only in the tabs that did *not* write, and
+ * `hydrateFromStorage` reads without re-persisting.
+ *
+ * The event payload (`newValue`) is deliberately ignored — re-reading through
+ * `hydrateFromStorage` runs the same validation as the initializer, so there is
+ * one parse/validate path instead of two that can drift.
+ *
+ * Applying it to `<html data-theme>` is still App.tsx's existing effect: the
+ * store change re-runs it, and under `auto` each tab resolves against *its own*
+ * pathname — which is the point of keeping the preference (not the effective
+ * theme) as the shared value.
+ *
+ * Returns an unsubscribe function (useEffect cleanup shape).
+ */
+export function subscribeToThemePreferenceStorage(): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== STORAGE_KEY) return;
+    useThemePrefsStore.getState().hydrateFromStorage();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}
