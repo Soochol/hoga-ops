@@ -37,10 +37,9 @@ export interface CaptureHealthView {
 
 /**
  * `capture_reason` 만 `CaptureReason` 이 아니라 `string` 인 것은 의도다. 여기는 wire
- * 가 아니라 **투영 경계**라서 두 종류의 union 밖 값이 정당하게 들어온다: 서버가
- * 앞서 나가 보낸 새 reason, 그리고 `deriveBannerState` 가 필드 부재를 메우는
- * `'unknown'` 합성값. 좁히면 그 둘을 타입 세탁해야 한다. 계약 강제는 wire 타입
- * (`LiveStatus`)과 `CAPTURE_REASON_VIEW` 테이블이 이미 맡고 있다.
+ * 가 아니라 **투영 경계**라서, 서버가 프론트보다 앞서 나가 보낸 새 reason 이 정당하게
+ * 들어온다 — 좁히면 그걸 타입 세탁해야 하고, 그러면 미지값 폴백이 테스트 불가가 된다.
+ * 계약 강제는 wire 타입(`LiveStatus`)과 `CAPTURE_REASON_VIEW` 테이블이 이미 맡는다.
  */
 export interface LiveStatusProjectionInput {
   status:
@@ -87,7 +86,7 @@ interface CaptureReasonView {
  *
  * `healthy` 항목은 두 함수의 `healthy` 불리언 단축 경로가 먼저 처리하므로 정상
  * 응답에선 쓰이지 않는다 — `capture_healthy=false` 인데 reason 만 `'healthy'` 인
- * 합성 입력(테스트·`deriveBannerState`)을 위해 남긴다.
+ * 합성 입력(테스트)을 위해 남긴다.
  */
 const CAPTURE_REASON_VIEW: Record<CaptureReason, CaptureReasonView> = {
   healthy: { label: 'LIVE●', severity: 'ok' },

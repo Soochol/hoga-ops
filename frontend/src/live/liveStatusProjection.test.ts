@@ -97,6 +97,26 @@ describe('projectLiveStatus', () => {
     expect(projection.banner.stack).toEqual(['kis_token_expired']);
   });
 
+  // 아래 둘은 삭제된 useLiveBannerState.test.ts 에서 이관했다 — 그쪽만 덮던 분기다.
+  it('watchlist_empty 가 우선순위-1 경쟁에서 이긴다', () => {
+    // 재고가 비었으면서 동시에 offline 인 상태. 매트릭스 순서상 빈 관심종목이 먼저다.
+    const projection = project({
+      status: { ...baseStatus, capture_healthy: false, capture_reason: 'offline' },
+      inventory: { kind: 'watchlist', size: 0 },
+    });
+
+    expect(projection.banner.primary).toBe('watchlist_empty');
+  });
+
+  it('status 가 없으면(로딩) 배너를 만들지 않는다', () => {
+    const projection = project({ status: null, inventory: { kind: 'watchlist', size: 1 } });
+
+    expect(projection.banner.primary).toBeNull();
+    expect(projection.banner.stack).toHaveLength(0);
+    // status 부재의 캡처 헬스는 offline 폴백 — 로딩 중을 장애로 칠하지 않는다.
+    expect(projection.captureHealth.severity).toBe('ok');
+  });
+
   // 백엔드가 실제로 내는 reason 전수(lifecycle.py 의 Literal)와 1:1. 여기 없는 값을
   // 백엔드가 내보내면 CaptureReason union 이 늘고 CAPTURE_REASON_VIEW 가 컴파일
   // 에러를 내므로, 이 표가 조용히 뒤처지지 않는다. 마지막 행은 union 밖 폴백 —

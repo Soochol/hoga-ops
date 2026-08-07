@@ -1,13 +1,12 @@
 import { Link } from 'react-router';
-import type { LiveBannerPrimary } from './liveStatusProjection';
-import type { BannerCause } from './useLiveBannerState';
+import type { LiveBannerCause, LiveBannerPrimary } from './liveStatusProjection';
 
 interface Props {
   primary: LiveBannerPrimary;
-  stack: BannerCause[];
+  stack: LiveBannerCause[];
 }
 
-const COPY: Record<BannerCause, { title: string; severity: 'error' | 'warn' | 'info' }> = {
+const COPY: Record<LiveBannerCause, { title: string; severity: 'error' | 'warn' | 'info' }> = {
   watchlist_empty: { title: '관심종목을 먼저 추가해주세요', severity: 'info' },
   kis_token_expired: { title: 'KIS 토큰이 만료되었습니다', severity: 'warn' },
   realtime_unavailable: { title: '실시간 미가동 — 호가·체결 스트림이 연결되지 않았습니다 (캔들·지수는 정상)', severity: 'warn' },
@@ -44,7 +43,7 @@ function BannerRow({
   actionTo,
   actionLabel,
 }: {
-  cause: BannerCause;
+  cause: LiveBannerCause;
   actionTo?: string;
   actionLabel?: string;
 }) {
