@@ -151,9 +151,9 @@ vi.mock('../api/useLiveCursor', () => ({
   useLiveBrokersAtCursor: () => undefined,
 }));
 
-// useLiveBannerState now reads the authoritative watchlist via useWatchlist;
+// useLiveStatusProjection reads the authoritative watchlist via useWatchlist;
 // mock it non-empty so the banner logic stays unit-level and doesn't hit
-// /api/watchlist in jsdom. (Empty-state is exercised in useLiveBannerState.test.ts.)
+// /api/watchlist in jsdom. (Empty-state is exercised in liveStatusProjection.test.ts.)
 // useAddToWatchlist / useRemoveFromWatchlist are stubbed defensively; the
 // symbol search now lives in the global TopNav, but other live surfaces still
 // touch these hooks in jsdom.

@@ -140,7 +140,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     vi.spyOn(apiClient, 'apiCall').mockImplementation((url: string) => {
       if (url.includes('/status')) {
         return Promise.resolve({
-          running: true, live_set: [], capture_reason: 'ok',
+          running: true, live_set: [], capture_reason: 'healthy',
           kiwoom: { enabled: true, accounts_configured: 2, connected_accounts: 1, subscribed_count: 190, last_tick_ms: null, accounts: [] },
         });
       }

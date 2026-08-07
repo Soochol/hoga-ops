@@ -1,9 +1,8 @@
-import type { LiveStatus } from '../api/liveStatus';
+import type { CaptureReason, LiveStatus } from '../api/liveStatus';
 import { useWatchlist } from '../watchlist/useWatchlist';
 
 export type LiveBannerCause =
   | 'watchlist_empty'
-  | 'credentials_missing'
   | 'kis_token_expired'
   | 'realtime_unavailable';
 
@@ -12,7 +11,6 @@ export type LiveBannerCause =
  * 멤버 추가 시 lockstep(CONTEXT.md STATE_SEVERITY SSOT 규율). */
 export type LiveBannerPrimary =
   | 'watchlist_empty'
-  | 'credentials_missing'
   | 'realtime_unavailable'
   | null;
 
@@ -21,7 +19,14 @@ export type InventoryState =
   | { kind: 'heatmap'; size: number | null }
   | { kind: 'unknown' };
 
-export type CaptureHealthSeverity = 'ok' | 'warn' | 'error';
+/**
+ * 캡처 헬스 pill 의 등급. **2단이다** — 예전엔 `'warn'` 이 있었지만 그 등급으로 가는
+ * 유일한 길이 `reconnecting`·`subscribing` 이었고, 두 reason 은 ADR-0118 PR-G
+ * (KIS WS 계층 삭제)에서 백엔드가 내보내기를 멈춘 뒤로 도달 불가였다. 타입에만 남은
+ * 등급은 "3단계 상태 기계" 라는 거짓 문서가 되므로 지웠다 — 다시 필요해지면
+ * `CAPTURE_REASON_VIEW` 에 warn 을 쓰는 reason 을 추가하면서 같이 되살린다.
+ */
+export type CaptureHealthSeverity = 'ok' | 'error';
 
 export interface CaptureHealthView {
   severity: CaptureHealthSeverity;
@@ -30,8 +35,17 @@ export interface CaptureHealthView {
   showDot: boolean;
 }
 
+/**
+ * `capture_reason` 만 `CaptureReason` 이 아니라 `string` 인 것은 의도다. 여기는 wire
+ * 가 아니라 **투영 경계**라서, 서버가 프론트보다 앞서 나가 보낸 새 reason 이 정당하게
+ * 들어온다 — 좁히면 그걸 타입 세탁해야 하고, 그러면 미지값 폴백이 테스트 불가가 된다.
+ * 계약 강제는 wire 타입(`LiveStatus`)과 `CAPTURE_REASON_VIEW` 테이블이 이미 맡는다.
+ */
 export interface LiveStatusProjectionInput {
-  status: Pick<LiveStatus, 'running' | 'started_at_ms' | 'cycle_lag_ms' | 'capture_healthy' | 'capture_reason' | 'watchlist_count'> | null | undefined;
+  status:
+    | (Pick<LiveStatus, 'capture_healthy'> & { capture_reason: string })
+    | null
+    | undefined;
   inventory: InventoryState;
   tokenExpired?: boolean;
 }
@@ -59,27 +73,52 @@ export function projectCaptureHealth(
   };
 }
 
+interface CaptureReasonView {
+  label: string;
+  severity: CaptureHealthSeverity;
+}
+
+/**
+ * reason → (라벨, 등급)의 유일한 표. `CaptureReason` union 에 **exhaustive** 로 묶여
+ * 있어서, 백엔드가 새 reason 을 추가하고 union 을 늘리면 여기가 컴파일 에러로 항목을
+ * 요구한다. 이 결합이 없던 판에서 프론트 표에는 백엔드가 안 내는 값 4개가 한글로
+ * 남고 실제로 나오는 `registration_incomplete` 만 빠져 있었다.
+ *
+ * `healthy` 항목은 두 함수의 `healthy` 불리언 단축 경로가 먼저 처리하므로 정상
+ * 응답에선 쓰이지 않는다 — `capture_healthy=false` 인데 reason 만 `'healthy'` 인
+ * 합성 입력(테스트)을 위해 남긴다.
+ */
+const CAPTURE_REASON_VIEW: Record<CaptureReason, CaptureReasonView> = {
+  healthy: { label: 'LIVE●', severity: 'ok' },
+  // 미기동·장 마감은 장애가 아니다 — 밤·주말 거짓-앰버를 막으려 ok 로 둔다.
+  offline: { label: '오프라인', severity: 'ok' },
+  closed: { label: '장 마감', severity: 'ok' },
+  // WS 는 붙었는데 저장셋 REG ACK 가 덜 찼다. 30s 워치독이 같은 패스에서 재구독을
+  // 시도하므로 한두 패스 떴다 사라지는 건 정상 과도기고, 지속되면 실제 전송 유실이다.
+  registration_incomplete: { label: '구독 등록 미완', severity: 'error' },
+};
+
+/**
+ * union 밖 문자열(서버가 프론트보다 앞서 나간 경우)은 **원문 그대로 + error** 로
+ * 떨어뜨린다. 한글로 얼버무리지 않는 것이 의도다 — 낯선 영문 토큰이 빨간 pill 에
+ * 뜨는 편이 계약 스큐를 훨씬 빨리 드러낸다.
+ */
+function captureReasonView(reason: string): CaptureReasonView {
+  const table: Record<string, CaptureReasonView | undefined> = CAPTURE_REASON_VIEW;
+  return table[reason] ?? { label: reason, severity: 'error' };
+}
+
 export function captureHealthSeverity(
   healthy: boolean,
   reason: string,
 ): CaptureHealthSeverity {
   if (healthy) return 'ok';
-  if (reason === 'offline' || reason === 'closed') return 'ok';
-  if (reason === 'reconnecting' || reason === 'subscribing') return 'warn';
-  return 'error';
+  return captureReasonView(reason).severity;
 }
 
 export function captureHealthLabel(healthy: boolean, reason: string): string {
   if (healthy) return 'LIVE●';
-  switch (reason) {
-    case 'offline': return '오프라인';
-    case 'closed': return '장 마감';
-    case 'reconnecting': return '재연결 중...';
-    case 'subscribing': return '구독 중...';
-    case 'sub_failed': return '구독 실패';
-    case 'stale': return '수신 끊김';
-    default: return reason;
-  }
+  return captureReasonView(reason).label;
 }
 
 export function projectLiveStatus({
@@ -104,11 +143,15 @@ export function projectLiveStatus({
     if (reason === 'offline') {
       return { banner: { primary: 'realtime_unavailable', stack }, captureHealth };
     }
-    // 정지+미시작이면서 offline/closed가 아닌 잔여 상태 = KIS 자격증명 문제로 간주
-    // (캔들·지수 경로의 KIS 키 결측). closed는 실시간 정지가 정상이므로 제외.
-    if (!status.running && status.started_at_ms == null && reason !== 'closed') {
-      return { banner: { primary: 'credentials_missing', stack }, captureHealth };
-    }
+    // 여기 있던 `credentials_missing` 분기는 **도달 불가라서** 내렸다. 조건이
+    // `!running && started_at_ms == null && reason ∉ {offline, closed}` 였는데,
+    // offline/closed 가 아닌 모든 reason(healthy·registration_incomplete)은
+    // `connected_accounts > 0` 을 함의하고 그건 `running=true` 를 함의한다
+    // (lifecycle.py::get_status) — 즉 `!running` 을 영영 만족하지 못한다.
+    //
+    // 원래 의도(캔들·지수 경로의 KIS 키 결측 표면화)는 이 자리에서 이미 실패하고
+    // 있었다. 다시 필요하면 capture_reason 을 우회 추론하지 말고 백엔드가 그
+    // 사실을 직접 실어 보내야 한다 — 그게 이 분기가 죽은 진짜 이유다.
   }
 
   return { banner: { primary: null, stack }, captureHealth };

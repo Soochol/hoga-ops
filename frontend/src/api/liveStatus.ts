@@ -1,6 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
 
+/**
+ * 백엔드가 실제로 내보내는 `capture_reason` 값의 전수. 미러:
+ * `hoga/live/lifecycle.py::LiveStatus.capture_reason` (같은 Literal).
+ *
+ * **`liveStatusProjection` 의 라벨·severity 테이블이 이 union 에 exhaustive 로
+ * 묶여 있다** — 멤버를 늘리면 그쪽이 컴파일 에러로 lockstep 을 요구한다. 그 결합이
+ * 이 타입의 존재 이유다: 예전엔 `string` 이라 백엔드가 값을 바꿔도 프론트가 조용히
+ * 원문을 렌더했고, 그렇게 죽은 라벨 4개(`reconnecting`·`subscribing`·`sub_failed`·
+ * `stale`)가 ADR-0118 PR-G 이후 1년 가까이 남아 있었다 — 정작 실제로 나오는
+ * `registration_incomplete` 는 매핑이 없어 영문 원문으로 노출되면서.
+ *
+ * 다만 **런타임 보장은 아니다**. 서버가 앞서 나가면 union 밖 문자열이 실제로 도착할
+ * 수 있어서, 투영 경계(`LiveStatusProjectionInput`)는 의도적으로 `string` 을 받고
+ * 미지값 폴백을 유지한다.
+ */
+export type CaptureReason = 'healthy' | 'offline' | 'closed' | 'registration_incomplete';
+
 export interface LiveStatus {
   running: boolean;
   started_at_ms: number | null;
@@ -8,7 +25,7 @@ export interface LiveStatus {
   cycle_lag_ms: number;
   /** 캡처 헬스(spec 2026-06-08 §2.2). cycle_lag_ms(0 고정)를 대체하는 신호. */
   capture_healthy: boolean;
-  capture_reason: string;
+  capture_reason: CaptureReason;
   /**
    * Codes the live poller is *actively iterating* — a poller-health metric,
    * NOT the watchlist inventory size. It is 0 whenever the poller isn't
@@ -77,6 +94,10 @@ export interface KiwoomStatus {
   // realtime(●) 판정. 백엔드 신규 필드라 optional — 구 응답엔 없을 수 있음.
   subscribed_codes?: string[];
   last_tick_ms: number | null;
+  // 저장셋 REG ACK 미확인 키가 남아 있는가(kiwoom_session.status() 미러). 이게 참이면
+  // lifecycle 이 capture_reason='registration_incomplete' 로 승격한다 — 즉 pill 이
+  // 이미 같은 사실을 말하므로 현재 소비처는 없다. optional 인 이유는 구 응답 호환.
+  registration_incomplete?: boolean;
   accounts: KiwoomAccountStatus[];
 }
 
