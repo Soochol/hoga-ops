@@ -602,8 +602,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const py = e.clientY - rect.top;
     onChartHoverPassthrough?.({ x: px, y: py });
     // Track the cursor for the hline/vline ghost-line preview and repaint.
+    // 선택된 도형을 잡아 끄는 중이면 고스트를 접는다 — 그 제스처는 배치가 아니라
+    // 이동이고(그리기 도구가 켜진 채로도 선택된 도형은 잡힌다, `tools.ts` 의
+    // `withSelectedDrawingDrag`), 커서 밑에서 끌려오는 선 위에 "여기 새로 놓는다"
+    // 는 점선이 겹쳐 떠서 둘 중 어느 것이 커밋될지 읽히지 않는다.
     if (activeTool === 'hline' || activeTool === 'vline') {
-      ghostRef.current = computeGhost(px, py);
+      ghostRef.current = dragRef.current ? null : computeGhost(px, py);
       requestRedraw();
     }
     TOOLS[activeTool].onPointerMove?.(buildCtx(e));

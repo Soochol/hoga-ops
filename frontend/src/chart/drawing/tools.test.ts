@@ -19,6 +19,7 @@ import {
   selectTool,
   trendlineTool,
   matchShortcut,
+  type DrawingToolSpec,
   type ToolCtx,
 } from './tools';
 import type { Drawing, Point } from './types';
@@ -459,12 +460,15 @@ describe('pencilTool throttle', () => {
   });
 });
 
-describe('pencilTool: 선택된 획 위에서 시작한 press 는 이동이다', () => {
-  // 연필은 커밋 후에도 활성으로 남으므로(2026-07-01 사용자 요청), 방금 그린 획을
-  // 잡아 좌우로 끌면 그 궤적이 새 가로 획으로 커밋됐다 — 화면에는 그린 그림이
-  // 좌우로 늘어난 것처럼 보였다. 게이트가 막는 방향은 "선택된 도형 위에서 시작한
-  // press" 하나뿐이고, 그 외에는 전부 종전대로 그려진다(아래 두 테스트).
-  const stroke: Drawing = {
+describe('그리기 도구: 선택된 도형 위에서 시작한 press 는 이동이다', () => {
+  // 그리기 도구는 커밋 후에도 활성으로 남는데(2026-07-01 사용자 요청) 방금 그린
+  // 도형이 선택되므로, 그 위를 잡아 끄는 자연스러운 다음 동작이 "새 도형 그리기"로
+  // 해석됐다. 연필에서 가장 나쁘게 보였다 — 좌우 드래그 궤적이 긴 가로 획으로
+  // 커밋되어 원래 획과 겹치니, 그린 그림이 좌우로 늘어난 것처럼 읽혔다.
+  //
+  // 게이트가 막는 방향은 "선택된 도형 위에서 시작한 press" 하나뿐이다. 아래 세
+  // 테스트를 도구마다 돌려 그 하나만 막히고 나머지 둘은 종전대로임을 고정한다.
+  const target: Drawing = {
     id: 'p1',
     kind: 'pencil',
     points: [
@@ -477,37 +481,76 @@ describe('pencilTool: 선택된 획 위에서 시작한 press 는 이동이다',
     paneId: 'candle',
   };
 
-  it('starts a body drag and commits NO new stroke', () => {
-    const ctx = makeCtx({ drawings: [stroke], selectedId: 'p1', hitTestAt: vi.fn(() => stroke) });
-    pencilTool.onPointerDown!(ctx);
-    expect(ctx.pencilDraft.current).toBeNull();
-    expect(ctx.dragRef.current).toMatchObject({ kind: 'body', id: 'p1' });
+  /** 매 호출마다 다른 점을 돌려주는 ctx — 추세선/사각형은 두 점이 같으면 생성을
+   *  거부하므로(0 길이/0 넓이) 고정 점짜리 기본 stub 으로는 "그려진다"를 못 잰다. */
+  function movingCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
+    let n = 0;
+    return makeCtx({
+      pixelToData: vi.fn(() => {
+        n += 1;
+        return { realMs: 1_700_000_000_000 + n * 60_000, price: 70_000 + n * 10 };
+      }),
+      ...overrides,
+    });
+  }
 
-    pencilTool.onPointerMove!(ctx);
-    expect(ctx.update).toHaveBeenCalledWith('p1', expect.objectContaining({ points: expect.any(Array) }));
+  /** 도구별 "정상적으로 하나 그리기". hline/vline 은 down 한 번이 곧 생성이고,
+   *  나머지는 down→move→up 이 필요하다. 선택적 호출인 것이 의도다 — `!` 로 부르면
+   *  핸들러 부재(1-클릭 도구)가 게이트 미적용과 같은 실패로 섞여 보인다. */
+  function drawOne(tool: DrawingToolSpec, ctx: ToolCtx): void {
+    tool.onPointerDown?.(ctx);
+    tool.onPointerMove?.(ctx);
+    tool.onPointerUp?.(ctx);
+  }
 
-    pencilTool.onPointerUp!(ctx);
-    // The regression: a left-right drag used to land here as a long horizontal pencil.
-    expect(ctx.add).not.toHaveBeenCalled();
+  const GATED: ReadonlyArray<readonly [string, DrawingToolSpec]> = [
+    ['hline', hlineTool],
+    ['vline', vlineTool],
+    ['trendline', trendlineTool],
+    ['rect', rectTool],
+    ['pencil', pencilTool],
+  ];
+
+  for (const [name, tool] of GATED) {
+    it(`${name}: 선택된 도형을 잡으면 이동만 하고 아무것도 만들지 않는다`, () => {
+      const ctx = movingCtx({ drawings: [target], selectedId: 'p1', hitTestAt: vi.fn(() => target) });
+      tool.onPointerDown!(ctx);
+      // hline/vline 은 down 이 곧 생성이라 여기서 이미 갈린다.
+      expect(ctx.add).not.toHaveBeenCalled();
+      expect(ctx.dragRef.current).toMatchObject({ kind: 'body', id: 'p1' });
+
+      // 넘긴 드래그를 끝까지 select 가 처리하려면 래퍼가 move/up 을 반드시 정의해야
+      // 한다 — hline/vline 은 원래 1-클릭 도구라 둘 다 없었다.
+      tool.onPointerMove!(ctx);
+      expect(ctx.update).toHaveBeenCalledWith('p1', expect.objectContaining({ points: expect.any(Array) }));
+
+      tool.onPointerUp!(ctx);
+      // 회귀의 자리: 좌우 드래그가 여기서 새 도형으로 커밋되던 것이 이 버그였다.
+      expect(ctx.add).not.toHaveBeenCalled();
+      expect(ctx.dragRef.current).toBeNull();
+      expect(ctx.releasePointer).toHaveBeenCalled();
+    });
+
+    it(`${name}: 선택되지 않은 도형 위에는 그대로 그려진다`, () => {
+      const ctx = movingCtx({ drawings: [target], selectedId: null, hitTestAt: vi.fn(() => target) });
+      drawOne(tool, ctx);
+      expect(ctx.dragRef.current).toBeNull();
+      expect(ctx.add).toHaveBeenCalledOnce();
+    });
+
+    it(`${name}: 선택된 도형을 빗나간 press 는 그대로 그려진다`, () => {
+      const ctx = movingCtx({ drawings: [target], selectedId: 'p1', hitTestAt: vi.fn(() => null) });
+      drawOne(tool, ctx);
+      expect(ctx.dragRef.current).toBeNull();
+      expect(ctx.add).toHaveBeenCalledOnce();
+    });
+  }
+
+  it('측정자는 게이트 밖이다 — 커밋 시 select 로 돌아가므로 함정 자체가 없다', () => {
+    const ctx = movingCtx({ drawings: [target], selectedId: 'p1', hitTestAt: vi.fn(() => target) });
+    measureTool.onPointerDown!(ctx);
     expect(ctx.dragRef.current).toBeNull();
-    expect(ctx.releasePointer).toHaveBeenCalled();
-  });
-
-  it('still draws over a drawing that is NOT selected', () => {
-    const ctx = makeCtx({ drawings: [stroke], selectedId: null, hitTestAt: vi.fn(() => stroke) });
-    pencilTool.onPointerDown!(ctx);
-    expect(ctx.dragRef.current).toBeNull();
-    expect(ctx.pencilDraft.current?.points).toHaveLength(1);
-    ctx.pencilDraft.current!.points.push({ realMs: 1_700_000_000_001, price: 70_010 });
-    pencilTool.onPointerUp!(ctx);
-    expect(ctx.add).toHaveBeenCalledOnce();
-  });
-
-  it('still draws when the press misses the selected drawing', () => {
-    const ctx = makeCtx({ drawings: [stroke], selectedId: 'p1', hitTestAt: vi.fn(() => null) });
-    pencilTool.onPointerDown!(ctx);
-    expect(ctx.dragRef.current).toBeNull();
-    expect(ctx.pencilDraft.current?.points).toHaveLength(1);
+    expect(ctx.measureDraft.current).not.toBeNull();
   });
 });
 
