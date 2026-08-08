@@ -291,7 +291,12 @@ async def test_page_request_carries_base_dt_and_scope() -> None:
     await fetch_minute_page(c, "005930", "20260803", venue="NXT")
     assert sent[0] == {
         "stk_cd": "005930_NX", "tic_scope": "1",
-        "upd_stkpc_tp": "1", "base_dt": "20260803",
+        # **`"0"`(원주가)이 계약이다 — `"1"` 로 되돌리면 여기가 빨개진다**(#1229).
+        # 벤더 수정주가는 `base_dt` 상대인데 이 어댑터는 `base_dt` 를 페이지마다
+        # 옮기므로, `"1"` 이면 커서가 수정일 밑으로 내려간 순간부터 척도가 갈린다
+        # (340570 실측: 동일 봉이 65,600 vs 33,200). 척도는 호출자가
+        # `kiwoom_adjust_factors` 로 고정한다.
+        "upd_stkpc_tp": "0", "base_dt": "20260803",
     }
     await c.aclose()
 

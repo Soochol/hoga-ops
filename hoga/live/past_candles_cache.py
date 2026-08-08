@@ -243,6 +243,28 @@ class PastCandlesCache:
         if slot in inner:
             self._drop_slot(key, inner, slot)
 
+    def drop_past_code(self, code: str) -> int:
+        """한 종목의 과거 봉을 venue·스코프 불문 전부 버린다. 버린 슬롯 수를 준다.
+
+        **척도가 바뀌었을 때 쓰는 문**이다(#1229). 저장된 봉은 수정계수가 이미
+        곱해진 표시값이라, 밤사이 액면분할이 효력을 얻으면 어제 담긴 항목만 옛
+        척도로 남는다 — 같은 차트에 두 척도가 섞이는 그 상태를 만드는 유일한
+        경로가 새 fetch 이고, 그 fetch 는 반드시 계수 조회를 지나므로 여기서
+        끊으면 섞임이 원천적으로 안 생긴다.
+
+        venue 를 안 받는다: 법인 이벤트는 종목의 성질이라 KRX 만 비우면 NXT·UN
+        슬롯이 옛 척도로 남는다.
+        """
+        dropped = 0
+        for key in [k for k in self._past_mem if k[1] == code]:
+            inner = self._past_mem.get(key)
+            if inner is None:
+                continue
+            for slot in list(inner):
+                self._drop_slot(key, inner, slot)
+                dropped += 1
+        return dropped
+
     def _add_weight(self, key: PastKey, delta: int) -> None:
         self._past_bars_total += delta
         self._past_bars_by_key[key] = self._past_bars_by_key.get(key, 0) + delta

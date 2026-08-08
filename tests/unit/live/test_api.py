@@ -1879,7 +1879,7 @@ def _kiwoom_investor_seam(monkeypatch):
     ):
         monkeypatch.setattr(live_api.kiwoom_investor, name, fn)
     # 일봉·분봉은 `live_*_backfill` 이 부른다 — `live_api` 를 거치지 않는다.
-    from hoga.live import kiwoom_daily_candles, kiwoom_minute_candles
+    from hoga.live import kiwoom_adjust_factors, kiwoom_daily_candles, kiwoom_minute_candles
 
     monkeypatch.setattr(kiwoom_daily_candles, "fetch_daily_candles", _daily)
 
@@ -1930,9 +1930,21 @@ def _kiwoom_investor_seam(monkeypatch):
             complete={cursor: got} if got else {}, oldest="",
         )
 
+    async def _factors(_client, _code, *, as_of_yyyymmdd, **_kw):
+        """수정계수는 항등(#1229) — 이 파일이 보는 것은 라우트·캐시·폴백이다.
+
+        `19900101` 하한은 "분봉이 닿을 수 있는 모든 날짜를 덮는다" 를 뜻한다.
+        계수 자체의 계약(계단 조회·이벤트 횡단)은
+        `test_kiwoom_adjust_factors.py` 와 `test_live_candle_backfill.py` 가 본다.
+        """
+        return kiwoom_adjust_factors.AdjustFactors(
+            as_of=as_of_yyyymmdd, dates=("19900101",), values=(1.0,),
+        )
+
     monkeypatch.setattr(kiwoom_minute_candles, "walk_minute_days", _walk)
     monkeypatch.setattr(kiwoom_minute_candles, "fetch_day", _day)
     monkeypatch.setattr(kiwoom_minute_candles, "fetch_minute_page", _page)
+    monkeypatch.setattr(kiwoom_adjust_factors, "fetch_adjust_factors", _factors)
     yield
     _fake_kiwoom_client["client"] = None
 

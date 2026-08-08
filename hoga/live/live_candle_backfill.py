@@ -12,6 +12,7 @@ from hoga import perf_debug
 from hoga.api import calendar as trading_calendar
 from hoga.live import (
     kiwoom_access,
+    kiwoom_adjust_factors,
     kiwoom_minute_candles,
     kiwoom_rest_runtime,
 )
@@ -106,6 +107,19 @@ class LiveMinuteCandleBackfill:
             asyncio.Task[list[dict]],
         ] = {}
         self._rate_limit_until = 0.0
+        # 수정계수 테이블 캐시 — 키는 (code, 기준일). 값이 `None` 이면 "그 기준일에
+        # 받아 봤는데 실패했다" 가 아니라 **아직 안 받았다**를 뜻하지 않는다: 실패는
+        # 캐시하지 않고 다음 collect 가 다시 시도한다(수정계수를 못 얻으면 그 날짜
+        # 봉을 아예 내보내지 않으므로, 실패를 박제하면 종목이 기준일 내내 막힌다).
+        #
+        # 기준일이 바뀌면(자정) 옛 항목은 자연히 미스가 되므로 별도 만료가 없다.
+        # 종목당 float 600개라 남아 있어도 무해하지만, `/live` 가 종목을 계속 갈면
+        # 무한 증식하므로 기준일이 바뀔 때 통째로 비운다.
+        self._factors: dict[tuple[str, str], kiwoom_adjust_factors.AdjustFactors] = {}
+        self._factors_as_of: str | None = None
+        # 기준일이 넘어갈 때 옆으로 옮겨 둔 어제 테이블. 새 테이블과 대조해 밤사이
+        # 척도가 바뀐 종목의 봉 캐시를 버리는 데만 쓴다(`_drop_cached_bars_if_rescaled`).
+        self._stale_factors: dict[str, kiwoom_adjust_factors.AdjustFactors] = {}
         # Fresh KIS past-minute fetches — the true cold re-spend metric (PR-1 (a)):
         # counted at the deduped fetch chokepoint (_fetch_past_scheduled), so it
         # measures KIS quota actually spent, not cache-layer get_past misses (which
@@ -361,6 +375,14 @@ class LiveMinuteCandleBackfill:
         warnings_by_date: dict[str, dict] = {}
         fresh: set[str] = set()
 
+        # **캐시를 읽기 전에 수정계수를 세운다**(#1229). 기준일이 넘어가면서 척도가
+        # 바뀐 종목은 여기서 옛 봉 캐시가 폐기되는데, 그보다 먼저 캐시를 읽으면
+        # 그 응답 하나가 옛 척도와 새 척도를 섞어 나간다. 계수는 (종목, 기준일)
+        # 캐시라 이 앞당김이 무는 비용은 종목당 하루 2콜이 전부다.
+        factors, factor_failure, factor_blocked = await self._factors_or_failure(
+            code, as_of=today_s,
+        )
+
         for date_s in _date_iter(frm, too):
             if date_s >= today_s:
                 continue
@@ -397,11 +419,19 @@ class LiveMinuteCandleBackfill:
         # 낭비가 된다. 순차 walk 로 콜 수가 절반 이하로 떨어진다(#1012 실측:
         # 20거래일 10콜 2.8초, ADR-0120 시절 46거래일 98초).
         blocked = False
-        if pending:
+        if pending and factors is not None:
             blocked = await self._walk_pending(
                 venue, code, pending, rows=rows, fresh=fresh,
                 warnings_by_date=warnings_by_date, tic_scope=tic_scope,
+                factors=factors,
             )
+        elif pending and factor_failure is not None:
+            # 계수를 못 얻었으면 walk 를 아예 돌리지 않는다 — 받아 봐야 척도가
+            # 없어 저장도 표시도 못 한다. 캐시분은 그대로 낸다(자기들끼리는 한
+            # 척도라 일관적이고, 계수 실패는 척도가 바뀌었다는 증거도 아니다).
+            for date_s in pending:
+                warnings_by_date[date_s] = factor_failure(date_s)
+            blocked = factor_blocked
 
         candles_all: list[dict] = []
         fresh_dates: list[str] = []
@@ -522,11 +552,15 @@ class LiveMinuteCandleBackfill:
         fresh: set[str],
         warnings_by_date: dict[str, dict],
         tic_scope: str,
+        factors: kiwoom_adjust_factors.AdjustFactors,
     ) -> bool:
         """미캐시 날짜들을 **한 번의 walk-back** 으로 채운다. 유량 차단이면 True.
 
         `pending` 은 오름차순이다. walk 는 최신(`pending[-1]`)에서 시작해 가장
         오래된 날(`pending[0]`)보다 더 오래된 날짜를 볼 때까지 커서를 뒤로 민다.
+
+        `factors` 는 호출자가 **캐시를 읽기 전에** 세운 것이다(#1229) — 이유는
+        `_collect_for_venue` 의 그 자리 주석에 있다.
         """
         newest, oldest = pending[-1], pending[0]
         if self._rate_limited_now():
@@ -565,9 +599,104 @@ class LiveMinuteCandleBackfill:
         self._apply_walk_result(
             venue, code, pending, result,
             rows=rows, fresh=fresh, warnings_by_date=warnings_by_date,
-            tic_scope=tic_scope,
+            tic_scope=tic_scope, factors=factors,
         )
         return False
+
+    async def _factors_or_failure(self, code: str, *, as_of: str) -> tuple[
+        kiwoom_adjust_factors.AdjustFactors | None,
+        Callable[[str], dict] | None,
+        bool,
+    ]:
+        """`(계수, 실패시 경고 팩토리, 유량차단)`. 실패 분류는 walk 와 같은 표다.
+
+        분류를 walk 와 맞추는 이유: 프론트는 사유 문자열로 박제 여부를 가르므로
+        (`_FALLBACK_BLOCKING_REASONS`), 같은 원인이 어느 콜에서 났느냐에 따라 다른
+        사유가 나가면 폴백·재시도 정책이 갈린다.
+        """
+        if self._rate_limited_now():
+            return None, self._rate_limit_aborted_warning, True
+        try:
+            return await self._ensure_factors(code, as_of=as_of), None, False
+        except KiwoomCapacityOverloaded:
+            return None, _capacity_overloaded_warning, False
+        except KiwoomRateLimitError as e:
+            self._mark_rate_limited()
+            # **`except ... as e` 는 블록 끝에서 이름을 지운다** — 클로저가 그대로
+            # 참조하면 호출 시점에 NameError 다. 로컬에 다시 묶어서 가둔다.
+            rate_msg = str(e)
+            return None, lambda date_s: {
+                "date": date_s, "reason": "rate_limit_upstream", "msg": rate_msg,
+            }, True
+        except KiwoomRestError as e:
+            rest_exc = e
+            return None, lambda date_s: _rest_error_warning(date_s, rest_exc), False
+
+    async def _ensure_factors(
+        self, code: str, *, as_of: str
+    ) -> kiwoom_adjust_factors.AdjustFactors:
+        """(종목, 기준일) 수정계수 테이블. 캐시 히트면 벤더 콜 0.
+
+        기준일이 넘어가면 테이블 전체를 버린다 — 어제 앵커로 만든 계수를 오늘
+        봉에 곱하면 오늘 효력인 수정 이벤트가 빠진 채 굳는다.
+        """
+        if self._factors_as_of != as_of:
+            # 어제 테이블은 지우지 않고 **옆으로 옮긴다** — 새 테이블과 대조해
+            # 밤사이 척도가 바뀌었는지 봐야 하기 때문이다(아래 `_drop_if_rescaled`).
+            self._stale_factors = {c: f for (c, _), f in self._factors.items()}
+            self._factors = {}
+            self._factors_as_of = as_of
+        cached = self._factors.get((code, as_of))
+        if cached is not None:
+            return cached
+
+        client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
+        if client is None:
+            raise KiwoomRestError("kiwoom client not initialized")
+
+        async def _paced_call(upd: str, fetch_fn):
+            return await kiwoom_access.run_with_capacity(
+                self._scheduler,
+                # 키에 기준일이 있어야 자정을 넘긴 두 요청이 조인되지 않고, `upd` 가
+                # 있어야 수정·원 두 콜이 서로 조인되지 않는다(`CallRunner` 주석).
+                key=("live-candle-backfill", "adjust-factors", code, as_of, upd),
+                api_id=kiwoom_adjust_factors.API_ID,
+                priority="user_visible",
+                client=client,
+                fetch_fn=fetch_fn,
+            )
+
+        factors = await kiwoom_adjust_factors.fetch_adjust_factors(
+            client, code, as_of_yyyymmdd=as_of, run_call=_paced_call,
+        )
+        self._factors[(code, as_of)] = factors
+        self._drop_cached_bars_if_rescaled(code, factors)
+        return factors
+
+    def _drop_cached_bars_if_rescaled(
+        self, code: str, factors: kiwoom_adjust_factors.AdjustFactors
+    ) -> None:
+        """밤사이 척도가 바뀌었으면 그 종목의 과거 봉 캐시를 버린다.
+
+        캐시에 담긴 봉은 **계수가 이미 곱해진 표시값**이다. 액면분할이 효력을
+        얻으면 어제 담긴 항목만 옛 척도로 남아 같은 차트에 두 척도가 섞인다 —
+        이 PR 이 없애려던 바로 그 상태다.
+
+        섞임을 만드는 유일한 경로가 **새 fetch** 이고 모든 fetch 가 이 함수를
+        지나므로, 여기서 끊으면 섞임이 원천적으로 생기지 않는다. 아무것도 새로
+        안 받는 동안은 캐시가 전부 어제 척도라 자체 일관적이다.
+        """
+        previous = self._stale_factors.pop(code, None)
+        if previous is None:
+            return
+        for date_s in previous.dates:
+            if previous.factor_for(date_s) != factors.factor_for(date_s):
+                dropped = self._cache.drop_past_code(code)
+                log.warning(
+                    "adjust factor changed code=%s %s→%s — 과거 봉 캐시 %d슬롯 폐기",
+                    code, previous.as_of, factors.as_of, dropped,
+                )
+                return
 
     def _apply_walk_result(
         self,
@@ -580,8 +709,17 @@ class LiveMinuteCandleBackfill:
         fresh: set[str],
         warnings_by_date: dict[str, dict],
         tic_scope: str,
+        factors: kiwoom_adjust_factors.AdjustFactors,
     ) -> None:
         """walk 결과를 캐시·행·경고로 흩뿌린다.
+
+        **여기서 수정계수를 곱한다**(#1229). walk 는 원주가를 주므로 `store_past`
+        직전이 척도가 정해지는 유일한 지점이다 — 저장 후에 곱하면 `rest_bypass`
+        경로(`collect_minute_cache_only`)가 벤더 콜 없이 캐시만 읽어서 계수를
+        만들 수 없다. **저장값이 곧 표시값**이라는 것이 이 캐시의 계약이다.
+
+        계수를 모르는 날짜(테이블 밖)는 **저장하지도 응답에 싣지도 않는다**.
+        무척도 봉을 흘려보내면 화면에 정상처럼 보이는 절벽이 남는다.
 
         `bars_by_date` 에는 요청 창보다 오래된 **수확분**(순회분 전량 적재)이 섞여
         있다. 전부 캐시에 넣되 응답(`rows`/`fresh`)은 `pending` 루프가 만들므로
@@ -595,7 +733,22 @@ class LiveMinuteCandleBackfill:
         판정은 종전보다 덜 보수적이면서 여전히 안전하다 — floor 보다 새로운 pending
         누락일은 "지나왔는데 없음" = 비거래일이 맞다.
         """
+        scaled: dict[str, list] = {}
+        unscalable: list[str] = []
         for date_s, bars in result.bars_by_date.items():
+            factor = factors.factor_for(date_s)
+            if factor is None:
+                unscalable.append(date_s)
+                continue
+            scaled[date_s] = kiwoom_adjust_factors.scale_bars(bars, factor)
+        if unscalable:
+            log.warning(
+                "adjust factor missing code=%s as_of=%s dates=%d oldest=%s "
+                "(일봉 테이블이 분봉 보유를 못 덮는다)",
+                code, factors.as_of, len(unscalable), min(unscalable),
+            )
+
+        for date_s, bars in scaled.items():
             self._cache.store_past(
                 venue, code, date_s, [_candle_to_dict(c) for c in bars], tic_scope
             )
@@ -606,9 +759,17 @@ class LiveMinuteCandleBackfill:
             "kiwoom minute retention floor" if result.wedged
             else f"walk exhausted after {result.pages} pages"
         )
+        unscalable_set = set(unscalable)
         for date_s in pending:
-            bars = result.bars_by_date.get(date_s)
-            if bars is not None:
+            bars = scaled.get(date_s)
+            if bars is None and date_s in unscalable_set:
+                # 계수를 모르는 날짜는 "비거래일이라 비었다" 로 접히면 안 된다 —
+                # 아래 `floor` 분기가 빈 배열을 진실로 캐시해 버린다.
+                warnings_by_date[date_s] = {
+                    "date": date_s, "reason": "api_error",
+                    "msg": f"adjust factor unavailable (as_of={factors.as_of})",
+                }
+            elif bars is not None:
                 rows[date_s] = [_candle_to_dict(c) for c in bars]
                 fresh.add(date_s)
             elif floor is not None and date_s >= floor:
