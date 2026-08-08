@@ -540,7 +540,9 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
     fetches one date range and returns `(rows: list[dict], violations)` — it may
     raise the vendor error families in ``_STOP_WALK_ERRORS`` /
     ``_DEGRADABLE_ERRORS`` (this orchestrator catches them and turns them into
-    ``data_warnings``, breaking on rate-limit, continuing on everything else).
+    ``data_warnings``). 걷기를 멈추는 축은 벤더도 유량도 아니라 **"더 걸어도 같은
+    결과인가"** 다 — 유량 초과·큐 포화·인증 실패가 멈추는 쪽이고, 그 배치 고유의
+    거절과 전송 실패가 계속하는 쪽이다(각 튜플 위 주석).
     **과거 gap 루프와 오늘 프로브가 같은 튜플을 본다** — 벤더별로 적으면 한쪽만
     갱신돼 나머지가 500 으로 샌다. 경고의 ``reason``·``msg`` 는 손으로 정하지 않고
     ``error_policy`` 가 정한다(분봉 경로와 같은 규율, ADR-0137).

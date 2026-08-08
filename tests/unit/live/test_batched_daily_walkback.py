@@ -16,6 +16,7 @@ import pytest
 
 from hoga.live.api import _KST, batched_daily_walkback
 from hoga.live.kis_client import KisApiError, KisRateLimitError, KisTransportError
+from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import (
     KiwoomApiError,
     KiwoomAuthError,
@@ -230,8 +231,9 @@ def test_today_kiwoom_errors_degrade_to_warnings(
     최소한 "일부 과거구간 로딩 실패" 칩까지 도달한다.
 
     `token_auth` 케이스는 8050 과 **다른 갈래**다: `KiwoomAuthError` 는
-    `KiwoomApiError` 의 하위 타입이 아니라, api-error 만 잡아도 여전히 500 으로
-    샜다(8005 는 2026-08-04 에 실제로 겪은 코드다).
+    `KiwoomApiError` 의 하위 타입이 **아니라서**, api-error 계열만 잡아도 여전히
+    500 으로 샜다(8005 는 2026-08-04 에 실제로 겪은 코드다). 지금은 둘 다
+    `_STOP_WALK_ERRORS` 가 잡는다.
 
     `frm == too == today_d` 라 gap 루프는 아예 돌지 않는다 — 경고를 만든 것이 오늘
     브랜치임을 이 조건 하나가 고정한다(gap 루프가 대신 만들어 준 것이 아니다).
@@ -277,3 +279,49 @@ def test_dedupe_by_t_ms_keeps_last() -> None:
 
     assert len(out["candles"]) == 1  # deduped by t_ms
     assert out["candles"][0]["v"] == 2  # last wins
+
+
+@pytest.mark.parametrize(
+    ("exc", "stops"),
+    [
+        (KiwoomTerminalAuthError(code=3, msg="…[8050:…]"), True),
+        (KiwoomAuthError("…[8005:…]"), True),
+        (KiwoomCapacityOverloaded("queue full (128)"), True),
+        (KiwoomApiError(code=3, msg="잘못된 요청입니다[1504:…]"), False),
+    ],
+    ids=["terminal_auth", "token_auth", "capacity", "api"],
+)
+def test_stop_walk_errors_end_the_gap_walk_but_api_errors_continue(
+    exc: Exception, stops: bool,
+) -> None:
+    """걷기를 멈추는 축은 벤더가 아니라 **"더 걸어도 같은 결과인가"** 다.
+
+    인증 실패·큐 포화는 남은 gap 을 두드려 봐야 같은 거절이다. 계속 걸으면 벤더를
+    헛되이 때리고 경고만 gap 수만큼 불어나 원인이 오히려 안 보인다. 그 배치 고유의
+    거절(1504 등)은 반대다 — 다음 배치는 성공할 수 있다.
+
+    **`KiwoomTerminalAuthError` ⊂ `KiwoomApiError` 라 이 테스트가 순서 함정을 겸한다.**
+    두 except 팔의 순서가 뒤집히면 8050 이 "계속" 팔로 새는데, 사유는 여전히
+    `auth_error`(정책이 정하므로)라 **경고만 보는 테스트는 그걸 못 잡는다**. 걷는
+    횟수를 세는 이 단언이 유일한 그물이다.
+
+    캐시가 덮지 않는 gap 이 둘 생기도록 배치를 가운데에만 둔다.
+    """
+    cache = _FakeCache(batches=[(date(2024, 1, 10), date(2024, 1, 12), [])])
+    calls: list[tuple[str, str]] = []
+
+    async def fetch_batch(code, from_s, to_s):
+        calls.append((from_s, to_s))
+        raise exc
+
+    out = _run(batched_daily_walkback(
+        cache=cache, fetch_batch=fetch_batch, output_key="candles",
+        code="005930", frm=date(2024, 1, 1), too=date(2024, 1, 20),
+        today_d=date(2024, 2, 1),
+    ))
+
+    expected_calls = 1 if stops else 2
+    assert len(calls) == expected_calls, (
+        f"gap 을 {len(calls)}번 걸었다 — {'멈췄어야' if stops else '계속했어야'} 한다"
+    )
+    assert len(out["data_warnings"]) == expected_calls
