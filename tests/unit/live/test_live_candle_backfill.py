@@ -5,12 +5,17 @@ from collections.abc import Awaitable, Callable, Hashable
 
 import pytest
 
-from hoga.live import kiwoom_minute_candles, kiwoom_rest_runtime
+from hoga.live import kiwoom_adjust_factors, kiwoom_minute_candles, kiwoom_rest_runtime
 from hoga.live.candle_models import LiveCandle
+from hoga.live.kiwoom_adjust_factors import AdjustFactors
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import KiwoomRestError
 from hoga.live.kiwoom_minute_candles import MinutePage, MinuteWalkResult
-from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill, _date_from_t_ms
+from hoga.live.live_candle_backfill import (
+    _FALLBACK_BLOCKING_REASONS,
+    LiveMinuteCandleBackfill,
+    _date_from_t_ms,
+)
 from hoga.live.past_candles_cache import PastCandlesCache
 
 
@@ -37,13 +42,18 @@ class _FakeWalk:
     """
 
     def __init__(self, *, wedged: bool = False, exhausted: bool = False,
-                 only: set[str] | None = None) -> None:
+                 only: set[str] | None = None,
+                 splits: dict[str, float] | None = None,
+                 bars_by_date: dict[str, list[LiveCandle]] | None = None) -> None:
         self.calls: list[tuple[str, str, str, str | None]] = []
         self.day_calls: list[tuple[str, str, str | None]] = []
         self.page_calls: list[str] = []
+        self.factor_calls: list[tuple[str, str]] = []
         self._wedged = wedged
         self._exhausted = exhausted
         self._only = only
+        self._splits = splits
+        self._bars_by_date = bars_by_date
 
     async def walk(self, _client, code, *, newest_yyyymmdd, oldest_yyyymmdd,
                    venue=None, fetch_page=None, **_kw) -> MinuteWalkResult:
@@ -58,7 +68,10 @@ class _FakeWalk:
         end = dt.datetime.strptime(newest_yyyymmdd, "%Y%m%d").date()
         while cur <= end:
             date_s = cur.strftime("%Y%m%d")
-            if self._only is None or date_s in self._only:
+            if self._bars_by_date is not None:
+                if date_s in self._bars_by_date:
+                    bars[date_s] = self._bars_by_date[date_s]
+            elif self._only is None or date_s in self._only:
                 bars[date_s] = [_bar(date_s)]
             cur += dt.timedelta(days=1)
         return MinuteWalkResult(
@@ -75,10 +88,37 @@ class _FakeWalk:
         self.page_calls.append(cursor)
         return MinutePage(complete={}, oldest="")
 
+    async def factors(self, _client, code, *, as_of_yyyymmdd, **_kw) -> AdjustFactors:
+        """수정계수 이음매(#1229). 기본은 항등이라 기존 단언이 그대로 성립한다.
+
+        `splits`(효력일 → 분할비율)를 주면 **벤더 의미론을 흉내낸다**: 기준일
+        **이후**의 이벤트는 테이블에 나타나지 않는다. 그래서 기준일을 오늘이
+        아니라 배치 끝으로 잘못 잡으면 이 페이크가 항등 테이블을 돌려주고,
+        옛 배치가 원주가로 남아 절벽이 되살아난다 — 그 회귀를 잡는 지렛대다.
+        """
+        self.factor_calls.append((code, as_of_yyyymmdd))
+        if not self._splits:
+            # `19900101` 하한은 "분봉이 닿을 수 있는 모든 날짜를 덮는다" 를 뜻한다.
+            return AdjustFactors(as_of=as_of_yyyymmdd, dates=("19900101",), values=(1.0,))
+        events = sorted(
+            (d, r) for d, r in self._splits.items() if d <= as_of_yyyymmdd
+        )
+        dates = ["19900101", *(d for d, _ in events)]
+        values = []
+        for d in dates:
+            ratio = 1.0
+            for ex_date, r in events:
+                if ex_date > d:
+                    ratio *= r
+            values.append(1.0 / ratio)
+        return AdjustFactors(
+            as_of=as_of_yyyymmdd, dates=tuple(dates), values=tuple(values),
+        )
+
 
 @pytest.fixture
 def kiwoom(monkeypatch):
-    """키움 이음매 4점(클라이언트 조달·walk·하루치·페이지)을 갈아끼운다."""
+    """키움 이음매 5점(클라이언트 조달·walk·하루치·페이지·수정계수)을 갈아끼운다."""
     def _install(fake: _FakeWalk) -> _FakeWalk:
         monkeypatch.setattr(
             kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
@@ -86,9 +126,27 @@ def kiwoom(monkeypatch):
         monkeypatch.setattr(kiwoom_minute_candles, "walk_minute_days", fake.walk)
         monkeypatch.setattr(kiwoom_minute_candles, "fetch_day", fake.day)
         monkeypatch.setattr(kiwoom_minute_candles, "fetch_minute_page", fake.page)
+        monkeypatch.setattr(kiwoom_adjust_factors, "fetch_adjust_factors", fake.factors)
         return fake
 
     return _install
+
+
+def _install_identity_factors(monkeypatch) -> list[tuple[str, str]]:
+    """수정계수를 항등으로 고정한다 — `_FakeWalk` 를 안 쓰는 테스트용.
+
+    **어댑터 함수를 통째로 갈아끼우므로 `ka10081` submit 이 아예 안 생긴다.**
+    거버너 대기표를 세는 테스트가 `ka10080` 만 세도 되게 하려는 것이고, 계수
+    콜의 페이싱은 그 자리가 아니라 전용 테스트가 박는다.
+    """
+    calls: list[tuple[str, str]] = []
+
+    async def _factors(_client, code, *, as_of_yyyymmdd, **_kw) -> AdjustFactors:
+        calls.append((code, as_of_yyyymmdd))
+        return AdjustFactors(as_of=as_of_yyyymmdd, dates=("19900101",), values=(1.0,))
+
+    monkeypatch.setattr(kiwoom_adjust_factors, "fetch_adjust_factors", _factors)
+    return calls
 
 
 class _RecordingScheduler:
@@ -388,6 +446,7 @@ async def test_each_walk_page_takes_its_own_governor_slot(tmp_path, monkeypatch)
     monkeypatch.setattr(
         kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
     )
+    _install_identity_factors(monkeypatch)
 
     # 커서 → (온전한 날짜들, 다음 커서가 될 최古 날짜). 마지막 장은 목표 하한보다
     # **더** 오래된 날짜를 물어 walk 를 끝낸다.
@@ -452,6 +511,7 @@ async def test_walk_harvest_serves_the_next_pan_chunk_from_cache(
     monkeypatch.setattr(
         kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
     )
+    _install_identity_factors(monkeypatch)
 
     # 10분 스코프 시나리오: 한 페이지가 요청 창(5/15~5/18)을 넘어 5/11 까지 실어온다.
     pages = {
@@ -574,3 +634,286 @@ def test_fallback_blocking_reasons_cover_every_rest_error_reason() -> None:
         assert reason in _FALLBACK_BLOCKING_REASONS, (
             f"{type(exc).__name__} → {reason!r} 이 폴백 차단 집합에 없다"
         )
+
+
+# === 수정계수 (#1229) =======================================================
+#
+# 배경: 키움 수정주가는 `base_dt` **상대**다(340570 실측 2026-08-08 — 같은
+# 20260805 15:30 봉이 `base_dt=20260805` 에선 65,600, `base_dt=20260807` 에선
+# 33,200). 분봉 어댑터는 그 `base_dt` 를 **페이지마다** 옮기므로 벤더 수정주가를
+# 쓸 수 없고, 원주가로 받아 여기서 계수를 곱한다. 아래 테스트들이 그 계약이다.
+
+
+def _priced_bar(date_yyyymmdd: str, close: int) -> LiveCandle:
+    return LiveCandle(
+        t_ms=_kst_ms(date_yyyymmdd), open=close, high=close, low=close,
+        close=close, volume=42,
+    )
+
+
+@pytest.mark.asyncio
+async def test_batches_straddling_a_split_come_back_on_one_scale(
+    tmp_path, monkeypatch, kiwoom
+) -> None:
+    """**좌측 스크롤이 쪼갠 두 배치가 한 척도로 이어진다.**
+
+    이것이 이 기능의 존재 이유다. 프론트는 최신 구간을 먼저 받고 스크롤할 때마다
+    옛 구간을 따로 요청한다. 기준일을 배치의 끝으로 잡으면 옛 배치의 기준일이
+    수정일 **이전**이라 그 배치만 원주가로 오고, 차트에 **요청 경계**에서 절벽이
+    생긴다 — 일봉이 005930 2018-03-05 에서 그랬던 것과 같은 실패다(#1228).
+
+    페이크가 벤더 의미론(기준일 이후 이벤트는 안 보인다)을 흉내내므로,
+    `as_of=today_s` 를 `pending[-1]` 로 되돌리면 옛 배치가 60,000 으로 남아
+    여기가 빨개진다.
+    """
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    # 원주가: 분할 전 60,000 → 분할(2:1) 후 30,000.
+    raw = {
+        "20260803": [_priced_bar("20260803", 60000)],
+        "20260804": [_priced_bar("20260804", 60000)],
+        "20260805": [_priced_bar("20260805", 60000)],
+        "20260806": [_priced_bar("20260806", 30000)],
+        "20260807": [_priced_bar("20260807", 30000)],
+    }
+    fake = kiwoom(_FakeWalk(bars_by_date=raw, splits={"20260806": 2.0}))
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+
+    async def _collect(frm: dt.date, too: dt.date):
+        return await backfill.collect_minute(
+            code="340570", frm=frm, too=too,
+            today_d=dt.date(2026, 8, 8), policy="KRX",
+        )
+
+    newer = await _collect(dt.date(2026, 8, 6), dt.date(2026, 8, 7))
+    older = await _collect(dt.date(2026, 8, 3), dt.date(2026, 8, 5))
+
+    closes = {
+        _date_from_t_ms(c["t_ms"]): c["close"]
+        for c in [*newer.candles, *older.candles]
+    }
+    assert closes == {
+        "20260803": 30000, "20260804": 30000, "20260805": 30000,
+        "20260806": 30000, "20260807": 30000,
+    }, "배치 경계에서 척도가 갈렸다 — 기준일이 배치 끝으로 돌아갔는지 볼 것"
+    # 기준일은 두 배치 모두 **오늘**이다. 배치 끝(20260805 / 20260807)이 아니다.
+    assert {as_of for _, as_of in fake.factor_calls} == {"20260808"}
+
+
+@pytest.mark.asyncio
+async def test_factor_table_is_fetched_once_per_code_and_as_of(
+    tmp_path, monkeypatch, kiwoom
+) -> None:
+    """여러 갭·여러 venue 가 **하나의 기준일과 하나의 테이블**을 공유한다.
+
+    벽시계가 아니라 **호출 횟수**로 잰다. 캐시가 빠지면 collect 마다, 그리고 NXT→KRX
+    폴백까지 겹쳐 종목당 하루 2콜이 요청마다 2콜로 불어난다.
+    """
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    fake = kiwoom(_FakeWalk())
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+    for day in (18, 19, 20):
+        await backfill.collect_minute(
+            code="005930", frm=dt.date(2026, 5, day), too=dt.date(2026, 5, day),
+            today_d=dt.date(2026, 6, 1), policy="KRX",
+        )
+
+    assert fake.factor_calls == [("005930", "20260601")]
+
+
+@pytest.mark.asyncio
+async def test_overnight_rescale_drops_the_cached_bars_of_that_code(
+    tmp_path, monkeypatch, kiwoom
+) -> None:
+    """밤사이 액면분할이 효력을 얻으면 그 종목의 과거 봉 캐시를 버린다.
+
+    캐시에 담긴 봉은 계수가 **이미 곱해진 표시값**이라, 어제 담긴 항목만 옛 척도로
+    남으면 같은 차트에 두 척도가 섞인다 — 이 기능이 없애려던 바로 그 상태다.
+    섞임을 만드는 유일한 경로가 새 fetch 이고 모든 fetch 가 계수 조회를 지나므로,
+    거기서 끊으면 원천적으로 안 생긴다.
+    """
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    raw = {
+        "20260803": [_priced_bar("20260803", 60000)],
+        "20260804": [_priced_bar("20260804", 60000)],
+    }
+    # 효력일 20260805 — 8/4 시점에는 안 보이고 8/5 시점에는 보인다.
+    fake = kiwoom(_FakeWalk(bars_by_date=raw, splits={"20260805": 2.0}))
+    cache = PastCandlesCache(data_dir=tmp_path)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path, cache=cache,
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+
+    first = await backfill.collect_minute(
+        code="340570", frm=dt.date(2026, 8, 3), too=dt.date(2026, 8, 3),
+        today_d=dt.date(2026, 8, 4), policy="KRX",
+    )
+    assert [c["close"] for c in first.candles] == [60000]   # 아직 분할 전 척도
+
+    second = await backfill.collect_minute(
+        code="340570", frm=dt.date(2026, 8, 3), too=dt.date(2026, 8, 4),
+        today_d=dt.date(2026, 8, 5), policy="KRX",
+    )
+
+    assert fake.factor_calls == [("340570", "20260804"), ("340570", "20260805")]
+    assert [c["close"] for c in second.candles] == [30000, 30000], (
+        "8/3 이 옛 척도(60,000)로 캐시에 남았다 — 한 차트에 두 척도가 섞인다"
+    )
+
+
+@pytest.mark.asyncio
+async def test_factor_calls_take_their_own_governor_slots(tmp_path, monkeypatch) -> None:
+    """계수 콜도 거버너를 지난다 — `ka10081` 버킷으로, `upd` 로 갈린 키로.
+
+    키에서 `upd` 가 빠지면 동시 실행된 두 요청이 조인돼 **수정주가 응답이 원주가
+    자리에** 들어간다(계수가 전부 1.0 → 절벽 부활). `past_candles_cache` 의
+    `tic_scope` 키 누락과 같은 종류의 오염이라 키 모양을 못 박는다.
+    """
+    from hoga.api import calendar as cal
+    from hoga.live import kiwoom_rest
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    monkeypatch.setattr(
+        kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: object()
+    )
+    monkeypatch.setattr(kiwoom_minute_candles, "walk_minute_days", _FakeWalk().walk)
+
+    class _Client:
+        async def call(self, api_id, body, **_kw):
+            if api_id != kiwoom_adjust_factors.API_ID:
+                return kiwoom_rest.Page(rows=[], cont=False, next_key="", raw={})
+            close = 50 if body["upd_stkpc_tp"] == "1" else 100
+            return kiwoom_rest.Page(
+                rows=[{"dt": "20260518", "cur_prc": str(close)}],
+                cont=False, next_key="", raw={},
+            )
+
+    monkeypatch.setattr(
+        kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: _Client()
+    )
+    scheduler = _RecordingScheduler()
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        concurrency=1,
+    )
+    await backfill.collect_minute(
+        code="005930", frm=dt.date(2026, 5, 18), too=dt.date(2026, 5, 18),
+        today_d=dt.date(2026, 6, 1), policy="KRX",
+    )
+
+    factor_keys = [c["key"] for c in scheduler.calls if c["api_id"] == "ka10081"]
+    assert factor_keys == [
+        ("live-candle-backfill", "adjust-factors", "005930", "20260601", "1"),
+        ("live-candle-backfill", "adjust-factors", "005930", "20260601", "0"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_dates_below_the_factor_table_warn_instead_of_caching_empty(
+    tmp_path, monkeypatch, kiwoom
+) -> None:
+    """계수를 모르는 날짜는 **경고**다 — 빈 배열로 캐시하면 안 된다.
+
+    walk 가 깨끗이 끝났으면 응답에 없는 날짜는 비거래일로 접히는데, "계수를 몰라
+    안 실었다" 가 그 분기로 새면 프론트가 빈 캔들을 진실로 그리고 캐시가 그것을
+    박제한다. 무척도 봉을 그냥 내보내는 것도 답이 아니다 — 화면에 정상처럼 보이는
+    절벽이 남는다.
+    """
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+
+    class _ShallowFactors(_FakeWalk):
+        async def factors(self, _client, code, *, as_of_yyyymmdd, **_kw):
+            self.factor_calls.append((code, as_of_yyyymmdd))
+            # 테이블이 20260519 까지만 닿는다 — 그 아래는 "모른다".
+            return AdjustFactors(
+                as_of=as_of_yyyymmdd, dates=("20260519",), values=(1.0,),
+            )
+
+    kiwoom(_ShallowFactors())
+    cache = PastCandlesCache(data_dir=tmp_path)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=cache,
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+    result = await backfill.collect_minute(
+        code="005930", frm=dt.date(2026, 5, 18), too=dt.date(2026, 5, 19),
+        today_d=dt.date(2026, 6, 1), policy="KRX",
+    )
+
+    assert [w["date"] for w in result.data_warnings] == ["20260518"]
+    assert result.data_warnings[0]["reason"] == "api_error"
+    assert cache.get_past("KRX", "005930", "20260518", "1") is None, (
+        "계수를 모르는 날짜가 빈 배열로 박제됐다"
+    )
+    assert result.fresh_dates == ["20260519"]
+
+
+@pytest.mark.asyncio
+async def test_factor_failure_blocks_the_walk_but_still_serves_cached_dates(
+    tmp_path, monkeypatch, kiwoom
+) -> None:
+    """계수를 못 얻으면 walk 를 **아예 안 돈다** — 받아 봐야 척도가 없다.
+
+    캐시분은 그대로 낸다: 이미 담긴 봉끼리는 한 척도라 자체 일관적이고, 계수를
+    못 얻었다는 것은 척도가 바뀌었다는 증거도 아니다.
+
+    사유가 walk 실패와 **같은 표**여야 한다 — 프론트는 사유 문자열로 박제 여부를
+    가르므로(`_FALLBACK_BLOCKING_REASONS`), 같은 원인이 어느 콜에서 났느냐로
+    사유가 갈리면 폴백·재시도 정책이 갈린다.
+    """
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    fake = kiwoom(_FakeWalk())
+    cache = PastCandlesCache(data_dir=tmp_path)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path, cache=cache,
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+    # 1차: 정상으로 20260518 을 캐시에 담는다.
+    await backfill.collect_minute(
+        code="005930", frm=dt.date(2026, 5, 18), too=dt.date(2026, 5, 18),
+        today_d=dt.date(2026, 6, 1), policy="KRX",
+    )
+
+    async def _boom(*_a, **_kw):
+        raise KiwoomRestError("token dead")
+
+    monkeypatch.setattr(kiwoom_adjust_factors, "fetch_adjust_factors", _boom)
+    # 기준일을 넘겨 계수 캐시를 무효화한 뒤 미캐시 날짜를 섞어 요청한다.
+    result = await backfill.collect_minute(
+        code="005930", frm=dt.date(2026, 5, 18), too=dt.date(2026, 5, 19),
+        today_d=dt.date(2026, 6, 2), policy="KRX",
+    )
+
+    assert fake.calls == [("005930", "20260518", "20260518", "KRX")], (
+        "계수 실패 뒤에도 walk 가 돌았다 — 척도 없는 봉을 사러 간 것이다"
+    )
+    assert [w["date"] for w in result.data_warnings] == ["20260519"]
+    assert result.data_warnings[0]["reason"] in _FALLBACK_BLOCKING_REASONS
+    assert result.cached_dates == ["20260518"]
+    assert len(result.candles) == 1

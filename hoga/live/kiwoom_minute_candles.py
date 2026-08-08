@@ -44,6 +44,24 @@ N개를 `asyncio.gather` 로 병렬 부채질하는 것이 최적이었다.
 `ka10081`(일봉)은 가격이 무부호인데 `ka10080`(분봉)은 `'-239500'`/`'+210000'` 처럼
 등락 방향을 부호로 싣는다(#1043 실측: 900행 중 439행에 부호). 같은 경로
 (`/api/dostk/chart`)의 TR 인데도 다르다 — 일봉 어댑터의 규약을 복사하면 안 된다.
+
+## **원주가로 받는다** — 수정은 `kiwoom_adjust_factors` 가 한다 (#1229)
+
+`upd_stkpc_tp=0` 이 여기 규약이다. 키움 수정주가는 `base_dt` **상대**인데(일봉 함정
+④) 이 어댑터는 그 `base_dt` 를 **페이지마다 옮긴다** — 커서가 곧 다음 `base_dt` 다.
+그래서 `upd=1` 을 쓰면 커서가 수정일 밑으로 내려가는 순간 그 아래 페이지 전체가
+원주가로 바뀌고, 절벽이 수정일이 아니라 **페이지 경계**(1분 기준 ~2.35 거래일)에
+생긴다. 340570(2026-08-06 효력) 실측 2026-08-08:
+
+    base_dt=20260805, upd=1 → 20260805 15:30 종가 65,600  (미반영)
+    base_dt=20260807, upd=1 → 같은 봉        종가 33,200  (반영)
+    동일 타임스탬프 900봉 전부에서 비율 **1.9759 단일값**
+
+원주가는 절대값이라 앵커 불변이다(같은 실측: `base_dt` 20260805 vs 20260807 겹침
+180봉, OHLC 4필드 불일치 0건). 그래서 커서 프로토콜을 하나도 바꾸지 않고 척도만
+호출자가 고정한다. **왜 일봉처럼 `base_dt` 를 오늘로 고정하지 않는지**는
+`kiwoom_adjust_factors` 모듈 docstring 에 있다(요지: 1분에서 `max_pages=40` 이
+~94 거래일 천장이 되어 보유 1년의 뒤쪽 절반에 못 닿는다).
 """
 from __future__ import annotations
 
@@ -62,7 +80,13 @@ API_ID = "ka10080"
 
 TIC_SCOPE_1MIN = "1"
 # 일봉과 같은 극성 함정을 피하려고 이름을 붙여 둔다: 1=수정주가, 0=원주가.
+#
+# **`UPD_RAW` 를 쓴다 — `UPD_ADJUSTED` 로 되돌리지 말 것**(#1229, 위 docstring).
+# 벤더 수정주가는 `base_dt` 상대인데 이 어댑터는 base_dt 를 페이지마다 옮긴다.
+# 상수 둘을 다 남겨 두는 것은 그 극성을 읽는 사람이 매번 확인하지 않게 하려는
+# 것이고, 여기서 쓰는 값은 `UPD_RAW` 하나다.
 UPD_ADJUSTED = "1"
+UPD_RAW = "0"
 
 # 표시 버킷(ms) → `tic_scope`(분). `kiwoom_index_candles.BUCKET_SECONDS_TO_TIC_SCOPE`
 # 와 대칭이지만 **단위가 ms 다** — 프론트 `TIMEFRAME_TO_MS` 가 그대로 넘어오는
@@ -201,7 +225,7 @@ async def fetch_minute_page(
     page = await client.call(API_ID, {
         "stk_cd": venue_code(code, venue),
         "tic_scope": tic_scope,
-        "upd_stkpc_tp": UPD_ADJUSTED,
+        "upd_stkpc_tp": UPD_RAW,
         "base_dt": cursor_yyyymmdd,
     })
     return split_page(page.rows)
@@ -320,11 +344,16 @@ async def fetch_day(
     그래서 여기서는 `split_page` 를 쓰지 않는다: 한 페이지가 D 하루로만 채워지는
     경우(보유 바닥) `split_page` 는 D 를 최古로 보고 떼어내는데, D 를 직접 지정한
     이 자리에서는 그게 오답이다.
+
+    **반환값은 원주가다.** 지금 유일한 호출자는 `_fetch_past_today_once`(오늘분)이고
+    오늘의 수정계수는 정의상 1.0 이라 그대로 쓴다. **과거 날짜에 쓰려면
+    `kiwoom_adjust_factors.scale_bars` 를 통과시켜야 한다** — 안 그러면 그 날짜만
+    수정 이벤트 전 척도로 남아 차트에 절벽이 생긴다.
     """
     page = await client.call(API_ID, {
         "stk_cd": venue_code(code, venue),
         "tic_scope": tic_scope,
-        "upd_stkpc_tp": UPD_ADJUSTED,
+        "upd_stkpc_tp": UPD_RAW,
         "base_dt": date_yyyymmdd,
     })
     bars: list[LiveCandle] = []
