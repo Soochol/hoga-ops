@@ -499,7 +499,9 @@ def _vendor_code(exc: Exception) -> str:
 async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
     *,
     cache: PastDailyCandlesCache,
-    fetch_batch: Callable[[str, str, str], Awaitable[tuple[list[dict], list]]],
+    fetch_batch: Callable[
+        [str, str, str], Awaitable[tuple[list[dict], list, date | None]]
+    ],
     output_key: str,
     code: str,
     frm: date,
@@ -513,12 +515,19 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
     row→dict converter, and output key).
 
     The caller supplies a thin `fetch_batch(code, from_s, to_s)` closure that
-    fetches one date range and returns `(rows: list[dict], violations)` — it may
+    fetches one date range and returns
+    `(rows: list[dict], violations, covered_to: date | None)` — it may
     raise ``KisRateLimitError`` / ``KisApiError`` (this orchestrator catches them
     and turns them into ``data_warnings``, breaking on rate-limit, continuing on
     api-error). Everything else — batch-cache intersect, gap compute, per-gap
     fetch + persist, today tri-state, dedupe-by-``t_ms`` / sort / [frm,too]
     filter — lives here, tested once in ``test_batched_daily_walkback.py``.
+
+    ``covered_to`` 는 **fetch 가 실제로 덮은 끝 날짜**다. 요청한 `to_s` 보다 뒤일
+    수 있다: 일봉 수정주가는 기준일에서 걸어 내려와야 하므로(#1228 함정 ④) 그
+    사이 행을 어차피 받는다. 그걸 캐시 커버리지로 인정하면 **다음 갭이 사라진다**
+    — 안 그러면 좌측 스크롤마다 오늘부터 다시 걷는다. `None` 은 "요청 구간만
+    덮었다"(투자자 순매수 경로 — 커서가 `to` 상대라 넓힐 것이 없다).
     """
     today_s = today_d.strftime("%Y%m%d")
     from_s = frm.strftime("%Y%m%d")
@@ -540,13 +549,29 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
 
     # 3. Compute gaps (past-only — today handled separately).
     req_to_past = min(too, today_d - timedelta(days=1))
+    # 과거 배치는 **오늘 직전까지만** 담는다. 오늘 봉은 진행 중이라 TTL 슬롯이
+    # 따로 있고(step 5), TTL 없는 과거 배치에 섞이면 그 값이 얼어붙는다.
+    cache_ceiling = today_d - timedelta(days=1)
+    # 이번 요청 안에서 이미 덮은 최대 날짜. 넓은 fetch 하나가 뒤쪽 갭들을
+    # 통째로 덮으므로, 그걸 모르면 같은 구간을 갭 개수만큼 다시 받는다.
+    covered_through: date | None = None
     if frm <= req_to_past:
+        # `_compute_daily_gaps` 는 오름차순(오래된 것부터)이다 — 그래야 첫 fetch 의
+        # 넓은 커버리지가 뒤 갭들을 덮는다. 순서가 뒤집히면 스킵이 무력해진다.
         for gap_from, gap_to in _compute_daily_gaps(frm, req_to_past, existing_relevant):
             gap_from_s = gap_from.strftime("%Y%m%d")
             gap_to_s = gap_to.strftime("%Y%m%d")
             label = f"{gap_from_s}__{gap_to_s}"
+            if covered_through is not None and gap_to <= covered_through:
+                # 앞선 fetch 가 이미 이 갭을 넘어 덮었다 — 그 행들은 `loaded` 에
+                # 들어 있고 캐시에도 기록됐다. 조용히 건너뛰지 않고 남기지 않는
+                # 이유: `fresh_batches` 는 벤더 왕복 기록이라 안 한 왕복을 적으면
+                # 거짓이 된다. 스킵 자체는 정상 경로라 경고도 아니다.
+                continue
             try:
-                rows, violations = await fetch_batch(code, gap_from_s, gap_to_s)
+                rows, violations, covered_to = await fetch_batch(
+                    code, gap_from_s, gap_to_s
+                )
             except _RATE_LIMIT_ERRORS as e:
                 warnings.append(_kis_error_to_warning("rate_limit_upstream", str(e), label))
                 break
@@ -566,9 +591,37 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
             except _API_ERRORS as e:
                 warnings.append(_kis_error_to_warning("api_error", _vendor_code(e), label))
                 continue
-            cache.append_batch(code, gap_from, gap_to, rows)
+            # 확장의 근거는 **"그 행을 실제로 받았다"** 이다. 빈 응답까지 넓게
+            # 주장하면, 일시적 빈 응답 하나가 오늘까지의 큰 구간을 "조회 완료" 로
+            # 굳혀 다음 롤오버까지 재시도를 막는다. 빈 갭 캐싱(휴일 구간 무한
+            # 재조회 방지)은 요청 갭 폭 그대로 유지된다.
+            batch_to = (
+                max(min(covered_to, cache_ceiling), gap_to)
+                if rows and covered_to is not None
+                else gap_to
+            )
+            # **행도 같이 자른다.** `_normalize_batch` 는 *경계*만 실제 행 범위로
+            # 조이고 bars 는 그대로 담으므로, 안 자르면 오늘의 진행 중 봉이 과거
+            # 배치 안에 얼어붙는다. step 6 의 today 슬롯 덮어쓰기가 보통 가려주지만
+            # today fetch 가 실패하면 그 가림이 사라진다.
+            ceiling_ms = int(
+                datetime.combine(cache_ceiling, time(23, 59, 59), tzinfo=_KST).timestamp()
+                * 1000
+            )
+            cache.append_batch(
+                code, gap_from, batch_to,
+                [r for r in rows if not isinstance(r.get("t_ms"), int)
+                 or r["t_ms"] <= ceiling_ms],
+            )
             loaded.extend(rows)
+            # 라벨은 **요청한 갭** 그대로다 — 이 필드는 벤더 왕복 기록이지 캐시
+            # 커버리지 기록이 아니다. 게다가 캐시는 `_normalize_batch` 로 경계를
+            # 실제 행 범위까지 다시 조이므로, 넓힌 값을 여기 적으면 실제 저장된
+            # 구간과 어긋날 수 있다. 넓어진 커버리지는 다음 요청의
+            # `cached_batches` 에 드러난다.
             fresh_batches.append(label)
+            if covered_through is None or batch_to > covered_through:
+                covered_through = batch_to
             for v in violations:
                 warnings.append(_violation_to_warning(v, label))
 
@@ -583,7 +636,9 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
         else:  # miss
             today_label = f"{today_s}__{today_s}"
             try:
-                rows, violations = await fetch_batch(code, today_s, today_s)
+                # `covered_to` 는 여기서 무의미하다 — 오늘 슬롯은 하루짜리 tri-state 라
+                # 커버리지를 넓힐 대상이 없다.
+                rows, violations, _covered_to = await fetch_batch(code, today_s, today_s)
                 if rows:
                     today_row = rows[0]
                     cache.store_today(code, today_row)

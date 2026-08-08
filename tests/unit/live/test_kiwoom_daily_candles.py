@@ -225,11 +225,13 @@ async def test_rows_older_than_from_are_not_violations() -> None:
     await c.aclose()
 
 
-async def test_rows_between_to_and_the_basis_date_are_not_violations() -> None:
+async def test_rows_between_to_and_the_basis_date_are_returned_not_dropped() -> None:
     """**함정 ④ 로 뒤집힌 불변식이다.** 예전엔 `base_dt=to` 라 "`to` 보다 새로운
-    행" 이 곧 이상이었다. 이제 기준일에서 출발해 걸어 내려오므로 `to`~기준일
-    사이 행은 **설계상 반드시** 섞인다 — 위반으로 실으면 깊은 구간 조회마다
-    수백 건의 가짜 경고가 뜬다.
+    행" 이 곧 이상이었다. 이제 기준일에서 걸어 내려오므로 `to`~기준일 사이 행은
+    설계상 반드시 섞인다 — 위반으로 실으면 가짜 경고가 쏟아진다.
+
+    그리고 **버리지도 않는다.** 어차피 받은 행이라, 돌려주면 호출자가 캐시
+    커버리지를 그만큼 넓혀 다음 갭을 없앨 수 있다.
     """
     rows = [{**ROW, "dt": AS_OF}, {**ROW, "dt": "20260803"}, {**ROW, "dt": "20200101"}]
     c = _client(lambda _r: _ok(rows))
@@ -237,7 +239,24 @@ async def test_rows_between_to_and_the_basis_date_are_not_violations() -> None:
         c, "005930", "20260803", "20260803", adjust=True, adjusted_as_of=AS_OF
     )
     assert [v.reason for v in res.violations] == []
-    assert [x.close for x in res.candles] == [239_500], "구간 밖은 버리되 조용히"
+    assert len(res.candles) == 2, "20260803(요청 끝) + 20260808(기준일) 둘 다"
+    assert [x.t_ms for x in res.candles] == sorted(x.t_ms for x in res.candles)
+    await c.aclose()
+
+
+async def test_raw_fetch_still_stops_at_the_requested_end() -> None:
+    """원주가는 `base_dt=to` 라 반환 구간이 예전과 같다 — 넓어지는 것은 수정주가
+    경로뿐이다. 스크리너 코퍼스가 요청 안 한 날짜를 받으면 append 규약이 깨진다.
+    """
+    rows = [{**ROW, "dt": "20260808"}, {**ROW, "dt": "20260803"}]
+    c = _client(lambda _r: _ok(rows))
+    res = await fetch_daily_candles(
+        c, "005930", "20260803", "20260803", adjust=False, adjusted_as_of=None
+    )
+    assert len(res.candles) == 1
+    assert [v.reason for v in res.violations] == ["out_of_range"], (
+        "원주가 경로에서는 `to` 보다 새로운 행이 여전히 진짜 이상이다"
+    )
     await c.aclose()
 
 

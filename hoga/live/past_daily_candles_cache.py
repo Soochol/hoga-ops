@@ -119,6 +119,16 @@ class PastDailyCandlesCache:
             for frm, to, bars in (batches or [])
         ]
 
+    def clear_batches(self) -> None:
+        """과거 배치를 전부 버린다. 오늘 슬롯(TTL tri-state)은 건드리지 않는다.
+
+        **수정주가 기준일이 바뀔 때** 쓴다(#1228 함정 ④). 배치는 기준일 시점의
+        척도로 굳어 있는데, 그 사이 액면분할이 나면 새로 받는 배치와 척도가
+        갈린다. 배치마다 기준일을 기억하는 대신 통째로 버리는 이유는 기준일이
+        **전역으로 하나**(오늘)라 부분 무효화할 축이 없기 때문이다.
+        """
+        self._per_key.clear()
+
     def append_batch(
         self, *args,
     ) -> None:

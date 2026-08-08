@@ -75,6 +75,11 @@ class LruDict(Generic[K, V]):
     def pop(self, key: K, default: V | None = None) -> V | None:
         return self._d.pop(key, default)
 
+    def clear(self) -> None:
+        """전부 버린다. **eviction 으로 세지 않는다** — 축출은 용량 압력의 지표라
+        의도적 무효화를 거기 섞으면 캐시 크기 튜닝 신호가 오염된다."""
+        self._d.clear()
+
     def __contains__(self, key: object) -> bool:
         return key in self._d
 
