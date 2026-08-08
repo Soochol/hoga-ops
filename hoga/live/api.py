@@ -31,6 +31,7 @@ from hoga.live import (
     kiwoom_rest_runtime,
     kiwoom_runtime,
 )
+from hoga.live.error_policy import classify_live_error
 from hoga.live.index_candles_cache import (
     IndexCandlesCache,
     collect_index_candles_with_cache,
@@ -49,8 +50,8 @@ from hoga.live.index_registry import (
 from hoga.live.investor import InvestorTrendEstimateRow
 from hoga.live.kis_client import (
     KisApiError,
+    KisAuthError,
     KisRateLimitError,
-    KisTransportError,
 )
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import (
@@ -58,7 +59,7 @@ from hoga.live.kiwoom_errors import (
     KiwoomAuthError,
     KiwoomRateLimitError,
     KiwoomRestError,
-    KiwoomTransportError,
+    KiwoomTerminalAuthError,
 )
 from hoga.live.kiwoom_index_candles import (
     KiwoomIndexCandlesError,
@@ -276,13 +277,20 @@ def _violation_to_warning(v, batch_label: str) -> dict:
     }
 
 
-def _kis_error_to_warning(reason: str, msg: str, batch_label: str) -> dict:
-    """Render a KIS rate-limit/api-error as the wire dict the handler emits.
+def _vendor_error_to_warning(exc: BaseException, batch_label: str) -> dict:
+    """벤더 실패를 핸들러가 내보내는 와이어 경고로. **사유·원문 모두 정책이 정한다.**
+
+    분봉 경로의 `live_candle_backfill._rest_error_warning` 과 같은 규율이다(ADR-0137) —
+    일봉만 손으로 사유를 적고 있어서 두 경로의 분해능이 달랐다. 특히 `msg` 가 벤더
+    코드 한 조각(`_vendor_code`)이었던 탓에, 키움 실패는 `return_code` 인 `"3"` 만
+    떠서 대괄호 안의 진짜 코드(`8050`·`8005`)와 한글 문구가 **화면에 도달하지 못했다**.
+    `policy.message` 는 벤더 원문 그대로라 프론트 칩 툴팁이 그걸 보여 준다.
 
     `date` field is intentionally omitted — these errors apply to the whole
     batch range, not a single date (companion to `_violation_to_warning`).
     """
-    return {"batch": batch_label, "reason": reason, "msg": msg}
+    policy = classify_live_error(exc)
+    return {"batch": batch_label, "reason": policy.reason, "msg": policy.message}
 
 
 def _compute_daily_gaps(
@@ -483,17 +491,33 @@ def _collect_index_minute_candles_cache_only(
     }
 
 
-# 이행기(#1005) — 이 오케스트레이터를 **두 벤더가 공유한다**: 일봉은 아직 KIS
-# (#1042 에서 이관), 투자자는 이미 키움(#1041). 한쪽만 잡으면 다른 쪽 실패가
-# data_warnings 로 안 내려가고 500 으로 샌다. #1046(PR-J)에서 키움만 남긴다.
-_RATE_LIMIT_ERRORS = (KisRateLimitError, KiwoomRateLimitError)
-_TRANSPORT_ERRORS = (KisTransportError, KiwoomTransportError)
-_API_ERRORS = (KisApiError, KiwoomApiError)
-
-
-def _vendor_code(exc: Exception) -> str:
-    """벤더별 에러코드 필드 이름이 다르다 — KIS 는 `msg_cd`, 키움은 `code`."""
-    return str(getattr(exc, "msg_cd", None) or getattr(exc, "code", "") or "")
+# 이 오케스트레이터를 **두 벤더가 공유한다**(일봉·투자자 모두 키움으로 이관됐지만
+# KIS 타입은 파생 경로 존치로 남아 있다). 한쪽만 잡으면 다른 쪽 실패가 data_warnings
+# 로 안 내려가고 500 으로 샌다 — 실제로 그렇게 샜다(#1226, 오늘 프로브의 8050).
+#
+# **잡을 타입만 나열하고 사유는 `_vendor_error_to_warning` 이 정한다.** 예전엔 transport
+# 튜플이 따로 있었는데, 그건 사유 문자열을 손으로 고르기 위한 것이었고 이제 정책이
+# 고른다. 타입으로만 보면 transport·batch-limit 은 api-error 의 하위 타입이라 아래
+# 한 줄에 이미 들어 있다(실측: `KiwoomTransportError`·`KiwoomBatchLimitError` ⊂
+# `KiwoomApiError`, `KisTransportError` ⊂ `KisApiError`).
+#
+# 인증 계열은 **하위 타입이 아니라 별도 갈래**다(`KiwoomAuthError` ⊄ `KiwoomApiError`).
+# 거버너 과부하(`KiwoomCapacityOverloaded`)는 아예 `RuntimeError` 다. 둘 다 빠뜨리면
+# 8005 토큰 무효화·큐 포화가 그대로 500 이 된다 — 8050 과 같은 사고가 코드만 바꿔
+# 반복된다(투자자 경로는 실제로 그 상태였다).
+#
+# **가르는 축은 벤더가 아니라 "더 걸어도 같은 결과인가" 다.**
+#   멈춘다: 유량 초과·큐 포화(창이 열려야 한다) · 인증 실패(설정을 고쳐야 한다).
+#           남은 gap 을 두드려 봐야 같은 거절이고, 경고만 N 개로 불어난다.
+#   계속:   그 배치 고유의 거절(1504 등)·전송 실패. 다음 배치는 성공할 수 있다.
+#
+# `KiwoomTerminalAuthError` ⊂ `KiwoomApiError` 라 **이 튜플의 except 절이 먼저 와야**
+# 8050 이 "계속" 팔로 새지 않는다.
+_STOP_WALK_ERRORS = (
+    KisRateLimitError, KiwoomRateLimitError, KiwoomCapacityOverloaded,
+    KisAuthError, KiwoomAuthError, KiwoomTerminalAuthError,
+)
+_DEGRADABLE_ERRORS = (KisApiError, KiwoomApiError)
 
 
 async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
@@ -517,9 +541,16 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
     The caller supplies a thin `fetch_batch(code, from_s, to_s)` closure that
     fetches one date range and returns
     `(rows: list[dict], violations, covered_to: date | None)` — it may
-    raise ``KisRateLimitError`` / ``KisApiError`` (this orchestrator catches them
-    and turns them into ``data_warnings``, breaking on rate-limit, continuing on
-    api-error). Everything else — batch-cache intersect, gap compute, per-gap
+    raise the vendor error families in ``_STOP_WALK_ERRORS`` /
+    ``_DEGRADABLE_ERRORS`` (this orchestrator catches them and turns them into
+    ``data_warnings``). 걷기를 멈추는 축은 벤더도 유량도 아니라 **"더 걸어도 같은
+    결과인가"** 다 — 유량 초과·큐 포화·인증 실패가 멈추는 쪽이고, 그 배치 고유의
+    거절과 전송 실패가 계속하는 쪽이다(각 튜플 위 주석).
+    **과거 gap 루프와 오늘 프로브가 같은 튜플을 본다** — 벤더별로 적으면 한쪽만
+    갱신돼 나머지가 500 으로 샌다. 경고의 ``reason``·``msg`` 는 손으로 정하지 않고
+    ``error_policy`` 가 정한다(분봉 경로와 같은 규율, ADR-0137).
+
+    Everything else — batch-cache intersect, gap compute, per-gap
     fetch + persist, today tri-state, dedupe-by-``t_ms`` / sort / [frm,too]
     filter — lives here, tested once in ``test_batched_daily_walkback.py``.
 
@@ -572,24 +603,16 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                 rows, violations, covered_to = await fetch_batch(
                     code, gap_from_s, gap_to_s
                 )
-            except _RATE_LIMIT_ERRORS as e:
-                warnings.append(_kis_error_to_warning("rate_limit_upstream", str(e), label))
+            except _STOP_WALK_ERRORS as e:
+                # 뒤 배치를 두드려 봐야 같은 거절이라 걷기를 **중단**한다. 경고 하나면
+                # 충분하고, N 개로 불어나면 원인이 오히려 안 보인다.
+                warnings.append(_vendor_error_to_warning(e, label))
                 break
-            except _TRANSPORT_ERRORS as e:
-                # Subtype of the generic api-error — must precede the generic arm
-                # so a network blip (TCP disconnect) carries its own reason and an
-                # operator can tell it apart from an upstream rejection (different
-                # remediation). Skip this batch, keep walking back. The client
-                # already retried connection-level failures once (ADR-0050).
-                # **`"transport"` 가 아니라 `"transport_error"` 다.** 프론트 계약은
-                # 후자인데 전자를 내보내고 있어서, 일봉 경로의 진짜 전송 실패가
-                # 토스트에 도달하지 못했다(ADR-0137).
-                warnings.append(
-                    _kis_error_to_warning("transport_error", _vendor_code(e), label)
-                )
-                continue
-            except _API_ERRORS as e:
-                warnings.append(_kis_error_to_warning("api_error", _vendor_code(e), label))
+            except _DEGRADABLE_ERRORS as e:
+                # 전송 실패·배치 상한이 각자의 사유로 갈리는 것은 이제
+                # `classify_live_error` 의 isinstance 순서가 보장한다 — 여기서 팔을
+                # 나눌 이유가 없다. 전송 실패는 클라이언트가 이미 1회 재시도했다(ADR-0050).
+                warnings.append(_vendor_error_to_warning(e, label))
                 continue
             # 확장의 근거는 **"그 행을 실제로 받았다"** 이다. 빈 응답까지 넓게
             # 주장하면, 일시적 빈 응답 하나가 오늘까지의 큰 구간을 "조회 완료" 로
@@ -652,14 +675,17 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                     fresh_batches.append(today_label)
                 for v in violations:
                     warnings.append(_violation_to_warning(v, today_label))
-            except KisRateLimitError as e:
-                warnings.append(_kis_error_to_warning("rate_limit_upstream", str(e), today_label))
-            except KisTransportError as e:
-                warnings.append(
-                    _kis_error_to_warning("transport_error", e.msg_cd, today_label)
-                )
-            except KisApiError as e:
-                warnings.append(_kis_error_to_warning("api_error", e.msg_cd, today_label))
+            # 위 gap 루프와 **같은 튜플**을 쓴다. 예전엔 여기만 `Kis*` 를 직접 적어서
+            # 두 브랜치의 포착 폭이 갈렸고, 일봉이 키움으로 이관된 뒤로는 오늘 프로브의
+            # `KiwoomApiError` 만 그대로 탈출해 500 이 됐다(#1226, 8050 지정단말기 인증 실패).
+            # 그 500 은 FastAPI detail 이 아니라 Starlette 의 plain text 라 프론트가
+            # 에러 코드를 못 읽고, 캔들이 이미 그려져 있으면 **아무 표시도 안 났다**.
+            # 브로커를 늘릴 때 여기를 잊지 않도록 튜플 공유가 유일한 규율이다.
+            #
+            # 여기는 배치가 하나뿐이라 멈출 것도 계속할 것도 없다 — 두 튜플을 한 팔로
+            # 합친다. 합쳤으므로 gap 루프와 달리 순서 함정이 없다.
+            except (*_STOP_WALK_ERRORS, *_DEGRADABLE_ERRORS) as e:
+                warnings.append(_vendor_error_to_warning(e, today_label))
 
     # 6. Dedupe by t_ms, sort, filter to [frm, too].
     frm_ms = int(datetime.combine(frm, time(0, 0), tzinfo=_KST).timestamp() * 1000)

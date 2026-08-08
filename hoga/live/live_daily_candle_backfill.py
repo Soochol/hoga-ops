@@ -5,8 +5,8 @@ from datetime import date, datetime, timedelta
 from typing import Protocol
 
 from hoga.live import kiwoom_access, kiwoom_daily_candles, kiwoom_rest_runtime
-from hoga.live.kis_client import KisRateLimitError
-from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded, Priority
+from hoga.live.kiwoom_capacity import Priority
+from hoga.live.kiwoom_errors import KiwoomAuthError
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.single_flight import SingleFlight
 from hoga.live.venue import LiveVenuePolicy, Venue, daily_venue_for_policy
@@ -234,13 +234,24 @@ class LiveDailyCandleBackfill:
     ):
         """PR-F(#1042) 칼 컷오버 — 소스는 키움 `ka10081` 이다.
 
-        거버너 과부하를 `KisRateLimitError` 로 감싸는 것은 **의도적**이다: 상위
-        walkback 오케스트레이터가 그 타입으로 "잠시 후 재시도" 경고를 만든다.
-        벤더명이 붙은 예외 이름은 #1046(PR-J)에서 한꺼번에 정리한다.
+        **예외를 다른 벤더 타입으로 감싸지 않는다.** 예전엔 거버너 과부하와 클라이언트
+        미초기화를 둘 다 `KisRateLimitError` 로 감쌌다 — 상위 walkback 이 그 타입으로만
+        경고를 만들었기 때문인데, 그 편법이 두 가지 거짓을 만들었다:
+
+        - 거버너 큐 포화가 `rate_limit_upstream` 으로 떠서 **묻지도 않은 벤더**가
+          거절한 것처럼 보였다. 같은 사건을 분봉 경로는 `capacity_overloaded` 로
+          부르고 있어 두 경로가 같은 일에 다른 이름을 붙였다.
+        - 클라이언트 미초기화(= 자격증명 없음)가 "잠시 후 재시도" 로 안내됐다.
+          고치기 전에는 영원히 같은 실패라 ADR-0137 R4 위반이다.
+
+        이제 walkback 이 사유를 `error_policy` 에 묻고 거버너 과부하도 직접 잡으므로
+        (`_STOP_WALK_ERRORS`) 감쌀 이유가 없다. 미초기화는 성격 그대로 인증 실패로
+        올린다 — 정상 경로에서는 라우트가 앞서 503 `not_wired` 로 막으므로 여기까지
+        오는 것은 요청 도중 자격증명이 사라진 경우뿐이다.
         """
         client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
         if client is None:
-            raise KisRateLimitError("kiwoom client not initialized")
+            raise KiwoomAuthError("kiwoom client not initialized")
         def _run_page(fetch_fn, page_idx: int):
             """페이지 1장 = 거버너 submit 1건.
 
@@ -257,16 +268,13 @@ class LiveDailyCandleBackfill:
                 fetch_fn=fetch_fn,
             )
 
-        try:
-            return await kiwoom_daily_candles.fetch_daily_candles(
-                client, code, from_s, to_s, venue=venue,
-                # `/live` 차트는 **수정주가**를 그린다. 기준일은 배치의 끝이 아니라
-                # 오늘이다 — 그래야 스크롤로 쪼개진 배치들이 한 척도로 이어진다.
-                adjust=True, adjusted_as_of=as_of_s,
-                run_page=_run_page,
-            )
-        except KiwoomCapacityOverloaded as e:
-            raise KisRateLimitError(str(e)) from e
+        return await kiwoom_daily_candles.fetch_daily_candles(
+            client, code, from_s, to_s, venue=venue,
+            # `/live` 차트는 **수정주가**를 그린다. 기준일은 배치의 끝이 아니라
+            # 오늘이다 — 그래야 스크롤로 쪼개진 배치들이 한 척도로 이어진다(#1228).
+            adjust=True, adjusted_as_of=as_of_s,
+            run_page=_run_page,
+        )
 
 
 class _VenueDailyCacheAdapter:

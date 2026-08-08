@@ -66,6 +66,27 @@ class KiwoomBatchLimitError(KiwoomApiError):
     """
 
 
+class KiwoomTerminalAuthError(KiwoomApiError):
+    """`8050` 지정단말기 인증 실패 — **인증 실패지만 토큰 문제가 아니다.**
+
+    `KiwoomAuthError` 가 **아니라** `KiwoomApiError` 를 상속하는 것이 이 타입의 전부다.
+    거버너(`kiwoom_capacity._recover_if_auth_failure`)는 `KiwoomAuthError` 를 보면
+    토큰을 무효화하고 계정을 격리한 뒤 되큐한다. 그 처방은 8050 에 **틀렸다** —
+    등록되지 않은 단말기/IP 에서 왔다는 뜻이라 토큰을 다시 받아도 같은 거절이 오고,
+    같은 앱키 재발급은 살아 있던 토큰만 죽인다(#1088). `_RC_MSG_AUTH` 가 1513·8005 를
+    묶은 기준이 "거버너가 그 사실에 대해 하는 일이 같다" 였으므로, 하는 일이 다른
+    8050 은 그 묶음에 들지 않는다.
+
+    그러면서도 **사용자에게는 인증 실패로 보여야** 한다 — 기다린다고 낫지 않고 설정을
+    고쳐야 하기 때문이다. 그 구분은 `error_policy` 가 `reason="auth_error"` ·
+    `permanent=True` 로 짓는다(타입 계층과 표시 정책을 분리한 이유).
+
+    `KiwoomBatchLimitError` 와 같은 모양이다: 벤더가 대괄호 코드로만 구별해 주는
+    특수 사례를 하위 타입으로 승격하되, 기존 `except KiwoomApiError` 팔이 수정 없이
+    계속 흡수한다.
+    """
+
+
 class KiwoomRateLimitError(KiwoomRestError):
     """HTTP 429 / `return_code == 5` — 유량 초과.
 
