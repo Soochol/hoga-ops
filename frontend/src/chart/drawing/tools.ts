@@ -729,6 +729,28 @@ export const textTool: DrawingToolSpec = {
 };
 
 // ─── pencil ────────────────────────────────────────────────────────────────
+
+/**
+ * 커밋 직후 선택돼 있는 도형 위에서 시작한 press 인가?
+ *
+ * 그리기 도구는 도형을 커밋해도 활성 상태로 남는다 — Escape 만이 select 로
+ * 돌아가는 길이다(2026-07-01 사용자 요청). 그런데 커밋 시점에 방금 그린 도형이
+ * `setSelected` 로 선택되므로, 화면은 "선택됐다 = 잡아서 옮길 수 있다"고 말하는데
+ * 실제로 그 위를 눌러 끌면 **새 도형이 그려진다**.
+ *
+ * 연필에서 이 어긋남이 가장 나쁘게 보인다: 좌우로 끈 궤적이 그대로 긴 가로 획으로
+ * 커밋되어, 방금 그린 그림이 좌우로 늘어난 것처럼 읽힌다(도형이 하나 더 생긴 것인데
+ * 겹쳐 있어서 구별되지 않는다). 측정자가 `revertToSelectMode` 로 피해 간 것과 같은
+ * 함정이지만, 연필은 여러 획을 이어 그리는 것이 정상 사용이라 도구를 끌 수 없다.
+ *
+ * 그래서 **선택된 도형 하나**로 한정한다. 다른 도형 위에 겹쳐 그리는 것은 그대로
+ * 되고, 잡히는 것은 직전에 그린(=옮기고 싶을 가능성이 가장 높은) 그 획뿐이다.
+ */
+function startsOnSelectedDrawing(ctx: ToolCtx): boolean {
+  if (ctx.selectedId == null) return false;
+  return ctx.hitTestAt(ctx.px, ctx.py)?.id === ctx.selectedId;
+}
+
 export const pencilTool: DrawingToolSpec = {
   kind: 'pencil',
   label: '연필',
@@ -736,6 +758,12 @@ export const pencilTool: DrawingToolSpec = {
   cursor: 'crosshair',
   shortcut: { alt: true, key: 'b' },
   onPointerDown(ctx) {
+    // 선택된 획을 잡았다면 새로 그리는 것이 아니라 옮기는 것이다. 이후의
+    // move/up 은 `dragRef` 가 살아 있는 동안 select 로 계속 넘어간다.
+    if (startsOnSelectedDrawing(ctx)) {
+      selectTool.onPointerDown?.(ctx);
+      return;
+    }
     const paneId = ctx.paneIdAtY(ctx.py);
     const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
     if (!data) return;
@@ -748,6 +776,12 @@ export const pencilTool: DrawingToolSpec = {
     ctx.capturePointer();
   },
   onPointerMove(ctx) {
+    // 이동 제스처로 넘어간 press 는 끝까지 select 가 처리한다. `dragRef` 는
+    // selectTool 만 세우므로, 연필 획을 그리는 중에는 절대 걸리지 않는다.
+    if (ctx.dragRef.current) {
+      selectTool.onPointerMove?.(ctx);
+      return;
+    }
     const draft = ctx.pencilDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
     const now = performance.now();
@@ -763,6 +797,10 @@ export const pencilTool: DrawingToolSpec = {
     ctx.requestRedraw();
   },
   onPointerUp(ctx) {
+    if (ctx.dragRef.current) {
+      selectTool.onPointerUp?.(ctx);
+      return;
+    }
     const draft = ctx.pencilDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
     ctx.pencilDraft.current = null;

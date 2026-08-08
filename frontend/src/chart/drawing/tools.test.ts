@@ -459,6 +459,58 @@ describe('pencilTool throttle', () => {
   });
 });
 
+describe('pencilTool: 선택된 획 위에서 시작한 press 는 이동이다', () => {
+  // 연필은 커밋 후에도 활성으로 남으므로(2026-07-01 사용자 요청), 방금 그린 획을
+  // 잡아 좌우로 끌면 그 궤적이 새 가로 획으로 커밋됐다 — 화면에는 그린 그림이
+  // 좌우로 늘어난 것처럼 보였다. 게이트가 막는 방향은 "선택된 도형 위에서 시작한
+  // press" 하나뿐이고, 그 외에는 전부 종전대로 그려진다(아래 두 테스트).
+  const stroke: Drawing = {
+    id: 'p1',
+    kind: 'pencil',
+    points: [
+      { realMs: 1_700_000_000_000, price: 70_000 },
+      { realMs: 1_700_000_060_000, price: 70_500 },
+    ],
+    color: '#14B8A6',
+    width: 2,
+    lineStyle: 'solid',
+    paneId: 'candle',
+  };
+
+  it('starts a body drag and commits NO new stroke', () => {
+    const ctx = makeCtx({ drawings: [stroke], selectedId: 'p1', hitTestAt: vi.fn(() => stroke) });
+    pencilTool.onPointerDown!(ctx);
+    expect(ctx.pencilDraft.current).toBeNull();
+    expect(ctx.dragRef.current).toMatchObject({ kind: 'body', id: 'p1' });
+
+    pencilTool.onPointerMove!(ctx);
+    expect(ctx.update).toHaveBeenCalledWith('p1', expect.objectContaining({ points: expect.any(Array) }));
+
+    pencilTool.onPointerUp!(ctx);
+    // The regression: a left-right drag used to land here as a long horizontal pencil.
+    expect(ctx.add).not.toHaveBeenCalled();
+    expect(ctx.dragRef.current).toBeNull();
+    expect(ctx.releasePointer).toHaveBeenCalled();
+  });
+
+  it('still draws over a drawing that is NOT selected', () => {
+    const ctx = makeCtx({ drawings: [stroke], selectedId: null, hitTestAt: vi.fn(() => stroke) });
+    pencilTool.onPointerDown!(ctx);
+    expect(ctx.dragRef.current).toBeNull();
+    expect(ctx.pencilDraft.current?.points).toHaveLength(1);
+    ctx.pencilDraft.current!.points.push({ realMs: 1_700_000_000_001, price: 70_010 });
+    pencilTool.onPointerUp!(ctx);
+    expect(ctx.add).toHaveBeenCalledOnce();
+  });
+
+  it('still draws when the press misses the selected drawing', () => {
+    const ctx = makeCtx({ drawings: [stroke], selectedId: 'p1', hitTestAt: vi.fn(() => null) });
+    pencilTool.onPointerDown!(ctx);
+    expect(ctx.dragRef.current).toBeNull();
+    expect(ctx.pencilDraft.current?.points).toHaveLength(1);
+  });
+});
+
 describe('selectTool', () => {
   it('clears selection when click misses', () => {
     const ctx = makeCtx({ hitTestAt: vi.fn(() => null) });
