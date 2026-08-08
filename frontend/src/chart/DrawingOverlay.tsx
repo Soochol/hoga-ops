@@ -356,8 +356,26 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           e.preventDefault();
         }
       } else if (e.key === 'Escape') {
-        useDrawingsStore.getState().setSelected(keyScope, null);
-        useDrawingsStore.getState().setActiveTool('select');
+        // 2단계 Escape. 그리기 도구가 켜져 있고 뭔가 선택돼 있으면 첫 Escape 는
+        // **선택만** 푼다 — 도구는 살려 둔다.
+        //
+        // 왜: 그리기 모드엔 빈 곳 클릭 해제가 없다(`shouldDeselectOnClick` effect 는
+        // select 모드에서만 마운트된다). 그런데 선택된 도형은 그리기 모드에서도
+        // 잡힌다(tools.ts 의 `withSelectedDrawingDrag` — 방금 그린 것을 끌면 새로
+        // 그려지던 버그의 수정). 둘이 겹치면 "방금 그린 도형의 윤곽 위에서 다음 획을
+        // 시작하는" 길이 막히는데, 종전 Escape 는 선택과 **도구를 한꺼번에** 풀어서
+        // 유일한 탈출구가 "도구까지 버리기" 였다.
+        //
+        // 도구를 끄는 길은 그대로 있다 — 선택이 없으면 곧장, 있으면 한 번 더.
+        // (2026-07-01 계획서의 "Escape remains the way to return to select mode" 는
+        // 유효하다. 눌러야 하는 횟수만 상태에 따라 1~2회로 갈린다.)
+        const store = useDrawingsStore.getState();
+        const hadSelection = (store.selectedByScope.get(keyScope) ?? null) != null;
+        store.setSelected(keyScope, null);
+        // activeTool 은 스토어에서 읽는다 — 이 keydown 클로저는 재바인딩되지 않아
+        // 렌더 시점의 `activeTool` 은 stale 이다.
+        if (store.activeTool !== 'select' && hadSelection) return;
+        store.setActiveTool('select');
         trendlineDraft.current = null;
         pencilDraft.current = null;
         rectDraft.current = null;

@@ -14,6 +14,8 @@
  *
  * 해제 경로 3개: 메뉴 첫 항목 '선택' · Escape(`DrawingOverlay` 가 이미 처리) ·
  * 트리거 재클릭 후 '선택'. 도구는 한 번 고르면 바꿀 때까지 유지(sticky)한다.
+ * Escape 는 2단계다 — 선택된 도형이 있으면 첫 번째는 선택만 풀고 도구를 살려 둔다
+ * (사유는 `DrawingOverlay` 의 Escape 분기).
  *
  * `code`/`timeframe` 은 조작할 드로잉 scope 를 정한다 — 레일과 같은 props 계약.
  * 셸을 마운트하는 쪽(/live 차트 창 · /study)이 이미 둘 다 들고 있고, 훅으로
