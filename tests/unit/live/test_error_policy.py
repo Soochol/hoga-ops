@@ -210,6 +210,30 @@ def test_kiwoom_terminal_auth_shows_as_auth_despite_api_error_base() -> None:
     assert "8050" in policy.message
 
 
+def test_capacity_overload_splits_kind_from_reason() -> None:
+    """거버너 큐 포화 — **처방 축과 표시 축이 갈리는 자리다.**
+
+    `kind` 는 유량 초과와 같다(기다리면 풀린다). 그래야 `kind` 로 접는 소비자
+    (`live_index_investor_net._reason_for` 등)가 손대지 않고도 옳은 처방을 받는다.
+    `reason` 은 갈라야 한다 — 벤더는 이 구간을 거절한 적이 없고, 분봉 경로가 이미
+    `capacity_overloaded` 라는 이름을 쓰고 있다.
+
+    팔이 없으면 `unexpected_error` 로 떨어진다: 일시적 큐 포화를 내부 결함으로
+    기록하고(ERROR + traceback) "재시도해도 소용없다"(permanent)고 표시하는 셈이다.
+    """
+    from hoga.live.error_policy import classify_live_error
+    from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
+
+    policy = classify_live_error(KiwoomCapacityOverloaded("queue full (128)"))
+
+    assert policy.kind == "rate_limit"
+    assert policy.reason == "capacity_overloaded"
+    assert policy.permanent is False
+    assert policy.retry_after_s is not None
+    assert policy.include_traceback is False
+    assert policy.log_level == logging.WARNING
+
+
 def test_kiwoom_base_error_does_not_fall_through_to_unexpected() -> None:
     """모듈별 에러(KiwoomIndexCandlesError 등)는 베이스만 상속한다. 이 팔이 없으면
     벤더 장애가 ERROR+traceback 의 '내부 결함' 으로 기록된다."""

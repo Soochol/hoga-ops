@@ -59,6 +59,7 @@ from hoga.live.kiwoom_errors import (
     KiwoomAuthError,
     KiwoomRateLimitError,
     KiwoomRestError,
+    KiwoomTerminalAuthError,
 )
 from hoga.live.kiwoom_index_candles import (
     KiwoomIndexCandlesError,
@@ -501,10 +502,22 @@ def _collect_index_minute_candles_cache_only(
 # `KiwoomApiError`, `KisTransportError` ⊂ `KisApiError`).
 #
 # 인증 계열은 **하위 타입이 아니라 별도 갈래**다(`KiwoomAuthError` ⊄ `KiwoomApiError`).
-# 빠뜨리면 8005 토큰 무효화가 그대로 500 이 된다 — 8050 과 같은 사고가 코드만 바꿔
-# 반복된다.
-_RATE_LIMIT_ERRORS = (KisRateLimitError, KiwoomRateLimitError)
-_DEGRADABLE_ERRORS = (KisApiError, KisAuthError, KiwoomApiError, KiwoomAuthError)
+# 거버너 과부하(`KiwoomCapacityOverloaded`)는 아예 `RuntimeError` 다. 둘 다 빠뜨리면
+# 8005 토큰 무효화·큐 포화가 그대로 500 이 된다 — 8050 과 같은 사고가 코드만 바꿔
+# 반복된다(투자자 경로는 실제로 그 상태였다).
+#
+# **가르는 축은 벤더가 아니라 "더 걸어도 같은 결과인가" 다.**
+#   멈춘다: 유량 초과·큐 포화(창이 열려야 한다) · 인증 실패(설정을 고쳐야 한다).
+#           남은 gap 을 두드려 봐야 같은 거절이고, 경고만 N 개로 불어난다.
+#   계속:   그 배치 고유의 거절(1504 등)·전송 실패. 다음 배치는 성공할 수 있다.
+#
+# `KiwoomTerminalAuthError` ⊂ `KiwoomApiError` 라 **이 튜플의 except 절이 먼저 와야**
+# 8050 이 "계속" 팔로 새지 않는다.
+_STOP_WALK_ERRORS = (
+    KisRateLimitError, KiwoomRateLimitError, KiwoomCapacityOverloaded,
+    KisAuthError, KiwoomAuthError, KiwoomTerminalAuthError,
+)
+_DEGRADABLE_ERRORS = (KisApiError, KiwoomApiError)
 
 
 async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
@@ -525,7 +538,7 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
 
     The caller supplies a thin `fetch_batch(code, from_s, to_s)` closure that
     fetches one date range and returns `(rows: list[dict], violations)` — it may
-    raise the vendor error families in ``_RATE_LIMIT_ERRORS`` /
+    raise the vendor error families in ``_STOP_WALK_ERRORS`` /
     ``_DEGRADABLE_ERRORS`` (this orchestrator catches them and turns them into
     ``data_warnings``, breaking on rate-limit, continuing on everything else).
     **과거 gap 루프와 오늘 프로브가 같은 튜플을 본다** — 벤더별로 적으면 한쪽만
@@ -563,13 +576,13 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
             label = f"{gap_from_s}__{gap_to_s}"
             try:
                 rows, violations = await fetch_batch(code, gap_from_s, gap_to_s)
-            except _RATE_LIMIT_ERRORS as e:
-                # 유량 초과만 제어 흐름이 다르다 — 뒤 배치를 두드려 봐야 같은 거절이라
-                # 걷기를 **중단**한다. 나머지는 그 배치만 건너뛰고 계속 걷는다.
+            except _STOP_WALK_ERRORS as e:
+                # 뒤 배치를 두드려 봐야 같은 거절이라 걷기를 **중단**한다. 경고 하나면
+                # 충분하고, N 개로 불어나면 원인이 오히려 안 보인다.
                 warnings.append(_vendor_error_to_warning(e, label))
                 break
             except _DEGRADABLE_ERRORS as e:
-                # 전송 실패·배치 상한·인증 실패가 각자의 사유로 갈리는 것은 이제
+                # 전송 실패·배치 상한이 각자의 사유로 갈리는 것은 이제
                 # `classify_live_error` 의 isinstance 순서가 보장한다 — 여기서 팔을
                 # 나눌 이유가 없다. 전송 실패는 클라이언트가 이미 1회 재시도했다(ADR-0050).
                 warnings.append(_vendor_error_to_warning(e, label))
@@ -612,11 +625,9 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
             # 에러 코드를 못 읽고, 캔들이 이미 그려져 있으면 **아무 표시도 안 났다**.
             # 브로커를 늘릴 때 여기를 잊지 않도록 튜플 공유가 유일한 규율이다.
             #
-            # break/continue 가 없어 gap 루프처럼 팔을 가를 필요조차 없지만, 유량
-            # 초과를 따로 두는 것은 위와 **읽는 순서를 맞추기 위해서**다.
-            except _RATE_LIMIT_ERRORS as e:
-                warnings.append(_vendor_error_to_warning(e, today_label))
-            except _DEGRADABLE_ERRORS as e:
+            # 여기는 배치가 하나뿐이라 멈출 것도 계속할 것도 없다 — 두 튜플을 한 팔로
+            # 합친다. 합쳤으므로 gap 루프와 달리 순서 함정이 없다.
+            except (*_STOP_WALK_ERRORS, *_DEGRADABLE_ERRORS) as e:
                 warnings.append(_vendor_error_to_warning(e, today_label))
 
     # 6. Dedupe by t_ms, sort, filter to [frm, too].

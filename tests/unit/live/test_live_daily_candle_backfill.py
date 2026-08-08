@@ -10,6 +10,7 @@ from hoga.live import kiwoom_daily_candles, kiwoom_rest_runtime
 from hoga.live.api import batched_daily_walkback
 from hoga.live.candle_fetch_result import DailyCandleFetchResult
 from hoga.live.candle_models import LiveCandle
+from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
@@ -288,3 +289,81 @@ async def test_live_daily_candle_backfill_falls_back_to_krx_for_empty_integrated
         and warning["batch"] == "20240101__20240105"
         for warning in result["data_warnings"]
     )
+
+
+class _OverloadedScheduler:
+    """거버너가 큐 포화로 신규 요청을 거절하는 상태."""
+
+    async def submit(self, *, key, api_id, priority, call):
+        raise KiwoomCapacityOverloaded("queue full (128)")
+
+
+@pytest.mark.asyncio
+async def test_capacity_overload_is_not_disguised_as_a_vendor_rate_limit(tmp_path, kiwoom) -> None:
+    """거버너 큐 포화를 **벤더 유량 초과로 위장하지 않는다.**
+
+    예전엔 `_fetch` 가 `KiwoomCapacityOverloaded` 를 `KisRateLimitError` 로 감쌌다.
+    상위 walkback 이 그 타입으로만 경고를 만들었기 때문인데, 그 편법이 두 거짓을
+    만들었다: (1) 사유가 `rate_limit_upstream` 이라 **묻지도 않은 벤더**가 거절한
+    것처럼 보였고, (2) 같은 사건을 분봉 경로는 `capacity_overloaded` 로 불러서 두
+    경로가 같은 일에 다른 이름을 붙였다.
+
+    이 테스트가 재는 것은 **경계에서 타입이 바뀌지 않는다**는 것이다 — 사유 문자열은
+    이제 `error_policy` 가 정하므로, 위장이 남아 있으면 여기서 이름이 갈린다.
+    """
+    kiwoom(_FakeKis())
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastDailyCandlesCache(),
+        scheduler=_OverloadedScheduler(),  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    result = await backfill.collect_daily(
+        code="005930",
+        frm=dt.date(2024, 1, 1),
+        too=dt.date(2024, 1, 5),
+        today_d=dt.date(2024, 2, 1),
+        policy="KRX",
+        from_label="20240101",
+        to_label="20240105",
+    )
+
+    reasons = [w["reason"] for w in result["data_warnings"]]
+    assert reasons == ["capacity_overloaded"]
+    assert "rate_limit_upstream" not in reasons, (
+        "벤더는 이 구간을 거절한 적이 없다 — 우리 큐가 찼을 뿐이다"
+    )
+    assert result["candles"] == []
+    # 500 으로 새지 않는 것도 함께 잰다(투자자 경로는 이 타입을 아무도 안 잡아서
+    # 실제로 500 이 났다).
+    assert result["fresh_batches"] == []
+
+
+@pytest.mark.asyncio
+async def test_missing_client_is_permanent_not_retry_soon(tmp_path, monkeypatch) -> None:
+    """자격증명이 사라진 상태를 "잠시 후 재시도" 로 안내하지 않는다(ADR-0137 R4).
+
+    예전엔 이것도 `KisRateLimitError` 였다 — 고치기 전에는 영원히 같은 실패인데
+    기다리라고 말하는 셈이었다. 정상 경로에서는 라우트가 앞서 503 `not_wired` 로
+    막으므로, 여기까지 오는 것은 요청 도중 자격증명이 사라진 경우뿐이다.
+    """
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: None)
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastDailyCandlesCache(),
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    result = await backfill.collect_daily(
+        code="005930",
+        frm=dt.date(2024, 1, 1),
+        too=dt.date(2024, 1, 5),
+        today_d=dt.date(2024, 2, 1),
+        policy="KRX",
+        from_label="20240101",
+        to_label="20240105",
+    )
+
+    assert [w["reason"] for w in result["data_warnings"]] == ["auth_error"]

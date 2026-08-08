@@ -33,6 +33,9 @@ export interface LivePastDailyCandlesWarning {
    */
   reason:
     | 'rate_limit_upstream'
+    // 거버너 큐 포화 — 벤더가 아니라 우리 쪽이다. 예전엔 이 경로가 이걸
+    // `rate_limit_upstream` 으로 위장해 보냈다(분봉 경로는 처음부터 제 이름을 썼다).
+    | 'capacity_overloaded'
     | 'transport_error'
     | 'api_error'
     | 'auth_error'
