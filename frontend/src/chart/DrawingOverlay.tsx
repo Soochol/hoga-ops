@@ -22,7 +22,7 @@ import { INITIAL_STYLE, isDrawingKind } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import type { TimeShift } from './drawing/translate';
-import { hitTestDrawings } from './drawing/hitTest';
+import { hitTestDrawings, type HitOptions } from './drawing/hitTest';
 import {
   TOOLS,
   matchShortcut,
@@ -411,7 +411,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // SR-5: the kind-dispatch hit geometry lives in the pure hitTestDrawings
   // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds
   // the chart-aware coordinate closures.
-  const hitTestAt = (px: number, py: number): Drawing | null =>
+  const hitTest = (px: number, py: number, opts?: HitOptions): Drawing | null =>
     // Hidden drawings are non-interactive — no hover gating, no selection.
     defaults.hiddenAll
       ? null
@@ -427,7 +427,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           drawings,
           px,
           py,
+          opts,
         );
+  const hitTestAt = (px: number, py: number): Drawing | null => hitTest(px, py);
+  /** 그리기 도구가 켜진 채로 "이 도형을 잡았는가" 를 묻는 좁은 판정. 채워진 박스는
+   *  테두리로만 잡힌다 — 안쪽은 다음 도형을 그릴 자리로 남긴다. 판정 하나를 두
+   *  질문으로 나누는 이유는 hitTest.ts 의 `HitOptions` 주석에 있다. */
+  const hitTestOutlineAt = (px: number, py: number): Drawing | null =>
+    hitTest(px, py, { boxInterior: false });
 
   // ── text editing ───────────────────────────────────────────────────────
   // Commit the in-flight text edit. Idempotent: reads textEditRef and nulls it,
@@ -554,6 +561,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       priceToCanvasY,
       canvasYToPrice,
       hitTestAt,
+      hitTestOutlineAt,
       paneIdAtY,
       clampYToPane,
       priceBoundsForPane,
@@ -602,8 +610,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const py = e.clientY - rect.top;
     onChartHoverPassthrough?.({ x: px, y: py });
     // Track the cursor for the hline/vline ghost-line preview and repaint.
+    // 선택된 도형을 잡아 끄는 중이면 고스트를 접는다 — 그 제스처는 배치가 아니라
+    // 이동이고(그리기 도구가 켜진 채로도 선택된 도형은 잡힌다, `tools.ts` 의
+    // `withSelectedDrawingDrag`), 커서 밑에서 끌려오는 선 위에 "여기 새로 놓는다"
+    // 는 점선이 겹쳐 떠서 둘 중 어느 것이 커밋될지 읽히지 않는다.
     if (activeTool === 'hline' || activeTool === 'vline') {
-      ghostRef.current = computeGhost(px, py);
+      ghostRef.current = dragRef.current ? null : computeGhost(px, py);
       requestRedraw();
     }
     TOOLS[activeTool].onPointerMove?.(buildCtx(e));

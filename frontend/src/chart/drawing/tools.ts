@@ -162,6 +162,10 @@ export type ToolCtx = {
   canvasYToPrice(py: number, paneId: PaneId): number | null;
   /** Hit-test all drawings (reverse / topmost-first). */
   hitTestAt(px: number, py: number): Drawing | null;
+  /** Same, but a filled box (rect / measure) counts only by its OUTLINE. Used by
+   *  `withSelectedDrawingDrag` so the empty middle of the box you just drew does
+   *  not swallow the next drawing gesture — see `HitOptions` in hitTest.ts. */
+  hitTestOutlineAt(px: number, py: number): Drawing | null;
 
   /** PaneId of the pane the cursor is currently in. */
   paneIdAtY(py: number): PaneId;
@@ -481,8 +485,81 @@ export const selectTool: DrawingToolSpec = {
   },
 };
 
+/** 커밋 직후 선택돼 있는 도형의 **윤곽** 위에서 시작한 press 인가?
+ *
+ *  `hitTestAt` 이 아니라 `hitTestOutlineAt` 인 것이 요점이다 — 채워진 박스는
+ *  select 모드에서 안쪽 아무 데나 잡히지만(그게 맞다), 그리기 도구가 켜진 채로
+ *  같은 판정을 쓰면 방금 그린 사각형 **안쪽 전체**가 다음 도형을 삼킨다. 큰 박스
+ *  안에 작은 박스를 그리는 것은 평범한 사용이다. */
+function startsOnSelectedDrawing(ctx: ToolCtx): boolean {
+  if (ctx.selectedId == null) return false;
+  return ctx.hitTestOutlineAt(ctx.px, ctx.py)?.id === ctx.selectedId;
+}
+
+/**
+ * 그리기 도구를 감싸, **선택된 도형 위에서 시작한 press** 를 새 도형 생성이 아니라
+ * 그 도형의 이동(=selectTool)으로 넘긴다.
+ *
+ * 왜 필요한가. 그리기 도구는 도형을 커밋해도 활성 상태로 남는다 — Escape 만이
+ * select 로 돌아가는 길이다(2026-07-01 사용자 요청). 그런데 커밋 시점에 방금 그린
+ * 도형이 `setSelected` 로 선택되므로, 화면은 "선택됐다 = 잡아서 옮길 수 있다"고
+ * 말하는데 실제로 그 위를 눌러 끌면 **새 도형이 그려진다**.
+ *
+ * 연필에서 이 어긋남이 가장 나쁘게 보인다: 좌우로 끈 궤적이 그대로 긴 가로 획으로
+ * 커밋되어, 방금 그린 그림이 좌우로 늘어난 것처럼 읽힌다(도형이 하나 더 생긴 것인데
+ * 겹쳐 있어 구별되지 않는다). 측정자는 `revertToSelectMode` 로 이 함정을 피했지만,
+ * 나머지 도구는 여러 도형을 이어 그리는 것이 정상 사용이라 도구를 끌 수 없다.
+ *
+ * 막는 방향은 **선택된 도형 하나** 뿐이다. 선택되지 않은 도형 위에 겹쳐 그리는 것,
+ * 빗나간 press, 아무것도 선택되지 않은 상태는 전부 종전대로 그려진다. 선택 상태는
+ * 커밋 직후의 도형에만 붙고 다음 도형을 그리면 옮겨가므로, 잡히는 대상은 자동으로
+ * "방금 그린 것" 하나로 한정된다.
+ *
+ * ⚠ 못 보는 것: 그리기 모드에서는 빈 곳 클릭 해제가 돌지 않으므로(오버레이의
+ * `shouldDeselectOnClick` effect 는 select 모드에서만 마운트된다) 방금 그린 도형은
+ * 계속 선택 상태로 남는다 — 즉 **그 도형 위에서 시작하는 새 도형은 그릴 수 없다**.
+ * 다른 곳에 하나 더 그리거나 Escape 를 누르면 풀린다. hline/vline 은 히트 밴드가
+ * 화면 전폭/전고라 이 대가가 가장 크지만, 6px 안에 같은 종류의 선을 겹쳐 놓는 것은
+ * 시각적으로 구별되지 않아 얻는 것이 없다.
+ *
+ * move/up 을 항상 정의하는 것이 핵심이다 — hline/vline 은 원래 1-클릭 도구라
+ * move/up 핸들러가 없었고, 그대로 두면 넘긴 드래그가 갱신도 해제도 되지 않는다.
+ *
+ * 자석 참고: 오버레이의 snap 게이트는 `activeTool !== 'pencil'` 이라, 연필이 켜진
+ * 채로 넘어간 드래그만 자석이 꺼진다. 앵커와 이동이 같은 기준을 쓰므로 자기모순은
+ * 없고, 자유곡선 도구에서 자석이 꺼지는 것은 오히려 자연스럽다.
+ */
+function withSelectedDrawingDrag(spec: DrawingToolSpec): DrawingToolSpec {
+  return {
+    ...spec,
+    onPointerDown(ctx) {
+      if (startsOnSelectedDrawing(ctx)) {
+        selectTool.onPointerDown?.(ctx);
+        return;
+      }
+      spec.onPointerDown?.(ctx);
+    },
+    onPointerMove(ctx) {
+      // 이동으로 넘어간 제스처는 끝까지 select 가 처리한다. `dragRef` 는 selectTool
+      // 만 세우므로, 도형을 그리는 중에는 절대 걸리지 않는다.
+      if (ctx.dragRef.current) {
+        selectTool.onPointerMove?.(ctx);
+        return;
+      }
+      spec.onPointerMove?.(ctx);
+    },
+    onPointerUp(ctx) {
+      if (ctx.dragRef.current) {
+        selectTool.onPointerUp?.(ctx);
+        return;
+      }
+      spec.onPointerUp?.(ctx);
+    },
+  };
+}
+
 // ─── hline ─────────────────────────────────────────────────────────────────
-export const hlineTool: DrawingToolSpec = {
+export const hlineTool: DrawingToolSpec = withSelectedDrawingDrag({
   kind: 'hline',
   label: '수평선',
   glyph: '━',
@@ -515,10 +592,10 @@ export const hlineTool: DrawingToolSpec = {
     });
     ctx.setSelected(id);
   },
-};
+});
 
 // ─── vline ─────────────────────────────────────────────────────────────────
-export const vlineTool: DrawingToolSpec = {
+export const vlineTool: DrawingToolSpec = withSelectedDrawingDrag({
   kind: 'vline',
   label: '수직선',
   glyph: '│',
@@ -542,10 +619,10 @@ export const vlineTool: DrawingToolSpec = {
     });
     ctx.setSelected(id);
   },
-};
+});
 
 // ─── trendline ─────────────────────────────────────────────────────────────
-export const trendlineTool: DrawingToolSpec = {
+export const trendlineTool: DrawingToolSpec = withSelectedDrawingDrag({
   kind: 'trendline',
   label: '추세선',
   glyph: '╱',
@@ -594,10 +671,10 @@ export const trendlineTool: DrawingToolSpec = {
     });
     ctx.setSelected(id);
   },
-};
+});
 
 // ─── rect ──────────────────────────────────────────────────────────────────
-export const rectTool: DrawingToolSpec = {
+export const rectTool: DrawingToolSpec = withSelectedDrawingDrag({
   kind: 'rect',
   label: '사각형',
   glyph: '▭',
@@ -645,7 +722,7 @@ export const rectTool: DrawingToolSpec = {
     });
     ctx.setSelected(id);
   },
-};
+});
 
 // ─── measure ───────────────────────────────────────────────────────────────
 export const measureTool: DrawingToolSpec = {
@@ -729,7 +806,7 @@ export const textTool: DrawingToolSpec = {
 };
 
 // ─── pencil ────────────────────────────────────────────────────────────────
-export const pencilTool: DrawingToolSpec = {
+export const pencilTool: DrawingToolSpec = withSelectedDrawingDrag({
   kind: 'pencil',
   label: '연필',
   glyph: '✎',
@@ -791,7 +868,7 @@ export const pencilTool: DrawingToolSpec = {
     });
     ctx.setSelected(id);
   },
-};
+});
 
 // ─── eraser ────────────────────────────────────────────────────────────────
 export const eraserTool: DrawingToolSpec = {

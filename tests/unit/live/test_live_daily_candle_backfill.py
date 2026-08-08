@@ -58,7 +58,7 @@ async def _fake_page_fetch(_client):
 
 class _FakeKis:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, str, str, str | None, bool]] = []
+        self.calls: list[tuple[str, str, str, str | None, bool, str | None]] = []
 
     async def fetch_daily_candles(
         self,
@@ -68,10 +68,15 @@ class _FakeKis:
         to_yyyymmdd: str,
         *,
         venue: str | None = None,
-        adjust: bool = True,
+        adjust: bool,
+        adjusted_as_of: str | None,
         run_page=None,
     ) -> DailyCandleFetchResult:
-        self.calls.append((code, from_yyyymmdd, to_yyyymmdd, venue, adjust))
+        # **기본값을 두지 않는다.** 진짜 어댑터가 둘 다 필수로 요구하므로 페이크도
+        # 그래야 한다 — 기본값을 주면 프로덕션이 척도를 안 넘겨도 테스트가 통과한다.
+        self.calls.append(
+            (code, from_yyyymmdd, to_yyyymmdd, venue, adjust, adjusted_as_of)
+        )
         if run_page is not None:
             # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
             # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
@@ -91,10 +96,15 @@ class _FallbackKis(_FakeKis):
         to_yyyymmdd: str,
         *,
         venue: str | None = None,
-        adjust: bool = True,
+        adjust: bool,
+        adjusted_as_of: str | None,
         run_page=None,
     ) -> DailyCandleFetchResult:
-        self.calls.append((code, from_yyyymmdd, to_yyyymmdd, venue, adjust))
+        # **기본값을 두지 않는다.** 진짜 어댑터가 둘 다 필수로 요구하므로 페이크도
+        # 그래야 한다 — 기본값을 주면 프로덕션이 척도를 안 넘겨도 테스트가 통과한다.
+        self.calls.append(
+            (code, from_yyyymmdd, to_yyyymmdd, venue, adjust, adjusted_as_of)
+        )
         if run_page is not None:
             # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
             # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
@@ -168,7 +178,9 @@ async def test_live_daily_candle_backfill_schedules_past_daily_fetches(tmp_path,
     assert result["venue"] == "UN"
     assert result["fresh_batches"] == ["20240101__20240105"]
     assert len(result["candles"]) == 5
-    assert kis.calls == [("005930", "20240101", "20240105", "UN", True)]
+    # 끝의 두 칸이 **척도**다: 수정주가(True) · 기준일은 배치의 끝(20240105)이 아니라
+    # **오늘**(20240201). 기준일이 배치를 따라가면 액면분할 절벽이 생긴다(함정 ④).
+    assert kis.calls == [("005930", "20240101", "20240105", "UN", True, "20240201")]
     assert scheduler.calls == [
         {
             # 끝의 0 은 **페이지 인덱스** — 거버너 단위가 페이지다(ADR-0137).
@@ -196,10 +208,15 @@ class _GatedKis(_FakeKis):
         to_yyyymmdd: str,
         *,
         venue: str | None = None,
-        adjust: bool = True,
+        adjust: bool,
+        adjusted_as_of: str | None,
         run_page=None,
     ) -> DailyCandleFetchResult:
-        self.calls.append((code, from_yyyymmdd, to_yyyymmdd, venue, adjust))
+        # **기본값을 두지 않는다.** 진짜 어댑터가 둘 다 필수로 요구하므로 페이크도
+        # 그래야 한다 — 기본값을 주면 프로덕션이 척도를 안 넘겨도 테스트가 통과한다.
+        self.calls.append(
+            (code, from_yyyymmdd, to_yyyymmdd, venue, adjust, adjusted_as_of)
+        )
         if run_page is not None:
             # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
             # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
@@ -367,3 +384,53 @@ async def test_missing_client_is_permanent_not_retry_soon(tmp_path, monkeypatch)
     )
 
     assert [w["reason"] for w in result["data_warnings"]] == ["auth_error"]
+
+
+def _rows(from_yyyymmdd: str, to_yyyymmdd: str) -> list[dict]:
+    return [
+        {"t_ms": c.t_ms, "open": c.open, "high": c.high,
+         "low": c.low, "close": c.close, "volume": c.volume}
+        for c in _daily_candles(from_yyyymmdd, to_yyyymmdd)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_every_gap_shares_one_adjustment_basis(tmp_path, kiwoom) -> None:
+    """**갭이 여럿이어도 수정주가 기준일은 하나다** — 2026-08-08 에 터진 버그다.
+
+    키움 `ka10081` 의 수정주가는 `base_dt` **상대**라, 갭마다 그 갭의 끝 날짜를
+    기준일로 쓰면 배치 경계에서 척도가 갈린다. 005930 차트가 2018-03-05 에서
+    50배 절벽을 그렸다 — **분할일(2018-05-04)이 아니라 스크롤이 만든 요청
+    경계**다. 갭 하나짜리 테스트는 이걸 원리적으로 못 잡는다.
+    """
+    kis = kiwoom(_FakeKis())
+    cache = PastDailyCandlesCache()
+    # 가운데를 캐시로 채워 갭을 둘로 쪼갠다 — 좌측 스크롤 백필이 만드는 모양이다.
+    cache.append_batch(
+        "KRX", "005930", dt.date(2024, 1, 10), dt.date(2024, 1, 20),
+        _rows("20240110", "20240120"),
+    )
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path,
+        cache=cache,
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    await backfill.collect_daily(
+        code="005930",
+        frm=dt.date(2024, 1, 1),
+        too=dt.date(2024, 1, 31),
+        today_d=dt.date(2024, 3, 1),
+        policy="KRX",
+        from_label="20240101",
+        to_label="20240131",
+    )
+
+    assert [(c[1], c[2]) for c in kis.calls] == [
+        ("20240101", "20240109"), ("20240121", "20240131"),
+    ], "갭이 둘로 쪼개져야 이 테스트가 의미를 갖는다"
+    assert {c[5] for c in kis.calls} == {"20240301"}, "기준일은 두 갭 모두 오늘 하나"
+    # 위 단언만 있으면 "기준일이 우연히 마지막 갭의 끝과 같은" 배치에서 통과한다.
+    # 기준일이 **배치를 따라가지 않는다**는 것을 직접 못 박는다.
+    assert all(c[5] != c[2] for c in kis.calls)
