@@ -15,6 +15,19 @@ import { apiCall } from './client';
 
 export type FuturesSession = 'day' | 'night' | 'closed';
 
+interface FuturesDayValuesWire {
+  value: number;
+  change: number;
+  change_rate: number;
+  prev_close: number;
+  volume: number;
+  open_interest: number;
+  oi_change: number;
+  market_basis: number | null;
+  disparity: number | null;
+  t_ms: number;
+}
+
 interface FuturesQuoteWire {
   id: string;
   underlying_id: string | null;
@@ -34,12 +47,34 @@ interface FuturesQuoteWire {
   disparity: number | null;
   data_session: FuturesSession;
   t_ms: number;
+  day: FuturesDayValuesWire | null;
 }
 
 interface FuturesQuotesResponseWire {
   quotes: FuturesQuoteWire[];
   session: FuturesSession;
   unavailable: string | null;
+}
+
+/** 야간 틱이 덮기 **전**의 주간 값 — 카드에서 주간↔야간을 고를 수 있게 하는 짝.
+ *
+ * 야간 REST 가 주간 마감본을 계속 준다는 성질(15:45 동결)이 여기서는 이점이 된다:
+ * 두 세션의 값이 추가 호출 없이 동시에 손에 있다. 반대 방향은 성립하지 않는다 —
+ * **낮에 전날 야간 값을 얻을 경로는 벤더에 없다**(2026-08-08 실측: 분봉 앵커를
+ * 야간으로 줘도 주간 83봉, `MF` 분류코드는 `OPSQ2001` 명시 거부). 그쪽은 우리가
+ * 저장한 기록으로만 가능하고 그건 별개 작업이다.
+ */
+export interface FuturesDayValues {
+  value: number;
+  change: number;
+  changeRate: number;
+  prevClose: number;
+  volume: number;
+  openInterest: number;
+  oiChange: number;
+  marketBasis: number | null;
+  disparity: number | null;
+  tMs: number;
 }
 
 export interface FuturesQuote {
@@ -64,6 +99,9 @@ export interface FuturesQuote {
   /** 이 값이 속한 세션. 스냅샷의 `session` 과 다르면 낡은 값이다(종목마다 다르다). */
   dataSession: FuturesSession;
   tMs: number;
+  /** 야간 값이 덮기 전의 주간 값. **`null` 이면 이 카드에는 선택지가 없다** —
+   *  주간 카드는 최상위 필드가 이미 주간이라 여기 채우면 같은 숫자가 두 벌이 된다. */
+  day: FuturesDayValues | null;
 }
 
 export interface FuturesQuotesSnapshot {
@@ -93,6 +131,18 @@ function mapQuote(wire: FuturesQuoteWire): FuturesQuote {
     disparity: wire.disparity,
     dataSession: wire.data_session,
     tMs: wire.t_ms,
+    day: wire.day == null ? null : {
+      value: wire.day.value,
+      change: wire.day.change,
+      changeRate: wire.day.change_rate,
+      prevClose: wire.day.prev_close,
+      volume: wire.day.volume,
+      openInterest: wire.day.open_interest,
+      oiChange: wire.day.oi_change,
+      marketBasis: wire.day.market_basis,
+      disparity: wire.day.disparity,
+      tMs: wire.day.t_ms,
+    },
   };
 }
 
@@ -127,6 +177,9 @@ export interface FuturesSpark {
    * 구별되지 않으므로, 앞이 잘렸다는 사실을 이 값으로 말한다.
    */
   coverage: FuturesSparkCoverage | null;
+  /** 야간 시리즈일 때 같이 오는 **그날 주간장** 모양. 값 쪽 `day` 와 짝이다 —
+   *  한쪽만 있으면 '주간' 선택이 숫자만 바꾸고 그림은 비운다. */
+  day: { closes: number[]; dayOpen: number | null } | null;
 }
 
 interface FuturesCandlesResponseWire {
@@ -141,6 +194,7 @@ interface FuturesCandlesResponseWire {
         observed_buckets: number;
         gap_count: number;
       } | null;
+      day: { closes: number[]; day_open: number | null } | null;
     }
   >;
 }
@@ -183,6 +237,7 @@ export function useMarketFuturesCandles(enabled: boolean) {
                   gapCount: s.coverage.gap_count,
                 }
               : null,
+            day: s.day == null ? null : { closes: s.day.closes ?? [], dayOpen: s.day.day_open },
           },
         ]),
       );

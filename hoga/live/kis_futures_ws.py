@@ -234,6 +234,16 @@ class KisFuturesNightWs:
             return ()
         return tuple(bars[k] for k in sorted(bars))
 
+    def night_bars(self, code: str) -> dict[int, float]:
+        """이 종목의 5분봉을 `{버킷 인덱스: 종가}` 로 — **인덱스째로**.
+
+        `night_series()` 와 같은 데이터인데 키를 살려서 준다. 디스크 기록이 이걸
+        쓴다: 값만 남기면 "18:00 부터 그린 선" 과 "02:00 부터 그린 선" 이 저장본에서
+        구별되지 않는다(스파크라인에 축이 없다는 문제 그대로다). 원점은 18:00 이라
+        인덱스 자체가 시각 정보를 담는다(`_bucket_of`).
+        """
+        return dict(self._bars.get(code) or {})
+
     def night_coverage(self) -> NightCoverage | None:
         """관측 구간 요약. 아직 아무것도 못 봤으면 None.
 

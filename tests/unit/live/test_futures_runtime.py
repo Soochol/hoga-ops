@@ -88,6 +88,21 @@ def test_unknown_calendar_day_is_treated_as_trading(monkeypatch):
     assert futures_session(_ms(2026, 8, 6, 10, 0)) == "day"
 
 
+def test_unknown_calendar_does_not_open_weekend_night(monkeypatch):
+    """**모름(None)이어도 주말은 열지 않는다.** 2026-08-08(토) 22:45 에 실제로 겪은
+    사고다 — 거래일 오버레이가 금요일까지만 차 있어 토요일이 `None` 이었고, 위 테스트가
+    고정한 fail-open 이 그것을 거래일로 읽어 **주말 밤이 야간장으로 판정**됐다. 야간
+    틱은 당연히 0 이니 화면은 "야간 세션 진행 중 · 값은 주간 마감본" 이 됐다.
+
+    마지막 단언이 이 가드의 **방향**이다: 좁힌 것은 주말뿐이고 평일 fail-open 은 그대로다.
+    """
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: None)
+    assert futures_session(_ms(2026, 8, 8, 22, 45)) == "closed"  # 토요일 밤(실측 시각)
+    assert futures_session(_ms(2026, 8, 9, 20, 0)) == "closed"  # 일요일 밤
+    assert futures_session(_ms(2026, 8, 9, 2, 0)) == "closed"  # 일요일 새벽 = 토요일 야간
+    assert futures_session(_ms(2026, 8, 6, 20, 0)) == "night"  # 평일은 여전히 fail-open
+
+
 def test_holiday_closes_all_sessions(monkeypatch):
     monkeypatch.setattr(cal, "is_trading_day", lambda d: False)
     assert futures_session(_ms(2026, 8, 6, 10, 0)) == "closed"
