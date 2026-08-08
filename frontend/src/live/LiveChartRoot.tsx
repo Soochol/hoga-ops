@@ -1173,7 +1173,9 @@ export function LiveChartRoot({
           if (isCalendarTimeframe(timeframeRef.current)) {
             return `${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
           }
-          return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+          // 연도를 앞에 둔다 — 과거 구간을 스크롤하면 월/일만으로는 어느 해인지
+          // 알 수 없다(캘린더 분기는 이미 YYYY 를 달고 있었다).
+          return `${d.getUTCFullYear()} ${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
         },
       },
       timeScale: {
