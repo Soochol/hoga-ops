@@ -47,6 +47,25 @@ describe('CandleEmptyState', () => {
     expect(screen.queryByTestId('candle-empty-action')).toBeNull();
   });
 
+  it('벤더 원문은 툴팁으로만 — 한 줄 규약을 지키면서 진단 근거를 남긴다', () => {
+    render(
+      <CandleEmptyState
+        state={{ text: '벤더 인증에 실패해 캔들을 받지 못했다', action: null, detail: '…[8050:…]' }}
+      />,
+    );
+    const label = screen.getByText('벤더 인증에 실패해 캔들을 받지 못했다');
+    expect(label).toHaveAttribute('title', '…[8050:…]');
+    // 컨테이너가 pointer-events-none 이라 되살리지 않으면 hover 가 안 걸려 툴팁이 안 뜬다.
+    expect(label.className).toContain('pointer-events-auto');
+  });
+
+  it('원문이 없으면 title 도 포인터도 붙이지 않는다', () => {
+    render(<CandleEmptyState state={{ text: '이 구간에 캔들이 없다', action: null }} />);
+    const label = screen.getByText('이 구간에 캔들이 없다');
+    expect(label).not.toHaveAttribute('title');
+    expect(label.className).not.toContain('pointer-events-auto');
+  });
+
   // 캔들이 없어도 차트 팬·크로스헤어는 살아 있어야 한다 — 컨테이너가 전면을 덮으므로
   // 포인터를 통과시키고 버튼만 되살린다.
   it('컨테이너는 포인터를 통과시키고 버튼만 받는다', () => {

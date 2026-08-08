@@ -27,9 +27,10 @@ def stub_daily(monkeypatch):
     def _install(candles):
         seen = {}
 
-        async def _fetch(_client, code, frm, to, *, venue="KRX", adjust=True,
-                         run_page=None):
+        async def _fetch(_client, code, frm, to, *, venue="KRX", adjust,
+                         adjusted_as_of, run_page=None):
             seen["adjust"] = adjust
+            seen["adjusted_as_of"] = adjusted_as_of
             if run_page is not None:
                 await run_page(_fake_page_fetch, 0)
             return DailyCandleFetchResult(candles=candles, violations=[])
@@ -47,6 +48,10 @@ async def test_daily_adapter_converts_shape(stub_daily):
     )
     rows = await _daily_fetch_one(object(), "000001", "20260514", "20260514")
     assert seen["adjust"] is False, "스크리너 코퍼스는 원주가다"
+    assert seen["adjusted_as_of"] is None, (
+        "원주가는 절대값이라 수정주가 기준일이 없다 — 여기에 날짜를 주면 "
+        "오늘부터 걸어 내려오느라 페이지만 낭비한다(함정 ④)"
+    )
     r = rows[0]
     assert isinstance(r, DailyBar)
     assert r.code == "000001"

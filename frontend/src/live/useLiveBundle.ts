@@ -1107,6 +1107,10 @@ export function useLiveBundle(
      */
     candleEmpty: deriveCandleEmptyState({
       error: activeCandlesError,
+      // 같은 "활성 경로" 규율을 경고에도 적용한다 — `pastDataWarnings` 가 이미 우회
+      // 여부·타임프레임으로 배타 선택된 값이라 그대로 넘기면 된다. 벤더 실패가 500 이
+      // 아니라 경고로 오는 경로(#1226 이후)에서는 이게 유일한 단서다.
+      warnings: pastDataWarnings,
       hasCandles: (chartBundle?.candles.length ?? 0) > 0,
       isLoading: activeCandlesLoading,
       restBypassEnabled,

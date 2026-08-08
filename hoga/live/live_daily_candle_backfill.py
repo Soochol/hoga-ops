@@ -5,8 +5,8 @@ from datetime import date, datetime, timedelta
 from typing import Protocol
 
 from hoga.live import kiwoom_access, kiwoom_daily_candles, kiwoom_rest_runtime
-from hoga.live.kis_client import KisRateLimitError
-from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded, Priority
+from hoga.live.kiwoom_capacity import Priority
+from hoga.live.kiwoom_errors import KiwoomAuthError
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.single_flight import SingleFlight
 from hoga.live.venue import LiveVenuePolicy, Venue, daily_venue_for_policy
@@ -57,6 +57,9 @@ class LiveDailyCandleBackfill:
         # single_flight.py): overlapping [from, today] requests share one KIS
         # fetch instead of each walking the same daily history independently.
         self._inflight = SingleFlight()
+        # 캐시된 배치들이 어느 수정주가 기준일로 받아진 것인지(#1228 함정 ④).
+        # 기준일이 바뀌면 그 사이 액면분할이 났을 수 있어 척도를 믿을 수 없다.
+        self._basis_day: str | None = None
 
     async def collect_daily(
         self,
@@ -71,6 +74,21 @@ class LiveDailyCandleBackfill:
     ) -> dict:
         venue = daily_venue_for_policy(policy)
         fallback_warnings: list[dict] = []
+        # **수정주가 기준일은 배치가 아니라 요청 전체에서 하나다**(함정 ④).
+        # 갭마다 그 갭의 끝 날짜를 기준일로 쓰면 배치 경계에서 척도가 갈려
+        # 차트에 액면분할 절벽이 생긴다 — 005930 이 2018-03-05 에서 그랬다.
+        as_of_s = today_d.strftime("%Y%m%d")
+        if self._basis_day is not None and self._basis_day != as_of_s:
+            # **날짜가 넘어갔다 → 캐시된 배치의 척도를 더는 믿을 수 없다.**
+            # 그 사이 액면분할이 났다면 옛 기준일 배치는 분할 미반영이고, 새로
+            # 받는 배치는 반영이라 경계에서 절벽이 생긴다. 하루 한 번 버리는
+            # 비용은 코드당 깊은 walk 한 번인데, 커버리지 확장(아래 `covered_to`)
+            # 덕에 그 walk 하나가 전 구간을 덮는다.
+            #
+            # 여기(fetch 하는 경로)에만 둔다 — REST 우회 모드는 비운 캐시를 다시
+            # 채울 수단이 없어서 화면이 통째로 비게 된다.
+            self._cache.clear_batches()
+        self._basis_day = as_of_s
 
         async def fetch_batch(code_: str, from_s: str, to_s: str):
             result = await self._fetch_primary_batch(
@@ -78,6 +96,7 @@ class LiveDailyCandleBackfill:
                 code=code_,
                 from_s=from_s,
                 to_s=to_s,
+                as_of_s=as_of_s,
             )
             if venue != "KRX" and not result.violations and _needs_krx_daily_fill(
                 result.candles,
@@ -88,6 +107,7 @@ class LiveDailyCandleBackfill:
                     code=code_,
                     from_s=from_s,
                     to_s=to_s,
+                    as_of_s=as_of_s,
                 )
                 if fallback.candles:
                     batch = f"{from_s}__{to_s}"
@@ -104,7 +124,14 @@ class LiveDailyCandleBackfill:
                             _daily_fallback_to_krx_warning(venue, batch)
                         )
                         result = fallback
-            return [_candle_to_dict(c) for c in result.candles], result.violations
+            # 세 번째 칸이 **실제로 덮은 끝 날짜**다. 어댑터는 기준일에서 걸어
+            # 내려오므로 요청한 `to_s` 보다 뒤까지 받는다(#1228) — 그걸 알려야
+            # 오케스트레이터가 캐시 커버리지를 넓혀 다음 갭을 없앤다.
+            return (
+                [_candle_to_dict(c) for c in result.candles],
+                result.violations,
+                today_d,
+            )
 
         async with self._inflight.acquire((venue, code)):
             out = await self._walkback(
@@ -180,11 +207,12 @@ class LiveDailyCandleBackfill:
         code: str,
         from_s: str,
         to_s: str,
+        as_of_s: str,
     ):
         return await self._fetch(
             venue=venue,
             key=("live-candle-backfill", "daily", venue, code, from_s, to_s),
-            code=code, from_s=from_s, to_s=to_s,
+            code=code, from_s=from_s, to_s=to_s, as_of_s=as_of_s,
         )
 
     async def _fetch_krx_fallback_batch(
@@ -193,23 +221,37 @@ class LiveDailyCandleBackfill:
         code: str,
         from_s: str,
         to_s: str,
+        as_of_s: str,
     ):
         return await self._fetch(
             venue="KRX",
             key=("live-candle-backfill", "daily", "KRX", code, from_s, to_s, "fallback"),
-            code=code, from_s=from_s, to_s=to_s,
+            code=code, from_s=from_s, to_s=to_s, as_of_s=as_of_s,
         )
 
-    async def _fetch(self, *, venue: Venue, key, code: str, from_s: str, to_s: str):
+    async def _fetch(
+        self, *, venue: Venue, key, code: str, from_s: str, to_s: str, as_of_s: str
+    ):
         """PR-F(#1042) 칼 컷오버 — 소스는 키움 `ka10081` 이다.
 
-        거버너 과부하를 `KisRateLimitError` 로 감싸는 것은 **의도적**이다: 상위
-        walkback 오케스트레이터가 그 타입으로 "잠시 후 재시도" 경고를 만든다.
-        벤더명이 붙은 예외 이름은 #1046(PR-J)에서 한꺼번에 정리한다.
+        **예외를 다른 벤더 타입으로 감싸지 않는다.** 예전엔 거버너 과부하와 클라이언트
+        미초기화를 둘 다 `KisRateLimitError` 로 감쌌다 — 상위 walkback 이 그 타입으로만
+        경고를 만들었기 때문인데, 그 편법이 두 가지 거짓을 만들었다:
+
+        - 거버너 큐 포화가 `rate_limit_upstream` 으로 떠서 **묻지도 않은 벤더**가
+          거절한 것처럼 보였다. 같은 사건을 분봉 경로는 `capacity_overloaded` 로
+          부르고 있어 두 경로가 같은 일에 다른 이름을 붙였다.
+        - 클라이언트 미초기화(= 자격증명 없음)가 "잠시 후 재시도" 로 안내됐다.
+          고치기 전에는 영원히 같은 실패라 ADR-0137 R4 위반이다.
+
+        이제 walkback 이 사유를 `error_policy` 에 묻고 거버너 과부하도 직접 잡으므로
+        (`_STOP_WALK_ERRORS`) 감쌀 이유가 없다. 미초기화는 성격 그대로 인증 실패로
+        올린다 — 정상 경로에서는 라우트가 앞서 503 `not_wired` 로 막으므로 여기까지
+        오는 것은 요청 도중 자격증명이 사라진 경우뿐이다.
         """
         client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
         if client is None:
-            raise KisRateLimitError("kiwoom client not initialized")
+            raise KiwoomAuthError("kiwoom client not initialized")
         def _run_page(fetch_fn, page_idx: int):
             """페이지 1장 = 거버너 submit 1건.
 
@@ -226,12 +268,13 @@ class LiveDailyCandleBackfill:
                 fetch_fn=fetch_fn,
             )
 
-        try:
-            return await kiwoom_daily_candles.fetch_daily_candles(
-                client, code, from_s, to_s, venue=venue, run_page=_run_page,
-            )
-        except KiwoomCapacityOverloaded as e:
-            raise KisRateLimitError(str(e)) from e
+        return await kiwoom_daily_candles.fetch_daily_candles(
+            client, code, from_s, to_s, venue=venue,
+            # `/live` 차트는 **수정주가**를 그린다. 기준일은 배치의 끝이 아니라
+            # 오늘이다 — 그래야 스크롤로 쪼개진 배치들이 한 척도로 이어진다(#1228).
+            adjust=True, adjusted_as_of=as_of_s,
+            run_page=_run_page,
+        )
 
 
 class _VenueDailyCacheAdapter:

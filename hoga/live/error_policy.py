@@ -26,12 +26,14 @@ from hoga.live.kis_client import (
     KisRateLimitError,
     KisTransportError,
 )
+from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import (
     KiwoomApiError,
     KiwoomAuthError,
     KiwoomBatchLimitError,
     KiwoomRateLimitError,
     KiwoomRestError,
+    KiwoomTerminalAuthError,
     KiwoomTransportError,
 )
 
@@ -71,9 +73,10 @@ def format_live_error(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
-def classify_live_error(  # noqa: PLR0911 — 정책 테이블은 분기 나열이 곧 내용이다.
+def classify_live_error(  # noqa: PLR0911, PLR0912 — 정책 테이블은 분기 나열이 곧 내용이다.
     # 예외 종류만큼 return 이 있는 게 정상이고, 이걸 dict 로 접으면 각 팔이 exc 에서
     # code/message 를 뽑는 방식이 달라 람다 테이블이 되어 오히려 읽기 어려워진다.
+    # (분기 수 상한도 같은 이유로 면제한다 — 벤더/사례가 늘면 팔도 는다.)
     exc: BaseException, *, internal: bool = False,
 ) -> LiveErrorPolicy:
     if internal:
@@ -87,6 +90,28 @@ def classify_live_error(  # noqa: PLR0911 — 정책 테이블은 분기 나열�
             degraded=True,
             backoff_cycles=0,
             permanent=True,
+        )
+
+    # 거버너 큐 포화 — **벤더가 거절한 게 아니라 우리가 묻지 않았다.**
+    #
+    # `kind` 와 `reason` 이 갈리는 자리다. `kind` 는 처방 축이라 유량 초과와 같다
+    # (기다리면 풀린다) — 그래서 `kind` 로 접는 소비자(`_reason_for` 등)가 손대지
+    # 않고도 옳은 처방을 받는다. `reason` 은 표시 축이라 갈라야 한다: "벤더가 주지
+    # 않았다" 로 말하면 묻지도 않은 쪽에 책임을 지운다.
+    #
+    # 이 팔이 없으면 `unexpected_error`(ERROR + traceback + permanent)로 떨어진다 —
+    # 일시적인 큐 포화를 내부 결함으로 기록하고 "재시도해도 소용없다" 고 표시하는 셈이다.
+    if isinstance(exc, KiwoomCapacityOverloaded):
+        return LiveErrorPolicy(
+            kind="rate_limit",
+            reason="capacity_overloaded",
+            code="CAPACITY",
+            message=str(exc),
+            log_level=logging.WARNING,
+            include_traceback=False,
+            degraded=True,
+            backoff_cycles=0,
+            retry_after_s=_RATE_LIMIT_RETRY_AFTER_S,
         )
 
     # --- 키움 (ADR-0136 이후의 주 데이터 경로) --------------------------------
@@ -143,6 +168,22 @@ def classify_live_error(  # noqa: PLR0911 — 정책 테이블은 분기 나열�
             degraded=True,
             backoff_cycles=3,
             # 자격증명·권한 문제는 사용자가 설정을 고치기 전에는 재시도해도 같다.
+            permanent=True,
+        )
+    if isinstance(exc, KiwoomTerminalAuthError):
+        # **타입 계층은 `KiwoomApiError` 인데 표시는 인증이다** — 의도된 어긋남이다.
+        # 거버너가 토큰 무효화를 하면 안 되므로 `KiwoomAuthError` 를 상속하지 않지만,
+        # 사용자에게는 기다려도 낫지 않는 인증 실패다(`KiwoomTerminalAuthError` docstring).
+        # 그래서 이 팔이 generic `KiwoomApiError` 팔보다 **위에** 있어야 한다.
+        return LiveErrorPolicy(
+            kind="auth",
+            reason="auth_error",
+            code=str(exc.code),
+            message=exc.msg,
+            log_level=logging.WARNING,
+            include_traceback=False,
+            degraded=True,
+            backoff_cycles=3,
             permanent=True,
         )
     if isinstance(exc, KiwoomApiError):

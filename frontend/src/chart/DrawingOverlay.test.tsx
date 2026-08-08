@@ -532,4 +532,53 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
     fireEvent.keyDown(window, { key: 'z', metaKey: true });
     expect(s().drawingsFor('005930|minute')).toHaveLength(0);
   });
+
+  // 그리기 모드에는 빈 곳 클릭 해제가 없는데(select 모드 전용 effect) 선택된 도형은
+  // 그리기 중에도 잡힌다(tools.ts `withSelectedDrawingDrag`). 그래서 "도구를 살린 채
+  // 선택만 푸는" 길이 필요하고, 그게 첫 Escape 다. 두 번째가 종전 동작(도구 해제).
+  describe('Escape 2단계 — 선택 해제와 도구 해제를 나눈다', () => {
+    const SCOPE = '005930|minute';
+    function seedSelected() {
+      const s = useDrawingsStore.getState();
+      s.setActiveScope(SCOPE);
+      s.add(SCOPE, { id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
+      s.setSelected(SCOPE, 'h1');
+    }
+
+    it('그리기 도구 + 선택 있음 → 첫 Escape 는 선택만 풀고 도구를 살린다', () => {
+      const s = () => useDrawingsStore.getState();
+      seedSelected();
+      s().setActiveTool('pencil');
+      mountOverlay();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(s().selectedByScope.get(SCOPE) ?? null).toBeNull();
+      expect(s().activeTool).toBe('pencil'); // ← 종전엔 여기서 'select' 로 떨어졌다
+
+      // 두 번째가 도구를 푼다 — 탈출구는 사라지지 않았고, 횟수만 상태에 따라 갈린다.
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(s().activeTool).toBe('select');
+    });
+
+    it('선택이 없으면 첫 Escape 가 곧장 도구를 푼다', () => {
+      const s = () => useDrawingsStore.getState();
+      s().setActiveScope(SCOPE);
+      s().setActiveTool('rect');
+      mountOverlay();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(s().activeTool).toBe('select');
+    });
+
+    it('select 모드에서는 선택이 있어도 종전대로 한 번에 처리된다', () => {
+      const s = () => useDrawingsStore.getState();
+      seedSelected();
+      s().setActiveTool('select');
+      mountOverlay();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(s().selectedByScope.get(SCOPE) ?? null).toBeNull();
+      expect(s().activeTool).toBe('select');
+    });
+  });
 });

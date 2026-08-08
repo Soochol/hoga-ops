@@ -10,6 +10,7 @@ from hoga.live import kiwoom_daily_candles, kiwoom_rest_runtime
 from hoga.live.api import batched_daily_walkback
 from hoga.live.candle_fetch_result import DailyCandleFetchResult
 from hoga.live.candle_models import LiveCandle
+from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
@@ -43,6 +44,15 @@ def _daily_candles(from_yyyymmdd: str, to_yyyymmdd: str, *, close: int = 105) ->
     return out
 
 
+def _walked_end(to_yyyymmdd: str, adjusted_as_of: str | None) -> str:
+    """진짜 어댑터는 **기준일까지** 걸어 내려오며 그 사이 행을 다 돌려준다(#1228).
+
+    페이크가 요청 구간만 돌려주면 커버리지 확장이 캐시 정규화에서 되감기고
+    (경계가 실제 행 범위로 조여진다) 갭 스킵 테스트가 아무것도 증명하지 못한다.
+    """
+    return max(to_yyyymmdd, adjusted_as_of) if adjusted_as_of else to_yyyymmdd
+
+
 async def _fake_page_fetch(_client):
     """페이크 어댑터가 러너에 넘기는 페이지 팩토리.
 
@@ -57,7 +67,7 @@ async def _fake_page_fetch(_client):
 
 class _FakeKis:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, str, str, str | None, bool]] = []
+        self.calls: list[tuple[str, str, str, str | None, bool, str | None]] = []
 
     async def fetch_daily_candles(
         self,
@@ -67,16 +77,23 @@ class _FakeKis:
         to_yyyymmdd: str,
         *,
         venue: str | None = None,
-        adjust: bool = True,
+        adjust: bool,
+        adjusted_as_of: str | None,
         run_page=None,
     ) -> DailyCandleFetchResult:
-        self.calls.append((code, from_yyyymmdd, to_yyyymmdd, venue, adjust))
+        # **기본값을 두지 않는다.** 진짜 어댑터가 둘 다 필수로 요구하므로 페이크도
+        # 그래야 한다 — 기본값을 주면 프로덕션이 척도를 안 넘겨도 테스트가 통과한다.
+        self.calls.append(
+            (code, from_yyyymmdd, to_yyyymmdd, venue, adjust, adjusted_as_of)
+        )
         if run_page is not None:
             # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
             # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
             await run_page(_fake_page_fetch, 0)
         return DailyCandleFetchResult(
-            candles=_daily_candles(from_yyyymmdd, to_yyyymmdd),
+            candles=_daily_candles(
+                from_yyyymmdd, _walked_end(to_yyyymmdd, adjusted_as_of)
+            ),
             violations=[],
         )
 
@@ -90,10 +107,15 @@ class _FallbackKis(_FakeKis):
         to_yyyymmdd: str,
         *,
         venue: str | None = None,
-        adjust: bool = True,
+        adjust: bool,
+        adjusted_as_of: str | None,
         run_page=None,
     ) -> DailyCandleFetchResult:
-        self.calls.append((code, from_yyyymmdd, to_yyyymmdd, venue, adjust))
+        # **기본값을 두지 않는다.** 진짜 어댑터가 둘 다 필수로 요구하므로 페이크도
+        # 그래야 한다 — 기본값을 주면 프로덕션이 척도를 안 넘겨도 테스트가 통과한다.
+        self.calls.append(
+            (code, from_yyyymmdd, to_yyyymmdd, venue, adjust, adjusted_as_of)
+        )
         if run_page is not None:
             # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
             # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
@@ -101,7 +123,9 @@ class _FallbackKis(_FakeKis):
         if venue == "UN":
             return DailyCandleFetchResult(candles=[], violations=[])
         return DailyCandleFetchResult(
-            candles=_daily_candles(from_yyyymmdd, to_yyyymmdd, close=205),
+            candles=_daily_candles(
+                from_yyyymmdd, _walked_end(to_yyyymmdd, adjusted_as_of), close=205
+            ),
             violations=[],
         )
 
@@ -165,9 +189,12 @@ async def test_live_daily_candle_backfill_schedules_past_daily_fetches(tmp_path,
     )
 
     assert result["venue"] == "UN"
+    # 라벨은 요청한 갭 그대로다 — 벤더 왕복 기록이지 캐시 커버리지 기록이 아니다.
     assert result["fresh_batches"] == ["20240101__20240105"]
     assert len(result["candles"]) == 5
-    assert kis.calls == [("005930", "20240101", "20240105", "UN", True)]
+    # 끝의 두 칸이 **척도**다: 수정주가(True) · 기준일은 배치의 끝(20240105)이 아니라
+    # **오늘**(20240201). 기준일이 배치를 따라가면 액면분할 절벽이 생긴다(함정 ④).
+    assert kis.calls == [("005930", "20240101", "20240105", "UN", True, "20240201")]
     assert scheduler.calls == [
         {
             # 끝의 0 은 **페이지 인덱스** — 거버너 단위가 페이지다(ADR-0137).
@@ -195,17 +222,24 @@ class _GatedKis(_FakeKis):
         to_yyyymmdd: str,
         *,
         venue: str | None = None,
-        adjust: bool = True,
+        adjust: bool,
+        adjusted_as_of: str | None,
         run_page=None,
     ) -> DailyCandleFetchResult:
-        self.calls.append((code, from_yyyymmdd, to_yyyymmdd, venue, adjust))
+        # **기본값을 두지 않는다.** 진짜 어댑터가 둘 다 필수로 요구하므로 페이크도
+        # 그래야 한다 — 기본값을 주면 프로덕션이 척도를 안 넘겨도 테스트가 통과한다.
+        self.calls.append(
+            (code, from_yyyymmdd, to_yyyymmdd, venue, adjust, adjusted_as_of)
+        )
         if run_page is not None:
             # 진짜 어댑터와 같은 계약: 페이지 I/O 는 러너를 지난다. 이 호출이 없으면
             # 페이크가 거버너를 건너뛰어 유량·과부하 검증이 조용히 죽는다.
             await run_page(_fake_page_fetch, 0)
         await self.gate.wait()
         return DailyCandleFetchResult(
-            candles=_daily_candles(from_yyyymmdd, to_yyyymmdd),
+            candles=_daily_candles(
+                from_yyyymmdd, _walked_end(to_yyyymmdd, adjusted_as_of)
+            ),
             violations=[],
         )
 
@@ -250,7 +284,10 @@ async def test_collect_daily_coalesces_concurrent_same_venue_code_requests(tmp_p
     assert len(r1["candles"]) == 10
     assert len(r2["candles"]) == 6
     assert r2["fresh_batches"] == []
-    assert r2["cached_batches"] == ["20240101__20240110"]
+    # 캐시된 구간이 요청 끝(0110)이 아니라 **오늘 직전**(0131)까지다 — 어댑터가
+    # 기준일에서 걸어 내려오며 받은 행을 커버리지로 인정한 결과다. 이것이 다음
+    # 요청에서 갭이 안 생기게 만드는 지점이다(#1228 후속).
+    assert r2["cached_batches"] == ["20240101__20240131"]
 
 
 @pytest.mark.asyncio
@@ -288,3 +325,197 @@ async def test_live_daily_candle_backfill_falls_back_to_krx_for_empty_integrated
         and warning["batch"] == "20240101__20240105"
         for warning in result["data_warnings"]
     )
+
+
+class _OverloadedScheduler:
+    """거버너가 큐 포화로 신규 요청을 거절하는 상태."""
+
+    async def submit(self, *, key, api_id, priority, call):
+        raise KiwoomCapacityOverloaded("queue full (128)")
+
+
+@pytest.mark.asyncio
+async def test_capacity_overload_is_not_disguised_as_a_vendor_rate_limit(tmp_path, kiwoom) -> None:
+    """거버너 큐 포화를 **벤더 유량 초과로 위장하지 않는다.**
+
+    예전엔 `_fetch` 가 `KiwoomCapacityOverloaded` 를 `KisRateLimitError` 로 감쌌다.
+    상위 walkback 이 그 타입으로만 경고를 만들었기 때문인데, 그 편법이 두 거짓을
+    만들었다: (1) 사유가 `rate_limit_upstream` 이라 **묻지도 않은 벤더**가 거절한
+    것처럼 보였고, (2) 같은 사건을 분봉 경로는 `capacity_overloaded` 로 불러서 두
+    경로가 같은 일에 다른 이름을 붙였다.
+
+    이 테스트가 재는 것은 **경계에서 타입이 바뀌지 않는다**는 것이다 — 사유 문자열은
+    이제 `error_policy` 가 정하므로, 위장이 남아 있으면 여기서 이름이 갈린다.
+    """
+    kiwoom(_FakeKis())
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastDailyCandlesCache(),
+        scheduler=_OverloadedScheduler(),  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    result = await backfill.collect_daily(
+        code="005930",
+        frm=dt.date(2024, 1, 1),
+        too=dt.date(2024, 1, 5),
+        today_d=dt.date(2024, 2, 1),
+        policy="KRX",
+        from_label="20240101",
+        to_label="20240105",
+    )
+
+    reasons = [w["reason"] for w in result["data_warnings"]]
+    assert reasons == ["capacity_overloaded"]
+    assert "rate_limit_upstream" not in reasons, (
+        "벤더는 이 구간을 거절한 적이 없다 — 우리 큐가 찼을 뿐이다"
+    )
+    assert result["candles"] == []
+    # 500 으로 새지 않는 것도 함께 잰다(투자자 경로는 이 타입을 아무도 안 잡아서
+    # 실제로 500 이 났다).
+    assert result["fresh_batches"] == []
+
+
+@pytest.mark.asyncio
+async def test_missing_client_is_permanent_not_retry_soon(tmp_path, monkeypatch) -> None:
+    """자격증명이 사라진 상태를 "잠시 후 재시도" 로 안내하지 않는다(ADR-0137 R4).
+
+    예전엔 이것도 `KisRateLimitError` 였다 — 고치기 전에는 영원히 같은 실패인데
+    기다리라고 말하는 셈이었다. 정상 경로에서는 라우트가 앞서 503 `not_wired` 로
+    막으므로, 여기까지 오는 것은 요청 도중 자격증명이 사라진 경우뿐이다.
+    """
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: None)
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastDailyCandlesCache(),
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    result = await backfill.collect_daily(
+        code="005930",
+        frm=dt.date(2024, 1, 1),
+        too=dt.date(2024, 1, 5),
+        today_d=dt.date(2024, 2, 1),
+        policy="KRX",
+        from_label="20240101",
+        to_label="20240105",
+    )
+
+    assert [w["reason"] for w in result["data_warnings"]] == ["auth_error"]
+
+
+def _rows(from_yyyymmdd: str, to_yyyymmdd: str) -> list[dict]:
+    return [
+        {"t_ms": c.t_ms, "open": c.open, "high": c.high,
+         "low": c.low, "close": c.close, "volume": c.volume}
+        for c in _daily_candles(from_yyyymmdd, to_yyyymmdd)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_successive_leftward_requests_share_one_adjustment_basis(
+    tmp_path, kiwoom
+) -> None:
+    """**fetch 가 여러 번이어도 수정주가 기준일은 하나다** — 2026-08-08 버그다.
+
+    키움 `ka10081` 의 수정주가는 `base_dt` **상대**라, fetch 마다 그 구간의 끝
+    날짜를 기준일로 쓰면 경계에서 척도가 갈린다. 005930 차트가 2018-03-05 에서
+    50배 절벽을 그렸다 — **분할일(2018-05-04)이 아니라 스크롤이 만든 요청
+    경계**다. fetch 하나짜리 테스트는 이걸 원리적으로 못 잡으므로, 좌측 스크롤
+    (요청 2회)을 그대로 재현한다.
+    """
+    kis = kiwoom(_FakeKis())
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastDailyCandlesCache(),
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    async def view(frm: dt.date):
+        return await backfill.collect_daily(
+            code="005930", frm=frm, too=dt.date(2024, 1, 31),
+            today_d=dt.date(2024, 3, 1), policy="KRX",
+            from_label=frm.strftime("%Y%m%d"), to_label="20240131",
+        )
+
+    await view(dt.date(2024, 1, 20))   # 처음 열기
+    await view(dt.date(2024, 1, 1))    # 왼쪽으로 스크롤
+
+    assert [(c[1], c[2]) for c in kis.calls] == [
+        ("20240120", "20240131"), ("20240101", "20240119"),
+    ], "두 번째 요청은 **새로 드러난 왼쪽만** 받는다"
+    assert {c[5] for c in kis.calls} == {"20240301"}, "기준일은 두 fetch 모두 오늘"
+    # 위 단언만 있으면 "기준일이 우연히 그 구간 끝과 같은" 배치에서 통과한다.
+    # 기준일이 **구간을 따라가지 않는다**는 것을 직접 못 박는다.
+    assert all(c[5] != c[2] for c in kis.calls)
+
+
+@pytest.mark.asyncio
+async def test_fragmented_cache_costs_one_fetch_not_one_per_hole(
+    tmp_path, kiwoom
+) -> None:
+    """파편화된 캐시에 넓은 요청 하나 → **fetch 한 번**.
+
+    기준일 고정(#1228)의 대가는 fetch 마다 오늘부터 걷는 것이다. 갭 목록은
+    fetch 전에 계산되므로, 받은 커버리지를 반영하지 않으면 사용자가 좌측
+    스크롤로 만든 구멍 개수만큼 그 walk 를 반복한다(실측 캐시엔 구멍이 10개
+    넘게 있었다).
+    """
+    kis = kiwoom(_FakeKis())
+    cache = PastDailyCandlesCache()
+    for frm_s, to_s in (("20240105", "20240107"), ("20240110", "20240112")):
+        frm_d = dt.date(2024, int(frm_s[4:6]), int(frm_s[6:8]))
+        to_d = dt.date(2024, int(to_s[4:6]), int(to_s[6:8]))
+        cache.append_batch("KRX", "005930", frm_d, to_d, _rows(frm_s, to_s))
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path,
+        cache=cache,
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    await backfill.collect_daily(
+        code="005930", frm=dt.date(2024, 1, 1), too=dt.date(2024, 1, 19),
+        today_d=dt.date(2024, 1, 21), policy="KRX",
+        from_label="20240101", to_label="20240119",
+    )
+
+    assert [(c[1], c[2]) for c in kis.calls] == [("20240101", "20240104")], (
+        "가장 오래된 갭 하나가 나머지를 덮는다"
+    )
+
+
+@pytest.mark.asyncio
+async def test_date_rollover_drops_batches_of_the_old_basis(tmp_path, kiwoom) -> None:
+    """**날짜가 넘어가면 캐시된 배치의 척도를 더는 믿을 수 없다.**
+
+    배치는 받을 당시의 기준일로 굳어 있다. 그 사이 액면분할이 나면 옛 배치는
+    미반영, 새 배치는 반영이라 경계에서 절벽이 생긴다 — 고친 버그가 프로세스
+    수명 안에서 되살아나는 유일한 경로다. 배치별 기준일을 기억하는 대신 통째로
+    버리는 이유는 기준일이 **전역으로 하나**라 부분 무효화할 축이 없어서다.
+    """
+    kis = kiwoom(_FakeKis())
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastDailyCandlesCache(),
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    async def view(today_d: dt.date):
+        return await backfill.collect_daily(
+            code="005930", frm=dt.date(2024, 1, 1), too=dt.date(2024, 1, 5),
+            today_d=today_d, policy="KRX",
+            from_label="20240101", to_label="20240105",
+        )
+
+    await view(dt.date(2024, 2, 1))
+    same_day = await view(dt.date(2024, 2, 1))
+    assert same_day["fresh_batches"] == [], "같은 날 재요청은 캐시로 끝난다"
+
+    rolled = await view(dt.date(2024, 2, 2))
+    assert rolled["fresh_batches"] == ["20240101__20240105"], "날짜가 넘어가면 다시 받는다"
+    assert {c[5] for c in kis.calls} == {"20240201", "20240202"}
+    assert len(kis.calls) == 2, "버리는 것은 하루 한 번뿐이다"
