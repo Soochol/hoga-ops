@@ -313,6 +313,30 @@ class FuturesDayValues(BaseModel):
     t_ms: int
 
 
+class FuturesNightValues(BaseModel):
+    """**직전 야간장의 마지막 값** — `FuturesDayValues` 의 반대 방향.
+
+    낮·마감에만 실린다. 출처가 벤더가 아니라 **우리가 그 밤에 적어 둔 기록**이라는
+    점이 `day` 와 다르다 — KIS 에 야간 소급 경로가 없어서(4표면 전수 실측) 저장을
+    켜기 전의 밤은 영영 `null` 이다.
+
+    `session_day` 가 **필수**다. 화면이 `8/7 야간` 처럼 날짜를 함께 말하지 않으면
+    오늘 야간과 구별되지 않는다.
+    """
+    #: 이 값이 속한 야간장의 거래일 `YYYYMMDD`.
+    session_day: str
+    value: float
+    change: float
+    change_rate: float
+    prev_close: float
+    volume: int
+    open_interest: int
+    oi_change: int
+    market_basis: float | None = None
+    disparity: float | None = None
+    t_ms: int
+
+
 class FuturesQuoteRow(BaseModel):
     id: str
     underlying_id: str | None = None
@@ -337,6 +361,9 @@ class FuturesQuoteRow(BaseModel):
     # 야간 값이 덮기 전의 주간 값. `data_session == "night"` 일 때만 실린다 —
     # 있으면 화면이 그 카드에서 주간↔야간을 고를 수 있다는 뜻이다.
     day: FuturesDayValues | None = None
+    # 직전 야간장의 마지막 값. **낮·마감에만** 실리고, 그 밤을 저장해 뒀을 때만 있다.
+    # `day` 와 정확히 반대 방향이라 둘이 동시에 차는 일은 없다.
+    night: FuturesNightValues | None = None
 
 
 class FuturesQuotesResponse(BaseModel):
@@ -361,6 +388,17 @@ class FuturesDaySeries(BaseModel):
     day_open: float | None = None
 
 
+class FuturesNightSeries(BaseModel):
+    """주간 시리즈와 함께 실리는 **직전 야간장** 모양. 값 쪽 `night` 와 짝이다.
+
+    기준선(`day_open`)이 없는 것은 야간 시리즈의 규칙 그대로다 — 첫 점이 곧 야간
+    시가이고, 주간 시가로 색칠하면 등락 방향이 뒤집힌다.
+    """
+    closes: list[float] = Field(default_factory=list)
+    #: 이 그림이 속한 야간장의 거래일. 값 쪽과 어긋나면 화면이 두 날짜를 섞는다.
+    session_day: str
+
+
 class FuturesSpark(BaseModel):
     closes: list[float] = Field(default_factory=list)
     day_open: float | None = None
@@ -369,6 +407,8 @@ class FuturesSpark(BaseModel):
     coverage: FuturesSparkCoverage | None = None
     # 야간 시리즈일 때 같이 오는 주간 모양. `session == "day"` 면 최상위가 이미 주간이다.
     day: FuturesDaySeries | None = None
+    # 주간 시리즈일 때 같이 오는 직전 야간 모양. `day` 와 반대 방향이다.
+    night: FuturesNightSeries | None = None
 
 
 class FuturesCandlesResponse(BaseModel):
@@ -838,6 +878,11 @@ class _FuturesRuntimeHolder:
                     "day": None
                     if s.day_series is None
                     else {"closes": list(s.day_series[0]), "day_open": s.day_series[1]},
+                    # 주간 시리즈에 붙는 직전 야간 그림. 값 쪽 `night` 와 짝이라
+                    # 한쪽만 있으면 '야간' 선택이 숫자만 바꾸고 그림을 비운다.
+                    "night": None
+                    if s.night_series is None
+                    else {"closes": list(s.night_series[0]), "session_day": s.night_series[1]},
                 }
                 for item_id, s in series.items()
             }
@@ -891,6 +936,23 @@ class _FuturesRuntimeHolder:
                         "market_basis": c.day_quote.market_basis,
                         "disparity": c.day_quote.disparity,
                         "t_ms": c.day_quote.t_ms,
+                    },
+                    # 직전 야간장의 마지막 값 — 낮·마감에만. 출처는 벤더가 아니라
+                    # 디스크 기록이라(야간 소급 경로 없음) 저장 전의 밤은 영영 없다.
+                    "night": None
+                    if c.night_quote is None or c.night_session_day is None
+                    else {
+                        "session_day": c.night_session_day,
+                        "value": c.night_quote.value,
+                        "change": c.night_quote.change,
+                        "change_rate": c.night_quote.change_rate,
+                        "prev_close": c.night_quote.prev_close,
+                        "volume": c.night_quote.volume,
+                        "open_interest": c.night_quote.open_interest,
+                        "oi_change": c.night_quote.oi_change,
+                        "market_basis": c.night_quote.market_basis,
+                        "disparity": c.night_quote.disparity,
+                        "t_ms": c.night_quote.t_ms,
                     },
                 }
                 for c in snap.cards

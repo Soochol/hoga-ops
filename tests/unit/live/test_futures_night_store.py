@@ -5,9 +5,14 @@
 KIS 는 야간을 REST 로 주지 않는다(2026-08-08 실측: 분봉 앵커를 야간으로 줘도 주간
 83봉, `MF` 분류코드는 `OPSQ2001` 명시 거부, 일봉은 주간 마감값). 안 쓴 밤은 영영 없다.
 
-**못 보는 것**: 실제 WS 프레임 해석(그쪽은 `test_futures_night_spark.py`)과, 저장된
-기록을 화면이 어떻게 읽는지(아직 어느 라우트에도 연결돼 있지 않다 — 다음 단계).
+쓰기의 짝인 **회상**(낮에 직전 야간을 되돌려 읽기)도 여기서 잰다. 가장 중요한 가드는
+"오늘 밤 파일을 어젯밤이라고 부르지 않는가" 와, 야간 세션 중에는 **회상하지 않는가**다.
+후자는 의도적 비대칭이라 명시하지 않으면 나중에 결함으로 오인돼 "고쳐진다".
+
+**못 보는 것**: 실제 WS 프레임 해석(그쪽은 `test_futures_night_spark.py`)과 wire
+직렬화(`tests/unit/api/test_futures_wire_shape.py`).
 """
+import datetime as dt
 import json
 
 import pytest
@@ -22,7 +27,7 @@ from hoga.live.futures_night_store import (
     save_session,
     session_path,
 )
-from hoga.live.kis_futures_endpoints import FuturesQuote
+from hoga.live.kis_futures_endpoints import FuturesQuote, FuturesSpark as KisFuturesSpark
 from hoga.live.kis_futures_ws import NightTick
 
 MASTER = [
@@ -153,6 +158,10 @@ class _FakeClient:
     async def fetch_futures_quotes(self, rows, *, foreground=False):
         return [_quote(r.code, 100.0 + i) for i, r in enumerate(rows)]
 
+    async def fetch_futures_spark(self, row, *, date_yyyymmdd, foreground=False):
+        # 주간 그림 — 회상한 야간 그림과 값이 겹치지 않게 확실히 구분해 둔다.
+        return KisFuturesSpark(code=row.code, closes=(900.0, 901.0), day_open=899.0)
+
 
 class _FakeWs:
     def __init__(self, ticks, bars=None) -> None:
@@ -255,6 +264,102 @@ async def test_daytime_writes_nothing(runtime, tmp_path, monkeypatch):
     await runtime.snapshot()
 
     assert not (tmp_path / "futures_night").exists()
+
+
+# ── 회상 (낮에 직전 야간 되돌려 읽기) ──────────────────────────────────────
+
+@pytest.fixture
+def daytime_runtime(tmp_path, monkeypatch):
+    """주간장 중. 회상 경로가 도는 유일한 조건이다."""
+    rt = fr.FuturesQuotesRuntime(lambda: _FakeClient(), tmp_path)
+    rt._master = MASTER
+    rt._master_at = float("inf")
+    monkeypatch.setattr(fr.time, "monotonic", lambda: 1_000.0)
+    monkeypatch.setattr(fr, "spark_date", lambda _t: "20260810")
+    monkeypatch.setattr(fr, "futures_session", lambda _t: "day")
+    return rt
+
+
+def _seed(tmp_path, day: str, price: float, bars: dict[int, float] | None = None) -> None:
+    save_session(
+        tmp_path,
+        NightSessionRecord(day, 1, {"KOSPI200_F": _record(price=price, bars=bars or {0: price})}),
+    )
+
+
+async def test_daytime_card_carries_the_previous_night(daytime_runtime, tmp_path):
+    _seed(tmp_path, "20260807", 1004.95)
+
+    snap = await daytime_runtime.snapshot()
+    card = {c.item.id: c for c in snap.cards}["KOSPI200_F"]
+
+    assert card.data_session == "day"
+    assert card.night_quote is not None
+    assert card.night_quote.value == 1004.95
+    assert card.night_session_day == "20260807"
+
+
+async def test_recall_skips_tonight_and_takes_the_previous_session(daytime_runtime, tmp_path,
+                                                                   monkeypatch):
+    """오늘 밤 파일은 야간이 시작되면 즉시 쌓인다 — 낮에 "어젯밤" 을 물었을 때 그것을
+    집으면 **오늘 저녁 값을 어젯밤이라고 부르게 된다**."""
+    _seed(tmp_path, "20260807", 1004.95)
+    _seed(tmp_path, "20260810", 2222.22)  # 오늘 밤(이미 쌓이는 중)
+
+    class _FixedNow(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dt.datetime(2026, 8, 10, 10, 0, tzinfo=fr.KST)
+
+    monkeypatch.setattr(fr.dt, "datetime", _FixedNow)
+
+    snap = await daytime_runtime.snapshot()
+    card = {c.item.id: c for c in snap.cards}["KOSPI200_F"]
+
+    assert card.night_session_day == "20260807"
+    assert card.night_quote is not None
+    assert card.night_quote.value == 1004.95
+
+
+async def test_night_session_does_not_recall_other_nights(runtime, tmp_path):
+    """**의도적 비대칭.** 야간이 도는 중에는 무음 카드에도 지난 밤을 붙이지 않는다 —
+    그 카드는 값이 주간 마감본이라, 지난 밤을 선택지로 내밀면 사용자는 그것을
+    "지금 야간" 으로 읽는다. 낮에 회상하는 것과 밤에 다른 밤을 보여주는 것은 다르다."""
+    _seed(tmp_path, "20260807", 1004.95)
+    runtime._ws = _FakeWs({})  # 전 종목 무음 → 전부 data_session='day'
+
+    snap = await runtime.snapshot()
+
+    assert [c.data_session for c in snap.cards] == ["day", "day"]
+    assert all(c.night_quote is None for c in snap.cards)
+
+
+async def test_no_record_means_no_choice(daytime_runtime):
+    """저장을 켠 첫날의 상태 — 오류가 아니라 정상이다."""
+    snap = await daytime_runtime.snapshot()
+
+    assert all(c.night_quote is None for c in snap.cards)
+
+
+async def test_recalled_bars_ride_along_with_the_day_series(daytime_runtime, tmp_path):
+    _seed(tmp_path, "20260807", 1004.95, bars={96: 1004.95, 0: 998.1, 70: 1002.5})
+
+    series = await daytime_runtime.sparks()
+
+    spark = series["KOSPI200_F"]
+    assert spark.session == "day"
+    assert spark.night_series is not None
+    # **버킷 키 순서**로 정렬돼야 한다 — 원점이 18:00 이라 정수 정렬이 곧 시간순이다.
+    assert spark.night_series == ((998.1, 1002.5, 1004.95), "20260807")
+
+
+async def test_single_bar_night_is_not_recalled_as_a_line(daytime_runtime, tmp_path):
+    """한 점짜리 선은 거짓 정보다 — 살아 있는 시리즈와 같은 기준을 적용한다."""
+    _seed(tmp_path, "20260807", 1004.95, bars={0: 1004.95})
+
+    series = await daytime_runtime.sparks()
+
+    assert series["KOSPI200_F"].night_series is None
 
 
 async def test_no_data_dir_disables_persistence(monkeypatch, tmp_path):

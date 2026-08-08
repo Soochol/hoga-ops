@@ -30,6 +30,8 @@ from hoga.api.kis_futures_master import (
 from hoga.live.futures_night_store import (
     NightQuoteRecord,
     NightSessionRecord,
+    latest_session_day,
+    load_session,
     save_session,
 )
 from hoga.live.kis_futures_endpoints import FuturesQuote
@@ -175,6 +177,10 @@ class SparkSeries:
     #: '주간' 을 고르면 이 그림을 그린다 — 없으면 값만 주간으로 바뀌고 그림은 사라져,
     #: 선택이 카드를 반쯤 비우는 것처럼 보인다.
     day_series: tuple[tuple[float, ...], float | None] | None = None
+    #: 주간 시리즈일 때 같이 싣는 **직전 야간장** 모양 `(종가들, 그 야간의 거래일)`.
+    #: `day_series` 의 반대 방향이고, 출처는 벤더가 아니라 디스크 기록이다.
+    #: 기준선이 없는 것은 야간 시리즈의 규칙 그대로다(첫 점이 곧 야간 시가).
+    night_series: tuple[tuple[float, ...], str] | None = None
 
 
 @dataclass(frozen=True)
@@ -194,6 +200,18 @@ class FuturesCard:
     #: 는 어차피 주간 마감본을 계속 주므로(15:45 동결) 이 값은 이미 손에 있다 —
     #: 접어서 버리고 있었을 뿐이다. 벤더 호출이 늘지 않는 것이 이 설계의 요점이다.
     day_quote: FuturesQuote | None = None
+    #: **직전 야간장의 마지막 값** — `day_quote` 의 반대 방향이고, 낮·마감에만 채운다.
+    #:
+    #: 이쪽은 공짜가 아니다. 벤더에 야간 소급 경로가 없어서(시세·분봉·일봉·전광판
+    #: 4표면 전수 실측, 2026-08-08·09) **우리가 그 밤에 적어 둔 기록**만이 유일한
+    #: 출처다. 그래서 저장을 켜기 전의 밤은 영원히 `None` 이다.
+    #:
+    #: `change`·`prev_close` 는 **그 밤이 기록한 값 그대로**다(전전일 종가 기준).
+    #: 다음 날 보면 기준일이 하루 밀려 있는데, 그것이 그 기록의 진실이라 고치지 않는다.
+    night_quote: FuturesQuote | None = None
+    #: `night_quote` 가 속한 야간장의 거래일 `YYYYMMDD`. 화면이 `8/7 야간` 처럼
+    #: **날짜를 함께 말해야** 한다 — 안 그러면 오늘 야간과 구별되지 않는다.
+    night_session_day: str | None = None
 
 
 @dataclass(frozen=True)
@@ -280,6 +298,7 @@ class FuturesQuotesRuntime:
         ticks = await self._night_ticks(
             session, tuple((item.id, row.code) for item, row in zip(items, rows, strict=True))
         )
+        recalled = await self._recall_night(session)
 
         cards: list[FuturesCard] = []
         for item, row in zip(items, rows, strict=True):
@@ -305,7 +324,21 @@ class FuturesQuotesRuntime:
             if tick is None:
                 # 야간이어도 틱이 없으면 주간 마감본이 **옳은 값**이다. 유동성이 낮은
                 # 상품은 야간 내내 무음일 수 있다(실측: 코스닥150·VKOSPI).
-                cards.append(FuturesCard(item, quote, "day"))
+                #
+                # `recalled` 는 야간 세션 중엔 비어 있다(아래 `_recall_night`) — 즉 이
+                # 무음 카드에 **직전 밤을 붙이지 않는다**. 오늘 야간이 진행 중인데
+                # 지난 금요일 밤을 선택지로 내밀면, 사용자는 그것을 "지금 야간" 으로
+                # 읽는다. 낮에 회상하는 것과 밤에 다른 밤을 보여주는 것은 다른 일이다.
+                night = recalled.get(item.id)
+                cards.append(
+                    FuturesCard(
+                        item,
+                        quote,
+                        "day",
+                        night_quote=None if night is None else night[0],
+                        night_session_day=None if night is None else night[1],
+                    )
+                )
                 continue
             cards.append(
                 FuturesCard(
@@ -334,6 +367,92 @@ class FuturesQuotesRuntime:
                 )
             )
         return FuturesSnapshot(tuple(cards), session, unavailable=None)
+
+    async def _recall_night(
+        self, session: FuturesSession
+    ) -> dict[str, tuple[FuturesQuote, str]]:
+        """직전 야간장의 기록 — `{카드 id: (값, 그 야간의 거래일)}`.
+
+        **야간 세션 중에는 빈 dict 다.** 지금 야간이 돌고 있는데 다른 밤을 곁들이면
+        두 야간이 한 카드에서 섞인다 — 무음 종목에서 특히 위험하다(그 카드는 값이
+        주간 마감본이라, 지난 밤을 붙이면 "야간 선택지가 있다" 로 읽힌다).
+
+        디스크는 `to_thread` 로 읽는다(`futures_session`·`spark_date` 와 같은 규칙).
+        읽기 빈도는 라우트의 `_TtlCache`(20초)가 이미 묶으므로 여기 캐시를 더 두지
+        않는다 — 두 벌이 되면 어느 쪽이 낡았는지 알 수 없어진다.
+
+        **`before` 가 오늘인 것이 요점**이다. 오늘 밤 파일은 야간이 시작되면 즉시
+        쌓이기 시작하는데, 낮에 "어젯밤" 을 물었을 때 그것을 집으면 안 된다.
+        """
+        if session == "night" or self._data_dir is None:
+            return {}
+        data_dir = self._data_dir
+        today = dt.datetime.now(KST).strftime("%Y%m%d")
+
+        def _load() -> dict[str, tuple[FuturesQuote, str]]:
+            day = latest_session_day(data_dir, before=today)
+            if day is None:
+                # 저장을 켜기 전의 밤은 영원히 없다 — 첫날이 정확히 이 상태다.
+                return {}
+            record = load_session(data_dir, day)
+            if record is None:
+                return {}
+            out: dict[str, tuple[FuturesQuote, str]] = {}
+            for card_id, q in record.quotes.items():
+                out[card_id] = (
+                    FuturesQuote(
+                        code=q.code,
+                        product="",
+                        label="",
+                        expiry="",
+                        value=q.price,
+                        change=q.change,
+                        change_rate=q.change_rate,
+                        # 그 밤이 기록한 기준가 그대로 되계산한다. 다음 날 보면 기준일이
+                        # 하루 밀려 있는데, 그것이 이 기록의 진실이라 고치지 않는다.
+                        prev_close=q.price - q.change,
+                        volume=q.volume,
+                        open_interest=q.open_interest,
+                        oi_change=q.oi_change,
+                        market_basis=q.market_basis,
+                        disparity=q.disparity,
+                        days_left=None,
+                        last_trade_date=None,
+                        t_ms=q.t_ms,
+                    ),
+                    record.session_day,
+                )
+            return out
+
+        return await asyncio.to_thread(_load)
+
+    async def _recall_night_bars(self, session: FuturesSession) -> dict[str, tuple[tuple[float, ...], str]]:
+        """직전 야간장의 5분봉 — `{카드 id: (종가들, 거래일)}`. 값 쪽과 같은 규칙이다.
+
+        버킷 키로 정렬해 시간순을 만든다. 원점이 18:00 이라 정수 정렬이 곧 시간순이고,
+        키를 버리면 자정을 넘는 세션에서 새벽이 저녁 앞에 온다(`_bucket_of`).
+        """
+        if session == "night" or self._data_dir is None:
+            return {}
+        data_dir = self._data_dir
+        today = dt.datetime.now(KST).strftime("%Y%m%d")
+
+        def _load() -> dict[str, tuple[tuple[float, ...], str]]:
+            day = latest_session_day(data_dir, before=today)
+            if day is None:
+                return {}
+            record = load_session(data_dir, day)
+            if record is None:
+                return {}
+            out: dict[str, tuple[tuple[float, ...], str]] = {}
+            for card_id, q in record.quotes.items():
+                if len(q.bars) < _MIN_SPARK_POINTS:
+                    # 한 점짜리 선은 거짓 정보다 — 살아 있는 시리즈와 같은 기준.
+                    continue
+                out[card_id] = (tuple(q.bars[k] for k in sorted(q.bars)), record.session_day)
+            return out
+
+        return await asyncio.to_thread(_load)
 
     async def _night_ticks(
         self, session: FuturesSession, pairs: tuple[tuple[str, str], ...]
@@ -487,6 +606,10 @@ class FuturesQuotesRuntime:
 
         now_ms = int(dt.datetime.now(KST).timestamp() * 1000)
         date = await asyncio.to_thread(spark_date, now_ms)
+        session = await asyncio.to_thread(futures_session, now_ms)
+        # 값 쪽(`snapshot`)과 **같은 판정**으로 회상한다 — 두 표면이 다른 밤을 고르면
+        # 카드에 숫자와 그림이 서로 다른 날짜로 붙는다.
+        recalled_bars = await self._recall_night_bars(session)
 
         async def one(item: FuturesLineupItem) -> tuple[str, SparkSeries] | None:
             try:
@@ -532,7 +655,11 @@ class FuturesQuotesRuntime:
 
             if spark is None:
                 return None
-            return item.id, SparkSeries(spark.closes, spark.day_open, "day")
+            # 주간 그림에 **직전 야간 그림**을 짝으로 싣는다. 값 쪽 `night_quote` 와
+            # 같은 축이고, 없으면 '야간' 선택이 숫자만 바꾸고 그림을 비운다.
+            return item.id, SparkSeries(
+                spark.closes, spark.day_open, "day", night_series=recalled_bars.get(item.id)
+            )
 
         results = await asyncio.gather(*(one(i) for i in LINEUP))
         return {item_id: series for got in results if got is not None for item_id, series in [got]}

@@ -102,6 +102,7 @@ function mockApi(
       session?: string;
       coverage?: { first_hhmm: string; observed_buckets: number; gap_count: number } | null;
       day?: { closes: number[]; day_open: number | null } | null;
+      night?: { closes: number[]; session_day: string } | null;
     }
   > = {},
   volatility: { code: string; name: string; value: number | null; change_pct: number | null } | null = null,
@@ -504,6 +505,128 @@ describe('IndexCards 주간↔야간 선택', () => {
     await showFutures();
 
     expect(sessionChip('KOSPI 200 F').parentElement?.textContent).toContain('KOSPI 200 F');
+  });
+});
+
+/**
+ * 낮에 **직전 야간장**을 되돌려 보는 방향 — 위 블록의 거울상이다.
+ *
+ * 두 방향의 결정적 차이는 출처다. 주간 값은 벤더가 항상 주지만 야간은 **우리가 그 밤에
+ * 적어 둔 기록**만이 유일한 경로다(KIS 4표면 전수 실측에서 소급 조회 없음 확인).
+ * 그래서 화면은 두 가지를 더 말해야 한다: **어느 밤인지**(날짜)와, **기록이 없으면
+ * 선택지도 없다**는 것.
+ */
+describe('IndexCards 직전 야간 회상', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  /** 주간 카드 + 백엔드가 실어 준 직전 야간(금요일 밤). */
+  const DAY_WITH_NIGHT = futuresQuote({
+    night: {
+      session_day: '20260807',
+      value: 1004.95,
+      change: 23.8,
+      change_rate: 2.43,
+      prev_close: 981.15,
+      volume: 18248,
+      open_interest: 159000,
+      oi_change: -100,
+      market_basis: 22.03,
+      disparity: -0.4,
+      t_ms: 999,
+    },
+  });
+
+  async function showFutures(indexLabel = 'KOSPI 200') {
+    await userEvent.click(
+      within(await screen.findByLabelText(`${indexLabel} 현물/선물`)).getByText('선물'),
+    );
+  }
+
+  function sessionChip(cardLabel: string): HTMLElement {
+    return within(cardByLabel(cardLabel)).getByRole('button', { name: /세션/ });
+  }
+
+  it('칩을 누르면 직전 야간 마지막 값으로 갈리고 라벨에 날짜가 붙는다', async () => {
+    mockApi({ quotes: [DAY_WITH_NIGHT], session: 'day' });
+    renderCards();
+    await showFutures();
+
+    expect(screen.getByText('981.15')).toBeTruthy();
+    await userEvent.click(sessionChip('KOSPI 200 F'));
+
+    expect(screen.getByText('1,004.95')).toBeTruthy();
+    // **날짜가 라벨의 본체다.** '야간' 만 쓰면 지금 열려 있는 야간장으로 읽힌다.
+    expect(within(cardByLabel('KOSPI 200 F')).getByText('8/7 야간')).toBeTruthy();
+  });
+
+  it('베이시스도 그 밤의 값으로 갈린다', async () => {
+    mockApi({ quotes: [DAY_WITH_NIGHT], session: 'day' });
+    renderCards();
+    await showFutures();
+
+    expect(screen.getByText('-1.77')).toBeTruthy();
+    await userEvent.click(sessionChip('KOSPI 200 F'));
+
+    expect(screen.getByText('+22.03')).toBeTruthy();
+  });
+
+  it('그림도 그 밤의 것으로 갈린다', async () => {
+    mockApi(
+      { quotes: [DAY_WITH_NIGHT], session: 'day' },
+      {
+        KOSPI200_F: {
+          closes: [1042.05, 981.15],
+          day_open: 1042.05,
+          session: 'day',
+          night: { closes: [998.1, 1002.5, 1004.95], session_day: '20260807' },
+        },
+      },
+    );
+    renderCards();
+    await showFutures();
+
+    const dayPath = sparkPath(cardByLabel('KOSPI 200 F'));
+    await userEvent.click(sessionChip('KOSPI 200 F'));
+
+    const nightPath = sparkPath(cardByLabel('KOSPI 200 F'));
+    expect(nightPath).toBeTruthy();
+    expect(nightPath).not.toBe(dayPath);
+  });
+
+  it('기록이 없으면 버튼도 없다 — 저장을 켠 첫날의 정상 상태다', async () => {
+    mockApi({ quotes: [futuresQuote()], session: 'day' });
+    renderCards();
+    await showFutures();
+
+    expect(within(cardByLabel('KOSPI 200 F')).queryByRole('button', { name: /세션/ })).toBeNull();
+  });
+
+  it('야간이 도는 중에는 회상 버튼이 붙지 않는다 — 의도적 비대칭', async () => {
+    // 백엔드가 야간 세션엔 `night` 를 아예 안 싣는다. 무음 카드(값이 주간 마감본)에
+    // 지난 밤을 선택지로 내밀면 사용자는 그것을 "지금 야간" 으로 읽기 때문이다.
+    // 프론트에서도 그 상태를 못 박아, 나중에 백엔드가 실어 보내면 여기서 걸리게 한다.
+    mockApi({ quotes: [futuresQuote({ data_session: 'day' })], session: 'night' });
+    renderCards();
+    await showFutures();
+
+    expect(within(cardByLabel('KOSPI 200 F')).queryByRole('button', { name: /세션/ })).toBeNull();
+    expect(within(cardByLabel('KOSPI 200 F')).getByText(/주간 마감값/)).toBeTruthy();
+  });
+
+  it('선택은 저장되지 않는다 — 현물로 갔다 오면 주간으로 돌아온다', async () => {
+    mockApi({ quotes: [DAY_WITH_NIGHT], session: 'day' });
+    renderCards();
+    await showFutures();
+    await userEvent.click(sessionChip('KOSPI 200 F'));
+    expect(screen.getByText('1,004.95')).toBeTruthy();
+
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('현물'));
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
+
+    expect(screen.getByText('981.15')).toBeTruthy();
   });
 });
 
