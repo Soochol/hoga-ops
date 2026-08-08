@@ -123,6 +123,62 @@ async def test_day_series_absent_when_the_shape_is_already_daytime():
 
 
 @pytest.mark.asyncio
+async def test_recalled_night_keeps_every_field_including_the_date():
+    """`night` 의 열한 필드가 전부 살아야 한다. **`session_day` 가 특히 위험하다** —
+    스트립돼도 값은 멀쩡히 뜨고 날짜만 사라져서, 지난 밤이 오늘 야간으로 읽힌다."""
+    card = FuturesCard(
+        ITEM, _quote(978.75, 111), "day",
+        night_quote=_quote(1004.95, 999), night_session_day="20260807",
+    )
+    got = await _holder(_FakeRuntime(FuturesSnapshot((card,), "day", None))).collect()
+    assert got is not None
+
+    dumped = FuturesQuotesResponse.model_validate({**got, "session": "day"}).model_dump()
+
+    produced = _keys(got["quotes"][0]["night"])
+    survived = _keys(dumped["quotes"][0]["night"])
+    assert produced == survived, f"스트립된 키: {produced - survived}"
+    assert dumped["quotes"][0]["night"]["session_day"] == "20260807"
+    assert dumped["quotes"][0]["night"]["value"] == 1004.95
+    assert dumped["quotes"][0]["value"] == 978.75  # 최상위는 여전히 주간이다
+
+
+@pytest.mark.asyncio
+async def test_recalled_night_series_survives_the_model():
+    series = {
+        "KOSPI200_F": SparkSeries(
+            (975.0, 978.75), 974.0, "day", night_series=((998.1, 1004.95), "20260807")
+        )
+    }
+    got = await _holder(_FakeRuntime(series=series)).collect_sparks()
+    assert got is not None
+
+    dumped = FuturesCandlesResponse.model_validate(got).model_dump()
+
+    produced = _keys(got["series"]["KOSPI200_F"]["night"])
+    survived = _keys(dumped["series"]["KOSPI200_F"]["night"])
+    assert produced == survived, f"스트립된 키: {produced - survived}"
+    assert dumped["series"]["KOSPI200_F"]["night"]["closes"] == [998.1, 1004.95]
+    assert dumped["series"]["KOSPI200_F"]["night"]["session_day"] == "20260807"
+
+
+@pytest.mark.asyncio
+async def test_day_and_night_are_never_both_present():
+    """둘은 반대 방향이라 **동시에 차면 화면이 어느 쪽으로 토글할지 모른다.**
+    야간 카드는 `day` 만, 주간 카드는 `night` 만 갖는다."""
+    night = FuturesCard(ITEM, _quote(1004.95, 999), "night", day_quote=_quote(978.75, 111))
+    day = FuturesCard(
+        ITEM, _quote(978.75, 111), "day",
+        night_quote=_quote(1004.95, 999), night_session_day="20260807",
+    )
+    for card in (night, day):
+        got = await _holder(_FakeRuntime(FuturesSnapshot((card,), "day", None))).collect()
+        assert got is not None
+        row = got["quotes"][0]
+        assert (row["day"] is None) != (row["night"] is None), row
+
+
+@pytest.mark.asyncio
 async def test_top_level_quote_fields_survive_the_model():
     """`day` 를 얹으면서 기존 필드를 건드리지 않았는지 — 회귀 방향이 반대인 가드다."""
     night = FuturesCard(ITEM, _quote(1004.95, 999), "night", day_quote=_quote(978.75, 111))

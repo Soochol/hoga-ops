@@ -28,6 +28,20 @@ interface FuturesDayValuesWire {
   t_ms: number;
 }
 
+interface FuturesNightValuesWire {
+  session_day: string;
+  value: number;
+  change: number;
+  change_rate: number;
+  prev_close: number;
+  volume: number;
+  open_interest: number;
+  oi_change: number;
+  market_basis: number | null;
+  disparity: number | null;
+  t_ms: number;
+}
+
 interface FuturesQuoteWire {
   id: string;
   underlying_id: string | null;
@@ -48,6 +62,7 @@ interface FuturesQuoteWire {
   data_session: FuturesSession;
   t_ms: number;
   day: FuturesDayValuesWire | null;
+  night: FuturesNightValuesWire | null;
 }
 
 interface FuturesQuotesResponseWire {
@@ -65,6 +80,30 @@ interface FuturesQuotesResponseWire {
  * 저장한 기록으로만 가능하고 그건 별개 작업이다.
  */
 export interface FuturesDayValues {
+  value: number;
+  change: number;
+  changeRate: number;
+  prevClose: number;
+  volume: number;
+  openInterest: number;
+  oiChange: number;
+  marketBasis: number | null;
+  disparity: number | null;
+  tMs: number;
+}
+
+/** **직전 야간장의 마지막 값** — `FuturesDayValues` 의 반대 방향이고, 낮·마감에만 온다.
+ *
+ * 이쪽은 공짜가 아니다. 벤더에 야간 소급 경로가 없어서(시세·분봉·일봉·전광판 4표면
+ * 전수 실측) **백엔드가 그 밤에 적어 둔 기록**만이 출처다. 저장을 켜기 전의 밤은
+ * 영영 `null` 이고, 그 상태가 오류가 아니라 정상이다.
+ *
+ * `sessionDay` 가 필수인 이유: 화면이 `8/7 야간` 처럼 날짜를 말하지 않으면 사용자가
+ * 오늘 야간과 구별할 수 없다. 그리고 그 날짜 자체가 **낡음 표시**다 — keeper 가 꺼져
+ * 있었으면 한참 전 날짜가 뜨고, 그게 정직한 신호다. */
+export interface FuturesNightValues {
+  /** 이 값이 속한 야간장의 거래일 `YYYYMMDD`. */
+  sessionDay: string;
   value: number;
   change: number;
   changeRate: number;
@@ -102,6 +141,9 @@ export interface FuturesQuote {
   /** 야간 값이 덮기 전의 주간 값. **`null` 이면 이 카드에는 선택지가 없다** —
    *  주간 카드는 최상위 필드가 이미 주간이라 여기 채우면 같은 숫자가 두 벌이 된다. */
   day: FuturesDayValues | null;
+  /** 직전 야간장의 마지막 값. **낮·마감에만** 오고, 그 밤이 저장돼 있을 때만 있다.
+   *  `day` 와 정확히 반대 방향이라 둘이 동시에 차는 일은 없다. */
+  night: FuturesNightValues | null;
 }
 
 export interface FuturesQuotesSnapshot {
@@ -143,6 +185,19 @@ function mapQuote(wire: FuturesQuoteWire): FuturesQuote {
       disparity: wire.day.disparity,
       tMs: wire.day.t_ms,
     },
+    night: wire.night == null ? null : {
+      sessionDay: wire.night.session_day,
+      value: wire.night.value,
+      change: wire.night.change,
+      changeRate: wire.night.change_rate,
+      prevClose: wire.night.prev_close,
+      volume: wire.night.volume,
+      openInterest: wire.night.open_interest,
+      oiChange: wire.night.oi_change,
+      marketBasis: wire.night.market_basis,
+      disparity: wire.night.disparity,
+      tMs: wire.night.t_ms,
+    },
   };
 }
 
@@ -180,6 +235,9 @@ export interface FuturesSpark {
   /** 야간 시리즈일 때 같이 오는 **그날 주간장** 모양. 값 쪽 `day` 와 짝이다 —
    *  한쪽만 있으면 '주간' 선택이 숫자만 바꾸고 그림은 비운다. */
   day: { closes: number[]; dayOpen: number | null } | null;
+  /** 주간 시리즈일 때 같이 오는 **직전 야간장** 모양. 값 쪽 `night` 와 짝이다.
+   *  기준선이 없는 것은 야간 시리즈의 규칙 그대로다(첫 점이 곧 야간 시가). */
+  night: { closes: number[]; sessionDay: string } | null;
 }
 
 interface FuturesCandlesResponseWire {
@@ -195,6 +253,7 @@ interface FuturesCandlesResponseWire {
         gap_count: number;
       } | null;
       day: { closes: number[]; day_open: number | null } | null;
+      night: { closes: number[]; session_day: string } | null;
     }
   >;
 }
@@ -238,6 +297,10 @@ export function useMarketFuturesCandles(enabled: boolean) {
                 }
               : null,
             day: s.day == null ? null : { closes: s.day.closes ?? [], dayOpen: s.day.day_open },
+            night:
+              s.night == null
+                ? null
+                : { closes: s.night.closes ?? [], sessionDay: s.night.session_day },
           },
         ]),
       );

@@ -96,16 +96,16 @@ function useCardModes(): [Record<string, CardMode>, (id: string, next: CardMode)
  *  KOSPI200 은 WS 틱이 붙어 실시간인데 코스닥150 은 무음이라 주간 마감본일 수 있다.
  *  스냅샷 하나로 판정하면 둘 중 하나는 반드시 틀린 배지를 단다.
  *
- *  **사용자가 직접 주간을 골랐으면 침묵한다**(`viewingDay`). 이 배지는 "의도하지
+ *  **사용자가 직접 다른 세션을 골랐으면 침묵한다**(`viewingAlt`). 이 배지는 "의도하지
  *  않았는데 값이 어긋났다" 는 **예외** 채널이다. 고른 결과를 같은 문구로 알리면
  *  경고와 확인이 한 자리에서 섞이고, 그 순간부터 배지가 어느 질문에 답하는지
  *  알 수 없어진다. 어느 세션 값인지는 라벨 옆 칩이 이미 상태로 말한다. */
 function stalenessNote(
   future: FuturesQuote,
   snapshot: FuturesQuotesSnapshot | undefined,
-  viewingDay: boolean,
+  viewingAlt: boolean,
 ): string | null {
-  if (viewingDay) return null;
+  if (viewingAlt) return null;
   if (!snapshot || snapshot.session === future.dataSession) return null;
   return snapshot.session === 'night' ? '주간 마감값' : '장 마감';
 }
@@ -121,6 +121,30 @@ function stalenessNote(
  *  마감본이기 때문이다. 그 값이 낡았다는 사실은 `stalenessNote` 가 따로 말한다. */
 function sessionLabel(session: FuturesQuote['dataSession']): string {
   return session === 'night' ? '야간' : '주간';
+}
+
+/** 회상한 야간 값의 칩 라벨 — `20260807` → `8/7 야간`.
+ *
+ *  **날짜가 라벨의 본체다.** 이 값은 오늘 야간이 아니라 *지난* 야간이라, 날짜 없이
+ *  '야간' 만 쓰면 지금 열려 있는 야간장으로 읽힌다. 그리고 그 날짜 자체가 낡음
+ *  표시이기도 하다 — keeper 가 꺼져 있었으면 한참 전 날짜가 뜨고, 그게 정직한
+ *  신호다(별도 경고 채널을 만들 이유가 없다). */
+function recalledNightLabel(sessionDay: string): string {
+  const month = Number(sessionDay.slice(4, 6));
+  const day = Number(sessionDay.slice(6, 8));
+  if (!month || !day) return '야간';
+  return `${month}/${day} 야간`;
+}
+
+/** 세션 칩에 쓸 글자 — **상태 한 줄이 곧 라벨**이다.
+ *
+ *  세 가지가 나온다: 지금 값의 세션(`주간`/`야간`), 야간 카드에서 고른 주간(`주간`),
+ *  주간 카드에서 회상한 야간(`8/7 야간`). 마지막만 날짜가 붙는 이유는 그것만이
+ *  **오늘이 아닌 값**이기 때문이다. */
+function sessionChipText(future: FuturesQuote, viewingAlt: boolean): string {
+  if (!viewingAlt) return sessionLabel(future.dataSession);
+  if (future.dataSession === 'night') return '주간';
+  return future.night ? recalledNightLabel(future.night.sessionDay) : '야간';
 }
 
 /** 베이시스·괴리율용 소수 2자리 부호 표기.
@@ -142,16 +166,18 @@ function fmtBasis(n: number | null): string {
 function FuturesMeta({
   future,
   snapshot,
-  viewingDay = false,
+  alt = null,
 }: {
   future: FuturesQuote;
   snapshot: FuturesQuotesSnapshot | undefined;
-  /** 사용자가 이 카드에서 '주간' 을 골랐는가. 베이시스도 그 세션 것으로 갈린다 —
-   *  값만 주간으로 바꾸고 베이시스를 야간 것으로 두면 한 카드가 두 시각을 가리킨다. */
-  viewingDay?: boolean;
+  /** 사용자가 고른 **반대편 세션 값**. `null` 이면 자동(카드가 그리는 그대로)이다.
+   *
+   *  베이시스도 여기서 갈린다 — 값만 반대편으로 바꾸고 베이시스를 그대로 두면 한
+   *  카드가 두 시각을 가리킨다. 방향(주간↔야간)은 이 컴포넌트가 알 필요가 없다. */
+  alt?: { marketBasis: number | null } | null;
 }) {
-  const stale = stalenessNote(future, snapshot, viewingDay);
-  const basis = viewingDay && future.day ? future.day.marketBasis : future.marketBasis;
+  const stale = stalenessNote(future, snapshot, alt != null);
+  const basis = alt ? alt.marketBasis : future.marketBasis;
   return (
     <div className="flex flex-wrap items-baseline gap-x-xs font-data text-2xs tabular-nums text-fg-dim">
       <span>
@@ -297,22 +323,33 @@ function IndexCard({
   // 만들지 않는다. 저장된 선택은 건드리지 않으므로 데이터가 오면 알아서 복귀한다.
   const showFutures = future != null && mode === 'futures';
 
-  // 야간 카드에서 "그럼 주간은 얼마였지" 를 볼 수 있게 하는 선택. **선택지는 백엔드가
-  // `day` 를 실어 줄 때만 존재한다** — 즉 이 카드가 지금 야간 값을 그리고 있을 때뿐이다.
+  // 카드가 지금 그리는 것의 **반대편 세션 값**. 방향은 백엔드가 정한다:
+  //  - 야간 값을 그리는 중이면 `day`   → 누르면 그날 주간 마감본
+  //  - 주간 값을 그리는 중이면 `night` → 누르면 **직전 야간장**(디스크 기록)
+  //
+  // 둘은 동시에 오지 않는다. 그래서 화면은 "반대편이 있는가" 하나만 보면 되고,
+  // 어느 방향인지는 `dataSession` 이 이미 말한다.
+  //
+  // 비대칭이 하나 있고 의도다: 야간 세션 중 **무음 카드**(값이 주간 마감본)에는
+  // `night` 가 오지 않는다. 오늘 야간이 도는 중에 지난 밤을 선택지로 내밀면 그것을
+  // "지금 야간" 으로 읽기 때문이다(백엔드 `_recall_night`).
   //
   // **영속하지 않는다**(현물/선물 모드와 다른 점). 그쪽은 취향이지만 이쪽은 시간에
-  // 종속된 선택이라, localStorage 에 남기면 다음 날 아침 '주간' 이 유령으로 남는다.
+  // 종속된 선택이라, localStorage 에 남기면 다음 날 아침 유령으로 남는다.
   // 선택지가 사라지면 아래 effect 가 자동으로 되돌린다.
-  const [preferDay, setPreferDay] = useState(false);
-  const canPickSession = showFutures && future.day != null;
+  const [preferAlt, setPreferAlt] = useState(false);
+  const alt = future == null ? null : future.dataSession === 'night' ? future.day : future.night;
+  const canPickSession = showFutures && alt != null;
   useEffect(() => {
-    if (!canPickSession) setPreferDay(false);
+    if (!canPickSession) setPreferAlt(false);
   }, [canPickSession]);
-  const viewingDay = canPickSession && preferDay;
+  const viewingAlt = canPickSession && preferAlt;
+  /** 회상한 야간을 보고 있는가 — 라벨에 날짜를 붙여야 하는 방향. */
+  const viewingRecalledNight = viewingAlt && future?.dataSession !== 'night';
 
   // 값·등락·베이시스가 **같은 세션에서** 나와야 한다. 하나만 갈아끼우면 한 카드가
   // 두 시각을 동시에 가리킨다.
-  const futureValues = viewingDay && future?.day ? future.day : future;
+  const futureValues = viewingAlt && alt ? alt : future;
 
   // **그림의 세션이 값의 세션과 다르면 그리지 않는다.** 백엔드는 야간 봉이 아직
   // 부족한 구간에 시리즈를 아예 주지 않지만(#1164), `/api/market/futures-candles` 의
@@ -327,17 +364,25 @@ function IndexCard({
   const sparkInSync =
     future != null && futureSpark?.session === future.dataSession ? futureSpark : undefined;
 
-  // '주간' 을 골랐을 때 그릴 그림. 두 경로가 있고 **둘 다 필요하다**: 응답이 이미
-  // 주간 시리즈면 그것이 곧 답이고(시세는 야간인데 분봉 캐시가 아직 주간인 창),
-  // 야간 시리즈면 짝으로 실려 온 `day` 를 쓴다.
-  const daySpark =
+  // 반대편을 골랐을 때 그릴 그림 — 값과 **같은 방향**으로 고른다.
+  //
+  // 주간 방향엔 경로가 둘이고 둘 다 필요하다: 응답이 이미 주간 시리즈면 그것이 곧
+  // 답이고(시세는 야간인데 분봉 캐시가 아직 주간인 창), 야간 시리즈면 짝으로 실려 온
+  // `day` 를 쓴다. 야간 방향은 디스크 기록이라 경로가 하나뿐이다.
+  const altSpark: { closes: number[]; dayOpen: number | null } | undefined =
     futureSpark == null
       ? undefined
-      : futureSpark.session === 'day'
-        ? { closes: futureSpark.closes, dayOpen: futureSpark.dayOpen }
-        : (futureSpark.day ?? undefined);
-  const shownSpark = viewingDay
-    ? daySpark
+      : viewingRecalledNight
+        ? // 회상한 야간엔 기준선을 주지 않는다 — 첫 점이 곧 그 밤의 시가다.
+          // 주간 시가로 색칠하면 등락 방향이 뒤집힌다.
+          futureSpark.night
+          ? { closes: futureSpark.night.closes, dayOpen: null }
+          : undefined
+        : futureSpark.session === 'day'
+          ? { closes: futureSpark.closes, dayOpen: futureSpark.dayOpen }
+          : (futureSpark.day ?? undefined);
+  const shownSpark = viewingAlt
+    ? altSpark
     : sparkInSync && { closes: sparkInSync.closes, dayOpen: sparkInSync.dayOpen };
 
   const shown =
@@ -370,12 +415,18 @@ function IndexCard({
             (canPickSession ? (
               <button
                 type="button"
-                onClick={() => setPreferDay((v) => !v)}
-                title={viewingDay ? '야간 값으로 전환' : '주간 마감값으로 전환'}
-                aria-label={`${future.label} 세션 — 현재 ${viewingDay ? '주간' : sessionLabel(future.dataSession)}, 눌러서 전환`}
+                onClick={() => setPreferAlt((v) => !v)}
+                title={
+                  viewingAlt
+                    ? `${sessionLabel(future.dataSession)} 값으로 되돌리기`
+                    : future.dataSession === 'night'
+                      ? '주간 마감값으로 전환'
+                      : '직전 야간장 마지막 값으로 전환'
+                }
+                aria-label={`${future.label} 세션 — 현재 ${sessionChipText(future, viewingAlt)}, 눌러서 전환`}
                 className="rounded px-2xs text-2xs font-normal hover:bg-bg-input-hover"
               >
-                {viewingDay ? '주간' : sessionLabel(future.dataSession)}
+                {sessionChipText(future, viewingAlt)}
               </button>
             ) : (
               <span className="text-2xs font-normal">{sessionLabel(future.dataSession)}</span>
@@ -428,7 +479,7 @@ function IndexCard({
           line-height 가 정하므로 하드코딩하면 사용자 줌에서 어긋난다. 같은 컴포넌트를
           그대로 재사용하면 정의상 높이가 일치한다. */}
       {showFutures ? (
-        <FuturesMeta future={future} snapshot={snapshot} viewingDay={viewingDay} />
+        <FuturesMeta future={future} snapshot={snapshot} alt={viewingAlt ? alt : null} />
       ) : breadth ? (
         <AdvanceDeclineBar rising={breadth.rising} falling={breadth.falling} flat={breadth.flat} />
       ) : future != null ? (
