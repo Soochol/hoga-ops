@@ -22,7 +22,7 @@ import { INITIAL_STYLE, isDrawingKind } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import type { TimeShift } from './drawing/translate';
-import { hitTestDrawings, type HitOptions } from './drawing/hitTest';
+import { hitTestDrawings } from './drawing/hitTest';
 import {
   TOOLS,
   matchShortcut,
@@ -360,11 +360,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         // 푼다(사용자 결정, 2026-08-08). 단계로 나누면 어느 제스처가 어디까지
         // 되돌리는지 외워야 하므로, 예측 가능성을 택했다. 두 경로가 같은 스토어
         // 액션을 부르는 것이 곧 "결과가 항상 같다" 는 보장이다.
-        //
-        // 대가는 알려진 것이다: 방금 그린 도형의 윤곽 위에서 이어 그리려면 도구를
-        // 다시 골라야 한다(선택된 도형은 그리기 중에도 잡히므로 — tools.ts 의
-        // `withSelectedDrawingDrag`). 그 자리를 피해 그리거나 도형을 하나 더
-        // 그리면 선택이 옮겨 가므로 재선택 없이도 된다.
         useDrawingsStore.getState().exitDrawingMode();
         trendlineDraft.current = null;
         pencilDraft.current = null;
@@ -419,7 +414,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // SR-5: the kind-dispatch hit geometry lives in the pure hitTestDrawings
   // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds
   // the chart-aware coordinate closures.
-  const hitTest = (px: number, py: number, opts?: HitOptions): Drawing | null =>
+  const hitTestAt = (px: number, py: number): Drawing | null =>
     // Hidden drawings are non-interactive — no hover gating, no selection.
     defaults.hiddenAll
       ? null
@@ -435,14 +430,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           drawings,
           px,
           py,
-          opts,
         );
-  const hitTestAt = (px: number, py: number): Drawing | null => hitTest(px, py);
-  /** 그리기 도구가 켜진 채로 "이 도형을 잡았는가" 를 묻는 좁은 판정. 채워진 박스는
-   *  테두리로만 잡힌다 — 안쪽은 다음 도형을 그릴 자리로 남긴다. 판정 하나를 두
-   *  질문으로 나누는 이유는 hitTest.ts 의 `HitOptions` 주석에 있다. */
-  const hitTestOutlineAt = (px: number, py: number): Drawing | null =>
-    hitTest(px, py, { boxInterior: false });
 
   // ── text editing ───────────────────────────────────────────────────────
   // Commit the in-flight text edit. Idempotent: reads textEditRef and nulls it,
@@ -477,7 +465,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         // (Re-edits take the `edit.id != null` branch above and keep their own.)
         fontSize: textStyle.fontSize,
       });
-      store.setSelected(scope, id);
+      // 커밋 후 선택하지 않는다 — 다른 그리기 도구와 같은 규약(그리기 모드는
+      // 항상 그린다). 방금 쓴 라벨의 색·크기는 select 모드에서 고른다.
     }
     setTextEdit(null);
     setTextValue('');
@@ -569,7 +558,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       priceToCanvasY,
       canvasYToPrice,
       hitTestAt,
-      hitTestOutlineAt,
       paneIdAtY,
       clampYToPane,
       priceBoundsForPane,
@@ -618,12 +606,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const py = e.clientY - rect.top;
     onChartHoverPassthrough?.({ x: px, y: py });
     // Track the cursor for the hline/vline ghost-line preview and repaint.
-    // 선택된 도형을 잡아 끄는 중이면 고스트를 접는다 — 그 제스처는 배치가 아니라
-    // 이동이고(그리기 도구가 켜진 채로도 선택된 도형은 잡힌다, `tools.ts` 의
-    // `withSelectedDrawingDrag`), 커서 밑에서 끌려오는 선 위에 "여기 새로 놓는다"
-    // 는 점선이 겹쳐 떠서 둘 중 어느 것이 커밋될지 읽히지 않는다.
     if (activeTool === 'hline' || activeTool === 'vline') {
-      ghostRef.current = dragRef.current ? null : computeGhost(px, py);
+      ghostRef.current = computeGhost(px, py);
       requestRedraw();
     }
     TOOLS[activeTool].onPointerMove?.(buildCtx(e));
@@ -845,10 +829,17 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // layer is hidden would be confusing (the new shape wouldn't appear). Keyed
   // on activeTool transitions ONLY (hiddenAll read fresh): otherwise toggling
   // hide while a drawing tool is active would instantly revert itself.
+  //
+  // 같은 전환에서 선택도 비운다 — 불변식은 **그리기 모드 ⇒ 선택 없음**이다.
+  // 도구는 커밋 후에 선택하지 않지만(그리기 모드는 항상 그린다), select 모드에서
+  // 고른 도형은 도구를 켜도 그대로 남는다. 그 헤일로는 그리기 모드에서 "잡을 수
+  // 있다" 고 거짓말을 하게 되므로(눌러도 새 도형이 그려진다) 진입 시점에 끊는다.
+  // 창마다 도는 effect 지만 해제는 멱등이라 중복이 무해하다.
   useEffect(() => {
-    if (activeTool !== 'select' && useDrawingsStore.getState().defaults.hiddenAll) {
-      useDrawingsStore.getState().setDefaults({ hiddenAll: false });
-    }
+    if (activeTool === 'select') return;
+    const store = useDrawingsStore.getState();
+    if (store.defaults.hiddenAll) store.setDefaults({ hiddenAll: false });
+    store.clearAllSelections();
   }, [activeTool]);
 
   // Duplicate the selected drawing with a ~14px down-right offset (derived from
