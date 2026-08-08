@@ -80,10 +80,31 @@ function errorCode(error: unknown): string | undefined {
  */
 const VENDOR_FAILURE_REASONS: ReadonlySet<string> = new Set([
   'rate_limit_upstream',
+  // 우리 쪽 쿨다운이지만 **그 쿨다운을 벤더 거절이 만들었다** — 뿌리가 상류라
+  // 이쪽에 둔다(`classifyRestWarning` 이 congestion 으로 묶는 것과 같은 판정).
   'rate_limit_aborted',
   'transport_error',
   'api_error',
   'batch_limit_exceeded',
+]);
+
+/**
+ * **벤더에게 묻지도 않은** 사유들 — 우리 쪽 유예다(분봉 경로 전용).
+ *
+ * 위 목록과 갈라 두는 이유는 문구가 거짓이 되기 때문이다. `capacity_overloaded` 는
+ * 우리 스케줄러 대기열이 찬 것이고 `fetch_budget_exhausted` 는 우리가 요청당 상한을
+ * 걸어 오래된 날짜를 **다음 사이클로 미룬** 것이다(`live_candle_backfill` 의 예산
+ * 주석). 둘 다 벤더는 이 구간을 거절한 적이 없으므로 "벤더가 주지 않았다" 로 말하면
+ * 묻지도 않은 쪽에 책임을 지우게 된다.
+ *
+ * 행동은 재시도를 준다. 폴링이 도는 장중에는 스스로 이어받지만, 폴링이 멈추는
+ * 장외(`liveVenueRefetchInterval` 이 false)에서는 저절로 낫지 않아 빈 차트가 그대로
+ * 남는다 — 그 구간에서 유일하게 듣는 손잡이다. "없는 버튼이 낫다" 규칙은 **누를 수
+ * 없는** 버튼에 대한 것이고, 이건 실제로 듣는다.
+ */
+const DEFERRED_FETCH_REASONS: ReadonlySet<string> = new Set([
+  'capacity_overloaded',
+  'fetch_budget_exhausted',
 ]);
 
 /**
@@ -137,6 +158,16 @@ export function deriveCandleEmptyState({
       action: 'retry',
       actionLabel: '다시 시도',
       detail: vendorWarning.msg,
+    };
+  }
+  // 벤더 실패보다 **뒤**다 — 둘이 섞여 오면 상류 거절 쪽이 더 알려 줄 것이 많다.
+  const deferredWarning = warnings?.find((w) => DEFERRED_FETCH_REASONS.has(w.reason));
+  if (deferredWarning) {
+    return {
+      text: '요청이 밀려 이 구간을 아직 받지 못했다',
+      action: 'retry',
+      actionLabel: '다시 시도',
+      detail: deferredWarning.msg,
     };
   }
 

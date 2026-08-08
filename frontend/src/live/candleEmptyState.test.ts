@@ -101,6 +101,28 @@ describe('deriveCandleEmptyState', () => {
     expect(s?.action).toBeNull();
   });
 
+  it('우리 쪽 유예는 벤더 탓으로 말하지 않는다', () => {
+    // capacity_overloaded 는 우리 스케줄러 대기열, fetch_budget_exhausted 는 우리가
+    // 건 요청당 상한이다 — 둘 다 벤더에게 **묻지도 않았다**. "벤더가 주지 않았다" 는
+    // 묻지도 않은 쪽에 책임을 지우는 거짓이고, "이 구간에 캔들이 없다"(예전 문구)는
+    // 미룬 것을 없는 것이라 단언하는 거짓이다.
+    for (const reason of ['capacity_overloaded', 'fetch_budget_exhausted']) {
+      const s = deriveCandleEmptyState({ ...base, warnings: [{ reason, msg: 'deferred' }] });
+      expect(s?.text).toBe('요청이 밀려 이 구간을 아직 받지 못했다');
+      // 장외엔 폴링이 멈춰 저절로 낫지 않는다 — 그 구간에서 유일하게 듣는 손잡이다.
+      expect(s?.action).toBe('retry');
+    }
+  });
+
+  it('벤더 실패가 우리 쪽 유예보다 우선한다 — 상류 거절이 더 알려 준다', () => {
+    const s = deriveCandleEmptyState({
+      ...base,
+      warnings: [{ reason: 'capacity_overloaded', msg: 'a' }, { reason: 'api_error', msg: 'b' }],
+    });
+    expect(s?.text).toBe('벤더가 이 구간을 주지 않았다');
+    expect(s?.detail).toBe('b');
+  });
+
   it('벤더 실패가 아닌 사유는 이 분기를 켜지 않는다', () => {
     // 허용목록이라 `invariant_violation`(행 단위 검증)·`rest_bypassed`(우회 켜짐)는
     // 통과한다. 여기가 새면 아래 우회 안내가 도달 불가가 된다.
