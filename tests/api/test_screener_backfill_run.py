@@ -92,8 +92,8 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
     t_ms = int(dt.datetime(2026, 6, 1, tzinfo=KST).timestamp() * 1000)
 
     async def fake_fetch_daily_candles(client_arg, code, frm, to, *, venue="KRX",
-                                       adjust=True, run_page=None):
-        calls.append(("adapter", client_arg, code, frm, to, adjust))
+                                       adjust, adjusted_as_of, run_page=None):
+        calls.append(("adapter", client_arg, code, frm, to, adjust, adjusted_as_of))
         if run_page is not None:
             await run_page(_fake_page_fetch, 0)
         return SimpleNamespace(candles=[

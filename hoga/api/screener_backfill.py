@@ -256,7 +256,14 @@ async def run_backfill(data_dir: Path) -> dict:
         raise RuntimeError("키움 자격증명 없음(KIWOOM_APP_KEY/SECRET) — 백필 불가")
     scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
 
-    async def _daily(code: str, frm: str, to: str, *, adjust: bool, tag: str):
+    # 수정주가 기준일은 **오늘 하나**다(함정 ④). 예전엔 `base_dt=to` 였고 여기서
+    # `to` 는 종목별 원주가 최신일이라 대부분 우연히 맞았지만, 상장폐지·장기
+    # 거래정지로 최신 행이 과거인 종목은 그 뒤의 분할이 빠진 채 factor 가 잡혔다.
+    as_of_s = datetime.now(KST).strftime("%Y%m%d")
+
+    async def _daily(
+        code: str, frm: str, to: str, *, adjust: bool, adjusted_as_of: str | None, tag: str
+    ):
         """**`adjust` 극성은 어댑터가 뒤집는다.** 키움 `upd_stkpc_tp` 는 KIS 의
         `FID_ORG_ADJ_PRC` 와 반대라(1=수정주가) 여기서 불리언을 그대로 넘기고
         와이어 값 변환은 `kiwoom_daily_candles.adjust_flag` 한 곳에만 둔다."""
@@ -277,16 +284,20 @@ async def run_backfill(data_dir: Path) -> dict:
             )
 
         return await kiwoom_daily_candles.fetch_daily_candles(
-            client, code, frm, to, adjust=adjust, run_page=_run_page,
+            client, code, frm, to,
+            adjust=adjust, adjusted_as_of=adjusted_as_of,
+            run_page=_run_page,
         )
 
     async def fetch_adj(code: str, frm: str, to: str):
-        res = await _daily(code, frm, to, adjust=True, tag="adj")   # 수정주가
+        # 수정주가 — 기준일을 오늘로 고정한다(위 as_of_s 주석).
+        res = await _daily(code, frm, to, adjust=True, adjusted_as_of=as_of_s, tag="adj")
         return [(datetime.fromtimestamp(c.t_ms / 1000, tz=KST).date(), float(c.close))
                 for c in res.candles]
 
     async def fetch_raw(code: str, frm: str, to: str):
-        res = await _daily(code, frm, to, adjust=False, tag="raw")  # 원주가
+        # 원주가 — 절대값이라 기준일이 무의미하다(`None` 이 규약).
+        res = await _daily(code, frm, to, adjust=False, adjusted_as_of=None, tag="raw")
         return [DailyBar(code, datetime.fromtimestamp(c.t_ms / 1000, tz=KST).date(),
                          float(c.open), float(c.high), float(c.low), float(c.close), c.volume)
                 for c in res.candles]
