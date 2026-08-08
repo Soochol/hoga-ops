@@ -685,6 +685,14 @@ class LiveMinuteCandleBackfill:
         섞임을 만드는 유일한 경로가 **새 fetch** 이고 모든 fetch 가 이 함수를
         지나므로, 여기서 끊으면 섞임이 원천적으로 생기지 않는다. 아무것도 새로
         안 받는 동안은 캐시가 전부 어제 척도라 자체 일관적이다.
+
+        **일봉(#1231 `PastDailyCandlesCache.clear_batches`)은 날짜가 넘어가면
+        조건 없이 전부 버린다 — 분봉은 그럴 수 없다.** 저쪽은 배치 단위라 척도가
+        바뀌었는지 싸게 알 방법이 없고 재획득이 코드당 깊은 walk 한 번이다.
+        여기는 ① 계수 테이블을 어차피 받으므로 대조가 공짜이고 ② 캐시가 종목당
+        최대 320일치 1분봉(ADR-0090 read-ahead)이라 매일 통째로 버리면 그
+        read-ahead 투자를 아침마다 되산다. 축이 달라서 처방이 다른 것이지
+        한쪽이 덜 엄격한 것이 아니다.
         """
         previous = self._stale_factors.pop(code, None)
         if previous is None:
