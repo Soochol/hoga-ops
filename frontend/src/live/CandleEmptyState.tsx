@@ -31,7 +31,15 @@ export function CandleEmptyState({
       data-testid="candle-empty-state"
       className="pointer-events-none absolute inset-0 z-[3] flex flex-col items-center justify-center gap-md"
     >
-      <span className="font-data text-xs text-fg-dim">{state.text}</span>
+      {/* 벤더 원문은 `title` 로만 — 한 줄 규약을 지키면서 진단 근거는 남긴다(부분로딩
+          칩과 같은 처방). 컨테이너가 `pointer-events-none` 이라 hover 를 살리려면
+          원문이 있을 때만 이 span 을 `auto` 로 되살려야 한다. */}
+      <span
+        className={`font-data text-xs text-fg-dim${state.detail ? ' pointer-events-auto' : ''}`}
+        title={state.detail}
+      >
+        {state.text}
+      </span>
       {canAct && (
         <button
           type="button"

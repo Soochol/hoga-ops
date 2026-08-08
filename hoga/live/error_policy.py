@@ -32,6 +32,7 @@ from hoga.live.kiwoom_errors import (
     KiwoomBatchLimitError,
     KiwoomRateLimitError,
     KiwoomRestError,
+    KiwoomTerminalAuthError,
     KiwoomTransportError,
 )
 
@@ -143,6 +144,22 @@ def classify_live_error(  # noqa: PLR0911 — 정책 테이블은 분기 나열�
             degraded=True,
             backoff_cycles=3,
             # 자격증명·권한 문제는 사용자가 설정을 고치기 전에는 재시도해도 같다.
+            permanent=True,
+        )
+    if isinstance(exc, KiwoomTerminalAuthError):
+        # **타입 계층은 `KiwoomApiError` 인데 표시는 인증이다** — 의도된 어긋남이다.
+        # 거버너가 토큰 무효화를 하면 안 되므로 `KiwoomAuthError` 를 상속하지 않지만,
+        # 사용자에게는 기다려도 낫지 않는 인증 실패다(`KiwoomTerminalAuthError` docstring).
+        # 그래서 이 팔이 generic `KiwoomApiError` 팔보다 **위에** 있어야 한다.
+        return LiveErrorPolicy(
+            kind="auth",
+            reason="auth_error",
+            code=str(exc.code),
+            message=exc.msg,
+            log_level=logging.WARNING,
+            include_traceback=False,
+            degraded=True,
+            backoff_cycles=3,
             permanent=True,
         )
     if isinstance(exc, KiwoomApiError):

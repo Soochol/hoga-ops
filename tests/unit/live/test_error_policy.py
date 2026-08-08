@@ -180,6 +180,36 @@ def test_kiwoom_auth_error_is_permanent_until_config_changes() -> None:
     assert policy.retry_after_s is None
 
 
+def test_kiwoom_terminal_auth_shows_as_auth_despite_api_error_base() -> None:
+    """**타입 계층과 표시 정책이 일부러 어긋난 자리다.**
+
+    8050 은 거버너가 토큰을 버리면 안 되므로 `KiwoomAuthError` 가 아니라
+    `KiwoomApiError` 를 상속한다. 그런데 사용자에게는 기다려도 낫지 않는 인증
+    실패이므로 정책은 `auth`·`permanent=True` 로 짓는다. 그 어긋남을 유지하는 것이
+    이 테스트의 전부다 — 어느 한쪽으로 맞추면 다른 쪽이 깨진다.
+    """
+    from hoga.live.error_policy import classify_live_error
+    from hoga.live.kiwoom_errors import KiwoomApiError, KiwoomAuthError, KiwoomTerminalAuthError
+
+    exc = KiwoomTerminalAuthError(
+        code=3, msg="인증에 실패했습니다[8050:지정단말기 인증에 실패했습니다]"
+    )
+
+    assert issubclass(KiwoomTerminalAuthError, KiwoomApiError)
+    assert not issubclass(KiwoomTerminalAuthError, KiwoomAuthError)
+
+    policy = classify_live_error(exc)
+    assert policy.kind == "auth"
+    assert policy.reason == "auth_error"
+    assert policy.permanent is True
+    assert policy.retry_after_s is None
+    # isinstance 순서 계약 — generic KiwoomApiError 팔이 먼저 걸리면 "잠시 후 재시도"
+    # 로 잘못 안내하고(retry_after_s 가 붙는다) 사유도 api_error 로 뭉개진다.
+    assert classify_live_error(KiwoomApiError(code=3, msg="x")).kind == "vendor_api"
+    # 벤더 원문이 통째로 실려야 프론트 칩 툴팁에서 8050 을 읽을 수 있다.
+    assert "8050" in policy.message
+
+
 def test_kiwoom_base_error_does_not_fall_through_to_unexpected() -> None:
     """모듈별 에러(KiwoomIndexCandlesError 등)는 베이스만 상속한다. 이 팔이 없으면
     벤더 장애가 ERROR+traceback 의 '내부 결함' 으로 기록된다."""

@@ -38,6 +38,7 @@ from hoga.live.kiwoom_errors import (
     KiwoomBatchLimitError,
     KiwoomRateLimitError,
     KiwoomRestError,
+    KiwoomTerminalAuthError,
     KiwoomTransportError,
 )
 
@@ -72,6 +73,10 @@ _RC_RATE_LIMITED = 5
 #         만료만 보는 provider 캐시는 이걸 통과시키므로, 이 코드를 인증 실패로
 #         승격하지 않으면 죽은 토큰을 만료 시각까지(≈하루) 계속 쓴다(2026-08-04 실측).
 _RC_MSG_AUTH = ("1513", "8005")
+#   8050  **지정단말기 인증 실패.** 위 둘과 달리 토큰이 아니라 단말기/IP 등록 문제라
+#         토큰 무효화·재발급이 처방이 아니다. 그래서 `_RC_MSG_AUTH` 에 넣지 않고
+#         별도 타입으로 올린다 — 자세한 근거는 `KiwoomTerminalAuthError` docstring.
+_RC_MSG_TERMINAL_AUTH = "8050"
 # **배치 크기 초과.** 벤더가 유량 초과(1700)와 똑같은 return_code 5 + 똑같은 한글
 # 문구로 돌려주므로 대괄호 코드로만 구분된다(#1040 실측). 재시도 대상이 아니다.
 _RC_MSG_BATCH_LIMIT = "1634"
@@ -196,6 +201,10 @@ def _raise_for_body(spec: TrSpec, status: int, body: dict[str, Any]) -> None:
     if status != httpx.codes.OK:
         raise KiwoomApiError(code=f"HTTP/{status}", msg=msg or f"HTTP {status}")
     if rc != 0:
+        if _RC_MSG_TERMINAL_AUTH in msg:
+            # 토큰 계열 인증 실패보다 **먼저** 본다. 문구가 겹치지는 않지만, 순서를
+            # 명시해 두어야 나중에 `_RC_MSG_AUTH` 에 8050 을 무심코 더하는 것을 막는다.
+            raise KiwoomTerminalAuthError(code=rc, msg=msg)
         if any(code in msg for code in _RC_MSG_AUTH):
             raise KiwoomAuthError(msg)
         raise KiwoomApiError(code=rc, msg=msg)

@@ -26,11 +26,28 @@ export interface CandleEmptyState {
   action: CandleEmptyAction;
   /** 행동 버튼 라벨. `action` 이 null 이면 없다. */
   actionLabel?: string;
+  /**
+   * 벤더 원문(있을 때). 한 줄 규약을 지키면서 진단 근거를 손 닿는 곳에 두려고
+   * **툴팁으로만** 노출한다 — 부분로딩 칩의 `title` 과 같은 처방이다.
+   *
+   * 이게 없으면 인증 실패의 진짜 코드(`8050` vs `8005`)를 화면에서 구별할 수 없다.
+   * 둘은 고칠 곳이 다르다(단말기 등록 vs 토큰/앱키).
+   */
+  detail?: string;
 }
 
 export interface CandleEmptyInput {
   /** 현재 활성 캔들 소스의 에러(타임프레임·우회 설정에 따라 다른 쿼리다). */
   error: unknown;
+  /**
+   * 활성 경로의 `data_warnings`. **200 인데 캔들이 비는 경우의 유일한 단서다.**
+   *
+   * 백엔드는 벤더 실패를 500 이 아니라 경고로 강등한다(#1226 이후 오늘 프로브까지).
+   * 그래서 `error` 는 null 인데 캔들이 0 인 상태가 정상 경로로 생기고, 경고를 안 보면
+   * 그 화면이 "이 구간에 캔들이 없다" 로 뜬다 — 벤더가 거절한 것을 **없는 데이터라고
+   * 단언**하는 셈이라 에러를 삼키는 것보다 나쁘다.
+   */
+  warnings?: readonly { reason: string; msg?: string }[];
   /** 이 창이 지금 캔들을 하나라도 그리고 있나. */
   hasCandles: boolean;
   /** 로딩 중엔 판단하지 않는다 — 안 그러면 매 조회마다 빈 상태가 깜빡인다. */
@@ -46,6 +63,23 @@ function errorCode(error: unknown): string | undefined {
 }
 
 /**
+ * "벤더가 못 줬다" 를 뜻하는 사유들 — **허용목록이다.**
+ *
+ * 제외목록이 아닌 이유: `rest_bypassed`(우회 켜짐)와 `invariant_violation`(행 단위
+ * 검증 실패)은 벤더 실패가 아니고, 이 목록에 새는 순간 그 아래 우회 안내 분기가
+ * 도달 불가가 된다. 백엔드가 사유를 늘릴 때 여기 추가하지 않으면 최악이 "예전처럼
+ * 일반 문구" 인 반면, 제외목록이면 최악이 "엉뚱한 안내" 라 방향이 다르다.
+ * (백엔드 `_FALLBACK_BLOCKING_REASONS` 도 같은 이유로 허용목록이다.)
+ */
+const VENDOR_FAILURE_REASONS: ReadonlySet<string> = new Set([
+  'rate_limit_upstream',
+  'rate_limit_aborted',
+  'transport_error',
+  'api_error',
+  'batch_limit_exceeded',
+]);
+
+/**
  * 표시할 빈 상태. 캔들이 있거나 판단할 수 없으면 `null`.
  *
  * 순서가 계약이다 — **에러가 먼저**다. 에러가 있으면 캔들이 없는 이유가 그것이고,
@@ -53,6 +87,7 @@ function errorCode(error: unknown): string | undefined {
  */
 export function deriveCandleEmptyState({
   error,
+  warnings,
   hasCandles,
   isLoading,
   restBypassEnabled,
@@ -75,6 +110,27 @@ export function deriveCandleEmptyState({
     // 알 수 없는 실패 — 코드를 못 읽어도 "조회가 실패했다" 는 말할 수 있다. 원인을
     // 모른다고 침묵하면 사용자는 다시 빈 차트만 본다.
     return { text: '캔들을 불러오지 못했다', action: 'retry', actionLabel: '다시 시도' };
+  }
+
+  // 200 + 경고 — 벤더가 거절했지만 백엔드가 경고로 강등한 경로다. 에러 분기 **뒤**,
+  // 우회/데이터없음 분기 **앞**이 자리다: 여기까지 왔다는 건 조회가 형식상 성공했다는
+  // 뜻이고, 그래도 경고가 있으면 "없는 데이터" 가 아니라 "못 받은 데이터"다.
+  const authWarning = warnings?.find((w) => w.reason === 'auth_error');
+  if (authWarning) {
+    // **행동을 제안하지 않는다.** 앱 설정 모달로는 못 고친다 — 인증 실패의 처방은
+    // 벤더 쪽(단말기·IP 등록)이거나 앱키 재발급이라 이 앱 안에 버튼이 없다. 재시도는
+    // 더 나쁘다: 설정을 고치기 전에는 영원히 같은 실패라 누를수록 헛돈다.
+    // 원문은 `detail` 로 넘겨 어느 코드인지 hover 로 확인할 수 있게 한다.
+    return { text: '벤더 인증에 실패해 캔들을 받지 못했다', action: null, detail: authWarning.msg };
+  }
+  const vendorWarning = warnings?.find((w) => VENDOR_FAILURE_REASONS.has(w.reason));
+  if (vendorWarning) {
+    return {
+      text: '벤더가 이 구간을 주지 않았다',
+      action: 'retry',
+      actionLabel: '다시 시도',
+      detail: vendorWarning.msg,
+    };
   }
 
   if (restBypassEnabled) {

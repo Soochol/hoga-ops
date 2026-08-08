@@ -64,4 +64,60 @@ describe('deriveCandleEmptyState', () => {
     const s = deriveCandleEmptyState(base);
     expect(s).toEqual({ text: '이 구간에 캔들이 없다', action: null });
   });
+
+  // --- 200 + data_warnings 경로 -------------------------------------------
+  // 백엔드가 벤더 실패를 500 이 아니라 경고로 강등하므로(#1226) `error` 는 null 인데
+  // 캔들만 0 인 상태가 **정상 경로로** 생긴다. 경고를 안 보면 그 화면이 "이 구간에
+  // 캔들이 없다" 로 떠서, 벤더가 거절한 것을 없는 데이터라고 단언하게 된다.
+
+  it('인증 실패 경고 → 재시도를 제안하지 않는다', () => {
+    // 설정을 고치기 전에는 영원히 같은 실패라 재시도 버튼은 헛돈다. 앱 설정 모달로도
+    // 못 고치므로(처방이 벤더 쪽이다) 행동 자체를 비운다.
+    const s = deriveCandleEmptyState({
+      ...base,
+      warnings: [{ reason: 'auth_error', msg: '인증에 실패했습니다[8050:지정단말기 인증에 실패했습니다]' }],
+    });
+    expect(s?.text).toBe('벤더 인증에 실패해 캔들을 받지 못했다');
+    expect(s?.action).toBeNull();
+    // 8050(단말기 등록)과 8005(토큰)는 고칠 곳이 다르다 — 원문이 없으면 구별 불가다.
+    expect(s?.detail).toContain('8050');
+  });
+
+  it('일반 벤더 실패 경고 → "없는 데이터" 가 아니라 "못 받은 데이터" 로 말한다', () => {
+    for (const reason of ['rate_limit_upstream', 'transport_error', 'api_error', 'batch_limit_exceeded']) {
+      const s = deriveCandleEmptyState({ ...base, warnings: [{ reason, msg: 'vendor said no' }] });
+      expect(s?.text).toBe('벤더가 이 구간을 주지 않았다');
+      expect(s?.action).toBe('retry');
+      expect(s?.detail).toBe('vendor said no');
+    }
+  });
+
+  it('인증 실패가 다른 벤더 실패보다 우선한다 — 처방이 정반대다', () => {
+    // 한 응답에 섞여 오면 재시도를 권하는 쪽이 이기면 안 된다.
+    const s = deriveCandleEmptyState({
+      ...base,
+      warnings: [{ reason: 'rate_limit_upstream', msg: 'a' }, { reason: 'auth_error', msg: 'b' }],
+    });
+    expect(s?.action).toBeNull();
+  });
+
+  it('벤더 실패가 아닌 사유는 이 분기를 켜지 않는다', () => {
+    // 허용목록이라 `invariant_violation`(행 단위 검증)·`rest_bypassed`(우회 켜짐)는
+    // 통과한다. 여기가 새면 아래 우회 안내가 도달 불가가 된다.
+    expect(deriveCandleEmptyState({ ...base, warnings: [{ reason: 'invariant_violation', msg: 'x' }] }))
+      .toEqual({ text: '이 구간에 캔들이 없다', action: null });
+    const bypass = deriveCandleEmptyState({
+      ...base, restBypassEnabled: true, warnings: [{ reason: 'rest_bypassed', msg: 'x' }],
+    });
+    expect(bypass?.text).toContain('벤더 우회');
+  });
+
+  it('에러가 경고보다 우선한다 — 조회 자체가 실패했으면 그게 이유다', () => {
+    const s = deriveCandleEmptyState({
+      ...base,
+      error: apiError('not_wired'),
+      warnings: [{ reason: 'auth_error', msg: 'x' }],
+    });
+    expect(s?.text).toContain('벤더 연결');
+  });
 });

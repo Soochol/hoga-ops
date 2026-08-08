@@ -18,7 +18,9 @@ from hoga.live.api import _KST, batched_daily_walkback
 from hoga.live.kis_client import KisApiError, KisRateLimitError, KisTransportError
 from hoga.live.kiwoom_errors import (
     KiwoomApiError,
+    KiwoomAuthError,
     KiwoomRateLimitError,
+    KiwoomTerminalAuthError,
     KiwoomTransportError,
 )
 
@@ -187,25 +189,49 @@ def test_today_miss_fetches_and_stores() -> None:
 
 
 @pytest.mark.parametrize(
-    ("exc", "expected_reason"),
+    ("exc", "expected_reason", "expected_msg_fragment"),
     [
-        (KiwoomRateLimitError("유량 초과 [유량=5, API ID=ka10081]"), "rate_limit_upstream"),
-        (KiwoomTransportError(httpx.RemoteProtocolError("server disconnected")), "transport_error"),
-        (KiwoomApiError(code=3, msg="인증에 실패했습니다[8050:지정단말기 인증에 실패했습니다]"), "api_error"),
+        # 유량 초과만 벤더가 코드 대신 상한(`유량=5`)을 실어 준다 — 정책은 `1700` 을
+        # `code` 에 넣고 `message` 는 원문 그대로 둔다.
+        (KiwoomRateLimitError("유량 초과 [유량=5, API ID=ka10081]"), "rate_limit_upstream", "유량=5"),
+        (
+            KiwoomTransportError(httpx.RemoteProtocolError("server disconnected")),
+            "transport_error",
+            "server disconnected",
+        ),
+        (KiwoomApiError(code=3, msg="잘못된 요청입니다[1504:...]"), "api_error", "1504"),
+        (
+            KiwoomAuthError("인증에 실패했습니다[8005:Token이 유효하지 않습니다]"),
+            "auth_error",
+            "8005",
+        ),
+        (
+            KiwoomTerminalAuthError(
+                code=3, msg="인증에 실패했습니다[8050:지정단말기 인증에 실패했습니다]"
+            ),
+            "auth_error",
+            "8050",
+        ),
     ],
-    ids=["rate_limit", "transport", "api"],
+    ids=["rate_limit", "transport", "api", "token_auth", "terminal_auth"],
 )
-def test_today_kiwoom_errors_degrade_to_warnings(exc: Exception, expected_reason: str) -> None:
+def test_today_kiwoom_errors_degrade_to_warnings(
+    exc: Exception, expected_reason: str, expected_msg_fragment: str,
+) -> None:
     """오늘 프로브가 **키움** 실패에 500 을 내지 않는다 — 2026-08-08 회귀.
 
-    과거 gap 루프는 `_API_ERRORS` 등 두 벤더 튜플을 잡는데 오늘 프로브만 `Kis*` 를
-    직접 적고 있었다. 일봉이 키움으로 이관된 뒤(ADR-0136) `KiwoomApiError` 만 그대로
-    탈출해 `/api/live/past-daily-candles` 가 500 이 됐다(`8050 지정단말기 인증 실패`).
+    과거 gap 루프는 두 벤더 튜플을 잡는데 오늘 프로브만 `Kis*` 를 직접 적고 있었다.
+    일봉이 키움으로 이관된 뒤(ADR-0136) `KiwoomApiError` 만 그대로 탈출해
+    `/api/live/past-daily-candles` 가 500 이 됐다(`8050 지정단말기 인증 실패`).
 
     이 500 이 특히 나쁜 이유는 **화면이 조용하다**는 것이다: 핸들러가 없어 Starlette
     plain text 로 나가므로 프론트 `buildApiError` 가 에러 코드를 못 읽고, 캔들이 이미
     캐시에 있으면 `deriveCandleEmptyState` 가 아무것도 띄우지 않는다. 경고로 강등돼야
     최소한 "일부 과거구간 로딩 실패" 칩까지 도달한다.
+
+    `token_auth` 케이스는 8050 과 **다른 갈래**다: `KiwoomAuthError` 는
+    `KiwoomApiError` 의 하위 타입이 아니라, api-error 만 잡아도 여전히 500 으로
+    샜다(8005 는 2026-08-04 에 실제로 겪은 코드다).
 
     `frm == too == today_d` 라 gap 루프는 아예 돌지 않는다 — 경고를 만든 것이 오늘
     브랜치임을 이 조건 하나가 고정한다(gap 루프가 대신 만들어 준 것이 아니다).
@@ -227,6 +253,9 @@ def test_today_kiwoom_errors_degrade_to_warnings(exc: Exception, expected_reason
     assert calls == [("005930", "20240105", "20240105")]  # 오늘 프로브 1회뿐
     assert [w["reason"] for w in out["data_warnings"]] == [expected_reason]
     assert out["data_warnings"][0]["batch"] == "20240105__20240105"
+    # `msg` 는 벤더 원문이다. 예전엔 `_vendor_code` 로 접혀서 키움 실패가 return_code
+    # 인 `"3"` 하나로 떠 대괄호 안의 진짜 코드가 화면에 도달하지 못했다.
+    assert expected_msg_fragment in out["data_warnings"][0]["msg"]
     assert out["candles"] == []
     # 실패를 성공으로 오기록하지 않는다 — negative 캐시로 굳으면 그날은 영영 안 받는다.
     assert cache.stored_today == []
