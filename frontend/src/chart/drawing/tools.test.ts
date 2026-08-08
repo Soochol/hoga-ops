@@ -41,6 +41,9 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     priceToCanvasY: vi.fn(() => 200),
     canvasYToPrice: vi.fn(() => defaultPoint.price),
     hitTestAt: vi.fn(() => null),
+    // 기본값을 hitTestAt 과 묶지 않는다 — 둘을 가르는 것이 이 테스트의 대상이라
+    // (채워진 박스 안쪽) 스텁이 서로를 흉내 내면 그 차이를 잴 수 없다.
+    hitTestOutlineAt: vi.fn(() => null),
     paneIdAtY: vi.fn(() => 'candle' as const),
     clampYToPane: vi.fn((_id, py) => py),
     priceBoundsForPane: vi.fn(() => ({ top: 100_000, bottom: 0 })),
@@ -503,6 +506,22 @@ describe('그리기 도구: 선택된 도형 위에서 시작한 press 는 이�
     tool.onPointerUp?.(ctx);
   }
 
+  /**
+   * 윤곽 판정은 전체 판정의 **부분집합**이다 — 윤곽에 맞았으면 본체에도 맞은 것이다.
+   * 게이트는 `hitTestOutlineAt` 으로 열리지만 `selectTool` 은 `hitTestAt` 으로 대상을
+   * 찾으므로, 스텁이 이 관계를 어기면 게이트만 열리고 드래그는 시작되지 않는 죽은
+   * 제스처가 된다(실제로 이 테스트를 그렇게 썼다가 잡았다). 둘이 갈리는 유일한
+   * 경우 — 채워진 박스의 안쪽 — 는 아래에서 따로 세운다.
+   */
+  function grabCtx(hit: Drawing | null, selectedId: string | null): ToolCtx {
+    return movingCtx({
+      drawings: [target],
+      selectedId,
+      hitTestAt: vi.fn(() => hit),
+      hitTestOutlineAt: vi.fn(() => hit),
+    });
+  }
+
   const GATED: ReadonlyArray<readonly [string, DrawingToolSpec]> = [
     ['hline', hlineTool],
     ['vline', vlineTool],
@@ -513,7 +532,7 @@ describe('그리기 도구: 선택된 도형 위에서 시작한 press 는 이�
 
   for (const [name, tool] of GATED) {
     it(`${name}: 선택된 도형을 잡으면 이동만 하고 아무것도 만들지 않는다`, () => {
-      const ctx = movingCtx({ drawings: [target], selectedId: 'p1', hitTestAt: vi.fn(() => target) });
+      const ctx = grabCtx(target, 'p1');
       tool.onPointerDown!(ctx);
       // hline/vline 은 down 이 곧 생성이라 여기서 이미 갈린다.
       expect(ctx.add).not.toHaveBeenCalled();
@@ -532,22 +551,43 @@ describe('그리기 도구: 선택된 도형 위에서 시작한 press 는 이�
     });
 
     it(`${name}: 선택되지 않은 도형 위에는 그대로 그려진다`, () => {
-      const ctx = movingCtx({ drawings: [target], selectedId: null, hitTestAt: vi.fn(() => target) });
+      const ctx = grabCtx(target, null);
       drawOne(tool, ctx);
       expect(ctx.dragRef.current).toBeNull();
       expect(ctx.add).toHaveBeenCalledOnce();
     });
 
     it(`${name}: 선택된 도형을 빗나간 press 는 그대로 그려진다`, () => {
-      const ctx = movingCtx({ drawings: [target], selectedId: 'p1', hitTestAt: vi.fn(() => null) });
+      const ctx = grabCtx(null, 'p1');
       drawOne(tool, ctx);
       expect(ctx.dragRef.current).toBeNull();
       expect(ctx.add).toHaveBeenCalledOnce();
     });
   }
 
+  it('채워진 박스의 안쪽은 게이트를 열지 않는다 — 큰 사각형 안에 작은 것을 그릴 수 있다', () => {
+    // 선택된 사각형의 **내부**를 누른 상황: select 모드 판정(`hitTestAt`)은 잡지만
+    // 윤곽 판정(`hitTestOutlineAt`)은 놓친다. 게이트는 후자를 물어야 한다 —
+    // 전자였다면 방금 그린 사각형 안쪽 전체가 다음 도형을 삼켰다.
+    const box: Drawing = {
+      id: 'r1', kind: 'rect',
+      a: { realMs: 1_700_000_000_000, price: 71_000 },
+      b: { realMs: 1_700_000_600_000, price: 69_000 },
+      color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle', fillOpacity: 0.1,
+    };
+    const ctx = movingCtx({
+      drawings: [box],
+      selectedId: 'r1',
+      hitTestAt: vi.fn(() => box),
+      hitTestOutlineAt: vi.fn(() => null),
+    });
+    drawOne(rectTool, ctx);
+    expect(ctx.dragRef.current).toBeNull();
+    expect(ctx.add).toHaveBeenCalledOnce();
+  });
+
   it('측정자는 게이트 밖이다 — 커밋 시 select 로 돌아가므로 함정 자체가 없다', () => {
-    const ctx = movingCtx({ drawings: [target], selectedId: 'p1', hitTestAt: vi.fn(() => target) });
+    const ctx = grabCtx(target, 'p1');
     measureTool.onPointerDown!(ctx);
     expect(ctx.dragRef.current).toBeNull();
     expect(ctx.measureDraft.current).not.toBeNull();

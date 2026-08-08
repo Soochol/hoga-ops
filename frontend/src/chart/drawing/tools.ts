@@ -162,6 +162,10 @@ export type ToolCtx = {
   canvasYToPrice(py: number, paneId: PaneId): number | null;
   /** Hit-test all drawings (reverse / topmost-first). */
   hitTestAt(px: number, py: number): Drawing | null;
+  /** Same, but a filled box (rect / measure) counts only by its OUTLINE. Used by
+   *  `withSelectedDrawingDrag` so the empty middle of the box you just drew does
+   *  not swallow the next drawing gesture — see `HitOptions` in hitTest.ts. */
+  hitTestOutlineAt(px: number, py: number): Drawing | null;
 
   /** PaneId of the pane the cursor is currently in. */
   paneIdAtY(py: number): PaneId;
@@ -481,10 +485,15 @@ export const selectTool: DrawingToolSpec = {
   },
 };
 
-/** 커밋 직후 선택돼 있는 도형 위에서 시작한 press 인가? */
+/** 커밋 직후 선택돼 있는 도형의 **윤곽** 위에서 시작한 press 인가?
+ *
+ *  `hitTestAt` 이 아니라 `hitTestOutlineAt` 인 것이 요점이다 — 채워진 박스는
+ *  select 모드에서 안쪽 아무 데나 잡히지만(그게 맞다), 그리기 도구가 켜진 채로
+ *  같은 판정을 쓰면 방금 그린 사각형 **안쪽 전체**가 다음 도형을 삼킨다. 큰 박스
+ *  안에 작은 박스를 그리는 것은 평범한 사용이다. */
 function startsOnSelectedDrawing(ctx: ToolCtx): boolean {
   if (ctx.selectedId == null) return false;
-  return ctx.hitTestAt(ctx.px, ctx.py)?.id === ctx.selectedId;
+  return ctx.hitTestOutlineAt(ctx.px, ctx.py)?.id === ctx.selectedId;
 }
 
 /**

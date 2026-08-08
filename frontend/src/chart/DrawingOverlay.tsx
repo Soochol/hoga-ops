@@ -22,7 +22,7 @@ import { INITIAL_STYLE, isDrawingKind } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import type { TimeShift } from './drawing/translate';
-import { hitTestDrawings } from './drawing/hitTest';
+import { hitTestDrawings, type HitOptions } from './drawing/hitTest';
 import {
   TOOLS,
   matchShortcut,
@@ -411,7 +411,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // SR-5: the kind-dispatch hit geometry lives in the pure hitTestDrawings
   // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds
   // the chart-aware coordinate closures.
-  const hitTestAt = (px: number, py: number): Drawing | null =>
+  const hitTest = (px: number, py: number, opts?: HitOptions): Drawing | null =>
     // Hidden drawings are non-interactive — no hover gating, no selection.
     defaults.hiddenAll
       ? null
@@ -427,7 +427,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           drawings,
           px,
           py,
+          opts,
         );
+  const hitTestAt = (px: number, py: number): Drawing | null => hitTest(px, py);
+  /** 그리기 도구가 켜진 채로 "이 도형을 잡았는가" 를 묻는 좁은 판정. 채워진 박스는
+   *  테두리로만 잡힌다 — 안쪽은 다음 도형을 그릴 자리로 남긴다. 판정 하나를 두
+   *  질문으로 나누는 이유는 hitTest.ts 의 `HitOptions` 주석에 있다. */
+  const hitTestOutlineAt = (px: number, py: number): Drawing | null =>
+    hitTest(px, py, { boxInterior: false });
 
   // ── text editing ───────────────────────────────────────────────────────
   // Commit the in-flight text edit. Idempotent: reads textEditRef and nulls it,
@@ -554,6 +561,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       priceToCanvasY,
       canvasYToPrice,
       hitTestAt,
+      hitTestOutlineAt,
       paneIdAtY,
       clampYToPane,
       priceBoundsForPane,
