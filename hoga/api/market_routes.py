@@ -292,6 +292,27 @@ class StreaksResponse(BaseModel):
     institution: list[StreakRow] = Field(default_factory=list, alias="기관")
 
 
+class FuturesDayValues(BaseModel):
+    """야간 틱이 덮기 **전**의 주간 값 — 카드에서 주간↔야간을 고를 수 있게 하는 짝.
+
+    `data_session == "night"` 인 quote 에만 실린다. 주간 카드는 최상위 필드가 이미
+    주간 값이라 여기 넣으면 같은 숫자가 두 벌이 된다.
+
+    **정체성 필드(코드·만기·최종거래일)는 넣지 않는다** — 두 세션이 같은 월물을
+    가리키므로 값만 갈린다. 복제하면 둘이 어긋날 자리를 새로 만드는 셈이다.
+    """
+    value: float
+    change: float
+    change_rate: float
+    prev_close: float
+    volume: int
+    open_interest: int
+    oi_change: int
+    market_basis: float | None = None
+    disparity: float | None = None
+    t_ms: int
+
+
 class FuturesQuoteRow(BaseModel):
     id: str
     underlying_id: str | None = None
@@ -313,6 +334,9 @@ class FuturesQuoteRow(BaseModel):
     # 이 값이 속한 세션. 최상위 `session`(지금 열린 세션)과 다를 수 있고 종목마다 다르다.
     data_session: str
     t_ms: int
+    # 야간 값이 덮기 전의 주간 값. `data_session == "night"` 일 때만 실린다 —
+    # 있으면 화면이 그 카드에서 주간↔야간을 고를 수 있다는 뜻이다.
+    day: FuturesDayValues | None = None
 
 
 class FuturesQuotesResponse(BaseModel):
@@ -327,12 +351,24 @@ class FuturesSparkCoverage(BaseModel):
     gap_count: int
 
 
+class FuturesDaySeries(BaseModel):
+    """야간 시리즈와 함께 실리는 **그날 주간장** 모양. 카드가 '주간' 을 고르면 이걸 그린다.
+
+    `coverage` 가 없는 것이 의도다 — 주간은 REST 로 날짜를 지정해 다시 받으므로
+    "놓친 구간" 이라는 개념 자체가 없다.
+    """
+    closes: list[float] = Field(default_factory=list)
+    day_open: float | None = None
+
+
 class FuturesSpark(BaseModel):
     closes: list[float] = Field(default_factory=list)
     day_open: float | None = None
     session: str
     # 야간 시리즈에만 실린다 — 주간은 REST 소급 조회가 되므로 "놓친 구간" 이 없다.
     coverage: FuturesSparkCoverage | None = None
+    # 야간 시리즈일 때 같이 오는 주간 모양. `session == "day"` 면 최상위가 이미 주간이다.
+    day: FuturesDaySeries | None = None
 
 
 class FuturesCandlesResponse(BaseModel):
@@ -797,6 +833,11 @@ class _FuturesRuntimeHolder:
                         "observed_buckets": s.coverage.observed_buckets,
                         "gap_count": s.coverage.gap_count,
                     },
+                    # 야간 시리즈일 때 같이 오는 주간 모양. 값 쪽 `day` 와 짝이다 —
+                    # 한쪽만 있으면 '주간' 선택이 숫자만 바꾸고 그림은 비운다.
+                    "day": None
+                    if s.day_series is None
+                    else {"closes": list(s.day_series[0]), "day_open": s.day_series[1]},
                 }
                 for item_id, s in series.items()
             }
@@ -834,6 +875,23 @@ class _FuturesRuntimeHolder:
                     # KOSPI200 은 night 이고 코스닥150 은 day(주간 마감본)일 수 있다.
                     "data_session": c.data_session,
                     "t_ms": c.quote.t_ms,
+                    # 야간 카드에만 실린다 — 있으면 화면이 주간↔야간을 고를 수 있다.
+                    # 야간 REST 가 주간 마감본이라 이 값은 이미 손에 있었고, 여기까지
+                    # 흘려보내는 데 벤더 호출이 늘지 않는다.
+                    "day": None
+                    if c.day_quote is None
+                    else {
+                        "value": c.day_quote.value,
+                        "change": c.day_quote.change,
+                        "change_rate": c.day_quote.change_rate,
+                        "prev_close": c.day_quote.prev_close,
+                        "volume": c.day_quote.volume,
+                        "open_interest": c.day_quote.open_interest,
+                        "oi_change": c.day_quote.oi_change,
+                        "market_basis": c.day_quote.market_basis,
+                        "disparity": c.day_quote.disparity,
+                        "t_ms": c.day_quote.t_ms,
+                    },
                 }
                 for c in snap.cards
             ],

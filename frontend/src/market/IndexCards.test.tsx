@@ -101,6 +101,7 @@ function mockApi(
       day_open: number | null;
       session?: string;
       coverage?: { first_hhmm: string; observed_buckets: number; gap_count: number } | null;
+      day?: { closes: number[]; day_open: number | null } | null;
     }
   > = {},
   volatility: { code: string; name: string; value: number | null; change_pct: number | null } | null = null,
@@ -342,6 +343,167 @@ describe('IndexCards 세션 칩', () => {
     const card = cardByLabel('KOSPI 200');
     expect(within(card).queryByText('야간')).toBeNull();
     expect(within(card).queryByText('주간')).toBeNull();
+  });
+});
+
+/**
+ * 야간 카드에서 "그럼 주간은 얼마였지" 를 보는 선택.
+ *
+ * **가드가 막는 방향**: ① 선택지가 없는 카드에 버튼이 생기는 것(주간 카드는 최상위가
+ * 이미 주간이라 고를 것이 없다), ② 값만 갈리고 베이시스·그림이 안 따라와 **한 카드가
+ * 두 시각을 가리키는 것**, ③ 명시적 선택을 낡음 경고로 되받는 것.
+ *
+ * **못 보는 것**: 낮에 전날 야간을 보는 반대 방향. 그건 데이터가 아직 없다 — KIS 는
+ * 야간을 REST 로 소급해 주지 않아서(2026-08-08 실측) 우리가 저장한 기록으로만 가능하고,
+ * 그 읽기 경로는 아직 배선되지 않았다.
+ */
+describe('IndexCards 주간↔야간 선택', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  /** 야간 틱이 덮은 카드 — 백엔드가 덮기 전 주간 값을 `day` 로 함께 싣는다. */
+  const NIGHT_WITH_DAY = futuresQuote({
+    data_session: 'night',
+    value: 1004.95,
+    change: 23.8,
+    change_rate: 2.43,
+    market_basis: 22.03,
+    day: {
+      value: 981.15,
+      change: -60.9,
+      change_rate: -5.84,
+      prev_close: 1042.05,
+      volume: 123714,
+      open_interest: 159288,
+      oi_change: -1469,
+      market_basis: -1.77,
+      disparity: -0.4,
+      t_ms: 1,
+    },
+  });
+
+  async function showFutures(indexLabel = 'KOSPI 200') {
+    await userEvent.click(
+      within(await screen.findByLabelText(`${indexLabel} 현물/선물`)).getByText('선물'),
+    );
+  }
+
+  function sessionChip(cardLabel: string): HTMLElement {
+    return within(cardByLabel(cardLabel)).getByRole('button', { name: /세션/ });
+  }
+
+  it('야간 카드의 칩을 누르면 값이 주간 마감본으로 갈린다', async () => {
+    mockApi({ quotes: [NIGHT_WITH_DAY], session: 'night' });
+    renderCards();
+    await showFutures();
+
+    expect(screen.getByText('1,004.95')).toBeTruthy();
+    await userEvent.click(sessionChip('KOSPI 200 F'));
+
+    expect(screen.getByText('981.15')).toBeTruthy();
+    expect(screen.queryByText('1,004.95')).toBeNull();
+    expect(within(cardByLabel('KOSPI 200 F')).getByText('주간')).toBeTruthy();
+  });
+
+  it('베이시스도 같은 세션으로 갈린다 — 값만 바꾸면 한 카드가 두 시각을 가리킨다', async () => {
+    mockApi({ quotes: [NIGHT_WITH_DAY], session: 'night' });
+    renderCards();
+    await showFutures();
+
+    expect(screen.getByText('+22.03')).toBeTruthy();
+    await userEvent.click(sessionChip('KOSPI 200 F'));
+
+    expect(screen.getByText('-1.77')).toBeTruthy();
+    expect(screen.queryByText('+22.03')).toBeNull();
+  });
+
+  it('그림도 같이 갈린다 — 값 쪽 day 와 그림 쪽 day 는 짝이다', async () => {
+    mockApi(
+      { quotes: [NIGHT_WITH_DAY], session: 'night' },
+      {
+        KOSPI200_F: {
+          closes: [1000, 1004.95],
+          day_open: null,
+          session: 'night',
+          day: { closes: [1042.05, 981.15], day_open: 1042.05 },
+        },
+      },
+    );
+    renderCards();
+    await showFutures();
+
+    const nightPath = sparkPath(cardByLabel('KOSPI 200 F'));
+    await userEvent.click(sessionChip('KOSPI 200 F'));
+
+    const dayPath = sparkPath(cardByLabel('KOSPI 200 F'));
+    expect(dayPath).toBeTruthy();
+    expect(dayPath).not.toBe(nightPath);
+  });
+
+  it('주간을 직접 고르면 낡음 배지가 침묵한다 — 고른 결과는 경고가 아니다', async () => {
+    // **세션 전환 창에서 재야 한다.** 야간이 진행 중이면 값도 야간이라 배지가 애초에
+    // 안 뜨고, 그 상태로 재면 침묵 로직을 지워도 통과한다(실측 — 첫 시도가 그랬다).
+    // 실재하는 창은 이쪽이다: 시세 캐시 20초 · 분봉 60초라 세션이 주간으로 돌아온 뒤에도
+    // 값은 잠깐 야간으로 남는다. 그때 배지는 '장 마감' 을 말하는데, 사용자가 방금
+    // 주간을 골랐다면 그 카드는 정확히 원하는 값을 그리고 있다.
+    mockApi({ quotes: [NIGHT_WITH_DAY], session: 'day' });
+    renderCards();
+    await showFutures();
+    expect(within(cardByLabel('KOSPI 200 F')).getByText(/장 마감/)).toBeTruthy();
+
+    await userEvent.click(sessionChip('KOSPI 200 F'));
+
+    expect(within(cardByLabel('KOSPI 200 F')).queryByText(/장 마감/)).toBeNull();
+  });
+
+  it('선택지가 없는 카드의 칩은 버튼이 아니다', async () => {
+    // 주간 카드는 최상위가 이미 주간이라 백엔드가 `day` 를 싣지 않는다.
+    mockApi({ quotes: [futuresQuote()], session: 'day' });
+    renderCards();
+    await showFutures();
+
+    expect(within(cardByLabel('KOSPI 200 F')).queryByRole('button', { name: /세션/ })).toBeNull();
+    expect(within(cardByLabel('KOSPI 200 F')).getByText('주간')).toBeTruthy();
+  });
+
+  it('야간에 무음인 카드에도 버튼이 붙지 않는다 — 카드마다 갈린다', async () => {
+    mockApi(
+      { quotes: [NIGHT_WITH_DAY, KOSDAQ150_F], session: 'night' },
+      {},
+    );
+    renderCards();
+    await showFutures('KOSPI 200');
+    await showFutures('KOSDAQ 150');
+
+    expect(sessionChip('KOSPI 200 F')).toBeTruthy();
+    expect(within(cardByLabel('KOSDAQ 150 F')).queryByRole('button', { name: /세션/ })).toBeNull();
+  });
+
+  it('선택은 저장되지 않는다 — 현물로 갔다 오면 야간으로 돌아온다', async () => {
+    // 세션 선택은 시간에 종속이라 영속하면 다음 날 아침 유령으로 남는다. 현물/선물
+    // 모드(localStorage)와 **의도적으로 다른** 규칙이라 여기서 못 박는다.
+    mockApi({ quotes: [NIGHT_WITH_DAY], session: 'night' });
+    renderCards();
+    await showFutures();
+    await userEvent.click(sessionChip('KOSPI 200 F'));
+    expect(screen.getByText('981.15')).toBeTruthy();
+
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('현물'));
+    await userEvent.click(within(toggleFor('KOSPI 200')).getByText('선물'));
+
+    expect(screen.getByText('1,004.95')).toBeTruthy();
+  });
+
+  it('칩은 라벨 옆에 있다 — 카드 어딘가가 아니라', async () => {
+    // `getByText('주간')` 은 카드 어디에 있든 통과한다(#1223 함정). 부모가 라벨을
+    // 품는지까지 봐야 "라벨 옆" 이 요구사항으로 고정된다.
+    mockApi({ quotes: [NIGHT_WITH_DAY], session: 'night' });
+    renderCards();
+    await showFutures();
+
+    expect(sessionChip('KOSPI 200 F').parentElement?.textContent).toContain('KOSPI 200 F');
   });
 });
 

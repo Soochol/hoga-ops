@@ -27,6 +27,11 @@ from hoga.api.kis_futures_master import (
     fetch_futures_master,
     near_month,
 )
+from hoga.live.futures_night_store import (
+    NightQuoteRecord,
+    NightSessionRecord,
+    save_session,
+)
 from hoga.live.kis_futures_endpoints import FuturesQuote
 from hoga.util.timeenc import KST
 
@@ -77,9 +82,26 @@ _NIGHT_OPEN_MIN = 18 * 60
 _NIGHT_CLOSE_MIN = 5 * 60
 
 
+#: 토요일의 `date.weekday()`. 주말 단락 판정에 쓴다(아래 `_is_trading_day`).
+_SATURDAY = 5
+
+
 def _is_trading_day(date: dt.date) -> bool:
     """캘린더 술어. 모름(`None`)은 **거래일로 본다** — 시드 범위 밖에서 카드를 조용히
-    끄는 것보다, 값이 안 변하는 것으로 사용자가 알아채는 편이 낫다."""
+    끄는 것보다, 값이 안 변하는 것으로 사용자가 알아채는 편이 낫다.
+
+    **단, 주말은 캘린더에 묻지 않는다.** KRX 에 토·일 세션은 없다 — 물어볼 필요가
+    없는 확정 사실인데 fail-open 뒤에 두면 커버리지가 끝나는 순간 뒤집힌다.
+    2026-08-08(토) 22:45 실측이 그랬다: 거래일 오버레이가 금요일까지만 차 있어
+    `is_trading_day("20260808")` 이 `None` 을 주고, 그것이 거래일로 읽혀 **주말 밤이
+    `night` 로 판정**됐다. 야간 틱은 당연히 0 이니 화면은 "야간장 진행 중인데 값은
+    주간 마감본" 이라는, 어느 쪽으로도 참이 아닌 상태를 표시했다.
+
+    fail-open 자체는 그대로 둔다 — 평일 휴장일에서는 여전히 "값이 안 변하는 것으로
+    알아챈다" 가 옳다. 여기서 좁힌 것은 **캘린더가 답할 필요조차 없는 구간**뿐이다.
+    """
+    if date.weekday() >= _SATURDAY:
+        return False
     from hoga.api.calendar import is_trading_day  # noqa: PLC0415 — 지연 import(순환 회피)
 
     return is_trading_day(date.strftime("%Y%m%d")) is not False
@@ -126,6 +148,11 @@ def spark_date(t_ms: int) -> str:
     return ref.strftime("%Y%m%d")
 
 
+#: 야간 기록을 디스크에 다시 쓰는 최소 간격(초). 시세 폴링(20~30초)과 keeper(60초)가
+#: 둘 다 이 경로를 지나므로 스로틀이 없으면 같은 파일을 분당 서너 번 덮어쓴다.
+#: 5분봉이 5분에 한 번만 늘어나니 1분이면 손실 상한이 그만큼으로 묶인다.
+_NIGHT_PERSIST_S = 60.0
+
 #: 스파크라인 최소 점 수. 야간 봉이 이보다 적으면 주간 모양으로 폴백한다 —
 #: 야간 개장 직후(18:00~18:10)가 그 구간이다. 한 점짜리 선은 거짓 정보다.
 _MIN_SPARK_POINTS = 2
@@ -144,6 +171,10 @@ class SparkSeries:
     #: 야간 시리즈의 관측 구간. **주간은 None** — REST 는 날짜를 지정해 언제든 다시
     #: 받을 수 있어서 "놓친 구간" 이라는 개념이 없다. 야간만 재구성이 불가능하다.
     coverage: Any = None
+    #: 야간 시리즈일 때 같이 싣는 **그날 주간장** 모양 `(종가들, 시가)`. 카드에서
+    #: '주간' 을 고르면 이 그림을 그린다 — 없으면 값만 주간으로 바뀌고 그림은 사라져,
+    #: 선택이 카드를 반쯤 비우는 것처럼 보인다.
+    day_series: tuple[tuple[float, ...], float | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -157,6 +188,12 @@ class FuturesCard:
     #: 2026-08-07 00:36 실측 40초에 KOSPI200 48틱 / 코스닥150 0틱 / VKOSPI 0틱.
     #: 스냅샷 하나에 세션을 매달면 그 순간 카드 둘 중 하나는 반드시 거짓말을 한다.
     data_session: FuturesSession
+    #: 야간 틱이 덮기 **전**의 주간 값. `data_session == "night"` 일 때만 채운다.
+    #:
+    #: 두 값을 같이 실어야 화면이 카드에서 주간↔야간을 **고를 수 있다**. 야간에 REST
+    #: 는 어차피 주간 마감본을 계속 주므로(15:45 동결) 이 값은 이미 손에 있다 —
+    #: 접어서 버리고 있었을 뿐이다. 벤더 호출이 늘지 않는 것이 이 설계의 요점이다.
+    day_quote: FuturesQuote | None = None
 
 
 @dataclass(frozen=True)
@@ -171,9 +208,13 @@ class FuturesSnapshot:
 class FuturesQuotesRuntime:
     """프로세스 싱글턴. 마스터를 캐시하고 라인업 근월물 시세를 한 번에 가져온다."""
 
-    def __init__(self, client_factory) -> None:
+    def __init__(self, client_factory, data_dir: Path | None = None) -> None:
         # client_factory: () -> KisClient | None  (자격증명 없으면 None)
         self._client_factory = client_factory
+        #: 야간 기록 저장 위치. None 이면 저장하지 않는다 — 무자격·테스트 경로다.
+        self._data_dir = data_dir
+        #: 야간 기록을 마지막으로 쓴 시각(monotonic). 스로틀용.
+        self._night_saved_at = 0.0
         self._master: list[FuturesMasterRow] | None = None
         self._master_at = 0.0
         self._master_lock = asyncio.Lock()
@@ -236,7 +277,9 @@ class FuturesQuotesRuntime:
         quotes = await client.fetch_futures_quotes(rows)
         by_code = {q.code: q for q in quotes}
         self._last_quotes.update(by_code)
-        ticks = await self._night_ticks(session, tuple(r.code for r in rows))
+        ticks = await self._night_ticks(
+            session, tuple((item.id, row.code) for item, row in zip(items, rows, strict=True))
+        )
 
         cards: list[FuturesCard] = []
         for item, row in zip(items, rows, strict=True):
@@ -284,16 +327,28 @@ class FuturesQuotesRuntime:
                         t_ms=tick.t_ms,
                     ),
                     "night",
+                    # 덮기 **전** 값을 같이 들고 간다 — 화면의 주간↔야간 선택지다.
+                    # 야간 REST 가 주간 마감본이라는 성질이 여기서는 이점이 된다:
+                    # 두 세션의 값이 추가 호출 없이 동시에 손에 있다.
+                    day_quote=quote,
                 )
             )
         return FuturesSnapshot(tuple(cards), session, unavailable=None)
 
-    async def _night_ticks(self, session: FuturesSession, codes: tuple[str, ...]) -> dict:
+    async def _night_ticks(
+        self, session: FuturesSession, pairs: tuple[tuple[str, str], ...]
+    ) -> dict:
         """야간이면 WS 를 깨우고 최신 틱을, 아니면 빈 dict 를 돌려준다.
+
+        `pairs` 는 `(카드 id, 종목코드)` 다. 코드만 받으면 될 것 같지만 **디스크
+        기록이 카드 id 로 키잉된다** — 롤오버로 근월물이 바뀌면 코드 키는 어제 밤을
+        못 찾는다(`futures_night_store` 참조). 두 호출자 모두 이미 라인업을 알고 있어
+        여기로 같이 내리는 것이 매핑을 다시 만드는 것보다 싸다.
 
         **야간이 아니면 세션을 닫는다** — 주간에 WS 슬롯을 쥐고 있을 이유가 없고,
         REST 가 이미 실시간이라 틱이 있어도 쓰지 않는다.
         """
+        codes = tuple(code for _, code in pairs)
         if session != "night" or not codes:
             if self._ws is not None:
                 await self._ws.aclose()
@@ -312,7 +367,69 @@ class FuturesQuotesRuntime:
         now_ms = int(dt.datetime.now(KST).timestamp() * 1000)
         session_day = await asyncio.to_thread(spark_date, now_ms)
         await self._ws.ensure_running(codes, session_day=session_day)
-        return {code: tick for code in codes if (tick := self._ws.latest(code)) is not None}
+        ticks = {code: tick for code in codes if (tick := self._ws.latest(code)) is not None}
+        self._persist_night(session_day, pairs, ticks)
+        return ticks
+
+    def _persist_night(
+        self,
+        session_day: str,
+        pairs: tuple[tuple[str, str], ...],
+        ticks: dict,
+    ) -> None:
+        """야간 틱·봉을 디스크에 남긴다 — **이 밤을 나중에 볼 수 있는 유일한 경로**다.
+
+        벤더에 소급 조회가 없으므로(`futures_night_store` 모듈 docstring), 여기서
+        안 쓴 밤은 영영 없다. 그래서 세션 **끝**에 한 번 쓰지 않고 진행 중 계속
+        덮어쓴다 — 마감 시각을 기다리다 그 전에 프로세스가 죽으면 그날이 통째로
+        사라진다.
+
+        저장은 두 경로(`snapshot` · keeper)에서 같이 걸린다. 어느 쪽이 부르든
+        같은 파일을 갱신하므로 keeper 가 꺼진 환경에서도 화면을 연 동안은 남는다.
+        **실패는 삼킨다** — 기록은 부가 기능이고, 디스크 문제로 카드가 사라지면
+        더 나쁜 거래다.
+        """
+        if self._data_dir is None or not ticks:
+            return
+        now = time.monotonic()
+        if now - self._night_saved_at < _NIGHT_PERSIST_S:
+            return
+        self._night_saved_at = now
+
+        records: dict[str, NightQuoteRecord] = {}
+        for card_id, code in pairs:
+            tick = ticks.get(code)
+            if tick is None:
+                # 무음 종목은 기록하지 않는다. 주간 마감본을 야간 기록으로 남기면
+                # 다음 날 "어젯밤 값" 이 사실은 그 전날 주간 종가가 된다.
+                continue
+            records[card_id] = NightQuoteRecord(
+                code=code,
+                price=tick.price,
+                change=tick.change,
+                change_rate=tick.change_rate,
+                volume=tick.volume,
+                open_interest=tick.open_interest,
+                oi_change=tick.oi_change,
+                market_basis=tick.market_basis,
+                disparity=tick.disparity,
+                bsop_hour=tick.bsop_hour,
+                t_ms=tick.t_ms,
+                bars={} if self._ws is None else self._ws.night_bars(code),
+            )
+        if not records:
+            return
+        try:
+            save_session(
+                self._data_dir,
+                NightSessionRecord(
+                    session_day=session_day,
+                    updated_ms=int(dt.datetime.now(KST).timestamp() * 1000),
+                    quotes=records,
+                ),
+            )
+        except OSError as e:
+            log.warning("야간 기록 저장 실패 session_day=%s: %s", session_day, e)
 
     async def ensure_night_stream(self) -> bool:
         """야간이면 WS 를 깨워 두고, 아니면 닫는다. **REST 는 건드리지 않는다.**
@@ -338,15 +455,15 @@ class FuturesQuotesRuntime:
             log.warning("야간 keeper: 선물 마스터 실패: %s", e)
             return False
 
-        codes: list[str] = []
+        pairs: list[tuple[str, str]] = []
         for item in LINEUP:
             try:
-                codes.append(near_month(master, item.product).code)
+                pairs.append((item.id, near_month(master, item.product).code))
             except KisFuturesMasterFetchError:
                 continue
-        if not codes:
+        if not pairs:
             return False
-        await self._night_ticks(session, tuple(codes))
+        await self._night_ticks(session, tuple(pairs))
         return True
 
     async def sparks(self) -> dict[str, SparkSeries]:
@@ -384,23 +501,35 @@ class FuturesQuotesRuntime:
             # 주간 그림으로 폴백하면, 값은 야간인데 그림은 주간인 카드가 된다 —
             # 사용자는 그날 주간 하락을 **야간에 일어난 것**으로 읽는다. 그래서
             # 그 구간은 아무것도 그리지 않는다(없는 편이 거짓보다 낫다).
-            if self._ws is not None and self._ws.latest(row.code) is not None:
-                night = self._ws.night_series(row.code)
-                if len(night) < _MIN_SPARK_POINTS:
-                    return None
+            is_night = self._ws is not None and self._ws.latest(row.code) is not None
+            if is_night and len(self._ws.night_series(row.code)) < _MIN_SPARK_POINTS:
+                return None
+
+            # 주간 모양은 **두 경우 모두** 필요하다. 주간 카드에는 그것이 곧 그림이고,
+            # 야간 카드에는 사용자가 '주간' 을 골랐을 때 그릴 짝이다. 야간에 이 호출을
+            # 아끼면 선택지의 절반이 빈 카드가 된다 — 분봉 폴링은 화면이 열려 있을 때만
+            # 도는 데다(`useMarketFuturesCandles` 의 `enabled`) 60초 캐시라 유량은 미미하다.
+            try:
+                spark = await client.fetch_futures_spark(row, date_yyyymmdd=date)
+            except Exception as e:  # noqa: BLE001 — 스파크라인은 장식이다. 카드를 죽이지 않는다.
+                log.debug("선물 스파크라인 실패 id=%s: %s", item.id, e)
+                spark = None
+
+            if is_night:
                 # 기준선을 주지 않는다 — 야간 시가가 곧 첫 점이라 Sparkline 이 알아서
                 # 쓴다. 주간 시가를 기준선으로 주면 야간 등락을 주간 대비로 색칠한다.
                 #
                 # 커버리지를 함께 싣는다. 스파크라인엔 축이 없어서 18:00 부터 8시간을
                 # 그린 선과 02:00 부터 10분을 그린 선이 화면에서 구별되지 않는다 —
                 # 재시작·유휴 정지로 앞이 잘렸다는 사실은 응답이 말해야 한다.
-                return item.id, SparkSeries(night, None, "night", self._ws.night_coverage())
+                return item.id, SparkSeries(
+                    self._ws.night_series(row.code),
+                    None,
+                    "night",
+                    self._ws.night_coverage(),
+                    day_series=None if spark is None else (spark.closes, spark.day_open),
+                )
 
-            try:
-                spark = await client.fetch_futures_spark(row, date_yyyymmdd=date)
-            except Exception as e:  # noqa: BLE001 — 스파크라인은 장식이다. 카드를 죽이지 않는다.
-                log.debug("선물 스파크라인 실패 id=%s: %s", item.id, e)
-                return None
             if spark is None:
                 return None
             return item.id, SparkSeries(spark.closes, spark.day_open, "day")
@@ -434,7 +563,7 @@ def ensure_runtime(data_dir: Path | None) -> FuturesQuotesRuntime:
 
             return ensure_kis_client_from_env(data_dir)
 
-        _RUNTIME = FuturesQuotesRuntime(factory)
+        _RUNTIME = FuturesQuotesRuntime(factory, data_dir)
     return _RUNTIME
 
 

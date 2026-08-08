@@ -11,7 +11,7 @@
  * 표시 규칙상 안 붙이는 것이고(#1100), 확정 이력이 빈 것은 **아직 쌓이는 중**이며,
  * 자금 카드가 빈 것은 **키가 없어서**다. 셋을 같은 빈 화면으로 보이면 진단이 흐려진다.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SectorFlowCard } from './SectorFlowCard';
 import { InvestorCard } from './InvestorFlowCard';
 import { useLiveIndexCandles } from '../api/liveIndices';
@@ -94,11 +94,18 @@ function useCardModes(): [Record<string, CardMode>, (id: string, next: CardMode)
  *
  *  **카드마다 따로 판정한다.** 야간엔 유동성에 따라 종목별로 갈리기 때문이다 —
  *  KOSPI200 은 WS 틱이 붙어 실시간인데 코스닥150 은 무음이라 주간 마감본일 수 있다.
- *  스냅샷 하나로 판정하면 둘 중 하나는 반드시 틀린 배지를 단다. */
+ *  스냅샷 하나로 판정하면 둘 중 하나는 반드시 틀린 배지를 단다.
+ *
+ *  **사용자가 직접 주간을 골랐으면 침묵한다**(`viewingDay`). 이 배지는 "의도하지
+ *  않았는데 값이 어긋났다" 는 **예외** 채널이다. 고른 결과를 같은 문구로 알리면
+ *  경고와 확인이 한 자리에서 섞이고, 그 순간부터 배지가 어느 질문에 답하는지
+ *  알 수 없어진다. 어느 세션 값인지는 라벨 옆 칩이 이미 상태로 말한다. */
 function stalenessNote(
   future: FuturesQuote,
   snapshot: FuturesQuotesSnapshot | undefined,
+  viewingDay: boolean,
 ): string | null {
+  if (viewingDay) return null;
   if (!snapshot || snapshot.session === future.dataSession) return null;
   return snapshot.session === 'night' ? '주간 마감값' : '장 마감';
 }
@@ -135,18 +142,20 @@ function fmtBasis(n: number | null): string {
 function FuturesMeta({
   future,
   snapshot,
+  viewingDay = false,
 }: {
   future: FuturesQuote;
   snapshot: FuturesQuotesSnapshot | undefined;
+  /** 사용자가 이 카드에서 '주간' 을 골랐는가. 베이시스도 그 세션 것으로 갈린다 —
+   *  값만 주간으로 바꾸고 베이시스를 야간 것으로 두면 한 카드가 두 시각을 가리킨다. */
+  viewingDay?: boolean;
 }) {
-  const stale = stalenessNote(future, snapshot);
+  const stale = stalenessNote(future, snapshot, viewingDay);
+  const basis = viewingDay && future.day ? future.day.marketBasis : future.marketBasis;
   return (
     <div className="flex flex-wrap items-baseline gap-x-xs font-data text-2xs tabular-nums text-fg-dim">
       <span>
-        베이시스{' '}
-        <span className={priceDirClass(future.marketBasis ?? 0)}>
-          {fmtBasis(future.marketBasis)}
-        </span>
+        베이시스 <span className={priceDirClass(basis ?? 0)}>{fmtBasis(basis)}</span>
       </span>
       {future.daysLeft != null && <span>· D-{future.daysLeft}</span>}
       {/* `text-fg-dimmer` 를 쓰지 않는다 — 소형 텍스트에는 WCAG AA 미달이다(DESIGN.md
@@ -288,6 +297,23 @@ function IndexCard({
   // 만들지 않는다. 저장된 선택은 건드리지 않으므로 데이터가 오면 알아서 복귀한다.
   const showFutures = future != null && mode === 'futures';
 
+  // 야간 카드에서 "그럼 주간은 얼마였지" 를 볼 수 있게 하는 선택. **선택지는 백엔드가
+  // `day` 를 실어 줄 때만 존재한다** — 즉 이 카드가 지금 야간 값을 그리고 있을 때뿐이다.
+  //
+  // **영속하지 않는다**(현물/선물 모드와 다른 점). 그쪽은 취향이지만 이쪽은 시간에
+  // 종속된 선택이라, localStorage 에 남기면 다음 날 아침 '주간' 이 유령으로 남는다.
+  // 선택지가 사라지면 아래 effect 가 자동으로 되돌린다.
+  const [preferDay, setPreferDay] = useState(false);
+  const canPickSession = showFutures && future.day != null;
+  useEffect(() => {
+    if (!canPickSession) setPreferDay(false);
+  }, [canPickSession]);
+  const viewingDay = canPickSession && preferDay;
+
+  // 값·등락·베이시스가 **같은 세션에서** 나와야 한다. 하나만 갈아끼우면 한 카드가
+  // 두 시각을 동시에 가리킨다.
+  const futureValues = viewingDay && future?.day ? future.day : future;
+
   // **그림의 세션이 값의 세션과 다르면 그리지 않는다.** 백엔드는 야간 봉이 아직
   // 부족한 구간에 시리즈를 아예 주지 않지만(#1164), `/api/market/futures-candles` 의
   // TTL 캐시는 빈 수집으로 last-good 을 축출하지 않으므로 **직전 주간 시리즈를 계속
@@ -301,9 +327,27 @@ function IndexCard({
   const sparkInSync =
     future != null && futureSpark?.session === future.dataSession ? futureSpark : undefined;
 
-  const shown = showFutures
-    ? { value: future.value, change: future.change, changeRate: future.changeRate }
-    : { value: quote.value, change: quote.change, changeRate: quote.changeRate };
+  // '주간' 을 골랐을 때 그릴 그림. 두 경로가 있고 **둘 다 필요하다**: 응답이 이미
+  // 주간 시리즈면 그것이 곧 답이고(시세는 야간인데 분봉 캐시가 아직 주간인 창),
+  // 야간 시리즈면 짝으로 실려 온 `day` 를 쓴다.
+  const daySpark =
+    futureSpark == null
+      ? undefined
+      : futureSpark.session === 'day'
+        ? { closes: futureSpark.closes, dayOpen: futureSpark.dayOpen }
+        : (futureSpark.day ?? undefined);
+  const shownSpark = viewingDay
+    ? daySpark
+    : sparkInSync && { closes: sparkInSync.closes, dayOpen: sparkInSync.dayOpen };
+
+  const shown =
+    showFutures && futureValues != null
+      ? {
+          value: futureValues.value,
+          change: futureValues.change,
+          changeRate: futureValues.changeRate,
+        }
+      : { value: quote.value, change: quote.change, changeRate: quote.changeRate };
 
   return (
     <MarketCard className="flex flex-col gap-sm p-md">
@@ -313,10 +357,29 @@ function IndexCard({
         <span className="inline-flex items-baseline gap-2xs text-xs font-semibold uppercase text-fg-dim">
           {showFutures ? future.label : quote.label}
           {/* 세션 칩 — **선물 모드에만** 붙는다. 현물 지수는 주간뿐이라 물음 자체가 없다.
-              굵기를 낮춰 라벨과 위계를 가른다(같은 색이면 이름의 일부로 읽힌다). */}
-          {showFutures && (
-            <span className="text-2xs font-normal">{sessionLabel(future.dataSession)}</span>
-          )}
+              굵기를 낮춰 라벨과 위계를 가른다(같은 색이면 이름의 일부로 읽힌다).
+
+              **선택 가능할 때 같은 자리가 버튼이 된다.** 자리를 새로 만들지 않은 것이
+              요점이다 — 이 칩은 "무슨 값인가" 를 말하는 곳이고, 토글은 정확히 그것을
+              바꾸는 조작이다. 옆에 스위치를 하나 더 놓으면 같은 질문에 답하는 자리가
+              둘이 되고, 5열일 때 가장 좁은 카드에서 헤더가 먼저 깨진다.
+
+              색으로 강조하지 않는다(`accent` 는 솔리드 채움 문맥 전용, DESIGN.md).
+              무엇을 보고 있는지는 칩 **글자 자체**가 이미 말한다. */}
+          {showFutures &&
+            (canPickSession ? (
+              <button
+                type="button"
+                onClick={() => setPreferDay((v) => !v)}
+                title={viewingDay ? '야간 값으로 전환' : '주간 마감값으로 전환'}
+                aria-label={`${future.label} 세션 — 현재 ${viewingDay ? '주간' : sessionLabel(future.dataSession)}, 눌러서 전환`}
+                className="rounded px-2xs text-2xs font-normal hover:bg-bg-input-hover"
+              >
+                {viewingDay ? '주간' : sessionLabel(future.dataSession)}
+              </button>
+            ) : (
+              <span className="text-2xs font-normal">{sessionLabel(future.dataSession)}</span>
+            ))}
         </span>
         {breadth?.rising != null && breadth.falling != null && (
           <span className="font-data text-2xs text-fg-dim tabular-nums">
@@ -350,8 +413,8 @@ function IndexCard({
             모드마다 **다른 소스**를 쓴다: 현물은 키움 ka20005(1분봉), 선물은
             KIS FHKIF03020200(5분봉). 선물 모드에 현물 분봉을 그리면 더 나쁜 거짓말이다. */}
         {showFutures
-          ? sparkInSync && (
-              <Sparkline points={sparkInSync.closes} baseline={sparkInSync.dayOpen ?? undefined} />
+          ? shownSpark && (
+              <Sparkline points={shownSpark.closes} baseline={shownSpark.dayOpen ?? undefined} />
             )
           : <Sparkline points={closes} baseline={dayOpen} />}
       </div>
@@ -365,7 +428,7 @@ function IndexCard({
           line-height 가 정하므로 하드코딩하면 사용자 줌에서 어긋난다. 같은 컴포넌트를
           그대로 재사용하면 정의상 높이가 일치한다. */}
       {showFutures ? (
-        <FuturesMeta future={future} snapshot={snapshot} />
+        <FuturesMeta future={future} snapshot={snapshot} viewingDay={viewingDay} />
       ) : breadth ? (
         <AdvanceDeclineBar rising={breadth.rising} falling={breadth.falling} flat={breadth.flat} />
       ) : future != null ? (
