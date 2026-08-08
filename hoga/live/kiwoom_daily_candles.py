@@ -177,12 +177,18 @@ async def fetch_daily_candles(
     adjusted_as_of: str | None,
     run_page: PageRunner | None = None,
 ) -> DailyCandleFetchResult:
-    """[from, to] 구간의 일봉. KIS `fetch_past_daily_candles` 대체.
+    """**[from, base_dt]** 구간의 일봉. KIS `fetch_past_daily_candles` 대체.
 
     `base_dt=adjusted_as_of` 에서 출발해 커서로 과거로 걸어간다. 종료 조건은
     하나다: **페이지에서 `from` 보다 오래된 날짜를 봤으면 덮은 것이다.** (KIS
     구현이 `[DATE_1, DATE_2]` 양끝을 밀고 당기며 venue 별 예외까지 다뤄야 했던
     60회 루프·4갈래 커서 분기와 달리.)
+
+    **`to` 까지가 아니라 `base_dt` 까지 돌려주는 것이 의도다.** 기준일에서 걸어
+    내려오는 동안 그 사이 행을 어차피 다 받는데(수정주가는 함정 ④ 때문에 이
+    walk 를 피할 수 없다), 버리면 호출자가 같은 구간을 또 받는다. 돌려주면
+    호출자가 캐시 커버리지를 그만큼 넓혀 **다음 갭을 아예 없앨 수 있다**.
+    원주가는 `base_dt=to` 라 반환 구간이 예전과 같다.
 
     **`adjust`·`adjusted_as_of` 는 기본값이 없다 — 척도는 호출자가 정한다.**
     둘 다 조용히 틀리는 축이고(함정 ①·④), 기본값을 두면 호출부를 읽어도 어느
@@ -217,23 +223,23 @@ async def fetch_daily_candles(
         date_s = str(row.get("dt") or "").strip()
         if date_s and date_s in seen:
             continue
+        # 상한이 `to` 가 아니라 `base_dt` 다 — walk 가 실제로 덮는 구간이 그것이고,
+        # 그 사이 행을 호출자에게 넘겨야 캐시 커버리지를 넓힐 수 있다.
         candle, violation = parse_row(
-            row, from_yyyymmdd=from_yyyymmdd, to_yyyymmdd=to_yyyymmdd
+            row, from_yyyymmdd=from_yyyymmdd, to_yyyymmdd=base_dt
         )
         if date_s:
             seen.add(date_s)
         if violation is not None:
-            # **구간 밖 행은 설계상 반드시 생긴다 — 이제 양쪽 다.** walk 는
-            # `base_dt` 에서 출발해 `from` 을 덮을 때까지 걷는다. 그래서 아래로는
-            # `from` 이전 행이, 위로는 `to`~`base_dt` 사이 행이 섞인다. 후자는
-            # 기준일을 오늘로 고정하면서 **정상**이 됐다(함정 ④) — 예전 불변식
-            # "`to` 보다 새로우면 이상" 을 그대로 두면 깊은 구간 조회마다 수백 건의
-            # 가짜 경고가 뜬다.
+            # **`from` 보다 오래된 행은 설계상 반드시 생긴다.** walk 는 `from` 을
+            # 덮을 때까지 걷고, 덮었다는 것 자체가 그 페이지에 `from` 이전 행이
+            # 섞였다는 뜻이다. 이걸 위반으로 실으면 정상 조회마다 경고가 뜬다.
             #
-            # 진짜 이상은 하나로 좁혀진다: **`base_dt` 보다 새로운** 행. 기준일을
-            # 줬는데 그보다 미래가 왔다는 뜻이다.
-            expected_overshoot = violation.reason == "out_of_range" and (
-                date_s < from_yyyymmdd or date_s <= base_dt
+            # 위쪽은 이제 `base_dt` 가 상한이므로(그 사이 행은 반환한다) 남는
+            # 위반은 **기준일보다 새로운** 행 하나뿐이다 — 기준일을 줬는데 그보다
+            # 미래가 왔다는 뜻이고, 그건 진짜 이상이다.
+            expected_overshoot = (
+                violation.reason == "out_of_range" and date_s < from_yyyymmdd
             )
             if not expected_overshoot:
                 violations.append(violation)

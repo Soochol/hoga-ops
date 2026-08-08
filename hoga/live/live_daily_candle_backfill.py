@@ -57,6 +57,9 @@ class LiveDailyCandleBackfill:
         # single_flight.py): overlapping [from, today] requests share one KIS
         # fetch instead of each walking the same daily history independently.
         self._inflight = SingleFlight()
+        # 캐시된 배치들이 어느 수정주가 기준일로 받아진 것인지(#1228 함정 ④).
+        # 기준일이 바뀌면 그 사이 액면분할이 났을 수 있어 척도를 믿을 수 없다.
+        self._basis_day: str | None = None
 
     async def collect_daily(
         self,
@@ -75,6 +78,17 @@ class LiveDailyCandleBackfill:
         # 갭마다 그 갭의 끝 날짜를 기준일로 쓰면 배치 경계에서 척도가 갈려
         # 차트에 액면분할 절벽이 생긴다 — 005930 이 2018-03-05 에서 그랬다.
         as_of_s = today_d.strftime("%Y%m%d")
+        if self._basis_day is not None and self._basis_day != as_of_s:
+            # **날짜가 넘어갔다 → 캐시된 배치의 척도를 더는 믿을 수 없다.**
+            # 그 사이 액면분할이 났다면 옛 기준일 배치는 분할 미반영이고, 새로
+            # 받는 배치는 반영이라 경계에서 절벽이 생긴다. 하루 한 번 버리는
+            # 비용은 코드당 깊은 walk 한 번인데, 커버리지 확장(아래 `covered_to`)
+            # 덕에 그 walk 하나가 전 구간을 덮는다.
+            #
+            # 여기(fetch 하는 경로)에만 둔다 — REST 우회 모드는 비운 캐시를 다시
+            # 채울 수단이 없어서 화면이 통째로 비게 된다.
+            self._cache.clear_batches()
+        self._basis_day = as_of_s
 
         async def fetch_batch(code_: str, from_s: str, to_s: str):
             result = await self._fetch_primary_batch(
@@ -110,7 +124,14 @@ class LiveDailyCandleBackfill:
                             _daily_fallback_to_krx_warning(venue, batch)
                         )
                         result = fallback
-            return [_candle_to_dict(c) for c in result.candles], result.violations
+            # 세 번째 칸이 **실제로 덮은 끝 날짜**다. 어댑터는 기준일에서 걸어
+            # 내려오므로 요청한 `to_s` 보다 뒤까지 받는다(#1228) — 그걸 알려야
+            # 오케스트레이터가 캐시 커버리지를 넓혀 다음 갭을 없앤다.
+            return (
+                [_candle_to_dict(c) for c in result.candles],
+                result.violations,
+                today_d,
+            )
 
         async with self._inflight.acquire((venue, code)):
             out = await self._walkback(

@@ -63,7 +63,7 @@ class LiveInvestorNetBackfill:
             # data_dir)은 사라졌다: 키움 유량은 TR별이라 고를 계정이 없다(#1015).
             client = kiwoom_rest_runtime.ensure_rest_client(self._data_dir)
             if client is None:
-                return [], []
+                return [], [], None
             def _run_page(fetch_fn, page_idx: int):
                 """페이지 1장 = 거버너 submit 1건.
 
@@ -84,7 +84,14 @@ class LiveInvestorNetBackfill:
             result = await kiwoom_investor.fetch_investor_net(
                 client, code_, from_s, to_s, run_page=_run_page,
             )
-            return [_investor_point_to_dict(p) for p in result.points], result.violations
+            # 세 번째 칸(`covered_to`)은 `None` 이다 — `ka10059` 커서는 `to` 상대라
+            # 요청 구간 밖을 받지 않는다. 일봉만 기준일에서 걸어 내려오며 넓게
+            # 받는다(#1228).
+            return (
+                [_investor_point_to_dict(p) for p in result.points],
+                result.violations,
+                None,
+            )
 
         async with self._inflight.acquire(code):
             return await self._walkback(
