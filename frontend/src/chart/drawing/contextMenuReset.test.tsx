@@ -16,7 +16,9 @@ function Host() {
  */
 describe('useDrawingToolContextMenuReset', () => {
   beforeEach(() => {
-    useDrawingsStore.getState().setActiveTool('select');
+    // 선택까지 비운다 — 아래 테스트들이 selectedByScope 를 남기면 다음 테스트의
+    // "풀렸다" 단언이 이전 실행 덕에 통과하는 위양성이 된다.
+    useDrawingsStore.getState().__resetForTests();
   });
 
   it('도구 활성 중이면 차트 밖 우클릭도 select 로 되돌린다', () => {
@@ -27,6 +29,37 @@ describe('useDrawingToolContextMenuReset', () => {
 
     expect(prevented).toBe(true);
     expect(useDrawingsStore.getState().activeTool).toBe('select');
+  });
+
+  it('도구뿐 아니라 선택도 함께 푼다 — 한 번으로 끝나야 한다', () => {
+    // 종전엔 도구만 풀어서 선택이 남았다. 하필 속성 패널은 select 모드에서만 뜨므로
+    // 우클릭한 순간 툴바가 새로 나타나 "안 풀렸다" 로 읽혔고, 그래서 한 번 더 누르게
+    // 되는데 두 번째는 첫 줄에서 빠져나가 아무 일도 하지 않았다.
+    const s = () => useDrawingsStore.getState();
+    s().setSelected('005930|minute', 'h1');
+    s().setActiveTool('pencil');
+    render(<Host />);
+
+    fireEvent.contextMenu(document.body);
+
+    expect(s().activeTool).toBe('select');
+    expect(s().selectedFor('005930|minute')).toBeNull();
+  });
+
+  it('여러 창(scope)의 선택을 모두 푼다 — 전역 리스너엔 scope 가 없다', () => {
+    // scope 별로 지우려면 어느 창인지 알아야 하는데 이 리스너는 화면 전역이다.
+    // `activeScope`(마지막 마운트 창이 이김)로 대신하면 엉뚱한 창만 지우고 정작
+    // 보이는 선택은 남는 간헐 버그가 된다 — 그래서 전량 해제다.
+    const s = () => useDrawingsStore.getState();
+    s().setSelected('005930|minute', 'h1');
+    s().setSelected('000660|D', 'r1');
+    s().setActiveTool('rect');
+    render(<Host />);
+
+    fireEvent.contextMenu(document.body);
+
+    expect(s().selectedFor('005930|minute')).toBeNull();
+    expect(s().selectedFor('000660|D')).toBeNull();
   });
 
   it('select 모드에선 리스너가 없어 우클릭을 가로채지 않는다', () => {

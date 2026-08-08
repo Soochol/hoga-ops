@@ -33,7 +33,11 @@ export function useDrawingToolContextMenuReset(): void {
     const onContextMenu = (e: MouseEvent) => {
       if (useDrawingsStore.getState().activeTool === 'select') return;
       e.preventDefault();
-      useDrawingsStore.getState().setActiveTool('select');
+      // 도구뿐 아니라 **선택도** 푼다 — Escape 와 같은 액션. 종전엔 도구만 풀어서
+      // 선택이 남았고, 속성 패널이 select 모드에서만 뜨는 탓에 우클릭한 순간 툴바가
+      // 새로 나타나 "안 풀렸다" 로 읽혔다. 그래서 한 번 더 누르게 되는데, 그때는
+      // 위 첫 줄에서 빠져나가므로 네이티브 메뉴만 뜨고 선택은 그대로였다.
+      useDrawingsStore.getState().exitDrawingMode();
     };
     window.addEventListener('contextmenu', onContextMenu);
     return () => window.removeEventListener('contextmenu', onContextMenu);
