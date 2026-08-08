@@ -19,7 +19,29 @@ export interface LivePastDailyCandlesWarning {
   /** Present when the warning is per-row (e.g. invariant_violation); absent on
    * batch-level failures like rate_limit_upstream / api_error. */
   date?: string;
-  reason: 'rate_limit_upstream' | 'api_error' | 'invariant_violation' | 'rest_bypassed';
+  /**
+   * 백엔드 `batched_daily_walkback` 이 실을 수 있는 사유 전부(ADR-0004 손 미러).
+   *
+   * 벤더 실패의 사유는 `error_policy.classify_live_error` 가 정하므로, **거기 팔이
+   * 늘면 여기도 늘어야 한다**. 이 미러는 wire 계약 가드가 못 본다 — 경고가 BE 의
+   * `Literal` 이 아니라 평범한 dict 라서다. 그래서 드리프트가 조용하다:
+   * `transport_error` 는 백엔드가 내보내기 시작한 뒤로도 한동안 여기 없었고,
+   * `liveDataWarnings.ts` 가 `reason: string` 을 받는 덕에 런타임은 멀쩡했다.
+   *
+   * `unexpected_error` 는 일부러 뺐다 — walkback 이 벤더 예외 타입만 잡으므로
+   * 이 경로에서는 도달할 수 없다. 도달 가능한 값만 적는 것이 미러의 값어치다.
+   */
+  reason:
+    | 'rate_limit_upstream'
+    // 거버너 큐 포화 — 벤더가 아니라 우리 쪽이다. 예전엔 이 경로가 이걸
+    // `rate_limit_upstream` 으로 위장해 보냈다(분봉 경로는 처음부터 제 이름을 썼다).
+    | 'capacity_overloaded'
+    | 'transport_error'
+    | 'api_error'
+    | 'auth_error'
+    | 'batch_limit_exceeded'
+    | 'invariant_violation'
+    | 'rest_bypassed';
   msg: string;
 }
 

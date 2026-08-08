@@ -13,6 +13,7 @@ from hoga.live.kiwoom_errors import (
     KiwoomAuthError,
     KiwoomRateLimitError,
     KiwoomRestError,
+    KiwoomTerminalAuthError,
     KiwoomTransportError,
 )
 from hoga.live.kiwoom_rest import TR, KiwoomRestClient, extract_rows
@@ -98,6 +99,30 @@ async def test_invalidated_token_8005_maps_to_auth_error() -> None:
     c = _client(lambda _r: httpx.Response(200, json=body))
     with pytest.raises(KiwoomAuthError):
         await c.call("ka10001", {"stk_cd": "A"})
+    await c.aclose()
+
+
+async def test_terminal_auth_8050_is_not_folded_into_token_auth_errors() -> None:
+    """**8050 은 인증 실패지만 토큰 문제가 아니다** — 거버너가 손대면 안 된다.
+
+    `_recover_if_auth_failure` 는 `KiwoomAuthError` 를 보면 토큰을 무효화하고 계정을
+    격리한 뒤 되큐한다. 8050(지정단말기 미등록)에 그 처방은 틀렸다: 토큰을 다시 받아도
+    같은 거절이 오고, 같은 앱키 재발급은 살아 있던 토큰만 죽인다(#1088).
+
+    그래서 `KiwoomApiError` 를 상속한 **별도 하위 타입**으로 올린다 —
+    `KiwoomBatchLimitError` 가 1634 를 1700 에서 떼어낸 것과 같은 모양이다.
+    사용자에게 인증 실패로 보이게 하는 일은 타입이 아니라 `error_policy` 가 한다.
+    """
+    body = {"return_code": 3,
+            "return_msg": "인증에 실패했습니다[8050:지정단말기 인증에 실패했습니다]"}
+    c = _client(lambda _r: httpx.Response(200, json=body))
+    with pytest.raises(KiwoomTerminalAuthError) as ei:
+        await c.call("ka10001", {"stk_cd": "A"})
+    # 이 두 줄이 이 테스트의 본론이다 — 거버너의 isinstance 가 걸리면 안 되고,
+    # walkback 의 `except KiwoomApiError` 는 걸려야 한다.
+    assert not isinstance(ei.value, KiwoomAuthError)
+    assert isinstance(ei.value, KiwoomApiError)
+    assert "8050" in ei.value.msg, "벤더 원문을 통째로 보존해야 화면까지 도달한다"
     await c.aclose()
 
 

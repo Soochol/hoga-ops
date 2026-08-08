@@ -2,15 +2,20 @@
  * /live 과거 데이터 fetch 경고 분류 (2026-06-09).
  *
  * past-candles(분봉)·past-daily-candles(D/W/M)·investor-net 응답은 모두
- * `data_warnings: { reason, msg, ... }[]` 를 내려준다. reason은 past-candles 쪽이
- * 느슨한 `string`(백엔드가 `rate_limit_upstream` | `rate_limit_aborted` | `api_error`
- * | `cache_write_failed` 방출), daily/investor 쪽이 `'rate_limit_upstream' |
- * 'api_error' | 'invariant_violation'` 유니온. 세 경로가 같은 분류를 쓰도록
+ * `data_warnings: { reason, msg, ... }[]` 를 내려준다. 세 경로가 같은 분류를 쓰도록
  * (DRY) 여기 한 곳에서만 reason→의미 매핑을 한다.
+ *
+ * **각 경로의 `reason` 타입은 제각각이고 이 파일은 일부러 `string` 을 받는다.**
+ * 분봉은 미러 자체가 느슨한 `string` 이고, daily 는 닫힌 유니온이며(그래서
+ * `livePastDailyCandles.ts` 가 실제 방출값 목록을 소유한다), investor 는 백엔드가
+ * `_reason_for` 로 좁혀서 보낸다. 값 목록을 여기 다시 적으면 세 벌이 되어 반드시
+ * 갈리므로 적지 않는다 — 실제로 daily 유니온에서 `transport_error` 가 오래 빠져
+ * 있었고 이 파일이 `string` 을 받은 덕에 런타임만 멀쩡했다(#1226).
  *
  * 소비처: useLiveBundle이 활성 타임프레임 경로의 경고를 골라 summarize하고,
  * LiveChartRoot가 (1) candles==0 && hasRateLimit → 빈칸 문구를 "호출 한도로 지연"으로,
  * (2) candles>0 && count>0 → 비차단 "일부 과거구간 로딩 지연" 칩으로 표시한다.
+ * 캔들이 0 이면서 벤더가 거절한 경우는 `candleEmptyState` 가 따로 소유한다.
  */
 
 /** 세 경로 경고의 공통 최소 형태 — 분류에 필요한 `reason`만 본다. */
