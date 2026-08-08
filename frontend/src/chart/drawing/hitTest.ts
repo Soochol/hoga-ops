@@ -64,24 +64,6 @@ export interface HitCoord {
   measureTextWidth?: (text: string, sizePx: number) => number;
 }
 
-/** Tuning for one hit-test question. Defaults reproduce select mode's geometry
- *  exactly, so existing callers need no change. */
-export interface HitOptions {
-  /**
-   * Does the fill of a rect/measure count as a hit? True (default) is select
-   * mode: a filled box is grabbed by clicking anywhere inside it.
-   *
-   * False asks the narrower "is the cursor ON the shape's outline" question,
-   * which is what a DRAWING tool needs before it hands a press to the move
-   * path (`withSelectedDrawingDrag` in tools.ts). With the fill counting, the
-   * whole interior of the rect you just drew stops accepting new shapes — and
-   * nesting a smaller box inside a bigger one is ordinary use. The outline
-   * still moves it, so nothing is lost; there is simply no reason for the
-   * empty middle of a box to swallow the next drawing gesture.
-   */
-  boxInterior?: boolean;
-}
-
 /** Topmost drawing under pixel (px, py), or null. Iterates back-to-front so a
  * later-drawn (visually on top) drawing wins. Only drawings on the cursor's
  * pane are considered; each kind uses its own HIT_THRESHOLD. Pure: all chart
@@ -95,9 +77,7 @@ export function hitTestDrawings(
   drawings: readonly Drawing[],
   px: number,
   py: number,
-  opts: HitOptions = {},
 ): Drawing | null {
-  const boxInterior = opts.boxInterior ?? true;
   const cursorPaneId = coord.paneIdAtY(py);
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i];
@@ -129,7 +109,7 @@ export function hitTestDrawings(
       // border-only, which made a filled box feel unmovable — the reported bug.)
       if (
         rectBorderHit({ x: px, y: py }, coord, d.a, d.b, d.paneId) ||
-        (boxInterior && rectInteriorHit({ x: px, y: py }, coord, d.a, d.b, d.paneId))
+        rectInteriorHit({ x: px, y: py }, coord, d.a, d.b, d.paneId)
       ) {
         return d;
       }

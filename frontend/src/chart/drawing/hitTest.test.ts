@@ -137,29 +137,6 @@ describe('hitTestDrawings', () => {
     expect(hitTestDrawings(c, [r], 200, 50)).toBeNull(); // outside the box → miss
   });
 
-  it('boxInterior:false keeps the border but drops the fill (drawing-mode grab test)', () => {
-    const r: Drawing = {
-      id: 'r1', kind: 'rect', paneId: 'candle',
-      color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.2,
-      a: { realMs: 0, price: 0 }, b: { realMs: 100, price: 100 },
-    };
-    const c: HitCoord = { ...coord, canvasWidth: 800 };
-    const outline = { boxInterior: false };
-    // 윤곽은 그대로 잡힌다 — 방금 그린 사각형을 테두리로 옮기는 길은 남는다.
-    expect(hitTestDrawings(c, [r], 3, 50, outline)).toBe(r);
-    expect(hitTestDrawings(c, [r], 50, 3, outline)).toBe(r);
-    // 안쪽은 놓친다 — 그 자리는 다음 도형을 그릴 자리다(기본값에서는 잡힌다, 위 테스트).
-    expect(hitTestDrawings(c, [r], 50, 50, outline)).toBeNull();
-    expect(hitTestDrawings(c, [r], 200, 50, outline)).toBeNull();
-  });
-
-  it('boxInterior:false does not touch non-box kinds', () => {
-    // 게이트가 좁히는 것은 채워진 박스뿐이다 — 선·자유곡선의 밴드는 그대로여야
-    // 연필/추세선의 이동 경로가 살아 있다.
-    const h = hline('h1', 100);
-    expect(hitTestDrawings(coord, [h], 50, 103, { boxInterior: false })).toBe(h);
-  });
-
   it('rect with a corner off-axis falls back to the canvas edge and stays selectable', () => {
     const r: Drawing = {
       id: 'r1', kind: 'rect', paneId: 'candle',

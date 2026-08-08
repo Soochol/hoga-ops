@@ -41,9 +41,6 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     priceToCanvasY: vi.fn(() => 200),
     canvasYToPrice: vi.fn(() => defaultPoint.price),
     hitTestAt: vi.fn(() => null),
-    // 기본값을 hitTestAt 과 묶지 않는다 — 둘을 가르는 것이 이 테스트의 대상이라
-    // (채워진 박스 안쪽) 스텁이 서로를 흉내 내면 그 차이를 잴 수 없다.
-    hitTestOutlineAt: vi.fn(() => null),
     paneIdAtY: vi.fn(() => 'candle' as const),
     clampYToPane: vi.fn((_id, py) => py),
     priceBoundsForPane: vi.fn(() => ({ top: 100_000, bottom: 0 })),
@@ -148,8 +145,9 @@ describe('hlineTool.onPointerDown', () => {
     const ctx = makeCtx();
     hlineTool.onPointerDown!(ctx);
     expect(ctx.add).toHaveBeenCalledOnce();
-    const addedId = ((ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
-    expect(ctx.setSelected).toHaveBeenCalledWith(addedId);
+    // 커밋 후 도구는 살아 있고(2026-07-01 요청), **선택은 하지 않는다**
+    // (2026-08-08 결정 — 그리기 모드는 항상 그린다).
+    expect(ctx.setSelected).not.toHaveBeenCalled();
     expect(ctx.revertToSelectMode).not.toHaveBeenCalled();
   });
 
@@ -355,8 +353,9 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
     });
     trendlineTool.onPointerUp!(upCtx);
     expect(upCtx.add).toHaveBeenCalledOnce();
-    const addedId = ((upCtx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
-    expect(upCtx.setSelected).toHaveBeenCalledWith(addedId);
+    // 커밋 후 도구는 살아 있고(2026-07-01 요청), **선택은 하지 않는다**
+    // (2026-08-08 결정 — 그리기 모드는 항상 그린다).
+    expect(upCtx.setSelected).not.toHaveBeenCalled();
     expect(upCtx.revertToSelectMode).not.toHaveBeenCalled();
   });
 
@@ -415,8 +414,9 @@ describe('pencilTool commit', () => {
     ctx.pencilDraft.current!.points.push({ realMs: 1_700_000_000_001, price: 70_010 });
     pencilTool.onPointerUp!(ctx);
     expect(ctx.add).toHaveBeenCalledOnce();
-    const addedId = ((ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
-    expect(ctx.setSelected).toHaveBeenCalledWith(addedId);
+    // 커밋 후 도구는 살아 있고(2026-07-01 요청), **선택은 하지 않는다**
+    // (2026-08-08 결정 — 그리기 모드는 항상 그린다).
+    expect(ctx.setSelected).not.toHaveBeenCalled();
     expect(ctx.revertToSelectMode).not.toHaveBeenCalled();
   });
 
@@ -463,14 +463,11 @@ describe('pencilTool throttle', () => {
   });
 });
 
-describe('그리기 도구: 선택된 도형 위에서 시작한 press 는 이동이다', () => {
-  // 그리기 도구는 커밋 후에도 활성으로 남는데(2026-07-01 사용자 요청) 방금 그린
-  // 도형이 선택되므로, 그 위를 잡아 끄는 자연스러운 다음 동작이 "새 도형 그리기"로
-  // 해석됐다. 연필에서 가장 나쁘게 보였다 — 좌우 드래그 궤적이 긴 가로 획으로
-  // 커밋되어 원래 획과 겹치니, 그린 그림이 좌우로 늘어난 것처럼 읽혔다.
-  //
-  // 게이트가 막는 방향은 "선택된 도형 위에서 시작한 press" 하나뿐이다. 아래 세
-  // 테스트를 도구마다 돌려 그 하나만 막히고 나머지 둘은 종전대로임을 고정한다.
+describe('그리기 모드는 항상 그린다 — 커밋해도 선택하지 않는다', () => {
+  // 한때 커밋 시 방금 그린 도형을 선택하고, 그 위에서 시작한 press 를 이동으로
+  // 넘기는 게이트가 있었다(#1227). 사용자가 써 본 뒤 2026-08-08 에 폐기했다 —
+  // 선택 효과를 없애고 방금 그린 자리 위에 곧바로 다음 도형을 그리는 쪽을 택했다.
+  // 이동·스타일 변경은 select 모드의 일이다.
   const target: Drawing = {
     id: 'p1',
     kind: 'pencil',
@@ -497,32 +494,16 @@ describe('그리기 도구: 선택된 도형 위에서 시작한 press 는 이�
     });
   }
 
-  /** 도구별 "정상적으로 하나 그리기". hline/vline 은 down 한 번이 곧 생성이고,
-   *  나머지는 down→move→up 이 필요하다. 선택적 호출인 것이 의도다 — `!` 로 부르면
-   *  핸들러 부재(1-클릭 도구)가 게이트 미적용과 같은 실패로 섞여 보인다. */
+  /** 도구별 "하나 그리기". hline/vline 은 down 한 번이 곧 생성이고, 나머지는
+   *  down→move→up 이 필요하다. 선택적 호출인 것이 의도다 — 1-클릭 도구엔 move/up
+   *  핸들러가 아예 없다(게이트를 걷어내며 래퍼가 붙여 주던 것도 사라졌다). */
   function drawOne(tool: DrawingToolSpec, ctx: ToolCtx): void {
     tool.onPointerDown?.(ctx);
     tool.onPointerMove?.(ctx);
     tool.onPointerUp?.(ctx);
   }
 
-  /**
-   * 윤곽 판정은 전체 판정의 **부분집합**이다 — 윤곽에 맞았으면 본체에도 맞은 것이다.
-   * 게이트는 `hitTestOutlineAt` 으로 열리지만 `selectTool` 은 `hitTestAt` 으로 대상을
-   * 찾으므로, 스텁이 이 관계를 어기면 게이트만 열리고 드래그는 시작되지 않는 죽은
-   * 제스처가 된다(실제로 이 테스트를 그렇게 썼다가 잡았다). 둘이 갈리는 유일한
-   * 경우 — 채워진 박스의 안쪽 — 는 아래에서 따로 세운다.
-   */
-  function grabCtx(hit: Drawing | null, selectedId: string | null): ToolCtx {
-    return movingCtx({
-      drawings: [target],
-      selectedId,
-      hitTestAt: vi.fn(() => hit),
-      hitTestOutlineAt: vi.fn(() => hit),
-    });
-  }
-
-  const GATED: ReadonlyArray<readonly [string, DrawingToolSpec]> = [
+  const DRAWING: ReadonlyArray<readonly [string, DrawingToolSpec]> = [
     ['hline', hlineTool],
     ['vline', vlineTool],
     ['trendline', trendlineTool],
@@ -530,67 +511,32 @@ describe('그리기 도구: 선택된 도형 위에서 시작한 press 는 이�
     ['pencil', pencilTool],
   ];
 
-  for (const [name, tool] of GATED) {
-    it(`${name}: 선택된 도형을 잡으면 이동만 하고 아무것도 만들지 않는다`, () => {
-      const ctx = grabCtx(target, 'p1');
-      tool.onPointerDown!(ctx);
-      // hline/vline 은 down 이 곧 생성이라 여기서 이미 갈린다.
-      expect(ctx.add).not.toHaveBeenCalled();
-      expect(ctx.dragRef.current).toMatchObject({ kind: 'body', id: 'p1' });
-
-      // 넘긴 드래그를 끝까지 select 가 처리하려면 래퍼가 move/up 을 반드시 정의해야
-      // 한다 — hline/vline 은 원래 1-클릭 도구라 둘 다 없었다.
-      tool.onPointerMove!(ctx);
-      expect(ctx.update).toHaveBeenCalledWith('p1', expect.objectContaining({ points: expect.any(Array) }));
-
-      tool.onPointerUp!(ctx);
-      // 회귀의 자리: 좌우 드래그가 여기서 새 도형으로 커밋되던 것이 이 버그였다.
-      expect(ctx.add).not.toHaveBeenCalled();
-      expect(ctx.dragRef.current).toBeNull();
-      expect(ctx.releasePointer).toHaveBeenCalled();
-    });
-
-    it(`${name}: 선택되지 않은 도형 위에는 그대로 그려진다`, () => {
-      const ctx = grabCtx(target, null);
+  for (const [name, tool] of DRAWING) {
+    it(`${name}: 커밋해도 setSelected 를 부르지 않는다`, () => {
+      const ctx = movingCtx();
       drawOne(tool, ctx);
-      expect(ctx.dragRef.current).toBeNull();
       expect(ctx.add).toHaveBeenCalledOnce();
+      expect(ctx.setSelected).not.toHaveBeenCalled();
     });
 
-    it(`${name}: 선택된 도형을 빗나간 press 는 그대로 그려진다`, () => {
-      const ctx = grabCtx(null, 'p1');
+    it(`${name}: 선택된 도형 위에서 시작해도 이동이 아니라 그려진다`, () => {
+      // 게이트가 살아 있으면 여기서 dragRef 가 서고 add 가 안 불린다.
+      const ctx = movingCtx({
+        drawings: [target],
+        selectedId: 'p1',
+        hitTestAt: vi.fn(() => target),
+      });
       drawOne(tool, ctx);
       expect(ctx.dragRef.current).toBeNull();
       expect(ctx.add).toHaveBeenCalledOnce();
     });
   }
 
-  it('채워진 박스의 안쪽은 게이트를 열지 않는다 — 큰 사각형 안에 작은 것을 그릴 수 있다', () => {
-    // 선택된 사각형의 **내부**를 누른 상황: select 모드 판정(`hitTestAt`)은 잡지만
-    // 윤곽 판정(`hitTestOutlineAt`)은 놓친다. 게이트는 후자를 물어야 한다 —
-    // 전자였다면 방금 그린 사각형 안쪽 전체가 다음 도형을 삼켰다.
-    const box: Drawing = {
-      id: 'r1', kind: 'rect',
-      a: { realMs: 1_700_000_000_000, price: 71_000 },
-      b: { realMs: 1_700_000_600_000, price: 69_000 },
-      color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle', fillOpacity: 0.1,
-    };
-    const ctx = movingCtx({
-      drawings: [box],
-      selectedId: 'r1',
-      hitTestAt: vi.fn(() => box),
-      hitTestOutlineAt: vi.fn(() => null),
-    });
-    drawOne(rectTool, ctx);
-    expect(ctx.dragRef.current).toBeNull();
+  it('측정자는 예외다 — 커밋 시 select 로 돌아가므로 그 선택은 그리기를 막지 않는다', () => {
+    const ctx = movingCtx();
+    drawOne(measureTool, ctx);
     expect(ctx.add).toHaveBeenCalledOnce();
-  });
-
-  it('측정자는 게이트 밖이다 — 커밋 시 select 로 돌아가므로 함정 자체가 없다', () => {
-    const ctx = grabCtx(target, 'p1');
-    measureTool.onPointerDown!(ctx);
-    expect(ctx.dragRef.current).toBeNull();
-    expect(ctx.measureDraft.current).not.toBeNull();
+    expect(ctx.revertToSelectMode).toHaveBeenCalledOnce();
   });
 });
 

@@ -576,6 +576,27 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
       expect(afterRightClick).toEqual({ tool: 'select', sel: null });
     });
 
+    it('그리기 도구로 진입하면 select 모드에서 고른 선택이 끊긴다', () => {
+      // 불변식: 그리기 모드 ⇒ 선택 없음. 커밋이 선택하지 않게 됐어도(2026-08-08),
+      // select 모드에서 고른 도형은 도구를 켜도 남는다 — 그 헤일로는 그리기
+      // 모드에서 "잡을 수 있다" 고 거짓말을 한다(눌러도 새 도형이 그려진다).
+      const s = () => useDrawingsStore.getState();
+      seedSelected('select');
+      const { rerender } = mountOverlay();
+      expect(s().selectedByScope.get(SCOPE) ?? null).toBe('h1');
+
+      s().setActiveTool('pencil');
+      rerender(<DrawingOverlay
+        chart={{ timeScale: () => ({ subscribeVisibleLogicalRangeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn() }), panes: () => [] } as never}
+        axis={{ segments: [] } as never}
+        scope={SCOPE}
+        paneSeries={new Map()}
+      />);
+
+      expect(s().selectedByScope.get(SCOPE) ?? null).toBeNull();
+      expect(s().activeTool).toBe('pencil'); // 도구는 살아 있다
+    });
+
     it('select 모드에서도 Escape 는 선택을 푼다 (종전 동작)', () => {
       const s = () => useDrawingsStore.getState();
       seedSelected('select');

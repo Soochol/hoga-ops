@@ -159,6 +159,13 @@ type Actions = {
   setActiveTool(tool: DrawingTool): void;
   setSelected(scope: string, id: DrawingId | null): void;
   /**
+   * 모든 scope 의 선택을 비운다(도구는 건드리지 않는다). 그리기 도구로 **진입할 때**
+   * 부른다 — 불변식은 "그리기 모드 ⇒ 선택 없음" 이다. select 모드에서 고른 도형이
+   * 도구 전환 뒤에도 남으면, 그 헤일로가 "잡을 수 있다" 고 거짓말을 한다(그리기
+   * 모드에서 누르면 새 도형이 그려진다).
+   */
+  clearAllSelections(): void;
+  /**
    * 그리기 상태를 통째로 원상복구한다 — 도구를 select 로 되돌리고 **모든 scope 의
    * 선택을 비운다**. Escape 와 우클릭의 **유일한** 출구이며, 두 제스처가 한 액션을
    * 공유하는 것이 곧 "둘의 결과가 항상 같다" 는 보장이다(예전엔 우클릭이 도구만
@@ -310,6 +317,10 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       const selectedByScope = new Map(get().selectedByScope);
       selectedByScope.set(scope, id);
       set({ selectedByScope });
+    },
+
+    clearAllSelections() {
+      set({ selectedByScope: new Map() });
     },
 
     exitDrawingMode() {
