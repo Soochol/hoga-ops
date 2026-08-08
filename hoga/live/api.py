@@ -514,9 +514,13 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
 
     The caller supplies a thin `fetch_batch(code, from_s, to_s)` closure that
     fetches one date range and returns `(rows: list[dict], violations)` — it may
-    raise ``KisRateLimitError`` / ``KisApiError`` (this orchestrator catches them
-    and turns them into ``data_warnings``, breaking on rate-limit, continuing on
-    api-error). Everything else — batch-cache intersect, gap compute, per-gap
+    raise the vendor error families in ``_RATE_LIMIT_ERRORS`` /
+    ``_TRANSPORT_ERRORS`` / ``_API_ERRORS`` (this orchestrator catches them and
+    turns them into ``data_warnings``, breaking on rate-limit, continuing on
+    api-error). **과거 gap 루프와 오늘 프로브가 같은 튜플을 본다** — 벤더별로 적으면
+    한쪽만 갱신돼 나머지가 500 으로 샌다.
+
+    Everything else — batch-cache intersect, gap compute, per-gap
     fetch + persist, today tri-state, dedupe-by-``t_ms`` / sort / [frm,too]
     filter — lives here, tested once in ``test_batched_daily_walkback.py``.
     """
@@ -597,14 +601,21 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                     fresh_batches.append(today_label)
                 for v in violations:
                     warnings.append(_violation_to_warning(v, today_label))
-            except KisRateLimitError as e:
+            # 위 gap 루프와 **같은 튜플**을 쓴다. 예전엔 여기만 `Kis*` 를 직접 적어서
+            # 두 브랜치의 포착 폭이 갈렸고, 일봉이 키움으로 이관된 뒤로는 오늘 프로브의
+            # `KiwoomApiError` 만 그대로 탈출해 500 이 됐다(8050 지정단말기 인증 실패).
+            # 그 500 은 FastAPI detail 이 아니라 Starlette 의 plain text 라 프론트가
+            # 에러 코드를 못 읽고, 캔들이 이미 그려져 있으면 **아무 표시도 안 났다**.
+            # 브로커를 늘릴 때 여기를 잊지 않도록 튜플 공유가 유일한 규율이다.
+            except _RATE_LIMIT_ERRORS as e:
                 warnings.append(_kis_error_to_warning("rate_limit_upstream", str(e), today_label))
-            except KisTransportError as e:
+            except _TRANSPORT_ERRORS as e:
+                # gap 루프와 같은 이유로 generic api-error 앞에 와야 한다(서브타입).
                 warnings.append(
-                    _kis_error_to_warning("transport_error", e.msg_cd, today_label)
+                    _kis_error_to_warning("transport_error", _vendor_code(e), today_label)
                 )
-            except KisApiError as e:
-                warnings.append(_kis_error_to_warning("api_error", e.msg_cd, today_label))
+            except _API_ERRORS as e:
+                warnings.append(_kis_error_to_warning("api_error", _vendor_code(e), today_label))
 
     # 6. Dedupe by t_ms, sort, filter to [frm, too].
     frm_ms = int(datetime.combine(frm, time(0, 0), tzinfo=_KST).timestamp() * 1000)
