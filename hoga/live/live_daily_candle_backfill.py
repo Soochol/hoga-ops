@@ -71,6 +71,10 @@ class LiveDailyCandleBackfill:
     ) -> dict:
         venue = daily_venue_for_policy(policy)
         fallback_warnings: list[dict] = []
+        # **수정주가 기준일은 배치가 아니라 요청 전체에서 하나다**(함정 ④).
+        # 갭마다 그 갭의 끝 날짜를 기준일로 쓰면 배치 경계에서 척도가 갈려
+        # 차트에 액면분할 절벽이 생긴다 — 005930 이 2018-03-05 에서 그랬다.
+        as_of_s = today_d.strftime("%Y%m%d")
 
         async def fetch_batch(code_: str, from_s: str, to_s: str):
             result = await self._fetch_primary_batch(
@@ -78,6 +82,7 @@ class LiveDailyCandleBackfill:
                 code=code_,
                 from_s=from_s,
                 to_s=to_s,
+                as_of_s=as_of_s,
             )
             if venue != "KRX" and not result.violations and _needs_krx_daily_fill(
                 result.candles,
@@ -88,6 +93,7 @@ class LiveDailyCandleBackfill:
                     code=code_,
                     from_s=from_s,
                     to_s=to_s,
+                    as_of_s=as_of_s,
                 )
                 if fallback.candles:
                     batch = f"{from_s}__{to_s}"
@@ -180,11 +186,12 @@ class LiveDailyCandleBackfill:
         code: str,
         from_s: str,
         to_s: str,
+        as_of_s: str,
     ):
         return await self._fetch(
             venue=venue,
             key=("live-candle-backfill", "daily", venue, code, from_s, to_s),
-            code=code, from_s=from_s, to_s=to_s,
+            code=code, from_s=from_s, to_s=to_s, as_of_s=as_of_s,
         )
 
     async def _fetch_krx_fallback_batch(
@@ -193,14 +200,17 @@ class LiveDailyCandleBackfill:
         code: str,
         from_s: str,
         to_s: str,
+        as_of_s: str,
     ):
         return await self._fetch(
             venue="KRX",
             key=("live-candle-backfill", "daily", "KRX", code, from_s, to_s, "fallback"),
-            code=code, from_s=from_s, to_s=to_s,
+            code=code, from_s=from_s, to_s=to_s, as_of_s=as_of_s,
         )
 
-    async def _fetch(self, *, venue: Venue, key, code: str, from_s: str, to_s: str):
+    async def _fetch(
+        self, *, venue: Venue, key, code: str, from_s: str, to_s: str, as_of_s: str
+    ):
         """PR-F(#1042) 칼 컷오버 — 소스는 키움 `ka10081` 이다.
 
         거버너 과부하를 `KisRateLimitError` 로 감싸는 것은 **의도적**이다: 상위
@@ -228,7 +238,11 @@ class LiveDailyCandleBackfill:
 
         try:
             return await kiwoom_daily_candles.fetch_daily_candles(
-                client, code, from_s, to_s, venue=venue, run_page=_run_page,
+                client, code, from_s, to_s, venue=venue,
+                # `/live` 차트는 **수정주가**를 그린다. 기준일은 배치의 끝이 아니라
+                # 오늘이다 — 그래야 스크롤로 쪼개진 배치들이 한 척도로 이어진다.
+                adjust=True, adjusted_as_of=as_of_s,
+                run_page=_run_page,
             )
         except KiwoomCapacityOverloaded as e:
             raise KisRateLimitError(str(e)) from e

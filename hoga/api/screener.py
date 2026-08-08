@@ -121,7 +121,11 @@ async def _daily_fetch_one(
     from hoga.live import kiwoom_daily_candles  # noqa: PLC0415 — 지연 import(순환 절단)
 
     res = await kiwoom_daily_candles.fetch_daily_candles(
-        client, code, frm, to, adjust=False, run_page=run_page,
+        client, code, frm, to,
+        # 원주가는 절대값이라 수정주가 기준일(함정 ④)이 무의미하다 → `None` 이
+        # 규약이고, 그 덕에 `base_dt=to` 랜덤 액세스를 그대로 쓴다(페이지 낭비 0).
+        adjust=False, adjusted_as_of=None,
+        run_page=run_page,
     )
     if res.violations:
         log.warning("screener daily violations %s: %d", code, len(res.violations))

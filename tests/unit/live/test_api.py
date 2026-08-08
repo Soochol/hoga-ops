@@ -1368,6 +1368,20 @@ def test_gaps_adjacent_batches_coalesce() -> None:
 from hoga.live.candle_fetch_result import DailyCandleFetchResult, DailyInvariantViolation
 
 
+def _venues(kwargs: list[dict]) -> list[str]:
+    """venue 목록을 뽑으면서 **척도**(함정 ④)를 함께 못 박는다.
+
+    일봉은 수정주가이고, 기준일은 배치마다가 아니라 **요청 전체에서 하나**여야
+    한다 — 갭마다 그 갭의 끝을 기준일로 쓰면 배치 경계에서 척도가 갈린다.
+    기준일의 정확한 값은 여기서 고정하지 않는다(요청 시각의 오늘이라 자정
+    경계에서 깨진다). 값 고정은 `today_d` 를 주입할 수 있는
+    `test_live_daily_candle_backfill.py` 가 한다.
+    """
+    assert {kw["adjust"] for kw in kwargs} == {True}, "/live 일봉은 수정주가다"
+    assert len({kw["adjusted_as_of"] for kw in kwargs}) == 1, "기준일은 하나다"
+    return [kw["venue"] for kw in kwargs]
+
+
 class _FakeKisForDaily:
     """Stub KIS client returning deterministic daily bars."""
 
@@ -1455,7 +1469,7 @@ def test_past_daily_threads_explicit_venue_to_kis_and_response(tmp_path, monkeyp
         body = r.json()
 
     assert body["venue"] == "UN"
-    assert fake.kwargs == [{"venue": "UN"}]   # `foreground` 는 키움에 없다
+    assert _venues(fake.kwargs) == ["UN"]   # `foreground` 는 키움에 없다
 
 
 def test_past_daily_legacy_auto_maps_to_integrated(tmp_path, monkeypatch) -> None:
@@ -1467,7 +1481,7 @@ def test_past_daily_legacy_auto_maps_to_integrated(tmp_path, monkeypatch) -> Non
         body = r.json()
 
     assert body["venue"] == "UN"
-    assert fake.kwargs == [{"venue": "UN"}]   # `foreground` 는 키움에 없다
+    assert _venues(fake.kwargs) == ["UN"]   # `foreground` 는 키움에 없다
 
 
 @pytest.mark.parametrize("venue,primary_venue", [("NXT", "NXT"), ("UN", "UN")])
@@ -1496,7 +1510,7 @@ def test_past_daily_non_krx_empty_falls_back_to_krx(
     assert body["venue"] == venue
     assert len(body["candles"]) == 5
     # `foreground` 는 키움에 없다 — 의도 신호는 거버너의 `priority` 다(#1015).
-    assert fake.kwargs[:2] == [{"venue": primary_venue}, {"venue": "KRX"}]
+    assert _venues(fake.kwargs[:2]) == [primary_venue, "KRX"]
     assert any(
         w["reason"] == "daily_fallback_to_krx" and w["batch"] == "20240101__20240105"
         for w in body["data_warnings"]
@@ -1545,7 +1559,7 @@ def test_past_daily_non_krx_partial_range_fills_missing_dates_from_krx(tmp_path,
         body = r.json()
 
     # `foreground` 는 키움에 없다 — 의도 신호는 거버너의 `priority` 다(#1015).
-    assert fake.kwargs[:2] == [{"venue": "UN"}, {"venue": "KRX"}]
+    assert _venues(fake.kwargs[:2]) == ["UN", "KRX"]
     assert len(body["candles"]) == 20
     assert body["candles"][0]["close"] == 205
     assert body["candles"][1]["close"] == 206

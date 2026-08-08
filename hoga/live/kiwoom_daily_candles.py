@@ -27,10 +27,28 @@ KIS `FHKST03010100`(inquire-daily-itemchartprice) 대체. 반환형은 브로커
 `pred_pre` 만 부호를 갖는다. 같은 벤더 안에서도 TR 마다 다르므로 절대값을 취한다
 (부호가 오더라도 가격은 절대값이 맞다).
 
+**④ 수정주가는 `base_dt` **상대**다 — 절대(최신일) 기준이 아니다.** (2026-08-08)
+`base_dt` **이후**에 일어난 액면분할은 반영되지 않는다. 즉 같은 날짜의 종가가
+`base_dt` 를 뭘로 줬느냐에 따라 달라진다. 035720(카카오, 2021-04-15 5:1) 실측:
+
+    base_dt=20191231 → 20191230 종가 153,500  (분할 미반영 = 사실상 원주가)
+    base_dt=20210630 → 20200106 종가  31,008  (반영 = 155,040 ÷ 5)
+
+**이것이 ①보다 더 조용하다.** ① 은 플래그를 잘못 주면 전 구간이 원주가라 한 번
+보면 보이지만, ④ 는 **배치마다 척도가 갈린다** — 요청 하나만 재면 정상으로 보인다.
+`/live` 는 좌측 스크롤 백필이 구간을 여러 배치로 쪼개므로 실제로 터졌다: 005930
+차트가 **2018-03-05** 에서 50배 절벽을 그렸다(배치 `20180305__20180511` 은 수정주가,
+`20171226__20180302` 는 원주가).
+
+**지문: 절벽이 분할일에 안 생긴다.** 005930 분할일은 2018-05-04 인데 절벽은 03-05 —
+스크롤이 만든 **요청 경계**다. 그래서 `base_dt` 는 조회 구간의 끝이 아니라
+**호출자가 명시하는 기준일**(`adjusted_as_of`)이고, `adjust=True` 면 필수다.
+
 ## 성질
 
-- 페이지 **600행 ≈ 2.4년**. `base_dt` 랜덤 액세스가 되므로(#1008) 요청 구간의
-  끝 날짜를 그대로 주소로 준다 — KIS 처럼 커서를 되감을 필요가 없다.
+- 페이지 **600행 ≈ 2.4년**. `base_dt` 랜덤 액세스 자체는 되지만(#1008), 수정주가를
+  요구하면 함정 ④ 때문에 **끝 날짜를 주소로 쓸 수 없다** — 기준일에서 출발해
+  구간까지 걸어 내려간다. 원주가(`adjust=False`)는 절대값이라 이 제약이 없다.
 - 보유 **1989년까지** 실측(`base_dt=19900101` → 600행, 최신 19891226).
   ADR-0120 이 남긴 "키움은 과거가 얕다" 인상은 **분봉의 성질**이지 일봉이 아니다.
 - venue 는 종목코드 접미(`_NX`/`_AL`) — 문서에 "일봉 미검증" 으로 남아 있던
@@ -53,14 +71,37 @@ API_ID = "ka10081"
 UPD_ADJUSTED = "1"
 UPD_RAW = "0"
 
-# 실측 600행/페이지 ≈ 2.4년. 8페이지면 약 19년, 12페이지면 1989년 바닥까지 닿는다.
-_MAX_PAGES = 12
+# 실측 600행/페이지 ≈ 2.4년.
+#
+# **12 → 20 으로 올린 이유는 함정 ④ 다.** 예전에는 `base_dt=to` 라 페이지 수가
+# *구간 길이*에 비례했고 12장이면 어느 구간이든 넉넉했다(`base_dt=19900101` 은
+# 1장이면 끝났다). 이제 기준일에서 걸어 내려가므로 페이지 수는 **오늘로부터의
+# 거리**에 비례한다: 2026 → 1989 는 약 9,065 행 = 16장. 20장이면 약 49년이다.
+_MAX_PAGES = 20
 _DATE_LEN = 8
 
 
 def adjust_flag(adjust: bool) -> str:
     """`adjust=True`(수정주가) → `"1"`. KIS 의 `FID_ORG_ADJ_PRC` 와 **반대**다."""
     return UPD_ADJUSTED if adjust else UPD_RAW
+
+
+def resolve_base_dt(*, to_yyyymmdd: str, adjust: bool, adjusted_as_of: str | None) -> str:
+    """`base_dt` = **수정주가 기준일**(함정 ④). 조회 구간의 끝이 아니다.
+
+    - `adjust=False` → `to`. 원주가는 절대값이라 기준일이 무의미하고, 그러면
+      #1008 의 랜덤 액세스를 그대로 쓸 수 있다(페이지 낭비 0).
+    - `adjust=True` → `max(adjusted_as_of, to)`. `max` 인 이유: 기준일보다 뒤를
+      조회하면(오늘 봉 등) `base_dt` 가 구간을 못 덮어 빈 응답이 된다.
+    """
+    if not adjust:
+        return to_yyyymmdd
+    if adjusted_as_of is None:
+        raise ValueError(
+            "adjust=True 면 adjusted_as_of 가 필수다 — 기준일을 안 주면 base_dt 가 "
+            "배치의 끝 날짜가 되고, 그 뒤의 액면분할이 통째로 빠진다(함정 ④)"
+        )
+    return max(adjusted_as_of, to_yyyymmdd)
 
 
 def _abs_int(raw: object) -> int | None:
@@ -132,19 +173,27 @@ async def fetch_daily_candles(
     to_yyyymmdd: str,
     *,
     venue: Venue = "KRX",
-    adjust: bool = True,
+    adjust: bool,
+    adjusted_as_of: str | None,
     run_page: PageRunner | None = None,
 ) -> DailyCandleFetchResult:
     """[from, to] 구간의 일봉. KIS `fetch_past_daily_candles` 대체.
 
-    `base_dt=to` 로 **끝 날짜를 직접 주소 지정**하고 커서로 과거로 걸어간다.
-    KIS 구현이 `[DATE_1, DATE_2]` 양끝을 밀고 당기며 venue 별 예외까지 다뤄야
-    했던 것(60회 루프·4갈래 커서 분기)과 달리, 여기서는 종료 조건이 하나다:
-    **페이지에서 `from` 보다 오래된 날짜를 봤으면 덮은 것이다.**
+    `base_dt=adjusted_as_of` 에서 출발해 커서로 과거로 걸어간다. 종료 조건은
+    하나다: **페이지에서 `from` 보다 오래된 날짜를 봤으면 덮은 것이다.** (KIS
+    구현이 `[DATE_1, DATE_2]` 양끝을 밀고 당기며 venue 별 예외까지 다뤄야 했던
+    60회 루프·4갈래 커서 분기와 달리.)
+
+    **`adjust`·`adjusted_as_of` 는 기본값이 없다 — 척도는 호출자가 정한다.**
+    둘 다 조용히 틀리는 축이고(함정 ①·④), 기본값을 두면 호출부를 읽어도 어느
+    척도인지 알 수 없다. `adjust=False` 면 `adjusted_as_of=None` 이 규약이다.
 
     `run_page` 는 유량 페이싱 이음매다 — walk 는 최대 `_MAX_PAGES` 콜이고,
     주입하지 않으면 그 전부가 한 submit 안에서 페이싱 없이 나간다(ADR-0137).
     """
+    base_dt = resolve_base_dt(
+        to_yyyymmdd=to_yyyymmdd, adjust=adjust, adjusted_as_of=adjusted_as_of
+    )
     def _covered(rows: list[dict[str, Any]], _page: Any) -> bool:
         oldest = min((str(r.get("dt") or "") for r in rows if r.get("dt")), default="")
         return bool(oldest) and oldest < from_yyyymmdd
@@ -153,7 +202,7 @@ async def fetch_daily_candles(
         API_ID,
         {
             "stk_cd": venue_code(code, venue),
-            "base_dt": to_yyyymmdd,
+            "base_dt": base_dt,
             "upd_stkpc_tp": adjust_flag(adjust),
         },
         max_pages=_MAX_PAGES,
@@ -174,11 +223,19 @@ async def fetch_daily_candles(
         if date_s:
             seen.add(date_s)
         if violation is not None:
-            # **구간보다 오래된 행은 위반이 아니다.** walk 는 `from` 을 덮을 때까지
-            # 걷고, 덮었다는 것 자체가 그 페이지에 `from` 이전 행이 섞였다는 뜻이다
-            # — 설계상 반드시 생긴다. 반대로 `to` 보다 **새로운** 행은 진짜 이상이다
-            # (`base_dt=to` 를 줬는데 미래가 왔다), 그건 그대로 싣는다.
-            if not (violation.reason == "out_of_range" and date_s < from_yyyymmdd):
+            # **구간 밖 행은 설계상 반드시 생긴다 — 이제 양쪽 다.** walk 는
+            # `base_dt` 에서 출발해 `from` 을 덮을 때까지 걷는다. 그래서 아래로는
+            # `from` 이전 행이, 위로는 `to`~`base_dt` 사이 행이 섞인다. 후자는
+            # 기준일을 오늘로 고정하면서 **정상**이 됐다(함정 ④) — 예전 불변식
+            # "`to` 보다 새로우면 이상" 을 그대로 두면 깊은 구간 조회마다 수백 건의
+            # 가짜 경고가 뜬다.
+            #
+            # 진짜 이상은 하나로 좁혀진다: **`base_dt` 보다 새로운** 행. 기준일을
+            # 줬는데 그보다 미래가 왔다는 뜻이다.
+            expected_overshoot = violation.reason == "out_of_range" and (
+                date_s < from_yyyymmdd or date_s <= base_dt
+            )
+            if not expected_overshoot:
                 violations.append(violation)
             continue
         if candle is not None:
@@ -189,7 +246,10 @@ async def fetch_daily_candles(
         # 진짜 사유를 남긴다(`kiwoom_investor` 와 같은 관례).
         violations.append(DailyInvariantViolation(
             date_yyyymmdd=from_yyyymmdd, reason="malformed_row",
-            detail=f"truncated: {_MAX_PAGES} 페이지에서 {from_yyyymmdd} 에 못 닿았다",
+            detail=(
+                f"truncated: base_dt={base_dt} 에서 {_MAX_PAGES} 페이지를 걸어도 "
+                f"{from_yyyymmdd} 에 못 닿았다"
+            ),
         ))
 
     candles.sort(key=lambda c: c.t_ms)   # 응답은 최신순(DESC) 이다
