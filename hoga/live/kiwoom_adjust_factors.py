@@ -115,11 +115,6 @@ class AdjustFactors:
     """오름차순. `factor_for` 의 이분 탐색 축이다."""
     values: tuple[float, ...]
 
-    @property
-    def is_identity(self) -> bool:
-        """전 구간 1.0 — 이 종목엔 커버 구간 안에 수정 이벤트가 없다."""
-        return all(v == 1.0 for v in self.values)
-
     def factor_for(self, date_yyyymmdd: str) -> float | None:
         """그 날짜의 계수. **테이블 밑이면 `None`**(모른다).
 

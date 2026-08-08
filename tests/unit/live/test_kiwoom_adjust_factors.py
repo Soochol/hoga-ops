@@ -48,7 +48,6 @@ def test_factors_are_the_daily_adjusted_over_raw_ratio() -> None:
     assert f.factor_for("20260807") == 1.0
     assert f.factor_for("20260806") == 1.0
     assert f.factor_for("20260805") == pytest.approx(0.5061, abs=1e-4)
-    assert not f.is_identity
 
 
 def test_missing_or_nonpositive_closes_drop_out_of_the_table() -> None:

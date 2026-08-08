@@ -15,6 +15,7 @@ import pytest
 
 from hoga.live.kiwoom_minute_candles import (
     MinutePage,
+    fetch_day,
     fetch_minute_page,
     parse_row,
     split_page,
@@ -328,3 +329,23 @@ async def test_walk_routes_every_page_through_the_injected_fetcher() -> None:
     assert seen == ["20260803", "20260731"], "커서 전진이 러너를 통해 일어난다"
     assert res.pages == 2
     assert set(res.bars_by_date) == {"20260803", "20260731"}
+
+
+async def test_day_request_also_asks_for_raw_prices() -> None:
+    """하루치도 **원주가**다(#1229).
+
+    지금 호출자는 오늘분뿐이고 오늘 계수는 정의상 1.0 이라 `upd=1` 로 돌아가도
+    증상이 없다 — 그래서 여기에 단언이 필요하다. 과거 날짜에 쓰이는 순간
+    조용히 그 날짜만 옛 척도가 된다.
+    """
+    sent: list[dict] = []
+
+    def _h(r: httpx.Request) -> httpx.Response:
+        import json as _json
+        sent.append(_json.loads(r.content))
+        return _ok(_day("20260803", 2))
+
+    c = _client(_h)
+    await fetch_day(c, "005930", "20260803")
+    assert sent[0]["upd_stkpc_tp"] == "0"
+    await c.aclose()
