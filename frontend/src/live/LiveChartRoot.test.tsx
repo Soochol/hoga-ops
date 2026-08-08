@@ -3982,6 +3982,42 @@ describe('LiveChartRoot x-axis tickMarkFormatter', () => {
     const fmt = captureTickFormatter('D');
     expect(fmt(MID_SESSION_SEC, TickMarkType.Time)).toBe('');
   });
+
+  // -------------------------------------------------------------------------
+  // Crosshair label — `localization.timeFormatter`, a DIFFERENT callback from
+  // tickMarkFormatter above. The tick formatter draws the fixed marks on the
+  // axis; this one draws the badge that follows the mouse. Both live on the
+  // same createChartEx options object, so the capture seam is shared.
+  //
+  // The minute branch used to omit the year ("05/27 14:30"), which is
+  // unreadable once you scroll into past years. Calendar (D/W/M) already
+  // carried it.
+  function captureCrosshairFormatter(timeframe: 'D' | '1m') {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe={timeframe}
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const opts = vi.mocked(createChartEx).mock.calls[0][2] as {
+      localization: { timeFormatter: (t: number) => string };
+    };
+    return opts.localization.timeFormatter;
+  }
+
+  it('1m: crosshair label leads with the KST year', () => {
+    const fmt = captureCrosshairFormatter('1m');
+    expect(fmt(MID_SESSION_SEC)).toBe('2026 05/27 14:30');
+  });
+
+  it('D (calendar): crosshair label stays date-only with the year', () => {
+    const fmt = captureCrosshairFormatter('D');
+    expect(fmt(FIRST_OPEN_SEC)).toBe('2026/05/26');
+  });
 });
 
 // ---------------------------------------------------------------------------
