@@ -356,26 +356,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           e.preventDefault();
         }
       } else if (e.key === 'Escape') {
-        // 2단계 Escape. 그리기 도구가 켜져 있고 뭔가 선택돼 있으면 첫 Escape 는
-        // **선택만** 푼다 — 도구는 살려 둔다.
+        // Escape 와 우클릭은 **같은 하나의 출구**다 — 한 번에 도구와 선택을 함께
+        // 푼다(사용자 결정, 2026-08-08). 단계로 나누면 어느 제스처가 어디까지
+        // 되돌리는지 외워야 하므로, 예측 가능성을 택했다. 두 경로가 같은 스토어
+        // 액션을 부르는 것이 곧 "결과가 항상 같다" 는 보장이다.
         //
-        // 왜: 그리기 모드엔 빈 곳 클릭 해제가 없다(`shouldDeselectOnClick` effect 는
-        // select 모드에서만 마운트된다). 그런데 선택된 도형은 그리기 모드에서도
-        // 잡힌다(tools.ts 의 `withSelectedDrawingDrag` — 방금 그린 것을 끌면 새로
-        // 그려지던 버그의 수정). 둘이 겹치면 "방금 그린 도형의 윤곽 위에서 다음 획을
-        // 시작하는" 길이 막히는데, 종전 Escape 는 선택과 **도구를 한꺼번에** 풀어서
-        // 유일한 탈출구가 "도구까지 버리기" 였다.
-        //
-        // 도구를 끄는 길은 그대로 있다 — 선택이 없으면 곧장, 있으면 한 번 더.
-        // (2026-07-01 계획서의 "Escape remains the way to return to select mode" 는
-        // 유효하다. 눌러야 하는 횟수만 상태에 따라 1~2회로 갈린다.)
-        const store = useDrawingsStore.getState();
-        const hadSelection = (store.selectedByScope.get(keyScope) ?? null) != null;
-        store.setSelected(keyScope, null);
-        // activeTool 은 스토어에서 읽는다 — 이 keydown 클로저는 재바인딩되지 않아
-        // 렌더 시점의 `activeTool` 은 stale 이다.
-        if (store.activeTool !== 'select' && hadSelection) return;
-        store.setActiveTool('select');
+        // 대가는 알려진 것이다: 방금 그린 도형의 윤곽 위에서 이어 그리려면 도구를
+        // 다시 골라야 한다(선택된 도형은 그리기 중에도 잡히므로 — tools.ts 의
+        // `withSelectedDrawingDrag`). 그 자리를 피해 그리거나 도형을 하나 더
+        // 그리면 선택이 옮겨 가므로 재선택 없이도 된다.
+        useDrawingsStore.getState().exitDrawingMode();
         trendlineDraft.current = null;
         pencilDraft.current = null;
         rectDraft.current = null;
@@ -669,7 +659,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     resetGesture();
-    useDrawingsStore.getState().setActiveTool('select');
+    // Escape 와 같은 출구를 쓴다 — 종전엔 `setActiveTool('select')` 만 해서 선택이
+    // 남았고, 하필 속성 패널은 select 모드에서만 뜨므로 **우클릭한 순간 툴바가 새로
+    // 튀어나왔다**. 사용자에겐 "안 풀렸다" 로 읽혀 한 번 더 누르게 만들었다(그 두
+    // 번째는 아무 일도 하지 않는다 — 선택을 푸는 우클릭 경로가 아예 없었다).
+    useDrawingsStore.getState().exitDrawingMode();
   };
   // Double-click an existing text label to re-open its editor in place.
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {

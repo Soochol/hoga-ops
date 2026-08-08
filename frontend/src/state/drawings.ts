@@ -158,6 +158,22 @@ type Actions = {
   setActiveScope(scope: string | null): void;
   setActiveTool(tool: DrawingTool): void;
   setSelected(scope: string, id: DrawingId | null): void;
+  /**
+   * 그리기 상태를 통째로 원상복구한다 — 도구를 select 로 되돌리고 **모든 scope 의
+   * 선택을 비운다**. Escape 와 우클릭의 **유일한** 출구이며, 두 제스처가 한 액션을
+   * 공유하는 것이 곧 "둘의 결과가 항상 같다" 는 보장이다(예전엔 우클릭이 도구만
+   * 풀어서, 선택은 몇 번을 눌러도 남았다).
+   *
+   * 왜 scope 별이 아니라 전량인가: `activeTool` 이 전역 단일 필드라 그리기 모드는
+   * 앱 전역 모달이다. 그 모달을 나가는 제스처가 선택만 한 창에 남겨 두면 비대칭이
+   * 된다. 무엇보다 우클릭 경로(`useDrawingToolContextMenuReset`)는 화면 전역
+   * 리스너라 scope 를 알 방법이 없고, `activeScope`(마지막 마운트 창이 이김)로
+   * 대신하면 **엉뚱한 창의 선택만 지우고 정작 보이는 것은 남는** 간헐 버그가 된다.
+   *
+   * ADR-0119 C2c-2b 와 충돌하지 않는다 — 그 조항이 막는 것은 변이가 **엉뚱한
+   * scope 에 귀속**되는 것이고, 균일한 해제에는 오귀속이 없다.
+   */
+  exitDrawingMode(): void;
   /** scope 의 현재 선택 — 비반응형 조회(소비자 렌더는 selectedByScope selector 직독). */
   selectedFor(scope: string): DrawingId | null;
   drawingsFor(scope: string): Drawing[];
@@ -294,6 +310,10 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       const selectedByScope = new Map(get().selectedByScope);
       selectedByScope.set(scope, id);
       set({ selectedByScope });
+    },
+
+    exitDrawingMode() {
+      set({ activeTool: 'select', selectedByScope: new Map() });
     },
 
     selectedFor(scope) {

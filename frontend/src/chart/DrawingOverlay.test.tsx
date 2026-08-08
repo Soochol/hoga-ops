@@ -533,50 +533,56 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
     expect(s().drawingsFor('005930|minute')).toHaveLength(0);
   });
 
-  // 그리기 모드에는 빈 곳 클릭 해제가 없는데(select 모드 전용 effect) 선택된 도형은
-  // 그리기 중에도 잡힌다(tools.ts `withSelectedDrawingDrag`). 그래서 "도구를 살린 채
-  // 선택만 푸는" 길이 필요하고, 그게 첫 Escape 다. 두 번째가 종전 동작(도구 해제).
-  describe('Escape 2단계 — 선택 해제와 도구 해제를 나눈다', () => {
+  // Escape 와 우클릭은 **같은 하나의 출구**다(사용자 결정, 2026-08-08). 단계로 나누면
+  // 어느 제스처가 어디까지 되돌리는지 외워야 하므로 예측 가능성을 택했다.
+  describe('Escape·우클릭 = 하나의 출구', () => {
     const SCOPE = '005930|minute';
-    function seedSelected() {
+    function seedSelected(tool: 'pencil' | 'rect' | 'select') {
       const s = useDrawingsStore.getState();
       s.setActiveScope(SCOPE);
       s.add(SCOPE, { id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
       s.setSelected(SCOPE, 'h1');
+      s.setActiveTool(tool);
     }
 
-    it('그리기 도구 + 선택 있음 → 첫 Escape 는 선택만 풀고 도구를 살린다', () => {
+    it('Escape 한 번이 도구와 선택을 함께 푼다', () => {
       const s = () => useDrawingsStore.getState();
-      seedSelected();
-      s().setActiveTool('pencil');
+      seedSelected('pencil');
       mountOverlay();
 
       fireEvent.keyDown(window, { key: 'Escape' });
+
+      expect(s().activeTool).toBe('select');
       expect(s().selectedByScope.get(SCOPE) ?? null).toBeNull();
-      expect(s().activeTool).toBe('pencil'); // ← 종전엔 여기서 'select' 로 떨어졌다
-
-      // 두 번째가 도구를 푼다 — 탈출구는 사라지지 않았고, 횟수만 상태에 따라 갈린다.
-      fireEvent.keyDown(window, { key: 'Escape' });
-      expect(s().activeTool).toBe('select');
     });
 
-    it('선택이 없으면 첫 Escape 가 곧장 도구를 푼다', () => {
+    it('우클릭 한 번도 같은 상태로 착지한다 — 두 경로가 갈리지 않는다', () => {
       const s = () => useDrawingsStore.getState();
-      s().setActiveScope(SCOPE);
-      s().setActiveTool('rect');
+
+      // Escape 경로
+      seedSelected('pencil');
+      const viaEscape = mountOverlay();
+      fireEvent.keyDown(window, { key: 'Escape' });
+      const afterEscape = { tool: s().activeTool, sel: s().selectedByScope.get(SCOPE) ?? null };
+      viaEscape.unmount();
+
+      // 우클릭 경로 — 오버레이 위에서. 전역 리스너 쪽은 contextMenuReset.test.tsx 가 잰다.
+      seedSelected('pencil');
+      const { container } = mountOverlay();
+      fireEvent.contextMenu(container.querySelector('[data-drawing-overlay]')!);
+      const afterRightClick = { tool: s().activeTool, sel: s().selectedByScope.get(SCOPE) ?? null };
+
+      expect(afterRightClick).toEqual(afterEscape);
+      expect(afterRightClick).toEqual({ tool: 'select', sel: null });
+    });
+
+    it('select 모드에서도 Escape 는 선택을 푼다 (종전 동작)', () => {
+      const s = () => useDrawingsStore.getState();
+      seedSelected('select');
       mountOverlay();
 
       fireEvent.keyDown(window, { key: 'Escape' });
-      expect(s().activeTool).toBe('select');
-    });
 
-    it('select 모드에서는 선택이 있어도 종전대로 한 번에 처리된다', () => {
-      const s = () => useDrawingsStore.getState();
-      seedSelected();
-      s().setActiveTool('select');
-      mountOverlay();
-
-      fireEvent.keyDown(window, { key: 'Escape' });
       expect(s().selectedByScope.get(SCOPE) ?? null).toBeNull();
       expect(s().activeTool).toBe('select');
     });
