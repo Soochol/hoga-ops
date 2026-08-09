@@ -10,6 +10,7 @@ import type { LiveEffectiveSession } from '../api/livePastCandles';
 import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 import { buildStudyReferenceBundleModel } from './studyReferenceBundleModel';
+import type { StudyDailyContextWindow } from './studyDailyContext';
 import { studyReferenceQueryOptions } from './studyReferenceQueries';
 
 function mergeStudyRangeBundles(
@@ -34,7 +35,11 @@ function mergeStudyRangeBundles(
 // KIS 지연 칩(LiveDataWarning)으로 표기하면 오해를 준다(디스크는 지연 개념이 없음).
 const EMPTY_WARNINGS: LiveDataWarning[] = [];
 
-export function useStudyReferenceBundle(save: StudyViewReference | null) {
+export function useStudyReferenceBundle(
+  save: StudyViewReference | null,
+  /** 캘린더 봉 맥락 창(`studyDailyContext`). null = 저장 구간만(분봉 경로). */
+  dailyContext: StudyDailyContextWindow = null,
+) {
   // 복기뷰가 **공유 venue 스토어를 읽는다**(ADR-0140 §7). 여기 있던 `STUDY_VENUE =
   // 'KRX'` 고정은 "복기는 hogaplay 정규장 캡처만 쓴다"는 사실에서 나온 것이었는데,
   // PR-D 가 디스크에 `kiwoom_live/{venue}/` 를 만들면서 고를 대상이 생겼다.
@@ -70,9 +75,10 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       volumeDistributionEnabled,
       volumeDistributionRangeCount,
       venue,
-    }),
+    }, dailyContext),
     [
       save,
+      dailyContext,
       venue,
       brokerLateEntryEnabled,
       brokerLateEntryStartHHMM,
@@ -116,8 +122,9 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       rangeCandles: rangeCandleData,
       screenerDailyCandles: screenerDailyData,
       sessions,
+      dailyContext,
     }),
-    [pastBundle, rangeCandleData, save, screenerDailyData, sessions, venue],
+    [dailyContext, pastBundle, rangeCandleData, save, screenerDailyData, sessions, venue],
   );
 
   return {

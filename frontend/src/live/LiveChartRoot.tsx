@@ -27,6 +27,8 @@ import { deriveSourceBadge } from './sourceBadge';
 import type { CandleEmptyState as CandleEmptyStateValue } from './candleEmptyState';
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
+import StudySavedRangeBand from '../studyViews/StudySavedRangeBand';
+import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
 import {
   type LiveMAConfig,
   type LiveTimeframe,
@@ -301,6 +303,9 @@ interface Props {
   /** 일봉 MA 오버레이의 KIS 일봉 fetch 허용 여부(기본 true). /study는 false로 넘겨
    * 디스크(스크리너) 일봉만 쓴다 — study의 KIS 무호출 계약 유지. */
   dailyCandleKisEnabled?: boolean;
+  /** `/study` 캘린더 봉의 저장 구간 밴드. null(기본) = 미표시 — `/live` 는 저장 구간
+   *  개념 자체가 없으므로 넘기지 않는다. */
+  savedRangeBand?: StudySavedRangeMarks | null;
   /** Snapshot restore can pin pane mounts to saved indicator state. Omitted means read /live store. */
   paneTogglesOverride?: {
     volumeEnabled?: boolean;
@@ -393,6 +398,7 @@ export function LiveChartRoot({
   depthDeltaToday = [],
   forceHogaPanes = false,
   dailyCandleKisEnabled = true,
+  savedRangeBand = null,
   paneTogglesOverride,
   dailyMovingAverageOverride,
   tradeVolumePocOverride,
@@ -2187,6 +2193,11 @@ export function LiveChartRoot({
               per-day vertical line collapses onto each candle. */}
           {isMinuteTimeframe(timeframe) && (
             <DayBoundaryOverlay chart={chart} axis={axis} />
+          )}
+          {/* `/study` 저장 구간 밴드 — 캘린더 봉 전용. 분봉에선 저장 구간이 곧
+              화면 전체라 표시할 것이 없고, 좌표계도 다르다(캘린더 축 = 하루 1포인트). */}
+          {savedRangeBand && !isMinuteTimeframe(timeframe) && (
+            <StudySavedRangeBand chart={chart} axis={axis} marks={savedRangeBand} />
           )}
           {/* 동시호가(15:20–15:30 KST) 배경 음영은 2026-08-09 에 삭제했다
               (사용자 결정). `auctionWindowMask` 토글은 그대로 살아 있고 —

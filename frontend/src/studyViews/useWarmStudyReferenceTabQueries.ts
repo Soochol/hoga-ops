@@ -6,6 +6,7 @@ import type { StudyTab } from '../state/studyTabs';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
 import { referenceStudyView } from './studyViewVariant';
 import { studyReferenceQueryOptions } from './studyReferenceQueries';
+import { studyDailyContextWindow } from './studyDailyContext';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useEffectiveVenueResolver } from '../live/useEffectiveVenue';
 
@@ -76,7 +77,14 @@ export function useWarmStudyReferenceTabQueries({
       // "열 때 기본 시간봉" override로 연 첫 렌더에서 save.timeframe으로 워밍
       // 쿼리를 만들면 즉시 버려질 range 번들을 한 벌 더 fetch하게 된다.
       const timeframe = tab.timeframe;
-      const options = studyReferenceQueryOptions({ ...save, timeframe }, settings);
+      const displayed = { ...save, timeframe };
+      // 맥락 창도 활성 경로와 **같은 규칙으로** 계산한다 — 안 넘기면 캘린더 봉 탭의
+      // screenerDaily 키가 갈려 워밍이 헛돌고 활성 전환에서 다시 fetch 한다.
+      const options = studyReferenceQueryOptions(
+        displayed,
+        settings,
+        studyDailyContextWindow(displayed),
+      );
       return [options.rangeHoga, options.rangeSidecars, options.rangeCandles, options.screenerDaily]
         .filter((query) => query.enabled)
         .map((query) => ({ tabId: tab.id, query }));

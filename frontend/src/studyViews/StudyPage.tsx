@@ -31,6 +31,11 @@ import {
   studyViewKindLabel,
 } from './studyViewVariant';
 import { studyActiveViewModel } from './studyActiveViewModel';
+import {
+  studyDailyContextWindow,
+  studyDailyViewport,
+  studySavedRangeMarks,
+} from './studyDailyContext';
 import { PanelCard, ToolbarButton } from '../ui/PageShell';
 import { useRightRailStore } from '../state/rightRail';
 import {
@@ -212,7 +217,13 @@ export function StudyPage() {
       : null,
     [referenceSave, selectedTimeframe],
   );
-  const referenceQuery = useStudyReferenceBundle(displayedReferenceSave);
+  // 캘린더 봉(D/W/M)을 보는 동안에만 창을 넓힌다 — 분봉은 null 이라 쿼리 키·클립
+  // 모두 무변경이다(`studyDailyContextWindow` 가 봉으로 판정한다).
+  const dailyContext = useMemo(
+    () => studyDailyContextWindow(displayedReferenceSave),
+    [displayedReferenceSave],
+  );
+  const referenceQuery = useStudyReferenceBundle(displayedReferenceSave, dailyContext);
   const activeViewModel = useMemo(
     () => studyActiveViewModel({
       selectedSave: displayedReferenceSave ?? selectedSave,
@@ -522,6 +533,25 @@ export function StudyPage() {
         : null
     : null;
 
+  // 캘린더 봉의 저장 구간 마크 + 그 구간을 화면에 앉히는 초기 뷰포트.
+  // 저장 봉이 분봉이든 일봉이든 **똑같이** `save.range` 를 표시한다 — "저장된 구간"
+  // 이라는 개념은 저장 봉에 의존하지 않는다.
+  const dailyContextCandles = activeViewModel.status === 'ready' && dailyContext
+    ? activeViewModel.chartBundle.candles
+    : [];
+  const savedRangeBand = activeViewModel.status === 'ready' && dailyContext && referenceSave
+    ? studySavedRangeMarks(referenceSave, dailyContextCandles)
+    : null;
+  // 넓힌 창의 기본 뷰포트가 탭/저장 뷰포트를 **이긴다** — 저장 뷰포트는 좁은 창
+  // 시절의 값이라 그대로 복원하면 맥락이 도로 사라진다. 사용자가 팬·줌한 뒤의 값은
+  // 탭 뷰포트로 다시 잡히고, 그건 봉 전환 때만 여기로 되돌아온다.
+  const dailyContextViewport = savedRangeBand
+    ? studyDailyViewport(dailyContextCandles, savedRangeBand.fromMs, savedRangeBand.toMs)
+    : null;
+  const effectiveRestoreViewport = activeTabViewport
+    ? restoreViewport
+    : dailyContextViewport ?? restoreViewport;
+
   return (
     // bottom 여백만 제거(!pb-0) — 차트가 화면 하단까지 붙는다. 좌·우·상 p-md 는 유지.
     <PageContainer className="min-h-0 !pb-0">
@@ -607,7 +637,8 @@ export function StudyPage() {
                     isPastCandlesLoading: false,
                     isExtending: false,
                     pastDataWarnings: activeViewModel.pastDataWarnings,
-                    restoreViewport,
+                    restoreViewport: effectiveRestoreViewport,
+                    savedRangeBand,
                     dayAskPeaks: activeViewModel.bundle.ask_peaks,
                     dayBidPeaks: activeViewModel.bundle.bid_peaks,
                     todayKst: activeViewModel.save.range.to_date,
