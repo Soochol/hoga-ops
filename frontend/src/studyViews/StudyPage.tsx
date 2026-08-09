@@ -208,17 +208,25 @@ export function StudyPage() {
     [activeViewId, savesQuery.data?.saves],
   );
   const referenceSave = referenceStudyView(selectedSave);
-  // 탭이 이 뷰를 들고 있으면 tab.timeframe이 렌더 시점 SSOT다. viewTimeframes는
-  // effect로 한 커밋 늦게 동기화되므로, 그걸 먼저 읽으면 "열 때 기본 시간봉"
-  // override로 연 첫 렌더가 save.timeframe으로 range 번들(수십 MB)을 한 벌
-  // 더 fetch한다. viewTimeframes는 탭 없는 라우트 과도기 전용 폴백.
-  // 창 봉을 먼저 읽지 않는 이유: 탭을 바꾼 첫 커밋에는 창이 아직 이전 탭의 봉을
-  // 들고 있다(재시드가 effect 라 한 커밋 늦다). 그때 창을 읽으면 엉뚱한 봉으로
-  // 번들을 한 벌 더 fetch 한다. write-through 로 둘이 같게 유지되므로 탭을 먼저
-  // 읽어도 창 소유와 어긋나지 않는다(#902).
+  /**
+   * 탭 재시드가 아직 안 끝난 창인가 — **탭 값이 창 값을 이기는 유일한 구간**이다.
+   *
+   * 탭을 바꾼 첫 커밋에는 창이 아직 이전 탭의 봉을 들고 있다(재시드가 effect 라 한
+   * 커밋 늦다). 그때 창을 읽으면 엉뚱한 봉으로 번들(수십 MB)을 한 벌 더 fetch 한다.
+   * 그래서 그 한 커밋 동안만 탭을 먼저 읽는다.
+   *
+   * ⚠ 이 구간을 "탭이 이 뷰를 들고 있으면 항상" 으로 넓히면 **창 포커스만 옮겨도
+   * 탭이 들고 있는 봉이 그 창을 덮어쓴다**(#801 후속 버그). 탭 timeframe 은 포커스
+   * 창의 거울이지 전 창의 명령이 아니다.
+   */
+  const tabSeedKey = `${activeTabId ?? ''}:${activeViewId ?? ''}`;
+  const seededTabKeyRef = useRef<string | null>(null);
+  const tabSeedPending = seededTabKeyRef.current !== tabSeedKey;
+  // viewTimeframes 는 탭 없는 라우트 과도기 전용 폴백.
   const selectedTimeframe = activeViewId && referenceSave
-    ? (activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
+    ? (tabSeedPending && activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
       ?? chartWindowTimeframe
+      ?? (activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
       ?? viewTimeframes[activeViewId]
       ?? referenceSave.timeframe
     : null;
@@ -386,12 +394,18 @@ export function StudyPage() {
    * ⚠ **포커스 창만** 재시드한다(#801). 워크스페이스는 탭 사이에 공유되므로 전 창을
    * 재시드하면 탭을 한 번 오갈 때마다 멀티 타임프레임 배치가 무너진다 —
    * "일봉+10분봉으로 벌려 놨는데 탭 갔다 오니 둘 다 10분봉" 이 그 증상이다.
+   *
+   * ⚠ 그리고 **탭/뷰가 바뀔 때만** 돈다(`tabSeedKey`). 포커스가 바뀌었다는 이유로
+   * 돌면 탭이 들고 있는 봉이 새로 포커스된 창을 덮어써서, 창을 클릭했을 뿐인데 그
+   * 창의 봉이 바뀐다 — #801 착지 후 실제로 났던 버그다.
    */
   useEffect(() => {
     if (!chartWindowId || !selectedTimeframe) return;
+    if (seededTabKeyRef.current === tabSeedKey) return;
+    seededTabKeyRef.current = tabSeedKey;
     if (chartWindowTimeframe === selectedTimeframe) return;
     setChartTimeframe(chartWindowId, selectedTimeframe);
-  }, [chartWindowId, chartWindowTimeframe, selectedTimeframe, setChartTimeframe]);
+  }, [chartWindowId, chartWindowTimeframe, selectedTimeframe, setChartTimeframe, tabSeedKey]);
 
   /** 닫힌 창의 캡처 함수를 걷어낸다 — 등록소가 죽은 클로저를 붙들고 있지 않게. */
   useEffect(() => {
