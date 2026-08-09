@@ -99,7 +99,19 @@ function emptyRangeBundle(code: string, fromDate: string, toDate: string, bucket
   };
 }
 
-export function studyReferenceQueryInputs(save: StudyViewReference | null): StudyReferenceQueryInputs {
+/**
+ * ⚠ PROTOTYPE 배관 — `/study` 일봉 맥락 확장(studyViews/prototype/) 전용.
+ *
+ * null = 현행(저장 구간으로 클립). 값이 있으면 **screenerDaily 창만** 넓히고
+ * 클립도 같은 창으로 푼다. 1분봉(hogaplay) 창은 손대지 않는다 — 그쪽 캡은 의도된
+ * 방어고, 캡 밖은 screenerDaily 가 덮는다는 계약이 아래 주석에 이미 적혀 있다.
+ */
+export type StudyDailyContextWindow = { from: string; to: string } | null;
+
+export function studyReferenceQueryInputs(
+  save: StudyViewReference | null,
+  dailyContext: StudyDailyContextWindow = null,
+): StudyReferenceQueryInputs {
   const timeframe = save?.timeframe ?? null;
   const isMinute = timeframe ? isMinuteTimeframe(timeframe) : false;
   const bucketMs = timeframe && isMinute ? TIMEFRAME_TO_MS[timeframe as Timeframe] : 60_000;
@@ -126,8 +138,8 @@ export function studyReferenceQueryInputs(save: StudyViewReference | null): Stud
     },
     screenerDaily: {
       code: save && !isMinute ? save.code : null,
-      from: save && !isMinute ? save.range.from_date : null,
-      to: save && !isMinute ? save.range.to_date : null,
+      from: save && !isMinute ? (dailyContext?.from ?? save.range.from_date) : null,
+      to: save && !isMinute ? (dailyContext?.to ?? save.range.to_date) : null,
     },
   };
 }
@@ -172,6 +184,7 @@ export function buildStudyReferenceBundleModel({
   rangeCandles,
   screenerDailyCandles,
   sessions = [],
+  dailyContext = null,
 }: {
   save: StudyViewReference | null;
   venue: LiveVenueOption;
@@ -179,10 +192,12 @@ export function buildStudyReferenceBundleModel({
   rangeCandles: readonly Candle[];
   screenerDailyCandles: readonly StudyReferenceKisBar[];
   sessions?: readonly LiveEffectiveSession[];
+  /** ⚠ PROTOTYPE — 일봉 맥락 확장 창(studyReferenceQueryInputs 주석 참조). */
+  dailyContext?: StudyDailyContextWindow;
 }): StudyReferenceBundleModel {
   if (!save) return { bundle: null, chartBundle: null };
 
-  const inputs = studyReferenceQueryInputs(save);
+  const inputs = studyReferenceQueryInputs(save, dailyContext);
   const kisCandles = aggregateReferenceCandles({
     save,
     isMinute: inputs.isMinute,
@@ -192,8 +207,12 @@ export function buildStudyReferenceBundleModel({
   const clippedKisCandles = inputs.isMinute
     ? kisCandles.filter((c) => c.ts_ms >= save.range.from_ms && c.ts_ms <= save.range.to_ms)
     : kisCandles.filter((c) => {
+      // ⚠ PROTOTYPE: dailyContext 가 있으면 클립을 넓힌 창으로 푼다. 이 필터가
+      // 곧 "일봉이 저장 구간만 보이는" 현행 동작의 원인이다.
       const date = realMsToYyyymmdd(c.ts_ms);
-      return date >= save.range.from_date && date <= save.range.to_date;
+      const from = dailyContext?.from ?? save.range.from_date;
+      const to = dailyContext?.to ?? save.range.to_date;
+      return date >= from && date <= to;
     });
   const effectiveSessionByDate = effectiveSessionBoundsByDate(sessions);
   const sessionForDate = inputs.isMinute
@@ -221,8 +240,9 @@ export function buildStudyReferenceBundleModel({
       investorPoints: [],
       sessionBoundsForDate: sessionForDate,
     }),
-    from_date: save.range.from_date,
-    to_date: save.range.to_date,
+    // ⚠ PROTOTYPE: 넓힌 창이면 번들 메타도 그 창을 말해야 축·경고가 정합.
+    from_date: dailyContext?.from ?? save.range.from_date,
+    to_date: dailyContext?.to ?? save.range.to_date,
   };
 
   if (!inputs.isMinute || !pastBundle) {

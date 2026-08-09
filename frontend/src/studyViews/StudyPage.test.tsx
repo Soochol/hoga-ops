@@ -355,7 +355,8 @@ describe('StudyPage', () => {
     expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
     // 44px 그리기 레일은 #760 으로 폐기 — 그리기는 헤더의 DrawingMenu 가 연다.
     expect(screen.queryByTestId('live-drawing-rail')).not.toBeInTheDocument();
-    expect(useStudyReferenceBundleMock).toHaveBeenCalledWith(expect.objectContaining(referenceSave));
+    // 2번째 인자 null = 프로토타입 일봉 맥락 창 미사용(현행 동작).
+    expect(useStudyReferenceBundleMock).toHaveBeenCalledWith(expect.objectContaining(referenceSave), null);
     const props = liveChartRootMock.mock.calls[0][0];
     expect(props.code).toBe('005930');
     expect(props.timeframe).toBe('5m');
@@ -442,7 +443,7 @@ describe('StudyPage', () => {
     expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
       id: 'view-ref',
       timeframe: 'D',
-    }));
+    }), null);
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('D');
 
     fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
@@ -451,7 +452,7 @@ describe('StudyPage', () => {
     expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
       id: 'view-ref',
       timeframe: '5m',
-    }));
+    }), null);
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('5m');
 
     fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 5분' }));
@@ -461,7 +462,7 @@ describe('StudyPage', () => {
     expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
       id: 'view-ref',
       timeframe: '15m',
-    }));
+    }), null);
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('15m');
   });
 

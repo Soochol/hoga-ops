@@ -180,7 +180,7 @@ describe('useStudyReferenceBundle', () => {
       depthHeatmapEnabled: false,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
-    });
+    }, null); // 3번째 인자 null = 프로토타입 일봉 맥락 창 미사용(현행 동작).
     expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeHogaOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeSidecarOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(3, rangeCandlesOptions);
@@ -202,6 +202,7 @@ describe('useStudyReferenceBundle', () => {
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(
       save,
       expect.objectContaining({ venue: 'KRX' }),
+      null,
     );
   });
 

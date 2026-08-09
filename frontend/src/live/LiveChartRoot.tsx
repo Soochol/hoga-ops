@@ -27,6 +27,9 @@ import { deriveSourceBadge } from './sourceBadge';
 import type { CandleEmptyState as CandleEmptyStateValue } from './candleEmptyState';
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
+// ⚠ PROTOTYPE import — 승자 확정 시 이 줄과 아래 렌더 블록을 함께 걷어낸다.
+import StudySavedRangeOverlay from '../studyViews/prototype/StudySavedRangeOverlay';
+import type { StudySavedRangeMarks } from '../studyViews/prototype/studyDailyContextPrototype';
 import {
   type LiveMAConfig,
   type LiveTimeframe,
@@ -301,6 +304,8 @@ interface Props {
   /** 일봉 MA 오버레이의 KIS 일봉 fetch 허용 여부(기본 true). /study는 false로 넘겨
    * 디스크(스크리너) 일봉만 쓴다 — study의 KIS 무호출 계약 유지. */
   dailyCandleKisEnabled?: boolean;
+  /** ⚠ PROTOTYPE — `/study` 일봉 저장구간 표시(studyViews/prototype/). null = 미표시. */
+  prototypeSavedRange?: { marks: StudySavedRangeMarks; mode: 'band' | 'dim' } | null;
   /** Snapshot restore can pin pane mounts to saved indicator state. Omitted means read /live store. */
   paneTogglesOverride?: {
     volumeEnabled?: boolean;
@@ -393,6 +398,7 @@ export function LiveChartRoot({
   depthDeltaToday = [],
   forceHogaPanes = false,
   dailyCandleKisEnabled = true,
+  prototypeSavedRange = null,
   paneTogglesOverride,
   dailyMovingAverageOverride,
   tradeVolumePocOverride,
@@ -2187,6 +2193,16 @@ export function LiveChartRoot({
               per-day vertical line collapses onto each candle. */}
           {isMinuteTimeframe(timeframe) && (
             <DayBoundaryOverlay chart={chart} axis={axis} />
+          )}
+          {/* ⚠ PROTOTYPE — `/study` 일봉 저장구간 밴드/디밍. 캘린더 봉 전용
+              (분봉에선 저장 구간이 곧 화면 전체라 표시할 것이 없다). */}
+          {prototypeSavedRange && !isMinuteTimeframe(timeframe) && (
+            <StudySavedRangeOverlay
+              chart={chart}
+              axis={axis}
+              marks={prototypeSavedRange.marks}
+              mode={prototypeSavedRange.mode}
+            />
           )}
           {/* 동시호가(15:20–15:30 KST) 배경 음영은 2026-08-09 에 삭제했다
               (사용자 결정). `auctionWindowMask` 토글은 그대로 살아 있고 —

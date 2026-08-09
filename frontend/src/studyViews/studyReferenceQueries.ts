@@ -3,7 +3,7 @@ import { rangeBundleQueryOptions } from '../api/range';
 import { screenerDailyCandlesQueryOptions } from '../api/screenerDailyCandles';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { SourcePreference } from '../state/sourcePreference';
-import { studyReferenceQueryInputs } from './studyReferenceBundleModel';
+import { studyReferenceQueryInputs, type StudyDailyContextWindow } from './studyReferenceBundleModel';
 
 export type StudyReferenceQuerySettings = {
   /** undefined = 설정 로딩 중 → `rangeBundleQueryOptions` 가 `enabled=false` 로 막는다. */
@@ -92,8 +92,12 @@ export function studyReferenceCandleRangeOptions(save: StudyViewReference | null
   });
 }
 
-export function studyReferenceScreenerDailyOptions(save: StudyViewReference | null) {
-  const inputs = studyReferenceQueryInputs(save);
+export function studyReferenceScreenerDailyOptions(
+  save: StudyViewReference | null,
+  /** ⚠ PROTOTYPE — 일봉 맥락 확장 창(studyViews/prototype/). */
+  dailyContext: StudyDailyContextWindow = null,
+) {
+  const inputs = studyReferenceQueryInputs(save, dailyContext);
   return screenerDailyCandlesQueryOptions(
     inputs.screenerDaily.code,
     inputs.screenerDaily.from,
@@ -104,11 +108,13 @@ export function studyReferenceScreenerDailyOptions(save: StudyViewReference | nu
 export function studyReferenceQueryOptions(
   save: StudyViewReference | null,
   settings: StudyReferenceQuerySettings,
+  /** ⚠ PROTOTYPE — 일봉 맥락 확장 창. warm 프리페치 경로는 null 로 둔다. */
+  dailyContext: StudyDailyContextWindow = null,
 ) {
   return {
     rangeHoga: studyReferenceHogaRangeOptions(save, settings),
     rangeSidecars: studyReferenceSidecarRangeOptions(save, settings),
     rangeCandles: studyReferenceCandleRangeOptions(save),
-    screenerDaily: studyReferenceScreenerDailyOptions(save),
+    screenerDaily: studyReferenceScreenerDailyOptions(save, dailyContext),
   };
 }

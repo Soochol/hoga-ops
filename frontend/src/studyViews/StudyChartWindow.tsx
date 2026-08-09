@@ -32,6 +32,9 @@ import { STUDY_DEFAULT_MINUTE_TIMEFRAME } from '../state/studyLastMinuteTimefram
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import type { LiveTimeframe, MinuteTimeframe } from '../state/livePage';
 import { STUDY_WINDOW_WORKSPACE } from './studyWindowWorkspace';
+// ⚠ PROTOTYPE imports — 승자 확정 시 함께 걷어낸다.
+import { StudySavedRangeRail } from './prototype/StudySavedRangeRail';
+import type { StudySavedRangeMarks } from './prototype/studyDailyContextPrototype';
 
 /** 차트 데이터 배선 — 페이지가 쿼리 소유자라 값은 위에서 오지만, 요소를 만드는
  *  건 창이다(로딩 자리·에러 경계·셸 선택이 창의 결정이 되게). */
@@ -49,6 +52,8 @@ export type StudyChartWindowProps = {
   /** null = 아직 준비 전(로딩/에러). 헤더는 그때도 렌더한다. */
   chart: StudyChartRootProps | null;
   loading: boolean;
+  /** ⚠ PROTOTYPE — 변형 C(하단 미니맵 레일). null = 미표시. */
+  prototypeRail?: StudySavedRangeMarks | null;
 };
 
 export function StudyChartWindow(props: StudyChartWindowProps) {
@@ -95,6 +100,7 @@ function StudyChartWindowInner({
   timeframe,
   chart,
   loading,
+  prototypeRail = null,
 }: StudyChartWindowProps & { timeframe: LiveTimeframe }) {
   const headerRef = useRef<HTMLDivElement>(null);
   // 임계는 `/live` 값을 재사용하지 않는다 — 액션이 2버튼이라 그대로 쓰면 일찍
@@ -145,6 +151,10 @@ function StudyChartWindowInner({
           </ChartErrorBoundary>
         ) : null}
       </div>
+      {/* ⚠ PROTOTYPE — 변형 C 의 하단 미니맵 레일. */}
+      {prototypeRail && chart?.chartBundle && (
+        <StudySavedRangeRail candles={chart.chartBundle.candles} marks={prototypeRail} />
+      )}
     </div>
   );
 }
