@@ -443,7 +443,9 @@ describe('StudyPage', () => {
     expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
       id: 'view-ref',
       timeframe: 'D',
-    }), null);
+      // 캘린더 봉은 맥락 창을 함께 넘긴다 — from 은 저장 시작(20260616)에서 일봉
+      // 250봉만큼 과거, to 는 오늘(테스트 실행일에 의존하므로 존재만 본다).
+    }), { from: '20250701', to: expect.any(String) });
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('D');
 
     fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
@@ -494,24 +496,25 @@ describe('StudyPage', () => {
   it('does not reuse a saved minute viewport after switching the study chart to D/W/M', () => {
     renderPage('/study?view=view-ref');
 
-    fireEvent.click(screen.getByRole('button', { name: '일' }));
+    // 캘린더 봉은 **저장 구간을 맥락 창 안에 앉히는 자체 뷰포트**를 쓴다. 이 테스트가
+    // 막는 방향은 "분봉 저장 뷰포트(barSpan 120)가 캘린더로 새는 것" 이므로, null
+    // 대신 그 값이 아님을 못박는다 — 값이 실린다는 사실만으로는 통과하지 않는다.
+    const savedMinuteSpan = 120;
 
+    fireEvent.click(screen.getByRole('button', { name: '일' }));
     expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
       timeframe: 'D',
-      restoreViewport: null,
+      restoreViewport: { atLiveEdge: false },
     });
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].restoreViewport.barSpan).not.toBe(savedMinuteSpan);
 
     fireEvent.click(screen.getByRole('button', { name: '주' }));
-    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
-      timeframe: 'W',
-      restoreViewport: null,
-    });
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].restoreViewport.barSpan).not.toBe(savedMinuteSpan);
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({ timeframe: 'W' });
 
     fireEvent.click(screen.getByRole('button', { name: '월' }));
-    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
-      timeframe: 'M',
-      restoreViewport: null,
-    });
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].restoreViewport.barSpan).not.toBe(savedMinuteSpan);
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({ timeframe: 'M' });
 
     fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
     expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
@@ -680,10 +683,9 @@ describe('StudyPage', () => {
 
     renderPage('/study?view=view-ref');
 
-    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
-      timeframe: 'D',
-      restoreViewport: null,
-    });
+    // 캡처 전에는 맥락 창 기본 뷰포트(저장 분봉 뷰포트가 아님)를 쓴다.
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({ timeframe: 'D' });
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].restoreViewport).not.toMatchObject({ barSpan: 120 });
 
     act(() => {
       liveChartRootMock.mock.calls.at(-1)?.[0].onViewportCaptureReady?.(() => capturedDailyViewport);

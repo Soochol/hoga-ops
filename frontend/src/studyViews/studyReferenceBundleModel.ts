@@ -18,6 +18,7 @@ import {
 } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { isMinuteTimeframe, type CalendarTimeframe } from '../state/livePage';
+import type { StudyDailyContextWindow } from './studyDailyContext';
 
 type StudyReferenceKisBar = {
   t_ms: number;
@@ -100,14 +101,12 @@ function emptyRangeBundle(code: string, fromDate: string, toDate: string, bucket
 }
 
 /**
- * ⚠ PROTOTYPE 배관 — `/study` 일봉 맥락 확장(studyViews/prototype/) 전용.
+ * 캘린더 봉 맥락 창(`studyDailyContext`). null = 저장 구간으로 클립(분봉 경로).
  *
- * null = 현행(저장 구간으로 클립). 값이 있으면 **screenerDaily 창만** 넓히고
- * 클립도 같은 창으로 푼다. 1분봉(hogaplay) 창은 손대지 않는다 — 그쪽 캡은 의도된
- * 방어고, 캡 밖은 screenerDaily 가 덮는다는 계약이 아래 주석에 이미 적혀 있다.
+ * 값이 있으면 **screenerDaily 창만** 넓히고 클립도 같은 창으로 푼다. 1분봉
+ * (hogaplay) 창은 손대지 않는다 — 그쪽 캡은 의도된 방어고, 캡 밖은 screenerDaily 가
+ * 덮는다는 계약이 아래 `dailyFrom` 주석에 이미 적혀 있다.
  */
-export type StudyDailyContextWindow = { from: string; to: string } | null;
-
 export function studyReferenceQueryInputs(
   save: StudyViewReference | null,
   dailyContext: StudyDailyContextWindow = null,
@@ -192,12 +191,15 @@ export function buildStudyReferenceBundleModel({
   rangeCandles: readonly Candle[];
   screenerDailyCandles: readonly StudyReferenceKisBar[];
   sessions?: readonly LiveEffectiveSession[];
-  /** ⚠ PROTOTYPE — 일봉 맥락 확장 창(studyReferenceQueryInputs 주석 참조). */
+  /** 캘린더 봉 맥락 창(`studyReferenceQueryInputs` 주석 참조). */
   dailyContext?: StudyDailyContextWindow;
 }): StudyReferenceBundleModel {
   if (!save) return { bundle: null, chartBundle: null };
 
   const inputs = studyReferenceQueryInputs(save, dailyContext);
+  // 맥락 창은 **캘린더 봉에서만** 의미가 있다. 호출부가 실수로 분봉에 창을 넘겨도
+  // 여기서 무력화해, 분봉 경로의 "저장 구간 = 화면" 계약이 한 곳에서 지켜지게 한다.
+  const window = inputs.isMinute ? null : dailyContext;
   const kisCandles = aggregateReferenceCandles({
     save,
     isMinute: inputs.isMinute,
@@ -207,13 +209,20 @@ export function buildStudyReferenceBundleModel({
   const clippedKisCandles = inputs.isMinute
     ? kisCandles.filter((c) => c.ts_ms >= save.range.from_ms && c.ts_ms <= save.range.to_ms)
     : kisCandles.filter((c) => {
-      // ⚠ PROTOTYPE: dailyContext 가 있으면 클립을 넓힌 창으로 푼다. 이 필터가
-      // 곧 "일봉이 저장 구간만 보이는" 현행 동작의 원인이다.
+      // 이 필터가 캘린더 봉의 가시 범위를 정한다. `dailyContext` 없이 저장 구간으로
+      // 자르면 일봉이 저장 구간만 보여 "큰 그림에서의 위치" 를 답할 수 없다.
       const date = realMsToYyyymmdd(c.ts_ms);
-      const from = dailyContext?.from ?? save.range.from_date;
-      const to = dailyContext?.to ?? save.range.to_date;
+      const from = window?.from ?? save.range.from_date;
+      const to = window?.to ?? save.range.to_date;
       return date >= from && date <= to;
     });
+  // 축 기준일은 **실제 마지막 캔들의 날짜**여야 한다. 저장 구간 끝을 쓰면 맥락 창이
+  // 그보다 뒤까지 뻗을 때 "오늘 세션" 세그먼트가 더 이른 날짜로 뒤에 붙어 세그먼트
+  // 정렬이 깨진다(`[virtualAxis] buildSegments … axis conversions will be wrong`).
+  const lastCandle = clippedKisCandles[clippedKisCandles.length - 1];
+  const axisTodayDate = window && lastCandle
+    ? realMsToYyyymmdd(lastCandle.ts_ms)
+    : save.range.to_date;
   const effectiveSessionByDate = effectiveSessionBoundsByDate(sessions);
   const sessionForDate = inputs.isMinute
     ? (yyyymmdd: string) =>
@@ -228,10 +237,10 @@ export function buildStudyReferenceBundleModel({
   const chartBundle = {
     ...buildChartBundle({
       code: save.code,
-      todayDate: save.range.to_date,
+      todayDate: axisTodayDate,
       todaySession: {
-        open_ms: regularSessionOpenMs(save.range.to_date),
-        close_ms: regularSessionCloseMs(save.range.to_date),
+        open_ms: regularSessionOpenMs(axisTodayDate),
+        close_ms: regularSessionCloseMs(axisTodayDate),
       },
       pastBundle: inputs.isMinute ? pastBundle : null,
       kisCandles: clippedKisCandles,
@@ -240,9 +249,10 @@ export function buildStudyReferenceBundleModel({
       investorPoints: [],
       sessionBoundsForDate: sessionForDate,
     }),
-    // ⚠ PROTOTYPE: 넓힌 창이면 번들 메타도 그 창을 말해야 축·경고가 정합.
-    from_date: dailyContext?.from ?? save.range.from_date,
-    to_date: dailyContext?.to ?? save.range.to_date,
+    // 번들 메타는 **실제로 들고 있는 범위**를 말한다 — 맥락 창을 열었으면 그 창이고,
+    // 우측은 요청 상한(오늘)이 아니라 마지막 캔들 날짜다(디스크에 없는 날은 없는 것).
+    from_date: window?.from ?? save.range.from_date,
+    to_date: window && lastCandle ? axisTodayDate : save.range.to_date,
   };
 
   if (!inputs.isMinute || !pastBundle) {

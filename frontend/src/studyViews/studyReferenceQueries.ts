@@ -3,7 +3,8 @@ import { rangeBundleQueryOptions } from '../api/range';
 import { screenerDailyCandlesQueryOptions } from '../api/screenerDailyCandles';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { SourcePreference } from '../state/sourcePreference';
-import { studyReferenceQueryInputs, type StudyDailyContextWindow } from './studyReferenceBundleModel';
+import { studyReferenceQueryInputs } from './studyReferenceBundleModel';
+import type { StudyDailyContextWindow } from './studyDailyContext';
 
 export type StudyReferenceQuerySettings = {
   /** undefined = 설정 로딩 중 → `rangeBundleQueryOptions` 가 `enabled=false` 로 막는다. */
@@ -94,7 +95,7 @@ export function studyReferenceCandleRangeOptions(save: StudyViewReference | null
 
 export function studyReferenceScreenerDailyOptions(
   save: StudyViewReference | null,
-  /** ⚠ PROTOTYPE — 일봉 맥락 확장 창(studyViews/prototype/). */
+  /** 캘린더 봉 맥락 창(`studyDailyContext`). null = 저장 구간만. */
   dailyContext: StudyDailyContextWindow = null,
 ) {
   const inputs = studyReferenceQueryInputs(save, dailyContext);
@@ -108,7 +109,8 @@ export function studyReferenceScreenerDailyOptions(
 export function studyReferenceQueryOptions(
   save: StudyViewReference | null,
   settings: StudyReferenceQuerySettings,
-  /** ⚠ PROTOTYPE — 일봉 맥락 확장 창. warm 프리페치 경로는 null 로 둔다. */
+  /** 캘린더 봉 맥락 창. warm 프리페치도 **같은 값을 넘겨야** 활성 전환 때 키가
+   *  맞아 재fetch 가 안 난다(#1216 의 탭 워밍 교훈과 같은 함정). */
   dailyContext: StudyDailyContextWindow = null,
 ) {
   return {

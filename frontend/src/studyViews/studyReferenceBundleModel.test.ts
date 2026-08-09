@@ -196,3 +196,69 @@ describe('studyReferenceBundleModel', () => {
     expect(model.chartBundle?.from_date).toBe('20260616');
   });
 });
+
+describe('studyReferenceBundleModel — 캘린더 맥락 창(studyDailyContext)', () => {
+  const d15 = Date.UTC(2026, 5, 15, 0, 0);
+  const d16 = Date.UTC(2026, 5, 16, 0, 0);
+  const d22 = Date.UTC(2026, 5, 22, 0, 0);
+  const window = { from: '20260601', to: '20260630' };
+  const dailySave = { ...save, timeframe: 'D' as const };
+  const screener = [
+    { t_ms: d15, open: 1, high: 2, low: 1, close: 15, volume: 1 },
+    { t_ms: d16, open: 1, high: 2, low: 1, close: 16, volume: 1 },
+    { t_ms: d22, open: 1, high: 2, low: 1, close: 22, volume: 1 },
+  ];
+
+  it('창이 없으면 저장 구간(20260616~18) 밖 일봉을 버린다 — 지금까지의 동작', () => {
+    const model = buildStudyReferenceBundleModel({
+      save: dailySave, venue: 'KRX', pastBundle: null, rangeCandles: [], screenerDailyCandles: screener,
+    });
+
+    expect(model.chartBundle?.candles.map((c) => c.close)).toEqual([16]);
+  });
+
+  it('창이 있으면 저장 구간 앞뒤 일봉이 살아남는다', () => {
+    const model = buildStudyReferenceBundleModel({
+      save: dailySave, venue: 'KRX', pastBundle: null, rangeCandles: [], screenerDailyCandles: screener,
+      dailyContext: window,
+    });
+
+    expect(model.chartBundle?.candles.map((c) => c.close)).toEqual([15, 16, 22]);
+  });
+
+  it('축 기준일은 마지막 캔들 날짜다 — 저장 끝을 쓰면 세그먼트 순서가 깨진다', () => {
+    const model = buildStudyReferenceBundleModel({
+      save: dailySave, venue: 'KRX', pastBundle: null, rangeCandles: [], screenerDailyCandles: screener,
+      dailyContext: window,
+    });
+
+    // to_date 가 저장 끝(20260618)이나 요청 상한(20260630)이 아니라 실제 마지막 캔들.
+    expect(model.chartBundle?.to_date).toBe('20260622');
+    expect(model.chartBundle?.from_date).toBe('20260601');
+  });
+
+  it('분봉 저장은 창을 넘겨도 무시한다 — 분봉 경로는 저장 구간 클립 그대로', () => {
+    const minute = buildStudyReferenceBundleModel({
+      save, venue: 'KRX', pastBundle: pastBundle(),
+      rangeCandles: [candle(1_000, 1, 2, 1, 2, 10), candle(9_999_999, 1, 2, 1, 3, 10)],
+      screenerDailyCandles: [],
+      dailyContext: window,
+    });
+
+    // 창 안(20260601~30)이지만 저장 구간(to_ms 3000) 밖인 캔들은 여전히 잘린다.
+    expect(minute.chartBundle?.candles.map((c) => c.close)).not.toContain(3);
+    expect(minute.chartBundle?.from_date).toBe('20260616');
+    expect(minute.chartBundle?.to_date).toBe('20260618');
+  });
+
+  it('창은 screenerDaily 쿼리만 넓힌다 — 1분봉(hogaplay) 창은 캡을 유지한다', () => {
+    const inputs = studyReferenceQueryInputs(dailySave, window);
+
+    expect(inputs.screenerDaily).toMatchObject({ from: '20260601', to: '20260630' });
+    // candles(1m)의 from 은 캡 계산 그대로여야 한다(창과 무관).
+    expect(inputs.candles.from).toBe(
+      studyReferenceQueryInputs(dailySave).candles.from,
+    );
+    expect(inputs.candles.to).toBe('20260618');
+  });
+});

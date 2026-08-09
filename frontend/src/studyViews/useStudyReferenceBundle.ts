@@ -9,7 +9,8 @@ import type { LiveDataWarning } from '../live/liveDataWarnings';
 import type { LiveEffectiveSession } from '../api/livePastCandles';
 import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
-import { buildStudyReferenceBundleModel, type StudyDailyContextWindow } from './studyReferenceBundleModel';
+import { buildStudyReferenceBundleModel } from './studyReferenceBundleModel';
+import type { StudyDailyContextWindow } from './studyDailyContext';
 import { studyReferenceQueryOptions } from './studyReferenceQueries';
 
 function mergeStudyRangeBundles(
@@ -36,7 +37,7 @@ const EMPTY_WARNINGS: LiveDataWarning[] = [];
 
 export function useStudyReferenceBundle(
   save: StudyViewReference | null,
-  /** ⚠ PROTOTYPE — 일봉 맥락 확장 창(studyViews/prototype/). null = 현행 동작. */
+  /** 캘린더 봉 맥락 창(`studyDailyContext`). null = 저장 구간만(분봉 경로). */
   dailyContext: StudyDailyContextWindow = null,
 ) {
   // 복기뷰가 **공유 venue 스토어를 읽는다**(ADR-0140 §7). 여기 있던 `STUDY_VENUE =

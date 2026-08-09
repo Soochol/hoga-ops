@@ -31,20 +31,11 @@ import {
   studyViewKindLabel,
 } from './studyViewVariant';
 import { studyActiveViewModel } from './studyActiveViewModel';
-// ⚠ PROTOTYPE imports — 승자 확정 시 이 블록과 아래 사용처를 함께 걷어낸다.
 import {
-  STUDY_DAILY_PARAMS,
-  STUDY_DAILY_VARIANTS,
-  STUDY_DAILY_VARIANT_LABELS,
-  STUDY_DAILY_VARIANT_NOTES,
-  parseStudyDailyAfter,
-  parseStudyDailyVariant,
   studyDailyContextWindow,
   studyDailyViewport,
   studySavedRangeMarks,
-  timeframeLabel,
-} from './prototype/studyDailyContextPrototype';
-import { PrototypeSwitcher } from '../ui/PrototypeSwitcher';
+} from './studyDailyContext';
 import { PanelCard, ToolbarButton } from '../ui/PageShell';
 import { useRightRailStore } from '../state/rightRail';
 import {
@@ -130,9 +121,6 @@ export function StudyPage() {
   const [params] = useSearchParams();
   const queryViewId = params.get('view');
   const navigate = useNavigate();
-  // ⚠ PROTOTYPE — 일봉 맥락 변형 스위치(studyViews/prototype/ 참조).
-  const prototypeVariant = parseStudyDailyVariant(params.get(STUDY_DAILY_PARAMS.variant));
-  const prototypeAfter = parseStudyDailyAfter(params.get(STUDY_DAILY_PARAMS.after));
 
   // 그리기 도구 활성 중 우클릭 = 해제(/live 와 동일 계약). 페이지 단위 1회.
   useDrawingToolContextMenuReset();
@@ -229,15 +217,13 @@ export function StudyPage() {
       : null,
     [referenceSave, selectedTimeframe],
   );
-  // ⚠ PROTOTYPE — 캘린더 봉(D/W/M)을 보는 동안에만 창을 넓힌다. 분봉 경로는
-  // null 이라 쿼리 키·클립 모두 현행과 바이트 동일.
-  const prototypeDailyContext = useMemo(
-    () => (prototypeVariant !== 'off' && displayedReferenceSave && !isMinuteTimeframe(displayedReferenceSave.timeframe)
-      ? studyDailyContextWindow(displayedReferenceSave, prototypeAfter)
-      : null),
-    [displayedReferenceSave, prototypeAfter, prototypeVariant],
+  // 캘린더 봉(D/W/M)을 보는 동안에만 창을 넓힌다 — 분봉은 null 이라 쿼리 키·클립
+  // 모두 무변경이다(`studyDailyContextWindow` 가 봉으로 판정한다).
+  const dailyContext = useMemo(
+    () => studyDailyContextWindow(displayedReferenceSave),
+    [displayedReferenceSave],
   );
-  const referenceQuery = useStudyReferenceBundle(displayedReferenceSave, prototypeDailyContext);
+  const referenceQuery = useStudyReferenceBundle(displayedReferenceSave, dailyContext);
   const activeViewModel = useMemo(
     () => studyActiveViewModel({
       selectedSave: displayedReferenceSave ?? selectedSave,
@@ -404,17 +390,13 @@ export function StudyPage() {
     if (initialQueryViewIdRef.current !== null) return;
     if (activeTab) {
       if (queryViewId === activeTab.viewId) return;
-      // ⚠ PROTOTYPE: 이 재작성은 쿼리스트링을 통째로 갈아 끼운다 → 그냥 두면
-      // 탭 동기화가 돌 때마다 `?variant=` 가 날아가 스위처가 고장난 것처럼 보인다.
-      const nextParams = new URLSearchParams(params);
-      nextParams.set('view', activeTab.viewId);
-      navigate(`/study?${nextParams.toString()}`, { replace: true });
+      navigate(`/study?view=${activeTab.viewId}`, { replace: true });
       return;
     }
     if (tabs.length === 0 && queryViewId !== null && initialQueryViewIdRef.current === null) {
       navigate('/study', { replace: true });
     }
-  }, [activeTab, navigate, params, queryViewId, tabs.length]);
+  }, [activeTab, navigate, queryViewId, tabs.length]);
 
   useStudyKeyboard({
     onSelectTabIndex: (index) => {
@@ -551,19 +533,24 @@ export function StudyPage() {
         : null
     : null;
 
-  // ⚠ PROTOTYPE — 일봉 맥락 변형의 파생값 3종(저장구간 마크 · 초기 뷰포트 · 레일).
+  // 캘린더 봉의 저장 구간 마크 + 그 구간을 화면에 앉히는 초기 뷰포트.
   // 저장 봉이 분봉이든 일봉이든 **똑같이** `save.range` 를 표시한다 — "저장된 구간"
   // 이라는 개념은 저장 봉에 의존하지 않는다.
-  const prototypeCandles = activeViewModel.status === 'ready' && prototypeDailyContext
+  const dailyContextCandles = activeViewModel.status === 'ready' && dailyContext
     ? activeViewModel.chartBundle.candles
     : [];
-  const prototypeMarks = activeViewModel.status === 'ready' && prototypeDailyContext && referenceSave
-    ? studySavedRangeMarks(referenceSave, timeframeLabel(referenceSave.timeframe), prototypeCandles)
+  const savedRangeBand = activeViewModel.status === 'ready' && dailyContext && referenceSave
+    ? studySavedRangeMarks(referenceSave, dailyContextCandles)
     : null;
-  const prototypeViewport = prototypeMarks
-    ? studyDailyViewport(prototypeVariant, prototypeCandles, prototypeMarks.fromMs, prototypeMarks.toMs, prototypeAfter)
+  // 넓힌 창의 기본 뷰포트가 탭/저장 뷰포트를 **이긴다** — 저장 뷰포트는 좁은 창
+  // 시절의 값이라 그대로 복원하면 맥락이 도로 사라진다. 사용자가 팬·줌한 뒤의 값은
+  // 탭 뷰포트로 다시 잡히고, 그건 봉 전환 때만 여기로 되돌아온다.
+  const dailyContextViewport = savedRangeBand
+    ? studyDailyViewport(dailyContextCandles, savedRangeBand.fromMs, savedRangeBand.toMs)
     : null;
-  const effectiveRestoreViewport = prototypeViewport ?? restoreViewport;
+  const effectiveRestoreViewport = activeTabViewport
+    ? restoreViewport
+    : dailyContextViewport ?? restoreViewport;
 
   return (
     // bottom 여백만 제거(!pb-0) — 차트가 화면 하단까지 붙는다. 좌·우·상 p-md 는 유지.
@@ -635,8 +622,6 @@ export function StudyPage() {
                   onTimeframeChange: changeTimeframe,
                   targetLabel: headerLabel,
                   loading: isStudyPageLoading,
-                  // ⚠ PROTOTYPE — 변형 C 전용 하단 레일.
-                  prototypeRail: prototypeVariant === 'C' ? prototypeMarks : null,
                   chart: activeViewModel.status === 'ready' ? {
                     code: activeViewModel.save.code,
                     timeframe: activeViewModel.save.timeframe,
@@ -644,11 +629,7 @@ export function StudyPage() {
                     // 창 id 를 키에 넣는다(#902) — #801 이 창을 늘리는 날 창마다
                     // 독립 리마운트 경계가 따라오게. 봉 세그먼트는 **로드된 번들의
                     // 봉**이라는 현행 의미를 유지한다(전환 과도기 리마운트 지연).
-                    // ⚠ PROTOTYPE: 변형 키를 identity 에 넣어야 변형 전환이 차트를
-                    // 리마운트한다 — restoreViewport 는 `lastAppliedCountRef` 로
-                    // 1회만 적용되므로, 안 넣으면 B/C 의 초기 뷰포트가 A 의 것을
-                    // 그대로 물려받아 "변형이 안 먹는다"로 읽힌다.
-                    viewIdentity: [chartWindowId, activeTabId, activeViewId, activeViewModel.save.timeframe, prototypeVariant, prototypeAfter ? 'after' : '']
+                    viewIdentity: [chartWindowId, activeTabId, activeViewId, activeViewModel.save.timeframe]
                       .filter(Boolean).join(':'),
                     bundle: activeViewModel.bundle,
                     chartBundle: activeViewModel.chartBundle,
@@ -657,11 +638,7 @@ export function StudyPage() {
                     isExtending: false,
                     pastDataWarnings: activeViewModel.pastDataWarnings,
                     restoreViewport: effectiveRestoreViewport,
-                    // ⚠ PROTOTYPE — 변형 A(밴드) / B(디밍)의 차트 내부 표시.
-                    prototypeSavedRange:
-                      prototypeMarks && (prototypeVariant === 'A' || prototypeVariant === 'B')
-                        ? { marks: prototypeMarks, mode: prototypeVariant === 'A' ? 'band' as const : 'dim' as const }
-                        : null,
+                    savedRangeBand,
                     dayAskPeaks: activeViewModel.bundle.ask_peaks,
                     dayBidPeaks: activeViewModel.bundle.bid_peaks,
                     todayKst: activeViewModel.save.range.to_date,
@@ -689,14 +666,6 @@ export function StudyPage() {
           )}
         </div>
       </div>
-      {/* ⚠ PROTOTYPE — 변형 전환 바(dev 전용). */}
-      <PrototypeSwitcher
-        variants={STUDY_DAILY_VARIANTS}
-        labels={STUDY_DAILY_VARIANT_LABELS}
-        notes={STUDY_DAILY_VARIANT_NOTES}
-        param={STUDY_DAILY_PARAMS.variant}
-        extras={[{ param: STUDY_DAILY_PARAMS.after, label: '이후 구간', on: prototypeAfter }]}
-      />
     </PageContainer>
   );
 }
