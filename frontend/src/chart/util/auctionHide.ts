@@ -14,10 +14,15 @@ import type { VirtualAxis } from '../../util/virtualAxis';
  *
  * Why not just drop the in-window points and let the indicators go empty (the
  * "filter at source" model)? Two lightweight-charts v5 behaviours block it:
- *   1. Time-scale is bar-index based. Dropping points shrinks the visible
- *      range past the auction window, so `AuctionWindowOverlay`'s
- *      `timeToCoordinate(auctionStart)` returns null and the highlight band
- *      disappears.
+ *   1. Time-scale is bar-index based. Dropping points shrinks the range past
+ *      the auction window, so `timeToCoordinate(t)` returns null for any `t`
+ *      beyond the surviving data — which silently breaks every DOM overlay
+ *      that positions itself by wall-clock time (`DayBoundaryOverlay`,
+ *      `DrawingOverlay`, peak-wall/POC labels). Keeping the points as
+ *      transparent sentinels preserves that bar-index density.
+ *      (ADR-0029 wrote this consequence against `AuctionWindowOverlay`, the
+ *      15:20–15:30 background band — that component was deleted 2026-08-09,
+ *      but the constraint holds for its siblings.)
  *   2. LineSeries / BaselineSeries silently interpolate across both
  *      `WhitespaceData` and missing-time gaps, so day-N close would still
  *      draw a diagonal into day-(N+1) open.

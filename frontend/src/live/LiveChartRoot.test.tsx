@@ -627,26 +627,6 @@ describe('LiveChartRoot', () => {
     expect(onCandleBasisHover).toHaveBeenLastCalledWith(null);
   });
 
-  it('mounts AuctionWindowOverlay when bundle has segments', () => {
-    // Phase D2 regression: the auctionWindowMask toggle (default ON) must
-    // render the AuctionWindowOverlay band so the user sees visual parity
-    // with the data masking it triggers on RatioPane / FillStrength and on
-    // BookPanel 의 총잔량 스트립. The overlay self-gates on useActivePrefs(auctionWindowMask)
-    // and on axis.segments.length > 0, so mounting it inside the
-    // bundle-has-segments JSX block is sufficient.
-    render(
-      <LiveChartRoot
-        code="005930"
-        timeframe="1m"
-        bundle={DEFAULT_BUNDLE}
-        clampEngaged={false}
-        isPastCandlesLoading={false}
-      />,
-      { wrapper },
-    );
-    expect(screen.getByTestId('auction-window-overlay')).toBeTruthy();
-  });
-
   it('passes rightmost visible candle cutoff to peak wall overlays when cutoff toggles are enabled', async () => {
     const previousAskPeakEnabled = useLivePageStore.getState().askPeakEnabled;
     const previousBidPeakEnabled = useLivePageStore.getState().bidPeakEnabled;
@@ -947,21 +927,6 @@ describe('LiveChartRoot', () => {
         bidPeakEnabled: previousBidPeakEnabled,
       });
     }
-  });
-
-  it('does not render the auction-window overlay for UN candle views', () => {
-    render(
-      <LiveChartRoot
-        code="005930"
-        timeframe="1m"
-        venue="UN"
-        bundle={DEFAULT_BUNDLE}
-        clampEngaged={false}
-        isPastCandlesLoading={false}
-      />,
-      { wrapper },
-    );
-    expect(screen.queryByTestId('auction-window-overlay')).toBeNull();
   });
 
   // ─────────────────────────────────────────────────────────────────────────
