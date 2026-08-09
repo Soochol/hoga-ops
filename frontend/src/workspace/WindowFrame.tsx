@@ -18,24 +18,26 @@ import type { ResizeMode } from './snapEngine';
 /** 인접 창 사이 시각 간격(px). 카드는 바깥 rect 에서 이 값의 절반씩 물러난다. */
 const GAP = 2;
 
-/** 모서리(2변) 핸들 — 스플리터 승격 없음, 이음매 accent 바도 없음. */
-const CORNER_HANDLES: { mode: ResizeMode; cls: string }[] = [
+/**
+ * 8방향 리사이즈 핸들 — 모서리 12×12, 변 8px 히트박스(간격을 넉넉히 덮어 이음매를
+ * 잡기 쉽게). 커서 모양이 유일한 어포던스다.
+ *
+ * 2026-08-09 (사용자 결정): 변 핸들에 있던 호버 accent 바(2px `bg-accent`,
+ * 토스식 분할선)를 삭제했다 — 창 가장자리에 뜨던 색 선이 시각 소음으로 판정됐다.
+ * 히트박스와 `cursor-*-resize` 는 그대로라 리사이즈 동작·스냅은 불변이고,
+ * 사라진 것은 "여기를 잡을 수 있다" 를 미리 알려주던 힌트뿐이다. 바가 없어지면서
+ * 변과 모서리가 동형이 됐으므로 두 배열을 하나로 합쳤다. 되살릴 일이 있으면
+ * DESIGN.md 의 삭제 이력을 먼저 볼 것.
+ */
+const RESIZE_HANDLES: { mode: ResizeMode; cls: string }[] = [
   { mode: 'se', cls: 'bottom-0 right-0 h-[12px] w-[12px] cursor-nwse-resize' },
   { mode: 'nw', cls: 'top-0 left-0 h-[12px] w-[12px] cursor-nwse-resize' },
   { mode: 'ne', cls: 'top-0 right-0 h-[12px] w-[12px] cursor-nesw-resize' },
   { mode: 'sw', cls: 'bottom-0 left-0 h-[12px] w-[12px] cursor-nesw-resize' },
-];
-
-/**
- * 변(edge) 핸들 — 8px 히트박스(간격을 넉넉히 덮어 이음매를 잡기 쉽게). `bar` 는
- * 호버 시 이음매에 나타나는 accent 선(토스식 분할선). 평상시 숨김(DESIGN: 스플리터
- * 라인은 호버/드래그에서만 --accent 로 노출).
- */
-const EDGE_HANDLES: { mode: ResizeMode; cls: string; bar: string }[] = [
-  { mode: 'e', cls: 'inset-y-[10px] right-0 w-[8px] cursor-ew-resize', bar: 'inset-y-[4px] right-0 w-[2px]' },
-  { mode: 'w', cls: 'inset-y-[10px] left-0 w-[8px] cursor-ew-resize', bar: 'inset-y-[4px] left-0 w-[2px]' },
-  { mode: 's', cls: 'inset-x-[10px] bottom-0 h-[8px] cursor-ns-resize', bar: 'inset-x-[4px] bottom-0 h-[2px]' },
-  { mode: 'n', cls: 'inset-x-[10px] top-0 h-[8px] cursor-ns-resize', bar: 'inset-x-[4px] top-0 h-[2px]' },
+  { mode: 'e', cls: 'inset-y-[10px] right-0 w-[8px] cursor-ew-resize' },
+  { mode: 'w', cls: 'inset-y-[10px] left-0 w-[8px] cursor-ew-resize' },
+  { mode: 's', cls: 'inset-x-[10px] bottom-0 h-[8px] cursor-ns-resize' },
+  { mode: 'n', cls: 'inset-x-[10px] top-0 h-[8px] cursor-ns-resize' },
 ];
 
 export interface WindowRectPx {
@@ -123,25 +125,13 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
         <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
       </div>
 
-      {CORNER_HANDLES.map((hd) => (
+      {RESIZE_HANDLES.map((hd) => (
         <div
           key={hd.mode}
           data-handle={hd.mode}
           className={`absolute z-10 ${hd.cls}`}
           onPointerDown={(e) => onHandleDown(e, id, hd.mode)}
         />
-      ))}
-      {EDGE_HANDLES.map((hd) => (
-        <div
-          key={hd.mode}
-          data-handle={hd.mode}
-          className={`group/handle absolute z-10 ${hd.cls}`}
-          onPointerDown={(e) => onHandleDown(e, id, hd.mode)}
-        >
-          <div
-            className={`absolute ${hd.bar} rounded-full bg-accent opacity-0 transition-opacity duration-150 group-hover/handle:opacity-80`}
-          />
-        </div>
       ))}
     </div>
   );
