@@ -574,6 +574,58 @@ describe('StudyPage', () => {
     });
   });
 
+  it('탭을 오가면 포커스 창은 그 탭의 봉으로 재시드된다 (#902 — 위 가드의 반대 방향)', () => {
+    useStudyTabsStore.setState({
+      tabs: [
+        { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: 'D' },
+        { id: 'tab-b', viewId: 'view-second', code: '000660', label: 'B', name: 'B', timeframe: '15m' },
+      ],
+      activeTabId: 'tab-a',
+    });
+
+    renderPage('/study?view=view-ref');
+
+    // 창은 5m 으로 태어났지만 탭 A 가 D 라 재시드된다.
+    const chartTf = () =>
+      useStudyWorkspaceStore.getState().windows.find((w) => w.id === 'w-chart')?.chart?.timeframe;
+    expect(chartTf()).toBe('D');
+
+    fireEvent.click(getStudyTab('B'));
+    expect(chartTf()).toBe('15m');
+
+    fireEvent.click(getStudyTab('A'));
+    expect(chartTf()).toBe('D');
+  });
+
+  it('다른 차트 창으로 포커스를 옮겨도 그 창의 봉이 바뀌지 않는다', () => {
+    useStudyTabsStore.setState({
+      tabs: [{
+        id: 'tab-ref', viewId: 'view-ref', code: '005930',
+        label: '삼성전자 · 돌파 복기 · 5m', name: '돌파 복기', timeframe: '5m',
+      }],
+      activeTabId: 'tab-ref',
+    });
+    addSecondChartWindow('5m');
+
+    renderPage('/study?view=view-ref');
+
+    // 포커스 창(w-chart)을 일봉으로 → write-through 로 탭도 D 가 된다.
+    const headers = screen.getAllByTestId('study-chart-window-header');
+    fireEvent.click(within(headers[0]).getByRole('button', { name: '일' }));
+    expect(useStudyTabsStore.getState().tabs[0].timeframe).toBe('D');
+
+    // 다른 창으로 포커스만 옮긴다 — 봉은 아무것도 안 만졌다.
+    act(() => { useStudyWorkspaceStore.getState().focusWindow('w-chart-2'); });
+
+    // 재시드는 **탭 재활성** 전용이다. 포커스 이동에 걸리면 탭이 들고 있는 봉이
+    // 옮겨간 창을 덮어써 "창을 클릭했을 뿐인데 봉이 바뀐다" 가 된다.
+    expect(useStudyWorkspaceStore.getState().windows.find((w) => w.id === 'w-chart-2')?.chart?.timeframe)
+      .toBe('5m');
+    // 렌더도 그 창의 봉이어야 한다(스토어만 지키고 렌더가 새면 증상은 같다).
+    const tfs = liveChartRootMock.mock.calls.slice(-2).map((c) => c[0].timeframe);
+    expect(tfs).toContain('5m');
+  });
+
   it('탭 재활성 재시드가 비포커스 창을 건드리지 않는다 — 멀티 타임프레임 배치 보존', () => {
     useStudyTabsStore.setState({
       tabs: [
