@@ -877,15 +877,23 @@ it('dragging a stock group outside the study target still reorders groups', asyn
 });
 
 describe('formatStudyViewMeta', () => {
-  it('shows timeframe · single date (from==to)', () => {
+  it('shows timeframe · single date (from==to) with the year', () => {
     expect(
       formatStudyViewMeta({ timeframe: '1m', range: { from_date: '20260708', to_date: '20260708' } }),
-    ).toBe('1m · 07-08');
+    ).toBe('1m · 2026-07-08');
   });
 
-  it('shows a date range when from != to', () => {
+  // 같은 해 안의 범위는 `to` 쪽 연도를 접는다 — 메타행이 truncate 라 아낀 폭이
+  // 그대로 `to` 날짜의 생존으로 돌아온다.
+  it('shows a date range when from != to, folding the repeated year', () => {
     expect(
       formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20260701', to_date: '20260708' } }),
-    ).toBe('D · 07-01~07-08');
+    ).toBe('D · 2026-07-01~07-08');
+  });
+
+  it('keeps both years when the range crosses a year boundary', () => {
+    expect(
+      formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20251228', to_date: '20260105' } }),
+    ).toBe('D · 2025-12-28~2026-01-05');
   });
 });
