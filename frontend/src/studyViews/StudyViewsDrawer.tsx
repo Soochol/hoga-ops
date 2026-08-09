@@ -51,18 +51,29 @@ export function filterStudyViews<T extends { name: string; code: string; memo: s
   return rows.filter((row) => [row.name, row.code, row.memo].some((v) => normalizeStudyViewQuery(v).includes(q)));
 }
 
-/** YYYYMMDD → "MM-DD" (같은 연도 가정, 저장뷰 메타의 좁은 폭에 맞춘 축약). */
-function shortMonthDay(yyyymmdd: string): string {
+/** YYYYMMDD → "YYYY-MM-DD", `withYear=false` 면 "MM-DD".
+ *
+ *  원래는 "같은 연도 가정" 으로 연도를 통째로 버렸는데, 저장뷰는 해를 넘겨 쌓이므로
+ *  그 전제가 성립하지 않았다 — 목록만 봐선 어느 해의 복기인지 알 수 없다. 이제
+ *  연도를 다는 것이 기본이고, 생략은 아래 범위 표기에서 **앞뒤 연도가 같을 때만**
+ *  쓰는 축약이다. */
+function shortDate(yyyymmdd: string, withYear: boolean): string {
   if (!/^\d{8}$/.test(yyyymmdd)) return yyyymmdd;
-  return `${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
+  const monthDay = `${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
+  return withYear ? `${yyyymmdd.slice(0, 4)}-${monthDay}` : monthDay;
 }
 
 /** 저장뷰 아이템 메타 = 타임프레임 · 복기 대상일(범위면 from~to). 종목은 그룹
- *  헤더가 이미 이므로 생략 — 아이템엔 "무엇을 저장했나"(분봉·날짜)만 남긴다. */
+ *  헤더가 이미 이므로 생략 — 아이템엔 "무엇을 저장했나"(분봉·날짜)만 남긴다.
+ *
+ *  범위가 한 해 안에 있으면 `to` 쪽 연도를 접는다(`2026-07-01~07-08`). 메타행이
+ *  `truncate` 라 넘치면 잘려 나가는 게 하필 `to` 날짜여서, 폭을 아끼는 편이
+ *  같은 연도를 두 번 찍는 것보다 읽힌다. 해를 걸치면 접지 않는다. */
 export function formatStudyViewMeta(row: { timeframe: string; range: { from_date: string; to_date: string } }): string {
   const { from_date, to_date } = row.range;
-  const date = from_date === to_date ? shortMonthDay(from_date) : `${shortMonthDay(from_date)}~${shortMonthDay(to_date)}`;
-  return `${row.timeframe} · ${date}`;
+  if (from_date === to_date) return `${row.timeframe} · ${shortDate(from_date, true)}`;
+  const sameYear = from_date.slice(0, 4) === to_date.slice(0, 4);
+  return `${row.timeframe} · ${shortDate(from_date, true)}~${shortDate(to_date, !sameYear)}`;
 }
 
 function ClearSearchIcon({ className }: { className?: string }) {
