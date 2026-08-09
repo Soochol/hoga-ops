@@ -3,10 +3,14 @@
  *
  * /live 의 `workspace.ts` 와 같은 뼈대(창 배열 + zOrder + 단일 영속 깔때기)지만
  * 의도적으로 얇다:
- * - **그룹 없음** — 활성 저장뷰가 단일 암묵 그룹이다(종목은 탭이 SSOT).
+ * - **그룹 없음** — 활성 저장뷰가 단일 암묵 그룹이다(종목은 탭이 SSOT). 차트 창이
+ *   여러 개여도 그대로다 — 창은 봉만 달리 볼 뿐 전부 같은 저장뷰를 본다.
  * - **레거시 px 마이그레이션 없음** — 처음부터 비율 rect(ADR-0122)로 태어난다.
  *
- * v1 은 차트 창 1개 고정(ADR-0123 — 멀티 차트는 PR-4 판정, #801).
+ * **차트 창은 여러 개 열 수 있다**(#801 판정: 도입, 2026-08-10). 같은 저장뷰를
+ * 창마다 다른 봉으로 나란히 보기 위한 것이다 — 창별 저장뷰는 범위 밖이고 종목은
+ * 여전히 탭이 SSOT 다. 남은 불변식은 **"차트 창이 0개가 되지 않는다"** 하나다
+ * (`canCloseStudyWindow`).
  *
  * 차트 창은 `/live` 와 **같은 모양**의 `chart` 설정을 갖는다(#906) — 타입을
  * `ChartWindowConfig` 로 공유해 동형을 컴파일러가 강제한다. #907 이 `windowView`
@@ -74,9 +78,9 @@ interface Store extends Persisted {
   /** 창별 비영속 런타임(#713 뷰포트 비저장과 정합) — 좌측 팬 딥 백필의 from-date. */
   chartRuntime: Record<string, ChartWindowRuntime>;
 
-  /** 창 추가. `chart` 는 v1 단일 고정 — 이미 있으면 그 창을 포커스하고 id 반환. */
+  /** 창 추가. `chart` 는 포커스된 차트의 설정을 복제해 새로 만든다(#801). */
   addWindow: (kind: StudyWindowKind) => string;
-  /** 창 닫기. 마지막 차트 창은 거부한다(차트 1개 불변식). */
+  /** 창 닫기. **마지막** 차트 창만 거부한다(`canCloseStudyWindow`). */
   closeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
   setWindowRect: (id: string, rect: FracRect) => void;
@@ -306,14 +310,49 @@ function seedChartConfig(): ChartWindowConfig {
   return { ...chartConfigSeed, indicators: normalizeIndicatorsV2(chartConfigSeed.indicators) };
 }
 
+/**
+ * 이 창을 닫아도 되는가 — **"차트 창이 0개가 되지 않는다"** 가 유일한 불변식이다
+ * (#801).
+ *
+ * 세 곳이 같은 답을 내야 한다: 스토어의 `closeWindow` 거부, 창 프레임의 닫기
+ * 어포던스, 창 목록 메뉴. 술어를 복제하면 "버튼은 있는데 안 닫힌다"(또는 그 반대)가
+ * 생기므로 여기 하나만 둔다.
+ */
+export function canCloseStudyWindow(
+  windows: readonly StudyWorkspaceWindow[],
+  id: string,
+): boolean {
+  const target = windows.find((w) => w.id === id);
+  if (!target) return false;
+  if (target.kind !== 'chart') return true;
+  return windows.filter((w) => w.kind === 'chart').length > 1;
+}
+
+/**
+ * 포커스된 차트 창 = zOrder 최상단의 차트 창.
+ *
+ * 창이 여러 개일 때 **탭 라벨 write-through·커서 해석·뷰포트 캡처**가 이 창을
+ * 따른다(#801 단계 1). 창이 하나면 그 창이므로 기존 동작과 같다.
+ */
+export function focusedChartWindowId(state: {
+  windows: readonly StudyWorkspaceWindow[];
+  zOrder: readonly string[];
+}): string | null {
+  for (let i = state.zOrder.length - 1; i >= 0; i -= 1) {
+    const id = state.zOrder[i];
+    if (state.windows.some((w) => w.id === id && w.kind === 'chart')) return id;
+  }
+  return state.windows.find((w) => w.kind === 'chart')?.id ?? null;
+}
+
 /** 차트 창에 설정이 빠진 게 있는가(하이드레이션 시 시드 여부 판정용). */
 function needsChartConfigSeed(windows: readonly StudyWorkspaceWindow[]): boolean {
   return windows.some((w) => w.kind === 'chart' && !w.chart);
 }
 
 /**
- * 차트 1개 불변식 + 설정 보정 — 손상 저장값에 차트가 없으면 좌측 기본 위치로
- * 주입하고, 설정이 없는 차트 창에는 시드 설정을 붙인다(#906).
+ * 차트 0개 금지 + 설정 보정 — 손상 저장값에 차트가 없으면 좌측 기본 위치로
+ * 주입하고, 설정이 없는 **모든** 차트 창에 시드 설정을 붙인다(#906).
  *
  * **배치는 절대 건드리지 않는다** — 설정 신설이 rect·zOrder 를 초기화하면 그게
  * 과잉 무효화다(#577).
@@ -453,14 +492,18 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
   chartRuntime: {},
 
   addWindow: (kind) => {
-    // 차트 1개 고정(v1) — 이미 있으면 새로 만들지 않고 포커스만 올린다.
-    if (kind === 'chart') {
-      const existing = get().windows.find((w) => w.kind === 'chart');
-      if (existing) {
-        get().focusWindow(existing.id);
-        return existing.id;
-      }
-    }
+    // 새 차트 창은 **포커스된 차트의 설정을 복제**해서 난다(#801). 기본값으로
+    // 태어나면 "복제 후 한쪽만 일봉으로" 라는 실제 사용 흐름에서 매번 봉·지표를
+    // 다시 맞춰야 한다. 복제는 값이지 상태이므로 지표는 깊은 복사한다.
+    const chartSeed = kind === 'chart'
+      ? (() => {
+          const s = get();
+          const focused = s.windows.find((w) => w.id === focusedChartWindowId(s))?.chart;
+          return focused
+            ? { ...focused, indicators: normalizeIndicatorsV2(focused.indicators) }
+            : seedChartConfig();
+        })()
+      : undefined;
     const id = newWindowId();
     set((state) => {
       const size = DEFAULT_SIZE[kind];
@@ -475,6 +518,7 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
           y: Math.min(offPx / REF_CANVAS.h, 1 - frac.h),
           ...frac,
         },
+        ...(chartSeed ? { chart: chartSeed } : {}),
       };
       const next = { windows: [...state.windows, win], zOrder: [...state.zOrder, id] };
       persistFromState({ ...state, ...next });
@@ -485,10 +529,8 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
 
   closeWindow: (id) => {
     set((state) => {
-      const target = state.windows.find((w) => w.id === id);
-      if (!target) return {};
-      // 차트 1개 불변식 — 마지막(=유일) 차트 창은 닫지 않는다.
-      if (target.kind === 'chart') return {};
+      // 남은 불변식은 "차트 창 0개 금지" 뿐이다 — 술어는 한 곳(#801).
+      if (!canCloseStudyWindow(state.windows, id)) return {};
       const next = {
         windows: state.windows.filter((w) => w.id !== id),
         zOrder: state.zOrder.filter((i) => i !== id),

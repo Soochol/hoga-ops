@@ -16,8 +16,9 @@ import type { WindowWorkspaceAdapter } from '../live/workspace/windowView';
  * `useWindowViewGuard` 의 존재 이유인 fresh 읽기가 깨진다 — 디바운스/타이머
  * 콜백이 "이 차트의 종목이 아직 활성인가"를 물을 때 한 틱 전 값을 보게 된다.
  *
- * 창 id 는 쓰지 않는다: v1 은 차트 창 1개 고정이고(ADR-0123) 종목은 탭이 정한다.
- * #801 이 창을 늘리는 날 "이 창은 어느 뷰인가"가 생기면 그때 창별로 갈라진다.
+ * 창 id 는 쓰지 않는다: 차트 창이 여러 개여도(#801 단계 1) **전부 활성 저장뷰에
+ * 묶여 있어** 종목이 하나이기 때문이다. 창별 저장뷰(창마다 다른 종목)를 허용하는
+ * 날 "이 창은 어느 뷰인가" 가 생기고, 그때 창별로 갈라진다.
  */
 function studyWindowCode(): string | null {
   const s = useStudyTabsStore.getState();

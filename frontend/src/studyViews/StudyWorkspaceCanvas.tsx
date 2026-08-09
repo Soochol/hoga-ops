@@ -6,7 +6,7 @@
  * 배치만 담당한다(방안 A). 창 콘텐츠는 ctx 로 주입받는다: 차트/메모는 StudyPage 가
  * 조립한 노드·props, 데이터 창은 kind 분기(studyWindowContents).
  */
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   WorkspaceCanvasCore,
   type WindowItemProps,
@@ -24,6 +24,7 @@ import { StudyChartWindow, type StudyChartWindowProps } from './StudyChartWindow
 import { StudyDataWindowContent } from './studyWindowContents';
 import { STUDY_WINDOW_LABEL, type StudyDataWindowKind } from './studyWindowMeta';
 import {
+  canCloseStudyWindow,
   useStudyWorkspaceStore,
   type StudyWindowKind,
   type StudyWorkspaceWindow,
@@ -43,8 +44,12 @@ export interface StudyItemCtx {
   /** 차트 창 타이틀바가 그리는 식별 행(#903 의 페이지 툴바 식별부에서 이관). */
   symbol: StudyChartSymbol;
   /** 차트 창 배선 — 창이 헤더·셸·차트를 소유하고(#908) 페이지는 데이터만 준다.
-   *  `windowId` 만 창 쪽에서 채운다(창이 자기 id 를 안다). */
-  chart: Omit<StudyChartWindowProps, 'windowId'>;
+   *  `windowId` 만 창 쪽에서 채운다(창이 자기 id 를 안다).
+   *
+   *  창마다 봉·번들이 다르므로 값이 아니라 **함수**다(#801). */
+  chartFor: (windowId: string) => Omit<StudyChartWindowProps, 'windowId'>;
+  /** 이 창을 닫을 수 있는가 — 스토어의 술어와 같은 것을 쓴다(어포던스 불일치 방지). */
+  canClose: (windowId: string) => boolean;
   /** 메모 창 본문 props(onClose 제외 — 창 닫기와 결속). null 이면 로딩 카드. */
   memo: Omit<StudyMemoPanelProps, 'onClose'> | null;
   closeWindow: (id: string) => void;
@@ -85,8 +90,8 @@ function StudyWindowItem({
       zIndex={zIndex}
       focused={focused}
       lifting={lifting}
-      // 차트 창은 v1 단일 고정(스토어가 닫기를 거부) — 어포던스도 숨긴다.
-      closable={win.kind !== 'chart'}
+      // 마지막 차트 창은 스토어가 닫기를 거부한다 — 어포던스도 같은 술어로 숨긴다.
+      closable={ctx.canClose(win.id)}
       // /study 통일: 안착 그림자·카드 배경 스텝 제거 → 콘텐츠가 필드에 평평하게 얹힌다.
       flat
 
@@ -106,7 +111,7 @@ function StudyWindowItem({
       }
     >
       {win.kind === 'chart' ? (
-        <StudyChartWindow {...ctx.chart} windowId={win.id} />
+        <StudyChartWindow {...ctx.chartFor(win.id)} windowId={win.id} />
       ) : (
         /* 창 단위 격리(/live WorkspaceCanvas 와 동일) — 데이터·메모 창의 throw 가
            워크스페이스 전체를 백지로 만들지 않게 한다. 차트 창은 내부 경계 보유.
@@ -136,7 +141,7 @@ function StudyWindowItem({
 export function StudyWorkspaceCanvas({
   save,
   bundle,
-  chart,
+  chartFor,
   memo,
   symbolLabel,
   symbolCode,
@@ -144,7 +149,8 @@ export function StudyWorkspaceCanvas({
 }: {
   save: StudyViewReference | null;
   bundle: RangeBundle | null;
-  chart: Omit<StudyChartWindowProps, 'windowId'>;
+  /** 창 id → 그 창의 차트 props. 창마다 봉·번들이 다르므로 값이 아니라 **함수**다(#801). */
+  chartFor: (windowId: string) => Omit<StudyChartWindowProps, 'windowId'>;
   memo: Omit<StudyMemoPanelProps, 'onClose'> | null;
   /** 차트 창 타이틀바 식별 — 스칼라 3개로 받아 itemCtx 재생성 축을 늘리지 않는다. */
   symbolLabel: string;
@@ -155,18 +161,23 @@ export function StudyWorkspaceCanvas({
   const zOrder = useStudyWorkspaceStore((s) => s.zOrder);
   const focusWindow = useStudyWorkspaceStore((s) => s.focusWindow);
   const closeWindow = useStudyWorkspaceStore((s) => s.closeWindow);
+  const canClose = useCallback(
+    (id: string) => canCloseStudyWindow(useStudyWorkspaceStore.getState().windows, id),
+    [windows],
+  );
   const setWindowRects = useStudyWorkspaceStore((s) => s.setWindowRects);
 
   const itemCtx = useMemo<StudyItemCtx>(
     () => ({
       save,
       bundle,
-      chart,
+      chartFor,
+      canClose,
       memo,
       closeWindow,
       symbol: { label: symbolLabel, code: symbolCode, kindLabel: symbolKindLabel },
     }),
-    [save, bundle, chart, memo, closeWindow, symbolLabel, symbolCode, symbolKindLabel],
+    [save, bundle, chartFor, canClose, memo, closeWindow, symbolLabel, symbolCode, symbolKindLabel],
   );
 
   return (
@@ -181,8 +192,8 @@ export function StudyWorkspaceCanvas({
   );
 }
 
-/** 창 추가 드롭다운의 kind 목록 — chart 는 v1 단일 고정이라 제외(ADR-0123). */
-const STUDY_ADD_KINDS: readonly StudyWindowKind[] = ['book', 'broker', 'vdist', 'program', 'memo'];
+/** 창 추가 드롭다운의 kind 목록 — 차트를 포함한다(#801: 창 여러 개 허용). */
+const STUDY_ADD_KINDS: readonly StudyWindowKind[] = ['chart', 'book', 'broker', 'vdist', 'program', 'memo'];
 
 /**
  * 창 추가 메뉴(/study) — /live WindowAddMenu 의 축소판.

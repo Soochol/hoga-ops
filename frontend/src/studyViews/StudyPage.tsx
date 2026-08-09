@@ -9,12 +9,17 @@ import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
-import { useStudyWorkspaceStore } from '../state/studyWorkspace';
+import { focusedChartWindowId, useStudyWorkspaceStore } from '../state/studyWorkspace';
+import {
+  FACTORY_INDICATOR_SETTINGS,
+  resolveIndicatorSettings,
+} from '../state/indicatorSettingsV2';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import {
   STUDY_DEFAULT_MINUTE_TIMEFRAME,
   useStudyLastMinuteTimeframeStore,
 } from '../state/studyLastMinuteTimeframe';
+import type { StudyChartRootProps } from './StudyChartWindow';
 import { StudyIndicatorDrawer } from './StudyIndicatorDrawer';
 import { StudyWorkspaceCanvas, StudyWindowAddMenu } from './StudyWorkspaceCanvas';
 import { StudyWindowListMenu } from './StudyWindowListMenu';
@@ -22,7 +27,10 @@ import { StudyLayoutPresetMenu } from './presets/StudyLayoutPresetMenu';
 import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
-import { useStudyReferenceBundle } from './useStudyReferenceBundle';
+import {
+  useStudyReferenceBundles,
+  type StudyReferenceBundleResult,
+} from './useStudyReferenceBundle';
 import { useStudyRangeCacheEviction } from './useStudyRangeCacheEviction';
 import { useWarmStudyReferenceTabQueries } from './useWarmStudyReferenceTabQueries';
 import {
@@ -31,11 +39,7 @@ import {
   studyViewKindLabel,
 } from './studyViewVariant';
 import { studyActiveViewModel } from './studyActiveViewModel';
-import {
-  studyDailyContextWindow,
-  studyDailyViewport,
-  studySavedRangeMarks,
-} from './studyDailyContext';
+import { studyDailyViewport, studySavedRangeMarks } from './studyDailyContext';
 import { PanelCard, ToolbarButton } from '../ui/PageShell';
 import { useRightRailStore } from '../state/rightRail';
 import {
@@ -46,6 +50,18 @@ import {
   WorkspaceState,
   WorkspaceToolbar,
 } from '../ui/WorkspaceShell';
+
+/** 포커스 차트 창이 아직 없을 때의 중립값 — 페이지가 "로딩" 으로 읽는다. */
+const EMPTY_BUNDLE_RESULT: StudyReferenceBundleResult = {
+  bundle: null,
+  chartBundle: null,
+  isLoading: true,
+  error: null,
+  pastDataWarnings: [],
+  venue: 'KRX',
+  displayedSave: null,
+  dailyContext: null,
+};
 
 function StudyDropOverlay() {
   return <DropOverlay>여기에 놓아 학습뷰 열기</DropOverlay>;
@@ -164,17 +180,19 @@ export function StudyPage() {
     [activeTabId, tabs],
   );
   // 봉은 차트 창이 런타임 소유자고 탭은 탭별 저장소다(#902 write-through 거울).
-  // v1 은 차트 창 1개 고정(ADR-0123).
-  const chartWindowId = useStudyWorkspaceStore(
-    (s) => s.windows.find((w) => w.kind === 'chart')?.id ?? null,
-  );
+  // 창이 여러 개면(#801) **포커스된 창**이 탭과 거울을 이룬다 — 탭 라벨에 봉이
+  // 박혀 있으므로 "지금 보고 있는 창" 하나만 라벨을 쓸 수 있다.
+  const chartWindowId = useStudyWorkspaceStore(focusedChartWindowId);
   const setChartTimeframe = useStudyWorkspaceStore((s) => s.setChartTimeframe);
   const chartWindowTimeframe = useStudyWorkspaceStore(
-    (s) => s.windows.find((w) => w.kind === 'chart')?.chart?.timeframe ?? null,
+    (s) => s.windows.find((w) => w.id === focusedChartWindowId(s))?.chart?.timeframe ?? null,
   );
   const chartWindowLastMinute = useStudyWorkspaceStore(
-    (s) => s.windows.find((w) => w.kind === 'chart')?.chart?.lastMinuteTimeframe ?? null,
+    (s) => s.windows.find((w) => w.id === focusedChartWindowId(s))?.chart?.lastMinuteTimeframe ?? null,
   );
+  // 스토어의 `windows` 를 그대로 구독한다 — 셀렉터에서 미리 접으면 매 렌더 새 배열이
+  // 나와 구독이 항상 깨진다. 접기는 아래 `chartWindowSpecs` 에서 한다.
+  const workspaceWindows = useStudyWorkspaceStore((s) => s.windows);
   const activatedTabIds = useMemo(() => Array.from(activatedStudyTabIds), [activatedStudyTabIds]);
   const querySave = useMemo(
     () => savesQuery.data?.saves.find((row) => row.id === queryViewId) ?? null,
@@ -211,19 +229,47 @@ export function StudyPage() {
       ? rememberedMinuteTimeframes[activeViewId]
         ?? (isMinuteTimeframe(referenceSave.timeframe) ? referenceSave.timeframe : '1m')
       : STUDY_DEFAULT_MINUTE_TIMEFRAME);
+  // 번들을 요구하는 창 목록 — 봉·지표가 곧 쿼리 키다(#904).
+  //
+  // **포커스 창만 `selectedTimeframe` 을 쓴다**: 탭을 바꾼 첫 커밋에는 창이 아직
+  // 이전 탭의 봉을 들고 있고(재시드가 effect 라 한 커밋 늦다), 그때 창 값을 그대로
+  // 쓰면 엉뚱한 봉으로 번들을 한 벌 더 fetch 한다(#902 의 그 함정). 나머지 창은
+  // 자기 봉 그대로여야 멀티 타임프레임 배치가 유지된다.
+  //
+  // 창을 드래그하기만 해도 이 배열이 새로 만들어지지만 **쿼리 키는 그대로**라
+  // 재fetch 는 나지 않는다(react-query 는 키로 판정한다).
+  const chartWindowSpecs = useMemo(
+    () => workspaceWindows
+      .filter((w) => w.kind === 'chart')
+      .map((w) => {
+        const timeframe = w.id === chartWindowId && selectedTimeframe
+          ? selectedTimeframe
+          : w.chart?.timeframe ?? STUDY_DEFAULT_MINUTE_TIMEFRAME;
+        return {
+          windowId: w.id,
+          timeframe,
+          indicators: w.chart
+            ? resolveIndicatorSettings(w.chart.indicators.byTimeframe, timeframe)
+            : FACTORY_INDICATOR_SETTINGS,
+        };
+      }),
+    [chartWindowId, selectedTimeframe, workspaceWindows],
+  );
   const displayedReferenceSave = useMemo(
     () => referenceSave && selectedTimeframe
       ? { ...referenceSave, timeframe: selectedTimeframe }
       : null,
     [referenceSave, selectedTimeframe],
   );
-  // 캘린더 봉(D/W/M)을 보는 동안에만 창을 넓힌다 — 분봉은 null 이라 쿼리 키·클립
-  // 모두 무변경이다(`studyDailyContextWindow` 가 봉으로 판정한다).
-  const dailyContext = useMemo(
-    () => studyDailyContextWindow(displayedReferenceSave),
-    [displayedReferenceSave],
+  // 창마다 번들 한 벌(#801). 같은 봉·지표 창끼리는 쿼리 키가 같아 dedupe 된다.
+  const bundlesByWindow = useStudyReferenceBundles(referenceSave, chartWindowSpecs);
+  // 페이지 상태(로딩·에러·상세창 데이터)는 **포커스된 창**을 따른다 — 비포커스 창의
+  // 에러가 페이지를 백지로 만들면 안 되고, 상세창은 커서를 주는 창과 같은 번들을
+  // 봐야 한다.
+  const referenceQuery = useMemo(
+    () => (chartWindowId ? bundlesByWindow[chartWindowId] : undefined) ?? EMPTY_BUNDLE_RESULT,
+    [bundlesByWindow, chartWindowId],
   );
-  const referenceQuery = useStudyReferenceBundle(displayedReferenceSave, dailyContext);
   const activeViewModel = useMemo(
     () => studyActiveViewModel({
       selectedSave: displayedReferenceSave ?? selectedSave,
@@ -251,7 +297,10 @@ export function StudyPage() {
   useEffect(() => {
     setIndicatorTimeframe(indicatorPanelTimeframe);
   }, [setIndicatorTimeframe, indicatorPanelTimeframe]);
-  const captureViewportRef = useRef<() => TabViewport | null>(() => null);
+  // 창별 뷰포트 캡처 함수 등록소(#801). 단일 ref 로 두면 창이 여러 개일 때
+  // **마지막에 마운트된 창이 이긴다** — 탭이 저장하는 뷰포트가 보고 있던 창의 것이
+  // 아니게 되고, 증상은 "탭을 돌아오면 엉뚱한 줌"으로 한참 뒤에 나타난다.
+  const captureViewportRefs = useRef<Map<string, () => TabViewport | null>>(new Map());
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
   const overStudy = useEntryDragStore((s) => s.overStudy);
   const registerStudyTarget = useEntryDragStore((s) => s.registerStudyTarget);
@@ -262,16 +311,26 @@ export function StudyPage() {
     activatedTabIds,
     saves: savesQuery.data?.saves ?? [],
   });
-  useStudyRangeCacheEviction(tabs);
-  const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
-    captureViewportRef.current = capture;
-  }, []);
+  // 축출은 (종목 × 봉)이다(#801) — 창이 여러 개면 같은 종목 아래 봉별 번들이 쌓인다.
+  useStudyRangeCacheEviction(
+    tabs,
+    referenceSave?.code ?? null,
+    chartWindowSpecs.map((w) => w.timeframe),
+  );
+  const registerViewportCapture = useCallback(
+    (windowId: string, capture: () => TabViewport | null) => {
+      captureViewportRefs.current.set(windowId, capture);
+    },
+    [],
+  );
+  // 탭이 들고 가는 뷰포트는 **포커스된 차트 창**의 것이다 — 탭 뷰포트는 한 벌이고
+  // 탭 라벨의 봉도 포커스 창을 따르므로, 둘이 같은 창을 봐야 복원이 어긋나지 않는다.
   const captureActiveTabViewport = useCallback(() => {
-    if (!activeTabId) return;
-    const viewport = captureViewportRef.current();
+    if (!activeTabId || !chartWindowId) return;
+    const viewport = captureViewportRefs.current.get(chartWindowId)?.();
     if (!viewport) return;
     updateTabViewport(activeTabId, viewport);
-  }, [activeTabId, updateTabViewport]);
+  }, [activeTabId, chartWindowId, updateTabViewport]);
   const handleFocusTab = useCallback((id: string) => {
     if (id !== activeTabId) captureActiveTabViewport();
     focusTab(id);
@@ -300,10 +359,14 @@ export function StudyPage() {
    * 이탈 시 캡처(뷰포트 방식)로는 부족하다: 탭 라벨에 봉이 박혀 있고 그 라벨은
    * 비활성 탭에서도 보이므로, 지연 반영하면 활성 탭 라벨이 창 봉과 어긋난 채
    * 노출된다. 봉은 문자열 하나라 상시 쓰기 비용도 없다.
+   *
+   * 창이 여러 개면(#801) 봉을 바꾼 **그 창**이 대상이고, 탭·전역 기억으로의
+   * write-through 는 **포커스 창일 때만** 일어난다. 비포커스 창의 봉이 탭 라벨을
+   * 갈아치우면 "안 만진 창 때문에 라벨이 바뀐다" 가 된다.
    */
-  const changeTimeframe = useCallback((next: LiveTimeframe) => {
-    if (chartWindowId) setChartTimeframe(chartWindowId, next);
-    if (!activeViewId) return;
+  const changeTimeframe = useCallback((windowId: string, next: LiveTimeframe) => {
+    setChartTimeframe(windowId, next);
+    if (!activeViewId || windowId !== chartWindowId) return;
     setViewTimeframes((current) => ({ ...current, [activeViewId]: next }));
     if (isMinuteTimeframe(next)) {
       setRememberedMinuteTimeframes((current) => ({ ...current, [activeViewId]: next }));
@@ -319,12 +382,24 @@ export function StudyPage() {
    * 탭 재활성 시 창을 탭 값으로 **재시드**한다 — 탭 A(일봉)→B→A 로 돌아오면
    * 일봉이 유지되는 이유(#902). 창이 이미 같은 봉이면 스토어가 no-op 이 아니라
    * 백필 런타임을 건드리므로 여기서 먼저 걸러낸다.
+   *
+   * ⚠ **포커스 창만** 재시드한다(#801). 워크스페이스는 탭 사이에 공유되므로 전 창을
+   * 재시드하면 탭을 한 번 오갈 때마다 멀티 타임프레임 배치가 무너진다 —
+   * "일봉+10분봉으로 벌려 놨는데 탭 갔다 오니 둘 다 10분봉" 이 그 증상이다.
    */
   useEffect(() => {
     if (!chartWindowId || !selectedTimeframe) return;
     if (chartWindowTimeframe === selectedTimeframe) return;
     setChartTimeframe(chartWindowId, selectedTimeframe);
   }, [chartWindowId, chartWindowTimeframe, selectedTimeframe, setChartTimeframe]);
+
+  /** 닫힌 창의 캡처 함수를 걷어낸다 — 등록소가 죽은 클로저를 붙들고 있지 않게. */
+  useEffect(() => {
+    const live = new Set(chartWindowSpecs.map((w) => w.windowId));
+    for (const id of captureViewportRefs.current.keys()) {
+      if (!live.has(id)) captureViewportRefs.current.delete(id);
+    }
+  }, [chartWindowSpecs]);
 
   useEffect(() => {
     if (!activeTab) return;
@@ -501,56 +576,89 @@ export function StudyPage() {
   const headerLabel = selectedSave?.label ?? activeTab?.label ?? '학습뷰';
   const headerCode = selectedSave?.code ?? activeTab?.code ?? '';
   const headerKindLabel = selectedSave ? studyViewKindLabel(selectedSave) : '복기뷰';
+  // 탭 뷰포트는 **포커스 창 하나에만** 적용된다(#801). 탭은 뷰포트를 한 벌만
+  // 들고 있고 그건 캡처한 창의 것이므로, 다른 봉을 보는 창에 씌우면 엉뚱한 줌이 된다.
+  // 봉 일치 조건은 기존 그대로 — "봉 전환 과도기에 옛 봉 번들 위로 새 봉 뷰포트가
+  // 새는 것" 차단이 그 술어의 실체다(#902).
   const activeViewTimeframe = activeViewModel.status === 'ready' ? activeViewModel.save.timeframe : null;
-  // 가드의 실체는 "봉 전환 과도기에 옛 봉 번들 위로 새 봉 뷰포트가 새는 것" 차단이라
-  // 우변은 **로드된 번들의 봉** 그대로다. 좌변만 창 봉으로 바꾼다(#902) —
-  // selectedTimeframe 이 곧 창 봉이다(write-through 로 탭과 동치).
-  const activeTabViewport =
+  const focusedTabViewport =
     activeTab?.viewId === activeViewId && selectedTimeframe === activeViewTimeframe
       ? activeTab.viewport
       : null;
-  const canUseSavedViewport =
-    activeViewModel.status === 'ready' &&
-    activeViewModel.save.timeframe === selectedSave?.timeframe;
-  const restoreViewport = activeViewModel.status === 'ready'
-    ? activeTabViewport
-      ? {
-          rightEdgeMs: activeTabViewport.rightEdgeMs,
-          barSpan: activeTabViewport.barSpan,
-          atLiveEdge: activeTabViewport.atLiveEdge,
-          ...(activeTabViewport.rightPaddingBars !== undefined ? { rightPaddingBars: activeTabViewport.rightPaddingBars } : {}),
-          ...(activeTabViewport.userAdjusted !== undefined ? { userAdjusted: activeTabViewport.userAdjusted } : {}),
-        }
-      : canUseSavedViewport
+
+  // 창별 차트 props. 훅이 아니라 평범한 계산이다 — 위쪽 조기 return 들 뒤라
+  // 여기서 훅을 부르면 렌더마다 훅 순서가 갈린다.
+  const chartPropsByWindow: Record<string, StudyChartRootProps | null> = {};
+  for (const spec of chartWindowSpecs) {
+    const result = bundlesByWindow[spec.windowId];
+    if (!result) continue;
+    const model = studyActiveViewModel({
+      selectedSave: result.displayedSave ?? selectedSave,
+      reference: result,
+    });
+    if (model.status !== 'ready') {
+      chartPropsByWindow[spec.windowId] = null;
+      continue;
+    }
+    const isFocused = spec.windowId === chartWindowId;
+    // 캘린더 봉의 저장 구간 마크 + 그 구간을 화면에 앉히는 초기 뷰포트(#1240).
+    // 저장 봉이 분봉이든 일봉이든 **똑같이** `save.range` 를 표시한다.
+    const band = result.dailyContext && referenceSave
+      ? studySavedRangeMarks(referenceSave, model.chartBundle.candles)
+      : null;
+    // 맥락 창의 기본 뷰포트가 저장 뷰포트를 이긴다 — 저장 뷰포트는 좁은 창 시절의
+    // 값이라 그대로 복원하면 맥락이 도로 사라진다. 탭 뷰포트(사용자가 팬·줌한 결과)는
+    // 포커스 창에 한해 그보다 우선한다.
+    const bandViewport = band
+      ? studyDailyViewport(model.chartBundle.candles, band.fromMs, band.toMs)
+      : null;
+    const savedViewport =
+      isFocused && model.save.timeframe === selectedSave?.timeframe
         ? {
-            rightEdgeMs: activeViewModel.save.viewport.right_edge_ms,
-            barSpan: activeViewModel.save.viewport.bar_span,
-            atLiveEdge: activeViewModel.save.viewport.at_live_edge,
-            ...(activeViewModel.save.viewport.right_padding_bars !== undefined && activeViewModel.save.viewport.right_padding_bars !== null
-              ? { rightPaddingBars: activeViewModel.save.viewport.right_padding_bars }
+            rightEdgeMs: model.save.viewport.right_edge_ms,
+            barSpan: model.save.viewport.bar_span,
+            atLiveEdge: model.save.viewport.at_live_edge,
+            ...(model.save.viewport.right_padding_bars !== undefined && model.save.viewport.right_padding_bars !== null
+              ? { rightPaddingBars: model.save.viewport.right_padding_bars }
               : {}),
           }
-        : null
-    : null;
+        : null;
+    const tabViewport = isFocused && focusedTabViewport
+      ? {
+          rightEdgeMs: focusedTabViewport.rightEdgeMs,
+          barSpan: focusedTabViewport.barSpan,
+          atLiveEdge: focusedTabViewport.atLiveEdge,
+          ...(focusedTabViewport.rightPaddingBars !== undefined ? { rightPaddingBars: focusedTabViewport.rightPaddingBars } : {}),
+          ...(focusedTabViewport.userAdjusted !== undefined ? { userAdjusted: focusedTabViewport.userAdjusted } : {}),
+        }
+      : null;
 
-  // 캘린더 봉의 저장 구간 마크 + 그 구간을 화면에 앉히는 초기 뷰포트.
-  // 저장 봉이 분봉이든 일봉이든 **똑같이** `save.range` 를 표시한다 — "저장된 구간"
-  // 이라는 개념은 저장 봉에 의존하지 않는다.
-  const dailyContextCandles = activeViewModel.status === 'ready' && dailyContext
-    ? activeViewModel.chartBundle.candles
-    : [];
-  const savedRangeBand = activeViewModel.status === 'ready' && dailyContext && referenceSave
-    ? studySavedRangeMarks(referenceSave, dailyContextCandles)
-    : null;
-  // 넓힌 창의 기본 뷰포트가 탭/저장 뷰포트를 **이긴다** — 저장 뷰포트는 좁은 창
-  // 시절의 값이라 그대로 복원하면 맥락이 도로 사라진다. 사용자가 팬·줌한 뒤의 값은
-  // 탭 뷰포트로 다시 잡히고, 그건 봉 전환 때만 여기로 되돌아온다.
-  const dailyContextViewport = savedRangeBand
-    ? studyDailyViewport(dailyContextCandles, savedRangeBand.fromMs, savedRangeBand.toMs)
-    : null;
-  const effectiveRestoreViewport = activeTabViewport
-    ? restoreViewport
-    : dailyContextViewport ?? restoreViewport;
+    chartPropsByWindow[spec.windowId] = {
+      code: model.save.code,
+      timeframe: model.save.timeframe,
+      venue: result.venue,
+      // 창 id 가 키에 있어 창마다 독립 리마운트 경계가 선다(#902 가 예고한 자리).
+      // 봉 세그먼트는 **로드된 번들의 봉**이라는 현행 의미를 유지한다.
+      viewIdentity: [spec.windowId, activeTabId, activeViewId, model.save.timeframe]
+        .filter(Boolean).join(':'),
+      bundle: model.bundle,
+      chartBundle: model.chartBundle,
+      clampEngaged: false,
+      isPastCandlesLoading: false,
+      isExtending: false,
+      pastDataWarnings: model.pastDataWarnings,
+      restoreViewport: tabViewport ?? bandViewport ?? savedViewport,
+      savedRangeBand: band,
+      dayAskPeaks: model.bundle.ask_peaks,
+      dayBidPeaks: model.bundle.bid_peaks,
+      todayKst: model.save.range.to_date,
+      tradeVolumePocs: tradeVolumePocsFromWire(model.bundle.trade_volume_pocs),
+      depthHeatmap: model.bundle.depth_heatmap,
+      forceHogaPanes: true,
+      dailyCandleKisEnabled: false,
+      onViewportCaptureReady: (capture: () => TabViewport | null) => registerViewportCapture(spec.windowId, capture),
+    };
+  }
 
   return (
     // bottom 여백만 제거(!pb-0) — 차트가 화면 하단까지 붙는다. 좌·우·상 p-md 는 유지.
@@ -616,39 +724,14 @@ export function StudyPage() {
                       onCommit: commitMemo,
                     }
                   : null}
-                chart={{
+                chartFor={(windowId) => ({
                   code: activeViewModel.status === 'ready' ? activeViewModel.save.code : null,
                   rememberedMinute: rememberedMinuteTimeframe,
                   onTimeframeChange: changeTimeframe,
                   targetLabel: headerLabel,
                   loading: isStudyPageLoading,
-                  chart: activeViewModel.status === 'ready' ? {
-                    code: activeViewModel.save.code,
-                    timeframe: activeViewModel.save.timeframe,
-                    venue: referenceQuery.venue,
-                    // 창 id 를 키에 넣는다(#902) — #801 이 창을 늘리는 날 창마다
-                    // 독립 리마운트 경계가 따라오게. 봉 세그먼트는 **로드된 번들의
-                    // 봉**이라는 현행 의미를 유지한다(전환 과도기 리마운트 지연).
-                    viewIdentity: [chartWindowId, activeTabId, activeViewId, activeViewModel.save.timeframe]
-                      .filter(Boolean).join(':'),
-                    bundle: activeViewModel.bundle,
-                    chartBundle: activeViewModel.chartBundle,
-                    clampEngaged: false,
-                    isPastCandlesLoading: false,
-                    isExtending: false,
-                    pastDataWarnings: activeViewModel.pastDataWarnings,
-                    restoreViewport: effectiveRestoreViewport,
-                    savedRangeBand,
-                    dayAskPeaks: activeViewModel.bundle.ask_peaks,
-                    dayBidPeaks: activeViewModel.bundle.bid_peaks,
-                    todayKst: activeViewModel.save.range.to_date,
-                    tradeVolumePocs: tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs),
-                    depthHeatmap: activeViewModel.bundle.depth_heatmap,
-                    forceHogaPanes: true,
-                    dailyCandleKisEnabled: false,
-                    onViewportCaptureReady: handleViewportCaptureReady,
-                  } : null,
-                }}
+                  chart: chartPropsByWindow[windowId] ?? null,
+                })}
               />
             </div>
             {draggingEntry && overStudy && <StudyDropOverlay />}
