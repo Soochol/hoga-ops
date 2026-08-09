@@ -132,17 +132,46 @@ describe('액션', () => {
     }
   });
 
-  it('addWindow(chart) — 차트 1개 고정: 기존 차트를 포커스하고 그 id 를 반환한다', async () => {
+  it('addWindow(chart) — 차트 창을 새로 만든다 (#801: 1개 고정 해제)', async () => {
     const { useStudyWorkspaceStore } = await importFresh();
     const store = useStudyWorkspaceStore;
-    const chartId = store.getState().windows.find((w) => w.kind === 'chart')?.id;
-    store.getState().addWindow('memo'); // 포커스를 다른 창으로.
+    const chartId = store.getState().windows.find((w) => w.kind === 'chart')!.id;
 
     const returned = store.getState().addWindow('chart');
     const s = store.getState();
-    expect(returned).toBe(chartId);
-    expect(s.windows.filter((w) => w.kind === 'chart').length).toBe(1);
-    expect(s.zOrder[s.zOrder.length - 1]).toBe(chartId);
+    expect(returned).not.toBe(chartId);
+    expect(s.windows.filter((w) => w.kind === 'chart').length).toBe(2);
+    expect(s.zOrder[s.zOrder.length - 1]).toBe(returned);
+  });
+
+  it('새 차트 창은 포커스된 차트의 설정을 복제한다 — "복제 후 한쪽만 일봉" 흐름', async () => {
+    const { useStudyWorkspaceStore } = await importFresh();
+    const store = useStudyWorkspaceStore;
+    const chartId = store.getState().windows.find((w) => w.kind === 'chart')!.id;
+    store.getState().setChartTimeframe(chartId, 'D');
+
+    const secondId = store.getState().addWindow('chart');
+    const second = store.getState().windows.find((w) => w.id === secondId);
+    expect(second?.chart?.timeframe).toBe('D');
+    // 값이지 상태다 — 참조를 나눠 가지면 한쪽 지표 변경이 다른 창에 샌다.
+    const first = store.getState().windows.find((w) => w.id === chartId);
+    expect(second?.chart?.indicators).not.toBe(first?.chart?.indicators);
+  });
+
+  it('차트 창은 둘 이상일 때만 닫힌다 — 마지막 하나는 거부', async () => {
+    const { useStudyWorkspaceStore, canCloseStudyWindow } = await importFresh();
+    const store = useStudyWorkspaceStore;
+    const chartId = store.getState().windows.find((w) => w.kind === 'chart')!.id;
+    expect(canCloseStudyWindow(store.getState().windows, chartId)).toBe(false);
+
+    const secondId = store.getState().addWindow('chart');
+    expect(canCloseStudyWindow(store.getState().windows, chartId)).toBe(true);
+    store.getState().closeWindow(secondId);
+    expect(store.getState().windows.filter((w) => w.kind === 'chart').length).toBe(1);
+    // 다시 하나 — 어포던스도 술어도 닫힘을 막는다.
+    expect(canCloseStudyWindow(store.getState().windows, chartId)).toBe(false);
+    store.getState().closeWindow(chartId);
+    expect(store.getState().windows.filter((w) => w.kind === 'chart').length).toBe(1);
   });
 
   it('closeWindow — 데이터 창은 닫히고, 차트 창은 거부된다', async () => {

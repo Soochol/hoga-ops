@@ -4,6 +4,11 @@
  * 구 StudyReferenceDetailPanel(우측 aside 4카드 스택)의 카드 resolver 들을 창 단위로
  * 이관한 것. 커서(`sidebarCursorMs`)는 전 창이 암묵 단일 그룹으로 소비한다 —
  * /live 의 `useGroupCursor`(origin.group 게이트)가 필요 없다(활성 저장뷰 하나뿐).
+ *
+ * 다만 **해석 봉은 발행 창의 것**을 쓴다(#801). 차트 창이 여럿이면 마지막에 호버한
+ * 창이 커서를 발행하는데, 그 커서를 다른 창의 봉으로 읽으면 일봉 커서를 분봉으로
+ * 오해하는 식의 어긋남이 난다. `sidebarCursorOrigin` 이 이미 발행 창의 봉을 싣고
+ * 있으므로(ADR-0119 PR-D) 그걸 쓴다.
  * 각 kind 가 자기 데이터 훅만 부른다 — react-query 가 중복 조회를 dedupe 하므로
  * 동종 창 중복도 안전하다.
  */
@@ -45,12 +50,16 @@ type ContentProps = {
 /** 커서 스코프 공용 파생 — 구 패널 상단 로직 그대로(창별 호출·값 동일). */
 function useStudyCursorScope(save: StudyViewReference) {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
-  const cursorScope = resolveCursorDetailScope({ cursorMs, timeframe: save.timeframe });
+  const cursorTimeframe = useLiveCursorStore((s) => s.sidebarCursorOrigin?.timeframe ?? null);
+  const cursorScope = resolveCursorDetailScope({
+    cursorMs,
+    timeframe: cursorTimeframe ?? save.timeframe,
+  });
   const detailCursorMs = cursorScope.kind === 'minute-cursor' ? cursorScope.cursorMs : null;
   const minuteTimeframe: MinuteTimeframe | null = cursorScope.kind === 'minute-cursor'
     ? cursorScope.minuteTimeframe
-    : isMinuteTimeframe(save.timeframe)
-      ? save.timeframe
+    : isMinuteTimeframe(cursorTimeframe ?? save.timeframe)
+      ? (cursorTimeframe ?? save.timeframe) as MinuteTimeframe
       : null;
   const volumeDistributionDate = detailCursorMs !== null
     ? realMsToYyyymmdd(detailCursorMs)

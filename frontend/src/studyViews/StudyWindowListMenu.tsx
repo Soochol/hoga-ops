@@ -9,7 +9,7 @@ import { useMemo } from 'react';
 import { WindowListMenu, type WindowListSection } from '../workspace/WindowListMenu';
 import { WINDOW_KIND_ICON } from '../live/workspace/windowKindIcons';
 import { STUDY_WINDOW_LABEL } from './studyWindowMeta';
-import { useStudyWorkspaceStore } from '../state/studyWorkspace';
+import { canCloseStudyWindow, useStudyWorkspaceStore } from '../state/studyWorkspace';
 
 export function StudyWindowListMenu() {
   const windows = useStudyWorkspaceStore((s) => s.windows);
@@ -28,8 +28,8 @@ export function StudyWindowListMenu() {
           label: STUDY_WINDOW_LABEL[w.kind],
           icon: WINDOW_KIND_ICON[w.kind],
           isFocused: w.id === focusedId,
-          // 유일 차트 창은 닫을 수 없다(차트 1개 불변식) — 닫기 버튼을 숨긴다.
-          closable: w.kind !== 'chart',
+          // 마지막 차트 창은 닫을 수 없다 — 스토어·창 프레임과 같은 술어(#801).
+          closable: canCloseStudyWindow(windows, w.id),
         })),
       },
     ],

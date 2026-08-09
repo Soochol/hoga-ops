@@ -43,7 +43,8 @@ export type StudyChartWindowProps = {
   code: string | null;
   /** 분봉 슬롯 복귀용 기억값(창 설정이 없을 때의 폴백). */
   rememberedMinute: MinuteTimeframe;
-  onTimeframeChange: (tf: LiveTimeframe) => void;
+  /** 봉 전환 — **어느 창인지 함께 넘긴다**(#801: 창이 여럿이라 대상이 모호해진다). */
+  onTimeframeChange: (windowId: string, tf: LiveTimeframe) => void;
   /** 보조지표 드로어 헤더에 찍히는 대상 이름. */
   targetLabel: string | null;
   /** null = 아직 준비 전(로딩/에러). 헤더는 그때도 렌더한다. */
@@ -83,7 +84,13 @@ export function StudyChartWindow(props: StudyChartWindowProps) {
 
   return (
     <WindowViewContext.Provider value={view}>
-      <StudyChartWindowInner {...props} timeframe={timeframe} />
+      <StudyChartWindowInner
+        {...props}
+        timeframe={timeframe}
+        // 분봉 슬롯은 **이 창의 기억**이 먼저다(#902). 페이지 값은 창 설정이 아직
+        // 없을 때의 폴백 — 창이 여럿이면 옆 창의 기억이 새어 들어오면 안 된다.
+        rememberedMinute={chartConfig?.lastMinuteTimeframe ?? props.rememberedMinute}
+      />
     </WindowViewContext.Provider>
   );
 }
@@ -111,7 +118,7 @@ function StudyChartWindowInner({
         <TimeframeControl
           timeframe={timeframe}
           rememberedMinute={rememberedMinute}
-          onChange={onTimeframeChange}
+          onChange={(next) => onTimeframeChange(windowId, next)}
           compact={fold.compactTimeframe}
         />
         <div className="ml-auto flex items-center gap-0.5">
@@ -130,20 +137,23 @@ function StudyChartWindowInner({
         data-testid="study-chart-card"
         className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
       >
-        {loading ? (
+        {/* 창마다 번들이 따로라(#801) 로딩도 창별이다 — 페이지 플래그는 포커스 창
+            기준이므로, 아직 안 받아온 다른 창이 빈 사각형으로 남지 않게 `!chart` 도
+            같은 자리로 취급한다. */}
+        {loading || !chart ? (
           <div
             data-testid="study-page-loading"
             className="flex h-full items-center justify-center text-sm text-fg-dim"
           >
             학습뷰 불러오는 중...
           </div>
-        ) : chart ? (
+        ) : (
           <ChartErrorBoundary>
             <ChartDrawingShell>
               <LiveChartRoot {...chart} />
             </ChartDrawingShell>
           </ChartErrorBoundary>
-        ) : null}
+        )}
       </div>
     </div>
   );

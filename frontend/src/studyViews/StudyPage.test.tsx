@@ -9,6 +9,7 @@ import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyWorkspaceStore, type StudyWorkspaceWindow } from '../state/studyWorkspace';
+import type { LiveTimeframe } from '../state/livePage';
 
 const {
   useStudyViewsMock,
@@ -41,8 +42,26 @@ vi.mock('./useStudyViews', () => ({
   useStudyViewMutations: useStudyViewMutationsMock,
 }));
 
+// 훅은 이제 창별 번들을 **창 id 로 접은 레코드**로 준다(#801). 기존 단수 mock 을
+// 그대로 살리고(단언 자산이 크다) 여기서 창 목록에 같은 값을 펴 준다 — 창이 하나면
+// 결과도 하나라 기존 계약과 동치다.
 vi.mock('./useStudyReferenceBundle', () => ({
-  useStudyReferenceBundle: useStudyReferenceBundleMock,
+  useStudyReferenceBundles: (
+    save: unknown,
+    windows: ReadonlyArray<{ windowId: string; timeframe: string }>,
+  ) => Object.fromEntries(windows.map((w) => {
+    const displayedSave = save && typeof save === 'object'
+      ? { ...save, timeframe: w.timeframe }
+      : save;
+    const result = useStudyReferenceBundleMock(displayedSave, null);
+    // 실제 훅은 "이 창이 표시 중인 봉으로 덮어쓴 저장뷰" 와 그 봉의 맥락 창을 함께
+    // 준다 — 페이지가 둘로 차트 봉·저장구간 밴드·초기 뷰포트를 정하므로 mock 도
+    // 같은 모양이어야 한다(캘린더 봉에만 창이 있다는 규칙까지).
+    const dailyContext = /^\d+m$/.test(w.timeframe)
+      ? null
+      : { from: '20250701', to: '20260810' };
+    return [w.windowId, result ? { ...result, displayedSave, dailyContext } : result];
+  })),
 }));
 
 vi.mock('./useWarmStudyReferenceTabQueries', () => ({
@@ -443,9 +462,9 @@ describe('StudyPage', () => {
     expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
       id: 'view-ref',
       timeframe: 'D',
-      // 캘린더 봉은 맥락 창을 함께 넘긴다 — from 은 저장 시작(20260616)에서 일봉
-      // 250봉만큼 과거, to 는 오늘(테스트 실행일에 의존하므로 존재만 본다).
-    }), { from: '20250701', to: expect.any(String) });
+      // 맥락 창(#1240) 계산은 훅 안으로 내려갔다(#801) — 여기서는 "이 창의 봉으로
+      // 계획이 세워졌는가"만 본다. 창 계산은 useStudyReferenceBundle.test 가 잰다.
+    }), null);
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('D');
 
     fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
@@ -491,6 +510,88 @@ describe('StudyPage', () => {
       label: '삼성전자 · 돌파 복기 · 5m',
     });
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('5m');
+  });
+
+  // ── 멀티 차트 창 (#801 단계 1) ──────────────────────────────────────
+  /** 두 번째 차트 창을 심는다 — 스토어 setState 는 하이드레이션을 우회하므로
+   *  첫 창의 chart 설정을 복제해 넣는다(addWindow 가 하는 일과 같다). */
+  function addSecondChartWindow(timeframe: LiveTimeframe) {
+    const s = useStudyWorkspaceStore.getState();
+    const first = s.windows.find((w) => w.id === 'w-chart')!;
+    useStudyWorkspaceStore.setState({
+      windows: [
+        ...s.windows,
+        {
+          ...first,
+          id: 'w-chart-2',
+          rect: { x: 0, y: 0, w: 0.3, h: 0.5 },
+          chart: { ...first.chart!, timeframe },
+        },
+      ],
+      // zOrder 최상단 = 포커스. 첫 창을 포커스로 유지한다.
+      zOrder: [...s.zOrder, 'w-chart-2', 'w-chart'],
+    });
+  }
+
+  function chartPropsByTimeframe() {
+    const byTf: Record<string, unknown> = {};
+    for (const call of liveChartRootMock.mock.calls) byTf[call[0].timeframe] = call[0];
+    return byTf;
+  }
+
+  it('차트 창마다 자기 봉으로 렌더한다 — 창별 번들', () => {
+    addSecondChartWindow('D');
+
+    renderPage('/study?view=view-ref');
+
+    const rendered = chartPropsByTimeframe();
+    // 포커스 창은 5m(탭·저장뷰), 두 번째 창은 D.
+    expect(Object.keys(rendered).sort()).toEqual(['5m', 'D']);
+  });
+
+  it('비포커스 창의 봉을 바꿔도 탭 라벨은 그대로다 — write-through 는 포커스 창만', () => {
+    useStudyTabsStore.setState({
+      tabs: [{
+        id: 'tab-ref', viewId: 'view-ref', code: '005930',
+        label: '삼성전자 · 돌파 복기 · 5m', name: '돌파 복기', timeframe: '5m',
+      }],
+      activeTabId: 'tab-ref',
+    });
+    addSecondChartWindow('D');
+
+    renderPage('/study?view=view-ref');
+
+    // 두 번째(비포커스) 창의 헤더에서 주봉으로 바꾼다.
+    const headers = screen.getAllByTestId('study-chart-window-header');
+    fireEvent.click(within(headers[1]).getByRole('button', { name: '주' }));
+
+    // 창은 바뀌고,
+    expect(useStudyWorkspaceStore.getState().windows.find((w) => w.id === 'w-chart-2')?.chart?.timeframe)
+      .toBe('W');
+    // 탭 라벨은 포커스 창의 봉 그대로다 — 안 만진 창이 라벨을 갈아치우면 안 된다.
+    expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
+      timeframe: '5m', label: '삼성전자 · 돌파 복기 · 5m',
+    });
+  });
+
+  it('탭 재활성 재시드가 비포커스 창을 건드리지 않는다 — 멀티 타임프레임 배치 보존', () => {
+    useStudyTabsStore.setState({
+      tabs: [
+        { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: '5m' },
+        { id: 'tab-b', viewId: 'view-second', code: '000660', label: 'B', name: 'B', timeframe: '5m' },
+      ],
+      activeTabId: 'tab-a',
+    });
+    addSecondChartWindow('D');
+
+    renderPage('/study?view=view-ref');
+    fireEvent.click(getStudyTab('B'));
+    fireEvent.click(getStudyTab('A'));
+
+    // 재시드는 포커스 창만 대상이다. 전 창을 재시드하면 탭을 한 번 오갈 때마다
+    // "일봉+5분봉으로 벌려 놨는데 둘 다 5분봉" 이 된다.
+    expect(useStudyWorkspaceStore.getState().windows.find((w) => w.id === 'w-chart-2')?.chart?.timeframe)
+      .toBe('D');
   });
 
   it('does not reuse a saved minute viewport after switching the study chart to D/W/M', () => {
@@ -818,7 +919,7 @@ describe('StudyPage', () => {
     expect(bookFrame.textContent).toContain('10호가');
   });
 
-  it('does not offer a close control on the chart window (차트 1개 고정)', () => {
+  it('does not offer a close control on the only chart window (차트 0개 금지)', () => {
     renderPage('/study?view=view-ref');
 
     const chartFrame = screen.getByTestId('study-chart-card').closest('[data-win]') as HTMLElement;

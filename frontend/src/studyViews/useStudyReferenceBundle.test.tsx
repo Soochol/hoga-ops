@@ -4,8 +4,11 @@ import type { UseQueryOptions, UseQueryResult } from '@tanstack/react-query';
 import type { StudyViewReference } from '../api/studyViews';
 import type { Candle, RangeBundle } from '../api/types';
 
-const { useQueryMock, studyReferenceQueryOptionsMock } = vi.hoisted(() => ({
+const { useQueryMock, useQueriesMock, studyReferenceQueryOptionsMock } = vi.hoisted(() => ({
+  // 훅은 `useQueries` 하나로 4×N 을 편다(#801). 개별 결과 팩토리는 그대로 쓰고
+  // `useQueriesMock` 이 배열로 접어 준다 — 단언은 계속 "이 옵션이 구독됐는가"다.
   useQueryMock: vi.fn(),
+  useQueriesMock: vi.fn(),
   studyReferenceQueryOptionsMock: vi.fn(),
 }));
 
@@ -13,7 +16,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>();
   return {
     ...actual,
-    useQuery: useQueryMock,
+    useQueries: useQueriesMock,
   };
 });
 
@@ -32,7 +35,9 @@ vi.mock('../live/useEffectiveVenue', () => ({
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useEffectiveVenue } from '../live/useEffectiveVenue';
-import { useStudyReferenceBundle } from './useStudyReferenceBundle';
+import { useStudyReferenceBundles } from './useStudyReferenceBundle';
+import { FACTORY_INDICATOR_SETTINGS, type IndicatorSettings } from '../state/indicatorSettingsV2';
+import type { LiveTimeframe } from '../state/livePage';
 
 // 소스 선호는 이제 설정(`live_settings.krx_prefer_hogaplay`)에서 온다. 설정이 로딩 중이면
 // `useOrderflowSourcePref()` 가 undefined 를 주고 쿼리가 비활성화되는데(콜드 마운트 차트
@@ -135,9 +140,37 @@ function queryResultFor(options: UseQueryOptions): Partial<UseQueryResult> {
   return { data: null, isLoading: false, error: null };
 }
 
-describe('useStudyReferenceBundle', () => {
+const WINDOW_ID = 'win-1';
+const indicators: IndicatorSettings = {
+  ...FACTORY_INDICATOR_SETTINGS,
+  brokerLateEntryEnabled: true,
+  brokerLateEntryStartHHMM: 1000,
+  tradeVolumePocEnabled: true,
+  depthHeatmapEnabled: false,
+  volumeDistributionEnabled: true,
+  volumeDistributionRangeCount: 12,
+};
+
+function spec(timeframe: LiveTimeframe, windowId = WINDOW_ID) {
+  return { windowId, timeframe, indicators };
+}
+
+/** 단일 창 결과 — 기존 단수 훅 단언을 그대로 옮기기 위한 얇은 어댑터. */
+function renderOne(target: StudyViewReference, windowId = WINDOW_ID) {
+  const rendered = renderHook(() =>
+    useStudyReferenceBundles(target, [spec(target.timeframe as LiveTimeframe, windowId)]));
+  return {
+    ...rendered,
+    get current() { return rendered.result.current[windowId]; },
+  };
+}
+
+describe('useStudyReferenceBundles', () => {
   beforeEach(() => {
     useQueryMock.mockReset();
+    useQueriesMock.mockReset();
+    useQueriesMock.mockImplementation(({ queries }: { queries: UseQueryOptions[] }) =>
+      queries.map((q) => useQueryMock(q)));
     // 해석 모킹을 **항등으로 복원**한다 — 강등을 재는 테스트가 `mockReturnValue` 로
     // 덮으면 그 값이 다음 테스트까지 남아 "공유 스토어를 따른다" 단언이 거짓 실패한다.
     vi.mocked(useEffectiveVenue).mockImplementation((_code, venue) => venue);
@@ -167,7 +200,7 @@ describe('useStudyReferenceBundle', () => {
   });
 
   it('passes the shared venue into the study query plan and subscribes 4 disk queries', () => {
-    renderHook(() => useStudyReferenceBundle(save));
+    renderOne(save);
 
     // settings 에 venue 가 실린다(ADR-0140 §7) — 캔들 쿼리만 KRX 고정이고
     // 그건 studyReferenceQueries 안에서 처리한다(디스크 캔들 소스는 venue 축이 없다).
@@ -180,7 +213,7 @@ describe('useStudyReferenceBundle', () => {
       depthHeatmapEnabled: false,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
-    }, null); // 3번째 인자 null = 프로토타입 일봉 맥락 창 미사용(현행 동작).
+    }, null); // 3번째 인자 null = 분봉이라 캘린더 맥락 창 없음.
     expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeHogaOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeSidecarOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(3, rangeCandlesOptions);
@@ -196,7 +229,7 @@ describe('useStudyReferenceBundle', () => {
     useLiveVenueStore.setState({ venue: 'UN' });
     vi.mocked(useEffectiveVenue).mockReturnValue('KRX');
 
-    renderHook(() => useStudyReferenceBundle(save));
+    renderOne(save);
 
     expect(useEffectiveVenue).toHaveBeenCalledWith(save.code, 'UN');
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(
@@ -209,31 +242,30 @@ describe('useStudyReferenceBundle', () => {
   it('renders minute candles from the disk (mode=candles) query', () => {
     rangeCandlesFixture = [{ ts_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, vol_a: 100, vol_b: 0 }];
 
-    const { result } = renderHook(() => useStudyReferenceBundle(save));
+    const rendered = renderOne(save);
 
-    expect(result.current.bundle?.candles).toHaveLength(1);
+    expect(rendered.current.bundle?.candles).toHaveLength(1);
   });
 
   it('renders daily candles from screener gap-fill when hogaplay 1m is absent', () => {
     screenerDailyFixture = [{ t_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, volume: 100 }];
 
-    const { result } = renderHook(() => useStudyReferenceBundle(dailySave));
+    const rendered = renderOne(dailySave);
 
-    expect(result.current.bundle?.candles).toHaveLength(1);
+    expect(rendered.current.bundle?.candles).toHaveLength(1);
   });
 
   it('always reports empty pastDataWarnings (disk-only has no KIS delay channel)', () => {
-    const { result } = renderHook(() => useStudyReferenceBundle(save));
-    expect(result.current.pastDataWarnings).toEqual([]);
+    expect(renderOne(save).current.pastDataWarnings).toEqual([]);
   });
 
   it('follows the shared live venue store (KRX 고정 해제 — ADR-0140 §7)', () => {
     // 숨겼던 이유("복기는 hogaplay 정규장 캡처만 쓴다")가 PR-D 의 venue 세그먼트로
     // 사라졌다. 이제 /live 에서 고른 거래소를 복기도 따른다.
     useLiveVenueStore.setState({ venue: 'NXT' });
-    expect(renderHook(() => useStudyReferenceBundle(save)).result.current.venue).toBe('NXT');
+    expect(renderOne(save).current.venue).toBe('NXT');
     useLiveVenueStore.setState({ venue: 'KRX' });
-    expect(renderHook(() => useStudyReferenceBundle(save)).result.current.venue).toBe('KRX');
+    expect(renderOne(save).current.venue).toBe('KRX');
   });
 
   it('merges sidecar overlays into the hoga study bundle without waiting on sidecar loading', () => {
@@ -283,12 +315,12 @@ describe('useStudyReferenceBundle', () => {
       return queryResultFor(options);
     });
 
-    const { result } = renderHook(() => useStudyReferenceBundle(save));
+    const rendered = renderOne(save);
 
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.bundle?.quote_ratio.points).toHaveLength(1);
-    expect(result.current.bundle?.broker_late_entries).toEqual([broker]);
-    expect(result.current.bundle?.volume_distributions).toEqual([distribution]);
+    expect(rendered.current.isLoading).toBe(false);
+    expect(rendered.current.bundle?.quote_ratio.points).toHaveLength(1);
+    expect(rendered.current.bundle?.broker_late_entries).toEqual([broker]);
+    expect(rendered.current.bundle?.volume_distributions).toEqual([distribution]);
   });
 
   it('holds isLoading while the sidecar is pending with no data yet (개선안 1-C)', () => {
@@ -299,9 +331,7 @@ describe('useStudyReferenceBundle', () => {
       return queryResultFor(options);
     });
 
-    const { result } = renderHook(() => useStudyReferenceBundle(save));
-
-    expect(result.current.isLoading).toBe(true);
+    expect(renderOne(save).current.isLoading).toBe(true);
   });
 
   it('does not hold isLoading when the sidecar errors (settle, no permanent hold)', () => {
@@ -312,9 +342,7 @@ describe('useStudyReferenceBundle', () => {
       return queryResultFor(options);
     });
 
-    const { result } = renderHook(() => useStudyReferenceBundle(save));
-
-    expect(result.current.isLoading).toBe(false);
+    expect(renderOne(save).current.isLoading).toBe(false);
   });
 
   it('holds isLoading while the screener daily gap-fill query is pending', () => {
@@ -325,8 +353,55 @@ describe('useStudyReferenceBundle', () => {
       return queryResultFor(options);
     });
 
-    const { result } = renderHook(() => useStudyReferenceBundle(dailySave));
+    expect(renderOne(dailySave).current.isLoading).toBe(true);
+  });
 
-    expect(result.current.isLoading).toBe(true);
+  // ── 멀티 차트 창 (#801) ──────────────────────────────────────────────
+  it('창마다 자기 봉으로 계획을 세운다 — 봉이 곧 쿼리 키다', () => {
+    renderHook(() => useStudyReferenceBundles(save, [spec('5m', 'a'), spec('D', 'b')]));
+
+    expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ timeframe: '5m' }), expect.anything(), null);
+    expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ timeframe: 'D' }),
+      expect.anything(),
+      // 캘린더 봉은 맥락 창을 함께 넘긴다(#1240).
+      expect.objectContaining({ from: expect.any(String), to: expect.any(String) }),
+    );
+  });
+
+  it('같은 설정 창끼리는 쿼리를 한 벌로 접는다 — RQ 의 Duplicate Queries 경고 방지', () => {
+    const { result } = renderHook(() =>
+      useStudyReferenceBundles(save, [spec('5m', 'a'), spec('5m', 'b')]));
+
+    // 옵션 객체가 같은 4개뿐 — 8개를 넣으면 react-query 가 경고한다(실측).
+    expect(useQueryMock).toHaveBeenCalledTimes(4);
+    // 그래도 두 창 모두 결과를 받는다.
+    expect(Object.keys(result.current).sort()).toEqual(['a', 'b']);
+    expect(result.current.a.bundle).toEqual(result.current.b.bundle);
+  });
+
+  it('봉이 다르면 창 수만큼 4개씩 구독한다 — 결과는 창 id 로 접힌다', () => {
+    // 기본 mock 은 봉과 무관하게 같은 옵션 객체를 주므로(=키 동일) 접기가 걸린다.
+    // 여기서는 봉별로 키를 갈라 "다른 봉 = 다른 쿼리" 를 잰다.
+    studyReferenceQueryOptionsMock.mockImplementation((s: { timeframe: string }) => ({
+      rangeHoga: { queryKey: ['hoga', s.timeframe], enabled: true },
+      rangeSidecars: { queryKey: ['sidecar', s.timeframe], enabled: true },
+      rangeCandles: { queryKey: ['candles', s.timeframe], enabled: true },
+      screenerDaily: { queryKey: ['screener', s.timeframe], enabled: false },
+    }));
+
+    const { result } = renderHook(() =>
+      useStudyReferenceBundles(save, [spec('5m', 'a'), spec('D', 'b')]));
+
+    expect(useQueryMock).toHaveBeenCalledTimes(8);
+    expect(Object.keys(result.current).sort()).toEqual(['a', 'b']);
+  });
+
+  it('창이 없으면 아무 쿼리도 걸지 않는다', () => {
+    const { result } = renderHook(() => useStudyReferenceBundles(save, []));
+
+    expect(useQueryMock).not.toHaveBeenCalled();
+    expect(result.current).toEqual({});
   });
 });

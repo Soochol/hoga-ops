@@ -243,6 +243,21 @@ export function codeFromMergedLiveRangeKey(queryKey: QueryKey): string | null {
   }
 }
 
+/**
+ * `['range', …]` 실키에서 bucket_ms(=봉)를 복원한다 — 축출용(#801).
+ *
+ * `RangeQueryKey` 규약상 인덱스 4 가 bucketMs 다. `codeFromMergedLiveRangeKey` 와
+ * 같은 이유로 키 형식 지식을 이 모듈에 가둔다 — 축출 쪽이 인덱스를 알면 키 순서를
+ * 바꾸는 날 조용히 엉뚱한 값을 지운다.
+ *
+ * 모르면 **null**(판별 불가 → 보존). 축출은 되돌릴 수 없다.
+ */
+export function bucketMsFromRangeKey(queryKey: QueryKey): number | null {
+  if (!Array.isArray(queryKey) || queryKey[0] !== 'range') return null;
+  const bucketMs: unknown = queryKey[4];
+  return typeof bucketMs === 'number' && Number.isFinite(bucketMs) ? bucketMs : null;
+}
+
 /** canonical 병합본 정확-키 O(1) 복원. 실키 스캔(cachedLiveRangeDeltaPrevious)의
  * 폴백이 아니라 선행 경로 — 개별 청크 키가 gc돼도(전역 30분) 병합본은 2h 살아
  * 있으므로 최광폭을 잃지 않는다. */
