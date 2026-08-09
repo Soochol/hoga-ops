@@ -85,8 +85,9 @@ describe('projectRatio', () => {
     const masked = projectRatio(bundle, axis, { ...baseCtx, auctionWindowMask: true });
 
     // 1 kept data point + 2 in-auction transparent points = 3 entries.
-    // The points stay on the time axis so the AuctionWindowOverlay can
-    // compute timeToCoordinate for the full band, but the per-point
+    // The points stay on the time axis so the bar-index scale keeps its
+    // density and `timeToCoordinate` stays valid past the auction window for
+    // the DOM overlays that position by wall-clock time; the per-point
     // transparent line/fill colors make the segment invisible (ADR-0029).
     expect(masked).toHaveLength(3);
 

@@ -92,7 +92,6 @@ import DepthHeatmapOverlay from './DepthHeatmapOverlay';
 import DepthDeltaOverlay from './DepthDeltaOverlay';
 import type { DepthDeltaPoint } from './depthDelta';
 import { depthHeatmapFromWire } from './depthHeatmapWire';
-import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
 import PaneLegendOverlay from './PaneLegendOverlay';
@@ -2189,14 +2188,20 @@ export function LiveChartRoot({
           {isMinuteTimeframe(timeframe) && (
             <DayBoundaryOverlay chart={chart} axis={axis} />
           )}
-          {/* Auction-window mask shading — self-gates on
-              useActivePrefs(auctionWindowMask) (default ON) and on
-              axis.segments.length > 0, so safe on D/W/M too. Gives
-              visual parity (gray band over 15:20–15:30 KST) with the
-              data masking the same toggle applies to RatioPane /
-              FillStrength, and to BookPanel 의 총잔량 스트립
-              (DataWindow 가 maskRatio 로 내려보낸다). */}
-          <AuctionWindowOverlay chart={chart} axis={axis} enabled={venue === 'KRX'} />
+          {/* 동시호가(15:20–15:30 KST) 배경 음영은 2026-08-09 에 삭제했다
+              (사용자 결정). `auctionWindowMask` 토글은 그대로 살아 있고 —
+              라벨이 "동시호가 구간 지표 숨김" 이라 계약도 변하지 않는다 —
+              데이터 마스킹(RatioPane / QuoteTotalsPane / FillStrength,
+              그리고 DataWindow 가 maskRatio 로 내려보내는 BookPanel 총잔량)은
+              각 projector 가 계속 소유한다. 음영만 없어졌다.
+
+              삭제 사유는 취향이 아니라 버그였다: 밴드 좌표를 intraday
+              VirtualAxis 의 가상시각으로 계산하는데 D/W/M 차트의 timeScale 은
+              일/주/월 포인트로 인덱싱돼 있어 **좌표계가 다르다**. 그래서
+              일봉에서 10분 창이 ~1700px 로 부풀고, 거래일 수만큼(수백 개)
+              겹친 10% 알파가 포화해 캔버스(z-index:1) 뒤(z-0)에서 우측
+              거터·시간축 아래로 새어 나왔다. 되살릴 일이 있으면 좌표계부터
+              맞추고 `isMinuteTimeframe` 게이트를 함께 달 것. */}
         </>
       )}
       {/* Reveal cover — masks the chart + its overlays while the initial

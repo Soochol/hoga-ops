@@ -106,8 +106,8 @@ describe('closing-auction-window hide', () => {
 
     // Each series: 1 kept data point + 2 in-auction transparent points = 3 entries.
     // The transparent per-point color makes the outgoing line segment invisible
-    // (ADR-0029), keeping the bar-index density for AuctionWindowOverlay's
-    // timeToCoordinate while breaking the visible line.
+    // (ADR-0029), keeping the bar-index density that the DOM overlays'
+    // timeToCoordinate depends on, while breaking the visible line.
     expect(bids).toHaveLength(3);
     expect(asks).toHaveLength(3);
 

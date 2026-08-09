@@ -115,11 +115,6 @@
   --tint-error-border:   rgba(242, 92, 122, 0.30);  /* banner/chip borders */
   --tint-price-up:   rgba(240, 68, 82, 0.10);   /* F04452 @ 10% */
   --tint-price-down: rgba(52, 133, 250, 0.11);  /* 3485FA @ 11% */
-  /* Closing Auction Window shading. Drawn behind chart panes by
-     AuctionWindowOverlay so analysts can distinguish a "flat 0" tick
-     from a "masked to 0" tick on RatioPane. Kept very subtle so it
-     doesn't compete with actual data series. */
-  --tint-auction-window: rgba(245, 158, 11, 0.08);  /* warn @ 8% */
 
   /* Depth bar fills for BookPanel (the 10호가 window shared by /live and
      /study). Distinct from --tint-price-up/down
@@ -268,7 +263,6 @@
   --tint-error-border:   rgba(193, 59, 82, 0.30);
   --tint-price-up:   rgba(196, 50, 46, 0.09);   /* C4322E @ 9% */
   --tint-price-down: rgba(30, 95, 193, 0.09);   /* 1E5FC1 @ 9% */
-  --tint-auction-window: rgba(161, 98, 7, 0.10); /* warn @ 10% */
 
   /* ───── Depth bar fills (alpha nudged up for light bg) ───── */
   --bar-ask: rgba(30, 95, 193, 0.30);   /* 1E5FC1 @ 30% */
@@ -365,7 +359,6 @@
   --tint-error-border:   rgba(228, 41, 57, 0.30);
   --tint-price-up:   rgba(222, 43, 57, 0.09);   /* de2b39 @ 9% */
   --tint-price-down: rgba(25, 87, 194, 0.09);   /* 1957c2 @ 9% */
-  --tint-auction-window: rgba(235, 115, 0, 0.10);
 
   /* ───── Depth bar fills (alpha nudged up for white bg) ───── */
   /* 매도/매수 깊이 막대 = Toss 웹트레이딩 호가창 실측 이식(2026-07-23):
@@ -462,7 +455,6 @@
   --tint-error-border:   rgba(246, 90, 104, 0.35);
   --tint-price-up:   rgba(245, 68, 90, 0.15);   /* f5445a @ 15% */
   --tint-price-down: rgba(86, 163, 255, 0.15);  /* 56a3ff @ 15% */
-  --tint-auction-window: rgba(252, 181, 12, 0.10);
 
   /* ───── Depth bar fills ───── */
   --bar-ask: rgba(86, 163, 255, 0.28);   /* 56a3ff @ 28% */
