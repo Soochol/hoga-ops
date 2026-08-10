@@ -29,6 +29,10 @@ import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import StudySavedRangeBand from '../studyViews/StudySavedRangeBand';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
+// PROTOTYPE(`?syncproto=`) — 분봉 커서를 일봉 창에 동기 표시. 던져버릴 배선이라
+// 세 지점(발행·해제·마운트)에만 닿는다. 승자 확정 후 전부 제거한다.
+import StudyCursorSyncProtoOverlay from '../studyViews/prototype/StudyCursorSyncProtoOverlay';
+import { useStudyCursorSyncProtoStore } from '../studyViews/prototype/studyCursorSyncProto';
 import {
   type LiveMAConfig,
   type LiveTimeframe,
@@ -430,6 +434,12 @@ export function LiveChartRoot({
   // `bundle` — so an SSE tick (which only changes the hoga overlay) leaves the
   // candle path's props referentially identical.
   const cb = chartBundle ?? bundle;
+  // PROTOTYPE — 일봉 창이 그리는 캔들의 ts_ms. 오버레이가 KST 날짜 → 캔들 ts 를
+  // 찾는 다리를 놓는 재료다(`D` 에서만 마운트되므로 그 외 봉에선 빈 배열).
+  const protoCandleMs = useMemo(
+    () => (timeframe === 'D' ? (cb?.candles ?? []).map((c) => c.ts_ms) : []),
+    [cb, timeframe],
+  );
   const hogaBundle = bundle ?? cb;
   const paneHogaBundle = hogaPaneBundle ?? hogaBundle;
   const paneRatioBundle = ratioBundle ?? paneHogaBundle;
@@ -618,6 +628,19 @@ export function LiveChartRoot({
   // inside one candle bucket can't postpone the next real update.
   const sidebarCursorLastPublishAtRef = useRef<number | null>(null);
 
+  // PROTOTYPE — origin 을 실은 **즉시** 발행. 기존 두 채널로는 안 되는 이유는
+  // `studyCursorSyncProto.ts` 주석 참조(cursorMs = origin 없음 / sidebarCursorMs =
+  // throttle + 버킷 정렬).
+  const publishProtoCursor = useCallback((cursorMs: number) => {
+    const origin = cursorOriginRef.current;
+    useStudyCursorSyncProtoStore.getState().publish({
+      tsMs: cursorMs,
+      windowId: origin.windowId,
+      code: origin.code,
+      timeframe: origin.timeframe,
+    });
+  }, []);
+
   const cancelPendingSidebarCursor = useCallback(() => {
     if (sidebarCursorTimeoutRef.current !== null) {
       window.clearTimeout(sidebarCursorTimeoutRef.current);
@@ -629,6 +652,10 @@ export function LiveChartRoot({
   const clearSidebarCursor = useCallback(() => {
     cancelPendingSidebarCursor();
     useLiveCursorStore.getState().clearSidebarCursor();
+    // PROTOTYPE — 해제 경로를 여기 하나로 잡는다. 크로스헤어 핸들러의 clear 분기
+    // 전부와 언마운트 정리가 이미 이 콜백을 지나므로, 창을 닫거나 포인터가 나가면
+    // 일봉 쪽 마커도 같이 꺼진다(안 그러면 화면에 눌어붙는다).
+    useStudyCursorSyncProtoStore.getState().clearFrom(cursorOriginRef.current.windowId);
   }, [cancelPendingSidebarCursor]);
 
   const scheduleSidebarCursor = useCallback((cursorMs: number) => {
@@ -1741,11 +1768,15 @@ export function LiveChartRoot({
       const publishCursorMs = (cursorMs: number) => {
         if (publishedCursorMsRef.current === cursorMs && store.cursorMs === cursorMs) {
           scheduleSidebarCursor(cursorMs);
+          // PROTOTYPE — 값이 같아도 되찾는다. 그 사이 옆 창이 발행했다가 해제하면
+          // 이 창의 "이미 발행함" 기억 때문에 표시가 영영 안 돌아온다.
+          publishProtoCursor(cursorMs);
           return;
         }
         publishedCursorMsRef.current = cursorMs;
         store.setCursor(cursorMs);
         scheduleSidebarCursor(cursorMs);
+        publishProtoCursor(cursorMs);
       };
       const t = typeof virtualTime === 'number'
         ? virtualTime
@@ -1812,7 +1843,7 @@ export function LiveChartRoot({
       publishCursorActive(true);
       publishCursorMs(cursorMs);
     },
-    [axis, chart, clearSidebarCursor, onCandleBasisHover, onCursorActiveChange, scheduleSidebarCursor],
+    [axis, chart, clearSidebarCursor, onCandleBasisHover, onCursorActiveChange, publishProtoCursor, scheduleSidebarCursor],
   );
 
   const drawingHoverRafRef = useRef<number | null>(null);
@@ -2202,6 +2233,18 @@ export function LiveChartRoot({
               화면 전체라 표시할 것이 없고, 좌표계도 다르다(캘린더 축 = 하루 1포인트). */}
           {savedRangeBand && !isMinuteTimeframe(timeframe) && (
             <StudySavedRangeBand chart={chart} axis={axis} marks={savedRangeBand} />
+          )}
+          {/* PROTOTYPE(`?syncproto=A|B|C`) — 분봉 창 커서의 일봉 동기 표시.
+              **`D` 전용**이다: 분봉 ms → KST 날짜 → 일봉 캔들 ts 로 스냅해야 좌표계가
+              맞는데(바로 위 동시호가 음영이 이걸 안 해서 삭제됐다), 그 스냅이 정확한
+              건 한 캔들 = 하루인 `D` 뿐이다. W/M 은 스코프 밖. */}
+          {timeframe === 'D' && (
+            <StudyCursorSyncProtoOverlay
+              chart={chart}
+              axis={axis}
+              candleMs={protoCandleMs}
+              code={code}
+            />
           )}
           {/* 동시호가(15:20–15:30 KST) 배경 음영은 2026-08-09 에 삭제했다
               (사용자 결정). `auctionWindowMask` 토글은 그대로 살아 있고 —

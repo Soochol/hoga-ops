@@ -18,6 +18,8 @@ import {
 } from '../state/studyLastMinuteTimeframe';
 import type { StudyChartRootProps } from './StudyChartWindow';
 import { StudyIndicatorDrawer } from './StudyIndicatorDrawer';
+// PROTOTYPE(`?syncproto=`) — 승자 확정 후 제거.
+import { StudyPrototypeSwitcher } from './prototype/StudyPrototypeSwitcher';
 import { StudyWorkspaceCanvas, StudyWindowAddMenu } from './StudyWorkspaceCanvas';
 import { StudyWindowListMenu } from './StudyWindowListMenu';
 import { StudyLayoutPresetMenu } from './presets/StudyLayoutPresetMenu';
@@ -759,6 +761,8 @@ export function StudyPage() {
           {settingsOpen && (
             <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
           )}
+          {/* PROTOTYPE — `?syncproto=` 가 없으면 아무것도 렌더하지 않는다. */}
+          <StudyPrototypeSwitcher />
         </div>
       </div>
     </PageContainer>
