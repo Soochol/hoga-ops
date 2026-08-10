@@ -15,6 +15,7 @@
  */
 
 import { warningKind, type LiveWarningKind, type WireDataWarning } from '../api/dataWarnings';
+import { WARNING_CAUSE } from '../api/warningCopy';
 
 interface ReasonCopy {
   /** 무엇이 일어났나 — 문장 앞머리에 온다. */
@@ -42,7 +43,9 @@ const KIND_COPY: Partial<Record<LiveWarningKind, ReasonCopy>> = {
   // 자격증명 부재 — 앱 설정 문제라 `auth`(벤더 쪽 등록)와 처방이 다르다.
   not_wired: { cause: 'API 자격증명 없음' },
   auth: { cause: 'API 인증 실패', hint: '자격증명을 확인하세요' },
-  transport: { cause: '시세 서버 연결 실패', hint: '잠시 후 다시 조회하세요' },
+  // 원인 명사구는 표면 공통 사전에서 온다 — 예전엔 여기가 '연결 실패' 라
+  // 같은 kind 를 `/live` 토스트('연결 불가')와 다른 이름으로 불렀다.
+  transport: { cause: WARNING_CAUSE.transport, hint: '잠시 후 다시 조회하세요' },
   vendor_api: { cause: '시세 서버 오류', hint: '잠시 후 다시 조회하세요' },
   internal: { cause: '장중 시세 처리 오류' },
   unexpected: { cause: '장중 시세 처리 오류' },

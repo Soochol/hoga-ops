@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLiveSettings, usePatchLiveSettings } from '../api/liveSettings';
 import { ToggleSwitch } from './settings/SettingsRow';
 import { ToastCard } from '../ui/toast/ToastCard';
+import { WARNING_CAUSE } from '../api/warningCopy';
 import {
   markLegacyRestBypassMigrated,
   readLegacyRestBypass,
@@ -12,11 +13,14 @@ import {
  * 알리면 사용자가 할 수 있는 판단(기다릴까 우회할까)이 뒤집힌다(ADR-0137). */
 const COPY = {
   transport: {
-    title: '시세 서버 연결 불가',
+    title: WARNING_CAUSE.transport,
     body: '시세 서버에 연결할 수 없습니다. 저장 데이터로 표시할 수 있습니다',
     status: '재시도 중',
   },
   congestion: {
+    // ⚠ `rate_limit` 원인 명사구는 아직 표면마다 다르다 — 스크리너는
+    // '호출 한도 초과'(원인)이고 여기는 '시세 서버 혼잡'(상태)이다. 어느 쪽이
+    // 옳은지가 정보량 판단이라 통일 대상으로 남겨 두었다(ADR-0143 §5).
     title: '시세 서버 혼잡',
     body: '요청이 몰려 일부 구간을 받지 못했습니다. 잠시 후 자동으로 다시 받습니다',
     status: '대기 중',
