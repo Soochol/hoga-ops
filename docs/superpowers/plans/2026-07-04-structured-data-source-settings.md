@@ -1,5 +1,35 @@
 # Structured Data Source Settings Implementation Plan
 
+> **⚠ 실행 완료된 계획이다 — 아래 산물은 이후 제거됐다. 재실행하지 말 것.**
+>
+> 이 계획은 `ee320a23`(2026-07-04)에서 실행됐다. 그 뒤 산물의 일부가 두 번에 걸쳐
+> 걷혔고, **본문은 계획 시점의 기록이라 그대로 둔다** — 아래 목록이 본문보다 우선한다.
+> 본문에서 이 파일들을 만들라고 지시하는 단계는 이미 무효다.
+>
+> | 제거된 것 | 태스크 | 제거 PR |
+> | --- | --- | --- |
+> | `frontend/src/state/candleDataPreference.ts` (+ `.test.ts`) | Task 2 | [#491](https://github.com/Soochol/hoga-ops/pull/491) (`b7ffcf79`, 2026-07-09) |
+> | `frontend/src/live/settings/CandleDataPreferenceRadio.tsx` | Task 3 | [#491](https://github.com/Soochol/hoga-ops/pull/491) |
+> | `useLiveBundle` 의 `preferHogaplayCandles` · `preferScreenerDailyCandles` 배선 | Task 4 | [#491](https://github.com/Soochol/hoga-ops/pull/491) |
+> | `frontend/src/live/candleSourceMerge.ts` (+ `.test.ts`) | Task 4 | [#1277](https://github.com/Soochol/hoga-ops/pull/1277) (`826cd0a2`, 2026-08-10) |
+>
+> **위 표는 "만들어졌다가 제거된 것" 만 담는다.** 계획에 적혔지만 **애초에 구현되지 않은
+> 것**은 다른 범주다 — Task 4 Step 7 의 `preferKisCandles` 가 그렇다. `git log --all -S`
+> 로 보면 이 식별자는 계획 문서(`7016caa8`)에만 있고 코드에 들어온 적이 없다. 구현은
+> `preferHogaplayCandles` + `preferScreenerDailyCandles` 이분법으로 갔다. 본문 단계를
+> 읽을 때 "지금 없다" 를 곧바로 "제거됐다" 로 읽지 말 것.
+>
+> **왜 걷혔는지가 계획의 전제를 반증한다.** 이 계획은 "낮은 우선순위 소스가 빠진 날짜를
+> 채운다"(Global Constraints 18~19행)를 커버리지 인식 병합으로 구현했다. #1277 이
+> 실측으로 뒤집었다 — hogaplay 1분봉은 **원주가**, 스크리너 일봉은 **수정주가**라
+> 주가 기준이 다르다. 갭을 메우면 액면분할 종목에서 봉 하나가 1/5 로 꽂힌다(010120,
+> 20250924: 293,000 → 57,300 → 278,500). 게다가 hogaplay 에만 있는 날짜는 5종목 표본에서
+> **0건**이라 병합이 메울 갭 자체가 없었다. 캘린더 봉은 이제 스크리너 일봉만 쓴다.
+>
+> 살아남은 산물도 있다(Task 1 의 `sourceCapabilities.ts` · `sourcePreference.ts` 리네이밍,
+> `LiveSettingsSections.tsx` 재구조화). 이 노트는 **제거 사실만** 기록한다 — 그 자리를
+> 지금 무엇이 차지하는지는 코드에서 확인할 것. 여기 적으면 그 문장이 다음 부채가 된다.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Split the confusing single "data source" setting into user-visible candle, orderbook/trade, and screener daily sections that match the actual disk/data architecture.
