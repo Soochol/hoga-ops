@@ -38,6 +38,10 @@ from hoga.api.models import (
     CaptureProgress,
     CaptureProgressEvent,
     CaptureQueuedEvent,
+    # 이 이름만 지연 import 였다 — 같은 모듈을 바로 위에서 이미 eager 로 들여오므로
+    # 순환도 무게도 줄이지 못하는 빈 예외였고, 모듈 스코프 헬퍼가 이걸 반환형으로
+    # 쓰게 되면서 이름이 실제로 필요해졌다.
+    CaptureQueueDrainedEvent,
     CaptureQueuePausedEvent,
     CaptureQueueResumedEvent,
     CaptureResult,
@@ -1058,13 +1062,48 @@ async def _run_item(state: QueueItemState) -> None:
                 )
 
 
+def _drained_event_if_bottomed_locked() -> CaptureQueueDrainedEvent | None:
+    """큐가 바닥났으면 ``capture_queue_drained`` 를, 아니면 None. **``_lock`` 을 쥔 채** 부른다.
+
+    "바닥났다" 의 술어와 집계를 **한 자리에 둔다.** 발행처가 하나가 아니기 때문이다:
+
+    1. :func:`_finalize_item` — 마지막 항목이 끝나서 바닥났다(정상 경로).
+    2. :func:`resume_queue` — 재개했는데 **할 일이 하나도 없었다**.
+    3. :func:`cancel_all` — 대기 항목을 **직접** ``_done`` 으로 옮겼고 활성이 없었다.
+
+    2·3 이 없던 시절의 구멍은 같은 모양이다(2026-08-10 실측). 둘 다 ``_finalize_item``
+    을 거치지 않고 항목을 종결시키므로, 그 순간 활성이 비어 있으면 **큐는 실제로
+    바닥났는데 종결 이벤트만 없는 상태**가 된다. 2번은 쿠키 만료 순간 다른 활성 항목이
+    없을 때다 — 실패한 항목은 terminal 이라 되살아나지 않고 재큐할 ``pause_origin``
+    항목도 0건이라, 소비자는 ``capture_queue_resumed`` 뒤로 영원히 아무것도 못 받는다.
+    e2e 가 90초 백스톱에서 죽어 드러났지만 성질은 프로덕션 쪽이다 — 재개를 누른
+    운영자도 같은 침묵을 본다.
+
+    술어를 복제하지 않는 이유: 세 경로가 **서로 다른 조건에서 같은 이름의 이벤트**를
+    내기 시작하면 그 어긋남은 소비자 쪽에서 원리적으로 안 보인다. ``_queue_paused``
+    검사가 여기 들어 있는 것도 그래서다 — 호출부는 이 함수를 부를지 말지만 정한다.
+
+    **이중 발행은 술어가 막는다.** 활성이 남아 있으면 여기서 None 이 나가고 드레인은
+    그 항목들의 finalize 가 낸다. 반대로 활성이 없으면 finalize 가 돌 일이 없다.
+
+    발행 **순서**는 계약이 아니다. ``_finalize_item`` 은 자기 ``capture_finished``
+    앞에서, 나머지 둘은 뒤에서 낸다 — 어느 쪽이든 집계는 락 안에서 **이미 커밋된
+    상태**로부터 계산되므로 값은 같다. 소비자가 쓸 것은 위치가 아니라 도착 사실이다
+    (프론트는 스냅샷 무효화 트리거로만 쓴다).
+    """
+    if _queue or _active or _queue_paused:
+        return None
+    return CaptureQueueDrainedEvent(
+        total_done=sum(1 for s in _done if s.phase == "done"),
+        total_failed=sum(1 for s in _done if s.phase == "failed"),
+        total_cancelled=sum(1 for s in _done if s.phase == "cancelled"),
+        total_skipped=sum(1 for s in _done if s.phase == "skipped"),
+    )
+
+
 async def _finalize_item(state: QueueItemState) -> None:
     """Move state into _done, publish finished, wake other workers, emit
     drained if applicable."""
-    from hoga.api.models import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        CaptureQueueDrainedEvent,
-    )
-
     # ADR-0042 (amended 2026-06-03) + ADR-0034: ``phase="done"`` only means "worker
     # returned without exception" — it is reachable with ``abort_reason`` set
     # (e.g. stagnation_abort) or with lenient-fallback invariant violations,
@@ -1120,17 +1159,9 @@ async def _finalize_item(state: QueueItemState) -> None:
             ),
         )
         _persist_queue_locked()  # ADR-0019 + ADR-0042 — item left _active, fail_streak updated
-        # Drain detection — also check we're not paused (drained only fires
-        # when the queue has naturally bottomed out).
-        drained_event: CaptureQueueDrainedEvent | None = None
-        if not _queue and not _active and not _queue_paused:
-            totals = {
-                "total_done": sum(1 for s in _done if s.phase == "done"),
-                "total_failed": sum(1 for s in _done if s.phase == "failed"),
-                "total_cancelled": sum(1 for s in _done if s.phase == "cancelled"),
-                "total_skipped": sum(1 for s in _done if s.phase == "skipped"),
-            }
-            drained_event = CaptureQueueDrainedEvent(**totals)
+        # Drain detection — 술어와 집계는 _drained_event_if_bottomed_locked 하나에 있다
+        # (일시정지 중이면 바닥나도 발행하지 않는 것까지 그 안의 규칙이다).
+        drained_event: CaptureQueueDrainedEvent | None = _drained_event_if_bottomed_locked()
         if _wakeup is not None:
             _wakeup.set()
     if drained_event is not None:
@@ -1206,9 +1237,21 @@ async def resume_queue() -> None:
     ADR-0031, not infrastructure-driven pauses. If a future code path
     needs "resume counts as +1 attempt" semantics, it must add a
     separate counter rather than reusing ``attempt``.
+
+    **되살릴 것이 하나도 없으면 여기서 ``capture_queue_drained`` 를 낸다.** 그 경우가
+    실재한다: 쿠키 만료 순간 다른 활성 항목이 없고 대기 큐도 비어 있으면, 오류를 맞은
+    항목은 terminal 이라 되살아나지 않고 ``pause_origin`` 취소분도 0건이다. 그러면
+    ``_finalize_item`` 이 다시 돌 일이 없어 **큐는 바닥났는데 종결 이벤트만 없는**
+    상태가 됐다 — 재개를 누른 뒤로 소비자가 영원히 침묵을 본다(2026-08-10 실측,
+    자세한 근거는 :func:`_drained_event_if_bottomed_locked`).
+
+    ``was_paused`` 로 가드하는 이유: 멈춘 적 없는 큐에 resume 이 들어오면 상태 전이가
+    없으므로 "바닥났다" 를 새로 알릴 것도 없다. 그 가드가 없으면 idle 한 큐에 resume
+    을 누를 때마다 드레인이 한 벌씩 더 나간다.
     """
     global _queue_paused  # noqa: PLW0603 — module singleton write under _lock
     async with _lock:
+        was_paused = _queue_paused
         _queue_paused = False
         # Items cancelled BY the pause go back to the front of the queue.
         to_reenqueue = [s for s in _done if s.pause_origin and s.phase == "cancelled"]
@@ -1227,9 +1270,14 @@ async def resume_queue() -> None:
         # Remove them from _done.
         _done[:] = [s for s in _done if s not in to_reenqueue]
         _persist_queue_locked()  # ADR-0019 — queue + paused both changed
+        drained_event = _drained_event_if_bottomed_locked() if was_paused else None
         if _wakeup is not None and _queue:
             _wakeup.set()
+    # 순서는 **재개 → 드레인**이다. 원인(일시정지 해제)이 먼저고 결과(바닥났다)가
+    # 뒤라야 소비자가 두 프레임을 인과로 읽는다.
     _publish_event(CaptureQueueResumedEvent(reason="user_resume"))
+    if drained_event is not None:
+        _publish_event(drained_event)
 
 
 async def cancel_all() -> dict:
@@ -1255,6 +1303,18 @@ async def cancel_all() -> dict:
                     s.pause_origin = False
             _queue_paused = False
         _persist_queue_locked()  # ADR-0019
+        # 여기서 직접 _done 으로 옮긴 대기 항목들은 **_finalize_item 을 거치지 않는다.**
+        # 그래서 활성이 하나도 없으면 드레인을 낼 사람이 아무도 없다 — resume 쪽과
+        # 같은 모양의 침묵이다. 활성이 남아 있으면 아래 헬퍼가 None 을 돌려주고,
+        # 실제 드레인은 그 항목들의 finalize 가 낸다(이중 발행 없음).
+        #
+        # `drained or was_paused` 가드: **아무 일도 없었으면 알릴 것도 없다.** 이미
+        # 비어 있고 멈춘 적도 없는 큐에 전체 취소 를 누르는 것은 정상 조작이고
+        # (range-capture 스펙이 실제로 그렇게 한다), 거기서 "다 끝났다" 를 새로 쏘면
+        # 소비자가 같은 배치를 두 번 끝난 것으로 센다.
+        drained_event = (
+            _drained_event_if_bottomed_locked() if (drained or was_paused) else None
+        )
         if _wakeup is not None:
             _wakeup.set()
     for s in drained:
@@ -1266,6 +1326,8 @@ async def cancel_all() -> dict:
         ))
     if was_paused:
         _publish_event(CaptureQueueResumedEvent(reason="cancel_all"))
+    if drained_event is not None:
+        _publish_event(drained_event)
     return {
         "status": "cancel_all_delivered",
         "drained_count": len(drained),

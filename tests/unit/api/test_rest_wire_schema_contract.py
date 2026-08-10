@@ -393,6 +393,7 @@ UNCLOTHED_ROUTE_BASELINE: frozenset[RouteKey] = frozenset()
 # 영구 제외 — 동결선과 달리 "언젠가 입힌다" 가 아니다.
 INTENTIONALLY_UNCLOTHED: dict[RouteKey, str] = {
     ("POST", "/add-stockdate", "test_routes"): "e2e 전용",
+    ("POST", "/reset-stockdate", "test_routes"): "e2e 전용",
     ("POST", "/cookie_expire_at", "test_routes"): "e2e 전용",
     ("POST", "/seed-trading-days", "test_routes"): "e2e 전용",
 }
