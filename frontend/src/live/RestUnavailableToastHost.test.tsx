@@ -186,8 +186,13 @@ describe('RestUnavailableToastHost', () => {
 
     // 서버는 멀쩡하다 — "연결 불가" 로 표시하면 사용자의 판단(기다릴까 우회할까)이
     // 뒤집힌다(ADR-0137).
+    //
+    // 제목은 **원인**을 말한다(ADR-0143 §5-A) — 예전엔 '시세 서버 혼잡'(상태)이라
+    // 스크리너의 '호출 한도 초과'와 같은 kind 를 다르게 불렀다. 본문이 이미 상태를
+    // 서술하므로 제목까지 상태일 이유가 없다. 이 단언과 `intradayDegradation.test`
+    // 쪽 단언이 같은 리터럴을 못 박는다.
     const toast = screen.getByRole('status');
-    expect(toast).toHaveTextContent('시세 서버 혼잡');
+    expect(toast).toHaveTextContent('호출 한도 초과');
     expect(toast).not.toHaveTextContent('연결할 수 없습니다');
     expect(toast).toHaveTextContent('대기 중');
   });

@@ -37,7 +37,7 @@ interface ReasonCopy {
  * 사유 8개가 kind 8개로 흩어지지 않고 정확히 대응한다.
  */
 const KIND_COPY: Partial<Record<LiveWarningKind, ReasonCopy>> = {
-  rate_limit: { cause: '호출 한도 초과', hint: '잠시 후 다시 조회하세요' },
+  rate_limit: { cause: WARNING_CAUSE.rate_limit, hint: '잠시 후 다시 조회하세요' },
   // 배치 상한은 재시도가 아니라 **범위 축소**가 답이다(키움 1634).
   batch_limit: { cause: '조회 상한 초과', hint: '종목 범위를 좁혀 주세요' },
   // 자격증명 부재 — 앱 설정 문제라 `auth`(벤더 쪽 등록)와 처방이 다르다.
