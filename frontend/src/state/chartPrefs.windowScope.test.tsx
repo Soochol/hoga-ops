@@ -10,7 +10,6 @@ import {
 } from './chartPrefs';
 import { WindowViewContext, type WindowViewValue } from '../live/workspace/windowViewContext';
 import { LIVE_WINDOW_WORKSPACE } from '../live/workspace/windowView';
-import { FACTORY_INDICATOR_SETTINGS } from './indicatorSettingsV2';
 import type { LiveTimeframe } from './livePage';
 
 /**
@@ -30,7 +29,6 @@ function windowView(timeframe: LiveTimeframe): WindowViewValue {
     code: '005930',
     timeframe,
     historicalFromDate: null,
-    indicators: FACTORY_INDICATOR_SETTINGS,
     workspace: LIVE_WINDOW_WORKSPACE,
   };
 }

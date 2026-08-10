@@ -13,10 +13,6 @@ import {
   capabilitiesForInstrument,
 } from '../liveInstrumentCapabilities';
 import { indexInstrument, isLiveIndexId, stockInstrument } from '../liveInstrument';
-import {
-  FACTORY_INDICATOR_SETTINGS,
-  resolveIndicatorSettings,
-} from '../../state/indicatorSettingsV2';
 import { LIVE_WINDOW_WORKSPACE, WindowViewContext, type WindowViewValue } from './windowView';
 import {
   targetChartWindow,
@@ -49,13 +45,8 @@ export function useChartWindowView(windowId: string | null): ChartWindowView | n
     : null;
   const symbol: GroupSymbol | null = target ? groupSymbols[target.group] ?? null : null;
   const timeframe = target?.chart?.timeframe ?? '1m';
-  const byTimeframe = target?.chart?.indicators.byTimeframe;
   const isIndex = symbol?.kind === 'index';
 
-  const indicators = useMemo(
-    () => (byTimeframe ? resolveIndicatorSettings(byTimeframe, timeframe) : FACTORY_INDICATOR_SETTINGS),
-    [byTimeframe, timeframe],
-  );
   const instrument = useMemo(() => {
     if (!symbol) return null;
     if (symbol.kind === 'index') {
@@ -72,11 +63,10 @@ export function useChartWindowView(windowId: string | null): ChartWindowView | n
       code: isIndex ? null : symbol?.code ?? null,
       timeframe,
       historicalFromDate: null, // 드로어/설정은 페치를 돌리지 않는다 — 뷰 식별용 아님
-      indicators,
       workspace: LIVE_WINDOW_WORKSPACE,
     };
     return { view, target, symbol, instrument };
-  }, [target, isIndex, symbol, timeframe, indicators, instrument]);
+  }, [target, isIndex, symbol, timeframe, instrument]);
 }
 
 /** 포커스 차트 창 기준 — 설정 모달이 아직 쓰는 경로(#712 호환). */

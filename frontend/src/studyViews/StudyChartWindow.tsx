@@ -24,10 +24,6 @@ import { STUDY_HEADER_FOLD } from '../live/workspace/chartHeaderCompact';
 import { requestIndicatorDrawer } from '../live/workspace/indicatorDrawerControls';
 import { useChartHeaderFold } from '../live/workspace/useChartHeaderCompact';
 import { WindowViewContext, type WindowViewValue } from '../live/workspace/windowView';
-import {
-  FACTORY_INDICATOR_SETTINGS,
-  resolveIndicatorSettings,
-} from '../state/indicatorSettingsV2';
 import { STUDY_DEFAULT_MINUTE_TIMEFRAME } from '../state/studyLastMinuteTimeframe';
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import type { LiveTimeframe, MinuteTimeframe } from '../state/livePage';
@@ -58,11 +54,6 @@ export function StudyChartWindow(props: StudyChartWindowProps) {
     (s) => s.windows.find((w) => w.id === windowId)?.chart,
   );
   const timeframe = chartConfig?.timeframe ?? STUDY_DEFAULT_MINUTE_TIMEFRAME;
-  const byTimeframe = chartConfig?.indicators.byTimeframe;
-  const indicators = useMemo(
-    () => (byTimeframe ? resolveIndicatorSettings(byTimeframe, timeframe) : FACTORY_INDICATOR_SETTINGS),
-    [byTimeframe, timeframe],
-  );
   // 좌측 팬 딥 백필의 창별 from-date — 비영속 런타임(#713 과 정합).
   const historicalFromDate = useStudyWorkspaceStore(
     (s) => s.chartRuntime[windowId]?.historicalFromDate ?? null,
@@ -76,10 +67,9 @@ export function StudyChartWindow(props: StudyChartWindowProps) {
       code,
       timeframe,
       historicalFromDate,
-      indicators,
       workspace: STUDY_WINDOW_WORKSPACE,
     }),
-    [windowId, code, timeframe, historicalFromDate, indicators],
+    [windowId, code, timeframe, historicalFromDate],
   );
 
   return (

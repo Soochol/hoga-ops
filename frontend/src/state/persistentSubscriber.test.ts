@@ -144,6 +144,22 @@ describe('attachPersistence — unsubscribe + silent failure', () => {
     expect(localStorage.getItem('test.k')).toBeNull();
   });
 
+  it('같은 값이면 다시 쓰지 않는다 — 크로스탭 에코가 여기서 끊긴다', () => {
+    const store = makeFakeStore({ a: 1 });
+    attachPersistence(store, { storageKey: 'test.k', toSnapshot: (s) => s, debounceMs: 0 });
+
+    store.setState({ a: 2 });
+    vi.advanceTimersByTime(1);
+    expect(JSON.parse(localStorage.getItem('test.k')!)).toEqual({ a: 2 });
+
+    // 다른 탭의 쓰기를 재수화한 것과 같은 모양: 상태는 다시 세팅되지만 값은 그대로.
+    localStorage.removeItem('test.k');
+    store.setState({ a: 2 });
+    vi.advanceTimersByTime(1);
+    // 되썼다면 키가 되살아난다 → 상대 탭이 또 storage 이벤트를 받아 핑퐁이 된다.
+    expect(localStorage.getItem('test.k')).toBeNull();
+  });
+
   it('silently no-ops when localStorage is undefined (SSR)', () => {
     const store = makeFakeStore({ a: 0 });
     const orig = globalThis.localStorage;

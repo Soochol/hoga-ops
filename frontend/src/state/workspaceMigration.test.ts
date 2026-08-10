@@ -27,7 +27,7 @@ describe('buildWorkspaceSeed', () => {
     const chart = seed!.windows.find((w) => w.kind === 'chart')!;
     expect(chart.group).toBe(1);
     expect(chart.chart?.timeframe).toBe('D');
-    expect(chart.chart?.indicators).toBeTruthy();
+    expect(chart.chart && 'indicators' in chart.chart).toBe(false);
     expect(seed!.groupSymbols[1]).toEqual({ code: '005930', name: '삼성전자' });
   });
 

@@ -20,7 +20,7 @@ function seedChartWindow(): void {
     kind: 'chart',
     group: 1,
     rect: { x: 0, y: 0, w: 800, h: 600 },
-    chart: { timeframe: '1m', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } },
+    chart: { timeframe: '1m' },
   };
   useWorkspaceStore.setState({ windows: [win], zOrder: [WIN], groupSymbols: {}, chartRuntime: {} });
 }

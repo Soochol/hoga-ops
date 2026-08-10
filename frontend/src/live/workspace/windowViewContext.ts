@@ -14,11 +14,7 @@
  */
 import { createContext } from 'react';
 import type { LiveTimeframe } from '../../state/livePage';
-import type { IndicatorSettings } from '../../state/indicatorSettingsV2';
 import type { ChartWindowConfig, ChartWindowRuntime, GroupId } from '../../state/workspace';
-import type { PaneId } from '../../chart/drawing/types';
-import type { PaneStretchMap } from '../../chart/paneOrder';
-import type { PresetEnableByTimeframe } from '../presets/presetFlags';
 
 export interface WindowView {
   /** null = 전역(창 없음, Provider 밖). */
@@ -36,23 +32,16 @@ export interface WindowView {
  *
  * `windows` 원소를 `{id, chart?}` 로만 좁힌 게 요점이다 — `/live` 의 `group`·`rect`,
  * `/study` 의 `kind` 처럼 한쪽에만 있는 필드에 훅이 손대지 못한다.
+ *
+ * **지표 액션은 여기 없다.** 지표 설정은 앱 전역 1세트(`live.indicators.v2`)로
+ * 돌아갔고, 창이 정하는 것은 "어느 봉 버킷을 편집하는가" 뿐이다 —
+ * `windowView.ts` 의 창 액션이 전역 스토어의 `patchIndicatorsAt` 을 창의
+ * `chart.timeframe` 으로 바인딩한다. 창이 소유하는 쓰기 경로는 봉과 백필뿐이다.
  */
 export interface WindowChartStoreState {
   windows: readonly { id: string; chart?: ChartWindowConfig }[];
   zOrder: readonly string[];
   chartRuntime: Record<string, ChartWindowRuntime>;
-  patchChartIndicators: (id: string, patch: Partial<IndicatorSettings>) => void;
-  patchChartIndicatorsAt: (
-    id: string, timeframe: LiveTimeframe, patch: Partial<IndicatorSettings>,
-  ) => void;
-  setChartPaneOrder: (id: string, order: PaneId[]) => void;
-  setChartPaneStretch: (id: string, patch: PaneStretchMap) => void;
-  resetChartIndicators: (id: string) => void;
-  applyChartIndicatorPreset: (id: string, preset: {
-    paneOrder: PaneId[];
-    byTimeframeEnable: PresetEnableByTimeframe;
-    paneStretch: PaneStretchMap;
-  }) => void;
   extendChartHistoricalRange: (id: string, date: string) => void;
   resetChartHistoricalRange: (id: string) => void;
 }
@@ -82,11 +71,14 @@ export interface WindowWorkspaceAdapter {
   getCode: (windowId: string) => string | null;
 }
 
-/** 창이 자기 지표(resolve 된 IndicatorSettings)와 워크스페이스 통로까지 공급하는
- *  완전한 뷰 값. `workspace` 는 **필수** — 빠뜨리면 훅이 조용히 다른 스토어를 보게
- *  되는데, 그 조용한 폴백이야말로 이 작업이 없애려는 것이다(#901). */
+/** 창이 워크스페이스 통로까지 공급하는 완전한 뷰 값. `workspace` 는 **필수** —
+ *  빠뜨리면 훅이 조용히 다른 스토어를 보게 되는데, 그 조용한 폴백이야말로 이
+ *  작업이 없애려는 것이다(#901).
+ *
+ *  지표는 값으로 싣지 않는다 — `useWindowIndicators` 가 전역 버킷을 이 값의
+ *  `timeframe` 으로 resolve 한다. 여기 사본을 두면 진실이 둘이 되고, 다른 탭이
+ *  바꾼 설정이 이 사본을 갱신하지 않아 화면만 낡는다. */
 export interface WindowViewValue extends WindowView {
-  indicators: IndicatorSettings;
   workspace: WindowWorkspaceAdapter;
 }
 

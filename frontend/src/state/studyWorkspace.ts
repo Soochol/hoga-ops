@@ -20,31 +20,20 @@
  * 시드는 두 갈래다:
  * - **배치**는 `study.layout.v1`(카드 순서/숨김)에서 1회. `detailPanelCollapsed` 는
  *   무시한다 — rail 접기는 "잠깐 치움"이지 숨김이 아니었으므로 창은 생성한다(플랜 §PR-2).
- * - **차트 설정**은 `live.indicators.v2`(지표) + `study.lastMinuteTimeframe.v1`(분봉)에서
- *   1회. 전자는 이름과 달리 사실상 `/study` 의 저장소였다 — `/live` 는 모든 차트가
- *   Provider 안이라 전역 지표를 쓰지 않으므로, 그 값은 사용자가 `/study` 에서 직접
- *   만진 설정이다(#904).
+ * - **차트 설정**은 `study.lastMinuteTimeframe.v1`(분봉)에서 1회. 지표는 시드하지
+ *   않는다 — 창이 소유하지 않고 앱 전역 1세트(`live.indicators.v2`)이기 때문이다.
  */
 import { create } from 'zustand';
 import { isFracRect, type FracRect } from '../workspace/rectSpace';
 import { persistJson, readJsonObject } from './persist';
+import { STUDY_WORKSPACE_STORAGE_KEY } from './workspaceKeys';
 import { STUDY_CARD_KEYS, STUDY_LAYOUT_STORAGE_KEY, type StudyCardKey } from './studyLayout';
-import {
-  INDICATORS_V2_STORAGE_KEY,
-  normalizeIndicatorsV2,
-  type IndicatorSettings,
-} from './indicatorSettingsV2';
 import {
   LIVE_TIMEFRAMES,
   MINUTE_TIMEFRAMES,
   type LiveTimeframe,
   type MinuteTimeframe,
 } from './livePage';
-import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
-import type { PaneId } from '../chart/drawing/types';
-import { profileKeyForTimeframe } from '../live/indicators/indicatorPaneProfiles';
-import { applyPresetEnableByTimeframe } from './indicatorPresetOps';
-import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
 import {
   STUDY_DEFAULT_MINUTE_TIMEFRAME,
   STUDY_LAST_MINUTE_TIMEFRAME_STORAGE_KEY,
@@ -53,7 +42,7 @@ import {
 // #907 의 스토어 핸들 주입이 성립하지 않는다.
 import type { ChartWindowConfig, ChartWindowRuntime } from './workspace';
 
-export const STUDY_WORKSPACE_STORAGE_KEY = 'study.workspace.v1';
+export { STUDY_WORKSPACE_STORAGE_KEY };
 export const STUDY_WORKSPACE_SCHEMA_VERSION = 1;
 
 export const STUDY_WINDOW_KINDS = ['chart', 'book', 'broker', 'vdist', 'program', 'memo'] as const;
@@ -90,19 +79,10 @@ interface Store extends Persisted {
 
   // ── 차트 창 설정 쓰기 경로 ────────────────────────────────────────────────
   // `/live` workspace 스토어와 **같은 이름·같은 시그니처**다. #907 이 windowView 의
-  // `buildWindowIndicatorActions`·`useHistoricalRangeActions` 에 이 스토어를 핸들로
-  // 주입하면 그쪽 코드가 어느 스토어인지 모른 채 호출한다(#901). 배선은 #908.
-  patchChartIndicators: (id: string, patch: Partial<IndicatorSettings>) => void;
-  patchChartIndicatorsAt: (id: string, timeframe: LiveTimeframe, patch: Partial<IndicatorSettings>) => void;
+  // `useHistoricalRangeActions` 에 이 스토어를 핸들로 주입하면 그쪽 코드가 어느
+  // 스토어인지 모른 채 호출한다(#901). 지표 액션은 양쪽 모두에서 사라졌다 —
+  // 설정이 전역으로 돌아가면서 창이 소유하는 것은 봉과 백필뿐이다.
   setChartTimeframe: (id: string, tf: LiveTimeframe) => void;
-  setChartPaneOrder: (id: string, order: PaneId[]) => void;
-  setChartPaneStretch: (id: string, patch: PaneStretchMap) => void;
-  resetChartIndicators: (id: string) => void;
-  applyChartIndicatorPreset: (id: string, preset: {
-    paneOrder: PaneId[];
-    byTimeframeEnable: PresetEnableByTimeframe;
-    paneStretch: PaneStretchMap;
-  }) => void;
   extendChartHistoricalRange: (id: string, date: string) => void;
   resetChartHistoricalRange: (id: string) => void;
 }
@@ -145,9 +125,10 @@ function isMinuteFrameValue(value: unknown): value is MinuteTimeframe {
  * 버릴지"를 정해야 하는데 그게 과잉 무효화의 입구다(#577).
  */
 function readChartConfig(raw: Record<string, unknown>): ChartWindowConfig {
+  // 구 스냅샷의 `raw.indicators` 는 읽지 않는다 — 전역으로 1회 승격된 뒤
+  // (`indicatorsWindowMigration`) 다음 저장 때 자연 소멸한다.
   const chart: ChartWindowConfig = {
     timeframe: isLiveTimeframe(raw.timeframe) ? raw.timeframe : STUDY_DEFAULT_MINUTE_TIMEFRAME,
-    indicators: normalizeIndicatorsV2(raw.indicators),
   };
   if (isMinuteFrameValue(raw.lastMinuteTimeframe)) {
     chart.lastMinuteTimeframe = raw.lastMinuteTimeframe;
@@ -287,6 +268,8 @@ function readLegacyLayoutSeed(): Parameters<typeof buildStudyWorkspaceSeed>[0] {
  * `readLegacyLayoutSeed` 와 같은 규율으로 **스토어를 경유하지 않는다** —
  * `livePage`·`studyLastMinuteTimeframe` 스토어의 하이드레이션 시점·테스트 격리에
  * 결합하지 않기 위해서다. 모듈 로드 시 1회만 읽는다.
+ *
+ * 지표는 더 이상 시드하지 않는다 — 창이 소유하지 않으므로 시드할 것이 없다.
  */
 function readLegacyChartConfigSeed(): ChartWindowConfig {
   const minuteRaw = readJsonObject(STUDY_LAST_MINUTE_TIMEFRAME_STORAGE_KEY).lastMinuteTimeframe;
@@ -299,7 +282,6 @@ function readLegacyChartConfigSeed(): ChartWindowConfig {
     // 놓는다('1m' 은 `/study` 가 쓰지 않는 값이라 폴백으로 부적절).
     timeframe: lastMinute,
     lastMinuteTimeframe: lastMinute,
-    indicators: normalizeIndicatorsV2(readJsonObject(INDICATORS_V2_STORAGE_KEY)),
   };
 }
 
@@ -307,7 +289,7 @@ let chartConfigSeed: ChartWindowConfig | null = null;
 /** 시드는 값이지 상태다 — 창마다 같은 참조를 나눠 갖지 않도록 매번 복제해 준다. */
 function seedChartConfig(): ChartWindowConfig {
   chartConfigSeed ??= readLegacyChartConfigSeed();
-  return { ...chartConfigSeed, indicators: normalizeIndicatorsV2(chartConfigSeed.indicators) };
+  return { ...chartConfigSeed };
 }
 
 /**
@@ -492,16 +474,14 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
   chartRuntime: {},
 
   addWindow: (kind) => {
-    // 새 차트 창은 **포커스된 차트의 설정을 복제**해서 난다(#801). 기본값으로
-    // 태어나면 "복제 후 한쪽만 일봉으로" 라는 실제 사용 흐름에서 매번 봉·지표를
-    // 다시 맞춰야 한다. 복제는 값이지 상태이므로 지표는 깊은 복사한다.
+    // 새 차트 창은 **포커스된 차트의 봉을 복제**해서 난다(#801). 기본값으로
+    // 태어나면 "복제 후 한쪽만 일봉으로" 라는 실제 사용 흐름에서 매번 봉을 다시
+    // 맞춰야 한다.
     const chartSeed = kind === 'chart'
       ? (() => {
           const s = get();
           const focused = s.windows.find((w) => w.id === focusedChartWindowId(s))?.chart;
-          return focused
-            ? { ...focused, indicators: normalizeIndicatorsV2(focused.indicators) }
-            : seedChartConfig();
+          return focused ? { ...focused } : seedChartConfig();
         })()
       : undefined;
     const id = newWindowId();
@@ -578,33 +558,6 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
     });
   },
 
-  patchChartIndicators: (id, patch) => {
-    get().patchChartIndicatorsAt(
-      id,
-      get().windows.find((w) => w.id === id)?.chart?.timeframe ?? STUDY_DEFAULT_MINUTE_TIMEFRAME,
-      patch,
-    );
-  },
-
-  patchChartIndicatorsAt: (id, timeframe, patch) => {
-    set((state) => {
-      const windows = withChart(state, id, (chart) => {
-        const profileKey = profileKeyForTimeframe(timeframe);
-        const bucket = { ...(chart.indicators.byTimeframe[profileKey] ?? {}), ...patch };
-        return {
-          ...chart,
-          indicators: {
-            ...chart.indicators,
-            byTimeframe: { ...chart.indicators.byTimeframe, [profileKey]: bucket },
-          },
-        };
-      });
-      if (!windows) return {};
-      persistFromState({ ...state, windows });
-      return { windows };
-    });
-  },
-
   setChartTimeframe: (id, tf) => {
     if (!isLiveTimeframe(tf)) return;
     set((state) => {
@@ -629,66 +582,6 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
       };
       persistFromState({ ...state, windows });
       return { windows, chartRuntime };
-    });
-  },
-
-  setChartPaneOrder: (id, order) => {
-    set((state) => {
-      const windows = withChart(state, id, (chart) => ({
-        ...chart,
-        indicators: { ...chart.indicators, paneOrder: normalizePaneOrder(order) },
-      }));
-      if (!windows) return {};
-      persistFromState({ ...state, windows });
-      return { windows };
-    });
-  },
-
-  setChartPaneStretch: (id, patch) => {
-    set((state) => {
-      const windows = withChart(state, id, (chart) => ({
-        ...chart,
-        indicators: {
-          ...chart.indicators,
-          paneStretch: normalizePaneStretch({ ...chart.indicators.paneStretch, ...patch }),
-        },
-      }));
-      if (!windows) return {};
-      persistFromState({ ...state, windows });
-      return { windows };
-    });
-  },
-
-  resetChartIndicators: (id) => {
-    set((state) => {
-      const windows = withChart(state, id, (chart) => {
-        const profileKey = profileKeyForTimeframe(chart.timeframe);
-        const byTimeframe = { ...chart.indicators.byTimeframe };
-        delete byTimeframe[profileKey];
-        return { ...chart, indicators: { ...chart.indicators, byTimeframe } };
-      });
-      if (!windows) return {};
-      persistFromState({ ...state, windows });
-      return { windows };
-    });
-  },
-
-  applyChartIndicatorPreset: (id, preset) => {
-    set((state) => {
-      const windows = withChart(state, id, (chart) => ({
-        ...chart,
-        indicators: {
-          paneOrder: normalizePaneOrder(preset.paneOrder),
-          paneStretch: normalizePaneStretch(preset.paneStretch),
-          byTimeframe: applyPresetEnableByTimeframe(
-            chart.indicators.byTimeframe,
-            preset.byTimeframeEnable,
-          ),
-        },
-      }));
-      if (!windows) return {};
-      persistFromState({ ...state, windows });
-      return { windows };
     });
   },
 
@@ -718,7 +611,7 @@ export function snapshotStudyWorkspace(): Persisted {
     windows: s.windows.map((w) => ({
       ...w,
       rect: { ...w.rect },
-      ...(w.chart ? { chart: { ...w.chart, indicators: normalizeIndicatorsV2(w.chart.indicators) } } : {}),
+      ...(w.chart ? { chart: { ...w.chart } } : {}),
     })),
     zOrder: [...s.zOrder],
   };

@@ -10,6 +10,7 @@ import {
 } from './indicatorSettingsV2';
 import { DEFAULT_LIVE_MAS } from './liveIndicatorsPersistence';
 import { CANONICAL_PANE_ORDER } from '../chart/paneOrder';
+import { WORKSPACE_STORAGE_KEY } from './workspaceKeys';
 
 const DEFAULT_PANE_ORDER = [...CANONICAL_PANE_ORDER];
 
@@ -184,6 +185,9 @@ describe('seedV2FromV1', () => {
 describe('loadIndicatorsV2Storage', () => {
   beforeEach(() => {
     localStorage.clear();
+    // 창 사본 승격이 탭 저장소를 먼저 보므로 함께 비운다 — 안 그러면 앞 테스트가
+    // 심은 워크스페이스가 뒤 테스트의 v2 를 덮는다.
+    sessionStorage.clear();
   });
 
   it('reads the v2 key when present (v1 ignored)', () => {
@@ -209,7 +213,54 @@ describe('loadIndicatorsV2Storage', () => {
     const v2 = loadIndicatorsV2Storage();
     expect(v2.byTimeframe).toEqual({});
     expect(v2.paneOrder).toEqual(DEFAULT_PANE_ORDER);
-    // 아무것도 만지지 않았으면 시드 영속도 없다.
+    // 아무것도 만지지 않았으면 시드 영속도 없다(마이그레이션 마커는 별개 키).
     expect(localStorage.getItem(INDICATORS_V2_STORAGE_KEY)).toBeNull();
+  });
+
+  it('창 사본이 있으면 v2 보다 **먼저** 승격한다 — 순서가 바뀌면 설정이 회귀한다', () => {
+    // 그동안 아무도 쓰지 않은 스테일 v2.
+    localStorage.setItem(INDICATORS_V2_STORAGE_KEY, JSON.stringify({
+      paneOrder: [], paneStretch: {}, byTimeframe: { minute: { askPeakEnabled: true } },
+    }));
+    // 사용자가 실제로 보던 창 사본(#712 이후의 진실).
+    sessionStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({
+      schema_version: 2,
+      windows: [{
+        id: 'w1', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: 0.4, h: 0.9 },
+        chart: {
+          timeframe: '1m',
+          indicators: { paneOrder: [], paneStretch: { volume: 4 }, byTimeframe: { minute: { bidPeakEnabled: true } } },
+        },
+      }],
+      zOrder: ['w1'],
+    }));
+
+    const v2 = loadIndicatorsV2Storage();
+    expect(v2.byTimeframe).toEqual({ minute: { bidPeakEnabled: true } });
+    expect(v2.paneStretch).toMatchObject({ volume: 4 });
+    // 승격 결과가 v2 로 즉시 영속돼야 다음 로드(마커가 선 뒤)에 살아남는다.
+    const persisted = JSON.parse(localStorage.getItem(INDICATORS_V2_STORAGE_KEY) ?? 'null');
+    expect(persisted?.byTimeframe).toEqual({ minute: { bidPeakEnabled: true } });
+  });
+});
+
+describe('resolveIndicatorSettings — 참조 안정성', () => {
+  it('같은 버킷이면 같은 객체를 준다(구독이 헛되이 깨지지 않게)', () => {
+    const bucket = { askPeakEnabled: true };
+    const a = resolveIndicatorSettings({ minute: bucket }, '1m');
+    const b = resolveIndicatorSettings({ minute: bucket }, '5m'); // 같은 프로파일
+    expect(a).toBe(b);
+  });
+
+  it('다른 봉 버킷만 바뀌면 이 봉의 참조는 그대로다', () => {
+    const minute = { askPeakEnabled: true };
+    const before = resolveIndicatorSettings({ minute }, '1m');
+    // 세터가 만드는 모양: 맵은 새로, 손대지 않은 버킷 참조는 보존.
+    const after = resolveIndicatorSettings({ minute, D: { ratioEnabled: true } }, '1m');
+    expect(after).toBe(before);
+  });
+
+  it('버킷이 없으면 공장값 객체 자체를 준다', () => {
+    expect(resolveIndicatorSettings({}, '1m')).toBe(FACTORY_INDICATOR_SETTINGS);
   });
 });

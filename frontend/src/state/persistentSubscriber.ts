@@ -35,6 +35,13 @@ export function attachPersistence<TState>(
 ): () => void {
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /** 직전에 실제로 쓴 문자열 — 같은 값의 재기록을 건너뛴다.
+   *
+   *  단순한 절약이 아니라 **크로스탭 에코를 끊는 장치**다. 다른 탭의 storage
+   *  이벤트를 받아 재수화하면 그 setState 가 이 구독을 깨워 같은 값을 되쓰고,
+   *  그 쓰기가 상대 탭에 다시 이벤트를 보낸다(브라우저는 값이 같아도 storage
+   *  이벤트를 발생시킨다). 여기서 한 홉이 끊기면 왕복이 수렴한다. */
+  let lastWritten: string | null = null;
 
   const unsubscribeStore = store.subscribe((state) => {
     if (timer) clearTimeout(timer);
@@ -42,8 +49,10 @@ export function attachPersistence<TState>(
       timer = null;
       if (typeof localStorage === 'undefined') return;
       try {
-        const snapshot = options.toSnapshot(state);
-        localStorage.setItem(options.storageKey, JSON.stringify(snapshot));
+        const serialized = JSON.stringify(options.toSnapshot(state));
+        if (serialized === lastWritten) return;
+        lastWritten = serialized;
+        localStorage.setItem(options.storageKey, serialized);
       } catch {
         /* quota / private mode / serialization — silently ignore */
       }

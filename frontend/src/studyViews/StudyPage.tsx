@@ -10,10 +10,7 @@ import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { focusedChartWindowId, useStudyWorkspaceStore } from '../state/studyWorkspace';
-import {
-  FACTORY_INDICATOR_SETTINGS,
-  resolveIndicatorSettings,
-} from '../state/indicatorSettingsV2';
+import { resolveIndicatorSettings } from '../state/indicatorSettingsV2';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import {
   STUDY_DEFAULT_MINUTE_TIMEFRAME,
@@ -237,6 +234,7 @@ export function StudyPage() {
       ? rememberedMinuteTimeframes[activeViewId]
         ?? (isMinuteTimeframe(referenceSave.timeframe) ? referenceSave.timeframe : '1m')
       : STUDY_DEFAULT_MINUTE_TIMEFRAME);
+  const indicatorsByTimeframe = useLivePageStore((s) => s.indicatorsByTimeframe);
   // 번들을 요구하는 창 목록 — 봉·지표가 곧 쿼리 키다(#904).
   //
   // **포커스 창만 `selectedTimeframe` 을 쓴다**: 탭을 바꾼 첫 커밋에는 창이 아직
@@ -256,12 +254,11 @@ export function StudyPage() {
         return {
           windowId: w.id,
           timeframe,
-          indicators: w.chart
-            ? resolveIndicatorSettings(w.chart.indicators.byTimeframe, timeframe)
-            : FACTORY_INDICATOR_SETTINGS,
+          // 지표는 앱 전역 1세트 — 창마다 갈리는 것은 봉(=어느 버킷인가)뿐이다.
+          indicators: resolveIndicatorSettings(indicatorsByTimeframe, timeframe),
         };
       }),
-    [chartWindowId, selectedTimeframe, workspaceWindows],
+    [chartWindowId, selectedTimeframe, workspaceWindows, indicatorsByTimeframe],
   );
   const displayedReferenceSave = useMemo(
     () => referenceSave && selectedTimeframe

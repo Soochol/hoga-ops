@@ -12,10 +12,6 @@
 import { useMemo } from 'react';
 import IndicatorPanel from '../live/indicators/IndicatorPanel';
 import { WindowViewContext, type WindowViewValue } from '../live/workspace/windowView';
-import {
-  FACTORY_INDICATOR_SETTINGS,
-  resolveIndicatorSettings,
-} from '../state/indicatorSettingsV2';
 import { STUDY_DEFAULT_MINUTE_TIMEFRAME } from '../state/studyLastMinuteTimeframe';
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { STUDY_WINDOW_WORKSPACE } from './studyWindowWorkspace';
@@ -36,11 +32,6 @@ export function StudyIndicatorDrawer({
     (s) => s.windows.find((w) => w.id === windowId)?.chart,
   );
   const timeframe = chartConfig?.timeframe ?? STUDY_DEFAULT_MINUTE_TIMEFRAME;
-  const byTimeframe = chartConfig?.indicators.byTimeframe;
-  const indicators = useMemo(
-    () => (byTimeframe ? resolveIndicatorSettings(byTimeframe, timeframe) : FACTORY_INDICATOR_SETTINGS),
-    [byTimeframe, timeframe],
-  );
   const view: WindowViewValue = useMemo(
     () => ({
       windowId,
@@ -49,10 +40,9 @@ export function StudyIndicatorDrawer({
       timeframe,
       // 드로어는 페치를 돌리지 않는다 — 뷰 식별용이 아님(`/live` 와 같은 이유).
       historicalFromDate: null,
-      indicators,
       workspace: STUDY_WINDOW_WORKSPACE,
     }),
-    [windowId, code, timeframe, indicators],
+    [windowId, code, timeframe],
   );
 
   if (!chartConfig) return null;

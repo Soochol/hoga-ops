@@ -9,7 +9,7 @@ import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyWorkspaceStore, type StudyWorkspaceWindow } from '../state/studyWorkspace';
-import type { LiveTimeframe } from '../state/livePage';
+import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 
 const {
   useStudyViewsMock,
@@ -279,8 +279,22 @@ beforeEach(() => {
     (args: { finalProfile: DayVolumeDistribution | null | undefined }) => args.finalProfile,
   );
   useLiveCursorStore.getState().resetCursor();
-  // 지표는 차트 창이 소유한다(#904) — 전역이 아니라 창 버킷에 심는다.
-  // 창 밖 소비자(vdist 데이터 창·번들 쿼리 키)도 같은 곳을 읽는다.
+  // 지표는 앱 전역 1세트다 — 창은 어느 봉 버킷을 볼지만 정한다. 창 밖 소비자
+  // (vdist 데이터 창·번들 쿼리 키)도 같은 전역 버킷을 창의 봉으로 편다(#904).
+  useLivePageStore.setState({
+    indicatorsByTimeframe: {
+      minute: {
+        volumeDistributionEnabled: true,
+        volumeDistributionHoverCutoffEnabled: false,
+        volumeDistributionRangeCount: 2,
+      },
+      D: {
+        volumeDistributionEnabled: true,
+        volumeDistributionHoverCutoffEnabled: false,
+        volumeDistributionRangeCount: 2,
+      },
+    },
+  });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
   // 창 워크스페이스(ADR-0123) — 시드와 무관한 결정적 배치로 초기화. DOM 순서 =
@@ -291,27 +305,11 @@ beforeEach(() => {
       kind: 'chart',
       rect: { x: 0, y: 0, w: 0.72, h: 1 },
       // ⚠️ setState 는 하이드레이션(ensureChartWindow)을 우회하므로 창 설정을
-      // 직접 심어야 한다. 없으면 `withChart` 가 no-op 이라 봉 전환이 조용히
-      // 죽고 지표는 공장 기본값으로 렌더된다.
+      // 직접 심어야 한다. 없으면 `withChart` 가 no-op 이라 봉 전환이 조용히 죽고,
+      // 지표도 폴백 봉의 버킷으로 펴진다.
       chart: {
         timeframe: '5m',
         lastMinuteTimeframe: '5m',
-        indicators: {
-          paneOrder: [],
-          paneStretch: {},
-          byTimeframe: {
-            minute: {
-              volumeDistributionEnabled: true,
-              volumeDistributionHoverCutoffEnabled: false,
-              volumeDistributionRangeCount: 2,
-            },
-            D: {
-              volumeDistributionEnabled: true,
-              volumeDistributionHoverCutoffEnabled: false,
-              volumeDistributionRangeCount: 2,
-            },
-          },
-        },
       },
     },
     { id: 'w-book', kind: 'book', rect: { x: 0.72, y: 0, w: 0.28, h: 0.25 } },
@@ -1082,8 +1080,8 @@ describe('StudyPage', () => {
   });
 
   it('uses hover-cutoff volume distribution for reference study views when enabled', () => {
-    // hover-cutoff 를 켜는 곳도 차트 창 버킷이다(#904).
-    useStudyWorkspaceStore.getState().patchChartIndicatorsAt('w-chart', '5m', {
+    // hover-cutoff 를 켜는 곳은 전역 버킷이다 — 창(5m)이 minute 버킷을 편다(#904).
+    useLivePageStore.getState().patchIndicatorsAt('5m', {
       volumeDistributionEnabled: true,
       volumeDistributionHoverCutoffEnabled: true,
       volumeDistributionRangeCount: 2,

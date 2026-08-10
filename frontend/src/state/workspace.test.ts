@@ -13,10 +13,7 @@ function chart(id: string, group: number): WorkspaceWindow {
     kind: 'chart',
     group,
     rect: { x: 0, y: 0, w: 500, h: 400 },
-    chart: {
-      timeframe: '1m',
-      indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} },
-    },
+    chart: { timeframe: '1m' },
   };
 }
 
@@ -74,7 +71,7 @@ describe('useWorkspaceStore 액션', () => {
 
   it('새 차트 창은 포커스 차트 창의 timeframe 을 복제한다(#712)', () => {
     useWorkspaceStore.setState({
-      windows: [{ ...chart('a', 3), chart: { timeframe: 'D', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } } }],
+      windows: [{ ...chart('a', 3), chart: { timeframe: 'D' } }],
       zOrder: ['a'],
       groupSymbols: {},
     });
@@ -179,10 +176,8 @@ describe('손상된 저장값 방어(관대한 per-entry 검증)', () => {
     const mod = await import('./workspace');
     const win = mod.useWorkspaceStore.getState().windows[0];
     expect(win.chart?.timeframe).toBe('1m'); // 손상값 폴백
-    // 지표 누락 → normalizeIndicatorsV2 로 유효 구조 복원
-    expect(win.chart?.indicators).toBeTruthy();
-    expect(Array.isArray(win.chart?.indicators.paneOrder)).toBe(true);
-    expect(typeof win.chart?.indicators.byTimeframe).toBe('object');
+    // 지표는 창이 소유하지 않는다 — 손상 저장값에서도 chart 는 봉만 담는다.
+    expect(win.chart && 'indicators' in win.chart).toBe(false);
   });
 
   it('readRect: 부분/비유한 rect 는 드롭, 미달 크기는 MIN 으로 클램프', async () => {

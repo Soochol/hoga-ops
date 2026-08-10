@@ -9,7 +9,6 @@ import {
   type WindowViewValue,
 } from './windowView';
 import { useLivePageStore } from '../../state/livePage';
-import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
 
 const windowValue: WindowViewValue = {
   windowId: 'w1',
@@ -17,7 +16,6 @@ const windowValue: WindowViewValue = {
   code: '000660',
   timeframe: 'D',
   historicalFromDate: '20260101',
-  indicators: { ...FACTORY_INDICATOR_SETTINGS, askPeakEnabled: true },
   workspace: LIVE_WINDOW_WORKSPACE,
 };
 
@@ -69,6 +67,9 @@ describe('useWindowView — Provider 안', () => {
 });
 
 describe('useWindowIndicators', () => {
+  // 설정은 전역 1세트고 창은 봉만 고른다 — 그래서 이 훅의 계약은 "무엇을 읽는가"가
+  // 아니라 "어느 버킷을 펴는가"다. 단 Provider **밖**은 종전대로 최상위 ambient
+  // 투영을 읽는다(세터가 유지하는 파생값 — livePage 지표 슬라이스 주석).
   it('Provider 밖에서는 전역 ambient 투영을 반환한다', () => {
     useLivePageStore.setState({ askPeakEnabled: false, programTradeEnabled: true });
     const { result } = renderHook(() => useWindowIndicators());
@@ -76,9 +77,14 @@ describe('useWindowIndicators', () => {
     expect(result.current.programTradeEnabled).toBe(true);
   });
 
-  it('Provider 안에서는 창의 resolve 된 지표를 반환한다', () => {
-    useLivePageStore.setState({ askPeakEnabled: false }); // 전역과 다르게
+  it('Provider 안에서는 창의 봉 버킷을 편다 — 투영이 아니라', () => {
+    useLivePageStore.setState({
+      indicatorsByTimeframe: { minute: { askPeakEnabled: false }, D: { askPeakEnabled: true } },
+      indicatorTimeframe: '1m',
+      askPeakEnabled: false, // ambient 투영은 minute 을 가리킨다
+    });
+    // windowValue 의 봉은 'D' — 투영을 읽으면 false 가 나온다.
     const { result } = renderHook(() => useWindowIndicators(), { wrapper: provider(windowValue) });
-    expect(result.current.askPeakEnabled).toBe(true); // 창 값(전역 false 아님)
+    expect(result.current.askPeakEnabled).toBe(true);
   });
 });

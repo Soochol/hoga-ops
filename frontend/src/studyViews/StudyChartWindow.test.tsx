@@ -49,15 +49,13 @@ function seedStudyWorkspace(timeframe = '5m' as const): void {
       id: CHART_ID,
       kind: 'chart',
       rect: { x: 0, y: 0, w: 1, h: 1 },
-      chart: {
-        timeframe,
-        lastMinuteTimeframe: '5m',
-        indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} },
-      },
+      chart: { timeframe, lastMinuteTimeframe: '5m' },
     }],
     zOrder: [CHART_ID],
     chartRuntime: {},
   });
+  // 지표는 앱 전역 1세트 — 창 시드와 함께 전역 버킷도 비운다.
+  useLivePageStore.setState({ indicatorsByTimeframe: {}, indicatorTimeframe: '1m' });
 }
 
 /** 같은 id 의 `/live` 미끼 창 — 스토어를 헷갈리면 이 값이 새어 나온다. */
@@ -68,10 +66,7 @@ function seedLiveDecoy(): void {
       kind: 'chart',
       group: 3,
       rect: { x: 0, y: 0, w: 0.5, h: 0.5 },
-      chart: {
-        timeframe: 'D',
-        indicators: { paneOrder: [], paneStretch: { volume: 9 }, byTimeframe: {} },
-      },
+      chart: { timeframe: 'D' },
     }],
     zOrder: [],
     groupSymbols: { 3: { code: '000660', name: 'SK하이닉스' } },
@@ -136,28 +131,30 @@ describe('세 컨트롤이 창 헤더에 있다 (#908)', () => {
 describe('Provider 가 /study 스토어를 향한다 (#901·#907)', () => {
   const chartProps = { code: '064350', timeframe: '5m' } as unknown as StudyChartRootProps;
 
-  it('창-스코프 읽기가 /study 창 설정을 본다 — 같은 id 의 /live 미끼가 아니라', () => {
-    act(() => useStudyWorkspaceStore.getState().setChartPaneStretch(CHART_ID, { volume: 2 }));
+  it('pane 레이아웃은 전역 1세트를 읽는다', () => {
+    act(() => useLivePageStore.getState().setPaneStretch({ volume: 2 } as never));
     renderWindow({ chart: chartProps });
-    // /live 미끼는 { volume: 9 } 를 들고 있다. 그 값이 나오면 스토어를 헷갈린 것.
-    expect(probe.paneStretch).toEqual({ volume: 2 });
+    expect(probe.paneStretch).toMatchObject({ volume: 2 });
   });
 
-  it('창-스코프 쓰기가 /study 창에 쌓인다 — /live 는 안 움직인다', () => {
+  it('지표 쓰기는 전역 v2 로 간다 — 두 워크스페이스 창 모두 안 움직인다', () => {
     renderWindow({ chart: chartProps });
     act(() => probe.actions!.setRatioEnabled(true));
 
-    const study = useStudyWorkspaceStore.getState().windows[0].chart!;
-    expect(study.indicators.byTimeframe.minute).toMatchObject({ ratioEnabled: true });
-    expect(useWorkspaceStore.getState().windows[0].chart?.indicators.byTimeframe).toEqual({});
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute)
+      .toMatchObject({ ratioEnabled: true });
+    // 창에는 봉만 남는다 — 설정 사본이 되살아나면 다시 탭마다 갈린다.
+    expect(useStudyWorkspaceStore.getState().windows[0].chart)
+      .toEqual({ timeframe: '5m', lastMinuteTimeframe: '5m' });
+    expect(useWorkspaceStore.getState().windows[0].chart).toEqual({ timeframe: 'D' });
     // 읽기도 곧바로 그 값을 본다(구독 생존).
     expect(probe.indicators?.ratioEnabled).toBe(true);
   });
 
-  it('창 봉이 바뀌면 지표 버킷도 그 봉으로 resolve 된다', () => {
+  it('창 봉이 바뀌면 전역 버킷도 그 봉으로 resolve 된다', () => {
     act(() => {
-      useStudyWorkspaceStore.getState().patchChartIndicatorsAt(CHART_ID, 'D', { ratioEnabled: true });
-      useStudyWorkspaceStore.getState().patchChartIndicatorsAt(CHART_ID, '5m', { ratioEnabled: false });
+      useLivePageStore.getState().patchIndicatorsAt('D', { ratioEnabled: true });
+      useLivePageStore.getState().patchIndicatorsAt('5m', { ratioEnabled: false });
     });
     renderWindow({ chart: chartProps });
     expect(probe.indicators?.ratioEnabled).toBe(false); // minute 버킷
@@ -167,15 +164,14 @@ describe('Provider 가 /study 스토어를 향한다 (#901·#907)', () => {
   });
 });
 
-describe('창 설정이 지표 SSOT 다 (#904)', () => {
-  it('전역 live.indicators 를 바꿔도 창 설정이 이긴다', () => {
+describe('전역 v2 가 지표 SSOT 다', () => {
+  it('다른 탭이 바꾼 전역 설정이 창에 그대로 반영된다', () => {
+    renderWindow({ chart: { code: '064350', timeframe: '5m' } as unknown as StudyChartRootProps });
+    expect(probe.indicators?.ratioEnabled).toBe(false);
+    // 크로스탭 재수화(`hydrateIndicatorsFromStorage`)가 하는 일과 같은 모양의 쓰기.
     act(() => {
-      useLivePageStore.setState({ ratioEnabled: true });
-      useStudyWorkspaceStore.getState().patchChartIndicators(CHART_ID, { ratioEnabled: false });
+      useLivePageStore.setState({ indicatorsByTimeframe: { minute: { ratioEnabled: true } } });
     });
-    const chart = useStudyWorkspaceStore.getState().windows[0].chart!;
-    expect(chart.indicators.byTimeframe.minute).toMatchObject({ ratioEnabled: false });
-    // /live 미끼 창은 손대지 않았다.
-    expect(useWorkspaceStore.getState().windows[0].chart?.indicators.byTimeframe).toEqual({});
+    expect(probe.indicators?.ratioEnabled).toBe(true);
   });
 });

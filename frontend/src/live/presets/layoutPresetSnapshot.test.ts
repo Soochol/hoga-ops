@@ -12,7 +12,7 @@ function chart(id: string, group: number, timeframe: LiveTimeframe = '1m'): Work
   return {
     id, kind: 'chart', group,
     rect: { x: 0, y: 0, w: 0.4, h: 0.6 },
-    chart: { timeframe, indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } },
+    chart: { timeframe },
   };
 }
 

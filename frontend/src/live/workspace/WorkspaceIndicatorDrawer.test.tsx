@@ -6,7 +6,7 @@ import { useWorkspaceStore, type WorkspaceWindow } from '../../state/workspace';
 function win(id: string, kind: WorkspaceWindow['kind'], group = 1): WorkspaceWindow {
   const w: WorkspaceWindow = { id, kind, group, rect: { x: 0, y: 0, w: 400, h: 300 } };
   if (kind === 'chart') {
-    w.chart = { timeframe: 'D', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } };
+    w.chart = { timeframe: 'D' };
   }
   return w;
 }

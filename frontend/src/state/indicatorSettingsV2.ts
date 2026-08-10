@@ -4,6 +4,7 @@ import {
   mergeLiveIndicatorPrefs,
   type PersistedIndicators,
 } from './liveIndicatorsPersistence';
+import { takeWindowIndicatorsForMigration } from './indicatorsWindowMigration';
 import {
   INDICATOR_PANE_PREF_KEYS,
   INDICATOR_PANE_PROFILE_KEYS,
@@ -145,15 +146,37 @@ export function normalizeIndicatorsV2(raw: unknown): PersistedIndicatorsV2 {
   };
 }
 
-/** 현재 봉의 유효 설정 = 공장 기본값 ⊕ 해당 버킷. */
+/**
+ * 같은 버킷에 **같은 객체 참조**를 돌려주기 위한 캐시.
+ *
+ * 지표가 앱 전역 1세트로 돌아오면서 이 함수는 뜨거운 경로가 됐다 — 창마다,
+ * 오버레이 selector 마다 스토어 변경 때 다시 불린다. 매번 새 객체를 만들면 값이
+ * 그대로여도 참조가 달라 구독이 전부 깨어난다.
+ *
+ * **키는 버킷이지 버킷 맵이 아니다.** 세터는 편집마다 맵을 새로 만들되 손대지 않은
+ * 프로파일의 버킷 **참조는 보존**한다(`{...byTimeframe, [key]: bucket}`). 맵을 키로
+ * 잡으면 어떤 편집이든 전량 미스라, 다른 봉을 보는 창까지 매번 재렌더된다.
+ */
+const RESOLVE_CACHE = new WeakMap<
+  Partial<IndicatorSettings>,
+  IndicatorSettings
+>();
+
+/** 현재 봉의 유효 설정 = 공장 기본값 ⊕ 해당 버킷. 반환값은 **읽기 전용**으로
+ *  다뤄야 한다(캐시 공유 — 호출자가 변형하면 다른 소비자가 함께 오염된다). */
 export function resolveIndicatorSettings(
   byTimeframe: IndicatorSettingsByTimeframe,
   timeframe: LiveTimeframe,
 ): IndicatorSettings {
-  return {
-    ...FACTORY_INDICATOR_SETTINGS,
-    ...(byTimeframe[profileKeyForTimeframe(timeframe)] ?? {}),
-  };
+  const bucket = byTimeframe[profileKeyForTimeframe(timeframe)];
+  // 버킷 없음 = 공장값 그대로 — 사본을 만들 이유가 없다(가장 흔한 경우).
+  if (!bucket) return FACTORY_INDICATOR_SETTINGS;
+  let resolved = RESOLVE_CACHE.get(bucket);
+  if (!resolved) {
+    resolved = { ...FACTORY_INDICATOR_SETTINGS, ...bucket };
+    RESOLVE_CACHE.set(bucket, resolved);
+  }
+  return resolved;
 }
 
 /** 전환 시드 (#697 결정 변경): v1 의 분봉 관점 유효 설정(flat ⊕ 구
@@ -184,10 +207,30 @@ export function persistIndicatorsV2(state: PersistedIndicatorsV2): void {
   }
 }
 
-/** v2 로드. v2 부재 && v1 존재 시 1회 시드 후 즉시 영속(다음 로드부터 v1 미참조).
- *  둘 다 없으면 공장 클린 스타트. */
+/** 저장된 v2 를 그대로 읽는다 — 시드도 마이그레이션도 하지 않는다.
+ *  다른 탭의 쓰기를 storage 이벤트로 받아 재수화하는 경로(`crossTabSync`)가 쓴다.
+ *  없거나 손상이면 공장 기본. */
+export function readIndicatorsV2Storage(): PersistedIndicatorsV2 {
+  try {
+    const raw = localStorage.getItem(INDICATORS_V2_STORAGE_KEY);
+    return normalizeIndicatorsV2(raw ? JSON.parse(raw) : undefined);
+  } catch {
+    return normalizeIndicatorsV2(undefined);
+  }
+}
+
+/** v2 로드. 우선순위는 ① 창 소유 시절 설정 1회 승격 → ② v2 → ③ v1 1회 시드 →
+ *  ④ 공장 클린 스타트. ①이 ②보다 먼저인 것이 요점이다 — 창 사본이 있으면 그게
+ *  사용자의 현재 구성이고, 그 기간 동안 v2 는 아무도 갱신하지 않았다
+ *  (`indicatorsWindowMigration` 도크스트링). */
 export function loadIndicatorsV2Storage(): PersistedIndicatorsV2 {
   try {
+    const fromWindows = takeWindowIndicatorsForMigration();
+    if (fromWindows) {
+      const migrated = normalizeIndicatorsV2(fromWindows);
+      persistIndicatorsV2(migrated);
+      return migrated;
+    }
     const rawV2 = localStorage.getItem(INDICATORS_V2_STORAGE_KEY);
     if (rawV2) return normalizeIndicatorsV2(JSON.parse(rawV2));
     const rawV1 = localStorage.getItem(V1_STORAGE_KEY);
