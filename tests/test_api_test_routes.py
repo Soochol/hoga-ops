@@ -65,6 +65,71 @@ def test_add_stockdate_unknown_code_returns_404(
     assert r.status_code == 404
 
 
+def test_reset_stockdate_removes_raw_and_parquet(
+    enable_test_endpoints: None, tmp_path: Path
+) -> None:
+    """`reset-stockdate` 는 `add-stockdate` 를 되돌린다 — 그래야 e2e 스펙이
+    "이 날짜는 아직 캡처된 적 없다" 를 스스로 만들 수 있다.
+
+    **양쪽 트리를 다 지우는지**가 요점이다. parquet 만 지우면 `check_disk_state`
+    가 raw 만 보고 CLIENT_INCOMPLETE 로 분류해 `decide_capture` 가 `resume=True`
+    로 이어 붙인다 — 백지가 아니다.
+    """
+    data_dir = tmp_path / "data"
+    (data_dir / "parquet").mkdir(parents=True)
+    app = create_app(data_dir=data_dir)
+    client = TestClient(app)
+    raw = data_dir / "raw" / "20260520" / "005930"
+    parquet = data_dir / "parquet" / "20260520" / "005930"
+    with client:
+        client.post(
+            "/api/test/add-stockdate",
+            params={"code": "005930", "date": "20260520"},
+        )
+        assert raw.is_dir() and parquet.is_dir()
+
+        r = client.post(
+            "/api/test/reset-stockdate",
+            params={"code": "005930", "date": "20260520"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json() == {
+            "ok": True, "code": "005930", "date": "20260520",
+            "removed": ["raw", "parquet"],
+        }
+        assert not raw.exists()
+        assert not parquet.exists()
+        assert client.get("/api/stock-dates").json() == []
+
+
+def test_reset_stockdate_is_idempotent(
+    enable_test_endpoints: None, tmp_path: Path
+) -> None:
+    """없는 Stock-Date 를 지워도 200 — 스펙은 직전 실행이 **어떻게 죽었든**
+    무조건 부르므로, 부재가 실패면 그 자체가 새 flake 원인이 된다."""
+    data_dir = tmp_path / "data"
+    (data_dir / "parquet").mkdir(parents=True)
+    app = create_app(data_dir=data_dir)
+    client = TestClient(app)
+    with client:
+        r = client.post(
+            "/api/test/reset-stockdate",
+            params={"code": "005930", "date": "20260520"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["removed"] == []
+
+
+def test_reset_stockdate_disabled_when_env_unset(tmp_path: Path) -> None:
+    """게이트는 `add-stockdate` 와 같은 것을 공유한다 — 프로덕션엔 붙지 않는다."""
+    app = create_app(data_dir=tmp_path / "data")
+    client = TestClient(app)
+    r = client.post(
+        "/api/test/reset-stockdate", params={"code": "005930", "date": "20260520"}
+    )
+    assert r.status_code == 404
+
+
 def test_cookie_expire_at_configures_fake(
     enable_test_endpoints: None, tmp_path: Path
 ) -> None:

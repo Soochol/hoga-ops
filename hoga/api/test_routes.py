@@ -69,6 +69,33 @@ def build_test_router(data_dir: Path) -> APIRouter:
         parse_stock_date(code=code, date=date, data_dir=data_dir)
         return {"ok": True, "code": code, "date": date}
 
+    @router.post("/reset-stockdate")
+    def reset_stockdate(code: Code, date: StockDate) -> dict:
+        """`add-stockdate` 의 역함수 — 한 Stock-Date 의 raw·parquet 를 지운다.
+
+        **스펙이 자기 전제를 스스로 만들게 하려고** 있다. `cookie-pause` 는 "5건이
+        실제로 캡처된다" 를 전제하는데, 직전 실행이 남긴 COMPLETE 가 있으면
+        `decide_capture` 가 그 날짜를 `already_complete` 로 즉시 스킵한다. 그러면
+        시나리오가 통째로 퇴화할 뿐 아니라(3번째 요청의 쿠키 만료를 사실상 안 돈다)
+        일시정지 시점에 활성·대기 항목이 하나도 안 남아 `resume_queue` 가 되살릴
+        대상이 0건이 되고, `capture_queue_drained` 는 `_finalize_item` 에서만
+        발행되므로 그 프레임이 **영영 오지 않는다**(2026-08-10 실측: 디렉터리를
+        지우면 통과, 안 지우고 재실행하면 3/3 실패). 즉 `rm -rf $HOGA_DATA_DIR` 은
+        위생 절차가 아니라 그 스펙의 **전제조건**이었고, 여기서 그걸 스펙 안으로
+        끌어들인다 — 데이터 디렉터리가 머신 전역이라 병행 세션이 언제 지우는지에
+        결과가 좌우되던 것을 끊는다.
+
+        멱등이다: 없는 디렉터리는 조용히 지나간다. 파일 조작을 서버에 두는 이유는
+        `add-stockdate` 와 같다 — 경로 계산을 스펙과 백엔드에 두 벌로 두지 않는다.
+        """
+        removed: list[str] = []
+        for root in ("raw", "parquet"):
+            target = data_dir / root / date / code
+            if target.is_dir():
+                shutil.rmtree(target)
+                removed.append(root)
+        return {"ok": True, "code": code, "date": date, "removed": removed}
+
     @router.post("/cookie_expire_at")
     def cookie_expire_at(req: CookieExpireAt) -> dict:
         """Configure FakeHogaplayClient to raise CookieExpiredError on the Nth
