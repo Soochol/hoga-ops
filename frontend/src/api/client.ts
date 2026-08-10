@@ -3,15 +3,21 @@ import { livePerfDebugEnabled, livePerfLog } from '../util/perfDebug';
 
 let _configPromise: Promise<AppConfig> | null = null;
 
-export async function apiUrl(path: string): Promise<string> {
+/** 해소된 런타임 설정. `apiUrl`/`wsUrl` 과 **같은 프로미스를 공유**하므로
+ *  `/config.json` 을 다시 받지 않는다 — 메모이제이션이 config.ts 가 아니라
+ *  여기 있어서, 표시용으로 `loadConfig()` 를 직접 부르면 중복 요청이 된다. */
+export async function getConfig(): Promise<AppConfig> {
   if (!_configPromise) _configPromise = loadConfig();
-  const cfg = await _configPromise;
+  return _configPromise;
+}
+
+export async function apiUrl(path: string): Promise<string> {
+  const cfg = await getConfig();
   return resolveApiUrl(cfg, path);
 }
 
 export async function wsUrl(path: string): Promise<string> {
-  if (!_configPromise) _configPromise = loadConfig();
-  const cfg = await _configPromise;
+  const cfg = await getConfig();
   return resolveWsUrl(cfg, path);
 }
 

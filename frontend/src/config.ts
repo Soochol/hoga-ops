@@ -42,6 +42,37 @@ export function resolveWsUrl(config: AppConfig, path: string): string {
   return url;
 }
 
+/** 루프백 표기 — 이 호스트들만 `:포트` 로 줄여도 어디를 가리키는지 잃지 않는다. */
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]']);
+
+/** api_url 이 비면(ADR-0134 same-origin 서빙) 실제 base 는 문서의 오리진이다. */
+function apiBase(config: AppConfig, locationOrigin: string): string {
+  return config.api_url === '' ? locationOrigin : config.api_url;
+}
+
+/** 클라이언트가 실제로 때릴 백엔드 오리진(툴팁·진단용 전체 표기). */
+export function resolveApiOrigin(config: AppConfig, locationOrigin: string): string {
+  const base = apiBase(config, locationOrigin);
+  try {
+    return new URL(base).origin;
+  } catch {
+    return base;
+  }
+}
+
+/** nav 뱃지용 압축 표기. 루프백이면 `:8000`, 아니면 `host[:port]`.
+ *  파싱 불가면 원문을 그대로 — 뱃지가 거짓말을 하느니 못생긴 편이 낫다. */
+export function formatApiOrigin(config: AppConfig, locationOrigin: string): string {
+  const base = apiBase(config, locationOrigin);
+  try {
+    const url = new URL(base);
+    if (LOOPBACK_HOSTNAMES.has(url.hostname) && url.port !== '') return `:${url.port}`;
+    return url.host;
+  } catch {
+    return base;
+  }
+}
+
 export async function loadConfig(): Promise<AppConfig> {
   try {
     const r = await fetch('/config.json');
