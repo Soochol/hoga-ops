@@ -84,9 +84,20 @@ function mmdd(date: string): string {
   return `${Number(date.slice(4, 6))}/${Number(date.slice(6, 8))}`;
 }
 
-function Tile({ label, color, points }: { label: string; color: string; points: TradeValuePoint[] }) {
+function Tile({
+  label,
+  color,
+  points,
+  base,
+}: {
+  label: string;
+  color: string;
+  /** **화면 창**으로 자른 배열 — 배경 추이가 그리는 범위다. */
+  points: TradeValuePoint[];
+  /** 기준 평균. **화면 창이 아니라 부모가 전체 배열에서** 계산해 넘긴다(아래 참조). */
+  base: number | null;
+}) {
   const last = points[points.length - 1].value_eok;
-  const base = baselineEok(points, BASELINE_DAYS);
   const vsBase = base ? ((last - base) / base) * 100 : null;
   return (
     // 높이를 px 로 박지 않는다 — 내용(두 줄)이 정하게 두면 밀도 다이얼(root
@@ -121,8 +132,14 @@ function Tile({ label, color, points }: { label: string; color: string; points: 
 
 export function TradeValueCard() {
   const [span, setSpan] = useState<Span>('20');
-  // 창을 바꿔도 벤더 콜은 늘지 않는다 — 백엔드가 최대 창을 캐시하고 라우트가 자른다.
-  const tv = useMarketTradeValue(Number(span));
+  // **기준 표본은 화면 창보다 하루 더 필요하다.** `days=span` 으로 받으면 20일 창에서
+  // 당일을 뺀 뒤 19개만 남아, 라벨은 "20일 평균" 인데 값은 19일 평균이 된다. 더 나쁜
+  // 쪽은 그 다음이다 — 토글만 눌러도 같은 날의 "평소" 가 32.68조↔32.63조로 움직여서
+  // `BASELINE_DAYS` 주석이 약속한 **창 독립성이 깨진다**(2026-08-10 실측).
+  //
+  // 그래서 요청은 넓게 받고 **표시만 창으로 자른다.** 벤더 콜은 안 는다 — 백엔드가
+  // 최대 창(250일)을 캐시하고 라우트가 자르므로 `days` 는 응답 길이만 정한다.
+  const tv = useMarketTradeValue(Math.max(Number(span), BASELINE_DAYS + 1));
   const sectors = useMarketSectors();
 
   const today = todayKstYyyymmdd();
@@ -133,14 +150,15 @@ export function TradeValueCard() {
 
   const tiles = MARKETS.map((name) => {
     const raw = tv.data?.markets[name];
-    if (!raw || raw.length < 2) return { name, points: null };
+    if (!raw || raw.length < 2) return { name, points: null, base: null };
     const fresh = live[name];
     const lastIdx = raw.length - 1;
-    const points =
+    const full =
       fresh != null && raw[lastIdx].date === today
         ? [...raw.slice(0, lastIdx), { ...raw[lastIdx], value_eok: fresh }]
         : raw;
-    return { name, points };
+    // 기준은 **받은 전체**에서(창과 무관), 표시는 **창으로 자른다**.
+    return { name, points: full.slice(-Number(span)), base: baselineEok(full, BASELINE_DAYS) };
   });
 
   // 날짜 범위는 **헤더에 한 번만** 적는다 — 두 타일이 같은 창을 보므로 타일마다
@@ -162,9 +180,15 @@ export function TradeValueCard() {
         </EmptyNote>
       ) : (
         <div className="grid grid-cols-2 gap-md">
-          {tiles.map(({ name, points }) =>
+          {tiles.map(({ name, points, base }) =>
             points ? (
-              <Tile key={name} label={MARKET_LABELS[name]} color={MARKET_COLORS[name]} points={points} />
+              <Tile
+                key={name}
+                label={MARKET_LABELS[name]}
+                color={MARKET_COLORS[name]}
+                points={points}
+                base={base}
+              />
             ) : (
               // 한 시장만 실패하면 **그 칸만** 말한다 — 칸을 비우면 남은 타일이 폭을
               // 두 배로 먹어 레이아웃이 바뀌고, 원인도 흐려진다(백엔드가 실패한
