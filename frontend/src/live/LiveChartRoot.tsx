@@ -434,10 +434,13 @@ export function LiveChartRoot({
   // `bundle` — so an SSE tick (which only changes the hoga overlay) leaves the
   // candle path's props referentially identical.
   const cb = chartBundle ?? bundle;
-  // PROTOTYPE — 일봉 창이 그리는 캔들의 ts_ms. 오버레이가 KST 날짜 → 캔들 ts 를
-  // 찾는 다리를 놓는 재료다(`D` 에서만 마운트되므로 그 외 봉에선 빈 배열).
-  const protoCandleMs = useMemo(
-    () => (timeframe === 'D' ? (cb?.candles ?? []).map((c) => c.ts_ms) : []),
+  // PROTOTYPE — 일봉 창이 그리는 캔들. 오버레이가 KST 날짜 → 캔들 ts 를 찾는 다리를
+  // 놓는 재료다(`D` 에서만 마운트되므로 그 외 봉에선 빈 배열). `close` 는 변형 D 가
+  // 크로스헤어 가로선 높이로 쓴다.
+  const protoCandles = useMemo(
+    () => (timeframe === 'D'
+      ? (cb?.candles ?? []).map((c) => ({ ts_ms: c.ts_ms, close: c.close }))
+      : []),
     [cb, timeframe],
   );
   const hogaBundle = bundle ?? cb;
@@ -2242,7 +2245,8 @@ export function LiveChartRoot({
             <StudyCursorSyncProtoOverlay
               chart={chart}
               axis={axis}
-              candleMs={protoCandleMs}
+              candles={protoCandles}
+              paneSeries={paneSeries}
               code={code}
             />
           )}

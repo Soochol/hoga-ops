@@ -33,6 +33,7 @@
  */
 import { memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
+import type { PaneSeriesMap } from '../../chart/drawing/chartCoordinates';
 import { safeUnsubscribe } from '../../chart/util/safeUnsubscribe';
 import { WindowViewContext } from '../../live/workspace/windowView';
 import { isMinuteTimeframe } from '../../state/livePage';
@@ -54,8 +55,10 @@ const SESSION_CLOSE_MIN = 15 * 60 + 30;
 type Props = {
   chart: IChartApi;
   axis: VirtualAxis;
-  /** 이 창이 그리고 있는 일봉 캔들의 ts_ms 목록. */
-  candleMs: readonly number[];
+  /** 이 창이 그리고 있는 일봉 캔들. `close` 는 변형 D 의 가로선 높이로 쓴다. */
+  candles: readonly { ts_ms: number; close: number }[];
+  /** 변형 D 전용 — `setCrosshairPosition` 이 시리즈 핸들을 요구한다. */
+  paneSeries: PaneSeriesMap;
   code: string | null;
 };
 
@@ -82,7 +85,7 @@ const chipStyle = {
   color: 'var(--accent-fg)',
 } as const;
 
-function StudyCursorSyncProtoOverlay({ chart, axis, candleMs, code }: Props) {
+function StudyCursorSyncProtoOverlay({ chart, axis, candles, paneSeries, code }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
   const variant = useStudyCursorSyncProtoStore((s) => s.variant);
@@ -107,12 +110,48 @@ function StudyCursorSyncProtoOverlay({ chart, axis, candleMs, code }: Props) {
     };
   }, [chart]);
 
-  // KST 날짜 → 일봉 캔들 ts_ms. 이 맵이 두 좌표계를 잇는 유일한 다리다.
-  const tsByDate = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const ms of candleMs) m.set(unixMsToKSTDate(ms), ms);
+  // KST 날짜 → 일봉 캔들. 이 맵이 두 좌표계를 잇는 유일한 다리다.
+  const byDate = useMemo(() => {
+    const m = new Map<string, { ts_ms: number; close: number }>();
+    for (const c of candles) m.set(unixMsToKSTDate(c.ts_ms), c);
     return m;
-  }, [candleMs]);
+  }, [candles]);
+
+  // 필터 + 날짜 스냅을 **early return 위로** 올렸다 — 변형 D 는 렌더가 아니라 effect 로
+  // 동작하는데(그리는 주체가 lwc 다), hook 은 조기 반환 뒤에 올 수 없기 때문이다.
+  const match = useMemo(() => {
+    if (!cursor) return null;
+    // 소비 측 세 필터: 자기 창 제외 · 분봉 발행만 · 같은 종목.
+    // `/study` 는 모든 창이 활성 저장뷰의 같은 code 를 보므로 code 는 형식적이다.
+    if (cursor.windowId !== null && cursor.windowId === myWindowId) return null;
+    if (!isMinuteTimeframe(cursor.timeframe)) return null;
+    if (cursor.code !== null && code !== null && cursor.code !== code) return null;
+    // 그 날의 일봉이 이 창에 없다(맥락 창 밖 · 휴장) → 가리킬 곳이 없다.
+    return byDate.get(unixMsToKSTDate(cursor.tsMs)) ?? null;
+  }, [cursor, myWindowId, code, byDate]);
+
+  /**
+   * 변형 D — **아무것도 그리지 않는다.** lwc 가 "두 차트의 크로스헤어 동기화" 용도로
+   * 문서화한 `setCrosshairPosition` 을 부를 뿐이다(typings.d.ts 의 그 예시가 곧 이 기능).
+   *
+   * 두 가지가 A~C 와 다르다:
+   *  - **가격도 요구한다.** 크로스헤어는 십자라 가로선이 함께 그려진다. 분봉의 가격을
+   *    일봉에 옮기는 건 의미가 없어 **그 날 일봉의 종가**를 준다.
+   *  - **화면 밖 처리가 없다.** lwc 가 알아서 안 그리고, 엣지 인디케이터도 없다.
+   *    A~C 와의 비교 지점이므로 일부러 보완하지 않았다.
+   */
+  useEffect(() => {
+    if (variant !== 'D') return;
+    const series = paneSeries.get('candle');
+    if (!series || !match) return;
+    chart.setCrosshairPosition(
+      match.close,
+      (axis.toVirtual(match.ts_ms) / 1000) as UTCTimestamp,
+      series,
+    );
+    // 커서가 바뀔 때마다 이전 위치를 지운다 — 안 지우면 창을 벗어나도 남는다.
+    return () => { chart.clearCrosshairPosition(); };
+  }, [variant, match, chart, axis, paneSeries]);
 
   // PROTOTYPE 디버그 훅 — 안 그려질 때 "발행이 없는가 / 필터에 걸렸는가 / 그 날의
   // 일봉이 없는가 / 화면 밖인가" 를 밖에서 구분하려면 이 창이 쥔 걸 봐야 한다.
@@ -121,38 +160,28 @@ function StudyCursorSyncProtoOverlay({ chart, axis, candleMs, code }: Props) {
   // timeScale 모의에는 `options()` 가 없어서, 이 훅이 그대로면 D 타임프레임 테스트
   // 27개가 프로토타입 때문에 깨진다. 던져버릴 코드가 실코드 스펙을 망가뜨리면 안 된다.
   if (import.meta.env.DEV && typeof window !== 'undefined') {
-    const day = cursor ? unixMsToKSTDate(cursor.tsMs) : null;
-    const dbgMs = day ? tsByDate.get(day) : undefined;
     let x: unknown = null;
     let barSpacing: unknown = null;
     try {
-      if (dbgMs !== undefined) {
-        x = chart.timeScale().timeToCoordinate((axis.toVirtual(dbgMs) / 1000) as UTCTimestamp);
+      if (match) {
+        x = chart.timeScale().timeToCoordinate((axis.toVirtual(match.ts_ms) / 1000) as UTCTimestamp);
       }
       barSpacing = chart.timeScale().options().barSpacing;
     } catch { /* 모의 차트 — 디버그 값만 비운다 */ }
     (window as unknown as Record<string, unknown>).__protoOverlayDebug = {
-      myWindowId, code, variant, cursor, day,
-      hasDay: dbgMs !== undefined,
-      x, barSpacing,
-      days: [...tsByDate.keys()],
-      chart, axis, tsByDate,
+      myWindowId, code, variant, cursor,
+      day: cursor ? unixMsToKSTDate(cursor.tsMs) : null,
+      match, x, barSpacing,
+      days: [...byDate.keys()],
+      chart, axis, byDate, paneSeries,
     };
   }
 
-  if (!variant || !cursor) return null;
-  // 소비 측 세 필터: 자기 창 제외 · 분봉 발행만 · 같은 종목.
-  // `/study` 는 모든 창이 활성 저장뷰의 같은 code 를 보므로 code 는 형식적이다.
-  if (cursor.windowId !== null && cursor.windowId === myWindowId) return null;
-  if (!isMinuteTimeframe(cursor.timeframe)) return null;
-  if (cursor.code !== null && code !== null && cursor.code !== code) return null;
-
-  const dayMs = tsByDate.get(unixMsToKSTDate(cursor.tsMs));
-  // 그 날의 일봉이 이 창에 없다(맥락 창 밖 · 휴장) → 그리지 않는다.
-  if (dayMs === undefined) return null;
+  // D 는 lwc 가 그린다 — 이 컴포넌트는 DOM 을 내놓지 않는다(위 effect 가 전부).
+  if (!variant || variant === 'D' || !cursor || !match) return null;
 
   const ts = chart.timeScale();
-  const x = ts.timeToCoordinate((axis.toVirtual(dayMs) / 1000) as UTCTimestamp);
+  const x = ts.timeToCoordinate((axis.toVirtual(match.ts_ms) / 1000) as UTCTimestamp);
   if (x == null) return null;
 
   const paneWidth = ts.width();
