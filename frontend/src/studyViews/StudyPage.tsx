@@ -661,6 +661,8 @@ export function StudyPage() {
       pastDataWarnings: model.pastDataWarnings,
       restoreViewport: tabViewport ?? bandViewport ?? savedViewport,
       savedRangeBand: band,
+      // 옆 분봉 창의 마우스 위치를 이 창(일봉일 때)의 크로스헤어로 받는다.
+      cursorSyncCrosshair: true,
       dayAskPeaks: model.bundle.ask_peaks,
       dayBidPeaks: model.bundle.bid_peaks,
       todayKst: model.save.range.to_date,

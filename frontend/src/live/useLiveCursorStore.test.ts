@@ -147,4 +147,48 @@ describe('useLiveCursorStore — 즉시 커서 (crosshair mirror 제거 후)', (
     expect(useLiveCursorStore.getState().cursorMs).toBe(123);
     expect(useLiveCursorStore.getState().sidebarCursorOrigin?.group).toBe(2);
   });
+
+  describe('syncCursor — 창 간 크로스헤어 동기화 채널', () => {
+    const origin = { windowId: 'w1', group: null, code: '064350', timeframe: '3m' } as const;
+
+    it('origin 과 함께 즉시 실린다 — 스로틀도 버킷 정렬도 없다', () => {
+      useLiveCursorStore.getState().setSyncCursor(1748400000123, origin);
+
+      expect(useLiveCursorStore.getState().syncCursorMs).toBe(1748400000123);
+      expect(useLiveCursorStore.getState().syncCursorOrigin?.timeframe).toBe('3m');
+    });
+
+    it('발행자만 자기 것을 지운다 — 옆 창의 leave 가 남의 발행을 끄면 안 된다', () => {
+      useLiveCursorStore.getState().setSyncCursor(1748400000000, origin);
+
+      useLiveCursorStore.getState().clearSyncCursorFrom('other-window');
+      expect(useLiveCursorStore.getState().syncCursorMs).toBe(1748400000000);
+
+      useLiveCursorStore.getState().clearSyncCursorFrom('w1');
+      expect(useLiveCursorStore.getState().syncCursorMs).toBeNull();
+      expect(useLiveCursorStore.getState().syncCursorOrigin).toBeNull();
+    });
+
+    it('restoreCursor 가 되살리지 않는다 — sticky 채널과 분리한 이유', () => {
+      // `cursorMs` 에 origin 을 얹었다면 여기서 크로스헤어가 되살아난다. 포인터가
+      // 발행 창을 떠난 뒤 옆 창에 선이 다시 뜨는 것이 그 증상이다.
+      useLiveCursorStore.getState().setCursor(1748400000000);
+      useLiveCursorStore.getState().setSyncCursor(1748400000000, origin);
+      useLiveCursorStore.getState().clearCursor();
+      useLiveCursorStore.getState().clearSyncCursorFrom('w1');
+
+      useLiveCursorStore.getState().restoreCursor();
+
+      expect(useLiveCursorStore.getState().cursorMs).toBe(1748400000000);
+      expect(useLiveCursorStore.getState().syncCursorMs).toBeNull();
+    });
+
+    it('resetCursor 가 함께 비운다 — 종목 변경·언마운트 경로', () => {
+      useLiveCursorStore.getState().setSyncCursor(1748400000000, origin);
+      useLiveCursorStore.getState().resetCursor();
+
+      expect(useLiveCursorStore.getState().syncCursorMs).toBeNull();
+      expect(useLiveCursorStore.getState().syncCursorOrigin).toBeNull();
+    });
+  });
 });
