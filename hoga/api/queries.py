@@ -13,7 +13,7 @@ import duckdb
 
 from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.eligibility import is_terminal_partial
-from hoga.api.invariants import normalize_session_bounds
+from hoga.api.invariants import indicator_session_bounds, normalize_session_bounds
 from hoga.api.models import StockDate, StockDateVenue
 from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.api.sources import resolve_source_result
@@ -671,8 +671,12 @@ class QueryEngine:
         rows = self.conn.execute(
             "SELECT ts_ms FROM read_parquet(?)", [str(snap_path)],
         ).fetchall()
+        norm_meta, _ = normalize_session_bounds(meta)
+        open_ms, close_ms = indicator_session_bounds(norm_meta)
         analysis = analyze_gaps(
-            (HogaMs(r[0]) for r in rows), session_close_ms=HogaMs(close_ms),
+            (HogaMs(r[0]) for r in rows),
+            session_open_ms=HogaMs(open_ms),
+            session_close_ms=HogaMs(close_ms),
         )
         ranges = [(int(s), int(e)) for s, e in analysis.gap_ranges]
         sparse = analysis.in_session_count < 2 and not ranges  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리

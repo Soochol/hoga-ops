@@ -38,6 +38,7 @@ _ZERO_LEVELS: tuple[int, ...] = (0,) * 10
 # mirrors the existing `_build_meta` constants and the promote-path assumption
 # that KIS live capture only runs the Regular Session — Half-Day sessions are a
 # known, pre-existing limitation shared with the rest of this module.
+_REGULAR_SESSION_OPEN_MS: HogaMs = HogaMs(90000000)    # 09:00:00.000 (HHMMSSmmm)
 _REGULAR_SESSION_CLOSE_MS: HogaMs = HogaMs(153000000)  # 15:30:00.000 (HHMMSSmmm)
 # 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
 _KST = KST
@@ -107,6 +108,7 @@ def _collection_finished(
 
 def _completeness_fields(
     ts_values: Iterable[HogaMs], *, collection_complete: bool,
+    session_open_ms: HogaMs | None = None,
     session_close_ms: HogaMs | None = None,
 ) -> dict:
     """The completeness block for a live promotion — the SAME gap analysis
@@ -119,12 +121,18 @@ def _completeness_fields(
     (same {start_ms, end_ms} form hogaplay's parser emits). ``ts_values`` are
     snapshot ``ts_ms`` in HHMMSSmmm (entity native, already HogaMs-compatible).
 
-    ``session_close_ms`` defaults to the regular-session close; hogaplay backfill
-    (ADR-0126) passes the meta's per-date close so a half-day is bounded correctly.
+    두 경계 모두 기본값은 **KRX 정규장**이다. hogaplay backfill(ADR-0126)은 meta 의
+    per-date close 를 넘겨 반나절장을 바르게 가두고, live promote 는 venue 별 지표
+    구간을 넘긴다(ADR-0140) — NXT·UN 의 08:00–20:00 이 그래야 갭 분석에 들어온다.
+
+    ⚠ 기본값이 남아 있는 이유는 hogaplay 계열 호출부(KRX 전용)가 인자 없이 부르는
+    것이 옳기 때문이다. **live promote 경로에서 인자를 빠뜨리면 조용히 KRX 로
+    떨어진다** — `_build_meta` 가 venue 표를 보고 반드시 넘긴다.
     """
+    open_ms = session_open_ms if session_open_ms is not None else _REGULAR_SESSION_OPEN_MS
     close = session_close_ms if session_close_ms is not None else _REGULAR_SESSION_CLOSE_MS
     gaps = analyze_gaps(
-        ts_values, session_close_ms=close, anchor_edges=True,
+        ts_values, session_open_ms=open_ms, session_close_ms=close, anchor_edges=True,
     )
     return {
         "collection_complete": collection_complete,
@@ -464,9 +472,14 @@ def _build_meta(
         "indicator_session_close_ms": int(indicator_close),
         # Completeness routed through the SAME classifier hogaplay uses. Orderbook
         # .ts_ms is already HHMMSSmmm (entity native); cast to HogaMs at this seam.
+        # 갭 분석도 **같은 venue 구간**을 쓴다(ADR-0140) — 여기를 안 넘기면 NXT·UN 의
+        # 프리·애프터마켓 결손이 분석 대상 밖에 남아, 세 venue 의 gap_ranges 가
+        # 글자 그대로 같아지는 지문이 다시 생긴다.
         **_completeness_fields(
             [HogaMs(s.ts_ms) for s in snapshots],
             collection_complete=_collection_finished(date, venue=venue),
+            session_open_ms=indicator_open,
+            session_close_ms=indicator_close,
         ),
     }
     if source == "kis_api":

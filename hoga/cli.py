@@ -336,6 +336,34 @@ def backfill_indicator_session_cmd(
     )
 
 
+@app.command(name="backfill-venue-gaps")
+def backfill_venue_gaps_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),
+) -> None:
+    """ADR-0140: kiwoom_live/{venue}/meta.json 의 is_partial/gap_ranges 를 venue 별
+    갭 창으로 재계산한다.
+
+    하한이 09:00 고정이던 시절 NXT·UN 의 프리·애프터마켓 결손이 분석 대상 밖이었다.
+    ⚠ 이 스윕은 **값을 덮어쓴다**(키 추가가 아니다) — `--dry-run` 이 is_partial
+    전이 수와 gap 개수 증감을 먼저 보여 주니 그걸 확인하고 실행할 것.
+    """
+    from hoga.live.meta_backfill import backfill_venue_gap_ranges  # noqa: PLC0415 — CLI-local
+
+    data_dir = resolve_data_dir()
+    try:
+        res = backfill_venue_gap_ranges(data_dir, dry_run=dry_run)
+    except Exception as e:
+        console.print(f"[red]backfill-venue-gaps failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    tag = "dry-run" if dry_run else "done"
+    console.print(
+        f"[green]backfill-venue-gaps {tag}[/green]: "
+        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped}\n"
+        f"  is_partial False→True={res.partial_false_to_true} "
+        f"True→False={res.partial_true_to_false}  gap 개수 증감={res.gap_count_delta:+d}"
+    )
+
+
 @app.command(name="ls")
 def list_stock_dates() -> None:
     """Show captured/parsed Stock-Dates."""

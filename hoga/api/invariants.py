@@ -358,12 +358,24 @@ def _series_snapshots_no_gaps(a: StockDateArtifacts) -> list[Violation]:
         # meta lacks the bound (legacy / malformed) — gap analysis requires it
         # to compute the Auction Window cutoff; skip rather than guess a default.
         return []
+    # 분석 창은 venue 별 지표 구간을 따른다(ADR-0140) — 새 키가 없으면 정규장으로
+    # 폴백하므로 hogaplay(KRX 전용)·구형 meta 는 종전과 같은 판정을 받는다.
+    #
+    # ⚠ `regular_session_open_ms` 가 **아예 없는** meta 가 실재한다(close 만 실린
+    # 구형·부분 meta). 그때 KRX 09:00 을 쓰는 것이 이 술어의 **기존 동작 그대로**다
+    # — 하한이 모듈 상수이던 시절엔 meta 에 open 이 있든 없든 09:00 이었다. 여기서
+    # skip 으로 돌리면 종전에 잡히던 갭이 조용히 사라진다.
+    norm_meta, _ = normalize_session_bounds(dict(a.meta))
+    norm_meta.setdefault("regular_session_open_ms", _KRX_REGULAR_OPEN_MS)
+    open_ms, close_ms = indicator_session_bounds(norm_meta)
     from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환/heavy)
         has_meaningful_gaps,
     )
     from hoga.util.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     ts_values = [HogaMs(ts) for ts in raw_ts]
-    if not has_meaningful_gaps(ts_values, session_close_ms=HogaMs(close_ms)):
+    if not has_meaningful_gaps(
+        ts_values, session_open_ms=HogaMs(open_ms), session_close_ms=HogaMs(close_ms),
+    ):
         return []
     return [Violation(
         "series.snapshots_no_gaps",

@@ -553,6 +553,7 @@ class GapAnalysis:
 def analyze_gaps(
     ts_ms_values: Iterable[HogaMs],
     *,
+    session_open_ms: HogaMs,
     session_close_ms: HogaMs,
     anchor_edges: bool = False,
 ) -> GapAnalysis:
@@ -564,19 +565,37 @@ def analyze_gaps(
     KEEPS each timestamp's original HogaMs alongside its linear value so gap
     boundaries are reported in the native encoding without a lossy round-trip.
 
-    The analysis window is ``[09:00, session_close - 10min)`` — continuous
+    The analysis window is ``[session_open, session_close - 10min)`` — continuous
     trading only. Snapshots inside the closing Auction Window (last 10 min of
     the Regular Session) are excluded: no continuous matching happens there, so
     absence of snapshot churn is normal market behavior, not a data gap.
-    ``session_close_ms`` is per-Stock-Date (Half-Day-safe: a 12:30 close
-    correctly bounds the analysis at 12:20).
+    Both bounds are per-Stock-Date (Half-Day-safe: a 12:30 close correctly
+    bounds the analysis at 12:20).
+
+    **venue 축** (ADR-0140): 하한이 09:00 모듈 상수이던 시절, NXT·UN 은 08:00–20:00
+    을 저장하는데 갭 분석 창이 KRX 정규장이라 **프리·애프터마켓의 실제 결손이 분석
+    대상 밖**이었다(그 구간 공백은 갭으로 잡히지 않고, 세 venue 의 ``gap_ranges`` 가
+    글자 그대로 같아지는 지문을 남겼다). 이제 호출부가 meta 의
+    ``indicator_session_open/close_ms`` 를 넘긴다(#1243 이 실은 키, venue 별).
+
+    ⚠ **NXT 거래정지 구간을 단일 창으로 덮을 수 있는 근거는 carry 다.** NXT 는
+    08:50–09:00:30 · 15:20–15:30 에 거래가 정지되지만(ADR-0140 §6.1, 증권사 안내
+    4곳), 캡처가 10초 주기로 **직전 값을 carry 해 행을 쓰므로** 그 구간에도 스냅샷이
+    있다(2026-08-10 실측 005930/20260807: 08:50–09:00 **59행** · 15:20–15:30 **39행**).
+    그래서 정지 구간이 갭으로 오인되지 않고, 창을 조각으로 쪼갤 필요가 없다.
+    **carry 를 없애면 이 전제가 죽는다** — 그때는 venue 별 연속거래 구간 리스트가
+    필요하다(회귀 테스트가 그 경우를 못박아 둔다).
 
     Args:
       ts_ms_values: snapshot timestamps as HogaMs (HHMMSSmmm encoding).
         Pre-session, Auction-Window, and post-close events are filtered out
         before analysis, so passing the full snapshot stream is safe.
-      session_close_ms: this Stock-Date's ``regular_session_close_ms`` from
-        meta (HogaMs / HHMMSSmmm). Required: a hardcoded default would re-
+      session_open_ms: 이 Stock-Date·venue 의 분석 하한(HogaMs / HHMMSSmmm).
+        **필수 인자다** — 기본값을 두면 인자를 잊은 호출부가 조용히 KRX 09:00 으로
+        판정돼 위 결함이 그대로 되돌아온다(`is_auction_window` 의 venue 필수 근거와
+        같은 형태).
+      session_close_ms: this Stock-Date's session close from meta (HogaMs /
+        HHMMSSmmm). Required: a hardcoded default would re-
         introduce the Half-Day footgun.
       anchor_edges: when True, also flag a head gap (session open → first
         snapshot) and a tail gap (last snapshot → auction-window start) if
@@ -589,7 +608,7 @@ def analyze_gaps(
         crash) has no interior gap yet is plainly partial, and only the edge
         anchors catch it.
     """
-    open_linear = _hhmmssms_to_intra_ms(_SESSION_OPEN_MS)
+    open_linear = _hhmmssms_to_intra_ms(session_open_ms)
     auction_start_linear = _hhmmssms_to_intra_ms(session_close_ms) - _AUCTION_WINDOW_DURATION_MS
     # (linear, original HogaMs) pairs, sorted by linear time. Retaining the
     # original lets gap boundaries stay HHMMSSmmm (no linear→HogaMs decode).
@@ -605,10 +624,10 @@ def analyze_gaps(
         # No continuous-trading data at all — the whole window is a gap. The
         # auction-start anchor is computed in linear ms, so encode it back to
         # HHMMSSmmm for a native-encoding boundary.
-        gap_ranges.append((_SESSION_OPEN_MS, _intra_ms_to_hhmmssms(auction_start_linear)))
+        gap_ranges.append((session_open_ms, _intra_ms_to_hhmmssms(auction_start_linear)))
         return GapAnalysis(in_session_count=0, gap_ranges=gap_ranges)
     if anchor_edges and in_session[0][0] - open_linear >= _GAP_THRESHOLD_MS:
-        gap_ranges.append((_SESSION_OPEN_MS, in_session[0][1]))
+        gap_ranges.append((session_open_ms, in_session[0][1]))
     # strict=False is correct: in_session[1:] is intentionally one shorter
     # (we're walking consecutive pairs, last element has no successor).
     for (prev_lin, prev_ts), (curr_lin, curr_ts) in zip(in_session, in_session[1:], strict=False):
@@ -622,12 +641,18 @@ def analyze_gaps(
 def has_meaningful_gaps(
     ts_ms_values: Iterable[HogaMs],
     *,
+    session_open_ms: HogaMs,
     session_close_ms: HogaMs,
 ) -> bool:
     """True if any consecutive pair within continuous-trading hours has a gap
     ≥ 1 minute, OR the window has fewer than 2 datapoints (too sparse to prove
-    completeness — conservative default). Thin wrapper over :func:`analyze_gaps`;
-    signature and semantics are unchanged so existing callers (parser is_partial,
-    invariants ``series.snapshots_no_gaps``) need no edits.
+    completeness — conservative default). Thin wrapper over :func:`analyze_gaps`.
+
+    ``session_open_ms`` 도 필수다 — 얇은 래퍼가 기본값을 들고 있으면 감싸진 함수의
+    필수 인자 계약이 여기서 새어 나간다(호출부는 래퍼만 보고 안심한다).
     """
-    return analyze_gaps(ts_ms_values, session_close_ms=session_close_ms).is_partial
+    return analyze_gaps(
+        ts_ms_values,
+        session_open_ms=session_open_ms,
+        session_close_ms=session_close_ms,
+    ).is_partial
