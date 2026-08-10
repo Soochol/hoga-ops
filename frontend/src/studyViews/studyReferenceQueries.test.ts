@@ -71,20 +71,29 @@ describe('studyReferenceQueryOptions', () => {
     expect(options.rangeSidecars.queryKey).not.toContain(1000);
   });
 
-  it('requests 1m disk candles + screener daily gap-fill for daily study views', () => {
+  it('캘린더 봉은 스크리너 일봉 **하나만** 요청한다 — 1분봉은 안 받는다', () => {
     const options = studyReferenceQueryOptions({ ...save, timeframe: 'D' }, settings);
 
     expect(options.rangeHoga.enabled).toBe(false);
     expect(options.rangeSidecars.enabled).toBe(false);
-    // 캔들은 1m으로 요청(프론트에서 캘린더 집계), mode=candles, hogaplay 고정.
-    expect(options.rangeCandles.enabled).toBe(true);
-    expect(options.rangeCandles.queryKey[4]).toBe(60_000);
-    expect(options.rangeCandles.queryKey[13]).toBe('hogaplay_first');
-    expect(options.rangeCandles.queryKey[14]).toBe('candles');
-    // 스크리너 일봉은 저장 구간 전체를 커버(갭 채움).
+    // ⚠ 이 줄이 이 변경의 전부다. 예전에는 일봉 98개를 그리려고 1분봉 36,000개
+    // (3.6MB)를 받아 프론트에서 접고 스크리너로 갭을 채웠다(hogaplay 우선).
+    // 그 병합은 **주가 기준이 다른 두 소스를 섞는 것**이라 분할 종목에서 봉이
+    // 1/5로 튀었다(`aggregateReferenceCandles` 주석).
+    expect(options.rangeCandles.enabled).toBe(false);
+    // 스크리너 일봉이 화면 전부다.
     expect(options.screenerDaily.enabled).toBe(true);
     expect(options.screenerDaily.queryKey).toEqual([
       'live', 'screener-daily-candles', '005930', '20260616', '20260618',
     ]);
+  });
+
+  it('분봉 저장은 그대로 1분봉(디스크 캔들)을 받는다 — 이 변경은 캘린더 봉 전용', () => {
+    const options = studyReferenceQueryOptions({ ...save, timeframe: '5m' }, settings);
+
+    expect(options.rangeCandles.enabled).toBe(true);
+    expect(options.rangeCandles.queryKey[13]).toBe('hogaplay_first');
+    expect(options.rangeCandles.queryKey[14]).toBe('candles');
+    expect(options.screenerDaily.enabled).toBe(false);
   });
 });
