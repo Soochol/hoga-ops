@@ -830,6 +830,100 @@ async def test_cancel_all_in_paused_resets_everything():
             assert s.phase == "cancelled"
 
 
+async def test_cancel_all_of_queued_only_emits_drained(monkeypatch):
+    """활성이 없는 채로 대기 항목을 취소하면 **여기서** 드레인을 낸다.
+
+    `cancel_all` 은 대기 항목을 `_queue` 에서 꺼내 **직접** `_done` 으로 옮긴다 —
+    `_finalize_item` 을 거치지 않는다. 활성이 하나도 없으면 그 함수가 돌 일이 없으니,
+    드레인 발행처가 거기 하나뿐이던 시절엔 큐가 바닥났는데 종결 이벤트만 없었다
+    (`resume_queue` 와 같은 모양의 침묵).
+
+    드레인이 **마지막**에 나오는 것까지 본다 — 항목별 `capture_finished` 보다 앞서면
+    "다 끝났다" 뒤에 개별 결과가 따라오는 순서가 된다.
+    """
+    published = []
+    monkeypatch.setattr(captures, "_publish_event", lambda e: published.append(e))
+
+    captures._queue.append(_make_item("q-1", date="20260518"))
+    captures._queue.append(_make_item("q-2", date="20260519"))
+    assert not captures._active, "전제: 활성이 없다 — finalize 가 돌 일이 없다"
+
+    result = await captures.cancel_all()
+
+    assert result["drained_count"] == 2
+    types = [type(e).__name__ for e in published]
+    assert types == [
+        "CaptureFinishedEvent", "CaptureFinishedEvent", "CaptureQueueDrainedEvent",
+    ], f"항목별 종결 뒤에 드레인 하나: {types}"
+    assert published[-1].total_cancelled == 2
+
+
+async def test_cancel_all_with_active_items_defers_drained_to_finalize(monkeypatch):
+    """활성이 남아 있으면 여기서는 **안 낸다** — 드레인은 그 항목들의 finalize 몫이다.
+
+    이 가드가 없으면 취소 신호만 보낸 시점에 "다 끝났다" 가 나가고, 아직 돌고 있는
+    캡처의 종결이 그 뒤에 도착한다. 술어(`_active` 비었나)가 이중 발행을 막는 자리다.
+    """
+    published = []
+    monkeypatch.setattr(captures, "_publish_event", lambda e: published.append(e))
+
+    active = _make_item("a-1", date="20260518")
+    active.phase = "capturing"
+    captures._active[active.item_id] = active
+    captures._queue.append(_make_item("q-1", date="20260519"))
+
+    await captures.cancel_all()
+
+    types = [type(e).__name__ for e in published]
+    assert "CaptureQueueDrainedEvent" not in types, (
+        f"활성이 남아 있는데 드레인이 나갔다 — finalize 가 낼 것과 겹친다: {types}"
+    )
+
+
+async def test_cancel_all_on_an_already_empty_queue_emits_no_drained(monkeypatch):
+    """이미 빈 큐의 전체 취소 는 상태 전이가 없다 — 알릴 것도 없다.
+
+    정상 조작이다: `range-capture` 스펙이 "완료 6/6" 을 확인한 **뒤** 전체 취소 를
+    누르고, 그 자리에 드레인이 없다는 전제로 벽시계 대기를 쓴다. 여기서 새로 쏘면
+    그 스펙이 깨지기 전에 소비자가 같은 배치를 두 번 끝난 것으로 센다.
+    """
+    published = []
+    monkeypatch.setattr(captures, "_publish_event", lambda e: published.append(e))
+
+    done = _make_item("old", date="20260518")
+    done.phase = "done"
+    captures._done.append(done)
+    assert not captures._queue and not captures._active and not captures._queue_paused
+
+    result = await captures.cancel_all()
+
+    assert result["drained_count"] == 0
+    assert published == [], f"아무 일도 없었는데 이벤트가 나갔다: {published}"
+
+
+async def test_cancel_all_while_paused_with_empty_queue_emits_drained(monkeypatch):
+    """일시정지 해제도 상태 전이다 — 취소할 게 없어도 바닥났음을 알린다.
+
+    쿠키 일시정지 뒤 되살리는 대신 **접기로** 한 경우다. `pause_origin` 항목은
+    `_done` 에서 그대로 cancelled 로 남고 큐는 비어 있으므로, 이 발행이 없으면
+    재개 경로와 똑같이 조용히 끝난다.
+    """
+    published = []
+    monkeypatch.setattr(captures, "_publish_event", lambda e: published.append(e))
+
+    paused_item = _make_item("p-1", date="20260518")
+    paused_item.phase = "cancelled"
+    paused_item.pause_origin = True
+    captures._done.append(paused_item)
+    captures._queue_paused = True
+
+    await captures.cancel_all()
+
+    types = [type(e).__name__ for e in published]
+    assert types == ["CaptureQueueResumedEvent", "CaptureQueueDrainedEvent"], types
+    assert published[-1].total_cancelled == 1
+
+
 # ---------------------------------------------------------------------------
 # Task 11: 429 per-item exponential backoff + cancel-aware sleep
 # ---------------------------------------------------------------------------

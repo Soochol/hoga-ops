@@ -91,10 +91,13 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   // 잔존). 로컬은 이미 전부 done 이라 우연히 통과했다.
   //
   // **여기는 `nextDrained()` 로 바꾸면 안 된다.** 위에서 "완료 6/6" 을 확인한 뒤라
-  // 큐도 활성도 이미 비어 있고, 그러면 `_finalize_item` 이 돌지 않아 드레인 프레임이
-  // **아예 나오지 않는다**(captures.py: 드레인은 마지막 항목의 finalize 안에서만 발행).
-  // 예약해 두면 백스톱까지 매달린다. 반대로 여기서 기다리는 일(취소 반영)은 캡처 작업이
-  // 아니라 UI 정착이라 부하에 민감하지도 않다 — 벽시계 바운드가 맞는 자리다.
+  // 큐도 활성도 이미 비어 있고, 그러면 취소할 항목이 0건이라 드레인 프레임이 **아예
+  // 나오지 않는다**. `cancel_all` 도 드레인 발행처이긴 하지만(captures.py 의
+  // `_drained_event_if_bottomed_locked` 참고) **실제로 뭔가 취소했거나 일시정지를
+  // 풀었을 때만** 낸다 — 이미 빈 큐에 전체 취소 를 누르는 것은 상태 전이가 없어서
+  // 알릴 것도 없다. 예약해 두면 백스톱까지 매달린다. 반대로 여기서 기다리는 일(취소
+  // 반영)은 캡처 작업이 아니라 UI 정착이라 부하에 민감하지도 않다 — 벽시계 바운드가
+  // 맞는 자리다.
   await expect(page.getByRole('button', { name: /^캡처 항목 .* (수집 중|대기)/ }))
     .toHaveCount(0, { timeout: 15_000 });
   await page.getByRole('button', { name: /완료 지우기/ }).click();

@@ -1069,18 +1069,27 @@ def _drained_event_if_bottomed_locked() -> CaptureQueueDrainedEvent | None:
 
     1. :func:`_finalize_item` — 마지막 항목이 끝나서 바닥났다(정상 경로).
     2. :func:`resume_queue` — 재개했는데 **할 일이 하나도 없었다**.
+    3. :func:`cancel_all` — 대기 항목을 **직접** ``_done`` 으로 옮겼고 활성이 없었다.
 
-    2번이 없던 시절의 구멍(2026-08-10 실측): 쿠키 만료로 멈췄는데 그 순간 다른 활성
-    항목이 없고 대기 큐도 비어 있으면, 실패한 항목은 terminal 이라 되살아나지 않고
-    ``resume_queue`` 가 재큐할 ``pause_origin`` 항목도 0건이다. 그러면 ``_finalize_item``
-    이 다시 돌 일이 없으니 **큐는 실제로 바닥났는데 종결 이벤트만 없는 상태**가 되고,
-    소비자는 ``capture_queue_resumed`` 뒤로 영원히 아무것도 못 받는다. e2e 가 90초
-    백스톱에서 죽어 드러났지만 성질은 프로덕션 쪽이다 — 재개를 누른 운영자도 같은
-    침묵을 본다.
+    2·3 이 없던 시절의 구멍은 같은 모양이다(2026-08-10 실측). 둘 다 ``_finalize_item``
+    을 거치지 않고 항목을 종결시키므로, 그 순간 활성이 비어 있으면 **큐는 실제로
+    바닥났는데 종결 이벤트만 없는 상태**가 된다. 2번은 쿠키 만료 순간 다른 활성 항목이
+    없을 때다 — 실패한 항목은 terminal 이라 되살아나지 않고 재큐할 ``pause_origin``
+    항목도 0건이라, 소비자는 ``capture_queue_resumed`` 뒤로 영원히 아무것도 못 받는다.
+    e2e 가 90초 백스톱에서 죽어 드러났지만 성질은 프로덕션 쪽이다 — 재개를 누른
+    운영자도 같은 침묵을 본다.
 
-    술어를 복제하지 않는 이유: 두 경로가 **서로 다른 조건에서 같은 이름의 이벤트**를
+    술어를 복제하지 않는 이유: 세 경로가 **서로 다른 조건에서 같은 이름의 이벤트**를
     내기 시작하면 그 어긋남은 소비자 쪽에서 원리적으로 안 보인다. ``_queue_paused``
     검사가 여기 들어 있는 것도 그래서다 — 호출부는 이 함수를 부를지 말지만 정한다.
+
+    **이중 발행은 술어가 막는다.** 활성이 남아 있으면 여기서 None 이 나가고 드레인은
+    그 항목들의 finalize 가 낸다. 반대로 활성이 없으면 finalize 가 돌 일이 없다.
+
+    발행 **순서**는 계약이 아니다. ``_finalize_item`` 은 자기 ``capture_finished``
+    앞에서, 나머지 둘은 뒤에서 낸다 — 어느 쪽이든 집계는 락 안에서 **이미 커밋된
+    상태**로부터 계산되므로 값은 같다. 소비자가 쓸 것은 위치가 아니라 도착 사실이다
+    (프론트는 스냅샷 무효화 트리거로만 쓴다).
     """
     if _queue or _active or _queue_paused:
         return None
@@ -1294,6 +1303,18 @@ async def cancel_all() -> dict:
                     s.pause_origin = False
             _queue_paused = False
         _persist_queue_locked()  # ADR-0019
+        # 여기서 직접 _done 으로 옮긴 대기 항목들은 **_finalize_item 을 거치지 않는다.**
+        # 그래서 활성이 하나도 없으면 드레인을 낼 사람이 아무도 없다 — resume 쪽과
+        # 같은 모양의 침묵이다. 활성이 남아 있으면 아래 헬퍼가 None 을 돌려주고,
+        # 실제 드레인은 그 항목들의 finalize 가 낸다(이중 발행 없음).
+        #
+        # `drained or was_paused` 가드: **아무 일도 없었으면 알릴 것도 없다.** 이미
+        # 비어 있고 멈춘 적도 없는 큐에 전체 취소 를 누르는 것은 정상 조작이고
+        # (range-capture 스펙이 실제로 그렇게 한다), 거기서 "다 끝났다" 를 새로 쏘면
+        # 소비자가 같은 배치를 두 번 끝난 것으로 센다.
+        drained_event = (
+            _drained_event_if_bottomed_locked() if (drained or was_paused) else None
+        )
         if _wakeup is not None:
             _wakeup.set()
     for s in drained:
@@ -1305,6 +1326,8 @@ async def cancel_all() -> dict:
         ))
     if was_paused:
         _publish_event(CaptureQueueResumedEvent(reason="cancel_all"))
+    if drained_event is not None:
+        _publish_event(drained_event)
     return {
         "status": "cancel_all_delivered",
         "drained_count": len(drained),
