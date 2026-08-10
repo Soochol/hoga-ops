@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
-import { type LiveTimeframe } from '../state/livePage';
+import { MINUTE_TIMEFRAMES, type LiveTimeframe } from '../state/livePage';
 import { PANE_SPECS } from '../chart/paneSpecs';
 import { CANDLE_SPEC } from '../chart/projectors/candle';
 import { VOLUME_SPEC } from '../chart/projectors/volume';
 
 describe('paneSpecsForTimeframe', () => {
-  it.each(['1m', '3m', '5m', '10m', '15m', '30m'] as const)(
+  // 목록을 손으로 적지 않는다 — 새 분봉 tf 가 추가되면 여기도 자동으로 덮는다.
+  it.each(MINUTE_TIMEFRAMES)(
     'minute timeframe %s → full 5-pane registry (PANE_SPECS identity)',
     (tf) => {
       expect(paneSpecsForTimeframe(tf)).toBe(PANE_SPECS);

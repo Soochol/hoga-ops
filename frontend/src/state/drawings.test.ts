@@ -4,6 +4,7 @@ import type { Drawing } from '../chart/drawing/types';
 import { INITIAL_DEFAULTS } from '../chart/drawing/types';
 import { DEFAULTS_KEY, drawingScope } from '../chart/drawing/persistence';
 import { useDrawingsStore, drawingBarMsFor, drawingScopeFor, slotForTimeframe } from './drawings';
+import { MINUTE_TIMEFRAMES } from './livePage';
 
 // 스토어 키는 (종목, 봉 슬롯) scope. A/B 는 서로 다른 종목의 분봉 슬롯이고,
 // A_DAILY 는 A 와 같은 종목의 일봉 슬롯 — 슬롯 격리 검증용.
@@ -58,7 +59,7 @@ describe('useDrawingsStore — Code partitioning', () => {
 
 describe('slotForTimeframe / drawingScopeFor', () => {
   it('collapses every minute frame onto one slot and keeps D/W/M separate', () => {
-    for (const tf of ['1m', '3m', '5m', '10m', '15m', '30m'] as const) {
+    for (const tf of MINUTE_TIMEFRAMES) {
       expect(slotForTimeframe(tf)).toBe('minute');
     }
     expect(slotForTimeframe('D')).toBe('D');

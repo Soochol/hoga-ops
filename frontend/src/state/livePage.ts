@@ -61,10 +61,10 @@ export { MA_PALETTE };
 /** Timeframes the live page supports.
  *
  * Backend (KIS) exposes only the base set directly: '1m', 'D', 'W', 'M'.
- * Aggregated minute frames (3m–30m) are computed client-side from the 1m
+ * Aggregated minute frames (3m–60m) are computed client-side from the 1m
  * series; see ``aggregateCandles``. Daily/weekly/monthly frames render
  * the indicator pane empty (Addendum 9.4 — hoga indicators are intraday only). */
-export const LIVE_TIMEFRAMES = ['1m', '3m', '5m', '10m', '15m', '30m', 'D', 'W', 'M'] as const;
+export const LIVE_TIMEFRAMES = ['1m', '3m', '5m', '10m', '15m', '30m', '60m', 'D', 'W', 'M'] as const;
 export type LiveTimeframe = (typeof LIVE_TIMEFRAMES)[number];
 
 /** Server-side base timeframes (no client aggregation). */
@@ -72,8 +72,26 @@ export const BASE_TIMEFRAMES = ['1m', 'D', 'W', 'M'] as const;
 export type BaseTimeframe = (typeof BASE_TIMEFRAMES)[number];
 
 /** Minute subset of LiveTimeframe — round-trips to `/api/range` via wire
- * `bucket_ms`, gets the full 5-pane chart. */
-export const MINUTE_TIMEFRAMES = ['1m', '3m', '5m', '10m', '15m', '30m'] as const;
+ * `bucket_ms`, gets the full 5-pane chart.
+ *
+ * ⚠ **60m 은 정규장 마감(15:30)이 버킷 경계가 아닌 첫 tf 다.** 1m~30m 은 전부 30분을
+ * 나누므로 마감이 항상 경계였고, 정규장 봉과 시간외 봉이 한 버킷에 섞이는 일이
+ * 구조적으로 불가능했다. 60m 의 `[15:00,16:00)` 은 그 경계를 가로지른다 — 실측상
+ * 무해하지만(아래) **120m 이상은 무해하지 않다**. 2026-08-07 `005930` 실측, 정규장
+ * 종가 대비 마감 포함 봉의 close 오차:
+ *
+ *   | tf   | KRX   | NXT    | UN     |
+ *   |------|-------|--------|--------|
+ *   | 60m  | 0.00% | −0.22% | 0.00%  |
+ *   | 120m | 0.00% | +1.08% | +1.30% |
+ *   | 240m | 0.00% | +1.08% | +1.30% |
+ *
+ * NXT·UN 은 08:00~19:59 를 통째로 싣는다. 60m 은 `[15:00,16:00)` 이 애프터마켓
+ * 개시(16:00) 직전에서 끊겨 살아남지만, 120m `[15:00,17:00)` · 240m `[13:00,17:00)`
+ * 은 애프터 1시간을 정규장 봉에 끌어들여 종가가 1%대로 어긋난다. 그래서 이 둘을
+ * 추가하려면 **집계 이전 정규장 클립**(venue 별 `effective_sessions` 기준)이 먼저다 —
+ * 가상 축은 버킷 `t_ms` 로 admit 하므로 오염된 봉을 걸러내지 못한다. */
+export const MINUTE_TIMEFRAMES = ['1m', '3m', '5m', '10m', '15m', '30m', '60m'] as const;
 export type MinuteTimeframe = (typeof MINUTE_TIMEFRAMES)[number];
 
 /** Calendar subset of LiveTimeframe — client-aggregated (`aggregateCalendar`),
@@ -105,6 +123,7 @@ export function bucketSeconds(tf: LiveTimeframe): number | null {
   if (tf === '10m') return 600;
   if (tf === '15m') return 900;
   if (tf === '30m') return 1800;
+  if (tf === '60m') return 3600;
   return null;
 }
 

@@ -59,6 +59,10 @@ INDEX_ID_TO_KIWOOM_CODE: dict[str, str] = {
 
 # 표시 버킷(초) → ka20005 `tic_scope`(분). 7종(1/3/5/10/15/30/60) 모두 900행을 준다고
 # 실측했으므로 KIS 처럼 잔 소스를 골라 집계할 이유가 없다 — 표시 버킷 그대로 요청한다.
+#
+# 지수는 종목과 달리 **정규장만** 온다(2026-08-07 KOSPI 30m 실측: 09:00~15:30, 14봉).
+# 그래서 60분에서 시간외가 정규장 봉에 섞이는 문제가 지수에는 존재하지 않는다 —
+# 종목 쪽 사정은 `kiwoom_minute_candles.BUCKET_MS_TO_TIC_SCOPE` 주석 참조.
 BUCKET_SECONDS_TO_TIC_SCOPE: dict[int, str] = {
     60: "1",
     180: "3",
@@ -66,6 +70,7 @@ BUCKET_SECONDS_TO_TIC_SCOPE: dict[int, str] = {
     600: "10",
     900: "15",
     1800: "30",
+    3600: "60",
 }
 
 

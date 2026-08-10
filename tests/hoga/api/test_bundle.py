@@ -10,6 +10,7 @@ from hoga.api.bundle import (
     _expand_distribution_bins,
     downsample_candles,
 )
+from hoga.api.models import ALLOWED_TIMEFRAME_MS
 from hoga.tables.candles import ApiCandle
 
 
@@ -66,11 +67,11 @@ def test_downsample_candles_rejects_invalid_bucket():
         downsample_candles([_c(0, 1, 1, 1, 1)], bucket_ms=42_000)
 
 
-def test_downsample_candles_handles_all_six_timeframes():
-    inp = [_c(i * 60_000, 100, 110, 90, 105, 1, 1) for i in range(30)]
-    for bucket_ms in (60_000, 180_000, 300_000, 600_000, 900_000, 1_800_000):
+def test_downsample_candles_handles_all_minute_timeframes():
+    inp = [_c(i * 60_000, 100, 110, 90, 105, 1, 1) for i in range(60)]
+    for bucket_ms in ALLOWED_TIMEFRAME_MS:
         out = downsample_candles(inp, bucket_ms=bucket_ms)
-        assert sum(c.vol_a for c in out) == 30
+        assert sum(c.vol_a for c in out) == 60
         for c in out:
             assert c.ts_ms % bucket_ms == 0
 

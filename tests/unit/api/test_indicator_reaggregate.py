@@ -25,7 +25,7 @@ DAY_START = hhmmssms_to_unix_ms(DATE, 0)
 CLOSE_FULL = 153000000  # 15:30:00.000 HHMMSSmmm
 
 # All /api/range minute timeframes (ms). 1m is the cache granularity.
-MINUTE_BUCKETS = [60_000, 180_000, 300_000, 600_000, 900_000, 1_800_000]
+MINUTE_BUCKETS = [60_000, 180_000, 300_000, 600_000, 900_000, 1_800_000, 3_600_000]
 
 
 def _unix(h: int, m: int, s: int = 0) -> int:

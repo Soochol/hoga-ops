@@ -85,9 +85,10 @@ def test_unknown_index_raises() -> None:
 def test_supported_buckets_map_to_display_bucket_itself() -> None:
     """집계 폴백을 두지 않는다 — 잔 소스로 접으면 depth 이점이 배수만큼 깎인다."""
     assert BUCKET_SECONDS_TO_TIC_SCOPE == {
-        60: "1", 180: "3", 300: "5", 600: "10", 900: "15", 1800: "30",
+        60: "1", 180: "3", 300: "5", 600: "10", 900: "15", 1800: "30", 3600: "60",
     }
     assert supports_bucket_seconds(1800) is True
+    assert supports_bucket_seconds(3600) is True
     assert supports_bucket_seconds(1200) is False, "미지원 버킷은 KIS 로 보낸다"
 
 

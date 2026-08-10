@@ -77,6 +77,43 @@ describe('aggregateCandles', () => {
     });
     expect(out[1].t_ms).toBe(baseMs + 60_000);
   });
+
+  it('60m: 정규장 마감 봉이 종가단일가·시간외종가를 한 버킷에 흡수한다', () => {
+    // 60m 은 정규장 마감(15:30)이 버킷 경계가 아닌 첫 tf 다 — `[15:00,16:00)` 이
+    // 마감을 가로지른다. 2026-08-07 `005930` 실측 구조를 그대로 고정한다:
+    // 연속거래 ~15:19 → 15:30 종가 단일가(대량) → 15:35 시간외종가(소량).
+    // KRX 는 시간외종가가 당일 종가에 고정 체결되므로 close 가 종가와 같다.
+    // ⚠ 이 단언은 **현행 동작의 기준선**이다. 120/240m 을 열면서 정규장 클립을
+    // 넣으면 여기가 먼저 빨개져야 한다 — 조용히 바뀌면 안 되는 자리다.
+    const baseMs = 1779840000000;                // 09:00 KST, 3,600,000ms 격자 위
+    const at = (h: number, m: number) => baseMs + ((h - 9) * 60 + m) * 60_000;
+    const src = [
+      { t_ms: at(15, 0), open: 231000, high: 231250, low: 230500, close: 230750, volume: 77769 },
+      { t_ms: at(15, 19), open: 231250, high: 232000, low: 231000, close: 231500, volume: 126306 },
+      { t_ms: at(15, 30), open: 231000, high: 231000, low: 231000, close: 231000, volume: 1586803 },
+      { t_ms: at(15, 35), open: 231000, high: 231000, low: 231000, close: 231000, volume: 1779 },
+    ];
+    const out = aggregateCandles(src, 3600);
+
+    expect(out).toHaveLength(1);
+    expect(out[0].t_ms).toBe(at(15, 0));
+    expect(out[0].close).toBe(231000);            // = 정규장 종가 (오차 0.00%)
+    expect(out[0].high).toBe(232000);
+    // 단일가 물량이 통째로 들어와 마지막 봉 거래량만 유난히 크다 — 정상이다.
+    expect(out[0].volume).toBe(77769 + 126306 + 1586803 + 1779);
+  });
+
+  it('60m: 09:00 에 버킷 경계가 서서 개장이 전날과 섞이지 않는다', () => {
+    // 격자 조건 `86,400,000 % bucketMs === 0` 의 관측 가능한 결과.
+    const baseMs = 1779840000000;                 // 09:00 KST
+    const src = [
+      { t_ms: baseMs - 60_000, open: 1, high: 1, low: 1, close: 1, volume: 1 },  // 08:59
+      { t_ms: baseMs, open: 2, high: 2, low: 2, close: 2, volume: 1 },           // 09:00
+    ];
+    const out = aggregateCandles(src, 3600);
+    expect(out).toHaveLength(2);
+    expect(out[1].t_ms).toBe(baseMs);
+  });
 });
 
 describe('aggregateCalendar', () => {

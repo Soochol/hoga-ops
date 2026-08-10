@@ -19,6 +19,7 @@ import {
   initialHistoricalDaysFor,
 } from './liveDateTime';
 import { PAST_CHUNK_CALENDAR_DAYS, pastChunkCalendarDays } from '../api/livePastCandles';
+import { MINUTE_TIMEFRAMES } from '../state/livePage';
 import { unixMsToKSTDate } from '../util/time';
 
 /** SR-1/SR-3: the /live infinite-scroll backfill policy was fused inside
@@ -119,8 +120,7 @@ describe('step sizing — STEP_TRADING_DAYS 단일 테이블 (ADR-0105, 2026-08-
     // 셋 중 하나만 바뀌면 조용히 깨지는 사슬 — 여기서 tf 마다 핀으로 박는다.
     // 백엔드 예산(12×m, live_candle_backfill._fresh_budget_for)은 이 파일에서
     // import 할 수 없으므로 같은 식으로 재계산해 대조한다.
-    const MINUTE_TFS = ['1m', '3m', '5m', '10m', '15m', '30m'] as const;
-    for (const tf of MINUTE_TFS) {
+    for (const tf of MINUTE_TIMEFRAMES) {
       const m = parseInt(tf, 10) * (tf.endsWith('m') ? 1 : NaN);
       const stepTradingDays = STEP_TRADING_DAYS[tf];
       expect(stepTradingDays).toBe(5 * m);
@@ -422,11 +422,15 @@ describe('initialCandleTargetFor — 초기 분봉 창 (5거래일)', () => {
     expect(initialCandleTargetFor('W')).toBe(250);
     expect(initialCandleTargetFor('M')).toBe(250);
   });
-  it('모든 분봉 TF의 초기 캘린더창 = 7일 (5거래일을 5/7 밀도로 환산)', () => {
+  it('분봉 초기 캘린더창은 봉 크기와 무관하게 5거래일 수준이다', () => {
     // useLiveBundle.seedFrom = today − initialHistoricalDaysFor(tf). 봉 크기와
-    // 무관하게 5거래일이므로 전부 7캘린더일. 과거(40일)에서 대폭 축소.
-    for (const tf of ['1m', '3m', '5m', '10m', '15m', '30m'] as const) {
-      expect(initialHistoricalDaysFor(tf)).toBe(7);
+    // 무관하게 5거래일이므로 7캘린더일. 과거(40일)에서 대폭 축소.
+    //
+    // 60m 만 8이다 — 정규장 390분을 60이 나누지 못해(6.5봉/일) 봉 개수 반올림이
+    // 32.5 → 33 으로 올라가고, 33봉은 5.08거래일이라 7일에 안 들어간다. 봉 크기에
+    // **비례해** 커지는 것이 아니라 경계에서 하루가 붙는 것이므로 의도대로다.
+    for (const tf of MINUTE_TIMEFRAMES) {
+      expect(initialHistoricalDaysFor(tf)).toBe(tf === '60m' ? 8 : 7);
     }
   });
   it('D는 기존 1년(350캘린더일) 유지', () => {
