@@ -3,13 +3,21 @@ import { selectSymbol, tradingDates } from './helpers/calendar';
 import { observeCaptureQueue } from './helpers/captureEvents';
 import { resetQueue } from './helpers/queue';
 
+// 파일 전체 예산은 `test.describe.configure` 로 준다 — 그룹·파일 단위 타임아웃의
+// **문서화된 형태**다(`test.setTimeout` 타입 문서가 그룹 용례로 이걸 가리킨다).
+// 파일 스코프 `test.setTimeout()` 도 실제로 동작한다(1.60.0↔1.62.1 `_setTimeout` 구현
+// 동일 — 로딩 중이면 `suite._timeout` 에 넣고 반환). 참고로 "1.62 가 이걸 수집 단계에서
+// 거부한다"는 보고는 **재현되지 않았다**: 그 에러는 **리포 루트에서 config 없이
+// `npx playwright`** 를 돌렸을 때 나오고, 같은 실행에서 live-tick 의 `test.use()` 도
+// 함께 죽는다 — 버전이 아니라 cwd 문제이므로 이 폼으로 바꿔도 그 실행은 여전히 깨진다.
+//
 // **기본 30초로는 안 된다 — 이 스펙은 백엔드에서 진짜 작업을 시킨다.**
 // 캡처 6건 × 1,523 페이지이고, 실측(32코어 개발기)이 건당 2.8~3.9초 · 스펙 전체 9.0초다.
 // 2코어 공유 러너에서는 GIL 경합으로 몇 배가 되므로 기본 예산이 곧바로 구속조건이 된다
 // (2026-08-03 CI: `Test timeout of 30000ms exceeded`). 여유를 실측의 ~13배로 잡는다.
 // 아래 대기들은 벽시계가 아니라 WS 프레임으로 깨어나므로, 이 값은 교착 백스톱이지
 // 성능 예산이 아니다.
-test.setTimeout(120_000);
+test.describe.configure({ timeout: 120_000 });
 
 test('range-capture: search → pick 3 trading days → Start → queue progresses to done × 3', async ({ page }) => {
   // 날짜는 런타임에 고른다 — 이전 판의 20260518/20 은 작성 시점(2026-05)에만 존재했다.

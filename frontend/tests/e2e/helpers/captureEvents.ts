@@ -45,9 +45,9 @@ interface CaptureFinishedEvent extends PushEvent {
 }
 
 /** 프레임 백스톱 — **성능 예산이 아니다.** 정상 경로는 프레임이 깨우므로 판정에
- *  관여하지 않는다. 교착일 때만 발화하며, 스펙의 `test.setTimeout` 보다 **작게**
- *  잡아 둔다 — 그래야 "테스트 시간 초과" 라는 익명의 메시지 대신 어떤 프레임을
- *  못 받았는지가 실패 사유로 남는다. */
+ *  관여하지 않는다. 교착일 때만 발화하며, 스펙의 `test.describe.configure({ timeout })`
+ *  보다 **작게** 잡아 둔다 — 그래야 "테스트 시간 초과" 라는 익명의 메시지 대신 어떤
+ *  프레임을 못 받았는지가 실패 사유로 남는다. */
 const FRAME_BACKSTOP_MS = 90_000;
 
 interface Waiter {
