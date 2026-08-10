@@ -37,7 +37,7 @@ describe('TopNav', () => {
     const labels = screen.getAllByRole('link').map((link) => link.textContent);
 
     expect(labels).toEqual([
-      '라이브', '복기', '히트맵', '스크리너', '옵션심리', '시장 종합', '보관함', '캡처',
+      '라이브', '복기', '히트맵', '시장 종합', '스크리너', '옵션심리', '보관함', '캡처',
     ]);
     expect(screen.getByRole('button', { name: '설정' })).toBeInTheDocument();
     expect(screen.queryByText('Watchlist')).not.toBeInTheDocument();
