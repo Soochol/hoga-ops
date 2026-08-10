@@ -186,7 +186,10 @@ class InvestorFlowResponse(BaseModel):
     daily: list[InvestorFlowDailyRow] = Field(default_factory=list)
     unit: str
     confirmed: bool
-    coverage: InvestorFlowCoverage
+    #: 시장 라벨 → 커버리지. **시장별인 것이 계약**이다(2026-08-10) — 한 덩어리로
+    #: 세면 분자만 두 시장 합이 되어 2배가 되고, 같은 사이클의 두 표본이 거의 같은
+    #: 시각이라 간격이 0 에 수렴해 `gap_ranges` 가 항상 비게 된다. 산출부 주석 참조.
+    coverage: dict[str, InvestorFlowCoverage] = Field(default_factory=dict)
     markets: dict[str, list[InvestorFlowPoint]] = Field(default_factory=dict)
 
 
@@ -523,12 +526,27 @@ def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str,
     poll_ms = int(POLL_INTERVAL_S * 1000)
 
     series: dict[str, list[dict[str, Any]]] = {}
+    # 커버리지는 **시장별**이다. 한 파일에 코스피·코스닥 표본이 섞여 있어서, 전량을
+    # 한 덩어리로 세면 두 가지가 동시에 틀어졌다(2026-08-10):
+    #
+    # 1. `sample_count` 는 두 시장 합인데 `expected_count` 는 한 시장 기준(390분 ÷
+    #    주기)이라 **분자가 2배**였다 — 30초 폴로 하루를 채우면 200% 로 표시된다.
+    #    60초 시절엔 51% 라 그럴듯해 보여서 드러나지 않았다.
+    # 2. 더 나쁜 쪽: 같은 사이클의 두 시장 표본이 **거의 같은 시각**이라 섞으면
+    #    간격이 0 에 수렴한다 → 갭 임계(주기×3)를 넘을 일이 없어 `gap_ranges` 가
+    #    사실상 항상 빈다. "재시작 공백이 정직하게 드러난다"(#1105)는 계약이
+    #    무력화돼 있었다.
+    #
+    # 한 시장만 실패한 사이클은 그 시장의 줄만 빠지므로(수집기 주석) 시장별로
+    # 나눠야 그 비대칭도 보인다 — 합치면 그것마저 가려진다.
+    by_market_samples: dict[str, list[Any]] = {}
     for s in samples:
         got = market_overview.market_investor_row(s.rows)
         if got is None:
             continue
         label, values = got
         series.setdefault(label, []).append({"t_ms": s.sampled_at_ms, **values})
+        by_market_samples.setdefault(label, []).append(s)
 
     # 일별(확정) 이력 — 확정본이 있는 날만. **비어 있는 것이 정상 시작 상태**다:
     # 장중 표본은 소급 백필이 불가능하지만 확정본은 `base_dt` 랜덤 액세스라 뒤늦게도
@@ -550,22 +568,26 @@ def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str,
         if got is not None or by_market:
             daily.append({"date": d, "markets": by_market})
 
-    cov = compute_coverage(samples, poll_interval_ms=poll_ms)
+    expected = market_overview.expected_sample_count(
+        session_minutes=_SESSION_MINUTES, poll_interval_ms=poll_ms
+    )
+    coverage: dict[str, Any] = {}
+    for label, market_samples in by_market_samples.items():
+        cov = compute_coverage(market_samples, poll_interval_ms=poll_ms)
+        coverage[label] = {
+            "first_sample_ms": cov.first_sample_ms,
+            "last_sample_ms": cov.last_sample_ms,
+            "sample_count": cov.sample_count,
+            "expected_count": expected,
+            "gap_ranges": cov.gap_ranges,
+        }
     return {
         "daily": daily,
         "date": date,
         # 단위는 수집 시 요청이 정했다 — 이름에 박아 화면이 축을 못 헷갈리게 한다.
         "unit": "amt_eok",
         "confirmed": store.is_confirmed(date),
-        "coverage": {
-            "first_sample_ms": cov.first_sample_ms,
-            "last_sample_ms": cov.last_sample_ms,
-            "sample_count": cov.sample_count,
-            "expected_count": market_overview.expected_sample_count(
-                session_minutes=_SESSION_MINUTES, poll_interval_ms=poll_ms
-            ),
-            "gap_ranges": cov.gap_ranges,
-        },
+        "coverage": coverage,
         "markets": series,
     }
 

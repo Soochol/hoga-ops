@@ -143,7 +143,8 @@ export function InvestorCard() {
 
   const hint = (() => {
     if (stockSel) {
-      const cov = stock.data?.coverage;
+      // 선택된 시장의 커버리지 — 두 시장을 합치면 분자가 2배가 된다(#1247 후속).
+      const cov = stock.data?.coverage?.[sel];
       return mode === 'intraday'
         ? `당일 누적 · 억원 · 잠정${cov ? ` · 표본 ${cov.sample_count}/${cov.expected_count ?? '—'}` : ''}`
         : '일별 확정 · 억원';

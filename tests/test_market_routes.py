@@ -181,7 +181,9 @@ async def test_investor_flow_reads_stored_samples_without_calling_the_vendor(tmp
     assert got["unit"] == "amt_eok"          # 단위를 이름에 박는다(#1117)
     assert got["confirmed"] is False          # 확정 파일이 없으니 잠정(파생)
     assert [p["foreign"] for p in got["markets"]["KOSPI"]] == [6473, 7697]
-    cov = got["coverage"]
+    # 커버리지는 **시장별**이다 — 합치면 분자만 두 시장 합이 되어 2배가 된다.
+    assert set(got["coverage"]) == {"KOSPI"}, "표본을 넣은 시장만 커버리지가 나온다"
+    cov = got["coverage"]["KOSPI"]
     assert cov["sample_count"] == 2
     # 390분 ÷ 30초. **분모가 폴 주기를 따라간다는 것이 이 단언의 요점**이므로,
     # 수집 주기를 바꾸면 여기도 같이 바뀌어야 한다(2026-08-10 60→30초).
@@ -198,7 +200,9 @@ async def test_investor_flow_empty_day_is_empty_not_error(tmp_path):
 
     got = _investor_flow_payload(tmp_path)
     assert got["markets"] == {}
-    assert got["coverage"]["sample_count"] == 0
+    # 표본이 없으면 커버리지도 빈 map 이다 — 0 을 채운 가짜 행을 만들지 않는다
+    # (그 행은 "이 시장을 수집 중인데 0건" 으로 읽혀 부재와 구별되지 않는다).
+    assert got["coverage"] == {}
     assert got["confirmed"] is False
 
 
