@@ -10,18 +10,78 @@
  * HOGA_ENABLE_TEST_ENDPOINTS=1 게이트). 그래서 여기서는 파일을 만지지 않는다 —
  * 경로 계산을 CI 와 로컬에서 두 벌로 유지하지 않기 위해서다.
  */
+import { execFileSync } from 'node:child_process';
+import { readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { API_URL as API, DATA_DIR, WORKTREE_ROOT, describeWorktreeEnv } from './worktreeEnv';
 
-/** **지금 붙은 백엔드가 내 워크트리 것인지 확인한다.**
+/** 백엔드가 스스로 밝히는 신원. `hoga/api/test_routes.py` 의 `whoami` 와 손 미러다. */
+interface WhoAmI {
+  repo_root: string;
+  data_dir: string;
+  /** 기동 시점 체크아웃의 짧은 SHA. git 이 없으면 `"unknown"`. */
+  commit: string;
+  /** 앱 조립 시각 = 이 프로세스가 소스를 읽은 시점. */
+  started_at_ms: number;
+}
+
+const HINT = '해당 포트 점유자를 /proc/<pid>/cmdline 으로 확인한 뒤 정리하라.';
+
+/** 이 워크트리의 짧은 SHA. 백엔드도 `--short` 를 쓰므로 축약 길이가 같다.
+ *  git 이 없거나 체크아웃이 아니면 null — 그때는 커밋 대조를 **건너뛴다**.
+ *  식별 실패가 실행을 막을 이유는 없다(`_read_git_commit` 과 같은 규칙). */
+function headCommit(): string | null {
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'],
+      { cwd: WORKTREE_ROOT, encoding: 'utf-8' }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** 백엔드가 읽었어야 할 소스의 **최신 mtime**(ms). 못 재면 null.
+ *
+ *  `hoga/**\/*.py` 와 `frontend/src` 둘 다 본다. 전자는 백엔드가 통째로 다시 읽어야
+ *  하는 코드이고(`hoga serve` 는 reload=False), 후자는 서버가 재사용되면
+ *  `vite build && prepare-dist` 가 **아예 돌지 않아** dist-smoke 가 옛 산출물을
+ *  검사하게 되는 경로다. */
+function newestSourceMtimeMs(): number | null {
+  const roots = [join(WORKTREE_ROOT, 'hoga'), join(WORKTREE_ROOT, 'frontend', 'src')];
+  let newest = 0;
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.name === '__pycache__') continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else newest = Math.max(newest, statSync(full).mtimeMs);
+    }
+  };
+  try {
+    for (const root of roots) walk(root);
+  } catch {
+    return null;  // 트리 모양이 예상과 다르다 — 판정 포기(새 flake 를 만들지 않는다)
+  }
+  return newest || null;
+}
+
+/** **지금 붙은 백엔드가 내 워크트리의, 지금 소스로 뜬 것인지 확인한다.**
  *
  *  포트는 워크트리 경로 해시로 파생되지만 슬롯은 512개뿐이라 충돌이 가능하고,
  *  `reuseExistingServer` 는 CI 밖에서 항상 true 라 충돌하면 **에러 대신 남의 서버에
  *  붙는다**. 그러면 스위트는 초록인데 잰 것은 남의 트리다 — 실측으로 겪은 실패
  *  모드다(2026-08-10: `Errno 98` 뒤에 조용히 다른 워크트리 백엔드로 통과).
  *
- *  파생은 확률을 낮출 뿐이고, 이 확인이 그걸 **시끄러운 실패**로 바꾼다. `/health`
- *  로는 안 된다 — version·commit 은 워크트리끼리 같을 수 있다(같은 커밋에서 딴
- *  브랜치가 흔하다). 판별에 필요한 것은 경로다. */
+ *  **축이 셋인데 각자 다른 것을 잡는다. 앞의 것으로 뒤의 것을 대신할 수 없다:**
+ *
+ *  1. `repo_root`·`data_dir` — **다른 체크아웃**. `/health` 로는 안 된다: version·
+ *     commit 은 워크트리끼리 같을 수 있다(같은 커밋에서 딴 브랜치가 흔하다).
+ *  2. `commit` — **같은 워크트리인데 다른 커밋**. 브랜치를 갈아탄 뒤 옛 서버가
+ *     고아로 남은 경우다. 1번은 경로가 같아서 통과시킨다.
+ *  3. `started_at_ms` vs 소스 mtime — **커밋 안 된 편집**. 2번이 원리적으로 못
+ *     잡는데, 개발 중에는 오히려 이쪽이 흔하다(고치고 바로 다시 돌린다).
+ *
+ *  2·3 은 git·파일시스템을 못 읽으면 **조용히 건너뛴다** — 판정 근거가 없을 때
+ *  죽이는 것은 새 flake 를 만드는 짓이다. 1번만 무조건이다. */
 async function assertBackendIsOurs(): Promise<void> {
   const res = await fetch(`${API}/api/test/whoami`);
   if (!res.ok) {
@@ -30,15 +90,36 @@ async function assertBackendIsOurs(): Promise<void> {
       `HOGA_ENABLE_TEST_ENDPOINTS=1 로 뜨지 않았다. (${describeWorktreeEnv()})`,
     );
   }
-  const { repo_root: repoRoot, data_dir: dataDir } =
-    await res.json() as { repo_root: string; data_dir: string };
-  if (repoRoot !== WORKTREE_ROOT || dataDir !== DATA_DIR) {
+  const who = await res.json() as WhoAmI;
+
+  if (who.repo_root !== WORKTREE_ROOT || who.data_dir !== DATA_DIR) {
     throw new Error(
       `${API} 에 뜬 백엔드가 **다른 체크아웃**의 것이다 — 이 실행은 내 코드를 재지 않는다.\n` +
       `  기대: repo_root=${WORKTREE_ROOT} data_dir=${DATA_DIR}\n` +
-      `  실제: repo_root=${repoRoot} data_dir=${dataDir}\n` +
+      `  실제: repo_root=${who.repo_root} data_dir=${who.data_dir}\n` +
       `포트 슬롯이 겹쳤거나(워크트리 경로 해시) 이전 실행의 서버가 남아 있다. ` +
-      `해당 포트 점유자를 /proc/<pid>/cmdline 으로 확인한 뒤 정리하라. (${describeWorktreeEnv()})`,
+      `${HINT} (${describeWorktreeEnv()})`,
+    );
+  }
+
+  const head = headCommit();
+  if (head !== null && who.commit !== 'unknown' && who.commit !== head) {
+    throw new Error(
+      `${API} 에 뜬 백엔드가 **다른 커밋**으로 떠 있다 — 경로는 같지만 코드가 다르다.\n` +
+      `  기대: ${head}\n  실제: ${who.commit}\n` +
+      `브랜치를 갈아타기 전에 뜬 서버가 고아로 남았다. ${HINT}`,
+    );
+  }
+
+  const newest = newestSourceMtimeMs();
+  if (newest !== null && newest > who.started_at_ms) {
+    throw new Error(
+      `${API} 에 뜬 백엔드가 **소스보다 오래됐다** — 재사용된 서버가 지금 코드를 안 읽었다.\n` +
+      `  서버 기동: ${new Date(who.started_at_ms).toISOString()}\n` +
+      `  최신 소스: ${new Date(newest).toISOString()}\n` +
+      `\`hoga serve\` 는 reload=False 라 조용히 옛 코드로 계속 돈다. ` +
+      `프론트도 마찬가지다 — 서버가 재사용되면 \`vite build\` 가 아예 돌지 않아 ` +
+      `dist-smoke 가 옛 산출물을 검사한다. ${HINT}`,
     );
   }
 }
