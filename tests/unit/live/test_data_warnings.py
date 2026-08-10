@@ -46,11 +46,21 @@ _SCANNED = (
 
 
 def _literal_reasons_in_source() -> set[str]:
-    """소스에서 `make_data_warning("literal", ...)` 의 첫 인자를 뽑는다."""
+    """소스에서 사유 리터럴을 뽑는다 — **두 형태**.
+
+    ① `make_data_warning("literal", ...)` — 직접 호출
+    ② `reason = "literal"` — 변수로 담아 넘기는 형태
+
+    ②가 뒤늦게 붙었다. 이 파일 docstring 이 "변수로 들어가는 호출부는 못 본다" 고
+    한계를 적어 뒀는데, **실제로 그 구멍에 미등록 사유가 하나 숨어 있었다**
+    (`index_kis_capacity_overloaded`, 2026-08-10 발견). 한계를 적어 두는 것과 막는
+    것은 다르다 — 적을 수 있으면 대개 막을 수도 있다.
+    """
     found: set[str] = set()
     for rel in _SCANNED:
         src = (_REPO_ROOT / rel).read_text(encoding="utf-8")
         found.update(re.findall(r'make_data_warning\(\s*"([a-z_]+)"', src))
+        found.update(re.findall(r'^\s*reason = "([a-z_]+)"', src, re.M))
     return found
 
 

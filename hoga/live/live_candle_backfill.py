@@ -492,8 +492,8 @@ class LiveMinuteCandleBackfill:
                 )
                 self._mark_rate_limited()
                 kis_blocked = True
-            except KiwoomCapacityOverloaded:
-                warnings.append(_capacity_overloaded_warning(date_s))
+            except KiwoomCapacityOverloaded as e:
+                warnings.append(_rest_error_warning(date_s, e))
             except KiwoomRestError as e:
                 warnings.append(_rest_error_warning(date_s, e))
 
@@ -574,9 +574,9 @@ class LiveMinuteCandleBackfill:
         t0 = perf_debug.now()
         try:
             result = await self._walk_scheduled(venue, code, newest, oldest, tic_scope)
-        except KiwoomCapacityOverloaded:
+        except KiwoomCapacityOverloaded as e:
             for date_s in pending:
-                warnings_by_date[date_s] = _capacity_overloaded_warning(date_s)
+                warnings_by_date[date_s] = _rest_error_warning(date_s, e)
             return False
         except KiwoomRateLimitError as e:
             self._mark_rate_limited()
@@ -621,8 +621,12 @@ class LiveMinuteCandleBackfill:
             return None, self._rate_limit_aborted_warning, True
         try:
             return await self._ensure_factors(code, as_of=as_of), None, False
-        except KiwoomCapacityOverloaded:
-            return None, _capacity_overloaded_warning, False
+        except KiwoomCapacityOverloaded as e:
+            # 바로 아래 `rate_msg` 와 같은 이유로 로컬에 묶는다 — `except ... as e` 는
+            # 블록 끝에서 이름을 지우므로 클로저가 `e` 를 그대로 참조하면 호출 시점에
+            # NameError 다.
+            capacity_exc = e
+            return None, lambda date_s: _rest_error_warning(date_s, capacity_exc), False
         except KiwoomRateLimitError as e:
             self._mark_rate_limited()
             # **`except ... as e` 는 블록 끝에서 이름을 지운다** — 클로저가 그대로
@@ -999,8 +1003,13 @@ def _merge_minute_fallback(
     return sorted(out, key=lambda candle: candle["t_ms"])
 
 
-def _rest_error_warning(date_s: str, exc: KiwoomRestError) -> dict:
-    """키움 REST 실패를 와이어 경고로. **사유는 `error_policy` 가 정한다.**
+def _rest_error_warning(date_s: str, exc: BaseException) -> dict:
+    """벤더·거버너 실패를 와이어 경고로. **사유는 `error_policy` 가 정한다.**
+
+    타입이 `BaseException` 인 것은 의도다 — 정책 테이블이 분류할 수 있는 예외면
+    무엇이든 지난다. 예전엔 `KiwoomRestError` 로 좁혀 있어서 거버너 큐 포화
+    (`KiwoomCapacityOverloaded`, `RuntimeError` 상속)가 **별도 생성기를 따로 갖고
+    있었고**, 그래서 같은 사유의 `msg` 가 두 벌로 갈렸다(ADR-0143).
 
     이전 판은 전부 `api_error` 한 단어로 접었다. 그래서 프론트가 진짜 전송 실패를
     가려내려고 `msg` 에서 `'TRANSPORT/'` 문자열을 뒤져야 했다 — 벤더 거절과 네트워크
@@ -1039,21 +1048,6 @@ def _fallback_blocking_warning_dates(warnings: list[dict]) -> set[str]:
         for warning in warnings
         if warning.get("reason") in blocking_reasons
     }
-
-
-def _capacity_overloaded_warning(date_s: str) -> dict:
-    """큐 포화 경고. **문구까지 정책 테이블에서 뽑는다**(ADR-0143).
-
-    이 사유는 생성 경로가 둘이었다 — `classify_live_error(KiwoomCapacityOverloaded)`
-    와 이 함수. 그래서 같은 `reason` 인데 `msg` 가 갈렸고, 이쪽에 박혀 있던
-    `"KIS capacity scheduler…"` 는 **KIS 시대 잔재**였다(현재 경로는 키움).
-    호출부 2곳은 예외 객체가 없는 자리라 이 함수 자체는 남지만, 안의 문구는
-    정책이 정한다 — 이중 생성이 갈리는 것을 구조로 막는다.
-    """
-    policy = classify_live_error(
-        KiwoomCapacityOverloaded("request queue is full; this date was not requested"),
-    )
-    return make_data_warning(policy.reason, policy.message, date=date_s)
 
 
 def _fetch_budget_exhausted_warning(date_s: str) -> dict:

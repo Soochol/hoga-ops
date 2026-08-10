@@ -170,8 +170,15 @@ class _RecordingScheduler:
 
 
 class _OverloadedScheduler:
+    """거버너 과부하 페이크.
+
+    **문구를 실제(`kiwoom_capacity`)와 맞춘다** — ADR-0143 이후 이 메시지가 합성되지
+    않고 **예외 그대로** wire 로 나가므로, 페이크가 딴 문구를 던지면 테스트가 실제와
+    다른 것을 못 박게 된다.
+    """
+
     async def submit(self, **_kwargs):
-        raise KiwoomCapacityOverloaded("KIS capacity scheduler pending request limit reached")
+        raise KiwoomCapacityOverloaded("queue full (4)")
 
 
 @pytest.mark.asyncio
@@ -305,9 +312,9 @@ async def test_live_minute_candle_backfill_reports_capacity_overload(tmp_path, k
     assert result.candles == []
     assert result.fresh_dates == []
     assert result.cached_dates == []
-    # ADR-0143: `kind`·`is_failure` 가 붙고, **msg 도 정책 테이블에서 온다**.
-    # 예전 문구 `"KIS capacity scheduler…"` 는 이 생성기에만 박혀 있던 KIS 시대
-    # 잔재였다 — 같은 사유의 다른 경로(`classify_live_error`)와 갈려 있었다.
+    # ADR-0143: `kind`·`is_failure` 가 붙고, **msg 는 예외 원문 그대로**다. 예전엔
+    # 별도 생성기가 합성 문구를 썼는데(그래서 같은 사유의 msg 가 두 벌로 갈렸다),
+    # 이제 거버너가 실은 **큐 상한값**이 화면까지 닿는다.
     assert result.data_warnings == [
         {
             "date": "20260518",
@@ -317,7 +324,8 @@ async def test_live_minute_candle_backfill_reports_capacity_overload(tmp_path, k
             # ::test_capacity_overload_kind_intentionally_differs_from_policy.
             "kind": "deferred",
             "is_failure": True,
-            "msg": "request queue is full; this date was not requested",
+            # 합성 문구가 아니라 **실제 예외**가 온다 — 큐 상한값이 화면에 닿는다.
+            "msg": "queue full (4)",
         }
     ]
 
@@ -668,6 +676,23 @@ def _ts_set_members(ts_path: Path, const_name: str) -> frozenset[str]:
     return frozenset(re.findall(r"'([^']*)'", body.split("]", 1)[0]))
 
 
+# **분봉 경로 밖 사유** — `hasBlockingWarnings` 가 보는 응답에 애초에 실리지 않는다.
+#
+# 아래 두 가드는 사유를 kind 로 사영해 대조하는데, 그러면 **경로가 다른 사유가 같은
+# kind 를 공유**하는 순간 위양성이 난다. `index_kis_capacity_overloaded` 는 지수 캔들
+# 경로(`/api/live/index-candles`)의 것이라 `_FALLBACK_BLOCKING_REASONS`(분봉 venue
+# 폴백 판정)에 들어갈 이유가 없는데, kind 가 `deferred` 라 프론트 blocking 집합에는
+# 걸린다 — 실제 문제가 아니라 **가드가 경로를 못 보는 것**이다.
+#
+# 사유와 함께 여기 적는다. 새로 추가할 때는 "그 사유가 분봉 `data_warnings` 에
+# 실릴 수 있는가" 를 실제로 확인할 것 — 실릴 수 있으면 예외가 아니라 진짜 불일치다.
+_OUTSIDE_MINUTE_PATH: frozenset[str] = frozenset({
+    "index_kis_capacity_overloaded",  # /index-candles 전용
+    "screener_daily_missing",  # 스크리너 일봉 디스크 경로 전용
+    "credentials_missing",  # 스크리너 장중 오버레이 전용
+})
+
+
 def _frontend_blocking_kinds() -> frozenset[str]:
     ts_path = (
         Path(__file__).resolve().parents[3] / "frontend/src/api/livePastCandles.ts"
@@ -720,6 +745,8 @@ def test_non_blocking_failures_stay_out_of_frontend_blocking_kinds() -> None:
     for reason, (kind, is_failure) in WARNING_CLASSIFICATION.items():
         if not is_failure or reason in _FALLBACK_BLOCKING_REASONS:
             continue
+        if reason in _OUTSIDE_MINUTE_PATH:
+            continue
         assert kind not in frontend, (
             f"{reason!r}(kind={kind!r})은 blocking 이 아닌데 그 kind 가 프론트 blocking "
             "집합에 있다 — 두 부류가 kind 를 공유하면 구분이 죽는다."
@@ -736,7 +763,7 @@ def test_every_failure_reason_agrees_on_blocking_membership() -> None:
     frontend = _frontend_blocking_kinds()
 
     for reason, (kind, is_failure) in WARNING_CLASSIFICATION.items():
-        if not is_failure:
+        if not is_failure or reason in _OUTSIDE_MINUTE_PATH:
             continue
         backend_blocking = reason in _FALLBACK_BLOCKING_REASONS
         frontend_blocking = kind in frontend
