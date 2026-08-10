@@ -1,5 +1,5 @@
 import { useStudyChartIndicators } from './useStudyChartIndicators';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import type { StudyViewReference } from '../api/studyViews';
 import type { StudyTab } from '../state/studyTabs';
@@ -13,8 +13,25 @@ export type StudyTabQueryStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 type WarmQuerySpec = {
   tabId: string;
+  /** 이 spec 이 실제로 fetch 를 낼 수 있는가. false 면 관찰만 하고 요청은 안 나간다. */
+  open: boolean;
   query: ReturnType<typeof studyReferenceQueryOptions>[keyof ReturnType<typeof studyReferenceQueryOptions>];
 };
+
+/**
+ * 한 번에 워밍을 새로 여는 비활성 탭 수.
+ *
+ * **1인 이유는 백엔드가 사실상 직렬이기 때문이다.** `/api/range` 는 조용할 때
+ * 단독 0.63초인데, 32코어에서 스레드 6개로 동시에 돌려도 wall 이 5.9배로 늘어난다
+ * (행→pydantic 변환이 GIL 을 놓지 않는다). 즉 동시에 던진 요청은 서로를 그 수만큼
+ * 늦출 뿐 총 처리량을 늘리지 못한다. 실측 최대 22개 동시 in-flight 에서 요청 하나가
+ * 8~213초까지 늘어났고, 그 대부분이 이 훅이 활성화된 탭 전부에 4쿼리씩 한꺼번에
+ * 발사한 것이었다.
+ *
+ * 워밍은 배경 작업이라 늦어도 손해가 없다 — 사용자가 그 탭을 실제로 누르면 그 탭이
+ * 활성이 되어 곧바로 우선순위를 받는다.
+ */
+const WARM_INACTIVE_TAB_CONCURRENCY = 1;
 
 type UseWarmStudyReferenceTabQueriesArgs = {
   tabs: StudyTab[];
@@ -54,6 +71,26 @@ export function useWarmStudyReferenceTabQueries({
     return ids;
   }, [activeTabId, activatedTabIds]);
 
+  // 실제로 요청을 낼 수 있는 탭들. 워밍 후보(`warmTabIds`) 전부가 아니라 **여기 있는
+  // 것만** 발사한다 — 상수 주석 참조.
+  //
+  // ⚠ **렌더 중에 갱신한다**(effect 가 아니라). effect 는 커밋 뒤라 한 발 늦는데,
+  // 그 사이 활성이던 탭이 비활성으로 바뀌면 spec 이 `useQueries` 배열에서 빠지고
+  // react-query 가 관찰자를 해제하며 **진행 중이던 요청을 abort** 한다. 탭 전환이
+  // 직전 탭의 in-flight 를 죽이지 않는다는 계약이 이 훅의 테스트에 못 박혀 있다.
+  // 렌더 중 ref mutation 이지만 멱등한 grow-only 라 StrictMode 이중 렌더에도 안전하다.
+  const openedRef = useRef<Set<string>>(new Set());
+  // 슬롯 전진(아래 effect)이 `openedRef` 를 바꿨을 때 spec 을 다시 만들게 하는 신호.
+  // ref 는 deps 로 쓸 수 없어 버전 카운터를 대신 둔다.
+  const [openedVersion, setOpenedVersion] = useState(0);
+
+  // 한 번 활성이었던 탭은 계속 열어 둔다(위 abort 계약).
+  if (activeTabId) openedRef.current.add(activeTabId);
+  // 닫힌 탭은 집합에서 지운다 — 안 지우면 같은 id 가 재사용될 때 워밍 순서를 건너뛴다.
+  for (const id of openedRef.current) {
+    if (!warmTabIds.has(id)) openedRef.current.delete(id);
+  }
+
   const specs = useMemo<WarmQuerySpec[]>(() => {
     const savesById = new Map(saves.map((save) => [save.id, save]));
     const baseSettings = {
@@ -82,11 +119,20 @@ export function useWarmStudyReferenceTabQueries({
         settings,
         studyDailyContextWindow(displayed),
       );
+      // 옵션 레벨 `enabled`(설정 로딩 중 등)를 먼저 거르고, 그 위에 워밍 게이트를
+      // **곱한다**. 아직 순번이 안 온 탭도 spec 자체는 만들어 둔다 — 관찰자가 있어야
+      // 상태 맵이 'idle'(한 번도 활성화 안 됨)과 'loading'(워밍 대기·진행)을 구분한다.
+      const open = openedRef.current.has(tab.id);
       return [options.rangeHoga, options.rangeSidecars, options.rangeCandles, options.screenerDaily]
         .filter((query) => query.enabled)
-        .map((query) => ({ tabId: tab.id, query }));
+        .map((query) => ({
+          tabId: tab.id,
+          open,
+          query: open ? query : { ...query, enabled: false },
+        }));
     });
   }, [
+    openedVersion,
     saves,
     brokerLateEntryEnabled,
     brokerLateEntryStartHHMM,
@@ -102,6 +148,30 @@ export function useWarmStudyReferenceTabQueries({
   const results = useQueries({
     queries: specs.map((spec) => spec.query),
   });
+
+  // 슬롯 전진: 지금 열려 있는 것들이 전부 끝나면 다음 탭을 연다.
+  //
+  // "끝났다" 는 성공만이 아니라 **에러로 끝난 것도 포함**한다(재시도까지 소진한
+  // 쿼리는 isPending·isFetching 이 모두 false 다). 안 그러면 실패한 탭 하나가 뒤의
+  // 워밍을 영구히 막는다. save 가 없어 spec 이 0개인 탭도 자동으로 끝난 것이 된다.
+  //
+  // 활성 탭이 영영 안 끝나면 비활성 워밍은 시작되지 않는다 — **의도한 동작이다.**
+  // 워밍의 목적은 배경 선반입이지 활성 화면과 대역폭을 다투는 것이 아니다.
+  useEffect(() => {
+    const openPending = specs.some((spec, index) => {
+      if (!spec.open) return false;
+      const result = results[index];
+      return !result || result.isPending || result.isFetching;
+    });
+    if (openPending) return;
+
+    const next = tabs
+      .filter((tab) => warmTabIds.has(tab.id) && !openedRef.current.has(tab.id))
+      .slice(0, WARM_INACTIVE_TAB_CONCURRENCY);
+    if (next.length === 0) return;
+    for (const tab of next) openedRef.current.add(tab.id);
+    setOpenedVersion((v) => v + 1);
+  }, [results, specs, tabs, warmTabIds]);
 
   return useMemo(() => {
     const byTab = new Map<string, typeof results>();
