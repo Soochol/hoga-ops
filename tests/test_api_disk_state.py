@@ -954,3 +954,81 @@ def test_nxt_tail_anchor_catches_stream_death_before_close() -> None:
     tail = [(int(s), int(e)) for s, e in g.gap_ranges][-1]
     assert tail[0] == 194500000        # 마지막 스냅샷에서
     assert tail[1] == 195000000        # 19:50 (= 20:00 − 10분) 까지
+
+
+# === ADR-0140 §6 — expected_venues 전부 닫혀야 COMPLETE =====================
+
+
+def _write_venue_stock_date(
+    root: Path, *, expected: list[str], present: list[str], complete: bool = True,
+) -> Path:
+    """`kiwoom_live` venue 축 Stock-Date 를 만든다. present 에 있는 venue 만 승격본."""
+    src = root / "kiwoom_live"
+    src.mkdir(parents=True, exist_ok=True)
+    (src / "meta.json").write_text(json.dumps({
+        "source": "kiwoom_live", "expected_venues": expected, "nxt_enabled": True,
+    }), encoding="utf-8")
+    for v in present:
+        (src / v).mkdir(exist_ok=True)
+        (src / v / "meta.json").write_text(json.dumps({
+            "source": "kiwoom_live",
+            "regular_session_open_ms": 90000000,
+            "regular_session_close_ms": 153000000,
+            "collection_complete": complete,
+            "is_partial": False,
+            "gap_ranges": [],
+        }), encoding="utf-8")
+    return root
+
+
+def test_missing_expected_venue_demotes_complete(tmp_path: Path) -> None:
+    """KRX 만 승격되고 NXT 가 통째로 빠진 날은 COMPLETE 가 아니다.
+
+    `source_meta_path` 는 **존재하는** venue meta 중 최악을 고르므로, 파일이 없는
+    venue 는 후보에 없어 결손이 판정에 안 들어온다 — 그 구멍을 막는 가드다.
+    """
+    from hoga.api.disk_state import DiskState, classify_stock_date
+
+    sd = _write_venue_stock_date(
+        tmp_path / "20260807" / "005930", expected=["KRX", "NXT"], present=["KRX"],
+    )
+    result = classify_stock_date(sd)
+    assert result["kiwoom_live"].state == DiskState.CLIENT_INCOMPLETE
+    ids = [v.invariant_id for v in result["kiwoom_live"].violations]
+    assert "meta.expected_venue_missing" in ids
+
+
+def test_all_expected_venues_present_stays_complete(tmp_path: Path) -> None:
+    """전부 있으면 종전대로 COMPLETE — 이 가드가 정상 케이스를 건드리지 않는다."""
+    from hoga.api.disk_state import DiskState, classify_stock_date
+
+    sd = _write_venue_stock_date(
+        tmp_path / "20260807" / "005930",
+        expected=["KRX", "NXT"], present=["KRX", "NXT"],
+    )
+    assert classify_stock_date(sd)["kiwoom_live"].state == DiskState.COMPLETE
+
+
+def test_unlisted_code_expects_krx_only(tmp_path: Path) -> None:
+    """NXT 미상장 종목은 `expected_venues=["KRX"]` 라 KRX 만으로 COMPLETE.
+
+    "NXT 자리가 없는 것" 과 "있는데 비어 있는 것" 을 가르는 것이 expected_venues 의
+    존재 이유다 — 미상장 98종이 영구 미완결이 되면 안 된다.
+    """
+    from hoga.api.disk_state import DiskState, classify_stock_date
+
+    sd = _write_venue_stock_date(
+        tmp_path / "20260807" / "069500", expected=["KRX"], present=["KRX"],
+    )
+    assert classify_stock_date(sd)["kiwoom_live"].state == DiskState.COMPLETE
+
+
+def test_already_partial_source_is_not_touched(tmp_path: Path) -> None:
+    """이미 COMPLETE 가 아니면 건드리지 않는다 — 더 심한 것이 이긴다."""
+    from hoga.api.disk_state import DiskState, classify_stock_date
+
+    sd = _write_venue_stock_date(
+        tmp_path / "20260807" / "005930",
+        expected=["KRX", "NXT"], present=["KRX"], complete=False,
+    )
+    assert classify_stock_date(sd)["kiwoom_live"].state == DiskState.CLIENT_INCOMPLETE
