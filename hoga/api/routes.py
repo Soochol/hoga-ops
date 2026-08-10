@@ -46,41 +46,45 @@ log = logging.getLogger(__name__)
 # `/api/range` 의 **넓은 구간** 동시 compute 상한.
 #
 # 왜 상한이 필요한가: 이 경로는 시간의 대부분이 행→pydantic 모델 생성이라 GIL 을
-# 놓지 않는다. 32코어에서 스레드 6개로 돌려도 wall 이 5.9배로 늘어나고(별도 DuckDB
-# 커넥션을 줘도 5.2배라 커넥션 락은 부차적이다), 그래서 동시에 던진 넓은 요청은
-# 서로를 그 수만큼 늦출 뿐 처리량을 늘리지 못한다.
+# 놓지 않는다. 32코어에서 스레드 6개로 돌려도 wall 이 **7.1배**로 늘어나고(스레드마다
+# 별도 DuckDB 커넥션을 줘도 7.8배라 커넥션 락은 부차적이다), 그래서 동시에 던진 넓은
+# 요청은 서로를 그 수만큼 늦출 뿐 처리량을 늘리지 못한다.
 #
 # **왜 좁은 요청은 이 상한을 타지 않는가 — 이게 이 설계의 핵심이고, 측정이 시켰다.**
 # 처음에는 모든 `/api/range` 를 한 큐에 넣었다. 같은 요청 12개(전부 5개월)로 재면
 # 상한 1이 모든 지표에서 최선이었다 — 균일한 작업에는 FIFO 단일 큐가 최적이다.
 # 그런데 **운영 부하는 균일하지 않다**: `/study` 의 5개월과 `/live` 의 하루가 같은
 # 엔드포인트를 탄다. 그 혼합(무거운 것 6 + 가벼운 것 16 = 22 동시)으로 재자 결론이
-# 뒤집혔다 — 아래는 **무게 분리 없이** 전부 한 큐에 넣었을 때다:
+# 뒤집혔다 — 아래는 **무게 분리 없이** 전부 한 큐에 넣었을 때다
+# (`HOGA_RANGE_WIDE_SPAN_DAYS=0` 으로 재현 가능):
 #
 #     상한      wall   가벼운것 중앙   무거운것 중앙   전체 평균
-#     무제한   2.25s        0.32s        2.02s      0.73s
-#     1        2.28s        2.26s        1.43s      2.01s   ← 가벼운 것이 7배 느려진다
-#     2        2.24s        1.89s        1.59s      1.77s
-#     4        2.06s        1.69s        1.56s      1.63s
+#     무제한   1.95s        0.25s        1.73s      0.62s
+#     1        1.87s        1.85s        1.15s      1.61s   ← 가벼운 것이 7배 느려진다
+#     2        1.72s        1.48s        1.20s      1.39s
+#     4        1.82s        1.52s        1.31s      1.44s
 #
-# 상한이 무거운 것의 중앙값은 낮추지만(2.02 → 1.43), 그 이득을 가벼운 요청에서
-# 그보다 크게 뺏어 온다. 총 wall 은 어느 쪽이든 같다 — 즉 **단일 큐의 상한은
+# 상한이 무거운 것의 중앙값은 낮추지만(1.73 → 1.15), 그 이득을 가벼운 요청에서
+# 그보다 크게 뺏어 온다. 총 wall 은 어느 쪽이든 비슷하다 — 즉 **단일 큐의 상한은
 # 이득이 아니라 재분배**였고, 재분배가 손해 쪽이었다. head-of-line blocking:
 # 하루짜리가 5개월짜리 뒤에 갇힌다.
 #
 # 그래서 큐를 무게로 나눴다(`_is_wide_range`). 넓은 요청만 줄을 서고 좁은 요청은
 # 곧장 지나간다. 같은 부하를 다시 재면 **모든 열이 개선된다** — 재분배가 아니라
-# 실제 이득이다:
+# 실제 이득이다(2회 측정, 순서 재현됨):
 #
 #     상한      wall   가벼운것 중앙   무거운것 중앙   전체 평균
-#     무제한   1.96s        0.22s        1.77s      0.59s
-#     1        2.05s        0.15s        1.43s      0.48s
-#     2        1.89s        0.12s        1.38s      0.44s   ← 채택
-#     4        1.87s        0.12s        1.43s      0.48s
+#     무제한   1.93s        0.25s        1.81s      0.62s
+#     1        1.90s        0.16s        1.24s      0.44s   ← 채택
+#     2        1.90s        0.21s        1.40s      0.50s
+#     4        2.07s        0.21s        1.70s      0.62s
 #
-# 2인 이유: 1은 넓은 것끼리도 완전 직렬이라 그쪽 중앙값이 도로 올라가고(1.43),
-# 4는 GIL 경합이 다시 붙어 이득이 없다. 2가 두 축의 바닥이다.
-RANGE_COMPUTE_CONCURRENCY = int(os.environ.get("HOGA_RANGE_CONCURRENCY", "") or 2)
+# ⚠ 1인 이유가 바뀐 적이 있다. `model_copy` 로 행을 두 벌 만들던 시절에는 compute 가
+# 지금의 2배여서 상한 2가 최적이었다(넓은 것끼리 완전 직렬이면 그쪽 중앙값이 올라갔다).
+# `ts_ms` 보정을 SQL 로 밀어 그 두 번째 벌을 없애자(0.63s → 0.29s) compute 가 짧아져
+# 대기 자체가 싸졌고, GIL 경합을 아예 피하는 1이 다시 최적이 됐다. **compute 비용이
+# 바뀌면 이 값을 다시 재라** — 상한은 compute 시간의 함수다.
+RANGE_COMPUTE_CONCURRENCY = int(os.environ.get("HOGA_RANGE_CONCURRENCY", "") or 1)
 
 # 이 일수 이상을 요청하면 "넓은 구간" 으로 보고 상한을 태운다.
 #
@@ -425,12 +429,13 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         # 디렉터리·meta.json 이 있어도 파케이 파일은 없을 수 있다(0행 → 파일 없음).
         if not path.is_file():
             return CandlesResponse(candles=[])
-        rows = candles_tbl.query_all(engine.conn, path=path)
-        rows = [
-            r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
-            for r in rows
-        ]
-        return CandlesResponse(candles=rows)
+        # 자정→Unix 보정은 SQL 이 한다(`candles.query_all`) — 파이썬에서 다시 씌우면
+        # 같은 행을 두 벌 만든다.
+        return CandlesResponse(
+            candles=candles_tbl.query_all(
+                engine.conn, path=path, ts_offset_ms=ms_from_midnight_to_unix_ms(date, 0),
+            ),
+        )
 
     @router.get("/brokers/series", response_model=BrokerSeriesResponse)
     def brokers_series(
