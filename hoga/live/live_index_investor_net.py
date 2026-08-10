@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable, Hashable
 from typing import Any, Protocol
 
 from hoga.live import kiwoom_access, kiwoom_investor, kiwoom_rest_runtime
+from hoga.live.data_warnings import make_data_warning
 from hoga.live.error_policy import LiveErrorPolicy, classify_live_error
 from hoga.live.index_registry import RepresentativeIndex
 from hoga.live.kiwoom_capacity import Priority
@@ -127,7 +128,7 @@ def _investor_point_to_dict(p) -> dict:
 
 
 def _warning(reason: str, msg: str, batch_label: str) -> dict:
-    return {"batch": batch_label, "reason": reason, "msg": msg}
+    return make_data_warning(reason, msg, batch=batch_label)
 
 
 def _reason_for(policy: LiveErrorPolicy) -> str:

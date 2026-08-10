@@ -31,6 +31,7 @@ from hoga.live import (
     kiwoom_rest_runtime,
     kiwoom_runtime,
 )
+from hoga.live.data_warnings import make_data_warning
 from hoga.live.error_policy import classify_live_error
 from hoga.live.index_candles_cache import (
     IndexCandlesCache,
@@ -269,12 +270,12 @@ def _violation_to_warning(v, batch_label: str) -> dict:
     so future frontend additions (e.g. `LivePastDailyCandlesWarning`
     interface widening) only need to touch one builder.
     """
-    return {
-        "batch": batch_label,
-        "date": v.date_yyyymmdd,
-        "reason": "invariant_violation",
-        "msg": f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
-    }
+    return make_data_warning(
+        "invariant_violation",
+        f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
+        date=v.date_yyyymmdd,
+        batch=batch_label,
+    )
 
 
 def _vendor_error_to_warning(exc: BaseException, batch_label: str) -> dict:
@@ -290,7 +291,7 @@ def _vendor_error_to_warning(exc: BaseException, batch_label: str) -> dict:
     batch range, not a single date (companion to `_violation_to_warning`).
     """
     policy = classify_live_error(exc)
-    return {"batch": batch_label, "reason": policy.reason, "msg": policy.message}
+    return make_data_warning(policy.reason, policy.message, batch=batch_label)
 
 
 def _compute_daily_gaps(
@@ -337,22 +338,22 @@ def _compute_daily_gaps(
 
 
 def _kis_rest_bypassed_batch_warning(batch_label: str) -> dict:
-    return {
-        "batch": batch_label,
-        "reason": "rest_bypassed",
-        "msg": "KIS REST bypass is enabled; served cache-only data",
-    }
+    return make_data_warning(
+        "rest_bypassed",
+        "REST bypass is enabled; served cache-only data",
+        batch=batch_label,
+    )
 
 
 def _kis_capacity_degraded_batch_warning(batch_label: str, reason: str) -> dict:
     """/index-candles가 KIS 용량 한계(쿨다운/오버로드)에 걸렸을 때, HTTP 500 대신
     비차단 data_warning으로 강등한다 (2026-07-08 KIS audit Fix C — quotes 핸들러와
     동일 정책). bypass 경고와 별도 reason이라 프론트가 '일시 지연'으로 구분한다."""
-    return {
-        "batch": batch_label,
-        "reason": reason,
-        "msg": "KIS 호출 용량 한계로 지수 캔들을 지금 불러오지 못했습니다 — 잠시 후 재시도",
-    }
+    return make_data_warning(
+        reason,
+        "KIS 호출 용량 한계로 지수 캔들을 지금 불러오지 못했습니다 — 잠시 후 재시도",
+        batch=batch_label,
+    )
 
 
 def _collect_daily_series_cache_only(
@@ -2158,11 +2159,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     "to": to,
                     "timeframe": timeframe,
                     "candles": [],
-                    "data_warnings": [{
-                        "batch": f"{from_}__{to}",
-                        "reason": "api_error",
-                        "msg": f"kiwoom {_KIWOOM_INDEX_MINUTE_API_ID} fetch failed",
-                    }],
+                    "data_warnings": [make_data_warning(
+                        "api_error",
+                        f"kiwoom {_KIWOOM_INDEX_MINUTE_API_ID} fetch failed",
+                        batch=f"{from_}__{to}",
+                    )],
                 }
             except KiwoomCapacityOverloaded:
                 # 계정별 쿨다운(`KisCapacityCooldown`)은 사라졌다 — 키움 유량은
@@ -2186,15 +2187,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if timeframe not in {"D", "W", "M"} and result.candles:
             earliest_returned = min(_candle_date_yyyymmdd(c) for c in result.candles)
             if from_ < earliest_returned:
-                data_warnings.append({
-                    "batch": batch_label,
-                    "date": earliest_returned,
-                    "reason": "index_minute_depth_limited",
-                    "msg": (
-                        "KIS index minute REST returned no candles before "
-                        f"{earliest_returned} for this source unit"
-                    ),
-                })
+                data_warnings.append(make_data_warning(
+                    "index_minute_depth_limited",
+                    "KIS index minute REST returned no candles before "
+                    f"{earliest_returned} for this source unit",
+                    date=earliest_returned,
+                    batch=batch_label,
+                ))
         return {
             "index_id": index.id,
             "from": from_,

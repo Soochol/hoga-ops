@@ -45,6 +45,15 @@ LiveErrorKind = Literal[
     "vendor_api",
     "internal",
     "unexpected",
+    # 아래 둘은 `classify_live_error` 가 내지 않는다 — 예외에서 오는 것이 아니라
+    # **우리 쪽 유예·품질 판정**이라 정책 밖 경고 생성기가 직접 붙인다(ADR-0143).
+    # 그래도 이 Literal 에 두는 이유는 kind 문자열의 단일 출처를 지키기 위해서다.
+    # 기존 7종에 욱여넣으면 코드가 이미 구별하던 것을 잃는다:
+    #   `deferred`     — 벤더에게 **묻지도 않았다**(예산·쿨다운). `rate_limit` 로 접으면
+    #                    "벤더가 거절했다" 가 되어 묻지 않은 쪽에 책임을 지운다.
+    #   `data_quality` — 받긴 받았는데 행 검증에 걸렸다(ADR-0020: 표시하되 렌더).
+    "deferred",
+    "data_quality",
 ]
 
 # 유량 초과의 재시도 간격. 두 벤더 모두 **초당** 한도라 1초면 창이 새로 열린다

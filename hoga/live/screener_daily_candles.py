@@ -5,6 +5,7 @@ from pathlib import Path
 
 import polars as pl
 
+from hoga.live.data_warnings import make_data_warning
 from hoga.util.timeenc import KST
 
 # 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
@@ -27,11 +28,11 @@ def read_screener_daily_candles(
     path = data_dir / "screener" / "daily_adjusted.parquet"
     warnings: list[dict] = []
     if not path.exists():
-        warnings.append({
-            "batch": f"{from_label}__{to_label}",
-            "reason": "screener_daily_missing",
-            "msg": "screener daily_adjusted.parquet not found",
-        })
+        warnings.append(make_data_warning(
+            "screener_daily_missing",
+            "screener daily_adjusted.parquet not found",
+            batch=f"{from_label}__{to_label}",
+        ))
         rows: list[dict] = []
     else:
         df = (
