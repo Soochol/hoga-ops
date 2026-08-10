@@ -902,3 +902,62 @@ async def test_promote_one_parses_off_the_event_loop(tmp_path: Path) -> None:
 
     assert seen, "파서가 아예 불리지 않았다 — 테스트가 경로를 놓쳤다"
     assert loop_thread not in seen, "파싱이 이벤트 루프 스레드에서 돌았다"
+
+
+# ── venue 별 지표 세션 경계 (ADR-0140) ────────────────────────────────────────
+#
+# 배경: promote 가 `regular_session_*` 만 KRX 값으로 싣던 시절, 조회 경로가 그걸
+# 지표 경계로 읽어 NXT·UN 의 프리·애프터마켓 호가가 통째로 집계에서 배제됐다
+# (2026-08-07 실측 49.1%). 아래 셋이 그 회귀를 각각 다른 층에서 막는다.
+
+
+@pytest.mark.parametrize(
+    ("venue", "expected"),
+    [
+        ("KRX", (90000000, 153000000)),   # 정규장 그대로
+        ("NXT", (80000000, 200000000)),   # 08:00–20:00
+        ("UN", (80000000, 200000000)),
+        ("ZZZ", (90000000, 153000000)),   # 모르는 venue → KRX 로 보수적 폴백
+    ],
+)
+def test_build_meta_carries_venue_indicator_session(venue: str, expected: tuple[int, int]) -> None:
+    from hoga.live.promote import _build_meta
+
+    meta = _build_meta("005930", "20260527", [], [], 0, venue=venue)
+
+    assert (meta["indicator_session_open_ms"], meta["indicator_session_close_ms"]) == expected
+    # 정규장 키는 venue 와 무관하게 KRX 정규장이어야 한다 — 이 키를 그 의미로
+    # 읽는 소비자(마감 동시호가 접기·보관함 표시)가 있다.
+    assert meta["regular_session_open_ms"] == 90000000
+    assert meta["regular_session_close_ms"] == 153000000
+
+
+@pytest.mark.asyncio
+async def test_promote_one_threads_venue_into_meta(tmp_path: Path) -> None:
+    """`promote_one(venue=...)` 이 meta 까지 흘러야 한다.
+
+    ⚠ 이 테스트가 지키는 것은 **인자 전달 한 줄**이다. `_parse_jsonl_to_records` 가
+    venue 를 안 받던 시절 호출부가 그냥 안 넘겼고, 기본값 "KRX" 라 **조용히** 틀린
+    meta 가 나왔다. 경로(`kiwoom_live/NXT/`)는 멀쩡했으므로 디렉터리만 보면 정상으로
+    보인다 — 그래서 meta 내용을 직접 잰다.
+    """
+    from hoga.live.promote import promote_one
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
+
+    jsonl_path = tmp_path / "live_kiwoom" / "20260527" / "NXT" / "005930.jsonl"
+    jsonl_path.parent.mkdir(parents=True)
+    t = hhmmssms_to_unix_ms("20260527", 81000000)  # 08:10 — NXT 프리마켓
+    jsonl_path.write_text(json.dumps({"t_ms": t, "kind": "ob", "payload": {
+        "bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0,
+    }}) + "\n")
+
+    await promote_one(
+        jsonl_path, tmp_path / "parquet", code="005930", date="20260527", venue="NXT",
+    )
+
+    meta = json.loads(
+        (tmp_path / "parquet" / "20260527" / "005930" / "kiwoom_live" / "NXT" / "meta.json")
+        .read_text(encoding="utf-8")
+    )
+    assert meta["indicator_session_open_ms"] == 80000000
+    assert meta["indicator_session_close_ms"] == 200000000

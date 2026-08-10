@@ -103,6 +103,33 @@ def normalize_session_bounds(meta: dict) -> tuple[dict, list[Violation]]:
     return patched, [note]
 
 
+def indicator_session_bounds(meta: Mapping[str, Any]) -> tuple[int, int]:
+    """이 Stock-Date 의 **지표 유효 구간** (HHMMSSmmm). 호가·체결 파생 지표가
+    스냅샷을 받아들이는 시간 창이다.
+
+    새 키(``indicator_session_open_ms`` / ``..._close_ms``, promote 가 venue 별로
+    싣는다) 우선, **없으면 ``regular_session_*`` 로 떨어진다** — 그 폴백이 곧
+    하위호환이다. hogaplay(KRX 전용)·구형 kiwoom_live 파일은 새 키가 없고, 그
+    경우 이 함수는 종전과 글자 그대로 같은 값을 낸다.
+
+    왜 별도 키인가: ``regular_session_*`` 는 이름 그대로 **정규장**이고, 마감
+    동시호가 접기·보관함 표시·``open==0`` 센티널 정규화가 그 의미로 읽는다.
+    NXT 의 08:00–20:00 을 거기 채우면 이름이 거짓이 되고 그 소비자들이 조용히
+    틀어진다(promote 의 ``_VENUE_INDICATOR_SESSION_MS`` 주석과 한 쌍).
+
+    ⚠ ``meta`` 는 **``normalize_session_bounds`` 를 통과한 것**을 넘긴다 — 폴백이
+    닿는 ``regular_session_open_ms`` 가 hogaplay 의 0 센티널일 수 있다(ADR-0063).
+    각 경계는 **독립적으로** 폴백한다: 한쪽만 실린 meta 도 나머지 한쪽은 정규장
+    값을 그대로 쓴다.
+    """
+    open_ms = meta.get("indicator_session_open_ms")
+    close_ms = meta.get("indicator_session_close_ms")
+    return (
+        int(open_ms if open_ms is not None else meta["regular_session_open_ms"]),
+        int(close_ms if close_ms is not None else meta["regular_session_close_ms"]),
+    )
+
+
 def _meta_close_after_open(m: Mapping[str, Any]) -> Violation | None:
     # Skip when either bound is absent — legacy/partial meta has nothing
     # to compare. Fire only when both are present and the relation is wrong

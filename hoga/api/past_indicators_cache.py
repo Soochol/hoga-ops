@@ -71,15 +71,28 @@ _log = logging.getLogger(__name__)
 #
 # 버전 이력(전역 시절): v6 (ADR-0062 v3) 동시호가 배제 통일 — ratio에 개장(session_open)
 # 하한 추가, depth heatmap을 WHERE 사전 필터 드롭으로 전환.
+#
+# 2026-08-10 (ADR-0140 venue 축): 세션 경계가 meta 의 정규장에서 **venue 별 지표
+# 구간**으로 바뀌어 NXT·UN 의 프리·애프터마켓이 집계에 들어온다 → 경계를 타는 kind 만
+# 범프. **범프가 필수인 이유**: `_is_stale` 은 capture meta 의 mtime 만 보므로
+# "데이터가 바뀌었나" 는 알아도 **"계산 로직이 바뀌었나" 는 모른다**. 실제로 meta 를
+# 소급 재작성한 직후 구버전 서버가 캐시를 다시 채웠고, 새 코드가 그 잘린 캐시를
+# 그대로 읽었다(실측). 경계 의미를 바꾸면서 여기를 안 올리면 그게 재발한다.
+#
+# ⚠ 경계를 **안 타는** kind 는 그대로 둔다(위 문단의 /study 콜드 로드 사고 방지):
+#   * `fill`(체결강도) — 빌더가 경계를 받지 않는다.
+#   * `broker_late` — 시작 HHMM 인자를 따로 받는다.
+#   * `continuous_before` — close 값이 **파일명에** 들어가(`.153000000.json`) 경계가
+#     바뀌면 자연히 다른 파일이 된다. 범프하면 이미 맞는 캐시만 버린다.
 KIND_VERSIONS: dict[str, int] = {
-    "ratio": 6,
+    "ratio": 7,
     "fill": 6,
-    "ask_peak": 6,
-    "bid_peak": 6,
-    "poc": 6,
-    "depth": 6,
-    "depth_delta": 1,
-    "vdist": 6,
+    "ask_peak": 7,
+    "bid_peak": 7,
+    "poc": 7,
+    "depth": 7,
+    "depth_delta": 2,
+    "vdist": 7,
     "broker_late": 6,
     "continuous_before": 6,
 }

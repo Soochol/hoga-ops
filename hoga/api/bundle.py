@@ -25,7 +25,7 @@ from fastapi import HTTPException
 from hoga import perf_debug
 from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.indicator_reaggregate import reaggregate_fill, reaggregate_ratio
-from hoga.api.invariants import normalize_session_bounds
+from hoga.api.invariants import indicator_session_bounds, normalize_session_bounds
 from hoga.api.models import (
     AskPeak,
     BidPeak,
@@ -1643,13 +1643,18 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             )
             candles_d = [] if sidecar_only else downsample_candles(raw_candles, bucket_ms=bucket_ms)
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
+        # 지표 슬라이스가 쓰는 경계는 **정규장이 아니라 venue 별 지표 구간**이다
+        # (ADR-0140). NXT·UN 은 08:00–20:00 이고, 이걸 정규장(09:00–15:30)으로
+        # 읽던 것이 "포인트는 전 구간 오는데 값만 0" 결함이었다. 구형 meta·hogaplay
+        # 는 새 키가 없어 정규장 값으로 떨어지므로 KRX 경로는 무변경이다.
+        ind_open_ms, ind_close_ms = indicator_session_bounds(norm_meta)
         qr_d = (
             QuoteRatio(bucket_ms=bucket_ms, points=[])
             if sidecar_only or candles_only
             else build_quote_ratio_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
-                session_open_ms=norm_meta["regular_session_open_ms"],
-                session_close_ms=meta["regular_session_close_ms"],
+                session_open_ms=ind_open_ms,
+                session_close_ms=ind_close_ms,
             )
         )
         fs_d = (
@@ -1669,7 +1674,12 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 date=d,
                 source=trade_indicator_source,
                 venue=venue,
-                session_close_ms=int(meta["regular_session_close_ms"]),
+                # 지표 close 와 같은 값이어야 한다 — 이 컷오프는 "그날 연속거래가
+                # 끝나는 시각" 이고, 위 체결 슬라이스가 이미 venue 별 구간으로 세고
+                # 있다. KRX 15:30 을 그대로 두면 NXT 애프터마켓 체결이 통째로
+                # "동시호가 이후" 로 잘린다. 캐시 키에 이 값이 들어가므로
+                # (`get_continuous_before`) 바뀐 경계는 자연 무효화된다.
+                session_close_ms=ind_close_ms,
             )
             if continuous_before_needed
             else None
@@ -1677,8 +1687,8 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         if include_ask_peaks or include_bid_peaks:
             ap_d, bp_d = build_ask_bid_peak_slices(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
-                session_open_ms=norm_meta["regular_session_open_ms"],
-                session_close_ms=meta["regular_session_close_ms"],
+                session_open_ms=ind_open_ms,
+                session_close_ms=ind_close_ms,
             )
             if not include_ask_peaks:
                 ap_d = None
@@ -1690,8 +1700,8 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         tvp_d = (
             build_trade_volume_poc_slice(
                 engine, code=code, date=d, source=trade_indicator_source, venue=venue,
-                session_open_ms=norm_meta["regular_session_open_ms"],
-                session_close_ms=meta["regular_session_close_ms"],
+                session_open_ms=ind_open_ms,
+                session_close_ms=ind_close_ms,
                 range_count=trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS,
                 price_range=price_range,
                 continuous_before_ms=continuous_before_ms,
@@ -1701,6 +1711,11 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         )
         segments.append(RangeSegment(
             date=d,
+            # ⚠ 여기는 **정규장 경계 그대로**다(지표 구간 아님) — 의도된 비대칭.
+            # `/live` 는 이 값을 안 쓰고 `sessionBoundsForDate`(effective_sessions +
+            # venue 확장창)로 세그먼트를 다시 만든다(buildLiveBundle.ts). 이 필드를
+            # 넓히면 그 우회를 안 타는 소비자(`/study` 복기)의 x축·클립이 같이
+            # 바뀌므로 별도 검증이 필요하다 — venue 축 세그먼트는 후속 과제.
             session_open_ms=hhmmssms_to_unix_ms(d, norm_meta["regular_session_open_ms"]),
             session_close_ms=hhmmssms_to_unix_ms(d, meta["regular_session_close_ms"]),
             source=source,
@@ -1735,8 +1750,8 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 date=d,
                 source=trade_indicator_source,
                 venue=venue,
-                session_open_ms=int(norm_meta["regular_session_open_ms"]),
-                session_close_ms=int(meta["regular_session_close_ms"]),
+                session_open_ms=ind_open_ms,
+                session_close_ms=ind_close_ms,
                 range_count=volume_distribution_bins,
                 price_min=price_range[0] if price_range is not None else None,
                 price_max=price_range[1] if price_range is not None else None,
@@ -1760,8 +1775,8 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     bucket_ms=bucket_ms,
                     source=source,
                     venue=venue,
-                    session_open_ms=norm_meta["regular_session_open_ms"],
-                    session_close_ms=meta["regular_session_close_ms"],
+                    session_open_ms=ind_open_ms,
+                    session_close_ms=ind_close_ms,
                 )
             )
         if include_depth_delta:
@@ -1773,8 +1788,8 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     bucket_ms=bucket_ms,
                     source=source,
                     venue=venue,
-                    session_open_ms=norm_meta["regular_session_open_ms"],
-                    session_close_ms=meta["regular_session_close_ms"],
+                    session_open_ms=ind_open_ms,
+                    session_close_ms=ind_close_ms,
                 )
             )
         if perf_debug.enabled():

@@ -203,3 +203,73 @@ def backfill_hogaplay_meta(
             atomic_write_json(meta_path, meta, indent=2)
             updated += 1
     return BackfillResult(scanned=scanned, updated=updated, skipped=skipped)
+
+
+def backfill_indicator_session_bounds(
+    data_dir: Path, *, dry_run: bool = False,
+) -> BackfillResult:
+    """venue 별 지표 구간(``indicator_session_open/close_ms``)을 이미 승격된
+    ``kiwoom_live/{venue}/meta.json`` 에 소급으로 실어 준다.
+
+    이 키가 생기기 전 승격본은 정규장 경계(09:00–15:30)만 실었고, 조회 경로가 그걸
+    지표 경계로 읽어 **NXT·UN 의 프리·애프터마켓 호가 스냅샷이 통째로 집계에서
+    배제**됐다(2026-08-07 실측: 그 날 NXT/UN 스냅샷의 49.1%). 데이터는 디스크에
+    온전하므로 손실이 아니라 **판독 경계만 고치면 되는** 소급이다.
+
+    위 두 스윕과 다른 점 셋:
+
+    - **KRX 도 훑는다.** 값이 정규장과 같아 무변경이지만, 키가 있는 것과 없는 것이
+      섞이면 "왜 이 파일만 없지" 를 나중에 다시 판정해야 한다. 멱등이라 손해가 없다.
+    - **``collection_complete`` 를 보지 않는다.** 대상은 전부 True(이미 마감된 과거일)
+      이라 live 스윕의 스킵 조건을 그대로 쓰면 **한 건도 안 고친다**.
+    - **오늘·미래는 건드리지 않는다.** 오늘 것은 promote 가 계속 다시 쓰므로 새 코드가
+      도는 순간 저절로 맞는다(위 두 스윕과 같은 규율).
+
+    ⚠ 부수효과가 하나 있고, 그게 **의도된 것**이다: 지표 캐시
+    (``kis-past-indicators``)의 정체성 토큰이 meta.json 의 mtime 이라
+    (``past_indicators_cache._capture_mtime_ms``), 이 재작성이 **잘린 값으로 캐시된
+    지표를 자동 무효화**한다. 이 스윕 없이 판독부만 고치면 캐시가 stale 인 채 남아
+    화면이 안 바뀐다.
+
+    멱등: 이미 값이 맞는 meta 는 skip 한다.
+    """
+    from hoga.live.promote import _VENUE_INDICATOR_SESSION_MS  # noqa: PLC0415 — 순환 절단(지연)
+
+    parquet_root = data_dir / "parquet"
+    scanned = updated = skipped = 0
+    if not parquet_root.exists():
+        return BackfillResult()
+    today = datetime.now(_KST).strftime("%Y%m%d")
+    for date_dir in sorted(parquet_root.iterdir()):
+        if not date_dir.is_dir() or not _is_yyyymmdd(date_dir.name):
+            continue
+        if date_dir.name >= today:
+            continue
+        for code_dir in sorted(date_dir.iterdir()):
+            if not code_dir.is_dir():
+                continue
+            for venue, (open_ms, close_ms) in _VENUE_INDICATOR_SESSION_MS.items():
+                meta_path = code_dir / "kiwoom_live" / venue / "meta.json"
+                if not meta_path.exists():
+                    continue
+                scanned += 1
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                except (ValueError, OSError):
+                    _log.warning("meta_backfill.indicator_unreadable path=%s", meta_path)
+                    skipped += 1
+                    continue
+                if (
+                    meta.get("indicator_session_open_ms") == int(open_ms)
+                    and meta.get("indicator_session_close_ms") == int(close_ms)
+                ):
+                    skipped += 1
+                    continue
+                if dry_run:
+                    updated += 1
+                    continue
+                meta["indicator_session_open_ms"] = int(open_ms)
+                meta["indicator_session_close_ms"] = int(close_ms)
+                atomic_write_json(meta_path, meta, indent=2)
+                updated += 1
+    return BackfillResult(scanned=scanned, updated=updated, skipped=skipped)
