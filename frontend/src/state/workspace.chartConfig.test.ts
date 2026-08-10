@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useWorkspaceStore, WORKSPACE_STORAGE_KEY, type WorkspaceWindow } from './workspace';
-import { FACTORY_INDICATOR_SETTINGS, resolveIndicatorSettings } from './indicatorSettingsV2';
 
-/** ADR-0119 C2c-2a — 창별 지표 쓰기 경로·비영속 런타임. */
+/** 창별 봉 쓰기 경로·비영속 런타임 (ADR-0119 C2c-2a).
+ *
+ *  지표는 여기 없다 — 창 소유였다가(#712) 전역 `live.indicators.v2` 로 돌아갔다.
+ *  그 계약은 `live/workspace/windowView.actions.test.tsx` 가 본다. */
 
 function chartWindow(id: string, overrides: Partial<WorkspaceWindow> = {}): WorkspaceWindow {
   return {
@@ -10,7 +12,7 @@ function chartWindow(id: string, overrides: Partial<WorkspaceWindow> = {}): Work
     kind: 'chart',
     group: 1,
     rect: { x: 0, y: 0, w: 400, h: 300 },
-    chart: { timeframe: '1m', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } },
+    chart: { timeframe: '1m' },
     ...overrides,
   };
 }
@@ -42,40 +44,20 @@ beforeEach(() => {
   seed([chartWindow('c1'), bookWindow('b1')]);
 });
 
-describe('patchChartIndicators', () => {
-  it('현재 봉(분봉) 버킷에 patch 를 누적하고 영속한다', () => {
-    useWorkspaceStore.getState().patchChartIndicators('c1', { movingAverageEnabled: false });
-    useWorkspaceStore.getState().patchChartIndicators('c1', { volumeEnabled: false });
-    expect(chartOf('c1').indicators.byTimeframe.minute).toEqual({
-      movingAverageEnabled: false,
-      volumeEnabled: false,
-    });
-    const persisted = JSON.parse(localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? '{}');
-    expect(persisted.windows[0].chart.indicators.byTimeframe.minute.volumeEnabled).toBe(false);
-  });
-
-  it('창의 timeframe 이 D 면 D 버킷에 쓴다', () => {
-    useWorkspaceStore.getState().setChartTimeframe('c1', 'D');
-    useWorkspaceStore.getState().patchChartIndicators('c1', { movingAverageEnabled: false });
-    expect(chartOf('c1').indicators.byTimeframe.D).toEqual({ movingAverageEnabled: false });
-    expect(chartOf('c1').indicators.byTimeframe.minute).toBeUndefined();
-  });
-
+describe('setChartTimeframe', () => {
   it('비차트 창·미지의 id 는 no-op', () => {
     const before = useWorkspaceStore.getState().windows;
-    useWorkspaceStore.getState().patchChartIndicators('b1', { volumeEnabled: false });
-    useWorkspaceStore.getState().patchChartIndicators('nope', { volumeEnabled: false });
+    useWorkspaceStore.getState().setChartTimeframe('b1', '5m');
+    useWorkspaceStore.getState().setChartTimeframe('nope', '5m');
     expect(useWorkspaceStore.getState().windows).toBe(before);
   });
 
-  it('다른 창의 설정에는 영향이 없다', () => {
+  it('다른 창의 봉에는 영향이 없다', () => {
     seed([chartWindow('c1'), chartWindow('c2')]);
-    useWorkspaceStore.getState().patchChartIndicators('c1', { volumeEnabled: false });
-    expect(chartOf('c2').indicators.byTimeframe).toEqual({});
+    useWorkspaceStore.getState().setChartTimeframe('c1', 'D');
+    expect(chartOf('c2').timeframe).toBe('1m');
   });
-});
 
-describe('setChartTimeframe', () => {
   it('봉을 바꾸고 분봉이면 lastMinuteTimeframe 을 기억한다', () => {
     useWorkspaceStore.getState().setChartTimeframe('c1', '5m');
     expect(chartOf('c1').timeframe).toBe('5m');
@@ -104,52 +86,6 @@ describe('setChartTimeframe', () => {
     useWorkspaceStore.getState().setChartTimeframe('c1', '3m'); // 복원 대기 상태
     const rt = useWorkspaceStore.getState().chartRuntime.c1;
     expect(rt.lastMinuteHistoricalFromDate).toBe('20260701');
-  });
-});
-
-describe('레이아웃 슬라이스', () => {
-  it('setChartPaneOrder 는 normalize 해 창에 저장한다', () => {
-    useWorkspaceStore.getState().setChartPaneOrder('c1', ['volume', 'candle'] as never);
-    const order = chartOf('c1').indicators.paneOrder;
-    expect(order[0]).toBe('candle'); // candle 은 항상 index 0 (ADR-0114)
-    expect(order).toContain('volume');
-  });
-
-  it('setChartPaneStretch 는 기존 값과 병합한다', () => {
-    useWorkspaceStore.getState().setChartPaneStretch('c1', { volume: 2 } as never);
-    useWorkspaceStore.getState().setChartPaneStretch('c1', { ratio: 3 } as never);
-    expect(chartOf('c1').indicators.paneStretch).toMatchObject({ volume: 2, ratio: 3 });
-  });
-});
-
-describe('resetChartIndicators', () => {
-  it('현재 봉 버킷만 비우고 다른 봉은 보존한다', () => {
-    useWorkspaceStore.getState().patchChartIndicators('c1', { volumeEnabled: false });
-    useWorkspaceStore.getState().setChartTimeframe('c1', 'D');
-    useWorkspaceStore.getState().patchChartIndicators('c1', { movingAverageEnabled: false });
-    useWorkspaceStore.getState().resetChartIndicators('c1'); // 현재 봉 = D
-    const by = chartOf('c1').indicators.byTimeframe;
-    expect(by.D).toBeUndefined();
-    expect(by.minute).toEqual({ volumeEnabled: false });
-  });
-});
-
-describe('applyChartIndicatorPreset', () => {
-  it('enable 은 프리셋으로 교체·파라미터는 보존·레이아웃은 프리셋 값', () => {
-    useWorkspaceStore.getState().patchChartIndicators('c1', {
-      volumeEnabled: false,
-      askPeakColor: '#123456',
-    });
-    useWorkspaceStore.getState().applyChartIndicatorPreset('c1', {
-      paneOrder: [],
-      paneStretch: {},
-      byTimeframeEnable: { minute: { volumeEnabled: true } },
-    });
-    const by = chartOf('c1').indicators.byTimeframe;
-    expect(by.minute?.volumeEnabled).toBe(true); // enable 교체
-    expect(by.minute?.askPeakColor).toBe('#123456'); // 파라미터 보존
-    const resolved = resolveIndicatorSettings(by, '1m');
-    expect(resolved.askPeakColor).toBe('#123456');
   });
 });
 
@@ -198,7 +134,7 @@ describe('창별 런타임(historicalFromDate)', () => {
 
   it('런타임은 영속되지 않는다(#713 뷰포트 비저장)', () => {
     useWorkspaceStore.getState().extendChartHistoricalRange('c1', '20260701');
-    useWorkspaceStore.getState().patchChartIndicators('c1', { volumeEnabled: false }); // persist 유발
+    useWorkspaceStore.getState().setChartTimeframe('c1', '5m'); // persist 유발
     const persisted = JSON.parse(localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? '{}');
     expect(persisted.chartRuntime).toBeUndefined();
   });
@@ -214,8 +150,6 @@ describe('창 복제·하이드레이션의 lastMinuteTimeframe', () => {
 
   it('공장 기본과 무효 저장값은 기억 없음으로 하이드레이트된다', () => {
     expect(chartOf('c1').lastMinuteTimeframe).toBeUndefined();
-    expect(resolveIndicatorSettings(chartOf('c1').indicators.byTimeframe, '1m'))
-      .toEqual(FACTORY_INDICATOR_SETTINGS);
   });
 
   it('저장값 없는 분봉 창은 하이드레이션에서 분봉 기억을 파생한다(livePage 미러)', async () => {
@@ -223,11 +157,11 @@ describe('창 복제·하이드레이션의 lastMinuteTimeframe', () => {
       windows: [{
         id: 'h5m', kind: 'chart', group: 1,
         rect: { x: 0, y: 0, w: 400, h: 300 },
-        chart: { timeframe: '5m', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } },
+        chart: { timeframe: '5m' },
       }, {
         id: 'hD', kind: 'chart', group: 1,
         rect: { x: 0, y: 0, w: 400, h: 300 },
-        chart: { timeframe: 'D', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } },
+        chart: { timeframe: 'D' },
       }],
       zOrder: ['h5m', 'hD'],
       groupSymbols: {},
@@ -237,5 +171,26 @@ describe('창 복제·하이드레이션의 lastMinuteTimeframe', () => {
     const wins = mod.useWorkspaceStore.getState().windows;
     expect(wins.find((w) => w.id === 'h5m')?.chart?.lastMinuteTimeframe).toBe('5m'); // 분봉→파생
     expect(wins.find((w) => w.id === 'hD')?.chart?.lastMinuteTimeframe).toBeUndefined(); // 비분봉→없음
+  });
+
+  it('구 스냅샷의 창별 지표 사본은 창에 실리지 않는다(전역으로 승격 후 소멸)', async () => {
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({
+      schema_version: 2,
+      windows: [{
+        id: 'legacy', kind: 'chart', group: 1,
+        rect: { x: 0, y: 0, w: 0.4, h: 0.9 },
+        chart: {
+          timeframe: '1m',
+          indicators: { paneOrder: [], paneStretch: { volume: 5 }, byTimeframe: { minute: { volumeEnabled: false } } },
+        },
+      }],
+      zOrder: ['legacy'],
+      groupSymbols: {},
+    }));
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const win = mod.useWorkspaceStore.getState().windows.find((w) => w.id === 'legacy');
+    expect(win?.chart).toEqual({ timeframe: '1m', lastMinuteTimeframe: '1m' });
+    expect(win?.chart && 'indicators' in win.chart).toBe(false);
   });
 });

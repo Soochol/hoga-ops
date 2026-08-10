@@ -144,7 +144,7 @@ describe('액션', () => {
     expect(s.zOrder[s.zOrder.length - 1]).toBe(returned);
   });
 
-  it('새 차트 창은 포커스된 차트의 설정을 복제한다 — "복제 후 한쪽만 일봉" 흐름', async () => {
+  it('새 차트 창은 포커스된 차트의 봉을 복제한다 — "복제 후 한쪽만 일봉" 흐름', async () => {
     const { useStudyWorkspaceStore } = await importFresh();
     const store = useStudyWorkspaceStore;
     const chartId = store.getState().windows.find((w) => w.kind === 'chart')!.id;
@@ -153,9 +153,11 @@ describe('액션', () => {
     const secondId = store.getState().addWindow('chart');
     const second = store.getState().windows.find((w) => w.id === secondId);
     expect(second?.chart?.timeframe).toBe('D');
-    // 값이지 상태다 — 참조를 나눠 가지면 한쪽 지표 변경이 다른 창에 샌다.
+    // 값이지 상태다 — 참조를 나눠 가지면 한쪽 봉 전환이 다른 창에 샌다.
     const first = store.getState().windows.find((w) => w.id === chartId);
-    expect(second?.chart?.indicators).not.toBe(first?.chart?.indicators);
+    expect(second?.chart).not.toBe(first?.chart);
+    store.getState().setChartTimeframe(secondId, '5m');
+    expect(store.getState().windows.find((w) => w.id === chartId)?.chart?.timeframe).toBe('D');
   });
 
   it('차트 창은 둘 이상일 때만 닫힌다 — 마지막 하나는 거부', async () => {
@@ -243,18 +245,7 @@ describe('액션', () => {
 });
 
 describe('차트 창 설정 신설 (#906)', () => {
-  /** `/study` 사용자가 지금까지 지표를 저장해 온 곳 — 이름과 달리 `/live` 는 쓰지
-   *  않는다(모든 차트가 Provider 안). #904 참조. */
-  function seedGlobalIndicators(): void {
-    localStorage.setItem('live.indicators.v2', JSON.stringify({
-      paneOrder: ['volume', 'candle'],
-      paneStretch: { volume: 2 },
-      byTimeframe: { minute: { depthHeatmapEnabled: true }, D: { ratioEnabled: true } },
-    }));
-  }
-
   it('설정이 없던 기존 저장분에 시드를 붙이되 배치는 그대로 둔다', async () => {
-    seedGlobalIndicators();
     localStorage.setItem('study.lastMinuteTimeframe.v1', JSON.stringify({ lastMinuteTimeframe: '15m' }));
     // 사용자가 직접 옮겨둔 배치 — 설정 신설이 이걸 초기화하면 과잉 무효화다(#577).
     const saved = {
@@ -276,19 +267,17 @@ describe('차트 창 설정 신설 (#906)', () => {
     expect(s.windows[1].rect).toEqual({ x: 0.7, y: 0, w: 0.3, h: 1 });
     expect(s.zOrder).toEqual(['c1', 'b1']);
 
-    // 차트 창에만 설정이 붙고, 값은 전역 키에서 그대로 옮겨온다.
+    // 차트 창에만 설정이 붙는다. 지표는 창이 소유하지 않으므로 시드 대상이 아니다.
     expect(s.windows[1].chart).toBeUndefined();
     const chart = s.windows[0].chart!;
-    expect(chart.indicators.paneStretch).toEqual({ volume: 2 });
-    expect(chart.indicators.byTimeframe.minute).toEqual({ depthHeatmapEnabled: true });
-    expect(chart.indicators.byTimeframe.D).toEqual({ ratioEnabled: true });
+    expect(chart && 'indicators' in chart).toBe(false);
     // 봉은 탭이 시드하기 전까지 `/study` 의 마지막 분봉을 쓴다('1m' 아님).
     expect(chart.timeframe).toBe('15m');
     expect(chart.lastMinuteTimeframe).toBe('15m');
   });
 
   it('시드는 즉시 persist 되어 재방문에 전역 키를 다시 읽지 않는다', async () => {
-    seedGlobalIndicators();
+    localStorage.setItem('study.lastMinuteTimeframe.v1', JSON.stringify({ lastMinuteTimeframe: '15m' }));
     localStorage.setItem('study.workspace.v1', JSON.stringify({
       schema_version: 1,
       windows: [{ id: 'c1', kind: 'chart', rect: { x: 0, y: 0, w: 1, h: 1 } }],
@@ -296,21 +285,17 @@ describe('차트 창 설정 신설 (#906)', () => {
     }));
 
     const first = await importFresh();
-    first.useStudyWorkspaceStore.getState().setChartPaneStretch('c1', { volume: 5 });
+    first.useStudyWorkspaceStore.getState().setChartTimeframe('c1', '10m');
 
-    // 전역 키가 바뀌어도 창이 이미 자기 설정을 갖고 있으므로 덮이지 않는다.
-    localStorage.setItem('live.indicators.v2', JSON.stringify({
-      paneOrder: [], paneStretch: { volume: 99 }, byTimeframe: {},
-    }));
+    // 전역 키가 바뀌어도 창이 이미 자기 봉을 갖고 있으므로 덮이지 않는다.
+    localStorage.setItem('study.lastMinuteTimeframe.v1', JSON.stringify({ lastMinuteTimeframe: '30m' }));
     const second = await importFresh();
-    const chart = second.useStudyWorkspaceStore.getState().windows[0].chart!;
-    expect(chart.indicators.paneStretch).toEqual({ volume: 5 });
+    expect(second.useStudyWorkspaceStore.getState().windows[0].chart!.timeframe).toBe('10m');
   });
 
   it('전역 키가 비어 있으면 공장 기본값으로 시작한다', async () => {
     const { useStudyWorkspaceStore } = await importFresh();
     const chart = useStudyWorkspaceStore.getState().windows[0].chart!;
-    expect(chart.indicators.byTimeframe).toEqual({});
     // 분봉 기본값은 `/study` 의 '3m'(전역 키 부재 폴백).
     expect(chart.timeframe).toBe('3m');
   });
@@ -345,7 +330,8 @@ describe('차트 창 설정 신설 (#906)', () => {
     const chart = useStudyWorkspaceStore.getState().windows[0].chart!;
     expect(chart.timeframe).toBe('3m');
     expect(chart.lastMinuteTimeframe).toBe('3m'); // 무효값 → 현재 분봉에서 파생
-    expect(chart.indicators.byTimeframe.minute).toEqual({ ratioEnabled: true }); // 살아남는다
+    // 구 스냅샷의 창별 지표 사본은 읽지 않는다(전역으로 1회 승격된 뒤 소멸).
+    expect(chart && 'indicators' in chart).toBe(false);
   });
 });
 
@@ -356,24 +342,13 @@ describe('차트 창 설정 쓰기 경로 (#906 — windowView 핸들 계약)', 
     return { store: mod.useStudyWorkspaceStore, id };
   }
 
-  it('patchChartIndicators — 현재 봉 버킷에 누적하고 persist 한다', async () => {
+  it('setChartTimeframe — 봉 변경이 persist 된다', async () => {
     const { store, id } = await freshChart();
-    store.getState().patchChartIndicators(id, { ratioEnabled: true });
-    store.getState().patchChartIndicators(id, { depthHeatmapEnabled: true });
-
-    const chart = store.getState().windows.find((w) => w.id === id)!.chart!;
-    expect(chart.indicators.byTimeframe.minute)
-      .toEqual({ ratioEnabled: true, depthHeatmapEnabled: true });
-    expect(storedWorkspace().windows[0]).toHaveProperty('chart');
-  });
-
-  it('patchChartIndicatorsAt — 봉 버킷을 분리해 기록한다', async () => {
-    const { store, id } = await freshChart();
-    store.getState().patchChartIndicatorsAt(id, 'D', { ratioEnabled: true });
-
-    const chart = store.getState().windows.find((w) => w.id === id)!.chart!;
-    expect(chart.indicators.byTimeframe.D).toEqual({ ratioEnabled: true });
-    expect(chart.indicators.byTimeframe.minute).toBeUndefined();
+    store.getState().setChartTimeframe(id, '10m');
+    const saved = (storedWorkspace().windows as Array<Record<string, unknown>>)
+      .find((w) => w.id === id);
+    expect(saved).toHaveProperty('chart');
+    expect((saved!.chart as { timeframe: string }).timeframe).toBe('10m');
   });
 
   it('setChartTimeframe — 분봉이면 lastMinuteTimeframe 도 따라가고 백필을 리셋한다', async () => {
@@ -392,23 +367,9 @@ describe('차트 창 설정 쓰기 경로 (#906 — windowView 핸들 계약)', 
     expect(store.getState().chartRuntime[id].lastMinuteHistoricalFromDate).toBe('2026-01-03');
   });
 
-  it('resetChartIndicators — 현재 봉 버킷만 걷고 레이아웃은 보존한다', async () => {
-    const { store, id } = await freshChart();
-    store.getState().setChartPaneStretch(id, { volume: 3 });
-    store.getState().patchChartIndicators(id, { ratioEnabled: true });
-    store.getState().patchChartIndicatorsAt(id, 'D', { ratioEnabled: true });
-
-    store.getState().resetChartIndicators(id);
-    const chart = store.getState().windows.find((w) => w.id === id)!.chart!;
-    expect(chart.indicators.byTimeframe.minute).toBeUndefined();
-    expect(chart.indicators.byTimeframe.D).toEqual({ ratioEnabled: true });
-    expect(chart.indicators.paneStretch).toEqual({ volume: 3 });
-  });
-
   it('차트 창이 아닌 id 는 조용히 no-op — 데이터 창에 chart 가 생기지 않는다', async () => {
     const { store } = await freshChart();
     const bookId = store.getState().windows.find((w) => w.kind === 'book')!.id;
-    store.getState().patchChartIndicators(bookId, { ratioEnabled: true });
     store.getState().setChartTimeframe(bookId, 'D');
     expect(store.getState().windows.find((w) => w.id === bookId)!.chart).toBeUndefined();
   });

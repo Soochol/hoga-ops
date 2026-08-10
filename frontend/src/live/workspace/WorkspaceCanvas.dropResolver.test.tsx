@@ -13,7 +13,7 @@ vi.mock('./DataWindow', () => ({ DataWindow: () => <div>data</div> }));
 vi.mock('./TitleBarSymbolRow', () => ({ TitleBarSymbolRow: () => <div>sym</div> }));
 
 function chart(id: string, group: number, rect: WorkspaceWindow['rect']): WorkspaceWindow {
-  return { id, kind: 'chart', group, rect, chart: { timeframe: '1m', indicators: { paneOrder: [], paneStretch: {}, byTimeframe: {} } } };
+  return { id, kind: 'chart', group, rect, chart: { timeframe: '1m' } };
 }
 
 /**

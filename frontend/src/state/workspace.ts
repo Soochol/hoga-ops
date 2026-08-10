@@ -1,10 +1,6 @@
 import { create } from 'zustand';
 import { persistJson, readJsonObject } from './persist';
-import {
-  normalizeIndicatorsV2,
-  type IndicatorSettings,
-  type PersistedIndicatorsV2,
-} from './indicatorSettingsV2';
+import { WORKSPACE_STORAGE_KEY } from './workspaceKeys';
 import {
   LIVE_TIMEFRAMES,
   MINUTE_TIMEFRAMES,
@@ -12,11 +8,6 @@ import {
   type LiveTimeframe,
   type MinuteTimeframe,
 } from './livePage';
-import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
-import type { PaneId } from '../chart/drawing/types';
-import { profileKeyForTimeframe } from '../live/indicators/indicatorPaneProfiles';
-import { applyPresetEnableByTimeframe } from './indicatorPresetOps';
-import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
 import { MIN_W, MIN_H, type Canvas, type Rect } from '../workspace/snapEngine';
 import { isFracRect, toFrac } from '../workspace/rectSpace';
 import { readLegacyWorkspaceSeed } from './workspaceMigration';
@@ -31,7 +22,7 @@ import { isLiveIndexId } from '../live/liveInstrument';
  * 배선과 구 키 마이그레이션은 PR-B/C 에서 붙는다.
  */
 
-export const WORKSPACE_STORAGE_KEY = 'live.workspace.v1';
+export { WORKSPACE_STORAGE_KEY };
 /** 2 = rect 가 캔버스 대비 비율(ADR-0122). 없거나 낮으면 레거시 px 로 읽고 지연 비율화. */
 export const WORKSPACE_SCHEMA_VERSION = 2;
 
@@ -39,10 +30,15 @@ export const WORKSPACE_SCHEMA_VERSION = 2;
  *
  *  이유: `persistFromState` 는 바뀐 필드가 아니라 **그 탭의 인메모리 스냅샷 전체**를
  *  쓴다(호출부 20여 곳이 전부 `{...state, 바뀐것}` 패턴). 두 탭이 같은 localStorage
- *  키를 공유하면, 오래된 탭에서 종목과 무관한 조작 하나(예: 보조지표 토글)만 해도
- *  다른 탭의 종목·봉·레이아웃이 통째로 되돌아간다. 두 탭 화면은 각자 자기 메모리를
- *  계속 보여주므로 **조용히** 깨지고, 손실은 다음 새로고침에야 드러난다.
- *  sessionStorage 는 탭마다 독립이라 이 경합을 구조적으로 없앤다.
+ *  키를 공유하면, 오래된 탭에서 창 하나를 드래그하기만 해도 다른 탭의 종목·봉·
+ *  레이아웃이 통째로 되돌아간다. 두 탭 화면은 각자 자기 메모리를 계속 보여주므로
+ *  **조용히** 깨지고, 손실은 다음 새로고침에야 드러난다. sessionStorage 는 탭마다
+ *  독립이라 이 경합을 구조적으로 없앤다.
+ *
+ *  대가는 "여기 담긴 것은 탭마다 갈린다" 이므로, **탭 전역이어야 하는 값을 이
+ *  스냅샷에 넣으면 안 된다**. 보조지표 설정이 그 사례였다(#712 가 창에 넣었다가
+ *  전역 `live.indicators.v2` 로 되돌렸다) — 사용자가 "앱 설정"으로 이해하는 값은
+ *  `crossTabSync` 가 덮는 localStorage 쪽에 둔다.
  *
  *  공유 키(localStorage)는 이제 **새 탭의 시드 전용**이다 — 이미 열린 탭은 하이드레이션
  *  이후 두 번 다시 읽지 않으므로 누가 마지막에 썼든 무해하다. 메인 탭(쿼리 없는
@@ -95,10 +91,16 @@ export interface WorkspaceRect {
   h: number;
 }
 
-/** 차트 창 전용 설정 — 창이 소유(#712). timeframe 은 창별 독립(#708). */
+/**
+ * 차트 창 전용 설정 — 창이 소유하는 것은 **봉뿐**이다(#708).
+ *
+ * 지표 설정도 한때 여기 있었지만(#712) 앱 전역 1세트(`live.indicators.v2`)로
+ * 되돌렸다 — 워크스페이스는 탭별 sessionStorage 라, 창이 지표를 소유하면 지표가
+ * 탭마다 갈라진다. 창의 봉은 여전히 창의 것이고, 전역 지표는 봉별 버킷이므로
+ * "창마다 다른 봉 → 다른 지표 구성"은 그대로 성립한다.
+ */
 export interface ChartWindowConfig {
   timeframe: LiveTimeframe;
-  indicators: PersistedIndicatorsV2;
   /** 마지막 분봉 기억(창별) — 봉 컨트롤의 분봉 슬롯 복귀·Shift+m 용. 없으면 '1m'. */
   lastMinuteTimeframe?: MinuteTimeframe;
 }
@@ -163,24 +165,11 @@ type Store = Persisted & {
    *  보강한다. `resolve` 가 undefined 를 주면 그 그룹은 그대로 둔다. */
   backfillSymbolNames: (resolve: (code: string) => string | undefined) => void;
 
-  // ── 차트 창 지표 쓰기 경로 (ADR-0119 C2c-2a, #712 창 소유 설정) ──
-  /** 대상 창의 "현재 봉" 버킷에 patch 를 누적한다(livePage patchIndicators 미러 —
-   *  sparse 정리는 로드 시 normalize 가 담당). 차트 창이 아니면 no-op. */
-  patchChartIndicators: (id: string, patch: Partial<IndicatorSettings>) => void;
-  /** 명시한 봉 버킷에 patch — pane 토글(setPanePrefForTimeframe)의 전역 시맨틱
-   *  미러(전역은 인자 tf 버킷에 기록). 창 tf 와 같으면 patchChartIndicators 동치. */
-  patchChartIndicatorsAt: (id: string, timeframe: LiveTimeframe, patch: Partial<IndicatorSettings>) => void;
+  // ── 차트 창 쓰기 경로 ──
+  // 지표 액션은 여기 없다 — 전역 스토어(`livePage`)가 소유하고, 창은 "어느 봉
+  // 버킷인가"만 정한다(`windowView` 의 `useIndicatorActions`).
   /** 봉 전환 — livePage setCandleTimeframe 의 창별 미러(분봉 기억·백필 리셋 포함). */
   setChartTimeframe: (id: string, tf: LiveTimeframe) => void;
-  setChartPaneOrder: (id: string, order: PaneId[]) => void;
-  setChartPaneStretch: (id: string, patch: PaneStretchMap) => void;
-  /** 현재 봉 버킷만 공장값으로(#697 미러). 레이아웃은 보존. */
-  resetChartIndicators: (id: string) => void;
-  applyChartIndicatorPreset: (id: string, preset: {
-    paneOrder: PaneId[];
-    byTimeframeEnable: PresetEnableByTimeframe;
-    paneStretch: PaneStretchMap;
-  }) => void;
   /** 좌측 팬 딥 백필의 창별 from-date 확장 — 단조 감소 가드(livePage 미러). */
   extendChartHistoricalRange: (id: string, date: string) => void;
   resetChartHistoricalRange: (id: string) => void;
@@ -248,9 +237,10 @@ function readWindow(raw: unknown, legacyPx: boolean): WorkspaceWindow | null {
   const win: WorkspaceWindow = { id: w.id, kind: w.kind, group: w.group, rect };
   if (w.kind === 'chart') {
     const cfg = (w.chart ?? {}) as Record<string, unknown>;
+    // 구 스냅샷의 `cfg.indicators` 는 읽지 않는다 — 전역으로 1회 승격된 뒤
+    // (`indicatorsWindowMigration`) 다음 저장 때 자연 소멸한다.
     win.chart = {
       timeframe: isLiveTimeframe(cfg.timeframe) ? cfg.timeframe : '1m',
-      indicators: normalizeIndicatorsV2(cfg.indicators),
     };
     if (isMinuteFrameValue(cfg.lastMinuteTimeframe)) {
       win.chart.lastMinuteTimeframe = cfg.lastMinuteTimeframe;
@@ -325,7 +315,7 @@ function defaultWindows(): WorkspaceWindow[] {
       kind: 'chart',
       group: 1,
       rect: { x: 0.0104, y: 0.0206, w: 0.4657, h: 0.9794 },
-      chart: { timeframe: '1m', indicators: normalizeIndicatorsV2({}) },
+      chart: { timeframe: '1m' },
     },
     // book 은 십자 배치(BookPanel)라 좁으면 못 담는다 — 차트 오른쪽 절반의 위쪽.
     {
@@ -549,18 +539,9 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
         },
       };
       if (kind === 'chart') {
-        // 포커스 차트 창 복제(#712) — 없으면 공장 기본. indicators 는 normalize 로
-        // 신선한 사본을 만든다(참조 공유 금지 — 창은 설정을 독립 소유, PR-C 편집 누출 방지).
+        // 포커스 차트 창의 봉을 물려받는다 — 없으면 공장 기본.
         const src = focusedChart(state);
-        win.chart = src?.chart
-          ? {
-              timeframe: src.chart.timeframe,
-              indicators: normalizeIndicatorsV2(src.chart.indicators),
-              ...(src.chart.lastMinuteTimeframe
-                ? { lastMinuteTimeframe: src.chart.lastMinuteTimeframe }
-                : {}),
-            }
-          : { timeframe: '1m', indicators: normalizeIndicatorsV2({}) };
+        win.chart = src?.chart ? { ...src.chart } : { timeframe: '1m' };
       }
       const next = { windows: [...state.windows, win], zOrder: [...state.zOrder, id] };
       persistFromState({ ...state, ...next });
@@ -673,33 +654,6 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     });
   },
 
-  patchChartIndicators: (id, patch) => {
-    get().patchChartIndicatorsAt(
-      id,
-      get().windows.find((w) => w.id === id)?.chart?.timeframe ?? '1m',
-      patch,
-    );
-  },
-
-  patchChartIndicatorsAt: (id, timeframe, patch) => {
-    set((state) => {
-      const windows = withChart(state, id, (chart) => {
-        const profileKey = profileKeyForTimeframe(timeframe);
-        const bucket = { ...(chart.indicators.byTimeframe[profileKey] ?? {}), ...patch };
-        return {
-          ...chart,
-          indicators: {
-            ...chart.indicators,
-            byTimeframe: { ...chart.indicators.byTimeframe, [profileKey]: bucket },
-          },
-        };
-      });
-      if (!windows) return {};
-      persistFromState({ ...state, windows });
-      return { windows };
-    });
-  },
-
   setChartTimeframe: (id, tf) => {
     if (!isLiveTimeframe(tf)) return;
     set((state) => {
@@ -725,66 +679,6 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       };
       persistFromState({ ...state, windows });
       return { windows, chartRuntime };
-    });
-  },
-
-  setChartPaneOrder: (id, order) => {
-    set((state) => {
-      const windows = withChart(state, id, (chart) => ({
-        ...chart,
-        indicators: { ...chart.indicators, paneOrder: normalizePaneOrder(order) },
-      }));
-      if (!windows) return {};
-      persistFromState({ ...state, windows });
-      return { windows };
-    });
-  },
-
-  setChartPaneStretch: (id, patch) => {
-    set((state) => {
-      const windows = withChart(state, id, (chart) => ({
-        ...chart,
-        indicators: {
-          ...chart.indicators,
-          paneStretch: normalizePaneStretch({ ...chart.indicators.paneStretch, ...patch }),
-        },
-      }));
-      if (!windows) return {};
-      persistFromState({ ...state, windows });
-      return { windows };
-    });
-  },
-
-  resetChartIndicators: (id) => {
-    set((state) => {
-      const windows = withChart(state, id, (chart) => {
-        const profileKey = profileKeyForTimeframe(chart.timeframe);
-        const byTimeframe = { ...chart.indicators.byTimeframe };
-        delete byTimeframe[profileKey];
-        return { ...chart, indicators: { ...chart.indicators, byTimeframe } };
-      });
-      if (!windows) return {};
-      persistFromState({ ...state, windows });
-      return { windows };
-    });
-  },
-
-  applyChartIndicatorPreset: (id, preset) => {
-    set((state) => {
-      const windows = withChart(state, id, (chart) => ({
-        ...chart,
-        indicators: {
-          paneOrder: normalizePaneOrder(preset.paneOrder),
-          paneStretch: normalizePaneStretch(preset.paneStretch),
-          byTimeframe: applyPresetEnableByTimeframe(
-            chart.indicators.byTimeframe,
-            preset.byTimeframeEnable,
-          ),
-        },
-      }));
-      if (!windows) return {};
-      persistFromState({ ...state, windows });
-      return { windows };
     });
   },
 
@@ -819,8 +713,11 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
 }));
 
 /** 현재 워크스페이스를 프리셋 v3 스냅샷으로 캡처한다(뷰포트·런타임 제외).
- *  스토어 내부 참조를 잡지 않도록 창·rect·chart(indicators normalize)·groupSymbols
- *  값까지 새 객체로 복제한다 — 프리셋 저장·비교가 나중의 스토어 변이에 오염되지 않게. */
+ *  스토어 내부 참조를 잡지 않도록 창·rect·chart·groupSymbols 값까지 새 객체로
+ *  복제한다 — 프리셋 저장·비교가 나중의 스토어 변이에 오염되지 않게.
+ *
+ *  **지표는 담기지 않는다** — 전역 1세트라 창에 실을 것이 없다. 레이아웃 프리셋은
+ *  창·배치·종목만 복원하고 지표 구성은 그대로 둔다. */
 export function snapshotWorkspace(): WorkspaceSnapshot {
   const s = useWorkspaceStore.getState();
   const groupSymbols: Partial<Record<GroupId, GroupSymbol>> = {};
@@ -831,7 +728,7 @@ export function snapshotWorkspace(): WorkspaceSnapshot {
     windows: s.windows.map((w) => ({
       ...w,
       rect: { ...w.rect },
-      ...(w.chart ? { chart: { ...w.chart, indicators: normalizeIndicatorsV2(w.chart.indicators) } } : {}),
+      ...(w.chart ? { chart: { ...w.chart } } : {}),
     })),
     zOrder: [...s.zOrder],
     groupSymbols,

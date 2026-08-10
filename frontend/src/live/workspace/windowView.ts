@@ -5,13 +5,17 @@
  * (code, timeframe, historicalFromDate, 지표)를 전역 `useLivePageStore` 에서 직독했다.
  * 멀티창에서는 이 값들이 창마다 달라야 하므로, 소비자를 이 컨텍스트 훅으로 절단한다.
  *
- * **핵심 계약: Provider 밖에서는 전역 스토어로 폴백한다.** 따라서 이 절단 자체는
- * 기능 무변경이다 — 아직 어떤 창도 `WindowViewContext.Provider` 로 감싸지 않으므로
- * (그건 PR-C) 항상 전역 값을 본다. `/study` 도 Provider 없이 렌더되므로 무변경.
- * 창별 Provider 가 붙는 순간(PR-C) 같은 소비자가 창의 값을 보게 된다.
+ * **핵심 계약: Provider 밖에서는 전역 스토어로 폴백한다.** 그래서 이 절단은 도입
+ * 당시 기능 무변경이었고, 지금도 Provider 없이 렌더되는 경로(테스트·단일 차트)가
+ * 종전대로 동작한다.
  *
- * 범위: 데이터 페치 경로만(code·timeframe·historicalFromDate·지표). 크로스헤어/축
- * 동기화는 PR-D, venue 는 전역 유지(#715), ambient 투영 원본 교체는 #712/PR-C.
+ * **지표는 창-스코프가 아니다.** 한때 창이 설정을 통째로 소유했지만(#712), 그러면
+ * 워크스페이스가 탭별 sessionStorage 라 지표가 브라우저 탭마다 갈렸다. 지금은 앱
+ * 전역 1세트(`live.indicators.v2`)이고 창이 정하는 것은 **어느 봉 버킷인가** 뿐이다
+ * — 창마다 봉이 다르면 유효 설정도 다르므로 멀티 타임프레임 배치는 그대로 산다.
+ *
+ * 범위: 데이터 페치 경로만(code·timeframe·historicalFromDate·지표 resolve).
+ * 크로스헤어/축 동기화는 PR-D, venue 는 전역 유지(#715).
  *
  * (컴포넌트를 export 하지 않는 `.ts` — Provider 는 컨텍스트를 직접 쓰는 쪽[테스트·
  * PR-C]에서 `<WindowViewContext.Provider>` 로 감싼다. react-refresh 규약상 훅·컨텍스트
@@ -21,16 +25,14 @@ import { useContext, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
 import {
-  FACTORY_INDICATOR_SETTINGS,
   INDICATOR_SETTING_KEYS,
   resolveIndicatorSettings,
   type IndicatorSettings,
-  type PersistedIndicatorsV2,
 } from '../../state/indicatorSettingsV2';
 import { INDICATOR_OPS, bindIndicatorOps, type BoundIndicatorOps } from '../../state/indicatorOps';
 import { useWorkspaceStore } from '../../state/workspace';
 import type { PaneId } from '../../chart/drawing/types';
-import { normalizePaneOrder, type PaneStretchMap } from '../../chart/paneOrder';
+import type { PaneStretchMap } from '../../chart/paneOrder';
 import type { PanePrefKey } from '../indicators/indicatorPaneProfiles';
 import type { PresetEnableByTimeframe } from '../presets/presetFlags';
 import {
@@ -104,14 +106,33 @@ export function useWindowScopeId(): string | null {
 }
 
 /**
- * 창의 resolve 된 IndicatorSettings. Provider 밖에서는 전역 스토어의 ambient 투영
- * (=현재 봉으로 resolve 된 최상위 IndicatorSettings 필드)으로 폴백. `useShallow` 로
- * 필드 단위 얕은 비교 → 무관한 스토어 변경에 재렌더하지 않는다.
+ * 이 서브트리가 편집·표시하는 지표 봉 — **창 안에서만** 의미가 있다(밖은 null).
+ *
+ * 지표 설정은 앱 전역 1세트(`live.indicators.v2`)이고 창이 정하는 것은 봉뿐이라,
+ * "어느 창인가" 는 "어느 버킷인가" 로 축소된다. 이 훅이 그 축소를 한 곳에 모아
+ * 읽기(`useWindowIndicators`)·쓰기(`useIndicatorActions`)가 같은 버킷을 향하는 것을
+ * 구조로 보장한다.
+ *
+ * Provider **밖**은 종전대로 전역 스토어의 **ambient 투영**(최상위
+ * `IndicatorSettings` 필드)을 읽는다 — 그 투영은 세터가 유지하는 파생값이고
+ * (`livePage` 지표 슬라이스 주석), 여기서 버킷 resolve 로 바꾸면 투영만 세팅하는
+ * 기존 소비자·픽스처가 조용히 공장값을 보게 된다.
+ */
+function useWindowIndicatorTimeframe(): LiveTimeframe | null {
+  return useContext(WindowViewContext)?.timeframe ?? null;
+}
+
+/**
+ * 이 서브트리의 resolve 된 IndicatorSettings. 창 안 = 전역 버킷을 창의 봉으로 편
+ * 값(`resolveIndicatorSettings` 가 버킷 단위로 캐시하므로 참조가 안정적 — 다른 봉
+ * 버킷만 바뀐 변경에는 재렌더하지 않는다), 밖 = ambient 투영을 `useShallow` 로
+ * 필드 비교.
  */
 export function useWindowIndicators(): IndicatorSettings {
-  const ctx = useContext(WindowViewContext);
-  const global = useLivePageStore(
-    useShallow((s): IndicatorSettings => {
+  const timeframe = useWindowIndicatorTimeframe();
+  const ambient = useLivePageStore(
+    useShallow((s): IndicatorSettings | undefined => {
+      if (timeframe) return undefined; // 창 안 — 상수 selector 로 구독 무력화
       const out: Partial<IndicatorSettings> = {};
       for (const k of INDICATOR_SETTING_KEYS) {
         (out as Record<string, unknown>)[k] = s[k];
@@ -119,21 +140,24 @@ export function useWindowIndicators(): IndicatorSettings {
       return out as IndicatorSettings;
     }),
   );
-  return ctx ? ctx.indicators : global;
+  const inWindow = useLivePageStore(
+    (s) => (timeframe ? resolveIndicatorSettings(s.indicatorsByTimeframe, timeframe) : undefined),
+  );
+  return (inWindow ?? ambient) as IndicatorSettings;
 }
 
 /**
  * 지표 설정 단일-값 selector — 오버레이/차트 소비자의 세밀 구독용.
- * Provider 안 = 창의 resolve 된 설정에서 select(창 값 변경은 어차피 서브트리
- * 재렌더). 밖 = 전역 스토어에 selector 구독을 그대로 위임해 **필드 단위 재렌더
- * 입도를 보존**한다(ctx 가 있으면 상수 selector 로 전역 구독을 무력화).
+ * 스토어 selector 안에서 값을 뽑으므로 **필드 단위 재렌더 입도가 보존된다**
+ * (선택한 값이 그대로면 다른 지표를 바꿔도 재렌더 없음).
  */
 export function useWindowIndicator<T>(select: (s: IndicatorSettings) => T): T {
-  const ctx = useContext(WindowViewContext);
-  const global = useLivePageStore(
-    (s) => (ctx ? undefined : select(s as unknown as IndicatorSettings)),
-  );
-  return ctx ? select(ctx.indicators) : (global as T);
+  const timeframe = useWindowIndicatorTimeframe();
+  return useLivePageStore((s) => select(
+    timeframe
+      ? resolveIndicatorSettings(s.indicatorsByTimeframe, timeframe)
+      : (s as unknown as IndicatorSettings),
+  ));
 }
 
 /**
@@ -151,48 +175,26 @@ export function useIsFocusedWindow(): boolean {
   return windowId ? focused : true;
 }
 
-const DEFAULT_PANE_ORDER: PaneId[] = normalizePaneOrder([]);
-const EMPTY_PANE_STRETCH: PaneStretchMap = {};
-
 /**
- * 레이아웃 슬라이스(IndicatorSettings 밖: paneOrder·paneStretch) 창-스코프 읽기.
- * 창=chart.indicators 의 슬라이스, 밖=전역 스토어 슬라이스. 비활성 분기는 상수
- * selector 로 구독을 무력화한다(재렌더 입도 보존). paneOrder/paneStretch 가
- * 같은 이중-소스+폴백 idiom 을 공유하므로 한 헬퍼로 묶는다(Duplicated Code 제거).
+ * pane 순서 — 전역 1세트다(봉 무관, ADR-0114 §3 / #696). 창별 사본이 있던 시절엔
+ * 창-스코프 폴백이 필요했지만, 지표가 전역으로 돌아오면서 레이아웃 슬라이스도
+ * 함께 돌아왔다. 이름에 `Window` 가 남은 것은 소비자 호환 때문이다.
  */
-function useWindowLayoutSlice<T>(
-  pickWindow: (indicators: PersistedIndicatorsV2) => T,
-  pickGlobal: (s: ReturnType<typeof useLivePageStore.getState>) => T,
-  fallback: T,
-): T {
-  const ctx = useContext(WindowViewContext);
-  const windowId = ctx?.windowId ?? null;
-  const store = ctx?.workspace.store ?? FALLBACK_STORE;
-  const fromWindow = store((s) => {
-    if (!windowId) return undefined;
-    const chart = s.windows.find((w) => w.id === windowId)?.chart;
-    return chart ? pickWindow(chart.indicators) : undefined;
-  });
-  const fromGlobal = useLivePageStore((s) => (windowId ? undefined : pickGlobal(s)));
-  return fromWindow ?? fromGlobal ?? fallback;
-}
-
-/** pane 순서 — 창=chart.indicators.paneOrder, 밖=전역 paneOrder. */
 export function useWindowPaneOrder(): PaneId[] {
-  return useWindowLayoutSlice((ind) => ind.paneOrder, (s) => s.paneOrder, DEFAULT_PANE_ORDER);
+  return useLivePageStore((s) => s.paneOrder);
 }
 
 /** pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스 규율. */
 export function useWindowPaneStretch(): PaneStretchMap {
-  return useWindowLayoutSlice((ind) => ind.paneStretch, (s) => s.paneStretch, EMPTY_PANE_STRETCH);
+  return useLivePageStore((s) => s.paneStretch);
 }
 
 // ── 쓰기 경로 (ADR-0119 C2c-2a) ──────────────────────────────────────────────
 
 /**
  * 지표 편집 표면 — indicatorOps 45종 + 레이아웃/버킷 관리 5종. 드로어·pane
- * 레전드·차트 내 조작이 전부 이 표면만 호출한다. Provider 안=대상 창의 봉
- * 버킷(#712 창 소유 설정), 밖=전역 `useLivePageStore`(기존 단일 뷰·`/study`).
+ * 레전드·차트 내 조작이 전부 이 표면만 호출한다. 백엔드는 언제나 전역
+ * `useLivePageStore` 이고, Provider 안이면 **대상 창의 봉 버킷**에 쓴다.
  */
 export type IndicatorActions = BoundIndicatorOps & {
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
@@ -206,8 +208,12 @@ export type IndicatorActions = BoundIndicatorOps & {
   }) => void;
 };
 
+/**
+ * 전역(Provider 밖) 판 — 스토어 세터를 그대로 집는다. 세터는 ambient 봉 버킷에
+ * 쓰고 최상위 투영을 함께 갱신하므로, read-modify-write op 도 **투영을 읽는다**.
+ * (zustand setter 는 스토어 생성 시 1회 만들어지는 안정 참조 — 1회 pick 으로 충분.)
+ */
 function buildGlobalIndicatorActions(): IndicatorActions {
-  // zustand setter 는 스토어 생성 시 1회 만들어지는 안정 참조 — 1회 pick 으로 충분.
   const s = useLivePageStore.getState();
   const out: Record<string, unknown> = {};
   for (const name of Object.keys(INDICATOR_OPS)) {
@@ -221,34 +227,36 @@ function buildGlobalIndicatorActions(): IndicatorActions {
   return out as unknown as IndicatorActions;
 }
 
+/**
+ * 창 판 — 백엔드는 같은 전역 스토어이고, 대상 버킷만 **이 창의 봉**으로 고정한다.
+ *
+ * 모든 읽기/쓰기가 호출 시점 `getState()` 다 — 렌더 시점 값을 클로저에 가두면
+ * 연속 편집(색상 드래그 등)에서 stale read 로 직전 값이 덮이고, 봉을 바꾼 직후의
+ * 편집이 이전 버킷으로 간다.
+ */
 function buildWindowIndicatorActions(
   windowId: string,
   handle: WindowStoreHandle,
 ): IndicatorActions {
-  // 모든 읽기/쓰기를 호출 시점 getState() 로 — 렌더 시점 설정을 클로저에 가두면
-  // 연속 편집(색상 드래그 등)에서 stale read 로 직전 값이 덮인다.
-  const ws = () => handle.getState();
-  const readSettings = (): IndicatorSettings => {
-    const win = ws().windows.find((w) => w.id === windowId);
-    return win?.chart
-      ? resolveIndicatorSettings(win.chart.indicators.byTimeframe, win.chart.timeframe)
-      : FACTORY_INDICATOR_SETTINGS;
-  };
+  const ps = () => useLivePageStore.getState();
+  const tf = (): LiveTimeframe =>
+    handle.getState().windows.find((w) => w.id === windowId)?.chart?.timeframe ?? '1m';
+  const readSettings = (): IndicatorSettings =>
+    resolveIndicatorSettings(ps().indicatorsByTimeframe, tf());
   return {
-    ...bindIndicatorOps(readSettings, (patch) => ws().patchChartIndicators(windowId, patch)),
-    // 전역 시맨틱 미러: 호출자가 넘긴 tf 의 버킷에 기록한다(전역 구현과 동일).
-    // 정상 경로에선 창의 tf 와 같지만, 드로어 재타깃/stale 렌더에서 어긋나도
-    // 조용히 다른 버킷을 오염시키지 않는다(리뷰 권고 반영).
+    ...bindIndicatorOps(readSettings, (patch) => ps().patchIndicatorsAt(tf(), patch)),
+    // 호출자가 넘긴 tf 의 버킷에 기록한다 — 정상 경로에선 이 창의 봉과 같지만,
+    // 드로어 재타깃/stale 렌더에서 어긋나도 조용히 다른 버킷을 오염시키지 않는다.
     setPanePrefForTimeframe: (timeframe, key, enabled) =>
-      ws().patchChartIndicatorsAt(windowId, timeframe, { [key]: enabled }),
-    setPaneOrder: (order) => ws().setChartPaneOrder(windowId, order),
-    setPaneStretch: (patch) => ws().setChartPaneStretch(windowId, patch),
-    resetIndicators: () => ws().resetChartIndicators(windowId),
-    applyIndicatorPreset: (preset) => ws().applyChartIndicatorPreset(windowId, preset),
+      ps().setPanePrefForTimeframe(timeframe, key, enabled),
+    setPaneOrder: (order) => ps().setPaneOrder(order),
+    setPaneStretch: (patch) => ps().setPaneStretch(patch),
+    resetIndicators: () => ps().resetIndicatorsAt(tf()),
+    applyIndicatorPreset: (preset) => ps().applyIndicatorPreset(preset),
   };
 }
 
-/** 지표 편집 액션 — Provider 안=창 백엔드, 밖=전역 폴백(`/study` 무변경 계약). */
+/** 지표 편집 액션 — Provider 안=이 창의 봉 버킷, 밖=전역 ambient 경로. */
 export function useIndicatorActions(): IndicatorActions {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;

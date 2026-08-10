@@ -4,7 +4,8 @@
  * `live.workspace.v1` 이 아직 없을 때, 사용자의 기존 단일 뷰 상태(`live.page.v1`·
  * `live.indicators.v2`·`live.layout.v1`)에서 초기 워크스페이스를 구성한다:
  *  - `live.page.v1`  → 그룹 1 종목 + 첫 차트 창의 timeframe
- *  - `live.indicators.v2` → 첫 차트 창의 지표 설정(#712 창 소유)
+ *  - `live.indicators.v2` → **존재 여부만** 본다("기존 사용자인가" 신호). 지표
+ *    설정은 앱 전역 1세트라 창에 실을 것이 없다 — 그 키를 그대로 쓴다.
  *  - `live.layout.v1` 카드 순서·숨김 → 데이터 창 배치(숨긴 카드는 창 미생성)
  *
  * 시드 변환은 순수 함수(`buildWorkspaceSeed`)로 격리해 결정론적 단위 테스트로 고정하고,
@@ -12,7 +13,7 @@
  * 구 키는 이후 사용하지 않는다(1회 시드 관례 — `live.indicators.v1→v2` 계승).
  */
 import { readJsonObject } from './persist';
-import { normalizeIndicatorsV2, INDICATORS_V2_STORAGE_KEY } from './indicatorSettingsV2';
+import { INDICATORS_V2_STORAGE_KEY } from './indicatorSettingsV2';
 import {
   LIVE_TIMEFRAMES,
   LIVE_PAGE_STORAGE_KEY,
@@ -114,7 +115,6 @@ export function buildWorkspaceSeed(
     : isMinuteFrameValue(timeframe)
       ? timeframe
       : undefined;
-  const indicators = normalizeIndicatorsV2(legacy.indicators);
 
   const dataCards = hasLayout ? visibleCardsInOrder(layout) : [...LIVE_CARD_KEYS];
 
@@ -131,7 +131,6 @@ export function buildWorkspaceSeed(
     rect: { x: PAD, y: PAD, w: chartW, h: TOTAL_H },
     chart: {
       timeframe,
-      indicators,
       ...(lastMinuteTimeframe ? { lastMinuteTimeframe } : {}),
     },
   });

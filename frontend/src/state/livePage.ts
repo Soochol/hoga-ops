@@ -17,8 +17,10 @@ import {
 } from './liveIndicatorsPersistence';
 import {
   FACTORY_INDICATOR_SETTINGS,
+  INDICATORS_V2_STORAGE_KEY,
   loadIndicatorsV2Storage,
   persistIndicatorsV2,
+  readIndicatorsV2Storage,
   resolveIndicatorSettings,
   type IndicatorSettings,
   type IndicatorSettingsByTimeframe,
@@ -180,6 +182,15 @@ type Store = Persisted & IndicatorSettings & {
   /** 지정한 봉의 버킷에 pane 토글을 기록한다(레전드 ✕ 등 명시적 timeframe 호출용).
    *  ambient 봉과 같은 프로파일이면 투영도 함께 갱신된다. */
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
+  /** 지정한 봉 버킷에 지표 변경을 기록한다 — 창마다 봉이 다른 멀티창에서 각 창의
+   *  편집을 그 창의 봉 버킷으로 보내는 진입점(`windowView` 의 창 액션 백엔드).
+   *  ambient 봉과 같은 프로파일일 때만 최상위 투영도 함께 갱신한다. */
+  patchIndicatorsAt: (timeframe: LiveTimeframe, patch: Partial<IndicatorSettings>) => void;
+  /** 지정한 봉 버킷의 오버라이드만 비운다 — `resetIndicators` 의 명시-봉 판. */
+  resetIndicatorsAt: (timeframe: LiveTimeframe) => void;
+  /** 다른 탭이 쓴 `live.indicators.v2` 를 다시 읽어 스토어를 맞춘다(crossTabSync).
+   *  **되쓰지 않는다** — 재기록하면 그 storage 이벤트가 다시 다른 탭들을 깨운다. */
+  hydrateIndicatorsFromStorage: () => void;
   /** pane 순서를 통째로 교체한다(레전드 ↑/↓ 의 reorderVisible 결과; candle 은
    *  normalizePaneOrder 가 index 0 으로 고정, ADR-0114 §3). */
   setPaneOrder: (order: PaneId[]) => void;
@@ -312,16 +323,30 @@ const initialIndicatorsV2 = loadIndicatorsV2Storage();
 const initialPage = { ...DEFAULTS, ...readStorage() };
 
 export const useLivePageStore = create<Store>((set, get) => {
-  /** 세터 공통 경로: 변경 필드를 ambient 봉의 버킷에 기록하고 투영을 갱신한 뒤
-   *  v2 로 영속한다. sparse 는 "공장값과의 diff" — 공장값과 같아진 항목은 다음
-   *  로드의 normalize 가 걷어낸다(런타임 버킷은 단순 누적). */
-  const patchIndicators = (patch: Partial<IndicatorSettings>): void => {
+  /** 세터 공통 경로: 변경 필드를 **지정한 봉**의 버킷에 기록하고 v2 로 영속한다.
+   *  sparse 는 "공장값과의 diff" — 공장값과 같아진 항목은 다음 로드의 normalize 가
+   *  걷어낸다(런타임 버킷은 단순 누적).
+   *
+   *  최상위 필드는 ambient 봉의 **투영**이므로 프로파일이 같을 때만 갱신한다.
+   *  멀티창에서는 편집 대상 창의 봉이 ambient 와 다를 수 있는데, 거기서 최상위를
+   *  덮으면 투영이 실제 버킷과 어긋난다(`setPanePrefForTimeframe` 과 같은 규율). */
+  const patchIndicatorsAt = (
+    timeframe: LiveTimeframe,
+    patch: Partial<IndicatorSettings>,
+  ): void => {
     const s = get();
-    const profileKey = profileKeyForTimeframe(s.indicatorTimeframe);
+    const profileKey = profileKeyForTimeframe(timeframe);
     const bucket = { ...(s.indicatorsByTimeframe[profileKey] ?? {}), ...patch };
     const byTimeframe = { ...s.indicatorsByTimeframe, [profileKey]: bucket };
-    set({ ...patch, indicatorsByTimeframe: byTimeframe } as Partial<Store>);
+    const next: Record<string, unknown> = { indicatorsByTimeframe: byTimeframe };
+    if (profileKey === profileKeyForTimeframe(s.indicatorTimeframe)) Object.assign(next, patch);
+    set(next as Partial<Store>);
     persistIndicatorsV2({ paneOrder: get().paneOrder, paneStretch: get().paneStretch, byTimeframe });
+  };
+
+  /** ambient 봉 버킷에 기록 — 지표 ops 45종의 기본 백엔드. */
+  const patchIndicators = (patch: Partial<IndicatorSettings>): void => {
+    patchIndicatorsAt(get().indicatorTimeframe, patch);
   };
 
   /** 봉 전환 시 투영 재계산. candleTimeframe 세터·페이지 동기화가 호출한다.
@@ -394,15 +419,35 @@ export const useLivePageStore = create<Store>((set, get) => {
       persistIndicatorsV2({ paneOrder: nextPaneOrder, paneStretch: nextPaneStretch, byTimeframe });
     },
 
-    resetIndicators: () => {
-      // 현재 봉 버킷만 공장값으로(#697). 레이아웃(paneOrder·paneStretch)은
+    patchIndicatorsAt,
+
+    resetIndicatorsAt: (timeframe) => {
+      // 지정 봉 버킷만 공장값으로(#697). 레이아웃(paneOrder·paneStretch)은
       // 보존 — 크기 리셋은 프리셋 "기본 레이아웃으로 초기화"가 담당(#703).
       const s = get();
-      const profileKey = profileKeyForTimeframe(s.indicatorTimeframe);
+      const profileKey = profileKeyForTimeframe(timeframe);
       const byTimeframe = { ...s.indicatorsByTimeframe };
       delete byTimeframe[profileKey];
-      set({ ...FACTORY_INDICATOR_SETTINGS, indicatorsByTimeframe: byTimeframe });
+      const next: Record<string, unknown> = { indicatorsByTimeframe: byTimeframe };
+      if (profileKey === profileKeyForTimeframe(s.indicatorTimeframe)) {
+        Object.assign(next, FACTORY_INDICATOR_SETTINGS);
+      }
+      set(next as Partial<Store>);
       persistIndicatorsV2({ paneOrder: s.paneOrder, paneStretch: s.paneStretch, byTimeframe });
+    },
+
+    resetIndicators: () => {
+      get().resetIndicatorsAt(get().indicatorTimeframe);
+    },
+
+    hydrateIndicatorsFromStorage: () => {
+      const stored = readIndicatorsV2Storage();
+      set({
+        paneOrder: stored.paneOrder,
+        paneStretch: stored.paneStretch,
+        indicatorsByTimeframe: stored.byTimeframe,
+        ...resolveIndicatorSettings(stored.byTimeframe, get().indicatorTimeframe),
+      });
     },
 
     projectActiveView: ({ instrument, code, timeframe, historicalFromDate, lastMinuteHistoricalFromDate }) => {
@@ -495,3 +540,22 @@ export const useLivePageStore = create<Store>((set, get) => {
 // 콜드 로드: chartPrefs 의 indicator-modal 투영을 저장된 봉으로 1회 정렬(PR-B).
 // (chartPrefs 스토어는 '1m' 투영으로 시작하고, 이후 전환은 projectIndicatorsFor 가 동기화.)
 syncIndicatorModalTimeframe(initialPage.candleTimeframe);
+
+/**
+ * 다른 탭의 지표 변경을 받아 이 탭 스토어를 맞춘다 — `crossTabSync` 가 유일 호출자.
+ *
+ * 지표 설정은 사용자가 "앱 설정"으로 이해하는 값이라, 한 탭에서 바꾸면 열려 있는
+ * 다른 탭도 리로드 없이 따라와야 한다(`crossTabSync` 도크스트링의 범위 기준).
+ * `/live` 딥링크가 새 탭을 여는 구조라 낡은 탭은 예외가 아니라 평상 상태다.
+ *
+ * 재수화는 **되쓰지 않는다**(`hydrateIndicatorsFromStorage`) — 되쓰면 그 storage
+ * 이벤트가 다시 상대 탭을 깨워 왕복이 멈추지 않는다.
+ */
+export function subscribeToIndicatorsStorage(): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== INDICATORS_V2_STORAGE_KEY) return;
+    useLivePageStore.getState().hydrateIndicatorsFromStorage();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}

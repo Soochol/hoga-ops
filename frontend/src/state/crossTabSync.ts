@@ -1,6 +1,9 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LIVE_SETTINGS_KEY, subscribeToLiveSettingsPing } from '../api/liveSettings';
+import { useChartPrefsStore } from './chartPrefs';
+import { subscribeToChartPrefsStorage } from './chartPrefsPersistence';
+import { subscribeToIndicatorsStorage } from './livePage';
 import { subscribeToLiveVenueStorage } from './liveVenue';
 import { subscribeToThemePreferenceStorage } from './themePrefs';
 
@@ -17,7 +20,7 @@ import { subscribeToThemePreferenceStorage } from './themePrefs';
  * (state/persist.ts 의 `tab`). 여기에 넣으면 탭을 나눠 쓰는 사용법이 죽는다.
  *
  * 동기 방식이 값마다 다른 것은 **진실이 어디 있는가**를 따른 결과다:
- *   - 테마 선호 · 거래소 → 진실이 localStorage → 저장소를 **다시 읽는다**.
+ *   - 테마 선호 · 거래소 · 보조지표 → 진실이 localStorage → 저장소를 **다시 읽는다**.
  *   - LiveSettings(REST 우회 · hogaplay 우선 …) → 진실이 **서버** → 값을 복제하지
  *     않고 "다시 읽어라"는 핑만 받아 쿼리를 invalidate 한다. 그래서 서버에 필드가
  *     늘어도 이 파일은 그대로다.
@@ -30,6 +33,10 @@ export function useCrossTabSync(): void {
 
   useEffect(() => subscribeToThemePreferenceStorage(), []);
   useEffect(() => subscribeToLiveVenueStorage(), []);
+  // 보조지표는 두 스토어에 나뉘어 산다(ADR-0072) — 「지표」 드로어라는 한 표면을
+  // 이루므로 둘 다 동기화하지 않으면 같은 드로어 안에서 일부 행만 따라온다.
+  useEffect(() => subscribeToIndicatorsStorage(), []);
+  useEffect(() => subscribeToChartPrefsStorage(useChartPrefsStore), []);
   useEffect(
     () =>
       subscribeToLiveSettingsPing(() => {

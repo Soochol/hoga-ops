@@ -8,7 +8,12 @@ import type { LiveLayoutPresetPayload } from '../../api/liveLayoutPresets';
  * v3: 프리셋 = **워크스페이스 전체 스냅샷**(창 목록·z순서·그룹→종목). 종목을 포함
  * 한다(TradingView 레이아웃 관례). 뷰포트·비영속 런타임은 담지 않는다(§6). 적용은
  * `applyWorkspaceSnapshot` 이 raw payload 를 canonical 재정규화(readWindow 재사용)
- * 하므로 새 창 kind/지표 필드 추가에 이 파일 변경이 없다.
+ * 하므로 새 창 kind 추가에 이 파일 변경이 없다.
+ *
+ * **지표는 프리셋에 담기지 않는다.** 한때 창이 설정을 소유해서 스냅샷에 딸려
+ * 왔지만(#712), 지금은 앱 전역 1세트(`live.indicators.v2`)라 창에 실을 것이 없다.
+ * 따라서 프리셋 적용은 창·배치·종목만 바꾸고 지표 구성은 **그대로 둔다** — 지표를
+ * 담고 있던 옛 payload 를 적용해도 그 부분은 `readWindow` 가 버린다.
  */
 
 /** 현재 워크스페이스를 프리셋 payload 로 캡처한다(v3 = 전체 스냅샷).

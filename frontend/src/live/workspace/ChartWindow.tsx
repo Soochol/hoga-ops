@@ -1,9 +1,10 @@
 /**
  * ChartWindow — 워크스페이스 차트 창의 실 콘텐츠 (ADR-0119 PR-C2b·C2c-2c).
  *
- * 창의 (group→종목, timeframe, indicators)로 창별 독립 데이터 파이프라인
- * (`useLiveChartData`)을 돌리고 실제 `LiveChartRoot` 를 렌더한다. 여기서 멀티창
- * 시맨틱이 처음 활성화된다.
+ * 창의 (group→종목, timeframe)로 창별 독립 데이터 파이프라인(`useLiveChartData`)을
+ * 돌리고 실제 `LiveChartRoot` 를 렌더한다. 여기서 멀티창 시맨틱이 처음 활성화된다.
+ * 지표는 창이 싣지 않는다 — 전역 1세트를 창의 봉으로 편 값을 `useWindowIndicators`
+ * 가 컨텍스트 안에서 읽는다.
  *
  * **Provider 경계**: 컴포넌트는 자신이 렌더하는 Provider 의 *바깥*이므로, 훅 호출을
  * Provider 안으로 넣으려면 바깥(`ChartWindow`, Provider 설정)과 안쪽(`ChartWindowInner`,
@@ -27,10 +28,6 @@ import {
   useWindowIndicators,
   type WindowViewValue,
 } from './windowView';
-import {
-  FACTORY_INDICATOR_SETTINGS,
-  resolveIndicatorSettings,
-} from '../../state/indicatorSettingsV2';
 import { indexInstrument, isLiveIndexId, stockInstrument } from '../liveInstrument';
 import { focusLiveSearch } from '../liveSearchFocus';
 import { useLiveVenueStore } from '../../state/liveVenue';
@@ -69,11 +66,6 @@ import type { TabViewport } from '../viewportAnchor';
 
 export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const timeframe = win.chart?.timeframe ?? '1m';
-  const byTimeframe = win.chart?.indicators.byTimeframe;
-  const resolved = useMemo(
-    () => (byTimeframe ? resolveIndicatorSettings(byTimeframe, timeframe) : FACTORY_INDICATOR_SETTINGS),
-    [byTimeframe, timeframe],
-  );
   // 창별 팬 백필 from-date — 비영속 런타임(#713 뷰포트 비저장, 세션 한정).
   // 좌측 팬이 useHistoricalRangeActions 로 확장하면 이 값이 창의 페치를 re-key 한다.
   const historicalFromDate = useWorkspaceStore(
@@ -89,10 +81,9 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
       code: isIndex ? null : symbol?.code ?? null,
       timeframe,
       historicalFromDate,
-      indicators: resolved,
       workspace: LIVE_WINDOW_WORKSPACE,
     }),
-    [win.id, win.group, isIndex, symbol?.code, timeframe, historicalFromDate, resolved],
+    [win.id, win.group, isIndex, symbol?.code, timeframe, historicalFromDate],
   );
 
   // 창 닫힘 시 이 창의 flag 레전드 provider 정리(비반응형 모듈 Map — 누수 방지).

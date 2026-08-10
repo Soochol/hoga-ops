@@ -133,6 +133,24 @@ export function hydrateChartPrefs(store: typeof useChartPrefsStore): void {
  * indicator-modal 키의 flat 값은 스냅샷에서 제외한다 — 원본은
  * `indicatorModalByTimeframe`(4버킷 sparse)이고 최상위는 투영일 뿐이다.
  */
+/**
+ * 다른 탭의 차트 prefs 변경을 받아 이 탭 스토어를 맞춘다(`crossTabSync` 가 유일
+ * 호출자). 「지표」 모달의 호가 동작설정(호가비 극단값 필터·체결강도 누적 …)이
+ * 여기 살고(ADR-0072), 사용자 눈에는 지표 설정과 같은 표면이므로 함께 따라와야
+ * 한다 — 한쪽만 동기화되면 같은 드로어 안에서 어떤 행은 따라오고 어떤 행은 안
+ * 따라오는 상태가 된다.
+ *
+ * 되쓰기(에코)는 `attachPersistence` 의 "같은 값이면 안 쓴다" 가드가 끊는다.
+ */
+export function subscribeToChartPrefsStorage(store: typeof useChartPrefsStore): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== CHART_PREFS_KEY) return;
+    hydrateChartPrefs(store);
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}
+
 export function attachChartPrefsPersistence(store: typeof useChartPrefsStore): () => void {
   return attachPersistence(store, {
     storageKey: CHART_PREFS_KEY,

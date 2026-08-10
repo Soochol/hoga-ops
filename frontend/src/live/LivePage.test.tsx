@@ -261,19 +261,21 @@ function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
 }
 
 // 멀티창 플립(ADR-0119 C2c-2d): 파이프라인은 차트 창 안에서 돈다. 셸 테스트는
-// 단일 차트 창(TEST_WIN)을 시드하고, 봉/지표는 창의 chart 설정으로 주입한다.
+// 단일 차트 창(TEST_WIN)을 시드한다. 봉은 창 설정으로, **지표는 전역 스토어로**
+// 주입한다 — 설정은 앱 전역 1세트고 창은 어느 봉 버킷을 볼지만 정한다.
 const TEST_WIN = 'w-test';
 function seedWorkspace(
   timeframe: LiveTimeframe = '1m',
   byTimeframe: IndicatorSettingsByTimeframe = {},
 ) {
+  useLivePageStore.setState({ indicatorsByTimeframe: byTimeframe });
   useWorkspaceStore.setState({
     windows: [{
       id: TEST_WIN,
       kind: 'chart',
       group: 1,
       rect: { x: 0, y: 0, w: 800, h: 600 },
-      chart: { timeframe, indicators: { paneOrder: [], paneStretch: {}, byTimeframe } },
+      chart: { timeframe },
     }],
     zOrder: [TEST_WIN],
     groupSymbols: {},

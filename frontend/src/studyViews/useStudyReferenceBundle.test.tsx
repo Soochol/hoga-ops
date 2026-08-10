@@ -37,7 +37,7 @@ import { useLiveVenueStore } from '../state/liveVenue';
 import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import { useStudyReferenceBundles } from './useStudyReferenceBundle';
 import { FACTORY_INDICATOR_SETTINGS, type IndicatorSettings } from '../state/indicatorSettingsV2';
-import type { LiveTimeframe } from '../state/livePage';
+import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 
 // 소스 선호는 이제 설정(`live_settings.krx_prefer_hogaplay`)에서 온다. 설정이 로딩 중이면
 // `useOrderflowSourcePref()` 가 undefined 를 주고 쿼리가 비활성화되는데(콜드 마운트 차트
@@ -186,11 +186,12 @@ describe('useStudyReferenceBundles', () => {
     screenerDailyFixture = [];
     useQueryMock.mockImplementation(queryResultFor);
     useLiveVenueStore.setState({ venue: 'UN' });
-    // 쿼리 키를 정하는 지표는 차트 창 소유다(#904) — 전역이 아니라 창 버킷.
+    // 쿼리 키를 정하는 지표는 전역 1세트이고, **어느 버킷**인지는 차트 창의 봉이
+    // 정한다(#904) — 창 밖 소비자도 같은 조합을 읽어야 "켰는데 안 보임"이 안 난다.
     const chartId = useStudyWorkspaceStore.getState().windows.find((w) => w.kind === 'chart')!.id;
-    useStudyWorkspaceStore.getState().resetChartIndicators(chartId);
     useStudyWorkspaceStore.getState().setChartTimeframe(chartId, save.timeframe);
-    useStudyWorkspaceStore.getState().patchChartIndicators(chartId, {
+    useLivePageStore.setState({ indicatorsByTimeframe: {} });
+    useLivePageStore.getState().patchIndicatorsAt(save.timeframe, {
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
