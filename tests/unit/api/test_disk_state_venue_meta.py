@@ -17,7 +17,12 @@ from hoga.api.disk_state import DiskState, classify_stock_date
 
 _COMPLETE = {"collection_complete": True, "is_partial": False}
 _PARTIAL = {"collection_complete": True, "is_partial": True}
-_SOURCE_META = {"expected_venues": ["KRX", "NXT"], "nxt_enabled": True}
+# ⚠ `expected_venues` 를 **KRX 하나**로 둔 것은 의도다. 이 파일의 관심사는 "source
+# 레벨 meta 를 venue meta 로 오독하지 않는가" 하나이고, 여기에 NXT 를 기대시키면
+# `_demote_if_venue_missing`(ADR-0140 §6 가드)이 같이 걸려 **실패 원인이 둘로 갈린다**
+# — 오독 회귀가 돌아와도 "가드가 걸렸나 보다" 로 읽히면 이 가드는 죽는다.
+# 결손 가드 자체는 test_api_disk_state.py 가 따로 잰다.
+_SOURCE_META = {"expected_venues": ["KRX"], "nxt_enabled": True}
 
 
 def _write(path, payload):

@@ -343,11 +343,16 @@ def check_disk_state(
 #
 # 값은 frozen dataclass 이고 소비자는 전부 읽기 전용이다(MtimeLruCache 규약).
 _META_CLASSIFY_CACHE: MtimeLruCache[Classification] = MtimeLruCache(max_entries=4096)
+# source 레벨 meta 의 `expected_venues` (ADR-0140 §6 결손 가드용). 값은 튜플이라
+# 불변이고, 위 캐시와 분리한 이유는 **키가 다른 파일**이기 때문이다 —
+# `{source}/meta.json` 이지 `{source}/{venue}/meta.json` 이 아니다.
+_EXPECTED_VENUES_CACHE: MtimeLruCache[tuple[str, ...]] = MtimeLruCache(max_entries=4096)
 
 
 def reset_classify_cache_for_tests() -> None:
     """meta 분류 캐시를 비운다 — 같은 tmp_path 를 재사용하는 테스트용."""
     _META_CLASSIFY_CACHE.clear()
+    _EXPECTED_VENUES_CACHE.clear()
 
 
 def _classify_meta_file(meta_path: Path) -> Classification:
@@ -387,10 +392,85 @@ def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
         meta_path = source_meta_path(src_dir)
         if meta_path is None:
             continue
-        out[src_dir.name] = _META_CLASSIFY_CACHE.get_or_load(
-            meta_path, _classify_meta_file,
-        )
+        cls = _META_CLASSIFY_CACHE.get_or_load(meta_path, _classify_meta_file)
+        out[src_dir.name] = _demote_if_venue_missing(src_dir, meta_path, cls)
     return out
+
+
+def _read_expected_venues(path: Path) -> tuple[str, ...]:
+    """source 레벨 meta 의 `expected_venues`. 없거나 손상이면 빈 튜플.
+
+    캐시 값이라 **불변**이어야 한다(리스트를 돌려주면 소비자가 변형할 수 있다).
+    """
+    try:
+        meta = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return ()
+    expected = meta.get("expected_venues")
+    if not isinstance(expected, list):
+        return ()
+    return tuple(v for v in expected if isinstance(v, str))
+
+
+def _demote_if_venue_missing(
+    src_dir: Path, meta_path: Path, cls: Classification,
+) -> Classification:
+    """`expected_venues` 에 있는데 **디렉터리가 아예 없는** venue 가 있으면 COMPLETE 를
+    CLIENT_INCOMPLETE 로 낮춘다 (ADR-0140 §6 "expected_venues 전부 닫혀야 COMPLETE").
+
+    `source_meta_path` 는 존재하는 venue meta 중 **가장 심한 상태**를 그 소스의
+    상태로 삼는다. 그것만으로는 §6 이 안 닫힌다 — 그 함수는 **경로**를 고르므로
+    파일이 없는 venue 는 애초에 후보에 없고, 결손이 판정에 아예 안 들어온다.
+    KRX 만 승격된 날 NXT 가 통째로 빠져도 소스가 COMPLETE 로 보인다.
+
+    **낮추는 방향은 CLIENT_INCOMPLETE 다** — 우리 수집이 못 한 것이지 업스트림에
+    없는 것(SOURCE_PARTIAL)이 아니다. 이미 그보다 심한 상태면 건드리지 않는다
+    (더 심한 것이 이긴다는 `_AGGREGATE_PRIORITY` 규율).
+
+    ⚠ 재캡처 게이트는 이 값을 안 본다 — `eligibility` 는 `source="hogaplay"` 로
+    고정 판정하므로(그쪽 주석 참조) NXT 결손이 재캡처 큐를 자극하지 않는다.
+    영향은 표시층(캘린더 `complete_live` 배지)에 한정된다.
+
+    ⚠ **`expected_venues` 는 캡처 시점 스냅샷**이다(`queries._venue_states` 와 같은
+    근거) — 현재 마스터로 판정하면 넥스트레이드가 종목을 늘릴 때 과거일에 없던
+    자리가 생겨 "그날은 결손이 아닌데 결손" 이 된다. 그래서 여기서도 디스크에
+    박힌 값만 읽는다.
+
+    실측(2026-08-10 · 1,095 Stock-Date): 결손 **0건**. 지금은 아무것도 바꾸지
+    않는 가드이고, NXT 캡처가 하루 실패했을 때 조용히 COMPLETE 로 보이는 것을 막는다.
+    """
+    if cls.state != DiskState.COMPLETE:
+        return cls
+    direct = src_dir / "meta.json"
+    # venue 축이 없는 소스(hogaplay 등)는 완결성 meta 가 곧 `{source}/meta.json` 이다
+    # → 여기서 이 파일을 **한 번 더** 파싱할 이유가 없다. 게다가 venue meta 가 하나도
+    # 없으면 그 meta 엔 `collection_complete` 가 없어 이미 COMPLETE 가 아니므로
+    # (위 early return) 가드가 볼 것도 없다. 이 분기를 빼면 소스당 파싱이 2배가 된다.
+    if meta_path == direct:
+        return cls
+    if not direct.exists():
+        return cls
+    # ⚠ mtime 캐시를 **반드시** 탄다. 여기서 매번 read_text 하면 Stock-Date 하나당
+    # 소스 수만큼 파싱이 늘어난다(가드 도입 시 실측 4회 → 16회) — 보관함·캘린더가
+    # 수천 행을 도는 경로라 그대로 목록 지연이 된다.
+    expected = _EXPECTED_VENUES_CACHE.get_or_load(direct, _read_expected_venues)
+    if not expected:
+        return cls
+    missing = [v for v in expected if not (src_dir / v / "meta.json").exists()]
+    if not missing:
+        return cls
+    return Classification(
+        state=DiskState.CLIENT_INCOMPLETE,
+        violations=[
+            *cls.violations,
+            Violation(
+                "meta.expected_venue_missing",
+                Severity.warn,
+                "expected_venues lists a venue with no promoted meta",
+                {"missing_venues": missing, "expected_venues": list(expected)},
+            ),
+        ],
+    )
 
 
 def source_meta_path(src_dir: Path) -> Path | None:
