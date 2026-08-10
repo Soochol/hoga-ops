@@ -49,7 +49,11 @@ export const DISPLAY_PRESENTATION: Record<DisplayStatus, DisplayPresentation> = 
   realtime:     { label: null,       colorVar: 'var(--success)',   ariaLabel: '실시간 수집 중' },
   polling:      { label: null,       colorVar: 'var(--fg-dimmer)', ariaLabel: 'REST 표시 중' },
   waiting_eod:  { label: null,       colorVar: 'var(--fg-dimmer)', ariaLabel: '관심종목 대기 중' },
-  disconnected: { label: '재연결 중', colorVar: 'var(--warn)',      ariaLabel: '연결 재시도 중' },
+  // **계층을 문구에 드러낸다**(ADR-0143 §5-B). "재연결 중" 은 무엇이 재연결 중인지
+  // 말하지 않아, REST 토스트의 "재시도 중" 과 구별되지 않았다 — 둘은 다른 계층이다
+  // (실시간 스트림 vs 과거 조회). 라벨과 aria 를 같은 문구로 맞춘 것은 좁은 자리에서
+  // 라벨이 생략돼도 의미가 온전히 남게 하기 위해서다(`CollectionDot.showLabel`).
+  disconnected: { label: '실시간 재연결 중', colorVar: 'var(--warn)', ariaLabel: '실시간 재연결 중' },
   uncollected:  { label: null,       colorVar: 'var(--fg-dimmer)', ariaLabel: '' },
 };
 
