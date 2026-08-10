@@ -26,6 +26,49 @@ def test_parse_row() -> None:
     assert c.vol_b == 0
 
 
+def test_parse_row_folds_auction_volume_into_vol_a() -> None:
+    """9번째 컬럼(단일가 체결량)이 vol_a 에 합쳐진다 (#1278).
+
+    실제 chart.tsv 행이다 — 20260716/053080 의 마감 단일가 봉. 그 봉은
+    ``vol_a=0 vol_b=0`` 인데 단일가 체결 261 주가 9번째 컬럼에 있다. 파서가
+    그 컬럼을 버리던 시절 이 봉의 거래량은 **0** 이었고, 그게 일봉 거래량이
+    벤더보다 항상 적던 원인이다.
+
+    가격은 그때도 맞았다(단일가 8500) — **가격은 맞고 수량만 없는 것**이 이
+    결함의 지문이라 아래에서 둘 다 단언한다.
+    """
+    line = "55800000\t15:30:42\t8500\t8500\t8500\t8500\t0\t0\t261\t4842\t4842"
+    c = parse_row(line)
+    assert c.open_ == c.close_ == c.high == c.low == 8500
+    assert c.vol_a == 261, "단일가 체결량이 vol_a 에 폴드되지 않았다"
+    assert c.vol_b == 0
+    assert c.vol_a + c.vol_b == 261
+
+
+def test_parse_row_adds_auction_volume_to_continuous_volume() -> None:
+    """시가단일가 봉처럼 연속체결과 단일가가 **같은 봉**에 있으면 더한다.
+
+    09:00 봉은 09:00:00 의 시가단일가 프린트와 09:00:01~09:00:59 의 연속체결을
+    함께 담는다. 폴드가 덮어쓰기가 아니라 덧셈이어야 하는 자리 — 덮어쓰기여도
+    위 마감봉 테스트(연속체결 0)는 통과하므로 이 케이스가 따로 필요하다.
+    """
+    line = "32400000\t09:00:31\t8500\t8600\t8600\t8500\t100\t55\t20368\t1\t1"
+    c = parse_row(line)
+    assert c.vol_a == 100 + 20368
+    assert c.vol_b == 55
+
+
+def test_parse_row_tolerates_row_without_auction_field() -> None:
+    """9번째 컬럼이 없는 행은 단일가 0 으로 읽는다 — 거부하지 않는다.
+
+    ``CANDLE_MIN_FIELDS`` 는 8 로 유지한다(#1278). 실측 raw 는 전부 11 필드라
+    이 경로가 실제로 타지는 않지만, 하한을 올려 8 필드 행을 새로 죽이는 것은
+    이 수정의 범위가 아니다.
+    """
+    c = parse_row("30600000\t08:30:00\t281000\t281000\t281000\t281000\t119\t7")
+    assert (c.vol_a, c.vol_b) == (119, 7)
+
+
 def test_candles_not_in_dispatcher_registry() -> None:
     """Candles is parsed from chart.tsv, not first.tsv. It must NOT register any event_type.
 
