@@ -294,3 +294,89 @@ export function Sparkline({
     </svg>
   );
 }
+
+/** 일별 **레벨** 라인 — 거래대금처럼 부호 없는 양수 계열용.
+ *
+ * `CumLinesChart`(누적 delta)·`ComboNetChart`(순매수 막대+라인)와 문법이 다르다.
+ * 저 둘은 **0 기준 부호 계열**이라 0 선이 의미를 갖는데, 레벨 계열은 0 이 화면에
+ * 나올 이유가 없다 — 거래대금이 0 에 가까운 날은 없고, 0 부터 그리면 실제 변동이
+ * 상단 일부에 뭉친다. 대신 `baseline`(20일 평균)이 0 이 하던 "지금 어디쯤인가" 의
+ * 역할을 한다.
+ *
+ * **마지막 구간은 점선 + 속빈 마커다.** 당일 값은 확정일과 달리 *지금까지의 누적*
+ * 이라 09:30 에 보면 라인이 절벽처럼 떨어진다 — 실제로는 아무 일도 없는데. 선 자체가
+ * 그 사실을 말하게 한다. `provisional=false` 면 전 구간이 실선이다.
+ *
+ * SVG 가 `preserveAspectRatio="none"` 이라 가로로 늘어난다 — 선은
+ * `vector-effect="non-scaling-stroke"` 로 굵기를 지키지만 **`<text>` 는 뭉개지므로
+ * 넣지 않는다**(축 라벨은 호출부가 DOM 으로 얹는다).
+ */
+export function LevelLineChart({
+  values,
+  color,
+  baseline = null,
+  provisional = true,
+  height = 92,
+  width = 900,
+}: {
+  values: number[];
+  color: string;
+  /** 기준선(예: 20일 평균). `null` 이면 안 그린다. */
+  baseline?: number | null;
+  /** 마지막 점이 미완성인가 — 당일 진행 중이면 true. */
+  provisional?: boolean;
+  height?: number;
+  width?: number;
+}) {
+  if (values.length < 2) return null;
+  const lo = Math.min(...values, baseline ?? Infinity);
+  const hi = Math.max(...values, baseline ?? -Infinity);
+  const span = hi - lo || 1;
+  const px = (i: number) => (i / (values.length - 1)) * (width - 4) + 2;
+  const py = (v: number) => height - 6 - ((v - lo) / span) * (height - 12);
+  const cut = provisional ? values.length - 1 : values.length;
+  const solid = values
+    .slice(0, cut)
+    .map((v, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`)
+    .join(' ');
+  const last = values[values.length - 1];
+  const dashed =
+    provisional && values.length >= 2
+      ? `M${px(cut - 1).toFixed(1)},${py(values[cut - 1]).toFixed(1)} L${px(cut).toFixed(1)},${py(last).toFixed(1)}`
+      : '';
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      {baseline != null && (
+        <line
+          x1={2}
+          x2={width - 2}
+          y1={py(baseline)}
+          y2={py(baseline)}
+          stroke="var(--border-strong)"
+          strokeDasharray="3 4"
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+      <path d={solid} fill="none" stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+      {dashed && (
+        <path
+          d={dashed}
+          fill="none"
+          stroke={color}
+          strokeWidth={1.5}
+          strokeDasharray="3 3"
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+      <circle
+        cx={px(values.length - 1)}
+        cy={py(last)}
+        r={3}
+        fill="var(--bg-card)"
+        stroke={color}
+        strokeWidth={1.5}
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}

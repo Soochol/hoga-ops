@@ -115,6 +115,33 @@ class ProgramResponse(BaseModel):
     markets: dict[str, list[ProgramPoint]] = Field(default_factory=dict)
 
 
+class TradeValuePoint(BaseModel):
+    """하루치 시장 거래대금. `date` 는 `YYYYMMDD`, 값은 **억원**.
+
+    `value_eok` 를 optional 로 두지 않는다 — 파서가 금액 없는 행을 **버리므로**
+    이 목록에 실린 점은 정의상 값이 있다. `null` 을 허용하면 화면이 "쉬는 날" 과
+    "파싱 실패" 를 구별해야 하는데, 그 구별은 여기서 이미 끝나 있다.
+    """
+
+    date: str
+    value_eok: float
+
+
+class TradeValueResponse(BaseModel):
+    """일별 시장 거래대금 (ka20006).
+
+    `unit` 을 필드로 싣는 것은 `/sector-flow` 의 선례를 따른 것이다(#1117 규약) —
+    단위를 필드 **이름**에만 박으면 프론트가 그 이름을 바꾸는 순간 조용히 갈린다.
+
+    한 시장이 실패하면 그 **키가 빠진다**(빈 배열이 아니라). 빈 배열은 "거래가 없었다"
+    로 읽히는데 그건 다른 사실이다 — 라우트에 `response_model_exclude_none` 을 걸지
+    않는 이유이기도 하다(여기엔 지울 `null` 이 없다).
+    """
+
+    unit: str = "eok"
+    markets: dict[str, list[TradeValuePoint]] = Field(default_factory=dict)
+
+
 class BreadthCountRow(BaseModel):
     """`truncated` 가 값과 동급이다 — 상한에 닿았으면 count 는 하한이다(#1099).
 
@@ -429,6 +456,10 @@ TTL_PROGRAM_INTRADAY_S = 20.0
 # 일별 TTL 까지 조용히 따라 내려가 같은 값을 세 배로 물어보게 된다.
 TTL_PROGRAM_DAILY_S = 60.0
 TTL_STREAKS_S = 300.0     # 연속일수는 일 단위 축
+# 일별 거래대금: 확정 이력은 하루 한 번만 바뀐다. **당일 점은 이 TTL 을 안 탄다** —
+# 화면이 마지막 점을 `/sectors`(30s + 0U WS 틱)로 덮으므로 여기를 조여도 얻는 것이
+# 없고, 600행 응답을 그만큼 자주 파싱하게 될 뿐이다.
+TTL_TRADE_VALUE_S = 600.0
 TTL_BREADTH_S = 300.0     # 52주 신고·신저는 느리게 움직인다
 # 선물: 지수 카드와 같은 줄에 서므로 `/live/index-quotes`(20s)와 신선도를 맞춘다.
 # 벤더가 KIS 라 키움 거버너와 무관하고, 라인업이 3콜뿐이라 유량도 제약이 아니다.
@@ -821,6 +852,50 @@ async def _collect_sectors(call: Any) -> dict[str, Any]:
     return out
 
 
+#: 종합지수 코드 — ka20006 은 `mrkt_tp` 를 받지 않고 `inds_cd` 하나로 시장이 정해진다.
+_WHOLE_INDEX_CODES: tuple[tuple[str, str], ...] = (("001", "KOSPI"), ("101", "KOSDAQ"))
+
+#: 응답 상한. 1페이지 600행이 2024-02 까지 덮으므로(2026-08-10 실측) 커서를 걷지
+#: 않는다 — 화면 최대 창이 120일이라 한 페이지가 5배 여유다. 이 상한을 넘겨 달라는
+#: 요청은 화면 요구가 아니라 오타이므로 조용히 깎지 말고 여기서 잘라 놓고 밝힌다.
+MAX_TRADE_VALUE_DAYS = 250
+
+
+async def _collect_trade_value(call: Any, *, days: int) -> dict[str, Any]:
+    """일별 시장 거래대금 (ka20006, 시장별 1콜).
+
+    **커서를 걷지 않는다.** `client.call` 1페이지가 600행이고 그게 2.4년치다 — 화면이
+    쓰는 최대 창(120일)의 5배라 `walk` 로 얻을 것이 없다. 대신 상한을 넘는 `days` 는
+    잘라서 응답이 조용히 짧아지는 대신 **요청이 잘렸음이 계약으로 드러나게** 한다.
+
+    `IndexCandleFetchResult` 파이프라인(`kiwoom_index_rest.fetch_index_daily_candles`)
+    을 재사용하지 않는 이유는 파서 쪽 docstring 에 적었다 — 그쪽은 브로커 중립 타입이라
+    KIS 에 없는 금액 필드를 실을 자리가 없다.
+    """
+    from hoga.collector.orchestrator import now_kst  # noqa: PLC0415
+
+    base_dt = now_kst().strftime("%Y%m%d")
+    out: dict[str, Any] = {"unit": "eok", "markets": {}}
+    for inds_cd, label in _WHOLE_INDEX_CODES:
+        rows = await call(
+            "ka20006",
+            {"inds_cd": inds_cd, "base_dt": base_dt},
+            key=("market-trade-value", inds_cd),
+        )
+        # ⚠ **`rows is None` 만 보면 부족하다.** `_call` 은 무자격일 때만 `None` 을
+        # 주고, 벤더 호출이 실패해 거버너가 degrade 하면 `getattr(None, "rows", [])`
+        # 를 거쳐 **빈 리스트**로 내려온다 — 두 상태가 같은 모양이 된다.
+        #
+        # 이 TR 에서는 빈 응답이 정당한 상태가 아니다. ka20006 은 지수 일봉이라
+        # 벤더에 항상 이력이 있고, 실제로 1페이지가 2.4년치를 준다(실측). 그래서
+        # 빈 것은 곧 실패이고, 실패한 시장은 **키를 만들지 않는다** — 빈 배열을
+        # 실으면 화면이 "그 시장은 거래가 없었다" 로 그린다.
+        if not rows:
+            continue
+        out["markets"][label] = market_overview.parse_index_trade_value(rows, days=days)
+    return out
+
+
 async def _collect_program(call: Any, api_id: str, *, scaled: bool, axis: str) -> dict[str, Any]:
     """프로그램 매매 추이. `scaled` 는 **기본값 없이** 호출부가 밝힌다 — 같은 이름의
     `kospi200` 이 ka90005 는 ×100, ka90010 은 소수점이라 한 파서로 묶으면 100배 틀린다."""
@@ -1079,6 +1154,8 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
         for d in get_args(StreakDirection)
     }
     breadth_cache = _TtlCache(TTL_BREADTH_S)
+    # 창(`days`)으로 키잉하지 않는다 — 항상 최대 창을 담고 라우트가 자른다(아래 주석).
+    trade_value_cache = _TtlCache(TTL_TRADE_VALUE_S)
     # 증시 주변 자금은 벤더가 다르다(KOFIA) — 키움 거버너·TTL 축과 분리해 자체 캐시를 쓴다.
     funds_cache = MarketFundsCache()
     _register_futures_routes(router, data_dir=data_dir)
@@ -1117,6 +1194,28 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
         """
 
         return await sectors_cache.get(lambda: _collect_sectors(_call)) or {"markets": {}}
+
+    @router.get("/trade-value")
+    async def get_trade_value(days: int = 120) -> TradeValueResponse:
+        """일별 시장 거래대금 (ka20006, 시장별 1콜).
+
+        **`days` 는 캐시 키가 아니다.** 캐시는 항상 최대 창(`MAX_TRADE_VALUE_DAYS`)을
+        들고 있고 자르기는 여기서 한다 — 벤더 응답이 어차피 600행이라 20일을 요청해도
+        같은 1콜이고, 축을 캐시 키로 삼으면 `_TtlCache` 가 단일 슬롯이라 창이 다른
+        두 요청이 서로의 값을 지운다(프로그램 축이 캐시를 나눠야 했던 그 문제).
+
+        상한을 넘는 요청은 상한으로 **자른다**. 창이 화면 최대치(120일)의 2배라
+        여기 걸리는 것은 사실상 오타뿐이고, 그때 500 을 내는 것보다 최대 창을 주는
+        쪽이 낫다.
+        """
+        window = max(1, min(days, MAX_TRADE_VALUE_DAYS))
+        full = await trade_value_cache.get(
+            lambda: _collect_trade_value(_call, days=MAX_TRADE_VALUE_DAYS)
+        ) or {"unit": "eok", "markets": {}}
+        return TradeValueResponse(
+            unit=full.get("unit", "eok"),
+            markets={k: v[-window:] for k, v in (full.get("markets") or {}).items()},
+        )
 
     @router.get("/program")
     async def get_program(axis: str = "intraday") -> ProgramResponse:

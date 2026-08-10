@@ -61,6 +61,7 @@ import {
   Sparkline,
 } from './marketBits';
 import { MARKET_LABELS, SERIES_COLORS, fmtSigned, stockSeriesDiffs, wonToJo } from './marketFormat';
+import { TradeValueCard } from './TradeValueCard';
 
 // ── 지수 카드 ─────────────────────────────────────────────────────────────
 
@@ -858,6 +859,9 @@ export function MarketPage() {
             <SectorFlowCard />
           </div>
         </div>
+        {/* 좌우 그리드 **밖**이다 — 안에 넣으면 열 높이 균형(위 주석)이 깨진다.
+            전폭이라 120일 라인에 가장 유리하기도 하다. */}
+        <TradeValueCard />
         <div className="grid grid-cols-3 gap-md">
           <RankCard title="상승률 상위" kind="change" direction="up" />
           <RankCard title="하락률 상위" kind="change" direction="down" />
