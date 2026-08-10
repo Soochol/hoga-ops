@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SidebarCursorOrigin } from '../live/useLiveCursorStore';
 import {
-  formatKstHhmm,
   formatKstMmdd,
   indexCandlesByKstDate,
   resolveSyncTarget,
@@ -83,17 +82,15 @@ describe('resolveSyncTarget', () => {
 });
 
 describe('라벨 포맷', () => {
-  it('KST 로 변환해 시:분을 만든다 — UTC 그대로면 9시간 어긋난다', () => {
-    expect(formatKstHhmm(CURSOR_1500)).toBe('15:00');
-  });
-
-  it('엣지 인디케이터는 날짜까지 보여 준다', () => {
+  it('엣지 인디케이터는 날짜만 보여 준다 — 분봉의 시:분은 일봉 창에 띄우지 않는다', () => {
     expect(formatKstMmdd(CURSOR_1500)).toBe('06/19');
   });
 
   it('자정 직전 KST 는 UTC 기준으로 다음 날이지만 KST 날짜를 유지한다', () => {
-    const lateNight = Date.UTC(2025, 5, 19, 14, 30); // KST 23:30
-    expect(formatKstHhmm(lateNight)).toBe('23:30');
-    expect(formatKstMmdd(lateNight)).toBe('06/19');
+    // KST 23:30 — UTC 로는 이미 06/19 14:30 이라 그대로 쓰면 날짜가 맞고,
+    // 09:00 이후 KST 밤 시간대에서 어긋나는 것은 반대 방향이다.
+    expect(formatKstMmdd(Date.UTC(2025, 5, 19, 14, 30))).toBe('06/19');
+    // KST 00:30(06/20) — UTC 로는 아직 06/19 15:30 이다. 여기서 갈린다.
+    expect(formatKstMmdd(Date.UTC(2025, 5, 19, 15, 30))).toBe('06/20');
   });
 });

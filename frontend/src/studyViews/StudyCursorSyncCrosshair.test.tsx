@@ -94,11 +94,14 @@ describe('StudyCursorSyncCrosshair', () => {
     expect(clearCrosshairPosition).toHaveBeenCalled();
   });
 
-  it('lwc 시간축 배지가 못 채우는 시:분을 칩으로 얹는다', () => {
+  it('화면 안이면 DOM 을 내놓지 않는다 — lwc 가 전부 그린다', () => {
+    // 분봉의 시:분을 일봉 창에 띄우던 칩은 걷어냈다(2026-08-11 사용자 결정).
+    // 일봉 축에 분 단위 시각이 뜨는 것이 축과 맞지 않는다.
     renderCrosshair();
     publish();
 
-    expect(screen.getByTestId('study-cursor-sync-chip').textContent).toBe('15:00');
+    expect(screen.queryByTestId('study-cursor-sync-chip')).toBeNull();
+    expect(screen.getByTestId('study-cursor-sync').textContent).toBe('');
   });
 
   it('자기 창이 발행하면 아무것도 하지 않는다', () => {
@@ -115,8 +118,9 @@ describe('StudyCursorSyncCrosshair', () => {
     publish();
 
     const edge = screen.getByTestId('study-cursor-sync-edge-left');
-    expect(edge.textContent).toContain('06/19 15:00');
-    expect(screen.queryByTestId('study-cursor-sync-chip')).toBeNull();
+    // 날짜만 — 시각은 뺐다.
+    expect(edge.textContent).toContain('06/19');
+    expect(edge.textContent).not.toContain('15:00');
   });
 
   it('오른쪽 밖이면 반대 방향으로 붙인다', () => {
