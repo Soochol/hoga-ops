@@ -9,6 +9,7 @@ import pytest
 
 from hoga.live import kiwoom_adjust_factors, kiwoom_minute_candles, kiwoom_rest_runtime
 from hoga.live.candle_models import LiveCandle
+from hoga.live.data_warnings import WARNING_CLASSIFICATION, classify_warning_reason
 from hoga.live.kiwoom_adjust_factors import AdjustFactors
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import KiwoomRestError
@@ -654,7 +655,12 @@ def _ts_set_members(ts_path: Path, const_name: str) -> frozenset[str]:
     한 번 덜 읽었다). 여기서도 실제 위험이다: 이 상수의 주석이 대괄호를 품는다.
     """
     src = ts_path.read_text(encoding="utf-8")
-    head = re.search(rf"^(?:export )?const {re.escape(const_name)}\s*=", src, re.M)
+    # 타입 주석(`const X: ReadonlySet<Y> = …`)을 허용한다. 없으면 kind 집합처럼
+    # 주석이 붙은 선언을 **못 읽고**, 그 실패가 "프론트에 없는 값 N개" 로 위장된다
+    # — 파서 회귀 테스트가 있어서 즉시 파서 문제로 드러났다.
+    head = re.search(
+        rf"^(?:export )?const {re.escape(const_name)}\s*(?::[^=]+)?=", src, re.M,
+    )
     assert head is not None, (
         f"{ts_path.name} 에 `const {const_name}` 이 없다 — 이름이 바뀌었으면 이 가드도 같이 고칠 것"
     )
@@ -662,52 +668,96 @@ def _ts_set_members(ts_path: Path, const_name: str) -> frozenset[str]:
     return frozenset(re.findall(r"'([^']*)'", body.split("]", 1)[0]))
 
 
-def test_frontend_blocking_warning_mirror_matches_backend() -> None:
-    """프론트 `BLOCKING_WARNING_REASONS` 는 이 집합의 **손 미러**다(ADR-0004).
+def _frontend_blocking_kinds() -> frozenset[str]:
+    ts_path = (
+        Path(__file__).resolve().parents[3] / "frontend/src/api/livePastCandles.ts"
+    )
+    return _ts_set_members(ts_path, "BLOCKING_WARNING_KINDS")
 
-    **이 가드가 막는 방향**: 백엔드가 사유를 넓혔는데 프론트가 따라오지 않는 것,
-    그리고 그 반대. 값 드리프트는 타입이 원리적으로 못 잡는다 — 양쪽 다 그냥
-    문자열 집합이라 갈려도 컴파일이 통과한다.
+
+def test_frontend_blocking_kinds_match_backend_blocking_reasons() -> None:
+    """프론트 `BLOCKING_WARNING_KINDS` 는 이 집합의 **kind 투영**이다(ADR-0143).
+
+    이관 전에는 양쪽이 같은 **사유** 집합이었다. 프론트가 kind 축으로 옮겨간 뒤로도
+    대조는 계속돼야 하므로, 백엔드 사유를 kind 로 사영해 비교한다.
+
+    **막는 방향**: 백엔드가 blocking 사유를 넓혔는데 그 kind 가 프론트 집합에 없는
+    것, 그리고 그 반대. 값 드리프트는 타입이 원리적으로 못 잡는다.
 
     **못 보는 것**: 프론트가 이 상수를 다른 이름으로 옮기거나 `new Set` 이외의
-    형태로 바꾸면 파서가 못 읽고 위 assert 가 먼저 터진다(조용한 통과는 아니다).
+    형태로 바꾸면 파서가 못 읽고 assert 가 먼저 터진다(조용한 통과는 아니다).
 
-    왜 이게 필요한가: ADR-0137 세분화 때 백엔드만 넓히고 프론트가 뒤처졌다.
-    그 상태에서 `transport_error` 는 프론트에서 non-blocking 으로 분류돼
-    ① 자가 회복 refetch(`pastCandlesRefetchInterval`) ② 델타 기준 박제 가드
-    ③ canonical 재발행 가드를 **전부** 통과했다. 과거 전용 청크는
-    `staleTime: Infinity` 라 ①이 유일한 회복 경로여서, 전송 실패 한 번이
-    그 구간을 재마운트 전까지 영구 구멍으로 만들었다.
+    왜 필요한가: ADR-0137 세분화 때 백엔드만 넓히고 프론트가 뒤처졌다. 그 상태에서
+    `transport_error` 가 프론트에서 non-blocking 으로 분류돼 ① 자가 회복 refetch
+    ② 델타 기준 박제 ③ canonical 재발행 가드를 **전부** 통과했고, 과거 전용 청크는
+    `staleTime: Infinity` 라 ①이 유일한 회복 경로여서 그 구간이 재마운트 전까지
+    영구 구멍으로 남았다(#1251).
     """
-    ts_path = (
-        Path(__file__).resolve().parents[3] / "frontend/src/api/livePastCandles.ts"
+    expected = frozenset(
+        classify_warning_reason(reason)[0] for reason in _FALLBACK_BLOCKING_REASONS
     )
-    frontend = _ts_set_members(ts_path, "BLOCKING_WARNING_REASONS")
+    frontend = _frontend_blocking_kinds()
 
-    assert frontend == _FALLBACK_BLOCKING_REASONS, (
-        "BE `_FALLBACK_BLOCKING_REASONS` 와 FE `BLOCKING_WARNING_REASONS` 가 갈렸다. "
-        f"프론트에 없는 값={sorted(_FALLBACK_BLOCKING_REASONS - frontend)} "
-        f"프론트에만 남은 값={sorted(frontend - _FALLBACK_BLOCKING_REASONS)}. "
-        "사유를 세분화하거나 지울 때 양쪽을 같은 PR 에서 고칠 것(ADR-0004)."
+    assert frontend == expected, (
+        "BE blocking 사유의 kind 집합과 FE `BLOCKING_WARNING_KINDS` 가 갈렸다. "
+        f"프론트에 없는 kind={sorted(expected - frontend)} "
+        f"프론트에만 남은 kind={sorted(frontend - expected)}. "
+        "사유를 넓히거나 kind 를 바꿀 때 양쪽을 같은 PR 에서 고칠 것(ADR-0004)."
     )
 
 
-def test_frontend_blocking_warning_mirror_parser_actually_reads_members() -> None:
+def test_non_blocking_failures_stay_out_of_frontend_blocking_kinds() -> None:
+    """**실패인데 blocking 이 아닌 것**이 kind 로 뭉뚱그려져 새지 않는가.
+
+    `invariant_violation`(`data_quality`)은 실패지만 **데이터는 받았다** — 박제해도
+    구멍이 나지 않는다(ADR-0020: 표시하되 렌더). 즉 `is_failure` 만으로는 가를 수
+    없고, kind 로 사영할 때 두 부류가 같은 kind 를 공유하면 이 구분이 죽는다.
+
+    이 테스트는 그 공유가 생기는 순간을 잡는다.
+    """
+    frontend = _frontend_blocking_kinds()
+
+    for reason, (kind, is_failure) in WARNING_CLASSIFICATION.items():
+        if not is_failure or reason in _FALLBACK_BLOCKING_REASONS:
+            continue
+        assert kind not in frontend, (
+            f"{reason!r}(kind={kind!r})은 blocking 이 아닌데 그 kind 가 프론트 blocking "
+            "집합에 있다 — 두 부류가 kind 를 공유하면 구분이 죽는다."
+        )
+
+
+def test_every_failure_reason_agrees_on_blocking_membership() -> None:
+    """새 실패 사유가 **두 축 중 한쪽에만** 등록되는 사고를 막는다.
+
+    사유가 `_FALLBACK_BLOCKING_REASONS` 에 있는데 그 kind 가 프론트 집합 밖이면
+    프론트만 non-blocking 으로 보고(= #1251 재현), 반대면 백엔드만 폴백을 막는다.
+    둘 다 무증상이라 여기서 잡는다.
+    """
+    frontend = _frontend_blocking_kinds()
+
+    for reason, (kind, is_failure) in WARNING_CLASSIFICATION.items():
+        if not is_failure:
+            continue
+        backend_blocking = reason in _FALLBACK_BLOCKING_REASONS
+        frontend_blocking = kind in frontend
+        assert backend_blocking == frontend_blocking, (
+            f"{reason!r}(kind={kind!r}): BE blocking={backend_blocking} 인데 "
+            f"FE blocking={frontend_blocking} 이다. 두 축을 같이 고칠 것."
+        )
+
+
+def test_frontend_blocking_kind_parser_actually_reads_members() -> None:
     """파서 자체의 회귀 — 빈 집합끼리 맞아떨어지는 위양성을 막는다.
 
-    파서가 조용히 0개를 읽으면 위 대조는 `frozenset() == frozenset()` 이 아니라
-    백엔드 9개와 비교해 터지지만, 그 실패 메시지는 "프론트에 없는 값 9개" 라고만
-    말해 **파서 결함을 드리프트로 위장**한다. 실제 멤버를 못 박아 그 오독을 끊는다.
+    파서가 조용히 0개를 읽으면 실패 메시지가 "프론트에 없는 kind 7개" 라고만 말해
+    **파서 결함을 드리프트로 위장**한다. 실제 멤버를 못 박아 그 오독을 끊는다.
     """
-    ts_path = (
-        Path(__file__).resolve().parents[3] / "frontend/src/api/livePastCandles.ts"
-    )
-    members = _ts_set_members(ts_path, "BLOCKING_WARNING_REASONS")
+    members = _frontend_blocking_kinds()
 
-    assert "capacity_overloaded" in members  # 배열 첫 원소
-    assert "unexpected_error" in members  # 배열 마지막 원소
-    assert "transport_error" in members  # 주석 뒤에 추가된 세분화 사유
-    assert len(members) == 9
+    assert "transport" in members  # 배열 첫 원소
+    assert "deferred" in members  # 배열 마지막 원소
+    assert "data_quality" not in members  # 실패지만 blocking 아님
+    assert len(members) == 7
 
 
 # === 수정계수 (#1229) =======================================================
