@@ -138,7 +138,7 @@ N개만 하고 멈춰도 나머지는 기존 표로 동작한다.
 | 1 | `liveDataWarnings.ts` (`RATE_LIMIT_REASONS`) | **완료** — `isRateLimitWarning` |
 | 2 | `restBypassMode.ts` (`classifyRestWarning`) | **완료** — kind → transport/congestion |
 | 3 | `intradayDegradation.ts` (`REASON_COPY`) | **완료** — 접두는 **백엔드가** 벗겼다(`intraday_failure` 필드 분리) |
-| 4 | `candleEmptyState.ts` (벤더실패·유예 2집합) | 대기 |
+| 4 | `candleEmptyState.ts` (벤더실패·유예 2집합) | **완료** — kind 집합 2개로 1:1 대응 |
 | 5 | `liveStatusProjection.ts` (`CAPTURE_REASON_VIEW`) | **비대상** — `capture_reason` 축 |
 | 6 | `livePastCandles.ts` (`BLOCKING_WARNING_REASONS`) | 대기 (**마지막** · 동등성 기준은 캐시 동작) |
 
