@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
+import type { WireDataWarning } from '../api/dataWarnings';
 import {
   overlayLiveTradesOnCandles,
   overlayLiveTradesOnCalendarCandles,
@@ -50,7 +51,11 @@ const candlesMock = {
   candles: [DEFAULT_CANDLE] as Array<typeof DEFAULT_CANDLE>,
   isPlaceholderData: false,
   isFetching: false,
-  warnings: [] as Array<{ date?: string; reason: string; msg: string }>,
+  warnings: [] as Array<
+    // ADR-0143: wire 가 `kind`·`is_failure` 를 함께 싣는다. 판정이 kind 축으로
+    // 옮겨갔으므로 픽스처도 실제 모양이어야 한다.
+    { date?: string; reason: string; msg: string } & Partial<WireDataWarning>
+  >,
   effectiveSessions: [] as Array<{ date: string; venue: 'KRX' | 'NXT' | 'UN'; open_ms: number; close_ms: number }>,
 };
 const livePastCandlesSpy = vi.fn(() => ({
@@ -77,7 +82,11 @@ const dailyCandlesMock = {
   candles: [
     { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
   ],
-  warnings: [] as Array<{ date?: string; reason: string; msg: string }>,
+  warnings: [] as Array<
+    // ADR-0143: wire 가 `kind`·`is_failure` 를 함께 싣는다. 판정이 kind 축으로
+    // 옮겨갔으므로 픽스처도 실제 모양이어야 한다.
+    { date?: string; reason: string; msg: string } & Partial<WireDataWarning>
+  >,
 };
 const livePastDailyCandlesSpy = vi.fn(() => ({
   data: {
@@ -1247,7 +1256,7 @@ describe('useLiveBundle', () => {
     });
     // 사유는 백엔드가 `error_policy` 로 정확히 싣는다 — 프론트가 `msg` 에서
     // `'TRANSPORT/'` 를 뒤지던 우회로는 죽었다(ADR-0137).
-    candlesMock.warnings = [{ reason: 'transport_error', msg: 'ConnectTimeout' }];
+    candlesMock.warnings = [{ reason: 'transport_error', kind: 'transport', msg: 'ConnectTimeout' }];
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
       wrapper: createWrapper({ rest_bypass_enabled: true }),
@@ -1279,7 +1288,7 @@ describe('useLiveBundle', () => {
       notifyFailure: notifyFailureSpy,
     });
     // 우리 쪽 쿨다운이다 — 서버는 멀쩡하다.
-    candlesMock.warnings = [{ reason: 'rate_limit_aborted', msg: 'cooldown active' }];
+    candlesMock.warnings = [{ reason: 'rate_limit_aborted', kind: 'rate_limit', msg: 'cooldown active' }];
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
       wrapper: createWrapper(),
@@ -1303,8 +1312,8 @@ describe('useLiveBundle', () => {
     });
     // 닿지 못한 사실이 혼잡보다 무겁고, 사용자 처방도 그쪽에 붙어 있다.
     candlesMock.warnings = [
-      { reason: 'rate_limit_aborted', msg: 'cooldown active' },
-      { reason: 'transport_error', msg: 'ConnectTimeout' },
+      { reason: 'rate_limit_aborted', kind: 'rate_limit', msg: 'cooldown active' },
+      { reason: 'transport_error', kind: 'transport', msg: 'ConnectTimeout' },
     ];
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
@@ -1850,7 +1859,7 @@ describe('useLiveBundle', () => {
     // 사유는 백엔드가 `error_policy` 로 정확히 싣는다 — `api_error` 는 벤더가 요청을
     // 거절한 것이라 알림 대상이 아니고, 전송 실패는 `transport_error` 로 온다(ADR-0137).
     candlesMock.warnings = [
-      { date: '20260527', reason: 'transport_error', msg: 'ConnectTimeout' },
+      { date: '20260527', reason: 'transport_error', kind: 'transport', msg: 'ConnectTimeout' },
     ];
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
@@ -2027,15 +2036,15 @@ describe('useLiveBundle', () => {
     expect(result.current.pastDataWarnings).toEqual([]);
   });
   it('분봉: past-candles 경고를 pastDataWarnings로 노출', () => {
-    candlesMock.warnings = [{ date: '20260609', reason: 'rate_limit_upstream', msg: 'rate limit' }];
+    candlesMock.warnings = [{ date: '20260609', reason: 'rate_limit_upstream', kind: 'rate_limit', msg: 'rate limit' }];
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     expect(result.current.pastDataWarnings).toEqual([
-      { date: '20260609', reason: 'rate_limit_upstream', msg: 'rate limit' },
+      { date: '20260609', reason: 'rate_limit_upstream', kind: 'rate_limit', msg: 'rate limit' },
     ]);
   });
   it('D/W/M: past-candles(분봉) 경고가 아닌 past-daily 경고를 노출', () => {
     // 분봉 경로 경고가 세팅돼 있어도 D에선 daily 경로 경고(여기선 빈 배열)를 본다.
-    candlesMock.warnings = [{ date: '20260609', reason: 'rate_limit_upstream', msg: 'minute path' }];
+    candlesMock.warnings = [{ date: '20260609', reason: 'rate_limit_upstream', kind: 'rate_limit', msg: 'minute path' }];
     const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     expect(result.current.pastDataWarnings).toEqual([]); // daily spy의 data_warnings=[]
   });

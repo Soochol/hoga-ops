@@ -133,7 +133,7 @@ N개만 하고 멈춰도 나머지는 기존 표로 동작한다.
 | # | 표 | 상태 |
 |---|---|---|
 | 1 | `liveDataWarnings.ts` (`RATE_LIMIT_REASONS`) | **완료** — `isRateLimitWarning` |
-| 2 | `restBypassMode.ts` (`classifyRestWarning`) | 대기 |
+| 2 | `restBypassMode.ts` (`classifyRestWarning`) | **완료** — kind → transport/congestion |
 | 3 | `intradayDegradation.ts` (`REASON_COPY`) | 대기 (접두 처리 결정 포함) |
 | 4 | `candleEmptyState.ts` (벤더실패·유예 2집합) | 대기 |
 | 5 | `liveStatusProjection.ts` (`CAPTURE_REASON_VIEW`) | **비대상** — `capture_reason` 축 |

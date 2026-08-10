@@ -1,14 +1,10 @@
 import { create } from 'zustand';
+import { warningKind, type WireDataWarning } from '../api/dataWarnings';
 
 export const REST_FAILURE_TOAST_COOLDOWN_MS = 5 * 60_000;
 
 const STORAGE_KEY = 'chart.kisRestMode.v1';
 const MIGRATED_KEY = 'chart.restBypassMode.v1.migrated';
-
-type RestWarningLike = {
-  reason?: string | null;
-  msg?: string | null;
-};
 
 /** 실패의 성격. 처방이 다르므로 문구도 갈라야 한다.
  *
@@ -55,20 +51,25 @@ export function markLegacyRestBypassMigrated(): void {
 
 /** 백엔드 `data_warnings` 한 건 → 알릴 실패 성격(알릴 것이 없으면 null).
  *
- * **사유 문자열만 본다.** 이전 판은 `msg` 에서 `'TRANSPORT/'` 를 뒤졌는데, 백엔드가
- * 전송 실패를 `api_error` 로 뭉개 보내서 메시지 본문이 유일한 단서였기 때문이다.
- * 백엔드가 `error_policy` 의 사유를 그대로 싣게 되면서 그 우회로가 필요 없어졌다
- * (ADR-0137). 죽은 사유 `kis_rest_unavailable` 도 함께 제거했다 — 백엔드 전체에
- * 0건이었다(KIS 시대 잔재).
+ * **백엔드가 실은 `kind` 로 가른다**(ADR-0143). 판정 축의 역사가 셋이다:
+ * ① `msg` 에서 `'TRANSPORT/'` 문자열 뒤지기(백엔드가 전송 실패를 `api_error` 로
+ * 뭉개던 시절) → ② 사유 문자열(ADR-0137 이 사유를 갈라 실으면서) → ③ `kind`
+ * (백엔드가 이미 계산해 둔 성격을 그대로 받는다). 매 단계가 역추론을 한 겹씩 걷어냈다.
+ *
+ * **동작은 동등하다.** `transport` kind 는 `transport_error` 하나뿐이고, `rate_limit`
+ * kind 는 `rate_limit_upstream`·`rate_limit_aborted` 정확히 둘이다.
+ *
+ * `deferred`(우리 쪽 예산·큐 포화)가 `congestion` 으로 가지 않는 것도 이관 전과 같다.
+ * 그쪽은 **알릴 것이 없다** — 사용자가 할 일이 없고 다음 사이클에 자동으로 이어받는다.
+ * 토스트는 우회를 켜라는 행동 유도인데, 켤 이유가 없는 상황이다.
  */
-export function classifyRestWarning(warning: RestWarningLike): RestFailureKind | null {
-  switch (warning.reason ?? '') {
-    case 'transport_error':
+export function classifyRestWarning(warning: WireDataWarning): RestFailureKind | null {
+  switch (warningKind(warning)) {
+    case 'transport':
       return 'transport';
-    // `rate_limit_aborted` 는 **우리 쪽 쿨다운**이다(서버는 멀쩡하다). 벤더의 유량
-    // 거절과 사용자 처방이 같아서(기다린다) 같은 성격으로 묶는다.
-    case 'rate_limit_upstream':
-    case 'rate_limit_aborted':
+    // 벤더의 유량 거절과 우리 쪽 쿨다운(`rate_limit_aborted`)은 사용자 처방이
+    // 같아서(기다린다) 백엔드가 같은 kind 로 묶는다.
+    case 'rate_limit':
       return 'congestion';
     default:
       return null;
