@@ -32,6 +32,15 @@ describe('intradayDegradationText', () => {
     expect(text).not.toContain('잠시 후');
   });
 
+  it('전송 실패 문구는 /live 토스트와 같은 이름을 쓴다', () => {
+    // ADR-0143 §5 — 예전엔 여기가 "시세 서버 연결 **실패**", 토스트가 "연결 **불가**"
+    // 라 같은 kind 를 다른 이름으로 불렀다. 이 단언과 `RestUnavailableToastHost`
+    // 쪽 단언이 **같은 리터럴**을 못 박는다(한쪽만 바꾸면 사전과 어긋난다).
+    expect(intradayDegradationText([], {
+      reason: 'transport_error', kind: 'transport', is_failure: true,
+    })).toBe('시세 서버 연결 불가 · 전일 확정 데이터로 표시 중 · 잠시 후 다시 조회하세요');
+  });
+
   it('배치 상한 초과는 재시도가 아니라 범위 축소를 안내한다', () => {
     expect(intradayDegradationText([], {
       reason: 'batch_limit_exceeded', kind: 'batch_limit', is_failure: true,
