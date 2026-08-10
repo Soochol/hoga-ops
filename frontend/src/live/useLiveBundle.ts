@@ -452,6 +452,7 @@ export function useLiveBundle(
   // 우회 ON=디스크만(분봉 hogaplay / D·W·M 스크리너). 모드당 소스 1개라 병합 없음.
   const restBypassEnabled = liveSettings?.rest_bypass_enabled ?? false;
   const notifyRestFailure = useRestBypassModeStore((s) => s.notifyFailure);
+  const resolveRestFailure = useRestBypassModeStore((s) => s.resolveFailure);
   const venue = options.venue ?? 'KRX';
 
   const isMinute = isMinuteTimeframe(timeframe);
@@ -527,22 +528,31 @@ export function useLiveBundle(
 
   useEffect(() => {
     if (restBypassEnabled) return;
-    const warnings = isMinute
-      ? pastCandlesQuery.data?.data_warnings ?? []
-      : pastDailyCandlesQuery.data?.data_warnings ?? [];
+    const response = isMinute ? pastCandlesQuery.data : pastDailyCandlesQuery.data;
+    // **응답이 아직 없는 것과 경고 없는 응답은 다르다.** 이전 판은 둘 다 빈 배열로
+    // 뭉갰는데, 그때는 실패만 읽었으므로 무해했다. 회복까지 읽는 지금은 로딩·비활성
+    // 상태를 "다시 성공했다" 로 오독해 토스트를 조기에 지운다.
+    if (!response) return;
+    const warnings: readonly { reason?: string | null; msg?: string | null }[] =
+      response.data_warnings;
     // 여러 사유가 섞여 오면 **transport 를 우선**한다 — 서버에 닿지도 못한 사실이
     // 혼잡보다 무겁고, 사용자 처방(저장 데이터 우회)도 그쪽에 붙어 있다.
     const kinds = warnings.map(classifyRestWarning).filter((k) => k !== null);
     const kind = kinds.includes('transport') ? 'transport' : kinds[0];
     if (kind) {
       notifyRestFailure(kind);
+    } else {
+      // 알릴 사유가 하나도 없는 응답 = 수집이 다시 됐다. 이 팔이 없으면 회복 뒤에도
+      // "재시도 중" 이 화면에 남는다 — 실패 사건에서만 상태가 움직였기 때문이다.
+      resolveRestFailure();
     }
   }, [
     isMinute,
     restBypassEnabled,
     notifyRestFailure,
-    pastCandlesQuery.data?.data_warnings,
-    pastDailyCandlesQuery.data?.data_warnings,
+    resolveRestFailure,
+    pastCandlesQuery.data,
+    pastDailyCandlesQuery.data,
   ]);
 
   // 우회 ON 분봉의 유일한 디스크 캔들 쿼리(/api/range mode=candles). 서버가 bucket_ms로
