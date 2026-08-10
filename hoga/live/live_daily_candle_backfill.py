@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Protocol
 
 from hoga.live import kiwoom_access, kiwoom_daily_candles, kiwoom_rest_runtime
+from hoga.live.data_warnings import make_data_warning
 from hoga.live.kiwoom_capacity import Priority
 from hoga.live.kiwoom_errors import KiwoomAuthError
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
@@ -350,33 +351,29 @@ def _dedupe_filter_sort(rows: list[dict], frm: date, too: date) -> list[dict]:
 
 
 def _kis_rest_bypassed_warning(batch_label: str) -> dict:
-    return {
-        "batch": batch_label,
-        "reason": "rest_bypassed",
-        "msg": "KIS REST bypass is enabled; served cache-only data",
-    }
+    return make_data_warning(
+        "rest_bypassed",
+        "REST bypass is enabled; served cache-only data",
+        batch=batch_label,
+    )
 
 
 def _daily_fallback_to_krx_warning(primary_venue: Venue, batch_label: str) -> dict:
-    return {
-        "batch": batch_label,
-        "reason": "daily_fallback_to_krx",
-        "msg": (
-            f"{primary_venue} daily returned no candles; using KRX daily candles "
-            "for this batch"
-        ),
-    }
+    return make_data_warning(
+        "daily_fallback_to_krx",
+        f"{primary_venue} daily returned no candles; using KRX daily candles "
+        "for this batch",
+        batch=batch_label,
+    )
 
 
 def _daily_partial_fallback_to_krx_warning(primary_venue: Venue, batch_label: str) -> dict:
-    return {
-        "batch": batch_label,
-        "reason": "daily_fallback_to_krx",
-        "msg": (
-            f"{primary_venue} daily returned a partial range; filling missing daily "
-            "candles from KRX for this batch"
-        ),
-    }
+    return make_data_warning(
+        "daily_fallback_to_krx",
+        f"{primary_venue} daily returned a partial range; filling missing daily "
+        "candles from KRX for this batch",
+        batch=batch_label,
+    )
 
 
 def _daily_candle_date(candle) -> date:

@@ -304,11 +304,16 @@ async def test_live_minute_candle_backfill_reports_capacity_overload(tmp_path, k
     assert result.candles == []
     assert result.fresh_dates == []
     assert result.cached_dates == []
+    # ADR-0143: `kind`·`is_failure` 가 붙고, **msg 도 정책 테이블에서 온다**.
+    # 예전 문구 `"KIS capacity scheduler…"` 는 이 생성기에만 박혀 있던 KIS 시대
+    # 잔재였다 — 같은 사유의 다른 경로(`classify_live_error`)와 갈려 있었다.
     assert result.data_warnings == [
         {
             "date": "20260518",
             "reason": "capacity_overloaded",
-            "msg": "KIS capacity scheduler pending request limit reached",
+            "kind": "rate_limit",
+            "is_failure": True,
+            "msg": "request queue is full; this date was not requested",
         }
     ]
 

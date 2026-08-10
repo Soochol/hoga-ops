@@ -16,6 +16,7 @@ from hoga.live import (
     kiwoom_minute_candles,
     kiwoom_rest_runtime,
 )
+from hoga.live.data_warnings import make_data_warning
 from hoga.live.error_policy import classify_live_error
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded, Priority
 from hoga.live.kiwoom_errors import KiwoomRateLimitError, KiwoomRestError
@@ -486,7 +487,9 @@ class LiveMinuteCandleBackfill:
                         self._cache.store_today(venue, code, None)
                 candles_all.extend(bars)
             except KiwoomRateLimitError as e:
-                warnings.append({"date": date_s, "reason": "rate_limit_upstream", "msg": str(e)})
+                warnings.append(
+                    make_data_warning("rate_limit_upstream", str(e), date=date_s),
+                )
                 self._mark_rate_limited()
                 kis_blocked = True
             except KiwoomCapacityOverloaded:
@@ -578,9 +581,9 @@ class LiveMinuteCandleBackfill:
         except KiwoomRateLimitError as e:
             self._mark_rate_limited()
             for date_s in pending:
-                warnings_by_date[date_s] = {
-                    "date": date_s, "reason": "rate_limit_upstream", "msg": str(e),
-                }
+                warnings_by_date[date_s] = make_data_warning(
+                    "rate_limit_upstream", str(e), date=date_s,
+                )
             return True
         except KiwoomRestError as e:
             for date_s in pending:
@@ -625,9 +628,9 @@ class LiveMinuteCandleBackfill:
             # **`except ... as e` 는 블록 끝에서 이름을 지운다** — 클로저가 그대로
             # 참조하면 호출 시점에 NameError 다. 로컬에 다시 묶어서 가둔다.
             rate_msg = str(e)
-            return None, lambda date_s: {
-                "date": date_s, "reason": "rate_limit_upstream", "msg": rate_msg,
-            }, True
+            return None, lambda date_s: make_data_warning(
+                "rate_limit_upstream", rate_msg, date=date_s,
+            ), True
         except KiwoomRestError as e:
             rest_exc = e
             return None, lambda date_s: _rest_error_warning(date_s, rest_exc), False
@@ -773,10 +776,11 @@ class LiveMinuteCandleBackfill:
             if bars is None and date_s in unscalable_set:
                 # 계수를 모르는 날짜는 "비거래일이라 비었다" 로 접히면 안 된다 —
                 # 아래 `floor` 분기가 빈 배열을 진실로 캐시해 버린다.
-                warnings_by_date[date_s] = {
-                    "date": date_s, "reason": "api_error",
-                    "msg": f"adjust factor unavailable (as_of={factors.as_of})",
-                }
+                warnings_by_date[date_s] = make_data_warning(
+                    "api_error",
+                    f"adjust factor unavailable (as_of={factors.as_of})",
+                    date=date_s,
+                )
             elif bars is not None:
                 rows[date_s] = [_candle_to_dict(c) for c in bars]
                 fresh.add(date_s)
@@ -786,9 +790,9 @@ class LiveMinuteCandleBackfill:
                 rows[date_s] = empty
                 fresh.add(date_s)
             else:
-                warnings_by_date[date_s] = {
-                    "date": date_s, "reason": "api_error", "msg": msg,
-                }
+                warnings_by_date[date_s] = make_data_warning(
+                    "api_error", msg, date=date_s,
+                )
 
     async def _walk_scheduled(
         self,
@@ -876,11 +880,9 @@ class LiveMinuteCandleBackfill:
         )
 
     def _rate_limit_aborted_warning(self, date_s: str) -> dict:
-        return {
-            "date": date_s,
-            "reason": "rate_limit_aborted",
-            "msg": "KIS rate limit cooldown active",
-        }
+        return make_data_warning(
+            "rate_limit_aborted", "rate limit cooldown active", date=date_s,
+        )
 
 
 def _date_iter(frm: date, to: date):
@@ -1003,9 +1005,13 @@ def _rest_error_warning(date_s: str, exc: KiwoomRestError) -> dict:
     이전 판은 전부 `api_error` 한 단어로 접었다. 그래서 프론트가 진짜 전송 실패를
     가려내려고 `msg` 에서 `'TRANSPORT/'` 문자열을 뒤져야 했다 — 벤더 거절과 네트워크
     끊김은 처방이 다른데(전자는 대기, 후자는 회선 점검) 같은 얼굴이었다(ADR-0137).
+
+    `kind`·`is_failure` 는 `make_data_warning` 이 붙인다(ADR-0143). 여기서
+    `policy.kind` 를 직접 넘기지 않는 이유: 정책 밖 생성기와 **같은 표**를 지나야
+    두 경로가 갈리지 않는다. 일치 여부는 `test_data_warnings` 가 대조한다.
     """
     policy = classify_live_error(exc)
-    return {"date": date_s, "reason": policy.reason, "msg": policy.message}
+    return make_data_warning(policy.reason, policy.message, date=date_s)
 
 
 # 폴백(NXT/UN → KRX)을 막는 사유들. **표시 계약과 같은 문자열을 공유하므로 사유를
@@ -1036,39 +1042,41 @@ def _fallback_blocking_warning_dates(warnings: list[dict]) -> set[str]:
 
 
 def _capacity_overloaded_warning(date_s: str) -> dict:
-    return {
-        "date": date_s,
-        "reason": "capacity_overloaded",
-        "msg": "KIS capacity scheduler pending request limit reached",
-    }
+    """큐 포화 경고. **문구까지 정책 테이블에서 뽑는다**(ADR-0143).
+
+    이 사유는 생성 경로가 둘이었다 — `classify_live_error(KiwoomCapacityOverloaded)`
+    와 이 함수. 그래서 같은 `reason` 인데 `msg` 가 갈렸고, 이쪽에 박혀 있던
+    `"KIS capacity scheduler…"` 는 **KIS 시대 잔재**였다(현재 경로는 키움).
+    호출부 2곳은 예외 객체가 없는 자리라 이 함수 자체는 남지만, 안의 문구는
+    정책이 정한다 — 이중 생성이 갈리는 것을 구조로 막는다.
+    """
+    policy = classify_live_error(
+        KiwoomCapacityOverloaded("request queue is full; this date was not requested"),
+    )
+    return make_data_warning(policy.reason, policy.message, date=date_s)
 
 
 def _fetch_budget_exhausted_warning(date_s: str) -> dict:
-    return {
-        "date": date_s,
-        "reason": "fetch_budget_exhausted",
-        "msg": "uncached-date fetch budget exhausted for this request; older dates deferred",
-    }
+    return make_data_warning(
+        "fetch_budget_exhausted",
+        "uncached-date fetch budget exhausted for this request; older dates deferred",
+        date=date_s,
+    )
 
 
 def _kis_rest_bypassed_warning(date_s: str) -> dict:
-    return {
-        "date": date_s,
-        "reason": "rest_bypassed",
-        "msg": "KIS REST bypass is enabled; served cache-only data",
-    }
+    return make_data_warning(
+        "rest_bypassed", "REST bypass is enabled; served cache-only data", date=date_s,
+    )
 
 
 def _minute_fallback_to_krx_warning(primary_venue: Venue, dates: list[str]) -> dict:
-    label = _format_date_label(dates)
-    return {
-        "date": label,
-        "reason": "minute_fallback_to_krx",
-        "msg": (
-            f"{primary_venue} minute returned no candles; using KRX minute "
-            "candles for this request"
-        ),
-    }
+    return make_data_warning(
+        "minute_fallback_to_krx",
+        f"{primary_venue} minute returned no candles; using KRX minute "
+        "candles for this request",
+        date=_format_date_label(dates),
+    )
 
 
 def _format_date_label(dates: list[str]) -> str:
