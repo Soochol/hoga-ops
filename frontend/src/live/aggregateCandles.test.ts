@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
+import {
+  aggregateCandles,
+  aggregateCalendar,
+  keepRegularSessionCandles,
+  isRegularSessionMs,
+} from './aggregateCandles';
 
 describe('aggregateCandles', () => {
   it('returns empty for empty input', () => {
@@ -103,6 +108,33 @@ describe('aggregateCandles', () => {
     expect(out[0].volume).toBe(77769 + 126306 + 1586803 + 1779);
   });
 
+  it('120m·240m: 클립하면 애프터마켓이 정규장 봉에 못 들어온다', () => {
+    // 2026-08-07 UN 실측 재현 — `[13:00,17:00)` 이 애프터 1시간을 끌어들여 close 가
+    // 정규 종가 231,000 대신 234,000(+1.30%)이 됐다. 입력이 30m 인 것이 전제다:
+    // 15:30 이 봉 경계로 남아 있어야 봉 단위 클립이 성립한다.
+    const baseMs = 1779840000000;                 // 09:00 KST
+    const at = (h: number, m: number) => baseMs + ((h - 9) * 60 + m) * 60_000;
+    const src = [
+      { t_ms: at(13, 0),  open: 232000, high: 234500, low: 231000, close: 231500, volume: 100 },
+      { t_ms: at(15, 0),  open: 231000, high: 232000, low: 230500, close: 231000, volume: 200 },
+      { t_ms: at(16, 0),  open: 231000, high: 233500, low: 230500, close: 233000, volume: 300 },
+      { t_ms: at(16, 30), open: 233000, high: 234000, low: 232500, close: 234000, volume: 400 },
+    ];
+
+    const clipped = aggregateCandles(keepRegularSessionCandles(src), 14400);
+    expect(clipped).toHaveLength(1);
+    expect(clipped[0].t_ms).toBe(at(13, 0));
+    expect(clipped[0].close).toBe(231000);        // 정규장 종가 — 오차 0
+    expect(clipped[0].high).toBe(234500);         // 정규장 안의 고가는 남는다
+    expect(clipped[0].volume).toBe(300);
+
+    // 클립하지 않으면 바로 그 오염이 재현된다 — 이 대조가 없으면 위 단언이
+    // "원래 그런 값" 인지 "클립이 한 일" 인지 구분되지 않는다.
+    const unclipped = aggregateCandles(src, 14400);
+    expect(unclipped[0].close).toBe(234000);
+    expect(unclipped[0].volume).toBe(1000);
+  });
+
   it('60m: 09:00 에 버킷 경계가 서서 개장이 전날과 섞이지 않는다', () => {
     // 격자 조건 `86,400,000 % bucketMs === 0` 의 관측 가능한 결과.
     const baseMs = 1779840000000;                 // 09:00 KST
@@ -113,6 +145,29 @@ describe('aggregateCandles', () => {
     const out = aggregateCandles(src, 3600);
     expect(out).toHaveLength(2);
     expect(out[1].t_ms).toBe(baseMs);
+  });
+});
+
+describe('isRegularSessionMs — 클립의 단일 술어', () => {
+  const baseMs = 1779840000000;                   // 09:00 KST
+  const at = (h: number, m: number) => baseMs + ((h - 9) * 60 + m) * 60_000;
+
+  it('정규장 경계는 양끝 포함, 밖은 배제', () => {
+    expect(isRegularSessionMs(at(9, 0))).toBe(true);    // 개장 정각
+    expect(isRegularSessionMs(at(15, 30))).toBe(true);  // 마감 정각 — 종가 단일가
+    expect(isRegularSessionMs(at(8, 59))).toBe(false);  // 프리마켓
+    expect(isRegularSessionMs(at(15, 31))).toBe(false); // 시간외 시작
+    expect(isRegularSessionMs(at(19, 59))).toBe(false); // NXT 애프터 종료 직전
+  });
+
+  it('keepRegularSessionCandles 는 이 술어의 필터일 뿐이다', () => {
+    // 둘이 갈리면 "과거봉은 잘렸는데 실시간 tail 은 안 잘린" 상태가 된다.
+    const src = [at(8, 30), at(9, 0), at(15, 30), at(16, 0)].map((t_ms) => ({
+      t_ms, open: 1, high: 1, low: 1, close: 1, volume: 1,
+    }));
+    expect(keepRegularSessionCandles(src).map((c) => c.t_ms)).toEqual(
+      src.filter((c) => isRegularSessionMs(c.t_ms)).map((c) => c.t_ms),
+    );
   });
 });
 

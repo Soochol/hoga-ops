@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { TIMEFRAME_TO_MS } from '../api/types';
 import type { MASource } from '../chart/projectors/movingAverage';
 import type { LineStyle, PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
@@ -64,7 +65,9 @@ export { MA_PALETTE };
  * Aggregated minute frames (3m–60m) are computed client-side from the 1m
  * series; see ``aggregateCandles``. Daily/weekly/monthly frames render
  * the indicator pane empty (Addendum 9.4 — hoga indicators are intraday only). */
-export const LIVE_TIMEFRAMES = ['1m', '3m', '5m', '10m', '15m', '30m', '60m', 'D', 'W', 'M'] as const;
+export const LIVE_TIMEFRAMES = [
+  '1m', '3m', '5m', '10m', '15m', '30m', '60m', '120m', '240m', 'D', 'W', 'M',
+] as const;
 export type LiveTimeframe = (typeof LIVE_TIMEFRAMES)[number];
 
 /** Server-side base timeframes (no client aggregation). */
@@ -88,11 +91,44 @@ export type BaseTimeframe = (typeof BASE_TIMEFRAMES)[number];
  *
  * NXT·UN 은 08:00~19:59 를 통째로 싣는다. 60m 은 `[15:00,16:00)` 이 애프터마켓
  * 개시(16:00) 직전에서 끊겨 살아남지만, 120m `[15:00,17:00)` · 240m `[13:00,17:00)`
- * 은 애프터 1시간을 정규장 봉에 끌어들여 종가가 1%대로 어긋난다. 그래서 이 둘을
- * 추가하려면 **집계 이전 정규장 클립**(venue 별 `effective_sessions` 기준)이 먼저다 —
- * 가상 축은 버킷 `t_ms` 로 admit 하므로 오염된 봉을 걸러내지 못한다. */
-export const MINUTE_TIMEFRAMES = ['1m', '3m', '5m', '10m', '15m', '30m', '60m'] as const;
+ * 은 애프터 1시간을 정규장 봉에 끌어들인다. 그래서 **그 둘만 집계 이전에 정규장으로
+ * 클립한다**(`CLIPPED_TIMEFRAMES`) — 가상 축은 버킷 `t_ms` 로 admit 하므로 오염된
+ * 봉을 걸러내지 못해 클립이 유일한 지점이다. */
+export const MINUTE_TIMEFRAMES = [
+  '1m', '3m', '5m', '10m', '15m', '30m', '60m', '120m', '240m',
+] as const;
 export type MinuteTimeframe = (typeof MINUTE_TIMEFRAMES)[number];
+
+/** 과거봉·실시간 체결을 **집계 전에 정규장으로 클립**하는 tf.
+ *
+ * 왜 산술 조건(`23_400_000 % bucketMs === 0`, 즉 15:30 이 버킷 경계인가)이 아니라
+ * 목록인가: 그 조건이면 **60m 도 걸린다**(23,400,000/3,600,000 = 6.5). 60m 는 실측
+ * 오차가 0.00~0.22% 라 클립 없이 내보냈고(#1252), 산술 조건을 쓰면 그 결정이 조용히
+ * 뒤집혀 60m 에서 시간외 봉이 사라진다. 동작을 바꾸는 것은 명시적이어야 한다.
+ *
+ * 클립하면 NXT·UN 의 프리마켓·애프터마켓 봉이 이 두 tf 에서만 사라진다 — 의도된
+ * 비대칭이다. 240m 에서 시간외 전용 버킷은 `[05:00,09:00)` 에 1시간, `[17:00,21:00)`
+ * 에 3시간만 들어 있어 폭이 버킷과 어긋난 봉이 되고, 넓은 tf 일수록 그 왜곡이 크다. */
+export const CLIPPED_TIMEFRAMES = ['120m', '240m'] as const;
+
+export function needsRegularSessionClip(tf: LiveTimeframe): boolean {
+  return (CLIPPED_TIMEFRAMES as readonly string[]).includes(tf);
+}
+
+/** 표시 버킷 → **벤더에서 받을** 주기(ms).
+ *
+ * 지금까지 둘은 같았다(#1008: 표시 tf 를 그대로 `tic_scope` 로 요청). 120·240 이
+ * 그 1:1 을 처음 깬다 — 키움 `ka10080` 이 안 주기도 하지만, **받아도 못 쓴다**:
+ * 벤더 120m 봉은 `[15:00,17:00)` 이 이미 정규장+시간외 혼합이라 봉 단위로 클립할
+ * 방법이 없다. 30m 로 받으면 15:30 이 입력에 경계로 남아(실측: KRX 30m 은 15:00 봉과
+ * 15:30 봉이 분리) 클립이 성립하고, 120·240 경계는 30m 경계의 부분집합이라
+ * `aggregateCandles` 가 걸치는 봉 없이 ×4·×8 로 접는다.
+ *
+ * 대가는 콜당 커버리지다 — 30m 는 900행에 ~34 거래일이라 60m(~128)의 1/4 이다.
+ * `STEP_TRADING_DAYS` 가 이를 흡수한다(아래 주석). */
+export function fetchBucketMsFor(tf: MinuteTimeframe): number {
+  return needsRegularSessionClip(tf) ? 1_800_000 : TIMEFRAME_TO_MS[tf];
+}
 
 /** Calendar subset of LiveTimeframe — client-aggregated (`aggregateCalendar`),
  * candle + volume panes only (ADR-0041). */
@@ -124,6 +160,8 @@ export function bucketSeconds(tf: LiveTimeframe): number | null {
   if (tf === '15m') return 900;
   if (tf === '30m') return 1800;
   if (tf === '60m') return 3600;
+  if (tf === '120m') return 7200;
+  if (tf === '240m') return 14400;
   return null;
 }
 

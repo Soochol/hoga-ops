@@ -19,13 +19,16 @@ def _c(ts_ms: int, o: int, h: int, l: int, c: int, va: int = 0, vb: int = 0) -> 
     return ApiCandle(ts_ms=ts_ms, open=o, close=c, high=h, low=l, vol_a=va, vol_b=vb)
 
 
+# epoch 0 == 1970-01-01 09:00 KST — 아래 픽스처의 ts_ms 가 그대로 정규장
+# 개장 기준 오프셋이 된다. 클립 대상 tf(120·240m)도 이 날짜로 통과한다.
+EPOCH_DATE = "19700101"
 JUN24_0901 = 1_782_259_260_000
 MINUTE = 60_000
 
 
 def test_downsample_candles_identity_at_60000():
     inp = [_c(60_000, 100, 110, 95, 105), _c(120_000, 105, 108, 100, 102)]
-    out = downsample_candles(inp, bucket_ms=60_000)
+    out = downsample_candles(inp, bucket_ms=60_000, date=EPOCH_DATE)
     assert out == inp
 
 
@@ -37,7 +40,7 @@ def test_downsample_candles_5min_groups_five_1min_bars():
         _c(180_000,  118, 119, 110, 112, 20, 10),
         _c(240_000,  112, 125, 111, 122, 30, 15),
     ]
-    out = downsample_candles(inp, bucket_ms=300_000)
+    out = downsample_candles(inp, bucket_ms=300_000, date=EPOCH_DATE)
     assert len(out) == 1
     bar = out[0]
     assert bar.ts_ms == 0
@@ -51,7 +54,7 @@ def test_downsample_candles_5min_groups_five_1min_bars():
 
 def test_downsample_candles_includes_last_partial_bucket():
     inp = [_c(i * 60_000, 100, 110, 90, 105, 1, 1) for i in range(7)]
-    out = downsample_candles(inp, bucket_ms=300_000)
+    out = downsample_candles(inp, bucket_ms=300_000, date=EPOCH_DATE)
     assert len(out) == 2
     assert out[0].ts_ms == 0
     assert out[1].ts_ms == 300_000
@@ -59,18 +62,46 @@ def test_downsample_candles_includes_last_partial_bucket():
 
 
 def test_downsample_candles_empty_input_returns_empty():
-    assert downsample_candles([], bucket_ms=300_000) == []
+    assert downsample_candles([], bucket_ms=300_000, date=EPOCH_DATE) == []
 
 
 def test_downsample_candles_rejects_invalid_bucket():
     with pytest.raises(ValueError, match="bucket_ms"):
-        downsample_candles([_c(0, 1, 1, 1, 1)], bucket_ms=42_000)
+        downsample_candles([_c(0, 1, 1, 1, 1)], bucket_ms=42_000, date=EPOCH_DATE)
+
+
+def test_downsample_clips_after_hours_only_for_120m_and_240m():
+    """정규장 밖 봉은 120·240 에서만 사라진다.
+
+    2026-08-07 `005930` 실측 재현: NXT·UN 은 08:00~19:59 를 통째로 싣는데, 240m
+    `[13:00,17:00)` 이 애프터마켓을 정규장 봉에 끌어들여 close 가 +1.30% 어긋났다.
+    클립이 그 유입을 막는지 — **그리고 60m 는 종전대로 두는지** — 를 함께 본다.
+    """
+    open_ms = 0                       # 1970-01-01 09:00 KST
+    def at(h: int, m: int) -> int:
+        return open_ms + ((h - 9) * 60 + m) * 60_000
+
+    inp = [
+        _c(at(9, 0),   100, 100, 100, 100, 1, 1),   # 정규장
+        _c(at(15, 0),  100, 100, 100, 100, 1, 1),   # 정규장
+        _c(at(16, 30), 900, 900, 900, 900, 1, 1),   # 애프터마켓 — 값이 크게 다르다
+    ]
+
+    for bucket_ms in (7_200_000, 14_400_000):
+        out = downsample_candles(inp, bucket_ms=bucket_ms, date=EPOCH_DATE)
+        assert all(c.high < 900 for c in out), f"{bucket_ms}: 애프터마켓이 새어 들어왔다"
+        assert sum(c.vol_a for c in out) == 2
+
+    # 60m 는 클립 대상이 아니다 — 애프터마켓 봉이 자기 버킷으로 그대로 남는다.
+    out_60 = downsample_candles(inp, bucket_ms=3_600_000, date=EPOCH_DATE)
+    assert sum(c.vol_a for c in out_60) == 3
+    assert any(c.high == 900 for c in out_60)
 
 
 def test_downsample_candles_handles_all_minute_timeframes():
     inp = [_c(i * 60_000, 100, 110, 90, 105, 1, 1) for i in range(60)]
     for bucket_ms in ALLOWED_TIMEFRAME_MS:
-        out = downsample_candles(inp, bucket_ms=bucket_ms)
+        out = downsample_candles(inp, bucket_ms=bucket_ms, date=EPOCH_DATE)
         assert sum(c.vol_a for c in out) == 60
         for c in out:
             assert c.ts_ms % bucket_ms == 0
@@ -303,7 +334,9 @@ def test_build_range_bundle_candles_mode_skips_hoga_and_sidecar_builders():
         )
 
     candles.assert_called_once()
-    downsample.assert_called_once_with(raw_candles, bucket_ms=60_000)
+    # `date` 는 정규장 클립의 기준이라 **날짜별 루프의 그 날짜**여야 한다 — 여기서
+    # 값을 못박지 않으면 엉뚱한 날짜가 넘어가도 통과한다(클립 tf 에서만 증상).
+    downsample.assert_called_once_with(raw_candles, bucket_ms=60_000, date="20260625")
     quote_ratio.assert_not_called()
     fill_strength.assert_not_called()
     distribution.assert_not_called()

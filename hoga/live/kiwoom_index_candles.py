@@ -74,6 +74,55 @@ BUCKET_SECONDS_TO_TIC_SCOPE: dict[int, str] = {
 }
 
 
+#: 벤더가 주지 않아 **서버가 접어서 만드는** 표시 버킷(초) → 받아올 버킷(초).
+#: ka20005 는 7종(1/3/5/10/15/30/60)까지다. 120·240 은 60 을 ×2·×4 로 접는다 —
+#: 두 경계 모두 60 경계의 부분집합이라 걸치는 봉이 없다.
+#:
+#: 종목(`kiwoom_minute_candles`)은 같은 tf 를 **30 으로** 받는다. 다른 이유가 아니라
+#: 다른 요구다: 종목은 15:30 을 봉 경계로 남겨야 정규장 클립이 성립하는데, 지수는
+#: 애초에 정규장만 온다(2026-08-07 KOSPI 30m 실측 09:00~15:30, 14봉). 클립할 것이
+#: 없으니 커버리지가 2배인 60 을 쓴다.
+DERIVED_BUCKET_SECONDS: dict[int, int] = {
+    7200: 3600,
+    14400: 3600,
+}
+
+
+def aggregate_index_candles(
+    candles: list[IndexCandlePoint], bucket_seconds: int
+) -> list[IndexCandlePoint]:
+    """정렬된 지수 봉을 `bucket_seconds` 버킷으로 접는다(epoch-floor).
+
+    프론트 `aggregateCandles` 와 같은 규약이다 — 입력 해상도가 목표 이하이기만 하면
+    되고, 이미 목표 버킷인 입력에는 멱등이다. 입력은 `t_ms` 오름차순이어야 한다
+    (호출부 계약; 어긋나면 open/close 가 조용히 틀린다).
+    """
+    if not candles:
+        return []
+    bucket_ms = bucket_seconds * 1000
+    out: list[IndexCandlePoint] = []
+    cur: IndexCandlePoint | None = None
+    for c in candles:
+        start = (c.t_ms // bucket_ms) * bucket_ms
+        if cur is None or start != cur.t_ms:
+            if cur is not None:
+                out.append(cur)
+            cur = IndexCandlePoint(
+                t_ms=start, open=c.open, high=c.high, low=c.low,
+                close=c.close, volume=c.volume,
+            )
+        else:
+            cur = cur.model_copy(update={
+                "high": max(cur.high, c.high),
+                "low": min(cur.low, c.low),
+                "close": c.close,
+                "volume": cur.volume + c.volume,
+            })
+    if cur is not None:
+        out.append(cur)
+    return out
+
+
 class KiwoomIndexCandlesError(RuntimeError):
     """ka20005 호출/응답 실패."""
 

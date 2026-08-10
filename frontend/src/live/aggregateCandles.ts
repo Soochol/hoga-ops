@@ -1,15 +1,29 @@
 import type { LivePastCandle as LiveCandle } from '../api/livePastCandles';
 import { realMsToYyyymmdd, regularSessionOpenMs, regularSessionCloseMs } from './liveDateTime';
 
+/** 이 시각이 자기 날짜의 정규장 `[09:00, 15:30]` KST 안인가.
+ *
+ * **정규장 클립의 단일 술어다.** 세 호출자가 이것 하나를 본다: 캘린더(D/W/M)
+ * 집계, 120·240분 과거봉 클립, 그리고 그 두 tf 의 실시간 체결 오버레이. 셋이
+ * 각자 경계를 재계산하면 "과거봉은 잘렸는데 실시간 tail 은 안 잘린" 상태가
+ * 장중에만 나타나 재현이 어렵다.
+ *
+ * ⚠ **반휴장일(12:30 마감)은 못 본다.** 고정 09:00~15:30 이라 12:30 이후 시간외가
+ * 창 안에 들어오면 통과시킨다. `effective_sessions` 를 쓰면 정확해지지만 그 값은
+ * **venue 세션**이지 정규장이 아니다 — NXT 는 08:00~20:00 으로 와서 클립 기준으로
+ * 쓰면 아무것도 안 잘린다(2026-08-07 실측). 이 한계는 `keepRegularSessionCandles`
+ * 가 D/W/M 에서 이미 갖고 있던 것과 같고, 새 술어를 만드는 대신 공유한다. */
+export function isRegularSessionMs(tMs: number): boolean {
+  const date = realMsToYyyymmdd(tMs);
+  return tMs >= regularSessionOpenMs(date) && tMs <= regularSessionCloseMs(date);
+}
+
 /** Drop bars outside the regular session [09:00, 15:30] KST for their own date.
  * Calendar (D/W/M) aggregation runs on this so pre/post-market minute bars do
  * not skew the day's OHLC. Generic over `{t_ms}` so it applies to raw KIS bars
  * and Candle-shaped rows alike. */
 export function keepRegularSessionCandles<T extends { t_ms: number }>(candles: readonly T[]): T[] {
-  return candles.filter((c) => {
-    const date = realMsToYyyymmdd(c.t_ms);
-    return c.t_ms >= regularSessionOpenMs(date) && c.t_ms <= regularSessionCloseMs(date);
-  });
+  return candles.filter((c) => isRegularSessionMs(c.t_ms));
 }
 
 /** OHLCV aggregation of a sorted candle stream into `bucketSeconds`-sized

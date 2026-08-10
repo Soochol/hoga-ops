@@ -15,22 +15,22 @@ from hoga.api.models import (
 )
 
 
-def test_allowed_timeframe_ms_is_seven_fixed_values():
+def test_allowed_timeframe_ms_is_nine_fixed_values():
     assert ALLOWED_TIMEFRAME_MS == (
-        60_000, 180_000, 300_000, 600_000, 900_000, 1_800_000, 3_600_000,
+        60_000, 180_000, 300_000, 600_000, 900_000,
+        1_800_000, 3_600_000, 7_200_000, 14_400_000,
     )
 
 
 def test_validate_bucket_ms_accepts_whitelist():
-    for ms in (60_000, 180_000, 300_000, 600_000, 900_000, 1_800_000, 3_600_000):
+    for ms in ALLOWED_TIMEFRAME_MS:
         assert validate_bucket_ms(ms) == ms
 
 
 def test_validate_bucket_ms_rejects_other_values():
-    # 120m(7,200,000)·240m(14,400,000)은 **의도적으로** 밖에 있다 — 정규장 마감이
-    # 버킷 경계가 아니어서 NXT·UN 에서 애프터마켓이 정규장 봉에 섞인다
-    # (frontend `MINUTE_TIMEFRAMES` 주석의 실측표). 열려면 집계 이전 클립이 먼저다.
-    for bad in (0, 30_000, 120_000, 2_700_000, 7_200_000, 14_400_000):
+    # 45m(2,700,000)은 격자 조건은 통과하지만 표시 tf 가 없다. 120·240 은 이제
+    # 안에 있고, 대신 `CLIPPED_TIMEFRAME_MS` 가 집계 전 클립을 요구한다.
+    for bad in (0, 30_000, 120_000, 2_700_000, 5_400_000, 28_800_000):
         with pytest.raises(ValueError, match="bucket_ms"):
             validate_bucket_ms(bad)
 

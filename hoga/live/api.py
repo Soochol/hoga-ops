@@ -9,6 +9,7 @@ import logging
 import re
 import time as monotonic_time
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple
@@ -63,8 +64,10 @@ from hoga.live.kiwoom_errors import (
     KiwoomTerminalAuthError,
 )
 from hoga.live.kiwoom_index_candles import (
+    DERIVED_BUCKET_SECONDS,
     KiwoomIndexCandlesError,
     KiwoomIndexCandlesFetcher,
+    aggregate_index_candles,
     supports_bucket_seconds as kiwoom_supports_bucket,
 )
 from hoga.live.kiwoom_rankings import (
@@ -2090,7 +2093,15 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 "15m": 900,
                 "30m": 1800,
                 "60m": 3600,
+                "120m": 7200,
+                "240m": 14400,
             }[timeframe]
+            # 벤더가 안 주는 버킷은 지원 버킷으로 받아 서버가 접는다. 프론트는 지수
+            # 봉을 재집계하지 않으므로(종목과 달리 표시 경로에 집계기가 없다) 여기서
+            # 표시 버킷으로 만들어 내보내야 한다.
+            fetch_bucket_seconds = DERIVED_BUCKET_SECONDS.get(
+                bucket_seconds, bucket_seconds
+            )
             if index_minute_candles_cache_instance is None:
                 raise HTTPException(
                     503,
@@ -2118,7 +2129,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     to_s=to,
                 )
 
-            if not _index_minute_available(bucket_seconds):
+            if not _index_minute_available(fetch_bucket_seconds):
                 raise HTTPException(
                     503,
                     {
@@ -2132,12 +2143,21 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             async def fetch_batch(from_s: str, to_s: str):
                 # 동기 httpx + 페이지당 1s 페이싱이라 스레드로 뺀다
                 # (kiwoom_rankings 와 같은 패턴).
-                return await asyncio.to_thread(
+                fetched = await asyncio.to_thread(
                     fetcher.fetch,
                     index.id,
                     from_s,
                     to_s,
-                    bucket_seconds=bucket_seconds,
+                    bucket_seconds=fetch_bucket_seconds,
+                )
+                if fetch_bucket_seconds == bucket_seconds:
+                    return fetched
+                # 접기는 **캐시에 들어가기 전에** 한다 — 캐시가 표시 버킷을 담아야
+                # 우회 경로(`_collect_index_minute_candles_cache_only`)가 같은 봉을
+                # 낸다. fetch 버킷으로 저장하면 그쪽만 조용히 잔 봉을 그린다.
+                return replace(
+                    fetched,
+                    candles=aggregate_index_candles(fetched.candles, bucket_seconds),
                 )
 
             try:
