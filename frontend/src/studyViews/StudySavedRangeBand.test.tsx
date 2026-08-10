@@ -10,7 +10,9 @@ const TO_MS = 1_781_000_000_000;
 /** `axis.toVirtual` 는 항등, `timeToCoordinate` 는 virtual초 → px 로 준 표를 본다. */
 function makeChart(coords: Map<number, number | null>, barSpacing = 8) {
   const timeScale = {
+    // pane 폭 / 시간축 높이 — 컨테이너를 pane 박스로 자르는 데 쓴다(#1272 계열).
     width: () => 500,
+    height: () => 28,
     options: () => ({ barSpacing }),
     timeToCoordinate: vi.fn((t: number) => coords.get(t) ?? null),
     subscribeVisibleLogicalRangeChange: vi.fn(),
@@ -65,5 +67,18 @@ describe('StudySavedRangeBand', () => {
     renderBand(new Map([[FROM_MS / 1000, 100], [TO_MS / 1000, 300]]));
 
     expect(screen.getByTestId('study-saved-range-band').className).toContain('z-10');
+  });
+
+  // 캔버스 위에 올라간 대가로 축 거터까지 덮게 되므로 pane 박스로 잘라야 한다 —
+  // 안 자르면 tint/실선이 가격 라벨 위로, 자식들의 `bottom-0` 이 시간축 날짜 라벨
+  // 위로 샌다(#1272). 폭·bottom·overflow 중 하나만 빠져도 새므로 셋 다 단언한다.
+  it('pane 박스로 클립해 가격축·시간축 거터로 새지 않는다', () => {
+    renderBand(new Map([[FROM_MS / 1000, 100], [TO_MS / 1000, 300]]));
+
+    const band = screen.getByTestId('study-saved-range-band');
+    expect(band.style.width).toBe('500px');
+    expect(band.style.bottom).toBe('28px');
+    expect(band.className).toContain('overflow-hidden');
+    expect(band.className).not.toContain('inset-0');
   });
 });
