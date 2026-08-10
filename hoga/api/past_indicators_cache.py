@@ -84,6 +84,19 @@ _log = logging.getLogger(__name__)
 #   * `broker_late` — 시작 HHMM 인자를 따로 받는다.
 #   * `continuous_before` — close 값이 **파일명에** 들어가(`.153000000.json`) 경계가
 #     바뀌면 자연히 다른 파일이 된다. 범프하면 이미 맞는 캐시만 버린다.
+#
+# 2026-08-11 (venue 오독 오염): `continuous_before` 6→7. 위 "경계는 파일명이 가른다" 는
+# 여전히 참이지만 **이번 오염은 경계가 아니라 입력 데이터**였다 — b64036f5 이후
+# `_compute_first_trailing_single_price_book_hhmmssms` 가 venue 를 못 받아 NXT/UN 요청을
+# **KRX 스냅샷·체결로** 계산해 놓고 NXT/UN 경로에 기록했다(이 머신 실측 542건).
+# 파일명(close)도 경로(venue)도 "맞는" 자리에 틀린 값이 들어앉은 형태라, 값을 버리는
+# 유일한 장치가 이 버전이다.
+#
+# ⚠ `ask_peak`/`bid_peak` 은 **범프하지 않는다**. 같은 누락이 peak 경로에도 있었지만
+# 오염 조건이 "trades.parquet 부재 폴백 + venue != KRX" 뿐이라 이 머신 실측 대상이
+# stock-date **2건**(20260807·20260810 의 183300/UN, 캐시 파일은 아직 생기지도 않았다)
+# 인 반면, 범프 비용은 위 문단의 /study 콜드 로드 사고 그 자체다(콜드 비용의 95%+ =
+# peak 재계산, 수십 분). 2건을 버리자고 전량을 버리는 거래가 성립하지 않는다.
 KIND_VERSIONS: dict[str, int] = {
     "ratio": 7,
     "fill": 6,
@@ -94,7 +107,7 @@ KIND_VERSIONS: dict[str, int] = {
     "depth_delta": 2,
     "vdist": 7,
     "broker_late": 6,
-    "continuous_before": 6,
+    "continuous_before": 7,
 }
 
 Kind = Literal["ratio", "fill"]
