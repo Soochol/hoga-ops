@@ -1711,13 +1711,15 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         )
         segments.append(RangeSegment(
             date=d,
-            # ⚠ 여기는 **정규장 경계 그대로**다(지표 구간 아님) — 의도된 비대칭.
-            # `/live` 는 이 값을 안 쓰고 `sessionBoundsForDate`(effective_sessions +
-            # venue 확장창)로 세그먼트를 다시 만든다(buildLiveBundle.ts). 이 필드를
-            # 넓히면 그 우회를 안 타는 소비자(`/study` 복기)의 x축·클립이 같이
-            # 바뀌므로 별도 검증이 필요하다 — venue 축 세그먼트는 후속 과제.
-            session_open_ms=hhmmssms_to_unix_ms(d, norm_meta["regular_session_open_ms"]),
-            session_close_ms=hhmmssms_to_unix_ms(d, meta["regular_session_close_ms"]),
+            # 세그먼트 경계도 **venue 별 지표 구간**이다. #1243 에서는 정규장 그대로
+            # 두고 후속 과제로 남겼었다 — `/live` 는 이 값을 안 쓰고
+            # `sessionBoundsForDate`(effective_sessions + venue 확장창)로 세그먼트를
+            # 다시 만들지만(buildLiveBundle.ts), **그 우회를 안 타는 `/study` 는 이
+            # 값을 그대로 쓴다**: 체결강도 클립(`studyWindowContents`)과 참조 번들의
+            # `LiveEffectiveSession` 변환(`useStudyReferenceBundle`) 둘 다. 정규장으로
+            # 두면 복기에서 NXT 프리·애프터마켓이 x축과 클립 양쪽에서 잘린다.
+            session_open_ms=hhmmssms_to_unix_ms(d, ind_open_ms),
+            session_close_ms=hhmmssms_to_unix_ms(d, ind_close_ms),
             source=source,
             venue=venue,
             gap_ms=_segment_gap_ms(d, meta),
