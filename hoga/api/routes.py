@@ -5,10 +5,17 @@ This file is the thin glue layer.
 
 from __future__ import annotations
 
+import contextlib
+import functools
 import logging
+import os
 import re
+from contextlib import AbstractAsyncContextManager
+from datetime import datetime
 from pathlib import Path
 
+import anyio
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query
 
 from hoga import perf_debug
@@ -35,6 +42,77 @@ from hoga.util.timeenc import (
 )
 
 log = logging.getLogger(__name__)
+
+# `/api/range` 의 **넓은 구간** 동시 compute 상한.
+#
+# 왜 상한이 필요한가: 이 경로는 시간의 대부분이 행→pydantic 모델 생성이라 GIL 을
+# 놓지 않는다. 32코어에서 스레드 6개로 돌려도 wall 이 5.9배로 늘어나고(별도 DuckDB
+# 커넥션을 줘도 5.2배라 커넥션 락은 부차적이다), 그래서 동시에 던진 넓은 요청은
+# 서로를 그 수만큼 늦출 뿐 처리량을 늘리지 못한다.
+#
+# **왜 좁은 요청은 이 상한을 타지 않는가 — 이게 이 설계의 핵심이고, 측정이 시켰다.**
+# 처음에는 모든 `/api/range` 를 한 큐에 넣었다. 같은 요청 12개(전부 5개월)로 재면
+# 상한 1이 모든 지표에서 최선이었다 — 균일한 작업에는 FIFO 단일 큐가 최적이다.
+# 그런데 **운영 부하는 균일하지 않다**: `/study` 의 5개월과 `/live` 의 하루가 같은
+# 엔드포인트를 탄다. 그 혼합(무거운 것 6 + 가벼운 것 16 = 22 동시)으로 재자 결론이
+# 뒤집혔다 — 아래는 **무게 분리 없이** 전부 한 큐에 넣었을 때다:
+#
+#     상한      wall   가벼운것 중앙   무거운것 중앙   전체 평균
+#     무제한   2.25s        0.32s        2.02s      0.73s
+#     1        2.28s        2.26s        1.43s      2.01s   ← 가벼운 것이 7배 느려진다
+#     2        2.24s        1.89s        1.59s      1.77s
+#     4        2.06s        1.69s        1.56s      1.63s
+#
+# 상한이 무거운 것의 중앙값은 낮추지만(2.02 → 1.43), 그 이득을 가벼운 요청에서
+# 그보다 크게 뺏어 온다. 총 wall 은 어느 쪽이든 같다 — 즉 **단일 큐의 상한은
+# 이득이 아니라 재분배**였고, 재분배가 손해 쪽이었다. head-of-line blocking:
+# 하루짜리가 5개월짜리 뒤에 갇힌다.
+#
+# 그래서 큐를 무게로 나눴다(`_is_wide_range`). 넓은 요청만 줄을 서고 좁은 요청은
+# 곧장 지나간다. 같은 부하를 다시 재면 **모든 열이 개선된다** — 재분배가 아니라
+# 실제 이득이다:
+#
+#     상한      wall   가벼운것 중앙   무거운것 중앙   전체 평균
+#     무제한   1.96s        0.22s        1.77s      0.59s
+#     1        2.05s        0.15s        1.43s      0.48s
+#     2        1.89s        0.12s        1.38s      0.44s   ← 채택
+#     4        1.87s        0.12s        1.43s      0.48s
+#
+# 2인 이유: 1은 넓은 것끼리도 완전 직렬이라 그쪽 중앙값이 도로 올라가고(1.43),
+# 4는 GIL 경합이 다시 붙어 이득이 없다. 2가 두 축의 바닥이다.
+RANGE_COMPUTE_CONCURRENCY = int(os.environ.get("HOGA_RANGE_CONCURRENCY", "") or 2)
+
+# 이 일수 이상을 요청하면 "넓은 구간" 으로 보고 상한을 태운다.
+#
+# 30일은 두 사용처 사이의 빈 구간이다: `/live` 는 하루~수일을 잘게 요청하고
+# (오늘 · 스크롤백 청크), `/study` 저장뷰는 수개월을 한 번에 요청한다. 경계가
+# 정확할 필요는 없다 — 틀리면 좁은 요청이 상한을 타거나(약간 느려짐) 넓은 요청이
+# 안 타는(예전 동작) 것뿐이고, 둘 다 정상 동작이다.
+#
+# ⚠ 무게 대리(proxy)로 **일수**를 쓴다. 실제 비용은 그 구간에 캡처가 얼마나
+# 있는지에 달렸으므로, 데이터가 없는 넓은 구간은 싼데도 줄을 선다. 그 요청은
+# 어차피 빨리 끝나 뒤를 오래 막지 않는다.
+RANGE_WIDE_SPAN_DAYS = int(os.environ.get("HOGA_RANGE_WIDE_SPAN_DAYS", "") or 30)
+
+# 상한 대기가 이 값을 넘으면 로그에 남긴다. 대기는 TTFB 에 그대로 포함되므로
+# (`request_timing`), 이 값이 없으면 다음 조사자가 **큐 대기를 계산 시간으로 읽는다**
+# — 이 세션이 정확히 그 오독을 한 번 하고 나서 프로브로 갈랐다.
+RANGE_QUEUE_WAIT_LOG_MS = 1000.0
+
+
+def _is_wide_range(from_date: str, to_date: str) -> bool:
+    """이 요청이 상한을 타는 "넓은 구간" 인가.
+
+    파싱 실패는 **좁은 것으로 본다**(= 상한 없음). 여기서 막아 봐야 얻는 것이 없고,
+    형식 오류는 바로 아래 `build_range_bundle` 이 400 으로 답하는 것이 계약이다.
+    이 함수가 그 판정을 앞당겨 흉내 내면 두 곳이 같은 규칙을 들고 갈라진다.
+    """
+    try:
+        d_from = datetime.strptime(from_date, "%Y%m%d").date()
+        d_to = datetime.strptime(to_date, "%Y%m%d").date()
+    except ValueError:
+        return False
+    return (d_to - d_from).days >= RANGE_WIDE_SPAN_DAYS
 
 
 def _parquet_path(
@@ -391,8 +469,18 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         ]
         return BrokerSeriesResponse(date=date, brokers=entries, source=source)
 
+    # 이 라우터(=이 앱 인스턴스)의 `/api/range` compute 상한. 모듈 전역이 아니라
+    # 클로저에 두는 이유는 테스트 격리다 — 앱을 새로 만들면 상한도 새것이라, 어느
+    # 테스트가 permit 을 흘려도 다음 테스트로 번지지 않는다.
+    #
+    # `anyio.CapacityLimiter` 는 **생성 시점에 이벤트 루프를 붙잡지 않는다**(실측:
+    # 루프 밖에서 만들어 서로 다른 `asyncio.run` 두 번에서 재사용 가능). 팩토리는
+    # uvicorn 루프가 뜨기 전에 돌고 `TestClient` 는 인스턴스마다 루프를 만드므로,
+    # 이 성질이 없으면 여기 두는 것 자체가 성립하지 않는다.
+    range_compute_limiter = anyio.CapacityLimiter(RANGE_COMPUTE_CONCURRENCY)
+
     @router.get("/range", response_model=RangeBundle)
-    def api_range(
+    async def api_range(
         code: Code,
         from_date: str = Query(..., alias="from"),
         to_date: str = Query(..., alias="to"),
@@ -449,51 +537,87 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                 400,
                 "broker_late_entry_start_hhmm must be between 900 and 1520",
             )
+        # 위 검증(400)은 **상한 밖**이다 — 잘못된 요청이 큐를 기다릴 이유가 없고,
+        # 기다리면 그 자리만큼 정상 요청이 밀린다.
         t0 = perf_debug.now()
-        try:
-            bundle = build_range_bundle(
-                engine,
-                code=code,
-                from_date=from_date,
-                to_date=to_date,
-                bucket_ms=bucket_ms,
-                source_pref=source_pref,
-                venue=venue,
-                broker_late_entries_enabled=broker_late_entries_enabled,
-                broker_late_entry_start_hhmm=broker_late_entry_start_hhmm,
-                volume_distribution_bins=volume_distribution_bins,
-                volume_distribution_price_min=volume_distribution_price_min,
-                volume_distribution_price_max=volume_distribution_price_max,
-                volume_distribution_cutoff_ms=volume_distribution_cutoff_ms,
-                trade_volume_poc_bins=trade_volume_poc_bins,
-                ask_peaks_enabled=ask_peaks_enabled,
-                bid_peaks_enabled=bid_peaks_enabled,
-                program_trade_enabled=program_trade_enabled,
-                trade_volume_poc_enabled=trade_volume_poc_enabled,
-                depth_heatmap_enabled=depth_heatmap_enabled,
-                depth_delta_enabled=depth_delta_enabled,
-                mode=mode,
-            )
-        except Exception:
-            # NOT gated on perf_debug. The success log below is performance
-            # instrumentation and belongs behind the flag; a failure is a
-            # defect report and must survive the default configuration.
-            # Gating both meant the traceback for a 500 existed only when a
-            # developer had already suspected this endpoint and restarted with
-            # HOGA_PERF_DEBUG set — i.e. the log was absent exactly when it
-            # was needed. ADR-0120 records four days lost to this failure class.
-            log.exception(
-                "hoga_perf api_range status=error code=%s from=%s to=%s bucket_ms=%s "
-                "mode=%s source_pref=%s duration_ms=%.1f",
-                code, from_date, to_date, bucket_ms, mode, source_pref,
-                perf_debug.elapsed_ms(t0),
-            )
-            raise
+        # 넓은 요청만 줄을 선다(상수 주석의 실측표 참조). 좁은 요청까지 같은 큐에
+        # 넣으면 하루짜리가 5개월짜리 뒤에 갇혀 **중앙값이 7배 나빠진다.**
+        gate: AbstractAsyncContextManager[object] = (
+            range_compute_limiter
+            if _is_wide_range(from_date, to_date)
+            else contextlib.nullcontext()
+        )
+        # 대기는 **이벤트 루프에서** 한다. 이 라우트가 `async def` 인 것이 그 조건이다:
+        # 동기 `def` 였다면 FastAPI 가 요청마다 스레드풀 스레드를 잡은 뒤 그 스레드
+        # 위에서 상한을 기다려, 대기자들이 40 토큰짜리 공용 풀을 채우고 **다른 동기
+        # 라우트까지 굶긴다**(/api/live/status 폴링 등이 같은 풀을 쓴다). 이제 스레드를
+        # 쥐는 것은 실제로 계산 중인 `RANGE_COMPUTE_CONCURRENCY` 개뿐이다.
+        async with gate:
+            queue_wait_ms = perf_debug.elapsed_ms(t0)
+            if queue_wait_ms >= RANGE_QUEUE_WAIT_LOG_MS:
+                # perf_debug 게이트를 걸지 않는다 — 이 줄이 없으면 slow-log 의
+                # duration 이 왜 큰지 알 길이 없고, 그건 조사자를 계산 최적화로
+                # 잘못 보낸다(상수 주석 참조).
+                log.warning(
+                    "hoga_perf api_range status=queued code=%s from=%s to=%s mode=%s "
+                    "queue_wait_ms=%.1f limit=%d",
+                    code, from_date, to_date, mode, queue_wait_ms,
+                    RANGE_COMPUTE_CONCURRENCY,
+                )
+            t_compute = perf_debug.now()
+            try:
+                bundle = await anyio.to_thread.run_sync(
+                    functools.partial(
+                        build_range_bundle,
+                        engine,
+                        code=code,
+                        from_date=from_date,
+                        to_date=to_date,
+                        bucket_ms=bucket_ms,
+                        source_pref=source_pref,
+                        venue=venue,
+                        broker_late_entries_enabled=broker_late_entries_enabled,
+                        broker_late_entry_start_hhmm=broker_late_entry_start_hhmm,
+                        volume_distribution_bins=volume_distribution_bins,
+                        volume_distribution_price_min=volume_distribution_price_min,
+                        volume_distribution_price_max=volume_distribution_price_max,
+                        volume_distribution_cutoff_ms=volume_distribution_cutoff_ms,
+                        trade_volume_poc_bins=trade_volume_poc_bins,
+                        ask_peaks_enabled=ask_peaks_enabled,
+                        bid_peaks_enabled=bid_peaks_enabled,
+                        program_trade_enabled=program_trade_enabled,
+                        trade_volume_poc_enabled=trade_volume_poc_enabled,
+                        depth_heatmap_enabled=depth_heatmap_enabled,
+                        depth_delta_enabled=depth_delta_enabled,
+                        mode=mode,
+                    ),
+                )
+            except Exception:
+                # NOT gated on perf_debug. The success log below is performance
+                # instrumentation and belongs behind the flag; a failure is a
+                # defect report and must survive the default configuration.
+                # Gating both meant the traceback for a 500 existed only when a
+                # developer had already suspected this endpoint and restarted with
+                # HOGA_PERF_DEBUG set — i.e. the log was absent exactly when it
+                # was needed. ADR-0120 records four days lost to this failure class.
+                #
+                # duration_ms 는 예전처럼 **요청 전체**(큐 대기 포함)이고,
+                # compute_ms 가 실제 계산이다. 둘을 나눠 두지 않으면 상한을 건 뒤의
+                # 느린 요청이 계산 결함처럼 읽힌다.
+                log.exception(
+                    "hoga_perf api_range status=error code=%s from=%s to=%s bucket_ms=%s "
+                    "mode=%s source_pref=%s duration_ms=%.1f queue_wait_ms=%.1f compute_ms=%.1f",
+                    code, from_date, to_date, bucket_ms, mode, source_pref,
+                    perf_debug.elapsed_ms(t0), queue_wait_ms,
+                    perf_debug.elapsed_ms(t_compute),
+                )
+                raise
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf api_range status=ok code=%s from=%s to=%s bucket_ms=%s "
                 "mode=%s source_pref=%s segments=%d candles=%d quote_ratio=%d "
-                "fill_strength=%d excluded=%d warnings=%d duration_ms=%.1f",
+                "fill_strength=%d excluded=%d warnings=%d duration_ms=%.1f "
+                "queue_wait_ms=%.1f compute_ms=%.1f",
                 code,
                 from_date,
                 to_date,
@@ -507,6 +631,8 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                 len(bundle.excluded_dates),
                 len(bundle.data_warnings),
                 perf_debug.elapsed_ms(t0),
+                queue_wait_ms,
+                perf_debug.elapsed_ms(t_compute),
             )
         return bundle
 
