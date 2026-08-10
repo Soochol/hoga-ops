@@ -96,6 +96,12 @@ WARNING_CLASSIFICATION: dict[str, tuple[LiveErrorKind | None, bool]] = {
     "fetch_budget_exhausted": ("deferred", True),
     # 받긴 받았는데 행 검증에 걸렸다(ADR-0020).
     "invariant_violation": ("data_quality", True),
+    # `/index-candles` 가 거버너 용량 한계에 걸려 HTTP 500 대신 경고로 강등한 것.
+    # `capacity_overloaded` 와 같은 부류(우리 쪽 큐)인데 **사유가 따로 있다** — 지수
+    # 경로가 프론트에서 '일시 지연' 으로 구분되기 때문이다(#1185 이전 결정).
+    # **이 사유는 `make_data_warning(reason_variable, …)` 로 들어가 리터럴 스캔이
+    # 못 봤다** — 등록 없이 폴백 `(None, True)` 로 떨어지고 있었다(2026-08-10 발견).
+    "index_kis_capacity_overloaded": ("deferred", True),
     # 디스크 파일 부재 — **배선 안 됨**이지 데이터 품질 문제가 아니다. 파일을 만들기
     # 전엔 재시도가 무의미하고 처방은 "수집을 돌려라" 다. `not_wired` 가 생기기 전에는
     # `data_quality` 로 뒀는데(Phase 1), 그 kind 는 "받긴 받았다" 를 함의해서 틀렸다.

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
+import type { WireDataWarning } from './dataWarnings';
 import { PAST_CANDLES_REFETCH_IN_BACKGROUND } from './livePastCandles';
 import type { LiveIndexId } from '../live/liveInstrument';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
@@ -36,10 +37,19 @@ export interface LiveIndexCandle {
   volume: number;
 }
 
-export interface LiveIndexCandlesWarning {
+export interface LiveIndexCandlesWarning extends WireDataWarning {
   batch: string;
   date?: string;
-  reason: 'rate_limit_upstream' | 'api_error' | 'invariant_violation' | 'index_minute_depth_limited';
+  reason:
+    | 'rate_limit_upstream'
+    | 'api_error'
+    | 'invariant_violation'
+    | 'index_minute_depth_limited'
+    // 거버너 용량 한계로 HTTP 500 대신 경고로 강등된 경우(`api.py::_kis_capacity_
+    // degraded_batch_warning`). **백엔드가 내보내는데 이 union 에 오래 없었다** —
+    // 사유가 변수로 들어가는 자리라 리터럴 스캔 가드가 못 봤고, ADR-0143 정리 중에
+    // 드러났다(2026-08-10).
+    | 'index_kis_capacity_overloaded';
   msg: string;
 }
 
