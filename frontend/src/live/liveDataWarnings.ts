@@ -18,20 +18,23 @@
  * 캔들이 0 이면서 벤더가 거절한 경우는 `candleEmptyState` 가 따로 소유한다.
  */
 
-/** 세 경로 경고의 공통 최소 형태 — 분류에 필요한 `reason`만 본다. */
-export interface LiveDataWarning {
-  reason: string;
-  msg?: string;
-}
+import { warningKind, type WireDataWarning } from '../api/dataWarnings';
 
-/** KIS 초당 한도(EGW00201)로 인한 지연/중단 경고인가?
- * - `rate_limit_upstream`: 재시도(_rate_limit_backoff) 소진 후 그 날짜 fetch 실패.
- * - `rate_limit_aborted`: 앞 날짜가 한도에 막혀(`blocked`) 후속 날짜를 KIS 안 두드리고 중단.
- * 나머지(`api_error`/`invariant_violation`/`cache_write_failed`)는
- * rate-limit 아님. */
-const RATE_LIMIT_REASONS: ReadonlySet<string> = new Set(['rate_limit_upstream', 'rate_limit_aborted']);
-export function isRateLimitReason(reason: string): boolean {
-  return RATE_LIMIT_REASONS.has(reason);
+/** 세 경로 경고의 공통 최소 형태. 진단 축은 `WireDataWarning` 이 소유한다. */
+export type LiveDataWarning = WireDataWarning;
+
+/**
+ * 유량 한도로 인한 지연/중단 경고인가? — **백엔드가 실은 `kind` 로 판정한다**(ADR-0143).
+ *
+ * 이관 전에는 사유 집합(`rate_limit_upstream` · `rate_limit_aborted`)을 프론트가
+ * 들고 있었다. 같은 사실의 6벌 중 하나였고, #1251 이 그 부류의 사고였다.
+ *
+ * **동작은 동등하다.** 백엔드 분류표에서 `rate_limit` 인 사유가 정확히 그 둘이다.
+ * `capacity_overloaded` 는 같은 PR 에서 `deferred` 로 고쳤다 — 큐 포화는 우리 쪽이라
+ * "호출 한도" 문구가 거짓이 되기 때문이고, 이관 전 이 집합에도 없었다.
+ */
+export function isRateLimitWarning(warning: LiveDataWarning): boolean {
+  return warningKind(warning) === 'rate_limit';
 }
 
 export interface WarningSummary {
@@ -58,7 +61,7 @@ export function summarizeWarnings(
   }
   return {
     count: warnings.length,
-    hasRateLimit: warnings.some((w) => isRateLimitReason(w.reason)),
+    hasRateLimit: warnings.some(isRateLimitWarning),
     firstMsg: warnings.find((w) => w.msg)?.msg ?? null,
   };
 }

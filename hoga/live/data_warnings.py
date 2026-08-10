@@ -43,7 +43,14 @@ WARNING_CLASSIFICATION: dict[str, tuple[LiveErrorKind | None, bool]] = {
     # ── error_policy 산출 (전부 실패) ──────────────────────────────────────
     "transport_error": ("transport", True),
     "rate_limit_upstream": ("rate_limit", True),
-    "capacity_overloaded": ("rate_limit", True),
+    # ⚠ **여기만 `policy.kind` 와 일부러 다르다** — 두 kind 는 축이 다르다.
+    # `error_policy` 의 `kind="rate_limit"` 은 **처방 축**이다(백오프 없이 1초 뒤
+    # 재시도). 반면 이 표는 **표시 축**이라 "누가 거절했나" 를 말해야 하는데,
+    # 큐 포화는 **우리 쪽**이고 벤더는 이 구간을 거절한 적이 없다. `rate_limit` 으로
+    # 표시하면 "호출 한도" 문구가 붙어 묻지도 않은 쪽에 책임을 지운다 —
+    # `fetch_budget_exhausted` 와 같은 부류이고, 프론트 `candleEmptyState` 의
+    # `DEFERRED_FETCH_REASONS` 가 이미 둘을 **한 집합에** 묶어 두었다.
+    "capacity_overloaded": ("deferred", True),
     "api_error": ("vendor_api", True),
     "auth_error": ("auth", True),
     "batch_limit_exceeded": ("batch_limit", True),

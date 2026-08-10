@@ -91,7 +91,7 @@ def test_scanner_actually_finds_reasons() -> None:
         (KiwoomBatchLimitError(code=5, msg="1634"), "batch_limit_exceeded"),
         (KiwoomAuthError("no token"), "auth_error"),
         (KiwoomApiError(code=3, msg="rejected"), "api_error"),
-        (KiwoomCapacityOverloaded("full"), "capacity_overloaded"),
+        # `KiwoomCapacityOverloaded` 는 **일부러 뺐다** — 아래 비대칭 테스트가 소유한다.
     ],
 )
 def test_policy_kind_matches_classification_table(exc: BaseException, reason: str) -> None:
@@ -109,6 +109,30 @@ def test_policy_kind_matches_classification_table(exc: BaseException, reason: st
         f"{type(exc).__name__}: policy.kind={policy.kind!r} 인데 "
         f"분류표는 {table_kind!r} 이다"
     )
+    assert is_failure is True
+
+
+def test_capacity_overload_kind_intentionally_differs_from_policy() -> None:
+    """**의도적 비대칭 — 이 사유 하나뿐이다.** 두 kind 는 축이 다르다.
+
+    `error_policy` 의 `kind="rate_limit"` 은 **처방 축**이다: 백오프 없이 1초 뒤
+    재시도하라는 뜻이고, 그건 옳다. 반면 wire kind 는 **표시 축**이라 "누가
+    거절했나" 를 말한다 — 큐 포화는 **우리 쪽**이고 벤더는 이 구간을 거절한 적이
+    없다.
+
+    `rate_limit` 으로 표시하면 프론트가 "호출 한도로 지연" 문구를 붙여 묻지도 않은
+    쪽에 책임을 지운다. `candleEmptyState` 가 `capacity_overloaded` 를
+    `fetch_budget_exhausted` 와 **한 집합**(`DEFERRED_FETCH_REASONS`)에 둔 것이
+    이 판정의 근거다.
+
+    이 테스트가 없으면 위 parametrize 에서 빠진 것이 **누락처럼 보인다.**
+    """
+    policy = classify_live_error(KiwoomCapacityOverloaded("full"))
+    table_kind, is_failure = classify_warning_reason("capacity_overloaded")
+
+    assert policy.reason == "capacity_overloaded"
+    assert policy.kind == "rate_limit"  # 처방 축 — retry_after 1s
+    assert table_kind == "deferred"  # 표시 축 — 벤더에게 묻지 않았다
     assert is_failure is True
 
 

@@ -311,7 +311,10 @@ async def test_live_minute_candle_backfill_reports_capacity_overload(tmp_path, k
         {
             "date": "20260518",
             "reason": "capacity_overloaded",
-            "kind": "rate_limit",
+            # `policy.kind` 는 `rate_limit`(처방 축)인데 wire kind 는 `deferred`
+            # (표시 축)다 — 유일한 의도적 비대칭. 근거는 `test_data_warnings.py`
+            # ::test_capacity_overload_kind_intentionally_differs_from_policy.
+            "kind": "deferred",
             "is_failure": True,
             "msg": "request queue is full; this date was not requested",
         }

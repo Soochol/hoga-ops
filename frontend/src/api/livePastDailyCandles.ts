@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
+import type { WireDataWarning } from './dataWarnings';
 import { PAST_CANDLES_REFETCH_IN_BACKGROUND } from './livePastCandles';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -14,7 +15,7 @@ export interface LivePastDailyCandle {
   volume: number;
 }
 
-export interface LivePastDailyCandlesWarning {
+export interface LivePastDailyCandlesWarning extends WireDataWarning {
   batch: string;
   /** Present when the warning is per-row (e.g. invariant_violation); absent on
    * batch-level failures like rate_limit_upstream / api_error. */

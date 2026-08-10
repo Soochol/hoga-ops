@@ -2,6 +2,7 @@ import { useEffect, useMemo, useReducer, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiCall } from './client';
+import type { WireDataWarning } from './dataWarnings';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
 
@@ -14,7 +15,7 @@ export interface LivePastCandle {
   volume: number;
 }
 
-export interface LivePastCandlesWarning {
+export interface LivePastCandlesWarning extends WireDataWarning {
   date: string;
   reason: string;
   msg: string;
