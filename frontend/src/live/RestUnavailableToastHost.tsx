@@ -15,7 +15,9 @@ const COPY = {
   transport: {
     title: WARNING_CAUSE.transport,
     body: '시세 서버에 연결할 수 없습니다. 저장 데이터로 표시할 수 있습니다',
-    status: '재시도 중',
+    // 계층을 문구에 드러낸다(ADR-0143 §5-B) — 종목 도트의 "실시간 재연결 중" 과
+    // 다른 계층이다. 예전엔 둘 다 "재…중" 이라 무엇이 다른지 화면이 말하지 않았다.
+    status: '과거 조회 재시도 중',
   },
   congestion: {
     // ⚠ `rate_limit` 원인 명사구는 아직 표면마다 다르다 — 스크리너는

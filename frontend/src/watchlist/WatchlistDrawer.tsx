@@ -308,7 +308,10 @@ function RowTrailing(props: {
     <span className="relative grid place-items-center" style={{ minWidth: '1.25rem', minHeight: '1.25rem' }}>
       {showDot && (
         <span className="col-start-1 row-start-1 group-hover:opacity-0 group-focus-within:opacity-0 transition-opacity">
-          <CollectionDot status={props.status} />
+          {/* 라벨은 끈다 — 이 슬롯은 `minWidth: 1.25rem` 이고 `⋯` 와 겹쳐 있어,
+              라벨이 들어오면 종목명을 52 → 13px 로 뭉갠다(2026-08-10 실측).
+              문구는 `title`·`aria-label` 이 그대로 전달한다. */}
+          <CollectionDot status={props.status} showLabel={false} />
         </span>
       )}
       <button
