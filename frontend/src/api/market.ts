@@ -305,7 +305,10 @@ export interface InvestorFlowResponse {
   unit: string;
   /** 확정 파일 존재로 파생된다 — 저장된 플래그가 아니다(#1115). */
   confirmed: boolean;
-  coverage: InvestorFlowCoverage;
+  /** 시장 라벨 → 커버리지. **시장별인 것이 계약**이다 — 한 덩어리로 세면 분자만
+   *  두 시장 합이 되어 2배가 되고(30초 폴로 하루를 채우면 200%), 같은 사이클의 두
+   *  표본이 거의 같은 시각이라 간격이 0 에 수렴해 갭이 영영 안 잡힌다. */
+  coverage: Record<string, InvestorFlowCoverage>;
   markets: Record<string, InvestorFlowPoint[]>;
 }
 
