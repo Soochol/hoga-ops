@@ -1,15 +1,12 @@
 import type { StudyViewReference } from '../api/studyViews';
 import type { LiveEffectiveSession } from '../api/livePastCandles';
 import { TIMEFRAME_TO_MS, type Candle, type RangeBundle, type Timeframe, type VolumeProfile } from '../api/types';
-import { aggregateCalendar, aggregateCandles, keepRegularSessionCandles } from '../live/aggregateCandles';
-import { mergeCalendarCandlesByPriority } from '../live/candleSourceMerge';
+import { aggregateCalendar, aggregateCandles } from '../live/aggregateCandles';
 import { buildChartBundle } from '../live/buildLiveBundle';
 import {
-  initialHistoricalDaysFor,
   realMsToYyyymmdd,
   regularSessionCloseMs,
   regularSessionOpenMs,
-  subtractDaysKst,
 } from '../live/liveDateTime';
 import {
   effectiveSessionBoundsByDate,
@@ -39,15 +36,15 @@ export type StudyReferenceQueryInputs = {
     to: string | null;
     timeframe: Timeframe | null;
   };
-  // 디스크 캔들(/api/range mode=candles) — 항상 활성. 분봉이면 저장 타임프레임,
-  // D/W/M이면 '1m'을 받아 프론트에서 캘린더 집계.
+  // 디스크 캔들(/api/range mode=candles) — **분봉 저장에서만 활성**(D/W/M은 null).
+  // 캘린더 봉은 스크리너 일봉만 쓴다(`aggregateReferenceCandles` 주석).
   candles: {
     code: string | null;
     from: string | null;
     to: string | null;
     timeframe: Timeframe | null;
   };
-  // 스크리너 일봉(디스크 parquet) — D/W/M 갭 채움 전용.
+  // 스크리너 일봉(디스크 parquet) — **D/W/M 화면의 유일한 소스**(예전엔 갭 채움용).
   screenerDaily: {
     code: string | null;
     from: string | null;
@@ -67,10 +64,6 @@ const EMPTY_VOLUME_PROFILE: VolumeProfile = {
   bin_width: 0,
   bins: [],
 };
-
-function laterDate(a: string, b: string): string {
-  return a >= b ? a : b;
-}
 
 function kisBarToCandle(c: StudyReferenceKisBar): Candle {
   return { ts_ms: c.t_ms, open: c.open, high: c.high, low: c.low, close: c.close, vol_a: c.volume, vol_b: 0 };
@@ -103,9 +96,8 @@ function emptyRangeBundle(code: string, fromDate: string, toDate: string, bucket
 /**
  * 캘린더 봉 맥락 창(`studyDailyContext`). null = 저장 구간으로 클립(분봉 경로).
  *
- * 값이 있으면 **screenerDaily 창만** 넓히고 클립도 같은 창으로 푼다. 1분봉
- * (hogaplay) 창은 손대지 않는다 — 그쪽 캡은 의도된 방어고, 캡 밖은 screenerDaily 가
- * 덮는다는 계약이 아래 `dailyFrom` 주석에 이미 적혀 있다.
+ * 값이 있으면 screenerDaily 창을 넓히고 클립도 같은 창으로 푼다. 캘린더 봉의
+ * 소스가 screenerDaily 하나뿐이므로, 이 창이 곧 화면 범위다.
  */
 export function studyReferenceQueryInputs(
   save: StudyViewReference | null,
@@ -114,11 +106,6 @@ export function studyReferenceQueryInputs(
   const timeframe = save?.timeframe ?? null;
   const isMinute = timeframe ? isMinuteTimeframe(timeframe) : false;
   const bucketMs = timeframe && isMinute ? TIMEFRAME_TO_MS[timeframe as Timeframe] : 60_000;
-  // D/W/M: hogaplay 1m 요청 창은 저장 구간, 단 to 기준 타임프레임별 캡(월봉 ~10년
-  // 1m 전량 요청 방지). 캡 밖·캡처 공백은 screenerDaily가 저장 구간 전체를 커버해 채운다.
-  const dailyFrom = save && !isMinute
-    ? laterDate(save.range.from_date, subtractDaysKst(save.range.to_date, initialHistoricalDaysFor(save.timeframe)))
-    : null;
 
   return {
     isMinute,
@@ -129,11 +116,17 @@ export function studyReferenceQueryInputs(
       to: save && isMinute ? save.range.to_date : null,
       timeframe: save && isMinute ? (save.timeframe as Timeframe) : null,
     },
+    // ⚠ **분봉 저장에서만 켠다.** D/W/M 은 예전에 여기서 1분봉을 저장 구간만큼
+    // 받아 프론트에서 일봉으로 접고 screenerDaily 로 갭을 채웠다(hogaplay 우선).
+    // 그 병합을 걷어낸 이유는 `aggregateReferenceCandles` 주석에 있다 — 요약하면
+    // **두 소스의 주가 기준이 달라 섞으면 안 되고**(액면분할 종목에서 봉 하나가
+    // 1/5로 튀었다), 섞어서 얻던 것도 사실상 없었다(5종목 실측: hogaplay 에만
+    // 있는 날짜 0, OHLC 불일치 1~3%).
     candles: {
-      code: save ? save.code : null,
-      from: save ? (isMinute ? save.range.from_date : dailyFrom) : null,
-      to: save ? save.range.to_date : null,
-      timeframe: save ? (isMinute ? (save.timeframe as Timeframe) : '1m') : null,
+      code: save && isMinute ? save.code : null,
+      from: save && isMinute ? save.range.from_date : null,
+      to: save && isMinute ? save.range.to_date : null,
+      timeframe: save && isMinute ? (save.timeframe as Timeframe) : null,
     },
     screenerDaily: {
       code: save && !isMinute ? save.code : null,
@@ -164,16 +157,29 @@ function aggregateReferenceCandles({
     return aggregateCandles(raw, TIMEFRAME_TO_MS[save.timeframe as Timeframe] / 1000).map(kisBarToCandle);
   }
 
-  // D/W/M: hogaplay 1m을 정규장 필터 후 일봉 집계 → 스크리너 일봉으로 갭 채움(hogaplay 우선).
-  // 일(D) granularity에서 병합해 캡 경계·캡처 공백의 부분 버킷을 스크리너가 날짜 단위로 메꾼 뒤,
-  // W/M이면 병합 결과를 다시 캘린더 집계한다.
-  const oneMinBars = rangeCandles.map(candleToBar).sort((a, b) => a.t_ms - b.t_ms);
-  const hogaDaily = aggregateCalendar(keepRegularSessionCandles(oneMinBars), 'D').map(kisBarToCandle);
+  // D/W/M: **스크리너 일봉만** 쓴다. W/M 이면 그 일봉을 캘린더 집계한다.
+  //
+  // 예전에는 hogaplay 1분봉을 정규장 필터 후 일봉으로 접고 스크리너로 갭을 채웠다
+  // (hogaplay 우선). 그 병합을 걷어냈다 — 실측이 두 가지를 보여줬기 때문이다.
+  //
+  // **① 두 소스는 주가 기준이 다르다. 섞으면 봉이 튄다.** 스크리너는 수정주가,
+  // hogaplay 1분봉은 그날의 원주가다. 5:1 액면분할 종목(010120)에서 hogaplay 캡처가
+  // 없는 하루가 스크리너 값으로 채워지며 close 가 293,000 → **57,300** → 278,500 으로
+  // 꽂혔다. 다른 종목에서 안 보였던 건 분할이 없어서지 병합이 안전해서가 아니다
+  // — 그 종목들도 스크리너로 채우는 날이 13~24일씩 있었다.
+  //
+  // **② 섞어서 얻던 것이 사실상 없었다.** 5종목·5개월 실측에서 hogaplay 에만 있는
+  // 날짜는 **한 종목도 없었고**(스크리너가 항상 덮는다), OHLC 불일치는 1~3% 였다
+  // (high/low/close 는 완전 일치, open 만 하루). 유일하게 일관되게 달랐던 거래량은
+  // hogaplay 쪽이 **항상 적었다**(3.5~28%) — 캡처가 불완전하다는 뜻이라, 우선할
+  // 이유가 아니라 우선하지 말아야 할 이유다.
+  //
+  // 대가: 캘린더 봉은 수정주가, 분봉은 원주가로 갈린다. 다만 **그 분기는 이 변경이
+  // 만든 것이 아니다** — 이전에는 같은 갈림이 한 차트 **안에서** 일어났다.
   const screenerDaily = [...screenerDailyCandles].sort((a, b) => a.t_ms - b.t_ms).map(kisBarToCandle);
-  const mergedDaily = mergeCalendarCandlesByPriority(hogaDaily, screenerDaily, 'D');
-  if (save.timeframe === 'D') return mergedDaily;
-  const mergedBars = mergedDaily.map(candleToBar);
-  return aggregateCalendar(mergedBars, save.timeframe as CalendarTimeframe).map(kisBarToCandle);
+  if (save.timeframe === 'D') return screenerDaily;
+  const dailyBars = screenerDaily.map(candleToBar);
+  return aggregateCalendar(dailyBars, save.timeframe as CalendarTimeframe).map(kisBarToCandle);
 }
 
 export function buildStudyReferenceBundleModel({

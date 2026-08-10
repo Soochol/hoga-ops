@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import type { Candle, RangeBundle } from '../api/types';
-import { initialHistoricalDaysFor, subtractDaysKst } from '../live/liveDateTime';
 import { buildStudyReferenceBundleModel, studyReferenceQueryInputs } from './studyReferenceBundleModel';
 
 const save: StudyViewReference = {
@@ -60,29 +59,28 @@ describe('studyReferenceBundleModel', () => {
     });
   });
 
-  it('derives query inputs for calendar reference saves (1m disk candles + screener gap-fill)', () => {
+  it('캘린더 저장은 **스크리너 일봉만** 요청한다 (1분봉 입력이 전부 null)', () => {
     expect(studyReferenceQueryInputs({ ...save, timeframe: 'D' })).toMatchObject({
       isMinute: false,
       range: { code: null, from: null, to: null, timeframe: null },
-      candles: { code: '005930', from: '20260616', to: '20260618', timeframe: '1m' },
+      // 예전엔 여기가 `{ code, from, to, timeframe: '1m' }` 이었다 —
+      // 일봉 98개를 그리려고 1분봉 36,000개를 받던 경로(`aggregateReferenceCandles` 주석).
+      candles: { code: null, from: null, to: null, timeframe: null },
       screenerDaily: { code: '005930', from: '20260616', to: '20260618' },
     });
   });
 
-  it('caps the daily 1m candle window to the live initial calendar window; screener covers the full range', () => {
+  it('구간이 아무리 넓어도 1분봉을 요청하지 않는다 — 캡이 아니라 부재다', () => {
+    // 예전에는 `initialHistoricalDaysFor` 캡으로 "월봉 10년치 1분봉 전량 요청" 을
+    // 막았다. 이제 캘린더 봉은 그 쿼리를 아예 안 걸므로 캡이 지킬 것이 없다.
     const to = '20260618';
     expect(studyReferenceQueryInputs({
       ...save,
-      timeframe: 'D',
+      timeframe: 'M',
       range: { ...save.range, from_date: '20200101', to_date: to },
     })).toMatchObject({
-      candles: {
-        code: '005930',
-        from: subtractDaysKst(to, initialHistoricalDaysFor('D')),
-        to,
-        timeframe: '1m',
-      },
-      // 스크리너 일봉은 캡 밖(2020~)까지 저장 구간 전체를 커버해 갭을 채운다.
+      candles: { code: null, from: null, to: null, timeframe: null },
+      // 스크리너 일봉은 저장 구간 전체를 그대로 커버한다.
       screenerDaily: { code: '005930', from: '20200101', to },
     });
   });
@@ -140,46 +138,57 @@ describe('studyReferenceBundleModel', () => {
     });
   });
 
-  it('aggregates hogaplay 1m into daily bars, filtering non-regular-session bars', () => {
-    // 09:00 KST = 00:00 UTC; 16:30 KST = 07:30 UTC (장 마감 이후, 제외돼야 함).
-    const inSessionOpen = Date.UTC(2026, 5, 16, 0, 0);
-    const inSessionMid = Date.UTC(2026, 5, 16, 1, 0);
-    const afterClose = Date.UTC(2026, 5, 16, 7, 30);
+  it('캘린더 봉은 hogaplay 1분봉을 **무시한다** — 넘겨도 화면에 안 들어온다', () => {
+    // 09:00 KST = 00:00 UTC. 예전에는 이 바들이 정규장 필터를 거쳐 일봉으로
+    // 집계됐다. 이제 캘린더 경로는 1분봉을 아예 안 받으므로(쿼리가 비활성),
+    // 설령 넘어와도 무시하는 것이 계약이다.
     const model = buildStudyReferenceBundleModel({
       save: { ...save, timeframe: 'D', range: { ...save.range, from_date: '20260616', to_date: '20260616' } },
       venue: 'KRX',
       pastBundle: null,
       rangeCandles: [
-        candle(inSessionOpen, 1, 2, 1, 2, 10),
-        candle(inSessionMid, 3, 9, 3, 5, 5),
-        candle(afterClose, 100, 200, 100, 150, 99), // 정규장 밖 → OHLC에 반영 안 됨
+        candle(Date.UTC(2026, 5, 16, 0, 0), 1, 2, 1, 2, 10),
+        candle(Date.UTC(2026, 5, 16, 1, 0), 3, 9, 3, 5, 5),
       ],
       screenerDailyCandles: [],
     });
 
-    // 정규장 두 바만 집계: open=1, high=9, low=1, close=5, vol=15.
-    expect(model.bundle?.candles).toHaveLength(1);
-    expect(model.bundle?.candles[0]).toMatchObject({ open: 1, high: 9, low: 1, close: 5 });
+    expect(model.bundle?.candles).toEqual([]);
   });
 
-  it('prefers hogaplay daily and fills capture gaps with screener daily', () => {
+  it('주가 기준이 다른 두 소스를 **섞지 않는다** — 분할 종목의 봉 스파이크 회귀', () => {
+    // 이 PR 을 낳은 실측(010120, 5:1 액면분할): 스크리너는 수정주가, hogaplay
+    // 1분봉은 그날의 원주가다. 예전 병합은 hogaplay 를 우선하고 없는 날만 스크리너로
+    // 채웠는데, 그 하루가 close 293,000 → **57,300** → 278,500 으로 꽂혔다.
+    //
+    // 여기서는 그 모양을 그대로 재현한다: hogaplay 가 이틀만 있고(원주가 배수 5),
+    // 가운데 하루가 비었다. 병합이 살아 있으면 가운데만 1/5 로 튄다.
     const d16 = Date.UTC(2026, 5, 16, 0, 0);
     const d17 = Date.UTC(2026, 5, 17, 0, 0);
+    const d18 = Date.UTC(2026, 5, 18, 0, 0);
     const model = buildStudyReferenceBundleModel({
-      save: { ...save, timeframe: 'D', range: { ...save.range, from_date: '20260616', to_date: '20260617' } },
+      save: { ...save, timeframe: 'D', range: { ...save.range, from_date: '20260616', to_date: '20260618' } },
       venue: 'KRX',
       pastBundle: null,
-      // hogaplay 1m는 20260616만 캡처됨.
-      rangeCandles: [candle(d16, 1, 4, 1, 4, 10)],
-      // 스크리너 일봉은 두 날짜 모두 있으나 20260616은 hogaplay가 이겨야 함.
+      // hogaplay 원주가 — 20260617 만 캡처 공백.
+      rangeCandles: [
+        candle(d16, 250_000, 300_000, 250_000, 293_000, 10),
+        candle(d18, 250_000, 300_000, 250_000, 278_500, 10),
+      ],
+      // 스크리너 수정주가 — 세 날 모두 있고, 전부 1/5 스케일이다.
       screenerDailyCandles: [
-        { t_ms: d16, open: 90, high: 99, low: 90, close: 999, volume: 1 },
-        { t_ms: d17, open: 50, high: 55, low: 45, close: 50, volume: 2 },
+        { t_ms: d16, open: 50_000, high: 60_000, low: 50_000, close: 58_600, volume: 1 },
+        { t_ms: d17, open: 50_000, high: 60_000, low: 50_000, close: 57_300, volume: 2 },
+        { t_ms: d18, open: 50_000, high: 60_000, low: 50_000, close: 55_700, volume: 3 },
       ],
     });
 
-    // 20260616 = hogaplay close 4, 20260617 = screener close 50 (갭 채움).
-    expect(model.bundle?.candles.map((c) => c.close)).toEqual([4, 50]);
+    // 전부 스크리너(수정주가) — 한 축으로 일관된다.
+    expect(model.bundle?.candles.map((c) => c.close)).toEqual([58_600, 57_300, 55_700]);
+    // 병합이 되살아나면 [293000, 57300, 278500] 이 되어 가운데가 1/5 로 튄다.
+    const closes = model.bundle?.candles.map((c) => c.close) ?? [];
+    const maxRatio = Math.max(...closes) / Math.min(...closes);
+    expect(maxRatio).toBeLessThan(2);
   });
 
   it('builds calendar bundles from screener daily alone when no hogaplay capture exists', () => {
@@ -251,14 +260,11 @@ describe('studyReferenceBundleModel — 캘린더 맥락 창(studyDailyContext)'
     expect(minute.chartBundle?.to_date).toBe('20260618');
   });
 
-  it('창은 screenerDaily 쿼리만 넓힌다 — 1분봉(hogaplay) 창은 캡을 유지한다', () => {
+  it('창은 screenerDaily 쿼리만 넓힌다 — 이제 그것이 캘린더 봉의 유일한 소스다', () => {
     const inputs = studyReferenceQueryInputs(dailySave, window);
 
     expect(inputs.screenerDaily).toMatchObject({ from: '20260601', to: '20260630' });
-    // candles(1m)의 from 은 캡 계산 그대로여야 한다(창과 무관).
-    expect(inputs.candles.from).toBe(
-      studyReferenceQueryInputs(dailySave).candles.from,
-    );
-    expect(inputs.candles.to).toBe('20260618');
+    // 1분봉은 캘린더 봉에서 아예 안 걸린다 — 창이 있든 없든 null 이다.
+    expect(inputs.candles).toMatchObject({ code: null, from: null, to: null });
   });
 });

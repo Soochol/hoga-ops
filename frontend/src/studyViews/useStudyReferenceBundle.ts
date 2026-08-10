@@ -6,7 +6,7 @@ import type { LiveDataWarning } from '../live/liveDataWarnings';
 import type { LiveEffectiveSession } from '../api/livePastCandles';
 import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
-import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import type { LiveTimeframe } from '../state/livePage';
 import type { IndicatorSettings } from '../state/indicatorSettingsV2';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { buildStudyReferenceBundleModel } from './studyReferenceBundleModel';
@@ -167,43 +167,28 @@ export function useStudyReferenceBundles(
         dailyContext: plan.dailyContext,
       });
 
-      // 캘린더 봉(D/W/M)에서 스크리너 일봉이 이미 캔들을 줬는가.
-      //
-      // 이 술어 하나가 **로딩 게이트와 에러 게이트를 둘 다** 움직인다. 둘을 따로
-      // 두면 "그려 놓고 나서 에러로 뒤집히는" 비대칭이 생긴다 — 뒤늦은 rangeCandles
-      // 실패는 정확히 우리가 없애려는 그 경합에서 가장 잘 나는 실패다.
-      const calendarPaintedFromScreener =
-        !isMinuteTimeframe(plan.win.timeframe) &&
-        ((screenerDaily.data as { candles?: unknown[] } | undefined)?.candles?.length ?? 0) > 0;
-
       out[plan.win.windowId] = {
         bundle: model.bundle,
         chartBundle: model.chartBundle,
         // 사이드카(최대벽·POC·거래량분포·프로그램매매)도 첫 커밋에 캔들과 함께 등장하도록
         // 풀스크린 게이트에 포함(개선안 1-C). 비활성 쿼리는 react-query v5에서 isLoading=false라
-        // 분봉/캘린더 저장을 단일식으로 커버한다(분봉=pastHoga+rangeCandles+sidecars,
-        // D/W/M=rangeCandles+screenerDaily). data==null 조건: 에러/캐시 히트로 settle되면 즉시 열림.
+        // 분봉/캘린더 저장을 단일식으로 커버한다. data==null 조건: 에러/캐시 히트로
+        // settle되면 즉시 열림.
         //
-        // **캘린더 봉은 rangeCandles 를 기다리지 않는다.** 그쪽은 일봉 98개를 그리려고
-        // 1분봉 36,000개(3.6MB)를 받아 프론트에서 접는 경로라 같은 화면을 스크리너
-        // 일봉(10KB·수백 ms)보다 수십 배 늦게 준다. 먼저 그리고, 1분봉이 도착하면
-        // `mergeCalendarCandlesByPriority` 가 hogaplay 우선으로 덧칠한다. 병합은
-        // 버킷 키 합집합이라 봉 개수가 사실상 안 변하고, 뷰포트 복원은 첫 캔들 커밋
-        // 1회뿐이라(`LiveChartRoot` 의 `lastAppliedCountRef`) 덧칠이 화면을 흔들지 않는다.
-        //
-        // ⚠ 이 게이트가 **못 보는 것**: 스크리너에 없고 hogaplay 에만 있는 날짜.
-        // 그런 구간은 덧칠이 곧 화면 전부이므로 스크리너가 비면(`…FromScreener` false)
-        // 예전처럼 rangeCandles 를 기다린다. 분봉 저장은 아무것도 달라지지 않는다.
+        // 여기 있던 "캘린더 봉은 rangeCandles 를 기다리지 않는다" 예외는 **사라졌다.**
+        // 그 예외는 캘린더 봉이 1분봉 36,000개를 받던 시절, 화면을 스크리너로 먼저
+        // 그리기 위한 것이었다. 이제 캘린더 봉은 그 쿼리를 **아예 걸지 않으므로**
+        // (`studyReferenceQueryInputs`) 기다릴 것이 없고, 술어는 항상 false 인
+        // 죽은 코드가 됐다. 같은 목적이 예외가 아니라 구조로 달성된 셈이다:
+        //   분봉    = pastHoga + rangeCandles + sidecars   (screenerDaily 비활성)
+        //   D/W/M   = screenerDaily                        (나머지 셋 비활성)
         isLoading:
           pastHoga.isLoading ||
-          (rangeCandles.isLoading && !calendarPaintedFromScreener) ||
+          rangeCandles.isLoading ||
           screenerDaily.isLoading ||
           (pastSidecars.isLoading && pastSidecars.data == null),
-        // 로딩 게이트와 **같은 술어로** 막는다: 이미 그려 놓은 캘린더 차트를 뒤늦은
-        // 1분봉 실패가 통째로 에러 화면으로 바꾸지 않는다. 스크리너가 비어 화면이
-        // rangeCandles 에 달려 있을 때는 그대로 치명적이다.
         error: (pastHoga.error
-          ?? (calendarPaintedFromScreener ? null : rangeCandles.error)
+          ?? rangeCandles.error
           ?? screenerDaily.error
           ?? pastSidecars.error
           ?? null) as Error | null,
