@@ -229,9 +229,10 @@ describe('useWarmStudyReferenceTabQueries', () => {
     expect(signals.get('005930')?.aborted).toBe(false);
   });
 
-  it('탭마다 **그 종목의** 유효 venue 로 조회한다', async () => {
-    // 활성 탭 하나로 해석하면 다른 종목의 워밍이 엉뚱한 venue 로 나가 캐시 키가
-    // 어긋난다 — 재fetch 를 막으려던 워밍이 정확히 재fetch 를 만든다.
+  it('스토어가 뭐든 모든 탭을 KRX 로 워밍한다 (ADR-0144)', async () => {
+    // 워밍 venue 가 활성 경로와 다르면 탭 전환에서 캐시가 안 맞아 재fetch 된다 —
+    // 워밍이 막으려던 것을 정확히 만든다. 양쪽이 같은 상수를 읽으므로 종목이 달라도
+    // (NXT 상장 005930 · 미상장 000660) 요청은 전부 KRX 다.
     useLiveVenueStore.setState({ venue: 'UN' });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     seedSymbolMaster(client, [symbolHit('005930', true), symbolHit('000660', false)]);
@@ -256,12 +257,11 @@ describe('useWarmStudyReferenceTabQueries', () => {
 
     await waitFor(() => {
       const urls = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
-      // NXT 상장 종목은 선택값(UN) 그대로.
-      expect(urls.some((u) => u.includes('code=005930') && u.includes('venue=UN'))).toBe(true);
-      // 미상장 종목은 KRX 로 강등된다 — UN 요청이 **한 건도** 나가면 안 된다
-      // (백엔드에 `kiwoom_live/UN/` 이 없어 빈 200 이 온다).
+      expect(urls.some((u) => u.includes('code=005930') && u.includes('venue=KRX'))).toBe(true);
       expect(urls.some((u) => u.includes('code=000660') && u.includes('venue=KRX'))).toBe(true);
-      expect(urls.some((u) => u.includes('code=000660') && u.includes('venue=UN'))).toBe(false);
+      // 선택값(UN)이 **한 건도** 새어 나가면 안 된다.
+      expect(urls.some((u) => u.includes('venue=UN'))).toBe(false);
+      expect(urls.some((u) => u.includes('venue=NXT'))).toBe(false);
     });
   });
 

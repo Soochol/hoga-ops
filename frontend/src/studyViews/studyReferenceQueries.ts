@@ -9,7 +9,9 @@ import type { StudyDailyContextWindow } from './studyDailyContext';
 export type StudyReferenceQuerySettings = {
   /** undefined = 설정 로딩 중 → `rangeBundleQueryOptions` 가 `enabled=false` 로 막는다. */
   sourcePref: SourcePreference | undefined;
-  /** 복기 거래소 — 공유 `live.venue.v1` 스토어(ADR-0140 §7). */
+  /** 복기 거래소. `/study` 는 항상 KRX 다(`studyVenuePolicy`, ADR-0144) — 호출부가
+   *  `STUDY_VENUE` 를 넘긴다. 순수 함수 쪽에서 상수를 다시 박지 않는 이유는 정책을
+   *  되돌릴 때 **고칠 곳이 하나**여야 하기 때문이다. */
   venue: LiveVenueOption;
   brokerLateEntryEnabled: boolean;
   brokerLateEntryStartHHMM: number;

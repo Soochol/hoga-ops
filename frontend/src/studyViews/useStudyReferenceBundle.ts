@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 
-import { useLiveVenueStore } from '../state/liveVenue';
-import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
 import type { LiveDataWarning } from '../live/liveDataWarnings';
 import type { LiveEffectiveSession } from '../api/livePastCandles';
@@ -13,6 +11,7 @@ import type { IndicatorSettings } from '../state/indicatorSettingsV2';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { buildStudyReferenceBundleModel } from './studyReferenceBundleModel';
 import { studyDailyContextWindow, type StudyDailyContextWindow } from './studyDailyContext';
+import { STUDY_VENUE } from './studyVenuePolicy';
 import { studyReferenceQueryOptions } from './studyReferenceQueries';
 
 function mergeStudyRangeBundles(
@@ -70,29 +69,21 @@ export type StudyReferenceBundleResult = {
  * **키가 같은 창끼리는 react-query 가 알아서 dedupe** 한다. 같은 봉·같은 지표 창을
  * 두 개 열어도 요청은 한 벌이다.
  *
- * venue·sourcePref 는 **한 번만** 푼다 — 단계 1의 창은 전부 활성 저장뷰에 묶여 있어
- * 종목이 하나이기 때문이다(창별 저장뷰는 범위 밖). 종목이 창마다 갈리는 날에는
- * `useEffectiveVenueResolver`(코드별 resolver)로 바꿔야 한다 — 단일 값을 물리면
- * 캐시 키가 어긋나 재fetch 를 막으려다 만든다(#1216 의 탭 워밍 교훈).
+ * venue 는 종목·창과 무관한 **상수**다(`STUDY_VENUE`) — 창별 저장뷰가 생겨 종목이
+ * 갈리는 날에도 이 값은 갈리지 않는다. sourcePref 는 전역 설정이라 역시 한 번만 푼다.
  */
 export function useStudyReferenceBundles(
   save: StudyViewReference | null,
   windows: readonly StudyReferenceWindowSpec[],
 ): Record<string, StudyReferenceBundleResult> {
-  // 복기뷰가 **공유 venue 스토어를 읽는다**(ADR-0140 §7). 여기 있던 `STUDY_VENUE =
-  // 'KRX'` 고정은 "복기는 hogaplay 정규장 캡처만 쓴다"는 사실에서 나온 것이었는데,
-  // PR-D 가 디스크에 `kiwoom_live/{venue}/` 를 만들면서 고를 대상이 생겼다.
+  // 복기뷰는 **공유 venue 스토어를 읽지 않는다** — `/study` 는 항상 KRX 다
+  // (`studyVenuePolicy`, ADR-0144). 여기 있던 스토어 읽기 + `useEffectiveVenue` 해석은
+  // ADR-0140 §7.2 의 선택기 부활에 딸린 것이었고, 그 정책이 되돌려졌다.
   //
-  // ⚠ hogaplay 는 여전히 KRX 전용이라 **NXT·통합이 비는 날이 있다**. 그건 장애가
-  // 아니라 그 소스의 커버 범위이고, 어느 날에 무엇이 있는지는 보관함의 시장 배지가
-  // 말한다(같은 `expected_venues` 판정을 공유한다).
-  //
-  // 선택값이 아니라 **이 종목에 대한 해석값**을 쓴다. `studyReferenceQueries` 는 순수
-  // 함수라 `rangeBundleQueryOptions` 를 직접 만들고, 그래서 `useRange` 안의 해석
-  // (#1214)을 타지 않는다 — 해석은 여기서 해 넣어야 한다. 안 하면 NXT 미상장 종목에
-  // 통합을 고른 복기 뷰가 **빈 200** 을 받는다(`kiwoom_live/UN/` 이 애초에 안 생긴다).
-  const selectedVenue = useLiveVenueStore((s) => s.venue);
-  const venue = useEffectiveVenue(save?.code, selectedVenue);
+  // 코드별 해석(`effectiveLiveVenue`)도 함께 사라진다 — 그 규칙은 UN 을 KRX 로
+  // 강등하는 것뿐이라 입력이 KRX 면 **항등**이다. 남겨 두면 하는 일 없는 훅 호출이
+  // 여기 venue 가 아직 가변인 것처럼 읽히게 만든다.
+  const venue = STUDY_VENUE;
   const sourcePref = useOrderflowSourcePref();
 
   const plans = useMemo(

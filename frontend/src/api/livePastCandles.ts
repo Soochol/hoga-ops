@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiCall } from './client';
-import type { WireDataWarning } from './dataWarnings';
+import { warningKind, type LiveWarningKind, type WireDataWarning } from './dataWarnings';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
 
@@ -87,31 +87,40 @@ function uniqueWarnings(warnings: LivePastCandlesWarning[]): LivePastCandlesWarn
   );
 }
 
-/** 백엔드 `_FALLBACK_BLOCKING_REASONS` 와 동일한 재시도-가능 실패 사유.
- * 이 경고를 실은 응답을 델타 기준(mergedRef)에 박제하면, 일시 장애 창이
- * "이미 받은 범위"로 굳어 영원히 재요청되지 않는다(영구 구멍).
+/**
+ * **그 날짜를 받지 못했다** 를 뜻하는 kind 들 (ADR-0143 이관).
  *
- * **아래 4개는 ADR-0137 세분화의 산물이다 — 백엔드만 넓히고 여기를 놔뒀던 기간이
- * 있었다.** 그전에는 `api_error` 하나가 전송·인증·배치상한을 모두 덮었으므로 이
- * 집합이 좁아도 실패 창이 걸렸는데, 백엔드가 사유를 갈라 내보내기 시작한 뒤로는
- * 같은 실패가 non-blocking 으로 분류돼 세 가드(재시도·박제·재발행)를 한꺼번에
- * 통과했다. 과거 전용 청크는 `staleTime: Infinity` 라 재시도 타이머가 유일한 회복
- * 경로인데 그것까지 꺼져, 그 구간이 재마운트 전까지 영구 구멍으로 남았다.
- * 백엔드 집합과의 대조는 `tests/unit/live/test_live_candle_backfill.py` 가 지킨다. */
-const BLOCKING_WARNING_REASONS = new Set([
-  'capacity_overloaded',
-  'fetch_budget_exhausted',
-  'api_error',
-  'rate_limit_upstream',
-  'rate_limit_aborted',
-  'transport_error',
-  'auth_error',
-  'batch_limit_exceeded',
-  'unexpected_error',
+ * 판정 질문은 하나다 — **데이터가 도착했는가.** 도착하지 않았으면 그 창을 다시
+ * 요청해야 하므로 델타 기준(mergedRef)에 박제하면 안 되고, 재시도 타이머도 살아
+ * 있어야 한다. 새 kind 가 생기면 이름이 아니라 이 질문으로 판정한다.
+ *
+ * 그래서 여기 **없는** 실패 kind 가 있다. `data_quality`(`invariant_violation`)는
+ * **받긴 받았고** 행 검증에만 걸린 것이라 박제해도 구멍이 나지 않는다(ADR-0020:
+ * 표시하되 렌더). `not_wired`·`internal` 은 이 경로에 도달하지 않는다.
+ * 즉 `is_failure` 만으로는 가를 수 없다 — 실패이면서 non-blocking 인 것이 있다.
+ *
+ * **이 집합이 갈리면 무슨 일이 나는지**: ADR-0137 이 `api_error` 를 세분화했을 때
+ * 백엔드만 넓히고 프론트가 뒤처진 기간이 있었다. 그동안 전송 실패가 non-blocking 으로
+ * 분류돼 세 가드(재시도·박제·재발행)를 한꺼번에 통과했고, 과거 전용 청크는
+ * `staleTime: Infinity` 라 재시도 타이머가 유일한 회복 경로였던 탓에 그 구간이
+ * 재마운트 전까지 영구 구멍으로 남았다(#1251). 백엔드와의 대조는
+ * `tests/unit/live/test_live_candle_backfill.py` 가 지킨다.
+ */
+const BLOCKING_WARNING_KINDS: ReadonlySet<LiveWarningKind> = new Set([
+  'transport',
+  'rate_limit',
+  'batch_limit',
+  'auth',
+  'vendor_api',
+  'unexpected',
+  'deferred',
 ]);
 
 export function hasBlockingWarnings(response: LivePastCandlesResponse): boolean {
-  return response.data_warnings.some((w) => BLOCKING_WARNING_REASONS.has(w.reason));
+  return response.data_warnings.some((w) => {
+    const kind = warningKind(w);
+    return kind !== undefined && BLOCKING_WARNING_KINDS.has(kind);
+  });
 }
 
 function uniqueSessionsByDate(sessions: LiveEffectiveSession[]): LiveEffectiveSession[] {

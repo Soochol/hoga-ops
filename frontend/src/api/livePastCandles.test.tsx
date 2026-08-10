@@ -15,6 +15,7 @@ import {
   type LivePastCandlesResponse,
 } from './livePastCandles';
 import * as client from './client';
+import type { LiveWarningKind } from './dataWarnings';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 
 function wrap(qc: QueryClient) {
@@ -38,7 +39,10 @@ const RESPONSE: LivePastCandlesResponse = {
 
 const BLOCKED: LivePastCandlesResponse = {
   ...RESPONSE,
-  data_warnings: [{ date: '20260501', reason: 'capacity_overloaded', msg: 'x' }],
+  // ADR-0143: blocking 판정은 `kind` 축이다 — 이 픽스처가 캐시 동작 3곳의 입력이다.
+  data_warnings: [{
+    date: '20260501', reason: 'capacity_overloaded', kind: 'deferred', msg: 'x', is_failure: true,
+  }],
 };
 
 describe('past-candles freshness gating (range.ts parity)', () => {
@@ -508,7 +512,9 @@ describe('useLivePastCandles', () => {
       candles: [],
       cached_dates: [],
       fresh_dates: [],
-      data_warnings: [{ date: '20260430', reason: 'rate_limit_aborted', msg: 'cooldown' }],
+      data_warnings: [{
+        date: '20260430', reason: 'rate_limit_aborted', kind: 'rate_limit', msg: 'cooldown',
+      }],
     };
     const recoveredDelta: LivePastCandlesResponse = {
       ...blockedDelta,
@@ -631,41 +637,53 @@ describe('withPastCandlesTimeout', () => {
 });
 
 describe('hasBlockingWarnings', () => {
-  const warn = (reason: string) => ({ date: '20260430', reason, msg: 'x' });
-
-  it.each([
-    'capacity_overloaded',
-    'api_error',
-    'rate_limit_upstream',
-    'rate_limit_aborted',
-  ])('blocking 사유 %s 에 true', (reason) => {
-    expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [warn(reason)] })).toBe(true);
+  // ADR-0143 이관: 판정 축이 사유 문자열 → 백엔드가 실은 `kind` 다.
+  // 판정 질문은 **"그 날짜를 받았는가"** 이고, 받지 못한 실패만 blocking 이다.
+  const warn = (reason: string, kind: LiveWarningKind) => ({
+    date: '20260430', reason, kind, msg: 'x', is_failure: true,
   });
 
-  it('fetch_budget_exhausted 경고도 blocking으로 취급한다', () => {
+  it.each([
+    ['transport_error', 'transport'],
+    ['rate_limit_upstream', 'rate_limit'],
+    ['rate_limit_aborted', 'rate_limit'],
+    ['api_error', 'vendor_api'],
+    ['auth_error', 'auth'],
+    ['batch_limit_exceeded', 'batch_limit'],
+    ['unexpected_error', 'unexpected'],
+    ['capacity_overloaded', 'deferred'],
+    ['fetch_budget_exhausted', 'deferred'],
+  ] as const)('받지 못한 실패 %s(kind=%s) 는 blocking', (reason, kind) => {
+    expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [warn(reason, kind)] })).toBe(true);
+  });
+
+  // **이 표의 유일한 미묘함** — 실패인데 blocking 이 아니다. 행 검증에 걸렸을 뿐
+  // 데이터는 **받았으므로** 박제해도 구멍이 나지 않는다(ADR-0020: 표시하되 렌더).
+  // `is_failure` 만으로 갈랐다면 여기서 틀렸을 것이다.
+  it('invariant_violation 은 실패지만 blocking 이 아니다 — 받긴 받았다', () => {
     expect(hasBlockingWarnings({
       ...RESPONSE,
-      data_warnings: [{ date: '20260501', reason: 'fetch_budget_exhausted', msg: 'deferred' }],
-    })).toBe(true);
+      data_warnings: [warn('invariant_violation', 'data_quality')],
+    })).toBe(false);
   });
 
-  // ADR-0137 이 `api_error` 한 덩어리를 갈라 내보내기 시작한 사유들. 백엔드
-  // `_FALLBACK_BLOCKING_REASONS` 는 같이 넓혔는데 이쪽이 뒤처져 있었고, 그동안
-  // 전송 실패가 non-blocking 으로 분류돼 재시도·박제·재발행 가드를 전부 통과했다.
-  it.each([
-    'transport_error',
-    'auth_error',
-    'batch_limit_exceeded',
-    'unexpected_error',
-  ])('세분화된 사유 %s 도 blocking 이다 (ADR-0137)', (reason) => {
-    expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [warn(reason)] })).toBe(true);
-  });
-
-  it('non-blocking 경고나 빈 경고에는 false', () => {
+  it('정보성 경고나 빈 경고에는 false', () => {
     expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [] })).toBe(false);
     expect(hasBlockingWarnings({
       ...RESPONSE,
-      data_warnings: [warn('minute_fallback_to_krx'), warn('rest_bypassed')],
+      data_warnings: [
+        { date: '20260430', reason: 'minute_fallback_to_krx', msg: 'x', is_failure: false },
+        { date: '20260430', reason: 'rest_bypassed', msg: 'x', is_failure: false },
+      ],
+    })).toBe(false);
+  });
+
+  // 배포 직후 gcTime(2h) 캐시의 옛 응답 — kind 가 없으면 판정할 수 없다. blocking 으로
+  // 보면 멀쩡한 병합본이 박제되지 않아 워크백이 헛돌므로 false 로 기운다.
+  it('kind 가 없으면 blocking 으로 보지 않는다', () => {
+    expect(hasBlockingWarnings({
+      ...RESPONSE,
+      data_warnings: [{ date: '20260430', reason: 'transport_error', msg: 'x' }],
     })).toBe(false);
   });
 });
@@ -769,7 +787,10 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
   it('blocking 경고 병합본은 canonical에 재발행되지 않는다', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       ...RESPONSE, from: '20260501', to: '20260502',
-      candles: [], data_warnings: [{ date: '20260501', reason: 'rate_limit_upstream', msg: 'x' }],
+      candles: [],
+      data_warnings: [{
+        date: '20260501', reason: 'rate_limit_upstream', kind: 'rate_limit', msg: 'x',
+      }],
     } satisfies LivePastCandlesResponse);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(

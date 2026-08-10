@@ -75,7 +75,7 @@ describe('deriveCandleEmptyState', () => {
     // 못 고치므로(처방이 벤더 쪽이다) 행동 자체를 비운다.
     const s = deriveCandleEmptyState({
       ...base,
-      warnings: [{ reason: 'auth_error', msg: '인증에 실패했습니다[8050:지정단말기 인증에 실패했습니다]' }],
+      warnings: [{ reason: 'auth_error', kind: 'auth', msg: '인증에 실패했습니다[8050:지정단말기 인증에 실패했습니다]' }],
     });
     expect(s?.text).toBe('벤더 인증에 실패해 캔들을 받지 못했다');
     expect(s?.action).toBeNull();
@@ -84,8 +84,15 @@ describe('deriveCandleEmptyState', () => {
   });
 
   it('일반 벤더 실패 경고 → "없는 데이터" 가 아니라 "못 받은 데이터" 로 말한다', () => {
-    for (const reason of ['rate_limit_upstream', 'transport_error', 'api_error', 'batch_limit_exceeded']) {
-      const s = deriveCandleEmptyState({ ...base, warnings: [{ reason, msg: 'vendor said no' }] });
+    // ADR-0143 이관: 사유 4개가 kind 4개에 1:1 대응한다 — 판정만 옮겼고 분류는 그대로다.
+    const vendorFailures = [
+      ['rate_limit_upstream', 'rate_limit'],
+      ['transport_error', 'transport'],
+      ['api_error', 'vendor_api'],
+      ['batch_limit_exceeded', 'batch_limit'],
+    ] as const;
+    for (const [reason, kind] of vendorFailures) {
+      const s = deriveCandleEmptyState({ ...base, warnings: [{ reason, kind, msg: 'vendor said no' }] });
       expect(s?.text).toBe('벤더가 이 구간을 주지 않았다');
       expect(s?.action).toBe('retry');
       expect(s?.detail).toBe('vendor said no');
@@ -96,7 +103,7 @@ describe('deriveCandleEmptyState', () => {
     // 한 응답에 섞여 오면 재시도를 권하는 쪽이 이기면 안 된다.
     const s = deriveCandleEmptyState({
       ...base,
-      warnings: [{ reason: 'rate_limit_upstream', msg: 'a' }, { reason: 'auth_error', msg: 'b' }],
+      warnings: [{ reason: 'rate_limit_upstream', kind: 'rate_limit', msg: 'a' }, { reason: 'auth_error', kind: 'auth', msg: 'b' }],
     });
     expect(s?.action).toBeNull();
   });
@@ -106,8 +113,12 @@ describe('deriveCandleEmptyState', () => {
     // 건 요청당 상한이다 — 둘 다 벤더에게 **묻지도 않았다**. "벤더가 주지 않았다" 는
     // 묻지도 않은 쪽에 책임을 지우는 거짓이고, "이 구간에 캔들이 없다"(예전 문구)는
     // 미룬 것을 없는 것이라 단언하는 거짓이다.
+    // 둘 다 백엔드가 `deferred` kind 로 실어 보낸다 — 이 파일에 있던 구분이
+    // 백엔드 분류표로 승격된 것이다(#1254).
     for (const reason of ['capacity_overloaded', 'fetch_budget_exhausted']) {
-      const s = deriveCandleEmptyState({ ...base, warnings: [{ reason, msg: 'deferred' }] });
+      const s = deriveCandleEmptyState({
+        ...base, warnings: [{ reason, kind: 'deferred', msg: 'deferred' }],
+      });
       expect(s?.text).toBe('요청이 밀려 이 구간을 아직 받지 못했다');
       // 장외엔 폴링이 멈춰 저절로 낫지 않는다 — 그 구간에서 유일하게 듣는 손잡이다.
       expect(s?.action).toBe('retry');
@@ -117,7 +128,7 @@ describe('deriveCandleEmptyState', () => {
   it('벤더 실패가 우리 쪽 유예보다 우선한다 — 상류 거절이 더 알려 준다', () => {
     const s = deriveCandleEmptyState({
       ...base,
-      warnings: [{ reason: 'capacity_overloaded', msg: 'a' }, { reason: 'api_error', msg: 'b' }],
+      warnings: [{ reason: 'capacity_overloaded', kind: 'deferred', msg: 'a' }, { reason: 'api_error', kind: 'vendor_api', msg: 'b' }],
     });
     expect(s?.text).toBe('벤더가 이 구간을 주지 않았다');
     expect(s?.detail).toBe('b');
@@ -126,10 +137,10 @@ describe('deriveCandleEmptyState', () => {
   it('벤더 실패가 아닌 사유는 이 분기를 켜지 않는다', () => {
     // 허용목록이라 `invariant_violation`(행 단위 검증)·`rest_bypassed`(우회 켜짐)는
     // 통과한다. 여기가 새면 아래 우회 안내가 도달 불가가 된다.
-    expect(deriveCandleEmptyState({ ...base, warnings: [{ reason: 'invariant_violation', msg: 'x' }] }))
+    expect(deriveCandleEmptyState({ ...base, warnings: [{ reason: 'invariant_violation', kind: 'data_quality', msg: 'x' }] }))
       .toEqual({ text: '이 구간에 캔들이 없다', action: null });
     const bypass = deriveCandleEmptyState({
-      ...base, restBypassEnabled: true, warnings: [{ reason: 'rest_bypassed', msg: 'x' }],
+      ...base, restBypassEnabled: true, warnings: [{ reason: 'rest_bypassed', is_failure: false, msg: 'x' }],
     });
     expect(bypass?.text).toContain('벤더 우회');
   });
@@ -138,7 +149,7 @@ describe('deriveCandleEmptyState', () => {
     const s = deriveCandleEmptyState({
       ...base,
       error: apiError('not_wired'),
-      warnings: [{ reason: 'auth_error', msg: 'x' }],
+      warnings: [{ reason: 'auth_error', kind: 'auth', msg: 'x' }],
     });
     expect(s?.text).toContain('벤더 연결');
   });

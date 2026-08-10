@@ -1,6 +1,7 @@
 # 0143 — 실패 진단은 한 곳, 표시 채널은 성격별로
 
-**Status:** proposed (2026-08-10) — 초안. 승인 전이며 코드 변경은 아직 없다.
+**Status:** accepted (2026-08-10) — Phase 1·2 구현 완료
+(#1253 · #1254 · #1256 · #1257 · #1258 · 표 6). Phase 3(정책층)·Phase 4(렌더 규약)는 미착수.
 
 **Extends:**
 - **ADR-0137**(에러 처리 전략) — `error_policy` 가 소유하는 `kind`·`permanent` 를
@@ -138,14 +139,23 @@ N개만 하고 멈춰도 나머지는 기존 표로 동작한다.
 | 1 | `liveDataWarnings.ts` (`RATE_LIMIT_REASONS`) | **완료** — `isRateLimitWarning` |
 | 2 | `restBypassMode.ts` (`classifyRestWarning`) | **완료** — kind → transport/congestion |
 | 3 | `intradayDegradation.ts` (`REASON_COPY`) | **완료** — 접두는 **백엔드가** 벗겼다(`intraday_failure` 필드 분리) |
-| 4 | `candleEmptyState.ts` (벤더실패·유예 2집합) | 대기 |
+| 4 | `candleEmptyState.ts` (벤더실패·유예 2집합) | **완료** — kind 집합 2개로 1:1 대응 |
 | 5 | `liveStatusProjection.ts` (`CAPTURE_REASON_VIEW`) | **비대상** — `capture_reason` 축 |
-| 6 | `livePastCandles.ts` (`BLOCKING_WARNING_REASONS`) | 대기 (**마지막** · 동등성 기준은 캐시 동작) |
+| 6 | `livePastCandles.ts` (`BLOCKING_WARNING_REASONS`) | **완료** — kind 집합(7종) · 호출부 3곳 무변경 |
 
-**첫 이관이 Phase 1 의 분류 오류를 하나 드러냈다** — `capacity_overloaded`. 정책값을
-그대로 옮겼는데, `policy.kind`(처방 축)와 wire kind(표시 축)를 구분하지 않은 것이었다.
-`deferred` 로 정정했고 유일한 의도적 비대칭으로 테스트에 고정했다. **표마다 이런 검토
-지점이 있을 수 있으므로 이관은 계속 표 단위로 한다.**
+**Phase 2 완료 — 6표 중 5 이관 + 1 비대상.** 역추론 표가 전부 사라졌고, 프론트는
+`frontend/src/api/dataWarnings.ts` 한 곳으로만 진단 축을 읽는다.
+
+**이관이 Phase 1 의 분류 오류를 둘 드러냈다** — `capacity_overloaded`(`rate_limit` →
+`deferred`, #1254)와 `screener_daily_missing`(`data_quality` → `not_wired`, #1257).
+전자는 `policy.kind`(처방 축)와 wire kind(표시 축)를 구분하지 않은 것이었고, 후자는
+"받긴 받았다" 를 함의하는 kind 를 파일 부재에 붙인 것이었다. **둘 다 실제 소비처에
+붙여 봐야 드러나는 종류였다** — 표 단위 이관의 값이 여기 있다.
+
+표 6 은 성격이 달랐다. 앞선 넷은 **문구**를 갈랐지만 이건 **데이터 동작**(자가 회복
+refetch · 델타 기준 박제 · canonical 재발행)을 가른다. `hasBlockingWarnings` 시그니처를
+유지해 호출부 3곳은 손대지 않았고, 판정 질문은 **"그 날짜를 받았는가"** 다 —
+`is_failure` 만으로는 가를 수 없다(`invariant_violation` 은 실패지만 데이터는 받았다).
 
 ## Phase 1 구현 결과 (2026-08-10)
 

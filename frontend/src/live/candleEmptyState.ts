@@ -1,4 +1,5 @@
 import type { ApiError } from '../api/client';
+import { warningKind, type LiveWarningKind, type WireDataWarning } from '../api/dataWarnings';
 
 /**
  * 캔들이 없을 때 **왜 없는지** — 원인 4종 판별 (#1133 후속).
@@ -54,7 +55,7 @@ export interface CandleEmptyInput {
    * 그 화면이 "이 구간에 캔들이 없다" 로 뜬다 — 벤더가 거절한 것을 **없는 데이터라고
    * 단언**하는 셈이라 에러를 삼키는 것보다 나쁘다.
    */
-  warnings?: readonly { reason: string; msg?: string }[];
+  warnings?: readonly WireDataWarning[];
   /** 이 창이 지금 캔들을 하나라도 그리고 있나. */
   hasCandles: boolean;
   /** 로딩 중엔 판단하지 않는다 — 안 그러면 매 조회마다 빈 상태가 깜빡인다. */
@@ -70,42 +71,41 @@ function errorCode(error: unknown): string | undefined {
 }
 
 /**
- * "벤더가 못 줬다" 를 뜻하는 사유들 — **허용목록이다.**
+ * "벤더가 못 줬다" 를 뜻하는 **kind 들** — 허용목록이다(ADR-0143 이관).
  *
- * 제외목록이 아닌 이유: `rest_bypassed`(우회 켜짐)와 `invariant_violation`(행 단위
- * 검증 실패)은 벤더 실패가 아니고, 이 목록에 새는 순간 그 아래 우회 안내 분기가
- * 도달 불가가 된다. 백엔드가 사유를 늘릴 때 여기 추가하지 않으면 최악이 "예전처럼
- * 일반 문구" 인 반면, 제외목록이면 최악이 "엉뚱한 안내" 라 방향이 다르다.
- * (백엔드 `_FALLBACK_BLOCKING_REASONS` 도 같은 이유로 허용목록이다.)
+ * 이관 전에는 사유 문자열 5개 집합이었다. kind 로 바꿔도 **완전히 동등하다**:
+ * `rate_limit_upstream`·`rate_limit_aborted`→`rate_limit`, `transport_error`→
+ * `transport`, `api_error`→`vendor_api`, `batch_limit_exceeded`→`batch_limit`.
+ *
+ * 제외목록이 아닌 이유는 그대로다: `rest_bypassed`(우회 켜짐)와 `invariant_violation`
+ * (행 단위 검증 실패)은 벤더 실패가 아니고, 이 목록에 새는 순간 그 아래 우회 안내
+ * 분기가 도달 불가가 된다. 백엔드가 kind 를 늘릴 때 여기 추가하지 않으면 최악이
+ * "예전처럼 일반 문구" 인 반면, 제외목록이면 최악이 "엉뚱한 안내" 라 방향이 다르다.
  */
-const VENDOR_FAILURE_REASONS: ReadonlySet<string> = new Set([
-  'rate_limit_upstream',
-  // 우리 쪽 쿨다운이지만 **그 쿨다운을 벤더 거절이 만들었다** — 뿌리가 상류라
-  // 이쪽에 둔다(`classifyRestWarning` 이 congestion 으로 묶는 것과 같은 판정).
-  'rate_limit_aborted',
-  'transport_error',
-  'api_error',
-  'batch_limit_exceeded',
+const VENDOR_FAILURE_KINDS: ReadonlySet<LiveWarningKind> = new Set([
+  'rate_limit',
+  'transport',
+  'vendor_api',
+  'batch_limit',
 ]);
 
 /**
- * **벤더에게 묻지도 않은** 사유들 — 우리 쪽 유예다(분봉 경로 전용).
+ * **벤더에게 묻지도 않은** 실패 — 우리 쪽 유예다(`deferred` kind).
  *
- * 위 목록과 갈라 두는 이유는 문구가 거짓이 되기 때문이다. `capacity_overloaded` 는
- * 우리 스케줄러 대기열이 찬 것이고 `fetch_budget_exhausted` 는 우리가 요청당 상한을
- * 걸어 오래된 날짜를 **다음 사이클로 미룬** 것이다(`live_candle_backfill` 의 예산
- * 주석). 둘 다 벤더는 이 구간을 거절한 적이 없으므로 "벤더가 주지 않았다" 로 말하면
- * 묻지도 않은 쪽에 책임을 지우게 된다.
+ * 위와 갈라 두는 이유는 문구가 거짓이 되기 때문이다. `capacity_overloaded` 는 우리
+ * 스케줄러 대기열이 찬 것이고 `fetch_budget_exhausted` 는 우리가 요청당 상한을 걸어
+ * 오래된 날짜를 **다음 사이클로 미룬** 것이다. 둘 다 벤더는 이 구간을 거절한 적이
+ * 없으므로 "벤더가 주지 않았다" 로 말하면 묻지도 않은 쪽에 책임을 지우게 된다.
+ *
+ * **이 구분이 백엔드 kind 로 승격됐다** — `capacity_overloaded` 의 wire kind 가
+ * `deferred` 인 것은 여기 있던 판정을 그대로 옮긴 것이다(#1254).
  *
  * 행동은 재시도를 준다. 폴링이 도는 장중에는 스스로 이어받지만, 폴링이 멈추는
  * 장외(`liveVenueRefetchInterval` 이 false)에서는 저절로 낫지 않아 빈 차트가 그대로
  * 남는다 — 그 구간에서 유일하게 듣는 손잡이다. "없는 버튼이 낫다" 규칙은 **누를 수
  * 없는** 버튼에 대한 것이고, 이건 실제로 듣는다.
  */
-const DEFERRED_FETCH_REASONS: ReadonlySet<string> = new Set([
-  'capacity_overloaded',
-  'fetch_budget_exhausted',
-]);
+const DEFERRED_FETCH_KIND: LiveWarningKind = 'deferred';
 
 /**
  * 표시할 빈 상태. 캔들이 있거나 판단할 수 없으면 `null`.
@@ -143,7 +143,7 @@ export function deriveCandleEmptyState({
   // 200 + 경고 — 벤더가 거절했지만 백엔드가 경고로 강등한 경로다. 에러 분기 **뒤**,
   // 우회/데이터없음 분기 **앞**이 자리다: 여기까지 왔다는 건 조회가 형식상 성공했다는
   // 뜻이고, 그래도 경고가 있으면 "없는 데이터" 가 아니라 "못 받은 데이터"다.
-  const authWarning = warnings?.find((w) => w.reason === 'auth_error');
+  const authWarning = warnings?.find((w) => warningKind(w) === 'auth');
   if (authWarning) {
     // **행동을 제안하지 않는다.** 앱 설정 모달로는 못 고친다 — 인증 실패의 처방은
     // 벤더 쪽(단말기·IP 등록)이거나 앱키 재발급이라 이 앱 안에 버튼이 없다. 재시도는
@@ -151,7 +151,10 @@ export function deriveCandleEmptyState({
     // 원문은 `detail` 로 넘겨 어느 코드인지 hover 로 확인할 수 있게 한다.
     return { text: '벤더 인증에 실패해 캔들을 받지 못했다', action: null, detail: authWarning.msg };
   }
-  const vendorWarning = warnings?.find((w) => VENDOR_FAILURE_REASONS.has(w.reason));
+  const vendorWarning = warnings?.find((w) => {
+    const kind = warningKind(w);
+    return kind !== undefined && VENDOR_FAILURE_KINDS.has(kind);
+  });
   if (vendorWarning) {
     return {
       text: '벤더가 이 구간을 주지 않았다',
@@ -161,7 +164,7 @@ export function deriveCandleEmptyState({
     };
   }
   // 벤더 실패보다 **뒤**다 — 둘이 섞여 오면 상류 거절 쪽이 더 알려 줄 것이 많다.
-  const deferredWarning = warnings?.find((w) => DEFERRED_FETCH_REASONS.has(w.reason));
+  const deferredWarning = warnings?.find((w) => warningKind(w) === DEFERRED_FETCH_KIND);
   if (deferredWarning) {
     return {
       text: '요청이 밀려 이 구간을 아직 받지 못했다',
