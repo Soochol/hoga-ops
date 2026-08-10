@@ -727,6 +727,82 @@ async def test_resume_clears_cancelled_token_so_the_retry_is_not_insta_cancelled
     )
 
 
+async def test_resume_with_nothing_to_revive_emits_drained(monkeypatch):
+    """되살릴 것도 대기도 없는 재개는 **그 자리에서** 드레인을 낸다.
+
+    실재하는 상황이다: 쿠키 만료 순간 다른 활성 항목이 없고 대기 큐도 비어 있으면,
+    오류를 맞은 항목은 terminal 이라 되살아나지 않고 `pause_origin` 취소분도 0건이다.
+    드레인의 유일한 발행처가 `_finalize_item` 이던 시절엔 그 함수가 다시 돌 일이 없어
+    **큐는 바닥났는데 종결 이벤트만 없는** 상태가 됐다 — 재개 뒤로 소비자가 영원히
+    침묵을 본다(2026-08-10 e2e 실측: `capture_queue_drained` 90초 백스톱).
+
+    집계도 같이 못박는다. `_finalize_item` 과 술어·집계를 공유하는지가 요점이라,
+    개수만 세는 게 아니라 phase 별로 다른 값을 넣어 자리 바뀜까지 잡는다.
+    """
+    published = []
+    monkeypatch.setattr(captures, "_publish_event", lambda e: published.append(e))
+
+    failed = _make_item("cookie-victim", date="20260518")
+    failed.phase = "failed"          # terminal — 재개가 되살리지 않는다
+    ok = _make_item("earlier-done", date="20260519")
+    ok.phase = "done"
+    skipped = _make_item("earlier-skip", date="20260520")
+    skipped.phase = "skipped"
+    captures._done.extend([failed, ok, skipped])
+    captures._queue_paused = True
+    assert not captures._queue and not captures._active, "전제: 되살릴 것도 대기도 없다"
+
+    await captures.resume_queue()
+
+    types = [type(e).__name__ for e in published]
+    assert types == ["CaptureQueueResumedEvent", "CaptureQueueDrainedEvent"], (
+        f"재개→드레인 순서로 둘 다 나와야 한다 (원인이 먼저): {types}"
+    )
+    drained = published[-1]
+    assert (drained.total_done, drained.total_failed, drained.total_skipped,
+            drained.total_cancelled) == (1, 1, 1, 0)
+
+
+async def test_resume_with_items_to_revive_does_not_emit_drained_yet(monkeypatch):
+    """되살릴 게 있으면 재개 시점엔 드레인이 **없다** — 아직 바닥나지 않았다.
+
+    이게 없으면 위 테스트는 "재개하면 무조건 드레인" 이라는 잘못된 구현으로도
+    통과한다. 그 구현은 되살아난 항목이 끝나기 전에 "다 끝났다" 를 먼저 쏜다.
+    """
+    published = []
+    monkeypatch.setattr(captures, "_publish_event", lambda e: published.append(e))
+
+    revivable = _make_item("p-1", date="20260518")
+    revivable.phase = "cancelled"
+    revivable.pause_origin = True
+    captures._done.append(revivable)
+    captures._queue_paused = True
+
+    await captures.resume_queue()
+
+    assert [type(e).__name__ for e in published] == ["CaptureQueueResumedEvent"]
+    assert [s.item_id for s in captures._queue] == ["p-1"], "전제: 실제로 재큐됐다"
+
+
+async def test_resume_on_a_queue_that_was_not_paused_emits_no_drained(monkeypatch):
+    """멈춘 적 없는 큐의 재개는 상태 전이가 없다 — 드레인을 새로 알릴 것도 없다.
+
+    이 가드가 없으면 idle 한 큐에 resume 을 누를 때마다 "다 끝났다" 가 한 벌씩 더
+    나가고, 그걸 종결 신호로 쓰는 소비자는 같은 배치를 두 번 끝난 것으로 센다.
+    """
+    published = []
+    monkeypatch.setattr(captures, "_publish_event", lambda e: published.append(e))
+
+    done = _make_item("old", date="20260518")
+    done.phase = "done"
+    captures._done.append(done)
+    assert captures._queue_paused is False, "전제: 멈춘 적 없다"
+
+    await captures.resume_queue()
+
+    assert [type(e).__name__ for e in published] == ["CaptureQueueResumedEvent"]
+
+
 async def test_cancel_all_in_paused_resets_everything():
     """Q20: cancel_all() called while _queue_paused clears the pause flag and
     downgrades pause_origin items to plain cancelled."""

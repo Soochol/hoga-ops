@@ -38,6 +38,10 @@ from hoga.api.models import (
     CaptureProgress,
     CaptureProgressEvent,
     CaptureQueuedEvent,
+    # 이 이름만 지연 import 였다 — 같은 모듈을 바로 위에서 이미 eager 로 들여오므로
+    # 순환도 무게도 줄이지 못하는 빈 예외였고, 모듈 스코프 헬퍼가 이걸 반환형으로
+    # 쓰게 되면서 이름이 실제로 필요해졌다.
+    CaptureQueueDrainedEvent,
     CaptureQueuePausedEvent,
     CaptureQueueResumedEvent,
     CaptureResult,
@@ -1058,13 +1062,39 @@ async def _run_item(state: QueueItemState) -> None:
                 )
 
 
+def _drained_event_if_bottomed_locked() -> CaptureQueueDrainedEvent | None:
+    """큐가 바닥났으면 ``capture_queue_drained`` 를, 아니면 None. **``_lock`` 을 쥔 채** 부른다.
+
+    "바닥났다" 의 술어와 집계를 **한 자리에 둔다.** 발행처가 하나가 아니기 때문이다:
+
+    1. :func:`_finalize_item` — 마지막 항목이 끝나서 바닥났다(정상 경로).
+    2. :func:`resume_queue` — 재개했는데 **할 일이 하나도 없었다**.
+
+    2번이 없던 시절의 구멍(2026-08-10 실측): 쿠키 만료로 멈췄는데 그 순간 다른 활성
+    항목이 없고 대기 큐도 비어 있으면, 실패한 항목은 terminal 이라 되살아나지 않고
+    ``resume_queue`` 가 재큐할 ``pause_origin`` 항목도 0건이다. 그러면 ``_finalize_item``
+    이 다시 돌 일이 없으니 **큐는 실제로 바닥났는데 종결 이벤트만 없는 상태**가 되고,
+    소비자는 ``capture_queue_resumed`` 뒤로 영원히 아무것도 못 받는다. e2e 가 90초
+    백스톱에서 죽어 드러났지만 성질은 프로덕션 쪽이다 — 재개를 누른 운영자도 같은
+    침묵을 본다.
+
+    술어를 복제하지 않는 이유: 두 경로가 **서로 다른 조건에서 같은 이름의 이벤트**를
+    내기 시작하면 그 어긋남은 소비자 쪽에서 원리적으로 안 보인다. ``_queue_paused``
+    검사가 여기 들어 있는 것도 그래서다 — 호출부는 이 함수를 부를지 말지만 정한다.
+    """
+    if _queue or _active or _queue_paused:
+        return None
+    return CaptureQueueDrainedEvent(
+        total_done=sum(1 for s in _done if s.phase == "done"),
+        total_failed=sum(1 for s in _done if s.phase == "failed"),
+        total_cancelled=sum(1 for s in _done if s.phase == "cancelled"),
+        total_skipped=sum(1 for s in _done if s.phase == "skipped"),
+    )
+
+
 async def _finalize_item(state: QueueItemState) -> None:
     """Move state into _done, publish finished, wake other workers, emit
     drained if applicable."""
-    from hoga.api.models import (  # noqa: PLC0415 — 지연 import(순환/heavy)
-        CaptureQueueDrainedEvent,
-    )
-
     # ADR-0042 (amended 2026-06-03) + ADR-0034: ``phase="done"`` only means "worker
     # returned without exception" — it is reachable with ``abort_reason`` set
     # (e.g. stagnation_abort) or with lenient-fallback invariant violations,
@@ -1120,17 +1150,9 @@ async def _finalize_item(state: QueueItemState) -> None:
             ),
         )
         _persist_queue_locked()  # ADR-0019 + ADR-0042 — item left _active, fail_streak updated
-        # Drain detection — also check we're not paused (drained only fires
-        # when the queue has naturally bottomed out).
-        drained_event: CaptureQueueDrainedEvent | None = None
-        if not _queue and not _active and not _queue_paused:
-            totals = {
-                "total_done": sum(1 for s in _done if s.phase == "done"),
-                "total_failed": sum(1 for s in _done if s.phase == "failed"),
-                "total_cancelled": sum(1 for s in _done if s.phase == "cancelled"),
-                "total_skipped": sum(1 for s in _done if s.phase == "skipped"),
-            }
-            drained_event = CaptureQueueDrainedEvent(**totals)
+        # Drain detection — 술어와 집계는 _drained_event_if_bottomed_locked 하나에 있다
+        # (일시정지 중이면 바닥나도 발행하지 않는 것까지 그 안의 규칙이다).
+        drained_event: CaptureQueueDrainedEvent | None = _drained_event_if_bottomed_locked()
         if _wakeup is not None:
             _wakeup.set()
     if drained_event is not None:
@@ -1206,9 +1228,21 @@ async def resume_queue() -> None:
     ADR-0031, not infrastructure-driven pauses. If a future code path
     needs "resume counts as +1 attempt" semantics, it must add a
     separate counter rather than reusing ``attempt``.
+
+    **되살릴 것이 하나도 없으면 여기서 ``capture_queue_drained`` 를 낸다.** 그 경우가
+    실재한다: 쿠키 만료 순간 다른 활성 항목이 없고 대기 큐도 비어 있으면, 오류를 맞은
+    항목은 terminal 이라 되살아나지 않고 ``pause_origin`` 취소분도 0건이다. 그러면
+    ``_finalize_item`` 이 다시 돌 일이 없어 **큐는 바닥났는데 종결 이벤트만 없는**
+    상태가 됐다 — 재개를 누른 뒤로 소비자가 영원히 침묵을 본다(2026-08-10 실측,
+    자세한 근거는 :func:`_drained_event_if_bottomed_locked`).
+
+    ``was_paused`` 로 가드하는 이유: 멈춘 적 없는 큐에 resume 이 들어오면 상태 전이가
+    없으므로 "바닥났다" 를 새로 알릴 것도 없다. 그 가드가 없으면 idle 한 큐에 resume
+    을 누를 때마다 드레인이 한 벌씩 더 나간다.
     """
     global _queue_paused  # noqa: PLW0603 — module singleton write under _lock
     async with _lock:
+        was_paused = _queue_paused
         _queue_paused = False
         # Items cancelled BY the pause go back to the front of the queue.
         to_reenqueue = [s for s in _done if s.pause_origin and s.phase == "cancelled"]
@@ -1227,9 +1261,14 @@ async def resume_queue() -> None:
         # Remove them from _done.
         _done[:] = [s for s in _done if s not in to_reenqueue]
         _persist_queue_locked()  # ADR-0019 — queue + paused both changed
+        drained_event = _drained_event_if_bottomed_locked() if was_paused else None
         if _wakeup is not None and _queue:
             _wakeup.set()
+    # 순서는 **재개 → 드레인**이다. 원인(일시정지 해제)이 먼저고 결과(바닥났다)가
+    # 뒤라야 소비자가 두 프레임을 인과로 읽는다.
     _publish_event(CaptureQueueResumedEvent(reason="user_resume"))
+    if drained_event is not None:
+        _publish_event(drained_event)
 
 
 async def cancel_all() -> dict:
