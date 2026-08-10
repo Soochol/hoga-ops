@@ -46,6 +46,7 @@ from typing import Literal, get_args, get_origin
 
 from hoga.api import events, models as m, sources
 from hoga.live import futures_runtime, market_overview
+from hoga.live.error_policy import LiveErrorKind
 from hoga.live.lifecycle import LiveStatus
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -133,6 +134,14 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     ),
     # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
     "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
+    # **이름이 다른 쌍이라 자동 발견이 못 본다** — 손으로 등록해야 하는 부류다
+    # (ADR-0143). BE 는 `LiveErrorKind`(정책 축에서 태어난 이름), FE 는
+    # `LiveWarningKind`(wire 에서 읽는 쪽 이름)다. 값이 갈리면 프론트가 모르는 kind 를
+    # 받아 진단 분기가 조용히 default 로 떨어진다 — #1251 과 같은 종류의 무증상 사고다.
+    "LiveWarningKind": (
+        frozenset(get_args(LiveErrorKind)),
+        "frontend/src/api/dataWarnings.ts",
+    ),
     # 감사가 못 보던 쌍이었다: BE 정의가 `hoga.live.futures_runtime` 인데 그 모듈이
     # `_AUDITED_BACKEND_MODULES` 에 없었다(#1185 가 남긴 "명시 목록" 한계). market
     # 라우트에 wire model 을 입히다가 발견해 모듈과 함께 등록했다.

@@ -30,7 +30,39 @@ kind 를 만들지 않는 이유: 정보성끼리의 구별은 `reason` 이 이�
 """
 from __future__ import annotations
 
+from pydantic import BaseModel, ConfigDict
+
 from hoga.live.error_policy import LiveErrorKind
+
+
+class LiveDataWarning(BaseModel):
+    """wire `data_warnings` 항목의 **shape 계약** (ADR-0143).
+
+    이전에는 `list[dict]` 였다. 스트립 위험이 없는 대신 **계약도 없어서**, 생성기가
+    키를 빠뜨려도 wire 계약 테스트가 볼 수 없었다 — 이 리팩터링이 고쳐 온 "같은
+    사실이 여러 벌" 문제와 같은 뿌리다.
+
+    **`extra="allow"` 가 load-bearing 이다.** 선언된 키는 계약이 되지만 그 밖의 키는
+    **그대로 통과**한다. 이게 없으면 `response_model` 이 선언 안 된 키를 **조용히
+    스트립**해서, 프론트가 읽던 값이 에러 없이 사라진다(CLAUDE.md "API wire 계약").
+    `/api/live/series` 가 같은 이유로 채택한 패턴이다 — 최상위 키만 계약으로 두고
+    나머지는 열어 둔다.
+
+    `date` 와 `batch` 는 배타가 아니다: 분봉은 날짜 단위, 일봉·지수는 배치 단위,
+    `invariant_violation` 은 둘 다 싣는다. 생성기가 `None` 인 키를 아예 빼서 보내므로
+    (`make_data_warning`) 여기서도 optional 이다.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    reason: str
+    msg: str
+    #: 실패의 처방 부류. **정보성 경고에는 없다** — kind 는 실패에만 붙는다.
+    kind: LiveErrorKind | None = None
+    #: 실패인가. `data_warnings` 는 실패 전용 채널이 아니다(모드 안내·대체 성공·보유 한계).
+    is_failure: bool | None = None
+    date: str | None = None
+    batch: str | None = None
 
 # reason → (kind, is_failure). **미등록 사유는 여기 없다는 것 자체가 버그다** —
 # `tests/unit/live/test_data_warnings.py` 가 생성기 전수와 대조한다.
