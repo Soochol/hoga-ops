@@ -66,13 +66,10 @@ export function resolveSyncTarget(params: {
   return byDate.get(unixMsToKSTDate(cursor.tsMs)) ?? null;
 }
 
-/** 칩 라벨 — 일봉 시간축 배지는 날짜까지라, 분봉의 시:분은 여기서만 나온다. */
-export function formatKstHhmm(ms: number): string {
-  const d = new Date(ms + 9 * 60 * 60 * 1000);
-  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-}
-
-/** 화면 밖 인디케이터 라벨 — 날짜까지 붙여야 "언제로 가야 하는지" 가 읽힌다. */
+/**
+ * 화면 밖 인디케이터 라벨. **날짜만** — 분봉의 시:분은 일봉 창에 표시하지 않는다
+ * (사용자 결정 2026-08-11). 일봉 축에 분 단위 시각이 뜨는 것이 축과 맞지 않는다.
+ */
 export function formatKstMmdd(ms: number): string {
   const d = new Date(ms + 9 * 60 * 60 * 1000);
   return `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`;

@@ -8,12 +8,14 @@
  * 이미 두 번 밟은 오버레이 함정(캔버스 뒤로 숨음 #1238 / 축 거터를 덮음 #1272)을
  * 다시 풀어야 한다.
  *
- * DOM 으로 남는 것은 둘뿐이고, 둘 다 lwc 가 채울 수 없는 자리다:
- *  - **시각 칩** — 시간축 배지는 일봉 축이라 날짜까지다. 분봉 커서의 시:분은 그
- *    축에 표현될 자리가 없다.
- *  - **엣지 인디케이터** — 두 창의 뷰포트가 독립이라 대상 캔들이 화면 밖인 경우가
- *    흔하다(실측: pane 왼쪽 1,236px 밖). lwc 는 그때 아무것도 그리지 않는데, 그러면
- *    "동기화가 고장났다" 로 읽힌다. 방향과 날짜만 가장자리에 남긴다.
+ * DOM 으로 남는 것은 **엣지 인디케이터 하나뿐**이다. 두 창의 뷰포트가 독립이라 대상
+ * 캔들이 화면 밖인 경우가 흔한데(실측: pane 왼쪽 1,236px 밖) lwc 는 그때 아무것도
+ * 그리지 않아 "동기화가 고장났다" 로 읽힌다. 방향과 **날짜만** 가장자리에 남긴다.
+ *
+ * **분봉의 시:분은 일봉 창에 표시하지 않는다**(사용자 결정, 2026-08-11). 초기 판에는
+ * 크로스헤어 위에 시각 칩(`14:09`)이 있었다 — lwc 시간축 배지가 일봉 축이라 날짜까지만
+ * 찍는 것을 보완하려던 것이다. 일봉 차트에 분 단위 시각이 뜨는 것이 축과 맞지 않아
+ * 걷어냈고, 같은 이유로 엣지 인디케이터에서도 시각을 뺐다.
  *
  * 좌표·필터 판정은 `studyCursorSync.ts` 가 소유한다. 여기서는 그 결과를 축에 태우고
  * 그린다.
@@ -31,7 +33,6 @@ import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { WindowViewContext } from '../live/workspace/windowView';
 import type { VirtualAxis } from '../util/virtualAxis';
 import {
-  formatKstHhmm,
   formatKstMmdd,
   indexCandlesByKstDate,
   resolveSyncTarget,
@@ -41,9 +42,7 @@ import {
 /** 좌상단 레전드(OHLC + 이동평균)와 저장 구간 라벨이 쓰는 높이. */
 const LEGEND_CLEARANCE_PX = 46;
 /** 저장 구간 라벨과 같은 y 를 피해 한 줄 더 내린다(둘 다 accent 칩이라 붙으면 읽히지 않는다). */
-const CHIP_TOP_PX = LEGEND_CLEARANCE_PX + 24;
-/** 칩이 pane 가장자리에서 잘리지 않게 두는 여백. */
-const CHIP_EDGE_MARGIN_PX = 26;
+const EDGE_TOP_PX = LEGEND_CLEARANCE_PX + 24;
 
 type Props = {
   chart: IChartApi;
@@ -116,12 +115,10 @@ function StudyCursorSyncCrosshair({ chart, axis, candles, paneSeries, code }: Pr
 
   const ts = chart.timeScale();
   const x = ts.timeToCoordinate((axis.toVirtual(target.ts_ms) / 1000) as UTCTimestamp);
-  // 축이 아직 안 섰다 — lwc 도 크로스헤어를 못 그렸을 테니 칩만 생략한다.
-  if (x == null) return null;
-
   const paneWidth = ts.width();
-  const cx = x as number;
-  const clock = formatKstHhmm(syncCursorMs);
+  // 축이 아직 안 섰거나(null) 대상이 화면 안이면 그릴 것이 없다 — 화면 안은 lwc 가
+  // 전부 그린다. 컨테이너는 그대로 두어 `ResizeObserver` 앵커를 잃지 않는다.
+  const offscreen = x != null && ((x as number) < 0 || (x as number) > paneWidth);
 
   return (
     <div
@@ -133,43 +130,25 @@ function StudyCursorSyncCrosshair({ chart, axis, candles, paneSeries, code }: Pr
       className="pointer-events-none absolute top-0 left-0 z-10 overflow-hidden"
       style={{ width: `${paneWidth}px`, bottom: `${ts.height()}px` }}
     >
-      {cx < 0 || cx > paneWidth ? (
+      {offscreen && (
         <EdgeIndicator
-          side={cx < 0 ? 'left' : 'right'}
+          side={(x as number) < 0 ? 'left' : 'right'}
           date={formatKstMmdd(syncCursorMs)}
-          clock={clock}
         />
-      ) : (
-        <div
-          data-testid="study-cursor-sync-chip"
-          className="absolute -translate-x-1/2 rounded-sm px-1.5 py-0.5 text-[11px] tabular-nums"
-          style={{
-            ...chipStyle,
-            top: `${CHIP_TOP_PX}px`,
-            left: `${Math.min(
-              Math.max(cx, CHIP_EDGE_MARGIN_PX),
-              Math.max(CHIP_EDGE_MARGIN_PX, paneWidth - CHIP_EDGE_MARGIN_PX),
-            )}px`,
-          }}
-        >
-          {clock}
-        </div>
       )}
     </div>
   );
 }
 
-function EdgeIndicator({
-  side, date, clock,
-}: { side: 'left' | 'right'; date: string; clock: string }) {
+function EdgeIndicator({ side, date }: { side: 'left' | 'right'; date: string }) {
   return (
     <div
       data-testid={`study-cursor-sync-edge-${side}`}
       className="absolute flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] tabular-nums"
-      style={{ ...chipStyle, top: `${CHIP_TOP_PX}px`, [side]: '4px' }}
+      style={{ ...chipStyle, top: `${EDGE_TOP_PX}px`, [side]: '4px' }}
     >
       {side === 'left' && <span aria-hidden>◀</span>}
-      <span>{date} {clock}</span>
+      <span>{date}</span>
       {side === 'right' && <span aria-hidden>▶</span>}
     </div>
   );
