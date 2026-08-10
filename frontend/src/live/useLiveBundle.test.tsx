@@ -1284,6 +1284,56 @@ describe('useLiveBundle', () => {
     });
   });
 
+  it('clears a stale toast once a clean response arrives', async () => {
+    useRestBypassModeStore.setState({
+      lastFailureAtMs: 1_000,
+      lastToastAtMs: 1_000,
+      lastKind: 'transport',
+      toastDismissed: false,
+    });
+    // 경고 없는 응답 = 수집이 다시 됐다. 이전 판은 실패 사건에서만 상태가 움직여서,
+    // 서버가 돌아온 뒤에도 "재시도 중" 이 화면에 남았다.
+    candlesMock.warnings = [];
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(useRestBypassModeStore.getState().toastDismissed).toBe(true);
+    });
+    // 쿨다운 앵커는 남긴다 — 지우면 부분 실패에서 매 응답마다 깜빡인다.
+    expect(useRestBypassModeStore.getState().lastToastAtMs).toBe(1_000);
+  });
+
+  it('does not read "no response yet" as recovery', async () => {
+    useRestBypassModeStore.setState({
+      lastFailureAtMs: 1_000,
+      lastToastAtMs: 1_000,
+      lastKind: 'transport',
+      toastDismissed: false,
+    });
+    // 아직 아무 응답도 없다(로딩·비활성). 이걸 빈 경고 목록과 같이 취급하면 실패
+    // 직후 리마운트에서 토스트가 조용히 사라진다 — 회복을 읽는 팔의 유일한 함정이다.
+    livePastCandlesSpy.mockImplementation(
+      () =>
+        ({
+          data: undefined,
+          isLoading: true,
+          error: null,
+          isPlaceholderData: false,
+          isFetching: true,
+        }) as unknown as ReturnType<typeof livePastCandlesSpy>,
+    );
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(livePastCandlesSpy).toHaveBeenCalled());
+    expect(useRestBypassModeStore.getState().toastDismissed).toBe(false);
+  });
+
   it('passes the KIS candle price range to the volume-distribution sidecar', () => {
     candlesMock.candles = [
       { t_ms: 1779840000000, open: 70000, high: 70200, low: 69900, close: 70050, volume: 1000 },

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from collections.abc import Awaitable, Callable, Hashable
+from pathlib import Path
 
 import pytest
 
@@ -634,6 +636,70 @@ def test_fallback_blocking_reasons_cover_every_rest_error_reason() -> None:
         assert reason in _FALLBACK_BLOCKING_REASONS, (
             f"{type(exc).__name__} → {reason!r} 이 폴백 차단 집합에 없다"
         )
+
+
+def _ts_set_members(ts_path: Path, const_name: str) -> frozenset[str]:
+    """``const NAME = new Set([...])`` 의 문자열 리터럴 집합.
+
+    주석을 **잘라내기 전에** 지운다 — 순서를 뒤집으면 주석 속 ``]`` 에서 본문이
+    조기 종료된다(같은 함정으로 `test_rest_wire_schema_contract` 의 union 파서가
+    한 번 덜 읽었다). 여기서도 실제 위험이다: 이 상수의 주석이 대괄호를 품는다.
+    """
+    src = ts_path.read_text(encoding="utf-8")
+    head = re.search(rf"^(?:export )?const {re.escape(const_name)}\s*=", src, re.M)
+    assert head is not None, (
+        f"{ts_path.name} 에 `const {const_name}` 이 없다 — 이름이 바뀌었으면 이 가드도 같이 고칠 것"
+    )
+    body = re.sub(r"//[^\n]*", "", re.sub(r"/\*.*?\*/", "", src[head.end():], flags=re.S))
+    return frozenset(re.findall(r"'([^']*)'", body.split("]", 1)[0]))
+
+
+def test_frontend_blocking_warning_mirror_matches_backend() -> None:
+    """프론트 `BLOCKING_WARNING_REASONS` 는 이 집합의 **손 미러**다(ADR-0004).
+
+    **이 가드가 막는 방향**: 백엔드가 사유를 넓혔는데 프론트가 따라오지 않는 것,
+    그리고 그 반대. 값 드리프트는 타입이 원리적으로 못 잡는다 — 양쪽 다 그냥
+    문자열 집합이라 갈려도 컴파일이 통과한다.
+
+    **못 보는 것**: 프론트가 이 상수를 다른 이름으로 옮기거나 `new Set` 이외의
+    형태로 바꾸면 파서가 못 읽고 위 assert 가 먼저 터진다(조용한 통과는 아니다).
+
+    왜 이게 필요한가: ADR-0137 세분화 때 백엔드만 넓히고 프론트가 뒤처졌다.
+    그 상태에서 `transport_error` 는 프론트에서 non-blocking 으로 분류돼
+    ① 자가 회복 refetch(`pastCandlesRefetchInterval`) ② 델타 기준 박제 가드
+    ③ canonical 재발행 가드를 **전부** 통과했다. 과거 전용 청크는
+    `staleTime: Infinity` 라 ①이 유일한 회복 경로여서, 전송 실패 한 번이
+    그 구간을 재마운트 전까지 영구 구멍으로 만들었다.
+    """
+    ts_path = (
+        Path(__file__).resolve().parents[3] / "frontend/src/api/livePastCandles.ts"
+    )
+    frontend = _ts_set_members(ts_path, "BLOCKING_WARNING_REASONS")
+
+    assert frontend == _FALLBACK_BLOCKING_REASONS, (
+        "BE `_FALLBACK_BLOCKING_REASONS` 와 FE `BLOCKING_WARNING_REASONS` 가 갈렸다. "
+        f"프론트에 없는 값={sorted(_FALLBACK_BLOCKING_REASONS - frontend)} "
+        f"프론트에만 남은 값={sorted(frontend - _FALLBACK_BLOCKING_REASONS)}. "
+        "사유를 세분화하거나 지울 때 양쪽을 같은 PR 에서 고칠 것(ADR-0004)."
+    )
+
+
+def test_frontend_blocking_warning_mirror_parser_actually_reads_members() -> None:
+    """파서 자체의 회귀 — 빈 집합끼리 맞아떨어지는 위양성을 막는다.
+
+    파서가 조용히 0개를 읽으면 위 대조는 `frozenset() == frozenset()` 이 아니라
+    백엔드 9개와 비교해 터지지만, 그 실패 메시지는 "프론트에 없는 값 9개" 라고만
+    말해 **파서 결함을 드리프트로 위장**한다. 실제 멤버를 못 박아 그 오독을 끊는다.
+    """
+    ts_path = (
+        Path(__file__).resolve().parents[3] / "frontend/src/api/livePastCandles.ts"
+    )
+    members = _ts_set_members(ts_path, "BLOCKING_WARNING_REASONS")
+
+    assert "capacity_overloaded" in members  # 배열 첫 원소
+    assert "unexpected_error" in members  # 배열 마지막 원소
+    assert "transport_error" in members  # 주석 뒤에 추가된 세분화 사유
+    assert len(members) == 9
 
 
 # === 수정계수 (#1229) =======================================================

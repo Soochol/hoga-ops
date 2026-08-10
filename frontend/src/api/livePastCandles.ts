@@ -86,15 +86,27 @@ function uniqueWarnings(warnings: LivePastCandlesWarning[]): LivePastCandlesWarn
   );
 }
 
-/** 백엔드 _fallback_blocking_warning_dates와 동일한 재시도-가능 실패 사유.
+/** 백엔드 `_FALLBACK_BLOCKING_REASONS` 와 동일한 재시도-가능 실패 사유.
  * 이 경고를 실은 응답을 델타 기준(mergedRef)에 박제하면, 일시 장애 창이
- * "이미 받은 범위"로 굳어 영원히 재요청되지 않는다(영구 구멍). */
+ * "이미 받은 범위"로 굳어 영원히 재요청되지 않는다(영구 구멍).
+ *
+ * **아래 4개는 ADR-0137 세분화의 산물이다 — 백엔드만 넓히고 여기를 놔뒀던 기간이
+ * 있었다.** 그전에는 `api_error` 하나가 전송·인증·배치상한을 모두 덮었으므로 이
+ * 집합이 좁아도 실패 창이 걸렸는데, 백엔드가 사유를 갈라 내보내기 시작한 뒤로는
+ * 같은 실패가 non-blocking 으로 분류돼 세 가드(재시도·박제·재발행)를 한꺼번에
+ * 통과했다. 과거 전용 청크는 `staleTime: Infinity` 라 재시도 타이머가 유일한 회복
+ * 경로인데 그것까지 꺼져, 그 구간이 재마운트 전까지 영구 구멍으로 남았다.
+ * 백엔드 집합과의 대조는 `tests/unit/live/test_live_candle_backfill.py` 가 지킨다. */
 const BLOCKING_WARNING_REASONS = new Set([
   'capacity_overloaded',
   'fetch_budget_exhausted',
   'api_error',
   'rate_limit_upstream',
   'rate_limit_aborted',
+  'transport_error',
+  'auth_error',
+  'batch_limit_exceeded',
+  'unexpected_error',
 ]);
 
 export function hasBlockingWarnings(response: LivePastCandlesResponse): boolean {

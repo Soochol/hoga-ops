@@ -649,6 +649,18 @@ describe('hasBlockingWarnings', () => {
     })).toBe(true);
   });
 
+  // ADR-0137 이 `api_error` 한 덩어리를 갈라 내보내기 시작한 사유들. 백엔드
+  // `_FALLBACK_BLOCKING_REASONS` 는 같이 넓혔는데 이쪽이 뒤처져 있었고, 그동안
+  // 전송 실패가 non-blocking 으로 분류돼 재시도·박제·재발행 가드를 전부 통과했다.
+  it.each([
+    'transport_error',
+    'auth_error',
+    'batch_limit_exceeded',
+    'unexpected_error',
+  ])('세분화된 사유 %s 도 blocking 이다 (ADR-0137)', (reason) => {
+    expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [warn(reason)] })).toBe(true);
+  });
+
   it('non-blocking 경고나 빈 경고에는 false', () => {
     expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [] })).toBe(false);
     expect(hasBlockingWarnings({

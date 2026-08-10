@@ -14,6 +14,7 @@ describe('restBypassMode', () => {
       lastFailureAtMs: null,
       lastToastAtMs: null,
       lastKind: null,
+      toastDismissed: false,
     });
   });
 
@@ -52,6 +53,38 @@ describe('restBypassMode', () => {
     expect(useRestBypassModeStore.getState().lastFailureAtMs).toBe(
       1_000 + REST_FAILURE_TOAST_COOLDOWN_MS + 1,
     );
+  });
+
+  it('hides the toast on recovery but keeps the cooldown anchor', () => {
+    useRestBypassModeStore.getState().notifyFailure('transport', 1_000);
+
+    useRestBypassModeStore.getState().resolveFailure();
+
+    expect(useRestBypassModeStore.getState().toastDismissed).toBe(true);
+    // 앵커를 지우면 성공/실패가 번갈아 오는 부분 실패에서 매 응답마다 깜빡인다 —
+    // 재알림 간격은 실패 쪽 정책(쿨다운) 그대로 두고 가시성만 끈다.
+    expect(useRestBypassModeStore.getState().lastToastAtMs).toBe(1_000);
+    expect(useRestBypassModeStore.getState().lastKind).toBe('transport');
+  });
+
+  it('does nothing on recovery when no failure was ever announced', () => {
+    useRestBypassModeStore.getState().resolveFailure();
+
+    // 가드가 없으면 매 폴링이 새 상태 객체를 만든다(구독자 통지 낭비).
+    expect(useRestBypassModeStore.getState().toastDismissed).toBe(false);
+    expect(useRestBypassModeStore.getState().lastToastAtMs).toBeNull();
+  });
+
+  it('re-announces after recovery once the cooldown has passed', () => {
+    useRestBypassModeStore.getState().notifyFailure('transport', 1_000);
+    useRestBypassModeStore.getState().resolveFailure();
+
+    const again = useRestBypassModeStore
+      .getState()
+      .notifyFailure('transport', 1_000 + REST_FAILURE_TOAST_COOLDOWN_MS + 1);
+
+    expect(again).toBe(true);
+    expect(useRestBypassModeStore.getState().toastDismissed).toBe(false);
   });
 
   it('does not swap the visible toast copy mid-cooldown', () => {

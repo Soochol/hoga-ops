@@ -23,10 +23,12 @@ interface Store {
   lastToastAtMs: number | null;
   /** 마지막으로 알린 실패의 성격. 토스트 문구를 가르는 유일한 축이다. */
   lastKind: RestFailureKind | null;
-  /** 사용자가 토스트를 닫았는가(× 또는 우회 ON). lastToastAtMs는 쿨다운 앵커로 보존하고
-   * 가시성만 이 플래그로 분리 — 닫아도 쿨다운은 유지되고, 쿨다운 경과 후 재실패면 다시 뜬다. */
+  /** 토스트를 감출 이유가 생겼는가(× · 우회 ON · 수집 회복). lastToastAtMs는 쿨다운
+   * 앵커로 보존하고 가시성만 이 플래그로 분리 — 닫아도 쿨다운은 유지되고, 쿨다운 경과
+   * 후 재실패면 다시 뜬다. */
   toastDismissed: boolean;
   notifyFailure: (kind: RestFailureKind, nowMs?: number) => boolean;
+  resolveFailure: () => void;
   dismissToast: () => void;
 }
 
@@ -90,6 +92,25 @@ export const useRestBypassModeStore = create<Store>((set, get) => ({
     // 새 알림 창(쿨다운 경과): 이전에 닫혔더라도 다시 띄운다.
     set({ lastToastAtMs: nowMs, lastKind: kind, toastDismissed: false });
     return true;
+  },
+
+  /** 수집이 다시 성공했다 — 표시를 끈다.
+   *
+   * **왜 필요한가**: 이 토스트는 실패 사건에서만 상태가 움직여서, 회복돼도 아무도
+   * 되돌리지 않았다. 그래서 서버가 돌아온 뒤에도 "재시도 중" 이 화면에 남아
+   * 사용자에게 거짓을 말했다(같은 뷰포트의 디스크·배경작업 토스트는 폴링 파생이라
+   * 회복 시 저절로 사라진다 — 이 호스트만 회복 신호를 안 봤다).
+   *
+   * **쿨다운 앵커(`lastToastAtMs`)는 지우지 않는다.** 지우면 성공/실패가 번갈아
+   * 오는 부분 실패에서 토스트가 매 응답마다 뜨고 사라지길 반복한다. 재알림 간격은
+   * 실패 쪽 정책(5분) 그대로 두고, 여기서는 가시성만 끈다.
+   *
+   * 이미 감춰져 있으면 아무것도 하지 않는다 — 폴링마다 새 상태 객체를 만들지 않기 위해서다.
+   */
+  resolveFailure: () => {
+    if (get().lastToastAtMs != null && !get().toastDismissed) {
+      set({ toastDismissed: true });
+    }
   },
 
   dismissToast: () => set({ toastDismissed: true }),
