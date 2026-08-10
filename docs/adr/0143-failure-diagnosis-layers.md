@@ -124,6 +124,26 @@ N개만 하고 멈춰도 나머지는 기존 표로 동작한다.
    `f"intraday_{reason}"` 경고도 같은 정책에서 값을 받으므로 접두와 무관하다.
    벗기는 위치는 프론트 이관 시 결정한다.
 
+## Phase 2 진행 (2026-08-10)
+
+프론트 6표를 이 진단층으로 이관한다. 표 하나당 1 PR — 각각 **기존 테스트가 동등성
+그물**이다. 진입점은 `frontend/src/api/dataWarnings.ts`(wire shape + `warningKind` ·
+`isWarningFailure`).
+
+| # | 표 | 상태 |
+|---|---|---|
+| 1 | `liveDataWarnings.ts` (`RATE_LIMIT_REASONS`) | **완료** — `isRateLimitWarning` |
+| 2 | `restBypassMode.ts` (`classifyRestWarning`) | 대기 |
+| 3 | `intradayDegradation.ts` (`REASON_COPY`) | 대기 (접두 처리 결정 포함) |
+| 4 | `candleEmptyState.ts` (벤더실패·유예 2집합) | 대기 |
+| 5 | `liveStatusProjection.ts` (`CAPTURE_REASON_VIEW`) | **비대상** — `capture_reason` 축 |
+| 6 | `livePastCandles.ts` (`BLOCKING_WARNING_REASONS`) | 대기 (**마지막** · 동등성 기준은 캐시 동작) |
+
+**첫 이관이 Phase 1 의 분류 오류를 하나 드러냈다** — `capacity_overloaded`. 정책값을
+그대로 옮겼는데, `policy.kind`(처방 축)와 wire kind(표시 축)를 구분하지 않은 것이었다.
+`deferred` 로 정정했고 유일한 의도적 비대칭으로 테스트에 고정했다. **표마다 이런 검토
+지점이 있을 수 있으므로 이관은 계속 표 단위로 한다.**
+
 ## Phase 1 구현 결과 (2026-08-10)
 
 `hoga/live/data_warnings.py` 가 분류 단일 출처이고 **모든 생성기가 `make_data_warning`

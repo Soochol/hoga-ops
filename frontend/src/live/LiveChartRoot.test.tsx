@@ -2015,7 +2015,11 @@ describe('LiveChartRoot', () => {
 
   // (c) /diagnose 2026-06-09 후속: rate-limit/부분로딩 상태 표시. 백엔드 data_warnings를
   // 살려 빈칸 문구 전환 + 부분로딩 칩으로 "고장?" 오해를 없앤다.
-  const RL_WARNINGS = [{ reason: 'rate_limit_upstream', msg: 'rate limit' }];
+  // ADR-0143: 유량 판정 축이 사유 문자열 → 백엔드가 실은 `kind` 로 바뀌었다.
+  // 픽스처도 wire 가 실제로 내려보내는 모양을 쓴다.
+  const RL_WARNINGS = [
+    { reason: 'rate_limit_upstream', kind: 'rate_limit' as const, msg: 'rate limit' },
+  ];
 
   it('캔들 없음 + rate-limit 경고 → 빈칸 노트가 한도 문구로 전환', () => {
     useLivePageStore.setState({ historicalFromDate: null });

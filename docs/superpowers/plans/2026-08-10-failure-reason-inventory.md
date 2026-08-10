@@ -31,12 +31,19 @@ grep 결과였는데, 거기에 **다른 축**이 섞여 있었다:
 |---|---|---|---|---|
 | `transport_error` | transport | False | 3.0 (retryable 일 때) | 회선·서버 회복 대기 / 저장 데이터 우회 |
 | `rate_limit_upstream` | rate_limit | False | 1.0 | 대기 |
-| `capacity_overloaded` | rate_limit | False | 1.0 | 대기 (우리 큐 포화) |
+| `capacity_overloaded` | rate_limit → **wire 는 `deferred`** ⚠ | False | 1.0 | 대기 (우리 큐 포화) |
 | `api_error` | vendor_api | False | 1.0 또는 None | 재시도 |
 | `auth_error` | auth | **True** | — | 벤더 쪽 등록·앱키 (앱 안에 버튼 없음) |
 | `batch_limit_exceeded` | batch_limit | **True** | — | 범위 축소 |
 | `internal_processing_error` | internal | **True** | — | 결함 신고 |
 | `unexpected_error` | unexpected | **True** | — | 결함 신고 |
+
+⚠ **`capacity_overloaded` 의 wire kind 는 `policy.kind` 와 일부러 다르다** (Phase 2 에서
+정정). 두 kind 는 축이 다르다 — `error_policy` 의 `rate_limit` 은 **처방 축**(1초 뒤
+재시도)이고 wire kind 는 **표시 축**("누가 거절했나")이다. 큐 포화는 우리 쪽이고 벤더는
+이 구간을 거절한 적이 없으므로 `deferred` 다. Phase 1 에서 정책값을 그대로 옮긴 것이
+오류였고, 프론트 `candleEmptyState` 가 이미 `fetch_budget_exhausted` 와 **한 집합**에
+두고 있던 것이 판정 근거다. 유일한 의도적 비대칭이며 테스트로 고정했다.
 
 ⚠ **`capacity_overloaded` 는 생성 경로가 둘이다.** `classify_live_error`
 (`KiwoomCapacityOverloaded` → `message=str(exc)`) 와 별도 생성기
