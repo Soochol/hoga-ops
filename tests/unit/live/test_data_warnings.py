@@ -21,6 +21,7 @@ import pytest
 
 from hoga.live.data_warnings import (
     WARNING_CLASSIFICATION,
+    LiveDataWarning,
     classify_warning_reason,
     make_data_warning,
 )
@@ -160,6 +161,33 @@ def test_unknown_reason_falls_back_to_failure() -> None:
 
     assert kind is None
     assert is_failure is True
+
+
+def test_model_preserves_every_generated_key() -> None:
+    """**`response_model` 이 생성기의 키를 스트립하지 않는가.**
+
+    `data_warnings` 를 `list[dict]` 에서 모델로 올리면서 생긴 유일한 새 위험이다.
+    FastAPI 는 선언되지 않은 키를 **에러 없이 버리므로**, 모델이 불완전하면 프론트가
+    읽던 값이 조용히 사라지고 증상은 한참 뒤에 온다(CLAUDE.md "API wire 계약").
+
+    `extra="allow"` 가 그걸 막는데, 그 설정이 지워져도 테스트는 통과할 수 있다 —
+    선언된 키만 쓰는 payload 로는 차이가 안 나기 때문이다. 그래서 **선언 밖 키를
+    일부러 하나 섞어** 통과를 확인한다.
+    """
+    generated = [
+        make_data_warning("transport_error", "boom", date="20260518"),
+        make_data_warning("rest_bypassed", "cache only", batch="a__b"),
+        make_data_warning("invariant_violation", "x", date="20260518", batch="a__b"),
+        # 선언 밖 키 — `extra="allow"` 가 없으면 여기서 사라진다.
+        {**make_data_warning("api_error", "y"), "vendor_code": "8005"},
+    ]
+
+    for raw in generated:
+        dumped = LiveDataWarning.model_validate(raw).model_dump(exclude_none=True)
+        assert dumped == raw, (
+            f"모델을 통과하며 키가 갈렸다: 넣은 것={sorted(raw)} 나온 것={sorted(dumped)}. "
+            "`extra=\"allow\"` 가 살아 있는지, 새 키를 모델에 선언했는지 확인할 것."
+        )
 
 
 def test_make_data_warning_omits_absent_keys() -> None:

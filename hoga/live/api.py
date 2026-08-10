@@ -32,7 +32,7 @@ from hoga.live import (
     kiwoom_rest_runtime,
     kiwoom_runtime,
 )
-from hoga.live.data_warnings import make_data_warning
+from hoga.live.data_warnings import LiveDataWarning, make_data_warning
 from hoga.live.error_policy import classify_live_error
 from hoga.live.index_candles_cache import (
     IndexCandlesCache,
@@ -1687,7 +1687,7 @@ class LivePastCandlesResponse(BaseModel):
     candles: list[LiveCandleRow] = Field(default_factory=list)
     cached_dates: list[str] = Field(default_factory=list)
     fresh_dates: list[str] = Field(default_factory=list)
-    data_warnings: list[dict] = Field(default_factory=list)
+    data_warnings: list[LiveDataWarning] = Field(default_factory=list)
     effective_sessions: list[LiveEffectiveSession] = Field(default_factory=list)
 
 
@@ -1699,7 +1699,7 @@ class LivePastDailyCandlesResponse(BaseModel):
     candles: list[LiveCandleRow] = Field(default_factory=list)
     cached_batches: list[str] = Field(default_factory=list)
     fresh_batches: list[str] = Field(default_factory=list)
-    data_warnings: list[dict] = Field(default_factory=list)
+    data_warnings: list[LiveDataWarning] = Field(default_factory=list)
 
 
 class ScreenerDailyCandlesResponse(BaseModel):
@@ -1708,7 +1708,7 @@ class ScreenerDailyCandlesResponse(BaseModel):
     to: str
     source: str
     candles: list[LiveCandleRow] = Field(default_factory=list)
-    data_warnings: list[dict] = Field(default_factory=list)
+    data_warnings: list[LiveDataWarning] = Field(default_factory=list)
 
 
 class LiveInvestorNetPoint(BaseModel):
@@ -1728,7 +1728,7 @@ class LivePastInvestorNetResponse(BaseModel):
     points: list[LiveInvestorNetPoint] = Field(default_factory=list)
     cached_batches: list[str] = Field(default_factory=list)
     fresh_batches: list[str] = Field(default_factory=list)
-    data_warnings: list[dict] = Field(default_factory=list)
+    data_warnings: list[LiveDataWarning] = Field(default_factory=list)
 
 
 class LiveIndexCandlesResponse(BaseModel):
@@ -1737,7 +1737,7 @@ class LiveIndexCandlesResponse(BaseModel):
     to: str
     timeframe: str
     candles: list[LiveCandleRow] = Field(default_factory=list)
-    data_warnings: list[dict] = Field(default_factory=list)
+    data_warnings: list[LiveDataWarning] = Field(default_factory=list)
 
 
 class LiveIndexInvestorNetResponse(BaseModel):
@@ -1746,7 +1746,7 @@ class LiveIndexInvestorNetResponse(BaseModel):
     to: str
     unit: str
     points: list[LiveInvestorNetPoint] = Field(default_factory=list)
-    data_warnings: list[dict] = Field(default_factory=list)
+    data_warnings: list[LiveDataWarning] = Field(default_factory=list)
 
 
 class StockLimitsResponse(BaseModel):
