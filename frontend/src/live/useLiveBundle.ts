@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import type { WireDataWarning } from '../api/dataWarnings';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { useLiveSettings } from '../api/liveSettings';
 import { useLivePastCandles } from '../api/livePastCandles';
@@ -553,8 +554,7 @@ export function useLiveBundle(
     // 뭉갰는데, 그때는 실패만 읽었으므로 무해했다. 회복까지 읽는 지금은 로딩·비활성
     // 상태를 "다시 성공했다" 로 오독해 토스트를 조기에 지운다.
     if (!response) return;
-    const warnings: readonly { reason?: string | null; msg?: string | null }[] =
-      response.data_warnings;
+    const warnings: readonly WireDataWarning[] = response.data_warnings;
     // 여러 사유가 섞여 오면 **transport 를 우선**한다 — 서버에 닿지도 못한 사실이
     // 혼잡보다 무겁고, 사용자 처방(저장 데이터 우회)도 그쪽에 붙어 있다.
     const kinds = warnings.map(classifyRestWarning).filter((k) => k !== null);
