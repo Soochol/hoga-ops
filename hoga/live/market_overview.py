@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 log = logging.getLogger(__name__)
 
@@ -198,15 +198,44 @@ def parse_program_trend(
     return out
 
 
-def parse_streaks(rows: list[dict[str, Any]], *, actor: str) -> list[dict[str, Any]]:
-    """ka10131 → 주체별 연속 순매수. 외국인·기관이 **필드로 갈려 있어 한 응답이 두 카드**를 채운다."""
+#: 연속 매매의 방향. 요청의 `netslmt_tp`(순매수 2 · 순매도 1)와 짝이고, 프론트
+#: `StreakDirection` union 과 손으로 미러한다(ADR-0004).
+StreakDirection = Literal["buy", "sell"]
+
+#: 시장 — **화면 라벨을 그대로 계약으로 쓴다**. 벤더 `mrkt_tp` 코드는 라우트가 내부에서
+#: 매핑한다(`_MRKT_TP`). 원시 코드를 wire 에 흘리지 않는 이유가 이 TR 에 특히 강하다:
+#: **모르는 코드에 에러가 안 난다** — `'1'` · `'000'` 이 HTTP 200 · `return_code=0` 으로
+#: **코스피 100행을 그대로** 돌려준다(2026-08-10 실측). 즉 오타의 대가가 빈 화면이
+#: 아니라 "코스닥" 이라고 쓰인 코스피 데이터다.
+MarketName = Literal["KOSPI", "KOSDAQ"]
+
+
+def parse_streaks(
+    rows: list[dict[str, Any]], *, actor: str, direction: StreakDirection
+) -> list[dict[str, Any]]:
+    """ka10131 → 주체별 연속 순매수/순매도. 외국인·기관이 **필드로 갈려 있어 한 응답이 두 카드**를 채운다.
+
+    `direction` 은 벤더 요청의 `netslmt_tp` 와 짝이다. 그 코드표는 리서치 문서가
+    "2=순매수 **추정**" 으로 남겨 뒀던 것을 2026-08-10 실측으로 확정했다 — 두 방향의
+    종목 코드 집합 **교집합이 0** 이라 정렬 축이 아니라 진짜 필터다.
+
+    **그런데도 부호 필터가 여전히 필요하다.** 벤더는 방향으로 종목을 고르지만 두 주체
+    값을 **한 행에 같이** 실어 주므로, 순매도 응답에도 그 종목을 사들인 주체가 섞인다
+    (같은 실측: 순매도 100행 중 외국인 음수 65 · 양수 35 · 기관 음수 70 · 양수 30).
+    방향을 믿고 필터를 빼면 "순매도 상위" 에 +7일 행이 올라온다 — 순매수 카드에 -2일
+    행이 노출됐던 2026-08-05 사고의 정확한 거울이다.
+
+    **부호는 보존한다.** 순매도 행의 일수·금액은 음수 그대로 나가고, 절대값으로 읽는
+    것은 화면의 결정이다(일수는 `Math.abs`, 금액은 부호가 곧 색이다). 여기서 뒤집으면
+    "벤더가 뭐라고 했는가" 를 되짚을 수 없어진다.
+    """
     prefix = "frgnr" if actor == "외국인" else "orgn"
+    want_positive = direction == "buy"
     out: list[dict[str, Any]] = []
     for r in rows:
         days = signed_int(r.get(f"{prefix}_cont_netprps_dys"))
-        # **양수만** — 음수 연속일수는 연속 순매도라 "순매수 상위" 카드에 섞이면
-        # 안 된다(실화면에서 -2일 · 금액 — 행이 노출됐다, 2026-08-05).
-        if days is None or days <= 0:
+        # 0 은 어느 방향도 아니다(그 주체의 연속이 끊긴 종목) — 양쪽에서 버린다.
+        if days is None or days == 0 or (days > 0) != want_positive:
             continue
         out.append(
             {
@@ -216,6 +245,11 @@ def parse_streaks(rows: list[dict[str, Any]], *, actor: str) -> list[dict[str, A
                 "streak_days": days,
                 # ⚠ 벤더 금액 단위는 백만원(_mwon_to_eok 근거) — amt_qty_tp 는 이
                 # TR 에서 **무시된다**(0/1 응답 동일, 양축이 한 응답에 온다).
+                #
+                # ⚠ 음수는 **마이너스 두 개**로 온다(`'--940483'`). 일수는 `'-2'` 로
+                # 하나뿐이라 표기가 필드마다 갈린다. `signed_int` 가 접어 주므로(#1247)
+                # 여기서 따로 다루지 않는다 — 그 폴딩이 없으면 순매도 카드는 일수만
+                # 나오고 금액·수량이 통째로 `—` 가 된다.
                 "streak_net_eok": _mwon_to_eok(signed_int(r.get(f"{prefix}_cont_netprps_amt"))),
                 "streak_net_qty_shares": signed_int(r.get(f"{prefix}_cont_netprps_qty")),
                 "period_change_pct": decimal_price(r.get("prid_stkpc_flu_rt")),

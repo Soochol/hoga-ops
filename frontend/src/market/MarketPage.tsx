@@ -28,8 +28,11 @@ import {
   useMarketProgram,
   useMarketSectors,
   useMarketStreaks,
+  type MarketName,
   type MarketVolatility,
   type ProgramAxis,
+  type StreakDirection,
+  type StreakRow,
 } from '../api/market';
 import { useLiveRankings } from '../api/liveRankings';
 import { heatBg } from '../heatmap/heat';
@@ -38,7 +41,14 @@ import { todayKstYyyymmdd } from '../live/liveDateTime';
 import type { LiveIndexId } from '../live/liveInstrument';
 import { PAGE_MAX_W, PageContainer } from '../layout/PageContainer';
 import { persistJson, readJsonObject } from '../state/persist';
-import { CARD_HEADER_RULE, CardHeader, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
+import {
+  CARD_HEADER_RULE,
+  CardHeader,
+  EmptyNote,
+  MarketCard,
+  ModeSwitch,
+  useCardPref,
+} from './marketCardBits';
 import { priceDirClass } from '../ui/priceDir';
 import {
   AdvanceDeclineBar,
@@ -608,21 +618,77 @@ export function ProgramCard() {
   );
 }
 
-// ── 순매수 상위 (주체별 2카드) ───────────────────────────────────────────
+// ── 연속 순매수·순매도 상위 (주체별 2카드) ───────────────────────────────
 
+const DIRECTION_LABELS: Record<StreakDirection, string> = { buy: '순매수', sell: '순매도' };
+const DIRECTIONS: ReadonlyArray<readonly [StreakDirection, string]> = [
+  ['buy', DIRECTION_LABELS.buy],
+  ['sell', DIRECTION_LABELS.sell],
+];
+const STREAK_MARKET_LABELS: Record<MarketName, string> = { KOSPI: '코스피', KOSDAQ: '코스닥' };
+const STREAK_MARKETS: ReadonlyArray<readonly [MarketName, string]> = [
+  ['KOSPI', STREAK_MARKET_LABELS.KOSPI],
+  ['KOSDAQ', STREAK_MARKET_LABELS.KOSDAQ],
+];
+const DIRECTION_KEY = 'market.actorNetDirection.v1';
+// 축마다 저장 키를 나눈다 — 한 객체에 두 축을 담으면 필드 이름이
+// `외국인_direction` 처럼 합성 키가 되고, 그 순간 `useCardPref` 의 필드 규약이
+// 카드마다 달라진다. 키가 하나 느는 대신 두 축이 같은 모양을 유지한다.
+const MARKET_KEY = 'market.actorNetMarket.v1';
+
+/** 주체 하나의 연속 매매 상위 — 시장·방향을 카드마다 따로 고른다.
+ *
+ *  **카드를 늘리지 않고 토글로 간 이유**는 레이아웃이다. 좌측 2×2 그리드가 우측 열
+ *  (업종 온도 + 업종 수급) 높이에 맞춰져 있어(아래 `MarketPage` 주석) 카드를 더하면
+ *  그 균형이 통째로 깨진다. 축이 둘로 늘어난 지금은 더 그렇다 — 조합이 4개라 카드로
+ *  펼치면 8장이 된다.
+ *
+ *  두 축을 **카드별로** 두는 것은 지수 카드(현물/선물)와 같은 규율이다 — 외국인 코스피
+ *  순매도 옆에 기관 코스닥 순매수를 놓고 보는 것이 이 페이지에서 자연스러운 비교다.
+ *  둘이 같은 조합이면 쿼리 키가 같아 벤더 콜도 한 벌이다.
+ *
+ *  **정렬은 벤더 순서 그대로다**(모든 조합 동일). 벤더 `rank` 는 연속 금액이 아니라
+ *  **당일 순매매 대금** 순이라(2026-08-10 실측: 193432 · 185256 · 135670 … 단조감소)
+ *  화면의 금액 열과 순서가 어긋나 보이는데, 이건 순매수 카드가 원래 갖고 있던 성질
+ *  이다. 한쪽만 재정렬하면 조합마다 서로 다른 질문에 답하게 된다. */
 export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
   const jump = useJumpToLive();
-  const streaks = useMarketStreaks();
-  const rows = (streaks.data?.[actor] ?? []) as import('../api/market').StreakRow[];
+  const [market, setMarket] = useCardPref<MarketName>(MARKET_KEY, actor, 'KOSPI');
+  const [direction, setDirection] = useCardPref<StreakDirection>(DIRECTION_KEY, actor, 'buy');
+  const streaks = useMarketStreaks(market, direction);
+  const rows = (streaks.data?.[actor] ?? []) as StreakRow[];
   const accent = actor === '외국인' ? SERIES_COLORS.foreign : SERIES_COLORS.institution;
   return (
     <MarketCard className="flex flex-col gap-xs p-sm">
-      <h2 className={`flex items-center gap-2xs text-sm text-fg ${CARD_HEADER_RULE}`}>
-        <span className="inline-block h-[2px] w-[10px]" style={{ background: accent }} />
-        {actor} 순매수 <span className="text-2xs text-fg-dim">연속 · 억원</span>
-      </h2>
+      {/* 토글이 둘이라 좁은 폭에서는 헤더가 줄바꿈된다(`flex-wrap`) — 잘리는 대신
+          높이를 내주는 쪽이 맞다. 읽는 순서대로 시장 → 방향. */}
+      <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
+        {/* 색 바는 **주체**의 표식이라 시장·방향을 따라가지 않는다 — 방향은 토글과
+            값의 색(적/청)이 이미 말한다. */}
+        <h2 className="flex items-center gap-2xs text-sm text-fg">
+          <span className="inline-block h-[2px] w-[10px]" style={{ background: accent }} />
+          {actor} <span className="text-2xs text-fg-dim">연속 · 억원</span>
+        </h2>
+        <div className="flex flex-wrap items-center gap-2xs">
+          <ModeSwitch
+            value={market}
+            onChange={setMarket}
+            options={STREAK_MARKETS}
+            label={`${actor} 연속 매매 시장`}
+          />
+          <ModeSwitch
+            value={direction}
+            onChange={setDirection}
+            options={DIRECTIONS}
+            label={`${actor} 연속 매매 방향`}
+          />
+        </div>
+      </div>
       {rows.length === 0 ? (
-        <EmptyNote>연속 순매수 종목이 없습니다.</EmptyNote>
+        // 어느 조합이 빈 것인지 문구가 말한다 — 토글이 넷이라 더 그렇다.
+        <EmptyNote>
+          {STREAK_MARKET_LABELS[market]} 연속 {DIRECTION_LABELS[direction]} 종목이 없습니다.
+        </EmptyNote>
       ) : (
         <ol className="flex flex-col">
           {rows.slice(0, 8).map((r) => (
@@ -634,8 +700,10 @@ export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
                 className="grid w-full grid-cols-[1fr_2.6rem_3.8rem] items-center gap-xs py-2xs text-left hover:bg-bg-input-hover"
               >
                 <span className="truncate text-sm text-fg">{r.name}</span>
+                {/* 순매도 방향은 일수가 음수로 온다 — 부호는 백엔드가 보존하고
+                    "며칠째인가" 로 읽는 것은 여기의 결정이다(`-2일` 은 안 읽힌다). */}
                 <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">
-                  {r.streak_days}일
+                  {Math.abs(r.streak_days)}일
                 </span>
                 <span
                   className={`text-right font-data text-sm tabular-nums ${r.streak_net_eok === null ? 'text-fg-dim' : priceDirClass(r.streak_net_eok)}`}

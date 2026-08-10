@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Literal, get_args, get_origin
 
 from hoga.api import events, models as m, sources
-from hoga.live import futures_runtime
+from hoga.live import futures_runtime, market_overview
 from hoga.live.lifecycle import LiveStatus
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -150,6 +150,21 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     "LiveTimeframe": (
         frozenset(get_args(m.StudyViewReference.model_fields["timeframe"].annotation)),
         "frontend/src/state/livePage.ts",
+    ),
+    # **응답 필드가 아니라 쿼리 파라미터의 enum** 이다 — 그래도 계약 표면은 같다.
+    # 값이 갈리면 프론트가 서버가 모르는 방향을 보내고 FastAPI 가 422 를 낸다(카드가
+    # 통째로 빈다). 선례인 `ProgramAxis` 는 백엔드가 `axis: str` 이라 대조할 짝이
+    # 없었고, 그래서 이쪽은 처음부터 `Literal` 로 뒀다.
+    "StreakDirection": (
+        frozenset(get_args(market_overview.StreakDirection)),
+        "frontend/src/api/market.ts",
+    ),
+    # 같은 이유로 값 대조가 특히 중요하다 — 벤더가 **모르는 시장 코드를 거절하지 않고
+    # 코스피를 그대로 준다**(2026-08-10 실측). 라벨이 갈리면 422 가 아니라 틀린 시장이
+    # 그려질 수도 있는 표면이라, 라벨 자체를 계약으로 못박는다.
+    "MarketName": (
+        frozenset(get_args(market_overview.MarketName)),
+        "frontend/src/api/market.ts",
     ),
 }
 
@@ -264,7 +279,7 @@ INTENTIONALLY_UNMIRRORED: dict[str, str] = {
 
 # 감사 대상 백엔드 모듈 — 명시 목록이다(registry 철학과 같다). 여기 없는 모듈의
 # Literal 별칭은 감사되지 않으므로, 새 wire enum 을 다른 모듈에 두면 추가할 것.
-_AUDITED_BACKEND_MODULES = (m, sources, events, futures_runtime)
+_AUDITED_BACKEND_MODULES = (m, sources, events, futures_runtime, market_overview)
 
 
 def _backend_literal_alias_names() -> set[str]:
