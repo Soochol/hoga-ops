@@ -4,13 +4,14 @@ import DayBoundaryOverlay from './DayBoundaryOverlay';
 import { useChartPrefsStore } from '../state/chartPrefs';
 import type { VirtualAxis } from '../util/virtualAxis';
 
-function makeChart(paneWidth = 498) {
+function makeChart(paneWidth = 498, timeAxisHeight = 28) {
   const subscribers = new Set<() => void>();
   const timeScale = {
     timeToCoordinate: vi.fn(() => 120),
-    // pane 폭 — 컨테이너 폭(가격축 거터 포함)보다 좁다. 오버레이는 이 값으로
-    // 스스로를 잘라 구분선이 가격 라벨 위로 새지 않게 한다.
+    // pane 폭 / 시간축 높이 — 오버레이는 이 둘로 스스로를 pane 영역에 가둬
+    // 구분선이 우측 가격 라벨과 하단 날짜 라벨 위로 새지 않게 한다.
     width: vi.fn(() => paneWidth),
+    height: vi.fn(() => timeAxisHeight),
     subscribeVisibleLogicalRangeChange: vi.fn((cb: () => void) => subscribers.add(cb)),
     unsubscribeVisibleLogicalRangeChange: vi.fn((cb: () => void) => subscribers.delete(cb)),
   };
@@ -53,17 +54,20 @@ describe('DayBoundaryOverlay', () => {
     expect(boundary.style.backgroundImage).toContain('rgb(239, 68, 68)');
   });
 
-  // 가격축(우측 거터) 누수 회귀 — 컨테이너를 pane 폭으로 잘라 두지 않으면
-  // x > paneWidth 인 구분선이 가격 라벨 배경 위에 그려진다. 폭과 overflow 중
-  // 하나만 있어도 새므로 둘 다 단언한다.
-  it('clips itself to the pane width so lines never reach the price axis gutter', () => {
-    render(<DayBoundaryOverlay chart={makeChart(498) as never} axis={axis} />);
+  // 축 누수 회귀 — 컨테이너를 pane 영역으로 잘라 두지 않으면 x > paneWidth 인
+  // 구분선이 우측 가격 라벨 배경 위에, 선의 아래쪽 끝이 하단 시간축의 날짜 라벨
+  // 위에 그려진다. 폭·높이·overflow 중 하나만 빠져도 새므로 셋 다 단언한다.
+  it('clips itself to the pane box so lines never reach either axis gutter', () => {
+    render(<DayBoundaryOverlay chart={makeChart(498, 28) as never} axis={axis} />);
 
     const clip = screen.getByTestId('day-boundary-clip');
     expect(clip.style.width).toBe('498px');
+    expect(clip.style.bottom).toBe('28px');
     expect(clip.className).toContain('overflow-hidden');
-    // 컨테이너가 우측으로 늘어나지 않도록 `inset-0` 이 아니라 좌측 고정이어야 한다.
+    // 컨테이너가 우측·하단으로 늘어나지 않도록 `inset-0`/`inset-y-0` 가 아니라
+    // 좌상단 고정 + 명시 폭·bottom 이어야 한다.
     expect(clip.className).not.toContain('inset-0');
+    expect(clip.className).not.toContain('inset-y-0');
   });
 
   it('attaches the resize observer after enabling from a disabled start', async () => {

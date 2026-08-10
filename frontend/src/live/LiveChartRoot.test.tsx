@@ -65,6 +65,7 @@ vi.mock('lightweight-charts', async () => {
         timeToCoordinate: vi.fn(() => null),
         coordinateToTime: vi.fn(() => null),
         width: vi.fn(() => 800),
+        height: vi.fn(() => 28),
       })),
       panes: vi.fn(() => []),
       remove: vi.fn(),
@@ -147,6 +148,7 @@ describe('LiveChartRoot', () => {
         coordinateToLogical: vi.fn(() => null),
         timeToIndex: vi.fn(() => null),
         width: vi.fn(() => 800),
+        height: vi.fn(() => 28),
       })),
       panes: vi.fn(() => []),
       remove: vi.fn(),
@@ -387,6 +389,7 @@ describe('LiveChartRoot', () => {
         coordinateToLogical: vi.fn(() => null),
         timeToIndex: vi.fn(() => 0),
         width: vi.fn(() => 800),
+        height: vi.fn(() => 28),
       })),
       panes: vi.fn(() => []),
       remove: vi.fn(),
@@ -465,6 +468,7 @@ describe('LiveChartRoot', () => {
         timeToCoordinate: vi.fn(() => null),
         coordinateToLogical: vi.fn(() => null),
         width: vi.fn(() => 800),
+        height: vi.fn(() => 28),
         timeToIndex: vi.fn(() => null),
       })),
       panes: vi.fn(() => []),
@@ -549,6 +553,7 @@ describe('LiveChartRoot', () => {
         timeToCoordinate: vi.fn(() => null),
         coordinateToLogical: vi.fn(() => null),
         width: vi.fn(() => 800),
+        height: vi.fn(() => 28),
         timeToIndex: vi.fn(() => null),
       })),
       panes: vi.fn(() => []),
@@ -653,6 +658,7 @@ describe('LiveChartRoot', () => {
       coordinateToLogical: vi.fn(() => null),
       timeToIndex: vi.fn(() => 0),
       width: vi.fn(() => 800),
+      height: vi.fn(() => 28),
     };
     const makeSeries = (chart: {
       timeScale: () => typeof ts;
@@ -802,6 +808,7 @@ describe('LiveChartRoot', () => {
       coordinateToLogical: vi.fn(() => null),
       timeToIndex: vi.fn(() => 0),
       width: vi.fn(() => 800),
+      height: vi.fn(() => 28),
     };
     const makeSeries = (chart: {
       timeScale: () => typeof ts;
@@ -1005,6 +1012,7 @@ describe('LiveChartRoot', () => {
       timeToCoordinate: vi.fn(() => null),
       coordinateToLogical: vi.fn((): number | null => null),
       width: vi.fn(() => 800),
+      height: vi.fn(() => 28),
       timeToIndex: vi.fn((): number | null => null),
     };
     const chart = {
@@ -2656,6 +2664,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       // can derive the expected shift from the same axis math production uses.
       timeToIndex: vi.fn((t: unknown): number | null => Math.round(t as number)),
       width: vi.fn(() => 800),
+      height: vi.fn(() => 28),
       setVisibleRange: vi.fn(),
       timeToCoordinate: vi.fn(() => null),
     };
@@ -3953,6 +3962,7 @@ function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
     timeToCoordinate: vi.fn(() => null),
     timeToIndex: vi.fn(() => null),
     width: vi.fn(() => 800),
+    height: vi.fn(() => 28),
   };
   return {
     addSeries: vi.fn(() => ({
@@ -4298,6 +4308,7 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
         timeToCoordinate: vi.fn(() => null),
         timeToIndex: vi.fn(() => null),
         width: vi.fn(() => 800),
+        height: vi.fn(() => 28),
       };
       const chart = {
         addSeries: vi.fn(() => ({
@@ -4581,6 +4592,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
       coordinateToTime: vi.fn(() => null),
       coordinateToLogical: vi.fn(() => null),
       width: vi.fn(() => 800),
+      height: vi.fn(() => 28),
       timeToIndex: vi.fn(() => null),
     })),
     panes: vi.fn(() => panes),
