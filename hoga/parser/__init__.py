@@ -375,8 +375,11 @@ def _build_meta(
     # losing the AM session — is flagged by the session-edge anchors even with
     # no interior gap. Previously omitted (default False), which let a leading
     # gap slip through as COMPLETE and mis-rank completeness_first.
+    # hogaplay 는 KRX 전용 업스트림이므로(ADR-0003) 하한이 정규장 개장이다 —
+    # venue 축을 타지 않는 유일한 소비자라 값을 여기서 명시한다.
     gaps = analyze_gaps(
         [HogaMs(ts) for ts in snapshot_ts_ms],
+        session_open_ms=HogaMs(info.regular_session_open_ms),
         session_close_ms=HogaMs(info.regular_session_close_ms),
         anchor_edges=True,
     )

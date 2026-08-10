@@ -325,18 +325,21 @@ def test_malformed_meta_json_returns_client_incomplete(tmp_path: Path) -> None:
 # Regular session open = 90000000 (09:00:00.000), close = 153000000 (15:30:00.000).
 # Closing Auction Window spans the last 10 minutes (15:20–15:30 on a regular day).
 _REGULAR_CLOSE = HogaMs(153000000)
+# 갭 분석 하한 — venue 축 도입(ADR-0140) 후 **필수 인자**다. 아래 케이스는 전부 KRX
+# 정규장 시나리오라 09:00 을 명시한다. NXT·UN 의 08:00 하한은 별도 테스트가 다룬다.
+_REGULAR_OPEN = HogaMs(90000000)
 
 
 def test_no_gaps_when_snapshots_dense() -> None:
     # One snapshot per second from 09:00:00 to 09:00:30 — no gap exceeds 1s.
     ts = [HogaMs(90000000 + i * 1000) for i in range(31)]
-    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is False
+    assert has_meaningful_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE) is False
 
 
 def test_gap_detected_when_60s_empty() -> None:
     # 09:00:00 then jump to 09:01:30 (90 seconds later) — gap exceeds threshold.
     assert has_meaningful_gaps(
-        [HogaMs(90000000), HogaMs(90130000)], session_close_ms=_REGULAR_CLOSE,
+        [HogaMs(90000000), HogaMs(90130000)], session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE,
     ) is True
 
 
@@ -346,17 +349,19 @@ def test_gap_outside_continuous_session_ignored() -> None:
     the pre-session sample at 08:40 is filtered out before gap analysis."""
     ts = [HogaMs(84000000), HogaMs(90000000), HogaMs(90001000), HogaMs(90002000)]
     # in_session = [90000000, 90001000, 90002000] — three points, 1s apart, no 60s gap.
-    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is False
+    assert has_meaningful_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE) is False
 
 
 def test_empty_list_returns_true() -> None:
     """Empty input → True (conservative: caller can't prove completeness)."""
-    assert has_meaningful_gaps([], session_close_ms=_REGULAR_CLOSE) is True
+    assert has_meaningful_gaps([], session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE) is True
 
 
 def test_single_in_session_event_returns_true() -> None:
     """One in-session datapoint isn't enough to compute gap presence; conservative True."""
-    assert has_meaningful_gaps([HogaMs(90000000)], session_close_ms=_REGULAR_CLOSE) is True
+    assert has_meaningful_gaps(
+        [HogaMs(90000000)], session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE,
+    ) is True
 
 
 def test_gap_across_minute_boundary_is_real_duration() -> None:
@@ -364,7 +369,7 @@ def test_gap_across_minute_boundary_is_real_duration() -> None:
     pause spanning 09:00:45 → 09:01:15 must NOT be flagged. Raw HogaMs
     subtraction gives 70,000 (looks like 70 sec) but real elapsed is 30 sec."""
     ts = [HogaMs(90045000), HogaMs(90115000)]
-    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is False
+    assert has_meaningful_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE) is False
 
 
 def test_gap_across_hour_boundary_is_real_duration() -> None:
@@ -372,13 +377,13 @@ def test_gap_across_hour_boundary_is_real_duration() -> None:
     30 sec real, but raw subtraction gives 4,000,030 ms — would falsely flag
     every multi-hour stream as partial. This is the dominant prod false-positive."""
     ts = [HogaMs(95945000), HogaMs(100015000)]
-    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is False
+    assert has_meaningful_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE) is False
 
 
 def test_real_gap_above_threshold_still_detected() -> None:
     """Sanity: real 90-second pause within the hour is still True after the fix."""
     ts = [HogaMs(100000000), HogaMs(100130000)]  # 10:00:00 → 10:01:30
-    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is True
+    assert has_meaningful_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE) is True
 
 
 def test_auction_window_snapshots_excluded_from_gap_analysis() -> None:
@@ -388,7 +393,7 @@ def test_auction_window_snapshots_excluded_from_gap_analysis() -> None:
     Window snapshots → empty in-session set → conservative True."""
     # 10 dense snapshots at 15:25:00..15:25:09 (inside the 15:20–15:30 window).
     ts = [HogaMs(152500000 + i * 1000) for i in range(10)]
-    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is True
+    assert has_meaningful_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE) is True
 
 
 # --- WS1: analyze_gaps returns gap boundaries in original HHMMSSmmm ---
@@ -398,7 +403,7 @@ def test_analyze_gaps_returns_boundary_in_original_encoding() -> None:
     linear-ms value back-converted (that round-trip is unsafe)."""
     from hoga.api.disk_state import analyze_gaps
     ts = [HogaMs(100000000), HogaMs(100130000)]  # 10:00:00 → 10:01:30 (90s gap)
-    a = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE)
+    a = analyze_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE)
     assert a.gap_ranges == [(HogaMs(100000000), HogaMs(100130000))]
     assert a.is_partial is True
     assert a.in_session_count == 2
@@ -409,14 +414,17 @@ def test_analyze_gaps_boundary_across_minute_is_original() -> None:
     09:59:40 → 10:01:20 is a real 100s gap; boundaries stay native."""
     from hoga.api.disk_state import analyze_gaps
     ts = [HogaMs(95940000), HogaMs(100120000)]
-    a = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE)
+    a = analyze_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE)
     assert a.gap_ranges == [(HogaMs(95940000), HogaMs(100120000))]
 
 
 def test_analyze_gaps_no_false_positive_across_hour_boundary() -> None:
     """The dominant prod false-positive: 09:59:45 → 10:00:15 is 30s real; no gap."""
     from hoga.api.disk_state import analyze_gaps
-    a = analyze_gaps([HogaMs(95945000), HogaMs(100015000)], session_close_ms=_REGULAR_CLOSE)
+    a = analyze_gaps(
+        [HogaMs(95945000), HogaMs(100015000)],
+        session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE,
+    )
     assert a.gap_ranges == []
     assert a.is_partial is False
 
@@ -426,7 +434,7 @@ def test_analyze_gaps_multiple_ranges_sorted() -> None:
     from hoga.api.disk_state import analyze_gaps
     # 10:02:00, then dense 10:00:00/10:00:01, then 10:03:30 — two ≥60s gaps.
     ts = [HogaMs(100200000), HogaMs(100000000), HogaMs(100001000), HogaMs(100330000)]
-    a = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE)
+    a = analyze_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE)
     assert a.gap_ranges == [
         (HogaMs(100001000), HogaMs(100200000)),
         (HogaMs(100200000), HogaMs(100330000)),
@@ -437,7 +445,7 @@ def test_analyze_gaps_sparse_window_has_no_ranges_but_is_partial() -> None:
     """< 2 in-session datapoints → is_partial True by the count rule, but no
     discrete ranges (nothing to point the user at)."""
     from hoga.api.disk_state import analyze_gaps
-    a = analyze_gaps([HogaMs(90000000)], session_close_ms=_REGULAR_CLOSE)
+    a = analyze_gaps([HogaMs(90000000)], session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE)
     assert a.gap_ranges == []
     assert a.in_session_count == 1
     assert a.is_partial is True
@@ -705,14 +713,14 @@ def test_anchor_edges_off_by_default_ignores_late_head() -> None:
     """Default (anchor_edges=False) keeps consecutive-pairs-only: a stream that
     starts at 13:00 with no interior gap is NOT flagged — hogaplay's behavior."""
     ts = [HogaMs(130000000 + i * 1000) for i in range(120)]
-    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is False
+    assert has_meaningful_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE) is False
 
 
 def test_anchor_edges_flags_late_head() -> None:
     from hoga.api.disk_state import analyze_gaps
 
     ts = [HogaMs(130000000 + i * 1000) for i in range(120)]
-    g = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
+    g = analyze_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
     assert g.is_partial is True
     # Head gap boundary: session open → first snapshot.
     assert g.gap_ranges[0] == (HogaMs(90000000), HogaMs(130000000))
@@ -733,7 +741,7 @@ def test_anchor_edges_flags_early_tail() -> None:
     while t < end:
         ts.append(_intra_ms_to_hhmmssms(t))
         t += 30_000
-    g = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
+    g = analyze_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
     assert g.is_partial is True
     # The final gap runs from the last snapshot to the auction-window start.
     assert g.gap_ranges[-1][1] == HogaMs(152000000)
@@ -742,7 +750,7 @@ def test_anchor_edges_flags_early_tail() -> None:
 def test_anchor_edges_empty_flags_whole_window() -> None:
     from hoga.api.disk_state import analyze_gaps
 
-    g = analyze_gaps([], session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
+    g = analyze_gaps([], session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
     assert g.in_session_count == 0
     assert g.is_partial is True
     assert g.gap_ranges == [(HogaMs(90000000), HogaMs(152000000))]
@@ -761,7 +769,7 @@ def test_anchor_edges_dense_full_window_no_gap() -> None:
     while t < end:
         ts.append(_intra_ms_to_hhmmssms(t))
         t += 30_000
-    g = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
+    g = analyze_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
     assert g.is_partial is False
     assert g.gap_ranges == []
 
@@ -839,3 +847,110 @@ def test_recapture_invalidates_the_cached_classification(tmp_path: Path, monkeyp
 
     assert classify_stock_date(sd)["hogaplay"].state == DiskState.SOURCE_PARTIAL
     assert counter["n"] == 1, "변경된 meta 는 다시 파싱해야 한다"
+
+
+# === venue 축 갭 창 (ADR-0140) ==============================================
+#
+# 하한이 09:00 모듈 상수이던 시절, NXT·UN 은 08:00–20:00 을 저장하는데 갭 분석
+# 창이 KRX 정규장이라 프리·애프터마켓의 실제 결손이 분석 대상 밖이었다.
+
+_NXT_OPEN = HogaMs(80000000)    # 08:00
+_NXT_CLOSE = HogaMs(200000000)  # 20:00
+
+
+def test_krx_window_unchanged_when_open_passed_explicitly() -> None:
+    """**무회귀의 전부**: 09:00 을 명시로 넘기면 하한이 상수이던 시절과 같은 답.
+
+    창 인자화가 KRX 판정을 바꾸지 않는다는 것을 값으로 못박는다 — 이게 깨지면
+    hogaplay 전량(9만여 Stock-Date)의 완결성 분류가 조용히 이동한다.
+
+    ⚠ HHMMSSmmm 은 **십진 자리 인코딩이라 산술이 성립하지 않는다**(90000000 에
+    10000 을 29번 더하면 초가 90 인 값이 나온다). 타임스탬프는 반드시 아래
+    `_hms` 처럼 자리별로 조립할 것 — 모듈 docstring 이 경고하는 그 함정이다.
+    """
+    from hoga.api.disk_state import analyze_gaps
+
+    def _hms(h: int, m: int, sec: int) -> HogaMs:
+        return HogaMs(h * 10_000_000 + m * 100_000 + sec * 1_000)
+
+    # 09:00:00~09:04:50 10초 간격(실제 캡처 밀도) → 09:08:00 로 3분 남짓 공백 → 다시 밀집
+    ts = [_hms(9, m, sec) for m in range(5) for sec in range(0, 60, 10)]
+    ts += [_hms(9, m, sec) for m in range(8, 13) for sec in range(0, 60, 10)]
+    a = analyze_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_REGULAR_CLOSE,
+                     anchor_edges=True)
+    ranges = [(int(x), int(y)) for x, y in a.gap_ranges]
+    # 09:04:50 → 09:08:00 하나(3분 10초). 09:00 정각 시작이라 head 앵커 없음.
+    # 마지막 09:12:50 → 15:20(close−10분) 은 6시간 넘는 tail 앵커.
+    assert ranges[0] == (int(_hms(9, 4, 50)), int(_hms(9, 8, 0)))
+    assert ranges[-1] == (int(_hms(9, 12, 50)), int(_hms(15, 20, 0)))
+    assert len(ranges) == 2
+    assert a.in_session_count == len(ts)
+
+
+def test_nxt_premarket_data_enters_the_window() -> None:
+    """NXT 하한 08:00 — 프리마켓 스냅샷이 분석에 **들어온다**.
+
+    KRX 창(09:00)이면 08:10·08:40 이 통째로 밖이라 in_session_count 가 2 였고,
+    그 사이 공백도 보이지 않았다.
+    """
+    from hoga.api.disk_state import analyze_gaps
+
+    ts = [HogaMs(81000000), HogaMs(84000000), HogaMs(90000000), HogaMs(150000000)]
+    krx = analyze_gaps(ts, session_open_ms=_REGULAR_OPEN, session_close_ms=_NXT_CLOSE)
+    nxt = analyze_gaps(ts, session_open_ms=_NXT_OPEN, session_close_ms=_NXT_CLOSE)
+    assert krx.in_session_count == 2   # 프리마켓 2건이 창 밖
+    assert nxt.in_session_count == 4   # 이제 들어온다
+    # 08:10 → 08:40 공백이 KRX 창에선 아예 보이지 않았다.
+    assert (81000000, 84000000) in [(int(s), int(e)) for s, e in nxt.gap_ranges]
+    assert (81000000, 84000000) not in [(int(s), int(e)) for s, e in krx.gap_ranges]
+
+
+def test_nxt_head_anchor_uses_venue_open_not_krx() -> None:
+    """head 앵커 경계가 **넘긴 하한**이어야 한다 — 모듈 상수가 새면 08:00 대신
+    09:00 이 갭 시작으로 찍혀 값이 조용히 틀린다."""
+    from hoga.api.disk_state import analyze_gaps
+
+    ts = [HogaMs(93000000), HogaMs(150000000)]
+    g = analyze_gaps(ts, session_open_ms=_NXT_OPEN, session_close_ms=_NXT_CLOSE,
+                     anchor_edges=True)
+    assert int(g.gap_ranges[0][0]) == 80000000  # 08:00 — KRX 09:00 이 아니다
+
+
+def test_nxt_trading_halt_is_covered_by_carry_rows() -> None:
+    """⚠ **이 테스트가 지키는 것은 carry 에 대한 의존이다.**
+
+    NXT 는 08:50–09:00:30 · 15:20–15:30 에 거래정지지만(ADR-0140 §6.1) 캡처가
+    10초 주기로 직전 값을 carry 해 행을 쓰므로 그 구간에도 스냅샷이 있다
+    (2026-08-10 실측 005930/20260807: 각 59행 · 39행). 그래서 단일 창으로 충분하고
+    venue 별 연속거래 **구간 리스트**가 필요 없다.
+
+    carry 를 없애면(디스크 절약 최적화 등) 이 전제가 죽고 정지 구간이 가짜 갭이
+    된다 — 아래 두 번째 단언이 그때 빨개져서 알려 준다.
+    """
+    from hoga.api.disk_state import analyze_gaps
+
+    # carry 있음: 정지 구간에도 10초 간격 행 → 갭 없음
+    with_carry = [HogaMs(84900000 + i * 10000) for i in range(12)]  # 08:49:00~08:50:50
+    a = analyze_gaps(with_carry, session_open_ms=_NXT_OPEN, session_close_ms=_NXT_CLOSE)
+    assert a.gap_ranges == []
+    # carry 없음(합성): 정지 구간이 진짜 비면 갭으로 잡힌다
+    without_carry = [HogaMs(84900000), HogaMs(90100000)]  # 08:49 → 09:01
+    b = analyze_gaps(without_carry, session_open_ms=_NXT_OPEN, session_close_ms=_NXT_CLOSE)
+    assert [(int(s), int(e)) for s, e in b.gap_ranges] == [(84900000, 90100000)]
+
+
+def test_nxt_tail_anchor_catches_stream_death_before_close() -> None:
+    """스트림이 19:45 에 죽은 날 — tail 앵커(close−10min = 19:50)가 잡아야 한다.
+
+    NXT 20:00 마감에 KRX 유래의 '마감 10분' 제외를 그대로 적용하는 것이 보수적으로
+    안전한지 확인하는 자리다(19:50–20:00 은 NXT 에선 접속매매지만, 그 구간을 빼도
+    **거짓 양성을 만들지 않는** 방향이다).
+    """
+    from hoga.api.disk_state import analyze_gaps
+
+    ts = [HogaMs(80000000), HogaMs(194500000)]  # 08:00 ~ 19:45
+    g = analyze_gaps(ts, session_open_ms=_NXT_OPEN, session_close_ms=_NXT_CLOSE,
+                     anchor_edges=True)
+    tail = [(int(s), int(e)) for s, e in g.gap_ranges][-1]
+    assert tail[0] == 194500000        # 마지막 스냅샷에서
+    assert tail[1] == 195000000        # 19:50 (= 20:00 − 10분) 까지

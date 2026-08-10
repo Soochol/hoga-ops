@@ -60,6 +60,7 @@ def _is_yyyymmdd(name: str) -> bool:
 
 def _recompute_fields(
     snapshots_path: Path, *,
+    session_open_ms: HogaMs | None = None,
     session_close_ms: HogaMs | None = None,
     collection_complete: bool = True,
 ) -> dict:
@@ -85,6 +86,7 @@ def _recompute_fields(
     return _completeness_fields(
         ts_values,
         collection_complete=collection_complete,
+        session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
     )
 
@@ -273,3 +275,111 @@ def backfill_indicator_session_bounds(
                 atomic_write_json(meta_path, meta, indent=2)
                 updated += 1
     return BackfillResult(scanned=scanned, updated=updated, skipped=skipped)
+
+
+@dataclass(frozen=True)
+class GapRecomputeResult(BackfillResult):
+    """``BackfillResult`` + is_partial 전이 카운트.
+
+    갭 스윕은 **재계산으로 덮어쓰는** 소급이라(키 추가가 아니다) 값이 어떻게
+    움직이는지를 dry-run 이 말해 줘야 한다. `is_partial` 은 보관함 배지·재캡처
+    게이트·hogaplay `already_complete` 스킵이 읽으므로, 뒤집히는 파일 수가 곧
+    파급 규모다.
+    """
+    partial_false_to_true: int = 0
+    partial_true_to_false: int = 0
+    gap_count_delta: int = 0   # 새 gap_ranges 총개수 − 옛 총개수
+
+
+def _recompute_one_gap_meta(meta_path: Path) -> tuple[dict, dict] | None:
+    """meta 하나를 읽어 (옛 값, 새 값) 을 돌려준다. 대상 아니면 None.
+
+    루프 본문을 여기로 뺀 것은 분기 수 때문만이 아니다 — "무엇을 skip 하는가" 가
+    한 화면에 모이면 스윕이 무엇을 안 건드리는지 읽힌다.
+    """
+    from hoga.api.invariants import (  # noqa: PLC0415 — 순환 절단(지연)
+        indicator_session_bounds,
+        normalize_session_bounds,
+    )
+
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        _log.warning("meta_backfill.gap_unreadable path=%s", meta_path)
+        return None
+    norm_meta, _ = normalize_session_bounds(meta)
+    try:
+        open_ms, close_ms = indicator_session_bounds(norm_meta)
+    except KeyError:
+        # 경계 키가 없는 meta — 창을 추측하지 않는다(갭을 지어낼 자리다).
+        return None
+    new_fields = _recompute_fields(
+        meta_path.parent / "snapshots.parquet",
+        session_open_ms=HogaMs(open_ms),
+        session_close_ms=HogaMs(close_ms),
+        collection_complete=bool(meta.get("collection_complete", True)),
+    )
+    return meta, new_fields
+
+
+def backfill_venue_gap_ranges(
+    data_dir: Path, *, dry_run: bool = False,
+) -> GapRecomputeResult:
+    """``kiwoom_live/{venue}/meta.json`` 의 ``is_partial``/``gap_ranges`` 를 venue 별
+    갭 창으로 재계산한다.
+
+    갭 분석 하한이 09:00 모듈 상수이던 시절, NXT·UN 은 08:00–20:00 을 저장하는데
+    분석 창이 KRX 정규장이라 **프리·애프터마켓의 실제 결손이 분석 대상 밖**이었다.
+    그 지문이 "세 venue 의 gap_ranges 가 밀리초까지 동일" 이다(2026-08-10 실측).
+
+    ``backfill_hogaplay_meta`` 와 같은 규율: **diff 없으면 skip**, 나머지 필드는
+    보존, 과거 날짜만. 다른 점은 venue 디렉터리를 훑고 경계를 meta 의
+    ``indicator_session_*`` 에서 읽는다는 것뿐이다(#1243 이 실은 키).
+
+    ⚠ hogaplay 는 대상이 아니다 — KRX 전용 업스트림이라(ADR-0003) 창이 안 바뀐다.
+    """
+    from hoga.live.promote import _VENUE_INDICATOR_SESSION_MS  # noqa: PLC0415 — 순환 절단(지연)
+
+    parquet_root = data_dir / "parquet"
+    scanned = updated = skipped = 0
+    f2t = t2f = gap_delta = 0
+    if not parquet_root.exists():
+        return GapRecomputeResult()
+    today = datetime.now(_KST).strftime("%Y%m%d")
+    for date_dir in sorted(parquet_root.iterdir()):
+        if not date_dir.is_dir() or not _is_yyyymmdd(date_dir.name) or date_dir.name >= today:
+            continue
+        for code_dir in sorted(date_dir.iterdir()):
+            for venue in _VENUE_INDICATOR_SESSION_MS:
+                meta_path = code_dir / "kiwoom_live" / venue / "meta.json"
+                if not meta_path.exists():
+                    continue
+                scanned += 1
+                pair = _recompute_one_gap_meta(meta_path)
+                if pair is None:
+                    skipped += 1
+                    continue
+                meta, new_fields = pair
+                old_partial, old_gaps = meta.get("is_partial"), meta.get("gap_ranges")
+                if (
+                    old_partial == new_fields["is_partial"]
+                    and old_gaps == new_fields["gap_ranges"]
+                ):
+                    skipped += 1
+                    continue
+                if old_partial is False and new_fields["is_partial"] is True:
+                    f2t += 1
+                elif old_partial is True and new_fields["is_partial"] is False:
+                    t2f += 1
+                gap_delta += len(new_fields["gap_ranges"]) - len(old_gaps or [])
+                updated += 1
+                if dry_run:
+                    continue
+                meta["is_partial"] = new_fields["is_partial"]
+                meta["gap_ranges"] = new_fields["gap_ranges"]
+                atomic_write_json(meta_path, meta, indent=2)
+    return GapRecomputeResult(
+        scanned=scanned, updated=updated, skipped=skipped,
+        partial_false_to_true=f2t, partial_true_to_false=t2f,
+        gap_count_delta=gap_delta,
+    )
