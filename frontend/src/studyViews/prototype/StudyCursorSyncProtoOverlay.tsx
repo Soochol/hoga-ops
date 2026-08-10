@@ -131,17 +131,18 @@ function StudyCursorSyncProtoOverlay({ chart, axis, candles, paneSeries, code }:
   }, [cursor, myWindowId, code, byDate]);
 
   /**
-   * 변형 D — **아무것도 그리지 않는다.** lwc 가 "두 차트의 크로스헤어 동기화" 용도로
-   * 문서화한 `setCrosshairPosition` 을 부를 뿐이다(typings.d.ts 의 그 예시가 곧 이 기능).
+   * 변형 D·E — **크로스헤어를 직접 그리지 않는다.** lwc 가 "두 차트의 크로스헤어
+   * 동기화" 용도로 문서화한 `setCrosshairPosition` 을 부를 뿐이다(typings.d.ts 의
+   * 그 예시가 곧 이 기능). E 는 여기에 시각 칩 하나만 더 얹는다(렌더 쪽).
    *
    * 두 가지가 A~C 와 다르다:
    *  - **가격도 요구한다.** 크로스헤어는 십자라 가로선이 함께 그려진다. 분봉의 가격을
    *    일봉에 옮기는 건 의미가 없어 **그 날 일봉의 종가**를 준다.
-   *  - **화면 밖 처리가 없다.** lwc 가 알아서 안 그리고, 엣지 인디케이터도 없다.
-   *    A~C 와의 비교 지점이므로 일부러 보완하지 않았다.
+   *  - **화면 밖은 lwc 가 알아서 안 그린다.** D 는 엣지 인디케이터도 없다(A~C 와의
+   *    비교 지점이라 일부러 보완하지 않았다). E 는 칩 경로를 타므로 엣지가 뜬다.
    */
   useEffect(() => {
-    if (variant !== 'D') return;
+    if (variant !== 'D' && variant !== 'E') return;
     const series = paneSeries.get('candle');
     if (!series || !match) return;
     chart.setCrosshairPosition(
@@ -177,7 +178,7 @@ function StudyCursorSyncProtoOverlay({ chart, axis, candles, paneSeries, code }:
     };
   }
 
-  // D 는 lwc 가 그린다 — 이 컴포넌트는 DOM 을 내놓지 않는다(위 effect 가 전부).
+  // D 는 lwc 가 전부 그린다 — DOM 을 내놓지 않는다(위 effect 가 전부).
   if (!variant || variant === 'D' || !cursor || !match) return null;
 
   const ts = chart.timeScale();
@@ -215,6 +216,9 @@ function StudyCursorSyncProtoOverlay({ chart, axis, candles, paneSeries, code }:
       {variant === 'C' && (
         <VariantC cx={cx} clock={clock} progress={sessionProgress(cursor.tsMs)} />
       )}
+      {/* E — 선은 lwc 가 이미 그렸다(위 effect). 여기서는 시간축 배지가 채우지 못하는
+          **시:분**만 얹는다. 칩은 A 와 같은 것을 재사용한다. */}
+      {variant === 'E' && <Chip cx={cx} paneWidth={paneWidth} top={CHIP_TOP_PX} text={clock} />}
     </Clip>
   );
 }

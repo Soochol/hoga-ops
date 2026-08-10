@@ -21,9 +21,9 @@ import type { LiveTimeframe } from '../../state/livePage';
 
 export const PROTO_PARAM = 'syncproto';
 
-export type ProtoVariant = 'A' | 'B' | 'C' | 'D';
+export type ProtoVariant = 'A' | 'B' | 'C' | 'D' | 'E';
 
-export const PROTO_VARIANTS: readonly ProtoVariant[] = ['A', 'B', 'C', 'D'] as const;
+export const PROTO_VARIANTS: readonly ProtoVariant[] = ['A', 'B', 'C', 'D', 'E'] as const;
 
 // 변형 축 = **무엇에 매이는가**. 1차 실측에서 캔들 폭(0.85~8.3px)에 매인 표현들이
 // 서로 구분되지 않아 다시 세웠다 — 자세한 건 오버레이 파일 상단 주석.
@@ -35,6 +35,9 @@ export const PROTO_VARIANT_NAMES: Record<ProtoVariant, string> = {
   // `setCrosshairPosition` 을 부를 뿐이다. A~C 가 손으로 그린 것을 라이브러리에
   // 맡기는 판. **변형 키 D 는 타임프레임 D(일봉)와 무관하다.**
   D: 'lwc 네이티브 크로스헤어',
+  // E 는 D 에 **시각 칩 하나만** 얹는다. lwc 가 시간축에 찍는 배지는 일봉 축이라
+  // 날짜뿐이고, 분봉 커서의 시:분은 그 축에 표현될 자리가 없기 때문이다.
+  E: '네이티브 크로스헤어 + 시각 칩',
 };
 
 export function parseProtoVariant(raw: string | null | undefined): ProtoVariant | null {
