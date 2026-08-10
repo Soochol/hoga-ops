@@ -32,7 +32,10 @@ export type LiveWarningKind =
   // 이유는 문구가 거짓이 되기 때문이다("호출 한도" 는 벤더가 거절했다는 뜻이다).
   | 'deferred'
   // 받긴 받았는데 행 검증에 걸렸다(ADR-0020: 표시하되 렌더).
-  | 'data_quality';
+  | 'data_quality'
+  // 의존성이 **배선되지 않았다**(자격증명 부재·파일 없음). `auth` 와 갈라 두는 이유는
+  // 처방이 다르기 때문이다 — 이쪽은 앱 설정, 저쪽은 벤더 쪽 등록·앱키다.
+  | 'not_wired';
 
 /** 세 경로(분봉·일봉·지수)가 공유하는 최소 shape. 분기는 이 필드들로만 한다. */
 export interface WireDataWarning {

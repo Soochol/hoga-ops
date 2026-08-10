@@ -217,7 +217,7 @@ export function ScreenerDrawer() {
   const selected = saves.find((s) => s.id === selectedSavedId) ?? null;
   const notSeeded = status?.status === 'not_seeded' || lastScan?.scanStatus === 'not_seeded';
   // 강등 사유별 문구 — 페이지와 같은 매핑을 쓴다(ADR-0137 R6).
-  const intradayDegradation = intradayDegradationText(lastScan?.warnings);
+  const intradayDegradation = intradayDegradationText(lastScan?.warnings, lastScan?.intradayFailure);
   const lastScanStaleReason = (() => {
     if (!lastScan) return null;
     // 풀페이지 Screener 에서 임시 조건으로 조회한 결과 — 드로어의 저장본 선택과 신원이
@@ -253,6 +253,7 @@ export function ScreenerDrawer() {
         scanKey: null,
         rows: res.rows,
         scanStatus: res.status,
+        intradayFailure: res.intraday_failure,
         warnings: res.warnings,
         depthValues: res.depth_values ?? null,
         scannedAtMs: Date.now(),

@@ -168,7 +168,7 @@ export function Screener() {
   const resultsStale = lastScan?.scanKey != null && lastScan.scanKey !== scanKey;
   // 강등 사유별 문구 — 유량 초과·자격증명 부재·파싱 오류의 처방이 각각 다르다(ADR-0137).
   const intradayDegradation =
-    lastScan?.basis === 'intraday' ? intradayDegradationText(lastScan?.warnings) : null;
+    lastScan?.basis === 'intraday' ? intradayDegradationText(lastScan?.warnings, lastScan?.intradayFailure) : null;
   const scopeUniverseEmpty = (lastScan?.warnings ?? []).includes('scope_universe_empty');
   // 심볼 마스터 미로드 → ETF 판정이 stocks.parquet(수동 시드, 낡을 수 있음)으로 강등.
   const etfFilterStale = (lastScan?.warnings ?? []).includes('etf_filter_stale_master_unavailable');
@@ -188,6 +188,7 @@ export function Screener() {
         scanKey,
         rows: res.rows,
         scanStatus: res.status,
+        intradayFailure: res.intraday_failure,
         warnings: res.warnings,
         depthValues: res.depth_values ?? null,
         scannedAtMs: Date.now(),
