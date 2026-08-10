@@ -10,7 +10,7 @@ import {
 import { createKstHorzScaleBehavior } from '../util/kstHorzScaleBehavior';
 import { resolveTokensThemed, currentThemeKey } from '../util/tokens';
 import {
-  CHART_CROSSHAIR_OPTIONS,
+  chartCrosshairOptions,
   CHART_LAYOUT_OPTIONS,
   CHART_TIMESCALE_OPTIONS,
 } from '../util/chartScale';
@@ -121,6 +121,10 @@ const TOKEN_SPEC = {
   // JS 문자열이라 CSS var 를 직접 못 받지만, resolveTokens 가 getComputedStyle
   // 로 완성된 rgba 문자열을 준다(#703).
   tintSelection: ['--tint-selection', 'rgba(240, 180, 41, 0.10)'],
+  // 크로스헤어 축 라벨 칩 배경 — DESIGN.md §Color 가 크로스헤어를 accent 의
+  // 승인된 사용처로 명시한다. lwc 기본값(#131722)은 테마를 안 따라가서 다크
+  // 테마 차트 배경과 1.00~1.04:1 로 융합됐다(chartCrosshairOptions 주석).
+  accent: ['--accent', '#f0b429'],
 } as const;
 
 function chartGridOptions(
@@ -1155,7 +1159,7 @@ export function LiveChartRoot({
         gridPrefs.horizontalGridLinesEnabled,
         gridPrefs.verticalGridLinesEnabled,
       ),
-      crosshair: CHART_CROSSHAIR_OPTIONS,
+      crosshair: chartCrosshairOptions(tokens.accent),
       // 라이브러리 내장 휠 줌(마우스 앵커) 비활성 — useWheelInteractions가 wheel을
       // 단독 소유한다(이중 소유권 레이스 방지). handleScale의 나머지 sub-option
       // (pinch, axisPressedMouseMove, axisDoubleClickReset)과 handleScroll(트랙패드

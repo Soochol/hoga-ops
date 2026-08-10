@@ -1484,6 +1484,101 @@ describe('LiveChartRoot', () => {
     expect(options?.fontSize).toBeUndefined();
   });
 
+  // Crosshair axis-label chips (2026-08-10). lightweight-charts 5.2.0 defaults
+  // BOTH labels to `#131722` and we only overrode `mode`, so the chip shipped
+  // theme-blind: measured against our chart background that is 1.04:1 on
+  // Obsidian and 1.00:1 on Toss Dark — the chip was indistinguishable from the
+  // canvas. These labels are the only value readout on the chart (DESIGN.md
+  // 2026-05-23 turned off priceLineVisible/lastValueVisible everywhere), so the
+  // guard asserts the token ARRIVES, not just that the helper returns it —
+  // chartScale.test.ts already covers the helper, and a correct constant that
+  // never reaches the canvas is exactly how the font bug above survived.
+  function readCrosshairLabelColors() {
+    const options = vi.mocked(createChartEx).mock.calls.at(-1)?.[2] as
+      | {
+          crosshair?: {
+            vertLine?: { labelBackgroundColor?: string };
+            horzLine?: { labelBackgroundColor?: string };
+          };
+        }
+      | undefined;
+    return {
+      time: options?.crosshair?.vertLine?.labelBackgroundColor,
+      price: options?.crosshair?.horzLine?.labelBackgroundColor,
+    };
+  }
+
+  it('paints both crosshair axis labels with the live --accent token', () => {
+    // 테마 이름을 유니크하게 둔다 — resolveTokensThemed 는 (spec, theme) 로
+    // 캐시하므로 다른 테스트가 채운 'obsidian' 항목을 건드리지 않는다.
+    document.documentElement.style.setProperty('--accent', '#3182f6');
+    document.documentElement.setAttribute('data-theme', 'test-crosshair-chip');
+    try {
+      const { chart } = buildChartMockWithStableTS();
+      vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+      render(
+        <LiveChartRoot
+          code="005930"
+          timeframe="1m"
+          bundle={makeBundleWithCandles(100)}
+          clampEngaged={false}
+          isPastCandlesLoading={false}
+        />,
+        { wrapper },
+      );
+
+      const { time, price } = readCrosshairLabelColors();
+      expect(time).toBe('#3182f6');
+      expect(price).toBe('#3182f6');
+      // The library default. Seeing it again means the token never arrived —
+      // either the option was dropped or only one axis got it.
+      expect(time).not.toBe('#131722');
+      expect(price).not.toBe('#131722');
+    } finally {
+      document.documentElement.style.removeProperty('--accent');
+      document.documentElement.removeAttribute('data-theme');
+    }
+  });
+
+  it('re-resolves the crosshair chip when the theme swaps mid-mount', () => {
+    // 이 옵션이 모듈 상수였다면 앱 부팅 시점 테마에 얼어붙는다(chartScale.ts
+    // 헤더의 경고). 재해석은 viewKey 의 테마 세그먼트가 차트를 remount 시키는
+    // 것에 의존하므로, 그 연결이 끊기면 여기서 걸린다.
+    document.documentElement.style.setProperty('--accent', '#f0b429');
+    document.documentElement.setAttribute('data-theme', 'test-crosshair-a');
+    try {
+      const before = vi.mocked(createChartEx).mock.calls.length;
+      vi.mocked(createChartEx).mockImplementationOnce(
+        () => buildChartMockWithStableTS().chart as never,
+      );
+      const props = {
+        code: '005930',
+        timeframe: '1m' as const,
+        bundle: makeBundleWithCandles(100),
+        clampEngaged: false,
+        isPastCandlesLoading: false,
+      };
+      const { rerender } = render(<LiveChartRoot {...props} />, { wrapper });
+      expect(readCrosshairLabelColors().price).toBe('#f0b429');
+
+      document.documentElement.style.setProperty('--accent', '#3182f6');
+      document.documentElement.setAttribute('data-theme', 'test-crosshair-b');
+      vi.mocked(createChartEx).mockImplementationOnce(
+        () => buildChartMockWithStableTS().chart as never,
+      );
+      rerender(<LiveChartRoot {...props} />);
+
+      expect(vi.mocked(createChartEx).mock.calls.length).toBe(before + 2);
+      const { time, price } = readCrosshairLabelColors();
+      expect(time).toBe('#3182f6');
+      expect(price).toBe('#3182f6');
+    } finally {
+      document.documentElement.style.removeProperty('--accent');
+      document.documentElement.removeAttribute('data-theme');
+    }
+  });
+
   it('1m timeframe: no remembered window → historicalFromDate stays null after placement', () => {
     useLivePageStore.setState({
       activeCode: '005930',
