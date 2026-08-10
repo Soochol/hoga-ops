@@ -261,7 +261,7 @@ def test_wire_enum_mirror_parser_reads_as_const_arrays() -> None:
 
     assert "1m" in members
     assert "M" in members  # 배열 마지막 원소
-    assert len(members) == 10  # LIVE_TIMEFRAMES 의 실제 길이
+    assert len(members) == 12  # LIVE_TIMEFRAMES 의 실제 길이
 
 
 # ── 등록 누락 감사 ────────────────────────────────────────────────────────────

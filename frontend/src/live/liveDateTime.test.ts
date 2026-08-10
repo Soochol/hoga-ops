@@ -19,7 +19,7 @@ import {
   initialHistoricalDaysFor,
 } from './liveDateTime';
 import { PAST_CHUNK_CALENDAR_DAYS, pastChunkCalendarDays } from '../api/livePastCandles';
-import { MINUTE_TIMEFRAMES } from '../state/livePage';
+import { MINUTE_TIMEFRAMES, fetchBucketMsFor } from '../state/livePage';
 import { unixMsToKSTDate } from '../util/time';
 
 /** SR-1/SR-3: the /live infinite-scroll backfill policy was fused inside
@@ -120,8 +120,12 @@ describe('step sizing — STEP_TRADING_DAYS 단일 테이블 (ADR-0105, 2026-08-
     // 셋 중 하나만 바뀌면 조용히 깨지는 사슬 — 여기서 tf 마다 핀으로 박는다.
     // 백엔드 예산(12×m, live_candle_backfill._fresh_budget_for)은 이 파일에서
     // import 할 수 없으므로 같은 식으로 재계산해 대조한다.
+    //
+    // ⚠ m 은 **fetch 분**이다(표시 분이 아니다). 세 상수가 함께 스케일되는 기준은
+    // 벤더에 요청하는 주기이고, 120·240 은 30m 로 받는다(`fetchBucketMsFor`). 표시
+    // 분으로 재면 이 불변식은 그 두 tf 에서 의미가 없다 — 재는 대상이 아니다.
     for (const tf of MINUTE_TIMEFRAMES) {
-      const m = parseInt(tf, 10) * (tf.endsWith('m') ? 1 : NaN);
+      const m = fetchBucketMsFor(tf) / 60_000;
       const stepTradingDays = STEP_TRADING_DAYS[tf];
       expect(stepTradingDays).toBe(5 * m);
       const dispatchTradingDays = stepTradingDays * MAX_BATCH_STEPS_PER_DISPATCH;

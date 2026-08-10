@@ -6,7 +6,12 @@ import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
 import { useRange, useRangeHogaDelta, useRangeSidecarDelta } from '../api/range';
-import { type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
+import {
+  type LiveTimeframe,
+  isMinuteTimeframe,
+  needsRegularSessionClip,
+  fetchBucketMsFor,
+} from '../state/livePage';
 import { useWindowView, useWindowIndicators } from './workspace/windowView';
 import type { LiveVenueOption } from '../state/liveVenue';
 import {
@@ -32,7 +37,13 @@ import {
 } from './depthDeltaSession';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
-import { aggregateCandles, aggregateCalendar, calendarBucketKey } from './aggregateCandles';
+import {
+  aggregateCandles,
+  aggregateCalendar,
+  calendarBucketKey,
+  keepRegularSessionCandles,
+  isRegularSessionMs,
+} from './aggregateCandles';
 import { collapseClosingAuction } from './collapseClosingAuction';
 import {
   regularSessionOpenMs,
@@ -95,11 +106,15 @@ function candlePriceRange(candles: readonly Candle[], startMs: number, endMs: nu
   return Number.isFinite(min) && Number.isFinite(max) ? { min, max } : null;
 }
 
+/** @param clipToRegularSession 정규장 밖 체결을 버린다. **기본값을 두지 않는다** —
+ *  과거봉만 클립하고 실시간 tail 을 안 클립하면 그 비대칭이 **장중에만** 나타나고
+ *  마감 후에는 사라져서 재현이 어렵다. 호출부가 매번 표시 tf 를 보고 정하게 한다. */
 export function overlayLiveTradesOnCandles(
   candles: readonly Candle[],
   trades: readonly TradeSnapshot[],
   bucketMs: number,
   venue: LiveVenueOption = 'KRX',
+  clipToRegularSession: boolean = false,
 ): Candle[] {
   if (candles.length === 0 || bucketMs <= 0) return candles as Candle[];
   const lastBase = candles[candles.length - 1];
@@ -121,6 +136,9 @@ export function overlayLiveTradesOnCandles(
         // 주말 캔들이 붙고, 저장뷰 to_date 가 토/일로 박제된다. 백엔드 파서가 1차로
         // 거르지만(kiwoom_frames), 버퍼에 남은 틱까지 덮도록 여기서도 막는다.
         isKstWeekend(realMsToYyyymmdd(tMs)) ||
+        // 120·240 전용 — 과거봉 클립(`keepRegularSessionCandles`)과 **같은 술어**를
+        // 본다. 다르게 재계산하면 정규장 마지막 봉만 tail 이 어긋난다.
+        (clipToRegularSession && !isRegularSessionMs(tMs)) ||
         !liveVenueAcceptsFrame(venue, snapshot.venue)
       ) {
         continue;
@@ -486,7 +504,9 @@ export function useLiveBundle(
     // 표시 tf 를 그대로 벤더 주기로 요청한다 — 콜당 커버리지가 tf 배수만큼 는다
     // (10분 = 900행에 약 23 거래일). 캘린더 tf(D/W/M)는 이 훅을 안 타므로
     // `isMinute` 가 아니면 값이 쓰이지 않는다.
-    isMinute ? TIMEFRAME_TO_MS[timeframe as Timeframe] : 60_000,
+    // 120·240 만 예외로 30m 를 받는다 — 15:30 경계를 입력에 남겨야 클립이 성립한다
+    // (`fetchBucketMsFor` 주석). 표시 버킷은 아래 `bucketMs` 가 따로 들고 있다.
+    isMinute ? fetchBucketMsFor(timeframe) : 60_000,
   );
 
   // 벤더 일봉 past-candles(키움 `ka10081`) — D/W/M, 우회 OFF에서만 (ADR-0048).
@@ -594,7 +614,11 @@ export function useLiveBundle(
     if (restBypassEnabled) return minuteDiskCandles.data?.candles ?? EMPTY_CANDLES;
     const raw = pastCandlesQuery.data?.candles ?? [];
     if (raw.length === 0) return EMPTY_CANDLES;
-    return aggregateCandles(raw, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000).map(kisBarToCandle);
+    // 120·240 만 정규장으로 클립한 뒤 접는다. 입력은 30m 라 15:30 이 봉 경계로 남아
+    // 있어 봉 단위 클립이 성립한다 — 표시 tf 로 받았다면 이미 혼합된 봉이라 불가능.
+    const src = needsRegularSessionClip(timeframe) ? keepRegularSessionCandles(raw) : raw;
+    if (src.length === 0) return EMPTY_CANDLES;
+    return aggregateCandles(src, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000).map(kisBarToCandle);
   }, [isMinute, timeframe, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles]);
   const calendarKisCandles = useMemo<Candle[]>(() => {
     if (isMinute) return EMPTY_CANDLES;
@@ -713,7 +737,9 @@ export function useLiveBundle(
   );
   const liveCandles = useMemo<Candle[]>(() => {
     const overlaid = isMinute
-      ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs, venue)
+      ? overlayLiveTradesOnCandles(
+          kisCandles, live.trade, bucketMs, venue, needsRegularSessionClip(timeframe),
+        )
       : overlayLiveTradesOnCalendarCandles(kisCandles, live.trade, timeframe as 'D' | 'W' | 'M', venue);
     // 마감 동시호가 봉 접기 — REST 원본과 실시간 오버레이를 **둘 다 지난 뒤** 건다.
     // kisCandles 단계에서 접으면 그 뒤 오버레이가 평탄화되지 않은 봉을 다시 세울 수

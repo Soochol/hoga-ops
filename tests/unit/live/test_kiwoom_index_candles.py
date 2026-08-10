@@ -9,11 +9,14 @@ import json
 import httpx
 import pytest
 
+from hoga.live.candle_models import IndexCandlePoint
 from hoga.live.kiwoom_index_candles import (
     BUCKET_SECONDS_TO_TIC_SCOPE,
+    DERIVED_BUCKET_SECONDS,
     INDEX_ID_TO_KIWOOM_CODE,
     KiwoomIndexCandlesError,
     KiwoomIndexCandlesFetcher,
+    aggregate_index_candles,
     index_id_to_kiwoom_code,
     parse_price,
     rows_to_result,
@@ -308,3 +311,46 @@ def test_request_shape_matches_the_measured_contract() -> None:
     assert captured["headers"]["api-id"] == "ka20005"
     assert captured["headers"]["authorization"] == "Bearer T"
     assert captured["body"] == {"inds_cd": "150", "tic_scope": "30"}
+
+
+# --- 서버 파생 버킷(120·240) ------------------------------------------------
+
+def test_derived_buckets_source_from_a_scope_the_vendor_actually_serves() -> None:
+    """파생 버킷의 소스는 반드시 벤더가 주는 스코프여야 한다.
+
+    맵을 손으로 관리하므로 오타 하나면 `supports_bucket_seconds` 가 False 를 내고
+    라우트가 503 을 던진다 — 그 실패를 여기서 잡는다.
+    """
+    for display, source in DERIVED_BUCKET_SECONDS.items():
+        assert supports_bucket_seconds(source), f"{display}s 의 소스 {source}s 를 벤더가 안 준다"
+        assert display % source == 0, "파생 버킷은 소스 버킷의 배수여야 걸치는 봉이 없다"
+        assert not supports_bucket_seconds(display), "벤더가 직접 주면 파생할 이유가 없다"
+
+
+def test_aggregate_folds_source_bars_into_display_buckets() -> None:
+    open_ms = 0  # 1970-01-01 09:00 KST — 3,600,000ms 격자 위
+    hour = 3_600_000
+    src = [
+        IndexCandlePoint(t_ms=open_ms + 0 * hour, open=10, high=15, low=9, close=12, volume=1),
+        IndexCandlePoint(t_ms=open_ms + 1 * hour, open=12, high=20, low=8, close=18, volume=2),
+        IndexCandlePoint(t_ms=open_ms + 2 * hour, open=18, high=19, low=17, close=17, volume=4),
+    ]
+    out = aggregate_index_candles(src, 7200)
+
+    assert [c.t_ms for c in out] == [open_ms, open_ms + 2 * hour]
+    assert out[0].open == 10 and out[0].close == 18      # 첫 봉 open, 마지막 봉 close
+    assert out[0].high == 20 and out[0].low == 8          # 창 전체의 극값
+    assert out[0].volume == 3
+    assert out[1].volume == 4                             # 마지막 버킷은 부분이어도 남는다
+
+
+def test_aggregate_is_idempotent_on_already_bucketed_input() -> None:
+    """캐시가 표시 버킷을 담으므로, 재집계가 값을 바꾸면 안 된다."""
+    src = [IndexCandlePoint(t_ms=0, open=1, high=2, low=0.5, close=1.5, volume=7)]
+    assert aggregate_index_candles(src, 7200) == aggregate_index_candles(
+        aggregate_index_candles(src, 7200), 7200
+    )
+
+
+def test_aggregate_empty_input_returns_empty() -> None:
+    assert aggregate_index_candles([], 7200) == []

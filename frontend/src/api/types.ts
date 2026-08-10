@@ -589,7 +589,7 @@ export type RangeSegment = {
   gap_ms?: number | null;
 };
 
-export type Timeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m' | '60m';
+export type Timeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m' | '60m' | '120m' | '240m';
 
 export const TIMEFRAME_TO_MS: Record<Timeframe, number> = {
   '1m': 60_000,
@@ -599,10 +599,12 @@ export const TIMEFRAME_TO_MS: Record<Timeframe, number> = {
   '15m': 900_000,
   '30m': 1_800_000,
   '60m': 3_600_000,
+  '120m': 7_200_000,
+  '240m': 14_400_000,
 };
 
 export const TIMEFRAME_LABELS: ReadonlyArray<Timeframe> = [
-  '1m', '3m', '5m', '10m', '15m', '30m', '60m',
+  '1m', '3m', '5m', '10m', '15m', '30m', '60m', '120m', '240m',
 ];
 
 /** ADR-0020: per-Stock-Date invariant outcome surfaced on the wire. */

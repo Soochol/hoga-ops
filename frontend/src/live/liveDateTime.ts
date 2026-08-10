@@ -179,6 +179,12 @@ export const STEP_TRADING_DAYS: Record<LiveTimeframe, number> = {
   '15m': 5 * 15,
   '30m': 5 * 30,
   '60m': 5 * 60,
+  // 120·240 은 **fetch 분(30)** 으로 산정한다 — 표시 분이 아니다. 이 상수가 지키는
+  // 불변식은 "스텝당 벤더 페이지 수 균일" 인데, 그 페이지를 정하는 것은 벤더에
+  // 요청하는 주기(`fetchBucketMsFor` → 30m)지 화면에 그리는 주기가 아니다. 표시
+  // 분으로 잡으면(5×240=1200) 30m 페이지 기준 35페이지를 한 스텝에 요구한다.
+  '120m': 5 * 30,
+  '240m': 5 * 30,
   D: STEP_CANDLE_TARGET,
   W: STEP_CANDLE_TARGET * TRADING_DAYS_PER_WEEK,
   M: STEP_CANDLE_TARGET * TRADING_DAYS_PER_MONTH,

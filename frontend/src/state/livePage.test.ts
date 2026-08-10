@@ -7,6 +7,8 @@ import {
   MA_SLOT_LIMIT,
   MINUTE_TIMEFRAMES,
   bucketSeconds,
+  needsRegularSessionClip,
+  fetchBucketMsFor,
   type LiveMAConfig,
 } from './livePage';
 import { TIMEFRAME_LABELS, TIMEFRAME_TO_MS } from '../api/types';
@@ -24,6 +26,29 @@ describe('분봉 tf 두 목록의 동기', () => {
   it('TIMEFRAME_TO_MS 와 bucketSeconds() 가 같은 폭을 말한다', () => {
     for (const tf of MINUTE_TIMEFRAMES) {
       expect(bucketSeconds(tf)).toBe(TIMEFRAME_TO_MS[tf] / 1000);
+    }
+  });
+
+  it('클립 대상은 120·240 뿐이다 — 60m 는 #1252 결정대로 둔다', () => {
+    for (const tf of MINUTE_TIMEFRAMES) {
+      expect(needsRegularSessionClip(tf)).toBe(tf === '120m' || tf === '240m');
+    }
+  });
+
+  it('클립 대상만 30m 로 받고 나머지는 표시 tf 그대로 받는다', () => {
+    // 30m 인 이유는 커버리지가 아니라 **경계 보존**이다 — 15:30 이 봉 경계로 남아야
+    // 봉 단위 클립이 성립한다. 표시 tf 로 받으면 이미 혼합된 봉이라 손쓸 수 없다.
+    expect(fetchBucketMsFor('120m')).toBe(1_800_000);
+    expect(fetchBucketMsFor('240m')).toBe(1_800_000);
+    for (const tf of MINUTE_TIMEFRAMES) {
+      if (needsRegularSessionClip(tf)) continue;
+      expect(fetchBucketMsFor(tf)).toBe(TIMEFRAME_TO_MS[tf]);
+    }
+  });
+
+  it('클립 tf 의 표시 버킷은 fetch 버킷의 정수배다 (걸치는 봉 없음)', () => {
+    for (const tf of MINUTE_TIMEFRAMES) {
+      expect(TIMEFRAME_TO_MS[tf] % fetchBucketMsFor(tf)).toBe(0);
     }
   });
 

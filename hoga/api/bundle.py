@@ -27,6 +27,7 @@ from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.indicator_reaggregate import reaggregate_fill, reaggregate_ratio
 from hoga.api.invariants import indicator_session_bounds, normalize_session_bounds
 from hoga.api.models import (
+    CLIPPED_TIMEFRAME_MS,
     AskPeak,
     BidPeak,
     BrokerLateEntryEvent,
@@ -92,6 +93,11 @@ DEFAULT_TRADE_VOLUME_POC_BINS = 10
 # 1000 ms /replay default, sub-minute callers) bypasses the cache and queries
 # directly — re-aggregation cannot synthesize a finer grain than the cache.
 _ONE_MINUTE_MS = 60_000
+
+# 정규장 클립 경계(HHMMSSmmm). 프론트 `isRegularSessionMs` 의 고정 09:00~15:30 과
+# 같은 값이어야 한다 — 근거는 `downsample_candles` docstring.
+_REGULAR_OPEN_HHMMSSMS = 90_000_000
+_REGULAR_CLOSE_HHMMSSMS = 153_000_000
 
 # WS3: 지표 빌더의 cache/today_kst 기본값 센티널. 미지정 호출은 빌더가
 # engine.indicators_cache / 현재 KST 날짜로 자가-해석해 ADR-0043/0090 게이트를
@@ -208,7 +214,9 @@ def _query_fill_rows(engine: QueryEngine, code_dir, bucket_ms: int) -> list[Fill
     return trades_tbl.query_fill_strength(engine.conn, path=trades_path, bucket_ms=bucket_ms)
 
 
-def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiCandle]:
+def downsample_candles(
+    candles: list[ApiCandle], *, bucket_ms: int, date: str
+) -> list[ApiCandle]:
     """Re-aggregate 1-minute OHLCV candles into the requested Timeframe bucket.
 
     Aggregation per bucket: open = first.open, close = last.close,
@@ -219,8 +227,25 @@ def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiC
     The last bucket may be partial (fewer than bucket_ms/60_000 source candles).
 
     Raises ValueError if bucket_ms is not in ALLOWED_TIMEFRAME_MS (ADR-0014).
+
+    ``date`` 는 정규장 클립의 기준 날짜다(YYYYMMDD KST). **기본값을 두지 않는다** —
+    호출부가 이미 날짜별 루프 안이라 넘길 값을 갖고 있고, 빠뜨리면 클립 대상 tf 에서
+    조용히 안 잘린다.
+
+    ## 120·240 만 정규장으로 클립한다
+
+    이 두 tf 는 버킷이 정규장 마감(15:30)을 가로질러 NXT·UN 의 애프터마켓을 정규장
+    봉에 끌어들인다(2026-08-07 실측 +1.08%/+1.30%). 클립 경계는 **고정 09:00~15:30**
+    이고, meta 의 실제 세션이 아니다 — 프론트(`isRegularSessionMs`)가 고정값을 쓰기
+    때문이다. 두 경로가 다른 경계를 쓰면 우회 ON/OFF 에서 **같은 종목·같은 날의 봉이
+    달라진다**. 대가는 공유된 한계다: 반휴장일(12:30 마감) 이후 시간외가 창 안에
+    들어오면 양쪽 다 통과시킨다.
     """
     validate_bucket_ms(bucket_ms)
+    if bucket_ms in CLIPPED_TIMEFRAME_MS:
+        open_ms = hhmmssms_to_unix_ms(date, _REGULAR_OPEN_HHMMSSMS)
+        close_ms = hhmmssms_to_unix_ms(date, _REGULAR_CLOSE_HHMMSSMS)
+        candles = [c for c in candles if open_ms <= c.ts_ms <= close_ms]
     if bucket_ms == 60_000 or not candles:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return list(candles)
 
@@ -1614,7 +1639,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         elif candles_only:
             price_range = None
             trade_indicator_source = source
-            candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
+            candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms, date=d)
         else:
             raw_lows = [c.low for c in raw_candles]
             raw_highs = [c.high for c in raw_candles]
@@ -1641,7 +1666,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 if needs_trade_price_range
                 else source
             )
-            candles_d = [] if sidecar_only else downsample_candles(raw_candles, bucket_ms=bucket_ms)
+            candles_d = [] if sidecar_only else downsample_candles(raw_candles, bucket_ms=bucket_ms, date=d)
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         # 지표 슬라이스가 쓰는 경계는 **정규장이 아니라 venue 별 지표 구간**이다
         # (ADR-0140). NXT·UN 은 08:00–20:00 이고, 이걸 정규장(09:00–15:30)으로
