@@ -24,17 +24,8 @@ vi.mock('./studyReferenceQueries', () => ({
   studyReferenceQueryOptions: studyReferenceQueryOptionsMock,
 }));
 
-// 유효 venue 해석은 심볼 마스터를 `useQuery` 로 읽는데, 이 파일은 그 훅을 통째로
-// 모킹해 호출 **횟수와 순서**를 단언한다 — 실제 해석을 태우면 심볼 조회가 그 카운트에
-// 끼어든다. 기본은 항등(선택값 그대로)이고, 강등이 흐르는지는 아래 전용 테스트가
-// 반환값을 바꿔서 잰다.
-vi.mock('../live/useEffectiveVenue', () => ({
-  useEffectiveVenue: vi.fn((_code: string | null | undefined, venue: string) => venue),
-}));
-
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
-import { useLiveVenueStore } from '../state/liveVenue';
-import { useEffectiveVenue } from '../live/useEffectiveVenue';
+import { LIVE_VENUE_OPTIONS, useLiveVenueStore } from '../state/liveVenue';
 import { useStudyReferenceBundles } from './useStudyReferenceBundle';
 import { FACTORY_INDICATOR_SETTINGS, type IndicatorSettings } from '../state/indicatorSettingsV2';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
@@ -171,9 +162,6 @@ describe('useStudyReferenceBundles', () => {
     useQueriesMock.mockReset();
     useQueriesMock.mockImplementation(({ queries }: { queries: UseQueryOptions[] }) =>
       queries.map((q) => useQueryMock(q)));
-    // 해석 모킹을 **항등으로 복원**한다 — 강등을 재는 테스트가 `mockReturnValue` 로
-    // 덮으면 그 값이 다음 테스트까지 남아 "공유 스토어를 따른다" 단언이 거짓 실패한다.
-    vi.mocked(useEffectiveVenue).mockImplementation((_code, venue) => venue);
     studyReferenceQueryOptionsMock.mockReset();
     studyReferenceQueryOptionsMock.mockReturnValue({
       rangeHoga: rangeHogaOptions,
@@ -185,6 +173,9 @@ describe('useStudyReferenceBundles', () => {
     rangeCandlesSegments = [];
     screenerDailyFixture = [];
     useQueryMock.mockImplementation(queryResultFor);
+    // 스토어를 **일부러 KRX 가 아닌 값으로** 둔다 — 이 파일의 모든 단언이 "스토어가
+    // 뭐든 복기는 KRX" 를 지나가게 하려는 것이다. 'KRX' 로 두면 정책이 사라져도
+    // 전부 초록이라 아무것도 증명하지 못한다.
     useLiveVenueStore.setState({ venue: 'UN' });
     // 쿼리 키를 정하는 지표는 전역 1세트이고, **어느 버킷**인지는 차트 창의 봉이
     // 정한다(#904) — 창 밖 소비자도 같은 조합을 읽어야 "켰는데 안 보임"이 안 난다.
@@ -200,14 +191,13 @@ describe('useStudyReferenceBundles', () => {
     });
   });
 
-  it('passes the shared venue into the study query plan and subscribes 4 disk queries', () => {
+  it('pins the study query plan to KRX and subscribes 4 disk queries', () => {
     renderOne(save);
 
-    // settings 에 venue 가 실린다(ADR-0140 §7) — 캔들 쿼리만 KRX 고정이고
-    // 그건 studyReferenceQueries 안에서 처리한다(디스크 캔들 소스는 venue 축이 없다).
+    // 스토어가 'UN' 인데도 settings 에는 KRX 가 실린다(ADR-0144).
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(save, {
       sourcePref: 'kiwoom_live',
-      venue: 'UN',
+      venue: 'KRX',
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
@@ -223,16 +213,14 @@ describe('useStudyReferenceBundles', () => {
     expect(useQueryMock).toHaveBeenCalledTimes(4);
   });
 
-  it('선택값이 아니라 **해석된** venue 를 싣는다 (NXT 미상장 → KRX 강등)', () => {
-    // `studyReferenceQueries` 는 순수 함수라 `rangeBundleQueryOptions` 를 직접 만들고,
-    // 그래서 `useRange` 안의 해석(#1214)을 타지 않는다 — 해석이 여기서 빠지면 통합을
-    // 고른 복기 뷰가 NXT 미상장 종목에서 **빈 200** 을 받는다.
-    useLiveVenueStore.setState({ venue: 'UN' });
-    vi.mocked(useEffectiveVenue).mockReturnValue('KRX');
+  // 정책 가드 — **어느 선택값에서도** 복기 쿼리는 KRX 다(ADR-0144). 옵션 목록을
+  // 돌리는 이유는 값이 늘어날 때(예: 4번째 거래소) 이 가드가 자동으로 그 값을
+  // 덮기 때문이다. 하나만 골라 두면 새 값에 정책이 조용히 안 걸린다.
+  it.each(LIVE_VENUE_OPTIONS)('ignores the shared venue store (=%s) and queries KRX', (selected) => {
+    useLiveVenueStore.setState({ venue: selected });
 
     renderOne(save);
 
-    expect(useEffectiveVenue).toHaveBeenCalledWith(save.code, 'UN');
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(
       save,
       expect.objectContaining({ venue: 'KRX' }),
@@ -260,12 +248,13 @@ describe('useStudyReferenceBundles', () => {
     expect(renderOne(save).current.pastDataWarnings).toEqual([]);
   });
 
-  it('follows the shared live venue store (KRX 고정 해제 — ADR-0140 §7)', () => {
-    // 숨겼던 이유("복기는 hogaplay 정규장 캡처만 쓴다")가 PR-D 의 venue 세그먼트로
-    // 사라졌다. 이제 /live 에서 고른 거래소를 복기도 따른다.
+  it('reports KRX as the bundle venue even while the shared store says otherwise', () => {
+    // 쿼리뿐 아니라 **결과에 실려 나가는 venue** 도 KRX 다 — 이 값이 차트의 세션
+    // 경계·클립으로 흘러가므로(`studyReferenceBundleModel`), 여기가 스토어를 따르면
+    // 데이터는 KRX 인데 x축만 08:00–20:00 으로 벌어진다.
     useLiveVenueStore.setState({ venue: 'NXT' });
-    expect(renderOne(save).current.venue).toBe('NXT');
-    useLiveVenueStore.setState({ venue: 'KRX' });
+    expect(renderOne(save).current.venue).toBe('KRX');
+    useLiveVenueStore.setState({ venue: 'UN' });
     expect(renderOne(save).current.venue).toBe('KRX');
   });
 

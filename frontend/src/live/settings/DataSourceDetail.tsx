@@ -77,23 +77,31 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
             </SettingsRow>
           )}
         </RoleSourceGroup>
-        {/* 복기뷰의 거래소 선택기가 **부활했다**(ADR-0140 §7). 숨겼던 이유는
-            "hogaplay 정규장 캡처(KRX)만 쓰므로 선택이 무의미"였는데, PR-D 가
-            디스크에 `kiwoom_live/{venue}/` 를 만들면서 고를 대상이 생겼다. */}
+        {/* 복기뷰의 거래소 선택기를 **다시 숨긴다**(ADR-0144). ADR-0140 §7.2 가 부활
+            시켰던 것인데, 선택기가 쓰는 스토어는 탭 전역이라 `/live` 에서 시장을 바꾸면
+            열려 있던 복기 탭까지 따라 움직였고, 복기 데이터의 상당량인 hogaplay 는
+            KRX 전용이라 NXT·통합에서 날짜가 통째로 비었다. 라디오를 남긴 채 값만
+            무시하면 **아무 일도 안 하는 컨트롤**이 되므로 안내문으로 바꾼다. */}
         <RoleSourceGroup
           title="거래소"
           description={
             variant === 'study'
-              ? 'KRX는 정규장(09:00–15:30), NXT는 프리·애프터마켓을 포함한 08:00–20:00을 봅니다. 복기 데이터의 상당 부분은 hogaplay 캡처인데 hogaplay는 KRX 전용이라, NXT·통합이 비어 있는 날이 있습니다 — 보관함의 시장 배지로 어느 날에 무엇이 있는지 확인하세요.'
+              ? '복기뷰는 항상 KRX 정규장(09:00–15:30) 기준입니다 — 복기 데이터의 상당 부분이 hogaplay 캡처인데 hogaplay는 KRX 전용이라, NXT·통합으로는 비는 날이 많습니다 실시간 화면의 거래소 선택은 복기뷰에 영향을 주지 않습니다'
               : LIVE_VENUE_HELP
           }
         >
-          {/* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */}
-          <div className="flex flex-wrap gap-2 pb-2">
-            {LIVE_VENUE_OPTIONS.map((opt) => (
-              <LiveVenueRadio key={opt} value={opt} />
-            ))}
-          </div>
+          {variant === 'study' ? (
+            <div className="text-sm text-fg-dim" data-testid="study-venue-fixed-note">
+              복기뷰 거래소는 KRX로 고정입니다.
+            </div>
+          ) : (
+            /* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */
+            <div className="flex flex-wrap gap-2 pb-2">
+              {LIVE_VENUE_OPTIONS.map((opt) => (
+                <LiveVenueRadio key={opt} value={opt} />
+              ))}
+            </div>
+          )}
         </RoleSourceGroup>
         {/* 「호가·체결 데이터 기준」 라디오 3종은 폐지됐다(2026-08-07 오전) — 셋 중 둘이
             venue 비교를 깨뜨렸다. 같은 날 오후에 **옵트인 토글 하나로** 돌아왔다:
@@ -113,8 +121,12 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
           </SettingsRow>
           {/* 비활성화하지 **않는다** — 설정은 지속되는 값이고 거래소는 자주 바뀌므로,
               NXT 를 볼 때마다 회색이면 고장으로 읽힌다. 대신 지금 적용되지 않는다는
-              사실만 알린다. */}
-          {krxPreferHogaplay && venue !== 'KRX' && (
+              사실만 알린다.
+
+              ⚠ `variant === 'live'` 일 때만이다. 복기뷰는 KRX 고정(ADR-0144)이라 이
+              토글이 **항상** 적용되는데, 스토어 venue 는 `/live` 선택을 들고 있으므로
+              게이트가 없으면 "적용되지 않습니다" 를 틀리게 띄운다. */}
+          {variant === 'live' && krxPreferHogaplay && venue !== 'KRX' && (
             <div className="mt-1 text-xs text-fg-dim" data-testid="krx-prefer-hogaplay-inactive">
               현재 거래소({LIVE_VENUE_LABELS[venue]})에는 적용되지 않습니다 — hogaplay는 KRX 전용입니다.
             </div>

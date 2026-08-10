@@ -7,8 +7,7 @@ import { useOrderflowSourcePref } from '../state/sourcePreference';
 import { referenceStudyView } from './studyViewVariant';
 import { studyReferenceQueryOptions } from './studyReferenceQueries';
 import { studyDailyContextWindow } from './studyDailyContext';
-import { useLiveVenueStore } from '../state/liveVenue';
-import { useEffectiveVenueResolver } from '../live/useEffectiveVenue';
+import { STUDY_VENUE } from './studyVenuePolicy';
 
 export type StudyTabQueryStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -41,14 +40,13 @@ export function useWarmStudyReferenceTabQueries({
     volumeDistributionEnabled,
     volumeDistributionRangeCount,
   } = useStudyChartIndicators();
-  // 워밍 쿼리도 같은 venue 여야 한다 — 다르면 탭 전환 시 캐시가 안 맞아 재fetch 된다.
+  // 워밍 쿼리도 활성 경로와 **같은 venue** 여야 한다 — 다르면 탭 전환 시 캐시가 안 맞아
+  // 재fetch 된다. `/study` 가 KRX 고정(`studyVenuePolicy`, ADR-0144)이 되면서 그 제약이
+  // 자명하게 충족된다: 양쪽 모두 같은 상수를 읽는다.
   //
-  // **탭마다 종목이 다르므로 코드별 resolver 가 필요하다.** 단일 값으로 해석하면
-  // (useStudyReferenceBundle 처럼) 활성 탭 기준 venue 를 다른 종목의 워밍에 물려
-  // 캐시 키가 어긋난다 — 재fetch 를 막으려던 것이 정확히 재fetch 를 만든다.
-  // resolver 는 `useCallback` 이라 identity 가 안정적이라 deps 에 그대로 넣는다.
-  const selectedVenue = useLiveVenueStore((s) => s.venue);
-  const resolveVenue = useEffectiveVenueResolver(selectedVenue);
+  // 여기 있던 코드별 `useEffectiveVenueResolver` 는 **탭마다 종목이 달라서** 필요했다
+  // (활성 탭 기준 venue 를 다른 종목의 워밍에 물리면 캐시 키가 어긋나 재fetch 를
+  // 막으려던 것이 재fetch 를 만든다, #1216). 상수에는 그 위험이 없다.
 
   const warmTabIds = useMemo(() => {
     const ids = new Set(activatedTabIds);
@@ -71,8 +69,7 @@ export function useWarmStudyReferenceTabQueries({
       if (!warmTabIds.has(tab.id)) return [];
       const save = referenceStudyView(savesById.get(tab.viewId) ?? null);
       if (!save) return [];
-      // venue 는 **탭의 종목으로** 해석한다 — 활성 탭 것을 물리면 안 된다.
-      const settings = { ...baseSettings, venue: resolveVenue(save.code) };
+      const settings = { ...baseSettings, venue: STUDY_VENUE };
       // tab.timeframe이 SSOT: viewTimeframes는 effect로 한 커밋 늦게 동기화돼,
       // "열 때 기본 시간봉" override로 연 첫 렌더에서 save.timeframe으로 워밍
       // 쿼리를 만들면 즉시 버려질 range 번들을 한 벌 더 fetch하게 된다.
@@ -98,7 +95,7 @@ export function useWarmStudyReferenceTabQueries({
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
     volumeDistributionEnabled,
-    volumeDistributionRangeCount, resolveVenue,
+    volumeDistributionRangeCount,
     warmTabIds,
   ]);
 
