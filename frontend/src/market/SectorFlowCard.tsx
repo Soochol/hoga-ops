@@ -19,14 +19,12 @@
  * 종합 행만 소비했을 뿐이다(#1105). 그래서 이 카드는 **새 벤더 호출이 0** 이다.
  * 대신 폴링 전용이다(이 TR 에는 WS 타입이 없다 — 0J/0U 는 지수·등락종목수만 준다).
  */
-import { useState } from 'react';
 import {
   useMarketBreadth,
   useMarketSectorFlow,
   type SectorFlowRow,
 } from '../api/market';
-import { CardHeader, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
-import { persistJson, readJsonObject } from '../state/persist';
+import { CardHeader, EmptyNote, MarketCard, ModeSwitch, useCardPref } from './marketCardBits';
 
 type Actor = 'foreign' | 'institution' | 'individual';
 type Market = 'KOSPI' | 'KOSDAQ';
@@ -47,23 +45,11 @@ const ROWS = 12;
 
 const PREF_KEY = 'market.sectorFlow.v1';
 
-/** 카드 선택 저장 — `useCardMode`(지수 카드)와 같은 규율이다. **쓸 때 다시 읽어
- *  병합한다**: 두 키(시장·주체)가 한 객체를 공유하므로 스냅샷을 들고 쓰면 나중 쓰기가
- *  앞 선택을 지운다. */
-function usePref<T extends string>(field: string, fallback: T): [T, (v: T) => void] {
-  const [value, setValue] = useState<T>(() => (readJsonObject(PREF_KEY)[field] as T) ?? fallback);
-  const update = (next: T) => {
-    setValue(next);
-    persistJson(PREF_KEY, { ...readJsonObject(PREF_KEY), [field]: next });
-  };
-  return [value, update];
-}
-
 export function SectorFlowCard() {
   const flow = useMarketSectorFlow();
   const breadth = useMarketBreadth();
-  const [market, setMarket] = usePref<Market>('market', 'KOSPI');
-  const [actor, setActor] = usePref<Actor>('actor', 'foreign');
+  const [market, setMarket] = useCardPref<Market>(PREF_KEY, 'market', 'KOSPI');
+  const [actor, setActor] = useCardPref<Actor>(PREF_KEY, 'actor', 'foreign');
 
   const all = flow.data?.markets?.[market] ?? [];
   // 종합은 백엔드가 맨 앞에 둔다 — 기준선이라 정렬·절단에서 빼고 따로 고정한다.

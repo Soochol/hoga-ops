@@ -22,13 +22,14 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from hoga.live import kiwoom_access, market_overview
 from hoga.live.market_funds_runtime import MarketFundsCache
+from hoga.live.market_overview import StreakDirection
 
 log = logging.getLogger(__name__)
 
@@ -436,6 +437,10 @@ _MARKETS = ("0", "1")  # 코스피 · 코스닥 — 별도 콜이다
 #: `mrkt_tp` → 화면 라벨. 투자자 표면이 이 라벨로 키잉한다(`market_investor_row` 와 동일).
 _MARKET_LABELS = {"0": "KOSPI", "1": "KOSDAQ"}
 _STEX_ALL = "3"
+#: 연속매매 방향 → 벤더 `netslmt_tp`(ka10131). **실측으로 확정한 코드표다**(2026-08-10):
+#: 리서치 문서는 "2=순매수 추정 · 배선 전에 흔들 것" 으로 남겨 뒀었고, 두 값의 응답을
+#: 대조해 보니 종목 코드 집합의 **교집합이 0** 이라 정렬 축이 아니라 필터임이 갈렸다.
+_NETSLMT_TP: dict[str, str] = {"buy": "2", "sell": "1"}
 
 
 class _TtlCache:
@@ -1033,7 +1038,10 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
     # 축마다 캐시가 갈려야 한다 — 한 캐시를 공유하면 당일/일별 토글이 서로의 값을 지운다.
     program_cache = _TtlCache(TTL_PROGRAM_INTRADAY_S)
     daily_program_cache = _TtlCache(TTL_PROGRAM_DAILY_S)
-    streaks_cache = _TtlCache(TTL_STREAKS_S)
+    # 방향마다 캐시가 갈려야 한다 — 위 프로그램 축과 같은 이유다. 한 슬롯을 공유하면
+    # 순매수↔순매도 토글이 서로의 값을 지우고, 더 나쁘게는 TTL 안에서 **반대 방향의
+    # payload 를 그대로** 받는다(`_TtlCache` 는 키 없는 단일 슬롯이다).
+    streaks_caches = {d: _TtlCache(TTL_STREAKS_S) for d in get_args(StreakDirection)}
     breadth_cache = _TtlCache(TTL_BREADTH_S)
     # 증시 주변 자금은 벤더가 다르다(KOFIA) — 키움 거버너·TTL 축과 분리해 자체 캐시를 쓴다.
     funds_cache = MarketFundsCache()
@@ -1190,15 +1198,25 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
         return await asyncio.to_thread(_deriv_flow_payload, data_dir)
 
     @router.get("/streaks")
-    async def get_streaks() -> StreaksResponse:
-        """연속 순매수 — **한 콜이 외국인·기관 두 카드**를 채운다(ka10131, #1096)."""
+    async def get_streaks(direction: StreakDirection = "buy") -> StreaksResponse:
+        """연속 순매수/순매도 — **한 콜이 외국인·기관 두 카드**를 채운다(ka10131, #1096).
+
+        `direction` 은 벤더 `netslmt_tp` 로 그대로 내려간다. 방향을 **쿼리 파라미터로**
+        가르고 응답 키(`외국인`·`기관`)는 그대로 둔다 — 한 응답에 두 방향을 같이 실으면
+        평소 아무도 안 보는 절반까지 매번 벤더를 부르게 된다. 화면이 토글할 때만 그
+        방향을 부르는 것이 이 갈래의 목적이다(기본값 `buy` 라 기존 호출자는 무변경).
+
+        방향별 부호 필터가 왜 여전히 필요한지는 `parse_streaks` 의 docstring 에 있다.
+        """
 
         async def _fetch() -> dict[str, Any]:
             rows = await _call(
                 "ka10131",
-                {"dt": "1", "mrkt_tp": "001", "netslmt_tp": "2", "stk_inds_tp": "0",
-                 "amt_qty_tp": "0", "stex_tp": _STEX_ALL},
-                key=("market-streaks",),
+                {"dt": "1", "mrkt_tp": "001", "netslmt_tp": _NETSLMT_TP[direction],
+                 "stk_inds_tp": "0", "amt_qty_tp": "0", "stex_tp": _STEX_ALL},
+                # 유량 키도 방향별이다 — 같은 TR 이라도 두 방향은 서로 다른 페이지라
+                # 한 키로 묶으면 한쪽의 페이싱이 다른 쪽을 대신 소모한다.
+                key=("market-streaks", direction),
             )
             if rows is None:
                 return {"외국인": [], "기관": [], "warnings": []}
@@ -1217,11 +1235,13 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
             return {
                 "warnings": warnings,
                 **{
-                    actor: market_overview.parse_streaks(rows, actor=actor)
+                    actor: market_overview.parse_streaks(rows, actor=actor, direction=direction)
                     for actor in ("외국인", "기관")
                 },
             }
 
-        return await streaks_cache.get(_fetch) or {"외국인": [], "기관": [], "warnings": []}
+        return await streaks_caches[direction].get(_fetch) or {
+            "외국인": [], "기관": [], "warnings": []
+        }
 
     return router

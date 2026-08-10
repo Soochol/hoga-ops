@@ -112,6 +112,102 @@ async def test_program_axes_do_not_share_a_cache(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_streak_directions_map_to_vendor_codes_and_do_not_share_a_cache(
+    monkeypatch, tmp_path
+):
+    """순매수↔순매도는 **벤더 코드·캐시·유량 키가 모두 갈린다**.
+
+    `_TtlCache` 는 키 없는 단일 슬롯이라, 안 가르면 두 번째 방향이 TTL(5분) 동안
+    **반대 방향의 payload 를 그대로** 받는다 — 화면엔 "순매도" 라고 쓰인 채 순매수
+    종목이 뜨는 모양이라 빈 화면보다 나쁘다.
+
+    무자격 seam(다른 테스트들)으로는 이걸 못 잰다. 양쪽 다 빈 응답이라 캐시를
+    공유하든 말든 결과가 같기 때문이다. 그래서 여기서는 가짜 클라이언트로 실제
+    fetch 경로를 태운다.
+    """
+    from hoga.api import market_routes, symbols
+    from hoga.live import kiwoom_access, kiwoom_rest_runtime
+
+    # 방향별로 **다른 종목**이 온다 — 실측(2026-08-10)에서 두 응답의 코드 교집합은 0이다.
+    vendor_rows = {
+        "2": [{"stk_cd": "005930_AL", "stk_nm": "삼성전자",
+               "frgnr_cont_netprps_dys": "+7", "frgnr_cont_netprps_amt": "+1241000"}],
+        "1": [{"stk_cd": "017670_AL", "stk_nm": "SK텔레콤",
+               "frgnr_cont_netprps_dys": "-2", "frgnr_cont_netprps_amt": "--940483"}],
+    }
+    bodies: list[dict] = []
+    keys: list[tuple] = []
+
+    class _Page:
+        def __init__(self, rows: list[dict]) -> None:
+            self.rows = rows
+
+    class _Client:
+        async def call(self, _api_id: str, body: dict) -> _Page:
+            bodies.append(body)
+            return _Page(vendor_rows[body["netslmt_tp"]])
+
+    async def _capacity(scheduler, *, key, api_id, priority, fetch_fn, client):  # noqa: ANN001, ARG001
+        keys.append(key)
+        return await fetch_fn(client)
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: _Client())
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda *_a, **_k: object())
+    monkeypatch.setattr(kiwoom_access, "run_with_capacity", _capacity)
+    monkeypatch.setattr(symbols, "all_etf_etn_codes", lambda: set())
+
+    streaks = next(x for x in build_router(data_dir=tmp_path).routes
+                   if x.path == "/api/market/streaks")
+
+    buy = await streaks.endpoint(direction="buy")
+    sell = await streaks.endpoint(direction="sell")
+
+    # 벤더 코드표 — 실측으로 확정했다(2=순매수 · 1=순매도).
+    assert [b["netslmt_tp"] for b in bodies] == ["2", "1"]
+    assert [r["name"] for r in buy["외국인"]] == ["삼성전자"]
+    assert [r["name"] for r in sell["외국인"]] == ["SK텔레콤"]
+    # 이중 마이너스 표기가 접혀 금액이 살아 있다(#1247). 접히지 않으면 여기서 None 이다.
+    assert sell["외국인"][0]["streak_net_eok"] == -9404.83
+    # 유량 키도 갈린다 — 한 키로 묶으면 한쪽 페이싱이 다른 쪽을 대신 소모한다.
+    assert keys == [("market-streaks", "buy"), ("market-streaks", "sell")]
+
+    # 같은 방향 재호출은 캐시에서 나온다(벤더 콜 증가 없음).
+    again = await streaks.endpoint(direction="sell")
+    assert len(bodies) == 2
+    assert [r["name"] for r in again["외국인"]] == ["SK텔레콤"]
+    assert market_routes.TTL_STREAKS_S == 300.0
+
+
+def test_streak_direction_is_validated_by_the_route(monkeypatch, tmp_path):
+    """방향 enum 은 **FastAPI 검증층**이 지킨다 — 위 테스트들은 endpoint 를 직접 불러
+    그 층을 통째로 건너뛴다(무자격 폴백 테스트가 따로 있는 것과 같은 사각).
+
+    모르는 값이 **조용히 기본값으로 떨어지면 안 된다**: 화면엔 "순매도" 라고 쓰인 채
+    순매수 종목이 뜨는 모양이 되고, 그건 빈 카드보다 나쁘다.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from hoga.live import kiwoom_rest_runtime
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: None)
+    app = FastAPI()
+    app.include_router(build_router(data_dir=tmp_path))
+    c = TestClient(app)
+
+    assert c.get("/api/market/streaks").status_code == 200  # 기본값 = buy(기존 호출자 무변경)
+    assert c.get("/api/market/streaks?direction=sell").status_code == 200
+    assert c.get("/api/market/streaks?direction=BUY").status_code == 422
+    assert c.get("/api/market/streaks?direction=").status_code == 422
+
+    # 주체 키는 **한글 alias 로** wire 에 나간다(`StreaksResponse` docstring). 직렬화가
+    # `by_alias` 를 잃으면 필드명(`foreign_investor`)이 나가고 화면이 통째로 빈다.
+    assert set(c.get("/api/market/streaks?direction=sell").json()) == {
+        "warnings", "외국인", "기관",
+    }
+
+
+@pytest.mark.asyncio
 async def test_breadth_counts_52w_only():
     """급등락(ka10019)은 뺐다 — 시장 폭 카드가 업종 수급으로 교체되며 소비자가 0 이 됐다.
 

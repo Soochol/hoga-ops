@@ -131,15 +131,20 @@ export function useMarketProgram(axis: ProgramAxis) {
   });
 }
 
-// ── 순매수 상위 (주체별 2카드) ───────────────────────────────────────────
+// ── 연속 순매수·순매도 상위 (주체별 2카드) ───────────────────────────────
+
+/** 연속 매매의 방향. 백엔드 `StreakDirection`(`hoga/live/market_overview.py`)의 손 미러. */
+export type StreakDirection = 'buy' | 'sell';
 
 export interface StreakRow {
   code: string;
   name: string;
   actor: string;
-  /** 항상 양수 — 음수(연속 순매도)는 백엔드가 거른다. */
+  /** **방향과 같은 부호**다 — `buy` 면 양수, `sell` 이면 음수. 백엔드가 요청한 방향과
+   *  어긋난 부호를 거르므로 한 응답 안에 부호가 섞이지 않는다. 일수는 절대값으로
+   *  읽는다(`-2일` 은 읽히지 않는다). */
   streak_days: number;
-  /** 억원 (벤더 백만원 → 정규화) */
+  /** 억원 (벤더 백만원 → 정규화). 부호는 방향을 따른다 — 색이 곧 그 정보다. */
   streak_net_eok: number | null;
   streak_net_qty_shares: number | null;
   period_change_pct: number | null;
@@ -152,10 +157,15 @@ export interface StreaksResponse {
   [actor: string]: StreakRow[] | string[] | undefined;
 }
 
-export function useMarketStreaks() {
+/** 방향은 **쿼리 키의 일부**다 — 한 키로 묶으면 토글이 서로의 캐시를 덮어써서
+ *  매 전환이 재요청이 되고, 그 사이 반대 방향의 값이 화면에 남는다.
+ *
+ *  방향마다 벤더 콜이 따로 나가지만 **토글해야 나간다**: 안 보는 방향은 쿼리 자체가
+ *  없다. 카드 둘이 같은 방향이면 키가 같아 한 벌만 돈다. */
+export function useMarketStreaks(direction: StreakDirection) {
   return useQuery({
-    queryKey: ['market', 'streaks'],
-    queryFn: () => apiCall<StreaksResponse>('/api/market/streaks'),
+    queryKey: ['market', 'streaks', direction],
+    queryFn: () => apiCall<StreaksResponse>(`/api/market/streaks?direction=${direction}`),
     refetchInterval: () => pollWhileOpen(5 * 60_000),
     staleTime: 4 * 60_000,
   });

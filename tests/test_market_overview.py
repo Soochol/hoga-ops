@@ -177,8 +177,8 @@ def test_one_streak_response_fills_both_actor_cards():
         "orgn_cont_netprps_qty": "+428739",
         "frgnr_cont_netprps_dys": "", "frgnr_cont_netprps_amt": "",
     }]
-    inst = parse_streaks(rows, actor="기관")
-    frgn = parse_streaks(rows, actor="외국인")
+    inst = parse_streaks(rows, actor="기관", direction="buy")
+    frgn = parse_streaks(rows, actor="외국인", direction="buy")
     assert len(inst) == 1
     assert inst[0]["code"] == "035420"  # `_AL` venue 접미 제거
     assert inst[0]["streak_days"] == 1
@@ -201,9 +201,57 @@ def test_negative_streaks_are_net_selling_and_excluded():
         {"stk_cd": "005930_AL", "stk_nm": "삼성전자",
          "frgnr_cont_netprps_dys": "+7", "frgnr_cont_netprps_amt": "+1241000"},
     ]
-    got = parse_streaks(rows, actor="외국인")
+    got = parse_streaks(rows, actor="외국인", direction="buy")
     assert [r["name"] for r in got] == ["삼성전자"]
     assert got[0]["streak_net_eok"] == 12410.0
+
+
+def test_sell_direction_is_the_exact_mirror():
+    """순매도 방향은 같은 행에서 **반대 부호만** 고른다.
+
+    벤더가 `netslmt_tp` 로 종목을 이미 갈라 주지만 그것으로 충분하지 않다 —
+    두 주체 값이 한 행에 같이 오므로 순매도 응답에도 사들인 주체가 섞인다
+    (2026-08-10 실측: 순매도 100행 중 외국인 양수 35). 필터를 빼면 "순매도 상위" 에
+    +7일 행이 올라온다.
+    """
+    rows = [
+        {"stk_cd": "017670_AL", "stk_nm": "SK텔레콤",
+         "frgnr_cont_netprps_dys": "-1", "frgnr_cont_netprps_amt": "-2373"},
+        {"stk_cd": "005930_AL", "stk_nm": "삼성전자",
+         "frgnr_cont_netprps_dys": "+7", "frgnr_cont_netprps_amt": "+1241000"},
+    ]
+    got = parse_streaks(rows, actor="외국인", direction="sell")
+    assert [r["name"] for r in got] == ["SK텔레콤"]
+    # 부호는 보존한다 — 절대값으로 읽는 것은 화면의 결정이다.
+    assert got[0]["streak_days"] == -1
+    assert got[0]["streak_net_eok"] == -23.73
+
+
+def test_sell_rows_survive_the_double_minus_notation():
+    """ka10131 순매도 행의 **금액·수량은 마이너스 두 개**로 온다 — 일수는 하나뿐이다.
+
+    2026-08-10 실측 원문(삼성전자): `dys='-2'` · `amt='--940483'` · `qty='--4105152'`.
+    `signed_int` 의 폴딩(#1247)이 없으면 이 카드는 **일수만 나오고 금액·수량이 통째로
+    `None`** 이 된다 — 순매수 방향은 값이 전부 양수라 이 결함이 무증상이었다.
+    """
+    rows = [{
+        "stk_cd": "005930_AL", "stk_nm": "삼성전자", "prid_stkpc_flu_rt": "-1.24",
+        "frgnr_cont_netprps_dys": "-2",
+        "frgnr_cont_netprps_amt": "--940483",
+        "frgnr_cont_netprps_qty": "--4105152",
+    }]
+    got = parse_streaks(rows, actor="외국인", direction="sell")
+    assert len(got) == 1
+    assert got[0]["streak_net_eok"] == -9404.83
+    assert got[0]["streak_net_qty_shares"] == -4105152
+
+
+def test_zero_streak_belongs_to_neither_direction():
+    """연속이 끊긴 주체(0일)는 양쪽 카드 어디에도 실리지 않는다."""
+    rows = [{"stk_cd": "005930_AL", "stk_nm": "삼성전자",
+             "frgnr_cont_netprps_dys": "0", "frgnr_cont_netprps_amt": "0"}]
+    assert parse_streaks(rows, actor="외국인", direction="buy") == []
+    assert parse_streaks(rows, actor="외국인", direction="sell") == []
 
 
 def test_truncated_count_says_so():
