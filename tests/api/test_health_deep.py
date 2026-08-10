@@ -124,9 +124,7 @@ def test_deep_health_carries_version_and_disk(
     disk 는 관측 전용 — low 여도 503 이 아니어야 한다: 503 은 워치독의 재시작
     신호인데 재시작은 디스크를 비우지 못한다.
     """
-    from hoga.api import captures
-
-    monkeypatch.setattr(captures, "_queue_owned", True)
+    # "미시도" 가 곧 쓰기 허용이다(`captures.queue_owned()` 규약) — 기본 상태 그대로.
     client, app = _client(tmp_path)
     app.state.startup_runtime = _Runtime(list(_RUNNING))
 
@@ -147,10 +145,12 @@ def test_deep_health_flags_unowned_queue_as_degraded(
     드러났다 — 워커 행이 'dead' 가 아니라 **생략**되는 형태라 감독자가 read-only
     prod 를 영원히 방치했다. env 옵트아웃이 아닌 비소유는 503 이어야 워치독이
     회수한다."""
-    from hoga.api import captures
+    from hoga.api import ownership
 
     monkeypatch.delenv("HOGA_CAPTURE_QUEUE_DISABLED", raising=False)
-    monkeypatch.setattr(captures, "_queue_owned", False)
+    ownership.acquire(
+        "queue", tmp_path, available=False, unavailable_reason="held_by_other",
+    )
     client, app = _client(tmp_path)
     app.state.startup_runtime = _Runtime(list(_RUNNING))
 
@@ -167,10 +167,12 @@ def test_deep_health_env_optout_queue_is_not_a_failure(
 ) -> None:
     """의도된 read-only(HOGA_CAPTURE_QUEUE_DISABLED=1 도그푸딩)는 실패가 아니다 —
     실패로 세면 그 인스턴스가 무한 재시작된다(미기동≠죽음 원칙과 동일)."""
-    from hoga.api import captures
+    from hoga.api import ownership
 
     monkeypatch.setenv("HOGA_CAPTURE_QUEUE_DISABLED", "1")
-    monkeypatch.setattr(captures, "_queue_owned", False)
+    ownership.acquire(
+        "queue", tmp_path, available=False, unavailable_reason="disabled_by_env",
+    )
     client, app = _client(tmp_path)
     app.state.startup_runtime = _Runtime(list(_RUNNING))
 

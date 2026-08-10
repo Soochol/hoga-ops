@@ -102,7 +102,7 @@ def test_get_live_status_exposes_collector_ownership(tmp_path) -> None:
         assert r.status_code == 200
         body = r.json()
         assert "writers" in body, "response_model 이 writers 를 스트립했다"
-        assert set(body["writers"]) == {"collectors", "ws", "daily"}
+        assert set(body["writers"]) == {"queue", "collectors", "ws", "daily"}
         # 스케줄러를 안 띄운 앱이므로 "미기동"(null) — false(뺏김)와 구별돼야 한다.
         assert body["writers"]["collectors"]["owned"] is None
 

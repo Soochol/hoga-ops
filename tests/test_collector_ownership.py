@@ -5,7 +5,7 @@
 표본이 두 위상으로 교차 기록). 이 파일이 지키는 것은 **두 번째 프로세스가 그 일을
 시작하지 않는다** 이다.
 
-⚠ 락이 프로세스 전역이라 `conftest._reset_collector_ownership` 이 매 테스트 앞에서
+⚠ 락이 프로세스 전역이라 `conftest._reset_writer_ownership` 이 매 테스트 앞에서
 해제한다. 그게 없으면 먼저 잡은 테스트 때문에 뒤 테스트가 위양성으로 통과한다.
 """
 from __future__ import annotations
@@ -65,7 +65,7 @@ def test_registry_covers_every_guarded_writer():
     writer 를 추가하고 등록을 잊으면 **관측면에서만 조용히 사라진다** — 락은 걸리는데
     상태가 안 보이는 것이 이 프로젝트가 싫어하는 "무증상 강등" 이다.
     """
-    assert set(ownership.ownership_state()) == {"collectors", "ws", "daily"}
+    assert set(ownership.ownership_state()) == {"queue", "collectors", "ws", "daily"}
 
 
 def test_queue_and_collector_locks_are_independent(tmp_path: Path):

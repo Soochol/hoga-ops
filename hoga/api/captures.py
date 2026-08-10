@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import hoga
-from hoga.api import watchlist
+from hoga.api import ownership, watchlist
 from hoga.api.calendar import TradingDayUnavailableError
 from hoga.api.captures_persistence import load_manifest, manifest_path, save_manifest
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
@@ -58,7 +58,6 @@ from hoga.api.models import (
     TimingEnv,
     ViolationModel,
 )
-from hoga.api.ownership import DataDirLock, try_acquire_queue_ownership
 from hoga.api.params import CODE_PATTERN
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import (
@@ -364,16 +363,22 @@ def _timing_enabled() -> bool:
 _wakeup: asyncio.Event | None = None                    # lazily constructed when the first worker starts
 _workers: list[asyncio.Task] = []                       # populated by app lifespan; stopped on shutdown
 
-# ADR-0094: single queue owner per data_dir. `_ownership` holds the flock (fd
-# kept open for the process lifetime); `_queue_owned` is the fast-path flag
-# guarding mutation endpoints and persistence. A non-owner boots read-only:
-# it neither restores the manifest nor spawns workers, so two backends sharing
-# one data_dir can't double-capture the same Stock-Date.
-_ownership: DataDirLock | None = None
-# Default True so the test DI surface (write `_data_dir` directly, never call
-# start_capture_pool) keeps persisting. Production's start_capture_pool sets
-# this explicitly from the flock result; non-owner tests set it False.
-_queue_owned: bool = True
+def queue_owned() -> bool:
+    """이 인스턴스가 큐를 **변경해도 되는가** (ADR-0094).
+
+    소유권 자체는 `hoga.api.ownership` 레지스트리가 쥔다(`.queue.lock` 의 flock).
+    여기서는 그 상태를 큐의 규약으로 **번역**한다:
+
+        owned=True   소유자 — 변경 허용
+        owned=False  다른 프로세스가 쥐고 있다 — read-only
+        owned=None   **아직 시도 안 함 → 허용**
+
+    마지막 줄이 이 함수가 존재하는 이유다. `start_capture_pool` 을 거치지 않는
+    테스트 DI 경로(`captures._data_dir` 를 직접 쓰는 표면)가 예전부터 쓰기를
+    허용받아 왔고, 그 기본값을 뒤집으면 `_finalize_item`·`_persist_queue_locked`
+    가 **에러 없이 조용히 no-op** 이 된다. 미시도를 거절로 읽으면 안 된다.
+    """
+    return ownership.ownership_state()["queue"]["owned"] is not False
 
 # Production dependencies — set by build_router() at startup.
 # Tests bypass build_router() by writing directly: `captures._data_dir = tmp_path`.
@@ -397,7 +402,7 @@ def queue_ownership_state() -> dict[str, bool]:
     ``disabled_by_env=True`` 면 의도된 옵트아웃(도그푸딩 read-only) — 정상.
     False 면 flock 경합·상실 — prod 단독 서버에서는 이상 신호라 degraded 다.
     """
-    return {"owned": _queue_owned, "disabled_by_env": _env_queue_disabled()}
+    return {"owned": queue_owned(), "disabled_by_env": _env_queue_disabled()}
 
 
 def _require_data_dir() -> Path:
@@ -417,7 +422,7 @@ def _require_queue_ownership() -> None:
     capture queue" and steer the user to the owning instance. Read paths
     (GET /queue, charts, inventory) never call this.
     """
-    if not _queue_owned:
+    if not queue_owned():
         raise HTTPException(status_code=503, detail={
             "code": CaptureErrorCode.QUEUE_NOT_OWNED,
             "message": (
@@ -450,19 +455,17 @@ def _record_no_upstream_data(data_dir: Path, code: str, date: str) -> None:
 def reset_state_for_tests() -> None:
     """For pytest fixtures only — clears all module singletons + the
     on-disk manifest (so per-test state never leaks)."""
-    global _queue_paused, _wakeup, _ownership, _queue_owned  # noqa: PLW0603 — intentional test-only reset of module singletons
+    global _queue_paused, _wakeup  # noqa: PLW0603 — intentional test-only reset of module singletons
     _queue.clear()
     _active.clear()
     _done.clear()
     _inflight_paths.clear()
     _fail_streaks.clear()  # ADR-0042 — keep test isolation for the new counter
     _queue_paused = False
-    # ADR-0094: drop any lock a prior test acquired and restore the owned
-    # default, so a non-owner test never leaks a 503 into the next test.
-    if _ownership is not None:
-        _ownership.release()
-        _ownership = None
-    _queue_owned = True
+    # ADR-0094: drop any lock a prior test acquired so a non-owner test never
+    # leaks a 503 into the next one. 해제하면 상태가 "미시도" 로 돌아가고,
+    # `queue_owned()` 규약상 그건 **쓰기 허용**이다(= 예전의 owned-by-default).
+    ownership.release("queue")
     # _wakeup is an asyncio.Event bound to an event loop — pytest-asyncio
     # creates a fresh loop per test, so we must drop the stale Event or the
     # next test gets "bound to a different event loop" errors. Workers
@@ -618,7 +621,7 @@ def _persist_queue_locked() -> None:
     """
     if _data_dir is None:
         return  # test fixture without data_dir wired — no lock check needed
-    if not _queue_owned:
+    if not queue_owned():
         return  # ADR-0094: read-only instance never writes the manifest
     assert _lock.locked(), "must hold _lock — see ADR-0019"
     items = [
@@ -784,7 +787,7 @@ def get_queue_snapshot() -> QueueSnapshot:
         done=[s.to_wire() for s in _done],
         paused=_queue_paused,
         max_concurrent=_max_concurrent,
-        queue_owned=_queue_owned,  # ADR-0094
+        queue_owned=queue_owned(),  # ADR-0094
     )
 
 
@@ -1394,32 +1397,25 @@ def start_capture_pool(data_dir: Path) -> list[asyncio.Task]:
     Set ``HOGA_CAPTURE_QUEUE_DISABLED=1`` to opt a dogfood backend out of
     ever contending for the lock.
     """
-    global _ownership, _queue_owned  # noqa: PLW0603 — startup-only ownership wiring
+    # 소유권은 `ownership` 레지스트리가 쥔다 — 이 모듈에 전역이 없다(2026-08-10 통일).
     # Re-read HOGA_MAX_CONCURRENT / HOGA_RATE_LIMIT_S now that load_env() has run
     # (import-time read was too early for a .env-only value — see the refreshers).
     refresh_max_concurrent()
     refresh_rate_limit_s()
     if _env_queue_disabled():
-        _queue_owned = False
+        # 의도적 옵트아웃도 **관측면에 남긴다** — 미시도(=쓰기 허용)와 구별돼야
+        # `queue_owned()` 가 이 인스턴스의 변경을 막는다.
+        ownership.acquire(
+            "queue", data_dir, available=False, unavailable_reason="disabled_by_env",
+        )
         logging.getLogger(__name__).info(
             "HOGA_CAPTURE_QUEUE_DISABLED set — capture queue runs read-only (no workers)",
         )
         return []
-    _ownership = try_acquire_queue_ownership(data_dir)
-    _queue_owned = _ownership is not None
-    if not _queue_owned:
+    if not ownership.acquire("queue", data_dir):
         return []
     _restore_queue_from_manifest(data_dir)
     return start_workers()
-
-
-def release_queue_ownership() -> None:
-    """Release the queue flock at shutdown. Idempotent; safe on a non-owner."""
-    global _ownership, _queue_owned  # noqa: PLW0603 — shutdown-only ownership teardown
-    if _ownership is not None:
-        _ownership.release()
-        _ownership = None
-    _queue_owned = False
 
 
 async def stop_workers(workers: list[asyncio.Task]) -> None:

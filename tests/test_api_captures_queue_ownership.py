@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from hoga.api import captures
+from hoga.api import captures, ownership
 from hoga.api.ownership import (
     lock_path,
     try_acquire_queue_ownership,
@@ -74,12 +74,12 @@ def test_pool_owner_restores_manifest(monkeypatch, tmp_path):
     # No competing holder — this instance becomes the owner.
     captures.start_capture_pool(tmp_path)
     try:
-        assert captures._queue_owned is True
+        assert captures.queue_owned() is True
         snap = captures.get_queue_snapshot()
         assert snap.queue_owned is True
         assert [i.item_id for i in snap.queued] == ["id1"]
     finally:
-        captures.release_queue_ownership()
+        ownership.release("queue")
 
 
 def test_pool_non_owner_skips_restore_and_workers(monkeypatch, tmp_path):
@@ -97,7 +97,7 @@ def test_pool_non_owner_skips_restore_and_workers(monkeypatch, tmp_path):
         })
         workers = captures.start_capture_pool(tmp_path)
         assert workers == []                      # no worker pool spawned
-        assert captures._queue_owned is False
+        assert captures.queue_owned() is False
         snap = captures.get_queue_snapshot()
         assert snap.queue_owned is False
         assert snap.queued == []                  # manifest NOT restored
@@ -110,7 +110,7 @@ def test_env_optout_runs_read_only_without_lock(monkeypatch, tmp_path):
     monkeypatch.setenv("HOGA_CAPTURE_QUEUE_DISABLED", "1")
     workers = captures.start_capture_pool(tmp_path)
     assert workers == []
-    assert captures._queue_owned is False
+    assert captures.queue_owned() is False
     # A different process can still take the lock since we never contended.
     other = try_acquire_queue_ownership(tmp_path)
     assert other is not None
@@ -123,7 +123,11 @@ def test_env_optout_runs_read_only_without_lock(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_non_owner_persist_is_noop(monkeypatch, tmp_path):
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
-    monkeypatch.setattr(captures, "_queue_owned", False)
+    # 다른 프로세스가 쥔 상태를 만든다. conftest 의 `release_all()` 이 매 테스트
+    # 앞에서 정리하므로 monkeypatch 없이도 새지 않는다.
+    ownership.acquire(
+        "queue", tmp_path, available=False, unavailable_reason="held_by_other",
+    )
     async with captures._lock:
         captures._persist_queue_locked()
     assert not (tmp_path / ".queue.json").exists()
@@ -132,7 +136,8 @@ async def test_non_owner_persist_is_noop(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_owner_persist_writes_manifest(monkeypatch, tmp_path):
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
-    monkeypatch.setattr(captures, "_queue_owned", True)
+    # "미시도" 가 곧 쓰기 허용이다(`queue_owned()` 규약).
+    ownership.release("queue")
     async with captures._lock:
         captures._persist_queue_locked()
     assert (tmp_path / ".queue.json").exists()
@@ -141,18 +146,23 @@ async def test_owner_persist_writes_manifest(monkeypatch, tmp_path):
 # --- mutation endpoint guard -----------------------------------------------
 
 
-def test_require_queue_ownership_raises_503_when_not_owned(monkeypatch):
+def test_require_queue_ownership_raises_503_when_not_owned(tmp_path):
     from fastapi import HTTPException
 
     from hoga.api.error_codes import CaptureErrorCode
 
-    monkeypatch.setattr(captures, "_queue_owned", False)
+    # 다른 프로세스가 쥔 상태를 만든다. conftest 의 `release_all()` 이 매 테스트
+    # 앞에서 정리하므로 monkeypatch 없이도 새지 않는다.
+    ownership.acquire(
+        "queue", tmp_path, available=False, unavailable_reason="held_by_other",
+    )
     with pytest.raises(HTTPException) as exc:
         captures._require_queue_ownership()
     assert exc.value.status_code == 503
     assert exc.value.detail["code"] == CaptureErrorCode.QUEUE_NOT_OWNED
 
 
-def test_require_queue_ownership_passes_when_owned(monkeypatch):
-    monkeypatch.setattr(captures, "_queue_owned", True)
+def test_require_queue_ownership_passes_when_owned():
+    # "미시도" 가 곧 쓰기 허용이다(`queue_owned()` 규약).
+    ownership.release("queue")
     captures._require_queue_ownership()  # no raise

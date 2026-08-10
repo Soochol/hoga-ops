@@ -244,8 +244,11 @@ def try_acquire_daily_ownership(data_dir: Path) -> DataDirLock | None:
 # 락이 넷이고 취득 지점이 셋(scheduler · storage_runtime · lifespan)이라, 각자
 # 모듈 전역을 들면 관측면이 갈린다. 소유 상태의 SSOT 를 여기 한 곳에 둔다.
 #
-# 큐 락(`.queue.lock`)은 **여기 없다** — `captures.py` 가 자체 전역으로 관리하고
-# `/health` 에 이미 노출한다(ADR-0094). 옮기는 것은 이 변경의 범위가 아니다.
+# 큐 락(`.queue.lock`)도 여기 있다(2026-08-10 통일). 다만 **읽는 규약이 하나 다르다**:
+# 큐는 "아직 시도 안 함"(`owned=null`)을 **쓰기 허용**으로 읽는다 —
+# `start_capture_pool` 을 거치지 않는 테스트 DI 경로가 예전부터 그렇게 동작했고,
+# 그 표면을 깨면 persistence 가 조용히 no-op 이 된다. `captures.queue_owned()` 가
+# 그 규약을 한 곳에서 표현한다.
 
 _ACQUIRERS: dict[str, Callable[[Path], DataDirLock | None]] = {}
 _held: dict[str, DataDirLock] = {}
@@ -253,18 +256,29 @@ _held: dict[str, DataDirLock] = {}
 _denied: dict[str, str] = {}
 
 
-def acquire(name: str, data_dir: Path, *, available: bool = True) -> bool:
+def acquire(
+    name: str,
+    data_dir: Path,
+    *,
+    available: bool = True,
+    unavailable_reason: str = "no_credentials",
+) -> bool:
     """이름 붙은 writer 락을 잡는다. 이미 잡았으면 그대로 유지(재기동 안전).
 
     ⚠ ``available=False``(무자격)면 **락을 시도조차 하지 않는다.** 무자격 인스턴스가
     선점하면 나중에 뜬 자격 있는 인스턴스가 그 일을 통째로 못 한다 — 워크트리가 빈
     `.env` 로(관례대로) 먼저 뜨고 사용자 dev 서버가 나중에 뜨는, **정상적이고 흔한
     순서**가 그렇다. 가드가 막으려던 것보다 나쁜 결과다.
+
+    ``unavailable_reason`` 은 그 "안 잡음" 이 **왜** 인지 관측면에 남긴다. 기본은
+    자격 부재지만, 큐는 의도적 옵트아웃(`HOGA_CAPTURE_QUEUE_DISABLED`)이 따로 있고
+    health 가 그 둘을 **다르게 판정**한다(옵트아웃은 정상, 경합 상실은 degraded).
+    한 값으로 뭉치면 도그푸딩 인스턴스가 무한 재시작한다.
     """
     if name in _held:
         return True
     if not available:
-        _denied[name] = "no_credentials"
+        _denied[name] = unavailable_reason
         return False
     lock = _ACQUIRERS[name](data_dir)
     if lock is None:
@@ -298,6 +312,23 @@ def ownership_state() -> dict[str, dict[str, object]]:
     return out
 
 
+def is_owned(name: str) -> bool:
+    """이 프로세스가 ``name`` 을 쥐고 있는가. **미시도는 False 다.**
+
+    ⚠ 큐는 이 술어를 그대로 쓰면 안 된다 — `captures.queue_owned()` 주석 참조
+    (미시도를 "쓰기 허용" 으로 읽는 별도 규약이 있다).
+    """
+    return name in _held
+
+
+def release(name: str) -> None:
+    """락 하나만 놓는다. 멱등이고 비소유자에게도 안전하다."""
+    lock = _held.pop(name, None)
+    if lock is not None:
+        lock.release()
+    _denied.pop(name, None)
+
+
 def release_all() -> None:
     """셧다운에서 전부 해제. 멱등이고 비소유자에게도 안전하다.
 
@@ -326,6 +357,7 @@ def _write_owner_hint(fd: int) -> None:
 
 #: writer 이름 → 취득 함수. 이름이 곧 `/api/live/status.writers` 의 키다.
 _ACQUIRERS.update({
+    "queue": try_acquire_queue_ownership,
     "collectors": try_acquire_collector_ownership,
     "ws": try_acquire_ws_writer_ownership,
     "daily": try_acquire_daily_ownership,
