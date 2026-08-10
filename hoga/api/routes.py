@@ -86,10 +86,18 @@ log = logging.getLogger(__name__)
 # 바뀌면 이 값을 다시 재라** — 상한은 compute 시간의 함수다.
 #
 # ⚠ **이 상한은 "polars 로 옮기면 없앨 수 있는 임시방편" 이 아니다** — 그렇게 적었다가
-# 측정으로 반증했다(ADR-0085 v3.1). 남은 GIL 무게는 candles(팽창 6.5×)가 아니라
-# hoga(14.5×)·sidecar(12.4×) 에 있고, candles 를 컬럼화해도 이득은 모델을 **아예 안
-# 만들 때만** 나온다(4.0× → 2.2×). 그건 `RangeBundle.candles` wire 계약을 걷어내는
+# 측정으로 반증했다(ADR-0085 v3.1). candles 를 컬럼화해도 이득은 모델을 **아예 안
+# 만들 때만** 나오고(4.0× → 2.2×), 그건 `RangeBundle.candles` wire 계약을 걷어내는
 # 일이라 성능과 맞바꿀 문제가 아니다. 없애려면 별도 ADR 로 의도를 먼저 세울 것.
+#
+# 운영 조건(engine 공유 = 캐시 1벌) 6-스레드 팽창: candles **6.7×** · hoga 6~8× ·
+# sidecar **3.8×**. sidecar 가 가장 잘 병렬화되는데(peak 가 polars 라 GIL 을 놓는다)
+# **부선형**이기까지 하다 — 즉 그쪽은 동시성이 실제 이득이다. 무게를 일수가 아니라
+# **모드**로 가르면 sidecar 를 상한 밖에 둘 여지가 있다(ADR-0085 v3.2, 미착수).
+#
+# ⚠ 그리고 팽창의 **약 절반은 GIL 이 아니라 GC** 다(`gc.disable()` 로 candles +49% ·
+# sidecar +51%). stop-the-world 수집이 모든 스레드를 멈추기 때문이다. 이 상한을
+# 재검토할 때는 GC 쪽을 먼저 볼 것 — 코드 구조를 안 건드리고 같은 크기를 겨냥한다.
 RANGE_COMPUTE_CONCURRENCY = int(os.environ.get("HOGA_RANGE_CONCURRENCY", "") or 1)
 
 # 이 일수 이상을 요청하면 "넓은 구간" 으로 보고 상한을 태운다.
