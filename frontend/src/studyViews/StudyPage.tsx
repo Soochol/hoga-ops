@@ -37,6 +37,7 @@ import {
 } from './studyViewVariant';
 import { studyActiveViewModel } from './studyActiveViewModel';
 import { studyDailyViewport, studySavedRangeMarks } from './studyDailyContext';
+import { STUDY_VENUE } from './studyVenuePolicy';
 import { PanelCard, ToolbarButton } from '../ui/PageShell';
 import { useRightRailStore } from '../state/rightRail';
 import {
@@ -55,7 +56,7 @@ const EMPTY_BUNDLE_RESULT: StudyReferenceBundleResult = {
   isLoading: true,
   error: null,
   pastDataWarnings: [],
-  venue: 'KRX',
+  venue: STUDY_VENUE,
   displayedSave: null,
   dailyContext: null,
 };

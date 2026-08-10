@@ -90,19 +90,32 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(screen.queryByRole('radio', { name: '실시간 WS 우선' })).toBeNull();
   });
 
-  it('study variant도 거래소 선택기를 노출한다 (ADR-0140 §7 — 숨김 해제)', async () => {
-    // 숨겼던 이유는 "복기는 hogaplay 정규장 캡처(KRX)만 쓰므로 선택이 무의미"였다.
-    // PR-D 가 디스크에 `kiwoom_live/{venue}/` 를 만들면서 고를 대상이 생겼다.
+  it('study variant는 거래소 선택기 대신 KRX 고정 안내를 보여준다 (ADR-0144)', async () => {
+    // 선택기가 쓰는 스토어는 **탭 전역**이라 여기서 고르면 `/live` 까지 움직인다.
+    // 복기가 그 값을 무시하는 이상 라디오는 아무 일도 안 하는 컨트롤이 된다.
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
 
     render(<DataSourceDetail variant="study" />, { wrapper: wrap(freshQc()) });
 
+    expect(await screen.findByTestId('study-venue-fixed-note')).toBeInTheDocument();
     for (const v of ['KRX', 'NXT', 'UN']) {
-      expect(await screen.findByTestId(`live-venue-${v}`)).toBeInTheDocument();
+      expect(screen.queryByTestId(`live-venue-${v}`)).toBeNull();
     }
-    // study 안내문은 hogaplay 가 KRX 전용이라는 사실을 말해야 한다 — 빈 날을
-    // 장애로 오해하지 않게.
+    // 안내문은 hogaplay 가 KRX 전용이라는 **이유**까지 말해야 한다 — 이유가 없으면
+    // 고정이 임의 제약으로 읽힌다.
     expect(screen.getByText(/hogaplay는 KRX 전용/)).toBeInTheDocument();
+  });
+
+  it('study variant에서는 hogaplay 우선이 "적용 안 됨" 안내를 띄우지 않는다', async () => {
+    // 스토어는 `/live` 선택(NXT)을 들고 있지만 복기는 KRX 고정이라 이 토글이
+    // **항상** 적용된다. 게이트가 없으면 사실과 반대되는 안내가 뜬다.
+    vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, krx_prefer_hogaplay: true });
+    useLiveVenueStore.setState({ venue: 'NXT' });
+
+    render(<DataSourceDetail variant="study" />, { wrapper: wrap(freshQc()) });
+
+    await screen.findByRole('switch', { name: 'KRX에서 hogaplay 우선' });
+    expect(screen.queryByTestId('krx-prefer-hogaplay-inactive')).toBeNull();
   });
 
   it('REST 우회 토글을 backend settings로 저장한다', async () => {

@@ -41,6 +41,7 @@ import {
 import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
 import { isMinuteTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { STUDY_DATA_WINDOW_TEST_ID, type StudyDataWindowKind } from './studyWindowMeta';
+import { STUDY_VENUE } from './studyVenuePolicy';
 
 type ContentProps = {
   save: StudyViewReference;
@@ -72,10 +73,10 @@ function BookContent({ save, bundle }: ContentProps) {
   const spotOrderbook = useLiveOrderbookAtCursor({
     code: save.code,
     timeframe: minuteTimeframe,
-    // ⚠ 복기는 아직 KRX 고정 — `/study` 거래소 선택기 부활은 PR-I(#1131)다.
-    // studyReferenceQueries 의 /api/range 호출과 같은 값이어야 카드와 차트가
-    // 같은 시장을 본다.
-    venue: 'KRX',
+    // 복기는 KRX 고정이다(`studyVenuePolicy`, ADR-0144). 차트(`useStudyReferenceBundle`)
+    // 와 **같은 상수**를 읽는 것이 요점이다 — 여기만 하드코딩으로 남겨 뒀던 시기에
+    // 차트는 NXT, 이 카드는 KRX 를 보는 화면이 실제로 있었다.
+    venue: STUDY_VENUE,
   });
   const orderbookSnapshot = resolveOrderbookCardSnapshot({
     scope: cursorScope,
@@ -145,8 +146,8 @@ function BrokerContent({ save }: ContentProps) {
   const spotBrokers = useLiveBrokersAtCursor({
     code: save.code,
     timeframe: minuteTimeframe,
-    // ⚠ 복기는 아직 KRX 고정 — 위 BookContent 와 같은 근거(PR-I #1131).
-    venue: 'KRX',
+    // 복기는 KRX 고정 — 위 BookContent 와 같은 근거(ADR-0144).
+    venue: STUDY_VENUE,
   });
   const brokerCard = resolveBrokerCardProps({
     scope: cursorScope,
@@ -154,12 +155,13 @@ function BrokerContent({ save }: ContentProps) {
     inactiveSeries: null,
     inactiveCursorMs: null,
   });
-  // 표시 창도 KRX 정규장 고정 — 위 조회와 같은 근거다(복기는 hogaplay KRX 캡처).
+  // 표시 창(세션 경계)도 같은 상수를 쓴다 — 조회 venue 와 표시 창이 갈리면 있는
+  // 데이터가 창 밖으로 밀려 빈 표가 된다.
   return (
     <BrokerTrajectoryTable
       series={brokerCard.series}
       cursorMs={brokerCard.cursorMs}
-      venue="KRX"
+      venue={STUDY_VENUE}
     />
   );
 }
