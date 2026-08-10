@@ -5,7 +5,8 @@ import react from '@vitejs/plugin-react'
  * e2e 전용 `/config.json` 재정의.
  *
  * `public/config.json` 은 `http://localhost:8000`(사용자 개발 서버)을 가리키는데,
- * Playwright 는 백엔드를 **8765** 로 띄운다. 이 불일치가 e2e 를 CI 에 못 걸던
+ * Playwright 는 백엔드를 **워크트리마다 파생된 포트**로 띄운다(tests/e2e/worktreeEnv.ts;
+ * 예전에는 8765 상수였다). 이 불일치가 e2e 를 CI 에 못 걸던
  * 두 이유 중 하나였다(다른 하나는 globalSetup 부재).
  *
  * 정적 파일을 덮어쓰지 않고 미들웨어로 가로챈다 — `public/config.json` 을

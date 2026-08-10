@@ -69,6 +69,26 @@ def build_test_router(data_dir: Path) -> APIRouter:
         parse_stock_date(code=code, date=date, data_dir=data_dir)
         return {"ok": True, "code": code, "date": date}
 
+    @router.get("/whoami")
+    def whoami() -> dict:
+        """이 백엔드가 **어느 체크아웃의 어느 데이터 디렉터리**로 도는지.
+
+        e2e 자원은 워크트리 경로 해시로 파생되는데(`tests/e2e/worktreeEnv.ts`),
+        슬롯이 충돌하면 두 워크트리가 같은 포트를 노린다. 그때
+        `reuseExistingServer` 는 **에러 대신 남의 서버에 붙으므로**, 그 초록은 내
+        트리가 아니라 남의 트리를 잰 결과가 된다(2026-08-10 실측). 파생만으로는
+        확률을 낮출 뿐이고, 이 라우트가 그걸 **시끄러운 실패**로 바꾼다 —
+        `global-setup.ts` 가 기동 직후 여기를 읽어 자기 기대값과 대조한다.
+
+        `/health` 로는 안 된다: version·commit 은 워크트리끼리 같을 수 있다(같은
+        커밋에서 딴 브랜치가 흔하다). 판별에 필요한 것은 **경로**다.
+        """
+        return {
+            # `hoga/api/test_routes.py` → 위로 둘이면 리포 루트.
+            "repo_root": str(Path(__file__).resolve().parents[2]),
+            "data_dir": str(data_dir.resolve()),
+        }
+
     @router.post("/reset-stockdate")
     def reset_stockdate(code: Code, date: StockDate) -> dict:
         """`add-stockdate` 의 역함수 — 한 Stock-Date 의 raw·parquet 를 지운다.

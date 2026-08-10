@@ -10,7 +10,38 @@
  * HOGA_ENABLE_TEST_ENDPOINTS=1 게이트). 그래서 여기서는 파일을 만지지 않는다 —
  * 경로 계산을 CI 와 로컬에서 두 벌로 유지하지 않기 위해서다.
  */
-const API = process.env.E2E_API_URL ?? 'http://127.0.0.1:8765';
+import { API_URL as API, DATA_DIR, WORKTREE_ROOT, describeWorktreeEnv } from './worktreeEnv';
+
+/** **지금 붙은 백엔드가 내 워크트리 것인지 확인한다.**
+ *
+ *  포트는 워크트리 경로 해시로 파생되지만 슬롯은 512개뿐이라 충돌이 가능하고,
+ *  `reuseExistingServer` 는 CI 밖에서 항상 true 라 충돌하면 **에러 대신 남의 서버에
+ *  붙는다**. 그러면 스위트는 초록인데 잰 것은 남의 트리다 — 실측으로 겪은 실패
+ *  모드다(2026-08-10: `Errno 98` 뒤에 조용히 다른 워크트리 백엔드로 통과).
+ *
+ *  파생은 확률을 낮출 뿐이고, 이 확인이 그걸 **시끄러운 실패**로 바꾼다. `/health`
+ *  로는 안 된다 — version·commit 은 워크트리끼리 같을 수 있다(같은 커밋에서 딴
+ *  브랜치가 흔하다). 판별에 필요한 것은 경로다. */
+async function assertBackendIsOurs(): Promise<void> {
+  const res = await fetch(`${API}/api/test/whoami`);
+  if (!res.ok) {
+    throw new Error(
+      `whoami ${res.status} — ${API} 가 e2e 백엔드가 아니거나 ` +
+      `HOGA_ENABLE_TEST_ENDPOINTS=1 로 뜨지 않았다. (${describeWorktreeEnv()})`,
+    );
+  }
+  const { repo_root: repoRoot, data_dir: dataDir } =
+    await res.json() as { repo_root: string; data_dir: string };
+  if (repoRoot !== WORKTREE_ROOT || dataDir !== DATA_DIR) {
+    throw new Error(
+      `${API} 에 뜬 백엔드가 **다른 체크아웃**의 것이다 — 이 실행은 내 코드를 재지 않는다.\n` +
+      `  기대: repo_root=${WORKTREE_ROOT} data_dir=${DATA_DIR}\n` +
+      `  실제: repo_root=${repoRoot} data_dir=${dataDir}\n` +
+      `포트 슬롯이 겹쳤거나(워크트리 경로 해시) 이전 실행의 서버가 남아 있다. ` +
+      `해당 포트 점유자를 /proc/<pid>/cmdline 으로 확인한 뒤 정리하라. (${describeWorktreeEnv()})`,
+    );
+  }
+}
 
 /** README 의 W6.4 가 요구하는 다종목 시드. multi-tab 스펙이 두 종목을 전제한다. */
 const SEED: ReadonlyArray<readonly [code: string, date: string]> = [
@@ -54,6 +85,11 @@ async function seedTradingDays(): Promise<void> {
 export default async function globalSetup(): Promise<void> {
   // webServer 가 /health 를 기다리고 나서 부르므로 서버는 이미 떠 있다.
   // 그래도 재시도를 둔다 — 준비 신호와 라우터 마운트 사이에 틈이 있을 수 있다.
+  // **시드보다 먼저** 확인한다 — 남의 백엔드에 시드를 심고 나서 알아채면 이미 남의
+  // 데이터 디렉터리를 오염시킨 뒤다. 재시도 루프 밖에 두는 것도 의도다: 이건
+  // "아직 준비 안 됨" 이 아니라 "잘못된 서버" 라 기다린다고 달라지지 않는다.
+  await assertBackendIsOurs();
+
   let lastErr: unknown;
   for (let attempt = 0; attempt < 10; attempt += 1) {
     try {

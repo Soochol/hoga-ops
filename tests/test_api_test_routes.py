@@ -65,6 +65,34 @@ def test_add_stockdate_unknown_code_returns_404(
     assert r.status_code == 404
 
 
+def test_whoami_reports_this_checkout_and_data_dir(
+    enable_test_endpoints: None, tmp_path: Path
+) -> None:
+    """`whoami` 는 **경로**를 돌려준다 — e2e 가 "지금 붙은 백엔드가 내 워크트리 것인가"
+    를 판별하는 근거다.
+
+    `/health` 의 version·commit 으로는 안 된다: 같은 커밋에서 딴 브랜치를 딴
+    워크트리들은 그 값이 똑같다. 포트가 겹쳐 남의 서버에 붙어도 구별이 안 된다.
+    """
+    data_dir = tmp_path / "data"
+    (data_dir / "parquet").mkdir(parents=True)
+    app = create_app(data_dir=data_dir)
+    client = TestClient(app)
+    with client:
+        body = client.get("/api/test/whoami").json()
+
+    assert body["data_dir"] == str(data_dir.resolve())
+    # 리포 루트 = `hoga/api/test_routes.py` 에서 둘 위. 하드코딩하지 않고 이 테스트
+    # 파일 위치에서 독립적으로 계산해 대조한다 — 양쪽이 같은 실수를 하면 무의미하다.
+    assert body["repo_root"] == str(Path(__file__).resolve().parents[1])
+
+
+def test_whoami_disabled_when_env_unset(tmp_path: Path) -> None:
+    """경로를 흘리는 라우트다 — 게이트 밖으로 새면 안 된다."""
+    app = create_app(data_dir=tmp_path / "data")
+    assert TestClient(app).get("/api/test/whoami").status_code == 404
+
+
 def test_reset_stockdate_removes_raw_and_parquet(
     enable_test_endpoints: None, tmp_path: Path
 ) -> None:

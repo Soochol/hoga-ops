@@ -19,8 +19,7 @@
  * 바로 그 API 를 직접 읽으면 경합 자체가 사라진다.
  */
 import { expect, type Page } from '@playwright/test';
-
-const API = 'http://127.0.0.1:8765';
+import { API_URL as API } from '../worktreeEnv';
 
 /** 클릭 가능한 상태들 — `src/capture/calendarStatus.ts` 의 `disabled: false` 와 동기.
  *  (테스트에서 앱 소스를 import 하지 않는 대신 여기 한 줄로 못박고 근거를 남긴다.) */
