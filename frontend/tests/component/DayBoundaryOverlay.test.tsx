@@ -20,6 +20,9 @@ function makeMockChart(timeToCoordReturns: (sec: number) => number | null): ICha
   return {
     timeScale: () => ({
       timeToCoordinate: (sec: number) => timeToCoordReturns(sec),
+      // 오버레이가 스스로를 pane 영역으로 자르기 위해 읽는다(가격축·시간축 누수 방지).
+      width: () => 498,
+      height: () => 28,
       subscribeVisibleLogicalRangeChange: (h: (r: unknown) => void) => handlers.push(h),
       unsubscribeVisibleLogicalRangeChange: vi.fn(),
     }),

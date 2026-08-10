@@ -474,6 +474,75 @@ describe('DrawingOverlay hover probe — 팬/줌 스로틀', () => {
     expect(overlay.style.pointerEvents).toBe('auto');
   });
 
+  /**
+   * 그리기 도구를 든 상태의 게이트 — 실측 치수를 그대로 넣는다(/live 1280px:
+   * 컨테이너 560.6×555.1, pane 폭 498, 시간축 28). jsdom 의
+   * `getBoundingClientRect` 는 전부 0 이라 스텁하지 않으면 플롯 판정이 성립하지
+   * 않는다.
+   */
+  function mountWithTool(tool: 'pencil' | 'hline') {
+    const handlers: Array<() => void> = [];
+    const timeScale = {
+      subscribeVisibleLogicalRangeChange: vi.fn((h: () => void) => { handlers.push(h); }),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      width: () => 498,
+      height: () => 28,
+      coordinateToTime: (x: number) => x,
+      timeToCoordinate: (t: number) => t,
+      coordinateToLogical: (x: number) => x,
+      logicalToCoordinate: (l: number) => l,
+    };
+    const chart = {
+      timeScale: () => timeScale,
+      panes: () => [{ getHeight: () => 400, getSeries: () => [] }],
+    };
+    const s = useDrawingsStore.getState();
+    s.setActiveScope('005930|minute');
+    s.setActiveTool(tool);
+
+    const view = render(
+      <DrawingOverlay
+        chart={chart as never}
+        scope="005930|minute"
+        axis={{ segments: [], contains: () => true, toVirtual: (v: number) => v, toReal: (v: number) => v } as never}
+        paneSeries={new Map() as never}
+      />,
+    );
+    const overlay = view.container.querySelector('[data-drawing-overlay]') as HTMLElement;
+    overlay.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 560.6, height: 555.1, right: 560.6, bottom: 555.1, x: 0, y: 0 }) as DOMRect;
+    return { ...view, overlay };
+  }
+
+  // 예전엔 도구를 들면 게이트가 무조건 'auto' 라 컨테이너가 덮는 축 거터까지
+  // 오버레이가 삼켰고, 그 결과 **축 드래그(가격축 세로 스케일 · 시간축 barSpacing)가
+  // 완전히 죽었다**. 플롯 안/가격축/시간축 세 지점을 한 테스트에서 본다 — 한 축만
+  // 재면 나머지 축의 실수가 그대로 남는다.
+  it('그리기 도구 중에도 축 거터 위에서는 포인터를 lwc 에 넘긴다', () => {
+    const { overlay } = mountWithTool('pencil');
+
+    hoverAt(300, 300); // 플롯 안
+    expect(overlay.style.pointerEvents).toBe('auto');
+
+    hoverAt(530, 300); // 우측 가격축 거터(498 < x)
+    expect(overlay.style.pointerEvents).toBe('none');
+
+    hoverAt(300, 540); // 하단 시간축(555.1 - 28 = 527.1 < y)
+    expect(overlay.style.pointerEvents).toBe('none');
+
+    hoverAt(300, 300); // 플롯으로 복귀
+    expect(overlay.style.pointerEvents).toBe('auto');
+  });
+
+  // 선택 모드는 컨테이너 전체를 유지해야 한다 — hline 히트는 y 거리만 보므로
+  // 가격축에 그려진 가격 배지 위에서도 잡히고, 그게 배지로 선을 고르는 경로다.
+  it('선택 모드에서는 가격축 위의 hline 배지도 여전히 잡는다', () => {
+    const { overlay } = mountWithHline();
+
+    hoverAt(530, 100); // 가격축 거터 x, hline 의 y
+    expect(overlay.style.pointerEvents).toBe('auto');
+  });
+
   it('언마운트 시 뷰포트 구독을 해제한다', () => {
     const { unmount, timeScale, handlers } = mountWithHline();
     // 정확히 1개 — 스로틀용 구독뿐이다. 렌더는 pane primitive 가 lwc 프레임 안에서

@@ -5,9 +5,13 @@
  * 답하는 유일한 표시다. accent 계열 tint + 양끝 실선 + 상단 라벨.
  *
  * 구조는 `chart/DayBoundaryOverlay` 를 따른다 — rAF 로 합친
- * `subscribeVisibleLogicalRangeChange` + `ResizeObserver`, 그리고 **`z-10`**.
- * lightweight-charts 는 캔버스를 `z-index:1` 에 그리므로 `z-0` 에 두면 캔버스 뒤로
- * 들어가 우측 거터로만 새어 나온다(#1238 에서 실제로 그랬다).
+ * `subscribeVisibleLogicalRangeChange` + `ResizeObserver`, **`z-10`**, 그리고
+ * **pane 박스 클립**.
+ *
+ * z 와 클립은 한 쌍이다. lightweight-charts 는 캔버스를 `z-index:1` 에 그리므로
+ * `z-0` 에 두면 캔버스 뒤로 들어가 우측 거터로만 새어 나오고(#1238), 반대로 `z-10`
+ * 으로 올리면 이번엔 축 거터를 **덮어** 버린다(#1272). 그래서 위로 올린 다음 pane
+ * 박스로 잘라야 둘 다 해결된다.
  *
  * 좌표는 마크가 이미 캔들 ts 로 잡혀 있다(`studySavedRangeMarks` 주석 참조).
  * 여기서는 그 ts 를 축에 태우고 바 폭의 절반씩 바깥으로 넓혀 밴드 경계를 만든다.
@@ -64,7 +68,15 @@ function StudySavedRangeBand({ chart, axis, marks }: Props) {
     <div
       ref={containerRef}
       data-testid="study-saved-range-band"
-      className="pointer-events-none absolute inset-0 z-10"
+      // pane 박스로 클립한다. `inset-0` 로 두면 컨테이너가 차트 전체(우측 가격축 거터 +
+      // 하단 시간축)를 덮는데, `left`/`right` 는 `timeToCoordinate` 가 준 **pane 좌표계**
+      // 값이라 두 좌표계의 **끝 경계가 다르다** — 구간 끝이 화면 우측에 걸치면 tint 와
+      // 우측 실선이 가격 라벨 배경 위로, `top-0 bottom-0` 인 자식들은 시간축 날짜 라벨
+      // 위로 새어 나온다. #1272 에서 `DayBoundaryOverlay` 가 같은 이유로 샜고 처방도 같다
+      // (선보다 반투명 fill 이 더 잘 보인다). 아래 라벨의 `maxWidth` 계산은 클립 후에도
+      // 유효한 중복 안전장치로 남겨 둔다.
+      className="pointer-events-none absolute top-0 left-0 overflow-hidden z-10"
+      style={{ width: `${ts.width()}px`, bottom: `${ts.height()}px` }}
     >
       <div
         data-testid="study-saved-range-fill"

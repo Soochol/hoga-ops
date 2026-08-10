@@ -691,21 +691,38 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    if (activeTool !== 'select') {
-      container.style.pointerEvents = 'auto';
-      return;
-    }
     const ts = chart.timeScale();
     // 팬/줌 스로틀 상태. applyGate 가 lastProbeAt 을 갱신하므로 그보다 앞에 선언한다.
     let lastProbeAt = 0;
     let viewportMoving = false;
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
+    /**
+     * 커서가 **플롯 영역** 안인가. 컨테이너는 `inset-0` 이라 우측 가격축 거터와 하단
+     * 시간축까지 덮지만, 그 두 거터는 lightweight-charts 의 축 드래그(세로 스케일 ·
+     * 가로 barSpacing 조정) 영역이다. 컨테이너 크기가 아니라 `ts.width()`/`ts.height()`
+     * 로 재는 이유는 이 컴포넌트가 팬/줌에 **재렌더하지 않게** 설계돼서(그림은 pane
+     * primitive 가 그린다) 렌더 시점에 굳힌 값은 리사이즈에 스테일해지기 때문이다 —
+     * 게이트는 커서가 움직일 때마다 축에 직접 묻는다.
+     */
+    const inPlotArea = (px: number, py: number, rect: DOMRect) =>
+      px >= 0 && py >= 0 && px <= ts.width() && py <= rect.height - ts.height();
+
     const applyGate = (clientX: number, clientY: number) => {
       lastProbeAt = performance.now();
       const rect = container.getBoundingClientRect();
       const px = clientX - rect.left;
       const py = clientY - rect.top;
+      if (activeTool !== 'select') {
+        // 그리기 도구를 든 동안에도 축 거터는 lwc 에 넘긴다. 예전엔 여기서 무조건
+        // 'auto' 였고, 그래서 도구를 들면 축 드래그가 **완전히 죽었다**(실측: 가격축
+        // 드래그로 autoScale·좌표가 전혀 안 변함, 시간축 barSpacing 도 동일).
+        container.style.pointerEvents = inPlotArea(px, py, rect) ? 'auto' : 'none';
+        return;
+      }
+      // 선택 모드는 히트 판정을 **컨테이너 전체**로 유지한다 — hline 히트는 y 거리만
+      // 보므로(hitTest 의 `distanceToHline`) 가격축에 그려진 가격 배지 위에서도 잡히고,
+      // 그게 배지를 클릭해 선을 고르는 경로다. 여기서 플롯으로 좁히면 그 경로가 죽는다.
       const hit =
         px >= 0 && py >= 0 && px <= rect.width && py <= rect.height
           ? hitTestAt(px, py)
@@ -720,7 +737,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     // again — the second click did nothing, the incidental mouse jiggle did.
     const last = lastMouseRef.current;
     if (last) applyGate(last.clientX, last.clientY);
-    else container.style.pointerEvents = 'none';
+    // 커서 기록이 없으면(로드 후 마우스를 한 번도 안 움직임) 도구별 기본값으로 둔다.
+    // 그리기 도구에서 'none' 으로 시작하면 첫 클릭 전에 반드시 오는 mousemove 가
+    // 고쳐 주긴 하지만, 관대한 쪽이 예전 동작과 같아 회귀 표면이 좁다.
+    else container.style.pointerEvents = activeTool === 'select' ? 'none' : 'auto';
     // rAF-coalesce the global mousemove. Native mousemove fires at the OS
     // sampling rate (can exceed 1 kHz on high-poll-rate mice). Without
     // throttling, every event paid getBoundingClientRect() (forces layout),
