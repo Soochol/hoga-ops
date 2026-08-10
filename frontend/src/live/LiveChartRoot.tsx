@@ -29,10 +29,7 @@ import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import StudySavedRangeBand from '../studyViews/StudySavedRangeBand';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
-// PROTOTYPE(`?syncproto=`) — 분봉 커서를 일봉 창에 동기 표시. 던져버릴 배선이라
-// 세 지점(발행·해제·마운트)에만 닿는다. 승자 확정 후 전부 제거한다.
-import StudyCursorSyncProtoOverlay from '../studyViews/prototype/StudyCursorSyncProtoOverlay';
-import { useStudyCursorSyncProtoStore } from '../studyViews/prototype/studyCursorSyncProto';
+import StudyCursorSyncCrosshair from '../studyViews/StudyCursorSyncCrosshair';
 import {
   type LiveMAConfig,
   type LiveTimeframe,
@@ -314,6 +311,17 @@ interface Props {
   /** `/study` 캘린더 봉의 저장 구간 밴드. null(기본) = 미표시 — `/live` 는 저장 구간
    *  개념 자체가 없으므로 넘기지 않는다. */
   savedRangeBand?: StudySavedRangeMarks | null;
+  /**
+   * 창 간 크로스헤어 동기화(옆 분봉 창 호버 → 이 일봉 창)를 켠다. `/study` 만
+   * 넘긴다 — `/live` 는 링크 그룹이 있어(ADR-0119) "어느 그룹까지 동기화할
+   * 것인가" 가 별도 질문이고, 그 답이 나오기 전까지 켜지 않는다.
+   *
+   * 라우트를 여기서 스니핑하지 않고 **prop 으로 받는** 이유는 둘이다: 결정의
+   * 소유자가 페이지이고, `/study` 워크스페이스 어댑터를 정적 import 하면 그
+   * 스토어들이 `live-workspace` 청크로 끌려온다(실측 +11.5kB, `/live` 사용자에겐
+   * 순수 낭비).
+   */
+  cursorSyncCrosshair?: boolean;
   /** Snapshot restore can pin pane mounts to saved indicator state. Omitted means read /live store. */
   paneTogglesOverride?: {
     volumeEnabled?: boolean;
@@ -407,6 +415,7 @@ export function LiveChartRoot({
   forceHogaPanes = false,
   dailyCandleKisEnabled = true,
   savedRangeBand = null,
+  cursorSyncCrosshair = false,
   paneTogglesOverride,
   dailyMovingAverageOverride,
   tradeVolumePocOverride,
@@ -434,10 +443,10 @@ export function LiveChartRoot({
   // `bundle` — so an SSE tick (which only changes the hoga overlay) leaves the
   // candle path's props referentially identical.
   const cb = chartBundle ?? bundle;
-  // PROTOTYPE — 일봉 창이 그리는 캔들. 오버레이가 KST 날짜 → 캔들 ts 를 찾는 다리를
-  // 놓는 재료다(`D` 에서만 마운트되므로 그 외 봉에선 빈 배열). `close` 는 변형 D 가
-  // 크로스헤어 가로선 높이로 쓴다.
-  const protoCandles = useMemo(
+  // 창 간 크로스헤어 동기화가 KST 날짜 → 캔들 ts 다리를 놓는 재료. 마운트가 `D` +
+  // `/study` 로 제한되므로 그 외에는 빈 배열이라 비용이 없다. `close` 는 크로스헤어
+  // 가로선 높이로 쓴다.
+  const syncCandles = useMemo(
     () => (timeframe === 'D'
       ? (cb?.candles ?? []).map((c) => ({ ts_ms: c.ts_ms, close: c.close }))
       : []),
@@ -631,17 +640,10 @@ export function LiveChartRoot({
   // inside one candle bucket can't postpone the next real update.
   const sidebarCursorLastPublishAtRef = useRef<number | null>(null);
 
-  // PROTOTYPE — origin 을 실은 **즉시** 발행. 기존 두 채널로는 안 되는 이유는
-  // `studyCursorSyncProto.ts` 주석 참조(cursorMs = origin 없음 / sidebarCursorMs =
-  // throttle + 버킷 정렬).
-  const publishProtoCursor = useCallback((cursorMs: number) => {
-    const origin = cursorOriginRef.current;
-    useStudyCursorSyncProtoStore.getState().publish({
-      tsMs: cursorMs,
-      windowId: origin.windowId,
-      code: origin.code,
-      timeframe: origin.timeframe,
-    });
+  // 창 간 크로스헤어 동기화 발행 — origin 을 실은 **즉시** 채널. 기존 두 채널을
+  // 쓰지 못하는 이유는 `useLiveCursorStore` 의 해당 필드 주석 참조.
+  const publishSyncCursor = useCallback((cursorMs: number) => {
+    useLiveCursorStore.getState().setSyncCursor(cursorMs, cursorOriginRef.current);
   }, []);
 
   const cancelPendingSidebarCursor = useCallback(() => {
@@ -655,10 +657,10 @@ export function LiveChartRoot({
   const clearSidebarCursor = useCallback(() => {
     cancelPendingSidebarCursor();
     useLiveCursorStore.getState().clearSidebarCursor();
-    // PROTOTYPE — 해제 경로를 여기 하나로 잡는다. 크로스헤어 핸들러의 clear 분기
-    // 전부와 언마운트 정리가 이미 이 콜백을 지나므로, 창을 닫거나 포인터가 나가면
-    // 일봉 쪽 마커도 같이 꺼진다(안 그러면 화면에 눌어붙는다).
-    useStudyCursorSyncProtoStore.getState().clearFrom(cursorOriginRef.current.windowId);
+    // 동기화 커서 해제 경로를 여기 하나로 모은다. 크로스헤어 핸들러의 clear 분기
+    // 전부와 언마운트 정리가 이미 이 콜백을 지나므로, 포인터가 차트를 벗어나거나
+    // 창이 닫히면 옆 창의 크로스헤어도 같이 꺼진다(안 그러면 화면에 눌어붙는다).
+    useLiveCursorStore.getState().clearSyncCursorFrom(cursorOriginRef.current.windowId);
   }, [cancelPendingSidebarCursor]);
 
   const scheduleSidebarCursor = useCallback((cursorMs: number) => {
@@ -1771,15 +1773,16 @@ export function LiveChartRoot({
       const publishCursorMs = (cursorMs: number) => {
         if (publishedCursorMsRef.current === cursorMs && store.cursorMs === cursorMs) {
           scheduleSidebarCursor(cursorMs);
-          // PROTOTYPE — 값이 같아도 되찾는다. 그 사이 옆 창이 발행했다가 해제하면
-          // 이 창의 "이미 발행함" 기억 때문에 표시가 영영 안 돌아온다.
-          publishProtoCursor(cursorMs);
+          // 값이 같아도 다시 발행한다. 그 사이 옆 창이 발행했다가 해제하면, 이 창의
+          // "이미 발행함" 기억(publishedCursorMsRef) 때문에 동기화 표시가 영영
+          // 돌아오지 않는다.
+          publishSyncCursor(cursorMs);
           return;
         }
         publishedCursorMsRef.current = cursorMs;
         store.setCursor(cursorMs);
         scheduleSidebarCursor(cursorMs);
-        publishProtoCursor(cursorMs);
+        publishSyncCursor(cursorMs);
       };
       const t = typeof virtualTime === 'number'
         ? virtualTime
@@ -1846,7 +1849,7 @@ export function LiveChartRoot({
       publishCursorActive(true);
       publishCursorMs(cursorMs);
     },
-    [axis, chart, clearSidebarCursor, onCandleBasisHover, onCursorActiveChange, publishProtoCursor, scheduleSidebarCursor],
+    [axis, chart, clearSidebarCursor, onCandleBasisHover, onCursorActiveChange, publishSyncCursor, scheduleSidebarCursor],
   );
 
   const drawingHoverRafRef = useRef<number | null>(null);
@@ -2237,15 +2240,16 @@ export function LiveChartRoot({
           {savedRangeBand && !isMinuteTimeframe(timeframe) && (
             <StudySavedRangeBand chart={chart} axis={axis} marks={savedRangeBand} />
           )}
-          {/* PROTOTYPE(`?syncproto=A|B|C`) — 분봉 창 커서의 일봉 동기 표시.
-              **`D` 전용**이다: 분봉 ms → KST 날짜 → 일봉 캔들 ts 로 스냅해야 좌표계가
-              맞는데(바로 위 동시호가 음영이 이걸 안 해서 삭제됐다), 그 스냅이 정확한
-              건 한 캔들 = 하루인 `D` 뿐이다. W/M 은 스코프 밖. */}
-          {timeframe === 'D' && (
-            <StudyCursorSyncProtoOverlay
+          {/* 창 간 크로스헤어 동기화(분봉 창 호버 → 이 일봉 창). 게이트가 둘이다:
+              **`D` 전용** — 분봉 ms 를 KST 날짜로 스냅해 일봉 캔들을 찾는데(바로 위
+              동시호가 음영이 이 스냅을 안 해서 좌표계가 어긋나 삭제됐다), 그 스냅이
+              정확한 건 한 캔들 = 하루인 `D` 뿐이다. W/M 은 범위 밖.
+              **`cursorSyncCrosshair` 로 켠다** — 그 prop 주석 참조. */}
+          {cursorSyncCrosshair && timeframe === 'D' && (
+            <StudyCursorSyncCrosshair
               chart={chart}
               axis={axis}
-              candles={protoCandles}
+              candles={syncCandles}
               paneSeries={paneSeries}
               code={code}
             />
