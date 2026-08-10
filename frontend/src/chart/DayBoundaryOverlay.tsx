@@ -57,8 +57,29 @@ function DayBoundaryOverlay({ chart, axis }: Props) {
     return { date: b.date, x };
   });
 
+  // 클립 폭 = pane 폭. `inset-0` 로 두면 컨테이너가 **우측 가격축 거터까지** 덮는데
+  // `timeToCoordinate` 가 주는 x 는 **pane 좌표계** 값이라, x > paneWidth 인 경계선이
+  // 가격 라벨 배경 위에 그대로 그려진다(실측 /live: 컨테이너 560.6px vs pane 498px,
+  // 걸친 경계선 502.9px → 라벨 위로 4.9px 침범). 캔버스는 z-index:1, 이 오버레이는
+  // z-10 이라 거터를 덮는 쪽이 항상 이긴다. 좌표를 클램프하지 않고 컨테이너를 자르는
+  // 이유는 걸친 선이 통째로 사라지지 않고 잘린 만큼만 남기 위해서다.
+  //
+  // 세로는 자르지 않는다(`inset-y-0`) — 구분선이 하단 시간축의 날짜 라벨까지 이어지는
+  // 것은 의도된 모습이다.
+  //
+  // 가격 자릿수가 바뀌어 거터 폭만 변하는 경우 ResizeObserver(부모 크기 불변)는 안
+  // 걸리지만, 그 상황은 스크롤·줌·데이터 갱신과 동반되고 그쪽 rangeChange 가 재렌더를
+  // 만들어 다음 프레임에 보정된다. 좌측 가격축은 이 리포에서 쓰지 않으므로(차트 옵션에
+  // `rightPriceScale` 만 있다) pane 원점 = 컨테이너 left 0 이다.
+  const paneWidth = ts.width();
+
   return (
-    <div ref={containerRef} className="absolute inset-0 pointer-events-none z-10">
+    <div
+      ref={containerRef}
+      data-testid="day-boundary-clip"
+      className="absolute inset-y-0 left-0 overflow-hidden pointer-events-none z-10"
+      style={{ width: `${paneWidth}px` }}
+    >
       {boundaries.map((b) =>
         b.x == null ? null : (
           <div
