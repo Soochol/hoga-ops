@@ -5,7 +5,7 @@
  * 그대로 서빙하면 스모크가 **사용자 서버** 에 붙어 "로컬에선 그럭저럭 통과" 형
  * 오염이 된다(vite.config 의 e2e config.json 미들웨어와 같은 문제의식 — 그
  * 미들웨어는 apply:'serve' 라 빌드 산출물에는 못 쓴다). 사본에 same-origin
- * (`{"api_url": ""}`)을 write 해 8765 백엔드 자신을 보게 한다. 원본 dist 는
+ * (`{"api_url": ""}`)을 write 해 백엔드 자신을 보게 한다. 원본 dist 는
  * 건드리지 않는다.
  *
  * playwright.config.ts 의 백엔드 webServer command 가 `vite build` 직후에
@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 
 const frontendRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const dist = join(frontendRoot, 'dist');
+// `E2E_DIST_DIR` 은 playwright.config 이 워크트리마다 파생해 넘긴다(worktreeEnv.ts).
+// 아래 폴백은 이 스크립트를 손으로 부를 때만 쓰인다.
 const out = process.env.E2E_DIST_DIR ?? '/tmp/hoga-e2e-dist';
 
 if (!existsSync(join(dist, 'index.html'))) {

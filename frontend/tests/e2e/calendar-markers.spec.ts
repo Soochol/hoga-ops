@@ -10,11 +10,9 @@ import { test, expect } from '@playwright/test';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { previousMonth, selectSymbol, tradingDates } from './helpers/calendar';
+import { API_URL as API, DATA_DIR } from './worktreeEnv';
 
-const DATA_DIR = '/tmp/hoga-e2e-data';
 const CODE = '005930';
-
-const API = 'http://127.0.0.1:8765';
 
 /** 진짜 Stock-Date 를 만든 뒤 meta 만 변형한다.
  *

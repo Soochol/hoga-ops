@@ -10,6 +10,7 @@ from __future__ import annotations
 import calendar as calendar_mod
 import datetime as dt
 import shutil
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -32,6 +33,11 @@ def build_test_router(data_dir: Path) -> APIRouter:
     without test data), the endpoint returns 503.
     """
     router = APIRouter(prefix="/api/test", tags=["test"])
+
+    # 앱 조립 시각 = 이 프로세스가 **소스를 읽은 시점**. `whoami` 가 이걸 돌려주면
+    # 호출자가 "그 뒤에 바뀐 소스 파일이 있는가" 로 재사용된 서버의 노후를 잰다.
+    # `hoga serve` 는 reload=False 라(README 운영 절) 한 번 읽은 코드가 끝까지 간다.
+    started_at_ms = int(time.time() * 1000)
 
     # Find repo root by walking up from this file until we hit tests/fixtures.
     here = Path(__file__).resolve()
@@ -68,6 +74,42 @@ def build_test_router(data_dir: Path) -> APIRouter:
         # Parse -> parquet (this triggers the watchdog observer)
         parse_stock_date(code=code, date=date, data_dir=data_dir)
         return {"ok": True, "code": code, "date": date}
+
+    @router.get("/whoami")
+    def whoami() -> dict:
+        """이 백엔드가 **어느 체크아웃의 어느 데이터 디렉터리**로 도는지.
+
+        e2e 자원은 워크트리 경로 해시로 파생되는데(`tests/e2e/worktreeEnv.ts`),
+        슬롯이 충돌하면 두 워크트리가 같은 포트를 노린다. 그때
+        `reuseExistingServer` 는 **에러 대신 남의 서버에 붙으므로**, 그 초록은 내
+        트리가 아니라 남의 트리를 잰 결과가 된다(2026-08-10 실측). 파생만으로는
+        확률을 낮출 뿐이고, 이 라우트가 그걸 **시끄러운 실패**로 바꾼다 —
+        `global-setup.ts` 가 기동 직후 여기를 읽어 자기 기대값과 대조한다.
+
+        `/health` 로는 안 된다: version·commit 은 워크트리끼리 같을 수 있다(같은
+        커밋에서 딴 브랜치가 흔하다). 판별에 필요한 것은 **경로**다.
+
+        경로만으로는 못 잡는 것이 하나 더 있다 — **같은 워크트리에서 옛 코드로 뜬
+        고아 서버**다. 그건 `repo_root` 가 당연히 일치하는데도 재사용되면 지금
+        소스가 아니라 **그때 소스**를 잰다. `hoga serve` 는 reload=False 라 조용히
+        끝까지 간다. 그래서 두 축을 더 싣는다:
+
+        - ``commit`` — 기동 시점 체크아웃의 짧은 SHA(`app.APP_COMMIT`, 모듈 상수라
+          재사용된 프로세스는 **옛 값을 그대로 들고 있다**). 브랜치를 갈아탄 뒤
+          고아가 남은 경우를 잡는다.
+        - ``started_at_ms`` — 앱 조립 시각. **커밋만으로는 커밋 안 된 편집을
+          원리적으로 못 잡는데, 개발 중에는 그쪽이 오히려 흔하다.** 호출자가 소스
+          파일의 최신 mtime 과 비교해 "서버가 소스보다 오래됐다" 를 판정한다.
+        """
+        from hoga.api.app import APP_COMMIT  # noqa: PLC0415 — 지연 import(app↔test_routes 순환 절단)
+
+        return {
+            # `hoga/api/test_routes.py` → 위로 둘이면 리포 루트.
+            "repo_root": str(Path(__file__).resolve().parents[2]),
+            "data_dir": str(data_dir.resolve()),
+            "commit": APP_COMMIT,
+            "started_at_ms": started_at_ms,
+        }
 
     @router.post("/reset-stockdate")
     def reset_stockdate(code: Code, date: StockDate) -> dict:

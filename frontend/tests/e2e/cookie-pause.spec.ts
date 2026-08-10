@@ -2,9 +2,10 @@ import { test, expect, request } from '@playwright/test';
 import { selectSymbol, tradingDates } from './helpers/calendar';
 import { observeCaptureQueue } from './helpers/captureEvents';
 import { resetQueue } from './helpers/queue';
+import { API_URL as API } from './worktreeEnv';
 
 // 여기의 호스트는 모킹이 아니라 **실제 e2e 백엔드**다(테스트 엔드포인트 직접 호출).
-const API = 'http://127.0.0.1:8765';
+// 포트는 워크트리마다 파생된다 — 근거는 `worktreeEnv.ts`.
 
 /** `selectSymbol()` 기본값(삼성전자)과 `tradingDates()` 기본값이 가리키는 같은 종목.
  *  아래 초기화가 **캡처 대상과 같은 (code, date)** 를 지워야 의미가 있다. */
@@ -50,8 +51,8 @@ test('cookie-pause: 3rd request → pause banner → Resume → completes', asyn
 
   // **이 5일을 백지에서 시작시킨다 — 이 스펙의 전제는 "5건이 실제로 캡처된다" 다.**
   //
-  // `HOGA_DATA_DIR` 은 머신 전역(`/tmp/hoga-e2e-data`)이고 지우는 것은 사람 손이라,
-  // 직전 실행이 남긴 COMPLETE 가 그대로 다음 실행에 들어온다 — **성공한 실행이 자기
+  // `HOGA_DATA_DIR` 은 워크트리마다 갈리지만(`worktreeEnv.ts`) **지우는 것은 사람
+  // 손이라**, 직전 실행이 남긴 COMPLETE 가 그대로 다음 실행에 들어온다 — **성공한 실행이 자기
   // 날짜 4개를 COMPLETE 로 만들어 다음 실행을 스스로 망친다.** 그러면 `decide_capture`
   // 가 4건을 `already_complete` 로 즉시 스킵하고, 일시정지 시점에 활성·대기 항목이
   // 하나도 안 남아 `resume_queue` 가 되살릴 대상이 0건이 된다. `capture_queue_drained`

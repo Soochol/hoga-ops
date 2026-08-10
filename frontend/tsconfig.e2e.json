@@ -16,5 +16,8 @@
     "noEmit": true,
     "types": ["node", "@playwright/test"]
   },
-  "include": ["tests/e2e"]
+  // `playwright.config.ts` 도 포함한다 — e2e 자원(포트·디렉터리)이 상수에서
+  // `tests/e2e/worktreeEnv.ts` 파생으로 바뀌면서 설정이 스펙과 **같은 모듈을 공유**한다.
+  // 어느 프로젝트에도 안 들어 있으면 그 결합이 타입체크 밖에 남는다.
+  "include": ["tests/e2e", "playwright.config.ts"]
 }

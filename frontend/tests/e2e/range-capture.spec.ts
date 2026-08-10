@@ -2,6 +2,7 @@ import { test, expect, request } from '@playwright/test';
 import { selectSymbol, tradingDates } from './helpers/calendar';
 import { observeCaptureQueue } from './helpers/captureEvents';
 import { resetQueue } from './helpers/queue';
+import { API_URL } from './worktreeEnv';
 
 // 파일 전체 예산은 `test.describe.configure` 로 준다 — 그룹·파일 단위 타임아웃의
 // **문서화된 형태**다(`test.setTimeout` 타입 문서가 그룹 용례로 이걸 가리킨다).
@@ -26,7 +27,7 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   // 되돌리지 못한 채 끝나고, 그 뒤 모든 캡처가 CookieExpiredError 로 실패한다(실측:
   // 이 스펙의 3행이 전부 failed). 시작할 때 확실히 끈다.
   const api = await request.newContext();
-  await api.post('http://127.0.0.1:8765/api/test/cookie_expire_at', { data: { index: -1 } });
+  await api.post(`${API_URL}/api/test/cookie_expire_at`, { data: { index: -1 } });
 
   // 네비게이션 **전에** 붙인다 — 앱이 첫 로드에서 /api/ws 를 연다.
   const queueEvents = observeCaptureQueue(page);
