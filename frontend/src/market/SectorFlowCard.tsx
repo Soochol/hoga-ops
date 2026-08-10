@@ -22,12 +22,15 @@
 import {
   useMarketBreadth,
   useMarketSectorFlow,
+  type MarketName,
   type SectorFlowRow,
 } from '../api/market';
 import { CardHeader, EmptyNote, MarketCard, ModeSwitch, useCardPref } from './marketCardBits';
 
 type Actor = 'foreign' | 'institution' | 'individual';
-type Market = 'KOSPI' | 'KOSDAQ';
+/** 시장 라벨은 `api/market` 의 `MarketName` 하나로 모은다 — 같은 union 을 두 벌 두면
+ *  백엔드 `MarketName` 과의 대조(ADR-0004)가 한쪽만 걸린다. */
+type Market = MarketName;
 
 const ACTORS: ReadonlyArray<readonly [Actor, string]> = [
   ['foreign', '외국인'],

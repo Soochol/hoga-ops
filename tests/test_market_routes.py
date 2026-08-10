@@ -112,14 +112,17 @@ async def test_program_axes_do_not_share_a_cache(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_streak_directions_map_to_vendor_codes_and_do_not_share_a_cache(
+async def test_streak_axes_map_to_vendor_codes_and_do_not_share_a_cache(
     monkeypatch, tmp_path
 ):
-    """순매수↔순매도는 **벤더 코드·캐시·유량 키가 모두 갈린다**.
+    """시장×방향 네 조합이 **벤더 코드·캐시·유량 키에서 모두 갈린다**.
 
-    `_TtlCache` 는 키 없는 단일 슬롯이라, 안 가르면 두 번째 방향이 TTL(5분) 동안
-    **반대 방향의 payload 를 그대로** 받는다 — 화면엔 "순매도" 라고 쓰인 채 순매수
-    종목이 뜨는 모양이라 빈 화면보다 나쁘다.
+    `_TtlCache` 는 키 없는 단일 슬롯이라, 안 가르면 두 번째 조합이 TTL(5분) 동안
+    **다른 조합의 payload 를 그대로** 받는다 — 화면엔 "코스닥 순매도" 라고 쓰인 채
+    코스피 순매수가 뜨는 모양이라 빈 화면보다 나쁘다.
+
+    **축을 하나만 키잉하는 실수는 절반에서만 드러난다.** 방향만 키잉하면 코스피
+    순매수와 코스닥 순매수가 한 슬롯을 공유한다 — 그래서 네 조합을 다 태운다.
 
     무자격 seam(다른 테스트들)으로는 이걸 못 잰다. 양쪽 다 빈 응답이라 캐시를
     공유하든 말든 결과가 같기 때문이다. 그래서 여기서는 가짜 클라이언트로 실제
@@ -128,12 +131,17 @@ async def test_streak_directions_map_to_vendor_codes_and_do_not_share_a_cache(
     from hoga.api import market_routes, symbols
     from hoga.live import kiwoom_access, kiwoom_rest_runtime
 
-    # 방향별로 **다른 종목**이 온다 — 실측(2026-08-10)에서 두 응답의 코드 교집합은 0이다.
+    # 축 조합마다 **다른 종목**이 온다 — 실측(2026-08-10)에서 방향 두 응답의 코드
+    # 교집합은 0이고, 코스피↔코스닥도 0이다.
     vendor_rows = {
-        "2": [{"stk_cd": "005930_AL", "stk_nm": "삼성전자",
-               "frgnr_cont_netprps_dys": "+7", "frgnr_cont_netprps_amt": "+1241000"}],
-        "1": [{"stk_cd": "017670_AL", "stk_nm": "SK텔레콤",
-               "frgnr_cont_netprps_dys": "-2", "frgnr_cont_netprps_amt": "--940483"}],
+        ("001", "2"): [{"stk_cd": "005930_AL", "stk_nm": "삼성전자",
+                        "frgnr_cont_netprps_dys": "+7", "frgnr_cont_netprps_amt": "+1241000"}],
+        ("001", "1"): [{"stk_cd": "017670_AL", "stk_nm": "SK텔레콤",
+                        "frgnr_cont_netprps_dys": "-2", "frgnr_cont_netprps_amt": "--940483"}],
+        ("101", "2"): [{"stk_cd": "222800_AL", "stk_nm": "심텍",
+                        "frgnr_cont_netprps_dys": "+3", "frgnr_cont_netprps_amt": "+52000"}],
+        ("101", "1"): [{"stk_cd": "028300_AL", "stk_nm": "HLB",
+                        "frgnr_cont_netprps_dys": "-4", "frgnr_cont_netprps_amt": "--31000"}],
     }
     bodies: list[dict] = []
     keys: list[tuple] = []
@@ -145,7 +153,7 @@ async def test_streak_directions_map_to_vendor_codes_and_do_not_share_a_cache(
     class _Client:
         async def call(self, _api_id: str, body: dict) -> _Page:
             bodies.append(body)
-            return _Page(vendor_rows[body["netslmt_tp"]])
+            return _Page(vendor_rows[(body["mrkt_tp"], body["netslmt_tp"])])
 
     async def _capacity(scheduler, *, key, api_id, priority, fetch_fn, client):  # noqa: ANN001, ARG001
         keys.append(key)
@@ -161,29 +169,47 @@ async def test_streak_directions_map_to_vendor_codes_and_do_not_share_a_cache(
 
     buy = await streaks.endpoint(direction="buy")
     sell = await streaks.endpoint(direction="sell")
+    kq_buy = await streaks.endpoint(direction="buy", market="KOSDAQ")
+    kq_sell = await streaks.endpoint(direction="sell", market="KOSDAQ")
 
-    # 벤더 코드표 — 실측으로 확정했다(2=순매수 · 1=순매도).
-    assert [b["netslmt_tp"] for b in bodies] == ["2", "1"]
+    # 벤더 코드표 — 실측으로 확정했다(순매수 2 · 순매도 1 · 코스피 001 · 코스닥 101).
+    assert [(b["mrkt_tp"], b["netslmt_tp"]) for b in bodies] == [
+        ("001", "2"), ("001", "1"), ("101", "2"), ("101", "1"),
+    ]
     assert [r["name"] for r in buy["외국인"]] == ["삼성전자"]
     assert [r["name"] for r in sell["외국인"]] == ["SK텔레콤"]
+    # 시장 축이 캐시를 공유하면 여기서 코스피 종목이 나온다 — 벤더는 모르는 시장
+    # 코드에도 코스피를 주므로(실측), 이 축의 실수는 에러가 아니라 **틀린 데이터**다.
+    assert [r["name"] for r in kq_buy["외국인"]] == ["심텍"]
+    assert [r["name"] for r in kq_sell["외국인"]] == ["HLB"]
     # 이중 마이너스 표기가 접혀 금액이 살아 있다(#1247). 접히지 않으면 여기서 None 이다.
     assert sell["외국인"][0]["streak_net_eok"] == -9404.83
-    # 유량 키도 갈린다 — 한 키로 묶으면 한쪽 페이싱이 다른 쪽을 대신 소모한다.
-    assert keys == [("market-streaks", "buy"), ("market-streaks", "sell")]
+    # 유량 키도 조합별이다 — 한 키로 묶으면 한쪽 페이싱이 다른 쪽을 대신 소모한다.
+    assert keys == [
+        ("market-streaks", "KOSPI", "buy"),
+        ("market-streaks", "KOSPI", "sell"),
+        ("market-streaks", "KOSDAQ", "buy"),
+        ("market-streaks", "KOSDAQ", "sell"),
+    ]
 
-    # 같은 방향 재호출은 캐시에서 나온다(벤더 콜 증가 없음).
+    # 같은 조합 재호출은 캐시에서 나온다(벤더 콜 증가 없음).
     again = await streaks.endpoint(direction="sell")
-    assert len(bodies) == 2
+    assert len(bodies) == 4
     assert [r["name"] for r in again["외국인"]] == ["SK텔레콤"]
     assert market_routes.TTL_STREAKS_S == 300.0
 
 
-def test_streak_direction_is_validated_by_the_route(monkeypatch, tmp_path):
-    """방향 enum 은 **FastAPI 검증층**이 지킨다 — 위 테스트들은 endpoint 를 직접 불러
-    그 층을 통째로 건너뛴다(무자격 폴백 테스트가 따로 있는 것과 같은 사각).
+def test_streak_axes_are_validated_by_the_route(monkeypatch, tmp_path):
+    """시장·방향 enum 은 **FastAPI 검증층**이 지킨다 — 위 테스트들은 endpoint 를 직접
+    불러 그 층을 통째로 건너뛴다(무자격 폴백 테스트가 따로 있는 것과 같은 사각).
 
     모르는 값이 **조용히 기본값으로 떨어지면 안 된다**: 화면엔 "순매도" 라고 쓰인 채
     순매수 종목이 뜨는 모양이 되고, 그건 빈 카드보다 나쁘다.
+
+    시장 축은 이 방어가 한 겹 더 중요하다. 벤더는 모르는 `mrkt_tp` 를 **거절하지 않고
+    코스피를 그대로 준다**(2026-08-10 실측: `'1'`·`'000'` → HTTP 200 · rc=0 · 코스피
+    100행). 즉 여기서 못 막으면 잘못된 값이 벤더까지 가서 **틀린 시장 데이터**로
+    돌아온다 — 422 로 끊는 것이 유일한 방어선이다.
     """
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -195,14 +221,18 @@ def test_streak_direction_is_validated_by_the_route(monkeypatch, tmp_path):
     app.include_router(build_router(data_dir=tmp_path))
     c = TestClient(app)
 
-    assert c.get("/api/market/streaks").status_code == 200  # 기본값 = buy(기존 호출자 무변경)
-    assert c.get("/api/market/streaks?direction=sell").status_code == 200
+    # 기본값 = buy · KOSPI(기존 호출자 무변경)
+    assert c.get("/api/market/streaks").status_code == 200
+    assert c.get("/api/market/streaks?direction=sell&market=KOSDAQ").status_code == 200
     assert c.get("/api/market/streaks?direction=BUY").status_code == 422
     assert c.get("/api/market/streaks?direction=").status_code == 422
+    # 벤더 원시 코드는 wire 에 없다 — 라벨만 받는다.
+    assert c.get("/api/market/streaks?market=101").status_code == 422
+    assert c.get("/api/market/streaks?market=kosdaq").status_code == 422
 
     # 주체 키는 **한글 alias 로** wire 에 나간다(`StreaksResponse` docstring). 직렬화가
     # `by_alias` 를 잃으면 필드명(`foreign_investor`)이 나가고 화면이 통째로 빈다.
-    assert set(c.get("/api/market/streaks?direction=sell").json()) == {
+    assert set(c.get("/api/market/streaks?direction=sell&market=KOSDAQ").json()) == {
         "warnings", "외국인", "기관",
     }
 

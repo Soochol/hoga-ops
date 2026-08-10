@@ -159,6 +159,13 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
         frozenset(get_args(market_overview.StreakDirection)),
         "frontend/src/api/market.ts",
     ),
+    # 같은 이유로 값 대조가 특히 중요하다 — 벤더가 **모르는 시장 코드를 거절하지 않고
+    # 코스피를 그대로 준다**(2026-08-10 실측). 라벨이 갈리면 422 가 아니라 틀린 시장이
+    # 그려질 수도 있는 표면이라, 라벨 자체를 계약으로 못박는다.
+    "MarketName": (
+        frozenset(get_args(market_overview.MarketName)),
+        "frontend/src/api/market.ts",
+    ),
 }
 
 

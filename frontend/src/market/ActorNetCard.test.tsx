@@ -36,11 +36,24 @@ const SELL = {
   ],
 };
 
-/** 호출된 URL 을 그대로 모은다 — 방향이 실제로 wire 로 나가는지 재려면 필요하다. */
+const KOSDAQ_BUY = {
+  warnings: [],
+  외국인: [
+    { code: '222800', name: '심텍', actor: '외국인', streak_days: 3,
+      streak_net_eok: 520.0, streak_net_qty_shares: 300000, period_change_pct: 1.1 },
+  ],
+  기관: [
+    { code: '028300', name: 'HLB', actor: '기관', streak_days: 2,
+      streak_net_eok: 310.0, streak_net_qty_shares: 120000, period_change_pct: 0.4 },
+  ],
+};
+
+/** 호출된 URL 을 그대로 모은다 — 두 축이 실제로 wire 로 나가는지 재려면 필요하다. */
 function mockApi(): string[] {
   const urls: string[] = [];
   vi.spyOn(client, 'apiCall').mockImplementation((async (url: string) => {
     urls.push(url);
+    if (url.includes('market=KOSDAQ')) return KOSDAQ_BUY;
     if (url.includes('direction=sell')) return SELL;
     if (url.includes('/api/market/streaks')) return BUY;
     return {};
@@ -72,13 +85,34 @@ describe('ActorNetCard', () => {
     localStorage.clear();
   });
 
-  it('기본은 순매수이고, 방향이 쿼리 파라미터로 나간다', async () => {
+  it('기본은 코스피 순매수이고, 두 축이 쿼리 파라미터로 나간다', async () => {
     const urls = mockApi();
     renderCards();
 
     expect(await screen.findByText('셀트리온')).toBeTruthy();
-    // 두 카드가 같은 방향이면 쿼리 키가 같아 **한 벌만** 돈다.
-    await waitFor(() => expect(urls).toEqual(['/api/market/streaks?direction=buy']));
+    // 두 카드가 같은 조합이면 쿼리 키가 같아 **한 벌만** 돈다.
+    await waitFor(() =>
+      expect(urls).toEqual(['/api/market/streaks?direction=buy&market=KOSPI']),
+    );
+  });
+
+  it('코스닥으로 토글하면 그 시장만 새로 부른다', async () => {
+    const urls = mockApi();
+    renderCards();
+    await screen.findByText('셀트리온');
+
+    const foreign = card('외국인');
+    await userEvent.click(within(foreign).getByRole('button', { name: '코스닥' }));
+
+    expect(await within(foreign).findByText('심텍')).toBeTruthy();
+    // 시장은 **카드별**이다 — 기관 카드는 코스피 그대로다.
+    expect(within(card('기관')).getByText('삼성전기')).toBeTruthy();
+    await waitFor(() =>
+      expect(urls).toEqual([
+        '/api/market/streaks?direction=buy&market=KOSPI',
+        '/api/market/streaks?direction=buy&market=KOSDAQ',
+      ]),
+    );
   });
 
   it('순매도로 토글하면 그 방향만 새로 부르고 일수는 절대값으로 읽힌다', async () => {
@@ -100,13 +134,13 @@ describe('ActorNetCard', () => {
     expect(within(card('기관')).getByText('삼성전기')).toBeTruthy();
     await waitFor(() =>
       expect(urls).toEqual([
-        '/api/market/streaks?direction=buy',
-        '/api/market/streaks?direction=sell',
+        '/api/market/streaks?direction=buy&market=KOSPI',
+        '/api/market/streaks?direction=sell&market=KOSPI',
       ]),
     );
   });
 
-  it('카드마다 방향을 따로 저장하고, 서로의 선택을 지우지 않는다', async () => {
+  it('두 축을 카드마다 따로 저장하고, 서로의 선택을 지우지 않는다', async () => {
     mockApi();
     const first = renderCards();
     await screen.findByText('셀트리온');
@@ -120,27 +154,36 @@ describe('ActorNetCard', () => {
     await userEvent.click(within(card('기관')).getByRole('button', { name: '순매수' }));
     await within(card('기관')).findByText('삼성전기');
 
+    // 시장도 한 축 더 움직여 둔다 — 두 저장 키가 서로를 지우지 않는지 같이 본다.
+    await userEvent.click(within(card('기관')).getByRole('button', { name: '코스닥' }));
+    await within(card('기관')).findByText('HLB');
+
     expect(JSON.parse(localStorage.getItem('market.actorNetDirection.v1')!)).toEqual({
       외국인: 'sell',
       기관: 'buy',
+    });
+    expect(JSON.parse(localStorage.getItem('market.actorNetMarket.v1')!)).toEqual({
+      기관: 'KOSDAQ',
     });
 
     // 새로고침(=재마운트) 후에도 각자의 선택이 살아 있다.
     first.unmount();
     renderCards();
     expect(await within(card('외국인')).findByText('삼성전자')).toBeTruthy();
-    expect(within(card('기관')).getByText('삼성전기')).toBeTruthy();
+    expect(within(card('기관')).getByText('HLB')).toBeTruthy();
   });
 
-  it('빈 상태 문구가 방향을 말한다', async () => {
+  it('빈 상태 문구가 시장과 방향을 말한다', async () => {
     vi.spyOn(client, 'apiCall').mockImplementation((async () => ({
       warnings: [], 외국인: [], 기관: [],
     })) as unknown as typeof client.apiCall);
     renderCards();
 
-    // "연속 순매수 종목이 없습니다" 를 순매도 화면에서 보이면 어느 방향이 빈 건지 모른다.
-    expect((await screen.findAllByText('연속 순매수 종목이 없습니다.')).length).toBe(2);
+    // 조합이 넷이라 "종목이 없습니다" 만으로는 **무엇이** 빈 건지 알 수 없다.
+    expect((await screen.findAllByText('코스피 연속 순매수 종목이 없습니다.')).length).toBe(2);
     await userEvent.click(within(card('외국인')).getByRole('button', { name: '순매도' }));
-    expect(await screen.findByText('연속 순매도 종목이 없습니다.')).toBeTruthy();
+    expect(await screen.findByText('코스피 연속 순매도 종목이 없습니다.')).toBeTruthy();
+    await userEvent.click(within(card('외국인')).getByRole('button', { name: '코스닥' }));
+    expect(await screen.findByText('코스닥 연속 순매도 종목이 없습니다.')).toBeTruthy();
   });
 });

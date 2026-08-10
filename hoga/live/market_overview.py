@@ -202,6 +202,13 @@ def parse_program_trend(
 #: `StreakDirection` union 과 손으로 미러한다(ADR-0004).
 StreakDirection = Literal["buy", "sell"]
 
+#: 시장 — **화면 라벨을 그대로 계약으로 쓴다**. 벤더 `mrkt_tp` 코드는 라우트가 내부에서
+#: 매핑한다(`_MRKT_TP`). 원시 코드를 wire 에 흘리지 않는 이유가 이 TR 에 특히 강하다:
+#: **모르는 코드에 에러가 안 난다** — `'1'` · `'000'` 이 HTTP 200 · `return_code=0` 으로
+#: **코스피 100행을 그대로** 돌려준다(2026-08-10 실측). 즉 오타의 대가가 빈 화면이
+#: 아니라 "코스닥" 이라고 쓰인 코스피 데이터다.
+MarketName = Literal["KOSPI", "KOSDAQ"]
+
 
 def parse_streaks(
     rows: list[dict[str, Any]], *, actor: str, direction: StreakDirection
