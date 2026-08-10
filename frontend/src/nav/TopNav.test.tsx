@@ -9,8 +9,10 @@ vi.mock('./CaptureInlineStatus', () => ({
   CaptureInlineStatus: () => null,
 }));
 
+// 라벨의 오리진은 런타임 설정에서 나온다(StatusDot.test.tsx 가 검증) — 여기서
+// 특정 포트를 흉내 내면 그 리터럴이 다시 계약처럼 보인다.
 vi.mock('./StatusDot', () => ({
-  default: () => <span>WS · :8000</span>,
+  default: () => <span>WS</span>,
 }));
 
 // The symbol search now lives in the TopNav header line but only on /live.

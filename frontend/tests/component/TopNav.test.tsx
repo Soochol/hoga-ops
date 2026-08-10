@@ -11,8 +11,9 @@ vi.mock('../../src/api/eventStream', () => ({
   useEventStream: () => {},
 }));
 
+// 오리진은 런타임 설정에서 해소된다 — 목이 포트를 지어내면 안 된다.
 vi.mock('../../src/nav/StatusDot', () => ({
-  default: () => <span>WS · :8000</span>,
+  default: () => <span>WS</span>,
 }));
 
 beforeEach(() => {
