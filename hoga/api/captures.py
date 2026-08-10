@@ -58,8 +58,8 @@ from hoga.api.models import (
     TimingEnv,
     ViolationModel,
 )
+from hoga.api.ownership import DataDirLock, try_acquire_queue_ownership
 from hoga.api.params import CODE_PATTERN
-from hoga.api.queue_ownership import QueueOwnership, try_acquire_queue_ownership
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import (
     CHART_FINAL_TIME_MS,
@@ -369,7 +369,7 @@ _workers: list[asyncio.Task] = []                       # populated by app lifes
 # guarding mutation endpoints and persistence. A non-owner boots read-only:
 # it neither restores the manifest nor spawns workers, so two backends sharing
 # one data_dir can't double-capture the same Stock-Date.
-_ownership: QueueOwnership | None = None
+_ownership: DataDirLock | None = None
 # Default True so the test DI surface (write `_data_dir` directly, never call
 # start_capture_pool) keeps persisting. Production's start_capture_pool sets
 # this explicitly from the flock result; non-owner tests set it False.

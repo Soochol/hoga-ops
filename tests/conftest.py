@@ -30,6 +30,20 @@ def _reset_queue_ownership() -> None:
 
 
 @pytest.fixture(autouse=True)
+def _reset_collector_ownership() -> None:
+    """수집기 락(ADR-0094 확장)이 테스트 사이로 새지 않게 한다.
+
+    락은 **프로세스 수명** 동안 fd 를 붙드는 모듈 전역이라, 한 테스트가 잡으면
+    다음 테스트의 `start_scheduler` 가 "이미 소유" 로 통과해 버린다(같은 프로세스라
+    flock 이 재진입 성공한다). 소유권을 검증하는 테스트가 위양성으로 초록이 되는
+    경로라 여기서 끊는다.
+    """
+    from hoga.api import scheduler
+
+    scheduler.release_collector_ownership()
+
+
+@pytest.fixture(autouse=True)
 def _no_real_mst_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
     """부팅 자동 갱신이 **실제 네트워크를 때리지 않게** 막는 스위트 전역 가드.
 

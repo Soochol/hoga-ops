@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from hoga.api import captures
-from hoga.api.queue_ownership import (
+from hoga.api.ownership import (
     lock_path,
     try_acquire_queue_ownership,
 )

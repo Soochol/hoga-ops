@@ -302,6 +302,11 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
             # restart) can acquire it. flock also auto-releases on process exit,
             # but explicit release makes handoff prompt.
             _captures_module.release_queue_ownership()
+            # 같은 이유로 수급 수집기 락도 명시적으로 놓는다 — --reload 재기동이
+            # 앞선 프로세스의 teardown 과 겹치는데, 후임이 재시도 창(4×0.5s) 안에
+            # 잡으려면 해제가 즉시여야 한다.
+            from hoga.api.scheduler import release_collector_ownership  # noqa: PLC0415
+            release_collector_ownership()
             observer.stop()
             observer.join()
             engine.close()

@@ -82,6 +82,31 @@ def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> N
         assert "background_deferred_due_to_user_visible" in scheduler
 
 
+def test_get_live_status_exposes_collector_ownership(tmp_path) -> None:
+    """수집기 소유권이 **wire 까지** 나가는지 (ADR-0094 확장).
+
+    `LiveStatus` 에 `collectors` 필드를 선언하지 않으면 FastAPI 가 `response_model`
+    단계에서 **에러 없이 키를 버린다** — 라우트를 직접 부르는 테스트로는 못 잡는
+    실패 유형이라 여기서 HTTP 응답을 본다.
+
+    이 관측면이 필요한 이유: 락을 못 잡아 수집기를 안 띄운 인스턴스는 읽기 경로가
+    멀쩡해서 화면상 정상과 구별되지 않는다.
+    """
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+
+    app = _make_test_app(data_dir=tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/api/live/status")
+        assert r.status_code == 200
+        body = r.json()
+        assert "collectors" in body, "response_model 이 collectors 를 스트립했다"
+        assert set(body["collectors"]) >= {"owned", "lock"}
+        # 스케줄러를 안 띄운 앱이므로 "미기동"(null) — false(뺏김)와 구별돼야 한다.
+        assert body["collectors"]["owned"] is None
+
+
 def test_get_live_status_includes_cache_stats(tmp_path) -> None:
     from hoga.live import lifecycle
 
