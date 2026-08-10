@@ -1,4 +1,4 @@
-/** 거래대금 추이 카드 — 축 분리 2단 안이 지켜야 하는 계약을 고정한다.
+/** 거래대금 추이 카드 — 통계 타일 안이 지켜야 하는 계약을 고정한다.
  *
  * 값은 2026-08-10 실측 축(억원)이지만 **자릿수를 골라 놓았다**: 확정일을 20조로
  * 평평하게 깔고 당일만 움직여서, 아래 세 경우가 서로 다른 퍼센트로 갈리게 했다.
@@ -78,7 +78,24 @@ describe('TradeValueCard', () => {
     // 30조 = 덮어쓴 값. 10조가 보이면 덮기가 안 걸린 것이다.
     await waitFor(() => expect(screen.getAllByText('30.00조').length).toBe(2));
     // +50% = 당일을 뺀 평균(20조) 기준. +36% 면 평균에 당일이 섞인 것이다.
-    expect(screen.getAllByText(/20일 평균 20\.00조 대비 \+50%/).length).toBe(2);
+    expect(screen.getAllByText('+50%').length).toBe(2);
+  });
+
+  it('기준을 글자로 준다 — 배경에서는 값을 읽을 수 없다', async () => {
+    // 차트가 배경이라 축도 눈금도 없다. 이 줄이 없으면 퍼센트가 무엇 대비인지
+    // 카드 안에 근거가 남지 않는다.
+    mockApi();
+    renderCard();
+    await waitFor(() => expect(screen.getAllByText('평소 20.00조').length).toBe(2));
+  });
+
+  it('배경 추이는 스크린리더에서 감춘다 — 읽는 그림이 아니다', async () => {
+    mockApi();
+    const { container } = renderCard();
+    await waitFor(() => expect(screen.getAllByText('30.00조').length).toBe(2));
+    const svgs = Array.from(container.querySelectorAll('svg'));
+    expect(svgs.length).toBe(2);
+    expect(svgs.every((s) => s.getAttribute('aria-hidden') === 'true')).toBe(true);
   });
 
   it('마지막 점이 오늘이 아니면 덮지 않는다', async () => {
@@ -91,15 +108,15 @@ describe('TradeValueCard', () => {
     renderCard();
     await waitFor(() => expect(screen.getAllByText('10.00조').length).toBe(2));
     expect(screen.queryByText('30.00조')).not.toBeInTheDocument();
-    expect(screen.getAllByText(/20일 평균 20\.00조 대비 -50%/).length).toBe(2);
+    expect(screen.getAllByText('-50%').length).toBe(2);
   });
 
-  it('한 시장만 실패하면 그 시장만 빈 문구다', async () => {
+  it('한 시장만 실패하면 그 칸만 빈 문구다', async () => {
     // 백엔드는 실패한 시장의 **키를 뺀다**(빈 배열이 아니다).
     mockApi({ unit: 'eok', markets: { KOSPI: series(TODAY, EOK_10JO) } });
     renderCard();
     await waitFor(() => expect(screen.getByText('30.00조')).toBeInTheDocument());
-    expect(screen.getByText('코스닥 거래대금 이력을 받지 못했습니다.')).toBeInTheDocument();
+    expect(screen.getByText('코스닥 이력을 받지 못했습니다.')).toBeInTheDocument();
   });
 
   it('둘 다 없으면 로딩과 실패를 다른 문구로 말한다', async () => {
@@ -110,11 +127,21 @@ describe('TradeValueCard', () => {
     );
   });
 
-  it('기간 토글이 요청 창을 바꾼다', async () => {
+  it('날짜 범위는 헤더에 한 번만 적는다', async () => {
+    // 두 타일이 같은 창을 보므로 타일마다 적으면 같은 글자가 두 번 나온다.
     mockApi();
     renderCard();
-    await waitFor(() => expect(urls.some((u) => u.includes('days=60'))).toBe(true));
-    await userEvent.click(screen.getByRole('button', { name: '20일' }));
+    await waitFor(() => expect(screen.getAllByText('30.00조').length).toBe(2));
+    const month = Number(TODAY.slice(4, 6));
+    const day = Number(TODAY.slice(6, 8));
+    expect(screen.getAllByText(new RegExp(`8/3–${month}/${day}`)).length).toBe(1);
+  });
+
+  it('기간 토글이 요청 창을 바꾼다 — 기본은 20일이다', async () => {
+    mockApi();
+    renderCard();
     await waitFor(() => expect(urls.some((u) => u.includes('days=20'))).toBe(true));
+    await userEvent.click(screen.getByRole('button', { name: '120일' }));
+    await waitFor(() => expect(urls.some((u) => u.includes('days=120'))).toBe(true));
   });
 });
