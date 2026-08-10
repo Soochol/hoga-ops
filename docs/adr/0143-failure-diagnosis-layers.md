@@ -120,9 +120,12 @@ N개만 하고 멈춰도 나머지는 기존 표로 동작한다.
 2. **`capacity_overloaded` 이중 경로 통합을 포함한다.** 별도 생성기를 지우는 것이
    아니라(호출부 2곳은 예외 객체가 없는 자리다) 생성기가 정책 산출에서 reason·msg 를
    뽑게 한다. 이로써 "정책 테이블이 유일 출처" 가 **문구까지** 성립한다.
-3. `intraday_` 접두는 **Phase 2 로 미룬다.** wire 에 kind·is_failure 가 실리면
-   `f"intraday_{reason}"` 경고도 같은 정책에서 값을 받으므로 접두와 무관하다.
-   벗기는 위치는 프론트 이관 시 결정한다.
+3. **`intraday_` 접두는 백엔드에서 벗긴다** (사용자 확정 2026-08-10 · Phase 2-3 구현).
+
+   단순 접두 제거가 **아니다.** 상태 태그 배열(`warnings`)은 depth·ETF 경고와 한
+   평면이라 접두를 그냥 떼면 이름이 충돌한다 — 접두는 그 충돌을 막던 네임스페이스였다.
+   그래서 **실패를 `intraday_failure` 라는 자체 필드로 분리**하고, 그 안에서는 접두 없이
+   `reason`·`kind`·`is_failure` 를 싣는다. 필드가 곧 네임스페이스이므로 접두가 필요 없다.
 
 ## Phase 2 진행 (2026-08-10)
 
@@ -134,7 +137,7 @@ N개만 하고 멈춰도 나머지는 기존 표로 동작한다.
 |---|---|---|
 | 1 | `liveDataWarnings.ts` (`RATE_LIMIT_REASONS`) | **완료** — `isRateLimitWarning` |
 | 2 | `restBypassMode.ts` (`classifyRestWarning`) | **완료** — kind → transport/congestion |
-| 3 | `intradayDegradation.ts` (`REASON_COPY`) | 대기 (접두 처리 결정 포함) |
+| 3 | `intradayDegradation.ts` (`REASON_COPY`) | **완료** — 접두는 **백엔드가** 벗겼다(`intraday_failure` 필드 분리) |
 | 4 | `candleEmptyState.ts` (벤더실패·유예 2집합) | 대기 |
 | 5 | `liveStatusProjection.ts` (`CAPTURE_REASON_VIEW`) | **비대상** — `capture_reason` 축 |
 | 6 | `livePastCandles.ts` (`BLOCKING_WARNING_REASONS`) | 대기 (**마지막** · 동등성 기준은 캐시 동작) |

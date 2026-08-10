@@ -1,4 +1,5 @@
 import { apiCall } from './client';
+import type { WireDataWarning } from './dataWarnings';
 
 // --- condition params (one per catalog type; type keys MUST match backend) ---
 export interface TradeValueParams { min_eok: number }
@@ -102,7 +103,10 @@ export interface DepthPeakValue {
 export interface ScreenerResponse {
   status: 'ok' | 'not_seeded' | 'building';
   rows: ScreenerRow[];
+  /** 상태 태그의 평평한 목록 — 장중·depth·ETF 가 한 평면이라 접두가 네임스페이스다. */
   warnings: string[];
+  /** 장중 오버레이 실패의 **구조화된 사유**(ADR-0143). 접두 없이 `kind` 를 동반한다. */
+  intraday_failure?: WireDataWarning | null;
   // 총잔량 신고 조건이 있을 때만 채워진다(없으면 null — 기존 응답과 하위호환).
   depth_coverage?: DepthCoverage | null;
   depth_values?: Record<string, DepthPeakValue> | null;

@@ -27,6 +27,7 @@ async def run_screener_scan(
         return ScreenerResponse(status="not_seeded", rows=[])
 
     warnings: list[str] = []
+    intraday_failure: dict | None = None
     intraday_rows = None
     now_value = now or now_kst()
 
@@ -68,6 +69,8 @@ async def run_screener_scan(
             )
             intraday_rows = overlay.rows
             warnings.extend(overlay.warnings)
+            # 사유는 상태 태그와 갈라 실어 보낸다(ADR-0143) — 접두 없이, kind 동반.
+            intraday_failure = overlay.failure
             if overlay.rows.height == 0:
                 warnings.append("intraday_fallback_eod")
 
@@ -109,6 +112,7 @@ async def run_screener_scan(
     )
     return ScreenerResponse(
         status="ok", rows=rows, warnings=warnings,
+        intraday_failure=intraday_failure,
         depth_coverage=depth_eval.coverage if depth_eval is not None else None,
         depth_values=depth_eval.values if depth_eval is not None else None,
     )

@@ -9,6 +9,7 @@ from pathlib import Path
 import polars as pl
 
 from hoga.live import kiwoom_access, kiwoom_multi_quote, kiwoom_rest_runtime, settings as live_settings
+from hoga.live.data_warnings import make_data_warning
 from hoga.live.error_policy import LiveErrorPolicy, classify_live_error
 from hoga.live.kiwoom_rest import KiwoomRestClient
 from hoga.live.quote_models import Quote
@@ -31,7 +32,17 @@ _CODE_LEN = 6
 class IntradayDailyOverlay:
     rows: pl.DataFrame
     fetched_at_ms: int | None
+    #: 상태 태그(`intraday_partial` · `intraday_quote_invalid` …). **사유는 여기 없다** —
+    #: 아래 `failure` 가 소유한다. 이 배열은 `screener_runner` 에서 depth·etf 경고와
+    #: 한 평면으로 합쳐지므로 `intraday_` 접두가 네임스페이스 역할을 한다.
     warnings: list[str]
+    #: 장중 조회가 실패했을 때의 **구조화된 사유**(ADR-0143). `make_data_warning` 산출이라
+    #: `reason`·`kind`·`is_failure` 를 담고 **접두가 없다**.
+    #:
+    #: 이전에는 `f"intraday_{worst.reason}"` 로 위 배열에 섞여 들어갔다. 접두는 평면
+    #: 충돌을 막으려던 것이었는데, 그 탓에 프론트가 접두를 붙인 사유별 문구표
+    #: (`REASON_COPY`)를 따로 들고 있어야 했다 — 같은 사실의 6벌 중 하나였다.
+    failure: dict | None = None
 
 
 _CACHE: dict[tuple[Path, str, tuple[str, ...]], IntradayDailyOverlay] = {}
@@ -39,11 +50,16 @@ _CACHE_AT: dict[tuple[Path, str, tuple[str, ...]], int] = {}
 _LOCKS: dict[tuple[Path, str, tuple[str, ...]], asyncio.Lock] = {}
 
 
-def _empty(warnings: list[str] | None = None) -> IntradayDailyOverlay:
+def _empty(
+    warnings: list[str] | None = None,
+    *,
+    failure: dict | None = None,
+) -> IntradayDailyOverlay:
     return IntradayDailyOverlay(
         rows=pl.DataFrame(schema=_SCHEMA),
         fetched_at_ms=None,
         warnings=warnings or [],
+        failure=failure,
     )
 
 
@@ -159,7 +175,9 @@ async def build_intraday_overlay(
                 "screener 장중 오버레이 휴면 → 전일 확정 폴백 (키움 자격증명 없음, %d종목)",
                 len(unique_codes),
             )
-            return _empty(["intraday_credentials_missing"])
+            return _empty(failure=make_data_warning(
+                "credentials_missing", "kiwoom credentials are not configured",
+            ))
 
         quotes, failures, chunk_count = await _fetch_quotes_in_chunks(
             client, unique_codes, today=today, data_dir=data_dir
@@ -174,7 +192,7 @@ async def build_intraday_overlay(
                 "(%d종목 · %d청크 전량 실패 · 원인 %s[%s]: %s)",
                 len(unique_codes), chunk_count, worst.kind, worst.code, worst.message,
             )
-            return _empty([f"intraday_{worst.reason}"])
+            return _empty(failure=make_data_warning(worst.reason, worst.message))
 
         rows = []
         invalid = False
@@ -196,7 +214,8 @@ async def build_intraday_overlay(
                 "close": float(q.price),
                 "volume": int(q.volume),
             })
-        warnings = []
+        warnings: list[str] = []
+        failure: dict | None = None
         if failures:
             # ADR-0137 R5 — 부분 성공을 전량 폐기하지 않는다. 앞선 청크가 받아온
             # 수백 종목은 조건 평가에 그대로 쓸 수 있고, 못 받은 몫만 전일 확정으로
@@ -209,7 +228,7 @@ async def build_intraday_overlay(
                 worst.kind, worst.code, worst.message,
             )
             warnings.append("intraday_partial")
-            warnings.append(f"intraday_{worst.reason}")
+            failure = make_data_warning(worst.reason, worst.message)
         if invalid:
             warnings.append("intraday_quote_invalid")
         if volume_unavailable:
@@ -218,6 +237,7 @@ async def build_intraday_overlay(
             rows=pl.DataFrame(rows, schema=_SCHEMA) if rows else pl.DataFrame(schema=_SCHEMA),
             fetched_at_ms=now_ms,
             warnings=warnings,
+            failure=failure,
         )
         _CACHE[key] = overlay
         _CACHE_AT[key] = now_ms

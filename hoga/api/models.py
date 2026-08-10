@@ -1706,7 +1706,13 @@ class DepthPeakValue(BaseModel):                       # 결과 행 검증용 �
 class ScreenerResponse(BaseModel):
     status: Literal["ok", "not_seeded", "building"]
     rows: list[ScreenerRow]
+    #: 상태 태그의 평평한 목록 — 장중 오버레이·depth·ETF 필터가 한 평면에 섞이므로
+    #: 접두(`intraday_` 등)가 네임스페이스 역할을 한다.
     warnings: list[str] = Field(default_factory=list)
+    #: 장중 오버레이가 실패했을 때의 **구조화된 사유**(ADR-0143). `make_data_warning`
+    #: 산출이라 `reason`·`kind`·`is_failure` 를 담고 **접두가 없다** — 위 배열과 달리
+    #: 자체 필드라 이름이 충돌하지 않는다. 실패가 없으면 None.
+    intraday_failure: dict | None = None
     # 총잔량 신고 조건이 있을 때만 채워진다(없으면 None — 기존 응답과 하위호환).
     depth_coverage: DepthCoverage | None = None
     depth_values: dict[str, DepthPeakValue] | None = None

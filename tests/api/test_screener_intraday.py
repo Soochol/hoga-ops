@@ -220,7 +220,14 @@ async def test_overlay_names_the_rate_limit_instead_of_generic_failure(
         )
 
     assert overlay.rows.height == 0
-    assert overlay.warnings == ["intraday_rate_limit_upstream"]
+    # ADR-0143: 사유는 상태 태그 배열이 아니라 `failure` 가 소유한다 — 접두 없이 kind 동반.
+    assert overlay.warnings == []
+    assert overlay.failure == {
+        "reason": "rate_limit_upstream",
+        "kind": "rate_limit",
+        "is_failure": True,
+        "msg": overlay.failure["msg"],
+    }
     # R3 — 폴백을 고른 층이 **영향**을 로그한다. 하위 층의 "ka10095 rate-limited" 만으로는
     # 어떤 기능이 무엇으로 대체됐는지 복원할 수 없다.
     logged = "\n".join(r.getMessage() for r in caplog.records)
@@ -257,7 +264,9 @@ async def test_overlay_keeps_partial_results_when_some_chunks_fail(
 
     assert overlay.rows.height == 150, "1·3번 청크(100+50)는 살아남아야 한다"
     assert "intraday_partial" in overlay.warnings
-    assert "intraday_rate_limit_upstream" in overlay.warnings
+    assert overlay.failure is not None
+    assert overlay.failure["reason"] == "rate_limit_upstream"
+    assert overlay.failure["kind"] == "rate_limit"
 
 
 @pytest.mark.asyncio
@@ -276,7 +285,11 @@ async def test_overlay_distinguishes_missing_credentials_from_fetch_failure(
     )
 
     assert overlay.rows.height == 0
-    assert overlay.warnings == ["intraday_credentials_missing"]
+    # 자격증명 부재는 `auth_error`(벤더가 거절)와 처방이 달라 kind 가 갈린다.
+    assert overlay.warnings == []
+    assert overlay.failure is not None
+    assert overlay.failure["reason"] == "credentials_missing"
+    assert overlay.failure["kind"] == "not_wired"
 
 
 @pytest.mark.asyncio

@@ -64,8 +64,13 @@ WARNING_CLASSIFICATION: dict[str, tuple[LiveErrorKind | None, bool]] = {
     "fetch_budget_exhausted": ("deferred", True),
     # 받긴 받았는데 행 검증에 걸렸다(ADR-0020).
     "invariant_violation": ("data_quality", True),
-    # 디스크 파일 부재. 파일을 만들기 전엔 재시도가 무의미하다.
-    "screener_daily_missing": ("data_quality", True),
+    # 디스크 파일 부재 — **배선 안 됨**이지 데이터 품질 문제가 아니다. 파일을 만들기
+    # 전엔 재시도가 무의미하고 처방은 "수집을 돌려라" 다. `not_wired` 가 생기기 전에는
+    # `data_quality` 로 뒀는데(Phase 1), 그 kind 는 "받긴 받았다" 를 함의해서 틀렸다.
+    "screener_daily_missing": ("not_wired", True),
+    # 스크리너 장중 오버레이가 자격증명을 못 찾았다. `auth_error`(벤더가 거절)와
+    # 처방이 다르다 — 이쪽은 앱 설정, 저쪽은 벤더 쪽 등록이다.
+    "credentials_missing": ("not_wired", True),
     # ── 정책 밖 · 실패 아님 ────────────────────────────────────────────────
     # 우회가 켜져 있어 캐시만 서빙 — 사용자가 그렇게 설정한 것이다.
     "rest_bypassed": (None, False),

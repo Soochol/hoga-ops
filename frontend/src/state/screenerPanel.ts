@@ -33,6 +33,9 @@ export interface PanelScan {
   rows: ScreenerRow[];
   scanStatus: ScreenerResponse['status'];
   warnings: string[];
+  /** 장중 오버레이 실패의 구조화된 사유(ADR-0143). 상태 태그와 갈라 저장한다 —
+   *  `warnings` 는 depth·ETF 태그와 한 평면이라 사유를 섞으면 이름이 충돌한다. */
+  intradayFailure?: ScreenerResponse['intraday_failure'];
   // 총잔량 신고 조건이 있을 때만 채워진다 — 결과 테이블의 호가 신고 값 컬럼 복원용.
   depthValues: Record<string, DepthPeakValue> | null;
   scannedAtMs: number;
@@ -236,6 +239,8 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
     scanKey,
     rows: raw.rows as ScreenerRow[],
     scanStatus: raw.scanStatus,
+    // 구버전 저장본에는 없다(필드를 넓히기만 하는 마이그레이션 — 위 주석 참조).
+    intradayFailure: raw.intradayFailure as PanelScan['intradayFailure'],
     warnings: raw.warnings as string[],
     depthValues,
     scannedAtMs: raw.scannedAtMs,

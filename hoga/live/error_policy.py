@@ -54,6 +54,12 @@ LiveErrorKind = Literal[
     #   `data_quality` — 받긴 받았는데 행 검증에 걸렸다(ADR-0020: 표시하되 렌더).
     "deferred",
     "data_quality",
+    #   `not_wired`    — 의존성이 **배선되지 않았다**(자격증명 부재·파일 없음).
+    #                    `auth` 와 갈라 두는 이유는 처방이 다르기 때문이다: 이쪽은
+    #                    설정·재시작이고 `auth` 는 벤더 쪽 등록·앱키다. HTTP 쪽
+    #                    `error_codes.py::LiveErrorCode.not_wired`(503)와 같은 성격이고,
+    #                    `candleEmptyState` 도 둘을 다른 문구·다른 행동으로 낸다.
+    "not_wired",
 ]
 
 # 유량 초과의 재시도 간격. 두 벤더 모두 **초당** 한도라 1초면 창이 새로 열린다
