@@ -9,9 +9,9 @@ export const WORKSPACE_NAV_ITEMS = [
   { to: '/live', label: '라이브' },
   { to: '/study', label: '복기' },
   { to: '/heatmap', label: '히트맵' },
+  { to: '/market', label: '시장 종합' },
   { to: '/screener', label: '스크리너' },
   { to: '/sentiment', label: '옵션심리' },
-  { to: '/market', label: '시장 종합' },
   { to: '/inventory', label: '보관함' },
   { to: '/capture', label: '캡처' },
 ] as const;
