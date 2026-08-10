@@ -20,6 +20,10 @@ vi.mock("../state/sourcePreference", async (orig) => ({
 }));
 
 
+// ⚠ 이 구현은 `beforeEach` 가 매번 다시 심는다(`resetApiCall`). `mockClear()` 는 호출
+// 기록만 지우고 **구현은 남기므로**, 어느 테스트가 apiCall 을 "영원히 pending" 으로
+// 덮어쓰면 그 뒤 테스트로 샌다. 워밍이 순차가 된 뒤로는 그 누출이 곧 교착이다 —
+// 앞 탭이 끝나야 다음 탭이 열리는데 앞 탭이 영영 안 끝난다.
 vi.mock('../api/client', () => ({
   apiCall: vi.fn(async (url: string) => {
     if (url.startsWith('/api/range')) {
@@ -50,6 +54,35 @@ vi.mock('../api/client', () => ({
 }));
 
 import { apiCall } from '../api/client';
+
+/** 위 `vi.mock` 팩토리와 같은 응답. 구현을 갈아치우는 테스트가 있으므로 매번 되돌린다. */
+function resetApiCall() {
+  vi.mocked(apiCall).mockImplementation(async (url: string) => {
+    const code = new URL(`http://test.local${url}`).searchParams.get('code') ?? '005930';
+    if (url.startsWith('/api/range')) {
+      return {
+        code,
+        from_date: '20260616',
+        to_date: '20260618',
+        bucket_ms: 300_000,
+        segments: [],
+        candles: [],
+        quote_ratio: { bucket_ms: 300_000, points: [] },
+        fill_strength: { bucket_ms: 300_000, points: [] },
+        volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+        volume_profile_by_day: [],
+        volume_distributions: [],
+        investorPoints: [],
+        ask_peaks: [],
+        bid_peaks: [],
+        broker_late_entries: [],
+        program_trade: { points: [], source: 'kis_program_trade' },
+        trade_volume_pocs: [],
+      };
+    }
+    return { code, venue: 'KRX', candles: [], data_warnings: [] };
+  });
+}
 
 function save(id: string, code: string, label: string): StudyViewReference {
   return {
@@ -88,6 +121,7 @@ function wrapper(client: QueryClient) {
 describe('useWarmStudyReferenceTabQueries', () => {
   beforeEach(() => {
     vi.mocked(apiCall).mockClear();
+    resetApiCall();
     useLiveVenueStore.setState({ venue: 'KRX' });
     // 쿼리 키를 정하는 지표는 전역 1세트이고, **어느 버킷**인지는 차트 창의 봉이
     // 정한다(#904) — 창 밖 소비자도 같은 조합을 읽어야 "켰는데 안 보임"이 안 난다.
@@ -135,8 +169,53 @@ describe('useWarmStudyReferenceTabQueries', () => {
     expect(urls.some((url) => url.includes('code=035420'))).toBe(false);
     expect(urls.some((url) => url.includes('broker_late_entry_start_hhmm=1000'))).toBe(true);
     await waitFor(() => expect(result.current['tab-a']).toBe('ready'));
-    expect(result.current['tab-b']).toBe('ready');
+    // 워밍이 순차라 tab-b 는 tab-a 가 끝난 **뒤에** 열린다 — 같은 커밋에 둘 다
+    // ready 이던 시절의 단언은 이제 경합이다.
+    await waitFor(() => expect(result.current['tab-b']).toBe('ready'));
     expect(result.current['tab-c']).toBe('idle');
+  });
+
+  it('활성 탭이 끝나기 전에는 비활성 탭 워밍을 한 건도 발사하지 않는다', async () => {
+    // 백엔드가 사실상 직렬이라(동시 요청은 서로를 그 수만큼 늦춘다) 워밍이 활성
+    // 화면과 대역폭을 다투면 안 된다. 활성 탭 요청을 손으로 붙잡아 두고, 그동안
+    // 비활성 탭이 정말 조용한지 본다.
+    const passthrough = vi.mocked(apiCall).getMockImplementation()!;
+    const gates: Array<() => void> = [];
+    vi.mocked(apiCall).mockImplementation(async (url: string, init?: RequestInit) => {
+      const code = new URL(`http://test.local${url}`).searchParams.get('code');
+      if (code === '005930') await new Promise<void>((resolve) => gates.push(resolve));
+      return passthrough(url, init);
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const saves = [save('view-a', '005930', '삼성전자'), save('view-b', '000660', 'SK하이닉스')];
+    const tabs = [
+      tab('tab-a', 'view-a', '005930', '삼성전자'),
+      tab('tab-b', 'view-b', '000660', 'SK하이닉스'),
+    ];
+
+    renderHook(
+      () => useWarmStudyReferenceTabQueries({
+        tabs,
+        activeTabId: 'tab-a',
+        activatedTabIds: ['tab-b'],
+        saves,
+      }),
+      { wrapper: wrapper(client) },
+    );
+
+    // 활성 탭은 즉시 나간다 — 순차화가 활성 화면까지 늦추면 고치려던 것을 악화시킨다.
+    await waitFor(() => expect(gates.length).toBeGreaterThan(0));
+    const beforeRelease = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
+    expect(beforeRelease.some((url) => url.includes('code=005930'))).toBe(true);
+    expect(beforeRelease.some((url) => url.includes('code=000660'))).toBe(false);
+
+    for (const open of gates) open();
+
+    await waitFor(() => {
+      const urls = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
+      expect(urls.some((url) => url.includes('code=000660'))).toBe(true);
+    });
   });
 
   it('warms with the tab timeframe, never the save timeframe', async () => {

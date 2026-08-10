@@ -136,11 +136,31 @@ class ApiCandle(BaseModel):
 # === Query (returns list[ApiCandle] directly) ===
 
 
-def query_all(con: duckdb.DuckDBPyConnection, *, path: Path) -> list[ApiCandle]:
+def query_all(
+    con: duckdb.DuckDBPyConnection, *, path: Path, ts_offset_ms: int
+) -> list[ApiCandle]:
+    """파케이의 ms-from-KST-midnight `ts_ms` 를 **SQL 에서** 이동시켜 읽는다.
+
+    ``ts_offset_ms`` 는 보통 그 Stock-Date 의 자정 Unix ms —
+    ``ms_from_midnight_to_unix_ms(date, 0)`` 로 구한다. 오프셋의 정의는 그 함수
+    하나에만 두고, 여기서는 받은 값을 더하기만 한다.
+
+    ⚠ **키워드 필수이고 기본값이 없다.** 기본 0 을 주면 호출자가 빠뜨렸을 때 조용히
+    자정 기준 ms 가 그대로 나가고, 그건 wire 상 Unix ms 와 구별되지 않는 **1970년대
+    타임스탬프**다 — venue 기본값이 만들던 것과 같은 종류의 조용한 오답이다
+    (`queries.parquet_dir` 주석 참조). 필수면 누락이 런타임 오답이 아니라 타입 에러다.
+
+    왜 SQL 인가: 호출부가 파이썬에서 `model_copy(update={"ts_ms": ...})` 로 보정하면
+    같은 행을 **두 벌** 물질화한다. 5개월치 1분봉이면 36,276개를 만들고 다시 36,276개다.
+    실측상 이 경로 시간의 38.7% 가 그 두 번째 벌이었다(`build_candles_slice` 분해).
+    """
     rows = con.execute(
-        'SELECT ts_ms, "open", "close", high, low, vol_a, vol_b '
+        'SELECT ts_ms + ? AS ts_ms, "open", "close", high, low, vol_a, vol_b '
+        # ORDER BY 는 **테이블 컬럼**을 가리킨다. 오프셋은 상수라 순서를 바꾸지
+        # 않으므로 둘 중 무엇으로 정렬하든 결과가 같지만, 별칭을 달아 투영과
+        # 정렬이 모호하게 묶이지 않게 한다.
         "FROM read_parquet(?) ORDER BY ts_ms ASC",
-        [str(path)],
+        [ts_offset_ms, str(path)],
     ).fetchall()
     return [
         ApiCandle(ts_ms=r[0], open=r[1], close=r[2], high=r[3], low=r[4], vol_a=r[5], vol_b=r[6])

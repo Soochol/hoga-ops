@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import gc
 import logging
 import os
 import subprocess
@@ -169,6 +170,54 @@ class HealthResponse(BaseModel):
     supervised_tasks: list[dict] | None = None
 
 
+# GC gen0 임계 기본값. CPython 기본은 700 이다.
+#
+# **왜 올리나 — 팽창의 절반이 GIL 이 아니라 GC 였다.** CPython 의 세대별 수집은
+# stop-the-world 라, `/api/range` 처럼 요청당 수만 개의 모델을 만드는 경로에서는
+# 스레드를 늘릴수록 수집이 잦아지고 매 수집이 **모든 스레드를** 멈춘다. 그래서
+# 팽창이 초선형이 된다(ADR-0085 v3.2).
+#
+# 실측(064350 · 5개월 · engine 공유 · 3회 median · 모든 변형이 같은 지점에서
+# `gc.collect()` 후 측정):
+#
+#     변형            candles 6스레드   gen0 수집    sidecar 6스레드   gen0 수집
+#     기본(700)          2.263s          869          3.778s         1442
+#     gen0 상향          1.428s (+37%)    12          1.705s (+55%)     7
+#     gc.freeze() 만     1.929s          869          3.600s         1673
+#     freeze + 상향      1.655s           12          1.925s            6
+#
+# **`gc.freeze()` 는 빼기로 했다** — 수집 횟수를 전혀 바꾸지 않고(869→869,
+# 613→613), 상향과 조합하면 오히려 나빴다. 이득이 있다는 근거가 없다.
+#
+# 값에는 **둔감하다**: 2,000 부터 200,000 까지 전부 +28~45% 대역이고 서로의 차이는
+# 노이즈다. 즉 중요한 것은 "임계를 올린다" 는 사실이지 정확한 값이 아니다.
+# 아래 값은 위 표를 잰 조합 그대로다.
+#
+# ⚠ **메모리**: peak RSS 는 446→448MB(candles) · 501→514MB(sidecar) 로 사실상
+# 그대로였다. 다만 이것은 **한 워크로드의 peak** 이지 장기 운영 RSS 가 아니다.
+# 이 ADR 계열이 애초에 OOM 사고에서 태어났으므로(ADR-0085), 운영 RSS 가 예전보다
+# 뚜렷이 높아지면 이 값을 먼저 의심할 것. `0` 을 넣으면 튜닝이 꺼진다.
+GC_GEN0_THRESHOLD_DEFAULT = 50_000
+# gen1/gen2 — 위 표를 잰 조합의 나머지 두 자리(기본은 10/10). gen0 이 덜 도는 만큼
+# 상위 세대 승격도 줄어 이 둘의 영향은 작다.
+GC_UPPER_GEN_THRESHOLDS = (50, 50)
+
+
+def gc_gen0_threshold() -> int:
+    """`HOGA_GC_GEN0_THRESHOLD` 해석. `0` = 튜닝 끔, 미설정 = 기본값.
+
+    파싱 실패는 기본값으로 떨어진다 — 오타 하나로 서버가 안 뜨는 것보다,
+    문서화된 기본으로 도는 편이 낫다(`slow_request_threshold_ms` 와 같은 규약).
+    """
+    raw = os.environ.get("HOGA_GC_GEN0_THRESHOLD", "")
+    if not raw:
+        return GC_GEN0_THRESHOLD_DEFAULT
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return GC_GEN0_THRESHOLD_DEFAULT
+
+
 def allowed_origins() -> tuple[str, ...]:
     """최종 허용 출처 = 정적 기본 4개 + ``HOGA_ALLOWED_ORIGINS``(콤마 구분).
 
@@ -276,9 +325,19 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
         # 만들고 lifespan 에 안 달아 오버레이가 자라지 않았고, 정적 시드 생성일
         # 다음 날부터 오늘이 커버리지 밖이 됐다(실측 2026-08-04).
         calendar_refresher = start_trading_calendar_refresher(data_dir)
+        # GC gen0 임계 상향 — **기동이 끝난 뒤** 건다(상주 객체가 다 올라온 시점).
+        gc_prev_threshold = gc.get_threshold()
+        gc_gen0 = gc_gen0_threshold()
+        if gc_gen0 > 0:
+            gc.set_threshold(gc_gen0, *GC_UPPER_GEN_THRESHOLDS)
         try:
             yield
         finally:
+            # 복원은 **프로덕션이 아니라 테스트를 위한 것**이다. 프로세스가 오래 사는
+            # 운영에서는 의미가 없지만, `TestClient` 는 한 pytest 프로세스 안에서
+            # 앱을 수백 번 만든다 — 복원이 없으면 이 전역 설정이 그 프로세스 전체로
+            # 새어 GC 동작에 의존하는 다른 테스트를 흔든다.
+            gc.set_threshold(*gc_prev_threshold)
             calendar_refresher.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await calendar_refresher

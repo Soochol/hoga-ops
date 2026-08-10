@@ -296,11 +296,11 @@ def build_candles_slice(
     path = engine.parquet_dir(date, code, source, venue=venue) / "candles.parquet"
     if not path.exists():
         return []
-    rows = candles_tbl.query_all(engine.conn, path=path)
-    return [
-        r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
-        for r in rows
-    ]
+    # 자정→Unix 보정은 **SQL 이 한다**. 여기서 `model_copy` 로 다시 씌우면 같은 행을
+    # 두 벌 만들게 되고, 5개월치면 그게 36,276개짜리 두 벌이다(`query_all` docstring).
+    return candles_tbl.query_all(
+        engine.conn, path=path, ts_offset_ms=ms_from_midnight_to_unix_ms(date, 0),
+    )
 
 
 def build_broker_late_entries_slice(

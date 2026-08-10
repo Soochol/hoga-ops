@@ -346,6 +346,78 @@ describe('useStudyReferenceBundles', () => {
     expect(renderOne(dailySave).current.isLoading).toBe(true);
   });
 
+  // ── 캘린더 봉은 스크리너 일봉으로 먼저 그린다 ────────────────────────
+  //
+  // 캘린더 봉의 rangeCandles 는 일봉 98개를 그리려고 1분봉 36,000개(3.6MB)를 받는
+  // 경로다. 같은 화면을 스크리너 일봉(10KB)이 수십 배 빨리 준다 — 그래서 먼저
+  // 그리고, 1분봉이 오면 hogaplay 우선으로 덧칠한다.
+
+  it('캘린더 봉: 스크리너가 캔들을 줬으면 rangeCandles 를 기다리지 않는다', () => {
+    screenerDailyFixture = [{ t_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, volume: 100 }];
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeCandlesOptions) return { data: null, isLoading: true, error: null };
+      return queryResultFor(options);
+    });
+
+    const rendered = renderOne(dailySave);
+
+    expect(rendered.current.isLoading).toBe(false);
+    // 그리고 그 순간 화면에 실제로 봉이 있어야 한다 — 게이트만 열고 빈 차트를
+    // 내보내면 고친 것이 아니라 로딩을 빈 화면으로 바꾼 것뿐이다.
+    expect(rendered.current.bundle?.candles).toHaveLength(1);
+  });
+
+  it('캘린더 봉: 스크리너가 비면 예전처럼 rangeCandles 를 기다린다', () => {
+    // 스크리너에 없고 hogaplay 에만 있는 날짜 구간 — 덧칠이 곧 화면 전부라
+    // 먼저 그릴 것이 없다.
+    screenerDailyFixture = [];
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeCandlesOptions) return { data: null, isLoading: true, error: null };
+      return queryResultFor(options);
+    });
+
+    expect(renderOne(dailySave).current.isLoading).toBe(true);
+  });
+
+  it('분봉은 그대로 rangeCandles 를 기다린다 — 이 완화는 캘린더 봉 전용이다', () => {
+    // 분봉에서 rangeCandles 는 화면 그 자체다(스크리너 일봉은 아예 비활성).
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeCandlesOptions) return { data: null, isLoading: true, error: null };
+      return queryResultFor(options);
+    });
+
+    expect(renderOne(save).current.isLoading).toBe(true);
+  });
+
+  it('캘린더 봉: 이미 그린 뒤 온 rangeCandles 실패는 화면을 에러로 뒤집지 않는다', () => {
+    // 로딩 게이트와 **같은 술어**로 막지 않으면, 먼저 그리기가 "그려 놓고 나서
+    // 에러 화면으로 뒤집히는" 회귀를 새로 만든다. 뒤늦은 1분봉 실패는 우리가
+    // 없애려는 그 경합에서 가장 흔한 실패다.
+    screenerDailyFixture = [{ t_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, volume: 100 }];
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeCandlesOptions) {
+        return { data: null, isLoading: false, error: new Error('range candles failed') };
+      }
+      return queryResultFor(options);
+    });
+
+    const rendered = renderOne(dailySave);
+
+    expect(rendered.current.error).toBeNull();
+    expect(rendered.current.bundle?.candles).toHaveLength(1);
+  });
+
+  it('캘린더 봉: 스크리너가 비었으면 rangeCandles 실패는 그대로 치명적이다', () => {
+    screenerDailyFixture = [];
+    const failure = new Error('range candles failed');
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeCandlesOptions) return { data: null, isLoading: false, error: failure };
+      return queryResultFor(options);
+    });
+
+    expect(renderOne(dailySave).current.error).toBe(failure);
+  });
+
   // ── 멀티 차트 창 (#801) ──────────────────────────────────────────────
   it('창마다 자기 봉으로 계획을 세운다 — 봉이 곧 쿼리 키다', () => {
     renderHook(() => useStudyReferenceBundles(save, [spec('5m', 'a'), spec('D', 'b')]));

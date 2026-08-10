@@ -77,7 +77,7 @@ def test_write_parquet_is_atomic_on_replace_failure(tmp_path: Path, monkeypatch)
         raised = True
     assert raised, "write_parquet must use os.replace (atomic); a failed replace should propagate"
 
-    rows = query_all(duckdb.connect(), path=out)
+    rows = query_all(duckdb.connect(), path=out, ts_offset_ms=0)
     assert [r.ts_ms for r in rows] == [1], "original parquet must survive a failed write intact"
 
 
@@ -103,11 +103,40 @@ def test_query_all_returns_ascending_api_models(tmp_path: Path) -> None:
         out,
     )
     con = duckdb.connect()
-    rows = query_all(con, path=out)
+    rows = query_all(con, path=out, ts_offset_ms=0)
     assert all(isinstance(r, ApiCandle) for r in rows)
     assert [r.ts_ms for r in rows] == [30600000, 30660000]
     assert rows[0].open == 2  # ascending sort moves second-inserted to first
     assert rows[1].open == 1
+
+
+def test_query_all_shifts_ts_by_offset_in_sql(tmp_path: Path) -> None:
+    """`ts_offset_ms` 가 SQL 에서 더해진다 — 파케이는 자정 기준 ms 로 남는다.
+
+    보정을 파이썬에서 `model_copy` 로 하면 같은 행을 두 벌 물질화하고, 5개월치
+    1분봉이면 36,276개짜리 두 벌이다. 이 단언이 그 보정의 **유일한 위치**가
+    SQL 임을 못 박는다.
+    """
+    out = tmp_path / "candles.parquet"
+    write_parquet(
+        [
+            Candle(ts_ms=30_600_000, open_=2, close_=2, high=2, low=2, vol_a=2, vol_b=2),
+            Candle(ts_ms=30_660_000, open_=1, close_=1, high=1, low=1, vol_a=1, vol_b=1),
+        ],
+        out,
+    )
+    con = duckdb.connect()
+    offset = 1_749_772_800_000  # 어느 Stock-Date 의 KST 자정 Unix ms
+
+    rows = query_all(con, path=out, ts_offset_ms=offset)
+
+    assert [r.ts_ms for r in rows] == [offset + 30_600_000, offset + 30_660_000]
+    # 오프셋은 단조라 정렬이 뒤집히지 않는다.
+    assert rows[0].ts_ms < rows[1].ts_ms
+    # 값 컬럼은 손대지 않는다 — 시프트가 OHLCV 로 새면 안 된다.
+    assert [r.open for r in rows] == [2, 1]
+    # 디스크는 여전히 자정 기준이다(보정이 읽기 경로에만 있다).
+    assert pq.read_table(out).column("ts_ms").to_pylist() == [30_600_000, 30_660_000]
 
 
 # ---------------------------------------------------------------------------
