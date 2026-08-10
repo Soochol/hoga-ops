@@ -104,7 +104,11 @@ async def test_program_axes_do_not_share_a_cache(monkeypatch, tmp_path):
     daily = await program.endpoint(axis="daily")
     assert intraday["axis"] == "intraday"
     assert daily["axis"] == "daily"
-    assert market_routes.TTL_PROGRAM_S == 60.0
+    # 두 축이 **별개 TTL** 이다. 하나로 묶여 있으면 장중을 조일 때 일별까지 따라
+    # 내려가 같은 값을 세 배로 물어본다(2026-08-10 분리).
+    assert market_routes.TTL_PROGRAM_INTRADAY_S == 20.0
+    assert market_routes.TTL_PROGRAM_DAILY_S == 60.0
+    assert market_routes.TTL_PROGRAM_INTRADAY_S < market_routes.TTL_PROGRAM_DAILY_S
 
 
 @pytest.mark.asyncio
@@ -179,7 +183,11 @@ async def test_investor_flow_reads_stored_samples_without_calling_the_vendor(tmp
     assert [p["foreign"] for p in got["markets"]["KOSPI"]] == [6473, 7697]
     cov = got["coverage"]
     assert cov["sample_count"] == 2
-    assert cov["expected_count"] == 390       # 390분 ÷ 60초
+    # 390분 ÷ 30초. **분모가 폴 주기를 따라간다는 것이 이 단언의 요점**이므로,
+    # 수집 주기를 바꾸면 여기도 같이 바뀌어야 한다(2026-08-10 60→30초).
+    assert cov["expected_count"] == 780
+    # 표본 간격 60초 < 갭 임계(30초 × GAP_MIN_JUMP_INTERVALS=3 = 90초) — 주기를
+    # 조였다고 과거 간격이 갭으로 뒤집히지 않는다는 것도 여기서 지킨다.
     assert cov["gap_ranges"] == []
     assert isinstance(dt.datetime.strptime(got["date"], "%Y%m%d"), dt.datetime)
 

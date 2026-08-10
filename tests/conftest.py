@@ -13,20 +13,21 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures" / "tiny_tsv"
 
 
 @pytest.fixture(autouse=True)
-def _reset_queue_ownership() -> None:
-    """ADR-0094: restore the owned-by-default state before each test.
+def _reset_writer_ownership() -> None:
+    """ADR-0094: 모든 writer 락을 테스트 사이에서 놓는다.
 
-    The app lifespan teardown calls ``release_queue_ownership()`` which sets
-    ``_queue_owned = False`` (the lock is gone). Tests that exercise
-    ``_finalize_item``/``_persist_queue_locked`` by writing ``_data_dir``
-    directly — without calling ``reset_state_for_tests()`` — would then see a
-    leaked False and silently no-op their persistence. Resetting to the owned
-    default here closes that cross-test leak; ownership tests set the state
-    they need inside the test body, after this fixture runs.
+    락은 **프로세스 전역**이라 한 테스트가 잡으면 같은 프로세스의 다음 테스트가
+    flock 재진입으로 통과해 버린다 — 소유권을 검증하는 테스트가 위양성으로 초록이
+    되는 경로다.
+
+    큐에는 그 위에 규약이 하나 더 있다: 해제 후의 "미시도" 상태가 곧 **쓰기 허용**
+    이다(`captures.queue_owned()`). 그래서 이 픽스처가 예전 `_queue_owned = True`
+    기본값을 대체한다 — `_data_dir` 를 직접 쓰는 테스트 DI 표면이 그 기본에 기대고
+    있고, 뒤집히면 persistence 가 **에러 없이 no-op** 이 된다.
     """
-    from hoga.api import captures
+    from hoga.api import ownership
 
-    captures._queue_owned = True
+    ownership.release_all()
 
 
 @pytest.fixture(autouse=True)

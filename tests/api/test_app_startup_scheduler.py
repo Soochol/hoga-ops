@@ -13,6 +13,10 @@ def test_app_startup_scheduler_does_not_spawn_catchup_by_default(
 ):
     from hoga.api import app as app_mod, scheduler as scheduler_mod
 
+    # 일일 배치는 자격이 있을 때만 락을 잡는다(ADR-0094 확장) — 이 스위트가 재는
+    # 것은 lifespan 태스크 구성이지 소유권이 아니므로 자격을 준다.
+    monkeypatch.setattr(scheduler_mod, "_kiwoom_credentialed", lambda *_a, **_k: True)
+
     task_names: list[str] = []
 
     async def fake_daily_loop(data_dir):
@@ -52,6 +56,10 @@ def test_app_startup_can_opt_into_live_startup(
     monkeypatch,
 ):
     from hoga.api import app as app_mod, scheduler as scheduler_mod
+
+    # 일일 배치는 자격이 있을 때만 락을 잡는다(ADR-0094 확장) — 이 스위트가 재는
+    # 것은 lifespan 태스크 구성이지 소유권이 아니므로 자격을 준다.
+    monkeypatch.setattr(scheduler_mod, "_kiwoom_credentialed", lambda *_a, **_k: True)
 
     task_names: list[str] = []
 

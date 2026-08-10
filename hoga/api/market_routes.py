@@ -415,8 +415,15 @@ class FuturesCandlesResponse(BaseModel):
     series: dict[str, FuturesSpark] = Field(default_factory=dict)
 
 # TTL 은 벤더 갱신 주기와 화면 위치가 정한다(#1099) — 유량이 정하지 않는다.
-TTL_SECTORS_S = 30.0      # 지수·등락종목수: 화면 최상단
-TTL_PROGRAM_S = 60.0      # 100행 ≈ 100분이라 자기 백필 — 주기는 신선도 문제일 뿐
+TTL_SECTORS_S = 30.0      # 지수·등락종목수: 화면 최상단(0J/0U WS 오버레이의 baseline)
+# 장중 축은 벤더가 **요청 직전 1초 이내** 행까지 준다(2026-08-10 실측: `cntr_tm
+# 103441` 행을 10:34:41 에 관측, 3회 연속 지연 0~1초). 즉 화면 지연을 지배하는 항이
+# 벤더가 아니라 이 TTL 이었다 — 15초로 폴링해도 갱신이 62·62·67초 간격으로만 보였다.
+# 100행 ≈ 100분이라 자기 백필이므로 놓쳐도 값이 빠지지 않는다(신선도 문제일 뿐).
+TTL_PROGRAM_INTRADAY_S = 20.0
+# 일별 축은 하루 한 번 바뀐다. **상수를 나눈 이유**: 하나로 두면 장중을 조일 때
+# 일별 TTL 까지 조용히 따라 내려가 같은 값을 세 배로 물어보게 된다.
+TTL_PROGRAM_DAILY_S = 60.0
 TTL_STREAKS_S = 300.0     # 연속일수는 일 단위 축
 TTL_BREADTH_S = 300.0     # 52주 신고·신저는 느리게 움직인다
 # 선물: 지수 카드와 같은 줄에 서므로 `/live/index-quotes`(20s)와 신선도를 맞춘다.
@@ -684,16 +691,23 @@ _VKOSPI_SECTOR_CODE = "603"
 def _sector_flow_payload(data_dir: Path) -> dict[str, Any]:
     """업종별 투자자 순매수 — 저장된 **최신 표본 1개**를 시장별로 읽는다.
 
-    **읽기 경로는 벤더를 부르지 않는다.** ka10051 이 이미 60초마다 업종 행 전부를
-    싣고 있었고 수집기가 그대로 저장해 왔다(#1105 가 종합 행만 소비했을 뿐이다).
-    그래서 이 표면을 여는 데 새 벤더 호출이 0 이다.
+    **읽기 경로는 벤더를 부르지 않는다.** ka10051 이 이미 수집 주기마다 업종 행
+    전부를 싣고 있었고 수집기가 그대로 저장해 왔다(#1105 가 종합 행만 소비했을
+    뿐이다). 그래서 이 표면을 여는 데 새 벤더 호출이 0 이다.
 
     시계열이 아니라 **스냅샷**인 이유: 업종 30개 × 3주체를 시각축으로 그리면 읽을 수
     없다. 카드가 답하는 질문은 "지금 어느 업종에 누가 들어와 있나" 이고 그건 최신
     표본 하나로 답해진다.
 
-    호출부가 60초 TTL 캐시로 감싼다 — `load_samples` 가 하루치를 통째로 파싱하는데
-    (오늘 313행 4MB) 수집 주기도 60초라 그보다 자주 읽어 봐야 같은 답이다.
+    ⚠ **호출부에 TTL 캐시가 없다** — 예전 주석은 "60초 TTL 로 감싼다" 고 적어 두었는데
+    호출부(`get_sector_flow`)는 `to_thread` 로 직접 부른다. 그 주석이 죽은 채 남아
+    있었고, 같은 함수의 핸들러 docstring 은 반대로 "캐시를 두지 않는다" 고 말하고
+    있었다(2026-08-10 정정).
+
+    비용 자체는 여전히 실재한다: `load_samples` 가 **하루치를 통째로 파싱**한다(장
+    마감 무렵 4MB+). 캐시가 없으므로 그 비용은 **프론트 폴링 주기에 그대로 비례**하고,
+    `/investor-flow` 가 같은 파일을 따로 또 파싱한다. 두 훅의 주기를 함께 움직여야
+    하는 이유다(둘 다 30초 — 수집 주기와 같다).
     """
     from hoga.collector.orchestrator import now_kst  # noqa: PLC0415
     from hoga.live.investor_flow_store import InvestorFlowStore  # noqa: PLC0415
@@ -1017,8 +1031,8 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
 
     sectors_cache = _TtlCache(TTL_SECTORS_S)
     # 축마다 캐시가 갈려야 한다 — 한 캐시를 공유하면 당일/일별 토글이 서로의 값을 지운다.
-    program_cache = _TtlCache(TTL_PROGRAM_S)
-    daily_program_cache = _TtlCache(TTL_PROGRAM_S)
+    program_cache = _TtlCache(TTL_PROGRAM_INTRADAY_S)
+    daily_program_cache = _TtlCache(TTL_PROGRAM_DAILY_S)
     streaks_cache = _TtlCache(TTL_STREAKS_S)
     breadth_cache = _TtlCache(TTL_BREADTH_S)
     # 증시 주변 자금은 벤더가 다르다(KOFIA) — 키움 거버너·TTL 축과 분리해 자체 캐시를 쓴다.
@@ -1127,13 +1141,13 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
     async def get_sector_flow() -> SectorFlowResponse:
         """업종별 투자자 순매수 — 저장된 최신 표본(ka10051, 벤더 호출 없음).
 
-        수집기가 60초마다 찍어 온 표본에 업종 행이 처음부터 들어 있었다 — 종합 행만
+        수집기가 30초마다 찍어 온 표본에 업종 행이 처음부터 들어 있었다 — 종합 행만
         소비하고 나머지를 흘려보내고 있었을 뿐이다(#1105 의 파서 주석이 그렇게 적어
         두었다). 그래서 이 표면은 **새 벤더 호출이 0** 이다.
 
         **TTL 캐시를 두지 않는다** — 형제인 `/investor-flow` 와 같은 규율이다. 저 캐시는
-        벤더 유량을 아끼는 장치인데 여기는 벤더가 없다. 디스크 파싱 비용(하루치 313행)은
-        `to_thread` 로 이벤트 루프 밖에 두고, 호출 빈도는 프론트 폴링(60초)이 정한다.
+        벤더 유량을 아끼는 장치인데 여기는 벤더가 없다. 디스크 파싱 비용(하루치 전량)은
+        `to_thread` 로 이벤트 루프 밖에 두고, 호출 빈도는 프론트 폴링(30초)이 정한다.
         """
         return await asyncio.to_thread(_sector_flow_payload, data_dir)
 

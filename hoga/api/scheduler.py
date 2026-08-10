@@ -17,6 +17,7 @@ import logging
 import os
 from pathlib import Path
 
+from hoga.api import ownership
 from hoga.api.calendar import trading_days_in_range
 from hoga.api.calendar_policy import daily_run_allowed_by_calendar, trading_days_for_enqueue
 from hoga.api.captures import enqueue_items_core
@@ -521,16 +522,53 @@ def startup_catchup_enabled_from_env() -> bool:
     return os.environ.get("HOGA_STARTUP_CATCHUP_ENABLED") == "true"
 
 
+def _kiwoom_credentialed(data_dir: Path) -> bool:
+    """키움 자격이 있는가. **환경만 보므로 토큰을 발급하지 않는다**(#1088 회피)."""
+    from hoga.live import kiwoom_runtime  # noqa: PLC0415 — 지연 import(순환 절단)
+
+    return bool(kiwoom_runtime.configured_account_ids(data_dir))
+
+
 def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
     """Spawn scheduler-owned background tasks.
 
     Startup catch-up is opt-in only; daily-loop remains always-on.
     """
-    tasks = [
-        asyncio.create_task(_daily_loop(data_dir), name="watchlist-daily-loop"),
-    ]
-    if startup_catchup_enabled_from_env():
+    # 일일 배치도 data_dir 당 한 프로세스다(ADR-0094 확장). `scheduler_state.json`
+    # 마커가 이미 "하루 1회" 를 맡고 있어 위험은 넷 중 가장 낮지만, 마커는
+    # **읽고-쓰기**라 같은 몇 초 안에 틱한 두 인스턴스가 둘 다 통과한다.
+    #
+    # 자격 게이트를 거는 대가: 무자격 인스턴스만 떠 있는 머신에서는 승격·prune 도
+    # 안 돈다. 수용한다 — 무자격이면 승격할 새 데이터가 애초에 없고 prune 지연은
+    # 무해한 반면, 무자격이 락을 쥐면 자격 있는 인스턴스의 **enqueue 가 죽는다**.
+    daily_owned = ownership.acquire(
+        "daily", data_dir, available=_kiwoom_credentialed(data_dir)
+    )
+    tasks = []
+    if daily_owned:
+        tasks.append(asyncio.create_task(_daily_loop(data_dir), name="watchlist-daily-loop"))
+    if daily_owned and startup_catchup_enabled_from_env():
         tasks.append(asyncio.create_task(_catchup_run(data_dir), name="watchlist-catchup"))
+    # ── 수급 수집기는 data_dir 당 한 프로세스만 (ADR-0094 확장) ──────────────
+    #
+    # `data_dir` 이 머신 전역이라 워크트리 백엔드가 메인 `.env` 를 상속해 뜨면 같은
+    # 파일에 **같이 쓴다**. 2026-08-10 에 70분간 실제로 그랬다(:8001 · 표본이 두 위상
+    # 으로 교차 기록). 예전 판단("REST 라 최악이 유량 합산")은 과소평가였다 — 커버리지
+    # 와 간격 분석이 틀어지고, 두 프로세스가 각자 토큰을 쥔다(#1088).
+    #
+    # 락을 못 잡으면 **수집기를 아예 안 띄운다.** 읽기 경로는 승자가 쓴 표본을 그대로
+    # 서빙하므로 화면은 정상이다. 실패가 조용하지 않도록 `collector_ownership_state()`
+    # 가 `/api/live/status` 에 실린다.
+    from hoga.live import deriv_flow_runtime, investor_flow_runtime  # noqa: PLC0415 — 순환 절단
+    owned = ownership.acquire(
+        "collectors",
+        data_dir,
+        available=(
+            investor_flow_runtime.is_available(data_dir)
+            or deriv_flow_runtime.is_available(data_dir)
+        ),
+    )
+
     # investor-flow 수집기(#1105/#1120). WS 가 아니라 스케줄러 소유인 이유: 페이지·라이브
     # 개방 여부와 무관하게 돌아야 하기 때문이다(화면 수요에 묶으면 시계열이 "누가 보고
     # 있었는가" 의 함수가 된다). 무자격이면 **태스크를 만들지 않는다** — 만들면 health 에
@@ -539,7 +577,7 @@ def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
     # ⚠ 퍼페추얼 루프다 — `ONE_SHOT_TASK_NAMES` 에 넣으면 정상 종료로 오인돼 deep health
     # 가 영구 503 이 되고 워치독이 멀쩡한 서버를 재시작한다(ADR-0064).
     from hoga.live import investor_flow_runtime  # noqa: PLC0415 — 지연 import(순환 절단)
-    collector = investor_flow_runtime.make_collector(data_dir)
+    collector = investor_flow_runtime.make_collector(data_dir) if owned else None
     if collector is not None:
         collector.start()
         if collector.task is not None:
@@ -549,7 +587,7 @@ def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
     # (ADR-0136 · 키움 REST 337 TR 중 파생 투자자 TR 0건). 그래서 키움 키만 있는
     # 환경에서는 이쪽만 조용히 빈다 — 옵션 심리 패널과 같은 처지이고 버그가 아니다.
     from hoga.live import deriv_flow_runtime  # noqa: PLC0415 — 지연 import(순환 절단)
-    deriv = deriv_flow_runtime.make_collector(data_dir)
+    deriv = deriv_flow_runtime.make_collector(data_dir) if owned else None
     if deriv is not None:
         deriv.start()
         if deriv.task is not None:

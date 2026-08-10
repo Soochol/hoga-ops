@@ -29,31 +29,61 @@ MAX_BREADTH_PAGES = 5
 BREADTH_PAGE_ROWS = 200
 
 
+def _fold_repeated_sign(s: str) -> str | None:
+    """키움의 **이중 부호** 표기를 부호 하나로 접는다. 섞여 있으면 `None`.
+
+    ka90005 는 음수를 마이너스 **두 개**로 보낸다 — `'--528475'` 는 -528475 다
+    (2026-08-10 장중 실측, 코스피 100행 전부). 의미는 산술로 확정했다:
+
+        dfrt '+25634' + ndiffpro '--528475' == all '--502841'   ✓
+
+    같은 응답의 양수는 `'+25634'` 로 부호가 하나뿐이고, `ka10051` 등 다른 TR 은
+    음수도 `'-'` 하나다 — **TR 별 표기 특성이지 전역 규칙이 아니다.** 그래서 이
+    폴딩을 모양 수준 헬퍼에 두고 파서별 분기를 만들지 않는다.
+
+    부호가 **섞이면**(`'+-5'`) 의미가 확인된 적이 없으므로 `None` 을 준다. 추측해서
+    통과시키면 틀린 값이 조용히 흐르는데, 이 리포는 그보다 빈 값을 택한다(ADR-0021).
+    """
+    stripped = s.lstrip("+-")
+    sign_len = len(s) - len(stripped)
+    if sign_len <= 1:
+        return s
+    if len(set(s[:sign_len])) > 1:
+        return None
+    return s[sign_len - 1 :]
+
+
 def signed_int(v: Any) -> int | None:
-    """`'+12,410'` · `'-8787'` · `''` → int|None. 키움은 부호를 문자열에 실어 보낸다."""
+    """`'+12,410'` · `'-8787'` · `'--528475'` · `''` → int|None.
+
+    키움은 부호를 문자열에 실어 보내고, TR 에 따라 음수를 이중 부호로 준다
+    (`_fold_repeated_sign`).
+    """
     if v is None:
         return None
     s = str(v).strip().replace(",", "")
-    if not s or s in {"+", "-"}:
+    folded = _fold_repeated_sign(s) if s else None
+    if not folded or folded in {"+", "-"}:
         return None
     try:
-        return int(s)
+        return int(folded)
     except ValueError:
         try:
-            return int(float(s))
+            return int(float(folded))
         except ValueError:
             return None
 
 
 def decimal_price(v: Any) -> float | None:
-    """소수점을 **포함해서** 오는 가격(ka20003·ka90010)."""
+    """소수점을 **포함해서** 오는 가격(ka20003·ka90010). 이중 부호도 접는다."""
     if v is None:
         return None
     s = str(v).strip().replace(",", "")
-    if not s or s in {"+", "-"}:
+    folded = _fold_repeated_sign(s) if s else None
+    if not folded or folded in {"+", "-"}:
         return None
     try:
-        return float(s)
+        return float(folded)
     except ValueError:
         return None
 
