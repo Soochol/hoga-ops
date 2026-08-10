@@ -39,29 +39,63 @@ function headCommit(): string | null {
   }
 }
 
-/** 백엔드가 읽었어야 할 소스의 **최신 mtime**(ms). 못 재면 null.
+/** 기동이 소비하는 것들 — 파일이든 디렉터리든. 기준은 하나다: **이게 바뀌면 기동을
+ *  다시 해야 지금 코드를 재는가.**
  *
- *  `hoga/**\/*.py` 와 `frontend/src` 둘 다 본다. 전자는 백엔드가 통째로 다시 읽어야
- *  하는 코드이고(`hoga serve` 는 reload=False), 후자는 서버가 재사용되면
- *  `vite build && prepare-dist` 가 **아예 돌지 않아** dist-smoke 가 옛 산출물을
- *  검사하게 되는 경로다. */
-function newestSourceMtimeMs(): number | null {
-  const roots = [join(WORKTREE_ROOT, 'hoga'), join(WORKTREE_ROOT, 'frontend', 'src')];
-  let newest = 0;
+ *  - `hoga` — 백엔드 코드. `hoga serve` 는 reload=False 라 한 번 읽은 것이 끝까지 간다.
+ *  - `pyproject.toml` · `uv.lock` — 파이썬 **환경 정의**. 의존성을 바꾸고 서버를
+ *    재사용하면 조용히 옛 환경으로 돈다(코드만 봐서는 안 보인다).
+ *  - `tests/fixtures/tiny_tsv_multi` — `FakeHogaplayClient` 가 `lru_cache` 로 **본문을
+ *    캐시**하고 `add-stockdate` 가 복사한다. 프로세스 안에 굳는 값이다.
+ *  - `frontend/{src,public,index.html,vite.config.ts,package.json}` — dist 빌드 입력.
+ *    서버가 재사용되면 `vite build && prepare-dist` 가 **아예 돌지 않아** dist-smoke 가
+ *    옛 산출물을 검사한다.
+ *
+ *  **`package-lock.json` 은 뺀다** — `npm install` 이 버전 필드를 되돌려 유령 수정을
+ *  만드는 파일이라(루트 CLAUDE.md), 넣으면 위양성이 상시로 생긴다. 의존성 변경은
+ *  `package.json` 쪽이 잡는다. `.env` 도 뺀다 — 사용자가 자기 dev 서버 때문에 자주
+ *  만지는데 e2e 는 자격증명을 비워 띄우므로 영향이 없다. */
+const STARTUP_INPUTS = [
+  'hoga',
+  'pyproject.toml',
+  'uv.lock',
+  join('tests', 'fixtures', 'tiny_tsv_multi'),
+  join('frontend', 'src'),
+  join('frontend', 'public'),
+  join('frontend', 'index.html'),
+  join('frontend', 'vite.config.ts'),
+  join('frontend', 'package.json'),
+];
+
+/** 위 입력들 중 **가장 최근에 바뀐 것**과 그 시각. 못 재면 null.
+ *
+ *  경로까지 돌려주는 이유: "서버가 오래됐다" 만으로는 무엇이 바뀌었는지 몰라 사용자가
+ *  다시 뒤져야 한다. 특히 의존성·픽스처는 **코드를 안 만졌는데** 걸리는 경우라
+ *  경로가 없으면 가드가 오작동처럼 읽힌다. */
+function newestStartupInput(): { path: string; mtimeMs: number } | null {
+  let newest: { path: string; mtimeMs: number } | null = null;
+  const consider = (full: string): void => {
+    const { mtimeMs } = statSync(full);
+    if (newest === null || mtimeMs > newest.mtimeMs) newest = { path: full, mtimeMs };
+  };
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (entry.name.startsWith('.') || entry.name === '__pycache__') continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else newest = Math.max(newest, statSync(full).mtimeMs);
+      else consider(full);
     }
   };
   try {
-    for (const root of roots) walk(root);
+    for (const rel of STARTUP_INPUTS) {
+      const full = join(WORKTREE_ROOT, rel);
+      if (statSync(full).isDirectory()) walk(full);
+      else consider(full);
+    }
   } catch {
     return null;  // 트리 모양이 예상과 다르다 — 판정 포기(새 flake 를 만들지 않는다)
   }
-  return newest || null;
+  return newest;
 }
 
 /** **지금 붙은 백엔드가 내 워크트리의, 지금 소스로 뜬 것인지 확인한다.**
@@ -77,8 +111,9 @@ function newestSourceMtimeMs(): number | null {
  *     commit 은 워크트리끼리 같을 수 있다(같은 커밋에서 딴 브랜치가 흔하다).
  *  2. `commit` — **같은 워크트리인데 다른 커밋**. 브랜치를 갈아탄 뒤 옛 서버가
  *     고아로 남은 경우다. 1번은 경로가 같아서 통과시킨다.
- *  3. `started_at_ms` vs 소스 mtime — **커밋 안 된 편집**. 2번이 원리적으로 못
- *     잡는데, 개발 중에는 오히려 이쪽이 흔하다(고치고 바로 다시 돌린다).
+ *  3. `started_at_ms` vs 기동 입력 mtime — **커밋 안 된 편집과 의존성·픽스처 변경**.
+ *     2번이 원리적으로 못 잡는데, 개발 중에는 오히려 이쪽이 흔하다(고치고 바로 다시
+ *     돌린다). 무엇을 입력으로 세는지는 `STARTUP_INPUTS` 참고.
  *
  *  2·3 은 git·파일시스템을 못 읽으면 **조용히 건너뛴다** — 판정 근거가 없을 때
  *  죽이는 것은 새 flake 를 만드는 짓이다. 1번만 무조건이다. */
@@ -111,12 +146,12 @@ async function assertBackendIsOurs(): Promise<void> {
     );
   }
 
-  const newest = newestSourceMtimeMs();
-  if (newest !== null && newest > who.started_at_ms) {
+  const newest = newestStartupInput();
+  if (newest !== null && newest.mtimeMs > who.started_at_ms) {
     throw new Error(
-      `${API} 에 뜬 백엔드가 **소스보다 오래됐다** — 재사용된 서버가 지금 코드를 안 읽었다.\n` +
+      `${API} 에 뜬 백엔드가 **기동 입력보다 오래됐다** — 재사용된 서버가 지금 것을 안 읽었다.\n` +
       `  서버 기동: ${new Date(who.started_at_ms).toISOString()}\n` +
-      `  최신 소스: ${new Date(newest).toISOString()}\n` +
+      `  최신 입력: ${new Date(newest.mtimeMs).toISOString()}  ${newest.path}\n` +
       `\`hoga serve\` 는 reload=False 라 조용히 옛 코드로 계속 돈다. ` +
       `프론트도 마찬가지다 — 서버가 재사용되면 \`vite build\` 가 아예 돌지 않아 ` +
       `dist-smoke 가 옛 산출물을 검사한다. ${HINT}`,
