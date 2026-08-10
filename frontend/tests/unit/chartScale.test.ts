@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS, CHART_CROSSHAIR_LINE_WIDTH } from '../../src/util/chartScale';
+import { CrosshairMode } from 'lightweight-charts';
+import {
+  CHART_LAYOUT_OPTIONS,
+  CHART_TIMESCALE_OPTIONS,
+  CHART_CROSSHAIR_LINE_WIDTH,
+  chartCrosshairOptions,
+} from '../../src/util/chartScale';
 import { CANVAS_FONT_STACK, RENDERED_ROOT_PX } from '../../src/styles/design-tokens';
 
 // 캔버스 상수는 RENDERED_ROOT_PX(밀도 다이얼 미러)에서 파생된다 — 기대값도
@@ -33,6 +39,22 @@ describe('chartScale', () => {
 
   it('keeps crosshair line width at 1px for sharpness (no scaling)', () => {
     expect(CHART_CROSSHAIR_LINE_WIDTH).toBe(1);
+  });
+
+  it('puts the crosshair label chip on BOTH axes and keeps Normal tracking', () => {
+    // vertLine 이 시간축 라벨, horzLine 이 가격축 라벨이다 — 한쪽만 걸면 절반만
+    // 고쳐지고, 어긋난 두 색이 같은 화면에 뜬다.
+    const opts = chartCrosshairOptions('#3182f6');
+    expect(opts.vertLine?.labelBackgroundColor).toBe('#3182f6');
+    expect(opts.horzLine?.labelBackgroundColor).toBe('#3182f6');
+    expect(opts.mode).toBe(CrosshairMode.Normal);
+  });
+
+  it('never bakes in a color — the chip must come from the caller (theme token)', () => {
+    // 상수였다면 앱 부팅 시점 테마에 얼어붙는다(이 모듈 헤더의 경고). 두 번
+    // 호출해 서로 다른 값이 나오는지 재면 리터럴 하드코딩이 걸린다.
+    expect(chartCrosshairOptions('#f0b429').horzLine?.labelBackgroundColor).toBe('#f0b429');
+    expect(chartCrosshairOptions('#1f6f54').horzLine?.labelBackgroundColor).toBe('#1f6f54');
   });
 
   it('derives timeScale right-offset from the density dial (library default 12 scaled)', () => {

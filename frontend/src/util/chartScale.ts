@@ -61,16 +61,64 @@ export const CHART_TIMESCALE_OPTIONS: DeepPartial<TimeScaleOptions> = {
 export const CHART_CROSSHAIR_LINE_WIDTH = 1;
 
 /**
- * Crosshair behavior. `Normal` (= 0) lets the crosshair track the actual
- * mouse position; the library default (`Magnet` = 1) snaps the horizontal
- * line to the close of the candle under the cursor, which makes off-candle
- * price readouts feel wrong. We want exact mouse tracking — the price-axis
- * label then reflects the cursor's Y, not a snapped close.
+ * Crosshair behavior + axis-label chip color.
+ *
+ * `mode`: `Normal` (= 0) lets the crosshair track the actual mouse position;
+ * the library default (`Magnet` = 1) snaps the horizontal line to the close of
+ * the candle under the cursor, which makes off-candle price readouts feel
+ * wrong. We want exact mouse tracking — the price-axis label then reflects the
+ * cursor's Y, not a snapped close.
+ *
+ * `labelBackgroundColor`: this is a FUNCTION, not the `mode`-only constant it
+ * used to be, because the chip color must come from the live theme. A module
+ * constant resolves once at app boot (see this file's header) and would freeze
+ * whichever theme happened to be active then. Callers pass a token resolved at
+ * chart-mount time; `LiveChartRoot`'s `viewKey` carries a theme segment, so a
+ * theme swap remounts the chart and re-resolves this for free.
+ *
+ * Why the caller must pass `--accent`: lightweight-charts defaults both labels
+ * to `#131722` (TradingView's dark background) regardless of theme. Measured
+ * against our chart background that is 1.04:1 on Obsidian and **1.00:1 on Toss
+ * Dark** — the chip is literally indistinguishable from the canvas behind it,
+ * so the readout reads as bare text floating over the axis ticks. That readout
+ * is not decorative: DESIGN.md's 2026-05-23 decision turned OFF
+ * `priceLineVisible` / `lastValueVisible` on every series precisely because
+ * "analysts read latest values via crosshair", making these labels the only
+ * value-readout surface on the chart. `--accent` is the fix DESIGN.md already
+ * prescribes — it names crosshair an approved accent context twice (the token
+ * table's "UI states only (buttons, focus, crosshair, active tab, primary
+ * CTAs)" and the 2026-08-07 entry's "accent 는 솔리드 채움"). Measured chip
+ * contrast: Obsidian 10.0:1, Toss Dark 4.8:1, Ledger 5.9:1, Toss Light 3.7:1.
+ *
+ * ⚠ The label's TEXT color cannot be set — lightweight-charts derives it from
+ * the background's grayscale (`.199r + .687g + .114b > 160 ? black : white`).
+ * All four theme accents land on the side `--accent-fg` intends, but that is a
+ * verified coincidence, not something we control. Changing an accent token
+ * means re-checking that threshold.
+ *
+ * ⚠ Toss themes only: the accent blue sits ΔE 17.3 from `--price-down` blue.
+ * DESIGN.md accepts that overlap and its re-review trigger is worded around
+ * exactly this surface ("파란 크로스헤어가 파란 하락 잔량 위에 겹쳐 읽기
+ * 어려우면"). Before this change the risk was theoretical — nothing on the
+ * crosshair was accent-colored. It is now real for the label chips.
+ *
+ * The crosshair LINE stays on the library default grey (`#9598A1`) — DESIGN.md
+ * would put it on accent too, but a brass dashed line spanning the whole chart
+ * is a far larger visual change than a chip, so it was deliberately left out of
+ * this fix (user decision, 2026-08-10) rather than smuggled in with it.
  *
  * `CHART_CROSSHAIR_LINE_WIDTH` above stays a separate constant; line width
- * lives under `crosshair.vertLine` / `crosshair.horzLine` subfields and is
- * not part of this `mode`-only override.
+ * lives under the same `vertLine` / `horzLine` subfields but is applied by the
+ * drawing layer, not here.
  */
-export const CHART_CROSSHAIR_OPTIONS: DeepPartial<CrosshairOptions> = {
-  mode: CrosshairMode.Normal,
-};
+export function chartCrosshairOptions(
+  labelBackgroundColor: string,
+): DeepPartial<CrosshairOptions> {
+  return {
+    mode: CrosshairMode.Normal,
+    // Both axes, or the fix is half-applied: vertLine carries the TIME axis
+    // label, horzLine the PRICE axis label.
+    vertLine: { labelBackgroundColor },
+    horzLine: { labelBackgroundColor },
+  };
+}
