@@ -35,6 +35,17 @@ export function wonToJo(won: number | null): number | null {
   return won === null ? null : won / 1e12;
 }
 
+/** 억원 → `18.84조`. **입력 단위가 `wonToJo` 와 다르다** — 바로 위 함수는 **원**을
+ *  받고 이쪽은 **억원**을 받는다(1조 = 10,000억). 두 축이 이 페이지에 공존하므로
+ *  나란히 둔다: `/funds` 는 KOFIA 라 원이고, 키움 금액 필드는 전부 억원으로
+ *  정규화돼 온다(`trade_value_eok` · `*_net_eok` · `value_eok`).
+ *
+ *  `BookPanel.fmtAmountKo` 도 **원** 입력이다 — 셋을 헷갈리면 1e8 배가 틀린다. */
+export function eokToJoText(eok: number | null | undefined, digits = 2): string {
+  if (eok == null) return '—';
+  return `${(eok / 1e4).toFixed(digits)}조`;
+}
+
 
 /** 잔고(스톡) 계열 → 인접 실값 간 delta. 누적하면 level - start 가 된다.
  *

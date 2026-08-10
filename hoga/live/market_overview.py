@@ -28,6 +28,9 @@ log = logging.getLogger(__name__)
 MAX_BREADTH_PAGES = 5
 BREADTH_PAGE_ROWS = 200
 
+#: `YYYYMMDD`. 길이가 다른 `dt` 는 파싱하지 않고 버린다.
+_DATE_LEN = 8
+
 
 def _fold_repeated_sign(s: str) -> str | None:
     """키움의 **이중 부호** 표기를 부호 하나로 접는다. 섞여 있으면 `None`.
@@ -367,6 +370,44 @@ def count_above_threshold(
 ) -> int:
     """임계 이상만 센다. 조기 종료해도 마지막 페이지엔 임계 미만이 섞여 있다."""
     return sum(1 for r in rows if (v := jump_rate_abs(r)) is not None and v >= threshold)
+
+
+def parse_index_trade_value(rows: list[dict[str, Any]], *, days: int) -> list[dict[str, Any]]:
+    """ka20006(지수 일봉) 행 → 일별 거래대금 `[{date, value_eok}]`, **오래된 순**.
+
+    **`IndexCandlePoint` 를 쓰지 않는다.** 그 타입은 ADR-0129 의 브로커 중립 계약이라
+    KIS 경로와 필드가 대칭이어야 하는데, KIS 지수 일봉엔 거래대금이 없다. 금액 필드를
+    거기 더하면 한 브로커에서만 채워지는 필드가 생기고, 소비자가 "누가 fetch 했는지
+    모른다" 는 D1 규율이 그 필드에서만 깨진다. 그래서 **별도 형상**으로 뽑는다.
+
+    단위는 `trde_prica` **백만원** → 억원(`_mwon_to_eok`). ka20003 의 같은 이름 필드와
+    동일 축이고, 실측으로 교차 검증했다(2026-08-10): 코스피 `20260810` 행이
+    `18,840,196` 백만원 = 188,401.96억이고 같은 시각 ka20003 종합 행의
+    `trade_value_eok` 가 188,401.96 이다. **두 TR 이 같은 값을 준다** — 그래서 화면이
+    당일 점만 ka20003/WS 로 덮어도 계열이 어긋나지 않는다.
+
+    벤더는 **최신 우선 역순**으로 준다. 여기서 뒤집어 시간축으로 돌려주므로 호출부가
+    다시 뒤집지 않는다 — `parse_program_trend` 소비자가 각자 뒤집다가 축이 갈렸던
+    선례를 반복하지 않는다.
+
+    날짜가 없거나 중복인 행, 금액이 없는 행은 버린다. **0 으로 채우지 않는다** —
+    거래대금 0 은 휴장을 뜻하는 실제 값이라, 파싱 실패를 0 으로 접으면 그날 시장이
+    쉬었다는 거짓말이 된다.
+    """
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        date_s = str(row.get("dt") or "")
+        if len(date_s) != _DATE_LEN or date_s in seen:
+            continue
+        eok = _mwon_to_eok(signed_int(row.get("trde_prica")))
+        if eok is None:
+            continue
+        seen.add(date_s)
+        out.append({"date": date_s, "value_eok": eok})
+    # 벤더 역순 → 시간순. 자르는 것은 **뒤집기 전**이 아니라 후여야 최신 N일이 남는다.
+    out.reverse()
+    return out[-days:] if days > 0 else out
 
 
 class BreadthCount:

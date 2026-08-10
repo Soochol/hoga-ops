@@ -100,6 +100,42 @@ export function useMarketSectors() {
   });
 }
 
+// ── 일별 시장 거래대금 ───────────────────────────────────────────────────
+
+/** 하루치 시장 거래대금. `date` 는 `YYYYMMDD`, 값은 **억원**.
+ *
+ *  `value_eok` 가 nullable 이 아닌 것은 의도다 — 백엔드 파서가 금액 없는 행을
+ *  **버리므로** 실린 점은 정의상 값이 있다(`parse_index_trade_value`). */
+export interface TradeValuePoint {
+  date: string;
+  value_eok: number;
+}
+
+/** 일별 거래대금 (키움 ka20006).
+ *
+ *  **한 시장이 실패하면 그 키가 빠진다** — 빈 배열이 아니다. 빈 배열은 "그날 거래가
+ *  없었다" 로 읽히는데 그건 다른 사실이다. 화면은 키 부재를 "받지 못함" 으로 그린다. */
+export interface TradeValueResponse {
+  /** 단위를 이름이 아니라 필드로 말한다(#1117 규약). */
+  unit: string;
+  markets: Record<string, TradeValuePoint[]>;
+}
+
+/** 확정 이력은 하루 한 번만 바뀐다 — 장중에도 조일 이유가 없다.
+ *
+ *  **당일 점의 신선도는 이 훅이 책임지지 않는다.** 화면이 마지막 점을
+ *  `useMarketSectors`(30초 + 0U WS 틱)의 종합 거래대금으로 덮는다 — 두 TR 이 같은
+ *  값을 준다는 것을 실측했다(2026-08-10: ka20006 `20260810` 코스피 188,401.96억 =
+ *  ka20003 종합 행 `trade_value_eok`). 여기를 조이면 600행 응답만 자주 파싱한다. */
+export function useMarketTradeValue(days = 120) {
+  return useQuery({
+    queryKey: ['market', 'trade-value', days],
+    queryFn: () => apiCall<TradeValueResponse>(`/api/market/trade-value?days=${days}`),
+    refetchInterval: () => pollWhileOpen(10 * 60_000),
+    staleTime: 9 * 60_000,
+  });
+}
+
 // ── 프로그램 매매 ────────────────────────────────────────────────────────
 
 export type ProgramAxis = 'intraday' | 'daily';

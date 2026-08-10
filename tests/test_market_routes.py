@@ -24,6 +24,7 @@ def test_router_exposes_the_market_surfaces():
         "/api/market/sector-flow",
         "/api/market/sectors",
         "/api/market/streaks",
+        "/api/market/trade-value",
     ]
 
 
@@ -503,3 +504,145 @@ async def test_sector_flow_empty_day_is_empty_not_error(tmp_path):
     got = _sector_flow_payload(tmp_path)
     assert got["markets"] == {}
     assert got["sampled_at_ms"] is None
+
+
+# ── 일별 거래대금 (ka20006) ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_trade_value_window_is_not_a_cache_key(monkeypatch, tmp_path):
+    """`days` 로 캐시를 나누지 않는다 — 최대 창을 담고 **라우트가 자른다**.
+
+    나누는 쪽이 틀린 이유가 둘이다. ① `_TtlCache` 는 키 없는 단일 슬롯이라 창이 다른
+    두 요청이 서로의 값을 지운다(프로그램 축이 겪은 문제). ② 창마다 캐시를 두면
+    슬롯이 창 개수만큼 늘고 **각각이 자기 벤더 콜을 판다** — 벤더 응답이 어차피
+    600행이라 그 콜은 전부 같은 값을 받아 온다.
+
+    그래서 계약은 "창을 바꿔도 벤더 콜이 안 는다 + 각 창이 자기 길이를 받는다" 다.
+    """
+    from hoga.api import market_routes
+    from hoga.live import kiwoom_access, kiwoom_rest_runtime
+
+    # 최신 우선 역순 — 벤더 순서 그대로다.
+    rows_by_index = {
+        "001": [{"dt": f"202608{10 - i:02d}", "trde_prica": str(18840196 + i)} for i in range(6)],
+        "101": [{"dt": f"202608{10 - i:02d}", "trde_prica": str(7067272 + i)} for i in range(6)],
+    }
+    bodies: list[dict] = []
+    keys: list[tuple] = []
+
+    class _Page:
+        def __init__(self, rows: list[dict]) -> None:
+            self.rows = rows
+
+    class _Client:
+        async def call(self, _api_id: str, body: dict) -> _Page:
+            bodies.append(body)
+            return _Page(rows_by_index[body["inds_cd"]])
+
+    async def _capacity(scheduler, *, key, api_id, priority, fetch_fn, client):  # noqa: ANN001, ARG001
+        keys.append(key)
+        return await fetch_fn(client)
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: _Client())
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda *_a, **_k: object())
+    monkeypatch.setattr(kiwoom_access, "run_with_capacity", _capacity)
+
+    route = next(x for x in build_router(data_dir=tmp_path).routes
+                 if x.path == "/api/market/trade-value")
+
+    wide = await route.endpoint(days=120)
+    narrow = await route.endpoint(days=2)
+
+    # 시장당 정확히 1콜, 그리고 **두 번째 창은 벤더를 다시 치지 않는다**.
+    assert [b["inds_cd"] for b in bodies] == ["001", "101"]
+    assert keys == [("market-trade-value", "001"), ("market-trade-value", "101")]
+
+    assert [len(v) for v in wide.markets.values()] == [6, 6]
+    assert [len(v) for v in narrow.markets.values()] == [2, 2]
+    # 좁은 창은 **최신** 쪽이다. 자르는 방향이 뒤집히면 여기서 오래된 날짜가 나온다.
+    assert [p.date for p in narrow.markets["KOSPI"]] == ["20260809", "20260810"]
+    assert narrow.unit == "eok"
+    assert market_routes.TTL_TRADE_VALUE_S == 600.0
+
+
+@pytest.mark.asyncio
+async def test_trade_value_clamps_an_oversized_window(monkeypatch, tmp_path):
+    """상한을 넘는 `days` 는 상한으로 자른다 — 500 이 아니다.
+
+    화면 최대 창(120일)의 2배가 상한이라 여기 걸리는 것은 사실상 오타뿐이고,
+    그때 최대 창을 주는 쪽이 낫다. **조용히 깎지 않는다**: 상한값이 상수로 노출돼
+    있어 응답 길이가 곧 그 사실을 말한다.
+    """
+    from hoga.api import market_routes
+    from hoga.live import kiwoom_access, kiwoom_rest_runtime
+
+    n = market_routes.MAX_TRADE_VALUE_DAYS + 30
+    rows = [{"dt": f"{20260810 - i}", "trde_prica": "18840196"} for i in range(n)]
+
+    class _Page:
+        def __init__(self, rows: list[dict]) -> None:
+            self.rows = rows
+
+    class _Client:
+        async def call(self, _api_id: str, _body: dict) -> _Page:
+            return _Page(rows)
+
+    async def _capacity(scheduler, *, key, api_id, priority, fetch_fn, client):  # noqa: ANN001, ARG001
+        return await fetch_fn(client)
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: _Client())
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda *_a, **_k: object())
+    monkeypatch.setattr(kiwoom_access, "run_with_capacity", _capacity)
+
+    route = next(x for x in build_router(data_dir=tmp_path).routes
+                 if x.path == "/api/market/trade-value")
+    got = await route.endpoint(days=10_000)
+    assert len(got.markets["KOSPI"]) == market_routes.MAX_TRADE_VALUE_DAYS
+
+
+@pytest.mark.asyncio
+async def test_trade_value_omits_a_failed_market_rather_than_emptying_it(monkeypatch, tmp_path):
+    """한 시장이 실패하면 **키가 빠진다**. 빈 배열은 "거래가 없었다" 로 읽힌다."""
+    from hoga.live import kiwoom_access, kiwoom_rest_runtime
+
+    class _Page:
+        def __init__(self, rows: list[dict]) -> None:
+            self.rows = rows
+
+    class _Client:
+        async def call(self, _api_id: str, body: dict) -> _Page:
+            if body["inds_cd"] == "101":
+                raise RuntimeError("kosdaq upstream down")
+            return _Page([{"dt": "20260810", "trde_prica": "18840196"}])
+
+    async def _capacity(scheduler, *, key, api_id, priority, fetch_fn, client):  # noqa: ANN001, ARG001
+        try:
+            return await fetch_fn(client)
+        except RuntimeError:
+            return None  # 거버너의 degrade 팔과 같은 모양 — 실패는 None 으로 흡수된다
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: _Client())
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda *_a, **_k: object())
+    monkeypatch.setattr(kiwoom_access, "run_with_capacity", _capacity)
+
+    route = next(x for x in build_router(data_dir=tmp_path).routes
+                 if x.path == "/api/market/trade-value")
+    got = await route.endpoint()
+    assert set(got.markets) == {"KOSPI"}
+
+
+@pytest.mark.asyncio
+async def test_trade_value_is_dormant_without_credentials(monkeypatch, tmp_path):
+    """무자격이면 빈 markets — 크래시가 아니다(ADR-0134). 라우트가 이미 모델을
+    만들어 돌려주므로 `response_model` 단계도 함께 통과한다."""
+    from hoga.api import market_routes as mr
+    from hoga.live import kiwoom_rest_runtime
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: None)
+    route = next(x for x in build_router(data_dir=tmp_path).routes
+                 if x.path == "/api/market/trade-value")
+    got = await route.endpoint()
+    assert isinstance(got, mr.TradeValueResponse)
+    assert got.markets == {}
+    assert got.unit == "eok"

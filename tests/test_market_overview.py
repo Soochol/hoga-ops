@@ -11,6 +11,7 @@ from hoga.live.market_overview import (
     decimal_price,
     index_level,
     parse_index_sectors,
+    parse_index_trade_value,
     parse_program_trend,
     parse_streaks,
     scaled_price,
@@ -415,3 +416,71 @@ def test_sector_investor_rows_strip_venue_suffix():
     assert got[0]["change_pct"] == 1.5
     # 값이 없는 주체는 None — 0 으로 채우면 "안 샀다" 가 된다.
     assert got[0]["individual"] is None
+
+
+# ── ka20006 일별 거래대금 ────────────────────────────────────────────────────
+#
+# 행은 2026-08-10 실응답이다. 값이 실물이라 단위 함정이 테스트에 남는다 —
+# `18,840,196` 백만원 = 188,401.96억 = 18.84조이고, 같은 시각 ka20003 종합 행의
+# `trade_value_eok` 가 정확히 188,401.96 이었다(두 TR 이 같은 축임을 교차 증명).
+
+_KA20006_ROWS = [
+    {"dt": "20260810", "cur_prc": "629966", "trde_qty": "299377", "trde_prica": "18840196"},
+    {"dt": "20260807", "cur_prc": "625877", "trde_qty": "299377", "trde_prica": "24730513"},
+    {"dt": "20260806", "cur_prc": "629638", "trde_qty": "311020", "trde_prica": "26452137"},
+    {"dt": "20260805", "cur_prc": "659826", "trde_qty": "305114", "trde_prica": "25657754"},
+]
+
+
+def test_trade_value_unit_is_mwon_to_eok():
+    """`trde_prica` 는 **백만원**이다 — 억원으로 정규화한다(÷100).
+
+    8/5 값은 `market_overview.IndexBreadth` docstring 의 ka20003 실측치와 같은
+    숫자다(25,657,754 → 25.66조). 두 TR 의 축이 같다는 것이 이 계열의 전제다.
+    """
+    got = parse_index_trade_value(_KA20006_ROWS, days=10)
+    assert {p["date"]: p["value_eok"] for p in got} == {
+        "20260805": 256577.54,
+        "20260806": 264521.37,
+        "20260807": 247305.13,
+        "20260810": 188401.96,
+    }
+
+
+def test_trade_value_is_returned_oldest_first():
+    """벤더는 최신 우선 역순으로 준다 — 파서가 뒤집어 시간축으로 돌려준다.
+
+    호출부가 각자 뒤집으면 소비자마다 축이 갈린다(프로그램 추이가 그랬다).
+    """
+    got = parse_index_trade_value(_KA20006_ROWS, days=10)
+    assert [p["date"] for p in got] == ["20260805", "20260806", "20260807", "20260810"]
+
+
+def test_trade_value_window_keeps_the_newest_days():
+    """`days` 절단은 **뒤집은 뒤**여야 최신 N일이 남는다.
+
+    뒤집기 전에 자르면 `[:days]` 가 벤더 역순의 앞쪽 = 최신을 집지만, 뒤집은 뒤
+    `[:days]` 를 쓰면 **가장 오래된** N일이 남는다. 방향과 절단을 함께 바꾸는
+    실수라 한쪽만 보면 통과한다 — 그래서 창을 좁혀 날짜 자체를 단언한다.
+    """
+    got = parse_index_trade_value(_KA20006_ROWS, days=2)
+    assert [p["date"] for p in got] == ["20260807", "20260810"]
+
+
+def test_trade_value_drops_rows_it_cannot_read_rather_than_zeroing_them():
+    """금액 없음·중복 날짜·짧은 `dt` 는 **버린다**. 0 으로 채우지 않는다.
+
+    거래대금 0 은 휴장을 뜻하는 실제 값이라, 파싱 실패를 0 으로 접으면 그날 시장이
+    쉬었다는 거짓말이 된다.
+    """
+    rows = [
+        {"dt": "20260810", "trde_prica": "18840196"},
+        {"dt": "20260810", "trde_prica": "99999999"},  # 중복 — 첫 행이 이긴다
+        {"dt": "20260807", "trde_prica": ""},          # 금액 없음
+        {"dt": "2026080", "trde_prica": "123"},        # 짧은 dt
+        {"dt": "20260806", "trde_prica": "26452137"},
+    ]
+    got = parse_index_trade_value(rows, days=10)
+    assert [p["date"] for p in got] == ["20260806", "20260810"]
+    assert all(p["value_eok"] > 0 for p in got)
+    assert got[-1]["value_eok"] == 188401.96
