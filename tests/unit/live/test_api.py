@@ -101,10 +101,10 @@ def test_get_live_status_exposes_collector_ownership(tmp_path) -> None:
         r = c.get("/api/live/status")
         assert r.status_code == 200
         body = r.json()
-        assert "collectors" in body, "response_model 이 collectors 를 스트립했다"
-        assert set(body["collectors"]) >= {"owned", "lock"}
+        assert "writers" in body, "response_model 이 writers 를 스트립했다"
+        assert set(body["writers"]) == {"collectors", "ws", "daily"}
         # 스케줄러를 안 띄운 앱이므로 "미기동"(null) — false(뺏김)와 구별돼야 한다.
-        assert body["collectors"]["owned"] is None
+        assert body["writers"]["collectors"]["owned"] is None
 
 
 def test_get_live_status_includes_cache_stats(tmp_path) -> None:
@@ -177,13 +177,20 @@ def test_live_router_registered_on_full_app(tmp_path) -> None:
         assert r.json()["running"] is False
 
 
-def test_status_exposes_supervised_task_health_through_lifespan(tmp_path) -> None:
+def test_status_exposes_supervised_task_health_through_lifespan(tmp_path, monkeypatch) -> None:
     """ADR-0088 end-to-end: the lifespan sets app.state.startup_runtime and the
     status route reads it, so GET /api/live/status carries supervised_tasks with
-    the always-on watchlist-daily-loop reporting running=True (alive, not stale)."""
+    watchlist-daily-loop reporting running=True (alive, not stale).
+
+    ⚠ 그 루프는 2026-08-10 부터 **무조건 뜨지 않는다** — 자격이 있고 `daily` 락을
+    잡았을 때만 뜬다(ADR-0094 확장). 여기서 재는 것은 health 배선이지 소유권이
+    아니므로 자격을 준다.
+    """
+    from hoga.api import scheduler
     from hoga.api.app import create_app
     from hoga.live import lifecycle
 
+    monkeypatch.setattr(scheduler, "_kiwoom_credentialed", lambda *_a, **_k: True)
     lifecycle.reset_for_tests()
     app = create_app(tmp_path)
     with TestClient(app) as c:  # context manager runs the lifespan

@@ -361,6 +361,11 @@ async def test_start_scheduler_spawns_only_daily_loop_by_default(
 
     from hoga.api import scheduler
 
+    # 일일 배치는 data_dir 당 한 프로세스이고 **자격이 있을 때만** 락을 잡는다
+    # (ADR-0094 확장). 이 스위트가 재는 것은 태스크 구성이지 소유권이 아니므로
+    # 자격을 준다 — 소유권 자체는 tests/test_collector_ownership.py 가 다룬다.
+    monkeypatch.setattr(scheduler, "_kiwoom_credentialed", lambda *_a, **_k: True)
+
     catchup_called = asyncio.Event()
     daily_loop_entered = asyncio.Event()
 
@@ -395,6 +400,11 @@ async def test_start_scheduler_can_opt_into_startup_catchup(
     import asyncio
 
     from hoga.api import scheduler
+
+    # 일일 배치는 data_dir 당 한 프로세스이고 **자격이 있을 때만** 락을 잡는다
+    # (ADR-0094 확장). 이 스위트가 재는 것은 태스크 구성이지 소유권이 아니므로
+    # 자격을 준다 — 소유권 자체는 tests/test_collector_ownership.py 가 다룬다.
+    monkeypatch.setattr(scheduler, "_kiwoom_credentialed", lambda *_a, **_k: True)
 
     catchup_called = asyncio.Event()
     daily_loop_entered = asyncio.Event()
@@ -440,6 +450,11 @@ async def test_start_scheduler_can_opt_into_night_futures_keeper(
     import asyncio
 
     from hoga.api import scheduler
+
+    # 일일 배치는 data_dir 당 한 프로세스이고 **자격이 있을 때만** 락을 잡는다
+    # (ADR-0094 확장). 이 스위트가 재는 것은 태스크 구성이지 소유권이 아니므로
+    # 자격을 준다 — 소유권 자체는 tests/test_collector_ownership.py 가 다룬다.
+    monkeypatch.setattr(scheduler, "_kiwoom_credentialed", lambda *_a, **_k: True)
     from hoga.live import futures_runtime
 
     daily_loop_entered = asyncio.Event()

@@ -17,13 +17,13 @@ import logging
 import os
 from pathlib import Path
 
+from hoga.api import ownership
 from hoga.api.calendar import trading_days_in_range
 from hoga.api.calendar_policy import daily_run_allowed_by_calendar, trading_days_for_enqueue
 from hoga.api.captures import enqueue_items_core
 from hoga.api.disk_state import latest_complete_date
 from hoga.api.eligibility import find_ineligible_dates
 from hoga.api.models import EnqueueRequest, EnqueueResponse, WatchlistEntry
-from hoga.api.ownership import DataDirLock, try_acquire_collector_ownership
 from hoga.api.watchlist import load_watchlist, set_last_success
 from hoga.collector.orchestrator import now_kst
 from hoga.util.atomic_write import atomic_write_json
@@ -522,63 +522,11 @@ def startup_catchup_enabled_from_env() -> bool:
     return os.environ.get("HOGA_STARTUP_CATCHUP_ENABLED") == "true"
 
 
-#: 수집기 락 핸들. 프로세스 수명 동안 fd 를 붙들고 있어야 락이 유지된다
-#: (`DataDirLock` docstring) — 지역 변수로 두면 GC 가 fd 를 닫아 락이 풀린다.
-_collector_lock: DataDirLock | None = None
-_collectors_owned: bool | None = None
-_collector_reason: str | None = None
+def _kiwoom_credentialed(data_dir: Path) -> bool:
+    """키움 자격이 있는가. **환경만 보므로 토큰을 발급하지 않는다**(#1088 회피)."""
+    from hoga.live import kiwoom_runtime  # noqa: PLC0415 — 지연 import(순환 절단)
 
-
-def _acquire_collector_ownership(data_dir: Path) -> bool:
-    """수집기 소유권을 잡는다. 이미 잡았으면 그대로 유지(재기동 안전).
-
-    ⚠ **자격이 있을 때만 잡는다.** 무자격 인스턴스가 락을 선점하면 나중에 뜬 자격
-    있는 인스턴스가 수집을 통째로 못 한다 — 워크트리가 빈 `.env` 로(관례대로) 먼저
-    뜨고 사용자 dev 서버가 나중에 뜨는, **정상적이고 흔한 순서**가 그렇다.
-    `is_available()` 은 환경만 보므로 토큰을 발급하지 않는다(#1088 회피).
-    """
-    global _collector_lock, _collectors_owned, _collector_reason  # noqa: PLW0603 — 프로세스 수명 소유권
-    if _collector_lock is not None:
-        return True
-
-    from hoga.live import deriv_flow_runtime, investor_flow_runtime  # noqa: PLC0415 — 순환 절단
-    if not (
-        investor_flow_runtime.is_available(data_dir) or deriv_flow_runtime.is_available(data_dir)
-    ):
-        _collectors_owned = False
-        _collector_reason = "no_credentials"
-        return False
-
-    _collector_lock = try_acquire_collector_ownership(data_dir)
-    _collectors_owned = _collector_lock is not None
-    _collector_reason = None if _collectors_owned else "held_by_other"
-    return _collectors_owned
-
-
-def collector_ownership_state() -> dict[str, object]:
-    """`/api/live/status` 에 실리는 관측면.
-
-    **강등이 무증상이면 안 된다**(ADR-0116 의 오버레이 규율과 같은 이유). 수집기를
-    안 띄운 인스턴스는 화면상 정상과 구별되지 않는다 — 읽기 경로가 승자의 표본을
-    그대로 서빙하기 때문이다. `owned=false` 가 그 유일한 신호다.
-
-    세 상태를 **구별해서** 말한다. 하나로 뭉치면 관측면이 거짓말을 한다:
-
-        owned=null                          스케줄러 미기동 (소유권 없음이 아니다)
-        owned=false  reason=no_credentials  무자격 — 애초에 락을 시도하지 않았다
-        owned=false  reason=held_by_other   다른 프로세스가 쥐고 있다 ← 조사 대상
-    """
-    return {"owned": _collectors_owned, "lock": "collectors", "reason": _collector_reason}
-
-
-def release_collector_ownership() -> None:
-    """셧다운에서 락 해제. 비소유자에게도 안전하고 멱등이다."""
-    global _collector_lock, _collectors_owned, _collector_reason  # noqa: PLW0603 — 셧다운 소유권 해제
-    if _collector_lock is not None:
-        _collector_lock.release()
-    _collector_lock = None
-    _collectors_owned = None
-    _collector_reason = None
+    return bool(kiwoom_runtime.configured_account_ids(data_dir))
 
 
 def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
@@ -586,10 +534,20 @@ def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
 
     Startup catch-up is opt-in only; daily-loop remains always-on.
     """
-    tasks = [
-        asyncio.create_task(_daily_loop(data_dir), name="watchlist-daily-loop"),
-    ]
-    if startup_catchup_enabled_from_env():
+    # 일일 배치도 data_dir 당 한 프로세스다(ADR-0094 확장). `scheduler_state.json`
+    # 마커가 이미 "하루 1회" 를 맡고 있어 위험은 넷 중 가장 낮지만, 마커는
+    # **읽고-쓰기**라 같은 몇 초 안에 틱한 두 인스턴스가 둘 다 통과한다.
+    #
+    # 자격 게이트를 거는 대가: 무자격 인스턴스만 떠 있는 머신에서는 승격·prune 도
+    # 안 돈다. 수용한다 — 무자격이면 승격할 새 데이터가 애초에 없고 prune 지연은
+    # 무해한 반면, 무자격이 락을 쥐면 자격 있는 인스턴스의 **enqueue 가 죽는다**.
+    daily_owned = ownership.acquire(
+        "daily", data_dir, available=_kiwoom_credentialed(data_dir)
+    )
+    tasks = []
+    if daily_owned:
+        tasks.append(asyncio.create_task(_daily_loop(data_dir), name="watchlist-daily-loop"))
+    if daily_owned and startup_catchup_enabled_from_env():
         tasks.append(asyncio.create_task(_catchup_run(data_dir), name="watchlist-catchup"))
     # ── 수급 수집기는 data_dir 당 한 프로세스만 (ADR-0094 확장) ──────────────
     #
@@ -601,7 +559,15 @@ def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
     # 락을 못 잡으면 **수집기를 아예 안 띄운다.** 읽기 경로는 승자가 쓴 표본을 그대로
     # 서빙하므로 화면은 정상이다. 실패가 조용하지 않도록 `collector_ownership_state()`
     # 가 `/api/live/status` 에 실린다.
-    owned = _acquire_collector_ownership(data_dir)
+    from hoga.live import deriv_flow_runtime, investor_flow_runtime  # noqa: PLC0415 — 순환 절단
+    owned = ownership.acquire(
+        "collectors",
+        data_dir,
+        available=(
+            investor_flow_runtime.is_available(data_dir)
+            or deriv_flow_runtime.is_available(data_dir)
+        ),
+    )
 
     # investor-flow 수집기(#1105/#1120). WS 가 아니라 스케줄러 소유인 이유: 페이지·라이브
     # 개방 여부와 무관하게 돌아야 하기 때문이다(화면 수요에 묶으면 시계열이 "누가 보고

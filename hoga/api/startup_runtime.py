@@ -254,7 +254,16 @@ async def start_app_runtime(
         if deps.start_sector_broadcast is not None:
             runtime.sector_broadcast_task = await deps.start_sector_broadcast()
 
-        if today_promoter_enabled_from_env(deps.env):
+        # Today Promotion 은 JSONL → parquet **쓰기**라 data_dir 당 한 프로세스여야
+        # 한다(ADR-0094 확장). 프로그램매매 사이드카와 `ws` 락을 공유한다 — 둘 다
+        # 전제가 "살아 있는 키움 WS" 하나뿐이라 판정이 늘 같이 간다.
+        #
+        # 여기서 `available=True` 인 이유: 이 블록은 이미 자격·게이트를 통과한
+        # 라이브 기동 경로 안이다(위 `start_live_stream` 성공 뒤). 무자격이면
+        # 애초에 여기 오지 않으므로 무자격 선점 위험이 없다.
+        from hoga.api import ownership  # noqa: PLC0415 — 지연 import(순환 절단)
+
+        if today_promoter_enabled_from_env(deps.env) and ownership.acquire("ws", data_dir):
             runtime.today_promoter_task = await deps.start_today_promoter(
                 data_dir=data_dir,
                 get_kiwoom_capture_codes=deps.get_kiwoom_capture_codes,

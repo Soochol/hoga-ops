@@ -89,13 +89,14 @@ class LiveStatus(BaseModel):
     # 키(enabled/accounts_configured/connected_accounts/subscribed_count/last_tick_ms/
     # accounts 등)는 KiwoomSessionManager.status()가 정의.
     kiwoom: dict[str, object] | None = None
-    # 수급 수집기 소유권(ADR-0094 확장, 2026-08-10). `{"owned": bool|None, "lock": str}`.
+    # 공유 data_dir writer 의 소유권(ADR-0094 확장, 2026-08-10).
+    # `{writer: {"owned": bool|None, "reason": str|None}}` — 키는 `ownership._ACQUIRERS`.
     #
     # **화면만 봐서는 알 수 없는 강등**이라 여기 싣는다: 락을 못 잡은 인스턴스는
-    # 수집기를 안 띄우지만 읽기 경로는 승자가 쓴 표본을 그대로 서빙하므로 정상과
+    # 그 일을 안 하지만 읽기 경로는 승자가 쓴 파일을 그대로 서빙하므로 정상과
     # 구별되지 않는다. `owned=false` 가 유일한 신호다.
-    # `owned=null` = 스케줄러 미기동(소유권 없음이 아니다).
-    collectors: dict[str, object] | None = None
+    # `owned=null` = 아직 시도 안 함(소유권 없음이 아니다).
+    writers: dict[str, object] | None = None
 
 
 # ── State ──────────────────────────────────────────────────────────────────────

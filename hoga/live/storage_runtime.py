@@ -155,13 +155,25 @@ async def sync_storage_runtime(
     # 아끼려던 잔재였고, 끄면 latch 만 쌓이고 아무도 drain 하지 않아 데이터가
     # 조용히 유실됐다 — 거래원(0F)이 스위치 없이 항시 저장되는 것과 같은 규율로
     # 맞춘다(키움 활성화 스위치 폐지 ADR-0118 과 동형).
-    program_collector = _ensure_program_trade_collector(
-        state,
-        data_dir=data_dir,
-        date_fn=date_fn,
-        now_ms_fn=now_ms_fn,
-    )
-    program_collector.start()
+    #
+    # ⚠ **data_dir 당 한 프로세스만 drain 한다**(ADR-0094 확장). 워크트리 백엔드가
+    # 메인 `.env` 를 상속해 뜨면 같은 사이드카 파일에 둘이 쓴다 — 수급 수집기에서
+    # 2026-08-10 에 실측된 것과 같은 구조다. 락은 `today promoter` 와 공유한다
+    # (`ws` — 둘 다 전제가 "살아 있는 키움 WS" 하나뿐이고, 앱키당 WS 1세션이라
+    # 두 프로세스가 동시에 건강할 수 없어 판정이 늘 같이 간다).
+    #
+    # `n_kiwoom > 0` 을 자격 게이트로 쓴다: 키움이 없으면 latch 가 비어 drain 할
+    # 것도 없는데, 락만 선점하면 나중에 뜬 자격 있는 인스턴스가 저장을 못 한다.
+    from hoga.api import ownership  # noqa: PLC0415 — 지연 import(순환 절단: api ← live)
+
+    if ownership.acquire("ws", data_dir, available=n_kiwoom > 0):
+        program_collector = _ensure_program_trade_collector(
+            state,
+            data_dir=data_dir,
+            date_fn=date_fn,
+            now_ms_fn=now_ms_fn,
+        )
+        program_collector.start()
 
     # 키움 WS 세션(ADR-0116) — 실시간(호가·체결)의 유일한 소스. 활성화 스위치는 폐지
     # (ADR-0118) — 자격증명(앱키)만 있으면 항상 활성. 앱키0/타깃 비면 sync가 conn 0으로

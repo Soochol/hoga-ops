@@ -38,9 +38,9 @@ def _reset_collector_ownership() -> None:
     flock 이 재진입 성공한다). 소유권을 검증하는 테스트가 위양성으로 초록이 되는
     경로라 여기서 끊는다.
     """
-    from hoga.api import scheduler
+    from hoga.api import ownership
 
-    scheduler.release_collector_ownership()
+    ownership.release_all()
 
 
 @pytest.fixture(autouse=True)

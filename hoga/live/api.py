@@ -1840,8 +1840,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 }
         # 수급 수집기 소유권(ADR-0094 확장) — 락을 못 잡아 수집기를 안 띄운 인스턴스는
         # 읽기 경로가 멀쩡해서 화면상 정상과 구별되지 않는다. 그 강등의 유일한 신호다.
-        from hoga.api.scheduler import collector_ownership_state  # noqa: PLC0415 — 순환 절단
-        update["collectors"] = collector_ownership_state()
+        from hoga.api.ownership import ownership_state  # noqa: PLC0415 — 순환 절단
+        update["writers"] = ownership_state()
         cache_stats = await _collect_cache_stats(request)
         if cache_stats:
             update["cache_stats"] = cache_stats

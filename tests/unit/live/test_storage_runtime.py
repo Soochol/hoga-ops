@@ -86,6 +86,20 @@ def _patch_common(monkeypatch):
     )
 
 
+def _kiwoom_credentialed(monkeypatch):
+    """사이드카는 **키움 자격이 있을 때만** 기동한다(ADR-0094 확장).
+
+    0w latch 의 원천이 키움 WS 라, 무자격이면 영원히 비는 no-op 태스크가 된다 —
+    ADR-0134 의 "무자격이면 태스크를 만들지 않는다" 규율이다. 스위치 폐지
+    (2026-07-21)와는 **다른 축**이므로, 그 성질을 재는 테스트에만 자격을 준다
+    (계정 수는 다른 테스트의 전제이기도 해서 전역으로 주면 안 된다).
+    """
+    monkeypatch.setattr(
+        "hoga.live.kiwoom_runtime.configured_account_ids",
+        lambda _data_dir: [0],
+    )
+
+
 def _seed_heatmap(tmp_path, codes: list[tuple[str, str]]):
     from hoga.api.heatmap import save_document as save_heatmap_document
     from hoga.api.models import HeatmapDocument, HeatmapEntry
@@ -268,6 +282,7 @@ async def test_storage_runtime_always_starts_program_trade_collector(
 ) -> None:
     """저장 스위치 폐지(2026-07-21) — 설정 파일이 없어도 사이드카는 항상 기동한다."""
     _patch_common(monkeypatch)
+    _kiwoom_credentialed(monkeypatch)
     _seed_watchlist(tmp_path)
     state = FakeStorageState()
 
@@ -284,6 +299,34 @@ async def test_storage_runtime_always_starts_program_trade_collector(
 
 
 @pytest.mark.asyncio
+async def test_storage_runtime_skips_sidecar_without_kiwoom_credentials(
+    tmp_path, monkeypatch,
+) -> None:
+    """**무자격이면 사이드카를 만들지 않는다** — 위 "always" 테스트의 짝.
+
+    0w latch 의 원천이 키움 WS 라 무자격이면 영원히 비는 no-op 태스크가 되고,
+    health 에 "도는 중인데 아무것도 안 하는" 거짓 행이 남는다(ADR-0134).
+    락 관점에서도 중요하다: 무자격이 `ws` 락을 선점하면 나중에 뜬 자격 있는
+    인스턴스가 사이드카를 못 띄운다.
+    """
+    _patch_common(monkeypatch)
+    monkeypatch.setattr("hoga.live.kiwoom_runtime.configured_account_ids", lambda _d: [])
+    _seed_watchlist(tmp_path)
+    state = FakeStorageState()
+
+    await sync_storage_runtime(
+        tmp_path,
+        state=state,
+        buffer=object(),  # type: ignore[arg-type]
+        date_fn=lambda: "20260717",
+        now_ms_fn=lambda: 0,
+    )
+
+    assert state.program_trade_collector is None
+    assert FakeProgramTradeCollector.created == []
+
+
+@pytest.mark.asyncio
 async def test_storage_runtime_ignores_legacy_program_trade_off_key(
     tmp_path, monkeypatch,
 ) -> None:
@@ -291,6 +334,7 @@ async def test_storage_runtime_ignores_legacy_program_trade_off_key(
     남아 있어도 사이드카를 멈추지 않는다 — 폐지된 키는 extra-ignore 로 무시된다.
     (게이트가 살아 있으면 업그레이드 후에도 데이터가 조용히 유실된다.)"""
     _patch_common(monkeypatch)
+    _kiwoom_credentialed(monkeypatch)
     _seed_watchlist(tmp_path)
     (tmp_path / "live_settings.json").write_text(
         json.dumps({"schema_version": 1, "program_trade_storage_enabled": False}),
@@ -319,6 +363,7 @@ async def test_storage_runtime_bypass_no_longer_stops_program_trade_collector(
     쓰므로, kis_rest_bypass 가 켜져도 사이드카는 계속 돈다. 설정 게이트마저 폐지된
     지금(2026-07-21) 사이드카는 무조건 돈다."""
     _patch_common(monkeypatch)
+    _kiwoom_credentialed(monkeypatch)
     _seed_watchlist(tmp_path)
     existing = FakeProgramTradeCollector()
     save_live_settings(tmp_path, LiveSettings(rest_bypass_enabled=True))
