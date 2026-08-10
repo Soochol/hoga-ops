@@ -154,7 +154,7 @@ const TRADING_DAYS_PER_MONTH = 21;
  * 쓴다 — 거래일이 주식 데이터의 자연 단위라(일봉은 거래일에만 존재), 스텝당
  * 캔들 산출량이 주말 위치와 무관하게 일정해진다.
  *
- * - 분봉(1m~30m): **5거래일 × tf분** (1m=5, 10m=50, 30m=150). /past-candles 가
+ * - 분봉(1m~60m): **5거래일 × tf분** (1m=5, 10m=50, 30m=150, 60m=300). /past-candles 가
  *   표시 tf 주기로 봉을 직접 받게 되면서(#1091, ka10080 tic_scope) 벤더 페이지
  *   (900행)의 커버리지가 tf 에 비례한다 — 스텝을 같이 비례시키면 **스텝당 벤더
  *   페이지 수가 전 tf 균일**(1분 환산 1,950봉 ≈ 2.2페이지)해져, 넓은 tf 딥 팬의
@@ -163,6 +163,11 @@ const TRADING_DAYS_PER_MONTH = 21;
  *   스텝 5m×dispatch 2 = 14m 캘린더일 ≤ 청크 `pastChunkCalendarDays`(15m),
  *   10m 거래일 ≤ 백엔드 신선예산(12m). 하나만 바꾸면 조용히 깨진다
  *   (MAX_BATCH_STEPS_PER_DISPATCH 주석 참고).
+ *   ⚠️ 60m 은 **한 스텝(300거래일 ≈ 420캘린더일)이 `PAST_CANDLES_MAX_DAYS`(250)를
+ *   넘는 첫 tf** 다. 규칙을 깨는 것은 아니고 클램프가 잘라 준다 — 좌측 팬 한 번에
+ *   보유 상한까지 가서 그 뒤로는 더 갈 곳이 없다는 뜻이다(250캘린더일 ≈ 178거래일
+ *   ≈ 1,250봉). 청크(15×60=900캘린더일)·백엔드 예산(12×60거래일)은 둘 다 여유가
+ *   커서 요청은 여전히 청크 1개로 완결된다.
  * - D/W/M: 캔들 STEP_CANDLE_TARGET(50)개 환산. D=50거래일, W=50주×5거래일,
  *   M=50개월×21거래일. D=50평일=70캘린더일(기존과 동치), W=250평일=350캘린더일
  *   (기존과 동치), M=1050평일≈1470캘린더일(기존 1550의 의도된 근사). */
@@ -173,6 +178,7 @@ export const STEP_TRADING_DAYS: Record<LiveTimeframe, number> = {
   '10m': 5 * 10,
   '15m': 5 * 15,
   '30m': 5 * 30,
+  '60m': 5 * 60,
   D: STEP_CANDLE_TARGET,
   W: STEP_CANDLE_TARGET * TRADING_DAYS_PER_WEEK,
   M: STEP_CANDLE_TARGET * TRADING_DAYS_PER_MONTH,

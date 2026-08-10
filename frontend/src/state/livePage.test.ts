@@ -5,8 +5,37 @@ import {
   MA_PERIOD_MIN,
   MA_PERIOD_MAX,
   MA_SLOT_LIMIT,
+  MINUTE_TIMEFRAMES,
+  bucketSeconds,
   type LiveMAConfig,
 } from './livePage';
+import { TIMEFRAME_LABELS, TIMEFRAME_TO_MS } from '../api/types';
+
+/** 분봉 tf 목록이 **두 벌**로 존재한다 — `api/types.ts` 의 `Timeframe`
+ *  (`TIMEFRAME_TO_MS` 의 키)과 여기 `MinuteTimeframe`. 백엔드 wire 가드는
+ *  `LiveTimeframe` 쪽만 보므로, 한쪽만 늘리면 **아무 가드도 안 울린 채** 갈린다.
+ *  타입도 못 잡는다 — 서로를 참조하지 않는 독립 union 이라서다. 그 드리프트를
+ *  여기서 막는다. */
+describe('분봉 tf 두 목록의 동기', () => {
+  it('TIMEFRAME_LABELS 와 MINUTE_TIMEFRAMES 가 같은 값·같은 순서다', () => {
+    expect([...TIMEFRAME_LABELS]).toEqual([...MINUTE_TIMEFRAMES]);
+  });
+
+  it('TIMEFRAME_TO_MS 와 bucketSeconds() 가 같은 폭을 말한다', () => {
+    for (const tf of MINUTE_TIMEFRAMES) {
+      expect(bucketSeconds(tf)).toBe(TIMEFRAME_TO_MS[tf] / 1000);
+    }
+  });
+
+  it('모든 분봉 버킷이 09:00 격자에 정렬된다 (86,400,000 % bucket === 0)', () => {
+    // KST 09:00 ≡ UTC 00:00 이고 `aggregateCandles` 는 epoch-floor 다 — 버킷이
+    // 하루를 나누지 못하면 봉 하나가 개장을 가로질러 전날·당일이 섞인다.
+    // 백엔드 `BUCKET_MS_TO_TIC_SCOPE` 의 같은 단언과 짝이다.
+    for (const tf of MINUTE_TIMEFRAMES) {
+      expect(86_400_000 % TIMEFRAME_TO_MS[tf]).toBe(0);
+    }
+  });
+});
 
 describe('livePage store', () => {
   beforeEach(() => {

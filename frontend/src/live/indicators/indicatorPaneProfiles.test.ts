@@ -21,6 +21,9 @@ describe('indicatorPaneProfiles', () => {
     expect(profileKeyForTimeframe('1m')).toBe('minute');
     expect(profileKeyForTimeframe('3m')).toBe('minute');
     expect(profileKeyForTimeframe('30m')).toBe('minute');
+    // 분기가 `D/W/M 이 아니면 minute` 이라 새 분봉 tf 는 자동으로 여기 떨어진다 —
+    // 폴스루가 아니라 설계(분봉은 지표 설정을 한 버킷에서 공유한다).
+    expect(profileKeyForTimeframe('60m')).toBe('minute');
     expect(profileKeyForTimeframe('D')).toBe('D');
     expect(profileKeyForTimeframe('W')).toBe('W');
     expect(profileKeyForTimeframe('M')).toBe('M');

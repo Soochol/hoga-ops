@@ -14,11 +14,13 @@ import httpx
 import pytest
 
 from hoga.live.kiwoom_minute_candles import (
+    BUCKET_MS_TO_TIC_SCOPE,
     MinutePage,
     fetch_day,
     fetch_minute_page,
     parse_row,
     split_page,
+    tic_scope_for_bucket_ms,
     venue_code,
     walk_minute_days,
 )
@@ -349,3 +351,41 @@ async def test_day_request_also_asks_for_raw_prices() -> None:
     await fetch_day(c, "005930", "20260803")
     assert sent[0]["upd_stkpc_tp"] == "0"
     await c.aclose()
+
+
+# ── 표시 버킷 ↔ tic_scope ────────────────────────────────────────────────────
+
+def test_every_supported_bucket_aligns_to_the_0900_grid() -> None:
+    """격자 조건은 `86_400_000 % bucket_ms == 0` 하나다.
+
+    `aggregateCandles` 는 epoch-floor 고 KST 09:00 ≡ UTC 00:00 이므로, 개장에
+    버킷 경계가 서려면 버킷이 하루(86,400,000ms)를 나눠야 한다. 이게 깨진 tf 를
+    넣으면 봉 하나가 개장을 가로질러 전날·당일이 한 봉에 섞인다.
+
+    ⚠ 이 단언이 **모듈 주석의 옛 판정식을 대체**한다. 옛 식("KST 오프셋
+    32,400,000 을 나눈 몫이 정수")은 120m 을 4.5 로 계산해 정렬되는 격자를 정렬
+    안 된다고 결론냈다 — 6종에서는 두 식이 같은 답을 내서 무증상이었다.
+    """
+    day_ms = 86_400_000
+    for bucket_ms in BUCKET_MS_TO_TIC_SCOPE:
+        assert day_ms % bucket_ms == 0, f"{bucket_ms}ms 는 09:00 격자에 안 맞는다"
+
+
+def test_bucket_maps_to_the_vendor_scope_of_the_same_length() -> None:
+    """폴백 집계를 두지 않는다 — 표시 버킷 = 요청 tic_scope 다."""
+    for bucket_ms, tic_scope in BUCKET_MS_TO_TIC_SCOPE.items():
+        assert int(tic_scope) * 60_000 == bucket_ms
+    assert tic_scope_for_bucket_ms(3_600_000) == "60"
+
+
+def test_120m_and_240m_are_deliberately_unsupported() -> None:
+    """벤더가 안 주기도 하지만, **막는 이유는 그것만이 아니다**.
+
+    둘은 정규장 마감(15:30)을 가로지르는 폭이라 NXT·UN 에서 애프터마켓이 정규장
+    봉에 섞인다(2026-08-07 `005930` 실측: 마감 포함 봉의 close 가 정규장 종가
+    대비 +1.08%/+1.30%). 60m 은 `[15:00,16:00)` 이 애프터 개시(16:00) 직전에서
+    끊겨 0.00%/−0.22% 로 살아남는다. 즉 여기에 두 값을 넣는 것만으로는 부족하고,
+    집계 이전 정규장 클립이 먼저다.
+    """
+    assert tic_scope_for_bucket_ms(7_200_000) is None
+    assert tic_scope_for_bucket_ms(14_400_000) is None

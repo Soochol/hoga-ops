@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from hoga.api import symbols
 from hoga.api.error_codes import LiveErrorCode
-from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate
+from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate, LiveTimeframeModel
 from hoga.api.params import CODE_PATTERN
 from hoga.live import (
     kis_runtime,
@@ -1996,7 +1996,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     @router.get("/index-candles")
     async def _get_index_candles(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
         index_id: str = Query(...),
-        timeframe: Literal["1m", "3m", "5m", "10m", "15m", "30m", "D", "W", "M"] = Query(...),
+        timeframe: LiveTimeframeModel = Query(...),
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
     ) -> LiveIndexCandlesResponse:
@@ -2088,6 +2088,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 "10m": 600,
                 "15m": 900,
                 "30m": 1800,
+                "60m": 3600,
             }[timeframe]
             if index_minute_candles_cache_instance is None:
                 raise HTTPException(

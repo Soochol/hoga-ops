@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TimeframeControl } from './TimeframeControl';
 import { WorkspaceLiveToolbar } from './workspace/WorkspaceLiveToolbar';
 import { useWorkspaceStore, type WorkspaceWindow } from '../state/workspace';
+import { MINUTE_TIMEFRAMES } from '../state/livePage';
 
 /**
  * 멀티창 플립(ADR-0119 C2c-2d) 후 봉 컨트롤은 각 차트 창 상단에 창별로 배선된다.
@@ -68,9 +69,15 @@ describe('창별 TimeframeControl (ChartWindow 배선 미러)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 1분' }));
     const menu = screen.getByRole('menu', { name: '분봉 목록' });
-    ['1분', '3분', '5분', '10분', '15분', '30분'].forEach((minuteOption) => {
-      expect(within(menu).getByRole('menuitemradio', { name: minuteOption })).toBeInTheDocument();
+    // 목록을 손으로 적지 않는다 — 새 분봉 tf 가 메뉴에 실제로 뜨는지까지 덮는다.
+    MINUTE_TIMEFRAMES.forEach((tf) => {
+      const label = `${tf.slice(0, -1)}분`;
+      expect(within(menu).getByRole('menuitemradio', { name: label })).toBeInTheDocument();
     });
+    // 위 루프는 `MINUTE_TIMEFRAMES` 자체를 돌기 때문에 **목록에서 tf 가 빠지면 같이
+    // 조용해진다** — 항목 수와 60분을 따로 못박아야 그 구멍이 닫힌다.
+    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(MINUTE_TIMEFRAMES.length);
+    expect(within(menu).getByRole('menuitemradio', { name: '60분' })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitemradio', { name: '3분' })).toHaveAttribute('aria-checked', 'false');
 
     fireEvent.click(within(menu).getByRole('menuitemradio', { name: '3분' }));

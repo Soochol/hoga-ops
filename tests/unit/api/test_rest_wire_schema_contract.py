@@ -253,7 +253,7 @@ def test_wire_enum_mirror_parser_reads_as_const_arrays() -> None:
     """``export type X = (typeof ARR)[number]`` 도 읽는가.
 
     타입 선언 자체엔 리터럴이 **하나도 없다** — 값은 배열 상수가 갖는다. 이 갈래가
-    없으면 파서가 빈 집합을 돌려주고, 대조 테스트는 "프론트에 없는 값" 을 9개 전부
+    없으면 파서가 빈 집합을 돌려주고, 대조 테스트는 "프론트에 없는 값" 을 전부
     보고한다. 즉 **파서 탓인데 드리프트처럼 보인다** — 위 여러 줄 케이스와 같은 함정이라
     같은 방식으로 고정한다.
     """
@@ -261,7 +261,7 @@ def test_wire_enum_mirror_parser_reads_as_const_arrays() -> None:
 
     assert "1m" in members
     assert "M" in members  # 배열 마지막 원소
-    assert len(members) == 9  # LIVE_TIMEFRAMES 의 실제 길이
+    assert len(members) == 10  # LIVE_TIMEFRAMES 의 실제 길이
 
 
 # ── 등록 누락 감사 ────────────────────────────────────────────────────────────

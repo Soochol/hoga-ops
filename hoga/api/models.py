@@ -710,6 +710,8 @@ ALLOWED_TIMEFRAME_MS: tuple[int, ...] = (
     600_000,     # 10m
     900_000,     # 15m
     1_800_000,   # 30m
+    3_600_000,   # 60m — 정규장 마감(15:30)이 버킷 경계가 아닌 첫 tf.
+                 # 근거·실측은 frontend `MINUTE_TIMEFRAMES` 주석 참조.
 )
 
 
@@ -1725,7 +1727,7 @@ class SavedScreenersFile(BaseModel):
     saves: list[SavedScreener] = Field(default_factory=list)
 
 
-LiveTimeframeModel = Literal["1m", "3m", "5m", "10m", "15m", "30m", "D", "W", "M"]
+LiveTimeframeModel = Literal["1m", "3m", "5m", "10m", "15m", "30m", "60m", "D", "W", "M"]
 
 
 def _ensure_finite(value: int | float) -> int | float:
