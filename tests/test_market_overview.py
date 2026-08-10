@@ -26,6 +26,59 @@ def test_signed_int_handles_vendor_sign_strings():
     assert signed_int(None) is None
 
 
+def test_double_minus_is_a_negative_number_not_garbage():
+    """ka90005 는 음수를 마이너스 **두 개**로 준다 — 예전엔 통째로 None 이 됐다.
+
+    2026-08-10 장중 실측(코스피 100행 전부 이 표기). 값이 사라지면 화면에서 비차익·
+    전체 선이 빠지고 합계가 '—' 가 된다. 양수는 부호가 하나뿐이라 살아남아서,
+    **순매도인 날에만** 증상이 나온다.
+    """
+    assert signed_int("--528475") == -528475
+    assert signed_int("--502841") == -502841
+    assert decimal_price("--1.5") == -1.5
+    # 부호가 하나인 기존 표기는 그대로여야 한다(ka10051 등 다른 TR).
+    assert signed_int("-8787") == -8787
+
+
+def test_double_minus_row_satisfies_the_arithmetic_identity():
+    """`차익 + 비차익 == 전체` — 이 검산이 `--` 를 음수로 읽는 근거다.
+
+    2026-08-10 10:36:13 코스피 실응답 행. 파서가 부호를 잘못 접으면 이 항등식이
+    깨지므로, 표기 해석이 바뀌면 여기서 잡힌다.
+
+    ⚠ **항등식을 전 행에 걸면 안 된다.** 벤더의 `all_netprps` 는 자체 반올림이라
+    원값(백만원) 기준으로 ±1 어긋나는 행이 있다 — 같은 응답 100행 실측에서 79행이
+    정확히 0, 13행이 +1, 8행이 -1 이었다. 여기 쓴 행은 정확히 맞는 표본이고,
+    부호를 틀리게 읽으면 오차가 백만원이 아니라 자릿수 단위로 벌어지므로 이 한 행
+    만으로도 판별력이 있다.
+    """
+    row = {
+        "cntr_tm": "103613",
+        "dfrt_trde_netprps": "+25634",
+        "ndiffpro_trde_netprps": "--528475",
+        "all_netprps": "--502841",
+        "kospi200": "+97539",
+        "basis": "3.11",
+    }
+    got = parse_program_trend([row], kospi200_scaled=True)[0]
+    assert got["arb_net_eok"] is not None
+    assert got["non_arb_net_eok"] is not None
+    assert got["total_net_eok"] is not None
+    assert got["arb_net_eok"] + got["non_arb_net_eok"] == got["total_net_eok"]
+    assert got["non_arb_net_eok"] < 0
+
+
+def test_mixed_signs_are_refused_rather_than_guessed():
+    """`'+-5'` 는 벤더에서 관측된 적이 없다 — 추측해서 통과시키지 않는다.
+
+    조용히 틀린 값보다 빈 값이 낫다(ADR-0021). 이 표기가 실제로 오기 시작하면
+    테스트가 먼저 깨지는 게 아니라 **화면이 비므로**, 그때 실측으로 의미를 정한다.
+    """
+    assert signed_int("+-5") is None
+    assert signed_int("-+5") is None
+    assert decimal_price("+-1.5") is None
+
+
 def test_scale_is_per_tr_not_global():
     """같은 지수를 TR 마다 다르게 준다 — 한 파서로 묶으면 100배 틀린다.
 
