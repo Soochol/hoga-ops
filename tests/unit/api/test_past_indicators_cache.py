@@ -120,8 +120,8 @@ def test_ratio_disk_payload_is_seven_tuples(tmp_path: Path) -> None:
 def test_schema_version_bumped_to_6_invalidates_peak_candidate_cache(tmp_path: Path) -> None:
     """v2→v6: 시간별 후보 배열 없는 peak 캐시는 버전 미스로 무효."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.KIND_VERSIONS["ratio"] == 6
-    assert mod.KIND_VERSIONS["ask_peak"] == 6
+    assert mod.KIND_VERSIONS["ratio"] >= 6
+    assert mod.KIND_VERSIONS["ask_peak"] >= 6
     p = _store_dir(tmp_path) / f"{DATE}.ratio.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"version": 1, "rows": [[0, 10, 20]], "fetched_at_ms": 0}),
@@ -148,8 +148,8 @@ def test_schema_version_bumped_to_6_invalidates_peak_candidate_cache(tmp_path: P
 def test_schema_version_bumped_to_6_invalidates_price_based_peak_classification_cache(tmp_path: Path) -> None:
     """v3→v6: 가격 집합 기준 peak 분류 캐시는 이벤트/lifecycle 기준 재계산이 필요."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.KIND_VERSIONS["ask_peak"] == 6
-    assert mod.KIND_VERSIONS["bid_peak"] == 6
+    assert mod.KIND_VERSIONS["ask_peak"] >= 6
+    assert mod.KIND_VERSIONS["bid_peak"] >= 6
 
     peak_dir = _store_dir(tmp_path)
     peak_dir.mkdir(parents=True, exist_ok=True)
@@ -179,8 +179,8 @@ def test_schema_version_bumped_to_6_invalidates_price_based_peak_classification_
 def test_schema_version_bumped_to_6_invalidates_raw_peak_event_rank_cache(tmp_path: Path) -> None:
     """v4→v6: 같은 가격 raw 이벤트 순위 캐시는 lifecycle 기준 재계산이 필요."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.KIND_VERSIONS["ask_peak"] == 6
-    assert mod.KIND_VERSIONS["bid_peak"] == 6
+    assert mod.KIND_VERSIONS["ask_peak"] >= 6
+    assert mod.KIND_VERSIONS["bid_peak"] >= 6
 
     peak_dir = _store_dir(tmp_path)
     peak_dir.mkdir(parents=True, exist_ok=True)
@@ -275,11 +275,18 @@ def test_ask_bid_peak_cache_survives_new_cache_instance(tmp_path: Path) -> None:
     assert reloaded.get_bid_peak("005930", "20260619", "hogaplay", 60_000) == bid
 
 
-def test_peak_cache_loads_version_6_payload_without_ranked_untraded_arrays(tmp_path: Path) -> None:
+def test_peak_cache_loads_payload_without_ranked_untraded_arrays(tmp_path: Path) -> None:
+    """ranked untraded 배열이 없는 payload 도 읽힌다(필드 하위호환).
+
+    ⚠ 버전은 **현재 값**으로 기록한다 — 숫자를 박으면 kind 범프마다 이 테스트가
+    깨지는데, 여기서 재는 것은 버전이 아니라 **없는 필드의 기본값 처리**다.
+    """
+    from hoga.api import past_indicators_cache as mod
+
     peak_dir = _store_dir(tmp_path)
     peak_dir.mkdir(parents=True, exist_ok=True)
     payload = {
-        "version": 6,
+        "version": mod.KIND_VERSIONS["ask_peak"],
         "value": {
             "date": "20260619",
             "price": 70000,

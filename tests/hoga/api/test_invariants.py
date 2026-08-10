@@ -304,3 +304,50 @@ def test_normalize_noop_when_open_nonzero() -> None:
     patched, notes = normalize_session_bounds(meta)
     assert patched is meta                              # 사본 안 만듦
     assert notes == []
+
+
+# ── indicator_session_bounds — venue 별 지표 구간 판독 (ADR-0140) ─────────────
+
+
+def test_indicator_session_bounds_prefers_new_keys() -> None:
+    from hoga.api.invariants import indicator_session_bounds
+
+    meta = {
+        "regular_session_open_ms": 90000000,
+        "regular_session_close_ms": 153000000,
+        "indicator_session_open_ms": 80000000,
+        "indicator_session_close_ms": 200000000,
+    }
+    assert indicator_session_bounds(meta) == (80000000, 200000000)
+
+
+def test_indicator_session_bounds_falls_back_to_regular() -> None:
+    """구형 meta·hogaplay(KRX 전용)는 새 키가 없다 — **그 폴백이 곧 하위호환**이라
+    KRX 경로가 종전과 글자 그대로 같은 값을 내야 한다."""
+    from hoga.api.invariants import indicator_session_bounds
+
+    meta = {"regular_session_open_ms": 90000000, "regular_session_close_ms": 153000000}
+    assert indicator_session_bounds(meta) == (90000000, 153000000)
+
+
+def test_indicator_session_bounds_falls_back_per_bound() -> None:
+    """경계는 **독립적으로** 폴백한다 — 한쪽만 실린 meta 도 나머지는 정규장 값."""
+    from hoga.api.invariants import indicator_session_bounds
+
+    meta = {
+        "regular_session_open_ms": 90000000,
+        "regular_session_close_ms": 153000000,
+        "indicator_session_close_ms": 200000000,
+    }
+    assert indicator_session_bounds(meta) == (90000000, 200000000)
+
+
+def test_indicator_session_bounds_reads_normalized_open_sentinel() -> None:
+    """hogaplay 의 ``open_ms == 0`` 센티널(ADR-0063)은 폴백 경로로 그대로 흐른다 —
+    호출부가 ``normalize_session_bounds`` 를 먼저 통과시켜야 한다는 계약의 red-check."""
+    from hoga.api.invariants import indicator_session_bounds, normalize_session_bounds
+
+    raw = {"regular_session_open_ms": 0, "regular_session_close_ms": 153000000}
+    assert indicator_session_bounds(raw) == (0, 153000000)  # 정규화 안 하면 0 이 샌다
+    norm, _ = normalize_session_bounds(raw)
+    assert indicator_session_bounds(norm) == (90000000, 153000000)

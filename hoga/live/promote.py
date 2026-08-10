@@ -55,6 +55,22 @@ _VENUE_FINALIZE_HHMM: dict[str, tuple[int, int]] = {
     "UN": (20, 5),
 }
 
+# venue 별 **지표 유효 구간** (HHMMSSmmm). `venue_capture_windows`(session_gate) 가
+# 여는 저장 창과 같은 시각이다 — 저장한 구간은 지표에서도 읽힌다는 뜻이라 두 값이
+# 갈리면 "디스크엔 있는데 화면엔 없는" 구간이 생긴다.
+#
+# ⚠ **`regular_session_*` 와 별개 키인 것이 요점이다.** 그 이름은 말 그대로 정규장을
+# 가리키고, 마감 동시호가 접기·보관함 표시·`open==0` 센티널 정규화(ADR-0063)가 그
+# 의미로 읽는다. NXT 의 08:00–20:00 을 거기 채우면 이름이 거짓이 되고 그 소비자들이
+# 조용히 틀어진다. 그래서 "지표가 유효한 구간" 이라는 실제 의미를 가진 키를 새로 싣고,
+# 판독부는 **새 키 있으면 그것, 없으면 `regular_session_*`** 로 떨어진다 — 그 폴백이
+# 곧 하위호환이라 KRX meta 와 구형 파일은 아무것도 바뀌지 않는다.
+_VENUE_INDICATOR_SESSION_MS: dict[str, tuple[HogaMs, HogaMs]] = {
+    "KRX": (HogaMs(90000000), _REGULAR_SESSION_CLOSE_MS),   # 09:00 – 15:30 (정규장 그대로)
+    "NXT": (HogaMs(80000000), HogaMs(200000000)),           # 08:00 – 20:00
+    "UN": (HogaMs(80000000), HogaMs(200000000)),
+}
+
 _log = logging.getLogger(__name__)
 
 
@@ -343,6 +359,7 @@ def _parse_jsonl_to_records(
     code: str,
     date: str,
     source: str = "kiwoom_live",
+    venue: str = "KRX",
 ) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], list[Candle], dict]:
     """Parse one Live Capture JSONL into typed table records + meta.
 
@@ -363,6 +380,11 @@ def _parse_jsonl_to_records(
     `meta` is the JSON dict ready to write to meta.json — caller decides
     when/how to persist it. If `jsonl_path` does not exist, returns empty
     lists and meta with row_counts=0.
+
+    ``venue`` 는 meta 로만 흐른다(레코드는 이미 venue 별 JSONL 로 갈려 들어온다).
+    **빠뜨리면 조용히 KRX 로 떨어진다** — 실제로 그랬고, 그래서 NXT·UN 승격본이
+    지표 경계·완결 마감을 KRX 로 달고 나갔다. 자매 경로
+    ``_parse_jsonl_incremental`` 은 처음부터 받고 있었다(비대칭이 이쪽이었다).
     """
     state = _JsonlParseState()
 
@@ -375,6 +397,7 @@ def _parse_jsonl_to_records(
             state.broker_snapshot_count,
             fill_count=0,
             source=source,
+            venue=venue,
         )
         return (state.snapshots, state.trades, state.broker_rows, state.fills,
                 state.candles, meta)
@@ -401,6 +424,7 @@ def _parse_jsonl_to_records(
         broker_snapshot_count,
         fill_count=len(fills),
         source=source,
+        venue=venue,
     )
     return snapshots, trades, broker_rows, fills, candles, meta
 
@@ -412,6 +436,11 @@ def _build_meta(
     source: str = "kiwoom_live",
     venue: str = "KRX",
 ) -> dict:
+    # 모르는 venue 는 KRX 로 떨어진다 — `_collection_finished` 와 같은 보수 규칙
+    # (더 넓은 창이 아니라 **기존 동작**으로 수렴).
+    indicator_open, indicator_close = _VENUE_INDICATOR_SESSION_MS.get(
+        venue, _VENUE_INDICATOR_SESSION_MS["KRX"],
+    )
     meta = {
         "source": source,
         "code": code,
@@ -423,9 +452,16 @@ def _build_meta(
             "brokers": broker_snapshot_count,
             "fills": fill_count,
         },
-        # ADR-0003 HHMMSSmmm encoding.
+        # ADR-0003 HHMMSSmmm encoding. **정규장 경계는 venue 와 무관하게 KRX 정규장이다**
+        # — NXT 도 "정규장" 이라는 말이 가리키는 시각은 같고, 이 키를 그 의미로 읽는
+        # 소비자(마감 동시호가 접기 등)가 있다. venue 별 구간은 아래 지표 경계로 나간다.
         "regular_session_open_ms": 90000000,    # 09:00:00.000
         "regular_session_close_ms": int(_REGULAR_SESSION_CLOSE_MS),  # 15:30:00.000
+        # venue 별 지표 유효 구간(_VENUE_INDICATOR_SESSION_MS 주석 참조). 이게 없던
+        # 시절 NXT·UN meta 는 정규장 경계만 실었고, 조회 경로가 그걸 지표 경계로 읽어
+        # **프리·애프터마켓 호가 스냅샷이 통째로 집계에서 배제**됐다(8/7 실측 49.1%).
+        "indicator_session_open_ms": int(indicator_open),
+        "indicator_session_close_ms": int(indicator_close),
         # Completeness routed through the SAME classifier hogaplay uses. Orderbook
         # .ts_ms is already HHMMSSmmm (entity native); cast to HogaMs at this seam.
         **_completeness_fields(
@@ -626,7 +662,7 @@ async def promote_one(
         promote_kiwoom_today 는 처음부터 to_thread 였다.
         """
         snapshots, trades, broker_rows, fills, candles, meta = _parse_jsonl_to_records(
-            jsonl_path, code=code, date=date, source=source,
+            jsonl_path, code=code, date=date, source=source, venue=venue,
         )
 
         target.mkdir(parents=True, exist_ok=True)

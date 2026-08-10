@@ -307,6 +307,35 @@ def backfill_hogaplay_meta_cmd(
     )
 
 
+@app.command(name="backfill-indicator-session")
+def backfill_indicator_session_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),
+) -> None:
+    """ADR-0140: 승격된 kiwoom_live/{venue}/meta.json 에 venue 별 지표 구간을 소급 기록.
+
+    이 키가 생기기 전 승격본은 정규장 경계(09:00–15:30)만 실었고, 조회 경로가 그걸
+    지표 경계로 읽어 NXT·UN 의 프리·애프터마켓 호가가 지표 집계에서 통째로 빠졌다.
+    데이터는 디스크에 온전하므로 판독 경계만 고치면 된다 (과거 날짜만; 오늘은
+    promote 가 다시 쓴다). 멱등.
+
+    부수효과가 의도된 것 하나: meta.json mtime 이 지표 캐시의 정체성 토큰이라
+    이 재작성이 **잘린 값으로 캐시된 지표를 자동 무효화**한다.
+    """
+    from hoga.live.meta_backfill import backfill_indicator_session_bounds  # noqa: PLC0415 — CLI-local
+
+    data_dir = resolve_data_dir()
+    try:
+        res = backfill_indicator_session_bounds(data_dir, dry_run=dry_run)
+    except Exception as e:
+        console.print(f"[red]backfill-indicator-session failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    tag = "dry-run" if dry_run else "done"
+    console.print(
+        f"[green]backfill-indicator-session {tag}[/green]: "
+        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped}"
+    )
+
+
 @app.command(name="ls")
 def list_stock_dates() -> None:
     """Show captured/parsed Stock-Dates."""

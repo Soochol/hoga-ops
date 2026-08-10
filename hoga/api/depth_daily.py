@@ -30,7 +30,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api.invariants import normalize_session_bounds
+from hoga.api.invariants import indicator_session_bounds, normalize_session_bounds
 from hoga.api.queries import resolve_source_dir
 from hoga.duck import connect_bounded
 from hoga.tables import snapshots as snapshots_tbl
@@ -94,8 +94,15 @@ def compute_stock_date_peak(
         return None
     # regular_session_open_ms 를 값으로 소비하기 전 정규화(open==0 sentinel 복원, ADR-0063).
     norm_meta, _ = normalize_session_bounds(meta)
-    open_ms = norm_meta.get("regular_session_open_ms")
-    close_ms = meta.get("regular_session_close_ms")
+    # 일별 최대벽도 호가 파생 지표라 **venue 별 지표 구간**을 쓴다 — 구형 meta·
+    # hogaplay 는 새 키가 없어 정규장 값으로 떨어진다(무변경).
+    try:
+        open_ms, close_ms = indicator_session_bounds(norm_meta)
+    except KeyError:
+        # 경계 키가 아예 없는 meta — 종전대로 "그 항만 생략"(둘 다 None 이면 순수
+        # 구조 술어)으로 떨어진다. 여기서 KRX 를 채워 넣지 않는 것이 요점이다.
+        open_ms = norm_meta.get("regular_session_open_ms")
+        close_ms = meta.get("regular_session_close_ms")
     return snapshots_tbl.query_daily_depth_peak(
         con,
         path=snap_path,
