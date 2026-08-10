@@ -415,8 +415,15 @@ class FuturesCandlesResponse(BaseModel):
     series: dict[str, FuturesSpark] = Field(default_factory=dict)
 
 # TTL 은 벤더 갱신 주기와 화면 위치가 정한다(#1099) — 유량이 정하지 않는다.
-TTL_SECTORS_S = 30.0      # 지수·등락종목수: 화면 최상단
-TTL_PROGRAM_S = 60.0      # 100행 ≈ 100분이라 자기 백필 — 주기는 신선도 문제일 뿐
+TTL_SECTORS_S = 30.0      # 지수·등락종목수: 화면 최상단(0J/0U WS 오버레이의 baseline)
+# 장중 축은 벤더가 **요청 직전 1초 이내** 행까지 준다(2026-08-10 실측: `cntr_tm
+# 103441` 행을 10:34:41 에 관측, 3회 연속 지연 0~1초). 즉 화면 지연을 지배하는 항이
+# 벤더가 아니라 이 TTL 이었다 — 15초로 폴링해도 갱신이 62·62·67초 간격으로만 보였다.
+# 100행 ≈ 100분이라 자기 백필이므로 놓쳐도 값이 빠지지 않는다(신선도 문제일 뿐).
+TTL_PROGRAM_INTRADAY_S = 20.0
+# 일별 축은 하루 한 번 바뀐다. **상수를 나눈 이유**: 하나로 두면 장중을 조일 때
+# 일별 TTL 까지 조용히 따라 내려가 같은 값을 세 배로 물어보게 된다.
+TTL_PROGRAM_DAILY_S = 60.0
 TTL_STREAKS_S = 300.0     # 연속일수는 일 단위 축
 TTL_BREADTH_S = 300.0     # 52주 신고·신저는 느리게 움직인다
 # 선물: 지수 카드와 같은 줄에 서므로 `/live/index-quotes`(20s)와 신선도를 맞춘다.
@@ -1017,8 +1024,8 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
 
     sectors_cache = _TtlCache(TTL_SECTORS_S)
     # 축마다 캐시가 갈려야 한다 — 한 캐시를 공유하면 당일/일별 토글이 서로의 값을 지운다.
-    program_cache = _TtlCache(TTL_PROGRAM_S)
-    daily_program_cache = _TtlCache(TTL_PROGRAM_S)
+    program_cache = _TtlCache(TTL_PROGRAM_INTRADAY_S)
+    daily_program_cache = _TtlCache(TTL_PROGRAM_DAILY_S)
     streaks_cache = _TtlCache(TTL_STREAKS_S)
     breadth_cache = _TtlCache(TTL_BREADTH_S)
     # 증시 주변 자금은 벤더가 다르다(KOFIA) — 키움 거버너·TTL 축과 분리해 자체 캐시를 쓴다.

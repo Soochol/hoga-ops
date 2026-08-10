@@ -3,7 +3,12 @@
  * 폴링 주기는 **백엔드 TTL 을 두 번 치지 않는 선**으로 잡는다 — 서버가 이미
  * 코얼레스하므로 프론트가 더 자주 물어도 같은 값이 온다(#1099 의 TTL 표):
  *
- *     sectors 30s · program 60s · streaks/breadth 5m · funds 6h · investor-flow 60s
+ *     sectors 30s · program 20s · streaks/breadth 5m · funds 6h · investor-flow 30s
+ *
+ * ⚠ **수급 두 표면(`investor-flow`·`deriv-flow`)은 TTL 이 없다.** 저장된 표본을 읽을
+ * 뿐 벤더를 부르지 않아서 서버가 코얼레스할 것이 없다 — 여기서 주기를 조이면 그만큼
+ * 디스크 파싱이 늘어난다(하루치 전량 파싱, 장 마감 무렵 4MB+). 그래서 수집기 주기
+ * (30s)보다 더 촘촘히 물어봐야 얻는 것이 없다.
  *
  * 장중이 아니면 폴링을 **60초 하트비트로 늦춘다**(멈추지는 않는다 — `pollWhileOpen`
  * 의 주석 참조: `false` 는 스스로 되살아나지 못한다). 표시 전용 표면은 결손이
@@ -119,8 +124,10 @@ export function useMarketProgram(axis: ProgramAxis) {
     queryKey: ['market', 'program', axis],
     queryFn: () => apiCall<ProgramResponse>(`/api/market/program?axis=${axis}`),
     // 일별 축은 하루 한 번 바뀌므로 장중 폴링이 무의미하다.
-    refetchInterval: () => (axis === 'intraday' ? pollWhileOpen(60_000) : false),
-    staleTime: axis === 'intraday' ? 30_000 : 10 * 60_000,
+    // 장중 축 20s: 벤더가 요청 직전 1초 이내 행까지 주므로(2026-08-10 실측) 화면
+    // 지연을 정하는 것은 이 주기와 라우트 TTL(20s) 둘뿐이다.
+    refetchInterval: () => (axis === 'intraday' ? pollWhileOpen(20_000) : false),
+    staleTime: axis === 'intraday' ? 10_000 : 10 * 60_000,
   });
 }
 
@@ -213,10 +220,11 @@ export function useMarketSectorFlow() {
   return useQuery({
     queryKey: ['market', 'sector-flow'],
     queryFn: () => apiCall<SectorFlowResponse>('/api/market/sector-flow'),
-    // 수집기가 60초로 찍으므로 그보다 자주 물어도 새 표본이 없다 — investor-flow 와
-    // 같은 축이다(같은 TR 의 같은 표본을 읽는다).
-    refetchInterval: () => pollWhileOpen(60_000),
-    staleTime: 30_000,
+    // 수집기가 30초로 찍으므로 그보다 자주 물어도 새 표본이 없다 — investor-flow 와
+    // 같은 축이다(같은 TR 의 같은 표본을 읽는다). **같은 파일을 각각 파싱**하므로
+    // 두 훅의 주기를 따로 놀게 두면 디스크 비용만 늘고 신선도는 느린 쪽에 묶인다.
+    refetchInterval: () => pollWhileOpen(30_000),
+    staleTime: 15_000,
   });
 }
 
@@ -287,9 +295,10 @@ export function useMarketInvestorFlow() {
   return useQuery({
     queryKey: ['market', 'investor-flow'],
     queryFn: () => apiCall<InvestorFlowResponse>('/api/market/investor-flow'),
-    // 수집기가 60초로 찍으므로 그보다 자주 물어도 새 표본이 없다.
-    refetchInterval: () => pollWhileOpen(60_000),
-    staleTime: 30_000,
+    // 수집기가 30초로 찍으므로 그보다 자주 물어도 새 표본이 없다(위 ⚠ 참조 —
+    // 여긴 TTL 이 없어서 초과 요청이 그대로 디스크 파싱이 된다).
+    refetchInterval: () => pollWhileOpen(30_000),
+    staleTime: 15_000,
   });
 }
 
@@ -346,8 +355,8 @@ export function useMarketDerivFlow() {
   return useQuery({
     queryKey: ['market', 'deriv-flow'],
     queryFn: () => apiCall<DerivFlowResponse>('/api/market/deriv-flow'),
-    // 수집기가 60초로 찍으므로 그보다 자주 물어도 새 표본이 없다 — 주식 쪽과 같다.
-    refetchInterval: () => pollWhileOpen(60_000),
-    staleTime: 30_000,
+    // 수집기가 30초로 찍으므로 그보다 자주 물어도 새 표본이 없다 — 주식 쪽과 같다.
+    refetchInterval: () => pollWhileOpen(30_000),
+    staleTime: 15_000,
   });
 }
