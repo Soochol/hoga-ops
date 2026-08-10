@@ -84,6 +84,12 @@ log = logging.getLogger(__name__)
 # `ts_ms` 보정을 SQL 로 밀어 그 두 번째 벌을 없애자(0.63s → 0.29s) compute 가 짧아져
 # 대기 자체가 싸졌고, GIL 경합을 아예 피하는 1이 다시 최적이 됐다. **compute 비용이
 # 바뀌면 이 값을 다시 재라** — 상한은 compute 시간의 함수다.
+#
+# ⚠ **이 상한은 "polars 로 옮기면 없앨 수 있는 임시방편" 이 아니다** — 그렇게 적었다가
+# 측정으로 반증했다(ADR-0085 v3.1). 남은 GIL 무게는 candles(팽창 6.5×)가 아니라
+# hoga(14.5×)·sidecar(12.4×) 에 있고, candles 를 컬럼화해도 이득은 모델을 **아예 안
+# 만들 때만** 나온다(4.0× → 2.2×). 그건 `RangeBundle.candles` wire 계약을 걷어내는
+# 일이라 성능과 맞바꿀 문제가 아니다. 없애려면 별도 ADR 로 의도를 먼저 세울 것.
 RANGE_COMPUTE_CONCURRENCY = int(os.environ.get("HOGA_RANGE_CONCURRENCY", "") or 1)
 
 # 이 일수 이상을 요청하면 "넓은 구간" 으로 보고 상한을 태운다.
