@@ -43,7 +43,17 @@ export function useStudyRangeCacheEviction(
     for (const tf of [...openTimeframes, ...tabs.map((t) => t.timeframe)]) {
       const ms = TIMEFRAME_TO_MS[tf as Timeframe];
       if (typeof ms === 'number') buckets.add(ms);
-      // 캘린더 봉(D/W/M)은 1분봉을 받아 프론트에서 집계한다(studyReferenceQueryInputs).
+      // 캘린더 봉(D/W/M)은 `TIMEFRAME_TO_MS` 에 없다 — **`['range', …]` 캐시를 아예
+      // 쓰지 않기 때문이다**(#1277 이후 D/W/M 은 스크리너 일봉만 본다). 그러니 이 봉이
+      // 버킷 축에 기여할 것은 원래 없다.
+      //
+      // 그런데 아무것도 안 더하면 **캘린더 탭만 열려 있을 때 그 종목의 분봉 캐시가
+      // 통째로 축출된다.** 봉을 분봉으로 되돌리는 순간 전부 재fetch 이고, 그게 이
+      // 축출 훅이 줄이려던 바로 그 비용이다. 축출은 되돌릴 수 없으니 보존 쪽으로
+      // 남긴다 — 1m 을 넣어 두면 최소 한 벌은 살아남는다.
+      //
+      // (여기 있던 "캘린더 봉은 1분봉을 받아 프론트에서 집계한다" 는 근거는 #1277 에
+      // 폐기됐다. 값은 같고 이유가 바뀌었다.)
       else buckets.add(TIMEFRAME_TO_MS['1m']);
     }
     return [...buckets].sort((a, b) => a - b).join(',');
