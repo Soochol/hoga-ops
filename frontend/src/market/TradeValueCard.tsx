@@ -59,10 +59,6 @@ const SPANS = [
 ] as const;
 type Span = (typeof SPANS)[number][0];
 
-/** 기준 평균의 창. **화면 기간 토글과 독립이다** — 토글로 같이 움직이면 같은 날의
- *  "평소 대비" 가 보는 창에 따라 달라져서 두 값이 서로를 반증한다. */
-const BASELINE_DAYS = 20;
-
 /** 시장 축 색. 방향색(`--price-up/down`)을 쓰지 않는 이유는 `marketBits` 상단 주석과
  *  같다 — 거래대금엔 방향이 없고, 방향색을 쓰면 "빨간 건 많아서인가 올라서인가" 가
  *  모호해진다. 방향색은 **평소 대비 퍼센트**만 진다. */
@@ -73,7 +69,17 @@ const MARKET_COLORS: Record<string, string> = {
 
 const MARKETS = ['KOSPI', 'KOSDAQ'] as const;
 
-/** 당일을 **뺀** 최근 N일 평균. 표본이 없으면 `null`(0 이 아니다 — 모른다). */
+/** 당일을 **뺀** 최근 n일 평균. 표본이 없으면 `null`(0 이 아니다 — 모른다).
+ *
+ * **`n` 은 화면 기간 토글과 같은 값이다**(2026-08-11 사용자 지시로 전환. 그전까지는
+ * 20일 고정이었다). 고정의 논거는 "토글이 기준을 움직이면 같은 날의 '평소 대비' 가
+ * 보는 창에 따라 달라진다" 였는데, 그건 **라벨이 20일에 못박혀 있을 때만** 모순이다.
+ * 라벨이 창을 따라가면 세 토글은 서로를 반증하는 세 답이 아니라 **세 개의 다른
+ * 질문**이다 — "최근 한 달 대비 오늘" 과 "최근 반년 대비 오늘" 은 둘 다 참이고 둘 다
+ * 쓸모가 있다.
+ *
+ * ⚠ 따라서 **퍼센트와 헤더 힌트는 한 몸이다.** 둘 중 하나만 창을 따라가는 순간
+ * 위가 경고한 자기모순으로 정확히 되돌아간다. */
 function baselineEok(points: TradeValuePoint[], n: number): number | null {
   const past = points.slice(0, -1).slice(-n);
   if (past.length === 0) return null;
@@ -94,7 +100,7 @@ function Tile({
   color: string;
   /** **화면 창**으로 자른 배열 — 배경 추이가 그리는 범위다. */
   points: TradeValuePoint[];
-  /** 기준 평균. **화면 창이 아니라 부모가 전체 배열에서** 계산해 넘긴다(아래 참조). */
+  /** 기준 평균. **화면 창과 같은 길이**로, 당일만 빼고 부모가 계산해 넘긴다. */
   base: number | null;
 }) {
   const last = points[points.length - 1].value_eok;
@@ -132,14 +138,16 @@ function Tile({
 
 export function TradeValueCard() {
   const [span, setSpan] = useState<Span>('20');
+  const days = Number(span);
   // **기준 표본은 화면 창보다 하루 더 필요하다.** `days=span` 으로 받으면 20일 창에서
-  // 당일을 뺀 뒤 19개만 남아, 라벨은 "20일 평균" 인데 값은 19일 평균이 된다. 더 나쁜
-  // 쪽은 그 다음이다 — 토글만 눌러도 같은 날의 "평소" 가 32.68조↔32.63조로 움직여서
-  // `BASELINE_DAYS` 주석이 약속한 **창 독립성이 깨진다**(2026-08-10 실측).
+  // 당일을 뺀 뒤 19개만 남아, 라벨은 "20일 평균" 인데 값은 19일 평균이 된다(#1268 이
+  // 실측으로 잡은 off-by-one: 32.68조 vs 32.63조). 기준 창이 토글을 따라가게 바뀐
+  // 뒤에도 이 **+1 은 그대로 남는다** — 표본 수를 라벨과 맞추는 것이 그 목적이라
+  // 라벨이 움직이든 말든 필요하다.
   //
-  // 그래서 요청은 넓게 받고 **표시만 창으로 자른다.** 벤더 콜은 안 는다 — 백엔드가
+  // 그래서 하나 더 받고 **표시만 창으로 자른다.** 벤더 콜은 안 는다 — 백엔드가
   // 최대 창(250일)을 캐시하고 라우트가 자르므로 `days` 는 응답 길이만 정한다.
-  const tv = useMarketTradeValue(Math.max(Number(span), BASELINE_DAYS + 1));
+  const tv = useMarketTradeValue(days + 1);
   const sectors = useMarketSectors();
 
   const today = todayKstYyyymmdd();
@@ -157,20 +165,24 @@ export function TradeValueCard() {
       fresh != null && raw[lastIdx].date === today
         ? [...raw.slice(0, lastIdx), { ...raw[lastIdx], value_eok: fresh }]
         : raw;
-    // 기준은 **받은 전체**에서(창과 무관), 표시는 **창으로 자른다**.
-    return { name, points: full.slice(-Number(span)), base: baselineEok(full, BASELINE_DAYS) };
+    // 기준과 표시가 **같은 창**이다 — 표시는 당일을 포함한 span 개, 기준은 당일을
+    // 뺀 span 개(그래서 기준 표본이 표시 구간보다 하루 더 앞에서 시작한다).
+    return { name, points: full.slice(-days), base: baselineEok(full, days) };
   });
 
   // 날짜 범위는 **헤더에 한 번만** 적는다 — 두 타일이 같은 창을 보므로 타일마다
   // 적으면 같은 글자가 두 번 나온다(프로토타입 1차에서 드러났다).
   const shown = tiles.find((t) => t.points)?.points;
   const range = shown ? `${mmdd(shown[0].date)}–${mmdd(shown[shown.length - 1].date)}` : '일별';
+  // 퍼센트의 분모가 토글을 따라가므로 **이 문구도 같이 따라간다**(`baselineEok`
+  // docstring 의 ⚠). 한쪽만 움직이면 라벨이 값을 반증한다.
+  const hint = `${range} · ${span}일 평균 대비 · 끝점은 당일`;
 
   return (
     <MarketCard className="flex flex-col gap-2xs p-md">
       <CardHeader
         title="거래대금 추이"
-        hint={`${range} · ${BASELINE_DAYS}일 평균 대비 · 끝점은 당일`}
+        hint={hint}
         right={<ModeSwitch value={span} onChange={setSpan} options={SPANS} label="거래대금 기간" />}
       />
       {shown === undefined ? (
