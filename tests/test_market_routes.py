@@ -312,9 +312,17 @@ async def test_investor_flow_reads_stored_samples_without_calling_the_vendor(tmp
     assert set(got["coverage"]) == {"KOSPI"}, "표본을 넣은 시장만 커버리지가 나온다"
     cov = got["coverage"]["KOSPI"]
     assert cov["sample_count"] == 2
-    # 390분 ÷ 30초. **분모가 폴 주기를 따라간다는 것이 이 단언의 요점**이므로,
-    # 수집 주기를 바꾸면 여기도 같이 바뀌어야 한다(2026-08-10 60→30초).
-    assert cov["expected_count"] == 780
+    # 450분(09:00–16:30) ÷ 30초. **분모가 폴 주기와 수집 창을 둘 다 따라간다는 것이
+    # 이 단언의 요점**이므로, 어느 쪽을 바꿔도 여기가 같이 바뀌어야 한다(2026-08-10
+    # 주기 60→30초, 2026-08-11 창 15:30→16:30).
+    #
+    # 값을 게이트 상수에서 계산해 적지 않는 이유: 그러면 산출부와 같은 식이 되어
+    # 동어반복이 된다. 값으로 세워야 실패 메시지가 "창이 바뀌었다" 를 말해 준다.
+    assert cov["expected_count"] == 900
+    # 창은 응답이 말한다 — 화면이 x축을 하드코딩하면 선은 16:30 까지 그려지는데
+    # 눈금은 15:30 이라고 말한다(`SessionAxisLabels` 주석의 그 함정).
+    assert got["session_start_sec"] == 9 * 3600
+    assert got["session_end_sec"] == 16 * 3600 + 30 * 60
     # 표본 간격 60초 < 갭 임계(30초 × GAP_MIN_JUMP_INTERVALS=3 = 90초) — 주기를
     # 조였다고 과거 간격이 갭으로 뒤집히지 않는다는 것도 여기서 지킨다.
     assert cov["gap_ranges"] == []

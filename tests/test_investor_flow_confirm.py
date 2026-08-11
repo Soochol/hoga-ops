@@ -94,6 +94,30 @@ def test_collector_is_dormant_without_credentials(tmp_path, monkeypatch):
     assert investor_flow_runtime.make_collector(tmp_path) is None
 
 
+def test_collector_is_wired_to_the_investor_flow_window_not_the_regular_session(
+    tmp_path, monkeypatch
+):
+    """**막는 것**: 배선이 기본값으로 조용히 되돌아가는 것.
+
+    `should_collect_fn` 의 기본값은 `ws_capture_window_async`(정규장 15:30)라, 이 주입을
+    빠뜨려도 수집기는 멀쩡히 돌고 테스트도 초록이다 — 다만 종가 단일가 체결분을 매일
+    놓친다. 그 회귀는 다음 거래일 15:30 이 지나야 드러나므로 여기서 못박는다.
+
+    **못 보는 것**: 게이트 자체의 시각 판정(그건 `test_session_gate.py` 의 몫)과, 창이
+    열려 있을 때 실제로 표본이 찍히는지(`test_investor_flow_collector.py`).
+    """
+    from hoga.live import investor_flow_runtime
+    from hoga.live.session_gate import investor_flow_capture_window_async
+
+    monkeypatch.setattr(
+        investor_flow_runtime, "_kiwoom_seam", lambda _d: (object(), object())
+    )
+    monkeypatch.setattr(investor_flow_runtime, "make_kiwoom_fetch", lambda _s, _c: None)
+    collector = investor_flow_runtime.make_collector(tmp_path)
+    assert collector is not None
+    assert collector._should_collect_fn is investor_flow_capture_window_async
+
+
 @pytest.mark.asyncio
 async def test_confirm_is_noop_without_credentials(tmp_path, monkeypatch):
     from hoga.live import investor_flow_runtime

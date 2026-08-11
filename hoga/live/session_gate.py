@@ -294,6 +294,66 @@ async def deriv_after_close_async(now_ms: int) -> bool:
     return await asyncio.to_thread(deriv_after_close, now_ms)
 
 
+# ── 투자자 수급(ka10051) 수집 창 ─────────────────────────────────────────────
+#
+# **주식 정규장보다 늦게 닫는다.** `ws_capture_window`(15:30)를 쓰면 그날의 마지막
+# 모양을 통째로 놓친다 — 종가 단일가(15:20–15:30)는 **체결이 15:30 에 일괄로** 나는데
+# 게이트는 그 직전에 닫히기 때문이다. 증상은 "수집이 멈춘 것" 처럼 보이지 않아서 더
+# 나쁘다: 15:20 이후 접속매매가 없어 벤더 값이 동결되므로 `rows_equal` 이 폴을 전부
+# 스킵하고, 파일의 마지막 쓰기가 매일 15:22 로 찍힌다(2026-08-11 실측 — 8/5·8/7·8/10·
+# 8/11 네 날 모두 15:22).
+#
+# 그 결손의 크기를 실측했다(2026-08-10 확정본 대비 장중 마지막 표본):
+#
+#     코스피 기관   장중 +6,619억 → 확정 +3,635억   (45% 차이)
+#     코스피 개인   장중 +8,772억 → 확정 +10,549억  (20% 차이)
+#
+# 마감 후에도 벤더는 그날 누적을 계속 답한다(2026-08-11 16:04 실측: 코스피 외국인이
+# 15:22 표본의 3,750억에서 2,089억으로 갱신돼 있었다). **묻기만 하면 살릴 수 있는
+# 값**이라 창을 여는 것으로 충분하다.
+#
+# ⚠ `ws_capture_window` 를 늘려서 해결하지 않는다. 저쪽 15:30 은 호가 도메인의
+# load-bearing 경계다 — 정규 TR 은 15:30 이후 틱이 없어 창을 열면 다운샘플러 carry 가
+# 유령 스냅샷만 쓴다(그 함수 docstring). 도메인이 다르면 게이트도 따로 둔다.
+#
+# 왜 확정본(17:00 배치)으로 대신하지 않는가: 그때까지 **두 시간을 틀린 값으로 서빙**한다
+# (실측 확정 시각 17:21). 그렇다고 확정을 앞당기는 것은 더 위험하다 — 확정 파일의
+# **존재 자체가 멱등 마커**라(#1115) 벤더가 아직 잠정치를 주는 시점에 쓰면 그 값이
+# 영구히 굳고 재조회 경로가 없다. 장중 표본은 잠정이라 그 위험이 없고, 남은 드리프트는
+# 17:00 확정이 그대로 덮는다.
+#
+#: **밑줄 없는 public 상수다** — 커버리지 분모(`_investor_flow_payload`)와 응답의
+#: x축(`session_end_sec`)이 같은 창을 말해야 하는데, 숫자를 세 곳에 적으면 창을
+#: 조정할 때 조용히 갈린다. 게이트가 SSOT 다(`DERIV_CLOSE_MIN` 과 같은 규율).
+INVESTOR_FLOW_OPEN_MIN = 9 * 60             # 09:00 KST
+INVESTOR_FLOW_CLOSE_MIN = 16 * 60 + 30      # 16:30 KST
+
+
+def _within_investor_flow_clock(t_ms: int) -> bool:
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
+    return INVESTOR_FLOW_OPEN_MIN <= (kst.hour * 60 + kst.minute) < INVESTOR_FLOW_CLOSE_MIN
+
+
+def investor_flow_capture_window(now_ms: int) -> bool:
+    """투자자 수급 수집 게이트: 거래일 && 09:00–16:30 KST.
+
+    `should_run_now` 를 못 쓰는 이유는 `deriv_capture_window` 와 같다 — 그 함수는
+    `market_phase`(주식 시계)가 'closed' 면 False 라 15:30 이후를 못 담는다. 그래서
+    거래일 판정만 SSOT 에서 받고 시계는 여기서 연다.
+
+    ⚠ BLOCKING: 거래일 판정이 캐시 미스 시 동기 KIS HTTP 를 칠 수 있다 — 이벤트
+    루프에서 직접 호출 금지, 코루틴은 ``investor_flow_capture_window_async`` 를 await.
+    """
+    if not _within_investor_flow_clock(now_ms):
+        return False
+    return is_trading_day_now(now_ms)
+
+
+async def investor_flow_capture_window_async(now_ms: int) -> bool:
+    """investor_flow_capture_window 의 non-blocking 진입점 — to_thread 봉인."""
+    return await asyncio.to_thread(investor_flow_capture_window, now_ms)
+
+
 # ── 시분할 구독은 폐지됐다 (ADR-0140 §2, PR-F) ────────────────────────────────
 #
 # 여기 있던 `target_ws_venue(now)` · `in_krx_warmup_window(now)` · `AUTO_VENUE` 는

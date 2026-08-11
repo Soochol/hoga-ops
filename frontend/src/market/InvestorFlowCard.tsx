@@ -11,10 +11,15 @@
  *
  * ## 주식과 파생은 같은 카드지만 같은 데이터가 아니다
  *
- * | | 벤더 | 세션 | 일별 확정 | 축 |
+ * | | 벤더 | 수집 창 | 일별 확정 | 축 |
  * |---|---|---|---|---|
- * | 주식 | 키움 ka10051 | 09:00–15:30 | 있음(`base_dt` 소급) | 억원 고정 |
+ * | 주식 | 키움 ka10051 | **09:00–16:30** | 있음(`base_dt` 소급) | 억원 고정 |
  * | 파생 | KIS FHPTJ04030000 | **09:00–15:45** | **없음** | 억원 **또는 계약** |
+ *
+ * 주식 창이 정규장(15:30)보다 넓은 것은 오타가 아니다 — 종가 단일가(15:20–15:30)는
+ * 체결이 15:30 에 일괄로 나는데, 정규장에서 닫으면 그 체결분이 통째로 빠진다(실측
+ * 2026-08-10: 코스피 기관 장중 마지막 +6,619억 → 확정 +3,635억). **두 창 다 응답에서
+ * 받는다**(`session_end_sec`) — 여기 숫자를 다시 적으면 조용히 갈린다.
  *
  * 그래서 파생을 고르면 「일별」 토글이 사라진다. 있지도 않은 경로를 버튼으로 만들어
  * 두면 눌러 보고 나서야 빈 화면을 만나게 된다.
@@ -45,6 +50,15 @@ const MARKET_LABELS: Record<string, string> = { KOSPI: '코스피', KOSDAQ: '코
 function kstSecOfDay(tMs: number): number {
   const kst = new Date(tMs + 9 * 3600_000);
   return kst.getUTCHours() * 3600 + kst.getUTCMinutes() * 60 + kst.getUTCSeconds();
+}
+
+/** 자정 기준 초 → `HH:MM`. **축 라벨을 하드코딩하지 않기 위한 것**이다 — 선은 서버가
+ *  준 `session_end_sec` 까지 그려지는데 눈금만 다른 시각을 말하면 조용한 거짓말이
+ *  된다(`SessionAxisLabels` 주석). 같은 값에서 파생시키면 어긋날 수가 없다. */
+function secOfDayLabel(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 /** 선택 하나 = 주식 시장 키(응답의 `markets` 키) 또는 파생 상품 키(`fid_input_iscd_2`). */
@@ -251,6 +265,10 @@ function StockIntraday({
     return <EmptyNote>오늘 표본이 아직 없습니다. 장중 수집이 시작되면 채워집니다.</EmptyNote>;
   }
   const secs = points.map((p) => kstSecOfDay(p.t_ms));
+  // 세션 끝을 **서버에서 받는다**. 정규장(15:30)으로 두면 마감 후 표본이 x축 끝에
+  // 클램프돼 뭉개진다(`SessionLinesChart` 의 px 계산) — 종가 단일가 체결분이 붙는
+  // 바로 그 표본이라 하필 가장 중요한 점이 사라진다.
+  const endSec = data?.session_end_sec;
   return (
     <FlowBody
       series={[
@@ -259,6 +277,8 @@ function StockIntraday({
         { color: SERIES_COLORS.institution, label: '기관', values: points.map((p) => p.institution), secs },
       ]}
       last={(s) => s.values[s.values.length - 1] ?? null}
+      sessionEndSec={endSec}
+      endLabel={endSec === undefined ? undefined : secOfDayLabel(endSec)}
     />
   );
 }
