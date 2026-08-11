@@ -28,12 +28,34 @@ from hoga.api.models import (
 )
 
 # 넓은 구간 = 상한을 탄다(`RANGE_WIDE_SPAN_DAYS` 이상).
+#
+# ⚠ **모드가 `hoga` 인 것이 이 상수의 계약이다 — 이 자리는 두 번 옮겨졌다.**
+# 원래 `mode=sidecar` 였는데 v3.4 가 sidecar 를 가르며 `candles` 로, v3.5 가 candles 를
+# 가르며 `hoga` 로 옮겼다. 그대로 뒀다면 이 파일의 단언은 **이름은 그대로인 채 다른
+# 레인을 재게** 됐을 것이다. 모드를 가를 때마다 여기부터 볼 것 — 공유 레인에 남은
+# 모드가 무엇인지가 이 상수의 정의다(지금은 hoga 하나뿐이다).
 URL = (
     "/api/range?code={code}&from=20260101&to=20260512&bucket_ms=60000"
-    "&venue=KRX&mode=sidecar"
+    "&venue=KRX&mode=hoga"
 )
 # 좁은 구간 = 상한 밖. `/live` 가 오늘·스크롤백 청크를 요청하는 모양이다.
 NARROW_URL = (
+    "/api/range?code={code}&from=20260512&to=20260512&bucket_ms=60000"
+    "&venue=KRX&mode=hoga"
+)
+# 넓은 sidecar = **자기 레인**. 위 `URL` 과 같은 구간이라 섞으면 레인들이 동시에 도는
+# 모양이 된다.
+SIDECAR_URL = (
+    "/api/range?code={code}&from=20260101&to=20260512&bucket_ms=60000"
+    "&venue=KRX&mode=sidecar"
+)
+# 넓은 candles = **또 다른 레인**(v3.5).
+CANDLES_URL = (
+    "/api/range?code={code}&from=20260101&to=20260512&bucket_ms=60000"
+    "&venue=KRX&mode=candles"
+)
+# 좁은 sidecar — 모드 분리가 **일수 분리를 대체하지 않는다**는 것을 재는 URL.
+NARROW_SIDECAR_URL = (
     "/api/range?code={code}&from=20260512&to=20260512&bucket_ms=60000"
     "&venue=KRX&mode=sidecar"
 )
@@ -63,10 +85,21 @@ def app(tmp_path):
 
 
 async def _max_concurrent_computes(app, monkeypatch, url_template, codes):
-    """`url_template` 로 동시 요청을 넣고, compute 안에 동시에 들어온 최대 수를 센다.
+    """`url_template` 로 동시 요청을 넣고, compute 안에 동시에 들어온 최대 수를 센다."""
+    return await _max_concurrent_for_urls(
+        app, monkeypatch, [url_template.format(code=c) for c in codes],
+    )
+
+
+async def _max_concurrent_for_urls(app, monkeypatch, urls):
+    """임의의 URL 묶음을 동시에 넣고 compute 안의 최대 동시 수를 센다.
 
     벽시계로 **비율**을 재지 않는다(리포 규칙) — 재는 것은 `max_inside` 라는
     카운트고, sleep 은 "요청들이 도착할 틈" 을 주는 동기화 수단일 뿐이다.
+
+    URL 을 직접 받는 형태가 따로 있는 이유는 **레인이 둘**이기 때문이다(ADR-0085 v3.4).
+    한 템플릿만 받으면 한 레인 안의 상한밖에 못 재고, 두 레인이 **서로 독립으로 도는지**
+    는 못 잰다 — 그건 두 모드를 한 배치에 섞어야 보인다.
     """
     inside = 0
     max_inside = 0
@@ -92,7 +125,7 @@ async def _max_concurrent_computes(app, monkeypatch, url_template, codes):
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
         responses, _ = await asyncio.gather(
-            asyncio.gather(*(ac.get(url_template.format(code=c)) for c in codes)),
+            asyncio.gather(*(ac.get(url) for url in urls)),
             release(),
         )
     assert all(r.status_code == 200 for r in responses), [r.status_code for r in responses]
@@ -123,6 +156,96 @@ async def test_narrow_range_bypasses_the_limit(app, monkeypatch):
     assert max_inside == len(codes), (
         f"좁은 요청이 직렬화됐다 — 동시 {max_inside}건 / {len(codes)}건. "
         "무게 분리가 죽으면 /live 의 하루짜리가 /study 의 5개월 뒤에 갇힌다."
+    )
+
+
+async def test_wide_sidecar_uses_its_own_lane(app, monkeypatch):
+    """넓은 sidecar 는 **자기 레인**의 상한을 탄다(ADR-0085 v3.4).
+
+    모드로 가르는 근거는 팽창률이다 — candles **6.7×** · hoga 6~8× 인데 sidecar 는
+    **3.8×** 로 부선형이다(peak 이 polars 라 그 구간에서 GIL 을 놓는다). 그런 요청을
+    candles 와 같은 줄에 세우면 이득을 버리면서 서로를 막는다.
+
+    상한이 **없어지는 것이 아니다**: 부선형인 것은 sidecar 끼리일 때고, peak 밖(depth
+    히트맵 · 응답 생성)은 여전히 파이썬이라 무제한으로 열면 v3 의 계기였던
+    "자연 상한 = 22" 가 이 클래스에서 재현된다.
+    """
+    assert routes.RANGE_SIDECAR_CONCURRENCY > 0, (
+        f"sidecar 전용 레인이 꺼져 있다 — HOGA_RANGE_SIDECAR_CONCURRENCY="
+        f"{routes.RANGE_SIDECAR_CONCURRENCY} (-1=공유 · 0=무제한). 둘 다 랜딩 값이 아니다."
+    )
+    codes = ["005930", "000660", "035420", "064350", "010120", "042660"]
+    max_inside = await _max_concurrent_computes(app, monkeypatch, SIDECAR_URL, codes)
+    # **정확히 레인 상한만큼** 돈다 — `<=` 로 두면 레인이 죽어 공유 상한에 갇혀도
+    # 통과한다(레인 값이 공유 상한 이상인 한). 레인이 실제로 **별개**라는 것은
+    # 아래 두-레인 테스트가 잰다.
+    assert max_inside == min(routes.RANGE_SIDECAR_CONCURRENCY, len(codes)), (
+        f"sidecar 레인이 상한만큼 돌지 않았다 — 동시 {max_inside}건 "
+        f"(레인 {routes.RANGE_SIDECAR_CONCURRENCY} · 요청 {len(codes)})"
+    )
+
+
+async def test_wide_candles_uses_its_own_lane(app, monkeypatch):
+    """넓은 candles 도 자기 레인을 탄다(ADR-0085 v3.5).
+
+    ⚠ **가르는 근거가 sidecar 와 반대다.** sidecar 는 부선형이라 동시성 이득을 살리려
+    갈랐고, candles 는 **가장 초선형**이라(6.7×) 이득이 아니라 **간섭 제거**가 목적이다 —
+    hoga 와 한 줄에 있으면 서로를 막고 그 대기가 곧 저장뷰 화면의 지연이었다.
+    그래서 레인 폭도 반대로 **좁을수록** 좋다.
+    """
+    assert routes.RANGE_CANDLES_CONCURRENCY > 0, (
+        f"candles 전용 레인이 꺼져 있다 — HOGA_RANGE_CANDLES_CONCURRENCY="
+        f"{routes.RANGE_CANDLES_CONCURRENCY} (-1=공유 · 0=무제한). 둘 다 랜딩 값이 아니다."
+    )
+    codes = ["005930", "000660", "035420", "064350", "010120", "042660"]
+    max_inside = await _max_concurrent_computes(app, monkeypatch, CANDLES_URL, codes)
+    assert max_inside == min(routes.RANGE_CANDLES_CONCURRENCY, len(codes)), (
+        f"candles 레인이 상한만큼 돌지 않았다 — 동시 {max_inside}건 "
+        f"(레인 {routes.RANGE_CANDLES_CONCURRENCY} · 요청 {len(codes)})"
+    )
+
+
+async def test_every_lane_runs_independently(app, monkeypatch):
+    """세 레인은 **서로를 막지 않는다** — 이것이 "레인" 이라는 말의 내용 전부다.
+
+    한 모드만 던지면 상한 값만 재게 되고, 레인 값이 공유 상한과 같은 날 분리가 죽어도
+    아무도 모른다. 모드를 **한 배치에 섞어야** 합이 보인다.
+
+    모드를 새로 가르면 이 테스트에 그 모드를 **추가**해야 한다 — 안 그러면 새 레인은
+    자기 상한만 검증되고 "독립인가" 는 아무도 안 본다.
+    """
+    codes = ["005930", "000660", "035420", "064350"]
+    urls = [
+        template.format(code=c)
+        for template in (URL, SIDECAR_URL, CANDLES_URL)
+        for c in codes
+    ]
+    max_inside = await _max_concurrent_for_urls(app, monkeypatch, urls)
+
+    expected = (
+        min(routes.RANGE_COMPUTE_CONCURRENCY, len(codes))
+        + min(routes.RANGE_SIDECAR_CONCURRENCY, len(codes))
+        + min(routes.RANGE_CANDLES_CONCURRENCY, len(codes))
+    )
+    assert max_inside == expected, (
+        f"레인 합이 안 맞는다 — 동시 {max_inside}건 (기대 {expected} = "
+        f"공유 {routes.RANGE_COMPUTE_CONCURRENCY} + sidecar {routes.RANGE_SIDECAR_CONCURRENCY} "
+        f"+ candles {routes.RANGE_CANDLES_CONCURRENCY}). "
+        "합이 더 작으면 어느 둘이 한 줄에 서 있는 것이다."
+    )
+
+
+async def test_narrow_sidecar_still_bypasses_every_lane(app, monkeypatch):
+    """모드 분리는 **일수 분리를 대체하지 않는다.**
+
+    sidecar 레인이 생겼다고 `/live` 의 하루짜리 sidecar 까지 그 줄에 세우면, 이번엔
+    `/study` 5개월 sidecar 뒤에 갇힌다 — 무게 분리가 원래 없애려던 그 head-of-line 이
+    레인 안에서 재현될 뿐이다. 좁은 요청은 모드와 무관하게 그냥 지나간다.
+    """
+    codes = ["005930", "000660", "035420", "064350", "010120", "042660"]
+    max_inside = await _max_concurrent_computes(app, monkeypatch, NARROW_SIDECAR_URL, codes)
+    assert max_inside == len(codes), (
+        f"좁은 sidecar 가 줄을 섰다 — 동시 {max_inside}건 / {len(codes)}건"
     )
 
 

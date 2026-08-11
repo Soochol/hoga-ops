@@ -20,7 +20,11 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   };
 });
 
-vi.mock('./studyReferenceQueries', () => ({
+// `studyReferenceQueryOptions` **만** 갈아끼운다 — 지표를 쿼리 설정으로 펴는
+// `studyReferenceQuerySettings` 는 실물을 쓴다. 이 파일의 단언 중 하나가 "창이 자기 봉의
+// 지표를 넘기는가" 이고, 그 매핑까지 흉내 내면 mock 이 정답을 대신 적는 셈이 된다.
+vi.mock('./studyReferenceQueries', async (orig) => ({
+  ...(await orig<typeof import('./studyReferenceQueries')>()),
   studyReferenceQueryOptions: studyReferenceQueryOptionsMock,
 }));
 

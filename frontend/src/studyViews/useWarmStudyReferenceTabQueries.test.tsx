@@ -137,6 +137,43 @@ describe('useWarmStudyReferenceTabQueries', () => {
     });
   });
 
+  it("resolves each tab's indicators from that tab's timeframe, not the focused window's", async () => {
+    // 지표 프로필은 `'minute' | 'D' | 'W' | 'M'` 네 개뿐이라(`profileKeyForTimeframe`)
+    // 분봉끼리는 어차피 같은 값이다 — **캘린더 봉이 섞여야** 갈린다. 그래서 포커스
+    // 창을 일봉으로 두고 탭은 5분봉으로 둔다. 이 어긋남이 이 테스트의 조건 전부다.
+    const chartId = useStudyWorkspaceStore.getState().windows.find((w) => w.kind === 'chart')!.id;
+    useStudyWorkspaceStore.getState().setChartTimeframe(chartId, 'D');
+    useLivePageStore.getState().patchIndicatorsAt('D', { depthHeatmapEnabled: true });
+    useLivePageStore.getState().patchIndicatorsAt('5m', { depthHeatmapEnabled: false });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const saves = [save('view-a', '005930', '삼성전자')];
+    const tabs = [tab('tab-a', 'view-a', '005930', '삼성전자')];  // timeframe: '5m'
+
+    renderHook(
+      () => useWarmStudyReferenceTabQueries({
+        tabs,
+        activeTabId: 'tab-a',
+        activatedTabIds: [],
+        saves,
+      }),
+      { wrapper: wrapper(client) },
+    );
+
+    await waitFor(() => {
+      const urls = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
+      expect(urls.some((url) => url.includes('mode=sidecar'))).toBe(true);
+    });
+
+    const sidecar = vi.mocked(apiCall).mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes('mode=sidecar'));
+    // 버킷은 탭의 봉(5분)이다. 지표도 **같은 봉**에서 나와야 활성 경로와 키가 맞는다.
+    expect(sidecar.every((url) => url.includes('bucket_ms=300000'))).toBe(true);
+    expect(sidecar.some((url) => url.includes('depth_heatmap_enabled=true'))).toBe(false);
+    expect(sidecar.every((url) => url.includes('depth_heatmap_enabled=false'))).toBe(true);
+  });
+
   it('observes the active tab and activated inactive tabs, but skips never-activated tabs', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const saves = [

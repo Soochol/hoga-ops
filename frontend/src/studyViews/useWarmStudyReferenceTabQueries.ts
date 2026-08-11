@@ -1,11 +1,12 @@
-import { useStudyChartIndicators } from './useStudyChartIndicators';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import type { StudyViewReference } from '../api/studyViews';
+import { resolveIndicatorSettings } from '../state/indicatorSettingsV2';
+import { useLivePageStore } from '../state/livePage';
 import type { StudyTab } from '../state/studyTabs';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
 import { referenceStudyView } from './studyViewVariant';
-import { studyReferenceQueryOptions } from './studyReferenceQueries';
+import { studyReferenceQueryOptions, studyReferenceQuerySettings } from './studyReferenceQueries';
 import { studyDailyContextWindow } from './studyDailyContext';
 import { STUDY_VENUE } from './studyVenuePolicy';
 
@@ -47,16 +48,15 @@ export function useWarmStudyReferenceTabQueries({
   saves,
 }: UseWarmStudyReferenceTabQueriesArgs): Record<string, StudyTabQueryStatus> {
   const sourcePref = useOrderflowSourcePref();
-  // 지표는 차트 창이 소유한다(#904) — 전역을 읽으면 차트가 그릴 지표와 여기서
-  // 받아오는 데이터가 어긋난다.
-  const {
-    brokerLateEntryEnabled,
-    brokerLateEntryStartHHMM,
-    tradeVolumePocEnabled,
-    depthHeatmapEnabled,
-    volumeDistributionEnabled,
-    volumeDistributionRangeCount,
-  } = useStudyChartIndicators();
+  // 지표 설정은 앱 전역 1세트지만 **봉마다 프로필이 다르다**(`indicatorsByTimeframe`).
+  // 그래서 여기서 해석하지 않고 **탭마다** 그 탭의 봉으로 푼다(아래 `specs`).
+  //
+  // 전에는 `useStudyChartIndicators()` 를 썼는데 그 훅은 **포커스된 창**의 봉으로
+  // 해석한다 — 워밍 쿼리의 `bucket_ms` 는 탭의 봉이므로, 포커스가 D 이고 워밍 대상이
+  // 분봉이면 "분봉 버킷 + D 프로필 지표" 라는 잡종 키가 나갔다. 활성 전환에서 키가
+  // 안 맞아 같은 구간을 플래그만 바꿔 한 번 더 받는다 — 워밍이 요청을 줄이려다 늘린다.
+  // 근거와 실측은 `studyReferenceQuerySettings` 주석.
+  const indicatorsByTimeframe = useLivePageStore((s) => s.indicatorsByTimeframe);
   // 워밍 쿼리도 활성 경로와 **같은 venue** 여야 한다 — 다르면 탭 전환 시 캐시가 안 맞아
   // 재fetch 된다. `/study` 가 KRX 고정(`studyVenuePolicy`, ADR-0144)이 되면서 그 제약이
   // 자명하게 충족된다: 양쪽 모두 같은 상수를 읽는다.
@@ -93,24 +93,21 @@ export function useWarmStudyReferenceTabQueries({
 
   const specs = useMemo<WarmQuerySpec[]>(() => {
     const savesById = new Map(saves.map((save) => [save.id, save]));
-    const baseSettings = {
-      sourcePref,
-      brokerLateEntryEnabled,
-      brokerLateEntryStartHHMM,
-      tradeVolumePocEnabled,
-      depthHeatmapEnabled,
-      volumeDistributionEnabled,
-      volumeDistributionRangeCount,
-    };
     return tabs.flatMap((tab) => {
       if (!warmTabIds.has(tab.id)) return [];
       const save = referenceStudyView(savesById.get(tab.viewId) ?? null);
       if (!save) return [];
-      const settings = { ...baseSettings, venue: STUDY_VENUE };
       // tab.timeframe이 SSOT: viewTimeframes는 effect로 한 커밋 늦게 동기화돼,
       // "열 때 기본 시간봉" override로 연 첫 렌더에서 save.timeframe으로 워밍
       // 쿼리를 만들면 즉시 버려질 range 번들을 한 벌 더 fetch하게 된다.
       const timeframe = tab.timeframe;
+      // 지표도 **같은 봉으로** 푼다 — 버킷과 플래그가 한 봉에서 나와야 활성 경로와
+      // 키가 맞는다(위 주석).
+      const settings = studyReferenceQuerySettings(
+        resolveIndicatorSettings(indicatorsByTimeframe, timeframe),
+        sourcePref,
+        STUDY_VENUE,
+      );
       const displayed = { ...save, timeframe };
       // 맥락 창도 활성 경로와 **같은 규칙으로** 계산한다 — 안 넘기면 캘린더 봉 탭의
       // screenerDaily 키가 갈려 워밍이 헛돌고 활성 전환에서 다시 fetch 한다.
@@ -134,14 +131,9 @@ export function useWarmStudyReferenceTabQueries({
   }, [
     openedVersion,
     saves,
-    brokerLateEntryEnabled,
-    brokerLateEntryStartHHMM,
+    indicatorsByTimeframe,
     sourcePref,
     tabs,
-    tradeVolumePocEnabled,
-    depthHeatmapEnabled,
-    volumeDistributionEnabled,
-    volumeDistributionRangeCount,
     warmTabIds,
   ]);
 

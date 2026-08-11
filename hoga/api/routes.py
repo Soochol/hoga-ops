@@ -16,7 +16,8 @@ from pathlib import Path
 
 import anyio
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from starlette.requests import ClientDisconnect
 
 from hoga import perf_debug
 from hoga.api.bundle import build_range_bundle
@@ -43,7 +44,9 @@ from hoga.util.timeenc import (
 
 log = logging.getLogger(__name__)
 
-# `/api/range` 의 **넓은 구간** 동시 compute 상한.
+# `/api/range` 의 **넓은 구간** 동시 compute 상한 — 지금 이 레인에 남은 모드는 **hoga
+# 하나뿐이다**(sidecar 는 v3.4, candles 는 v3.5 에서 자기 레인으로 나갔다). 이름이
+# "compute" 로 남은 것은 이력 때문이고, 마지막 모드까지 나가면 이 상수는 사라진다.
 #
 # 왜 상한이 필요한가: 이 경로는 시간의 대부분이 행→pydantic 모델 생성이라 GIL 을
 # 놓지 않는다. 32코어에서 스레드 6개로 돌려도 wall 이 **7.1배**로 늘어나고(스레드마다
@@ -116,10 +119,106 @@ RANGE_COMPUTE_CONCURRENCY = int(os.environ.get("HOGA_RANGE_CONCURRENCY", "") or 
 # 어차피 빨리 끝나 뒤를 오래 막지 않는다.
 RANGE_WIDE_SPAN_DAYS = int(os.environ.get("HOGA_RANGE_WIDE_SPAN_DAYS", "") or 30)
 
+# `mode=sidecar` 의 레인. 위 무게 분리(일수)에 **모드 축**을 더한 것이다(ADR-0085 v3.4).
+#
+# 왜 sidecar 만 다른가: 6-스레드 팽창이 모드마다 다르다 — candles **6.7×** · hoga 6~8×
+# 인데 sidecar 는 **3.8×** 로 **부선형**이다(팽창/N < 1). peak 이 polars 라 그 구간에서
+# GIL 을 놓기 때문이고, 즉 sidecar 끼리는 동시성이 **실제 이득**이다. 그런 요청을
+# candles 와 같은 줄에 세우면 이득을 버리면서 서로를 막는다.
+#
+# ⚠ **그렇다고 상한을 푸는 것이 아니다 — 측정이 그쪽을 기각했다.** 부선형인 것은
+# sidecar **끼리**일 때고, peak 밖(depth 히트맵 · 1~2MB 응답 생성)은 여전히 파이썬이다.
+# 혼합 부하 22 동시(저장뷰 4개분 12 + 하루짜리 10), 교대 대조 4라운드 median:
+#
+#     변형        wall  뷰완성  h:hoga  h:sidecar  h:candles  l:hoga  l:sidecar  평균
+#     공유(현행)  9.35   8.27    6.16     7.06       8.24     0.144    0.277    3.72
+#     레인 2      8.46   7.73    4.96     6.19       6.81     0.163    0.233    3.26  ← 채택
+#     레인 4      8.95   8.69    6.45     4.75       8.65     0.239    0.317    3.54
+#
+# ("뷰완성" = 저장뷰 하나의 3모드 중 **가장 느린 것** — `isLoading` 이 OR 라 화면은
+#  그때 뜬다. 사용자가 실제로 기다리는 값이고, 클래스별 중앙값으로는 안 보인다.)
+#
+# **레인 4는 재분배다**: sidecar 를 -33% 얻는 대신 뷰완성 +5% · candles +5% ·
+# 가벼운 hoga **+66%** 를 잃는다 — 레인을 넓게 열수록 그쪽이 제한 레인의 candles/hoga
+# 와 GIL 을 나눠 갉아먹는다. v3 이 "상한을 모두에게 걸면 손해" 라고 적은 것의 거울상이다.
+# **레인 2는 실제 이득**: 가벼운 hoga 만 +14%(절대 **+19ms**, 노이즈 범위) 나빠지고
+# 나머지 전 열이 7~19% 개선된다.
+#
+# ⚠ **단발 sweep 은 이 결론을 뒤집었다.** 3-trial 1회에서는 레인 4가 최선으로 보였고
+# (wall 8.30 · 평균 3.165), 교대 대조로 다시 재자 뒤집혔다. 변형 간 차이가 머신 부하
+# 드리프트와 같은 크기라 **번갈아 돌리지 않으면 순서가 곧 결과**다.
+#
+# 값의 의미(sweep 을 서버 재시작만으로 돌리기 위한 노브 — `HOGA_RANGE_CONCURRENCY` 와
+# 같은 자리에 둔다):
+#   -1 = 공유 레인 (모드 분리 이전 동작)
+#    0 = 상한 없음
+#   N>0 = 전용 레인 N
+#
+# 채택값이 공유 상한과 **같은 2**인 것은 우연이 아니다 — 이득의 정체는 "sidecar 를 더
+# 돌린다" 가 아니라 **"서로를 막지 않는다"** 다. 두 상수를 한 값으로 합치지 말 것:
+# 근거가 다르고(이쪽은 모드 팽창률, 저쪽은 GIL 직렬화) 다음 재측정에서 갈릴 값이다.
+RANGE_SIDECAR_CONCURRENCY = int(os.environ.get("HOGA_RANGE_SIDECAR_CONCURRENCY", "") or 2)
+
+# `mode=candles` 의 레인. 값 규약은 위 sidecar 노브와 같다(-1 공유 · 0 무제한 · N 레인).
+#
+# 가르는 근거가 sidecar 와 다르다. sidecar 는 부선형이라 **동시성 이득**을 살리려 갈랐고,
+# candles 는 v3.4 가 남긴 **뷰완성 지배자**여서 갈랐다 — 저장뷰 화면은 3모드가 다 와야
+# 뜨는데(`isLoading` 이 OR) 그 마지막이 늘 candles 였다.
+#
+# ⚠ **"가장 초선형이니 레인은 좁을수록 좋다" 는 측정으로 반증됐다.** 그렇게 예상하고
+# 레인 1부터 쟀는데 candles 가 오히려 느려졌다(7.11 → 7.46). 초선형은 **총 wall** 의
+# 성질이지 **개별 요청 지연**의 성질이 아니다 — 레인 1은 4건을 직렬화해 마지막의 대기가
+# 누적되고, 그 누적이 초선형 페널티보다 크다. 사용자가 기다리는 것은 총 wall 이 아니라
+# 자기 요청이므로 이쪽이 이긴다. 혼합 22 동시 · 전부 warm · 교대 대조 3라운드 median:
+#
+#     변형        wall  뷰완성  h:hoga  h:sidecar  h:candles  l:hoga  평균
+#     공유(v3.4)  9.54   8.56    5.47     7.10       7.32    0.230   3.65
+#     레인 1      9.61   8.42    2.06     7.36       7.46    0.240   3.18  ← 더 느려졌다
+#     레인 2     10.03   7.93    2.19     7.89       4.82    0.277   3.07
+#     **레인 3**  9.84   7.85    2.29     7.79       2.88    0.269   2.83  ← 채택
+#     레인 4      9.77   7.88    2.26     7.88       2.69    0.197   2.45
+#
+# **레인 3에서 꺾인다** — 4로 넓혀도 뷰완성이 안 움직인다(7.85 ↔ 7.88, 노이즈).
+# 병목이 이미 sidecar 로 옮겨갔기 때문이다: 채택 변형의 뷰완성 7.85 는 `h:sidecar`
+# 7.79 와 같은 값이다. **candles 를 더 여는 것은 이제 이득이 없고 GIL 만 더 나눈다.**
+#
+# ⚠ **공짜가 아니다.** wall +3% · `h:sidecar` +10% 는 일관되게 악화된다(병목 이동의
+# 대가). 그래도 랜딩하는 근거는 **뷰완성 -8%** 와 전체 평균 -23% 다 — wall 은 "마지막
+# 요청까지" 라 사용자가 기다리는 값이 아니다. light 열은 라운드마다 부호가 뒤집혀
+# (-14% ↔ +17%) 노이즈로 판정했다.
+RANGE_CANDLES_CONCURRENCY = int(os.environ.get("HOGA_RANGE_CANDLES_CONCURRENCY", "") or 3)
+
 # 상한 대기가 이 값을 넘으면 로그에 남긴다. 대기는 TTFB 에 그대로 포함되므로
 # (`request_timing`), 이 값이 없으면 다음 조사자가 **큐 대기를 계산 시간으로 읽는다**
 # — 이 세션이 정확히 그 오독을 한 번 하고 나서 프로브로 갈랐다.
 RANGE_QUEUE_WAIT_LOG_MS = 1000.0
+
+# nginx 관례의 "클라이언트가 먼저 끊었다". 표준 코드는 아니지만 이 상황에 2xx/4xx 를
+# 주면 로그에서 정상 응답과 구별되지 않는다 — 받을 사람이 이미 없으므로 값의 유일한
+# 소비자는 로그와 메트릭이다.
+HTTP_CLIENT_CLOSED_REQUEST = 499
+
+
+async def _drain_request_stream(request: Request) -> bool:
+    """요청 본문을 비운다. 그 사이 클라이언트가 떠났으면 True.
+
+    ⚠ **이 호출이 없으면 아래 `is_disconnected()` 가 조용히 무력화된다.**
+    starlette 의 `Request.is_disconnected()` 는 **호출당 receive 메시지 하나**만 읽고
+    그것이 `http.disconnect` 인지 본다. 그런데 uvicorn 은 body 가 없는 GET 에도 빈
+    `http.request` 를 한 번 보내므로, 큐를 미리 비워 두지 않으면 첫 호출이 그것을
+    소비하고 **False** 를 돌려준다 — 바로 뒤에 있는 `http.disconnect` 는 못 본 채로.
+    실패 방식이 "감지 못 함" 이라 **증상이 없다**: 이탈 요청이 그냥 예전처럼 끝까지
+    계산될 뿐이고 로그에도 흔적이 없다. 그래서 receive 큐 순서를 그대로 재현하는
+    테스트를 붙여 뒀다(`test_range_client_disconnect.py`) — 그 테스트는 이 호출을
+    지우면 빨개진다.
+
+    GET 이라 즉시 끝나고, `body()` 는 결과를 캐시하므로 중복 호출도 안전하다.
+    """
+    try:
+        await request.body()
+    except ClientDisconnect:
+        return True
+    return False
 
 
 def _is_wide_range(from_date: str, to_date: str) -> bool:
@@ -502,8 +601,52 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
     # 이 성질이 없으면 여기 두는 것 자체가 성립하지 않는다.
     range_compute_limiter = anyio.CapacityLimiter(RANGE_COMPUTE_CONCURRENCY)
 
+    def _dedicated_lane(limit: int) -> AbstractAsyncContextManager[object] | None:
+        """전용 레인 하나. `None` = 이 모드는 공유 레인을 쓴다.
+
+        값 규약은 상수 주석과 같다: `-1` 공유 · `0` 무제한 · `N>0` 레인 N.
+        `nullcontext` 는 상태가 없어 여러 요청이 같은 인스턴스를 써도 안전하다.
+        """
+        if limit == 0:
+            return contextlib.nullcontext()
+        if limit > 0:
+            return anyio.CapacityLimiter(limit)
+        return None
+
+    # 모드 → 전용 레인 **표**. if 사다리로 두지 않는 이유: 모드가 셋인데 이미 둘을
+    # 갈랐고, 남은 hoga 를 가르는 날 사다리는 분기가 또 늘지만 표는 줄이 하나 는다.
+    mode_lanes = {
+        mode: lane
+        for mode, limit in (
+            ("sidecar", RANGE_SIDECAR_CONCURRENCY),
+            ("candles", RANGE_CANDLES_CONCURRENCY),
+        )
+        if (lane := _dedicated_lane(limit)) is not None
+    }
+    lane_limits = {
+        "sidecar": RANGE_SIDECAR_CONCURRENCY,
+        "candles": RANGE_CANDLES_CONCURRENCY,
+    }
+
+    def _range_gate(mode: str, from_date: str, to_date: str) -> tuple[
+        AbstractAsyncContextManager[object], str,
+    ]:
+        """이 요청이 설 줄과 그 이름. 이름은 `queue_wait` 로그에 실린다.
+
+        좁은 요청은 **모드와 무관하게** 그냥 지나간다 — 모드 분리는 넓은 요청 안에서
+        무게를 다시 가르는 것이지, 일수 분리를 대체하는 것이 아니다. `/live` 의
+        하루짜리 sidecar 가 `/study` 5개월 sidecar 뒤에 갇히면 안 되는 것은 그대로다.
+        """
+        if not _is_wide_range(from_date, to_date):
+            return contextlib.nullcontext(), "none"
+        lane = mode_lanes.get(mode)
+        if lane is not None:
+            return lane, mode
+        return range_compute_limiter, "shared"
+
     @router.get("/range", response_model=RangeBundle)
     async def api_range(
+        request: Request,
         code: Code,
         from_date: str = Query(..., alias="from"),
         to_date: str = Query(..., alias="to"),
@@ -562,14 +705,15 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
             )
         # 위 검증(400)은 **상한 밖**이다 — 잘못된 요청이 큐를 기다릴 이유가 없고,
         # 기다리면 그 자리만큼 정상 요청이 밀린다.
+        #
+        # 줄을 서기 **전에** 요청 스트림을 비운다 — 이유는 `_drain_request_stream`.
+        client_gone = await _drain_request_stream(request)
         t0 = perf_debug.now()
         # 넓은 요청만 줄을 선다(상수 주석의 실측표 참조). 좁은 요청까지 같은 큐에
         # 넣으면 하루짜리가 5개월짜리 뒤에 갇혀 **중앙값이 7배 나빠진다.**
-        gate: AbstractAsyncContextManager[object] = (
-            range_compute_limiter
-            if _is_wide_range(from_date, to_date)
-            else contextlib.nullcontext()
-        )
+        # 그 안에서 sidecar 는 자기 레인을 쓴다 — `RANGE_SIDECAR_CONCURRENCY`.
+        gate: AbstractAsyncContextManager[object]
+        gate, lane = _range_gate(mode, from_date, to_date)
         # 대기는 **이벤트 루프에서** 한다. 이 라우트가 `async def` 인 것이 그 조건이다:
         # 동기 `def` 였다면 FastAPI 가 요청마다 스레드풀 스레드를 잡은 뒤 그 스레드
         # 위에서 상한을 기다려, 대기자들이 40 토큰짜리 공용 풀을 채우고 **다른 동기
@@ -583,10 +727,28 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                 # 잘못 보낸다(상수 주석 참조).
                 log.warning(
                     "hoga_perf api_range status=queued code=%s from=%s to=%s mode=%s "
-                    "queue_wait_ms=%.1f limit=%d",
-                    code, from_date, to_date, mode, queue_wait_ms,
-                    RANGE_COMPUTE_CONCURRENCY,
+                    "lane=%s queue_wait_ms=%.1f limit=%d",
+                    code, from_date, to_date, mode, lane, queue_wait_ms,
+                    lane_limits.get(lane, RANGE_COMPUTE_CONCURRENCY),
                 )
+            # 기다리는 동안 화면이 이 요청을 버렸을 수 있다 — `/study` 저장뷰에서는
+            # 흔하다(봉·지표를 바꾸면 react-query 가 in-flight 를 abort 한다). 그런
+            # 요청을 그대로 계산하면 **아무도 안 읽을 결과**를 만드는 데 permit 하나를
+            # 수 분간 쓰고, 그만큼 살아 있는 요청이 밀린다. 실측(2026-08-11): 저장뷰
+            # 하나에 같은 URL 이 최대 4벌 완주했고 뒤의 요청은 큐에서 180초를 기다렸다.
+            #
+            # ⚠ **이미 계산에 들어간 요청은 여기서 못 살린다.** `to_thread.run_sync` 는
+            # 취소되지 않으므로 스레드가 끝나야 permit 이 풀린다. 그렇다고 permit 만
+            # 먼저 반납하면 **더 나빠진다** — 스레드는 계속 GIL 을 먹는데 대기자까지
+            # 들어와 동시 계산이 상한을 넘는다. 그래서 처방은 "취소" 가 아니라
+            # **"시작하지 않기"** 다.
+            if client_gone or await request.is_disconnected():
+                log.warning(
+                    "hoga_perf api_range status=abandoned code=%s from=%s to=%s mode=%s "
+                    "queue_wait_ms=%.1f",
+                    code, from_date, to_date, mode, queue_wait_ms,
+                )
+                raise HTTPException(HTTP_CLIENT_CLOSED_REQUEST, "client disconnected")
             t_compute = perf_debug.now()
             try:
                 bundle = await anyio.to_thread.run_sync(
