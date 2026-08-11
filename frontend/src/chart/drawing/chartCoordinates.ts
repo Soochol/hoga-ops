@@ -146,9 +146,30 @@ function coreRealMsToCanvasX(chart: IChartApi, axis: VirtualAxis, realMs: number
   return x == null ? null : (x as number);
 }
 
-/** realMs (past the last candle) → canvas X via logical-index extrapolation:
- *  bars-ahead = (realMs − lastRealMs) / bucketMs, projected off the last
- *  candle's logical position. Returns null if the last candle can't be located. */
+/**
+ * realMs (past the last candle) → canvas X via logical-index extrapolation:
+ * bars-ahead = (realMs − lastRealMs) / bucketMs, projected off the last
+ * candle's logical position. Returns null if the last candle can't be located.
+ *
+ * ⚠ `logicalToCoordinate` RESOLVES ONLY WHOLE LOGICAL INDICES — a fractional
+ * argument returns **0**, not null and not an interpolated coordinate (measured
+ * on lwc 5.2, 60m chart: 1155 → 312.7, 1156 → 319.9, but 1155.1 / 1155.25 /
+ * 1155.5 / 1155.75 → 0). Since `x == null ? null : x` treats that 0 as a real
+ * coordinate, a fractional `barsAhead` used to pin the vertex to the canvas's
+ * left edge — a trendline drawn minutes ago stretched across the whole chart.
+ *
+ * `barsAhead` is fractional exactly when the drawing's realMs is off the
+ * timeframe's bar grid, which is the NORMAL case for every aggregated minute
+ * frame: `/live` fetches 1m and folds it client-side (`aggregateCandles`), so a
+ * realMs on the 1m grid divides 3m/5m/…/240m unevenly. 1m alone was accidentally
+ * safe (bucketMs = 60 000 divides its own grid), which is why this survived so
+ * long — and why the symptom read as "each minute frame saves something
+ * different" rather than as one broken projection.
+ *
+ * So the pitch is MEASURED in pixels between two whole logicals and multiplied,
+ * instead of handing lwc a fraction. Do not "simplify" this back to
+ * `logicalToCoordinate(lastLogical + barsAhead)`.
+ */
 function extrapolateFutureX(
   chart: IChartApi,
   axis: VirtualAxis,
@@ -160,9 +181,17 @@ function extrapolateFutureX(
   if (lastX == null) return null;
   const lastLogical = ts.coordinateToLogical(lastX);
   if (lastLogical == null) return null;
+  // Round before re-projecting: `coordinateToLogical` may hand back a fraction,
+  // and only whole indices resolve (see above). `baseX` is re-derived from the
+  // rounded logical rather than reusing `lastX` so the two ends of `barPx` come
+  // from the same grid.
+  const baseLogical = Math.round(lastLogical as number);
+  const baseX = ts.logicalToCoordinate(baseLogical as Logical);
+  const nextX = ts.logicalToCoordinate((baseLogical + 1) as Logical);
+  if (baseX == null || nextX == null) return null;
+  const barPx = (nextX as number) - (baseX as number);
   const barsAhead = (realMs - future.lastRealMs) / future.bucketMs;
-  const x = ts.logicalToCoordinate(((lastLogical as number) + barsAhead) as Logical);
-  return x == null ? null : (x as number);
+  return (baseX as number) + barsAhead * barPx;
 }
 
 /** Canvas X (in the empty band) → realMs via logical-index extrapolation. Only
