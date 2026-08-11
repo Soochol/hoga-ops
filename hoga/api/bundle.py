@@ -692,7 +692,7 @@ def build_ask_peak_slice(
     if cacheable and cache.has_ask_peak(code, date, source, bucket_ms, venue=venue):  # type: ignore[union-attr]
         return cache.get_ask_peak(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
     peak = _compute_ask_peak(
-        engine, code=code, date=date, source=source, bucket_ms=bucket_ms,
+        engine, code=code, date=date, source=source, venue=venue, bucket_ms=bucket_ms,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
     if cacheable:
@@ -788,7 +788,15 @@ def _compute_ask_peak(
     code: str,
     date: str,
     source: str,
-    venue: Venue = "KRX",
+    # ⚠ **기본값을 주지 말 것**(#1133 과 같은 함정, 이번엔 백엔드에서). 이 세 `_compute_*`
+    # 헬퍼는 전부 `engine.parquet_dir(..., venue=venue)` 로 디스크 경로를 정하는데,
+    # `= "KRX"` 가 있으면 호출부가 venue 를 빠뜨려도 **조용히 KRX 를 읽는다**.
+    # b64036f5(ADR-0140) 가 슬라이스 빌더 15곳에 venue 를 꿰면서 이 안쪽 호출 5곳을
+    # 빠뜨렸고, 기본값이 그걸 타입 에러가 아니라 런타임 오독으로 바꿔 놨다 —
+    # NXT/UN 차트에 KRX 벽·KRX 연속거래 상한이 나갔고, 오늘자처럼 KRX 캡처 디렉터리가
+    # 아직 없는 시각(프리마켓 08:00–09:00)엔 StockDateNotFound 로 /api/range 가 통째로
+    # 500 이었다. 필수 키워드로 두면 다음 누락은 컴파일 시점에 걸린다.
+    venue: Venue,
     bucket_ms: int,
     session_open_ms: int | None,
     session_close_ms: int | None,
@@ -839,7 +847,7 @@ def build_bid_peak_slice(
     if cacheable and cache.has_bid_peak(code, date, source, bucket_ms, venue=venue):  # type: ignore[union-attr]
         return cache.get_bid_peak(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
     peak = _compute_bid_peak(
-        engine, code=code, date=date, source=source, bucket_ms=bucket_ms,
+        engine, code=code, date=date, source=source, venue=venue, bucket_ms=bucket_ms,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
     if cacheable:
@@ -853,7 +861,7 @@ def _compute_bid_peak(
     code: str,
     date: str,
     source: str,
-    venue: Venue = "KRX",
+    venue: Venue,  # 필수 — 근거는 `_compute_ask_peak` 의 주석
     bucket_ms: int,
     session_open_ms: int | None,
     session_close_ms: int | None,
@@ -950,6 +958,7 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
                 date=date,
                 bucket_ms=bucket_ms,
                 source=source,
+                venue=venue,
                 session_open_ms=session_open_ms,
                 session_close_ms=session_close_ms,
                 cache=cache,
@@ -962,6 +971,7 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
                 date=date,
                 bucket_ms=bucket_ms,
                 source=source,
+                venue=venue,
                 session_open_ms=session_open_ms,
                 session_close_ms=session_close_ms,
                 cache=cache,
@@ -1279,7 +1289,8 @@ def _first_trailing_single_price_book_hhmmssms(
     result = SLICE_COALESCER.run(
         cont_key,
         lambda: _compute_first_trailing_single_price_book_hhmmssms(
-            engine, code=code, date=date, source=source, session_close_ms=session_close_ms
+            engine, code=code, date=date, source=source, venue=venue,
+            session_close_ms=session_close_ms,
         ),
     )
     if cacheable:
@@ -1295,7 +1306,7 @@ def _compute_first_trailing_single_price_book_hhmmssms(
     code: str,
     date: str,
     source: str,
-    venue: Venue = "KRX",
+    venue: Venue,  # 필수 — 근거는 `_compute_ask_peak` 의 주석
     session_close_ms: int,
 ) -> int | None:
     code_dir = engine.parquet_dir(date, code, source, venue=venue)
