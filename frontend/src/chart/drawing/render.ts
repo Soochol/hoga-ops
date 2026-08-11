@@ -15,8 +15,7 @@ import type {
   LineStyle,
 } from './types';
 import type { TrendlineDraft } from './tools';
-import { type FutureBand, dragTimeDomain } from './chartCoordinates';
-import { INTER_SEGMENT_GAP_MS } from '../../util/time';
+import { type FutureBand, dragBarDomain } from './chartCoordinates';
 
 /**
  * Everything a render needs to place a Drawing on SOME canvas, with the
@@ -407,22 +406,22 @@ function measureDirColor(a: number, b: number): string {
  *  deliberately wall-clock (a measure spanning a weekend really covers 3 days),
  *  but the BAR COUNT must be gap-aware: dividing the real-ms span by bucketMs
  *  counted inter-session gaps as bars (an overnight on the 1m timeframe
- *  inflated the count by ~1,050봉). Counting in the virtual (gap-compressed)
- *  domain matches the bars actually on screen; the drag domain also linearizes
- *  the empty right band so a measure with a future-anchored endpoint counts
- *  its extrapolated bars. Exported for tests. */
+ *  inflated the count by ~1,050봉). The drag domain counts on-screen columns
+ *  directly, so a day boundary contributes exactly the one bar it occupies —
+ *  the earlier virtual-ms arithmetic scored it as INTER_SEGMENT_GAP_MS, i.e.
+ *  1/60th of a bar on 1m, and rounded it away (one bar undercounted per
+ *  boundary). The domain also linearizes the empty right band so a measure
+ *  with a future-anchored endpoint counts its extrapolated bars. Exported for
+ *  tests. */
 export function formatMeasureLabel(m: Measure, ctx: ProjectCtx): string {
   const delta = formatDeltaLabel(m.a.price, m.b.price, m.paneId);
   const dur = formatDuration(m.b.realMs - m.a.realMs);
   const parts = [delta, dur];
-  const bucketMs = ctx.bucketMs;
-  if (bucketMs && bucketMs > 0) {
-    const dom = dragTimeDomain(ctx.axis, futureBand(ctx));
-    // One bar of virtual time: session-linear on intraday axes, one segment
-    // pitch on calendar (D/W/M) axes where each trading day is one bar.
-    const vPerBar = ctx.axis.mode === 'calendar' ? INTER_SEGMENT_GAP_MS : bucketMs;
-    const bars = Math.round(Math.abs(dom.toVirtual(m.b.realMs) - dom.toVirtual(m.a.realMs)) / vPerBar);
-    parts.push(`${bars}봉`);
+  const dom = dragBarDomain(ctx.axis, futureBand(ctx));
+  // Gated on barSized: without a known bar pitch the domain falls back to
+  // virtual ms, whose units are not columns — a count read off it would lie.
+  if (dom.barSized) {
+    parts.push(`${Math.round(Math.abs(dom.toBar(m.b.realMs) - dom.toBar(m.a.realMs)))}봉`);
   }
   return parts.join(' · ');
 }

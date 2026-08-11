@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Drawing, Hline, Measure, Pencil, Rect, Text, Trendline, Vline } from './types';
 import {
   clampDPriceForDrawing,
-  clampDVirtualForDrawing,
+  clampDBarForDrawing,
   pricesOf,
   timesOf,
   translateDrawing,
@@ -278,7 +278,7 @@ describe('timesOf', () => {
   });
 });
 
-describe('clampDVirtualForDrawing — left-edge shape-preserving cap', () => {
+describe('clampDBarForDrawing — left-edge shape-preserving cap', () => {
   const rect: Rect = {
     id: 'r', kind: 'rect',
     a: { realMs: 1_000, price: 10 },
@@ -289,17 +289,17 @@ describe('clampDVirtualForDrawing — left-edge shape-preserving cap', () => {
   const identity = (ms: number) => ms;
 
   it('passes a rightward shift through untouched (future band is open-ended)', () => {
-    expect(clampDVirtualForDrawing(rect, 500, 0, identity)).toBe(500);
+    expect(clampDBarForDrawing(rect, 500, 0, identity)).toBe(500);
   });
 
   it('caps a leftward shift so the earliest vertex stops at the origin', () => {
-    // Earliest vertex at virtual 1_000; origin 0 → at most -1_000. The same
+    // Earliest vertex at ordinal 1_000; origin 0 → at most -1_000. The same
     // capped delta applies to BOTH vertices, so the 2_000 span survives.
-    expect(clampDVirtualForDrawing(rect, -5_000, 0, identity)).toBe(-1_000);
+    expect(clampDBarForDrawing(rect, -5_000, 0, identity)).toBe(-1_000);
   });
 
   it('leaves an hline unclamped (no time vertices to protect)', () => {
     const h: Hline = { id: 'h', kind: 'hline', price: 5, ...baseStyle, paneId: 'candle' };
-    expect(clampDVirtualForDrawing(h, -9_999, 0, identity)).toBe(-9_999);
+    expect(clampDBarForDrawing(h, -9_999, 0, identity)).toBe(-9_999);
   });
 });
