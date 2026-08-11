@@ -1,7 +1,6 @@
 /**
  * 일봉 창에 **다른 창(분봉)의 마우스 위치**를 크로스헤어로 표시한다. `/study` 와
- * `/live` 워크스페이스가 둘 다 쓴다(파일 이름의 `Study` 접두는 `/study` 전용이던
- * 시절의 잔재다 — 이름만 남았고 동작은 페이지에 무관하다).
+ * `/live` 워크스페이스가 둘 다 쓰고, 동작은 페이지에 무관하다.
  *
  * 선은 직접 그리지 않는다 — lightweight-charts 가 "두 차트의 크로스헤어 동기화"
  * 용도로 문서화한 `setCrosshairPosition` 을 부른다(`typings.d.ts` 의 예시가 곧 이
@@ -19,7 +18,7 @@
  * 찍는 것을 보완하려던 것이다. 일봉 차트에 분 단위 시각이 뜨는 것이 축과 맞지 않아
  * 걷어냈고, 같은 이유로 엣지 인디케이터에서도 시각을 뺐다.
  *
- * 좌표·필터 판정은 `studyCursorSync.ts` 가 소유한다. 여기서는 그 결과를 축에 태우고
+ * 좌표·필터 판정은 `cursorSync.ts` 가 소유한다. 여기서는 그 결과를 축에 태우고
  * 그린다.
  *
  * 실측으로 확인한 성질 하나: `setCrosshairPosition` 은 그 차트의
@@ -29,8 +28,8 @@
  */
 import { memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
-import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
-import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
+import type { PaneSeriesMap } from './drawing/chartCoordinates';
+import { safeUnsubscribe } from './util/safeUnsubscribe';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { WindowViewContext } from '../live/workspace/windowView';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -39,7 +38,7 @@ import {
   indexCandlesByKstDate,
   resolveSyncTarget,
   type SyncCandle,
-} from './studyCursorSync';
+} from './cursorSync';
 
 /** 좌상단 레전드(OHLC + 이동평균)와 저장 구간 라벨이 쓰는 높이. */
 const LEGEND_CLEARANCE_PX = 46;
@@ -59,7 +58,7 @@ type Props = {
 
 const chipStyle = { background: 'var(--accent)', color: 'var(--accent-fg)' } as const;
 
-function StudyCursorSyncCrosshair({ chart, axis, candles, paneSeries, code }: Props) {
+function CursorSyncCrosshair({ chart, axis, candles, paneSeries, code }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
   const syncCursorMs = useLiveCursorStore((s) => s.syncCursorMs);
@@ -156,4 +155,4 @@ function EdgeIndicator({ side, date }: { side: 'left' | 'right'; date: string })
   );
 }
 
-export default memo(StudyCursorSyncCrosshair);
+export default memo(CursorSyncCrosshair);

@@ -27,9 +27,9 @@ import { deriveSourceBadge } from './sourceBadge';
 import type { CandleEmptyState as CandleEmptyStateValue } from './candleEmptyState';
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
+import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
 import StudySavedRangeBand from '../studyViews/StudySavedRangeBand';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
-import StudyCursorSyncCrosshair from '../studyViews/StudyCursorSyncCrosshair';
 import {
   type LiveMAConfig,
   type LiveTimeframe,
@@ -2261,7 +2261,7 @@ export function LiveChartRoot({
               정확한 건 한 캔들 = 하루인 `D` 뿐이다. W/M 은 범위 밖.
               **`cursorSyncCrosshair` 로 켠다** — 그 prop 주석 참조. */}
           {cursorSyncCrosshair && timeframe === 'D' && (
-            <StudyCursorSyncCrosshair
+            <CursorSyncCrosshair
               chart={chart}
               axis={axis}
               candles={syncCandles}

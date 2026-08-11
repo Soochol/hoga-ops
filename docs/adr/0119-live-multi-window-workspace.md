@@ -299,7 +299,7 @@ timeframe 이 다른 것이 폐기 사유였는데, 여기서는 그것이 **전
 
 **변경 규모가 작은 이유**: 발행 측(`publishSyncCursor`·`clearSyncCursorFrom`)은 #1282
 이래 **라우트 게이트 없이** 돌고 있었다 — `/live` 분봉 창은 이미 `syncCursorMs` 슬롯에
-쓰고 있었고 소비자가 없었을 뿐이다. `StudyCursorSyncCrosshair` 도 `LiveChartRoot` 가
+쓰고 있었고 소비자가 없었을 뿐이다. `CursorSyncCrosshair` 도 `LiveChartRoot` 가
 정적 import 해서 이미 `live-workspace` 청크에 있다. 실질 배선은 `ChartWindow` 의
 `cursorSyncCrosshair` prop 한 줄이다.
 
