@@ -3545,6 +3545,60 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     }
   });
 
+  /**
+   * 동기화 채널(`syncCursorMs`)은 **분봉 창만** 쓴다.
+   *
+   * **이 가드가 막는 방향**: 비분봉 창이 단일 슬롯을 덮어써 분봉 발행을 밀어내는 것.
+   * 소비 측(`resolveSyncTarget`)이 분봉 origin 이 아니면 어차피 버리므로, 비분봉
+   * 발행은 표시에 기여하지 않으면서 표시를 **지우기만** 한다. `/live` 실측(2026-08-11)
+   * 에서 포인터가 분봉 창에 있는데 일봉 창 발행이 슬롯을 가져가 동기화 표시가 사라졌다.
+   *
+   * **못 보는 것**: 소비 측 필터는 이 테스트가 검증하지 않는다(`studyCursorSync.test.ts`
+   * 담당). 여기서 재는 것은 발행 측이 슬롯에 손대는지 여부뿐이다.
+   */
+  it('일봉 창은 동기화 슬롯에 쓰지 않는다 — 커서는 발행하되 sync 는 건드리지 않는다', () => {
+    vi.useFakeTimers();
+    try {
+      const fireOn = (timeframe: 'D' | '1m') => {
+        vi.mocked(createChartEx).mockClear();
+        const { unmount } = render(
+          <LiveChartRoot
+            code="005930"
+            timeframe={timeframe}
+            bundle={DEFAULT_BUNDLE}
+            clampEngaged={false}
+            isPastCandlesLoading={false}
+          />,
+          { wrapper },
+        );
+        const chart = vi.mocked(createChartEx).mock.results[0].value;
+        act(() => chart.subscribeCrosshairMove.mock.calls.forEach(
+          ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h({ time: 0, point: { x: 1 } }),
+        ));
+        act(() => { vi.advanceTimersByTime(16); });
+        const s = useLiveCursorStore.getState();
+        const snap = { cursorMs: s.cursorMs, syncCursorMs: s.syncCursorMs, syncTf: s.syncCursorOrigin?.timeframe ?? null };
+        unmount();
+        useLiveCursorStore.getState().resetCursor();
+        return snap;
+      };
+
+      // 분봉: 커서와 동기화 슬롯 둘 다 선다.
+      const minute = fireOn('1m');
+      expect(minute.cursorMs).not.toBeNull();
+      expect(minute.syncCursorMs).toBe(minute.cursorMs);
+      expect(minute.syncTf).toBe('1m');
+
+      // 일봉: **커서는 서는데**(핸들러가 돈 증거) 동기화 슬롯은 그대로 null 이다.
+      // 두 단언이 같이 있어야 "게이트가 걸렸다" 와 "이벤트가 안 들어왔다" 가 갈린다.
+      const daily = fireOn('D');
+      expect(daily.cursorMs).not.toBeNull();
+      expect(daily.syncCursorMs).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('throttles sidebar cursor (leading + trailing) while keeping chart cursor immediate', async () => {
     vi.useFakeTimers();
     try {

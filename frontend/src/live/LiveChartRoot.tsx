@@ -312,9 +312,14 @@ interface Props {
    *  개념 자체가 없으므로 넘기지 않는다. */
   savedRangeBand?: StudySavedRangeMarks | null;
   /**
-   * 창 간 크로스헤어 동기화(옆 분봉 창 호버 → 이 일봉 창)를 켠다. `/study` 만
-   * 넘긴다 — `/live` 는 링크 그룹이 있어(ADR-0119) "어느 그룹까지 동기화할
-   * 것인가" 가 별도 질문이고, 그 답이 나오기 전까지 켜지 않는다.
+   * 창 간 크로스헤어 동기화(옆 분봉 창 호버 → 이 일봉 창)를 켠다. `/study` 와
+   * `/live` 워크스페이스가 둘 다 넘긴다.
+   *
+   * **동기화 범위는 종목이다** — 링크 그룹이 아니다(`/live`, 사용자 결정
+   * 2026-08-11). ADR-0119 §4 가 드로잉을 창 귀속에서 **종목 귀속**으로 뒤집은 것과
+   * 같은 범주의 판단이라 같은 답을 쓴다: 같은 종목을 보는 창은 그룹이 달라도
+   * 따라온다. 판정은 `resolveSyncTarget` 의 code 게이트 하나이고, `/live` 를 켜기
+   * 위해 필터에 추가한 것은 없다.
    *
    * 라우트를 여기서 스니핑하지 않고 **prop 으로 받는** 이유는 둘이다: 결정의
    * 소유자가 페이지이고, `/study` 워크스페이스 어댑터를 정적 import 하면 그
@@ -443,9 +448,12 @@ export function LiveChartRoot({
   // `bundle` — so an SSE tick (which only changes the hoga overlay) leaves the
   // candle path's props referentially identical.
   const cb = chartBundle ?? bundle;
-  // 창 간 크로스헤어 동기화가 KST 날짜 → 캔들 ts 다리를 놓는 재료. 마운트가 `D` +
-  // `/study` 로 제한되므로 그 외에는 빈 배열이라 비용이 없다. `close` 는 크로스헤어
-  // 가로선 높이로 쓴다.
+  // 창 간 크로스헤어 동기화가 KST 날짜 → 캔들 ts 다리를 놓는 재료. `D` 가 아니면 빈
+  // 배열이라 비용이 없다. `close` 는 크로스헤어 가로선 높이로 쓴다.
+  //
+  // 이 map 은 `cursorSyncCrosshair` 와 무관하게 모든 `D` 창에서 돈다 — prop 이
+  // 꺼져 있으면 소비자 없이 재료만 만든 셈이었고, `/live` 를 켜면서 그 낭비가
+  // 사라졌다.
   const syncCandles = useMemo(
     () => (timeframe === 'D'
       ? (cb?.candles ?? []).map((c) => ({ ts_ms: c.ts_ms, close: c.close }))
@@ -642,7 +650,14 @@ export function LiveChartRoot({
 
   // 창 간 크로스헤어 동기화 발행 — origin 을 실은 **즉시** 채널. 기존 두 채널을
   // 쓰지 못하는 이유는 `useLiveCursorStore` 의 해당 필드 주석 참조.
+  //
+  // **분봉 창만 발행한다.** 슬롯이 하나라 아무나 쓰면 마지막 쓴 사람이 이기는데,
+  // 소비 측(`resolveSyncTarget`)은 분봉 origin 이 아니면 어차피 버린다 — 즉 비분봉
+  // 발행은 표시에 기여하지 않으면서 **분봉 발행만 밀어낸다**. `/live` 실측(2026-08-11):
+  // 포인터가 분봉 창에 있는데도 일봉 창이 자기 크로스헤어를 발행해 슬롯을 덮었고,
+  // 동기화 표시가 그대로 사라졌다(`/study` 는 창이 적어 눈에 덜 띄었을 뿐 같은 구조).
   const publishSyncCursor = useCallback((cursorMs: number) => {
+    if (!isMinuteTimeframe(cursorOriginRef.current.timeframe)) return;
     useLiveCursorStore.getState().setSyncCursor(cursorMs, cursorOriginRef.current);
   }, []);
 

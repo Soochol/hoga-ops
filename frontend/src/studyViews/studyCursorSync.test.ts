@@ -81,6 +81,46 @@ describe('resolveSyncTarget', () => {
   });
 });
 
+/**
+ * `/live` 워크스페이스에서 처음 의미를 갖는 성질들. `/study` 는 창이 전부 같은 종목·
+ * 그룹 없음이라 이 축들이 상수였다.
+ *
+ * **이 가드가 막는 방향**: 종목이 다른 창끼리 동기화되는 것. **못 보는 것**: 양쪽
+ * code 가 둘 다 null 인 경우(아래 마지막 케이스가 그 통과를 명시로 고정한다).
+ */
+describe('resolveSyncTarget — /live 스코프', () => {
+  it('링크 그룹이 달라도 같은 종목이면 동기화한다 — 범위는 종목이다', () => {
+    // 사용자 결정 2026-08-11. ADR-0119 §4 가 드로잉을 종목 귀속으로 뒤집은 것과 같은
+    // 답이다. 그룹으로 좁히려면 여기가 실패해야 하므로, 이 단언이 곧 그 결정이다.
+    expect(target({ group: 3 })).toEqual({ ts_ms: DAY_20250619, close: 212000 });
+  });
+
+  it('같은 그룹이라도 종목이 다르면 무시한다 — 그룹은 판정에 쓰이지 않는다', () => {
+    expect(target({ group: 1, code: '005930' })).toBeNull();
+  });
+
+  it('지수 창은 code 가 `index:` 접두로 채워져 서로 갈린다', () => {
+    // `/live` 지수 창의 code 는 `workareaCode` 가 `index:KOSPI` 로 만든다 — null 이
+    // 아니므로 KOSPI 호버가 KOSDAQ 창으로 새지 않는다.
+    expect(resolveSyncTarget({
+      cursor: { tsMs: CURSOR_1500, origin: origin({ code: 'index:KOSPI' }) },
+      myWindowId: 'daily-window', myCode: 'index:KOSDAQ',
+      byDate: indexCandlesByKstDate(CANDLES),
+    })).toBeNull();
+  });
+
+  it('⚠ 양쪽 code 가 둘 다 null 이면 통과한다 — 이 가드가 못 보는 구멍', () => {
+    // 관대한 `!== null` 가드의 귀결이다. 현재 `/live` 도달 경로는 없지만(지수는
+    // `index:` 로 채워지고, 종목 없는 창은 LiveChartRoot 를 렌더하지 않는다) code 가
+    // null 인 창 종류가 새로 생기면 여기가 먼저 샌다. 통과를 명시로 남겨 둔다.
+    expect(resolveSyncTarget({
+      cursor: { tsMs: CURSOR_1500, origin: origin({ code: null }) },
+      myWindowId: 'daily-window', myCode: null,
+      byDate: indexCandlesByKstDate(CANDLES),
+    })).not.toBeNull();
+  });
+});
+
 describe('라벨 포맷', () => {
   it('엣지 인디케이터는 날짜만 보여 준다 — 분봉의 시:분은 일봉 창에 띄우지 않는다', () => {
     expect(formatKstMmdd(CURSOR_1500)).toBe('06/19');
