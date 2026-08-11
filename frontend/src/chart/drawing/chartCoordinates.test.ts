@@ -29,6 +29,22 @@ const axis = {
 // Fake chart: 100px per bar. Bar index = realMs / BUCKET. Data spans logical
 // [0, 1000] → x in [0, 100000] (10px/bar here for smaller numbers).
 const PX_PER_BAR = 10;
+
+/**
+ * `logicalToCoordinate` as lightweight-charts actually behaves: **whole logical
+ * indices only**. A fractional argument yields `0` — not null, not an
+ * interpolated coordinate (measured on lwc 5.2, 60m chart: 1155 → 312.7,
+ * 1156 → 319.9, 1155.1 / 1155.25 / 1155.5 / 1155.75 → 0).
+ *
+ * This detail is load-bearing for the suite, not decoration. The stub used to
+ * interpolate fractions linearly, which made it IMPOSSIBLE for any test here to
+ * catch a caller passing a fraction — and one did: the future-band projection
+ * pinned every off-grid vertex to x=0 on aggregated minute frames. Keep the
+ * fraction→0 branch; without it the regression test below passes against the
+ * broken implementation too.
+ */
+const stubLogicalToCoordinate = (logical: number) =>
+  Number.isInteger(logical) ? logical * PX_PER_BAR : 0;
 const LAST_X = (LAST_REAL / BUCKET) * PX_PER_BAR; // = 10000
 const chart = {
   timeScale: () => ({
@@ -38,7 +54,7 @@ const chart = {
       x >= 0 && x <= LAST_X ? (x / PX_PER_BAR) * BUCKET / 1000 : null,
     timeToCoordinate: (timeSec: number) => (timeSec * 1000 / BUCKET) * PX_PER_BAR,
     coordinateToLogical: (x: number) => x / PX_PER_BAR,
-    logicalToCoordinate: (logical: number) => logical * PX_PER_BAR,
+    logicalToCoordinate: stubLogicalToCoordinate,
   }),
 } as unknown as IChartApi;
 
@@ -66,6 +82,26 @@ describe('empty-band extrapolation', () => {
     const x = realMsToCanvasX(chart, axis, futureRealMs, future);
     // 30 bars past last → lastLogical 1000 + 30 → x = 1030 * 10 = 10300
     expect(x).toBe(10300);
+  });
+
+  it('extrapolates a FRACTIONAL bars-ahead instead of collapsing to the left edge', () => {
+    // The aggregated-minute-frame case. `/live` fetches 1m and folds it
+    // client-side, so a drawing anchored on the 1m grid lands BETWEEN two bars
+    // of every larger frame — 0.4 bars past the last candle here. lwc resolves
+    // only whole logicals (fraction → 0), so handing it `lastLogical + 0.4`
+    // returned 0 and the vertex snapped to x=0: a trendline drawn minutes ago
+    // stretched across the entire chart, differently on every minute frame.
+    const x = realMsToCanvasX(chart, axis, LAST_REAL + 0.4 * BUCKET, future);
+    expect(x).toBe(LAST_X + 0.4 * PX_PER_BAR); // 10004, not 0
+  });
+
+  it('keeps whole bars-ahead identical to the direct logical projection', () => {
+    // Guards the fix's blast radius: the pixel-arithmetic path must reproduce
+    // what lwc itself returns wherever lwc could answer at all.
+    for (const bars of [1, 7, 30]) {
+      expect(realMsToCanvasX(chart, axis, LAST_REAL + bars * BUCKET, future))
+        .toBe(stubLogicalToCoordinate(LAST_X / PX_PER_BAR + bars));
+    }
   });
 
   it('realMsToCanvasX returns null for a future realMs without a future ref', () => {
@@ -102,7 +138,7 @@ describe('realMsToCanvasXClamped (off-axis text anchor)', () => {
       coordinateToTime: (x: number) => (x >= 0 && x <= 30 ? (x / PX_PER_BAR) * BUCKET / 1000 : null),
       timeToCoordinate: (timeSec: number) => (timeSec * 1000 / BUCKET) * PX_PER_BAR,
       coordinateToLogical: (x: number) => x / PX_PER_BAR,
-      logicalToCoordinate: (logical: number) => logical * PX_PER_BAR,
+      logicalToCoordinate: stubLogicalToCoordinate,
     }),
   } as unknown as IChartApi;
 
@@ -255,7 +291,7 @@ describe('realMsToCanvasX — off-grid on-axis fallback (boundary-residue render
       },
       coordinateToTime: () => null,
       coordinateToLogical: (x: number) => x / PX_PER_BAR,
-      logicalToCoordinate: (logical: number) => logical * PX_PER_BAR,
+      logicalToCoordinate: stubLogicalToCoordinate,
     }),
   } as unknown as IChartApi;
 
