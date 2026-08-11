@@ -8,6 +8,7 @@ from hoga.live import kiwoom_investor, kiwoom_rest_runtime
 from hoga.live.index_registry import get_representative_index
 from hoga.live.investor import InvestorNetPoint
 from hoga.live.kiwoom_errors import KiwoomRateLimitError, KiwoomTransportError
+from hoga.live.kiwoom_investor import KiwoomInvestorError
 from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
 
 
@@ -18,14 +19,28 @@ class _FakeKis:
     돌면 배선 계약이 사라져 테스트가 아무것도 검증하지 않는다(ADR-0137).
     """
 
-    def __init__(self, *, blank_dates: frozenset[str] = frozenset()) -> None:
+    def __init__(
+        self,
+        *,
+        blank_dates: frozenset[str] = frozenset(),
+        row_absent_dates: frozenset[str] = frozenset(),
+    ) -> None:
         self.calls: list[tuple[str, str]] = []
         self.blank_dates = blank_dates
+        self.row_absent_dates = row_absent_dates
 
     async def fetch_market_investor_net_day(
         self, _client, index, date_yyyymmdd: str,
     ) -> InvestorNetPoint | None:
         self.calls.append((index.id, date_yyyymmdd))
+        if date_yyyymmdd in self.row_absent_dates:
+            # 행은 왔는데 우리 업종이 없다 — 휴장일(None)과 **다른 사건**이다(#1296).
+            raise KiwoomInvestorError(
+                "index_row_absent",
+                f"ka10051 이 {index.id}(업종 101) 행을 주지 않았다 — "
+                f"mrkt_tp=10 · base_dt={date_yyyymmdd} 로 28행을 받았고 "
+                "업종코드는 ['001', '002'] 이다",
+            )
         if date_yyyymmdd in self.blank_dates:
             return None  # 휴장일
         return InvestorNetPoint(
@@ -145,6 +160,34 @@ async def test_non_trading_days_are_not_failures(tmp_path, kiwoom) -> None:
 
     assert [p["t_ms"] for p in result["points"]] == [20260801, 20260803]
     assert result["data_warnings"] == []
+
+
+@pytest.mark.asyncio
+async def test_index_row_absent_is_a_warning_not_a_silent_empty(tmp_path, kiwoom) -> None:
+    """#1296 회귀 봉인 — 코스닥이 **경고 없이** 0포인트로 나오던 자리다.
+
+    잘못된 `mrkt_tp` 는 에러가 아니라 매칭 안 되는 행 집합을 낳았고, 그게 "휴장일은
+    None, 실패가 아니다" 규칙에 흡수됐다. 어댑터가 이제 그 서명을 구분해 던지므로
+    이 층의 기존 배관(`classify_live_error` → `api_error`)이 화면에 노출한다.
+
+    막는 방향: 빈 결과 + `data_warnings == []` 의 조합. 못 보는 것: 거래일인데
+    벤더 응답 자체가 빈 경우(여전히 휴장일과 구별되지 않는다).
+    """
+    kiwoom(_FakeKis(row_absent_dates=frozenset({"20260811"})))
+    scheduler = _RecordingScheduler()
+
+    result = await _fetcher(tmp_path, scheduler).fetch(
+        index=get_representative_index("KOSDAQ"),
+        from_label="20260811",
+        to_label="20260811",
+    )
+
+    assert result["points"] == []
+    assert result["data_warnings"], "빈 결과가 조용하면 안 된다 — 그게 #1296 이었다"
+    warning = result["data_warnings"][0]
+    assert warning["reason"] == "api_error", "유량 한도가 아니다"
+    assert "index_row_absent" in warning["msg"]
+    assert "mrkt_tp=10" in warning["msg"], "무엇을 보냈는지가 메시지에 남아야 진단이 된다"
 
 
 @pytest.mark.asyncio
