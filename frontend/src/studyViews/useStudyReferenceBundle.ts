@@ -12,7 +12,7 @@ import type { LiveVenueOption } from '../state/liveVenue';
 import { buildStudyReferenceBundleModel } from './studyReferenceBundleModel';
 import { studyDailyContextWindow, type StudyDailyContextWindow } from './studyDailyContext';
 import { STUDY_VENUE } from './studyVenuePolicy';
-import { studyReferenceQueryOptions } from './studyReferenceQueries';
+import { studyReferenceQueryOptions, studyReferenceQuerySettings } from './studyReferenceQueries';
 
 function mergeStudyRangeBundles(
   hoga: RangeBundle | null,
@@ -90,16 +90,13 @@ export function useStudyReferenceBundles(
     () => windows.map((win) => {
       const displayedSave = save ? { ...save, timeframe: win.timeframe } : null;
       const dailyContext = studyDailyContextWindow(displayedSave);
-      const options = studyReferenceQueryOptions(displayedSave, {
-        sourcePref,
-        venue,
-        brokerLateEntryEnabled: win.indicators.brokerLateEntryEnabled,
-        brokerLateEntryStartHHMM: win.indicators.brokerLateEntryStartHHMM,
-        tradeVolumePocEnabled: win.indicators.tradeVolumePocEnabled,
-        depthHeatmapEnabled: win.indicators.depthHeatmapEnabled,
-        volumeDistributionEnabled: win.indicators.volumeDistributionEnabled,
-        volumeDistributionRangeCount: win.indicators.volumeDistributionRangeCount,
-      }, dailyContext);
+      // 펴는 것은 `studyReferenceQuerySettings` 한 곳에서만 한다 — 워밍 경로와 이
+      // 경로가 같은 매핑을 손으로 반복하다 한쪽이 다른 봉의 지표를 읽었다(그 함수 주석).
+      const options = studyReferenceQueryOptions(
+        displayedSave,
+        studyReferenceQuerySettings(win.indicators, sourcePref, venue),
+        dailyContext,
+      );
       return { win, displayedSave, dailyContext, options };
     }),
     [save, sourcePref, venue, windows],

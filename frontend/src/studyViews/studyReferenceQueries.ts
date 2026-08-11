@@ -1,6 +1,7 @@
 import type { StudyViewReference } from '../api/studyViews';
 import { rangeBundleQueryOptions } from '../api/range';
 import { screenerDailyCandlesQueryOptions } from '../api/screenerDailyCandles';
+import type { IndicatorSettings } from '../state/indicatorSettingsV2';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { SourcePreference } from '../state/sourcePreference';
 import { studyReferenceQueryInputs } from './studyReferenceBundleModel';
@@ -20,6 +21,40 @@ export type StudyReferenceQuerySettings = {
   depthHeatmapEnabled: boolean;
   volumeDistributionRangeCount: number;
 };
+
+/**
+ * 지표 설정 한 벌을 쿼리 설정으로 편다.
+ *
+ * 이 매핑을 소비자마다 손으로 반복하면 **한쪽만 다른 지표를 읽어도 타입이 안 잡는다**
+ * — 실제로 그랬다. 비활성 탭 워밍이 `useStudyChartIndicators()`(= **포커스 창**의 봉
+ * 기준)를 읽는 동안 쿼리의 `bucket_ms` 는 **탭의 봉**이라, 포커스가 D 이고 워밍
+ * 대상이 분봉이면 "분봉 버킷 + D 프로필 지표" 라는 잡종 키가 나갔다. 워밍이 헛돌고
+ * 활성 전환에서 같은 구간을 플래그만 바꿔 한 번 더 받는다(실측: 같은 5개월 구간에
+ * `depth_heatmap_enabled` 만 다른 sidecar 두 벌, 각 1~1.9MB).
+ *
+ * 지표 프로필은 `'minute' | 'D' | 'W' | 'M'` 네 개뿐이라(`profileKeyForTimeframe`)
+ * 분봉끼리는 어차피 같은 값이다 — 즉 이 잡종은 **캘린더 봉이 섞일 때만** 생기고,
+ * 그래서 오래 안 보였다.
+ *
+ * venue 는 인자로 받는다 — `/study` 가 KRX 고정이라도(ADR-0144) 그 상수를 여기
+ * 다시 박으면 정책을 되돌릴 때 고칠 곳이 둘이 된다.
+ */
+export function studyReferenceQuerySettings(
+  indicators: IndicatorSettings,
+  sourcePref: SourcePreference | undefined,
+  venue: LiveVenueOption,
+): StudyReferenceQuerySettings {
+  return {
+    sourcePref,
+    venue,
+    brokerLateEntryEnabled: indicators.brokerLateEntryEnabled,
+    brokerLateEntryStartHHMM: indicators.brokerLateEntryStartHHMM,
+    tradeVolumePocEnabled: indicators.tradeVolumePocEnabled,
+    depthHeatmapEnabled: indicators.depthHeatmapEnabled,
+    volumeDistributionEnabled: indicators.volumeDistributionEnabled,
+    volumeDistributionRangeCount: indicators.volumeDistributionRangeCount,
+  };
+}
 
 export function studyReferenceHogaRangeOptions(
   save: StudyViewReference | null,
