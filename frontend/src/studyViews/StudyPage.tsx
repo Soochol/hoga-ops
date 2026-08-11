@@ -9,7 +9,11 @@ import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
-import { focusedChartWindowId, useStudyWorkspaceStore } from '../state/studyWorkspace';
+import {
+  chartWindowIdShowingTimeframe,
+  focusedChartWindowId,
+  useStudyWorkspaceStore,
+} from '../state/studyWorkspace';
 import { resolveIndicatorSettings } from '../state/indicatorSettingsV2';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import {
@@ -182,6 +186,7 @@ export function StudyPage() {
   // 박혀 있으므로 "지금 보고 있는 창" 하나만 라벨을 쓸 수 있다.
   const chartWindowId = useStudyWorkspaceStore(focusedChartWindowId);
   const setChartTimeframe = useStudyWorkspaceStore((s) => s.setChartTimeframe);
+  const focusWindow = useStudyWorkspaceStore((s) => s.focusWindow);
   const chartWindowTimeframe = useStudyWorkspaceStore(
     (s) => s.windows.find((w) => w.id === focusedChartWindowId(s))?.chart?.timeframe ?? null,
   );
@@ -396,14 +401,36 @@ export function StudyPage() {
    * ⚠ 그리고 **탭/뷰가 바뀔 때만** 돈다(`tabSeedKey`). 포커스가 바뀌었다는 이유로
    * 돌면 탭이 들고 있는 봉이 새로 포커스된 창을 덮어써서, 창을 클릭했을 뿐인데 그
    * 창의 봉이 바뀐다 — #801 착지 후 실제로 났던 버그다.
+   *
+   * ⚠ **덮기 전에 대안을 먼저 찾는다**(#1295). 포커스 창 하나만 건드려도 그 창이
+   * 사용자가 방금 분봉으로 맞춰 둔 창이면 멀티 타임프레임 배치는 똑같이 무너진다 —
+   * 봉을 바꾼 창이 곧 포커스 창이므로 "분봉 창을 만진 직후 일봉 저장뷰 클릭" 이라는
+   * 가장 흔한 순서에서 항상 그 창이 희생된다. 그래서 요구되는 봉을 **이미 보여주는
+   * 창이 있으면 포커스만 그리로 옮기고 아무 창의 봉도 바꾸지 않는다**. 없을 때만
+   * 종전대로 포커스 창을 덮는다 — 창이 하나뿐인 흔한 경우가 정확히 그 경로라
+   * #902 계약은 그대로다.
+   *
+   * 이 증상은 #1293 이 드러냈다. 그전에는 일봉 저장뷰도 "마지막 분봉" override 로
+   * 열려 탭 봉이 대개 포커스 분봉 창과 같았고, 그래서 위 `===` 검사에서 조용히
+   * 걸러졌다. 저장된 봉을 존중하게 되자 그 우연한 no-op 이 사라졌다.
    */
   useEffect(() => {
     if (!chartWindowId || !selectedTimeframe) return;
     if (seededTabKeyRef.current === tabSeedKey) return;
     seededTabKeyRef.current = tabSeedKey;
     if (chartWindowTimeframe === selectedTimeframe) return;
+    // 구독이 아니라 getState 로 읽는다 — 이 effect 는 `tabSeedKey` 전이에만 반응해야
+    // 하고, 창 배열을 deps 에 넣으면 창을 드래그하기만 해도 재평가된다.
+    const showing = chartWindowIdShowingTimeframe(
+      useStudyWorkspaceStore.getState(),
+      selectedTimeframe,
+    );
+    if (showing) {
+      focusWindow(showing);
+      return;
+    }
     setChartTimeframe(chartWindowId, selectedTimeframe);
-  }, [chartWindowId, chartWindowTimeframe, selectedTimeframe, setChartTimeframe, tabSeedKey]);
+  }, [chartWindowId, chartWindowTimeframe, focusWindow, selectedTimeframe, setChartTimeframe, tabSeedKey]);
 
   /** 닫힌 창의 캡처 함수를 걷어낸다 — 등록소가 죽은 클로저를 붙들고 있지 않게. */
   useEffect(() => {

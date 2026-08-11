@@ -644,6 +644,58 @@ describe('StudyPage', () => {
       .toBe('D');
   });
 
+  /**
+   * #1295 — "포커스 창만" 은 배치를 지키기에 부족했다.
+   *
+   * 봉을 바꾼 창이 곧 포커스 창이므로, **분봉 창을 만진 직후 일봉 저장뷰를 여는**
+   * 가장 흔한 순서에서는 언제나 그 분봉 창이 재시드 대상이 된다. 사용자가 본 증상은
+   * "일봉+분봉으로 벌려 놨는데 저장뷰를 누르니 둘 다 일봉" 이었고, 실제로 바뀐 것은
+   * 포커스 창 하나였다(다른 창은 원래 일봉).
+   */
+  it('요구된 봉을 이미 띄운 창이 있으면 포커스만 옮긴다 — 분봉 창이 희생되지 않는다', () => {
+    useStudyTabsStore.setState({
+      tabs: [
+        { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: '5m' },
+        { id: 'tab-b', viewId: 'view-second', code: '000660', label: 'B', name: 'B', timeframe: 'D' },
+      ],
+      activeTabId: 'tab-a',
+    });
+    // 5분봉 창(포커스) + 일봉 창 = 사용자가 벌려 둔 배치.
+    addSecondChartWindow('D');
+
+    renderPage('/study?view=view-ref');
+    fireEvent.click(getStudyTab('B'));
+
+    const state = useStudyWorkspaceStore.getState();
+    const tfOf = (id: string) => state.windows.find((w) => w.id === id)?.chart?.timeframe;
+    expect(tfOf('w-chart')).toBe('5m');
+    expect(tfOf('w-chart-2')).toBe('D');
+    // 대신 포커스가 그 봉을 띄운 창으로 간다 — 안 옮기면 요구된 봉이 어디에도
+    // 안 보이는 채로 탭만 바뀐 꼴이 된다.
+    expect(state.zOrder.at(-1)).toBe('w-chart-2');
+  });
+
+  it('그 봉의 창이 없으면 종전대로 포커스 창을 재시드한다 (#902 계약 유지)', () => {
+    useStudyTabsStore.setState({
+      tabs: [
+        { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: '5m' },
+        { id: 'tab-b', viewId: 'view-second', code: '000660', label: 'B', name: 'B', timeframe: 'D' },
+      ],
+      activeTabId: 'tab-a',
+    });
+    // 위 테스트와 **이 한 값만** 다르다(D → W): 어느 창도 탭이 요구하는 D 가 아니다.
+    addSecondChartWindow('W');
+
+    renderPage('/study?view=view-ref');
+    fireEvent.click(getStudyTab('B'));
+
+    const state = useStudyWorkspaceStore.getState();
+    const tfOf = (id: string) => state.windows.find((w) => w.id === id)?.chart?.timeframe;
+    // 대안이 없으니 포커스 창이 덮인다 — 대안 탐색이 재시드 자체를 삼키면 안 된다.
+    expect(tfOf('w-chart')).toBe('D');
+    expect(tfOf('w-chart-2')).toBe('W');
+  });
+
   it('does not reuse a saved minute viewport after switching the study chart to D/W/M', () => {
     renderPage('/study?view=view-ref');
 

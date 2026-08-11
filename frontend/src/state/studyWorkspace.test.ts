@@ -472,3 +472,49 @@ describe('snapshotStudyWorkspace — 깊은 복사(프리셋 저장본 오염 �
     expect(after.rect).not.toEqual({ x: 0.4, y: 0.4, w: 0.2, h: 0.2 });
   });
 });
+
+/**
+ * StudyPage 의 탭 재시드가 **덮기 전에** 이 함수로 대안을 찾는다(#1295) — null 을
+ * 내면 호출부는 포커스 창의 봉을 덮는다. 그래서 "못 찾는다" 는 곧 배치 파괴이고,
+ * 아래 케이스들은 그 오답의 경로를 하나씩 막는다.
+ */
+describe('chartWindowIdShowingTimeframe — 이 봉을 이미 띄운 창 찾기', () => {
+  const rect = { x: 0, y: 0, w: 0.5, h: 1 };
+  const chart = (id: string, timeframe: string) => ({
+    id,
+    kind: 'chart' as const,
+    rect,
+    chart: { timeframe: timeframe as never },
+  });
+
+  it('후보가 여럿이면 zOrder 상단(마지막 포커스)을 고른다', async () => {
+    const { chartWindowIdShowingTimeframe } = await importFresh();
+    const state = {
+      windows: [chart('c1', 'D'), chart('c2', '5m'), chart('c3', 'D')],
+      zOrder: ['c3', 'c1', 'c2'],
+    };
+    // 'c1' 이 'c3' 보다 뒤 = 더 최근 포커스. 배열 순서(c1 이 먼저)로 고르면 오답.
+    expect(chartWindowIdShowingTimeframe(state, 'D')).toBe('c1');
+  });
+
+  it('그 봉의 창이 없으면 null — 호출부가 덮어쓰기로 떨어지는 유일한 경로다', async () => {
+    const { chartWindowIdShowingTimeframe } = await importFresh();
+    const state = { windows: [chart('c1', '5m')], zOrder: ['c1'] };
+    expect(chartWindowIdShowingTimeframe(state, 'D')).toBeNull();
+  });
+
+  it('차트가 아닌 창은 후보가 아니다', async () => {
+    const { chartWindowIdShowingTimeframe } = await importFresh();
+    const state = {
+      windows: [{ id: 'b1', kind: 'book' as const, rect }, chart('c1', '5m')],
+      zOrder: ['c1', 'b1'],
+    };
+    expect(chartWindowIdShowingTimeframe(state, 'D')).toBeNull();
+  });
+
+  it('zOrder 가 아직 그 창을 모를 때도 찾는다 — 정규화 한 커밋 지연에 배치를 걸지 않는다', async () => {
+    const { chartWindowIdShowingTimeframe } = await importFresh();
+    const state = { windows: [chart('c1', '5m'), chart('c2', 'D')], zOrder: ['c1'] };
+    expect(chartWindowIdShowingTimeframe(state, 'D')).toBe('c2');
+  });
+});
