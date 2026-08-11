@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
-import StudyCursorSyncCrosshair from './StudyCursorSyncCrosshair';
+import CursorSyncCrosshair from './CursorSyncCrosshair';
 import { useLiveCursorStore, type SidebarCursorOrigin } from '../live/useLiveCursorStore';
 import { WindowViewContext, type WindowViewValue } from '../live/workspace/windowView';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -42,7 +42,7 @@ function renderCrosshair(coords = new Map([[DAY_20250619 / 1000, 260]])) {
   const view = { windowId: 'daily-window' } as WindowViewValue;
   return render(
     <WindowViewContext.Provider value={view}>
-      <StudyCursorSyncCrosshair
+      <CursorSyncCrosshair
         chart={makeChart(coords) as never}
         axis={axis}
         candles={CANDLES}
@@ -57,7 +57,7 @@ function publish(tsMs = CURSOR_1500, origin = MINUTE_ORIGIN) {
   act(() => { useLiveCursorStore.getState().setSyncCursor(tsMs, origin); });
 }
 
-describe('StudyCursorSyncCrosshair', () => {
+describe('CursorSyncCrosshair', () => {
   beforeEach(() => {
     useLiveCursorStore.getState().resetCursor();
     setCrosshairPosition.mockClear();

@@ -3,7 +3,7 @@
  * 워크스페이스가 같은 판정을 쓴다.
  *
  * 분봉 창의 호버를 일봉 창이 받아 "내 축의 어느 캔들인가" 로 바꾸는 결정이 전부
- * 여기 있다. 그리는 일은 `StudyCursorSyncCrosshair` 가 lightweight-charts 에
+ * 여기 있다. 그리는 일은 `CursorSyncCrosshair` 가 lightweight-charts 에
  * 맡긴다(`setCrosshairPosition`).
  *
  * ── 왜 날짜로 스냅하는가 ──────────────────────────────────────────────────

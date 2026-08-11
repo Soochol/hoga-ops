@@ -5,7 +5,7 @@ import {
   indexCandlesByKstDate,
   resolveSyncTarget,
   type SyncCandle,
-} from './studyCursorSync';
+} from './cursorSync';
 
 /** 2025-06-19 09:00 KST = 일봉 캔들의 ts_ms(장 시작 기준). */
 const DAY_20250619 = Date.UTC(2025, 5, 19, 0, 0);
