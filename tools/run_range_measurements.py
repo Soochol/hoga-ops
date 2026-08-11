@@ -324,7 +324,16 @@ async def measure_asgi_response(
         if not request_sent:
             request_sent = True
             return {"type": "http.request", "body": b"", "more_body": False}
-        return {"type": "http.disconnect"}
+        # 본문을 다 보낸 뒤에는 **기다린다** — uvicorn 이 그렇게 한다(연결이 살아 있는
+        # 한 `http.disconnect` 는 오지 않는다).
+        #
+        # 여기서 곧장 `http.disconnect` 를 돌려주던 것을 고쳤다. 라우트는 큐 대기 뒤에
+        # 클라이언트 이탈을 확인하고 떠난 요청의 계산을 건너뛰는데(`api_range`),
+        # 그 확인이 이 프로브를 "이미 떠났다" 로 읽어 **499 를 돌려주고 계산 경로에
+        # 아예 안 들어갔다**. 프로브가 서버와 다른 모양이면 측정값이 흔들리는 게 아니라
+        # **측정 대상이 바뀐다.**
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable — the wait above never returns")
 
     async def send(message: dict) -> None:
         nonlocal ttfb_ms, end_of_body_ms, status, response_headers, final_body_seen

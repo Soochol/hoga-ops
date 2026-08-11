@@ -16,7 +16,8 @@ from pathlib import Path
 
 import anyio
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from starlette.requests import ClientDisconnect
 
 from hoga import perf_debug
 from hoga.api.bundle import build_range_bundle
@@ -120,6 +121,33 @@ RANGE_WIDE_SPAN_DAYS = int(os.environ.get("HOGA_RANGE_WIDE_SPAN_DAYS", "") or 30
 # (`request_timing`), 이 값이 없으면 다음 조사자가 **큐 대기를 계산 시간으로 읽는다**
 # — 이 세션이 정확히 그 오독을 한 번 하고 나서 프로브로 갈랐다.
 RANGE_QUEUE_WAIT_LOG_MS = 1000.0
+
+# nginx 관례의 "클라이언트가 먼저 끊었다". 표준 코드는 아니지만 이 상황에 2xx/4xx 를
+# 주면 로그에서 정상 응답과 구별되지 않는다 — 받을 사람이 이미 없으므로 값의 유일한
+# 소비자는 로그와 메트릭이다.
+HTTP_CLIENT_CLOSED_REQUEST = 499
+
+
+async def _drain_request_stream(request: Request) -> bool:
+    """요청 본문을 비운다. 그 사이 클라이언트가 떠났으면 True.
+
+    ⚠ **이 호출이 없으면 아래 `is_disconnected()` 가 조용히 무력화된다.**
+    starlette 의 `Request.is_disconnected()` 는 **호출당 receive 메시지 하나**만 읽고
+    그것이 `http.disconnect` 인지 본다. 그런데 uvicorn 은 body 가 없는 GET 에도 빈
+    `http.request` 를 한 번 보내므로, 큐를 미리 비워 두지 않으면 첫 호출이 그것을
+    소비하고 **False** 를 돌려준다 — 바로 뒤에 있는 `http.disconnect` 는 못 본 채로.
+    실패 방식이 "감지 못 함" 이라 **증상이 없다**: 이탈 요청이 그냥 예전처럼 끝까지
+    계산될 뿐이고 로그에도 흔적이 없다. 그래서 receive 큐 순서를 그대로 재현하는
+    테스트를 붙여 뒀다(`test_range_client_disconnect.py`) — 그 테스트는 이 호출을
+    지우면 빨개진다.
+
+    GET 이라 즉시 끝나고, `body()` 는 결과를 캐시하므로 중복 호출도 안전하다.
+    """
+    try:
+        await request.body()
+    except ClientDisconnect:
+        return True
+    return False
 
 
 def _is_wide_range(from_date: str, to_date: str) -> bool:
@@ -504,6 +532,7 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
 
     @router.get("/range", response_model=RangeBundle)
     async def api_range(
+        request: Request,
         code: Code,
         from_date: str = Query(..., alias="from"),
         to_date: str = Query(..., alias="to"),
@@ -562,6 +591,9 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
             )
         # 위 검증(400)은 **상한 밖**이다 — 잘못된 요청이 큐를 기다릴 이유가 없고,
         # 기다리면 그 자리만큼 정상 요청이 밀린다.
+        #
+        # 줄을 서기 **전에** 요청 스트림을 비운다 — 이유는 `_drain_request_stream`.
+        client_gone = await _drain_request_stream(request)
         t0 = perf_debug.now()
         # 넓은 요청만 줄을 선다(상수 주석의 실측표 참조). 좁은 요청까지 같은 큐에
         # 넣으면 하루짜리가 5개월짜리 뒤에 갇혀 **중앙값이 7배 나빠진다.**
@@ -587,6 +619,24 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                     code, from_date, to_date, mode, queue_wait_ms,
                     RANGE_COMPUTE_CONCURRENCY,
                 )
+            # 기다리는 동안 화면이 이 요청을 버렸을 수 있다 — `/study` 저장뷰에서는
+            # 흔하다(봉·지표를 바꾸면 react-query 가 in-flight 를 abort 한다). 그런
+            # 요청을 그대로 계산하면 **아무도 안 읽을 결과**를 만드는 데 permit 하나를
+            # 수 분간 쓰고, 그만큼 살아 있는 요청이 밀린다. 실측(2026-08-11): 저장뷰
+            # 하나에 같은 URL 이 최대 4벌 완주했고 뒤의 요청은 큐에서 180초를 기다렸다.
+            #
+            # ⚠ **이미 계산에 들어간 요청은 여기서 못 살린다.** `to_thread.run_sync` 는
+            # 취소되지 않으므로 스레드가 끝나야 permit 이 풀린다. 그렇다고 permit 만
+            # 먼저 반납하면 **더 나빠진다** — 스레드는 계속 GIL 을 먹는데 대기자까지
+            # 들어와 동시 계산이 상한을 넘는다. 그래서 처방은 "취소" 가 아니라
+            # **"시작하지 않기"** 다.
+            if client_gone or await request.is_disconnected():
+                log.warning(
+                    "hoga_perf api_range status=abandoned code=%s from=%s to=%s mode=%s "
+                    "queue_wait_ms=%.1f",
+                    code, from_date, to_date, mode, queue_wait_ms,
+                )
+                raise HTTPException(HTTP_CLIENT_CLOSED_REQUEST, "client disconnected")
             t_compute = perf_debug.now()
             try:
                 bundle = await anyio.to_thread.run_sync(
