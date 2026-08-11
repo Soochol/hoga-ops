@@ -194,6 +194,20 @@ describe('InvestorCard', () => {
     expect(screen.queryByText('16:30')).toBeNull();
   });
 
+  it('확정본이 나오면 헤더가 「잠정」 대신 「확정」 을 말한다', async () => {
+    // 확정본이 있으면 백엔드가 시계열 끝에 확정점을 붙인다 — 그 순간부터 「잠정」 은
+    // 거짓말이다. 상태를 응답(`confirmed`)에서 받으므로 하드코딩 라벨과 갈릴 수 없다.
+    mockApi();
+    renderCard();
+    expect(await screen.findByText(/잠정/)).toBeTruthy();
+
+    vi.restoreAllMocks();
+    mockApi(derivResponse(), { ...STOCK, confirmed: true });
+    renderCard();
+    const confirmedHints = await screen.findAllByText(/확정/);
+    expect(confirmedHints.length).toBeGreaterThan(0);
+  });
+
   it('마감 후 표본이 x축 끝에 클램프되지 않는다 — 종가 단일가 체결분이 붙는 점이다', async () => {
     // **막는 것**: 창만 넓히고 화면 축을 15:30 에 두는 반쪽 수정. 그러면 15:35 표본이
     // `Math.min(sec, sessionEndSec)` 에 걸려 오른쪽 끝(x=299)에 못박히고, 하필 그날

@@ -570,6 +570,32 @@ def _session_window_min() -> tuple[int, int]:
     return INVESTOR_FLOW_OPEN_MIN, INVESTOR_FLOW_CLOSE_MIN
 
 
+def _confirmed_by_market(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """확정본 행에서 시장별 3주체 값. 일별 이력과 당일 마지막 점이 **같은 추출**을 쓴다.
+
+    복제하면 한쪽만 고쳐져도 아무도 모른다 — 두 표면이 같은 날 다른 값을 말하게 된다.
+    """
+    out: dict[str, Any] = {}
+    for label in market_overview.WHOLE_MARKET_INDS.values():
+        picked = market_overview.market_investor_row(
+            [r for r in rows
+             if market_overview.WHOLE_MARKET_INDS.get(str(r.get("inds_cd") or "")) == label]
+        )
+        if picked is not None:
+            out[label] = picked[1]
+    return out
+
+
+def _session_close_ms(date: str, close_min: int) -> int:
+    """`YYYYMMDD` 의 KST 세션 끝 epoch-ms. 확정점을 축 안에 놓기 위한 좌표다."""
+    import datetime as _dt  # noqa: PLC0415
+
+    from hoga.util.timeenc import KST  # noqa: PLC0415
+
+    day = _dt.datetime.strptime(date, "%Y%m%d").replace(tzinfo=KST)
+    return int((day + _dt.timedelta(minutes=close_min)).timestamp() * 1000)
+
+
 def _recent_dates(today: str, *, days: int) -> list[str]:
     """오늘부터 거슬러 달력일 목록(오래된 순). 확정본이 없는 날은 호출부가 건너뛰므로
     휴장일을 여기서 거를 필요가 없다 — 파일 존재가 곧 거래일 판정이다."""
@@ -629,18 +655,32 @@ def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str,
         if confirmed is None:
             continue
         got = market_overview.market_investor_row(confirmed.rows)
-        by_market: dict[str, Any] = {}
-        for label in market_overview.WHOLE_MARKET_INDS.values():
-            picked = market_overview.market_investor_row(
-                [r for r in confirmed.rows
-                 if market_overview.WHOLE_MARKET_INDS.get(str(r.get("inds_cd") or "")) == label]
-            )
-            if picked is not None:
-                by_market[label] = picked[1]
+        by_market = _confirmed_by_market(confirmed.rows)
         if got is not None or by_market:
             daily.append({"date": d, "markets": by_market})
 
     open_min, close_min = _session_window_min()
+    # 오늘 확정본이 있으면 **당일 시계열의 마지막 점으로 붙인다**. 없으면 화면이 그날의
+    # 마지막 장중 표본에서 멈추는데, 그 값과 확정치는 실측으로 갈린다(2026-08-11:
+    # 코스피 외국인 16:23 표본 2,073억 vs 확정 2,200억 = 5.8%). 확정본은 이미 만들어져
+    # 있는데 「당일」 이 그것을 안 읽어서 생기는 차이라 데이터가 아니라 배선 문제다.
+    #
+    # **x 는 세션 끝에 고정한다** — 확정 시각(실측 17:02)을 쓰면 축 밖이라 클램프되고,
+    # 실제 마감(15:30)을 쓰면 이미 있는 16:2x 표본보다 앞이라 시계열이 역행한다.
+    # 세션 끝만이 단조 증가를 지키면서 축 안에 들어온다.
+    #
+    # **커버리지에는 세지 않는다**(`by_market_samples` 에 안 넣는다) — 이 점은 벤더
+    # 표본이 아니라 확정본에서 온 파생이고, `sample_count` 는 "장중에 몇 번 찍혔나" 를
+    # 말해야 한다. 여기 섞으면 수집이 죽은 날도 +1 이 되어 완결성 신호가 오염된다.
+    #
+    # 장중 표본이 0 인 날(서버가 종일 꺼져 있던 날)은 이 점 하나만 남는다. 차트는
+    # 점 2개부터 그려지므로 선은 안 나오고 범례 숫자만 뜬다 — 그날 장중을 모르는 것이
+    # 사실이므로 정직한 표시다.
+    today_confirmed = store.load_confirmed(date)
+    if today_confirmed is not None:
+        close_ms = _session_close_ms(date, close_min)
+        for label, values in _confirmed_by_market(today_confirmed.rows).items():
+            series.setdefault(label, []).append({"t_ms": close_ms, **values})
     expected = market_overview.expected_sample_count(
         session_minutes=close_min - open_min, poll_interval_ms=poll_ms
     )

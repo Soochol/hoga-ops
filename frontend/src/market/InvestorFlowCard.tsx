@@ -159,8 +159,12 @@ export function InvestorCard() {
     if (stockSel) {
       // 선택된 시장의 커버리지 — 두 시장을 합치면 분자가 2배가 된다(#1247 후속).
       const cov = stock.data?.coverage?.[sel];
+      // 확정본이 나오면 시계열 끝에 확정점이 붙으므로(백엔드) 「잠정」 은 그때부터
+      // 거짓말이 된다. 상태를 응답에서 받아 말한다 — `confirmed` 는 확정 파일의
+      // 존재로 파생된 값이라 저장된 플래그가 아니다(#1115).
+      const status = stock.data?.confirmed ? '확정' : '잠정';
       return mode === 'intraday'
-        ? `당일 누적 · 억원 · 잠정${cov ? ` · 표본 ${cov.sample_count}/${cov.expected_count ?? '—'}` : ''}`
+        ? `당일 누적 · 억원 · ${status}${cov ? ` · 표본 ${cov.sample_count}/${cov.expected_count ?? '—'}` : ''}`
         : '일별 확정 · 억원';
     }
     const cov = product?.coverage;

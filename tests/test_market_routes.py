@@ -330,6 +330,63 @@ async def test_investor_flow_reads_stored_samples_without_calling_the_vendor(tmp
 
 
 @pytest.mark.asyncio
+async def test_investor_flow_appends_the_confirmed_value_as_the_last_intraday_point(tmp_path):
+    """**막는 것**: 확정본이 이미 있는데 「당일」 이 마지막 장중 표본에서 멈추는 것.
+
+    수집 창을 16:30 까지 넓혀도 벤더는 그 뒤로도 갱신한다 — 2026-08-11 실측에서 코스피
+    외국인이 16:23 표본 2,073억 vs 확정 2,200억으로 **5.8%** 갈렸다. 확정본은 17:00
+    배치가 이미 만들어 두므로 이건 데이터가 아니라 배선 문제다.
+
+    **못 보는 것**: 확정본 자체의 정확성(벤더가 준 값을 그대로 믿는다)과, 확정이 아직
+    없는 시간대의 잔여 오차(그건 수집 창의 몫 — `test_session_gate.py`).
+    """
+    import datetime as dt
+
+    from hoga.api.market_routes import _investor_flow_payload
+    from hoga.collector.orchestrator import now_kst
+    from hoga.live.investor_flow_store import (
+        DailyConfirmedFile,
+        IntradaySample,
+        InvestorFlowStore,
+    )
+    from hoga.util.timeenc import KST
+
+    date = now_kst().strftime("%Y%m%d")
+    store = InvestorFlowStore(tmp_path)
+    store.append_sample(date, IntradaySample(
+        sampled_at_ms=1_000,
+        request={"mrkt_tp": "0", "amt_qty_tp": "0", "base_dt": date, "stex_tp": "3"},
+        rows=[{"inds_cd": "001_AL", "ind_netprps": "-8787",
+               "frgnr_netprps": "+2073", "orgn_netprps": "+1893"}],
+    ))
+    store.write_confirmed(DailyConfirmedFile(
+        date=date,
+        confirmed_at_ms=2_000,
+        request={"mrkt_tp": "0,1", "amt_qty_tp": "0", "base_dt": date, "stex_tp": "3"},
+        rows=[{"inds_cd": "001_AL", "ind_netprps": "-8800",
+               "frgnr_netprps": "+2200", "orgn_netprps": "+1900"}],
+    ))
+
+    got = _investor_flow_payload(tmp_path)
+    points = got["markets"]["KOSPI"]
+    assert [p["foreign"] for p in points] == [2073, 2200], "확정값이 시계열 끝에 붙는다"
+
+    # x 는 **세션 끝**이다. 확정 시각을 쓰면 축 밖이라 클램프되고, 실제 마감(15:30)을
+    # 쓰면 16:2x 표본보다 앞이라 시계열이 역행한다.
+    expected_ms = int(
+        (dt.datetime.strptime(date, "%Y%m%d").replace(tzinfo=KST)
+         + dt.timedelta(minutes=16 * 60 + 30)).timestamp() * 1000
+    )
+    assert points[-1]["t_ms"] == expected_ms
+    assert points[-1]["t_ms"] > points[-2]["t_ms"], "단조 증가가 깨지면 선이 되돌아간다"
+
+    # 커버리지는 **장중 표본만** 센다 — 확정점은 벤더 표본이 아니라 파생이다. 여기
+    # 섞으면 수집이 죽은 날도 +1 이 되어 완결성 신호가 오염된다.
+    assert got["coverage"]["KOSPI"]["sample_count"] == 1
+    assert got["confirmed"] is True, "화면이 「잠정」 대신 「확정」 을 말할 근거"
+
+
+@pytest.mark.asyncio
 async def test_investor_flow_empty_day_is_empty_not_error(tmp_path):
     from hoga.api.market_routes import _investor_flow_payload
 
