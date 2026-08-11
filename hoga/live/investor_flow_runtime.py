@@ -18,6 +18,7 @@ from typing import Any
 
 from hoga.live.investor_flow_collector import InvestorFlowCollector, make_kiwoom_fetch
 from hoga.live.investor_flow_confirm import CATCHUP_TRADING_DAYS, confirm_days
+from hoga.live.session_gate import investor_flow_capture_window_async
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,10 @@ def make_collector(data_dir: Path) -> InvestorFlowCollector | None:
         date_fn=lambda: now_kst().strftime("%Y%m%d"),
         now_ms_fn=lambda: int(now_kst().timestamp() * 1000),
         fetch_market_fn=make_kiwoom_fetch(scheduler, client),
+        # 주식 정규장(15:30)이 아니라 **전용 창**이다 — 종가 단일가 체결분이 15:30 에
+        # 일괄로 붙는데 `ws_capture_window` 는 그 직전에 닫힌다(게이트 docstring 에
+        # 실측 수치). 기본값을 그대로 두면 그날의 마지막 모양을 매일 놓친다.
+        should_collect_fn=investor_flow_capture_window_async,
     )
 
 

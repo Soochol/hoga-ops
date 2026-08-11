@@ -346,6 +346,11 @@ export interface InvestorFlowResponse {
    *  표본이 거의 같은 시각이라 간격이 0 에 수렴해 갭이 영영 안 잡힌다. */
   coverage: Record<string, InvestorFlowCoverage>;
   markets: Record<string, InvestorFlowPoint[]>;
+  /** 수집 창 = x축. **정규장(15:30)이 아니다** — 종가 단일가 체결분은 15:30 에 일괄로
+   *  붙는데 게이트가 그 전에 닫히면 그날의 마지막 모양을 통째로 놓친다(백엔드
+   *  `session_gate.INVESTOR_FLOW_CLOSE_MIN`). 파생과 같이 **하드코딩하지 말 것**. */
+  session_start_sec: number;
+  session_end_sec: number;
 }
 
 export function useMarketInvestorFlow() {

@@ -219,6 +219,12 @@ class InvestorFlowResponse(BaseModel):
     #: 시각이라 간격이 0 에 수렴해 `gap_ranges` 가 항상 비게 된다. 산출부 주석 참조.
     coverage: dict[str, InvestorFlowCoverage] = Field(default_factory=dict)
     markets: dict[str, list[InvestorFlowPoint]] = Field(default_factory=dict)
+    #: 수집 창 = 화면 x축. **정규장(15:30)이 아니다** — 종가 단일가 체결분을 담으려고
+    #: 늦게 닫는다(`session_gate.INVESTOR_FLOW_CLOSE_MIN`). 파생 쪽과 같은 이유로
+    #: 응답에 실어 보낸다: 프론트가 하드코딩하면 선은 창 끝까지 그려지는데 눈금은
+    #: 다른 시각을 말한다(= 조용한 거짓말).
+    session_start_sec: int
+    session_end_sec: int
 
 
 class DerivFlowPoint(BaseModel):
@@ -537,9 +543,31 @@ _KA10016_BASE = {
 }
 
 
-# 정규장 09:00–15:30 = 390분. 커버리지 분모의 근거이고, 수집 게이트
-# (`ws_capture_window`)와 같은 창이다.
-_SESSION_MINUTES = 390
+# 커버리지 분모의 근거는 **수집 게이트에서 파생**한다 — 숫자를 여기 다시 적으면
+# 창을 조정할 때 조용히 갈린다(그전엔 `390` 이 박혀 있었고 "정규장과 같은 창" 이라고
+# 주석이 주장했다).
+#
+# 창이 정규장(15:30)보다 늦게 닫는 이유는 게이트 docstring 에 있다 — 종가 단일가
+# 체결분이 15:30 에 일괄로 붙는다. 그 연장이 분모를 늘리므로 **표시되는 커버리지 %는
+# 내려간다**. 그래도 창에서 파생하는 것이 옳다: 분모는 "이 창에서 기대되는 폴 횟수"
+# 이고, 창만 늘리고 분모를 정규장에 두면 분자가 분모를 넘어설 수 있다(한 파일에 두
+# 시장이 섞여 200% 가 나왔던 2026-08-10 사고와 같은 종류).
+#
+# 애초에 이 비율은 dedup 때문에 100% 에 닿지 않는다 — 값이 안 변한 폴은 기록되지
+# 않는다(`rows_equal`). 마감 후 꼬리는 그 성질이 가장 강해서, 값이 완전히 동결되면
+# 그 구간이 통째로 `gap_ranges` 한 줄로 찍힌다. 그것은 오작동이 아니라 "그 사이 새
+# 값이 없었다" 는 정직한 표시다(#1105 커버리지 철학).
+def _session_window_min() -> tuple[int, int]:
+    """수집 창 (여는 분, 닫는 분). 게이트가 SSOT — 지연 import 는 파생과 같은 순환 절단.
+
+    커버리지 분모와 화면 x축이 **이 한 곳**에서 나온다.
+    """
+    from hoga.live.session_gate import (  # noqa: PLC0415
+        INVESTOR_FLOW_CLOSE_MIN,
+        INVESTOR_FLOW_OPEN_MIN,
+    )
+
+    return INVESTOR_FLOW_OPEN_MIN, INVESTOR_FLOW_CLOSE_MIN
 
 
 def _recent_dates(today: str, *, days: int) -> list[str]:
@@ -612,8 +640,9 @@ def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str,
         if got is not None or by_market:
             daily.append({"date": d, "markets": by_market})
 
+    open_min, close_min = _session_window_min()
     expected = market_overview.expected_sample_count(
-        session_minutes=_SESSION_MINUTES, poll_interval_ms=poll_ms
+        session_minutes=close_min - open_min, poll_interval_ms=poll_ms
     )
     coverage: dict[str, Any] = {}
     for label, market_samples in by_market_samples.items():
@@ -633,6 +662,9 @@ def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str,
         "confirmed": store.is_confirmed(date),
         "coverage": coverage,
         "markets": series,
+        # x축은 게이트에서 파생한다 — 화면이 창을 다시 적으면 갈린다(파생과 같은 규율).
+        "session_start_sec": open_min * 60,
+        "session_end_sec": close_min * 60,
     }
 
 

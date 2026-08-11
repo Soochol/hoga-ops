@@ -5,6 +5,8 @@ import pytest
 
 from hoga.api import calendar as cal
 from hoga.live.session_gate import (
+    investor_flow_capture_window,
+    investor_flow_capture_window_async,
     is_auction_window,
     ws_capture_window,
     ws_capture_window_async,
@@ -134,3 +136,65 @@ def test_is_auction_window_unknown_venue_is_closed():
     """모르는 venue 는 닫힘 — 단일가 시각을 모르는 시장에 창을 열면 값이 샌다."""
     assert is_auction_window(_ms(2026, 5, 27, 8, 55), "KOSDAQ_ATS") is False
     assert is_auction_window(_ms(2026, 5, 27, 15, 35), "") is False
+
+
+# ── 투자자 수급(ka10051) 수집 창: 정규장보다 늦게 닫는다 ──────────────────────
+
+
+def test_investor_flow_window_stays_open_through_closing_auction(monkeypatch):
+    """**이 창이 막는 것**: 종가 단일가 체결분(15:30 일괄)이 시계열에서 빠지는 것.
+
+    정규장(15:30)에서 닫으면 그 체결이 붙기 전에 게이트가 내려간다. 증상이 "수집이
+    멈췄다" 로 보이지 않는 것이 이 버그의 성질이다 — 15:20 이후 접속매매가 없어 값이
+    동결되므로 `rows_equal` 이 폴을 전부 스킵하고, 파일의 마지막 쓰기가 매일 15:22 로
+    찍힌다(2026-08-11 실측, 네 거래일 모두).
+
+    **이 창이 못 보는 것**: 벤더가 실제로 언제 갱신하는가. 창은 "물어볼 자격" 만
+    정하고, 값이 안 변하면 dedup 이 버린다 — 그래서 창을 넓히는 쪽은 안전하다.
+    """
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
+    # 정규장 안 — 기존 창과 겹치는 구간
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 9, 0)) is True
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 15, 29)) is True
+    # **여기가 새로 열린 구간이다.** `ws_capture_window` 는 이 셋에서 전부 False 다.
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 15, 35)) is True
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 16, 1)) is True
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 16, 29)) is True
+    # 끝은 배제 — 16:30 부터는 17:00 확정 배치의 몫이다.
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 16, 30)) is False
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 8, 59)) is False
+
+
+def test_investor_flow_window_is_strictly_wider_than_regular_session(monkeypatch):
+    """정규장이 열린 시각은 이 창도 반드시 열린다(투자자 수급 창 ⊇ 저장 창).
+
+    확장이 **덧붙이기**임을 고정한다 — 창을 옮기면서 장중 구간을 잃으면 소급 백필이
+    불가능한 표본을 영구히 버리게 된다(#1105).
+    """
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
+    for h, m in [(9, 0), (10, 30), (12, 0), (15, 19), (15, 29)]:
+        t = _ms(2026, 5, 27, h, m)
+        if ws_capture_window(t):
+            assert investor_flow_capture_window(t) is True
+
+
+def test_investor_flow_window_false_on_weekend_and_holiday(monkeypatch):
+    """거래일 판정은 SSOT 에 위임한다 — 확장된 꼬리가 휴장일을 열어 주면 안 된다.
+
+    비거래일에 표본을 찍으면 그날이 "수집했는데 아무 일도 없던 날" 로 남아, 커버리지가
+    말하는 결손과 구별되지 않는다.
+    """
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
+    assert investor_flow_capture_window(_ms(2026, 5, 30, 16, 0)) is False  # 토요일
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: False)
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 16, 0)) is False  # 평일 휴장
+
+
+@pytest.mark.asyncio
+async def test_investor_flow_window_async_matches_sync(monkeypatch):
+    """async 진입점은 sync 와 같은 답 — blocking 계약만 시그니처에 박는다."""
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
+    t = _ms(2026, 5, 27, 16, 0)
+    assert await investor_flow_capture_window_async(t) is True
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: False)
+    assert await investor_flow_capture_window_async(t) is False

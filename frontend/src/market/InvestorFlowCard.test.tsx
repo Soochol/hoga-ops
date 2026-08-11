@@ -12,11 +12,18 @@ import * as client from '../api/client';
 import { InvestorCard } from './InvestorFlowCard';
 
 const T0 = Date.UTC(2026, 7, 7, 4, 0); // 13:00 KST
+/** 15:35 KST — **정규장 밖이지만 수집 창 안**이다. 종가 단일가 체결분이 붙는 자리라
+ *  이 표본 하나가 그날 수급의 마지막 모양을 정한다. */
+const T_AFTER_CLOSE = Date.UTC(2026, 7, 7, 6, 35);
 
 const STOCK = {
   date: '20260807',
   unit: 'amt_eok',
   confirmed: false,
+  // 주식 수집 창은 09:00–16:30 이다(`session_gate.INVESTOR_FLOW_CLOSE_MIN`) — 정규장
+  // 15:30 이 아니다. 화면은 이 값에서 x축과 눈금을 **둘 다** 파생시킨다.
+  session_start_sec: 9 * 3600,
+  session_end_sec: 16 * 3600 + 30 * 60,
   coverage: {
     first_sample_ms: T0,
     last_sample_ms: T0 + 60_000,
@@ -175,13 +182,42 @@ describe('InvestorCard', () => {
     expect(screen.getByRole('group', { name: '수급 표시 구간' })).toBeTruthy();
   });
 
-  it('파생 세션축은 15:45 로 끝난다 — 주식 15:30 이 아니다', async () => {
+  it('세션축 눈금은 응답이 정한다 — 주식 16:30, 파생 15:45', async () => {
+    // 눈금을 하드코딩하면 선은 창 끝까지 그려지는데 눈금만 다른 시각을 말한다
+    // (`SessionAxisLabels` 주석의 그 함정). 두 축이 서로 다른 값이라 한쪽을 고정값으로
+    // 되돌리면 반드시 여기가 깨진다.
     mockApi();
     renderCard();
-    expect(await screen.findByText('15:30')).toBeTruthy();
+    expect(await screen.findByText('16:30')).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: '선물' }));
     expect(screen.getByText('15:45')).toBeTruthy();
-    expect(screen.queryByText('15:30')).toBeNull();
+    expect(screen.queryByText('16:30')).toBeNull();
+  });
+
+  it('마감 후 표본이 x축 끝에 클램프되지 않는다 — 종가 단일가 체결분이 붙는 점이다', async () => {
+    // **막는 것**: 창만 넓히고 화면 축을 15:30 에 두는 반쪽 수정. 그러면 15:35 표본이
+    // `Math.min(sec, sessionEndSec)` 에 걸려 오른쪽 끝(x=299)에 못박히고, 하필 그날
+    // 가장 중요한 점(동시호가 반영분)이 직전 표본과 겹쳐 사라진다.
+    //
+    // 판정을 픽셀로 한다: 09:00–16:30 축에서 15:35 는 x≈262 여야 하고, 축이 15:30 이면
+    // 클램프되어 정확히 299 가 된다. **눈금 라벨만 보는 검사로는 이걸 못 잡는다** —
+    // 라벨과 스케일은 각각 다른 prop 이라 한쪽만 고쳐도 라벨은 통과한다.
+    mockApi(derivResponse(), {
+      ...STOCK,
+      markets: {
+        ...STOCK.markets,
+        KOSPI: [
+          ...STOCK.markets.KOSPI,
+          { t_ms: T_AFTER_CLOSE, individual: 200, foreign: -600, institution: 410 },
+        ],
+      },
+    });
+    const { container } = renderCard();
+    await screen.findByText('16:30');
+    const d = container.querySelector('svg path[stroke]')?.getAttribute('d') ?? '';
+    const lastX = Number(d.trim().split(/[ML]/).filter(Boolean).pop()?.split(',')[0]);
+    expect(lastX).toBeGreaterThan(255);
+    expect(lastX).toBeLessThan(270);
   });
 
   it('단위가 확정되면 억원 축을 쓴다', async () => {
