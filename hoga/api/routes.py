@@ -44,7 +44,9 @@ from hoga.util.timeenc import (
 
 log = logging.getLogger(__name__)
 
-# `/api/range` 의 **넓은 구간** 동시 compute 상한.
+# `/api/range` 의 **넓은 구간** 동시 compute 상한 — 지금 이 레인에 남은 모드는 **hoga
+# 하나뿐이다**(sidecar 는 v3.4, candles 는 v3.5 에서 자기 레인으로 나갔다). 이름이
+# "compute" 로 남은 것은 이력 때문이고, 마지막 모드까지 나가면 이 상수는 사라진다.
 #
 # 왜 상한이 필요한가: 이 경로는 시간의 대부분이 행→pydantic 모델 생성이라 GIL 을
 # 놓지 않는다. 32코어에서 스레드 6개로 돌려도 wall 이 **7.1배**로 늘어나고(스레드마다
@@ -156,6 +158,35 @@ RANGE_WIDE_SPAN_DAYS = int(os.environ.get("HOGA_RANGE_WIDE_SPAN_DAYS", "") or 30
 # 돌린다" 가 아니라 **"서로를 막지 않는다"** 다. 두 상수를 한 값으로 합치지 말 것:
 # 근거가 다르고(이쪽은 모드 팽창률, 저쪽은 GIL 직렬화) 다음 재측정에서 갈릴 값이다.
 RANGE_SIDECAR_CONCURRENCY = int(os.environ.get("HOGA_RANGE_SIDECAR_CONCURRENCY", "") or 2)
+
+# `mode=candles` 의 레인. 값 규약은 위 sidecar 노브와 같다(-1 공유 · 0 무제한 · N 레인).
+#
+# 가르는 근거가 sidecar 와 다르다. sidecar 는 부선형이라 **동시성 이득**을 살리려 갈랐고,
+# candles 는 v3.4 가 남긴 **뷰완성 지배자**여서 갈랐다 — 저장뷰 화면은 3모드가 다 와야
+# 뜨는데(`isLoading` 이 OR) 그 마지막이 늘 candles 였다.
+#
+# ⚠ **"가장 초선형이니 레인은 좁을수록 좋다" 는 측정으로 반증됐다.** 그렇게 예상하고
+# 레인 1부터 쟀는데 candles 가 오히려 느려졌다(7.11 → 7.46). 초선형은 **총 wall** 의
+# 성질이지 **개별 요청 지연**의 성질이 아니다 — 레인 1은 4건을 직렬화해 마지막의 대기가
+# 누적되고, 그 누적이 초선형 페널티보다 크다. 사용자가 기다리는 것은 총 wall 이 아니라
+# 자기 요청이므로 이쪽이 이긴다. 혼합 22 동시 · 전부 warm · 교대 대조 3라운드 median:
+#
+#     변형        wall  뷰완성  h:hoga  h:sidecar  h:candles  l:hoga  평균
+#     공유(v3.4)  9.54   8.56    5.47     7.10       7.32    0.230   3.65
+#     레인 1      9.61   8.42    2.06     7.36       7.46    0.240   3.18  ← 더 느려졌다
+#     레인 2     10.03   7.93    2.19     7.89       4.82    0.277   3.07
+#     **레인 3**  9.84   7.85    2.29     7.79       2.88    0.269   2.83  ← 채택
+#     레인 4      9.77   7.88    2.26     7.88       2.69    0.197   2.45
+#
+# **레인 3에서 꺾인다** — 4로 넓혀도 뷰완성이 안 움직인다(7.85 ↔ 7.88, 노이즈).
+# 병목이 이미 sidecar 로 옮겨갔기 때문이다: 채택 변형의 뷰완성 7.85 는 `h:sidecar`
+# 7.79 와 같은 값이다. **candles 를 더 여는 것은 이제 이득이 없고 GIL 만 더 나눈다.**
+#
+# ⚠ **공짜가 아니다.** wall +3% · `h:sidecar` +10% 는 일관되게 악화된다(병목 이동의
+# 대가). 그래도 랜딩하는 근거는 **뷰완성 -8%** 와 전체 평균 -23% 다 — wall 은 "마지막
+# 요청까지" 라 사용자가 기다리는 값이 아니다. light 열은 라운드마다 부호가 뒤집혀
+# (-14% ↔ +17%) 노이즈로 판정했다.
+RANGE_CANDLES_CONCURRENCY = int(os.environ.get("HOGA_RANGE_CANDLES_CONCURRENCY", "") or 3)
 
 # 상한 대기가 이 값을 넘으면 로그에 남긴다. 대기는 TTFB 에 그대로 포함되므로
 # (`request_timing`), 이 값이 없으면 다음 조사자가 **큐 대기를 계산 시간으로 읽는다**
@@ -569,12 +600,33 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
     # uvicorn 루프가 뜨기 전에 돌고 `TestClient` 는 인스턴스마다 루프를 만드므로,
     # 이 성질이 없으면 여기 두는 것 자체가 성립하지 않는다.
     range_compute_limiter = anyio.CapacityLimiter(RANGE_COMPUTE_CONCURRENCY)
-    # sidecar 전용 레인. 상수 주석 참조 — `-1`(공유)·`0`(무제한)이면 만들지 않는다.
-    range_sidecar_limiter = (
-        anyio.CapacityLimiter(RANGE_SIDECAR_CONCURRENCY)
-        if RANGE_SIDECAR_CONCURRENCY > 0
-        else None
-    )
+
+    def _dedicated_lane(limit: int) -> AbstractAsyncContextManager[object] | None:
+        """전용 레인 하나. `None` = 이 모드는 공유 레인을 쓴다.
+
+        값 규약은 상수 주석과 같다: `-1` 공유 · `0` 무제한 · `N>0` 레인 N.
+        `nullcontext` 는 상태가 없어 여러 요청이 같은 인스턴스를 써도 안전하다.
+        """
+        if limit == 0:
+            return contextlib.nullcontext()
+        if limit > 0:
+            return anyio.CapacityLimiter(limit)
+        return None
+
+    # 모드 → 전용 레인 **표**. if 사다리로 두지 않는 이유: 모드가 셋인데 이미 둘을
+    # 갈랐고, 남은 hoga 를 가르는 날 사다리는 분기가 또 늘지만 표는 줄이 하나 는다.
+    mode_lanes = {
+        mode: lane
+        for mode, limit in (
+            ("sidecar", RANGE_SIDECAR_CONCURRENCY),
+            ("candles", RANGE_CANDLES_CONCURRENCY),
+        )
+        if (lane := _dedicated_lane(limit)) is not None
+    }
+    lane_limits = {
+        "sidecar": RANGE_SIDECAR_CONCURRENCY,
+        "candles": RANGE_CANDLES_CONCURRENCY,
+    }
 
     def _range_gate(mode: str, from_date: str, to_date: str) -> tuple[
         AbstractAsyncContextManager[object], str,
@@ -587,12 +639,10 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         """
         if not _is_wide_range(from_date, to_date):
             return contextlib.nullcontext(), "none"
-        if mode == "sidecar":
-            if RANGE_SIDECAR_CONCURRENCY == 0:
-                return contextlib.nullcontext(), "sidecar-unlimited"
-            if range_sidecar_limiter is not None:
-                return range_sidecar_limiter, "sidecar"
-        return range_compute_limiter, "wide"
+        lane = mode_lanes.get(mode)
+        if lane is not None:
+            return lane, mode
+        return range_compute_limiter, "shared"
 
     @router.get("/range", response_model=RangeBundle)
     async def api_range(
@@ -679,7 +729,7 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                     "hoga_perf api_range status=queued code=%s from=%s to=%s mode=%s "
                     "lane=%s queue_wait_ms=%.1f limit=%d",
                     code, from_date, to_date, mode, lane, queue_wait_ms,
-                    RANGE_SIDECAR_CONCURRENCY if lane == "sidecar" else RANGE_COMPUTE_CONCURRENCY,
+                    lane_limits.get(lane, RANGE_COMPUTE_CONCURRENCY),
                 )
             # 기다리는 동안 화면이 이 요청을 버렸을 수 있다 — `/study` 저장뷰에서는
             # 흔하다(봉·지표를 바꾸면 react-query 가 in-flight 를 abort 한다). 그런

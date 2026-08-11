@@ -29,24 +29,30 @@ from hoga.api.models import (
 
 # 넓은 구간 = 상한을 탄다(`RANGE_WIDE_SPAN_DAYS` 이상).
 #
-# ⚠ **모드가 `candles` 인 것이 이 상수의 계약이다.** sidecar 는 ADR-0085 v3.4 부터
-# 자기 레인을 쓰므로(`RANGE_SIDECAR_CONCURRENCY`), 예전처럼 `mode=sidecar` 로 두면 이
-# 파일의 단언이 **공유 레인이 아니라 sidecar 레인을 재게 된다** — 이름은 그대로인 채로.
-# 그 침묵 전환을 막으려고 모드를 명시하고, sidecar 레인은 자기 테스트를 따로 둔다.
+# ⚠ **모드가 `hoga` 인 것이 이 상수의 계약이다 — 이 자리는 두 번 옮겨졌다.**
+# 원래 `mode=sidecar` 였는데 v3.4 가 sidecar 를 가르며 `candles` 로, v3.5 가 candles 를
+# 가르며 `hoga` 로 옮겼다. 그대로 뒀다면 이 파일의 단언은 **이름은 그대로인 채 다른
+# 레인을 재게** 됐을 것이다. 모드를 가를 때마다 여기부터 볼 것 — 공유 레인에 남은
+# 모드가 무엇인지가 이 상수의 정의다(지금은 hoga 하나뿐이다).
 URL = (
     "/api/range?code={code}&from=20260101&to=20260512&bucket_ms=60000"
-    "&venue=KRX&mode=candles"
+    "&venue=KRX&mode=hoga"
 )
 # 좁은 구간 = 상한 밖. `/live` 가 오늘·스크롤백 청크를 요청하는 모양이다.
 NARROW_URL = (
     "/api/range?code={code}&from=20260512&to=20260512&bucket_ms=60000"
-    "&venue=KRX&mode=candles"
+    "&venue=KRX&mode=hoga"
 )
-# 넓은 sidecar = **자기 레인**. 위 `URL` 과 같은 구간이라 둘을 섞으면 두 레인이 동시에
-# 도는 모양이 된다.
+# 넓은 sidecar = **자기 레인**. 위 `URL` 과 같은 구간이라 섞으면 레인들이 동시에 도는
+# 모양이 된다.
 SIDECAR_URL = (
     "/api/range?code={code}&from=20260101&to=20260512&bucket_ms=60000"
     "&venue=KRX&mode=sidecar"
+)
+# 넓은 candles = **또 다른 레인**(v3.5).
+CANDLES_URL = (
+    "/api/range?code={code}&from=20260101&to=20260512&bucket_ms=60000"
+    "&venue=KRX&mode=candles"
 )
 # 좁은 sidecar — 모드 분리가 **일수 분리를 대체하지 않는다**는 것을 재는 URL.
 NARROW_SIDECAR_URL = (
@@ -179,25 +185,53 @@ async def test_wide_sidecar_uses_its_own_lane(app, monkeypatch):
     )
 
 
-async def test_sidecar_and_shared_lanes_run_independently(app, monkeypatch):
-    """두 레인은 **서로를 막지 않는다** — 이것이 "레인" 이라는 말의 내용 전부다.
+async def test_wide_candles_uses_its_own_lane(app, monkeypatch):
+    """넓은 candles 도 자기 레인을 탄다(ADR-0085 v3.5).
+
+    ⚠ **가르는 근거가 sidecar 와 반대다.** sidecar 는 부선형이라 동시성 이득을 살리려
+    갈랐고, candles 는 **가장 초선형**이라(6.7×) 이득이 아니라 **간섭 제거**가 목적이다 —
+    hoga 와 한 줄에 있으면 서로를 막고 그 대기가 곧 저장뷰 화면의 지연이었다.
+    그래서 레인 폭도 반대로 **좁을수록** 좋다.
+    """
+    assert routes.RANGE_CANDLES_CONCURRENCY > 0, (
+        f"candles 전용 레인이 꺼져 있다 — HOGA_RANGE_CANDLES_CONCURRENCY="
+        f"{routes.RANGE_CANDLES_CONCURRENCY} (-1=공유 · 0=무제한). 둘 다 랜딩 값이 아니다."
+    )
+    codes = ["005930", "000660", "035420", "064350", "010120", "042660"]
+    max_inside = await _max_concurrent_computes(app, monkeypatch, CANDLES_URL, codes)
+    assert max_inside == min(routes.RANGE_CANDLES_CONCURRENCY, len(codes)), (
+        f"candles 레인이 상한만큼 돌지 않았다 — 동시 {max_inside}건 "
+        f"(레인 {routes.RANGE_CANDLES_CONCURRENCY} · 요청 {len(codes)})"
+    )
+
+
+async def test_every_lane_runs_independently(app, monkeypatch):
+    """세 레인은 **서로를 막지 않는다** — 이것이 "레인" 이라는 말의 내용 전부다.
 
     한 모드만 던지면 상한 값만 재게 되고, 레인 값이 공유 상한과 같은 날 분리가 죽어도
-    아무도 모른다. 두 모드를 **한 배치에 섞어야** 합이 보인다.
+    아무도 모른다. 모드를 **한 배치에 섞어야** 합이 보인다.
+
+    모드를 새로 가르면 이 테스트에 그 모드를 **추가**해야 한다 — 안 그러면 새 레인은
+    자기 상한만 검증되고 "독립인가" 는 아무도 안 본다.
     """
     codes = ["005930", "000660", "035420", "064350"]
-    urls = (
-        [URL.format(code=c) for c in codes] + [SIDECAR_URL.format(code=c) for c in codes]
-    )
+    urls = [
+        template.format(code=c)
+        for template in (URL, SIDECAR_URL, CANDLES_URL)
+        for c in codes
+    ]
     max_inside = await _max_concurrent_for_urls(app, monkeypatch, urls)
 
-    expected = min(routes.RANGE_COMPUTE_CONCURRENCY, len(codes)) + min(
-        routes.RANGE_SIDECAR_CONCURRENCY, len(codes),
+    expected = (
+        min(routes.RANGE_COMPUTE_CONCURRENCY, len(codes))
+        + min(routes.RANGE_SIDECAR_CONCURRENCY, len(codes))
+        + min(routes.RANGE_CANDLES_CONCURRENCY, len(codes))
     )
     assert max_inside == expected, (
-        f"두 레인의 합이 안 맞는다 — 동시 {max_inside}건 (기대 {expected} = "
-        f"공유 {routes.RANGE_COMPUTE_CONCURRENCY} + sidecar {routes.RANGE_SIDECAR_CONCURRENCY}). "
-        "합이 공유 상한과 같으면 분리가 죽어 한 줄에 서 있는 것이다."
+        f"레인 합이 안 맞는다 — 동시 {max_inside}건 (기대 {expected} = "
+        f"공유 {routes.RANGE_COMPUTE_CONCURRENCY} + sidecar {routes.RANGE_SIDECAR_CONCURRENCY} "
+        f"+ candles {routes.RANGE_CANDLES_CONCURRENCY}). "
+        "합이 더 작으면 어느 둘이 한 줄에 서 있는 것이다."
     )
 
 
