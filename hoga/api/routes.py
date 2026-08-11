@@ -117,6 +117,46 @@ RANGE_COMPUTE_CONCURRENCY = int(os.environ.get("HOGA_RANGE_CONCURRENCY", "") or 
 # 어차피 빨리 끝나 뒤를 오래 막지 않는다.
 RANGE_WIDE_SPAN_DAYS = int(os.environ.get("HOGA_RANGE_WIDE_SPAN_DAYS", "") or 30)
 
+# `mode=sidecar` 의 레인. 위 무게 분리(일수)에 **모드 축**을 더한 것이다(ADR-0085 v3.4).
+#
+# 왜 sidecar 만 다른가: 6-스레드 팽창이 모드마다 다르다 — candles **6.7×** · hoga 6~8×
+# 인데 sidecar 는 **3.8×** 로 **부선형**이다(팽창/N < 1). peak 이 polars 라 그 구간에서
+# GIL 을 놓기 때문이고, 즉 sidecar 끼리는 동시성이 **실제 이득**이다. 그런 요청을
+# candles 와 같은 줄에 세우면 이득을 버리면서 서로를 막는다.
+#
+# ⚠ **그렇다고 상한을 푸는 것이 아니다 — 측정이 그쪽을 기각했다.** 부선형인 것은
+# sidecar **끼리**일 때고, peak 밖(depth 히트맵 · 1~2MB 응답 생성)은 여전히 파이썬이다.
+# 혼합 부하 22 동시(저장뷰 4개분 12 + 하루짜리 10), 교대 대조 4라운드 median:
+#
+#     변형        wall  뷰완성  h:hoga  h:sidecar  h:candles  l:hoga  l:sidecar  평균
+#     공유(현행)  9.35   8.27    6.16     7.06       8.24     0.144    0.277    3.72
+#     레인 2      8.46   7.73    4.96     6.19       6.81     0.163    0.233    3.26  ← 채택
+#     레인 4      8.95   8.69    6.45     4.75       8.65     0.239    0.317    3.54
+#
+# ("뷰완성" = 저장뷰 하나의 3모드 중 **가장 느린 것** — `isLoading` 이 OR 라 화면은
+#  그때 뜬다. 사용자가 실제로 기다리는 값이고, 클래스별 중앙값으로는 안 보인다.)
+#
+# **레인 4는 재분배다**: sidecar 를 -33% 얻는 대신 뷰완성 +5% · candles +5% ·
+# 가벼운 hoga **+66%** 를 잃는다 — 레인을 넓게 열수록 그쪽이 제한 레인의 candles/hoga
+# 와 GIL 을 나눠 갉아먹는다. v3 이 "상한을 모두에게 걸면 손해" 라고 적은 것의 거울상이다.
+# **레인 2는 실제 이득**: 가벼운 hoga 만 +14%(절대 **+19ms**, 노이즈 범위) 나빠지고
+# 나머지 전 열이 7~19% 개선된다.
+#
+# ⚠ **단발 sweep 은 이 결론을 뒤집었다.** 3-trial 1회에서는 레인 4가 최선으로 보였고
+# (wall 8.30 · 평균 3.165), 교대 대조로 다시 재자 뒤집혔다. 변형 간 차이가 머신 부하
+# 드리프트와 같은 크기라 **번갈아 돌리지 않으면 순서가 곧 결과**다.
+#
+# 값의 의미(sweep 을 서버 재시작만으로 돌리기 위한 노브 — `HOGA_RANGE_CONCURRENCY` 와
+# 같은 자리에 둔다):
+#   -1 = 공유 레인 (모드 분리 이전 동작)
+#    0 = 상한 없음
+#   N>0 = 전용 레인 N
+#
+# 채택값이 공유 상한과 **같은 2**인 것은 우연이 아니다 — 이득의 정체는 "sidecar 를 더
+# 돌린다" 가 아니라 **"서로를 막지 않는다"** 다. 두 상수를 한 값으로 합치지 말 것:
+# 근거가 다르고(이쪽은 모드 팽창률, 저쪽은 GIL 직렬화) 다음 재측정에서 갈릴 값이다.
+RANGE_SIDECAR_CONCURRENCY = int(os.environ.get("HOGA_RANGE_SIDECAR_CONCURRENCY", "") or 2)
+
 # 상한 대기가 이 값을 넘으면 로그에 남긴다. 대기는 TTFB 에 그대로 포함되므로
 # (`request_timing`), 이 값이 없으면 다음 조사자가 **큐 대기를 계산 시간으로 읽는다**
 # — 이 세션이 정확히 그 오독을 한 번 하고 나서 프로브로 갈랐다.
@@ -529,6 +569,30 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
     # uvicorn 루프가 뜨기 전에 돌고 `TestClient` 는 인스턴스마다 루프를 만드므로,
     # 이 성질이 없으면 여기 두는 것 자체가 성립하지 않는다.
     range_compute_limiter = anyio.CapacityLimiter(RANGE_COMPUTE_CONCURRENCY)
+    # sidecar 전용 레인. 상수 주석 참조 — `-1`(공유)·`0`(무제한)이면 만들지 않는다.
+    range_sidecar_limiter = (
+        anyio.CapacityLimiter(RANGE_SIDECAR_CONCURRENCY)
+        if RANGE_SIDECAR_CONCURRENCY > 0
+        else None
+    )
+
+    def _range_gate(mode: str, from_date: str, to_date: str) -> tuple[
+        AbstractAsyncContextManager[object], str,
+    ]:
+        """이 요청이 설 줄과 그 이름. 이름은 `queue_wait` 로그에 실린다.
+
+        좁은 요청은 **모드와 무관하게** 그냥 지나간다 — 모드 분리는 넓은 요청 안에서
+        무게를 다시 가르는 것이지, 일수 분리를 대체하는 것이 아니다. `/live` 의
+        하루짜리 sidecar 가 `/study` 5개월 sidecar 뒤에 갇히면 안 되는 것은 그대로다.
+        """
+        if not _is_wide_range(from_date, to_date):
+            return contextlib.nullcontext(), "none"
+        if mode == "sidecar":
+            if RANGE_SIDECAR_CONCURRENCY == 0:
+                return contextlib.nullcontext(), "sidecar-unlimited"
+            if range_sidecar_limiter is not None:
+                return range_sidecar_limiter, "sidecar"
+        return range_compute_limiter, "wide"
 
     @router.get("/range", response_model=RangeBundle)
     async def api_range(
@@ -597,11 +661,9 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         t0 = perf_debug.now()
         # 넓은 요청만 줄을 선다(상수 주석의 실측표 참조). 좁은 요청까지 같은 큐에
         # 넣으면 하루짜리가 5개월짜리 뒤에 갇혀 **중앙값이 7배 나빠진다.**
-        gate: AbstractAsyncContextManager[object] = (
-            range_compute_limiter
-            if _is_wide_range(from_date, to_date)
-            else contextlib.nullcontext()
-        )
+        # 그 안에서 sidecar 는 자기 레인을 쓴다 — `RANGE_SIDECAR_CONCURRENCY`.
+        gate: AbstractAsyncContextManager[object]
+        gate, lane = _range_gate(mode, from_date, to_date)
         # 대기는 **이벤트 루프에서** 한다. 이 라우트가 `async def` 인 것이 그 조건이다:
         # 동기 `def` 였다면 FastAPI 가 요청마다 스레드풀 스레드를 잡은 뒤 그 스레드
         # 위에서 상한을 기다려, 대기자들이 40 토큰짜리 공용 풀을 채우고 **다른 동기
@@ -615,9 +677,9 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                 # 잘못 보낸다(상수 주석 참조).
                 log.warning(
                     "hoga_perf api_range status=queued code=%s from=%s to=%s mode=%s "
-                    "queue_wait_ms=%.1f limit=%d",
-                    code, from_date, to_date, mode, queue_wait_ms,
-                    RANGE_COMPUTE_CONCURRENCY,
+                    "lane=%s queue_wait_ms=%.1f limit=%d",
+                    code, from_date, to_date, mode, lane, queue_wait_ms,
+                    RANGE_SIDECAR_CONCURRENCY if lane == "sidecar" else RANGE_COMPUTE_CONCURRENCY,
                 )
             # 기다리는 동안 화면이 이 요청을 버렸을 수 있다 — `/study` 저장뷰에서는
             # 흔하다(봉·지표를 바꾸면 react-query 가 in-flight 를 abort 한다). 그런
