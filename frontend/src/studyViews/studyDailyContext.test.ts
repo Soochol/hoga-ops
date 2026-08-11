@@ -87,16 +87,6 @@ describe('studySavedRangeMarks', () => {
     );
     expect(marks).toBeNull();
   });
-
-  it('라벨에 저장 봉을 적는다 — 일봉 화면에서 원래 무슨 봉이었는지가 사라지지 않게', () => {
-    const bars = candles(4);
-    const marks = studySavedRangeMarks(
-      save({ timeframe: '10m', range: { from_date: '20260601', to_date: '20260604', from_ms: bars[0].ts_ms, to_ms: bars[3].ts_ms } }),
-      bars,
-    );
-    expect(marks!.label).toContain('10분봉');
-    expect(marks!.label).toContain('06/01');
-  });
 });
 
 describe('studyDailyViewport', () => {

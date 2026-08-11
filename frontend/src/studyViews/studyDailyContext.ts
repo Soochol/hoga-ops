@@ -96,7 +96,6 @@ export type StudySavedRangeMarks = {
   fromMs: number;
   toMs: number;
   barCount: number;
-  label: string;
 };
 
 export function studySavedRangeMarks(
@@ -113,18 +112,5 @@ export function studySavedRangeMarks(
     fromMs: first.ts_ms,
     toMs: last.ts_ms,
     barCount: inRange.length,
-    label: `저장 구간 · ${formatMonthDay(save.range.from_date)}–${formatMonthDay(save.range.to_date)} · ${timeframeLabel(save.timeframe)}`,
   };
-}
-
-/** 저장 봉의 사람용 라벨. `TimeframeControl` 의 표는 export 가 아니라 여기 최소판을 둔다. */
-export function timeframeLabel(tf: string): string {
-  if (tf === 'D') return '일봉';
-  if (tf === 'W') return '주봉';
-  if (tf === 'M') return '월봉';
-  return `${tf.replace('m', '')}분봉`;
-}
-
-function formatMonthDay(yyyymmdd: string): string {
-  return `${yyyymmdd.slice(4, 6)}/${yyyymmdd.slice(6, 8)}`;
 }

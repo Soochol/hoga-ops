@@ -27,7 +27,6 @@ const marks: StudySavedRangeMarks = {
   fromMs: FROM_MS,
   toMs: TO_MS,
   barCount: 12,
-  label: '저장 구간 · 06/01–06/12 · 10분봉',
 };
 
 function renderBand(coords: Map<number, number | null>, barSpacing?: number) {
@@ -50,10 +49,12 @@ describe('StudySavedRangeBand', () => {
     expect(fill.style.width).toBe('208px');
   });
 
-  it('저장 봉이 적힌 라벨을 레전드 아래에 둔다', () => {
+  // 예전엔 여기에 "저장 구간 · 06/01–06/12 · 10분봉" 칩이 떴다. 캔들을 가려서 걷어냈고
+  // (2026-08-11 사용자 요청), 저장 봉·날짜는 탭 제목과 저장뷰 드로어가 계속 답한다.
+  it('글자를 얹지 않는다 — tint 와 양끝 실선만 그린다', () => {
     renderBand(new Map([[FROM_MS / 1000, 100], [TO_MS / 1000, 300]]));
 
-    expect(screen.getByText('저장 구간 · 06/01–06/12 · 10분봉')).toBeTruthy();
+    expect(screen.getByTestId('study-saved-range-band').textContent).toBe('');
   });
 
   it('좌표를 못 얻으면(축 미준비·화면 밖) 아무것도 그리지 않는다', () => {
