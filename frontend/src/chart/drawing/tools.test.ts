@@ -24,7 +24,7 @@ import {
 } from './tools';
 import type { Drawing, Point } from './types';
 import { createVirtualAxis } from '../../util/virtualAxis';
-import { dragTimeDomain } from './chartCoordinates';
+import { dragBarDomain } from './chartCoordinates';
 
 function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
   const defaultPoint: Point = { realMs: 1_700_000_000_000, price: 70_000 };
@@ -44,10 +44,15 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     paneIdAtY: vi.fn(() => 'candle' as const),
     clampYToPane: vi.fn((_id, py) => py),
     priceBoundsForPane: vi.fn(() => ({ top: 100_000, bottom: 0 })),
-    // Identity time domain: virtual == real. Gap-aware behavior is covered by
-    // the dragTimeDomain tests (chartCoordinates.test.ts) and the dedicated
-    // gap-crossing drag test below.
-    dragTime: { toVirtual: (ms: number) => ms, toReal: (v: number) => v, originV: -Infinity },
+    // Identity bar domain: ordinal == real. Gap-aware behavior is covered by
+    // the dragBarDomain tests (chartCoordinates.test.ts) and the dedicated
+    // boundary-crossing drag tests below.
+    dragBars: {
+      toBar: (ms: number) => ms,
+      toReal: (b: number) => b,
+      originBar: -Infinity,
+      barSized: true,
+    },
     drawings: [],
     selectedId: null,
     defaults: { color: '#14B8A6', width: 2, lineStyle: 'solid' as const, fontSize: 13, fillOpacity: 0.1 },
@@ -672,7 +677,7 @@ describe('selectTool — body drag across a session gap (virtual-domain shift)',
   // cursor position sits on the bar grid — like real drawings, whose vertices
   // only ever come from coordinateToTime (bar times).
   const BUCKET = 50_000;
-  const dragTime = dragTimeDomain(axis, { lastRealMs: 10_900_000, bucketMs: BUCKET });
+  const dragBars = dragBarDomain(axis, { lastRealMs: 10_900_000, bucketMs: BUCKET });
 
   const rect = (): Drawing => ({
     id: 'r1', kind: 'rect',
@@ -687,7 +692,7 @@ describe('selectTool — body drag across a session gap (virtual-domain shift)',
     const update = vi.fn();
     const ctx = makeCtx({
       drawings: [target],
-      dragTime,
+      dragBars,
       update,
       // Cursor jumped from late session A into session B (crossed the day
       // boundary): 2 bars into B, i.e. +201_000 VIRTUAL ms from 900_000 (the
@@ -728,7 +733,7 @@ describe('selectTool — body drag across a session gap (virtual-domain shift)',
     const update = vi.fn();
     const ctx = makeCtx({
       drawings: [target],
-      dragTime,
+      dragBars,
       update,
       dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 10_100_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
       pixelToData: vi.fn(() => ({ realMs: 900_000, price: 110 })),
@@ -746,7 +751,7 @@ describe('selectTool — body drag across a session gap (virtual-domain shift)',
     const update = vi.fn();
     const ctx = makeCtx({
       drawings: [target],
-      dragTime,
+      dragBars,
       update,
       dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 900_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
       // Cursor swung far left — raw Δvirtual would be -900_000, past the origin.
@@ -771,7 +776,7 @@ describe('selectTool — body drag across a session gap (virtual-domain shift)',
     const update = vi.fn();
     const ctx = makeCtx({
       drawings: [target],
-      dragTime,
+      dragBars,
       update,
       dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 10_100_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
       // Pure vertical move: Δvirtual = 0, but the round-trip still snaps the

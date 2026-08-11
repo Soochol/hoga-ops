@@ -16,9 +16,9 @@ import type { Drawing, Hline, Measure, Pencil, Rect, Text, Trendline, Vline } fr
 /**
  * Horizontal shift for a translation: either a flat Δrealms or a mapping
  * function. The function form exists because the drag path shifts in the
- * gap-compressed VIRTUAL time domain — `toReal(toVirtual(ms) + dVirtual)` is
- * not expressible as a constant real-ms delta across session boundaries
- * (a flat Δms lands vertices inside inter-session gaps; see DragTimeDomain).
+ * screen-uniform BAR ORDINAL domain — `toReal(toBar(ms) + dBar)` is not
+ * expressible as a constant real-ms delta across session boundaries (a flat
+ * Δms lands vertices inside inter-session gaps; see DragBarDomain).
  */
 export type TimeShift = number | ((realMs: number) => number);
 
@@ -145,25 +145,28 @@ export function timesOf(drawing: Drawing): number[] {
 }
 
 /**
- * Cap a requested body-drag Δvirtual (leftward) so that EVERY vertex of
- * `drawing` stays at or right of the axis origin — the time-axis sibling of
+ * Cap a requested body-drag Δbar (leftward) so that EVERY vertex of `drawing`
+ * stays at or right of the axis origin — the time-axis sibling of
  * `clampDPriceForDrawing`. Without it a leftward drag past the first session
- * would clamp vertices one by one against the origin (axis.toReal floors
- * there), permanently compressing the shape. Rightward needs no cap: the
- * future band is open-ended.
+ * would clamp vertices one by one against the origin (the domain's toReal
+ * floors there), permanently compressing the shape. Rightward needs no cap:
+ * the future band is open-ended.
+ *
+ * `toBar` and `originBar` must come from the SAME DragBarDomain the caller
+ * shifts with — the cap is a comparison in that domain's units.
  */
-export function clampDVirtualForDrawing(
+export function clampDBarForDrawing(
   drawing: Drawing,
-  dVirtual: number,
-  originV: number,
-  toVirtual: (realMs: number) => number,
+  dBar: number,
+  originBar: number,
+  toBar: (realMs: number) => number,
 ): number {
-  if (dVirtual >= 0) return dVirtual;
+  if (dBar >= 0) return dBar;
   const times = timesOf(drawing);
-  if (times.length === 0) return dVirtual;
-  let minV = Infinity;
-  for (const t of times) minV = Math.min(minV, toVirtual(t));
-  return Math.max(dVirtual, originV - minV);
+  if (times.length === 0) return dBar;
+  let minBar = Infinity;
+  for (const t of times) minBar = Math.min(minBar, toBar(t));
+  return Math.max(dBar, originBar - minBar);
 }
 
 /**

@@ -44,7 +44,7 @@ import {
   paneIdAtY as projPaneIdAtY,
   clampYToPane as projClampYToPane,
   priceBoundsForPane as projPriceBoundsForPane,
-  dragTimeDomain,
+  dragBarDomain,
   type PaneSeriesMap,
 } from './drawing/chartCoordinates';
 import { safeUnsubscribe } from './util/safeUnsubscribe';
@@ -408,8 +408,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const priceBoundsForPane = (paneId: PaneId) =>
     projPriceBoundsForPane(chart, paneSeries, paneId);
 
-  // Gap-aware virtual-time domain for body-drag translation (see DragTimeDomain).
-  const dragTime = dragTimeDomain(axis, futureBand);
+  // Screen-uniform bar-ordinal domain for body-drag translation (see DragBarDomain).
+  const dragBars = dragBarDomain(axis, futureBand);
 
   // SR-5: the kind-dispatch hit geometry lives in the pure hitTestDrawings
   // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds
@@ -561,7 +561,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       paneIdAtY,
       clampYToPane,
       priceBoundsForPane,
-      dragTime,
+      dragBars,
       drawings,
       selectedId,
       // Narrow the per-kind defaults to the active tool's slot. select/eraser
@@ -874,11 +874,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     if (d == null) return;
     const OFFSET_PX = 14;
     const ref = refCoords(d);
-    // Horizontal offset in VIRTUAL ms, applied per-vertex through dragTime
+    // Horizontal offset in BAR ORDINALS, applied per-vertex through dragBars
     // (same domain as body-drag). The ref vertex is pixel-derived and thus
     // always lands on-axis, but a flat real-ms delta would strand the OTHER
     // vertices in an inter-session gap whenever the ref's +14px crosses a
-    // session boundary (clone stretched to the canvas edge near the close).
+    // session boundary (clone stretched to the canvas edge near the close),
+    // and a virtual-ms delta would move the vertices that straddle a boundary
+    // further than the ref (clone wider than the original).
     let shiftMs: TimeShift = 0;
     let dPrice = 0;
     if (ref.realMs != null) {
@@ -886,8 +888,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       if (x != null) {
         const shifted = rawCanvasXToRealMs(x + OFFSET_PX);
         if (shifted != null) {
-          const dVirtual = dragTime.toVirtual(shifted) - dragTime.toVirtual(ref.realMs);
-          shiftMs = (ms) => dragTime.toReal(dragTime.toVirtual(ms) + dVirtual);
+          const dBar = dragBars.toBar(shifted) - dragBars.toBar(ref.realMs);
+          shiftMs = (ms) => dragBars.toReal(dragBars.toBar(ms) + dBar);
         }
       }
     }

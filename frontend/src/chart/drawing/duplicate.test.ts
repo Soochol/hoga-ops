@@ -1,7 +1,7 @@
 // frontend/src/chart/drawing/duplicate.test.ts
 import { describe, expect, it } from 'vitest';
 import { refCoords, cloneWithOffset } from './duplicate';
-import { dragTimeDomain } from './chartCoordinates';
+import { dragBarDomain } from './chartCoordinates';
 import { createVirtualAxis } from '../../util/virtualAxis';
 import type { Drawing } from './types';
 
@@ -58,7 +58,7 @@ describe('cloneWithOffset', () => {
       { date: '20260101', sessionOpenMs: 0, sessionCloseMs: 1_000_000 },
       { date: '20260102', sessionOpenMs: 10_000_000, sessionCloseMs: 11_000_000 },
     ]);
-    const dom = dragTimeDomain(axis, { lastRealMs: 10_900_000, bucketMs: 60_000 });
+    const dom = dragBarDomain(axis, { lastRealMs: 10_900_000, bucketMs: 60_000 });
     const rect: Drawing = {
       id: 'r1', kind: 'rect',
       // Wide rect late in session A: a (ref) on the last full bar (#16),
@@ -66,17 +66,22 @@ describe('cloneWithOffset', () => {
       a: { realMs: 960_000, price: 50 }, b: { realMs: 480_000, price: 60 },
       fillOpacity: 0.1, ...style,
     };
-    // Ref vertex offset lands 1 bar into session B → Δvirtual = 101_000 (the
-    // crossed gap's 1s rides along).
+    // The ref vertex sits on session A's last bar; its +14px offset lands on
+    // session B's second bar, i.e. Δ = 2 COLUMNS (A's last → B's open → B#1).
+    // The same step is 9.1 hours of real time and 101_000 of virtual ms (one
+    // bucket plus the boundary's 1_000) — neither is "2" of anything, which is
+    // why the offset is taken in columns.
     const refShifted = 10_060_000;
-    const dVirtual = dom.toVirtual(refShifted) - dom.toVirtual(rect.kind === 'rect' ? rect.a.realMs : 0);
-    const clone = cloneWithOffset(rect, (ms) => dom.toReal(dom.toVirtual(ms) + dVirtual), 1);
+    const dBar = dom.toBar(refShifted) - dom.toBar(rect.kind === 'rect' ? rect.a.realMs : 0);
+    const clone = cloneWithOffset(rect, (ms) => dom.toReal(dom.toBar(ms) + dBar), 1);
     if (clone.kind === 'rect') {
       expect(clone.a.realMs).toBe(refShifted);
-      // b stays inside session A, shifted by the same bar count as the ref
-      // (+2 bars once the grid snap cancels the gap residue — un-snapped it
-      // would sit at 581_000, off the bar grid, which timeToCoordinate can't
-      // resolve; the flat real-ms path would have put it inside the gap).
+      // b stays inside session A and moves the SAME 2 columns as the ref, so
+      // the clone is congruent to the original. The flat real-ms path put it
+      // inside the overnight gap. The virtual-ms path added 101_000 to it —
+      // 1.68 bars, off the grid — and only landed right because the grid
+      // rounding happened to absorb the residue; here the count is 2 by
+      // construction rather than by that coincidence.
       expect(clone.b.realMs).toBe(600_000);
       expect(axis.contains(clone.a.realMs)).toBe(true);
       expect(axis.contains(clone.b.realMs)).toBe(true);

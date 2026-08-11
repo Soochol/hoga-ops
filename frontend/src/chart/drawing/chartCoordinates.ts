@@ -50,71 +50,146 @@ export type PaneSeriesMap = ReadonlyMap<PaneId, ISeriesApi<any>>;
 export type FutureBand = { lastRealMs: number; bucketMs: number };
 
 /**
- * Gap-aware time domain for horizontal DRAG translation. Body-drag used to
- * shift vertices by Δ-real-ms, but the screen's X axis is the gap-compressed
- * VirtualAxis: the moment the cursor crossed a day boundary, Δms swallowed the
- * whole inter-session gap (overnight ~17.5h, weekends days) and the shifted
- * vertices landed INSIDE a gap — off-axis realMs that `axis.contains()`
- * rejects. One gap-landed corner made a rect/measure stretch to the canvas
- * edge (the `?? 0 / ?? width` render fallback); both corners gap-landed made
- * it vanish from render AND hit-test.
+ * Screen-uniform coordinate for horizontal DRAG translation: the BAR ORDINAL.
+ * One unit is one on-screen column — 0 is the first session's first bar, +1 is
+ * always the bar immediately to its right, including across a day boundary.
  *
- * Translating in VIRTUAL ms instead preserves the visual shape and guarantees
- * every vertex lands back on-axis: `toReal(toVirtual(ms) + dVirtual)` walks
- * bar-space, not wall-clock space.
+ * WHY NOT REAL MS: body-drag used to shift vertices by Δ-real-ms, but the
+ * screen's X axis is the gap-compressed VirtualAxis. The moment the cursor
+ * crossed a day boundary, Δms swallowed the whole inter-session gap (overnight
+ * ~17.5h, weekends days) and the shifted vertices landed INSIDE a gap —
+ * off-axis realMs that `axis.contains()` rejects. One gap-landed corner made a
+ * rect/measure stretch to the canvas edge (the `?? 0 / ?? width` render
+ * fallback); both corners gap-landed made it vanish from render AND hit-test.
  *
- * The virtual domain is extended linearly past the last candle so vertices
- * anchored in the empty right band (created there via FutureBand
- * extrapolation) keep dragging instead of getting clamped onto the last
- * candle. The extension pitch matches the render-side extrapolation: one
- * `bucketMs` of real time per bar, where a bar is `bucketMs` of virtual time
- * on intraday axes and one segment (`INTER_SEGMENT_GAP_MS`) on calendar axes.
+ * WHY NOT VIRTUAL MS EITHER: the fix for that was to translate in virtual ms,
+ * which does keep every vertex on-axis — but virtual ms is NOT uniform on
+ * screen. Two adjacent columns are `bucketMs` apart inside a session and only
+ * `INTER_SEGMENT_GAP_MS` (1 000) apart across a day boundary: a factor of 60 on
+ * the 1m timeframe, 1 800 on 30m. A drag applies ONE Δ to every vertex, so a
+ * vertex straddling the boundary spent 1 000 units crossing it and the
+ * remaining ~59 000 walking into the neighbouring session — it moved two
+ * columns while the cursor moved one, and the shape stretched by exactly one
+ * bar per straddled boundary (measured: trendline width 15 → 16, pencil span
+ * 18 → 19). Symmetrically, when the CURSOR crossed the boundary the whole
+ * drawing stalled for that frame (Δ = 1 000 → rounds to zero columns).
+ *
+ * Counting in BAR ORDINALS removes the non-uniformity at the source: the
+ * boundary is worth exactly 1, like every other column.
+ *
+ * The domain extends linearly past the last candle so vertices anchored in the
+ * empty right band (created there via FutureBand extrapolation) keep dragging
+ * instead of getting clamped onto the last candle. The extension pitch matches
+ * the render-side extrapolation: one bar per `bucketMs` of real time.
  */
-export type DragTimeDomain = {
-  toVirtual(realMs: number): number;
-  toReal(virtualMs: number): number;
-  /** Virtual coordinate of the axis origin (first session open) — the left
-   *  bound for the shape-preserving horizontal drag cap. */
-  originV: number;
+export type DragBarDomain = {
+  /** realMs → bar ordinal. Off-axis inputs behave exactly like
+   *  `axis.toVirtual`: a gap snaps FORWARD to the next open (so grabbing a
+   *  drawing stranded there by the old real-ms drags heals it), and the empty
+   *  band right of the last candle extends at one bar per `bucketMs`. */
+  toBar(realMs: number): number;
+  /** Bar ordinal → realMs, rounded onto the bar grid. Inverse of `toBar` for
+   *  every on-grid input; for an off-grid one it snaps to the nearest bar,
+   *  which also heals residue persisted by the pre-ordinal drags. */
+  toReal(bar: number): number;
+  /** Ordinal of the axis origin (first session's first bar) — the left bound
+   *  for the shape-preserving horizontal drag cap. */
+  originBar: number;
+  /** True when one unit really is one on-screen column. False only on an
+   *  intraday axis whose bar pitch is unknown (no candles loaded), where the
+   *  domain degrades to the old virtual-ms units. Consumers that read a delta
+   *  as a BAR COUNT must gate on this; drag consumers need not, because they
+   *  measure and apply the delta in the same domain either way. */
+  barSized: boolean;
 };
 
-export function dragTimeDomain(axis: VirtualAxis, future?: FutureBand): DragTimeDomain {
-  const hasFuture = future != null && future.bucketMs > 0;
-  const vPerBar = hasFuture
-    ? axis.mode === 'calendar'
-      ? INTER_SEGMENT_GAP_MS
-      : future.bucketMs
-    : 0;
-  const lastV = hasFuture ? axis.toVirtual(future.lastRealMs) : 0;
+export function dragBarDomain(axis: VirtualAxis, future?: FutureBand): DragBarDomain {
+  const segments = axis.segments;
+  const calendar = axis.mode === 'calendar';
+  const bucketMs = future?.bucketMs ?? 0;
+  // Calendar axes are one bar per segment by construction, so they can be
+  // counted without knowing a bucket; intraday needs the pitch.
+  if (segments.length === 0 || (!calendar && bucketMs <= 0)) {
+    return virtualMsDomain(axis);
+  }
+  const hasFuture = future != null && bucketMs > 0;
+
+  // First ordinal of each segment. A session owns the bar ladder
+  // `open + k·bucketMs` capped at its close — the same ladder
+  // `nearestBarGridRealMs` snaps to and `timeToCoordinate` can resolve.
+  const barStarts: number[] = [];
+  let total = 0;
+  for (const seg of segments) {
+    barStarts.push(total);
+    total += calendar ? 1 : Math.floor((seg.sessionCloseMs - seg.sessionOpenMs) / bucketMs) + 1;
+  }
+  const lastBar = total - 1;
+
+  /** On-axis realMs → ordinal, delegating gap/clamp policy to `axis.toVirtual`
+   *  and converting its (non-uniform) virtual ms into (uniform) columns. */
+  const onAxisBar = (realMs: number): number => {
+    const v = axis.toVirtual(realMs);
+    if (calendar) return (v - segments[0].virtualStart) / INTER_SEGMENT_GAP_MS;
+    const idx = axis.findByVirtual(v);
+    if (idx < 0) return 0;
+    return barStarts[idx] + (v - segments[idx].virtualStart) / bucketMs;
+  };
+  const lastCandleBar = hasFuture ? onAxisBar(future.lastRealMs) : 0;
+
+  /** Segment owning an integer ordinal (binary search over `barStarts`). */
+  const segmentOfBar = (bar: number): number => {
+    let lo = 0;
+    let hi = barStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (barStarts[mid] <= bar) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+
   return {
-    toVirtual(realMs: number): number {
+    toBar(realMs: number): number {
       // Off-axis but past the last candle → the empty right band. Mirrors
       // realMsToCanvasX / extrapolateFutureX so drag and render agree.
       if (hasFuture && realMs > future.lastRealMs && !axis.contains(realMs)) {
-        return lastV + ((realMs - future.lastRealMs) / future.bucketMs) * vPerBar;
+        return lastCandleBar + (realMs - future.lastRealMs) / bucketMs;
       }
-      // On-axis → exact; in a gap (legacy real-ms-drag leftovers) → toVirtual
-      // snaps forward to the next open, self-healing the drawing on its next drag.
-      return axis.toVirtual(realMs);
+      return onAxisBar(realMs);
     },
-    toReal(virtualMs: number): number {
-      // Past the last candle → invert the band extension. For intraday this is
-      // identical to axis.toReal inside the last session and continues linearly
-      // beyond its close, so the branch boundary introduces no seam.
-      if (hasFuture && virtualMs > lastV) {
-        return future.lastRealMs + ((virtualMs - lastV) / vPerBar) * future.bucketMs;
+    toReal(bar: number): number {
+      // Past the last candle → invert the band extension. Inside the last
+      // session this continues the same ladder, so the branch introduces no seam.
+      if (hasFuture && bar > lastCandleBar) {
+        return future.lastRealMs + Math.round(bar - lastCandleBar) * bucketMs;
       }
-      // On-axis result → snap to the bar grid. A Δvirtual measured across a
-      // session boundary carries the compressed gap (INTER_SEGMENT_GAP_MS per
-      // boundary); applied to a vertex crossing a different number of
-      // boundaries it would land ±gap off the bar grid — still `contains()`ed
-      // (so the gap-heal above never fires) but unresolvable by
-      // timeToCoordinate, which edge-pins the render (`?? 0 / ?? width`).
-      // The snap also heals already-misaligned vertices on their next drag.
-      const real = axis.toReal(virtualMs);
-      return hasFuture ? nearestBarGridRealMs(axis, real, future.bucketMs) : real;
+      const b = Math.min(Math.round(bar), lastBar);
+      if (b <= 0) return segments[0].sessionOpenMs;
+      const idx = segmentOfBar(b);
+      const seg = segments[idx];
+      if (calendar) return seg.sessionOpenMs;
+      // No close cap needed: a segment owns exactly floor(len / bucketMs) + 1
+      // ordinals, so the largest in-segment offset is floor(len / bucketMs) ×
+      // bucketMs ≤ len — the result cannot overshoot its own session close.
+      return seg.sessionOpenMs + (b - barStarts[idx]) * bucketMs;
     },
-    originV: axis.segments.length > 0 ? axis.segments[0].virtualStart : 0,
+    originBar: 0,
+    barSized: true,
+  };
+}
+
+/** Degenerate domain for an intraday axis with no known bar pitch (no candles
+ *  loaded). Units are virtual ms, so `barSized` is false. Drag still works —
+ *  the delta is measured and applied in these same units — but the boundary is
+ *  worth `INTER_SEGMENT_GAP_MS` instead of one column. In practice this path is
+ *  unreachable from a drag: without candles `pixelToData` cannot resolve a
+ *  cursor time, so the horizontal delta is zero anyway. */
+function virtualMsDomain(axis: VirtualAxis): DragBarDomain {
+  return {
+    toBar: (realMs) => axis.toVirtual(realMs),
+    toReal: (v) => axis.toReal(v),
+    originBar: axis.segments.length > 0 ? axis.segments[0].virtualStart : 0,
+    barSized: false,
   };
 }
 

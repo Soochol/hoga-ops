@@ -38,10 +38,10 @@ import {
   PENCIL_MAX_POINTS,
   HIT_THRESHOLD,
 } from './types';
-import { translateDrawing, clampDPriceForDrawing, clampDVirtualForDrawing } from './translate';
+import { translateDrawing, clampDPriceForDrawing, clampDBarForDrawing } from './translate';
 import { constrainAngle } from './snap';
 import { simplifyByPixels, PENCIL_SIMPLIFY_EPSILON } from './simplify';
-import type { DragTimeDomain } from './chartCoordinates';
+import type { DragBarDomain } from './chartCoordinates';
 
 /** Constrain the free endpoint (cursor px,py) to 0°/45°/90° relative to anchor
  *  `a`, in pixel space, then convert back to a data Point. Returns null when the
@@ -171,11 +171,14 @@ export type ToolCtx = {
    *  from the registered series' coordinateToPrice at the pane's top/bottom
    *  pixels. Returns null if the pane or its series isn't mounted. */
   priceBoundsForPane(paneId: PaneId): { top: number; bottom: number } | null;
-  /** Gap-aware time domain for body-drag translation. Horizontal drag deltas
-   *  are computed and applied in VIRTUAL ms so shifted vertices always land
+  /** Screen-uniform domain for body-drag translation. Horizontal drag deltas
+   *  are computed and applied in BAR ORDINALS so shifted vertices always land
    *  back on-axis (a flat Δ-real-ms swallowed inter-session gaps and stranded
-   *  rect/measure corners inside them — stretched or vanished drawings). */
-  dragTime: DragTimeDomain;
+   *  rect/measure corners inside them — stretched or vanished drawings) AND
+   *  move by the same number of columns as the cursor (Δ-virtual-ms did not:
+   *  a day boundary is worth 1 000 virtual ms but a whole column, so vertices
+   *  straddling one moved twice as far as the cursor). */
+  dragBars: DragBarDomain;
 
   /** The current Drawing list for the active Code. */
   drawings: readonly Drawing[];
@@ -370,17 +373,17 @@ export const selectTool: DrawingToolSpec = {
     const drag = ctx.dragRef.current;
     if (!drag || drag.pointerId !== ctx.pointerId) return;
     // vline body drag: horizontal only, no price scale involved. The delta is
-    // taken in virtual ms (see the body branch below for why).
+    // taken in bar ordinals (see the body branch below for why).
     if (drag.kind === 'vline-body') {
       const target = ctx.drawings.find((d) => d.id === drag.id);
       if (!target || target.kind !== 'vline') return;
       const curRealMs = ctx.canvasXToRealMs(ctx.px);
-      const dVirtual =
+      const dBar =
         curRealMs != null && drag.lastRealMs != null
-          ? ctx.dragTime.toVirtual(curRealMs) - ctx.dragTime.toVirtual(drag.lastRealMs)
+          ? ctx.dragBars.toBar(curRealMs) - ctx.dragBars.toBar(drag.lastRealMs)
           : 0;
-      if (dVirtual !== 0) {
-        const shift = (ms: number) => ctx.dragTime.toReal(ctx.dragTime.toVirtual(ms) + dVirtual);
+      if (dBar !== 0) {
+        const shift = (ms: number) => ctx.dragBars.toReal(ctx.dragBars.toBar(ms) + dBar);
         ctx.update(target.id, translateDrawing(target, shift, 0));
       }
       if (curRealMs != null) drag.lastRealMs = curRealMs;
@@ -432,25 +435,27 @@ export const selectTool: DrawingToolSpec = {
     if (drag.kind === 'body') {
       // Horizontal shift only when both ends resolve; otherwise 0 — hline
       // discards it anyway, and trendline/pencil degrade to vertical-only
-      // rather than freezing. The delta lives in VIRTUAL ms: shifting stored
+      // rather than freezing. The delta lives in BAR ORDINALS: shifting stored
       // real timestamps by a flat Δ-real-ms stranded vertices inside
       // inter-session gaps whenever the cursor crossed a day boundary (the
       // gap's whole duration entered the delta), which rendered rect/measure
-      // stretched to the canvas edge or not at all. Virtual-domain shifts walk
-      // bar-space, so every vertex lands back on-axis and the on-screen shape
-      // is preserved.
-      const rawDVirtual =
+      // stretched to the canvas edge or not at all. Δ-virtual-ms fixed that but
+      // is not uniform on screen — a day boundary spans 1 000 virtual ms and a
+      // full column — so a vertex straddling one moved two columns per one of
+      // the cursor's and the shape stretched. Ordinals are the screen's own
+      // units, so cursor and every vertex move together.
+      const rawDBar =
         curRealMs != null && drag.lastRealMs != null
-          ? ctx.dragTime.toVirtual(curRealMs) - ctx.dragTime.toVirtual(drag.lastRealMs)
+          ? ctx.dragBars.toBar(curRealMs) - ctx.dragBars.toBar(drag.lastRealMs)
           : 0;
       // Shape-preserving cap against the axis origin — the time-axis sibling
       // of the price cap below. Without it a leftward overshoot would floor
       // vertices one by one at the first session's open, compressing the shape.
-      const dVirtual = clampDVirtualForDrawing(
+      const dBar = clampDBarForDrawing(
         target,
-        rawDVirtual,
-        ctx.dragTime.originV,
-        ctx.dragTime.toVirtual,
+        rawDBar,
+        ctx.dragBars.originBar,
+        ctx.dragBars.toBar,
       );
       const rawDPrice = price - drag.lastPrice;
       // Shape-preserving cap: compute the largest |dPrice| that keeps every
@@ -461,11 +466,11 @@ export const selectTool: DrawingToolSpec = {
       const dPrice = paneBounds
         ? clampDPriceForDrawing(target, rawDPrice, paneBounds)
         : rawDPrice;
-      // The round-trip runs even when dVirtual is 0: for a healthy vertex it is
-      // the identity, and for one stranded in a gap by the old real-ms drags it
+      // The round-trip runs even when dBar is 0: for a healthy vertex it is the
+      // identity, and for one stranded in a gap by the old real-ms drags it
       // snaps forward to the next session open — grabbing a broken drawing
       // heals it.
-      const shift = (ms: number) => ctx.dragTime.toReal(ctx.dragTime.toVirtual(ms) + dVirtual);
+      const shift = (ms: number) => ctx.dragBars.toReal(ctx.dragBars.toBar(ms) + dBar);
       ctx.update(target.id, translateDrawing(target, shift, dPrice));
       // Advance the horizontal anchor only when X resolved, so re-entering the
       // data area computes the delta from the last real position (no jump).

@@ -12,7 +12,7 @@ import {
   realMsToCanvasX,
   realMsToCanvasXClamped,
   canvasXToRealMs,
-  dragTimeDomain,
+  dragBarDomain,
   type FutureBand,
 } from './chartCoordinates';
 
@@ -177,95 +177,145 @@ describe('realMsToCanvasXClamped (off-axis text anchor)', () => {
   });
 });
 
-// Body-drag translation domain: shifting a vertex by Δvirtual must always land
-// it back on-axis (or in the linearized future band), unlike the old flat
-// Δ-real-ms which stranded vertices inside inter-session gaps whenever the
-// cursor crossed a day boundary (rect/measure stretched to the canvas edge or
-// vanished — the drag "왔다갔다" bug).
-describe('dragTimeDomain — intraday', () => {
+// Body-drag translation domain: a horizontal drag delta must move every vertex
+// by the same number of ON-SCREEN COLUMNS as the cursor, and must always land
+// each vertex back on-axis (or in the linearized future band).
+//
+// Two failure modes are pinned here, both of which shipped:
+//   - a flat Δ-real-ms stranded vertices inside inter-session gaps whenever the
+//     cursor crossed a day boundary (rect/measure stretched to the canvas edge
+//     or vanished — the drag "왔다갔다" bug);
+//   - Δ-virtual-ms fixed that but is not uniform on screen (a day boundary is
+//     INTER_SEGMENT_GAP_MS wide, a full column), so a vertex straddling one
+//     moved two columns per one of the cursor's and the shape stretched by a
+//     bar per boundary.
+describe('dragBarDomain — intraday', () => {
   // Two real sessions with a big overnight gap: A [0, 1_000_000],
-  // B [10_000_000, 11_000_000]. Virtual: A [0, 1_000_000], B starts at
-  // 1_001_000 (gap collapses to INTER_SEGMENT_GAP_MS = 1000).
+  // B [10_000_000, 11_000_000]. BUCKET divides each session evenly (as the
+  // real 390-minute session divides by 1/3/5/10/15/30m), so every column —
+  // including the closing one — sits on the grid. Ordinals: A 0..20, B 21..41.
   const axis = createVirtualAxis([
     { date: '20260101', sessionOpenMs: 0, sessionCloseMs: 1_000_000 },
     { date: '20260102', sessionOpenMs: 10_000_000, sessionCloseMs: 11_000_000 },
   ]);
-  // Last candle mid session B, 1-minute bars.
-  const future: FutureBand = { lastRealMs: 10_500_000, bucketMs: 60_000 };
-  const dom = dragTimeDomain(axis, future);
+  const BUCKET = 50_000;
+  // Last candle on B's 8th bar.
+  const future: FutureBand = { lastRealMs: 10_400_000, bucketMs: BUCKET };
+  const dom = dragBarDomain(axis, future);
+
+  it('numbers the columns consecutively across the day boundary', () => {
+    // The whole point of the domain: A's close and B's open are ADJACENT on
+    // screen, so their ordinals differ by exactly 1 — even though they are
+    // 2.5 hours apart in real time and INTER_SEGMENT_GAP_MS (1 000) apart in
+    // virtual time, which is 1/50 of a bar and rounds away to nothing.
+    expect(dom.toBar(950_000)).toBe(19);
+    expect(dom.toBar(1_000_000)).toBe(20); // A's close
+    expect(dom.toBar(10_000_000)).toBe(21); // B's open — the very next column
+    expect(dom.toBar(10_050_000)).toBe(22);
+    expect(dom.barSized).toBe(true);
+  });
+
+  it('costs one unit per column INSIDE a session and ACROSS the boundary alike', () => {
+    // The regression this domain exists for: these two must be equal. In the
+    // virtual-ms domain they were 50 000 and 1 000.
+    const insideSession = dom.toBar(10_050_000) - dom.toBar(10_000_000);
+    const acrossBoundary = dom.toBar(10_000_000) - dom.toBar(1_000_000);
+    expect(insideSession).toBe(1);
+    expect(acrossBoundary).toBe(1);
+  });
+
+  it('moves a boundary-straddling shape by the same columns as one that is not', () => {
+    // THE bug, stated as an invariant. A trendline dragged 3 columns left, one
+    // of whose vertices crosses the day boundary on the way: both move 3
+    // columns, so the span survives. Under Δ-virtual-ms the crossing vertex
+    // moved 4 and the shape stretched by exactly one bar per boundary
+    // (measured on a real axis: trendline width 15 → 16, pencil span 18 → 19).
+    const a = 10_000_000; // B's open
+    const b = 10_150_000; // 3 columns to its right
+    const movedA = dom.toReal(dom.toBar(a) - 3);
+    const movedB = dom.toReal(dom.toBar(b) - 3);
+    expect(dom.toBar(movedA)).toBe(18); // crossed into session A
+    expect(dom.toBar(movedB)).toBe(21); // stayed in B
+    expect(dom.toBar(movedB) - dom.toBar(movedA)).toBe(3); // span preserved
+    expect(axis.contains(movedA)).toBe(true);
+    expect(axis.contains(movedB)).toBe(true);
+  });
 
   it('round-trips on-axis bar-grid realMs exactly (identity when unshifted)', () => {
-    // Samples sit on the bar grid (session open + k·bucketMs) — the only
-    // times creation can produce. 1_000_000 is session A's close, preserved
-    // by the grid snap's close cap.
-    for (const ms of [0, 480_000, 1_000_000, 10_000_000, 10_180_000]) {
-      expect(dom.toReal(dom.toVirtual(ms))).toBe(ms);
+    // Samples sit on the bar grid (session open + k·bucketMs) — the only times
+    // creation can produce, since every vertex comes from coordinateToTime.
+    for (const ms of [0, 500_000, 1_000_000, 10_000_000, 10_150_000]) {
+      expect(dom.toReal(dom.toBar(ms))).toBe(ms);
     }
   });
 
-  it('a gap-crossing shift lands the vertex ON-AXIS and ON-GRID in the next session', () => {
-    // Vertex late in session A, shifted right by 200_000 virtual ms — enough
-    // to cross the compressed overnight gap into session B.
-    const shifted = dom.toReal(dom.toVirtual(900_000) + 200_000);
+  it('a boundary-crossing shift lands the vertex ON-AXIS and ON-GRID in the next session', () => {
+    // Vertex on A's close, shifted right by 4 columns → B#3.
+    const shifted = dom.toReal(dom.toBar(1_000_000) + 4);
     expect(axis.contains(shifted)).toBe(true);
-    // virtual 1_100_000 → 99_000 into session B, which is 1.65 bars: the
-    // crossed gap's INTER_SEGMENT_GAP_MS rode along in Δvirtual. Un-snapped
-    // this landed at 10_099_000 — on-axis but off the bar grid, which
-    // timeToCoordinate can't resolve (the trendline edge-pin stretch bug).
-    // The grid snap rounds to the nearest bar: 2 bars into session B.
-    expect(shifted).toBe(10_120_000);
-    expect((shifted - 10_000_000) % future.bucketMs).toBe(0);
-    expect(axis.contains(1_100_000)).toBe(false);
+    expect(shifted).toBe(10_150_000);
+    expect((shifted - 10_000_000) % BUCKET).toBe(0);
   });
 
-  it('a leftward gap-crossing shift is exactly inverse (drag back restores)', () => {
-    const there = dom.toVirtual(900_000) + 200_000;
-    expect(dom.toReal(there - 200_000)).toBe(900_000);
+  it('a leftward boundary crossing is exactly inverse (drag back restores)', () => {
+    const there = dom.toBar(1_000_000) + 4;
+    expect(dom.toReal(there - 4)).toBe(1_000_000);
   });
 
-  it('a leftward boundary crossing walks bar-space onto the previous session grid', () => {
-    // Vertex 2 bars into session B, dragged 3 bars left: B#2 → B#1 → B#0 →
-    // session A's last full bar (16 × 60_000 = 960_000). A flat Δvirtual
-    // would have produced 941_000 (the gap residue) — off the bar grid.
-    const shifted = dom.toReal(dom.toVirtual(10_120_000) - 3 * future.bucketMs);
-    expect(shifted).toBe(960_000);
+  it('a leftward crossing walks onto the previous session grid', () => {
+    // 2 columns into session B (#23), dragged 3 left: B#23 → B#22 → B#21 →
+    // session A's closing column.
+    expect(dom.toReal(dom.toBar(10_100_000) - 3)).toBe(1_000_000);
   });
 
-  it('heals an off-grid on-axis realMs (persisted boundary residue) on a zero-shift grab', () => {
-    // 10_099_000 is contained (so the gap-heal never fires) but 1.65 bars into
-    // session B — a leftover from a pre-snap boundary-crossing drag. The
-    // round-trip snaps it onto the nearest bar instead of preserving it.
-    expect(dom.toReal(dom.toVirtual(10_099_000))).toBe(10_120_000);
+  it('heals an off-grid on-axis realMs (persisted drag residue) on a zero-shift grab', () => {
+    // 10_099_000 is contained (so the gap-heal never fires) but 1.98 bars into
+    // session B — a leftover from a pre-ordinal boundary-crossing drag. The
+    // round-trip rounds it onto the nearest column instead of preserving it,
+    // which is what timeToCoordinate needs to resolve it at all.
+    expect(dom.toReal(dom.toBar(10_099_000))).toBe(10_100_000);
   });
 
   it('heals a gap-stranded realMs (legacy real-ms drag leftover) to the next open', () => {
     // 5_000_000 sits in the overnight gap — the zero-shift round-trip snaps it
     // forward onto session B's open instead of leaving it invisible.
-    expect(dom.toReal(dom.toVirtual(5_000_000))).toBe(10_000_000);
+    expect(dom.toReal(dom.toBar(5_000_000))).toBe(10_000_000);
   });
 
   it('is seamless across the last-candle boundary (on-axis after the last bar)', () => {
     // 10_800_000 is beyond the last candle but still inside session B: the
-    // on-axis toVirtual and the future-branch toReal must agree exactly.
-    expect(dom.toReal(dom.toVirtual(10_800_000))).toBe(10_800_000);
+    // on-axis toBar and the future-branch toReal must agree exactly, or the
+    // branch would introduce a visible seam mid-session.
+    expect(dom.toReal(dom.toBar(10_800_000))).toBe(10_800_000);
   });
 
   it('round-trips future-band realMs past the session close (bar-linear extension)', () => {
     // 2 bars past session B's close: creation extrapolates such anchors; the
     // drag domain must keep them draggable rather than clamping onto the close.
-    const bandMs = 11_120_000;
-    expect(dom.toReal(dom.toVirtual(bandMs))).toBe(bandMs);
-    // And shifting one bar right moves exactly one bucket in real time.
-    expect(dom.toReal(dom.toVirtual(bandMs) + future.bucketMs)).toBe(bandMs + future.bucketMs);
+    const bandMs = 11_100_000;
+    expect(axis.contains(bandMs)).toBe(false);
+    expect(dom.toReal(dom.toBar(bandMs))).toBe(bandMs);
+    // And shifting one column right moves exactly one bucket of real time.
+    expect(dom.toReal(dom.toBar(bandMs) + 1)).toBe(bandMs + BUCKET);
   });
 
   it('exposes the axis origin for the shape-preserving left cap', () => {
-    expect(dom.originV).toBe(0);
+    expect(dom.originBar).toBe(0);
+  });
+
+  it('degrades to virtual ms — and says so — when the bar pitch is unknown', () => {
+    // No FutureBand ⇒ no bucketMs ⇒ columns cannot be counted on an intraday
+    // axis. Drag still round-trips (the delta is measured and applied in the
+    // same units either way), but a consumer reading the delta as a bar COUNT
+    // must gate on barSized — hence the flag rather than a silent fallback.
+    const noPitch = dragBarDomain(axis);
+    expect(noPitch.barSized).toBe(false);
+    expect(noPitch.toReal(noPitch.toBar(500_000))).toBe(500_000);
   });
 });
 
 describe('realMsToCanvasX — off-grid on-axis fallback (boundary-residue render)', () => {
-  // Same two-session intraday axis as the dragTimeDomain suite, but with a
+  // Same two-session intraday axis as the dragBarDomain suite, but with a
   // STRICT timeToCoordinate that — like real lightweight-charts — resolves
   // only exact bar times present in the data. The original linear stub hid
   // this bug class entirely.
@@ -325,9 +375,9 @@ describe('realMsToCanvasX — off-grid on-axis fallback (boundary-residue render
   });
 });
 
-describe('dragTimeDomain — calendar (D/W/M)', () => {
-  // Three trading days; calendar mode gives each day one INTER_SEGMENT_GAP_MS
-  // (1000) of virtual width regardless of session length.
+describe('dragBarDomain — calendar (D/W/M)', () => {
+  // Three trading days; calendar mode gives each day exactly one column
+  // regardless of session length, so ordinals are just the day index.
   const axis = createVirtualAxis(
     [
       { date: '20260105', sessionOpenMs: 0, sessionCloseMs: 1_000 },
@@ -338,19 +388,26 @@ describe('dragTimeDomain — calendar (D/W/M)', () => {
     { mode: 'calendar' },
   );
   const future: FutureBand = { lastRealMs: 200_000, bucketMs: 50_000 };
-  const dom = dragTimeDomain(axis, future);
+  const dom = dragBarDomain(axis, future);
 
-  it('shifts an anchor by whole segments onto the target day open', () => {
-    // Day 1 anchor + 2 segment pitches (2 × 1000 virtual) → day 3 open, even
-    // though the real-ms distance (200_000) is irregular across the days.
-    expect(dom.toReal(dom.toVirtual(0) + 2_000)).toBe(200_000);
+  it('numbers each trading day as one column', () => {
+    expect(dom.toBar(0)).toBe(0);
+    expect(dom.toBar(100_000)).toBe(1);
+    expect(dom.toBar(200_000)).toBe(2);
+    expect(dom.barSized).toBe(true);
   });
 
-  it('extends past the last bar at one bucketMs per segment pitch', () => {
-    // One pitch past the last anchor → one bucket of real time ahead.
-    const v = dom.toVirtual(200_000) + 1_000;
-    expect(dom.toReal(v)).toBe(250_000);
+  it('shifts an anchor by whole days onto the target day open', () => {
+    // Day 1 anchor + 2 columns → day 3 open, even though the real-ms
+    // distance (200_000) is irregular across the days.
+    expect(dom.toReal(dom.toBar(0) + 2)).toBe(200_000);
+  });
+
+  it('extends past the last bar at one bucketMs per column', () => {
+    // One column past the last anchor → one bucket of real time ahead.
+    const bar = dom.toBar(200_000) + 1;
+    expect(dom.toReal(bar)).toBe(250_000);
     // And the forward map inverts it (round-trip through the band).
-    expect(dom.toVirtual(250_000)).toBe(v);
+    expect(dom.toBar(250_000)).toBe(bar);
   });
 });
