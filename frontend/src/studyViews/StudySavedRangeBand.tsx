@@ -2,7 +2,9 @@
  * `/study` 캘린더 봉에서 **저장 구간**을 표시하는 밴드.
  *
  * 넓힌 맥락 창(`studyDailyContext`) 안에서 "이 복기뷰가 저장한 구간이 어디인지" 를
- * 답하는 유일한 표시다. accent 계열 tint + 양끝 실선 + 상단 라벨.
+ * 답하는 유일한 표시다. accent 계열 tint + 양끝 실선 — **글자는 얹지 않는다.**
+ * 저장 봉·날짜를 적던 상단 라벨은 2026-08-11 사용자 요청으로 걷어냈다(캔들을 가린다);
+ * 그 정보는 탭 제목과 저장뷰 드로어에 그대로 남아 있다.
  *
  * 구조는 `chart/DayBoundaryOverlay` 를 따른다 — rAF 로 합친
  * `subscribeVisibleLogicalRangeChange` + `ResizeObserver`, **`z-10`**, 그리고
@@ -21,9 +23,6 @@ import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 import type { StudySavedRangeMarks } from './studyDailyContext';
-
-/** 차트 좌상단 레전드(OHLC 1줄 + 이동평균선 1줄) 아래로 라벨을 내리는 여유. */
-const LEGEND_CLEARANCE_PX = 46;
 
 type Props = {
   chart: IChartApi;
@@ -62,7 +61,6 @@ function StudySavedRangeBand({ chart, axis, marks }: Props) {
   const left = (xFrom as number) - half;
   const right = (xTo as number) + half;
   const width = Math.max(0, right - left);
-  const labelLeft = Math.max(2, left);
 
   return (
     <div
@@ -73,8 +71,7 @@ function StudySavedRangeBand({ chart, axis, marks }: Props) {
       // 값이라 두 좌표계의 **끝 경계가 다르다** — 구간 끝이 화면 우측에 걸치면 tint 와
       // 우측 실선이 가격 라벨 배경 위로, `top-0 bottom-0` 인 자식들은 시간축 날짜 라벨
       // 위로 새어 나온다. #1272 에서 `DayBoundaryOverlay` 가 같은 이유로 샜고 처방도 같다
-      // (선보다 반투명 fill 이 더 잘 보인다). 아래 라벨의 `maxWidth` 계산은 클립 후에도
-      // 유효한 중복 안전장치로 남겨 둔다.
+      // (선보다 반투명 fill 이 더 잘 보인다).
       className="pointer-events-none absolute top-0 left-0 overflow-hidden z-10"
       style={{ width: `${ts.width()}px`, bottom: `${ts.height()}px` }}
     >
@@ -93,18 +90,6 @@ function StudySavedRangeBand({ chart, axis, marks }: Props) {
         className="absolute top-0 bottom-0 w-px"
         style={{ left: `${right}px`, background: 'var(--accent)' }}
       />
-      <div
-        className="absolute truncate rounded-sm px-1.5 py-0.5 text-[11px] tabular-nums"
-        style={{
-          top: `${LEGEND_CLEARANCE_PX}px`,
-          left: `${labelLeft}px`,
-          maxWidth: `${Math.max(60, Math.min(width, ts.width() - labelLeft))}px`,
-          background: 'var(--accent)',
-          color: 'var(--bg)',
-        }}
-      >
-        {marks.label}
-      </div>
     </div>
   );
 }
