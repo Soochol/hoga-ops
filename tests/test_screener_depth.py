@@ -111,6 +111,113 @@ def test_ask_depth_new_high_passes_when_today_exceeds_past(tmp_path: Path) -> No
     assert res.values[code].ask_need_days == 20
 
 
+def test_past_peak_falls_back_to_kiwoom_when_hogaplay_day_missing(tmp_path: Path) -> None:
+    """창 안에 hogaplay 가 없는 날은 kiwoom_live 로 폴백해 기준선에 든다.
+
+    2026-08-05 대원전선(006340) 사고의 축소판. 그 날 hogaplay 캡처가 빠져 기준선이
+    170,683(전날 값)으로 내려앉았고, 실제 peak 431,144 는 창에서 통째로 사라져
+    종목이 통과했다 — 차트 총잔량 지표는 소스 사다리 폴백으로 그 값을 그리고 있었다.
+
+    여기서는 폴백일(20260713)의 kiwoom peak 9000 이 기준선을 지배해 **미통과**가
+    옳다. 폴백이 없으면 기준선은 max(4000, 3000)=4000 이 되어 당일 5000 이 통과한다
+    — 즉 이 단언은 폴백을 걷어내면 뒤집힌다(회귀 가드).
+    """
+    data_dir = tmp_path
+    sdir = data_dir / "screener"
+    code = "005930"
+    _seed_heatmap(data_dir, [code])
+    _seed_corpus(sdir, ["20260710", "20260713", "20260714"], [code])
+
+    _write_snap(data_dir, date="20260710", code=code, source="hogaplay",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(400,) * 10, bid_q=(100,) * 10)])
+    # 20260713: hogaplay 캡처 결손 — kiwoom_live 만 있다(그 날의 진짜 peak 9000).
+    _write_snap(data_dir, date="20260713", code=code, source="kiwoom_live",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(900,) * 10, bid_q=(100,) * 10)])
+    _write_snap(data_dir, date="20260714", code=code, source="hogaplay",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(300,) * 10, bid_q=(100,) * 10)])
+    depth_daily.sweep(data_dir)
+
+    _write_snap(data_dir, date="20260715", code=code, source="kiwoom_live",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(500,) * 10, bid_q=(100,) * 10)])
+
+    leaf = AskDepthNewHighLeaf(id="a1", params=DepthPeakParams(lookback=20, threshold_pct=100))
+    res = screener_depth.evaluate(
+        data_dir=data_dir, sdir=sdir, conditions=[leaf],
+        universe_codes={code}, basis="intraday", today="20260715",
+    )
+    assert code not in res.passing["a1"]           # 폴백 없으면 통과했을 자리
+    assert res.values[code].ask_past_peak == 9000  # 폴백일이 기준선을 지배
+    assert res.values[code].ask_have_days == 3     # 결손일이 커버리지에도 든다
+
+
+def test_eod_today_peak_also_falls_back_to_kiwoom(tmp_path: Path) -> None:
+    """eod 기준의 '당일'(코퍼스 최신 확정일)도 같은 폴백 프레임에서 읽는다.
+
+    intraday 는 '당일'을 live parquet 에서 직접 산출하지만 eod 는 depth_daily 에서
+    읽는다. 그 조회가 폴백을 안 타면 **과거 창만 폴백되고 당일은 안 되는 비대칭**이
+    생겨, hogaplay 가 없는 날이 최신 확정일이면 그 종목이 조용히 평가에서 빠진다
+    (today_val=None → continue). 여기서는 20260714 에 kiwoom 만 있고, 그 값 5000 이
+    '당일'로 잡혀 과거 peak 4000 을 넘어 통과해야 한다.
+
+    이 경로는 폴백 도입 전까지 테스트가 **전혀 없었다** — eod 를 쓰던 기존 2건은
+    기준시각 돌파(renewal) 조건이라 이 분기를 지나지 않는다.
+    """
+    data_dir = tmp_path
+    sdir = data_dir / "screener"
+    code = "005930"
+    _seed_heatmap(data_dir, [code])
+    _seed_corpus(sdir, ["20260710", "20260713", "20260714"], [code])
+
+    _write_snap(data_dir, date="20260710", code=code, source="hogaplay",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(400,) * 10, bid_q=(100,) * 10)])
+    _write_snap(data_dir, date="20260713", code=code, source="hogaplay",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(300,) * 10, bid_q=(100,) * 10)])
+    # 최신 확정일에 hogaplay 결손 — kiwoom_live 만 있다.
+    _write_snap(data_dir, date="20260714", code=code, source="kiwoom_live",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(500,) * 10, bid_q=(100,) * 10)])
+    depth_daily.sweep(data_dir)
+
+    leaf = AskDepthNewHighLeaf(id="a1", params=DepthPeakParams(lookback=20, threshold_pct=100))
+    res = screener_depth.evaluate(
+        data_dir=data_dir, sdir=sdir, conditions=[leaf],
+        universe_codes={code}, basis="eod", today="20260715",
+    )
+    assert res.values[code].ask_today == 5000      # 폴백 없으면 None → 평가에서 탈락
+    assert res.values[code].ask_past_peak == 4000
+    assert code in res.passing["a1"]
+
+
+def test_hogaplay_wins_over_kiwoom_on_days_that_have_both(tmp_path: Path) -> None:
+    """두 소스가 다 있는 날은 hogaplay 값을 쓴다 — 폴백이 max 로 섞이지 않는다.
+
+    kiwoom 을 더 크게 심어 구분한다. 소스별 max 를 합치면 기준선이 9000 이 되어
+    미통과가 되겠지만, 올바른 동작은 hogaplay 4000 을 골라 **통과**다(표본이 30배
+    촘촘한 쪽이 그 날의 진실이라는 것이 우선순위의 근거다).
+    """
+    data_dir = tmp_path
+    sdir = data_dir / "screener"
+    code = "005930"
+    _seed_heatmap(data_dir, [code])
+    _seed_corpus(sdir, ["20260713", "20260714"], [code])
+
+    _write_snap(data_dir, date="20260713", code=code, source="hogaplay",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(400,) * 10, bid_q=(100,) * 10)])
+    _write_snap(data_dir, date="20260713", code=code, source="kiwoom_live",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(900,) * 10, bid_q=(100,) * 10)])
+    depth_daily.sweep(data_dir)
+
+    _write_snap(data_dir, date="20260715", code=code, source="kiwoom_live",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(500,) * 10, bid_q=(100,) * 10)])
+
+    leaf = AskDepthNewHighLeaf(id="a1", params=DepthPeakParams(lookback=20, threshold_pct=100))
+    res = screener_depth.evaluate(
+        data_dir=data_dir, sdir=sdir, conditions=[leaf],
+        universe_codes={code}, basis="intraday", today="20260715",
+    )
+    assert res.values[code].ask_past_peak == 4000  # 9000(kiwoom) 이 아니다
+    assert code in res.passing["a1"]
+
+
 def test_ask_depth_below_threshold_fails(tmp_path: Path) -> None:
     data_dir = tmp_path
     sdir = data_dir / "screener"

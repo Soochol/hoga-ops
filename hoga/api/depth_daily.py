@@ -10,10 +10,21 @@ Intra-Bar Max(``ask_max``, ADR-0076)를 하루로 collapse한 값이며 동시�
 술어(ADR-0062 v3)를 그대로 재사용한다. 사용자가 스크리너 결과의 과거 peak를 /live
 pane에서 눈으로 검증할 수 있어야 하기 때문이다.
 
-v1은 스크리너 비교 기준이 hogaplay이므로 스윕도 hogaplay 소스만 집계한다(``src``
-컬럼은 두어 추후 승격본 폴백 여지를 남긴다). "당일" peak는 depth_daily가
-아니라 스캔 시점에 실시간 승격본 parquet에서 직접 산출한다 — 그 경로는
-screener_runner가 담당한다.
+스윕은 ``SWEEP_SOURCES`` 를 모두 집계하고, 읽는 쪽이 :func:`select_with_fallback` 로
+(code,date)당 한 행을 고른다 — **hogaplay 우선, 없으면 kiwoom_live**. v1은 hogaplay
+전용이었고(``src`` 컬럼이 이 확장을 위해 예약돼 있었다) 그때는 hogaplay 캡처가 빠진
+날이 창에서 **통째로 사라져** 기준선이 낮아졌다. 차트 총잔량 지표는 같은 결손에서
+소스 사다리로 kiwoom_live 에 폴백해 값을 그리므로, 두 화면이 갈렸다(2026-08-05 실측:
+지표 428,830 ↔ 스크리너는 그 날 자체가 없음 → 위양성 3종목).
+
+폴백이 **막는 방향**: 결손일의 기준선 기여가 0 이 되는 것. peak 는 max 라 폴백 값은
+언제나 하한이고, 누락(0 기여)보다 크거나 같다 — 기준선을 진실 쪽으로만 올린다.
+폴백이 **못 보는 것**: kiwoom_live 표본이 얕은 날은 하한이 실제보다 많이 낮다
+(2026-08-06 006340 실측 eligible 294행 → hogaplay 대비 3.71배 낮은 peak). 위양성을
+줄이지만 없애지는 못한다.
+
+"당일" peak는 depth_daily가 아니라 스캔 시점에 실시간 승격본 parquet에서 직접
+산출한다 — 그 경로는 screener_runner가 담당한다.
 """
 # PEP 236: __future__ import 는 "첫 문장" 이어야 하지만 **모듈 docstring 은 예외**로
 # 허용된다. 순서를 뒤집어 __future__ 를 1행에 두면 뒤따르는 문자열이 docstring 자격을
@@ -39,6 +50,16 @@ from hoga.util.atomic_write import atomic_write_parquet_df
 log = logging.getLogger(__name__)
 
 HOGAPLAY = "hogaplay"
+KIWOOM_LIVE = "kiwoom_live"
+
+#: 스윕이 집계하는 소스. 순서는 무의미하다 — 우선순위는 읽는 쪽(_SOURCE_PRIORITY)이
+#: 정한다. 여기 값은 "어떤 디렉터리를 훑는가" 만 말한다.
+SWEEP_SOURCES: tuple[str, ...] = (HOGAPLAY, KIWOOM_LIVE)
+
+#: 폴백 순위(작을수록 우선). hogaplay 가 이기는 이유는 표본 밀도다 — 하루 71,453행
+#: 대 2,404행(ORDERFLOW_LADDER 주석의 실측). peak 는 max 라 촘촘한 쪽이 진실에 가깝다.
+_SOURCE_PRIORITY: dict[str, int] = {HOGAPLAY: 0, KIWOOM_LIVE: 1}
+_UNKNOWN_SOURCE_PRIORITY = 99  # 미등록 src 는 최후순위 — 버리지는 않는다(있는 게 없는 것보다 낫다)
 
 # depth_daily.parquet 의 read-modify-write 를 직렬화한다. sweep 은 캡처 완료 훅에서
 # 기본 스레드풀(동시 최대 _max_concurrent 워커)을 통해 호출되므로, lock 없이는 두
@@ -119,6 +140,32 @@ def load(data_dir: Path) -> pl.DataFrame:
     return pl.read_parquet(path)
 
 
+def select_with_fallback(dd: pl.DataFrame) -> pl.DataFrame:
+    """(code,date)당 1행으로 접는다 — hogaplay 우선, 없으면 kiwoom_live.
+
+    스크리너 과거 peak·커버리지·사이드카가 전부 이 프레임 위에서 돈다. 소스를 고르는
+    지식이 스토어 쪽에 한 벌만 있도록 여기에 둔다(호출부가 각자 필터를 쓰면 갈린다).
+
+    **`eligible_count > 0` 필터가 우선순위 선택보다 먼저다.** 순서가 뒤집히면 hogaplay
+    가 센티넬(퇴화 캡처, eligible 0)인 (code,date)에서 그 센티넬이 우선순위로 이긴 뒤
+    필터에 걸려 **그 날이 통째로 사라진다** — 정상 kiwoom_live 행이 있는데도. 지금
+    순서면 센티넬이 먼저 빠지고 kiwoom_live 가 폴백으로 남는다.
+    """
+    if dd.height == 0:
+        return dd
+    return (
+        dd.filter(pl.col("eligible_count") > 0)
+        .with_columns(
+            pl.col("src")
+            .replace_strict(_SOURCE_PRIORITY, default=_UNKNOWN_SOURCE_PRIORITY)
+            .alias("_prio"),
+        )
+        .sort(["code", "date", "_prio"])
+        .unique(subset=["code", "date"], keep="first", maintain_order=True)
+        .drop("_prio")
+    )
+
+
 def is_yyyymmdd(name: str) -> bool:
     if len(name) != 8 or not name.isdigit():  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return False
@@ -134,14 +181,18 @@ def sweep(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 �
     *,
     codes: set[str] | None = None,
     dates: set[str] | None = None,
-    sources: tuple[str, ...] = (HOGAPLAY,),
+    sources: tuple[str, ...] = SWEEP_SOURCES,
 ) -> SweepResult:
     """parquet 트리를 훑어 depth_daily 를 증분 갱신.
 
     ``codes`` / ``dates`` 로 대상을 좁힐 수 있다(parse 완료 훅은 방금 캡처한 (code,date)
     한 쌍만 넘긴다). 메타 mtime 이 기존 행과 같으면 재계산을 건너뛴다(증분). 유효
     스냅샷이 0인 스톡데이트(퇴화 캡처)는 peak 를 만들지 않고 no_data 로만 집계한다 —
-    그 날은 스크리너 비교에서 "데이터 없음"으로 취급된다.
+    **그 소스가** 데이터 없음이라는 뜻이고, 다른 소스 행이 있으면
+    :func:`select_with_fallback` 이 그쪽을 쓴다.
+
+    ``sources`` 기본값이 ``SWEEP_SOURCES`` 라 스캔 대상이 소스 수만큼 는다. 증분
+    지문이 (code,date,**src**) 단위라 이미 집계된 hogaplay 행은 다시 계산되지 않는다.
     """
     parquet_root = data_dir / "parquet"
     existing = load(data_dir)
