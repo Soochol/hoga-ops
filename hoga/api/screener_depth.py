@@ -1,9 +1,11 @@
 """스크리너 총잔량 조건 평가 — 두 갈래가 한 모듈에 있다.
 
 **과거 N일 peak 대비** (``ask_depth_new_high`` / ``bid_depth_new_high``):
-당일 총잔량(10단계 합) 분봉 peak ≥ (threshold_pct/100) × 지난 N거래일 hogaplay peak.
-당일 값은 오늘 실시간 승격본(kiwoom_live) 데이터에서, 과거 값은 hogaplay 캡처의
-depth_daily 집계에서 온다(요구사항: 당일=실시간, 과거=hogaplay).
+당일 총잔량(10단계 합) 분봉 peak ≥ (threshold_pct/100) × 지난 N거래일 peak.
+당일 값은 오늘 실시간 승격본(kiwoom_live) 데이터에서, 과거 값은 depth_daily 집계에서
+온다 — 과거는 (code,date)당 **hogaplay 우선, 없으면 kiwoom_live**
+(:func:`hoga.api.depth_daily.select_with_fallback`). 폴백 전에는 hogaplay 결손일이
+창에서 통째로 빠져 기준선이 낮아졌다(위양성).
 
 **기준시각 돌파** (``ask_depth_renewal`` / ``bid_depth_renewal``, 당일 전용):
 기준시각 이후 그 side 총잔량 최댓값 ≥ (threshold_pct/100) × 개장~기준시각 최댓값.
@@ -70,8 +72,9 @@ _HHMM_TO_HHMMSSMMM = 100_000
 @dataclass
 class DepthEvalResult:
     passing: dict[str, set[str]]          # leaf.id -> 통과 코드 집합
-    # 커버리지는 **과거 hogaplay 데이터**에 대한 리포트다 — 배너의 처방이 "지난 N일
-    # 수집 요청"이라 과거 의존이 없는 조건에는 줄 수 있는 조치가 없다. 기준시각 돌파
+    # 커버리지는 **과거 집계 데이터**(폴백 적용 후)에 대한 리포트다 — 배너의 처방이
+    # "지난 N일 수집 요청"이라 과거 의존이 없는 조건에는 줄 수 있는 조치가 없다.
+    # 폴백이 메운 날은 have_days 에 잡히므로 배너에도 안 뜬다(수집할 게 없다). 기준시각 돌파
     # 조건만 있는 스크린은 None 이고, 배너는 그리지 않는다(당일 데이터가 없는 종목은
     # 수집이 아니라 관심·히트맵 편입으로만 해결된다).
     coverage: DepthCoverage | None
@@ -271,7 +274,7 @@ def _window_dates(corpus: list[str], *, before: str | None, n: int) -> list[str]
 def _past_agg(
     dd: pl.DataFrame, window: list[str], side_col: str,
 ) -> tuple[dict[str, int], dict[str, int]]:
-    """window 내 code별 (peak, have_days). dd 는 hogaplay 필터 완료 프레임."""
+    """window 내 code별 (peak, have_days). dd 는 select_with_fallback 통과 프레임."""
     if not window or dd.height == 0:
         return {}, {}
     w = dd.filter(pl.col("date").is_in(window))
@@ -326,19 +329,19 @@ def evaluate(  # noqa: PLR0912, PLR0915
     # 과거 코퍼스·depth_daily 는 이 갈래에서만 필요하다 — 기준시각 돌파 조건만 있는
     # 스크린에서 parquet 을 읽거나 depth_corpus_unavailable 을 붙이지 않는다.
     if peak_leaves:
-        dd_all = depth_daily.load(data_dir)
-        # eligible_count>0 만 — 퇴화 캡처의 센티넬 행(peak null)은 과거 peak/커버리지에서 제외.
-        dd = (
-            dd_all.filter((pl.col("src") == depth_daily.HOGAPLAY) & (pl.col("eligible_count") > 0))
-            if dd_all.height else dd_all
-        )
+        # (code,date)당 1행 — hogaplay 우선, 없으면 kiwoom_live 폴백. 센티넬 행
+        # (퇴화 캡처, eligible 0)은 그 안에서 걸러진다. 소스 선택 규칙은 스토어가
+        # 소유하므로 여기서 src 를 직접 필터하지 않는다.
+        dd = depth_daily.select_with_fallback(depth_daily.load(data_dir))
         corpus = _corpus_dates(sdir / "daily_adjusted.parquet")
 
         # 당일 기준일과 당일 peak 소스.
         if basis == "intraday":
             today_ref = today
             today_peaks = _today_peaks(data_dir, depth_codes, today)
-        else:  # eod: '당일' = 코퍼스 최신 확정 거래일, 그 날의 hogaplay peak.
+        else:  # eod: '당일' = 코퍼스 최신 확정 거래일, 그 날의 집계 peak.
+            # 여기도 폴백 프레임을 쓴다 — 과거 창과 당일이 같은 선택 규칙을 따라야
+            # "오늘이 지난 N일 대비" 비교가 소스 비대칭 없이 성립한다.
             today_ref = corpus[-1] if corpus else None
             if today_ref is not None and dd.height:
                 tp = dd.filter(pl.col("date") == today_ref)
