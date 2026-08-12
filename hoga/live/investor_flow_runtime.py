@@ -19,6 +19,7 @@ from typing import Any
 from hoga.live.investor_flow_collector import InvestorFlowCollector, make_kiwoom_fetch
 from hoga.live.investor_flow_confirm import CATCHUP_TRADING_DAYS, confirm_days
 from hoga.live.session_gate import investor_flow_capture_window_async
+from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
 
@@ -61,11 +62,30 @@ def make_collector(data_dir: Path) -> InvestorFlowCollector | None:
     )
 
 
+def _stamp_ms(now: dt.datetime) -> int:
+    """확정 스탬프(epoch-ms). **naive 는 KST 로 간주한다.**
+
+    이 값은 감사 로그가 아니라 계약이다 — `investor_flow_confirm.is_final()` 이
+    KST 날짜로 환산해 "다시 물을 것인가" 를 판정한다. 호출부(`run_trading_stage`)는
+    `now_kst()` 로 aware 를 넘기지만 시그니처는 naive 를 허용하고, naive 의
+    `.timestamp()` 는 **머신 로컬 tz** 로 해석된다. UTC 머신이었다면 17:00 스탬프가
+    KST 로 D+1 이 되어 당일 확정본이 즉시 최종으로 판정되고 — **이 재확정 전체가
+    조용히 무력화된다.** 개발 머신이 KST 라 로컬 테스트로는 절대 드러나지 않는
+    종류라, 여기서 못박는다.
+    """
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=KST)
+    return int(now.timestamp() * 1000)
+
+
 async def confirm_recent(data_dir: Path, *, now: dt.datetime) -> int:
-    """최근 거래일 중 확정본이 없는 날을 채운다. 무자격이면 0.
+    """최근 거래일 중 확정본이 없거나 **아직 최종이 아닌** 날을 채운다. 무자격이면 0.
 
     거래일 목록은 달력 SSOT 에서 받는다 — 주말·휴장일에 확정본을 만들면 그날이
     영원히 "확정된 빈 날" 이 되기 때문이다.
+
+    창(`CATCHUP_TRADING_DAYS`)에는 **오늘이 포함된다**. 오늘치는 여기서 처음 쓰이고,
+    당일 스탬프라 비최종으로 남아 다음 거래일 런이 덮어쓴다(`is_final` 참고).
     """
     seam = _kiwoom_seam(data_dir)
     if seam is None:
@@ -84,5 +104,5 @@ async def confirm_recent(data_dir: Path, *, now: dt.datetime) -> int:
         data_dir,
         dates=recent,
         fetch_market_fn=make_kiwoom_fetch(scheduler, client),
-        now_ms_fn=lambda: int(now.timestamp() * 1000),
+        now_ms_fn=lambda: _stamp_ms(now),
     )

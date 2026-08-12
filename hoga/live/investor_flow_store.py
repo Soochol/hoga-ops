@@ -22,7 +22,10 @@
 무엇을 요청해 받은 값인지 증빙이 된다(장중 표본은 소급 백필이 불가능하다).
 
 **잠정/확정은 저장하지 않고 파생한다** (#1115). 확정 파일(`daily/<날짜>.json`)이 있으면
-확정, 없으면 잠정 — 상태를 두 곳에 적지 않는다.
+확정, 없으면 잠정 — 상태를 두 곳에 적지 않는다. **최종성도 마찬가지로 파생이다**:
+당일에 쓴 확정본은 벤더 최종값이 아니라(실측은 `investor_flow_confirm` 모듈 docstring)
+다음 거래일 런이 덮어쓰는데, 그 판정은 본문 `confirmed_at_ms` 에서 나온다
+(`investor_flow_confirm.is_final`) — 여기에 플래그를 새로 두지 않는다.
 """
 from __future__ import annotations
 
@@ -85,7 +88,14 @@ class IntradayCoverage(BaseModel):
 
 
 class DailyConfirmedFile(BaseModel):
-    """마감 후 `base_dt` 재조회로 확정한 그날의 값. 이 파일의 **존재가 곧 확정 마커**다."""
+    """마감 후 `base_dt` 재조회로 확정한 그날의 값.
+
+    이 파일의 **존재는 "표시상 확정"** 이다(화면 배지 · 일별 이력의 원천). 그것이
+    **최종값이라는 뜻은 아니다** — 당일에 쓴 확정본을 벤더는 그 뒤에도 고친다.
+    다시 물어야 하는지는 `investor_flow_confirm.is_final()` 이 `confirmed_at_ms` 로
+    판정하므로, **이 값은 감사 로그가 아니라 계약의 일부**다. 재확정이 덮어쓸 때
+    함께 갱신되어야 하며, 그렇지 않으면 재확정이 매일 반복된다.
+    """
 
     schema_version: int = DAILY_SCHEMA_VERSION
     source: str = SOURCE
@@ -151,7 +161,12 @@ class InvestorFlowStore:
     # ── 확정본 ────────────────────────────────────────────────────────────
 
     def is_confirmed(self, date: str) -> bool:
-        """확정 여부는 **파일 존재**로 판정한다 — 잠정 플래그를 따로 저장하지 않는다."""
+        """**화면용** 술어 — 잠정 플래그를 따로 저장하지 않고 파일 존재로 판정한다.
+
+        ⚠ **배치의 스킵 판정에 쓰지 말 것.** "확정본이 있다" 와 "다시 물 필요가 없다"
+        는 다른 질문이고, 후자는 `investor_flow_confirm.is_final()` 이다. 둘을 겹치면
+        당일에 쓴 비최종 값이 영구히 굳는다 — 그게 이 분리를 만든 사고다.
+        """
         return self.daily_path(date).exists()
 
     def write_confirmed(self, day: DailyConfirmedFile) -> None:
