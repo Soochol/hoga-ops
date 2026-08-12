@@ -5,6 +5,7 @@ import pytest
 
 from hoga.api import calendar as cal
 from hoga.live.session_gate import (
+    deriv_capture_window,
     investor_flow_capture_window,
     investor_flow_capture_window_async,
     is_auction_window,
@@ -162,7 +163,34 @@ def test_investor_flow_window_stays_open_through_closing_auction(monkeypatch):
     assert investor_flow_capture_window(_ms(2026, 5, 27, 16, 29)) is True
     # 끝은 배제 — 16:30 부터는 17:00 확정 배치의 몫이다.
     assert investor_flow_capture_window(_ms(2026, 5, 27, 16, 30)) is False
-    assert investor_flow_capture_window(_ms(2026, 5, 27, 8, 59)) is False
+
+
+def test_investor_flow_window_opens_before_regular_session(monkeypatch):
+    """**이 창이 막는 것**: 장전 세션 체결이 09:00 한 점에 뭉쳐 경로를 잃는 것.
+
+    09:00 은 검토된 값이 아니라 "주식 정규장 시작" 이라는 기본값이었다. 재보니 벤더는
+    장전에도 답한다(2026-08-12 실측, 코스피): 08:17 에 외국인 -616 · 기관 +149 로
+    시작해 08:47 에 -1280 · +519 까지 움직이고, NXT 프리마켓이 끝나는 08:50 이후
+    동결됐다.
+
+    **09:00 에 리셋되지 않는다** — 수집기가 09:00:25 에 찍은 그날 첫 표본이 이미
+    -1260 · +475 로 장전 누적을 승계하고 있었다. 그러니 이 창이 새로 담는 것은 값이
+    아니라 **해상도**다.
+
+    **이 창이 못 보는 것**: 08:00 정각에 이미 값이 있는가. 첫 실측이 08:17 이라 그
+    앞은 안 재봤다. 창을 열어 두면 값이 없는 구간은 dedup 이 버리므로 안전한 방향이다.
+
+    **파생은 따라 열지 않는다** — `deriv_capture_window` 는 09:00 그대로다. 같은 날
+    08:23 에 KOSPI200 선물이 `session:"closed"` · `volume:0` 이었다(장전 세션 없음).
+    """
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
+    # **여기가 새로 열린 구간이다.** `ws_capture_window` 는 이 둘에서 False 다.
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 8, 0)) is True
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 8, 59)) is True
+    # 시작도 끝과 같이 경계는 배제한다 — 07:59 는 닫혀 있다.
+    assert investor_flow_capture_window(_ms(2026, 5, 27, 7, 59)) is False
+    # 파생 창은 이 확장을 따라오지 않는다 — 담을 값이 없다.
+    assert deriv_capture_window(_ms(2026, 5, 27, 8, 30)) is False
 
 
 def test_investor_flow_window_is_strictly_wider_than_regular_session(monkeypatch):

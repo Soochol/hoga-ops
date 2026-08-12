@@ -161,6 +161,9 @@ export function ComboNetChart({
  *
  * 값은 **이미 누적**이라고 가정하고 그대로 그린다(ka90005·수집 표본 모두 벤더 누적).
  * `vector-effect: non-scaling-stroke` 로 초광폭 스트레치에서 선 굵기를 지킨다. */
+/* ⚠ 창을 **서버가 주는 표면은 두 값을 반드시 넘긴다**(`session_start_sec` ·
+   `session_end_sec`). 기본값은 그 필드가 없는 표면(프로그램 매매 — 정규장 고정)만을
+   위한 것이고, 넘기지 않으면 `px()` 의 클램프가 창 밖 표본을 양 끝에 겹쳐 쌓는다. */
 export function SessionLinesChart({
   series,
   sessionStartSec = 9 * 3600,
@@ -217,16 +220,33 @@ export function SessionLinesChart({
   );
 }
 
-/** 세션축의 고정 시간 라벨 — 표본 범위가 아니라 **세션**을 말한다. */
-export function SessionAxisLabels({ end = '15:30' }: { end?: string } = {}) {
+/** 자정 기준 초 → `HH:MM`. **축 라벨을 하드코딩하지 않기 위한 것**이다 — 선은 서버가
+ *  준 세션 창까지 그려지는데 눈금만 다른 시각을 말하면 조용한 거짓말이 된다.
+ *  같은 값에서 파생시키면 어긋날 수가 없다. */
+export function secOfDayLabel(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** 세션축의 시간 라벨 — 표본 범위가 아니라 **세션**을 말한다.
+ *
+ * **`SessionLinesChart` 와 같은 초를 받는다.** 문자열 라벨을 따로 받던 이전 판은
+ * 선과 눈금이 서로 다른 창을 말할 수 있었고, 실제로 그랬다: 세 라벨 중 시작(`09:00`)과
+ * 중간(`12:00`)이 리터럴이라 끝만 넘겨받아 봐야 나머지 둘은 못 따라왔다. 파생
+ * (09:00–15:45)에서 중간 라벨은 이미 어긋나 있었다 — 실제 중점은 12:22 다.
+ *
+ * 중간 라벨을 계산하는 이유는 `justify-between` 이 그것을 **시각적 정중앙**에 놓기
+ * 때문이다. 정중앙에 놓인 눈금이 중점이 아닌 시각을 말하면 그 자체가 거짓말이다. */
+export function SessionAxisLabels({
+  startSec = 9 * 3600,
+  endSec = 15.5 * 3600,
+}: { startSec?: number; endSec?: number } = {}) {
   return (
     <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
-      <span>09:00</span>
-      <span>12:00</span>
-      {/* 파생은 15:45 다 — 주식 마감을 기본값으로 두되 축이 다른 시장은 넘겨받는다.
-          하드코딩된 라벨과 실제 `sessionEndSec` 이 어긋나면 선은 15:45 까지 그려지는데
-          눈금은 15:30 이라고 말한다(= 조용히 거짓말). */}
-      <span>{end}</span>
+      <span>{secOfDayLabel(startSec)}</span>
+      <span>{secOfDayLabel((startSec + endSec) / 2)}</span>
+      <span>{secOfDayLabel(endSec)}</span>
     </div>
   );
 }
