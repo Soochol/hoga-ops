@@ -15,6 +15,7 @@ import pytest
 from hoga.live.index_registry import RepresentativeIndex
 from hoga.live.kiwoom_investor import (
     AMT_QTY_QUANTITY,
+    KiwoomInvestorError,
     date_range,
     fetch_investor_net,
     fetch_investor_trend_estimate,
@@ -26,6 +27,14 @@ from hoga.live.kiwoom_rest import KiwoomRestClient
 KOSPI = RepresentativeIndex(
     id="KOSPI", label="코스피", kis_index_code="0001",
     investor_scope="market", enabled_by_default=True,
+)
+KOSDAQ = RepresentativeIndex(
+    id="KOSDAQ", label="코스닥", kis_index_code="1001",
+    investor_scope="market", enabled_by_default=True,
+)
+KOSDAQ150 = RepresentativeIndex(
+    id="KOSDAQ150", label="코스닥 150", kis_index_code="3003",
+    investor_scope="none", enabled_by_default=True,
 )
 
 # 실측 행(005930, 20260803, amt_qty_tp=2). KIS 대조값: 외국인 -3,896,489 · 기관 -5,039,954
@@ -196,6 +205,63 @@ async def test_market_investor_day_returns_none_on_non_trading_day() -> None:
     """휴장일은 빈 응답이다 — 실패가 아니라 '그 날은 데이터가 없다' 는 뜻이다."""
     c = _client(lambda _r: _ok("inds_netprps", []))
     assert await fetch_market_investor_net_day(c, KOSPI, "20260802") is None
+    await c.aclose()
+
+
+@pytest.mark.parametrize(
+    ("index", "expected_mrkt_tp"),
+    [(KOSPI, "0"), (KOSDAQ, "1"), (KOSDAQ150, "1")],
+    ids=["KOSPI", "KOSDAQ", "KOSDAQ150"],
+)
+async def test_market_investor_day_sends_ka10051_market_code(
+    index: RepresentativeIndex, expected_mrkt_tp: str,
+) -> None:
+    """`ka10051` 의 `mrkt_tp` 는 **0=코스피 · 1=코스닥**이다 — 리터럴로 못 박는다.
+
+    #1296 이 이 자리의 사고였다: 코스닥에 `"10"` 이 나갔고, 벤더는 에러 대신 매칭
+    안 되는 행 집합을 줘서 라우트가 **경고 없이** 빈 결과를 1년 가까이 돌려줬다.
+    ka20001(`kiwoom_index_rest`)의 `"10"` 을 옮겨 온 모양인데, 이 파일 docstring 이
+    `amt_qty_tp` 를 두고 경고한 그대로 **TR 마다 코드표가 다르다**.
+
+    근거(둘 다 실측): `investor_flow_collector.MARKETS = ("0", "1")` 주석의
+    "mrkt_tp=0 은 코스피 28행, 1 은 코스닥 32행", 그리고 20260811 장중 표본 —
+    `mrkt_tp="1"` 응답이 `101_AL`(종합(KOSDAQ)) 행을 담고 있고 그 행에 이 함수가
+    읽는 세 필드가 모두 있다.
+
+    **상수(`_MRKT_KOSDAQ`)로 단언하지 않는다** — 자기참조는 값이 무엇이든 통과해서
+    영원히 빨개질 수 없다. 이 테스트가 지키는 것은 상수와의 일치가 아니라 **벤더
+    코드표와의 일치**다.
+    """
+    seen: list[str] = []
+
+    def _h(r: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(r.content)["mrkt_tp"])
+        return _ok("inds_netprps", [])
+
+    c = _client(_h)
+    await fetch_market_investor_net_day(c, index, "20260811")
+    assert seen == [expected_mrkt_tp]
+    await c.aclose()
+
+
+async def test_market_investor_day_raises_when_rows_present_but_index_absent() -> None:
+    """행이 왔는데 우리 업종이 없으면 **실패다** — 휴장일과 서명이 다르다.
+
+    막는 방향: `rows` 가 비어 있지 않은데 `want` 매칭이 없는 경우 하나. 잘못된
+    `mrkt_tp`·업종코드 개편처럼 "요청은 성공했는데 엉뚱한 시장을 받은" 상태가
+    여기서 잡힌다.
+
+    못 보는 것: **거래일인데 응답이 빈 경우**. 그건 여전히 휴장일 규칙에 흡수돼
+    `None` 이다(거래일 달력을 이 함수에 끌어들이면 판정 축이 하나 더 늘고
+    `data_warnings` 유니온까지 건드려야 한다 — #1296 은 그 축이 필요 없었다).
+    """
+    rows = [{"inds_cd": "001_AL", "frgnr_netprps": "+1", "orgn_netprps": "+1"}]
+    c = _client(lambda _r: _ok("inds_netprps", rows))
+    with pytest.raises(KiwoomInvestorError) as excinfo:
+        await fetch_market_investor_net_day(c, KOSDAQ, "20260811")
+    msg = str(excinfo.value)
+    assert "101" in msg, "찾던 업종코드가 메시지에 있어야 진단이 된다"
+    assert "001" in msg, "실제로 받은 코드가 있어야 '어느 시장을 받았나' 가 보인다"
     await c.aclose()
 
 

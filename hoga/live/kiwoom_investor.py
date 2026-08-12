@@ -78,7 +78,16 @@ _STEX_ALL = "3"
 _DATE_LEN = 8
 _MAX_PAGES = 6
 
-_MRKT_KOSDAQ = "10"
+# `ka10051` 의 시장 구분은 **0=코스피 · 1=코스닥**이다. `ka20001`
+# (`kiwoom_index_rest`)은 코스닥이 `"10"` 이라 값이 갈린다 — 위 함정 ① 이 `amt_qty_tp`
+# 를 두고 경고한 "TR 마다 코드표가 다르다" 가 `mrkt_tp` 에도 그대로 참이다.
+#
+# #1296 이 그 사고였다: 여기가 `"10"` 이었고, 벤더는 에러 대신 **매칭 안 되는 행
+# 집합**을 줘서 `/api/live/index-investor-net?index_id=KOSDAQ` 가 경고 없이 빈
+# 결과를 돌려줬다. 실측 근거 둘 — `investor_flow_collector.MARKETS = ("0", "1")`
+# 주석("mrkt_tp=0 은 코스피 28행, 1 은 코스닥 32행"), 그리고 20260811 장중 표본의
+# `mrkt_tp="1"` 응답이 담은 `101_AL`(종합(KOSDAQ)) 행.
+_MRKT_KOSDAQ = "1"
 _MRKT_KOSPI = "0"
 _KOSDAQ_IDS = frozenset({"KOSDAQ", "KOSDAQ150"})
 
@@ -196,12 +205,25 @@ async def fetch_market_investor_net_day(
     한다(ADR-0137). 한 submit 안에서 N일을 돌면 버킷은 1 을 세고 벤더는 N 을 세서,
     90일 요청 하나가 유량을 90콜만큼 쓰면서 페이싱은 전혀 받지 않는다. 이전 판이
     정확히 그랬고 주석에는 "거버너가 페이싱하므로 순차로 돈다" 고 적혀 있었다.
+
+    ## 빈 응답과 "행은 왔는데 우리 업종이 없음" 은 다른 사건이다 (#1296)
+
+    - **빈 응답 → None.** 휴장일의 서명이고 실패가 아니다.
+    - **행이 있는데 `want` 매칭 없음 → `KiwoomInvestorError`.** 요청은 성공했는데
+      엉뚱한 시장을 받았다는 뜻이다. 잘못된 `mrkt_tp` 가 정확히 이 모양으로
+      나타났고, 두 사건을 한 `None` 으로 접어 둔 탓에 코스닥이 **경고 없이** 빈
+      결과로 1년 가까이 흘렀다.
+
+    이 가드가 **못 보는 것**: "거래일인데 응답이 비었다". 그건 여전히 휴장일 규칙에
+    흡수돼 None 이다 — 판정하려면 거래일 달력을 이 함수에 끌어들여야 하는데, 그건
+    축을 하나 더 늘리는 별개 결정이라 여기서 하지 않는다.
     """
     want = index_id_to_kiwoom_code(index.id)
+    mrkt_tp = _mrkt_tp(index.id)
     page = await client.call("ka10051", {
         # 금액(억원) 축 — 시장 순매수는 금액이 표시 관례다. 이 선택이 응답의
         # unit="amt_eok" 로 노출된다(#1119: 모델 주석이 "수량" 이라 조용히 거짓이던 자리).
-        "mrkt_tp": _mrkt_tp(index.id), "amt_qty_tp": KA10051_AMT_EOK,
+        "mrkt_tp": mrkt_tp, "amt_qty_tp": KA10051_AMT_EOK,
         "base_dt": date_yyyymmdd, "stex_tp": _STEX_ALL,
     })
     for row in page.rows:
@@ -215,6 +237,17 @@ async def fetch_market_investor_net_day(
                 row, base="frgnr_netprps", native="native_trmt_frgnr_netprps"
             ),
             institution_net=_signed(row.get("orgn_netprps")),
+        )
+    if page.rows:
+        # 받은 업종코드를 메시지에 싣는다 — "어느 시장을 받았나" 가 곧 진단이다.
+        # 호출자(`live_index_investor_net`)가 `classify_live_error` 로 흡수해
+        # `api_error` 경고로 노출하므로 wire enum 은 그대로다.
+        got = sorted({str(r.get("inds_cd") or "").split("_")[0] for r in page.rows})
+        raise KiwoomInvestorError(
+            "index_row_absent",
+            f"ka10051 이 {index.id}(업종 {want}) 행을 주지 않았다 — "
+            f"mrkt_tp={mrkt_tp} · base_dt={date_yyyymmdd} 로 {len(page.rows)}행을 받았고 "
+            f"업종코드는 {got[:6]} 이다",
         )
     return None
 
