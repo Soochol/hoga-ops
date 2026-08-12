@@ -341,10 +341,15 @@ async def run_trading_stage(data_dir: Path) -> bool:
     except Exception:
         log.exception("daily run: depth_daily sweep failed; continuing")
 
-    # 장중 잠정 표본 → 확정본 수렴(#1115). **멱등 마커는 확정 파일의 존재**라 별도
-    # 상태를 두지 않고, 확정본이 없는 최근 거래일만 채운다 — 오늘 실패해도 내일 런이
-    # 자동으로 주워 간다. 여기(거래일 게이트 뒤)에 있는 것이 중요하다: 휴장일에
-    # 확정본을 만들면 그날이 영원히 "확정된 빈 날" 이 된다.
+    # 장중 잠정 표본 → 확정본 수렴(#1115). 별도 상태 파일 없이, 확정본이 없거나
+    # **아직 최종이 아닌** 최근 거래일만 채운다 — 오늘 실패해도 내일 런이 자동으로
+    # 주워 간다. 여기(거래일 게이트 뒤)에 있는 것이 중요하다: 휴장일에 확정본을
+    # 만들면 그날이 영원히 "확정된 빈 날" 이 된다.
+    #
+    # **오늘치는 여기서 쓰고 다음 거래일 런이 덮어쓴다.** 당일 17:00 재조회는 벤더
+    # 최종값이 아니라서(기관 13~32% 어긋남, 실측은 investor_flow_confirm 모듈
+    # docstring) 한 번만 쓰면 그 오차가 영구 고정된다. 그래서 이 호출은 **하루에 한
+    # 날짜씩 두 번** 벤더를 부른다 — 당일 + D+1. D+1 이 Δ0 인 것은 실측됐다.
     try:
         from hoga.live import investor_flow_runtime  # noqa: PLC0415
         filled = await investor_flow_runtime.confirm_recent(data_dir, now=now)
