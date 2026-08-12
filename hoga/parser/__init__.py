@@ -20,7 +20,7 @@ from hoga.tables.trades import Trade
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.timeenc import HogaMs
 
-PARSER_VERSION = "0.1.0"
+PARSER_VERSION = "0.2.0"
 
 INFO_MIN_FIELDS = 22
 
@@ -43,28 +43,57 @@ class StockInfo:
 
 
 def parse_info_row(line: str) -> StockInfo:
+    """hogaplay `info.tsv` 한 줄 → :class:`StockInfo`.
+
+    **위치 인덱스 표 (0-based `parts` / 괄호는 1-based hogaplay 필드번호)**::
+
+        11 (f12) 당일 시가      15 (f16) 상한가      18 (f19) 전일 시가
+        12 (f13) 당일 고가      16 (f17) 하한가      19 (f20) 전일 고가
+        13 (f14) 당일 저가      17 (f18) 기준가      20 (f21) 전일 저가
+        14 (f15) 당일 종가                           21 (f22) 전일 종가
+
+    이 표는 **추측이 아니라 실측이다**(2026-08-12, 디스크의 raw info 행 1,869건):
+
+    - OHLC 불변식(`high >= low`, `high >= open/close`, `low <= open/close`)이
+      11~14 에서 **0건 위반**, 18~21 에서도 0건 위반.
+    - 상·하한가는 기준가(17)의 ±30% 를 호가단위로 반올림한 값 — 퇴화행(전 필드 0)
+      429건을 뺀 **1,440건 전부**가 일치.
+    - 11~14·18~21 을 KIS 원주가 일봉(`daily_unadjusted.parquet`)의 당일/전일
+      OHLC 와 대조해 각 인덱스가 해당 축에서 최다 매칭.
+
+    ⚠ **두 블록 모두 "확정값" 이 아니라 스냅샷이다.** 캡처 시점의 값이 실린다:
+
+    - 11~14 는 info 행을 뜬 **그 순간의** 시/고/저/**현재가**다. 종가가 아니다 —
+      장 종료 후 캡처(1,538건)는 일봉 종가와 일치하지만 장초반 캡처(333건,
+      종료시각 중앙값 09:08)는 어긋난다. 그 불일치는 결함이 아니다.
+    - 18~21 도 마찬가지로 stale 할 수 있다. 실측 23건에서 전일 시가는 맞는데
+      고가는 낮고 저가는 높고 종가는 어긋났다 — 전일 **장중** 스냅샷의 지문이다.
+      그래서 ``prev_close`` 는 21 이 아니라 **기준가(17)** 를 쓴다. 둘이 갈리는
+      비퇴화 23건에서 17 이 일봉 전일 종가와 **23:0** 으로 일치했다.
+
+    18~21(전일 OHLC)은 위 stale 위험 때문에 필드로 노출하지 않는다. 필요하면
+    ``raw_info_tsv`` 가 원문을 통째로 보존하므로 거기서 다시 판단할 것.
+    """
     parts = split_row(line)
     if len(parts) < INFO_MIN_FIELDS:
         raise FieldCountError(f"info row expects >={INFO_MIN_FIELDS} fields, got {len(parts)}")
-    unknowns = {
-        "f11": parts[10],
-        "f16": parts[15],
-        "f17": parts[16],
-        "f21": parts[20],
-        "f22": parts[21],
-    }
+    # 아직 이름을 못 붙인 필드만 남긴다. f16·f17·f21·f22 는 위 표로 확정돼
+    # 빠졌다(f21·f22 = 전일 저가·종가는 확정됐지만 stale 위험 때문에 미노출).
+    # f10(parts[9])은 거래량으로 보이나 장 종료 후 캡처 1,558건 중 1,192건만
+    # 일봉 거래량과 일치해 단정하지 않는다.
+    unknowns = {"f11": parts[10]}
     return StockInfo(
         code=parts[1],
         name=parts[2],
         regular_session_open_ms=int(parts[4]),
         regular_session_close_ms=int(parts[5]),
-        prev_close=int(parts[11]),
-        upper_limit=int(parts[12]),
-        lower_limit=int(parts[13]),
-        today_open=int(parts[14]),
-        today_high=int(parts[17]),
-        today_low=int(parts[18]),
-        today_close=int(parts[19]),
+        prev_close=int(parts[17]),
+        upper_limit=int(parts[15]),
+        lower_limit=int(parts[16]),
+        today_open=int(parts[11]),
+        today_high=int(parts[12]),
+        today_low=int(parts[13]),
+        today_close=int(parts[14]),
         raw_line=line.rstrip("\n"),
         unknowns=unknowns,
     )
