@@ -15,6 +15,9 @@ const T0 = Date.UTC(2026, 7, 7, 4, 0); // 13:00 KST
 /** 15:35 KST — **정규장 밖이지만 수집 창 안**이다. 종가 단일가 체결분이 붙는 자리라
  *  이 표본 하나가 그날 수급의 마지막 모양을 정한다. */
 const T_AFTER_CLOSE = Date.UTC(2026, 7, 7, 6, 35);
+/** 08:20 KST — **정규장 전**이다. 수집 창이 08:00 으로 열릴 때만 창 안에 든다
+ *  (KST = UTC+9 라 전날 23:20 UTC). */
+const T_PRE_OPEN = Date.UTC(2026, 7, 6, 23, 20);
 
 const STOCK = {
   date: '20260807',
@@ -192,6 +195,51 @@ describe('InvestorCard', () => {
     await userEvent.click(screen.getByRole('button', { name: '선물' }));
     expect(screen.getByText('15:45')).toBeTruthy();
     expect(screen.queryByText('16:30')).toBeNull();
+  });
+
+  it('세션축 **시작**도 응답이 정한다 — 창이 08:00 으로 열리면 눈금 셋이 다 따라간다', async () => {
+    // 끝 눈금과 **대칭**인 가드다. 시작은 오래도록 `SessionLinesChart` 의 기본값
+    // (`sessionStartSec = 9 * 3600`)과 `<span>09:00</span>` 리터럴에 묶여 있어서,
+    // 응답에 `session_start_sec` 가 있는데도 아무도 읽지 않았다.
+    //
+    // **막는 방향**: 시작 눈금을 09:00 으로 되돌리는 수정. 중간 눈금까지 보는 이유는
+    // 그것이 `justify-between` 의 시각적 정중앙에 놓이기 때문이다 — 정중앙 눈금이
+    // 중점이 아닌 시각을 말하면 그 자체가 거짓말이고, 리터럴 `12:00` 은 09:00–16:30
+    // 창에서 이미 45분 어긋나 있었다.
+    //
+    // **못 보는 것**: 스케일. 라벨과 x 계산은 각각 다른 prop 이라 아래 픽셀 테스트가
+    // 따로 필요하다(끝 쪽에서 같은 이유로 둘을 나눠 둔 것과 같다).
+    mockApi(derivResponse(), { ...STOCK, session_start_sec: 8 * 3600 });
+    renderCard();
+    expect(await screen.findByText('08:00')).toBeTruthy();
+    expect(screen.getByText('12:15')).toBeTruthy(); // (08:00 + 16:30) / 2
+    expect(screen.queryByText('09:00')).toBeNull();
+  });
+
+  it('장전 표본이 x축 시작에 클램프되지 않는다 — 창을 넓히고 축을 09:00 에 두는 반쪽 수정을 막는다', async () => {
+    // 마감 후 표본 테스트의 **거울상**이다. 축이 09:00 에 머물면 08:20 표본이
+    // `Math.max(sec, sessionStartSec)` 에 걸려 왼쪽 끝(x=1)에 못박히고, 장전 한 시간이
+    // 통째로 한 점에 겹쳐 사라진다.
+    //
+    // 판정은 픽셀로 한다: 08:00–16:30 축(span 30600초)에서 08:20 은
+    // 1 + (1200/30600) × 298 ≈ 12.7 이어야 하고, 축이 09:00 이면 정확히 1 이 된다.
+    mockApi(derivResponse(), {
+      ...STOCK,
+      session_start_sec: 8 * 3600,
+      markets: {
+        ...STOCK.markets,
+        KOSPI: [
+          { t_ms: T_PRE_OPEN, individual: 20, foreign: -60, institution: 40 },
+          ...STOCK.markets.KOSPI,
+        ],
+      },
+    });
+    const { container } = renderCard();
+    await screen.findByText('08:00');
+    const d = container.querySelector('svg path[stroke]')?.getAttribute('d') ?? '';
+    const firstX = Number(d.trim().split(/[ML]/).filter(Boolean)[0]?.split(',')[0]);
+    expect(firstX).toBeGreaterThan(8);
+    expect(firstX).toBeLessThan(18);
   });
 
   it('확정본이 나오면 헤더가 「잠정」 대신 「확정」 을 말한다', async () => {
