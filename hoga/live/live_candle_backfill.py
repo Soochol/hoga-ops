@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time as monotonic_time
 from collections.abc import Awaitable, Callable, Hashable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Protocol
 
@@ -59,6 +59,20 @@ class LiveMinuteCandleBackfillResult:
     fresh_dates: list[str]
     data_warnings: list[dict]
     effective_sessions: list[dict]
+    adjust_factors: dict[str, float] = field(default_factory=dict)
+    """이 응답의 봉에 **실제로 곱해진** 날짜별 수정계수 (#1229 의 척도를 소비자에게 노출).
+
+    호가 유래 지표(`/api/range` 의 히트맵·매물대·최대벽 등)는 디스크 캡처라 **원주가**
+    인데 이 봉은 수정주가다. 같은 price scale 에 그리면 계수 ≠ 1 인 구간이 통째로
+    어긋난다(009830 2026-06-12 실측: 캔들 34,662~36,596 vs 히트맵 36,300~39,250,
+    비율 0.9430 단일값). 프론트가 지표를 같은 척도로 옮기려면 **이 봉에 쓰인 바로 그
+    계수**를 알아야 하고, 그것을 따로 조회하게 하면 두 곳이 각자 다른 기준일의 값을
+    쥘 수 있다 — 그래서 봉과 **같은 응답에** 실어 lockstep 으로 움직인다.
+
+    계수를 모르는 날짜는 **키가 없다**. 그런 날짜는 애초에 봉도 안 실리므로
+    (`_apply_walk_result` 의 무척도 봉 방출 금지) 소비자 입장에서 규칙이 하나다:
+    봉이 없으면 지표도 그리지 않는다.
+    """
 
     def model_dump(self) -> dict:
         return {
@@ -67,6 +81,7 @@ class LiveMinuteCandleBackfillResult:
             "fresh_dates": self.fresh_dates,
             "data_warnings": self.data_warnings,
             "effective_sessions": self.effective_sessions,
+            "adjust_factors": self.adjust_factors,
         }
 
 
@@ -234,6 +249,7 @@ class LiveMinuteCandleBackfill:
                     fresh_dates=primary_out.fresh_dates,
                     data_warnings=primary_out.data_warnings + fallback_warnings,
                     effective_sessions=primary_out.effective_sessions,
+                    adjust_factors=primary_out.adjust_factors,
                 )
             used_fallback_dates = _dates_for_candles(fallback_candles)
             for date_s in used_fallback_dates:
@@ -276,6 +292,17 @@ class LiveMinuteCandleBackfill:
                     ],
                     fallback_dates=used_fallback_dates,
                 ),
+                # 계수는 **종목의 성질**이라 venue 로 갈리지 않는다(법인 이벤트는
+                # 거래소별로 다르지 않다). 그래서 병합은 합집합이면 충분하고, 겹치는
+                # 날짜는 두 값이 같다 — primary 를 나중에 얹어 그 사실을 명시한다.
+                adjust_factors={
+                    **{
+                        date_s: factor
+                        for fallback_out in fallback_outs
+                        for date_s, factor in fallback_out.adjust_factors.items()
+                    },
+                    **primary_out.adjust_factors,
+                },
             )
         return await self._collect_for_venue(
             policy,
@@ -332,6 +359,13 @@ class LiveMinuteCandleBackfill:
                 warnings.append(_kis_rest_bypassed_warning(date_s))
 
         rows.sort(key=lambda candle: candle["t_ms"])
+        # 이 경로는 계수를 **조회하지 않는다**(rest_bypass 의 요점이 벤더 콜 0 이다).
+        # 대신 메모리에 남아 있으면 그것을 쓴다 — 캐시된 봉과 이 테이블은 같은 척도임이
+        # 보장된다: 척도가 바뀌는 유일한 경로가 `_ensure_factors` 이고 거기서
+        # `_drop_cached_bars_if_rescaled` 가 옛 척도 봉을 버리기 때문이다. 테이블이
+        # 없으면(프로세스 기동 후 이 종목을 한 번도 안 받았다) 빈 dict 이고, 프론트는
+        # 환산 없이 **지금과 같은 화면**으로 degrade 한다.
+        cached_factors = self._factors.get((code, today_s))
         result = LiveMinuteCandleBackfillResult(
             candles=rows,
             cached_dates=cached_dates,
@@ -341,6 +375,7 @@ class LiveMinuteCandleBackfill:
                 _effective_session(date_s, venue)
                 for date_s, venue in sorted(effective_session_venues.items())
             ],
+            adjust_factors=_factors_for_candles(rows, cached_factors),
         )
         if perf_debug.enabled():
             log.warning(
@@ -503,6 +538,7 @@ class LiveMinuteCandleBackfill:
             fresh_dates=fresh_dates,
             data_warnings=warnings,
             effective_sessions=_effective_sessions_for_candles(candles_all, venue),
+            adjust_factors=_factors_for_candles(candles_all, factors),
         )
         elapsed_ms = perf_debug.elapsed_ms(t0)
         # 상시 느림 신호(ADR-0120): perf_debug 게이트 밖에서도 임계 초과는 한 줄 남긴다.
@@ -964,6 +1000,29 @@ def _effective_sessions_for_candles(candles: list[dict], venue: Venue) -> list[d
         _effective_session(date_s, venue)
         for date_s in sorted(_dates_for_candles(candles))
     ]
+
+
+def _factors_for_candles(
+    candles: list[dict],
+    factors: kiwoom_adjust_factors.AdjustFactors | None,
+) -> dict[str, float]:
+    """실린 봉의 날짜별 수정계수. 테이블 밖 날짜는 **키가 없다**(모른다 ≠ 1.0).
+
+    `factors` 가 `None` 인 경우(계수 조회 실패)는 빈 dict 다 — 그때는 과거 봉 자체가
+    안 실리므로(`_apply_walk_result`) 소비자가 볼 것도 없다. **오늘분은 예외로
+    실린다**: 오늘은 정의상 계수 1.0 이고 테이블의 `as_of` 쪽 끝도 1.0 이라 값이
+    같지만, 계수 테이블은 `as_of` 까지만 덮으므로 오늘이 비거래일 취급이면
+    `factor_for` 가 `None` 을 줄 수 있다. 그 경우 키가 빠지고, 오늘 지표는 어차피
+    실시간 원주가라 환산 대상이 아니므로 결과가 같다.
+    """
+    if factors is None:
+        return {}
+    out: dict[str, float] = {}
+    for date_s in sorted(_dates_for_candles(candles)):
+        factor = factors.factor_for(date_s)
+        if factor is not None:
+            out[date_s] = factor
+    return out
 
 
 def _merge_effective_sessions(

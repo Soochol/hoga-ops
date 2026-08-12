@@ -7,6 +7,7 @@ import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
 import { useRange, useRangeHogaDelta, useRangeSidecarDelta } from '../api/range';
+import { scaleRangeBundlePrices } from './scaleRangeBundlePrices';
 import {
   type LiveTimeframe,
   isMinuteTimeframe,
@@ -313,6 +314,10 @@ export interface UseLiveBundleResult {
   /** 오늘의 단별 잔량 증감 버킷(분봉). 과거일 소스가 없는 **오늘 전용** 지표라
    * RangeBundle 이 아니라 별도 필드로 나간다 — 자세한 근거는 `HogaSeries.depth_delta_today`. */
   depthDeltaToday: readonly DepthDeltaPoint[];
+  /** 이 번들의 지표에 적용된 날짜별 수정계수(`YYYYMMDD` → 계수). `/api/range` 를 따로
+   *  호출하는 소비자가 **같은 척도**를 쓰게 하는 통로다 — `scaleRangeBundlePrices` 참조.
+   *  우회 ON 이면 `undefined`(그 모드는 캔들도 디스크라 환산 자체가 없다). */
+  adjustFactors: Readonly<Record<string, number>> | undefined;
   isLoading: boolean;
   error: unknown;
   clampEngaged: boolean;
@@ -731,6 +736,30 @@ export function useLiveBundle(
     sidecarEnabled ? rangePlan.todayKst : null,
     sidecarRangeOptions,
   );
+  // 호가 유래 지표를 **캔들과 같은 척도**로 옮긴다. `/api/range` 는 디스크 캡처라
+  // 원주가이고 위 벤더 봉은 수정주가인데, 둘이 같은 price scale 에 그려지므로 계수 ≠ 1
+  // 인 구간이 통째로 어긋난다(009830 2026-06-12: 캔들 34,662~36,596 vs 히트맵
+  // 36,300~39,250). 근거·규약 전문은 `scaleRangeBundlePrices`.
+  //
+  // **환산은 여기 한 곳에서만 한다.** 렌더 지점(히트맵·최대벽·매물대…)마다 흩뿌리면
+  // 빠뜨릴 자리가 그만큼 늘고, 하위 wire→domain 캐시가 객체 **참조**를 키로 쓰므로
+  // (`depthHeatmapWire`) 캐시 앞단에서 한 번 바꾸는 것이 참조 안정성 면에서도 맞다.
+  // 계수는 봉 응답에서만 온다 — 따로 조회하면 두 곳이 다른 기준일을 쥘 수 있다.
+  //
+  // **우회 ON 이면 계수를 쓰지 않는다.** 그 모드의 캔들은 벤더 봉이 아니라 디스크
+  // (`minuteDiskCandles`, mode='candles')라 지표와 **똑같이 원주가**다 — 이미 정합인
+  // 것을 환산하면 새로 어긋난다. `pastCandlesQuery` 는 그때 비활성이지만 React Query 는
+  // 비활성 쿼리의 **옛 데이터를 그대로 돌려주므로**(우회를 켜기 전에 받아 둔 응답이
+  // 남는다) `enabled` 에 기대면 안 되고 여기서 명시적으로 끊어야 한다.
+  const adjustFactors = restBypassEnabled ? undefined : pastCandlesQuery.data?.adjust_factors;
+  const scaledHogaData = useMemo(
+    () => (pastHoga.data ? scaleRangeBundlePrices(pastHoga.data, adjustFactors) : null),
+    [pastHoga.data, adjustFactors],
+  );
+  const scaledSidecarData = useMemo(
+    () => (pastSidecars.data ? scaleRangeBundlePrices(pastSidecars.data, adjustFactors) : null),
+    [pastSidecars.data, adjustFactors],
+  );
   const effectiveSessionByDate = useMemo(
     () => effectiveSessionBoundsByDate(pastCandlesQuery.data?.effective_sessions),
     [pastCandlesQuery.data?.effective_sessions],
@@ -812,7 +841,7 @@ export function useLiveBundle(
       code,
       todayDate: todayKstYyyymmdd,
       todaySession: todayChartSession,
-      pastBundle: pastHoga.data ?? null,
+      pastBundle: scaledHogaData,
       kisCandles: liveCandles,
       candleSourceByDate,
       bucketMs,
@@ -820,7 +849,7 @@ export function useLiveBundle(
       investorPoints,
       sessionBoundsForDate,
     });
-    const sidecarSource = pastSidecars.data ?? null;
+    const sidecarSource = scaledSidecarData;
     if (sidecarSource) {
       built.ask_peaks = sidecarSource.ask_peaks ?? [];
       built.bid_peaks = sidecarSource.bid_peaks ?? [];
@@ -867,8 +896,8 @@ export function useLiveBundle(
     code,
     todayKstYyyymmdd,
     todayChartSession,
-    pastHoga.data,
-    pastSidecars.data,
+    scaledHogaData,
+    scaledSidecarData,
     liveCandles,
     live.program,
     candleSourceByDate,
@@ -892,7 +921,7 @@ export function useLiveBundle(
         // `todayChartSession` 이 venue 분기(확장창 08:00–20:00)와 우회 ON 예외(KRX 정규창)를
         // 이미 삼켰으므로, 여기서 갈라지면 축과 지표가 다시 어긋난다.
         todaySession: todayChartSession,
-        pastBundle: pastHoga.data ?? null,
+        pastBundle: scaledHogaData,
         sseOb: isMinute ? live.ob : [],
         sseTrade: isMinute ? live.trade : [],
         bucketMs,
@@ -904,7 +933,7 @@ export function useLiveBundle(
         depthDeltaEnabled,
       }),
     [
-      todayChartSession, pastHoga.data, isMinute, live.ob, live.trade, bucketMs,
+      todayChartSession, scaledHogaData, isMinute, live.ob, live.trade, bucketMs,
       depthHeatmapEnabled, depthDeltaEnabled,
     ],
   );
@@ -1156,6 +1185,11 @@ export function useLiveBundle(
     /** 오늘의 단별 잔량 증감 버킷(세션 누적). 과거일 소스가 없어(설계 §5) RangeBundle 에
      *  싣지 않고 도메인 그대로 내보낸다 — wire 왕복도, 백엔드 플래그도 필요 없다. */
     depthDeltaToday,
+    /** 이 번들의 지표에 적용된 날짜별 수정계수. `/api/range` 를 **따로 호출하는**
+     *  소비자(예: `useVolumeDistributionCutoffProfile`)가 같은 척도를 쓰게 하려고
+     *  내보낸다 — 여기서 안 주면 그 경로만 원주가로 남아 옆문으로 어긋난다.
+     *  우회 ON 이면 `undefined`(그 모드는 캔들도 디스크라 환산 대상이 아니다). */
+    adjustFactors,
     isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading),
     error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? minuteDiskCandles.error ?? null,
     clampEngaged,

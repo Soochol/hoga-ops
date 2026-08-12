@@ -115,6 +115,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     pastDataWarnings,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
+    adjustFactors,
   } = useLiveBundle(activeCode, timeframe, today, live, { investorNetEnabled, venue, sidecarDemands });
   const liveInitial = live.initial?.code === activeCode ? live.initial : undefined;
   const stockBundle = activeCode && bundle?.code === activeCode ? bundle : null;
@@ -279,6 +280,10 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     liveSaveBundle,
     // 지수(index) 워크에어리어는 호가장이 없어 증감 소스도 없다 — 종목일 때만 흘린다.
     depthDeltaToday: activeIndexId ? [] : depthDeltaToday,
+    /** 번들 지표에 적용된 날짜별 수정계수 — `/api/range` 를 따로 호출하는 데이터 창이
+     *  같은 척도를 쓰게 하는 통로(`scaleRangeBundlePrices`). 지수는 호가 지표 자체가
+     *  없으므로 `undefined`(`depthDeltaToday` 와 같은 규율). */
+    adjustFactors: activeIndexId ? undefined : adjustFactors,
     workareaCode,
     workareaBundle,
     workareaChartBundle,

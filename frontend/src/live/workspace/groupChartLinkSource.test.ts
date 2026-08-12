@@ -15,6 +15,7 @@ function link(windowId: string, group: number): GroupChartLink {
     code: '005930',
     timeframe: '1m',
     bundle: null,
+    adjustFactors: undefined,
     todayKst: '20260720',
     vdist: { rangeCount: 10, color: '#64748B', maxColor: '#EAB308', hoverCutoffEnabled: false },
   };

@@ -179,6 +179,10 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     code: isSpot ? code : null,
     timeframe: spotTimeframe,
     venue,
+    // 파케이 스팟은 디스크 캡처(원주가)라 차트 지표와 같은 척도로 옮겨야 한다.
+    // 아래 `bufferSnap`·`latestSnapshot` 은 **WS 실시간 = 오늘**이고 오늘 계수는
+    // 정의상 1.0 이라 환산이 no-op 이다 — 그래서 그 두 경로는 손대지 않는다.
+    adjustFactors: link?.code === code ? link.adjustFactors : undefined,
   });
   // ob/trade 는 useLiveSeries 가 선택 venue 로 소스에서 이미 필터한다(강제 경계) —
   // 창에서 재필터하지 않는다. 호가·체결강도·체결 미니리스트가 같은 venue 를 본다.
@@ -600,6 +604,10 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     rangeCount: vdistSettings.rangeCount,
     finalProfile: activeProfile,
     priceRange,
+    // 이 훅은 `/api/range` 를 **따로** 부르므로 차트 파이프라인의 환산을 안 지난다.
+    // 계수를 넘겨야 요청 밴드를 원주가로 되돌리고 응답을 다시 환산한다 — 안 넘기면
+    // 호버 컷오프 프로파일만 옛 척도로 남는다(`scaleRangeBundlePrices` 참조).
+    adjustFactors: linked ? link.adjustFactors : undefined,
     liveTrades: liveDistribution.trades,
     candles: activeCandles,
     segment: activeSegment ? regularSessionBinningSegment(activeSegment) : null,

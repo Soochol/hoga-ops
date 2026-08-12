@@ -858,6 +858,95 @@ async def test_batches_straddling_a_split_come_back_on_one_scale(
 
 
 @pytest.mark.asyncio
+async def test_response_carries_the_factor_actually_applied(
+    tmp_path, monkeypatch, kiwoom
+) -> None:
+    """응답의 `adjust_factors` 는 **그 봉에 실제로 곱해진 값**이어야 한다.
+
+    막는 방향: 호가 유래 지표(`/api/range`)를 이 봉과 같은 척도로 옮기는 소비자가
+    계수를 **따로 조회**하게 되는 것. 그러면 두 곳이 다른 기준일의 값을 쥘 수 있고,
+    그 순간 한 차트에 두 척도가 다시 섞인다(#1229 가 없애려던 상태). 계수를 봉과
+    같은 응답에 실어 lockstep 으로 움직이는 것이 그 가능성을 없앤다.
+
+    못 보는 것: 소비자가 이 값을 **쓰는지**는 여기서 못 잰다(프론트 쪽 가드가 본다).
+    """
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    # 원주가 60,000 → 2:1 분할(20260806 효력) → 표시값은 30,000 (계수 0.5).
+    raw = {
+        "20260804": [_priced_bar("20260804", 60000)],
+        "20260805": [_priced_bar("20260805", 60000)],
+        "20260806": [_priced_bar("20260806", 30000)],
+    }
+    kiwoom(_FakeWalk(bars_by_date=raw, splits={"20260806": 2.0}))
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+
+    out = await backfill.collect_minute(
+        code="340570", frm=dt.date(2026, 8, 4), too=dt.date(2026, 8, 6),
+        today_d=dt.date(2026, 8, 8), policy="KRX",
+    )
+
+    assert out.adjust_factors == {
+        "20260804": 0.5, "20260805": 0.5, "20260806": 1.0,
+    }
+    # 실려 나간 계수 × 원주가 = 실려 나간 봉. 이 항등식이 "실제로 곱해진 값" 의 뜻이다.
+    for candle in out.candles:
+        date_s = _date_from_t_ms(candle["t_ms"])
+        raw_close = raw[date_s][0].close
+        assert candle["close"] == raw_close * out.adjust_factors[date_s]
+
+
+@pytest.mark.asyncio
+async def test_cache_only_path_reuses_the_in_memory_factor_table(
+    tmp_path, monkeypatch, kiwoom
+) -> None:
+    """`rest_bypass` 는 계수를 **조회하지 않지만**, 메모리에 있으면 실어 보낸다.
+
+    이 경로의 요점은 벤더 콜 0 이다 — 계수를 위해 콜을 되살리면 그 성질이 깨진다.
+    대신 살아 있는 캐시와 메모리 테이블은 같은 척도임이 보장되므로(척도가 바뀌는
+    유일한 경로인 `_ensure_factors` 가 옛 척도 봉을 버린다) 그대로 쓸 수 있다.
+
+    못 보는 것: 프로세스 기동 후 이 종목을 한 번도 안 받았으면 테이블이 없어 빈
+    dict 이고, 그때 소비자는 환산 없이 degrade 한다 — 아래 절반이 그 경우다.
+    """
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    raw = {"20260804": [_priced_bar("20260804", 60000)]}
+    fake = kiwoom(_FakeWalk(bars_by_date=raw, splits={"20260806": 2.0}))
+    cache = PastCandlesCache(data_dir=tmp_path)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=cache,
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+    args = dict(
+        code="340570", frm=dt.date(2026, 8, 4), too=dt.date(2026, 8, 4),
+        today_d=dt.date(2026, 8, 8), policy="KRX",
+    )
+
+    # 테이블이 없는 상태에서 먼저 — 계수는 비고 봉만 나온다(degrade).
+    cold = await backfill.collect_minute_cache_only(**args)  # type: ignore[arg-type]
+    assert cold.adjust_factors == {}
+
+    await backfill.collect_minute(**args)  # type: ignore[arg-type]
+    calls_after_warm = len(fake.factor_calls)
+    warm = await backfill.collect_minute_cache_only(**args)  # type: ignore[arg-type]
+
+    assert warm.adjust_factors == {"20260804": 0.5}
+    assert len(fake.factor_calls) == calls_after_warm, (
+        "cache-only 경로가 계수를 조회했다 — rest_bypass 의 벤더 콜 0 이 깨진다"
+    )
+
+
+@pytest.mark.asyncio
 async def test_factor_table_is_fetched_once_per_code_and_as_of(
     tmp_path, monkeypatch, kiwoom
 ) -> None:
