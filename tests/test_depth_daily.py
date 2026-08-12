@@ -28,8 +28,15 @@ def _write_stock_date(
     data_dir: Path, *, date: str, code: str, obs: list[Orderbook],
     source: str = "hogaplay",
 ) -> Path:
-    """parquet/{date}/{code}/{source}/ 에 meta.json + snapshots.parquet 를 쓴다."""
-    src_dir = data_dir / "parquet" / date / code / source
+    """정본 경로에 meta.json + snapshots.parquet 를 쓴다.
+
+    경로 조립은 ``source_venue_dir`` 에 맡긴다 — 손으로 `{code}/{source}` 를 이으면
+    venue 세그먼트를 붙이는 소스(kiwoom_live → `kiwoom_live/KRX`)에서 어긋나고,
+    스윕이 그 픽스처를 아예 못 본다(테스트가 조용히 0건을 세게 된다).
+    """
+    from hoga.api.sources import source_venue_dir
+
+    src_dir = source_venue_dir(data_dir / "parquet" / date / code, source, "KRX")
     src_dir.mkdir(parents=True, exist_ok=True)
     meta = {
         "name": code, "regular_session_open_ms": _OPEN,
@@ -165,3 +172,94 @@ def test_sweep_empty_tree_returns_empty(tmp_path: Path) -> None:
     res = depth_daily.sweep(tmp_path)
     assert res.scanned == 0 and res.total_rows == 0
     assert depth_daily.load(tmp_path).height == 0
+
+
+def _seed_two_sources(
+    tmp_path: Path, *, hogaplay_ask: int | None, kiwoom_ask: int | None,
+    hogaplay_degenerate: bool = False,
+) -> None:
+    """같은 (code,date)에 소스별 스톡데이트를 심는다. ask 값이 소스의 지문이 된다.
+
+    ``hogaplay_degenerate`` 는 개장 전 스냅샷만 써서 센티넬(eligible 0)을 만든다.
+    """
+    if hogaplay_ask is not None:
+        ts = 85_900_000 if hogaplay_degenerate else 91_000_000
+        _write_stock_date(
+            tmp_path, date="20260714", code="005930", source="hogaplay",
+            obs=[_ob(ts_ms=ts, seq=1, ask_q=(hogaplay_ask,) * 10, bid_q=(10,) * 10)],
+        )
+    if kiwoom_ask is not None:
+        _write_stock_date(
+            tmp_path, date="20260714", code="005930", source="kiwoom_live",
+            obs=[_ob(ts_ms=91_000_000, seq=1, ask_q=(kiwoom_ask,) * 10, bid_q=(10,) * 10)],
+        )
+
+
+def test_sweep_collects_both_sources_as_separate_rows(tmp_path: Path) -> None:
+    """기본 sources 가 hogaplay·kiwoom_live 둘 다 — (code,date,src) 키라 행이 갈린다.
+
+    폴백이 고를 후보가 애초에 스토어에 있어야 성립한다. 예전 기본값(hogaplay 단독)
+    이면 kiwoom_live 행이 0개라 select_with_fallback 이 영원히 no-op 이었다.
+    """
+    _seed_two_sources(tmp_path, hogaplay_ask=30, kiwoom_ask=50)
+
+    res = depth_daily.sweep(tmp_path)
+    assert res.computed == 2
+
+    df = depth_daily.load(tmp_path).sort("src")
+    assert df["src"].to_list() == ["hogaplay", "kiwoom_live"]
+    assert df["ask_peak"].to_list() == [300, 500]
+
+
+def test_select_with_fallback_prefers_hogaplay_even_when_lower(tmp_path: Path) -> None:
+    """둘 다 있으면 hogaplay — **값 크기가 아니라 소스 순위**가 고른다.
+
+    kiwoom 값을 더 크게 심어 "max 를 고르는 것" 과 구별한다. 표본이 30배 촘촘한
+    hogaplay 가 진실에 가깝다는 것이 순위의 근거이므로, 값 비교로 뒤집으면 안 된다.
+    """
+    _seed_two_sources(tmp_path, hogaplay_ask=30, kiwoom_ask=50)
+    depth_daily.sweep(tmp_path)
+
+    sel = depth_daily.select_with_fallback(depth_daily.load(tmp_path))
+    assert sel.height == 1
+    assert sel.row(0, named=True)["src"] == "hogaplay"
+    assert sel.row(0, named=True)["ask_peak"] == 300
+
+
+def test_select_with_fallback_uses_kiwoom_when_hogaplay_absent(tmp_path: Path) -> None:
+    """hogaplay 캡처가 없는 날 — 예전엔 그 날이 창에서 통째로 빠져 기준선이 낮아졌다."""
+    _seed_two_sources(tmp_path, hogaplay_ask=None, kiwoom_ask=50)
+    depth_daily.sweep(tmp_path)
+
+    sel = depth_daily.select_with_fallback(depth_daily.load(tmp_path))
+    assert sel.height == 1
+    assert sel.row(0, named=True)["src"] == "kiwoom_live"
+    assert sel.row(0, named=True)["ask_peak"] == 500
+
+
+def test_select_with_fallback_falls_back_past_hogaplay_sentinel(tmp_path: Path) -> None:
+    """hogaplay 가 센티넬(퇴화 캡처)이고 kiwoom 이 정상 → kiwoom 이 남는다.
+
+    **필터 순서 회귀 가드.** `eligible_count > 0` 이 우선순위 선택보다 **뒤**에 오면
+    센티넬이 순위로 먼저 이긴 뒤 필터에 걸려 그 (code,date)가 통째로 사라진다 —
+    정상 kiwoom 행이 있는데도. 그건 폴백이 막으려던 바로 그 증상이다.
+    """
+    _seed_two_sources(tmp_path, hogaplay_ask=30, kiwoom_ask=50, hogaplay_degenerate=True)
+    depth_daily.sweep(tmp_path)
+
+    raw = depth_daily.load(tmp_path)
+    assert raw.height == 2  # 센티넬 + 정상
+    assert raw.filter(pl.col("src") == "hogaplay").row(0, named=True)["eligible_count"] == 0
+
+    sel = depth_daily.select_with_fallback(raw)
+    assert sel.height == 1
+    assert sel.row(0, named=True)["src"] == "kiwoom_live"
+    assert sel.row(0, named=True)["ask_peak"] == 500
+
+
+def test_select_with_fallback_empty_frame_is_passthrough(tmp_path: Path) -> None:
+    """빈 프레임 — 스키마를 잃지 않고 그대로 나간다(호출부가 .filter 를 이어 쓴다)."""
+    empty = depth_daily.load(tmp_path)
+    out = depth_daily.select_with_fallback(empty)
+    assert out.height == 0
+    assert set(out.columns) == set(empty.columns)

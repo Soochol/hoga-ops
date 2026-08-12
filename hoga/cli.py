@@ -211,12 +211,15 @@ def depth_daily_sweep(
     dry_run: bool = typer.Option(False, "--dry-run", help="스캔 대상만 세고 쓰지 않음"),
     code: str | None = typer.Option(None, "--code", help="한 종목만(6자리)"),
 ) -> None:
-    """hogaplay 캡처에서 (code,date)별 매도/매수 총잔량 당일 peak 를 집계해
+    """캡처에서 (code,date,src)별 매도/매수 총잔량 당일 peak 를 집계해
     screener/depth_daily.parquet 에 박제한다(스크리너 총잔량 신고 조건의 과거 기준).
 
+    소스는 ``depth_daily.SWEEP_SOURCES`` — hogaplay 와 kiwoom_live 를 **둘 다** 집계하고,
+    읽는 쪽이 (code,date)당 hogaplay 우선으로 고른다(없으면 kiwoom_live 폴백).
+
     증분: 메타 mtime 이 그대로면 재계산을 건너뛴다. 멱등(반복 실행 안전).
-    --dry-run 은 parquet 트리를 훑어 hogaplay meta.json 이 있는 스톡데이트 수(=sweep 의
-    scanned)만 센다 — peak 계산(DuckDB)이나 쓰기는 하지 않으므로 즉시 끝난다.
+    --dry-run 은 parquet 트리를 훑어 대상 meta.json 이 있는 (스톡데이트, 소스) 수
+    (=sweep 의 scanned)만 센다 — peak 계산(DuckDB)이나 쓰기는 하지 않으므로 즉시 끝난다.
     """
     import time  # noqa: PLC0415 — CLI-local
 
@@ -237,10 +240,13 @@ def depth_daily_sweep(
                         continue
                     if codes is not None and code_dir.name not in codes:
                         continue
-                    src_dir = depth_daily.resolve_source_dir(code_dir, depth_daily.HOGAPLAY, "KRX")
-                    if (src_dir / "meta.json").exists():
-                        n += 1
-        console.print(f"[green]dry-run[/green] {n} hogaplay stock-date(s) in scope")
+                    # sweep 과 같은 소스 목록을 돈다 — 하드코딩하면 dry-run 이
+                    # 실제 스캔량을 과소 보고한다(소스 수만큼 어긋난다).
+                    for source in depth_daily.SWEEP_SOURCES:
+                        src_dir = depth_daily.resolve_source_dir(code_dir, source, "KRX")
+                        if (src_dir / "meta.json").exists():
+                            n += 1
+        console.print(f"[green]dry-run[/green] {n} (stock-date, source) pair(s) in scope")
         return
     t0 = time.time()
     try:
