@@ -4881,3 +4881,85 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
     expect(useLivePageStore.getState().paneStretch).toEqual({});
   });
 });
+
+/**
+ * sync 소비 창이 스팟 커서를 **덮어쓰지** 않는다.
+ *
+ * 소유자 가드(clear 쪽)로는 이 경로를 못 막는다 — 지우는 게 아니라 **쓰는** 경로다.
+ * `CursorSyncCrosshair` 가 `setCrosshairPosition` 을 걸어 두면 그 뒤 데이터 갱신마다
+ * lwc 가 crosshairMove 를 재발화하고, 그 이벤트로 발행하면 옆 창의 유효한 발행을
+ * 내 origin 으로 덮는다. 2026-08-12 실측(분봉+일봉 두 창): 25초에 분봉 97회 /
+ * 일봉 96회로 핑퐁, `null` 은 0회 — 덮어쓴 origin 의 봉이 `D` 라 소비 측이
+ * inactive 로 떨어져 10호가·거래원이 함께 latest 를 그렸다.
+ *
+ * **막는 방향**: sync 로 그려진 크로스헤어의 재발화가 남의 발행을 덮는 것.
+ * **못 보는 것**: 실제 포인터 입력은 통과시킨다(사용자가 그 창으로 옮기면 발행자가
+ * 바뀌는 게 맞다) — 아래 두 번째 단언이 그 방향을 고정한다.
+ */
+describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
+  const OTHER = { windowId: 'other-window', group: 1, code: '005930', timeframe: '1m' as const };
+
+  function renderWithCrosshair() {
+    let crosshairHandler:
+      | ((p: { time?: unknown; point?: { x: number } | null; sourceEvent?: unknown }) => void)
+      | null = null;
+    const realMs = Date.UTC(2026, 5, 19, 0, 0, 0);
+    const bundle: RangeBundle = {
+      ...DEFAULT_BUNDLE,
+      from_date: '20260619',
+      to_date: '20260619',
+      segments: [{ date: '20260619', session_open_ms: realMs, session_close_ms: realMs + 23400000, source: 'kiwoom_live' }],
+      candles: [{ ts_ms: realMs, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
+    } as unknown as RangeBundle;
+    const base = vi.mocked(createChartEx).getMockImplementation();
+    const chart = base ? (base as unknown as () => Record<string, unknown>)() : {};
+    (chart as Record<string, unknown>).subscribeCrosshairMove = vi.fn((h) => { crosshairHandler = h; });
+    (chart as Record<string, unknown>).unsubscribeCrosshairMove = vi.fn();
+    vi.mocked(createChartEx).mockReturnValueOnce(chart as never);
+    render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={bundle} clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    const axis = createVirtualAxis(
+      [{ date: '20260619', sessionOpenMs: realMs, sessionCloseMs: realMs + 23400000 }],
+      realMs,
+    );
+    return { fire: () => crosshairHandler, vsec: realMsToVirtualSeconds(axis, realMs) };
+  }
+
+  const flushRaf = async () => {
+    await act(async () => { await new Promise((r) => requestAnimationFrame(r)); });
+  };
+
+  beforeEach(() => {
+    useLiveCursorStore.getState().resetCursor();
+  });
+
+  it('sourceEvent 없는 재발화는 옆 창의 발행을 덮어쓰지 않는다', async () => {
+    const { fire, vsec } = renderWithCrosshair();
+    act(() => {
+      useLiveCursorStore.getState().setSidebarCursor(1_000_000, OTHER);
+      useLiveCursorStore.getState().setSyncCursor(1_000_000, OTHER);
+    });
+
+    act(() => { fire()?.({ time: vsec, point: { x: 10 } }); });
+    await flushRaf();
+
+    expect(useLiveCursorStore.getState().sidebarCursorOrigin?.windowId).toBe('other-window');
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(1_000_000);
+  });
+
+  it('실제 포인터 이벤트는 통과한다 — 그 창으로 마우스를 옮기면 발행자가 바뀐다', async () => {
+    const { fire, vsec } = renderWithCrosshair();
+    act(() => {
+      useLiveCursorStore.getState().setSidebarCursor(1_000_000, OTHER);
+      useLiveCursorStore.getState().setSyncCursor(1_000_000, OTHER);
+    });
+
+    act(() => { fire()?.({ time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } }); });
+    await flushRaf();
+
+    expect(useLiveCursorStore.getState().sidebarCursorOrigin?.windowId).toBeNull();
+    expect(useLiveCursorStore.getState().sidebarCursorMs).not.toBe(1_000_000);
+  });
+});

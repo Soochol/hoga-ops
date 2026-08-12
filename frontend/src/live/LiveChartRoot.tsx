@@ -1776,9 +1776,30 @@ export function LiveChartRoot({
   ]);
 
   const publishCursorHover = useCallback(
-    (virtualTime: unknown, pointX?: number): void => {
+    (virtualTime: unknown, pointX?: number, fromUserPointer = false): void => {
       if (!chart) return;
       const store = useLiveCursorStore.getState();
+      // **옆 창의 호버가 sync 로 그려 준 크로스헤어는 발행하지 않는다.**
+      //
+      // `CursorSyncCrosshair` 가 이 차트에 `setCrosshairPosition` 을 걸면 그 뒤의
+      // 데이터 갱신마다 lwc 가 crosshairMove 를 **재발화**한다(호출 시점에는 안
+      // 쏜다 — 그 파일 주석이 잰 것이 그 시점 하나뿐이라 루프가 없다고 결론냈다).
+      // 그 이벤트로 발행하면 **옆 창의 유효한 발행을 내 origin 으로 덮어쓴다**.
+      //
+      // 2026-08-12 실측(003490 장중, 분봉+일봉 두 창): 스토어가 두 창 사이에서
+      // 초당 여러 번 핑퐁했다 — 25초에 분봉 97회 / 일봉 96회, `null` 은 **0회**.
+      // 덮어쓴 origin 의 봉이 `D` 라 `resolveCursorDetailScope` 가 inactive 로
+      // 떨어뜨려 10호가·거래원이 **함께** latest 를 그렸다(사용자 신고 증상).
+      //
+      // 소유자 가드(clear 쪽)로는 이걸 못 막는다 — 지우는 게 아니라 **쓰는** 경로다.
+      // 실제 포인터 이벤트는 통과시킨다: 사용자가 이 창으로 마우스를 옮기면 그때는
+      // 이 창이 발행자가 되는 게 맞다.
+      if (!fromUserPointer) {
+        const syncOrigin = store.syncCursorOrigin;
+        if (syncOrigin !== null && syncOrigin.windowId !== cursorOriginRef.current.windowId) {
+          return;
+        }
+      }
       const publishBasisHover = (date: string | null) => {
         if (publishedBasisDateRef.current === date) return;
         publishedBasisDateRef.current = date;
@@ -1883,7 +1904,8 @@ export function LiveChartRoot({
         const latest = drawingHoverPointRef.current;
         drawingHoverPointRef.current = null;
         if (!latest) return;
-        publishCursorHover(chart.timeScale().coordinateToTime(latest.x), latest.x);
+        // 드로잉 오버레이의 실제 pointer 이벤트에서 온다 → 사용자 입력.
+        publishCursorHover(chart.timeScale().coordinateToTime(latest.x), latest.x, true);
       });
     },
     [chart, publishCursorHover],
@@ -1959,7 +1981,8 @@ export function LiveChartRoot({
             ? param.time
             : (readNumericCrosshairTimeFromSeriesData(param.seriesData)
               ?? chart.timeScale().coordinateToTime(separatorX));
-          publishCursorHover(t, separatorX);
+          // 이 분기는 `param.sourceEvent.localX` 가 있어야 진입한다 → 사용자 입력.
+          publishCursorHover(t, separatorX, true);
         });
         return;
       }
@@ -1978,13 +2001,18 @@ export function LiveChartRoot({
       cancelPendingLeaveClear();
       if (pending !== null) cancelAnimationFrame(pending);
       const point = param.point;
+      // rAF 밖에서 뽑는다 — lwc 가 param 객체를 재사용하면 프레임이 도는 사이 값이
+      // 바뀔 수 있다(`point` 를 여기서 잡아 두는 것과 같은 이유).
+      const hasSourceEvent = param.sourceEvent != null;
       pending = requestAnimationFrame(() => {
         pending = null;
         const t = typeof param.time === 'number'
           ? param.time
           : (readNumericCrosshairTimeFromSeriesData(param.seriesData)
             ?? chart.timeScale().coordinateToTime(point.x));
-        publishCursorHover(t, point.x);
+        // sourceEvent 가 있으면 내 마우스가 만든 이벤트다. 없으면 데이터 갱신에
+        // 따른 재발화이고, 그때는 sync 소비 중인 창이 발행하지 못하게 막힌다.
+        publishCursorHover(t, point.x, hasSourceEvent);
       });
     };
     chart.subscribeCrosshairMove(handler);
