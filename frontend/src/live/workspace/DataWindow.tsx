@@ -600,6 +600,10 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     rangeCount: vdistSettings.rangeCount,
     finalProfile: activeProfile,
     priceRange,
+    // 이 훅은 `/api/range` 를 **따로** 부르므로 차트 파이프라인의 환산을 안 지난다.
+    // 계수를 넘겨야 요청 밴드를 원주가로 되돌리고 응답을 다시 환산한다 — 안 넘기면
+    // 호버 컷오프 프로파일만 옛 척도로 남는다(`scaleRangeBundlePrices` 참조).
+    adjustFactors: linked ? link.adjustFactors : undefined,
     liveTrades: liveDistribution.trades,
     candles: activeCandles,
     segment: activeSegment ? regularSessionBinningSegment(activeSegment) : null,

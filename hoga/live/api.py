@@ -1689,6 +1689,13 @@ class LivePastCandlesResponse(BaseModel):
     fresh_dates: list[str] = Field(default_factory=list)
     data_warnings: list[LiveDataWarning] = Field(default_factory=list)
     effective_sessions: list[LiveEffectiveSession] = Field(default_factory=list)
+    adjust_factors: dict[str, float] = Field(default_factory=dict)
+    """`YYYYMMDD` → 그 날짜 봉에 **실제로 곱해진** 수정계수 (#1229).
+
+    이 봉은 수정주가인데 `/api/range` 의 호가 유래 지표는 디스크 캡처라 원주가다.
+    프론트가 그 지표를 같은 price scale 로 옮기려면 이 값이 필요하다 — 자세한 근거와
+    "모르는 날짜는 키가 없다" 규약은 `LiveMinuteCandleBackfillResult.adjust_factors`.
+    """
 
 
 class LivePastDailyCandlesResponse(BaseModel):

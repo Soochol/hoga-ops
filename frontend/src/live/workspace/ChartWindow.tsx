@@ -200,6 +200,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       code: view.code,
       timeframe: view.timeframe,
       bundle: d.workareaChartBundle ?? d.workareaBundle,
+      adjustFactors: d.adjustFactors,
       todayKst: d.today,
       vdist: {
         rangeCount: ind.volumeDistributionRangeCount,
@@ -215,6 +216,10 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       && prev.code === next.code
       && prev.timeframe === next.timeframe
       && prev.bundle === next.bundle
+      // 계수는 번들과 lockstep 이라 대개 같이 바뀌지만, 계수만 늦게 도착하는
+      // 순간(봉 응답이 번들보다 늦음)이 있어 별도 축으로 센다 — 빠뜨리면 그 창의
+      // 데이터 창이 계수 없는 링크를 계속 본다.
+      && prev.adjustFactors === next.adjustFactors
       && prev.todayKst === next.todayKst
       && prev.vdist.rangeCount === next.vdist.rangeCount
       && prev.vdist.color === next.vdist.color

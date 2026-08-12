@@ -6,9 +6,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hoga.live import api as live_api, kis_runtime, lifecycle
+from hoga.live import api as live_api, kis_runtime, kiwoom_rest_runtime, lifecycle
 from hoga.live.api import build_router
 from hoga.live.candle_fetch_result import DailyCandleFetchResult, IndexCandleFetchResult
+from hoga.live.kiwoom_adjust_factors import AdjustFactors
+from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.settings import update_live_settings
 
@@ -91,6 +93,57 @@ def test_past_candles_bypass_serves_cache_only_on_miss(tmp_path, monkeypatch) ->
     assert response.json()["data_warnings"][0]["reason"] == "rest_bypassed"
     assert run_with_capacity_calls == 0
     assert fake.minute_fetch_count == 0
+
+
+def test_past_candles_wire_carries_adjust_factors(tmp_path, monkeypatch) -> None:
+    """`adjust_factors` 가 **HTTP 응답 JSON 까지** 살아 나온다.
+
+    막는 방향: `response_model` 이 이 필드를 조용히 스트립하는 것. FastAPI 는 모델에
+    없는 키를 에러 없이 버리므로, 백필 결과에만 담고 모델에 안 적으면 **아무 신호 없이**
+    프론트가 계수를 못 받고 환산이 통째로 no-op 이 된다 — 증상은 지금과 똑같은 어긋난
+    차트라, 고쳤다고 믿은 뒤에 발견된다.
+
+    엔드포인트 함수를 직접 부르지 않고 `TestClient` 로 도는 이유가 그것이다. 함수를
+    직접 부르면 `response_model` 단계를 건너뛰어 이 검사가 아무것도 증명하지 못한다.
+    """
+    fake = _CountingKis()
+    date_s = "20240102"
+    cache = PastCandlesCache(tmp_path)
+    cache.store_past(
+        "KRX", "005930", date_s,
+        [{
+            "t_ms": _kst_t_ms(date_s),
+            "open": 100, "high": 110, "low": 90, "close": 105, "volume": 123,
+        }],
+        "1",
+    )
+    monkeypatch.setattr(live_api, "PastCandlesCache", lambda data_dir: cache)
+
+    # 계수 테이블을 쥔 백필을 주입한다 — bypass 경로는 계수를 **조회하지 않으므로**
+    # 메모리에 있는 것만 실린다(그것이 이 경로의 계약이다).
+    today_s = datetime.datetime.now(
+        datetime.timezone(datetime.timedelta(hours=9))
+    ).strftime("%Y%m%d")
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=cache,
+        scheduler=kiwoom_rest_runtime.ensure_scheduler(tmp_path),
+        concurrency=1,
+    )
+    backfill._factors[("005930", today_s)] = AdjustFactors(
+        as_of=today_s, dates=("19900101",), values=(0.5,),
+    )
+    monkeypatch.setattr(live_api, "LiveMinuteCandleBackfill", lambda **_kw: backfill)
+    app = _bypass_app(tmp_path, fake)
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        response = c.get(
+            f"/api/live/past-candles?code=005930&from={date_s}&to={date_s}"
+        )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["adjust_factors"] == {date_s: 0.5}
 
 
 def test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request(

@@ -33,6 +33,15 @@ export type GroupChartLink = {
   timeframe: LiveTimeframe;
   /** 차트 파이프라인의 chartBundle ?? bundle (레거시 LiveSidebar 계약 미러). */
   bundle: RangeBundle | null;
+  /** 위 `bundle` 의 지표에 **이미 적용된** 날짜별 수정계수(`scaleRangeBundlePrices`).
+   *
+   *  번들과 **같은 채널로** 흐르는 것이 요점이다: 데이터 창이 `/api/range` 를 따로
+   *  호출할 때(매물대 호버 컷오프) 이 값으로 요청을 원주가로 되돌리고 응답을 다시
+   *  환산해야, 그 경로만 옛 척도로 남는 옆문이 안 생긴다. 번들과 계수가 갈라지면
+   *  한 화면에 두 척도가 다시 섞인다.
+   *
+   *  우회 ON 이면 `undefined` — 그 모드는 캔들도 디스크(원주가)라 환산이 없다. */
+  adjustFactors: Readonly<Record<string, number>> | undefined;
   todayKst: string;
   vdist: GroupChartLinkVdistSettings;
 };

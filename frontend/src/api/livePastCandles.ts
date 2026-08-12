@@ -43,6 +43,19 @@ export interface LivePastCandlesResponse {
   fresh_dates: string[];
   data_warnings: LivePastCandlesWarning[];
   effective_sessions?: LiveEffectiveSession[];
+  /** `YYYYMMDD` → 그 날짜 봉에 **실제로 곱해진** 수정계수 (#1229).
+   *
+   *  이 봉은 수정주가인데 `/api/range` 의 호가 유래 지표(히트맵·매물대·최대벽…)는
+   *  디스크 캡처라 **원주가**다. 같은 price scale 에 그리면 계수 ≠ 1 인 구간이 통째로
+   *  어긋난다 — `scaleRangeBundlePrices` 가 이 값으로 지표를 봉 쪽 척도로 옮긴다.
+   *
+   *  **따로 조회하지 말 것.** 계수를 두 곳에서 각자 구하면 서로 다른 기준일의 값을 쥘
+   *  수 있고, 그 순간 한 차트에 두 척도가 다시 섞인다. 봉과 같은 응답에 실려 오는
+   *  이유가 그것이고, 병합도 봉과 lockstep 이다(`mergePastCandlesResponses`).
+   *
+   *  키가 없는 날짜 = **모른다**(1.0 아님). 그런 날짜는 봉도 없으므로 지표도 그리지
+   *  않는다. 구백엔드 응답엔 필드 자체가 없다 → optional. */
+  adjust_factors?: Record<string, number>;
 }
 
 /** 응답의 해상도. 필드가 없으면 1분(하위호환). */
@@ -355,6 +368,11 @@ export function mergePastCandleResponses(
       ...(previous.effective_sessions ?? []),
       ...(next.effective_sessions ?? []),
     ]),
+    // 계수는 봉과 **lockstep** 으로 병합된다 — 청크가 합쳐지는 자리에서 봉만 합치고
+    // 계수를 떨어뜨리면, 병합본의 옛 청크 날짜들이 계수를 잃어 지표가 그 구간만
+    // 환산 없이 그려진다(한 차트 두 척도의 재발). 겹치는 날짜는 `next` 가 이긴다:
+    // 봉의 `sortUniqueCandles` 와 같은 방향이라 값과 척도가 같은 손을 든다.
+    adjust_factors: { ...previous.adjust_factors, ...next.adjust_factors },
   };
 }
 
