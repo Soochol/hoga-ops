@@ -9,7 +9,7 @@
  * is applied to both the URL `t=` param and the cache key to collapse
  * within-bucket motion to a single request.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
@@ -20,6 +20,10 @@ import type { OrderbookSnapshot, BrokerSeriesEntry, SourceName } from './types';
 import type { MinuteTimeframe } from '../state/livePage';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { unixMsToKSTDate } from '../util/time';
+import {
+  scaleOrderbookSnapshot,
+  type AdjustFactors,
+} from '../live/scaleRangeBundlePrices';
 
 // ─── Spot 캐시 튜닝 ───────────────────────────────────────────────────────────
 
@@ -78,6 +82,12 @@ type VenueParam = { venue: LiveVenueOption };
 interface Params extends VenueParam {
   code: string | null;
   timeframe: MinuteTimeframe | null;
+  /** 차트 봉에 곱해진 날짜별 수정계수(`groupChartLink.adjustFactors`).
+   *
+   *  이 스냅샷은 디스크 캡처라 **원주가**인데 같은 순간의 히트맵은 환산가로 그려진다 —
+   *  안 넘기면 같은 호가 레벨이 패널과 차트에서 다른 숫자로 뜬다.
+   *  근거·규약은 `scaleRangeBundlePrices`. */
+  adjustFactors?: AdjustFactors;
 }
 
 // ─── Task 10 + T14b: useLiveOrderbookAtCursor ────────────────────────────────
@@ -131,7 +141,16 @@ export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefin
       source: r.source,
     })),
   );
-  return data;
+  // 환산은 **fetch 결과의 파생**이다 — 캐시 키에 계수를 넣지 않는다. 키에 넣으면 계수가
+  // 늦게 도착할 때 같은 스냅샷을 두 벌 받고, 안 넣으면서 환산을 fetch 안에서 하면 계수
+  // 도착 전 캐시가 환산 없이 굳는다. 원본을 캐시하고 파생을 memo 하면 둘 다 없다.
+  return useMemo(() => {
+    if (data?.snapshot == null || date === null) return data;
+    return {
+      ...data,
+      snapshot: scaleOrderbookSnapshot(data.snapshot, p.adjustFactors, date),
+    };
+  }, [data, p.adjustFactors, date]);
 }
 
 // ─── Task 12: useLiveBrokersAtCursor ─────────────────────────────────────────

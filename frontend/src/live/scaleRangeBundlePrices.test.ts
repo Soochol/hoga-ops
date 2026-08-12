@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { scaleRangeBundlePrices, unscalePriceForRequest } from './scaleRangeBundlePrices';
+import {
+  scaleOrderbookSnapshot,
+  scaleRangeBundlePrices,
+  unscalePriceForRequest,
+} from './scaleRangeBundlePrices';
 import type { RangeBundle } from '../api/types';
 
 /** 2026-06-12 09:00 KST — 계수 0.9432 를 실은 날짜(한화솔루션 실측 케이스). */
@@ -147,6 +151,42 @@ describe('scaleRangeBundlePrices', () => {
     const second = scaleRangeBundlePrices(bundle({ depth_heatmap: [point] }), FACTORS);
 
     expect(second.depth_heatmap![0]).toBe(first.depth_heatmap![0]);
+  });
+});
+
+describe('scaleOrderbookSnapshot', () => {
+  const snap = {
+    ts_ms: T_0612, seq: 1,
+    ask: [{ price: 38550, qty: 610 }],
+    bid: [{ price: 38400, qty: 218 }],
+    tot_ask: 71943, tot_bid: 130772,
+  };
+
+  it('호가 레벨만 옮기고 총잔량·수량은 그대로 둔다', () => {
+    const out = scaleOrderbookSnapshot(snap, FACTORS, '20260612');
+
+    expect(out.ask).toEqual([{ price: 19275, qty: 610 }]);
+    expect(out.bid).toEqual([{ price: 19200, qty: 218 }]);
+    expect(out.tot_ask).toBe(71943);
+    expect(out.tot_bid).toBe(130772);
+  });
+
+  it('오늘(계수 1.0)·모르는 날짜·계수 부재는 **원본 참조**를 돌려준다', () => {
+    // 실시간 WS 스냅샷이 이 함수를 지나도 값이 안 바뀌는 근거 — 그래서 호출부가
+    // "과거냐 오늘이냐" 를 따로 가르지 않는다.
+    expect(scaleOrderbookSnapshot(snap, FACTORS, '20260615')).toBe(snap);
+    expect(scaleOrderbookSnapshot(snap, FACTORS, '20260611')).toBe(snap);
+    expect(scaleOrderbookSnapshot(snap, undefined, '20260612')).toBe(snap);
+  });
+
+  it('예상체결가는 있을 때만 옮기고 0·부재는 보존한다', () => {
+    // `BookPanel` 이 "값>0" 으로 게이트하므로 0 이 살아나면 평시에도 칸이 뜬다.
+    const withExp = { ...snap, exp_price: 38500 };
+    expect(scaleOrderbookSnapshot(withExp, FACTORS, '20260612').exp_price).toBe(19250);
+
+    const zeroExp = { ...snap, exp_price: 0 };
+    expect(scaleOrderbookSnapshot(zeroExp, FACTORS, '20260612').exp_price).toBe(0);
+    expect(scaleOrderbookSnapshot(snap, FACTORS, '20260612')).not.toHaveProperty('exp_price');
   });
 });
 

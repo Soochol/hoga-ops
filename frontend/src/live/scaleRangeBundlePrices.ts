@@ -1,12 +1,13 @@
-/** 호가 유래 지표를 **캔들과 같은 척도**로 옮긴다 (#1229 의 짝).
+/** 캡처 유래 가격을 **캔들과 같은 척도**로 옮긴다 (#1229 의 짝).
  *
  * ## 왜 필요한가
  *
  * `/api/live/past-candles` 의 봉은 **수정주가**다(오늘 기준 계수를 곱한 값). 반면
  * `/api/range` 가 싣는 지표 — 호가 잔량 히트맵·잔량 증감·최대벽·거래량 POC·매물대 —
- * 는 디스크에 캡처된 **원주가**다. 둘은 lightweight-charts 의 **같은 price scale** 에
- * 그려지므로(`DepthHeatmapPrimitive` 가 캔들 시리즈의 `priceToCoordinate` 를 쓴다),
- * 계수 ≠ 1 인 구간은 통째로 어긋난다.
+ * 와 `/api/orderbook` 의 커서 스팟 10호가는 디스크에 캡처된 **원주가**다. 앞의 것들은
+ * lightweight-charts 의 **같은 price scale** 에 그려지고(`DepthHeatmapPrimitive` 가 캔들
+ * 시리즈의 `priceToCoordinate` 를 쓴다), 호가창은 같은 순간 같은 레벨을 **옆 창에 숫자로**
+ * 띄운다 — 어느 쪽이든 계수 ≠ 1 인 구간에서 두 척도가 한 화면에 공존한다.
  *
  * 009830(한화솔루션) 2026-06-12 실측 — 2026-06-15 효력, 계수 0.9432:
  *
@@ -285,6 +286,40 @@ export function scaleRangeBundlePrices(
     depth_delta: bundle.depth_delta
       ? byTMs(bundle.depth_delta, (p, f) => scaleCached(p, f, scaleDeltaPoint))
       : bundle.depth_delta,
+  };
+}
+
+/** 커서 스팟 10호가 스냅샷을 같은 척도로 옮긴다.
+ *
+ * 이 스냅샷은 `/api/orderbook`(디스크 캡처 = 원주가)에서 오는데, 같은 순간의 히트맵
+ * 셀은 이제 환산가로 그려진다 — 안 맞추면 **같은 호가 레벨이 패널엔 38,550, 차트엔
+ * 36,350** 으로 갈린다.
+ *
+ * **날짜 하나로 계층 분기가 사라진다**: 오늘 계수는 정의상 1.0 이므로(`AdjustFactors`
+ * 의 `as_of` 쪽 끝) 실시간 WS 스냅샷이 이 함수를 지나도 값이 안 바뀐다. 그래서
+ * "과거냐 오늘이냐" 를 따로 가르지 않는다.
+ *
+ * `tot_ask`/`tot_bid`/`qty` 는 **수량**이라 곱하지 않는다. `exp_price`(예상체결가)는
+ * 백엔드 `ApiOrderbookSnapshot` 에 없고 WS 경로에서만 채워지지만, 타입상 올 수 있으므로
+ * 있으면 함께 옮긴다 — 0/부재는 그대로 둔다(`BookPanel` 의 "값>0" 게이트 보존).
+ */
+export function scaleOrderbookSnapshot<
+  T extends {
+    ask: readonly { price: number; qty: number }[];
+    bid: readonly { price: number; qty: number }[];
+    exp_price?: number;
+  },
+>(snapshot: T, factors: AdjustFactors | undefined, date: string | undefined): T {
+  if (!factors) return snapshot;
+  const factor = factorFor(factors, date);
+  if (factor === null || factor === 1) return snapshot;
+  const levels = (rows: readonly { price: number; qty: number }[]) =>
+    rows.map((row) => ({ ...row, price: scalePrice(row.price, factor) }));
+  return {
+    ...snapshot,
+    ask: levels(snapshot.ask),
+    bid: levels(snapshot.bid),
+    ...(snapshot.exp_price ? { exp_price: scalePrice(snapshot.exp_price, factor) } : {}),
   };
 }
 

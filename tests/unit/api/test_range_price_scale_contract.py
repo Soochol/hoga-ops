@@ -34,7 +34,7 @@ from typing import get_args, get_origin, get_type_hints
 
 from pydantic import BaseModel
 
-from hoga.api.models import RangeBundle
+from hoga.api.models import OrderbookResponse, RangeBundle
 
 _FRONTEND = Path(__file__).resolve().parents[3] / "frontend" / "src"
 _SCALER = _FRONTEND / "live" / "scaleRangeBundlePrices.ts"
@@ -66,6 +66,9 @@ PRICE_FIELDS: frozenset[str] = frozenset({
     "DepthDeltaPoint.asks", "DepthDeltaPoint.bids",
     # 호가 단위 — 이름에 `price` 가 없지만 **가격공간 값**이다(셀 높이).
     "DepthDeltaPoint.ask_tick", "DepthDeltaPoint.bid_tick",
+    # 커서 스팟 10호가 — 히트맵과 **같은 순간 같은 레벨**을 다른 창에 숫자로 띄우므로
+    # 척도가 갈리면 사용자가 두 숫자를 동시에 본다.
+    "ApiOrderbookLevel.price",
 })
 
 #: 척도와 무관한 필드(수량·시각·식별자·사유). 새 필드가 여기 있으면 환산 불필요라는
@@ -134,6 +137,13 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     "ProgramTradePoint.net_qty", "ProgramTradePoint.net_amount",
     "ProgramTradePoint.delta_qty", "ProgramTradePoint.delta_amount",
     "ProgramTradePoint.gap_risk",
+    # 커서 스팟 호가창 — 총잔량은 **수량**이다.
+    "OrderbookResponse.available_from", "OrderbookResponse.snapshot",
+    "OrderbookResponse.source",
+    "ApiOrderbookSnapshot.ts_ms", "ApiOrderbookSnapshot.seq",
+    "ApiOrderbookSnapshot.ask", "ApiOrderbookSnapshot.bid",
+    "ApiOrderbookSnapshot.tot_ask", "ApiOrderbookSnapshot.tot_bid",
+    "ApiOrderbookLevel.qty",
 })
 
 
@@ -186,13 +196,27 @@ def _strip_comments(source: str) -> str:
         out.append(line.split("//", 1)[0])
     return "\n".join(out)
 
+#: 가격을 싣고 **차트와 같은 화면에 숫자로 뜨는** wire model 루트.
+#: `/api/orderbook` 이 여기 있는 이유: 커서 스팟 10호가는 히트맵과 같은 순간 같은 레벨을
+#: 옆 창에 띄우므로, 척도가 갈리면 사용자가 두 숫자를 나란히 본다.
+_ROOTS = (RangeBundle, OrderbookResponse)
+
+
+def _walk_all_roots() -> set[str]:
+    seen: set[type[BaseModel]] = set()
+    out: set[str] = set()
+    for root in _ROOTS:
+        out |= _walk_models(root, seen)
+    return out
+
+
 def test_every_range_bundle_field_is_classified() -> None:
     """새 필드는 **가격이냐 아니냐**를 사람이 정하기 전엔 통과하지 못한다.
 
     막는 방향: 가격 필드가 조용히 늘어나 프론트 환산이 그것만 빠뜨리는 것. 그 증상은
     계수 ≠ 1 인 소수 종목·구간에서만 나오므로 일반 테스트·눈으로는 안 걸린다.
     """
-    actual = _walk_models(RangeBundle, set())
+    actual = _walk_all_roots()
     classified = PRICE_FIELDS | NON_PRICE_FIELDS
 
     unclassified = actual - classified
