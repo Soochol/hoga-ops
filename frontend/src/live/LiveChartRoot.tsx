@@ -671,11 +671,15 @@ export function LiveChartRoot({
 
   const clearSidebarCursor = useCallback(() => {
     cancelPendingSidebarCursor();
-    useLiveCursorStore.getState().clearSidebarCursor();
+    // 두 채널 모두 **내가 발행한 것만** 지운다. 슬롯은 전역 한 벌인데 차트 창은
+    // 여럿이라, 가드 없이 지우면 옆 창의 정리가 호버 중인 창의 스팟을 죽인다
+    // (근거·실측은 useLiveCursorStore 의 소유자 절).
+    const ownerWindowId = cursorOriginRef.current.windowId;
+    useLiveCursorStore.getState().clearSidebarCursorFrom(ownerWindowId);
     // 동기화 커서 해제 경로를 여기 하나로 모은다. 크로스헤어 핸들러의 clear 분기
     // 전부와 언마운트 정리가 이미 이 콜백을 지나므로, 포인터가 차트를 벗어나거나
     // 창이 닫히면 옆 창의 크로스헤어도 같이 꺼진다(안 그러면 화면에 눌어붙는다).
-    useLiveCursorStore.getState().clearSyncCursorFrom(cursorOriginRef.current.windowId);
+    useLiveCursorStore.getState().clearSyncCursorFrom(ownerWindowId);
   }, [cancelPendingSidebarCursor]);
 
   const scheduleSidebarCursor = useCallback((cursorMs: number) => {
@@ -1908,7 +1912,10 @@ export function LiveChartRoot({
       publishedBasisDateRef.current = null;
       publishedCursorMsRef.current = null;
       cancelPendingSidebarCursor();
-      useLiveCursorStore.getState().resetCursor();
+      useLiveCursorStore.getState().resetCursorFrom(cursorOriginRef.current.windowId);
+      // resetCursorFrom 이 남의 발행분을 만나 no-op 이어도 **내 sync 발행은 반드시
+      // 걷는다** — 이유는 아래 cleanup 의 같은 줄 주석 참조.
+      useLiveCursorStore.getState().clearSyncCursorFrom(cursorOriginRef.current.windowId);
       return;
     }
     let pending: number | null = null;
@@ -1995,7 +2002,17 @@ export function LiveChartRoot({
       }
       publishedCursorMsRef.current = null;
       cancelPendingSidebarCursor();
-      useLiveCursorStore.getState().resetCursor();
+      // **내가 발행자일 때만** 지운다. 이 cleanup 은 언마운트뿐 아니라 deps 변경
+      // (특히 `axis` 재생성)마다 도는데, 가드가 없으면 옆 창의 재구독 한 번이
+      // 호버 중인 창의 스팟을 통째로 날린다 — 그것이 10호가 창이 틱마다 최신
+      // 호가로 튀던 기전이다(실측은 useLiveCursorStore 의 소유자 절).
+      useLiveCursorStore.getState().resetCursorFrom(cursorOriginRef.current.windowId);
+      // sync 는 **따로** 걷는다. 위가 no-op 인 경우가 정확히 위험한 순간이기
+      // 때문이다: 포인터가 이 창을 떠나 leave 타이머(120ms)가 걸린 사이 옆 창이
+      // sidebar 를 발행하면 주인이 바뀌고, 그 안에 이 창이 언마운트되면 타이머는
+      // 취소되는데 내가 띄운 sync 크로스헤어만 남아 옆 창에 눌어붙는다. 이 호출은
+      // 자체 소유자 가드가 있어 남의 것은 건드리지 않는다.
+      useLiveCursorStore.getState().clearSyncCursorFrom(cursorOriginRef.current.windowId);
     };
   }, [
     chart,
