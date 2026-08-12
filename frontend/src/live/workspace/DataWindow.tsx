@@ -270,6 +270,39 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const availableFrom = spotOrderbook?.available_from ?? null;
   const showAvailableHint =
     isSpot && spotOrderbook !== undefined && spotSnap === null && bufferSnap === null && availableFrom !== null;
+  // 형성 중 봉 힌트 — 커서가 **아직 닫히지 않은 봉**을 가리키면 그 봉의 대표 호가는
+  // 정의상 확정 전이라 틱마다 갱신된다(`orderbookSnapshotAtCursor` = 버킷의 마지막
+  // continuous book, 백엔드 `query_bucket_representative` 와 맞춘 계약). 실측
+  // 2026-08-12 장중: 형성 중 봉 42초에 잔량 27회 변동 / 닫힌 봉은 55~106초에 0~1회.
+  // 값이 흐르는 것이 고장이 아니라는 것을 화면에서 읽히게 한다.
+  //
+  // **판정을 `Date.now()` 로 하지 않는다** — 렌더 중 호출이 impure 이고 매 렌더 값이
+  // 달라 memo 가 불안정해진다(`useLiveBrokersToday` 의 stampMs 주석이 같은 함정을
+  // 기록해 뒀다). 대신 링크 차트 창 번들의 **마지막 캔들**로 유도한다: 장중이면 그것이
+  // 곧 형성 중 봉이고, 데이터 파생이라 새 봉이 생기면 저절로 따라간다.
+  //
+  // `link.timeframe !== spotTimeframe` 이면 판정하지 않는다 — 그룹에 차트 창이 여럿일
+  // 때 링크 발행자(z-최상위)와 호버 발행자가 다른 봉일 수 있고, 그러면 버킷 경계가
+  // 서로 다른 축이라 비교가 성립하지 않는다.
+  //
+  // `spotSnap === null && bufferSnap !== null` 이 마감 후 오표시를 막는다: 승격이
+  // 끝나면 파케이가 답하므로(그때는 값이 고정) 힌트가 저절로 사라진다.
+  const spotBucketMs = spotTimeframe !== null ? TIMEFRAME_TO_MS[spotTimeframe as Timeframe] : null;
+  const linkLastCandleMs =
+    link !== null && link.bundle !== null && link.bundle.candles.length > 0
+      ? link.bundle.candles[link.bundle.candles.length - 1].ts_ms
+      : null;
+  const showFormingHint = !!(
+    isSpot &&
+    scope.cursorMs !== null &&
+    spotBucketMs !== null &&
+    link !== null &&
+    link.timeframe === spotTimeframe &&
+    linkLastCandleMs !== null &&
+    Math.floor(scope.cursorMs / spotBucketMs) === Math.floor(linkLastCandleMs / spotBucketMs) &&
+    spotSnap === null &&
+    bufferSnap !== null
+  );
   // 종목 요약 지표(체결강도·거래량·어제보다·VWAP·당일 OHLC)는 **latest 전용**이다.
   // 0B 가 실어 오는 값은 "지금 이 순간의 누적"이라 과거 커서(스팟) 시점의 값이
   // 아니다 — 스팟에서 latest 를 그대로 보여주면 호가는 과거인데 요약만 현재인
@@ -312,6 +345,17 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           className="px-3 py-1 font-data text-xs text-fg-dim"
         >
           다음 가용: {formatKstClock(availableFrom)}
+        </div>
+      )}
+      {/* 위 힌트와 배타적이다 — 저쪽은 `bufferSnap === null`(진짜 공백), 이쪽은
+          `bufferSnap !== null`(버퍼가 답하는 중). 자리·토큰을 공유해 둘이 같은
+          "덜 확정된 상태" 라는 말임을 유지한다. */}
+      {showFormingHint && (
+        <div
+          data-testid="orderbook-forming-hint"
+          className="px-3 py-1 font-data text-xs text-fg-dim"
+        >
+          형성 중 · 실시간
         </div>
       )}
       <div className="min-h-0 flex-1">

@@ -25,13 +25,17 @@ vi.mock('./SectorRankingWindow', () => ({
   SectorRankingWindow: ({ indexId }: { indexId: string }) => <div>stub:{indexId}</div>,
 }));
 
-// WS 구독·링버퍼는 이 테스트의 관심사가 아니다 — 빈 버퍼 고정.
+// WS 구독·링버퍼는 대부분의 테스트에서 관심사가 아니다 — 기본은 빈 버퍼.
+// 다만 형성 중 봉 힌트는 **버퍼가 답해야** 성립하는 상태라(파케이 미승격 →
+// orderbookSnapshotAtCursor 폴백) 그 describe 만 `ob` 를 채운다. `vi.mock` factory 는
+// hoisting 되어 외부 변수를 직접 참조하면 초기화 전 접근이 되므로 `vi.hoisted` 로 뺀다.
+const liveSeriesBuffers = vi.hoisted(() => ({ ob: [] as unknown[] }));
 vi.mock('../../api/liveSeries', () => ({
   useLiveSeries: () => ({
     initial: undefined,
     isLoading: false,
     error: null,
-    ob: [],
+    ob: liveSeriesBuffers.ob,
     trade: [],
     broker: [],
     program: [],
@@ -530,5 +534,104 @@ describe('DataWindow — 10호가 시점 게이트 (상하한가·VI)', () => {
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(screen.getByText('limits:set')).toBeInTheDocument();
     expect(screen.getByText('vi:set')).toBeInTheDocument();
+  });
+});
+
+/**
+ * 형성 중 봉 힌트 — 커서가 **아직 닫히지 않은 봉**을 가리킬 때만 뜬다.
+ *
+ * **막는 방향**: 값이 흐르는 것을 고장으로 오해하는 것. 형성 중 봉의 대표 호가는
+ * 정의상 확정 전이라 틱마다 갱신되는 게 계약이다(백엔드 `query_bucket_representative`
+ * 와 같은 규칙 = 버킷의 마지막 continuous book).
+ * **못 보는 것**: 문구·위치의 시각적 적합성은 단위 테스트 범위 밖이다.
+ * **등록 의존**: 링크 차트 창이 bundle 을 발행해야 판정한다 — 없으면 힌트도 없다.
+ */
+describe('DataWindow — 형성 중 봉 힌트', () => {
+  const symbol = { code: '005930', name: '삼성전자' };
+  const BUCKET = 60_000;
+  /** KST 2026-07-20 11:00 — 링크 번들의 마지막 봉(= 장중이면 형성 중인 봉). */
+  const LAST_CANDLE_MS = Date.UTC(2026, 6, 20, 2, 0);
+  const CLOSED_CANDLE_MS = LAST_CANDLE_MS - 5 * BUCKET;
+
+  function bundleWithLastCandle(): RangeBundle {
+    const candle = (tsMs: number) => ({ ts_ms: tsMs, open: 1, high: 1, low: 1, close: 1, volume: 1 });
+    return {
+      code: '005930', from_date: '20260720', to_date: '20260720', bucket_ms: BUCKET,
+      segments: [{
+        date: '20260720',
+        session_open_ms: Date.UTC(2026, 6, 20, 0, 0),
+        session_close_ms: Date.UTC(2026, 6, 20, 6, 30),
+      }],
+      candles: [candle(CLOSED_CANDLE_MS), candle(LAST_CANDLE_MS)],
+      investorPoints: [],
+    } as unknown as RangeBundle;
+  }
+
+  /** 그 버킷에 실제로 답이 있는 WS 스냅샷 — 없으면 bufferSnap 이 null 이라 조건 자체가 안 선다. */
+  function obAt(tMs: number) {
+    const levels = (base: number) =>
+      Array.from({ length: 5 }, (_, i) => ({ price: 1000 + i, qty: base + i }));
+    return { t_ms: tMs, total_ask_qty: 10, total_bid_qty: 10, asks: levels(1), bids: levels(2) };
+  }
+
+  function hoverAt(cursorMs: number) {
+    __resetGroupChartLinksForTests();
+    useLiveCursorStore.getState().resetCursor();
+    publishGroupChartLink(chartLink({ bundle: bundleWithLastCandle(), todayKst: '20260720' }));
+    useLiveCursorStore.getState().setSidebarCursor(cursorMs, {
+      windowId: 'cw1', group: 1, code: '005930', timeframe: '1m',
+    });
+  }
+
+  /** 파케이 미승격(= WS 버퍼가 답하는 구간). 실측 승격 지연 3~8분의 상태. */
+  function parquetMiss() {
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(
+      { snapshot: null, available_from: null, source: 'kiwoom_live' } as never,
+    );
+  }
+
+  beforeEach(() => {
+    liveSeriesBuffers.ob = [];
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(undefined as never);
+  });
+
+  it('형성 중 봉을 호버하고 파케이가 아직 없으면 힌트를 띄운다', () => {
+    liveSeriesBuffers.ob = [obAt(LAST_CANDLE_MS + 30_000)];
+    parquetMiss();
+    hoverAt(LAST_CANDLE_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByTestId('orderbook-forming-hint')).toBeInTheDocument();
+  });
+
+  it('닫힌 봉이면 띄우지 않는다 — 커서 버킷 하나만 바꾼 대조', () => {
+    liveSeriesBuffers.ob = [obAt(CLOSED_CANDLE_MS + 30_000)];
+    parquetMiss();
+    hoverAt(CLOSED_CANDLE_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.queryByTestId('orderbook-forming-hint')).not.toBeInTheDocument();
+  });
+
+  it('파케이가 답하면 띄우지 않는다 — 승격됐다는 것은 값이 고정됐다는 뜻이다', () => {
+    liveSeriesBuffers.ob = [obAt(LAST_CANDLE_MS + 30_000)];
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(
+      { snapshot: { ts_ms: LAST_CANDLE_MS, seq: 0, ask: [], bid: [], tot_ask: 1, tot_bid: 1, exp_price: 0, exp_qty: 0 },
+        available_from: null, source: 'hogaplay' } as never,
+    );
+    hoverAt(LAST_CANDLE_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.queryByTestId('orderbook-forming-hint')).not.toBeInTheDocument();
+  });
+
+  it('링크 차트 창의 봉이 커서 봉과 다르면 판정하지 않는다 (버킷 축이 다르다)', () => {
+    liveSeriesBuffers.ob = [obAt(LAST_CANDLE_MS + 30_000)];
+    parquetMiss();
+    __resetGroupChartLinksForTests();
+    useLiveCursorStore.getState().resetCursor();
+    publishGroupChartLink(chartLink({ bundle: bundleWithLastCandle(), todayKst: '20260720', timeframe: '5m' }));
+    useLiveCursorStore.getState().setSidebarCursor(LAST_CANDLE_MS, {
+      windowId: 'cw1', group: 1, code: '005930', timeframe: '1m',
+    });
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.queryByTestId('orderbook-forming-hint')).not.toBeInTheDocument();
   });
 });

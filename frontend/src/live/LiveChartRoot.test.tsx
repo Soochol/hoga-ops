@@ -184,6 +184,75 @@ describe('LiveChartRoot', () => {
     expect(useLiveCursorStore.getState().cursorMs).toBeNull();
   });
 
+  /**
+   * 호출자 쪽 가드 고정 — 스토어 단위 테스트(useLiveCursorStore.test.ts)가 못 보는
+   * 자리다. 저기서는 `ownedBy` 만 고정되므로, 이 cleanup 이 여전히 export 되어 있는
+   * `resetCursor()` 로 되돌아가도 스토어 테스트는 전부 초록이다.
+   *
+   * **막는 방향**: 발행자가 **아닌** 차트 창의 teardown 이 남의 발행분을 지우는 것.
+   * **못 보는 것**: 발행자 자신의 teardown(그건 지워야 맞다 — 위 테스트가 본다).
+   */
+  it('다른 창이 발행한 스팟 커서를 이 창의 teardown 이 지우지 않는다', () => {
+    const { unmount } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    // 옆 차트 창 'hovered' 가 호버 중이라 스팟을 발행한 상태. 이 창은 Provider 밖이라
+    // windowId 가 null 이므로 주인이 아니다.
+    act(() => {
+      useLiveCursorStore.getState().setCursor(1748400000123);
+      useLiveCursorStore.getState().setSidebarCursor(1748400000000, {
+        windowId: 'hovered', group: 1, code: '005930', timeframe: '1m',
+      });
+    });
+
+    unmount();
+
+    // 이 세 줄이 회귀의 본체다 — 가드가 없으면 셋 다 null 이 되고, 10호가 창이
+    // latest 로 떨어진다(2026-08-12 실측: 29초에 19회).
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(1748400000000);
+    expect(useLiveCursorStore.getState().sidebarCursorOrigin?.windowId).toBe('hovered');
+    expect(useLiveCursorStore.getState().cursorMs).toBe(1748400000123);
+  });
+
+  it('남의 스팟은 남겨도 자기 sync 발행은 teardown 에서 걷는다', () => {
+    const { unmount } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    act(() => {
+      // 주인은 옆 창인데(leave 타이머 사이 옆 창이 발행한 상황),
+      useLiveCursorStore.getState().setSidebarCursor(1748400000000, {
+        windowId: 'hovered', group: 1, code: '005930', timeframe: '1m',
+      });
+      // 이 창이 띄워 둔 sync 크로스헤어는 아직 살아 있다.
+      useLiveCursorStore.getState().setSyncCursor(1748400000999, {
+        windowId: null, group: 1, code: '005930', timeframe: '1m',
+      });
+    });
+
+    unmount();
+
+    // sync 를 따로 걷지 않으면 옆 창에 크로스헤어가 눌어붙는다.
+    expect(useLiveCursorStore.getState().syncCursorMs).toBeNull();
+    // 그러면서 남의 스팟은 그대로다.
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(1748400000000);
+  });
+
   it('renders root container with chart slot', () => {
     render(
       <LiveChartRoot

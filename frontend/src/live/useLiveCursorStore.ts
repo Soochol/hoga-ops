@@ -29,11 +29,29 @@ interface State {
   /** 창 간 크로스헤어 동기화 채널 — 즉시 발행 + origin. 아래 주석 참조. */
   setSyncCursor: (t: number, origin: SidebarCursorOrigin) => void;
   clearCursor: () => void;
-  clearSidebarCursor: () => void;
+  /** 발행자만 자기 것을 지운다 — 근거는 `clearSyncCursorFrom` 과 동일(아래). */
+  clearSidebarCursorFrom: (windowId: string | null) => void;
   /** 발행자만 자기 것을 지운다 — 옆 창의 mouse-leave 가 내 표시를 끄면 안 된다. */
   clearSyncCursorFrom: (windowId: string | null) => void;
   restoreCursor: () => void;
+  /** 발행자만 자기 것을 지운다. 차트 언마운트·재생성 정리 경로 전용. */
+  resetCursorFrom: (windowId: string | null) => void;
+  /** ⚠ 소유자를 보지 않고 **전 채널을 지운다**. 테스트 초기화 전용 —
+   *  프로덕션에서는 `resetCursorFrom` 을 쓸 것(이 함수를 창 정리 경로에 두면
+   *  옆 창의 teardown 이 호버 중인 창의 스팟을 죽인다. 아래 소유자 절 참조). */
   resetCursor: () => void;
+}
+
+/**
+ * 이 창이 현재 발행분의 주인인가.
+ *
+ * origin 이 **없으면** true — 누구 것인지 모르는 상태(스로틀 대기 중이라 아직
+ * origin 이 안 붙었거나, Provider 밖 발행)까지 붙들면 정리 경로가 영영 막힌다.
+ * 그래서 "모르면 지운다" 를 기본으로 두고 **주인이 분명히 다를 때만** 막는다 —
+ * `clearSyncCursorFrom` 이 이미 쓰던 규칙 그대로다.
+ */
+function ownedBy(origin: SidebarCursorOrigin | null, windowId: string | null): boolean {
+  return origin === null || origin.windowId === windowId;
 }
 
 function sameOrigin(a: SidebarCursorOrigin | null, b: SidebarCursorOrigin | null): boolean {
@@ -69,6 +87,20 @@ function sameOrigin(a: SidebarCursorOrigin | null, b: SidebarCursorOrigin | null
  * 포인터가 발행 창을 떠난 뒤의 restore 가 옆 창 크로스헤어를 되살린다 — "떠나면
  * 지워진다" 라는 이 기능의 계약과 정면으로 어긋난다. 그래서 sticky 가 없는 별도
  * 필드 한 쌍으로 둔다.
+ *
+ * ── 지우는 쪽은 전부 소유자 가드를 통과한다 ────────────────────────────────
+ * 슬롯은 전역 한 벌인데 발행자는 창마다다. 그래서 **지우는 함수는 반드시
+ * `…From(windowId)` 형태**이고, 주인이 분명히 다르면 no-op 이다(`ownedBy`).
+ *
+ * 가드가 syncCursor 에만 있던 동안 `/live` 는 이렇게 깨졌다(2026-08-12 실측,
+ * 003490 장중): 차트 창 2개에서 한쪽 캔들에 호버하면 10호가 창이 **틱마다 한
+ * 프레임씩 최신 호가로 튀었다** — 29초에 19회. 옆 창의 crosshair effect 가
+ * teardown 하며 `resetCursor()` 로 전역을 비웠고, 곧바로 호버 창의 다음 틱
+ * 이벤트가 되살렸다. 차트 창을 하나 닫자 40초에 1회로 떨어졌다(대조).
+ *
+ * 지우는 쪽과 되살리는 쪽이 **둘 다 SSE 틱에 묶여** 있는 것이 이 증상의 정체다:
+ * 마우스가 완전히 정지해 있어도 lwc 는 데이터 갱신마다 `crosshairMove` 를
+ * 재발화한다(실측 초당 ~8회, 전부 `sourceEvent` 없음).
  */
 export const useLiveCursorStore = create<State>((set, get) => ({
   cursorMs: null,
@@ -96,9 +128,10 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     if (get().cursorMs === null) return;
     set({ cursorMs: null });
   },
-  clearSidebarCursor: () => {
+  clearSidebarCursorFrom: (windowId) => {
     const { sidebarCursorMs, sidebarCursorOrigin } = get();
     if (sidebarCursorMs === null && sidebarCursorOrigin === null) return;
+    if (!ownedBy(sidebarCursorOrigin, windowId)) return;
     set({ sidebarCursorMs: null, sidebarCursorOrigin: null });
   },
   clearSyncCursorFrom: (windowId) => {
@@ -106,13 +139,22 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     if (syncCursorMs === null && syncCursorOrigin === null) return;
     // 다른 창이 발행 중이면 건드리지 않는다. 창이 셋 이상일 때 한 창의 mouse-leave 가
     // 다른 창의 유효한 발행을 지우는 것을 막는다.
-    if (syncCursorOrigin !== null && syncCursorOrigin.windowId !== windowId) return;
+    if (!ownedBy(syncCursorOrigin, windowId)) return;
     set({ syncCursorMs: null, syncCursorOrigin: null });
   },
   restoreCursor: () => {
     const { cursorMs, lastCursorMs } = get();
     if (cursorMs === lastCursorMs) return;
     set({ cursorMs: lastCursorMs });
+  },
+  resetCursorFrom: (windowId) => {
+    const s = get();
+    // 주인 판정은 origin 이 붙는 두 채널로 한다. `cursorMs` 에는 origin 이 없지만
+    // 같은 창이 `publishCursorMs` 에서 셋을 함께 발행하므로 주인이 같다 — 남의 창
+    // teardown 이 내 `cursorMs` 를 지우는 것도 스팟이 지워지는 것과 같은 결함이다.
+    const owner = s.sidebarCursorOrigin ?? s.syncCursorOrigin;
+    if (!ownedBy(owner, windowId)) return;
+    get().resetCursor();
   },
   resetCursor: () => {
     const s = get();
