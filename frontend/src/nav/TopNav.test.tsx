@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import TopNav from './TopNav';
+import { useRightRailStore } from '../state/rightRail';
 
 vi.mock('./CaptureInlineStatus', () => ({
   CaptureInlineStatus: () => null,
@@ -31,6 +32,12 @@ function W({ children, route = '/live' }: { children: ReactNode; route?: string 
 }
 
 describe('TopNav', () => {
+  beforeEach(() => {
+    cleanup();
+    localStorage.clear();
+    useRightRailStore.setState({ activePanel: null, lastPanel: 'watchlist' });
+  });
+
   it('renders workspace links in the approved order and Settings at the end', () => {
     render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
 
@@ -75,6 +82,66 @@ describe('TopNav', () => {
     });
 
     expect(screen.queryByTestId('live-symbol-search')).toBeNull();
+  });
+
+  it('라이브 nav 는 관심종목 패널을 함께 연다', () => {
+    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+
+    fireEvent.click(screen.getByRole('link', { name: '라이브' }));
+
+    expect(useRightRailStore.getState().activePanel).toBe('watchlist');
+  });
+
+  it('복기 nav 는 저장뷰 패널을 함께 연다', () => {
+    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+
+    fireEvent.click(screen.getByRole('link', { name: '복기' }));
+
+    expect(useRightRailStore.getState().activePanel).toBe('savedViews');
+  });
+
+  // 열림이 아니라 **교체**다: 다른 패널을 보던 중에 눌러도 그 라우트의 패널로 간다.
+  it('다른 패널이 열려 있어도 그 라우트의 패널로 교체한다', () => {
+    useRightRailStore.setState({ activePanel: 'screener', lastPanel: 'screener' });
+    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+
+    fireEvent.click(screen.getByRole('link', { name: '복기' }));
+
+    expect(useRightRailStore.getState().activePanel).toBe('savedViews');
+    // 레일 쉐브론이 다시 열 대상도 방금 연 패널이어야 한다(setActivePanel 계약).
+    expect(useRightRailStore.getState().lastPanel).toBe('savedViews');
+  });
+
+  // toggle 이었다면 여기서 닫힌다 — "누르면 열린다" 와 정반대다.
+  it('같은 nav 를 다시 눌러도 패널이 닫히지 않는다', () => {
+    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+    const live = screen.getByRole('link', { name: '라이브' });
+
+    fireEvent.click(live);
+    fireEvent.click(live);
+
+    expect(useRightRailStore.getState().activePanel).toBe('watchlist');
+  });
+
+  it('패널이 지정되지 않은 nav 는 열린 패널을 그대로 둔다', () => {
+    useRightRailStore.setState({ activePanel: 'watchlist', lastPanel: 'watchlist' });
+    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+
+    fireEvent.click(screen.getByRole('link', { name: '히트맵' }));
+
+    expect(useRightRailStore.getState().activePanel).toBe('watchlist');
+  });
+
+  // 새 탭으로 여는 클릭은 이 탭에서 이동이 일어나지 않는다 — 그런데 패널만 바뀌면
+  // 사용자는 건드린 적 없는 화면이 변한 걸 보게 된다.
+  it('새 탭 클릭(ctrl/meta/shift/alt)은 이 탭의 패널을 바꾸지 않는다', () => {
+    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+    const study = screen.getByRole('link', { name: '복기' });
+
+    for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey'] as const) {
+      fireEvent.click(study, { [modifier]: true });
+      expect(useRightRailStore.getState().activePanel).toBeNull();
+    }
   });
 
   it('opens settings through a button instead of navigating', () => {
