@@ -47,7 +47,8 @@ from pathlib import Path
 
 from hoga.api import study_views
 from hoga.api.bundle import build_range_bundle
-from hoga.api.queries import QueryEngine
+from hoga.api.disk_state import DiskState, classify_from_meta
+from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.config import resolve_data_dir
 
 # 이 스크립트가 채우는 지표. 캐시 파일명이 `{date}.{이름}.{bucket_ms}.json` 이라
@@ -75,30 +76,45 @@ def _cache_dir(data_dir: Path, code: str) -> Path:
     return data_dir / "kis-past-indicators" / code / SOURCE
 
 
-def _captured_dates(data_dir: Path, code: str, from_date: str, to_date: str) -> list[str]:
-    """구간 안에서 **원본 호가 스냅샷이 있는** 거래일.
+def _captured_dates(
+    engine: QueryEngine, data_dir: Path, code: str, from_date: str, to_date: str
+) -> list[str]:
+    """이 구간에서 **백엔드가 실제로 계산할** 거래일. 두 조건의 교집합이다.
 
-    판정 기준은 `snapshots.parquet` 의 존재다 — 이 스크립트가 채우는 4종이 전부 그
-    파일에서 나오고, 없으면 슬라이스 빌더가 빈 결과를 돌려주며 **캐시에 저장하지도
-    않는다**(`build_depth_delta_slice` 의 `path_obj.exists()` 가드).
+    ① `engine.list_stock_dates_in_range` — `build_range_bundle` 이 도는 바로 그 목록.
+       **비거래일 파티션을 제외**한다(유령 REST 캡처가 만든 파티션 방어).
+    ② `hogaplay/snapshots.parquet` 존재 — 4종이 전부 이 파일에서 나오고, 없으면 빌더가
+       빈 결과를 돌려주며 **저장도 하지 않는다**(`path_obj.exists()` 가드). ①은
+       "선호 소스 **또는 아무 소스**" 로 매칭하므로 다른 소스만 있는 날짜가 통과한다.
+    ③ `classify_from_meta(...).state is not INVALID` — 불변식 위반 날짜는 빌더가
+       `excluded_dates` 로 빼고 **계산 자체를 하지 않는다**. 실측 예: 캡처 메타의
+       `close_ms=0` 이라 `meta.close_after_open` 위반(20260313·20260331).
 
-    ⚠ **캐시 디렉터리로 판정하면 안 된다.** 처음엔 그렇게 했는데 두 가지가 어긋났다:
-    ① `mode=sidecar` 는 `ratio`/`fill` 도 함께 채우는데 그 둘은 `trades.parquet` 에서도
-    나오므로, 스냅샷이 없는 날짜에 캐시 파일이 생긴다 → 그 날짜가 다음 실행에서 "캡처일"
-    로 새로 등장한다. ② 그 날짜의 4종은 영원히 채워지지 않으므로 **반복 실행이 수렴하지
-    않는다**(실측: 재실행에서 `신규 0파일` 인 작업이 계속 남았다).
+    **판정과 실제가 갈리면 도구가 수렴하지 않는다** — 채울 수 없는 칸을 매번 대상으로
+    잡아 `신규 0파일` 작업이 영원히 남는다. 실측으로 두 번 겪었다:
+    - 캐시 디렉터리 기준(최초): `mode=sidecar` 가 함께 채우는 `ratio`/`fill` 은
+      `trades.parquet` 에서도 나오므로 **스냅샷 없는 날짜에 캐시가 생기고**, 그 날짜가
+      다음 실행에서 "캡처일" 로 새로 등장했다. 반대로 캐시가 전혀 없던 날짜는 통째로
+      빠져 "미계산 0" 이 **불완전한 분모에 대한 0** 이었다.
+    - `snapshots.parquet` 단독(두 번째): 비거래일 파티션과 불변식 위반 날짜가 통과해
+      38개 작업이 `신규 0파일` 이었고 재실행이 같은 712 셀을 계속 잡았다.
     """
-    dates: list[str] = []
+    dates = engine.list_stock_dates_in_range(
+        code=code, from_date=from_date, to_date=to_date, source_pref=SOURCE
+    )
     parquet_root = data_dir / "parquet"
-    if not parquet_root.is_dir():
-        return dates
-    for date_dir in parquet_root.iterdir():
-        name = date_dir.name
-        if not (name.isdigit() and from_date <= name <= to_date):
+    out: list[str] = []
+    for date in dates:
+        if not (parquet_root / date / code / SOURCE / "snapshots.parquet").exists():
             continue
-        if (date_dir / code / SOURCE / "snapshots.parquet").exists():
-            dates.append(name)
-    return sorted(dates)
+        try:
+            meta = engine.get_meta(date, code, SOURCE, venue=VENUE)
+        except (FileNotFoundError, StockDateNotFound):
+            continue
+        if classify_from_meta(meta).state is DiskState.INVALID:
+            continue
+        out.append(date)
+    return out
 
 
 def _missing_cells(data_dir: Path, code: str, dates: list[str], bucket_ms: int) -> int:
@@ -166,12 +182,22 @@ def main() -> int:
     # 가변 범위 키·뷰포트 정책), 저장뷰가 **열거 가능한 고정 집합**인 동안은 여기서
     # 미리 채우는 편이 싸다.
     saves = list(study_views.load_saves(data_dir).saves)
+    # DuckDB temp 를 따로 둔다 — dev 서버와 같은 디렉터리를 쓰면 스필 파일이 섞인다.
+    # dry-run 도 engine 이 필요하다: 대상 날짜 판정이 백엔드와 **같은 함수**를 써야
+    # 수렴한다(`_captured_dates`).
+    engine = QueryEngine(data_dir, temp_directory=data_dir / "duckdb-tmp-backfill")
+    try:
+        return _run(args, data_dir, saves, engine)
+    finally:
+        engine.close()
 
+
+def _run(args: argparse.Namespace, data_dir: Path, saves: list, engine: QueryEngine) -> int:
     jobs: list[tuple[str, str, str, str, int, list[str], int]] = []
     for save in saves:
         for timeframe in _resolve_timeframes(args.timeframes, save.timeframe):
             bucket_ms = TIMEFRAME_TO_MS[timeframe]
-            dates = _captured_dates(data_dir, save.code, save.range.from_date, save.range.to_date)
+            dates = _captured_dates(engine, data_dir, save.code, save.range.from_date, save.range.to_date)
             if not dates:
                 continue
             missing = _missing_cells(data_dir, save.code, dates, bucket_ms)
@@ -199,47 +225,42 @@ def main() -> int:
         print("채울 것이 없다.")
         return 0
 
-    # DuckDB temp 를 따로 둔다 — dev 서버와 같은 디렉터리를 쓰면 스필 파일이 섞인다.
-    engine = QueryEngine(data_dir, temp_directory=data_dir / "duckdb-tmp-backfill")
     started = time.monotonic()
     written_total = 0
-    try:
-        for index, (name, code, timeframe, _from, bucket_ms, dates, missing) in enumerate(jobs, start=1):
-            before = _cache_file_count(data_dir, code)
-            t0 = time.monotonic()
-            build_range_bundle(
-                engine,
-                code=code,
-                from_date=dates[0],
-                to_date=dates[-1],
-                bucket_ms=bucket_ms,
-                source_pref=SOURCE,
-                venue=VENUE,
-                mode="sidecar",
-                # 프론트 sidecar 요청과 같은 값(실측 URL). heatmap 만 항상 켠다 — 모듈 docstring.
-                broker_late_entries_enabled=False,
-                trade_volume_poc_enabled=False,
-                volume_distribution_bins=None,
-                trade_volume_poc_bins=None,
-                ask_peaks_enabled=True,
-                bid_peaks_enabled=True,
-                depth_heatmap_enabled=True,
-                depth_delta_enabled=True,
-                program_trade_enabled=False,
-            )
-            written = _cache_file_count(data_dir, code) - before
-            written_total += written
-            elapsed = time.monotonic() - t0
-            # flush 필수: 이 루프는 몇 시간 돌 수 있고 출력이 파이프·파일로 가면
-            # 블록 버퍼링이라 **끝날 때까지 한 줄도 안 보인다**(실측). 진행이 안 보이면
-            # 멈춘 것과 구별할 수 없어 조사자가 멀쩡한 실행을 죽인다.
-            print(
-                f"[{index}/{len(jobs)}] {code} {timeframe:>4} 거래일{len(dates):3d} "
-                f"미계산{missing:4d} → 신규 {written:4d}파일 {elapsed:6.1f}s  {name}",
-                flush=True,
-            )
-    finally:
-        engine.close()
+    for index, (name, code, timeframe, _from, bucket_ms, dates, missing) in enumerate(jobs, start=1):
+        before = _cache_file_count(data_dir, code)
+        t0 = time.monotonic()
+        build_range_bundle(
+            engine,
+            code=code,
+            from_date=dates[0],
+            to_date=dates[-1],
+            bucket_ms=bucket_ms,
+            source_pref=SOURCE,
+            venue=VENUE,
+            mode="sidecar",
+            # 프론트 sidecar 요청과 같은 값(실측 URL). heatmap 만 항상 켠다 — 모듈 docstring.
+            broker_late_entries_enabled=False,
+            trade_volume_poc_enabled=False,
+            volume_distribution_bins=None,
+            trade_volume_poc_bins=None,
+            ask_peaks_enabled=True,
+            bid_peaks_enabled=True,
+            depth_heatmap_enabled=True,
+            depth_delta_enabled=True,
+            program_trade_enabled=False,
+        )
+        written = _cache_file_count(data_dir, code) - before
+        written_total += written
+        elapsed = time.monotonic() - t0
+        # flush 필수: 이 루프는 몇 시간 돌 수 있고 출력이 파이프·파일로 가면
+        # 블록 버퍼링이라 **끝날 때까지 한 줄도 안 보인다**(실측). 진행이 안 보이면
+        # 멈춘 것과 구별할 수 없어 조사자가 멀쩡한 실행을 죽인다.
+        print(
+            f"[{index}/{len(jobs)}] {code} {timeframe:>4} 거래일{len(dates):3d} "
+            f"미계산{missing:4d} → 신규 {written:4d}파일 {elapsed:6.1f}s  {name}",
+            flush=True,
+        )
 
     total_elapsed = time.monotonic() - started
     print(f"완료: 신규 캐시 {written_total:,}파일 · {total_elapsed / 60:.1f}분")
