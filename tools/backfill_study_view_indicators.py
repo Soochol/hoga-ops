@@ -76,19 +76,28 @@ def _cache_dir(data_dir: Path, code: str) -> Path:
 
 
 def _captured_dates(data_dir: Path, code: str, from_date: str, to_date: str) -> list[str]:
-    """구간 안에서 **캡처가 존재하는** 거래일. 캐시 디렉터리의 파일명에서 읽는다.
+    """구간 안에서 **원본 호가 스냅샷이 있는** 거래일.
 
-    캡처가 없는 날은 계산할 것도 없으므로 진행 표시의 분모에서 빼야 한다 — 안 그러면
-    "0건 계산" 이 결함처럼 보인다.
+    판정 기준은 `snapshots.parquet` 의 존재다 — 이 스크립트가 채우는 4종이 전부 그
+    파일에서 나오고, 없으면 슬라이스 빌더가 빈 결과를 돌려주며 **캐시에 저장하지도
+    않는다**(`build_depth_delta_slice` 의 `path_obj.exists()` 가드).
+
+    ⚠ **캐시 디렉터리로 판정하면 안 된다.** 처음엔 그렇게 했는데 두 가지가 어긋났다:
+    ① `mode=sidecar` 는 `ratio`/`fill` 도 함께 채우는데 그 둘은 `trades.parquet` 에서도
+    나오므로, 스냅샷이 없는 날짜에 캐시 파일이 생긴다 → 그 날짜가 다음 실행에서 "캡처일"
+    로 새로 등장한다. ② 그 날짜의 4종은 영원히 채워지지 않으므로 **반복 실행이 수렴하지
+    않는다**(실측: 재실행에서 `신규 0파일` 인 작업이 계속 남았다).
     """
-    cache_dir = _cache_dir(data_dir, code)
-    if not cache_dir.is_dir():
-        return []
-    dates = {
-        name[:8]
-        for name in (p.name for p in cache_dir.iterdir())
-        if len(name) >= 8 and name[:8].isdigit() and from_date <= name[:8] <= to_date  # noqa: PLR2004 — YYYYMMDD 길이
-    }
+    dates: list[str] = []
+    parquet_root = data_dir / "parquet"
+    if not parquet_root.is_dir():
+        return dates
+    for date_dir in parquet_root.iterdir():
+        name = date_dir.name
+        if not (name.isdigit() and from_date <= name <= to_date):
+            continue
+        if (date_dir / code / SOURCE / "snapshots.parquet").exists():
+            dates.append(name)
     return sorted(dates)
 
 
@@ -143,7 +152,20 @@ def main() -> int:
     args = parser.parse_args()
 
     data_dir = args.data_dir or resolve_data_dir()
-    saves = [s for s in study_views.load_saves(data_dir).saves if s.timeframe in TIMEFRAME_TO_MS]
+    # **캘린더 봉(D/W/M) 저장뷰도 대상이다** — 봉을 명시했을 때만.
+    #
+    # 캘린더 저장뷰 자체는 스크리너 일봉 한 방이라 채울 것이 없다(`--timeframes saved`
+    # 면 `_resolve_timeframes` 가 알아서 걸러 낸다 — `'D'` 는 아래 표에 없다). 그런데
+    # `/study` 는 **창마다 봉이 다르고**, 저장뷰를 열 때 봉이 맞춰지는 것은 포커스 창
+    # 하나뿐이다. 그래서 분봉 창을 하나 벌려 두면 그 창이 **일봉 저장뷰의 구간을 분봉
+    # 해상도로** 요청한다 — 실측된 40~93초가 전부 이 경우였다.
+    #
+    # 그 창이 실제로 보여주는 것은 마지막 300봉뿐인데(`initialVisibleMinuteBarsFor`)
+    # 받는 것은 구간 전체라, 10분봉이면 12배·3분봉이면 41배를 받아서 버린다. 그 구조를
+    # 고치는 것이 정답이지만 결합이 넷이라 미뤘고(창 봉 축·`historicalFromDate` 배선·
+    # 가변 범위 키·뷰포트 정책), 저장뷰가 **열거 가능한 고정 집합**인 동안은 여기서
+    # 미리 채우는 편이 싸다.
+    saves = list(study_views.load_saves(data_dir).saves)
 
     jobs: list[tuple[str, str, str, str, int, list[str], int]] = []
     for save in saves:
@@ -154,15 +176,18 @@ def main() -> int:
                 continue
             missing = _missing_cells(data_dir, save.code, dates, bucket_ms)
             if missing:
+                # 저장 봉을 라벨에 남긴다 — "D 저장뷰를 10m 로 채우는 중" 이 보여야
+                # 이 실행이 무엇을 하는지 로그만으로 판별된다.
                 jobs.append(
-                    (save.name, save.code, timeframe, save.range.from_date, bucket_ms, dates, missing)
+                    (f"[{save.timeframe}] {save.name}", save.code, timeframe,
+                     save.range.from_date, bucket_ms, dates, missing)
                 )
 
     if args.limit is not None:
         jobs = jobs[: args.limit]
     total_missing = sum(j[6] for j in jobs)
     print(f"data_dir={data_dir}")
-    print(f"분봉 저장뷰 {len(saves)}개 · 봉 스펙 '{args.timeframes}'")
+    print(f"저장뷰 {len(saves)}개 · 봉 스펙 '{args.timeframes}'")
     print(f"작업 대상 {len(jobs)}건 · 미계산 (지표×날짜) {total_missing:,}건")
     if args.dry_run:
         for name, code, timeframe, from_date, _bucket, dates, missing in jobs[:15]:
