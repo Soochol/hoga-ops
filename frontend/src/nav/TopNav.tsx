@@ -1,19 +1,33 @@
 import { useLocation } from 'react-router';
+import type { MouseEvent } from 'react';
 import { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './items';
 import TopNavItem from './TopNavItem';
 import { CaptureInlineStatus } from './CaptureInlineStatus';
 import StatusDot from './StatusDot';
 import { LiveSymbolSearch } from '../live/LiveSymbolSearch';
+import { useRightRailStore } from '../state/rightRail';
 
 const NAV_BUTTON_CLASS = [
   'h-full inline-flex items-center whitespace-nowrap transition-colors',
   'text-sm text-fg-dim font-semibold hover:text-fg',
 ].join(' ');
 
+/**
+ * 이 탭에서 실제로 이동이 일어나는 클릭인가.
+ *
+ * ctrl/meta/shift/alt + 클릭은 새 탭·새 창·다운로드라 **여기 있는 페이지는 그대로**
+ * 인데, 그냥 열면 이 탭의 우측 패널만 바뀐다. react-router 의 NavLink 도 정확히 같은
+ * 네 키로 라우팅을 건너뛰므로 조건을 맞춰 둔다(가운데 버튼은 button !== 0).
+ */
+function navigatesInThisTab(e: MouseEvent<HTMLAnchorElement>): boolean {
+  return e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
+}
+
 export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void }) {
   // 종목 검색은 /live 전용이므로 해당 라우트에서만 헤더에 마운트한다. 검색창의
   // ＋버튼·"/" 키 포커스 배선은 liveSearchFocus 이벤트 버스로 위치와 무관하게 동작한다.
   const isLive = useLocation().pathname === '/live';
+  const setActivePanel = useRightRailStore((s) => s.setActivePanel);
   return (
     <nav
       aria-label="주요 메뉴"
@@ -32,7 +46,18 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
 
         <div className="flex h-full min-w-0 items-center gap-xl overflow-hidden">
           {WORKSPACE_NAV_ITEMS.map((item) => (
-            <TopNavItem key={item.to} to={item.to} label={item.label} />
+            <TopNavItem
+              key={item.to}
+              to={item.to}
+              label={item.label}
+              // 라우트로 가면서 그 페이지의 주력 패널을 함께 연다(items.ts 의 `panel`).
+              // **toggle 이 아니라 set** 이다 — 이미 그 페이지에 있는데 nav 를 또 눌렀을 때
+              // 열려 있던 패널이 닫히면 "누르면 열린다" 와 정반대로 동작한다. set 은 덤으로
+              // lastPanel 까지 갱신해 레일 쉐브론의 재열기 대상도 방금 연 패널이 된다.
+              onClick={'panel' in item
+                ? (e) => { if (navigatesInThisTab(e)) setActivePanel(item.panel); }
+                : undefined}
+            />
           ))}
         </div>
 
