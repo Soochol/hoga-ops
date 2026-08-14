@@ -75,6 +75,11 @@ import QuoteLevelLines from './QuoteLevelLines';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
+import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
+
+/** 번들에 wall_surge 가 없을 때 넘길 **안정 참조** — 인라인 `[]` 는 매 렌더 새 배열이라
+ *  memo 를 매번 깨뜨린다. */
+const EMPTY_WALL_SURGE: readonly never[] = [];
 import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import {
   deriveDayAskPeaksIncrementalAsOf,
@@ -2189,6 +2194,14 @@ export function LiveChartRoot({
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} liveTradePrice={liveTradePrice} />
           {isMinuteTimeframe(timeframe) && (
             <QuoteLevelLines paneSeries={paneSeries} bundle={paneRatioBundle ?? cb} />
+          )}
+          {isMinuteTimeframe(timeframe) && (
+            <LiveWallSurgeMarkers
+              paneSeries={paneSeries}
+              events={cb.wall_surge ?? EMPTY_WALL_SURGE}
+              candles={cb.candles}
+              axis={axis}
+            />
           )}
           {isMinuteTimeframe(timeframe) && (
             <LiveAskPeakSegments

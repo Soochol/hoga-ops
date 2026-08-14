@@ -23,6 +23,10 @@ export interface HeatmapFolderProps {
   folder: HeatmapFolderModel;
   entries: HeatmapEntry[];
   quoteByCode: Map<string, LiveQuote>;
+  /** **행 정렬 키 전용** 시세(SORT_THROTTLE_MS 스로틀). 표시값(셀 시세·헤더 틴트)은
+   *  quoteByCode 를 그대로 쓴다 — 숫자는 실시간이고 자리만 정돈되는 게 이 분리의 목적이다.
+   *  미전달이면 quoteByCode 로 폴백(정렬 시세 = 표시 시세) — 단독 렌더/테스트용. */
+  sortQuoteByCode?: Map<string, LiveQuote>;
   sortMode: SortMode;
   onPick: (code: string, name?: string, e?: JumpModifiers) => void;
   /** 행 우클릭 메뉴(삭제·폴더이동) 오프너. 미전달이면 메뉴 비활성. */
@@ -71,9 +75,10 @@ export interface HeatmapFolderProps {
  *
  *  간격: 그룹 간 mb-xs(4.5px, 밀도 우선). 그룹 내부는 헤더-첫행·행간 모두 0으로 붙여
  *  관심종목 패널 리스트와 같은 촘촘한 연속 리스트를 이룬다(구분은 border-b). */
-export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, captureMarkers, laggingCodes, autoOpenAdd, onAutoOpenAdd }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, captureMarkers, laggingCodes, autoOpenAdd, onAutoOpenAdd }: HeatmapFolderProps) {
   const pctOf = makePctOf(quoteByCode);
-  const sorted = sortEntries(entries, sortMode, pctOf);
+  // 정렬 키만 스로틀된 시세에서 읽는다 — 헤더 틴트(avg)와 행 표시값은 라이브 pctOf 유지.
+  const sorted = sortEntries(entries, sortMode, makePctOf(sortQuoteByCode ?? quoteByCode));
   const avg = avgPct(entries, pctOf);
   const folderId = folder.id;
   const canSort = !!dragEnabled && !!sortEnabled;
