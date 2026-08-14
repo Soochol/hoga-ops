@@ -133,6 +133,14 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
         frozenset(get_args(m.SignalAlertSource)),
         "frontend/src/api/signalAlerts.ts",
     ),
+    # 호가벽 급증. BE 는 named alias(필드 인라인 Literal 이면 아래 등록 누락 감사가
+    # 원리적으로 못 본다), FE 는 같은 이름의 union + 라벨 표를 types.ts 에 둔다.
+    # 값이 갈리면 새 kind/outcome 이 라벨 없이 영문 원문으로 화면에 뜬다(#1183 재발).
+    "WallSurgeKind": (frozenset(get_args(m.WallSurgeKind)), "frontend/src/api/types.ts"),
+    "WallSurgeOutcome": (
+        frozenset(get_args(m.WallSurgeOutcome)),
+        "frontend/src/api/types.ts",
+    ),
     # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
     "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
     # **이름이 다른 쌍이라 자동 발견이 못 본다** — 손으로 등록해야 하는 부류다

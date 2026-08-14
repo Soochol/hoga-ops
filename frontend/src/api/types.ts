@@ -753,6 +753,47 @@ export type DepthDeltaPointWire = {
   bid_tick: number;
 };
 
+/** 호가벽 급증 이벤트(백엔드 WallSurgeEvent).
+ *
+ *  `kind` 는 baseline 을 어디서 구했는지이자 곧 **시점 신뢰도**다 — `pierce`(반대측
+ *  자리였다 = 0 확정) · `grow`(창 안 관측 대비)는 초 단위로 정확하고, `reappear`(창 밖,
+ *  당일 마지막 관측 대비)는 크기만 정확하다. `blind_ms` 가 그 불확실성의 폭이며
+ *  reappear 일 때만 채워진다.
+ *
+ *  `outcome` 이 null 이면 **결말 미정** — 데이터 끝에서 추적 창이 덜 찬 사건이다.
+ *  "아직 모른다" 와 "버텼다(held)" 는 다른 사실이라 렌더가 미정색으로 가른다. */
+export type WallSurgeKind = 'pierce' | 'grow' | 'reappear';
+export type WallSurgeOutcome = 'consumed' | 'broken' | 'pulled' | 'held';
+
+export type WallSurgeEventWire = {
+  t_ms: number;
+  side: 'ask' | 'bid';
+  price: number;
+  qty: number;
+  jump: number;
+  total: number;
+  kind: WallSurgeKind;
+  blind_ms?: number | null;
+  outcome?: WallSurgeOutcome | null;
+  filled_qty: number;
+  duration_ms?: number | null;
+};
+
+/** 화면 라벨. wire 는 영문이고 한글은 여기서만 붙인다 — 백엔드가 값을 늘리면
+ *  계약 테스트 2층이 이 union 과 대조해 실패시킨다(#1183 의 재발 방지). */
+export const WALL_SURGE_KIND_LABEL: Record<WallSurgeKind, string> = {
+  pierce: '스프레드 관통',
+  grow: '레벨 증량',
+  reappear: '재등장',
+};
+
+export const WALL_SURGE_OUTCOME_LABEL: Record<WallSurgeOutcome, string> = {
+  consumed: '체결소화',
+  broken: '가격돌파',
+  pulled: '취소',
+  held: '잔존',
+};
+
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -792,5 +833,6 @@ export type RangeBundle = {
    *  매도/매수 [price, qty] 최대 10단계. 멀티데이 병합은 t_ms 단위 latest-wins. */
   depth_heatmap?: DepthHeatmapPointWire[];
   depth_delta?: DepthDeltaPointWire[];
+  wall_surge?: WallSurgeEventWire[];
   broker_late_entries: BrokerLateEntryEvent[];
 };
