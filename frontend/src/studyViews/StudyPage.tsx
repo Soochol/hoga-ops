@@ -774,6 +774,11 @@ export function StudyPage() {
                   targetLabel: headerLabel,
                   loading: isStudyPageLoading,
                   chart: chartPropsByWindow[windowId] ?? null,
+                  // 사이드카 상태는 **창별**이다(#801: 창마다 번들이 따로다). 페이지
+                  // 플래그를 쓰면 포커스 창 것이 옆 창 칩으로 새어 "이 창은 다 왔는데
+                  // 불러오는 중" 이 뜬다.
+                  sidecarLoading: bundlesByWindow[windowId]?.isSidecarLoading ?? false,
+                  sidecarFailed: bundlesByWindow[windowId]?.sidecarError != null,
                 })}
               />
             </div>
