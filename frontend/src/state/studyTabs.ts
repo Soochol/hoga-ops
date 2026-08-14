@@ -94,7 +94,12 @@ export function studyTabFromSave(save: SaveTabFields): StudyTab {
  * `bucket_ms` 가 있어 **처음 보는 봉은 그 봉을 통째로 재계산**한다(실측: 5개월
  * 저장뷰 하나에 1,472 파일 = 184 거래일 × 8종, `mode=sidecar` 단독 141초).
  *
- * 그래서 캘린더 봉 저장뷰는 저장된 봉 그대로 연다. 분봉 저장뷰의 동작은 불변이다.
+ * 그래서 캘린더 봉 저장뷰는 저장된 봉 그대로 연다.
+ *
+ * ⚠ **분봉 저장뷰도 이제 기본값이 "저장 봉 그대로" 다**(2026-08-14). 다만 그 판단은
+ * 여기가 아니라 호출부에 있다 — `studyViewOpenPrefs` 가 `'saved'` 면 `StudyViewsDrawer`
+ * 가 override 자체를 안 넘긴다. 이 함수는 "override 가 왔으면 분봉에만 적용한다" 는
+ * 규칙만 지킨다. 근거(저장 봉은 캐시가 구조적으로 warm)는 그 스토어 주석에 있다.
  */
 function saveWithOpenOptions(save: SaveTabFields, options?: OpenSaveOptions): SaveTabFields {
   const override = options?.timeframeOverride;

@@ -84,6 +84,8 @@ function renderWindow(overrides: Partial<Parameters<typeof StudyChartWindow>[0]>
       targetLabel="현대로템"
       loading={false}
       chart={null}
+      sidecarLoading={false}
+      sidecarFailed={false}
       {...overrides}
     />,
   );
@@ -173,5 +175,45 @@ describe('전역 v2 가 지표 SSOT 다', () => {
       useLivePageStore.setState({ indicatorsByTimeframe: { minute: { ratioEnabled: true } } });
     });
     expect(probe.indicators?.ratioEnabled).toBe(true);
+  });
+
+  // 게이트에서 사이드카를 뺀 뒤(#1304) 지표는 캔들보다 수십 초 늦게 온다. 표시가
+  // 없으면 "껐나" 와 "오는 중" 이 구별되지 않고 실패는 무증상이다.
+  describe('사이드카 상태 칩', () => {
+    // 차트가 떠 있어야 칩이 나온다 — 아래 케이스가 전부 이 prop 에 의존한다.
+    const chart = {} as NonNullable<Parameters<typeof StudyChartWindow>[0]['chart']>;
+
+    it('평상시에는 없다 — 다 온 화면에 잔여 표시가 남으면 안 된다', () => {
+      renderWindow({ chart });
+
+      expect(screen.queryByTestId('study-sidecar-status')).toBeNull();
+    });
+
+    it('로딩 중이면 진행을 알린다', () => {
+      renderWindow({ chart, sidecarLoading: true });
+
+      expect(screen.getByTestId('study-sidecar-status').textContent).toContain('불러오는 중');
+    });
+
+    it('실패는 조용히 지나가지 않는다', () => {
+      renderWindow({ chart, sidecarFailed: true });
+
+      expect(screen.getByTestId('study-sidecar-status').textContent).toContain('실패');
+    });
+
+    it('실패가 로딩을 이긴다 — 끝난 상태를 진행 중으로 말하지 않는다', () => {
+      renderWindow({ chart, sidecarLoading: true, sidecarFailed: true });
+
+      expect(screen.getByTestId('study-sidecar-status').textContent).toContain('실패');
+    });
+
+    // 페이지가 아직 로딩 자리(“학습뷰 불러오는 중...”)를 그리는 동안에는 칩을 겹치지
+    // 않는다 — 같은 화면에 "불러오는 중" 이 두 번 뜬다.
+    it('페이지 로딩 자리에는 겹쳐 뜨지 않는다', () => {
+      renderWindow({ chart, loading: true, sidecarLoading: true });
+
+      expect(screen.getByTestId('study-page-loading')).toBeTruthy();
+      expect(screen.queryByTestId('study-sidecar-status')).toBeNull();
+    });
   });
 });
