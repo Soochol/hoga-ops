@@ -8,10 +8,10 @@ import pytest
 
 def test_save_document_prunes_orphan_entries(tmp_path):
     """어느 폴더 member_codes 에도 없는 entry 는 write 경로(save)가 자동 제거한다."""
-    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder, code_items
     from hoga.api.watchlist import load_document, save_document
     doc = WatchlistDocument(
-        folders=[WatchlistFolder(id="f_0000000a", name="A", order=0, member_codes=["000660"])],
+        folders=[WatchlistFolder(id="f_0000000a", name="A", order=0, items=code_items(["000660"]))],
         entries=[
             WatchlistEntry(code="000660", name="SK", registered_at_kst_date="20260101", last_success_date=None),
             WatchlistEntry(code="005930", name="삼성", registered_at_kst_date="20260101", last_success_date=None),  # orphan  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
@@ -44,7 +44,7 @@ async def test_invariant_holds_after_remove_member_last_folder(tmp_path):
     await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260101", folder_id=f.id)
     await remove_member(tmp_path, code="005930", folder_id=f.id)
     doc = load_document(tmp_path)
-    members = {c for fo in doc.folders for c in fo.member_codes}
+    members = {c for fo in doc.folders for c in fo.code_members()}
     assert {e.code for e in doc.entries} == members == set()
 
 
@@ -65,5 +65,5 @@ async def test_invariant_holds_after_mutation(tmp_path, op):
     else:
         await wl.remove_entries(tmp_path, codes=["005930", "000660"])
     doc = wl.load_document(tmp_path)
-    members = {c for fo in doc.folders for c in fo.member_codes}
+    members = {c for fo in doc.folders for c in fo.code_members()}
     assert {e.code for e in doc.entries} == members

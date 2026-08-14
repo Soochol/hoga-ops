@@ -24,7 +24,7 @@ def test_load_returns_empty_when_file_missing(tmp_path: Path):
 
 
 def test_save_then_load_round_trip(tmp_path: Path):
-    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder, code_items
     from hoga.api.watchlist import load_watchlist, save_document
     # v3 불변식(ADR-0070): entry 는 어떤 폴더 member 여야 save 라운드트립에서 살아남는다
     # (어느 폴더에도 없으면 save_document 가 orphan 으로 prune — 단일 소유 강제).
@@ -34,7 +34,7 @@ def test_save_then_load_round_trip(tmp_path: Path):
         registered_at_kst_date="20260526",
         last_success_date=None,
     )
-    folder = WatchlistFolder(id="f_0000000a", name="기본", order=0, member_codes=["003490"])
+    folder = WatchlistFolder(id="f_0000000a", name="기본", order=0, items=code_items(["003490"]))
     save_document(tmp_path, WatchlistDocument(folders=[folder], entries=[entry]))
     wl = load_watchlist(tmp_path)
     assert len(wl) == 1

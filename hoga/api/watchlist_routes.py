@@ -26,18 +26,23 @@ from hoga.api.models import (
     ManualCatchupAllResponse,
     ManualCatchupError,
     MemberAddRequest,
+    MemoCreateRequest,
+    MemoUpdateRequest,
     WatchlistDocument,
     WatchlistEntry,
     WatchlistFolderView,
+    WatchlistMemoView,
     WatchlistResponse,
 )
 from hoga.api.params import CODE_PATTERN
 from hoga.api.scheduler import catchup_one_entry, next_run_at_ms
 from hoga.api.watchlist import (
     FolderNotFoundError,
+    MemoNotFoundError,
     NotInWatchlistError,
     WatchlistSetMismatchError,
     add_member,
+    add_memo,
     create_folder,
     delete_folder,
     load_document,
@@ -45,10 +50,12 @@ from hoga.api.watchlist import (
     remove_entries,
     remove_entry,
     remove_member,
+    remove_memo,
     rename_folder,
     reorder_entries,
     reorder_folders,
     set_folder_capture_enabled,
+    update_memo,
 )
 from hoga.api.watchlist_projection import project_watchlist_response
 from hoga.collector.orchestrator import now_kst
@@ -271,6 +278,39 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 �
             await refresh_live_stream(data_dir=data_dir)
         except Exception:  # best-effort, mutation already succeeded
             log.exception("watchlist.reorder: refresh_live_stream failed")
+
+    # --- 메모("빈칸") 아이템 (v4) ---------------------------------------
+    # 셋 다 refresh_live_stream 을 부르지 않는다 — 메모는 Code 가 아니라 Live Set
+    # 산출(capture_ordered_codes)에 원리적으로 들어가지 않으므로, 부르면 아무것도
+    # 바뀌지 않는 WS 재동기화만 낭비한다.
+
+    @router.post("/folders/{folder_id}/memos", status_code=201,
+                 response_model=WatchlistMemoView)
+    async def add_folder_memo(folder_id: str, req: MemoCreateRequest) -> WatchlistMemoView:
+        try:
+            memo, index = await add_memo(data_dir, folder_id=folder_id,
+                                         text=req.text, at=req.at)
+        except FolderNotFoundError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
+        return WatchlistMemoView(id=memo.id, folder_id=folder_id, order=index, text=memo.text)
+
+    @router.patch("/memos/{memo_id}", response_model=WatchlistMemoView)
+    async def update_watchlist_memo(memo_id: str, req: MemoUpdateRequest) -> WatchlistMemoView:
+        try:
+            memo, folder_id, index = await update_memo(data_dir, memo_id=memo_id, text=req.text)
+        except MemoNotFoundError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "memo_not_found", "message": f"Memo {memo_id} not found."}) from e
+        return WatchlistMemoView(id=memo.id, folder_id=folder_id, order=index, text=memo.text)
+
+    @router.delete("/memos/{memo_id}", status_code=204)
+    async def delete_watchlist_memo(memo_id: str) -> None:
+        try:
+            await remove_memo(data_dir, memo_id=memo_id)
+        except MemoNotFoundError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "memo_not_found", "message": f"Memo {memo_id} not found."}) from e
 
     @router.post("/remove", status_code=204)
     async def bulk_remove_watchlist_entries(req: EntriesRemoveRequest) -> None:

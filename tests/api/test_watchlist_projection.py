@@ -1,7 +1,7 @@
 """Watchlist display projection rules live in one domain module."""
 from __future__ import annotations
 
-from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder, code_items
 from hoga.api.watchlist_projection import (
     capture_ordered_codes,
     display_ordered_codes,
@@ -18,13 +18,13 @@ def _doc():
                 id="f_0000000b",
                 name="Second",
                 order=1,
-                member_codes=["000660", "035720"],
+                items=code_items(["000660", "035720"]),
             ),
             WatchlistFolder(
                 id="f_0000000a",
                 name="First",
                 order=0,
-                member_codes=["005930", "000660", "999999"],
+                items=code_items(["005930", "000660", "999999"]),
             ),
         ],
         entries=[
@@ -81,14 +81,14 @@ def test_project_entries_marks_capture_candidate_by_any_enabled_membership():
                 id="f_0000000a",
                 name="Disabled",
                 order=0,
-                member_codes=["005930", "000660"],
+                items=code_items(["005930", "000660"]),
                 capture_enabled=False,
             ),
             WatchlistFolder(
                 id="f_0000000b",
                 name="Enabled",
                 order=1,
-                member_codes=["005930"],
+                items=code_items(["005930"]),
                 capture_enabled=True,
             ),
         ],
@@ -123,21 +123,21 @@ def test_capture_ordered_codes_uses_enabled_folders_only() -> None:
                 id="f_0000000a",
                 name="Enabled",
                 order=0,
-                member_codes=["005930", "000660"],
+                items=code_items(["005930", "000660"]),
                 capture_enabled=True,
             ),
             WatchlistFolder(
                 id="f_0000000b",
                 name="Disabled",
                 order=1,
-                member_codes=["035720"],
+                items=code_items(["035720"]),
                 capture_enabled=False,
             ),
             WatchlistFolder(
                 id="f_0000000c",
                 name="AlsoEnabled",
                 order=2,
-                member_codes=["000660", "035420"],
+                items=code_items(["000660", "035420"]),
                 capture_enabled=True,
             ),
         ],

@@ -1,14 +1,14 @@
-"""Watchlist v3: 폴더가 member_codes 소유, entry는 순수 백필 레코드.
+"""Watchlist v4: 폴더가 items(코드+메모) 소유, entry는 순수 백필 레코드.
 와이어(WatchlistResponse)는 펼친 view(folder_id+order) — Entity≠Wire(ADR-0004/0069)."""
 from __future__ import annotations
 
 
-def test_folder_has_member_codes_default_empty():
-    from hoga.api.models import WatchlistFolder
+def test_folder_has_items_default_empty():
+    from hoga.api.models import WatchlistFolder, code_items
     f = WatchlistFolder(id="f_0000000a", name="스윙", order=0)
-    assert f.member_codes == []
-    f2 = WatchlistFolder(id="f_0000000b", name="장기", order=1, member_codes=["005930", "000660"])
-    assert f2.member_codes == ["005930", "000660"]
+    assert f.code_members() == []
+    f2 = WatchlistFolder(id="f_0000000b", name="장기", order=1, items=code_items(["005930", "000660"]))
+    assert f2.code_members() == ["005930", "000660"]
 
 
 def test_entry_has_no_folder_fields():
@@ -19,9 +19,9 @@ def test_entry_has_no_folder_fields():
     assert not hasattr(e, "order")
 
 
-def test_document_v3_default_version():
+def test_document_default_version():
     from hoga.api.models import WatchlistDocument
-    assert WatchlistDocument().schema_version == 3
+    assert WatchlistDocument().schema_version == 4
 
 
 def test_wire_view_models_carry_folder_and_order():

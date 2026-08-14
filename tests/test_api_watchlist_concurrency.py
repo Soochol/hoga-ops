@@ -40,9 +40,9 @@ def test_folders_survive_multi_writer_document_roundtrip(tmp_path: Path):
     assert doc.folders[0].id == fid            # folder survived all writers
     assert {e.code for e in doc.entries} == {"005930", "000660", "035720"}
     # folder still owns all three members (round-trip preserved member_codes)
-    assert set(doc.folders[0].member_codes) == {"005930", "000660", "035720"}
+    assert set(doc.folders[0].code_members()) == {"005930", "000660", "035720"}
     marks = {e.code: e.last_success_date for e in doc.entries}
     assert marks["005930"] == "20260102"
     # invariant: every entry code is a member of some folder (ADR-0070)
-    members = {c for f in doc.folders for c in f.member_codes}
+    members = {c for f in doc.folders for c in f.code_members()}
     assert {e.code for e in doc.entries} == members

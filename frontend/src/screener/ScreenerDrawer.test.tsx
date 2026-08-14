@@ -145,7 +145,7 @@ describe('ScreenerDrawer', () => {
     vi.restoreAllMocks();
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ folders: [], entries: [], next_run_at_ms: 0 });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ folders: [], entries: [], memos: [], next_run_at_ms: 0 });
   });
 
   it('lists saved screeners in the dropdown', async () => {
@@ -659,6 +659,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
       folders: [{ id: 'f_a', name: '스윙', order: 0 }],
       entries: [{ code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 }],
+      memos: [],
       next_run_at_ms: 0,
     });
     useScreenerPanelStore.setState({

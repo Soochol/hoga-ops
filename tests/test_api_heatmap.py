@@ -525,10 +525,10 @@ def test_member_add_does_not_touch_watchlist(tmp_path: Path):
 def _seed_watchlist(tmp_path: Path) -> None:
     """Write a watchlist.json directly (v3: folder owns member_codes)."""
     from hoga.api import watchlist
-    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder, code_items
     doc = WatchlistDocument(
         folders=[WatchlistFolder(id="f_0000000a", name="반도체", order=0,
-                                 member_codes=["005930", "035720"])],
+                                 items=code_items(["005930", "035720"]))],
         entries=[
             WatchlistEntry(code="005930", name="삼성전자",
                            registered_at_kst_date="20260601", last_success_date="20260610"),

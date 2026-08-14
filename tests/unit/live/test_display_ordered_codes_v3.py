@@ -1,11 +1,13 @@
-"""다중 소속 평탄화(v3): 폴더 order순 → member_codes순, 첫 등장으로 dedup."""
+"""다중 소속 평탄화(v4): 폴더 order순 → items 의 code 항목순, 첫 등장으로 dedup."""
 from __future__ import annotations
 
 
 def _doc(folders, entries_codes):
-    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    """(id, name, order, codes) 튜플 목록 → 문서. `codes` 는 code item 으로 승격된다."""
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder, code_items
     return WatchlistDocument(
-        folders=[WatchlistFolder(**f) for f in folders],
+        folders=[WatchlistFolder(id=fid, name=name, order=order, items=code_items(codes))
+                 for fid, name, order, codes in folders],
         entries=[WatchlistEntry(code=c, name=c, registered_at_kst_date="20260101",
                                 last_success_date=None) for c in entries_codes],
     )
@@ -15,8 +17,8 @@ def test_flatten_dedup_topmost_folder_wins():
     from hoga.api.watchlist_projection import display_ordered_codes
     doc = _doc(
         folders=[
-            {"id": "f_0000000a", "name": "A", "order": 0, "member_codes": ["005930", "000660"]},
-            {"id": "f_0000000b", "name": "B", "order": 1, "member_codes": ["000660", "035720"]},
+            ("f_0000000a", "A", 0, ["005930", "000660"]),
+            ("f_0000000b", "B", 1, ["000660", "035720"]),
         ],
         entries_codes=["005930", "000660", "035720"],
     )
@@ -28,8 +30,8 @@ def test_folders_sorted_by_order():
     from hoga.api.watchlist_projection import display_ordered_codes
     doc = _doc(
         folders=[
-            {"id": "f_0000000b", "name": "B", "order": 1, "member_codes": ["035720"]},
-            {"id": "f_0000000a", "name": "A", "order": 0, "member_codes": ["005930"]},
+            ("f_0000000b", "B", 1, ["035720"]),
+            ("f_0000000a", "A", 0, ["005930"]),
         ],
         entries_codes=["005930", "035720"],
     )
@@ -38,13 +40,38 @@ def test_folders_sorted_by_order():
 
 def test_empty_folders_yield_empty():
     from hoga.api.watchlist_projection import display_ordered_codes
-    doc = _doc(folders=[{"id": "f_0000000a", "name": "A", "order": 0, "member_codes": []}],
-               entries_codes=[])
+    doc = _doc(folders=[("f_0000000a", "A", 0, [])], entries_codes=[])
     assert display_ordered_codes(doc) == []
 
 
+def test_memo_items_never_reach_display_order():
+    """메모는 Code 가 아니므로 Live Set 산출(=KIS WS 구독 경계)에 등장하면 안 된다.
+
+    `display_ordered_codes` 가 items 를 그대로 흘리면 메모 id 가 코드로 둔갑해
+    구독 요청에 섞인다 — 이 테스트가 그 경로를 막는다.
+    """
+    from hoga.api.models import (
+        WatchlistCodeItem,
+        WatchlistDocument,
+        WatchlistEntry,
+        WatchlistFolder,
+        WatchlistMemoItem,
+    )
+    from hoga.api.watchlist_projection import display_ordered_codes
+    doc = WatchlistDocument(
+        folders=[WatchlistFolder(id="f_0000000a", name="A", order=0, items=[
+            WatchlistCodeItem(code="005930"),
+            WatchlistMemoItem(id="m_0000000a", text="실적 발표 대기"),
+            WatchlistCodeItem(code="000660"),
+        ])],
+        entries=[WatchlistEntry(code=c, name=c, registered_at_kst_date="20260101")
+                 for c in ("005930", "000660")],
+    )
+    assert display_ordered_codes(doc) == ["005930", "000660"]
+
+
 def test_compute_capture_candidates_uses_enabled_folders(tmp_path, monkeypatch) -> None:
-    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder, code_items
     from hoga.api.watchlist import save_document
     from hoga.live.coverage import _compute_capture_candidates
 
@@ -54,14 +81,14 @@ def test_compute_capture_candidates_uses_enabled_folders(tmp_path, monkeypatch) 
                 id="f_0000000a",
                 name="Enabled",
                 order=0,
-                member_codes=["005930", "000660"],
+                items=code_items(["005930", "000660"]),
                 capture_enabled=True,
             ),
             WatchlistFolder(
                 id="f_0000000b",
                 name="Disabled",
                 order=1,
-                member_codes=["035720"],
+                items=code_items(["035720"]),
                 capture_enabled=False,
             ),
         ],

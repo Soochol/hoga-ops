@@ -15,6 +15,7 @@ from hoga.api.models import (
     WatchlistDocument,
     WatchlistEntry,
     WatchlistFolder,
+    code_items,
 )
 from hoga.api.watchlist import save_document
 from hoga.live.settings import LiveSettings, save_live_settings
@@ -52,7 +53,7 @@ def _seed_watchlist(tmp_path):
                     id="f_0000000a",
                     name="스윙",
                     order=0,
-                    member_codes=["005930", "000660", "035420"],
+                    items=code_items(["005930", "000660", "035420"]),
                     capture_enabled=True,
                 ),
             ],

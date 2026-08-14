@@ -103,6 +103,7 @@ def test_scope_codes_union_of_watchlist_and_heatmap(tmp_path):
         WatchlistDocument,
         WatchlistEntry,
         WatchlistFolder,
+        code_items,
     )
     from hoga.api.watchlist import save_document as save_watchlist
     save_heatmap(tmp_path, HeatmapDocument(
@@ -110,7 +111,7 @@ def test_scope_codes_union_of_watchlist_and_heatmap(tmp_path):
         entries=[HeatmapEntry(code="000111", name="a", folder_id="f_0000000a")]))
     save_watchlist(tmp_path, WatchlistDocument(
         folders=[WatchlistFolder(id="f_0000000b", name="B", order=0,
-                                 member_codes=["000222"])],
+                                 items=code_items(["000222"]))],
         entries=[WatchlistEntry(code="000222", name="b",
                                 registered_at_kst_date="20260716")]))
 
