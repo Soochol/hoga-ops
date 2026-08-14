@@ -68,6 +68,10 @@ TIMEFRAME_TO_MS = {
     "240m": 14_400_000,
 }
 
+# 이 백필은 hogaplay 한 소스로 고정이고 hogaplay 는 **KRX 전용 source** 다
+# (`source_covers_venue`) — 여기서 KRX 는 폴백이 아니라 **사실**이다(#1133).
+# 그래도 `get_meta` 에는 명시적으로 넘긴다: "축이 하나뿐" 인 것과 "기본값에 기댄다" 는
+# 다르고, 대상 소스가 늘면 갈라져야 할 자리가 이 상수라는 것을 호출부가 말하게 둔다.
 SOURCE = "hogaplay"
 VENUE = "KRX"
 

@@ -295,6 +295,34 @@ describe('BookPanel', () => {
     expect(screen.getByTestId('book-total-masked')).toBeInTheDocument();
   });
 
+  it('시간외 총잔량이 오면 그 값으로 갈아끼우고 "시간외" 라벨을 단다', () => {
+    // snap() 의 정규장 총잔량(매도 1,045 / 매수 2,045)과 다른 값을 준다 —
+    // 라벨만 뜨고 숫자는 그대로면 이 단언이 잡는다.
+    renderPanel({ afterHoursTotals: { ask: 7_777, bid: 8_888 } });
+
+    expect(screen.getByTestId('book-total-after-hours')).toHaveTextContent('시간외');
+    expect(screen.getByLabelText('시간외 매도총잔량 7,777')).toBeInTheDocument();
+    expect(screen.getByLabelText('시간외 매수총잔량 8,888')).toBeInTheDocument();
+  });
+
+  it('시간외 값이 없으면 라벨 없이 정규장 총잔량 그대로다', () => {
+    // 라벨이 상시로 새면 정규장 화면에 없던 글자가 생긴다 — 조건부임을 고정한다.
+    renderPanel();
+
+    expect(screen.queryByTestId('book-total-after-hours')).toBeNull();
+    expect(screen.getByLabelText('매도총잔량 1,045')).toBeInTheDocument();
+    expect(screen.getByLabelText('매수총잔량 2,045')).toBeInTheDocument();
+  });
+
+  it('시간외 총잔량은 사다리를 건드리지 않는다 — 위 10단은 정규장 마지막 값', () => {
+    // 0E 에는 단계별 호가가 없다. 사다리까지 갈아끼우면 호가창이 비므로,
+    // 스트립만 바뀌고 가격 행은 그대로여야 한다(백엔드 SnapshotKind.AFTER_HOURS 주석).
+    renderPanel({ afterHoursTotals: { ask: 7_777, bid: 8_888 } });
+
+    expect(screen.getByText('256,000')).toBeInTheDocument(); // 매도 최말단
+    expect(screen.getByText('246,500')).toBeInTheDocument(); // 매수 최말단
+  });
+
   it('빈 상태를 구분해 그린다', () => {
     const { rerender } = render(
       <BookPanel

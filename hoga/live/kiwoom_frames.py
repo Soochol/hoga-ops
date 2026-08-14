@@ -105,7 +105,9 @@ def _ratio(values: dict[str, str], fid: str) -> float | None:
 def _reject_if_not_today(tick: WsTick, *, now_ms: int) -> WsTick | None:
     """date+HHMMSS 합성 스탬프가 도착 시각보다 미래면 버린다(자정 넘김 방어).
 
-    0F/0w 는 now_ms 를 그대로 쓰므로 이 검사가 필요 없다 — 대상은 0B/0D 뿐이다.
+    0F/0w 는 now_ms 를 그대로 쓰므로 이 검사가 필요 없다 — 대상은 **시각 FID 를
+    합성해 쓰는 0B/0D/0E** 다. 0E 는 FID 21(호가시간)이 0D 와 같은 형태라 같은
+    함정을 그대로 물려받는다.
     """
     if tick.t_ms > now_ms + _MAX_FUTURE_SKEW_MS:
         _log.warning(
@@ -138,6 +140,11 @@ def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | N
             return _reject_if_not_today(
                 _parse_trade(code, values, date=date, venue=venue), now_ms=now_ms,
             )
+        if typ == K.TYPE_AFTER_HOURS:
+            # 0B/0D 와 달리 파서가 None 을 낼 수 있다(잔량 0 게이트) — 그 경우
+            # _reject_if_not_today 에 넘기면 tick.t_ms 에서 터진다.
+            ah = _parse_after_hours(code, values, date=date, venue=venue)
+            return _reject_if_not_today(ah, now_ms=now_ms) if ah is not None else None
         if typ == K.TYPE_MEMBER:
             return _parse_member(code, values, now_ms=now_ms, venue=venue)
         if typ == K.TYPE_PROGRAM:
@@ -224,6 +231,47 @@ def _parse_orderbook(
         payload["expected_price"] = exp_price
         payload["expected_qty"] = exp_qty
     return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload, venue=venue)
+
+
+def _parse_after_hours(
+    code: str, values: dict[str, str], *, date: str, venue: str
+) -> WsTick | None:
+    """0E 주식시간외호가 → SnapshotKind.AFTER_HOURS. 양쪽 잔량이 다 0이면 None.
+
+    **총잔량 두 개가 전부다** — 0E 에는 단계별 호가 FID 가 없다(근거와 실측은
+    `kiwoom_fields` 의 0E 절). 그래서 payload 도 0D 의 부분집합처럼 생겼지만
+    `asks`/`bids` 키가 **없다**. 소비자는 이 kind 로 사다리를 그리려 하면 안 된다.
+    키 이름은 0D 와 맞춰 뒀다(`total_ask_qty`/`total_bid_qty`) — 같은 값을 두 경로가
+    다른 이름으로 부르면 프론트 어댑터가 갈린다.
+
+    **양쪽 0 을 버리는 이유**는 예상체결(0D FID 23/24)의 전례와 같다. 그쪽은 NXT 가
+    접속매매 중에도 값을 흘려 평시에 노출된 적이 있고(2026-07-22 실측), 방어로
+    시각 창 AND 값>0 을 걸었다. 0E 가 정규장 중에도 흐르는지는 **아직 모른다** —
+    발견 시점(2026-08-14)이 이미 15:30 이후라 정규장 관측 창이 없었다. 여기서는
+    값 게이트만 걸고 시계 창은 두지 않는다: 시간외 잔량이 정규장에 0 이 아닌 값으로
+    올 이유가 없으므로 이 게이트로 충분할 가능성이 높고, 창을 잘못 좁히면 진짜
+    신호가 사라지는 쪽이 더 비싸다.
+    ⚠ **다음 정규장에서 확인할 것** — 09:00–15:30 에 0E 틱이 0 아닌 잔량으로 오면
+    `session_gate.is_auction_window` 같은 시계 창을 AND 로 추가해야 한다.
+
+    venue 는 구독 코드 접미에서 온 값을 그대로 태그한다(`split_venue`). KRX-only
+    종목은 접미 없는 코드로만 구독하니 항상 "KRX" 지만, `_NX`/`_AL` 구독 코드에 0E 가
+    실제로 오는지는 **미실측**이다 — 0D 의 `_AL` 주석과 같은 규율로 적어 둔다.
+    """
+    t_ms = _hhmmss_to_unix_ms(date, values[K.AH_TIME])
+    total_ask = _qty(values, K.AH_TOTAL_ASK_QTY)
+    total_bid = _qty(values, K.AH_TOTAL_BID_QTY)
+    if total_ask == 0 and total_bid == 0:
+        return None
+    payload = {
+        "code": code,
+        "t_ms": t_ms,
+        "total_ask_qty": total_ask,
+        "total_bid_qty": total_bid,
+    }
+    return WsTick(
+        code=code, t_ms=t_ms, kind=SnapshotKind.AFTER_HOURS, payload=payload, venue=venue,
+    )
 
 
 def _parse_trade(

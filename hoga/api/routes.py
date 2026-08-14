@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import json
 import logging
 import os
 import re
@@ -21,6 +22,7 @@ from starlette.requests import ClientDisconnect
 
 from hoga import perf_debug
 from hoga.api.bundle import build_range_bundle
+from hoga.api.invariants import indicator_session_bounds
 from hoga.api.models import (
     BrokerSeriesResponse,
     CandlesResponse,
@@ -412,6 +414,16 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
 
     @router.get("/meta", response_model=Meta)
     def meta(code: Code, date: StockDate) -> Meta:
+        # venue 를 안 넘기는 것이 맞다 — 이 표면엔 venue 축이 **없다**(#1133).
+        # 근거가 두 겹이다: ① 라우트에 venue 파라미터가 없고, 응답 `Meta` 도 venue 별로
+        # 갈리는 필드를 싣지 않는다(`regular_session_close_ms` 는 세 venue 가 같은 값이고
+        # `indicator_session_*`(KRX 09:00~15:30 vs NXT/UN 08:00~20:00)는 애초에 노출하지
+        # 않는다). ② **source 도 축이 아니다** — 이 라우트는 `get_meta` 의 기본
+        # source(`hogaplay`)로 고정이고, hogaplay 는 **KRX 전용 source** 다
+        # (`source_covers_venue`). 그래서 KRX 는 폴백이 아니라 **사실**이다.
+        # ⚠ 여기서 `venue="KRX"` 를 명시하지 말 것 — 명시는 "선택이 있다" 는 뜻이라
+        # 축 없는 표면에 축이 있는 것처럼 읽힌다. 이 라우트가 venue 선택을 받게
+        # 되는 날, 그때 명시가 **필수**가 된다.
         try:
             m = engine.get_meta(date, code)
         except StockDateNotFound as e:
@@ -436,6 +448,16 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                 status_code=400,
                 detail=f"gap analysis only supported for hogaplay, got {source!r}",
             )
+        # `compute_gap_ranges` 에 venue 를 안 넘겨 기본값 KRX 를 쓰는 것이 맞다 —
+        # 이 표면의 venue 축은 **두 단계로 이미 닫혀 있다**(#1133): ① 바로 위 가드가
+        # `source != "hogaplay"` 를 400 으로 거부하고, ② hogaplay 는 KRX 전용
+        # source 다(`source_covers_venue`). 그래서 KRX 는 폴백이 아니라 **사실**이다.
+        #
+        # 이 경로가 venue 별로 갈리는 필드를 **실제로 읽는다**는 점은 짚어 둔다 —
+        # legacy meta 재계산 분기가 `indicator_session_bounds()` 를 탄다(queries.py).
+        # 그래도 값이 갈리지 않는 이유는 우연이 아니다: hogaplay meta 에는
+        # `indicator_session_*` 키가 **없어서** 그 헬퍼가 `regular_session_*` 로
+        # 폴백한다(하위호환 계약). venue 를 넘겨도 글자 그대로 같은 값이 나온다.
         try:
             ranges_hoga, sparse, origin = engine.compute_gap_ranges(date, code, source)
         except StockDateNotFound as e:
@@ -492,11 +514,24 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
             # (query_bucketed_ratio, ADR-0062). Without the structural exclusion a
             # straddle bucket (e.g. 3m [15:18,15:21)) would show the 15:20+ auction
             # book here while the indicator shows the last pre-auction book.
+            # 마감 시각은 **venue 별 지표 구간**에서 온다. `regular_session_close_ms`
+            # 는 venue 와 무관하게 KRX 정규장(15:30)이고(promote 가 의도적으로 그렇게
+            # 싣는다), 그걸 쓰면 08:00–20:00 을 도는 NXT·UN 의 시간외 book 이 통째로
+            # 잘린다 — 캔들은 있는데 10호가 창만 비는 증상이었다(실측 2026-08-14,
+            # 000720 16:00). 지표·일별 최대벽 경로는 이미 이 헬퍼로 옮겨 왔고
+            # (`depth_daily`·`compute_gap_ranges`), 이 라우트만 남아 있었다.
+            #
+            # meta 는 **실제로 읽는 그 디렉터리**의 것을 본다 — venue 해석은
+            # `_resolved_parquet_dir` 가 이미 했으므로 여기서 다시 하면 두 벌이 갈린다
+            # (`engine.get_meta` 는 venue 기본값이 KRX 라 UN 강등을 못 따라간다).
             try:
-                session_close_ms = engine.get_meta(date, code, source).get(
-                    "regular_session_close_ms"
+                _, session_close_ms = indicator_session_bounds(
+                    json.loads((sd_dir / "meta.json").read_text(encoding="utf-8"))
                 )
-            except (FileNotFoundError, StockDateNotFound):
+            except (OSError, json.JSONDecodeError, KeyError):
+                # 경계 키가 아예 없는 meta — 시간 임계 없이 **깊이 조건만** 남긴다.
+                # 종가 동시호가는 3 단 book 이라 깊이에서 걸리므로(ADR-0062) 이 폴백이
+                # 그걸 새게 하지는 않는다(corpus 23,913 조합 실측 누출 0).
                 session_close_ms = None
             snap = snapshots_tbl.query_bucket_representative(
                 engine.conn,
