@@ -414,6 +414,16 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
 
     @router.get("/meta", response_model=Meta)
     def meta(code: Code, date: StockDate) -> Meta:
+        # venue 를 안 넘기는 것이 맞다 — 이 표면엔 venue 축이 **없다**(#1133).
+        # 근거가 두 겹이다: ① 라우트에 venue 파라미터가 없고, 응답 `Meta` 도 venue 별로
+        # 갈리는 필드를 싣지 않는다(`regular_session_close_ms` 는 세 venue 가 같은 값이고
+        # `indicator_session_*`(KRX 09:00~15:30 vs NXT/UN 08:00~20:00)는 애초에 노출하지
+        # 않는다). ② **source 도 축이 아니다** — 이 라우트는 `get_meta` 의 기본
+        # source(`hogaplay`)로 고정이고, hogaplay 는 **KRX 전용 source** 다
+        # (`source_covers_venue`). 그래서 KRX 는 폴백이 아니라 **사실**이다.
+        # ⚠ 여기서 `venue="KRX"` 를 명시하지 말 것 — 명시는 "선택이 있다" 는 뜻이라
+        # 축 없는 표면에 축이 있는 것처럼 읽힌다. 이 라우트가 venue 선택을 받게
+        # 되는 날, 그때 명시가 **필수**가 된다.
         try:
             m = engine.get_meta(date, code)
         except StockDateNotFound as e:
@@ -438,6 +448,16 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                 status_code=400,
                 detail=f"gap analysis only supported for hogaplay, got {source!r}",
             )
+        # `compute_gap_ranges` 에 venue 를 안 넘겨 기본값 KRX 를 쓰는 것이 맞다 —
+        # 이 표면의 venue 축은 **두 단계로 이미 닫혀 있다**(#1133): ① 바로 위 가드가
+        # `source != "hogaplay"` 를 400 으로 거부하고, ② hogaplay 는 KRX 전용
+        # source 다(`source_covers_venue`). 그래서 KRX 는 폴백이 아니라 **사실**이다.
+        #
+        # 이 경로가 venue 별로 갈리는 필드를 **실제로 읽는다**는 점은 짚어 둔다 —
+        # legacy meta 재계산 분기가 `indicator_session_bounds()` 를 탄다(queries.py).
+        # 그래도 값이 갈리지 않는 이유는 우연이 아니다: hogaplay meta 에는
+        # `indicator_session_*` 키가 **없어서** 그 헬퍼가 `regular_session_*` 로
+        # 폴백한다(하위호환 계약). venue 를 넘겨도 글자 그대로 같은 값이 나온다.
         try:
             ranges_hoga, sparse, origin = engine.compute_gap_ranges(date, code, source)
         except StockDateNotFound as e:
