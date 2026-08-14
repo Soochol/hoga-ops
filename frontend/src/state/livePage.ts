@@ -28,7 +28,12 @@ import {
 } from './indicatorSettingsV2';
 import { bindIndicatorOps, MA_PALETTE } from './indicatorOps';
 import { applyPresetEnableByTimeframe } from './indicatorPresetOps';
-import { syncIndicatorModalTimeframe } from './chartPrefs';
+import {
+  attachIndicatorModalScope,
+  detachIndicatorModalScope,
+  dropIndicatorModalScopes,
+  syncIndicatorModalTimeframe,
+} from './chartPrefs';
 import {
   profileKeyForTimeframe,
   type IndicatorPaneProfileKey,
@@ -584,6 +589,10 @@ export const useLivePageStore = create<Store>((set, get) => {
       }
       set({ indicatorsByWindow: { ...s.indicatorsByWindow, [scopeKey]: copy } });
       persistIndicators();
+      // 드로어의 호가 동작설정(급증 마커·극단값 필터 …)은 chartPrefs 소속이라
+      // 같은 틱에 함께 분리한다 — 멤버십이 어긋나면 한 패널 안에서 절반만
+      // 분리된 상태가 되고, 그 절반은 조용히 공용 세트로 샌다(ADR-0072).
+      detachIndicatorModalScope(scopeKey);
     },
 
     attachWindowIndicators: (scopeKey) => {
@@ -593,11 +602,15 @@ export const useLivePageStore = create<Store>((set, get) => {
       delete byWindow[scopeKey];
       set({ indicatorsByWindow: byWindow });
       persistIndicators();
+      attachIndicatorModalScope(scopeKey);
     },
 
     dropWindowIndicatorScopes: (scopeKeys) => {
       const s = get();
       const known = scopeKeys.filter((key) => Object.hasOwn(s.indicatorsByWindow, key));
+      // chartPrefs 회수는 조건 없이 부른다 — 두 맵이 어긋난 상태(수동 setState 를
+      // 쓰는 테스트·손상된 저장값)에서도 회수가 한쪽만 되고 끝나지 않게.
+      dropIndicatorModalScopes(scopeKeys);
       if (known.length === 0) return; // 없는 키에 쓰기·persist 를 유발하지 않는다.
       const byWindow = { ...s.indicatorsByWindow };
       for (const key of known) delete byWindow[key];

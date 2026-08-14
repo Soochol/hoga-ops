@@ -19,6 +19,11 @@ import {
   normalizeIndicatorsV2,
 } from '../../state/indicatorSettingsV2';
 import { normalizePaneOrder } from '../../chart/paneOrder';
+import {
+  useActivePrefs,
+  useChartPrefActions,
+  useChartPrefsStore,
+} from '../../state/chartPrefs';
 
 /**
  * 창별 지표 분리(opt-in)의 계약 가드.
@@ -87,6 +92,14 @@ function renderWindow(value: WindowViewValue) {
   }), { wrapper: provider(value) });
 }
 
+/** 드로어 안 chartPrefs 항목(급증 마커)의 창 스코프 읽기·쓰기 한 묶음. */
+function renderPrefsWindow(value: WindowViewValue) {
+  return renderHook(() => ({
+    surgeMarkerEnabled: useActivePrefs((p) => p.surgeMarkerEnabled),
+    prefActions: useChartPrefActions(),
+  }), { wrapper: provider(value) });
+}
+
 function storedV2() {
   return normalizeIndicatorsV2(JSON.parse(localStorage.getItem(INDICATORS_V2_STORAGE_KEY) ?? '{}'));
 }
@@ -100,6 +113,12 @@ beforeEach(() => {
     indicatorTimeframe: '1m',
     paneOrder: normalizePaneOrder([]),
     paneStretch: {},
+  });
+  useChartPrefsStore.setState({
+    indicatorModalByTimeframe: {},
+    indicatorModalByWindow: {},
+    indicatorModalTimeframe: '1m',
+    surgeMarkerEnabled: true,
   });
   seedWorkspace([chartWindow('w1'), chartWindow('w2')]);
 });
@@ -196,6 +215,43 @@ describe('분리 — 격리', () => {
     expect(scoped?.minute?.volumeEnabled).toBe(false);
     expect(scoped?.D).toBeUndefined();
     expect(daily.result.current.volumeEnabled).toBe(true);
+  });
+});
+
+describe('드로어 혼재 방지 — chartPrefs 항목도 같이 갈린다', () => {
+  it('분리 창의 「총잔량 급증 마커」가 다른 창에 새지 않는다', () => {
+    const a = renderWindow(windowValue('w1'));
+    const aPrefs = renderPrefsWindow(windowValue('w1'));
+    const bPrefs = renderPrefsWindow(windowValue('w2'));
+
+    a.result.current.actions.detachIndicators();
+    aPrefs.rerender();
+    aPrefs.result.current.prefActions.setToggle('surgeMarkerEnabled', false);
+    aPrefs.rerender();
+    bPrefs.rerender();
+
+    // 같은 패널의 지표 토글은 창별인데 이 행만 전역이면, 화면에 구별이 없는 채로
+    // 두 창이 서로를 덮는다 — 이 기능이 없애려는 바로 그 혼재다(ADR-0072).
+    expect(aPrefs.result.current.surgeMarkerEnabled).toBe(false);
+    expect(bPrefs.result.current.surgeMarkerEnabled).toBe(true);
+  });
+
+  it('분리·복귀·회수에서 두 스토어의 멤버십이 함께 움직인다', () => {
+    const a = renderWindow(windowValue('w1'));
+    const hasScope = () => ({
+      indicators: Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, 'live:w1'),
+      prefs: Object.hasOwn(useChartPrefsStore.getState().indicatorModalByWindow, 'live:w1'),
+    });
+
+    a.result.current.actions.detachIndicators();
+    expect(hasScope()).toEqual({ indicators: true, prefs: true });
+
+    a.result.current.actions.attachIndicators();
+    expect(hasScope()).toEqual({ indicators: false, prefs: false });
+
+    a.result.current.actions.detachIndicators();
+    useLivePageStore.getState().dropWindowIndicatorScopes(['live:w1']);
+    expect(hasScope()).toEqual({ indicators: false, prefs: false });
   });
 });
 

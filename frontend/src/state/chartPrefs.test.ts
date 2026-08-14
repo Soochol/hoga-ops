@@ -33,6 +33,7 @@ describe('useChartPrefsStore', () => {
 import {
   mergePrefs,
   mergeIndicatorModalByTimeframe,
+  mergeIndicatorModalByWindow,
   CHART_PREFS_KEY,
 } from './chartPrefsPersistence';
 import { resolveIndicatorModalPrefs } from './chartPrefs';
@@ -62,6 +63,29 @@ describe('chartPrefsPersistence', () => {
   it('uses the new key, not replay.tabs.*', () => {
     expect(CHART_PREFS_KEY).toBe('hoga.chart.prefs.v1');
     expect(CHART_PREFS_KEY.includes('replay')).toBe(false);
+  });
+
+  it('창 분리 맵은 값이 비어도 엔트리를 보존한다 — 멤버십이 키의 존재이므로', () => {
+    const merged = mergeIndicatorModalByWindow({
+      indicatorModalByWindow: {
+        'live:w1': {},
+        'live:w2': { minute: { surgeMarkerEnabled: false } },
+      },
+    });
+    expect(Object.hasOwn(merged, 'live:w1')).toBe(true);
+    expect(merged['live:w1']).toEqual({});
+    expect(merged['live:w2']?.minute?.surgeMarkerEnabled).toBe(false);
+  });
+
+  it('창 분리 맵이 손상돼도 나머지를 잃지 않는다', () => {
+    const merged = mergeIndicatorModalByWindow({
+      indicatorModalByWindow: {
+        'live:bad': 'not-an-object',
+        'live:ok': { minute: { surgeMarkerEnabled: false } },
+      },
+    });
+    expect(Object.hasOwn(merged, 'live:bad')).toBe(false);
+    expect(merged['live:ok']?.minute?.surgeMarkerEnabled).toBe(false);
   });
 });
 
