@@ -84,6 +84,36 @@ def is_auction_window(t_ms: int, venue: str) -> bool:
     return any(lo <= minutes < hi for lo, hi in windows)
 
 
+# 시간외 단일가매매 창 — **KRX 전용 제도**다(ADR 없음, 2026-08-14 조사).
+#
+#     15:40–16:00  장후 시간외 **종가**매매 — 당일 종가 단일 가격, 시간우선 체결.
+#                  가격이 하나라 **호가 사다리라는 개념이 없다**.
+#     16:00–18:00  시간외 **단일가**매매 — 10분 주기 단일가. 여기엔 호가가 접수된다.
+#
+# 이 창이 필요한 이유는 그 구간에 **WS 가 침묵하기 때문**이다(실측: `0D` 는 15:30 에,
+# `0B` 는 16:00 에 끊긴다 — `docs/research/2026-08-14-kiwoom-after-hours-orderbook-
+# sources.md`). 유일한 소스가 REST `ka10087` 이고, 그걸 창 밖에서 치면 장중 유량을
+# 태우므로 라우트가 이 술어로 먼저 막는다.
+#
+# 거래일 판정을 **얹지 않는다** — `_quote_phase`·순위 TR 게이트가 이미 시계만 쓰는
+# 선례이고(캘린더는 동기 KIS HTTP 재도입), 평일 공휴일의 드문 헛콜은 수용 가능하다.
+# 벤더가 빈 호가를 답하고 라우트가 그대로 "볼 것 없음" 으로 흘린다.
+_AFTER_HOURS_SINGLE_PRICE_MIN = (16 * 60, 18 * 60)  # [16:00, 18:00)
+
+
+def is_after_hours_single_price_window(t_ms: int) -> bool:
+    """시간외 단일가매매(16:00–18:00 KST) 시각인가 — 순수 시계(주말만 배제).
+
+    주말은 KRX 세션이 아예 없어 짧게 끊는다 — 평일 공휴일과 달리 캘린더 없이도
+    확실하고, 토·일 내내 폴링이 도는 것은 명백한 낭비다.
+    """
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
+    if kst.weekday() >= 5:  # noqa: PLR2004 — 토/일
+        return False
+    lo, hi = _AFTER_HOURS_SINGLE_PRICE_MIN
+    return lo <= (kst.hour * 60 + kst.minute) < hi
+
+
 def is_trading_day_now(t_ms: int) -> bool:
     """거래일 여부 — **시계 무관** 순수 캘린더 술어(주말 단축 후 chk-holiday).
 

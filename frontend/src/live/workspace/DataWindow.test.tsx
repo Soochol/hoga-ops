@@ -39,7 +39,21 @@ vi.mock('../../api/liveSeries', () => ({
     trade: [],
     broker: [],
     program: [],
+    // ⚠ 이 mock 은 `LiveSeriesData` 로 타입되지 않는다 — 키를 빠뜨려도 tsc 가 못 잡고,
+    // 소비처가 그 키를 읽는 순간 런타임 크래시로만 드러난다(afterHours 추가 때 실제로
+    // latest 모드 7건이 통째로 죽었다). 훅 반환에 키를 늘리면 여기도 늘릴 것.
+    afterHours: [],
   }),
+}));
+
+// 시간외 단일가(ka10087) 훅은 **실시각에 반응한다** — `isAfterHoursSinglePriceWindow`
+// 가 16:00–18:00 에만 true 라, 모킹하지 않으면 이 스펙이 **몇 시에 돌리느냐에 따라
+// 다른 경로**를 탄다(그 시간대에 돌리면 훅이 실제 fetch 를 시도한다). 창 밖 동작을
+// 기본으로 고정하고, 창 안 동작은 전용 스펙(`liveAfterHoursBook.test.ts`)이 순수
+// 함수로 검증한다.
+vi.mock('../../api/liveAfterHoursBook', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/liveAfterHoursBook')>()),
+  useAfterHoursBook: () => ({ data: undefined }),
 }));
 
 // 스팟 훅은 게이트(코드 인자) 검증용 스파이 — 실제 fetch 는 useLiveCursor.test 소관.

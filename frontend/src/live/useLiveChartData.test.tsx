@@ -20,6 +20,7 @@ const liveFixture: LiveSeriesData = {
   trade: [],
   broker: [],
   program: [],
+  afterHours: [],
 };
 
 /** sidecar 원본에만 있는 과거 버킷. */

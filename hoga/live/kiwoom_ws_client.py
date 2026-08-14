@@ -42,11 +42,16 @@ class _WsLike(Protocol):
     async def close(self) -> None: ...
 
 WS_URL_REAL = "wss://api.kiwoom.com:10000/api/dostk/websocket"
-# 체결 + 호가(히트맵 요건) + 당일거래원(PR-F1) + 프로그램매매(PR-F4) — 뒤 둘은
-# KIS REST 폴러(ADR-0111·프로그램 수집기)를 대체한다.
+# 체결 + 호가(히트맵 요건) + 시간외호가 + 당일거래원(PR-F1) + 프로그램매매(PR-F4) —
+# 뒤 둘은 KIS REST 폴러(ADR-0111·프로그램 수집기)를 대체한다.
 # 타입 추가는 슬롯 무료 — 키움 한도는 종목 단위(연결당 200종목, 타입무관,
 # 2026-07-16 실측 + PR-F1 게이트 재확인)이고 REG 는 타입 리스트 1회라 유량(5/s)도 불변.
-DEFAULT_TYPES = ("0B", "0D", "0F", "0w")
+#
+# `0E`(시간외호가)가 메우는 구멍: KRX-only 종목은 15:30 에 0D 가 끊기는데 시간외
+# 종가매매 체결(0B)은 15:40 부터 계속 온다(2026-08-14 실측 — `kiwoom_fields` 0E 절).
+# 그래서 호가 축만 20분 전 값으로 얼어 있었다. 0E 는 사다리를 되살리지는 못하고
+# (그런 FID 가 없다) 총잔량 두 개만 되살린다.
+DEFAULT_TYPES = ("0B", "0D", "0E", "0F", "0w")
 _REG_BATCH = 50  # item/REG (실측: 배치로 유량 5/s 회피)
 _REG_PACING_S = 0.35  # ~3 REG/s 페이싱 (5/s 상한 여유)
 _BACKOFF_S = (1, 2, 4, 8, 16, 32, 60)
