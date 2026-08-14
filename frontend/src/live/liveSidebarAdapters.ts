@@ -101,6 +101,32 @@ export function latestOrderbookSnapshot(ob: readonly RawSnapshot[]): OrderbookSn
   };
 }
 
+/** 시간외 매도/매수 총잔량(키움 0E). 정규장 총잔량과 **다른 값**이다. */
+export type AfterHoursTotals = { ask: number; bid: number };
+
+/**
+ * 시간외호가 버퍼(`ah`)의 마지막 총잔량. 없으면 null.
+ *
+ * `latestOrderbookSnapshot` 과 짝이지만 `OrderbookSnapshot` 을 만들지 **않는다** —
+ * 0E 에는 사다리가 없어서 만들면 10단이 전부 0 인 가짜 호가창이 된다
+ * (백엔드 `SnapshotKind.AFTER_HOURS` 주석). 소비자는 이 값을 정규장 스냅샷의
+ * 총잔량 **자리에 덧씌우되**, 사다리는 정규장 마지막 값 그대로 두고 라벨로
+ * 두 출처를 구분해야 한다.
+ *
+ * 양쪽 0 은 null 로 접는다 — 파서가 이미 그런 프레임을 버리지만(`_parse_after_hours`),
+ * 여기서도 접어야 "시간외 잔량 없음" 이 정규장 총잔량으로 자연히 폴백한다.
+ */
+export function latestAfterHoursTotals(
+  ah: readonly RawSnapshot[],
+): AfterHoursTotals | null {
+  if (ah.length === 0) return null;
+  const latest = ah[ah.length - 1];
+  const ask = (latest.total_ask_qty as number) ?? 0;
+  const bid = (latest.total_bid_qty as number) ?? 0;
+  if (ask === 0 && bid === 0) return null;
+  return { ask, bid };
+}
+
 /** 종목 요약 지표 — 0B 프레임 payload 최상위에 실려 오는 값들(kiwoom_frames._parse_trade).
  *  체결 레코드가 아니라 종목 단위 값이라 trades[] 안이 아니라 payload 루트에 있다. */
 export type LiveTradeSummary = {

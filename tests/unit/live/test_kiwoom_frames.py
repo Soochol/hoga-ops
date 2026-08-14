@@ -521,3 +521,99 @@ def test_weekday_frame_survives_weekend_guard() -> None:
     msg = {"trnm": "REAL", "data": [REAL_0D_KRX]}
 
     assert len(parse_real_message(msg, date=DATE, now_ms=NOW_MS)) == 1
+
+
+# ── 0E 주식시간외호가 ────────────────────────────────────────────────────────
+#
+# ⚠ 아래 fixture 는 이 파일의 다른 상수와 달리 **실측 채록이 아니라 문서 FID 표 기반
+# 합성**이다(키움 공식 `kiwoom_docs/실시간시세.md`). 0E 구독을 시작한 것이 이 변경
+# 자체라 채록본이 아직 없다 — 다음 시간외 세션에서 실프레임을 받으면 교체할 것.
+# 그래서 이 테스트들이 고정하는 것은 "키움이 무엇을 보내는가" 가 아니라 **파서가
+# 그 문서 형태를 어떻게 다루는가**(kind·키 집합·게이트)다.
+#
+# 실측으로 확정된 것은 **왜 이 타입이 필요한가** 쪽이다(2026-08-14, kiwoom_fields
+# 0E 절): KRX-only 종목은 0D 가 15:30 에, 0B 가 16:00 에 끊긴다.
+REAL_0E = {
+    "type": "0E", "name": "주식시간외호가", "item": "006360",
+    "values": {
+        "21": "160312",   # 호가시간
+        "131": "12345",   # 시간외매도호가총잔량
+        "132": "+100",    # 직전대비(미소비)
+        "135": "6789",    # 시간외매수호가총잔량
+        "136": "-50",     # 직전대비(미소비)
+    },
+}
+# 0E 프레임의 HHMMSS(16:03)보다 뒤 — 안 그러면 미래-틱 가드가 먼저 걸려 전 케이스가
+# None 이 되고, 그러면 "게이트를 검사한 것" 과 "가드에 걸린 것" 이 구별되지 않는다.
+AH_NOW_MS = hhmmssms_to_unix_ms(DATE, 163000000)
+
+
+def test_after_hours_parses_total_quantities() -> None:
+    t = parse_real_row(REAL_0E, date=DATE, now_ms=AH_NOW_MS)
+
+    assert t is not None
+    assert t.kind is SnapshotKind.AFTER_HOURS
+    assert t.code == "006360"
+    assert t.venue == "KRX"
+    assert t.t_ms == hhmmssms_to_unix_ms(DATE, 160312000)
+    assert t.payload["total_ask_qty"] == 12345
+    assert t.payload["total_bid_qty"] == 6789
+
+
+def test_after_hours_payload_has_no_ladder() -> None:
+    """0E 에는 단계별 호가가 **없다**.
+
+    이 단언이 지키는 것은 파서가 아니라 **소비자의 오해**다. payload 가 0D 와 닮았다는
+    이유로 OrderbookSnapshot 으로 투영하면 10단이 전부 0 인 가짜 호가창이 뜬다 —
+    별도 kind 를 둔 이유가 그것이라(SnapshotKind.AFTER_HOURS 주석), 키가 새로 생기면
+    여기서 실패해야 한다.
+    """
+    t = parse_real_row(REAL_0E, date=DATE, now_ms=AH_NOW_MS)
+
+    assert t is not None
+    assert "asks" not in t.payload
+    assert "bids" not in t.payload
+    assert set(t.payload) == {"code", "t_ms", "total_ask_qty", "total_bid_qty"}
+
+
+def test_after_hours_zero_totals_dropped() -> None:
+    """양쪽 0 은 버린다 — 정규장 오염 방어(예상체결 FID 23/24 게이트와 같은 규율)."""
+    frame = {**REAL_0E, "values": {**REAL_0E["values"], "131": "0", "135": "0"}}
+
+    assert parse_real_row(frame, date=DATE, now_ms=AH_NOW_MS) is None
+
+
+def test_after_hours_one_sided_total_kept() -> None:
+    """한쪽만 0 은 **정상 상태**다 — 매수만 쌓인 시간외 호가를 지우면 안 된다."""
+    frame = {**REAL_0E, "values": {**REAL_0E["values"], "131": "0"}}
+
+    t = parse_real_row(frame, date=DATE, now_ms=AH_NOW_MS)
+
+    assert t is not None
+    assert t.payload["total_ask_qty"] == 0
+    assert t.payload["total_bid_qty"] == 6789
+
+
+def test_after_hours_venue_from_code_suffix() -> None:
+    """venue 는 구독 코드 접미에서 — 0D 와 같은 규약.
+
+    `_NX` 코드에 0E 가 실제로 오는지는 **미실측**이다(파서 주석). 이 테스트는 오면
+    어떻게 태그되는지를 고정할 뿐, 온다는 것을 주장하지 않는다.
+    """
+    frame = {**REAL_0E, "item": "006360_NX"}
+
+    t = parse_real_row(frame, date=DATE, now_ms=AH_NOW_MS)
+
+    assert t is not None
+    assert t.code == "006360"
+    assert t.venue == "NXT"
+
+
+def test_after_hours_future_tick_dropped() -> None:
+    """0E 도 date+HHMMSS 합성이라 자정 넘김 가드를 탄다(0B/0D 와 동형).
+
+    16:03 프레임이 09:00 에 도착 = 7시간 미래 → 이전 세션 프레임으로 보고 버린다.
+    """
+    assert parse_real_row(
+        REAL_0E, date=DATE, now_ms=hhmmssms_to_unix_ms(DATE, 90000000),
+    ) is None

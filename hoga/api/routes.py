@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import json
 import logging
 import os
 import re
@@ -21,6 +22,7 @@ from starlette.requests import ClientDisconnect
 
 from hoga import perf_debug
 from hoga.api.bundle import build_range_bundle
+from hoga.api.invariants import indicator_session_bounds
 from hoga.api.models import (
     BrokerSeriesResponse,
     CandlesResponse,
@@ -510,11 +512,24 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
             # (query_bucketed_ratio, ADR-0062). Without the structural exclusion a
             # straddle bucket (e.g. 3m [15:18,15:21)) would show the 15:20+ auction
             # book here while the indicator shows the last pre-auction book.
+            # 마감 시각은 **venue 별 지표 구간**에서 온다. `regular_session_close_ms`
+            # 는 venue 와 무관하게 KRX 정규장(15:30)이고(promote 가 의도적으로 그렇게
+            # 싣는다), 그걸 쓰면 08:00–20:00 을 도는 NXT·UN 의 시간외 book 이 통째로
+            # 잘린다 — 캔들은 있는데 10호가 창만 비는 증상이었다(실측 2026-08-14,
+            # 000720 16:00). 지표·일별 최대벽 경로는 이미 이 헬퍼로 옮겨 왔고
+            # (`depth_daily`·`compute_gap_ranges`), 이 라우트만 남아 있었다.
+            #
+            # meta 는 **실제로 읽는 그 디렉터리**의 것을 본다 — venue 해석은
+            # `_resolved_parquet_dir` 가 이미 했으므로 여기서 다시 하면 두 벌이 갈린다
+            # (`engine.get_meta` 는 venue 기본값이 KRX 라 UN 강등을 못 따라간다).
             try:
-                session_close_ms = engine.get_meta(date, code, source).get(
-                    "regular_session_close_ms"
+                _, session_close_ms = indicator_session_bounds(
+                    json.loads((sd_dir / "meta.json").read_text(encoding="utf-8"))
                 )
-            except (FileNotFoundError, StockDateNotFound):
+            except (OSError, json.JSONDecodeError, KeyError):
+                # 경계 키가 아예 없는 meta — 시간 임계 없이 **깊이 조건만** 남긴다.
+                # 종가 동시호가는 3 단 book 이라 깊이에서 걸리므로(ADR-0062) 이 폴백이
+                # 그걸 새게 하지는 않는다(corpus 23,913 조합 실측 누출 0).
                 session_close_ms = None
             snap = snapshots_tbl.query_bucket_representative(
                 engine.conn,

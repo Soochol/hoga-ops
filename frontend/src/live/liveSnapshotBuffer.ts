@@ -31,9 +31,12 @@ function evictOld(arr: Array<{ t_ms: number }>, nowMs: number): void {
 // primary size bound; the count cap remains only as a runaway safeguard.
 export const MAX_BUFFER_PER_KIND = 60_000;
 
-export type SnapshotKind = 'ob' | 'trade' | 'broker' | 'program';
+/** 백엔드 `hoga/live/snapshot.py::SnapshotKind` 의 손 미러(ADR-0004).
+ *  `ah` = 주식시간외호가(키움 0E) — **`ob` 와 담는 것이 다르다**: 사다리가 없고
+ *  총잔량 두 개뿐이라 별도 kind 다(백엔드 주석 참조). */
+export type SnapshotKind = 'ob' | 'trade' | 'broker' | 'program' | 'ah';
 
-const KINDS: readonly SnapshotKind[] = ['ob', 'trade', 'broker', 'program'] as const;
+const KINDS: readonly SnapshotKind[] = ['ob', 'trade', 'broker', 'program', 'ah'] as const;
 
 interface RawSnapshot {
   t_ms: number;
@@ -47,6 +50,7 @@ export class LiveSnapshotBuffer {
     trade: [],
     broker: [],
     program: [],
+    ah: [],
   };
   // Snapshot cache — returned by get() until the underlying kind is mutated.
   // Stable references let downstream useMemo(bundle) keep its identity across
@@ -58,6 +62,7 @@ export class LiveSnapshotBuffer {
     trade: Object.freeze([]),
     broker: Object.freeze([]),
     program: Object.freeze([]),
+    ah: Object.freeze([]),
   };
 
   private invalidate(k: SnapshotKind): void {

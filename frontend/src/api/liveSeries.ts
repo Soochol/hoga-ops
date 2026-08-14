@@ -50,6 +50,9 @@ export interface LiveSeriesResponse {
   trades: Array<Record<string, unknown>>;
   brokers: Array<Record<string, unknown>>;
   programs: Array<Record<string, unknown>>;
+  /** 시간외호가(키움 0E) — `snapshots` 와 **다른 배열**이다. 사다리가 없고
+   *  총잔량 두 개(`total_ask_qty`/`total_bid_qty`)만 들었다. */
+  after_hours: Array<Record<string, unknown>>;
   ask_peak_today: LiveTodayAskPeak | null;
   bid_peak_today?: LiveTodayBidPeak | null;
 }
@@ -71,6 +74,9 @@ export interface LiveSeriesData {
   trade: ReadonlyArray<TradeSnapshot>;
   broker: ReadonlyArray<Record<string, unknown>>;
   program: ReadonlyArray<Record<string, unknown>>;
+  /** 시간외호가(0E). 15:30 에 `ob` 가 끊기는 KRX-only 종목의 총잔량을 시간외에도
+   *  잇는 유일한 소스다 — 사다리는 여기 없다. */
+  afterHours: ReadonlyArray<Record<string, unknown>>;
 }
 
 /** Trailing-throttle window for coalescing live WS pushes into one buffer
@@ -83,6 +89,7 @@ const EMPTY_OB_SNAPSHOTS: ReadonlyArray<ObSnapshot> = Object.freeze([]);
 const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = Object.freeze([]);
 const EMPTY_BROKER_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
 const EMPTY_PROGRAM_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
+const EMPTY_AH_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
 
 /**
  * useLiveSeries — initial REST fetch + WebSocket subscription for live snapshots.
@@ -153,6 +160,7 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
       trade: initial.data.trades as Array<{ t_ms: number; kind: string }>,
       broker: initial.data.brokers as Array<{ t_ms: number; kind: string }>,
       program: (initial.data.programs ?? []) as Array<{ t_ms: number; kind: string }>,
+      ah: (initial.data.after_hours ?? []) as Array<{ t_ms: number; kind: string }>,
     });
     setTick((t) => t + 1);
   }, [initial.data, code]);
@@ -219,8 +227,18 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
   const rawProgram = bufferVisible
     ? readKind(bufferRef.current, 'program', tick)
     : EMPTY_PROGRAM_SNAPSHOTS;
+  const rawAfterHours = bufferVisible
+    ? readKind(bufferRef.current, 'ah', tick)
+    : EMPTY_AH_SNAPSHOTS;
   const broker = useMemo(() => filterByVenueTag(rawBroker, effective), [rawBroker, effective]);
   const program = useMemo(() => filterByVenueTag(rawProgram, effective), [rawProgram, effective]);
+  // broker·program 과 같은 venue 필터를 탄다 — 위 ⚠ 주석의 결함을 새 kind 가
+  // 되풀이하지 않게. 0E 는 KRX 종목에서만 관측됐지만(`_NX`/`_AL` 수신은 미실측)
+  // 필터를 빼면 그 미실측이 화면에서 조용히 섞이는 형태로 드러난다.
+  const afterHours = useMemo(
+    () => filterByVenueTag(rawAfterHours, effective),
+    [rawAfterHours, effective],
+  );
   return {
     initial: currentInitial,
     isLoading: initial.isLoading,
@@ -229,6 +247,7 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
     trade,
     broker,
     program,
+    afterHours,
   };
 }
 
