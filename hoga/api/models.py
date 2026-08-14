@@ -1360,8 +1360,41 @@ class EntriesMoveRequest(BaseModel):
 
 
 class EntriesReorderRequest(BaseModel):
+    """"이 폴더의 **종목 순서**를 이렇게" — 메모는 items 인덱스에 고정된다(v4).
+
+    편집 모달이 쓴다. 그 화면은 메모를 표시하지 않으므로 메모 위치에 의견이 없고,
+    의견 없는 표면에 전체 순서를 정하게 하면 어떻게 정하든 조용한 이동이 된다.
+    표시 순서 전체를 바꾸는 것은 ItemsReorderRequest(패널 dnd)의 몫이다.
+    """
+
     folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")  # v3: reorder is within one real folder
     ordered_codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+
+
+class CodeItemRef(BaseModel):
+    kind: Literal["code"] = "code"
+    code: str = Field(pattern=CODE_PATTERN)
+
+
+class MemoItemRef(BaseModel):
+    kind: Literal["memo"] = "memo"
+    id: str = Field(pattern=MEMO_ID_PATTERN)
+
+
+# 요청 전용 판별 유니온 — 프론트 미러는 frontend/src/api/watchlist.ts::WatchlistItemRef.
+# 저장 모델(WatchlistItem)과 모양이 비슷하지만 별개다: 여기엔 memo `text` 가 없다
+# (재배열은 내용을 옮기지 않는다 — id 로 지목만 한다).
+WatchlistItemRef = Annotated[CodeItemRef | MemoItemRef, Field(discriminator="kind")]
+
+
+class ItemsReorderRequest(BaseModel):
+    """"이 폴더의 **표시 순서 전체**를 이렇게" — 코드와 메모를 한 리스트로 받는다(v4).
+
+    패널 dnd 가 쓴다. 폴더의 현재 items 집합과 **정확히 일치**해야 한다(불일치 409) —
+    EntriesReorderRequest 와 같은 authoritative-list 계약.
+    """
+
+    ordered_items: list[WatchlistItemRef]
 
 
 class EntriesRemoveRequest(BaseModel):

@@ -43,7 +43,7 @@ async function setup(page: import('@playwright/test').Page) {
     }
     return route.fallback();
   });
-  await page.route(apiExact('watchlist'), (r) => json(r, { ...state, next_run_at_ms: 0 }));
+  await page.route(apiExact('watchlist'), (r) => json(r, { ...state, memos: [], next_run_at_ms: 0 }));
 
   await page.goto('/live');
   const group = page.locator('[data-testid="watchlist-group-f_a"]');

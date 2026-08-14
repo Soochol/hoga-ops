@@ -22,6 +22,7 @@ from hoga.api.models import (
     FolderCreateRequest,
     FolderRenameRequest,
     FolderReorderRequest,
+    ItemsReorderRequest,
     ManualCatchupAllEntryResult,
     ManualCatchupAllResponse,
     ManualCatchupError,
@@ -54,6 +55,7 @@ from hoga.api.watchlist import (
     rename_folder,
     reorder_entries,
     reorder_folders,
+    reorder_items,
     set_folder_capture_enabled,
     update_memo,
 )
@@ -279,10 +281,40 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 �
         except Exception:  # best-effort, mutation already succeeded
             log.exception("watchlist.reorder: refresh_live_stream failed")
 
+    @router.put("/folders/{folder_id}/items/order", status_code=204)
+    async def reorder_watchlist_items(folder_id: str, req: ItemsReorderRequest) -> None:
+        """표시 순서 전체(코드+메모) 재배열 — 패널 dnd 전용(v4).
+
+        `PUT /reorder`(ordered_codes)와 공존한다: 저쪽은 "종목 순서만, 메모는 제자리"
+        라 메모를 표시하지 않는 편집 모달의 계약이고, 이쪽은 메모까지 끌 수 있는
+        패널의 계약이다.
+        """
+        keys = [("code", i.code) if i.kind == "code" else ("memo", i.id)
+                for i in req.ordered_items]
+        try:
+            await reorder_items(data_dir, folder_id=folder_id, ordered_keys=keys)
+        except FolderNotFoundError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
+        except WatchlistSetMismatchError as e:
+            log.info("watchlist items reorder set mismatch: %s", e)
+            raise HTTPException(status_code=409, detail={
+                "code": "reorder_set_mismatch",
+                "message": "Reorder list does not match the folder's current items."}) from e
+        # 아래 메모 CRUD 와 **반대로** 재동기화를 부른다: 코드 순서가 바뀌면 display
+        # order 가 바뀌고 그건 Live Set(=WS 구독) 경계를 움직인다(기존 /reorder 와
+        # 같은 이유). 메모끼리만 자리를 바꾼 경우도 그냥 부른다 — no-op 재동기화는
+        # 싸고, 무엇이 바뀌었는지 diff 하는 것은 과설계다.
+        try:
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:  # best-effort, mutation already succeeded
+            log.exception("watchlist.items_order: refresh_live_stream failed")
+
     # --- 메모("빈칸") 아이템 (v4) ---------------------------------------
     # 셋 다 refresh_live_stream 을 부르지 않는다 — 메모는 Code 가 아니라 Live Set
     # 산출(capture_ordered_codes)에 원리적으로 들어가지 않으므로, 부르면 아무것도
-    # 바뀌지 않는 WS 재동기화만 낭비한다.
+    # 바뀌지 않는 WS 재동기화만 낭비한다. (바로 위 items/order 는 반대다 — 거기선
+    # 코드 순서가 바뀔 수 있다.)
 
     @router.post("/folders/{folder_id}/memos", status_code=201,
                  response_model=WatchlistMemoView)

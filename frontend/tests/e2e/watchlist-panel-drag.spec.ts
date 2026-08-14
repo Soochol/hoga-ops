@@ -36,7 +36,11 @@ test.describe('Watchlist panel drag', () => {
     await installLiveMocks(page);
     // 스윙(f_a)에 005930, 000660 — 그룹 내 2행.
     let order = ['005930', '000660'];
-    let lastPut: { folder_id: string | null; ordered_codes: string[] } | null = null;
+    // v4: 패널 dnd 는 `ordered_items`(코드+메모 한 리스트)를 보낸다 — 메모를 종목
+    // 사이로 끌 수 있어야 하기 때문이다. 편집 모달은 여전히 `ordered_codes`(메모는
+    // 제자리)를 쓰고, 그쪽은 watchlist-edit-reorder.spec.ts 가 잰다.
+    type ItemRef = { kind: 'code'; code: string } | { kind: 'memo'; id: string };
+    let lastPut: { ordered_items: ItemRef[] } | null = null;
     const entries = (): Entry[] => [
       ...order.map((code, i) => ({
         code, name: NAMES[code], registered_at_kst_date: '20260527',
@@ -44,13 +48,15 @@ test.describe('Watchlist panel drag', () => {
       })),
     ];
     await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
-    await page.route(apiExact('watchlist/reorder'), async (route) => {
+    await page.route(apiExact('watchlist/folders/f_a/items/order'), async (route) => {
       lastPut = JSON.parse(route.request().postData() || '{}');
-      order = lastPut!.ordered_codes;
+      order = lastPut!.ordered_items
+        .filter((i): i is { kind: 'code'; code: string } => i.kind === 'code')
+        .map((i) => i.code);
       return route.fulfill({ status: 204, body: '' });
     });
     await page.route(apiExact('watchlist'), (r) =>
-      json(r, { folders: [{ id: 'f_a', name: '스윙', order: 0 }], entries: entries(), next_run_at_ms: 0 }));
+      json(r, { folders: [{ id: 'f_a', name: '스윙', order: 0 }], entries: entries(), memos: [], next_run_at_ms: 0 }));
 
     await openPanel(page);
     const codesInDom = () =>
@@ -72,8 +78,10 @@ test.describe('Watchlist panel drag', () => {
     await page.mouse.move(fx, ty + 2, { steps: 2 });
     await page.mouse.up();
 
-    await expect.poll(() => lastPut?.ordered_codes ?? null).toEqual(['000660', '005930']);
-    expect(lastPut!.folder_id).toBe('f_a');
+    await expect.poll(() => lastPut?.ordered_items ?? null).toEqual([
+      { kind: 'code', code: '000660' },
+      { kind: 'code', code: '005930' },
+    ]);
     await expect.poll(codesInDom).toEqual(['000660', '005930']);
   });
 
@@ -87,12 +95,15 @@ test.describe('Watchlist panel drag', () => {
       { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_a', order: 1 },
     ];
     await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
-    await page.route(apiExact('watchlist/reorder'), async (route) => {
+    // ⚠ 부정 단언이므로 **감시 대상이 정확해야** 한다 — 패널 dnd 는 v4 부터
+    // `items/order` 를 부른다. 옛 `watchlist/reorder` 를 감시하면 아무도 안 부르는
+    // 라우트를 지켜보는 셈이라 이 테스트가 조용히 위양성으로 통과한다.
+    await page.route(apiExact('watchlist/folders/f_a/items/order'), async (route) => {
       reorderCalled = true;
       return route.fulfill({ status: 204, body: '' });
     });
     await page.route(apiExact('watchlist'), (r) =>
-      json(r, { folders: [{ id: 'f_a', name: '스윙', order: 0 }], entries, next_run_at_ms: 0 }));
+      json(r, { folders: [{ id: 'f_a', name: '스윙', order: 0 }], entries, memos: [], next_run_at_ms: 0 }));
 
     await openPanel(page);
     const row = page.getByTestId('watchlist-row-000660');
@@ -124,7 +135,7 @@ test.describe('Watchlist panel drag', () => {
       return route.fulfill({ status: 204, body: '' });
     });
     await page.route(apiExact('watchlist'), (r) =>
-      json(r, { folders: folders(), entries, next_run_at_ms: 0 }));
+      json(r, { folders: folders(), entries, memos: [], next_run_at_ms: 0 }));
 
     await openPanel(page);
     // **접두사 충돌 주의.** `watchlist-group-` 로 시작하는 testid 는 그룹 컨테이너 말고도

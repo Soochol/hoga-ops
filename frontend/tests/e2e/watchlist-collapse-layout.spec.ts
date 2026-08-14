@@ -43,7 +43,7 @@ async function setup(page: import('@playwright/test').Page) {
   const json = (route: import('@playwright/test').Route, body: unknown) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
-  await page.route(apiPrefix('watchlist'), (r) => json(r, { ...makeState(), next_run_at_ms: 0 }));
+  await page.route(apiPrefix('watchlist'), (r) => json(r, { ...makeState(), memos: [], next_run_at_ms: 0 }));
 
   await page.goto('/live');
   const panel = page.getByTestId('watchlist-panel');
