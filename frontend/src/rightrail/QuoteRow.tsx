@@ -20,7 +20,7 @@ export interface QuoteRowProps {
   pct: number | null;
   changeWon: number | null;
   /** 동시호가 예상체결가/등락률(LiveQuote.expected_*). 값이 있으면 가격·등락% 셀을
-   *  예상값으로 대체하고 가격 앞에 '예' 마커를 붙인다. 창 밖·체결 후엔 키가 사라져
+   *  예상값으로 대체하고 종목명 앞에 '*' 마커를 붙인다. 창 밖·체결 후엔 키가 사라져
    *  자동으로 확정치로 복귀(백엔드 게이트 SSOT). 미전달 시 기존 동작 그대로. */
   expectedPrice?: number | null;
   expectedPct?: number | null;
@@ -73,7 +73,10 @@ export function QuoteRow({
   onContextMenu, onDelete, indented, flash, matched,
 }: QuoteRowProps) {
   void _changeWon;
-  // 예상 표시 모드 — HeatmapRow 와 동일 규칙(가격·등락% 셀을 예상값으로 대체 + 마커).
+  // 예상 표시 모드 — 셀 대체 규칙은 HeatmapRow 와 같고(가격·등락% 를 예상값으로),
+  // 마커만 다르다: 이 행은 종목명 앞 '*', 히트맵 행은 캔들 옆 '예상'. 이 행엔 캔들
+  // 글리프가 없어 마커를 걸 중립 슬롯이 없고, 가격 셀에 두면 고정폭 4.75rem 을
+  // 마커와 나눠 써야 한다(사용자 요청 2026-08-14).
   const showExpected = expectedPrice != null;
   const shownPrice = showExpected ? expectedPrice : price;
   const shownPct = showExpected ? (expectedPct ?? null) : pct;
@@ -158,14 +161,21 @@ export function QuoteRow({
           truncate 는 flex 아이템 자신에 걸어야 클립된다(내부 inline span 은 overflow 를
           무시해 긴 종목명이 가격 컬럼을 침범했다). 가격/% 는 flex-none 고정폭이라
           종목명이 대신 잘리고(전체 이름은 행 aria-label), 행마다 우측 끝자리가 정렬된다. */}
-      <span className="flex-1 min-w-0 truncate text-xs text-fg leading-tight">{name}</span>
+      <span className="flex-1 min-w-0 truncate text-xs text-fg leading-tight">
+        {/* 동시호가 예상 마커. truncate 는 위 부모(flex 아이템)에 걸려 있으므로 이
+            inline span 은 자기 폭을 갖지 않고, 긴 종목명은 뒤쪽이 잘리며 마커는 항상
+            남는다. 크기는 종목명 상속(text-xs) — 별표 글리프 자체가 이미 작아
+            text-2xs 로 더 줄이면 밀도 다이얼 하단에서 사라진다. 색은 3차 텍스트
+            --fg-dim(DESIGN.md 2026-08-04: 소형 텍스트에 --fg-dimmer 금지). */}
+        {showExpected && (
+          <span className="text-fg-dim" data-testid={`${testId}-expected-marker`}>*</span>
+        )}
+        {name}
+      </span>
       {/* 가격은 --fg 중립, 등락%만 방향색 — 패널이 온통 적/청이던 것을 진정시켜 변동 큰
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
       <span title={priceTitle} className="flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
-        {showExpected && (
-          <span className="mr-0.5 text-2xs text-fg-dim" data-testid={`${testId}-expected-marker`}>예</span>
-        )}
         {shownPrice != null ? shownPrice.toLocaleString('ko-KR') : '—'}
       </span>
       <span className={`flex-none w-[3.5rem] text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dim' : priceDirClass(shownPct)}`}>
