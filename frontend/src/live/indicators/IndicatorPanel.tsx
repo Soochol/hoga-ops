@@ -1,6 +1,11 @@
 import { useState, Fragment } from 'react';
 import { useChartPrefActions } from '../../state/chartPrefs';
-import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
+import {
+  useIndicatorActions,
+  useIsWindowIndicatorsDetached,
+  useWindowIndicatorScope,
+  useWindowIndicators,
+} from '../workspace/windowView';
 import MovingAverageConfig from './MovingAverageConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
@@ -156,6 +161,10 @@ export default function IndicatorPanel({
   const setPanePrefForTimeframe = actions.setPanePrefForTimeframe;
 
   const resetIndicators = actions.resetIndicators;
+  // 창 분리(opt-in) — 스코프가 없으면(Provider 밖: 단일 차트·테스트) 분리할 창이
+  // 없으므로 행 자체를 렌더하지 않는다.
+  const windowScope = useWindowIndicatorScope();
+  const detached = useIsWindowIndicatorsDetached();
   // indicator-modal chartPrefs 도 이제 대상 창의 봉 버킷을 향한다 — #712 에서
   // "전역 유지"로 수용했던 비대칭은 결함이었다: 버킷은 봉별인데 어느 버킷을 볼지는
   // 포커스를 따라다니는 전역 슬롯이 정해, 창마다 엉뚱한 봉의 설정이 적용됐다.
@@ -166,6 +175,13 @@ export default function IndicatorPanel({
   const [selected, setSelected] = useState<CategoryId>('moving-average');
   // 파괴적 리셋은 인라인 2단계 확인(중첩 모달 회피). 클릭 → 확인 행 → 복원.
   const [confirmingReset, setConfirmingReset] = useState(false);
+  // 연동 복귀도 파괴적이다 — 그 창에만 있던 설정이 사라진다(같은 규율).
+  const [confirmingRelink, setConfirmingRelink] = useState(false);
+
+  const handleRelink = () => {
+    actions.attachIndicators();
+    setConfirmingRelink(false);
+  };
 
   // "현재 봉 초기화"(PR-C #699): 지표 버킷과 indicator-modal chartPrefs 버킷을
   // 현재 봉만 비운다. 차트 전반 flat(⚙️ 설정 항목)은 드로어 밖이라 건드리지 않는다.
@@ -298,6 +314,51 @@ export default function IndicatorPanel({
             );
           })}
         </nav>
+        {/* 창 단위 액션 구역 — 카테고리가 아니라 "이 창 전체"에 걸리는 것들. */}
+        {windowScope && (
+          <div className="border-t border-border p-2">
+            {confirmingRelink ? (
+              <div className="flex items-center justify-between gap-2 px-1 py-1">
+                <span className="text-xs text-fg-dim">이 창의 설정을 버리고 연동?</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingRelink(false)}
+                    className="rounded px-2 py-1 text-xs text-fg-dim hover:text-fg"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRelink}
+                    className="rounded px-2 py-1 text-xs font-medium"
+                    style={{ background: 'var(--error)', color: 'var(--fg)' }}
+                  >
+                    연동
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="text-sm text-fg">이 창만 따로</div>
+                  <div className="text-xs text-fg-dim">
+                    {detached
+                      ? '다른 창과 분리된 설정입니다'
+                      : '모든 창이 같은 설정을 씁니다'}
+                  </div>
+                </div>
+                <ToggleSwitch
+                  label="이 창만 따로 설정"
+                  checked={detached}
+                  // 켜기는 무손실(현재 설정을 복사)이라 즉시, 끄기는 이 창의
+                  // 설정을 버리므로 초기화와 같은 2단계 확인을 거친다.
+                  onClick={() => (detached ? setConfirmingRelink(true) : actions.detachIndicators())}
+                />
+              </div>
+            )}
+          </div>
+        )}
         {/* 현재 봉 초기화 — 현재 보는 봉의 지표 설정만 되돌린다(#699). 파괴적이라
             인라인 2단계 확인. */}
         <div className="border-t border-border p-2">

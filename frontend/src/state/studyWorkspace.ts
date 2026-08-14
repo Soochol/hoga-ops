@@ -28,6 +28,7 @@ import { isFracRect, type FracRect } from '../workspace/rectSpace';
 import { persistJson, readJsonObject } from './persist';
 import { STUDY_WORKSPACE_STORAGE_KEY } from './workspaceKeys';
 import { STUDY_CARD_KEYS, STUDY_LAYOUT_STORAGE_KEY, type StudyCardKey } from './studyLayout';
+import { dropIndicatorScopesForRemovedWindows } from './indicatorScopeGc';
 import {
   LIVE_TIMEFRAMES,
   MINUTE_TIMEFRAMES,
@@ -534,6 +535,7 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
   },
 
   closeWindow: (id) => {
+    const before = get().windows;
     set((state) => {
       // 남은 불변식은 "차트 창 0개 금지" 뿐이다 — 술어는 한 곳(#801).
       if (!canCloseStudyWindow(state.windows, id)) return {};
@@ -547,6 +549,10 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
       delete chartRuntime[id];
       return { ...next, chartRuntime };
     });
+    // 닫기가 **거부될 수 있으므로**(마지막 차트 창) 요청 id 가 아니라 실제로
+    // 사라진 창을 기준으로 회수한다 — 그러지 않으면 화면에 남아 있는 창의
+    // 지표 설정이 조용히 초기화된다.
+    dropIndicatorScopesForRemovedWindows('study', before, get().windows);
   },
 
   focusWindow: (id) => {
@@ -576,12 +582,14 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
   },
 
   applySnapshot: (snapshot) => {
+    const before = get().windows;
     const next = normalizeSnapshot(snapshot);
     set(() => {
       persistFromState(next);
       // 창 전면 교체 → 비영속 런타임을 걷는다(fresh-view, `/live` 미러).
       return { ...next, chartRuntime: {} };
     });
+    dropIndicatorScopesForRemovedWindows('study', before, next.windows);
   },
 
   setChartTimeframe: (id, tf) => {

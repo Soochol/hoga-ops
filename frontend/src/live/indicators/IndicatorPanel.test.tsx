@@ -6,11 +6,40 @@ import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
+import { useWorkspaceStore } from '../../state/workspace';
+import {
+  LIVE_WINDOW_WORKSPACE,
+  WindowViewContext,
+  type WindowViewValue,
+} from '../workspace/windowView';
 
 function renderPanel(props: Partial<ComponentProps<typeof IndicatorPanel>> = {}) {
   const onClose = props.onClose ?? (() => {});
   const timeframe = props.timeframe ?? '1m';
   return render(<IndicatorPanel onClose={onClose} timeframe={timeframe} {...props} />);
+}
+
+/** 차트 창 안(=Provider 안)의 드로어 — 창 단위 액션은 여기서만 나타난다. */
+function renderInWindow(props: Partial<ComponentProps<typeof IndicatorPanel>> = {}) {
+  useWorkspaceStore.setState({
+    windows: [{ id: 'w1', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: 400, h: 300 }, chart: { timeframe: '1m' } }],
+    zOrder: ['w1'],
+    groupSymbols: { 1: { code: '005930', name: '삼성전자' } },
+    chartRuntime: {},
+  });
+  const view: WindowViewValue = {
+    windowId: 'w1',
+    group: 1,
+    code: '005930',
+    timeframe: '1m',
+    historicalFromDate: null,
+    workspace: LIVE_WINDOW_WORKSPACE,
+  };
+  return render(
+    <WindowViewContext.Provider value={view}>
+      <IndicatorPanel onClose={() => {}} timeframe="1m" {...props} />
+    </WindowViewContext.Provider>,
+  );
 }
 
 describe('IndicatorPanel', () => {
@@ -20,6 +49,7 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({
       ...FACTORY_INDICATOR_SETTINGS,
       indicatorsByTimeframe: {},
+      indicatorsByWindow: {},
       indicatorTimeframe: '1m',
     });
     useChartPrefsStore.getState().resetToDefaults();
@@ -737,6 +767,56 @@ describe('IndicatorPanel', () => {
 
       expect(screen.queryByText('호가 잔량 히트맵')).toBeTruthy();
       expect(screen.queryByText('당일 최대벽')).toBeTruthy();
+    });
+  });
+
+  /**
+   * "이 창만 따로" — 창 단위 액션이라 카테고리 목록이 아니라 초기화와 같은 구역에
+   * 산다. 차트 창 헤더에 두지 않는 이유는 폭 예산이다(#1312: 5번째 버튼은 접힘
+   * 단계에서 정의상 넘친다).
+   */
+  describe('창 분리 스위치', () => {
+    it('창 밖(단일 차트)에서는 렌더하지 않는다 — 분리할 창이 없다', () => {
+      renderPanel();
+      expect(screen.queryByRole('switch', { name: '이 창만 따로 설정' })).toBeNull();
+    });
+
+    it('켜면 이 창이 분리되고 보이는 설정은 그대로다', async () => {
+      const user = userEvent.setup();
+      useLivePageStore.setState({ indicatorsByTimeframe: { minute: { volumeEnabled: false } } });
+      renderInWindow();
+
+      await user.click(screen.getByRole('switch', { name: '이 창만 따로 설정' }));
+
+      expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, 'live:w1')).toBe(true);
+      // 분리는 현재 유효 설정을 복사한다 — 누른 순간 화면이 바뀌면 안 된다.
+      expect(screen.getByRole('checkbox', { name: '거래량' }).getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('끄기는 2단계 확인을 거친다 — 그 창에만 있던 설정이 사라지므로', async () => {
+      const user = userEvent.setup();
+      renderInWindow();
+      const toggle = () => screen.getByRole('switch', { name: '이 창만 따로 설정' });
+
+      await user.click(toggle());
+      await user.click(toggle());
+
+      // 확인 전에는 아직 분리 상태.
+      expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, 'live:w1')).toBe(true);
+      await user.click(screen.getByRole('button', { name: '연동' }));
+      expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, 'live:w1')).toBe(false);
+    });
+
+    it('취소하면 분리가 유지된다', async () => {
+      const user = userEvent.setup();
+      renderInWindow();
+      const toggle = () => screen.getByRole('switch', { name: '이 창만 따로 설정' });
+
+      await user.click(toggle());
+      await user.click(toggle());
+      await user.click(screen.getByRole('button', { name: '취소' }));
+
+      expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, 'live:w1')).toBe(true);
     });
   });
 });
