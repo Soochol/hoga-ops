@@ -115,9 +115,14 @@ export function WorkspaceCanvas() {
   }, [api, registerChartDropResolver, clearChartDropResolver]);
 
   // 드래그 중 호버 창(어포던스용) — dragPoint 아래 z-최상위 창. DOM 측정
-  // (getBoundingClientRect)은 effect 에서만(렌더 중 ref 접근 금지 규율). dragPoint 는
-  // 패널이 프레임당 throttle 해 발행하므로 재계산 빈도가 낮다. 창 밖이면 null →
-  // 캔버스 전면 오버레이(활성 그룹 교체)로 폴백.
+  // (getBoundingClientRect)은 effect 에서만(렌더 중 ref 접근 금지 규율).
+  //
+  // dragPoint 는 프레임당 한 번만 발행되므로 재계산 빈도가 낮다. 그 스로틀은 여기가
+  // 아니라 **발행 측**에 있다(`state/useDragPointPublisher`) — 우측 레일 세 드로어
+  // (관심종목·스크리너·순위)가 그 훅 하나를 공유한다. 새 드래그 소스를 추가하면 그
+  // 훅을 쓸 것: 직접 setDragPoint 를 치면 포인터 이동마다 여기가 강제 레이아웃을 돈다.
+  //
+  // 창 밖이면 null → 캔버스 전면 오버레이(활성 그룹 교체)로 폴백.
   const [hoverDropWin, setHoverDropWin] = useState<WorkspaceWindow | null>(null);
   useEffect(() => {
     // rAF 로 측정+setState 를 커밋 이후로 미룬다 — 렌더 중 ref 접근·effect 내 동기

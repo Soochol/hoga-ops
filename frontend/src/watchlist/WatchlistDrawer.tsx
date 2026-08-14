@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
@@ -34,10 +34,13 @@ import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
 import { useLiveVenueStore } from '../state/liveVenue';
 import {
-  DndContext, PointerSensor, useSensor, useSensors, closestCenter,
+  DndContext, PointerSensor, useSensor, useSensors,
   type DragStartEvent, type DragMoveEvent, type DragEndEvent,
-  type CollisionDetection, type DraggableAttributes, type DraggableSyntheticListeners,
+  type DraggableAttributes, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
+import { typeAwareCollision } from './panelDragCollision';
+import { RailDragOverlay } from '../rightrail/RailDragOverlay';
+import { useDragPointPublisher } from '../state/useDragPointPublisher';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { WatchlistEntry, WatchlistMemo } from '../api/watchlist';
@@ -53,6 +56,9 @@ import {
 } from './dragHandlers';
 import { useEntryDragStore, isPointOnChart, dropPoint, resolveDropOnChart } from '../state/entryDrag';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
+// 히트맵이 먼저 쓰던 훅(HeatmapDrawer·pages/Heatmap). 드래그 중 입력을 얼려 리렌더를
+// **싸게** 만든다 — 리렌더 자체를 막지는 못한다(WS 틱의 setTick 은 그대로 발생).
+import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
 
 // v1는 기존 전역 정렬 값 마이그레이션 입력으로만 유지.
 const LEGACY_SORT_MODE_STORAGE_KEY = 'watchlist.sortMode.v1';
@@ -347,23 +353,6 @@ function RowTrailing(props: {
   );
 }
 
-/** 액티브 드래그와 같은 레인의 droppable만 closestCenter에 넘긴다 — 중첩
- *  SortableContext의 cross-talk(폴더 컨테이너가 행 위로 끼어드는) 차단.
- *
- *  v4: 행 레인은 'entry'와 'memo'를 **함께** 본다. 둘은 한 리스트에 섞여 있어서 서로를
- *  드롭 타깃으로 삼을 수 있어야 한다(메모를 종목 사이로, 종목을 메모 사이로). 폴더
- *  레인만 따로 격리된다. */
-const ROW_TYPES = new Set(['entry', 'memo']);
-const typeAwareCollision: CollisionDetection = (args) => {
-  const type = args.active.data.current?.type;
-  const inRowLane = ROW_TYPES.has(String(type));
-  const same = args.droppableContainers.filter((c) => {
-    const t = String(c.data.current?.type);
-    return inRowLane ? ROW_TYPES.has(t) : t === type;
-  });
-  return closestCenter({ ...args, droppableContainers: same });
-};
-
 /** 그룹 헤더에 부착할 드래그 핸들 — listeners만(포인터 전용; KeyboardSensor 미도입,
  *  편집 모달 ⠿ 핸들과 동일 계약). */
 type GroupDragHandle = {
@@ -393,20 +382,32 @@ function SortableGroup({ folderId, children }: {
 }
 
 /** 패널 종목 행 — dnd transform/ref는 행에 두고, listeners는 종목명 왼쪽 핸들에만 둔다.
- *  행 클릭(차트 이동)·우클릭 메뉴와 드래그 시작 표면이 섞이지 않게 분리한다. */
-function SortableQuoteRow(props: {
+ *  행 클릭(차트 이동)·우클릭 메뉴와 드래그 시작 표면이 섞이지 않게 분리한다.
+ *
+ *  **`memo` 인 이유와 그 조건**: WS 체결 틱이 150ms 마다 드로어를 리렌더한다
+ *  (`api/liveTickOverlay.ts` LIVE_FLUSH_MS). 그때마다 이 행까지 리렌더되면 dnd-kit 의
+ *  transform transition 이 진행 중에 재시작돼 드래그가 뚝뚝 끊긴다. 그래서 props 를
+ *  **전부 스칼라 아니면 안정 참조**로 좁혔다 — 트레일링 슬롯을 `ReactNode` 로 주입받거나
+ *  콜백을 행마다 새로 만들면 memo 는 그냥 무효다. 콜백은 `entry` 를 인자로 받는 폴더
+ *  단위 안정 참조이고, 트레일링은 여기서 조립한다. 이 계약을 깨는 prop 을 추가하지 말 것. */
+const SortableQuoteRow = memo(function SortableQuoteRow(props: {
   entry: WatchlistEntry;
   price: number | null; pct: number | null; changeWon: number | null;
   expectedPrice?: number | null; expectedPct?: number | null;
   active: boolean;
-  onPick: (e?: JumpModifiers) => void;
-  onContextMenu: (e: React.MouseEvent<HTMLLIElement>) => void;
-  onDelete: () => void;
-  collectionBadge?: React.ReactNode;
+  status: DisplayStatus;
   collectionLabel?: string;
+  onPick: (entry: WatchlistEntry, e?: JumpModifiers) => void;
+  onOpenMenu: (e: React.MouseEvent, entry: WatchlistEntry) => void;
+  onDelete: (entry: WatchlistEntry) => void;
   dragEnabled?: boolean;
 }) {
-  const { entry } = props;
+  const { entry, onPick, onOpenMenu, onDelete } = props;
+  const handlePick = useCallback((e?: JumpModifiers) => onPick(entry, e), [onPick, entry]);
+  const handleOpenMenu = useCallback((e: React.MouseEvent) => onOpenMenu(e, entry), [onOpenMenu, entry]);
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(e, entry), [onOpenMenu, entry]);
+  const handleDelete = useCallback(() => onDelete(entry), [onDelete, entry]);
   const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging, activeIndex, overIndex, index } =
     useSortable({ id: entrySortableId(entry.folder_id, entry.code), data: { type: 'entry', folderId: entry.folder_id, code: entry.code, name: entry.name } });
   const dropIndicator = activeIndex !== -1 && overIndex !== -1 && index === overIndex && index !== activeIndex
@@ -423,9 +424,9 @@ function SortableQuoteRow(props: {
       active={props.active}
       ariaLabel={[entry.name, entry.code, props.collectionLabel, '차트 열기'].filter(Boolean).join(' ')}
       testId={`watchlist-row-${entry.code}`}
-      onClick={props.onPick}
-      onContextMenu={props.onContextMenu}
-      onDelete={props.onDelete}
+      onClick={handlePick}
+      onContextMenu={handleContextMenu}
+      onDelete={handleDelete}
       indented
       sortableRef={props.dragEnabled === false ? undefined : setNodeRef}
       sortableStyle={props.dragEnabled === false ? undefined : { transform: CSS.Transform.toString(transform), transition }}
@@ -433,35 +434,41 @@ function SortableQuoteRow(props: {
       dragAttributes={props.dragEnabled === false ? undefined : attributes}
       dragActivatorRef={props.dragEnabled === false ? undefined : setActivatorNodeRef}
       dragging={props.dragEnabled === false ? false : isDragging}
+      // DragOverlay 고스트가 커서에 들려 있으므로 원본 행은 빈 자리로 비운다.
+      draggingAppearance="placeholder"
       dropIndicator={props.dragEnabled === false ? undefined : dropIndicator}
-      trailingAction={props.collectionBadge}
+      trailingAction={<RowTrailing status={props.status} name={entry.name} onOpenMenu={handleOpenMenu} />}
     />
   );
-}
+});
 
 /** 메모("빈칸") 행의 sortable 래퍼 — SortableQuoteRow 와 같은 계약(행 전체가 핸들).
  *  data.type='entry' 를 쓰지 **않는다**: 차트로 드롭·종목 교체 분기가 그 타입을 보고
  *  도는데 메모는 그 대상이 아니다. 대신 'memo' 로 태깅해 재배열에만 참여시킨다. */
-function SortableMemoRow(props: {
+const SortableMemoRow = memo(function SortableMemoRow(props: {
   folderId: string;
   memo: WatchlistMemo;
   autoEdit: boolean;
   onAutoEditConsumed: () => void;
-  onSave: (text: string) => void;
-  onDelete: () => void;
+  /** memoId 를 인자로 받는 **안정 참조** — SortableQuoteRow 와 같은 memo 계약이다. */
+  onSave: (memoId: string, text: string) => void;
+  onDelete: (memoId: string) => void;
   dragEnabled: boolean;
 }) {
+  const { memo: row, onSave, onDelete } = props;
   const { setNodeRef, setActivatorNodeRef, listeners, transform, transition, isDragging, activeIndex, overIndex, index } =
     useSortable({ id: memoSortableId(props.folderId, props.memo.id), data: { type: 'memo', folderId: props.folderId, memoId: props.memo.id } });
   const dropIndicator = activeIndex !== -1 && overIndex !== -1 && index === overIndex && index !== activeIndex
     ? (activeIndex < overIndex ? 'after' : 'before')
     : undefined;
   const off = !props.dragEnabled;
+  const handleSave = useCallback((text: string) => onSave(row.id, text), [onSave, row.id]);
+  const handleDelete = useCallback(() => onDelete(row.id), [onDelete, row.id]);
   return (
     <MemoRow
       text={props.memo.text}
-      onSave={props.onSave}
-      onDelete={props.onDelete}
+      onSave={handleSave}
+      onDelete={handleDelete}
       maxLength={WATCHLIST_MEMO_MAX_LEN}
       autoEdit={props.autoEdit}
       onAutoEditConsumed={props.onAutoEditConsumed}
@@ -471,7 +478,61 @@ function SortableMemoRow(props: {
       dragListeners={off ? undefined : listeners}
       dragActivatorRef={off ? undefined : setActivatorNodeRef}
       dragging={off ? false : isDragging}
+      draggingAppearance="placeholder"
       dropIndicator={off ? undefined : dropIndicator}
+    />
+  );
+});
+
+/** 드래그 고스트에 그릴 스냅샷. `onDragStart` 에서 한 번 찍고 드래그 내내 갱신하지
+ *  않는다 — 데이터 동결과 같은 규율이고, 손에 든 것이 도중에 바뀌면 오히려 산만하다. */
+type DragGhost =
+  | {
+      kind: 'entry'; name: string; status: DisplayStatus;
+      price: number | null; pct: number | null;
+      expectedPrice: number | null; expectedPct: number | null;
+    }
+  | { kind: 'memo'; text: string };
+
+const GHOST_NOOP = () => {};
+
+/**
+ * 커서를 따라오는 드래그 고스트(P1).
+ *
+ * **없으면 어떤 문제인가**: 원본 행에 transform 을 걸어 움직이는 방식은 스크롤 컨테이너
+ * (`RailDrawerBody` = `overflow-auto`) 경계에서 잘린다. 그래서 패널을 벗어나 차트 창으로
+ * 끌고 가는 동안 손에 아무것도 없었다 — 목적지(창 하이라이트) 피드백만 있고 커서 쪽
+ * 피드백이 비어 있었다.
+ *
+ * 폴더(그룹) 드래그는 고스트를 만들지 않는다. 이동이 패널 안에서만 일어나고 그룹 블록
+ * 전체 클론은 크기만 크지 정보가 없다 — 기존 transform 방식이 이미 적절하다.
+ */
+function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
+  if (ghost.kind === 'memo') {
+    return (
+      <MemoRow
+        text={ghost.text}
+        onSave={GHOST_NOOP}
+        onDelete={GHOST_NOOP}
+        maxLength={WATCHLIST_MEMO_MAX_LEN}
+        testId="watchlist-drag-ghost"
+      />
+    );
+  }
+  return (
+    <QuoteRow
+      name={ghost.name}
+      price={ghost.price}
+      pct={ghost.pct}
+      changeWon={null}
+      expectedPrice={ghost.expectedPrice}
+      expectedPct={ghost.expectedPct}
+      active={false}
+      ariaLabel={ghost.name}
+      testId="watchlist-drag-ghost"
+      onClick={GHOST_NOOP}
+      indented
+      trailingAction={<RowTrailing status={ghost.status} name={ghost.name} onOpenMenu={GHOST_NOOP} />}
     />
   );
 }
@@ -490,7 +551,17 @@ function SortableMemoRow(props: {
 export function WatchlistDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
   const onPick = useJumpToLive();
-  const { data, isLoading, error } = useWatchlist();
+  const { data: liveData, isLoading, error } = useWatchlist();
+  // --- 드래그 중 입력 동결(P2) ---
+  // 드래그가 시작되면 서버 데이터·시세·수집상태를 freeze 시점 값으로 고정한다. WS 체결
+  // 틱은 150ms 마다 계속 리렌더를 걸지만(liveTickOverlay 의 setTick — 이건 못 막는다),
+  // **입력 참조가 그대로면** 아래 useMemo 들이 전부 캐시 히트라 rows·sortableIds·행 props
+  // 가 동일해지고, memo 된 행이 리렌더를 건너뛰어 dnd-kit transform transition 이 진행
+  // 중에 재시작되지 않는다. 동결은 리렌더를 없애는 게 아니라 **싸게** 만드는 장치다.
+  // 60초 refetch 가 드래그 도중 착지해 순서를 뒤흔드는 것도 같이 막힌다. 대가는 드래그
+  // 하는 몇 초 동안 가격이 멈추는 것이고, 히트맵이 이미 같은 거래를 했다(같은 훅).
+  const [isDragging, setIsDragging] = useState(false);
+  const data = useFrozenWhileDragging(liveData, isDragging);
   const catchupAllM = useCatchupAll();
   const removeM = useRemoveFromWatchlist();
   const createM = useCreateFolder();
@@ -515,7 +586,9 @@ export function WatchlistDrawer() {
     useState<{ code: string; name: string; x: number; y: number } | null>(null);
 
   // 메모("빈칸") 행 — entries 와 같은 order 축(폴더 items 인덱스)이라 렌더 직전에 병합한다.
-  const memos = data?.memos ?? [];
+  // `?? []` 를 useMemo 로 감싸는 이유: 매 렌더 새 빈 배열이면 아래 파생 memo 가 전부
+  // 무효화돼 동결이 무의미해진다.
+  const memos = useMemo(() => data?.memos ?? [], [data]);
   const addMemoM = useAddMemo();
   const updateMemoM = useUpdateMemo();
   const removeMemoM = useRemoveMemo();
@@ -531,13 +604,38 @@ export function WatchlistDrawer() {
   // 다중 소속이라 한 코드가 여러 폴더 행으로 등장 → quote 폴링용 코드는 dedup.
   const codes = useMemo(() => [...new Set(data?.entries.map((e) => e.code) ?? [])], [data]);
   const venue = useLiveVenueStore((s) => s.venue);
-  const quoteByCode = useQuoteByCode(codes, venue);
+  const liveQuoteByCode = useQuoteByCode(codes, venue);
+  const quoteByCode = useFrozenWhileDragging(liveQuoteByCode, isDragging);
 
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
-  const { data: liveStatusData } = useLiveStatus();
-  const liveCodes = liveStatusData?.live_set ?? [];
-  const kiwoomCodes = liveStatusData?.kiwoom?.subscribed_codes ?? [];
-  const viewedCodes = activeCode ? [activeCode] : [];
+  const { data: liveStatusRaw } = useLiveStatus();
+  const liveStatusData = useFrozenWhileDragging(liveStatusRaw, isDragging);
+
+  // 행별 수집상태를 **한 번에** 계산해 스칼라로 넘긴다 — 행에 배열(live_set 등)을
+  // 넘기면 `?? []` 가 매 렌더 새 identity 라 memo 가 뚫린다. 키가 code 가 아니라
+  // composite id 인 이유: 같은 코드가 여러 폴더에 있을 수 있고 `capture_candidate` 는
+  // 폴더별 엔트리 속성이라 결과가 갈릴 수 있다.
+  const collectionByRow = useMemo(() => {
+    const liveSet = liveStatusData?.live_set ?? [];
+    const kiwoomCodes = liveStatusData?.kiwoom?.subscribed_codes ?? [];
+    const viewedCodes = activeCode ? [activeCode] : [];
+    const map = new Map<string, { displayStatus: DisplayStatus; ariaLabel: string }>();
+    for (const entry of data?.entries ?? []) {
+      const view = deriveCollectionView({
+        code: entry.code,
+        liveSet,
+        watchlistCodes: codes,
+        viewedCodes,
+        kiwoomCodes,
+        captureCandidate: entry.capture_candidate !== false,
+      });
+      map.set(entrySortableId(entry.folder_id, entry.code), {
+        displayStatus: view.displayStatus,
+        ariaLabel: view.ariaLabel,
+      });
+    }
+    return map;
+  }, [data, liveStatusData, codes, activeCode]);
 
   // 함수형 업데이터 — 같은 배치의 다중 toggle도 최신 Set 위에서 계산된다.
   const toggle = (key: string) =>
@@ -553,22 +651,74 @@ export function WatchlistDrawer() {
     const valid = data ? new Set([...data.folders.map((f) => f.id), '__uncat__']) : null;
     persistJson('watchlist.collapsed', { keys: [...collapsed].filter((k) => !valid || valid.has(k)) });
   }, [collapsed, data]);
-  const openMenu = (e: React.MouseEvent, code: string, name: string, folderId: string | null) => {
-    e.preventDefault();                                   // 네이티브 우클릭 메뉴 억제
-    setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });  // raw 좌표 — 클램프는 메뉴가 실측
-  };
+  const openMenu = useCallback(
+    (e: React.MouseEvent, code: string, name: string, folderId: string | null) => {
+      e.preventDefault();                                 // 네이티브 우클릭 메뉴 억제
+      setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });  // raw 좌표 — 클램프는 메뉴가 실측
+    },
+    [],
+  );
 
-  const groups = data ? groupByFolder(data.folders, data.entries) : [];
-  const pctOf = makeChangePctOf(quoteByCode);
+  // 폴더별 정렬 모드가 아직 없을 때 쓰는 이월값(구 전역 설정). 아래 renderGroups 가
+  // 읽으므로 그보다 먼저 선언한다.
+  const migrationSortMode = readSortModeFromStorage();
+  // 폴더의 유효 정렬 모드. renderGroups(아래)·onDragEnd·행 메뉴가 **같은 하나**를 쓴다 —
+  // 렌더용 사본을 따로 두면 게이트가 조용히 갈린다. useCallback 인 이유는 renderGroups
+  // 의 dep 이라서다: 매 렌더 새 함수면 그 memo 가 매번 무효화돼 동결이 무의미해진다.
+  const getFolderSortMode = useCallback((folderId: string | null): QuoteSortMode => {
+    if (folderId === null) return 'default';
+    return groupSortModes[folderId] ?? migrationSortMode;
+  }, [groupSortModes, migrationSortMode]);
+
+  // 그룹 → 표시 행 → sortable id 까지를 **한 memo 안에서** 만든다.
+  //
+  // `sortableIds` 가 특히 중요하다: 이 배열 identity 가 매 렌더 바뀌면 SortableContext 의
+  // context value 가 새로 생기고, **context 구독은 React.memo 를 뚫는다** — 행을 memo 로
+  // 감싸도 모든 useSortable 이 리렌더되는 경로라 행 최적화만으로는 못 막는다.
+  //
+  // 접힘 여부(`collapsed`)는 여기 넣지 않는다 — 행 계산과 무관하고, deps 에 넣으면 접기
+  // 토글마다 전 그룹이 재계산된다(원본도 접힌 그룹의 rows 를 계산해 두고 렌더만 걸렀다).
+  const renderGroups = useMemo(() => {
+    if (!data) return [];
+    const pctOf = makeChangePctOf(quoteByCode);
+    return data ? groupByFolder(data.folders, data.entries).map((g) => {
+      const folder = g.folder;
+      const sortMode = getFolderSortMode(folder?.id ?? null);
+      const rowDragEnabled = sortMode === 'default';
+      const displayEntries = sortEntriesByChangePct(g.entries, pctOf, sortMode);
+      // 정렬 모드(등락률)면 메모를 **숨긴다** — 위치가 의미를 잃기 때문이다(행 드래그가
+      // 이미 같은 조건에서 꺼지는 것과 같은 게이트). 게이트를 병합 **전에** 두는 것이
+      // 중요하다: 병합 후 필터링하면 sortEntriesByChangePct(rightrail 공유 유틸)가
+      // PanelRow 유니온을 알게 된다.
+      const rows: PanelRow[] = rowDragEnabled && folder
+        ? mergePanelRows(displayEntries, memosOfFolder(memos, folder.id))
+        : displayEntries.map((entry) => ({ kind: 'entry', entry }));
+      return {
+        key: folder?.id ?? '__uncat__',
+        label: folder?.name ?? '미분류',
+        folder,
+        count: g.entries.length,
+        sortMode,
+        rowDragEnabled,
+        rows,
+        sortableIds: rows.map((r) => (r.kind === 'entry'
+          ? entrySortableId(r.entry.folder_id, r.entry.code)
+          : memoSortableId(folder!.id, r.memo.id))),
+      };
+    }) : [];
+  }, [data, quoteByCode, getFolderSortMode, memos]);
   const folderCount = data?.folders.length ?? 0;
-  const realFolderIds = groups.filter((g) => g.folder).map((g) => g.folder!.id);
+  const realFolderIds = useMemo(
+    () => renderGroups.filter((g) => g.folder).map((g) => g.folder!.id),
+    [renderGroups],
+  );
 
   // 전체 접기/펼치기 — 대상은 **화면에 실제로 렌더되는 그룹**이다(아래 렌더에서 빈 미분류는
   // 숨기므로 제외). collapsed.size 로 "모두 접힘"을 판정하면 삭제된 그룹의 inert 키(위 persist
   // 주석 참조 — 메모리 Set 은 다음 마운트까지 정리되지 않는다)에 걸려 거짓 양성이 난다.
-  const visibleGroupKeys = groups
-    .filter((g) => !(g.entries.length === 0 && g.folder === null))
-    .map((g) => g.folder?.id ?? '__uncat__');
+  const visibleGroupKeys = renderGroups
+    .filter((g) => !(g.count === 0 && g.folder === null))
+    .map((g) => g.key);
   const allCollapsed =
     visibleGroupKeys.length > 0 && visibleGroupKeys.every((k) => collapsed.has(k));
   const toggleAll = () =>
@@ -580,7 +730,6 @@ export function WatchlistDrawer() {
       }
       return n;
     });
-  const migrationSortMode = readSortModeFromStorage();
   useEffect(() => {
     if (!data) return;
     const folderIds = data?.folders.map((f) => f.id) ?? [];
@@ -608,10 +757,6 @@ export function WatchlistDrawer() {
     persistJson(FOLDER_SORT_MODE_STORAGE_KEY, groupSortModes);
   }, [groupSortModes]);
 
-  const getFolderSortMode = (folderId: string | null) => {
-    if (folderId === null) return 'default';
-    return groupSortModes[folderId] ?? migrationSortMode;
-  };
   const setFolderSortMode = (folderId: string, mode: QuoteSortMode) => {
     setGroupSortModes((prev) => {
       if (prev[folderId] === mode) return prev;
@@ -644,29 +789,103 @@ export function WatchlistDrawer() {
   const reorderItemsM = useReorderItems();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  // --- 행에 넘길 안정 콜백(P2) ---
+  // 행을 memo 로 감싸도 콜백이 매 렌더 새로 생기면 props 비교가 실패해 그냥 무효다.
+  // `useJumpToLive()` 는 **매 렌더 새 함수를 반환**하므로(navigate/pathname 클로저) 그대로
+  // 넘길 수 없다 — latest ref 로 받아 호출 시점에 최신 것을 쓴다. 나머지는 mutation 의
+  // `mutate`(react-query 가 안정 참조로 보장)와 useCallback 으로 고정한다.
+  const onPickRef = useRef(onPick);
+  useEffect(() => { onPickRef.current = onPick; });
+  const removeMutate = removeM.mutate;
+  const updateMemoMutate = updateMemoM.mutate;
+  const removeMemoMutate = removeMemoM.mutate;
+  const handleRowPick = useCallback((entry: WatchlistEntry, e?: JumpModifiers) => {
+    onPickRef.current(entry.code, entry.name, e);
+  }, []);
+  const handleRowMenu = useCallback((e: React.MouseEvent, entry: WatchlistEntry) => {
+    openMenu(e, entry.code, entry.name, entry.folder_id);
+  }, [openMenu]);
+  const handleRowDelete = useCallback((entry: WatchlistEntry) => {
+    removeMutate(entry.code);
+  }, [removeMutate]);
+  const handleMemoSave = useCallback((memoId: string, text: string) => {
+    updateMemoMutate({ memoId, text });
+  }, [updateMemoMutate]);
+  const handleMemoDelete = useCallback((memoId: string) => {
+    removeMemoMutate(memoId);
+  }, [removeMemoMutate]);
+
   // "차트로 드롭" 공유 상태 — WorkspaceCanvas가 구독해 드롭 타깃 오버레이를 띄운다.
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
-  const setOverChart = useEntryDragStore((s) => s.setOverChart);
-  const setDragPoint = useEntryDragStore((s) => s.setDragPoint);
   const endEntryDrag = useEntryDragStore((s) => s.endDrag);
 
+  // 드래그 좌표는 프레임당 한 번만 발행한다(P3) — 우측 레일 세 드로어 공용 훅.
+  const { publishDragPoint, cancelDragPointFlush } = useDragPointPublisher();
+
+  // 커서를 따라오는 고스트의 스냅샷(P1). null = 고스트 없음(폴더 드래그 포함).
+  const [dragGhost, setDragGhost] = useState<DragGhost | null>(null);
+  // 직전 드롭이 차트 위였는가 — true 면 낙하 애니메이션을 끈다(onDragEnd 주석 참조).
+  // 취소(onDragCancel)는 false 로 남겨 둔다: 취소는 원위치로 돌아가는 게 맞다.
+  const [ghostDroppedOnChart, setGhostDroppedOnChart] = useState(false);
+
   const onDragStart = (ev: DragStartEvent) => {
-    if (ev.active.data.current?.type === 'entry') startEntryDrag(String(ev.active.id));
+    setIsDragging(true);
+    setGhostDroppedOnChart(false);   // 직전 드래그의 판정이 새 드래그로 새지 않게
+    const d = ev.active.data.current;
+    if (d?.type === 'entry') {
+      startEntryDrag(String(ev.active.id));
+      const code = String(d.code ?? '');
+      const q = quoteByCode.get(code);
+      setDragGhost({
+        kind: 'entry',
+        name: String(d.name ?? code),
+        status: collectionByRow.get(String(ev.active.id))?.displayStatus ?? 'realtime',
+        price: q?.price ?? null,
+        pct: q?.change_pct ?? null,
+        expectedPrice: q?.expected_price ?? null,
+        expectedPct: q?.expected_change_pct ?? null,
+      });
+      return;
+    }
+    if (d?.type === 'memo') {
+      const parsed = parseItemSortableId(String(ev.active.id));
+      const text = parsed.kind === 'memo'
+        ? (memos.find((m) => m.id === parsed.memoId)?.text ?? '')
+        : '';
+      setDragGhost({ kind: 'memo', text });
+      return;
+    }
+    setDragGhost(null);   // 폴더는 그룹 블록 transform 이 이미 적절하다
   };
   const onDragMove = (ev: DragMoveEvent) => {
     // 메모 행은 차트 드롭 대상이 아니다 — 'entry' 타입만 오버레이를 띄운다.
     if (ev.active.data.current?.type !== 'entry') return;
-    const point = dropPoint(ev);
-    setOverChart(isPointOnChart(point));
-    setDragPoint(point); // 창별 어포던스: 캔버스가 좌표로 호버 창을 계산한다.
+    publishDragPoint(dropPoint(ev)); // 창별 어포던스: 캔버스가 좌표로 호버 창을 계산한다.
   };
-  const onDragCancel = () => endEntryDrag();
+  const finishDrag = () => {
+    cancelDragPointFlush();
+    setIsDragging(false);
+    setDragGhost(null);
+    endEntryDrag();
+  };
+  const onDragCancel = () => finishDrag();
 
   const onDragEnd = (ev: DragEndEvent) => {
     const activeType = ev.active.data.current?.type;
     const wasEntry = activeType === 'entry';
     const wasMemo = activeType === 'memo';
-    endEntryDrag();
+    // 낙하 애니메이션 여부를 **지우기 전에** 확정한다. finishDrag() 안의 endEntryDrag()
+    // 가 store 의 overChart 를 false 로 되돌리는데, 그 갱신은 dnd-kit 의 active→null 과
+    // 같은 커밋에 착지한다 — store 를 그대로 읽으면 차트에 성공적으로 떨궈도 항상
+    // "되돌아가는 비행"이 재생돼 성공이 실패로 읽힌다. 판정식은 아래 드롭 분기와
+    // **같은 술어**라 둘이 갈릴 수 없다.
+    setGhostDroppedOnChart(wasEntry && isPointOnChart(dropPoint(ev)));
+    // 낙하 애니메이션 여부를 **지우기 전에** 확정한다. finishDrag() 안의 endEntryDrag()
+    // 가 store 의 overChart 를 false 로 되돌리는데, 그 갱신은 dnd-kit 의 active→null 과
+    // 같은 커밋에 착지한다 — store 를 그대로 읽으면 차트에 성공적으로 떨궈도 항상
+    // "되돌아가는 비행"이 재생돼 성공이 실패로 읽힌다. 판정식은 아래 드롭 분기와
+    // **같은 술어**라 둘이 갈릴 수 없다.
+    finishDrag();
     if ((wasEntry || wasMemo)
         && getFolderSortMode(parseItemSortableId(String(ev.active.id)).folderId) !== 'default') return;
     // 종목 행을 차트 위에 드롭 → 종목 교체(재정렬 대신). 창 위 드롭이면 그 창 그룹 교체
@@ -759,25 +978,13 @@ export function WatchlistDrawer() {
         <DndContext sensors={sensors} collisionDetection={typeAwareCollision}
           onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
           <SortableContext items={realFolderIds} strategy={verticalListSortingStrategy}>
-            {groups.map((g, gi) => {
-              const key = g.folder?.id ?? '__uncat__';
-              const label = g.folder?.name ?? '미분류';
-              if (g.entries.length === 0 && g.folder === null) return null; // 빈 미분류는 숨김
+            {renderGroups.map((g, gi) => {
+              const { key, label, folder, rows, rowDragEnabled } = g;
+              if (g.count === 0 && folder === null) return null; // 빈 미분류는 숨김
               const isCollapsed = collapsed.has(key);
-              const folder = g.folder;
-              const groupSortMode = folder ? getFolderSortMode(folder.id) : 'default';
-              const displayEntries = sortEntriesByChangePct(g.entries, pctOf, groupSortMode);
-              const rowDragEnabled = groupSortMode === 'default';
-              // 정렬 모드(등락률)면 메모를 **숨긴다** — 위치가 의미를 잃기 때문이다
-              // (행 드래그가 이미 같은 조건에서 꺼지는 것과 같은 게이트). 게이트를
-              // 병합 **전에** 두는 것이 중요하다: 병합 후 필터링하면
-              // sortEntriesByChangePct(rightrail 공유 유틸)가 PanelRow 유니온을 알게 된다.
-              const rows: PanelRow[] = rowDragEnabled && folder
-                ? mergePanelRows(displayEntries, memosOfFolder(memos, folder.id))
-                : displayEntries.map((entry) => ({ kind: 'entry', entry }));
               const entriesList = !isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  <SortableContext items={rows.map((r) => `${r.kind === 'entry' ? (r.entry.folder_id ?? '__uncat__') : folder!.id}:${panelRowKey(r)}`)} strategy={verticalListSortingStrategy}>
+                  <SortableContext items={g.sortableIds} strategy={verticalListSortingStrategy}>
                     {rows.map((row) => {
                       if (row.kind === 'memo') {
                         return (
@@ -787,32 +994,19 @@ export function WatchlistDrawer() {
                             memo={row.memo}
                             autoEdit={row.memo.id === justAddedMemoId}
                             onAutoEditConsumed={clearJustAddedMemo}
-                            onSave={(text) => updateMemoM.mutate({ memoId: row.memo.id, text })}
-                            onDelete={() => removeMemoM.mutate(row.memo.id)}
+                            onSave={handleMemoSave}
+                            onDelete={handleMemoDelete}
                             dragEnabled={rowDragEnabled}
                           />
                         );
                       }
                       const entry = row.entry;
+                      const rowId = entrySortableId(entry.folder_id, entry.code);
                       const q = quoteByCode.get(entry.code);
-                      const collection = deriveCollectionView({
-                        code: entry.code,
-                        liveSet: liveCodes,
-                        watchlistCodes: codes,
-                        viewedCodes,
-                        kiwoomCodes,
-                        captureCandidate: entry.capture_candidate !== false,
-                      });
-                      const trailing = (
-                        <RowTrailing
-                          status={collection.displayStatus}
-                          name={entry.name}
-                          onOpenMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
-                        />
-                      );
+                      const collection = collectionByRow.get(rowId);
                       return (
                         <SortableQuoteRow
-                          key={entrySortableId(entry.folder_id, entry.code)}
+                          key={rowId}
                           entry={entry}
                           price={q?.price ?? null}
                           pct={q?.change_pct ?? null}
@@ -820,11 +1014,11 @@ export function WatchlistDrawer() {
                           expectedPrice={q?.expected_price ?? null}
                           expectedPct={q?.expected_change_pct ?? null}
                           active={entry.code === activeCode}
-                          onPick={(e) => onPick(entry.code, entry.name, e)}
-                          onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
-                          onDelete={() => removeM.mutate(entry.code)}
-                          collectionBadge={trailing}
-                          collectionLabel={collection.ariaLabel}
+                          status={collection?.displayStatus ?? 'realtime'}
+                          collectionLabel={collection?.ariaLabel}
+                          onPick={handleRowPick}
+                          onOpenMenu={handleRowMenu}
+                          onDelete={handleRowDelete}
                           dragEnabled={rowDragEnabled}
                         />
                       );
@@ -833,7 +1027,7 @@ export function WatchlistDrawer() {
                 </ul>
               );
               const renderHeader = (dragHandle?: GroupDragHandle) => (
-                <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
+                <GroupHeader label={label} count={g.count} collapsed={isCollapsed}
                   onToggle={() => toggle(key)}
                   onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
                   onDelete={folder ? () => deleteFolderWithConfirm(folder.id) : undefined}
@@ -842,7 +1036,7 @@ export function WatchlistDrawer() {
                   onAddMemo={folder ? () => addMemoAt(folder.id) : undefined}
                   canMoveUp={gi > 0}
                   canMoveDown={gi < folderCount - 1}
-                  sortMode={groupSortMode}
+                  sortMode={g.sortMode}
                   onSort={folder ? (mode) => setFolderSortMode(folder.id, mode) : undefined}
                   folderId={folder?.id}
                   dragHandle={dragHandle} />
@@ -856,6 +1050,10 @@ export function WatchlistDrawer() {
               );
             })}
           </SortableContext>
+          {/* 커서를 따라오는 고스트(P1) — 포털·낙하 애니메이션 결정은 공용 껍데기가 갖는다. */}
+          <RailDragOverlay droppedOnChart={ghostDroppedOnChart}>
+            {dragGhost && <WatchlistDragGhost ghost={dragGhost} />}
+          </RailDragOverlay>
         </DndContext>
       </RailDrawerBody>
 

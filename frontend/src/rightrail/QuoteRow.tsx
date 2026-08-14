@@ -1,6 +1,9 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { priceDirClass } from '../ui/priceDir';
-import { dropIndicatorClass, sortableDraggingStyle, type DropIndicator } from '../ui/sortableDragVisuals';
+import {
+  dropIndicatorClass, sortableDraggingStyle, sortablePlaceholderStyle,
+  type DropIndicator,
+} from '../ui/sortableDragVisuals';
 
 /** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가(+등락률)(우) │ (선택) 트레일링 액션.
  *  ScreenerResultRow 의 시각/키보드 계약을 그대로 가져오고 quote 셀을 우측에 둔다.
@@ -38,6 +41,10 @@ export interface QuoteRowProps {
   dragAttributes?: DraggableAttributes;
   dragActivatorRef?: (node: HTMLElement | null) => void;
   dragging?: boolean;
+  /** `dragging` 일 때 원본 행을 어떻게 그릴지. 기본 `'lifted'` = 틴트+그림자로 들어올린
+   *  모습(관심종목 외 세 리스트의 현행 동작). `'placeholder'` 는 `DragOverlay` 고스트를
+   *  띄우는 리스트용 — 커서에 이미 클론이 들려 있으므로 원본은 빈 자리로 비운다. */
+  draggingAppearance?: 'lifted' | 'placeholder';
   dropIndicator?: DropIndicator;
   // --- 관심종목 패널 전용 우클릭/Delete (미전달 시 무동작) ---
   onContextMenu?: (e: React.MouseEvent<HTMLLIElement>) => void;
@@ -61,7 +68,8 @@ function formatPct(pct: number | null): string {
 export function QuoteRow({
   name, price, pct, changeWon: _changeWon, expectedPrice, expectedPct,
   active, ariaLabel, testId, onClick, leading, trailingAction,
-  sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging, dropIndicator,
+  sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
+  draggingAppearance = 'lifted', dropIndicator,
   onContextMenu, onDelete, indented, flash, matched,
 }: QuoteRowProps) {
   void _changeWon;
@@ -138,7 +146,9 @@ export function QuoteRow({
         // 관심·히트맵·스크리너·순위가 이 행을 공유하므로 여기 한 곳이 네 리스트를 결정한다(2026-07-23).
         background: active || matched ? 'var(--tint-selection)' : 'transparent',
         ...sortableStyle,
-        ...(dragging ? sortableDraggingStyle(18) : {}),
+        ...(dragging
+          ? (draggingAppearance === 'placeholder' ? sortablePlaceholderStyle() : sortableDraggingStyle(18))
+          : {}),
         ...(dropIndicator ? { position: 'relative' } : {}),
       }}
     >
