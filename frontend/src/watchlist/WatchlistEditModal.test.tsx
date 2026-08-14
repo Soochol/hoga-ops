@@ -238,6 +238,51 @@ describe('WatchlistEditModal', () => {
     await waitFor(() => expect(ro).toHaveBeenCalledWith(['f_b', 'f_a']));
   });
 
+  // --- v4: 메모가 낀 폴더 (sparse order) ---
+  //
+  // 1단계가 "2단계에서 확인할 가정" 으로 올려놓고 아직 아무도 검증하지 않은 항목이
+  // 이것이다: `resolveDrag` 는 **배열 인덱스** 기반인데, v4 부터 entries 의 order 는
+  // 폴더 items 인덱스라 메모가 낀 폴더에서 **띄엄띄엄**해진다(0, 2, 3, 5…).
+  // 두 축이 어긋나면 모달 드래그가 엉뚱한 코드 순서를 보낸다.
+  //
+  // 이 모달은 메모를 **표시하지 않는다**(의도) — 메모 위치에 의견이 없는 화면이라
+  // `ordered_codes` 계약(코드만, 메모는 items 인덱스 고정)을 쓴다. 그래서 여기서
+  // 재는 것은 "메모를 그리는가" 가 아니라 "sparse order 를 정렬 키로만 쓰는가" 다.
+  it('메모가 낀 폴더에서도 코드 순서를 옳게 보낸다 (sparse order)', async () => {
+    // items: [005930(0), memo(1), 000660(2), memo(3), 035720(4)]
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [{ id: 'f_a', name: '스윙', order: 0, capture_enabled: true }],
+      // **배열 순서를 일부러 섞는다** — order 순으로 넣으면 정렬이 no-op 이라
+      // "정렬 키로 쓴다" 를 실제로 재지 못한다(서버도 순서를 보장하지 않는다).
+      entries: [
+        { code: '035720', name: '카카오', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 4 },
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 2 },
+      ],
+      memos: [
+        { id: 'm_0000000a', folder_id: 'f_a', order: 1, text: '실적 발표 대기' },
+        { id: 'm_0000000b', folder_id: 'f_a', order: 3, text: '' },
+      ],
+      next_run_at_ms: 0,
+    });
+    const reorder = vi.spyOn(api, 'reorderEntries').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+    await screen.findByText('삼성전자');
+
+    // 메모는 이 화면에 없다 — 코드 3행만 보인다.
+    expect(screen.queryByText('실적 발표 대기')).not.toBeInTheDocument();
+
+    // 첫 코드(005930)를 마지막 코드(035720) 자리로 — 배열 인덱스 0 → 2.
+    h.onDragEnd!({
+      active: { id: '005930', data: { current: { type: 'entry' } } },
+      over: { id: '035720', data: { current: { type: 'entry' } } },
+    });
+
+    // order 가 0,2,4 로 띄엄띄엄해도 **정렬 키로만** 쓰이므로 코드 순서는 온전하다.
+    await waitFor(() => expect(reorder).toHaveBeenCalledWith('f_a', ['000660', '035720', '005930']));
+  });
+
   it('selects the next real group when the currently-selected folder is deleted', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
       folders: [

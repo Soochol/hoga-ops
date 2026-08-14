@@ -15,6 +15,10 @@ import { TrashIcon } from '../ui/TrashIcon';
  * 않는다. QuoteRow 의 ↑↓ 네비게이션이 `[data-quote-row]` 로 행을 모으므로, 그
  * 속성이 없으면 키보드 이동이 이 행을 **자동으로 건너뛴다**(별도 분기 불필요).
  *
+ * **키보드로 편집할 수 있다** — 행 안의 두 액션(편집 진입 · 삭제)이 각각 형제
+ * `<button>` 이라 Tab 으로 닿고 Enter/Space 로 눌린다. 행 자체(`li`)에 클릭 핸들러를
+ * 두면 삭제 버튼과 중첩 인터랙티브가 되어 그 경로가 막힌다.
+ *
  * 색은 `--fg-dim` 이다. DESIGN.md(2026-08-04): 소형 텍스트에 `--fg-dimmer` 를 쓰지
  * 않는다 — 그건 비활성 요소·장식 글리프 전용이다. 종목명(`--fg`)보다 한 단계 물러나
  * 위계는 색으로 표현하되 대비는 지킨다.
@@ -118,19 +122,37 @@ export function MemoRow({
       {...dragListeners}
       data-testid={testId}
       // data-quote-row 를 붙이지 않는다 → QuoteRow 의 ↑↓ 네비게이션이 건너뛴다.
-      className={`${rowClass} cursor-text touch-none`}
+      // role 도 주지 않는다(기본 listitem) — 행 자체는 액션이 아니고, 액션은 안의
+      // 두 버튼이다. `role="button"` 을 주면 삭제 버튼과 중첩 인터랙티브가 된다.
+      className={`${rowClass} touch-none`}
       style={rowStyle}
-      onClick={() => setEditing(true)}
     >
-      {/* 빈 줄(text='')이면 아무것도 안 보이고 높이만 차지한다 — 그게 "빈칸"이다.
-          텍스트가 있으면 종목명과 같은 x 에서 시작하되 --fg-dim 으로 물러난다. */}
-      <span className="flex-1 min-w-0 truncate text-xs text-fg-dim leading-tight">
-        {text}
-      </span>
+      {/* 편집 진입은 **형제 버튼**이다(GroupHeader 의 div + 버튼 관용구). li 에
+          onClick/tabIndex 를 주면 삭제 버튼과 중첩돼 키보드·AT 에서 어긋난다.
+          드래그 listeners 는 li 에 남아 있어 버튼 위에서도 포인터 드래그가 시작된다
+          (PointerSensor distance:5 가 클릭과 구분한다 — RowTrailing ⋯ 와 같은 조합).
+
+          빈 줄(text='')이면 아무것도 안 보이고 높이만 차지한다 — 그게 "빈칸"이다.
+          그 상태에선 버튼에 이름이 없어 AT 가 "버튼" 이라고만 읽으므로 aria-label 로
+          상태와 액션을 함께 준다. */}
+      {/* `self-stretch` 가 **빈 줄의 클릭 타깃**을 만든다 — 텍스트가 없으면 버튼
+          높이가 0 이 되어 마우스로도 키보드로도 닿을 수 없다(Playwright 가 hidden 으로
+          판정해 잡아냈다). 빈 줄이야말로 "방금 만들어 아직 안 쓴 메모" 라 편집 진입이
+          가장 필요한 상태다. */}
+      <button
+        type="button"
+        data-testid={`${testId}-edit`}
+        aria-label={text ? `메모 편집: ${text}` : '빈칸 — 메모 입력'}
+        title={text || undefined}
+        onClick={() => setEditing(true)}
+        className="flex-1 min-w-0 self-stretch flex items-center text-left text-xs text-fg-dim leading-tight cursor-text"
+      >
+        <span className="min-w-0 truncate">{text}</span>
+      </button>
       <span className="flex items-center justify-center" style={{ minWidth: '1.25rem' }}>
         <button
           type="button"
-          aria-label="빈칸 삭제"
+          aria-label={text ? `메모 삭제: ${text}` : '빈칸 삭제'}
           data-testid={`${testId}-delete`}
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
           className="grid place-items-center px-1 leading-none text-fg-dim hover:text-error opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
