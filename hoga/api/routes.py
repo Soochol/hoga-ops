@@ -415,10 +415,12 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
     @router.get("/meta", response_model=Meta)
     def meta(code: Code, date: StockDate) -> Meta:
         # venue 를 안 넘기는 것이 맞다 — 이 표면엔 venue 축이 **없다**(#1133).
-        # 라우트에 venue 파라미터가 없고, 응답 `Meta` 도 venue 별로 갈리는 필드를
-        # 싣지 않는다: `regular_session_close_ms` 는 세 venue 가 같은 값이고
-        # `indicator_session_*`(KRX 09:00~15:30 vs NXT/UN 08:00~20:00)는 애초에
-        # 노출하지 않는다. 그래서 KRX 는 폴백이 아니라 **사실**이다.
+        # 근거가 두 겹이다: ① 라우트에 venue 파라미터가 없고, 응답 `Meta` 도 venue 별로
+        # 갈리는 필드를 싣지 않는다(`regular_session_close_ms` 는 세 venue 가 같은 값이고
+        # `indicator_session_*`(KRX 09:00~15:30 vs NXT/UN 08:00~20:00)는 애초에 노출하지
+        # 않는다). ② **source 도 축이 아니다** — 이 라우트는 `get_meta` 의 기본
+        # source(`hogaplay`)로 고정이고, hogaplay 는 **KRX 전용 source** 다
+        # (`source_covers_venue`). 그래서 KRX 는 폴백이 아니라 **사실**이다.
         # ⚠ 여기서 `venue="KRX"` 를 명시하지 말 것 — 명시는 "선택이 있다" 는 뜻이라
         # 축 없는 표면에 축이 있는 것처럼 읽힌다. 이 라우트가 venue 선택을 받게
         # 되는 날, 그때 명시가 **필수**가 된다.
