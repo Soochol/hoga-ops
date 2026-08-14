@@ -1,9 +1,32 @@
 {
-  "_contract": "Watchlist Panel 표시 순서 계약(ADR-0070). 백엔드 hoga/api/watchlist_projection.py::display_ordered_codes (Live Set = KIS WS 구독 경계 산출)와 프론트 grouping.ts::groupByFolder (렌더)가 반드시 일치: 폴더 .order 오름차순 -> 각 폴더 member_codes 순 -> 첫 등장으로 dedup. 양쪽 테스트가 이 한 파일을 읽어, 한쪽 정렬 키만 바뀌어도 다른 쪽 테스트가 깨지도록 계약을 코드로 박는다. 깨지면 화면 상단과 실제 구독 종목이 조용히 어긋난다(capture-critical).",
+  "_contract": "Watchlist Panel 표시 순서 계약(ADR-0070). 백엔드 hoga/api/watchlist_projection.py::display_ordered_codes (Live Set = KIS WS 구독 경계 산출)와 프론트 grouping.ts::groupByFolder (렌더)가 반드시 일치: 폴더 .order 오름차순 -> 각 폴더 items 순 -> code 항목만 -> 첫 등장으로 dedup. 양쪽 테스트가 이 한 파일을 읽어, 한쪽 정렬 키만 바뀌어도 다른 쪽 테스트가 깨지도록 계약을 코드로 박는다. 깨지면 화면 상단과 실제 구독 종목이 조용히 어긋난다(capture-critical).",
+  "_v4": "폴더 A 의 memo 항목은 display_order 에 등장하지 않는다 — 메모는 Code 가 아니므로 Live Set 산출에서 원리적으로 배제된다. 그 항목이 코드 사이에 끼어 있어서, 메모를 세는 회귀가 생기면 이 픽스처가 즉시 깨진다.",
   "folders": [
-    { "id": "f_0000000a", "name": "A", "order": 1, "member_codes": ["005930", "000660"] },
-    { "id": "f_0000000b", "name": "B", "order": 0, "member_codes": ["000660", "035720"] },
-    { "id": "f_0000000c", "name": "C", "order": 2, "member_codes": ["005930"] }
+    {
+      "id": "f_0000000a",
+      "name": "A",
+      "order": 1,
+      "items": [
+        { "kind": "code", "code": "005930" },
+        { "kind": "memo", "id": "m_0000000a", "text": "실적 발표 대기" },
+        { "kind": "code", "code": "000660" }
+      ]
+    },
+    {
+      "id": "f_0000000b",
+      "name": "B",
+      "order": 0,
+      "items": [
+        { "kind": "code", "code": "000660" },
+        { "kind": "code", "code": "035720" }
+      ]
+    },
+    {
+      "id": "f_0000000c",
+      "name": "C",
+      "order": 2,
+      "items": [{ "kind": "code", "code": "005930" }]
+    }
   ],
   "entries": [
     { "code": "005930", "name": "삼성", "registered_at_kst_date": "20260101", "last_success_date": null },

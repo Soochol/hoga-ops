@@ -64,7 +64,8 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
             "registered_at_kst_date",
         }
     ),
-    "WatchlistResponse": frozenset({"entries", "folders", "next_run_at_ms"}),
+    "WatchlistMemoView": frozenset({"id", "folder_id", "order", "text"}),
+    "WatchlistResponse": frozenset({"entries", "folders", "memos", "next_run_at_ms"}),
     "HeatmapEntry": frozenset({"code", "folder_id", "name", "order"}),
     "HeatmapResponse": frozenset(
         {"entries", "folders", "capture_markers", "next_run_at_ms"}

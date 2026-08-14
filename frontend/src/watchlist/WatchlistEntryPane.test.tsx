@@ -14,6 +14,7 @@ const DATA = {
     { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: '20260102', folder_id: 'f_a', order: 0 },
     { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 },
   ],
+  memos: [],
   next_run_at_ms: 0,
 };
 
@@ -48,6 +49,7 @@ describe('WatchlistEntryPane', () => {
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
         { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 1 },
       ],
+      memos: [],
       next_run_at_ms: 0,
     });
     // v3 이동 = 대상 추가 후 출처 제거(멤버십). add/remove를 각각 스파이.
@@ -75,6 +77,7 @@ describe('WatchlistEntryPane', () => {
       entries: [
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
       ],
+      memos: [],
       next_run_at_ms: 0,
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

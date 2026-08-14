@@ -16,7 +16,7 @@ async def test_add_member_creates_entry_and_membership(tmp_path):
     await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260611", folder_id=fid)
     doc = load_document(tmp_path)
     assert [e.code for e in doc.entries] == ["005930"]
-    assert next(f for f in doc.folders if f.id == fid).member_codes == ["005930"]
+    assert next(f for f in doc.folders if f.id == fid).code_members() == ["005930"]
 
 
 async def test_add_member_second_folder_keeps_single_entry(tmp_path):
@@ -27,8 +27,8 @@ async def test_add_member_second_folder_keeps_single_entry(tmp_path):
     await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260611", folder_id=f2)
     doc = load_document(tmp_path)
     assert [e.code for e in doc.entries] == ["005930"]  # 단일 entry
-    assert next(f for f in doc.folders if f.id == f1).member_codes == ["005930"]
-    assert next(f for f in doc.folders if f.id == f2).member_codes == ["005930"]
+    assert next(f for f in doc.folders if f.id == f1).code_members() == ["005930"]
+    assert next(f for f in doc.folders if f.id == f2).code_members() == ["005930"]
 
 
 async def test_add_member_idempotent(tmp_path):
@@ -37,7 +37,7 @@ async def test_add_member_idempotent(tmp_path):
     await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260611", folder_id=fid)
     await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260611", folder_id=fid)
     doc = load_document(tmp_path)
-    assert next(f for f in doc.folders if f.id == fid).member_codes == ["005930"]  # 중복 없음
+    assert next(f for f in doc.folders if f.id == fid).code_members() == ["005930"]  # 중복 없음
 
 
 async def test_remove_member_last_folder_drops_entry(tmp_path):
@@ -47,7 +47,7 @@ async def test_remove_member_last_folder_drops_entry(tmp_path):
     await remove_member(tmp_path, code="005930", folder_id=fid)
     doc = load_document(tmp_path)
     assert doc.entries == []  # 마지막 폴더 제거 → watchlist 탈락
-    assert next(f for f in doc.folders if f.id == fid).member_codes == []
+    assert next(f for f in doc.folders if f.id == fid).code_members() == []
 
 
 async def test_remove_member_other_folder_keeps_entry(tmp_path):
@@ -59,7 +59,7 @@ async def test_remove_member_other_folder_keeps_entry(tmp_path):
     await remove_member(tmp_path, code="005930", folder_id=f1)
     doc = load_document(tmp_path)
     assert [e.code for e in doc.entries] == ["005930"]  # 잔여 폴더로 유지
-    assert next(f for f in doc.folders if f.id == f2).member_codes == ["005930"]
+    assert next(f for f in doc.folders if f.id == f2).code_members() == ["005930"]
 
 
 async def test_add_member_unknown_folder_raises(tmp_path):
@@ -89,4 +89,4 @@ async def test_reorder_entries_reorders_member_codes(tmp_path):
     await add_member(tmp_path, code="000660", name="SK", today_kst_date="20260611", folder_id=fid)
     await reorder_entries(tmp_path, folder_id=fid, ordered_codes=["000660", "005930"])
     doc = load_document(tmp_path)
-    assert next(f for f in doc.folders if f.id == fid).member_codes == ["000660", "005930"]
+    assert next(f for f in doc.folders if f.id == fid).code_members() == ["000660", "005930"]

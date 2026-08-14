@@ -5,6 +5,7 @@ module (``hoga/tables/{trades,snapshots,brokers,candles}.py``).
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
@@ -976,23 +977,92 @@ class BrokerLateEntryEvent(BaseModel):
 # --- Watchlist (see spec 2026-05-26 and ADR-0034) --------------------------
 
 
+# 메모 텍스트 상한 — 패널 종목명 컬럼 폭에 맞춘 값. 넘으면 UI 가 truncate 하는 게
+# 아니라 요청이 422 로 거절된다(저장된 값은 항상 표시 가능한 길이).
+WATCHLIST_MEMO_MAX_LEN = 80
+
+# 메모 아이템 id — 폴더 `f_` 관례와 대칭. 6자리 종목코드와 prefix 로 구별되므로
+# 프론트 dnd sortable id 파서가 kind 를 문자열만 보고 가를 수 있다.
+MEMO_ID_PATTERN = r"^m_[0-9a-f]{8}$"
+
+
+class WatchlistCodeItem(BaseModel):
+    """폴더 items 의 종목 항목(v4). v3 의 `member_codes` 원소가 이것으로 승격됐다."""
+
+    kind: Literal["code"] = "code"
+    code: str = Field(pattern=CODE_PATTERN)
+
+
+class WatchlistMemoItem(BaseModel):
+    """폴더 items 의 메모 항목(v4) — 리스트에 끼워 넣는 "빈칸".
+
+    `text=""` 가 **정상 상태**(빈 줄)다. 폴더 이름(_FolderNameBody)과 정반대이므로
+    그쪽 blank-거부 validator 를 재사용하면 이 기능이 통째로 죽는다.
+    """
+
+    kind: Literal["memo"] = "memo"
+    id: str = Field(pattern=MEMO_ID_PATTERN)
+    text: str = Field(default="", max_length=WATCHLIST_MEMO_MAX_LEN)
+
+
+# discriminated union — 알 수 없는 `kind` 는 ValidationError 가 되어 load_document 의
+# corruption 경로(backup + empty)로 간다. 읽기 경로에서 조용히 드롭하면 다음 save 가
+# 그 드롭을 영속시켜 read-path wipe 가 된다(ADR-0065 위반).
+WatchlistItem = Annotated[
+    WatchlistCodeItem | WatchlistMemoItem, Field(discriminator="kind")
+]
+
+
+def code_items(codes: Iterable[str]) -> list[WatchlistItem]:
+    """코드 리스트 → code item 리스트 (v4 폴더를 코드만으로 세우는 단위 연산).
+
+    `WatchlistFolder(items=code_items([...]))` 가 v3 의
+    `WatchlistFolder(member_codes=[...])` 를 대신한다. 반환형이 좁은
+    `list[WatchlistCodeItem]` 이 아니라 `list[WatchlistItem]` 인 것은 의도다 —
+    `list` 는 불변(invariant)이라 좁게 선언하면 모든 호출부가 타입 에러가 난다.
+    """
+    return [WatchlistCodeItem(code=c) for c in codes]
+
+
 class WatchlistFolder(BaseModel):
-    """A named, ordered grouping that OWNS its ordered member Codes (v3,
-    ADR-0070). `member_codes` order = the folder's in-display order. `id` is
-    backend-minted and stable across renames. STORE model — the wire ships
-    WatchlistFolderView (member_codes dropped, ADR-0004 Entity≠Wire)."""
+    """A named, ordered grouping that OWNS its ordered items (v4, ADR-0070).
+    `items` order = the folder's in-display order, mixing Codes and memo rows.
+    `id` is backend-minted and stable across renames. STORE model — the wire
+    ships WatchlistFolderView (items dropped, ADR-0004 Entity≠Wire).
+
+    v3 까지 이 자리는 `member_codes: list[str]` 였다. 그 이름은 **의도적으로
+    남기지 않았다** — 읽기 전용 property 로 남기면 기존
+    `model_copy(update={"member_codes": ...})` 호출부가 에러도 경고도 없이 무시된다
+    (pydantic v2 는 update dict 를 __dict__ 에 넣지만 클래스 property 가 이긴다).
+    코드 멤버만 필요하면 watchlist.code_members(folder) 를 쓴다.
+    """
 
     id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
     name: str = Field(min_length=1, max_length=40)
     order: int = Field(ge=0)
-    member_codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]] = Field(default_factory=list)
+    items: list[WatchlistItem] = Field(default_factory=list)
     capture_enabled: bool = True
+
+    def code_members(self) -> list[str]:
+        """이 폴더의 **종목 코드만**, items 순서대로.
+
+        v3 의 `member_codes` 필드 자리를 대신하는 읽기 뷰다. 캡처 플래너·Live Set·
+        히트맵 시드로 가는 projection 이 이 메서드만 통과하면 메모 항목은
+        **원리적으로** 그 경로에 샐 수 없다.
+
+        메서드인 것이 중요하다 — property 였다면 기존
+        `model_copy(update={"member_codes": ...})` 호출부가 에러도 경고도 없이
+        무시됐을 것이다(pydantic v2 는 update dict 를 __dict__ 에 넣지만 클래스
+        property 가 이긴다).
+        """
+        return [i.code for i in self.items if isinstance(i, WatchlistCodeItem)]
 
 
 class WatchlistEntry(BaseModel):
-    """One Code's backfill record (v3). Folder membership + ordering live on
-    WatchlistFolder.member_codes — the entry holds only capture markers.
-    STORE model; the wire ships the exploded WatchlistEntryView."""
+    """One Code's backfill record (v4). Folder membership + ordering live on
+    WatchlistFolder.items — the entry holds only capture markers. Memo items
+    have no entry (they are not Codes). STORE model; the wire ships the
+    exploded WatchlistEntryView."""
 
     code: str = Field(pattern=CODE_PATTERN)
     name: str
@@ -1001,23 +1071,29 @@ class WatchlistEntry(BaseModel):
 
 
 class WatchlistDocument(BaseModel):
-    """On-disk watchlist.json (v3). Typed envelope, validated on load via
+    """On-disk watchlist.json (v4). Typed envelope, validated on load via
     model_validate. Every writer round-trips the WHOLE document under one
     lock so folders survive a capture-success write (ADR-0065). The invariant
-    {e.code} == ⋃ folder.member_codes is a write-path/migration concern — NOT
-    a raising validator (read path must not crash/wipe on drift, ADR-0065)."""
+    {e.code} == ⋃ folder 의 code items 는 write-path/migration concern — NOT
+    a raising validator (read path must not crash/wipe on drift, ADR-0065).
+    Memo items sit outside that invariant entirely."""
 
-    schema_version: int = 3
+    schema_version: int = 4
     folders: list[WatchlistFolder] = Field(default_factory=list)
     entries: list[WatchlistEntry] = Field(default_factory=list)
 
 
 # --- Wire (Wire Model = consumer shape; ADR-0004) --------------------------
-# The store keeps member_codes on folders + slim per-Code entries; the wire
-# ships the shape the frontend consumes verbatim: folders {id,name,order} and
-# entries EXPLODED to one (folder, code) row each (a multi-folder Code appears
-# once per folder). The backend route builds these from the document — no
-# client adapter (ADR-0070 option B).
+# The store keeps items on folders + slim per-Code entries; the wire ships the
+# shape the frontend consumes verbatim: folders {id,name,order}, entries
+# EXPLODED to one (folder, code) row each (a multi-folder Code appears once per
+# folder), and memos in a SEPARATE array. The backend route builds these from
+# the document — no client adapter (ADR-0070 option B).
+#
+# 메모를 `entries` 에 판별 유니온으로 섞지 않는 이유: `entries` 는 히트맵·라이브 등
+# 여러 소비자가 읽는 배열이라, 유니온을 섞으면 메모를 모르는 소비자가 전부 바뀐다.
+# 별도 배열이면 기존 소비자는 무영향이고, 순서는 `order`(둘 다 folder items 인덱스)로
+# 프론트에서 병합한다 — entries∪memos 는 폴더당 0..N-1 로 조밀하다.
 
 
 class WatchlistFolderView(BaseModel):
@@ -1033,13 +1109,29 @@ class WatchlistEntryView(BaseModel):
     registered_at_kst_date: str = Field(pattern=r"^\d{8}$")
     last_success_date: str | None = Field(default=None, pattern=r"^\d{8}$")
     folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")  # v3: never null
-    order: int = Field(default=0, ge=0)                  # index within the folder's member_codes
+    # v4: index within the folder's ITEMS (memo rows included), not a code-only
+    # index. Values are sparse across this array alone; entries∪memos is dense.
+    order: int = Field(default=0, ge=0)
     capture_candidate: bool = True
+
+
+class WatchlistMemoView(BaseModel):
+    """A memo ("빈칸") row in a folder's display order (v4).
+
+    `text=""` is the blank-line state and is intentionally valid — see
+    WatchlistMemoItem.
+    """
+
+    id: str = Field(pattern=MEMO_ID_PATTERN)
+    folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
+    order: int = Field(default=0, ge=0)  # index within the folder's items
+    text: str = Field(default="", max_length=WATCHLIST_MEMO_MAX_LEN)
 
 
 class WatchlistResponse(BaseModel):
     folders: list[WatchlistFolderView] = Field(default_factory=list)
     entries: list[WatchlistEntryView]
+    memos: list[WatchlistMemoView] = Field(default_factory=list)
     next_run_at_ms: int  # Unix-ms of next KST 17:00 boundary (ADR-0003)
 
 
@@ -1085,6 +1177,38 @@ class FolderCaptureRequest(BaseModel):
 
 class FolderReorderRequest(BaseModel):
     ordered_ids: list[str]
+
+
+class _MemoTextBody(BaseModel):
+    """Shared request body for memo create/update — one memo text.
+
+    ⚠ `_FolderNameBody` 와 **정반대** 계약이다: 빈 문자열이 정상 값(빈 줄)이므로
+    strip 만 하고 blank 를 거절하지 않는다. 저 validator 를 재사용하면 "빈칸" 기능이
+    통째로 죽는다 — 그래서 상속하지 않고 따로 둔다.
+    """
+
+    text: str = Field(default="", max_length=WATCHLIST_MEMO_MAX_LEN)
+
+    @field_validator("text")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        # 공백만 입력 → "" (빈 줄). 거절이 아니라 정규화다.
+        return v.strip()
+
+
+class MemoCreateRequest(_MemoTextBody):
+    """Body for POST /api/watchlist/folders/{folder_id}/memos.
+
+    `at` = 삽입할 items 인덱스. None 이면 폴더 맨 아래. 범위를 벗어난 값은 끝으로
+    클램프한다(422 로 거절하지 않는다 — 동시 편집으로 길이가 줄었을 뿐인 흔한 경우라
+    사용자에게 에러를 보일 이유가 없다).
+    """
+
+    at: int | None = Field(default=None, ge=0)
+
+
+class MemoUpdateRequest(_MemoTextBody):
+    """Body for PATCH /api/watchlist/memos/{memo_id}."""
 
 
 class LiveSettingsResponse(BaseModel):

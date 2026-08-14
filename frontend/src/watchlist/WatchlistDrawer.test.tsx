@@ -30,7 +30,7 @@ const ENTRIES = [
   { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 0 },
   { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 },
 ];
-const DATA = { folders: FOLDERS, entries: ENTRIES, next_run_at_ms: 0 };
+const DATA = { folders: FOLDERS, entries: ENTRIES, memos: [], next_run_at_ms: 0 };
 
 describe('WatchlistDrawer', () => {
   beforeEach(() => {
@@ -116,7 +116,7 @@ describe('WatchlistDrawer', () => {
   });
 
   it('shows empty message when no entries and no folders', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ folders: [], entries: [], next_run_at_ms: 0 });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ folders: [], entries: [], memos: [], next_run_at_ms: 0 });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText(/관심종목이 없습니다/)).toBeInTheDocument());
@@ -213,6 +213,7 @@ describe('WatchlistDrawer', () => {
         { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 1 },
         { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 2 },
       ],
+      memos: [],
       next_run_at_ms: 0,
     };
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(threeEntries);
@@ -257,6 +258,7 @@ describe('WatchlistDrawer', () => {
         { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 0 },
         { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 1 },
       ],
+      memos: [],
       next_run_at_ms: 0,
     };
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(multiFolderEntries);
@@ -313,6 +315,7 @@ describe('WatchlistDrawer', () => {
         { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 0 },
         { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 1 },
       ],
+      memos: [],
       next_run_at_ms: 0,
     };
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(multiFolderEntries);
@@ -354,6 +357,7 @@ describe('WatchlistDrawer', () => {
         { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 1 },
         { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 2 },
       ],
+      memos: [],
       next_run_at_ms: 0,
     };
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(threeEntries);
@@ -527,6 +531,7 @@ describe('WatchlistDrawer', () => {
         { id: 'f_0000000b', name: '장기', order: 1 },
       ],
       entries: ENTRIES,
+      memos: [],
       next_run_at_ms: 0,
     });
     const reorderSpy = vi.spyOn(watchlistApi, 'reorderFolders').mockResolvedValue();
@@ -580,6 +585,7 @@ describe('WatchlistDrawer', () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
       folders: FOLDERS,
       entries: [{ code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 }],
+      memos: [],
       next_run_at_ms: 0,
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -653,6 +659,7 @@ describe('WatchlistDrawer', () => {
         { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_enabled', order: 2, capture_candidate: true },
         { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_excluded', order: 0, capture_candidate: false },
       ],
+      memos: [],
       next_run_at_ms: 0,
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -689,6 +696,7 @@ describe('WatchlistDrawer', () => {
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_enabled', order: 0, capture_candidate: true },
         { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_legacy', order: 0, capture_candidate: true },
       ],
+      memos: [],
       next_run_at_ms: 0,
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

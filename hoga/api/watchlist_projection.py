@@ -13,6 +13,8 @@ from hoga.api.models import (
     WatchlistEntryView,
     WatchlistFolder,
     WatchlistFolderView,
+    WatchlistMemoItem,
+    WatchlistMemoView,
     WatchlistResponse,
 )
 
@@ -30,7 +32,7 @@ def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
     for folder in ordered_folders(doc):
-        for code in folder.member_codes:
+        for code in folder.code_members():
             if code in seen:
                 continue
             if code not in by_code:
@@ -69,7 +71,7 @@ def capture_ordered_codes(
     for folder in ordered_folders(doc):
         if not folder.capture_enabled:
             continue
-        for code in folder.member_codes:
+        for code in folder.code_members():
             if code in seen:
                 continue
             if code not in by_code:
@@ -91,17 +93,24 @@ def project_entry_views(doc: WatchlistDocument) -> list[WatchlistEntryView]:
 
     Multi-folder codes intentionally appear once per folder. Drift is skipped on
     reads so one bad membership does not make the whole Watchlist unavailable.
+
+    `order` 는 폴더의 **items 인덱스**다(v4) — 메모 행이 차지한 자리를 건너뛰므로
+    이 배열만 보면 값이 띄엄띄엄하다. `project_memo_views` 가 같은 축을 쓰고, 둘을
+    합치면 폴더당 0..N-1 로 조밀하다. 프론트는 그 합집합을 order 로 정렬해 원래
+    표시 순서를 복원한다.
     """
     by_code = {entry.code: entry for entry in doc.entries}
     capture_candidates = set(capture_ordered_codes(doc))
     views: list[WatchlistEntryView] = []
     for folder in ordered_folders(doc):
-        for order, code in enumerate(folder.member_codes):
-            base = by_code.get(code)
+        for order, item in enumerate(folder.items):
+            if isinstance(item, WatchlistMemoItem):
+                continue
+            base = by_code.get(item.code)
             if base is None:
                 log.warning(
                     "watchlist.drift: member %s in folder %s has no entry (skipped)",
-                    code,
+                    item.code,
                     folder.id,
                 )
                 continue
@@ -119,12 +128,32 @@ def project_entry_views(doc: WatchlistDocument) -> list[WatchlistEntryView]:
     return views
 
 
+def project_memo_views(doc: WatchlistDocument) -> list[WatchlistMemoView]:
+    """Memo ("빈칸") rows in display order, one per folder item.
+
+    `order` 는 `project_entry_views` 와 **같은 축**(폴더 items 인덱스)이다. 메모는
+    entry 를 갖지 않으므로 drift 검사 대상이 아니다 — 스킵할 조건 자체가 없다.
+    """
+    return [
+        WatchlistMemoView(id=item.id, folder_id=folder.id, order=order, text=item.text)
+        for folder in ordered_folders(doc)
+        for order, item in enumerate(folder.items)
+        if isinstance(item, WatchlistMemoItem)
+    ]
+
+
 def first_membership_positions(doc: WatchlistDocument) -> dict[str, tuple[str, int]]:
-    """Return each valid code's first display membership as (folder_id, order)."""
+    """Return each valid code's first display membership as (folder_id, order).
+
+    ⚠ 여기의 `order` 는 `project_entry_views` 와 **다른 축**이다 — 메모를 제외한
+    **코드 전용 조밀 인덱스**(0..M-1)다. 소비자가 히트맵 시드 배치이고(heatmap.py),
+    히트맵 보드에는 메모 개념이 없어 빈자리가 생기면 안 되기 때문이다. 두 축을
+    통일하려 들지 말 것 — 서로 다른 보드의 좌표계다.
+    """
     by_code = {e.code for e in doc.entries}
     positions: dict[str, tuple[str, int]] = {}
     for folder in ordered_folders(doc):
-        for order, code in enumerate(folder.member_codes):
+        for order, code in enumerate(folder.code_members()):
             if code in positions:
                 continue
             if code not in by_code:
@@ -147,5 +176,6 @@ def project_watchlist_response(
     return WatchlistResponse(
         folders=project_folder_views(doc),
         entries=project_entry_views(doc),
+        memos=project_memo_views(doc),
         next_run_at_ms=next_run_at_ms,
     )

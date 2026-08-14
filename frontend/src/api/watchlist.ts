@@ -18,13 +18,29 @@ export interface WatchlistEntry {
   folder_id: string | null;        // watchlist v3 와이어는 항상 실폴더(null 없음, ADR-0070);
                                    // heatmap 도 v3 부터 자체 HeatmapEntry(비-null)를 쓴다(ADR-0112)
                                    // — null 은 grouping.ts 제네릭 하위호환으로만 남아 있다
-  order: number;                   // 0-based, 폴더 내 인덱스
+  order: number;                   // 폴더 items 인덱스(v4) — 메모 행이 차지한 자리를
+                                   // 건너뛰므로 이 배열만 보면 띄엄띄엄하다. WatchlistMemo
+                                   // 와 합치면 0..N-1 로 조밀하다. **정렬 키로만 쓸 것**
   capture_candidate?: boolean;     // code-level: any capture-enabled watchlist membership
+}
+
+/** 리스트에 끼워 넣는 "빈칸" 행(v4). 종목명 자리에 `text` 가 보이고, `text: ''` 는
+ *  빈 줄이라는 정상 상태다(폴더 이름과 정반대 — blank 를 거절하지 않는다).
+ *
+ *  `order` 는 WatchlistEntry.order 와 **같은 축**(폴더 items 인덱스)이다. 두 배열을
+ *  각각 보면 값이 띄엄띄엄하지만, entries∪memos 는 폴더당 0..N-1 로 조밀하다 —
+ *  order 로 정렬해 병합하면 원래 표시 순서가 그대로 복원된다. */
+export interface WatchlistMemo {
+  id: string;                      // m_ + 8 hex
+  folder_id: string;
+  order: number;
+  text: string;
 }
 
 export interface WatchlistResponse {
   folders: WatchlistFolder[];
   entries: WatchlistEntry[];
+  memos: WatchlistMemo[];
   next_run_at_ms: number;
 }
 
@@ -88,6 +104,31 @@ export function reorderEntries(folderId: string, orderedCodes: string[]): Promis
     body: JSON.stringify({ folder_id: folderId, ordered_codes: orderedCodes }),
   });
 }
+// --- 메모("빈칸") 아이템 (v4) ---------------------------------------------
+// 셋 다 Live Set 에 영향이 없다(메모는 Code 가 아니다) — 백엔드도 이 라우트들에선
+// refresh_live_stream 을 부르지 않는다.
+
+/** 폴더에 빈칸을 삽입. `at` = items 인덱스, 생략하면 맨 아래. 범위를 넘으면 끝으로
+ *  클램프된다(422 아님 — 동시 편집으로 길이가 줄었을 뿐인 흔한 경우). */
+export function addMemo(folderId: string, text = '', at?: number): Promise<WatchlistMemo> {
+  return apiCall<WatchlistMemo>(`/api/watchlist/folders/${folderId}/memos`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, at: at ?? null }),
+  });
+}
+
+/** 메모 텍스트 교체. `''` 는 빈 줄로 정상 저장된다. */
+export function updateMemo(memoId: string, text: string): Promise<WatchlistMemo> {
+  return apiCall<WatchlistMemo>(`/api/watchlist/memos/${memoId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function removeMemo(memoId: string): Promise<void> {
+  return apiAction(`/api/watchlist/memos/${memoId}`, { method: 'DELETE' });
+}
+
 export function removeEntries(codes: string[]): Promise<void> {
   return apiAction('/api/watchlist/remove', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

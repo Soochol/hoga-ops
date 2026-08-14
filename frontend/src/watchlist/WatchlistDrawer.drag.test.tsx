@@ -52,7 +52,7 @@ const ENTRIES = [
   { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 0 },
   { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 1 },
 ];
-const DATA = { folders: FOLDERS, entries: ENTRIES, next_run_at_ms: 0 };
+const DATA = { folders: FOLDERS, entries: ENTRIES, memos: [], next_run_at_ms: 0 };
 
 function wrap(qc: QueryClient) {
   return ({ children }: { children: React.ReactNode }) => (
@@ -239,6 +239,7 @@ describe('WatchlistDrawer drag wiring', () => {
         { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 0 },
         { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 1 },
       ],
+      memos: [],
       next_run_at_ms: 0,
     });
     vi.spyOn(client, 'apiCall').mockResolvedValue({

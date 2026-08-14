@@ -22,7 +22,7 @@ beforeEach(() => {
 
 describe('watchlist api client', () => {
   it('getWatchlist hits /api/watchlist', async () => {
-    const fake: WatchlistResponse = { folders: [], entries: [], next_run_at_ms: 0 };
+    const fake: WatchlistResponse = { folders: [], entries: [], memos: [], next_run_at_ms: 0 };
     vi.mocked(apiCall).mockResolvedValueOnce(fake);
     const r = await getWatchlist();
     expect(apiCall).toHaveBeenCalledWith('/api/watchlist');

@@ -1,4 +1,4 @@
-"""Watchlist v3: folders own member_codes + document envelope + migration.
+"""Watchlist v4: folders own items(코드+메모) + document envelope + migration.
 See docs/adr/0069-watchlist-v3-multi-membership.md, 2026-05-31 folders, ADR-0055/0065."""
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def test_folder_model_fields():
     assert f.id == "f_0000000a"
     assert f.name == "스윙"
     assert f.order == 0
-    assert f.member_codes == []
+    assert f.code_members() == []
 
 
 def test_watchlist_folder_defaults_capture_enabled_true_for_direct_model() -> None:
@@ -45,25 +45,25 @@ def test_migrate_v1_to_v3_default_folder(tmp_path):
         ],
     }), encoding="utf-8")
     doc = load_document(tmp_path)
-    assert doc.schema_version == 3
+    assert doc.schema_version == 4
     assert [f.name for f in doc.folders] == ["기본"]
-    assert doc.folders[0].member_codes == ["005930", "000660"]
+    assert doc.folders[0].code_members() == ["005930", "000660"]
     assert {e.code for e in doc.entries} == {"005930", "000660"}
 
 
 def test_migrate_is_idempotent(tmp_path):
-    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder, code_items
     from hoga.api.watchlist import load_document, save_document
     doc = WatchlistDocument(
-        folders=[WatchlistFolder(id="f_0000000a", name="스윙", order=0, member_codes=["005930"])],
+        folders=[WatchlistFolder(id="f_0000000a", name="스윙", order=0, items=code_items(["005930"]))],
         entries=[WatchlistEntry(code="005930", name="삼성전자",
                                 registered_at_kst_date="20260101", last_success_date=None)],
     )
     save_document(tmp_path, doc)
     reloaded = load_document(tmp_path)
-    assert reloaded.schema_version == 3
+    assert reloaded.schema_version == 4
     assert reloaded.folders[0].id == "f_0000000a"
-    assert reloaded.folders[0].member_codes == ["005930"]
+    assert reloaded.folders[0].code_members() == ["005930"]
 
 
 def test_migrate_existing_v3_folder_without_capture_enabled_defaults_true(tmp_path):
@@ -119,17 +119,17 @@ def test_load_invalid_v3_capture_enabled_backs_up_and_returns_empty_doc(tmp_path
 
 def test_bump_last_success_preserves_folders(tmp_path):
     """Blocker #1 regression: the Scheduler's bump must NOT drop folders/members."""
-    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder, code_items
     from hoga.api.watchlist import bump_last_success, load_document, save_document
     save_document(tmp_path, WatchlistDocument(
-        folders=[WatchlistFolder(id="f_0000000a", name="스윙", order=0, member_codes=["005930"])],
+        folders=[WatchlistFolder(id="f_0000000a", name="스윙", order=0, items=code_items(["005930"]))],
         entries=[WatchlistEntry(code="005930", name="삼성전자",
                                 registered_at_kst_date="20260101", last_success_date=None)],
     ))
     asyncio.run(bump_last_success(tmp_path, code="005930", date="20260102"))
     doc = load_document(tmp_path)
     assert doc.folders[0].id == "f_0000000a"                 # folder survived
-    assert doc.folders[0].member_codes == ["005930"]         # membership survived
+    assert doc.folders[0].code_members() == ["005930"]         # membership survived
     assert doc.entries[0].last_success_date == "20260102"
 
 
@@ -139,7 +139,7 @@ def test_future_version_raises_not_downgrades(tmp_path):
     path can catch malformed ValueErrors without swallowing it."""
     from hoga.api.watchlist import UnsupportedWatchlistSchema, load_document
     (tmp_path / "watchlist.json").write_text(json.dumps({
-        "schema_version": 4, "folders": [], "entries": [],
+        "schema_version": 5, "folders": [], "entries": [],
     }), encoding="utf-8")
     with pytest.raises(UnsupportedWatchlistSchema, match="unsupported watchlist schema_version"):
         load_document(tmp_path)
@@ -294,7 +294,7 @@ def test_reorder_entries_within_folder(tmp_path):
     asyncio.run(reorder_entries(tmp_path, folder_id=f.id,
                                 ordered_codes=["035720", "005930", "000660"]))
     doc = load_document(tmp_path)
-    assert doc.folders[0].member_codes == ["035720", "005930", "000660"]
+    assert doc.folders[0].code_members() == ["035720", "005930", "000660"]
 
 
 def test_remove_entries_bulk(tmp_path):
@@ -304,4 +304,4 @@ def test_remove_entries_bulk(tmp_path):
     asyncio.run(remove_entries(tmp_path, codes=["005930", "000660"]))
     doc = load_document(tmp_path)
     assert doc.entries == []
-    assert doc.folders[0].member_codes == []
+    assert doc.folders[0].code_members() == []

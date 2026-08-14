@@ -17,6 +17,7 @@ from hoga.api.models import (
     HeatmapDocument,
     HeatmapEntry,
     WatchlistFolder,
+    code_items,
 )
 from hoga.tables.snapshots import Orderbook, write_parquet
 
@@ -72,7 +73,7 @@ def _seed_heatmap(data_dir: Path, codes: list[str]) -> None:
     doc = HeatmapDocument(
         schema_version=3,
         folders=[WatchlistFolder(id="f_00000000", name="G", order=0,
-                                 member_codes=list(codes))],
+                                 items=code_items(codes))],
         entries=[HeatmapEntry(code=c, name=c, folder_id="f_00000000", order=i)
                  for i, c in enumerate(codes)],
     )
