@@ -20,6 +20,8 @@ const save: StudyViewReference = {
 const settings = {
   sourcePref: 'hogaplay_first' as const,
   venue: 'KRX' as const,
+  askPeakEnabled: true,
+  bidPeakEnabled: true,
   brokerLateEntryEnabled: true,
   brokerLateEntryStartHHMM: 1000,
   volumeDistributionEnabled: true,
@@ -86,6 +88,41 @@ describe('studyReferenceQueryOptions', () => {
     expect(options.screenerDaily.queryKey).toEqual([
       'live', 'screener-daily-candles', '005930', '20260616', '20260618',
     ]);
+  });
+
+  // 아래 둘이 재는 것: **플래그를 빠뜨리지 않았는가.** 빠뜨리면 백엔드 `Query(True)`
+  // 기본값이 먹어 꺼 둔 지표까지 계산·전송되는데, 그건 타입도 화면도 잡지 못하는
+  // **침묵하는 낭비**다(실측: `depth_delta` 하나로 응답 55,272B → 26,258B).
+  // 슬롯 인덱스는 `range.depthHeatmap.test.ts` 의 `queryKey[20]` 관례를 따른다 —
+  // 그 파일이 같은 슬롯의 **wire 파라미터 이름**까지 못 박고 있어 둘이 짝을 이룬다.
+  it('sidecar 요청은 단별 잔량 증감을 **끈다** — /study 는 그 지표를 그리지 않는다', () => {
+    const key = studyReferenceQueryOptions(save, settings).rangeSidecars.queryKey;
+
+    expect(key[21]).toBe(false);
+  });
+
+  // `bins` 를 null 로 두는 것만으로는 안 꺼진다 — 백엔드 게이트가 `enabled` 이고
+  // bins 는 기본값으로 폴백한다. 그래서 **두 값을 함께** 본다.
+  it('당일 최대 매물대는 enabled 플래그로 꺼야 실제로 안 계산된다', () => {
+    const off = studyReferenceQueryOptions(
+      save,
+      { ...settings, tradeVolumePocEnabled: false },
+    ).rangeSidecars.queryKey;
+
+    expect(off[19]).toBe(false);
+  });
+
+  it('최대벽 플래그가 지표 설정을 따른다 — 꺼 두면 계산·전송이 안 나간다', () => {
+    const on = studyReferenceQueryOptions(save, settings).rangeSidecars.queryKey;
+    const off = studyReferenceQueryOptions(
+      save,
+      { ...settings, askPeakEnabled: false, bidPeakEnabled: false },
+    ).rangeSidecars.queryKey;
+
+    expect([on[16], on[17]]).toEqual([true, true]);
+    expect([off[16], off[17]]).toEqual([false, false]);
+    // 키가 갈려야 토글 직후 재fetch 가 난다 — 안 갈리면 꺼도 옛 응답을 계속 쓴다.
+    expect(off).not.toEqual(on);
   });
 
   it('분봉 저장은 그대로 1분봉(디스크 캔들)을 받는다 — 이 변경은 캘린더 봉 전용', () => {

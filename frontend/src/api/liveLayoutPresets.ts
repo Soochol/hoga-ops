@@ -4,14 +4,23 @@ import type { LineStyle } from '../chart/drawing/types';
 /**
  * 레이아웃 프리셋 API 클라이언트 (ADR-0119 PR-E, #713 §5). study-views 클론.
  *
- * v3: payload = **워크스페이스 전체 스냅샷**(창 목록·z순서·그룹→종목). 프론트-네이티브
- * camelCase 를 그대로 담는 얕은 컨테이너 — 백엔드는 저장/반환만, 검증·정규화는 프론트가
- * apply 시점에 한다(`applyWorkspaceSnapshot`→`readWindow`). windows 원소·groupSymbols
- * 값은 자유 구조(창 kind별 chart 설정 등). 뷰포트·비영속 런타임은 미포함(§6).
+ * payload = **창 목록·z순서**. 프론트-네이티브 camelCase 를 그대로 담는 얕은 컨테이너 —
+ * 백엔드는 저장/반환만, 검증·정규화는 프론트가 apply 시점에 한다
+ * (`applyWorkspaceSnapshot`→`readWindow`). windows 원소는 자유 구조(창 kind별 chart
+ * 설정 등). 뷰포트·비영속 런타임은 미포함(§6).
  */
 export type LiveLayoutPresetPayload = {
   windows: unknown[];
   zOrder: string[];
+  /**
+   * 구 v3 의 그룹→종목. **더 이상 쓰지 않는다** — 저장은 빈 객체를 보내고 적용은
+   * 읽지 않는다(프리셋은 배치만, `state/workspace.ts` 의 `WorkspaceSnapshot` 참조).
+   *
+   * 필드를 지우지 않는 이유는 백엔드 모델이 그대로라 응답에 **항상 있기** 때문이다
+   * (`hoga/api/models.py` 의 `default_factory=dict`) — 손 미러의 정확성을 위해 자리를
+   * 남긴다(ADR-0004). 옛 프리셋에는 실제 종목이 들어 있을 수 있고, 그 값은 적용
+   * 시점에 버려진다.
+   */
   groupSymbols: Record<string, unknown>;
 };
 

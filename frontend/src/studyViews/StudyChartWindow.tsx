@@ -46,6 +46,14 @@ export type StudyChartWindowProps = {
   /** null = 아직 준비 전(로딩/에러). 헤더는 그때도 렌더한다. */
   chart: StudyChartRootProps | null;
   loading: boolean;
+  /** 사이드카(최대벽·POC·거래량분포·히트맵·거래원) 진행 상태.
+   *
+   *  화면 게이트에서 사이드카를 뺀 뒤(#1304) 캔들은 먼저 뜨지만 지표는 콜드일 때
+   *  수십 초 뒤에 온다. 그 사이 **아무 표시가 없으면** "지표를 껐나" 와 "아직 오는
+   *  중" 이 구별되지 않고, 실패는 아예 무증상이 된다(전에는 페이지가 통째로 에러라
+   *  과했지만 신호는 있었다). 이 두 값이 그 자리를 메운다. */
+  sidecarLoading: boolean;
+  sidecarFailed: boolean;
 };
 
 export function StudyChartWindow(props: StudyChartWindowProps) {
@@ -85,6 +93,33 @@ export function StudyChartWindow(props: StudyChartWindowProps) {
   );
 }
 
+/**
+ * 사이드카 지표의 진행/실패를 차트 위에 알리는 칩.
+ *
+ * **인라인인 이유**(DESIGN.md "Error surfaces — 인라인 vs 토스트"): 이 실패의 원인은
+ * 지금 화면에 **보이는 그 차트 창**이다. 토스트로 올리면 시선을 원인에서 떼어놓고,
+ * 창이 여럿일 때 **어느 창의 지표가 실패했는지** 말할 수 없다.
+ *
+ * `pointer-events-none` 이라 차트 조작(드래그·크로스헤어)을 가로채지 않는다. z 는
+ * pane 오버레이(≤20)보다 위, 그리기 툴바(49~50)보다 아래.
+ */
+function SidecarStatusChip({ failed }: { failed: boolean }) {
+  return (
+    <div
+      data-testid="study-sidecar-status"
+      className="pointer-events-none absolute right-2 top-2 z-[25] flex items-center gap-1.5 rounded-md px-2 py-1 text-xs shadow-panel"
+      style={{ background: 'var(--bg-card)', color: failed ? 'var(--error)' : 'var(--fg-dim)' }}
+    >
+      <span
+        // 로딩만 맥동시킨다 — 실패는 **끝난 상태**라 움직이면 아직 진행 중으로 읽힌다.
+        className={`h-1.5 w-1.5 rounded-full ${failed ? '' : 'live-pulse'}`}
+        style={{ background: failed ? 'var(--error)' : 'var(--accent)' }}
+      />
+      {failed ? '지표 불러오기 실패' : '지표 불러오는 중'}
+    </div>
+  );
+}
+
 function StudyChartWindowInner({
   windowId,
   rememberedMinute,
@@ -92,6 +127,8 @@ function StudyChartWindowInner({
   timeframe,
   chart,
   loading,
+  sidecarLoading,
+  sidecarFailed,
 }: StudyChartWindowProps & { timeframe: LiveTimeframe }) {
   const headerRef = useRef<HTMLDivElement>(null);
   // 임계는 `/live` 값을 재사용하지 않는다 — 액션이 2버튼이라 그대로 쓰면 일찍
@@ -143,6 +180,11 @@ function StudyChartWindowInner({
               <LiveChartRoot {...chart} />
             </ChartDrawingShell>
           </ChartErrorBoundary>
+        )}
+        {/* 차트가 실제로 떠 있을 때만 — 로딩 자리(위 분기)에는 이미 문구가 있고,
+            거기 겹쳐 놓으면 "불러오는 중" 이 두 번 나온다. */}
+        {chart && !loading && (sidecarLoading || sidecarFailed) && (
+          <SidecarStatusChip failed={sidecarFailed} />
         )}
       </div>
     </div>

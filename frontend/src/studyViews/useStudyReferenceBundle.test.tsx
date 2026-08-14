@@ -202,6 +202,10 @@ describe('useStudyReferenceBundles', () => {
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(save, {
       sourcePref: 'kiwoom_live',
       venue: 'KRX',
+      // 최대벽 플래그도 창의 지표 설정에서 온다 — 전에는 아예 안 넘겨 백엔드 기본값
+      // `True` 로 항상 계산됐다. 여기 공장 기본은 꺼짐이라 false 가 실린다.
+      askPeakEnabled: false,
+      bidPeakEnabled: false,
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
@@ -317,7 +321,43 @@ describe('useStudyReferenceBundles', () => {
     expect(rendered.current.bundle?.volume_distributions).toEqual([distribution]);
   });
 
-  it('holds isLoading while the sidecar is pending with no data yet (개선안 1-C)', () => {
+  // 프로그램 순매수는 백엔드가 `program_trade_enabled and sidecar_only` 로 게이트해
+  // **sidecar 응답에만** 실린다. 병합에서 빠져 있으면 `...hoga` 의 빈 값이 남아
+  // `/study` 에서 그 지표가 영영 안 그려진다 — 토글은 보이는데 화면은 그대로다.
+  it('프로그램 순매수는 sidecar 것을 쓴다 — hoga 쪽은 항상 비어 있다', () => {
+    const points = [{ t_ms: 1_779_840_000_000, net: 1234 }];
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeHogaOptions) {
+        // 백엔드가 hoga 모드에서 채우지 않는다는 사실을 픽스처로 못 박는다.
+        return { data: rangeBundleFixture({ program_trade: { points: [] } }), isLoading: false, error: null };
+      }
+      if (options === rangeSidecarOptions) {
+        return {
+          data: rangeBundleFixture({ program_trade: { points } as never }),
+          isLoading: false,
+          error: null,
+        };
+      }
+      return queryResultFor(options);
+    });
+
+    expect(renderOne(save).current.bundle?.program_trade?.points).toEqual(points);
+  });
+
+  // ── 사이드카는 화면 게이트에서 빠져 있다 (개선안 1-C 뒤집기) ──────────
+  //
+  // 전에는 "지표가 캔들과 함께 등장하도록" 사이드카를 `isLoading` 에 포함했다
+  // (`holds isLoading while the sidecar is pending`). `/study` 에서 그 전제가
+  // 깨진다 — 저장 구간 전체를 계산하므로 콜드 73~93초다(2026-08-13 실측: 같은
+  // URL 콜드 73.2초 → 웜 2.3초). 지표를 같이 띄우려다 캔들까지 73초 잡아 두는
+  // 것이 이 화면 지연의 정체였으므로, 캔들 먼저 띄우고 지표는 나중에 채운다.
+  //
+  // ⚠ 아래 두 단언은 **방향이 뒤집힌 것**이지 완화된 것이 아니다. 다시 뒤집으려면
+  // 위 실측이 달라졌는지부터 확인할 것.
+  it('does NOT hold isLoading while the sidecar is pending — 캔들 먼저 (개선안 1-C 뒤집기)', () => {
+    // 캔들을 실제로 채운다 — 이 테스트의 요점이 "지표를 기다리는 동안 **캔들은
+    // 이미 화면에 있다**" 라서, 빈 픽스처로는 게이트만 재고 요점을 못 잰다.
+    rangeCandlesFixture = [{ ts_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, vol_a: 100, vol_b: 0 }];
     useQueryMock.mockImplementation((options: UseQueryOptions) => {
       if (options === rangeSidecarOptions) {
         return { data: null, isLoading: true, error: null };
@@ -325,7 +365,16 @@ describe('useStudyReferenceBundles', () => {
       return queryResultFor(options);
     });
 
-    expect(renderOne(save).current.isLoading).toBe(true);
+    const rendered = renderOne(save);
+    expect(rendered.current.isLoading).toBe(false);
+    // 대신 별도 채널로 보고한다 — 화면을 막지 않으면서 "지표는 아직" 을 말할 수 있어야 한다.
+    expect(rendered.current.isSidecarLoading).toBe(true);
+    // 그리고 그 사이에도 캔들은 이미 있다.
+    expect(rendered.current.chartBundle?.candles?.length).toBeGreaterThan(0);
+  });
+
+  it('clears isSidecarLoading once the sidecar settles', () => {
+    expect(renderOne(save).current.isSidecarLoading).toBe(false);
   });
 
   it('does not hold isLoading when the sidecar errors (settle, no permanent hold)', () => {
@@ -337,6 +386,49 @@ describe('useStudyReferenceBundles', () => {
     });
 
     expect(renderOne(save).current.isLoading).toBe(false);
+  });
+
+  it('releases isSidecarLoading when the sidecar errors (settle, 고착 없음)', () => {
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeSidecarOptions) {
+        return { data: null, isLoading: false, error: new Error('sidecar failed') };
+      }
+      return queryResultFor(options);
+    });
+
+    expect(renderOne(save).current.isSidecarLoading).toBe(false);
+  });
+
+  // #1271: 에러 게이트도 로딩 게이트와 **같은 술어로** 갈라야 한다. 한쪽만 갈라면
+  // 증상이 "73초 대기" 에서 "백지" 로 옮겨갈 뿐이다 — `studyActiveViewModel` 이
+  // `error` 하나로 페이지를 통째로 'error' 로 만들기 때문이다.
+  it('keeps a sidecar-only failure out of the page error gate (지표 없는 차트 > 백지)', () => {
+    const sidecarFailure = new Error('sidecar failed');
+    rangeCandlesFixture = [{ ts_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, vol_a: 100, vol_b: 0 }];
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeSidecarOptions) {
+        return { data: null, isLoading: false, error: sidecarFailure };
+      }
+      return queryResultFor(options);
+    });
+
+    const rendered = renderOne(save);
+    expect(rendered.current.error).toBeNull();
+    // 조용히 삼키지는 않는다 — 별도 채널로 남긴다.
+    expect(rendered.current.sidecarError).toBe(sidecarFailure);
+    expect(rendered.current.chartBundle?.candles?.length).toBeGreaterThan(0);
+  });
+
+  it('still surfaces a hoga failure in the page error gate', () => {
+    const hogaFailure = new Error('hoga failed');
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeHogaOptions) {
+        return { data: null, isLoading: false, error: hogaFailure };
+      }
+      return queryResultFor(options);
+    });
+
+    expect(renderOne(save).current.error).toBe(hogaFailure);
   });
 
   it('holds isLoading while the screener daily gap-fill query is pending', () => {
