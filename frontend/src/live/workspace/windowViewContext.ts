@@ -69,6 +69,31 @@ export interface WindowStoreHandle {
 export interface WindowWorkspaceAdapter {
   store: WindowStoreHandle;
   getCode: (windowId: string) => string | null;
+  /**
+   * 이 워크스페이스의 지표 스코프 네임스페이스. 창 id 는 두 워크스페이스가
+   * 독립적으로 발급하므로(`/live`=`newWindowId`, `/study`=`randomUUID`), 전역
+   * 지표 저장소의 창 맵에서 둘을 구별할 접두사가 필요하다.
+   *
+   * 어댑터가 들고 있는 이유: 이 값을 아는 곳은 워크스페이스 종류를 아는 곳뿐이고,
+   * 어댑터는 이미 그런 축(`getCode`)을 담는 자리다. 모듈 상수 2개(`LIVE_`/`STUDY_`)
+   * 라 참조가 안정적이므로 `WindowViewValue` 를 만드는 4곳이 무엇도 계산하지 않는다.
+   */
+  scopePrefix: 'live' | 'study';
+}
+
+/**
+ * 지표 스코프 키 — 창별 지표 설정의 저장소 키(`live.indicators.v2` 의 `byWindow`).
+ *
+ * `windowId` 가 null(=Provider 밖, 단일 차트·테스트)이면 null 이고, 그 null 이 곧
+ * "공용 세트를 본다"는 뜻이다. 두 스토어(`livePage`·`chartPrefs`)가 같은 키를 써야
+ * 분리 멤버십이 어긋나지 않으므로 파생을 여기 한 곳에 둔다 — chartPrefs 는
+ * livePage 를 import 할 수 없다(이 파일 상단의 순환 주석 참조).
+ */
+export function windowScopeKey(
+  adapter: Pick<WindowWorkspaceAdapter, 'scopePrefix'> | undefined,
+  windowId: string | null | undefined,
+): string | null {
+  return adapter && windowId ? `${adapter.scopePrefix}:${windowId}` : null;
 }
 
 /** 창이 워크스페이스 통로까지 공급하는 완전한 뷰 값. `workspace` 는 **필수** —

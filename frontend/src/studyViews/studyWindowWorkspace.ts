@@ -28,4 +28,5 @@ function studyWindowCode(): string | null {
 export const STUDY_WINDOW_WORKSPACE: WindowWorkspaceAdapter = {
   store: useStudyWorkspaceStore,
   getCode: studyWindowCode,
+  scopePrefix: 'study',
 };

@@ -39,7 +39,23 @@ export type PersistedIndicatorsV2 = {
    *  전역 1세트, pane 종류별. 없는 키 = 스펙 기본값. */
   paneStretch: PaneStretchMap;
   byTimeframe: IndicatorSettingsByTimeframe;
+  /**
+   * 공용 세트에서 **분리된 창**의 설정. 키는 `live:<창id>` / `study:<창id>`.
+   *
+   * **키의 존재가 곧 "이 창은 분리됨"이다** — 값이 빈 객체여도 그렇다(공장값
+   * 상태에서 분리하면 복사할 diff 가 없어 `{}` 가 정상이다). 그래서 정규화가
+   * `byTimeframe` 과 달리 **빈 엔트리를 걷어내지 않는다**: 걷어내면 공장값에서
+   * 분리한 창이 다음 로드에 조용히 다시 연동되고, 증상은 한참 뒤 공용 설정을
+   * 바꾼 순간에야 "왜 이 창까지 따라오지" 로 나타난다.
+   *
+   * 내용물이 여기(전역 localStorage)에 사는 것이 #712 와의 차이다 — 창이 소유한
+   * 것은 **키뿐**이라 워크스페이스(탭별 sessionStorage)가 갈려도 설정은 안 갈린다.
+   */
+  byWindow: Record<string, IndicatorSettingsByTimeframe>;
 };
+
+/** 손상된 스토어의 무한 증식 방어 — 실사용 창 수보다 한참 크다. */
+export const INDICATOR_WINDOW_SCOPE_LIMIT = 64;
 
 export const INDICATORS_V2_STORAGE_KEY = 'live.indicators.v2';
 const V1_STORAGE_KEY = 'live.indicators.v1';
@@ -127,22 +143,42 @@ function sanitizeSettingsPatch(raw: unknown): Partial<IndicatorSettings> {
   return diffIndicatorSettingsFromFactory(touched);
 }
 
+/** 버킷 맵 하나(4프로파일)를 정규화한다 — 공용 세트와 창 세트가 같은 규칙을 쓴다.
+ *  빈 버킷은 여기서 걷힌다(sparse 의 정의). 맵 **자체**가 비는 것은 정상이며,
+ *  그 의미는 호출자가 정한다(공용=공장값 / 창=분리됐지만 오버라이드 없음). */
+function normalizeBucketMap(raw: unknown): IndicatorSettingsByTimeframe {
+  const rawBuckets = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? raw as Record<string, unknown>
+    : {};
+  const out: IndicatorSettingsByTimeframe = {};
+  for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
+    const patch = sanitizeSettingsPatch(rawBuckets[profileKey]);
+    if (Object.keys(patch).length > 0) out[profileKey] = patch;
+  }
+  return out;
+}
+
+/** 창 스코프 맵 — **빈 엔트리를 보존한다**(`byWindow` 필드 주석의 멤버십 규약). */
+function normalizeByWindow(raw: unknown): Record<string, IndicatorSettingsByTimeframe> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, IndicatorSettingsByTimeframe> = {};
+  for (const [scopeKey, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!scopeKey || Object.keys(out).length >= INDICATOR_WINDOW_SCOPE_LIMIT) break;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    out[scopeKey] = normalizeBucketMap(value);
+  }
+  return out;
+}
+
 export function normalizeIndicatorsV2(raw: unknown): PersistedIndicatorsV2 {
   const obj = raw && typeof raw === 'object' && !Array.isArray(raw)
     ? raw as Record<string, unknown>
     : {};
-  const byTimeframe: IndicatorSettingsByTimeframe = {};
-  const rawBuckets = obj.byTimeframe && typeof obj.byTimeframe === 'object' && !Array.isArray(obj.byTimeframe)
-    ? obj.byTimeframe as Record<string, unknown>
-    : {};
-  for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
-    const patch = sanitizeSettingsPatch(rawBuckets[profileKey]);
-    if (Object.keys(patch).length > 0) byTimeframe[profileKey] = patch;
-  }
   return {
     paneOrder: normalizePaneOrder(obj.paneOrder),
     paneStretch: normalizePaneStretch(obj.paneStretch),
-    byTimeframe,
+    byTimeframe: normalizeBucketMap(obj.byTimeframe),
+    byWindow: normalizeByWindow(obj.byWindow),
   };
 }
 
@@ -179,6 +215,30 @@ export function resolveIndicatorSettings(
   return resolved;
 }
 
+/**
+ * 이 스코프가 읽고 쓰는 버킷 맵 — 분리된 창은 자기 것, 나머지는 전부 공용.
+ *
+ * 폴백이 "엔트리 없음 → 공용" 이라, `byWindow` 가 통째로 없는 저장값(이 기능
+ * 이전에 쓰인 것 포함)은 전 창이 공용을 보는 종전 동작이 된다. 되돌리기도
+ * 대칭이다 — 필드를 버리면 전부 연동으로 돌아온다.
+ */
+export function bucketsForScope(
+  shared: IndicatorSettingsByTimeframe,
+  byWindow: Record<string, IndicatorSettingsByTimeframe>,
+  scopeKey: string | null,
+): IndicatorSettingsByTimeframe {
+  if (!scopeKey) return shared;
+  return byWindow[scopeKey] ?? shared;
+}
+
+/** 이 창이 공용 세트에서 분리됐는가 — 값이 아니라 **키의 존재**로 판정한다. */
+export function isWindowScopeDetached(
+  byWindow: Record<string, IndicatorSettingsByTimeframe>,
+  scopeKey: string | null,
+): boolean {
+  return scopeKey !== null && Object.hasOwn(byWindow, scopeKey);
+}
+
 /** 전환 시드 (#697 결정 변경): v1 의 분봉 관점 유효 설정(flat ⊕ 구
  *  panePrefsByTimeframe.minute)을 새 공장값과 diff 해 minute 버킷에 심는다.
  *  D/W/M 버킷은 시드 없음 — 구 D/W/M pane 오버라이드는 폐기. paneOrder 는 이관. */
@@ -196,6 +256,8 @@ export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
     // v1 블롭에 paneStretch 가 있으면 이관(구 프로덕션 v1 엔 없어 대개 {}).
     paneStretch: normalizePaneStretch((v1raw as { paneStretch?: unknown } | null)?.paneStretch),
     byTimeframe: Object.keys(minuteDiff).length > 0 ? { minute: minuteDiff } : {},
+    // v1 에는 창 스코프 개념이 없다 — 전 창 연동이 곧 v1 의 동작이다.
+    byWindow: {},
   };
 }
 

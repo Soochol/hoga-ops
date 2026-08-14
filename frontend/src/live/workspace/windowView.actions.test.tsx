@@ -72,6 +72,7 @@ function resetIndicatorState(): void {
   useLivePageStore.setState({
     ...FACTORY_INDICATOR_SETTINGS,
     indicatorsByTimeframe: {},
+    indicatorsByWindow: {},
     indicatorTimeframe: '1m',
     paneOrder: normalizePaneOrder([]),
     paneStretch: {},
