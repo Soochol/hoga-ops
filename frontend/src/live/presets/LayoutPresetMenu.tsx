@@ -54,7 +54,7 @@ export function LayoutPresetMenu() {
           { name, payload },
           {
             onSuccess: (row) => {
-              // 새로 만든 프리셋이 곧 활성 프리셋 — "현재 워크스페이스 저장"의 대상.
+              // 새로 만든 프리셋이 곧 활성 프리셋 — "현재 배치 저장"의 대상.
               useLiveLayoutStore.getState().setLastAppliedPresetId(row.id);
               handlers.onSuccess({ id: row.id });
             },
