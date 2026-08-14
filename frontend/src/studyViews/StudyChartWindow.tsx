@@ -13,7 +13,7 @@
  * 창 경로로 전환된다(#901). 그 경로가 `/study` 스토어를 보게 만드는 건 #907 의
  * 어댑터고, 여기서는 그걸 실어 주기만 한다.
  */
-import { useMemo, useRef, type ComponentProps } from 'react';
+import { useMemo, type ComponentProps } from 'react';
 import ChartErrorBoundary from '../chart/ChartErrorBoundary';
 import { ChartDrawingShell } from '../live/ChartDrawingShell';
 import { DrawingMenu } from '../live/DrawingMenu';
@@ -130,10 +130,9 @@ function StudyChartWindowInner({
   sidecarLoading,
   sidecarFailed,
 }: StudyChartWindowProps & { timeframe: LiveTimeframe }) {
-  const headerRef = useRef<HTMLDivElement>(null);
   // 임계는 `/live` 값을 재사용하지 않는다 — 액션이 2버튼이라 그대로 쓰면 일찍
   // 접힌다(#903, #905 가 실측으로 대체).
-  const fold = useChartHeaderFold(headerRef, STUDY_HEADER_FOLD);
+  const [fold, headerRef] = useChartHeaderFold(STUDY_HEADER_FOLD);
 
   return (
     <div className="flex h-full w-full flex-col">
