@@ -28,6 +28,16 @@ function mergeStudyRangeBundles(
     trade_volume_pocs: sidecars.trade_volume_pocs ?? [],
     depth_heatmap: sidecars.depth_heatmap ?? [],
     volume_distributions: sidecars.volume_distributions ?? [],
+    // ⚠ **프로그램 순매수는 sidecar 에서만 온다** — 백엔드가
+    // `include_program_trade = program_trade_enabled and sidecar_only` 로 게이트하므로
+    // hoga 응답의 이 필드는 **항상 빈 값**이다. 이 줄이 없으면 `...hoga` 의 빈 값이
+    // 남아 `/study` 에서 그 지표가 영영 안 그려진다(토글은 보이는데 화면은 그대로).
+    //
+    // 위 여섯과 달리 **`??` 폴백을 두지 않는다**: 이건 배열이 아니라
+    // `ProgramTradeSeries` 객체(`{points, source}`)라 `[]` 로 떨어뜨리면 소비자가
+    // `.points` 에서 터진다. sidecar 가 없으면 위 early-return 이 이미 hoga 를 그대로
+    // 돌려주므로 여기 도달할 때 `sidecars` 는 비어 있지 않다.
+    program_trade: sidecars.program_trade,
   };
 }
 
