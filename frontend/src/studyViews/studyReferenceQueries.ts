@@ -113,6 +113,12 @@ export function studyReferenceSidecarRangeOptions(
       brokerLateEntriesEnabled: settings.brokerLateEntryEnabled,
       brokerLateEntryStartHHMM: settings.brokerLateEntryEnabled ? settings.brokerLateEntryStartHHMM : null,
       volumeDistributionBins: settings.volumeDistributionEnabled ? settings.volumeDistributionRangeCount : null,
+      // ⚠ `bins` 를 null 로 두는 것만으로는 **안 꺼진다.** 백엔드는 게이트를
+      // `trade_volume_poc_enabled`(기본 `True`)로 보고, bins 는
+      // `trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS` 로 폴백한다 —
+      // 즉 지표를 꺼도 기본 bins 로 계산됐다. `volume_distribution` 은 게이트가
+      // `bins is not None` 이라 같은 실수가 없다(그래서 이 비대칭이 안 보였다).
+      tradeVolumePocEnabled: settings.tradeVolumePocEnabled,
       tradeVolumePocBins: settings.tradeVolumePocEnabled ? settings.volumeDistributionRangeCount : null,
       depthHeatmapEnabled: settings.depthHeatmapEnabled,
       volumeDistributionPriceRange: null,

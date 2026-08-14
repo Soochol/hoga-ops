@@ -101,6 +101,17 @@ describe('studyReferenceQueryOptions', () => {
     expect(key[21]).toBe(false);
   });
 
+  // `bins` 를 null 로 두는 것만으로는 안 꺼진다 — 백엔드 게이트가 `enabled` 이고
+  // bins 는 기본값으로 폴백한다. 그래서 **두 값을 함께** 본다.
+  it('당일 최대 매물대는 enabled 플래그로 꺼야 실제로 안 계산된다', () => {
+    const off = studyReferenceQueryOptions(
+      save,
+      { ...settings, tradeVolumePocEnabled: false },
+    ).rangeSidecars.queryKey;
+
+    expect(off[19]).toBe(false);
+  });
+
   it('최대벽 플래그가 지표 설정을 따른다 — 꺼 두면 계산·전송이 안 나간다', () => {
     const on = studyReferenceQueryOptions(save, settings).rangeSidecars.queryKey;
     const off = studyReferenceQueryOptions(
