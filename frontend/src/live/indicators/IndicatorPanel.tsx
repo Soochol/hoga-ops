@@ -29,7 +29,7 @@ import { ModalShell } from '../../ui/ModalShell';
 import { WORKSPACE_DRAWER_WIDTH_CLASS, WORKSPACE_DRAWER_SHELL_CLASS } from '../workspaceDrawer';
 import type { LiveTimeframe } from '../../state/livePage';
 
-type CategoryId =
+export type CategoryId =
   | 'moving-average'
   | 'daily-moving-average'
   | 'volume'
@@ -97,9 +97,24 @@ type Props = {
   timeframe: LiveTimeframe;
   /** 멀티창 대상 창 표시(#712) — "종목명" 등. 없으면 기존 단일 뷰 헤더. */
   targetLabel?: string;
+  /** 이 워크스페이스가 **그리지 않는** 지표 — 목록에서 뺀다.
+   *
+   *  `capabilities` 와 다른 축이다: 저쪽은 "이 종목/시장에 그 데이터가 있는가"(ETF 는
+   *  투자자 순매수가 없다 등)이고, 이쪽은 "이 화면이 그 지표를 렌더하는가" 다.
+   *  토글만 있고 아무것도 안 그려지는 항목을 없애기 위한 것이라, 숨기는 쪽은
+   *  **데이터 요청도 같이 꺼야 한다**(`/study` 는 `studyReferenceQueries` 에서 끈다). */
+  hiddenCategories?: readonly CategoryId[];
 };
 
-export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILITIES, timeframe, targetLabel }: Props) {
+const NO_HIDDEN_CATEGORIES: readonly CategoryId[] = [];
+
+export default function IndicatorPanel({
+  onClose,
+  capabilities = STOCK_CAPABILITIES,
+  timeframe,
+  targetLabel,
+  hiddenCategories = NO_HIDDEN_CATEGORIES,
+}: Props) {
   // 창-스코프 절단(ADR-0119 C2c-2a): 읽기=대상 창의 resolve 된 설정, 쓰기=창 봉
   // 버킷. Provider 밖(/study·플립 전 /live)에서는 둘 다 전역 스토어로 폴백.
   const ind = useWindowIndicators();
@@ -161,6 +176,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   };
 
   const categories = CATEGORIES.filter((c) => {
+    if (hiddenCategories.includes(c.id)) return false;
     if (c.group === 'hoga' || c.group === 'program') return capabilities.hogaPanes;
     if ((c.id === 'foreign-net' || c.id === 'institution-net') && capabilities.investorNet === 'none') {
       return false;

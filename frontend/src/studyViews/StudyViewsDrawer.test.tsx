@@ -449,6 +449,26 @@ it('uses the configured saved-view side-panel timeframe when opening a saved vie
   });
 });
 
+// 기본값 경로. 저장 봉을 그대로 쓰는 것이 곧 "지표 캐시가 이미 채워진 봉" 이라
+// 콜드 재계산을 피한다(`studyViewOpenPrefs` 주석의 실측). `lastMinuteTimeframe` 을
+// **일부러 다른 값으로** 둔다 — 같은 값이면 override 를 안 넘기는지 아닌지 구별할 수
+// 없어 이 테스트가 아무것도 증명하지 못한다.
+it('opens a minute save at its SAVED timeframe when the side-panel option is "saved"', async () => {
+  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'saved' });
+  useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '15m' });
+  mockedSaves = [{ ...saves[0], timeframe: '10m' }];
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
+    viewId: 'a',
+    timeframe: '10m',
+    label: '삼성전자 · 급등 이후 · 10m',
+  });
+});
+
 it('opens with the last study minute timeframe when the side-panel option is "current"', async () => {
   useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'current' });
   useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '15m' });

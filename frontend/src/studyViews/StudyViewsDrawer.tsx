@@ -192,9 +192,14 @@ export function StudyViewsDrawer() {
   const endEntryDrag = useEntryDragStore((s) => s.endDrag);
   const defaultOpenTimeframe = useStudyViewOpenPrefsStore((s) => s.defaultTimeframe);
   const lastMinuteTimeframe = useStudyLastMinuteTimeframeStore((s) => s.lastMinuteTimeframe);
+  // '저장된 분봉'(saved, 기본값)이면 **override 를 안 넘긴다** — 저장뷰가 저장한 봉
+  // 그대로 열린다. 그 이유(캐시가 봉별이라 저장 봉이 구조적으로 warm)는
+  // `studyViewOpenPrefs` 주석에 있다.
   // '설정된 분봉'(current)이면 복기뷰 차트에서 마지막으로 쓴 분봉을, 아니면 고른 고정 분봉을
   // override로 넘긴다. lastMinuteTimeframe은 항상 유효값('3m' 폴백)이라 undefined 경로는 없다.
-  const openTimeframeOverride = defaultOpenTimeframe === 'current' ? lastMinuteTimeframe : defaultOpenTimeframe;
+  const openTimeframeOverride = defaultOpenTimeframe === 'saved'
+    ? undefined
+    : defaultOpenTimeframe === 'current' ? lastMinuteTimeframe : defaultOpenTimeframe;
 
   useEffect(() => () => {
     if (navigateClickTimerRef.current === null) return;
