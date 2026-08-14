@@ -46,6 +46,7 @@ import type {
   Candle,
   DayVolumeDistribution,
   DepthDeltaPointWire,
+  WallSurgeEventWire,
   DepthHeatmapPointWire,
   PriceLevelHit,
   RangeBundle,
@@ -184,6 +185,16 @@ function scaleDeltaPoint(point: DepthDeltaPointWire, factor: number): DepthDelta
   };
 }
 
+/** 호가벽 급증 마커. 환산 대상은 `price` **하나뿐**이다 — 잔량·증가량·체결량은
+ *  수량(주식 수)이고 총잔량도 마찬가지라 척도와 무관하다(QuoteRatioPoint 와 같은 판단).
+ *
+ *  마커는 캔들과 **같은 가격축에 앉으므로** 이 곱셈이 빠지면 마커만 원주가 높이에
+ *  찍혀 캔들과 어긋난다. 히트맵/증감과 달리 개수가 하루 수십 건이라 포인트 캐시는
+ *  타지 않는다(참조 불변식이 걸린 배열도 아니다). */
+function scaleWallSurge(ev: WallSurgeEventWire, factor: number): WallSurgeEventWire {
+  return { ...ev, price: scalePrice(ev.price, factor) };
+}
+
 /** 포인트 단위 환산 캐시 — **참조 안정성이 계약이다**.
  *
  * `/api/range` 델타 병합은 미변경 버킷의 wire point **참조를 보존**하도록 설계돼 있고
@@ -286,6 +297,7 @@ export function scaleRangeBundlePrices(
     depth_delta: bundle.depth_delta
       ? byTMs(bundle.depth_delta, (p, f) => scaleCached(p, f, scaleDeltaPoint))
       : bundle.depth_delta,
+    wall_surge: bundle.wall_surge ? byTMs(bundle.wall_surge, scaleWallSurge) : bundle.wall_surge,
   };
 }
 

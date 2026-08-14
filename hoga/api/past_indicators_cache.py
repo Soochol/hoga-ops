@@ -48,6 +48,7 @@ from hoga.api.models import (
     DepthDeltaPoint,
     DepthHeatmapPoint,
     TradeVolumePoc,
+    WallSurgeEvent,
 )
 from hoga.live.venue import Venue
 from hoga.tables.snapshots import QuoteRatioRow
@@ -105,6 +106,7 @@ KIND_VERSIONS: dict[str, int] = {
     "poc": 7,
     "depth": 7,
     "depth_delta": 2,
+    "wall_surge": 1,
     "vdist": 7,
     "broker_late": 6,
     "continuous_before": 7,
@@ -170,6 +172,13 @@ class PastIndicatorsCache:
         self._mem_depth_delta: OrderedDict[
             tuple[str, str, str, str, int], list[DepthDeltaPoint]
         ] = OrderedDict()
+        # ⚠ wall_surge 키에는 **bucket_ms 가 없다**. 이벤트는 봉과 무관한 시점 사실이라
+        # 버킷을 키에 넣으면 무효화만 배수로 늘고, 새 봉 종속 지표가 기존 저장뷰를 통째로
+        # 콜드로 만드는 문제까지 따라온다. 대신 판정 상수(WALL_SURGE_*)가 사용자 조절식이
+        # 되는 날에는 그 값이 키에 들어가거나 KIND_VERSIONS 가 올라가야 한다.
+        self._mem_wall_surge: OrderedDict[
+            tuple[str, str, str, str], list[WallSurgeEvent]
+        ] = OrderedDict()
         # 체결 분포(단일 모델|None)·거래원 지각진입(리스트)·연속거래 상한(스칼라).
         # 전부 소형이라 공용 512 LRU 편승(depth 처럼 전용 상한 불필요).
         self._mem_vdist: OrderedDict[
@@ -196,6 +205,7 @@ class PastIndicatorsCache:
         self._all_mem_dicts: tuple[OrderedDict, ...] = (
             self._mem_ratio, self._mem_fill, self._mem_ask_peak, self._mem_bid_peak,
             self._mem_trade_volume_poc, self._mem_depth, self._mem_depth_delta,
+            self._mem_wall_surge,
             self._mem_vdist, self._mem_broker_late, self._mem_continuous_before,
         )
         # Per-kind stats. Peak lookups are accounted on has_*, not get_* — bundle.py
@@ -205,7 +215,7 @@ class PastIndicatorsCache:
             kind: CacheStats()
             for kind in (
                 "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth", "depth_delta",
-                "vdist", "broker_late", "continuous_before",
+                "wall_surge", "vdist", "broker_late", "continuous_before",
             )
         }
 
@@ -218,6 +228,7 @@ class PastIndicatorsCache:
             "poc": len(self._mem_trade_volume_poc),
             "depth": len(self._mem_depth),
             "depth_delta": len(self._mem_depth_delta),
+            "wall_surge": len(self._mem_wall_surge),
             "vdist": len(self._mem_vdist),
             "broker_late": len(self._mem_broker_late),
             "continuous_before": len(self._mem_continuous_before),
@@ -786,6 +797,74 @@ class PastIndicatorsCache:
             _log.warning(
                 "past_indicators_cache.write_failed path=%s",
                 self._depth_delta_path(code, date, source, bucket_ms, venue=venue),
+                exc_info=True,
+            )
+
+    # ── wall_surge (호가벽 급증) ────────────────────────────────────────────────
+
+    def _wall_surge_path(self, code: str, date: str, source: str, *, venue: Venue = "KRX") -> Path:
+        return self._model_path(code, date, source, "wall_surge", venue=venue)
+
+    def get_wall_surge(
+        self, code: str, date: str, source: str, *, venue: Venue = "KRX"
+    ) -> list[WallSurgeEvent] | object:
+        """완료 과거일의 호가벽 급증 이벤트, 또는 ``_CACHE_MISS``.
+
+        get_depth_delta 와 대칭이되 **bucket_ms 축이 없다**(이벤트는 봉 독립).
+        빈 리스트도 유효 결과(사건 없는 날)라 센티넬로 미스를 구분한다."""
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue)
+        stats = self._stats["wall_surge"]
+        hit = self._mem_hit(self._mem_wall_surge, key)
+        if hit is not None:
+            stats.record_hit()
+            return hit
+        path = self._wall_surge_path(code, date, source, venue=venue)
+        if not path.exists():
+            stats.record_miss()
+            return _CACHE_MISS
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
+            stats.record_miss()
+            return _CACHE_MISS
+        if body.get("version") != KIND_VERSIONS["wall_surge"] or self._is_stale(
+            path, body.get("fetched_at_ms")
+        ):
+            stats.record_miss()
+            return _CACHE_MISS
+        raw = body.get("events")
+        if not isinstance(raw, list):
+            stats.record_miss()
+            return _CACHE_MISS
+        try:
+            events = [WallSurgeEvent.model_validate(v) for v in raw]
+        except ValueError:
+            _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
+            stats.record_miss()
+            return _CACHE_MISS
+        stats.record_disk_hit()
+        self._mem_put(self._mem_wall_surge, key, events, stats)
+        return events
+
+    def store_wall_surge(
+        self, code: str, date: str, source: str, events: list[WallSurgeEvent], *, venue: Venue = "KRX"
+    ) -> None:
+        stats = self._stats["wall_surge"]
+        stats.record_store()
+        self._mem_put(self._mem_wall_surge, (code, date, source, venue), events, stats)
+        payload = {
+            "version": KIND_VERSIONS["wall_surge"],
+            "events": [e.model_dump(mode="json") for e in events],
+            "fetched_at_ms": int(time.time() * 1000),
+        }
+        try:
+            atomic_write_json(self._wall_surge_path(code, date, source, venue=venue), payload)
+        except OSError:
+            _log.warning(
+                "past_indicators_cache.write_failed path=%s",
+                self._wall_surge_path(code, date, source, venue=venue),
                 exc_info=True,
             )
 

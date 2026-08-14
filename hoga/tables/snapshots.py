@@ -2123,3 +2123,317 @@ def query_day_ask_bid_peak_dual(
         )
     return ask_row, bid_row
 
+
+
+# ── 호가벽 급증 (Wall Surge) ────────────────────────────────────────────────
+# 설계: docs/superpowers/specs/2026-08-14-sell-wall-surge-indicator-design.md
+#
+# depth_delta 와 재료는 같지만 **규칙이 정반대인 지점이 하나** 있다. depth_delta 는
+# 두 스냅샷의 공통 가격만 INNER JOIN 해 관측창 이동 아티팩트를 통째로 배제한다.
+# wall_surge 는 바로 그 배제 대상을 **셋으로 가른다** — 반대측 자리였다가 넘어온 것은
+# 잔량 0 이 확정이라 진짜 신규 유입(신호), 창 밖 상단에서 들어온 것은 직전 값을 몰라
+# 판정 불가, 당일 본 적 있는 가격이 돌아온 것은 그 마지막 관측을 baseline 으로 쓴다.
+#
+# 임계는 **당일 러닝** — 그 시점까지 관측된 값만 쓰므로 실시간에서도 같은 값이 나온다.
+# 하루 전체 통계를 쓰면 오전 판정에 오후 데이터가 섞여(look-ahead) 복기에서만 맞는
+# 지표가 된다.
+WALL_SURGE_WINDOW_MS = 10_000  # baseline 을 구하는 창 (hogaplay: 중앙값 407ms 간격)
+# ⚠ **소스마다 창이 달라야 한다.** kiwoom_live 는 저장 간격이 10초라 10초 창에 표본이
+# 중앙값 2개뿐이고, MIN_SAMPLES(3)를 넘는 시점이 실측 1% 에 그쳐 **이벤트가 통째로
+# 0건**이 된다(20260814 028050: 1,721 스냅샷 중 20개). 창을 스냅샷 간격에 맞춰 넓힌다.
+WALL_SURGE_WINDOW_MS_SPARSE = 60_000
+WALL_SURGE_MIN_SAMPLES = 3  # 창 안 스냅샷이 이보다 적으면 판정하지 않는다(캡처 갭 직후)
+WALL_SURGE_QTY_FLOOR_RATIO = 0.1  # 최소 증가량 = 당일 러닝 평균 총잔량 × 이 비율
+WALL_SURGE_MIN_SHARE = 0.15  # 그 시점 해당 측 총잔량 대비 최소 비중
+WALL_SURGE_WARMUP_MS = 30 * 60_000  # session_open 이후 이만큼은 통계만 쌓는다
+WALL_SURGE_DEBOUNCE_MS = 120_000  # 같은 가격 재발동 억제 + 결말 추적 창
+WALL_SURGE_GONE_RATIO = 0.2  # 벽이 소멸했다고 볼 잔량 비율
+WALL_SURGE_CONSUMED_RATIO = 0.5  # 체결로 소화됐다고 볼 비율
+
+# ⚠ 위 상수가 사용자 조절식이 되면 **캐시 키에 포함하거나 캐시 버전을 올려야 한다**.
+# 지금은 모듈 상수라 캐시 키가 (code,date,source,venue) 로 충분하다.
+
+
+@dataclass(frozen=True)
+class WallSurgeRow:
+    """호가벽 급증 이벤트 하나.
+
+    ``kind`` 는 baseline 을 어디서 구했는지 — ``pierce``(반대측 자리였다 = 0 확정) ·
+    ``grow``(창 안 관측 대비) · ``reappear``(창 밖, 당일 마지막 관측 대비). 앞의 둘은
+    시점이 초 단위로 정확하고 reappear 는 **크기만** 정확하다(``blind_ms`` 가 그 폭).
+
+    ``outcome`` 이 None 이면 결말 미정 — 데이터 끝에서 추적 창이 덜 찬 이벤트다.
+    """
+
+    intra_ms: int
+    side: str  # 'ask' | 'bid'
+    price: int
+    qty: int
+    jump: int
+    total: int
+    kind: str  # 'pierce' | 'grow' | 'reappear'
+    blind_ms: int | None  # reappear 일 때 시야 밖 체류시간
+    outcome: str | None  # 'consumed' | 'broken' | 'pulled' | 'held' | None(미정)
+    filled_qty: int
+    duration_ms: int | None
+
+
+_WALL_SIDE_SQL: dict[str, dict[str, str]] = {
+    # 매수벽은 부등호만 뒤집는 것이 아니다 — bid_p1 이 최고가라 가격 정렬이 반대이고,
+    # 관통 방향·시야 범위·벽을 소화하는 체결 부호까지 네 축이 함께 뒤집힌다.
+    "ask": {
+        "best": "ask_p1", "total": f"({_ASK_Q_SUM})", "opp": "bid_p1",
+        "best_agg": "max", "pierce_op": ">", "escape_op": ">=", "fill_side": "1",
+    },
+    "bid": {
+        "best": "bid_p1", "total": f"({_BID_Q_SUM})", "opp": "ask_p1",
+        "best_agg": "min", "pierce_op": "<", "escape_op": "<=", "fill_side": "-1",
+    },
+}
+
+
+def _wall_surge_candidates(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    side: str,
+    where_pred: str,
+    intra_ms_expr: str,
+    window_ms: int,
+    warmup_sql: str | None,
+) -> list[tuple[int, int, int, int, int, str, int | None]]:
+    """발동 후보를 (t, price, qty, jump, total, kind, blind_ms) 로 뽑는다 (디바운스 전)."""
+    s = _WALL_SIDE_SQL[side]
+    level_arms = " UNION ALL ".join(
+        f"SELECT n, {side}_p{i} AS px, {side}_q{i} AS qty FROM eligible WHERE {side}_p{i} > 0"
+        for i in range(1, ORDERBOOK_LEVELS + 1)
+    )
+    level_cols = ", ".join(f"{side}_p{i}, {side}_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
+    warmup_pred = "" if warmup_sql is None else f"AND s.t >= {warmup_sql}"
+    rows = con.execute(
+        f"""
+        WITH eligible AS (
+          SELECT ({intra_ms_expr}) AS t,
+                 row_number() OVER (ORDER BY ({intra_ms_expr}), seq) AS n,
+                 {s['best']} AS best, {s['total']} AS tot, {level_cols}
+          FROM read_parquet(?)
+          WHERE {where_pred}
+        ),
+        snap AS (
+          SELECT n, t, best, tot,
+                 avg(tot) OVER (ORDER BY t ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS tot_run,
+                 {s['best_agg']}(best) OVER w AS w_best,
+                 count(*) OVER w AS w_n
+          FROM eligible
+          WINDOW w AS (ORDER BY t RANGE BETWEEN {window_ms} PRECEDING AND CURRENT ROW)
+        ),
+        lvl AS (
+          SELECT e.n, s0.t, u.px, u.qty
+          FROM ({level_arms}) u JOIN eligible e ON e.n = u.n JOIN snap s0 ON s0.n = u.n
+        ),
+        cur AS (
+          SELECT l.t, l.px, l.qty, s.tot, s.tot_run, s.w_best, s.w_n,
+                 min(l.qty) OVER wl AS w_min,
+                 count(*) OVER wl AS w_cnt,
+                 lag(l.qty) OVER (PARTITION BY l.px ORDER BY l.t) AS prev_q,
+                 lag(l.t) OVER (PARTITION BY l.px ORDER BY l.t) AS prev_t
+          FROM lvl l JOIN snap s ON s.n = l.n
+          WINDOW wl AS (PARTITION BY l.px ORDER BY l.t
+                        RANGE BETWEEN {window_ms} PRECEDING AND CURRENT ROW)
+        ),
+        based AS (
+          SELECT *,
+            CASE WHEN w_best {s['pierce_op']} px THEN 0
+                 WHEN w_cnt > 1 THEN w_min
+                 WHEN prev_q IS NOT NULL THEN prev_q
+                 END AS base,
+            CASE WHEN w_best {s['pierce_op']} px THEN 'pierce'
+                 WHEN w_cnt > 1 THEN 'grow'
+                 WHEN prev_q IS NOT NULL THEN 'reappear'
+                 END AS kind
+          FROM cur
+        )
+        SELECT t, px, qty, qty - base AS jump, tot, kind,
+               CASE WHEN kind = 'reappear' THEN t - prev_t END AS blind_ms
+        FROM based s
+        WHERE base IS NOT NULL AND w_n >= {WALL_SURGE_MIN_SAMPLES} {warmup_pred}
+          AND qty - base >= {WALL_SURGE_QTY_FLOOR_RATIO} * tot_run
+          AND qty - base >= {WALL_SURGE_MIN_SHARE} * tot
+        ORDER BY t, px
+        """,
+        [str(path)],
+    ).fetchall()
+    return [(int(r[0]), int(r[1]), int(r[2]), int(r[3]), int(r[4]), str(r[5]), r[6]) for r in rows]
+
+
+def _wall_surge_outcomes(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    trades_path: Path | None,
+    side: str,
+    where_pred: str,
+    intra_ms_expr: str,
+    events: list[tuple[int, int, int, int, int, str, int | None]],
+    data_end_ms: int,
+) -> list[tuple[str | None, int, int | None]]:
+    """이벤트별 (outcome, filled_qty, duration_ms) 를 **한 번의 쿼리로** 판정한다.
+
+    이벤트가 하루 수백 건일 수 있어 건당 서브쿼리는 그만큼 왕복이 된다. VALUES CTE 로
+    한 번에 조인한다. 추적 창이 데이터 끝을 넘는 이벤트는 결말 **미정**(None)이다 —
+    "아직 안 끝났다" 와 "버텼다" 는 다른 사실이고, 프론트가 미정색으로 가른다.
+    """
+    if not events:
+        return []
+    s = _WALL_SIDE_SQL[side]
+    level_arms = " UNION ALL ".join(
+        f"SELECT n, {side}_p{i} AS px, {side}_q{i} AS qty FROM eligible WHERE {side}_p{i} > 0"
+        for i in range(1, ORDERBOOK_LEVELS + 1)
+    )
+    level_cols = ", ".join(f"{side}_p{i}, {side}_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
+    ev_values = ", ".join(
+        f"({i}, {e[0]}, {e[1]}, {e[2]})" for i, e in enumerate(events)
+    )
+    win = WALL_SURGE_DEBOUNCE_MS
+    trades_cte = (
+        f"""fil AS (
+              SELECT ev.i AS i, sum(tr.qty) AS filled
+              FROM ev JOIN (
+                SELECT ({intra_ms_expr}) AS t, price, qty, side FROM read_parquet(?)
+              ) tr ON tr.price = ev.price AND tr.side = {s['fill_side']}
+                  AND tr.t >= ev.t AND tr.t <= ev.t + {win}
+              GROUP BY 1
+            )"""
+        if trades_path is not None
+        else "fil AS (SELECT 0 AS i, 0 AS filled WHERE FALSE)"
+    )
+    params: list[str] = [str(path)]
+    if trades_path is not None:
+        params.append(str(trades_path))
+    rows = con.execute(
+        f"""
+        WITH eligible AS (
+          SELECT ({intra_ms_expr}) AS t,
+                 row_number() OVER (ORDER BY ({intra_ms_expr}), seq) AS n,
+                 {s['opp']} AS opp, {level_cols}
+          FROM read_parquet(?)
+          WHERE {where_pred}
+        ),
+        lvl AS (
+          SELECT e.t, u.px, u.qty FROM ({level_arms}) u JOIN eligible e ON e.n = u.n
+        ),
+        ev(i, t, price, qty) AS (VALUES {ev_values}),
+        gone AS (
+          SELECT ev.i AS i, min(l.t) AS gone_t
+          FROM ev JOIN lvl l ON l.px = ev.price AND l.t > ev.t AND l.t <= ev.t + {win}
+                            AND l.qty <= ev.qty * {WALL_SURGE_GONE_RATIO}
+          GROUP BY 1
+        ),
+        esc AS (
+          SELECT ev.i AS i, min(e.t) AS esc_t
+          FROM ev JOIN eligible e ON e.t > ev.t AND e.t <= ev.t + {win}
+                                 AND e.opp {s['escape_op']} ev.price
+          GROUP BY 1
+        ),
+        {trades_cte}
+        SELECT ev.i, gone.gone_t, esc.esc_t, coalesce(fil.filled, 0) AS filled, ev.qty
+        FROM ev LEFT JOIN gone ON gone.i = ev.i
+                LEFT JOIN esc ON esc.i = ev.i
+                LEFT JOIN fil ON fil.i = ev.i
+        ORDER BY ev.i
+        """,
+        params,
+    ).fetchall()
+
+    out: list[tuple[str | None, int, int | None]] = []
+    for (i, gone_t, esc_t, filled, qty) in rows:
+        ev_t = events[int(i)][0]
+        ends = [x for x in (gone_t, esc_t) if x is not None]
+        filled_i = int(filled or 0)
+        if not ends:
+            # 추적 창이 데이터 끝을 넘으면 "버텼다" 가 아니라 **아직 모른다**.
+            undecided = ev_t + win > data_end_ms
+            out.append((None if undecided else "held", filled_i, None))
+            continue
+        duration = int(min(ends)) - ev_t
+        if filled_i >= qty * WALL_SURGE_CONSUMED_RATIO:
+            out.append(("consumed", filled_i, duration))
+        elif esc_t is not None and (gone_t is None or esc_t <= gone_t):
+            out.append(("broken", filled_i, duration))
+        else:
+            out.append(("pulled", filled_i, duration))
+    return out
+
+
+def query_wall_surge(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    trades_path: Path | None = None,
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+    window_ms: int = WALL_SURGE_WINDOW_MS,
+) -> list[WallSurgeRow]:
+    """호가벽 급증 이벤트 (매도·매수 양측).
+
+    baseline 을 최근 ``window_ms`` 창에서 구해 셋으로 가른다 — 반대측 자리였으면 0 확정
+    (``pierce``), 창 안 관측이 있으면 그 최소값(``grow``), 창 밖이지만 당일 본 적이 있으면
+    마지막 관측(``reappear``). 당일 한 번도 못 본 가격은 판정하지 않는다.
+
+    임계는 **당일 러닝** — 장 시작부터 그 시각까지의 평균 총잔량 대비다. 하루 전체
+    통계를 쓰면 오전 판정에 오후가 섞여 실시간에서 재현 불가능한 값이 된다.
+
+    ⚠ 워밍업은 ``session_open + WALL_SURGE_WARMUP_MS`` 다. 벽시계 09:30 을 박으면
+    반나절장·지연개장에서 어긋난다(``_book_indicator_eligible_sql`` docstring 의
+    "시각을 다시 함수 안에 넣지 말 것" 과 같은 이유).
+    """
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    where_pred = _book_indicator_eligible_sql(
+        intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
+    # ⚠ session_open_ms 는 **native HHMMSSmmm** 이다(_book_indicator_eligible_sql 이 안에서
+    # 변환한다). native 는 비선형이라 여기에 선형 ms 를 더하면 09:00+30분이 09:18 이 된다 —
+    # 선형 축으로 옮긴 뒤 더한다.
+    warmup_sql = (
+        None
+        if session_open_ms is None
+        else f"({hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))} + {WALL_SURGE_WARMUP_MS})"
+    )
+    data_end = con.execute(
+        f"SELECT max({intra_ms_expr}) FROM read_parquet(?) WHERE {where_pred}", [str(path)]
+    ).fetchone()
+    if data_end is None or data_end[0] is None:
+        return []
+    data_end_ms = int(data_end[0])
+
+    out: list[WallSurgeRow] = []
+    for side in ("ask", "bid"):
+        cands = _wall_surge_candidates(
+            con, path=path, side=side, where_pred=where_pred,
+            intra_ms_expr=intra_ms_expr, window_ms=window_ms, warmup_sql=warmup_sql,
+        )
+        # 같은 가격 연속 발동은 첫 건만 — 벽이 조금씩 커지면 매 스냅샷이 후보가 되는데
+        # 그건 한 사건이지 여러 사건이 아니다.
+        seen: dict[int, int] = {}
+        events: list[tuple[int, int, int, int, int, str, int | None]] = []
+        for c in cands:
+            t, px = c[0], c[1]
+            if px in seen and t - seen[px] < WALL_SURGE_DEBOUNCE_MS:
+                seen[px] = t
+                continue
+            seen[px] = t
+            events.append(c)
+        outcomes = _wall_surge_outcomes(
+            con, path=path, trades_path=trades_path, side=side, where_pred=where_pred,
+            intra_ms_expr=intra_ms_expr, events=events, data_end_ms=data_end_ms,
+        )
+        for c, (outcome, filled, duration) in zip(events, outcomes, strict=True):
+            out.append(
+                WallSurgeRow(
+                    intra_ms=c[0], side=side, price=c[1], qty=c[2], jump=c[3], total=c[4],
+                    kind=c[5], blind_ms=None if c[6] is None else int(c[6]),
+                    outcome=outcome, filled_qty=filled, duration_ms=duration,
+                )
+            )
+    out.sort(key=lambda r: (r.intra_ms, r.side, r.price))
+    return out

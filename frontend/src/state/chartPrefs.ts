@@ -97,6 +97,16 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
+    key: 'wallSurgeEnabled',
+    label: '호가벽 급증 마커',
+    description:
+      '한 호가 레벨에 물량이 순간적으로 몰린 지점을 캔들 차트에 삼각형으로 표시합니다. ' +
+      '매도벽은 아래, 매수벽은 위를 가리키며, 채움은 결말(체결소화·돌파=채움, 취소=외곽선, ' +
+      '잔존=반투명, 미정=회색)을, 점선 테두리는 시야 밖에서 커진 벽(시점 부정확)을 뜻합니다.',
+    default: false,
+    category: 'indicator-modal',
+  },
+  {
     key: 'quoteTotalsIntraMax',
     label: '분봉 내 최댓값 기준',
     description: '그 분의 마지막값(종가) 대신 분봉 내 최대 총잔량을 표시합니다. (캔들 고가와 같은 직관)',
@@ -260,6 +270,17 @@ export const CHART_NUMERIC_PREFS = [
     min: 2,
     max: 10_000,
     enabledBy: 'ratioOutlierFilterEnabled',
+  },
+  {
+    key: 'wallSurgeLabelCount',
+    label: '급증 마커 라벨 개수',
+    description:
+      '증가량 상위 몇 건까지 잔량 라벨을 상시 표시할지. 나머지는 마커만 찍고 호버로 봅니다 — ' +
+      '하루 수십 건이라 전건 라벨은 서로 겹칩니다.',
+    default: 4,
+    min: 0,
+    max: 10,
+    enabledBy: 'wallSurgeEnabled',
   },
   {
     key: 'surgeApproachPct',
