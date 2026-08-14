@@ -36,12 +36,15 @@ describe('QuoteRow', () => {
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
-  it('예상체결 모드: 가격 앞 예 마커 + 가격·등락% 셀이 예상값으로 대체된다', () => {
+  it('예상체결 모드: 종목명 앞 * 마커 + 가격·등락% 셀이 예상값으로 대체된다', () => {
     row({ expectedPrice: 71500, expectedPct: 2.14 });
     const marker = screen.getByTestId('quote-row-005930-expected-marker');
-    expect(marker).toHaveTextContent('예');
-    // 마커와 가격이 같은 셀 — 부모 span 의 textContent 로 대조한다.
-    expect(marker.parentElement).toHaveTextContent('71,500');
+    expect(marker).toHaveTextContent('*');
+    // 마커는 종목명 셀 안이고 공백 없이 이름에 붙는다 — 부모 span 의 textContent 로 대조.
+    expect(marker.parentElement?.textContent).toBe('*삼성전자');
+    expect(screen.getByText('71,500')).toBeInTheDocument();
+    // 마커가 가격 셀로 되돌아가면 여기서 잡힌다(2026-08-14 이전 배치).
+    expect(screen.getByText('71,500').textContent).toBe('71,500');
     expect(screen.queryByText('72,400')).not.toBeInTheDocument(); // 확정가는 표시 안 함
     const pctCell = screen.getByText('+2.14%');
     expect(pctCell).toHaveClass('text-price-up');
@@ -59,14 +62,14 @@ describe('QuoteRow', () => {
     // 마감 동시호가엔 확정가가 이미 있는데 예상가가 덮는다. 캔들이 없는 행이라
     // 두 숫자를 나란히 둘 폭이 없어 호버로 되찾게 한다.
     row({ expectedPrice: 71500, expectedPct: 2.14 });
-    const cell = screen.getByTestId('quote-row-005930-expected-marker').parentElement;
-    expect(cell).toHaveAttribute('title', '예상 71,500 · 직전 체결 72,400');
+    // 가격 셀은 값으로 직접 잡는다 — 마커의 parentElement 로 잡으면 마커가 옮겨갈 때
+    // 조용히 종목명 셀을 검사하게 된다(2026-08-14 마커 이동에서 실제로 그랬다).
+    expect(screen.getByText('71,500')).toHaveAttribute('title', '예상 71,500 · 직전 체결 72,400');
   });
 
   it('확정가가 없으면(개장 동시호가 미도착) title 을 붙이지 않는다', () => {
     row({ price: null, pct: null, changeWon: null, expectedPrice: 71500, expectedPct: 2.14 });
-    const cell = screen.getByTestId('quote-row-005930-expected-marker').parentElement;
-    expect(cell?.getAttribute('title')).toBeNull();
+    expect(screen.getByText('71,500').getAttribute('title')).toBeNull();
   });
 
   it('Enter key triggers onClick (keyboard a11y)', () => {
