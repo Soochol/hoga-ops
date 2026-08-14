@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DndContext,
@@ -6,14 +6,13 @@ import {
   useDraggable,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragMoveEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
 import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
-import { useEntryDragStore, isPointOnChart, dropPoint, resolveDropOnChart } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
+import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
+import { RailDragOverlay } from '../rightrail/RailDragOverlay';
+import { useChartDropDrag } from '../rightrail/useChartDropDrag';
 import { useScreenerPanelStore, useExpireScreenerScan, MONITOR_PERIOD_CHOICES_MS } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
 import { useScreener } from './useScreener';
@@ -128,23 +127,37 @@ function screenerDraggableId(code: string): string {
   return `${SCREENER_ENTRY_TYPE}:${code}`;
 }
 
-function DraggableScreenerRow({
+/** 스크리너 결과 행.
+ *
+ *  **`memo` 인 이유와 그 조건**: 결과 행은 WS 체결 틱 오버레이를 달고 있어
+ *  (`useScreenerRowsLive` → `useQuoteByCode`) 150ms 마다 드로어가 리렌더된다. props 를
+ *  전부 스칼라 아니면 안정 참조로 좁혀야 memo 가 실제로 걸린다 — 콜백은 `row` 를 인자로
+ *  받는 안정 참조이고 여기서 바인딩한다.
+ *
+ *  **transform 을 행에 걸지 않는다**: DragOverlay 고스트가 이동을 대신하므로 원본까지
+ *  움직이면 같은 행이 두 개로 보인다. 원본은 제자리에서 들어올림 틴트만 남긴다 —
+ *  관심종목처럼 빈 자리로 비우지 **않는다**(재정렬이 아니라 복사 제스처라 드롭 후에도
+ *  행이 리스트에 남는다). */
+const DraggableScreenerRow = memo(function DraggableScreenerRow({
   row,
   active,
   flash,
   onActivate,
-  onContextMenu,
+  onOpenMenu,
 }: {
   row: ScreenerRowLive;
   active: boolean;
   flash: boolean;
-  onActivate: (e?: JumpModifiers) => void;
-  onContextMenu: (e: React.MouseEvent<HTMLLIElement>) => void;
+  onActivate: (row: ScreenerRowLive, e?: JumpModifiers) => void;
+  onOpenMenu: (row: ScreenerRowLive, e: React.MouseEvent<HTMLLIElement>) => void;
 }) {
-  const { setNodeRef, listeners, attributes, transform, isDragging } = useDraggable({
+  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
     id: screenerDraggableId(row.code),
     data: { type: SCREENER_ENTRY_TYPE, code: row.code, name: row.name },
   });
+  const handleActivate = useCallback((e?: JumpModifiers) => onActivate(row, e), [onActivate, row]);
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(row, e), [onOpenMenu, row]);
   return (
     <QuoteRow
       name={row.name}
@@ -157,13 +170,30 @@ function DraggableScreenerRow({
       flash={flash}
       ariaLabel={`${row.name} ${row.code} 차트 열기`}
       testId={`screener-row-${row.code}`}
-      onClick={onActivate}
-      onContextMenu={onContextMenu}
+      onClick={handleActivate}
+      onContextMenu={handleContextMenu}
       sortableRef={setNodeRef}
-      sortableStyle={{ transform: CSS.Transform.toString(transform), transition: undefined }}
       dragListeners={listeners}
       dragAttributes={attributes}
       dragging={isDragging}
+    />
+  );
+});
+
+/** 고스트에 그릴 행 — 리스트 행과 같은 QuoteRow 라 손에 든 것이 그대로 보인다. */
+function ScreenerDragGhost({ ghost }: {
+  ghost: { name: string; price: number | null; pct: number | null };
+}) {
+  return (
+    <QuoteRow
+      name={ghost.name}
+      price={ghost.price}
+      pct={ghost.pct}
+      changeWon={null}
+      active={false}
+      ariaLabel={ghost.name}
+      testId="screener-drag-ghost"
+      onClick={() => {}}
     />
   );
 }
@@ -315,7 +345,7 @@ export function ScreenerDrawer() {
   // 등)이 걸리면 그게 우선이라 스택을 적용하지 않는다. 진입순은 조건(selectedSavedId)별로
   // 초기화 — 풀페이지 Screener 는 이 훅을 안 써 default 가 여전히 서버순이다(공용 계약 무손상).
   const entryOrder = useEntryOrder(resultCodes, selectedSavedId);
-  const sortedLiveRows = useMemo(
+  const sortedLiveRowsLive = useMemo(
     () => (sortMode === 'default'
       ? stackByEntryOrder(liveRows, entryOrder)
       : sortScreenerRows(liveRows, sortMode)),
@@ -327,38 +357,34 @@ export function ScreenerDrawer() {
   // 초기화 뒤 첫 결과가 전 종목 플래시로 터진다(useNewEntryFlash 주석 참조).
   const flashCodes = useNewEntryFlash(lastScan ? resultCodes : null);
   const sensors = useSensors(useSensor(PointerSensor, SCREENER_DRAG_SENSOR_OPTIONS));
-  const startEntryDrag = useEntryDragStore((s) => s.startDrag);
-  const setOverChart = useEntryDragStore((s) => s.setOverChart);
-  const setDragPoint = useEntryDragStore((s) => s.setDragPoint);
-  const endEntryDrag = useEntryDragStore((s) => s.endDrag);
+  // 좌표 아래 창이 없을 때의 폴백(활성 그룹 교체). useJumpToLive 는 매 렌더 새 함수라
+  // 그대로 쓰면 아래 훅의 콜백들이 매번 새로 생긴다 — ref 로 최신 것을 가리킨다.
+  const openLiveRef = useRef(openLive);
+  useEffect(() => { openLiveRef.current = openLive; });
+  const fallbackPick = useCallback((code: string, name?: string) => {
+    openLiveRef.current(code, name);
+  }, []);
+  const drag = useChartDropDrag(SCREENER_ENTRY_TYPE, fallbackPick);
+
+  // 드래그 중 결과 목록 동결 — 여기엔 재시작될 sortable transition 이 없다(useDraggable).
+  // 이게 막는 것은 **드래그 중인 행이 발밑에서 움직이는 것**이다: WS 틱이 150ms 마다
+  // 착지하는데 가격·등락률 정렬이 걸려 있으면 그때마다 순서가 갈리고, 모니터링 중이면
+  // 재조회가 행을 통째로 갈아 끼운다.
+  const sortedLiveRows = useFrozenWhileDragging(sortedLiveRowsLive, drag.isDragging);
 
   const onDragStart = (ev: DragStartEvent) => {
-    if (ev.active.data.current?.type !== SCREENER_ENTRY_TYPE) return;
-    const d = ev.active.data.current as { code?: string };
-    if (d.code) startEntryDrag(d.code);
+    const code = String((ev.active.data.current as { code?: string } | undefined)?.code ?? '');
+    const row = sortedLiveRows.find((r) => r.code === code);
+    drag.onDragStart(ev, row ? { code: row.code, name: row.name, price: row.price, pct: row.change_pct } : null);
   };
 
-  const onDragMove = (ev: DragMoveEvent) => {
-    if (ev.active.data.current?.type !== SCREENER_ENTRY_TYPE) return;
-    const point = dropPoint(ev);
-    setOverChart(isPointOnChart(point));
-    setDragPoint(point); // 창별 어포던스: 캔버스가 좌표로 호버 창을 계산한다.
-  };
-
-  const onDragCancel = () => {
-    endEntryDrag();
-  };
-
-  const onDragEnd = (ev: DragEndEvent) => {
-    const wasScreenerEntry = ev.active.data.current?.type === SCREENER_ENTRY_TYPE;
-    endEntryDrag();
-    if (!wasScreenerEntry || !isPointOnChart(dropPoint(ev))) return;
-    const d = ev.active.data.current as { code?: string; name?: string } | undefined;
-    if (!d?.code) return;
-    // 창 위 드롭 = 그 창 그룹 종목 교체(정밀 드롭, #711), 창 밖 = 활성 그룹 교체(openLive).
-    if (resolveDropOnChart(dropPoint(ev), { code: d.code, name: d.name })) return;
-    openLive(d.code, d.name);
-  };
+  const onActivateRow = useCallback((row: ScreenerRowLive, e?: JumpModifiers) => {
+    openLiveRef.current(row.code, row.name, e);
+  }, []);
+  const onOpenRowMenu = useCallback((row: ScreenerRowLive, e: React.MouseEvent<HTMLLIElement>) => {
+    e.preventDefault();
+    setRowMenu({ code: row.code, name: row.name, x: e.clientX, y: e.clientY });
+  }, []);
 
   return (
     <RailDrawer
@@ -513,9 +539,9 @@ export function ScreenerDrawer() {
               <DndContext
                 sensors={sensors}
                 onDragStart={onDragStart}
-                onDragMove={onDragMove}
-                onDragEnd={onDragEnd}
-                onDragCancel={onDragCancel}
+                onDragMove={drag.onDragMove}
+                onDragEnd={drag.onDragEnd}
+                onDragCancel={drag.onDragCancel}
               >
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {sortedLiveRows.map((r) => (
@@ -524,14 +550,15 @@ export function ScreenerDrawer() {
                       row={r}
                       active={r.code === activeCode}
                       flash={monitoringActive && flashCodes.has(r.code)}
-                      onActivate={(e) => openLive(r.code, r.name, e)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setRowMenu({ code: r.code, name: r.name, x: e.clientX, y: e.clientY });
-                      }}
+                      onActivate={onActivateRow}
+                      onOpenMenu={onOpenRowMenu}
                     />
                   ))}
                 </ul>
+                {/* 커서를 따라오는 고스트 — 패널 밖(차트 창)까지 손에 든 것이 보인다. */}
+                <RailDragOverlay droppedOnChart={drag.droppedOnChart}>
+                  {drag.ghost && <ScreenerDragGhost ghost={drag.ghost} />}
+                </RailDragOverlay>
               </DndContext>
             )}
           </>
