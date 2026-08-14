@@ -1296,6 +1296,14 @@ def build_wall_surge_slice(
         hit, cached = TODAY_TTL.lookup(key)
         if hit:
             return cached
+    # 창은 **소스의 스냅샷 간격에 맞춘다** — hogaplay 는 중앙값 407ms 라 10초면 표본이
+    # 넉넉하지만, kiwoom_live 는 저장 간격이 10초라 같은 창에서 표본 부족으로 전량
+    # 탈락한다(실측 1%). 소스를 여기서 아는 김에 함께 정한다.
+    window_ms = (
+        snapshots_tbl.WALL_SURGE_WINDOW_MS
+        if source == "hogaplay"
+        else snapshots_tbl.WALL_SURGE_WINDOW_MS_SPARSE
+    )
     rows = SLICE_COALESCER.run(
         key,
         lambda: snapshots_tbl.query_wall_surge(
@@ -1304,6 +1312,7 @@ def build_wall_surge_slice(
             trades_path=trades_path,
             session_open_ms=session_open_ms,
             session_close_ms=session_close_ms,
+            window_ms=window_ms,
         ),
     )
     out = [

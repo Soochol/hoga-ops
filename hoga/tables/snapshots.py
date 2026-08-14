@@ -2137,7 +2137,11 @@ def query_day_ask_bid_peak_dual(
 # 임계는 **당일 러닝** — 그 시점까지 관측된 값만 쓰므로 실시간에서도 같은 값이 나온다.
 # 하루 전체 통계를 쓰면 오전 판정에 오후 데이터가 섞여(look-ahead) 복기에서만 맞는
 # 지표가 된다.
-WALL_SURGE_WINDOW_MS = 10_000  # baseline 을 구하는 창
+WALL_SURGE_WINDOW_MS = 10_000  # baseline 을 구하는 창 (hogaplay: 중앙값 407ms 간격)
+# ⚠ **소스마다 창이 달라야 한다.** kiwoom_live 는 저장 간격이 10초라 10초 창에 표본이
+# 중앙값 2개뿐이고, MIN_SAMPLES(3)를 넘는 시점이 실측 1% 에 그쳐 **이벤트가 통째로
+# 0건**이 된다(20260814 028050: 1,721 스냅샷 중 20개). 창을 스냅샷 간격에 맞춰 넓힌다.
+WALL_SURGE_WINDOW_MS_SPARSE = 60_000
 WALL_SURGE_MIN_SAMPLES = 3  # 창 안 스냅샷이 이보다 적으면 판정하지 않는다(캡처 갭 직후)
 WALL_SURGE_QTY_FLOOR_RATIO = 0.1  # 최소 증가량 = 당일 러닝 평균 총잔량 × 이 비율
 WALL_SURGE_MIN_SHARE = 0.15  # 그 시점 해당 측 총잔량 대비 최소 비중

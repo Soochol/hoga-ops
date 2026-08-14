@@ -289,3 +289,37 @@ def test_wrong_side_fills_do_not_count_as_consumed(tmp_path: Path, side_sign: in
         # 매도 공격은 매도벽을 먹지 않는다 — 체결이 있어도 소화가 아니다
         assert fired[0].outcome == "pulled"
         assert fired[0].filled_qty == 0
+
+
+def test_sparse_source_needs_a_wider_window(tmp_path: Path) -> None:
+    """저장 간격이 넓은 소스(kiwoom_live 10초)는 창을 넓혀야 이벤트가 나온다.
+
+    실측 사고: `/api/range` 가 kiwoom_live 를 고르는데 창이 10초라 창 안 표본이 중앙값
+    2개뿐이었고, MIN_SAMPLES(3)를 못 넘겨 **이벤트가 통째로 0건**이었다(캐시에 빈
+    리스트까지 저장됐다). 슬라이스가 소스를 보고 창을 정하는 것이 그 처방이다.
+    """
+    # 10초 간격 — 10초 창에는 자기 자신 포함 2개뿐이라 판정이 열리지 않는다.
+    # ⚠ 초를 그대로 곱하면 60 을 넘어 HHMMSSmmm 인코딩이 깨진다 — 총 초로 환산한다.
+    books = [
+        _book(
+            _hhmmssms(9, (i * 10) // 60, (i * 10) % 60), i + 1,
+            ask_top=50000, ask_qs=[100, 100, 100], bid_top=49950, bid_qs=[100, 100, 100],
+        )
+        for i in range(240)
+    ]
+    books.append(
+        _book(_hhmmssms(9, 40, 0), 900,
+              ask_top=49950, ask_qs=[9000, 100, 100], bid_top=49900, bid_qs=[100])
+    )
+    snap = tmp_path / "snapshots.parquet"
+    write_parquet(books, snap)
+
+    def run(window_ms: int) -> list[WallSurgeRow]:
+        return query_wall_surge(
+            duckdb.connect(), path=snap, trades_path=None,
+            session_open_ms=OPEN_NATIVE, session_close_ms=CLOSE_NATIVE,
+            window_ms=window_ms,
+        )
+
+    assert run(10_000) == [], "10초 창에서는 표본 부족으로 판정이 열리지 않는다"
+    assert [r for r in run(60_000) if r.price == 49950], "60초 창이면 잡힌다"
