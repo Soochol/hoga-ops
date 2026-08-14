@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useWatchlist, useAddMember, useRemoveMember, useCreateFolder } from './useWatchlist';
 import { useWatchlistMembership } from './useWatchlistMembership';
 import { useDismissablePopover } from '../util/useDismissablePopover';
@@ -8,7 +9,8 @@ import { CheckIcon } from '../ui/CheckIcon';
 /**
  * 단일 멤버십 primitive (v3, ADR-0070). code의 그룹 소속을 체크박스로 토글 + 새 그룹
  * 생성. "미분류" 단일 추가 대상이 없어진 v3에서 모든 하트(스크리너 페이지·패널·라이브
- * 상태바·라이브 검색·편집모달)와 드로어 행 메뉴 "그룹 편집"이 이 컴포넌트를 연다. 호출처는
+ * 상태바·라이브 검색·편집모달·`/live` 차트 창 헤더)와 드로어 행 메뉴 "그룹 편집"이 이
+ * 컴포넌트를 연다. 호출처는
  * 앵커 (x,y)만 넘기고, 위치 클램프·디스미스·멤버십 토글은 이 컴포넌트가 책임진다.
  */
 export function WatchlistGroupPicker({ code, name, x, y, onClose }: {
@@ -44,7 +46,14 @@ export function WatchlistGroupPicker({ code, name, x, y, onClose }: {
     setNewName('');
   };
 
-  return (
+  // `document.body` 로 portal — 호출처가 `contain` 을 건 조상 안에 있어도 좌표계가
+  // 뷰포트로 유지된다. `/live` 차트 창 카드가 `contain: layout paint` + `overflow-hidden`
+  // 이라 그 안에서 직접 렌더하면 **카드가 fixed 의 containing block 이 되어** 위치가
+  // 창 기준으로 어긋나고, 카드 밖으로 나가는 부분은 잘린다(피커 min-w 200px vs 창
+  // MIN_W 160px → 확정적). 같은 카드 안의 DrawingMenu·TimeframeControl 이 먼저 쓰던
+  // 처방이다. React 트리는 그대로라 이벤트 버블링 의미는 변하지 않는다 —
+  // useDismissablePopover 의 `ref.contains` 판정도 실제 DOM 노드를 보므로 그대로 산다.
+  return createPortal((
     <div ref={ref} role="menu" aria-label="내 관심 그룹"
       data-testid="watchlist-group-picker"
       className="bg-bg-card border border-border rounded shadow-lg z-30 py-1 min-w-[200px]"
@@ -69,5 +78,5 @@ export function WatchlistGroupPicker({ code, name, x, y, onClose }: {
           className="flex-1 bg-transparent text-sm outline-none focus-visible:outline-none placeholder:text-fg-dimmer" />
       </div>
     </div>
-  );
+  ), document.body);
 }
