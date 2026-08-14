@@ -335,6 +335,9 @@ export function StudyPage() {
     activeTabId,
     activatedTabIds,
     saves: savesQuery.data?.saves ?? [],
+    // 'keep' 이면 탭을 눌러도 창 봉이 안 바뀌므로 **활성 전환의 실제 키는 창 봉**이다.
+    // 비활성 탭이 든 저장 봉으로 워밍하면 받아 놓고 버리는 번들이 된다.
+    warmTimeframe: keepWindowTimeframe ? chartWindowTimeframe : undefined,
   });
   // 축출은 (종목 × 봉)이다(#801) — 창이 여러 개면 같은 종목 아래 봉별 번들이 쌓인다.
   useStudyRangeCacheEviction(

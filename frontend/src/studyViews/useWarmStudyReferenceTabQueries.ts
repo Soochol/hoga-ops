@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import type { StudyViewReference } from '../api/studyViews';
 import { resolveIndicatorSettings } from '../state/indicatorSettingsV2';
-import { useLivePageStore } from '../state/livePage';
+import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import type { StudyTab } from '../state/studyTabs';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
 import { referenceStudyView } from './studyViewVariant';
@@ -39,6 +39,17 @@ type UseWarmStudyReferenceTabQueriesArgs = {
   activeTabId: string | null;
   activatedTabIds: readonly string[];
   saves: StudyViewReference[];
+  /**
+   * 탭 봉 대신 워밍에 쓸 봉 — '창 주기 유지'(`studyViewOpenPrefs='keep'`) 전용.
+   *
+   * 그 모드에서는 탭을 눌러도 창의 봉이 안 바뀌므로 **활성 전환의 실제 쿼리 키는
+   * 창 봉**이다. 비활성 탭은 저장 봉을 들고 있으니 `tab.timeframe` 으로 워밍하면
+   * 받아 놓고 즉시 버리는 번들이 된다 — 아래 `tab.timeframe` 주석이 경고하는 그
+   * 실패("워밍이 요청을 줄이려다 늘린다")가 override 경로 대신 이 모드에서 재발한다.
+   *
+   * 넘기지 않으면(`undefined`) 종전대로 탭 봉이 SSOT 다.
+   */
+  warmTimeframe?: LiveTimeframe | null;
 };
 
 export function useWarmStudyReferenceTabQueries({
@@ -46,6 +57,7 @@ export function useWarmStudyReferenceTabQueries({
   activeTabId,
   activatedTabIds,
   saves,
+  warmTimeframe,
 }: UseWarmStudyReferenceTabQueriesArgs): Record<string, StudyTabQueryStatus> {
   const sourcePref = useOrderflowSourcePref();
   // 지표 설정은 앱 전역 1세트지만 **봉마다 프로필이 다르다**(`indicatorsByTimeframe`).
@@ -100,7 +112,8 @@ export function useWarmStudyReferenceTabQueries({
       // tab.timeframe이 SSOT: viewTimeframes는 effect로 한 커밋 늦게 동기화돼,
       // "열 때 기본 시간봉" override로 연 첫 렌더에서 save.timeframe으로 워밍
       // 쿼리를 만들면 즉시 버려질 range 번들을 한 벌 더 fetch하게 된다.
-      const timeframe = tab.timeframe;
+      // 예외는 `warmTimeframe`(창 주기 유지) 하나 — 근거는 그 인자 주석.
+      const timeframe = warmTimeframe ?? tab.timeframe;
       // 지표도 **같은 봉으로** 푼다 — 버킷과 플래그가 한 봉에서 나와야 활성 경로와
       // 키가 맞는다(위 주석).
       const settings = studyReferenceQuerySettings(
@@ -135,6 +148,7 @@ export function useWarmStudyReferenceTabQueries({
     sourcePref,
     tabs,
     warmTabIds,
+    warmTimeframe,
   ]);
 
   const results = useQueries({
