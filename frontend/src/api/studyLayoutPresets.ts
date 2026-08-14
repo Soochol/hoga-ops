@@ -4,9 +4,10 @@ import { apiAction, apiCall } from './client';
  * `/study` 레이아웃 프리셋 API 클라이언트 — `liveLayoutPresets.ts` 와 동형이되
  * payload 가 **창 배치만**이다(종목 없음).
  *
- * `/live` 는 groupSymbols(그룹→종목)를 함께 담아 적용 시 종목까지 교체하지만, `/study`
- * 의 종목·구간은 탭(저장뷰)이 SSOT 다. 프리셋이 탭을 건드리지 않는 것이 이 리소스의
- * 계약이라 payload 에 종목 자리를 두지 않는다.
+ * `/study` 의 종목·구간은 탭(저장뷰)이 SSOT 다. 프리셋이 탭을 건드리지 않는 것이 이
+ * 리소스의 계약이라 payload 에 종목 자리를 두지 않는다. `/live` 는 한때 groupSymbols
+ * 를 담아 적용 시 종목까지 교체했으나 지금은 같은 "배치만" 계약이다 — 다만 그쪽은
+ * 구 프리셋 하위호환으로 필드 자리만 남아 있다(값은 쓰지도 읽지도 않는다).
  *
  * 백엔드는 저장/반환만 하고 검증·정규화는 프론트가 apply 시점에 한다
  * (`studyWorkspace.applySnapshot` → `readWindow`).
