@@ -317,6 +317,29 @@ describe('useStudyReferenceBundles', () => {
     expect(rendered.current.bundle?.volume_distributions).toEqual([distribution]);
   });
 
+  // 프로그램 순매수는 백엔드가 `program_trade_enabled and sidecar_only` 로 게이트해
+  // **sidecar 응답에만** 실린다. 병합에서 빠져 있으면 `...hoga` 의 빈 값이 남아
+  // `/study` 에서 그 지표가 영영 안 그려진다 — 토글은 보이는데 화면은 그대로다.
+  it('프로그램 순매수는 sidecar 것을 쓴다 — hoga 쪽은 항상 비어 있다', () => {
+    const points = [{ t_ms: 1_779_840_000_000, net: 1234 }];
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeHogaOptions) {
+        // 백엔드가 hoga 모드에서 채우지 않는다는 사실을 픽스처로 못 박는다.
+        return { data: rangeBundleFixture({ program_trade: { points: [] } }), isLoading: false, error: null };
+      }
+      if (options === rangeSidecarOptions) {
+        return {
+          data: rangeBundleFixture({ program_trade: { points } as never }),
+          isLoading: false,
+          error: null,
+        };
+      }
+      return queryResultFor(options);
+    });
+
+    expect(renderOne(save).current.bundle?.program_trade?.points).toEqual(points);
+  });
+
   it('holds isLoading while the sidecar is pending with no data yet (개선안 1-C)', () => {
     useQueryMock.mockImplementation((options: UseQueryOptions) => {
       if (options === rangeSidecarOptions) {
