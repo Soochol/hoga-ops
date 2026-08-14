@@ -8,10 +8,14 @@ describe('LiveSnapshotBuffer', () => {
     buf.push({ t_ms: 1, kind: 'trade', trades: [] });
     buf.push({ t_ms: 1, kind: 'broker', buy_top: [] });
     buf.push({ t_ms: 1, kind: 'program', net_qty: 10, net_amount: 1_000_000 });
+    buf.push({ t_ms: 1, kind: 'ah', total_ask_qty: 500, total_bid_qty: 300 });
     expect(buf.get('ob')).toHaveLength(1);
     expect(buf.get('trade')).toHaveLength(1);
     expect(buf.get('broker')).toHaveLength(1);
     expect(buf.get('program')).toHaveLength(1);
+    expect(buf.get('ah')).toHaveLength(1);
+    // ah 는 ob 로 새지 않는다 — 섞이면 사다리 없는 payload 가 호가창을 비운다.
+    expect(buf.get('ob')[0].total_ask_qty).toBeUndefined();
   });
 
   it('preserves order within a kind', () => {

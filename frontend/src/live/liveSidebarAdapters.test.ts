@@ -3,6 +3,7 @@ import {
   filterByVenueTag,
   filterObByVenue,
   filterTradeByVenue,
+  latestAfterHoursTotals,
   latestOrderbookSnapshot,
   aggregateBrokerSeries,
   latestTradeSummary,
@@ -330,5 +331,29 @@ describe('filterByVenueTag (거래원·프로그램)', () => {
 
     expect(filterByVenueTag(input, 'KRX')).toHaveLength(1);
     expect(filterByVenueTag(input, 'NXT')).toHaveLength(0);
+  });
+})
+
+describe('latestAfterHoursTotals', () => {
+  const ah = (total_ask_qty: number, total_bid_qty: number, t_ms = 1) =>
+    ({ t_ms, kind: 'ah', total_ask_qty, total_bid_qty });
+
+  it('마지막 프레임의 총잔량을 준다', () => {
+    expect(latestAfterHoursTotals([ah(100, 200, 1), ah(300, 400, 2)])).toEqual({
+      ask: 300,
+      bid: 400,
+    });
+  });
+
+  it('버퍼가 비면 null — 정규장 총잔량으로 폴백하라는 뜻', () => {
+    expect(latestAfterHoursTotals([])).toBeNull();
+  });
+
+  it('양쪽 0 은 null 로 접는다 — "시간외 잔량 없음"이 화면을 0 으로 덮지 않게', () => {
+    expect(latestAfterHoursTotals([ah(0, 0)])).toBeNull();
+  });
+
+  it('한쪽만 0 은 유지한다 — 매수만 쌓인 시간외 호가는 정상 상태다', () => {
+    expect(latestAfterHoursTotals([ah(0, 500)])).toEqual({ ask: 0, bid: 500 });
   });
 })
