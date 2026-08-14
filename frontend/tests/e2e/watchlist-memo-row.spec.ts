@@ -106,6 +106,62 @@ test.describe('Watchlist Panel — 메모(빈칸) 행', () => {
     expect(Math.abs(memoBox!.x - rowBox!.x)).toBeLessThanOrEqual(1);
   });
 
+  test('키보드만으로 메모를 편집할 수 있다', async ({ page }) => {
+    // 편집 진입이 형제 <button> 이라 Tab 으로 닿고 Enter 로 눌린다. 행(li)에 클릭
+    // 핸들러를 두면 삭제 버튼과 중첩 인터랙티브가 되어 이 경로가 막힌다 — 실제
+    // 브라우저의 포커스 순서·키 기본동작으로만 확인되는 계약이다.
+    await installLiveMocks(page);
+
+    const entries = makeEntries();
+    let memos: Memo[] = [{ id: 'm_0000000c', folder_id: 'f_0000000a', order: 2, text: '' }];
+    let patched: string | null = null;
+
+    await page.route(apiExact('watchlist'), (route) =>
+      json(route, { folders: FOLDERS, entries, memos, next_run_at_ms: Date.now() + 3_600_000 }));
+    await page.route(apiPrefix('watchlist/memos/'), async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback();
+      const { text } = route.request().postDataJSON() as { text: string };
+      patched = text;
+      memos = memos.map((m) => ({ ...m, text }));
+      await json(route, memos[0]);
+    });
+
+    await page.goto('/inventory');
+    await openPanelIfClosed(page, 'watchlist-row-005930');
+
+    // 빈칸이라 텍스트가 없다 — 접근성 이름으로 찾는다(AT 가 읽는 것과 같은 경로).
+    const editBtn = page.getByRole('button', { name: '빈칸 — 메모 입력' });
+    await expect(editBtn).toBeVisible();
+
+    await editBtn.focus();
+    await expect(editBtn).toBeFocused();
+    await page.keyboard.press('Enter');          // button 기본동작 → click
+
+    const input = page.getByTestId('watchlist-memo-m_0000000c-input');
+    await expect(input).toBeFocused();           // 진입과 동시에 포커스가 옮겨간다
+    await page.keyboard.type('키보드로 입력');
+    await page.keyboard.press('Enter');
+
+    await expect.poll(() => patched).toBe('키보드로 입력');
+    await expect(page.getByTestId('watchlist-memo-m_0000000c')).toContainText('키보드로 입력');
+  });
+
+  test('마우스 클릭 진입도 살아 있다 — 행의 드래그 listeners 가 버튼 클릭을 먹지 않는다', async ({ page }) => {
+    // listeners 달린 li 안의 버튼 클릭 — dnd PointerSensor 가 pointerdown 을 가로채
+    // 클릭이 죽으면 편집이 통째로 막힌다. 키보드 경로를 넣으면서 회귀할 수 있는 자리다.
+    await installLiveMocks(page);
+    const entries = makeEntries();
+    const memos: Memo[] = [{ id: 'm_0000000d', folder_id: 'f_0000000a', order: 2, text: '클릭 진입' }];
+    await page.route(apiExact('watchlist'), (route) =>
+      json(route, { folders: FOLDERS, entries, memos, next_run_at_ms: Date.now() + 3_600_000 }));
+
+    await page.goto('/inventory');
+    await openPanelIfClosed(page, 'watchlist-row-005930');
+
+    await page.getByTestId('watchlist-memo-m_0000000d-edit').click();
+    await expect(page.getByTestId('watchlist-memo-m_0000000d-input')).toBeFocused();
+  });
+
   test('빈 텍스트로 저장하면 빈 줄로 남는다 — 행이 사라지지 않는다', async ({ page }) => {
     await installLiveMocks(page);
 
@@ -127,7 +183,7 @@ test.describe('Watchlist Panel — 메모(빈칸) 행', () => {
     const memoRow = page.getByTestId('watchlist-memo-m_0000000b');
     await expect(memoRow).toContainText('지울 내용');
 
-    await memoRow.click();
+    await page.getByTestId('watchlist-memo-m_0000000b-edit').click();
     const input = page.getByTestId('watchlist-memo-m_0000000b-input');
     await input.fill('');
     await input.press('Enter');

@@ -75,10 +75,76 @@ describe('WatchlistDrawer — 메모(빈칸) 행', () => {
     expect(row).not.toHaveAttribute('role', 'button');
   });
 
+  // --- 키보드 접근성 (3단계) ---
+
+  it('키보드만으로 편집할 수 있다 — 편집 진입이 형제 버튼이라 Tab 으로 닿는다', async () => {
+    const patch = vi.spyOn(watchlistApi, 'updateMemo').mockResolvedValue(MEMOS[0]);
+    renderPanel();
+    const editBtn = await screen.findByTestId('watchlist-memo-m_0000000a-edit');
+    // 행(li)이 아니라 버튼이 포커스 대상이다 — li 에 tabIndex 를 주면 삭제 버튼과
+    // 중첩 인터랙티브가 되어 이 경로가 막힌다.
+    editBtn.focus();
+    expect(document.activeElement).toBe(editBtn);
+    fireEvent.keyDown(editBtn, { key: 'Enter' });
+    fireEvent.click(editBtn);   // Enter 는 button 기본 동작으로 click 을 낳는다
+    const input = screen.getByTestId('watchlist-memo-m_0000000a-input');
+    fireEvent.change(input, { target: { value: '키보드로 입력' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(patch).toHaveBeenCalledWith('m_0000000a', '키보드로 입력'));
+  });
+
+  it('빈칸도 접근성 이름을 갖는다 — 텍스트가 없으면 AT 가 "버튼"으로만 읽는다', async () => {
+    renderPanel({ ...DATA, memos: [{ ...MEMOS[0], text: '' }] });
+    await screen.findByTestId('watchlist-memo-m_0000000a');
+    expect(screen.getByLabelText('빈칸 — 메모 입력')).toBeInTheDocument();
+    expect(screen.getByLabelText('빈칸 삭제')).toBeInTheDocument();
+  });
+
+  it('메모가 있으면 라벨이 상태와 액션을 함께 말한다', async () => {
+    renderPanel();
+    await screen.findByTestId('watchlist-memo-m_0000000a');
+    expect(screen.getByLabelText('메모 편집: 실적 발표 대기')).toBeInTheDocument();
+    expect(screen.getByLabelText('메모 삭제: 실적 발표 대기')).toBeInTheDocument();
+  });
+
+  it('긴 메모는 truncate 되지만 title 로 전문이 남는다', async () => {
+    const long = '가'.repeat(60);
+    renderPanel({ ...DATA, memos: [{ ...MEMOS[0], text: long }] });
+    const btn = await screen.findByTestId('watchlist-memo-m_0000000a-edit');
+    expect(btn).toHaveAttribute('title', long);
+    expect(btn.querySelector('.truncate')).not.toBeNull();
+  });
+
+  it('빈 줄도 클릭 타깃을 갖는다 — 텍스트가 없으면 버튼 높이가 0 이 된다', async () => {
+    // `self-stretch` 가 없으면 빈 버튼은 높이 0 이라 마우스로도 키보드로도 닿을 수
+    // 없다(Playwright 가 hidden 으로 판정해 잡아낸 회귀). jsdom 은 레이아웃을 계산하지
+    // 않아 클래스로만 확인 가능하다 — 실제 판정은 e2e 가 한다.
+    const patch = vi.spyOn(watchlistApi, 'updateMemo').mockResolvedValue(MEMOS[0]);
+    renderPanel({ ...DATA, memos: [{ ...MEMOS[0], text: '' }] });
+    const btn = await screen.findByTestId('watchlist-memo-m_0000000a-edit');
+    expect(btn.className).toContain('self-stretch');
+    fireEvent.click(btn);
+    const input = screen.getByTestId('watchlist-memo-m_0000000a-input');
+    fireEvent.change(input, { target: { value: '빈 줄에 쓴 메모' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(patch).toHaveBeenCalledWith('m_0000000a', '빈 줄에 쓴 메모'));
+  });
+
+  it('편집 버튼 클릭이 행의 드래그 listeners 에 먹히지 않는다', async () => {
+    // listeners 달린 li 안의 버튼 클릭은 이 패널에서 새 조합이다(RowTrailing ⋯ 가
+    // 같은 구조로 돌지만 메모 행은 별도 컴포넌트다). dnd PointerSensor 가
+    // pointerdown 을 가로채 클릭이 죽으면 편집 진입이 통째로 막힌다.
+    renderPanel();
+    const btn = await screen.findByTestId('watchlist-memo-m_0000000a-edit');
+    fireEvent.pointerDown(btn);            // dnd 가 먼저 보는 이벤트
+    fireEvent.click(btn);
+    expect(screen.getByTestId('watchlist-memo-m_0000000a-input')).toBeInTheDocument();
+  });
+
   it('클릭하면 인라인 편집이 열리고 Enter 로 저장한다', async () => {
     const patch = vi.spyOn(watchlistApi, 'updateMemo').mockResolvedValue(MEMOS[0]);
     renderPanel();
-    fireEvent.click(await screen.findByTestId('watchlist-memo-m_0000000a'));
+    fireEvent.click(await screen.findByTestId('watchlist-memo-m_0000000a-edit'));
     const input = screen.getByTestId('watchlist-memo-m_0000000a-input');
     fireEvent.change(input, { target: { value: '수정된 메모' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -88,7 +154,7 @@ describe('WatchlistDrawer — 메모(빈칸) 행', () => {
   it('Escape 는 취소한다 — 저장을 부르지 않는다', async () => {
     const patch = vi.spyOn(watchlistApi, 'updateMemo').mockResolvedValue(MEMOS[0]);
     renderPanel();
-    fireEvent.click(await screen.findByTestId('watchlist-memo-m_0000000a'));
+    fireEvent.click(await screen.findByTestId('watchlist-memo-m_0000000a-edit'));
     const input = screen.getByTestId('watchlist-memo-m_0000000a-input');
     fireEvent.change(input, { target: { value: '버릴 내용' } });
     fireEvent.keyDown(input, { key: 'Escape' });
@@ -99,14 +165,14 @@ describe('WatchlistDrawer — 메모(빈칸) 행', () => {
   it('값이 그대로면 저장을 부르지 않는다(빈 PATCH 방지)', async () => {
     const patch = vi.spyOn(watchlistApi, 'updateMemo').mockResolvedValue(MEMOS[0]);
     renderPanel();
-    fireEvent.click(await screen.findByTestId('watchlist-memo-m_0000000a'));
+    fireEvent.click(await screen.findByTestId('watchlist-memo-m_0000000a-edit'));
     fireEvent.keyDown(screen.getByTestId('watchlist-memo-m_0000000a-input'), { key: 'Enter' });
     expect(patch).not.toHaveBeenCalled();
   });
 
   it('편집 중 키가 행 네비게이션으로 새지 않는다', async () => {
     renderPanel();
-    fireEvent.click(await screen.findByTestId('watchlist-memo-m_0000000a'));
+    fireEvent.click(await screen.findByTestId('watchlist-memo-m_0000000a-edit'));
     const input = screen.getByTestId('watchlist-memo-m_0000000a-input');
     // 드로어가 [data-quote-nav] 이고 종목 행이 ↑↓·Delete 를 잡는다. 입력 중 그 키가
     // 위로 새면 행 삭제나 차트 전환이 오발동한다.
