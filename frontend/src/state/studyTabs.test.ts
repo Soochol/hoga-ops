@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import { studyTabFromSave, toStudyTabsSnapshot, useStudyTabsStore } from './studyTabs';
-import { useStudyViewOpenPrefsStore } from './studyViewOpenPrefs';
 
 const save = {
   schema_version: 2,
@@ -21,7 +20,6 @@ const save = {
 describe('studyTabs store', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
     useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   });
 
@@ -45,62 +43,30 @@ describe('studyTabs store', () => {
     expect(state.tabs[0]).toMatchObject({ viewId: 'view2', name: '마감' });
   });
 
-  it('opens saved views from the side panel with the configured default minute timeframe', () => {
-    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' }, { timeframeOverride: '3m' });
-    expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
-      timeframe: '3m',
-      label: '삼성전자 · 장초반 · 3m',
-    });
-  });
-
-  it('updates an existing saved-view tab to the configured side-panel timeframe when clicked again', () => {
-    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' });
-    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' }, { timeframeOverride: '3m' });
-
-    expect(useStudyTabsStore.getState().tabs).toHaveLength(1);
-    expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
-      timeframe: '3m',
-      label: '삼성전자 · 장초반 · 3m',
-    });
-  });
-
+  // 탭이 창 봉을 든 채(StudyPage 가 되받아쓴다, #1326) 같은 저장뷰를 다시 열면
+  // 저장 봉으로 리셋되고 **뷰포트는 버린다** — 다른 봉의 줌을 물려받으면 엉뚱한
+  // 구간을 보게 된다. 이 경로는 봉 소유가 창으로 넘어오면서 오히려 흔해졌다.
   it('clears an existing saved-view tab viewport when reopening it with a different timeframe', () => {
     useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' });
     const tabId = useStudyTabsStore.getState().activeTabId!;
+    // 창이 3m 이라 탭 라벨도 3m 으로 따라간 상태를 만든다(그 함수가 뷰포트를 비우므로
+    // 뷰포트는 그 **다음에** 심는다 — 순서를 뒤집으면 검사 대상이 사라진다).
+    useStudyTabsStore.getState().updateTabTimeframe(tabId, '3m');
     useStudyTabsStore.getState().updateTabViewport(tabId, {
       rightEdgeMs: 9_000,
       barSpan: 42,
       atLiveEdge: false,
     });
 
-    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' }, { timeframeOverride: '3m' });
+    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' });
 
     expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
-      timeframe: '3m',
+      timeframe: '10m',
       viewport: null,
     });
   });
 
-  // 「기본 분봉」설정의 값 집합은 분봉뿐이다 — 그 설정이 정하는 것은 분봉 저장뷰들끼리
-  // 어느 분봉으로 통일할까이지, 일봉 저장뷰를 분봉으로 바꿀지가 아니다. 무조건 덮어쓰면
-  // 스크리너 일봉 한 방(10KB)으로 끝날 화면이 range 3쿼리(6.2MB)가 되고, 그 봉의 지표
-  // 캐시가 없으면 통째로 재계산한다(실측 sidecar 단독 141초).
-  it('ignores the side-panel minute override for calendar-timeframe saved views', () => {
-    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: 'D' }, { timeframeOverride: '3m' });
-
-    expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
-      timeframe: 'D',
-      label: '삼성전자 · 장초반 · D',
-    });
-  });
-
-  it('ignores the side-panel minute override for calendar saved views opened in a new tab', () => {
-    useStudyTabsStore.getState().openSaveInNewTab({ ...save, timeframe: 'W' }, { timeframeOverride: '10m' });
-
-    expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({ timeframe: 'W' });
-  });
-
-  it('keeps the saved view timeframe when no side-panel override is provided', () => {
+  it('탭은 저장 봉으로 시드된다 — 봉을 바꾸는 것은 창이지 이 스토어가 아니다', () => {
     useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' });
 
     expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({

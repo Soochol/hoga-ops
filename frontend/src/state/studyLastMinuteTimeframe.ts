@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import { MINUTE_TIMEFRAMES, type MinuteTimeframe } from './livePage';
 
-// /study 차트에서 마지막으로 설정한 "분봉" 하나를 전역 persist한다. 저장뷰를
-// "설정된 분봉"으로 열 때(studyViewOpenPrefs='current') 이 값을 override로 쓴다.
+// /study 차트에서 마지막으로 설정한 "분봉" 하나를 전역 persist한다.
 // /live의 lastMinuteTimeframe(live.page.v1)과 같은 역할이지만 라우트가 다르므로 별도 키.
 // 분봉을 한 번도 안 쓴 초기 상태 폴백은 이 기본값('3m')이 그대로 담당한다.
+//
+// **소비자는 이제 차트 창 설정 시드 하나다**(#906, `studyWorkspace.seedChartConfig`).
+// 저장뷰를 "설정된 분봉"으로 여는 경로가 있었지만 #1326 에서 그 설정 자체가 사라졌다 —
+// 봉의 소유자가 차트 창으로 단일화되면서 저장뷰가 봉을 정할 일이 없어졌기 때문이다.
 export const STUDY_LAST_MINUTE_TIMEFRAME_STORAGE_KEY = 'study.lastMinuteTimeframe.v1';
 const STORAGE_KEY = STUDY_LAST_MINUTE_TIMEFRAME_STORAGE_KEY;
 /** 분봉을 한 번도 안 쓴 초기 상태의 폴백 — 차트 창 설정 시드도 이 값을 쓴다(#906). */

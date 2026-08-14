@@ -10,7 +10,6 @@ import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyWorkspaceStore, type StudyWorkspaceWindow } from '../state/studyWorkspace';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
-import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
 
 const {
   useStudyViewsMock,
@@ -297,10 +296,6 @@ beforeEach(() => {
     },
   });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
-  // ⚠ 봉 재시드 계약(#902·#1295)은 **이 설정이 'keep' 이 아닐 때만** 존재한다.
-  // 앱 기본값은 'keep'(창 주기 유지)이므로 아래 테스트들이 검사하는 경로에 들어가려면
-  // 여기서 명시적으로 고정해야 한다 — 안 하면 기본값이 바뀔 때 전제가 조용히 뒤집힌다.
-  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'saved' });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
   // 창 워크스페이스(ADR-0123) — 시드와 무관한 결정적 배치로 초기화. DOM 순서 =
   // windows 배열 순서(orderbook → brokers → vdist → program).
@@ -411,7 +406,9 @@ describe('StudyPage', () => {
     expect(liveChartRootMock.mock.calls[0][0].venue).toBe('NXT');
   });
 
-  it('uses the active saved-view tab timeframe over the saved reference timeframe', () => {
+  it('창 봉이 탭 봉과 저장 봉을 모두 이긴다 (#1326)', () => {
+    // 창은 시드대로 5m, 탭은 3m 을 들고 있다. 예전에는 탭이 이겨(그리고 창을 덮어)
+    // 3m 이 됐다 — 이제 봉의 소유자는 창이므로 5m 이다.
     useStudyTabsStore.setState({
       tabs: [{
         id: 'tab-ref',
@@ -426,14 +423,15 @@ describe('StudyPage', () => {
 
     renderPage('/study?view=view-ref');
 
-    expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('3m');
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('5m');
     expect(screen.getByText('005930 · 복기뷰')).toBeTruthy();
   });
 
-  it('never requests the saved timeframe when the tab overrides it', () => {
-    // tab.timeframe(3m) ≠ save.timeframe(5m)일 때 첫 렌더부터 3m이어야 한다.
-    // viewTimeframes effect 동기화를 기다리면 5m range 번들(수십 MB)을 한 벌
-    // fetch한 뒤 버리는 회귀가 된다 (#689 후속).
+  it('첫 렌더부터 창 봉으로만 번들을 요청한다 — 버려질 번들을 안 받는다', () => {
+    // 세 값을 **모두 다르게** 둔다(창 15m · 탭 3m · 저장 5m). 하나라도 겹치면 어느
+    // 축이 이겼는지 구별할 수 없다. 창 봉이 아닌 값으로 한 번이라도 요청이 나가면
+    // 그 구간 range 번들(수십 MB)을 받아 놓고 버린다(#689 후속, #1326 에서 축 반전).
+    setChartWindowTimeframe('15m');
     useStudyTabsStore.setState({
       tabs: [{
         id: 'tab-ref',
@@ -453,7 +451,7 @@ describe('StudyPage', () => {
       .map(([save]) => (save as StudyViewReference | null)?.timeframe)
       .filter((timeframe): timeframe is StudyViewReference['timeframe'] => timeframe != null);
     expect(requestedTimeframes.length).toBeGreaterThan(0);
-    expect(requestedTimeframes.every((timeframe) => timeframe === '3m')).toBe(true);
+    expect(requestedTimeframes.every((timeframe) => timeframe === '15m')).toBe(true);
   });
 
   it('switches the study reference timeframe with the live timeframe controls', () => {
@@ -491,6 +489,9 @@ describe('StudyPage', () => {
   });
 
   it('keeps a study tab on the selected minute after switching from calendar timeframe', () => {
+    // 창을 D 로 세운다 — 봉의 소유자가 창이므로(#1326) 탭만 D 로 두면 화면은 5m 이라
+    // "캘린더 봉에서 전환" 이라는 이 테스트의 전제 자체가 사라진다.
+    setChartWindowTimeframe('D');
     useStudyTabsStore.setState({
       tabs: [{
         id: 'tab-ref',
@@ -514,6 +515,20 @@ describe('StudyPage', () => {
     });
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('5m');
   });
+
+  /**
+   * 포커스 차트 창의 봉을 세운다.
+   *
+   * 봉의 소유자가 창이므로(#1326) **화면이 설 봉은 여기서 정해진다** — 탭에만 봉을
+   * 심으면 창이 시드값(5m)에 남아 그 테스트의 전제가 조용히 사라진다.
+   */
+  function setChartWindowTimeframe(timeframe: LiveTimeframe) {
+    useStudyWorkspaceStore.setState({
+      windows: useStudyWorkspaceStore.getState().windows.map((w) => (
+        w.id === 'w-chart' && w.chart ? { ...w, chart: { ...w.chart, timeframe } } : w
+      )),
+    });
+  }
 
   // ── 멀티 차트 창 (#801 단계 1) ──────────────────────────────────────
   /** 두 번째 차트 창을 심는다 — 스토어 setState 는 하이드레이션을 우회하므로
@@ -577,28 +592,9 @@ describe('StudyPage', () => {
     });
   });
 
-  it('탭을 오가면 포커스 창은 그 탭의 봉으로 재시드된다 (#902 — 위 가드의 반대 방향)', () => {
-    useStudyTabsStore.setState({
-      tabs: [
-        { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: 'D' },
-        { id: 'tab-b', viewId: 'view-second', code: '000660', label: 'B', name: 'B', timeframe: '15m' },
-      ],
-      activeTabId: 'tab-a',
-    });
-
-    renderPage('/study?view=view-ref');
-
-    // 창은 5m 으로 태어났지만 탭 A 가 D 라 재시드된다.
-    const chartTf = () =>
-      useStudyWorkspaceStore.getState().windows.find((w) => w.id === 'w-chart')?.chart?.timeframe;
-    expect(chartTf()).toBe('D');
-
-    fireEvent.click(getStudyTab('B'));
-    expect(chartTf()).toBe('15m');
-
-    fireEvent.click(getStudyTab('A'));
-    expect(chartTf()).toBe('D');
-  });
+  // #902 의 "탭을 오가면 포커스 창이 그 탭의 봉으로 재시드된다" 는 #1326 에서
+  // **방향이 뒤집혔다** — 이제 탭이 창을 따라간다. 그 계약의 가드는 아래
+  // '봉의 소유자는 차트 창이다' describe 에 있다.
 
   it('다른 차트 창으로 포커스를 옮겨도 그 창의 봉이 바뀌지 않는다', () => {
     useStudyTabsStore.setState({
@@ -629,7 +625,7 @@ describe('StudyPage', () => {
     expect(tfs).toContain('5m');
   });
 
-  it('탭 재활성 재시드가 비포커스 창을 건드리지 않는다 — 멀티 타임프레임 배치 보존', () => {
+  it('탭을 오갔다 돌아와도 두 창의 봉이 그대로다 — 멀티 타임프레임 배치 보존', () => {
     useStudyTabsStore.setState({
       tabs: [
         { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: '5m' },
@@ -643,84 +639,29 @@ describe('StudyPage', () => {
     fireEvent.click(getStudyTab('B'));
     fireEvent.click(getStudyTab('A'));
 
-    // 재시드는 포커스 창만 대상이다. 전 창을 재시드하면 탭을 한 번 오갈 때마다
-    // "일봉+5분봉으로 벌려 놨는데 둘 다 5분봉" 이 된다.
+    // 탭 전환은 어느 창의 봉도 바꾸지 않는다(#1326). 예전엔 포커스 창을 탭 봉으로
+    // 재시드해서, 탭을 한 번 오갈 때마다 "일봉+5분봉으로 벌려 놨는데 둘 다 5분봉" 이 됐다.
     expect(useStudyWorkspaceStore.getState().windows.find((w) => w.id === 'w-chart-2')?.chart?.timeframe)
       .toBe('D');
   });
 
   /**
-   * #1295 — "포커스 창만" 은 배치를 지키기에 부족했다.
-   *
-   * 봉을 바꾼 창이 곧 포커스 창이므로, **분봉 창을 만진 직후 일봉 저장뷰를 여는**
-   * 가장 흔한 순서에서는 언제나 그 분봉 창이 재시드 대상이 된다. 사용자가 본 증상은
-   * "일봉+분봉으로 벌려 놨는데 저장뷰를 누르니 둘 다 일봉" 이었고, 실제로 바뀐 것은
-   * 포커스 창 하나였다(다른 창은 원래 일봉).
-   */
-  it('요구된 봉을 이미 띄운 창이 있으면 포커스만 옮긴다 — 분봉 창이 희생되지 않는다', () => {
-    useStudyTabsStore.setState({
-      tabs: [
-        { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: '5m' },
-        { id: 'tab-b', viewId: 'view-second', code: '000660', label: 'B', name: 'B', timeframe: 'D' },
-      ],
-      activeTabId: 'tab-a',
-    });
-    // 5분봉 창(포커스) + 일봉 창 = 사용자가 벌려 둔 배치.
-    addSecondChartWindow('D');
-
-    renderPage('/study?view=view-ref');
-    fireEvent.click(getStudyTab('B'));
-
-    const state = useStudyWorkspaceStore.getState();
-    const tfOf = (id: string) => state.windows.find((w) => w.id === id)?.chart?.timeframe;
-    expect(tfOf('w-chart')).toBe('5m');
-    expect(tfOf('w-chart-2')).toBe('D');
-    // 대신 포커스가 그 봉을 띄운 창으로 간다 — 안 옮기면 요구된 봉이 어디에도
-    // 안 보이는 채로 탭만 바뀐 꼴이 된다.
-    expect(state.zOrder.at(-1)).toBe('w-chart-2');
-  });
-
-  it('그 봉의 창이 없으면 종전대로 포커스 창을 재시드한다 (#902 계약 유지)', () => {
-    useStudyTabsStore.setState({
-      tabs: [
-        { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: '5m' },
-        { id: 'tab-b', viewId: 'view-second', code: '000660', label: 'B', name: 'B', timeframe: 'D' },
-      ],
-      activeTabId: 'tab-a',
-    });
-    // 위 테스트와 **이 한 값만** 다르다(D → W): 어느 창도 탭이 요구하는 D 가 아니다.
-    addSecondChartWindow('W');
-
-    renderPage('/study?view=view-ref');
-    fireEvent.click(getStudyTab('B'));
-
-    const state = useStudyWorkspaceStore.getState();
-    const tfOf = (id: string) => state.windows.find((w) => w.id === id)?.chart?.timeframe;
-    // 대안이 없으니 포커스 창이 덮인다 — 대안 탐색이 재시드 자체를 삼키면 안 된다.
-    expect(tfOf('w-chart')).toBe('D');
-    expect(tfOf('w-chart-2')).toBe('W');
-  });
-
-  /**
-   * '창 주기 유지'(`studyViewOpenPrefs='keep'`, 앱 기본값) — 저장뷰가 종목·구간만
-   * 정하고 봉은 창이 소유한다.
+   * 봉의 소유자는 **차트 창**이고 저장뷰는 종목·구간만 정한다(#1326).
    *
    * **이 가드가 막는 방향**: 저장뷰를 열거나 탭을 오갔다는 이유로 차트 창의 봉이
-   * 바뀌는 것. 위 #902/#1295 테스트들이 검사하는 재시드는 이 모드에서 **반대로**
-   * 돈다(탭이 창을 따라간다).
+   * 바뀌는 것. 반대 방향(#902 재시드)은 이 PR 에서 뒤집혔다 — 탭이 창을 따라간다.
    *
    * **이 가드가 못 보는 것**: 사용자가 창 헤더에서 직접 봉을 바꾸는 경로
-   * (`changeTimeframe`)는 그대로다 — 제스처는 언제나 창을 이긴다.
+   * (`changeTimeframe`)는 그대로다 — 제스처는 언제나 창을 이긴다(아래 마지막 케이스).
+   *
+   * **설정 의존 없음**: 이 계약은 이제 조건 없이 성립한다. 예전에는 「저장뷰 사이드
+   * 메뉴 기본 분봉」 설정이 봉을 정했고, 그 설정 자체가 이 PR 에서 삭제됐다.
    */
-  describe("'창 주기 유지' 모드 (keep)", () => {
-    beforeEach(() => {
-      useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'keep' });
-    });
-
+  describe('봉의 소유자는 차트 창이다 (#1326)', () => {
     it('일봉 창 + 분봉 창 배치에서 다른 분봉 저장뷰를 열어도 두 창 다 그대로다', () => {
       // 사용자가 보고한 순서 그대로: 창 두 개(5m 포커스 + D)를 벌려 두고,
-      // 어느 창의 봉과도 일치하지 않는 분봉(15m) 저장뷰를 연다. #1295 의 완화는
-      // 봉이 **정확히** 일치할 때만 걸리므로 이 순서에서 포커스 창이 희생됐다.
+      // 어느 창의 봉과도 일치하지 않는 분봉(15m) 저장뷰를 연다. #1295 가 넣었던
+      // 완화는 봉이 **정확히** 일치할 때만 걸려서 이 순서에서 포커스 창이 희생됐다.
       useStudyTabsStore.setState({
         tabs: [
           { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: '5m' },
@@ -855,6 +796,10 @@ describe('StudyPage', () => {
   });
 
   it('passes the active study timeframe into IndicatorPanel while the reference bundle is loading', () => {
+    // 로딩 구간에는 저장뷰 모델이 아직 없어 폴백이 답을 낸다. 그 폴백도 **창**을
+    // 읽어야 한다(#1326) — 탭을 먼저 읽으면 되받아쓰기 전의 저장 봉이 지표
+    // 버킷으로 샌다. 그래서 창을 D 로 세우고 D 가 나오는지 본다.
+    setChartWindowTimeframe('D');
     useStudyTabsStore.setState({
       tabs: [{
         id: 'tab-ref',
@@ -924,6 +869,7 @@ describe('StudyPage', () => {
   });
 
   it('restores a study tab viewport after the tab timeframe differs from the saved view timeframe', () => {
+    setChartWindowTimeframe('15m');
     useStudyTabsStore.setState({
       tabs: [
         {
@@ -962,6 +908,7 @@ describe('StudyPage', () => {
   });
 
   it('restores a captured calendar timeframe viewport without reusing the saved minute viewport', () => {
+    setChartWindowTimeframe('D');
     useStudyTabsStore.setState({
       tabs: [
         {

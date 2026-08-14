@@ -7,8 +7,6 @@ import {
   useChartPrefsStore,
   type ChartToggleCategory,
 } from '../state/chartPrefs';
-import { MINUTE_TIMEFRAMES, type MinuteTimeframe } from '../state/livePage';
-import { useStudyViewOpenPrefsStore, type StudyViewOpenTimeframe } from '../state/studyViewOpenPrefs';
 import MAStylePicker from './indicators/MAStylePicker';
 import ColorSwatchPicker from './indicators/ColorSwatchPicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
@@ -25,7 +23,7 @@ import { WORKSPACE_DRAWER_SHELL_CLASS } from './workspaceDrawer';
  * toggles are excluded (they live in the 「지표」 modal instead). Adding
  * a toggle/pref stays a one-line registry edit.
  */
-type NavId = ChartToggleCategory | 'data-source' | 'study-views' | 'alerts';
+type NavId = ChartToggleCategory | 'data-source' | 'alerts';
 
 const CATEGORY_ORDER: ChartToggleCategory[] = ['chart', 'trade-window'];
 const LABEL: Record<NavId, string> = {
@@ -33,7 +31,6 @@ const LABEL: Record<NavId, string> = {
   'indicator-modal': '지표', // never rendered — not in CATEGORY_ORDER; kept for Record<NavId> exhaustiveness
   'trade-window': '체결창',
   'data-source': '데이터소스',
-  'study-views': '저장뷰',
   alerts: '알림',
 };
 
@@ -128,61 +125,9 @@ function ViLimitPriceLineStyleRow() {
   );
 }
 
-function minuteLabel(value: MinuteTimeframe): string {
-  return `${value.slice(0, -1)}분`;
-}
-
-function studyViewOpenTimeframeLabel(value: StudyViewOpenTimeframe): string {
-  if (value === 'keep') return '창 주기 유지';
-  if (value === 'saved') return '저장된 분봉';
-  if (value === 'current') return '설정된 분봉';
-  return minuteLabel(value);
-}
-
-function StudyViewsDetail() {
-  const defaultTimeframe = useStudyViewOpenPrefsStore((s) => s.defaultTimeframe);
-  const setDefaultTimeframe = useStudyViewOpenPrefsStore((s) => s.setDefaultTimeframe);
-
-  return (
-    <>
-      <div className="mb-1 text-sm text-fg-dim">저장뷰 사이드 메뉴</div>
-      <div className="mb-md text-xs text-fg-dim">
-        오른쪽 저장뷰 패널에서 저장뷰를 열 때 적용할 기본 분봉입니다.
-        「창 주기 유지」는 차트 창이 지금 보고 있는 봉을 그대로 둡니다 —
-        일봉 창과 분봉 창을 나란히 띄워 둔 배치가 저장뷰를 열어도 유지됩니다.
-        「저장된 분봉」은 저장뷰가 저장한 봉 그대로 열어 가장 빠릅니다 —
-        지표 계산 결과가 봉마다 따로 저장되는데, 저장 당시 이미 그 봉으로 계산돼 있기 때문입니다.
-        「설정된 분봉」은 복기뷰 차트에서 마지막으로 사용한 분봉으로 엽니다.
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {(['keep', 'saved', 'current', ...MINUTE_TIMEFRAMES] as StudyViewOpenTimeframe[]).map((value) => {
-          const checked = defaultTimeframe === value;
-          return (
-            <label
-              key={value}
-              className="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm cursor-pointer focus-within:outline focus-within:outline-2 focus-within:outline-offset-2"
-              style={{
-                borderColor: checked ? 'var(--accent)' : 'var(--border)',
-                background: checked ? 'var(--bg-input)' : 'transparent',
-                color: checked ? 'var(--fg)' : 'var(--fg-dim)',
-                outlineColor: 'var(--accent)',
-              }}
-            >
-              <input
-                type="radio"
-                name="study-view-open-timeframe"
-                value={value}
-                checked={checked}
-                onChange={() => setDefaultTimeframe(value)}
-              />
-              <span>{studyViewOpenTimeframeLabel(value)}</span>
-            </label>
-          );
-        })}
-      </div>
-    </>
-  );
-}
+// 여기 있던 「저장뷰」 섹션(저장뷰를 열 때 적용할 기본 분봉)은 #1326 에서 제거됐다.
+// 차트 창이 봉의 유일한 소유자가 되면서 그 설정이 정할 것이 없어졌다 — 저장뷰는
+// 종목과 구간만 정한다. 근거와 버려진 trade-off 는 그 PR 에 있다.
 
 export default function LiveSettingsSections({ variant = 'live', onClose }: { variant?: 'live' | 'study'; onClose?: () => void }) {
   const navIds: NavId[] = [
@@ -192,7 +137,6 @@ export default function LiveSettingsSections({ variant = 'live', onClose }: { va
     // 'data-source'는 라이브 워크스페이스에선 메인 Settings(「데이터 소스」)로 이동했다.
     // 복기뷰(study)는 캔들 디스크-온리 등 전용 안내가 있어 이 모달에 유지한다.
     ...(variant === 'study' ? (['data-source'] as const) : []),
-    'study-views',
     'alerts',
   ];
   const [selected, setSelected] = useState<NavId>(navIds[0]);
@@ -240,11 +184,9 @@ export default function LiveSettingsSections({ variant = 'live', onClose }: { va
         <section aria-label={LABEL[selected]} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5">
           {selected === 'data-source'
             ? <DataSourceDetail variant={variant} />
-            : selected === 'study-views'
-              ? <StudyViewsDetail />
-              : selected === 'alerts'
-                ? <SignalAlertSettingsSection />
-                : <CategoryDetail category={selected} />}
+            : selected === 'alerts'
+              ? <SignalAlertSettingsSection />
+              : <CategoryDetail category={selected} />}
         </section>
       </div>
     </div>

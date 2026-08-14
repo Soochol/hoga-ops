@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
-import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
 import { useStudyLastMinuteTimeframeStore } from '../state/studyLastMinuteTimeframe';
 import { StudyViewsDrawer, filterStudyViews, formatStudyViewMeta } from './StudyViewsDrawer';
 
@@ -152,7 +151,6 @@ beforeEach(() => {
   dnd.onDragEnd = null;
   dnd.onDragCancel = null;
   mockedSaves = saves;
-  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
   useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '3m' });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   (useEntryDragStore.setState as unknown as (state: Record<string, unknown>) => void)({
@@ -430,31 +428,16 @@ it('normal row click replaces the current study tab instead of opening only the 
   const state = useStudyTabsStore.getState();
   expect(state.tabs).toHaveLength(1);
   expect(state.activeTabId).toBe(activeTabId);
-  expect(state.tabs[0]).toMatchObject({ viewId: 'a', name: '급등 이후', timeframe: '3m' });
-  expect(state.tabs[0].label).toBe('삼성전자 · 급등 이후 · 3m');
+  // 봉은 저장뷰가 저장한 값(`saves[0]`) 그대로다 — 서랍이 갈아끼우지 않는다(#1326).
+  expect(state.tabs[0]).toMatchObject({ viewId: 'a', name: '급등 이후', timeframe: '5m' });
+  expect(state.tabs[0].label).toBe('삼성전자 · 급등 이후 · 5m');
 });
 
-it('uses the configured saved-view side-panel timeframe when opening a saved view', async () => {
-  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '5m' });
-  mockedSaves = [{ ...saves[0], timeframe: '10m' }];
-  renderDrawer('/inventory');
-
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
-
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-  expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
-    viewId: 'a',
-    timeframe: '5m',
-    label: '삼성전자 · 급등 이후 · 5m',
-  });
-});
-
-// 기본값 경로. 저장 봉을 그대로 쓰는 것이 곧 "지표 캐시가 이미 채워진 봉" 이라
-// 콜드 재계산을 피한다(`studyViewOpenPrefs` 주석의 실측). `lastMinuteTimeframe` 을
-// **일부러 다른 값으로** 둔다 — 같은 값이면 override 를 안 넘기는지 아닌지 구별할 수
-// 없어 이 테스트가 아무것도 증명하지 못한다.
-it('opens a minute save at its SAVED timeframe when the side-panel option is "saved"', async () => {
-  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'saved' });
+// 서랍은 봉을 **정하지 않는다**(#1326) — 탭은 저장 봉으로 시드되고, 그 뒤 StudyPage 가
+// 포커스 창 봉으로 되받아쓴다. 여기서 볼 것은 "서랍이 딴 값을 끼워 넣지 않는가" 다.
+// `lastMinuteTimeframe` 을 **일부러 다른 값으로** 둔다 — 같은 값이면 그 전역이 새어
+// 들어오는지 아닌지 구별할 수 없어 이 테스트가 아무것도 증명하지 못한다.
+it('저장뷰를 열면 탭이 저장 봉으로 시드된다 — 서랍은 봉을 갈아끼우지 않는다', async () => {
   useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '15m' });
   mockedSaves = [{ ...saves[0], timeframe: '10m' }];
   renderDrawer('/inventory');
@@ -469,21 +452,6 @@ it('opens a minute save at its SAVED timeframe when the side-panel option is "sa
   });
 });
 
-it('opens with the last study minute timeframe when the side-panel option is "current"', async () => {
-  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'current' });
-  useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '15m' });
-  mockedSaves = [{ ...saves[0], timeframe: '10m' }];
-  renderDrawer('/inventory');
-
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
-
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-  expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
-    viewId: 'a',
-    timeframe: '15m',
-    label: '삼성전자 · 급등 이후 · 15m',
-  });
-});
 
 it('clicking the saved view name text navigates to the study route', async () => {
   renderDrawer('/inventory');
