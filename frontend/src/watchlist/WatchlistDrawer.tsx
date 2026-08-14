@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
@@ -13,7 +13,7 @@ import { CollectionDot } from '../live/CollectionDot';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
   useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders,
-  useReorderEntries,
+  useReorderItems, useAddMemo, useUpdateMemo, useRemoveMemo,
 } from './useWatchlist';
 import { persistJson, readJsonObject } from '../state/persist';
 import { ChevronIcon } from '../ui/ChevronIcon';
@@ -40,8 +40,17 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { WatchlistEntry } from '../api/watchlist';
-import { resolveDrag, resolveFolderDrag, entrySortableId, parseEntrySortableId } from './dragHandlers';
+import type { WatchlistEntry, WatchlistMemo } from '../api/watchlist';
+import { WATCHLIST_MEMO_MAX_LEN } from '../api/watchlist';
+import { MemoRow } from './MemoRow';
+import {
+  mergePanelRows, memosOfFolder, panelRowKey, toItemRefs, type PanelRow,
+} from './panelRows';
+// resolveDrag(코드 전용 재배열)는 이제 편집 모달만 쓴다 — 패널은 메모를 함께 옮기므로
+// mergePanelRows + toItemRefs 로 표시 순서 전체를 만든다.
+import {
+  resolveFolderDrag, entrySortableId, memoSortableId, parseItemSortableId,
+} from './dragHandlers';
 import { useEntryDragStore, isPointOnChart, dropPoint, resolveDropOnChart } from '../state/entryDrag';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
 
@@ -95,6 +104,8 @@ const PencilIcon = () => <MenuGlyph><path d="M12 20h9" /><path d="M16.5 3.5a2.1 
 const ArrowUpIcon = () => <MenuGlyph><path d="M12 19V5" /><path d="M6 11l6-6 6 6" /></MenuGlyph>;
 const ArrowDownIcon = () => <MenuGlyph><path d="M12 5v14" /><path d="M6 13l6 6 6-6" /></MenuGlyph>;
 const PlusIcon = () => <MenuGlyph><path d="M12 5v14" /><path d="M5 12h14" /></MenuGlyph>;
+/** 빈칸(메모) 행 — 실선 위에 점선 한 줄로 "빈 자리"를 표현. */
+const BlankRowIcon = () => <MenuGlyph><path d="M4 8h16" /><path d="M4 16h16" strokeDasharray="3 3" /></MenuGlyph>;
 
 const ADD_POPOVER_W = 280;
 
@@ -157,6 +168,8 @@ function GroupHeader(props: {
   onDelete?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  /** "빈칸 추가" — 그룹 맨 아래에 메모 행을 넣는다(v4, 실폴더만). */
+  onAddMemo?: () => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   sortMode?: QuoteSortMode;
@@ -250,6 +263,13 @@ function GroupHeader(props: {
                   <span className="w-4 grid place-items-center"><PlusIcon /></span> 종목 추가
                 </button>
               )}
+              {props.onAddMemo && (
+                <button type="button" role="menuitem"
+                  onClick={() => { setMenuOpen(false); props.onAddMemo?.(); }}
+                  className={itemClass}>
+                  <span className="w-4 grid place-items-center"><BlankRowIcon /></span> 빈칸 추가
+                </button>
+              )}
               <button type="button" role="menuitem"
                 onClick={() => { setMenuOpen(false); props.onRename?.(); }}
                 className={itemClass}>
@@ -327,11 +347,20 @@ function RowTrailing(props: {
   );
 }
 
-/** 액티브 드래그와 같은 data.type(='entry'|'folder')의 droppable만 closestCenter에 넘긴다 —
- *  중첩 SortableContext의 cross-talk(폴더 컨테이너가 행 위로 끼어드는) 차단. */
+/** 액티브 드래그와 같은 레인의 droppable만 closestCenter에 넘긴다 — 중첩
+ *  SortableContext의 cross-talk(폴더 컨테이너가 행 위로 끼어드는) 차단.
+ *
+ *  v4: 행 레인은 'entry'와 'memo'를 **함께** 본다. 둘은 한 리스트에 섞여 있어서 서로를
+ *  드롭 타깃으로 삼을 수 있어야 한다(메모를 종목 사이로, 종목을 메모 사이로). 폴더
+ *  레인만 따로 격리된다. */
+const ROW_TYPES = new Set(['entry', 'memo']);
 const typeAwareCollision: CollisionDetection = (args) => {
   const type = args.active.data.current?.type;
-  const same = args.droppableContainers.filter((c) => c.data.current?.type === type);
+  const inRowLane = ROW_TYPES.has(String(type));
+  const same = args.droppableContainers.filter((c) => {
+    const t = String(c.data.current?.type);
+    return inRowLane ? ROW_TYPES.has(t) : t === type;
+  });
   return closestCenter({ ...args, droppableContainers: same });
 };
 
@@ -410,6 +439,43 @@ function SortableQuoteRow(props: {
   );
 }
 
+/** 메모("빈칸") 행의 sortable 래퍼 — SortableQuoteRow 와 같은 계약(행 전체가 핸들).
+ *  data.type='entry' 를 쓰지 **않는다**: 차트로 드롭·종목 교체 분기가 그 타입을 보고
+ *  도는데 메모는 그 대상이 아니다. 대신 'memo' 로 태깅해 재배열에만 참여시킨다. */
+function SortableMemoRow(props: {
+  folderId: string;
+  memo: WatchlistMemo;
+  autoEdit: boolean;
+  onAutoEditConsumed: () => void;
+  onSave: (text: string) => void;
+  onDelete: () => void;
+  dragEnabled: boolean;
+}) {
+  const { setNodeRef, setActivatorNodeRef, listeners, transform, transition, isDragging, activeIndex, overIndex, index } =
+    useSortable({ id: memoSortableId(props.folderId, props.memo.id), data: { type: 'memo', folderId: props.folderId, memoId: props.memo.id } });
+  const dropIndicator = activeIndex !== -1 && overIndex !== -1 && index === overIndex && index !== activeIndex
+    ? (activeIndex < overIndex ? 'after' : 'before')
+    : undefined;
+  const off = !props.dragEnabled;
+  return (
+    <MemoRow
+      text={props.memo.text}
+      onSave={props.onSave}
+      onDelete={props.onDelete}
+      maxLength={WATCHLIST_MEMO_MAX_LEN}
+      autoEdit={props.autoEdit}
+      onAutoEditConsumed={props.onAutoEditConsumed}
+      testId={`watchlist-memo-${props.memo.id}`}
+      sortableRef={off ? undefined : setNodeRef}
+      sortableStyle={off ? undefined : { transform: CSS.Transform.toString(transform), transition }}
+      dragListeners={off ? undefined : listeners}
+      dragActivatorRef={off ? undefined : setActivatorNodeRef}
+      dragging={off ? false : isDragging}
+      dropIndicator={off ? undefined : dropIndicator}
+    />
+  );
+}
+
 /**
  * Watchlist Panel (CONTEXT.md), app-wide via the Right Rail (ADR-0052).
  * Folder-grouped read+navigate: rows show the KIS live quote overlay (ADR-0056)
@@ -447,6 +513,20 @@ export function WatchlistDrawer() {
   // v3 "그룹 편집" — 행 메뉴/하트가 여는 멤버십 피커(ADR-0070 P5).
   const [groupPicker, setGroupPicker] =
     useState<{ code: string; name: string; x: number; y: number } | null>(null);
+
+  // 메모("빈칸") 행 — entries 와 같은 order 축(폴더 items 인덱스)이라 렌더 직전에 병합한다.
+  const memos = data?.memos ?? [];
+  const addMemoM = useAddMemo();
+  const updateMemoM = useUpdateMemo();
+  const removeMemoM = useRemoveMemo();
+  // 갓 만든 빈칸은 즉시 편집 모드로 연다(추가 → 바로 입력). 서버가 준 id 를 한 번만
+  // 쓰고 지운다 — 남겨 두면 폴링 리페치마다 그 행이 다시 편집 모드로 열린다.
+  const [justAddedMemoId, setJustAddedMemoId] = useState<string | null>(null);
+  // effect dep 로 들어가므로 참조가 매 렌더 바뀌면 안 된다.
+  const clearJustAddedMemo = useCallback(() => setJustAddedMemoId(null), []);
+  const addMemoAt = (folderId: string, at?: number) => {
+    addMemoM.mutate({ folderId, at }, { onSuccess: (m) => setJustAddedMemoId(m.id) });
+  };
 
   // 다중 소속이라 한 코드가 여러 폴더 행으로 등장 → quote 폴링용 코드는 dedup.
   const codes = useMemo(() => [...new Set(data?.entries.map((e) => e.code) ?? [])], [data]);
@@ -561,7 +641,7 @@ export function WatchlistDrawer() {
     deleteM.mutate(folderId);
   };
 
-  const reorderEntriesM = useReorderEntries();
+  const reorderItemsM = useReorderItems();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   // "차트로 드롭" 공유 상태 — WorkspaceCanvas가 구독해 드롭 타깃 오버레이를 띄운다.
@@ -574,6 +654,7 @@ export function WatchlistDrawer() {
     if (ev.active.data.current?.type === 'entry') startEntryDrag(String(ev.active.id));
   };
   const onDragMove = (ev: DragMoveEvent) => {
+    // 메모 행은 차트 드롭 대상이 아니다 — 'entry' 타입만 오버레이를 띄운다.
     if (ev.active.data.current?.type !== 'entry') return;
     const point = dropPoint(ev);
     setOverChart(isPointOnChart(point));
@@ -582,14 +663,20 @@ export function WatchlistDrawer() {
   const onDragCancel = () => endEntryDrag();
 
   const onDragEnd = (ev: DragEndEvent) => {
-    const wasEntry = ev.active.data.current?.type === 'entry';
+    const activeType = ev.active.data.current?.type;
+    const wasEntry = activeType === 'entry';
+    const wasMemo = activeType === 'memo';
     endEntryDrag();
-    if (wasEntry && getFolderSortMode(parseEntrySortableId(String(ev.active.id)).folderId) !== 'default') return;
+    if ((wasEntry || wasMemo)
+        && getFolderSortMode(parseItemSortableId(String(ev.active.id)).folderId) !== 'default') return;
     // 종목 행을 차트 위에 드롭 → 종목 교체(재정렬 대신). 창 위 드롭이면 그 창 그룹 교체
     // (정밀 드롭, #711), 창 밖(캔버스 여백)이면 활성 그룹 교체(onPick, /live 위라 navigate no-op).
+    // 메모는 이 분기를 타지 않는다 — 차트에 실을 종목이 없다.
     if (wasEntry && isPointOnChart(dropPoint(ev))) {
       const d = ev.active.data.current as { code?: string; name?: string } | undefined;
-      const code = d?.code ?? parseEntrySortableId(String(ev.active.id)).code;
+      const parsed = parseItemSortableId(String(ev.active.id));
+      const code = d?.code ?? (parsed.kind === 'code' ? parsed.code : '');
+      if (!code) return;
       if (resolveDropOnChart(dropPoint(ev), { code, name: d?.name })) return;
       onPick(code, d?.name);
       return;
@@ -609,16 +696,25 @@ export function WatchlistDrawer() {
       if (fr.kind === 'reorder') reorderFoldersM.mutate(fr.orderedIds);
       return;
     }
-    // v3 composite id: `${folderId}:${code}` — 같은 코드가 N폴더면 N행이라 폴더 스코프로 파싱.
-    const { folderId, code: activeCode } = parseEntrySortableId(String(ev.active.id));
-    const { code: overCode } = parseEntrySortableId(String(ev.over.id));
-    const group = (data?.entries ?? [])
-      .filter((e) => e.folder_id === folderId)
-      .sort((a, b) => a.order - b.order);
-    const r = resolveDrag(group, folderId, activeCode, overCode);
-    if (r.kind === 'reorder' && r.folderId !== null) {
-      reorderEntriesM.mutate({ folderId: r.folderId, orderedCodes: r.orderedCodes });
-    }
+    // v4 composite id: `${folderId}:${code|memoId}` — 같은 코드가 N폴더면 N행이라
+    // 폴더 스코프로 파싱하고, 키 모양으로 종목/메모를 가른다.
+    const active = parseItemSortableId(String(ev.active.id));
+    const over = parseItemSortableId(String(ev.over.id));
+    const folderId = active.folderId;
+    if (folderId === null) return;   // 미분류엔 메모가 없고 재정렬 대상도 아니다
+    // 화면에 보이는 순서(종목+메모)를 그대로 옮긴다 — 서버 계약이 items 전체 집합
+    // 일치를 요구하므로 한쪽만 보내면 409 다.
+    const rows = mergePanelRows(
+      (data?.entries ?? []).filter((e) => e.folder_id === folderId).sort((a, b) => a.order - b.order),
+      memosOfFolder(memos, folderId),
+    );
+    const keyOf = (p: typeof active) => (p.kind === 'code' ? p.code : p.memoId);
+    const from = rows.findIndex((r) => panelRowKey(r) === keyOf(active));
+    const to = rows.findIndex((r) => panelRowKey(r) === keyOf(over));
+    if (from < 0 || to < 0 || from === to) return;
+    const moved = [...rows];
+    moved.splice(to, 0, ...moved.splice(from, 1));
+    reorderItemsM.mutate({ folderId, orderedItems: toItemRefs(moved) });
   };
 
   return (
@@ -672,10 +768,32 @@ export function WatchlistDrawer() {
               const groupSortMode = folder ? getFolderSortMode(folder.id) : 'default';
               const displayEntries = sortEntriesByChangePct(g.entries, pctOf, groupSortMode);
               const rowDragEnabled = groupSortMode === 'default';
+              // 정렬 모드(등락률)면 메모를 **숨긴다** — 위치가 의미를 잃기 때문이다
+              // (행 드래그가 이미 같은 조건에서 꺼지는 것과 같은 게이트). 게이트를
+              // 병합 **전에** 두는 것이 중요하다: 병합 후 필터링하면
+              // sortEntriesByChangePct(rightrail 공유 유틸)가 PanelRow 유니온을 알게 된다.
+              const rows: PanelRow[] = rowDragEnabled && folder
+                ? mergePanelRows(displayEntries, memosOfFolder(memos, folder.id))
+                : displayEntries.map((entry) => ({ kind: 'entry', entry }));
               const entriesList = !isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  <SortableContext items={displayEntries.map((e) => entrySortableId(e.folder_id, e.code))} strategy={verticalListSortingStrategy}>
-                    {displayEntries.map((entry) => {
+                  <SortableContext items={rows.map((r) => `${r.kind === 'entry' ? (r.entry.folder_id ?? '__uncat__') : folder!.id}:${panelRowKey(r)}`)} strategy={verticalListSortingStrategy}>
+                    {rows.map((row) => {
+                      if (row.kind === 'memo') {
+                        return (
+                          <SortableMemoRow
+                            key={memoSortableId(folder!.id, row.memo.id)}
+                            folderId={folder!.id}
+                            memo={row.memo}
+                            autoEdit={row.memo.id === justAddedMemoId}
+                            onAutoEditConsumed={clearJustAddedMemo}
+                            onSave={(text) => updateMemoM.mutate({ memoId: row.memo.id, text })}
+                            onDelete={() => removeMemoM.mutate(row.memo.id)}
+                            dragEnabled={rowDragEnabled}
+                          />
+                        );
+                      }
+                      const entry = row.entry;
                       const q = quoteByCode.get(entry.code);
                       const collection = deriveCollectionView({
                         code: entry.code,
@@ -721,6 +839,7 @@ export function WatchlistDrawer() {
                   onDelete={folder ? () => deleteFolderWithConfirm(folder.id) : undefined}
                   onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
                   onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
+                  onAddMemo={folder ? () => addMemoAt(folder.id) : undefined}
                   canMoveUp={gi > 0}
                   canMoveDown={gi < folderCount - 1}
                   sortMode={groupSortMode}
@@ -777,7 +896,14 @@ export function WatchlistDrawer() {
       {menu && (
         <WatchlistRowMenu x={menu.x} y={menu.y} name={menu.name}
           onEditGroups={() => setGroupPicker({ code: menu.code, name: menu.name, x: menu.x, y: menu.y })}
-          onRemove={() => removeM.mutate(menu.code)} onClose={() => setMenu(null)} />
+          onRemove={() => removeM.mutate(menu.code)}
+          // 이 행이 차지한 items 인덱스에 삽입 → 기존 행은 한 칸 밀린다("위에" 삽입).
+          // 미분류 행은 담을 폴더가 없어 항목 자체를 띄우지 않는다.
+          onInsertMemoAbove={menu.folderId ? () => {
+            const row = data?.entries.find((e) => e.folder_id === menu.folderId && e.code === menu.code);
+            addMemoAt(menu.folderId!, row?.order);
+          } : undefined}
+          onClose={() => setMenu(null)} />
       )}
       {groupPicker && (
         <WatchlistGroupPicker code={groupPicker.code} name={groupPicker.name}

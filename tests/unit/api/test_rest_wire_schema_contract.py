@@ -176,6 +176,19 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
         frozenset(get_args(market_overview.MarketName)),
         "frontend/src/api/market.ts",
     ),
+    # **요청 body 의 판별자**다 — 응답이 아니라서 EXPECTED_REST_WIRE_FIELDS 로는 안
+    # 보이고, 필드 인라인 `Literal` 이라 자동 감사도 못 본다(손 등록 부류).
+    #
+    # BE 는 판별 유니온의 두 갈래(`CodeItemRef` · `MemoItemRef`)에 각각 한 값씩 쓰고,
+    # FE 는 그 합집합을 `WatchlistItemKind` 한 줄로 미러한다 — 그래서 여기서도
+    # 합집합으로 만든다. 값이 갈리면 프론트가 서버가 모르는 kind 를 보내 422 가
+    # 나고, 패널에서 행을 끌어도 순서가 저장되지 않는다(조용한 실패는 아니지만
+    # 원인이 dnd 로 보여 진단이 오래 걸린다).
+    "WatchlistItemKind": (
+        frozenset(get_args(m.CodeItemRef.model_fields["kind"].annotation))
+        | frozenset(get_args(m.MemoItemRef.model_fields["kind"].annotation)),
+        "frontend/src/api/watchlist.ts",
+    ),
 }
 
 

@@ -52,7 +52,7 @@ test.describe('Watchlist edit modal drag-reorder', () => {
       return json(r, {
         folders: [{ id: FOLDER_ID, name: '테스트 그룹', order: 0 }],
         entries: entriesIn(order),
-        next_run_at_ms: 0,
+        memos: [], next_run_at_ms: 0,
       });
     });
 

@@ -55,7 +55,7 @@ test.describe('Watchlist Panel context menu', () => {
       return route.fallback();
     });
     await page.route(apiExact('watchlist'), (r) =>
-      json(r, { folders: FOLDERS, entries, next_run_at_ms: 0 }));
+      json(r, { folders: FOLDERS, entries, memos: [], next_run_at_ms: 0 }));
 
     await page.goto('/live');
     await openPanelIfClosed(page, 'watchlist-row-005930');
@@ -88,7 +88,7 @@ test.describe('Watchlist Panel context menu', () => {
       return route.fulfill({ status: 204, body: '' });
     });
     await page.route(apiExact('watchlist'), (r) =>
-      json(r, { folders: FOLDERS, entries, next_run_at_ms: 0 }));
+      json(r, { folders: FOLDERS, entries, memos: [], next_run_at_ms: 0 }));
 
     await page.goto('/live');
     await openPanelIfClosed(page, 'watchlist-row-000660');

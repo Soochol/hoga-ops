@@ -500,6 +500,40 @@ async def reorder_entries(data_dir: Path, *, folder_id: str,
         save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
 
 
+def _item_key(item: WatchlistCodeItem | WatchlistMemoItem) -> tuple[str, str]:
+    """items 원소의 동일성 키 — 코드와 메모 id 가 같은 네임스페이스를 쓰지 않게
+    kind 를 함께 담는다(`("code","005930")` vs `("memo","m_…")`)."""
+    return ("code", item.code) if isinstance(item, WatchlistCodeItem) else ("memo", item.id)
+
+
+async def reorder_items(
+    data_dir: Path,
+    *,
+    folder_id: str,
+    ordered_keys: list[tuple[str, str]],
+) -> None:
+    """folder_id 의 items 를 ordered_keys 순서로 재배열(v4). 코드와 메모를 함께 옮긴다.
+
+    ordered_keys 는 현재 items 집합과 정확히 일치해야 한다(아니면
+    WatchlistSetMismatchError → 409) — reorder_entries 와 같은 authoritative-list
+    계약이다. 메모 `text` 는 옮기지 않는다: 기존 아이템 객체를 키로 찾아 재배치할
+    뿐이라 내용이 요청에 실릴 필요가 없다.
+    """
+    async with _lock:
+        doc = load_document(data_dir)
+        folder = next((f for f in doc.folders if f.id == folder_id), None)
+        if folder is None:
+            raise FolderNotFoundError(folder_id)
+        by_key = {_item_key(i): i for i in folder.items}
+        if len(ordered_keys) != len(by_key) or set(ordered_keys) != set(by_key):
+            raise WatchlistSetMismatchError(
+                f"reorder set {ordered_keys} != folder {folder_id} items {list(by_key)}")
+        new_items = [by_key[k] for k in ordered_keys]
+        new_folders = [f.model_copy(update={"items": new_items})
+                       if f.id == folder_id else f for f in doc.folders]
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
+
+
 async def remove_entries(data_dir: Path, *, codes: list[str]) -> None:
     """Bulk remove from the Watchlist (v4): drop the codes from every folder's
     items and delete their entries. Absent codes ignored (idempotent)."""

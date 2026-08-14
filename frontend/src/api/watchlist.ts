@@ -37,6 +37,11 @@ export interface WatchlistMemo {
   text: string;
 }
 
+/** 메모 텍스트 상한 — 백엔드 models.py::WATCHLIST_MEMO_MAX_LEN 의 손 미러.
+ *  input 의 maxLength 로 써서 초과 입력이 422 로 돌아오기 전에 막는다. 값이 갈리면
+ *  넘치는 입력이 조용히 거절되므로 백엔드와 같은 PR 에서 함께 고친다(ADR-0004). */
+export const WATCHLIST_MEMO_MAX_LEN = 80;
+
 export interface WatchlistResponse {
   folders: WatchlistFolder[];
   entries: WatchlistEntry[];
@@ -98,10 +103,28 @@ export function reorderFolders(orderedIds: string[]): Promise<void> {
     body: JSON.stringify({ ordered_ids: orderedIds }),
   });
 }
+/** "이 폴더의 **종목 순서**를 이렇게" — 메모는 items 인덱스에 고정된다.
+ *  편집 모달이 쓴다(그 화면은 메모를 표시하지 않아 메모 위치에 의견이 없다). */
 export function reorderEntries(folderId: string, orderedCodes: string[]): Promise<void> {
   return apiAction('/api/watchlist/reorder', {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ folder_id: folderId, ordered_codes: orderedCodes }),
+  });
+}
+
+/** 재배열이 지목하는 항목 — 저장 모델(코드/메모)과 달리 메모 `text` 가 없다.
+ *  순서만 옮기므로 내용을 실을 필요가 없다. BE 미러: models.py::WatchlistItemRef. */
+export type WatchlistItemKind = 'code' | 'memo';
+export type WatchlistItemRef =
+  | { kind: 'code'; code: string }
+  | { kind: 'memo'; id: string };
+
+/** "이 폴더의 **표시 순서 전체**를 이렇게" — 코드와 메모를 한 리스트로 보낸다.
+ *  패널 dnd 가 쓴다. 폴더의 현재 items 집합과 정확히 일치해야 한다(불일치 409). */
+export function reorderItems(folderId: string, orderedItems: WatchlistItemRef[]): Promise<void> {
+  return apiAction(`/api/watchlist/folders/${folderId}/items/order`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ordered_items: orderedItems }),
   });
 }
 // --- 메모("빈칸") 아이템 (v4) ---------------------------------------------

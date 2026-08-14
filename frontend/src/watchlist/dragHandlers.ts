@@ -21,10 +21,29 @@ export function folderDroppableId(folderId: string | null): string {
 export function entrySortableId(folderId: string | null, code: string): string {
   return `${folderId ?? UNCAT_SENTINEL}:${code}`;
 }
-export function parseEntrySortableId(id: string): { folderId: string | null; code: string } {
+
+/** 메모("빈칸") 행의 sortable id (v4). 인코딩은 종목 행과 **같다** — 히트맵이
+ *  entrySortableId 를 공유하므로 형식을 갈라놓지 않고, 판별은 파서가 키 모양으로 한다. */
+export function memoSortableId(folderId: string | null, memoId: string): string {
+  return `${folderId ?? UNCAT_SENTINEL}:${memoId}`;
+}
+
+export type ItemSortableParts =
+  | { folderId: string | null; kind: 'code'; code: string }
+  | { folderId: string | null; kind: 'memo'; memoId: string };
+
+/** composite id → 폴더 + 항목. kind 판별은 **키 모양**으로 한다: 메모 id 는 `m_` 로
+ *  시작하고 종목코드는 6자리 영숫자(또는 Q접두 7자리)라 겹치지 않는다. 인코딩에
+ *  kind 를 넣지 않는 이유는 히트맵이 entrySortableId 를 그대로 쓰기 때문이다 —
+ *  형식을 바꾸면 메모를 모르는 그 화면까지 끌려 들어온다. */
+export function parseItemSortableId(id: string): ItemSortableParts {
   const i = id.indexOf(':');
   const f = id.slice(0, i);
-  return { folderId: f === UNCAT_SENTINEL ? null : f, code: id.slice(i + 1) };
+  const folderId = f === UNCAT_SENTINEL ? null : f;
+  const key = id.slice(i + 1);
+  return key.startsWith('m_')
+    ? { folderId, kind: 'memo', memoId: key }
+    : { folderId, kind: 'code', code: key };
 }
 
 /** activeCode dragged; `over` is either a folder droppable id (see folderDroppableId)
