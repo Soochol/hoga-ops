@@ -1889,15 +1889,19 @@ class StudyViewsFile(BaseModel):
 
 
 # ── Live layout presets (ADR-0114 §4 → ADR-0119 PR-E) ─────────────────────
-# v3(PR-E, #713 §5): 프리셋 = **워크스페이스 전체 스냅샷**(창 목록·z순서·그룹→종목).
-# 종목을 포함한다(TradingView 레이아웃 관례). 뷰포트·비영속 런타임은 담지 않는다(§6).
+# 프리셋 = **창 목록·z순서**(배치). 뷰포트·비영속 런타임은 담지 않는다(§6).
 # 서버는 **얕은 구조 검증만** 하고 키셋을 강제하지 않는다 — 적용 시 프론트가 canonical
 # 재정규화(readWindow 재사용)하므로 새 창 kind/지표 필드 추가에 백엔드 변경이 없다.
 # payload 는 프론트-네이티브 camelCase 스냅샷을 그대로 담는 얕은 컨테이너다.
 class LiveLayoutPresetPayload(BaseModel):
-    # windows 원소·groupSymbols 값은 자유 구조(창 kind별 chart 설정 등) → dict 통과.
+    # windows 원소는 자유 구조(창 kind별 chart 설정 등) → dict 통과.
     windows: list[dict[str, Any]] = Field(default_factory=list)
     zOrder: list[str] = Field(default_factory=list)
+    # 구 v3 의 그룹→종목. 프론트가 더 이상 쓰지 않는다(저장은 빈 객체, 적용은 무시) —
+    # 배치를 바꾸려고 누른 프리셋이 보던 종목까지 교체하던 동작을 철회했다.
+    # 지워도 옛 payload 는 그대로 로드된다(모르는 키는 조용히 무시된다) — 남기는 이유는
+    # 프론트 미러가 아직 이 필드를 선언하고 있어서다(ADR-0004: 지우려면 wire 스냅샷과
+    # 미러를 같이 손대야 하는데, 얻는 것이 없다). 저장된 값은 apply 시점에 버려진다.
     groupSymbols: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 

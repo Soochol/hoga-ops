@@ -137,9 +137,17 @@ type Persisted = {
   groupSymbols: Partial<Record<GroupId, GroupSymbol>>;
 };
 
-/** 레이아웃 프리셋 v3 스냅샷(ADR-0119 PR-E, #713 §5) = Persisted 3필드.
- *  뷰포트·chartRuntime 은 비저장(§6). 프리셋이 이 스냅샷을 통째로 저장/복원한다. */
-export type WorkspaceSnapshot = Persisted;
+/**
+ * 레이아웃 프리셋 스냅샷 = **창·z순서만**(ADR-0119 PR-E, #713 §5 의 v3 에서 종목을 뺀 형태).
+ *
+ * `groupSymbols` 가 빠진 것이 이 타입의 요점이다. v3 는 종목까지 담아 적용 시 교체했지만
+ * (TradingView 레이아웃 관례), 배치를 바꾸려고 프리셋을 누른 사용자가 보던 종목까지
+ * 잃는 것이 실제 사용에서 손해였다. 이제 프리셋은 배치를 담고 종목은 담지 않는다 —
+ * `/study` 프리셋과 같은 계약이다(거긴 애초에 탭이 종목의 SSOT 라 담은 적이 없다).
+ *
+ * 뷰포트·chartRuntime 은 종전대로 비저장(§6).
+ */
+export type WorkspaceSnapshot = Omit<Persisted, 'groupSymbols'>;
 
 type Store = Persisted & {
   /** 창별 비영속 런타임(팬 백필 from-date 등). 창 닫힘·종목 교체 시 정리. */
@@ -174,10 +182,20 @@ type Store = Persisted & {
   extendChartHistoricalRange: (id: string, date: string) => void;
   resetChartHistoricalRange: (id: string) => void;
 
-  /** 프리셋 v3 적용 — 워크스페이스 통째 교체(ADR-0119 PR-E). raw 스냅샷을
-   *  readWindow/readGroupSymbols 로 canonical 재정규화 후 windows·zOrder·
-   *  groupSymbols 교체 + chartRuntime 전체 리셋(fresh-view) + persist. 유효 창이
-   *  하나도 없으면 공장 기본으로 폴백(readStorage 폴백과 동일 규율). */
+  /**
+   * 프리셋 적용 — **창·배치만** 교체한다(ADR-0119 PR-E 에서 종목 교체를 철회).
+   *
+   * raw 스냅샷을 readWindow 로 canonical 재정규화해 windows·zOrder 를 교체하고,
+   * chartRuntime 을 전체 리셋(fresh-view)한 뒤 persist 한다. 유효 창이 하나도 없으면
+   * 공장 기본 배치로 폴백한다(readStorage 폴백과 동일 규율).
+   *
+   * **`groupSymbols` 는 payload 에서 읽지 않는다** — 어떤 경로로 들어와도(프리셋 적용·
+   * 기본 배치 초기화·손상 payload 폴백) 지금 보고 있는 종목이 그대로 남는다. 종목을
+   * 바꾸는 문은 `setGroupSymbol` 하나뿐이다.
+   *
+   * 못 보는 것: 프리셋 창이 지금 종목이 없는 그룹을 쓰면 그 창은 빈 상태로 열린다
+   * (공장 기본 워크스페이스와 같은 상태 — 검색으로 종목을 넣으면 채워진다).
+   */
   applyWorkspaceSnapshot: (snapshot: unknown) => void;
 };
 
@@ -703,27 +721,26 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   },
 
   applyWorkspaceSnapshot: (snapshot) => {
-    const next = normalizeWorkspaceSnapshot(snapshot);
-    set(() => {
+    set((state) => {
+      // 종목은 payload 를 보지 않고 현재 것을 그대로 넘긴다 — 폴백 분기까지 한 규칙.
+      const next = { ...normalizeWorkspaceSnapshot(snapshot), groupSymbols: state.groupSymbols };
       persistFromState(next);
-      // 프리셋 적용 = 창·종목 전면 교체 → 모든 비영속 런타임을 걷는다(fresh-view).
+      // 창이 통째로 갈리며 id 도 프리셋 것으로 바뀐다 → 창에 매인 비영속 런타임은
+      // 가리킬 창이 없어진다. 종목이 유지돼도 이 리셋은 그대로 필요하다(fresh-view).
       return { ...next, chartRuntime: {} };
     });
   },
 }));
 
-/** 현재 워크스페이스를 프리셋 v3 스냅샷으로 캡처한다(뷰포트·런타임 제외).
- *  스토어 내부 참조를 잡지 않도록 창·rect·chart·groupSymbols 값까지 새 객체로
- *  복제한다 — 프리셋 저장·비교가 나중의 스토어 변이에 오염되지 않게.
+/** 현재 워크스페이스를 프리셋 스냅샷으로 캡처한다(뷰포트·런타임 제외).
+ *  스토어 내부 참조를 잡지 않도록 창·rect·chart 값까지 새 객체로 복제한다 —
+ *  프리셋 저장·비교가 나중의 스토어 변이에 오염되지 않게.
  *
- *  **지표는 담기지 않는다** — 전역 1세트라 창에 실을 것이 없다. 레이아웃 프리셋은
- *  창·배치·종목만 복원하고 지표 구성은 그대로 둔다. */
+ *  담기지 않는 것 둘: **종목**(프리셋은 배치만 — `WorkspaceSnapshot` 주석)과
+ *  **지표**(전역 1세트라 창에 실을 것이 없다). 창의 group 번호는 배치의 일부라
+ *  남지만, 그 번호가 어느 종목인지는 프리셋 밖의 현재 상태가 정한다. */
 export function snapshotWorkspace(): WorkspaceSnapshot {
   const s = useWorkspaceStore.getState();
-  const groupSymbols: Partial<Record<GroupId, GroupSymbol>> = {};
-  for (const [g, sym] of Object.entries(s.groupSymbols)) {
-    if (sym) groupSymbols[Number(g) as GroupId] = { ...sym };
-  }
   return {
     windows: s.windows.map((w) => ({
       ...w,
@@ -731,14 +748,18 @@ export function snapshotWorkspace(): WorkspaceSnapshot {
       ...(w.chart ? { chart: { ...w.chart } } : {}),
     })),
     zOrder: [...s.zOrder],
-    groupSymbols,
   };
 }
 
-/** raw 스냅샷(프리셋 payload)을 canonical Persisted 로 재정규화한다 — readStorage 와
- *  같은 검증 경로(readWindow/readGroupSymbols/normalizeZOrder) 재사용. 유효 창이
- *  없으면 공장 기본으로 폴백(빈 워크스페이스로 덮어써 창을 잃지 않게). */
-function normalizeWorkspaceSnapshot(raw: unknown): Persisted {
+/** raw 스냅샷(프리셋 payload)을 canonical 창·z순서로 재정규화한다 — readStorage 와
+ *  같은 검증 경로(readWindow/normalizeZOrder) 재사용. 유효 창이 없으면 공장 기본
+ *  배치로 폴백(빈 워크스페이스로 덮어써 창을 잃지 않게).
+ *
+ *  **`groupSymbols` 는 읽지 않는다** — 반환 타입에서 빠져 있으므로, 옛 payload 에
+ *  종목이 남아 있어도(v3 로 저장된 프리셋) 여기서 조용히 버려진다. 폴백 분기가
+ *  종목을 지우지 못하는 것도 같은 이유다(그 분기가 `groupSymbols: {}` 를 만들던 것이
+ *  "기본 배치로 초기화" 에서 종목을 날리던 경로였다). */
+function normalizeWorkspaceSnapshot(raw: unknown): WorkspaceSnapshot {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const rawWindows = Array.isArray(obj.windows) ? obj.windows : [];
   // 프리셋 payload 는 v2(비율)만 인정한다 — 스키마 v3 로 저장된 구 px 페이로드는
@@ -749,11 +770,7 @@ function normalizeWorkspaceSnapshot(raw: unknown): Persisted {
     .filter((w): w is WorkspaceWindow => w !== null);
   if (windows.length === 0) {
     const fallback = defaultWindows();
-    return { windows: fallback, zOrder: fallback.map((w) => w.id), groupSymbols: {} };
+    return { windows: fallback, zOrder: fallback.map((w) => w.id) };
   }
-  return {
-    windows,
-    zOrder: normalizeZOrder(obj.zOrder, windows),
-    groupSymbols: readGroupSymbols(obj.groupSymbols),
-  };
+  return { windows, zOrder: normalizeZOrder(obj.zOrder, windows) };
 }
