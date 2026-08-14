@@ -30,8 +30,17 @@ import duckdb
 
 DATA_ROOT = "/home/dev/.local/share/hoga-ops/data/parquet"
 
-MIN_QTY = 3_000  # 최소 절대 증가량(주). 종목별 정규화는 설계 문서 §3.4 참조
+# ── 임계는 **당일 기준**이다. 전일 이월도, 종목별 절대 주수도 쓰지 않는다 ──────
+# 다만 "당일" 을 하루 전체 통계로 잡으면 09:30 판정에 14:00 데이터가 섞여 미래를
+# 보게 된다(look-ahead). 실시간에서 재현 불가능한 값이 되므로, **그 시점까지 관측된
+# 당일 데이터**만 쓰는 러닝 기준으로 간다 — `sell_total_renewal` 이 baseline 을
+# start_hhmm 이전 최대치로 잡고 그 전엔 발동하지 않는 것과 같은 구조다.
+QTY_FLOOR_RATIO = 0.1  # 최소 증가량 = 당일 러닝 평균 총잔량 × 이 비율
 MIN_SHARE = 0.15  # 그 시점 해당 측 총잔량 대비 최소 비중
+WARMUP_HHMM = 930  # 이 시각 전에는 통계만 쌓고 발동하지 않는다(표본 부족 구간)
+# 종목별 발동 밀도는 여전히 갈린다(028050 17 · 005930 10 · 000660 226). z-score
+# 정규화(당일 러닝 μ·σ)를 시도했으나 **더 갈렸다**(36 · 150 · 191) — 증가량 분포가
+# 정규분포가 아니라 같은 z 가 종목마다 다른 백분위에 걸린다. 설계 문서 §3.5 참조.
 OUTCOME_MS = 120_000  # 결말 추적 창
 CONSUMED = 0.5  # 체결로 소화됐다고 볼 비율
 GONE_RATIO = 0.2  # 벽이 소멸했다고 볼 잔량 비율
@@ -40,6 +49,11 @@ GONE_RATIO = 0.2  # 벽이 소멸했다고 볼 잔량 비율
 MAX_STALE_MS = 10_000
 
 SESSION_START, SESSION_END = 90000000, 152000000
+
+
+def hhmm_to_ms(hhmm: int) -> int:
+    """HHMM(예: 930)을 자정 기준 밀리초로."""
+    return (hhmm // 100) * 3600000 + (hhmm % 100) * 60000
 
 
 @dataclass(frozen=True)
@@ -113,11 +127,15 @@ def build_views(con: duckdb.DuckDBPyConnection, base: str, spec: SideSpec) -> No
     """
     cont = "ask_q4>0 and ask_q10>0 and bid_q4>0 and bid_q10>0"
     where = f"where {cont} and ts_ms between {SESSION_START} and {SESSION_END}"
+    # tot_run = 장 시작부터 그 시각까지의 총잔량 평균. **당일 러닝** 기준이라
+    # 미래 구간을 보지 않는다 — 실시간에서도 같은 값이 나온다.
     con.execute(f"""
-        create or replace view snap as select row_number() over (order by t) as rn, * from
-        (select ts_ms, {to_ms('ts_ms')} as t, {spec.total_col} as tot,
-                {spec.best} as best, {spec.far} as far, {spec.opposite_best} as opp
-         from '{base}/snapshots.parquet' {where})
+        create or replace view snap as
+        select *, avg(tot) over (order by t rows between unbounded preceding and current row) as tot_run
+        from (select row_number() over (order by t) as rn, * from
+              (select ts_ms, {to_ms('ts_ms')} as t, {spec.total_col} as tot,
+                      {spec.best} as best, {spec.far} as far, {spec.opposite_best} as opp
+               from '{base}/snapshots.parquet' {where}))
     """)
     union = " union all ".join(
         f"select ts_ms, {spec.price_col}{i} as px, {spec.qty_col}{i} as qty "
@@ -134,7 +152,7 @@ def find_events(con: duckdb.DuckDBPyConnection, spec: SideSpec) -> list[tuple]:
     """발동 후보를 뽑고 가격별로 OUTCOME_MS 디바운스한다."""
     rows = con.execute(f"""
         with cur as (
-            select l.rn, l.t, l.px, l.qty, s.tot,
+            select l.rn, l.t, l.px, l.qty, s.tot, s.tot_run,
                    p.best as p_best, p.far as p_far, s.t - p.t as stale
             from lvl l join snap s on s.rn=l.rn join snap p on p.rn=l.rn-1),
         j as (
@@ -148,7 +166,8 @@ def find_events(con: duckdb.DuckDBPyConnection, spec: SideSpec) -> list[tuple]:
         select rn, t, px, qty, qty-base as jump, tot, (px {spec.pierce_op} p_best) as pierce
         from b
         where base is not null and stale <= {MAX_STALE_MS}
-          and qty-base >= {MIN_QTY} and (qty-base) >= {MIN_SHARE}*tot
+          and t >= {hhmm_to_ms(WARMUP_HHMM)}
+          and qty-base >= {QTY_FLOOR_RATIO}*tot_run and (qty-base) >= {MIN_SHARE}*tot
         order by t
     """).fetchall()
 
@@ -217,7 +236,8 @@ def scan(date: str, code: str, spec: SideSpec, quiet: bool) -> None:
 
     print(
         f"=== {date} {code} · {spec.label}벽 급증 {len(events)}건 "
-        f"(인접 호가창 diff, 최소 {MIN_QTY:,}주 & {spec.label}총잔량 {MIN_SHARE:.0%}) ==="
+        f"(당일 기준: 러닝평균 {QTY_FLOOR_RATIO:.0%} & 현재 {spec.label}총잔량 "
+        f"{MIN_SHARE:.0%}, {WARMUP_HHMM // 100:02d}:{WARMUP_HHMM % 100:02d} 이후) ==="
     )
     if quiet or not events:
         return
