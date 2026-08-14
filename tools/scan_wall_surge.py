@@ -34,6 +34,15 @@ import duckdb
 
 DATA_ROOT = "/home/dev/.local/share/hoga-ops/data/parquet"
 
+# 소스별 하위 경로와 **기본 창 크기**. 창은 소스의 스냅샷 간격에 맞춰야 한다 —
+# hogaplay 는 중앙값 407ms 라 10초 창에 표본이 20개 넘게 들어오지만, kiwoom_live 는
+# 저장 간격이 10초라 같은 창에 **중앙값 2개**뿐이라 MIN_SAMPLES 를 못 넘긴다(실측
+# 20260814: 3개 이상인 시점이 1,721 중 20개=1%). 실시간 소스는 창을 넓혀야 돈다.
+SOURCES = {
+    "hogaplay": ("hogaplay", 10_000),
+    "kiwoom": ("kiwoom_live/KRX", 60_000),
+}
+
 # ── 임계는 **당일 기준**이다. 전일 이월도, 종목별 절대 주수도 쓰지 않는다 ──────
 # 다만 "당일" 을 하루 전체 통계로 잡으면 09:30 판정에 14:00 데이터가 섞여 미래를
 # 보게 된다(look-ahead). 실시간에서 재현 불가능한 값이 되므로, **그 시점까지 관측된
@@ -126,16 +135,24 @@ BID = SideSpec(
 
 
 def to_ms(expr: str) -> str:
-    """HHMMSSmmm 인코딩 컬럼을 자정 기준 선형 밀리초로 바꾸는 SQL 조각."""
+    """HHMMSSmmm 인코딩 컬럼을 자정 기준 선형 밀리초로 바꾸는 SQL 조각.
+
+    ⚠ **정수 나눗셈 `//` 을 써야 한다.** DuckDB 의 `/` 는 실수 나눗셈이고 `::bigint` 는
+    **반올림**한다 — `145000005/10000000 = 14.5000005` 가 15 로 캐스팅돼 14:50 이후가
+    15시로 계산됐다. 자리마다 같은 일이 일어난다(초 50↑ → 분 +1, ms 500↑ → 초 +1).
+    표시만의 문제가 아니라 창·워밍업 경계가 전부 이 값을 쓴다.
+    """
     return (
-        f"(({expr})/10000000)::bigint*3600000"
-        f"+(({expr})/100000%100)::bigint*60000"
-        f"+(({expr})/1000%100)::bigint*1000"
+        f"(({expr})//10000000)*3600000"
+        f"+(({expr})//100000%100)*60000"
+        f"+(({expr})//1000%100)*1000"
         f"+({expr})%1000"
     )
 
 
-def build_views(con: duckdb.DuckDBPyConnection, base: str, spec: SideSpec) -> None:
+def build_views(
+    con: duckdb.DuckDBPyConnection, base: str, spec: SideSpec, window_ms: int
+) -> None:
     """스냅샷(1행/시각)과 레벨 롱 포맷(10행/시각) 뷰를 만든다.
 
     연속호가 10레벨만 본다 — 단일가(동시호가·VI)는 3레벨로 붕괴해 레벨 비교가 무의미하다.
@@ -154,7 +171,7 @@ def build_views(con: duckdb.DuckDBPyConnection, base: str, spec: SideSpec) -> No
               (select ts_ms, {to_ms('ts_ms')} as t, {spec.total_col} as tot,
                       {spec.best} as best, {spec.far} as far, {spec.opposite_best} as opp
                from '{base}/snapshots.parquet' {where}))
-        window w as (order by t range between {WINDOW_MS} preceding and current row)
+        window w as (order by t range between {window_ms} preceding and current row)
     """)
     union = " union all ".join(
         f"select ts_ms, {spec.price_col}{i} as px, {spec.qty_col}{i} as qty "
@@ -167,7 +184,9 @@ def build_views(con: duckdb.DuckDBPyConnection, base: str, spec: SideSpec) -> No
     """)
 
 
-def find_events(con: duckdb.DuckDBPyConnection, spec: SideSpec) -> list[tuple]:
+def find_events(
+    con: duckdb.DuckDBPyConnection, spec: SideSpec, window_ms: int
+) -> list[tuple]:
     """발동 후보를 뽑고 가격별로 OUTCOME_MS 디바운스한다."""
     rows = con.execute(f"""
         with cur as (
@@ -180,7 +199,7 @@ def find_events(con: duckdb.DuckDBPyConnection, spec: SideSpec) -> list[tuple]:
                    lag(l.t) over (partition by l.px order by l.t) as prev_t
             from lvl l join snap s on s.rn=l.rn
             window w_lvl as (partition by l.px order by l.t
-                             range between {WINDOW_MS} preceding and current row)),
+                             range between {window_ms} preceding and current row)),
         b as (
             select *,
               case
@@ -263,16 +282,18 @@ def classify(
     return f"취소 {filled:,}", duration
 
 
-def scan(date: str, code: str, spec: SideSpec, quiet: bool) -> None:
-    base = f"{DATA_ROOT}/{date}/{code}/hogaplay"
+def scan(date: str, code: str, spec: SideSpec, quiet: bool, source: str, window_ms: int) -> None:
+    sub, _ = SOURCES[source]
+    base = f"{DATA_ROOT}/{date}/{code}/{sub}"
     con = duckdb.connect()
-    build_views(con, base, spec)
-    events = find_events(con, spec)
+    build_views(con, base, spec, window_ms)
+    events = find_events(con, spec, window_ms)
 
     print(
         f"=== {date} {code} · {spec.label}벽 급증 {len(events)}건 "
-        f"(당일 기준: 러닝평균 {QTY_FLOOR_RATIO:.0%} & 현재 {spec.label}총잔량 "
-        f"{MIN_SHARE:.0%}, {WARMUP_HHMM // 100:02d}:{WARMUP_HHMM % 100:02d} 이후) ==="
+        f"({source} · 창 {window_ms // 1000}초 · 러닝평균 {QTY_FLOOR_RATIO:.0%} & "
+        f"{spec.label}총잔량 {MIN_SHARE:.0%} · {WARMUP_HHMM // 100:02d}:"
+        f"{WARMUP_HHMM % 100:02d} 이후) ==="
     )
     if quiet or not events:
         return
@@ -292,6 +313,22 @@ def scan(date: str, code: str, spec: SideSpec, quiet: bool) -> None:
 
 def main() -> None:
     argv = sys.argv[1:]
+    source = "hogaplay"
+    window_override: int | None = None
+    for flag in ("--source", "--window"):
+        if flag in argv:
+            i = argv.index(flag)
+            val = argv[i + 1] if i + 1 < len(argv) else None
+            if val is not None:
+                if flag == "--source":
+                    source = val
+                else:
+                    window_override = int(val) * 1000
+            argv = argv[:i] + argv[i + 2 :]
+    if source not in SOURCES:
+        print(f"알 수 없는 --source: {source} ({' | '.join(SOURCES)})")
+        raise SystemExit(2)
+    window_ms = window_override if window_override is not None else SOURCES[source][1]
     side = "ask"
     if "--side" in argv:
         idx = argv.index("--side")
@@ -307,7 +344,7 @@ def main() -> None:
         print(f"알 수 없는 --side: {side} (ask | bid | both)")
         raise SystemExit(2)
     for spec in specs:
-        scan(date, code, spec, quiet)
+        scan(date, code, spec, quiet, source, window_ms)
 
 
 if __name__ == "__main__":
