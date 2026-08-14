@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DraggableSyntheticListeners } from '@dnd-kit/core';
-import { dropIndicatorClass, sortableDraggingStyle, type DropIndicator } from '../ui/sortableDragVisuals';
+import {
+  dropIndicatorClass, sortableDraggingStyle, sortablePlaceholderStyle,
+  type DropIndicator,
+} from '../ui/sortableDragVisuals';
 import { TrashIcon } from '../ui/TrashIcon';
 
 /**
@@ -45,13 +48,15 @@ export interface MemoRowProps {
   dragListeners?: DraggableSyntheticListeners;
   dragActivatorRef?: (node: HTMLElement | null) => void;
   dragging?: boolean;
+  /** QuoteRow 와 동일 계약 — `'placeholder'` 는 `DragOverlay` 고스트를 쓰는 리스트용. */
+  draggingAppearance?: 'lifted' | 'placeholder';
   dropIndicator?: DropIndicator;
 }
 
 export function MemoRow({
   text, onSave, onDelete, maxLength, autoEdit, onAutoEditConsumed, testId,
   sortableRef, sortableStyle, dragListeners, dragActivatorRef,
-  dragging, dropIndicator,
+  dragging, draggingAppearance = 'lifted', dropIndicator,
 }: MemoRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
@@ -86,7 +91,9 @@ export function MemoRow({
     `hover:bg-bg-input-hover ${dropIndicatorClass(dropIndicator)}`;
   const rowStyle: React.CSSProperties = {
     ...sortableStyle,
-    ...(dragging ? sortableDraggingStyle(18) : {}),
+    ...(dragging
+      ? (draggingAppearance === 'placeholder' ? sortablePlaceholderStyle() : sortableDraggingStyle(18))
+      : {}),
     ...(dropIndicator ? { position: 'relative' } : {}),
   };
 

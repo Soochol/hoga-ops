@@ -22,6 +22,16 @@ export function dropIndicatorClass(dropIndicator?: DropIndicator, axis: DropIndi
   return '';
 }
 
+/** `DragOverlay` 고스트를 쓰는 리스트의 **원본 슬롯** 스타일.
+ *
+ *  고스트가 커서에 들려 있으므로 원본 행은 "들어올려진 것"이 아니라 **삽입될 빈 자리**다
+ *  (DESIGN.md 345행: "원래 슬롯 opacity 0 placeholder"). 여기에 `sortableDraggingStyle`
+ *  의 틴트를 같이 걸면 같은 행이 화면에 두 번 보인다. 행 높이는 `min-h-list-row` 고정이라
+ *  숨겨도 reflow 가 흔들리지 않는다. */
+export function sortablePlaceholderStyle(): CSSProperties {
+  return { opacity: 0 };
+}
+
 export function sortableDraggingStyle(tintPercent = 14): CSSProperties {
   return {
     opacity: 0.72,

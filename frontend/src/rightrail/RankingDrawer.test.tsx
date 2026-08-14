@@ -1,18 +1,42 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import * as client from '../api/client';
 import * as liveNavigate from '../live/liveNavigate';
 import * as watchlistApi from '../api/watchlist';
+import { useEntryDragStore } from '../state/entryDrag';
 import { RankingDrawer } from './RankingDrawer';
 
 // DnD 는 렌더 골격만 필요 — 실제 센서/포인터는 이 테스트 범위 밖.
+const dnd = vi.hoisted(() => ({
+  onDragStart: null as null | ((e: unknown) => void),
+  onDragEnd: null as null | ((e: unknown) => void),
+  /** 마지막 렌더에서 DragOverlay 가 받은 dropAnimation. null = 낙하 애니메이션 끔. */
+  dropAnimation: undefined as unknown,
+}));
 vi.mock('@dnd-kit/core', async (orig) => {
   const actual = await orig<typeof import('@dnd-kit/core')>();
   return {
     ...actual,
-    DndContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    DndContext: ({ children, onDragStart, onDragEnd }: {
+      children: React.ReactNode;
+      onDragStart?: (e: unknown) => void;
+      onDragEnd?: (e: unknown) => void;
+    }) => {
+      dnd.onDragStart = onDragStart ?? null;
+      dnd.onDragEnd = onDragEnd ?? null;
+      return <>{children}</>;
+    },
+    // 실제 DragOverlay 는 DndContext 의 `active` 를 읽어 없으면 null 을 반환한다 — 위
+    // passthrough 모킹에는 그 컨텍스트가 없으므로 고스트가 영원히 안 뜬다. 여기서 재는
+    // 것은 렌더 위치가 아니라 **고스트에 무엇이 실리는가**이므로 children 을 통과시킨다.
+    DragOverlay: ({ children, dropAnimation }: {
+      children: React.ReactNode; dropAnimation: unknown;
+    }) => {
+      dnd.dropAnimation = dropAnimation;
+      return <>{children}</>;
+    },
     useDraggable: () => ({ setNodeRef: () => {}, listeners: {}, attributes: {}, transform: null, isDragging: false }),
     useSensor: () => ({}),
     useSensors: () => [],
@@ -31,15 +55,20 @@ const OPEN_RESPONSE = {
   fetched_at_ms: 1_700_000_000_000,
 };
 
+/** QueryClient 도 함께 돌려준다 — 드래그 중 폴링 착지를 흉내 내려면 캐시에 직접
+ *  써야 한다(쿼리 키를 바꾸는 UI 조작은 목록을 로딩 상태로 날려 버린다). */
 function renderDrawer() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/live']}>
-        <RankingDrawer />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  return {
+    qc,
+    ...render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/live']}>
+          <RankingDrawer />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 beforeEach(() => {
@@ -177,5 +206,96 @@ describe('RankingDrawer', () => {
     fireEvent.click(sortBtn); // → desc
     fireEvent.click(sortBtn); // → asc: 낮은 등락률(삼성 5.79)이 위로
     expect(rowNames()[0]).toContain('삼성전자');
+  });
+
+  // --- 차트로 끌어 떨구기(공용 seam) ---
+  // 이 패널의 드래그는 재정렬이 아니라 **복사 제스처**다: droppable 이 없어 over 가 없고,
+  // 드롭 후에도 행은 리스트에 남는다. 그래서 재는 것은 (1) 손에 든 것이 보이는가,
+  // (2) 성공한 드롭이 되날아가지 않는가, (3) 드래그 중 발밑이 흔들리지 않는가 셋이다.
+  const DRAG_START = {
+    active: {
+      id: 'ranking-entry:005930',
+      data: { current: { type: 'ranking-entry', code: '005930', name: '삼성전자' } },
+    },
+  };
+
+  it('puts the dragged row on the drag ghost, and clears it when the drag ends', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
+    renderDrawer();
+    await screen.findByText('삼성전자');
+    expect(screen.queryByTestId('ranking-drag-ghost')).not.toBeInTheDocument();
+
+    act(() => { dnd.onDragStart!(DRAG_START); });
+    expect(screen.getByTestId('ranking-drag-ghost')).toHaveTextContent('삼성전자');
+
+    act(() => {
+      dnd.onDragEnd!({ ...DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } });
+    });
+    expect(screen.queryByTestId('ranking-drag-ghost')).not.toBeInTheDocument();
+  });
+
+  it('turns the fly-back animation off for a chart drop, and keeps it otherwise', async () => {
+    const hitTest = (clientX: number) => clientX < 800; // x<800 = 차트 위
+    useEntryDragStore.getState().registerChartTarget(hitTest);
+    try {
+      vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
+      renderDrawer();
+      await screen.findByText('삼성전자');
+
+      // (1) 차트 위 드롭 — activator(900,300) + delta(-500,0) = (400,300) → 술어 true.
+      act(() => { dnd.onDragStart!(DRAG_START); });
+      act(() => {
+        dnd.onDragEnd!({
+          ...DRAG_START,
+          activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+          delta: { x: -500, y: 0 },
+        });
+      });
+      expect(dnd.dropAnimation).toBeNull();
+
+      // (2) 차트 밖 드롭 → 기본 애니메이션(원위치 복귀)이 남는다.
+      act(() => { dnd.onDragStart!(DRAG_START); });
+      act(() => {
+        dnd.onDragEnd!({
+          ...DRAG_START,
+          activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+          delta: { x: 0, y: 0 },
+        });
+      });
+      expect(dnd.dropAnimation).not.toBeNull();
+    } finally {
+      useEntryDragStore.getState().clearChartTarget(hitTest);
+    }
+  });
+
+  it('freezes the row list while a drag is in flight, and catches up after it ends', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
+    const { qc } = renderDrawer();
+    await screen.findByText('삼성전자');
+    const rowNames = () =>
+      screen.getAllByRole('button', { name: /차트 열기/ }).map((li) => li.getAttribute('aria-label'));
+    expect(rowNames()[0]).toContain('HDC현대산업개발');
+    const key = ['live-rankings', 'change', 'all', 'up', false, 'KRX'];
+
+    act(() => { dnd.onDragStart!(DRAG_START); });
+    // 드래그 도중 10초 폴링이 착지해 순위가 통째로 갈린다.
+    await act(async () => {
+      qc.setQueryData(key, {
+        rows: [{ rank: 1, code: '000660', name: 'SK하이닉스', price: 180000, change_pct: 12.3 }],
+        marketOpen: true,
+        fetchedAtMs: 1_700_000_001_000,
+      });
+    });
+    // 캐시 갱신만으로는 이 시점에 리렌더가 보장되지 않는다(react-query 알림이 배치된다).
+    // 그래서 **행 목록에 영향이 없는 상호작용**으로 리렌더를 확정적으로 일으킨 뒤 잰다 —
+    // 우클릭은 행 메뉴 state 만 건드린다. 이 강제 리렌더가 없으면 동결을 제거해도 통과
+    // 하는 가짜 가드가 된다(관심종목에서 red-check 로 실제로 확인한 함정이다).
+    fireEvent.contextMenu(screen.getByTestId('ranking-row-005930'));
+    expect(rowNames()[0]).toContain('HDC현대산업개발');   // 얼어 있다
+
+    act(() => {
+      dnd.onDragEnd!({ ...DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } });
+    });
+    await waitFor(() => expect(rowNames()[0]).toContain('SK하이닉스'));
   });
 });

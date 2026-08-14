@@ -1,16 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import * as watchlistApi from '../api/watchlist';
 import * as client from '../api/client';
 import { useLivePageStore } from '../state/livePage';
 import { useEntryDragStore } from '../state/entryDrag';
+import { WATCHLIST_KEY } from './watchlistKeys';
 
 // ADR-0057: 패널 드래그의 wiring contract만 검증 — 실제 dnd-kit 포인터/충돌은 e2e가 담당.
 // DndContext를 passthrough로 모킹해 주입된 onDragEnd를 캡처하고, useSortable은 no-op으로 둔다.
 const h = vi.hoisted(() => ({
+  onDragStart: null as null | ((e: unknown) => void),
   onDragEnd: null as null | ((e: unknown) => void),
+  /** 마지막 렌더에서 DragOverlay 가 받은 dropAnimation. null = 낙하 애니메이션 끔. */
+  dropAnimation: undefined as unknown,
   onPointerDown: vi.fn(),
   setActivatorNodeRef: vi.fn(),
 }));
@@ -18,8 +22,23 @@ vi.mock('@dnd-kit/core', async (orig) => {
   const actual = await orig<typeof import('@dnd-kit/core')>();
   return {
     ...actual,
-    DndContext: ({ children, onDragEnd }: { children: React.ReactNode; onDragEnd: (e: unknown) => void }) => {
+    DndContext: ({ children, onDragStart, onDragEnd }: {
+      children: React.ReactNode;
+      onDragStart: (e: unknown) => void;
+      onDragEnd: (e: unknown) => void;
+    }) => {
+      h.onDragStart = onDragStart;
       h.onDragEnd = onDragEnd;
+      return <>{children}</>;
+    },
+    // 실제 DragOverlay 는 DndContext 의 `active` 를 읽어 없으면 null 을 반환한다 — 위
+    // passthrough 모킹에는 그 컨텍스트가 없으므로 고스트가 영원히 안 뜬다. 여기서
+    // 검증하는 것은 렌더 위치가 아니라 **고스트에 무엇이 실리는가**(wiring)이므로
+    // children 을 그대로 통과시킨다. 실제 오버레이 배치는 e2e 담당(ADR-0057).
+    DragOverlay: ({ children, dropAnimation }: {
+      children: React.ReactNode; dropAnimation: unknown;
+    }) => {
+      h.dropAnimation = dropAnimation;
       return <>{children}</>;
     },
     useSensor: () => ({}),
@@ -66,7 +85,9 @@ describe('WatchlistDrawer drag wiring', () => {
   beforeEach(() => {
     cleanup();
     window.localStorage.clear();
+    h.onDragStart = null;
     h.onDragEnd = null;
+    h.dropAnimation = undefined;
     h.onPointerDown.mockClear();
     h.setActivatorNodeRef.mockClear();
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
@@ -229,6 +250,122 @@ describe('WatchlistDrawer drag wiring', () => {
     await Promise.resolve();
     expect(reorderSpy).not.toHaveBeenCalled();
     expect(useLivePageStore.getState().activeCode).toBeNull();
+  });
+
+  // --- 드래그 중 입력 동결(P2) ---
+  // 막는 방향: 드래그가 진행되는 동안 들어온 갱신(WS 틱 150ms · 60초 refetch)이 화면
+  // 행 목록을 흔드는 것. 못 보는 것: 리렌더 **횟수** 자체는 여기서 안 잰다(동결은
+  // 리렌더를 없애는 게 아니라 참조를 고정해 싸게 만드는 장치다 — 파일 상단 주석 참조).
+  const DRAG_START = {
+    active: {
+      id: 'f_0000000a:005930',
+      data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } },
+    },
+  };
+  // **패널 스크롤 영역 안의** `[data-quote-row]` 만 센다. 두 가지를 동시에 배제한다:
+  // testId 접두사로 모으면 우클릭 메뉴(`watchlist-row-menu`)가 딸려 오고, 문서 전체를
+  // 훑으면 드래그 고스트(`document.body` 포털 · 같은 QuoteRow 라 같은 마커)가 섞인다.
+  const rowNames = () =>
+    Array.from(
+      screen.getByTestId('watchlist-scroll').querySelectorAll('[data-quote-row]'),
+    ).map((el) => el.getAttribute('data-testid'));
+
+  it('freezes the rendered row list while a drag is in flight, and catches up after it ends', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    expect(rowNames()).toEqual(['watchlist-row-005930', 'watchlist-row-000660']);
+
+    act(() => { h.onDragStart!(DRAG_START); });
+    // 드래그 도중 서버 갱신이 착지한다(순서 뒤집힘).
+    await act(async () => {
+      qc.setQueryData(WATCHLIST_KEY, {
+        ...DATA,
+        entries: [
+          { ...ENTRIES[1], order: 0 },
+          { ...ENTRIES[0], order: 1 },
+        ],
+      });
+    });
+    // 캐시 갱신만으로는 이 시점에 리렌더가 보장되지 않는다(react-query 알림이 배치된다).
+    // 그래서 **행 목록에 영향이 없는 상호작용**으로 리렌더를 확정적으로 일으킨 뒤 잰다 —
+    // 우클릭은 setMenu 만 건드린다. 이 강제 리렌더가 없으면 동결을 제거해도 테스트가
+    // 통과하는 가짜 가드가 된다(red-check 로 실제로 확인했다).
+    fireEvent.contextMenu(screen.getByTestId('watchlist-row-005930'));
+    expect(rowNames()).toEqual(['watchlist-row-005930', 'watchlist-row-000660']);
+
+    act(() => {
+      h.onDragEnd!({ ...DRAG_START, over: null, activatorEvent: null, delta: { x: 0, y: 0 } });
+    });
+    await waitFor(() =>
+      expect(rowNames()).toEqual(['watchlist-row-000660', 'watchlist-row-005930']));
+  });
+
+  // --- 드래그 고스트(P1) ---
+  it('puts the dragged stock on the drag ghost, and clears it when the drag ends', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    expect(screen.queryByTestId('watchlist-drag-ghost')).not.toBeInTheDocument();
+
+    act(() => { h.onDragStart!(DRAG_START); });
+    expect(screen.getByTestId('watchlist-drag-ghost')).toHaveTextContent('삼성전자');
+
+    act(() => {
+      h.onDragEnd!({ ...DRAG_START, over: null, activatorEvent: null, delta: { x: 0, y: 0 } });
+    });
+    expect(screen.queryByTestId('watchlist-drag-ghost')).not.toBeInTheDocument();
+  });
+
+  // 차트에 성공적으로 떨군 드롭은 고스트가 패널 원위치로 **되날아가면 안 된다** — 그
+  // 그림은 성공을 실패로 읽히게 한다. store 의 overChart 를 렌더에서 읽던 첫 구현은 이
+  // 조항이 무효였다: endDrag() 가 같은 커밋에서 그 값을 먼저 지운다. 타이밍이 아니라
+  // **결정 자체**를 재려고 DragOverlay 가 받은 prop 을 캡처한다.
+  it('turns the fly-back animation off for a chart drop, and keeps it for a panel reorder', async () => {
+    const hitTest = (clientX: number) => clientX < 800; // x<800 = 차트 위
+    useEntryDragStore.getState().registerChartTarget(hitTest);
+    try {
+      vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+      await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+      // (1) 차트 위 드롭 — activator(900,300) + delta(-500,0) = (400,300) → 술어 true.
+      act(() => { h.onDragStart!(DRAG_START); });
+      act(() => {
+        h.onDragEnd!({
+          ...DRAG_START, over: null,
+          activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+          delta: { x: -500, y: 0 },
+        });
+      });
+      expect(h.dropAnimation).toBeNull();
+
+      // (2) 패널 안 재정렬 — 같은 좌표계에서 차트 밖(900,300) → 기본 애니메이션 유지.
+      act(() => { h.onDragStart!(DRAG_START); });
+      act(() => {
+        h.onDragEnd!({
+          ...DRAG_START,
+          over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
+          activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+          delta: { x: 0, y: 0 },
+        });
+      });
+      expect(h.dropAnimation).not.toBeNull();
+    } finally {
+      useEntryDragStore.getState().clearChartTarget(hitTest);
+    }
+  });
+
+  it('makes no ghost for a folder drag — the group block transform already reads right', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    act(() => {
+      h.onDragStart!({ active: { id: 'f_0000000a', data: { current: { type: 'folder' } } } });
+    });
+    expect(screen.queryByTestId('watchlist-drag-ghost')).not.toBeInTheDocument();
   });
 
   it('entry-drag in one folder does not affect another folder default-sort behavior', async () => {

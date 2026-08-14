@@ -1,18 +1,17 @@
-import { useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
   useDraggable,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragMoveEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
 import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
-import { useEntryDragStore, isPointOnChart, dropPoint, resolveDropOnChart } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
+import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
+import { RailDragOverlay } from './RailDragOverlay';
+import { useChartDropDrag } from './useChartDropDrag';
 import {
   useLiveRankings,
   type RankingDirection,
@@ -67,21 +66,34 @@ function formatUpdatedAt(ms: number | undefined): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-function DraggableRankingRow({
+/** 순위 행.
+ *
+ *  **`memo` 인 이유와 그 조건**: 10초 폴링(useLiveRankings)이 드로어를 리렌더한다. 그때
+ *  행까지 다시 그리면 드래그 중인 행이 흔들리므로, props 를 전부 스칼라 아니면 안정
+ *  참조로 좁혔다 — 콜백은 `row` 를 인자로 받는 안정 참조이고 여기서 바인딩한다.
+ *
+ *  **transform 을 행에 걸지 않는다**: DragOverlay 고스트가 이동을 대신하므로 원본까지
+ *  움직이면 같은 행이 두 개로 보인다. 원본은 제자리에서 들어올림 틴트(`dragging`)만
+ *  남는다 — 관심종목처럼 빈 자리로 비우지 **않는다**. 이 드래그는 재정렬이 아니라 복사
+ *  제스처라 드롭 후에도 행이 리스트에 남기 때문이다. */
+const DraggableRankingRow = memo(function DraggableRankingRow({
   row,
   active,
   onActivate,
-  onContextMenu,
+  onOpenMenu,
 }: {
   row: RankingRow;
   active: boolean;
-  onActivate: (e?: JumpModifiers) => void;
-  onContextMenu: (e: React.MouseEvent<HTMLLIElement>) => void;
+  onActivate: (row: RankingRow, e?: JumpModifiers) => void;
+  onOpenMenu: (row: RankingRow, e: React.MouseEvent<HTMLLIElement>) => void;
 }) {
-  const { setNodeRef, listeners, attributes, transform, isDragging } = useDraggable({
+  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
     id: `${RANKING_ENTRY_TYPE}:${row.code}`,
     data: { type: RANKING_ENTRY_TYPE, code: row.code, name: row.name },
   });
+  const handleActivate = useCallback((e?: JumpModifiers) => onActivate(row, e), [onActivate, row]);
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(row, e), [onOpenMenu, row]);
   return (
     <QuoteRow
       name={row.name}
@@ -91,18 +103,33 @@ function DraggableRankingRow({
       active={active}
       ariaLabel={`${row.rank}위 ${row.name} ${row.code} 차트 열기`}
       testId={`ranking-row-${row.code}`}
-      onClick={onActivate}
-      onContextMenu={onContextMenu}
+      onClick={handleActivate}
+      onContextMenu={handleContextMenu}
       leading={
         <span className="w-5 flex-none text-right font-data tabular-nums text-xs text-fg-dim">
           {row.rank}
         </span>
       }
       sortableRef={setNodeRef}
-      sortableStyle={{ transform: CSS.Transform.toString(transform), transition: undefined }}
       dragListeners={listeners}
       dragAttributes={attributes}
       dragging={isDragging}
+    />
+  );
+});
+
+/** 고스트에 그릴 행 — 리스트 행과 같은 QuoteRow 라 손에 든 것이 그대로 보인다. */
+function RankingDragGhost({ ghost }: { ghost: { name: string; price: number | null; pct: number | null } }) {
+  return (
+    <QuoteRow
+      name={ghost.name}
+      price={ghost.price}
+      pct={ghost.pct}
+      changeWon={null}
+      active={false}
+      ariaLabel={ghost.name}
+      testId="ranking-drag-ghost"
+      onClick={() => {}}
     />
   );
 }
@@ -122,36 +149,36 @@ export function RankingDrawer() {
   const [rowMenu, setRowMenu] = useState<{ code: string; name: string; x: number; y: number } | null>(null);
 
   const { data, isPending, isError, error } = useLiveRankings({ kind, market, direction, excludeEtf });
-  const rows = useMemo(() => sortRankingRows(data?.rows ?? [], sortMode), [data?.rows, sortMode]);
 
   const sensors = useSensors(useSensor(PointerSensor, RANKING_DRAG_SENSOR_OPTIONS));
-  const startEntryDrag = useEntryDragStore((s) => s.startDrag);
-  const setOverChart = useEntryDragStore((s) => s.setOverChart);
-  const setDragPoint = useEntryDragStore((s) => s.setDragPoint);
-  const endEntryDrag = useEntryDragStore((s) => s.endDrag);
+  // 좌표 아래 창이 없을 때의 폴백(활성 그룹 교체). useJumpToLive 는 매 렌더 새 함수라
+  // 그대로 쓰면 아래 훅의 콜백들이 매번 새로 생긴다 — ref 로 최신 것을 가리킨다.
+  const openLiveRef = useRef(openLive);
+  useEffect(() => { openLiveRef.current = openLive; });
+  const fallbackPick = useCallback((code: string, name?: string) => {
+    openLiveRef.current(code, name);
+  }, []);
+  const drag = useChartDropDrag(RANKING_ENTRY_TYPE, fallbackPick);
+
+  // 드래그 중 목록 동결 — 여기엔 재시작될 sortable transition 이 없다(useDraggable).
+  // 이게 막는 것은 **드래그 중인 행이 발밑에서 사라지는 것**이다: 10초 폴링이 착지하면
+  // 순위가 통째로 갈리고, 잡고 있던 행이 언마운트되면 드래그가 그대로 끊긴다.
+  const liveRows = useMemo(() => sortRankingRows(data?.rows ?? [], sortMode), [data?.rows, sortMode]);
+  const rows = useFrozenWhileDragging(liveRows, drag.isDragging);
 
   const onDragStart = (ev: DragStartEvent) => {
-    if (ev.active.data.current?.type !== RANKING_ENTRY_TYPE) return;
-    const d = ev.active.data.current as { code?: string };
-    if (d.code) startEntryDrag(d.code);
+    const code = String((ev.active.data.current as { code?: string } | undefined)?.code ?? '');
+    const row = rows.find((r) => r.code === code);
+    drag.onDragStart(ev, row ? { code: row.code, name: row.name, price: row.price, pct: row.change_pct } : null);
   };
-  const onDragMove = (ev: DragMoveEvent) => {
-    if (ev.active.data.current?.type !== RANKING_ENTRY_TYPE) return;
-    const point = dropPoint(ev);
-    setOverChart(isPointOnChart(point));
-    setDragPoint(point);
-  };
-  const onDragCancel = () => endEntryDrag();
-  const onDragEnd = (ev: DragEndEvent) => {
-    const wasRankingEntry = ev.active.data.current?.type === RANKING_ENTRY_TYPE;
-    endEntryDrag();
-    if (!wasRankingEntry || !isPointOnChart(dropPoint(ev))) return;
-    const d = ev.active.data.current as { code?: string; name?: string } | undefined;
-    if (!d?.code) return;
-    // 창 위 드롭 = 그 창 그룹 종목 교체(정밀), 창 밖 = 활성 그룹 교체(openLive).
-    if (resolveDropOnChart(dropPoint(ev), { code: d.code, name: d.name })) return;
-    openLive(d.code, d.name);
-  };
+
+  const onActivateRow = useCallback((row: RankingRow, e?: JumpModifiers) => {
+    openLiveRef.current(row.code, row.name, e);
+  }, []);
+  const onOpenRowMenu = useCallback((row: RankingRow, e: React.MouseEvent<HTMLLIElement>) => {
+    e.preventDefault();
+    setRowMenu({ code: row.code, name: row.name, x: e.clientX, y: e.clientY });
+  }, []);
 
   const marketClosed = data != null && !data.marketOpen;
 
@@ -263,9 +290,9 @@ export function RankingDrawer() {
           <DndContext
             sensors={sensors}
             onDragStart={onDragStart}
-            onDragMove={onDragMove}
-            onDragEnd={onDragEnd}
-            onDragCancel={onDragCancel}
+            onDragMove={drag.onDragMove}
+            onDragEnd={drag.onDragEnd}
+            onDragCancel={drag.onDragCancel}
           >
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {rows.map((r) => (
@@ -273,14 +300,15 @@ export function RankingDrawer() {
                   key={r.code}
                   row={r}
                   active={r.code === activeCode}
-                  onActivate={(e) => openLive(r.code, r.name, e)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setRowMenu({ code: r.code, name: r.name, x: e.clientX, y: e.clientY });
-                  }}
+                  onActivate={onActivateRow}
+                  onOpenMenu={onOpenRowMenu}
                 />
               ))}
             </ul>
+            {/* 커서를 따라오는 고스트 — 패널 밖(차트 창)까지 손에 든 것이 보인다. */}
+            <RailDragOverlay droppedOnChart={drag.droppedOnChart}>
+              {drag.ghost && <RankingDragGhost ghost={drag.ghost} />}
+            </RailDragOverlay>
           </DndContext>
         )}
       </RailDrawerBody>

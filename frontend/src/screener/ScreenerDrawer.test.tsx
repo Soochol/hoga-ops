@@ -18,6 +18,8 @@ type DndHandlers = {
   onDragMove: null | ((e: unknown) => void);
   onDragEnd: null | ((e: unknown) => void);
   onDragCancel: null | (() => void);
+  /** 마지막 렌더에서 DragOverlay 가 받은 dropAnimation. null = 낙하 애니메이션 끔. */
+  dropAnimation: unknown;
 };
 
 const dnd = vi.hoisted<DndHandlers>(() => ({
@@ -25,6 +27,7 @@ const dnd = vi.hoisted<DndHandlers>(() => ({
   onDragMove: null,
   onDragEnd: null,
   onDragCancel: null,
+  dropAnimation: undefined,
 }));
 
 vi.mock('@dnd-kit/core', async (orig) => {
@@ -48,6 +51,15 @@ vi.mock('@dnd-kit/core', async (orig) => {
       dnd.onDragMove = onDragMove ?? null;
       dnd.onDragEnd = onDragEnd ?? null;
       dnd.onDragCancel = onDragCancel ?? null;
+      return <>{children}</>;
+    },
+    // 실제 DragOverlay 는 DndContext 의 `active` 를 읽어 없으면 null 을 반환한다 — 위
+    // passthrough 모킹에는 그 컨텍스트가 없으므로 고스트가 영원히 안 뜬다. 여기서 재는
+    // 것은 렌더 위치가 아니라 **고스트에 무엇이 실리는가**이므로 children 을 통과시킨다.
+    DragOverlay: ({ children, dropAnimation }: {
+      children: React.ReactNode; dropAnimation: unknown;
+    }) => {
+      dnd.dropAnimation = dropAnimation;
       return <>{children}</>;
     },
     useDraggable: () => ({
@@ -130,6 +142,7 @@ describe('ScreenerDrawer', () => {
     dnd.onDragMove = null;
     dnd.onDragEnd = null;
     dnd.onDragCancel = null;
+    dnd.dropAnimation = undefined;
     useEntryDragStore.setState({ draggingCode: null, overChart: false, hitTestChart: null });
     useLivePageStore.setState({ activeInstrument: null, activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
     useLiveVenueStore.setState({ venue: 'KRX' });
@@ -727,7 +740,9 @@ describe('ScreenerDrawer', () => {
         activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
         delta: { x: -500, y: 0 },
       });
-      expect(useEntryDragStore.getState().overChart).toBe(true);
+      // 좌표 발행은 rAF 로 스로틀된다(useDragPointPublisher) — onDragMove 는 ref 에만
+      // 적고 프레임 경계에서 한 번 내보내므로, 동기 단언은 항상 실패한다.
+      await waitFor(() => expect(useEntryDragStore.getState().overChart).toBe(true));
 
       dnd.onDragEnd!({
         active: { id: 'screener-entry:005930', data: { current: { type: 'screener-entry', code: '005930', name: '삼성전자' } } },
@@ -741,6 +756,96 @@ describe('ScreenerDrawer', () => {
     } finally {
       useEntryDragStore.getState().clearChartTarget(hitTest);
     }
+  });
+
+  // --- 차트로 끌어 떨구기: 고스트·낙하 애니메이션·동결 ---
+  // 이 패널의 드래그는 재정렬이 아니라 **복사 제스처**다(droppable 없음, 드롭 후에도 행이
+  // 남는다). 재는 것은 (1) 손에 든 것이 보이는가, (2) 성공한 드롭이 되날아가지 않는가,
+  // (3) 드래그 중 발밑이 흔들리지 않는가 셋이다.
+  const SCREENER_DRAG_START = {
+    active: {
+      id: 'screener-entry:005930',
+      data: { current: { type: 'screener-entry', code: '005930', name: '삼성전자' } },
+    },
+  };
+
+  it('puts the dragged row on the drag ghost, and clears it when the drag ends', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerPanelStore.setState({ selectedSavedId: 's1', lastScan: makeScan() });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    expect(screen.queryByTestId('screener-drag-ghost')).not.toBeInTheDocument();
+
+    act(() => { dnd.onDragStart!(SCREENER_DRAG_START); });
+    expect(screen.getByTestId('screener-drag-ghost')).toHaveTextContent('삼성전자');
+
+    act(() => {
+      dnd.onDragEnd!({ ...SCREENER_DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } });
+    });
+    expect(screen.queryByTestId('screener-drag-ghost')).not.toBeInTheDocument();
+  });
+
+  it('turns the fly-back animation off for a chart drop, and keeps it otherwise', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerPanelStore.setState({ selectedSavedId: 's1', lastScan: makeScan() });
+    const hitTest = (clientX: number) => clientX < 800;
+    useEntryDragStore.getState().registerChartTarget(hitTest);
+    try {
+      render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
+      await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+      // (1) 차트 위 드롭 — activator(900,300) + delta(-500,0) = (400,300) → 술어 true.
+      act(() => { dnd.onDragStart!(SCREENER_DRAG_START); });
+      act(() => {
+        dnd.onDragEnd!({
+          ...SCREENER_DRAG_START,
+          activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+          delta: { x: -500, y: 0 },
+        });
+      });
+      expect(dnd.dropAnimation).toBeNull();
+
+      // (2) 차트 밖 드롭 → 기본 애니메이션(원위치 복귀) 유지.
+      act(() => { dnd.onDragStart!(SCREENER_DRAG_START); });
+      act(() => {
+        dnd.onDragEnd!({
+          ...SCREENER_DRAG_START,
+          activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+          delta: { x: 0, y: 0 },
+        });
+      });
+      expect(dnd.dropAnimation).not.toBeNull();
+    } finally {
+      useEntryDragStore.getState().clearChartTarget(hitTest);
+    }
+  });
+
+  it('freezes the result list while a drag is in flight, and catches up after it ends', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerPanelStore.setState({ selectedSavedId: 's1', lastScan: makeScan() });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    const rowCodes = () =>
+      Array.from(document.querySelectorAll('[data-testid^="screener-row-"]'))
+        .map((el) => el.getAttribute('data-testid'));
+    expect(rowCodes()).toEqual(['screener-row-005930', 'screener-row-000660']);
+
+    act(() => { dnd.onDragStart!(SCREENER_DRAG_START); });
+    // 드래그 도중 모니터링 재조회가 착지해 결과가 통째로 갈린다. 스캔 결과는 zustand
+    // store 라 setState 가 동기 리렌더를 부른다 — react-query 의 배치 함정이 없다.
+    act(() => {
+      useScreenerPanelStore.setState({
+        lastScan: makeScan({
+          rows: [{ code: '035420', name: 'NAVER', market: 'KOSPI', price: 211000, trade_value_won: 3e11, change_pct: 4.2 }],
+        }),
+      });
+    });
+    expect(rowCodes()).toEqual(['screener-row-005930', 'screener-row-000660']);   // 얼어 있다
+
+    act(() => {
+      dnd.onDragEnd!({ ...SCREENER_DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } });
+    });
+    await waitFor(() => expect(rowCodes()).toEqual(['screener-row-035420']));
   });
 
   it('dragging a sorted screener row over the chart keeps the row payload', async () => {
