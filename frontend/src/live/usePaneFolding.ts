@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BoundPaneSpec } from '../chart/paneSpecs';
 import type { PaneStretchMap } from '../chart/paneOrder';
 import {
@@ -18,16 +18,30 @@ import {
  * `minmax(0,1fr)` 로 확정해 주므로(#730), 접기가 pane 수를 바꿔도 컨테이너 높이는
  * 변하지 않는다. 즉 `높이 → 접힘 → 높이` 로 되돌아오는 경로가 없다. lightweight-charts
  * 의 `autoSize` 가 같은 요소를 관측하지만 그쪽도 컨테이너를 *읽기*만 한다.
+ *
+ * **관측 대상은 `RefObject` 로 받지 않고 callback ref 를 돌려준다**(`useChartHeaderFold`
+ * 와 같은 형태). ref 객체는 렌더 간 identity 가 고정이라 deps 에 넣어도 "노드가
+ * 생겼다" 를 말해 주지 못하고, effect 가 첫 렌더에 `ref.current === null` 로 조기
+ * 반환하면 다시 돌 기회가 없다 — 관측자가 영영 안 붙는다.
+ *
+ * ⚠️ **이 전환은 예방이다.** 지금 유일한 호출처(`LiveChartRoot`)의 차트 컨테이너는
+ * 조건부 렌더 아래가 아니라 항상 첫 커밋에 있어 옛 형태로도 관측이 붙었다 — 즉
+ * 고친 증상이 없다. 같은 결함이 실제로 터진 것은 `/live` 차트 창 헤더 쪽이었고
+ * (헤더는 종목이 없으면 렌더되지 않아 **첫 마운트 이후에 등장**한다), 이 훅은 그때
+ * 지목된 동류다. 컨테이너를 조건부 렌더 아래로 옮기면 옛 형태는 조용히 죽는다.
+ *
+ * 타이밍은 등가다: callback ref 도 커밋의 ref-부착 단계에 돌고 측정은 양쪽 다
+ * `useEffect`(페인트 후)라, 마운트 시 리렌더 1회가 느는 것 외에 관찰 가능한 차이가
+ * 없다.
  */
 export function usePaneFolding(
   specs: readonly BoundPaneSpec[],
-  containerRef: RefObject<HTMLElement | null>,
   paneStretch: PaneStretchMap,
-): PaneFoldResult {
+): [PaneFoldResult, (el: HTMLElement | null) => void] {
+  const [el, setEl] = useState<HTMLElement | null>(null);
   const [heightPx, setHeightPx] = useState(0);
 
   useEffect(() => {
-    const el = containerRef.current;
     if (!el) return undefined;
     // 서브픽셀 진동으로 재계산이 도는 것을 막는다 — 0.5px 미만 변화는 무시.
     const push = (h: number): void => {
@@ -40,7 +54,7 @@ export function usePaneFolding(
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [containerRef]);
+  }, [el]);
 
   // 히스테리시스 기준점. 렌더 중 갱신하지만 `foldPanes` 는 dead band 안에서 멱등이라
   // (같은 입력+같은 직전 상태 → 같은 출력) StrictMode 이중 렌더에서도 수렴한다.
@@ -63,5 +77,8 @@ export function usePaneFolding(
     [specs, foldedCount],
   );
 
-  return { specs: foldedSpecs, foldedCount, timeAxisVisible };
+  // 결과 객체는 접힘 수가 그대로면 같은 필드값을 돌려주지만 객체 자체는 매 렌더
+  // 새로 만든다 — 소비처가 구조분해로 받아 쓰므로(위 `foldedSpecs` 의 identity 가
+  // 실제 계약) 여기서 memo 할 이득이 없다. 튜플로 감싸도 같다.
+  return [{ specs: foldedSpecs, foldedCount, timeAxisVisible }, setEl];
 }
