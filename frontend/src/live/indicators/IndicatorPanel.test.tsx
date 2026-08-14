@@ -718,4 +718,25 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('button', { name: '매도 색상 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('slider')).toBeTruthy();
   });
+
+  // `hiddenCategories` 는 `capabilities` 와 **다른 축**이다: 저쪽은 "이 종목에 그
+  // 데이터가 있는가", 이쪽은 "이 화면이 그 지표를 그리는가". `/study` 가 단별 잔량
+  // 증감을 렌더하지 않으면서 토글만 보여 주던 것을 없애기 위한 것이다.
+  describe('hiddenCategories', () => {
+    it('숨긴 지표는 목록에서 사라진다', () => {
+      const { unmount } = renderPanel();
+      expect(screen.queryByText('단별 잔량 증감')).toBeTruthy();
+      unmount();
+
+      renderPanel({ hiddenCategories: ['depth-delta'] });
+      expect(screen.queryByText('단별 잔량 증감')).toBeNull();
+    });
+
+    it('다른 지표는 그대로 남는다 — 필터가 과하게 걷어내지 않는다', () => {
+      renderPanel({ hiddenCategories: ['depth-delta'] });
+
+      expect(screen.queryByText('호가 잔량 히트맵')).toBeTruthy();
+      expect(screen.queryByText('당일 최대벽')).toBeTruthy();
+    });
+  });
 });
