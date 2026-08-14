@@ -14,7 +14,8 @@ import {
   focusedChartWindowId,
   useStudyWorkspaceStore,
 } from '../state/studyWorkspace';
-import { resolveIndicatorSettings } from '../state/indicatorSettingsV2';
+import { bucketsForScope, resolveIndicatorSettings } from '../state/indicatorSettingsV2';
+import { windowScopeKey } from '../live/workspace/windowViewContext';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import {
   STUDY_DEFAULT_MINUTE_TIMEFRAME,
@@ -243,6 +244,7 @@ export function StudyPage() {
         ?? (isMinuteTimeframe(referenceSave.timeframe) ? referenceSave.timeframe : '1m')
       : STUDY_DEFAULT_MINUTE_TIMEFRAME);
   const indicatorsByTimeframe = useLivePageStore((s) => s.indicatorsByTimeframe);
+  const indicatorsByWindow = useLivePageStore((s) => s.indicatorsByWindow);
   // 번들을 요구하는 창 목록 — 봉·지표가 곧 쿼리 키다(#904).
   //
   // **포커스 창만 `selectedTimeframe` 을 쓴다**: 탭을 바꾼 첫 커밋에는 창이 아직
@@ -262,11 +264,20 @@ export function StudyPage() {
         return {
           windowId: w.id,
           timeframe,
-          // 지표는 앱 전역 1세트 — 창마다 갈리는 것은 봉(=어느 버킷인가)뿐이다.
-          indicators: resolveIndicatorSettings(indicatorsByTimeframe, timeframe),
+          // 지표는 기본이 전역 공용이고 분리된 창만 자기 버킷을 본다. 여기가 그
+          // 스코프를 안 보면 분리 창이 켠 지표의 데이터가 번들에 안 실려
+          // **"켰는데 안 보임"** 이 된다(차트는 그리려 하는데 데이터가 없다).
+          indicators: resolveIndicatorSettings(
+            bucketsForScope(
+              indicatorsByTimeframe,
+              indicatorsByWindow,
+              windowScopeKey({ scopePrefix: 'study' }, w.id),
+            ),
+            timeframe,
+          ),
         };
       }),
-    [chartWindowId, selectedTimeframe, workspaceWindows, indicatorsByTimeframe],
+    [chartWindowId, selectedTimeframe, workspaceWindows, indicatorsByTimeframe, indicatorsByWindow],
   );
   const displayedReferenceSave = useMemo(
     () => referenceSave && selectedTimeframe

@@ -21,7 +21,8 @@
  * - **배치**는 `study.layout.v1`(카드 순서/숨김)에서 1회. `detailPanelCollapsed` 는
  *   무시한다 — rail 접기는 "잠깐 치움"이지 숨김이 아니었으므로 창은 생성한다(플랜 §PR-2).
  * - **차트 설정**은 `study.lastMinuteTimeframe.v1`(분봉)에서 1회. 지표는 시드하지
- *   않는다 — 창이 소유하지 않고 앱 전역 1세트(`live.indicators.v2`)이기 때문이다.
+ *   않는다 — 창이 소유하지 않고 앱 전역 저장소(`live.indicators.v2`)에 있기
+ *   때문이다. 창을 분리해도(ADR-0145) 창이 갖는 것은 스코프 키뿐이라 그대로다.
  */
 import { create } from 'zustand';
 import { isFracRect, type FracRect } from '../workspace/rectSpace';

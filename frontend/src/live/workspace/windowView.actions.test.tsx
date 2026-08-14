@@ -23,12 +23,15 @@ import { normalizePaneOrder } from '../../chart/paneOrder';
 
 /**
  * 지표 편집 표면의 계약 — **백엔드는 언제나 전역 스토어**이고, 창이 정하는 것은
- * "어느 봉 버킷인가" 뿐이다. 한때 창이 설정을 통째로 소유했지만(#712), 워크스페이스가
+ * "어느 버킷인가" 뿐이다. 한때 창이 설정을 통째로 소유했지만(#712), 워크스페이스가
  * 탭별 sessionStorage 라 지표가 브라우저 탭마다 갈렸다.
  *
  * 그래서 여기서 못 박는 것이 둘이다:
  *  ① 창에서 편집해도 **워크스페이스는 건드리지 않는다**(전역 v2 로 간다).
  *  ② 창의 봉이 ambient 와 다르면 **다른 버킷에 쓰고 ambient 투영은 그대로**다.
+ *
+ * 이 파일은 **연동(기본) 상태**의 계약만 본다 — 창별 분리(ADR-0145)는 같은 두
+ * 성질을 분리 축에서 다시 재는 `windowView.scope.test.tsx` 가 맡는다.
  */
 
 function chartWindow(id: string, timeframe: LiveTimeframe = '5m'): WorkspaceWindow {

@@ -56,6 +56,13 @@ export function useWarmStudyReferenceTabQueries({
   // 분봉이면 "분봉 버킷 + D 프로필 지표" 라는 잡종 키가 나갔다. 활성 전환에서 키가
   // 안 맞아 같은 구간을 플래그만 바꿔 한 번 더 받는다 — 워밍이 요청을 줄이려다 늘린다.
   // 근거와 실측은 `studyReferenceQuerySettings` 주석.
+  //
+  // **창 분리 스코프는 여기서 보지 않는다**(`indicatorsByWindow`). 워밍의 단위는
+  // 탭이고 탭에는 창이 없다 — 어느 창이 그 탭을 열게 될지는 활성화 시점에 정해진다.
+  // 그래서 워밍은 공용 세트로 근사하고, 분리된 창을 활성화하면 그 창의 키로 한 번
+  // 더 받는다. 워밍은 지연을 줄이는 최선노력이지 정확성 계약이 아니므로 이 미스는
+  // 손해가 제한적이다(분리 창 수만큼). 반대로 여기서 특정 창을 골라 해석하면 위
+  // 문단의 잡종 키 문제가 축만 바뀌어 되돌아온다.
   const indicatorsByTimeframe = useLivePageStore((s) => s.indicatorsByTimeframe);
   // 워밍 쿼리도 활성 경로와 **같은 venue** 여야 한다 — 다르면 탭 전환 시 캐시가 안 맞아
   // 재fetch 된다. `/study` 가 KRX 고정(`studyVenuePolicy`, ADR-0144)이 되면서 그 제약이
