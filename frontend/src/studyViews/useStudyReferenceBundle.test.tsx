@@ -202,6 +202,10 @@ describe('useStudyReferenceBundles', () => {
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(save, {
       sourcePref: 'kiwoom_live',
       venue: 'KRX',
+      // 최대벽 플래그도 창의 지표 설정에서 온다 — 전에는 아예 안 넘겨 백엔드 기본값
+      // `True` 로 항상 계산됐다. 여기 공장 기본은 꺼짐이라 false 가 실린다.
+      askPeakEnabled: false,
+      bidPeakEnabled: false,
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,

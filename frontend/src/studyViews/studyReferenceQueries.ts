@@ -10,6 +10,10 @@ import type { StudyDailyContextWindow } from './studyDailyContext';
 export type StudyReferenceQuerySettings = {
   /** undefined = 설정 로딩 중 → `rangeBundleQueryOptions` 가 `enabled=false` 로 막는다. */
   sourcePref: SourcePreference | undefined;
+  /** 최대벽(매도·매수). 끄면 계산·전송 둘 다 준다 — 전에는 플래그를 아예 안 넘겨
+   *  백엔드 기본값 `True` 로 **항상** 계산됐다. */
+  askPeakEnabled: boolean;
+  bidPeakEnabled: boolean;
   /** 복기 거래소. `/study` 는 항상 KRX 다(`studyVenuePolicy`, ADR-0144) — 호출부가
    *  `STUDY_VENUE` 를 넘긴다. 순수 함수 쪽에서 상수를 다시 박지 않는 이유는 정책을
    *  되돌릴 때 **고칠 곳이 하나**여야 하기 때문이다. */
@@ -47,6 +51,8 @@ export function studyReferenceQuerySettings(
   return {
     sourcePref,
     venue,
+    askPeakEnabled: indicators.askPeakEnabled,
+    bidPeakEnabled: indicators.bidPeakEnabled,
     brokerLateEntryEnabled: indicators.brokerLateEntryEnabled,
     brokerLateEntryStartHHMM: indicators.brokerLateEntryStartHHMM,
     tradeVolumePocEnabled: indicators.tradeVolumePocEnabled,
@@ -90,6 +96,20 @@ export function studyReferenceSidecarRangeOptions(
     venue: settings.venue,
     options: {
       mode: 'sidecar',
+      // 지표 플래그는 **전부 명시한다.** 빠뜨리면 백엔드 기본값(`Query(True)`)이 먹어
+      // 꺼 둔 지표까지 계산·전송된다 — 침묵하는 낭비라 타입도 안 잡는다.
+      askPeaksEnabled: settings.askPeakEnabled,
+      bidPeaksEnabled: settings.bidPeakEnabled,
+      // ⚠ `/study` 는 **단별 잔량 증감을 쓰지 않는다.** `mergeStudyRangeBundles` 의 병합
+      // 목록에 `depth_delta` 가 없어 sidecar 가 실어 온 값이 화면에 닿지 않는다. 그런데
+      // 플래그를 안 넘겨 기본값 `True` 로 **계산되고 전송돼 왔다** — 하루치 10분봉 실측으로
+      // 응답 55,272B → 26,258B(-53%) · 0.409s → 0.246s(-40%). 1분봉은 그 지표 캐시가
+      // 파일당 836KB(4종 중 최대)라 차이가 더 크다.
+      //
+      // 되살리려면(= `/study` 에서도 이 지표를 그리려면) 여기만 켜면 안 된다 — 병합
+      // 목록과 지표 드로어 노출(`StudyIndicatorDrawer` 의 `hiddenCategories`)을 같이 되돌려야
+      // "켰는데 안 보임" 이 안 생긴다.
+      depthDeltaEnabled: false,
       brokerLateEntriesEnabled: settings.brokerLateEntryEnabled,
       brokerLateEntryStartHHMM: settings.brokerLateEntryEnabled ? settings.brokerLateEntryStartHHMM : null,
       volumeDistributionBins: settings.volumeDistributionEnabled ? settings.volumeDistributionRangeCount : null,
