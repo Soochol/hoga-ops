@@ -13,6 +13,10 @@ import { computeCaptureLag } from './captureLag';
 export interface HeatmapBoardProps {
   groups: HeatmapGroup[];
   quoteByCode: Map<string, LiveQuote>;
+  /** **정렬 키 전용** 시세(SORT_THROTTLE_MS 스로틀). 행 정렬과 드래그 커밋 순서 계산이
+   *  같은 출처를 봐야 하므로 둘 다 이걸 쓴다 — 커밋만 라이브를 보면 서버에 저장되는
+   *  순서가 사용자가 본 화면과 어긋난다. 미전달이면 quoteByCode 로 폴백. */
+  sortQuoteByCode?: Map<string, LiveQuote>;
   sortMode: SortMode;
   onPick: (code: string, name?: string) => void;
   /** 그룹 내 드래그 재정렬 커밋(manual 모드). 페이지에서 useReorderHeatmapEntries 로 주입. */
@@ -71,7 +75,8 @@ const entryCollision: CollisionDetection = (args) => {
  *  그래서 드래그가 구조적으로 "그룹 내"에 갇혀 있었다. 그룹 간 이동/복제를 드래그로 하려면
  *  컨텍스트가 하나여야 한다. multicol 이 블록을 칼럼에 흩뿌려도 폴더 블록은 break-inside-avoid
  *  라 한 칼럼 안에 온전히 있고, dnd-kit 은 좌표로 충돌을 재므로 칼럼을 넘는 드래그도 동작한다. */
-export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder, onMove, onCopy, onRowMenu, onRenameFolder, onDeleteFolder, onRowDragState, flowByFolder, query, captureMarkers, autoAddFolderId, onAutoAddOpened }: HeatmapBoardProps) {
+export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, onPick, onReorder, onMove, onCopy, onRowMenu, onRenameFolder, onDeleteFolder, onRowDragState, flowByFolder, query, captureMarkers, autoAddFolderId, onAutoAddOpened }: HeatmapBoardProps) {
+  const sortQuotes = sortQuoteByCode ?? quoteByCode;
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬/이동)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   // 보드 전체 코드로 한 번 계산 — 기준일(마커 최댓값)이 그룹별로 갈리면 안 된다.
@@ -105,7 +110,9 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
       if (!onReorder) return;
       const group = groups.find((g) => g.folder.id === from);
       if (!group) return;
-      const ordered = sortEntries(group.entries, sortMode, makePctOf(quoteByCode)).map((e) => e.code);
+      // 정렬 시세는 렌더(HeatmapFolder)와 **같은 출처**여야 한다 — 여기만 라이브를 보면
+      // 스로틀 창 안에서 커밋 순서가 화면 순서와 어긋나 드롭이 엉뚱한 자리에 저장된다.
+      const ordered = sortEntries(group.entries, sortMode, makePctOf(sortQuotes)).map((e) => e.code);
       const fromIdx = ordered.indexOf(code);
       const toIdx = ordered.indexOf(String(over.code));
       if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
@@ -127,6 +134,7 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
           folder={g.folder}
           entries={g.entries}
           quoteByCode={quoteByCode}
+          sortQuoteByCode={sortQuotes}
           sortMode={sortMode}
           onPick={onPick}
           onRowMenu={onRowMenu}
