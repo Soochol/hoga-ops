@@ -898,8 +898,15 @@ export function WatchlistDrawer() {
           onEditGroups={() => setGroupPicker({ code: menu.code, name: menu.name, x: menu.x, y: menu.y })}
           onRemove={() => removeM.mutate(menu.code)}
           // 이 행이 차지한 items 인덱스에 삽입 → 기존 행은 한 칸 밀린다("위에" 삽입).
-          // 미분류 행은 담을 폴더가 없어 항목 자체를 띄우지 않는다.
-          onInsertMemoAbove={menu.folderId ? () => {
+          //
+          // 두 경우에 항목을 아예 띄우지 않는다:
+          // 1. 미분류 행 — 담을 폴더가 없다.
+          // 2. 등락률 정렬이 켜진 그룹 — 화면 순서(등락률)와 `order`(저장 순서)가
+          //    다르므로 "위에" 가 사용자가 본 자리를 가리키지 않는다. 게다가 정렬
+          //    모드에선 메모행이 숨겨져 결과도 안 보인다 → "눌렀는데 아무 일도 안
+          //    일어났고, 정렬을 풀면 엉뚱한 자리에 빈칸이 있다" 가 된다.
+          //    드래그·메모 표시와 같은 게이트다.
+          onInsertMemoAbove={menu.folderId && getFolderSortMode(menu.folderId) === 'default' ? () => {
             const row = data?.entries.find((e) => e.folder_id === menu.folderId && e.code === menu.code);
             addMemoAt(menu.folderId!, row?.order);
           } : undefined}

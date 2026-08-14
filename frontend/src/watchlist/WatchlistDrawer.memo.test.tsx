@@ -149,6 +149,21 @@ describe('WatchlistDrawer — 메모(빈칸) 행', () => {
     await waitFor(() => expect(add).toHaveBeenCalledWith('f_0000000a', '', 2));
   });
 
+  it('등락률 정렬 중에는 "위에 빈칸 삽입"이 없다 — "위에"가 본 자리를 못 가리킨다', async () => {
+    renderPanel();
+    await screen.findByTestId('watchlist-row-000660');
+    fireEvent.click(screen.getByLabelText('스윙 정렬'));   // default → change_pct_desc
+    await waitFor(() =>
+      expect(screen.queryByTestId('watchlist-memo-m_0000000a')).not.toBeInTheDocument());
+    fireEvent.contextMenu(screen.getByTestId('watchlist-row-000660'));
+    // 화면 순서는 등락률, order 는 저장 순서라 두 축이 갈린다. 게다가 메모가 숨겨져
+    // 결과도 안 보인다 → 항목 자체를 띄우지 않는다.
+    expect(screen.queryByText('위에 빈칸 삽입')).not.toBeInTheDocument();
+    // 그룹 ⋯ 의 "빈칸 추가"(맨 아래)는 위치 모호성이 없어 그대로 남는다
+    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    expect(screen.getByText('빈칸 추가')).toBeInTheDocument();
+  });
+
   it('미분류 행에는 "위에 빈칸 삽입"이 없다 — 담을 폴더가 없다', async () => {
     renderPanel({
       ...DATA,

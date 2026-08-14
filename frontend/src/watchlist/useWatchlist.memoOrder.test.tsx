@@ -3,7 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi } from 'vitest';
 import * as api from '../api/watchlist';
-import { useReorderItems, useAddMember } from './useWatchlist';
+import { useReorderItems, useAddMember, useReorderEntries } from './useWatchlist';
 import { WATCHLIST_KEY } from './watchlistKeys';
 import type { WatchlistResponse } from '../api/watchlist';
 
@@ -66,6 +66,35 @@ describe('applyItemsReorder (패널 dnd 낙관 경로)', () => {
     expect(byKey.map((r) => r.key)).toEqual(['m_00000001', '000660', '005930']);
     // 축이 0..N-1 로 조밀해야 병합 정렬이 안정적이다
     expect(byKey.map((r) => r.order)).toEqual([0, 1, 2]);
+  });
+});
+
+describe('applyReorder (편집 모달 낙관 경로 — 코드만 재배열)', () => {
+  it('코드가 차지하던 order 슬롯을 재사용해 메모를 제자리에 남긴다', async () => {
+    // 서버 reorder_entries 와 같은 시맨틱: 코드 슬롯에만 새 순서를 채우고 메모는
+    // items 인덱스에 고정. 낙관값이 rank(0,1,…)를 쓰면 **메모와 충돌**한다 —
+    // items [005930(0), memo(1), 000660(2)] 에서 rank 는 000660→0, 005930→1 이 되어
+    // 005930 이 메모와 같은 order 를 갖는다.
+    vi.spyOn(api, 'reorderEntries').mockImplementation(() => new Promise(() => {}));
+    const qc = seededClient();
+    const { result } = renderHook(() => useReorderEntries(), { wrapper: wrap(qc) });
+
+    act(() => {
+      result.current.mutate({ folderId: 'f_a', orderedCodes: ['000660', '005930'] });
+    });
+
+    await waitFor(() => {
+      const d = qc.getQueryData<WatchlistResponse>(WATCHLIST_KEY)!;
+      expect(d.entries.find((e) => e.code === '000660')!.order).toBe(0);
+    });
+    const d = qc.getQueryData<WatchlistResponse>(WATCHLIST_KEY)!;
+    // 코드는 0 과 2 를 교환하고, 메모는 1 에 그대로 있어야 한다.
+    expect(d.entries.find((e) => e.code === '000660')!.order).toBe(0);
+    expect(d.entries.find((e) => e.code === '005930')!.order).toBe(2);
+    expect(d.memos[0].order).toBe(1);
+    // 축이 겹치지 않는다 — 겹치면 병합 정렬에서 행이 서로를 덮는다
+    const all = [...d.entries.map((e) => e.order), ...d.memos.map((m) => m.order)];
+    expect(new Set(all).size).toBe(all.length);
   });
 });
 
