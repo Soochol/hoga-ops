@@ -192,12 +192,18 @@ export function StudyViewsDrawer() {
   const endEntryDrag = useEntryDragStore((s) => s.endDrag);
   const defaultOpenTimeframe = useStudyViewOpenPrefsStore((s) => s.defaultTimeframe);
   const lastMinuteTimeframe = useStudyLastMinuteTimeframeStore((s) => s.lastMinuteTimeframe);
-  // '저장된 분봉'(saved, 기본값)이면 **override 를 안 넘긴다** — 저장뷰가 저장한 봉
+  // '저장된 분봉'(saved)이면 **override 를 안 넘긴다** — 저장뷰가 저장한 봉
   // 그대로 열린다. 그 이유(캐시가 봉별이라 저장 봉이 구조적으로 warm)는
   // `studyViewOpenPrefs` 주석에 있다.
   // '설정된 분봉'(current)이면 복기뷰 차트에서 마지막으로 쓴 분봉을, 아니면 고른 고정 분봉을
   // override로 넘긴다. lastMinuteTimeframe은 항상 유효값('3m' 폴백)이라 undefined 경로는 없다.
-  const openTimeframeOverride = defaultOpenTimeframe === 'saved'
+  //
+  // '창 주기 유지'(keep, 기본값)도 override 를 안 넘긴다 — 다만 이유가 다르다. 여기서
+  // 포커스 창의 봉을 넘겨 봐야 구멍이 둘이라 계약이 안 선다: ① 탭 전환은 이 경로를
+  // 안 타고, ② `ensureQuerySeed`(URL `?view=` 진입)는 옵션 없이 탭을 만든다. 그래서
+  // 게이트는 진입점이 아니라 **창 봉을 쓰는 유일한 지점**인 StudyPage 의 재시드
+  // effect 하나에 있다. 탭은 종전대로 저장 봉으로 시드되고 그 effect 가 되받아쓴다.
+  const openTimeframeOverride = defaultOpenTimeframe === 'keep' || defaultOpenTimeframe === 'saved'
     ? undefined
     : defaultOpenTimeframe === 'current' ? lastMinuteTimeframe : defaultOpenTimeframe;
 

@@ -20,6 +20,7 @@ import {
   STUDY_DEFAULT_MINUTE_TIMEFRAME,
   useStudyLastMinuteTimeframeStore,
 } from '../state/studyLastMinuteTimeframe';
+import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
 import type { StudyChartRootProps } from './StudyChartWindow';
 import { StudyIndicatorDrawer } from './StudyIndicatorDrawer';
 import { StudyWorkspaceCanvas, StudyWindowAddMenu } from './StudyWorkspaceCanvas';
@@ -227,9 +228,20 @@ export function StudyPage() {
   const tabSeedKey = `${activeTabId ?? ''}:${activeViewId ?? ''}`;
   const seededTabKeyRef = useRef<string | null>(null);
   const tabSeedPending = seededTabKeyRef.current !== tabSeedKey;
+  /**
+   * "창 주기 유지" 모드인가 — 봉의 소유자가 **저장뷰가 아니라 창**이다.
+   *
+   * 이 플래그는 **쓰기 지점 두 곳을 같이** 게이트해야 한다. 아래 재시드 effect 는
+   * 스토어를 쓰고, 바로 밑 `selectedTimeframe` 의 seed-pending 항은 렌더 경로로
+   * 새어 `chartWindowSpecs` → 번들 쿼리 키가 된다. effect 만 막으면 화면은 멀쩡한데
+   * 저장뷰를 열 때마다 **엉뚱한 봉의 번들(수 MB)을 한 커밋 동안 fetch** 한다.
+   */
+  const keepWindowTimeframe = useStudyViewOpenPrefsStore((s) => s.defaultTimeframe === 'keep');
   // viewTimeframes 는 탭 없는 라우트 과도기 전용 폴백.
   const selectedTimeframe = activeViewId && referenceSave
-    ? (tabSeedPending && activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
+    ? (!keepWindowTimeframe && tabSeedPending && activeTab?.viewId === activeViewId
+        ? activeTab.timeframe
+        : undefined)
       ?? chartWindowTimeframe
       ?? (activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
       ?? viewTimeframes[activeViewId]
@@ -415,11 +427,28 @@ export function StudyPage() {
    * 이 증상은 #1293 이 드러냈다. 그전에는 일봉 저장뷰도 "마지막 분봉" override 로
    * 열려 탭 봉이 대개 포커스 분봉 창과 같았고, 그래서 위 `===` 검사에서 조용히
    * 걸러졌다. 저장된 봉을 존중하게 되자 그 우연한 no-op 이 사라졌다.
+   *
+   * ⚠ **`keep` 모드에서는 이 거울이 반대로 돈다** — 창을 덮는 대신 탭이 창을 따라간다.
+   * #1295 의 완화로는 부족했기 때문이다: 그 구제는 요구 봉을 **정확히** 보여주는 창이
+   * 있을 때만 걸리므로, `D` + `3m` 배치에 `1m` 저장뷰가 오면 일치 창이 없어 곧장
+   * 덮어쓰기로 떨어진다. 그 모드에서 탭 봉은 명령이 아니라 **포커스 창의 라벨**이므로
+   * 여기서 되받아써야 라벨과 창이 어긋나지 않는다(#902 write-through 의 역방향).
    */
   useEffect(() => {
     if (!chartWindowId || !selectedTimeframe) return;
     if (seededTabKeyRef.current === tabSeedKey) return;
     seededTabKeyRef.current = tabSeedKey;
+    if (keepWindowTimeframe) {
+      if (
+        activeTab
+        && activeTab.viewId === activeViewId
+        && chartWindowTimeframe
+        && activeTab.timeframe !== chartWindowTimeframe
+      ) {
+        updateTabTimeframe(activeTab.id, chartWindowTimeframe);
+      }
+      return;
+    }
     if (chartWindowTimeframe === selectedTimeframe) return;
     // 구독이 아니라 getState 로 읽는다 — 이 effect 는 `tabSeedKey` 전이에만 반응해야
     // 하고, 창 배열을 deps 에 넣으면 창을 드래그하기만 해도 재평가된다.
@@ -432,7 +461,18 @@ export function StudyPage() {
       return;
     }
     setChartTimeframe(chartWindowId, selectedTimeframe);
-  }, [chartWindowId, chartWindowTimeframe, focusWindow, selectedTimeframe, setChartTimeframe, tabSeedKey]);
+  }, [
+    activeTab,
+    activeViewId,
+    chartWindowId,
+    chartWindowTimeframe,
+    focusWindow,
+    keepWindowTimeframe,
+    selectedTimeframe,
+    setChartTimeframe,
+    tabSeedKey,
+    updateTabTimeframe,
+  ]);
 
   /** 닫힌 창의 캡처 함수를 걷어낸다 — 등록소가 죽은 클로저를 붙들고 있지 않게. */
   useEffect(() => {

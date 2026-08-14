@@ -7,15 +7,24 @@ describe('study view open preferences', () => {
     useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
   });
 
-  // 기본값은 **저장 봉 존중**이다. 봉 종속 지표 캐시가 봉마다 갈리는데, 저장 시점의
-  // 사용자는 그 구간을 그 봉으로 보고 있었으므로 저장 봉은 이미 계산돼 있다 — warm 이
-  // 확률이 아니라 구조다(스토어 주석의 실측). 다른 봉으로 열면 그 보장이 사라진다.
-  it('defaults saved-view side-panel opens to the saved timeframe', async () => {
+  // 기본값은 **창 주기 유지**다. 나머지 세 값('saved'·'current'·고정 분봉)은 전부
+  // "저장뷰가 봉을 정한다" 는 같은 축 위에 있고, 그 축은 창이 여럿일 때 사용자가
+  // 벌려 둔 배치를 무너뜨린다 — 일봉 창 + 분봉 창에서 다른 분봉 저장뷰를 열면
+  // 포커스 창이 덮여 "분봉, 분봉" 이 된다. 대가는 저장 봉의 warm 캐시 보장이고,
+  // 그건 'saved' 를 고르면 되찾는다(근거는 스토어 주석의 실측).
+  it('defaults saved-view side-panel opens to keeping the window timeframe', async () => {
     // 초기값은 모듈 로드 시점에 결정되므로, 빈 스토리지에서 새로 로드해 검증한다.
     localStorage.clear();
     vi.resetModules();
     const fresh = await import('./studyViewOpenPrefs');
-    expect(fresh.useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('saved');
+    expect(fresh.useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('keep');
+  });
+
+  it('persists the keep-window option', () => {
+    useStudyViewOpenPrefsStore.getState().setDefaultTimeframe('keep');
+
+    expect(useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('keep');
+    expect(localStorage.getItem('studyView.openPrefs.v1')).toContain('keep');
   });
 
   it('persists the selected default minute timeframe', () => {

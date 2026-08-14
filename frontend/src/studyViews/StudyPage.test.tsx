@@ -10,6 +10,7 @@ import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyWorkspaceStore, type StudyWorkspaceWindow } from '../state/studyWorkspace';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
+import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
 
 const {
   useStudyViewsMock,
@@ -296,6 +297,10 @@ beforeEach(() => {
     },
   });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
+  // ⚠ 봉 재시드 계약(#902·#1295)은 **이 설정이 'keep' 이 아닐 때만** 존재한다.
+  // 앱 기본값은 'keep'(창 주기 유지)이므로 아래 테스트들이 검사하는 경로에 들어가려면
+  // 여기서 명시적으로 고정해야 한다 — 안 하면 기본값이 바뀔 때 전제가 조용히 뒤집힌다.
+  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'saved' });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
   // 창 워크스페이스(ADR-0123) — 시드와 무관한 결정적 배치로 초기화. DOM 순서 =
   // windows 배열 순서(orderbook → brokers → vdist → program).
@@ -694,6 +699,102 @@ describe('StudyPage', () => {
     // 대안이 없으니 포커스 창이 덮인다 — 대안 탐색이 재시드 자체를 삼키면 안 된다.
     expect(tfOf('w-chart')).toBe('D');
     expect(tfOf('w-chart-2')).toBe('W');
+  });
+
+  /**
+   * '창 주기 유지'(`studyViewOpenPrefs='keep'`, 앱 기본값) — 저장뷰가 종목·구간만
+   * 정하고 봉은 창이 소유한다.
+   *
+   * **이 가드가 막는 방향**: 저장뷰를 열거나 탭을 오갔다는 이유로 차트 창의 봉이
+   * 바뀌는 것. 위 #902/#1295 테스트들이 검사하는 재시드는 이 모드에서 **반대로**
+   * 돈다(탭이 창을 따라간다).
+   *
+   * **이 가드가 못 보는 것**: 사용자가 창 헤더에서 직접 봉을 바꾸는 경로
+   * (`changeTimeframe`)는 그대로다 — 제스처는 언제나 창을 이긴다.
+   */
+  describe("'창 주기 유지' 모드 (keep)", () => {
+    beforeEach(() => {
+      useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'keep' });
+    });
+
+    it('일봉 창 + 분봉 창 배치에서 다른 분봉 저장뷰를 열어도 두 창 다 그대로다', () => {
+      // 사용자가 보고한 순서 그대로: 창 두 개(5m 포커스 + D)를 벌려 두고,
+      // 어느 창의 봉과도 일치하지 않는 분봉(15m) 저장뷰를 연다. #1295 의 완화는
+      // 봉이 **정확히** 일치할 때만 걸리므로 이 순서에서 포커스 창이 희생됐다.
+      useStudyTabsStore.setState({
+        tabs: [
+          { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: '5m' },
+          { id: 'tab-b', viewId: 'view-second', code: '000660', label: 'B', name: 'B', timeframe: '15m' },
+        ],
+        activeTabId: 'tab-a',
+      });
+      addSecondChartWindow('D');
+
+      renderPage('/study?view=view-ref');
+      fireEvent.click(getStudyTab('B'));
+
+      const state = useStudyWorkspaceStore.getState();
+      const tfOf = (id: string) => state.windows.find((w) => w.id === id)?.chart?.timeframe;
+      expect(tfOf('w-chart')).toBe('5m');
+      expect(tfOf('w-chart-2')).toBe('D');
+    });
+
+    it('렌더도 창의 봉으로 나간다 — 저장 봉으로 유령 번들을 fetch 하지 않는다', () => {
+      // 스토어만 지키고 렌더 경로(`chartWindowSpecs`)가 새면 화면은 멀쩡한데
+      // 저장뷰를 열 때마다 엉뚱한 봉의 번들(수 MB)이 한 커밋 나간다.
+      useStudyTabsStore.setState({
+        tabs: [
+          { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: '5m' },
+          { id: 'tab-b', viewId: 'view-second', code: '000660', label: 'B', name: 'B', timeframe: '15m' },
+        ],
+        activeTabId: 'tab-a',
+      });
+      addSecondChartWindow('D');
+
+      renderPage('/study?view=view-ref');
+      liveChartRootMock.mockClear();
+      fireEvent.click(getStudyTab('B'));
+
+      const rendered = new Set(liveChartRootMock.mock.calls.map((c) => c[0].timeframe));
+      expect(rendered).toEqual(new Set(['5m', 'D']));
+    });
+
+    it('탭 라벨이 포커스 창의 봉을 따라간다 — 거울이 반대로 돈다', () => {
+      // 창을 안 바꾸므로 탭 봉이 저장 봉으로 남으면 라벨(`… · 15m`)이 실제 창(5m)과
+      // 어긋난 채 노출된다. #902 write-through 의 역방향.
+      useStudyTabsStore.setState({
+        tabs: [
+          { id: 'tab-a', viewId: 'view-ref', code: '005930', label: 'A', name: 'A', timeframe: '5m' },
+          { id: 'tab-b', viewId: 'view-second', code: '000660', label: 'B · 000660', name: 'B', timeframe: '15m' },
+        ],
+        activeTabId: 'tab-a',
+      });
+
+      renderPage('/study?view=view-ref');
+      fireEvent.click(getStudyTab('B · 000660'));
+
+      const tabB = useStudyTabsStore.getState().tabs.find((t) => t.id === 'tab-b');
+      expect(tabB?.timeframe).toBe('5m');
+      expect(tabB?.label).toContain('5m');
+    });
+
+    it('창 헤더로 직접 바꾸는 봉 전환은 그대로다 — 제스처는 창을 이긴다', () => {
+      useStudyTabsStore.setState({
+        tabs: [{
+          id: 'tab-ref', viewId: 'view-ref', code: '005930',
+          label: '삼성전자 · 돌파 복기 · 5m', name: '돌파 복기', timeframe: '5m',
+        }],
+        activeTabId: 'tab-ref',
+      });
+
+      renderPage('/study?view=view-ref');
+      const headers = screen.getAllByTestId('study-chart-window-header');
+      fireEvent.click(within(headers[0]).getByRole('button', { name: '일' }));
+
+      expect(useStudyWorkspaceStore.getState().windows.find((w) => w.id === 'w-chart')?.chart?.timeframe)
+        .toBe('D');
+      expect(useStudyTabsStore.getState().tabs[0].timeframe).toBe('D');
+    });
   });
 
   it('does not reuse a saved minute viewport after switching the study chart to D/W/M', () => {
