@@ -17,8 +17,9 @@ import { SortCycleButton } from '../heatmap/SortCycleButton';
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
 import { CollectDialog, SingleCodeCollectDialog } from '../heatmap/CollectDialog';
 import { filterGroups, entryMatchesQuery } from '../heatmap/filterGroups';
-import { avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from '../heatmap/heat';
+import { avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort, SORT_THROTTLE_MS } from '../heatmap/heat';
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
+import { useThrottledValue } from '../util/useThrottledValue';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 import { PageContainer } from '../layout/PageContainer';
 import { ControlBar, PageState, PanelCard, ToolbarButton } from '../ui/PageShell';
@@ -47,14 +48,21 @@ export function Heatmap() {
   const setSortMode = useHeatmapPrefsStore((s) => s.setSortMode);
   const groupSort = useHeatmapPrefsStore((s) => s.groupSort);
   const setGroupSort = useHeatmapPrefsStore((s) => s.setGroupSort);
-  // 그룹 순서 = orderFolderGroups(직교 축). groupSort≠manual 이면 quoteByCode 가 폴마다
-  // 새 Map → 매 폴 라이브 재정렬. ⚠️ 이는 행 'change' 모드와 "동형"이 아니다(거짓 등가):
-  // change 는 드래그를 끄지만 (manual행, desc그룹)은 드래그를 켠 채 그룹을 재배치한다
-  // → 행 드래그 중 그룹 텔레포트 리스크(스펙 G1, 미검증 — 실측 후 동결 가드 조건부 추가).
+  // 정렬 키 **전용** 시세. 그룹 순서와 행 순서가 이걸 공유하고, 표시값(셀 시세·헤더 틴트·
+  // 섹터 스트립)은 계속 라이브 quoteByCode 를 본다 — 숫자는 실시간이고 자리만 정돈된다.
+  // 얼리는 대상이 결과 배열이 아니라 정렬 키라서, 그룹 추가·삭제·검색 같은 **구조** 변화는
+  // 스로틀을 통과해 즉시 보인다(배열을 얼리면 삭제된 그룹이 최대 10초 남는다).
+  const sortQuoteByCode = useThrottledValue(quoteByCode, SORT_THROTTLE_MS);
+  // 그룹 순서 = orderFolderGroups(직교 축). groupSort≠manual 이면 스로틀된 시세로 재정렬한다
+  // — 예전엔 quoteByCode 를 직접 봐서 WS 틱 flush 마다(초당 최대 ~6.7회) 카드가 자리를 바꿨다.
+  // ⚠️ 이는 행 'change' 모드와 "동형"이 아니다(거짓 등가): change 는 드래그를 끄지만
+  // (manual행, desc그룹)은 드래그를 켠 채 그룹을 재배치한다 → 행 드래그 중 그룹 텔레포트
+  // 리스크(스펙 G1). 스로틀이 그 확률을 크게 줄이지만 창 경계가 드래그 도중 떨어질 수
+  // 있으므로 아래 동결 가드는 그대로 둔다.
   const liveOrderedGroups = useMemo(() => {
-    const pctOf = makePctOf(quoteByCode);
+    const pctOf = makePctOf(sortQuoteByCode);
     return orderFolderGroups(groups, groupSort, (g) => avgPct(g.entries, pctOf));
-  }, [groups, groupSort, quoteByCode]);
+  }, [groups, groupSort, sortQuoteByCode]);
   const [isRowDragging, setIsRowDragging] = useState(false);
   // G1: 행 드래그 중 그룹 순서 동결(텔레포트 방지), drag-end 에 최신 적용.
   const orderedGroups = useFrozenWhileDragging(liveOrderedGroups, isRowDragging);
@@ -234,6 +242,7 @@ export function Heatmap() {
             드래그 재정렬은 매칭 탐색 흐름을 방해하고, 그룹 간 정렬(orderedGroups)이
             검색 결과를 추종해 순서 기준이 흔들린다. query 는 매칭 행 하이라이트용. */}
         <HeatmapBoard groups={visibleGroups} quoteByCode={quoteByCode}
+          sortQuoteByCode={sortQuoteByCode}
           sortMode={sortMode} onPick={onPick}
           onReorder={isSearching ? undefined : onReorder} onRowMenu={onRowMenu}
           onMove={onDragMove} onCopy={onDragCopy}

@@ -34,7 +34,8 @@ import { ChevronIcon } from '../ui/ChevronIcon';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
 import { filterGroups, entryMatchesQuery } from './filterGroups';
-import { sortEntries, avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from './heat';
+import { sortEntries, avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort, SORT_THROTTLE_MS } from './heat';
+import { useThrottledValue } from '../util/useThrottledValue';
 import {
   useHeatmap, useRemoveFromHeatmap, useMoveHeatmapEntries, useReorderHeatmapEntries,
   useCreateHeatmapFolder, useRenameHeatmapFolder, useDeleteHeatmapFolder,
@@ -240,7 +241,9 @@ function GroupHeader(props: {
         <span className="flex-none text-xs font-normal text-fg-dim">{props.count}</span>
       </button>
       {/* 그룹 평균 등락률(비가중, 시세 도착 종목만; 전부 결측이면 미표시). 방향색만 —
-          배경 틴트는 없다(섹터 스트립과 달리 드로어는 숫자만). 정렬키(avgPct)와 동일값. */}
+          배경 틴트는 없다(섹터 스트립과 달리 드로어는 숫자만). 같은 avgPct 지만 **라이브
+          시세**로 계산한다 — 그룹 순서를 정하는 쪽은 SORT_THROTTLE_MS 로 스로틀된 시세를
+          보므로, 창 안에서는 이 숫자가 현재 순서보다 앞선다(값은 실시간, 자리는 격자). */}
       {props.avg != null && (
         <span className={`flex-none text-xs font-normal font-data tabular-nums ${priceDirClass(props.avg)}`}>
           {`${props.avg > 0 ? '+' : ''}${props.avg.toFixed(2)}%`}
@@ -556,15 +559,22 @@ export function HeatmapDrawer() {
   };
 
   // 렌더 파이프라인: groupByFolder → orderFolderGroups(그룹간 정렬) → filterGroups(검색)
-  //   → (렌더 시) sortEntries(그룹내 정렬). pctOf 는 시세 Map 파생이라 change/desc/asc 모드는
-  // 매 폴링 라이브 재정렬(페이지와 동일).
+  //   → (렌더 시) sortEntries(그룹내 정렬).
+  //
+  // pctOf 가 **두 갈래**인 이유: 표시값(그룹 헤더 평균 숫자)은 라이브여야 하고, 순서를
+  // 정하는 키는 SORT_THROTTLE_MS 격자여야 한다. 갈라 두지 않으면 둘 중 하나가 반드시
+  // 틀린다 — 통째로 스로틀하면 헤더 숫자가 최대 10초 낡고, 통째로 라이브면 WS 틱
+  // flush 마다(초당 최대 ~6.7회) 그룹·행이 자리를 바꾼다. 페이지는 행 정렬이
+  // HeatmapFolder 안에 있어 주입점이 다를 뿐 정책은 같다.
   const pctOf = useMemo(() => makePctOf(quoteByCode), [quoteByCode]);
+  const sortQuoteByCode = useThrottledValue(quoteByCode, SORT_THROTTLE_MS);
+  const sortPctOf = useMemo(() => makePctOf(sortQuoteByCode), [sortQuoteByCode]);
   const visibleGroups = useMemo(() => {
     if (!data) return [];
     const grouped = groupHeatmapEntries(data.folders, data.entries);
-    const ordered = orderFolderGroups(grouped, groupSort, (g) => avgPct(g.entries, pctOf));
+    const ordered = orderFolderGroups(grouped, groupSort, (g) => avgPct(g.entries, sortPctOf));
     return filterGroups(ordered, query);
-  }, [data, groupSort, pctOf, query]);
+  }, [data, groupSort, sortPctOf, query]);
 
   const isSearching = query.trim() !== '';
   // 그룹 내 종목 드래그 재정렬은 manual 정렬 + 비검색일 때만(페이지 HeatmapFolder 와 동일 계약).
@@ -629,7 +639,9 @@ export function HeatmapDrawer() {
       // 그룹 내 재정렬. rows 는 현재 화면 순서(manual=entry.order). arrayMove 로 새 순서 산출.
       const group = visibleGroups.find((g) => g.folder.id === from);
       if (!group) return;
-      const ordered = sortEntries(group.entries, sortMode, pctOf).map((e) => e.code);
+      // 정렬 시세는 렌더(아래 rows)와 **같은 출처**여야 한다 — 여기만 라이브를 보면 스로틀
+      // 창 안에서 커밋 순서가 화면 순서와 어긋나 드롭이 엉뚱한 자리에 저장된다.
+      const ordered = sortEntries(group.entries, sortMode, sortPctOf).map((e) => e.code);
       const fromIdx = ordered.indexOf(code);
       const toIdx = ordered.indexOf(String(over.code));
       if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
@@ -701,7 +713,7 @@ export function HeatmapDrawer() {
               //  그룹을 채울 표면을 없애 데드엔드였다).
               // 검색 중엔 접기 무시 — 매칭된 행이 보여야 한다(collapsed Set 은 안 건드림).
               const isCollapsed = !isSearching && collapsed.has(key);
-              const rows = sortEntries(g.entries, sortMode, pctOf);
+              const rows = sortEntries(g.entries, sortMode, sortPctOf);
               const renderGroup = (dragHandle?: GroupDragHandle) => (
                 <>
                   <GroupHeader label={folder.name} count={g.entries.length} collapsed={isCollapsed}

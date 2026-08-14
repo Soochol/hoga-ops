@@ -46,6 +46,15 @@ export function heatmapGroupNameOf(
 // 행(종목)·그룹 정렬 공용 3-상태: manual=기본(저장 순서), desc=등락률 내림, asc=오름.
 // 관심종목의 QuoteSortMode(default/change_pct_desc/change_pct_asc)와 1:1 대응(아이콘 공용).
 export type SortMode = 'manual' | 'desc' | 'asc';
+/** 정렬 키(시세)를 통과시키는 최소 간격. desc/asc 에서 **순서만** 이 격자로 움직인다 —
+ *  셀 시세·헤더 틴트·섹터 스트립은 계속 실시간이다.
+ *
+ *  왜 필요한가: 정렬 키의 출처인 quoteByCode 는 REST 10초 폴링뿐 아니라 WS 체결 틱
+ *  오버레이로도 갱신되고, 그쪽은 150ms 로 코얼레싱돼 **초당 최대 ~6.7회** 새 Map 을
+ *  낸다(liveTickOverlay.ts LIVE_FLUSH_MS). 그룹 평균(avgPct)·행 등락률은 체결 한 건에도
+ *  소수점이 움직여 인접 순위가 계속 뒤집혔다 — 값이 아니라 자리가 읽기를 방해한 것이다.
+ *  10초는 REST 폴링 주기와 같은 값이라 "폴링마다 한 번 정돈"으로 읽힌다. */
+export const SORT_THROTTLE_MS = 10_000;
 export const HEAT_SAT = 8;          // 포화 임계(%)
 export const HEAT_MAX_ALPHA = 0.42; // 기본 최대 알파(폴백 기본값)
 /** 등락률 → 배경 색. null/0 = 투명(카드 배경 노출). ±HEAT_SAT% 포화.
