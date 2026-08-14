@@ -56,6 +56,9 @@ import {
 import type { LiveStudySaveSource } from '../../studyViews/studySaveCommand';
 import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButton';
 import { CollectButton } from './CollectButton';
+import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
+import { showsWatchlistHeart } from './chartHeaderCompact';
+import { useWatchlistMembership } from '../../watchlist/useWatchlistMembership';
 import type { CollectVisibleRange } from './collectDialogControls';
 import { unixMsToKSTDate } from '../../util/time';
 import { clearWindowFlagLegendValues } from '../indicators/flagLegendValueRegistry';
@@ -164,6 +167,13 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 접힘이 관측값을 되바꾸지 않는다(피드백 루프 없음).
   const headerRef = useRef<HTMLDivElement>(null);
   const headerFold = useChartHeaderFold(headerRef);
+
+  // 관심 하트의 채움 상태. `useWatchlistMembership` 의 계약대로 **창에서 한 번만**
+  // 부르고 버튼에 내린다(버튼이 직접 부르면 창 수만큼 옵저버가 는다). 타이틀바도
+  // 자기 몫으로 한 번 부르므로 창당 2개인데, 창 단위라 행 단위였던 그 훅의 원래
+  // 문제와는 규모가 다르다 — 의도된 비용이다.
+  const { isMember } = useWatchlistMembership();
+  const heartCode = symbol?.kind === 'index' ? null : symbol?.code ?? null;
 
   // 저장뷰 캡처용 뷰포트 ref — LiveChartRoot 가 마운트 시 캡처 함수를 공급한다.
   const viewportCaptureRef = useRef<() => TabViewport | null>(() => null);
@@ -327,6 +337,24 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           compact={headerFold.compactTimeframe}
         />
         <div className="ml-auto flex items-center gap-0.5">
+          {/* 관심 하트는 액션 행 맨 왼쪽 — 나머지 넷은 차트 조작이고 이것만
+              종목 속성이라, 그리기 왼쪽에 두어 동사 묶음 앞에 세운다.
+              **2단계 접힘에서는 내린다.** 그 단계의 요구폭이 하트 포함 170px 인데
+              창은 MIN_W=160px(컨테이너 158px)까지 좁아져 12px 넘치고, 넘친 만큼
+              오른쪽 끝 「수집」이 overflow-hidden 에 무성 잘린다(2026-08-14 실측으로
+              확인 — #767 과 같은 실패 모드). #762 의 "기능 손실 없이 폭만 줄인다" 를
+              여기서만 밟는 대가로 잘림을 0 으로 되돌린다 — 하트는 우측 레일·종목
+              검색에도 있어 도달 경로가 남는다.
+              발진하지 않는다: 접힘 판정은 **컨테이너 폭**을 보므로(useChartHeaderFold)
+              내용물이 줄어드는 이 변화가 판정을 되돌리지 못한다. */}
+          {showsWatchlistHeart(headerFold) && (
+            <WatchlistHeartActionButton
+              code={heartCode}
+              name={symbol?.name ?? null}
+              isMember={heartCode != null && isMember(heartCode)}
+              compact={headerFold.compactActions}
+            />
+          )}
           <DrawingMenu
             code={d.workareaCode}
             timeframe={view.timeframe}

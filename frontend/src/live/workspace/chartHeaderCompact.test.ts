@@ -8,6 +8,9 @@ import {
   HEADER_TIMEFRAME_RESTORE_WIDTH_PX,
   nextHeaderFold,
   LIVE_HEADER_FOLD,
+  LIVE_HEADER_NEED,
+  HEART_FOLDED_WIDTH_PX,
+  showsWatchlistHeart,
   STUDY_HEADER_FOLD,
   STUDY_HEADER_NEED,
   type HeaderFold,
@@ -24,16 +27,16 @@ describe('nextHeaderFold', () => {
 
   // 임계 아래에서 마지막 액션 버튼이 overflow-hidden 에 예고 없이 잘려 사라진다
   // (#762 원 실측: 2버튼 시절 250px 에서 41px 스필). 1단계는 그 무성 손실을 막고,
-  // 봉 버튼은 아직 살려둔다 — 300px 는 두 임계 사이(240 ≤ w < 384).
+  // 봉 버튼은 아직 살려둔다 — 300px 는 두 임계 사이(262 ≤ w < 414).
   it('folds action labels first, keeping the timeframe buttons', () => {
     const fold = nextHeaderFold(300, HEADER_FOLD_NONE);
     expect(fold.compactActions).toBe(true);
     expect(fold.compactTimeframe).toBe(false);
   });
 
-  // 액션 4버튼 실측(2026-08-07, 다이얼 1.0×): 라벨 펼침 382px · 아이콘만 235px.
+  // 액션 5버튼 실측(2026-08-14, 다이얼 1.0×): 라벨 펼침 412px · 아이콘만 257px.
   // 창은 MIN_W=160px 까지 좁아지므로 2단계까지 접어야 잘림이 0 이 된다.
-  // (2026-07-21 · 1.125× 시절: 414 / 241 / 완전 접힘 141.)
+  // (하트 없던 4버튼 시절: 382 / 235 · 2026-07-21 1.125× 시절: 414 / 241 / 141.)
   it('folds the timeframe buttons too once even icons would not fit', () => {
     expect(nextHeaderFold(200, HEADER_FOLD_NONE)).toEqual(BOTH_FOLDED);
     expect(nextHeaderFold(160, HEADER_FOLD_NONE)).toEqual(BOTH_FOLDED);
@@ -45,11 +48,33 @@ describe('nextHeaderFold', () => {
   // 남아 있었다 — 임계 258 이 실요구 254.25 위 3.75px 여유로 우연히 살아 있어서
   // 무증상이었다. **여유가 근거처럼 보이는 것이 이 계열 버그의 공통 서명이다.**
   it('keeps thresholds above the measured requirement for the current button set', () => {
-    // 2026-08-07 실측 @1.0× · 30분 라벨(최장). 다이얼을 움직이면 여기도 재측정한다.
-    const MEASURED_LABEL_WIDTH_PX = 382;
-    const MEASURED_ICON_WIDTH_PX = 235;
+    // 2026-08-14 실측 @1.0× · 30분 라벨(최장) · 액션 5버튼(관심 하트 추가).
+    // 다이얼이나 버튼 구성이 바뀌면 `LIVE_HEADER_NEED` 를 재측정한다.
+    const MEASURED_LABEL_WIDTH_PX = 412;
+    const MEASURED_ICON_WIDTH_PX = 257;
+    expect(LIVE_HEADER_NEED.full).toBe(MEASURED_LABEL_WIDTH_PX);
+    expect(LIVE_HEADER_NEED.actionsFolded).toBe(MEASURED_ICON_WIDTH_PX);
     expect(HEADER_LABEL_MIN_WIDTH_PX).toBeGreaterThanOrEqual(MEASURED_LABEL_WIDTH_PX);
     expect(HEADER_TIMEFRAME_FOLD_WIDTH_PX).toBeGreaterThanOrEqual(MEASURED_ICON_WIDTH_PX);
+  });
+
+  // 접힘의 마지막 단계는 **더 접을 것이 없으므로** 그 자체로 `MIN_W` 창에 들어가야
+  // 한다 — 여기서 넘치면 임계를 어떻게 잡아도 오른쪽 끝 버튼이 무성 잘린다.
+  // 두 번째 단언이 하트를 그 단계에서 내리는 이유다: 되살리면 예산을 넘는다.
+  it('fits the fully folded header inside the narrowest window, heart excluded', () => {
+    // 창 rect 는 좌우 GAP/2 를 패딩으로 쓰므로 헤더 컨테이너는 MIN_W - 2.
+    const container = MIN_W - 2;
+    expect(LIVE_HEADER_NEED.bothFolded).toBeLessThanOrEqual(container);
+    expect(LIVE_HEADER_NEED.bothFolded + HEART_FOLDED_WIDTH_PX).toBeGreaterThan(container);
+    expect(showsWatchlistHeart({ compactActions: true, compactTimeframe: true })).toBe(false);
+  });
+
+  // 하트가 사라지는 것은 **마지막 단계에서만** 이다 — 1단계(라벨만 접힘)는 예산이
+  // 남으므로(257 ≤ 임계 262) 하트를 유지한다. 두 단계를 같이 지우면 임계 384~262
+  // 구간에서 이유 없이 기능이 사라진다.
+  it('keeps the heart while only the action labels are folded', () => {
+    expect(showsWatchlistHeart(HEADER_FOLD_NONE)).toBe(true);
+    expect(showsWatchlistHeart({ compactActions: true, compactTimeframe: false })).toBe(true);
   });
 
   // 임계 하나만 쓰면 경계에서 1px 떨림에 라벨이 깜빡인다.
