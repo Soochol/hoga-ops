@@ -16,9 +16,9 @@
 소화하는 체결 부호(매수벽은 매도공격 side=-1 이 먹는다).
 
 사용:
-    uv run --extra dev python tools/scan_sell_wall_surge.py 20260812 028050
-    uv run --extra dev python tools/scan_sell_wall_surge.py 20260812 028050 --side bid
-    uv run --extra dev python tools/scan_sell_wall_surge.py 20260812 028050 --side both -q
+    uv run --extra dev python tools/scan_wall_surge.py 20260812 028050
+    uv run --extra dev python tools/scan_wall_surge.py 20260812 028050 --side bid
+    uv run --extra dev python tools/scan_wall_surge.py 20260812 028050 --side both -q
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ MIN_SHARE = 0.15  # 그 시점 해당 측 총잔량 대비 최소 비중
 WARMUP_HHMM = 930  # 이 시각 전에는 통계만 쌓고 발동하지 않는다(표본 부족 구간)
 # 종목별 발동 밀도는 여전히 갈린다(028050 17 · 005930 10 · 000660 226). z-score
 # 정규화(당일 러닝 μ·σ)를 시도했으나 **더 갈렸다**(36 · 150 · 191) — 증가량 분포가
-# 정규분포가 아니라 같은 z 가 종목마다 다른 백분위에 걸린다. 설계 문서 §3.5 참조.
+# 정규분포가 아니라 같은 z 가 종목마다 다른 백분위에 걸린다. 설계 문서 §3.6 참조.
 OUTCOME_MS = 120_000  # 결말 추적 창
 CONSUMED = 0.5  # 체결로 소화됐다고 볼 비율
 GONE_RATIO = 0.2  # 벽이 소멸했다고 볼 잔량 비율
