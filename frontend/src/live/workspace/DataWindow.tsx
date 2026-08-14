@@ -54,10 +54,12 @@ import {
   mergeBrokerSeriesWithLiveTail,
   aggregateProgramTrade,
   mergeProgramTradeWithLiveTail,
+  latestAfterHoursTotals,
   latestOrderbookSnapshot,
   latestTradeSummary,
   orderbookSnapshotAtCursor,
 } from '../liveSidebarAdapters';
+import { afterHoursBookToSnapshot, useAfterHoursBook } from '../../api/liveAfterHoursBook';
 import { useLiveCursorStore } from '../useLiveCursorStore';
 import { useGroupChartLink } from './groupChartLinkSource';
 import {
@@ -202,12 +204,35 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         : null,
     [isSpot, spotSnap, spotTimeframe, scope.cursorMs, venueOb],
   );
-  const snapshot = resolveOrderbookCardSnapshot({
+  // 시간외 단일가 5단(ka10087) — 16:00–18:00 창에서만 폴링한다. 그 구간엔 WS 가
+  // 침묵해 이게 유일한 호가 소스다(`liveAfterHoursBook` 참조). 스팟 커서 중에는
+  // 아예 끈다 — 과거 시점 위에 "지금 호가"를 얹으면 거짓 정보다.
+  const afterHoursBook = useAfterHoursBook(isSpot ? null : code);
+  const singlePriceSnapshot = useMemo(
+    () => afterHoursBookToSnapshot(afterHoursBook.data),
+    [afterHoursBook.data],
+  );
+  const regularSnapshot = resolveOrderbookCardSnapshot({
     scope,
     spotSnapshot: spotSnap,
     inactiveSnapshot: latestSnapshot,
     bufferFallbackSnapshot: bufferSnap,
   });
+  // 시간외 단일가 호가가 있으면 **사다리째** 그것으로 간다(5단이라 격자 바깥 5행은
+  // 빈다 — 사용자 결정). 없으면 정규장 스냅샷 그대로: `active=false` 는 "창 밖이거나
+  // 볼 호가가 없다" 라서 화면을 비우는 것보다 15:30 값을 남기는 편이 낫다.
+  const snapshot = singlePriceSnapshot ?? regularSnapshot;
+  // 하단 총잔량 스트립의 두 모드. deltaBadges 와 같은 규율로 스팟 중에는 전부 끈다.
+  //   16:00–18:00  ka10087 총잔량(사다리와 같은 출처라 합이 맞는다)
+  //   15:40–16:00  WS 0E 총잔량(사다리는 15:30 정규장 값이라 합이 안 맞는 게 정상)
+  const afterHoursTotals = useMemo(() => {
+    if (isSpot) return null;
+    if (singlePriceSnapshot !== null) {
+      return { ask: singlePriceSnapshot.tot_ask, bid: singlePriceSnapshot.tot_bid };
+    }
+    return latestAfterHoursTotals(live.afterHours);
+  }, [isSpot, singlePriceSnapshot, live.afterHours]);
+  const afterHoursLabel = singlePriceSnapshot !== null ? '시간외 단일가' : '시간외';
   const quote = useQuoteByCode([code], venue).get(code);
   // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.
   //
@@ -365,6 +390,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       <div className="min-h-0 flex-1">
         <BookPanel
           snapshot={snapshot}
+          afterHoursTotals={afterHoursTotals}
+          afterHoursLabel={afterHoursLabel}
           baselinePrice={baselinePrice}
           summary={summary}
           trades={recentTrades}

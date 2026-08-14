@@ -8,6 +8,7 @@ from hoga.live.session_gate import (
     deriv_capture_window,
     investor_flow_capture_window,
     investor_flow_capture_window_async,
+    is_after_hours_single_price_window,
     is_auction_window,
     ws_capture_window,
     ws_capture_window_async,
@@ -226,3 +227,39 @@ async def test_investor_flow_window_async_matches_sync(monkeypatch):
     assert await investor_flow_capture_window_async(t) is True
     monkeypatch.setattr(cal, "is_trading_session_today", lambda d: False)
     assert await investor_flow_capture_window_async(t) is False
+
+
+# ── 시간외 단일가 창 (ka10087 라우트 게이트) ─────────────────────────────────
+
+
+def test_after_hours_single_price_window_boundaries():
+    """[16:00, 18:00) — 여는 쪽 포함, 닫는 쪽 배제.
+
+    경계를 값으로 세워 둔다: 15:59 가 True 면 정규장 직후를 시간외로 오인하는
+    것이고, 18:00 이 True 면 창이 닫히지 않아 밤새 폴링이 돈다.
+    """
+    assert is_after_hours_single_price_window(_ms(2026, 5, 27, 15, 59)) is False
+    assert is_after_hours_single_price_window(_ms(2026, 5, 27, 16, 0)) is True
+    assert is_after_hours_single_price_window(_ms(2026, 5, 27, 17, 59)) is True
+    assert is_after_hours_single_price_window(_ms(2026, 5, 27, 18, 0)) is False
+
+
+def test_after_hours_single_price_window_excludes_weekend():
+    """주말은 닫는다 — 캘린더 없이도 확실하고, 이틀 내내 도는 폴링은 명백한 낭비다."""
+    # 2026-05-30/31 = 토/일.
+    assert is_after_hours_single_price_window(_ms(2026, 5, 30, 17, 0)) is False
+    assert is_after_hours_single_price_window(_ms(2026, 5, 31, 17, 0)) is False
+
+
+def test_after_hours_single_price_window_needs_no_calendar(monkeypatch):
+    """캘린더를 **묻지 않는다** — 시계만으로 답한다(quotes phase 와 같은 선례).
+
+    캘린더를 얹으면 동기 KIS HTTP 가 라우트 경로로 재도입된다. 평일 공휴일에
+    헛콜이 나가는 것은 수용 — 벤더가 빈 호가를 답하고 라우트가 접는다.
+    """
+    def _boom(_d):  # pragma: no cover — 불려선 안 된다
+        raise AssertionError("calendar must not be consulted")
+
+    monkeypatch.setattr(cal, "is_trading_session_today", _boom)
+
+    assert is_after_hours_single_price_window(_ms(2026, 5, 27, 17, 0)) is True

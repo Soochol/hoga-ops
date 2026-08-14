@@ -22,7 +22,7 @@ import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/or
 import type { LiveViEvent } from '../../api/liveViStatus';
 import { priceDirClass } from '../../ui/priceDir';
 import { viExpectedDown, viExpectedUp } from '../krxTick';
-import type { LiveTradeSummary } from '../liveSidebarAdapters';
+import type { AfterHoursTotals, LiveTradeSummary } from '../liveSidebarAdapters';
 
 /** 체결 리스트 한 줄. */
 export type BookTrade = { price: number; qty: number; side: number };
@@ -57,6 +57,27 @@ type Props = {
   limits?: BookStockLimits | null;
   /** 종목의 최신 VI 이벤트(키움 1h). null = 오늘 이벤트 없음 → 예상가만 표시. */
   vi?: LiveViEvent | null;
+  /**
+   * 시간외 총잔량(키움 0E). 있으면 하단 스트립이 `snapshot` 의 총잔량 대신 이 값을
+   * 쓰고 "시간외" 라벨을 단다. null/미지정이면 종전 그대로 정규장 총잔량.
+   *
+   * **사다리는 갈아치우지 않는다** — 0E 에는 단계별 호가가 없어서 바꿀 것이 없고,
+   * 위 사다리는 15:30 정규장 마지막 스냅샷으로 남는다. 그래서 이 상태에서는
+   * "사다리 잔량 합 ≠ 총잔량" 이 **정상**이다: 두 숫자의 출처와 시각이 다르다.
+   * 라벨이 그 불일치를 설명하는 유일한 장치라 값과 함께 반드시 뜬다.
+   */
+  afterHoursTotals?: AfterHoursTotals | null;
+  /**
+   * 시간외 스트립 라벨. 두 모드가 같은 자리를 쓰지만 **의미가 다르다**:
+   *
+   *   '시간외'       15:40–16:00 · WS `0E` 총잔량만(사다리는 15:30 정규장 값)
+   *   '시간외 단일가' 16:00–18:00 · REST `ka10087` — **사다리도 시간외 값**이고 5단이라
+   *                  격자 바깥 5행이 빈다
+   *
+   * 두 번째 모드에서 라벨이 특히 load-bearing 하다 — 빈 5행이 "데이터 결손"이 아니라
+   * "그 시장에 없는 단계" 임을 말하는 유일한 장치다.
+   */
+  afterHoursLabel?: string;
 };
 
 const ROW_H = 22; // DESIGN.md — Orderbook table row 22px
@@ -100,6 +121,8 @@ export default function BookPanel({
   deltaBadges = null,
   limits = null,
   vi = null,
+  afterHoursTotals = null,
+  afterHoursLabel = '시간외',
 }: Props) {
   if (snapshot === undefined) return <PanelState>커서 위치 불러오는 중…</PanelState>;
   if (snapshot === null) return <PanelState>호가 데이터 없음</PanelState>;
@@ -274,7 +297,12 @@ export default function BookPanel({
           </div>
         </div>
       </div>
-      <TotalQtyStrip snapshot={snapshot} maskRatio={maskRatio} />
+      <TotalQtyStrip
+        snapshot={snapshot}
+        maskRatio={maskRatio}
+        afterHoursTotals={afterHoursTotals}
+        afterHoursLabel={afterHoursLabel}
+      />
     </div>
   );
 }
@@ -617,12 +645,20 @@ function SummaryRow({
 function TotalQtyStrip({
   snapshot,
   maskRatio,
+  afterHoursTotals,
+  afterHoursLabel,
 }: {
   snapshot: OrderbookSnapshot;
   maskRatio: boolean;
+  afterHoursTotals: AfterHoursTotals | null;
+  afterHoursLabel: string;
 }) {
-  const ask = snapshot.tot_ask;
-  const bid = snapshot.tot_bid;
+  // 시간외 총잔량이 오면 그걸 쓴다 — 위 사다리(정규장 15:30 마지막 스냅샷)는
+  // 그대로 두고 이 스트립만 살아 움직인다. KRX-only 종목은 15:30 에 0D 가 끊겨
+  // 여기가 시간외의 유일한 호가 신호다(Props.afterHoursTotals 주석).
+  const isAfterHours = afterHoursTotals !== null;
+  const ask = afterHoursTotals?.ask ?? snapshot.tot_ask;
+  const bid = afterHoursTotals?.bid ?? snapshot.tot_bid;
   return (
     <div className="border-t border-border">
       {maskRatio ? (
@@ -638,16 +674,27 @@ function TotalQtyStrip({
         </div>
       )}
       {/* 중앙 라벨("판매대기 · 구매대기")은 사용자 요청으로 삭제(2026-07-21) —
-          색·좌우 위치가 의미를 이미 전달하고, aria-label 이 접근성을 담당한다. */}
+          색·좌우 위치가 의미를 이미 전달하고, aria-label 이 접근성을 담당한다.
+          아래 "시간외"는 그 상시 라벨의 부활이 아니라 **조건부 출처 표시**다:
+          이 숫자만 시간외 값이고 위 사다리는 정규장 마지막 값이라 둘의 합이
+          안 맞는데, 그 불일치를 설명하는 장치가 이것뿐이다. */}
       <div className="flex items-center justify-between px-2 py-1">
         <span
-          aria-label={`매도총잔량 ${ask.toLocaleString('ko-KR')}`}
+          aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매도총잔량 ${ask.toLocaleString('ko-KR')}`}
           className="font-data text-sm tabular-nums text-price-down"
         >
           {ask.toLocaleString('ko-KR')}
         </span>
+        {isAfterHours && (
+          <span
+            className="whitespace-nowrap text-xs text-fg-dim"
+            data-testid="book-total-after-hours"
+          >
+            {afterHoursLabel}
+          </span>
+        )}
         <span
-          aria-label={`매수총잔량 ${bid.toLocaleString('ko-KR')}`}
+          aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매수총잔량 ${bid.toLocaleString('ko-KR')}`}
           className="font-data text-sm tabular-nums text-price-up"
         >
           {bid.toLocaleString('ko-KR')}

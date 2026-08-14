@@ -391,6 +391,16 @@ class LiveStream:
         snap = LiveSnapshot(t_ms=tick.t_ms, kind=tick.kind, payload=payload)
         # 표시 경로는 §11에 따라 무게이트 — 세 venue 모두 항상 publish.
         await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
+        # 시간외호가(0E)는 **여기서 끝난다** — 0w 가 위에서 먼저 return 하는 것과 같은
+        # 표시 전용 부류다(0w 와 달리 사이드카 latch 가 없어 공통 publish 를 재사용).
+        #
+        # 아래 저장 경로에 흘리면 안 되는 이유가 kind 분기 유무와 무관하게 하나 있다:
+        # 이 틱이 오는 시각(15:40~)에 KRX 저장 창은 이미 닫혀 있어(`_open_venues`)
+        # `_ds.ingest` 는 어차피 안 불리지만, **피크 집계(`_ingest_*_peak`)는 게이트
+        # 밖**이라 그대로 통과한다. 사다리 없는 payload 가 최대벽 상태에 섞이면
+        # 그날 피크가 시간외 총잔량에 오염된다. 명시적으로 끊는 편이 안전하다.
+        if tick.kind is SnapshotKind.AFTER_HOURS:
+            return
         # ── 성역 격리(#524)는 여기서 끝난다 (ADR-0140 §2, PR-F) ────────────────
         #
         # `if tick.venue != "KRX": return` 이 있던 자리다. 그 한 줄이 저장·집계·피크·

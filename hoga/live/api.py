@@ -55,6 +55,7 @@ from hoga.live.kis_client import (
     KisAuthError,
     KisRateLimitError,
 )
+from hoga.live.kiwoom_after_hours import KiwoomAfterHoursError, KiwoomAfterHoursFetcher
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import (
     KiwoomApiError,
@@ -89,6 +90,7 @@ from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.quote_change_resolver import QuoteChangeResolver
 from hoga.live.quote_models import Quote
 from hoga.live.screener_daily_candles import read_screener_daily_candles
+from hoga.live.session_gate import is_after_hours_single_price_window
 from hoga.live.venue import LiveVenuePolicy, Venue, parse_live_venue_policy, quote_venue_for_policy
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.timeenc import KST
@@ -148,6 +150,9 @@ index_candles_cache_instance: IndexCandlesCache | None = None
 # ka10001 fetcher — 프로세스 싱글톤(httpx.Client 보유). build_router 재호출(테스트)
 # 마다 새 클라이언트가 새지 않도록 index_candles_cache_instance 와 같은 패턴.
 kiwoom_stock_info_fetcher_instance: KiwoomStockInfoFetcher | None = None
+# ka10087 fetcher — 위와 같은 이유의 싱글톤. 16:00–18:00 시간외 단일가 5단 호가 소스로,
+# 그 구간엔 WS 가 침묵하므로 이것 말고 대안이 없다(kiwoom_after_hours 모듈 docstring).
+kiwoom_after_hours_fetcher_instance: KiwoomAfterHoursFetcher | None = None
 kiwoom_rankings_fetcher_instance: KiwoomRankingsFetcher | None = None
 index_minute_candles_cache_instance: IndexMinuteCandlesCache | None = None
 # ka20005 fetcher — 지수 **분봉** 전용(ADR-0129). 키움 자격증명이 있을 때만 만들어지고,
@@ -1654,6 +1659,11 @@ class LiveSeriesResponse(BaseModel):
     trades: list[dict] = Field(default_factory=list)
     brokers: list[dict] = Field(default_factory=list)
     programs: list[dict] = Field(default_factory=list)
+    # 시간외호가(키움 0E) — 위 네 배열과 같은 규약(항목 shape 은 스트림 소유).
+    # **`snapshots` 와 합치지 않는다**: 사다리 없는 payload 라 섞이면 호가창이 빈다
+    # (`SnapshotKind.AFTER_HOURS` 주석). 15:30 에 0D 가 끊기는 KRX-only 종목의
+    # 총잔량 두 개를 시간외에도 살리는 것이 이 배열의 유일한 목적이다.
+    after_hours: list[dict] = Field(default_factory=list)
     ask_peak_today: dict | None = None
     bid_peak_today: dict | None = None
 
@@ -1768,6 +1778,48 @@ class StockLimitsResponse(BaseModel):
     high_250_date: str | None
     low_250_date: str | None
     fetched_at_ms: int
+    source: Literal["kiwoom"] = "kiwoom"
+
+
+class AfterHoursLevelModel(BaseModel):
+    """시간외 단일가 호가 한 단계. 빈 단계는 price=0·qty=0(길이 고정 배열의 패딩)."""
+
+    price: int
+    qty: int
+
+
+class AfterHoursBookResponse(BaseModel):
+    """GET /api/live/after-hours-book — 키움 ka10087 시간외 단일가 **5단**.
+
+    16:00–18:00 구간엔 WS 가 침묵해(`0D`·`0B` 모두) 이 REST 가 유일한 호가 소스다.
+    근거와 실측은 `docs/research/2026-08-14-kiwoom-after-hours-orderbook-sources.md`.
+
+    **`ask`/`bid` 는 5개다 — 10개가 아니다.** 벤더 상한이 5차선이라 10호가 창은 이
+    구간에 중앙 쪽 5행만 차고 바깥 5행은 빈다(사용자 결정 2026-08-14: 10단 격자
+    유지). 프론트가 그 사실을 라벨로 말해야 한다 — 빈 행은 결손이 아니라 **없는
+    단계**다.
+
+    `active` 가 판별 필드다:
+      - `false` = 창 밖이거나(벤더 콜 자체를 안 한다) 볼 호가가 없다.
+        이때 나머지 필드는 빈 값이고, 소비자는 **정규장 스냅샷을 그대로 둬야** 한다.
+      - `true` = 이 응답으로 호가창을 갈아끼운다.
+
+    `response_model_exclude_none` 을 걸지 **않는다** — 5단이 부분만 찰 때 "값이 null"
+    과 "키가 없음" 이 구분돼야 한다(CLAUDE.md 부재/null 계약).
+    """
+
+    code: str
+    active: bool
+    #: 호가잔량기준시간 HHMMSS(벤더 `bid_req_base_tm`). 표시용 — 신선도 판단 근거.
+    base_tm: str | None = None
+    ask: list[AfterHoursLevelModel] = Field(default_factory=list)
+    bid: list[AfterHoursLevelModel] = Field(default_factory=list)
+    total_ask_qty: int = 0
+    total_bid_qty: int = 0
+    cur_price: int | None = None
+    change_pct: float | None = None
+    acc_volume: int = 0
+    fetched_at_ms: int = 0
     source: Literal["kiwoom"] = "kiwoom"
 
 
@@ -2638,11 +2690,15 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     if data_dir is not None and index_candles_cache_instance is None:
         index_candles_cache_instance = IndexCandlesCache()
     global kiwoom_stock_info_fetcher_instance, kiwoom_rankings_fetcher_instance  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
+    global kiwoom_after_hours_fetcher_instance  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     global _kiwoom_index_fetcher  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     if data_dir is not None and kiwoom_stock_info_fetcher_instance is None:
         _kiwoom_prov = kiwoom_runtime.ensure_token_provider_for_account(0, data_dir)
         if _kiwoom_prov is not None:
             kiwoom_stock_info_fetcher_instance = KiwoomStockInfoFetcher(_kiwoom_prov)
+            # 시간외 단일가(ka10087) — 같은 account-0 provider 재사용. 이 TR 은
+            # 16:00–18:00 에만 호출되므로 다른 표면과 유량이 겹치지 않는다.
+            kiwoom_after_hours_fetcher_instance = KiwoomAfterHoursFetcher(_kiwoom_prov)
             # 순위 fetcher 는 같은 account-0 토큰 provider 를 재사용(스펙: rkinfo 4종).
             kiwoom_rankings_fetcher_instance = KiwoomRankingsFetcher(_kiwoom_prov)
             # 지수 분봉 fetcher (ADR-0129) — 같은 provider. 이 대입이 곧 소스 선택이다:
@@ -2899,6 +2955,53 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             low_250=limits.low_250,
             high_250_date=limits.high_250_date,
             low_250_date=limits.low_250_date,
+            fetched_at_ms=fetched_at_ms,
+        )
+
+    @router.get("/after-hours-book", response_model=AfterHoursBookResponse)
+    async def _get_after_hours_book(code: str = Query(...)) -> AfterHoursBookResponse:
+        """시간외 단일가 5단 호가 (키움 ka10087, 16:00–18:00 KST 전용).
+
+        이 창에서 WS 는 아무것도 주지 않는다 — `0D` 는 15:30, `0B` 는 16:00 에 끊긴다
+        (2026-08-14 실측). 그래서 이 라우트가 그 두 시간의 유일한 호가 소스다.
+
+        **창 밖이면 벤더를 치지 않는다.** 프론트 폴링 실수 하나가 장중 유량을 태우는
+        것을 막는 방어선이 여기다(프론트도 창 밖에선 폴링을 멈추지만, 그건 두 번째
+        줄이다). 창 밖 응답은 200 + `active=false` — 에러가 아니라 "지금은 없는 표면"
+        이라서, 프론트가 예외 처리 없이 조용히 정규장 호가를 유지하면 된다.
+        """
+        if not _CODE_RE.match(code):
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "code must be 6 digits"})
+        # ⚠ 이 모듈에서 `time` 은 **`datetime.time`** 이다(상단 import) — 벽시계는
+        # `monotonic_time` 별칭으로 들어와 있다. `time.time()` 이라고 쓰면 죽는다.
+        if not is_after_hours_single_price_window(int(monotonic_time.time() * 1000)):
+            return AfterHoursBookResponse(code=code, active=False)
+        if kiwoom_after_hours_fetcher_instance is None:
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom credentials not configured"})
+        try:
+            book, fetched_at_ms = await kiwoom_after_hours_fetcher_instance.get(code)
+        except KiwoomAfterHoursError as e:
+            raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_API_ERROR, "message": str(e)}) from e
+        except httpx.HTTPError as e:
+            raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_HTTP_ERROR, "message": str(e)}) from e
+        if not book.has_quotes:
+            # 벤더는 답했지만 전 단계가 0 이다(그 종목에 시간외 주문이 없다).
+            # 빈 호가창으로 갈아끼우면 화면이 오히려 나빠지므로 정규장 스냅샷을
+            # 유지시킨다 — 그 판정을 프론트가 다시 하지 않도록 여기서 접는다.
+            return AfterHoursBookResponse(
+                code=code, active=False, base_tm=book.base_tm, fetched_at_ms=fetched_at_ms,
+            )
+        return AfterHoursBookResponse(
+            code=book.code,
+            active=True,
+            base_tm=book.base_tm,
+            ask=[AfterHoursLevelModel(price=lv.price, qty=lv.qty) for lv in book.ask],
+            bid=[AfterHoursLevelModel(price=lv.price, qty=lv.qty) for lv in book.bid],
+            total_ask_qty=book.total_ask_qty,
+            total_bid_qty=book.total_bid_qty,
+            cur_price=book.cur_price,
+            change_pct=book.change_pct,
+            acc_volume=book.acc_volume,
             fetched_at_ms=fetched_at_ms,
         )
 
