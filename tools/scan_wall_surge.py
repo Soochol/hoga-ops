@@ -44,18 +44,19 @@ WARMUP_HHMM = 930  # 이 시각 전에는 통계만 쌓고 발동하지 않는�
 OUTCOME_MS = 120_000  # 결말 추적 창
 CONSUMED = 0.5  # 체결로 소화됐다고 볼 비율
 GONE_RATIO = 0.2  # 벽이 소멸했다고 볼 잔량 비율
-# 직전 호가창이 이보다 오래됐으면 판정하지 않는다. 캡처 갭(실측 최대 29분) 너머의
-# 느린 축적이 '급증' 으로 뒤집히는 것을 막는 유일한 가드다.
+# baseline 은 **직전 호가창 하나가 아니라 최근 WINDOW_MS 창**에서 구한다. 벽이 한 번의
+# 호가 갱신에 다 들어오지 않고 여러 갱신에 나뉘어 쌓이면 인접 diff 는 각 증가분이 문턱에
+# 미달해 통째로 놓치기 때문이다.
 #
-# ⚠ 10초라는 값 자체는 튜닝 결과가 아니라 **안전 여유**다 — 정상 간격 p99 가 2.5초라
-# 그 4배를 잡았을 뿐이다. 실측상 이 값은 결과를 바꾸지 않는다: 간격이 10초를 넘는 쌍이
-# 38,968개 중 7개(0.02%)뿐이고, 2초~120초로 60배를 움직여도 4거래일 발동 건수가
-# 20·13·17·10 으로 **한 건도 달라지지 않았다**.
+# 창을 **시간 범위**로 잡으면 캡처 갭이 구조적으로 배제된다 — 29분 전 값은 10초 창에
+# 애초에 들어오지 않는다. 그래서 예전의 MAX_STALE_MS 가드는 사라진 것이 아니라 창에
+# 흡수됐고, 대신 갭 **직후** 창에 표본이 한둘뿐인 구간을 MIN_SAMPLES 로 막는다.
 #
-# 그렇다고 **빼면 안 된다.** 이건 평소엔 놀다가 캡처가 크게 밀린 날에만 작동하는
-# 방어책이고, 위 측정은 "그 4일에 사고가 없었다" 를 보여줄 뿐이다. 값을 조정할 일이
-# 있다면 근거는 민감도가 아니라 **캡처 갭 분포**여야 한다.
-MAX_STALE_MS = 10_000
+# 실측(028050 20260812): 창을 3·10·30초로 두면 발동 17건으로 인접 diff 와 동일하고,
+# 60초 18건 · 180초 23건으로 늘어난다. 즉 이 종목·이 날에는 대부분의 벽이 한 번에
+# 생겼다. 10초는 결과를 보존하면서 나뉘어 들어오는 벽에 대비하는 보험 성격이다.
+WINDOW_MS = 10_000
+MIN_SAMPLES = 3  # 창 안 스냅샷이 이보다 적으면 판정하지 않는다(캡처 갭 직후)
 
 SESSION_START, SESSION_END = 90000000, 152000000
 
@@ -80,10 +81,11 @@ class SideSpec:
     best: str  # 최우선 호가 (ask_p1 / bid_p1)
     far: str  # 최말단 호가 (ask_p10 / bid_p10)
     opposite_best: str  # 반대측 최우선 — 가격돌파 판정에 쓴다
-    # 관통(신규유입) 조건: 직전 최우선 호가 대비 어느 쪽이면 '반대측이었다' 인가
-    pierce_op: str  # ask: '<'  · bid: '>'
-    # 시야 밖(판정 불가) 조건
-    unseen_op: str  # ask: '>'  · bid: '<'
+    # 창 안 어느 시점에 그 가격이 '반대측이었나' 를 보는 집계와 비교 방향.
+    # 매도: 창 안 max(ask_p1) > px 이면 그때 px 는 매수측이었다 → 매도잔량 0 이 확정.
+    # 매수: 창 안 min(bid_p1) < px 이면 그때 px 는 매도측이었다 → 매수잔량 0 이 확정.
+    best_agg: str  # ask: 'max' · bid: 'min'
+    pierce_op: str  # 위 집계와 px 의 비교 방향. ask: '>' · bid: '<'
     # 가격돌파: 그 가격이 반대측 최우선에 닿으면 벽을 넘어선 것
     escape_op: str  # ask: '>=' (bid_p1 >= px) · bid: '<=' (ask_p1 <= px)
     fill_side: int  # 벽을 소화하는 체결 부호. 매도벽=+1(매수공격), 매수벽=-1
@@ -98,8 +100,8 @@ ASK = SideSpec(
     best="ask_p1",
     far="ask_p10",
     opposite_best="bid_p1",
-    pierce_op="<",
-    unseen_op=">",
+    best_agg="max",
+    pierce_op=">",
     escape_op=">=",
     fill_side=1,
 )
@@ -112,8 +114,8 @@ BID = SideSpec(
     best="bid_p1",
     far="bid_p10",
     opposite_best="ask_p1",
-    pierce_op=">",
-    unseen_op="<",
+    best_agg="min",
+    pierce_op="<",
     escape_op="<=",
     fill_side=-1,
 )
@@ -140,11 +142,15 @@ def build_views(con: duckdb.DuckDBPyConnection, base: str, spec: SideSpec) -> No
     # 미래 구간을 보지 않는다 — 실시간에서도 같은 값이 나온다.
     con.execute(f"""
         create or replace view snap as
-        select *, avg(tot) over (order by t rows between unbounded preceding and current row) as tot_run
+        select *,
+          avg(tot) over (order by t rows between unbounded preceding and current row) as tot_run,
+          {spec.best_agg}(best) over w as w_best,
+          count(*) over w as w_n
         from (select row_number() over (order by t) as rn, * from
               (select ts_ms, {to_ms('ts_ms')} as t, {spec.total_col} as tot,
                       {spec.best} as best, {spec.far} as far, {spec.opposite_best} as opp
                from '{base}/snapshots.parquet' {where}))
+        window w as (order by t range between {WINDOW_MS} preceding and current row)
     """)
     union = " union all ".join(
         f"select ts_ms, {spec.price_col}{i} as px, {spec.qty_col}{i} as qty "
@@ -161,20 +167,36 @@ def find_events(con: duckdb.DuckDBPyConnection, spec: SideSpec) -> list[tuple]:
     """발동 후보를 뽑고 가격별로 OUTCOME_MS 디바운스한다."""
     rows = con.execute(f"""
         with cur as (
-            select l.rn, l.t, l.px, l.qty, s.tot, s.tot_run,
-                   p.best as p_best, p.far as p_far, s.t - p.t as stale
-            from lvl l join snap s on s.rn=l.rn join snap p on p.rn=l.rn-1),
-        j as (
-            select cur.*, coalesce(pl.qty, 0) as prev_qty
-            from cur left join lvl pl on pl.rn=cur.rn-1 and pl.px=cur.px),
+            select l.rn, l.t, l.px, l.qty, s.tot, s.tot_run, s.w_best, s.w_n,
+                   min(l.qty) over w_lvl as w_min,
+                   count(*) over w_lvl as w_cnt,
+                   -- 창 밖이라도 **당일** 그 가격을 마지막으로 봤을 때의 값.
+                   -- 가격이 멀어져 시야에서 사라졌다 돌아온 벽을 재는 폴백이다.
+                   lag(l.qty) over (partition by l.px order by l.t) as prev_q,
+                   lag(l.t) over (partition by l.px order by l.t) as prev_t
+            from lvl l join snap s on s.rn=l.rn
+            window w_lvl as (partition by l.px order by l.t
+                             range between {WINDOW_MS} preceding and current row)),
         b as (
-            select *, case when px {spec.pierce_op} p_best then 0
-                           when px {spec.unseen_op} p_far then null
-                           else prev_qty end as base
-            from j)
-        select rn, t, px, qty, qty-base as jump, tot, (px {spec.pierce_op} p_best) as pierce
+            select *,
+              case
+                -- ① 창 안 어느 시점에 반대측 자리였다면 그때 잔량 0 이 확정
+                when w_best {spec.pierce_op} px then 0
+                -- ② 창 안에 이전 관측이 있으면 그 최소값 (w_cnt=1 은 현재 행뿐이라는 뜻)
+                when w_cnt > 1 then w_min
+                -- ③ 창 밖이지만 당일 본 적이 있으면 그 값 — 시점은 부정확하다
+                when prev_q is not null then prev_q
+                else null end as base,
+              case
+                when w_best {spec.pierce_op} px then '스프레드관통'
+                when w_cnt > 1 then '레벨증량'
+                when prev_q is not null then '재등장'
+                else null end as kind
+            from cur)
+        select rn, t, px, qty, qty-base as jump, tot, kind,
+               case when kind = '재등장' then t - prev_t end as blind_ms
         from b
-        where base is not null and stale <= {MAX_STALE_MS}
+        where base is not null and w_n >= {MIN_SAMPLES}
           and t >= {hhmm_to_ms(WARMUP_HHMM)}
           and qty-base >= {QTY_FLOOR_RATIO}*tot_run and (qty-base) >= {MIN_SHARE}*tot
         order by t
@@ -252,14 +274,15 @@ def scan(date: str, code: str, spec: SideSpec, quiet: bool) -> None:
         return
 
     print(f"{'시각':>10} {'가격':>8} {'벽':>7} {'증가':>7} {'총比':>5} {'유형':>10} {'지속':>7}  결말")
-    for _, t, px, qty, jump, tot, pierce in events:
+    for _, t, px, qty, jump, tot, kind, blind_ms in events:
         verdict, duration = classify(con, base, spec, t, px, qty)
         clock = f"{t // 3600000:02d}:{t // 60000 % 60:02d}:{t // 1000 % 60:02d}"
-        kind = "스프레드관통" if pierce else "레벨증량"
         dur = f"{duration / 1000:.1f}s" if duration is not None else "  —"
+        # 재등장은 시야에서 사라져 있던 시간을 함께 적는다 — 그만큼 시점이 부정확하다
+        blind = f" [{blind_ms / 1000:.0f}s 시야밖]" if blind_ms else ""
         print(
             f"{clock:>10} {px:>8,} {qty:>7,} {jump:>7,} "
-            f"{jump / tot:>4.0%} {kind:>10} {dur:>7}  {verdict}"
+            f"{jump / tot:>4.0%} {kind:>10} {dur:>7}  {verdict}{blind}"
         )
 
 
