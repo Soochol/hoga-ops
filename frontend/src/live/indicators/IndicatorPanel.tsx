@@ -14,6 +14,7 @@ import PeakWallsConfig from './PeakWallsConfig';
 import TradeVolumePocConfig from './TradeVolumePocConfig';
 import DepthHeatmapConfig from './DepthHeatmapConfig';
 import DepthDeltaConfig from './DepthDeltaConfig';
+import WallSurgeConfig from './WallSurgeConfig';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import FillStrengthConfig from './FillStrengthConfig';
@@ -44,6 +45,7 @@ export type CategoryId =
   | 'trade-volume-poc'
   | 'depth-heatmap'
   | 'depth-delta'
+  | 'wall-surge'
   | 'volume-distribution'
   | 'quote-totals'
   | 'ratio'
@@ -71,6 +73,7 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'peak-walls',      label: '당일 최대벽',     group: 'hoga' },
   { id: 'depth-heatmap',   label: '호가 잔량 히트맵', group: 'hoga' },
   { id: 'depth-delta',     label: '단별 잔량 증감',   group: 'hoga' },
+  { id: 'wall-surge',      label: '호가벽 급증',     group: 'hoga' },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker'  },
   { id: 'institution-net', label: '기관 순매수량',    group: 'broker'  },
   { id: 'broker-late-entry', label: '신규 거래원 등장', group: 'broker' },
@@ -149,6 +152,8 @@ export default function IndicatorPanel({
   const setDepthHeatmapEnabled = actions.setDepthHeatmapEnabled;
   const depthDeltaEnabled = ind.depthDeltaEnabled;
   const setDepthDeltaEnabled = actions.setDepthDeltaEnabled;
+  const wallSurgeEnabled = ind.wallSurgeEnabled;
+  const setWallSurgeEnabled = actions.setWallSurgeEnabled;
   const paneIndicators: PanePrefsIndicatorSource = {
     volumeEnabled: ind.volumeEnabled,
     quoteTotalsEnabled: ind.quoteTotalsEnabled,
@@ -217,6 +222,7 @@ export default function IndicatorPanel({
       case 'volume-distribution': return volumeDistributionEnabled;
       case 'depth-heatmap': return depthHeatmapEnabled;
       case 'depth-delta': return depthDeltaEnabled;
+      case 'wall-surge': return wallSurgeEnabled;
       case 'broker-late-entry': return brokerLateEntryEnabled;
       default: return false;
     }
@@ -243,6 +249,7 @@ export default function IndicatorPanel({
       case 'volume-distribution': return () => setVolumeDistributionEnabled(!volumeDistributionEnabled);
       case 'depth-heatmap': return () => setDepthHeatmapEnabled(!depthHeatmapEnabled);
       case 'depth-delta': return () => setDepthDeltaEnabled(!depthDeltaEnabled);
+      case 'wall-surge': return () => setWallSurgeEnabled(!wallSurgeEnabled);
       case 'broker-late-entry': return () => setBrokerLateEntryEnabled(!brokerLateEntryEnabled);
       default: return null;
     }
@@ -452,6 +459,7 @@ export default function IndicatorPanel({
               {selected === 'trade-volume-poc' && <TradeVolumePocConfig />}
               {selected === 'depth-heatmap' && <DepthHeatmapConfig />}
               {selected === 'depth-delta' && <DepthDeltaConfig />}
+              {selected === 'wall-surge' && <WallSurgeConfig />}
               {selected === 'volume-distribution' && (
                 <div>
                   <h3 className="pb-1 text-base font-medium text-fg">연속체결 매물대 분포</h3>

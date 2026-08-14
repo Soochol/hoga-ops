@@ -5,6 +5,7 @@ import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
+import { useWindowIndicator } from './workspace/windowView';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import {
   WallSurgeMarkersPrimitive,
@@ -87,8 +88,12 @@ type Props = {
  */
 function LiveWallSurgeMarkersImpl({ paneSeries, events, candles, axis }: Props): null {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
-  const enabled = useActivePrefs((s) => s.wallSurgeEnabled);
-  const labelCount = useActivePrefs((s) => s.wallSurgeLabelCount);
+  // 마스터 토글은 **indicator 슬라이스**다 — 지표 드로어의 다른 항목들과 같은 자리라야
+  // 창별 스코프(멀티 창)와 프리셋이 함께 따라온다. 라벨 개수 같은 세부 옵션만 chartPrefs.
+  const enabled = useWindowIndicator((s) => s.wallSurgeEnabled);
+  const labelOn = useActivePrefs((s) => s.wallSurgeLabelEnabled);
+  const labelCountPref = useActivePrefs((s) => s.wallSurgeLabelCount);
+  const labelCount = labelOn ? labelCountPref : 0;
   const primRef = useRef<WallSurgeMarkersPrimitive | null>(null);
 
   useEffect(() => {

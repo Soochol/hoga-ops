@@ -219,6 +219,9 @@ export const INDICATOR_OPS = {
       : clamp(patch.maxOpacity, 0.2, 1),
   }),
 
+  setWallSurgeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ wallSurgeEnabled: enabled }),
+
   setDepthDeltaEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     (enabled
       ? { depthDeltaEnabled: true, depthDeltaHidden: false }
