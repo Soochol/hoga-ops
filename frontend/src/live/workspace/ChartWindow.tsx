@@ -165,8 +165,10 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
 
   // 헤더가 좁아지면 액션 라벨을 접는다(#762) — 관측 대상은 컨테이너 폭이라
   // 접힘이 관측값을 되바꾸지 않는다(피드백 루프 없음).
-  const headerRef = useRef<HTMLDivElement>(null);
-  const headerFold = useChartHeaderFold(headerRef);
+  // 훅이 **callback ref** 를 준다: 아래 `if (!instrument)` 빈 상태를 지나 종목이
+  // 붙는 순간 헤더가 처음 마운트되는데, ref 객체로는 그 등장을 관측자에게 알릴 수
+  // 없었다(그 훅의 주석 참조 — 리사이즈가 통째로 죽던 원인).
+  const [headerFold, headerRef] = useChartHeaderFold();
 
   // 관심 하트의 채움 상태. `useWatchlistMembership` 의 계약대로 **창에서 한 번만**
   // 부르고 버튼에 내린다(버튼이 직접 부르면 창 수만큼 옵저버가 는다). 타이틀바도

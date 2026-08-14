@@ -429,7 +429,10 @@ export function LiveChartRoot({
   onCandleBasisHover,
   onCandleBasisClick,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  // mutable 로 두는 이유: 아래 `setContainer` 가 직접 채운다(`ref=` 에 거는 것이
+  // callback ref 라서). 소비처(`useWheelInteractions` 등)는 `RefObject` 를 받지만
+  // MutableRefObject 는 그대로 할당 가능하다.
+  const containerRef = useRef<HTMLDivElement | null>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
   const warnSummary = summarizeWarnings(pastDataWarnings);
@@ -1590,11 +1593,19 @@ export function LiveChartRoot({
   // 접기(점진적 degradation) 적용 후 실제로 마운트할 목록. stretch 재적용 effect 와
   // 렌더 JSX 가 **반드시 같은 목록**을 봐야 pane index → PaneId 매핑이 어긋나지 않는다.
   // 접기는 렌더 시점 파생값이며 저장 설정에는 쓰지 않는다(`paneFolding.ts` 참조).
-  const {
-    specs: visiblePaneSpecs,
-    foldedCount: foldedPaneCount,
-    timeAxisVisible,
-  } = usePaneFolding(gatedPaneSpecs, containerRef, paneStretch);
+  const [
+    { specs: visiblePaneSpecs, foldedCount: foldedPaneCount, timeAxisVisible },
+    observePaneFoldTarget,
+  ] = usePaneFolding(gatedPaneSpecs, paneStretch);
+
+  // 컨테이너 ref 합성 — 접기 관측자는 노드 등장을 봐야 하므로 callback ref 이고
+  // (그 훅의 주석 참조), `containerRef` 는 차트 생성·휠·구분선 드래그·폭 측정이
+  // 계속 쓴다. `observePaneFoldTarget` 이 `useState` setter 라 참조가 안정적이므로
+  // 이 합성 콜백도 안정적이다 — 렌더마다 detach/attach 가 돌지 않는다.
+  const setContainer = useCallback((el: HTMLDivElement | null) => {
+    containerRef.current = el;
+    observePaneFoldTarget(el);
+  }, [observePaneFoldTarget]);
 
   // 글랜스 티어 — 보조 pane 이 전부 접히고도 캔들이 좁으면 시간축(28px)까지 숨겨
   // 캔들에 돌려준다. 이 크기에서 28px 는 전체의 20% 가 넘는 사치이고, 절대 시각은
@@ -2102,7 +2113,7 @@ export function LiveChartRoot({
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
       <div
-        ref={containerRef}
+        ref={setContainer}
         className="live-chart-canvas"
         style={{ width: '100%', height: '100%', background: 'var(--bg-card)' }}
       />
