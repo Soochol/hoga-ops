@@ -280,6 +280,32 @@ describe('useWarmStudyReferenceTabQueries', () => {
     expect(urls.some((url) => url.includes('bucket_ms=300000'))).toBe(false);
   });
 
+  it('warmTimeframe 이 오면 탭 봉 대신 그 봉으로 워밍한다 (창이 봉의 소유자)', async () => {
+    // `/study` 는 포커스 창의 봉을 넘긴다(#1326). 탭을 눌러도 창 봉이 안 바뀌므로
+    // 활성 전환의 실제 키가 창 봉(15m)이다. 탭이 든 저장 봉(5m)으로 워밍하면 받아
+    // 놓고 즉시 버리는 번들이 된다 — 위 테스트가 막는 회귀가 이 축에서 재발한다.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const saves = [save('view-a', '005930', '삼성전자')];
+
+    renderHook(
+      () => useWarmStudyReferenceTabQueries({
+        tabs: [tab('tab-a', 'view-a', '005930', '삼성전자')],  // timeframe: '5m'
+        activeTabId: 'tab-a',
+        activatedTabIds: [],
+        saves,
+        warmTimeframe: '15m',
+      }),
+      { wrapper: wrapper(client) },
+    );
+
+    await waitFor(() => {
+      const urls = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
+      expect(urls.some((url) => url.includes('bucket_ms=900000'))).toBe(true);
+    });
+    const urls = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
+    expect(urls.some((url) => url.includes('bucket_ms=300000'))).toBe(false);
+  });
+
   it('drops removed tabs from the status map', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const saves = [save('view-a', '005930', '삼성전자'), save('view-b', '000660', 'SK하이닉스')];

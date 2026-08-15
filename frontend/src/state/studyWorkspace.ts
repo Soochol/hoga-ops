@@ -327,32 +327,6 @@ export function focusedChartWindowId(state: {
   return state.windows.find((w) => w.kind === 'chart')?.id ?? null;
 }
 
-/**
- * 이 봉을 **이미 보여주고 있는** 차트 창 — 없으면 null.
- *
- * 탭/저장뷰가 요구하는 봉을 어느 창엔가 이미 띄워 두었다면, 그 창을 포커스하는 것이
- * 다른 창의 봉을 덮는 것보다 낫다(#1295). `focusedChartWindowId` 와 **같은 방향**으로
- * 훑는 이유도 같다 — 후보가 여럿이면 마지막에 보던 창이 사용자가 기대하는 대상이다.
- *
- * zOrder 는 `normalizeZOrder` 가 창 집합과 맞춰 주지만, 여기서도 못 찾으면 창 배열을
- * 한 번 더 본다 — 이 함수가 null 을 내면 호출부가 "덮어쓰기" 로 떨어지므로, 정규화가
- * 늦은 한 커밋 때문에 배치가 무너지지 않게 한다.
- */
-export function chartWindowIdShowingTimeframe(
-  state: {
-    windows: readonly StudyWorkspaceWindow[];
-    zOrder: readonly string[];
-  },
-  timeframe: LiveTimeframe,
-): string | null {
-  const shows = (w: StudyWorkspaceWindow) => w.kind === 'chart' && w.chart?.timeframe === timeframe;
-  for (let i = state.zOrder.length - 1; i >= 0; i -= 1) {
-    const id = state.zOrder[i];
-    if (state.windows.some((w) => w.id === id && shows(w))) return id;
-  }
-  return state.windows.find(shows)?.id ?? null;
-}
-
 /** 차트 창에 설정이 빠진 게 있는가(하이드레이션 시 시드 여부 판정용). */
 function needsChartConfigSeed(windows: readonly StudyWorkspaceWindow[]): boolean {
   return windows.some((w) => w.kind === 'chart' && !w.chart);

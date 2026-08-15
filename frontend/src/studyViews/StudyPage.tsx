@@ -10,7 +10,6 @@ import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import {
-  chartWindowIdShowingTimeframe,
   focusedChartWindowId,
   useStudyWorkspaceStore,
 } from '../state/studyWorkspace';
@@ -183,12 +182,11 @@ export function StudyPage() {
     () => tabs.find((tab) => tab.id === activeTabId) ?? null,
     [activeTabId, tabs],
   );
-  // 봉은 차트 창이 런타임 소유자고 탭은 탭별 저장소다(#902 write-through 거울).
-  // 창이 여러 개면(#801) **포커스된 창**이 탭과 거울을 이룬다 — 탭 라벨에 봉이
-  // 박혀 있으므로 "지금 보고 있는 창" 하나만 라벨을 쓸 수 있다.
+  // 봉은 차트 창이 **유일한 소유자**고 탭은 그 라벨이다(#1326). 창이 여러 개면
+  // (#801) **포커스된 창**이 탭과 거울을 이룬다 — 탭 라벨에 봉이 박혀 있으므로
+  // "지금 보고 있는 창" 하나만 라벨을 쓸 수 있다.
   const chartWindowId = useStudyWorkspaceStore(focusedChartWindowId);
   const setChartTimeframe = useStudyWorkspaceStore((s) => s.setChartTimeframe);
-  const focusWindow = useStudyWorkspaceStore((s) => s.focusWindow);
   const chartWindowTimeframe = useStudyWorkspaceStore(
     (s) => s.windows.find((w) => w.id === focusedChartWindowId(s))?.chart?.timeframe ?? null,
   );
@@ -226,17 +224,20 @@ export function StudyPage() {
    */
   const tabSeedKey = `${activeTabId ?? ''}:${activeViewId ?? ''}`;
   const seededTabKeyRef = useRef<string | null>(null);
-  const tabSeedPending = seededTabKeyRef.current !== tabSeedKey;
-  // viewTimeframes 는 탭 없는 라우트 과도기 전용 폴백.
+  /**
+   * 지금 화면이 서 있는 봉 — **창이 유일한 소유자다**(#1326).
+   *
+   * 뒤의 폴백 사슬은 창이 아직 없거나(하이드레이션 전) 탭 없는 라우트로 들어온
+   * 과도기에만 닿는다. 저장뷰의 봉(`referenceSave.timeframe`)은 사슬의 **맨 끝**이라
+   * 열린 창이 하나라도 있으면 절대 이기지 못한다 — 그게 이 페이지의 계약이다.
+   */
   const selectedTimeframe = activeViewId && referenceSave
-    ? (tabSeedPending && activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
-      ?? chartWindowTimeframe
+    ? chartWindowTimeframe
       ?? (activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
       ?? viewTimeframes[activeViewId]
       ?? referenceSave.timeframe
     : null;
-  // 창별 분봉 기억이 헤더 컨트롤의 분봉 슬롯을 정한다(#902 — 전역
-  // studyLastMinuteTimeframe 은 서랍 "설정된 분봉으로 열기" 용으로 따로 산다).
+  // 창별 분봉 기억이 헤더 컨트롤의 분봉 슬롯을 정한다(#902).
   const rememberedMinuteTimeframe = chartWindowLastMinute
     ?? (activeViewId && referenceSave
       ? rememberedMinuteTimeframes[activeViewId]
@@ -301,9 +302,11 @@ export function StudyPage() {
   const isLoadingActiveView = activeViewModel.status === 'loading';
   const isErrorActiveView = activeViewModel.status === 'error';
   const isStudyPageLoading = savesQuery.isLoading || isLoadingActiveView;
+  // 로딩·에러 구간의 폴백도 **창을 먼저 읽는다**(#1326) — 봉의 소유자가 창이므로
+  // 탭을 먼저 읽으면 아직 되받아쓰기 전인 저장 봉이 지표 버킷으로 새어 나간다.
   const indicatorPanelTimeframe = activeViewModel.status === 'ready'
     ? activeViewModel.save.timeframe
-    : activeTab?.timeframe ?? selectedTimeframe ?? '1m';
+    : selectedTimeframe ?? activeTab?.timeframe ?? '1m';
   // /study 의 ambient 지표 봉 동기화(PR-A #699) — 활성 뷰의 timeframe 이 지표
   // 설정의 조회 키다. 렌더 중인 차트와 지표 드로어가 같은 값을 쓰므로 이 하나로 충분.
   const setIndicatorTimeframe = useLivePageStore((s) => s.setIndicatorTimeframe);
@@ -323,6 +326,9 @@ export function StudyPage() {
     activeTabId,
     activatedTabIds,
     saves: savesQuery.data?.saves ?? [],
+    // 탭을 눌러도 창 봉이 안 바뀌므로 **활성 전환의 실제 쿼리 키는 창 봉**이다.
+    // 비활성 탭이 든 저장 봉으로 워밍하면 받아 놓고 버리는 번들이 된다.
+    warmTimeframe: chartWindowTimeframe,
   });
   // 축출은 (종목 × 봉)이다(#801) — 창이 여러 개면 같은 종목 아래 봉별 번들이 쌓인다.
   useStudyRangeCacheEviction(
@@ -383,7 +389,7 @@ export function StudyPage() {
     setViewTimeframes((current) => ({ ...current, [activeViewId]: next }));
     if (isMinuteTimeframe(next)) {
       setRememberedMinuteTimeframes((current) => ({ ...current, [activeViewId]: next }));
-      // 저장뷰 "설정된 분봉" 열기가 참조하는 전역 마지막 분봉. D/W/M 전환 땐 유지.
+      // 새 차트 창의 분봉 시드가 참조하는 전역 마지막 분봉(#906). D/W/M 전환 땐 유지.
       setLastMinuteTimeframe(next);
     }
     if (activeTab && activeTab.viewId === activeViewId) {
@@ -392,47 +398,37 @@ export function StudyPage() {
   }, [activeTab, activeViewId, chartWindowId, setChartTimeframe, updateTabTimeframe, setLastMinuteTimeframe]);
 
   /**
-   * 탭 재활성 시 창을 탭 값으로 **재시드**한다 — 탭 A(일봉)→B→A 로 돌아오면
-   * 일봉이 유지되는 이유(#902). 창이 이미 같은 봉이면 스토어가 no-op 이 아니라
-   * 백필 런타임을 건드리므로 여기서 먼저 걸러낸다.
+   * 탭/뷰가 바뀌면 **탭 라벨을 창 봉으로 되받아쓴다** — 거울의 방향이 여기다(#1326).
    *
-   * ⚠ **포커스 창만** 재시드한다(#801). 워크스페이스는 탭 사이에 공유되므로 전 창을
-   * 재시드하면 탭을 한 번 오갈 때마다 멀티 타임프레임 배치가 무너진다 —
-   * "일봉+10분봉으로 벌려 놨는데 탭 갔다 오니 둘 다 10분봉" 이 그 증상이다.
+   * 여기 있던 것은 반대 방향이었다: 탭이 든 봉으로 **창을 재시드**했다(#902). 그
+   * 계약은 저장뷰가 봉을 정한다는 전제 위에 서 있었고, 창이 여럿이 되자(#801) 그
+   * 전제가 배치를 무너뜨렸다 — "일봉+분봉으로 벌려 놨는데 저장뷰를 누르니 둘 다
+   * 분봉". #1295 가 완화("요구 봉을 이미 띄운 창이 있으면 포커스만 이동")를 넣었지만
+   * 봉이 **정확히** 일치할 때만 걸려서, `D` + `3m` 배치에 `1m` 저장뷰가 오면 그대로
+   * 덮였다. 그래서 소유권 자체를 창으로 옮겼다.
    *
-   * ⚠ 그리고 **탭/뷰가 바뀔 때만** 돈다(`tabSeedKey`). 포커스가 바뀌었다는 이유로
-   * 돌면 탭이 들고 있는 봉이 새로 포커스된 창을 덮어써서, 창을 클릭했을 뿐인데 그
-   * 창의 봉이 바뀐다 — #801 착지 후 실제로 났던 버그다.
+   * 이제 탭의 `timeframe` 은 명령이 아니라 **포커스 창의 라벨**이다. 탭 라벨에 봉이
+   * 박혀 있으므로(`… · 5m`) 여기서 되받아쓰지 않으면 라벨이 실제 창과 어긋난 채
+   * 노출된다.
    *
-   * ⚠ **덮기 전에 대안을 먼저 찾는다**(#1295). 포커스 창 하나만 건드려도 그 창이
-   * 사용자가 방금 분봉으로 맞춰 둔 창이면 멀티 타임프레임 배치는 똑같이 무너진다 —
-   * 봉을 바꾼 창이 곧 포커스 창이므로 "분봉 창을 만진 직후 일봉 저장뷰 클릭" 이라는
-   * 가장 흔한 순서에서 항상 그 창이 희생된다. 그래서 요구되는 봉을 **이미 보여주는
-   * 창이 있으면 포커스만 그리로 옮기고 아무 창의 봉도 바꾸지 않는다**. 없을 때만
-   * 종전대로 포커스 창을 덮는다 — 창이 하나뿐인 흔한 경우가 정확히 그 경로라
-   * #902 계약은 그대로다.
-   *
-   * 이 증상은 #1293 이 드러냈다. 그전에는 일봉 저장뷰도 "마지막 분봉" override 로
-   * 열려 탭 봉이 대개 포커스 분봉 창과 같았고, 그래서 위 `===` 검사에서 조용히
-   * 걸러졌다. 저장된 봉을 존중하게 되자 그 우연한 no-op 이 사라졌다.
+   * ⚠ **탭/뷰가 바뀔 때만** 돈다(`tabSeedKey`). 포커스가 바뀌었다는 이유로 돌면
+   * 창을 클릭했을 뿐인데 탭 라벨이 흔들린다.
    */
   useEffect(() => {
-    if (!chartWindowId || !selectedTimeframe) return;
+    if (!chartWindowId || !chartWindowTimeframe) return;
     if (seededTabKeyRef.current === tabSeedKey) return;
     seededTabKeyRef.current = tabSeedKey;
-    if (chartWindowTimeframe === selectedTimeframe) return;
-    // 구독이 아니라 getState 로 읽는다 — 이 effect 는 `tabSeedKey` 전이에만 반응해야
-    // 하고, 창 배열을 deps 에 넣으면 창을 드래그하기만 해도 재평가된다.
-    const showing = chartWindowIdShowingTimeframe(
-      useStudyWorkspaceStore.getState(),
-      selectedTimeframe,
-    );
-    if (showing) {
-      focusWindow(showing);
-      return;
-    }
-    setChartTimeframe(chartWindowId, selectedTimeframe);
-  }, [chartWindowId, chartWindowTimeframe, focusWindow, selectedTimeframe, setChartTimeframe, tabSeedKey]);
+    if (!activeTab || activeTab.viewId !== activeViewId) return;
+    if (activeTab.timeframe === chartWindowTimeframe) return;
+    updateTabTimeframe(activeTab.id, chartWindowTimeframe);
+  }, [
+    activeTab,
+    activeViewId,
+    chartWindowId,
+    chartWindowTimeframe,
+    tabSeedKey,
+    updateTabTimeframe,
+  ]);
 
   /** 닫힌 창의 캡처 함수를 걷어낸다 — 등록소가 죽은 클로저를 붙들고 있지 않게. */
   useEffect(() => {
