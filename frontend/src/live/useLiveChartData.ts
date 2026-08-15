@@ -115,6 +115,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     pastDataWarnings,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
+    pastSettledFromDate,
     adjustFactors,
   } = useLiveBundle(activeCode, timeframe, today, live, { investorNetEnabled, venue, sidecarDemands });
   const liveInitial = live.initial?.code === activeCode ? live.initial : undefined;
@@ -254,6 +255,11 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     (activeIndexId ? indexBundle : stockBundle)?.depth_heatmap ?? EMPTY_DEPTH_HEATMAP;
   const workareaLoading = activeIndexId ? indexCandles.isLoading : isPastCandlesLoading;
   const indexExtending = activeIndexId ? historicalFromDate !== null && indexCandles.isFetching : false;
+  /** 지수 캔들 응답이 되싣는 from — 웜 캐시 스텝의 백필 진행 신호(#1328).
+   *  지수는 캔들 쿼리 하나가 곧 스텝이라(동반 확장할 range 지표가 없다) 종목 D/W/M과
+   *  달리 **전 봉**에서 안전하다. 지수 분봉도 병합 캐시가 없어 같은 잠금을 겪으므로
+   *  봉으로 가르지 않는다. `indexExtending` 식 자체는 원자화 의미라 손대지 않는다. */
+  const indexSettledFromDate = activeIndexId ? indexCandles.data?.from ?? null : null;
   const workareaDataWarnings = activeIndexId ? indexCandles.data?.data_warnings ?? [] : pastDataWarnings;
 
   return {
@@ -272,6 +278,8 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     isDailyMaLoading,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
+    pastSettledFromDate,
+    indexSettledFromDate,
     dayAskPeaks,
     todayAllPriceAskPeak,
     dayBidPeaks,

@@ -77,6 +77,18 @@ export interface ViewportBackfillArgs {
   indicatorCoverageFromDate?: string | null;
   /** 지금 range가 요청 중인 창의 from — nextCoverageFrom base의 null-fallback. */
   rangeWindowFromDate?: string | null;
+  /**
+   * 지금 **서빙 중인** 과거 캔들 창의 from(YYYYMMDD) — 응답이 되싣는 echo.
+   *
+   * 진행 루프(3a)의 두 번째 스텝-완료 신호다. 첫 번째(isExtending 하강 엣지)는 fetch가
+   * 있어야만 성립하는데, 웜 캐시 히트는 fetch 없이 스텝을 완결시킨다 — 그때 이 값이
+   * 요청한 from과 같아지는 것이 유일한 진행 증거다. 지원하지 않는 경로는 null(비활성).
+   *
+   * **최좌단 캔들 날짜로 대체하지 말 것.** 연휴만 든 청크·상장일 도달 청크는 새 캔들이
+   * 0개여도 요청한 from을 그대로 되싣는다. 응답 echo를 봐야 그런 스텝도 예산을 소모하고
+   * 루프가 이어진다 — `planFillStep`의 "연휴 스텝도 예산 1" 계약이 여기에 기댄다.
+   */
+  settledFromDate?: string | null;
 }
 
 /** Headless controller for /live's leftward-pan historical backfill +
@@ -127,6 +139,7 @@ export function useViewportBackfill({
   canTriggerBackfill = () => true,
   indicatorCoverageFromDate = null,
   rangeWindowFromDate = null,
+  settledFromDate = null,
 }: ViewportBackfillArgs): void {
   // 창-스코프 절단(ADR-0119 C2c-2a): from-date 읽기/확장은 창 런타임(Provider
   // 안) 또는 전역 스토어(밖)로 — getState 병행 경로의 창별 대응물.
@@ -145,6 +158,10 @@ export function useViewportBackfill({
   // 진행 루프: 현재 fill에서 dispatch한 스텝 수 + isExtending 직전값(falling edge 검출).
   const fillStepCountRef = useRef(0);
   const prevExtendingRef = useRef(false);
+  // 이미 진행 처리한 스텝의 from. 두 스텝-완료 신호(fetch 하강 엣지 / 캐시 settle)가
+  // 같은 스텝에 겹쳐도 예산을 한 단위만 소모하게 하는 멱등 가드다 — 겹치면 fill이
+  // 동결 예산을 초과해 목표보다 과거까지 걸어간다.
+  const lastAdvancedFromRef = useRef<string | null>(null);
   // 제스처 예산 fill 상태(/investigate 2026-07-11). 트리거(3b) 순간의 빈공간으로
   // 예산을 동결하고, 진행 루프(3a)는 뷰포트를 다시 측정하지 않은 채 예산만
   // 소진하며 무조건 완주한다 — fill 도중의 인터랙션은 이번 fill을 늘리지도
@@ -196,6 +213,7 @@ export function useViewportBackfill({
     prevEarliestTsMsRef.current = null;
     fillStepCountRef.current = 0;
     prevExtendingRef.current = false;
+    lastAdvancedFromRef.current = null;
     fillKindRef.current = null;
     fillBudgetRef.current = 0;
     fillCoverageTargetRef.current = null;
@@ -284,30 +302,50 @@ export function useViewportBackfill({
     }
   }, [chart, bundle, axis, historicalRange]);
 
-  // 3a. 진행 루프(스텝 2..N): 한 스텝 settle(isExtending true→false)마다 활성
-  // fill의 예산을 소진하며 다음 스텝을 자가 dispatch한다. 뷰포트는 읽지 않는다
-  // — 예산과 목표는 트리거(3b) 순간에 동결됐고, fill은 그만큼 무조건 완주한다.
-  // planFillStep이 종료(예산 소진/클램프/coverage 목표 도달)를 판정.
+  // 3a. 진행 루프(스텝 2..N): 한 스텝이 settle할 때마다 활성 fill의 예산을 소진하며
+  // 다음 스텝을 자가 dispatch한다. 뷰포트는 읽지 않는다 — 예산과 목표는 트리거(3b)
+  // 순간에 동결됐고, fill은 그만큼 무조건 완주한다. planFillStep이 종료(예산 소진/
+  // 클램프/coverage 목표 도달)를 판정.
+  //
+  // **"스텝이 settle했다"는 신호가 둘인 이유**(#1328): 종전에는 fetch의 하강 엣지
+  // (isExtending true→false)만 봤는데, 그 신호는 **fetch가 실제로 일어나야만** 존재한다.
+  // 종목을 떠났다 돌아오면 창 런타임이 리셋돼 historicalFromDate=null이고, 그 상태의
+  // 첫 스텝 from은 결정적이라(axis 최좌단 base) 직전 방문의 쿼리 키와 정확히 같다 —
+  // 즉 **반드시 캐시 히트**다. 캐시 히트는 fetch가 없어 하강 엣지도 없고, 그러면 이
+  // 루프가 endFill에 닿지 못해 fillKind가 영구 non-null로 잠긴다. 그 뒤로는 3b 가드가
+  // 모든 트리거를 반려하므로 백필이 1청크에서 죽는다(2026-08-15 실측).
+  //
+  // 그래서 데이터 기준 신호를 함께 본다: "지금 서빙 중인 창의 from == 방금 요청한 from".
+  // 두 신호가 같은 스텝에 겹칠 수 있으므로(콜드 스텝의 착지 커밋) lastAdvancedFromRef가
+  // 예산 이중 집행을 막는다.
   useEffect(() => {
     const wasExtending = prevExtendingRef.current;
     prevExtendingRef.current = isExtending;
     if (!chart) return;
     if (!canTriggerBackfill()) return;
-    if (!(wasExtending && !isExtending)) return; // falling edge만
     if (fillKindRef.current === null) return; // 활성 fill 없음 (예: 초기 로드 settle)
+    // 초기 캔들 미로드(빈 차트)면 백필 폭주 금지 — candleCountRef 주석 참조.
+    if (candleCountRef.current === 0) return;
+    const cur = historicalRange.snapshot().historicalFromDate;
+    const settledByFetch = wasExtending && !isExtending;
+    // 캐시 settle: fetch 없이 요청 창이 그대로 서빙되고 있다. isExtending 가드는
+    // 콜드 스텝 진행 중의 placeholder(이전 창 from)를 배제하는 것과 별개로,
+    // "지금 아무 스텝도 날고 있지 않다"를 명시해 하강 엣지 경로와 상호배타로 둔다.
+    const settledByCache =
+      !isExtending && cur !== null && settledFromDate === cur && lastAdvancedFromRef.current !== cur;
+    if (!settledByFetch && !settledByCache) return;
     const endFill = () => {
       fillKindRef.current = null;
       fillBudgetRef.current = 0;
       fillCoverageTargetRef.current = null;
       fillStepCountRef.current = 0;
+      lastAdvancedFromRef.current = null;
     };
-    // 초기 캔들 미로드(빈 차트)면 백필 폭주 금지 — candleCountRef 주석 참조.
-    if (candleCountRef.current === 0) return;
-    const cur = historicalRange.snapshot().historicalFromDate;
     if (cur === null || axis.segments.length === 0) {
       endFill();
       return;
     }
+    lastAdvancedFromRef.current = cur;
     const plan = planFillStep({
       kind: fillKindRef.current,
       historicalFromDate: cur,
@@ -345,7 +383,9 @@ export function useViewportBackfill({
       candleCount: candleCountRef.current,
     });
     historicalRange.extend(plan.nextFrom);
-  }, [chart, axis, timeframe, isExtending, canTriggerBackfill, historicalRange]);
+    // settledFromDate는 원시 문자열이라 deps에 값으로 들어간다 — 주기 refetch는 같은
+    // from을 되싣으므로 effect가 재실행되지 않는다(candleCountRef식 ref 미러 불요).
+  }, [chart, axis, timeframe, isExtending, canTriggerBackfill, historicalRange, settledFromDate]);
 
   // 3b. Lazy fetch trigger — extend historicalFromDate when user scrolls past
   // the leftmost loaded candle.
