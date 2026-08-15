@@ -276,6 +276,10 @@ interface Props {
   indicatorCoverageFromDate?: string | null;
   /** 지금 range가 요청 중인 창의 from — coverage 스텝 base의 null-fallback. */
   rangeWindowFromDate?: string | null;
+  /** 지금 서빙 중인 과거 캔들 창의 from(응답 echo). 웜 캐시로 채워진 좌측 팬 스텝은
+   * fetch가 없어 `isExtending` 하강 엣지를 만들지 않으므로, 진행 루프가 이 값으로
+   * 스텝 완료를 판정한다(#1328). 옵셔널+기본 null이라 기존 호출부는 무변경. */
+  settledFromDate?: string | null;
   /** 활성 경로 과거 fetch 경고(rate-limit 등, useLiveBundle). 캔들 없으면 빈칸 문구를
    * "호출 한도로 지연"으로 전환, 캔들 있으면 비차단 "일부 과거구간 로딩 지연" 칩. 옵셔널
    * (기존 단일-번들 호출부/테스트 보존). */
@@ -408,6 +412,7 @@ export function LiveChartRoot({
   isExtending = false,
   indicatorCoverageFromDate = null,
   rangeWindowFromDate = null,
+  settledFromDate = null,
   pastDataWarnings,
   restoreViewport = null,
   dayAskPeaks = EMPTY_ASK_PEAKS,
@@ -864,6 +869,7 @@ export function LiveChartRoot({
     canTriggerBackfill,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
+    settledFromDate,
   });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md

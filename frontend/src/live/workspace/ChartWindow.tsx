@@ -400,6 +400,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               isExtending={d.activeIndexId ? d.indexExtending : d.isExtending}
               indicatorCoverageFromDate={d.activeIndexId ? null : d.indicatorCoverageFromDate}
               rangeWindowFromDate={d.activeIndexId ? null : d.rangeWindowFromDate}
+              settledFromDate={d.activeIndexId ? d.indexSettledFromDate : d.pastSettledFromDate}
               pastDataWarnings={[...d.workareaDataWarnings]}
               dayAskPeaks={d.dayAskPeaks}
               todayAllPriceAskPeak={d.todayAllPriceAskPeak}

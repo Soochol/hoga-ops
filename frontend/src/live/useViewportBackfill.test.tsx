@@ -427,3 +427,125 @@ describe('useViewportBackfill — initial-display coverage trigger (3c, PR-3)', 
     expect(extendSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('useViewportBackfill — warm-cache settle signal (3a)', () => {
+  /**
+   * 종목 A→B→A 복귀 후 일봉 재-팬의 박제(2026-08-15 실측).
+   *
+   * 복귀는 fresh-view 라 `historicalFromDate=null` 이고, 그 상태의 첫 스텝 from 은
+   * 결정적이다(`nextHistoricalFrom` 이 axis 최좌단을 base 로 삼는다) — 1차 방문의
+   * 쿼리 키와 **정확히 같다**. 그 키는 웜이라 fetch 가 아예 없고, 일봉의
+   * `isExtending`(=isPlaceholderData && isFetching)이 한 번도 뜨지 않는다. fetch 의
+   * falling edge 만 스텝 완료로 읽으면 fill 이 영구 non-null 로 잠겨 이후 트리거가
+   * 전부 3b 가드에 막힌다(실측 증상: 복귀 후 1청크만 받고 정지).
+   *
+   * 그래서 스텝 완료를 **데이터 기준**으로도 판정한다: "지금 서빙 중인 창의 from 이
+   * 방금 요청한 from 과 같다".
+   */
+  let extendSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: 'D',
+      // fresh view — setGroupSymbol(종목 교체)이 런타임을 리셋한 직후 상태.
+      historicalFromDate: null,
+    });
+    // **passthrough 스파이**(다른 블록의 no-op mock 과 다르다): 스토어가 실제로
+    // 움직여야 `snapshot().historicalFromDate` 가 요청한 from 과 같아진다 —
+    // no-op 이면 캐시 분기의 전제가 원리적으로 성립하지 않아 테스트가 무의미해진다.
+    extendSpy = vi.spyOn(useLivePageStore.getState(), 'extendHistoricalRange');
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    extendSpy.mockRestore();
+    useLivePageStore.setState({ historicalFromDate: null });
+  });
+
+  function renderWarm() {
+    const cap = chartWithCapturedHandler();
+    const hook = renderHook(
+      ({ settled, ext }: { settled: string | null; ext: boolean }) =>
+        useViewportBackfill({
+          chart: cap.chart,
+          axis: axisWithOneSession(),
+          bundle: bundleWithCandles(),
+          timeframe: 'D',
+          isExtending: ext,
+          code: '005930',
+          canTriggerBackfill: () => true,
+          settledFromDate: settled,
+        }),
+      { initialProps: { settled: null as string | null, ext: false } },
+    );
+    return { cap, ...hook };
+  }
+
+  it('advances the fill when a step settles from cache (no fetch, so no falling edge)', () => {
+    const { cap, rerender } = renderWarm();
+
+    // 빈공간 60바 → D 예산 ceil(60/50)=2. 첫 스텝 dispatch.
+    cap.fire({ from: -60, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    const step1 = extendSpy.mock.calls[0][0] as string;
+
+    // 웜 히트: 그 창이 즉시 서빙된다 — isExtending 은 내내 false.
+    rerender({ settled: step1, ext: false });
+
+    expect(extendSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('consumes one budget unit when both signals fire for the same step', () => {
+    // 멱등 가드: 콜드 스텝의 falling edge 와 (뒤늦게 도착한) settled 신호가 같은
+    // 스텝을 가리키면 진행은 한 번만이어야 한다 — 아니면 예산이 두 배로 집행돼
+    // fill 이 목표를 넘어간다.
+    const { cap, rerender } = renderWarm();
+
+    cap.fire({ from: -60, to: 100 });
+    vi.advanceTimersByTime(150);
+    const step1 = extendSpy.mock.calls[0][0] as string;
+
+    rerender({ settled: null, ext: true }); // 스텝 1 fetch 진행
+    rerender({ settled: step1, ext: false }); // settle: falling edge + settled 동시
+
+    expect(extendSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases the fill on budget exhaustion so a later pan can start a new one', () => {
+    // 잠금 해제까지 확인한다 — 진행만 되고 endFill 에 못 닿으면 증상은 그대로다.
+    const { cap, rerender } = renderWarm();
+
+    cap.fire({ from: -60, to: 100 }); // 예산 2
+    vi.advanceTimersByTime(150);
+    const step1 = extendSpy.mock.calls[0][0] as string;
+
+    rerender({ settled: step1, ext: false }); // 스텝 2 (예산 소진)
+    expect(extendSpy).toHaveBeenCalledTimes(2);
+    const step2 = extendSpy.mock.calls[1][0] as string;
+
+    rerender({ settled: step2, ext: false }); // 예산 0 → stop → fill 해제
+    expect(extendSpy).toHaveBeenCalledTimes(2);
+
+    // 해제됐으므로 새 제스처가 새 예산으로 다시 시작한다.
+    cap.fire({ from: -60, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not advance on a settled date that is not the requested one', () => {
+    // 스테일 응답(이전 창의 from)이 스텝 완료로 위장하지 못한다.
+    const { cap, rerender } = renderWarm();
+
+    cap.fire({ from: -60, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+
+    rerender({ settled: '20991231', ext: false }); // 요청한 from 과 무관한 값
+
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+});
