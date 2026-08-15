@@ -1373,6 +1373,17 @@ describe('StudyPage', () => {
    * 분리하면 그 창의 요청도 갈려야 한다 — 안 그러면 차트는 히트맵을 그리려는데
    * 페이지가 받아온 번들에 그 데이터가 없어 **"켰는데 안 보임"** 이 된다.
    */
+  it('워밍에도 그 창의 스코프를 넘긴다 — 봉만 창에서 오면 잡종 키가 된다', () => {
+    renderPage('/study?view=view-ref');
+
+    // 봉(`warmTimeframe`)을 포커스 창에서 가져오는 이상(#1326) 지표 스코프도 **같은
+    // 창**에서 와야 활성 전환의 키와 맞는다. 한쪽만 넘기면 분리된 창에서 워밍이
+    // 받아 놓고 버리는 번들이 된다.
+    expect(useWarmStudyReferenceTabQueriesMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      warmScopeKey: 'study:w-chart',
+    }));
+  });
+
   it('분리된 창의 지표가 그 창의 번들 요청에 실린다', () => {
     useLivePageStore.getState().detachWindowIndicators('study:w-chart');
     useLivePageStore.getState().patchIndicatorsScoped('study:w-chart', '5m', {

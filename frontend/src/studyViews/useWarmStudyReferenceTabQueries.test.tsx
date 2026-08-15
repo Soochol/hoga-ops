@@ -306,6 +306,44 @@ describe('useWarmStudyReferenceTabQueries', () => {
     expect(urls.some((url) => url.includes('bucket_ms=300000'))).toBe(false);
   });
 
+  it('warmScopeKey 가 오면 분리된 창의 지표로 워밍한다 (봉과 지표는 같은 창에서)', async () => {
+    // #1326 이 봉을 포커스 창에서 가져오게 만든 뒤, 지표만 공용 세트에서 가져오면
+    // 그 창이 분리됐을 때(ADR-0145) 활성 전환의 실제 키와 어긋난다 — 실제 키는
+    // (창 봉, **창** 지표)인데 워밍은 (창 봉, **공용** 지표)로 받아 놓고 버린다.
+    // 위 warmTimeframe 회귀와 같은 실패가 축만 바꾼 것이라 같은 강도로 막는다.
+    useLivePageStore.getState().detachWindowIndicators('study:w-focus');
+    useLivePageStore.getState().patchIndicatorsScoped('study:w-focus', '5m', {
+      depthHeatmapEnabled: true,
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const saves = [save('view-a', '005930', '삼성전자')];
+
+    renderHook(
+      () => useWarmStudyReferenceTabQueries({
+        tabs: [tab('tab-a', 'view-a', '005930', '삼성전자')],  // timeframe: '5m'
+        activeTabId: 'tab-a',
+        activatedTabIds: [],
+        saves,
+        warmTimeframe: '5m',
+        warmScopeKey: 'study:w-focus',
+      }),
+      { wrapper: wrapper(client) },
+    );
+
+    await waitFor(() => {
+      const urls = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
+      expect(urls.some((url) => url.includes('mode=sidecar'))).toBe(true);
+    });
+
+    const sidecar = vi.mocked(apiCall).mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes('mode=sidecar'));
+    // 공용 5m 버킷은 히트맵이 꺼져 있다(beforeEach) — true 가 나온다는 것은 값이
+    // 분리된 창 버킷에서 왔다는 뜻이다.
+    expect(sidecar.every((url) => url.includes('depth_heatmap_enabled=true'))).toBe(true);
+  });
+
   it('drops removed tabs from the status map', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const saves = [save('view-a', '005930', '삼성전자'), save('view-b', '000660', 'SK하이닉스')];

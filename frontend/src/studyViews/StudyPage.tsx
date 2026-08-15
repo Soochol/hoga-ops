@@ -340,6 +340,9 @@ export function StudyPage() {
     // 탭을 눌러도 창 봉이 안 바뀌므로 **활성 전환의 실제 쿼리 키는 창 봉**이다.
     // 비활성 탭이 든 저장 봉으로 워밍하면 받아 놓고 버리는 번들이 된다.
     warmTimeframe: chartWindowTimeframe,
+    // 지표 스코프도 **같은 창**에서 — 봉만 창에서 가져오고 지표를 공용에서 가져오면
+    // 그 창이 분리됐을 때(ADR-0145) 같은 이유로 받아 놓고 버린다.
+    warmScopeKey: windowScopeKey({ scopePrefix: 'study' }, chartWindowId),
   });
   // 축출은 (종목 × 봉)이다(#801) — 창이 여러 개면 같은 종목 아래 봉별 번들이 쌓인다.
   useStudyRangeCacheEviction(
