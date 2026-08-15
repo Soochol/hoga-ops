@@ -28,7 +28,7 @@ describe('IndicatorPanel', () => {
     useChartPrefsStore.getState().setIndicatorModalTimeframe('1m');
   });
 
-  it('활성 15개 체크박스(비활성 0), 10호가·프로그램·거래원 지표 포함', () => {
+  it('활성 16개 체크박스(비활성 0), 10호가·프로그램·거래원 지표 포함', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -39,8 +39,8 @@ describe('IndicatorPanel', () => {
     });
     renderPanel();
     const checkboxes = screen.getAllByRole('checkbox');
-    // 상단 3 + 10호가 8(매도/매수 최대벽 병합) + 프로그램 1 + 거래원 3
-    expect(checkboxes).toHaveLength(15);
+    // 상단 3 + 10호가 9(매도/매수 최대벽 병합, 호가벽 급증 포함) + 프로그램 1 + 거래원 3
+    expect(checkboxes).toHaveLength(16);
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
@@ -696,6 +696,25 @@ describe('IndicatorPanel', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '일봉 이동평균선' }));
     expect(screen.getByText(/일봉 종가 기준 이평선을 분봉 차트에 투영/)).toBeTruthy();
+  });
+
+  it('호가벽 급증 카테고리가 10호가 그룹에 렌더된다', () => {
+    renderPanel();
+    expect(screen.getByText('호가벽 급증')).toBeInTheDocument();
+  });
+
+  it('호가벽 급증 토글이 지표 슬라이스를 바꾼다 (chartPrefs 가 아니다)', () => {
+    renderPanel();
+    const cb = screen.getByRole('checkbox', { name: '호가벽 급증' });
+    expect(cb).not.toBeChecked();
+    fireEvent.click(cb);
+    expect(useLivePageStore.getState().wallSurgeEnabled).toBe(true);
+  });
+
+  it('호가벽 급증 상세에 라벨 토글이 뜬다 — 등록만으로는 안 뜨므로 렌더로 확인', () => {
+    renderPanel();
+    fireEvent.click(screen.getByText('호가벽 급증'));
+    expect(screen.getByText('급증 마커 잔량 라벨')).toBeInTheDocument();
   });
 
   it('호가 잔량 히트맵 카테고리가 10호가 그룹에 렌더된다', () => {
