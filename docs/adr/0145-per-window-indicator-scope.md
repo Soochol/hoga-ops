@@ -81,8 +81,13 @@ CRUD·이름·삭제 시 참조 처리 같은 관리 UI 가 통째로 따라온�
 
 **Negative / watch:**
 
-- **번들 요청이 늘 수 있다.** 지표 플래그가 쿼리 키에 실리므로(`studyReferenceQuerySettings`),
-  분리된 창은 같은 봉의 다른 창과 캐시를 공유하지 못한다. 분리 창 수만큼 선형 증가다.
+- **번들 요청은 "요청 축" 이 갈릴 때만 는다.** 쿼리 키에 실리는 것은 지표 설정 전체가
+  아니라 `studyReferenceQuerySettings` 의 **8개 필드뿐**이다(askPeak·bidPeak·
+  brokerLateEntry·tradeVolumePoc·depthHeatmap·volumeDistribution 계열). 그래서 분리된
+  창이라도 그 8개가 공용과 같으면 키가 같아 **캐시를 그대로 공유한다** — MA 기간·색·
+  pane 토글을 아무리 달리해도 요청은 늘지 않는다. 증가분은 "분리 창 수" 가 아니라
+  **"그 8개를 실제로 다르게 켠 창 수"** 이고, 그건 사용자가 명시적으로 요구한 것
+  자체다. 이 목록에 필드를 추가하면 그때 창별 요청 분기가 넓어진다는 점만 기억할 것.
 - **비활성 탭 워밍(`useWarmStudyReferenceTabQueries`)은 공용 세트로 근사한다** — 탭에는
   창이 없기 때문이다. 분리 창을 활성화하면 그 창 키로 한 번 더 받는다.
 - **두 store 의 멤버십이 어긋나면 절반만 분리된 드로어가 된다.** 동반 호출이 그 유일한
