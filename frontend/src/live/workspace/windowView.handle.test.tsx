@@ -36,6 +36,7 @@ function studyChartId(): string {
 const STUDY_WORKSPACE: WindowWorkspaceAdapter = {
   store: useStudyWorkspaceStore,
   getCode: () => STUDY_CODE,
+  scopePrefix: 'study',
 };
 
 function studyView(windowId: string): WindowViewValue {

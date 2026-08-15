@@ -23,6 +23,7 @@ const {
   useLiveIndicesMock,
   indicatorPanelMockProps,
   liveChartRootMock,
+  capturedWindowSpecs,
 } = vi.hoisted(() => ({
   useStudyViewsMock: vi.fn(),
   useStudyViewMutationsMock: vi.fn(),
@@ -35,6 +36,9 @@ const {
   useLiveIndicesMock: vi.fn(),
   indicatorPanelMockProps: [] as Array<{ timeframe: string }>,
   liveChartRootMock: vi.fn(),
+  // 번들 훅이 받은 창별 스펙 — 봉·지표가 곧 쿼리 키라, 창 분리가 여기 닿는지를
+  // 재려면 인자를 봐야 한다(반환값은 mock 이 만들므로 아무것도 증명하지 않는다).
+  capturedWindowSpecs: { current: [] as Array<{ windowId: string; indicators: Record<string, unknown> }> },
 }));
 
 vi.mock('./useStudyViews', () => ({
@@ -48,8 +52,8 @@ vi.mock('./useStudyViews', () => ({
 vi.mock('./useStudyReferenceBundle', () => ({
   useStudyReferenceBundles: (
     save: unknown,
-    windows: ReadonlyArray<{ windowId: string; timeframe: string }>,
-  ) => Object.fromEntries(windows.map((w) => {
+    windows: ReadonlyArray<{ windowId: string; timeframe: string; indicators: Record<string, unknown> }>,
+  ) => Object.fromEntries((capturedWindowSpecs.current = [...windows]).map((w) => {
     const displayedSave = save && typeof save === 'object'
       ? { ...save, timeframe: w.timeframe }
       : save;
@@ -1362,5 +1366,36 @@ describe('StudyPage', () => {
 
     expect(screen.getByTestId('study-page-empty')).toBeTruthy();
     expect(screen.getByText('저장된 학습뷰를 선택하세요')).toBeTruthy();
+  });
+
+  /**
+   * 번들 쿼리 키에는 지표 플래그가 실린다(`studyReferenceQuerySettings`). 창을
+   * 분리하면 그 창의 요청도 갈려야 한다 — 안 그러면 차트는 히트맵을 그리려는데
+   * 페이지가 받아온 번들에 그 데이터가 없어 **"켰는데 안 보임"** 이 된다.
+   */
+  it('워밍에도 그 창의 스코프를 넘긴다 — 봉만 창에서 오면 잡종 키가 된다', () => {
+    renderPage('/study?view=view-ref');
+
+    // 봉(`warmTimeframe`)을 포커스 창에서 가져오는 이상(#1326) 지표 스코프도 **같은
+    // 창**에서 와야 활성 전환의 키와 맞는다. 한쪽만 넘기면 분리된 창에서 워밍이
+    // 받아 놓고 버리는 번들이 된다.
+    expect(useWarmStudyReferenceTabQueriesMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      warmScopeKey: 'study:w-chart',
+    }));
+  });
+
+  it('분리된 창의 지표가 그 창의 번들 요청에 실린다', () => {
+    useLivePageStore.getState().detachWindowIndicators('study:w-chart');
+    useLivePageStore.getState().patchIndicatorsScoped('study:w-chart', '5m', {
+      depthHeatmapEnabled: true,
+    });
+
+    renderPage('/study?view=view-ref');
+
+    const chartSpec = capturedWindowSpecs.current.find((w) => w.windowId === 'w-chart');
+    expect(chartSpec?.indicators.depthHeatmapEnabled).toBe(true);
+    // 공용 세트는 그대로다 — 이 값이 공용에서 온 것이 아님을 못 박는다.
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.depthHeatmapEnabled)
+      .toBeUndefined();
   });
 });

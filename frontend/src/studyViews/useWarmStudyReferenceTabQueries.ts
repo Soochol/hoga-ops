@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import type { StudyViewReference } from '../api/studyViews';
-import { resolveIndicatorSettings } from '../state/indicatorSettingsV2';
+import { bucketsForScope, resolveIndicatorSettings } from '../state/indicatorSettingsV2';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import type { StudyTab } from '../state/studyTabs';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
@@ -50,6 +50,17 @@ type UseWarmStudyReferenceTabQueriesArgs = {
    * 넘기지 않으면(`undefined` — 창이 아직 없는 하이드레이션 전) 탭 봉으로 떨어진다.
    */
   warmTimeframe?: LiveTimeframe | null;
+  /**
+   * 워밍에 쓸 지표 스코프 — `warmTimeframe` 과 **같은 창**의 것이어야 한다(ADR-0145).
+   *
+   * 봉을 포커스 창에서 가져오기 시작한 순간(#1326) 지표만 공용 세트에서 가져오는 것은
+   * 잡종이 된다: 그 창이 분리돼 있으면 활성 전환의 실제 키는 (창 봉, **창** 지표)인데
+   * 워밍은 (창 봉, **공용** 지표)로 받아 놓고 버린다 — 위 `warmTimeframe` 주석이
+   * 경고하는 그 실패가 축만 바꿔 재발한다.
+   *
+   * null = 분리되지 않은 창(=공용 세트)이거나 창이 아직 없음. 둘 다 공용으로 푼다.
+   */
+  warmScopeKey?: string | null;
 };
 
 export function useWarmStudyReferenceTabQueries({
@@ -58,6 +69,7 @@ export function useWarmStudyReferenceTabQueries({
   activatedTabIds,
   saves,
   warmTimeframe,
+  warmScopeKey,
 }: UseWarmStudyReferenceTabQueriesArgs): Record<string, StudyTabQueryStatus> {
   const sourcePref = useOrderflowSourcePref();
   // 지표 설정은 앱 전역 1세트지만 **봉마다 프로필이 다르다**(`indicatorsByTimeframe`).
@@ -68,7 +80,14 @@ export function useWarmStudyReferenceTabQueries({
   // 분봉이면 "분봉 버킷 + D 프로필 지표" 라는 잡종 키가 나갔다. 활성 전환에서 키가
   // 안 맞아 같은 구간을 플래그만 바꿔 한 번 더 받는다 — 워밍이 요청을 줄이려다 늘린다.
   // 근거와 실측은 `studyReferenceQuerySettings` 주석.
+  //
+  // **창 분리 스코프(ADR-0145)도 같은 규율을 따른다**: 호출자가 봉과 함께 넘긴
+  // `warmScopeKey` 로 푼다. 한때 "워밍의 단위는 탭이고 탭에는 창이 없으니 공용으로
+  // 근사한다" 가 맞았지만, #1326 이 봉을 포커스 창에서 가져오게 만든 뒤로는 지표만
+  // 공용에서 가져오는 것이 곧 잡종이다(위 `warmScopeKey` 주석). 두 축은 **같은 창**
+  // 에서 나와야 활성 전환의 키와 맞는다.
   const indicatorsByTimeframe = useLivePageStore((s) => s.indicatorsByTimeframe);
+  const indicatorsByWindow = useLivePageStore((s) => s.indicatorsByWindow);
   // 워밍 쿼리도 활성 경로와 **같은 venue** 여야 한다 — 다르면 탭 전환 시 캐시가 안 맞아
   // 재fetch 된다. `/study` 가 KRX 고정(`studyVenuePolicy`, ADR-0144)이 되면서 그 제약이
   // 자명하게 충족된다: 양쪽 모두 같은 상수를 읽는다.
@@ -116,7 +135,10 @@ export function useWarmStudyReferenceTabQueries({
       // 지표도 **같은 봉으로** 푼다 — 버킷과 플래그가 한 봉에서 나와야 활성 경로와
       // 키가 맞는다(위 주석).
       const settings = studyReferenceQuerySettings(
-        resolveIndicatorSettings(indicatorsByTimeframe, timeframe),
+        resolveIndicatorSettings(
+          bucketsForScope(indicatorsByTimeframe, indicatorsByWindow, warmScopeKey ?? null),
+          timeframe,
+        ),
         sourcePref,
         STUDY_VENUE,
       );
@@ -144,10 +166,12 @@ export function useWarmStudyReferenceTabQueries({
     openedVersion,
     saves,
     indicatorsByTimeframe,
+    indicatorsByWindow,
     sourcePref,
     tabs,
     warmTabIds,
     warmTimeframe,
+    warmScopeKey,
   ]);
 
   const results = useQueries({

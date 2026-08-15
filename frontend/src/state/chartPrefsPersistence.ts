@@ -103,6 +103,27 @@ export function mergeIndicatorModalByTimeframe(raw: unknown): IndicatorModalByTi
   return Object.keys(seeded).length > 0 ? { minute: seeded } : {};
 }
 
+/** 창 분리 맵 로드 — 값이 비어도 **엔트리를 보존한다**(멤버십 = 키의 존재).
+ *  `livePage` 쪽 `byWindow` 정규화와 같은 규약이다. */
+export function mergeIndicatorModalByWindow(
+  raw: unknown,
+): Record<string, IndicatorModalByTimeframe> {
+  if (!raw || typeof raw !== 'object') return {};
+  const stored = (raw as Record<string, unknown>).indicatorModalByWindow;
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
+  const out: Record<string, IndicatorModalByTimeframe> = {};
+  for (const [scopeKey, value] of Object.entries(stored as Record<string, unknown>)) {
+    if (!scopeKey || !value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const byTimeframe: IndicatorModalByTimeframe = {};
+    for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
+      const bucket = sanitizeIndicatorModalBucket((value as Record<string, unknown>)[profileKey]);
+      if (Object.keys(bucket).length > 0) byTimeframe[profileKey] = bucket;
+    }
+    out[scopeKey] = byTimeframe;
+  }
+  return out;
+}
+
 export function hydrateChartPrefs(store: typeof useChartPrefsStore): void {
   try {
     if (typeof localStorage === 'undefined') return;
@@ -115,6 +136,7 @@ export function hydrateChartPrefs(store: typeof useChartPrefsStore): void {
     store.setState({
       ...prefs,
       indicatorModalByTimeframe,
+      indicatorModalByWindow: mergeIndicatorModalByWindow(parsed),
       ...resolveIndicatorModalPrefs(indicatorModalByTimeframe, tf),
     });
   } catch {
@@ -162,6 +184,7 @@ export function attachChartPrefsPersistence(store: typeof useChartPrefsStore): (
           .map((k) => [k, s[k as keyof ChartViewPrefs]]),
       ),
       indicatorModalByTimeframe: s.indicatorModalByTimeframe,
+      indicatorModalByWindow: s.indicatorModalByWindow,
     }) as unknown as ChartViewPrefs,
   });
 }
