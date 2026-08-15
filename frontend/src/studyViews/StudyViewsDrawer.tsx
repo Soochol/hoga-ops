@@ -15,8 +15,6 @@ import { CSS } from '@dnd-kit/utilities';
 import type { StudyViewListRow } from '../api/studyViews';
 import { dropPoint, isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
-import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
-import { useStudyLastMinuteTimeframeStore } from '../state/studyLastMinuteTimeframe';
 import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import {
@@ -190,17 +188,6 @@ export function StudyViewsDrawer() {
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverStudy = useEntryDragStore((s) => s.setOverStudy);
   const endEntryDrag = useEntryDragStore((s) => s.endDrag);
-  const defaultOpenTimeframe = useStudyViewOpenPrefsStore((s) => s.defaultTimeframe);
-  const lastMinuteTimeframe = useStudyLastMinuteTimeframeStore((s) => s.lastMinuteTimeframe);
-  // '저장된 분봉'(saved, 기본값)이면 **override 를 안 넘긴다** — 저장뷰가 저장한 봉
-  // 그대로 열린다. 그 이유(캐시가 봉별이라 저장 봉이 구조적으로 warm)는
-  // `studyViewOpenPrefs` 주석에 있다.
-  // '설정된 분봉'(current)이면 복기뷰 차트에서 마지막으로 쓴 분봉을, 아니면 고른 고정 분봉을
-  // override로 넘긴다. lastMinuteTimeframe은 항상 유효값('3m' 폴백)이라 undefined 경로는 없다.
-  const openTimeframeOverride = defaultOpenTimeframe === 'saved'
-    ? undefined
-    : defaultOpenTimeframe === 'current' ? lastMinuteTimeframe : defaultOpenTimeframe;
-
   useEffect(() => () => {
     if (navigateClickTimerRef.current === null) return;
     window.clearTimeout(navigateClickTimerRef.current);
@@ -250,18 +237,14 @@ export function StudyViewsDrawer() {
     navigate(`/study?view=${row.id}`);
   }
 
+  // 봉은 넘기지 않는다 — 차트 창이 유일한 소유자다(#1326). 저장뷰가 정하는 것은
+  // 종목과 구간이고, 탭이 든 봉은 StudyPage 가 포커스 창 봉으로 되받아쓴다.
   function openSaveInActiveTab(row: StudyViewListRow) {
-    useStudyTabsStore.getState().openSaveInActiveTab(
-      row,
-      { timeframeOverride: openTimeframeOverride },
-    );
+    useStudyTabsStore.getState().openSaveInActiveTab(row);
   }
 
   function openSaveInNewTab(row: StudyViewListRow) {
-    useStudyTabsStore.getState().openSaveInNewTab(
-      row,
-      { timeframeOverride: openTimeframeOverride },
-    );
+    useStudyTabsStore.getState().openSaveInNewTab(row);
   }
 
   function openStudyViewInActiveTab(row: StudyViewListRow) {

@@ -3,7 +3,6 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LiveSettingsSections from './LiveSettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
-import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
 import * as signalAlertsApi from '../api/signalAlerts';
 
 function wrap(qc: QueryClient) {
@@ -17,14 +16,15 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     vi.restoreAllMocks();
     localStorage.clear();
     useLiveVenueStore.setState({ venue: 'KRX' });
-    useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
   });
 
   it('라이브 카테고리 nav를 렌더 — 데이터소스는 메인 Settings로 이동해 제외', () => {
     render(<LiveSettingsSections />);
     expect(screen.getByTestId('settings-nav-chart')).toBeTruthy();
-    expect(screen.getByTestId('settings-nav-study-views')).toBeTruthy();
     expect(screen.getByTestId('settings-nav-alerts')).toBeTruthy();
+    // 「저장뷰」 nav 는 #1326 에서 사라졌다 — 저장뷰가 차트 봉을 정하지 않게 되면서
+    // 그 섹션이 정할 것이 없어졌다.
+    expect(screen.queryByTestId('settings-nav-study-views')).toBeNull();
     // 데이터소스는 라이브 모달에선 제거되고 메인 Settings의 「데이터 소스」로 이동.
     expect(screen.queryByTestId('settings-nav-data-source')).toBeNull();
     expect(screen.queryByTestId('settings-nav-indicators')).toBeNull();
@@ -116,20 +116,8 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
   // 라이브 모달에선 데이터소스가 메인 Settings로 이동했고, 복기뷰(study) 모달의
   // nav 유지만 위에서 검증한다.
 
-  it('저장뷰 상세에서 사이드 메뉴 기본 분봉을 선택한다', () => {
-    render(<LiveSettingsSections />);
-    fireEvent.click(screen.getByTestId('settings-nav-study-views'));
-
-    expect(screen.getByRole('radio', { name: '설정된 분봉' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: '3분' })).toBeChecked();
-    fireEvent.click(screen.getByRole('radio', { name: '5분' }));
-
-    expect(useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('5m');
-    expect(localStorage.getItem('studyView.openPrefs.v1')).toContain('5m');
-
-    fireEvent.click(screen.getByRole('radio', { name: '설정된 분봉' }));
-    expect(useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('current');
-  });
+  // 「저장뷰 사이드 메뉴 기본 분봉」 상세는 #1326 에서 삭제됐다 — 차트 창이 봉의
+  // 유일한 소유자가 되면서 저장뷰가 봉을 정할 일이 없어졌다. nav 부재는 위에서 검사한다.
 
   it('알림 상세에서 시그널 알림 설정을 수정한다', async () => {
     vi.spyOn(signalAlertsApi, 'getSignalAlertSettings').mockResolvedValue({
