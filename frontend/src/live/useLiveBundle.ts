@@ -357,6 +357,23 @@ export interface UseLiveBundleResult {
   /** 지금 range가 요청 중인 창의 from(YYYYMMDD). coverage 스텝 base의 null-fallback.
    * 분봉 외/미요청이면 null. */
   rangeWindowFromDate: string | null;
+  /**
+   * 지금 **서빙 중인** 과거 캔들 창의 from(YYYYMMDD) — 벤더/디스크 응답이 되싣는 echo.
+   *
+   * `useViewportBackfill` 3a의 두 번째 스텝-완료 신호다(#1328). 좌측 팬 스텝이 웜 캐시로
+   * 채워지면 fetch가 없어 `isExtending`이 뜨지 않고, 그 하강 엣지에만 기대던 진행 루프가
+   * 잠긴다 — 종목을 떠났다 돌아온 뒤의 첫 스텝은 쿼리 키가 직전 방문과 같아 **반드시**
+   * 그 경우다.
+   *
+   * **D/W/M 전용(분봉은 null).** 두 가지 이유다: ① 분봉은 캔들 병합 캐시가 깊이를 통째로
+   * 복원하므로 같은 창을 다시 걸어 들어가는 일 자체가 없고, ② 분봉의 한 스텝은 캔들과
+   * range 지표가 **함께** 착지해야 완료라(위 `extending` 원자화) 캔들 응답의 from만으로는
+   * 스텝 완료를 뜻하지 않는다. 그쪽은 하강 엣지가 계속 유일 신호다.
+   *
+   * 응답 `code`가 현재 종목과 다르면 null — placeholder 술어(`livePastDailyCandles`)와
+   * 같은 규율로, 종목 전환 직후 이전 종목의 echo가 스텝 완료로 위장하지 못하게 한다.
+   */
+  pastSettledFromDate: string | null;
 }
 
 /** 같은 그룹의 데이터 창(매물대·프로그램)이 요구하는 sidecar 강제 fetch
@@ -1139,6 +1156,16 @@ export function useLiveBundle(
   }, [isMinute, pastHoga.data?.from_date, sidecarEnabled, pastSidecars.data?.from_date]);
   const rangeWindowFromDate = isMinute ? rangePlan.from : null;
 
+  // 캘린더(D/W/M) 캔들 응답이 되싣는 from — 웜 캐시 스텝의 진행 신호(위 필드 주석).
+  // 활성 소스 배타 선택은 `pastDataWarnings`·`activeCandlesQuery`와 같은 규율이다.
+  const settledDailyResponse = restBypassEnabled
+    ? screenerDailyCandlesQuery.data
+    : pastDailyCandlesQuery.data;
+  const pastSettledFromDate =
+    !isMinute && settledDailyResponse && settledDailyResponse.code === code
+      ? settledDailyResponse.from
+      : null;
+
   // 활성 소스의 fetch 경고만 노출 — 배타 이분화. 우회 ON 분봉은 디스크라 경고 없음([]),
   // D/W/M은 스크리너. 우회 OFF는 KIS 경로. (다른 경로 쿼리는 disabled라 스테일 경고가
   // 새어 나오지 않도록 배타로 고른다.)
@@ -1209,5 +1236,6 @@ export function useLiveBundle(
     pastDataWarnings,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
+    pastSettledFromDate,
   };
 }

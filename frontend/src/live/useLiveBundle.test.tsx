@@ -84,6 +84,9 @@ const dailyCandlesMock = {
   candles: [
     { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
   ],
+  // 응답이 되싣는 code/from — `pastSettledFromDate`(웜 캐시 백필 진행 신호)의 입력.
+  code: '005930',
+  from: '',
   warnings: [] as Array<
     // ADR-0143: wire 가 `kind`·`is_failure` 를 함께 싣는다. 판정이 kind 축으로
     // 옮겨갔으므로 픽스처도 실제 모양이어야 한다.
@@ -92,8 +95,8 @@ const dailyCandlesMock = {
 };
 const livePastDailyCandlesSpy = vi.fn(() => ({
   data: {
-    code: '005930',
-    from: '',
+    code: dailyCandlesMock.code,
+    from: dailyCandlesMock.from,
     to: '',
     candles: dailyCandlesMock.candles,
     cached_batches: [],
@@ -109,11 +112,12 @@ vi.mock('../api/livePastDailyCandles', () => ({
 
 const screenerDailyCandlesMock = {
   candles: [] as Array<typeof DEFAULT_CANDLE>,
+  from: '',
 };
 const screenerDailyCandlesSpy = vi.fn(() => ({
   data: {
     code: '005930',
-    from: '',
+    from: screenerDailyCandlesMock.from,
     to: '',
     source: 'screener_daily',
     candles: screenerDailyCandlesMock.candles,
@@ -702,6 +706,9 @@ describe('useLiveBundle', () => {
       { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
     ];
     dailyCandlesMock.warnings = [];
+    dailyCandlesMock.code = '005930';
+    dailyCandlesMock.from = '';
+    screenerDailyCandlesMock.from = '';
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
     investorMock.isLoading = false;
@@ -2504,5 +2511,47 @@ describe('useLiveBundle isExtending', () => {
       { wrapper: createWrapper({ rest_bypass_enabled: true }) },
     );
     expect(result.current.isExtending).toBe(false);
+  });
+
+  // 웜 캐시 백필 진행 신호(#1328). `isExtending` 이 fetch 를 전제로 하는 것과 달리
+  // 이 값은 **응답이 되싣는 from** 이라, fetch 없이 캐시로 채워진 스텝도 완료로 읽힌다.
+  describe('pastSettledFromDate', () => {
+    it('echoes the vendor daily response from-date on D/W/M', () => {
+      dailyCandlesMock.from = '20260301';
+      const { result } = renderHook(
+        () => useLiveBundle('005930', 'D', '20260527', liveFixture),
+        { wrapper: createWrapper() },
+      );
+      expect(result.current.pastSettledFromDate).toBe('20260301');
+    });
+
+    it('echoes the screener (bypass) daily response from-date', () => {
+      screenerDailyCandlesMock.from = '20260301';
+      dailyCandlesMock.from = '20251111'; // 비활성 경로 — 새어 나오면 안 된다
+      const { result } = renderHook(
+        () => useLiveBundle('005930', 'D', '20260527', liveFixture),
+        { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+      );
+      expect(result.current.pastSettledFromDate).toBe('20260301');
+    });
+
+    it('is null on minute timeframes (병합 캐시 + 다중 소스 원자화라 하강 엣지가 유일 신호)', () => {
+      dailyCandlesMock.from = '20260301';
+      const { result } = renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+        { wrapper: createWrapper() },
+      );
+      expect(result.current.pastSettledFromDate).toBeNull();
+    });
+
+    it('is null when the response is for a different code (종목 전환 직후 stale echo)', () => {
+      dailyCandlesMock.from = '20260301';
+      dailyCandlesMock.code = '000660'; // 이전 종목 응답이 아직 서빙 중
+      const { result } = renderHook(
+        () => useLiveBundle('005930', 'D', '20260527', liveFixture),
+        { wrapper: createWrapper() },
+      );
+      expect(result.current.pastSettledFromDate).toBeNull();
+    });
   });
 });
