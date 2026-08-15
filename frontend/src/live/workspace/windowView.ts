@@ -38,6 +38,7 @@ import {
 } from '../../state/indicatorSettingsV2';
 import { INDICATOR_OPS, bindIndicatorOps, type BoundIndicatorOps } from '../../state/indicatorOps';
 import { useWorkspaceStore } from '../../state/workspace';
+import { indexWorkareaCode, isLiveIndexId } from '../liveInstrument';
 import type { PaneId } from '../../chart/drawing/types';
 import type { PaneStretchMap } from '../../chart/paneOrder';
 import type { PanePrefKey } from '../indicators/indicatorPaneProfiles';
@@ -65,10 +66,18 @@ export type {
  */
 export const LIVE_WINDOW_WORKSPACE: WindowWorkspaceAdapter = {
   store: useWorkspaceStore,
-  getCode: (windowId) => {
+  getWorkareaCode: (windowId) => {
     const s = useWorkspaceStore.getState();
     const win = s.windows.find((w) => w.id === windowId);
-    return win ? s.groupSymbols[win.group]?.code ?? null : null;
+    const sym = win ? s.groupSymbols[win.group] : undefined;
+    if (!sym) return null;
+    // `isLiveIndexId` 까지 보는 이유: `ChartWindow` 의 instrument 생성이 **정확히 같은
+    // 조건**으로 거르고(`kind==='index' && isLiveIndexId(code)` 아니면 instrument=null
+    // → workareaCode=null), 여기서 조건이 한 글자라도 넓으면 그 폴백 상태에서 가드가
+    // `'index:쓰레기' !== ''` 로 다시 반려한다. 생산자와 조건을 맞춘다.
+    return sym.kind === 'index' && isLiveIndexId(sym.code)
+      ? indexWorkareaCode(sym.code)
+      : sym.code;
   },
   scopePrefix: 'live',
 };
@@ -312,6 +321,13 @@ export function useIndicatorActions(): IndicatorActions {
  * 아직 활성인가"를 검사할 때 쓴다. 렌더 클로저가 아니라 **호출 시점 getState** 라
  * 스토어 변경 직후 React 재렌더 전에 발화해도 stale 하지 않다(전역 getState 가드의
  * 창별 대응물).
+ *
+ * `code` 는 **workarea 공간**이다 — 소비처(`useViewportBackfill`·`LiveChartRoot`)가
+ * `LiveChartRoot` 의 `code` prop 과 직접 비교하므로 그 공간이 아니면 비교가 성립하지
+ * 않는다. 지수는 `index:<id>`, 주식은 맨 코드.
+ *
+ * **막는 방향**: 디바운스 대기 중 창의 종목·봉이 바뀌면 옛 차트의 dispatch 를 반려한다.
+ * **못 보는 것**: 실제 fetch 성공 여부·픽셀. 코드가 맞으면 통과시킬 뿐이다.
  */
 type ViewGuard = () => { code: string | null; timeframe: LiveTimeframe };
 
@@ -322,7 +338,7 @@ function buildWindowViewGuard(
   return () => ({
     // 코드만 어댑터에 묻는다 — 스토어 모양으로 덮이지 않는 유일한 축이다
     // (`/live`=링크 그룹, `/study`=활성 저장뷰). 상세는 어댑터 타입 주석 참조.
-    code: workspace.getCode(windowId),
+    code: workspace.getWorkareaCode(windowId),
     timeframe: workspace.store.getState().windows
       .find((w) => w.id === windowId)?.chart?.timeframe ?? '1m',
   });
@@ -330,7 +346,15 @@ function buildWindowViewGuard(
 
 const GLOBAL_VIEW_GUARD: ViewGuard = () => {
   const s = useLivePageStore.getState();
-  return { code: s.activeCode, timeframe: s.candleTimeframe };
+  return {
+    // `activeCode` 를 base 로 유지한다 — 주식 경로의 값이 한 글자도 바뀌면 안 된다
+    // (이 경로를 타는 기존 테스트들이 `activeCode` 만 세팅하고 `activeInstrument` 는
+    // 비워 두므로, instrument 기반으로 갈아엎으면 전부 null 이 된다). 지수에서만
+    // null 이던 구멍을 창-스코프 가드와 같은 공간으로 메운다.
+    code: s.activeCode
+      ?? (s.activeInstrument?.kind === 'index' ? indexWorkareaCode(s.activeInstrument.id) : null),
+    timeframe: s.candleTimeframe,
+  };
 };
 
 export function useWindowViewGuard(): ViewGuard {

@@ -35,7 +35,7 @@ function studyChartId(): string {
  *  그룹이 없다). */
 const STUDY_WORKSPACE: WindowWorkspaceAdapter = {
   store: useStudyWorkspaceStore,
-  getCode: () => STUDY_CODE,
+  getWorkareaCode: () => STUDY_CODE,
   scopePrefix: 'study',
 };
 
@@ -115,7 +115,7 @@ describe('#907 — 주입된 핸들이 쓰기 경로를 가른다', () => {
 });
 
 describe('#907 — 코드 축은 스토어가 아니라 어댑터가 답한다', () => {
-  it('/study 는 그룹이 없어 getCode 가 코드를 공급한다', () => {
+  it('/study 는 그룹이 없어 getWorkareaCode 가 코드를 공급한다', () => {
     const id = studyChartId();
     seedLiveDecoy(id); // /live 미끼는 group 3 → 000660, 봉 'D' 를 갖고 있다
     useStudyWorkspaceStore.getState().setChartTimeframe(id, '10m');

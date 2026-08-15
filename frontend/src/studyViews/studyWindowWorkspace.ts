@@ -19,14 +19,18 @@ import type { WindowWorkspaceAdapter } from '../live/workspace/windowView';
  * 창 id 는 쓰지 않는다: 차트 창이 여러 개여도(#801 단계 1) **전부 활성 저장뷰에
  * 묶여 있어** 종목이 하나이기 때문이다. 창별 저장뷰(창마다 다른 종목)를 허용하는
  * 날 "이 창은 어느 뷰인가" 가 생기고, 그때 창별로 갈라진다.
+ *
+ * 반환은 **workarea 공간**이다(어댑터 계약). `/study` 탭은 6자리 종목 코드뿐이라
+ * 지금은 맨 코드가 곧 workarea 코드다 — 지수 탭이 생기는 날 여기가 갈리고,
+ * `liveInstrument.ts` 의 `indexWorkareaCode` 를 태워야 한다.
  */
-function studyWindowCode(): string | null {
+function studyWindowWorkareaCode(): string | null {
   const s = useStudyTabsStore.getState();
   return s.tabs.find((t) => t.id === s.activeTabId)?.code ?? null;
 }
 
 export const STUDY_WINDOW_WORKSPACE: WindowWorkspaceAdapter = {
   store: useStudyWorkspaceStore,
-  getCode: studyWindowCode,
+  getWorkareaCode: studyWindowWorkareaCode,
   scopePrefix: 'study',
 };

@@ -1,8 +1,15 @@
 import { renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
 
 import { useViewportBackfill } from './useViewportBackfill';
 import { useLivePageStore } from '../state/livePage';
+import { useWorkspaceStore, type GroupSymbol } from '../state/workspace';
+import {
+  WindowViewContext,
+  LIVE_WINDOW_WORKSPACE,
+  type WindowViewValue,
+} from './workspace/windowView';
 import { createVirtualAxis } from '../util/virtualAxis';
 import type { RangeBundle } from '../api/types';
 
@@ -16,9 +23,9 @@ function axisWithOneSession() {
 }
 
 // candleCountRef>0 이 되도록 캔들 1개만 있으면 충분(3a/3b 의 빈 차트 가드 통과).
-function bundleWithCandles(): RangeBundle {
+function bundleWithCandles(code = '005930'): RangeBundle {
   return {
-    code: '005930',
+    code,
     from_date: '20260709',
     to_date: '20260709',
     bucket_ms: 60_000,
@@ -547,5 +554,104 @@ describe('useViewportBackfill — warm-cache settle signal (3a)', () => {
     rerender({ settled: '20991231', ext: false }); // 요청한 from 과 무관한 값
 
     expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * 창 스코프(Provider 안) 경로 — 위 describe 들은 전부 **전역 폴백**만 검증한다.
+ *
+ * 그 비대칭이 실제 결함을 숨겼다: 워크스페이스 창에서는 가드가 어댑터에 코드를 묻고,
+ * 지수 그룹의 심볼 코드(`'KOSPI'`)가 차트가 받은 prop(`'index:KOSPI'`)과 달라 3b
+ * 디스패치가 **매번 조용히 반려**됐다. 전역 경로는 지수에서 `activeCode=null` 이라
+ * `view.code &&` 가 단락돼 공허하게 통과했으므로 이 경로로는 영원히 드러나지 않는다.
+ *
+ * 두 케이스를 **교대 대조**로 둔다 — 지수와 종목이 같은 하니스를 타므로, 종목 쪽이
+ * 초록인데 지수 쪽만 빨갛다면 원인은 하니스가 아니라 가드다. 지수만 단독으로 두면
+ * "디바운스가 아예 안 돌았다" 와 구별되지 않는다.
+ */
+describe('useViewportBackfill — 창 스코프(Provider 안)', () => {
+  const WINDOW_ID = 'w-chart';
+  let extendSpy: ReturnType<typeof vi.spyOn>;
+
+  function seedWindow(symbol: GroupSymbol): void {
+    useWorkspaceStore.setState({
+      windows: [{
+        id: WINDOW_ID,
+        kind: 'chart',
+        group: 1,
+        rect: { x: 0, y: 0, w: 400, h: 300 },
+        chart: { timeframe: '1m' },
+      }],
+      zOrder: [WINDOW_ID],
+      groupSymbols: { 1: symbol },
+      chartRuntime: {},
+    });
+  }
+
+  /** `ChartWindow` 가 싣는 값의 축소판. 지수의 `code` 는 null 이다(공간 C 미러). */
+  function provider(code: string | null) {
+    const value: WindowViewValue = {
+      windowId: WINDOW_ID,
+      group: 1,
+      code,
+      timeframe: '1m',
+      historicalFromDate: '20260601',
+      workspace: LIVE_WINDOW_WORKSPACE,
+    };
+    return ({ children }: { children: ReactNode }) => (
+      <WindowViewContext.Provider value={value}>{children}</WindowViewContext.Provider>
+    );
+  }
+
+  /** 좌측 팬 1회 → 디바운스 만료. `code` 는 `LiveChartRoot` 가 넘기는 workarea 코드. */
+  function panLeft(workareaCode: string, ctxCode: string | null) {
+    const cap = chartWithCapturedHandler();
+    renderHook(
+      () =>
+        useViewportBackfill({
+          chart: cap.chart,
+          axis: axisWithOneSession(),
+          bundle: bundleWithCandles(workareaCode),
+          timeframe: '1m',
+          isExtending: false,
+          code: workareaCode,
+          canTriggerBackfill: () => true,
+        }),
+      { wrapper: provider(ctxCode) },
+    );
+    cap.fire({ from: -5, to: 100 });
+    vi.advanceTimersByTime(150);
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    extendSpy = vi
+      .spyOn(useWorkspaceStore.getState(), 'extendChartHistoricalRange')
+      .mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    extendSpy.mockRestore();
+  });
+
+  it('지수 창: 좌측 팬이 창의 from-date 를 확장한다', () => {
+    seedWindow({ code: 'KOSPI', name: '코스피', kind: 'index' });
+    panLeft('index:KOSPI', null);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    expect(extendSpy).toHaveBeenCalledWith(WINDOW_ID, expect.any(String));
+  });
+
+  it('종목 창: 같은 하니스에서 동일하게 확장한다(대조군)', () => {
+    seedWindow({ code: '005930', name: '삼성전자' });
+    panLeft('005930', '005930');
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('창의 종목이 팬 도중 바뀌면 반려한다 — 가드가 닫는 방향', () => {
+    seedWindow({ code: '005930', name: '삼성전자' });
+    panLeft('000660', '000660'); // 차트가 든 코드와 창의 현재 종목이 불일치
+    expect(extendSpy).not.toHaveBeenCalled();
   });
 });

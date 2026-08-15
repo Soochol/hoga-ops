@@ -15,6 +15,7 @@ import {
 } from './windowView';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
 import { useWorkspaceStore, type WorkspaceWindow } from '../../state/workspace';
+import { indexInstrument } from '../liveInstrument';
 import {
   FACTORY_INDICATOR_SETTINGS,
   resolveIndicatorSettings,
@@ -255,5 +256,31 @@ describe('useWindowViewGuard', () => {
     const { result } = renderHook(() => useWindowViewGuard());
     useLivePageStore.setState({ activeCode: '005930', candleTimeframe: 'W' });
     expect(result.current()).toEqual({ code: '005930', timeframe: 'W' });
+  });
+
+  /**
+   * 가드가 돌려주는 코드는 **workarea 공간**이다 — `LiveChartRoot` 의 `code` prop 과
+   * 같은 공간이어야 비교가 성립한다. 지수 창에서 그룹 심볼(`'KOSPI'`)을 그대로
+   * 돌려주던 시절, 가드는 `'KOSPI' !== 'index:KOSPI'` 로 **매번 반려**해 좌측 팬
+   * 백필과 분봉 복원이 둘 다 죽어 있었다.
+   *
+   * 이 창의 `ctx.code` 는 여전히 **null** 이다(지수 = activeCode null 미러). 같은
+   * 컨텍스트 안에서 두 값이 갈리는 것이 의도이고, 이 테스트가 그 의도를 고정한다.
+   */
+  it('Provider 안 지수: workarea 공간(`index:<id>`)을 돌려준다 — ctx.code(null)와 의도적으로 갈린다', () => {
+    useWorkspaceStore.getState().setGroupSymbol(3, { code: 'KOSPI', name: '코스피', kind: 'index' });
+    const value: WindowViewValue = { ...windowValue('w1'), code: null };
+    const { result } = renderHook(() => useWindowViewGuard(), { wrapper: provider(value) });
+    expect(result.current()).toEqual({ code: 'index:KOSPI', timeframe: '5m' });
+  });
+
+  it('Provider 밖 지수: activeCode 가 null 이어도 activeInstrument 로 같은 공간을 채운다', () => {
+    useLivePageStore.setState({
+      activeCode: null,
+      activeInstrument: indexInstrument('KOSPI', '코스피'),
+      candleTimeframe: 'D',
+    });
+    const { result } = renderHook(() => useWindowViewGuard());
+    expect(result.current()).toEqual({ code: 'index:KOSPI', timeframe: 'D' });
   });
 });

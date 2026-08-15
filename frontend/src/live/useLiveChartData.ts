@@ -32,7 +32,7 @@ import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './l
 import type { LiveVenueOption } from '../state/liveVenue';
 import { liveVenueSessionBoundsMs } from './liveVenuePolicy';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
-import { instrumentLabel, type LiveInstrument } from './liveInstrument';
+import { indexWorkareaCode, instrumentLabel, type LiveInstrument } from './liveInstrument';
 import { useLiveIndexCandles, useLiveIndexInvestorNet } from '../api/liveIndices';
 import { buildIndexBundle } from './buildIndexBundle';
 import { capabilitiesForInstrument } from './liveInstrumentCapabilities';
@@ -232,7 +232,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
       depth_heatmap: stockBundle.depth_heatmap ?? [],
     };
   }, [stockBundle, stockChartBundle, dayAskPeaks, dayBidPeaks, tradeVolumePocs]);
-  const workareaCode = activeCode ?? (activeIndexId ? `index:${activeIndexId}` : null);
+  const workareaCode = activeCode ?? (activeIndexId ? indexWorkareaCode(activeIndexId) : null);
   const workareaBundle = activeIndexId ? indexBundle : stockBundle;
   const workareaChartBundle = activeIndexId ? indexBundle : stockChartBundle;
   const workareaHogaBundle = activeIndexId ? indexBundle : stockHogaBundle;

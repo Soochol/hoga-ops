@@ -8,6 +8,7 @@ import type { LiveVenueOption } from '../../state/liveVenue';
 import { computeDailyMaByDate } from '../../chart/projectors/dailyMovingAverage';
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
 import { useResolvedDailyCandles } from './useResolvedDailyCandles';
+import { isIndexWorkareaCode } from '../liveInstrument';
 import { useDailyMaSeriesRegistry } from './dailyMaSeriesRegistry';
 import { useWindowScopeId } from '../workspace/windowView';
 import { useWindowIndicator } from '../workspace/windowView';
@@ -52,7 +53,14 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
 
-  const enabled = masterEnabled && isMinuteTimeframe(timeframe) && !!code && !!todayKst;
+  // 지수 제외: 일봉 소스가 `/api/live/past-daily-candles`(6자리 종목 전용)라 지수
+  // 코드로는 애초에 시리즈가 그려지지 않는다. 즉 기능 제거가 아니라 헛요청 제거다
+  // (지수 일봉 MA 를 지원하려면 `/api/live/index-candles` D 를 태워야 한다 — 별건).
+  const enabled = masterEnabled
+    && isMinuteTimeframe(timeframe)
+    && !!code
+    && !isIndexWorkareaCode(code)
+    && !!todayKst;
 
   // 일봉 fetch 창은 today 앵커라 좌측 팬에 불변 → react-query 키 안정 → 재fetch 없이
   // candle prepend와 lockstep(ADR-0073). lookback 산식·거래일 환산은 dailyMaProjection(테스트됨).

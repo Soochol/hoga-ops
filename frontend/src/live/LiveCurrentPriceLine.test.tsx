@@ -57,6 +57,24 @@ describe('LiveCurrentPriceLine', () => {
     expect(opts.color).toBe(T.up); // 상승 → up 토큰
   });
 
+  it('지수 창(index:*): quote 를 묻지 않되 라인은 번들 종가로 그린다', () => {
+    // 회귀 방지의 핵심은 "안 그려진다" 가 아니라 **여전히 그려진다** 쪽이다.
+    // `/api/live/quotes` 가 종목 전용이라 폴링을 끊는 것이 목적이고, 라인 자체는
+    // deriveCurrentPriceLine 이 번들 마지막 종가로 계속 그린다.
+    const s = makeSeriesMock();
+    const paneSeries = new Map([['candle', s]]);
+    render(
+      <LiveCurrentPriceLine paneSeries={paneSeries as never} bundle={bundleWith([2450])} code="index:KOSPI" />,
+    );
+    // 빈 배열 = react-query enabled:false → 요청이 나가지 않는다.
+    expect(mockUseQuoteByCode).toHaveBeenLastCalledWith([], expect.anything());
+    expect(s.createPriceLine).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const opts = (s.createPriceLine.mock.calls as any[][])[0]![0] as Record<string, unknown>;
+    expect(opts).toMatchObject({ price: 2450, lineVisible: true, axisLabelVisible: true });
+    expect(opts.color).toBe(T.neutral); // quote 없음 → 방향 미상 → neutral
+  });
+
   it('updates price via applyOptions without recreating the line', () => {
     const s = makeSeriesMock();
     const paneSeries = new Map([['candle', s]]);
