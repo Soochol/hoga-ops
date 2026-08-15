@@ -103,23 +103,32 @@ export function mergeIndicatorModalByTimeframe(raw: unknown): IndicatorModalByTi
   return Object.keys(seeded).length > 0 ? { minute: seeded } : {};
 }
 
-/** 창 분리 맵 로드 — 값이 비어도 **엔트리를 보존한다**(멤버십 = 키의 존재).
- *  `livePage` 쪽 `byWindow` 정규화와 같은 규약이다. */
-export function mergeIndicatorModalByWindow(
+/**
+ * `/study` 의 indicator-modal 버킷 로드 — **키가 없을 때만** `/live` 에서 시드한다
+ * (ADR-0146). `livePage` 의 `studyByTimeframe` 과 같은 규약이다:
+ * 게으른 폴백이면 `/study` 가 첫 편집 전까지 `/live` 를 계속 따라다닌다.
+ */
+export function mergeStudyIndicatorModal(
   raw: unknown,
-): Record<string, IndicatorModalByTimeframe> {
-  if (!raw || typeof raw !== 'object') return {};
-  const stored = (raw as Record<string, unknown>).indicatorModalByWindow;
-  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
-  const out: Record<string, IndicatorModalByTimeframe> = {};
-  for (const [scopeKey, value] of Object.entries(stored as Record<string, unknown>)) {
-    if (!scopeKey || !value || typeof value !== 'object' || Array.isArray(value)) continue;
-    const byTimeframe: IndicatorModalByTimeframe = {};
+  live: IndicatorModalByTimeframe,
+): IndicatorModalByTimeframe {
+  const stored = raw && typeof raw === 'object'
+    ? (raw as Record<string, unknown>).studyIndicatorModalByTimeframe
+    : undefined;
+  if (stored === undefined) {
+    // 깊은 사본 — 버킷 객체를 공유하면 한쪽 편집이 다른 쪽으로 샌다.
+    const seeded: IndicatorModalByTimeframe = {};
     for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
-      const bucket = sanitizeIndicatorModalBucket((value as Record<string, unknown>)[profileKey]);
-      if (Object.keys(bucket).length > 0) byTimeframe[profileKey] = bucket;
+      const bucket = live[profileKey];
+      if (bucket) seeded[profileKey] = { ...bucket };
     }
-    out[scopeKey] = byTimeframe;
+    return seeded;
+  }
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
+  const out: IndicatorModalByTimeframe = {};
+  for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
+    const bucket = sanitizeIndicatorModalBucket((stored as Record<string, unknown>)[profileKey]);
+    if (Object.keys(bucket).length > 0) out[profileKey] = bucket;
   }
   return out;
 }
@@ -136,7 +145,7 @@ export function hydrateChartPrefs(store: typeof useChartPrefsStore): void {
     store.setState({
       ...prefs,
       indicatorModalByTimeframe,
-      indicatorModalByWindow: mergeIndicatorModalByWindow(parsed),
+      studyIndicatorModalByTimeframe: mergeStudyIndicatorModal(parsed, indicatorModalByTimeframe),
       ...resolveIndicatorModalPrefs(indicatorModalByTimeframe, tf),
     });
   } catch {
@@ -184,7 +193,7 @@ export function attachChartPrefsPersistence(store: typeof useChartPrefsStore): (
           .map((k) => [k, s[k as keyof ChartViewPrefs]]),
       ),
       indicatorModalByTimeframe: s.indicatorModalByTimeframe,
-      indicatorModalByWindow: s.indicatorModalByWindow,
+      studyIndicatorModalByTimeframe: s.studyIndicatorModalByTimeframe,
     }) as unknown as ChartViewPrefs,
   });
 }

@@ -11,10 +11,6 @@ import {
 import { MIN_W, MIN_H, type Canvas, type Rect } from '../workspace/snapEngine';
 import { isFracRect, toFrac } from '../workspace/rectSpace';
 import { readLegacyWorkspaceSeed } from './workspaceMigration';
-import {
-  dropIndicatorScopesForRemovedWindows,
-  dropIndicatorScopesForWindows,
-} from './indicatorScopeGc';
 import { isLiveIndexId } from '../live/liveInstrument';
 
 /**
@@ -102,9 +98,9 @@ export interface WorkspaceRect {
  * 되돌렸다 — 워크스페이스는 탭별 sessionStorage 라, 창이 지표를 **소유하면**
  * 지표가 탭마다 갈라진다.
  *
- * 창별 지표는 그 뒤 다시 생겼지만(ADR-0145) **여기로 돌아오지 않았다**: 창이 갖는
- * 것은 스코프 **키**뿐이고 내용물은 그대로 전역 localStorage 에 있다. 그래서 이
- * 타입에 지표를 다시 넣으려는 변경은 #712 를 그대로 재현하는 것이다.
+ * 지표 세트는 이제 **페이지별**이다(ADR-0146 — `/live` ↔ `/study`). 그 축도 전역
+ * localStorage 에 살지 이 스냅샷에 오지 않는다. 이 타입에 지표를 다시 넣으려는
+ * 변경은 #712 를 그대로 재현하는 것이다.
  */
 export interface ChartWindowConfig {
   timeframe: LiveTimeframe;
@@ -585,10 +581,6 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       persistFromState({ ...state, ...next });
       return next;
     });
-    // 창별 지표 설정은 전역 저장소에 있어 창과 함께 사라지지 않는다 — 창 id 는
-    // 재사용되지 않으므로 여기서 회수하지 않으면 닿을 수 없는 쓰레기가 된다.
-    // (set 콜백 **밖**에서 부른다 — 다른 스토어를 그 안에서 갱신하지 않기 위해.)
-    dropIndicatorScopesForWindows('live', [id]);
   },
 
   focusWindow: (id) => {
@@ -732,7 +724,6 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   },
 
   applyWorkspaceSnapshot: (snapshot) => {
-    const before = useWorkspaceStore.getState().windows;
     set((state) => {
       // 종목은 payload 를 보지 않고 현재 것을 그대로 넘긴다 — 폴백 분기까지 한 규칙.
       const next = { ...normalizeWorkspaceSnapshot(snapshot), groupSymbols: state.groupSymbols };
@@ -741,10 +732,6 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       // 가리킬 창이 없어진다. 종목이 유지돼도 이 리셋은 그대로 필요하다(fresh-view).
       return { ...next, chartRuntime: {} };
     });
-    // 같은 이유로 창별 지표 스코프도 고아가 된다. 다만 프리셋 payload 가 **같은
-    // id 를 담고 있으면**(그 배치를 저장한 그 세션의 창들) 살아남아야 하므로,
-    // 전량 폐기가 아니라 사라진 id 만 회수한다.
-    dropIndicatorScopesForRemovedWindows('live', before, useWorkspaceStore.getState().windows);
   },
 }));
 

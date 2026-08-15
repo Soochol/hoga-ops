@@ -9,16 +9,15 @@
  * 당시 기능 무변경이었고, 지금도 Provider 없이 렌더되는 경로(테스트·단일 차트)가
  * 종전대로 동작한다.
  *
- * **지표 스코프는 두 단계다: 봉, 그리고 창(opt-in).** 기본은 앱 전역 공용 1세트
- * (`live.indicators.v2`)이고 창이 정하는 것은 **어느 봉 버킷인가** 뿐 — 이게 종전
- * 동작이고 지금도 대부분의 창이 그렇다. 사용자가 한 창을 **명시적으로 분리**하면
- * (드로어의 "이 창만 따로") 그 창은 자기 버킷 세트를 갖는다.
+ * **지표 스코프는 (페이지 × 봉)이다**(ADR-0146). `/live` 와 `/study` 는 각각 자기
+ * 세트를 갖고 **서로 동기화하지 않는다**. 한 페이지 **안**에서는 창들이 같은 세트를
+ * 공유하고, 창이 정하는 것은 **어느 봉 버킷인가** 뿐이다.
  *
- * 한때 창이 설정을 통째로 소유했다가(#712) 되돌린 적이 있는데, 그 사고의 원인은
- * 창-스코프 자체가 아니라 **설정의 내용물을 창 스냅샷에 담은 것**이었다 —
- * 워크스페이스는 탭별 sessionStorage 라 지표가 브라우저 탭마다 갈렸다. 지금은
- * 내용물이 전역 localStorage 에 있고 창이 소유하는 것은 **키뿐**이라, 크로스탭
- * 동기화(`subscribeToIndicatorsStorage`)가 분리된 창까지 그대로 덮는다.
+ * 창별 분리는 만들었다가 같은 날 되돌렸다(#1327 → ADR-0146) — 요구는 "창마다" 가
+ * 아니라 "두 페이지가 서로 안 따라오게" 였다. 그보다 앞서 창이 설정을 통째로
+ * 소유하던 시절도 있었고(#712), 그건 내용물을 창 스냅샷(탭별 sessionStorage)에
+ * 담아서 지표가 브라우저 탭마다 갈렸다. 지금 두 세트는 모두 전역 localStorage 에
+ * 있어 크로스탭 동기화(`subscribeToIndicatorsStorage`)가 양쪽을 그대로 덮는다.
  *
  * 범위: 데이터 페치 경로만(code·timeframe·historicalFromDate·지표 resolve).
  * 크로스헤어/축 동기화는 PR-D, venue 는 전역 유지(#715).
@@ -32,9 +31,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
 import {
   INDICATOR_SETTING_KEYS,
-  bucketsForScope,
-  isWindowScopeDetached,
+  bucketsForPage,
   resolveIndicatorSettings,
+  type IndicatorPageScope,
   type IndicatorSettings,
 } from '../../state/indicatorSettingsV2';
 import { INDICATOR_OPS, bindIndicatorOps, type BoundIndicatorOps } from '../../state/indicatorOps';
@@ -45,14 +44,13 @@ import type { PanePrefKey } from '../indicators/indicatorPaneProfiles';
 import type { PresetEnableByTimeframe } from '../presets/presetFlags';
 import {
   WindowViewContext,
-  windowScopeKey,
   type WindowView,
   type WindowWorkspaceAdapter,
 } from './windowViewContext';
 
 // 컨텍스트 객체·타입은 `windowViewContext.ts` 가 소유한다(chartPrefs 순환 회피 —
 // 그 파일 상단 주석 참조). 소비자 호환을 위해 여기서 그대로 re-export 한다.
-export { WindowViewContext, windowScopeKey } from './windowViewContext';
+export { WindowViewContext } from './windowViewContext';
 export type {
   WindowChartStoreState,
   WindowStoreHandle,
@@ -117,10 +115,9 @@ export function useWindowScopeId(): string | null {
 /**
  * 이 서브트리가 편집·표시하는 지표 봉 — **창 안에서만** 의미가 있다(밖은 null).
  *
- * 지표 설정은 앱 전역 1세트(`live.indicators.v2`)이고 창이 정하는 것은 봉뿐이라,
- * "어느 창인가" 는 "어느 버킷인가" 로 축소된다. 이 훅이 그 축소를 한 곳에 모아
- * 읽기(`useWindowIndicators`)·쓰기(`useIndicatorActions`)가 같은 버킷을 향하는 것을
- * 구조로 보장한다.
+ * 페이지 세트 안에서 창이 정하는 것은 봉뿐이라, "어느 창인가" 는 "어느 버킷인가" 로
+ * 축소된다. 이 훅이 그 축소를 한 곳에 모아 읽기(`useWindowIndicators`)·쓰기
+ * (`useIndicatorActions`)가 같은 버킷을 향하는 것을 구조로 보장한다.
  *
  * Provider **밖**은 종전대로 전역 스토어의 **ambient 투영**(최상위
  * `IndicatorSettings` 필드)을 읽는다 — 그 투영은 세터가 유지하는 파생값이고
@@ -132,21 +129,15 @@ function useWindowIndicatorTimeframe(): LiveTimeframe | null {
 }
 
 /**
- * 이 서브트리의 지표 스코프 키(`live:<id>`/`study:<id>`) — Provider 밖은 null.
+ * 이 서브트리의 지표 소유 페이지 — Provider 밖은 null(= `/live` 세트로 폴백).
  *
- * null 은 "분리되지 않음" 이 아니라 **"창이 없다"** 는 뜻이고, 두 경우 모두 공용
- * 세트를 본다. 분리 여부는 이 키로 저장소를 조회해야 알 수 있다
- * (`useIsWindowIndicatorsDetached`) — 키를 가진 창의 대다수는 연동 상태다.
+ * 어댑터에서 **렌더 동기적으로** 나온다. 전역 "현재 페이지" 슬롯을 두지 않는 이유가
+ * 여기 있다: 그런 슬롯은 라우팅·마운트보다 한 커밋 늦게 갱신되고, 그 한 틱 동안
+ * 엉뚱한 페이지의 버킷이 적용된다 — `chartPrefs.windowScope.test.tsx` 가 남아 있는
+ * 결함이 정확히 그 모양(포커스를 따라다니는 전역 슬롯)이었다.
  */
-export function useWindowIndicatorScope(): string | null {
-  const ctx = useContext(WindowViewContext);
-  return windowScopeKey(ctx?.workspace, ctx?.windowId);
-}
-
-/** 이 창이 공용 세트에서 분리됐는가 — 드로어의 "이 창만 따로" 스위치 상태. */
-export function useIsWindowIndicatorsDetached(): boolean {
-  const scopeKey = useWindowIndicatorScope();
-  return useLivePageStore((s) => isWindowScopeDetached(s.indicatorsByWindow, scopeKey));
+export function useWindowIndicatorScope(): IndicatorPageScope | null {
+  return useContext(WindowViewContext)?.workspace.scopePrefix ?? null;
 }
 
 /**
@@ -157,7 +148,7 @@ export function useIsWindowIndicatorsDetached(): boolean {
  */
 export function useWindowIndicators(): IndicatorSettings {
   const timeframe = useWindowIndicatorTimeframe();
-  const scopeKey = useWindowIndicatorScope();
+  const page = useWindowIndicatorScope();
   const ambient = useLivePageStore(
     useShallow((s): IndicatorSettings | undefined => {
       if (timeframe) return undefined; // 창 안 — 상수 selector 로 구독 무력화
@@ -171,7 +162,7 @@ export function useWindowIndicators(): IndicatorSettings {
   const inWindow = useLivePageStore(
     (s) => (timeframe
       ? resolveIndicatorSettings(
-        bucketsForScope(s.indicatorsByTimeframe, s.indicatorsByWindow, scopeKey),
+        bucketsForPage(s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, page),
         timeframe,
       )
       : undefined),
@@ -186,11 +177,11 @@ export function useWindowIndicators(): IndicatorSettings {
  */
 export function useWindowIndicator<T>(select: (s: IndicatorSettings) => T): T {
   const timeframe = useWindowIndicatorTimeframe();
-  const scopeKey = useWindowIndicatorScope();
+  const page = useWindowIndicatorScope();
   return useLivePageStore((s) => select(
     timeframe
       ? resolveIndicatorSettings(
-        bucketsForScope(s.indicatorsByTimeframe, s.indicatorsByWindow, scopeKey),
+        bucketsForPage(s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, page),
         timeframe,
       )
       : (s as unknown as IndicatorSettings),
@@ -243,11 +234,6 @@ export type IndicatorActions = BoundIndicatorOps & {
     byTimeframeEnable: PresetEnableByTimeframe;
     paneStretch: PaneStretchMap;
   }) => void;
-  /** 이 창을 공용 세트에서 분리한다(현재 유효 설정을 복사 — 화면 무변경).
-   *  Provider 밖에서는 분리할 창이 없어 no-op 다. */
-  detachIndicators: () => void;
-  /** 분리를 취소하고 공용 세트로 되돌린다(그 창의 오버라이드는 버려진다). */
-  attachIndicators: () => void;
 };
 
 /**
@@ -266,10 +252,6 @@ function buildGlobalIndicatorActions(): IndicatorActions {
   out.setPaneStretch = s.setPaneStretch;
   out.resetIndicators = s.resetIndicators;
   out.applyIndicatorPreset = s.applyIndicatorPreset;
-  // 창이 없으면 분리할 대상이 없다. UI 는 이 스위치를 창 안에서만 렌더하므로
-  // (드로어는 언제나 대상 창의 Provider 안) 도달하지 않는 분기다.
-  out.detachIndicators = () => {};
-  out.attachIndicators = () => {};
   return out as unknown as IndicatorActions;
 }
 
@@ -285,33 +267,30 @@ function buildWindowIndicatorActions(
   workspace: WindowWorkspaceAdapter,
 ): IndicatorActions {
   const handle = workspace.store;
-  // 스코프 키는 창 수명 동안 불변이다(`windowViewContext` 말미의 windowId 불변식)
-  // — 그래서 호출마다 다시 만들지 않고 여기서 한 번 굳힌다.
-  const scopeKey = windowScopeKey(workspace, windowId) as string;
+  // 이 창이 속한 페이지 — 어댑터가 모듈 상수라 창 수명 동안 불변이다.
+  const page = workspace.scopePrefix;
   const ps = () => useLivePageStore.getState();
   const tf = (): LiveTimeframe =>
     handle.getState().windows.find((w) => w.id === windowId)?.chart?.timeframe ?? '1m';
   const readSettings = (): IndicatorSettings => {
     const s = ps();
     return resolveIndicatorSettings(
-      bucketsForScope(s.indicatorsByTimeframe, s.indicatorsByWindow, scopeKey),
+      bucketsForPage(s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, page),
       tf(),
     );
   };
   return {
-    ...bindIndicatorOps(readSettings, (patch) => ps().patchIndicatorsScoped(scopeKey, tf(), patch)),
+    ...bindIndicatorOps(readSettings, (patch) => ps().patchIndicatorsScoped(page, tf(), patch)),
     // 호출자가 넘긴 tf 의 버킷에 기록한다 — 정상 경로에선 이 창의 봉과 같지만,
     // 드로어 재타깃/stale 렌더에서 어긋나도 조용히 다른 버킷을 오염시키지 않는다.
     setPanePrefForTimeframe: (timeframe, key, enabled) =>
-      ps().setPanePrefScoped(scopeKey, timeframe, key, enabled),
+      ps().setPanePrefScoped(page, timeframe, key, enabled),
     // 레이아웃(pane 순서·크기)은 분리 대상이 아니다 — 전역 1세트 유지(ADR-0114 §3).
     setPaneOrder: (order) => ps().setPaneOrder(order),
     setPaneStretch: (patch) => ps().setPaneStretch(patch),
-    resetIndicators: () => ps().resetIndicatorsScoped(scopeKey, tf()),
-    // 프리셋은 공용 세트를 갈아끼운다 — 분리된 창은 영향받지 않는다(livePage 주석).
+    resetIndicators: () => ps().resetIndicatorsScoped(page, tf()),
+    // 프리셋은 그 페이지의 세트를 갈아끼운다(다른 페이지는 영향 없음).
     applyIndicatorPreset: (preset) => ps().applyIndicatorPreset(preset),
-    detachIndicators: () => ps().detachWindowIndicators(scopeKey),
-    attachIndicators: () => ps().attachWindowIndicators(scopeKey),
   };
 }
 

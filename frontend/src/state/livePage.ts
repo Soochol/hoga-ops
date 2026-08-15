@@ -23,20 +23,15 @@ import {
   persistIndicatorsV2,
   readIndicatorsV2Storage,
   resolveIndicatorSettings,
+  type IndicatorPageScope,
   type IndicatorSettings,
   type IndicatorSettingsByTimeframe,
 } from './indicatorSettingsV2';
 import { bindIndicatorOps, MA_PALETTE } from './indicatorOps';
 import { applyPresetEnableByTimeframe } from './indicatorPresetOps';
-import {
-  attachIndicatorModalScope,
-  detachIndicatorModalScope,
-  dropIndicatorModalScopes,
-  syncIndicatorModalTimeframe,
-} from './chartPrefs';
+import { syncIndicatorModalTimeframe } from './chartPrefs';
 import {
   profileKeyForTimeframe,
-  type IndicatorPaneProfileKey,
   type PanePrefKey,
 } from '../live/indicators/indicatorPaneProfiles';
 import {
@@ -215,12 +210,11 @@ type Store = Persisted & IndicatorSettings & {
   paneOrder: PaneId[];
   /** 사용자 소유 Pane 크기 가중치(#703 — 전역, paneOrder 와 같은 레이아웃 슬라이스). */
   paneStretch: PaneStretchMap;
-  /** 4버킷 sparse 오버라이드 원본 (`live.indicators.v2`). 공용 세트 — 분리되지
-   *  않은 모든 창이 이것을 본다. */
+  /** `/live` 의 4버킷 sparse 오버라이드 원본 (`live.indicators.v2`). */
   indicatorsByTimeframe: IndicatorSettingsByTimeframe;
-  /** 공용 세트에서 분리된 창의 4버킷 원본. 키 = `live:<창id>`/`study:<창id>`,
-   *  키의 존재가 곧 분리 멤버십(`indicatorSettingsV2` 의 `byWindow` 주석). */
-  indicatorsByWindow: Record<string, IndicatorSettingsByTimeframe>;
+  /** `/study` 의 4버킷 원본 — 두 페이지는 항상 분리다(ADR-0146). 로드 시
+   *  `/live` 세트에서 시드되고, 그 뒤로는 서로를 보지 않는다. */
+  studyIndicatorsByTimeframe: IndicatorSettingsByTimeframe;
   /** 지표 설정이 현재 투영된 봉 — 보는 차트의 timeframe 과 항상 일치해야 한다. */
   indicatorTimeframe: LiveTimeframe;
   /** 페이지가 현재 봉을 공급한다(/live=candleTimeframe·/study=activeTab.timeframe). */
@@ -249,10 +243,10 @@ type Store = Persisted & IndicatorSettings & {
   /** 지정한 봉의 버킷에 pane 토글을 기록한다(레전드 ✕ 등 명시적 timeframe 호출용).
    *  ambient 봉과 같은 프로파일이면 투영도 함께 갱신된다. */
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
-  /** `setPanePrefForTimeframe` 의 스코프 판 — 분리된 창의 레전드 ✕ 가 공용 세트를
+  /** `setPanePrefForTimeframe` 의 페이지 판 — `/study` 레전드 ✕ 가 `/live` 세트를
    *  건드리지 않게 한다. */
   setPanePrefScoped: (
-    scopeKey: string | null,
+    page: IndicatorPageScope | null,
     timeframe: LiveTimeframe,
     key: PanePrefKey,
     enabled: boolean,
@@ -261,31 +255,18 @@ type Store = Persisted & IndicatorSettings & {
    *  편집을 그 창의 봉 버킷으로 보내는 진입점(`windowView` 의 창 액션 백엔드).
    *  ambient 봉과 같은 프로파일일 때만 최상위 투영도 함께 갱신한다. */
   patchIndicatorsAt: (timeframe: LiveTimeframe, patch: Partial<IndicatorSettings>) => void;
-  /** `patchIndicatorsAt` 의 스코프 판. `scopeKey`=null 이면 공용 세트(종전 동작),
-   *  분리된 창이면 그 창의 버킷에만 쓴다. **분리 창 쓰기는 최상위 투영을 절대
-   *  갱신하지 않는다** — 투영은 공용 세트의 ambient 봉 값이라, 창 편집이 여기를
-   *  덮으면 Provider 밖 소비자(단일 차트·픽스처)가 남의 창 설정을 보게 된다. */
+  /** `patchIndicatorsAt` 의 페이지 판. `page`=null 은 Provider 밖(단일 차트·픽스처)
+   *  이라 `/live` 세트로 간다. **`/study` 쓰기는 최상위 투영을 갱신하지 않는다** —
+   *  투영은 `/live` 세트의 ambient 봉 값이다. */
   patchIndicatorsScoped: (
-    scopeKey: string | null,
+    page: IndicatorPageScope | null,
     timeframe: LiveTimeframe,
     patch: Partial<IndicatorSettings>,
   ) => void;
   /** 지정한 봉 버킷의 오버라이드만 비운다 — `resetIndicators` 의 명시-봉 판. */
   resetIndicatorsAt: (timeframe: LiveTimeframe) => void;
-  /** `resetIndicatorsAt` 의 스코프 판. 분리된 창의 "현재 봉 초기화"는 **그 창의
-   *  버킷만** 비운다 — 공용으로 되돌리는 것은 `attachWindowIndicators` 라는 별개
-   *  행동이다(초기화가 조용히 연동을 해제하면 되돌릴 방법이 없다). */
-  resetIndicatorsScoped: (scopeKey: string | null, timeframe: LiveTimeframe) => void;
-  /** 이 창을 공용 세트에서 분리한다 — 현재 공용 버킷 전체(4봉)를 복사해 심으므로
-   *  분리 직후 화면이 바뀌지 않는다. 이미 분리됐으면 no-op(복사가 덮지 않는다). */
-  detachWindowIndicators: (scopeKey: string) => void;
-  /** 분리를 취소하고 공용 세트로 되돌린다 — 그 창의 오버라이드는 버려진다. */
-  attachWindowIndicators: (scopeKey: string) => void;
-  /** 사라진 창의 스코프를 회수한다(창 닫힘·레이아웃 프리셋 적용). 로드 시 일괄
-   *  청소는 하지 않는다 — 딥링크 탭은 워크스페이스를 공유 저장소에 미러하지
-   *  않으므로(`workspace.ts` 의 `isDeepLinkTab`), 다른 탭이 스냅샷을 근거로 쓸면
-   *  **살아 있는** 창의 설정을 지운다. */
-  dropWindowIndicatorScopes: (scopeKeys: readonly string[]) => void;
+  /** `resetIndicatorsAt` 의 페이지 판 — 그 페이지의 그 봉 버킷만 비운다. */
+  resetIndicatorsScoped: (page: IndicatorPageScope | null, timeframe: LiveTimeframe) => void;
   /** 다른 탭이 쓴 `live.indicators.v2` 를 다시 읽어 스토어를 맞춘다(crossTabSync).
    *  **되쓰지 않는다** — 재기록하면 그 storage 이벤트가 다시 다른 탭들을 깨운다. */
   hydrateIndicatorsFromStorage: () => void;
@@ -443,31 +424,26 @@ export const useLivePageStore = create<Store>((set, get) => {
       paneOrder: s.paneOrder,
       paneStretch: s.paneStretch,
       byTimeframe: s.indicatorsByTimeframe,
-      byWindow: s.indicatorsByWindow,
+      studyByTimeframe: s.studyIndicatorsByTimeframe,
     });
   };
 
-  /** 이 스코프가 편집하는 버킷 맵이 창 것인가(=분리됐는가). 값이 아니라 **키의
-   *  존재**로 판정한다 — 공장값에서 분리하면 복사할 diff 가 없어 `{}` 다. */
-  const isDetached = (s: Store, scopeKey: string | null): scopeKey is string =>
-    scopeKey !== null && Object.hasOwn(s.indicatorsByWindow, scopeKey);
-
   const patchIndicatorsScoped = (
-    scopeKey: string | null,
+    page: IndicatorPageScope | null,
     timeframe: LiveTimeframe,
     patch: Partial<IndicatorSettings>,
   ): void => {
     const s = get();
     const profileKey = profileKeyForTimeframe(timeframe);
-    const detached = isDetached(s, scopeKey);
-    const source = detached ? s.indicatorsByWindow[scopeKey] : s.indicatorsByTimeframe;
+    const isStudy = page === 'study';
+    const source = isStudy ? s.studyIndicatorsByTimeframe : s.indicatorsByTimeframe;
     const buckets = { ...source, [profileKey]: { ...(source[profileKey] ?? {}), ...patch } };
-    const next: Record<string, unknown> = detached
-      ? { indicatorsByWindow: { ...s.indicatorsByWindow, [scopeKey]: buckets } }
+    const next: Record<string, unknown> = isStudy
+      ? { studyIndicatorsByTimeframe: buckets }
       : { indicatorsByTimeframe: buckets };
-    // 최상위 투영은 **공용 세트의** ambient 봉 값이다. 분리 창의 편집이 봉만 같다고
-    // 여기를 덮으면 Provider 밖 소비자(단일 차트·픽스처)가 남의 창 설정을 보게 된다.
-    if (!detached && profileKey === profileKeyForTimeframe(s.indicatorTimeframe)) {
+    // 최상위 투영은 **`/live` 세트의** ambient 봉 값이다. `/study` 편집이 봉만 같다고
+    // 여기를 덮으면 Provider 밖 소비자(단일 차트·픽스처)가 남의 페이지 설정을 본다.
+    if (!isStudy && profileKey === profileKeyForTimeframe(s.indicatorTimeframe)) {
       Object.assign(next, patch);
     }
     set(next as Partial<Store>);
@@ -500,7 +476,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     paneOrder: initialIndicatorsV2.paneOrder,
     paneStretch: initialIndicatorsV2.paneStretch,
     indicatorsByTimeframe: initialIndicatorsV2.byTimeframe,
-    indicatorsByWindow: initialIndicatorsV2.byWindow,
+    studyIndicatorsByTimeframe: initialIndicatorsV2.studyByTimeframe,
     indicatorTimeframe: initialPage.candleTimeframe,
     lastMinuteHistoricalFromDate: null,
 
@@ -520,8 +496,8 @@ export const useLivePageStore = create<Store>((set, get) => {
     setPanePrefForTimeframe: (timeframe, key, enabled) =>
       patchIndicatorsScoped(null, timeframe, { [key]: enabled } as Partial<IndicatorSettings>),
 
-    setPanePrefScoped: (scopeKey, timeframe, key, enabled) =>
-      patchIndicatorsScoped(scopeKey, timeframe, { [key]: enabled } as Partial<IndicatorSettings>),
+    setPanePrefScoped: (page, timeframe, key, enabled) =>
+      patchIndicatorsScoped(page, timeframe, { [key]: enabled } as Partial<IndicatorSettings>),
 
     setPaneOrder: (order) => {
       set({ paneOrder: normalizePaneOrder(order) });
@@ -553,19 +529,16 @@ export const useLivePageStore = create<Store>((set, get) => {
 
     resetIndicatorsAt: (timeframe) => get().resetIndicatorsScoped(null, timeframe),
 
-    resetIndicatorsScoped: (scopeKey, timeframe) => {
+    resetIndicatorsScoped: (page, timeframe) => {
       // 지정 봉 버킷만 공장값으로(#697). 레이아웃(paneOrder·paneStretch)은
       // 보존 — 크기 리셋은 프리셋 "기본 레이아웃으로 초기화"가 담당(#703).
       const s = get();
       const profileKey = profileKeyForTimeframe(timeframe);
       const next: Record<string, unknown> = {};
-      if (isDetached(s, scopeKey)) {
-        // 분리된 창은 **자기 버킷만** 비운다. 공용으로 되돌리는 것은
-        // `attachWindowIndicators` 라는 별개 행동이다 — 초기화가 조용히 연동을
-        // 해제하면 사용자는 자기가 무엇을 잃었는지도 모른 채 되돌릴 수 없다.
-        const buckets = { ...s.indicatorsByWindow[scopeKey] };
+      if (page === 'study') {
+        const buckets = { ...s.studyIndicatorsByTimeframe };
         delete buckets[profileKey];
-        next.indicatorsByWindow = { ...s.indicatorsByWindow, [scopeKey]: buckets };
+        next.studyIndicatorsByTimeframe = buckets;
       } else {
         const byTimeframe = { ...s.indicatorsByTimeframe };
         delete byTimeframe[profileKey];
@@ -575,46 +548,6 @@ export const useLivePageStore = create<Store>((set, get) => {
         }
       }
       set(next as Partial<Store>);
-      persistIndicators();
-    },
-
-    detachWindowIndicators: (scopeKey) => {
-      const s = get();
-      if (Object.hasOwn(s.indicatorsByWindow, scopeKey)) return;
-      // 버킷 **객체까지** 새로 만든다 — 맵만 얕게 복사하면 분리된 창과 공용 세트가
-      // 같은 버킷 참조를 공유해, 이후 공용 편집이 분리 창으로 샌다.
-      const copy: IndicatorSettingsByTimeframe = {};
-      for (const [profileKey, bucket] of Object.entries(s.indicatorsByTimeframe)) {
-        copy[profileKey as IndicatorPaneProfileKey] = { ...bucket };
-      }
-      set({ indicatorsByWindow: { ...s.indicatorsByWindow, [scopeKey]: copy } });
-      persistIndicators();
-      // 드로어의 호가 동작설정(급증 마커·극단값 필터 …)은 chartPrefs 소속이라
-      // 같은 틱에 함께 분리한다 — 멤버십이 어긋나면 한 패널 안에서 절반만
-      // 분리된 상태가 되고, 그 절반은 조용히 공용 세트로 샌다(ADR-0072).
-      detachIndicatorModalScope(scopeKey);
-    },
-
-    attachWindowIndicators: (scopeKey) => {
-      const s = get();
-      if (!Object.hasOwn(s.indicatorsByWindow, scopeKey)) return;
-      const byWindow = { ...s.indicatorsByWindow };
-      delete byWindow[scopeKey];
-      set({ indicatorsByWindow: byWindow });
-      persistIndicators();
-      attachIndicatorModalScope(scopeKey);
-    },
-
-    dropWindowIndicatorScopes: (scopeKeys) => {
-      const s = get();
-      const known = scopeKeys.filter((key) => Object.hasOwn(s.indicatorsByWindow, key));
-      // chartPrefs 회수는 조건 없이 부른다 — 두 맵이 어긋난 상태(수동 setState 를
-      // 쓰는 테스트·손상된 저장값)에서도 회수가 한쪽만 되고 끝나지 않게.
-      dropIndicatorModalScopes(scopeKeys);
-      if (known.length === 0) return; // 없는 키에 쓰기·persist 를 유발하지 않는다.
-      const byWindow = { ...s.indicatorsByWindow };
-      for (const key of known) delete byWindow[key];
-      set({ indicatorsByWindow: byWindow });
       persistIndicators();
     },
 
@@ -628,9 +561,9 @@ export const useLivePageStore = create<Store>((set, get) => {
         paneOrder: stored.paneOrder,
         paneStretch: stored.paneStretch,
         indicatorsByTimeframe: stored.byTimeframe,
-        // 창 스코프도 함께 받는다 — 안 받으면 이 탭의 스토어엔 남의 분리 설정이
-        // 없고, 이 탭의 다음 편집이 `persistIndicators` 로 그것을 덮어 지운다.
-        indicatorsByWindow: stored.byWindow,
+        // `/study` 세트도 함께 받는다 — 안 받으면 이 탭의 스토어엔 다른 탭이 바꾼
+        // 값이 없고, 이 탭의 다음 편집이 `persistIndicators` 로 그것을 덮어 지운다.
+        studyIndicatorsByTimeframe: stored.studyByTimeframe,
         ...resolveIndicatorSettings(stored.byTimeframe, get().indicatorTimeframe),
       });
     },

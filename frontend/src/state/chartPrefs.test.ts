@@ -33,7 +33,7 @@ describe('useChartPrefsStore', () => {
 import {
   mergePrefs,
   mergeIndicatorModalByTimeframe,
-  mergeIndicatorModalByWindow,
+  mergeStudyIndicatorModal,
   CHART_PREFS_KEY,
 } from './chartPrefsPersistence';
 import { resolveIndicatorModalPrefs } from './chartPrefs';
@@ -65,27 +65,21 @@ describe('chartPrefsPersistence', () => {
     expect(CHART_PREFS_KEY.includes('replay')).toBe(false);
   });
 
-  it('창 분리 맵은 값이 비어도 엔트리를 보존한다 — 멤버십이 키의 존재이므로', () => {
-    const merged = mergeIndicatorModalByWindow({
-      indicatorModalByWindow: {
-        'live:w1': {},
-        'live:w2': { minute: { surgeMarkerEnabled: false } },
-      },
-    });
-    expect(Object.hasOwn(merged, 'live:w1')).toBe(true);
-    expect(merged['live:w1']).toEqual({});
-    expect(merged['live:w2']?.minute?.surgeMarkerEnabled).toBe(false);
+  it('`/study` 키가 없으면 `/live` 에서 즉시 시드한다(깊은 사본)', () => {
+    // 게으른 폴백이면 `/study` 가 첫 편집 전까지 `/live` 를 따라다닌다(ADR-0146).
+    const live = { minute: { surgeMarkerEnabled: false } } as const;
+    const merged = mergeStudyIndicatorModal({}, live);
+
+    expect(merged.minute?.surgeMarkerEnabled).toBe(false);
+    expect(merged.minute).not.toBe(live.minute); // 버킷 참조를 공유하지 않는다
   });
 
-  it('창 분리 맵이 손상돼도 나머지를 잃지 않는다', () => {
-    const merged = mergeIndicatorModalByWindow({
-      indicatorModalByWindow: {
-        'live:bad': 'not-an-object',
-        'live:ok': { minute: { surgeMarkerEnabled: false } },
-      },
-    });
-    expect(Object.hasOwn(merged, 'live:bad')).toBe(false);
-    expect(merged['live:ok']?.minute?.surgeMarkerEnabled).toBe(false);
+  it('`/study` 키가 비어 있으면 그대로 빈 세트다 — 시드로 덮지 않는다', () => {
+    const merged = mergeStudyIndicatorModal(
+      { studyIndicatorModalByTimeframe: {} },
+      { minute: { surgeMarkerEnabled: false } },
+    );
+    expect(merged).toEqual({});
   });
 });
 

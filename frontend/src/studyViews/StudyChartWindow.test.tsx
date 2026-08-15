@@ -55,7 +55,11 @@ function seedStudyWorkspace(timeframe = '5m' as const): void {
     chartRuntime: {},
   });
   // 지표는 앱 전역 1세트 — 창 시드와 함께 전역 버킷도 비운다.
-  useLivePageStore.setState({ indicatorsByTimeframe: {}, indicatorTimeframe: '1m' });
+  useLivePageStore.setState({
+    indicatorsByTimeframe: {},
+    studyIndicatorsByTimeframe: {},
+    indicatorTimeframe: '1m',
+  });
 }
 
 /** 같은 id 의 `/live` 미끼 창 — 스토어를 헷갈리면 이 값이 새어 나온다. */
@@ -139,12 +143,14 @@ describe('Provider 가 /study 스토어를 향한다 (#901·#907)', () => {
     expect(probe.paneStretch).toMatchObject({ volume: 2 });
   });
 
-  it('지표 쓰기는 전역 v2 로 간다 — 두 워크스페이스 창 모두 안 움직인다', () => {
+  it('지표 쓰기는 전역 v2 의 `/study` 세트로 간다 — 두 워크스페이스 창 모두 안 움직인다', () => {
     renderWindow({ chart: chartProps });
     act(() => probe.actions!.setRatioEnabled(true));
 
-    expect(useLivePageStore.getState().indicatorsByTimeframe.minute)
+    expect(useLivePageStore.getState().studyIndicatorsByTimeframe.minute)
       .toMatchObject({ ratioEnabled: true });
+    // `/live` 세트는 그대로다(ADR-0146) — 두 페이지는 서로 동기화하지 않는다.
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute).toBeUndefined();
     // 창에는 봉만 남는다 — 설정 사본이 되살아나면 다시 탭마다 갈린다.
     expect(useStudyWorkspaceStore.getState().windows[0].chart)
       .toEqual({ timeframe: '5m', lastMinuteTimeframe: '5m' });
@@ -155,8 +161,8 @@ describe('Provider 가 /study 스토어를 향한다 (#901·#907)', () => {
 
   it('창 봉이 바뀌면 전역 버킷도 그 봉으로 resolve 된다', () => {
     act(() => {
-      useLivePageStore.getState().patchIndicatorsAt('D', { ratioEnabled: true });
-      useLivePageStore.getState().patchIndicatorsAt('5m', { ratioEnabled: false });
+      useLivePageStore.getState().patchIndicatorsScoped('study', 'D', { ratioEnabled: true });
+      useLivePageStore.getState().patchIndicatorsScoped('study', '5m', { ratioEnabled: false });
     });
     renderWindow({ chart: chartProps });
     expect(probe.indicators?.ratioEnabled).toBe(false); // minute 버킷
@@ -172,7 +178,7 @@ describe('전역 v2 가 지표 SSOT 다', () => {
     expect(probe.indicators?.ratioEnabled).toBe(false);
     // 크로스탭 재수화(`hydrateIndicatorsFromStorage`)가 하는 일과 같은 모양의 쓰기.
     act(() => {
-      useLivePageStore.setState({ indicatorsByTimeframe: { minute: { ratioEnabled: true } } });
+      useLivePageStore.setState({ studyIndicatorsByTimeframe: { minute: { ratioEnabled: true } } });
     });
     expect(probe.indicators?.ratioEnabled).toBe(true);
   });

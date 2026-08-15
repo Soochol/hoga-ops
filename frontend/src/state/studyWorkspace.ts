@@ -22,14 +22,14 @@
  *   무시한다 — rail 접기는 "잠깐 치움"이지 숨김이 아니었으므로 창은 생성한다(플랜 §PR-2).
  * - **차트 설정**은 `study.lastMinuteTimeframe.v1`(분봉)에서 1회. 지표는 시드하지
  *   않는다 — 창이 소유하지 않고 앱 전역 저장소(`live.indicators.v2`)에 있기
- *   때문이다. 창을 분리해도(ADR-0145) 창이 갖는 것은 스코프 키뿐이라 그대로다.
+ *   때문이다. 그 저장소 안에서 `/study` 는 자기 세트를 갖지만(ADR-0146) 그것도
+ *   페이지 축이지 창 축이 아니다.
  */
 import { create } from 'zustand';
 import { isFracRect, type FracRect } from '../workspace/rectSpace';
 import { persistJson, readJsonObject } from './persist';
 import { STUDY_WORKSPACE_STORAGE_KEY } from './workspaceKeys';
 import { STUDY_CARD_KEYS, STUDY_LAYOUT_STORAGE_KEY, type StudyCardKey } from './studyLayout';
-import { dropIndicatorScopesForRemovedWindows } from './indicatorScopeGc';
 import {
   LIVE_TIMEFRAMES,
   MINUTE_TIMEFRAMES,
@@ -510,7 +510,6 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
   },
 
   closeWindow: (id) => {
-    const before = get().windows;
     set((state) => {
       // 남은 불변식은 "차트 창 0개 금지" 뿐이다 — 술어는 한 곳(#801).
       if (!canCloseStudyWindow(state.windows, id)) return {};
@@ -524,10 +523,6 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
       delete chartRuntime[id];
       return { ...next, chartRuntime };
     });
-    // 닫기가 **거부될 수 있으므로**(마지막 차트 창) 요청 id 가 아니라 실제로
-    // 사라진 창을 기준으로 회수한다 — 그러지 않으면 화면에 남아 있는 창의
-    // 지표 설정이 조용히 초기화된다.
-    dropIndicatorScopesForRemovedWindows('study', before, get().windows);
   },
 
   focusWindow: (id) => {
@@ -557,14 +552,12 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
   },
 
   applySnapshot: (snapshot) => {
-    const before = get().windows;
     const next = normalizeSnapshot(snapshot);
     set(() => {
       persistFromState(next);
       // 창 전면 교체 → 비영속 런타임을 걷는다(fresh-view, `/live` 미러).
       return { ...next, chartRuntime: {} };
     });
-    dropIndicatorScopesForRemovedWindows('study', before, next.windows);
   },
 
   setChartTimeframe: (id, tf) => {
