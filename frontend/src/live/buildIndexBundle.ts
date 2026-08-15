@@ -1,6 +1,6 @@
 import type { Candle, InvestorNetPoint, RangeBundle, VolumeProfile } from '../api/types';
 import type { LiveIndexCandle } from '../api/liveIndices';
-import type { LiveIndexId } from './liveInstrument';
+import { indexWorkareaCode, type LiveIndexId } from './liveInstrument';
 import {
   realMsToYyyymmdd,
   regularSessionCloseMs,
@@ -34,7 +34,7 @@ export function buildIndexBundle(input: {
   }));
   const dates = Array.from(new Set(input.candles.map((c) => realMsToYyyymmdd(c.t_ms))));
   return {
-    code: `index:${input.indexId}`,
+    code: indexWorkareaCode(input.indexId),
     from_date: input.from,
     to_date: input.to,
     bucket_ms: input.bucketMs,

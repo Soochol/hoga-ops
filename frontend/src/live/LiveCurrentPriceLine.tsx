@@ -4,6 +4,7 @@ import type { RangeBundle } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import { useQuoteByCode } from '../api/liveQuotes';
+import { isIndexWorkareaCode } from './liveInstrument';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { resolveTokensThemed } from '../util/tokens';
 import { deriveCurrentPriceLine } from './deriveCurrentPriceLine';
@@ -37,7 +38,16 @@ type Props = {
 function LiveCurrentPriceLine({ paneSeries, bundle, code, liveTradePrice }: Props) {
   const series = paneSeries.get('candle' as PaneId);
   const venue = useLiveVenueStore((s) => s.venue);
-  const quote = useQuoteByCode(code ? [code] : [], venue).get(code ?? '');
+  // 지수는 quote 를 **묻지 않는다** — `/api/live/quotes` 는 6자리 종목 전용이라
+  // `codes=index:KOSPI` 는 에러 없이 `quotes: []` 를 돌려준다(실측). 즉 10초마다 빈
+  // 응답을 받으려고 폴링하던 것이다.
+  //
+  // 라인 자체는 **끄지 않는다**: `deriveCurrentPriceLine` 이 quote 없이도 번들 마지막
+  // 종가로 그리므로 지수 현재가 라인은 그대로 산다. 색이 neutral 로 굳는 것도 회귀가
+  // 아니다 — 빈 응답이면 `basis` 가 null 이라 이미 neutral 이었다. 컴포넌트를 통째로
+  // 끄면 그때가 회귀다.
+  const quoteCode = code && !isIndexWorkareaCode(code) ? code : null;
+  const quote = useQuoteByCode(quoteCode ? [quoteCode] : [], venue).get(quoteCode ?? '');
   const TOKENS = resolveTokensThemed(TOKEN_SPEC);
   const model = deriveCurrentPriceLine(bundle, quote, TOKENS, liveTradePrice);
   const lineRef = useRef<IPriceLine | null>(null);

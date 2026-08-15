@@ -1151,9 +1151,13 @@ export function LiveChartRoot({
         // atomize 게이트가 "fresh 로드 = null"에 기대므로, 배치가 끝난 뒤에야
         // 안전하게 창을 넓힐 수 있다. 확장 자체는 뷰포트를 움직이지 않는다
         // (useViewportBackfill 리포지셔너가 현재 봉을 핀).
-        // activeCode 엄격 동등: /live는 activeCode truthy일 때만 이 차트를
-        // 마운트하므로 항상 일치한다. 느슨한 truthy-게이트였다면 StudyPage 등
-        // 다른 마운트의 분봉 배치가 live store를 extend하는 월경이 가능하다.
+        // 코드 엄격 동등: 가드가 `code` prop 과 **같은 workarea 공간**을 돌려주므로
+        // (`windowView.ts` 의 `getWorkareaCode`) 이 창의 차트면 항상 일치한다.
+        // 한때 "activeCode truthy 일 때만 마운트하니 일치한다"고 적혀 있었는데, 그
+        // 전제는 지수 창에서 깨져 있었다 — 어댑터가 맨 코드(`'KOSPI'`)를 돌려줘
+        // `'index:KOSPI'` 와 영영 달랐고, 이 복원이 지수에선 한 번도 돌지 않았다.
+        // 느슨한 truthy-게이트였다면 StudyPage 등 다른 마운트의 분봉 배치가 live
+        // store를 extend하는 월경이 가능하다.
         const remembered = historicalRange.snapshot().lastMinuteHistoricalFromDate;
         const view = viewGuard();
         if (

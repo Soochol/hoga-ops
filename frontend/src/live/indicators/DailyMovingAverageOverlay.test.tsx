@@ -100,6 +100,16 @@ describe('DailyMovingAverageOverlay', () => {
     );
   });
 
+  it('지수 창(index:*)에서는 일봉 fetch 를 걸지 않는다 — 종목 전용 엔드포인트', () => {
+    // `/api/live/past-daily-candles` 는 6자리 종목만 받는다. 지수 코드로는 시리즈가
+    // 애초에 안 그려지므로 요청만 헛돌았다. `!!code` 만 보던 게이트의 구멍.
+    const m = makeChartMock();
+    renderOverlay(m, { code: 'index:KOSPI' });
+    expect(mockUseResolvedDaily).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false, from: null, to: null }),
+    );
+  });
+
   it('uses integer price formatting so daily MA overlays do not add .00 to the candle axis', () => {
     const m = makeChartMock();
     renderOverlay(m);

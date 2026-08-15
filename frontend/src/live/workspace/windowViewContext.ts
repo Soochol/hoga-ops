@@ -69,13 +69,25 @@ export interface WindowStoreHandle {
  */
 export interface WindowWorkspaceAdapter {
   store: WindowStoreHandle;
-  getCode: (windowId: string) => string | null;
+  /**
+   * 이 창의 코드를 **workarea 공간**으로 — 주식=6자리 코드, 지수=`index:<id>`
+   * (`liveInstrument.ts` 의 `indexWorkareaCode`).
+   *
+   * 이름에 공간을 박아 둔 이유: 같은 컨텍스트 값의 `WindowViewValue.code` 는 **다른
+   * 공간**이다(지수=null, 전역 `activeCode` 미러). 둘이 갈리는 것은 의도이고, 이름이
+   * 같으면 다음 사람이 아무 생각 없이 바꿔 쓴다. 실제로 그 혼동이 지수 창의 좌측 팬
+   * 백필을 통째로 죽였다 — 가드가 `'KOSPI' !== 'index:KOSPI'` 로 매번 반려했다.
+   *
+   * 유일한 소비처는 `buildWindowViewGuard` 다. 지표 스코프 키·드로잉 키 같은 **영속**
+   * 저장소는 이 값을 쓰지 않으므로, 공간을 바꿔도 저장된 설정이 무효화되지 않는다.
+   */
+  getWorkareaCode: (windowId: string) => string | null;
   /**
    * 이 워크스페이스가 속한 **페이지** — 지표 세트의 소유자다(ADR-0146).
    * `/live` 와 `/study` 는 각각 자기 세트를 갖고 서로 동기화하지 않는다.
    *
    * 어댑터가 들고 있는 이유: 이 값을 아는 곳은 워크스페이스 종류를 아는 곳뿐이고,
-   * 어댑터는 이미 그런 축(`getCode`)을 담는 자리다. 모듈 상수 2개(`LIVE_`/`STUDY_`)
+   * 어댑터는 이미 그런 축(`getWorkareaCode`)을 담는 자리다. 모듈 상수 2개(`LIVE_`/`STUDY_`)
    * 라 **렌더 동기적**이고 참조도 안정적이다 — 전역 "현재 페이지" 슬롯을 두면
    * 라우팅보다 한 커밋 늦어 그 틈에 남의 페이지 버킷이 적용된다.
    */
