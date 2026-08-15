@@ -13,8 +13,7 @@ import {
   focusedChartWindowId,
   useStudyWorkspaceStore,
 } from '../state/studyWorkspace';
-import { bucketsForScope, resolveIndicatorSettings } from '../state/indicatorSettingsV2';
-import { windowScopeKey } from '../live/workspace/windowViewContext';
+import { bucketsForPage, resolveIndicatorSettings } from '../state/indicatorSettingsV2';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import {
   STUDY_DEFAULT_MINUTE_TIMEFRAME,
@@ -245,7 +244,7 @@ export function StudyPage() {
         ?? (isMinuteTimeframe(referenceSave.timeframe) ? referenceSave.timeframe : '1m')
       : STUDY_DEFAULT_MINUTE_TIMEFRAME);
   const indicatorsByTimeframe = useLivePageStore((s) => s.indicatorsByTimeframe);
-  const indicatorsByWindow = useLivePageStore((s) => s.indicatorsByWindow);
+  const studyIndicators = useLivePageStore((s) => s.studyIndicatorsByTimeframe);
   // 번들을 요구하는 창 목록 — 봉·지표가 곧 쿼리 키다(#904).
   //
   // **포커스 창만 `selectedTimeframe` 을 쓴다**: 탭을 바꾼 첫 커밋에는 창이 아직
@@ -265,20 +264,15 @@ export function StudyPage() {
         return {
           windowId: w.id,
           timeframe,
-          // 지표는 기본이 전역 공용이고 분리된 창만 자기 버킷을 본다. 여기가 그
-          // 스코프를 안 보면 분리 창이 켠 지표의 데이터가 번들에 안 실려
-          // **"켰는데 안 보임"** 이 된다(차트는 그리려 하는데 데이터가 없다).
+          // 지표는 `/study` 세트에서 푼다(ADR-0146) — `/live` 것으로 풀면 이 페이지가
+          // 켠 지표의 데이터가 번들에 안 실려 **"켰는데 안 보임"** 이 된다.
           indicators: resolveIndicatorSettings(
-            bucketsForScope(
-              indicatorsByTimeframe,
-              indicatorsByWindow,
-              windowScopeKey({ scopePrefix: 'study' }, w.id),
-            ),
+            bucketsForPage(indicatorsByTimeframe, studyIndicators, 'study'),
             timeframe,
           ),
         };
       }),
-    [chartWindowId, selectedTimeframe, workspaceWindows, indicatorsByTimeframe, indicatorsByWindow],
+    [chartWindowId, selectedTimeframe, workspaceWindows, indicatorsByTimeframe, studyIndicators],
   );
   const displayedReferenceSave = useMemo(
     () => referenceSave && selectedTimeframe
@@ -340,9 +334,6 @@ export function StudyPage() {
     // 탭을 눌러도 창 봉이 안 바뀌므로 **활성 전환의 실제 쿼리 키는 창 봉**이다.
     // 비활성 탭이 든 저장 봉으로 워밍하면 받아 놓고 버리는 번들이 된다.
     warmTimeframe: chartWindowTimeframe,
-    // 지표 스코프도 **같은 창**에서 — 봉만 창에서 가져오고 지표를 공용에서 가져오면
-    // 그 창이 분리됐을 때(ADR-0145) 같은 이유로 받아 놓고 버린다.
-    warmScopeKey: windowScopeKey({ scopePrefix: 'study' }, chartWindowId),
   });
   // 축출은 (종목 × 봉)이다(#801) — 창이 여러 개면 같은 종목 아래 봉별 번들이 쌓인다.
   useStudyRangeCacheEviction(

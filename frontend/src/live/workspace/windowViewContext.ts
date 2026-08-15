@@ -34,10 +34,10 @@ export interface WindowView {
  * `/study` 의 `kind` 처럼 한쪽에만 있는 필드에 훅이 손대지 못한다.
  *
  * **지표 액션은 여기 없다.** 지표 설정은 앱 전역 저장소(`live.indicators.v2`)에
- * 있고, 창이 정하는 것은 "어느 버킷을 편집하는가"(봉 + 분리 스코프) 뿐이다 —
- * `windowView.ts` 의 창 액션이 전역 스토어의 `patchIndicatorsScoped` 를 창의
- * `chart.timeframe` 과 `windowScopeKey` 로 바인딩한다. 창이 소유하는 쓰기 경로는
- * 봉과 백필뿐이다.
+ * 있고, 창이 정하는 것은 "어느 버킷을 편집하는가"(페이지 + 봉) 뿐이다 —
+ * `windowView.ts` 의 창 액션이 전역 스토어의 `patchIndicatorsScoped` 를 어댑터의
+ * `scopePrefix` 와 창의 `chart.timeframe` 으로 바인딩한다. 창이 소유하는 쓰기
+ * 경로는 봉과 백필뿐이다.
  */
 export interface WindowChartStoreState {
   windows: readonly { id: string; chart?: ChartWindowConfig }[];
@@ -71,39 +71,24 @@ export interface WindowWorkspaceAdapter {
   store: WindowStoreHandle;
   getCode: (windowId: string) => string | null;
   /**
-   * 이 워크스페이스의 지표 스코프 네임스페이스. 창 id 는 두 워크스페이스가
-   * 독립적으로 발급하므로(`/live`=`newWindowId`, `/study`=`randomUUID`), 전역
-   * 지표 저장소의 창 맵에서 둘을 구별할 접두사가 필요하다.
+   * 이 워크스페이스가 속한 **페이지** — 지표 세트의 소유자다(ADR-0146).
+   * `/live` 와 `/study` 는 각각 자기 세트를 갖고 서로 동기화하지 않는다.
    *
    * 어댑터가 들고 있는 이유: 이 값을 아는 곳은 워크스페이스 종류를 아는 곳뿐이고,
    * 어댑터는 이미 그런 축(`getCode`)을 담는 자리다. 모듈 상수 2개(`LIVE_`/`STUDY_`)
-   * 라 참조가 안정적이므로 `WindowViewValue` 를 만드는 4곳이 무엇도 계산하지 않는다.
+   * 라 **렌더 동기적**이고 참조도 안정적이다 — 전역 "현재 페이지" 슬롯을 두면
+   * 라우팅보다 한 커밋 늦어 그 틈에 남의 페이지 버킷이 적용된다.
    */
   scopePrefix: 'live' | 'study';
-}
-
-/**
- * 지표 스코프 키 — 창별 지표 설정의 저장소 키(`live.indicators.v2` 의 `byWindow`).
- *
- * `windowId` 가 null(=Provider 밖, 단일 차트·테스트)이면 null 이고, 그 null 이 곧
- * "공용 세트를 본다"는 뜻이다. 두 스토어(`livePage`·`chartPrefs`)가 같은 키를 써야
- * 분리 멤버십이 어긋나지 않으므로 파생을 여기 한 곳에 둔다 — chartPrefs 는
- * livePage 를 import 할 수 없다(이 파일 상단의 순환 주석 참조).
- */
-export function windowScopeKey(
-  adapter: Pick<WindowWorkspaceAdapter, 'scopePrefix'> | undefined,
-  windowId: string | null | undefined,
-): string | null {
-  return adapter && windowId ? `${adapter.scopePrefix}:${windowId}` : null;
 }
 
 /** 창이 워크스페이스 통로까지 공급하는 완전한 뷰 값. `workspace` 는 **필수** —
  *  빠뜨리면 훅이 조용히 다른 스토어를 보게 되는데, 그 조용한 폴백이야말로 이
  *  작업이 없애려는 것이다(#901).
  *
- *  지표는 값으로 싣지 않는다 — `useWindowIndicators` 가 전역 버킷을 이 값의
- *  `timeframe` 과 (분리된 창이면) 스코프 키로 resolve 한다. 여기 사본을 두면
- *  진실이 둘이 되고, 다른 탭이 바꾼 설정이 이 사본을 갱신하지 않아 화면만 낡는다. */
+ *  지표는 값으로 싣지 않는다 — `useWindowIndicators` 가 그 페이지의 버킷을 이 값의
+ *  `timeframe` 으로 resolve 한다. 여기 사본을 두면 진실이 둘이 되고, 다른 탭이
+ *  바꾼 설정이 이 사본을 갱신하지 않아 화면만 낡는다. */
 export interface WindowViewValue extends WindowView {
   workspace: WindowWorkspaceAdapter;
 }

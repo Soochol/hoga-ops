@@ -285,8 +285,11 @@ beforeEach(() => {
   useLiveCursorStore.getState().resetCursor();
   // 지표는 앱 전역 1세트다 — 창은 어느 봉 버킷을 볼지만 정한다. 창 밖 소비자
   // (vdist 데이터 창·번들 쿼리 키)도 같은 전역 버킷을 창의 봉으로 편다(#904).
+  // 지표 세트는 페이지 것이다(ADR-0146) — `/study` 화면을 보는 테스트는 `/study`
+  // 세트에 심어야 한다. `/live` 에 심으면 이 페이지는 그것을 보지 않는다.
   useLivePageStore.setState({
-    indicatorsByTimeframe: {
+    indicatorsByTimeframe: {},
+    studyIndicatorsByTimeframe: {
       minute: {
         volumeDistributionEnabled: true,
         volumeDistributionHoverCutoffEnabled: false,
@@ -1184,8 +1187,9 @@ describe('StudyPage', () => {
   });
 
   it('uses hover-cutoff volume distribution for reference study views when enabled', () => {
-    // hover-cutoff 를 켜는 곳은 전역 버킷이다 — 창(5m)이 minute 버킷을 편다(#904).
-    useLivePageStore.getState().patchIndicatorsAt('5m', {
+    // hover-cutoff 는 **`/study` 세트**의 minute 버킷에 켠다 — 창(5m)이 그것을
+    // 편다(#904 + ADR-0146).
+    useLivePageStore.getState().patchIndicatorsScoped('study', '5m', {
       volumeDistributionEnabled: true,
       volumeDistributionHoverCutoffEnabled: true,
       volumeDistributionRangeCount: 2,
@@ -1369,24 +1373,12 @@ describe('StudyPage', () => {
   });
 
   /**
-   * 번들 쿼리 키에는 지표 플래그가 실린다(`studyReferenceQuerySettings`). 창을
-   * 분리하면 그 창의 요청도 갈려야 한다 — 안 그러면 차트는 히트맵을 그리려는데
-   * 페이지가 받아온 번들에 그 데이터가 없어 **"켰는데 안 보임"** 이 된다.
+   * 번들 쿼리 키에는 지표 플래그가 실린다(`studyReferenceQuerySettings`). 그 값은
+   * **`/study` 세트**에서 와야 한다 — `/live` 것으로 풀면 차트는 히트맵을 그리려는데
+   * 페이지가 받아온 번들에 그 데이터가 없어 **"켰는데 안 보임"** 이 된다(ADR-0146).
    */
-  it('워밍에도 그 창의 스코프를 넘긴다 — 봉만 창에서 오면 잡종 키가 된다', () => {
-    renderPage('/study?view=view-ref');
-
-    // 봉(`warmTimeframe`)을 포커스 창에서 가져오는 이상(#1326) 지표 스코프도 **같은
-    // 창**에서 와야 활성 전환의 키와 맞는다. 한쪽만 넘기면 분리된 창에서 워밍이
-    // 받아 놓고 버리는 번들이 된다.
-    expect(useWarmStudyReferenceTabQueriesMock).toHaveBeenLastCalledWith(expect.objectContaining({
-      warmScopeKey: 'study:w-chart',
-    }));
-  });
-
-  it('분리된 창의 지표가 그 창의 번들 요청에 실린다', () => {
-    useLivePageStore.getState().detachWindowIndicators('study:w-chart');
-    useLivePageStore.getState().patchIndicatorsScoped('study:w-chart', '5m', {
+  it('번들 요청의 지표가 `/study` 세트에서 온다', () => {
+    useLivePageStore.getState().patchIndicatorsScoped('study', '5m', {
       depthHeatmapEnabled: true,
     });
 
@@ -1394,7 +1386,7 @@ describe('StudyPage', () => {
 
     const chartSpec = capturedWindowSpecs.current.find((w) => w.windowId === 'w-chart');
     expect(chartSpec?.indicators.depthHeatmapEnabled).toBe(true);
-    // 공용 세트는 그대로다 — 이 값이 공용에서 온 것이 아님을 못 박는다.
+    // `/live` 세트는 그대로다 — 이 값이 거기서 온 것이 아님을 못 박는다.
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.depthHeatmapEnabled)
       .toBeUndefined();
   });

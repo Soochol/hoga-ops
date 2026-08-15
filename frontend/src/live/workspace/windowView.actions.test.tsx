@@ -30,8 +30,7 @@ import { normalizePaneOrder } from '../../chart/paneOrder';
  *  ① 창에서 편집해도 **워크스페이스는 건드리지 않는다**(전역 v2 로 간다).
  *  ② 창의 봉이 ambient 와 다르면 **다른 버킷에 쓰고 ambient 투영은 그대로**다.
  *
- * 이 파일은 **연동(기본) 상태**의 계약만 본다 — 창별 분리(ADR-0145)는 같은 두
- * 성질을 분리 축에서 다시 재는 `windowView.scope.test.tsx` 가 맡는다.
+ * 페이지 축(`/live` ↔ `/study`)은 `windowView.scope.test.tsx` 가 맡는다(ADR-0146).
  */
 
 function chartWindow(id: string, timeframe: LiveTimeframe = '5m'): WorkspaceWindow {
@@ -75,7 +74,7 @@ function resetIndicatorState(): void {
   useLivePageStore.setState({
     ...FACTORY_INDICATOR_SETTINGS,
     indicatorsByTimeframe: {},
-    indicatorsByWindow: {},
+    studyIndicatorsByTimeframe: {},
     indicatorTimeframe: '1m',
     paneOrder: normalizePaneOrder([]),
     paneStretch: {},

@@ -38,24 +38,33 @@ export type PersistedIndicatorsV2 = {
   /** 사용자 소유 Pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스.
    *  전역 1세트, pane 종류별. 없는 키 = 스펙 기본값. */
   paneStretch: PaneStretchMap;
+  /**
+   * `/live` 의 지표 세트 — **이 필드는 종전 그대로다**(ADR-0146).
+   *
+   * 페이지 축을 대칭(`byPage.{live,study}`)으로 만들지 않은 이유: 그러면 이 키가
+   * 아무도 안 쓰는 값이 되는데, 이 리포는 그 실패를 이미 겪었다 — 스테일해진
+   * `live.indicators.v2` 를 되살리려고 `indicatorsWindowMigration` 을 써야 했다.
+   * `/live` 저장 형태를 바이트 단위로 유지하면 마이그레이션도, 스테일 키도 없다.
+   */
   byTimeframe: IndicatorSettingsByTimeframe;
   /**
-   * 공용 세트에서 **분리된 창**의 설정. 키는 `live:<창id>` / `study:<창id>`.
+   * `/study` 의 지표 세트. 두 페이지는 **항상 분리**다(ADR-0146) — 창별 분리나
+   * 연동 스위치는 없다.
    *
-   * **키의 존재가 곧 "이 창은 분리됨"이다** — 값이 빈 객체여도 그렇다(공장값
-   * 상태에서 분리하면 복사할 diff 가 없어 `{}` 가 정상이다). 그래서 정규화가
-   * `byTimeframe` 과 달리 **빈 엔트리를 걷어내지 않는다**: 걷어내면 공장값에서
-   * 분리한 창이 다음 로드에 조용히 다시 연동되고, 증상은 한참 뒤 공용 설정을
-   * 바꾼 순간에야 "왜 이 창까지 따라오지" 로 나타난다.
+   * **로드 시 즉시 시드된다**(`/live` 세트의 깊은 사본). 게으른 폴백
+   * (`study ?? byTimeframe`)이 아닌 이유가 이 기능의 인수 조건이다: 폴백이면
+   * `/study` 가 **첫 편집 전까지** `/live` 를 계속 따라다니고, 사용자가 보기엔
+   * "분리했다는데 여전히 같이 바뀐다" 다.
    *
-   * 내용물이 여기(전역 localStorage)에 사는 것이 #712 와의 차이다 — 창이 소유한
-   * 것은 **키뿐**이라 워크스페이스(탭별 sessionStorage)가 갈려도 설정은 안 갈린다.
+   * 키의 **존재**가 "이미 시드했다" 이므로 값이 `{}` 여도 보존한다 — 공장값
+   * 사용자는 복사할 diff 가 없어 `{}` 가 정상이고, 이걸 걷어내면 다음 로드에
+   * 다시 `/live` 값으로 덮인다.
    */
-  byWindow: Record<string, IndicatorSettingsByTimeframe>;
+  studyByTimeframe: IndicatorSettingsByTimeframe;
 };
 
-/** 손상된 스토어의 무한 증식 방어 — 실사용 창 수보다 한참 크다. */
-export const INDICATOR_WINDOW_SCOPE_LIMIT = 64;
+/** 지표 세트의 소유자 — 페이지 하나당 하나. */
+export type IndicatorPageScope = 'live' | 'study';
 
 export const INDICATORS_V2_STORAGE_KEY = 'live.indicators.v2';
 const V1_STORAGE_KEY = 'live.indicators.v1';
@@ -143,9 +152,9 @@ function sanitizeSettingsPatch(raw: unknown): Partial<IndicatorSettings> {
   return diffIndicatorSettingsFromFactory(touched);
 }
 
-/** 버킷 맵 하나(4프로파일)를 정규화한다 — 공용 세트와 창 세트가 같은 규칙을 쓴다.
- *  빈 버킷은 여기서 걷힌다(sparse 의 정의). 맵 **자체**가 비는 것은 정상이며,
- *  그 의미는 호출자가 정한다(공용=공장값 / 창=분리됐지만 오버라이드 없음). */
+/** 버킷 맵 하나(4프로파일)를 정규화한다 — 두 페이지 세트가 같은 규칙을 쓴다.
+ *  빈 버킷은 여기서 걷힌다(sparse 의 정의). 맵 **자체**가 비는 것은 정상이며
+ *  (= 공장값), 그래서 "비었다" 와 "없다" 는 서로 다른 뜻이다 — 후자만 시드를 부른다. */
 function normalizeBucketMap(raw: unknown): IndicatorSettingsByTimeframe {
   const rawBuckets = raw && typeof raw === 'object' && !Array.isArray(raw)
     ? raw as Record<string, unknown>
@@ -158,14 +167,12 @@ function normalizeBucketMap(raw: unknown): IndicatorSettingsByTimeframe {
   return out;
 }
 
-/** 창 스코프 맵 — **빈 엔트리를 보존한다**(`byWindow` 필드 주석의 멤버십 규약). */
-function normalizeByWindow(raw: unknown): Record<string, IndicatorSettingsByTimeframe> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const out: Record<string, IndicatorSettingsByTimeframe> = {};
-  for (const [scopeKey, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (!scopeKey || Object.keys(out).length >= INDICATOR_WINDOW_SCOPE_LIMIT) break;
-    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-    out[scopeKey] = normalizeBucketMap(value);
+/** 버킷 맵의 깊은 사본 — **버킷 객체까지** 새로 만든다. 얕게 복사하면 두 페이지가
+ *  같은 버킷 참조를 공유해, 한쪽 편집이 다른 쪽으로 샌다. */
+function cloneBucketMap(source: IndicatorSettingsByTimeframe): IndicatorSettingsByTimeframe {
+  const out: IndicatorSettingsByTimeframe = {};
+  for (const [profileKey, bucket] of Object.entries(source)) {
+    out[profileKey as IndicatorPaneProfileKey] = { ...bucket };
   }
   return out;
 }
@@ -174,11 +181,18 @@ export function normalizeIndicatorsV2(raw: unknown): PersistedIndicatorsV2 {
   const obj = raw && typeof raw === 'object' && !Array.isArray(raw)
     ? raw as Record<string, unknown>
     : {};
+  const byTimeframe = normalizeBucketMap(obj.byTimeframe);
+  // `/study` 세트는 **키의 존재**로 판정한다. 있으면(빈 객체여도) 그대로 쓰고,
+  // 없을 때만 `/live` 에서 시드한다 — 빈 것을 "없음" 으로 취급하면 공장값 사용자의
+  // `/study` 가 매 로드 `/live` 값으로 덮인다.
+  const studyByTimeframe = obj.studyByTimeframe !== undefined
+    ? normalizeBucketMap(obj.studyByTimeframe)
+    : cloneBucketMap(byTimeframe);
   return {
     paneOrder: normalizePaneOrder(obj.paneOrder),
     paneStretch: normalizePaneStretch(obj.paneStretch),
-    byTimeframe: normalizeBucketMap(obj.byTimeframe),
-    byWindow: normalizeByWindow(obj.byWindow),
+    byTimeframe,
+    studyByTimeframe,
   };
 }
 
@@ -216,27 +230,18 @@ export function resolveIndicatorSettings(
 }
 
 /**
- * 이 스코프가 읽고 쓰는 버킷 맵 — 분리된 창은 자기 것, 나머지는 전부 공용.
+ * 이 페이지가 읽고 쓰는 버킷 맵.
  *
- * 폴백이 "엔트리 없음 → 공용" 이라, `byWindow` 가 통째로 없는 저장값(이 기능
- * 이전에 쓰인 것 포함)은 전 창이 공용을 보는 종전 동작이 된다. 되돌리기도
- * 대칭이다 — 필드를 버리면 전부 연동으로 돌아온다.
+ * `page` 가 null 인 경우는 **화면이 아니다** — Provider 밖(단일 차트·테스트 픽스처)
+ * 이고, 그때는 종전대로 `/live` 세트를 본다. 실제 두 페이지는 모두 창 Provider
+ * 안에서 렌더되므로 이 폴백을 타지 않는다.
  */
-export function bucketsForScope(
-  shared: IndicatorSettingsByTimeframe,
-  byWindow: Record<string, IndicatorSettingsByTimeframe>,
-  scopeKey: string | null,
+export function bucketsForPage(
+  live: IndicatorSettingsByTimeframe,
+  study: IndicatorSettingsByTimeframe,
+  page: IndicatorPageScope | null,
 ): IndicatorSettingsByTimeframe {
-  if (!scopeKey) return shared;
-  return byWindow[scopeKey] ?? shared;
-}
-
-/** 이 창이 공용 세트에서 분리됐는가 — 값이 아니라 **키의 존재**로 판정한다. */
-export function isWindowScopeDetached(
-  byWindow: Record<string, IndicatorSettingsByTimeframe>,
-  scopeKey: string | null,
-): boolean {
-  return scopeKey !== null && Object.hasOwn(byWindow, scopeKey);
+  return page === 'study' ? study : live;
 }
 
 /** 전환 시드 (#697 결정 변경): v1 의 분봉 관점 유효 설정(flat ⊕ 구
@@ -256,8 +261,8 @@ export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
     // v1 블롭에 paneStretch 가 있으면 이관(구 프로덕션 v1 엔 없어 대개 {}).
     paneStretch: normalizePaneStretch((v1raw as { paneStretch?: unknown } | null)?.paneStretch),
     byTimeframe: Object.keys(minuteDiff).length > 0 ? { minute: minuteDiff } : {},
-    // v1 에는 창 스코프 개념이 없다 — 전 창 연동이 곧 v1 의 동작이다.
-    byWindow: {},
+    // v1 에는 페이지 축이 없었다 — 두 페이지가 같은 값에서 출발하는 것이 맞다.
+    studyByTimeframe: Object.keys(minuteDiff).length > 0 ? { minute: { ...minuteDiff } } : {},
   };
 }
 

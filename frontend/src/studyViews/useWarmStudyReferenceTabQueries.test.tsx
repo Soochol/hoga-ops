@@ -123,12 +123,13 @@ describe('useWarmStudyReferenceTabQueries', () => {
     vi.mocked(apiCall).mockClear();
     resetApiCall();
     useLiveVenueStore.setState({ venue: 'KRX' });
-    // 쿼리 키를 정하는 지표는 전역 1세트이고, **어느 버킷**인지는 차트 창의 봉이
-    // 정한다(#904) — 창 밖 소비자도 같은 조합을 읽어야 "켰는데 안 보임"이 안 난다.
+    // 쿼리 키를 정하는 지표는 **`/study` 세트**이고(ADR-0146), 어느 버킷인지는
+    // 차트 창의 봉이 정한다(#904) — 창 밖 소비자도 같은 조합을 읽어야
+    // "켰는데 안 보임"이 안 난다.
     const chartId = useStudyWorkspaceStore.getState().windows.find((w) => w.kind === 'chart')!.id;
     useStudyWorkspaceStore.getState().setChartTimeframe(chartId, '5m');
-    useLivePageStore.setState({ indicatorsByTimeframe: {} });
-    useLivePageStore.getState().patchIndicatorsAt('5m', {
+    useLivePageStore.setState({ indicatorsByTimeframe: {}, studyIndicatorsByTimeframe: {} });
+    useLivePageStore.getState().patchIndicatorsScoped('study', '5m', {
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
@@ -143,8 +144,8 @@ describe('useWarmStudyReferenceTabQueries', () => {
     // 창을 일봉으로 두고 탭은 5분봉으로 둔다. 이 어긋남이 이 테스트의 조건 전부다.
     const chartId = useStudyWorkspaceStore.getState().windows.find((w) => w.kind === 'chart')!.id;
     useStudyWorkspaceStore.getState().setChartTimeframe(chartId, 'D');
-    useLivePageStore.getState().patchIndicatorsAt('D', { depthHeatmapEnabled: true });
-    useLivePageStore.getState().patchIndicatorsAt('5m', { depthHeatmapEnabled: false });
+    useLivePageStore.getState().patchIndicatorsScoped('study', 'D', { depthHeatmapEnabled: true });
+    useLivePageStore.getState().patchIndicatorsScoped('study', '5m', { depthHeatmapEnabled: false });
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const saves = [save('view-a', '005930', '삼성전자')];
@@ -306,13 +307,10 @@ describe('useWarmStudyReferenceTabQueries', () => {
     expect(urls.some((url) => url.includes('bucket_ms=300000'))).toBe(false);
   });
 
-  it('warmScopeKey 가 오면 분리된 창의 지표로 워밍한다 (봉과 지표는 같은 창에서)', async () => {
-    // #1326 이 봉을 포커스 창에서 가져오게 만든 뒤, 지표만 공용 세트에서 가져오면
-    // 그 창이 분리됐을 때(ADR-0145) 활성 전환의 실제 키와 어긋난다 — 실제 키는
-    // (창 봉, **창** 지표)인데 워밍은 (창 봉, **공용** 지표)로 받아 놓고 버린다.
-    // 위 warmTimeframe 회귀와 같은 실패가 축만 바꾼 것이라 같은 강도로 막는다.
-    useLivePageStore.getState().detachWindowIndicators('study:w-focus');
-    useLivePageStore.getState().patchIndicatorsScoped('study:w-focus', '5m', {
+  it('지표를 `/study` 세트에서 푼다 — `/live` 것으로 풀면 활성 전환 키와 어긋난다', async () => {
+    // 워밍은 `/study` 에서만 돈다. `/live` 세트로 풀면 활성 전환의 실제 키와 달라
+    // 받아 놓은 번들을 즉시 버린다(위 warmTimeframe 회귀의 지표 축 판, ADR-0146).
+    useLivePageStore.getState().patchIndicatorsScoped('study', '5m', {
       depthHeatmapEnabled: true,
     });
 
@@ -326,7 +324,6 @@ describe('useWarmStudyReferenceTabQueries', () => {
         activatedTabIds: [],
         saves,
         warmTimeframe: '5m',
-        warmScopeKey: 'study:w-focus',
       }),
       { wrapper: wrapper(client) },
     );
@@ -339,8 +336,8 @@ describe('useWarmStudyReferenceTabQueries', () => {
     const sidecar = vi.mocked(apiCall).mock.calls
       .map(([url]) => String(url))
       .filter((url) => url.includes('mode=sidecar'));
-    // 공용 5m 버킷은 히트맵이 꺼져 있다(beforeEach) — true 가 나온다는 것은 값이
-    // 분리된 창 버킷에서 왔다는 뜻이다.
+    // `/live` 5m 버킷은 히트맵이 꺼져 있다(beforeEach) — true 가 나온다는 것은
+    // 값이 `/study` 세트에서 왔다는 뜻이다.
     expect(sidecar.every((url) => url.includes('depth_heatmap_enabled=true'))).toBe(true);
   });
 
