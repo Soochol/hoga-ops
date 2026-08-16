@@ -968,6 +968,10 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     trade_volume_pocs: pastBundle?.trade_volume_pocs ?? [],
     depth_heatmap: pastBundle?.depth_heatmap ?? [],
     depth_delta: pastBundle?.depth_delta ?? [],
+    // 결손 사유는 **캔들 경로로도** 통과시킨다. 그날이 왜 없는지는 곧 캔들이 빈
+    // 이유이기도 한데, `missing_dates` 가 optional 이라 목록에서 빠져도 타입이
+    // 아무 말을 안 했다 — 응답엔 있고 화면엔 없는 #1333 형태가 정확히 이것이다.
+    missing_dates: pastBundle?.missing_dates ?? [],
   };
 }
 

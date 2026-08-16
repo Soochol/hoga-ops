@@ -20,7 +20,42 @@ import { LIVE_VENUE_LABELS, type LiveVenueOption } from '../state/liveVenue';
  */
 
 /** 데이터가 원리적으로 없는 사유 — "고장" 이 아니라 "원래 없음". */
-const ABSENT_REASONS = new Set(['venue_unsupported', 'source_missing', 'stock_date_missing']);
+const ABSENT_REASONS = new Set([
+  'venue_unsupported', 'source_missing', 'stock_date_missing',
+  // hogaplay 가 그날을 통째로 못 준다(ADR-0021). venue 결손과 같은 부류다 —
+  // 소급 복구가 안 되고 사용자가 할 수 있는 일이 없다는 점에서 동일하다.
+  'no_upstream_data',
+]);
+
+/**
+ * `/live` 에서는 **말하지 않을** 사유.
+ *
+ * `not_captured` 는 "아직 캡처하지 않았다" 이고, `/live` 는 임의 종목을 탐색하는
+ * 화면이라 그게 정상 상태다 — 실측(2026-08-16) 90일 창에서 한 종목이 22일까지
+ * 미캡처였다. 그걸 배너로 말하면 상시 켜져 의미를 잃고, 정작 진짜 결손이 왔을 때
+ * 묻힌다. 저장 구간을 사용자가 **명시적으로 정한** `/study` 에서만 뜻이 있다.
+ */
+const IGNORED_REASONS = new Set(['not_captured']);
+
+/** `20251218` → `12/18`. 차트 위 한 줄이라 연도는 뺀다(조회 구간이 곧 맥락). */
+function monthDay(yyyymmdd: string): string {
+  return `${yyyymmdd.slice(4, 6)}/${yyyymmdd.slice(6, 8)}`;
+}
+
+/**
+ * 스크린리더용 뒷문장. 시각 문구는 한 줄이어야 차트를 안 가리므로 "왜" 는 여기서 말한다.
+ *
+ * 사유마다 갈리는 이유: #1133 의 기본 문구는 **호가 pane 전용** 맥락이라
+ * "캔들만 표시됩니다" 라고 하는데, 업스트림 결손은 캔들까지 없어 그 말이 **틀린다**.
+ */
+export function deriveHogaMissingDetail(
+  missingDates: readonly RangeMissingDate[] | undefined,
+): string {
+  const upstream = (missingDates ?? []).some((m) => m.reason === 'no_upstream_data');
+  return upstream
+    ? '그날은 캔들과 호가가 모두 없어 차트에서 빠집니다.'
+    : '이 구간은 호가 지표를 만들 데이터가 없어 캔들만 표시됩니다.';
+}
 
 export interface HogaMissingNoticeInput {
   missingDates: readonly RangeMissingDate[] | undefined;
@@ -43,7 +78,20 @@ export function deriveHogaMissingNotice({
 }: HogaMissingNoticeInput): string | null {
   if (!missingDates || missingDates.length === 0) return null;
 
-  const absent = missingDates.some((m) => ABSENT_REASONS.has(m.reason));
+  // ⚠ 무시 사유를 **분류보다 먼저** 걷어낸다. 뒤에 두면 `not_captured` 만 담긴 목록이
+  // 아래 `!absent` 분기로 떨어져 "손상" 이 뜬다 — 침묵이 아니라 오진이다.
+  const relevant = missingDates.filter((m) => !IGNORED_REASONS.has(m.reason));
+  if (relevant.length === 0) return null;
+
+  // 업스트림 결손은 **가장 구체적인 사유**라 먼저 말한다. venue 결손("이 시장엔 원래
+  // 없음")과 달리 특정 날짜를 지목할 수 있고, 희소해서(전체 429거래일 중 4일) 지목이
+  // 실제로 유용하다. "호가 기록 없음" 으로 뭉치면 절반만 맞는 말이 된다 — 그날은
+  // 호가만이 아니라 캔들까지 전부 없다.
+  const upstream = relevant.filter((m) => m.reason === 'no_upstream_data');
+  if (upstream.length === 1) return `${monthDay(upstream[0].date)} 업스트림 데이터 없음`;
+  if (upstream.length > 1) return `업스트림 데이터 없음 ${upstream.length}일`;
+
+  const absent = relevant.some((m) => ABSENT_REASONS.has(m.reason));
   if (!absent) {
     // 전부 손상 — 결손과 달리 재캡처 여지가 있으므로 다르게 말한다.
     return hasAnyHogaPoints ? '호가 기록 일부 손상' : '호가 기록 손상';

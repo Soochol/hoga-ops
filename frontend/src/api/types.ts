@@ -635,9 +635,22 @@ export type RangeDateWarning = {
  * 배열을 장애와 구별할 수 없어 아무 설명 없는 빈 pane 을 그린다. */
 export type RangeMissingDate = {
   date: string;
-  /** `hoga/api/sources.py::MissingReason` + 조립점의 `meta_unreadable`. 미지의 값이
-   *  와도 렌더가 깨지지 않도록 소비처는 일반 문구로 폴백한다. */
-  reason: 'venue_unsupported' | 'source_missing' | 'stock_date_missing' | 'meta_unreadable' | string;
+  /** Mirrors `hoga/api/models.py::MissingDateReason` (ADR-0004 — 손 미러).
+   *
+   *  `no_upstream_data`(업스트림이 그날을 영구히 못 준다)와 `not_captured`(캡처하면
+   *  채워진다)는 **사용자의 선택지가 다르므로** 값이 갈려 있다 — 소비처가 이 둘을
+   *  같게 말하면 되는 일과 안 되는 일이 화면에서 구별되지 않는다.
+   *
+   *  `| string` 은 방어적으로 남긴다: 백엔드가 값을 늘렸는데 프론트 번들이 옛것인
+   *  배포 스큐에서도 렌더가 깨지지 않아야 한다(소비처는 일반 문구로 폴백). */
+  reason:
+    | 'venue_unsupported'
+    | 'source_missing'
+    | 'stock_date_missing'
+    | 'meta_unreadable'
+    | 'no_upstream_data'
+    | 'not_captured'
+    | string;
 };
 
 /** One live snapshot frame payload (ws.ts ch:'live' data). Mirrors the

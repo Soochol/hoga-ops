@@ -21,7 +21,7 @@ import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 import { usePaneFolding } from './usePaneFolding';
 import { FoldedPaneNotice } from './FoldedPaneNotice';
 import { HogaMissingNotice } from './HogaMissingNotice';
-import { deriveHogaMissingNotice } from './hogaMissingNotice';
+import { deriveHogaMissingDetail, deriveHogaMissingNotice } from './hogaMissingNotice';
 import { CandleEmptyState } from './CandleEmptyState';
 import { deriveSourceBadge } from './sourceBadge';
 import type { CandleEmptyState as CandleEmptyStateValue } from './candleEmptyState';
@@ -2140,6 +2140,10 @@ export function LiveChartRoot({
         text={showHogaMissing ? hogaMissingText : null}
         timeAxisVisible={timeAxisVisible}
         stacked={foldedPaneCount > 0}
+        // 뒷문장이 사유마다 갈린다 — 기본값은 호가 pane 전용이라 업스트림 결손엔 틀린다.
+        ariaLabel={showHogaMissing
+          ? `${hogaMissingText}. ${deriveHogaMissingDetail(missingDates)}`
+          : undefined}
       />
       {/* 캔들이 아예 없을 때 — 빈 중앙을 쓴다(가릴 것이 없다). 행동 버튼이 있어야 해서
           호가 안내와 달리 포인터를 받는다(버튼만; 컨테이너는 통과시킨다). */}
