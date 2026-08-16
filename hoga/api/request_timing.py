@@ -25,6 +25,21 @@ log = logging.getLogger(__name__)
 
 DEFAULT_SLOW_REQUEST_MS = 2000.0
 _QUERY_LOG_MAX_CHARS = 200
+# 이 프로세스의 PID. 모듈 로드 1회 — 요청마다 os.getpid() 를 부를 이유가 없다.
+#
+# **왜 PID·포트를 로그에 싣나.** 이 리포는 병행 세션이 6개까지 늘고, 워크트리마다
+# 백엔드를 띄우는데 로그 파일(`~/.local/share/hoga-ops/logs/hoga.log`)은 **하나**다.
+# 여러 프로세스가 같은 파일에 append 하므로, 줄에 프로세스 식별자가 없으면 집계가
+# 통째로 오염된다 — 2026-08-16 감사에서 `/api/heatmap/group-flow` p50 3.85 s / max
+# 33.1 s 라는 수치가 나왔는데, 머신이 한산한 상태에서 사용자 dev 서버 하나로 다시 재니
+# **630 ms** 였다(6배). 즉 그 p50 은 "이 라우트의 비용" 이 아니라 **병행 백엔드들이
+# 경합한 값**이었고, 줄만 봐서는 그걸 구별할 방법이 없었다.
+#
+# 이건 성능 결함이 아니라 **계측 인프라 결함**이다. 앞으로도 slow-log 기반 판단이
+# 전부 같은 방식으로 오염되므로, 여기서 한 번 고쳐 둔다.
+# 판별식: `grep hoga_perf hoga.log | grep -o 'pid=[0-9]*' | sort -u | wc -l` 이 1 보다
+# 크면 그 구간의 집계는 단일 서버 수치가 아니다.
+_PID = os.getpid()
 # 이 값 이상은 서버 결함으로 보고 두 성능 게이트와 무관하게 항상 로그한다.
 # 4xx 는 호출자 잘못이라 제외 — 404 를 훑는 브라우저 한 대가 5xx 신호를 덮는다.
 _SERVER_ERROR_STATUS = 500
@@ -66,9 +81,15 @@ def _log_timing(
     query = query[:_QUERY_LOG_MAX_CHARS]
     body_bytes_field = "" if body_bytes is None else f" body_bytes={body_bytes}"
     streaming_field = " streaming=1" if streaming else ""
+    # `scope["server"]` = (host, port). uvicorn 이 채우지만 ASGI 스펙상 선택 필드라
+    # 부재를 허용한다 — 그 경우 `-` 로 두고 PID 만으로 구별한다.
+    server = scope.get("server") or (None, None)
+    port = server[1] if len(server) > 1 and server[1] is not None else "-"
     log.warning(
-        "hoga_perf http_request status=%d method=%s path=%s%s%s "
+        "hoga_perf http_request pid=%s port=%s status=%d method=%s path=%s%s%s "
         "ttfb_ms=%.1f duration_ms=%.1f%s%s%s%s",
+        _PID,
+        port,
         status,
         scope.get("method", "-"),
         scope.get("path", "-"),

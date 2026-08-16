@@ -9,6 +9,8 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from hoga.api import loop_lag
+
 log = logging.getLogger(__name__)
 
 TaskOrNone = asyncio.Task | None
@@ -234,6 +236,29 @@ async def start_app_runtime(
     )
     try:
         runtime.scheduler_tasks = deps.start_scheduler(data_dir)
+
+        # 이벤트 루프 기아 프로브(트랙 4). `--workers` 금지 구조라 단일 루프가 전부를
+        # 처리하므로, 어딘가가 GIL 을 오래 쥐면 앱 전체가 멎는다 — 그런데 그게 지금까지
+        # **보이지 않았다**(slow-log 두 줄의 타임스탬프를 눈으로 맞추는 사후 추론뿐).
+        # 스케줄러 목록에 넣어 `supervised_task_health` 가 조용한 죽음을 잡게 한다.
+        # 자세한 읽는 법·기본값 근거는 `loop_lag` 모듈 docstring.
+        loop_lag_warn_ms = loop_lag.warn_ms_from_env(
+            dict(deps.env) if deps.env is not None else None,
+        )
+        if loop_lag_warn_ms > 0:
+            runtime.scheduler_tasks.append(
+                asyncio.create_task(
+                    # 불변식: **`warn_ms > 0` 에서만 등록**하므로 이 태스크에
+                    # 정상 반환 경로가 없다(프로브 안의 `warn_ms<=0` 조기 반환은
+                    # 여기서 도달 불가). 영구 루프이므로 `ONE_SHOT_TASK_NAMES` 에
+                    # 넣지 않는다 — 넣으면 조용한 죽음이 `completed` 로 위장한다.
+                    # 반대로 이 불변식이 깨져 정상 반환하게 되면 health 가 `dead` 로
+                    # 잡고 README 워치독이 멀쩡한 서버를 5분마다 재시작한다
+                    # (2026-08-03 의 실패 모드). 등록 조건을 손대면 여기를 같이 볼 것.
+                    loop_lag.loop_lag_probe(warn_ms=loop_lag_warn_ms),
+                    name="loop-lag-probe",
+                )
+            )
 
         # **심볼 마스터 로드가 라이브 기동보다 먼저다 — 순서가 계약이다.**
         # `coverage._compute_heatmap_codes`/`_compute_capture_candidates`는 심볼 마스터

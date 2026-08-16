@@ -130,3 +130,53 @@ describe('live day peak performance (incremental, deterministic)', () => {
     expect(switched).toEqual(cold.update(ob, [], preOpenMs, []));
   });
 });
+
+/**
+ * 슬라이딩 축출(15분 창)에서 prefix-guard 가 깨지는 **알려진 결함**의 마커.
+ *
+ * 위 두 테스트는 배열이 **append-only** 이거나 **통째로 교체**되는 두 경우만 본다.
+ * 실제 라이브 버퍼는 세 번째 모양을 만든다 — **앞을 자르고 뒤에 붙인다**(15분 슬라이딩).
+ * 그 모양에서 prefix 참조가 어긋나 매 flush 마다 전량 재소비가 발생한다. 기존 테스트가
+ * 이 축을 **원리적으로 못 보는 것**이 결함이 숨은 이유였다(감사 트랙 1-3).
+ *
+ * ## 왜 `it.fails` 인가
+ *
+ * 감사는 "지금 반드시 빨개야 한다" 고 했지만, 항상 빨간 테스트는 무시되기 시작해
+ * 메커니즘 전체를 죽인다(CLAUDE.md 「가드를 고칠 때」). `it.fails` 는 그 둘을 화해시킨다:
+ * **결함이 있는 지금은 초록**(예상대로 실패했으므로), **고쳐지는 순간 이 테스트가 실패**해
+ * "마커를 걷고 진짜 단언으로 바꿔라" 라고 알려 준다.
+ *
+ * ## 고칠 때 읽을 것 — 기계적 이식은 오히려 나쁘다
+ *
+ * `locate()` 를 그냥 축출에 강하게 만들면 `events` 가 세션 내내 단조 증가한다
+ * (`classify()` 는 매 호출 `this.events` 를 전량 순회하고 가지치기 경로가 `reset()`
+ * 뿐이다). 그러면 ①classify 비용이 오히려 커지고 ②창 밖으로 밀려난 벽이 남아 배치
+ * 오라클과 갈라진다. **지금의 깨진 가드가 정확성과 메모리 상한을 우연히 지켜 주고 있다.**
+ * 올바른 수정은 `locate()` + 축출 조정(`events` prefix 절단 + `eventIndexByKey` 의
+ * `baseOffset` 리베이스 + `touchTimes`/`touchPrices` prefix 컷)이다.
+ *
+ * ## 착수 전 선행 조건
+ *
+ * 입력 N 이 **미측정**이다 — 장중 1회 계측(차트 창 1개의 `live.ob.length`)이 필요하다.
+ * 1 ob/s 면 flush 당 12 ms, 20 ob/s 면 310 ms 로 26배 갈린다. 그 값에 따라 이 항목의
+ * 순위가 최상위일 수도, 무시해도 될 수준일 수도 있다.
+ */
+describe('live day peak — 알려진 결함 마커 (슬라이딩 축출)', () => {
+  it.fails('축출 갱신이 델타만 소비한다 — 아직 아니다(고쳐지면 이 테스트가 실패한다)', () => {
+    const spy = vi.spyOn(bucketHogaSeries, 'isIndicatorEligibleBook');
+    const src = new IncrementalPeakWallSource('ask');
+    const ob: ObSnapshot[] = Array.from({ length: 2000 }, (_unused, i) => mkOb(i));
+
+    src.update(ob, [], OPEN_MS, []);
+    const afterFull = spy.mock.calls.length;
+
+    // 슬라이딩 창: 앞 1개를 버리고 뒤 1개를 붙인다(라이브 버퍼의 실제 모양).
+    src.update([...ob.slice(1), mkOb(2000)], [], OPEN_MS, []);
+    const delta = spy.mock.calls.length - afterFull;
+    spy.mockRestore();
+
+    // 이상적으로는 델타 1~2 여야 한다. 현재는 전량 재소비(2000)라 이 단언이 실패하고,
+    // `it.fails` 가 그 실패를 **예상된 것**으로 받아 스위트를 초록으로 유지한다.
+    expect(delta).toBeLessThanOrEqual(2);
+  });
+});

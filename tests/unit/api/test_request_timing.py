@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 import pytest
 from fastapi import FastAPI
@@ -302,3 +303,43 @@ def test_server_error_logging_survives_slow_log_disabled(
     with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
         client.get("/explicit-500")
     assert len(_timing_records(caplog)) == 1
+
+
+def test_log_line_carries_pid_and_port(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """줄마다 **프로세스 식별자**가 있어야 한다 — 없으면 집계가 통째로 오염된다.
+
+    이 리포는 병행 세션이 6개까지 늘고 워크트리마다 백엔드를 띄우는데 로그 파일은
+    **하나**다. 2026-08-16 감사에서 `/api/heatmap/group-flow` p50 3.85 s 라는 수치가
+    나왔지만, 한산한 상태의 단일 서버 실측은 630 ms 였다(6배) — 그 p50 은 "라우트의
+    비용" 이 아니라 **병행 백엔드들이 경합한 값**이었고 줄만 봐서는 구별할 수 없었다.
+    성능 결함이 아니라 **계측 인프라 결함**이라 여기서 고친다.
+    """
+    monkeypatch.delenv("HOGA_PERF_DEBUG", raising=False)
+    monkeypatch.setenv("HOGA_SLOW_REQUEST_MS", "1")
+    client = _make_client(sleep_s=0.02)
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        client.get("/ping")
+    [record] = _timing_records(caplog)
+    msg = record.getMessage()
+    assert f"pid={os.getpid()}" in msg
+    assert " port=" in msg
+
+
+def test_missing_server_scope_degrades_to_dash(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`scope['server']` 는 ASGI 스펙상 **선택 필드**다 — 부재가 로그를 죽이면 안 된다.
+
+    미들웨어가 KeyError/IndexError 로 죽으면 요청 자체가 500 이 된다. 관측용 코드가
+    관측 대상을 고장내는 것은 이 리포가 반복해서 경계하는 실패 유형이다.
+    """
+    monkeypatch.setenv("HOGA_SLOW_REQUEST_MS", "1")
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        request_timing._log_timing(
+            scope={"method": "GET", "path": "/x", "query_string": b""},
+            status=200, ttfb_ms=1.0, duration_ms=9999.0, body_bytes=0, streaming=False,
+        )
+    [record] = _timing_records(caplog)
+    assert "port=-" in record.getMessage()
