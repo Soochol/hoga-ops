@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { useNavigate, useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { PageContainer } from '../layout/PageContainer';
-import { requestSettingsModal } from '../live/settingsModalControls';
-import { SettingsButton } from '../live/LiveToolbar';
 import { registerIndicatorDrawerOpener } from '../live/workspace/indicatorDrawerControls';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
@@ -157,8 +155,9 @@ export function StudyPage() {
   // 않으므로 모듈 슬롯 하나를 공유해도 안전하다.
   const [indicatorTargetId, setIndicatorTargetId] = useState<string | null>(null);
   useEffect(() => registerIndicatorDrawerOpener(setIndicatorTargetId), []);
-  // 설정 드로어는 `App` 이 소유한다 — 이 페이지는 레이아웃 분기가 넷이라 예전엔 같은
-  // 모달을 네 번 렌더해야 했다. 이제 툴바 ⚙ 가 `requestSettingsModal()` 을 부르고 끝이다.
+  // 설정 관련 코드는 이 페이지에 **없다** — 드로어는 `App` 이 소유하고 진입점은 상단
+  // TopNav 「설정」 하나다. 예전엔 레이아웃 분기 넷마다 같은 모달을 렌더했고 툴바 ⚙ 도
+  // 있었는데, 둘 다 사라졌다(2026-08-16 · 08-17).
   const [memoError, setMemoError] = useState<string | null>(null);
   const tabs = useStudyTabsStore((state) => state.tabs);
   const activeTabId = useStudyTabsStore((state) => state.activeTabId);
@@ -728,7 +727,6 @@ export function StudyPage() {
               자리다. 그래서 이 줄은 `/live` 툴바처럼 워크스페이스 관리 버튼만
               남고, 버튼은 좌측 정렬(`ml-auto` 없음)로 두 페이지가 같아진다. */}
           <WorkspaceToolbar testId="study-page-toolbar">
-            <SettingsButton onClick={requestSettingsModal} />
             <StudyWindowListMenu />
             <StudyWindowAddMenu />
             <StudyLayoutPresetMenu />
