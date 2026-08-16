@@ -1,17 +1,17 @@
 /**
  * WorkspaceLiveToolbar — 워크스페이스 상단 고정 툴바 (ADR-0119 C2c-2c).
  *
- * **워크스페이스와 앱의 것만 남는다.** 거래소(앱 전역)·창 추가·레이아웃 프리셋
- * (워크스페이스 관리)·설정(앱 전역). 차트 하나에 걸리는 것 — 봉·그리기·보조지표·
- * 저장뷰·수집 — 은 전부 그 차트 창의 헤더로 이관됐다(#758 및 후속). 그 결과 이
- * 툴바에는 "어느 창/그룹에 걸리나" 를 추론해야 하는 항목이 하나도 남지 않았다.
+ * **워크스페이스의 것만 남는다.** 거래소(앱 전역)·창 추가·레이아웃 프리셋
+ * (워크스페이스 관리). 차트 하나에 걸리는 것 — 봉·그리기·보조지표·저장뷰·수집 —
+ * 은 전부 그 차트 창의 헤더로 이관됐다(#758 및 후속). 그 결과 이 툴바에는
+ * "어느 창/그룹에 걸리나" 를 추론해야 하는 항목이 하나도 남지 않았다.
  *
- * 설정의 열림 상태는 셸(LivePage 또는 프리뷰 페이지)이 소유하고 콜백으로 받는다.
+ * 설정 버튼도 **여기 없다**(2026-08-17) — 앱 전역 드로어라 진입점이 상단 TopNav
+ * 「설정」 하나로 모였다. `onOpenSettings` prop 도 함께 사라졌다.
  */
 import { IconToolbarButton, WorkspaceToolbar } from '../../ui/WorkspaceShell';
 import { LiveVenuePicker } from '../LiveVenuePicker';
 import { openShortcutHelp } from '../../ui/shortcutHelp';
-import { SettingsButton } from '../LiveToolbar';
 import { LayoutPresetMenu } from '../presets/LayoutPresetMenu';
 import { WindowAddMenu } from './WindowAddMenu';
 import { LiveWindowListMenu } from './LiveWindowListMenu';
@@ -19,7 +19,6 @@ import { captureHealthPillColor } from '../captureHealthPill';
 import type { CaptureHealthView } from '../liveStatusProjection';
 
 type Props = {
-  onOpenSettings: () => void;
   /** 전역 캡처 파이프라인 건강도 — 종목 무관이라 폐지된 상태바 대신 여기 소유한다
    *  (창 헤더에 두면 종목별인 듯 반복되어 노이즈). */
   captureHealth: CaptureHealthView;
@@ -51,7 +50,7 @@ function CaptureHealthIndicator({ health }: { health: CaptureHealthView }) {
   );
 }
 
-export function WorkspaceLiveToolbar({ onOpenSettings, captureHealth }: Props) {
+export function WorkspaceLiveToolbar({ captureHealth }: Props) {
   return (
     <WorkspaceToolbar testId="workspace-live-toolbar" className="flex-nowrap">
       {/* 거래소 — 툴바 맨 앞. venue 는 창이 아니라 앱 전역(관심종목·히트맵·타이틀바가
@@ -65,12 +64,11 @@ export function WorkspaceLiveToolbar({ onOpenSettings, captureHealth }: Props) {
       <span className="mx-1 h-[14px] w-px shrink-0 bg-border-strong" />
       <WindowAddMenu />
       <span className="mx-1 h-[14px] w-px shrink-0 bg-border-strong" />
-      {/* 보조지표는 차트 창 헤더로 이관됐다(#758) — 창의 것이라 창이 연다.
-          설정은 편집 값이 앱 전역(chartPrefs·저장뷰·알림·데이터소스)이라 여기
-          남는다: 창 헤더에 두면 "이 창의 설정" 으로 읽히는데 실제론 앱 전체를
-          바꾼다(#759 결정 1). 차트 창 0개 가드도 함께 사라졌다 — 헤더 버튼은
-          차트 창에만 있으므로 "차트 창이 있어야 연다" 가 자명하게 참이다. */}
-      <SettingsButton onClick={onOpenSettings} />
+      {/* 보조지표는 차트 창 헤더로 이관됐고(#758 — 창의 것이라 창이 연다), 설정은
+          상단 TopNav 로 모였다(2026-08-17). 설정이 여기 있던 근거는 "편집 값이 앱
+          전역이라 창 헤더에 두면 「이 창의 설정」으로 읽힌다"(#759 결정 1)였는데,
+          그 논리는 **앱 크롬**이 더 나은 자리라는 뜻이기도 했다 — 툴바는 `/live`·
+          `/study` 에만 있어서 진입점으로는 고르지 않았다. */}
       <LayoutPresetMenu />
       {/* 단축키 도움말 — `?` 키의 가시적 진입점(발견성). 도움말의 발견성을 도움말
           단축키에만 맡기면 순환이라, 텍스트 버튼 하나를 앱 크롬에 남긴다. */}
