@@ -87,4 +87,31 @@ describe('wall_surge merge', () => {
     expect(merged.wall_surge).toHaveLength(1);
     expect(merged.wall_surge![0].outcome).toBe('consumed');
   });
+
+  // next 가 **세그먼트를 실제로 내려준** 경우에도 previous 를 거르지 않는다는 계약.
+  //
+  // `broker_late_entries`·`program_trade` 는 여기서 `outsideCoveredSegment` 로 previous
+  // 를 버린다 — 재계산에서 항목이 사라질 수 있기 때문이다. 호가벽은 그렇지 않으므로
+  // (`query_wall_surge` 의 임계가 prefix 집계라 과거 판정이 불변) 같은 필터를 걸면
+  // **막는 사건이 없는 코드**가 되고, 다음 독자에게 "여기선 사라짐이 일어난다" 는 거짓
+  // 신호를 준다. 이 테스트가 그 필터를 넣는 순간 빨개진다.
+  it('뒤 청크가 세그먼트를 내려줘도 그 구간의 previous 를 버리지 않는다', () => {
+    const previous: RangeBundle = {
+      ...fakeBundle,
+      segments: [{ date: '20260813', session_open_ms: 10, session_close_ms: 90, source: 'hogaplay' }],
+      wall_surge: [ev({ t_ms: 50 }), ev({ t_ms: 400 })],
+    };
+    const next: RangeBundle = {
+      ...fakeBundle,
+      segments: [{ date: '20260814', session_open_ms: 100, session_close_ms: 900, source: 'hogaplay' }],
+      wall_surge: [ev({ t_ms: 500 })],
+    };
+
+    const merged = mergeRangeBundles(previous, next);
+
+    // 400 은 next 의 세션(100~900) **안**이지만 살아남는다 — 세그먼트 밖의 50 과 함께
+    // 경계 양쪽을 값으로 세워, 필터가 들어오면 400 만 빠지며 실패 메시지가 어느 규칙이
+    // 잘못 적용됐는지 말하게 한다.
+    expect(merged.wall_surge!.map((e) => e.t_ms)).toEqual([50, 400, 500]);
+  });
 });
