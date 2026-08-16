@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { useNavigate, useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { PageContainer } from '../layout/PageContainer';
-import LiveSettingsModal from '../live/LiveSettingsModal';
+import SettingsDrawer from '../live/SettingsDrawer';
 import { SettingsButton } from '../live/LiveToolbar';
 import { registerIndicatorDrawerOpener } from '../live/workspace/indicatorDrawerControls';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
@@ -568,7 +568,7 @@ export function StudyPage() {
         )}
       >
         {settingsOpen && (
-          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
+          <SettingsDrawer variant="study" onClose={() => setSettingsOpen(false)} />
         )}
       </StudyPageStateShell>
     );
@@ -588,7 +588,7 @@ export function StudyPage() {
         )}
       >
         {settingsOpen && (
-          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
+          <SettingsDrawer variant="study" onClose={() => setSettingsOpen(false)} />
         )}
       </StudyPageStateShell>
     );
@@ -609,7 +609,7 @@ export function StudyPage() {
         )}
       >
         {settingsOpen && (
-          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
+          <SettingsDrawer variant="study" onClose={() => setSettingsOpen(false)} />
         )}
       </StudyPageStateShell>
     );
@@ -798,7 +798,7 @@ export function StudyPage() {
             />
           )}
           {settingsOpen && (
-            <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
+            <SettingsDrawer variant="study" onClose={() => setSettingsOpen(false)} />
           )}
         </div>
       </div>

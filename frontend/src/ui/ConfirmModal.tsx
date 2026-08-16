@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { ModalShell } from './ModalShell';
 
-// Presentational center confirm modal. Mirrors the LiveSettingsModal /
+// Presentational center confirm modal. Mirrors the SettingsDrawer /
 // IndicatorPanel pattern (backdrop + Escape useEffect; no useDismissablePopover).
 // Holds NO mutation/anchor logic — the parent's onConfirm does that.
 export function ConfirmModal({ message, confirmLabel, tone, onConfirm, onClose }: {

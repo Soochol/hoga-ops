@@ -54,9 +54,10 @@ vi.mock('./signalAlerts/useSignalAlertEvents', () => ({
   useSignalAlertEvents: () => {},
 }));
 
-vi.mock('./pages/Settings', () => ({
-  SettingsPanel: () => <div>settings panel body</div>,
-  default: () => <div>settings page route</div>,
+// 설정 본체는 이제 `live/SettingsSections` 하나다 — App 은 그것을 lazy 로 열고,
+// `pages/Settings` 는 `/settings` 라우트 프레임으로만 남아 App 이 참조하지 않는다.
+vi.mock('./live/SettingsSections', () => ({
+  default: () => <div>settings panel body</div>,
 }));
 
 function wrap(ui: ReactNode, initialEntry: string) {
@@ -178,14 +179,17 @@ describe('App shell layout', () => {
     expect(await screen.findByTestId('heatmap-drawer')).toBeInTheDocument();
   });
 
-  it('opens Settings as a centered popover without leaving the current page', async () => {
+  it('opens Settings as a right drawer without leaving the current page', async () => {
     wrap(<div>unused</div>, '/live');
 
     fireEvent.click(screen.getByRole('button', { name: '설정' }));
 
     // 모달 껍데기(ModalShell)는 정적이라 즉시 뜬다 — 안쪽 패널만 lazy 다.
     const dialog = screen.getByRole('dialog', { name: '설정' });
-    expect(dialog).toHaveClass('fixed', 'inset-0', 'items-center', 'justify-center');
+    // `/live`·`/study` 툴바 ⚙ 와 **같은 크롬**(우측 드로어)이다. 옛 중앙 모달
+    // (720×560 하드코딩)은 설정 표면이 하나로 합쳐지면서 사라졌다 — 진입점이 달라도
+    // 폭·앵커·nav 가 같아야 「설정은 하나」가 화면에서도 참이다.
+    expect(dialog).toHaveClass('fixed', 'inset-0', 'items-stretch', 'justify-end');
     expect(await within(dialog).findByText('settings panel body')).toBeInTheDocument();
     expect(screen.getByText('live page')).toBeInTheDocument();
   });

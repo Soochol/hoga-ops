@@ -130,7 +130,7 @@ vi.mock('../live/indicators/IndicatorPanel', () => ({
   },
 }));
 
-vi.mock('../live/LiveSettingsModal', () => ({
+vi.mock('../live/SettingsDrawer', () => ({
   default: ({ onClose }: { onClose: () => void }) => (
     <div role="dialog" aria-label="설정">
       <button type="button" onClick={onClose}>닫기</button>
