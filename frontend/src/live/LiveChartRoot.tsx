@@ -28,7 +28,7 @@ import type { CandleEmptyState as CandleEmptyStateValue } from './candleEmptySta
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
-import StudySavedRangeBand from '../studyViews/StudySavedRangeBand';
+import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
 import {
   type LiveMAConfig,
@@ -2330,9 +2330,11 @@ export function LiveChartRoot({
             <DayBoundaryOverlay chart={chart} axis={axis} />
           )}
           {/* `/study` 저장 구간 밴드 — 캘린더 봉 전용. 분봉에선 저장 구간이 곧
-              화면 전체라 표시할 것이 없고, 좌표계도 다르다(캘린더 축 = 하루 1포인트). */}
+              화면 전체라 표시할 것이 없고, 좌표계도 다르다(캘린더 축 = 하루 1포인트).
+              DOM 없는 primitive 호스트라 팬/줌 재계산은 lwc 캔버스 패스가 담당한다
+              (캔들과 같은 프레임 — 고저 극값 라벨과 동일 처방). */}
           {savedRangeBand && !isMinuteTimeframe(timeframe) && (
-            <StudySavedRangeBand chart={chart} axis={axis} marks={savedRangeBand} />
+            <StudySavedRangeBandHost axis={axis} paneSeries={paneSeries} marks={savedRangeBand} />
           )}
           {/* 창 간 크로스헤어 동기화(분봉 창 호버 → 이 일봉 창). 게이트가 둘이다:
               **`D` 전용** — 분봉 ms 를 KST 날짜로 스냅해 일봉 캔들을 찾는데(바로 위
