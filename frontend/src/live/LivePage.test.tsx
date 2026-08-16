@@ -74,6 +74,12 @@ const livePageMocks = vi.hoisted(() => {
     dayAskPeakTodayArgs: [] as unknown[],
     allPriceObArgs: [] as unknown[],
     allPriceTodayArgs: [] as unknown[],
+    // 매수 최대벽·매물대 POC 의 라이브 인자 — 매도와 **같은 계산 게이트**를 공유하므로
+    // 관측 지점도 같이 둔다(하나만 두면 나머지 둘이 조용히 게이트를 잃는다).
+    dayBidPeakObArgs: [] as unknown[],
+    dayBidPeakTradeArgs: [] as unknown[],
+    tradeVolumePocTradeArgs: [] as unknown[],
+    tradeVolumePocObArgs: [] as unknown[],
     currentStudySaveSource: null as unknown,
     dayBidPeaksResult: null as unknown[] | null,
     tradeVolumePocsResult: [] as unknown[],
@@ -143,11 +149,30 @@ vi.mock('./useDayAskPeaks', () => ({
 
 vi.mock('./useDayBidPeaks', () => ({
   useTodayAllPriceBidPeak: () => null,
-  useDayBidPeaks: (_ob: unknown, _trade: unknown, seeds: unknown) => livePageMocks.dayBidPeaksResult ?? seeds ?? [],
+  useDayBidPeaks: (ob: unknown, trade: unknown, seeds: unknown) => {
+    livePageMocks.dayBidPeakObArgs.push(ob);
+    livePageMocks.dayBidPeakTradeArgs.push(trade);
+    return livePageMocks.dayBidPeaksResult ?? seeds ?? [];
+  },
 }));
 
+// ⚠ 위 `useDayAskPeaks` 목과 같은 규율 — 인자 자리가 실제 시그니처와 자릿수까지 같아야 한다.
+// 여기서 재는 것은 **1번(trades)과 7번(orderbooks)**, 즉 틱마다 churn 하는 라이브 인자 둘이다.
+// 3~6번(seeds·today·code·candles·segments)은 게이트 대상이 아니라 그대로 흐른다.
 vi.mock('./useTradeVolumePoc', () => ({
-  useTradeVolumePocs: () => livePageMocks.tradeVolumePocsResult,
+  useTradeVolumePocs: (
+    trades: unknown,
+    _seeds: unknown,
+    _todayKst: unknown,
+    _code: unknown,
+    _candles: unknown,
+    _segments: unknown,
+    orderbooks: unknown,
+  ) => {
+    livePageMocks.tradeVolumePocTradeArgs.push(trades);
+    livePageMocks.tradeVolumePocObArgs.push(orderbooks);
+    return livePageMocks.tradeVolumePocsResult;
+  },
 }));
 
 // LiveSidebar now calls cursor hooks (ADR-0044) — mock them so the shell
@@ -323,6 +348,10 @@ describe('LivePage shell', () => {
     livePageMocks.dayAskPeakTodayArgs.length = 0;
     livePageMocks.allPriceObArgs.length = 0;
     livePageMocks.allPriceTodayArgs.length = 0;
+    livePageMocks.dayBidPeakObArgs.length = 0;
+    livePageMocks.dayBidPeakTradeArgs.length = 0;
+    livePageMocks.tradeVolumePocTradeArgs.length = 0;
+    livePageMocks.tradeVolumePocObArgs.length = 0;
     livePageMocks.currentStudySaveSource = null;
     livePageMocks.dayBidPeaksResult = null;
     livePageMocks.tradeVolumePocsResult = [];
@@ -810,12 +839,72 @@ describe('LivePage shell', () => {
     await waitFor(() => expect(useLivePageStore.getState().activeCode).toBe('000660'));
   });
 
-  it('passes live orderbook snapshots to ask-peak ratchet on minute timeframes', () => {
-    seedWorkspace('1m');
+  it('passes live orderbook snapshots to ask-peak ratchet on minute timeframes (지표 ON)', () => {
+    // 봉 축(분봉)과 토글 축(askPeakEnabled)이 **둘 다** 열려야 라이브 스트림이 흐른다.
+    // 종전엔 봉 축뿐이라 이 테스트가 토글을 안 켜고도 통과했다 — 그 비대칭이 곧 결함이었다.
+    seedWorkspace('1m', { minute: { askPeakEnabled: true } });
     renderWithRouter('/live?code=005930');
     expect(livePageMocks.dayAskPeakObArgs.at(-1)).toBe(livePageMocks.liveOb);
     expect(livePageMocks.dayAskPeakTradeArgs.at(-1)).toBe(livePageMocks.liveTrade);
     expect(livePageMocks.allPriceObArgs.at(-1)).toBe(livePageMocks.liveOb);
+  });
+
+  /**
+   * 계산 게이트의 토글 축 — 봉 축(바로 아래 'calendar timeframes')과 **교대 대조**를 이룬다.
+   *
+   * 이걸 지키지 않으면 최대벽을 한 번도 켠 적 없는 사용자가 매 flush(150ms)마다 `live.ob`
+   * 전량 스캔을 낸다. 화면에는 아무것도 안 그려지므로(렌더는 `LiveAskPeakSegments` 안에서
+   * `askPeakEnabled` 로 이미 게이트된다) 증상이 "차트가 그냥 무겁다" 로만 나타나고, 그래서
+   * **테스트로만 잡힌다**. 백엔드 fetch 게이트(`planLiveRangeRequest` 의 `askPeaksEnabled`)와
+   * 같은 술어를 쓰는지가 이 단언의 요지다.
+   *
+   * `seedWorkspace('1m')` 의 기본값이 곧 공장 기본값(OFF)이라 시드를 비워 두는 것이 전제다.
+   */
+  it('does not feed live orderbook snapshots into ask-peak ratchet when the indicator is off', () => {
+    seedWorkspace('1m');
+    renderWithRouter('/live?code=005930');
+    const ob = livePageMocks.dayAskPeakObArgs.at(-1);
+    const trade = livePageMocks.dayAskPeakTradeArgs.at(-1);
+    expect(ob).not.toBe(livePageMocks.liveOb);
+    expect(ob).toEqual([]);
+    expect(trade).not.toBe(livePageMocks.liveTrade);
+    expect(trade).toEqual([]);
+    expect(livePageMocks.allPriceObArgs.at(-1)).toEqual([]);
+  });
+
+  // 매수 최대벽 — 매도와 **독립 토글**이라 따로 센다. 하나만 게이트하면 반대쪽이
+  // 조용히 전액 비용을 계속 낸다(#923 이 히트맵·증감만 고치고 이 셋을 빠뜨린 모양 그대로).
+  it('passes live snapshots to bid-peak ratchet when the indicator is on', () => {
+    seedWorkspace('1m', { minute: { bidPeakEnabled: true } });
+    renderWithRouter('/live?code=005930');
+    expect(livePageMocks.dayBidPeakObArgs.at(-1)).toBe(livePageMocks.liveOb);
+    expect(livePageMocks.dayBidPeakTradeArgs.at(-1)).toBe(livePageMocks.liveTrade);
+  });
+
+  it('does not feed live snapshots into bid-peak ratchet when the indicator is off', () => {
+    seedWorkspace('1m');
+    renderWithRouter('/live?code=005930');
+    expect(livePageMocks.dayBidPeakObArgs.at(-1)).toEqual([]);
+    expect(livePageMocks.dayBidPeakTradeArgs.at(-1)).toEqual([]);
+  });
+
+  /**
+   * 매물대 POC — `orderbooks` 인자가 `firstTrailingSinglePriceBookMs` 로 들어가고,
+   * 그 함수는 조기 종료 없이 ob 창을 **두 번 완주**한다. 즉 이 게이트가 빠지면 최대벽을
+   * 다 꺼도 ob 전량 스캔이 남는다 — 셋을 함께 게이트해야 하는 이유가 이것이다.
+   */
+  it('passes live snapshots to trade-volume POC when the indicator is on', () => {
+    seedWorkspace('1m', { minute: { tradeVolumePocEnabled: true } });
+    renderWithRouter('/live?code=005930');
+    expect(livePageMocks.tradeVolumePocTradeArgs.at(-1)).toBe(livePageMocks.liveTrade);
+    expect(livePageMocks.tradeVolumePocObArgs.at(-1)).toBe(livePageMocks.liveOb);
+  });
+
+  it('does not feed live snapshots into trade-volume POC when the indicator is off', () => {
+    seedWorkspace('1m');
+    renderWithRouter('/live?code=005930');
+    expect(livePageMocks.tradeVolumePocTradeArgs.at(-1)).toEqual([]);
+    expect(livePageMocks.tradeVolumePocObArgs.at(-1)).toEqual([]);
   });
 
   it('does not feed live orderbook snapshots into ask-peak ratchet on calendar timeframes', () => {

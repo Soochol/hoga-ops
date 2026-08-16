@@ -48,10 +48,42 @@ export interface TradeSnapshot {
  * totals-only path) we cannot tell structurally → treat as continuous so the
  * series falls back to legacy last-in-bucket (no spurious masking). */
 export function isContinuousBook(s: ObSnapshot): boolean {
-  const hasDeep = (lv: OrderbookLevel[] | undefined): boolean =>
-    !!lv && lv.slice(3).some((l) => l.qty > 0);
   if (!s.asks && !s.bids) return true;
-  return hasDeep(s.asks) && hasDeep(s.bids);
+  return hasDepthBeyondLevel3(s.asks) && hasDepthBeyondLevel3(s.bids);
+}
+
+/**
+ * `lv[3..]` 에 잔량이 있는 레벨이 하나라도 있는가 — `isContinuousBook` 의 유일한 술어.
+ *
+ * 종전엔 `isContinuousBook` **안의 클로저**로 `!!lv && lv.slice(3).some((l) => l.qty > 0)`
+ * 였다. 호출 한 번에 클로저 1개 + `slice` 사본 1개, `isContinuousBook` 은 양쪽을 보므로
+ * 스냅샷당 배열 2개가 난다. 이 술어는 틱 빈도 경로의 **최내곽**이라 그 할당 자체가 비용이다 —
+ * `firstTrailingSinglePriceBookMs`(continuousTradeVolumeDistribution.ts)는 조기 종료 없이
+ * ob 창을 **두 번 완주**하고, `isIndicatorEligibleBook` 경유로 `buildLiveBundle`·
+ * `incrementalPeakWallSource` 도 스냅샷마다 부른다.
+ *
+ * 실측(2026-08-16, 10레벨 연속북을 창 두 번 완주 = `firstTrailingSinglePriceBookMs` 의 패턴):
+ *
+ * | 스냅샷 | 종전 | 현행 |
+ * |---:|---:|---:|
+ * | 900 (1 ob/s × 15분) | 0.05 ms | 0.01 ms |
+ * | 4,500 (5 ob/s) | 0.25 ms | 0.08 ms |
+ * | 9,000 (10 ob/s) | 0.58 ms | 0.18 ms |
+ * | 18,000 (20 ob/s) | 1.06 ms | 0.29 ms |
+ *
+ * 대략 3배. 절대값이 작아 보이지만 **flush 하나에 창 수만큼 곱해지고**(150ms 예산),
+ * 같은 술어가 `isIndicatorEligibleBook` 경유로 다른 지표에도 들어간다.
+ *
+ * 동작은 글자 그대로 같다: 인덱스 3부터 훑고 첫 양수에서 조기 종료, `undefined` 는 false,
+ * 길이 3 이하는 순회할 원소가 없어 false. 모듈 레벨로 올린 것도 같은 이유다(호출마다
+ * 클로저를 다시 만들지 않는다).
+ */
+function hasDepthBeyondLevel3(lv: OrderbookLevel[] | undefined): boolean {
+  if (!lv) return false;
+  for (let i = 3; i < lv.length; i += 1) {
+    if (lv[i].qty > 0) return true;
+  }
+  return false;
 }
 
 /** 호가 파생 지표(호가비·총잔량·히트맵·매도/매수 최대벽) 공용 '유효 스냅샷' 술어 (ADR-0062 v3).
