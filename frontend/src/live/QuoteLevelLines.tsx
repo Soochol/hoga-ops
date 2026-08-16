@@ -42,9 +42,12 @@ function QuoteLevelLines({ paneSeries, bundle }: Props) {
 
   const qtIntraMax = useActivePrefs((p) => p.quoteTotalsIntraMax);
   const ratioIntraMax = useActivePrefs((p) => p.ratioIntraMax);
+  // 라인 프로젝터와 **같은** 마스크를 읽는다 — 이걸 안 넘기면 붕괴 버킷((0,0) 마감
+  // 동시호가·장중 VI)이 현재값으로 잡혀 수평선만 pane 바닥에 깔린다.
+  const auctionWindowMask = useActivePrefs((p) => p.auctionWindowMask);
 
-  const levels = deriveQuoteTotalsLevels(bundle, qtIntraMax);
-  const ratioValue = deriveRatioLevel(bundle, ratioIntraMax);
+  const levels = deriveQuoteTotalsLevels(bundle, qtIntraMax, auctionWindowMask);
+  const ratioValue = deriveRatioLevel(bundle, ratioIntraMax, auctionWindowMask);
 
   return (
     <>
