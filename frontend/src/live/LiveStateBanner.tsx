@@ -1,5 +1,5 @@
-import { Link } from 'react-router';
 import type { LiveBannerCause, LiveBannerPrimary } from './liveStatusProjection';
+import { requestSettingsModal } from './settingsModalControls';
 
 interface Props {
   primary: LiveBannerPrimary;
@@ -25,8 +25,11 @@ export function LiveStateBanner({ primary, stack }: Props) {
     <div data-testid="live-state-banner" className="flex flex-col">
       {/* `credentials_missing` 행은 도달 불가 판정으로 내렸다 — 자세한 근거는
           liveStatusProjection.ts 의 삭제된 분기 자리 주석 참조. */}
+      {/* 복구 동선은 이제 **라우트 이동이 아니라 드로어 열기**다 — `/settings` 페이지가
+          사라지면서(설정 표면 단일화) 링크가 갈 곳이 없어졌고, 어차피 이 배너를 보는
+          채로 설정을 만지는 게 자연스럽다(화면을 떠나지 않는다). */}
       {primary === 'realtime_unavailable' && (
-        <BannerRow cause="realtime_unavailable" actionTo="/settings" actionLabel="설정" />
+        <BannerRow cause="realtime_unavailable" onAction={requestSettingsModal} actionLabel="설정" />
       )}
       {/* watchlist_empty is rendered in the workarea emptystate, not here.
           We surface it as a null in the header banner area but the LiveEmptyState
@@ -40,11 +43,11 @@ export function LiveStateBanner({ primary, stack }: Props) {
 
 function BannerRow({
   cause,
-  actionTo,
+  onAction,
   actionLabel,
 }: {
   cause: LiveBannerCause;
-  actionTo?: string;
+  onAction?: () => void;
   actionLabel?: string;
 }) {
   const c = COPY[cause];
@@ -68,9 +71,10 @@ function BannerRow({
       style={{ background: bg, borderColor, color: fg, fontSize: 'var(--text-sm)' }}
     >
       <span>{c.title}</span>
-      {actionTo && actionLabel && (
-        <Link
-          to={actionTo}
+      {onAction && actionLabel && (
+        <button
+          type="button"
+          onClick={onAction}
           className="px-2 py-1 rounded font-data"
           style={{
             background: 'var(--bg-input)',
@@ -80,7 +84,7 @@ function BannerRow({
           }}
         >
           {actionLabel}
-        </Link>
+        </button>
       )}
     </div>
   );

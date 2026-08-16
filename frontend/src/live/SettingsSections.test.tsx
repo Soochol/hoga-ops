@@ -3,6 +3,8 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SettingsSections from './SettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { useChartPrefsStore } from '../state/chartPrefs';
+import * as liveSettingsApi from '../api/liveSettings';
 import * as signalAlertsApi from '../api/signalAlerts';
 
 function wrap(qc: QueryClient) {
@@ -16,6 +18,7 @@ describe('SettingsSections (2단 nav+detail)', () => {
     vi.restoreAllMocks();
     localStorage.clear();
     useLiveVenueStore.setState({ venue: 'KRX' });
+    useChartPrefsStore.getState().resetToDefaults();
   });
 
   it('통합 nav 8개를 렌더한다 — 차트·체결창·알림 + 앱 스코프 5개', () => {
@@ -113,6 +116,51 @@ describe('SettingsSections (2단 nav+detail)', () => {
     expect(screen.queryByTestId('settings-toggle-surgeMarkerEnabled')).toBeNull();
     expect(screen.queryByTestId('settings-toggle-fillStrengthCumulative')).toBeNull();
     expect(screen.queryByTestId('settings-toggle-ratioOutlierFilterEnabled')).toBeNull();
+  });
+
+  // ── 아래 4건은 `SettingsDrawer.test.tsx` 에서 이관됐다. 그 파일은 드로어 래퍼가
+  //    사라지면서(App 이 ModalShell 을 직접 세운다) 함께 지워졌고, 크롬 계약
+  //    (우측 앵커·백드롭·Escape)은 `App.test.tsx` 가 이어받았다.
+
+  it('토글 클릭이 chartPrefs 스토어에 반영된다', () => {
+    render(<SettingsSections />);
+    expect(useChartPrefsStore.getState().auctionWindowMask).toBe(true);
+    // ToggleRow 는 testId 를 **바깥 wrapper** 에 단다 — 핸들러는 안쪽 role="switch"
+    // 버튼에 있으므로 파고들어 눌러야 한다(누르는 시늉만 하면 조용히 통과한다).
+    const row = screen.getByTestId('settings-toggle-auctionWindowMask');
+    fireEvent.click(row.querySelector('[role="switch"]') as HTMLElement);
+    expect(useChartPrefsStore.getState().auctionWindowMask).toBe(false);
+  });
+
+  it('캔들 기준 Y축 토글 클릭이 chartPrefs 스토어에 반영된다', () => {
+    render(<SettingsSections />);
+    expect(useChartPrefsStore.getState().candlePaneCandleOnlyScale).toBe(false);
+    const row = screen.getByTestId('settings-toggle-candlePaneCandleOnlyScale');
+    fireEvent.click(row.querySelector('[role="switch"]') as HTMLElement);
+    expect(useChartPrefsStore.getState().candlePaneCandleOnlyScale).toBe(true);
+  });
+
+  it('차트 설정에 VI/상하한가 선 스타일 선택이 보인다', () => {
+    render(<SettingsSections />);
+    expect(screen.getByText('VI/상하한가 선 스타일')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'VI/상하한가 선 스타일 선택' })).toBeTruthy();
+  });
+
+  it('복기뷰(study)도 같은 데이터소스 상세를 연다 — 복기 안내는 동반 문구로 남는다', () => {
+    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
+      schema_version: 1,
+      rest_bypass_enabled: false,
+      screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
+    });
+    render(<SettingsSections variant="study" />, {
+      wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+    });
+    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
+    expect(screen.getByTestId('study-candle-source-note')).toBeTruthy();
+    expect(screen.getByText('호가·체결 데이터 기준')).toBeTruthy();
+    expect(screen.getByText('표시 소스')).toBeTruthy();
+    expect(screen.getByText('캡처 저장')).toBeTruthy();
   });
 
   // 데이터소스 상세 콘텐츠 테스트는 DataSourceDetail.test.tsx로 이관(추출·재사용).

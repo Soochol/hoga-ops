@@ -97,7 +97,7 @@ describe('App document title', () => {
     ['/screener', '스크리너'],
     ['/inventory', '보관함'],
     ['/capture', '캡처'],
-    ['/settings', '설정'],
+    // `/settings` 는 빠졌다 — 라우트가 아니라 드로어라 탭 제목을 가질 페이지가 없다.
   ])('sets %s to the matching top menu label', (path, expected) => {
     wrap(<div>{expected}</div>, path);
     expect(document.title).toBe(expected);
@@ -194,7 +194,7 @@ describe('App shell layout', () => {
     expect(screen.getByText('live page')).toBeInTheDocument();
   });
 
-  it('closes the Settings popover with Escape', async () => {
+  it('closes the Settings drawer with Escape', async () => {
     wrap(<div>unused</div>, '/live');
 
     fireEvent.click(screen.getByRole('button', { name: '설정' }));
@@ -205,6 +205,32 @@ describe('App shell layout', () => {
 
     expect(screen.queryByRole('dialog', { name: '설정' })).toBeNull();
     expect(screen.getByText('live page')).toBeInTheDocument();
+  });
+
+  // ↓ 두 건은 `SettingsDrawer.test.tsx` 에서 이관됐다. 그 래퍼 컴포넌트가 사라지고
+  //   App 이 ModalShell 을 직접 세우면서, 드로어 크롬 계약의 검증 자리도 여기가 됐다.
+
+  it('drawer card is a full-height, left-bordered panel (ADR-0116)', async () => {
+    wrap(<div>unused</div>, '/live');
+
+    fireEvent.click(screen.getByRole('button', { name: '설정' }));
+    // Suspense 는 DOM 요소를 만들지 않으므로 본문의 부모가 곧 ModalShell 카드다.
+    const card = (await screen.findByText('settings panel body')).parentElement!;
+    expect(card).toHaveClass('border-l');
+    expect(card).toHaveClass('h-full');
+  });
+
+  it('closes the Settings drawer on backdrop press', async () => {
+    wrap(<div>unused</div>, '/live');
+
+    fireEvent.click(screen.getByRole('button', { name: '설정' }));
+    await screen.findByText('settings panel body');
+    // 백드롭 닫힘은 click 이 아니라 **mousedown** 기준이다 — click 이면 카드 안에서
+    // 드래그(텍스트 선택)를 시작해 백드롭에서 놓을 때 공통 조상에서 발화해 오작동으로
+    // 닫힌다(ModalShell 계약).
+    fireEvent.mouseDown(screen.getByRole('dialog', { name: '설정' }));
+
+    expect(screen.queryByRole('dialog', { name: '설정' })).toBeNull();
   });
 });
 
