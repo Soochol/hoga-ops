@@ -88,6 +88,55 @@ def _entry_groups(
     return sorted(rows, key=lambda row: (row[2], row[1]))
 
 
+def _load_prev_closes(path: Path, codes: list[str], basis: dt.date) -> dict[str, float]:
+    """코드별 **basis 직전 거래일 종가** 하나씩. 필요한 출력이 코드당 1행일 때 쓴다.
+
+    `_load_daily_rows` 는 코드별 **전 이력**을 파이썬 dict 리스트로 물질화한다. 히트맵
+    그룹 플로우는 그중 코드당 1행(basis 직전 종가)만 쓰는데, 296종목 × 평균 2,943일 =
+    **871,099행**을 만들어 그중 296개를 골랐다. 필요 출력은 종목 수 고정인데 입력은
+    코퍼스가 하루 자랄 때마다 296행, 종목을 더할 때마다 ~3,000행씩 는다.
+
+    실측(2026-08-16, 실데이터 133.9MB / 8,692,057행, 실히트맵 296유니크, basis 20260814):
+
+        종전 453 ms (파이썬 dict 871,099행) → 현행 **19 ms** (296행) = **23.6배**
+        두 경로의 반환 dict 는 **완전 일치**(296항목).
+
+    60초 폴링 경로라 그 시간 동안 GIL 을 쥔 순수 파이썬 구간이 그대로 이벤트 루프
+    지연이 된다 — `--workers` 금지 구조(#998: 프로세스 내 싱글턴)라 단일 루프가
+    REST·WS·스케줄러를 전부 처리하기 때문이다. 즉 이건 이 라우트만의 비용이 아니다.
+
+    ⚠ **`close > 0` 검사는 "마지막 행을 고른 뒤"다** — SQL 술어로 앞당기면 안 된다.
+    종전 소비처는 basis 직전 마지막 행의 종가가 0 이면 그 종목을 **통째로 제외**했지,
+    더 이전의 양수 종가로 폴백하지 않았다. 실코퍼스에 `close <= 0` 행이 실제로 있어
+    (2026-08-16 실측 1건) 이건 이론적 차이가 아니다. 순서를 그대로 보존한다.
+
+    `_load_daily_rows` 자체는 건드리지 않는다 — 다른 호출부
+    (`build_index_sector_rankings`)는 `_latest_available_basis` 폴백 때문에 넓은 집합이
+    필요하다. 시그니처를 바꾸면 그쪽이 조용히 깨진다.
+    """
+    if not codes:
+        return {}
+    df = (
+        pl.scan_parquet(path)
+        .filter(pl.col("code").is_in(codes))
+        .filter(pl.col("date") < basis)
+        .group_by("code")
+        # `sort_by("date").last()` 는 입력 순서에 의존하지 않는다(정렬 후 group_by 의
+        # 그룹 내 순서에 기대는 관용구보다 명시적). 실코퍼스에 (code,date) 중복은
+        # 0건이라 동률 tie-breaking 은 정의상 발생하지 않는다(2026-08-16 실측).
+        .agg(pl.col("close").sort_by("date").last())
+        .collect()
+    )
+    out: dict[str, float] = {}
+    for code, close in zip(df["code"].to_list(), df["close"].to_list(), strict=True):
+        if close is None:
+            continue
+        value = float(close)
+        if value > 0:
+            out[str(code)] = value
+    return out
+
+
 def _load_daily_rows(path: Path, codes: list[str], basis: dt.date) -> dict[str, list[dict]]:
     if not codes:
         return {}

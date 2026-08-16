@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from collections.abc import Hashable
+from collections.abc import Hashable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -45,6 +45,9 @@ class _AdjustedDailySignature:
 
 
 _BASELINE_SCALE_MISMATCH_RATIO = 3.0
+# 프라임 쿼리 하나가 묶는 코드 수. 히트맵 전량(296)이 한 번에 들어가는 크기이면서,
+# 파라미터 플레이스홀더가 무한정 늘지 않도록 상한을 둔다.
+_PRIME_CHUNK = 500
 
 
 class QuoteChangeResolver:
@@ -153,7 +156,12 @@ class QuoteChangeResolver:
             warnings=warnings,
         )
 
-    def _baseline_for(self, code: str, *, today: dt.date | None) -> _Baseline | None:
+    def _sync_cache_generation(self) -> _AdjustedDailySignature | None:
+        """파일 세대와 캐시를 맞춘다. None = 코퍼스 없음(캐시도 비운다).
+
+        `_baseline_for` 와 `prime_baselines` 가 공유한다 — 프라임이 이 정렬을 건너뛰면
+        **스테일 세대의 캐시에 새 값을 섞어** 넣게 된다.
+        """
         signature = self._adjusted_daily_signature()
         if signature is None:
             self._baseline_cache.clear()
@@ -162,6 +170,97 @@ class QuoteChangeResolver:
         if signature != self._baseline_cache_signature:
             self._baseline_cache.clear()
             self._baseline_cache_signature = signature
+        return signature
+
+    def prime_baselines(self, codes: Sequence[str], *, today: dt.date | None) -> None:
+        """캐시에 없는 코드의 기준가를 **한 쿼리로** 채운다. 호출은 선택적 최적화다.
+
+        ⚠ **블로킹이다 — `asyncio.to_thread` 로 부를 것.** 이름이 그 규율을 말해 주지
+        않으므로 여기 적는다.
+
+        왜 필요한가: `resolve_quote` 는 종목마다 `_baseline_for` 를 부르고, 캐시 미스면
+        종목당 DuckDB 쿼리가 1건씩 난다(N+1). `/api/live/quotes` 는 히트맵 화면에서
+        **한 요청에 296종목**을 받고(`Heatmap.tsx` 가 유니크 코드 전량을 넘긴다), 그
+        전 경로가 `async def` 인데 `to_thread` 가 한 곳도 없었다. `--workers` 금지
+        구조(#998)라 그동안 **이벤트 루프 전체가 멎는다**.
+
+        캐시가 있는데 왜 폭발하나 — 무효화 계기가 셋이다:
+          ① 백엔드 재시작 후 첫 벤더 성공 응답
+          ② 매일 17:25 코퍼스 갱신(`_adjusted_daily_signature` 의 mtime/size 세대)
+          ③ **KST 날짜가 바뀔 때** — 캐시 키가 `(code, today.isoformat())` 이라
+             거래일 아침 첫 폴링이 전량 미스다. 사용자가 화면을 가장 열심히 보는 순간이
+             하필 여기다.
+
+        실측(2026-08-16, 실데이터 133.9MB / 8,692,057행, 실히트맵 296종목, 콜드 캐시):
+
+            종전 N+1 **1,538 ms** → 배치 프라임 + 캐시 히트 **37 ms** = **41.7배**
+            296종목 반환값 **완전 일치**(코퍼스 부재 0건, 부재도 None 으로 캐시됨).
+
+        그 1.5초는 전부 이벤트 루프 위였다.
+
+        의미론은 `_load_baseline` 과 **글자 그대로 같다**: `close > 0` 이고
+        `date < today` 인 행 중 **date 가 가장 큰 것**. 즉 종가 0 인 날은 건너뛰고 그
+        이전 양수 종가를 집는다(히트맵 그룹플로우의 `_load_prev_closes` 와 **반대**
+        계약이다 — 그쪽은 마지막 행을 고른 뒤 0 이면 제외한다. 두 경로를 합치지 말 것).
+
+        부재도 `None` 으로 캐시한다 — 안 하면 코퍼스에 없는 종목이 매 폴링마다 다시
+        쿼리를 태워 배치화의 목적이 반감된다.
+        """
+        signature = self._sync_cache_generation()
+        if signature is None or self._adjusted_daily_path is None:
+            return
+        if not self._adjusted_daily_path.exists():
+            return
+        today_key = today.isoformat() if today is not None else None
+        missing = [
+            code for code in dict.fromkeys(codes)
+            if (code, today_key) not in self._baseline_cache
+        ]
+        if not missing:
+            return
+        found: dict[str, _Baseline] = {}
+        try:
+            with connect_bounded() as con:
+                for start in range(0, len(missing), _PRIME_CHUNK):
+                    chunk = missing[start:start + _PRIME_CHUNK]
+                    placeholders = ",".join("?" for _ in chunk)
+                    date_guard = "AND date < ?" if today is not None else ""
+                    params: list[object] = [*chunk]
+                    if today is not None:
+                        params.append(today)
+                    rows = con.execute(
+                        f"""
+                        SELECT code,
+                               CAST(max(date) AS VARCHAR) AS date_s,
+                               max_by(close, date) AS close
+                        FROM '{self._adjusted_daily_path}'
+                        WHERE code IN ({placeholders}) AND close > 0 {date_guard}
+                        GROUP BY code
+                        """,
+                        params,
+                    ).fetchall()
+                    for row in rows:
+                        found[str(row[0])] = _Baseline(
+                            date=str(row[1]), close=int(round(float(row[2]))),
+                        )
+        except Exception:  # noqa: BLE001 — 프라임 실패가 시세 응답을 죽이면 안 된다.
+            # 아무것도 캐시하지 않고 조용히 물러난다. 그러면 `_baseline_for` 의 종목별
+            # 폴백이 그대로 돌아 **동작은 종전과 같다**(느릴 뿐). 여기서 부분 결과를
+            # 캐시하면 실패 시점에 따라 어떤 종목만 기준가가 비는 비결정적 응답이 된다.
+            #
+            # 이 성질은 **청크가 여러 개일 때도** 성립한다 — 아래 캐시 쓰기가 try 블록
+            # **밖**에 있어서, 청크 2가 터지면 청크 1의 `found` 까지 통째로 버려진다.
+            # (테스트는 단일 청크 실패만 재현한다. 실히트맵 296 < `_PRIME_CHUNK` 500 이라
+            #  다중 청크는 오늘 죽은 경로이고, 위 배치는 코드 검토로만 확인했다.)
+            log.warning("adjusted-daily baseline prime failed (%d codes)", len(missing), exc_info=True)
+            return
+        for code in missing:
+            self._baseline_cache[(code, today_key)] = found.get(code)
+
+    def _baseline_for(self, code: str, *, today: dt.date | None) -> _Baseline | None:
+        signature = self._sync_cache_generation()
+        if signature is None:
+            return None
         cache_key = (code, today.isoformat() if today is not None else None)
         if cache_key in self._baseline_cache:
             return self._baseline_cache[cache_key]
