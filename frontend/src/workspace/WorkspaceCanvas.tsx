@@ -251,6 +251,20 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
   // 않는다. 초기값을 동기로 읽는 이유는 ResizeObserver 가 없는 환경(jsdom)에서도
   // 좌표 변환이 살아 있어야 하기 때문(useChartHeaderCompact 와 같은 가드 패턴).
   const [canvasBox, setCanvasBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  /**
+   * 크기가 **실제로 달라졌을 때만** 새 객체를 만든다.
+   *
+   * `setCanvasBox({...})` 를 무조건 부르면 값이 같아도 신원이 바뀌어 React 가 bail 하지
+   * 못하고, `pxRects` 가 통째로 무효화돼 **모든 창이 재렌더된다**. ResizeObserver 는
+   * 부모 레이아웃 변화로 같은 크기를 다시 통지할 수 있고, 마운트 직후엔 초기값
+   * `{0,0}` 과 첫 실측이 같아도 한 번 더 돌았다.
+   *
+   * `prev` 를 그대로 반환하면 React 가 그 setState 를 통째로 무시한다 — 위 memo 의
+   * deps 안정성이 여기에 걸려 있다.
+   */
+  const setCanvasBoxIfChanged = useCallback((w: number, h: number) => {
+    setCanvasBox((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+  }, []);
   // 안정 콜백(windowAtPoint 등)이 최신 값을 읽기 위한 미러 — state/props 를 deps 에
   // 넣으면 드롭 리졸버 등록이 리사이즈·커밋마다 재등록된다. 갱신은 layout effect
   // 에서만(렌더 중 ref 쓰기 금지 규율) — 소비자는 전부 이벤트/effect 경로라 페인트
@@ -266,15 +280,15 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
   useLayoutEffect(() => {
     const el = boxRef.current;
     if (!el) return;
-    setCanvasBox({ w: el.clientWidth, h: el.clientHeight });
+    setCanvasBoxIfChanged(el.clientWidth, el.clientHeight);
     if (typeof ResizeObserver === 'undefined') return undefined;
     const ro = new ResizeObserver((entries) => {
       const r = entries[0].contentRect;
-      setCanvasBox({ w: Math.round(r.width), h: Math.round(r.height) });
+      setCanvasBoxIfChanged(Math.round(r.width), Math.round(r.height));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [setCanvasBoxIfChanged]);
 
   // 레거시 px 저장값 → 비율 1회 변환. 캔버스가 자기 크기를 처음 알게 된 이 시점이
   // 유일하게 올바른 기준이다 — 사용자가 지금 보고 있는 화면으로 나누므로 변환
@@ -316,9 +330,42 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
     return () => onApi(null);
   }, [onApi, api]);
 
+  /**
+   * 창 id → px rect. **이 memo 의 존재 이유는 값이 아니라 신원이다.**
+   *
+   * 종전엔 `rectOf` 가 매번 `toPx(...)` 를 불러 **호출마다 새 객체**를 냈다. 그 값이
+   * `windowItem` 의 `rect` prop 으로 들어가는데, 항목 컴포넌트는 memo 이고 비교자가
+   * 없어 기본 얕은 비교를 쓴다 — rect 하나가 매번 달라지니 **모든 창이 bail 실패**했다.
+   *
+   * 그런데 `preview` 는 **드래그 참여 창만** 담는다(move 는 대상 1개, resize 는 대상+
+   * follower). 즉 참여하지 않는 창은 `preview.get()` 이 undefined 라 이 경로로 떨어지고,
+   * pointermove 마다(≈60Hz) 새 rect 를 받아 서브트리 전체가 다시 돈다. `/live` 에서
+   * 그 서브트리는 `ChartWindowInner → useLiveChartData → useLiveBundle → LiveChartRoot`
+   * (훅 수십 개 + 비-memo 오버레이 다수)이고, 창 수에 그대로 비례한다.
+   *
+   * 이 파일 아래 `WorkspaceWindowItem`(소비처)의 주석은 정반대를 약속하고 있었다 —
+   * "드래그 중엔 rect 가 바뀐 창만 재렌더된다". 그 약속을 실제로 성립시키는 것이 여기다.
+   *
+   * **생산자에서 고친다**(#1330 의 "생산자 정렬" 선례). 소비처마다 비교자를 붙이면
+   * 소비처 수만큼 고쳐야 하고 하나 빠뜨리면 조용히 되돌아간다. 코어에 두었으므로
+   * `/live` 와 `/study` 캔버스가 함께 고쳐진다.
+   *
+   * deps 가 드래그 중 안정인 근거: 드래그는 커밋 전까지 스토어를 안 건드리므로
+   * `windows` 신원이 유지되고, `canvasBox` 는 ResizeObserver 가 **크기 변화에만**
+   * 발화하므로 드래그 중엔 갱신되지 않는다.
+   */
+  const pxRects = useMemo(() => {
+    const out = new Map<string, Rect>();
+    for (const w of windows) out.set(w.id, toPx(w.rect, canvasBox));
+    return out;
+  }, [windows, canvasBox]);
+
   // 렌더는 px. 프리뷰(드래그 중)는 이미 px 이고, 그 외에는 스토어의 비율을 현재
   // 캔버스로 편다 — 캔버스가 줄면 창도 같은 비율로 줄어 배치가 보존된다(ADR-0122).
-  const rectOf = (w: W): Rect => preview?.get(w.id) ?? toPx(w.rect, canvasBox);
+  // 마지막 `toPx` 는 구성상 도달 불가다(`pxRects` 를 아래 map 과 **같은 `windows`**
+  // 로 만든다) — 타입을 좁히면서 미래에 소스가 갈라져도 값이 틀리지 않게만 둔다.
+  const rectOf = (w: W): Rect =>
+    preview?.get(w.id) ?? pxRects.get(w.id) ?? toPx(w.rect, canvasBox);
 
   return (
     <div
