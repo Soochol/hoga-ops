@@ -5,18 +5,24 @@ import json
 import os
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
+
+import pytest
 
 from hoga.api.models import (
     AskPeak,
     BidPeak,
     BrokerLateEntryEvent,
     DayVolumeDistribution,
+    DepthDeltaPoint,
     DepthHeatmapPoint,
     TradeVolumePoc,
     VolumeDistributionBin,
+    WallSurgeEvent,
 )
-from hoga.api.past_indicators_cache import CACHE_MISS, PastIndicatorsCache
+from hoga.api.past_indicators_cache import CACHE_MISS, KIND_VERSIONS, PastIndicatorsCache
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 
@@ -395,6 +401,25 @@ def test_depth_bucket_ms_is_part_of_the_key(tmp_path: Path) -> None:
     assert c.get_depth(CODE, DATE, SRC, 300_000) is CACHE_MISS
 
 
+def test_depth_disk_payload_shape_is_frozen(tmp_path: Path) -> None:
+    """디스크 payload 의 **키 집합과 값**을 못 박는다.
+
+    이 캐시의 포맷을 바꾸면 사용자가 재계산을 치른다 — 파일 docstring 이 그 비용을
+    "`/study` 콜드 로드 사고 그 자체(콜드 비용의 95%+ = peak 재계산, 수십 분)" 라고
+    적어 뒀다. 그런데 "새 인스턴스에서 디스크로 살아남는다" 류 테스트는 **같은 코드로
+    쓰고 같은 코드로 읽으므로** 읽기·쓰기를 함께 바꾸면 조용히 통과한다. 이 테스트는
+    파일 내용을 직접 보므로 그 경우에도 빨개진다.
+    """
+    PastIndicatorsCache(tmp_path).store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
+    body = json.loads(
+        (_store_dir(tmp_path) / f"{DATE}.depth.60000.json").read_text(encoding="utf-8")
+    )
+    assert set(body) == {"version", "points", "fetched_at_ms"}
+    assert body["version"] == KIND_VERSIONS["depth"]
+    assert body["points"] == [p.model_dump(mode="json") for p in _DEPTH]
+    assert isinstance(body["fetched_at_ms"], int)
+
+
 def test_depth_path_layout(tmp_path: Path) -> None:
     PastIndicatorsCache(tmp_path).store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
     assert (_store_dir(tmp_path) / f"{DATE}.depth.60000.json").exists()
@@ -464,6 +489,197 @@ _BROKER = [
     BrokerLateEntryEvent(t_ms=1_700_019_000_000, broker="미래에셋", side="buy", net=1200),
     BrokerLateEntryEvent(t_ms=1_700_019_060_000, broker="키움", side="sell", net=-800),
 ]
+
+
+
+
+# ── 단일 모델 kind 표 ──────────────────────────────────────────────────────────
+#
+# `_read_model_cache` 계열(단일 모델 하나를 싣는 kind)에는 **버전 불일치·손상 파일
+# 테스트가 아예 없었다.** #1352 의 red-check 이 그것을 드러냈다 — 그 계열의 버전 검사를
+# 무력화했는데 **아무것도 실패하지 않았다.**
+#
+# `_is_stale` 은 capture meta 의 mtime 만 보므로 "데이터가 바뀌었나" 는 알아도 **"계산
+# 로직이 바뀌었나" 는 모른다**. kind 버전이 그 축을 대신하는데, 그 축을 지키는 테스트가
+# 이 계열에 없었다.
+
+
+def _sole_cache_file(tmp_path: Path) -> Path:
+    """방금 저장된 캐시 파일 하나. 파일명 규칙을 **표가 알 필요 없게** 한다 —
+    규칙이 바뀌어도 이 표는 안 깨지고, 파일이 둘이면 오히려 실패해서 표가 잘못
+    쓰였다는 것을 알려준다(경로 레이아웃 자체는 kind 별 기존 테스트가 따로 잰다)."""
+    files = sorted(_store_dir(tmp_path).glob("*.json"))
+    assert len(files) == 1, f"기대: 캐시 파일 1개, 실제: {[f.name for f in files]}"
+    return files[0]
+
+
+@dataclass(frozen=True)
+class _ModelKindCase:
+    """단일 모델을 디스크에 싣는 kind 하나."""
+
+    kind: str
+    store: Callable[[PastIndicatorsCache], None]
+    get: Callable[[PastIndicatorsCache], object]
+    expected: object
+    miss: object
+
+
+_ASK_PEAK_SAMPLE = AskPeak(date=DATE, price=71_000, qty=7, t_ms=11, max_price=71_000, max_qty=7, max_t_ms=11)
+_BID_PEAK_SAMPLE = BidPeak(date=DATE, price=70_000, qty=5, t_ms=13, max_price=70_000, max_qty=5, max_t_ms=13)
+
+# peak 은 `has_*` 가 디스크→mem 승격을 맡고 `get_*` 은 승격된 값을 재조회한다(조회 통계도
+# `has_*` 에서만 계수된다). 그래서 표의 `get` 이 둘을 함께 부른다 — 이 비대칭 자체가
+# 이 계열의 사실이라 표가 그것을 숨기지 않는다.
+_MODEL_KIND_CASES = [
+    _ModelKindCase(
+        "ask_peak",
+        lambda c: c.store_ask_peak(CODE, DATE, SRC, 60_000, _ASK_PEAK_SAMPLE),
+        lambda c: (c.has_ask_peak(CODE, DATE, SRC, 60_000), c.get_ask_peak(CODE, DATE, SRC, 60_000))[1],
+        _ASK_PEAK_SAMPLE,
+        None,
+    ),
+    _ModelKindCase(
+        "bid_peak",
+        lambda c: c.store_bid_peak(CODE, DATE, SRC, 60_000, _BID_PEAK_SAMPLE),
+        lambda c: (c.has_bid_peak(CODE, DATE, SRC, 60_000), c.get_bid_peak(CODE, DATE, SRC, 60_000))[1],
+        _BID_PEAK_SAMPLE,
+        None,
+    ),
+    _ModelKindCase(
+        "vdist",
+        lambda c: c.store_volume_distribution(CODE, DATE, SRC, 10, 70_000, 71_000, _VDIST),
+        lambda c: c.get_volume_distribution(CODE, DATE, SRC, 10, 70_000, 71_000),
+        _VDIST,
+        CACHE_MISS,
+    ),
+]
+
+_MODEL_KIND_IDS = [c.kind for c in _MODEL_KIND_CASES]
+
+
+@pytest.mark.parametrize("case", _MODEL_KIND_CASES, ids=_MODEL_KIND_IDS)
+def test_model_kind_persists_to_disk_across_instances(case: _ModelKindCase, tmp_path: Path) -> None:
+    case.store(PastIndicatorsCache(tmp_path))
+    assert case.get(PastIndicatorsCache(tmp_path)) == case.expected  # cold memory → 디스크 복원
+
+
+@pytest.mark.parametrize("case", _MODEL_KIND_CASES, ids=_MODEL_KIND_IDS)
+def test_model_kind_version_mismatch_is_a_miss(case: _ModelKindCase, tmp_path: Path) -> None:
+    case.store(PastIndicatorsCache(tmp_path))
+    path = _sole_cache_file(tmp_path)
+    body = json.loads(path.read_text(encoding="utf-8"))
+    body["version"] = KIND_VERSIONS[case.kind] + 1
+    path.write_text(json.dumps(body), encoding="utf-8")
+    assert case.get(PastIndicatorsCache(tmp_path)) is case.miss
+
+
+@pytest.mark.parametrize("case", _MODEL_KIND_CASES, ids=_MODEL_KIND_IDS)
+def test_model_kind_corrupt_file_is_a_miss(case: _ModelKindCase, tmp_path: Path) -> None:
+    case.store(PastIndicatorsCache(tmp_path))
+    _sole_cache_file(tmp_path).write_text("{not json", encoding="utf-8")
+    assert case.get(PastIndicatorsCache(tmp_path)) is case.miss
+
+
+# ── kind 파라미터화 테이블 ─────────────────────────────────────────────────────
+#
+# 아래 명제들은 **저장 메커니즘의 성질**이지 kind 고유 규칙이 아니다. 종전엔 kind 마다
+# 손으로 반복돼 있었고(버전 불일치 7회 · 재캡처 5회 · 빈 결과 6회 · 디스크 생존 7회),
+# 그래서 새 kind 가 생겨도 **아무도 그 표에 넣지 않는 일**이 벌어졌다 — 실제로
+# `depth_delta` 와 `wall_surge` 는 캐시 단위 테스트가 **0건**이었다(roundtrip · 버전 ·
+# `[]`-유효 · 손상 전부 없음). 이제 표에 한 줄을 더하면 다섯 명제가 함께 붙는다.
+#
+# kind **고유** 명제(POC 의 cutoff 제외, `wall_surge` 의 bucket_ms 부재, ratio 의 7-tuple
+# 직렬화 등)는 이 표가 아니라 각자의 자리에 그대로 둔다 — 표는 공통분만 담는다.
+
+
+@dataclass(frozen=True)
+class _ListKindCase:
+    """list-of-model 을 디스크에 싣는 kind 하나."""
+
+    kind: str
+    filename: str
+    store: Callable[[PastIndicatorsCache, list], None]
+    get: Callable[[PastIndicatorsCache], object]
+    sample: list
+
+
+_DEPTH_DELTA_SAMPLE = [DepthDeltaPoint(t_ms=1_764_000_000_000, asks=[[70_100, 5]], bids=[[70_000, -3]])]
+_WALL_SURGE_SAMPLE = [
+    WallSurgeEvent(t_ms=1_764_000_000_000, side="ask", price=70_100, qty=900, jump=700, total=5_000, kind="grow")
+]
+
+_LIST_KIND_CASES = [
+    _ListKindCase(
+        "depth",
+        f"{DATE}.depth.60000.json",
+        lambda c, v: c.store_depth(CODE, DATE, SRC, 60_000, v),
+        lambda c: c.get_depth(CODE, DATE, SRC, 60_000),
+        _DEPTH,
+    ),
+    _ListKindCase(
+        "depth_delta",
+        f"{DATE}.depth_delta.60000.json",
+        lambda c, v: c.store_depth_delta(CODE, DATE, SRC, 60_000, v),
+        lambda c: c.get_depth_delta(CODE, DATE, SRC, 60_000),
+        _DEPTH_DELTA_SAMPLE,
+    ),
+    _ListKindCase(
+        "wall_surge",
+        f"{DATE}.wall_surge.json",
+        lambda c, v: c.store_wall_surge(CODE, DATE, SRC, v),
+        lambda c: c.get_wall_surge(CODE, DATE, SRC),
+        _WALL_SURGE_SAMPLE,
+    ),
+    _ListKindCase(
+        "broker_late",
+        f"{DATE}.broker_late.930.json",
+        lambda c, v: c.store_broker_late(CODE, DATE, SRC, 930, v),
+        lambda c: c.get_broker_late(CODE, DATE, SRC, 930),
+        _BROKER,
+    ),
+]
+
+_LIST_KIND_IDS = [c.kind for c in _LIST_KIND_CASES]
+
+
+@pytest.mark.parametrize("case", _LIST_KIND_CASES, ids=_LIST_KIND_IDS)
+def test_list_kind_roundtrips_through_memory(case: _ListKindCase, tmp_path: Path) -> None:
+    cache = PastIndicatorsCache(tmp_path)
+    case.store(cache, case.sample)
+    assert case.get(cache) == case.sample
+
+
+@pytest.mark.parametrize("case", _LIST_KIND_CASES, ids=_LIST_KIND_IDS)
+def test_list_kind_persists_to_disk_across_instances(case: _ListKindCase, tmp_path: Path) -> None:
+    case.store(PastIndicatorsCache(tmp_path), case.sample)
+    assert case.get(PastIndicatorsCache(tmp_path)) == case.sample  # cold memory → 디스크에서 복원
+
+
+@pytest.mark.parametrize("case", _LIST_KIND_CASES, ids=_LIST_KIND_IDS)
+def test_list_kind_empty_is_a_valid_cached_value(case: _ListKindCase, tmp_path: Path) -> None:
+    """`[]` 는 **캐시된 사실**이지 미스가 아니다 — 구별 못 하면 매번 재계산한다."""
+    case.store(PastIndicatorsCache(tmp_path), [])
+    assert case.get(PastIndicatorsCache(tmp_path)) == []
+
+
+@pytest.mark.parametrize("case", _LIST_KIND_CASES, ids=_LIST_KIND_IDS)
+def test_list_kind_version_mismatch_is_a_miss(case: _ListKindCase, tmp_path: Path) -> None:
+    """`_is_stale` 은 capture meta 의 mtime 만 보므로 **계산 로직이 바뀐 것은 모른다** —
+    그래서 kind 버전이 그 축을 대신한다."""
+    case.store(PastIndicatorsCache(tmp_path), case.sample)
+    path = _store_dir(tmp_path) / case.filename
+    body = json.loads(path.read_text(encoding="utf-8"))
+    body["version"] = KIND_VERSIONS[case.kind] + 1
+    path.write_text(json.dumps(body), encoding="utf-8")
+    assert case.get(PastIndicatorsCache(tmp_path)) is CACHE_MISS
+
+
+@pytest.mark.parametrize("case", _LIST_KIND_CASES, ids=_LIST_KIND_IDS)
+def test_list_kind_corrupt_file_is_a_miss(case: _ListKindCase, tmp_path: Path) -> None:
+    """손상 파일은 예외가 아니라 미스여야 한다 — 캐시가 죽으면 라우트가 함께 죽는다."""
+    case.store(PastIndicatorsCache(tmp_path), case.sample)
+    (_store_dir(tmp_path) / case.filename).write_text("{not json", encoding="utf-8")
+    assert case.get(PastIndicatorsCache(tmp_path)) is CACHE_MISS
 
 
 def test_broker_late_roundtrip_and_empty_valid(tmp_path: Path) -> None:
@@ -660,12 +876,22 @@ def _instrument(cache: PastIndicatorsCache) -> _TrackedLock:
         if isinstance(value, OrderedDict):
             setattr(cache, name, _LockAssertingDict(lock, name, value))
     # _all_mem_dicts 는 같은 객체들의 튜플이라 교체 후 다시 묶어야 purge 가 새 dict 를 본다.
+    # 이 목록이 프로덕션 `_all_mem_dicts` 보다 짧으면 그만큼이 **감시 밖**이 된다 —
+    # 실제로 `_mem_wall_surge` 가 빠져 있었고 아무도 몰랐다. 개수를 못 박아 재발을 막는다.
+    _production_count = len(cache._all_mem_dicts)
     cache._all_mem_dicts = tuple(
         getattr(cache, n) for n in (
             "_mem_ratio", "_mem_fill", "_mem_ask_peak", "_mem_bid_peak",
             "_mem_trade_volume_poc", "_mem_depth", "_mem_depth_delta",
+            # `_mem_wall_surge` 가 빠져 있었다 — 프로덕션 `_all_mem_dicts` 는 11개인데
+            # 이 목록은 10개라, wall_surge dict 의 락 위반을 아무도 못 봤다.
+            "_mem_wall_surge",
             "_mem_vdist", "_mem_broker_late", "_mem_continuous_before",
         )
+    )
+    assert len(cache._all_mem_dicts) == _production_count, (
+        "락 감시 목록이 프로덕션 `_all_mem_dicts` 와 개수가 다르다 — 빠진 dict 는 "
+        "락 위반이 나도 이 테스트가 못 본다."
     )
     return lock
 
