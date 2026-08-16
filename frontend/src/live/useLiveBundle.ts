@@ -403,6 +403,7 @@ export type LiveRangeRequestPlan = {
     tradeVolumePocEnabled: boolean;
     depthHeatmapEnabled: boolean;
     depthDeltaEnabled: boolean;
+    wallSurgeEnabled: boolean;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
     volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -419,6 +420,7 @@ export function planLiveRangeRequest(args: {
   tradeVolumePocEnabled: boolean;
   depthHeatmapEnabled: boolean;
   depthDeltaEnabled: boolean;
+  wallSurgeEnabled: boolean;
   brokerLateEntryEnabled: boolean;
   brokerLateEntryStartHHMM: number;
   programTradeEnabled: boolean;
@@ -446,6 +448,7 @@ export function planLiveRangeRequest(args: {
       tradeVolumePocEnabled: enableMinute && args.tradeVolumePocEnabled,
       depthHeatmapEnabled: enableMinute && args.depthHeatmapEnabled,
       depthDeltaEnabled: enableMinute && args.depthDeltaEnabled,
+      wallSurgeEnabled: enableMinute && args.wallSurgeEnabled,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
@@ -477,6 +480,7 @@ export function useLiveBundle(
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
     depthDeltaEnabled,
+    wallSurgeEnabled,
     brokerLateEntryEnabled,
     brokerLateEntryStartHHMM,
     programTradeEnabled,
@@ -693,6 +697,7 @@ export function useLiveBundle(
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
     depthDeltaEnabled,
+    wallSurgeEnabled,
     brokerLateEntryEnabled,
     brokerLateEntryStartHHMM,
     programTradeEnabled: effProgramTradeEnabled,
@@ -736,6 +741,7 @@ export function useLiveBundle(
       rangePlan.options.tradeVolumePocEnabled ||
       rangePlan.options.depthHeatmapEnabled ||
       rangePlan.options.depthDeltaEnabled ||
+      rangePlan.options.wallSurgeEnabled ||
       rangePlan.options.volumeDistributionBins != null
     )
   );
@@ -874,6 +880,7 @@ export function useLiveBundle(
       built.trade_volume_pocs = sidecarSource.trade_volume_pocs ?? [];
       built.depth_heatmap = sidecarSource.depth_heatmap ?? [];
       built.depth_delta = sidecarSource.depth_delta ?? [];
+      built.wall_surge = sidecarSource.wall_surge ?? [];
       built.volume_distributions = sidecarSource.volume_distributions ?? [];
       built.program_trade = filterProgramTradeForCandles(sidecarSource.program_trade, liveCandles);
     }

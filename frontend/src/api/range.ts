@@ -566,6 +566,19 @@ export function mergeRangeBundles(previous: RangeBundle, next: RangeBundle): Ran
       (p) => String(p.t_ms),
       (a, b) => a.t_ms - b.t_ms,
     ),
+    // 위 둘과 같은 버킷 단위 병합이되 **키가 t_ms 하나로는 부족하다** — 한 스냅샷 시각에
+    // 매도·매수 벽이 동시에, 또는 다른 호가 레벨에서 함께 설 수 있어 t_ms 만으로 묶으면
+    // 그중 하나만 남는다. `...next` 스프레드에 맡기면 청크를 이어 붙일 때마다 앞 구간이
+    // 통째로 사라진다(좌측 팬 · 다중 청크에서 마커가 전멸).
+    // 위 둘과 같은 버킷 단위 병합이되 **키가 t_ms 하나로는 부족하다** — 한 스냅샷 시각에
+    // 매도·매수 벽이 동시에, 또는 다른 호가 레벨에서 함께 설 수 있어 t_ms 만으로 묶으면
+    // 그중 하나만 남는다. `...next` 스프레드에 맡기면 청크를 이어 붙일 때마다 앞 구간이
+    // 통째로 사라진다(좌측 팬 · 다중 청크에서 마커가 전멸).
+    wall_surge: uniqueBy(
+      [...(previous.wall_surge ?? []), ...(next.wall_surge ?? [])],
+      (e) => `${e.t_ms}|${e.side}|${e.price}`,
+      (a, b) => a.t_ms - b.t_ms,
+    ),
     volume_distributions: uniqueBy(
       [...outsideCoveredDates(previous.volume_distributions, nextDates), ...next.volume_distributions],
       (p) => p.date,

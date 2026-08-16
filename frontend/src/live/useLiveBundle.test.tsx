@@ -283,6 +283,7 @@ describe('planLiveRangeRequest', () => {
       tradeVolumePocEnabled: true,
       depthHeatmapEnabled: true,
       depthDeltaEnabled: false,
+      wallSurgeEnabled: true,
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 945,
       programTradeEnabled: true,
@@ -304,6 +305,7 @@ describe('planLiveRangeRequest', () => {
         tradeVolumePocEnabled: true,
         depthHeatmapEnabled: true,
       depthDeltaEnabled: false,
+        wallSurgeEnabled: true,
         volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -322,6 +324,7 @@ describe('planLiveRangeRequest', () => {
       tradeVolumePocEnabled: false,
       depthHeatmapEnabled: true,
       depthDeltaEnabled: false,
+      wallSurgeEnabled: true,
       brokerLateEntryEnabled: false,
       brokerLateEntryStartHHMM: 945,
       programTradeEnabled: true,
@@ -343,6 +346,9 @@ describe('planLiveRangeRequest', () => {
         tradeVolumePocEnabled: false,
         depthHeatmapEnabled: false,
         depthDeltaEnabled: false,
+        // 캘린더 봉에서는 args 가 true 여도 enableMinute 게이트가 끈다 — 설정 패널이
+        // 약속한 "분봉 차트에서만 표시됩니다" 와 요청 축을 맞춘다.
+        wallSurgeEnabled: false,
         volumeDistributionBins: null,
         tradeVolumePocBins: null,
         volumeDistributionPriceRange: null,
@@ -724,6 +730,9 @@ describe('useLiveBundle', () => {
       bidPeakEnabled: false,
       programTradeEnabled: true,
       brokerLateEntryEnabled: false,
+      // sidecar 레인을 여는 플래그라 기준선에 못 박는다 — 안 그러면 이 지표를 켜는
+      // 테스트가 뒤 테스트로 새어 "전부 off" 전제를 조용히 무너뜨린다.
+      wallSurgeEnabled: false,
     });
     useRestBypassModeStore.setState({
       lastFailureAtMs: null,
@@ -984,6 +993,60 @@ describe('useLiveBundle', () => {
     }));
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
     expect(result.current.isSidecarLoading).toBe(false);
+  });
+
+  // #1325 후속 결함 B. 호가벽 급증은 sidecar 레인에만 실려 오는데(백엔드
+  // `include_optional_sidecar_slices`) `sidecarEnabled` 술어에서 빠져 있었다 —
+  // 이 지표만 켠 사용자는 `mode=hoga` 만 나가 마커가 영영 안 떴다. 막는 방향은
+  // "이 지표 단독으로도 레인이 열리는가" 이고, 다른 지표가 같이 켜진 경우는
+  // 원래 통과하던 경로라 이 테스트가 못 본다.
+  it('opens the sidecar lane when 호가벽 급증 is the only indicator on', () => {
+    useLivePageStore.setState({
+      tradeVolumePocEnabled: false,
+      volumeDistributionEnabled: false,
+      programTradeEnabled: false,
+      askPeakEnabled: false,
+      bidPeakEnabled: false,
+      brokerLateEntryEnabled: false,
+      depthHeatmapEnabled: false,
+      depthDeltaEnabled: false,
+      wallSurgeEnabled: true,
+    });
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    // 1번째 인자는 `sidecarEnabled ? rangePlan.code : null` — code 면 레인이 열린 것이다.
+    expect(useRangeSidecarDeltaSpy.mock.calls.map((c) => c[0])).toContain('005930');
+  });
+
+  // #1325 후속 결함 A(근본). 번들은 sidecar 슬라이스를 **명시 복사**하는데 wall_surge 만
+  // 빠져 있어, 레인이 열려 응답에 실려 와도 렌더러에는 항상 빈 배열이 갔다. 선례는
+  // #1310(프로그램 순매수). 값 자체는 `scaleRangeBundlePrices` 까지 와 있었다.
+  it('merges wall_surge from the sidecar response into the chart bundle', () => {
+    // 2026-08-14 028050 실측 사건(#1316 발단)을 그대로 쓴다.
+    const event = {
+      t_ms: 1_779_852_660_000,
+      side: 'ask' as const,
+      price: 49_200,
+      qty: 14_935,
+      jump: 10_000,
+      total: 30_882,
+      kind: 'grow' as const,
+      outcome: 'held' as const,
+      filled_qty: 0,
+    };
+    useRangeSidecarDeltaSpy.mockImplementation(() => ({
+      data: { ...fallbackRangeBundle(71_000), wall_surge: [event] },
+      isLoading: false,
+      isPending: false,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: false,
+      isHistoricalDeltaFetching: false,
+    }));
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    // price 는 뺀다 — `scaleWallSurge` 가 원주가→수정주가로 바꾸는 유일한 필드라
+    // 계수가 1 이 아닌 픽스처에서 이 단언만 무관하게 깨진다.
+    expect(result.current.bundle!.wall_surge?.map(({ price: _p, ...rest }) => rest))
+      .toEqual([(({ price: _p, ...rest }) => rest)(event)]);
   });
 
   // 장면1 — 거래량분포 게이트 편입: 거래량분포는 캔들 priceRange 가 나와야 사이드카
