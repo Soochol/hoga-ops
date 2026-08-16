@@ -78,7 +78,22 @@ export type RangeBundleRequest = {
   todayKst: string | null;
 };
 
-const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] as const;
+/** placeholder 를 재사용하려면 **같아야 하는** 키 축들. 여기 없는 인덱스는 아예
+ *  비교되지 않으므로, 값이 달라도 이전 번들이 그대로 화면에 남는다.
+ *
+ *  빠진 것 중 의도적인 것: `1`(code)은 `rangePlaceholderData` 가 따로 비교하고,
+ *  `2`·`3`(from·to)은 좌측 팬으로 구간을 넓히는 동안 이전 구간을 보여주는 것이
+ *  이 기능의 목적 그 자체다.
+ *
+ *  **queryKey 에 축을 추가하면 이 목록도 같이 늘린다.** 늘리지 않으면 그 옵션을 바꿔도
+ *  placeholder 가 유지돼 옛 데이터가 남는데, 기존 테스트들은 새 인덱스를 양쪽 키에서
+ *  같은 값으로 고정하므로 **아무것도 빨개지지 않는다** — 누락이 무증상이다.
+ *  실제로 `depthDeltaEnabled`(21)와 `venue`(22)가 그렇게 빠져 있었다. #490 이
+ *  "RangeQueryKey 튜플·queryKey 배열·이 목록에 추가" 라고 세 곳을 커밋 메시지에
+ *  적어 뒀지만, 그 규칙이 코드에 없어 다음 두 축이 그대로 샜다. */
+const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [
+  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+] as const;
 
 function addParam(params: URLSearchParams, key: string, value: number | string | null | undefined): void {
   if (value == null) return;

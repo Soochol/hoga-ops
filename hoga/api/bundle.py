@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from collections.abc import Collection
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
@@ -61,6 +62,7 @@ from hoga.api.sources import (
     source_covers_venue,
 )
 from hoga.api.today_ttl_cache import TODAY_TTL
+from hoga.collector.orchestrator import now_kst
 from hoga.live.program_trade_store import ProgramTradeStore, is_significant_gap_event
 from hoga.live.venue import Venue
 from hoga.tables import (
@@ -1429,6 +1431,52 @@ def _compute_first_trailing_single_price_book_hhmmssms(
     return h * 10_000_000 + m * 100_000 + s * 1000 + ms
 
 
+def uncaptured_trading_days(
+    *,
+    data_dir: Path,
+    code: str,
+    from_date: str,
+    to_date: str,
+    captured: Collection[str],
+    today: str,
+) -> list[MissingDate]:
+    """캡처가 **아예 없는** 거래일 + 사유. 오름차순.
+
+    `captured` 는 `list_stock_dates_in_range` 의 결과 — 그 목록은 parquet 인벤토리
+    스캔이라 "캡처된 날" 만 담는다. 그 차집합이 곧 이 함수의 대상이다.
+    """
+    from hoga.api import queries  # noqa: PLC0415 — 지연 import(순환 회피)
+
+    out: list[MissingDate] = []
+    for d in _dates_between(from_date, to_date):
+        if d in captured or d >= today:
+            continue
+        # ⚠ **확정 거래일만** 본다 — 모름(None)은 결손이 아니다. 근거는 술어 쪽 docstring.
+        #
+        # ⚠ `queries` 를 **모듈로** 참조하는 것이 load-bearing 이다. `from ... import` 로
+        # 이름을 끌어오면 `tools/range_measurement_policy.py` 의 몽키패치가 우회되어,
+        # 측정 진입점이 외부 달력에 닿는다(그 hermetic 가드가 이 실수를 잡아냈다).
+        if not queries._is_confirmed_trading_day(d):
+            continue
+        sentinel = (data_dir / "raw" / d / code / ".no_upstream_data").exists()
+        out.append(MissingDate(
+            date=d, reason="no_upstream_data" if sentinel else "not_captured",
+        ))
+    return out
+
+
+def _dates_between(from_date: str, to_date: str) -> list[str]:
+    """[from, to] 의 모든 YYYYMMDD (거래일 여부 무관)."""
+    start = datetime.strptime(from_date, "%Y%m%d").date()
+    end = datetime.strptime(to_date, "%Y%m%d").date()
+    out: list[str] = []
+    cur = start
+    while cur <= end:
+        out.append(cur.strftime("%Y%m%d"))
+        cur += timedelta(days=1)
+    return out
+
+
 def _empty_range_bundle(
     code: str,
     from_date: str,
@@ -1618,11 +1666,27 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         code=code, from_date=from_date, to_date=to_date,
         source_pref=source_pref,
     )
+    # 캡처가 **아예 없는** 거래일 + 사유. `dates` 는 parquet 인벤토리 스캔이라 이들을
+    # 담지 않으므로, 사유 기록을 아래 루프 안에서만 하면 이 부류는 영영 표면화되지
+    # 않는다 — 화면에서 그날이 사유 없이 증발하던 원인이다(006800/20251218).
+    uncaptured = uncaptured_trading_days(
+        data_dir=engine.data_dir,
+        code=code,
+        from_date=from_date,
+        to_date=to_date,
+        captured=set(dates),
+        today=now_kst().strftime("%Y%m%d"),
+    )
     if not dates:
         # Spec 2026-05-27 §4.3: empty range is a normal case for /live's
         # lazy-fetch. Surface as an empty bundle so the frontend can stitch
         # today's SSE buffer in without 404 round-trips.
-        return _empty_range_bundle(code, from_date, to_date, bucket_ms, excluded=[])
+        #
+        # ⚠ `missing` 을 여기서 **반드시** 넘긴다. "그날 하나만 조회" 가 정확히 이
+        # 분기로 떨어지는데, 그게 사용자가 원인을 가장 알고 싶어 하는 요청이다.
+        return _empty_range_bundle(
+            code, from_date, to_date, bucket_ms, excluded=[], missing=uncaptured,
+        )
 
     # ADR-0020: per-Stock-Date invariant check.
     # INVALID → skip + surface under excluded_dates.
@@ -1631,7 +1695,9 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     warnings_list: list[DateWarning] = []
     # 읽을 것이 없어 건너뛴 날 + 사유(#1133). `excluded` 와 나눠 두는 이유는 모델 주석 참조 —
     # "데이터가 틀렸다" 와 "데이터가 없다" 를 UI 가 다르게 말해야 한다.
-    missing: list[MissingDate] = []
+    # 미캡처 거래일을 **시드로 깔고** 시작한다 — 루프가 채우는 것("목록엔 있는데 읽을 수
+    # 없다")과 서로소라 그냥 합치면 된다. 이렇게 두면 아래 두 반환 지점이 자동으로 커버된다.
+    missing: list[MissingDate] = list(uncaptured)
     segments: list[RangeSegment] = []
     candles: list[ApiCandle] = []
     ratio_pts: list[QuoteRatioPoint] = []
@@ -1951,6 +2017,9 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 len(warnings_list) - date_warnings_before,
                 perf_debug.elapsed_ms(date_t0),
             )
+
+    # 두 출처(미캡처 시드 + 루프)가 섞여 있으므로 날짜순으로 정렬해 내보낸다.
+    missing.sort(key=lambda m: m.date)
 
     if not segments:
         # Spec 2026-05-27 §4.3: every in-range date is INVALID → return an

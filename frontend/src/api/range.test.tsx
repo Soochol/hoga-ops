@@ -1994,6 +1994,73 @@ describe('rangePlaceholderData', () => {
 
     expect(rangePlaceholderData(fakeBundle, currentKey, previousKey)).toBeUndefined();
   });
+
+  // ADR-0140 은 venue 를 캐시 키에 넣어 "거래소를 바꿔도 이전 데이터가 보이는" 것을
+  // 막았는데, placeholder 경로만 그 인덱스를 비교하지 않아 뚫려 있었다 — 새 응답이
+  // 도착할 때까지 **이전 거래소의 과거 지표가 새 venue 화면에 뜬다**.
+  it('drops previous data when the venue changes', () => {
+    const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
+      'range',
+      '005930',
+      '20260512',
+      '20260512',
+      60_000,
+      undefined,
+      undefined,
+      null,
+      930,
+      null,
+      undefined,
+      undefined,
+      null,
+      'kiwoom_live',
+      'full',
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      'NXT', // ← baseKey 는 'KRX'
+    ];
+
+    expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
+  });
+
+  // depth_delta 토글은 화면 증상이 없다 — pane 렌더 게이트가 번들이 아니라 스토어
+  // 플래그(`useWindowIndicator`)라 옛 데이터가 placeholder 에 남아도 그려지지 않는다.
+  // 그래도 "placeholder 는 옵션이 같은 사본" 이라는 계약은 지켜야 한다: 바로 옆
+  // 히트맵(idx 20)이 그렇게 하고 있고, 둘의 비대칭은 의도가 아니라 갱신 누락이었다.
+  it('drops previous data when the depth delta toggle changes', () => {
+    const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
+      'range',
+      '005930',
+      '20260512',
+      '20260512',
+      60_000,
+      undefined,
+      undefined,
+      null,
+      930,
+      null,
+      undefined,
+      undefined,
+      null,
+      'kiwoom_live',
+      'full',
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      true, // ← baseKey 는 null
+      'KRX',
+    ];
+
+    expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
+  });
 });
 
 describe('좌측 팬 중 range 캐시 사본 누적', () => {

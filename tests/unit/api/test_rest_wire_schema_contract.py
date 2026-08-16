@@ -70,6 +70,44 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "HeatmapResponse": frozenset(
         {"entries", "folders", "capture_markers", "next_run_at_ms"}
     ),
+    # `/api/range` 의 단일 read-path Wire Model (ADR-0013). **이 리포에서 가장 자주 바뀌는
+    # wire model 인데 1층 밖에 있었다** — 슬라이스가 하나 늘 때마다 필드가 늘지만, 그 사실을
+    # 재는 것이 아무것도 없었다. 프론트 미러는 ``frontend/src/api/types.ts`` 의 ``RangeBundle``.
+    #
+    # **최상위 필드만 본다.** 이 스냅샷은 중첩 모델을 따라가지 않으므로 ``RangeSegment``·
+    # ``MissingDate`` 같은 하위 shape 의 드리프트는 여기서 안 잡힌다. 하위 모델을 덮고 싶으면
+    # 그 이름으로 항목을 따로 추가해야 한다(척도 축만은 ``test_range_price_scale_contract.py``
+    # 가 재귀 순회로 이미 덮고 있다).
+    #
+    # 프론트 ``RangeBundle`` 에는 ``investorPoints`` 가 하나 더 있는데 백엔드엔 대응 필드가
+    # 없다 — 프론트가 다른 출처로 채우는 값이라 이 스냅샷의 대상이 아니다.
+    "RangeBundle": frozenset(
+        {
+            "code",
+            "from_date",
+            "to_date",
+            "bucket_ms",
+            "segments",
+            "candles",
+            "quote_ratio",
+            "fill_strength",
+            "volume_profile_range",
+            "volume_profile_by_day",
+            "excluded_dates",
+            "data_warnings",
+            "missing_dates",
+            "ask_peaks",
+            "bid_peaks",
+            "depth_heatmap",
+            "depth_delta",
+            "wall_surge",
+            "broker_late_entries",
+            "price_level_hits",
+            "trade_volume_pocs",
+            "volume_distributions",
+            "program_trade",
+        }
+    ),
 }
 
 
@@ -143,6 +181,13 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     ),
     # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
     "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
+    # 결손 사유. FE 는 종전에 `RangeMissingDate.reason` 의 **필드 인라인 union** 이라
+    # 파서가 원리적으로 못 봤다 — 그래서 같은 이름의 named alias 로 꺼내며 등록했다.
+    # 값이 갈리면 새 사유가 배너 문구 분기에 없어 조용히 "손상" 으로 오분류된다.
+    "MissingDateReason": (
+        frozenset(get_args(m.MissingDateReason)),
+        "frontend/src/api/types.ts",
+    ),
     # **이름이 다른 쌍이라 자동 발견이 못 본다** — 손으로 등록해야 하는 부류다
     # (ADR-0143). BE 는 `LiveErrorKind`(정책 축에서 태어난 이름), FE 는
     # `LiveWarningKind`(wire 에서 읽는 쪽 이름)다. 값이 갈리면 프론트가 모르는 kind 를

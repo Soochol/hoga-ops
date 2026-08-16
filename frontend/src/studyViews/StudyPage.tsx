@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { useNavigate, useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { PageContainer } from '../layout/PageContainer';
-import LiveSettingsModal from '../live/LiveSettingsModal';
+import SettingsDrawer from '../live/SettingsDrawer';
 import { SettingsButton } from '../live/LiveToolbar';
 import { registerIndicatorDrawerOpener } from '../live/workspace/indicatorDrawerControls';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
@@ -568,7 +568,7 @@ export function StudyPage() {
         )}
       >
         {settingsOpen && (
-          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
+          <SettingsDrawer variant="study" onClose={() => setSettingsOpen(false)} />
         )}
       </StudyPageStateShell>
     );
@@ -588,7 +588,7 @@ export function StudyPage() {
         )}
       >
         {settingsOpen && (
-          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
+          <SettingsDrawer variant="study" onClose={() => setSettingsOpen(false)} />
         )}
       </StudyPageStateShell>
     );
@@ -609,7 +609,7 @@ export function StudyPage() {
         )}
       >
         {settingsOpen && (
-          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
+          <SettingsDrawer variant="study" onClose={() => setSettingsOpen(false)} />
         )}
       </StudyPageStateShell>
     );
@@ -685,6 +685,11 @@ export function StudyPage() {
         .filter(Boolean).join(':'),
       bundle: model.bundle,
       chartBundle: model.chartBundle,
+      // 미캡처 안내는 **여기서만** 켠다. 저장뷰는 사용자가 구간을 명시적으로 정한
+      // 것이라 "그 구간에 아직 안 받은 날이 있다" 가 행동으로 이어지는 정보다.
+      // `/live` 는 임의 종목을 훑는 자리라 미캡처가 정상이고, 거기서 켜면 배너가
+      // 상시 들어와 진짜 결손이 묻힌다(hogaMissingNotice.ts 의 근거 주석).
+      showNotCapturedNotice: true,
       clampEngaged: false,
       isPastCandlesLoading: false,
       // `/study` 는 `historicalFromDate` 를 소비하는 쿼리가 없어 backfill 이 비활성
@@ -798,7 +803,7 @@ export function StudyPage() {
             />
           )}
           {settingsOpen && (
-            <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
+            <SettingsDrawer variant="study" onClose={() => setSettingsOpen(false)} />
           )}
         </div>
       </div>

@@ -8,7 +8,7 @@ import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveStateBanner } from './LiveStateBanner';
 import { activateLiveCode, activateLiveInstrument, mirrorActiveGroupToLivePage } from './liveNavigate';
 import { useLiveKeyboard } from './useLiveKeyboard';
-import LiveSettingsModal from './LiveSettingsModal';
+import SettingsDrawer from './SettingsDrawer';
 import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
 import { useSymbols } from '../capture/useSymbols';
 import { useDocumentTitle } from '../util/useDocumentTitle';
@@ -213,7 +213,7 @@ export function LivePage() {
       {/* 설정 모달은 순수 전역 — 창 Provider 래핑도 key 재마운트도 필요 없다.
           유일한 창 소유 필드였던 VI 선 스타일이 자기 토글 옆(전역 chartPrefs)
           으로 옮겨가면서 이 모달은 앱 설정만 편집한다(#759). */}
-      {settingsOpen && <LiveSettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsDrawer onClose={() => setSettingsOpen(false)} />}
       {collectTarget && (
         <SingleCodeCollectDialog
           // 다이얼로그가 열린 채 종목이 바뀌면 remount 로 미리보기·기간 상태를 초기화한다.

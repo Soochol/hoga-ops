@@ -22,7 +22,7 @@ const SETTINGS = {
   krx_prefer_hogaplay: false,
 };
 
-describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
+describe('DataSourceDetail (앱 전역 단일 표면)', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
@@ -30,9 +30,9 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     useLiveVenueStore.setState({ venue: 'KRX' });
   });
 
-  it('KIS 캔들 venue 옵션을 렌더하고 저장한다 (live)', () => {
+  it('KIS 캔들 venue 옵션을 렌더하고 저장한다', () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     // 라벨 문구가 아니라 **data-testid 의 원값**으로 잡는다 — 문구는 바뀌지만
     // 저장 키('KRX'/'NXT'/'UN')는 계약이다(#1083 규율).
@@ -45,10 +45,10 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(localStorage.getItem('live.venue.v1')).toContain('NXT');
   });
 
-  it('상세를 캔들/호가체결/스크리너 일봉 + 표시/캡처 매크로 그룹으로 구조화한다 (live)', async () => {
+  it('상세를 캔들/호가체결/스크리너 일봉 + 표시/캡처 매크로 그룹으로 구조화한다', async () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
 
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     expect(await screen.findByText('표시 소스')).toBeInTheDocument();
     expect(screen.getByText('캡처 저장')).toBeInTheDocument();
@@ -76,53 +76,43 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(screen.getByText(/'REST 우회'를 켜면 분봉은 캡처\(hogaplay\)/)).toBeInTheDocument();
   });
 
-  it('study variant는 캔들 기준 라디오 대신 디스크 온리 안내문을 표시한다', async () => {
+  it('복기뷰 캔들 안내는 REST 우회 토글을 숨기지 않고 동반 문구로 붙는다', async () => {
+    // 옛 `variant === 'study'` 분기는 이 토글을 통째로 안내문으로 **치환**했다. 값이
+    // 전역인데 화면마다 숨기면 같은 탭에서도 문(TopNav ⚙ / 툴바 ⚙)에 따라 다른
+    // 이야기가 나온다 — 그게 이 통합의 발단이었다.
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
 
-    render(<DataSourceDetail variant="study" />, { wrapper: wrap(freshQc()) });
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
-    expect(await screen.findByTestId('study-candle-source-note')).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
-    expect(screen.queryByText('KIS 캔들 거래소')).toBeNull();
-    // 호가·체결 기준 그룹은 study 에서도 보인다 — 오히려 복기뷰가 과거 데이터를 보는
-    // 화면이라 이 토글이 더 쓸모 있다. 폐지된 것은 라디오 3종이지 그룹이 아니다.
-    expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: '실시간 WS 우선' })).toBeNull();
+    expect(await screen.findByRole('switch', { name: 'REST 우회' })).toBeInTheDocument();
+    expect(screen.getByTestId('study-candle-source-note')).toHaveTextContent(/항상 저장 데이터/);
   });
 
-  it('study variant는 거래소 선택기 대신 KRX 고정 안내를 보여준다 (ADR-0144)', async () => {
-    // 선택기가 쓰는 스토어는 **탭 전역**이라 여기서 고르면 `/live` 까지 움직인다.
-    // 복기가 그 값을 무시하는 이상 라디오는 아무 일도 안 하는 컨트롤이 된다.
+  it('거래소 라디오는 상시 표시되고 복기뷰 고정은 동반 문구로 알린다 (ADR-0144는 유효)', async () => {
+    // ADR-0144 의 격리는 이 화면이 아니라 `studyVenuePolicy` 의 `STUDY_VENUE` 상수와
+    // 그 테스트가 건다 — 여기서 골라도 복기뷰는 KRX 그대로다. 숨길 근거였던 "아무 일도
+    // 안 하는 컨트롤" 은 앱 전역 설정에서 성립하지 않는다: 이 라디오는 `/live` 말고도
+    // `/heatmap`·`/screener`·관심종목에 실제로 작동한다.
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
 
-    render(<DataSourceDetail variant="study" />, { wrapper: wrap(freshQc()) });
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
-    expect(await screen.findByTestId('study-venue-fixed-note')).toBeInTheDocument();
     for (const v of ['KRX', 'NXT', 'UN']) {
-      expect(screen.queryByTestId(`live-venue-${v}`)).toBeNull();
+      expect(screen.getByTestId(`live-venue-${v}`)).toBeInTheDocument();
     }
-    // 안내문은 hogaplay 가 KRX 전용이라는 **이유**까지 말해야 한다 — 이유가 없으면
-    // 고정이 임의 제약으로 읽힌다.
-    expect(screen.getByText(/hogaplay는 KRX 전용/)).toBeInTheDocument();
-  });
-
-  it('study variant에서는 hogaplay 우선이 "적용 안 됨" 안내를 띄우지 않는다', async () => {
-    // 스토어는 `/live` 선택(NXT)을 들고 있지만 복기는 KRX 고정이라 이 토글이
-    // **항상** 적용된다. 게이트가 없으면 사실과 반대되는 안내가 뜬다.
-    vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, krx_prefer_hogaplay: true });
-    useLiveVenueStore.setState({ venue: 'NXT' });
-
-    render(<DataSourceDetail variant="study" />, { wrapper: wrap(freshQc()) });
-
-    await screen.findByRole('switch', { name: 'KRX에서 hogaplay 우선' });
-    expect(screen.queryByTestId('krx-prefer-hogaplay-inactive')).toBeNull();
+    // 동반 문구는 **이유**를 댄다 — 「복기뷰는 예외로 항상 KRX」라는 사실 자체는
+    // 그룹 설명(`LIVE_VENUE_HELP`)이 이미 말하므로 여기서 반복하지 않는다. 이유가
+    // 없으면 고정이 임의 제약으로 읽힌다.
+    const note = await screen.findByTestId('study-venue-fixed-note');
+    expect(note).toHaveTextContent(/복기뷰가 KRX 고정인 이유/);
+    expect(note).toHaveTextContent(/hogaplay 캡처가 KRX 전용/);
   });
 
   it('REST 우회 토글을 backend settings로 저장한다', async () => {
     const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, rest_bypass_enabled: true });
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
 
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     const toggle = await screen.findByRole('switch', { name: 'REST 우회' });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
@@ -143,7 +133,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
       .mockResolvedValue({ ...SETTINGS, krx_prefer_hogaplay: true });
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
 
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     const toggle = await screen.findByRole('switch', { name: 'KRX에서 hogaplay 우선' });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
@@ -162,13 +152,18 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     // NXT 를 볼 때마다 disabled 면 고장으로 읽힌다. 사실만 알린다.
     // getLiveSettings spy 는 안 먹는다 — useLiveSettings 의 queryFn 이 같은 모듈의
     // 함수를 내부 참조로 잡는다. apiCall 은 import 경계를 넘으므로 교체가 먹는다.
+    //
+    // ⚠ 옛 `variant === 'live'` 게이트가 사라진 자리다. 게이트의 근거는 "복기뷰는 항상
+    // KRX 라 이 안내가 거짓이 된다" 였으므로, 게이트 대신 **문장이 두 화면을 모두
+    // 말하는지**를 검사한다 — 그래야 어느 라우트에서 열어도 참이다.
     vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, krx_prefer_hogaplay: true });
     useLiveVenueStore.setState({ venue: 'NXT' });
 
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     const hint = await screen.findByTestId('krx-prefer-hogaplay-inactive');
-    expect(hint).toBeInTheDocument();
+    expect(hint).toHaveTextContent(/실시간 화면의 현재 거래소/);
+    expect(hint).toHaveTextContent(/복기뷰는 KRX 고정이라 항상 적용됩니다/);
     // 토글 자체는 살아 있다 — 끌 수 있어야 한다.
     expect(screen.getByRole('switch', { name: 'KRX에서 hogaplay 우선' })).not.toBeDisabled();
   });
@@ -179,7 +174,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, krx_prefer_hogaplay: true });
     useLiveVenueStore.setState({ venue: 'KRX' });
 
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     await screen.findByRole('switch', { name: 'KRX에서 hogaplay 우선' });
     expect(screen.queryByTestId('krx-prefer-hogaplay-inactive')).toBeNull();
@@ -194,7 +189,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
         : Promise.resolve(SETTINGS),
     );
 
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
+    render(<DataSourceDetail />, { wrapper: wrap(qc) });
 
     expect(await screen.findByText('항시 저장 중입니다')).toBeInTheDocument();
     // 키움 0w push 전환으로 수집 비용이 0 — 거래원(0F)처럼 스위치 자체가 없다.
@@ -214,7 +209,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
       return Promise.resolve({ ...SETTINGS });
     });
 
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
+    render(<DataSourceDetail />, { wrapper: wrap(qc) });
 
     // 상태줄은 처음 '상태 확인 중'으로 뜨고 status 쿼리 해결 후 내용이 채워진다.
     await waitFor(() =>
@@ -236,11 +231,80 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
       return Promise.resolve({ ...SETTINGS });
     });
 
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
+    render(<DataSourceDetail />, { wrapper: wrap(qc) });
 
     await waitFor(() =>
       expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('키움 앱키 미설정'),
     );
     expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('KIWOOM_APP_KEY');
+  });
+});
+
+/** 옛 「데이터 수집」 nav(토글 1개짜리 섹션)에서 이관된 검사들.
+ *  캡처 쓰기 설정이라 「캡처 저장」 매크로 그룹이 제자리다. */
+describe('DataSourceDetail — 스크리너 총잔량 결측 자동 수집', () => {
+  const TOGGLE = '스크리너 총잔량 결측 자동 수집';
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    localStorage.clear();
+    useLiveVenueStore.setState({ venue: 'KRX' });
+  });
+
+  it('기본은 꺼짐 — 스캔은 반복 실행이라 묵시적 큐 증가를 막는다', async () => {
+    vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS });
+
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
+
+    expect(await screen.findByRole('switch', { name: TOGGLE })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('wire 값이 켜져 있으면 반영한다', async () => {
+    vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, screener_depth_autocollect: true });
+
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
+
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: TOGGLE })).toHaveAttribute('aria-checked', 'true'),
+    );
+  });
+
+  it('클릭하면 반전된 값을 PATCH 한다', async () => {
+    const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS });
+
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
+
+    // ⚠ 이 패널에서 **로딩 중 잠기는 토글은 이것 하나**다(옛 「데이터 수집」 동작을
+    // 그대로 옮겼다 — REST 우회·hogaplay 는 잠기지 않는다). 해소를 기다리지 않으면
+    // disabled 버튼이 클릭을 삼켜 PATCH 가 아예 일어나지 않는다.
+    const toggle = await screen.findByRole('switch', { name: TOGGLE });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ screener_depth_autocollect: true }),
+    }));
+  });
+
+  it('설정 로딩 중에는 토글을 잠근다', () => {
+    // 영원히 pending — isLoading 상태를 고정한다.
+    vi.spyOn(apiClient, 'apiCall').mockImplementation(() => new Promise(() => {}));
+
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
+
+    expect(screen.getByRole('switch', { name: TOGGLE })).toBeDisabled();
+  });
+
+  it('GET 실패는 패널 상단에 한 번 알리고 토글은 살려 둔다', async () => {
+    // PATCH 는 partial 이라 현재값을 몰라도 조작이 안전하다 — 복구 조작을 열어둔다.
+    vi.spyOn(apiClient, 'apiCall').mockRejectedValue(new Error('backend down'));
+
+    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
+
+    expect(await screen.findByText(/라이브 설정을 불러오지 못했습니다/)).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: TOGGLE })).toBeEnabled();
   });
 });
