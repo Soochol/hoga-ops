@@ -3,7 +3,7 @@ import { Outlet, useLocation } from 'react-router';
 import TopNav from './nav/TopNav';
 import { MarketIndexBar } from './layout/MarketIndexBar';
 import { useDrawerAutoCollapse } from './layout/useDrawerAutoCollapse';
-import { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './nav/items';
+import { WORKSPACE_NAV_ITEMS } from './nav/items';
 import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
 import { useRightRailStore } from './state/rightRail';
@@ -24,6 +24,8 @@ import { useSectorTickEvents } from './api/useSectorTickEvents';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
+import { WORKSPACE_DRAWER_WIDTH_CLASS } from './live/workspaceDrawer';
+import { registerSettingsModalOpener } from './live/settingsModalControls';
 import { effectiveTheme, useThemePrefsStore } from './state/themePrefs';
 import { useCrossTabSync } from './state/crossTabSync';
 
@@ -57,12 +59,11 @@ const StudyViewsDrawer = lazy(() =>
   import('./studyViews/StudyViewsDrawer').then((m) => ({ default: m.StudyViewsDrawer })),
 );
 const SignalAlertsDrawer = lazy(() => import('./signalAlerts/SignalAlertsDrawer'));
-const SettingsPanel = lazy(() =>
-  import('./pages/Settings').then((m) => ({ default: m.SettingsPanel })),
-);
+const SettingsSections = lazy(() => import('./live/SettingsSections'));
 
+// `/settings` 는 빠졌다 — 라우트가 아니라 드로어라 탭 제목을 가질 페이지가 없다.
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
-  [...WORKSPACE_NAV_ITEMS, ...SYSTEM_NAV_ITEMS]
+  WORKSPACE_NAV_ITEMS
     .filter((item) => item.to !== '/live')
     .map((item) => [item.to, item.label] as const),
 );
@@ -96,6 +97,14 @@ export default function App() {
   const contentCols = `1fr${activePanel ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
   const staticTitle = pathname === '/live' ? null : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 설정 드로어의 **유일한 소유자**다. 트리거는 앱 곳곳에 흩어져 있지만(전 라우트
+  // TopNav ⚙ · `/live`·`/study` 툴바 ⚙ · 차트 창 캔들 빈 상태 · 실시간 불가 배너 ·
+  // 종목검색의 「설정에서 갱신」) 전부 `requestSettingsModal()` 로 모인다. 등록 지점을
+  // 늘리지 말 것 — 그 채널은 슬롯이 하나고 스택이 없다(모듈 주석 참조).
+  useEffect(() => registerSettingsModalOpener(() => setSettingsOpen(true)), []);
+  // 설정 본체는 앱 전역이지만 「체결창」 nav 하나만 컨텍스트로 갈린다(/live 워크스페이스
+  // 전용 데이터 창). 이제 진입점이 하나라 variant 는 **경로에서만** 파생한다.
+  const settingsVariant = pathname.startsWith('/study') ? 'study' : 'live';
 
   // Keep <html data-theme> in sync with the preference + current route. The
   // index.html bootstrap sets the first-paint value; this owns every change
@@ -149,14 +158,16 @@ export default function App() {
       {settingsOpen && (
         <ModalShell
           ariaLabel="설정"
-          width="w-[min(720px,calc(100vw-48px))]"
-          height="h-[min(560px,calc(100vh-80px))]"
+          side="right"
+          width={WORKSPACE_DRAWER_WIDTH_CLASS}
           onClose={() => setSettingsOpen(false)}
         >
-          {/* title 없음 — 섹션 제목·닫기 X는 SettingsPanel 콘텐츠 헤더가 담당(첨부 디자인).
-              SettingsPanel이 다이얼로그를 edge-to-edge로 채운다(중첩 카드 제거). */}
+          {/* title 없음 — 섹션 제목·닫기 X는 SettingsSections 콘텐츠 헤더가 담당.
+              `/live`·`/study` 툴바 ⚙ 와 **같은 크롬**(우측 드로어 760px + nav 240px)이다:
+              진입점이 달라도 폭·앵커·nav 가 같아야 「설정은 하나」가 화면에서도 참이다.
+              옛 중앙 모달(720×560 하드코딩)은 이 통일로 사라졌다. */}
           <Suspense fallback={null}>
-            <SettingsPanel onClose={() => setSettingsOpen(false)} />
+            <SettingsSections variant={settingsVariant} onClose={() => setSettingsOpen(false)} />
           </Suspense>
         </ModalShell>
       )}

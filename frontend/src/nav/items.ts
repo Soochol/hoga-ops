@@ -27,6 +27,5 @@ export const WORKSPACE_NAV_ITEMS = [
   { to: '/capture', label: '캡처' },
 ] as const satisfies readonly { to: string; label: string; panel?: RailPanel }[];
 
-export const SYSTEM_NAV_ITEMS = [
-  { to: '/settings', label: '설정' },
-] as const;
+// 여기 있던 `SYSTEM_NAV_ITEMS`(`/settings` 한 항목)는 그 라우트와 함께 사라졌다 —
+// 설정은 이제 페이지가 아니라 앱 전역 드로어이고, TopNav 가 버튼을 직접 렌더한다.

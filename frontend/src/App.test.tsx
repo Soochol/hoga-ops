@@ -54,9 +54,10 @@ vi.mock('./signalAlerts/useSignalAlertEvents', () => ({
   useSignalAlertEvents: () => {},
 }));
 
-vi.mock('./pages/Settings', () => ({
-  SettingsPanel: () => <div>settings panel body</div>,
-  default: () => <div>settings page route</div>,
+// 설정 본체는 이제 `live/SettingsSections` 하나다 — App 은 그것을 lazy 로 열고,
+// `pages/Settings` 는 `/settings` 라우트 프레임으로만 남아 App 이 참조하지 않는다.
+vi.mock('./live/SettingsSections', () => ({
+  default: () => <div>settings panel body</div>,
 }));
 
 function wrap(ui: ReactNode, initialEntry: string) {
@@ -96,7 +97,7 @@ describe('App document title', () => {
     ['/screener', '스크리너'],
     ['/inventory', '보관함'],
     ['/capture', '캡처'],
-    ['/settings', '설정'],
+    // `/settings` 는 빠졌다 — 라우트가 아니라 드로어라 탭 제목을 가질 페이지가 없다.
   ])('sets %s to the matching top menu label', (path, expected) => {
     wrap(<div>{expected}</div>, path);
     expect(document.title).toBe(expected);
@@ -178,19 +179,22 @@ describe('App shell layout', () => {
     expect(await screen.findByTestId('heatmap-drawer')).toBeInTheDocument();
   });
 
-  it('opens Settings as a centered popover without leaving the current page', async () => {
+  it('opens Settings as a right drawer without leaving the current page', async () => {
     wrap(<div>unused</div>, '/live');
 
     fireEvent.click(screen.getByRole('button', { name: '설정' }));
 
     // 모달 껍데기(ModalShell)는 정적이라 즉시 뜬다 — 안쪽 패널만 lazy 다.
     const dialog = screen.getByRole('dialog', { name: '설정' });
-    expect(dialog).toHaveClass('fixed', 'inset-0', 'items-center', 'justify-center');
+    // `/live`·`/study` 툴바 ⚙ 와 **같은 크롬**(우측 드로어)이다. 옛 중앙 모달
+    // (720×560 하드코딩)은 설정 표면이 하나로 합쳐지면서 사라졌다 — 진입점이 달라도
+    // 폭·앵커·nav 가 같아야 「설정은 하나」가 화면에서도 참이다.
+    expect(dialog).toHaveClass('fixed', 'inset-0', 'items-stretch', 'justify-end');
     expect(await within(dialog).findByText('settings panel body')).toBeInTheDocument();
     expect(screen.getByText('live page')).toBeInTheDocument();
   });
 
-  it('closes the Settings popover with Escape', async () => {
+  it('closes the Settings drawer with Escape', async () => {
     wrap(<div>unused</div>, '/live');
 
     fireEvent.click(screen.getByRole('button', { name: '설정' }));
@@ -201,6 +205,32 @@ describe('App shell layout', () => {
 
     expect(screen.queryByRole('dialog', { name: '설정' })).toBeNull();
     expect(screen.getByText('live page')).toBeInTheDocument();
+  });
+
+  // ↓ 두 건은 `SettingsDrawer.test.tsx` 에서 이관됐다. 그 래퍼 컴포넌트가 사라지고
+  //   App 이 ModalShell 을 직접 세우면서, 드로어 크롬 계약의 검증 자리도 여기가 됐다.
+
+  it('drawer card is a full-height, left-bordered panel (ADR-0116)', async () => {
+    wrap(<div>unused</div>, '/live');
+
+    fireEvent.click(screen.getByRole('button', { name: '설정' }));
+    // Suspense 는 DOM 요소를 만들지 않으므로 본문의 부모가 곧 ModalShell 카드다.
+    const card = (await screen.findByText('settings panel body')).parentElement!;
+    expect(card).toHaveClass('border-l');
+    expect(card).toHaveClass('h-full');
+  });
+
+  it('closes the Settings drawer on backdrop press', async () => {
+    wrap(<div>unused</div>, '/live');
+
+    fireEvent.click(screen.getByRole('button', { name: '설정' }));
+    await screen.findByText('settings panel body');
+    // 백드롭 닫힘은 click 이 아니라 **mousedown** 기준이다 — click 이면 카드 안에서
+    // 드래그(텍스트 선택)를 시작해 백드롭에서 놓을 때 공통 조상에서 발화해 오작동으로
+    // 닫힌다(ModalShell 계약).
+    fireEvent.mouseDown(screen.getByRole('dialog', { name: '설정' }));
+
+    expect(screen.queryByRole('dialog', { name: '설정' })).toBeNull();
   });
 });
 

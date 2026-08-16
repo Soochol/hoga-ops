@@ -35,7 +35,9 @@ const Screener = lazy(() => import('./pages/Screener').then((m) => ({ default: m
 const Capture = lazy(() => import('./pages/Capture'));
 const Sentiment = lazy(() => import('./pages/Sentiment'));
 const Market = lazy(() => import('./pages/Market'));
-const Settings = lazy(() => import('./pages/Settings'));
+// `/settings` **페이지는 없다** — 설정은 앱 전역 드로어 하나이고(`App` 소유), 트리거는
+// 전부 `requestSettingsModal()` 로 모인다. 페이지 사본이 있던 시절엔 같은 내용이 두
+// 표면으로 열렸다. 옛 북마크는 아래 라우트가 `/live` 로 받는다.
 
 
 const _disposeStudyTabsSync = initStudyTabsSync();
@@ -101,7 +103,10 @@ createRoot(document.getElementById('root')!).render(
             <Route path="capture" element={<Suspense fallback={null}><Capture /></Suspense>} />
             <Route path="sentiment" element={<Suspense fallback={null}><Sentiment /></Suspense>} />
             <Route path="market" element={<Suspense fallback={null}><Market /></Suspense>} />
-            <Route path="settings" element={<Suspense fallback={null}><Settings /></Suspense>} />
+            {/* 옛 `/settings` 페이지 북마크를 받아 준다 — 설정이 드로어가 되면서 갈
+                페이지가 없어졌는데, 라우트를 그냥 지우면 빈 화면 + "No routes matched"
+                경고라 고장으로 읽힌다(실측). 드로어는 어느 라우트에서든 ⚙ 로 열린다. */}
+            <Route path="settings" element={<Navigate to="/live" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>

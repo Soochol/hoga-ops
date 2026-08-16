@@ -4,6 +4,7 @@ import { useSymbols, useSymbolSearch, SYMBOLS_QUERY_KEY } from './useSymbols';
 import { useCombobox } from '../util/useCombobox';
 import { symbolSearchHints } from '../api/upstream-hints';
 import { refreshSymbols } from '../api/symbols';
+import { requestSettingsModal } from '../live/settingsModalControls';
 import type { SymbolHit, SymbolsCacheStatus } from '../api/types';
 
 const STALE_NUDGE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
@@ -168,7 +169,11 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
                 <div className="mt-2 text-xs text-fg-dim">
                   Symbol Master가 {formatRelativeShort(fetchedAtMs)} 업데이트되었습니다 —
                   신규 상장 종목이 누락되었을 수 있습니다.{' '}
-                  <a href="/settings" className="underline">설정에서 갱신</a>
+                  {/* 예전엔 raw `<a href="/settings">` 라 **전체 페이지 리로드**였다
+                      (router Link 도 아니었다). 이제 드로어를 그 자리에서 연다. */}
+                  <button type="button" onClick={requestSettingsModal} className="underline">
+                    설정에서 갱신
+                  </button>
                 </div>
               )}
             </div>

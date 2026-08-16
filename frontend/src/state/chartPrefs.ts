@@ -199,7 +199,7 @@ export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
 
 /** UI surface a toggle belongs to. 'indicator-modal'은 「지표」 모달의
  *  호가 Config로 이동했음을 뜻하며 ⚙️ 설정 모달에는 렌더되지 않는다
- *  (LiveSettingsSections의 CATEGORY_ORDER가 포함하지 않음).
+ *  (SettingsSections의 CATEGORY_ORDER가 포함하지 않음).
  *  'trade-window'는 ⚙️ 설정 모달의 「체결창」 nav 항목. Unset → 'chart'. */
 export type ChartToggleCategory = 'chart' | 'indicator-modal' | 'trade-window';
 
@@ -208,7 +208,7 @@ export type ChartToggleCategory = 'chart' | 'indicator-modal' | 'trade-window';
  *  fails to compile on entries that omit the field — `as const` narrows
  *  each literal shape to exclude absent properties. The `'category' in t`
  *  predicate narrows the union so the access becomes safe. Consumers
- *  (LiveSettingsSections, indicator Configs) call this instead of inlining
+ *  (SettingsSections, indicator Configs) call this instead of inlining
  *  the predicate so the narrowing trick lives in one place. */
 export function categoryOf(
   t: (typeof CHART_TOGGLES)[number],
@@ -222,10 +222,10 @@ export function categoryOf(
  * (a) the `ChartViewPrefs` type field, (b) `DEFAULT_PREFS` value, (c) the
  * `setNumericPref` setter on `useChartPrefsStore`, (d) `mergePrefs`
  * validation in `chartPrefsPersistence.ts`, and (e) the `NumericPrefRow`
- * render in `LiveSettingsModal.tsx` all derive from this list — no
+ * render in `SettingsSections.tsx` all derive from this list — no
  * per-pref code in any of those modules.
  *
- * `enabledBy` (optional): when set, `LiveSettingsModal` dims and disables
+ * `enabledBy` (optional): when set, `SettingsSections` dims and disables
  * the row when the named toggle is off and renders it indented beneath
  * its gating toggle. The value is preserved while disabled. The projector
  * that reads the pref is responsible

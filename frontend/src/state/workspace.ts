@@ -12,6 +12,7 @@ import { MIN_W, MIN_H, type Canvas, type Rect } from '../workspace/snapEngine';
 import { isFracRect, toFrac } from '../workspace/rectSpace';
 import { readLegacyWorkspaceSeed } from './workspaceMigration';
 import { isLiveIndexId } from '../live/liveInstrument';
+import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 
 /**
  * `/live` 멀티창 워크스페이스 상태 (ADR-0119, 스펙 #715).
@@ -315,19 +316,34 @@ function normalizeZOrder(raw: unknown, windows: readonly WorkspaceWindow[]): str
  * 차트 720×760 / book 680×560 / broker 680×188)을 그 캔버스로 나눈 값이라
  * 어느 화면 크기에서도 같은 배치로 열린다.
  *
- * **단, 우측 열은 REF 유래 비율(0.4398)을 쓰지 않는다.** REF 캔버스(1546)는 실제
- * 캔버스보다 넓어서(1280 뷰포트 실측 1226×531) 그 비율이 `BookPanel` 의 절대
- * 계약인 `min-w 560px` 를 못 채운다 — 0.4398 × 1226 = 539px 로 21px 모자라 가로
- * 스크롤이 생기고 우측 요약 열이 잘린다("시작 58,000" 이 "시작 58" 로 보인다).
+ * **단, 우측 열은 REF 유래 비율을 쓰지 않는다.** REF 캔버스(1546)는 실제 캔버스보다
+ * 넓어서(1280 뷰포트 실측 1226×531) 그 비율이 `BookPanel` 의 절대 계약을 못 채운다 —
+ * 가로 스크롤이 생기고 우측 요약 열이 잘린다("시작 58,000" 이 "시작 58" 로 보인다).
  * 비율 좌표계는 절대 하한을 표현하지 못하므로(ADR-0122), 하한이 있는 창의 비율은
  * **REF 가 아니라 좁은 쪽 실측에서 역산**해야 한다.
  *
- * 우측 여백(기존 0.0764)이 놀고 있었으므로 차트는 그대로 두고 그 여백을 우측 열에
- * 준다 — 좌측 여백(0.0104)과 대칭이 되고, 1226 캔버스에서 620px 로 계약을 넘긴다.
+ * ## 유도 방향이 2026-08-16 에 뒤집혔다
+ *
+ * 종전에는 하한(560)이 커서 우측 열이 남는 여백을 **먹는** 쪽이었다(차트 고정,
+ * 우측 0.5058 = 1226 에서 620px). `BOOK_PANEL_MIN_W` 가 448 로 내려오면서 방향이
+ * 반대가 됐다: 우측 열을 계약 + 여유까지만 잡고 **남는 폭을 전부 차트에 넘긴다**.
+ * 차트 0.4657 → 0.5715 (1226 캔버스에서 571 → 701px).
+ *
+ * 그래서 여기 상수는 하드코딩이 아니라 `DEFAULT_RIGHT_COL_W` 하나에서 유도된다 —
+ * 하한이 또 움직이면 고칠 곳이 한 줄이다.
  */
-const DEFAULT_RIGHT_COL_X = 0.4838;
-/** 우측 열 폭 — 우측 여백을 좌측(0.0104)과 대칭으로 남긴 나머지 전부. */
-const DEFAULT_RIGHT_COL_W = 1 - DEFAULT_RIGHT_COL_X - 0.0104;
+const DEFAULT_EDGE_MARGIN = 0.0104;
+/** 차트 ↔ 우측 열 간격. 좌측 여백과 대칭이 아니라 종전 실측값을 유지한다. */
+const DEFAULT_COL_GAP = 0.0077;
+/**
+ * 우측 열 폭. 좁은 쪽 실측 캔버스(1226px)에서 `BOOK_WINDOW_DEFAULT_W`(480) 를
+ * 넘겨야 한다 — 0.40 × 1226 = 490px 로 10px 여유. 이 곱이 480 아래로 내려가면
+ * 10호가 창이 첫 로드부터 가로 스크롤된다(`workspace.test.ts` 가 못박는다).
+ */
+const DEFAULT_RIGHT_COL_W = 0.4;
+const DEFAULT_RIGHT_COL_X = 1 - DEFAULT_RIGHT_COL_W - DEFAULT_EDGE_MARGIN;
+/** 차트 폭 — 좌 여백·간격·우측 열을 뺀 나머지 전부. */
+const DEFAULT_CHART_W = DEFAULT_RIGHT_COL_X - DEFAULT_COL_GAP - DEFAULT_EDGE_MARGIN;
 
 function defaultWindows(): WorkspaceWindow[] {
   return [
@@ -335,7 +351,7 @@ function defaultWindows(): WorkspaceWindow[] {
       id: newWindowId(),
       kind: 'chart',
       group: 1,
-      rect: { x: 0.0104, y: 0.0206, w: 0.4657, h: 0.9794 },
+      rect: { x: DEFAULT_EDGE_MARGIN, y: 0.0206, w: DEFAULT_CHART_W, h: 0.9794 },
       chart: { timeframe: '1m' },
     },
     // book 은 십자 배치(BookPanel)라 좁으면 못 담는다 — 차트 오른쪽 절반의 위쪽.
@@ -474,12 +490,12 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   chart: { w: 520, h: 360 },
   // 고정 조성 카드는 첫 표시부터 전부 보이는 높이로 (실데이터 실측 기준):
   // book = 십자 배치(BookPanel). 헤더 27 + 행 22×22(상한 여백 1 + 매도 10 + 매수 10 +
-  // 하단 여백 1) + 총잔량바 ~34 ≈ 545 → 560. 폭 = BookPanel 의 min-w 560 +
-  // 세로 스크롤바·서브픽셀 여유 ~40 = 600. (WindowFrameCore 본문은 가로 크롬이
-  // 없어 창 폭이 곧 패널 폭 — 기존 680은 슬랙 ~120px 이 우측 통계 라벨↔값 간격을
-  // 벌려 빈 세로 띠를 만들었다. 2026-07-24 축소. 560 미만으로만 좁히면 패널이
-  // 가로 스크롤된다.)
-  book: { w: 600, h: 560 },
+  // 하단 여백 1) + 총잔량바 ~34 ≈ 545 → 560. **높이는 행 수가 정하므로 폭 축소와
+  // 무관하게 불변이다.** 폭은 `bookPanelMetrics` 가 SSOT — 680(~2026-07-24) →
+  // 600(~2026-08-16) → 480. 두 축소 모두 폰트가 아니라 슬랙을 걷어낸 것으로,
+  // 슬랙은 우측 통계의 라벨↔값 간격을 벌려 빈 세로 띠로 나타났다. (WindowFrameCore
+  // 본문은 가로 크롬이 없어 창 폭이 곧 패널 폭 — 하한 미만으로 좁히면 가로 스크롤.)
+  book: { w: BOOK_WINDOW_DEFAULT_W, h: 560 },
   // broker = 헤더 27 + 시점 상한 10행(매수5+매도5) 23.25×10 + divide 9 ≈ 269 → 280.
   // (하루 누적 유니온은 10행을 넘을 수 있고 그때는 스크롤이 정상.)
   broker: { w: 236, h: 280 },

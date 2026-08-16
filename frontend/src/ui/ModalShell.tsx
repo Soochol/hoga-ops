@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 // and the canon card (bg-card / border-strong / 6px / shadow). The
 // optional `title` renders the standard header (title + ✕ 닫기). Callers supply
 // the body (and footer) as children. Concentrates the modal dismissal contract
-// in one place — consumed by ConfirmModal, LiveSettingsModal, IndicatorPanel.
+// in one place — consumed by ConfirmModal, SettingsDrawer, IndicatorPanel, App.
 //
 // `side='right'` turns it into a right-anchored, full-height drawer (slides in)
 // with a lighter dim so the chart stays visible on the left — immediate-apply

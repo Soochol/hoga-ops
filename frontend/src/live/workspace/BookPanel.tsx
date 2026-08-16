@@ -23,6 +23,7 @@ import type { LiveViEvent } from '../../api/liveViStatus';
 import { priceDirClass } from '../../ui/priceDir';
 import { viExpectedDown, viExpectedUp } from '../krxTick';
 import type { AfterHoursTotals, LiveTradeSummary } from '../liveSidebarAdapters';
+import { BOOK_PANEL_GRID_COLS, BOOK_PANEL_MIN_W } from './bookPanelMetrics';
 
 /** 체결 리스트 한 줄. */
 export type BookTrade = { price: number; qty: number; side: number };
@@ -145,11 +146,17 @@ export default function BookPanel({
       />
       {/* min-w 가 load-bearing: 창을 좁히면 좌우 열이 0 으로 수렴해 잔량 숫자가
           겹친다. 최소 폭을 잡아 두면 대신 가로 스크롤이 생긴다(깨지지 않는다).
-          우측 열의 190px 하한도 같은 계약 — fr 의 auto-min 은 콘텐츠를 min-content
-          까지 쥐어짜는데, 요약 값이 최장인 경우(250일 "304,000/181,100" 6자리
-          고가 종목)가 딱 그 경계라 개행으로 행 높이 계약이 깨졌었다(NAVER 실사례). */}
+          우측 열 하한도 같은 계약 — fr 의 auto-min 은 콘텐츠를 min-content 까지
+          쥐어짜는데, 요약 값이 최장인 경우(250일 "1,319,000/1,081,100" 7자리 고가
+          종목)가 딱 그 경계라 개행으로 행 높이 계약이 깨졌었다(NAVER 실사례).
+
+          두 값의 근거·실측표는 `bookPanelMetrics` 에 있다. **Tailwind 임의값으로
+          되돌리지 말 것** — JIT 가 리터럴만 스캔해서 상수 보간이 조용히 죽는다. */}
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="grid min-w-[560px] grid-cols-[1fr_minmax(140px,180px)_minmax(190px,1fr)]">
+        <div
+          className="grid"
+          style={{ minWidth: BOOK_PANEL_MIN_W, gridTemplateColumns: BOOK_PANEL_GRID_COLS }}
+        >
           {/* 좌: 매도 잔량 바 → 체결강도 → 체결 리스트 */}
           <div className="flex flex-col">
             <div style={{ height: ROW_H }} />

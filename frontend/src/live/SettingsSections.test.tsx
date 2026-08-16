@@ -1,8 +1,10 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import LiveSettingsSections from './LiveSettingsSections';
+import SettingsSections from './SettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { useChartPrefsStore } from '../state/chartPrefs';
+import * as liveSettingsApi from '../api/liveSettings';
 import * as signalAlertsApi from '../api/signalAlerts';
 
 function wrap(qc: QueryClient) {
@@ -10,52 +12,56 @@ function wrap(qc: QueryClient) {
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-describe('LiveSettingsSections (2단 nav+detail)', () => {
+describe('SettingsSections (2단 nav+detail)', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
     localStorage.clear();
     useLiveVenueStore.setState({ venue: 'KRX' });
+    useChartPrefsStore.getState().resetToDefaults();
   });
 
-  it('라이브 카테고리 nav를 렌더 — 데이터소스는 메인 Settings로 이동해 제외', () => {
-    render(<LiveSettingsSections />);
-    expect(screen.getByTestId('settings-nav-chart')).toBeTruthy();
-    expect(screen.getByTestId('settings-nav-alerts')).toBeTruthy();
+  it('통합 nav 8개를 렌더한다 — 차트·체결창·알림 + 앱 스코프 5개', () => {
+    render(<SettingsSections />);
+    for (const id of [
+      'chart', 'trade-window', 'alerts', 'data-source', 'theme', 'symbols', 'general', 'roadmap',
+    ]) {
+      expect(screen.getByTestId(`settings-nav-${id}`)).toBeTruthy();
+    }
     // 「저장뷰」 nav 는 #1326 에서 사라졌다 — 저장뷰가 차트 봉을 정하지 않게 되면서
     // 그 섹션이 정할 것이 없어졌다.
     expect(screen.queryByTestId('settings-nav-study-views')).toBeNull();
-    // 데이터소스는 라이브 모달에선 제거되고 메인 Settings의 「데이터 소스」로 이동.
-    expect(screen.queryByTestId('settings-nav-data-source')).toBeNull();
     expect(screen.queryByTestId('settings-nav-indicators')).toBeNull();
     expect(screen.queryByTestId('settings-nav-surge')).toBeNull();
+    // 「데이터 수집」 은 토글 1개짜리 섹션이라 데이터소스의 「캡처 저장」 으로 흡수됐다.
+    expect(screen.queryByTestId('settings-nav-data')).toBeNull();
   });
 
-  it('복기뷰(study) 모달은 데이터소스 nav를 유지한다', () => {
-    render(<LiveSettingsSections variant="study" />);
-    expect(screen.getByTestId('settings-nav-data-source')).toBeTruthy();
+  it('복기뷰(study)는 체결창만 빠지고 나머지 nav 는 같다', () => {
+    // `variant` 가 가르는 **유일한** 항목이다. 데이터소스가 쓰던 분기는 삭제됐다 —
+    // 값이 전역인데 화면마다 숨기면 어느 문으로 들어왔는지에 답이 달라진다.
+    render(<SettingsSections variant="study" />);
+    for (const id of ['chart', 'alerts', 'data-source', 'theme', 'symbols', 'general', 'roadmap']) {
+      expect(screen.getByTestId(`settings-nav-${id}`)).toBeTruthy();
+    }
+    expect(screen.queryByTestId('settings-nav-trade-window')).toBeNull();
   });
 
   it('라이브 모달에 체결창 nav — 토글·기준 금액·배경색 피커가 상세에 보인다', () => {
-    render(<LiveSettingsSections />);
+    render(<SettingsSections />);
     fireEvent.click(screen.getByTestId('settings-nav-trade-window'));
     expect(screen.getByTestId('settings-toggle-tradeHighlightEnabled')).toBeTruthy();
     expect(screen.getByText('기준 금액 (만원)')).toBeTruthy();
     expect(screen.getByLabelText('대량 체결 강조 배경색 선택')).toBeTruthy();
   });
 
-  it('체결창은 /live 전용 데이터 창 — 복기뷰(study) 설정에는 nav 가 없다', () => {
-    render(<LiveSettingsSections variant="study" />);
-    expect(screen.queryByTestId('settings-nav-trade-window')).toBeNull();
-  });
-
   it('기본 선택은 차트 — 동시호가 마스킹 토글이 상세에 보인다', () => {
-    render(<LiveSettingsSections />);
+    render(<SettingsSections />);
     expect(screen.getByTestId('settings-toggle-auctionWindowMask')).toBeTruthy();
   });
 
   it('uses a flat section surface for the detail pane', () => {
-    render(<LiveSettingsSections />);
+    render(<SettingsSections />);
 
     // nav는 border-r 대신 bg-subtle 톤 스텝으로 분리(2026-07-15 borderless 통일).
     expect(screen.getByRole('navigation', { name: '설정 카테고리' })).toHaveClass('bg-bg-subtle');
@@ -64,34 +70,34 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
   });
 
   it('차트 설정에 날짜 구분선 토글이 보인다', () => {
-    render(<LiveSettingsSections />);
+    render(<SettingsSections />);
     expect(screen.getByTestId('settings-toggle-dayBoundaryEnabled')).toBeTruthy();
   });
 
   it('차트 설정에 캔들 기준 Y축 토글이 보인다', () => {
-    render(<LiveSettingsSections />);
+    render(<SettingsSections />);
     expect(screen.getByTestId('settings-toggle-candlePaneCandleOnlyScale')).toBeTruthy();
   });
 
   it('차트 설정에 캔들이 항상 위 토글이 보인다', () => {
-    render(<LiveSettingsSections />);
+    render(<SettingsSections />);
     expect(screen.getByTestId('settings-toggle-candleAlwaysOnTop')).toBeTruthy();
   });
 
   it('차트 설정에 날짜 구분선 스타일 선택 버튼이 보인다', () => {
-    render(<LiveSettingsSections />);
+    render(<SettingsSections />);
     expect(screen.getByRole('button', { name: '날짜 구분선 스타일 선택' })).toBeTruthy();
   });
 
   it('날짜 구분선 스타일 팔레트에서 기본 색상을 다시 선택할 수 있다', () => {
-    render(<LiveSettingsSections />);
+    render(<SettingsSections />);
     fireEvent.click(screen.getByRole('button', { name: '날짜 구분선 스타일 선택' }));
 
     expect(screen.getByRole('button', { name: '날짜 구분선 색상 #64748B' })).toBeTruthy();
   });
 
   it('날짜 구분선 스타일 선택 버튼은 날짜 구분선 토글 다음, 캔들 툴팁 토글 전에 보인다', () => {
-    render(<LiveSettingsSections />);
+    render(<SettingsSections />);
 
     const dayBoundaryToggle = screen.getByTestId('settings-toggle-dayBoundaryEnabled');
     const styleButton = screen.getByRole('button', { name: '날짜 구분선 스타일 선택' });
@@ -106,10 +112,55 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
   });
 
   it('이동된 토글은 설정 모달에 없다 (급증·누적·극단값필터)', () => {
-    render(<LiveSettingsSections />);
+    render(<SettingsSections />);
     expect(screen.queryByTestId('settings-toggle-surgeMarkerEnabled')).toBeNull();
     expect(screen.queryByTestId('settings-toggle-fillStrengthCumulative')).toBeNull();
     expect(screen.queryByTestId('settings-toggle-ratioOutlierFilterEnabled')).toBeNull();
+  });
+
+  // ── 아래 4건은 `SettingsDrawer.test.tsx` 에서 이관됐다. 그 파일은 드로어 래퍼가
+  //    사라지면서(App 이 ModalShell 을 직접 세운다) 함께 지워졌고, 크롬 계약
+  //    (우측 앵커·백드롭·Escape)은 `App.test.tsx` 가 이어받았다.
+
+  it('토글 클릭이 chartPrefs 스토어에 반영된다', () => {
+    render(<SettingsSections />);
+    expect(useChartPrefsStore.getState().auctionWindowMask).toBe(true);
+    // ToggleRow 는 testId 를 **바깥 wrapper** 에 단다 — 핸들러는 안쪽 role="switch"
+    // 버튼에 있으므로 파고들어 눌러야 한다(누르는 시늉만 하면 조용히 통과한다).
+    const row = screen.getByTestId('settings-toggle-auctionWindowMask');
+    fireEvent.click(row.querySelector('[role="switch"]') as HTMLElement);
+    expect(useChartPrefsStore.getState().auctionWindowMask).toBe(false);
+  });
+
+  it('캔들 기준 Y축 토글 클릭이 chartPrefs 스토어에 반영된다', () => {
+    render(<SettingsSections />);
+    expect(useChartPrefsStore.getState().candlePaneCandleOnlyScale).toBe(false);
+    const row = screen.getByTestId('settings-toggle-candlePaneCandleOnlyScale');
+    fireEvent.click(row.querySelector('[role="switch"]') as HTMLElement);
+    expect(useChartPrefsStore.getState().candlePaneCandleOnlyScale).toBe(true);
+  });
+
+  it('차트 설정에 VI/상하한가 선 스타일 선택이 보인다', () => {
+    render(<SettingsSections />);
+    expect(screen.getByText('VI/상하한가 선 스타일')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'VI/상하한가 선 스타일 선택' })).toBeTruthy();
+  });
+
+  it('복기뷰(study)도 같은 데이터소스 상세를 연다 — 복기 안내는 동반 문구로 남는다', () => {
+    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
+      schema_version: 1,
+      rest_bypass_enabled: false,
+      screener_depth_autocollect: false,
+      krx_prefer_hogaplay: false,
+    });
+    render(<SettingsSections variant="study" />, {
+      wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+    });
+    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
+    expect(screen.getByTestId('study-candle-source-note')).toBeTruthy();
+    expect(screen.getByText('호가·체결 데이터 기준')).toBeTruthy();
+    expect(screen.getByText('표시 소스')).toBeTruthy();
+    expect(screen.getByText('캡처 저장')).toBeTruthy();
   });
 
   // 데이터소스 상세 콘텐츠 테스트는 DataSourceDetail.test.tsx로 이관(추출·재사용).
@@ -149,7 +200,7 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
       context: undefined,
     } as never);
 
-    render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
+    render(<SettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
     fireEvent.click(screen.getByTestId('settings-nav-alerts'));
 
     expect(await screen.findByRole('switch', { name: '알림 사용' })).toHaveAttribute('aria-checked', 'true');
@@ -204,7 +255,7 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
       context: undefined,
     } as never);
 
-    render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
+    render(<SettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
     fireEvent.click(screen.getByTestId('settings-nav-alerts'));
     const startTime = await screen.findByLabelText('기준 시각') as HTMLInputElement;
 

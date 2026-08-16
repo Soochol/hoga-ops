@@ -64,9 +64,12 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
 
   const qtIntraMax = useActivePrefs((p) => p.quoteTotalsIntraMax);
   const ratioIntraMax = useActivePrefs((p) => p.ratioIntraMax);
+  // 라인 프로젝터와 **같은** 마스크를 읽는다 — 이걸 안 넘기면 붕괴 버킷((0,0) 마감
+  // 동시호가·장중 VI)이 현재값으로 잡혀 수평선만 pane 바닥에 깔린다.
+  const auctionWindowMask = useActivePrefs((p) => p.auctionWindowMask);
 
-  const levels = deriveQuoteTotalsLevels(bundle, qtIntraMax);
-  const ratioValue = deriveRatioLevel(bundle, ratioIntraMax);
+  const levels = deriveQuoteTotalsLevels(bundle, qtIntraMax, auctionWindowMask);
+  const ratioValue = deriveRatioLevel(bundle, ratioIntraMax, auctionWindowMask);
   // 최고 수평선은 **`/live` 전용**이다. 기준일이 "데이터의 마지막 거래일" 이라 복기에서는
   // 로드된 구간의 **끝날**이 되는데, 복기는 그 구간 한가운데의 "그때 그 시점" 을 보는
   // 작업이다 — 6/25 를 되짚는 화면에 7/24 기준선이 그어지면 선만 미래를 알고 있어 방해가

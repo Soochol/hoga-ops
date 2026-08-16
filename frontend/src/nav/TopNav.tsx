@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router';
 import type { MouseEvent } from 'react';
-import { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './items';
+import { WORKSPACE_NAV_ITEMS } from './items';
 import TopNavItem from './TopNavItem';
 import { CaptureInlineStatus } from './CaptureInlineStatus';
 import StatusDot from './StatusDot';
@@ -70,20 +70,12 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
 
         <div className="flex min-w-max items-center gap-lg text-xs font-semibold text-fg-dim">
           <CaptureInlineStatus />
-          {SYSTEM_NAV_ITEMS.map((item) => (
-            item.to === '/settings'
-              ? (
-                <button
-                  key={item.to}
-                  type="button"
-                  onClick={onOpenSettings}
-                  className={NAV_BUTTON_CLASS}
-                >
-                  {item.label}
-                </button>
-              )
-              : <TopNavItem key={item.to} to={item.to} label={item.label} />
-          ))}
+          {/* 설정은 **라우트가 아니라 드로어**다. 목록 기반 렌더(`SYSTEM_NAV_ITEMS`)와
+              그 안의 `/settings` 분기는 항목이 하나뿐인 죽은 일반화였고, 페이지가
+              사라지면서 함께 지웠다. */}
+          <button type="button" onClick={onOpenSettings} className={NAV_BUTTON_CLASS}>
+            설정
+          </button>
           <StatusDot />
         </div>
       </div>

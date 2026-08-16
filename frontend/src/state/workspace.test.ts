@@ -6,6 +6,7 @@ import {
   WORKSPACE_STORAGE_KEY,
   type WorkspaceWindow,
 } from './workspace';
+import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 
 function chart(id: string, group: number): WorkspaceWindow {
   return {
@@ -260,21 +261,40 @@ describe('레거시 마이그레이션 하이드레이션(#713, PR-C)', () => {
     expect(s.groupSymbols[1]).toBeUndefined();
   });
 
-  // BookPanel 은 min-w 560px 가 절대 계약이고, 비율 좌표계는 절대 하한을 표현하지
-  // 못한다(ADR-0122). REF 캔버스(1546)에서 유도한 비율은 실제 캔버스(1280 뷰포트
-  // 실측 1226px)에서 계약을 못 채워 요약 열이 조용히 잘렸다 — 좁은 쪽 실측을
-  // 기준으로 못박아 재발을 막는다.
-  it('기본 10호가 창은 좁은 실측 캔버스에서도 BookPanel min-w 를 만족한다', async () => {
+  // BookPanel 의 폭은 절대 계약이고, 비율 좌표계는 절대 하한을 표현하지 못한다
+  // (ADR-0122). REF 캔버스(1546)에서 유도한 비율은 실제 캔버스(1280 뷰포트 실측
+  // 1226px)에서 계약을 못 채워 요약 열이 조용히 잘렸다 — 좁은 쪽 실측을 기준으로
+  // 못박아 재발을 막는다. 기준은 패널 하한이 아니라 **창 기본 폭**이다: 세로
+  // 스크롤바가 뜨는 순간 그 여유(BOOK_WINDOW_CHROME_W)까지 없으면 패널이 하한
+  // 아래로 눌린다. 숫자는 `bookPanelMetrics` 에서 가져와 하한이 움직이면 이 가드가
+  // 함께 따라오게 한다(2026-08-16 이전엔 560 이 여기 손으로 복제돼 있었다).
+  it('기본 10호가 창은 좁은 실측 캔버스에서도 BookPanel 폭 계약을 만족한다', async () => {
     localStorage.clear();
     vi.resetModules();
     const mod = await import('./workspace');
     const book = mod.useWorkspaceStore.getState().windows.find((w) => w.kind === 'book');
     const MEASURED_CANVAS_W = 1226;
-    const BOOK_PANEL_MIN_W = 560;
     expect(book).toBeDefined();
-    expect(book!.rect.w * MEASURED_CANVAS_W).toBeGreaterThanOrEqual(BOOK_PANEL_MIN_W);
+    expect(book!.rect.w * MEASURED_CANVAS_W).toBeGreaterThanOrEqual(BOOK_WINDOW_DEFAULT_W);
     // 비율 불변식(ADR-0122) — 넓혀도 캔버스를 넘지 않는다.
     expect(book!.rect.x + book!.rect.w).toBeLessThanOrEqual(1);
+  });
+
+  // 하한이 560→448 로 내려오며 회수한 폭은 여백으로 남기지 않고 차트에 넘겼다
+  // (2026-08-16). 우측 열만 줄이고 끝내면 캔버스 가운데에 빈 띠가 생기므로,
+  // "차트 오른쪽 끝 + 간격 = 우측 열 시작" 을 못박아 그 회귀를 막는다.
+  it('회수한 폭은 차트가 흡수한다 — 차트와 우측 열 사이에 빈 띠가 없다', async () => {
+    localStorage.clear();
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const wins = mod.useWorkspaceStore.getState().windows;
+    const chart = wins.find((w) => w.kind === 'chart')!;
+    const book = wins.find((w) => w.kind === 'book')!;
+    const gap = book.rect.x - (chart.rect.x + chart.rect.w);
+    expect(gap).toBeGreaterThan(0); // 겹치지 않는다
+    expect(gap).toBeLessThan(0.02); // 간격일 뿐 빈 열이 아니다
+    // 차트가 캔버스 절반보다 넓다 — 회수 방향이 뒤집히면(우측 열이 다시 먹으면) 깨진다.
+    expect(chart.rect.w).toBeGreaterThan(0.5);
   });
 });
 

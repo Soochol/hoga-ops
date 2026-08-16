@@ -793,6 +793,30 @@ class DateWarning(BaseModel):
     warnings: list[ViolationModel]
 
 
+MissingDateReason = Literal[
+    # --- `sources.MissingReason` 과 공유하는 값 (사다리가 판정) ---
+    "venue_unsupported",   # 이 venue 를 줄 수 있는 source 가 정책 사다리에 없다
+    "source_missing",      # 사다리 승자의 디렉터리가 그 날 없다(NXT 미기록의 통상 형태)
+    "stock_date_missing",  # 사다리가 그 (날짜,종목) 디렉터리를 못 찾았다
+    # --- 조립점(bundle.py)에서만 생기는 값 ---
+    "meta_unreadable",     # 경로는 있는데 meta.json 을 읽지 못했다(손상)
+    # 아래 둘은 `list_stock_dates_in_range` 목록에 **애초에 없던** 날이다. 사다리는
+    # 이들을 볼 기회조차 없으므로 `sources.MissingReason` 에는 대응 값이 없다.
+    "no_upstream_data",    # hogaplay 가 그날을 못 준다(ADR-0021 센티넬). 영구.
+    "not_captured",        # 아직 캡처하지 않았다. 캡처하면 채워진다.
+]
+"""`MissingDate.reason` 의 전체 값 — 프론트 `RangeMissingDate['reason']` 의 미러 원본.
+
+**둘의 차이가 곧 사용자의 선택지다.** `no_upstream_data` 는 할 수 있는 일이 없고
+`not_captured` 는 캡처 한 번이면 채워진다 — 화면이 이를 같게 말하면 사용자는 되는 일에
+손을 안 대고 안 되는 일에 시간을 쓴다(006800/20251218 조사, 2026-08-16).
+
+값을 늘리면 **같은 PR 에서** 프론트 union 도 고친다(ADR-0004). 좁혀 둔 이유가 그것이다 —
+`reason: str` 이던 시절엔 `meta_unreadable` 이 `sources.MissingReason` 밖에서 조용히
+생산되고 있었고, 손 미러는 그 드리프트를 원리적으로 못 잡는다.
+"""
+
+
 class MissingDate(BaseModel):
     """번들에 **데이터가 없어서** 빠진 거래일과 그 사유 (#1133).
 
@@ -805,14 +829,11 @@ class MissingDate(BaseModel):
     빈다. 사유 없이 빈 배열만 보내면 프론트는 그것을 장애와 구별할 수 없고, 실제로
     빈 pane 을 그대로 렌더해 사용자에게 아무 설명도 못 했다.
 
-    `reason` 값은 `sources.MissingReason` 을 그대로 싣는다:
-      - `venue_unsupported` — 이 venue 를 줄 수 있는 source 가 정책 사다리에 없다
-      - `source_missing`    — 사다리 승자의 디렉터리가 그 날 없다(NXT 미기록의 통상 형태)
-      - `stock_date_missing` — 그 날 그 종목 자체가 캡처되지 않았다
-      - `meta_unreadable`   — 경로는 있는데 meta.json 을 읽지 못했다(손상)
+    `reason` 은 `MissingDateReason` — `sources.MissingReason` 의 상위집합이다(조립점에서만
+    생기는 사유가 있어서 두 타입이 갈린다).
     """
     date: str
-    reason: str
+    reason: MissingDateReason
 
 
 class PriceLevelHit(BaseModel):

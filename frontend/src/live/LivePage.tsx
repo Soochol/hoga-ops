@@ -8,7 +8,6 @@ import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveStateBanner } from './LiveStateBanner';
 import { activateLiveCode, activateLiveInstrument, mirrorActiveGroupToLivePage } from './liveNavigate';
 import { useLiveKeyboard } from './useLiveKeyboard';
-import LiveSettingsModal from './LiveSettingsModal';
 import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
 import { useSymbols } from '../capture/useSymbols';
 import { useDocumentTitle } from '../util/useDocumentTitle';
@@ -20,7 +19,7 @@ import {
   targetChartWindow,
 } from './workspace/WorkspaceIndicatorDrawer';
 import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';
-import { registerSettingsModalOpener } from './settingsModalControls';
+import { requestSettingsModal } from './settingsModalControls';
 import { registerCollectDialogOpener, type CollectTarget } from './workspace/collectDialogControls';
 import { liveOpenCodesKey, useLiveRangeCacheEviction } from './useLiveRangeCacheEviction';
 
@@ -123,10 +122,9 @@ export function LivePage() {
   // 대상을 z-최상위로 추론했는데, 트리거가 창 헤더로 내려오며 추론이 불필요해졌다.
   const [indicatorTargetId, setIndicatorTargetId] = useState<string | null>(null);
   useEffect(() => registerIndicatorDrawerOpener(setIndicatorTargetId), []);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  // 차트 창의 캔들 빈 상태가 "설정 열기" 를 요청하는 경로(#1133 후속). 트리거는 캔버스
-  // 안에 있고 모달은 셸 소유라, 지표 드로어와 같은 모듈 채널 idiom 을 쓴다.
-  useEffect(() => registerSettingsModalOpener(() => setSettingsOpen(true)), []);
+  // 설정 드로어는 여기 없다 — 열림 상태도 렌더도 `App` 이 소유한다(전 라우트 공용).
+  // 이 페이지의 트리거(툴바 ⚙ · 차트 창 캔들 빈 상태)는 `requestSettingsModal()` 로
+  // 요청만 보낸다.
   // 지난 N일 hogaplay 수집(히트맵 CollectDialog 재사용) — 대상 종목은 **차트 창
   // 헤더의 수집 버튼**이 실어 보낸다. 전역 툴바에 있던 시절엔 "활성 그룹의 종목"
   // 이라 다른 종목을 수집하려면 그 창을 먼저 활성화해야 했다.
@@ -200,7 +198,7 @@ export function LivePage() {
         stack={banner.stack}
       />
       <WorkspaceLiveToolbar
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={requestSettingsModal}
         captureHealth={liveStatus.captureHealth}
       />
       <WorkspaceCanvas />
@@ -213,7 +211,6 @@ export function LivePage() {
       {/* 설정 모달은 순수 전역 — 창 Provider 래핑도 key 재마운트도 필요 없다.
           유일한 창 소유 필드였던 VI 선 스타일이 자기 토글 옆(전역 chartPrefs)
           으로 옮겨가면서 이 모달은 앱 설정만 편집한다(#759). */}
-      {settingsOpen && <LiveSettingsModal onClose={() => setSettingsOpen(false)} />}
       {collectTarget && (
         <SingleCodeCollectDialog
           // 다이얼로그가 열린 채 종목이 바뀌면 remount 로 미리보기·기간 상태를 초기화한다.

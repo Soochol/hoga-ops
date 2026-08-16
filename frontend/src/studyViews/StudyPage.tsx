@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { useNavigate, useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { PageContainer } from '../layout/PageContainer';
-import LiveSettingsModal from '../live/LiveSettingsModal';
+import { requestSettingsModal } from '../live/settingsModalControls';
 import { SettingsButton } from '../live/LiveToolbar';
 import { registerIndicatorDrawerOpener } from '../live/workspace/indicatorDrawerControls';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
@@ -119,18 +119,14 @@ function StudyStateWorkspace({
   );
 }
 
-function StudyPageStateShell({
-  children,
-  workspace,
-}: {
-  children: ReactNode;
-  workspace: ReactNode;
-}) {
+/** 빈/로딩/에러 상태의 공용 프레임. `children` 슬롯이 있었지만 유일한 사용처가
+ *  **상태별로 네 번 렌더되던 설정 모달**이었고, 그 소유권이 `App` 으로 올라가면서
+ *  비었다 — 슬롯째 지운다(빈 children 을 넘기는 호출부가 남지 않게). */
+function StudyPageStateShell({ workspace }: { workspace: ReactNode }) {
   return (
     <PageContainer className="min-h-0">
       <PanelCard data-testid="study-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
         {workspace}
-        {children}
       </PanelCard>
     </PageContainer>
   );
@@ -161,7 +157,8 @@ export function StudyPage() {
   // 않으므로 모듈 슬롯 하나를 공유해도 안전하다.
   const [indicatorTargetId, setIndicatorTargetId] = useState<string | null>(null);
   useEffect(() => registerIndicatorDrawerOpener(setIndicatorTargetId), []);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // 설정 드로어는 `App` 이 소유한다 — 이 페이지는 레이아웃 분기가 넷이라 예전엔 같은
+  // 모달을 네 번 렌더해야 했다. 이제 툴바 ⚙ 가 `requestSettingsModal()` 을 부르고 끝이다.
   const [memoError, setMemoError] = useState<string | null>(null);
   const tabs = useStudyTabsStore((state) => state.tabs);
   const activeTabId = useStudyTabsStore((state) => state.activeTabId);
@@ -566,11 +563,7 @@ export function StudyPage() {
             </div>
           </StudyStateWorkspace>
         )}
-      >
-        {settingsOpen && (
-          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
-        )}
-      </StudyPageStateShell>
+      />
     );
   }
 
@@ -586,11 +579,7 @@ export function StudyPage() {
             학습뷰 불러오는 중...
           </StudyStateWorkspace>
         )}
-      >
-        {settingsOpen && (
-          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
-        )}
-      </StudyPageStateShell>
+      />
     );
   }
 
@@ -607,11 +596,7 @@ export function StudyPage() {
             학습뷰를 찾을 수 없습니다
           </StudyStateWorkspace>
         )}
-      >
-        {settingsOpen && (
-          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
-        )}
-      </StudyPageStateShell>
+      />
     );
   }
 
@@ -685,6 +670,11 @@ export function StudyPage() {
         .filter(Boolean).join(':'),
       bundle: model.bundle,
       chartBundle: model.chartBundle,
+      // 미캡처 안내는 **여기서만** 켠다. 저장뷰는 사용자가 구간을 명시적으로 정한
+      // 것이라 "그 구간에 아직 안 받은 날이 있다" 가 행동으로 이어지는 정보다.
+      // `/live` 는 임의 종목을 훑는 자리라 미캡처가 정상이고, 거기서 켜면 배너가
+      // 상시 들어와 진짜 결손이 묻힌다(hogaMissingNotice.ts 의 근거 주석).
+      showNotCapturedNotice: true,
       clampEngaged: false,
       isPastCandlesLoading: false,
       // `/study` 는 `historicalFromDate` 를 소비하는 쿼리가 없어 backfill 이 비활성
@@ -738,7 +728,7 @@ export function StudyPage() {
               자리다. 그래서 이 줄은 `/live` 툴바처럼 워크스페이스 관리 버튼만
               남고, 버튼은 좌측 정렬(`ml-auto` 없음)로 두 페이지가 같아진다. */}
           <WorkspaceToolbar testId="study-page-toolbar">
-            <SettingsButton onClick={() => setSettingsOpen(true)} />
+            <SettingsButton onClick={requestSettingsModal} />
             <StudyWindowListMenu />
             <StudyWindowAddMenu />
             <StudyLayoutPresetMenu />
@@ -796,9 +786,6 @@ export function StudyPage() {
               targetLabel={headerLabel}
               onClose={() => setIndicatorTargetId(null)}
             />
-          )}
-          {settingsOpen && (
-            <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
           )}
         </div>
       </div>

@@ -59,9 +59,23 @@ export default function SeriesLevelLine({ series, price, color, lineWidth, lineS
   }, [series]);
 
   const show = enabled && price != null;
+  // `series` 가 deps 에 있어야 한다 — 라인은 **숨김으로 태어나** 이 effect 의 reveal 에
+  // 전적으로 의존하는데, 생성은 series 도착 시점에 일어나고 `lineRef.current` 대입은
+  // 재렌더를 일으키지 않는다. series 를 빼면 "라인이 이제 생겼다" 가 관측 불가능한
+  // 이벤트가 되어, **값이 series 보다 먼저 안정화된 경로에서 라인이 영구히 숨겨진다**
+  // (price 0 · lineVisible false 로 고착 — #1338).
+  //
+  // `/study` 가 정확히 그 순서다: 번들이 react-query 캐시에서 완성된 채 첫 렌더에
+  // 들어오고 pane primary series 는 자식 effect 로 한 커밋 뒤에 온다. `/live` 는 SSE
+  // 틱이 price 를 계속 흔들어 이 구멍을 가려 왔다 — 증상이 한쪽 페이지에만 보인
+  // 이유이지 `/study` 고유 결함이 아니다.
+  //
+  // 형제 `LiveCurrentPriceLine` 이 멀쩡한 것은 생성 옵션을 model 로 시드하기
+  // 때문이다. 여기서 그 방식을 따르지 않는 이유는 옵션 조립이 두 곳으로 갈리기
+  // 때문 — 이 effect 를 값의 유일한 권위로 두고, 생성은 숨김 기본값만 잡는다.
   useEffect(() => {
     const line = lineRef.current;
-    if (!line) return;
+    if (!series || !line) return;
     if (!show || price == null) {
       line.applyOptions({ lineVisible: false, axisLabelVisible: false });
       return;
@@ -76,7 +90,7 @@ export default function SeriesLevelLine({ series, price, color, lineWidth, lineS
       axisLabelVisible: true,
       title,
     });
-  }, [show, price, color, lineWidth, lineStyle, title]);
+  }, [series, show, price, color, lineWidth, lineStyle, title]);
 
   return null;
 }

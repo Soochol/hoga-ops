@@ -130,13 +130,11 @@ vi.mock('../live/indicators/IndicatorPanel', () => ({
   },
 }));
 
-vi.mock('../live/LiveSettingsModal', () => ({
-  default: ({ onClose }: { onClose: () => void }) => (
-    <div role="dialog" aria-label="설정">
-      <button type="button" onClick={onClose}>닫기</button>
-    </div>
-  ),
-}));
+// 설정 드로어는 이 페이지 트리에 없다 — 열림 상태도 렌더도 `App` 이 소유하고,
+// 툴바 ⚙ 는 명령 채널로 **요청만** 보낸다. 그래서 모킹 대상이 컴포넌트가 아니라
+// 채널이고, 단언도 "다이얼로그가 떴다" 가 아니라 "요청이 나갔다" 가 된다.
+const { requestSettingsModal } = vi.hoisted(() => ({ requestSettingsModal: vi.fn() }));
+vi.mock('../live/settingsModalControls', () => ({ requestSettingsModal }));
 
 import { StudyPage } from './StudyPage';
 
@@ -788,8 +786,9 @@ describe('StudyPage', () => {
     expect(screen.getByRole('dialog', { name: '보조지표' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    requestSettingsModal.mockClear();
     fireEvent.click(screen.getByTestId('live-settings-button'));
-    expect(screen.getByRole('dialog', { name: '설정' })).toBeTruthy();
+    expect(requestSettingsModal).toHaveBeenCalledOnce();
   });
 
   it('passes the active study timeframe into IndicatorPanel', () => {
