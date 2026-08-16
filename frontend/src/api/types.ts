@@ -633,24 +633,30 @@ export type RangeDateWarning = {
  * venue 축이 이 필드를 필요하게 만들었다: NXT·통합은 `kiwoom_live` 가 저장을 시작한
  * 날부터만 존재하므로 그 이전 구간은 **정상적으로** 빈다. 사유가 없으면 프론트는 빈
  * 배열을 장애와 구별할 수 없어 아무 설명 없는 빈 pane 을 그린다. */
+/** Mirrors `hoga/api/models.py::MissingDateReason` (ADR-0004 — 손 미러).
+ *
+ *  `no_upstream_data`(업스트림이 그날을 영구히 못 준다)와 `not_captured`(캡처하면
+ *  채워진다)는 **사용자의 선택지가 다르므로** 값이 갈려 있다 — 소비처가 이 둘을 같게
+ *  말하면 되는 일과 안 되는 일이 화면에서 구별되지 않는다.
+ *
+ *  **이름을 백엔드와 같게 둔 것이 load-bearing 이다.** 필드 인라인 union 이면
+ *  `WIRE_ENUM_MIRRORS` 의 파서가 원리적으로 못 찾아 값 드리프트가 무증상이 된다(#1183).
+ *
+ *  `| string` 은 방어적으로 남긴다: 백엔드가 값을 늘렸는데 프론트 번들이 옛것인 배포
+ *  스큐에서도 렌더가 깨지지 않아야 한다(소비처는 일반 문구로 폴백). 대조 파서는 따옴표
+ *  없는 `string` 을 세지 않으므로 이 폴백이 미러 검사를 무디게 하지 않는다. */
+export type MissingDateReason =
+  | 'venue_unsupported'
+  | 'source_missing'
+  | 'stock_date_missing'
+  | 'meta_unreadable'
+  | 'no_upstream_data'
+  | 'not_captured'
+  | string;
+
 export type RangeMissingDate = {
   date: string;
-  /** Mirrors `hoga/api/models.py::MissingDateReason` (ADR-0004 — 손 미러).
-   *
-   *  `no_upstream_data`(업스트림이 그날을 영구히 못 준다)와 `not_captured`(캡처하면
-   *  채워진다)는 **사용자의 선택지가 다르므로** 값이 갈려 있다 — 소비처가 이 둘을
-   *  같게 말하면 되는 일과 안 되는 일이 화면에서 구별되지 않는다.
-   *
-   *  `| string` 은 방어적으로 남긴다: 백엔드가 값을 늘렸는데 프론트 번들이 옛것인
-   *  배포 스큐에서도 렌더가 깨지지 않아야 한다(소비처는 일반 문구로 폴백). */
-  reason:
-    | 'venue_unsupported'
-    | 'source_missing'
-    | 'stock_date_missing'
-    | 'meta_unreadable'
-    | 'no_upstream_data'
-    | 'not_captured'
-    | string;
+  reason: MissingDateReason;
 };
 
 /** One live snapshot frame payload (ws.ts ch:'live' data). Mirrors the
