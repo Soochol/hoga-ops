@@ -120,7 +120,7 @@ export function projectVolumeCached(bundle: RangeBundle, axis: VirtualAxis): His
 // pane is mounted, volume is on.
 export const VOLUME_SPEC = {
   name: 'volume' as const,
-  live: true,
+  // bundleKind 없음: 누적 체결강도 토글에 따라 갈려 상수로 못 정한다(LiveChartRoot 참조).
   stretch: 0.3,
   legendToggleKey: 'volumeEnabled',
   useContext: useVolumeContext,

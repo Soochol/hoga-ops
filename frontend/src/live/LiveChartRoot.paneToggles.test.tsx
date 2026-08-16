@@ -149,7 +149,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 };
 
 function renderAt(timeframe: '1m' | 'D' | 'W' | 'M', props: Partial<ComponentProps<typeof LiveChartRoot>> = {}) {
-  render(
+  return render(
     <LiveChartRoot
       code="005930"
       timeframe={timeframe}
@@ -290,6 +290,45 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     expect(byName.get('ratio')).toBe(hogaPaneBundle);
     expect(byName.get('fill-strength')).toBe(hogaPaneBundle);
     expect(byName.get('program-trade')).toBe(DEFAULT_BUNDLE);
+  });
+
+  // `chartBundle` 이 존재하는 **유일한 이유**가 이 성질이다 — SSE 틱이 캔들 경로의 props
+  // 참조를 churn 하면 VirtualAxis·레이블 캐시가 무효화된다. 그런데 종전 테스트들은
+  // "어느 번들이 어느 pane 에 도달하는가" 만 보고 **틱 후에도 같은 객체인지**는 묻지
+  // 않았다. 그릇 배선을 옮기는 편집이 이 계약을 조용히 깨뜨릴 수 있어 값으로 못 박는다.
+  //
+  // 대조군(호가 pane)이 함께 있어야 한다 — 캔들만 보면 "애초에 아무것도 안 바뀌었다" 와
+  // 구별되지 않는다.
+  it('SSE 틱은 캔들 경로 pane 의 번들 참조를 바꾸지 않는다 (호가 pane 은 바뀐다)', () => {
+    const chartBundle = {
+      ...DEFAULT_BUNDLE,
+      candles: [{ ts_ms: 1748275260000, open: 1, high: 2, low: 1, close: 2, vol_a: 10, vol_b: 0 }],
+    } satisfies RangeBundle;
+    const point = (askTotal: number) => ({
+      bucket_ms: 60_000,
+      points: [{ t: 1748275260000, ask_total: askTotal, bid_total: 20, ask_max: askTotal, bid_max: 20, imb_max_ask: askTotal, imb_max_bid: 20 }],
+    });
+    const beforeTick = { ...chartBundle, quote_ratio: point(10) } satisfies RangeBundle;
+    const afterTick = { ...chartBundle, quote_ratio: point(11) } satisfies RangeBundle;
+
+    const { rerender } = renderAt('1m', { bundle: beforeTick, chartBundle });
+    const before = new Map(paneBundles.map((p) => [p.name, p.bundle]));
+    paneBundles.length = 0;
+
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={afterTick}
+        chartBundle={chartBundle}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+    const after = new Map(paneBundles.map((p) => [p.name, p.bundle]));
+
+    expect(after.get('candle')).toBe(before.get('candle'));
+    expect(after.get('quote-totals')).not.toBe(before.get('quote-totals'));
   });
 
   it('volume pane uses the stable chart bundle when volume cumulative is disabled', () => {

@@ -123,6 +123,16 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const stockBundle = activeCode && bundle?.code === activeCode ? bundle : null;
   const stockChartBundle = activeCode && chartBundle?.code === activeCode ? chartBundle : null;
   const stockHogaBundle = activeCode && hogaBundle?.code === activeCode ? hogaBundle : null;
+  /** 캔들 경로 그릇 — 안정 참조인 `chartBundle` 우선, 없으면 병합 번들.
+   *
+   *  **여기서 읽어도 되는 것은 `todaySource` 가 `'bundle'` 이 아닌 슬라이스뿐이다**
+   *  (`frontend/src/api/rangeSlices.ts`). 그 축이 `'bundle'` 인 넷(quote_ratio ·
+   *  fill_strength · price_level_hits · depth_heatmap)을 이 값에서 뽑으면 에러 없이
+   *  조용히 과거분만 얻는다(#719). 아래 소비처들이 뽑는 것은 씨앗·캔들·세그먼트라 안전하다.
+   *
+   *  `??` 는 새 객체를 만들지 않으므로 두 그릇 중 하나의 참조를 그대로 갖는다 — SSE 틱에
+   *  이 값이 churn 하지 않는다는 뜻이고, 하류 today-merge 훅들의 memo deps 가 그걸 전제한다. */
+  const candlePathBundle = stockChartBundle ?? stockBundle;
   const activeIndexId = activeInstrument?.kind === 'index' ? activeInstrument.id : null;
   const isDailyMaLoading = useDailyMaRevealGate({ code: activeCode, timeframe, venue, todayKst: today });
   const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
@@ -183,8 +193,8 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const tradeVolumePocOn = isMinute && tradeVolumePocEnabled;
   const askPeakOb = askPeaksOn ? live.ob : EMPTY_OB_SNAPSHOTS;
   const askPeakTrade = askPeaksOn ? live.trade : EMPTY_TRADE_SNAPSHOTS;
-  const askPeakSeeds = (stockChartBundle ?? stockBundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
-  const askPeakCandles = isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
+  const askPeakSeeds = candlePathBundle?.ask_peaks ?? EMPTY_ASK_PEAKS;
+  const askPeakCandles = isMinuteTimeframe(timeframe) ? (candlePathBundle?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
   const dayAskPeaks = useDayAskPeaks(
     askPeakOb,
     askPeakTrade,
@@ -205,8 +215,8 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   );
   const bidPeakOb = bidPeaksOn ? live.ob : EMPTY_OB_SNAPSHOTS;
   const bidPeakTrade = bidPeaksOn ? live.trade : EMPTY_TRADE_SNAPSHOTS;
-  const bidPeakSeeds = (stockChartBundle ?? stockBundle)?.bid_peaks ?? EMPTY_BID_PEAKS;
-  const bidPeakCandles = isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
+  const bidPeakSeeds = candlePathBundle?.bid_peaks ?? EMPTY_BID_PEAKS;
+  const bidPeakCandles = isMinuteTimeframe(timeframe) ? (candlePathBundle?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
   const dayBidPeaks = useDayBidPeaks(
     bidPeakOb,
     bidPeakTrade,
@@ -230,32 +240,33 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   // 종료 없이 두 번 완주하므로 이 훅에서 가장 비싼 항이다(위 게이트 주석 참조).
   const tradeVolumePocs = useTradeVolumePocs(
     tradeVolumePocOn ? live.trade : EMPTY_TRADE_SNAPSHOTS,
-    (stockChartBundle ?? stockBundle)?.trade_volume_pocs ?? [],
+    candlePathBundle?.trade_volume_pocs ?? [],
     today,
     activeCode,
-    isMinute ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES,
-    isMinute ? ((stockChartBundle ?? stockBundle)?.segments ?? []) : [],
+    isMinute ? (candlePathBundle?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES,
+    isMinute ? (candlePathBundle?.segments ?? []) : [],
     tradeVolumePocOn ? live.ob : EMPTY_OB_SNAPSHOTS,
   );
   const liveSaveBundle = useMemo<RangeBundle | null>(() => {
-    if (!stockBundle) return null;
-    const base = stockChartBundle ?? stockBundle;
+    // `candlePathBundle` 은 `stockChartBundle ?? stockBundle` 이라 `stockBundle` 이 있으면
+    // 반드시 있지만, 타입이 그걸 모른다. 가드를 함께 두어 아래를 non-null 로 좁힌다.
+    if (!stockBundle || !candlePathBundle) return null;
     return {
       ...stockBundle,
-      from_date: base.from_date,
-      to_date: base.to_date,
-      bucket_ms: base.bucket_ms,
-      segments: base.segments,
-      candles: base.candles,
-      volume_profile_range: base.volume_profile_range,
-      volume_profile_by_day: base.volume_profile_by_day,
-      volume_distributions: base.volume_distributions ?? [],
-      investorPoints: base.investorPoints,
+      from_date: candlePathBundle.from_date,
+      to_date: candlePathBundle.to_date,
+      bucket_ms: candlePathBundle.bucket_ms,
+      segments: candlePathBundle.segments,
+      candles: candlePathBundle.candles,
+      volume_profile_range: candlePathBundle.volume_profile_range,
+      volume_profile_by_day: candlePathBundle.volume_profile_by_day,
+      volume_distributions: candlePathBundle.volume_distributions ?? [],
+      investorPoints: candlePathBundle.investorPoints,
       ask_peaks: dayAskPeaks,
       bid_peaks: dayBidPeaks,
-      broker_late_entries: base.broker_late_entries ?? [],
+      broker_late_entries: candlePathBundle.broker_late_entries ?? [],
       trade_volume_pocs: tradeVolumePocsToWire(tradeVolumePocs),
-      // ⚠️ `base`(=chartBundle 우선) 가 아니라 병합 번들에서 가져온다 — 아래
+      // ⚠️ `candlePathBundle`(=캔들 경로 그릇) 가 아니라 병합 번들에서 가져온다 — 아래
       // workareaDepthHeatmap 과 같은 이유다. 저장 뷰는 "지금 화면"의 스냅샷이라
       // 오버레이가 그린 것과 같은 배열이어야 한다.
       depth_heatmap: stockBundle.depth_heatmap ?? [],

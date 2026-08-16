@@ -256,7 +256,7 @@ function brokerLegendCells(
 
 export const RATIO_SPEC = {
   name: 'ratio' as const,
-  live: true, // reads quote_ratio (SSE-derived) → fed the live bundle on /live
+  bundleKind: 'ratio', // quote_ratio(todaySource='bundle')를 읽는다 — 호가비 전용 그릇
   stretch: 0.4,
   legendToggleKey: 'ratioEnabled',
   useContext: useRatioContext,

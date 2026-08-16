@@ -51,7 +51,18 @@ _FRONTEND_SRC = _REPO_ROOT / "frontend/src"
 
 # 캔들 경로 번들을 담는 식별자들. ``todaySource == 'bundle'`` 인 필드를 여기서 읽으면
 # 에러 없이 **조용히 과거분만** 얻는다(#719).
-_CANDLE_PATH_IDENTIFIERS = ("cb", "chartBundle", "stockChartBundle", "workareaChartBundle")
+_CANDLE_PATH_IDENTIFIERS = (
+    "cb",
+    "chartBundle",
+    "stockChartBundle",
+    "workareaChartBundle",
+    # 이름을 바꾸면 스캔이 조용히 무력해진다는 한계가 **바로 다음 PR 에서 실현됐다** —
+    # `useLiveChartData` 의 `(stockChartBundle ?? stockBundle)` 사다리 8곳을 단일
+    # `candlePathBundle` 로 묶으면서 그 이름이 목록 밖에 있었다. 캔들 경로 번들에 새 이름을
+    # 붙일 때는 여기도 같이 늘린다.
+    "candlePathBundle",
+    "candlePath",
+)
 _ROUTES = _REPO_ROOT / "hoga/api/routes.py"
 
 # ``RangeBundle`` 의 스칼라 필드 — 슬라이스가 아니다(ADR-0013 의 범위 식별자).
