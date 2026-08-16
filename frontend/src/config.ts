@@ -42,9 +42,6 @@ export function resolveWsUrl(config: AppConfig, path: string): string {
   return url;
 }
 
-/** 루프백 표기 — 이 호스트들만 `:포트` 로 줄여도 어디를 가리키는지 잃지 않는다. */
-const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]']);
-
 /** api_url 이 비면(ADR-0134 same-origin 서빙) 실제 base 는 문서의 오리진이다. */
 function apiBase(config: AppConfig, locationOrigin: string): string {
   return config.api_url === '' ? locationOrigin : config.api_url;
@@ -60,18 +57,9 @@ export function resolveApiOrigin(config: AppConfig, locationOrigin: string): str
   }
 }
 
-/** nav 뱃지용 압축 표기. 루프백이면 `:8000`, 아니면 `host[:port]`.
- *  파싱 불가면 원문을 그대로 — 뱃지가 거짓말을 하느니 못생긴 편이 낫다. */
-export function formatApiOrigin(config: AppConfig, locationOrigin: string): string {
-  const base = apiBase(config, locationOrigin);
-  try {
-    const url = new URL(base);
-    if (LOOPBACK_HOSTNAMES.has(url.hostname) && url.port !== '') return `:${url.port}`;
-    return url.host;
-  } catch {
-    return base;
-  }
-}
+// 여기 있던 `formatApiOrigin`(nav 뱃지용 `:8000` 압축 표기)과 그 `LOOPBACK_HOSTNAMES`
+// 는 삭제됐다 — 유일한 소비자가 StatusDot 의 텍스트 라벨이었고, 그 라벨이 사라졌다.
+// 툴팁은 전체 오리진(`resolveApiOrigin`)을 쓰므로 압축 표기가 필요 없다.
 
 export async function loadConfig(): Promise<AppConfig> {
   try {

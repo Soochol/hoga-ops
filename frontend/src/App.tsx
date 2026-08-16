@@ -3,7 +3,7 @@ import { Outlet, useLocation } from 'react-router';
 import TopNav from './nav/TopNav';
 import { MarketIndexBar } from './layout/MarketIndexBar';
 import { useDrawerAutoCollapse } from './layout/useDrawerAutoCollapse';
-import { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './nav/items';
+import { WORKSPACE_NAV_ITEMS } from './nav/items';
 import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
 import { useRightRailStore } from './state/rightRail';
@@ -25,6 +25,7 @@ import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
 import { WORKSPACE_DRAWER_WIDTH_CLASS } from './live/workspaceDrawer';
+import { registerSettingsModalOpener } from './live/settingsModalControls';
 import { effectiveTheme, useThemePrefsStore } from './state/themePrefs';
 import { useCrossTabSync } from './state/crossTabSync';
 
@@ -60,8 +61,9 @@ const StudyViewsDrawer = lazy(() =>
 const SignalAlertsDrawer = lazy(() => import('./signalAlerts/SignalAlertsDrawer'));
 const SettingsSections = lazy(() => import('./live/SettingsSections'));
 
+// `/settings` 는 빠졌다 — 라우트가 아니라 드로어라 탭 제목을 가질 페이지가 없다.
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
-  [...WORKSPACE_NAV_ITEMS, ...SYSTEM_NAV_ITEMS]
+  WORKSPACE_NAV_ITEMS
     .filter((item) => item.to !== '/live')
     .map((item) => [item.to, item.label] as const),
 );
@@ -95,9 +97,13 @@ export default function App() {
   const contentCols = `1fr${activePanel ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
   const staticTitle = pathname === '/live' ? null : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 설정 드로어의 **유일한 소유자**다. 트리거는 앱 곳곳에 흩어져 있지만(전 라우트
+  // TopNav ⚙ · `/live`·`/study` 툴바 ⚙ · 차트 창 캔들 빈 상태 · 실시간 불가 배너 ·
+  // 종목검색의 「설정에서 갱신」) 전부 `requestSettingsModal()` 로 모인다. 등록 지점을
+  // 늘리지 말 것 — 그 채널은 슬롯이 하나고 스택이 없다(모듈 주석 참조).
+  useEffect(() => registerSettingsModalOpener(() => setSettingsOpen(true)), []);
   // 설정 본체는 앱 전역이지만 「체결창」 nav 하나만 컨텍스트로 갈린다(/live 워크스페이스
-  // 전용 데이터 창). 툴바 ⚙ 는 자기 variant 를 직접 넘기고, 전 라우트에서 열리는 이
-  // TopNav ⚙ 는 경로에서 파생한다.
+  // 전용 데이터 창). 이제 진입점이 하나라 variant 는 **경로에서만** 파생한다.
   const settingsVariant = pathname.startsWith('/study') ? 'study' : 'live';
 
   // Keep <html data-theme> in sync with the preference + current route. The
