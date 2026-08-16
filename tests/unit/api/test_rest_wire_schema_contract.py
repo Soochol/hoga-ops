@@ -70,6 +70,44 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "HeatmapResponse": frozenset(
         {"entries", "folders", "capture_markers", "next_run_at_ms"}
     ),
+    # `/api/range` 의 단일 read-path Wire Model (ADR-0013). **이 리포에서 가장 자주 바뀌는
+    # wire model 인데 1층 밖에 있었다** — 슬라이스가 하나 늘 때마다 필드가 늘지만, 그 사실을
+    # 재는 것이 아무것도 없었다. 프론트 미러는 ``frontend/src/api/types.ts`` 의 ``RangeBundle``.
+    #
+    # **최상위 필드만 본다.** 이 스냅샷은 중첩 모델을 따라가지 않으므로 ``RangeSegment``·
+    # ``MissingDate`` 같은 하위 shape 의 드리프트는 여기서 안 잡힌다. 하위 모델을 덮고 싶으면
+    # 그 이름으로 항목을 따로 추가해야 한다(척도 축만은 ``test_range_price_scale_contract.py``
+    # 가 재귀 순회로 이미 덮고 있다).
+    #
+    # 프론트 ``RangeBundle`` 에는 ``investorPoints`` 가 하나 더 있는데 백엔드엔 대응 필드가
+    # 없다 — 프론트가 다른 출처로 채우는 값이라 이 스냅샷의 대상이 아니다.
+    "RangeBundle": frozenset(
+        {
+            "code",
+            "from_date",
+            "to_date",
+            "bucket_ms",
+            "segments",
+            "candles",
+            "quote_ratio",
+            "fill_strength",
+            "volume_profile_range",
+            "volume_profile_by_day",
+            "excluded_dates",
+            "data_warnings",
+            "missing_dates",
+            "ask_peaks",
+            "bid_peaks",
+            "depth_heatmap",
+            "depth_delta",
+            "wall_surge",
+            "broker_late_entries",
+            "price_level_hits",
+            "trade_volume_pocs",
+            "volume_distributions",
+            "program_trade",
+        }
+    ),
 }
 
 
