@@ -36,6 +36,27 @@
  */
 export type RangeSliceMergeRule = 'spread' | 'segment-filtered' | 'date-filtered' | 'unfiltered';
 
+/** **오늘분이 어디서 번들에 붙는가** — 즉 "어느 그릇으로 읽어야 오늘 데이터를 얻는가".
+ *
+ * `useLiveBundle` 은 같은 `RangeBundle` 타입을 둘 돌려준다. `chartBundle` 은 SSE 틱에
+ * 참조가 바뀌지 않는 캔들 경로용이고, `bundle` 은 거기에 라이브 성분을 얹은 것이다.
+ * **그 분리는 성능 분기지 데이터 분기가 아니다** — 그래서 라이브 성분이 필요한 필드를
+ * `chartBundle` 에서 뽑으면 에러 없이 **조용히 과거분만** 얻는다(#719 가 그 사고였다).
+ *
+ * - `bundle` — `bundle` 조립부에서만 라이브가 병합·치환된다. **`chartBundle` 계열로 읽으면 안 된다.**
+ * - `chart-bundle` — 오늘분이 `chartBundle` 자체에 이미 있다. 어느 그릇으로 읽어도 안전하다.
+ * - `downstream` — 번들 어느 쪽에도 오늘분이 없고, 하류 훅이 라이브 스냅샷으로 덧붙인다
+ *   (번들 값은 그 훅의 **씨앗**이다).
+ * - `separate-field` — 오늘분이 번들이 아니라 별도 반환 필드로 나온다. 번들에서 찾으면 없다.
+ * - `none` — 오늘분이라는 개념이 없거나 라이브 경로가 없다.
+ */
+export type RangeSliceTodaySource =
+  | 'bundle'
+  | 'chart-bundle'
+  | 'downstream'
+  | 'separate-field'
+  | 'none';
+
 export type RangeSliceSpec = {
   /** `RangeBundle` 의 wire 필드명. */
   readonly field: string;
@@ -50,6 +71,8 @@ export type RangeSliceSpec = {
   /** `hoga/api/bundle.py` 의 게이트. `inline` = `include_*` 변수 없이 인라인 조건. */
   readonly backendGate: string | null;
   readonly mergeRule: RangeSliceMergeRule;
+  /** 오늘분이 어디서 붙는가 — 위 타입 주석 참조. `bundle` 이면 캔들 경로로 읽으면 안 된다. */
+  readonly todaySource: RangeSliceTodaySource;
   /** `live/buildLiveBundle.ts` 의 `buildChartBundle` 반환 목록에 있는가. */
   readonly inChartBundle: boolean;
   /** `hoga/api/past_indicators_cache.py` 의 `KIND_VERSIONS` 키. */
@@ -69,6 +92,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: null,
     mergeRule: 'unfiltered',
+    todaySource: 'chart-bundle',
     inChartBundle: true,
     cacheKind: null,
     note: '',
@@ -81,6 +105,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: 'mode',
     mergeRule: 'segment-filtered',
+    todaySource: 'chart-bundle',
     inChartBundle: true,
     cacheKind: null,
     note: 'mode 로만 갈린다 — 슬라이스 단위 토글이 없다.',
@@ -93,6 +118,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: 'mode',
     mergeRule: 'segment-filtered',
+    todaySource: 'bundle',
     inChartBundle: true,
     cacheKind: 'ratio',
     note: 'mode 로만 갈린다. chartBundle 에는 빈 스텁으로 실리고 라이브가 덮는다.',
@@ -105,6 +131,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: 'mode',
     mergeRule: 'segment-filtered',
+    todaySource: 'bundle',
     inChartBundle: true,
     cacheKind: 'fill',
     note: 'mode 로만 갈린다. chartBundle 에는 빈 스텁으로 실리고 라이브가 덮는다.',
@@ -117,6 +144,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: null,
     mergeRule: 'spread',
+    todaySource: 'none',
     inChartBundle: true,
     cacheKind: null,
     note: '백엔드가 상시 빈 값을 넣는다 — mode=full 퇴역(2026-07-08)의 잔재다.',
@@ -129,6 +157,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: null,
     mergeRule: 'spread',
+    todaySource: 'none',
     inChartBundle: true,
     cacheKind: null,
     note: '백엔드가 상시 빈 값을 넣는다 — mode=full 퇴역(2026-07-08)의 잔재다.',
@@ -141,6 +170,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: null,
     mergeRule: 'date-filtered',
+    todaySource: 'none',
     inChartBundle: false,
     cacheKind: null,
     note: '델타 병합 규칙은 있는데 chartBundle 반환 목록에는 없다 — 캔들 경로에서 소실된다.',
@@ -153,6 +183,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: null,
     mergeRule: 'date-filtered',
+    todaySource: 'none',
     inChartBundle: false,
     cacheKind: null,
     note: '델타 병합 규칙은 있는데 chartBundle 반환 목록에는 없다 — 캔들 경로에서 소실된다.',
@@ -165,6 +196,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: null,
     mergeRule: 'date-filtered',
+    todaySource: 'none',
     inChartBundle: true,
     cacheKind: null,
     note: '',
@@ -177,6 +209,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: true,
     backendGate: 'include_ask_peaks',
     mergeRule: 'date-filtered',
+    todaySource: 'downstream',
     inChartBundle: true,
     cacheKind: 'ask_peak',
     note: '',
@@ -189,6 +222,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: true,
     backendGate: 'include_bid_peaks',
     mergeRule: 'date-filtered',
+    todaySource: 'downstream',
     inChartBundle: true,
     cacheKind: 'bid_peak',
     note: '',
@@ -201,6 +235,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: true,
     backendGate: 'include_depth_heatmap',
     mergeRule: 'unfiltered',
+    todaySource: 'bundle',
     inChartBundle: true,
     cacheKind: 'depth',
     note: '',
@@ -213,6 +248,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: true,
     backendGate: 'include_depth_delta',
     mergeRule: 'unfiltered',
+    todaySource: 'separate-field',
     inChartBundle: true,
     cacheKind: 'depth_delta',
     note: '',
@@ -225,6 +261,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: 'include_wall_surge',
     mergeRule: 'unfiltered',
+    todaySource: 'none',
     inChartBundle: false,
     cacheKind: 'wall_surge',
     note: '축 4개가 빈다. 빌더는 wall_surge_enabled 파라미터를 받지만 routes.py 가 전달하지 않아 HTTP 로 도달 불가이고, 그래서 프론트에도 요청 옵션·캐시 키 축이 없다. chartBundle 반환 목록에도 없어 useLiveBundle 이 사후 대입한다. 토글을 살릴지 지울지가 미결이다.',
@@ -237,6 +274,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: true,
     backendGate: 'inline',
     mergeRule: 'segment-filtered',
+    todaySource: 'none',
     inChartBundle: true,
     cacheKind: 'broker_late',
     note: '게이트가 include_* 변수가 아니라 인라인 조건이다.',
@@ -249,6 +287,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: false,
     backendGate: null,
     mergeRule: 'spread',
+    todaySource: 'bundle',
     inChartBundle: true,
     cacheKind: null,
     note: '백엔드가 상시 빈 값을 넣는다 — mode=full 퇴역(2026-07-08)의 잔재다.',
@@ -261,6 +300,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: true,
     backendGate: 'include_trade_volume_pocs',
     mergeRule: 'date-filtered',
+    todaySource: 'downstream',
     inChartBundle: true,
     cacheKind: 'poc',
     note: '',
@@ -273,6 +313,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: true,
     backendGate: 'inline',
     mergeRule: 'date-filtered',
+    todaySource: 'none',
     inChartBundle: true,
     cacheKind: 'vdist',
     note: '게이트가 bool 토글이 아니라 bins 의 존재다 — bins 를 null 로 두면 꺼진다. 그래서 같은 자리의 trade_volume_poc_enabled 와 비대칭이다.',
@@ -285,6 +326,7 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     placeholderCompatible: true,
     backendGate: 'include_program_trade',
     mergeRule: 'segment-filtered',
+    todaySource: 'chart-bundle',
     inChartBundle: true,
     cacheKind: null,
     note: '옵션 슬라이스 중 유일하게 과거일 캐시 kind 가 없다.',

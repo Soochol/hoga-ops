@@ -46,6 +46,12 @@ _REGISTRY = _REPO_ROOT / "frontend/src/api/rangeSlices.ts"
 _RANGE_REQUEST = _REPO_ROOT / "frontend/src/api/rangeRequest.ts"
 _RANGE_TS = _REPO_ROOT / "frontend/src/api/range.ts"
 _BUILD_LIVE_BUNDLE = _REPO_ROOT / "frontend/src/live/buildLiveBundle.ts"
+_USE_LIVE_BUNDLE = _REPO_ROOT / "frontend/src/live/useLiveBundle.ts"
+_FRONTEND_SRC = _REPO_ROOT / "frontend/src"
+
+# 캔들 경로 번들을 담는 식별자들. ``todaySource == 'bundle'`` 인 필드를 여기서 읽으면
+# 에러 없이 **조용히 과거분만** 얻는다(#719).
+_CANDLE_PATH_IDENTIFIERS = ("cb", "chartBundle", "stockChartBundle", "workareaChartBundle")
 _ROUTES = _REPO_ROOT / "hoga/api/routes.py"
 
 # ``RangeBundle`` 의 스칼라 필드 — 슬라이스가 아니다(ADR-0013 의 범위 식별자).
@@ -125,6 +131,7 @@ def _registry() -> list[dict[str, str | int | bool | None]]:
                     "placeholderCompatible",
                     "backendGate",
                     "mergeRule",
+                    "todaySource",
                     "inChartBundle",
                     "cacheKind",
                     "note",
@@ -254,6 +261,62 @@ def test_chart_bundle_membership_matches_the_builder() -> None:
             f"{field}: buildChartBundle 반환 목록 등장 여부가 등록({expected})과 실제({present})에서 "
             "다르다. 캔들 경로 번들에서 빠지면 '응답엔 있고 화면엔 없는' 형태가 된다(#1333)."
         )
+
+
+def test_today_source_bundle_matches_the_live_overlay_assembly() -> None:
+    """``todaySource: 'bundle'`` 인 필드가 정확히 `bundle` 조립부에서 라이브를 얹는 것들인가.
+
+    `useLiveBundle` 은 같은 타입의 번들을 둘 돌려준다 — `chartBundle`(SSE 틱에 참조가
+    안 바뀌는 캔들 경로용)과 `bundle`(거기에 라이브를 얹은 것). **성능 분기지 데이터
+    분기가 아니라서**, 라이브가 필요한 필드를 캔들 경로에서 뽑으면 에러 없이 조용히
+    과거분만 얻는다. 그 목록이 코드와 어긋나면 아래 금지 스캔도 함께 빗나간다.
+    """
+    text = _strip_ts_comments(_USE_LIVE_BUNDLE.read_text(encoding="utf-8"))
+    block = _balanced_block(text, "const bundle = useMemo", "{")
+    for entry in _registry():
+        field, source = entry["field"], entry["todaySource"]
+        present = _declares(block, str(field))
+        if source == "bundle":
+            assert present, (
+                f"{field}: 등록은 todaySource='bundle' 인데 useLiveBundle 의 bundle 조립부에 없다. "
+                "라이브를 얹지 않는다면 등록을 실제 값으로 고친다."
+            )
+        else:
+            assert not present, (
+                f"{field}: 등록은 todaySource={source!r} 인데 bundle 조립부가 이 필드를 덮어쓴다 — "
+                "라이브가 얹히고 있으므로 등록은 'bundle' 이어야 한다."
+            )
+
+
+def test_bundle_only_fields_are_not_read_from_the_candle_path() -> None:
+    """``todaySource: 'bundle'`` 인 필드를 캔들 경로 식별자로 읽는 곳이 없는가.
+
+    **이 가드는 이름으로 판정한다.** 캔들 경로 번들이 다른 이름의 변수에 담기면(예:
+    ``const base = stockChartBundle ?? stockBundle``) 조용히 무력해진다 — 그 한계를 알고
+    쓴다. 반대로 오탐은 없다: 목록의 이름들은 전부 캔들 경로 전용이다.
+
+    ``useLiveBundle.ts`` 는 제외한다 — 거기가 **병합을 정의하는 곳**이라
+    ``mergeDepthHeatmapToday(chartBundle.depth_heatmap, …)`` 처럼 캔들 경로에서 읽는 것이
+    정당하다(그 읽기가 곧 병합의 입력이다).
+    """
+    fields = [str(e["field"]) for e in _registry() if e["todaySource"] == "bundle"]
+    assert fields, "todaySource='bundle' 인 슬라이스가 하나도 없다 — 등록이나 파서를 의심할 것"
+    pattern = re.compile(
+        r"\b(" + "|".join(_CANDLE_PATH_IDENTIFIERS) + r")\s*\??\.\s*(" + "|".join(fields) + r")\b"
+    )
+    offenders: list[str] = []
+    for path in sorted(_FRONTEND_SRC.rglob("*.ts*")):
+        if ".test." in path.name or path == _USE_LIVE_BUNDLE:
+            continue
+        text = _strip_ts_comments(path.read_text(encoding="utf-8"))
+        for match in pattern.finditer(text):
+            line = text[: match.start()].count("\n") + 1
+            offenders.append(f"{path.relative_to(_REPO_ROOT)}:{line} → {match.group(0)}")
+    assert not offenders, (
+        "라이브 성분이 필요한 슬라이스를 캔들 경로 번들에서 읽는다 — 조용히 과거분만 얻는다(#719):\n"
+        + "\n".join(offenders)
+        + "\n병합 번들(bundle 계열)에서 읽거나, 소비처가 고르지 않도록 훅이 이미 고른 값을 내보낸다."
+    )
 
 
 def test_cache_kinds_match_kind_versions() -> None:
