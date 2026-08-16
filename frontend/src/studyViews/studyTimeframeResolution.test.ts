@@ -1,0 +1,158 @@
+import { describe, expect, it } from 'vitest';
+
+import { STUDY_DEFAULT_MINUTE_TIMEFRAME } from '../state/studyLastMinuteTimeframe';
+import {
+  resolveIndicatorPanelTimeframe,
+  resolveRememberedMinuteTimeframe,
+  resolveSelectedTimeframe,
+} from './studyTimeframeResolution';
+
+const VIEW = 'view-1';
+
+describe('resolveSelectedTimeframe — 창이 유일한 소유자다 (#1326)', () => {
+  // 우선순위를 **표로** 못 박는다. 종전엔 이 사슬이 StudyPage 본문의 인라인 표현식이라
+  // 한 단계를 확인하려면 페이지 전체를 렌더해야 했다.
+  const cases: Array<{
+    name: string;
+    window: '15m' | null;
+    tabViewId: string | null;
+    expected: string | null;
+  }> = [
+    { name: '창이 탭·로컬·저장을 전부 이긴다', window: '15m', tabViewId: VIEW, expected: '15m' },
+    { name: '창이 없으면 같은 뷰의 탭이 이긴다', window: null, tabViewId: VIEW, expected: '3m' },
+    { name: '탭이 다른 뷰를 들고 있으면 건너뛴다', window: null, tabViewId: 'other', expected: '5m' },
+  ];
+
+  for (const c of cases) {
+    it(c.name, () => {
+      expect(
+        resolveSelectedTimeframe({
+          chartWindowTimeframe: c.window,
+          activeViewId: VIEW,
+          activeTab: c.tabViewId ? { viewId: c.tabViewId, timeframe: '3m' } : null,
+          viewTimeframes: { [VIEW]: '5m' },
+          savedTimeframe: 'D',
+        }),
+      ).toBe(c.expected);
+    });
+  }
+
+  it('저장 봉은 사슬의 맨 끝이라 다른 단서가 하나도 없을 때만 이긴다', () => {
+    expect(
+      resolveSelectedTimeframe({
+        chartWindowTimeframe: null,
+        activeViewId: VIEW,
+        activeTab: null,
+        viewTimeframes: {},
+        savedTimeframe: 'D',
+      }),
+    ).toBe('D');
+  });
+
+  it('뷰가 없으면 null — 봉을 물을 대상 자체가 없다', () => {
+    expect(
+      resolveSelectedTimeframe({
+        chartWindowTimeframe: '15m',
+        activeViewId: null,
+        activeTab: null,
+        viewTimeframes: {},
+        savedTimeframe: 'D',
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('resolveRememberedMinuteTimeframe — 헤더 분봉 슬롯', () => {
+  it('창 기억이 최우선이다', () => {
+    expect(
+      resolveRememberedMinuteTimeframe({
+        chartWindowLastMinute: '15m',
+        activeViewId: VIEW,
+        rememberedMinuteTimeframes: { [VIEW]: '5m' },
+        savedTimeframe: '1m',
+      }),
+    ).toBe('15m');
+  });
+
+  it('창 기억이 없으면 뷰별 로컬 기억', () => {
+    expect(
+      resolveRememberedMinuteTimeframe({
+        chartWindowLastMinute: null,
+        activeViewId: VIEW,
+        rememberedMinuteTimeframes: { [VIEW]: '5m' },
+        savedTimeframe: '1m',
+      }),
+    ).toBe('5m');
+  });
+
+  it('저장 봉이 분봉이면 그것을 쓴다', () => {
+    expect(
+      resolveRememberedMinuteTimeframe({
+        chartWindowLastMinute: null,
+        activeViewId: VIEW,
+        rememberedMinuteTimeframes: {},
+        savedTimeframe: '1m',
+      }),
+    ).toBe('1m');
+  });
+});
+
+// ── 이번 작업의 인수 기준 ──────────────────────────────────────────────────────
+//
+// 이 결함은 **무증상이었다** — 지표 프로필이 `minute|D|W|M` 네 버킷으로 접혀
+// `'1m'`↔`'3m'` 이 지표 스코프에서는 같은 값이 된다. 무증상 결함을 고칠 때 가장 위험한
+// 것은 **고쳤는지 아닌지 아무도 모른다**는 점이다: 기존 테스트는 전에도 통과했고 앞으로도
+// 통과한다. 그래서 끝값을 **값으로 직접** 잰다.
+describe('아무 단서가 없을 때의 끝값은 한 값이다', () => {
+  it('분봉 슬롯 — 뷰가 있든 없든 같은 상수로 떨어진다', () => {
+    // 종전엔 여기가 갈렸다: 뷰가 있으면 `'1m'`, 없으면 `'3m'`. 같은 질문의 두 답이었다.
+    const withView = resolveRememberedMinuteTimeframe({
+      chartWindowLastMinute: null,
+      activeViewId: VIEW,
+      rememberedMinuteTimeframes: {},
+      savedTimeframe: 'D', // 분봉이 아니라 사슬 끝까지 간다
+    });
+    const withoutView = resolveRememberedMinuteTimeframe({
+      chartWindowLastMinute: null,
+      activeViewId: null,
+      rememberedMinuteTimeframes: {},
+      savedTimeframe: null,
+    });
+    expect(withView).toBe(STUDY_DEFAULT_MINUTE_TIMEFRAME);
+    expect(withoutView).toBe(STUDY_DEFAULT_MINUTE_TIMEFRAME);
+    expect(withView).toBe(withoutView);
+  });
+
+  it('지표 패널 봉 — 끝값이 같은 상수다', () => {
+    expect(
+      resolveIndicatorPanelTimeframe({
+        readySavedTimeframe: null,
+        selectedTimeframe: null,
+        activeTab: null,
+      }),
+    ).toBe(STUDY_DEFAULT_MINUTE_TIMEFRAME);
+  });
+});
+
+describe('resolveIndicatorPanelTimeframe — 로딩 구간도 창을 먼저 읽는다 (#1326)', () => {
+  it('ready 면 저장 봉을 그대로 쓴다', () => {
+    expect(
+      resolveIndicatorPanelTimeframe({
+        readySavedTimeframe: 'D',
+        selectedTimeframe: '15m',
+        activeTab: { viewId: VIEW, timeframe: '3m' },
+      }),
+    ).toBe('D');
+  });
+
+  it('로딩 구간엔 selected(=창 우선 사슬)가 탭을 이긴다', () => {
+    // 탭을 먼저 읽으면 아직 되받아쓰기 전인 저장 봉이 지표 버킷으로 새어 나간다.
+    expect(
+      resolveIndicatorPanelTimeframe({
+        readySavedTimeframe: null,
+        selectedTimeframe: '15m',
+        activeTab: { viewId: VIEW, timeframe: '3m' },
+      }),
+    ).toBe('15m');
+  });
+});
