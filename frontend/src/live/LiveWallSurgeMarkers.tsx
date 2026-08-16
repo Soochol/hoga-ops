@@ -40,38 +40,29 @@ export function snapEventMsToCandle(tMs: number, candles: readonly Candle[]): nu
 /**
  * 이벤트를 마커 점으로 옮긴다(순수).
  *
- * **라벨은 상위 `labelCount` 건만** 붙인다(증가량 기준). 당일 최대벽은 전건 라벨을
- * 달지만 그건 선분이 몇 개일 때 얘기고, 하루 수십 건이 겹치면 라벨끼리 충돌한다 —
- * 나머지는 마커만 찍고 호버 툴팁이 맡는다(설계 문서 §4.2, 사용자 결정).
+ * **라벨 선정은 여기서 하지 않는다** — 전건에 `label`·`jump` 를 채워 보내고 고르는 일은
+ * 렌더러가 맡는다(`pickLabelledIndices`). 라벨을 제한하는 이유가 화면 위 충돌이라
+ * 기준도 "화면에 든 것 중 상위 N" 이어야 하는데, 그 판정은 좌표가 나오는 draw 시점에만
+ * 할 수 있다. build 단계에서 로드된 전 기간을 놓고 고르면 5거래일을 로드하고 하루만 볼 때
+ * 상위 N 이 다른 날에 몰려 화면엔 한 개도 안 뜬다.
  */
 export function buildWallSurgeMarkers(
   events: readonly WallSurgeEventWire[],
   candles: readonly Candle[],
   axis: VirtualAxis,
-  labelCount: number,
 ): WallSurgeMarkerPoint[] {
-  if (events.length === 0) return [];
-  // 라벨 대상은 증가량 상위 N — 원본 순서를 건드리지 않도록 인덱스만 뽑는다.
-  const labelled = new Set(
-    events
-      .map((e, i) => ({ i, jump: e.jump }))
-      .sort((a, b) => b.jump - a.jump)
-      .slice(0, Math.max(0, labelCount))
-      .map((x) => x.i),
-  );
-  const out: WallSurgeMarkerPoint[] = [];
-  events.forEach((e, i) => {
+  return events.map((e) => {
     const snapped = snapEventMsToCandle(e.t_ms, candles) ?? e.t_ms;
-    out.push({
+    return {
       time: (axis.toVirtual(snapped) / 1000) as Time,
       price: e.price,
       side: e.side,
       outcome: e.outcome ?? null,
       reappear: e.kind === 'reappear',
-      label: labelled.has(i) ? formatQtyCompact(e.qty) : undefined,
-    });
+      jump: e.jump,
+      label: formatQtyCompact(e.qty),
+    };
   });
-  return out;
 }
 
 type Props = {
@@ -114,7 +105,7 @@ function LiveWallSurgeMarkersImpl({ paneSeries, events, candles, axis }: Props):
   useEffect(() => {
     const prim = primRef.current;
     if (!prim) return;
-    prim.setData(enabled ? buildWallSurgeMarkers(events, candles, axis, labelCount) : []);
+    prim.setData(enabled ? buildWallSurgeMarkers(events, candles, axis) : [], labelCount);
   }, [events, candles, axis, enabled, labelCount]);
 
   return null;

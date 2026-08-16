@@ -36,6 +36,12 @@ import {
  * 라벨은 **상위 몇 건만** 들고 나머지는 마커만 찍는다(호버 툴팁이 나머지를 맡는다).
  * 당일 최대벽은 전건 라벨을 달지만 그건 선분이 몇 개일 때 얘기고, 하루 수십 건이
  * 겹치면 라벨끼리 충돌한다.
+ *
+ * ⚠ 그 "상위 N" 은 **화면에 든 것 중** 상위 N 이다. 로드된 전 기간에서 고르면 설정한
+ * 개수와 눈에 보이는 개수가 어긋난다 — 5거래일을 로드하고 하루만 보면 상위 4건이 다른
+ * 날에 몰려 화면엔 한 개도 안 뜬다(실측). 라벨을 제한하는 이유가 **화면 위 충돌**이므로
+ * 기준도 화면이어야 한다. 그래서 선정이 build 단계가 아니라 여기(draw)에 있다 — 팬·줌
+ * 마다 draw 가 다시 도니 별도 구독 없이 따라온다.
  */
 export interface WallSurgeMarkerPoint {
   /** axis 가상시(초) — 캔들 버킷에 스냅된 값이어야 마커가 1캔들 밀리지 않는다. */
@@ -47,8 +53,33 @@ export interface WallSurgeMarkerPoint {
   outcome: 'consumed' | 'broken' | 'pulled' | 'held' | null;
   /** 재등장이면 점선 테두리. */
   reappear: boolean;
-  /** 있으면 마커 옆에 상시 표시(상위 몇 건만 채워 보낸다). */
-  label?: string;
+  /** 라벨 우선순위(증가량). 화면 안 마커끼리 겨룬다. */
+  jump: number;
+  /** 라벨 문구. **선정된 것만** 그려지므로 전건에 채워 보낸다. */
+  label: string;
+}
+
+/**
+ * 화면에 든 마커(`visible`) 중 증가량 상위 `labelCount` 건의 인덱스.
+ *
+ * 동점은 `time` 오름차순으로 가른다 — 팬 중 같은 두 마커가 프레임마다 자리를 바꾸면
+ * 라벨이 깜빡인다. 입력 순서는 건드리지 않는다(호출부가 인덱스로 되찾는다).
+ */
+export function pickLabelledIndices(
+  markers: readonly WallSurgeMarkerPoint[],
+  visible: readonly number[],
+  labelCount: number,
+): Set<number> {
+  if (labelCount <= 0) return new Set();
+  if (visible.length <= labelCount) return new Set(visible);
+  return new Set(
+    [...visible]
+      .sort((a, b) => {
+        const d = markers[b].jump - markers[a].jump;
+        return d !== 0 ? d : Number(markers[a].time) - Number(markers[b].time);
+      })
+      .slice(0, labelCount),
+  );
 }
 
 const TOKENS = {
@@ -63,6 +94,10 @@ const HALF_W_PX = 5; // 삼각형 반너비
 const HEIGHT_PX = 8; // 삼각형 높이
 const GAP_PX = 3; // 가격선과 삼각형 꼭짓점 사이
 const HELD_ALPHA = 0.4;
+
+function clamp(v: number, lo: number, hi: number): number {
+  return hi < lo ? lo : Math.min(Math.max(v, lo), hi);
+}
 
 /** 결말별 채움/외곽선 결정 — 색은 측이 정하고 여기서는 **채우는지 여부**만 정한다. */
 function fillStyleFor(
@@ -101,12 +136,29 @@ class WallSurgeMarkersRenderer implements IPrimitivePaneRenderer {
       const height = HEIGHT_PX * vr;
       const gap = GAP_PX * vr;
 
-      for (const m of markers) {
+      // 1패스 — 좌표를 잡고 **화면 밖을 떨군다**. `timeToCoordinate` 의 null 은 축
+      // 밖이라는 뜻이지 화면 밖이라는 뜻이 아니라(가시 범위 밖도 좌표가 나온다),
+      // 캔버스 경계로 직접 판정해야 라벨 자리를 안 보이는 마커에 뺏기지 않는다.
+      const placed = new Map<number, { cx: number; cy: number }>();
+      const visible: number[] = [];
+      markers.forEach((m, i) => {
         const x = timeScale.timeToCoordinate(m.time);
         const y = series.priceToCoordinate(m.price);
-        if (x === null || y === null) continue;
+        if (x === null || y === null) return;
         const cx = x * hr;
         const cy = y * vr;
+        if (cx < 0 || cx > scope.bitmapSize.width) return;
+        if (cy < 0 || cy > scope.bitmapSize.height) return;
+        placed.set(i, { cx, cy });
+        visible.push(i);
+      });
+
+      // 2패스 — 화면 안에서만 라벨을 겨루고 그린다.
+      const labelled = pickLabelledIndices(markers, visible, this._source.labelCount());
+
+      for (const i of visible) {
+        const m = markers[i];
+        const { cx, cy } = placed.get(i)!;
         const sideColor = m.side === 'ask' ? t.ask : t.bid;
         const { fill, stroke, alpha } = fillStyleFor(m.outcome, sideColor, t.undecided);
 
@@ -134,8 +186,9 @@ class WallSurgeMarkersRenderer implements IPrimitivePaneRenderer {
         ctx.setLineDash([]);
         ctx.restore();
 
-        if (m.label) {
-          this._drawLabel(ctx, m, cx, baseY, hr, vr, sideColor, t);
+        // `label` 은 전건에 차 있다 — 게이트는 **선정 여부**다.
+        if (labelled.has(i)) {
+          this._drawLabel(ctx, m, cx, baseY, hr, vr, sideColor, t, scope.bitmapSize.height);
         }
       }
     });
@@ -150,17 +203,26 @@ class WallSurgeMarkersRenderer implements IPrimitivePaneRenderer {
     vr: number,
     sideColor: string,
     t: Record<string, string>,
+    paneHeight: number,
   ): void {
     const font = LABEL_FONT_PX * vr;
     ctx.save();
     ctx.font = `${font}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const w = ctx.measureText(m.label!).width;
+    const w = ctx.measureText(m.label).width;
     const padX = LABEL_BOX_X_PAD_PX * hr;
     const padY = LABEL_BOX_Y_PAD_PX * vr;
     // 삼각형 몸통 바깥쪽에 칩을 붙인다 — 매도는 더 위로, 매수는 더 아래로.
-    const chipCy = m.side === 'ask' ? baseY - font : baseY + font;
+    // 다만 pane 경계를 넘으면 **안쪽으로 물린다**: 최저가 근처 매수벽은 칩이 아래로
+    // 밀려 통째로 잘리는데, 그러면 "라벨 N 개" 약속이 개수부터 어긋난다
+    // (`AskPeakSegmentsPrimitive` 의 `maxBaselineY` 와 같은 이유·같은 처방).
+    const half = font / 2 + padY;
+    const chipCy = clamp(
+      m.side === 'ask' ? baseY - font : baseY + font,
+      half,
+      paneHeight - half,
+    );
     ctx.fillStyle = t.chipBg;
     ctx.strokeStyle = t.chipBorder;
     ctx.lineWidth = Math.max(1, hr);
@@ -171,7 +233,7 @@ class WallSurgeMarkersRenderer implements IPrimitivePaneRenderer {
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = sideColor;
-    ctx.fillText(m.label!, cx, chipCy);
+    ctx.fillText(m.label, cx, chipCy);
     ctx.restore();
   }
 }
@@ -192,6 +254,7 @@ export class WallSurgeMarkersPrimitive implements ISeriesPrimitive<Time> {
   private _chart: IChartApi | null = null;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _markers: readonly WallSurgeMarkerPoint[] = [];
+  private _labelCount = 0;
   private readonly _paneViews: WallSurgeMarkersPaneView[];
   private _requestUpdate?: () => void;
 
@@ -211,9 +274,14 @@ export class WallSurgeMarkersPrimitive implements ISeriesPrimitive<Time> {
     this._requestUpdate = undefined;
   }
 
-  setData(markers: readonly WallSurgeMarkerPoint[]): void {
+  setData(markers: readonly WallSurgeMarkerPoint[], labelCount = 0): void {
     this._markers = markers;
+    this._labelCount = labelCount;
     this._requestUpdate?.();
+  }
+
+  labelCount(): number {
+    return this._labelCount;
   }
 
   chartApi(): IChartApi | null {
