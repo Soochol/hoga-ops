@@ -110,12 +110,27 @@ export type PaneSpec<Ctx = void> = {
    *  (총잔량 매수/매도 vs 체결강도 매수/매도). Single-cell panes omit it — the
    *  cell label already names the indicator (거래량, 외국인 순매수량). */
   legendTitle?: string;
-  /** /live bundle-split routing (2026-06-09): `true` = this pane's projectors
-   * read SSE-derived hoga series (quote_ratio / fill_strength), so LiveChartRoot
-   * feeds it the live `bundle`. Unset/false = candle-path pane fed the stable
-   * `chartBundle` (no re-setData on an SSE tick). Inert outside /live. */
-  live?: boolean;
+  /** `/live` 번들 분리(2026-06-09) 라우팅 — **이 pane 이 어느 그릇을 받는가**.
+   *
+   * 종전엔 `live?: boolean` 이었는데 표현력이 모자라, 정작 어느 pane 이 호가 그릇인지
+   * ratio 그릇인지는 `LiveChartRoot` 가 `spec.name` 으로 다시 분기해야 했다. 그릇을
+   * 여기서 **선언**하면 새 pane 을 추가할 때 그 파일 한 칸으로 정해진다.
+   *
+   * 어느 값을 쓸지는 이 pane 의 projector 가 읽는 슬라이스의 `todaySource` 로 정한다
+   * (`frontend/src/api/rangeSlices.ts`) — `'bundle'` 인 슬라이스를 읽으면 캔들 그릇으로는
+   * 조용히 과거분만 얻는다.
+   *
+   * - `candle`(기본) — 안정 참조 `chartBundle`. SSE 틱에 re-setData 가 없다.
+   * - `hoga` — 호가 pane 그릇(`quote_ratio`·`fill_strength` 를 읽는 pane).
+   * - `ratio` — 호가비 pane 그릇(호가 그릇 위에 ratio 전용 폴백이 한 겹 더 있다).
+   * - `live` — 라이브 성분이 얹힌 전체 번들.
+   *
+   * `/live` 밖에서는 무의미하다(단일 번들만 넘어온다). */
+  bundleKind?: PaneBundleKind;
 };
+
+/** pane 이 받을 번들의 종류. 위 `PaneSpec.bundleKind` 주석 참조. */
+export type PaneBundleKind = 'candle' | 'hoga' | 'ratio' | 'live';
 
 type Props<Ctx> = {
   chart: IChartApi;

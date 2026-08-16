@@ -15,7 +15,7 @@ import {
   CHART_TIMESCALE_OPTIONS,
 } from '../util/chartScale';
 import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
-import RangeSeriesPane, { type SeriesLegendMeta } from '../chart/RangeSeriesPane';
+import RangeSeriesPane, { type PaneBundleKind, type SeriesLegendMeta } from '../chart/RangeSeriesPane';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 import { usePaneFolding } from './usePaneFolding';
@@ -465,6 +465,41 @@ export function LiveChartRoot({
   // `bundle` — so an SSE tick (which only changes the hoga overlay) leaves the
   // candle path's props referentially identical.
   const cb = chartBundle ?? bundle;
+  // 라이브 성분이 얹힌 그릇. `bundle` 이 없는 pre-split 호출자·테스트에서만 캔들 그릇으로
+  // 떨어진다. **`todaySource: 'bundle'` 인 슬라이스**(quote_ratio · fill_strength ·
+  // price_level_hits · depth_heatmap)는 반드시 이 계열에서 읽는다 — 캔들 그릇으로 읽으면
+  // 에러 없이 조용히 과거분만 얻는다(#719). 축은 `frontend/src/api/rangeSlices.ts` 에
+  // 선언돼 있고 `tests/unit/api/test_range_slice_registry_contract.py` 가 그걸 강제한다.
+  //
+  // 종전 이름은 `hogaBundle` 이었는데 훅이 반환하는 `hogaBundle`(호가 pane 전용, 아래
+  // `hogaPaneBundle` prop 으로 들어온다)과 **같은 이름 다른 것**이었다. 실제로 이 값은
+  // 호가와 무관한 PriceLevelDotsOverlay 도 쓴다.
+  const liveBundle = bundle ?? cb;
+  // 호가 pane 전용 그릇 — 훅이 sidecar 착지에 re-key 되지 않도록 따로 memo 한 것이다.
+  const paneHogaBundle = hogaPaneBundle ?? liveBundle;
+  // 호가비 pane 은 그 위에 전용 폴백이 한 겹 더 있다.
+  const paneRatioBundle = ratioBundle ?? paneHogaBundle;
+  /** pane 이 받을 그릇 — **스펙의 `bundleKind` 가 정한다**(`chart/RangeSeriesPane.tsx`).
+   *
+   *  종전엔 이 자리에서 `spec.name` 으로 4갈래 분기했다. 그래서 새 pane 을 추가할 때
+   *  이 조건식을 읽고 자기 이름을 어디에 끼울지 판단해야 했다 — 이제 pane 파일 한 칸이다.
+   *
+   *  `volume` 만 예외다: 누적 체결강도 라인이 켜졌을 때만 라이브가 필요해 **상수로 접히지
+   *  않는다**. 그 라인의 데이터 함수도 같은 prefs 키로 게이트되므로(`projectors/volume.ts`)
+   *  조건이 둘로 갈리지 않는다. */
+  const bundleForPane = (
+    spec: { name: string; bundleKind?: PaneBundleKind },
+    candlePath: RangeBundle,
+  ): RangeBundle =>
+    spec.name === 'volume'
+      ? (volumeFillStrengthCumulative ? (liveBundle ?? candlePath) : candlePath)
+      : spec.bundleKind === 'ratio'
+        ? (paneRatioBundle ?? candlePath)
+        : spec.bundleKind === 'hoga'
+          ? (paneHogaBundle ?? candlePath)
+          : spec.bundleKind === 'live'
+            ? (liveBundle ?? candlePath)
+            : candlePath;
   // 창 간 크로스헤어 동기화가 KST 날짜 → 캔들 ts 다리를 놓는 재료. `D` 가 아니면 빈
   // 배열이라 비용이 없다. `close` 는 크로스헤어 가로선 높이로 쓴다.
   //
@@ -477,9 +512,6 @@ export function LiveChartRoot({
       : []),
     [cb, timeframe],
   );
-  const hogaBundle = bundle ?? cb;
-  const paneHogaBundle = hogaPaneBundle ?? hogaBundle;
-  const paneRatioBundle = ratioBundle ?? paneHogaBundle;
   // 호가 pane 이 빈 **이유**(#1133). prop 을 먼저 보고 번들로 폴백하는 순서가 요점이다 —
   // 번들은 캔들이 없으면 통째로 null 이라, 정작 "왜 비었나" 를 물어야 할 상황에서
   // 사유가 함께 사라진다(자격증명 미설정·벤더 장애). prop 은 그 그릇 밖에 있다.
@@ -2178,20 +2210,7 @@ export function LiveChartRoot({
             <RangeSeriesPane
               key={spec.name}
               chart={chart}
-              // Hoga panes get the live bundle. Candle/investor panes, and volume
-              // unless its cumulative fill-strength line is enabled, get the stable
-              // chartBundle so an SSE tick doesn't re-project the candle path.
-              bundle={
-                spec.name === 'ratio'
-                  ? (paneRatioBundle ?? cb)
-                  : (spec.name === 'quote-totals' || spec.name === 'fill-strength')
-                    ? (paneHogaBundle ?? cb)
-                    : spec.name === 'volume'
-                      ? (volumeFillStrengthCumulative ? (bundle ?? cb) : cb)
-                      : spec.live
-                        ? (bundle ?? cb)
-                        : cb
-              }
+              bundle={bundleForPane(spec, cb)}
               axis={axis}
               paneIndex={i}
               spec={spec}
@@ -2328,8 +2347,8 @@ export function LiveChartRoot({
             timeframe={timeframe}
             avoidWallLabels={highLowAvoidWallLabels}
           />
-          {isMinuteTimeframe(timeframe) && hogaBundle && (
-            <PriceLevelDotsOverlay chart={chart} bundle={hogaBundle} axis={axis} paneSeries={paneSeries} />
+          {isMinuteTimeframe(timeframe) && liveBundle && (
+            <PriceLevelDotsOverlay chart={chart} bundle={liveBundle} axis={axis} paneSeries={paneSeries} />
           )}
           <DrawingPropertyPanel scope={drawingScope} />
           {/* Day boundary lines only make sense on intraday timeframes —

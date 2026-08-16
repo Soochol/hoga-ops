@@ -58,7 +58,7 @@ describe('programTrade projector', () => {
   });
 
   it('uses the live bundle because it aligns to hoga time slots', () => {
-    expect(PROGRAM_TRADE_SPEC.live).toBe(true);
+    expect(PROGRAM_TRADE_SPEC.bundleKind).toBe('live');
   });
 
   it('maps program_trade.points to signed cumulative net-amount line data', () => {
