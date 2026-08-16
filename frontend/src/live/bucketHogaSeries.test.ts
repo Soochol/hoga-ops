@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bucketHogaSeries } from './bucketHogaSeries';
+import { bucketHogaSeries, isContinuousBook } from './bucketHogaSeries';
 import { quoteImbalance } from '../util/imbalance';
 import type { OrderbookLevel } from '../api/types';
 
@@ -296,5 +296,52 @@ describe('bucketHogaSeries', () => {
       { t: preOpen - (preOpen % BUCKET), ask_total: 0, bid_total: 0, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0 },
       { t: inSession - (inSession % BUCKET), ask_total: 22, bid_total: 12, bid_max: 12, ask_max: 22, imb_max_bid: 12, imb_max_ask: 22 },
     ]);
+  });
+});
+
+/**
+ * `isContinuousBook` 의 깊이 술어 파리티 (2026-08-16).
+ *
+ * 술어를 `lv.slice(3).some((l) => l.qty > 0)` 에서 인덱스 3부터 도는 무할당 루프로 바꿨다
+ * (틱 빈도 최내곽이라 호출당 배열 2개가 실제 비용이었다 — 그 함수의 주석에 실측이 있다).
+ * **동작이 같다는 것은 성능 수정의 전제**이므로, `slice` 와 인덱스 루프가 갈릴 수 있는
+ * 경계를 값으로 못박는다: 길이가 4 미만이면 `slice(3)` 은 빈 배열이고 루프는 한 번도 안 돈다
+ * (둘 다 false), `undefined` 는 `!!lv` 와 이른 return 이 같은 답을 낸다.
+ *
+ * 이 경계가 왜 중요한가: 마감 동시호가·VI 는 한쪽을 정확히 3레벨로 붕괴시키는데
+ * (모듈 상단 주석), 그게 이 술어가 존재하는 이유 자체다. 여기서 갈리면 "장 마감 직전
+ * 지표만 조용히 달라진다" 가 된다.
+ */
+describe('isContinuousBook — 깊이 술어 경계', () => {
+  const lvls = (qtys: number[]): OrderbookLevel[] =>
+    qtys.map((qty, i) => ({ price: 100 + i, qty }));
+  const book = (asks?: OrderbookLevel[], bids?: OrderbookLevel[]) =>
+    ({ t_ms: 1, total_ask_qty: 0, total_bid_qty: 0, asks, bids });
+
+  it('레벨 4+ 에 잔량이 있으면 연속북', () => {
+    expect(isContinuousBook(book(lvls([1, 1, 1, 5]), lvls([1, 1, 1, 5])))).toBe(true);
+  });
+
+  it('레벨 4+ 가 전부 0 이면 붕괴북 — 마감 동시호가/VI 의 모양', () => {
+    expect(isContinuousBook(book(lvls([1, 1, 1, 0]), lvls([1, 1, 1, 0])))).toBe(false);
+  });
+
+  it('길이가 3 이하면 볼 원소가 없어 붕괴북 (slice(3) 의 빈 배열과 동치)', () => {
+    expect(isContinuousBook(book(lvls([9, 9, 9]), lvls([9, 9, 9])))).toBe(false);
+    expect(isContinuousBook(book(lvls([]), lvls([])))).toBe(false);
+  });
+
+  it('한쪽만 깊으면 붕괴북 — 두 술어의 AND 다', () => {
+    expect(isContinuousBook(book(lvls([1, 1, 1, 5]), lvls([1, 1, 1, 0])))).toBe(false);
+    expect(isContinuousBook(book(lvls([1, 1, 1, 0]), lvls([1, 1, 1, 5])))).toBe(false);
+  });
+
+  it('양쪽 다 부재면 구조로 판정할 수 없어 연속북으로 본다 (총잔량 전용 경로)', () => {
+    expect(isContinuousBook(book(undefined, undefined))).toBe(true);
+  });
+
+  it('한쪽만 부재면 그 쪽이 깊이 0 이라 붕괴북', () => {
+    expect(isContinuousBook(book(lvls([1, 1, 1, 5]), undefined))).toBe(false);
+    expect(isContinuousBook(book(undefined, lvls([1, 1, 1, 5])))).toBe(false);
   });
 });

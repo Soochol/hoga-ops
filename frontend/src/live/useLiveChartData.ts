@@ -37,6 +37,7 @@ import { useLiveIndexCandles, useLiveIndexInvestorNet } from '../api/liveIndices
 import { buildIndexBundle } from './buildIndexBundle';
 import { capabilitiesForInstrument } from './liveInstrumentCapabilities';
 import { useDailyMaRevealGate } from './indicators/useDailyMaRevealGate';
+import { useWindowIndicators } from './workspace/windowView';
 
 /** 안정 빈 배열 — 매 렌더 새 [] 가 peaks 훅의 메모 deps 를 churn 하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
@@ -155,8 +156,33 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     () => liveVenueSessionBoundsMs(today, venue).open_ms,
     [today, venue],
   );
-  const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
-  const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
+  /**
+   * 라이브 스트림을 훑는 지표의 **계산 게이트**. fetch 게이트(`planLiveRangeRequest` 의
+   * `askPeaksEnabled`/`bidPeaksEnabled`/`tradeVolumePocEnabled`)와 **같은 술어**여야 한다.
+   *
+   * 종전엔 `isMinuteTimeframe` 하나뿐이라 **비대칭**이었다: 토글을 끄면 백엔드는 seed 를
+   * 안 보내는데 클라이언트는 없는 데이터를 위해 `live.ob`·`live.trade` 를 계속 훑었다.
+   * 기본값이 OFF 이고(`liveIndicatorsPersistence` 의 `=== true`) 기본 봉이 분봉이라,
+   * **최대벽·매물대를 한 번도 켠 적 없는 사용자가 매 flush(150ms)마다 이 비용을 전액**
+   * 냈다 — 화면에는 아무것도 안 그려지므로 원인을 지목할 단서가 없다. #923 이 히트맵·증감에
+   * 같은 처방을 넣으면서 이 세 지표를 빠뜨린 것이다(기각이 아니라 적용 누락).
+   *
+   * **끄는 것은 `ob`/`trade` 뿐이다.** `seeds`·`candles`·`segments` 는 그대로 흘린다 —
+   * 그래야 꺼진 상태에서도 파생값이 백엔드 래칫(`liveInitial.ask_peak_today`)과 캔들 폴백
+   * (`computeCandleVolumePocs`)으로 조립되고, `liveSaveBundle` 이 `/study` 저장 뷰로
+   * 내보내는 `ask_peaks`/`bid_peaks`/`trade_volume_pocs` 가 통째로 비지 않는다. 그 둘은
+   * 틱마다 churn 하지 않으므로 게이트의 목적(틱당 비용 제거)과 충돌하지 않는다.
+   *
+   * `hidden` 은 게이트에 넣지 않는다 — fetch 게이트가 `enabled` 만 보므로 같은 축을 유지한다
+   * (넣으면 숨김 토글이 저장 뷰의 내용을 조용히 바꾼다).
+   */
+  const { askPeakEnabled, bidPeakEnabled, tradeVolumePocEnabled } = useWindowIndicators();
+  const isMinute = isMinuteTimeframe(timeframe);
+  const askPeaksOn = isMinute && askPeakEnabled;
+  const bidPeaksOn = isMinute && bidPeakEnabled;
+  const tradeVolumePocOn = isMinute && tradeVolumePocEnabled;
+  const askPeakOb = askPeaksOn ? live.ob : EMPTY_OB_SNAPSHOTS;
+  const askPeakTrade = askPeaksOn ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const askPeakSeeds = (stockChartBundle ?? stockBundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
   const askPeakCandles = isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
   const dayAskPeaks = useDayAskPeaks(
@@ -177,8 +203,8 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     activeCode,
     liveInitial?.ask_peak_today ?? null,
   );
-  const bidPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
-  const bidPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
+  const bidPeakOb = bidPeaksOn ? live.ob : EMPTY_OB_SNAPSHOTS;
+  const bidPeakTrade = bidPeaksOn ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const bidPeakSeeds = (stockChartBundle ?? stockBundle)?.bid_peaks ?? EMPTY_BID_PEAKS;
   const bidPeakCandles = isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
   const dayBidPeaks = useDayBidPeaks(
@@ -199,14 +225,17 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     activeCode,
     liveInitial?.bid_peak_today ?? null,
   );
+  // 라이브 인자(trade·ob)만 토글로 끊는다 — candles·segments 는 봉 게이트만 따른다.
+  // `orderbooks` 는 `firstTrailingSinglePriceBookMs` 로 들어가는데, 그 함수가 창을 조기
+  // 종료 없이 두 번 완주하므로 이 훅에서 가장 비싼 항이다(위 게이트 주석 참조).
   const tradeVolumePocs = useTradeVolumePocs(
-    isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS,
+    tradeVolumePocOn ? live.trade : EMPTY_TRADE_SNAPSHOTS,
     (stockChartBundle ?? stockBundle)?.trade_volume_pocs ?? [],
     today,
     activeCode,
-    isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES,
-    isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.segments ?? []) : [],
-    isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS,
+    isMinute ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES,
+    isMinute ? ((stockChartBundle ?? stockBundle)?.segments ?? []) : [],
+    tradeVolumePocOn ? live.ob : EMPTY_OB_SNAPSHOTS,
   );
   const liveSaveBundle = useMemo<RangeBundle | null>(() => {
     if (!stockBundle) return null;
