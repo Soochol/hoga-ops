@@ -265,6 +265,18 @@ export const INDICATOR_OPS = {
     quoteTotalsAskLevelWidth: patch.lineWidth ?? cur.quoteTotalsAskLevelWidth,
     quoteTotalsAskLevelStyle: patch.lineStyle ?? cur.quoteTotalsAskLevelStyle,
   }),
+  setQuoteTotalsDayMaxLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ quoteTotalsDayMaxLineEnabled: enabled }),
+  setQuoteTotalsDayMaxBidStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4; lineStyle?: LineStyle }): Patch => ({
+    quoteTotalsDayMaxBidColor: patch.color ?? cur.quoteTotalsDayMaxBidColor,
+    quoteTotalsDayMaxBidWidth: patch.lineWidth ?? cur.quoteTotalsDayMaxBidWidth,
+    quoteTotalsDayMaxBidStyle: patch.lineStyle ?? cur.quoteTotalsDayMaxBidStyle,
+  }),
+  setQuoteTotalsDayMaxAskStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4; lineStyle?: LineStyle }): Patch => ({
+    quoteTotalsDayMaxAskColor: patch.color ?? cur.quoteTotalsDayMaxAskColor,
+    quoteTotalsDayMaxAskWidth: patch.lineWidth ?? cur.quoteTotalsDayMaxAskWidth,
+    quoteTotalsDayMaxAskStyle: patch.lineStyle ?? cur.quoteTotalsDayMaxAskStyle,
+  }),
 
   setRatioEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ ratioEnabled: enabled }),

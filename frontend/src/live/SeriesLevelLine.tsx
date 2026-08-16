@@ -15,6 +15,10 @@ type Props = {
   /** Master visibility. When false the line stays created but hidden — avoids
    *  churning the handle on a toggle flip. */
   enabled: boolean;
+  /** 라인 옆 텍스트. 같은 pane 에 성격이 다른 수평선이 여럿일 때(현재값 vs 당일 최고)
+   *  구분자 역할 — 신고가를 갱신하는 순간 두 값이 정확히 같아져 선이 포개진다.
+   *  미지정이면 '' → 종전 동작 그대로. */
+  title?: string;
 };
 
 /**
@@ -25,7 +29,7 @@ type Props = {
  * the update effect. The pane's own `priceFormat` drives the y-axis tag, so the
  * label reads in the pane's units (잔량 count / imbalance ratio) automatically.
  */
-export default function SeriesLevelLine({ series, price, color, lineWidth, lineStyle, enabled }: Props) {
+export default function SeriesLevelLine({ series, price, color, lineWidth, lineStyle, enabled, title = '' }: Props) {
   const lineRef = useRef<IPriceLine | null>(null);
 
   // Create once per series handle. Starts hidden; the update effect reveals it
@@ -42,7 +46,7 @@ export default function SeriesLevelLine({ series, price, color, lineWidth, lineS
       lineVisible: false,
       axisLabelVisible: false,
       axisLabelColor: color,
-      title: '',
+      title,
     } as PriceLineOptions);
     lineRef.current = line;
     return () => {
@@ -68,7 +72,7 @@ export default function SeriesLevelLine({ series, price, color, lineWidth, lineS
   //
   // 형제 `LiveCurrentPriceLine` 이 멀쩡한 것은 생성 옵션을 model 로 시드하기
   // 때문이다. 여기서 그 방식을 따르지 않는 이유는 옵션 조립이 두 곳으로 갈리기
-  // 때문 — #1336 이 `title` 을 update 쪽에만 추가한 것이 그 드리프트의 실례다.
+  // 때문 — 이 effect 를 값의 유일한 권위로 두고, 생성은 숨김 기본값만 잡는다.
   useEffect(() => {
     const line = lineRef.current;
     if (!series || !line) return;
@@ -84,8 +88,9 @@ export default function SeriesLevelLine({ series, price, color, lineWidth, lineS
       axisLabelColor: color,
       lineVisible: true,
       axisLabelVisible: true,
+      title,
     });
-  }, [series, show, price, color, lineWidth, lineStyle]);
+  }, [series, show, price, color, lineWidth, lineStyle, title]);
 
   return null;
 }
