@@ -249,6 +249,9 @@ interface Props {
    * 쓸모가 없다 — 자격증명 미설정·벤더 장애로 캔들이 안 오는 경우가 정확히 그렇다.
    * 미지정이면 번들에서 읽어(구 호출부·`/study` 하위호환) 동작이 이전과 같다. */
   hogaMissingDates?: readonly RangeMissingDate[];
+  /** 미캡처(`not_captured`) 날짜도 안내할 것인가. **`/study` 만 켠다** — 근거는
+   *  `hogaMissingNotice.ts` 의 `includeNotCaptured` 주석. */
+  showNotCapturedNotice?: boolean;
   /** 캔들이 없을 때의 빈 상태(#1133 후속). 판별은 `useLiveBundle` 이 한다 — 활성 캔들
    *  쿼리가 타임프레임·우회 설정에 따라 넷으로 갈려 여기서는 고를 수 없다. */
   candleEmpty?: CandleEmptyStateValue | null;
@@ -402,6 +405,7 @@ export function LiveChartRoot({
   chartBundle,
   hogaPaneBundle,
   hogaMissingDates,
+  showNotCapturedNotice = false,
   candleEmpty,
   onRetryCandles,
   ratioBundle,
@@ -486,8 +490,9 @@ export function LiveChartRoot({
         missingDates,
         venue,
         hasAnyHogaPoints: (paneHogaBundle?.quote_ratio.points.length ?? 0) > 0,
+        includeNotCaptured: showNotCapturedNotice,
       }),
-    [missingDates, paneHogaBundle?.quote_ratio.points.length, venue],
+    [missingDates, paneHogaBundle?.quote_ratio.points.length, venue, showNotCapturedNotice],
   );
   // 캔들이 없으면 **캔들 결손만** 말한다. 차트 자체가 없는데 "호가 기록 없음" 부터
   // 읽히면 무엇을 고쳐야 할지 알 수 없고, 실제로 고칠 수 있는 쪽은 캔들이다

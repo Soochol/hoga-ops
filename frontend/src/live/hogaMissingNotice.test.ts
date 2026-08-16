@@ -153,3 +153,49 @@ describe('deriveHogaMissingDetail', () => {
       .toBe('이 구간은 호가 지표를 만들 데이터가 없어 캔들만 표시됩니다.');
   });
 });
+
+describe('deriveHogaMissingNotice — /study 의 not_captured 문구', () => {
+  const notCaptured = (date: string) => ({ date, reason: 'not_captured' });
+
+  it('옵션을 켜면 미캡처를 말한다 — 한 건이면 날짜', () => {
+    expect(deriveHogaMissingNotice({
+      missingDates: [notCaptured('20260805')],
+      venue: 'KRX',
+      hasAnyHogaPoints: true,
+      includeNotCaptured: true,
+    })).toBe('08/05 미캡처');
+  });
+
+  it('여러 날이면 일수로', () => {
+    expect(deriveHogaMissingNotice({
+      missingDates: [notCaptured('20260805'), notCaptured('20260806'), notCaptured('20260807')],
+      venue: 'KRX',
+      hasAnyHogaPoints: true,
+      includeNotCaptured: true,
+    })).toBe('미캡처 3일');
+  });
+
+  it('옵션이 꺼져 있으면 종전대로 침묵한다 — /live 의 기본값', () => {
+    expect(deriveHogaMissingNotice({
+      missingDates: [notCaptured('20260805')],
+      venue: 'KRX',
+      hasAnyHogaPoints: true,
+    })).toBeNull();
+  });
+
+  it('결손이 함께 있으면 결손을 먼저 말한다 — 고칠 수 없는 쪽이 우선', () => {
+    // 이 모듈의 기존 정책과 같은 규칙이다("손상은 재캡처로 고칠 수 있고 결손은 아니다").
+    // 미캡처도 **고칠 수 있는** 부류라 결손 뒤에 선다.
+    expect(deriveHogaMissingNotice({
+      missingDates: [notCaptured('20260805'), { date: '20251218', reason: 'no_upstream_data' }],
+      venue: 'KRX',
+      hasAnyHogaPoints: true,
+      includeNotCaptured: true,
+    })).toBe('12/18 업스트림 데이터 없음');
+  });
+
+  it('미캡처의 뒷문장은 "캡처하면 채워진다" 여야 한다', () => {
+    expect(deriveHogaMissingDetail([notCaptured('20260805')]))
+      .toBe('아직 캡처하지 않은 날입니다. 캡처하면 채워집니다.');
+  });
+});

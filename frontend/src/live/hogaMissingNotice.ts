@@ -51,10 +51,15 @@ function monthDay(yyyymmdd: string): string {
 export function deriveHogaMissingDetail(
   missingDates: readonly RangeMissingDate[] | undefined,
 ): string {
-  const upstream = (missingDates ?? []).some((m) => m.reason === 'no_upstream_data');
-  return upstream
-    ? '그날은 캔들과 호가가 모두 없어 차트에서 빠집니다.'
-    : '이 구간은 호가 지표를 만들 데이터가 없어 캔들만 표시됩니다.';
+  const reasons = missingDates ?? [];
+  if (reasons.some((m) => m.reason === 'no_upstream_data')) {
+    return '그날은 캔들과 호가가 모두 없어 차트에서 빠집니다.';
+  }
+  // 미캡처만 남았다면 **행동 가능한** 상태다 — 그 점을 말해야 안내가 쓸모를 갖는다.
+  if (reasons.length > 0 && reasons.every((m) => m.reason === 'not_captured')) {
+    return '아직 캡처하지 않은 날입니다. 캡처하면 채워집니다.';
+  }
+  return '이 구간은 호가 지표를 만들 데이터가 없어 캔들만 표시됩니다.';
 }
 
 export interface HogaMissingNoticeInput {
@@ -63,6 +68,14 @@ export interface HogaMissingNoticeInput {
   /** 이 범위에 호가 지표 포인트가 **하나라도** 있나. 전 구간 결손과 일부 결손의
    *  문구가 다르다 — 일부인데 "없음" 이라고 하면 보이는 데이터와 모순된다. */
   hasAnyHogaPoints: boolean;
+  /**
+   * `not_captured` 를 말할 것인가. **`/study` 만 켠다.**
+   *
+   * 조회 구간을 사용자가 **명시적으로 정한** 화면에서만 뜻이 있다. `/live` 는 임의
+   * 종목을 탐색하는 자리라 미캡처가 정상 상태이고(실측 2026-08-16: 90일 창에서 한
+   * 종목 22일), 거기서 켜면 배너가 상시 들어와 진짜 결손이 묻힌다.
+   */
+  includeNotCaptured?: boolean;
 }
 
 /**
@@ -75,13 +88,21 @@ export function deriveHogaMissingNotice({
   missingDates,
   venue,
   hasAnyHogaPoints,
+  includeNotCaptured = false,
 }: HogaMissingNoticeInput): string | null {
   if (!missingDates || missingDates.length === 0) return null;
 
   // ⚠ 무시 사유를 **분류보다 먼저** 걷어낸다. 뒤에 두면 `not_captured` 만 담긴 목록이
   // 아래 `!absent` 분기로 떨어져 "손상" 이 뜬다 — 침묵이 아니라 오진이다.
   const relevant = missingDates.filter((m) => !IGNORED_REASONS.has(m.reason));
-  if (relevant.length === 0) return null;
+  if (relevant.length === 0) {
+    // 결손이 없고 미캡처만 남았다 — `/study` 는 여기서 말하고 `/live` 는 침묵한다.
+    if (!includeNotCaptured) return null;
+    const n = missingDates.filter((m) => m.reason === 'not_captured');
+    if (n.length === 1) return `${monthDay(n[0].date)} 미캡처`;
+    if (n.length > 1) return `미캡처 ${n.length}일`;
+    return null;
+  }
 
   // 업스트림 결손은 **가장 구체적인 사유**라 먼저 말한다. venue 결손("이 시장엔 원래
   // 없음")과 달리 특정 날짜를 지목할 수 있고, 희소해서(전체 429거래일 중 4일) 지목이
