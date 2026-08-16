@@ -40,7 +40,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 
 from hoga.api.heatmap import load_document
-from hoga.live.index_sector_rankings import _entry_groups, _load_daily_rows
+from hoga.live.index_sector_rankings import _entry_groups, _load_prev_closes
 
 log = logging.getLogger(__name__)
 
@@ -222,12 +222,12 @@ def build_group_flow(
 
     all_codes = [e.code for _, _, _, entries in groups for e in entries]
     daily_path = data_dir / "screener" / "daily_adjusted.parquet"
-    rows_by_code = _load_daily_rows(daily_path, all_codes, basis) if daily_path.exists() else {}
-    prev_close_of: dict[str, float] = {}
-    for code, rows in rows_by_code.items():
-        prev = next((r for r in reversed(rows) if r["date"] < basis), None)
-        if prev is not None and float(prev["close"]) > 0:
-            prev_close_of[code] = float(prev["close"])
+    # 코드당 1행(basis 직전 종가)만 필요하다 — 코퍼스 전 이력을 파이썬 dict 로 물질화하던
+    # `_load_daily_rows` 대신 전용 헬퍼를 쓴다(그 함수의 docstring 에 실측·주의사항).
+    # 60초 폴링 경로라 여기서 쓰는 시간이 그대로 이벤트 루프 지연이다.
+    prev_close_of: dict[str, float] = (
+        _load_prev_closes(daily_path, all_codes, basis) if daily_path.exists() else {}
+    )
 
     # venue 세그먼트가 정본이다(ADR-0140 §3). 히트맵 셀은 venue 별 시세인데 그룹
     # 헤더만 KRX 고정이면 한 화면에서 두 기준이 섞인다.

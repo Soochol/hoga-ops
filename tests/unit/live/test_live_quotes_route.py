@@ -1,3 +1,4 @@
+import asyncio
 import datetime as dt
 from datetime import datetime
 
@@ -10,6 +11,7 @@ from hoga.live import account_health, api as live_api, kis_runtime, lifecycle
 from hoga.live.api import _KST, _quote_phase, build_router
 from hoga.live.buffer import LiveBuffer
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
+from hoga.live.quote_change_resolver import QuoteChangeResolver
 from hoga.live.quote_models import Quote
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 
@@ -650,3 +652,61 @@ def test_quotes_capacity_overloaded_returns_stale_last_good(monkeypatch, tmp_pat
     assert [q["code"] for q in body["quotes"]] == ["005930", "000660"]
     assert body["quotes"][0]["stale"] is True
     assert body["quotes"][0]["stale_reason"] == "capacity_overloaded_upstream"
+
+
+# ---------------------------------------------------------------------------
+# 기준가 프라임의 **오프로딩** 배선 (트랙 3, 2026-08-16)
+#
+# 두 결함이 있었고 처방이 둘이다: (a) 종목당 DuckDB 쿼리 1건(N+1) → 배치화,
+# (b) 그 전 경로가 `async def` 인데 `to_thread` 가 없음 → 이벤트 루프 정지.
+#
+# **(a)만 고치고 (b)를 빠뜨려도 응답은 똑같이 맞고 빨라진다** — 루프를 막는 시간만
+# 남는다. 값이나 속도를 재는 어떤 단언도 그 차이를 못 본다. 그래서 여기서 재는 것은
+# "프라임이 루프 스레드 밖에서 돌았는가" 하나다: `asyncio.get_running_loop()` 은
+# 워커 스레드에서 RuntimeError 를 던지고 루프 스레드에서는 루프를 돌려준다.
+#
+# 실측(실데이터 296종목, 콜드): 1,538 ms → 37 ms. 그 1.5초가 전부 루프 위였다.
+# ---------------------------------------------------------------------------
+
+
+def _record_prime_thread(monkeypatch) -> dict:
+    seen: dict = {}
+
+    def _fake_prime(self, codes, *, today):
+        try:
+            asyncio.get_running_loop()
+            seen["on_loop"] = True
+        except RuntimeError:
+            seen["on_loop"] = False
+        seen["codes"] = list(codes)
+        seen["today"] = today
+
+    monkeypatch.setattr(QuoteChangeResolver, "prime_baselines", _fake_prime)
+    return seen
+
+
+def test_quotes_primes_baselines_off_the_event_loop(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    seen = _record_prime_thread(monkeypatch)
+    c = TestClient(_app(QUOTES, tmp_path))
+    assert c.get("/api/live/quotes", params={"codes": "005930,000660"}).status_code == 200
+    assert seen["on_loop"] is False, "prime_baselines 가 이벤트 루프 스레드에서 돌았다 — to_thread 누락"
+    assert seen["codes"] == ["005930", "000660"], "요청 코드 전량을 한 번에 넘겨야 배치가 성립한다"
+
+
+def test_tab_metrics_primes_baselines_off_the_event_loop(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    seen = _record_prime_thread(monkeypatch)
+    c = TestClient(_app(QUOTES, tmp_path))
+    assert c.get("/api/live/tab-metrics", params={"codes": "005930,000660"}).status_code == 200
+    assert seen["on_loop"] is False
+    assert seen["codes"] == ["005930", "000660"]
+
+
+def test_quotes_skips_prime_when_no_valid_codes(monkeypatch, tmp_path):
+    """유효 코드가 0개면 프라임도 없다 — 빈 요청이 디스크를 건드리지 않아야."""
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    seen = _record_prime_thread(monkeypatch)
+    c = TestClient(_app(QUOTES, tmp_path))
+    assert c.get("/api/live/quotes", params={"codes": "bogus"}).status_code == 200
+    assert "codes" not in seen

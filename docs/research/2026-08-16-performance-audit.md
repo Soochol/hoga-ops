@@ -53,10 +53,10 @@
 | 2 | ✅ **구현됨** `hasDeep` 이 호출마다 배열 2개 할당 | A-4 | CONFIRMED | 창당 0.4~1.1 ms/flush + 전 호출부 확산 | **S** | 낮음 |
 | 3 | ✅ **구현됨** 워크스페이스 `rect` 신원이 memo 를 항상 뚫음 | F-1 | CONFIRMED | 드래그·행 드롭 중 무관한 차트 창 전부 재렌더 → 0 | **S** | 낮음 |
 | 4 | ✅ **구현됨** reveal 커버가 문구 없이 4.6~11.7초 침묵 | F-2 | CONFIRMED | 종목 첫 방문마다 "고장났나" 구간 제거 | **S** | 낮음 |
-| 5 | `_load_daily_rows` 871k행 물질화 | C-1 | CONFIRMED | 60초마다 630 ms → ~120 ms (13×) | **S** | 낮음 |
+| 5 | ✅ **구현됨** `_load_daily_rows` 871k행 물질화 | C-1 | CONFIRMED | 60초마다 630 ms → ~120 ms (13×) | **S** | 낮음 |
 | 6 | 슬라이딩 축출이 prefix-guard 를 깸 | A-1 · B-1 · E-1 | CONFIRMED×3 | 잠재 최대. **선행 측정 필수** | **M/L** | 중간 |
-| 7 | `/api/live/quotes` 기준가 N+1 이 루프 위에서 | C-4 | **CONFIRMED** | **매 거래일 아침 첫 폴에 2.0~2.5초 루프 정지** → 한 자릿수 ms | S | 중간 |
-| 8 | 섹터 랭킹 당일 경로가 캐시를 전부 우회 | C-3 | WEAKENED | #5 수정의 **두 번째 수혜처** — 독립 착수 불필요 | S | 중간 |
+| 7 | ✅ **구현됨** `/api/live/quotes` 기준가 N+1 이 루프 위에서 | C-4 | **CONFIRMED** | **매 거래일 아침 첫 폴에 2.0~2.5초 루프 정지** → 한 자릿수 ms | S | 중간 |
+| 8 | 섹터 랭킹 당일 경로가 캐시를 전부 우회 | C-3 | WEAKENED | **미착수** — 노출 좁음(지수 그룹 전용 창). ~~#5 로 함께 해결~~ **아님**(2026-08-17 정정) | S | 중간 |
 | 9 | `range-merged` identity 고아 2시간 상주 | E-2 | CONFIRMED | 지표 토글 시 23 MB 급 누적 차단 | M | 낮음~중간 |
 | 10 | `manualChunks` 무력화 → 청크 이름이 거짓 | D-1 | WEAKENED | **0 바이트**. 계측 정직성 | S | 낮음 |
 | 11 | `/live` 내부 lazy 경계 0개 | D-2 | WEAKENED | 초기 로드 −33.2 KB raw / −9 KB gzip | M | 낮음 |
@@ -346,8 +346,13 @@ def _load_prev_closes(path, codes, basis) -> dict[str, float]:
 > `live/workspace/SectorRankingWindow.tsx:41` 하나뿐이고, 그 창은 `state/workspace.ts:332-336`
 > 의 `defaultWindows()` 에 **없으며** `WindowAddMenu.tsx:46` 이 `indexOnly: true` 로 표시하듯
 > **지수 그룹 전용**이다. 즉 사용자가 지수 그룹에서 직접 추가한 세션에서만, 그것도 거래일에만 발생한다.
-> ② **독립 항목이 아니다** — 3-1 과 **같은 함수·같은 수정**이라, 3-1 을 고치면 이쪽 비용도
-> 473 ms → 35 ms 로 함께 떨어져 캐시 우회 자체가 무해해진다. **아래 캐시 축 분리는 3-1 을 하고도
+> ② ~~독립 항목이 아니다 — 3-1 을 고치면 함께 해결된다~~ → **이 서술은 틀렸다(2026-08-17 정정).**
+> 트랙 3 구현 중 확인: 3-1 은 `heatmap_group_flow` 전용 헬퍼(`_load_prev_closes`, 코드당 **1행**)를
+> 새로 만든 것이고 `_load_daily_rows` 는 그대로 뒀다. 이 경로(`index_sector_rankings.py:405`)는
+> `_stock_from_entry` 가 `rows` 에서 **basis 당일 행과 직전 행을 둘 다** 읽으므로(`:172`, `:201`)
+> 1행 헬퍼로 대체되지 않는다 — **여전히 전 이력을 물질화한다.**
+> 따라서 착수하지 않는 근거는 「이미 해결됨」이 아니라 **오직 노출 인구가 좁다는 것**(위 ①)이다.
+> 하려면 코드당 2행(basis · 직전)을 뽑는 별도 헬퍼가 필요하고, 그건 이 항목 고유의 작업이다. **아래 캐시 축 분리는 3-1 을 하고도
 > 남는 비용이 측정될 때만 착수한다.**
 
 **증거.** `hoga/live/api.py:2339` — `date == today` 면 `intraday_prices` 는 **항상 dict** 다(오버레이가 빈 `{}` 를 줘도, 무자격이라 강등돼도). 그 결과 `hoga/live/index_sector_rankings.py:373`:

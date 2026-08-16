@@ -2459,6 +2459,27 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         code_list = [c for c in codes.split(",") if _CODE_RE.match(c)]
         if not code_list:
             return LiveQuotesResponse(phase=phase, quotes=[])
+        # 기준가를 **한 쿼리로 미리** 채운다. 안 하면 아래 모든 경로가 종목마다
+        # DuckDB 쿼리를 1건씩 태우는데(N+1), 그게 전부 `async def` 안이라 296종목이면
+        # 이벤트 루프가 초 단위로 멎는다(`--workers` 금지 구조 #998 — 단일 루프가
+        # REST·WS·스케줄러를 전부 처리한다). 자세한 계기·의미론은 `prime_baselines` 참조.
+        #
+        # **분기 앞에 둔다** — bypass·타임아웃(stale_last_good)·정상 경로가 전부
+        # `_to_live_quote` 를 지나 같은 resolver 를 쓴다(`stale_last_good` 도 부른다).
+        # 한 곳에서 데우면 셋 다 덮인다.
+        #
+        # 대가는 **한 경우의 헛일**이다: bypass 모드 + `_last_quotes` 콜드(재시작 직후)
+        # 면 `stale_last_good` 이 표본을 못 찾아 resolver 를 아예 안 부르는데 프라임은
+        # 이미 돌았다. 의도적으로 감수한다 — 파일 세대당 코드 집합 1회로 묶이고(캐시가
+        # 부재도 기억한다) 스레드풀에서 도니 루프를 막지 않는다. 반대로 분기 아래로
+        # 내리면 같은 프라임을 세 자리에 복제해야 하고, 하나 빠뜨리면 그 경로만 조용히
+        # N+1 로 돌아간다 — 이 결함이 처음 생긴 방식이 정확히 그것이다.
+        #
+        # 실패해도 무시한다: `prime_baselines` 는 실패 시 아무것도 캐시하지 않고 물러나며,
+        # 그러면 종목별 폴백이 그대로 돌아 **동작은 종전과 같다**(느릴 뿐).
+        await asyncio.to_thread(
+            quote_change_resolver.prime_baselines, code_list, today=now.date(),
+        )
         if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
             return LiveQuotesResponse(
                 phase=phase,
@@ -2544,6 +2565,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         code_list = list(dict.fromkeys(c for c in codes.split(",") if _CODE_RE.match(c)))
         if not code_list:
             return LiveTabMetricsResponse(phase=phase, metrics=[])
+        # `/quotes` 와 같은 이유·같은 자리 — 이 경로도 `fetch_and_gate → _to_live_quote`
+        # 로 같은 resolver 를 지나므로 N+1 이 그대로 있다. 캐시는 resolver 가 공유하니
+        # 어느 쪽이 먼저 데우든 나머지가 덤으로 warm 이다.
+        await asyncio.to_thread(
+            quote_change_resolver.prime_baselines, code_list, today=now.date(),
+        )
 
         quotes: list[LiveQuote] = []
         if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
