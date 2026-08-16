@@ -30,6 +30,7 @@ vi.mock('./studyReferenceQueries', async (orig) => ({
 
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import { LIVE_VENUE_OPTIONS, useLiveVenueStore } from '../state/liveVenue';
+import { STUDY_DAILY_FULL_HISTORY_FROM } from './studyDailyContext';
 import { useStudyReferenceBundles } from './useStudyReferenceBundle';
 import { FACTORY_INDICATOR_SETTINGS, type IndicatorSettings } from '../state/indicatorSettingsV2';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
@@ -483,8 +484,8 @@ describe('useStudyReferenceBundles', () => {
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(
       expect.objectContaining({ timeframe: 'D' }),
       expect.anything(),
-      // 캘린더 봉은 맥락 창을 함께 넘긴다(#1240).
-      expect.objectContaining({ from: expect.any(String), to: expect.any(String) }),
+      // 캘린더 봉은 맥락 창을 함께 넘긴다(#1240). from 은 전체 히스토리 센티널이다.
+      expect.objectContaining({ from: STUDY_DAILY_FULL_HISTORY_FROM, to: expect.any(String) }),
     );
   });
 

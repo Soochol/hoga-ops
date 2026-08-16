@@ -687,6 +687,10 @@ export function StudyPage() {
       chartBundle: model.chartBundle,
       clampEngaged: false,
       isPastCandlesLoading: false,
+      // `/study` 는 `historicalFromDate` 를 소비하는 쿼리가 없어 backfill 이 비활성
+      // 경로다(캘린더 봉은 전체 히스토리를 한 번에 받는다 — `studyDailyContextWindow`).
+      // 최좌단 캔들 왼쪽 여백으로 팬하면 `viewport_backfill_extend` perf 로그 1건이
+      // 남지만 inert(fetch 0)이니 백필 디버깅 시그널로 읽지 말 것.
       isExtending: false,
       pastDataWarnings: model.pastDataWarnings,
       restoreViewport: tabViewport ?? bandViewport ?? savedViewport,
