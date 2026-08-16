@@ -666,9 +666,6 @@ class PastIndicatorsCache:
     def get_depth(
         self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX"
     ) -> list[DepthHeatmapPoint] | object:
-        """Cached depth-heatmap points for a completed past Stock-Date, or
-        ``_CACHE_MISS``. An empty list is a valid cached result (no-data day),
-        so the sentinel — not ``[]`` — signals a miss (mirrors get_trade_volume_poc)."""
         self._sync_generation(code, date, source, venue=venue)
         key = (code, date, source, venue, bucket_ms)
         stats = self._stats["depth"]
@@ -676,34 +673,18 @@ class PastIndicatorsCache:
         if hit is not None:
             stats.record_hit()
             return hit
-        path = self._depth_path(code, date, source, bucket_ms, venue=venue)
-        if not path.exists():
-            stats.record_miss()
-            return _CACHE_MISS
-        try:
-            body = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
-            stats.record_miss()
-            return _CACHE_MISS
-        if body.get("version") != KIND_VERSIONS["depth"] or self._is_stale(
-            path, body.get("fetched_at_ms")
-        ):
-            stats.record_miss()
-            return _CACHE_MISS
-        raw = body.get("points")
-        if not isinstance(raw, list):
-            stats.record_miss()
-            return _CACHE_MISS
-        try:
-            points = [DepthHeatmapPoint.model_validate(v) for v in raw]
-        except ValueError:
-            _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
+        value = self._read_model_list_cache(
+            self._depth_path(code, date, source, bucket_ms, venue=venue),
+            DepthHeatmapPoint,
+            payload_key="points",
+            kind="depth",
+        )
+        if value is _CACHE_MISS:
             stats.record_miss()
             return _CACHE_MISS
         stats.record_disk_hit()
-        self._mem_put_depth(key, points)
-        return points
+        self._mem_put_depth(key, value)  # type: ignore[arg-type]
+        return value  # type: ignore[return-value]
 
     def store_depth(
         self,
@@ -718,19 +699,12 @@ class PastIndicatorsCache:
         stats = self._stats["depth"]
         stats.record_store()
         self._mem_put_depth((code, date, source, venue, bucket_ms), points)
-        payload = {
-            "version": KIND_VERSIONS["depth"],
-            "points": [p.model_dump(mode="json") for p in points],
-            "fetched_at_ms": int(time.time() * 1000),
-        }
-        try:
-            atomic_write_json(self._depth_path(code, date, source, bucket_ms, venue=venue), payload)
-        except OSError:
-            _log.warning(
-                "past_indicators_cache.write_failed path=%s",
-                self._depth_path(code, date, source, bucket_ms, venue=venue),
-                exc_info=True,
-            )
+        self._write_model_list_cache(
+            self._depth_path(code, date, source, bucket_ms, venue=venue),
+            points,
+            payload_key="points",
+            kind="depth",
+        )
 
     # ── depth_delta (단별 잔량 증감) ─────────────────────────────────────────────
 
@@ -740,10 +714,6 @@ class PastIndicatorsCache:
     def get_depth_delta(
         self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX"
     ) -> list[DepthDeltaPoint] | object:
-        """완료 과거일의 단별 잔량 증감 포인트, 또는 ``_CACHE_MISS``.
-
-        get_depth 와 완전 대칭 — 빈 리스트도 유효 결과(무데이터 일자)라 센티넬로
-        미스를 구분한다."""
         self._sync_generation(code, date, source, venue=venue)
         key = (code, date, source, venue, bucket_ms)
         stats = self._stats["depth_delta"]
@@ -751,34 +721,18 @@ class PastIndicatorsCache:
         if hit is not None:
             stats.record_hit()
             return hit
-        path = self._depth_delta_path(code, date, source, bucket_ms, venue=venue)
-        if not path.exists():
-            stats.record_miss()
-            return _CACHE_MISS
-        try:
-            body = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
-            stats.record_miss()
-            return _CACHE_MISS
-        if body.get("version") != KIND_VERSIONS["depth_delta"] or self._is_stale(
-            path, body.get("fetched_at_ms")
-        ):
-            stats.record_miss()
-            return _CACHE_MISS
-        raw = body.get("points")
-        if not isinstance(raw, list):
-            stats.record_miss()
-            return _CACHE_MISS
-        try:
-            points = [DepthDeltaPoint.model_validate(v) for v in raw]
-        except ValueError:
-            _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
+        value = self._read_model_list_cache(
+            self._depth_delta_path(code, date, source, bucket_ms, venue=venue),
+            DepthDeltaPoint,
+            payload_key="points",
+            kind="depth_delta",
+        )
+        if value is _CACHE_MISS:
             stats.record_miss()
             return _CACHE_MISS
         stats.record_disk_hit()
-        self._mem_put(self._mem_depth_delta, key, points, stats)
-        return points
+        self._mem_put(self._mem_depth_delta, key, value, stats)  # type: ignore[arg-type]
+        return value  # type: ignore[return-value]
 
     def store_depth_delta(
         self, code: str, date: str, source: str, bucket_ms: int, points: list[DepthDeltaPoint], *, venue: Venue = "KRX"
@@ -786,19 +740,12 @@ class PastIndicatorsCache:
         stats = self._stats["depth_delta"]
         stats.record_store()
         self._mem_put(self._mem_depth_delta, (code, date, source, venue, bucket_ms), points, stats)
-        payload = {
-            "version": KIND_VERSIONS["depth_delta"],
-            "points": [p.model_dump(mode="json") for p in points],
-            "fetched_at_ms": int(time.time() * 1000),
-        }
-        try:
-            atomic_write_json(self._depth_delta_path(code, date, source, bucket_ms, venue=venue), payload)
-        except OSError:
-            _log.warning(
-                "past_indicators_cache.write_failed path=%s",
-                self._depth_delta_path(code, date, source, bucket_ms, venue=venue),
-                exc_info=True,
-            )
+        self._write_model_list_cache(
+            self._depth_delta_path(code, date, source, bucket_ms, venue=venue),
+            points,
+            payload_key="points",
+            kind="depth_delta",
+        )
 
     # ── wall_surge (호가벽 급증) ────────────────────────────────────────────────
 
@@ -808,10 +755,6 @@ class PastIndicatorsCache:
     def get_wall_surge(
         self, code: str, date: str, source: str, *, venue: Venue = "KRX"
     ) -> list[WallSurgeEvent] | object:
-        """완료 과거일의 호가벽 급증 이벤트, 또는 ``_CACHE_MISS``.
-
-        get_depth_delta 와 대칭이되 **bucket_ms 축이 없다**(이벤트는 봉 독립).
-        빈 리스트도 유효 결과(사건 없는 날)라 센티넬로 미스를 구분한다."""
         self._sync_generation(code, date, source, venue=venue)
         key = (code, date, source, venue)
         stats = self._stats["wall_surge"]
@@ -819,34 +762,18 @@ class PastIndicatorsCache:
         if hit is not None:
             stats.record_hit()
             return hit
-        path = self._wall_surge_path(code, date, source, venue=venue)
-        if not path.exists():
-            stats.record_miss()
-            return _CACHE_MISS
-        try:
-            body = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
-            stats.record_miss()
-            return _CACHE_MISS
-        if body.get("version") != KIND_VERSIONS["wall_surge"] or self._is_stale(
-            path, body.get("fetched_at_ms")
-        ):
-            stats.record_miss()
-            return _CACHE_MISS
-        raw = body.get("events")
-        if not isinstance(raw, list):
-            stats.record_miss()
-            return _CACHE_MISS
-        try:
-            events = [WallSurgeEvent.model_validate(v) for v in raw]
-        except ValueError:
-            _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
+        value = self._read_model_list_cache(
+            self._wall_surge_path(code, date, source, venue=venue),
+            WallSurgeEvent,
+            payload_key="events",
+            kind="wall_surge",
+        )
+        if value is _CACHE_MISS:
             stats.record_miss()
             return _CACHE_MISS
         stats.record_disk_hit()
-        self._mem_put(self._mem_wall_surge, key, events, stats)
-        return events
+        self._mem_put(self._mem_wall_surge, key, value, stats)  # type: ignore[arg-type]
+        return value  # type: ignore[return-value]
 
     def store_wall_surge(
         self, code: str, date: str, source: str, events: list[WallSurgeEvent], *, venue: Venue = "KRX"
@@ -854,19 +781,12 @@ class PastIndicatorsCache:
         stats = self._stats["wall_surge"]
         stats.record_store()
         self._mem_put(self._mem_wall_surge, (code, date, source, venue), events, stats)
-        payload = {
-            "version": KIND_VERSIONS["wall_surge"],
-            "events": [e.model_dump(mode="json") for e in events],
-            "fetched_at_ms": int(time.time() * 1000),
-        }
-        try:
-            atomic_write_json(self._wall_surge_path(code, date, source, venue=venue), payload)
-        except OSError:
-            _log.warning(
-                "past_indicators_cache.write_failed path=%s",
-                self._wall_surge_path(code, date, source, venue=venue),
-                exc_info=True,
-            )
+        self._write_model_list_cache(
+            self._wall_surge_path(code, date, source, venue=venue),
+            events,
+            payload_key="events",
+            kind="wall_surge",
+        )
 
     # ── volume_distribution (체결 분포) ──────────────────────────────────────────
 
@@ -951,8 +871,13 @@ class PastIndicatorsCache:
         self, path: Path, model_type: type[_ModelT], *, payload_key: str, kind: str
     ) -> list[_ModelT] | object:
         """List-of-model 디스크 read (list 또는 ``_CACHE_MISS``). ``[]`` 는 유효
-        캐시값이라 미스와 구분된다. depth 의 인라인 read 와 동형이나 payload_key 로
-        일반화 — broker_late 가 재사용한다(depth 는 기존 경로 유지)."""
+        캐시값이라 미스와 구분된다.
+
+        종전엔 depth 계열 3종(`depth`·`depth_delta`·`wall_surge`)이 이 헬퍼와 **동형인
+        본문을 각자 인라인으로** 들고 있었다 — `get_depth_delta` 와 `get_wall_surge` 는
+        각 35줄 중 26줄이 문자 단위로 같았고, 나머지 9줄도 전부 토큰 치환이었다. 이
+        헬퍼가 그때 이미 있었는데 두 메서드가 파일에서 **헬퍼보다 앞에 정의**돼 있어
+        재사용되지 않았다. 지금은 넷 다 이 경로를 쓴다."""
         if not path.exists():
             return _CACHE_MISS
         try:
