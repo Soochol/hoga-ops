@@ -45,6 +45,31 @@ def _is_non_trading_day(date_yyyymmdd: str) -> bool:
     return is_trading_day(date_yyyymmdd) is False
 
 
+def _is_confirmed_trading_day(date_yyyymmdd: str) -> bool:
+    """**확정** 거래일인가 — 모름(None)은 False.
+
+    `_is_non_trading_day` 의 단순 부정이 **아니다.** 둘은 같은 사실을 묻지만 관대함이
+    향하는 곳이 반대다:
+
+    * `_is_non_trading_day` — 서빙 인벤토리용. 모르면 **서빙한다**(False). 정상 데이터를
+      달력 flake 로 드롭하지 않으려는 정책이다.
+    * 이 함수 — 결손 **보고**용. 모르면 **말하지 않는다**(False). 모름이 "데이터 없음" 으로
+      승격되면 시드 커버리지 뒤 구간이 통째로 결손처럼 뜬다.
+
+    두 술어가 이 모듈에 나란히 사는 이유는 `tools/range_measurement_policy.py` 때문이다 —
+    측정 진입점은 외부 달력에 닿으면 안 되므로 **이 모듈의 속성을 몽키패치**한다. 소비처가
+    `hoga.api.calendar` 를 직접 부르면 그 이음매를 우회해 hermetic 이 깨진다.
+    """
+    try:
+        if datetime.strptime(date_yyyymmdd, "%Y%m%d").weekday() >= 5:  # 토/일  # noqa: PLR2004 — 국소 비교 상수
+            return False
+    except ValueError:
+        return False
+    from hoga.api.calendar import is_trading_day  # noqa: PLC0415 — 지연 import(순환 회피)
+
+    return is_trading_day(date_yyyymmdd) is True
+
+
 def resolve_source_dir(stock_date_dir: Path, source: str, venue: Venue) -> Path:
     """Resolve the on-disk parquet dir for one source.
 

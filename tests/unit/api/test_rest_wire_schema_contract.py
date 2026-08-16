@@ -143,6 +143,13 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     ),
     # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
     "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
+    # 결손 사유. FE 는 종전에 `RangeMissingDate.reason` 의 **필드 인라인 union** 이라
+    # 파서가 원리적으로 못 봤다 — 그래서 같은 이름의 named alias 로 꺼내며 등록했다.
+    # 값이 갈리면 새 사유가 배너 문구 분기에 없어 조용히 "손상" 으로 오분류된다.
+    "MissingDateReason": (
+        frozenset(get_args(m.MissingDateReason)),
+        "frontend/src/api/types.ts",
+    ),
     # **이름이 다른 쌍이라 자동 발견이 못 본다** — 손으로 등록해야 하는 부류다
     # (ADR-0143). BE 는 `LiveErrorKind`(정책 축에서 태어난 이름), FE 는
     # `LiveWarningKind`(wire 에서 읽는 쪽 이름)다. 값이 갈리면 프론트가 모르는 kind 를

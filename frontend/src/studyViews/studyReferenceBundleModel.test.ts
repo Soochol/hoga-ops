@@ -268,3 +268,26 @@ describe('studyReferenceBundleModel — 캘린더 맥락 창(studyDailyContext)'
     expect(inputs.candles).toMatchObject({ code: null, from: null, to: null });
   });
 });
+
+describe('studyReferenceBundleModel — 결손 사유 보존', () => {
+  it('missing_dates 를 번들까지 실어 나른다', () => {
+    // #1333 계보: `/study` 번들은 **명시 복사 목록**으로 조립되므로, 목록에 없는
+    // 슬라이스는 응답에 있어도 화면에 도달하지 못한다. 결손 사유는 하필 "화면이
+    // 아무 말도 안 하는" 증상을 고치려고 만든 값이라, 여기서 떨어지면 기능 전체가
+    // 조용히 무동작이 된다.
+    const past = pastBundle();
+    past.missing_dates = [{ date: '20251218', reason: 'no_upstream_data' }];
+
+    const model = buildStudyReferenceBundleModel({
+      save: { ...save, range: { ...save.range, from_ms: 0, to_ms: 300_000 } },
+      venue: 'KRX',
+      pastBundle: past,
+      rangeCandles: [candle(1_000, 1, 2, 1, 2, 10)],
+      screenerDailyCandles: [],
+    });
+
+    expect(model.bundle?.missing_dates).toEqual([
+      { date: '20251218', reason: 'no_upstream_data' },
+    ]);
+  });
+});
