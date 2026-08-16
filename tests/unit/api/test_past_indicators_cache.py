@@ -492,6 +492,94 @@ _BROKER = [
 
 
 
+
+# ── 단일 모델 kind 표 ──────────────────────────────────────────────────────────
+#
+# `_read_model_cache` 계열(단일 모델 하나를 싣는 kind)에는 **버전 불일치·손상 파일
+# 테스트가 아예 없었다.** #1352 의 red-check 이 그것을 드러냈다 — 그 계열의 버전 검사를
+# 무력화했는데 **아무것도 실패하지 않았다.**
+#
+# `_is_stale` 은 capture meta 의 mtime 만 보므로 "데이터가 바뀌었나" 는 알아도 **"계산
+# 로직이 바뀌었나" 는 모른다**. kind 버전이 그 축을 대신하는데, 그 축을 지키는 테스트가
+# 이 계열에 없었다.
+
+
+def _sole_cache_file(tmp_path: Path) -> Path:
+    """방금 저장된 캐시 파일 하나. 파일명 규칙을 **표가 알 필요 없게** 한다 —
+    규칙이 바뀌어도 이 표는 안 깨지고, 파일이 둘이면 오히려 실패해서 표가 잘못
+    쓰였다는 것을 알려준다(경로 레이아웃 자체는 kind 별 기존 테스트가 따로 잰다)."""
+    files = sorted(_store_dir(tmp_path).glob("*.json"))
+    assert len(files) == 1, f"기대: 캐시 파일 1개, 실제: {[f.name for f in files]}"
+    return files[0]
+
+
+@dataclass(frozen=True)
+class _ModelKindCase:
+    """단일 모델을 디스크에 싣는 kind 하나."""
+
+    kind: str
+    store: Callable[[PastIndicatorsCache], None]
+    get: Callable[[PastIndicatorsCache], object]
+    expected: object
+    miss: object
+
+
+_ASK_PEAK_SAMPLE = AskPeak(date=DATE, price=71_000, qty=7, t_ms=11, max_price=71_000, max_qty=7, max_t_ms=11)
+_BID_PEAK_SAMPLE = BidPeak(date=DATE, price=70_000, qty=5, t_ms=13, max_price=70_000, max_qty=5, max_t_ms=13)
+
+# peak 은 `has_*` 가 디스크→mem 승격을 맡고 `get_*` 은 승격된 값을 재조회한다(조회 통계도
+# `has_*` 에서만 계수된다). 그래서 표의 `get` 이 둘을 함께 부른다 — 이 비대칭 자체가
+# 이 계열의 사실이라 표가 그것을 숨기지 않는다.
+_MODEL_KIND_CASES = [
+    _ModelKindCase(
+        "ask_peak",
+        lambda c: c.store_ask_peak(CODE, DATE, SRC, 60_000, _ASK_PEAK_SAMPLE),
+        lambda c: (c.has_ask_peak(CODE, DATE, SRC, 60_000), c.get_ask_peak(CODE, DATE, SRC, 60_000))[1],
+        _ASK_PEAK_SAMPLE,
+        None,
+    ),
+    _ModelKindCase(
+        "bid_peak",
+        lambda c: c.store_bid_peak(CODE, DATE, SRC, 60_000, _BID_PEAK_SAMPLE),
+        lambda c: (c.has_bid_peak(CODE, DATE, SRC, 60_000), c.get_bid_peak(CODE, DATE, SRC, 60_000))[1],
+        _BID_PEAK_SAMPLE,
+        None,
+    ),
+    _ModelKindCase(
+        "vdist",
+        lambda c: c.store_volume_distribution(CODE, DATE, SRC, 10, 70_000, 71_000, _VDIST),
+        lambda c: c.get_volume_distribution(CODE, DATE, SRC, 10, 70_000, 71_000),
+        _VDIST,
+        CACHE_MISS,
+    ),
+]
+
+_MODEL_KIND_IDS = [c.kind for c in _MODEL_KIND_CASES]
+
+
+@pytest.mark.parametrize("case", _MODEL_KIND_CASES, ids=_MODEL_KIND_IDS)
+def test_model_kind_persists_to_disk_across_instances(case: _ModelKindCase, tmp_path: Path) -> None:
+    case.store(PastIndicatorsCache(tmp_path))
+    assert case.get(PastIndicatorsCache(tmp_path)) == case.expected  # cold memory → 디스크 복원
+
+
+@pytest.mark.parametrize("case", _MODEL_KIND_CASES, ids=_MODEL_KIND_IDS)
+def test_model_kind_version_mismatch_is_a_miss(case: _ModelKindCase, tmp_path: Path) -> None:
+    case.store(PastIndicatorsCache(tmp_path))
+    path = _sole_cache_file(tmp_path)
+    body = json.loads(path.read_text(encoding="utf-8"))
+    body["version"] = KIND_VERSIONS[case.kind] + 1
+    path.write_text(json.dumps(body), encoding="utf-8")
+    assert case.get(PastIndicatorsCache(tmp_path)) is case.miss
+
+
+@pytest.mark.parametrize("case", _MODEL_KIND_CASES, ids=_MODEL_KIND_IDS)
+def test_model_kind_corrupt_file_is_a_miss(case: _ModelKindCase, tmp_path: Path) -> None:
+    case.store(PastIndicatorsCache(tmp_path))
+    _sole_cache_file(tmp_path).write_text("{not json", encoding="utf-8")
+    assert case.get(PastIndicatorsCache(tmp_path)) is case.miss
+
+
 # ── kind 파라미터화 테이블 ─────────────────────────────────────────────────────
 #
 # 아래 명제들은 **저장 메커니즘의 성질**이지 kind 고유 규칙이 아니다. 종전엔 kind 마다
