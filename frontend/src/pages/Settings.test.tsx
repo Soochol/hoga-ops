@@ -9,20 +9,12 @@ vi.mock('../config', () => ({
   loadConfig: () => Promise.resolve({ api_url: 'http://test' }),
 }));
 
-// The 데이터 수집 section reads/writes /api/live/settings via these hooks. Mock the
-// module so the toggle is deterministic and no network is touched. `liveSettingsState`
-// is mutable so individual tests can flip the wire value; `heatmapMutate` records PATCH.
-const { heatmapMutate, liveSettingsState } = vi.hoisted(() => ({
-  heatmapMutate: vi.fn(),
-  liveSettingsState: {
-    data: { screener_depth_autocollect: false } as { screener_depth_autocollect: boolean } | undefined,
-    isLoading: false,
-    isError: false,
-  },
-}));
+// 데이터소스 상세가 /api/live/settings 를 읽는다. 모듈을 모킹해 네트워크를 끊는다 —
+// 그 상세의 동작은 DataSourceDetail.test.tsx 가 커버하고, 여기서는 `/settings` 라우트
+// 프레임이 통합 셸을 제대로 띄우는지만 본다.
 vi.mock('../api/liveSettings', () => ({
-  useLiveSettings: () => liveSettingsState,
-  usePatchLiveSettings: () => ({ mutate: heatmapMutate, isPending: false }),
+  useLiveSettings: () => ({ data: undefined, isLoading: false, isError: false }),
+  usePatchLiveSettings: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 function renderWithQuery(ui: React.ReactElement) {
@@ -37,7 +29,7 @@ function selectSection(id: string) {
   fireEvent.click(screen.getByTestId(`settings-nav-${id}`));
 }
 
-describe('Settings — 사이드바 레이아웃', () => {
+describe('Settings — /settings 라우트 프레임', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
@@ -46,20 +38,27 @@ describe('Settings — 사이드바 레이아웃', () => {
     });
   });
 
-  it('renders all section nav items with 앱 정보 selected by default', async () => {
+  it('통합 셸을 렌더한다 — nav 8개, 기본 선택은 첫 항목(차트)', () => {
     renderWithQuery(<Settings />);
-    for (const id of ['general', 'theme', 'source', 'data', 'symbols', 'roadmap']) {
+    for (const id of [
+      'chart', 'trade-window', 'alerts', 'data-source', 'theme', 'symbols', 'general', 'roadmap',
+    ]) {
       expect(screen.getByTestId(`settings-nav-${id}`)).toBeInTheDocument();
     }
-    expect(screen.getByTestId('settings-nav-general')).toHaveAttribute('aria-current', 'true');
-    // Default detail = 앱 정보 → API URL row visible.
+    // 셸이 하나가 되면서 기본 선택도 nav 첫 항목으로 통일됐다 — 옛 앱 설정 모달은
+    // 자체 목록의 첫 항목인 「앱 정보」로 열렸다.
+    expect(screen.getByTestId('settings-nav-chart')).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('앱 정보 섹션이 API URL·버전을 보인다', async () => {
+    renderWithQuery(<Settings />);
+    selectSection('general');
     await waitFor(() => expect(screen.getByText('http://test')).toBeInTheDocument());
   });
 
-  it('데이터 소스 섹션이 라이브 데이터소스 상세(REST 우회 등)를 렌더한다', async () => {
+  it('데이터소스 섹션이 라이브 데이터소스 상세(REST 우회 등)를 렌더한다', async () => {
     renderWithQuery(<Settings />);
-    selectSection('source');
-    // DataSourceDetail(variant="live") 콘텐츠 — 상세 동작은 DataSourceDetail.test.tsx가 커버.
+    selectSection('data-source');
     expect(await screen.findByRole('switch', { name: 'REST 우회' })).toBeInTheDocument();
     expect(screen.getByText('표시 소스')).toBeInTheDocument();
     expect(screen.getByText('캡처 저장')).toBeInTheDocument();
@@ -68,7 +67,9 @@ describe('Settings — 사이드바 레이아웃', () => {
   it('renders a borderless full-bleed panel without repeating the nav page title', () => {
     renderWithQuery(<Settings />);
     expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull();
-    const panel = screen.getByTestId('settings-page-primary');
+    // 셸 testId 는 통합 후 `settings-shell` 하나다 — 옛 `settings-page-primary`
+    // (페이지 전용)와 `live-settings-drawer-shell`(드로어 전용)이 합쳐졌다.
+    const panel = screen.getByTestId('settings-shell');
     // 카드 크롬(보더) 제거 — 분리는 nav의 bg-subtle 톤 스텝이 담당. 페이지 프레임은
     // 바깥 래퍼로 이동했으므로 패널 자체는 borderless full-bleed 그리드다.
     expect(panel).toHaveClass('bg-bg-card');
@@ -192,7 +193,7 @@ describe('Settings — Symbol Master section', () => {
     expect(screen.queryByText(/force/i)).toBeNull();
   });
 
-  it('does not render signal alert settings after moving them to the live settings modal', async () => {
+  it('Symbol Master 상세에는 시그널 알림 설정이 섞이지 않는다 (그건 「알림」 섹션 소관)', async () => {
     vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
       count: 0,
       fetched_at_ms: null,
@@ -204,75 +205,13 @@ describe('Settings — Symbol Master section', () => {
     selectSection('symbols');
 
     await waitFor(() => expect(screen.getByText('fresh')).toBeInTheDocument());
-    expect(screen.queryByText('시그널 알림')).toBeNull();
     expect(screen.queryByRole('switch', { name: '알림 사용' })).toBeNull();
   });
 });
 
-describe('Settings — 데이터 수집', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    localStorage.clear();
-    heatmapMutate.mockReset();
-    liveSettingsState.data = { screener_depth_autocollect: false };
-    liveSettingsState.isLoading = false;
-    liveSettingsState.isError = false;
-    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
-      count: 0, fetched_at_ms: null, status: 'unavailable', reason: 'symbol_master_not_initialized',
-    });
-  });
-
-  it('히트맵 API 수집 토글은 제거됐다 (2026-07-17: rest30 폐지 — 히트맵=키움 WS)', () => {
-    renderWithQuery(<Settings />);
-    selectSection('data');
-    expect(screen.queryByRole('switch', { name: '히트맵 종목 API 수집' })).toBeNull();
-    expect(screen.queryByTestId('settings-heatmap-capture-row')).toBeNull();
-  });
-
-  it('shows the screener autocollect toggle unchecked by default', () => {
-    renderWithQuery(<Settings />);
-    selectSection('data');
-    const toggle = screen.getByRole('switch', { name: '스크리너 총잔량 결측 자동 수집' });
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('reflects the enabled wire value', () => {
-    liveSettingsState.data = { screener_depth_autocollect: true };
-    renderWithQuery(<Settings />);
-    selectSection('data');
-    expect(screen.getByRole('switch', { name: '스크리너 총잔량 결측 자동 수집' })).toHaveAttribute('aria-checked', 'true');
-  });
-
-  it('clicking the toggle PATCHes the inverted value', () => {
-    renderWithQuery(<Settings />);
-    selectSection('data');
-    fireEvent.click(screen.getByRole('switch', { name: '스크리너 총잔량 결측 자동 수집' }));
-    expect(heatmapMutate).toHaveBeenCalledWith({ screener_depth_autocollect: true });
-  });
-
-  it('disables the toggle while settings are loading', () => {
-    liveSettingsState.data = undefined;
-    liveSettingsState.isLoading = true;
-    renderWithQuery(<Settings />);
-    selectSection('data');
-    expect(screen.getByRole('switch', { name: '스크리너 총잔량 결측 자동 수집' })).toBeDisabled();
-  });
-
-  it('stays actionable (not disabled) when settings failed to load', () => {
-    // PATCH is partial, so a GET failure must not lock the toggle — the user
-    // can still recover by toggling.
-    liveSettingsState.data = undefined;
-    liveSettingsState.isLoading = false;
-    liveSettingsState.isError = true;
-    renderWithQuery(<Settings />);
-    selectSection('data');
-    const toggle = screen.getByRole('switch', { name: '스크리너 총잔량 결측 자동 수집' });
-    expect(toggle).toBeEnabled();
-    expect(screen.getByText(/라이브 설정을 불러오지 못했습니다/)).toBeInTheDocument();
-    fireEvent.click(toggle);
-    expect(heatmapMutate).toHaveBeenCalledWith({ screener_depth_autocollect: true });
-  });
-});
+// 「데이터 수집」 describe 는 DataSourceDetail.test.tsx 로 이관됐다 — 토글 1개짜리
+// 섹션이 캡처 쓰기 설정이 모여 있는 「캡처 저장」 그룹으로 흡수되면서, 그 검사도
+// 컨트롤이 실제로 사는 곳을 따라갔다.
 
 describe('Settings — 테마 section', () => {
   beforeEach(() => {

@@ -37,71 +37,90 @@ function MacroGroupLabel({ children }: { children: ReactNode }) {
   );
 }
 
+/** 「이 컨트롤이 어디에 적용되는가」를 적는 동반 문구.
+ *
+ * 옛 `variant` 분기가 컨트롤을 통째로 숨기던 자리다. 숨기면 같은 값에 대해 화면마다
+ * 다른 이야기가 나오므로, 컨트롤은 그대로 두고 범위만 말한다. 아래 hogaplay 힌트와
+ * 같은 톤이라 "지금 적용되지 않는다" 계열 문구가 한 벌로 읽힌다. */
+function ScopeNote({ testId, children }: { testId: string; children: ReactNode }) {
+  return (
+    <div className="mt-1 text-xs text-fg-dim" data-testid={testId}>
+      {children}
+    </div>
+  );
+}
+
 /** 데이터 소스 설정 상세 — 표시 소스(읽기)와 캡처 저장(쓰기)를 나눠 배치.
- * 전역 설정(LiveSettings API + 전역 store)이라 메인 Settings의 「데이터 소스」
- * 섹션(variant='live')과 복기뷰 설정 모달(variant='study')이 공유한다. */
-export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
-  const { data } = useLiveSettings();
+ *
+ * **컨텍스트 인자가 없다**(옛 `variant: 'live' | 'study'` 삭제). 값이 전부 전역
+ * (LiveSettings API + 전역 store)인데 화면마다 컨트롤을 숨기고 있어서, 같은 탭에서도
+ * 어느 문으로 들어오느냐에 따라 다른 이야기가 나왔다 — `pages/Settings` 가
+ * `variant="live"` 를 하드코딩한 탓에 `/study` 에서 TopNav ⚙ 는 REST 우회 토글을,
+ * 툴바 ⚙ 는 "디스크 온리" 안내문을 보여줬다.
+ *
+ * 그래서 **숨기지 않고 적용 범위를 적는다** — 이 파일이 hogaplay 토글에서 이미 쓰던
+ * 방식이다(아래 「비활성화하지 않는다」 주석). 복기뷰 안내는 사라지지 않고 컨트롤
+ * 아래 상시 동반 문구(`ScopeNote`)가 된다.
+ *
+ * ⚠ ADR-0144(복기뷰 KRX 고정)는 **유효하다**. 그 격리는 이 화면이 아니라
+ * `studyVenuePolicy.ts` 의 `STUDY_VENUE` 상수와 그 테스트가 건다 — 여기서 거래소를
+ * 골라도 복기뷰는 KRX 그대로다. 대체된 것은 "복기뷰 설정 화면에 라디오를 두지
+ * 않는다" 는 표면 규칙 하나뿐이고, 그 근거였던 "아무 일도 안 하는 컨트롤" 은 앱 전역
+ * 설정에서는 성립하지 않는다 — 이 라디오는 `/live`·`/heatmap`·`/screener`·관심종목에
+ * 실제로 작동한다. */
+export function DataSourceDetail() {
+  const { data, isLoading, isError } = useLiveSettings();
   const patch = usePatchLiveSettings();
   const restBypassEnabled = data?.rest_bypass_enabled ?? false;
   const krxPreferHogaplay = data?.krx_prefer_hogaplay ?? false;
+  // 기본 False: 스캔은 탐색적 반복 실행이라 묵시적 큐 증가를 막는다(명시적 버튼이 1차 UX).
+  const autoCollect = data?.screener_depth_autocollect ?? false;
   const venue = useLiveVenueStore((s) => s.venue);
 
   return (
     <>
+      {/* GET 실패는 이 패널의 **모든** 토글에 걸리는 사실이라 상단에 한 번만 알린다.
+          PATCH 는 partial 이라 현재값을 몰라도 조작 자체는 안전하므로 토글을 잠그지
+          않는다 — 아래 hogaplay 힌트와 같은 규율("회색은 고장으로 읽힌다"). */}
+      {isError && (
+        <p className="text-xs text-error">라이브 설정을 불러오지 못했습니다. 백엔드 연결을 확인하세요</p>
+      )}
       {/* 표시 소스(읽기): 차트에 무엇이 그려지는가 — 캔들·거래소·호가체결·스크리너. */}
       <MacroGroupLabel>표시 소스</MacroGroupLabel>
       <div>
-        {/* 캔들 소스는 'REST 우회' 토글이 단독 결정(4옵션 캔들 라디오 폐기).
-            live는 우회 토글, study(복기뷰)는 디스크 온리 안내문을 이 그룹에 담아
-            호가·체결 그룹과 대칭을 맞춘다. */}
+        {/* 캔들 소스는 'REST 우회' 토글이 단독 결정(4옵션 캔들 라디오 폐기). */}
         <RoleSourceGroup
           title="캔들 데이터 기준"
-          description={
-            variant === 'study'
-              ? '복기뷰 전용 안내입니다'
-              : "기본은 시세 서버(분봉 REST+WS · 일/주/월봉 일봉)입니다 'REST 우회'를 켜면 분봉은 캡처(hogaplay), 일·주·월봉은 스크리너 일봉으로 표시합니다 — 저장된 날짜만 나오고 없는 날짜는 비워지며, 오늘 실시간(WS)은 계속 표시됩니다"
-          }
+          description="기본은 시세 서버(분봉 REST+WS · 일/주/월봉 일봉)입니다 'REST 우회'를 켜면 분봉은 캡처(hogaplay), 일·주·월봉은 스크리너 일봉으로 표시합니다 — 저장된 날짜만 나오고 없는 날짜는 비워지며, 오늘 실시간(WS)은 계속 표시됩니다"
         >
-          {variant === 'study' ? (
-            <div className="text-sm text-fg-dim" data-testid="study-candle-source-note">
-              복기뷰 캔들은 저장 데이터(캡처 분봉 + 스크리너 일봉)만 사용합니다.
-            </div>
-          ) : (
-            <SettingsRow label="REST 우회" testId="kis-rest-bypass-row">
-              <ToggleSwitch
-                label="REST 우회"
-                checked={restBypassEnabled}
-                onClick={() => patch.mutate({ rest_bypass_enabled: !restBypassEnabled })}
-              />
-            </SettingsRow>
-          )}
+          <SettingsRow label="REST 우회" testId="kis-rest-bypass-row">
+            <ToggleSwitch
+              label="REST 우회"
+              checked={restBypassEnabled}
+              onClick={() => patch.mutate({ rest_bypass_enabled: !restBypassEnabled })}
+            />
+          </SettingsRow>
+          <ScopeNote testId="study-candle-source-note">
+            복기뷰 캔들은 이 설정과 무관하게 항상 저장 데이터(캡처 분봉 + 스크리너 일봉)를 사용합니다.
+          </ScopeNote>
         </RoleSourceGroup>
-        {/* 복기뷰의 거래소 선택기를 **다시 숨긴다**(ADR-0144). ADR-0140 §7.2 가 부활
-            시켰던 것인데, 선택기가 쓰는 스토어는 탭 전역이라 `/live` 에서 시장을 바꾸면
-            열려 있던 복기 탭까지 따라 움직였고, 복기 데이터의 상당량인 hogaplay 는
-            KRX 전용이라 NXT·통합에서 날짜가 통째로 비었다. 라디오를 남긴 채 값만
-            무시하면 **아무 일도 안 하는 컨트롤**이 되므로 안내문으로 바꾼다. */}
-        <RoleSourceGroup
-          title="거래소"
-          description={
-            variant === 'study'
-              ? '복기뷰는 항상 KRX 정규장(09:00–15:30) 기준입니다 — 복기 데이터의 상당 부분이 hogaplay 캡처인데 hogaplay는 KRX 전용이라, NXT·통합으로는 비는 날이 많습니다 실시간 화면의 거래소 선택은 복기뷰에 영향을 주지 않습니다'
-              : LIVE_VENUE_HELP
-          }
-        >
-          {variant === 'study' ? (
-            <div className="text-sm text-fg-dim" data-testid="study-venue-fixed-note">
-              복기뷰 거래소는 KRX로 고정입니다.
-            </div>
-          ) : (
-            /* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */
-            <div className="flex flex-wrap gap-2 pb-2">
-              {LIVE_VENUE_OPTIONS.map((opt) => (
-                <LiveVenueRadio key={opt} value={opt} />
-              ))}
-            </div>
-          )}
+        {/* 거래소 라디오는 `/live` 전용 컨트롤이 **아니다** — `/heatmap`·`/screener`·
+            관심종목이 전부 같은 스토어를 읽는다. ADR-0144 가 복기뷰 설정 화면에서
+            이걸 뺐던 근거("복기가 값을 무시하니 아무 일도 안 하는 컨트롤")는 앱 전역
+            설정에서는 성립하지 않으므로, 숨기는 대신 범위를 적는다(헤더 주석). */}
+        <RoleSourceGroup title="거래소" description={LIVE_VENUE_HELP}>
+          {/* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */}
+          <div className="flex flex-wrap gap-2 pb-2">
+            {LIVE_VENUE_OPTIONS.map((opt) => (
+              <LiveVenueRadio key={opt} value={opt} />
+            ))}
+          </div>
+          {/* 「복기뷰는 예외로 항상 KRX」 자체는 `LIVE_VENUE_HELP` 가 이미 말한다 —
+              여기서 반복하지 않고 **이유**만 잇는다(실물 확인에서 잡은 중복). 이유가
+              없으면 고정이 임의 제약으로 읽힌다. */}
+          <ScopeNote testId="study-venue-fixed-note">
+            복기뷰가 KRX 고정인 이유 — 복기 데이터의 상당 부분인 hogaplay 캡처가 KRX 전용이라, NXT·통합으로는 비는 날이 많습니다.
+          </ScopeNote>
         </RoleSourceGroup>
         {/* 「호가·체결 데이터 기준」 라디오 3종은 폐지됐다(2026-08-07 오전) — 셋 중 둘이
             venue 비교를 깨뜨렸다. 같은 날 오후에 **옵트인 토글 하나로** 돌아왔다:
@@ -123,12 +142,13 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
               NXT 를 볼 때마다 회색이면 고장으로 읽힌다. 대신 지금 적용되지 않는다는
               사실만 알린다.
 
-              ⚠ `variant === 'live'` 일 때만이다. 복기뷰는 KRX 고정(ADR-0144)이라 이
-              토글이 **항상** 적용되는데, 스토어 venue 는 `/live` 선택을 들고 있으므로
-              게이트가 없으면 "적용되지 않습니다" 를 틀리게 띄운다. */}
-          {variant === 'live' && krxPreferHogaplay && venue !== 'KRX' && (
+              옛 `variant === 'live'` 게이트는 사라졌다. 게이트가 있던 이유는 스토어
+              venue 가 실시간 화면의 선택이라 복기뷰(항상 KRX)에서는 이 안내가 거짓말이
+              된다는 것이었다 — 그래서 게이트 대신 **어느 화면 이야기인지 문장에
+              적는다**. 이제 어느 라우트에서 열어도 참이다. */}
+          {krxPreferHogaplay && venue !== 'KRX' && (
             <div className="mt-1 text-xs text-fg-dim" data-testid="krx-prefer-hogaplay-inactive">
-              현재 거래소({LIVE_VENUE_LABELS[venue]})에는 적용되지 않습니다 — hogaplay는 KRX 전용입니다.
+              실시간 화면의 현재 거래소({LIVE_VENUE_LABELS[venue]})에는 적용되지 않습니다 — hogaplay는 KRX 전용입니다. 복기뷰는 KRX 고정이라 항상 적용됩니다.
             </div>
           )}
         </RoleSourceGroup>
@@ -161,6 +181,22 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
           description="관심종목·히트맵의 실시간(호가·체결)을 키움 WebSocket으로 수집합니다(앱키당 200종목). 실시간의 유일한 소스이며, .env에 KIWOOM_APP_KEY가 설정되면 자동 활성화됩니다(별도 켜기 불필요)."
         >
           <KiwoomStatusLine />
+        </RoleSourceGroup>
+        {/* 옛 「데이터 수집」 nav(토글 1개짜리 섹션)에서 옮겨 왔다 — 캡처 쓰기 설정이라
+            여기가 제자리이고, 바로 위 「스크리너 일봉 데이터」 와 같은 대상을 다룬다.
+            토글만 `disabled` 를 쓰는 비대칭은 이전 동작 그대로 보존한 것이다. */}
+        <RoleSourceGroup
+          title="스크리너 총잔량 결측 자동 수집"
+          description="스크리너 총잔량 신고 조건에서 hogaplay 과거 데이터가 없는 종목을 발견하면 지난 N일치를 자동으로 수집 큐에 적재합니다. 끄면(기본) 결과 배너의 [수집 요청] 버튼으로만 수집합니다"
+        >
+          <SettingsRow label="자동 수집" testId="settings-depth-autocollect-row">
+            <ToggleSwitch
+              label="스크리너 총잔량 결측 자동 수집"
+              checked={autoCollect}
+              disabled={isLoading || patch.isPending}
+              onClick={() => patch.mutate({ screener_depth_autocollect: !autoCollect })}
+            />
+          </SettingsRow>
         </RoleSourceGroup>
       </div>
 

@@ -12,18 +12,38 @@ import ColorSwatchPicker from './indicators/ColorSwatchPicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import { SettingsRow } from './settings/SettingsRow';
 import { DataSourceDetail } from './settings/DataSourceDetail';
+import {
+  GeneralSection,
+  RoadmapSection,
+  SymbolMasterSection,
+  ThemeSection,
+} from './settings/AppInfoSections';
 import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSection';
 import { WORKSPACE_DRAWER_SHELL_CLASS } from './workspaceDrawer';
 
 /**
- * The live settings body — mirrors `IndicatorPanel`'s two-column layout (left
- * category nav 240px + right detail pane; 지표 드로어와 동일 폭이라 툴바에서
- * 보조지표↔설정을 오가도 nav가 흔들리지 않는다). Categories come from the
- * `CHART_TOGGLES` registry (차트) plus a 데이터소스 item; 'indicator-modal'
- * toggles are excluded (they live in the 「지표」 modal instead). Adding
- * a toggle/pref stays a one-line registry edit.
+ * 앱의 **유일한** 설정 본체 — 좌측 카테고리 nav 240px + 우측 상세(지표 드로어와 동일
+ * 폭이라 툴바에서 보조지표↔설정을 오가도 nav가 흔들리지 않는다). 차트 카테고리는
+ * `CHART_TOGGLES` 레지스트리에서 오고('indicator-modal' 은 제외 — 그건 「지표」
+ * 모달 소관), 나머지는 아래 고정 항목이다. 토글/pref 추가는 여전히 레지스트리 한 줄.
+ *
+ * 원래 설정 표면이 **둘**이었다 — 여기(차트 드로어)와 `pages/Settings` 의 앱 설정
+ * 모달. 둘은 셸 마크업·testId 규칙·행 컴포넌트를 이미 공유하면서 nav 목록과 셸 상수만
+ * 갈라져 있었고, 같은 값에 대해 서로 다른 이야기를 하는 지점까지 생겼다(자세한 사연은
+ * `DataSourceDetail` 헤더). 이제 진입점(TopNav ⚙ · `/live`·`/study` 툴바 ⚙ · 캔들
+ * 빈 상태 · `/settings` 라우트)이 전부 이 컴포넌트를 연다.
+ *
+ * `variant` 는 **체결창 nav 하나**만 가른다(아래). 데이터소스가 쓰던 분기는 삭제됐다 —
+ * 값이 전역인데 화면마다 숨기면 어느 문으로 들어왔는지에 답이 달라지기 때문이다.
  */
-type NavId = ChartToggleCategory | 'data-source' | 'alerts';
+type NavId =
+  | ChartToggleCategory
+  | 'data-source'
+  | 'alerts'
+  | 'theme'
+  | 'symbols'
+  | 'general'
+  | 'roadmap';
 
 const CATEGORY_ORDER: ChartToggleCategory[] = ['chart', 'trade-window'];
 const LABEL: Record<NavId, string> = {
@@ -32,7 +52,32 @@ const LABEL: Record<NavId, string> = {
   'trade-window': '체결창',
   'data-source': '데이터소스',
   alerts: '알림',
+  theme: '테마',
+  symbols: 'Symbol Master',
+  general: '앱 정보',
+  roadmap: '로드맵',
 };
+
+/** nav id → 상세 패널. 차트 토글 카테고리는 레지스트리 주도라 `default` 로 떨어진다
+ *  (리터럴 케이스를 모두 처리했으므로 TS 가 `ChartToggleCategory` 로 좁혀 준다). */
+function SectionDetail({ id }: { id: NavId }) {
+  switch (id) {
+    case 'data-source':
+      return <DataSourceDetail />;
+    case 'alerts':
+      return <SignalAlertSettingsSection />;
+    case 'theme':
+      return <ThemeSection />;
+    case 'symbols':
+      return <SymbolMasterSection />;
+    case 'general':
+      return <GeneralSection />;
+    case 'roadmap':
+      return <RoadmapSection />;
+    default:
+      return <CategoryDetail category={id} />;
+  }
+}
 
 function CategoryDetail({ category }: { category: ChartToggleCategory }) {
   const keys = CHART_TOGGLES
@@ -129,15 +174,20 @@ function ViLimitPriceLineStyleRow() {
 // 차트 창이 봉의 유일한 소유자가 되면서 그 설정이 정할 것이 없어졌다 — 저장뷰는
 // 종목과 구간만 정한다. 근거와 버려진 trade-off 는 그 PR 에 있다.
 
-export default function LiveSettingsSections({ variant = 'live', onClose }: { variant?: 'live' | 'study'; onClose?: () => void }) {
+export default function SettingsSections({ variant = 'live', onClose }: { variant?: 'live' | 'study'; onClose?: () => void }) {
   const navIds: NavId[] = [
     // 체결창은 /live 워크스페이스 전용 데이터 창 — 복기뷰(study) 설정에는 숨긴다.
+    // **컨텍스트로 갈리는 유일한 항목**이다. 데이터소스가 쓰던 분기는 사라졌다:
+    // 한때 `/live` 에서만 빼고 메인 Settings 로 보냈는데, 그 결과 `/study` 에서
+    // TopNav ⚙ 와 툴바 ⚙ 가 같은 값에 대해 서로 다른 화면을 보여줬다.
     ...CATEGORY_ORDER.filter((c) => (variant === 'live' || c !== 'trade-window')
       && CHART_TOGGLES.some((t) => categoryOf(t) === c)),
-    // 'data-source'는 라이브 워크스페이스에선 메인 Settings(「데이터 소스」)로 이동했다.
-    // 복기뷰(study)는 캔들 디스크-온리 등 전용 안내가 있어 이 모달에 유지한다.
-    ...(variant === 'study' ? (['data-source'] as const) : []),
     'alerts',
+    'data-source',
+    'theme',
+    'symbols',
+    'general',
+    'roadmap',
   ];
   const [selected, setSelected] = useState<NavId>(navIds[0]);
 
@@ -146,7 +196,7 @@ export default function LiveSettingsSections({ variant = 'live', onClose }: { va
   // nav↔콘텐츠 분리는 bg-subtle↔bg-card 톤 스텝. rounded-lg는 ModalShell 반경에 맞춰 클립.
   return (
     <div
-      data-testid="live-settings-drawer-shell"
+      data-testid="settings-shell"
       className={WORKSPACE_DRAWER_SHELL_CLASS}
     >
       <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="설정 카테고리">
@@ -182,11 +232,7 @@ export default function LiveSettingsSections({ variant = 'live', onClose }: { va
           )}
         </header>
         <section aria-label={LABEL[selected]} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5">
-          {selected === 'data-source'
-            ? <DataSourceDetail variant={variant} />
-            : selected === 'alerts'
-              ? <SignalAlertSettingsSection />
-              : <CategoryDetail category={selected} />}
+          <SectionDetail id={selected} />
         </section>
       </div>
     </div>
