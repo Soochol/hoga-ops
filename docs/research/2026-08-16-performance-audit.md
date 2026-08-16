@@ -58,7 +58,7 @@
 | 7 | ✅ **구현됨** `/api/live/quotes` 기준가 N+1 이 루프 위에서 | C-4 | **CONFIRMED** | **매 거래일 아침 첫 폴에 2.0~2.5초 루프 정지** → 한 자릿수 ms | S | 중간 |
 | 8 | 섹터 랭킹 당일 경로가 캐시를 전부 우회 | C-3 | WEAKENED | **미착수** — 노출 좁음(지수 그룹 전용 창). ~~#5 로 함께 해결~~ **아님**(2026-08-17 정정) | S | 중간 |
 | 9 | `range-merged` identity 고아 2시간 상주 | E-2 | CONFIRMED | 지표 토글 시 23 MB 급 누적 차단 | M | 낮음~중간 |
-| 10 | `manualChunks` 무력화 → 청크 이름이 거짓 | D-1 | WEAKENED | **0 바이트**. 계측 정직성 | S | 낮음 |
+| 10 | ✅ **구현됨** `manualChunks` 무력화 → 청크 이름이 거짓 | D-1 | WEAKENED | **0 바이트**. 계측 정직성 | S | 낮음 |
 | 11 | `/live` 내부 lazy 경계 0개 | D-2 | WEAKENED | 초기 로드 −33.2 KB raw / −9 KB gzip | M | 낮음 |
 
 C-2(이벤트 루프 기아)는 **1단계가 #5 와 동일 수정**이라 별도 항목으로 세우지 않고, 남은 계측 부분만 트랙 4 로 넘겼다.
@@ -469,18 +469,25 @@ rollupOptions: { output: { codeSplitting: { groups: [
 
 **부수 효과.** `live-workspace` 가 `chunkSizeWarningLimit: 700` 에 3 KB 남았다. **임계를 올리는 것은 이 저장소가 명시적으로 거부한 선택**이므로("이 경고를 끄는 게 아니라 … 여기서 더 커지면 다시 알려 주도록 남긴다") 이 수정으로 내린다.
 
-### 4-3. 회귀를 잡는 장치 6종
+### 4-3. 회귀를 잡는 장치 6종 · ✅ 전부 구현됨
+
+> **구현 완료 (트랙 4).** (b)는 소스맵 대신 **마커 문자열**로 갔다 — 소스맵을 켜면
+> 빌드가 느려지고 `.map` 이 배포에 실린다. (c)는 「항상 빨간 테스트」 대신 vitest
+> `it.fails` 마커로 갔다 — CLAUDE.md 가 상시 red 가드를 명시적으로 금하기 때문이고,
+> 이 형태는 **결함이 고쳐지는 순간 실패해서** 마커를 걷으라고 알려 준다.
+> (a)·(b)는 vitest 가 아니라 **`vite build` 안**에 있다 — `dist/` 가 없으면 스킵되는
+> 테스트는 없는 가드이고, 빌드는 이미 머지 게이트에 있다.
 
 현재 성능 회귀를 잡는 자동 장치는 `vite.config.ts` 의 `chunkSizeWarningLimit` **하나뿐**이고, 그건 개별 청크만 본다. 초기 로드가 조용히 늘고 청크 이름이 거짓이 되고 slow-log 가 오염돼도 아무도 모른다.
 
 | # | 장치 | 잡는 회귀 | 규모 |
 |---|---|---|---|
-| a | **초기 로드 합계 테스트** — `dist/index.html` 의 entry+modulepreload+**stylesheet** raw/gzip 합계를 상한과 대조. **지표 정의를 JS+CSS 로 명시**하고 vite.config 주석의 기준선을 재현 가능한 형태(측정 스크립트 동봉)로 교체 | §0.2 의 지표 혼용 재발, 조용한 번들 증가 | S |
-| b | **소스맵 소속 단언** — `dist/assets/*.js.map` 의 `sources` 에서 `react-dom` 이 `react-*.js` 안에 있는지 | 청크 배정이 조용히 무력화되는 것(4-1) | S |
-| c | **축출 호출 수 red 테스트** — `useDayPeaks.perf.test.tsx` + `tradeVolumePoc.test.ts` 에 **선두 절단** 케이스. 지금 반드시 빨개야 한다 | 1-3 의 재발. 기존 테스트가 이 축을 원리적으로 못 본다 | S |
-| d | **렌더 카운트 테스트** — 코어의 `windowItem` 주입 슬롯에 카운터 더미를 넣어 "드래그에 참여하지 않은 창의 렌더 증가 = 0" | 2-1 의 재발. 이 성질은 주석에만 있고 한 번도 검증된 적이 없다 | S |
-| e | **`loop_lag` 프로브** — `startup_runtime.py` 의 supervised task 로 0.5초 sleep 의 초과 지연을 `hoga_perf loop_lag` 로 warn. `grep 'hoga_perf loop_lag' \| sort` 로 상위 지연을 뽑고 같은 타임스탬프의 `http_request` 줄과 대조 | 이벤트 루프 기아를 **사후 co-timing 추론이 아니라 신호로**. 현재 `grep 'loop_lag' hoga/` → 0건 | S |
-| f | **`RequestTimingMiddleware` 로그에 PID·포트 추가** | C-1 검증자가 발견한 **다중 프로세스 오염** — 여러 백엔드가 같은 파일에 append 해서 p50 3.85 s 같은 수치가 "다중 백엔드 경합의 산물" 인지 구별이 안 된다. 이것 자체가 계측 인프라 결함 | S |
+| a | ✅ **구현됨** **초기 로드 합계 테스트** — `dist/index.html` 의 entry+modulepreload+**stylesheet** raw/gzip 합계를 상한과 대조. **지표 정의를 JS+CSS 로 명시**하고 vite.config 주석의 기준선을 재현 가능한 형태(측정 스크립트 동봉)로 교체 | §0.2 의 지표 혼용 재발, 조용한 번들 증가 | S |
+| b | ✅ **구현됨**(소스맵 대신 **마커 문자열**) **소속 단언** — `dist/assets/*.js.map` 의 `sources` 에서 `react-dom` 이 `react-*.js` 안에 있는지 | 청크 배정이 조용히 무력화되는 것(4-1) | S |
+| c | ✅ **구현됨**(`it.fails` 마커) **축출 호출 수 테스트** — `useDayPeaks.perf.test.tsx` + `tradeVolumePoc.test.ts` 에 **선두 절단** 케이스. 지금 반드시 빨개야 한다 | 1-3 의 재발. 기존 테스트가 이 축을 원리적으로 못 본다 | S |
+| d | ✅ **구현됨**(#1348) **렌더 카운트 테스트** — 코어의 `windowItem` 주입 슬롯에 카운터 더미를 넣어 "드래그에 참여하지 않은 창의 렌더 증가 = 0" | 2-1 의 재발. 이 성질은 주석에만 있고 한 번도 검증된 적이 없다 | S |
+| e | ✅ **구현됨** **`loop_lag` 프로브** — `startup_runtime.py` 의 supervised task 로 0.5초 sleep 의 초과 지연을 `hoga_perf loop_lag` 로 warn. `grep 'hoga_perf loop_lag' \| sort` 로 상위 지연을 뽑고 같은 타임스탬프의 `http_request` 줄과 대조 | 이벤트 루프 기아를 **사후 co-timing 추론이 아니라 신호로**. 현재 `grep 'loop_lag' hoga/` → 0건 | S |
+| f | ✅ **구현됨** **`RequestTimingMiddleware` 로그에 PID·포트 추가** | C-1 검증자가 발견한 **다중 프로세스 오염** — 여러 백엔드가 같은 파일에 append 해서 p50 3.85 s 같은 수치가 "다중 백엔드 경합의 산물" 인지 구별이 안 된다. 이것 자체가 계측 인프라 결함 | S |
 
 특히 **(f)** 가 없으면 앞으로도 slow-log 기반 판단이 전부 오염된다 — 병행 세션이 6개까지 늘어나는 이 저장소의 작업 방식에서는 구조적 문제다.
 
