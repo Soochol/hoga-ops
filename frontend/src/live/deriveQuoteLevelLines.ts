@@ -35,9 +35,13 @@ export function deriveQuoteTotalsLevels(bundle: RangeBundle, intraMax: boolean):
   return { bid, ask };
 }
 
+/** 당일 최고 수평선 모델 — 매수·매도 최댓값 + 그 값이 속한 거래일의 앵커 시각(`t`).
+ *  `t` 는 호출부가 라벨을 정하는 데 쓴다(오늘이면 「최고」, 아니면 「8/14 최고」). */
+export type QuoteTotalsDayMax = { bid: number; ask: number; t: number } | null;
+
 /**
- * 총잔량 pane 「당일 최고 수평선」의 매수·매도 값을 산출한다 — 오늘 총잔량이 가장 높았던
- * 높이에 기준선을 그어 지금 잔량이 오늘 고점 대비 어디쯤인지 보이게 한다.
+ * 총잔량 pane 「당일 최고 수평선」의 매수·매도 값을 산출한다 — **데이터의 마지막 거래일**에
+ * 총잔량이 가장 높았던 높이에 기준선을 그어, 지금 잔량이 그날 고점 대비 어디쯤인지 보이게 한다.
  *
  * 규칙 셋이 이 함수의 계약이고, 각각 특정 실패를 막는다:
  *
@@ -51,38 +55,43 @@ export function deriveQuoteTotalsLevels(bundle: RangeBundle, intraMax: boolean):
  *     **표시 스위치가 계산된 기준값을 조용히 바꾼다**. 항상 제외해야 이 선과 급증 마커의
  *     running peak(같은 배제 규칙)가 한 이야기를 한다. 술어를 인자로 받는 이유는 세션 마감이
  *     venue 별로 다르기 때문 — 15:20–15:30 을 여기 박지 말 것.
- *  3. **"오늘"은 엄격히 KST 오늘** — 마지막 점의 거래일이 `nowMs` 의 거래일과 다르면 null(선
- *     숨김). 프리마켓·주말·공휴일엔 기준선이 뜨지 않는다. `nowMs` 를 인자로 받아 이 함수는
- *     시계에 의존하지 않는다(테스트가 값을 직접 넘긴다).
+ *  3. **기준일은 데이터의 마지막 거래일** — 장중엔 그게 곧 오늘이라 "오늘 기준" 과 같고, 장
+ *     마감 후·주말·공휴일엔 직전 거래일 기준선이 남으며, `/study`(복기)에선 보고 있는 그
+ *     날이 된다. 한때 "엄격히 KST 오늘" 이었으나 그 규칙은 **복기에서 이 지표를 영영 죽였고**
+ *     (거기엔 "오늘" 이 없다) 주말엔 선이 사라졌다. 낡은 기준선을 오늘 것으로 착각할 위험은
+ *     선을 숨겨서가 아니라 **호출부가 `t` 로 날짜 라벨을 붙여** 막는다.
  *
- * 스캔은 배열 끝에서 시작해 거래일이 바뀌면 중단 → O(오늘 점 수) ≈ 390. 매 렌더 계산해도 싸다
+ *     앵커는 `lastRealPoint` 다 — 배열 맨 끝이 gap 센티넬이어도 안전하다. 화면 팬과는 무관하다
+ *     (보이는 구간이 아니라 데이터 배열이 기준이라, 과거로 팬해도 기준선은 그대로 있다).
+ *
+ * 스캔은 앵커에서 시작해 거래일이 바뀌면 중단 → O(그날 점 수) ≈ 390. 매 렌더 계산해도 싸다
  * (sibling 과 같이 memo 없음). 매수·매도는 서로 다른 시각에 최고를 찍을 수 있어 독립 누적한다.
+ * `nowMs` 를 받지 않아 완전히 순수하다 — 시계는 라벨을 정하는 호출부에만 있다.
  *
- * 0 초기화 + 최종 `> 0` 검사가 VI/gap 센티넬 `(0,0)` 을 걸러낸다 — 없으면 오늘 점이 전부
+ * 0 초기화 + 최종 `> 0` 검사가 VI/gap 센티넬 `(0,0)` 을 걸러낸다 — 없으면 그날 점이 전부
  * 센티넬일 때 pane 바닥에 붙은 선을 그린다(선례: computeDayAskPeak 의 `lv.qty > 0` 가드).
  */
 export function deriveQuoteTotalsDayMax(
   bundle: RangeBundle,
   intraMax: boolean,
   inClosingAuction: (t: number) => boolean,
-  nowMs: number,
-): QuoteTotalsLevels {
+): QuoteTotalsDayMax {
   const points = quoteRatioPointsForBundle(bundle);
-  if (points.length === 0) return null;
-  const today = tradingDayOf(nowMs);
-  if (tradingDayOf(points[points.length - 1].t) !== today) return null;
+  const anchor = lastRealPoint(points);
+  if (!anchor) return null;
+  const day = tradingDayOf(anchor.t);
   let bid = 0;
   let ask = 0;
   for (let i = points.length - 1; i >= 0; i--) {
     const p = points[i];
-    if (tradingDayOf(p.t) !== today) break; // 어제 이전 — 오늘 최고만 본다
+    if (tradingDayOf(p.t) !== day) break; // 그 전날 이전 — 마지막 거래일 최고만 본다
     if (isSyntheticHogaGapPoint(p) || inClosingAuction(p.t)) continue;
     const b = intraMax ? p.bid_max : p.bid_total;
     const a = intraMax ? p.ask_max : p.ask_total;
     if (Number.isFinite(b) && b > bid) bid = b;
     if (Number.isFinite(a) && a > ask) ask = a;
   }
-  return bid > 0 && ask > 0 ? { bid, ask } : null;
+  return bid > 0 && ask > 0 ? { bid, ask, t: anchor.t } : null;
 }
 
 /**

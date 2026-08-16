@@ -6,7 +6,15 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
 import SeriesLevelLine from './SeriesLevelLine';
 import { deriveQuoteTotalsDayMax, deriveQuoteTotalsLevels, deriveRatioLevel } from './deriveQuoteLevelLines';
+import { tradingDayOf } from '../util/tradingDay';
 import { useWindowIndicator } from './workspace/windowView';
+
+/** epoch ms 의 KST 월/일(예 "8/14"). 낡은 기준선에 붙이는 라벨용이라 연도는 뺀다 —
+ *  차트가 보여주는 범위가 며칠 단위라 M/D 로 충분하고, 칩이 짧을수록 라인을 덜 가린다. */
+const kstMonthDay = (ms: number): string => {
+  const d = new Date(ms + 9 * 60 * 60 * 1000);
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+};
 
 type Props = {
   paneSeries: PaneSeriesMap;
@@ -59,12 +67,16 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
 
   const levels = deriveQuoteTotalsLevels(bundle, qtIntraMax);
   const ratioValue = deriveRatioLevel(bundle, ratioIntraMax);
-  // 당일 최고는 "지금이 오늘인가"에 의존한다 — Date.now()는 여기(호출부)에서만 읽고 파생
-  // 함수엔 값으로 넘긴다(그래야 파생 테스트가 시계에 묶이지 않는다). 틱마다 재평가되므로
-  // 자정을 넘겨 열어둔 차트는 다음 틱에 스스로 교정된다.
+  // 기준일은 데이터의 마지막 거래일이라 파생은 시계와 무관하다(장중엔 그게 곧 오늘, 주말엔
+  // 직전 거래일, /study 에선 보고 있는 그 날). 시계는 **라벨에만** 쓴다 — 오늘 것이 아니면
+  // 날짜를 붙여 낡은 기준선을 오늘 것으로 착각하지 않게 한다.
   const dayMax = dayMaxEnabled
-    ? deriveQuoteTotalsDayMax(bundle, qtIntraMax, (t) => axis.inClosingAuctionWindow(t), Date.now())
+    ? deriveQuoteTotalsDayMax(bundle, qtIntraMax, (t) => axis.inClosingAuctionWindow(t))
     : null;
+  const dayMaxTitle =
+    dayMax && tradingDayOf(dayMax.t) !== tradingDayOf(Date.now())
+      ? `${kstMonthDay(dayMax.t)} 최고`
+      : '최고';
 
   return (
     <>
@@ -91,7 +103,7 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
         lineWidth={dayMaxBidWidth}
         lineStyle={dayMaxBidStyle}
         enabled={dayMaxEnabled}
-        title="최고"
+        title={dayMaxTitle}
       />
       <SeriesLevelLine
         series={quoteTotalsSeries}
@@ -100,7 +112,7 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
         lineWidth={dayMaxAskWidth}
         lineStyle={dayMaxAskStyle}
         enabled={dayMaxEnabled}
-        title="최고"
+        title={dayMaxTitle}
       />
       <SeriesLevelLine
         series={ratioSeries}
