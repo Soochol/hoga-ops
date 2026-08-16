@@ -13,7 +13,7 @@
  * 이후 구간(저장 시점엔 몰랐던 미래)을 **항상 보여준다** — 2026-08-09 사용자 결정.
  * 복기의 목적이 결과 확인이라 스포일러 회피보다 맥락이 우선이라는 판단이다.
  */
-import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from '../live/liveDateTime';
+import { todayKstYyyymmdd } from '../live/liveDateTime';
 import { isMinuteTimeframe } from '../state/livePage';
 import type { StudyViewReference } from '../api/studyViews';
 import type { Candle } from '../api/types';
@@ -21,17 +21,33 @@ import type { Candle } from '../api/types';
 export type StudyDailyContextWindow = { from: string; to: string } | null;
 
 /**
+ * 캘린더 봉 조회 창의 from 센티널 — "전체 히스토리".
+ *
+ * 백엔드 `screener-daily-candles` 는 from 하한도 개수 상한도 없고(디스크 parquet
+ * 스캔), corpus 는 1999-01-04 부터다 — 데이터 시작보다 확실히 이른 고정값이면 된다.
+ * 상수라 쿼리 키가 저장 구간과 무관해져, 같은 종목이면 D/W/M 창·다른 저장뷰·탭
+ * 워밍이 캐시 한 벌을 공유한다. payload 캡이 필요해지면 이 상수만 조이면 된다.
+ */
+export const STUDY_DAILY_FULL_HISTORY_FROM = '19900101';
+
+/**
  * 캘린더 봉으로 볼 때의 조회·클립 창. **분봉이면 null** — 분봉 경로는 저장 구간이
  * 곧 화면이므로 창을 넓힐 이유도, 넓혀서 생기는 추가 fetch 를 감수할 이유도 없다.
  *
- * 앞: 저장 구간 시작에서 `/live` 일봉 초기 창과 같은 250봉만큼. 새 상수를 만들지
- * 않는 이유는 "라이브에서 보던 만큼" 이 사용자 기대치이기 때문이다.
+ * 앞: 전체 히스토리. 전에는 `/live` 초기 창과 같은 250봉이었는데, 그 왼쪽이
+ * **영구 벽**이었다 — 좌측 팬의 backfill extend 신호는 발화해도 `/study` 에는
+ * `historicalFromDate` 를 읽는 쿼리가 없어(그 소비자는 `/live` 전용 `useLiveBundle`)
+ * fetch 가 0회다. 점진 백필 이식 대신 창을 여는 이유: 이 쿼리는 [from, 오늘] 창
+ * 전체를 재조회하는 구조라(분봉과 달리 병합 캐시 없음) 딥 팬을 스텝으로 자르면
+ * 누적 전송이 전체 1회 로드보다 오히려 커지고, settle 신호 배선(#1328류)까지
+ * 붙는다. 전체도 싸다 — 실측 3,140캔들 = 320KB/19ms, 최악(1999년부터) 6,810캔들
+ * = 695KB/34ms.
  * 뒤: 오늘. 디스크 일봉이라 넓혀도 벤더 호출이 늘지 않는다.
  */
 export function studyDailyContextWindow(save: StudyViewReference | null): StudyDailyContextWindow {
   if (!save || isMinuteTimeframe(save.timeframe)) return null;
   return {
-    from: subtractDaysKst(save.range.from_date, initialHistoricalDaysFor('D')),
+    from: STUDY_DAILY_FULL_HISTORY_FROM,
     to: todayKstYyyymmdd(),
   };
 }

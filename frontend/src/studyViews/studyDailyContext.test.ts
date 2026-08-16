@@ -3,6 +3,7 @@ import type { StudyViewReference } from '../api/studyViews';
 import type { Candle } from '../api/types';
 import {
   MAX_LEGIBLE_DAILY_SPAN,
+  STUDY_DAILY_FULL_HISTORY_FROM,
   studyDailyContextWindow,
   studyDailyViewport,
   studySavedRangeMarks,
@@ -49,17 +50,17 @@ describe('studyDailyContextWindow', () => {
     expect(studyDailyContextWindow(null)).toBeNull();
   });
 
-  it('캘린더 봉이면 저장 시작보다 과거로 넓히고 오른쪽은 오늘까지 연다', () => {
+  it('캘린더 봉이면 전체 히스토리를 열고 오른쪽은 오늘까지 연다', () => {
     const window = studyDailyContextWindow(save({ timeframe: 'D' }));
     expect(window).not.toBeNull();
-    // 앞: 저장 시작보다 **엄격히** 과거여야 맥락이 생긴다.
-    expect(window!.from < '20260601').toBe(true);
+    // 앞: 전체 히스토리 센티널 — 저장 구간과 무관한 상수라 캐시 키가 종목당 한 벌이다.
+    expect(window!.from).toBe(STUDY_DAILY_FULL_HISTORY_FROM);
     // 뒤: 이후 구간 노출은 항상 켬(2026-08-09 사용자 결정) → 저장 끝이 아니라 오늘.
     expect(window!.to).toBe(todayKstYyyymmdd());
     expect(window!.to > '20260630').toBe(true);
   });
 
-  it('W·M 도 같은 창을 쓴다 — 일봉 기준 250봉', () => {
+  it('W·M 도 같은 창을 쓴다 — 소스가 일봉 하나라 창도 하나다', () => {
     const daily = studyDailyContextWindow(save({ timeframe: 'D' }))!;
     expect(studyDailyContextWindow(save({ timeframe: 'W' }))).toEqual(daily);
     expect(studyDailyContextWindow(save({ timeframe: 'M' }))).toEqual(daily);
