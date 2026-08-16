@@ -2425,10 +2425,22 @@ export function LiveChartRoot({
           {warnSummary.hasRateLimit ? 'KIS 호출 한도로 지연 중 — 잠시 후 재시도…' : '분봉 불러오는 중…'}
         </div>
       )}
-      {/* 호가 홀드 노트: 캔들은 도착했지만 호가 경로 settle을 기다리며 reveal이 홀드된 동안
-          표시. 침묵 커버가 "행"처럼 보이는 걸 막는다. !chartReady 가드로 ungated 팬 경로에서
-          revealed 차트 위 플래시를 막는다. 커버 div 뒤에 렌더돼 커버 위에 페인트된다. */}
-      {cb !== null && cb.candles.length > 0 && !chartReady && isHogaLoading && (
+      {/* 호가·사이드카 홀드 노트: 캔들은 도착했지만 지표 경로 settle을 기다리며 reveal이
+          홀드된 동안 표시. 침묵 커버가 "행"처럼 보이는 걸 막는다. !chartReady 가드로 ungated
+          팬 경로에서 revealed 차트 위 플래시를 막는다. 커버 div 뒤에 렌더돼 커버 위에 페인트된다.
+
+          ⚠ **술어는 위 `revealWhenSettled` 의 홀드 조건과 같은 집합이어야 한다.**
+          종전엔 홀드가 `!isHogaLoading && !isSidecarLoading` 인데 이 문구는 `isHogaLoading`
+          만 봤다 — 그 차집합(`isHogaLoading=false, isSidecarLoading=true`)이 **커버는 떠
+          있는데 글자가 하나도 없는** 구간이었다. 실측으로 사이드카가 호가보다 훨씬 느리다
+          (콜드 5거래일 창에서 호가 44ms vs 사이드카 4.68s, 한 달 창은 11.7s) → 종목 첫
+          방문마다 수 초짜리 단색 사각형이 뜬다.
+
+          경위: 문구 자체가 #457 에서 **침묵 커버를 막으려고** 생겼는데, 이후 #479·#579 가
+          홀드 게이트만 넓히고 문구를 안 데려갔다. 무한 홀드(#579)는 그대로 둔다 — 캡을
+          되살리는 게 아니라 이미 있는 문구의 적용 범위를 홀드 범위와 일치시키는 것이다.
+          기존 문구가 사이드카·일봉MA 케이스에도 그대로 정확하므로 새 시각 요소를 만들지 않는다. */}
+      {cb !== null && cb.candles.length > 0 && !chartReady && (isHogaLoading || isSidecarLoading) && (
         <div
           data-testid="hoga-loading-note"
           style={{

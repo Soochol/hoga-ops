@@ -51,8 +51,8 @@
 |---|---|---|---|---|---|---|
 | 1 | ✅ **구현됨** 꺼진 지표(최대벽·POC·firstTrailing)가 무조건 계산 | A-2 · B-3 | CONFIRMED×2 | 기본 상태 사용자의 최상위 항 → 0 | **S** | 낮음 |
 | 2 | ✅ **구현됨** `hasDeep` 이 호출마다 배열 2개 할당 | A-4 | CONFIRMED | 창당 0.4~1.1 ms/flush + 전 호출부 확산 | **S** | 낮음 |
-| 3 | 워크스페이스 `rect` 신원이 memo 를 항상 뚫음 | F-1 | CONFIRMED | 드래그·행 드롭 중 무관한 차트 창 전부 재렌더 → 0 | **S** | 낮음 |
-| 4 | reveal 커버가 문구 없이 4.6~11.7초 침묵 | F-2 | CONFIRMED | 종목 첫 방문마다 "고장났나" 구간 제거 | **S** | 낮음 |
+| 3 | ✅ **구현됨** 워크스페이스 `rect` 신원이 memo 를 항상 뚫음 | F-1 | CONFIRMED | 드래그·행 드롭 중 무관한 차트 창 전부 재렌더 → 0 | **S** | 낮음 |
+| 4 | ✅ **구현됨** reveal 커버가 문구 없이 4.6~11.7초 침묵 | F-2 | CONFIRMED | 종목 첫 방문마다 "고장났나" 구간 제거 | **S** | 낮음 |
 | 5 | `_load_daily_rows` 871k행 물질화 | C-1 | CONFIRMED | 60초마다 630 ms → ~120 ms (13×) | **S** | 낮음 |
 | 6 | 슬라이딩 축출이 prefix-guard 를 깸 | A-1 · B-1 · E-1 | CONFIRMED×3 | 잠재 최대. **선행 측정 필수** | **M/L** | 중간 |
 | 7 | `/api/live/quotes` 기준가 N+1 이 루프 위에서 | C-4 | **CONFIRMED** | **매 거래일 아침 첫 폴에 2.0~2.5초 루프 정지** → 한 자릿수 ms | S | 중간 |
@@ -200,7 +200,16 @@ expect(spy.mock.calls.length - after).toBeLessThanOrEqual(2);  // 지금은 2000
 
 **예상 효과:** 항목 3 은 창 드래그·행 드롭 중 **드래그에 참여하지 않는 차트 창의 재렌더를 0 으로** — 창 4~6개 워크스페이스에서 드래그가 끌리는 체감의 직접 원인. 항목 4 는 종목 첫 방문마다 생기는 **4.6~11.7초 무문구 커버**에 안내를 붙인다. **총 S 규모.**
 
-### 2-1. `rect` 객체 신원이 창 memo 를 항상 뚫는다 (F-1, CONFIRMED) — S / 낮음
+### 2-1. `rect` 객체 신원이 창 memo 를 항상 뚫는다 (F-1, CONFIRMED) — S / 낮음 · ✅ 구현됨
+
+> **구현 완료 (트랙 2).** 아래 처방(`pxRects` 생산자 memo)을 코어에 넣어 `/live`·`/study` 가
+> 함께 고쳐졌다. **구현 중에 형제 결함이 하나 더 드러났다**: `setCanvasBox` 가 값이 같아도
+> 항상 새 객체를 만들어, **no-op ResizeObserver 발화 하나가 전 창의 rect 를 무효화**했다
+> (`prev` 를 그대로 반환해 React 가 bail 하도록 고쳤다). 이걸 안 고치면 memo 가 fragile 하다 —
+> 아래 검증에서 요구한 「같은 rect 를 두 번 읽으면 같은 객체」 테스트가 그 결함을 잡아냈다.
+> 렌더 카운트 테스트는 새 파일 `frontend/src/workspace/WorkspaceCanvas.test.tsx` 에 있다
+> (코어에 테스트 파일이 **아예 없었다** — 그래서 이 성질이 한 번도 검증된 적 없었다는 아래
+> 서술이 맞았다). red-check 확인: `pxRects` 우회 시 두 테스트 모두 실패.
 
 **증거.** `frontend/src/workspace/WorkspaceCanvas.tsx:321`:
 
@@ -240,7 +249,12 @@ const rectOf = (w: W): Rect => preview?.get(w.id) ?? pxRects.get(w.id) ?? toPx(w
 
 **선행 작업.** `git log -S 'rectOf'` → `348baed6`(#804 코어 분리) 1건. `git log -S 'WorkspaceWindowItem'` → `453eddc9`(#719) 1건. rect 신원을 다룬 커밋 **0건**. 재렌더 경계를 다룬 ADR 없음(0122 좌표계·0123 코어 분리·0127 오프스크린 드래그는 다른 축). **코드 주석이 확보돼 있다고 잘못 기술하고 있고, 렌더 카운트 테스트가 없어 한 번도 검증된 적이 없다.**
 
-### 2-2. reveal 커버가 문구 없이 침묵한다 (F-2, CONFIRMED) — S / 낮음
+### 2-2. reveal 커버가 문구 없이 침묵한다 (F-2, CONFIRMED) — S / 낮음 · ✅ 구현됨
+
+> **구현 완료 (트랙 2).** 문구 게이트를 `(isHogaLoading || isSidecarLoading)` 으로 — 홀드
+> 게이트와 같은 집합. 테스트는 **새로 만들지 않고** 이미 그 조성을 세워 둔 기존 테스트
+> (`holds the cover while the sidecar path is still loading`)에 문구 단언을 더했다 —
+> 그 테스트가 opacity 만 재고 문구를 안 본 것이 결함이 숨은 이유였기 때문이다.
 
 **증거.** 홀드 게이트 `frontend/src/live/LiveChartRoot.tsx:948`:
 

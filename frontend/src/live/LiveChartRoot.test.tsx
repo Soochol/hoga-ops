@@ -2075,6 +2075,12 @@ describe('LiveChartRoot', () => {
     );
     await flushFrames(3);
     expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+    // 커버가 떠 있으면 **왜 떠 있는지도 보여야 한다.** 종전엔 문구 게이트가 `isHogaLoading`
+    // 만 봐서 이 조성(호가 settle · 사이드카 pending)에서 글자 없는 단색 사각형이 됐다.
+    // 실측으로 사이드카는 호가보다 두 자릿수 느리다(콜드 44ms vs 4.68s) — 즉 종목 첫
+    // 방문에서 사용자가 실제로 오래 보는 화면이 바로 이 조성이다.
+    // 위 테스트 셋이 opacity 만 재고 문구는 안 봤기 때문에 결함이 숨어 있었다.
+    expect(screen.getByTestId('hoga-loading-note').textContent).toContain('지표 불러오는 중');
   });
 
   it('reveals once the sidecar path settles (candles+hoga already present)', async () => {
@@ -2106,6 +2112,8 @@ describe('LiveChartRoot', () => {
     );
     await flushFrames(3);
     expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+    // 문구도 함께 사라진다 — 넓힌 술어가 revealed 차트 위에 글자를 남기지 않는지 확인.
+    expect(screen.queryByTestId('hoga-loading-note')).toBeNull();
   });
 
   it('holds the cover indefinitely while the sidecar loads — no cap (장면1)', async () => {
