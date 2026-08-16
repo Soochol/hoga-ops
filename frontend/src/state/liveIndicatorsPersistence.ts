@@ -103,6 +103,9 @@ export const QUOTE_TOTALS_ASK_LEVEL_DEFAULT_COLOR = '#3485FA'; // 매도(파랑)
 export const RATIO_LEVEL_DEFAULT_COLOR = '#9A9AA8'; // 중립 회색
 export const QUOTE_LEVEL_LINE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
 export const QUOTE_LEVEL_LINE_DEFAULT_STYLE: LineStyle = 'dashed';
+// 총잔량 당일 최고 수평선 — 색·두께는 현재값 수평선과 같은 pane 라인색을 재사용하되 모양만
+// dotted 로 갈라 둘을 구분한다(현재값 dashed / 데이터 라인 solid width 3).
+export const QUOTE_TOTALS_DAY_MAX_DEFAULT_STYLE: LineStyle = 'dotted';
 
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
@@ -205,6 +208,21 @@ export type PersistedIndicators = {
   quoteTotalsAskLevelWidth: 1 | 2 | 3 | 4;
   /** 총잔량 매도 현재값 수평선 모양(solid/dashed/dotted). */
   quoteTotalsAskLevelStyle: LineStyle;
+  /** 총잔량 **당일 최고**값 수평선(매수·매도) 표시. opt-in(기본 false). 현재값 수평선과
+   *  독립 토글 — 둘 다 켜면 신고가 순간에만 겹친다. */
+  quoteTotalsDayMaxLineEnabled: boolean;
+  /** 총잔량 매수 당일 최고 수평선 색(hex). */
+  quoteTotalsDayMaxBidColor: string;
+  /** 총잔량 매수 당일 최고 수평선 두께. */
+  quoteTotalsDayMaxBidWidth: 1 | 2 | 3 | 4;
+  /** 총잔량 매수 당일 최고 수평선 모양(solid/dashed/dotted). */
+  quoteTotalsDayMaxBidStyle: LineStyle;
+  /** 총잔량 매도 당일 최고 수평선 색(hex). */
+  quoteTotalsDayMaxAskColor: string;
+  /** 총잔량 매도 당일 최고 수평선 두께. */
+  quoteTotalsDayMaxAskWidth: 1 | 2 | 3 | 4;
+  /** 총잔량 매도 당일 최고 수평선 모양(solid/dashed/dotted). */
+  quoteTotalsDayMaxAskStyle: LineStyle;
   /** 호가비 pane on/off. Default TRUE. */
   ratioEnabled: boolean;
   /** 호가비 현재값 수평선 표시. opt-in(기본 false). */
@@ -426,6 +444,14 @@ export function mergeLiveIndicatorPrefs(
   const qtAskLevelColor = normalizeHexColor(obj?.quoteTotalsAskLevelColor, QUOTE_TOTALS_ASK_LEVEL_DEFAULT_COLOR);
   const qtAskLevelWidth = normalizeLineWidth(obj?.quoteTotalsAskLevelWidth, QUOTE_LEVEL_LINE_DEFAULT_WIDTH);
   const qtAskLevelStyle = normalizeLineStyle(obj?.quoteTotalsAskLevelStyle, QUOTE_LEVEL_LINE_DEFAULT_STYLE);
+  // 총잔량 당일 최고 수평선 — 현재값 수평선과 같은 검증·폴백, 모양 기본만 dotted.
+  const quoteTotalsDayMaxLineEnabled = obj?.quoteTotalsDayMaxLineEnabled === true;
+  const qtDayMaxBidColor = normalizeHexColor(obj?.quoteTotalsDayMaxBidColor, QUOTE_TOTALS_BID_LEVEL_DEFAULT_COLOR);
+  const qtDayMaxBidWidth = normalizeLineWidth(obj?.quoteTotalsDayMaxBidWidth, QUOTE_LEVEL_LINE_DEFAULT_WIDTH);
+  const qtDayMaxBidStyle = normalizeLineStyle(obj?.quoteTotalsDayMaxBidStyle, QUOTE_TOTALS_DAY_MAX_DEFAULT_STYLE);
+  const qtDayMaxAskColor = normalizeHexColor(obj?.quoteTotalsDayMaxAskColor, QUOTE_TOTALS_ASK_LEVEL_DEFAULT_COLOR);
+  const qtDayMaxAskWidth = normalizeLineWidth(obj?.quoteTotalsDayMaxAskWidth, QUOTE_LEVEL_LINE_DEFAULT_WIDTH);
+  const qtDayMaxAskStyle = normalizeLineStyle(obj?.quoteTotalsDayMaxAskStyle, QUOTE_TOTALS_DAY_MAX_DEFAULT_STYLE);
   const ratioLevelLineEnabled = obj?.ratioLevelLineEnabled === true;
   const ratioLevelColor = normalizeHexColor(obj?.ratioLevelColor, RATIO_LEVEL_DEFAULT_COLOR);
   const ratioLevelWidth = normalizeLineWidth(obj?.ratioLevelWidth, QUOTE_LEVEL_LINE_DEFAULT_WIDTH);
@@ -489,6 +515,13 @@ export function mergeLiveIndicatorPrefs(
     quoteTotalsAskLevelColor: qtAskLevelColor,
     quoteTotalsAskLevelWidth: qtAskLevelWidth,
     quoteTotalsAskLevelStyle: qtAskLevelStyle,
+    quoteTotalsDayMaxLineEnabled,
+    quoteTotalsDayMaxBidColor: qtDayMaxBidColor,
+    quoteTotalsDayMaxBidWidth: qtDayMaxBidWidth,
+    quoteTotalsDayMaxBidStyle: qtDayMaxBidStyle,
+    quoteTotalsDayMaxAskColor: qtDayMaxAskColor,
+    quoteTotalsDayMaxAskWidth: qtDayMaxAskWidth,
+    quoteTotalsDayMaxAskStyle: qtDayMaxAskStyle,
     ratioEnabled: ratio,
     ratioLevelLineEnabled,
     ratioLevelColor,

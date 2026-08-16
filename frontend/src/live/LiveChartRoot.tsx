@@ -2203,7 +2203,7 @@ export function LiveChartRoot({
           )}
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} liveTradePrice={liveTradePrice} />
           {isMinuteTimeframe(timeframe) && (
-            <QuoteLevelLines paneSeries={paneSeries} bundle={paneRatioBundle ?? cb} />
+            <QuoteLevelLines paneSeries={paneSeries} bundle={paneRatioBundle ?? cb} axis={axis} />
           )}
           {isMinuteTimeframe(timeframe) && (
             <LiveWallSurgeMarkers

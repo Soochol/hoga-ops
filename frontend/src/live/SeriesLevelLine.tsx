@@ -15,6 +15,10 @@ type Props = {
   /** Master visibility. When false the line stays created but hidden — avoids
    *  churning the handle on a toggle flip. */
   enabled: boolean;
+  /** 라인 옆 텍스트. 같은 pane 에 성격이 다른 수평선이 여럿일 때(현재값 vs 당일 최고)
+   *  구분자 역할 — 신고가를 갱신하는 순간 두 값이 정확히 같아져 선이 포개진다.
+   *  미지정이면 '' → 종전 동작 그대로. */
+  title?: string;
 };
 
 /**
@@ -25,7 +29,7 @@ type Props = {
  * the update effect. The pane's own `priceFormat` drives the y-axis tag, so the
  * label reads in the pane's units (잔량 count / imbalance ratio) automatically.
  */
-export default function SeriesLevelLine({ series, price, color, lineWidth, lineStyle, enabled }: Props) {
+export default function SeriesLevelLine({ series, price, color, lineWidth, lineStyle, enabled, title = '' }: Props) {
   const lineRef = useRef<IPriceLine | null>(null);
 
   // Create once per series handle. Starts hidden; the update effect reveals it
@@ -42,7 +46,7 @@ export default function SeriesLevelLine({ series, price, color, lineWidth, lineS
       lineVisible: false,
       axisLabelVisible: false,
       axisLabelColor: color,
-      title: '',
+      title,
     } as PriceLineOptions);
     lineRef.current = line;
     return () => {
@@ -70,8 +74,9 @@ export default function SeriesLevelLine({ series, price, color, lineWidth, lineS
       axisLabelColor: color,
       lineVisible: true,
       axisLabelVisible: true,
+      title,
     });
-  }, [show, price, color, lineWidth, lineStyle]);
+  }, [show, price, color, lineWidth, lineStyle, title]);
 
   return null;
 }

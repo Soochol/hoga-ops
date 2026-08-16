@@ -17,6 +17,16 @@ export default function QuoteTotalsConfig() {
   const askWidth = useWindowIndicator((s) => s.quoteTotalsAskLevelWidth);
   const askStyle = useWindowIndicator((s) => s.quoteTotalsAskLevelStyle);
   const setAskStyle = useIndicatorActions().setQuoteTotalsAskLevelStyle;
+  const dayMaxEnabled = useWindowIndicator((s) => s.quoteTotalsDayMaxLineEnabled);
+  const setDayMaxEnabled = useIndicatorActions().setQuoteTotalsDayMaxLineEnabled;
+  const dayMaxBidColor = useWindowIndicator((s) => s.quoteTotalsDayMaxBidColor);
+  const dayMaxBidWidth = useWindowIndicator((s) => s.quoteTotalsDayMaxBidWidth);
+  const dayMaxBidStyle = useWindowIndicator((s) => s.quoteTotalsDayMaxBidStyle);
+  const setDayMaxBidStyle = useIndicatorActions().setQuoteTotalsDayMaxBidStyle;
+  const dayMaxAskColor = useWindowIndicator((s) => s.quoteTotalsDayMaxAskColor);
+  const dayMaxAskWidth = useWindowIndicator((s) => s.quoteTotalsDayMaxAskWidth);
+  const dayMaxAskStyle = useWindowIndicator((s) => s.quoteTotalsDayMaxAskStyle);
+  const setDayMaxAskStyle = useIndicatorActions().setQuoteTotalsDayMaxAskStyle;
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">
@@ -56,6 +66,40 @@ export default function QuoteTotalsConfig() {
               onChange={setAskStyle}
               onLineStyleChange={(lineStyle) => setAskStyle({ lineStyle })}
               label="매도 수평선"
+            />
+          </div>
+        </div>
+      )}
+      <div className="border-b border-border my-3" />
+      <ToggleRow
+        label="당일 최고 수평선"
+        description="오늘 매수·매도 총잔량이 최고였던 값에 수평 기준선을 그립니다. 마감 동시호가 구간은 제외하며, 오늘 데이터가 없으면 표시하지 않습니다."
+        checked={dayMaxEnabled}
+        onToggle={() => setDayMaxEnabled(!dayMaxEnabled)}
+        testId="settings-toggle-quoteTotalsDayMaxLineEnabled"
+      />
+      {dayMaxEnabled && (
+        <div className="space-y-2 mt-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-fg">매수 최고선</span>
+            <MAStylePicker
+              color={dayMaxBidColor}
+              lineWidth={dayMaxBidWidth}
+              lineStyle={dayMaxBidStyle}
+              onChange={setDayMaxBidStyle}
+              onLineStyleChange={(lineStyle) => setDayMaxBidStyle({ lineStyle })}
+              label="매수 최고선"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-fg">매도 최고선</span>
+            <MAStylePicker
+              color={dayMaxAskColor}
+              lineWidth={dayMaxAskWidth}
+              lineStyle={dayMaxAskStyle}
+              onChange={setDayMaxAskStyle}
+              onLineStyleChange={(lineStyle) => setDayMaxAskStyle({ lineStyle })}
+              label="매도 최고선"
             />
           </div>
         </div>
