@@ -43,6 +43,7 @@ import {
 // 창 설정 타입은 /live 와 **공유**한다(복제 금지) — 두 창 모양이 갈라지는 순간
 // #907 의 스토어 핸들 주입이 성립하지 않는다.
 import type { ChartWindowConfig, ChartWindowRuntime } from './workspace';
+import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 
 export { STUDY_WORKSPACE_STORAGE_KEY };
 export const STUDY_WORKSPACE_SCHEMA_VERSION = 1;
@@ -189,13 +190,15 @@ const SEED_CHART_FRACTION = 0.72;
 /**
  * 10호가(십자 배치 BookPanel)가 보일 때의 차트 비율.
  *
- * BookPanel 은 **min-w 560px** 가 계약이고(그 아래로는 가로 스크롤 = 요약 값 잘림),
- * /study 캔버스는 탭 바+헤더를 뺀 나머지라 /live 보다 작다(실측 1280 뷰포트에서
- * 1190×531 vs /live REF 1546×776). 그래서 /live 의 폭 비율(0.44)을 그대로 쓰면
- * 1190×0.44 = 524px 로 **36px 모자라 잘린다**. 좁은 쪽 실측을 기준으로 잡는다:
- * 0.50 → 1190 에서 595px 로 계약을 넘긴다.
+ * BookPanel 의 폭 계약(`bookPanelMetrics`)은 절대 px 인데 /study 캔버스는 탭 바+헤더를
+ * 뺀 나머지라 /live 보다 작다(실측 1280 뷰포트에서 1190×531 vs /live REF 1546×776).
+ * 그래서 비율은 **좁은 쪽(1190)에서 역산**한다 — 우측 열 = (1 − 0.58) × 1190 = 500px
+ * 로 `BOOK_WINDOW_DEFAULT_W`(480) 를 20px 넘긴다.
+ *
+ * 2026-08-16 에 하한이 560→448 로 내려오며 0.50 → 0.58 로 넓혔다(차트 595 → 690px).
+ * 상한은 0.5966 (= 1 − 480/1190) 이고 그 위로 올리면 첫 시드부터 가로 스크롤이다.
  */
-const SEED_CHART_FRACTION_WITH_BOOK = 0.5;
+const SEED_CHART_FRACTION_WITH_BOOK = 0.58;
 /**
  * 10호가의 세로 가중치. 전 10단을 다 보려면 ~462px 가 필요한데(행 22px × 21),
  * 그건 /study 캔버스 높이(531px)의 87% 라 다른 창과 함께 담을 수 없다. 가장
@@ -442,9 +445,10 @@ function readStorage(): Persisted {
 const REF_CANVAS = { w: 1546, h: 776 };
 const DEFAULT_SIZE: Record<StudyWindowKind, { w: number; h: number }> = {
   chart: { w: 520, h: 360 },
-  // book 폭 = min-w 560 + 스크롤바·여유 ~40 = 600 (기존 680 슬랙이 통계 여백을
-  // 만들어 축소, 2026-07-24). live/state/workspace.ts 의 book 정의와 동일 근거.
-  book: { w: 600, h: 560 },
+  // book 폭은 `bookPanelMetrics` 가 SSOT (= min-w + 스크롤바·여유). 높이 560 은
+  // 행 수(22×22 + 총잔량바)가 정하므로 폭 축소와 무관하게 불변이다.
+  // live/state/workspace.ts 의 book 정의와 같은 상수를 본다.
+  book: { w: BOOK_WINDOW_DEFAULT_W, h: 560 },
   broker: { w: 236, h: 280 },
   vdist: { w: 300, h: 240 },
   program: { w: 260, h: 200 },

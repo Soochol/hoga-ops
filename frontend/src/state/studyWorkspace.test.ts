@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 
 /** 모듈 하이드레이션(시드)이 import 시점에 돌므로, 저장소를 세팅한 뒤 신선하게
  *  다시 불러온다 — workspace.tabScope 류의 격리 관례. */
@@ -23,21 +24,23 @@ describe('시드 — study.layout.v1 → 기본 창 배치 (ADR-0123 PR-2)', () 
 
     expect(s.windows.map((w) => w.kind)).toEqual(['chart', 'book', 'broker', 'vdist', 'program']);
     const chart = s.windows[0];
-    // 10호가(십자 배치)가 보이면 우측 열이 BookPanel min-w 560px 계약을 넘도록 넓어진다.
-    expect(chart.rect).toEqual({ x: 0, y: 0, w: 0.5, h: 1 });
+    // 10호가(십자 배치)가 보이면 우측 열이 BookPanel 폭 계약을 넘도록 넓어진다.
+    // 0.58 = 하한 560→448 축소분을 차트에 넘긴 값(2026-08-16). 상한은 0.5966.
+    expect(chart.rect).toEqual({ x: 0, y: 0, w: 0.58, h: 1 });
     // 데이터 창은 우측 열 스택 — book 은 3배 높이 가중(3/6), 나머지 1/6.
     const data = s.windows.slice(1);
     const expectedHeights = [0.5, 1 / 6, 1 / 6, 1 / 6];
     let expectedY = 0;
     data.forEach((w, i) => {
-      expect(w.rect.x).toBeCloseTo(0.5);
-      expect(w.rect.w).toBeCloseTo(0.5);
+      expect(w.rect.x).toBeCloseTo(0.58);
+      expect(w.rect.w).toBeCloseTo(0.42);
       expect(w.rect.y).toBeCloseTo(expectedY);
       expect(w.rect.h).toBeCloseTo(expectedHeights[i]);
       expectedY += expectedHeights[i];
     });
-    // 좁은 쪽 실측 캔버스(1190px)에서도 BookPanel min-w 계약을 만족해야 한다.
-    expect(data[0].rect.w * 1190).toBeGreaterThanOrEqual(560);
+    // 좁은 쪽 실측 캔버스(1190px)에서도 BookPanel 폭 계약을 만족해야 한다 —
+    // 기준은 패널 하한이 아니라 창 기본 폭(스크롤바 여유 포함, `bookPanelMetrics`).
+    expect(data[0].rect.w * 1190).toBeGreaterThanOrEqual(BOOK_WINDOW_DEFAULT_W);
     // 첫 포커스 = 차트(zOrder 마지막).
     expect(s.zOrder[s.zOrder.length - 1]).toBe(chart.id);
     // 시드 즉시 persist — 창 id 고정(재방문 재시드 없음).
