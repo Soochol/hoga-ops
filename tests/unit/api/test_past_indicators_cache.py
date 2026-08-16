@@ -16,7 +16,7 @@ from hoga.api.models import (
     TradeVolumePoc,
     VolumeDistributionBin,
 )
-from hoga.api.past_indicators_cache import CACHE_MISS, PastIndicatorsCache
+from hoga.api.past_indicators_cache import CACHE_MISS, KIND_VERSIONS, PastIndicatorsCache
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 
@@ -395,6 +395,25 @@ def test_depth_bucket_ms_is_part_of_the_key(tmp_path: Path) -> None:
     assert c.get_depth(CODE, DATE, SRC, 300_000) is CACHE_MISS
 
 
+def test_depth_disk_payload_shape_is_frozen(tmp_path: Path) -> None:
+    """디스크 payload 의 **키 집합과 값**을 못 박는다.
+
+    이 캐시의 포맷을 바꾸면 사용자가 재계산을 치른다 — 파일 docstring 이 그 비용을
+    "`/study` 콜드 로드 사고 그 자체(콜드 비용의 95%+ = peak 재계산, 수십 분)" 라고
+    적어 뒀다. 그런데 "새 인스턴스에서 디스크로 살아남는다" 류 테스트는 **같은 코드로
+    쓰고 같은 코드로 읽으므로** 읽기·쓰기를 함께 바꾸면 조용히 통과한다. 이 테스트는
+    파일 내용을 직접 보므로 그 경우에도 빨개진다.
+    """
+    PastIndicatorsCache(tmp_path).store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
+    body = json.loads(
+        (_store_dir(tmp_path) / f"{DATE}.depth.60000.json").read_text(encoding="utf-8")
+    )
+    assert set(body) == {"version", "points", "fetched_at_ms"}
+    assert body["version"] == KIND_VERSIONS["depth"]
+    assert body["points"] == [p.model_dump(mode="json") for p in _DEPTH]
+    assert isinstance(body["fetched_at_ms"], int)
+
+
 def test_depth_path_layout(tmp_path: Path) -> None:
     PastIndicatorsCache(tmp_path).store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
     assert (_store_dir(tmp_path) / f"{DATE}.depth.60000.json").exists()
@@ -660,12 +679,22 @@ def _instrument(cache: PastIndicatorsCache) -> _TrackedLock:
         if isinstance(value, OrderedDict):
             setattr(cache, name, _LockAssertingDict(lock, name, value))
     # _all_mem_dicts 는 같은 객체들의 튜플이라 교체 후 다시 묶어야 purge 가 새 dict 를 본다.
+    # 이 목록이 프로덕션 `_all_mem_dicts` 보다 짧으면 그만큼이 **감시 밖**이 된다 —
+    # 실제로 `_mem_wall_surge` 가 빠져 있었고 아무도 몰랐다. 개수를 못 박아 재발을 막는다.
+    _production_count = len(cache._all_mem_dicts)
     cache._all_mem_dicts = tuple(
         getattr(cache, n) for n in (
             "_mem_ratio", "_mem_fill", "_mem_ask_peak", "_mem_bid_peak",
             "_mem_trade_volume_poc", "_mem_depth", "_mem_depth_delta",
+            # `_mem_wall_surge` 가 빠져 있었다 — 프로덕션 `_all_mem_dicts` 는 11개인데
+            # 이 목록은 10개라, wall_surge dict 의 락 위반을 아무도 못 봤다.
+            "_mem_wall_surge",
             "_mem_vdist", "_mem_broker_late", "_mem_continuous_before",
         )
+    )
+    assert len(cache._all_mem_dicts) == _production_count, (
+        "락 감시 목록이 프로덕션 `_all_mem_dicts` 와 개수가 다르다 — 빠진 dict 는 "
+        "락 위반이 나도 이 테스트가 못 본다."
     )
     return lock
 
