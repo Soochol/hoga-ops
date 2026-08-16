@@ -14,6 +14,11 @@ import {
 import { bucketsForPage, resolveIndicatorSettings } from '../state/indicatorSettingsV2';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import {
+  resolveIndicatorPanelTimeframe,
+  resolveRememberedMinuteTimeframe,
+  resolveSelectedTimeframe,
+} from './studyTimeframeResolution';
+import {
   STUDY_DEFAULT_MINUTE_TIMEFRAME,
   useStudyLastMinuteTimeframeStore,
 } from '../state/studyLastMinuteTimeframe';
@@ -227,18 +232,20 @@ export function StudyPage() {
    * 과도기에만 닿는다. 저장뷰의 봉(`referenceSave.timeframe`)은 사슬의 **맨 끝**이라
    * 열린 창이 하나라도 있으면 절대 이기지 못한다 — 그게 이 페이지의 계약이다.
    */
-  const selectedTimeframe = activeViewId && referenceSave
-    ? chartWindowTimeframe
-      ?? (activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
-      ?? viewTimeframes[activeViewId]
-      ?? referenceSave.timeframe
-    : null;
+  const selectedTimeframe = resolveSelectedTimeframe({
+    chartWindowTimeframe,
+    activeViewId,
+    activeTab: activeTab ?? null,
+    viewTimeframes,
+    savedTimeframe: referenceSave?.timeframe ?? null,
+  });
   // 창별 분봉 기억이 헤더 컨트롤의 분봉 슬롯을 정한다(#902).
-  const rememberedMinuteTimeframe = chartWindowLastMinute
-    ?? (activeViewId && referenceSave
-      ? rememberedMinuteTimeframes[activeViewId]
-        ?? (isMinuteTimeframe(referenceSave.timeframe) ? referenceSave.timeframe : '1m')
-      : STUDY_DEFAULT_MINUTE_TIMEFRAME);
+  const rememberedMinuteTimeframe = resolveRememberedMinuteTimeframe({
+    chartWindowLastMinute,
+    activeViewId,
+    rememberedMinuteTimeframes,
+    savedTimeframe: referenceSave?.timeframe ?? null,
+  });
   const indicatorsByTimeframe = useLivePageStore((s) => s.indicatorsByTimeframe);
   const studyIndicators = useLivePageStore((s) => s.studyIndicatorsByTimeframe);
   // 번들을 요구하는 창 목록 — 봉·지표가 곧 쿼리 키다(#904).
@@ -305,9 +312,11 @@ export function StudyPage() {
   const isStudyPageLoading = savesQuery.isLoading || isLoadingActiveView;
   // 로딩·에러 구간의 폴백도 **창을 먼저 읽는다**(#1326) — 봉의 소유자가 창이므로
   // 탭을 먼저 읽으면 아직 되받아쓰기 전인 저장 봉이 지표 버킷으로 새어 나간다.
-  const indicatorPanelTimeframe = activeViewModel.status === 'ready'
-    ? activeViewModel.save.timeframe
-    : selectedTimeframe ?? activeTab?.timeframe ?? '1m';
+  const indicatorPanelTimeframe = resolveIndicatorPanelTimeframe({
+    readySavedTimeframe: activeViewModel.status === 'ready' ? activeViewModel.save.timeframe : null,
+    selectedTimeframe,
+    activeTab: activeTab ?? null,
+  });
   // /study 의 ambient 지표 봉 동기화(PR-A #699) — 활성 뷰의 timeframe 이 지표
   // 설정의 조회 키다. 렌더 중인 차트와 지표 드로어가 같은 값을 쓰므로 이 하나로 충분.
   const setIndicatorTimeframe = useLivePageStore((s) => s.setIndicatorTimeframe);
