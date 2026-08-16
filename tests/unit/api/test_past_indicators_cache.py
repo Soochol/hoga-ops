@@ -524,6 +524,9 @@ class _ModelKindCase:
     miss: object
 
 
+_POC_SAMPLE = TradeVolumePoc(
+    date=DATE, center_price=70_500, low_price=70_400, high_price=70_600, qty=321, t_ms=17, band_pct=0.005
+)
 _ASK_PEAK_SAMPLE = AskPeak(date=DATE, price=71_000, qty=7, t_ms=11, max_price=71_000, max_qty=7, max_t_ms=11)
 _BID_PEAK_SAMPLE = BidPeak(date=DATE, price=70_000, qty=5, t_ms=13, max_price=70_000, max_qty=5, max_t_ms=13)
 
@@ -552,10 +555,60 @@ _MODEL_KIND_CASES = [
         _VDIST,
         CACHE_MISS,
     ),
+    _ModelKindCase(
+        "poc",
+        lambda c: c.store_trade_volume_poc(CODE, DATE, SRC, 10, 70_000, 71_000, _POC_SAMPLE),
+        lambda c: c.get_trade_volume_poc(CODE, DATE, SRC, 10, 70_000, 71_000),
+        _POC_SAMPLE,
+        CACHE_MISS,
+    ),
+    # 스칼라 kind — 모델이 아니라 `int | None` 을 싣지만 **저장 메커니즘의 명제는 같다**.
+    # `None` 도 유효 캐시값이라 미스와 구별된다(그 명제는 아래 고유 테스트가 따로 잰다).
+    _ModelKindCase(
+        "continuous_before",
+        lambda c: c.store_continuous_before(CODE, DATE, SRC, 153_000_000, 70_800),
+        lambda c: c.get_continuous_before(CODE, DATE, SRC, 153_000_000),
+        70_800,
+        CACHE_MISS,
+    ),
+    # `ratio`·`fill` 은 `_read`/`_write` 계열 — 모델이 아니라 raw tuple 리스트를 싣고,
+    # **미스 신호가 `None`** 인 유일한 계열이다(나머지는 `_CACHE_MISS` 센티넬). 그 비대칭은
+    # 표의 `miss` 칸이 담는다 — 표가 kind 를 같게 취급하려고 사실을 뭉개면 안 된다.
+    _ModelKindCase(
+        "ratio",
+        lambda c: c.store_ratio(CODE, DATE, SRC, RATIO),
+        lambda c: c.get_ratio(CODE, DATE, SRC),
+        RATIO,
+        None,
+    ),
+    _ModelKindCase(
+        "fill",
+        lambda c: c.store_fill(CODE, DATE, SRC, FILL),
+        lambda c: c.get_fill(CODE, DATE, SRC),
+        FILL,
+        None,
+    ),
 ]
 
 _MODEL_KIND_IDS = [c.kind for c in _MODEL_KIND_CASES]
 
+
+
+def test_kind_tables_cover_every_kind() -> None:
+    """두 표가 `KIND_VERSIONS` 전수를 덮는가.
+
+    **이 테스트가 이 파일에서 가장 중요한 한 줄이다.** 명제를 표로 모아도 새 kind 를
+    표에 넣는 것이 규율로 남으면 결국 또 빠진다 — 실제로 `depth_delta` 와 `wall_surge` 가
+    그렇게 캐시 테스트 0건이었고, 단일 모델 계열은 버전 축이 통째로 비어 있었다. 여기가
+    빨개지면 "표에 한 줄" 이 규율이 아니라 **요구**가 된다.
+    """
+    covered = {c.kind for c in _LIST_KIND_CASES} | {c.kind for c in _MODEL_KIND_CASES}
+    missing = set(KIND_VERSIONS) - covered
+    extra = covered - set(KIND_VERSIONS)
+    assert covered == set(KIND_VERSIONS), (
+        f"표가 덮지 않는 kind={sorted(missing)} / KIND_VERSIONS 에 없는 표 항목={sorted(extra)}. "
+        "kind 를 추가했다면 위 두 표 중 저장 형태가 맞는 쪽에 한 줄을 더한다."
+    )
 
 @pytest.mark.parametrize("case", _MODEL_KIND_CASES, ids=_MODEL_KIND_IDS)
 def test_model_kind_persists_to_disk_across_instances(case: _ModelKindCase, tmp_path: Path) -> None:
