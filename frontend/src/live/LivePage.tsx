@@ -19,7 +19,6 @@ import {
   targetChartWindow,
 } from './workspace/WorkspaceIndicatorDrawer';
 import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';
-import { requestSettingsModal } from './settingsModalControls';
 import { registerCollectDialogOpener, type CollectTarget } from './workspace/collectDialogControls';
 import { liveOpenCodesKey, useLiveRangeCacheEviction } from './useLiveRangeCacheEviction';
 
@@ -28,7 +27,7 @@ import { liveOpenCodesKey, useLiveRangeCacheEviction } from './useLiveRangeCache
  *
  * Three-row grid (symbol search lives in the global TopNav header line):
  *   1. LiveStateBanner (auto)                  — empty/error state matrix
- *   2. WorkspaceLiveToolbar (auto)             — 창 추가·설정·프리셋·캡처헬스
+ *   2. WorkspaceLiveToolbar (auto)             — 창 추가·프리셋·캡처헬스
  *   3. WorkspaceCanvas (1fr)                   — 창들(차트·데이터) + 자석 스냅 엔진
  *
  * 종목 식별·현재가·등락률·히트맵·경고는 각 차트 창 **타이틀바**(TitleBarSymbolRow)가
@@ -122,9 +121,9 @@ export function LivePage() {
   // 대상을 z-최상위로 추론했는데, 트리거가 창 헤더로 내려오며 추론이 불필요해졌다.
   const [indicatorTargetId, setIndicatorTargetId] = useState<string | null>(null);
   useEffect(() => registerIndicatorDrawerOpener(setIndicatorTargetId), []);
-  // 설정 드로어는 여기 없다 — 열림 상태도 렌더도 `App` 이 소유한다(전 라우트 공용).
-  // 이 페이지의 트리거(툴바 ⚙ · 차트 창 캔들 빈 상태)는 `requestSettingsModal()` 로
-  // 요청만 보낸다.
+  // 설정 드로어는 여기 없다 — 열림 상태도 렌더도 `App` 이 소유하고, 진입점은 상단
+  // TopNav 「설정」 하나다(툴바 ⚙ 는 2026-08-17 에 제거). 이 페이지에 남은 트리거는
+  // 차트 창의 캔들 빈 상태뿐이고, 그건 `CandleEmptyState` 가 직접 요청을 보낸다.
   // 지난 N일 hogaplay 수집(히트맵 CollectDialog 재사용) — 대상 종목은 **차트 창
   // 헤더의 수집 버튼**이 실어 보낸다. 전역 툴바에 있던 시절엔 "활성 그룹의 종목"
   // 이라 다른 종목을 수집하려면 그 창을 먼저 활성화해야 했다.
@@ -198,7 +197,6 @@ export function LivePage() {
         stack={banner.stack}
       />
       <WorkspaceLiveToolbar
-        onOpenSettings={requestSettingsModal}
         captureHealth={liveStatus.captureHealth}
       />
       <WorkspaceCanvas />

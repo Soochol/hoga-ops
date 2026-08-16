@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TimeframeControl } from './TimeframeControl';
@@ -199,7 +199,7 @@ function renderToolbar(props: Partial<Parameters<typeof WorkspaceLiveToolbar>[0]
   const captureHealth = { severity: 'ok' as const, label: 'LIVE●', title: 'capture_reason = healthy', showDot: true };
   return render(
     <QueryClientProvider client={qc}>
-      <WorkspaceLiveToolbar onOpenSettings={() => {}} captureHealth={captureHealth} {...props} />
+      <WorkspaceLiveToolbar captureHealth={captureHealth} {...props} />
     </QueryClientProvider>,
   );
 }
@@ -210,14 +210,13 @@ describe('WorkspaceLiveToolbar 액션 버튼', () => {
     seedChartWindow();
   });
 
-  it('renders settings button and calls onOpenSettings on click', () => {
-    const onOpenSettings = vi.fn();
-    renderToolbar({ onOpenSettings });
-    const btn = screen.getByTestId('live-settings-button');
-    expect(btn).toHaveClass('bg-transparent');
-    expect(btn).toHaveClass('text-fg-dim');
-    fireEvent.click(btn);
-    expect(onOpenSettings).toHaveBeenCalledOnce();
+  // 설정 버튼은 상단 TopNav 로 이관됐다(2026-08-17). 앱 전역 드로어라 `/live`·`/study`
+  // 툴바에만 두면 진입점이 고르지 않았고, 상단에 이미 같은 드로어를 여는 버튼이 있어
+  // 둘은 중복이었다. **부재가 계약이다** — 여기 되살아나면 두 번째 버튼이 된다.
+  it('does not render the settings button — it moved to the top nav', () => {
+    renderToolbar();
+    expect(screen.queryByTestId('live-settings-button')).toBeNull();
+    expect(screen.queryByRole('button', { name: '설정' })).toBeNull();
   });
 
   // 보조지표는 차트 창 헤더로 이관됐다(#758·#759) — 창의 것이라 창이 연다.
@@ -250,13 +249,12 @@ describe('WorkspaceLiveToolbar 액션 버튼', () => {
     expect(screen.getByTestId('workspace-add-chart')).toBeInTheDocument();
   });
 
-  // 남는 것은 워크스페이스 관리(창 추가·프리셋) + 앱 설정뿐 —
-  // "어느 창/그룹에 걸리나" 를 추론해야 하는 항목이 하나도 없다.
-  it('keeps only workspace-management and app-settings controls', () => {
+  // 남는 것은 워크스페이스 관리(창 추가·프리셋)뿐 — "어느 창/그룹에 걸리나" 를
+  // 추론해야 하는 항목도, 앱 전역 설정도 여기 없다.
+  it('keeps only workspace-management controls', () => {
     renderToolbar();
 
     expect(screen.getByTestId('workspace-add-menu-button')).toBeInTheDocument();
     expect(screen.getByTestId('layout-preset-button')).toBeInTheDocument();
-    expect(screen.getByTestId('live-settings-button')).toBeInTheDocument();
   });
 });

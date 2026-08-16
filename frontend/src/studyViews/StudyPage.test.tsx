@@ -130,11 +130,8 @@ vi.mock('../live/indicators/IndicatorPanel', () => ({
   },
 }));
 
-// 설정 드로어는 이 페이지 트리에 없다 — 열림 상태도 렌더도 `App` 이 소유하고,
-// 툴바 ⚙ 는 명령 채널로 **요청만** 보낸다. 그래서 모킹 대상이 컴포넌트가 아니라
-// 채널이고, 단언도 "다이얼로그가 떴다" 가 아니라 "요청이 나갔다" 가 된다.
-const { requestSettingsModal } = vi.hoisted(() => ({ requestSettingsModal: vi.fn() }));
-vi.mock('../live/settingsModalControls', () => ({ requestSettingsModal }));
+// 설정 관련 모킹은 없다 — 이 페이지는 `settingsModalControls` 를 import 하지 않는다.
+// 드로어는 `App` 이 소유하고 진입점은 상단 TopNav 「설정」 하나다(툴바 ⚙ 제거).
 
 import { StudyPage } from './StudyPage';
 
@@ -777,18 +774,14 @@ describe('StudyPage', () => {
     renderPage('/study?view=view-ref');
 
     expect(screen.getByTestId('live-indicators-button')).toBeTruthy();
-    expect(screen.getByTestId('live-settings-button')).toBeTruthy();
+    // 설정 버튼은 상단 TopNav 로 이관됐다(2026-08-17) — 헤더에서의 **부재가 계약**이다.
+    expect(screen.queryByTestId('live-settings-button')).toBeNull();
     // 레일 폐기(#760) 이후 /study 도 헤더에서 그리기를 연다 — 이 단언은 레일이
     // 있던 시절 "그리기는 헤더에 없다" 를 못박고 있었고, 이번에 의도적으로 뒤집혔다.
     expect(screen.getByTestId('drawing-menu-trigger')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('live-indicators-button'));
     expect(screen.getByRole('dialog', { name: '보조지표' })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
-    requestSettingsModal.mockClear();
-    fireEvent.click(screen.getByTestId('live-settings-button'));
-    expect(requestSettingsModal).toHaveBeenCalledOnce();
   });
 
   it('passes the active study timeframe into IndicatorPanel', () => {
