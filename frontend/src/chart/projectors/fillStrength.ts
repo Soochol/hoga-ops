@@ -387,7 +387,7 @@ export const cumulativeCachedData = makeCumulativeCachedProjector();
 
 export const FILL_STRENGTH_SPEC = {
   name: 'fill-strength' as const,
-  live: true, // reads fill_strength (SSE-derived) → fed the live bundle on /live
+  bundleKind: 'hoga', // fill_strength(todaySource='bundle')를 읽는다
   stretch: 0.4,
   legendToggleKey: 'fillStrengthEnabled',
   legendTitle: '체결강도',

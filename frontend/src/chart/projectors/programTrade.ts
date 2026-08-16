@@ -102,7 +102,7 @@ function isKrxRegularProgramTime(bundle: RangeBundle, t: number): boolean {
 
 export const PROGRAM_TRADE_SPEC = {
   name: 'program-trade' as const,
-  live: true,
+  bundleKind: 'live', // quote_ratio 를 읽는 라이브 pane
   stretch: 0.35,
   legendToggleKey: 'programTradeEnabled',
   series: [

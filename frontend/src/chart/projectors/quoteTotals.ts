@@ -233,7 +233,7 @@ const askCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => ask
 
 export const QUOTE_TOTALS_SPEC = {
   name: 'quote-totals' as const,
-  live: true, // reads quote_ratio (SSE-derived) → fed the live bundle on /live
+  bundleKind: 'hoga', // quote_ratio(todaySource='bundle')를 읽는다
   stretch: 0.4,
   legendToggleKey: 'quoteTotalsEnabled',
   legendTitle: '총잔량',
