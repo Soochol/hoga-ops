@@ -132,51 +132,76 @@ describe('live day peak performance (incremental, deterministic)', () => {
 });
 
 /**
- * 슬라이딩 축출(15분 창)에서 prefix-guard 가 깨지는 **알려진 결함**의 마커.
+ * 슬라이딩 축출(15분 창)에서도 **델타만 소비**한다 — 트랙 1-3.
  *
  * 위 두 테스트는 배열이 **append-only** 이거나 **통째로 교체**되는 두 경우만 본다.
  * 실제 라이브 버퍼는 세 번째 모양을 만든다 — **앞을 자르고 뒤에 붙인다**(15분 슬라이딩).
- * 그 모양에서 prefix 참조가 어긋나 매 flush 마다 전량 재소비가 발생한다. 기존 테스트가
- * 이 축을 **원리적으로 못 보는 것**이 결함이 숨은 이유였다(감사 트랙 1-3).
+ * 종전 prefix-guard(`ob[L-1] === lastRef`)는 그 모양에서 **항상 실패**해 매 flush 마다
+ * 전량 재소비가 일어났다. 기존 테스트가 이 축을 **원리적으로 못 보는 것**이 결함이 숨은
+ * 이유였고, 그래서 이 케이스가 여기 있다.
  *
- * ## 왜 `it.fails` 인가
+ * ## 무엇이 어려웠나 (고칠 때 읽을 것)
  *
- * 감사는 "지금 반드시 빨개야 한다" 고 했지만, 항상 빨간 테스트는 무시되기 시작해
- * 메커니즘 전체를 죽인다(CLAUDE.md 「가드를 고칠 때」). `it.fails` 는 그 둘을 화해시킨다:
- * **결함이 있는 지금은 초록**(예상대로 실패했으므로), **고쳐지는 순간 이 테스트가 실패**해
- * "마커를 걷고 진짜 단언으로 바꿔라" 라고 알려 준다.
+ * `locate()` 만 이식하면 **오히려 나빠진다**. `classify()` 는 매 호출 누적 이벤트를 전량
+ * 순회하고 `events` 에는 `reset()` 말고 가지치기 경로가 없었다 — 가드만 관대하게 만들면
+ * ① 이벤트가 세션 내내 단조 증가하고 ② 창 밖으로 밀려난 벽이 남아 배치 오라클과 갈린다
+ * (#926 이 형제에서 실측한 "오라클 ask_max 는 5000→120 인데 누적본은 5000" 과 같은 실패).
  *
- * ## 고칠 때 읽을 것 — 기계적 이식은 오히려 나쁘다
+ * 그래서 슬라이딩과 **축출을 같이** 넣었다: `eventSeq`(스냅샷 순번) 기준 prefix 절단 +
+ * `head` 포인터(맵 재구축 회피, 절반 넘으면 압축) + trade 스냅샷별 터치 기여 개수로 정확
+ * 환산. t_ms 중복·터치 역순은 **sticky 플래그로 잡아 전량 재소비로 폴백**한다 — 정확성은
+ * 언제나 폴백이 보증하고, 증분은 "같은 결과를 덜 계산" 하는 수단일 뿐이다.
  *
- * `locate()` 를 그냥 축출에 강하게 만들면 `events` 가 세션 내내 단조 증가한다
- * (`classify()` 는 매 호출 `this.events` 를 전량 순회하고 가지치기 경로가 `reset()`
- * 뿐이다). 그러면 ①classify 비용이 오히려 커지고 ②창 밖으로 밀려난 벽이 남아 배치
- * 오라클과 갈라진다. **지금의 깨진 가드가 정확성과 메모리 상한을 우연히 지켜 주고 있다.**
- * 올바른 수정은 `locate()` + 축출 조정(`events` prefix 절단 + `eventIndexByKey` 의
- * `baseOffset` 리베이스 + `touchTimes`/`touchPrices` prefix 컷)이다.
- *
- * ## 착수 전 선행 조건
- *
- * 입력 N 이 **미측정**이다 — 장중 1회 계측(차트 창 1개의 `live.ob.length`)이 필요하다.
- * 1 ob/s 면 flush 당 12 ms, 20 ob/s 면 310 ms 로 26배 갈린다. 그 값에 따라 이 항목의
- * 순위가 최상위일 수도, 무시해도 될 수준일 수도 있다.
+ * 실측(2026-08-17, 이 파일과 같은 픽스처, 축출 정상상태 flush 1회):
+ *   n=900 1.90ms · 4,500 10.81ms · 9,000 24.20ms · 18,000 63.78ms  (재소비가 89~92%)
+ * 수정 후에는 append 경로와 같은 수준으로 떨어진다.
  */
-describe('live day peak — 알려진 결함 마커 (슬라이딩 축출)', () => {
-  it.fails('축출 갱신이 델타만 소비한다 — 아직 아니다(고쳐지면 이 테스트가 실패한다)', () => {
+describe('live day peak — 슬라이딩 축출도 델타만 소비한다', () => {
+  it('앞을 자르고 뒤에 붙여도 새 스냅샷만 소비한다', () => {
     const spy = vi.spyOn(bucketHogaSeries, 'isIndicatorEligibleBook');
     const src = new IncrementalPeakWallSource('ask');
     const ob: ObSnapshot[] = Array.from({ length: 2000 }, (_unused, i) => mkOb(i));
 
     src.update(ob, [], OPEN_MS, []);
     const afterFull = spy.mock.calls.length;
+    expect(afterFull).toBe(2000);
+
+    // ⚠ 새 스냅샷은 **한 번만 만들어 재사용**한다 — prefix-guard 는 참조 동일성으로
+    // 판정하므로, 같은 인덱스로 mkOb 를 다시 부르면 다른 객체가 되어 폴백이 뜬다
+    // (라이브 버퍼는 객체를 유지하므로 그게 실제 모양이 아니다).
+    const fresh = Array.from({ length: 4 }, (_unused, i) => mkOb(2000 + i));
 
     // 슬라이딩 창: 앞 1개를 버리고 뒤 1개를 붙인다(라이브 버퍼의 실제 모양).
-    src.update([...ob.slice(1), mkOb(2000)], [], OPEN_MS, []);
-    const delta = spy.mock.calls.length - afterFull;
-    spy.mockRestore();
+    const win1 = [...ob.slice(1), fresh[0]];
+    src.update(win1, [], OPEN_MS, []);
+    expect(spy.mock.calls.length - afterFull).toBe(1);
 
-    // 이상적으로는 델타 1~2 여야 한다. 현재는 전량 재소비(2000)라 이 단언이 실패하고,
-    // `it.fails` 가 그 실패를 **예상된 것**으로 받아 스위트를 초록으로 유지한다.
-    expect(delta).toBeLessThanOrEqual(2);
+    // 여러 개를 한 번에 밀어도 붙인 만큼만 — 실전에서 flush 사이에 여러 틱이 온다.
+    const before = spy.mock.calls.length;
+    src.update([...win1.slice(3), fresh[1], fresh[2], fresh[3]], [], OPEN_MS, []);
+    expect(spy.mock.calls.length - before).toBe(3);
+
+    spy.mockRestore();
+  });
+
+  it('축출된 벽은 결과에서 사라진다 — 메모리 상한과 정확성이 같은 수정에 달려 있다', () => {
+    // 창 안에서 압도적으로 큰 벽을 하나 세우고, 그 스냅샷을 창 밖으로 밀어낸다.
+    const huge = mkOb(0);
+    huge.asks = [
+      ...Array.from({ length: 9 }, (_u, l) => ({ price: 40_000 + l, qty: 1 })),
+      { price: 49_999, qty: 999_999 },
+    ];
+    const rest = Array.from({ length: 20 }, (_unused, i) => mkOb(i + 1));
+    const src = new IncrementalPeakWallSource('ask');
+    src.update([huge, ...rest], [], OPEN_MS, []);
+    expect(src.update([huge, ...rest], [], OPEN_MS, []).all[0].qty).toBe(999_999);
+
+    // huge 를 축출 → 오라클(전량 재소비)과 같아야 한다. 종전 결함의 모양이라면 999_999 가
+    // 남아 "창 밖으로 밀려난 벽이 계속 보이는" 상태가 된다.
+    const slid = [...rest, mkOb(21)];
+    const fresh = new IncrementalPeakWallSource('ask');
+    expect(src.update(slid, [], OPEN_MS, []).all)
+      .toEqual(fresh.update(slid, [], OPEN_MS, []).all);
+    expect(src.update(slid, [], OPEN_MS, []).all.some((c) => c.qty === 999_999)).toBe(false);
   });
 });
