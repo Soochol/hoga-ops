@@ -1,5 +1,6 @@
 import type { RangeBundle, QuoteRatioPoint } from '../api/types';
 import { isSyntheticHogaGapPoint } from '../chart/util/hogaGapHide';
+import { isExcludedQuoteBucket } from '../chart/util/auctionHide';
 import { quoteRatioPointsForBundle } from '../chart/projectors/quoteRatioPoints';
 import { quoteImbalance } from '../util/imbalance';
 import { tradingDayOf } from '../util/tradingDay';
@@ -8,26 +9,52 @@ import { tradingDayOf } from '../util/tradingDay';
 export type QuoteTotalsLevels = { bid: number; ask: number } | null;
 
 /**
- * quote_ratio 포인트 배열 끝에서 마지막 "실제" 버킷을 찾는다. hoga-gap sentinel
- * (isSyntheticHogaGapPoint)은 값이 없는 자리표시자라 건너뛴다. 뒤에서부터 스캔하므로
- * 최신 버킷을 O(꼬리 gap 개수) 안에 찾는다. quote_ratio 는 시간순 append.
+ * quote_ratio 포인트 배열 끝에서 **라인이 실제로 그리는** 마지막 버킷을 찾는다.
+ * 두 종류를 건너뛴다:
+ *  - hoga-gap sentinel(`isSyntheticHogaGapPoint`) — 값이 없는 자리표시자.
+ *  - 붕괴 버킷(`isExcludedQuoteBucket`) — 마감 동시호가·장중 VI 의 `(0,0)`
+ *    구조 센티넬(ADR-0062 v2). 프로젝터가 이걸 투명으로 가리므로, 안 거르면
+ *    수평선만 pane 바닥(0)에 깔려 라인 끝점과 어긋난다.
+ *
+ * `auctionWindowMask` 를 그대로 관통시키는 것이 요점이다 — 이 토글은 라인과
+ * 수평선의 표시를 **함께** 지배한다. 무조건 걸러 버리면 마스크를 끈 사용자에게
+ * 라인은 0 에 있는데 수평선만 그 위에 뜨는 반대 방향의 비정렬이 생긴다.
+ *
+ * ⚠ **`deriveQuoteTotalsDayMax` 는 정반대 규칙이다(그쪽 규칙 2) — 통일하지 말 것.**
+ * 두 선이 답하는 질문이 다르다: 당일 최고는 **계산된 통계**라 표시 pref 가 값을
+ * 흔들면 안 되고(그래서 마스크와 무관하게 항상 배제), 현재값은 **라인 끝점의 정렬
+ * 마커**라 라인이 그리는 것을 그대로 따라야 한다(그래서 마스크를 따른다). 한쪽
+ * 규칙을 다른 쪽에 옮기면 그 선이 깨진다.
+ *
+ * 뒤에서부터 스캔하므로 최신 버킷을 O(꼬리 배제 버킷 개수) 안에 찾는다.
+ * quote_ratio 는 시간순 append.
  */
-function lastRealPoint(points: readonly QuoteRatioPoint[]): QuoteRatioPoint | null {
+function lastDisplayedPoint(
+  points: readonly QuoteRatioPoint[],
+  auctionWindowMask: boolean,
+): QuoteRatioPoint | null {
   for (let i = points.length - 1; i >= 0; i--) {
     const p = points[i];
-    if (!isSyntheticHogaGapPoint(p)) return p;
+    if (isSyntheticHogaGapPoint(p)) continue;
+    if (isExcludedQuoteBucket(auctionWindowMask, p.bid_total, p.ask_total)) continue;
+    return p;
   }
   return null;
 }
 
 /**
  * 총잔량 pane 현재값 수평선의 매수·매도 값을 산출한다. 총잔량 라인(quoteTotals.ts
- * projectBid/Ask)과 동일한 소스·intraMax 규칙을 써 라인 끝점과 수평선이 정렬된다.
+ * projectBid/Ask)과 동일한 소스·intraMax **·배제 규칙**을 써 라인 끝점과 수평선이
+ * 정렬된다.
  * intraMax = 분봉 내 최댓값(bid_max/ask_max), 아니면 종가 시점 총잔량(bid_total/ask_total).
  * 유효 버킷이 없으면 null → 수평선 숨김.
  */
-export function deriveQuoteTotalsLevels(bundle: RangeBundle, intraMax: boolean): QuoteTotalsLevels {
-  const p = lastRealPoint(quoteRatioPointsForBundle(bundle));
+export function deriveQuoteTotalsLevels(
+  bundle: RangeBundle,
+  intraMax: boolean,
+  auctionWindowMask: boolean,
+): QuoteTotalsLevels {
+  const p = lastDisplayedPoint(quoteRatioPointsForBundle(bundle), auctionWindowMask);
   if (!p) return null;
   const bid = intraMax ? p.bid_max : p.bid_total;
   const ask = intraMax ? p.ask_max : p.ask_total;
@@ -61,8 +88,11 @@ export type QuoteTotalsDayMax = { bid: number; ask: number; t: number } | null;
  *     (거기엔 "오늘" 이 없다) 주말엔 선이 사라졌다. 낡은 기준선을 오늘 것으로 착각할 위험은
  *     선을 숨겨서가 아니라 **호출부가 `t` 로 날짜 라벨을 붙여** 막는다.
  *
- *     앵커는 `lastRealPoint` 다 — 배열 맨 끝이 gap 센티넬이어도 안전하다. 화면 팬과는 무관하다
- *     (보이는 구간이 아니라 데이터 배열이 기준이라, 과거로 팬해도 기준선은 그대로 있다).
+ *     앵커는 `lastDisplayedPoint(points, false)` 다 — 배열 맨 끝이 gap 센티넬이어도 안전하다.
+ *     `false` 를 넘기는 것이 규칙 2 의 연장이다: 앵커는 **거래일만** 정하므로 붕괴 버킷이
+ *     앵커여도 날짜가 같아 결과가 바뀌지 않는데, 여기서 표시 마스크를 읽으면 토글이 앵커를
+ *     흔드는 통로가 생긴다. 화면 팬과도 무관하다(보이는 구간이 아니라 데이터 배열이 기준이라,
+ *     과거로 팬해도 기준선은 그대로 있다).
  *
  * 스캔은 앵커에서 시작해 거래일이 바뀌면 중단 → O(그날 점 수) ≈ 390. 매 렌더 계산해도 싸다
  * (sibling 과 같이 memo 없음). 매수·매도는 서로 다른 시각에 최고를 찍을 수 있어 독립 누적한다.
@@ -77,7 +107,7 @@ export function deriveQuoteTotalsDayMax(
   inClosingAuction: (t: number) => boolean,
 ): QuoteTotalsDayMax {
   const points = quoteRatioPointsForBundle(bundle);
-  const anchor = lastRealPoint(points);
+  const anchor = lastDisplayedPoint(points, false);
   if (!anchor) return null;
   const day = tradingDayOf(anchor.t);
   let bid = 0;
@@ -96,12 +126,18 @@ export function deriveQuoteTotalsDayMax(
 
 /**
  * 호가비 pane 현재값 수평선의 값을 산출한다. ratio.ts projectRatioPoints 와 동일하게
- * quoteImbalance 로 계산 — 라인 끝점과 정렬된다. intraMax = 분봉 내 |불균형| 극값
+ * quoteImbalance 로 계산하고 **같은 배제 규칙**을 쓴다 — 라인 끝점과 정렬된다
+ * (`ratio.ts` 도 `isAuctionHidden || isExcludedQuoteBucket` 으로 가린다).
+ * intraMax = 분봉 내 |불균형| 극값
  * (imb_max_bid/imb_max_ask), 아니면 종가 시점(bid_total/ask_total).
  * 유효 버킷이 없으면 null → 수평선 숨김.
  */
-export function deriveRatioLevel(bundle: RangeBundle, intraMax: boolean): number | null {
-  const p = lastRealPoint(quoteRatioPointsForBundle(bundle));
+export function deriveRatioLevel(
+  bundle: RangeBundle,
+  intraMax: boolean,
+  auctionWindowMask: boolean,
+): number | null {
+  const p = lastDisplayedPoint(quoteRatioPointsForBundle(bundle), auctionWindowMask);
   if (!p) return null;
   const value = intraMax
     ? quoteImbalance(p.imb_max_bid, p.imb_max_ask)
