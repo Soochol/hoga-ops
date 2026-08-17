@@ -1,12 +1,18 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
-import type { VirtualAxis } from '../util/virtualAxis';
+import type { DayBoundaryTick } from './sessionSpans';
 import { useActivePrefs } from '../state/chartPrefs';
 import { safeUnsubscribe } from './util/safeUnsubscribe';
 
 type Props = {
   chart: IChartApi;
-  axis: VirtualAxis;
+  /**
+   * 경계가 설 자리 — `resolveDayBoundaryTicks` 가 만든다. **개장 정각이 아니라 그
+   * 세션에서 실제로 렌더되는 첫 캔들의 시각**이어야 하는 이유는 그 모듈의 docstring
+   * 참조(요약: lwc 의 `timeToCoordinate` 는 보간이 아니라 조회라, 축에 없는 시각은
+   * `null` 을 주고 선이 조용히 사라진다).
+   */
+  boundaries: readonly DayBoundaryTick[];
 };
 
 /**
@@ -19,7 +25,7 @@ type Props = {
  *
  * N segments → N-1 boundaries (no boundary at the start of segment[0]).
  */
-function DayBoundaryOverlay({ chart, axis }: Props) {
+function DayBoundaryOverlay({ chart, boundaries }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
   const enabled = useActivePrefs((prefs) => prefs.dayBoundaryEnabled);
@@ -49,11 +55,11 @@ function DayBoundaryOverlay({ chart, axis }: Props) {
 
   if (!enabled) return null;
 
-  if (axis.segments.length < 2) return null;
+  if (boundaries.length === 0) return null;
 
   const ts = chart.timeScale();
-  const boundaries = axis.dayBoundaries.map((b) => {
-    const x = ts.timeToCoordinate((b.virtualStart / 1000) as UTCTimestamp);
+  const placed = boundaries.map((b) => {
+    const x = ts.timeToCoordinate((b.virtualMs / 1000) as UTCTimestamp);
     return { date: b.date, x };
   });
 
@@ -87,7 +93,7 @@ function DayBoundaryOverlay({ chart, axis }: Props) {
       className="absolute top-0 left-0 overflow-hidden pointer-events-none z-10"
       style={{ width: `${paneWidth}px`, bottom: `${timeAxisHeight}px` }}
     >
-      {boundaries.map((b) =>
+      {placed.map((b) =>
         b.x == null ? null : (
           <div
             key={b.date}
@@ -106,6 +112,7 @@ function DayBoundaryOverlay({ chart, axis }: Props) {
   );
 }
 
-// memo: depends only on chart + axis (both stable across SSE ticks on /live), so
-// the parent's per-tick re-render no longer reaches this overlay (2026-06-09 Phase B).
+// memo: depends only on chart + boundaries. `boundaries` 는 값이 같으면 이전 참조를
+// 유지하도록 호출부가 안정화한다(`sameDayBoundaryTicks`) — 그 전제가 깨지면 SSE 틱마다
+// 이 오버레이가 다시 렌더된다(2026-06-09 Phase B 가 막아 둔 것).
 export default memo(DayBoundaryOverlay);
