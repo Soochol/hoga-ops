@@ -12,6 +12,7 @@ import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
 import { useSymbols } from '../capture/useSymbols';
 import { useDocumentTitle } from '../util/useDocumentTitle';
 import { indexInstrument, isLiveIndexId } from './liveInstrument';
+import { WORKSPACE_PAGE_PAD } from '../ui/WorkspaceShell';
 import { WorkspaceCanvas } from './workspace/WorkspaceCanvas';
 import { WorkspaceLiveToolbar } from './workspace/WorkspaceLiveToolbar';
 import {
@@ -176,10 +177,11 @@ export function LivePage() {
 
   return (
     <div
-      // /study 통일(2026-07-23): full-bleed → 좌·우 p-md 여백 + 하단 flush(!pb-0).
-      // 상단은 밀도 개편으로 pt-sm(9px) — nav 와 시세 스트립 사이 최소 숨.
+      // 여백 소유자는 `WORKSPACE_PAGE_PAD` 한 곳이다 — `/study` 와 같은 상수를 쓰므로
+      // 두 워크스페이스 페이지의 창 영역이 갈리지 않는다(2026-08-17). 종전엔 여기
+      // 리터럴(`px-md pt-sm`)과 `/study` 의 `PageContainer`(`p-md`)가 따로 값을 들고 있었다.
       // 여백은 그리드 컨테이너에 두므로 트랙(minmax)·캔버스 clamp 는 그대로다.
-      className="h-full grid px-md pt-sm !pb-0"
+      className={`h-full grid ${WORKSPACE_PAGE_PAD}`}
       style={{
         // minmax(0, 1fr) on the canvas row prevents chart canvases' intrinsic
         // size from pushing the row past viewport height. 상태바 폐지로 행이 3개로

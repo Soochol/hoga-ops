@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
+import { NARROW_CANVAS_W } from '../workspace/referenceCanvas';
 
 /** 모듈 하이드레이션(시드)이 import 시점에 돌므로, 저장소를 세팅한 뒤 신선하게
  *  다시 불러온다 — workspace.tabScope 류의 격리 관례. */
@@ -38,9 +39,11 @@ describe('시드 — study.layout.v1 → 기본 창 배치 (ADR-0123 PR-2)', () 
       expect(w.rect.h).toBeCloseTo(expectedHeights[i]);
       expectedY += expectedHeights[i];
     });
-    // 좁은 쪽 실측 캔버스(1190px)에서도 BookPanel 폭 계약을 만족해야 한다 —
-    // 기준은 패널 하한이 아니라 창 기본 폭(스크롤바 여유 포함, `bookPanelMetrics`).
-    expect(data[0].rect.w * 1190).toBeGreaterThanOrEqual(BOOK_WINDOW_DEFAULT_W);
+    // 좁은 쪽 실측 캔버스에서도 BookPanel 폭 계약을 만족해야 한다 — 기준은 패널 하한이
+    // 아니라 창 기본 폭(스크롤바 여유 포함, `bookPanelMetrics`). 캔버스 폭은 `/live` 와
+    // **같은 상수**를 쓴다: 2026-08-17 여백 통일로 두 페이지 캔버스가 같아졌고, 손으로
+    // 복제됐던 1190 은 탭 스트립이 있던 시절 값이라 이미 실제(1208)보다 좁았다.
+    expect(data[0].rect.w * NARROW_CANVAS_W).toBeGreaterThanOrEqual(BOOK_WINDOW_DEFAULT_W);
     // 첫 포커스 = 차트(zOrder 마지막).
     expect(s.zOrder[s.zOrder.length - 1]).toBe(chart.id);
     // 시드 즉시 persist — 창 id 고정(재방문 재시드 없음).

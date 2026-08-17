@@ -40,7 +40,17 @@ const CARD_TO_KIND: Record<LiveCardKey, WindowKind> = {
   investor: 'investor',
 };
 
-// 시드 레이아웃 상수(스토어는 canvas 크기를 모르므로 고정 px — defaultWindows 관례).
+// 시드 레이아웃 상수(스토어는 canvas 크기를 모르므로 고정 px).
+//
+// **여백 통일(2026-08-17)의 남은 예외다.** `defaultWindows` 는 여백을 버리고 캔버스를
+// 꽉 채우도록 바뀌었지만(여백 소유자는 `WORKSPACE_PAGE_PAD` 한 곳), 이 경로는 좌표가
+// 고정 px 이라 "꽉 채움" 을 **애초에 표현할 수 없다** — `PAD` 만 0 으로 해도 `CHART_W`·
+// `TOTAL_H` 가 실제 캔버스와 무관해 오른쪽·아래가 뜬다. 제대로 고치려면 시드를 비율
+// 기반으로 재작성해야 하므로 남겨 두었다.
+//
+// 도는 조건은 좁다: `live.workspace.v1` 이 없고 레거시 키만 있는 사용자의 1회 시드이며,
+// 결과는 `normalizeLegacyRects` 로 비율화된 뒤 사용자 소유 상태가 된다. 즉 여백이
+// 남더라도 "기본 배치로 초기화"(툴바 → 레이아웃) 한 번이면 새 기본값으로 간다.
 const PAD = 16;
 const CHART_W = 720;
 const DATA_W = 236;

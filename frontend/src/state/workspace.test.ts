@@ -7,6 +7,7 @@ import {
   type WorkspaceWindow,
 } from './workspace';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
+import { NARROW_CANVAS_W } from '../workspace/referenceCanvas';
 
 function chart(id: string, group: number): WorkspaceWindow {
   return {
@@ -262,27 +263,29 @@ describe('레거시 마이그레이션 하이드레이션(#713, PR-C)', () => {
   });
 
   // BookPanel 의 폭은 절대 계약이고, 비율 좌표계는 절대 하한을 표현하지 못한다
-  // (ADR-0122). REF 캔버스(1546)에서 유도한 비율은 실제 캔버스(1280 뷰포트 실측
-  // 1226px)에서 계약을 못 채워 요약 열이 조용히 잘렸다 — 좁은 쪽 실측을 기준으로
-  // 못박아 재발을 막는다. 기준은 패널 하한이 아니라 **창 기본 폭**이다: 세로
-  // 스크롤바가 뜨는 순간 그 여유(BOOK_WINDOW_CHROME_W)까지 없으면 패널이 하한
-  // 아래로 눌린다. 숫자는 `bookPanelMetrics` 에서 가져와 하한이 움직이면 이 가드가
-  // 함께 따라오게 한다(2026-08-16 이전엔 560 이 여기 손으로 복제돼 있었다).
+  // (ADR-0122). REF 캔버스(1546)에서 유도한 비율은 실제 캔버스에서 계약을 못 채워
+  // 요약 열이 조용히 잘렸다 — 좁은 쪽 실측을 기준으로 못박아 재발을 막는다. 기준은
+  // 패널 하한이 아니라 **창 기본 폭**이다: 세로 스크롤바가 뜨는 순간 그 여유
+  // (BOOK_WINDOW_CHROME_W)까지 없으면 패널이 하한 아래로 눌린다. 숫자는
+  // `bookPanelMetrics` 에서 가져와 하한이 움직이면 이 가드가 함께 따라오게 한다
+  // (2026-08-16 이전엔 560 이 여기 손으로 복제돼 있었다).
+  //
+  // 캔버스 폭도 같은 이유로 상수에서 가져온다 — 손으로 복제한 1226 은 시세 스트립이
+  // 있던 시절 실측이라 실제(1208)보다 넓어 가드가 그만큼 느슨했다(2026-08-17).
   it('기본 10호가 창은 좁은 실측 캔버스에서도 BookPanel 폭 계약을 만족한다', async () => {
     localStorage.clear();
     vi.resetModules();
     const mod = await import('./workspace');
     const book = mod.useWorkspaceStore.getState().windows.find((w) => w.kind === 'book');
-    const MEASURED_CANVAS_W = 1226;
     expect(book).toBeDefined();
-    expect(book!.rect.w * MEASURED_CANVAS_W).toBeGreaterThanOrEqual(BOOK_WINDOW_DEFAULT_W);
+    expect(book!.rect.w * NARROW_CANVAS_W).toBeGreaterThanOrEqual(BOOK_WINDOW_DEFAULT_W);
     // 비율 불변식(ADR-0122) — 넓혀도 캔버스를 넘지 않는다.
     expect(book!.rect.x + book!.rect.w).toBeLessThanOrEqual(1);
   });
 
   // 하한이 560→448 로 내려오며 회수한 폭은 여백으로 남기지 않고 차트에 넘겼다
   // (2026-08-16). 우측 열만 줄이고 끝내면 캔버스 가운데에 빈 띠가 생기므로,
-  // "차트 오른쪽 끝 + 간격 = 우측 열 시작" 을 못박아 그 회귀를 막는다.
+  // "차트 오른쪽 끝 = 우측 열 시작" 을 못박아 그 회귀를 막는다.
   it('회수한 폭은 차트가 흡수한다 — 차트와 우측 열 사이에 빈 띠가 없다', async () => {
     localStorage.clear();
     vi.resetModules();
@@ -290,11 +293,34 @@ describe('레거시 마이그레이션 하이드레이션(#713, PR-C)', () => {
     const wins = mod.useWorkspaceStore.getState().windows;
     const chart = wins.find((w) => w.kind === 'chart')!;
     const book = wins.find((w) => w.kind === 'book')!;
-    const gap = book.rect.x - (chart.rect.x + chart.rect.w);
-    expect(gap).toBeGreaterThan(0); // 겹치지 않는다
-    expect(gap).toBeLessThan(0.02); // 간격일 뿐 빈 열이 아니다
+    // 좌표 틈은 0 이다(2026-08-17) — 인접 창의 시각 간격은 `WindowFrameCore` 의
+    // GAP(2px, 좌표는 그대로 두고 카드만 물러난다)이 담당하므로 좌표가 벌어질 이유가 없다.
+    expect(book.rect.x - (chart.rect.x + chart.rect.w)).toBe(0);
     // 차트가 캔버스 절반보다 넓다 — 회수 방향이 뒤집히면(우측 열이 다시 먹으면) 깨진다.
     expect(chart.rect.w).toBeGreaterThan(0.5);
+  });
+
+  /**
+   * 여백 소유자는 페이지 패딩(`WORKSPACE_PAGE_PAD`) **한 곳**이다 — 창 좌표는 여백을
+   * 갖지 않는다(2026-08-17).
+   *
+   * 막는 방향: 비율 좌표에 여백이 **다시 들어오는** 것. 종전 `DEFAULT_EDGE_MARGIN`
+   * (0.0104)·y(0.0206) 이 그것이었고, 비율이라 캔버스에 비례해 자라 `/study` 와의 창
+   * 왼쪽 간격 차이가 1440 뷰포트 10px → 2560 뷰포트 22px 로 벌어졌다.
+   *
+   * 못 보는 것: 페이지 패딩 쪽 값(`WORKSPACE_PAGE_PAD` 리터럴)과 `/study` 시드
+   * (`buildStudyWorkspaceSeed` — 자기 테스트가 `{x:0,y:0,w:0.58,h:1}` 을 못박는다).
+   * 이 가드는 `/live` 기본 배치만 본다.
+   */
+  it('기본 배치는 여백 없이 캔버스를 꽉 채운다', async () => {
+    localStorage.clear();
+    vi.resetModules();
+    const mod = await import('./workspace');
+    const rects = mod.useWorkspaceStore.getState().windows.map((w) => w.rect);
+    expect(Math.min(...rects.map((r) => r.x))).toBe(0);
+    expect(Math.min(...rects.map((r) => r.y))).toBe(0);
+    expect(Math.max(...rects.map((r) => r.x + r.w))).toBe(1);
+    expect(Math.max(...rects.map((r) => r.y + r.h))).toBe(1);
   });
 });
 
