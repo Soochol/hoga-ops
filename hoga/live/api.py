@@ -1142,6 +1142,7 @@ class LiveQuoteFetcher:
                 phase,
                 today=today,
                 stale_reason="fetch_failed",
+                venue=venue,
             )
         for q in quotes:
             self._last_quotes[(venue, q.code)] = _QuoteSample(q, phase, day)

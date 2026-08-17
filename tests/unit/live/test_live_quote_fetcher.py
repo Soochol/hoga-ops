@@ -125,6 +125,24 @@ async def test_stale_last_good_is_venue_scoped() -> None:
     assert f.stale_last_good(["005930"], "open", venue="UN") == []
 
 
+async def test_fetch_failure_keeps_the_requested_venue_scope() -> None:
+    """**fetch 가 실패해 stale 로 접힐 때도** venue 가 보존된다.
+
+    바로 위 테스트는 `stale_last_good` 을 직접 부르지만, 실서비스 진입점은
+    `fetch_and_gate` 의 `except` 절이다. 그 호출이 venue 를 안 넘기면 피호출부 기본값
+    `"KRX"` 로 떨어져 **UN 요청이 KRX 캐시를 stale 로 받는다** — `stale_last_good` 의
+    docstring 이 명시적으로 금지한 동작이 호출부에서 되살아나는 형태다. 함수를 옳게
+    만들어도 호출부 한 줄이 무를 수 있다는 것이 이 테스트의 요점이다.
+    """
+    f = LiveQuoteFetcher()
+    await f.fetch_and_gate(_FakeKis(Q), ["005930"], "open")  # type: ignore[arg-type]  # KRX 캐시 적재
+
+    boom = _FakeKis([], fail=True)
+    out = await f.fetch_and_gate(boom, ["005930"], "open", venue="UN")  # type: ignore[arg-type]
+
+    assert out == [], "UN 요청이 실패했는데 KRX 캐시가 stale 로 새어 나왔다"
+
+
 async def test_closed_omits_uncached_code() -> None:
     f = LiveQuoteFetcher()
     kis = _FakeKis([Quote("005930", 72400, 1.2, 750)])
