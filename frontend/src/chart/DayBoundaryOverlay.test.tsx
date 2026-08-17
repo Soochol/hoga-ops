@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
 import { useChartPrefsStore } from '../state/chartPrefs';
-import type { VirtualAxis } from '../util/virtualAxis';
+import type { DayBoundaryTick } from './dayBoundaryTicks';
 
 function makeChart(paneWidth = 498, timeAxisHeight = 28) {
   const subscribers = new Set<() => void>();
@@ -21,15 +21,7 @@ function makeChart(paneWidth = 498, timeAxisHeight = 28) {
   };
 }
 
-const axis = {
-  segments: [
-    { date: '20260615' },
-    { date: '20260616' },
-  ],
-  dayBoundaries: [
-    { date: '20260616', virtualStart: 1_800_000 },
-  ],
-} as unknown as VirtualAxis;
+const boundaries: readonly DayBoundaryTick[] = [{ date: '20260616', virtualMs: 1_800_000 }];
 
 describe('DayBoundaryOverlay', () => {
   beforeEach(() => {
@@ -40,14 +32,14 @@ describe('DayBoundaryOverlay', () => {
 
   it('renders no boundary when disabled', () => {
     useChartPrefsStore.getState().setToggle('dayBoundaryEnabled', false);
-    render(<DayBoundaryOverlay chart={makeChart() as never} axis={axis} />);
+    render(<DayBoundaryOverlay chart={makeChart() as never} boundaries={boundaries} />);
 
     expect(screen.queryByTestId('day-boundary-20260616')).toBeNull();
   });
 
   it('applies configured color and line width', () => {
     useChartPrefsStore.getState().setDayBoundaryStyle({ color: '#EF4444', lineWidth: 3 });
-    render(<DayBoundaryOverlay chart={makeChart() as never} axis={axis} />);
+    render(<DayBoundaryOverlay chart={makeChart() as never} boundaries={boundaries} />);
 
     const boundary = screen.getByTestId('day-boundary-20260616');
     expect(boundary.style.width).toBe('3px');
@@ -58,7 +50,7 @@ describe('DayBoundaryOverlay', () => {
   // 구분선이 우측 가격 라벨 배경 위에, 선의 아래쪽 끝이 하단 시간축의 날짜 라벨
   // 위에 그려진다. 폭·높이·overflow 중 하나만 빠져도 새므로 셋 다 단언한다.
   it('clips itself to the pane box so lines never reach either axis gutter', () => {
-    render(<DayBoundaryOverlay chart={makeChart(498, 28) as never} axis={axis} />);
+    render(<DayBoundaryOverlay chart={makeChart(498, 28) as never} boundaries={boundaries} />);
 
     const clip = screen.getByTestId('day-boundary-clip');
     expect(clip.style.width).toBe('498px');
@@ -83,7 +75,7 @@ describe('DayBoundaryOverlay', () => {
     try {
       render(
         <div data-testid="chart-host">
-          <DayBoundaryOverlay chart={makeChart() as never} axis={axis} />
+          <DayBoundaryOverlay chart={makeChart() as never} boundaries={boundaries} />
         </div>,
       );
 

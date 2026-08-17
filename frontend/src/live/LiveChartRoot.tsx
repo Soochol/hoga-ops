@@ -27,6 +27,12 @@ import { deriveSourceBadge } from './sourceBadge';
 import type { CandleEmptyState as CandleEmptyStateValue } from './candleEmptyState';
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
+import {
+  NO_DAY_BOUNDARY_TICKS,
+  resolveDayBoundaryTicks,
+  sameDayBoundaryTicks,
+  type DayBoundaryTick,
+} from '../chart/dayBoundaryTicks';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
@@ -581,6 +587,28 @@ export function LiveChartRoot({
       { mode: isCalendarTimeframe(timeframe) ? 'calendar' : 'intraday' },
     );
   }, [cb?.segments, timeframe]);
+
+  // 날짜 구분선이 설 자리. **개장 정각이 아니라 그 세션에서 실제로 렌더되는 첫
+  // 캔들**의 시각이다 — 이유는 `dayBoundaryTicks` 의 docstring(요약: lwc 의
+  // `timeToCoordinate` 는 보간이 아니라 조회라, 첫 캔들이 09:00 이 아닌 날은 축에
+  // 그 시각이 없어 선이 조용히 사라졌다). D/W/M 은 한 캔들이 곧 하루라 구분선을
+  // 그리지 않으므로(아래 오버레이 마운트 게이트와 같은 조건) 계산도 건너뛴다.
+  const nextDayBoundaryTicks = useMemo(
+    () =>
+      cb && isMinuteTimeframe(timeframe)
+        ? resolveDayBoundaryTicks(cb.candles, axis)
+        : NO_DAY_BOUNDARY_TICKS,
+    [cb, axis, timeframe],
+  );
+  // 값이 같으면 이전 참조를 유지한다 — SSE 틱이 `cb` 를 갈아 끼워도 오늘 캔들이
+  // 붙을 뿐 각 세션의 첫 캔들은 그대로라, 새 배열을 내려보내면 오버레이의 memo 만
+  // 헛되이 깨진다. 렌더 중 ref 쓰기는 위 axisRef 와 같은 패턴이고 같은 값이면
+  // 아무것도 안 바꾸므로 StrictMode 이중 렌더에서도 멱등이다.
+  const dayBoundaryTicksRef = useRef<readonly DayBoundaryTick[]>(NO_DAY_BOUNDARY_TICKS);
+  if (!sameDayBoundaryTicks(dayBoundaryTicksRef.current, nextDayBoundaryTicks)) {
+    dayBoundaryTicksRef.current = nextDayBoundaryTicks;
+  }
+  const dayBoundaryTicks = dayBoundaryTicksRef.current;
 
   // 드로잉 귀속 단위 = (종목, 봉 슬롯). 분봉(1m~30m)은 한 슬롯을 공유하고
   // D/W/M 은 각자 슬롯을 갖는다 — 같은 종목이라도 분봉에 그린 도형이 일봉에
@@ -2355,7 +2383,7 @@ export function LiveChartRoot({
               D/W/M's candles are already day/week/month units, so a
               per-day vertical line collapses onto each candle. */}
           {isMinuteTimeframe(timeframe) && (
-            <DayBoundaryOverlay chart={chart} axis={axis} />
+            <DayBoundaryOverlay chart={chart} boundaries={dayBoundaryTicks} />
           )}
           {/* `/study` 저장 구간 밴드 — 캘린더 봉 전용. 분봉에선 저장 구간이 곧
               화면 전체라 표시할 것이 없고, 좌표계도 다르다(캘린더 축 = 하루 1포인트).

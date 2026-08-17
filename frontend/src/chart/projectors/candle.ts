@@ -40,7 +40,9 @@ type CandleCacheEntry = {
 
 const candleCache = new WeakMap<VirtualAxis, CandleCacheEntry>();
 
-function lowerBoundCandle(candles: readonly Candle[], t: number): number {
+/** 첫 `ts_ms >= t` 인 인덱스. 캔들 배열은 시각 오름차순이 보장된다
+ *  (`mergeRangeBundles` 가 `uniqueBy` 로 정렬해서 넘긴다). */
+export function lowerBoundCandle(candles: readonly Candle[], t: number): number {
   let lo = 0;
   let hi = candles.length;
   while (lo < hi) {
