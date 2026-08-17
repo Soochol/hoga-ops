@@ -1,3 +1,4 @@
+import { normalizeZOrder } from '../workspace/zOrder';
 import { create } from 'zustand';
 import { persistJson, readJsonObject } from './persist';
 import { WORKSPACE_STORAGE_KEY } from './workspaceKeys';
@@ -292,24 +293,6 @@ function readGroupSymbols(raw: unknown): Partial<Record<GroupId, GroupSymbol>> {
   return out;
 }
 
-/** zOrder 를 실제 창 id 집합에 맞춰 정규화(unknown 드롭, 누락 append). */
-function normalizeZOrder(raw: unknown, windows: readonly WorkspaceWindow[]): string[] {
-  const ids = new Set(windows.map((w) => w.id));
-  const seen = new Set<string>();
-  const next: string[] = [];
-  if (Array.isArray(raw)) {
-    for (const entry of raw) {
-      if (typeof entry === 'string' && ids.has(entry) && !seen.has(entry)) {
-        seen.add(entry);
-        next.push(entry);
-      }
-    }
-  }
-  for (const w of windows) {
-    if (!seen.has(w.id)) next.push(w.id);
-  }
-  return next;
-}
 
 /**
  * 첫 로드 기본 레이아웃 — 비율(ADR-0122). 기존 px 기본값(1546×776 캔버스 기준
