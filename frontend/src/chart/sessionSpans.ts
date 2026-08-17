@@ -1,8 +1,14 @@
 /**
- * 날짜 구분선이 설 **가상 시각**을 정한다 — 개장 정각이 아니라 **그 세션에서 실제로
- * 렌더되는 첫 캔들**의 시각이다.
+ * 세션의 **양 끝을 축에 실재하는 시각으로** 준다 — 개장/마감 정각이 아니라 **그
+ * 세션에서 실제로 렌더되는 첫·마지막 캔들**의 시각이다.
  *
- * ## 왜 개장 정각이면 안 되는가
+ * 오버레이가 세션 경계에 무언가를 그리려면 좌표가 필요하고, 좌표를 얻으려면 그 시각이
+ * **축에 포인트로 존재**해야 한다. 도메인 상수(09:00·15:30)는 그 보장이 없다. 이
+ * 모듈은 그 번역을 한 자리에서 한다 — 소비처가 각자 캔들을 뒤지면 같은 결함이 각자
+ * 재발한다(실제로 두 곳에서 재발했다: `DayBoundaryOverlay` #1361,
+ * `PriceLevelDotsOverlay`).
+ *
+ * ## 왜 개장/마감 정각이면 안 되는가
  *
  * lightweight-charts 의 시간축은 연속 시간축이 아니라 **데이터 포인트의 인덱스 축**이다.
  * `timeToCoordinate(t)` 는 "t 가 축의 어디쯤인가" 를 보간하지 않고 **t 인 포인트를 조회**해
@@ -36,6 +42,15 @@ import type { Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { lowerBoundCandle } from './projectors/candle';
 
+export type SessionSpan = Readonly<{
+  /** YYYYMMDD KST 거래일. */
+  date: string;
+  /** 그 세션에서 렌더되는 **첫** 캔들의 가상 시각(ms). */
+  firstVirtualMs: number;
+  /** 그 세션에서 렌더되는 **마지막** 캔들의 가상 시각(ms). */
+  lastVirtualMs: number;
+}>;
+
 export type DayBoundaryTick = Readonly<{
   /** YYYYMMDD KST — 경계가 여는 세그먼트의 거래일. */
   date: string;
@@ -43,32 +58,60 @@ export type DayBoundaryTick = Readonly<{
   virtualMs: number;
 }>;
 
+export const NO_SESSION_SPANS: readonly SessionSpan[] = Object.freeze([]);
 export const NO_DAY_BOUNDARY_TICKS: readonly DayBoundaryTick[] = Object.freeze([]);
 
 /**
- * N 세그먼트 → 최대 N-1 경계. `segments[0]` 은 경계를 열지 않는다(축의 시작).
+ * 각 세그먼트의 첫·마지막 렌더 캔들. **캔들이 하나도 없는 세그먼트는 생략된다** —
+ * 그릴 자리가 없으니 항목을 내지 않는다(소비처의 `null` 분기와 같은 결론을 더 이른
+ * 단계에서 낸다). 따라서 결과 길이 ≤ `axis.segments.length` 이고 **인덱스가 세그먼트
+ * 인덱스와 일치한다고 가정하면 안 된다** — 날짜로 찾을 것.
  *
- * 비용은 경계당 이분 탐색 한 번 — 세그먼트 69개 × log2(8886) ≈ 970 비교로, 캔들
- * 배열이 바뀔 때만 돈다. 세그먼트 안에서 앞으로 훑는 루프는 첫 캔들이 장외로 걸러진
- * 드문 경우에만 두 걸음 이상 간다.
+ * 비용은 세그먼트당 이분 탐색 한 번 + 그 세션 캔들 훑기 = 전체 O(N + M log N).
+ * 실측 규모(캔들 8886 · 세그먼트 69)에서 무시할 수준이고, 캔들 배열이 바뀔 때만 돈다.
  */
-export function resolveDayBoundaryTicks(
+export function resolveSessionSpans(
   candles: readonly Candle[],
   axis: VirtualAxis,
-): readonly DayBoundaryTick[] {
-  if (axis.segments.length < 2 || candles.length === 0) return NO_DAY_BOUNDARY_TICKS;
+): readonly SessionSpan[] {
+  if (axis.segments.length === 0 || candles.length === 0) return NO_SESSION_SPANS;
 
-  const out: DayBoundaryTick[] = [];
-  for (let i = 1; i < axis.segments.length; i++) {
-    const seg = axis.segments[i];
+  const out: SessionSpan[] = [];
+  for (const seg of axis.segments) {
+    let first: number | null = null;
+    let last: number | null = null;
     for (let j = lowerBoundCandle(candles, seg.sessionOpenMs); j < candles.length; j++) {
       const ts = candles[j].ts_ms;
       if (ts > seg.sessionCloseMs) break;
       const { contained, virtual } = axis.classifyAndProject(ts);
       if (!contained) continue;
-      out.push(Object.freeze({ date: seg.date, virtualMs: virtual }));
-      break;
+      if (first === null) first = virtual;
+      last = virtual;
     }
+    if (first !== null && last !== null) {
+      out.push(Object.freeze({ date: seg.date, firstVirtualMs: first, lastVirtualMs: last }));
+    }
+  }
+  return out.length === 0 ? NO_SESSION_SPANS : Object.freeze(out);
+}
+
+/**
+ * N 세그먼트 → 최대 N-1 경계. `segments[0]` 은 경계를 열지 않는다(축의 시작).
+ *
+ * 첫 세그먼트를 **인덱스가 아니라 날짜로** 뺀다 — `resolveSessionSpans` 가 캔들 없는
+ * 세그먼트를 생략하므로 인덱스 0 이 곧 축의 첫 세그먼트라는 보장이 없다.
+ */
+export function resolveDayBoundaryTicks(
+  candles: readonly Candle[],
+  axis: VirtualAxis,
+): readonly DayBoundaryTick[] {
+  if (axis.segments.length < 2) return NO_DAY_BOUNDARY_TICKS;
+
+  const firstDate = axis.segments[0].date;
+  const out: DayBoundaryTick[] = [];
+  for (const span of resolveSessionSpans(candles, axis)) {
+    if (span.date === firstDate) continue;
+    out.push(Object.freeze({ date: span.date, virtualMs: span.firstVirtualMs }));
   }
   return out.length === 0 ? NO_DAY_BOUNDARY_TICKS : Object.freeze(out);
 }

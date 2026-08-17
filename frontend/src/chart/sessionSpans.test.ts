@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDayBoundaryTicks, sameDayBoundaryTicks } from './dayBoundaryTicks';
+import {
+  resolveDayBoundaryTicks,
+  resolveSessionSpans,
+  sameDayBoundaryTicks,
+} from './sessionSpans';
 import { createVirtualAxis } from '../util/virtualAxis';
 import type { Candle } from '../api/types';
 
@@ -25,7 +29,83 @@ function session(openMs: number, skipMinutes = 0, count = 5): Candle[] {
   return Array.from({ length: count }, (_, i) => candle(start + i * 180_000));
 }
 
+describe('resolveSessionSpans', () => {
+  it('세션의 첫·마지막 렌더 캔들을 준다', () => {
+    const axis = createVirtualAxis([seg('20260529', 0), seg('20260602', 4)], D0_OPEN);
+    const candles = [
+      ...session(axis.segments[0].sessionOpenMs, 0, 5),
+      ...session(axis.segments[1].sessionOpenMs, 12, 3),
+    ];
+
+    expect(resolveSessionSpans(candles, axis)).toEqual([
+      {
+        date: '20260529',
+        firstVirtualMs: axis.segments[0].virtualStart,
+        lastVirtualMs: axis.segments[0].virtualStart + 4 * 180_000,
+      },
+      {
+        date: '20260602',
+        firstVirtualMs: axis.segments[1].virtualStart + 12 * 60_000,
+        lastVirtualMs: axis.segments[1].virtualStart + 12 * 60_000 + 2 * 180_000,
+      },
+    ]);
+  });
+
+  // 마감 정각(15:30)은 실측상 종가 단일가 덕에 대개 존재하지만(005380 69/69),
+  // **보장은 아니다.** 끝값도 첫값과 같은 규칙으로 실재 캔들에서 와야 한다.
+  it('마지막 캔들이 마감 정각이 아니어도 그 캔들을 끝으로 잡는다', () => {
+    const axis = createVirtualAxis([seg('20260529', 0)], D0_OPEN);
+    const candles = session(axis.segments[0].sessionOpenMs, 0, 3);
+    const spans = resolveSessionSpans(candles, axis);
+
+    expect(spans[0].lastVirtualMs).toBe(axis.segments[0].virtualStart + 2 * 180_000);
+    // 마감 정각(= 종전 동작)이 아니어야 한다.
+    const sessionLen = axis.segments[0].sessionCloseMs - axis.segments[0].sessionOpenMs;
+    expect(spans[0].lastVirtualMs).not.toBe(axis.segments[0].virtualStart + sessionLen);
+  });
+
+  it('캔들 하나뿐인 세션은 첫값 = 끝값', () => {
+    const axis = createVirtualAxis([seg('20260529', 0)], D0_OPEN);
+    const candles = session(axis.segments[0].sessionOpenMs, 5, 1);
+    const [span] = resolveSessionSpans(candles, axis);
+
+    expect(span.firstVirtualMs).toBe(span.lastVirtualMs);
+  });
+
+  it('캔들 없는 세그먼트는 생략된다 — 인덱스가 세그먼트 인덱스와 어긋난다', () => {
+    const axis = createVirtualAxis(
+      [seg('20260529', 0), seg('20260602', 4), seg('20260604', 6)],
+      D0_OPEN,
+    );
+    const candles = session(axis.segments[2].sessionOpenMs);
+
+    const spans = resolveSessionSpans(candles, axis);
+    expect(spans.map((s) => s.date)).toEqual(['20260604']);
+  });
+});
+
 describe('resolveDayBoundaryTicks', () => {
+  // 일반화가 깨뜨릴 수 있는 지점 — `resolveSessionSpans` 가 캔들 없는 세그먼트를
+  // 생략하므로 `slice(1)` 로 첫 세그먼트를 빼면 **엉뚱한 경계가 사라진다**.
+  // 여기서는 축의 첫 세그먼트(20260529)에 캔들이 없어 spans[0] 이 20260602 다.
+  it('축의 첫 세그먼트에 캔들이 없어도 나머지 경계를 잃지 않는다', () => {
+    const axis = createVirtualAxis(
+      [seg('20260529', 0), seg('20260602', 4), seg('20260604', 6)],
+      D0_OPEN,
+    );
+    const candles = [
+      // 20260529 는 비어 있다.
+      ...session(axis.segments[1].sessionOpenMs),
+      ...session(axis.segments[2].sessionOpenMs),
+    ];
+
+    expect(resolveDayBoundaryTicks(candles, axis).map((t) => t.date)).toEqual([
+      '20260602',
+      '20260604',
+    ]);
+  });
+
+
   it('첫 캔들이 개장 정각이면 경계는 개장 시각에 선다', () => {
     const axis = createVirtualAxis([seg('20260529', 0), seg('20260602', 4)], D0_OPEN);
     const candles = [

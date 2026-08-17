@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
 import { useChartPrefsStore } from '../state/chartPrefs';
-import type { DayBoundaryTick } from './dayBoundaryTicks';
+import type { DayBoundaryTick } from './sessionSpans';
 
 function makeChart(paneWidth = 498, timeAxisHeight = 28) {
   const subscribers = new Set<() => void>();

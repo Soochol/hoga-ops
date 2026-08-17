@@ -19,10 +19,17 @@ const hits: PriceLevelHit[] = [
   { date: '20260624', t_ms: OPEN + 120_000, price: 13_000, kind: 'limit', direction: 'upper', pct: 30 },
 ];
 
+function candleAt(ts: number) {
+  return { ts_ms: ts, open: 10_000, high: 13_000, low: 9_000, close: 12_000, vol_a: 0, vol_b: 0 };
+}
+
+// 선의 양 끝은 **그 세션의 첫·마지막 렌더 캔들**이다(`sessionSpans`). 개장·마감
+// 정각에 캔들이 있는 정상 케이스라 끝값이 세션 경계와 같다 — 아래 늦은-개장
+// 케이스가 그 둘이 갈리는 쪽을 잰다.
 const bundle = {
   price_level_hits: hits,
   segments: [{ date: '20260624', session_open_ms: OPEN, session_close_ms: CLOSE }],
-  candles: [{ ts_ms: OPEN + 180_000, open: 10_000, high: 13_000, low: 9_000, close: 12_000, vol_a: 0, vol_b: 0 }],
+  candles: [candleAt(OPEN), candleAt(OPEN + 180_000), candleAt(CLOSE)],
 } as RangeBundle;
 
 function makeChart(timeToCoordinate: (time: number) => number | null = () => 100) {
@@ -106,5 +113,39 @@ describe('PriceLevelDotsOverlay', () => {
       height: '4px',
       backgroundColor: '#A855F7',
     });
+  });
+
+  // 결손 회귀 가드 — 종전엔 선의 양 끝을 **세션 개장/마감 정각**으로 구했다.
+  // 그 시각의 캔들이 없는 날(005380 실측: 20260318 +6분, 20260602 +12분)은
+  // `timeToCoordinate` 가 null 을 줘서 **그 히트가 통째로 사라졌다** — 날짜
+  // 구분선과 같은 결함이다(#1361).
+  //
+  // mock 이 lwc 를 정확히 흉내 내는 것이 이 가드의 전부다: 데이터에 있는 시각에만
+  // 좌표를 준다. 항상 좌표를 주는 mock 이면 개장 정각을 쓰든 첫 캔들을 쓰든 통과해
+  // 버그를 원리적으로 재현할 수 없다.
+  it('개장 정각에 캔들이 없는 날에도 선이 산다', () => {
+    const lateFirst = OPEN + 12 * 60_000;
+    const lateBundle = {
+      ...bundle,
+      candles: [candleAt(lateFirst), candleAt(lateFirst + 180_000), candleAt(CLOSE)],
+    } as RangeBundle;
+    const known = new Set(
+      [lateFirst, lateFirst + 180_000, CLOSE].map((ms) => axis.toVirtual(ms) / 1000),
+    );
+
+    renderOverlay({
+      bundle: lateBundle,
+      timeToCoordinate: (time) => (known.has(time) ? 100 : null),
+    });
+
+    expect(screen.getByLabelText('VI +10% 11,000원 09:01')).toBeInTheDocument();
+  });
+
+  it('그 날 캔들이 아예 없으면 그 히트만 건너뛴다', () => {
+    const emptyBundle = { ...bundle, candles: [] } as RangeBundle;
+    renderOverlay({ bundle: emptyBundle });
+
+    expect(screen.getByTestId('price-level-lines-overlay')).toBeInTheDocument();
+    expect(screen.queryByLabelText('VI +10% 11,000원 09:01')).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { memo, useEffect, useReducer, useRef, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useReducer, useRef, type CSSProperties } from 'react';
 import type { IChartApi, ITimeScaleApi, Time } from 'lightweight-charts';
 import type { PriceLevelHit, RangeBundle } from '../api/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
@@ -6,6 +6,7 @@ import type { PaneId } from '../chart/drawing/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
+import { resolveSessionSpans, type SessionSpan } from '../chart/sessionSpans';
 
 type Props = {
   chart: IChartApi;
@@ -86,19 +87,30 @@ function PriceLevelDotsOverlay({ chart, bundle, axis, paneSeries }: Props) {
     };
   }, [chart, enabled]);
 
+  // 선의 양 끝은 **축에 실재하는 시각**이어야 한다 — 세션 개장/마감 정각을 쓰면 그
+  // 시각의 캔들이 없는 날(첫 버킷 무체결·캡처 지연)에 `timeToCoordinate` 가 null 을
+  // 주고 그 히트가 통째로 사라진다. `sessionSpans` docstring 참조(같은 결함이
+  // 날짜 구분선에서 먼저 났다 — #1361).
+  const spansByDate = useMemo(() => {
+    const m = new Map<string, SessionSpan>();
+    for (const span of resolveSessionSpans(bundle.candles, axis)) m.set(span.date, span);
+    return m;
+  }, [bundle.candles, axis]);
+
   if (!enabled) return null;
 
   const ts = chart.timeScale();
   const range = readVisibleRange(ts);
   const activeSeries = paneSeries.get('candle' as PaneId);
   const hits = activeSeries ? bundle.price_level_hits ?? [] : [];
-  const segmentsByDate = new Map((bundle.segments ?? []).map((s) => [s.date, s]));
   const items = hits.map((hit) => {
     if (!activeSeries) return null;
-    const segment = segmentsByDate.get(hit.date);
-    if (!segment) return null;
-    const startSec = axis.toVirtual(segment.session_open_ms) / 1000;
-    const endSec = axis.toVirtual(segment.session_close_ms) / 1000;
+    // span 이 없다 = 그 날 렌더되는 캔들이 없다 = 그릴 자리가 없다. 종전의
+    // "세그먼트가 없으면 스킵" 과 같은 결론이되, 캔들 부재까지 함께 본다.
+    const span = spansByDate.get(hit.date);
+    if (!span) return null;
+    const startSec = span.firstVirtualMs / 1000;
+    const endSec = span.lastVirtualMs / 1000;
     if (range && (endSec < range.from || startSec > range.to)) return null;
     let x0: ReturnType<typeof ts.timeToCoordinate>;
     let x1: ReturnType<typeof ts.timeToCoordinate>;
