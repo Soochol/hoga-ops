@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import { useEntryDragStore } from '../state/entryDrag';
-import { useStudyTabsStore } from '../state/studyTabs';
+import { useStudyActiveViewStore } from '../state/studyActiveView';
 import { useStudyLastMinuteTimeframeStore } from '../state/studyLastMinuteTimeframe';
 import { StudyViewsDrawer, filterStudyViews, formatStudyViewMeta } from './StudyViewsDrawer';
 
@@ -152,7 +152,7 @@ beforeEach(() => {
   dnd.onDragCancel = null;
   mockedSaves = saves;
   useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '3m' });
-  useStudyTabsStore.setState({ tabs: [], activeTabId: null });
+  useStudyActiveViewStore.setState({ active: null });
   (useEntryDragStore.setState as unknown as (state: Record<string, unknown>) => void)({
     draggingCode: null,
     overChart: false,
@@ -235,13 +235,11 @@ it('matches watchlist list typography for stock headers and saved view names', (
   expect(savedViewName).not.toHaveClass('text-sm');
 });
 
-it('highlights the saved-view row for the active study tab', () => {
-  useStudyTabsStore.setState({
-    tabs: [
-      { id: 'tab-a', viewId: 'a', code: '005930', label: '삼성전자 · 급등 이후 · 5m', name: '급등 이후', timeframe: '5m' },
-      { id: 'tab-b', viewId: 'b', code: '000660', label: 'SK하이닉스 · 눌림 · D', name: '눌림', timeframe: 'D' },
-    ],
-    activeTabId: 'tab-b',
+// 스토어가 URL 을 이긴다 — 이 드로어는 우측 레일의 **전역** 컴포넌트라 `/live` 등에서는
+// URL 에 `?view=` 가 아예 없고, 스토어를 안 읽으면 하이라이트가 그 라우트에서 사라진다.
+it('highlights the saved-view row for the active study view', () => {
+  useStudyActiveViewStore.setState({
+    active: { viewId: 'b', code: '000660', label: 'SK하이닉스', name: '눌림' },
   });
   renderDrawer('/study?view=a');
 
@@ -417,27 +415,26 @@ it('clicking the saved view title navigates to the study route', async () => {
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
 });
 
-it('normal row click replaces the current study tab instead of opening only the route', async () => {
-  useStudyTabsStore.getState().openSaveInActiveTab(saves[1]);
-  const activeTabId = useStudyTabsStore.getState().activeTabId;
+it('normal row click replaces the active study view instead of opening only the route', async () => {
+  useStudyActiveViewStore.getState().openSave(saves[1]);
   renderDrawer('/study?view=b');
 
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-  const state = useStudyTabsStore.getState();
-  expect(state.tabs).toHaveLength(1);
-  expect(state.activeTabId).toBe(activeTabId);
-  // 봉은 저장뷰가 저장한 값(`saves[0]`) 그대로다 — 서랍이 갈아끼우지 않는다(#1326).
-  expect(state.tabs[0]).toMatchObject({ viewId: 'a', name: '급등 이후', timeframe: '5m' });
-  expect(state.tabs[0].label).toBe('삼성전자 · 급등 이후 · 5m');
+  // 제자리 교체 — 뷰가 쌓이지 않는다(ADR-0148).
+  expect(useStudyActiveViewStore.getState().active).toEqual({
+    viewId: 'a',
+    code: '005930',
+    label: '삼성전자',
+    name: '급등 이후',
+  });
 });
 
-// 서랍은 봉을 **정하지 않는다**(#1326) — 탭은 저장 봉으로 시드되고, 그 뒤 StudyPage 가
-// 포커스 창 봉으로 되받아쓴다. 여기서 볼 것은 "서랍이 딴 값을 끼워 넣지 않는가" 다.
-// `lastMinuteTimeframe` 을 **일부러 다른 값으로** 둔다 — 같은 값이면 그 전역이 새어
-// 들어오는지 아닌지 구별할 수 없어 이 테스트가 아무것도 증명하지 못한다.
-it('저장뷰를 열면 탭이 저장 봉으로 시드된다 — 서랍은 봉을 갈아끼우지 않는다', async () => {
+// 스토어는 **봉을 담지 않는다**(ADR-0148) — 봉의 소유자는 차트 창이다(#1326).
+// 종전엔 탭이 저장 봉을 들고 있어서 "서랍이 딴 값을 끼워 넣지 않는가" 를 여기서 쟀다.
+// 이제는 담을 자리 자체가 없다는 것이 계약이고, 그것을 그대로 잰다.
+it('저장뷰를 열어도 스토어에 봉이 들어가지 않는다 — 봉은 창이 소유한다', async () => {
   useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '15m' });
   mockedSaves = [{ ...saves[0], timeframe: '10m' }];
   renderDrawer('/inventory');
@@ -445,11 +442,7 @@ it('저장뷰를 열면 탭이 저장 봉으로 시드된다 — 서랍은 봉�
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-  expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
-    viewId: 'a',
-    timeframe: '10m',
-    label: '삼성전자 · 급등 이후 · 10m',
-  });
+  expect(useStudyActiveViewStore.getState().active).not.toHaveProperty('timeframe');
 });
 
 
@@ -461,17 +454,16 @@ it('clicking the saved view name text navigates to the study route', async () =>
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
 });
 
-it('ctrl-clicking a saved view row opens that exact save in a new study tab', async () => {
-  useStudyTabsStore.getState().openSaveInActiveTab(saves[1]);
+// ADR-0148 §「Ctrl+클릭은 일반 클릭과 동일」 — 탭이 없으면 "새 탭으로" 가 무의미하다
+// (ADR-0113 §3 의 `disposition` 제거와 동형). 계산만 하고 버려지는 배선을 남기지 않는다.
+it('ctrl-clicking a saved view row behaves exactly like a normal click', async () => {
+  useStudyActiveViewStore.getState().openSave(saves[1]);
   renderDrawer('/inventory');
 
   fireEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), { ctrlKey: true });
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-  const state = useStudyTabsStore.getState();
-  expect(state.tabs).toHaveLength(2);
-  expect(state.tabs.map((tab) => tab.viewId)).toEqual(['b', 'a']);
-  expect(state.tabs.find((tab) => tab.id === state.activeTabId)).toMatchObject({ viewId: 'a', name: '급등 이후' });
+  expect(useStudyActiveViewStore.getState().active).toMatchObject({ viewId: 'a', name: '급등 이후' });
 });
 
 it('pressing Enter on the saved view title navigates to the study route', async () => {
@@ -657,14 +649,11 @@ it('navigates away after the delete grace period for the active study view', () 
   }
 });
 
-it('removes every open tab for a deleted inactive study view', () => {
+// 남의 뷰를 지웠을 뿐이니 화면이 흔들리면 안 된다.
+it('비활성 저장뷰를 지워도 활성 뷰와 라우트는 그대로다', () => {
   vi.useFakeTimers();
   try {
-    useStudyTabsStore.getState().openSaveInNewTab(saves[1]);
-    useStudyTabsStore.getState().openSaveInNewTab(saves[0]);
-    useStudyTabsStore.getState().openSaveInNewTab(saves[0]);
-    const firstTabId = useStudyTabsStore.getState().tabs[0].id;
-    useStudyTabsStore.getState().focusTab(firstTabId);
+    useStudyActiveViewStore.getState().openSave(saves[1]);
     removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
     renderDrawer('/study?view=b');
 
@@ -672,9 +661,7 @@ it('removes every open tab for a deleted inactive study view', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
     act(() => { vi.advanceTimersByTime(5000); });
 
-    const state = useStudyTabsStore.getState();
-    expect(state.tabs.map((tab) => tab.viewId)).toEqual(['b']);
-    expect(state.activeTabId).toBe(firstTabId);
+    expect(useStudyActiveViewStore.getState().active).toMatchObject({ viewId: 'b' });
     expect(screen.getByTestId('loc').textContent).toBe('/study?view=b');
   } finally {
     vi.useRealTimers();
@@ -688,7 +675,8 @@ it('opens the full row menu from the hover ⋯ button without navigating', async
 
   const menu = screen.getByRole('menu', { name: '급등 이후 저장뷰 메뉴' });
   expect(within(menu).getByRole('menuitem', { name: '열기' })).toBeTruthy();
-  expect(within(menu).getByRole('menuitem', { name: '새 탭에서 열기' })).toBeTruthy();
+  // 「새 탭에서 열기」는 ADR-0148 로 사라졌다.
+  expect(within(menu).queryByRole('menuitem', { name: '새 탭에서 열기' })).toBeNull();
   expect(within(menu).getByRole('menuitem', { name: '이름 변경' })).toBeTruthy();
   expect(within(menu).getByRole('menuitem', { name: '메모 편집' })).toBeTruthy();
   expect(within(menu).getByRole('menuitem', { name: '삭제' })).toBeTruthy();
@@ -702,17 +690,6 @@ it('opens the saved view from the row menu 열기 item', async () => {
   await userEvent.click(screen.getByRole('menuitem', { name: '열기' }));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-});
-
-it('opens a new study tab from the row menu 새 탭에서 열기 item', async () => {
-  useStudyTabsStore.getState().openSaveInActiveTab(saves[1]);
-  renderDrawer('/inventory');
-
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: '새 탭에서 열기' }));
-
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-  expect(useStudyTabsStore.getState().tabs.map((tab) => tab.viewId)).toEqual(['b', 'a']);
 });
 
 it('starts inline rename from the row menu', async () => {
@@ -763,22 +740,24 @@ it('cancels memo edit on Escape without saving', async () => {
   expect(screen.queryByLabelText('저장뷰 메모 수정')).toBeNull();
 });
 
-it('ctrl-clicking a stock group header opens its newest save in a new study tab without collapsing the group', async () => {
+// 그룹 헤더 Ctrl+클릭 = 그 종목의 최신 저장뷰를 새 탭으로, 도 ADR-0148 로 사라졌다.
+// 헤더 클릭은 이제 접기/펼치기 하나뿐이다.
+it('ctrl-clicking a stock group header just toggles the group', async () => {
   mockedSaves = [
     ...saves,
     { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2, created_at_ms: 2 },
   ];
-  useStudyTabsStore.getState().openSaveInActiveTab(saves[1]);
+  useStudyActiveViewStore.getState().openSave(saves[1]);
   renderDrawer('/inventory');
 
   fireEvent.click(screen.getByRole('button', { name: '삼성전자 005930 접기' }), { ctrlKey: true });
 
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=c'));
-  const state = useStudyTabsStore.getState();
-  expect(state.tabs).toHaveLength(2);
-  expect(state.tabs.map((tab) => tab.viewId)).toEqual(['b', 'c']);
-  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
-  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+  await waitFor(() => (
+    expect(screen.getByRole('button', { name: '삼성전자 005930 펼치기' })).toBeTruthy()
+  ));
+  // 라우트도 활성 뷰도 그대로다.
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+  expect(useStudyActiveViewStore.getState().active).toMatchObject({ viewId: 'b' });
 });
 
 it('updates study hover state during stock-group drag', async () => {
@@ -809,13 +788,12 @@ it('updates study hover state during stock-group drag', async () => {
   }
 });
 
-it('dragging a stock group over the study target opens its newest save in the active tab without reordering groups', async () => {
+it('dragging a stock group over the study target opens its newest save without reordering groups', async () => {
   mockedSaves = [
     ...saves,
     { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2, created_at_ms: 2 },
   ];
-  useStudyTabsStore.getState().openSaveInActiveTab(saves[1]);
-  const activeTabId = useStudyTabsStore.getState().activeTabId;
+  useStudyActiveViewStore.getState().openSave(saves[1]);
   const hitTest = (clientX: number) => clientX < 800;
   useEntryDragStore.getState().registerStudyTarget(hitTest);
 
@@ -831,10 +809,8 @@ it('dragging a stock group over the study target opens its newest save in the ac
     });
 
     await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=c'));
-    const state = useStudyTabsStore.getState();
-    expect(state.tabs).toHaveLength(1);
-    expect(state.activeTabId).toBe(activeTabId);
-    expect(state.tabs[0]).toMatchObject({ viewId: 'c', name: '종가 반등' });
+    // 제자리 교체 — 드롭이 뷰를 쌓지 않는다.
+    expect(useStudyActiveViewStore.getState().active).toMatchObject({ viewId: 'c', name: '종가 반등' });
     expect(groupHeaderLabels()).toEqual(['삼성전자 005930 접기', 'SK하이닉스 000660 접기']);
   } finally {
     useEntryDragStore.getState().clearStudyTarget(hitTest);
@@ -858,7 +834,7 @@ it('dragging a stock group outside the study target still reorders groups', asyn
 
     await waitFor(() => expect(groupHeaderLabels()).toEqual(['SK하이닉스 000660 접기', '삼성전자 005930 접기']));
     expect(screen.getByTestId('loc').textContent).toBe('/inventory');
-    expect(useStudyTabsStore.getState().tabs).toHaveLength(0);
+    expect(useStudyActiveViewStore.getState().active).toBeNull();
   } finally {
     useEntryDragStore.getState().clearStudyTarget(hitTest);
   }

@@ -768,8 +768,8 @@ export function LiveChartRoot({
   }, []);
 
   // chartRef bridges the live chart instance to the viewport-capture callback
-  // (registered once, reads refs) so the tabs store can snapshot the OUTGOING
-  // tab's view synchronously on switch-away, before the per-viewKey remount.
+  // (registered once, reads refs) so callers can snapshot the current view
+  // synchronously, before any per-viewKey remount.
   // Written during render (like axisRef) so it's current before any effect.
   const chartRef = useRef<IChartApi | null>(chart);
   chartRef.current = chart;
@@ -777,9 +777,10 @@ export function LiveChartRoot({
   const verticalGridLinesEnabled = useActivePrefs((prefs) => prefs.verticalGridLinesEnabled);
 
   // Viewport capture (ADR-0069 A안): read the live chart's visible range + zoom
-  // and pin them to a real-time anchor. The tabs store calls this on switch-away
-  // (focusTab / openOrFocusTab) to save the outgoing tab's view. Stable identity
-  // (refs only) so the registration effect runs once.
+  // and pin them to a real-time anchor. The remaining caller is the saved-view
+  // write path (`studySaveCommand` via `ChartWindow.captureViewport`) — the tab
+  // stores that used to call it on switch-away are gone (ADR-0113, ADR-0148).
+  // Stable identity (refs only) so the registration effect runs once.
   const captureViewport = useCallback((): TabViewport | null => {
     const c = chartRef.current;
     if (!c) return null;

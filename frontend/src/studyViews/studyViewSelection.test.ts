@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
-import { formatStudyTabLabel, latestStudyViewForCode } from './studyViewSelection';
+import { latestStudyViewForCode } from './studyViewSelection';
 
 const base = {
   schema_version: 2,
@@ -32,9 +32,5 @@ describe('studyViewSelection', () => {
 
   it('returns null when the code has no saved study view', () => {
     expect(latestStudyViewForCode([base], '000660')).toBeNull();
-  });
-
-  it('formats study tab labels with stock and timeframe context', () => {
-    expect(formatStudyTabLabel(base)).toBe('삼성전자 · 장초반 · 1m');
   });
 });

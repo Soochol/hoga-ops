@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { LivePage } from './live/LivePage';
-import { initStudyTabsSync } from './state/studyTabs';
+import { initStudyActiveViewSync } from './state/studyActiveView';
 import AppErrorBoundary from './ui/AppErrorBoundary';
 // 앱 서체(Pretendard dynamic-subset)를 번들에 내장한다 — ADR-0134 §4 (폰트
 // self-host). 이전에는 index.html 이 jsdelivr CDN 을 렌더 블로킹으로 링크해,
@@ -40,10 +40,10 @@ const Market = lazy(() => import('./pages/Market'));
 // 표면으로 열렸다. 옛 북마크는 아래 라우트가 `/live` 로 받는다.
 
 
-const _disposeStudyTabsSync = initStudyTabsSync();
+const _disposeStudyActiveViewSync = initStudyActiveViewSync();
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    _disposeStudyTabsSync();
+    _disposeStudyActiveViewSync();
   });
 }
 

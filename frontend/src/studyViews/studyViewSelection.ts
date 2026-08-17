@@ -12,9 +12,3 @@ export function latestStudyViewForCode(
     return b.created_at_ms - a.created_at_ms;
   })[0] ?? null;
 }
-
-export function formatStudyTabLabel(
-  save: Pick<StudyViewListRow, 'label' | 'name' | 'timeframe'>,
-): string {
-  return `${save.label} · ${save.name} · ${save.timeframe}`;
-}

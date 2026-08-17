@@ -4,9 +4,8 @@ import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuRese
 import { PageContainer } from '../layout/PageContainer';
 import { registerIndicatorDrawerOpener } from '../live/workspace/indicatorDrawerControls';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
-import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
-import { useStudyTabsStore } from '../state/studyTabs';
+import { useStudyActiveViewStore } from '../state/studyActiveView';
 import {
   focusedChartWindowId,
   useStudyWorkspaceStore,
@@ -27,15 +26,12 @@ import { StudyIndicatorDrawer } from './StudyIndicatorDrawer';
 import { StudyWorkspaceCanvas, StudyWindowAddMenu } from './StudyWorkspaceCanvas';
 import { StudyWindowListMenu } from './StudyWindowListMenu';
 import { StudyLayoutPresetMenu } from './presets/StudyLayoutPresetMenu';
-import { StudyTabBar } from './StudyTabBar';
-import { useStudyKeyboard } from './useStudyKeyboard';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import {
   useStudyReferenceBundles,
   type StudyReferenceBundleResult,
 } from './useStudyReferenceBundle';
 import { useStudyRangeCacheEviction } from './useStudyRangeCacheEviction';
-import { useWarmStudyReferenceTabQueries } from './useWarmStudyReferenceTabQueries';
 import {
   referenceStudyView,
   studyReferenceDetailPanelTestId,
@@ -144,7 +140,6 @@ export function StudyPage() {
   useDrawingToolContextMenuReset();
   const [viewTimeframes, setViewTimeframes] = useState<Record<string, LiveTimeframe>>({});
   const [rememberedMinuteTimeframes, setRememberedMinuteTimeframes] = useState<Record<string, MinuteTimeframe>>({});
-  const [activatedStudyTabIds, setActivatedStudyTabIds] = useState<Set<string>>(() => new Set());
   const savesQuery = useStudyViews();
   const mutations = useStudyViewMutations();
   // 메모 = 창(ADR-0123) — aside 동거 시절의 "접힘 자동 펼침" 결합이 사라진다.
@@ -164,28 +159,15 @@ export function StudyPage() {
   // TopNav 「설정」 하나다. 예전엔 레이아웃 분기 넷마다 같은 모달을 렌더했고 툴바 ⚙ 도
   // 있었는데, 둘 다 사라졌다(2026-08-16 · 08-17).
   const [memoError, setMemoError] = useState<string | null>(null);
-  const tabs = useStudyTabsStore((state) => state.tabs);
-  const activeTabId = useStudyTabsStore((state) => state.activeTabId);
-  const ensureQuerySeed = useStudyTabsStore((state) => state.ensureQuerySeed);
-  const openSaveInActiveTab = useStudyTabsStore((state) => state.openSaveInActiveTab);
-  const focusTab = useStudyTabsStore((state) => state.focusTab);
-  const closeTab = useStudyTabsStore((state) => state.closeTab);
-  const reorderTabs = useStudyTabsStore((state) => state.reorderTabs);
-  const toggleTabPinned = useStudyTabsStore((state) => state.toggleTabPinned);
-  const updateTabTimeframe = useStudyTabsStore((state) => state.updateTabTimeframe);
+  const activeView = useStudyActiveViewStore((state) => state.active);
+  const openSave = useStudyActiveViewStore((state) => state.openSave);
   const setLastMinuteTimeframe = useStudyLastMinuteTimeframeStore((state) => state.setLastMinuteTimeframe);
-  const updateTabViewport = useStudyTabsStore((state) => state.updateTabViewport);
   const initialQueryViewIdRef = useRef(queryViewId);
   const handledQueryViewIdRef = useRef(queryViewId);
   const routeSyncPendingRef = useRef(false);
   const studyDropTargetRef = useRef<HTMLDivElement>(null);
-  const activeTab = useMemo(
-    () => tabs.find((tab) => tab.id === activeTabId) ?? null,
-    [activeTabId, tabs],
-  );
-  // 봉은 차트 창이 **유일한 소유자**고 탭은 그 라벨이다(#1326). 창이 여러 개면
-  // (#801) **포커스된 창**이 탭과 거울을 이룬다 — 탭 라벨에 봉이 박혀 있으므로
-  // "지금 보고 있는 창" 하나만 라벨을 쓸 수 있다.
+  // 봉은 차트 창이 **유일한 소유자**다(#1326). 창이 여러 개면(#801) **포커스된 창**이
+  // 뷰포트 캡처·커서 해석의 기준이 된다.
   const chartWindowId = useStudyWorkspaceStore(focusedChartWindowId);
   const setChartTimeframe = useStudyWorkspaceStore((s) => s.setChartTimeframe);
   const chartWindowTimeframe = useStudyWorkspaceStore(
@@ -197,7 +179,6 @@ export function StudyPage() {
   // 스토어의 `windows` 를 그대로 구독한다 — 셀렉터에서 미리 접으면 매 렌더 새 배열이
   // 나와 구독이 항상 깨진다. 접기는 아래 `chartWindowSpecs` 에서 한다.
   const workspaceWindows = useStudyWorkspaceStore((s) => s.windows);
-  const activatedTabIds = useMemo(() => Array.from(activatedStudyTabIds), [activatedStudyTabIds]);
   const querySave = useMemo(
     () => savesQuery.data?.saves.find((row) => row.id === queryViewId) ?? null,
     [queryViewId, savesQuery.data?.saves],
@@ -206,36 +187,22 @@ export function StudyPage() {
   const unhandledRouteQuery = queryViewId !== null && queryViewId !== handledQueryViewIdRef.current;
   const activeViewId = initialQueryPending || unhandledRouteQuery
     ? queryViewId
-    : activeTab?.viewId ?? queryViewId ?? null;
+    : activeView?.viewId ?? queryViewId ?? null;
   const selectedSave = useMemo(
     () => savesQuery.data?.saves.find((row) => row.id === activeViewId) ?? null,
     [activeViewId, savesQuery.data?.saves],
   );
   const referenceSave = referenceStudyView(selectedSave);
   /**
-   * 탭 재시드가 아직 안 끝난 창인가 — **탭 값이 창 값을 이기는 유일한 구간**이다.
-   *
-   * 탭을 바꾼 첫 커밋에는 창이 아직 이전 탭의 봉을 들고 있다(재시드가 effect 라 한
-   * 커밋 늦다). 그때 창을 읽으면 엉뚱한 봉으로 번들(수십 MB)을 한 벌 더 fetch 한다.
-   * 그래서 그 한 커밋 동안만 탭을 먼저 읽는다.
-   *
-   * ⚠ 이 구간을 "탭이 이 뷰를 들고 있으면 항상" 으로 넓히면 **창 포커스만 옮겨도
-   * 탭이 들고 있는 봉이 그 창을 덮어쓴다**(#801 후속 버그). 탭 timeframe 은 포커스
-   * 창의 거울이지 전 창의 명령이 아니다.
-   */
-  const tabSeedKey = `${activeTabId ?? ''}:${activeViewId ?? ''}`;
-  const seededTabKeyRef = useRef<string | null>(null);
-  /**
    * 지금 화면이 서 있는 봉 — **창이 유일한 소유자다**(#1326).
    *
-   * 뒤의 폴백 사슬은 창이 아직 없거나(하이드레이션 전) 탭 없는 라우트로 들어온
-   * 과도기에만 닿는다. 저장뷰의 봉(`referenceSave.timeframe`)은 사슬의 **맨 끝**이라
-   * 열린 창이 하나라도 있으면 절대 이기지 못한다 — 그게 이 페이지의 계약이다.
+   * 뒤의 폴백 사슬은 창이 아직 없는(하이드레이션 전) 과도기에만 닿는다. 저장뷰의
+   * 봉(`referenceSave.timeframe`)은 사슬의 **맨 끝**이라 열린 창이 하나라도 있으면
+   * 절대 이기지 못한다 — 그게 이 페이지의 계약이다.
    */
   const selectedTimeframe = resolveSelectedTimeframe({
     chartWindowTimeframe,
     activeViewId,
-    activeTab: activeTab ?? null,
     viewTimeframes,
     savedTimeframe: referenceSave?.timeframe ?? null,
   });
@@ -310,12 +277,11 @@ export function StudyPage() {
   const isLoadingActiveView = activeViewModel.status === 'loading';
   const isErrorActiveView = activeViewModel.status === 'error';
   const isStudyPageLoading = savesQuery.isLoading || isLoadingActiveView;
-  // 로딩·에러 구간의 폴백도 **창을 먼저 읽는다**(#1326) — 봉의 소유자가 창이므로
-  // 탭을 먼저 읽으면 아직 되받아쓰기 전인 저장 봉이 지표 버킷으로 새어 나간다.
+  // 로딩·에러 구간의 폴백도 **창을 먼저 읽는다**(#1326) — `selectedTimeframe` 이 이미
+  // 창을 사슬 맨 앞에 두므로 그 값을 그대로 태운다.
   const indicatorPanelTimeframe = resolveIndicatorPanelTimeframe({
     readySavedTimeframe: activeViewModel.status === 'ready' ? activeViewModel.save.timeframe : null,
     selectedTimeframe,
-    activeTab: activeTab ?? null,
   });
   // /study 의 ambient 지표 봉 동기화(PR-A #699) — 활성 뷰의 timeframe 이 지표
   // 설정의 조회 키다. 렌더 중인 차트와 지표 드로어가 같은 값을 쓰므로 이 하나로 충분.
@@ -323,55 +289,16 @@ export function StudyPage() {
   useEffect(() => {
     setIndicatorTimeframe(indicatorPanelTimeframe);
   }, [setIndicatorTimeframe, indicatorPanelTimeframe]);
-  // 창별 뷰포트 캡처 함수 등록소(#801). 단일 ref 로 두면 창이 여러 개일 때
-  // **마지막에 마운트된 창이 이긴다** — 탭이 저장하는 뷰포트가 보고 있던 창의 것이
-  // 아니게 되고, 증상은 "탭을 돌아오면 엉뚱한 줌"으로 한참 뒤에 나타난다.
-  const captureViewportRefs = useRef<Map<string, () => TabViewport | null>>(new Map());
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
   const overStudy = useEntryDragStore((s) => s.overStudy);
   const registerStudyTarget = useEntryDragStore((s) => s.registerStudyTarget);
   const clearStudyTarget = useEntryDragStore((s) => s.clearStudyTarget);
-  const warmTabStatuses = useWarmStudyReferenceTabQueries({
-    tabs,
-    activeTabId,
-    activatedTabIds,
-    saves: savesQuery.data?.saves ?? [],
-    // 탭을 눌러도 창 봉이 안 바뀌므로 **활성 전환의 실제 쿼리 키는 창 봉**이다.
-    // 비활성 탭이 든 저장 봉으로 워밍하면 받아 놓고 버리는 번들이 된다.
-    warmTimeframe: chartWindowTimeframe,
-  });
   // 축출은 (종목 × 봉)이다(#801) — 창이 여러 개면 같은 종목 아래 봉별 번들이 쌓인다.
+  // 보존 대상은 활성 저장뷰의 종목 하나다(ADR-0148).
   useStudyRangeCacheEviction(
-    tabs,
     referenceSave?.code ?? null,
     chartWindowSpecs.map((w) => w.timeframe),
   );
-  const registerViewportCapture = useCallback(
-    (windowId: string, capture: () => TabViewport | null) => {
-      captureViewportRefs.current.set(windowId, capture);
-    },
-    [],
-  );
-  // 탭이 들고 가는 뷰포트는 **포커스된 차트 창**의 것이다 — 탭 뷰포트는 한 벌이고
-  // 탭 라벨의 봉도 포커스 창을 따르므로, 둘이 같은 창을 봐야 복원이 어긋나지 않는다.
-  const captureActiveTabViewport = useCallback(() => {
-    if (!activeTabId || !chartWindowId) return;
-    const viewport = captureViewportRefs.current.get(chartWindowId)?.();
-    if (!viewport) return;
-    updateTabViewport(activeTabId, viewport);
-  }, [activeTabId, chartWindowId, updateTabViewport]);
-  const handleFocusTab = useCallback((id: string) => {
-    if (id !== activeTabId) captureActiveTabViewport();
-    focusTab(id);
-  }, [activeTabId, captureActiveTabViewport, focusTab]);
-  const handleCloseTab = useCallback((id: string) => {
-    if (id === activeTabId) captureActiveTabViewport();
-    closeTab(id);
-  }, [activeTabId, captureActiveTabViewport, closeTab]);
-  const openSaveInActiveTabWithViewportCapture = useCallback((save: Parameters<typeof openSaveInActiveTab>[0]) => {
-    captureActiveTabViewport();
-    openSaveInActiveTab(save);
-  }, [captureActiveTabViewport, openSaveInActiveTab]);
   const commitMemo = useCallback((memo: string) => {
     if (!activeViewId || memo === (selectedSave?.memo ?? '')) return;
     setMemoError(null);
@@ -383,15 +310,14 @@ export function StudyPage() {
     );
   }, [activeViewId, mutations.updateMetadata, selectedSave?.memo]);
   /**
-   * 봉 전환 — 창이 소유하고 활성 탭에 **즉시 되받아쓴다**(#902 write-through).
+   * 봉 전환 — **창이 소유한다**(#1326).
    *
-   * 이탈 시 캡처(뷰포트 방식)로는 부족하다: 탭 라벨에 봉이 박혀 있고 그 라벨은
-   * 비활성 탭에서도 보이므로, 지연 반영하면 활성 탭 라벨이 창 봉과 어긋난 채
-   * 노출된다. 봉은 문자열 하나라 상시 쓰기 비용도 없다.
+   * 창이 여러 개면(#801) 봉을 바꾼 **그 창**이 대상이고, 뷰별·전역 기억으로의 반영은
+   * **포커스 창일 때만** 일어난다. 비포커스 창의 봉이 뷰 기억을 갈아치우면 "안 만진
+   * 창 때문에 다음에 열 봉이 바뀐다" 가 된다.
    *
-   * 창이 여러 개면(#801) 봉을 바꾼 **그 창**이 대상이고, 탭·전역 기억으로의
-   * write-through 는 **포커스 창일 때만** 일어난다. 비포커스 창의 봉이 탭 라벨을
-   * 갈아치우면 "안 만진 창 때문에 라벨이 바뀐다" 가 된다.
+   * 여기 있던 탭 라벨 write-through(#902)는 ADR-0148 로 사라졌다 — 탭 칩에 봉이
+   * 박혀 있어서(`… · 5m`) 필요했던 거울이고, 칩이 없으면 비출 대상이 없다.
    */
   const changeTimeframe = useCallback((windowId: string, next: LiveTimeframe) => {
     setChartTimeframe(windowId, next);
@@ -402,89 +328,16 @@ export function StudyPage() {
       // 새 차트 창의 분봉 시드가 참조하는 전역 마지막 분봉(#906). D/W/M 전환 땐 유지.
       setLastMinuteTimeframe(next);
     }
-    if (activeTab && activeTab.viewId === activeViewId) {
-      updateTabTimeframe(activeTab.id, next);
-    }
-  }, [activeTab, activeViewId, chartWindowId, setChartTimeframe, updateTabTimeframe, setLastMinuteTimeframe]);
+  }, [activeViewId, chartWindowId, setChartTimeframe, setLastMinuteTimeframe]);
 
   /**
-   * 탭/뷰가 바뀌면 **탭 라벨을 창 봉으로 되받아쓴다** — 거울의 방향이 여기다(#1326).
+   * 최초 진입의 `?view=` 를 활성 뷰로 심는다.
    *
-   * 여기 있던 것은 반대 방향이었다: 탭이 든 봉으로 **창을 재시드**했다(#902). 그
-   * 계약은 저장뷰가 봉을 정한다는 전제 위에 서 있었고, 창이 여럿이 되자(#801) 그
-   * 전제가 배치를 무너뜨렸다 — "일봉+분봉으로 벌려 놨는데 저장뷰를 누르니 둘 다
-   * 분봉". #1295 가 완화("요구 봉을 이미 띄운 창이 있으면 포커스만 이동")를 넣었지만
-   * 봉이 **정확히** 일치할 때만 걸려서, `D` + `3m` 배치에 `1m` 저장뷰가 오면 그대로
-   * 덮였다. 그래서 소유권 자체를 창으로 옮겼다.
-   *
-   * 이제 탭의 `timeframe` 은 명령이 아니라 **포커스 창의 라벨**이다. 탭 라벨에 봉이
-   * 박혀 있으므로(`… · 5m`) 여기서 되받아쓰지 않으면 라벨이 실제 창과 어긋난 채
-   * 노출된다.
-   *
-   * ⚠ **탭/뷰가 바뀔 때만** 돈다(`tabSeedKey`). 포커스가 바뀌었다는 이유로 돌면
-   * 창을 클릭했을 뿐인데 탭 라벨이 흔들린다.
+   * **딥링크가 영속된 마지막 뷰를 이긴다** — 이 effect 와 아래 두 개가 그 우선순위를
+   * 실현한다. 단일 뷰가 됐다고 가드(`initialQueryViewIdRef`/`handledQueryViewIdRef`/
+   * `routeSyncPendingRef`)를 접으면 우선순위가 조용히 뒤집히거나 `navigate(replace)`
+   * ↔ effect 핑퐁이 돈다.
    */
-  useEffect(() => {
-    if (!chartWindowId || !chartWindowTimeframe) return;
-    if (seededTabKeyRef.current === tabSeedKey) return;
-    seededTabKeyRef.current = tabSeedKey;
-    if (!activeTab || activeTab.viewId !== activeViewId) return;
-    if (activeTab.timeframe === chartWindowTimeframe) return;
-    updateTabTimeframe(activeTab.id, chartWindowTimeframe);
-  }, [
-    activeTab,
-    activeViewId,
-    chartWindowId,
-    chartWindowTimeframe,
-    tabSeedKey,
-    updateTabTimeframe,
-  ]);
-
-  /** 닫힌 창의 캡처 함수를 걷어낸다 — 등록소가 죽은 클로저를 붙들고 있지 않게. */
-  useEffect(() => {
-    const live = new Set(chartWindowSpecs.map((w) => w.windowId));
-    for (const id of captureViewportRefs.current.keys()) {
-      if (!live.has(id)) captureViewportRefs.current.delete(id);
-    }
-  }, [chartWindowSpecs]);
-
-  useEffect(() => {
-    if (!activeTab) return;
-    setViewTimeframes((current) => (
-      current[activeTab.viewId] === activeTab.timeframe
-        ? current
-        : { ...current, [activeTab.viewId]: activeTab.timeframe }
-    ));
-    const tabTimeframe = activeTab.timeframe;
-    if (isMinuteTimeframe(tabTimeframe)) {
-      setRememberedMinuteTimeframes((current) => (
-        current[activeTab.viewId] === tabTimeframe
-          ? current
-          : { ...current, [activeTab.viewId]: tabTimeframe }
-      ));
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    setActivatedStudyTabIds((current) => {
-      const currentTabIds = new Set(tabs.map((tab) => tab.id));
-      const next = new Set<string>();
-      let changed = false;
-      for (const id of current) {
-        if (currentTabIds.has(id)) {
-          next.add(id);
-        } else {
-          changed = true;
-        }
-      }
-      if (activeTabId && currentTabIds.has(activeTabId) && !next.has(activeTabId)) {
-        next.add(activeTabId);
-        changed = true;
-      }
-      return changed ? next : current;
-    });
-  }, [activeTabId, tabs]);
-
   useEffect(() => {
     if (initialQueryViewIdRef.current === null) return;
     if (queryViewId !== initialQueryViewIdRef.current) {
@@ -492,9 +345,9 @@ export function StudyPage() {
       return;
     }
     if (savesQuery.isLoading) return;
-    if (querySave) ensureQuerySeed(querySave);
+    if (querySave) openSave(querySave);
     initialQueryViewIdRef.current = null;
-  }, [ensureQuerySeed, querySave, queryViewId, savesQuery.isLoading]);
+  }, [openSave, querySave, queryViewId, savesQuery.isLoading]);
 
   useEffect(() => {
     routeSyncPendingRef.current = false;
@@ -502,40 +355,32 @@ export function StudyPage() {
     if (queryViewId === handledQueryViewIdRef.current) return;
     handledQueryViewIdRef.current = queryViewId;
     if (!querySave) return;
-    if (activeTab?.viewId === querySave.id) return;
+    if (activeView?.viewId === querySave.id) return;
     routeSyncPendingRef.current = true;
-    openSaveInActiveTabWithViewportCapture(querySave);
-  }, [activeTab?.viewId, openSaveInActiveTabWithViewportCapture, querySave, queryViewId]);
+    openSave(querySave);
+  }, [activeView?.viewId, openSave, querySave, queryViewId]);
 
   useEffect(() => {
     if (routeSyncPendingRef.current) return;
     if (initialQueryViewIdRef.current !== null) return;
-    if (activeTab) {
-      if (queryViewId === activeTab.viewId) return;
-      navigate(`/study?view=${activeTab.viewId}`, { replace: true });
+    /**
+     * 쿼리가 가리키는 저장뷰가 **아직 활성으로 반영되기 전이면 되감지 않는다.**
+     *
+     * 위 두 effect 는 `openSave` 를 부르지만 그 상태는 다음 렌더에나 온다. 같은
+     * 커밋에서 이어 도는 이 effect 가 그 사이 값을 보고 URL 을 되감으면 **딥링크가
+     * 영속된 마지막 뷰에 덮인다** — `?view=<B>` 로 들어왔는데 지난번에 보던 A 가
+     * 열리고, URL 까지 A 로 바뀐다. 증상이 첫 렌더에만 나타나 재현이 어렵다.
+     */
+    if (querySave && activeView?.viewId !== querySave.id) return;
+    if (activeView) {
+      if (queryViewId === activeView.viewId) return;
+      navigate(`/study?view=${activeView.viewId}`, { replace: true });
       return;
     }
-    if (tabs.length === 0 && queryViewId !== null && initialQueryViewIdRef.current === null) {
+    if (queryViewId !== null) {
       navigate('/study', { replace: true });
     }
-  }, [activeTab, navigate, queryViewId, tabs.length]);
-
-  useStudyKeyboard({
-    onSelectTabIndex: (index) => {
-      const nextTab = tabs[index];
-      if (nextTab) handleFocusTab(nextTab.id);
-    },
-    onNextTab: () => {
-      if (!tabs.length) return;
-      const activeIdx = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
-      handleFocusTab(tabs[(activeIdx + 1) % tabs.length].id);
-    },
-    onPrevTab: () => {
-      if (!tabs.length) return;
-      const activeIdx = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
-      handleFocusTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id);
-    },
-  });
+  }, [activeView, navigate, querySave, queryViewId]);
 
   useEffect(() => {
     const hitTest = (clientX: number, clientY: number): boolean => {
@@ -575,7 +420,10 @@ export function StudyPage() {
     );
   }
 
-  if (isStudyPageLoading && !selectedSave && tabs.length === 0) {
+  // 이 게이트에 닿는 유일한 경로는 "영속된 뷰/딥링크는 있는데 saves 가 아직" 이다
+  // (`!activeViewId` 는 위에서 이미 걸렸다). 술어를 넓히면 새로고침마다 **전체 페이지**가
+  // 로딩으로 교체된다 — 지금은 워크스페이스를 유지한 채 창 내부만 로딩한다.
+  if (isStudyPageLoading && !selectedSave && activeView === null) {
     return (
       <StudyPageStateShell
         workspace={(
@@ -608,18 +456,11 @@ export function StudyPage() {
     );
   }
 
-  const headerLabel = selectedSave?.label ?? activeTab?.label ?? '학습뷰';
-  const headerCode = selectedSave?.code ?? activeTab?.code ?? '';
+  // 스토어의 label/code 는 saves 도착 전 한 프레임을 메우는 폴백이다 — 빼면 새로고침
+  // 직후가 `'학습뷰'` + 빈 코드로 깜빡인다.
+  const headerLabel = selectedSave?.label ?? activeView?.label ?? '학습뷰';
+  const headerCode = selectedSave?.code ?? activeView?.code ?? '';
   const headerKindLabel = selectedSave ? studyViewKindLabel(selectedSave) : '복기뷰';
-  // 탭 뷰포트는 **포커스 창 하나에만** 적용된다(#801). 탭은 뷰포트를 한 벌만
-  // 들고 있고 그건 캡처한 창의 것이므로, 다른 봉을 보는 창에 씌우면 엉뚱한 줌이 된다.
-  // 봉 일치 조건은 기존 그대로 — "봉 전환 과도기에 옛 봉 번들 위로 새 봉 뷰포트가
-  // 새는 것" 차단이 그 술어의 실체다(#902).
-  const activeViewTimeframe = activeViewModel.status === 'ready' ? activeViewModel.save.timeframe : null;
-  const focusedTabViewport =
-    activeTab?.viewId === activeViewId && selectedTimeframe === activeViewTimeframe
-      ? activeTab.viewport
-      : null;
 
   // 창별 차트 props. 훅이 아니라 평범한 계산이다 — 위쪽 조기 return 들 뒤라
   // 여기서 훅을 부르면 렌더마다 훅 순서가 갈린다.
@@ -642,8 +483,12 @@ export function StudyPage() {
       ? studySavedRangeMarks(referenceSave, model.chartBundle.candles)
       : null;
     // 맥락 창의 기본 뷰포트가 저장 뷰포트를 이긴다 — 저장 뷰포트는 좁은 창 시절의
-    // 값이라 그대로 복원하면 맥락이 도로 사라진다. 탭 뷰포트(사용자가 팬·줌한 결과)는
-    // 포커스 창에 한해 그보다 우선한다.
+    // 값이라 그대로 복원하면 맥락이 도로 사라진다.
+    //
+    // 사슬 맨 앞에 **탭 뷰포트**(사용자가 팬·줌한 결과를 탭 전환 직전에 캡처한 것)가
+    // 하나 더 있었다. ADR-0148 로 사라졌다 — 뷰 슬롯이 하나뿐이면 "이탈 시 캡처 →
+    // 복귀 시 복원" 이 성립하지 않는다(캡처한 뷰와 복원 대상이 같다는 보장이 없다).
+    // 복기뷰에서는 이쪽이 오히려 옳다: 저장 뷰포트는 사용자가 명시적으로 정한 값이다.
     const bandViewport = band
       ? studyDailyViewport(model.chartBundle.candles, band.fromMs, band.toMs)
       : null;
@@ -658,15 +503,6 @@ export function StudyPage() {
               : {}),
           }
         : null;
-    const tabViewport = isFocused && focusedTabViewport
-      ? {
-          rightEdgeMs: focusedTabViewport.rightEdgeMs,
-          barSpan: focusedTabViewport.barSpan,
-          atLiveEdge: focusedTabViewport.atLiveEdge,
-          ...(focusedTabViewport.rightPaddingBars !== undefined ? { rightPaddingBars: focusedTabViewport.rightPaddingBars } : {}),
-          ...(focusedTabViewport.userAdjusted !== undefined ? { userAdjusted: focusedTabViewport.userAdjusted } : {}),
-        }
-      : null;
 
     chartPropsByWindow[spec.windowId] = {
       code: model.save.code,
@@ -674,7 +510,7 @@ export function StudyPage() {
       venue: result.venue,
       // 창 id 가 키에 있어 창마다 독립 리마운트 경계가 선다(#902 가 예고한 자리).
       // 봉 세그먼트는 **로드된 번들의 봉**이라는 현행 의미를 유지한다.
-      viewIdentity: [spec.windowId, activeTabId, activeViewId, model.save.timeframe]
+      viewIdentity: [spec.windowId, activeViewId, model.save.timeframe]
         .filter(Boolean).join(':'),
       bundle: model.bundle,
       chartBundle: model.chartBundle,
@@ -691,7 +527,7 @@ export function StudyPage() {
       // 남지만 inert(fetch 0)이니 백필 디버깅 시그널로 읽지 말 것.
       isExtending: false,
       pastDataWarnings: model.pastDataWarnings,
-      restoreViewport: tabViewport ?? bandViewport ?? savedViewport,
+      restoreViewport: bandViewport ?? savedViewport,
       savedRangeBand: band,
       // 옆 분봉 창의 마우스 위치를 이 창(일봉일 때)의 크로스헤어로 받는다.
       cursorSyncCrosshair: true,
@@ -702,34 +538,18 @@ export function StudyPage() {
       depthHeatmap: model.bundle.depth_heatmap,
       forceHogaPanes: true,
       dailyCandleKisEnabled: false,
-      onViewportCaptureReady: (capture: () => TabViewport | null) => registerViewportCapture(spec.windowId, capture),
     };
   }
 
   return (
     // bottom 여백만 제거(!pb-0) — 차트가 화면 하단까지 붙는다. 좌·우·상 p-md 는 유지.
     <PageContainer className="min-h-0 !pb-0">
-      {/* 부유 카드 모델(2026-07-15, /live 통일) — 바깥 PanelCard 프레임 제거. 탭 바·헤더는
+      {/* 부유 카드 모델(2026-07-15, /live 통일) — 바깥 PanelCard 프레임 제거. 헤더는
           --bg full-bleed 크롬이 되고, 차트·상세는 --bg 필드 위에 gap+shadow 로 떠 있는
-          카드 2장이 된다. 분리는 톤+간격(gap+shadow-panel)이 담당(보더 없음). */}
+          카드 2장이 된다. 분리는 톤+간격(gap+shadow-panel)이 담당(보더 없음).
+          저장뷰 탭 스트립이 이 위에 한 줄 더 있었다(ADR-0148 로 제거 — 툴바 + 캔버스 2행). */}
       <div data-testid="study-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden bg-bg text-fg">
-        <div data-testid="study-page" className="grid flex-1 min-h-0 grid-rows-[auto_auto_minmax(0,1fr)]">
-          {tabs.length > 0 && (
-            <div className="min-w-0">
-              <StudyTabBar
-                background="var(--bg)"
-                tabs={tabs}
-                activeTabId={activeTabId}
-                activeLoading={isStudyPageLoading}
-                tabStatuses={warmTabStatuses}
-                onFocus={handleFocusTab}
-                onClose={handleCloseTab}
-                onReorder={reorderTabs}
-                onTogglePin={toggleTabPinned}
-                onNewTab={() => {}}
-              />
-            </div>
-          )}
+        <div data-testid="study-page" className="grid flex-1 min-h-0 grid-rows-[auto_minmax(0,1fr)]">
           {/* 봉·그리기·보조지표가 차트 창 헤더로 내려간 뒤 남는 줄(#903).
               식별부(`종목 코드 · 복기뷰`)는 그 뒤 차트 창 **타이틀바**로 이관했다 —
               `/live` 가 종목 식별을 창 타이틀바(TitleBarSymbolRow)에 두는 것과 같은

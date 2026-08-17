@@ -460,5 +460,3 @@
   --bar-ask: rgba(86, 163, 255, 0.28);   /* 56a3ff @ 28% */
   --bar-bid: rgba(245, 68, 90, 0.28);    /* f5445a @ 28% */
 }
-
-@keyframes tab-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }

@@ -55,6 +55,13 @@ ADR-0069 D3는 "활성 탭이 유일 writer"였다. 탭이 사라졌으므로 wr
 
 ## 보존 (삭제하지 않음)
 
+> **갱신 (2026-08-17): 아래 §보존의 세 항목은 전부 무효다** — ADR-0148 이 `/study` 탭을
+> 제거했다. `tabs/ChartTabBar.tsx`·`ChartTabOverflowMenu.tsx` 는 "study 가 쓰니까" 라는
+> 이 문단의 이유만으로 남아 있었고 그 이유가 사라져 함께 삭제됐다. `state/studyTabs.ts`·
+> `useStudyKeyboard`·`StudyTabBar` 의 "본 ADR 범위 밖" 도 ADR-0148 이 그 범위를 덮었다.
+> `--h-tab` CSS 변수는 **그보다 앞선 #916(2026-07-29)** 의 미사용 토큰 정리에서 이미
+> 죽었다(`DESIGN.md` 참조) — 즉 이 문장은 3주 전부터 틀린 상태였다.
+
 - **`tabs/ChartTabBar.tsx` + `tabs/ChartTabOverflowMenu.tsx`**: `/study`(`StudyTabBar`)가
   공유하는 제네릭 탭바. `--h-tab` CSS 변수도 study가 계속 사용.
 - **`live/viewportAnchor.ts` (`TabViewport` 타입 + 캡처 로직)**: 저장뷰(Study View Save)가
