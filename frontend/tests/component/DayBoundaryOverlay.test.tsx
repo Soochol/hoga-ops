@@ -3,7 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { IChartApi } from 'lightweight-charts';
 
 import DayBoundaryOverlay from '../../src/chart/DayBoundaryOverlay';
-import { resolveDayBoundaryTicks } from '../../src/chart/dayBoundaryTicks';
+import { resolveDayBoundaryTicks } from '../../src/chart/sessionSpans';
 import { createVirtualAxis, type VirtualAxis } from '../../src/util/virtualAxis';
 import type { Candle } from '../../src/api/types';
 

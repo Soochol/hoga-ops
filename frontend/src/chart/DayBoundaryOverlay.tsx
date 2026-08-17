@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
-import type { DayBoundaryTick } from './dayBoundaryTicks';
+import type { DayBoundaryTick } from './sessionSpans';
 import { useActivePrefs } from '../state/chartPrefs';
 import { safeUnsubscribe } from './util/safeUnsubscribe';
 

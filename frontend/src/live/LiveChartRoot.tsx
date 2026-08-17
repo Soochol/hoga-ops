@@ -32,7 +32,7 @@ import {
   resolveDayBoundaryTicks,
   sameDayBoundaryTicks,
   type DayBoundaryTick,
-} from '../chart/dayBoundaryTicks';
+} from '../chart/sessionSpans';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
