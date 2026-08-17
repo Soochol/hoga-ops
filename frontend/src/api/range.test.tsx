@@ -102,7 +102,7 @@ describe('buildRangeBundleRequest', () => {
       sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: {
-        mode: 'full',
+        mode: 'hoga',
         brokerLateEntryStartHHMM: 945,
         volumeDistributionBins: 12,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -118,7 +118,7 @@ describe('buildRangeBundleRequest', () => {
         + '&volume_distribution_bins=12'
         + '&volume_distribution_price_min=69900&volume_distribution_price_max=70100'
         + '&trade_volume_poc_bins=12'
-        + '&source_pref=kiwoom_live&mode=full&venue=KRX',
+        + '&source_pref=kiwoom_live&mode=hoga&venue=KRX',
     );
     expect(request.queryKey).toEqual([
       'range',
@@ -135,7 +135,7 @@ describe('buildRangeBundleRequest', () => {
       70100,
       12,
       'kiwoom_live',
-      'full',
+      'hoga',
       null,
       null,
       null,
@@ -263,7 +263,7 @@ describe('buildRangeBundleRequest', () => {
       timeframe: '1m',
       sourcePref: 'kiwoom_live',
       venue: 'KRX',
-      options: { mode: 'full', brokerLateEntriesEnabled: false },
+      options: { mode: 'hoga', brokerLateEntriesEnabled: false },
     });
 
     expect(request.url).toContain('&broker_late_entries_enabled=false');
@@ -932,7 +932,7 @@ describe('rangeBundleQueryOptions', () => {
       sourcePref: 'kiwoom_live',
       venue: 'KRX',
       options: {
-        mode: 'full',
+        mode: 'hoga',
         volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: null,
@@ -955,7 +955,7 @@ describe('rangeBundleQueryOptions', () => {
       undefined,
       12,
       'kiwoom_live',
-      'full',
+      'hoga',
       null,
       null,
       null,
@@ -970,7 +970,7 @@ describe('rangeBundleQueryOptions', () => {
     const queryFn = options.queryFn as (context: { signal: AbortSignal }) => Promise<RangeBundle>;
     await queryFn({ signal });
     expect(spy).toHaveBeenCalledWith(
-      '/api/range?code=005930&from=20260616&to=20260618&bucket_ms=300000&volume_distribution_bins=12&trade_volume_poc_bins=12&source_pref=kiwoom_live&mode=full&venue=KRX',
+      '/api/range?code=005930&from=20260616&to=20260618&bucket_ms=300000&volume_distribution_bins=12&trade_volume_poc_bins=12&source_pref=kiwoom_live&mode=hoga&venue=KRX',
       { signal },
     );
   });
@@ -995,7 +995,7 @@ describe('useRange', () => {
   it('calls /api/range with correct query string (bucket_ms from Timeframe)', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     const { result } = renderHook(
-      () => useRange('005930', '20260512', '20260512', '5m', undefined, undefined, { mode: 'full' }),
+      () => useRange('005930', '20260512', '20260512', '5m', undefined, undefined, { mode: 'hoga' }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -1009,7 +1009,7 @@ describe('useRange', () => {
   it('appends price_min/price_max when priceRange given', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     renderHook(
-      () => useRange('005930', '20260512', '20260512', '1m', { min: 100, max: 200 }, undefined, { mode: 'full' }),
+      () => useRange('005930', '20260512', '20260512', '1m', { min: 100, max: 200 }, undefined, { mode: 'hoga' }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
@@ -1040,7 +1040,7 @@ describe('useRange', () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({} as RangeBundle);
 
     renderHook(
-      () => useRange('005930', '20260520', '20260520', '1m', undefined, undefined, { mode: 'full' }),
+      () => useRange('005930', '20260520', '20260520', '1m', undefined, undefined, { mode: 'hoga' }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(client.apiCall).toHaveBeenCalled());
@@ -1059,7 +1059,7 @@ describe('useRange', () => {
         '1m',
         undefined,
         undefined,
-        { mode: 'full' },
+        { mode: 'hoga' },
         'kiwoom_live',
       ),
       { wrapper: makeWrapper() },
@@ -1072,7 +1072,7 @@ describe('useRange', () => {
   it('omits volume_distribution_bins when not requested', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     renderHook(
-      () => useRange('005930', '20260512', '20260512', '1m', undefined, undefined, { mode: 'full' }),
+      () => useRange('005930', '20260512', '20260512', '1m', undefined, undefined, { mode: 'hoga' }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
@@ -1083,7 +1083,7 @@ describe('useRange', () => {
   it('threads volume_distribution_bins into query string', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     renderHook(
-      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, { mode: 'full', volumeDistributionBins: 20 }),
+      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, { mode: 'hoga', volumeDistributionBins: 20 }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
@@ -1109,7 +1109,7 @@ describe('useRange', () => {
     renderHook(
       () => useRange('005930', '20260512', '20260512', '1m', undefined, null, {
         volumeDistributionBins: 10,
-        mode: 'full',
+        mode: 'hoga',
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
       }),
       { wrapper: makeWrapper() },
@@ -1121,7 +1121,7 @@ describe('useRange', () => {
   it('threads trade_volume_poc_bins into query string', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     renderHook(
-      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, { mode: 'full', tradeVolumePocBins: 12 }),
+      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, { mode: 'hoga', tradeVolumePocBins: 12 }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
@@ -1138,7 +1138,7 @@ describe('useRange', () => {
         '1m',
         undefined,
         null,
-        { mode: 'full', brokerLateEntryStartHHMM },
+        { mode: 'hoga', brokerLateEntryStartHHMM },
       ),
       {
         wrapper: makeWrapper(),
@@ -1869,7 +1869,7 @@ describe('rangePlaceholderData', () => {
     undefined,
     null,
     'kiwoom_live',
-    'full',
+    'hoga',
     null,
     null,
     null,
@@ -1896,7 +1896,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       null,
       'kiwoom_live',
-      'full',
+      'hoga',
       null,
       null,
       null,
@@ -1926,7 +1926,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       null,
       'kiwoom_live',
-      'full',
+      'hoga',
       null,
       null,
       null,
@@ -2014,7 +2014,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       null,
       'kiwoom_live',
-      'full',
+      'hoga',
       null,
       null,
       null,
@@ -2048,7 +2048,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       null,
       'kiwoom_live',
-      'full',
+      'hoga',
       null,
       null,
       null,
@@ -2147,7 +2147,7 @@ describe('range 훅 — 종목별 유효 venue 해석', () => {
     useLiveVenueStore.setState({ venue: 'UN' });
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     const { result } = renderHook(
-      () => useRange('003490', '20260807', '20260807', '1m', undefined, undefined, { mode: 'full' }),
+      () => useRange('003490', '20260807', '20260807', '1m', undefined, undefined, { mode: 'hoga' }),
       { wrapper: seededWrapper([symbolHit('003490', false)]) },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -2158,7 +2158,7 @@ describe('range 훅 — 종목별 유효 venue 해석', () => {
     useLiveVenueStore.setState({ venue: 'UN' });
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     const { result } = renderHook(
-      () => useRange('005930', '20260807', '20260807', '1m', undefined, undefined, { mode: 'full' }),
+      () => useRange('005930', '20260807', '20260807', '1m', undefined, undefined, { mode: 'hoga' }),
       { wrapper: seededWrapper([symbolHit('005930', true)]) },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -2171,7 +2171,7 @@ describe('range 훅 — 종목별 유효 venue 해석', () => {
     useLiveVenueStore.setState({ venue: 'UN' });
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     const { result } = renderHook(
-      () => useRange('005930', '20260807', '20260807', '1m', undefined, undefined, { mode: 'full' }),
+      () => useRange('005930', '20260807', '20260807', '1m', undefined, undefined, { mode: 'hoga' }),
       { wrapper: seededWrapper([symbolHit('005930', null)]) },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));

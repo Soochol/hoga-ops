@@ -31,6 +31,7 @@ from hoga.api.models import (
     Meta,
     OrderbookResponse,
     RangeBundle,
+    RangeMode,
     StockDate as StockDateModel,
     validate_bucket_ms,
 )
@@ -705,7 +706,10 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         trade_volume_poc_enabled: bool = Query(True),
         depth_heatmap_enabled: bool = Query(True),
         depth_delta_enabled: bool = Query(True),
-        mode: str = Query(..., pattern="^(hoga|sidecar|candles)$"),
+        # 값 목록은 `RangeMode`(models.py)가 유일 출처다 — 여기 정규식을 손으로 다시
+        # 적으면 그 사본이 곧 드리프트 지점이 된다(퇴역한 `full` 이 프론트에 남은 것이
+        # 정확히 그 사고였다).
+        mode: RangeMode = Query(...),
     ) -> RangeBundle:
         try:
             validate_bucket_ms(bucket_ms)
