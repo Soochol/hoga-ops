@@ -122,8 +122,8 @@ describe('indicator-modal chartPrefs 창 스코프', () => {
 
   it('"현재 봉 초기화"는 대상 창의 버킷만 비운다', async () => {
     act(() => {
-      useChartPrefsStore.getState().setPrefAt('1m', 'surgeMarkerEnabled', false);
-      useChartPrefsStore.getState().setPrefAt('D', 'surgeMarkerEnabled', false);
+      useChartPrefsStore.getState().setPrefScoped(null, '1m', 'surgeMarkerEnabled', false);
+      useChartPrefsStore.getState().setPrefScoped(null, 'D', 'surgeMarkerEnabled', false);
     });
     function Reset() {
       const { resetIndicatorModalBucket } = useChartPrefActions();

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useLivePageStore } from './livePage';
+import { useLivePageStore, type LiveTimeframe } from './livePage';
 import {
   DEFAULT_LIVE_MAS,
   MA_PERIOD_MIN,
@@ -107,19 +107,11 @@ describe('livePage store', () => {
   });
 
   it('projectActiveView falls back to the current timeframe when given an invalid one', () => {
-    useLivePageStore.getState().setCandleTimeframe('5m');
+    useLivePageStore.getState().projectActiveView({ code: 'Z', timeframe: '5m', historicalFromDate: null });
     // @ts-expect-error — deliberately invalid timeframe to test the clamp
     useLivePageStore.getState().projectActiveView({ code: 'A', timeframe: 'NOPE', historicalFromDate: null });
     expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
     expect(useLivePageStore.getState().activeCode).toBe('A');
-  });
-
-  it('setCandleTimeframe rejects unknown values', () => {
-    const before = useLivePageStore.getState().candleTimeframe;
-    // Cast bypasses the Literal type guard; runtime check inside
-    // setCandleTimeframe should still reject the unknown value.
-    useLivePageStore.getState().setCandleTimeframe('bogus' as never);
-    expect(useLivePageStore.getState().candleTimeframe).toBe(before);
   });
 
   it('hydrates from localStorage on read', () => {
@@ -153,18 +145,24 @@ describe('livePage store', () => {
   });
 
   it('tracks the last selected minute timeframe', () => {
-    useLivePageStore.getState().setCandleTimeframe('10m');
+    const view = (timeframe: LiveTimeframe) =>
+      useLivePageStore.getState().projectActiveView({ code: 'A', timeframe, historicalFromDate: null });
+
+    view('10m');
     expect(useLivePageStore.getState().candleTimeframe).toBe('10m');
     expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');
 
-    useLivePageStore.getState().setCandleTimeframe('D');
+    view('D');
     expect(useLivePageStore.getState().candleTimeframe).toBe('D');
     expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');
   });
 
   it('persists and hydrates lastMinuteTimeframe', () => {
-    useLivePageStore.getState().setCandleTimeframe('15m');
-    useLivePageStore.getState().setCandleTimeframe('W');
+    const view = (timeframe: LiveTimeframe) =>
+      useLivePageStore.getState().projectActiveView({ code: 'A', timeframe, historicalFromDate: null });
+
+    view('15m');
+    view('W');
 
     const raw = JSON.parse(localStorage.getItem('live.page.v1') ?? '{}');
     expect(raw.candleTimeframe).toBe('W');
@@ -227,43 +225,11 @@ describe('livePage store', () => {
     expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');
   });
 
-  it('setCandleTimeframe remembers the minute pan window when leaving a minute frame', () => {
-    useLivePageStore.setState({ candleTimeframe: '1m', historicalFromDate: '20250712' });
-    useLivePageStore.getState().setCandleTimeframe('D');
-    const s = useLivePageStore.getState();
-    expect(s.historicalFromDate).toBeNull(); // 전환 자체는 여전히 null 리셋
-    expect(s.lastMinuteHistoricalFromDate).toBe('20250712');
-  });
-
-  it('setCandleTimeframe preserves the remembered window across D/W/M hops', () => {
-    useLivePageStore.setState({ candleTimeframe: '1m', historicalFromDate: '20250712' });
-    useLivePageStore.getState().setCandleTimeframe('D');
-    useLivePageStore.getState().setCandleTimeframe('W'); // 비분봉→비분봉: 기억 유지
-    const s = useLivePageStore.getState();
-    expect(s.historicalFromDate).toBeNull();
-    expect(s.lastMinuteHistoricalFromDate).toBe('20250712');
-  });
-
-  it('setCandleTimeframe carries the window across minute→minute switches', () => {
-    useLivePageStore.setState({ candleTimeframe: '1m', historicalFromDate: '20250712' });
-    useLivePageStore.getState().setCandleTimeframe('5m');
-    const s = useLivePageStore.getState();
-    expect(s.historicalFromDate).toBeNull();
-    expect(s.lastMinuteHistoricalFromDate).toBe('20250712');
-  });
-
-  it('leaving minute before the restore ran keeps the remembered window (?? fallback)', () => {
-    // D→분봉 복귀 직후, 초기 배치 전(콜드 로드 등)에 다시 떠나는 레이스:
-    // historicalFromDate는 아직 null이지만 기억을 null로 덮어쓰면 영구 소실된다.
-    // 명시적 리셋 경로는 resetHistoricalRange가 기억까지 직접 클리어한다(아래 테스트).
-    useLivePageStore.setState({
-      candleTimeframe: '1m',
-      historicalFromDate: null,
-      lastMinuteHistoricalFromDate: '20250712',
-    });
-    useLivePageStore.getState().setCandleTimeframe('D');
-    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20250712');
-  });
+  // 「분봉을 떠나는 순간의 pan 창 기억」 4건은 `setCandleTimeframe` 과 함께 옮겨졌다.
+  // 그 액션은 프로덕션 호출자가 0이었고, 실제 봉 전환 경로는 워크스페이스의
+  // `setChartTimeframe`(창별 런타임)이다 — 같은 semantics 를 그쪽에서 재는 것이
+  // 프로덕션을 재는 것이다. 커버는 `workspace.chartConfig.test.ts` 의 4건:
+  // 무효 봉 no-op · 분봉 기억 · pan 창 기억+백필 리셋 · `??` 폴백 · D→W hop.
 
   it('setActiveCode clears the remembered minute window (per-symbol coverage)', () => {
     useLivePageStore.setState({ lastMinuteHistoricalFromDate: '20250712' });
@@ -599,5 +565,78 @@ describe('LiveMAConfig constants', () => {
 
   it('DEFAULT_LIVE_MAS is frozen (Object.freeze)', () => {
     expect(Object.isFrozen(DEFAULT_LIVE_MAS)).toBe(true);
+  });
+});
+
+/**
+ * 저장 페이로드 가드.
+ *
+ * **막는 것**: `persist({ ...get(), ... })` 가 스토어 전체를 흘려보내는 회귀. 호출부가
+ * 전부 스프레드 객체 리터럴이라 **TS 초과 프로퍼티 검사가 안 걸린다** — 파라미터 타입이
+ * `Persisted`(5필드)여도 컴파일러는 아무 말도 하지 않는다. 실제로 그렇게 새고 있었다:
+ * 실측 **85키 3,059B 중 되읽히는 것은 5키 119B**(공장 기본값 기준, 봉·종목·범위 전환마다
+ * 매번 기록).
+ *
+ * **못 보는 것**: 저장 *값*의 정확성. 여기서 재는 것은 키 집합뿐이다.
+ *
+ * **등록 의존**: 아래 `PERSISTED_KEYS` 는 `livePage.ts` 의 `Persisted` 타입과 손으로
+ * 맞춘 사본이다(상수를 공유하면 둘이 함께 틀려도 통과하는 순환 논증이 된다). 필드를
+ * 늘리면 두 곳을 같이 고쳐야 한다.
+ */
+describe('live.page.v1 저장 페이로드', () => {
+  const PERSISTED_KEYS = [
+    'activeCode',
+    'activeInstrument',
+    'candleTimeframe',
+    'historicalFromDate',
+    'lastMinuteTimeframe',
+  ];
+
+  const stored = (): Record<string, unknown> =>
+    JSON.parse(localStorage.getItem('live.page.v1') ?? '{}') as Record<string, unknown>;
+
+  /** persist 를 부르는 액션 전수 — 하나라도 빠지면 그 경로의 누출을 못 본다. */
+  const writers: Record<string, () => void> = {
+    projectActiveView: () =>
+      useLivePageStore
+        .getState()
+        .projectActiveView({ code: '005930', timeframe: '5m', historicalFromDate: null }),
+    setActiveCode: () => useLivePageStore.getState().setActiveCode('005930'),
+    extendHistoricalRange: () => useLivePageStore.getState().extendHistoricalRange('20260101'),
+    resetHistoricalRange: () => useLivePageStore.getState().resetHistoricalRange(),
+  };
+
+  it.each(Object.keys(writers))('%s 는 Persisted 5키만 쓴다', (name) => {
+    writers[name]();
+    expect(Object.keys(stored()).sort()).toEqual(PERSISTED_KEYS);
+  });
+
+  it('지표 flat 필드·버킷·ambient 슬롯이 저장 블롭에 새지 않는다', () => {
+    // 이 셋이 누출의 대표다 — flat 74개 · 4버킷 원본 · 전역 봉 슬롯.
+    useLivePageStore.setState({
+      askPeakEnabled: true,
+      indicatorsByTimeframe: { minute: { askPeakEnabled: true } },
+      indicatorTimeframe: '5m',
+    });
+    useLivePageStore.getState().setActiveCode('005930');
+
+    const raw = stored();
+    expect(raw).not.toHaveProperty('askPeakEnabled');
+    expect(raw).not.toHaveProperty('indicatorsByTimeframe');
+    expect(raw).not.toHaveProperty('indicatorTimeframe');
+    expect(raw).not.toHaveProperty('lastMinuteHistoricalFromDate'); // 런타임 전용
+  });
+
+  it('레거시 워크스페이스 시드가 읽는 네 필드는 살아 있다', () => {
+    // workspaceMigration.readLegacyWorkspaceSeed 의 입력 — 이게 빠지면 `live.workspace.v1`
+    // 부재 시 시드가 조용히 비고, 증상은 새 사용자에게만 나타난다.
+    useLivePageStore
+      .getState()
+      .projectActiveView({ code: '005930', timeframe: '5m', historicalFromDate: null });
+
+    const raw = stored();
+    for (const key of ['activeInstrument', 'activeCode', 'candleTimeframe', 'lastMinuteTimeframe']) {
+      expect(raw).toHaveProperty(key);
+    }
   });
 });

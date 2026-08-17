@@ -508,20 +508,17 @@ type ChartPrefsStore = ChartViewPrefs & {
   setIndicatorModalTimeframe: (tf: LiveTimeframe) => void;
   setToggle: (key: ChartToggleKey, value: boolean) => void;
   setNumericPref: (key: NumericPrefKey, value: number) => void;
-  /** 봉을 명시한 쓰기 — indicator-modal 키는 **그 봉의 버킷**에 기록한다.
-   *  차트 전반(flat) 키는 봉과 무관하므로 tf 를 무시한다. 창-스코프 편집 표면
-   *  (`useChartPrefActions`)이 대상 창의 봉을 실어 이 경로로만 쓴다. */
-  setPrefAt: (tf: LiveTimeframe, key: ChartToggleKey | NumericPrefKey, value: boolean | number) => void;
-  /** `setPrefAt` 의 페이지 판 — `/study` 는 자기 버킷에만 쓴다. */
+  /** (페이지 × 봉)을 명시한 쓰기 — indicator-modal 키는 **그 버킷**에 기록하고,
+   *  차트 전반(flat) 키는 봉과 무관하므로 tf 를 무시한다. `/study` 는 자기 버킷에만
+   *  쓴다. 창-스코프 편집 표면(`useChartPrefActions`)이 대상 창의 봉을 실어 이
+   *  경로로만 쓴다. */
   setPrefScoped: (
     page: IndicatorPageScope | null,
     tf: LiveTimeframe,
     key: ChartToggleKey | NumericPrefKey,
     value: boolean | number,
   ) => void;
-  /** 지정한 봉의 indicator-modal 버킷만 비운다(드로어 "현재 봉 초기화"). */
-  resetIndicatorModalBucketAt: (tf: LiveTimeframe) => void;
-  /** `resetIndicatorModalBucketAt` 의 페이지 판. */
+  /** 지정한 (페이지 × 봉)의 indicator-modal 버킷만 비운다(드로어 "현재 봉 초기화"). */
   resetIndicatorModalBucketScoped: (page: IndicatorPageScope | null, tf: LiveTimeframe) => void;
   setDayBoundaryStyle: (patch: { color?: string; lineWidth?: DayBoundaryLineWidth }) => void;
   setTradeHighlightColor: (color: string) => void;
@@ -565,15 +562,9 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
     set(patch as Partial<ChartPrefsStore>);
   };
 
-  const writePrefAt = (
-    tf: LiveTimeframe,
-    key: ChartToggleKey | NumericPrefKey,
-    value: boolean | number,
-  ): void => writePrefScoped(null, tf, key, value);
-
-  /** ambient 봉 기준 쓰기 — Provider 밖(레거시 단일 뷰·`/study`) 호출자용. */
+  /** ambient 봉 기준 쓰기 — Provider 밖(⚙️ 설정 시트) 호출자용. */
   const writePref = (key: ChartToggleKey | NumericPrefKey, value: boolean | number): void =>
-    writePrefAt(get().indicatorModalTimeframe, key, value);
+    writePrefScoped(null, get().indicatorModalTimeframe, key, value);
 
   return {
     ...DEFAULT_PREFS,
@@ -593,8 +584,6 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
 
     setNumericPref: (key, value) => writePref(key, value),
 
-    setPrefAt: (tf, key, value) => writePrefAt(tf, key, value),
-
     setPrefScoped: (page, tf, key, value) => writePrefScoped(page, tf, key, value),
 
 
@@ -612,9 +601,8 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
         viLimitPriceLineWidth: patch.lineWidth ?? s.viLimitPriceLineWidth,
       })),
 
-    resetIndicatorModalBucket: () => get().resetIndicatorModalBucketAt(get().indicatorModalTimeframe),
-
-    resetIndicatorModalBucketAt: (tf) => get().resetIndicatorModalBucketScoped(null, tf),
+    resetIndicatorModalBucket: () =>
+      get().resetIndicatorModalBucketScoped(null, get().indicatorModalTimeframe),
 
     resetIndicatorModalBucketScoped: (page, tf) => {
       const s = get();

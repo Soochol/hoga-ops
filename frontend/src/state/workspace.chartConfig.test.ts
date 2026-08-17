@@ -87,6 +87,17 @@ describe('setChartTimeframe', () => {
     const rt = useWorkspaceStore.getState().chartRuntime.c1;
     expect(rt.lastMinuteHistoricalFromDate).toBe('20260701');
   });
+
+  it('비분봉→비분봉(D→W) 사이를 건너뛰어도 기억이 유지된다', () => {
+    // 떠날 때의 봉이 분봉이 아니면 기억을 갱신하지 않는다 — D 에서 W 로 가는 동안
+    // 분봉 창 기억이 null 로 덮이면 분봉 복귀 시 팬 창이 영구 소실된다.
+    useWorkspaceStore.getState().extendChartHistoricalRange('c1', '20260701');
+    useWorkspaceStore.getState().setChartTimeframe('c1', 'D');
+    useWorkspaceStore.getState().setChartTimeframe('c1', 'W');
+    const rt = useWorkspaceStore.getState().chartRuntime.c1;
+    expect(rt.historicalFromDate).toBeNull();
+    expect(rt.lastMinuteHistoricalFromDate).toBe('20260701');
+  });
 });
 
 describe('창별 런타임(historicalFromDate)', () => {
