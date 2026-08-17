@@ -212,6 +212,36 @@ function nearestBarGridRealMs(axis: VirtualAxis, realMs: number, bucketMs: numbe
   return seg.sessionOpenMs + Math.min(snapped, sessionLen);
 }
 
+/**
+ * Last-resort X for an on-axis time the series doesn't actually carry: ask lwc
+ * for the NEAREST loaded bar index and take that bar's coordinate.
+ *
+ * Needed because the bar ladder is not the same set as the loaded bars. A
+ * session owns `open + k·bucketMs` for every k, but a bucket with no trade
+ * produces NO candle — measured on 005380 3m (20260211~20260608): 9039 ladder
+ * rungs vs 8886 candles, **240 empty rungs (2.7%) spread over 69/69 trading
+ * days**. `timeToCoordinate` is a lookup, not an interpolation, so an empty
+ * rung yields null and the caller's `?? 0 / ?? width` render fallback pins the
+ * vertex to a canvas edge — a trendline anchored there stretched across the
+ * whole chart (reproduced 2026-08-17: moving the vertex one rung, from an empty
+ * 09:03 to a loaded 09:12, made the artifact vanish).
+ *
+ * `timeToIndex(t, true)` returns a WHOLE index, which matters: fractional
+ * arguments make `logicalToCoordinate` return 0 rather than null (see the
+ * measurement on `extrapolateFutureX`).
+ *
+ * Same shape as `AskPeakSegmentsPrimitive.xCoordinateOrNearest`, which learned
+ * this for wall segments in 2026-07. Kept local rather than shared: that one
+ * takes an already-virtual `Time`, this one owns the realMs→virtual step.
+ */
+function nearestLoadedBarX(chart: IChartApi, axis: VirtualAxis, realMs: number): number | null {
+  const ts = chart.timeScale();
+  const idx = ts.timeToIndex((axis.toVirtual(realMs) / 1000) as UTCTimestamp, true);
+  if (idx == null) return null;
+  const x = ts.logicalToCoordinate(idx as unknown as Logical);
+  return x == null ? null : Number(x);
+}
+
 /** Core real→canvas-X (in-axis only). Split out so the future-band path can
  *  resolve the last candle's coordinate without re-entering the wrapper. */
 function coreRealMsToCanvasX(chart: IChartApi, axis: VirtualAxis, realMs: number): number | null {
@@ -342,8 +372,17 @@ export function realMsToCanvasX(
   // dragTimeDomain.toReal); this covers drawings saved before that snap.
   if (future && future.bucketMs > 0 && axis.contains(realMs)) {
     const snapped = nearestBarGridRealMs(axis, realMs, future.bucketMs);
-    if (snapped !== realMs) return coreRealMsToCanvasX(chart, axis, snapped);
+    if (snapped !== realMs) {
+      const snappedX = coreRealMsToCanvasX(chart, axis, snapped);
+      if (snappedX != null) return snappedX;
+    }
+    // Still nothing: the vertex sits ON the ladder but the series has no bar
+    // there (an empty bucket — no trade in that window). The retry above cannot
+    // help, because it snaps to the very rung the vertex already occupies, so
+    // `snapped === realMs` and it doesn't even fire. See `nearestLoadedBarX`.
+    return nearestLoadedBarX(chart, axis, realMs);
   }
+  // No bucket pitch → no grid to reason about; callers own this case.
   return null;
 }
 
