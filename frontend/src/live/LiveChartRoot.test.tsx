@@ -2516,7 +2516,8 @@ describe('LiveChartRoot lazy fetch trigger', () => {
 
     act(() => {
       handlers.forEach((h) => h({ from: -50.3, to: 100.7 }));
-      useLivePageStore.getState().setCandleTimeframe('3m');
+      // 봉 전환은 프로덕션 경로인 projectActiveView 로 — 전환 시 historicalFromDate 는 null 리셋.
+      useLivePageStore.getState().projectActiveView({ code: '005930', timeframe: '3m', historicalFromDate: null });
       vi.advanceTimersByTime(200);
     });
 

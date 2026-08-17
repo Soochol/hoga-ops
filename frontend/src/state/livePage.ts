@@ -225,12 +225,12 @@ type Store = Persisted & IndicatorSettings & {
    *  복원한다(캔들 병합 캐시와 수명 대칭). 전환 자체는 여전히
    *  historicalFromDate=null 리셋 — 초기 뷰 배치·번들 atomize 게이트가
    *  "fresh (code,tf) 로드 = null" 불변식에 기대기 때문. 종목/탭 전환 시 초기화.
-   *  persist 블롭(live.page.v1)에 직렬화는 되지만 readStorage 화이트리스트가
-   *  무시하므로 재수화되지 않는다 — "런타임 전용"은 읽기 경로 기준. */
+   *  **런타임 전용이 이제 쓰기 경로에서도 참이다** — `persistedPayload` 가 저장을
+   *  `Persisted` 5필드로 좁히므로 이 값은 `live.page.v1` 에 실리지 않는다(그전에는
+   *  실리되 `readStorage` 화이트리스트가 무시해 재수화만 안 됐다). */
   lastMinuteHistoricalFromDate: string | null;
   projectActiveView: (view: ActiveViewProjection) => void;
   setActiveCode: (code: string | null) => void;
-  setCandleTimeframe: (tf: LiveTimeframe) => void;
   extendHistoricalRange: (date: string) => void;
   resetHistoricalRange: () => void;
   hydrateFromStorage: () => void;
@@ -251,21 +251,17 @@ type Store = Persisted & IndicatorSettings & {
     key: PanePrefKey,
     enabled: boolean,
   ) => void;
-  /** 지정한 봉 버킷에 지표 변경을 기록한다 — 창마다 봉이 다른 멀티창에서 각 창의
-   *  편집을 그 창의 봉 버킷으로 보내는 진입점(`windowView` 의 창 액션 백엔드).
-   *  ambient 봉과 같은 프로파일일 때만 최상위 투영도 함께 갱신한다. */
-  patchIndicatorsAt: (timeframe: LiveTimeframe, patch: Partial<IndicatorSettings>) => void;
-  /** `patchIndicatorsAt` 의 페이지 판. `page`=null 은 Provider 밖(단일 차트·픽스처)
-   *  이라 `/live` 세트로 간다. **`/study` 쓰기는 최상위 투영을 갱신하지 않는다** —
-   *  투영은 `/live` 세트의 ambient 봉 값이다. */
+  /** 지정한 (페이지 × 봉) 버킷에 지표 변경을 기록한다 — 창마다 봉이 다른 멀티창에서
+   *  각 창의 편집을 그 창의 버킷으로 보내는 진입점(`windowView` 의 창 액션 백엔드).
+   *  `page`=null 은 Provider 밖(단일 차트·픽스처)이라 `/live` 세트로 간다. ambient
+   *  봉과 같은 프로파일일 때만 최상위 투영도 함께 갱신하며, **`/study` 쓰기는 투영을
+   *  갱신하지 않는다** — 투영은 `/live` 세트의 ambient 봉 값이다. */
   patchIndicatorsScoped: (
     page: IndicatorPageScope | null,
     timeframe: LiveTimeframe,
     patch: Partial<IndicatorSettings>,
   ) => void;
-  /** 지정한 봉 버킷의 오버라이드만 비운다 — `resetIndicators` 의 명시-봉 판. */
-  resetIndicatorsAt: (timeframe: LiveTimeframe) => void;
-  /** `resetIndicatorsAt` 의 페이지 판 — 그 페이지의 그 봉 버킷만 비운다. */
+  /** 지정한 (페이지 × 봉) 버킷의 오버라이드만 비운다 — `resetIndicators` 의 명시 판. */
   resetIndicatorsScoped: (page: IndicatorPageScope | null, timeframe: LiveTimeframe) => void;
   /** 다른 탭이 쓴 `live.indicators.v2` 를 다시 읽어 스토어를 맞춘다(crossTabSync).
    *  **되쓰지 않는다** — 재기록하면 그 storage 이벤트가 다시 다른 탭들을 깨운다. */
@@ -344,9 +340,33 @@ const DEFAULTS: Persisted = {
   historicalFromDate: null,
 };
 
+/**
+ * 저장 페이로드를 `Persisted` 의 5필드로 **좁힌다**.
+ *
+ * ⚠ 이 좁힘이 load-bearing 이다. 호출부는 전부 `persist({ ...get(), ...next })` 형태인데
+ * **스프레드 객체 리터럴은 TS 초과 프로퍼티 검사를 통과**하므로, 파라미터 타입이 5필드여도
+ * 실제로는 스토어 전체가 들어온다. 그대로 `JSON.stringify` 하면 **되읽히지도 않는** 지표
+ * flat 74개가 함께 실렸다 — 실측 85키 3,059B 중 유효분은 5키 119B 로, 나머지 96% 가
+ * 사문이었다(그것도 공장 기본값 기준이고, 봉·종목·범위 전환마다 매번 쓴다).
+ *
+ * 되읽는 쪽은 원래 안전했다 — `readStorage` 가 같은 5키 화이트리스트다. 그래서 이 좁힘은
+ * 낭비만 없애고 동작은 바꾸지 않는다. 이 키의 다른 리더인
+ * `workspaceMigration.readLegacyWorkspaceSeed` 도 `activeInstrument`·`activeCode`·
+ * `candleTimeframe`·`lastMinuteTimeframe` 넷만 읽어 전부 이 안에 있다.
+ */
+function persistedPayload(state: Persisted): Persisted {
+  return {
+    activeInstrument: state.activeInstrument,
+    activeCode: state.activeCode,
+    candleTimeframe: state.candleTimeframe,
+    lastMinuteTimeframe: state.lastMinuteTimeframe,
+    historicalFromDate: state.historicalFromDate,
+  };
+}
+
 function persist(state: Persisted): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedPayload(state)));
   } catch {
     // localStorage may be unavailable (SSR, privacy mode) — silent fallback.
   }
@@ -450,14 +470,9 @@ export const useLivePageStore = create<Store>((set, get) => {
     persistIndicators();
   };
 
-  const patchIndicatorsAt = (
-    timeframe: LiveTimeframe,
-    patch: Partial<IndicatorSettings>,
-  ): void => patchIndicatorsScoped(null, timeframe, patch);
-
-  /** ambient 봉 버킷에 기록 — 지표 ops 45종의 기본 백엔드. */
+  /** ambient 봉 버킷에 기록 — 지표 ops 55종의 기본 백엔드. */
   const patchIndicators = (patch: Partial<IndicatorSettings>): void => {
-    patchIndicatorsAt(get().indicatorTimeframe, patch);
+    patchIndicatorsScoped(null, get().indicatorTimeframe, patch);
   };
 
   /** 봉 전환 시 투영 재계산. candleTimeframe 세터·페이지 동기화가 호출한다.
@@ -480,7 +495,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     indicatorTimeframe: initialPage.candleTimeframe,
     lastMinuteHistoricalFromDate: null,
 
-    // 지표 도메인 변이 setter 45종 — 시맨틱 SSOT 는 indicatorOps.ts (ADR-0119
+    // 지표 도메인 변이 setter 55종 — 시맨틱 SSOT 는 indicatorOps.ts (ADR-0119
     // C2c-2a). 전역 백엔드 = 호출 시점 fresh get() + ambient 봉 버킷 patch.
     ...bindIndicatorOps(() => get(), patchIndicators),
 
@@ -524,10 +539,7 @@ export const useLivePageStore = create<Store>((set, get) => {
       persistIndicators();
     },
 
-    patchIndicatorsAt,
     patchIndicatorsScoped,
-
-    resetIndicatorsAt: (timeframe) => get().resetIndicatorsScoped(null, timeframe),
 
     resetIndicatorsScoped: (page, timeframe) => {
       // 지정 봉 버킷만 공장값으로(#697). 레이아웃(paneOrder·paneStretch)은
@@ -552,7 +564,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     },
 
     resetIndicators: () => {
-      get().resetIndicatorsAt(get().indicatorTimeframe);
+      get().resetIndicatorsScoped(null, get().indicatorTimeframe);
     },
 
     hydrateIndicatorsFromStorage: () => {
@@ -604,29 +616,6 @@ export const useLivePageStore = create<Store>((set, get) => {
         lastMinuteHistoricalFromDate: null,
       });
       persist({ ...get(), activeInstrument, activeCode: code, historicalFromDate: null });
-    },
-
-    setCandleTimeframe: (tf) => {
-      if (!LIVE_TIMEFRAMES.includes(tf)) return;
-      const cur = get();
-      const next = {
-        candleTimeframe: tf,
-        lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : cur.lastMinuteTimeframe,
-        historicalFromDate: null,
-        // 분봉을 떠나는 순간의 pan 창을 기억한다(분봉→분봉 전환 포함 — 같은 1m
-        // 데이터의 재집계라 창 유지가 자연스럽다). 복원은 LiveChartRoot가 초기 뷰
-        // 배치 직후 1-샷 dispatch — Store 타입의 필드 주석 참조.
-        // `??` 폴백: 복원 dispatch가 아직 안 돈 창(빠른 D→분봉→재이탈, 콜드 로드
-        // 배치 전)에는 historicalFromDate가 여전히 null이므로, null로 덮어쓰면
-        // 기억이 영구 소실된다. hFD=null && 기억≠null은 그 "복원 대기" 상태뿐 —
-        // 명시적 리셋은 resetHistoricalRange가 기억까지 직접 클리어하므로 폴백이
-        // 리셋을 되살리는 일은 없다.
-        lastMinuteHistoricalFromDate: isMinuteTimeframe(cur.candleTimeframe)
-          ? cur.historicalFromDate ?? cur.lastMinuteHistoricalFromDate
-          : cur.lastMinuteHistoricalFromDate,
-      };
-      set({ ...next, ...projectIndicatorsFor(tf) });
-      persist({ ...get(), ...next });
     },
 
     extendHistoricalRange: (date) => {
