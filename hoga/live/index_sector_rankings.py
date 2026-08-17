@@ -137,6 +137,64 @@ def _load_prev_closes(path: Path, codes: list[str], basis: dt.date) -> dict[str,
     return out
 
 
+def _load_prev_rows(path: Path, codes: list[str], basis: dt.date) -> dict[str, list[dict]]:
+    """코드별 **basis 직전 행 하나씩**. `_load_daily_rows` 와 같은 모양이되 행이 1개다.
+
+    **당일 경로 전용이다.** 그 경로가 `rows` 를 쓰는 곳은 `_stock_from_entry` 의
+    `previous_row` 하나뿐이기 때문이다 — 나머지는 전부 닫혀 있다:
+
+    - `basis_row` 는 `intraday_price is not None` 이면 **아예 안 읽는다**(단락).
+    - `intraday_price` 가 없으면 그 앞에서 `no_intraday_price` 로 조기 반환해 `rows` 를
+      건드리지 않는다.
+    - 그래서 `no_basis_bar` 는 당일 경로에서 **도달 불가**이고, `_all_stocks_missing_basis`
+      (그 사유만 본다)의 판정도 달라지지 않는다.
+    - `_latest_available_basis` 폴백은 `intraday_prices is None` 안에만 있다
+      (`build_index_sector_rankings` 의 `if intraday_prices is None and ...`) — 즉 **과거
+      날짜 경로 전용**이라 당일에는 넓은 집합이 필요 없다.
+
+    왜 필요한가: 당일 경로는 응답 캐시가 통째로 꺼져 있다(`use_cache = intraday_prices is
+    None`). 장중 시세 오버레이가 매 폴링 달라지므로 완성 응답을 캐시하면 시세가 얼어붙어
+    **그 결정 자체는 옳다.** 문제는 비싼 부분(일봉 코퍼스)과 변하는 부분(장중 시세)이 같은
+    결정에 묶여, 60초마다 코퍼스 전 이력이 파이썬 dict 로 다시 물질화되던 것이다
+    (296종목 × 평균 2,943일 = 871,099행).
+
+    실측(2026-08-17, 실데이터 133.9MB / 8,692,057행, 실히트맵 296종목, basis 20260814):
+
+        종전 423 ms (871,099행) → 현행 **23 ms** (296행) = **18.4배**
+        소비처가 뽑는 `previous_row` 는 296종목 **전수 일치**(불일치 0건).
+
+    캐시를 손대지 않고 **읽는 양을 줄이는** 쪽을 택했다. 캐시 축을 쪼개면 메모된 dict 를
+    호출부가 공유하게 되어 변형·스테일 위험이 새로 생기는데, 이쪽은 그 표면이 없다.
+
+    ⚠ 과거 날짜 경로(`_load_daily_rows`)는 **그대로 둔다** — 폴백이 `basis` 가 아닌 다른
+    날짜로 재계산하므로 그때는 넓은 집합이 실제로 필요하다.
+    """
+    if not codes:
+        return {}
+    df = (
+        pl.scan_parquet(path)
+        .filter(pl.col("code").is_in(codes))
+        .filter(pl.col("date") < basis)
+        .group_by("code")
+        # `date.max()` 와 `close.sort_by(date).last()` 는 같은 행을 가리킨다.
+        # 종전 소비처가 `reversed(rows)` 로 **마지막 행**을 집던 것과 같은 선택이다.
+        .agg(
+            pl.col("date").max().alias("date"),
+            pl.col("close").sort_by("date").last().alias("close"),
+        )
+        .collect()
+    )
+    out: dict[str, list[dict]] = {}
+    for code, date, close in zip(
+        df["code"].to_list(), df["date"].to_list(), df["close"].to_list(), strict=True,
+    ):
+        # `close` 가 null 이어도 **그대로 싣는다** — 소비처의 `float(...) == 0` 이
+        # TypeError 를 내고 그것이 `daily_corpus_invalid` 로 잡히는 것이 종전 동작이다.
+        # 여기서 걸러 내면 그 신호가 조용히 `no_previous_close` 로 바뀐다.
+        out[str(code)] = [{"code": str(code), "date": date, "close": close}]
+    return out
+
+
 def _load_daily_rows(path: Path, codes: list[str], basis: dt.date) -> dict[str, list[dict]]:
     if not codes:
         return {}
@@ -451,7 +509,14 @@ def build_index_sector_rankings(
         )
     codes = [entry.code for entry in doc.entries]
     try:
-        daily_rows = _load_daily_rows(corpus_path, codes, basis)
+        # 당일(오버레이 있음) 경로는 코드당 1행이면 충분하다 — 근거는 `_load_prev_rows`
+        # docstring. 과거 날짜는 `_latest_available_basis` 폴백이 다른 날짜로 재계산하므로
+        # 넓은 집합을 그대로 쓴다.
+        daily_rows = (
+            _load_daily_rows(corpus_path, codes, basis)
+            if intraday_prices is None
+            else _load_prev_rows(corpus_path, codes, basis)
+        )
     except Exception:  # noqa: BLE001 — 코퍼스 parquet 은 외부 산출물이라 스키마·인코딩
         # 어떤 식으로도 깨질 수 있다. 실패를 daily_corpus_invalid 로 응답에 실어 보내므로
         # 위의 screener_daily_corpus_missing 과 같은 층위의 "이유 있는 unavailable" 이다.
