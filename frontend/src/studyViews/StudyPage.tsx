@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
-import { PageContainer } from '../layout/PageContainer';
 import { registerIndicatorDrawerOpener } from '../live/workspace/indicatorDrawerControls';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import { useEntryDragStore } from '../state/entryDrag';
@@ -49,6 +48,7 @@ import {
   WorkspaceRoot,
   WorkspaceState,
   WorkspaceToolbar,
+  WORKSPACE_PAGE_PAD,
 } from '../ui/WorkspaceShell';
 
 /** 포커스 차트 창이 아직 없을 때의 중립값 — 페이지가 "로딩" 으로 읽는다. */
@@ -123,11 +123,13 @@ function StudyStateWorkspace({
  *  비었다 — 슬롯째 지운다(빈 children 을 넘기는 호출부가 남지 않게). */
 function StudyPageStateShell({ workspace }: { workspace: ReactNode }) {
   return (
-    <PageContainer className="min-h-0">
+    // 여백은 성공 경로와 **같은 상수**를 쓴다 — 로딩·에러에서 창 화면으로 넘어갈 때
+    // 프레임이 움직이지 않는다(종전엔 `PageContainer` 의 p-md 라 상단이 4px 튀었다).
+    <div className={`h-full min-h-0 ${WORKSPACE_PAGE_PAD}`}>
       <PanelCard data-testid="study-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
         {workspace}
       </PanelCard>
-    </PageContainer>
+    </div>
   );
 }
 
@@ -542,8 +544,10 @@ export function StudyPage() {
   }
 
   return (
-    // bottom 여백만 제거(!pb-0) — 차트가 화면 하단까지 붙는다. 좌·우·상 p-md 는 유지.
-    <PageContainer className="min-h-0 !pb-0">
+    // 여백 소유자는 `WORKSPACE_PAGE_PAD` 한 곳이다 — `/live` 와 같은 상수를 쓴다
+    // (2026-08-17). `PageContainer` 를 떼어낸 이유는 그쪽 기본 `p-md` 가 여백을 두 번째로
+    // 소유해 상단이 `/live` 와 8 vs 12 로 갈렸기 때문이다.
+    <div className={`h-full min-h-0 ${WORKSPACE_PAGE_PAD}`}>
       {/* 부유 카드 모델(2026-07-15, /live 통일) — 바깥 PanelCard 프레임 제거. 헤더는
           --bg full-bleed 크롬이 되고, 차트·상세는 --bg 필드 위에 gap+shadow 로 떠 있는
           카드 2장이 된다. 분리는 톤+간격(gap+shadow-panel)이 담당(보더 없음).
@@ -566,7 +570,9 @@ export function StudyPage() {
           <div
             ref={studyDropTargetRef}
             data-testid="study-drop-target"
-            className="relative min-h-0 px-1 pt-1"
+            // 여백 없음 — 캔버스가 이 칸을 그대로 쓴다. 종전엔 `px-1 pt-1`(#806 의 `p-1`
+            // 잔여)이 페이지 패딩 위에 4px 링을 더 얹어 `/live` 보다 캔버스가 8×8 작았다.
+            className="relative min-h-0"
           >
             {/* 창 워크스페이스(ADR-0123) — 배치는 studyWorkspace 스토어, 콘텐츠는
                 활성 저장뷰(탭 = 콘텐츠 선택자). 구 2열 grid(차트 카드 + 상세 aside)의
@@ -616,7 +622,7 @@ export function StudyPage() {
           )}
         </div>
       </div>
-    </PageContainer>
+    </div>
   );
 }
 

@@ -13,6 +13,7 @@ import {
 import { MIN_W, MIN_H, type Canvas, type Rect } from '../workspace/snapEngine';
 import { isFracRect, toFrac } from '../workspace/rectSpace';
 import { readLegacyWorkspaceSeed } from './workspaceMigration';
+import { liveDefaultWindows } from './liveDefaultLayout';
 import { isLiveIndexId } from '../live/liveInstrument';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 
@@ -295,63 +296,10 @@ function readGroupSymbols(raw: unknown): Partial<Record<GroupId, GroupSymbol>> {
 }
 
 
-/**
- * 첫 로드 기본 레이아웃 — 비율(ADR-0122). 기존 px 기본값(1546×776 캔버스 기준
- * 차트 720×760 / book 680×560 / broker 680×188)을 그 캔버스로 나눈 값이라
- * 어느 화면 크기에서도 같은 배치로 열린다.
- *
- * **단, 우측 열은 REF 유래 비율을 쓰지 않는다.** REF 캔버스(1546)는 실제 캔버스보다
- * 넓어서(1280 뷰포트 실측 1226×531) 그 비율이 `BookPanel` 의 절대 계약을 못 채운다 —
- * 가로 스크롤이 생기고 우측 요약 열이 잘린다("시작 58,000" 이 "시작 58" 로 보인다).
- * 비율 좌표계는 절대 하한을 표현하지 못하므로(ADR-0122), 하한이 있는 창의 비율은
- * **REF 가 아니라 좁은 쪽 실측에서 역산**해야 한다.
- *
- * ## 유도 방향이 2026-08-16 에 뒤집혔다
- *
- * 종전에는 하한(560)이 커서 우측 열이 남는 여백을 **먹는** 쪽이었다(차트 고정,
- * 우측 0.5058 = 1226 에서 620px). `BOOK_PANEL_MIN_W` 가 448 로 내려오면서 방향이
- * 반대가 됐다: 우측 열을 계약 + 여유까지만 잡고 **남는 폭을 전부 차트에 넘긴다**.
- * 차트 0.4657 → 0.5715 (1226 캔버스에서 571 → 701px).
- *
- * 그래서 여기 상수는 하드코딩이 아니라 `DEFAULT_RIGHT_COL_W` 하나에서 유도된다 —
- * 하한이 또 움직이면 고칠 곳이 한 줄이다.
- */
-const DEFAULT_EDGE_MARGIN = 0.0104;
-/** 차트 ↔ 우측 열 간격. 좌측 여백과 대칭이 아니라 종전 실측값을 유지한다. */
-const DEFAULT_COL_GAP = 0.0077;
-/**
- * 우측 열 폭. 좁은 쪽 실측 캔버스(1226px)에서 `BOOK_WINDOW_DEFAULT_W`(480) 를
- * 넘겨야 한다 — 0.40 × 1226 = 490px 로 10px 여유. 이 곱이 480 아래로 내려가면
- * 10호가 창이 첫 로드부터 가로 스크롤된다(`workspace.test.ts` 가 못박는다).
- */
-const DEFAULT_RIGHT_COL_W = 0.4;
-const DEFAULT_RIGHT_COL_X = 1 - DEFAULT_RIGHT_COL_W - DEFAULT_EDGE_MARGIN;
-/** 차트 폭 — 좌 여백·간격·우측 열을 뺀 나머지 전부. */
-const DEFAULT_CHART_W = DEFAULT_RIGHT_COL_X - DEFAULT_COL_GAP - DEFAULT_EDGE_MARGIN;
-
+/** 공장 기본 배치는 `liveDefaultLayout.ts` 소유다 — `workspaceMigration` 과 값을
+ *  공유해야 하고, 여기 두면 순환이 된다(그 파일 주석 참조). */
 function defaultWindows(): WorkspaceWindow[] {
-  return [
-    {
-      id: newWindowId(),
-      kind: 'chart',
-      group: 1,
-      rect: { x: DEFAULT_EDGE_MARGIN, y: 0.0206, w: DEFAULT_CHART_W, h: 0.9794 },
-      chart: { timeframe: '1m' },
-    },
-    // book 은 십자 배치(BookPanel)라 좁으면 못 담는다 — 차트 오른쪽 절반의 위쪽.
-    {
-      id: newWindowId(),
-      kind: 'book',
-      group: 1,
-      rect: { x: DEFAULT_RIGHT_COL_X, y: 0.0206, w: DEFAULT_RIGHT_COL_W, h: 0.7216 },
-    },
-    {
-      id: newWindowId(),
-      kind: 'broker',
-      group: 1,
-      rect: { x: DEFAULT_RIGHT_COL_X, y: 0.7577, w: DEFAULT_RIGHT_COL_W, h: 0.2423 },
-    },
-  ];
+  return liveDefaultWindows(newWindowId);
 }
 
 /** raw 스냅샷 — 자기 탭 저장소가 authoritative. 비어 있으면(새 탭) 공유 시드를
@@ -374,11 +322,16 @@ function readStorage(): Persisted & { pendingNormalize: boolean } {
     // (ADR-0119 PR-C, #713). 마이그레이션할 상태도 없으면 공장 기본 레이아웃.
     // 시드/기본 레이아웃은 **즉시 persist** — 첫 mutation 전 새로고침마다 재시드돼
     // 창 id 가 흔들리는 것을 막는다(C2c-2d, 스펙 ⑤-①).
-    // 레거시 시드는 px 를 만들어낸다 — 비율화 대기 상태로 넘긴다.
+    //
+    // 레거시 시드는 **비율**이다(2026-08-17) → `pendingNormalize: false`. 종전엔 px 를
+    // 만들고 `true` 로 넘겼는데, 바로 위 persist 가 그것을 v2(비율)로 태그해 다음 로드에
+    // `isFracRect` 가 전량 탈락시켰다 — 마이그레이션이 첫 새로고침에 사라졌다
+    // (경위·실측은 `buildWorkspaceSeed` 주석). `pendingNormalize` 자체는 남는다:
+    // 진짜 v1 px 저장값을 가진 사용자의 경로가 아래 `legacyPx` 다.
     const seeded = readLegacyWorkspaceSeed(newWindowId);
     if (seeded) {
       persistFromState(seeded);
-      return { ...seeded, pendingNormalize: true };
+      return { ...seeded, pendingNormalize: false };
     }
     const windows = defaultWindows();
     const fresh = { windows, zOrder: windows.map((w) => w.id), groupSymbols: {} };

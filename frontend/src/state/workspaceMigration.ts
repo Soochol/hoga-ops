@@ -23,6 +23,7 @@ import {
 } from './livePage';
 import { LIVE_CARD_KEYS, LIVE_LAYOUT_STORAGE_KEY, type LiveCardKey } from './liveLayout';
 import { isLiveInstrument } from '../live/liveInstrument';
+import { LIVE_RIGHT_COL_W, LIVE_RIGHT_COL_X } from './liveDefaultLayout';
 import type { WorkspaceWindow, GroupSymbol, WindowKind } from './workspace';
 
 export interface WorkspaceSeed {
@@ -40,13 +41,9 @@ const CARD_TO_KIND: Record<LiveCardKey, WindowKind> = {
   investor: 'investor',
 };
 
-// 시드 레이아웃 상수(스토어는 canvas 크기를 모르므로 고정 px — defaultWindows 관례).
-const PAD = 16;
-const CHART_W = 720;
-const DATA_W = 236;
-const COL_GAP = 12;
-const TOTAL_H = 760;
-const DATA_X = PAD + CHART_W + COL_GAP; // 748
+// 시드 배치는 **비율**이다(ADR-0122) — 분할 상수는 공장 기본과 같은 것을 쓴다
+// (`liveDefaultLayout.ts`). 종전 px 상수(PAD 16 · CHART_W 720 · DATA_W 236 ·
+// COL_GAP 12 · TOTAL_H 760)는 전부 사라졌다. 경위는 `buildWorkspaceSeed` 주석.
 
 function isLiveCardKey(value: unknown): value is LiveCardKey {
   return typeof value === 'string' && (LIVE_CARD_KEYS as readonly string[]).includes(value);
@@ -91,6 +88,29 @@ function groupOneSymbol(page: Record<string, unknown>): GroupSymbol | null {
 /**
  * 레거시 파싱 객체들에서 초기 워크스페이스 시드를 만든다. 순수 함수.
  * 세 키가 모두 비어(마이그레이션할 상태 없음) 있으면 null → 호출측이 공장 기본을 쓴다.
+ *
+ * ## rect 는 비율이다 — px 였던 것이 조용한 데이터 손실이었다 (2026-08-17)
+ *
+ * 종전 이 함수는 px rect(`{x:16, y:16, w:720, h:760}`)를 냈고, 호출측이
+ * `pendingNormalize: true` 로 표시해 캔버스 첫 실측 때 비율화하려 했다. 그런데 시드는
+ * **즉시 persist** 되고 `persistFromState` 는 항상 `schema_version: 2`(비율)로 태그한다.
+ * 그래서 저장소에는 **px 값이 v2 로 태그된 스냅샷**이 남았고, 다음 로드에서
+ * `readRect(legacyPx=false)` 의 `isFracRect`(`w <= 1.0001`)가 전부 떨어뜨렸다 →
+ * `windows.length === 0` → 공장 기본 폴백.
+ *
+ * 실측(재현 테스트): 시드 직후 창 6개 · 봉 `D` → **새로고침 후 창 3개 · 봉 `1m` ·
+ * id 전부 교체 · 종목 유실**. 즉 마이그레이션이 물려받으려던 카드 순서·숨김·봉·종목이
+ * 첫 새로고침에 전멸했다. 증상이 "새로고침하면 레이아웃이 초기화된다" 라 저장 실패로
+ * 보이지만, 실제 원인은 **좌표계 태그 불일치**다.
+ *
+ * 비율로 만들면 시드가 곧 v2 라 태그가 참이 되고, 정규화 왕복도 필요 없다(호출측이
+ * `pendingNormalize: false`). 여백은 갖지 않는다 — 소유자는 `WORKSPACE_PAGE_PAD` 다.
+ *
+ * 데이터 창 높이는 **균등 분할**로 남긴다(종전 `floor(TOTAL_H / n)` 과 동형). 공장
+ * 기본·`/study` 시드가 10호가에 3배 가중을 주는 것과 다르지만, 이 경로의 목적은 옛
+ * 사용자의 카드 순서·숨김을 **그대로** 옮기는 것이라 배치 정책까지 바꾸지 않는다.
+ * 폭 계약은 균등 분할과 무관하게 지켜진다(`LIVE_RIGHT_COL_W`), 높이는 broker 처럼
+ * 스크롤로 산다.
  */
 
 function isMinuteFrameValue(value: unknown): value is MinuteTimeframe {
@@ -121,14 +141,14 @@ export function buildWorkspaceSeed(
   const windows: WorkspaceWindow[] = [];
   const zOrder: string[] = [];
 
-  // 차트 창(그룹 1) — 데이터 창이 없으면 폭을 넓혀 화면을 채운다.
+  // 차트 창(그룹 1) — 데이터 창이 없으면 캔버스 전폭을 쓴다.
   const chartId = makeId();
-  const chartW = dataCards.length > 0 ? CHART_W : CHART_W + COL_GAP + DATA_W;
+  const n = dataCards.length;
   windows.push({
     id: chartId,
     kind: 'chart',
     group: 1,
-    rect: { x: PAD, y: PAD, w: chartW, h: TOTAL_H },
+    rect: { x: 0, y: 0, w: n > 0 ? LIVE_RIGHT_COL_X : 1, h: 1 },
     chart: {
       timeframe,
       ...(lastMinuteTimeframe ? { lastMinuteTimeframe } : {}),
@@ -136,16 +156,16 @@ export function buildWorkspaceSeed(
   });
   zOrder.push(chartId);
 
-  // 데이터 창 — 우측 열에 세로 스택(숨긴 카드는 생성 안 함).
-  const n = dataCards.length;
-  const dataH = n > 0 ? Math.floor(TOTAL_H / n) : 0;
+  // 데이터 창 — 우측 열에 세로 균등 스택(숨긴 카드는 생성 안 함). 마지막 창의 높이는
+  // 남은 몫으로 잡아 스택이 정확히 1 에서 끝나게 한다(1/3 같은 값의 누적 오차 방지).
   dataCards.forEach((card, i) => {
     const id = makeId();
+    const y = i / n;
     windows.push({
       id,
       kind: CARD_TO_KIND[card],
       group: 1,
-      rect: { x: DATA_X, y: PAD + i * dataH, w: DATA_W, h: dataH },
+      rect: { x: LIVE_RIGHT_COL_X, y, w: LIVE_RIGHT_COL_W, h: i === n - 1 ? 1 - y : 1 / n },
     });
     zOrder.push(id);
   });
