@@ -1,3 +1,4 @@
+import { REFERENCE_CANVAS as REF_CANVAS } from '../workspace/referenceCanvas';
 import { normalizeZOrder } from '../workspace/zOrder';
 import { create } from 'zustand';
 import { persistJson, readJsonObject } from './persist';
@@ -467,7 +468,6 @@ function focusedChart(state: Persisted): WorkspaceWindow | undefined {
  * 1600×900 뷰포트에서 실측한 캔버스 크기 — DEFAULT_SIZE 주석의 px 근거들이
  * 이 캔버스를 전제로 잡혀 있다.
  */
-const REF_CANVAS = { w: 1546, h: 776 };
 
 const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   chart: { w: 520, h: 360 },

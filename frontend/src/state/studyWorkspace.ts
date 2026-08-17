@@ -25,6 +25,7 @@
  *   때문이다. 그 저장소 안에서 `/study` 는 자기 세트를 갖지만(ADR-0146) 그것도
  *   페이지 축이지 창 축이 아니다.
  */
+import { REFERENCE_CANVAS as REF_CANVAS } from '../workspace/referenceCanvas';
 import { normalizeZOrder } from '../workspace/zOrder';
 import { create } from 'zustand';
 import { isFracRect, type FracRect } from '../workspace/rectSpace';
@@ -425,7 +426,6 @@ function readStorage(): Persisted {
  * 렌더하므로 "전부 보이는 높이"의 근거가 같다. memo 는 StudyMemoPanel 텍스트영역
  * 기준 소형 카드.
  */
-const REF_CANVAS = { w: 1546, h: 776 };
 const DEFAULT_SIZE: Record<StudyWindowKind, { w: number; h: number }> = {
   chart: { w: 520, h: 360 },
   // book 폭은 `bookPanelMetrics` 가 SSOT (= min-w + 스크롤바·여유). 높이 560 은
