@@ -23,18 +23,11 @@
 import { isMinuteTimeframe, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { STUDY_DEFAULT_MINUTE_TIMEFRAME } from '../state/studyLastMinuteTimeframe';
 
-/** 탭이 들고 있는 것 중 봉 결정에 쓰이는 부분만. */
-export type StudyTimeframeTab = {
-  readonly viewId: string;
-  readonly timeframe: LiveTimeframe;
-};
-
 export type SelectedTimeframeInput = {
   /** 포커스된 차트 창의 봉. **유일한 소유자**라 사슬의 맨 앞이다. */
   readonly chartWindowTimeframe: LiveTimeframe | null;
   readonly activeViewId: string | null;
-  readonly activeTab: StudyTimeframeTab | null;
-  /** 뷰별 로컬 기억(창·탭이 아직 없는 과도기용). */
+  /** 뷰별 로컬 기억(창이 아직 없는 과도기용). */
   readonly viewTimeframes: Readonly<Record<string, LiveTimeframe>>;
   /** 저장뷰가 저장된 봉. 사슬의 **맨 끝**이다. */
   readonly savedTimeframe: LiveTimeframe | null;
@@ -42,15 +35,17 @@ export type SelectedTimeframeInput = {
 
 /** 지금 화면이 서 있는 봉. 뷰가 없으면 `null`.
  *
- * 뒤의 폴백은 창이 아직 없거나(하이드레이션 전) 탭 없는 라우트로 들어온 과도기에만 닿는다.
+ * 뒤의 폴백은 창이 아직 없는(하이드레이션 전) 과도기에만 닿는다.
  * **저장뷰의 봉은 맨 끝이라 열린 창이 하나라도 있으면 절대 이기지 못한다** — 그게 이
- * 페이지의 계약이다. */
+ * 페이지의 계약이다.
+ *
+ * 사슬에 탭 단계가 하나 더 있었다(ADR-0149 이전). 탭의 봉은 포커스 창의 **거울**이었으므로
+ * 창을 읽는 첫 단계와 같은 값이었고, 탭이 사라지면서 그대로 접혔다. */
 export function resolveSelectedTimeframe(input: SelectedTimeframeInput): LiveTimeframe | null {
-  const { chartWindowTimeframe, activeViewId, activeTab, viewTimeframes, savedTimeframe } = input;
+  const { chartWindowTimeframe, activeViewId, viewTimeframes, savedTimeframe } = input;
   if (!activeViewId || savedTimeframe === null) return null;
   return (
     chartWindowTimeframe
-    ?? (activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
     ?? viewTimeframes[activeViewId]
     ?? savedTimeframe
   );
@@ -83,18 +78,17 @@ export type IndicatorPanelTimeframeInput = {
   /** 활성 뷰가 ready 면 그 저장 봉, 아니면 `null`. */
   readonly readySavedTimeframe: LiveTimeframe | null;
   readonly selectedTimeframe: LiveTimeframe | null;
-  readonly activeTab: StudyTimeframeTab | null;
 };
 
 /** 지표 패널·ambient 지표 버킷이 쓸 봉.
  *
- * 로딩·에러 구간의 폴백도 **창을 먼저 읽는다**(#1326) — 봉의 소유자가 창이므로 탭을 먼저
- * 읽으면 아직 되받아쓰기 전인 저장 봉이 지표 버킷으로 새어 나간다.
+ * 로딩·에러 구간의 폴백도 **창을 먼저 읽는다**(#1326) — `selectedTimeframe` 이 이미 창을
+ * 사슬 맨 앞에 두므로 그 값을 그대로 태운다.
  *
  * 이 자리의 끝값은 지표 프로필이 4버킷으로 접혀 **결과가 같지만**, 같은 질문의 끝값이
  * 자리마다 다르면 다음 사람이 어느 쪽이 정책인지 알 수 없다. 통일한다. */
 export function resolveIndicatorPanelTimeframe(input: IndicatorPanelTimeframeInput): LiveTimeframe {
-  const { readySavedTimeframe, selectedTimeframe, activeTab } = input;
+  const { readySavedTimeframe, selectedTimeframe } = input;
   if (readySavedTimeframe !== null) return readySavedTimeframe;
-  return selectedTimeframe ?? activeTab?.timeframe ?? STUDY_DEFAULT_MINUTE_TIMEFRAME;
+  return selectedTimeframe ?? STUDY_DEFAULT_MINUTE_TIMEFRAME;
 }

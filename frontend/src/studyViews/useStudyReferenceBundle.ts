@@ -95,7 +95,10 @@ export type StudyReferenceBundleResult = {
  *
  * 창이 여러 개면 봉도 여러 개고, 봉은 곧 쿼리 키다. 훅을 창 개수만큼 부를 수는
  * 없으므로(훅 순서) `useQueries` 로 **4 × N 쿼리를 한 배열**에 펴서 넣고 다시
- * 창별로 접는다 — `useWarmStudyReferenceTabQueries` 가 탭에 대해 쓰는 것과 같은 수법.
+ * 창별로 접는다.
+ *
+ * 이 `useQueries` 가 열린 창들의 옵저버를 직접 들고 있다는 사실이 `useStudyRangeCacheEviction`
+ * 의 `type: 'inactive'` 가드를 떠받친다 — "지금 쓰는 번들" 의 보호는 여기서 나온다(ADR-0149).
  *
  * **키가 같은 창끼리는 react-query 가 알아서 dedupe** 한다. 같은 봉·같은 지표 창을
  * 두 개 열어도 요청은 한 벌이다.

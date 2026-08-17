@@ -69,7 +69,7 @@ describe('StudyLayoutPresetMenu', () => {
   it('안내 문구가 "탭은 그대로" 계약을 알린다 — /live 와 다른 지점', () => {
     renderMenu();
     act(() => screen.getByTestId('study-layout-preset-button').click());
-    expect(screen.getByTestId('study-layout-preset-menu')).toHaveTextContent('열린 탭·종목은 그대로');
+    expect(screen.getByTestId('study-layout-preset-menu')).toHaveTextContent('보고 있는 저장뷰는 그대로');
   });
 
   it('활성 프리셋이 없으면 덮어쓰기 저장이 비활성이다', () => {

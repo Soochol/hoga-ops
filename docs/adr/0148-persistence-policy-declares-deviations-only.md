@@ -103,6 +103,14 @@
 재시작 간 영속을 잃는다**(workspace 는 dual-write 라 비용이 달랐다). 저장 경로 테스트만
 세워 현재 동작을 못박았다.
 
+> **갱신 (2026-08-17, ADR-0149): 이 항목은 보류가 아니라 소멸했다.** `/study` 저장뷰 탭이
+> 제거되면서 `study.tabs.v1` 을 **쓰는 코드가 없어졌다** — 새 `study.activeView.v1` 이
+> 부팅 때 한 번 읽어 승계할 뿐이고(승계 직후 새 키를 굳혀 그 의존도 끊는다), 옛 키는
+> 롤백 여지로 지우지 않고 둔다. 스냅샷 전체를 공유 localStorage 에 쓰는 파괴 기전도
+> 함께 사라졌다: 새 키가 담는 것은 **뷰 하나**(`{viewId, code, label, name}`)라 두 탭이
+> 서로를 덮어써도 잃는 것이 "다음에 그 탭에서 뭐가 먼저 뜨나" 뿐이다. 여기서 세운 저장
+> 경로 테스트의 **계약은 `studyActiveView.test.ts` 의 「저장 배선」 describe 가 승계**했다.
+
 **`readJsonObject` 가 키 부재를 지운다**(`persist.ts:27` — `if (!raw) return {}`). 이것이
 "원시 localStorage 를 직접 쓰는" 사례 중 4건의 실제 이유다 — `chartPrefsPersistence` ·
 `indicatorSettingsV2` · `indicatorsWindowMigration` · `chart/drawing/persistence` 가 전부

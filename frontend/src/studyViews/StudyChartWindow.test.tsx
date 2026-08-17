@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { StudyChartWindow } from './StudyChartWindow';
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
-import { useStudyTabsStore } from '../state/studyTabs';
+import { useStudyActiveViewStore } from '../state/studyActiveView';
 import { useWorkspaceStore } from '../state/workspace';
 import { useLivePageStore } from '../state/livePage';
 import { registerIndicatorDrawerOpener } from '../live/workspace/indicatorDrawerControls';
@@ -98,12 +98,8 @@ function renderWindow(overrides: Partial<Parameters<typeof StudyChartWindow>[0]>
 beforeEach(() => {
   seedStudyWorkspace();
   seedLiveDecoy();
-  useStudyTabsStore.setState({
-    tabs: [{
-      id: 'tab-1', viewId: 'view-1', code: '064350',
-      label: '현대로템 · 복기 · 5m', name: '복기', timeframe: '5m',
-    }],
-    activeTabId: 'tab-1',
+  useStudyActiveViewStore.setState({
+    active: { viewId: 'view-1', code: '064350', label: '현대로템', name: '복기' },
   });
 });
 

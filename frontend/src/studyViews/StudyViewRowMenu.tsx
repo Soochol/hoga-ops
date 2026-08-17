@@ -7,7 +7,6 @@ interface Props {
   y: number;
   name: string;         // 접근성 라벨용
   onOpen: () => void;
-  onOpenNewTab: () => void;
   onRename: () => void;
   onEditMemo: () => void;
   onDelete: () => void;
@@ -25,13 +24,6 @@ function MenuGlyph({ children }: { children: React.ReactNode }) {
   );
 }
 const OpenIcon = () => <MenuGlyph><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></MenuGlyph>;
-const NewTabIcon = () => (
-  <MenuGlyph>
-    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-    <path d="M15 3h6v6" />
-    <path d="M10 14 21 3" />
-  </MenuGlyph>
-);
 const PencilIcon = () => <MenuGlyph><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></MenuGlyph>;
 const MemoIcon = () => <MenuGlyph><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h9" /></MenuGlyph>;
 
@@ -40,11 +32,13 @@ const itemClass =
 
 /**
  * 저장뷰 행 메뉴 — 우클릭(커서 앵커)과 행 호버 ⋯ 버튼(버튼 앵커)이 공유한다.
- * 그간 숨겨진 제스처로만 닿던 액션(새 탭=Ctrl+클릭, 이름 변경=더블클릭, 삭제=우클릭)을
- * 한 메뉴에 모아 발견 가능하게 한다. 위치 보정·dismiss 계약은 WatchlistRowMenu와
+ * 그간 숨겨진 제스처로만 닿던 액션(이름 변경=더블클릭, 삭제=우클릭)을 한 메뉴에 모아
+ * 발견 가능하게 한다. 위치 보정·dismiss 계약은 WatchlistRowMenu와
  * 동일 primitive(useClampedFixedPosition + useDismissablePopover).
+ *
+ * 「새 탭에서 열기」는 ADR-0149 로 사라졌다 — `/study` 는 저장뷰를 한 번에 하나만 본다.
  */
-export function StudyViewRowMenu({ x, y, name, onOpen, onOpenNewTab, onRename, onEditMemo, onDelete, onClose }: Props) {
+export function StudyViewRowMenu({ x, y, name, onOpen, onRename, onEditMemo, onDelete, onClose }: Props) {
   const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
   useDismissablePopover(true, ref, onClose);
 
@@ -62,9 +56,6 @@ export function StudyViewRowMenu({ x, y, name, onOpen, onOpenNewTab, onRename, o
     >
       <button type="button" role="menuitem" onClick={run(onOpen)} className={itemClass}>
         <span className="w-4 grid place-items-center"><OpenIcon /></span> 열기
-      </button>
-      <button type="button" role="menuitem" onClick={run(onOpenNewTab)} className={itemClass}>
-        <span className="w-4 grid place-items-center"><NewTabIcon /></span> 새 탭에서 열기
       </button>
       <div role="separator" className="my-1 border-t border-border" />
       <button type="button" role="menuitem" onClick={run(onRename)} className={itemClass}>

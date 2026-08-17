@@ -14,7 +14,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import type { StudyViewListRow } from '../api/studyViews';
 import { dropPoint, isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
-import { useStudyTabsStore } from '../state/studyTabs';
+import { useStudyActiveViewStore } from '../state/studyActiveView';
 import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import {
@@ -180,9 +180,10 @@ export function StudyViewsDrawer() {
     reorderRow,
   } = useStudyViewTreeState(saves);
   const currentStudyViewId = useMemo(() => new URLSearchParams(location.search).get('view'), [location.search]);
-  const activeStudyViewId = useStudyTabsStore((state) => (
-    state.tabs.find((tab) => tab.id === state.activeTabId)?.viewId ?? null
-  ));
+  // 스토어를 읽는 이유: 이 드로어는 **우측 레일의 전역 컴포넌트**라 `/live` 등 다른
+  // 라우트에서는 URL 에 `?view=` 가 아예 없다. URL 만 보면 그 라우트들에서 행 하이라이트가
+  // 통째로 사라진다.
+  const activeStudyViewId = useStudyActiveViewStore((state) => state.active?.viewId ?? null);
   const selectedStudyViewId = activeStudyViewId ?? currentStudyViewId;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
@@ -237,32 +238,22 @@ export function StudyViewsDrawer() {
     navigate(`/study?view=${row.id}`);
   }
 
-  // 봉은 넘기지 않는다 — 차트 창이 유일한 소유자다(#1326). 저장뷰가 정하는 것은
-  // 종목과 구간이고, 탭이 든 봉은 StudyPage 가 포커스 창 봉으로 되받아쓴다.
-  function openSaveInActiveTab(row: StudyViewListRow) {
-    useStudyTabsStore.getState().openSaveInActiveTab(row);
-  }
-
-  function openSaveInNewTab(row: StudyViewListRow) {
-    useStudyTabsStore.getState().openSaveInNewTab(row);
-  }
-
-  function openStudyViewInActiveTab(row: StudyViewListRow) {
-    openSaveInActiveTab(row);
+  /**
+   * 저장뷰를 연다 — 활성 뷰를 **제자리 교체**한다(ADR-0149). "새 탭으로 열기" 는 없다.
+   *
+   * 봉은 넘기지 않는다 — 차트 창이 유일한 소유자다(#1326). 저장뷰가 정하는 것은
+   * 종목과 구간이다.
+   */
+  function openStudyView(row: StudyViewListRow) {
+    useStudyActiveViewStore.getState().openSave(row);
     navigateToStudyView(row);
-  }
-
-  function openStudyViewInNewTab(row: StudyViewListRow) {
-    cancelPendingStudyViewNavigation();
-    openSaveInNewTab(row);
-    navigate(`/study?view=${row.id}`);
   }
 
   function scheduleStudyViewNavigation(row: StudyViewListRow) {
     cancelPendingStudyViewNavigation();
     navigateClickTimerRef.current = window.setTimeout(() => {
       navigateClickTimerRef.current = null;
-      openStudyViewInActiveTab(row);
+      openStudyView(row);
     }, 180);
   }
 
@@ -314,9 +305,12 @@ export function StudyViewsDrawer() {
     const deletedId = row.id;
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
-        const nextActiveTab = useStudyTabsStore.getState().closeTabsByViewId(deletedId);
+        // 지운 것이 활성 뷰였으면 **빈 상태**로 간다(ADR-0149). 남은 뷰 중 하나로 자동
+        // 이동하면 사용자가 지운 직후 뜻밖의 뷰가 뜬다 — 빈 상태에는 "저장뷰 열기"
+        // 버튼이 있다.
+        useStudyActiveViewStore.getState().clearIfView(deletedId);
         if (location.pathname === '/study' && currentStudyViewId === deletedId) {
-          navigate(nextActiveTab ? `/study?view=${nextActiveTab.viewId}` : '/study');
+          navigate('/study');
         }
       },
     });
@@ -383,7 +377,7 @@ export function StudyViewsDrawer() {
     if (event.active.data.current?.type === 'group' && isPointOnStudy(dropPoint(event))) {
       const draggedGroup = visibleGroups.find((group) => studyViewGroupDndId(group.key) === String(event.active.id));
       const save = draggedGroup ? latestStudyViewForCode(saves, draggedGroup.code) : null;
-      if (save) openStudyViewInActiveTab(save);
+      if (save) openStudyView(save);
       return;
     }
 
@@ -411,11 +405,9 @@ export function StudyViewsDrawer() {
         style={{
           background: isActive ? 'var(--tint-selection)' : 'transparent',
         }}
-        onClick={isEditing ? undefined : (event) => {
-          if (event.ctrlKey || event.metaKey) {
-            openStudyViewInNewTab(row);
-            return;
-          }
+        // Ctrl/⌘+클릭 분기는 ADR-0149 로 사라졌다 — 탭이 없으면 "새 탭으로" 가 무의미하다
+        // (ADR-0113 §3 의 `disposition` 제거와 동형). 일반 클릭과 똑같이 현재 뷰를 교체한다.
+        onClick={isEditing ? undefined : () => {
           scheduleStudyViewNavigation(row);
         }}
         onContextMenu={isEditing ? undefined : (e) => {
@@ -426,7 +418,7 @@ export function StudyViewsDrawer() {
           if (e.target !== e.currentTarget) return;
           if (e.key !== 'Enter' && e.key !== ' ') return;
           e.preventDefault();
-          openStudyViewInActiveTab(row);
+          openStudyView(row);
         }}
       >
         {renameState?.id === row.id ? (
@@ -608,13 +600,9 @@ export function StudyViewsDrawer() {
                           aria-label={`${group.label} ${group.code} ${groupCollapsed ? '펼치기' : '접기'}`}
                           aria-expanded={!groupCollapsed}
                           title={`${group.label} ${group.code}`}
-                          onClick={(event) => {
-                            if (event.ctrlKey || event.metaKey) {
-                              event.preventDefault();
-                              const save = latestStudyViewForCode(saves, group.code);
-                              if (save) openStudyViewInNewTab(save);
-                              return;
-                            }
+                          // Ctrl/⌘+클릭 = 그 종목의 최신 저장뷰를 새 탭으로 열던 분기는
+                          // ADR-0149 로 사라졌다. 헤더 클릭은 이제 접기/펼치기 하나다.
+                          onClick={() => {
                             toggleGroup(group.key);
                           }}
                           className={dragEnabled ? 'cursor-grab active:cursor-grabbing' : ''}
@@ -659,8 +647,7 @@ export function StudyViewsDrawer() {
           x={rowMenu.left}
           y={rowMenu.top}
           name={rowMenu.row.name}
-          onOpen={() => openStudyViewInActiveTab(rowMenu.row)}
-          onOpenNewTab={() => openStudyViewInNewTab(rowMenu.row)}
+          onOpen={() => openStudyView(rowMenu.row)}
           onRename={() => startRename(rowMenu.row)}
           onEditMemo={() => startMemoEdit(rowMenu.row)}
           onDelete={() => requestDelete(rowMenu.row)}

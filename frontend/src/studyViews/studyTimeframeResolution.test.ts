@@ -12,15 +12,15 @@ const VIEW = 'view-1';
 describe('resolveSelectedTimeframe — 창이 유일한 소유자다 (#1326)', () => {
   // 우선순위를 **표로** 못 박는다. 종전엔 이 사슬이 StudyPage 본문의 인라인 표현식이라
   // 한 단계를 확인하려면 페이지 전체를 렌더해야 했다.
+  // 사슬에 탭 단계가 하나 더 있었다(ADR-0149 이전). 탭의 봉은 포커스 창의 **거울**이라
+  // 첫 단계와 같은 값이었고, 탭이 사라지면서 그대로 접혔다 — 남는 축은 창·로컬·저장 셋이다.
   const cases: Array<{
     name: string;
     window: '15m' | null;
-    tabViewId: string | null;
     expected: string | null;
   }> = [
-    { name: '창이 탭·로컬·저장을 전부 이긴다', window: '15m', tabViewId: VIEW, expected: '15m' },
-    { name: '창이 없으면 같은 뷰의 탭이 이긴다', window: null, tabViewId: VIEW, expected: '3m' },
-    { name: '탭이 다른 뷰를 들고 있으면 건너뛴다', window: null, tabViewId: 'other', expected: '5m' },
+    { name: '창이 로컬·저장을 전부 이긴다', window: '15m', expected: '15m' },
+    { name: '창이 없으면 뷰별 로컬 기억이 이긴다', window: null, expected: '5m' },
   ];
 
   for (const c of cases) {
@@ -29,7 +29,6 @@ describe('resolveSelectedTimeframe — 창이 유일한 소유자다 (#1326)', (
         resolveSelectedTimeframe({
           chartWindowTimeframe: c.window,
           activeViewId: VIEW,
-          activeTab: c.tabViewId ? { viewId: c.tabViewId, timeframe: '3m' } : null,
           viewTimeframes: { [VIEW]: '5m' },
           savedTimeframe: 'D',
         }),
@@ -37,12 +36,23 @@ describe('resolveSelectedTimeframe — 창이 유일한 소유자다 (#1326)', (
     });
   }
 
+  // 로컬 기억은 **뷰별**이다 — 다른 뷰의 기억이 새어 들어오면 안 된다.
+  it('다른 뷰의 로컬 기억은 건너뛰고 저장 봉으로 떨어진다', () => {
+    expect(
+      resolveSelectedTimeframe({
+        chartWindowTimeframe: null,
+        activeViewId: VIEW,
+        viewTimeframes: { 'other-view': '5m' },
+        savedTimeframe: 'D',
+      }),
+    ).toBe('D');
+  });
+
   it('저장 봉은 사슬의 맨 끝이라 다른 단서가 하나도 없을 때만 이긴다', () => {
     expect(
       resolveSelectedTimeframe({
         chartWindowTimeframe: null,
         activeViewId: VIEW,
-        activeTab: null,
         viewTimeframes: {},
         savedTimeframe: 'D',
       }),
@@ -54,7 +64,6 @@ describe('resolveSelectedTimeframe — 창이 유일한 소유자다 (#1326)', (
       resolveSelectedTimeframe({
         chartWindowTimeframe: '15m',
         activeViewId: null,
-        activeTab: null,
         viewTimeframes: {},
         savedTimeframe: 'D',
       }),
@@ -128,7 +137,6 @@ describe('아무 단서가 없을 때의 끝값은 한 값이다', () => {
       resolveIndicatorPanelTimeframe({
         readySavedTimeframe: null,
         selectedTimeframe: null,
-        activeTab: null,
       }),
     ).toBe(STUDY_DEFAULT_MINUTE_TIMEFRAME);
   });
@@ -140,18 +148,16 @@ describe('resolveIndicatorPanelTimeframe — 로딩 구간도 창을 먼저 읽�
       resolveIndicatorPanelTimeframe({
         readySavedTimeframe: 'D',
         selectedTimeframe: '15m',
-        activeTab: { viewId: VIEW, timeframe: '3m' },
       }),
     ).toBe('D');
   });
 
-  it('로딩 구간엔 selected(=창 우선 사슬)가 탭을 이긴다', () => {
-    // 탭을 먼저 읽으면 아직 되받아쓰기 전인 저장 봉이 지표 버킷으로 새어 나간다.
+  it('로딩 구간엔 selected(=창 우선 사슬)를 쓴다', () => {
+    // `selectedTimeframe` 이 이미 창을 사슬 맨 앞에 두므로 그 값이 곧 창의 봉이다.
     expect(
       resolveIndicatorPanelTimeframe({
         readySavedTimeframe: null,
         selectedTimeframe: '15m',
-        activeTab: { viewId: VIEW, timeframe: '3m' },
       }),
     ).toBe('15m');
   });

@@ -159,7 +159,9 @@ async function assertBackendIsOurs(): Promise<void> {
   }
 }
 
-/** README 의 W6.4 가 요구하는 다종목 시드. multi-tab 스펙이 두 종목을 전제한다. */
+/** README 의 W6.4 가 요구하는 다종목 시드.
+ *  종전 근거였던 multi-tab 스펙은 사라졌지만 시드는 그대로 필요하다 —
+ *  `watchlist-*` 3종과 `range-capture` 가 두 종목을 전제한다. */
 const SEED: ReadonlyArray<readonly [code: string, date: string]> = [
   ['005930', '20260521'],
   ['000660', '20260521'],
