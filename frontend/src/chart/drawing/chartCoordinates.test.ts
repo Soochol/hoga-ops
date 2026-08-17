@@ -411,3 +411,81 @@ describe('dragBarDomain — calendar (D/W/M)', () => {
     expect(dom.toBar(250_000)).toBe(bar);
   });
 });
+
+describe('realMsToCanvasX — empty rung (a bucket with no trade, so no candle)', () => {
+  // 위 STRICT 스위트와 같은 축이되, 사다리를 **빈틈없이 채우지 않는다**. 그 스위트는
+  // 모든 버킷에 봉을 두어 "사다리 = 로드된 봉" 을 가정했고, 그래서 이 결함을 원리적으로
+  // 재현할 수 없었다. 실제로는 체결 없는 버킷에 봉이 없다 — 005380 3분봉 실측으로
+  // 사다리 9039칸 중 240칸(2.7%)이 비었고 **69/69 전 거래일**에 나타난다.
+  const axis = createVirtualAxis([
+    { date: '20260101', sessionOpenMs: 0, sessionCloseMs: 600_000 },
+  ]);
+  const BUCKET_1M = 60_000;
+  const future: FutureBand = { lastRealMs: 600_000, bucketMs: BUCKET_1M };
+  // 개장 직후 두 칸(k=0,1)이 비어 있다 — 실측에서 본 모양 그대로(첫 버킷 무체결).
+  const EMPTY_RUNGS = new Set([0, 1]);
+  const barsV: number[] = [];
+  for (let k = 0; k * BUCKET_1M <= 600_000; k++) {
+    if (!EMPTY_RUNGS.has(k)) barsV.push(k * BUCKET_1M);
+  }
+
+  // lwc 를 있는 그대로: `timeToCoordinate` 는 조회(정확 매칭만),
+  // `timeToIndex(t, true)` 는 **정수** 인덱스로 가장 가까운 봉을 준다.
+  const chartWithGaps = {
+    timeScale: () => ({
+      timeToCoordinate: (timeSec: number) => {
+        const i = barsV.indexOf(timeSec * 1000);
+        return i < 0 ? null : i * PX_PER_BAR;
+      },
+      timeToIndex: (timeSec: number, findNearest?: boolean) => {
+        const t = timeSec * 1000;
+        const exact = barsV.indexOf(t);
+        if (exact >= 0) return exact;
+        if (!findNearest) return null;
+        let best = 0;
+        for (let i = 1; i < barsV.length; i++) {
+          if (Math.abs(barsV[i] - t) < Math.abs(barsV[best] - t)) best = i;
+        }
+        return best;
+      },
+      coordinateToTime: () => null,
+      coordinateToLogical: (x: number) => x / PX_PER_BAR,
+      logicalToCoordinate: stubLogicalToCoordinate,
+    }),
+  } as unknown as IChartApi;
+
+  it('로드된 칸은 그대로 해결한다 (대조군)', () => {
+    // k=2 는 barsV 의 첫 원소 → 인덱스 0.
+    expect(realMsToCanvasX(chartWithGaps, axis, 2 * BUCKET_1M, future)).toBe(0);
+    expect(realMsToCanvasX(chartWithGaps, axis, 3 * BUCKET_1M, future)).toBe(PX_PER_BAR);
+  });
+
+  // 재현된 결함(2026-08-17): 정점이 빈 칸에 있으면 좌표가 null 이 되고, 호출부의
+  // `?? 0 / ?? width` 가 그 정점을 캔버스 가장자리로 보내 도형이 화면을 가로질렀다.
+  // 드래그가 빈 칸에 정점을 놓을 수 있는 이유는 `dragBarDomain.toReal` 이 순수 사다리
+  // 계산이라 봉 존재를 안 보기 때문이다(아래 별도 단언).
+  it('빈 칸 정점도 좌표를 얻는다 — 가장 가까운 로드된 봉', () => {
+    const x = realMsToCanvasX(chartWithGaps, axis, 1 * BUCKET_1M, future);
+    expect(x).not.toBeNull();
+    // k=1 에서 가장 가까운 로드된 봉은 k=2(= barsV[0]) → x = 0.
+    expect(x).toBe(0);
+  });
+
+  it('드래그 스냅은 빈 칸을 산출할 수 있다 (결함의 입구)', () => {
+    const dom = dragBarDomain(axis, future);
+    // 사다리 ordinal 1 → realMs 60_000. 그 칸에 봉이 없다.
+    expect(dom.toReal(1)).toBe(1 * BUCKET_1M);
+    expect(barsV).not.toContain(1 * BUCKET_1M);
+  });
+
+  // 폴백을 `coreRealMsToCanvasX` 안에 넣으면 이 단언이 깨진다 — 미래 밴드 시각이
+  // "가장 가까운 봉" 으로 먼저 해석돼 외삽 분기가 죽고, 미래에 앵커된 도형이 전부
+  // 마지막 봉에 붙는다. 폴백은 **마지막 단계**여야 한다.
+  it('미래 밴드는 여전히 외삽으로 간다 (폴백 위치 가드)', () => {
+    const lastIdx = barsV.length - 1;
+    const twoAhead = realMsToCanvasX(chartWithGaps, axis, 600_000 + 2 * BUCKET_1M, future);
+    expect(twoAhead).toBe((lastIdx + 2) * PX_PER_BAR);
+    // 마지막 봉 자신보다 오른쪽이어야 한다(= 눌어붙지 않았다).
+    expect(twoAhead as number).toBeGreaterThan(lastIdx * PX_PER_BAR);
+  });
+});
