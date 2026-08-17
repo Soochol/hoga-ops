@@ -41,10 +41,21 @@ import pytest
 
 _HOGA = Path(__file__).resolve().parents[3] / "hoga"
 
-#: venue 로 디스크 경로를 정하는 모듈 — 새로 생기면 여기 추가한다.
+#: **기본값 있는 키워드 전용 `venue`** 를 가진 함수가 사는 모듈 — 새로 생기면 여기
+#: 추가한다. 아래 `test_guarded_list_covers_every_module` 가 누락을 잡는다.
 GUARDED = (
     _HOGA / "api" / "bundle.py",
     _HOGA / "api" / "past_indicators_cache.py",
+    _HOGA / "api" / "queries.py",
+    _HOGA / "api" / "heatmap_group_flow.py",
+    _HOGA / "live" / "api.py",
+    _HOGA / "live" / "promote.py",
+    # 아래 넷은 **등록 누락 감사가 잡아서** 들어왔다 — 손으로 훑을 때 `async def` 를
+    # 통째로 빠뜨렸다. 목록을 사람이 적는 한 같은 일이 또 생기므로 그 감사가 있다.
+    _HOGA / "live" / "kiwoom_adjust_factors.py",
+    _HOGA / "live" / "kiwoom_daily_candles.py",
+    _HOGA / "live" / "kiwoom_minute_candles.py",
+    _HOGA / "live" / "kiwoom_multi_quote.py",
 )
 
 
@@ -57,25 +68,71 @@ def _call_name(node: ast.Call) -> str | None:
     return None
 
 
+def _risky_functions(tree: ast.Module) -> set[str]:
+    """**기본값 있는 키워드 전용** `venue` 를 받는 함수 이름.
+
+    판정식이 이 형태인 이유가 이 가드의 핵심이다. venue 파라미터는 셋으로 갈리는데
+    **위험한 것은 하나뿐이다**:
+
+      * `venue: Venue`(기본값 없는 위치인자) — 안 넘기면 `TypeError`. 언어가 이미
+        막으므로 가드가 필요 없다.
+      * `*, venue: Venue`(기본값 없는 키워드 전용) — 같은 이유로 안전하다.
+      * `*, venue: Venue = "KRX"`(**기본값 있는 키워드 전용**) — 안 넘겨도 조용히
+        KRX 로 떨어진다. **여기만 위험하다.**
+
+    기본값 있는 **위치**인자는 일부러 뺐다. 위치로 넘긴 것을 AST 로 확인하려면
+    피호출부 시그니처와 인자 순서를 맞춰야 하고, 그 매칭이 틀리면 위양성이 난다 —
+    상시 빨간 가드는 무시되기 시작해 메커니즘 전체를 죽인다. 키워드 전용은 반드시
+    `venue=` 로 넘겨야 하므로 **위양성이 원리적으로 0**이다.
+    """
+    out: set[str] = set()
+    for n in ast.walk(tree):
+        if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        names = [a.arg for a in n.args.kwonlyargs]
+        if "venue" not in names:
+            continue
+        if n.args.kw_defaults[names.index("venue")] is not None:
+            out.add(n.name)
+    return out
+
+
 @pytest.mark.parametrize("path", GUARDED, ids=lambda p: p.name)
 def test_no_call_drops_venue(path: Path) -> None:
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    takes_venue = {
-        n.name
-        for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef)
-        and any(a.arg == "venue" for a in [*n.args.args, *n.args.kwonlyargs])
-    }
-    assert takes_venue, f"{path.name}: venue 를 받는 함수를 하나도 못 찾았다 — 파서가 덜 읽고 있다"
+    risky = _risky_functions(tree)
+    assert risky, f"{path.name}: 대상 함수를 하나도 못 찾았다 — 파서가 덜 읽고 있다"
 
     dropped = [
         f"{path.name}:{n.lineno} {_call_name(n)}(...)"
         for n in ast.walk(tree)
         if isinstance(n, ast.Call)
-        and _call_name(n) in takes_venue
+        and _call_name(n) in risky
         and not any(k.arg == "venue" for k in n.keywords)
     ]
     assert not dropped, (
         "venue 를 받는 함수를 venue 없이 부른다 → 피호출부 기본값 KRX 로 조용히 떨어진다:\n  "
         + "\n  ".join(dropped)
+    )
+
+
+def test_guarded_list_covers_every_module() -> None:
+    """감시 목록이 전수인지 — **등록을 잊는 실패 모드**를 막는다.
+
+    `GUARDED` 는 손으로 적는 목록이라 새 모듈이 생기면 조용히 무방비가 된다. 그런데
+    테스트는 여전히 초록이라 보호받는 줄 안다. 여기서 그 침묵을 깬다: `hoga/` 전체를
+    스캔해 대상 함수가 있는 모듈을 찾고 목록과 대조한다.
+
+    이 가드가 왜 필요한지는 이력이 말해 준다 — 원래 목록은 `bundle.py` 하나였고,
+    그래서 `past_indicators_cache._poc_path` 의 venue 누락을 열흘 넘게 못 봤다.
+    """
+    found = {
+        p
+        for p in _HOGA.rglob("*.py")
+        if _risky_functions(ast.parse(p.read_text(encoding="utf-8")))
+    }
+    missing = sorted(str(p.relative_to(_HOGA)) for p in found - set(GUARDED))
+    assert not missing, (
+        "기본값 있는 키워드 전용 venue 를 가진 모듈이 감시 목록에 없다 — GUARDED 에 추가할 것:\n  "
+        + "\n  ".join(missing)
     )
