@@ -25,6 +25,7 @@
  *   때문이다. 그 저장소 안에서 `/study` 는 자기 세트를 갖지만(ADR-0146) 그것도
  *   페이지 축이지 창 축이 아니다.
  */
+import { normalizeZOrder } from '../workspace/zOrder';
 import { create } from 'zustand';
 import { isFracRect, type FracRect } from '../workspace/rectSpace';
 import { persistJson, readJsonObject } from './persist';
@@ -158,24 +159,6 @@ function readWindow(raw: unknown): StudyWorkspaceWindow | null {
   return win;
 }
 
-/** zOrder 를 실제 창 id 집합에 맞춰 정규화(unknown 드롭, 누락 append). */
-function normalizeZOrder(raw: unknown, windows: readonly StudyWorkspaceWindow[]): string[] {
-  const ids = new Set(windows.map((w) => w.id));
-  const seen = new Set<string>();
-  const next: string[] = [];
-  if (Array.isArray(raw)) {
-    for (const entry of raw) {
-      if (typeof entry === 'string' && ids.has(entry) && !seen.has(entry)) {
-        seen.add(entry);
-        next.push(entry);
-      }
-    }
-  }
-  for (const w of windows) {
-    if (!seen.has(w.id)) next.push(w.id);
-  }
-  return next;
-}
 
 /** 상세 패널 카드 → 창 kind (시드 전용 매핑). */
 const CARD_TO_KIND: Record<StudyCardKey, StudyWindowKind> = {
