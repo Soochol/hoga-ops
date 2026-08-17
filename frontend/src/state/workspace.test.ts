@@ -253,6 +253,50 @@ describe('레거시 마이그레이션 하이드레이션(#713, PR-C)', () => {
     expect(dataKinds).toEqual(['broker', 'book']);
   });
 
+  /**
+   * 마이그레이션 시드가 **새로고침을 넘어 살아남는지**. 종전엔 살아남지 못했다.
+   *
+   * 막는 방향: 시드가 저장 스키마와 **다른 좌표계**를 내는 것. 시드는 즉시 persist 되고
+   * `persistFromState` 는 항상 v2(비율)로 태그하므로, 시드가 px 를 내면 저장소에 거짓
+   * 태그가 남고 다음 로드의 `isFracRect` 가 전량 탈락시킨다 → 공장 기본 폴백.
+   * 실측(고치기 전): 창 6개·봉 `D` → 새로고침 후 창 3개·봉 `1m`·id 전부 교체.
+   *
+   * 에러가 없다는 것이 이 실패의 특징이다 — 폴백이 정상 경로라 조용히 데이터만 사라진다.
+   * 그래서 가드는 "창이 있다" 가 아니라 **같은 id·같은 봉이 남았는가**를 본다.
+   *
+   * 못 보는 것: 진짜 v1 px 저장값(사용자가 옛 버전에서 만든 것)의 `pendingNormalize`
+   * 경로 — 그건 캔버스 실측이 필요해 jsdom 단위 테스트 범위 밖이다.
+   */
+  it('레거시 시드는 새로고침을 넘어 살아남는다 — 좌표계 태그가 참이어야 한다', async () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem(
+      'live.page.v1',
+      JSON.stringify({ candleTimeframe: 'D', activeCode: '000660', activeInstrument: { kind: 'stock', code: '000660', label: 'SK하이닉스' } }),
+    );
+    vi.resetModules();
+    const first = await import('./workspace');
+    const seeded = first.useWorkspaceStore.getState();
+    const seededIds = seeded.windows.map((w) => w.id);
+
+    // 저장된 스냅샷의 좌표계가 태그(v2=비율)와 일치해야 한다.
+    const stored = JSON.parse(
+      sessionStorage.getItem(WORKSPACE_STORAGE_KEY) ?? localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? 'null',
+    );
+    expect(stored.schema_version).toBe(2);
+    for (const w of stored.windows) {
+      expect(w.rect.w).toBeLessThanOrEqual(1);
+      expect(w.rect.h).toBeLessThanOrEqual(1);
+    }
+
+    vi.resetModules();
+    const second = await import('./workspace');
+    const after = second.useWorkspaceStore.getState();
+    expect(after.windows.map((w) => w.id)).toEqual(seededIds); // id 고정 = 재시드 없음
+    expect(after.windows.find((w) => w.kind === 'chart')?.chart?.timeframe).toBe('D'); // 레거시 봉 유지
+    expect(after.groupSymbols[1]).toEqual({ code: '000660', name: 'SK하이닉스' }); // 종목 유지
+  });
+
   it('레거시 키도 없으면 공장 기본 레이아웃', async () => {
     localStorage.clear();
     vi.resetModules();
