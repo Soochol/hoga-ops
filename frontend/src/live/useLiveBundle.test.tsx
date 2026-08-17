@@ -248,7 +248,7 @@ function renderUseLiveBundle(
   const previousImplementation = useRangeSpy.getMockImplementation();
   useRangeSpy.mockImplementation((...args: unknown[]) => {
     const options = args[6] as { mode?: string } | undefined;
-    if (options?.mode === 'candles' || options?.mode === 'full') {
+    if (options?.mode === 'candles') {
       return rangeResult(rangeCandles.length > 0 ? {
         ...fallbackRangeBundle(rangeCandles[rangeCandles.length - 1]?.close ?? 71_234),
         candles: rangeCandles,

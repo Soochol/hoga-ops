@@ -3,7 +3,7 @@ import { TIMEFRAME_TO_MS } from './types';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { SourcePreference } from '../state/sourcePreference';
 
-export type RangeMode = 'full' | 'hoga' | 'sidecar' | 'candles';
+export type RangeMode = 'hoga' | 'sidecar' | 'candles';
 
 export type RangeRequestOptions = {
   askPeaksEnabled?: boolean | null;

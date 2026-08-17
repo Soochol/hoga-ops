@@ -181,6 +181,13 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     ),
     # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
     "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
+    # `/api/range` 의 mode. **BE 가 Literal 이 아니라 Query 정규식이라 오래 가드 밖에
+    # 있었다** — `get_args` 로 읽을 수 없으니 등록 자체가 불가능했고, 그래서 등록 누락
+    # 감사도 이 쌍을 못 봤다. models.py 에 alias 를 두어 라우트 검증과 이 대조가 같은
+    # 목록에서 파생되게 한 뒤 등록했다. 등록하자마자 실제 드리프트가 드러났다 —
+    # 퇴역한 `full`(2026-07-08 WS2, BE 는 422 회귀 테스트까지 세움)이 FE union 에
+    # 그대로 남아 있었다.
+    "RangeMode": (frozenset(get_args(m.RangeMode)), "frontend/src/api/rangeRequest.ts"),
     # 결손 사유. FE 는 종전에 `RangeMissingDate.reason` 의 **필드 인라인 union** 이라
     # 파서가 원리적으로 못 봤다 — 그래서 같은 이름의 named alias 로 꺼내며 등록했다.
     # 값이 갈리면 새 사유가 배너 문구 분기에 없어 조용히 "손상" 으로 오분류된다.

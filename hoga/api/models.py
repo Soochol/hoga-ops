@@ -1964,6 +1964,17 @@ LiveTimeframeModel = Literal[
     "1m", "3m", "5m", "10m", "15m", "30m", "60m", "120m", "240m", "D", "W", "M"
 ]
 
+#: `/api/range` 의 `mode` — **어떤 슬라이스 집합을 만드느냐**를 고르는 값이다.
+#:
+#: 여기 alias 로 둔 것은 두 가지를 위해서다. ① 라우트의 Query 검증이 이 목록에서
+#: 파생되어 둘이 갈릴 수 없다. ② `WIRE_ENUM_MIRRORS`(ADR-0004 2층)가 프론트 union 과
+#: 값을 대조할 수 있다 — 정규식 pattern 은 `get_args` 로 읽을 수 없어 가드 밖이었다.
+#:
+#: 퇴역한 값 `"full"` 은 2026-07-08 dead-path 제거로 사라졌다(WS2). 백엔드는 그때
+#: 422 회귀 테스트까지 세웠지만 프론트 union 은 따라오지 않았고, 이 alias 가 없어
+#: 2층 가드가 그 드리프트를 못 봤다.
+RangeMode = Literal["hoga", "sidecar", "candles"]
+
 
 def _ensure_finite(value: int | float) -> int | float:
     if not math.isfinite(float(value)):
