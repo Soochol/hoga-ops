@@ -229,7 +229,7 @@ export function useWindowPaneStretch(): PaneStretchMap {
 // ── 쓰기 경로 (ADR-0119 C2c-2a) ──────────────────────────────────────────────
 
 /**
- * 지표 편집 표면 — indicatorOps 45종 + 레이아웃/버킷 관리 5종. 드로어·pane
+ * 지표 편집 표면 — indicatorOps 55종 + 레이아웃/버킷 관리 5종. 드로어·pane
  * 레전드·차트 내 조작이 전부 이 표면만 호출한다. 백엔드는 언제나 전역
  * `useLivePageStore` 이고, Provider 안이면 **대상 창의 봉 버킷**에 쓴다.
  */
