@@ -36,7 +36,7 @@ const itemClass =
  * 발견 가능하게 한다. 위치 보정·dismiss 계약은 WatchlistRowMenu와
  * 동일 primitive(useClampedFixedPosition + useDismissablePopover).
  *
- * 「새 탭에서 열기」는 ADR-0148 로 사라졌다 — `/study` 는 저장뷰를 한 번에 하나만 본다.
+ * 「새 탭에서 열기」는 ADR-0149 로 사라졌다 — `/study` 는 저장뷰를 한 번에 하나만 본다.
  */
 export function StudyViewRowMenu({ x, y, name, onOpen, onRename, onEditMemo, onDelete, onClose }: Props) {
   const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);

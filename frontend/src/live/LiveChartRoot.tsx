@@ -779,7 +779,7 @@ export function LiveChartRoot({
   // Viewport capture (ADR-0069 A안): read the live chart's visible range + zoom
   // and pin them to a real-time anchor. The remaining caller is the saved-view
   // write path (`studySaveCommand` via `ChartWindow.captureViewport`) — the tab
-  // stores that used to call it on switch-away are gone (ADR-0113, ADR-0148).
+  // stores that used to call it on switch-away are gone (ADR-0113, ADR-0149).
   // Stable identity (refs only) so the registration effect runs once.
   const captureViewport = useCallback((): TabViewport | null => {
     const c = chartRef.current;

@@ -12,7 +12,7 @@ import type { LiveTimeframe } from '../state/livePage';
  * 번들이 30분씩 힙에 상주한다. 장시간 세션에서 힙이 GB 단위로 부풀어 GC 정지가
  * 길어지고 마우스/크로스헤어가 버벅이는 원인이다.
  *
- * **ADR-0148 로 보존 대상이 좁아졌다.** 종전엔 "열린 탭 어느 하나라도 든 종목" 을
+ * **ADR-0149 로 보존 대상이 좁아졌다.** 종전엔 "열린 탭 어느 하나라도 든 종목" 을
  * 남겼지만 `/study` 는 이제 저장뷰를 하나만 연다 — 보존 집합이 활성 종목 하나다.
  * 그만큼 **축출이 공격적**이어서 뷰 A↔B 왕복은 매번 재fetch 가 된다. 메모리와
  * 재요청을 맞바꾼 것이고, 체감이 나쁘면 "직전 종목 1개 유예" 가 다음 수다.
@@ -64,12 +64,12 @@ export function useStudyRangeCacheEviction(
       predicate: (query) => {
         const code = query.queryKey[1];
         if (typeof code !== 'string') return false;
-        // 보존 집합은 활성 종목 하나다(ADR-0148). 나머지는 전부 축출 대상.
+        // 보존 집합은 활성 종목 하나다(ADR-0149). 나머지는 전부 축출 대상.
         if (code !== activeCode) return true;
         // 열린 창 봉을 하나도 모르면 **봉 축을 끈다** — 빈 배열은 "보존할 봉이 없다" 가
         // 아니라 "창이 아직 없다"(하이드레이션 직전)는 뜻이다. 여기서 축출하면 창이
         // 뜨자마자 전부 재fetch 다. 탭이 있던 시절엔 탭 봉이 이 자리를 메워서 이 구멍이
-        // 드러나지 않았다(ADR-0148 로 그 안전망이 사라졌다).
+        // 드러나지 않았다(ADR-0149 로 그 안전망이 사라졌다).
         if (keepBuckets.size === 0) return false;
         const bucketMs = bucketMsFromRangeKey(query.queryKey);
         // 판별 불가 → 보존. 축출은 되돌릴 수 없다.

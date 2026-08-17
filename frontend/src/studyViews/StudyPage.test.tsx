@@ -238,7 +238,7 @@ function renderPage(initialEntry = '/study') {
 }
 
 /** 저장뷰 전환 — 실제 UI 진입점(저장뷰 드로어)은 이 페이지에 렌더되지 않으므로
- *  스토어 액션을 직접 부른다. 종전엔 탭 칩을 클릭했다(ADR-0148 로 제거). */
+ *  스토어 액션을 직접 부른다. 종전엔 탭 칩을 클릭했다(ADR-0149 로 제거). */
 function openStudyView(view: { viewId: string; code: string; label: string; name: string }) {
   act(() => {
     useStudyActiveViewStore.getState().openSave({
@@ -534,7 +534,7 @@ describe('StudyPage', () => {
   });
 
   // 「비포커스 창의 봉을 바꿔도 탭 라벨은 그대로다」가 여기 있었다. 라벨에 봉이 박힌
-  // 탭 칩이 사라져(ADR-0148) 비출 대상 자체가 없어졌으므로 함께 제거했다. 창끼리 서로의
+  // 탭 칩이 사라져(ADR-0149) 비출 대상 자체가 없어졌으므로 함께 제거했다. 창끼리 서로의
   // 봉을 안 건드린다는 계약은 바로 아래 케이스와 '봉의 소유자는 차트 창이다' 가 잰다.
 
   it('다른 차트 창으로 포커스를 옮겨도 그 창의 봉이 바뀌지 않는다', () => {
@@ -559,7 +559,7 @@ describe('StudyPage', () => {
     expect(tfs).toContain('5m');
   });
 
-  // ADR-0148 회귀 가드: 저장뷰 전환이 창 배치를 무너뜨리지 않는다. 탭 시절의
+  // ADR-0149 회귀 가드: 저장뷰 전환이 창 배치를 무너뜨리지 않는다. 탭 시절의
   // 「탭을 오갔다 돌아와도」와 같은 계약이고, 전환 수단만 드로어(=`openSave`)로 바뀌었다.
   it('저장뷰를 바꿨다 돌아와도 두 창의 봉이 그대로다 — 멀티 타임프레임 배치 보존', () => {
     addSecondChartWindow('D');
@@ -579,7 +579,7 @@ describe('StudyPage', () => {
    *
    * **이 가드가 막는 방향**: 저장뷰를 열었다는 이유로 차트 창의 봉이 바뀌는 것.
    * 반대 방향(#902 재시드)은 #1326 에서 뒤집혔고, 그 거울의 반대편이던 탭 라벨
-   * write-through 는 ADR-0148 로 사라졌다(비출 칩이 없다).
+   * write-through 는 ADR-0149 로 사라졌다(비출 칩이 없다).
    *
    * **이 가드가 못 보는 것**: 사용자가 창 헤더에서 직접 봉을 바꾸는 경로
    * (`changeTimeframe`)는 그대로다 — 제스처는 언제나 창을 이긴다(아래 마지막 케이스).
@@ -698,7 +698,7 @@ describe('StudyPage', () => {
     expect(screen.getByRole('dialog', { name: '보조지표' })).toBeTruthy();
   });
 
-  // 탭 뷰포트 캡처/복원 케이스 3건이 여기 있었다(ADR-0148 로 제거).
+  // 탭 뷰포트 캡처/복원 케이스 3건이 여기 있었다(ADR-0149 로 제거).
   // 뷰 슬롯이 하나뿐이면 "이탈 시 캡처 → 복귀 시 복원" 이 성립하지 않는다 — 캡처한 뷰와
   // 복원 대상이 같다는 보장이 없다. 복원 사슬은 이제 `bandViewport ?? savedViewport` 이고,
   // "저장 분봉 뷰포트가 캘린더 봉으로 새지 않는다" 는 위
@@ -1058,7 +1058,7 @@ describe('StudyPage', () => {
 
   // 「keeps previously focused study tabs in the warm query set after switching tabs」가
   // 여기 있었다. 비활성 탭 프리페치 훅(`useWarmStudyReferenceTabQueries`)이 통째로
-  // 사라져(ADR-0148) 잴 대상이 없다 — 단일 뷰에서 워밍 세트는 활성 세트와 같고,
+  // 사라져(ADR-0149) 잴 대상이 없다 — 단일 뷰에서 워밍 세트는 활성 세트와 같고,
   // 그 옵저버는 `useStudyReferenceBundles` 가 직접 든다.
 
 
@@ -1070,14 +1070,14 @@ describe('StudyPage', () => {
   });
 
   /**
-   * 단일 활성 뷰 모델의 진입 계약(ADR-0148).
+   * 단일 활성 뷰 모델의 진입 계약(ADR-0149).
    *
    * 탭 시절엔 이 두 축이 충돌할 일이 없었다 — 모든 진입이 `?view=` 를 들고 왔다.
    * 이제 스토어가 마지막 뷰를 영속하므로 **둘이 다를 수 있고**, 어느 쪽이 이기는지가
    * 계약이 된다. 그 규칙을 실현하는 것은 `initialQueryViewIdRef` 등 라우트 sync 가드
    * 셋이므로, 저기를 "이제 단순하니까" 접으면 여기가 빨개진다.
    */
-  describe('진입 시 활성 뷰 결정 (ADR-0148)', () => {
+  describe('진입 시 활성 뷰 결정 (ADR-0149)', () => {
     it('쿼리 없이 들어오면 영속된 마지막 뷰를 연다', () => {
       useStudyActiveViewStore.setState({
         active: { viewId: 'view-second', code: '000660', label: 'SK하이닉스', name: '눌림 복기' },

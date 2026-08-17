@@ -72,3 +72,31 @@ export const useInvestorEstimateUnitStore = create<Store>((set, get) => ({
     if (stored) set({ unit: stored });
   },
 }));
+
+/**
+ * 다른 탭의 단위 선택을 이 탭에 반영한다 — 단위는 **탭 전역**이다.
+ *
+ * 위 도크스트링의 논거("단위가 서로 다르면 나란히 놓고 비교하는 일 자체가 불가능")는
+ * 창뿐 아니라 **탭에도 그대로 성립한다** — `/live` 딥링크가 새 탭을 여는 구조라
+ * (`live/liveNavigate.ts`) 낡은 탭은 예외가 아니라 평상 상태다. 이 배선이 없던 동안
+ * `hydrateFromStorage` 는 정의만 되고 아무도 부르지 않아, 저장은 공유(localStorage)인데
+ * 읽는 시점이 모듈 로드 한 번뿐이었다 — 먼저 띄워 둔 탭만 옛 단위로 남았다.
+ * `state/liveVenue.ts` 가 거래소에서 고친 것과 **같은 기전**이다(2026-08-07).
+ *
+ * 트레이드오프는 명시적으로 받아들인 것이다: 탭을 나눠 주(수량)와 억(금액)을 나란히
+ * 비교하는 사용법은 이제 불가능하다. 대신 헤더 칩으로 한 창 안에서 전환한다.
+ *
+ * 에코 루프 없음 — `storage` 이벤트는 쓴 탭에서 발생하지 않고 `hydrateFromStorage` 는
+ * 읽기만 한다. `event.newValue` 대신 저장소를 다시 읽어 초기화와 같은 검증(`isUnit`)을
+ * 태우므로, 손으로 편집된 값이 store 로 새지 않는다.
+ *
+ * Returns an unsubscribe function (useEffect cleanup shape).
+ */
+export function subscribeToInvestorEstimateUnitStorage(): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== STORAGE_KEY) return;
+    useInvestorEstimateUnitStore.getState().hydrateFromStorage();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}

@@ -294,7 +294,7 @@ export function StudyPage() {
   const registerStudyTarget = useEntryDragStore((s) => s.registerStudyTarget);
   const clearStudyTarget = useEntryDragStore((s) => s.clearStudyTarget);
   // 축출은 (종목 × 봉)이다(#801) — 창이 여러 개면 같은 종목 아래 봉별 번들이 쌓인다.
-  // 보존 대상은 활성 저장뷰의 종목 하나다(ADR-0148).
+  // 보존 대상은 활성 저장뷰의 종목 하나다(ADR-0149).
   useStudyRangeCacheEviction(
     referenceSave?.code ?? null,
     chartWindowSpecs.map((w) => w.timeframe),
@@ -316,7 +316,7 @@ export function StudyPage() {
    * **포커스 창일 때만** 일어난다. 비포커스 창의 봉이 뷰 기억을 갈아치우면 "안 만진
    * 창 때문에 다음에 열 봉이 바뀐다" 가 된다.
    *
-   * 여기 있던 탭 라벨 write-through(#902)는 ADR-0148 로 사라졌다 — 탭 칩에 봉이
+   * 여기 있던 탭 라벨 write-through(#902)는 ADR-0149 로 사라졌다 — 탭 칩에 봉이
    * 박혀 있어서(`… · 5m`) 필요했던 거울이고, 칩이 없으면 비출 대상이 없다.
    */
   const changeTimeframe = useCallback((windowId: string, next: LiveTimeframe) => {
@@ -486,7 +486,7 @@ export function StudyPage() {
     // 값이라 그대로 복원하면 맥락이 도로 사라진다.
     //
     // 사슬 맨 앞에 **탭 뷰포트**(사용자가 팬·줌한 결과를 탭 전환 직전에 캡처한 것)가
-    // 하나 더 있었다. ADR-0148 로 사라졌다 — 뷰 슬롯이 하나뿐이면 "이탈 시 캡처 →
+    // 하나 더 있었다. ADR-0149 로 사라졌다 — 뷰 슬롯이 하나뿐이면 "이탈 시 캡처 →
     // 복귀 시 복원" 이 성립하지 않는다(캡처한 뷰와 복원 대상이 같다는 보장이 없다).
     // 복기뷰에서는 이쪽이 오히려 옳다: 저장 뷰포트는 사용자가 명시적으로 정한 값이다.
     const bandViewport = band
@@ -547,7 +547,7 @@ export function StudyPage() {
       {/* 부유 카드 모델(2026-07-15, /live 통일) — 바깥 PanelCard 프레임 제거. 헤더는
           --bg full-bleed 크롬이 되고, 차트·상세는 --bg 필드 위에 gap+shadow 로 떠 있는
           카드 2장이 된다. 분리는 톤+간격(gap+shadow-panel)이 담당(보더 없음).
-          저장뷰 탭 스트립이 이 위에 한 줄 더 있었다(ADR-0148 로 제거 — 툴바 + 캔버스 2행). */}
+          저장뷰 탭 스트립이 이 위에 한 줄 더 있었다(ADR-0149 로 제거 — 툴바 + 캔버스 2행). */}
       <div data-testid="study-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden bg-bg text-fg">
         <div data-testid="study-page" className="grid flex-1 min-h-0 grid-rows-[auto_minmax(0,1fr)]">
           {/* 봉·그리기·보조지표가 차트 창 헤더로 내려간 뒤 남는 줄(#903).

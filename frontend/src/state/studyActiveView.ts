@@ -1,5 +1,5 @@
 /**
- * `/study` 의 활성 저장뷰 — **한 번에 하나**(ADR-0148).
+ * `/study` 의 활성 저장뷰 — **한 번에 하나**(ADR-0149).
  *
  * 여기 있던 것은 탭 배열이었다(`study.tabs.v1`). 탭을 없앤 뒤 남는 질문은 하나뿐이라
  * 스토어도 그 하나만 든다: **지금 어느 저장뷰를 보고 있나.**
@@ -34,7 +34,7 @@ import type { StudyViewListRow } from '../api/studyViews';
 import { attachPersistence } from './persistentSubscriber';
 
 const STORAGE_KEY = 'study.activeView.v1';
-/** 탭 시절 저장소(ADR-0148 이전). **승계 전용** — 쓰지 않고, 지우지도 않는다. */
+/** 탭 시절 저장소(ADR-0149 이전). **승계 전용** — 쓰지 않고, 지우지도 않는다. */
 const LEGACY_TABS_KEY = 'study.tabs.v1';
 
 type OpenSaveFields = Pick<StudyViewListRow, 'id' | 'code' | 'label' | 'name'>;

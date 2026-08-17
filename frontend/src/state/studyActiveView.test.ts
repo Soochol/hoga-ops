@@ -1,10 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import {
+  initStudyActiveViewSync,
   studyActiveViewFromSave,
   toStudyActiveViewSnapshot,
   useStudyActiveViewStore,
 } from './studyActiveView';
+
+/** `studyActiveView.ts` 의 비-export 상수를 테스트가 다시 적는다 — 프로덕션 표면을
+ *  테스트만을 위해 넓히지 않기 위해서다. 값이 갈리면 아래 저장 테스트가 빨개진다. */
+const STUDY_ACTIVE_VIEW_STORAGE_KEY = 'study.activeView.v1';
 
 const save = {
   schema_version: 2,
@@ -209,5 +214,99 @@ describe('studyActiveView store', () => {
       }));
       expect(await hydrateFresh()).toBeNull();
     });
+  });
+});
+
+/**
+ * 저장 배선 — `initStudyActiveViewSync()` 는 `src/main.tsx` 에서만 불린다. ADR-0148 이
+ * 탭 스토어에서 지적한 것과 같은 구멍이라(그 경로를 어떤 테스트도 타지 않았다) 새
+ * 스토어는 처음부터 잰다.
+ *
+ * `study.activeView.v1` 은 **기본 관례**다(localStorage · 탭 로컬 런타임 · 저장소는 다음
+ * 로드의 시드). 그래서 `persistencePolicy.ts` 에 선언하지 않는다 — 그 파일은 기본에서
+ * 벗어난 키만 담는다. 여기 테스트가 그 "기본" 을 값으로 못박는다.
+ */
+describe('initStudyActiveViewSync — 저장 배선', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useStudyActiveViewStore.setState({ active: null });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('활성 뷰 변경을 debounce 후 localStorage 에 쓴다', () => {
+    vi.useFakeTimers();
+    const dispose = initStudyActiveViewSync();
+    try {
+      useStudyActiveViewStore.getState().openSave(save);
+      expect(localStorage.getItem(STUDY_ACTIVE_VIEW_STORAGE_KEY)).toBeNull(); // debounce 전
+
+      vi.advanceTimersByTime(250);
+
+      const raw = localStorage.getItem(STUDY_ACTIVE_VIEW_STORAGE_KEY);
+      expect(raw).toBeTruthy();
+      expect(JSON.parse(raw!)).toEqual({
+        version: 1,
+        view: { viewId: 'view1', code: '005930', label: '삼성전자', name: '장초반' },
+      });
+    } finally {
+      dispose();
+    }
+  });
+
+  it('dispose 하면 더 이상 쓰지 않는다', () => {
+    vi.useFakeTimers();
+    const dispose = initStudyActiveViewSync();
+    dispose();
+
+    useStudyActiveViewStore.getState().openSave(save);
+    vi.advanceTimersByTime(250);
+
+    expect(localStorage.getItem(STUDY_ACTIVE_VIEW_STORAGE_KEY)).toBeNull();
+  });
+
+  it('저장한 스냅샷이 다음 로드에 복원된다', async () => {
+    vi.useFakeTimers();
+    const dispose = initStudyActiveViewSync();
+    try {
+      useStudyActiveViewStore.getState().openSave(save);
+      vi.advanceTimersByTime(250);
+    } finally {
+      dispose();
+    }
+    vi.useRealTimers();
+
+    // 스토어는 모듈 로드 시 하이드레이션하므로 신선하게 다시 불러온다.
+    vi.resetModules();
+    const { useStudyActiveViewStore: fresh } = await import('./studyActiveView');
+
+    expect(fresh.getState().active).toEqual({
+      viewId: 'view1',
+      code: '005930',
+      label: '삼성전자',
+      name: '장초반',
+    });
+  });
+
+  // 뷰를 비운 상태도 저장된다 — 그래야 다음 부팅이 옛 탭 키로 되돌아가지 않는다
+  // (하이드레이션의 「자기 키가 명시적 null 이면 승계하지 않는다」와 짝이다).
+  it('활성 뷰를 비운 것도 저장한다', () => {
+    vi.useFakeTimers();
+    const dispose = initStudyActiveViewSync();
+    try {
+      useStudyActiveViewStore.getState().openSave(save);
+      vi.advanceTimersByTime(250);
+      useStudyActiveViewStore.getState().clearIfView('view1');
+      vi.advanceTimersByTime(250);
+
+      expect(JSON.parse(localStorage.getItem(STUDY_ACTIVE_VIEW_STORAGE_KEY)!)).toEqual({
+        version: 1,
+        view: null,
+      });
+    } finally {
+      dispose();
+    }
   });
 });

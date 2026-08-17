@@ -422,7 +422,7 @@ it('normal row click replaces the active study view instead of opening only the 
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-  // 제자리 교체 — 뷰가 쌓이지 않는다(ADR-0148).
+  // 제자리 교체 — 뷰가 쌓이지 않는다(ADR-0149).
   expect(useStudyActiveViewStore.getState().active).toEqual({
     viewId: 'a',
     code: '005930',
@@ -431,7 +431,7 @@ it('normal row click replaces the active study view instead of opening only the 
   });
 });
 
-// 스토어는 **봉을 담지 않는다**(ADR-0148) — 봉의 소유자는 차트 창이다(#1326).
+// 스토어는 **봉을 담지 않는다**(ADR-0149) — 봉의 소유자는 차트 창이다(#1326).
 // 종전엔 탭이 저장 봉을 들고 있어서 "서랍이 딴 값을 끼워 넣지 않는가" 를 여기서 쟀다.
 // 이제는 담을 자리 자체가 없다는 것이 계약이고, 그것을 그대로 잰다.
 it('저장뷰를 열어도 스토어에 봉이 들어가지 않는다 — 봉은 창이 소유한다', async () => {
@@ -454,7 +454,7 @@ it('clicking the saved view name text navigates to the study route', async () =>
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
 });
 
-// ADR-0148 §「Ctrl+클릭은 일반 클릭과 동일」 — 탭이 없으면 "새 탭으로" 가 무의미하다
+// ADR-0149 §「Ctrl+클릭은 일반 클릭과 동일」 — 탭이 없으면 "새 탭으로" 가 무의미하다
 // (ADR-0113 §3 의 `disposition` 제거와 동형). 계산만 하고 버려지는 배선을 남기지 않는다.
 it('ctrl-clicking a saved view row behaves exactly like a normal click', async () => {
   useStudyActiveViewStore.getState().openSave(saves[1]);
@@ -675,7 +675,7 @@ it('opens the full row menu from the hover ⋯ button without navigating', async
 
   const menu = screen.getByRole('menu', { name: '급등 이후 저장뷰 메뉴' });
   expect(within(menu).getByRole('menuitem', { name: '열기' })).toBeTruthy();
-  // 「새 탭에서 열기」는 ADR-0148 로 사라졌다.
+  // 「새 탭에서 열기」는 ADR-0149 로 사라졌다.
   expect(within(menu).queryByRole('menuitem', { name: '새 탭에서 열기' })).toBeNull();
   expect(within(menu).getByRole('menuitem', { name: '이름 변경' })).toBeTruthy();
   expect(within(menu).getByRole('menuitem', { name: '메모 편집' })).toBeTruthy();
@@ -740,7 +740,7 @@ it('cancels memo edit on Escape without saving', async () => {
   expect(screen.queryByLabelText('저장뷰 메모 수정')).toBeNull();
 });
 
-// 그룹 헤더 Ctrl+클릭 = 그 종목의 최신 저장뷰를 새 탭으로, 도 ADR-0148 로 사라졌다.
+// 그룹 헤더 Ctrl+클릭 = 그 종목의 최신 저장뷰를 새 탭으로, 도 ADR-0149 로 사라졌다.
 // 헤더 클릭은 이제 접기/펼치기 하나뿐이다.
 it('ctrl-clicking a stock group header just toggles the group', async () => {
   mockedSaves = [

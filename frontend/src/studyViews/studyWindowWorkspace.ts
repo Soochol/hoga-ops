@@ -10,7 +10,7 @@ import { useStudyActiveViewStore } from '../state/studyActiveView';
 import type { WindowWorkspaceAdapter } from '../live/workspace/windowView';
 
 /**
- * 창의 종목 코드 — `/study` 에는 링크 그룹이 없어 **활성 저장뷰**가 소스다(ADR-0148).
+ * 창의 종목 코드 — `/study` 에는 링크 그룹이 없어 **활성 저장뷰**가 소스다(ADR-0149).
  *
  * 호출 시점 `getState()` 로 읽는다. 렌더 클로저(예: `ctx.save?.code`)를 가두면
  * `useWindowViewGuard` 의 존재 이유인 fresh 읽기가 깨진다 — 디바운스/타이머

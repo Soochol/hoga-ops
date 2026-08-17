@@ -39,7 +39,7 @@ export type SelectedTimeframeInput = {
  * **저장뷰의 봉은 맨 끝이라 열린 창이 하나라도 있으면 절대 이기지 못한다** — 그게 이
  * 페이지의 계약이다.
  *
- * 사슬에 탭 단계가 하나 더 있었다(ADR-0148 이전). 탭의 봉은 포커스 창의 **거울**이었으므로
+ * 사슬에 탭 단계가 하나 더 있었다(ADR-0149 이전). 탭의 봉은 포커스 창의 **거울**이었으므로
  * 창을 읽는 첫 단계와 같은 값이었고, 탭이 사라지면서 그대로 접혔다. */
 export function resolveSelectedTimeframe(input: SelectedTimeframeInput): LiveTimeframe | null {
   const { chartWindowTimeframe, activeViewId, viewTimeframes, savedTimeframe } = input;

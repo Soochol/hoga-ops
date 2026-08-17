@@ -16,7 +16,7 @@ function seedRange(queryClient: QueryClient, code: string, bucketMs = 600_000): 
   return key;
 }
 
-// 보존 집합은 **활성 저장뷰의 종목 하나**다(ADR-0148). 종전엔 "열린 탭 어느 하나라도
+// 보존 집합은 **활성 저장뷰의 종목 하나**다(ADR-0149). 종전엔 "열린 탭 어느 하나라도
 // 든 종목" 이라 여러 개였고, 탭이 사라지면서 하나로 좁아졌다 — 그만큼 축출이 공격적이다.
 describe('useStudyRangeCacheEviction — 종목 축', () => {
   it('활성 종목이 아닌 range 캐시를 축출한다', () => {

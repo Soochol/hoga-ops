@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCrossTabSync } from './crossTabSync';
 import { useThemePrefsStore } from './themePrefs';
 import { useLiveVenueStore } from './liveVenue';
+import { useInvestorEstimateUnitStore } from './investorEstimateUnit';
 import { useLivePageStore } from './livePage';
 import { useChartPrefsStore } from './chartPrefs';
 import { INDICATORS_V2_STORAGE_KEY } from './indicatorSettingsV2';
@@ -14,6 +15,7 @@ import { LIVE_SETTINGS_KEY } from '../api/liveSettings';
 const THEME_KEY = 'ui.themePreference.v1';
 const VENUE_KEY = 'live.venue.v1';
 const PING_KEY = 'live.settings.ping.v1';
+const UNIT_KEY = 'live.investorEstimateUnit.v1';
 const INDICATORS_KEY = INDICATORS_V2_STORAGE_KEY;
 
 function wrapper(qc: QueryClient) {
@@ -35,6 +37,7 @@ beforeEach(() => {
   localStorage.clear();
   useThemePrefsStore.setState({ themePreference: 'toss-light' });
   useLiveVenueStore.setState({ venue: 'KRX' });
+  useInvestorEstimateUnitStore.setState({ unit: 'qty' });
 });
 
 describe('useCrossTabSync', () => {
@@ -52,6 +55,14 @@ describe('useCrossTabSync', () => {
     otherTabWrites(VENUE_KEY, JSON.stringify({ venue: 'NXT' }));
 
     expect(useLiveVenueStore.getState().venue).toBe('NXT');
+  });
+
+  it('잠정투자자 단위를 다른 탭에서 받는다', () => {
+    renderHook(() => useCrossTabSync(), { wrapper: wrapper(new QueryClient()) });
+
+    otherTabWrites(UNIT_KEY, JSON.stringify({ unit: 'amount' }));
+
+    expect(useInvestorEstimateUnitStore.getState().unit).toBe('amount');
   });
 
   it('LiveSettings 는 값을 받는 게 아니라 쿼리를 무효화한다', () => {
@@ -118,6 +129,7 @@ describe('useCrossTabSync', () => {
 
     otherTabWrites(THEME_KEY, JSON.stringify({ themePreference: 'obsidian' }));
     otherTabWrites(VENUE_KEY, JSON.stringify({ venue: 'NXT' }));
+    otherTabWrites(UNIT_KEY, JSON.stringify({ unit: 'amount' }));
     otherTabWrites(PING_KEY, '1-1');
     otherTabWrites(INDICATORS_KEY, JSON.stringify({
       paneOrder: [], paneStretch: {}, byTimeframe: { minute: { askPeakEnabled: true } },
@@ -125,6 +137,7 @@ describe('useCrossTabSync', () => {
 
     expect(useThemePrefsStore.getState().themePreference).toBe('toss-light');
     expect(useLiveVenueStore.getState().venue).toBe('KRX');
+    expect(useInvestorEstimateUnitStore.getState().unit).toBe('qty');
     expect(useLivePageStore.getState().indicatorsByTimeframe).toEqual({});
     expect(invalidate).not.toHaveBeenCalled();
   });

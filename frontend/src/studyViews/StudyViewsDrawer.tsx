@@ -239,7 +239,7 @@ export function StudyViewsDrawer() {
   }
 
   /**
-   * 저장뷰를 연다 — 활성 뷰를 **제자리 교체**한다(ADR-0148). "새 탭으로 열기" 는 없다.
+   * 저장뷰를 연다 — 활성 뷰를 **제자리 교체**한다(ADR-0149). "새 탭으로 열기" 는 없다.
    *
    * 봉은 넘기지 않는다 — 차트 창이 유일한 소유자다(#1326). 저장뷰가 정하는 것은
    * 종목과 구간이다.
@@ -305,7 +305,7 @@ export function StudyViewsDrawer() {
     const deletedId = row.id;
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
-        // 지운 것이 활성 뷰였으면 **빈 상태**로 간다(ADR-0148). 남은 뷰 중 하나로 자동
+        // 지운 것이 활성 뷰였으면 **빈 상태**로 간다(ADR-0149). 남은 뷰 중 하나로 자동
         // 이동하면 사용자가 지운 직후 뜻밖의 뷰가 뜬다 — 빈 상태에는 "저장뷰 열기"
         // 버튼이 있다.
         useStudyActiveViewStore.getState().clearIfView(deletedId);
@@ -405,7 +405,7 @@ export function StudyViewsDrawer() {
         style={{
           background: isActive ? 'var(--tint-selection)' : 'transparent',
         }}
-        // Ctrl/⌘+클릭 분기는 ADR-0148 로 사라졌다 — 탭이 없으면 "새 탭으로" 가 무의미하다
+        // Ctrl/⌘+클릭 분기는 ADR-0149 로 사라졌다 — 탭이 없으면 "새 탭으로" 가 무의미하다
         // (ADR-0113 §3 의 `disposition` 제거와 동형). 일반 클릭과 똑같이 현재 뷰를 교체한다.
         onClick={isEditing ? undefined : () => {
           scheduleStudyViewNavigation(row);
@@ -601,7 +601,7 @@ export function StudyViewsDrawer() {
                           aria-expanded={!groupCollapsed}
                           title={`${group.label} ${group.code}`}
                           // Ctrl/⌘+클릭 = 그 종목의 최신 저장뷰를 새 탭으로 열던 분기는
-                          // ADR-0148 로 사라졌다. 헤더 클릭은 이제 접기/펼치기 하나다.
+                          // ADR-0149 로 사라졌다. 헤더 클릭은 이제 접기/펼치기 하나다.
                           onClick={() => {
                             toggleGroup(group.key);
                           }}
