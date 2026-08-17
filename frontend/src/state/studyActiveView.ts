@@ -126,13 +126,18 @@ function migrateFromStudyTabs(): StudyActiveView | null {
   };
 }
 
+/** 탭 키에서 승계했는가 — `initStudyActiveViewSync` 가 즉시 1회 굳히는 데 쓴다. */
+let _migratedFromTabs = false;
+
 /** 자기 키 → (비었으면) 탭 키 승계 → `null`. */
 function loadActiveView(): StudyActiveView | null {
   const own = readJson(STORAGE_KEY) as Partial<StudyActiveViewSnapshot> | null;
   if (own && 'view' in own) {
     return isStudyActiveView(own.view) ? own.view : null;
   }
-  return migrateFromStudyTabs();
+  const migrated = migrateFromStudyTabs();
+  if (migrated) _migratedFromTabs = true;
+  return migrated;
 }
 
 export function toStudyActiveViewSnapshot(
@@ -159,6 +164,26 @@ let _syncDispose: (() => void) | null = null;
 
 export function initStudyActiveViewSync(): () => void {
   if (_syncDispose) return _syncDispose;
+  /**
+   * 승계했으면 **즉시 새 키에 굳힌다** — `attachPersistence` 는 `store.subscribe` 라
+   * 하이드레이션 초기값을 쓰지 않는다. 굳히지 않으면 사용자가 뷰를 한 번도 바꾸지
+   * 않는 한 매 부팅이 옛 키(`study.tabs.v1`)에 계속 기댄다. 승계가 멱등이라 결과는
+   * 같지만, 1회성이라고 적어 놓고 실제로는 상시 의존하는 상태가 남는다.
+   *
+   * `studyWorkspace` 하이드레이션이 레거시 시드 직후 즉시 persist 해 창 id 를
+   * 고정하는 것과 같은 규율이다.
+   */
+  if (_migratedFromTabs) {
+    _migratedFromTabs = false;
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(toStudyActiveViewSnapshot(useStudyActiveViewStore.getState())),
+      );
+    } catch {
+      // quota/SSR — attachPersistence 와 같은 무음 정책. 다음 부팅이 다시 승계한다.
+    }
+  }
   const unsubPersist = attachPersistence(useStudyActiveViewStore, {
     storageKey: STORAGE_KEY,
     toSnapshot: (state) => toStudyActiveViewSnapshot(state),

@@ -154,6 +154,42 @@ describe('studyActiveView store', () => {
       expect(await hydrateFresh()).toBeNull();
     });
 
+    // 승계는 1회성이라고 적어 놓고 실제로는 매 부팅 옛 키에 기대는 상태를 막는다.
+    // `attachPersistence` 는 `store.subscribe` 라 하이드레이션 초기값을 쓰지 않으므로,
+    // 굳히지 않으면 사용자가 뷰를 바꾸기 전까지 새 키가 영영 비어 있다.
+    it('승계 직후 새 키를 즉시 굳힌다 — 옛 키 의존을 끊는다', async () => {
+      window.localStorage.setItem('study.tabs.v1', JSON.stringify({
+        version: 1,
+        activeIndex: 0,
+        tabs: [{ viewId: 'view-a', code: '005930', label: 'A', name: 'a', timeframe: '1m' }],
+      }));
+
+      vi.resetModules();
+      const mod = await import('./studyActiveView');
+      expect(window.localStorage.getItem('study.activeView.v1')).toBeNull();
+
+      const dispose = mod.initStudyActiveViewSync();
+      try {
+        expect(JSON.parse(window.localStorage.getItem('study.activeView.v1') ?? 'null')).toEqual({
+          version: 1,
+          view: { viewId: 'view-a', code: '005930', label: 'A', name: 'a' },
+        });
+      } finally {
+        dispose();
+      }
+    });
+
+    it('승계가 없었으면 굳히기도 하지 않는다', async () => {
+      vi.resetModules();
+      const mod = await import('./studyActiveView');
+      const dispose = mod.initStudyActiveViewSync();
+      try {
+        expect(window.localStorage.getItem('study.activeView.v1')).toBeNull();
+      } finally {
+        dispose();
+      }
+    });
+
     it('깨진 JSON·모양이 다른 값은 null 로 떨어진다', async () => {
       window.localStorage.setItem('study.activeView.v1', '{not json');
       expect(await hydrateFresh()).toBeNull();
