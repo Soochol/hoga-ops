@@ -345,7 +345,7 @@ class PastIndicatorsCache:
                 for k in [k for k in list(od) if k[:4] == key]:
                     od.pop(k, None)
 
-    def _store_dir(self, code: str, source: str, venue: Venue) -> Path:
+    def _store_dir(self, code: str, source: str, *, venue: Venue) -> Path:
         """이 (code, source, venue) 의 캐시 디렉터리.
 
         parquet 트리와 **같은 규율**(`source_venue_dir`)을 쓴다 — venue 를 하나만
@@ -359,7 +359,7 @@ class PastIndicatorsCache:
         return source_venue_dir(self._data_dir / "kis-past-indicators" / code, source, venue)
 
     def _path(self, code: str, date: str, source: str, kind: Kind, *, venue: Venue = "KRX") -> Path:
-        return self._store_dir(code, source, venue) / f"{date}.{kind}.json"
+        return self._store_dir(code, source, venue=venue) / f"{date}.{kind}.json"
 
     # ── ratio (호가비) ─────────────────────────────────────────────────────────
 
@@ -438,7 +438,7 @@ class PastIndicatorsCache:
         source: str,
         suffix: str, *, venue: Venue = "KRX",
     ) -> Path:
-        return self._store_dir(code, source, venue) / f"{date}.{suffix}.json"
+        return self._store_dir(code, source, venue=venue) / f"{date}.{suffix}.json"
 
     def _peak_path(self, code: str, date: str, source: str, kind: Literal["ask_peak", "bid_peak"], bucket_ms: int, *, venue: Venue = "KRX") -> Path:  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         return self._model_path(code, date, source, f"{kind}.{bucket_ms}", venue=venue)
@@ -457,6 +457,7 @@ class PastIndicatorsCache:
             date,
             source,
             f"trade_volume_poc.{range_count}.{price_min}.{price_max}",
+            venue=venue,
         )
 
     def _read_model_cache(

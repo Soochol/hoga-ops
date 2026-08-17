@@ -24,7 +24,11 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from hoga.api.bundle import build_quote_ratio_slice, build_range_bundle
+from hoga.api.bundle import (
+    build_quote_ratio_slice,
+    build_range_bundle,
+    build_trade_volume_poc_slice,
+)
 from hoga.api.queries import QueryEngine
 
 CODE = "005930"
@@ -135,6 +139,55 @@ def test_past_indicator_cache_does_not_leak_across_venues(tmp_path: Path) -> Non
     store = tmp_path / "kis-past-indicators" / CODE / "kiwoom_live"
     assert (store / "KRX" / f"{DATE}.ratio.json").exists()
     assert (store / "NXT" / f"{DATE}.ratio.json").exists()
+
+
+def test_trade_volume_poc_cache_does_not_leak_across_venues(tmp_path: Path) -> None:
+    """거래량 POC 의 디스크 캐시도 venue 별로 갈린다.
+
+    바로 위 ratio 판과 따로 두는 이유: **경로 헬퍼가 지표마다 따로**라 한쪽만 고쳐도
+    다른 쪽이 남는다. 실제로 `_poc_path` 만 `_model_path` 에 `venue=` 를 안 넘겨,
+    ratio 는 갈리는데 POC 는 안 갈리는 상태가 venue 축 도입(b64036f5, 2026-08-07)부터
+    실재했다 — 형제인 `_peak_path` 는 같은 커밋에서 제대로 고쳐졌다.
+
+    실측 2026-08-17(운영 캐시 트리): `kiwoom_live` 아래 `trade_volume_poc` 파일이
+    KRX 276 / NXT 0 / UN 0 인데 `ask_peak` 는 61 / 3 / 3 이었다 — 대조군이 있어
+    "NXT 를 안 써서" 가 아니라 "POC 만 KRX 로 떨어져서" 임이 확정된다.
+
+    두 층을 함께 잰다: ① 값이 갈리는가 ② **캐시 아티팩트가 갈리는가**. ①만 재면
+    메모리 캐시 키에 venue 가 이미 있어(경로와 달리 정상) 통과해 버린다.
+    """
+    for venue, price in (("KRX", 100), ("NXT", 200)):
+        d = tmp_path / "parquet" / DATE / CODE / "kiwoom_live" / venue
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(json.dumps({
+            "regular_session_open_ms": OPEN_MS,
+            "regular_session_close_ms": CLOSE_MS,
+            "collection_complete": True,
+            "is_partial": False,
+        }))
+        pq.write_table(
+            pa.table({"ts_ms": [_hms_native(9, 0, 10)], "seq": [1],
+                      "price": [price], "qty": [7], "side": [1]}),
+            d / "trades.parquet",
+        )
+
+    eng = QueryEngine(tmp_path)
+    common = {"code": CODE, "date": DATE, "source": "kiwoom_live",
+              "session_open_ms": OPEN_MS, "session_close_ms": CLOSE_MS,
+              "range_count": 10, "price_range": (100, 200)}
+
+    krx = build_trade_volume_poc_slice(eng, venue="KRX", **common)   # 캐시 채우기
+    nxt = build_trade_volume_poc_slice(eng, venue="NXT", **common)   # 콜드여야 한다
+
+    assert krx is not None and nxt is not None
+    # 체결 가격이 다르므로 POC 중심가도 달라야 한다. 같으면 한쪽 캐시가 새어 나온 것이다.
+    assert krx.center_price != nxt.center_price
+
+    store = tmp_path / "kis-past-indicators" / CODE / "kiwoom_live"
+    assert list((store / "KRX").glob("*.trade_volume_poc.*.json"))
+    assert list((store / "NXT").glob("*.trade_volume_poc.*.json")), (
+        "NXT POC 캐시가 KRX 디렉터리에 앉았다 — _poc_path 가 venue 를 버리고 있다"
+    )
 
 
 def test_trade_indicator_source_stays_inside_the_requested_venue(tmp_path: Path) -> None:
