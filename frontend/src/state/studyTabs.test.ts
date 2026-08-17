@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
-import { studyTabFromSave, toStudyTabsSnapshot, useStudyTabsStore } from './studyTabs';
+import { initStudyTabsSync, studyTabFromSave, toStudyTabsSnapshot, useStudyTabsStore } from './studyTabs';
+
+/** studyTabs.ts 의 비-export 상수를 테스트가 다시 적는다 — 프로덕션 표면을 테스트만을
+ *  위해 넓히지 않기 위해서다. 값이 갈리면 아래 저장 테스트가 빨개진다. */
+const STUDY_TABS_STORAGE_KEY = 'study.tabs.v1';
 
 const save = {
   schema_version: 2,
@@ -232,5 +236,84 @@ describe('studyTabs store', () => {
     expect(state.tabs.map((tab) => tab.viewId)).toEqual(['view2']);
     expect(state.activeTabId).toBe(state.tabs[0].id);
     expect(nextActive?.viewId).toBe('view2');
+  });
+});
+
+/**
+ * 저장 배선 — `initStudyTabsSync()` 는 `src/main.tsx` 에서만 불리므로 **어떤 테스트도
+ * 이 경로를 타지 않았다.** `attachPersistence` 의 유일한 실제 스토어 소비처인데
+ * 스냅샷이 저장되는지, 다음 로드에 복원되는지가 통째로 미검증이었다.
+ *
+ * ⚠ `study.tabs.v1` 은 **공유 localStorage 에 탭 목록 전체 스냅샷**을 쓴다 —
+ * `state/workspace.ts` 가 이름 붙여 고친 그 파괴 기전과 구조적으로 같다(두 탭 화면은
+ * 각자 자기 메모리를 계속 그리므로 조용히 깨지고, 손실은 다음 새로고침에야 드러난다).
+ * 도달성이 낮아(코드 전체에서 `window.open` 은 `/live` 한 곳뿐이라 /study 를 두 탭에
+ * 띄우려면 사용자가 탭을 수동 복제해야 한다) 2026-08-17 에 **보류**로 결정했다.
+ * 여기 테스트는 그 결정을 전제로 현재 동작을 못박는다 — 스코프를 바꾸면 여기가 빨개진다.
+ */
+describe('initStudyTabsSync — 저장 배선', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useStudyTabsStore.setState({ tabs: [], activeTabId: null });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('탭 변경을 debounce 후 localStorage 에 쓴다', () => {
+    vi.useFakeTimers();
+    const dispose = initStudyTabsSync();
+    try {
+      useStudyTabsStore.getState().openSaveInNewTab(save);
+      expect(localStorage.getItem(STUDY_TABS_STORAGE_KEY)).toBeNull(); // debounce 전
+
+      vi.advanceTimersByTime(250);
+
+      const raw = localStorage.getItem(STUDY_TABS_STORAGE_KEY);
+      expect(raw).toBeTruthy();
+      expect(JSON.parse(raw!)).toMatchObject({
+        version: 1,
+        activeIndex: 0,
+        tabs: [{ viewId: 'view1', code: '005930' }],
+      });
+    } finally {
+      dispose();
+    }
+  });
+
+  it('dispose 하면 더 이상 쓰지 않는다', () => {
+    vi.useFakeTimers();
+    const dispose = initStudyTabsSync();
+    dispose();
+
+    useStudyTabsStore.getState().openSaveInNewTab(save);
+    vi.advanceTimersByTime(250);
+
+    expect(localStorage.getItem(STUDY_TABS_STORAGE_KEY)).toBeNull();
+  });
+
+  it('저장한 스냅샷이 다음 로드에 복원된다 (탭 id 는 새로 발급)', async () => {
+    vi.useFakeTimers();
+    const dispose = initStudyTabsSync();
+    let savedId: string;
+    try {
+      useStudyTabsStore.getState().openSaveInNewTab(save);
+      savedId = useStudyTabsStore.getState().activeTabId!;
+      vi.advanceTimersByTime(250);
+    } finally {
+      dispose();
+    }
+    vi.useRealTimers();
+
+    // 스토어는 모듈 로드 시 하이드레이션하므로 신선하게 다시 불러온다.
+    vi.resetModules();
+    const { useStudyTabsStore: fresh } = await import('./studyTabs');
+
+    const state = fresh.getState();
+    expect(state.tabs.map((tab) => tab.viewId)).toEqual(['view1']);
+    expect(state.activeTabId).toBe(state.tabs[0].id);
+    // id 는 nanoid 로 재발급된다 — 저장 스냅샷에 id 를 싣지 않기 때문.
+    expect(state.tabs[0].id).not.toBe(savedId);
   });
 });
