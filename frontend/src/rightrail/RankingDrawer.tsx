@@ -11,7 +11,7 @@ import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
 import { useLivePageStore } from '../state/livePage';
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
 import { RailDragOverlay } from './RailDragOverlay';
-import { useChartDropDrag } from './useChartDropDrag';
+import { useChartDropDrag, type ChartDropGhost } from './useChartDropDrag';
 import {
   useLiveRankings,
   type RankingDirection,
@@ -66,6 +66,28 @@ function formatUpdatedAt(ms: number | undefined): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+/** 순위번호 슬롯 — 리스트 행과 드래그 고스트가 **함께** 쓴다.
+ *
+ *  이 폭이 좌측 정렬 계약의 절반이다: `w-5`(1.25rem) + 행의 `gap-2`(0.5rem) = 1.75rem 이
+ *  `pl-md`(0.75rem) 위에 얹혀 종목명 시작 x 를 2.5rem 으로 만든다 — 관심·히트맵이
+ *  `QuoteRow indented`(pl-10)로 얻는 값과 같다(계약은 QuoteRow 의 prop 주석).
+ *
+ *  **왜 컴포넌트로 빼는가**: 두 곳에 손으로 옮겨 적으면 한쪽 폭만 바뀌었을 때 드래그
+ *  중에만 어긋나고, 그 순간은 스크린샷으로 잡기 가장 어려운 상태다.
+ *
+ *  `rank` 가 optional 인 것은 스냅샷 타입(ChartDropGhost)이 스크리너와 공용이기 때문이고,
+ *  값이 없어도 슬롯은 폭을 잡는다 — 정렬은 내용이 아니라 슬롯이 책임진다. */
+function RankSlot({ rank }: { rank?: number }) {
+  return (
+    <span
+      data-testid="ranking-rank"
+      className="w-5 flex-none text-right font-data tabular-nums text-xs text-fg-dim"
+    >
+      {rank}
+    </span>
+  );
+}
+
 /** 순위 행.
  *
  *  **`memo` 인 이유와 그 조건**: 10초 폴링(useLiveRankings)이 드로어를 리렌더한다. 그때
@@ -105,11 +127,7 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
       testId={`ranking-row-${row.code}`}
       onClick={handleActivate}
       onContextMenu={handleContextMenu}
-      leading={
-        <span className="w-5 flex-none text-right font-data tabular-nums text-xs text-fg-dim">
-          {row.rank}
-        </span>
-      }
+      leading={<RankSlot rank={row.rank} />}
       sortableRef={setNodeRef}
       dragListeners={listeners}
       dragAttributes={attributes}
@@ -118,8 +136,19 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
   );
 });
 
-/** 고스트에 그릴 행 — 리스트 행과 같은 QuoteRow 라 손에 든 것이 그대로 보인다. */
-function RankingDragGhost({ ghost }: { ghost: { name: string; price: number | null; pct: number | null } }) {
+/** 고스트에 그릴 행 — 리스트 행과 같은 QuoteRow 라 손에 든 것이 그대로 보인다.
+ *
+ *  **`leading` 을 같이 싣는 이유**는 두 가지다.
+ *
+ *  1. **정렬.** QuoteRow 의 좌측 여백은 `leading` 이 있으면 `pl-md`, 없으면(그리고
+ *     `indented` 면) `pl-10` 이다 — 둘은 상호배타이고 `leading` 이 이긴다. 슬롯을 빼면
+ *     고스트만 `pl-md` 로 떨어져 종목명이 리스트 행보다 1.75rem 왼쪽에서 시작한다.
+ *  2. **복제.** 이 리포의 고스트 계약은 "네 리스트를 같은 x 로" 가 아니라 **"고스트는
+ *     자기 리스트 행의 렌더를 그대로 복제한다"** 이다(관심종목 고스트는 무동작
+ *     `trailingAction` 까지 싣는다). 순위 행의 좌측 슬롯은 여백이 아니라 순위번호이므로,
+ *     `indented` 로 폭만 맞추면 손에 든 것이 집어 든 것과 달라지고 카드 안에 내용 없는
+ *     거터가 남는다. */
+function RankingDragGhost({ ghost }: { ghost: ChartDropGhost }) {
   return (
     <QuoteRow
       name={ghost.name}
@@ -129,6 +158,7 @@ function RankingDragGhost({ ghost }: { ghost: { name: string; price: number | nu
       active={false}
       ariaLabel={ghost.name}
       testId="ranking-drag-ghost"
+      leading={<RankSlot rank={ghost.rank} />}
       onClick={() => {}}
     />
   );
@@ -169,7 +199,10 @@ export function RankingDrawer() {
   const onDragStart = (ev: DragStartEvent) => {
     const code = String((ev.active.data.current as { code?: string } | undefined)?.code ?? '');
     const row = rows.find((r) => r.code === code);
-    drag.onDragStart(ev, row ? { code: row.code, name: row.name, price: row.price, pct: row.change_pct } : null);
+    drag.onDragStart(
+      ev,
+      row ? { code: row.code, name: row.name, price: row.price, pct: row.change_pct, rank: row.rank } : null,
+    );
   };
 
   const onActivateRow = useCallback((row: RankingRow, e?: JumpModifiers) => {
