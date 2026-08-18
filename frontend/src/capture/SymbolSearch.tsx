@@ -160,18 +160,23 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
           </span>
         )}
       </div>
-      {cacheStatus === 'unavailable' && (
+      {/* `showRefresh` 는 `stale` 도 포함하는데 이 블록이 `unavailable` 일 때만 렌더돼서
+          **stale 에서 그 조건이 죽어 있었다** — "오래됨" 뱃지를 본 사용자에게 갱신 경로가
+          없었다(검색 결과가 0건일 때 뜨는 "설정에서 갱신" 이 유일한 우회로였다).
+
+          `hint` 는 unavailable 전용 문구다("종목 목록 미가용 — 6자리 코드 입력 후 Enter")
+          — stale 은 목록이 있으니 그 문장이 거짓이라, 버튼만 낸다. 상태 설명은 옆의
+          「오래됨」 뱃지가 이미 한다. */}
+      {showRefresh && (
         <div className="mt-1.5 text-xs text-fg-dim">
-          <p className="m-0">{hint}</p>
-          {showRefresh && (
-            <button
-              type="button"
-              onClick={handleRefresh}
-              className="mt-1.5 bg-bg-input border border-border rounded-md px-xs py-0.5 text-fg-dim hover:text-fg cursor-pointer font-[inherit] text-xs"
-            >
-              갱신
-            </button>
-          )}
+          {cacheStatus === 'unavailable' && <p className="m-0">{hint}</p>}
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="mt-1.5 bg-bg-input border border-border rounded-md px-xs py-0.5 text-fg-dim hover:text-fg cursor-pointer font-[inherit] text-xs"
+          >
+            갱신
+          </button>
         </div>
       )}
       {dropdownVisible && (

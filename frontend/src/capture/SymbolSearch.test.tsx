@@ -298,5 +298,32 @@ describe('SymbolSearch — empty-result staleness nudge', () => {
     expect(name.className).toContain('min-w-0');    // grid 자식이 1fr 아래로 줄 수 있게
     expect(name.getAttribute('title')).toBe('삼성전자');
   });
-});
+  // `showRefresh` 는 stale·unavailable 둘 다 포함하는데 갱신 블록이 unavailable 일 때만
+  // 렌더돼서 **stale 에서 그 조건이 죽어 있었다** — "오래됨" 을 본 사용자에게 갱신 경로가
+  // 없었다. hint 는 unavailable 전용 문구라(목록이 없다는 뜻) stale 에는 붙이지 않는다.
+  it('offers 갱신 on stale too — hint stays unavailable-only', async () => {
+    const qc = setup({ symbols: [], status: 'stale' as const, fetched_at_ms: null });
+    render(<SymbolSearch value={null} onChange={() => {}} />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    await new Promise((r) => setTimeout(r, 30));
 
+    expect(screen.getByRole('button', { name: '갱신' })).toBeInTheDocument();
+    expect(screen.queryByText(/종목 목록 미가용/)).not.toBeInTheDocument();
+  });
+
+  it('keeps hint + 갱신 together when the master is unavailable', async () => {
+    const qc = setup({ symbols: [], status: 'unavailable' as const, fetched_at_ms: null });
+    render(<SymbolSearch value={null} onChange={() => {}} />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(screen.getByRole('button', { name: '갱신' })).toBeInTheDocument();
+    expect(screen.getByText(/6자리 코드/)).toBeInTheDocument();
+  });
+
+  it('shows no 갱신 while fresh', async () => {
+    const qc = setup({ symbols: [], status: 'fresh' as const, fetched_at_ms: null });
+    render(<SymbolSearch value={null} onChange={() => {}} />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(screen.queryByRole('button', { name: '갱신' })).not.toBeInTheDocument();
+  });
+});
