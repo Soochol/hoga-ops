@@ -8,6 +8,8 @@ import { useWatchlistFeedback } from './useWatchlistFeedback';
 import { WatchlistAddForm } from './WatchlistAddForm';
 import { Banner } from './Banner';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { MoveIcon } from '../ui/MoveIcon';
+import { RefreshIcon } from '../ui/RefreshIcon';
 import { LastSuccessBadge } from './rowFormat';
 import { formatCaughtUpOneMessage, symbolLabel } from './banners';
 import { selectVisibleEntries, countOrphansIfRemovedFrom, type Selected } from './grouping';
@@ -160,7 +162,9 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
         </span>
         <div className="relative" ref={moveMenuRef}>
           <button type="button" disabled={selectedCodes.length === 0} onClick={() => setMoveMenu((v) => !v)}
-            className="px-2 py-1 rounded border border-border text-xs text-fg-dim hover:text-accent disabled:opacity-40">⇄ 이동</button>
+            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-xs text-fg-dim hover:text-accent disabled:opacity-40">
+            <MoveIcon /> 이동
+          </button>
           {moveMenu && (
             <div role="menu" className="absolute z-10 mt-1 bg-bg-card border border-border rounded shadow-lg min-w-[140px]">
               {folders.filter((f) => f.id !== selected).map((f) => (
@@ -315,7 +319,9 @@ function SortableEntryRow(props: RowProps) {
       <LastSuccessBadge date={entry.last_success_date} />
       <button type="button" aria-label={`${entry.name} 수집`} onClick={props.onCatchup} disabled={props.catchingUp}
         onPointerDown={(e) => e.stopPropagation()}
-        className={`text-fg-dimmer hover:text-accent disabled:opacity-40 ${props.catchingUp ? 'animate-spin' : ''}`}>↻</button>
+        className="flex items-center justify-center text-fg-dimmer hover:text-accent disabled:opacity-40">
+        <RefreshIcon className={`w-[1em] h-[1em] ${props.catchingUp ? 'animate-spin' : ''}`} />
+      </button>
     </li>
   );
 }
