@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useLiveSeries } from './liveSeries';
+import { pickLastKnownOb, useLiveSeries } from './liveSeries';
 import * as client from './client';
 import { installFakeWebSocket, fakeSockets } from '../test/fakeWebSocket';
 import { __resetForTests as resetWs } from './ws';
@@ -151,5 +151,122 @@ describe('useLiveSeries', () => {
     await waitFor(() => expect(result.current.ob).toHaveLength(1));
     expect(result.current.ob[0]).toMatchObject({ venue: 'KRX' });
     expect(result.current.trade).toHaveLength(1);
+  });
+});
+
+
+// ── 빈 호가창 폴백 (2026-08-18) ────────────────────────────────────────────
+//
+// 15:30 이후 KRX 를 고른 사용자의 10호가 창이 **NXT 상장 종목에서만** 비었다.
+// 키움 `0D` 가 15:30 에 끊긴 뒤 NXT·UN 프레임이 같은 버퍼에서 KRX 프레임을 밀어내기
+// 때문이다(실측 2026-08-18: 005930 `ob` 360건이 34초치 · KRX 0건). NXT 미상장 종목은
+// 밀어낼 상대가 없어 15:30 값이 남아 정상으로 보였다 — 고치는 것은 그 **대칭**이다.
+
+const OLD_SERVED_OB = { t_ms: 100, kind: 'ob', venue: 'KRX', asks: [{ price: 1, qty: 1 }] };
+
+function seriesBody(extra: Record<string, unknown> = {}) {
+  return {
+    code: '005930', date: '20260818', session_open_ms: 1000,
+    session_close_ms: null, is_open: true,
+    snapshots: [], trades: [], brokers: [], programs: [],
+    ...extra,
+  };
+}
+
+describe('pickLastKnownOb', () => {
+  const latched = { t_ms: 500 } as never;
+  const served = { t_ms: 100 } as never;
+
+  it('prefers whichever frame is newer', () => {
+    expect(pickLastKnownOb(latched, served)).toBe(latched);
+    expect(pickLastKnownOb(served, latched)).toBe(latched);
+  });
+
+  it('falls back to whichever one exists', () => {
+    expect(pickLastKnownOb(undefined, served)).toBe(served);
+    expect(pickLastKnownOb(latched, undefined)).toBe(latched);
+    expect(pickLastKnownOb(undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe('useLiveSeries — 빈 호가창 폴백', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    installFakeWebSocket();
+    resetWs();
+    vi.spyOn(client, 'wsUrl').mockResolvedValue('ws://localhost:8080/api/ws');
+  });
+  afterEach(() => { resetWs(); });
+
+  it('serves the backend last_ob when the buffer holds no frame for this venue', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue(seriesBody({ last_ob: OLD_SERVED_OB }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
+
+    await waitFor(() => expect(result.current.ob).toHaveLength(1));
+    expect(result.current.ob[0]).toMatchObject({ t_ms: 100, venue: 'KRX' });
+  });
+
+  it('keeps the latched frame when it is newer than the served one', async () => {
+    // **09:00 에 열어 둔 탭**이 이 경로다. `initial` 은 마운트 1회 조회라 그 응답의
+    // last_ob 가 그 시각에 얼어 있는데, 클라이언트 축출은 몇 시간 뒤에 온다. 래치가
+    // 없으면 그 순간 화면이 **몇 시간 낡은 사다리**로 바뀐다 — 빈 화면보다 나쁘다.
+    vi.spyOn(client, 'apiCall').mockResolvedValue(seriesBody({ last_ob: OLD_SERVED_OB }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
+    await waitFor(() => expect(result.current.initial).toBeDefined());
+    await waitFor(() => expect(fakeSockets.length).toBe(1));
+    const sock = fakeSockets[0];
+    sock.open();
+
+    const fresh = { t_ms: 5_000, kind: 'ob', venue: 'KRX', asks: [{ price: 2, qty: 2 }] };
+    act(() => { sock.message({ ch: 'live', code: '005930', data: fresh }); });
+    await waitFor(() => expect(result.current.ob[0]).toMatchObject({ t_ms: 5_000 }));
+
+    // 15분 뒤 NXT 프레임 하나면 `evictOld` 가 KRX 프레임을 버린다 — 15:30 이후
+    // NXT 상장 종목에서 실제로 일어나는 일이고, 여기가 폴백이 발동하는 순간이다.
+    //
+    // ⚠ **`ob` 로는 그 순간을 기다릴 수 없다.** 폴백이 붙은 뒤에도 `ob` 는 길이 1 ·
+    // t_ms 5,000 이라 축출 전후가 **구별되지 않고**, `waitFor` 는 조건이 이미 참이면
+    // 즉시 반환하므로 단언이 축출 이전 상태를 본다(그러면 폴백을 꺼도 통과하는
+    // 위양성이다 — red-check 으로 실제 관측했다). 그래서 같은 flush 에 `trade` 를
+    // 하나 태워 **그것을** 기다린다: trade 가 보였다면 flush 가 끝났고 같은 flush 에
+    // 들어온 `ob` 축출도 이미 적용돼 있다.
+    const evictingTick = 5_000 + 16 * 60_000;
+    act(() => {
+      sock.message({
+        ch: 'live', code: '005930',
+        data: { t_ms: evictingTick, kind: 'ob', venue: 'NXT', asks: [] },
+      });
+      sock.message({
+        ch: 'live', code: '005930',
+        data: { t_ms: evictingTick, kind: 'trade', venue: 'KRX', trades: [{ price: 9 }] },
+      });
+    });
+    await waitFor(() => expect(result.current.trade).toHaveLength(1));
+
+    expect(result.current.ob).toHaveLength(1);
+    expect(result.current.ob[0]).toMatchObject({ t_ms: 5_000, venue: 'KRX' });
+  });
+
+  it('never substitutes a frame from another venue', async () => {
+    // 폴백이 필터를 우회하면 증상이 **빈 화면에서 조용히 틀린 값으로** 바뀐다.
+    vi.spyOn(client, 'apiCall').mockResolvedValue(
+      seriesBody({ last_ob: { ...OLD_SERVED_OB, venue: 'NXT' } }),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
+
+    await waitFor(() => expect(result.current.initial).toBeDefined());
+    expect(result.current.ob).toEqual([]);
+  });
+
+  it('stays empty when the backend has no last_ob for this venue', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue(seriesBody({ last_ob: null }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useLiveSeries('005930', 'KRX'), { wrapper: wrap(qc) });
+
+    await waitFor(() => expect(result.current.initial).toBeDefined());
+    expect(result.current.ob).toEqual([]);
   });
 });

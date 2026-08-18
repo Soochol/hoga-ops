@@ -1656,6 +1656,14 @@ class LiveSeriesResponse(BaseModel):
     session_open_ms: int | None = None
     session_close_ms: int | None = None
     is_open: bool = False
+    # 이 venue 의 마지막 호가 프레임 — `snapshots` 가 그 venue 를 다 잃었을 때의
+    # 폴백(LiveBuffer._last_ob 주석). **shape 을 좁히지 않는다**: 위 docstring 이
+    # 배열 항목에 대해 밝힌 이유(항목 shape 은 스트림 소유, 좁히면 미러 한 벌 +
+    # 조용한 스트립 위험)가 같은 payload 인 이 필드에도 그대로 적용된다.
+    #
+    # **없음(None)과 빈 dict 는 다르다** — None 은 "이 venue 로 호가가 온 적 없다"
+    # 이고, 그때 프론트는 폴백 없이 기존대로 빈 호가창을 그린다(정직한 표시).
+    last_ob: dict | None = None
     snapshots: list[dict] = Field(default_factory=list)
     trades: list[dict] = Field(default_factory=list)
     brokers: list[dict] = Field(default_factory=list)
@@ -2401,6 +2409,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             # ⚠ `venue` 기본값이 "KRX" 인 것은 다른 라우트와 규율이 다르다. 이 라우트는
             # 표시 버퍼 hydrate 용이고 프레임마다 venue 태그가 실려 프론트가 거르므로,
             # 필수화하면 구 프론트가 통째로 빈 화면이 된다. 최대벽만 venue 를 탄다.
+            # 축출 무관 폴백(ADR-0140 §2 의 부작용 수습). `venue` 는 최대벽과 **같은
+            # 값을 쓴다** — 프론트가 프레임 필터에 쓰는 effective venue 이므로,
+            # 폴백이 필터와 다른 시장을 가리키면 빈 화면이 엉뚱한 값으로 바뀐다.
+            "last_ob": await buf.get_last_ob(code, venue),
             "ask_peak_today": (
                 get_today_ask_peak(code, venue) if get_today_ask_peak is not None else None
             ),
