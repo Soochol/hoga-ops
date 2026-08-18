@@ -170,6 +170,10 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
       flash={flash}
       ariaLabel={`${row.name} ${row.code} 차트 열기`}
       testId={`screener-row-${row.code}`}
+      // 관심·히트맵과 같은 좌측 여백. 우측 레일 네 리스트의 종목명 시작 x 를 한 값으로
+      // 맞춘다(순위는 leading 순위번호가 같은 폭을 채운다) — 패널을 토글할 때 이름 열이
+      // 튀지 않게. 평면 목록이라 그룹 위계 이유는 없고, 정렬 일관성만이 근거다.
+      indented
       onClick={handleActivate}
       onContextMenu={handleContextMenu}
       sortableRef={setNodeRef}
@@ -193,6 +197,7 @@ function ScreenerDragGhost({ ghost }: {
       active={false}
       ariaLabel={ghost.name}
       testId="screener-drag-ghost"
+      indented
       onClick={() => {}}
     />
   );

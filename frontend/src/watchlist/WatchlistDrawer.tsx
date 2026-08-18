@@ -23,7 +23,7 @@ import { Countdown } from './Countdown';
 import { Banner } from './Banner';
 import { WatchlistEditModal } from './WatchlistEditModal';
 import { GroupNameModal } from './GroupNameModal';
-import { WatchlistRowMenu } from './WatchlistRowMenu';
+import { WatchlistRowMenu, WatchlistMemoRowMenu } from './WatchlistRowMenu';
 import { WatchlistGroupPicker } from './WatchlistGroupPicker';
 import { WatchlistAddForm } from './WatchlistAddForm';
 import { useDismissablePopover } from '../util/useDismissablePopover';
@@ -123,22 +123,31 @@ const ADD_POPOVER_W = 280;
  * (히트맵 헤더 버튼과 달리 그룹 선택 셀렉트 없음). 바깥 클릭·Escape·추가 완료 시 onClose.
  * 히트맵 SymbolAddPopover 와 동일 셸/레이어링(메뉴와 별개 portal 레이어).
  */
-function WatchlistSymbolAddPopover({ anchorRef, folderId, onClose }: {
-  anchorRef: React.RefObject<HTMLElement | null>;
+function WatchlistSymbolAddPopover({ anchorRef, point, folderId, resolveAt, onAdded, onClose }: {
+  /** ⋯ 메뉴 경로 — 이 버튼의 우하단에 정렬한다. `point` 와 배타적이다. */
+  anchorRef?: React.RefObject<HTMLElement | null>;
+  /** 행 우클릭 경로 — 커서 좌표에 그대로 띄운다(컨텍스트 메뉴가 있던 자리). */
+  point?: { x: number; y: number };
   folderId: string;
+  /** 삽입 위치(WatchlistAddForm 참조) — 미전달이면 폴더 맨 아래. */
+  resolveAt?: () => number | undefined;
+  /** 추가 성공 후. 미전달이면 닫기만 한다(⋯ 메뉴 경로의 기존 동작). */
+  onAdded?: () => void;
   onClose: () => void;
 }) {
-  const [anchor, setAnchor] = useState({ left: 0, top: 0 });
+  const [anchor, setAnchor] = useState(
+    point ? { left: point.x, top: point.y } : { left: 0, top: 0 });
   useLayoutEffect(() => {
-    const r = anchorRef.current?.getBoundingClientRect();
+    if (point) return;   // 커서 좌표 경로 — 실측할 앵커가 없다(초기 state 가 곧 위치)
+    const r = anchorRef?.current?.getBoundingClientRect();
     if (r) setAnchor({ left: r.right - ADD_POPOVER_W, top: r.bottom + 4 });
-  }, [anchorRef]);
+  }, [anchorRef, point]);
   const { ref: popRef, left, top } = useClampedFixedPosition<HTMLDivElement>(anchor.left, anchor.top);
   useLayoutEffect(() => { popRef.current?.querySelector('input')?.focus(); }, [popRef]);
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (anchorRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      if (anchorRef?.current?.contains(t) || popRef.current?.contains(t)) return;
       onClose();
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -154,7 +163,8 @@ function WatchlistSymbolAddPopover({ anchorRef, folderId, onClose }: {
       data-testid="watchlist-group-add-popover"
       style={{ position: 'fixed', left, top, width: ADD_POPOVER_W }}
       className="z-30 bg-bg-card border border-border-strong rounded p-2 shadow-lg">
-      <WatchlistAddForm folderId={folderId} onAdded={() => onClose()} />
+      <WatchlistAddForm folderId={folderId} resolveAt={resolveAt}
+        onAdded={() => (onAdded ? onAdded() : onClose())} />
     </div>,
     document.body,
   );
@@ -453,9 +463,10 @@ const SortableMemoRow = memo(function SortableMemoRow(props: {
   /** memoId 를 인자로 받는 **안정 참조** — SortableQuoteRow 와 같은 memo 계약이다. */
   onSave: (memoId: string, text: string) => void;
   onDelete: (memoId: string) => void;
+  onOpenMenu: (e: React.MouseEvent, folderId: string, memo: WatchlistMemo) => void;
   dragEnabled: boolean;
 }) {
-  const { memo: row, onSave, onDelete } = props;
+  const { memo: row, onSave, onDelete, onOpenMenu, folderId } = props;
   const { setNodeRef, setActivatorNodeRef, listeners, transform, transition, isDragging, activeIndex, overIndex, index } =
     useSortable({ id: memoSortableId(props.folderId, props.memo.id), data: { type: 'memo', folderId: props.folderId, memoId: props.memo.id } });
   const dropIndicator = activeIndex !== -1 && overIndex !== -1 && index === overIndex && index !== activeIndex
@@ -464,6 +475,8 @@ const SortableMemoRow = memo(function SortableMemoRow(props: {
   const off = !props.dragEnabled;
   const handleSave = useCallback((text: string) => onSave(row.id, text), [onSave, row.id]);
   const handleDelete = useCallback(() => onDelete(row.id), [onDelete, row.id]);
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => onOpenMenu(e, folderId, row), [onOpenMenu, folderId, row]);
   return (
     <MemoRow
       text={props.memo.text}
@@ -472,6 +485,7 @@ const SortableMemoRow = memo(function SortableMemoRow(props: {
       maxLength={WATCHLIST_MEMO_MAX_LEN}
       autoEdit={props.autoEdit}
       onAutoEditConsumed={props.onAutoEditConsumed}
+      onContextMenu={handleContextMenu}
       testId={`watchlist-memo-${props.memo.id}`}
       sortableRef={off ? undefined : setNodeRef}
       sortableStyle={off ? undefined : { transform: CSS.Transform.toString(transform), transition }}
@@ -584,6 +598,17 @@ export function WatchlistDrawer() {
   // v3 "그룹 편집" — 행 메뉴/하트가 여는 멤버십 피커(ADR-0070 P5).
   const [groupPicker, setGroupPicker] =
     useState<{ code: string; name: string; x: number; y: number } | null>(null);
+  // 메모("빈칸") 행 우클릭 메뉴(v5). 종목 행 메뉴와 항목이 달라 state 를 따로 둔다 —
+  // 하나로 합치면 두 메뉴의 필드가 서로 optional 이 되어 어느 쪽이 열렸는지 흐려진다.
+  const [memoMenu, setMemoMenu] = useState<
+    { x: number; y: number; folderId: string; memoId: string; text: string } | null>(null);
+  // 행 우클릭이 여는 종목 검색 팝오버(v5). **앵커를 인덱스가 아니라 id 로 들고 있는다** —
+  // 팝오버가 열려 있는 동안 60초 폴링이 order 를 바꿀 수 있어, 열 때 얼린 숫자는
+  // 엉뚱한 자리를 가리킨다. 실제 인덱스는 submit 시점에 resolveInsertAt 이 다시 읽는다.
+  const [symbolInsert, setSymbolInsert] = useState<{
+    x: number; y: number; folderId: string;
+    anchor: { kind: 'entry'; code: string } | { kind: 'memo'; id: string };
+  } | null>(null);
 
   // 메모("빈칸") 행 — entries 와 같은 order 축(폴더 items 인덱스)이라 렌더 직전에 병합한다.
   // `?? []` 를 useMemo 로 감싸는 이유: 매 렌더 새 빈 배열이면 아래 파생 memo 가 전부
@@ -814,6 +839,20 @@ export function WatchlistDrawer() {
   const handleMemoDelete = useCallback((memoId: string) => {
     removeMemoMutate(memoId);
   }, [removeMemoMutate]);
+  const handleMemoMenu = useCallback((e: React.MouseEvent, folderId: string, memo: WatchlistMemo) => {
+    e.preventDefault();                                  // 네이티브 우클릭 메뉴 억제
+    setMemoMenu({ x: e.clientX, y: e.clientY, folderId, memoId: memo.id, text: memo.text });
+  }, []);
+
+  /** 열려 있는 삽입 팝오버의 items 인덱스를 **지금** 다시 읽는다(submit 시점 호출).
+   *  앵커 행이 그 사이 사라졌으면 undefined → 백엔드가 맨 아래로 클램프한다. */
+  const resolveInsertAt = useCallback((): number | undefined => {
+    if (!symbolInsert) return undefined;
+    const { folderId, anchor } = symbolInsert;
+    return anchor.kind === 'entry'
+      ? data?.entries.find((e) => e.folder_id === folderId && e.code === anchor.code)?.order
+      : data?.memos.find((m) => m.folder_id === folderId && m.id === anchor.id)?.order;
+  }, [symbolInsert, data]);
 
   // "차트로 드롭" 공유 상태 — WorkspaceCanvas가 구독해 드롭 타깃 오버레이를 띄운다.
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
@@ -996,6 +1035,7 @@ export function WatchlistDrawer() {
                             onAutoEditConsumed={clearJustAddedMemo}
                             onSave={handleMemoSave}
                             onDelete={handleMemoDelete}
+                            onOpenMenu={handleMemoMenu}
                             dragEnabled={rowDragEnabled}
                           />
                         );
@@ -1108,7 +1148,43 @@ export function WatchlistDrawer() {
             const row = data?.entries.find((e) => e.folder_id === menu.folderId && e.code === menu.code);
             addMemoAt(menu.folderId!, row?.order);
           } : undefined}
+          // "위에 종목 추가" — 빈칸 삽입과 **같은 게이트**를 쓴다(위 주석의 두 경우).
+          // 여기선 인덱스를 계산하지 않고 앵커 코드만 넘긴다: 검색 팝오버가 떠 있는
+          // 동안 순서가 바뀔 수 있어 submit 시점에 resolveInsertAt 이 다시 읽는다.
+          onAddSymbolAbove={menu.folderId && getFolderSortMode(menu.folderId) === 'default' ? () => {
+            setSymbolInsert({
+              x: menu.x, y: menu.y, folderId: menu.folderId!,
+              anchor: { kind: 'entry', code: menu.code },
+            });
+          } : undefined}
           onClose={() => setMenu(null)} />
+      )}
+      {memoMenu && (
+        <WatchlistMemoRowMenu x={memoMenu.x} y={memoMenu.y} text={memoMenu.text}
+          onFillWithSymbol={() => setSymbolInsert({
+            x: memoMenu.x, y: memoMenu.y, folderId: memoMenu.folderId,
+            anchor: { kind: 'memo', id: memoMenu.memoId },
+          })}
+          onInsertMemoAbove={() => {
+            const row = data?.memos.find((m) => m.id === memoMenu.memoId);
+            addMemoAt(memoMenu.folderId, row?.order);
+          }}
+          onDelete={() => removeMemoMutate(memoMenu.memoId)}
+          onClose={() => setMemoMenu(null)} />
+      )}
+      {symbolInsert && (
+        <WatchlistSymbolAddPopover
+          point={{ x: symbolInsert.x, y: symbolInsert.y }}
+          folderId={symbolInsert.folderId}
+          resolveAt={resolveInsertAt}
+          // 빈칸 경로는 **추가 성공 후에** 그 빈칸을 지운다 = "교체". 순서가 중요하다:
+          // 먼저 지우면 추가가 실패했을 때 자리도 내용도 사라진다(되돌릴 근거가 없다).
+          // 반대 순서의 실패는 "종목은 들어갔고 빈칸이 남았다" 라 눈에 보이고 지울 수 있다.
+          onAdded={() => {
+            if (symbolInsert.anchor.kind === 'memo') removeMemoMutate(symbolInsert.anchor.id);
+            setSymbolInsert(null);
+          }}
+          onClose={() => setSymbolInsert(null)} />
       )}
       {groupPicker && (
         <WatchlistGroupPicker code={groupPicker.code} name={groupPicker.name}
