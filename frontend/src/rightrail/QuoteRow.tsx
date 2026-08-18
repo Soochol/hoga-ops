@@ -8,9 +8,10 @@ import {
 /** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가(+등락률)(우) │ (선택) 트레일링 액션.
  *  ScreenerResultRow 의 시각/키보드 계약을 그대로 가져오고 quote 셀을 우측에 둔다.
  *  밀도는 스크리너 결과표(DataTableRow)·HeatmapRow 와 정합 — 공용 min-h-list-row 토큰으로
- *  행 높이(≈28px @ 기본 밀도)를 맞추고, py-0.5 패딩 + 행 하단 border-b 구분선을 얹는다.
+ *  행 높이(1.5625rem = 25px @ 1.0× 다이얼)를 맞추고, py-0.5 패딩 + 행 하단 border-b 구분선을 얹는다.
  *  우측 레일 세 드로어(관심·순위·스크리너)가 이 행을 공유하고, 스크리너 결과표·히트맵 행도
  *  같은 토큰(design-tokens list-row-min-h)에서 높이를 얻으므로 네 리스트가 한 값으로 통일된다.
+ *  가로도 마찬가지다 — 종목명 시작 x 는 indented/leading 이 함께 2.5rem 으로 맞춘다(아래 prop 주석).
  *  trailingAction: 패널이 주입하는 행 우측 affordance(하트/휴지통). 자체적으로
  *  stopPropagation/aria 를 책임진다. <li> 는 group 이라 액션이 group-hover/
  *  group-focus-within 로 등장 처리를 할 수 있다. */
@@ -49,9 +50,16 @@ export interface QuoteRowProps {
   // --- 관심종목 패널 전용 우클릭/Delete (미전달 시 무동작) ---
   onContextMenu?: (e: React.MouseEvent<HTMLLIElement>) => void;
   onDelete?: () => void;
-  // --- 관심종목 패널 전용 들여쓰기: 그룹 헤더의 chevron-left 구조에서 종목명이
-  // 그룹명 첫 글자(≈46px)보다 왼쪽에서 시작해 위계가 역전되는 것을 교정.
-  // pl-10(50px) > 라벨 시작. 그룹 없는 스크리너는 미전달(평면 목록, 폭 절약). ---
+  // --- 좌측 들여쓰기(pl-10 = 2.5rem). 출발은 관심종목 전용 교정이었다: 그룹 헤더의
+  // chevron+라벨 구조보다 종목명이 왼쪽에서 시작해 위계가 역전되던 것을 밀어냈다
+  // (실측 @1.0× 다이얼: 라벨 시작 990px < 종목명 992px — 여유 2px).
+  // 지금은 우측 레일 네 리스트의 **종목명 시작 x 를 맞추는 계약**이다. 관심·히트맵·
+  // 스크리너는 이 prop 으로, 순위는 leading 순위번호(w-5 + gap-2 = 1.75rem)가 pl-md 위에
+  // 얹혀 같은 2.5rem 에 떨어진다. 셋 다 rem 이라 밀도 다이얼을 돌려도 함께 움직인다.
+  // 스크리너는 "평면 목록이라 폭 절약"을 근거로 2026-08-18 까지 홀로 미전달이었고,
+  // 그래서 이름 열이 1.75rem 왼쪽에서 시작해 패널 토글 때 이름 열이 튀었다.
+  // 둘 다 미전달인 소비처는 RankingDragGhost 하나 남는다 — 고스트엔 순위번호가 없어
+  // 드래그 중 이름이 리스트 행보다 1.75rem 왼쪽에 뜬다(기존 동작, 별도 건). ---
   indented?: boolean;
   // 스크리너 모니터링 전용: 재조회로 새로 편입된 행이면 한 번 accent tint 플래시.
   flash?: boolean;
