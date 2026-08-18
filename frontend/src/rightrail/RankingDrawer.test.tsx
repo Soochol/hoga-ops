@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import * as client from '../api/client';
@@ -232,6 +232,24 @@ describe('RankingDrawer', () => {
       dnd.onDragEnd!({ ...DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } });
     });
     expect(screen.queryByTestId('ranking-drag-ghost')).not.toBeInTheDocument();
+  });
+
+  // 고스트의 좌측 슬롯. 이 패널의 행은 순위번호(leading)로 종목명 시작 x 를 맞추므로
+  // 고스트가 그 슬롯을 빼면 손에 든 이름만 1.75rem 왼쪽으로 밀린다 — QuoteRow 의 좌측
+  // 여백은 `leading` 이 있으면 pl-md, 없으면 pl-10(indented)이라 두 경로가 상호배타다.
+  // 숫자를 텍스트로 재지 않고 슬롯을 지목하는 이유: 픽스처 005930 은 rank 2 인데
+  // 가격 71,200 에도 '2' 가 있어 toHaveTextContent('2') 는 슬롯을 지워도 통과한다.
+  it('고스트에 리스트 행과 같은 순위번호 슬롯을 실어 종목명 시작 x 를 맞춘다', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
+    renderDrawer();
+    await screen.findByText('삼성전자');
+
+    act(() => { dnd.onDragStart!(DRAG_START); });
+    const ghost = screen.getByTestId('ranking-drag-ghost');
+    expect(within(ghost).getByTestId('ranking-rank')).toHaveTextContent('2');
+    // leading 경로를 탄다는 증거 — indented(pl-10)로 폭만 맞춘 것이 아니다.
+    expect(ghost).toHaveClass('pl-md');
+    expect(ghost).not.toHaveClass('pl-10');
   });
 
   it('turns the fly-back animation off for a chart drop, and keeps it otherwise', async () => {
