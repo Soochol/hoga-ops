@@ -365,6 +365,21 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
   });
 
+  // 결과 행의 좌측 여백. 우측 레일 네 리스트(관심·히트맵·순위·스크리너)는 종목명이
+  // 같은 x 에서 시작해야 한다 — 패널을 토글할 때 이름 열이 튀지 않게. 스크리너만
+  // 오래 미들여쓰기라 홀로 1.75rem 왼쪽에서 시작했다(2026-08-18 통일). 관심·히트맵과
+  // 같은 QuoteRow 의 `indented` 계약을 쓰므로 여기서 재는 것은 "그 prop 이 호출부에서
+  // 떨어지지 않았는가" 하나다 — 값 자체(2.5rem)의 계약은 QuoteRow.test.tsx 가 잰다.
+  it('결과 행은 관심·히트맵과 같은 좌측 여백(indented)으로 종목명 시작 x 를 맞춘다', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
+    await waitFor(() => expect(screen.getByTestId('screener-row-005930')).toBeInTheDocument());
+    expect(screen.getByTestId('screener-row-005930')).toHaveClass('pl-10');
+  });
+
   it('disables 시작 when status is not_seeded', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'not_seeded' });
