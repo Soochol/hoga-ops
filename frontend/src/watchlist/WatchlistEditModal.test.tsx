@@ -55,7 +55,7 @@ function wrap(qc: QueryClient) {
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 const DATA = {
-  folders: [{ id: 'f_a', name: '스윙', order: 0, capture_enabled: true }],
+  folders: [{ id: 'f_a', name: '스윙', order: 0 }],
   entries: [{ code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 }],
   memos: [],
   next_run_at_ms: 0,
@@ -82,7 +82,7 @@ describe('WatchlistEditModal', () => {
   });
   it('keeps folder names readable until row actions are revealed', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
-      folders: [{ id: 'f_a', name: '길게 만든 관심 그룹 이름', order: 0, capture_enabled: true }],
+      folders: [{ id: 'f_a', name: '길게 만든 관심 그룹 이름', order: 0 }],
       entries: [],
       memos: [],
       next_run_at_ms: 0,
@@ -109,8 +109,8 @@ describe('WatchlistEditModal', () => {
   it('paints the selected folder row with the selection tint token', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
       folders: [
-        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
-        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+        { id: 'f_a', name: '스윙', order: 0 },
+        { id: 'f_b', name: '장기', order: 1 },
       ],
       entries: [],
       memos: [],
@@ -208,8 +208,8 @@ describe('WatchlistEditModal', () => {
     // 005930 이 f_b 에도 있으므로 f_a 를 지워도 관심종목에서 빠지는 코드가 없다.
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
       folders: [
-        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
-        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+        { id: 'f_a', name: '스윙', order: 0 },
+        { id: 'f_b', name: '장기', order: 1 },
       ],
       entries: [
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
@@ -280,8 +280,8 @@ describe('WatchlistEditModal', () => {
   it('pane 의 이동 메뉴가 열려 있어도 Escape 가 모달을 닫지 않는다', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
       folders: [
-        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
-        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+        { id: 'f_a', name: '스윙', order: 0 },
+        { id: 'f_b', name: '장기', order: 1 },
       ],
       entries: [{ code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 }],
       memos: [],
@@ -307,8 +307,8 @@ describe('WatchlistEditModal', () => {
     };
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
       folders: [
-        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
-        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+        { id: 'f_a', name: '스윙', order: 0 },
+        { id: 'f_b', name: '장기', order: 1 },
       ],
       entries: [],
       memos: [],
@@ -335,7 +335,7 @@ describe('WatchlistEditModal', () => {
       '000660': { activeIndex: 0, overIndex: 1, index: 1 },
     };
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
-      folders: [{ id: 'f_a', name: '스윙', order: 0, capture_enabled: true }],
+      folders: [{ id: 'f_a', name: '스윙', order: 0 }],
       entries: [
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
         { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 1 },
@@ -378,8 +378,8 @@ describe('WatchlistEditModal', () => {
   it('reorders folders by dragging the group handle — authoritative ordered_ids', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
       folders: [
-        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
-        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+        { id: 'f_a', name: '스윙', order: 0 },
+        { id: 'f_b', name: '장기', order: 1 },
       ],
       entries: [], memos: [], next_run_at_ms: 0,
     });
@@ -407,7 +407,7 @@ describe('WatchlistEditModal', () => {
   it('메모가 낀 폴더에서도 코드 순서를 옳게 보낸다 (sparse order)', async () => {
     // items: [005930(0), memo(1), 000660(2), memo(3), 035720(4)]
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
-      folders: [{ id: 'f_a', name: '스윙', order: 0, capture_enabled: true }],
+      folders: [{ id: 'f_a', name: '스윙', order: 0 }],
       // **배열 순서를 일부러 섞는다** — order 순으로 넣으면 정렬이 no-op 이라
       // "정렬 키로 쓴다" 를 실제로 재지 못한다(서버도 순서를 보장하지 않는다).
       entries: [
@@ -442,8 +442,8 @@ describe('WatchlistEditModal', () => {
   it('selects the next real group when the currently-selected folder is deleted', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
       folders: [
-        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
-        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+        { id: 'f_a', name: '스윙', order: 0 },
+        { id: 'f_b', name: '장기', order: 1 },
       ],
       entries: [
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
@@ -467,84 +467,6 @@ describe('WatchlistEditModal', () => {
     expect(screen.queryByText('삼성전자')).not.toBeInTheDocument();
   });
 
-  it('renders and toggles folder capture setting', async () => {
-    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
-      folders: [{ id: 'f_a', name: '스윙', order: 0, capture_enabled: false }],
-      entries: [],
-      memos: [],
-      next_run_at_ms: 0,
-    });
-    const setCapture = vi.spyOn(api, 'setFolderCaptureEnabled').mockResolvedValue({
-      id: 'f_a',
-      name: '스윙',
-      order: 0,
-      capture_enabled: true,
-    });
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
-
-    const toggle = await screen.findByRole('switch', { name: '스윙 실시간 저장' });
-    expect(toggle).not.toBeChecked();
-
-    fireEvent.click(toggle);
-
-    await waitFor(() => expect(setCapture).toHaveBeenCalledWith('f_a', true));
-  });
-
-  it('defaults missing folder capture state to enabled in the edit modal', async () => {
-    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
-      folders: [{ id: 'f_a', name: '스윙', order: 0 }],
-      entries: [],
-      memos: [],
-      next_run_at_ms: 0,
-    });
-    const setCapture = vi.spyOn(api, 'setFolderCaptureEnabled').mockResolvedValue({
-      id: 'f_a',
-      name: '스윙',
-      order: 0,
-      capture_enabled: false,
-    });
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
-
-    const toggle = await screen.findByRole('switch', { name: '스윙 실시간 저장' });
-    expect(toggle).toBeChecked();
-
-    fireEvent.click(toggle);
-
-    await waitFor(() => expect(setCapture).toHaveBeenCalledWith('f_a', false));
-  });
-  // 토글은 이 앱에서 `capture_enabled` 를 보여 주는 **유일한 지점**이다. hover 뒤에 있으면
-  // 상태를 볼 수도, 마우스로 누를 수도 없었다(`pointer-events-none`). 신규 폴더가 기본
-  // 꺼짐이라(ADR-0079) "안 보이는 기본값" 이 정상 경로였다는 점이 이 계약의 근거다.
-  it('keeps the capture toggle visible without hover — only delete hides', async () => {
-    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
-    await screen.findByText('스윙');
-
-    // jsdom 은 :hover 를 모르므로 **클래스로** 읽는다 — 숨김은 opacity 로 하고 있어
-    // (Tab 도달 계약) 존재 여부로는 구별되지 않는다.
-    //
-    // **자기 className 만 보면 안 된다**: 숨김은 조상(액션 묶음 div)에 걸 수도 있어서,
-    // 버튼만 검사하면 토글을 통째로 hover 뒤로 되돌려도 테스트가 초록으로 통과한다
-    // (red-check 에서 실제로 그랬다). 행까지 거슬러 올라가며 확인한다.
-    const hiddenFromView = (el: HTMLElement | null) => {
-      for (let n = el; n; n = n.parentElement) {
-        if (/(^|\s)(opacity-0|pointer-events-none)(\s|$)/.test(n.className)) return true;
-        if (n.dataset.testid?.startsWith('folder-row-f_')) break;   // 행이 상한
-      }
-      return false;
-    };
-    expect(hiddenFromView(screen.getByRole('switch', { name: '스윙 실시간 저장' }))).toBe(false);
-    expect(hiddenFromView(screen.getByLabelText('스윙 삭제'))).toBe(true);
-    expect(screen.getByLabelText('스윙 삭제').className).toMatch(/group-hover:opacity-100/);
-  });
-  // P1-6: 이름 변경 진입이 더블클릭 전용이라 **키보드로는 아예 불가능**했다. hover 액션을
-  // 토글·삭제 둘로 줄인 0.12.17.2 결정은 유지하고(연필 버튼을 되살리지 않는다) 키보드
-  // 경로만 연다 — Enter 는 이 버튼의 click(그룹 선택)에 이미 묶여 있어 쓸 수 없다.
   it('enters inline rename with F2 as well as double-click', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
     const ren = vi.spyOn(api, 'renameFolder').mockResolvedValue();

@@ -7,7 +7,6 @@ from hoga.api.watchlist_projection import (
     display_ordered_codes,
     first_membership_positions,
     project_entry_views,
-    project_folder_views,
 )
 
 
@@ -54,12 +53,6 @@ def test_display_ordered_codes_dedupes_by_first_membership():
     assert display_ordered_codes(_doc()) == ["005930", "000660", "035720"]
 
 
-def test_project_folder_views_includes_capture_enabled() -> None:
-    views = project_folder_views(_doc())
-
-    assert views[0].capture_enabled is True
-
-
 def test_project_entries_preserves_each_valid_membership_row():
     views = project_entry_views(_doc())
 
@@ -74,22 +67,25 @@ def test_project_entries_preserves_each_valid_membership_row():
     assert all(v.capture_candidate for v in views)
 
 
-def test_project_entries_marks_capture_candidate_by_any_enabled_membership():
+def test_project_entries_mark_every_row_as_capture_candidate():
+    """게이트 제거(ADR-0150) 후 `capture_candidate` 는 전 행에서 true 다.
+
+    상수가 된 이 필드의 정리는 `deriveStorageLabel` 이 이미 write-only 라는 발견과 함께
+    별도로 다룬다(그 값이 **틀리지 않으므로** 급하지 않다).
+    """
     doc = WatchlistDocument(
         folders=[
             WatchlistFolder(
                 id="f_0000000a",
-                name="Disabled",
+                name="첫 그룹",
                 order=0,
                 items=code_items(["005930", "000660"]),
-                capture_enabled=False,
             ),
             WatchlistFolder(
                 id="f_0000000b",
-                name="Enabled",
+                name="둘째 그룹",
                 order=1,
                 items=code_items(["005930"]),
-                capture_enabled=True,
             ),
         ],
         entries=[
@@ -103,7 +99,7 @@ def test_project_entries_marks_capture_candidate_by_any_enabled_membership():
     by_row = {(v.folder_id, v.code): v.capture_candidate for v in views}
     assert by_row == {
         ("f_0000000a", "005930"): True,
-        ("f_0000000a", "000660"): False,
+        ("f_0000000a", "000660"): True,   # 옛 계약이라면 False 였다(그 폴더가 꺼져 있었으므로)
         ("f_0000000b", "005930"): True,
     }
 
@@ -116,7 +112,12 @@ def test_first_membership_positions_returns_topmost_valid_position():
     }
 
 
-def test_capture_ordered_codes_uses_enabled_folders_only() -> None:
+def test_capture_ordered_codes_includes_every_folder() -> None:
+    """폴더 단위 저장 옵트인은 ADR-0150 으로 제거됐다 — **모든 폴더의 멤버가 후보**다.
+
+    옛 계약("capture_enabled 폴더만")을 뒤집어 못박는다. 그냥 지우면 새 계약을 아무도
+    지키지 않는다. dedup·문서 순서·known_codes 필터는 그대로다.
+    """
     doc = WatchlistDocument(
         folders=[
             WatchlistFolder(
@@ -124,21 +125,18 @@ def test_capture_ordered_codes_uses_enabled_folders_only() -> None:
                 name="Enabled",
                 order=0,
                 items=code_items(["005930", "000660"]),
-                capture_enabled=True,
             ),
             WatchlistFolder(
                 id="f_0000000b",
                 name="Disabled",
                 order=1,
                 items=code_items(["035720"]),
-                capture_enabled=False,
             ),
             WatchlistFolder(
                 id="f_0000000c",
                 name="AlsoEnabled",
                 order=2,
                 items=code_items(["000660", "035420"]),
-                capture_enabled=True,
             ),
         ],
         entries=[
@@ -149,5 +147,6 @@ def test_capture_ordered_codes_uses_enabled_folders_only() -> None:
         ],
     )
 
-    assert capture_ordered_codes(doc) == ["005930", "000660", "035420"]
+    # 가운데 폴더(옛 "Disabled")의 035720 도 이제 포함된다 — 문서 순서 · 코드 dedup 유지.
+    assert capture_ordered_codes(doc) == ["005930", "000660", "035720", "035420"]
     assert capture_ordered_codes(doc, known_codes={"005930", "035420"}) == ["005930", "035420"]

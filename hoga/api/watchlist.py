@@ -104,7 +104,7 @@ def _migrate(raw: dict) -> dict:
             "schema_version": 4,
             "folders": [{"id": f["id"], "name": f["name"], "order": f.get("order", i),
                          "items": items_of(f),
-                         "capture_enabled": f["capture_enabled"] if "capture_enabled" in f else True}  # noqa: SIM401 — 분기가 기본값의 근거를 담고 있음
+                         }
                         for i, f in enumerate(raw.get("folders", []))],
             "entries": [_slim(e) for e in raw.get("entries", [])],
         }
@@ -127,13 +127,13 @@ def _migrate(raw: dict) -> dict:
         return [e["code"] for e in sorted(by_fid.get(fid, []), key=lambda r: r["order"])]
 
     folders_v4 = [{"id": f["id"], "name": f["name"], "order": f.get("order", i),
-                   "items": _code_items(codes_in(f["id"])), "capture_enabled": True}
+                   "items": _code_items(codes_in(f["id"]))}
                   for i, f in enumerate(folders_v2)]
     nulls = codes_in(None)
     if nulls:
         folders_v4.append({"id": _DEFAULT_FOLDER_ID, "name": _DEFAULT_FOLDER_NAME,
                            "order": len(folders_v4), "items": _code_items(nulls),
-                           "capture_enabled": True})
+                           })
     return {"schema_version": 4, "folders": folders_v4,
             "entries": [_slim(e) for e in v2_entries]}
 
@@ -414,8 +414,7 @@ async def create_folder(data_dir: Path, *, name: str) -> WatchlistFolder:
     async with _lock:
         doc = load_document(data_dir)
         folder = WatchlistFolder(id=_mint_folder_id(), name=name.strip(),
-                                 order=len(doc.folders), items=[],
-                                 capture_enabled=False)
+                                 order=len(doc.folders), items=[])
         save_document(data_dir, doc.model_copy(update={"folders": [*doc.folders, folder]}))
         return folder
 
@@ -432,27 +431,11 @@ async def rename_folder(data_dir: Path, *, folder_id: str, name: str) -> None:
         # persisted unchecked and then trip model_validate on the NEXT load —
         # quarantining the whole watchlist (ADR-0065: irreplaceable user data).
         new = [WatchlistFolder(id=f.id, name=name.strip(), order=f.order,
-                               items=f.items, capture_enabled=f.capture_enabled)
+                               items=f.items)
                if f.id == folder_id else f
                for f in doc.folders]
         save_document(data_dir, doc.model_copy(update={"folders": new}))
 
-
-async def set_folder_capture_enabled(
-    data_dir: Path,
-    *,
-    folder_id: str,
-    capture_enabled: bool,
-) -> WatchlistFolder:
-    async with _lock:
-        doc = load_document(data_dir)
-        folder = next((f for f in doc.folders if f.id == folder_id), None)
-        if folder is None:
-            raise FolderNotFoundError(folder_id)
-        updated = folder.model_copy(update={"capture_enabled": capture_enabled})
-        folders = [updated if f.id == folder_id else f for f in doc.folders]
-        save_document(data_dir, doc.model_copy(update={"folders": folders}))
-        return updated
 
 
 async def delete_folder(data_dir: Path, *, folder_id: str) -> None:

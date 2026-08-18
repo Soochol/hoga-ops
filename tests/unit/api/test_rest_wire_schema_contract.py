@@ -52,7 +52,7 @@ from hoga.live.lifecycle import LiveStatus
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
-    "WatchlistFolderView": frozenset({"id", "name", "order", "capture_enabled"}),
+    "WatchlistFolderView": frozenset({"id", "name", "order"}),
     "WatchlistEntryView": frozenset(
         {
             "code",

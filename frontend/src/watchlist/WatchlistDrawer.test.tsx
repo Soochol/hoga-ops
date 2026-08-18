@@ -650,8 +650,8 @@ describe('WatchlistDrawer', () => {
   it('uses the trailing LED as the only per-row collection indicator', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
       folders: [
-        { id: 'f_enabled', name: '저장', order: 0, capture_enabled: true },
-        { id: 'f_excluded', name: '제외', order: 1, capture_enabled: false },
+        { id: 'f_enabled', name: '저장', order: 0 },
+        { id: 'f_excluded', name: '제외', order: 1 },
       ],
       entries: [
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: '20260621', folder_id: 'f_enabled', order: 0, capture_candidate: true },
@@ -687,8 +687,8 @@ describe('WatchlistDrawer', () => {
   it('does not render storage labels even when capture candidates differ by folder', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
       folders: [
-        { id: 'f_enabled', name: '저장', order: 0, capture_enabled: true },
-        { id: 'f_excluded', name: '제외', order: 1, capture_enabled: false },
+        { id: 'f_enabled', name: '저장', order: 0 },
+        { id: 'f_excluded', name: '제외', order: 1 },
         { id: 'f_legacy', name: '기존', order: 2 },
       ],
       entries: [
@@ -716,36 +716,5 @@ describe('WatchlistDrawer', () => {
       expect(row).not.toHaveTextContent('저장 제외');
     }
     expect(screen.getByTestId('watchlist-row-000660')).not.toHaveTextContent('대기');
-  });
-  // 그룹 헤더의 「저장」 배지(ADR-0079 표시). **꺼짐이 아니라 켜짐을 표시한다** — v3 다중
-  // 소속에서 capture_ordered_codes 는 코드 단위로 dedup 하므로 "이 그룹은 저장 안 함" 은
-  // 그 종목이 다른 켜진 그룹을 통해 저장될 때 **거짓**이 된다. 폴더 단위로 항상 참인
-  // 문장은 긍정형뿐이다.
-  it('marks only capture-enabled groups with the 저장 badge', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
-      folders: [
-        { id: 'f_enabled', name: '켜짐', order: 0, capture_enabled: true },
-        { id: 'f_excluded', name: '꺼짐', order: 1, capture_enabled: false },
-        { id: 'f_legacy', name: '기존', order: 2 },
-      ],
-      entries: [
-        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_enabled', order: 0 },
-        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_excluded', order: 0 },
-        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_legacy', order: 0 },
-      ],
-      memos: [],
-      next_run_at_ms: 0,
-    });
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await screen.findByText('켜짐');
-
-    const headers = screen.getAllByTestId('watchlist-group-header');
-    const badgeIn = (i: number) => within(headers[i]).queryByTestId('group-capture-badge');
-    expect(badgeIn(0)).toBeInTheDocument();          // capture_enabled: true
-    expect(badgeIn(1)).not.toBeInTheDocument();      // capture_enabled: false
-    // 필드가 없는 레거시 폴더는 **켜짐**으로 읽는다(ADR-0079 마이그레이션 의미) — 편집
-    // 모달의 토글과 같은 폴백(folderCaptureEnabled)이라야 두 화면이 어긋나지 않는다.
-    expect(badgeIn(2)).toBeInTheDocument();
   });
 });

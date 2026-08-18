@@ -260,9 +260,9 @@ def daily_enqueue_codes(data_dir: Path) -> list[str]:
     위험이 크다**. 관심종목이 사용자가 실제로 매매를 보는 목록이므로 앞에 둔다.
     이는 라이브 저장셋의 우선순위(coverage.plan_storage_targets)와도 같은 순서다.
 
-    히트맵은 그룹 단위 on/off 가 없다 — 등록 = 캡처 대상이다(사용자 결정). 폴더의
-    ``capture_enabled`` 는 관심종목에서도 hogaplay 캡처가 아니라 **실시간 WS 저장셋**
-    을 고르는 플래그라(capture_ordered_codes) 여기서 읽지 않는다.
+    관심종목·히트맵 **둘 다** 그룹 단위 on/off 가 없다 — 등록 = 대상이다. 폴더의
+    ``capture_enabled`` 옵트인은 ADR-0150 으로 제거됐다(그전에도 이 함수는 그 플래그를
+    읽지 않았다 — 그건 hogaplay 캡처가 아니라 실시간 WS 저장셋을 고르는 것이었다).
     """
     from hoga.api.heatmap import load_heatmap  # noqa: PLC0415 — 지연 import(순환 절단)
 

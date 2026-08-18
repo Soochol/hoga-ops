@@ -19,7 +19,7 @@ interface Entry {
 }
 interface Memo { id: string; folder_id: string; order: number; text: string }
 
-const FOLDERS = [{ id: 'f_0000000a', name: '스윙', order: 0, capture_enabled: true }];
+const FOLDERS = [{ id: 'f_0000000a', name: '스윙', order: 0 }];
 // items: [005930(0), 000660(1)] — 메모는 테스트가 만든다.
 const makeEntries = (): Entry[] => [
   { code: '005930', name: '삼성전자', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_0000000a', order: 0 },

@@ -30,7 +30,7 @@ function wrap(qc: QueryClient) {
 
 type Entry = watchlistApi.WatchlistEntry;
 
-const FOLDERS = [{ id: 'f_0000000a', name: '스윙', order: 0, capture_enabled: true }];
+const FOLDERS = [{ id: 'f_0000000a', name: '스윙', order: 0 }];
 // items: [005930(0), memo(1), 000660(2)] — 메모가 종목 **사이**에 있다.
 const ENTRIES: Entry[] = [
   { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 0 },

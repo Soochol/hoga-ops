@@ -19,7 +19,6 @@ from hoga.api.models import (
     EnqueueResponse,
     EntriesRemoveRequest,
     EntriesReorderRequest,
-    FolderCaptureRequest,
     FolderCreateRequest,
     FolderRenameRequest,
     FolderReorderRequest,
@@ -58,7 +57,6 @@ from hoga.api.watchlist import (
     reorder_entries,
     reorder_folders,
     reorder_items,
-    set_folder_capture_enabled,
     update_memo,
 )
 from hoga.api.watchlist_projection import project_watchlist_response
@@ -174,7 +172,6 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             id=f.id,
             name=f.name,
             order=f.order,
-            capture_enabled=f.capture_enabled,
         )
 
     @router.put("/folders/order", status_code=204)
@@ -199,33 +196,6 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         except FolderNotFoundError as e:
             raise HTTPException(status_code=404, detail={
                 "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
-
-    @router.patch("/folders/{folder_id}/capture", response_model=WatchlistFolderView)
-    async def set_watchlist_folder_capture(
-        folder_id: str,
-        req: FolderCaptureRequest,
-    ) -> WatchlistFolderView:
-        try:
-            folder = await set_folder_capture_enabled(
-                data_dir,
-                folder_id=folder_id,
-                capture_enabled=req.capture_enabled,
-            )
-        except FolderNotFoundError as e:
-            raise HTTPException(status_code=404, detail={
-                "code": "folder_not_found",
-                "message": f"Folder {folder_id} not found.",
-            }) from e
-        try:
-            await refresh_live_stream(data_dir=data_dir)
-        except Exception:
-            log.exception("watchlist.folder_capture: refresh_live_stream failed")
-        return WatchlistFolderView(
-            id=folder.id,
-            name=folder.name,
-            order=folder.order,
-            capture_enabled=folder.capture_enabled,
-        )
 
     @router.delete("/folders/{folder_id}", status_code=204)
     async def delete_watchlist_folder(folder_id: str) -> None:

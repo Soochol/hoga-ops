@@ -1102,7 +1102,6 @@ class WatchlistFolder(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     order: int = Field(ge=0)
     items: list[WatchlistItem] = Field(default_factory=list)
-    capture_enabled: bool = True
 
     def code_members(self) -> list[str]:
         """이 폴더의 **종목 코드만**, items 순서대로.
@@ -1161,7 +1160,6 @@ class WatchlistFolderView(BaseModel):
     id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
     name: str = Field(min_length=1, max_length=40)
     order: int = Field(ge=0)
-    capture_enabled: bool = True
 
 
 class WatchlistEntryView(BaseModel):
@@ -1237,10 +1235,6 @@ class FolderCreateRequest(_FolderNameBody):
 
 class FolderRenameRequest(_FolderNameBody):
     pass
-
-
-class FolderCaptureRequest(BaseModel):
-    capture_enabled: bool
 
 
 class FolderReorderRequest(BaseModel):
