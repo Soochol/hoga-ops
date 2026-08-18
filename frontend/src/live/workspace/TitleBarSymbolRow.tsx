@@ -16,7 +16,6 @@ import { useConnectionLiveness } from '../../api/useConnectionLiveness';
 import { LIVE_STALE_MS } from '../../api/liveness';
 import { useQuoteByCode, isStaleLiveQuote } from '../../api/liveQuotes';
 import { useWatchlist } from '../../watchlist/useWatchlist';
-import { useWatchlistMembership } from '../../watchlist/useWatchlistMembership';
 import { useLiveStatus } from '../../api/liveStatus';
 import { useHeatmap } from '../../heatmap/useHeatmap';
 import { heatmapGroupNameOf } from '../../heatmap/heat';
@@ -60,9 +59,6 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
     ? heatmapGroupNameOf(code, heatmapData!.folders, heatmapData!.entries)
     : null;
 
-  const { isMember } = useWatchlistMembership();
-  const member = !isIndex && isMember(code);
-
   // ADR-0067: 수집 상태 점(표시 전용) — 지수는 수집 개념이 없어 숨긴다.
   const { data: watchlistData } = useWatchlist();
   const { data: liveStatusData } = useLiveStatus();
@@ -72,8 +68,6 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
     watchlistCodes: watchlistData?.entries.map((e) => e.code) ?? [],
     viewedCodes: [code],
     kiwoomCodes: liveStatusData?.kiwoom?.subscribed_codes ?? [],
-    captureCandidate: watchlistData?.entries.some((e) =>
-      e.code === code && e.capture_candidate !== false) ?? member,
     liveConnection: live,
   });
 

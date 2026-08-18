@@ -1171,7 +1171,6 @@ class WatchlistEntryView(BaseModel):
     # v4: index within the folder's ITEMS (memo rows included), not a code-only
     # index. Values are sparse across this array alone; entries∪memos is dense.
     order: int = Field(default=0, ge=0)
-    capture_candidate: bool = True
 
 
 class WatchlistMemoView(BaseModel):

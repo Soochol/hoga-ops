@@ -638,8 +638,9 @@ export function WatchlistDrawer() {
 
   // 행별 수집상태를 **한 번에** 계산해 스칼라로 넘긴다 — 행에 배열(live_set 등)을
   // 넘기면 `?? []` 가 매 렌더 새 identity 라 memo 가 뚫린다. 키가 code 가 아니라
-  // composite id 인 이유: 같은 코드가 여러 폴더에 있을 수 있고 `capture_candidate` 는
-  // 폴더별 엔트리 속성이라 결과가 갈릴 수 있다.
+  // composite id 인 이유: 같은 코드가 여러 폴더에 등장하므로 행을 구별해야 해서다
+  // (폴더별로 값이 갈리던 `capture_candidate` 는 ADR-0150 이후 사라졌지만, 행 식별
+  // 자체는 여전히 폴더+코드다).
   const collectionByRow = useMemo(() => {
     const liveSet = liveStatusData?.live_set ?? [];
     const kiwoomCodes = liveStatusData?.kiwoom?.subscribed_codes ?? [];
@@ -652,7 +653,6 @@ export function WatchlistDrawer() {
         watchlistCodes: codes,
         viewedCodes,
         kiwoomCodes,
-        captureCandidate: entry.capture_candidate !== false,
       });
       map.set(entrySortableId(entry.folder_id, entry.code), {
         displayStatus: view.displayStatus,

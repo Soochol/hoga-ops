@@ -97,7 +97,6 @@ def project_entry_views(doc: WatchlistDocument) -> list[WatchlistEntryView]:
     표시 순서를 복원한다.
     """
     by_code = {entry.code: entry for entry in doc.entries}
-    capture_candidates = set(capture_ordered_codes(doc))
     views: list[WatchlistEntryView] = []
     for folder in ordered_folders(doc):
         for order, item in enumerate(folder.items):
@@ -119,7 +118,6 @@ def project_entry_views(doc: WatchlistDocument) -> list[WatchlistEntryView]:
                     last_success_date=base.last_success_date,
                     folder_id=folder.id,
                     order=order,
-                    capture_candidate=base.code in capture_candidates,
                 )
             )
     return views
