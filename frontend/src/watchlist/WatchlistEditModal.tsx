@@ -300,7 +300,15 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
         onClose 를 막는다 — Escape·백드롭 둘 다 같은 onClose 를 타서 가드 하나로
         충분하다. 확인 취소 후 포커스는 ModalShell 의 복원 계약이 휴지통으로 돌린다. */}
     <ModalShell ariaLabel="관심종목 편집" title="관심종목 편집"
-      width="w-[860px]" height="h-[600px] max-h-[88vh]"
+      // 높이를 뷰포트에 맡긴다(`70vh`). `600px` 고정은 큰 화면에서 리스트 아래를 비워
+      // 두고 긴 그룹에서는 스크롤만 길게 했다. **"600px 보장" 은 원래 없던 계약이다** —
+      // `max-h-[88vh]` 가 682px 이하 뷰포트에서 이미 그 값을 깎고 있었다.
+      //
+      // ⚠ `min-h` 를 더하지 말 것: 작은 뷰포트에서 min-h > max-h 가 되면 **min 이 max 를
+      // 이기는** CSS 규칙 때문에 모달이 화면을 넘는다. 그리고 콘텐츠 추종 높이(높이 클래스
+      // 제거)도 안 된다 — 리스트가 `overflow-auto` 라 clip 할 bounded-height 조상이
+      // 필요하다(ModalShell 의 `height` docstring).
+      width="w-[860px]" height="h-[70vh] max-h-[88vh]"
       onClose={deleteConfirm || paneOverlayOpen ? NOOP_CLOSE : onClose}>
       <DndContext sensors={sensors} collisionDetection={modalCollision} onDragEnd={onDragEnd}>
         <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0">

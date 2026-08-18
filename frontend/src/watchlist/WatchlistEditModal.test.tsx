@@ -583,4 +583,19 @@ describe('WatchlistEditModal', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByText('스윙')).toBeInTheDocument();
   });
+  // P2-5: `h-[600px]` 고정은 큰 화면에서 리스트 아래를 비워 두고 긴 그룹에서는 스크롤만
+  // 길게 했다. 뷰포트에 맡긴다 — 다만 **높이 클래스 자체는 있어야 한다**(리스트가
+  // overflow-auto 라 clip 할 bounded-height 조상이 필요하다, ModalShell 계약).
+  it('sizes the modal to the viewport, keeping a bounded height', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+    const card = (await screen.findByRole('dialog', { name: '관심종목 편집' })).firstElementChild!;
+
+    expect(card.className).toMatch(/h-\[70vh\]/);
+    expect(card.className).toMatch(/max-h-\[88vh\]/);
+    expect(card.className).not.toMatch(/h-\[600px\]/);
+    // min-h 금지: 작은 뷰포트에서 min-h > max-h 면 min 이 이겨 모달이 화면을 넘는다.
+    expect(card.className).not.toMatch(/min-h-/);
+  });
 });
