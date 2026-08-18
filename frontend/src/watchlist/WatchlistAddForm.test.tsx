@@ -189,4 +189,30 @@ describe('WatchlistAddForm', () => {
     await waitFor(() => expect(screen.queryByText(/이미 이 그룹에 있습니다/)).toBeNull());
     expect(onDuplicate).not.toHaveBeenCalled();
   });
+  // ⚠ 이 폼은 폴더를 옮겨도 **언마운트되지 않는다**(`folderId` prop 만 갈린다). 그래서 이전
+  // 그룹에서 고른 종목이 그대로 남아 있었고, 실사용에서 이렇게 나타났다: 「A」에서 이미 있는
+  // 종목을 골라 중복 안내를 본 뒤 「B」로 옮기면 같은 종목이 남은 채 **추가 버튼이 다시
+  // 활성화**돼, 무심코 누르면 **의도하지 않은 그룹에 들어간다**(사용자 보고: 중복 배너 뒤에
+  // "추가됨" 이 이어서 떴다).
+  it('폴더가 바뀌면 고른 종목을 버린다', async () => {
+    const onAdded = vi.fn();
+    const add = vi.spyOn(api, 'addMember');
+    const qc = newQc();
+    seedWatchlist(qc, [{ code: '005930', name: '삼성전자', folder_id: 'f_a' }]);
+    const { rerender } = render(
+      <WatchlistAddForm folderId="f_a" onAdded={onAdded} />, { wrapper: wrap(qc) });
+
+    fireEvent.click(await screen.findByText('pick'));      // f_a 에 이미 있는 005930
+    await waitFor(() => expect(screen.getByText(/이미 이 그룹에 있습니다/)).toBeInTheDocument());
+
+    rerender(<WatchlistAddForm folderId="f_b" onAdded={onAdded} />);
+
+    // 고른 것이 남아 있으면 "f_b 에는 없다" 며 추가 버튼이 살아난다 — 그 상태가 사고다.
+    await waitFor(() =>
+      expect(screen.queryByText(/이미 이 그룹에 있습니다/)).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /종목 추가/ })).toBeDisabled();
+
+    fireEvent.submit(screen.getByRole('button', { name: /종목 추가/ }).closest('form')!);
+    await waitFor(() => expect(add).not.toHaveBeenCalled());
+  });
 });
