@@ -308,4 +308,22 @@ describe('WatchlistEntryPane', () => {
     // 빈 그룹에 컬럼 머리글만 떠 있으면 "표가 있는데 비었다" 가 아니라 노이즈다.
     expect(screen.queryByTestId('entry-column-header')).not.toBeInTheDocument();
   });
+  // P2-1: 유니코드 글리프(⇄·↻)를 ui/ SVG 프리미티브로 이관했다(ADR-0110 관용구).
+  // 회전 애니메이션의 **부착 지점**이 계약이다 — 버튼에 걸면 패딩까지 함께 돈다.
+  it('spins the refresh icon, not the button, while catching up', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    // 영원히 pending — catchingUp 상태를 붙잡아 둔다.
+    vi.spyOn(api, 'catchupNow').mockReturnValue(new Promise(() => {}) as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
+    await screen.findByText('삼성전자');
+    const button = screen.getByLabelText('삼성전자 수집');
+
+    // 문자 글리프가 아니라 SVG 다(폰트별 렌더 불일치·색 토큰 미적용 회피).
+    expect(button.querySelector('svg')).not.toBeNull();
+
+    fireEvent.click(button);
+    await waitFor(() => expect(button.querySelector('svg')).toHaveClass('animate-spin'));
+    expect(button.className).not.toMatch(/animate-spin/);
+  });
 });
