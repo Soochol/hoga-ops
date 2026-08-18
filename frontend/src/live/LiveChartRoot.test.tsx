@@ -1179,9 +1179,14 @@ describe('LiveChartRoot', () => {
   it('D timeframe: re-applies the daily window after an initially narrow time scale width', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
-    ts.width
-      .mockReturnValueOnce(24)
-      .mockReturnValue(800);
+    // 폭은 **상태 변수**로 준다 — `mockReturnValueOnce(24).mockReturnValue(800)` 는
+    // "첫 **호출자**가 24 를 받는다" 는 뜻이라, 같은 트리의 다른 컴포넌트가
+    // `timeScale().width()` 를 읽기 시작하면 좁은 값이 엉뚱한 곳으로 새고 이 테스트가
+    // 무관한 변경에 깨진다(2026-08-18, PaneLegendOverlay 가 pane 우측 정렬을 위해
+    // 폭을 읽으면서 실제로 그랬다). 재고 싶은 것은 호출 순서가 아니라 "처음엔 좁고
+    // 다음 렌더엔 넓다" 는 **상태**다.
+    let timeScaleWidth = 24;
+    ts.width.mockImplementation(() => timeScaleWidth);
     vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
 
     const { rerender } = render(
@@ -1197,6 +1202,7 @@ describe('LiveChartRoot', () => {
 
     expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
 
+    timeScaleWidth = 800;
     rerender(
       <LiveChartRoot
         code="005930"

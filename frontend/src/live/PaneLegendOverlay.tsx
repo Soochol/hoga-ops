@@ -248,8 +248,11 @@ function PaneMoveButton({
       onClick={onClick}
       style={{
         ...iconBtnStyle,
-        width: 16,
-        height: 16,
+        // 크기 override 없음 — iconBtnStyle 의 18px 를 그대로 쓴다. legend 행과 같은
+        // 줄에 놓이므로 두 칩의 높이가 어긋나면 단차가 그대로 보이는데, 행 높이를
+        // 정하는 것은 텍스트(line-height 14.7px)가 아니라 **✕ 버튼(18px)**이다
+        // (실측: 행 22px = 18 + 상하 패딩 2×2, 컨트롤 칩도 같은 패딩). 그래서 여기서
+        // 크기를 줄이면(이전 16px) 반드시 어긋난다.
         cursor: disabled ? 'default' : 'pointer',
         color: disabled ? 'var(--fg-disabled, var(--fg-dimmer))' : 'var(--fg-dimmer)',
         opacity: disabled ? 0.4 : 1,
@@ -267,7 +270,10 @@ function PaneMoveButton({
 }
 
 /** 한 pane 의 ↑/↓ 순서 이동 컨트롤. candle(idx 0)은 렌더하지 않는다. 이동은
- *  **마운트된 이웃과 스왑**이라 게이트로 부재중인 pane 을 건너뛴다(ADR-0114 §3). */
+ *  **마운트된 이웃과 스왑**이라 게이트로 부재중인 pane 을 건너뛴다(ADR-0114 §3).
+ *
+ *  배치: legend 행과 **같은 줄의 pane 우측 끝**(2026-08-18). 우측 끝은 컨테이너가
+ *  아니라 **플롯 우측**이다 — 래퍼의 `rightInset` 이 가격축 거터를 뺀다. */
 function PaneMoveControls({
   paneId,
   label,
@@ -291,7 +297,21 @@ function PaneMoveControls({
   const canUp = idx > 1 && upNeighbor !== null && upNeighbor !== 'candle';
   const canDown = idx < mountedCount - 1 && downNeighbor !== null;
   return (
-    <span style={{ ...boxStyle, gap: 'var(--space-2xs)', pointerEvents: 'auto', padding: 'var(--space-2xs)' }}>
+    <span
+      style={{
+        ...boxStyle,
+        gap: 'var(--space-2xs)',
+        pointerEvents: 'auto',
+        padding: 'var(--space-2xs)',
+        // pane 우측 정렬. `justifyContent:'space-between'` 이 아니라 auto 마진인
+        // 이유는 legend 행이 없는 pane(호가비·체결강도·투자자)에서 자식이 이
+        // 컨트롤 **하나뿐**이 되기 때문 — space-between 은 그 하나를 왼쪽에 둔다.
+        marginLeft: 'auto',
+        // boxStyle 의 `maxWidth:100%`+`overflow:hidden` 과 결합하면 좁은 pane 에서
+        // 버튼이 잘린다. 잘려야 하는 쪽은 legend 행이고 컨트롤은 아니다.
+        flexShrink: 0,
+      }}
+    >
       <PaneMoveButton
         dir="up"
         label={`${label} pane 위로 이동`}
@@ -817,6 +837,18 @@ function PaneLegendOverlay({
     }
   }
 
+  // pane 플롯 폭 = 우측 가격축 거터를 **뺀** 폭. 이 오버레이 컨테이너는 거터까지
+  // 덮으므로(DayBoundaryOverlay 실측: 컨테이너 560.6px vs pane 498px, 거터 62.6px)
+  // 그냥 우측 정렬하면 이동 버튼이 가격 라벨 위에 얹힌다. 0(첫 프레임·teardown)이면
+  // 클램프를 포기하고 기존 inset 으로 폴백한다 — 아래 ResizeObserver/rangeChange
+  // 재렌더가 다음 프레임에 보정한다.
+  let plotWidth = 0;
+  try {
+    plotWidth = chart.timeScale().width();
+  } catch {
+    plotWidth = 0; // chart tearing down
+  }
+
   // Group rows per pane — the candle pane can hold several (MA + daily-MA +
   // flag chips), stacked vertically inside one absolutely-positioned wrapper.
   const rowsByPane = new Map<string, LegendRow[]>();
@@ -844,6 +876,13 @@ function PaneLegendOverlay({
         const paneRows = rowsByPane.get(paneId) ?? [];
         const showMoveControls = idx > 0; // 캔들은 고정
         if (paneRows.length === 0 && !showMoveControls) return null;
+        // 컨트롤이 있는 pane 만 플롯 우측으로 클램프한다. 캔들은 폭을 그대로 둬서
+        // OHLC 셀 드롭 컨테이너 쿼리(global.css `.legend-ohlc-*`)의 임계값을 건드리지
+        // 않는다 — 그 쿼리는 캔들 pane 에만 적용되므로 다른 pane 이 좁아지는 것은 무해.
+        const rightInset =
+          showMoveControls && plotWidth > 0
+            ? `calc(100% - ${plotWidth}px + ${LEGEND_INSET})`
+            : LEGEND_INSET;
         return (
           <div
             key={paneId}
@@ -851,11 +890,16 @@ function PaneLegendOverlay({
               position: 'absolute',
               top: `calc(${paneTops[idx]}px + ${LEGEND_INSET})`,
               left: LEGEND_INSET,
-              right: LEGEND_INSET,
+              right: rightInset,
               display: 'flex',
-              flexDirection: 'column',
+              // row — 이동 컨트롤이 legend 행과 **같은 줄** 우측에 붙는다(2026-08-18).
+              // 세로 스택이면 컨트롤이 legend 위 한 줄을 통째로 차지했다. 별도 절대배치
+              // 대신 같은 flex 행에 두는 이유는 겹침 방지 — 절대배치였다면 좁은 pane 에서
+              // legend 칩이 컨트롤 밑으로 파고들어 우측 끝 ✕ 가 **에러 없이** 안 눌린다
+              // (둘 다 pointerEvents:auto 라 위에 있는 쪽이 이긴다).
+              flexDirection: 'row',
               alignItems: 'flex-start',
-              gap: 'var(--space-2xs)',
+              gap: 'var(--space-xs)',
               pointerEvents: 'none',
               // 자기 pane 안으로 가둔다. 캔들 pane 은 행이 6줄까지(MA·일봉MA·최대벽
               // 2종·매물대·히트맵) 쌓이는데, 창이 작아지면 그 높이가 pane 을 넘어
@@ -870,6 +914,43 @@ function PaneLegendOverlay({
               containerType: 'inline-size',
             }}
           >
+            {/* 좌측 = 행 스택. 캔들 pane 은 MA·일봉MA·flag 가 여러 줄 쌓이므로 column
+                을 유지한다. `minWidth: 0` 이 필수 — flex 자식의 기본 `min-width:auto`
+                는 축소를 거부해서, 없으면 긴 레전드가 우측 컨트롤을 pane 밖으로 민다. */}
+            {paneRows.length > 0 && (
+              <div
+                data-testid={`pane-legend-rows-${paneId}`}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: 'var(--space-2xs)',
+                  minWidth: 0,
+                }}
+              >
+                {paneRows.map((row) => (
+                  <div
+                    // paneId+kind(+flag id): 캔들 pane은 MA/daily-MA/flag row가 공존 —
+                    // key 충돌 예방.
+                    key={row.kind === 'flag' ? `${row.paneId}:flag:${row.id}` : `${row.paneId}:${row.kind}`}
+                    style={boxStyle}
+                  >
+                    {row.kind === 'ohlc' ? (
+                      <OhlcLegendRow row={row} />
+                    ) : row.kind === 'ma' ? (
+                      <MaLegendRow row={row} />
+                    ) : row.kind === 'daily-ma' ? (
+                      <DailyMaLegendRow row={row} />
+                    ) : row.kind === 'flag' ? (
+                      <FlagLegendRow row={row} />
+                    ) : (
+                      <CellsLegendRow row={row} timeframe={timeframe} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* 우측 = 이동 컨트롤. DOM 순서도 행 뒤로 옮긴다(탭 순서 = 시각 순서). */}
             {showMoveControls && (
               <PaneMoveControls
                 paneId={paneId}
@@ -881,26 +962,6 @@ function PaneLegendOverlay({
                 paneOrder={paneOrder}
               />
             )}
-            {paneRows.map((row) => (
-              <div
-                // paneId+kind(+flag id): 캔들 pane은 MA/daily-MA/flag row가 공존 —
-                // key 충돌 예방.
-                key={row.kind === 'flag' ? `${row.paneId}:flag:${row.id}` : `${row.paneId}:${row.kind}`}
-                style={boxStyle}
-              >
-                {row.kind === 'ohlc' ? (
-                  <OhlcLegendRow row={row} />
-                ) : row.kind === 'ma' ? (
-                  <MaLegendRow row={row} />
-                ) : row.kind === 'daily-ma' ? (
-                  <DailyMaLegendRow row={row} />
-                ) : row.kind === 'flag' ? (
-                  <FlagLegendRow row={row} />
-                ) : (
-                  <CellsLegendRow row={row} timeframe={timeframe} />
-                )}
-              </div>
-            ))}
           </div>
         );
       })}
