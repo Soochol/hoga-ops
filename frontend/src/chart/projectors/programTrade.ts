@@ -32,14 +32,12 @@ const lineOptions = () => ({
   // net_amount 는 당일 **누적** 순매수라 한쪽으로만 쌓인 구간을 확대하면 0 이
   // 보이는 범위 밖으로 밀린다 — 정작 부호를 읽어야 할 때 기준선이 사라진다.
   autoscaleInfoProvider: includeZeroAutoscale,
+  // 라이브러리 기본 수평선 + 가격축 최신값 칩을 둘 다 끈다(DESIGN.md 2026-05-23).
+  // 값은 Pane Legend 로 읽는다 — 커서가 있으면 그 시점, 없으면 최신(2026-08-18 에
+  // `LEGEND_CELL_PANES` 에 이 pane 을 넣었다). 축 칩을 같이 켜 두면 갱신 주기가 달라
+  // 같은 시리즈가 두 숫자로 보인다.
   priceLineVisible: false,
-  // ⚠ 앱에서 이 pane 만 true — DESIGN.md 2026-05-23("전 시리즈 off, 최신값은
-  // 크로스헤어로") 의 **명시적 예외**이고 드리프트가 아니다. 프로그램은
-  // `LEGEND_CELL_PANES`(volume·quote-totals) 밖이라 레전드 값 행이 꺼져 있고,
-  // 그 필터는 크로스헤어 유무와 무관하게 행 자체를 거른다 → 이 라벨을 끄면
-  // 현재 순매수를 읽을 표면이 남지 않는다. 레전드가 켜지면 같이 끌 것
-  // (근거·해소 조건은 DESIGN.md 2026-08-18 항목).
-  lastValueVisible: true,
+  lastValueVisible: false,
 });
 
 export function projectProgramTradeNetAmount(

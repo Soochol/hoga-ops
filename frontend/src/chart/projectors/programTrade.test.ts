@@ -201,8 +201,19 @@ describe('PROGRAM_TRADE_SPEC zero baseline', () => {
       autoscaleInfoProvider?: (
         o: () => unknown,
       ) => { priceRange: { minValue: number; maxValue: number } } | null;
+      lastValueVisible?: boolean;
+      priceLineVisible?: boolean;
     };
   }
+
+  // 값 판독면은 Pane Legend 하나로 유지한다(2026-08-18 에 `LEGEND_CELL_PANES` 에
+  // 이 pane 을 넣으면서 축 칩을 껐다). 축 칩은 SSE 재투영을 따라 거의 실시간이고
+  // 레전드 latest 는 캔들 epoch 주기라, 둘 다 켜면 같은 시리즈가 두 숫자로 보인다.
+  it('가격축 최신값 칩과 기본 수평선을 끈다 (DESIGN.md 2026-05-23)', () => {
+    const o = resolvedOptions();
+    expect(o.lastValueVisible).toBe(false);
+    expect(o.priceLineVisible).toBe(false);
+  });
 
   it('draws a dotted, unlabelled price line at 0', () => {
     const createPriceLine = vi.fn();
