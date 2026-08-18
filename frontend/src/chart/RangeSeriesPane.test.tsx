@@ -427,6 +427,8 @@ function makePaneChart() {
         setData: vi.fn(), update: vi.fn(),
         attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
       };
+      // 재생성된 핸들이 **데이터를 받았는지**까지 봐야 한다. pane 구성(개수)만 재면
+      // "series 는 제자리인데 전부 비어 있는" 상태가 초록으로 통과한다.
       if (paneIndex > panes.length) gapRequests.push(paneIndex);
       while (panes.length <= paneIndex) panes.push([]);
       panes[paneIndex].push(series);
@@ -537,5 +539,47 @@ describe('RangeSeriesPane — pane 순서 바꾸기 (인덱스 시프트)', () =
 
     expect(panes.map((p) => p.length)).toEqual([3, 2, 1, 4]);
     expect(panes[2][0]).toBe(firstSeriesOfC);
+  });
+});
+
+describe('RangeSeriesPane — 재생성 후 데이터 재푸시', () => {
+  afterEach(cleanup);
+
+  /** 모든 pane 의 모든 series 가 비어 있지 않은 데이터를 받았는가. */
+  const everySeriesHasData = (panes: unknown[][]) =>
+    panes.every((pane) =>
+      pane.every((s) => {
+        const calls = (s as { setData: { mock: { calls: unknown[][] } } }).setData.mock.calls;
+        const last = calls[calls.length - 1];
+        return Array.isArray(last?.[0]) && (last[0] as unknown[]).length > 0;
+      }),
+    );
+
+  it('순서를 바꾸면 **아래쪽** pane 도 데이터를 다시 받는다', () => {
+    const { chart, panes } = makePaneChart();
+    const { rerender } = render(<PaneStack chart={chart} names={['a', 'b', 'c', 'd']} />);
+    expect(everySeriesHasData(panes)).toBe(true);
+
+    rerender(<PaneStack chart={chart} names={['a', 'c', 'b', 'd']} />);
+
+    // d 는 `paneIndex` 가 3 그대로라 `precedingPaneKey` 로만 재생성에 참여한다 —
+    // 데이터 effect 가 그 키를 dep 으로 갖지 않으면 새 핸들이 **빈 채로** 남는다
+    // (실측 회귀: 이동 1회로 아래 두 pane 이 1776건 → 0건).
+    expect(everySeriesHasData(panes)).toBe(true);
+  });
+
+  it('candleAlwaysOnTop 이 바뀌어도 데이터를 다시 받는다', () => {
+    const { chart, panes } = makePaneChart();
+    const spec = REORDER_SPECS.a;
+    const { rerender } = render(
+      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0}
+        precedingPaneKey="" spec={spec} candleAlwaysOnTop={false} />,
+    );
+    rerender(
+      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0}
+        precedingPaneKey="" spec={spec} candleAlwaysOnTop />,
+    );
+
+    expect(everySeriesHasData(panes)).toBe(true);
   });
 });
