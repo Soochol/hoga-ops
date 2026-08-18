@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Path as PathParam
 
 from hoga.api import symbols
 from hoga.api.calendar import TradingDayUnavailableError
+from hoga.api.events import EventBus
 from hoga.api.models import (
     EnqueueResponse,
     EntriesRemoveRequest,
@@ -35,6 +36,7 @@ from hoga.api.models import (
     WatchlistMemoView,
     WatchlistResponse,
 )
+from hoga.api.mutation_broadcast import mutation_broadcast_route_class
 from hoga.api.params import CODE_PATTERN
 from hoga.api.scheduler import catchup_one_entry, next_run_at_ms
 from hoga.api.watchlist import (
@@ -88,8 +90,18 @@ def _project(doc: WatchlistDocument, *, next_run_at_ms: int) -> WatchlistRespons
     return project_watchlist_response(doc, next_run_at_ms=next_run_at_ms)
 
 
-def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
-    router = APIRouter(prefix="/api/watchlist", tags=["watchlist"])
+def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
+    *, data_dir: Path, bus: EventBus | None = None,
+) -> APIRouter:
+    router = APIRouter(
+        prefix="/api/watchlist",
+        tags=["watchlist"],
+        # 변경 라우트가 2xx 로 끝나면 "관심목록이 바뀌었다" 신호를 열려 있는 모든
+        # WS 연결에 브로드캐스트한다 — 다른 탭·다른 브라우저가 새로고침 없이 목록을
+        # 다시 읽게 하는 유일한 경로다. 라우트마다 손으로 publish 하지 않는 근거와
+        # 이 방식이 못 보는 것은 mutation_broadcast 모듈 docstring 에 있다.
+        route_class=mutation_broadcast_route_class(bus, "watchlist_changed"),
+    )
 
     @router.get("", response_model=WatchlistResponse)
     async def get_watchlist() -> WatchlistResponse:
