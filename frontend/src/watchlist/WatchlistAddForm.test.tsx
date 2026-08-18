@@ -161,4 +161,32 @@ describe('WatchlistAddForm', () => {
     // 좁아지지 않아 버튼을 밀어낸다 — 좁아질 수 있어야 1줄이 성립한다.
     expect(inline.querySelector('.min-w-0')).not.toBeNull();
   });
+  // 중복 안내는 "있다" 고만 말할 뿐 **어디 있는지** 보여 주지 않았다 — 40행짜리 그룹에서
+  // 그 종목이 맨 아래면 화면 밖이라 "없는데 있다고 한다" 로 읽힌다(실측 사례). 호출부가
+  // 그 행을 보여 줄 수 있게 **고른 순간** 알린다.
+  it('중복 종목을 고르면 onDuplicate 로 알린다 — 없으면 안 부른다', async () => {
+    const onDuplicate = vi.fn();
+    const qc = newQc();
+    seedWatchlist(qc, [{ code: '005930', name: '삼성전자', folder_id: 'f_a' }]);
+    render(<WatchlistAddForm folderId="f_a" onAdded={() => {}} onDuplicate={onDuplicate} />,
+      { wrapper: wrap(qc) });
+
+    fireEvent.click(await screen.findByText('pick'));   // mock SymbolSearch → 005930
+
+    await waitFor(() => expect(onDuplicate).toHaveBeenCalledWith('005930'));
+    expect(onDuplicate).toHaveBeenCalledTimes(1);
+  });
+
+  it('다른 폴더에만 있는 종목은 중복이 아니다', async () => {
+    const onDuplicate = vi.fn();
+    const qc = newQc();
+    seedWatchlist(qc, [{ code: '005930', name: '삼성전자', folder_id: 'f_other' }]);
+    render(<WatchlistAddForm folderId="f_a" onAdded={() => {}} onDuplicate={onDuplicate} />,
+      { wrapper: wrap(qc) });
+
+    fireEvent.click(await screen.findByText('pick'));
+
+    await waitFor(() => expect(screen.queryByText(/이미 이 그룹에 있습니다/)).toBeNull());
+    expect(onDuplicate).not.toHaveBeenCalled();
+  });
 });

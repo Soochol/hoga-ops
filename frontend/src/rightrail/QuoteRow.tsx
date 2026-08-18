@@ -151,7 +151,7 @@ export function QuoteRow({
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
       className={`group cursor-pointer touch-none ${leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center gap-2 border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
-        flash ? 'screener-row-flash' : ''
+        flash ? 'row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{
         // 선택 표식은 배경 틴트(--tint-selection)만 — 인벤토리(ListRow) 기준으로 통일.

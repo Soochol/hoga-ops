@@ -6,7 +6,7 @@ import { Banner } from './Banner';
 
 /** Shared add-form (v3): SymbolSearch + submit → 선택된 폴더의 멤버로 추가(ADR-0070).
  *  onAdded fires after a successful add (caller drives feedback/highlight). */
-export function WatchlistAddForm({ folderId, resolveAt, onAdded, layout = 'stacked' }: {
+export function WatchlistAddForm({ folderId, resolveAt, onAdded, onDuplicate, layout = 'stacked' }: {
   folderId: string;
   /** 입력과 버튼의 배치. **호출부가 자기 폭을 알기 때문에 호출부가 정한다.**
    *
@@ -24,6 +24,14 @@ export function WatchlistAddForm({ folderId, resolveAt, onAdded, layout = 'stack
    *  미전달이면 기존 계약 그대로 맨 아래(그룹 ⋯ 메뉴·히트맵 팝오버). */
   resolveAt?: () => number | undefined;
   onAdded: (hit: { code: string; name: string }) => void;
+  /** 이미 이 폴더에 있는 종목을 고른 순간 발화한다 — 호출부가 그 행을 보여 준다.
+   *
+   *  "이미 있습니다" 만으로는 사용자가 확인할 방법이 없다. 40행짜리 그룹에서 그 종목이
+   *  맨 아래에 있으면 화면 밖이라 **"없는데 있다고 한다"** 로 읽힌다(실측: 사용자의
+   *  삼성화재가 40/40번째였다).
+   *
+   *  optional 이라 리스트가 없는 소비처(패널 그룹 ⋯ 팝오버)는 안 넘기면 그만이다. */
+  onDuplicate?: (code: string) => void;
 }) {
   const addM = useAddMember();
   const { data } = useWatchlist();
@@ -32,8 +40,16 @@ export function WatchlistAddForm({ folderId, resolveAt, onAdded, layout = 'stack
   // 이미 이 폴더의 멤버면 **아예 보내지 않는다**. 백엔드 add 는 멱등 no-op 이라
   // 보내 봐야 아무 일도 안 일어나고, 사용자에겐 "지정한 자리에 안 생겼다" 로만 보인다
   // (at 도 무시된다). 캐시에 이미 있는 데이터라 추가 요청은 없다.
-  const duplicate = picked !== null
-    && (data?.entries ?? []).some((e) => e.folder_id === folderId && e.code === picked.code);
+  const isDuplicate = (hit: SymbolHit | null) =>
+    hit !== null && (data?.entries ?? []).some((e) => e.folder_id === folderId && e.code === hit.code);
+  const duplicate = isDuplicate(picked);
+
+  // **선택 시점에 한 번** 알린다 — derived 값을 effect 로 감시하면 폴링 리페치가 돌 때마다
+  // 재발화해 하이라이트 타이머가 계속 되살아난다. 사용자의 행동(고름)이 곧 발화점이다.
+  const handlePick = (hit: SymbolHit | null) => {
+    setPicked(hit);
+    if (hit && isDuplicate(hit)) onDuplicate?.(hit.code);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,7 +86,7 @@ export function WatchlistAddForm({ folderId, resolveAt, onAdded, layout = 'stack
       <form onSubmit={submit}
         className={layout === 'inline' ? 'flex items-start gap-2' : 'flex flex-col gap-2'}>
         <div className={layout === 'inline' ? 'flex-1 min-w-0' : undefined}>
-          <SymbolSearch value={picked} onChange={setPicked} />
+          <SymbolSearch value={picked} onChange={handlePick} />
         </div>
         {/* 우측 정렬 — GroupNameModal·ConfirmModal 의 폼 액션 관용구와 같다. */}
         <div className={layout === 'inline' ? 'shrink-0' : 'flex justify-end'}>
@@ -80,7 +96,9 @@ export function WatchlistAddForm({ folderId, resolveAt, onAdded, layout = 'stack
           </button>
         </div>
       </form>
-      {duplicate && <Banner kind="error">{picked.name}은(는) 이미 이 그룹에 있습니다</Banner>}
+      {picked && duplicate && (
+        <Banner kind="error">{picked.name}은(는) 이미 이 그룹에 있습니다 — 아래에 표시했습니다</Banner>
+      )}
       {addM.error && <Banner kind="error">{(addM.error as Error).message}</Banner>}
     </div>
   );
