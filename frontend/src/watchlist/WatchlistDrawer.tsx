@@ -18,9 +18,7 @@ import {
 import { persistJson, readJsonObject } from '../state/persist';
 import { ChevronIcon } from '../ui/ChevronIcon';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
-import {
-  groupByFolder, swapFolderOrder, countOrphansIfFolderDeleted, folderCaptureEnabled,
-} from './grouping';
+import { groupByFolder, swapFolderOrder, countOrphansIfFolderDeleted } from './grouping';
 import { Countdown } from './Countdown';
 import { Banner } from './Banner';
 import { WatchlistEditModal } from './WatchlistEditModal';
@@ -192,9 +190,6 @@ function GroupHeader(props: {
   canMoveDown?: boolean;
   sortMode?: QuoteSortMode;
   onSort?: (mode: QuoteSortMode) => void;
-  /** 실시간 저장 옵트인(ADR-0079). 켜진 그룹에만 배지가 붙는다 — 미분류(폴더 없음)는
-   *  미전달이라 배지가 없다. 표시 전용이고 조작은 편집 모달에 있다. */
-  captureEnabled?: boolean;
   /** 실폴더 id — 있으면 ⋯ 메뉴에 "종목 추가"가 붙는다(미분류는 미전달). */
   folderId?: string;
   dragHandle?: GroupDragHandle;
@@ -250,21 +245,6 @@ function GroupHeader(props: {
         <span className="truncate">{props.label}</span>
         <span className="flex-none text-xs font-normal text-fg-dim">{props.count}</span>
       </button>
-      {/* 실시간 저장 대상 표시 — **표시 전용**이다(조작은 편집 모달의 토글 하나로 남긴다,
-          패널=읽기·이동 / 모달=관리라는 역할 분담). 이전까지 `capture_enabled` 는 앱 어디에도
-          드러나지 않아, 저장이 안 되는 그룹인지 알려면 모달을 열고 행에 마우스를 올려야 했다.
-
-          **꺼짐이 아니라 켜짐을 표시한다.** 다중 소속(v3)에서 `capture_ordered_codes` 는 코드
-          단위로 dedup 하므로, 꺼진 폴더에 "저장 안 함" 을 달면 **그 문장이 거짓일 수 있다** —
-          같은 종목이 다른 켜진 폴더를 통해 저장되기 때문이다. 폴더 단위로 항상 참인 문장은
-          긍정형뿐이다. 신규 폴더 기본값이 꺼짐이라(ADR-0079) 켜진 쪽이 소수이기도 하다. */}
-      {props.captureEnabled && (
-        <span data-testid="group-capture-badge"
-          title="실시간 저장 대상 — 이 그룹의 종목이 실시간으로 저장된다"
-          className="flex-none px-1 rounded text-2xs font-normal bg-tint-selection text-accent">
-          저장
-        </span>
-      )}
       {props.onSort && (
         <button type="button" aria-label={`${props.label} 정렬`}
           aria-describedby={sortDescriptionId}
@@ -1096,7 +1076,6 @@ export function WatchlistDrawer() {
                   sortMode={g.sortMode}
                   onSort={folder ? (mode) => setFolderSortMode(folder.id, mode) : undefined}
                   folderId={folder?.id}
-                  captureEnabled={folder ? folderCaptureEnabled(folder) : false}
                   dragHandle={dragHandle} />
               );
               return folder ? (

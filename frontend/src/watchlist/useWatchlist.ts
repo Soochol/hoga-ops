@@ -9,7 +9,6 @@ import {
   catchupAll,
   createFolder,
   renameFolder,
-  setFolderCaptureEnabled,
   deleteFolder,
   reorderFolders,
   reorderEntries,
@@ -87,7 +86,6 @@ type ReorderVars = { folderId: string; orderedCodes: string[] };
 type ItemsReorderVars = { folderId: string; orderedItems: WatchlistItemRef[] };
 type AddMemberVars = { folderId: string; code: string; name: string; at?: number };
 type RemoveMemberVars = { folderId: string; code: string };
-type CaptureVars = { folderId: string; captureEnabled: boolean };
 
 // no-jump invariant: 서버가 target 그룹을 0..N-1로 compact 유지하므로(_reindex), 아래 낙관적
 // order는 invalidate 후 서버 값과 같은 *상대순서*에 안착 → 화면 jump 없음. 렌더는 .order로
@@ -177,14 +175,6 @@ function applyFolderReorder(data: WatchlistResponse, orderedIds: string[]): Watc
     folders: data.folders.map((f) => (rank.has(f.id) ? { ...f, order: rank.get(f.id)! } : f)),
   };
 }
-function applyFolderCapture(data: WatchlistResponse, v: CaptureVars): WatchlistResponse {
-  return {
-    ...data,
-    folders: data.folders.map((f) =>
-      f.id === v.folderId ? { ...f, capture_enabled: v.captureEnabled } : f),
-  };
-}
-
 function useOptimisticWatchlistMutation<V>(
   mutationFn: (v: V) => Promise<void>,
   apply: (d: WatchlistResponse, v: V) => WatchlistResponse,
@@ -218,12 +208,6 @@ export function useAddMember() {
 export function useRemoveMember() {
   return useOptimisticWatchlistMutation<RemoveMemberVars>(
     (v) => removeMember(v.folderId, v.code), applyRemoveMember);
-}
-export function useSetFolderCaptureEnabled() {
-  return useOptimisticWatchlistMutation<CaptureVars>(
-    (v) => setFolderCaptureEnabled(v.folderId, v.captureEnabled).then(() => undefined),
-    applyFolderCapture,
-  );
 }
 
 /** v3: 코드를 from→to 폴더로 이동 = 대상 폴더에 추가 후 출처 폴더에서 제거(둘 다 멤버십).

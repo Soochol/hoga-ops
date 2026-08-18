@@ -70,7 +70,7 @@ def test_memo_items_never_reach_display_order():
     assert display_ordered_codes(doc) == ["005930", "000660"]
 
 
-def test_compute_capture_candidates_uses_enabled_folders(tmp_path, monkeypatch) -> None:
+def test_compute_capture_candidates_includes_every_folder(tmp_path, monkeypatch) -> None:
     from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder, code_items
     from hoga.api.watchlist import save_document
     from hoga.live.coverage import _compute_capture_candidates
@@ -82,14 +82,12 @@ def test_compute_capture_candidates_uses_enabled_folders(tmp_path, monkeypatch) 
                 name="Enabled",
                 order=0,
                 items=code_items(["005930", "000660"]),
-                capture_enabled=True,
             ),
             WatchlistFolder(
                 id="f_0000000b",
-                name="Disabled",
+                name="둘째 그룹",
                 order=1,
                 items=code_items(["035720"]),
-                capture_enabled=False,
             ),
         ],
         entries=[
@@ -108,4 +106,6 @@ def test_compute_capture_candidates_uses_enabled_folders(tmp_path, monkeypatch) 
         lambda _query, limit=10_000: [Hit("005930"), Hit("035720")],
     )
 
-    assert _compute_capture_candidates(tmp_path) == ["005930"]
+    # 폴더 단위 옵트인 제거(ADR-0150) 후 두 폴더의 코드가 모두 후보다 — 남는 필터는
+    # **심볼 마스터**뿐이라(monkeypatch 가 005930·035720 만 안다) 000660 이 빠진다.
+    assert _compute_capture_candidates(tmp_path) == ["005930", "035720"]

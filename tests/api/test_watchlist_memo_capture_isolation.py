@@ -57,15 +57,15 @@ def _doc_with_memos() -> WatchlistDocument:
     """메모를 **코드 사이에** 끼운 문서 — 앞/중간/뒤 셋 다 덮는다."""
     return WatchlistDocument(
         folders=[
-            WatchlistFolder(id="f_0000000a", name="스윙", order=0, capture_enabled=True, items=[
+            WatchlistFolder(id="f_0000000a", name="스윙", order=0, items=[
                 WatchlistMemoItem(id=_MEMO_ID, text="선두 메모"),
                 WatchlistCodeItem(code="005930"),
                 WatchlistMemoItem(id="m_0000000b", text=""),          # 빈 줄
                 WatchlistCodeItem(code="000660"),
                 WatchlistMemoItem(id="m_0000000c", text="끝 메모"),
             ]),
-            WatchlistFolder(id="f_0000000b", name="관망", order=1, capture_enabled=False, items=[
-                WatchlistMemoItem(id="m_0000000d", text="수집 끔"),
+            WatchlistFolder(id="f_0000000b", name="관망", order=1, items=[
+                WatchlistMemoItem(id="m_0000000d", text="둘째 그룹 메모"),
                 WatchlistCodeItem(code="035720"),
             ]),
         ],
@@ -77,7 +77,12 @@ def _doc_with_memos() -> WatchlistDocument:
 
 
 def test_capture_ordered_codes_contains_only_codes() -> None:
-    assert capture_ordered_codes(_doc_with_memos()) == ["005930", "000660"]
+    """메모 아이템은 저장 후보에 끼지 않는다 — 이 파일의 관심사는 그 격리다.
+
+    폴더 단위 옵트인이 사라진 뒤(ADR-0150) 두 폴더의 코드가 **모두** 후보다;
+    이 단언이 재는 것은 그 목록에 메모 id 가 섞이지 않는다는 것이다.
+    """
+    assert capture_ordered_codes(_doc_with_memos()) == ["005930", "000660", "035720"]
 
 
 def test_display_ordered_codes_contains_only_codes() -> None:

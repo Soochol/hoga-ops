@@ -7,13 +7,11 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import {
   useWatchlist, useCreateFolder, useReorderEntries, useMoveMember,
-  useRenameFolder, useDeleteFolder, useReorderFolders, useSetFolderCaptureEnabled,
+  useRenameFolder, useDeleteFolder, useReorderFolders,
 } from './useWatchlist';
 import { WatchlistEntryPane } from './WatchlistEntryPane';
 import { resolveDrag, resolveFolderDrag, folderDroppableId } from './dragHandlers';
-import {
-  selectVisibleEntries, countOrphansIfFolderDeleted, folderCaptureEnabled, type Selected,
-} from './grouping';
+import { selectVisibleEntries, countOrphansIfFolderDeleted, type Selected } from './grouping';
 import { ModalShell } from '../ui/ModalShell';
 import { TrashIcon } from '../ui/TrashIcon';
 import { dropIndicatorClass, sortableDraggingStyle, type DropIndicator } from '../ui/sortableDragVisuals';
@@ -30,10 +28,8 @@ const NOOP_CLOSE = () => {};
 // on hover via `group-hover`.
 function FolderRow(props: {
   id: string; name: string; count: number;
-  captureEnabled: boolean;
   isSelected: boolean; isEditing: boolean; editName: string;
   onSelect: () => void; onStartEdit: () => void; onDelete: () => void;
-  onToggleCapture: () => void;
   onEditNameChange: (v: string) => void; onCommit: () => void; onCancelEdit: () => void;
   dragListeners?: DraggableSyntheticListeners;
   dragAttributes?: DraggableAttributes;
@@ -96,52 +92,17 @@ function FolderRow(props: {
         </button>
       )}
       {!props.isEditing && (
-        // **토글은 상시 노출한다.** 이건 이 앱에서 `capture_enabled` 를 보여 주는 **유일한
-        // 지점**인데 hover 뒤에 숨어 있었다 — 게다가 신규 폴더는 기본이 꺼짐이라
-        // (ADR-0079, 실시간 저장은 명시적 옵트인) "그룹을 만들고 종목을 넣었는데 저장이
-        // 안 된다" 가 **정상 경로**이고 그 사실을 알 방법이 없었다. 상시 노출이 상태
-        // 표시와 조작을 동시에 해결한다(숨김 시절엔 `pointer-events-none` 이라 hover
-        // 없이는 클릭조차 못 했다 — 실측).
-        //
-        // 파괴적인 휴지통만 hover 로 남긴다. opacity 숨김(display:none 아님)이라 Tab
+        // 파괴적인 휴지통만 hover 로 드러낸다. opacity 숨김(display:none 아님)이라 Tab
         // 포커스가 닿고 `group-focus-within` 으로 드러난다(패널 GroupHeader ⋯과 같은
         // 키보드 접근성 계약).
         //
         // **absolute 를 쓰지 않는다.** 예전엔 액션 묶음이 `absolute right-2` 라 자리를
         // 안 차지했고, 그래서 이름 버튼에 hover 패딩(`pr-12`)을 줘 자리를 비워야 했다 —
-        // 그 값(48px)이 액션 실제 폭(54px)보다 작아 카운트를 5px 덮었고 `10` 이 `1` 로
-        // 읽혔다. 패딩과 액션 폭이 **손으로 맞춰야 하는 두 숫자**인 한 같은 사고가 다시
-        // 난다. 평범한 flex 아이템으로 두면 겹침이 원리적으로 불가능하다. 대가는 휴지통
-        // 자리(≈22px)를 늘 비워 두는 것이고, 그만큼 이름이 일찍 truncate 된다.
+        // 그 값이 액션 실제 폭보다 작아 카운트를 덮었다(`10` 이 `1` 로 읽혔다). 패딩과
+        // 액션 폭이 손으로 맞춰야 하는 두 숫자인 한 같은 사고가 다시 난다. 평범한 flex
+        // 아이템으로 두면 겹침이 원리적으로 불가능하다.
         <div data-testid={`folder-row-actions-${props.id}`}
           className="shrink-0 flex items-center gap-0.5 text-fg-dimmer">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={props.captureEnabled}
-            aria-label={`${props.name} 실시간 저장`}
-            title={props.captureEnabled
-              ? '실시간 저장 대상 — 이 그룹의 종목을 실시간으로 저장한다'
-              : '실시간 저장 안 함 — 일별 과거 데이터 수집은 계속된다'}
-            onClick={(e) => {
-              e.stopPropagation();
-              props.onToggleCapture();
-            }}
-            // 행 전체가 드래그 활성 영역이라(dnd-kit PointerSensor, distance 5) 토글을
-            // 누른 채 손이 흔들리면 폴더 드래그가 시작된다. entry 행 버튼들과 같은
-            // 관용구로 pointerdown 에서 끊는다 — 상시 노출이 되면서 빈도가 올라간다.
-            onPointerDown={(e) => e.stopPropagation()}
-            className={`w-8 h-4 rounded-full border ${
-              props.captureEnabled ? 'bg-accent border-accent' : 'bg-bg-input border-border'
-            }`}
-          >
-            <span
-              aria-hidden
-              className={`block w-3 h-3 rounded-full bg-fg transition-transform ${
-                props.captureEnabled ? 'translate-x-4' : 'translate-x-0.5'
-              }`}
-            />
-          </button>
           <button type="button" aria-label={`${props.name} 삭제`}
             onClick={props.onDelete}
             onPointerDown={(e) => e.stopPropagation()}
@@ -198,7 +159,6 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
   const renameM = useRenameFolder();
   const deleteM = useDeleteFolder();
   const reorderFoldersM = useReorderFolders();
-  const captureM = useSetFolderCaptureEnabled();
   const [selected, setSelected] = useState<Selected | undefined>(undefined);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
@@ -314,14 +274,7 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
         <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0">
           {/* 좌: 폴더 pane — 보조지표 nav 패턴(섹션 헤더 + 행)과 정렬 */}
           <div className="border-r border-border flex flex-col min-h-0">
-            {/* 「실시간 저장」 캡션은 토글 컬럼 위에 온다 — 행마다 라벨을 붙이면 220px
-                nav 에서 그룹 이름을 잡아먹으므로, 라벨 하나로 컬럼 전체를 설명한다.
-                맨 스위치는 무엇을 켜는지 말해 주지 않는다(aria-label 은 시각 사용자에게
-                안 보인다). 휴지통은 hover 로만 나오므로 캡션 대상이 아니다. */}
-            <div className="flex items-baseline justify-between text-fg-dim text-xs px-3 pt-3 pb-2">
-              <span className="uppercase">관심 그룹</span>
-              <span className="text-fg-dimmer">실시간 저장</span>
-            </div>
+            <div className="text-fg-dim text-xs uppercase px-3 pt-3 pb-2">관심 그룹</div>
             <div className="px-2 pb-2">
               {adding ? (
                 <form data-testid="folder-create-form" onSubmit={submitFolder} className="flex gap-1">
@@ -345,19 +298,13 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
             <div className="flex-1 overflow-auto px-2 pb-2 flex flex-col gap-px">
               <SortableContext items={folders.map((f) => f.id)} strategy={verticalListSortingStrategy}>
                 {folders.map((f) => {
-                  const captureEnabled = folderCaptureEnabled(f);
                   return (
                     <SortableFolderRow key={f.id} id={f.id} name={f.name} count={countIn(f.id)}
-                      captureEnabled={captureEnabled}
                       isSelected={selected === f.id} isEditing={editingId === f.id}
                       editName={editName}
                       onSelect={() => setSelected(f.id)}
                       onStartEdit={() => { setEditingId(f.id); setEditName(f.name); }}
                       onDelete={() => requestDeleteFolder(f.id)}
-                      onToggleCapture={() => captureM.mutate({
-                        folderId: f.id,
-                        captureEnabled: !captureEnabled,
-                      })}
                       onEditNameChange={setEditName}
                       onCommit={() => commitRename(f.id)}
                       onCancelEdit={() => setEditingId(null)} />

@@ -21,7 +21,7 @@ function wrap(qc: QueryClient) {
 
 // items: [code 005930(0), memo(1), code 000660(2)]
 const seeded: WatchlistResponse = {
-  folders: [{ id: 'f_a', name: '스윙', order: 0, capture_enabled: true }],
+  folders: [{ id: 'f_a', name: '스윙', order: 0 }],
   entries: [
     { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
     { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 2 },

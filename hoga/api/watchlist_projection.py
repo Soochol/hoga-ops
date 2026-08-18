@@ -54,7 +54,6 @@ def project_folder_views(doc: WatchlistDocument) -> list[WatchlistFolderView]:
             id=folder.id,
             name=folder.name,
             order=folder.order,
-            capture_enabled=folder.capture_enabled,
         )
         for folder in ordered_folders(doc)
     ]
@@ -69,8 +68,6 @@ def capture_ordered_codes(
     seen: set[str] = set()
     out: list[str] = []
     for folder in ordered_folders(doc):
-        if not folder.capture_enabled:
-            continue
         for code in folder.code_members():
             if code in seen:
                 continue
