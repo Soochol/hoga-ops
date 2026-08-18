@@ -1679,6 +1679,24 @@ export function LiveChartRoot({
     observePaneFoldTarget,
   ] = usePaneFolding(gatedPaneSpecs, paneStretch);
 
+  // 각 pane 앞에 놓인 pane 이름 시퀀스. `RangeSeriesPane` 의 lifecycle dep 으로 들어가
+  // "밑에서 pane 인덱스가 밀리는" pane 들을 재생성에 참여시킨다 — 왜 필요한지는 그
+  // prop 의 JSDoc 참조(요약: 빈 pane 은 lwc 가 자동 삭제하고 아래 인덱스가 당겨진다).
+  //
+  // 앞 시퀀스가 바뀐 pane 은 항상 **연속된 suffix** 를 이룬다: i 번 pane 이 바뀌면
+  // i 뒤의 모든 pane 도 자기 앞 시퀀스 안에 그 변화를 포함한다. 그래서 teardown 후
+  // 남는 것은 [0..i-1] 이고, effect 가 오름차순으로 돌며 i, i+1, … 로 **append** 한다
+  // (최초 마운트와 같은 경로 — 새 순서 가정이 없다).
+  const precedingPaneKeys = useMemo(() => {
+    const keys: string[] = [];
+    let acc = '';
+    for (const spec of visiblePaneSpecs) {
+      keys.push(acc);
+      acc = acc === '' ? spec.name : `${acc}|${spec.name}`;
+    }
+    return keys;
+  }, [visiblePaneSpecs]);
+
   // 컨테이너 ref 합성 — 접기 관측자는 노드 등장을 봐야 하므로 callback ref 이고
   // (그 훅의 주석 참조), `containerRef` 는 차트 생성·휠·구분선 드래그·폭 측정이
   // 계속 쓴다. `observePaneFoldTarget` 이 `useState` setter 라 참조가 안정적이므로
@@ -2242,6 +2260,7 @@ export function LiveChartRoot({
               bundle={bundleForPane(spec, cb)}
               axis={axis}
               paneIndex={i}
+              precedingPaneKey={precedingPaneKeys[i]}
               spec={spec}
               contextOverride={spec.name === 'candle' ? candlePaneContext : undefined}
               forceSetData={isCalendarTimeframe(timeframe) && spec.name === 'candle'}
