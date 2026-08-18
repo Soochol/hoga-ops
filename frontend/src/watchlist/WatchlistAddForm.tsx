@@ -6,8 +6,16 @@ import { Banner } from './Banner';
 
 /** Shared add-form (v3): SymbolSearch + submit → 선택된 폴더의 멤버로 추가(ADR-0070).
  *  onAdded fires after a successful add (caller drives feedback/highlight). */
-export function WatchlistAddForm({ folderId, resolveAt, onAdded }: {
+export function WatchlistAddForm({ folderId, resolveAt, onAdded, layout = 'stacked' }: {
   folderId: string;
+  /** 입력과 버튼의 배치. **호출부가 자기 폭을 알기 때문에 호출부가 정한다.**
+   *
+   *  `'stacked'`(기본) — 2줄. 좁은 컨테이너의 안전값이다(아래 붕괴 주석 참조).
+   *  `'inline'` — 1줄. 검색 입력이 넉넉한 곳(편집 모달 우측 pane)에서만 쓴다.
+   *
+   *  **컨테이너 쿼리는 쓰지 않는다** — 이 리포에 함정이 둘 있고(인라인 스타일·content-sized
+   *  컨테이너), 호출부가 자기 폭을 아는 상황에서는 prop 이 더 정직하다. */
+  layout?: 'stacked' | 'inline';
   /** 삽입할 items 인덱스를 **submit 시점에 다시 계산**한다(v5, 행 우클릭 삽입 경로).
    *
    *  숫자가 아니라 함수를 받는 이유: 팝오버가 열려 있는 동안 60초 폴링 리페치가
@@ -53,10 +61,19 @@ export function WatchlistAddForm({ folderId, resolveAt, onAdded }: {
           2줄로 두면 드롭다운이 262px 이 되어 종목명 컬럼 92px, 행 높이 35px 로 돌아온다
           (팝오버 폭은 그대로여도 된다 — 실측). 세로쓰기 자체는 SymbolRow 의
           `truncate` 가 폭과 무관하게 다시 한 번 막는다. */}
-      <form onSubmit={submit} className="flex flex-col gap-2">
-        <SymbolSearch value={picked} onChange={setPicked} />
+      {/* `inline` 은 위 붕괴가 **일어날 수 없는 폭**에서만 쓴다 — 편집 모달 우측 pane 은
+          638px 이라 버튼을 빼고도 검색 입력이 480px 이상 남는다(팝오버 173px 과 비교).
+          거기서 2줄은 순수한 세로 낭비다(실측 91px vs 53px, 리스트 가시 영역의 10%).
+          `min-w-0` 은 필수 — flex item 의 기본 `min-width:auto` 아래서는 SymbolSearch
+          래퍼가 내용보다 좁아지지 않아 버튼을 밀어낸다(입력 자체는 이미 같은 이유로
+          `min-w-0` 을 갖고 있다). */}
+      <form onSubmit={submit}
+        className={layout === 'inline' ? 'flex items-start gap-2' : 'flex flex-col gap-2'}>
+        <div className={layout === 'inline' ? 'flex-1 min-w-0' : undefined}>
+          <SymbolSearch value={picked} onChange={setPicked} />
+        </div>
         {/* 우측 정렬 — GroupNameModal·ConfirmModal 의 폼 액션 관용구와 같다. */}
-        <div className="flex justify-end">
+        <div className={layout === 'inline' ? 'shrink-0' : 'flex justify-end'}>
           <button type="submit" disabled={addM.isPending || picked === null || duplicate}
                   className="px-3 py-1.5 rounded bg-accent text-bg text-sm font-medium disabled:opacity-40">
             ＋ 종목 추가

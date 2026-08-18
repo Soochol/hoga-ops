@@ -136,5 +136,29 @@ describe('WatchlistAddForm', () => {
     expect(form.className).toContain('flex-col');
     expect(form.className).not.toContain('items-center');
   });
-});
+  // P2-3: 2줄(stacked)은 **좁은 팝오버(280px)의 처방**이다 — 거기선 1줄이면 검색
+  // 드롭다운이 173px 로 좁아져 한글 종목명 컬럼이 min-content(한 글자)까지 붕괴한다
+  // (#1379). 그 처방이 넓은 곳까지 따라가 세로를 낭비했다. 호출부가 자기 폭을 아니
+  // 호출부가 정한다 — **컨테이너 쿼리는 쓰지 않는다**(이 리포에 함정이 둘 있다).
+  //
+  // 픽셀은 jsdom 이 못 재므로 방향(flex-col vs flex-row)만 클래스로 못박고, 실제 폭은
+  // 도그푸딩이 쟀다: 모달 inline 은 폼 높이 37px·드롭다운 525px·종목명 컬럼 355px·
+  // 행 35px, 팝오버 stacked 는 종목명 92px·행 35px(#1379 수정값 그대로).
+  it('stacks by default and goes inline only when the caller asks', () => {
+    const { container, unmount } = render(
+      <WatchlistAddForm folderId="f_a" onAdded={() => {}} />, { wrapper: wrap(newQc()) });
+    const stacked = container.querySelector('form')!;
+    expect(stacked).toHaveClass('flex-col');
+    unmount();
 
+    const { container: c2 } = render(
+      <WatchlistAddForm folderId="f_a" layout="inline" onAdded={() => {}} />,
+      { wrapper: wrap(newQc()) });
+    const inline = c2.querySelector('form')!;
+    expect(inline).toHaveClass('flex');
+    expect(inline).not.toHaveClass('flex-col');
+    // `min-w-0` 이 없으면 flex item 의 `min-width:auto` 때문에 검색 래퍼가 내용보다
+    // 좁아지지 않아 버튼을 밀어낸다 — 좁아질 수 있어야 1줄이 성립한다.
+    expect(inline.querySelector('.min-w-0')).not.toBeNull();
+  });
+});

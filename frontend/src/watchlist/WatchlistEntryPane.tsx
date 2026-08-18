@@ -192,7 +192,8 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
       {/* add form — v3: 실폴더 선택 시에만(미분류 추가 대상 없음) */}
       {selected !== null && (
         <div className="px-3 py-2 border-b border-border">
-          <WatchlistAddForm folderId={selected}
+          {/* 이 pane 은 638px — 검색 입력이 넉넉해 2줄일 이유가 없다(팝오버와 반대). */}
+          <WatchlistAddForm folderId={selected} layout="inline"
             onAdded={(hit) => setRecentAction({ kind: 'added', code: hit.code, name: hit.name })} />
         </div>
       )}

@@ -326,4 +326,17 @@ describe('WatchlistEntryPane', () => {
     await waitFor(() => expect(button.querySelector('svg')).toHaveClass('animate-spin'));
     expect(button.className).not.toMatch(/animate-spin/);
   });
+  // prop 을 만든 것과 **호출부가 그걸 넘기는 것**은 다른 축이다. AddForm 자체 테스트는
+  // layout 동작만 보므로, 여기서 inline 을 지워도 그쪽은 초록이다(red-check 에서 실측).
+  // 이 pane 은 638px 이라 2줄일 이유가 없다 — 실측 폼 높이 37px(2줄이면 79px).
+  it('asks the add form for the inline layout — this pane is wide', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
+    await screen.findByText('삼성전자');
+
+    const form = container.querySelector('form')!;
+    expect(form).toHaveClass('flex');
+    expect(form).not.toHaveClass('flex-col');
+  });
 });
