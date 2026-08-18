@@ -11,9 +11,12 @@ import { formatKoreanWonEok } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 import { LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
+import { addZeroBaselineGuide, includeZeroAutoscale } from '../util/zeroBaseline';
 
 const TOKEN_SPEC = {
   line: ['--accent', '#F0B429'],
+  // 0선은 데이터가 아니라 참조선이므로 중립색 — 호가비 pane 과 동일 토큰.
+  baseline: ['--fg-dimmer', '#63636F'],
 } as const;
 
 // Color is series-level (thunked in the spec below); the data is value-only.
@@ -26,6 +29,9 @@ const lineOptions = () => ({
     minMove: 1,
   },
   priceScaleId: 'right' as const,
+  // net_amount 는 당일 **누적** 순매수라 한쪽으로만 쌓인 구간을 확대하면 0 이
+  // 보이는 범위 밖으로 밀린다 — 정작 부호를 읽어야 할 때 기준선이 사라진다.
+  autoscaleInfoProvider: includeZeroAutoscale,
   priceLineVisible: false,
   lastValueVisible: true,
 });
@@ -115,6 +121,10 @@ export const PROGRAM_TRADE_SPEC = {
         color: () => resolveTokensThemed(TOKEN_SPEC).line,
         format: formatKoreanWonEok, // 억 단위 (라인 축과 동일)
       },
+      // 0 = 프로그램 매수/매도 우위의 경계. 누적값이라 이 선을 언제 되돌아
+      // 넘는지가 그 자체로 신호다.
+      afterAdd: (series) =>
+        addZeroBaselineGuide(series, resolveTokensThemed(TOKEN_SPEC).baseline),
     },
   ],
 } satisfies PaneSpec;
