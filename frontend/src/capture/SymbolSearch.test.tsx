@@ -259,4 +259,25 @@ describe('SymbolSearch — empty-result staleness nudge', () => {
     expect(screen.getByText(/검색 결과가 없습니다/)).toBeInTheDocument();
     expect(screen.queryByText(/Symbol Master.*업데이트되었습니다/)).not.toBeInTheDocument();
   });
+
+  it('종목명이 좁은 컨테이너에서 세로로 깨지지 않는다 — nowrap + 전체 이름 title', async () => {
+    // 이 행은 `grid-cols-[1fr_auto_auto_auto]` 이고 종목명만 `1fr` 이라, 좁은
+    // 컨테이너(280px 팝오버)에서 그 컬럼이 min-content 로 붕괴한다. **한글의
+    // min-content 는 한 글자**라 이름이 세로로 쌓이고 행 높이가 3배가 됐다
+    // (실측 11px 폭 / 91px 높이). 영문은 단어가 안 끊겨 이 실패가 안 난다.
+    //
+    // ⚠ jsdom 은 레이아웃을 계산하지 않아 **줄바꿈 자체는 여기서 못 잰다**. 이
+    // 단언이 고정하는 것은 "그 줄바꿈을 정의상 불가능하게 만드는 클래스가 붙어
+    // 있는가" 와 "잘린 이름을 복구할 수단이 있는가" 두 가지다. 실제 폭·높이는
+    // 도그푸딩으로 확인했다(262px 드롭다운 / 92px 이름 컬럼 / 35px 행).
+    const qc = setup();
+    render(<SymbolSearch value={null} onChange={() => {}} />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
+    await new Promise((r) => setTimeout(r, 30));
+    const name = screen.getByText('삼성전자');
+    expect(name.className).toContain('truncate');   // = overflow-hidden + ellipsis + nowrap
+    expect(name.className).toContain('min-w-0');    // grid 자식이 1fr 아래로 줄 수 있게
+    expect(name.getAttribute('title')).toBe('삼성전자');
+  });
 });
+

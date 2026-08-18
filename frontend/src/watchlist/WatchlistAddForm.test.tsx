@@ -121,4 +121,20 @@ describe('WatchlistAddForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /추가/ }));
     await waitFor(() => expect(add).toHaveBeenCalledWith('f_a', '005930', 1));
   });
+
+  it('검색 입력과 제출 버튼을 한 줄에 두지 않는다 (좁은 팝오버에서 드롭다운이 짜부라진다)', () => {
+    // 한 줄이면 280px 팝오버에서 검색 입력이 173px 로 눌리고, 드롭다운이 그 폭을
+    // 물려받아 종목명 컬럼이 **한 글자(11px)** 로 붕괴한다(한글의 min-content).
+    // 2줄이면 262px 로 회복된다 — 실측은 도그푸딩.
+    //
+    // ⚠ jsdom 은 레이아웃이 없어 **폭 자체는 못 잰다.** 이 단언은 "세로 배치라는
+    // 결정" 만 고정한다 — 누가 다시 한 줄로 되돌리면 여기서 걸린다.
+    const qc = newQc();
+    const { container } = render(<WatchlistAddForm folderId="f_a" onAdded={vi.fn()} />,
+      { wrapper: wrap(qc) });
+    const form = container.querySelector('form')!;
+    expect(form.className).toContain('flex-col');
+    expect(form.className).not.toContain('items-center');
+  });
 });
+
