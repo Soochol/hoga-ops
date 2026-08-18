@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listSaves, createSave, updateSave, deleteSave, type SaveWriteRequest } from '../api/savedScreeners';
-
-const KEY = ['screener-saves'];
+import { SCREENER_SAVES_KEY as KEY } from './screenerKeys';
 
 export const useSavedScreeners = () => useQuery({ queryKey: KEY, queryFn: listSaves });
 

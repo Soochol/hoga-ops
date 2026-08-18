@@ -31,6 +31,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Path as PathParam, Query
 
 from hoga.api import symbols
+from hoga.api.events import EventBus
 from hoga.api.heatmap import (
     FolderNotFoundError,
     HeatmapSetMismatchError,
@@ -63,6 +64,7 @@ from hoga.api.models import (
     MemberAddRequest,
     WatchlistFolder,
 )
+from hoga.api.mutation_broadcast import mutation_broadcast_route_class
 from hoga.api.params import CODE_PATTERN
 from hoga.api.scheduler import next_run_at_ms
 from hoga.live.lifecycle import refresh_live_stream
@@ -117,8 +119,17 @@ def _folder_views(folders: Iterable[WatchlistFolder]) -> list[HeatmapFolderView]
     return [HeatmapFolderView(id=f.id, name=f.name, order=f.order) for f in folders]
 
 
-def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
-    router = APIRouter(prefix="/api/heatmap", tags=["heatmap"])
+def build_router(  # noqa: PLR0915
+    *, data_dir: Path, bus: EventBus | None = None,
+) -> APIRouter:
+    router = APIRouter(
+        prefix="/api/heatmap",
+        tags=["heatmap"],
+        # 관심목록과 같은 브로드캐스트(mutation_broadcast). 두 목록은 독립 스토어라
+        # (ADR-0068) 신호도 각자다 — 히트맵 변경이 ['watchlist'] 를 건드리지 않는
+        # 프론트 규율이 교차 창 경로에서도 그대로 유지된다.
+        route_class=mutation_broadcast_route_class(bus, "heatmap_changed"),
+    )
 
     @router.get("", response_model=HeatmapResponse)
     async def get_heatmap() -> HeatmapResponse:

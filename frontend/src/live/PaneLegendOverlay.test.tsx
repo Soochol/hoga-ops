@@ -15,6 +15,7 @@ import {
 } from './indicators/paneLegendRegistry';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneToggles } from './paneSpecsForTimeframe';
+import { formatKoreanWonEok } from '../util/koreanNumber';
 
 // Minimal chart stub: the overlay only reads pane heights for positioning and
 // (un)subscribes to crosshair / range — no live chart needed. Latest-fallback
@@ -167,11 +168,11 @@ describe('PaneLegendOverlay — candle daily-MA row', () => {
   });
 });
 
-// 지표 값 레전드 중 flag 행(최대벽·매물대·히트맵·단별잔량·신규거래원)과 거래량·총잔량
-// 밖의 cells pane(호가비·체결강도·프로그램·투자자)은 오버레이에서 숨긴다(2026-07-22,
-// 차트 밀집도). 거래량·총잔량 cells 행은 2026-08-04 에 되살렸다(아래 describe). 행 생성
-// 로직은 legendRows.test.ts 가, flag 값 provider 스코프는 flagLegendValueRegistry.test.ts
-// 가 계속 커버한다.
+// 지표 값 레전드 중 flag 행(최대벽·매물대·히트맵·단별잔량·신규거래원)과 화이트리스트
+// 밖의 cells pane(호가비·체결강도·투자자)은 오버레이에서 숨긴다(2026-07-22, 차트
+// 밀집도). 거래량·총잔량은 2026-08-04 에, 프로그램 순매수는 2026-08-18 에 되살렸다
+// (아래 describe). 행 생성 로직은 legendRows.test.ts 가, flag 값 provider 스코프는
+// flagLegendValueRegistry.test.ts 가 계속 커버한다.
 describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => {
   beforeEach(resetStore);
   afterEach(cleanup);
@@ -228,10 +229,10 @@ describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => 
   });
 });
 
-// 거래량·총잔량 pane 은 다른 지표(캔들 OHLC·이동평균선)처럼 값 레전드를 갖는다
-// (2026-08-04 사용자 요청). `/live` 와 `/study` 가 같은 LiveChartRoot 를 쓰므로
-// 이 게이트 하나가 두 화면을 동시에 덮는다.
-describe('PaneLegendOverlay — 거래량·총잔량 cells 행 표시(2026-08-04)', () => {
+// 거래량·총잔량·프로그램 순매수 pane 은 다른 지표(캔들 OHLC·이동평균선)처럼 값
+// 레전드를 갖는다(2026-08-04 · 2026-08-18 사용자 요청). `/live` 와 `/study` 가 같은
+// LiveChartRoot 를 쓰므로 이 게이트 하나가 두 화면을 동시에 덮는다.
+describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 · 08-18)', () => {
   beforeEach(resetStore);
   afterEach(cleanup);
 
@@ -261,6 +262,19 @@ describe('PaneLegendOverlay — 거래량·총잔량 cells 행 표시(2026-08-04
     expect(screen.getByText('총잔량')).toBeInTheDocument();
     expect(screen.getByText('311,400')).toBeInTheDocument();
     expect(screen.getByText('6,789')).toBeInTheDocument();
+  });
+
+  // 2026-08-18. 이 행이 생기면서 프로그램 pane 의 `lastValueVisible`(가격축 최신값
+  // 칩)을 껐다 — 두 판독면은 갱신 주기가 달라 같이 켜면 한 시리즈가 두 숫자로 보인다.
+  // 그 짝은 projector 쪽 옵션이라 여기서 못 재고, programTrade.test.ts 가 맡는다.
+  it('프로그램 순매수 pane 의 값 행을 렌더한다(억 단위 포맷)', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false });
+    registerLegend('program-trade', [
+      { label: '프로그램 순매수', value: 512_800_000_000, format: formatKoreanWonEok },
+    ]);
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.getByText('프로그램 순매수')).toBeInTheDocument();
+    expect(screen.getByText(formatKoreanWonEok(512_800_000_000))).toBeInTheDocument();
   });
 
   // 값이 null 인 셀(토글 off / 콜드로드)은 빠지고, 남는 셀이 없으면 행 자체가 사라진다

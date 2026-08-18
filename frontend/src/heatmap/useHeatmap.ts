@@ -1,6 +1,5 @@
-import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { HEATMAP_KEY } from './heatmapKeys';
-import { INDEX_SECTOR_RANKINGS_KEY } from '../api/indexSectorRankings';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { HEATMAP_KEY, invalidateHeatmapDependents } from './heatmapKeys';
 import {
   getHeatmap,
   addToHeatmapFolder,
@@ -26,11 +25,6 @@ export function useHeatmap() {
     queryKey: HEATMAP_KEY,
     queryFn: getHeatmap,
   });
-}
-
-function invalidateHeatmapDependents(qc: QueryClient) {
-  void qc.invalidateQueries({ queryKey: HEATMAP_KEY });
-  void qc.invalidateQueries({ queryKey: INDEX_SECTOR_RANKINGS_KEY });
 }
 
 export function useAddToHeatmapFolder() {

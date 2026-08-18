@@ -6,8 +6,9 @@ import {
   updateStudyLayoutPreset,
   type StudyLayoutPresetWriteRequest,
 } from '../../api/studyLayoutPresets';
+import { STUDY_LAYOUT_PRESETS_QUERY } from './studyLayoutPresetKeys';
 
-export const STUDY_LAYOUT_PRESETS_QUERY = ['study-layout-presets'] as const;
+export { STUDY_LAYOUT_PRESETS_QUERY };
 
 export function useStudyLayoutPresets() {
   return useQuery({ queryKey: STUDY_LAYOUT_PRESETS_QUERY, queryFn: listStudyLayoutPresets });
