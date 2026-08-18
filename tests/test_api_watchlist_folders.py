@@ -260,3 +260,70 @@ def test_remove_entries_bulk(tmp_path):
     doc = load_document(tmp_path)
     assert doc.entries == []
     assert doc.folders[0].code_members() == []
+
+
+def test_remove_members_bulk_is_atomic_and_prunes_orphans(tmp_path):
+    """벌크 멤버십 제거: **한 번의 save** 로 전 코드를 빼고 고아만 prune 한다.
+
+    존재 이유가 원자성이다 — `remove_member` 를 N번 부르면 중간 실패 시 앞쪽만 빠진
+    상태로 끝나고, 다중 선택 UI 에서 그건 "절반만 지워짐" 이다.
+    """
+    from hoga.api.watchlist import (
+        add_member,
+        create_folder,
+        load_document,
+        remove_members,
+    )
+
+    a = asyncio.run(create_folder(tmp_path, name="A"))
+    b = asyncio.run(create_folder(tmp_path, name="B"))
+    for code in ("005930", "000660", "035420"):
+        asyncio.run(add_member(tmp_path, code=code, name=code,
+                               today_kst_date="20260101", folder_id=a.id))
+    # 000660 은 B 에도 있다 → A 에서 빼도 Watchlist 에 남는다
+    asyncio.run(add_member(tmp_path, code="000660", name="000660",
+                           today_kst_date="20260101", folder_id=b.id))
+
+    asyncio.run(remove_members(tmp_path, codes=["005930", "000660"], folder_id=a.id))
+
+    doc = load_document(tmp_path)
+    by_id = {f.id: f for f in doc.folders}
+    assert by_id[a.id].code_members() == ["035420"]
+    assert by_id[b.id].code_members() == ["000660"]
+    # 005930 은 마지막 소속이었으므로 entry 까지 사라진다; 000660 은 B 덕분에 남는다.
+    assert sorted(e.code for e in doc.entries) == ["000660", "035420"]
+
+
+def test_remove_members_is_idempotent_and_keeps_memos(tmp_path):
+    """멤버가 아닌 코드는 무시하고(단수형과 같은 계약), 메모 아이템은 보존한다."""
+    from hoga.api.watchlist import (
+        add_member,
+        add_memo,
+        create_folder,
+        load_document,
+        remove_members,
+    )
+
+    f = asyncio.run(create_folder(tmp_path, name="A"))
+    asyncio.run(add_member(tmp_path, code="005930", name="삼성전자",
+                           today_kst_date="20260101", folder_id=f.id))
+    memo, _index = asyncio.run(add_memo(tmp_path, folder_id=f.id, text="자리표시"))
+
+    asyncio.run(remove_members(tmp_path, codes=["005930", "999999"], folder_id=f.id))
+
+    doc = load_document(tmp_path)
+    assert doc.folders[0].code_members() == []
+    # 메모는 folder.items 안에 산다 — `_without_codes` 가 code item 만 걸러야 한다.
+    kept = [i for i in doc.folders[0].items if getattr(i, "id", None) == memo.id]
+    assert len(kept) == 1
+
+
+def test_remove_members_unknown_folder_raises(tmp_path):
+    from hoga.api.watchlist import FolderNotFoundError, remove_members
+
+    try:
+        asyncio.run(remove_members(tmp_path, codes=["005930"], folder_id="f_deadbeef"))
+    except FolderNotFoundError:
+        pass
+    else:  # pragma: no cover - 실패 시에만 도달
+        raise AssertionError("FolderNotFoundError 를 기대했다")

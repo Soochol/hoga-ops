@@ -4,6 +4,7 @@ import {
   getWatchlist,
   addMember,
   removeMember,
+  removeMembers,
   removeFromWatchlist,
   catchupNow,
   catchupAll,
@@ -162,6 +163,14 @@ function applyAddMember(data: WatchlistResponse, v: AddMemberVars): WatchlistRes
     memos: pushDown(data.memos),
   };
 }
+type RemoveMembersVars = { folderId: string; codes: string[] };
+function applyRemoveMembers(data: WatchlistResponse, v: RemoveMembersVars): WatchlistResponse {
+  const drop = new Set(v.codes);
+  return {
+    ...data,
+    entries: data.entries.filter((e) => !(e.folder_id === v.folderId && drop.has(e.code))),
+  };
+}
 function applyRemoveMember(data: WatchlistResponse, v: RemoveMemberVars): WatchlistResponse {
   return {
     ...data,
@@ -208,6 +217,11 @@ export function useAddMember() {
 export function useRemoveMember() {
   return useOptimisticWatchlistMutation<RemoveMemberVars>(
     (v) => removeMember(v.folderId, v.code), applyRemoveMember);
+}
+/** 멤버십 벌크 제거 — 서버가 한 락에서 처리하므로 **전부 아니면 전무**다. */
+export function useRemoveMembers() {
+  return useOptimisticWatchlistMutation<RemoveMembersVars>(
+    (v) => removeMembers(v.folderId, v.codes), applyRemoveMembers);
 }
 
 /** v3: 코드를 from→to 폴더로 이동 = 대상 폴더에 추가 후 출처 폴더에서 제거(둘 다 멤버십).

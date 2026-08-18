@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useWatchlist, useRemoveEntries, useRemoveMember, useMoveMember, useCatchupOne } from './useWatchlist';
+import {
+  useWatchlist, useRemoveEntries, useRemoveMembers, useAddMember, useCatchupOne,
+} from './useWatchlist';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { CheckIcon } from '../ui/CheckIcon';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
@@ -29,8 +31,8 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
 }) {
   const { data } = useWatchlist();
   const removeM = useRemoveEntries();
-  const removeMemberM = useRemoveMember();
-  const moveMember = useMoveMember();
+  const removeMembersM = useRemoveMembers();
+  const addMemberM = useAddMember();
   const catchupOneM = useCatchupOne();
   const { recentAction, setRecentAction } = useWatchlistFeedback();
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -77,11 +79,18 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
     const codes = selectedCodes;
     setMoveMenu(false);
     try {
-      // v3 이동 = 대상 추가 후 출처 제거(멤버십). 선택 순서대로 순차 실행.
-      for (const code of codes) await moveMember({ code, from: selected, to: targetId });
+      // v3 이동 = 대상 추가 후 출처 제거(멤버십, ADR-0070). **추가는 순차, 제거는 벌크**다.
+      //
+      // 이 비대칭이 부분 실패의 성격을 바꾼다: 추가가 중간에 실패하면 일부가 **양쪽 그룹에**
+      // 있는 상태로 끝나는데, 다중 소속 모델에서 그건 **합법 상태**이고 재시도로 낫는다.
+      // 반대로 제거가 순차였을 때는 "출처에서만 사라진" 유실이 날 수 있었다 — 그쪽을
+      // 원자적 벌크로 옮겨 유실 모드를 없앤다. 서버 원자 move 는 만들지 않았다(중간
+      // 상태가 합법이라 필요 없다).
+      for (const code of codes) await addMemberM.mutateAsync({ folderId: targetId, code, name: '' });
+      await removeMembersM.mutateAsync({ folderId: selected, codes });
       setChecked(new Set());
     } catch {
-      // 멤버십 mutation이 onError로 낙관적 캐시를 롤백; 선택은 유지해 재시도 가능.
+      // 낙관적 캐시는 mutation 의 onError 가 롤백; 선택은 유지해 재시도 가능.
     }
   };
   // v3 는 다중 소속이라 "뺀다" 가 두 가지다. 하나로 합쳐 두면 **좁은 쪽으로 읽히고
@@ -118,9 +127,9 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
   const doUnlink = async (codes: string[]) => {
     if (selected === null) return;
     try {
-      // 벌크 엔드포인트가 없어 순차 실행한다(doMove 와 같은 관용구). 중간에 실패하면
-      // 앞쪽만 빠진 상태로 끝나므로 선택을 남겨 재시도할 수 있게 한다.
-      for (const code of codes) await removeMemberM.mutateAsync({ folderId: selected, code });
+      // **한 번의 요청**이다 — 서버가 한 락에서 처리하므로 전부 아니면 전무다.
+      // (순차 루프였을 때는 중간 실패가 "절반만 빠짐" 으로 끝났다.)
+      await removeMembersM.mutateAsync({ folderId: selected, codes });
       setChecked(new Set());
     } catch {
       // 낙관적 캐시는 mutation 의 onError 가 롤백한다; 선택은 유지.

@@ -27,6 +27,7 @@ from hoga.api.models import (
     ManualCatchupAllResponse,
     ManualCatchupError,
     MemberAddRequest,
+    MembersRemoveRequest,
     MemoCreateRequest,
     MemoUpdateRequest,
     WatchlistDocument,
@@ -52,6 +53,7 @@ from hoga.api.watchlist import (
     remove_entries,
     remove_entry,
     remove_member,
+    remove_members,
     remove_memo,
     rename_folder,
     reorder_entries,
@@ -244,6 +246,20 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             await refresh_live_stream(data_dir=data_dir)
         except Exception:  # best-effort
             log.exception("watchlist.remove_member: refresh_live_stream failed code=%s", code)
+
+    @router.post("/folders/{folder_id}/members/remove", status_code=204)
+    async def remove_folder_members(folder_id: str, req: MembersRemoveRequest) -> None:
+        """멤버십 벌크 제거 — 다중 선택 UI 가 N번 왕복하며 중간에 실패해 **절반만 빠지는**
+        것을 막는다(한 락, 한 save)."""
+        try:
+            await remove_members(data_dir, codes=req.codes, folder_id=folder_id)
+        except FolderNotFoundError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
+        try:
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:  # best-effort
+            log.exception("watchlist.remove_members: refresh_live_stream failed n=%d", len(req.codes))
 
     @router.put("/reorder", status_code=204)
     async def reorder_watchlist_entries(req: EntriesReorderRequest) -> None:

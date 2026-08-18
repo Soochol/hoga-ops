@@ -57,20 +57,27 @@ describe('WatchlistEntryPane', () => {
       folders: [{ id: 'f_a', name: '스윙', order: 0 }, { id: 'f_b', name: '장기', order: 1 }],
       entries: [
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 1 },
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_b', order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_b', order: 1 },
       ],
       memos: [],
       next_run_at_ms: 0,
     });
-    const rmMember = vi.spyOn(api, 'removeMember').mockResolvedValue();
+    const rmMembers = vi.spyOn(api, 'removeMembers').mockResolvedValue();
     const rmAll = vi.spyOn(api, 'removeEntries').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
     await screen.findByText('삼성전자');
     fireEvent.click(screen.getByLabelText('005930 선택'));
+    fireEvent.click(screen.getByLabelText('000660 선택'));
     fireEvent.click(screen.getByRole('button', { name: '이 그룹에서 빼기' }));
 
-    await waitFor(() => expect(rmMember).toHaveBeenCalledWith('f_a', '005930'));
+    // **한 번의 벌크 호출**이다 — 순차 루프면 중간 실패가 "절반만 빠짐" 으로 끝난다.
+    // ⚠ 코드가 **둘 이상**이어야 이 축이 측정된다: 하나만 고르면 "벌크 1회" 와
+    // "순차 루프 1회" 가 같은 호출이라 red-check 이 통과해 버린다(실측).
+    await waitFor(() => expect(rmMembers).toHaveBeenCalledWith('f_a', ['005930', '000660']));
+    expect(rmMembers).toHaveBeenCalledTimes(1);
     expect(rmAll).not.toHaveBeenCalled();                       // 전역 제거가 아니다
     expect(screen.queryByRole('button', { name: '빼기' })).not.toBeInTheDocument();  // 확인 없음
   });
@@ -103,7 +110,7 @@ describe('WatchlistEntryPane', () => {
   it('이 그룹에서 빼기도 마지막 소속이면 확인한다 — 관심종목을 떠나기 때문', async () => {
     // DATA 의 005930 은 f_a 에만 있다 → 빼면 서버가 orphan entry 를 prune 한다.
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
-    const rmMember = vi.spyOn(api, 'removeMember').mockResolvedValue();
+    const rmMembers = vi.spyOn(api, 'removeMembers').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
     await screen.findByText('삼성전자');
@@ -111,11 +118,11 @@ describe('WatchlistEntryPane', () => {
     fireEvent.click(screen.getByRole('button', { name: '이 그룹에서 빼기' }));
 
     const confirm = await screen.findByRole('dialog', { name: '빼기' });
-    expect(rmMember).not.toHaveBeenCalled();
+    expect(rmMembers).not.toHaveBeenCalled();
     expect(within(confirm).getByText(/관심종목에서 빠집니다/)).toBeInTheDocument();
 
     fireEvent.click(within(confirm).getByRole('button', { name: '빼기' }));
-    await waitFor(() => expect(rmMember).toHaveBeenCalledWith('f_a', '005930'));
+    await waitFor(() => expect(rmMembers).toHaveBeenCalledWith('f_a', ['005930']));
   });
 
   it('multi-select move sends codes in VISUAL order, not checkbox-click order', async () => {
@@ -132,7 +139,7 @@ describe('WatchlistEntryPane', () => {
     });
     // v3 이동 = 대상 추가 후 출처 제거(멤버십). add/remove를 각각 스파이.
     const add = vi.spyOn(api, 'addMember').mockResolvedValue({} as never);
-    const rm = vi.spyOn(api, 'removeMember').mockResolvedValue();
+    const rmMembers = vi.spyOn(api, 'removeMembers').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
     await screen.findByText('삼성전자');
@@ -141,12 +148,12 @@ describe('WatchlistEntryPane', () => {
     fireEvent.click(screen.getByLabelText('005930 선택'));
     fireEvent.click(screen.getByRole('button', { name: /이동/ }));
     fireEvent.click(await screen.findByRole('menuitem', { name: '장기' }));
-    // visual order is 005930 before 000660 → add/remove codes must follow that order,
-    // add into the target(f_b), remove from the source(f_a).
+    // 추가는 **순차**(대상 폴더에 시각 순서대로 꽂혀야 한다), 제거는 **벌크 1회**다 —
+    // 그 비대칭이 유실 모드를 없앤다(추가 실패 = 양쪽 소속, 다중 소속에서 합법 상태).
     await waitFor(() => expect(add.mock.calls.map((c) => c[1])).toEqual(['005930', '000660']));
     expect(add.mock.calls.every((c) => c[0] === 'f_b')).toBe(true);
-    expect(rm.mock.calls.map((c) => c[1])).toEqual(['005930', '000660']);
-    expect(rm.mock.calls.every((c) => c[0] === 'f_a')).toBe(true);
+    expect(rmMembers).toHaveBeenCalledTimes(1);
+    expect(rmMembers).toHaveBeenCalledWith('f_a', ['005930', '000660']);
   });
 
   it('clears the multi-select when the viewed folder changes', async () => {
