@@ -1201,8 +1201,15 @@ class WatchlistAddRequest(BaseModel):
 
 
 class MemberAddRequest(BaseModel):
-    """Body for POST /api/watchlist/folders/{folder_id}/members (v3, ADR-0070)."""
+    """Body for POST /api/watchlist/folders/{folder_id}/members (v3, ADR-0070).
+
+    `at` = 삽입할 items 인덱스. MemoCreateRequest.at 과 **같은 축·같은 클램프
+    시맨틱**이다(패널 행 우클릭 "위에 종목 추가"). None 이면 폴더 맨 아래.
+    이미 멤버인 코드면 at 은 무시된다 — add 는 멱등 no-op 계약이다.
+    """
+
     code: str = Field(pattern=CODE_PATTERN)
+    at: int | None = Field(default=None, ge=0)
 
 
 class _FolderNameBody(BaseModel):
