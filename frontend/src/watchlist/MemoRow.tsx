@@ -34,6 +34,9 @@ export interface MemoRowProps {
   maxLength: number;
   /** 갓 만든 빈칸이면 즉시 편집 모드로 연다(추가 → 바로 입력). */
   autoEdit?: boolean;
+  /** 우클릭 컨텍스트 메뉴(WatchlistMemoRowMenu). **편집 중에는 붙이지 않는다** —
+   *  입력 위에서는 브라우저 기본 메뉴(복사·붙여넣기·맞춤법)가 더 유용하다. */
+  onContextMenu?: (e: React.MouseEvent) => void;
   /** autoEdit 를 소비했음을 부모에 알린다 — 부모가 플래그를 지워야 폴링 리페치마다
    *  이 행이 다시 편집 모드로 열리지 않는다. 참조가 안정적이어야 한다(useCallback). */
   onAutoEditConsumed?: () => void;
@@ -54,7 +57,7 @@ export interface MemoRowProps {
 }
 
 export function MemoRow({
-  text, onSave, onDelete, maxLength, autoEdit, onAutoEditConsumed, testId,
+  text, onSave, onDelete, maxLength, autoEdit, onAutoEditConsumed, onContextMenu, testId,
   sortableRef, sortableStyle, dragListeners, dragActivatorRef,
   dragging, draggingAppearance = 'lifted', dropIndicator,
 }: MemoRowProps) {
@@ -127,6 +130,7 @@ export function MemoRow({
     <li
       ref={setRowRef}
       {...dragListeners}
+      onContextMenu={onContextMenu}
       data-testid={testId}
       // data-quote-row 를 붙이지 않는다 → QuoteRow 의 ↑↓ 네비게이션이 건너뛴다.
       // role 도 주지 않는다(기본 listitem) — 행 자체는 액션이 아니고, 액션은 안의

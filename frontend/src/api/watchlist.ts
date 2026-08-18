@@ -53,11 +53,19 @@ export function getWatchlist(): Promise<WatchlistResponse> {
   return apiCall<WatchlistResponse>('/api/watchlist');
 }
 
-/** v3 멤버십(ADR-0070): code를 folderId의 멤버로 추가. entry 없으면 백엔드가 생성. */
-export function addMember(folderId: string, code: string): Promise<WatchlistEntry> {
+/** v3 멤버십(ADR-0070): code를 folderId의 멤버로 추가. entry 없으면 백엔드가 생성.
+ *
+ *  `at` = 삽입할 items 인덱스(v4) — addMemo 와 **같은 축·같은 클램프 시맨틱**이다.
+ *  생략하면 폴더 맨 아래(추가 폼·하트 버튼·히트맵 팝오버의 기존 경로). 패널 행
+ *  우클릭 "위에 종목 추가" 만 값을 준다. 음수는 422(ge=0) — 클램프는 상한만이다.
+ *
+ *  ⚠ **이미 멤버인 코드에는 `at` 이 무시된다**(백엔드 add 는 멱등 no-op). 위치를
+ *  옮기려면 reorderItems 를 쓴다. 호출부는 중복이면 아예 부르지 않는 편이 낫다 —
+ *  "눌렀는데 아무 일도 안 일어난다" 가 되기 때문. */
+export function addMember(folderId: string, code: string, at?: number): Promise<WatchlistEntry> {
   return apiCall<WatchlistEntry>(`/api/watchlist/folders/${folderId}/members`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, at: at ?? null }),
   });
 }
 

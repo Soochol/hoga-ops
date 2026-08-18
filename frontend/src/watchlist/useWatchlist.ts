@@ -85,7 +85,7 @@ export function useDeleteFolder() {
 // --- membership / reorder: optimistic + rollback (DnD smoothness) ---
 type ReorderVars = { folderId: string; orderedCodes: string[] };
 type ItemsReorderVars = { folderId: string; orderedItems: WatchlistItemRef[] };
-type AddMemberVars = { folderId: string; code: string; name: string };
+type AddMemberVars = { folderId: string; code: string; name: string; at?: number };
 type RemoveMemberVars = { folderId: string; code: string };
 type CaptureVars = { folderId: string; captureEnabled: boolean };
 
@@ -130,15 +130,20 @@ function applyItemsReorder(data: WatchlistResponse, v: ItemsReorderVars): Watchl
 // v3 멤버십(펼친 와이어): 한 코드가 N폴더면 N행. add=대상 폴더에 행 1개 추가(다른 폴더
 // 행 보존), remove=그 폴더 행만 제거. 백엔드가 entry 생성/삭제·order compact를 확정한다.
 function applyAddMember(data: WatchlistResponse, v: AddMemberVars): WatchlistResponse {
+  // 이미 멤버면 no-op — 서버 add 도 멱등이라 `at` 이 와도 자리를 옮기지 않는다.
+  // 낙관 쪽만 옮기면 invalidate 후 되돌아가는 "튀는" 행이 된다.
   if (data.entries.some((e) => e.folder_id === v.folderId && e.code === v.code)) return data;
   // v4: max 를 entries 만으로 구하면 **폴더 끝이 메모일 때 어긋난다** — items 가
   // [codeA(0), memo(1)] 이면 서버는 새 코드에 order 2 를 주는데 entries-only max 는
   // 1 을 만들어 메모와 충돌한다. 두 배열을 함께 본다(같은 축이므로).
-  const base = Math.max(
+  const end = Math.max(
     -1,
     ...data.entries.filter((e) => e.folder_id === v.folderId).map((e) => e.order),
     ...data.memos.filter((m) => m.folder_id === v.folderId).map((m) => m.order),
   ) + 1;
+  // `at` 미지정 = 맨 뒤(기존 경로). 상한 클램프는 서버가 하고 여기선 안 한다 —
+  // order 는 정렬 키라 end 보다 큰 값도 "맨 뒤" 로 같은 자리에 그린다.
+  const at = v.at ?? end;
   const existing = data.entries.find((e) => e.code === v.code);
   const row: WatchlistResponse['entries'][number] = {
     code: v.code,
@@ -146,9 +151,18 @@ function applyAddMember(data: WatchlistResponse, v: AddMemberVars): WatchlistRes
     registered_at_kst_date: existing?.registered_at_kst_date ?? '',
     last_success_date: existing?.last_success_date ?? null,
     folder_id: v.folderId,
-    order: base,
+    order: at,
   };
-  return { ...data, entries: [...data.entries, row] };
+  // 삽입 자리 뒤를 한 칸씩 민다 — **entries 와 memos 양쪽 다**. 한쪽만 밀면 두
+  // 배열이 같은 order 를 갖게 되고 mergePanelRows 의 정렬에서 행이 겹친다(그 축이
+  // 하나라는 게 v4 의 전제다). at===end 면 대상이 없어 기존 append 와 동일하다.
+  const pushDown = <T extends { folder_id: string | null; order: number }>(rows: T[]): T[] =>
+    rows.map((r) => (r.folder_id === v.folderId && r.order >= at ? { ...r, order: r.order + 1 } : r));
+  return {
+    ...data,
+    entries: [...pushDown(data.entries), row],
+    memos: pushDown(data.memos),
+  };
 }
 function applyRemoveMember(data: WatchlistResponse, v: RemoveMemberVars): WatchlistResponse {
   return {
@@ -199,7 +213,7 @@ export function useReorderItems() {
 }
 export function useAddMember() {
   return useOptimisticWatchlistMutation<AddMemberVars>(
-    (v) => addMember(v.folderId, v.code).then(() => undefined), applyAddMember);
+    (v) => addMember(v.folderId, v.code, v.at).then(() => undefined), applyAddMember);
 }
 export function useRemoveMember() {
   return useOptimisticWatchlistMutation<RemoveMemberVars>(
