@@ -77,8 +77,20 @@ function FolderRow(props: {
           }}
           className="flex-1 min-w-0 px-1 py-0.5 rounded bg-bg-input text-sm border border-border" />
       ) : (
+        // 이름 변경 진입은 **더블클릭 + F2** 다. hover 액션을 토글·삭제 둘로 단순화한
+        // 0.12.17.2 결정을 유지하면서(연필 버튼을 되살리지 않는다) 키보드 경로만 연다 —
+        // 그 단순화가 의도한 것은 행 조작 밀도이지 "키보드로는 이름을 못 바꾼다" 가 아니다.
+        //
+        // **Enter 는 못 쓴다**: 이 버튼의 click 이 그룹 선택이라 Enter 는 이미 거기에 묶여
+        // 있다. F2 는 파일 탐색기 관례이고 다른 곳에서 안 쓴다. 드래그는 포인터 전용이라
+        // (KeyboardSensor 미도입) dnd-kit 리스너와도 겹치지 않는다.
         <button type="button" onClick={props.onSelect} onDoubleClick={props.onStartEdit}
+          onKeyDown={(e) => { if (e.key === 'F2') { e.preventDefault(); props.onStartEdit(); } }}
+          aria-keyshortcuts="F2"
+          title="더블클릭 또는 F2: 이름 변경"
           className="flex-1 min-w-0 flex items-center justify-between text-left pr-2">
+          {/* span 의 title 은 truncate 된 **전체 이름**을 보여 주는 용도라 그대로 둔다 —
+              이름 위에서는 이름이, 나머지 영역에서는 버튼의 안내가 뜬다. */}
           <span className="truncate" title={props.name}>{props.name}</span>
           <span className="shrink-0 font-data tabular-nums text-fg-dim text-xs">{props.count}</span>
         </button>
