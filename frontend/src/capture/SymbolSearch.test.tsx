@@ -60,13 +60,32 @@ describe('SymbolSearch', () => {
     expect(countEl.getAttribute('title')).toMatch(/완결 14 · 부분 3 · 미완결 2/);
   });
 
-  it('Q19: shows cache status indicator next to the input', async () => {
-    const qc = setup({
-      symbols: [], status: 'loading' as const, fetched_at_ms: null,
-    });
-    render(<SymbolSearch value={null} onChange={() => {}} />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
-    await new Promise((r) => setTimeout(r, 30));
-    expect(screen.getByTestId('symbol-cache-status').getAttribute('data-status')).toBe('loading');
+  // Q19(개정): 상태 뱃지는 **경고일 때만** 뜬다. 정상(fresh)·첫 fetch 중(loading)은
+  // 사용자가 할 일이 없는 상태라 상시 표시가 장식이었다 — 검색창 옆의 정체불명한 초록
+  // 점이 그것이다. 남기는 둘은 문자 글리프(⏱·!)가 아니라 **텍스트**다(무슨 뜻인지
+  // 말해 주고, 폰트별 렌더 불일치도 없다).
+  it('Q19: 캐시 상태 뱃지는 경고 상태에서만, 텍스트로 뜬다', async () => {
+    const quiet = ['loading', 'fresh'] as const;
+    for (const status of quiet) {
+      const qc = setup({ symbols: [], status, fetched_at_ms: null });
+      const { unmount } = render(<SymbolSearch value={null} onChange={() => {}} />,
+        { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+      await new Promise((r) => setTimeout(r, 30));
+      expect(screen.queryByTestId('symbol-cache-status')).toBeNull();
+      unmount();
+    }
+
+    const loud = [['stale', '오래됨'], ['unavailable', '사용 불가']] as const;
+    for (const [status, label] of loud) {
+      const qc = setup({ symbols: [], status, fetched_at_ms: null });
+      const { unmount } = render(<SymbolSearch value={null} onChange={() => {}} />,
+        { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+      await new Promise((r) => setTimeout(r, 30));
+      const badge = screen.getByTestId('symbol-cache-status');
+      expect(badge.getAttribute('data-status')).toBe(status);
+      expect(badge).toHaveTextContent(label);
+      unmount();
+    }
   });
 
   it('calling onChange with the selected hit on row click', async () => {
