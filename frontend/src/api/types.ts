@@ -313,6 +313,14 @@ export type PushEvent =
   // The frontend refetches that code's today range on receipt instead of
   // waiting out the polling fallback.
   | { type: 'promotion_completed'; code: string; date: string }
+  // 관심목록·히트맵 문서가 **서버에서** 바뀌었다 — 어느 창이 바꿨든 열려 있는 모든
+  // 연결에 브로드캐스트된다(hoga/api/mutation_broadcast.py). 이 두 목록은 서버가
+  // 진실이지만 프론트는 refetchOnWindowFocus 를 꺼 두었으므로(main.tsx), 이 신호가
+  // 없으면 다른 탭·다른 브라우저는 새로고침 전까지 옛 목록을 계속 보여 준다.
+  // 페이로드는 "바뀌었다" 신호뿐이고 diff 가 없다 — 수신 측은 목록 쿼리를 무효화해
+  // 서버 상태를 통째로 다시 읽는다(inventory_* 와 같은 형태).
+  | { type: 'watchlist_changed' }
+  | { type: 'heatmap_changed' }
   | { type: 'screener_update_progress'; done: number; total: number }
   | { type: 'screener_update_finished'; updated: number; total: number; reason: string | null }
   // 키움 표시(온디맨드) 슬롯 만석 — 이 탭의 구독이 보류됐다(hoga/api/ws.py).

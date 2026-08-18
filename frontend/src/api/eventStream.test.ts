@@ -84,6 +84,95 @@ describe('useEventStream disconnect handler', () => {
   });
 });
 
+describe('useEventStream 목록 교차 창 동기화', () => {
+  // 서버가 브로드캐스트하는 "바뀌었다" 신호(hoga/api/mutation_broadcast.py)를 받으면
+  // 이 창은 목록을 다시 읽어야 한다. 그게 다른 브라우저에서 추가한 종목이 새로고침
+  // 없이 나타나는 유일한 경로다.
+  function mount() {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children);
+    renderHook(() => useEventStream(), { wrapper });
+    return spy;
+  }
+
+  function keys(spy: { mock: { calls: unknown[][] } }): string[] {
+    return spy.mock.calls
+      .map((call) => call[0] as { queryKey?: unknown } | undefined)
+      .filter((arg): arg is { queryKey: unknown[] } => Array.isArray(arg?.queryKey))
+      .map((arg) => arg.queryKey.join(','));
+  }
+
+  it('watchlist_changed 를 받으면 관심목록을 다시 읽는다', async () => {
+    vi.useFakeTimers();
+    try {
+      const spy = mount();
+      await vi.advanceTimersByTimeAsync(0);
+      fakeSockets[0].open();
+      fakeSockets[0].message({ ch: 'event', data: { type: 'watchlist_changed' } });
+
+      expect(keys(spy)).not.toContain('watchlist');   // 접기 창이 끝나기 전
+      await vi.advanceTimersByTimeAsync(250);
+      expect(keys(spy)).toContain('watchlist');
+      // 히트맵은 독립 스토어다(ADR-0068) — 관심목록 신호가 건드리면 안 된다.
+      expect(keys(spy)).not.toContain('heatmap');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('heatmap_changed 는 지수·업종 랭킹까지 함께 무효화한다', async () => {
+    // 랭킹 응답이 히트맵 그룹 구성을 그대로 투영하므로, 히트맵만 무효화하면
+    // **원격 창에서만** 옛 그룹이 남는다 — 로컬 mutation 경로와 같은 집합이어야 한다.
+    vi.useFakeTimers();
+    try {
+      const spy = mount();
+      await vi.advanceTimersByTimeAsync(0);
+      fakeSockets[0].open();
+      fakeSockets[0].message({ ch: 'event', data: { type: 'heatmap_changed' } });
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(keys(spy)).toContain('heatmap');
+      expect(keys(spy)).toContain('live,index-sector-rankings');
+      expect(keys(spy)).not.toContain('watchlist');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('연속 변경 버스트를 한 번의 무효화로 접는다', async () => {
+    // 다중 선택 이동은 변경 라우트를 여러 번 친다 → 서버 신호도 그 횟수만큼 온다.
+    vi.useFakeTimers();
+    try {
+      const spy = mount();
+      await vi.advanceTimersByTimeAsync(0);
+      fakeSockets[0].open();
+      for (let i = 0; i < 8; i += 1) {
+        fakeSockets[0].message({ ch: 'event', data: { type: 'watchlist_changed' } });
+      }
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(keys(spy).filter((k) => k === 'watchlist')).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('재연결 시 끊겨 있던 동안의 목록 변경을 따라잡는다', async () => {
+    // EventBus 는 큐를 연결에 매달아 두므로 끊긴 사이의 신호는 재전송되지 않는다.
+    const spy = mount();
+    await new Promise((r) => setTimeout(r, 0));
+    fakeSockets[0].open();
+    fakeSockets[0].serverClose();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(keys(spy)).toContain('watchlist');
+    expect(keys(spy)).toContain('heatmap');
+    expect(keys(spy)).toContain('live,index-sector-rankings');
+  });
+});
+
 describe('useEventStream inventory 무효화 접기', () => {
   function mount() {
     const qc = new QueryClient();
