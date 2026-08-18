@@ -4,8 +4,15 @@ import { dropPoint, isPointOnChart, resolveDropOnChart, useEntryDragStore } from
 import { useDragPointPublisher } from '../state/useDragPointPublisher';
 
 /** 고스트에 그릴 스냅샷. drag start 에 한 번 찍고 드래그 내내 갱신하지 않는다 —
- *  손에 든 것이 도중에 바뀌면 산만하고, 데이터 동결과도 같은 규율이다. */
-export type ChartDropGhost = { code: string; name: string; price: number | null; pct: number | null };
+ *  손에 든 것이 도중에 바뀌면 산만하고, 데이터 동결과도 같은 규율이다.
+ *
+ *  `rank` 는 순위 드로어 전용이라 optional 이다(스크리너 행엔 순위 개념이 없다).
+ *  고스트는 **자기 리스트 행의 렌더를 복제**하는 것이 계약이므로, leading 슬롯을
+ *  가진 리스트는 그 슬롯의 내용까지 스냅샷에 담아야 손에 든 것이 어긋나지 않는다. */
+export type ChartDropGhost = {
+  code: string; name: string; price: number | null; pct: number | null;
+  rank?: number;
+};
 
 /**
  * "행을 끌어 차트 창에 떨군다" 제스처의 공용 배선 — 스크리너·순위 드로어가 공유한다.

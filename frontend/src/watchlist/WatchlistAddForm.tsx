@@ -43,17 +43,25 @@ export function WatchlistAddForm({ folderId, resolveAt, onAdded }: {
 
   return (
     <div className="flex flex-col gap-2">
-      <form onSubmit={submit} className="flex gap-2 items-center">
-        {/* `min-w-0` 이 없으면 flex item 의 기본 `min-width:auto` 때문에 입력이
-            콘텐츠 폭 아래로 줄지 않는다. 종목을 고르면 입력값이 "SK하이닉스 000660"
-            처럼 길어져 280px 팝오버를 9px 넘고, **제출 버튼이 뷰포트 밖으로 밀린다**
-            (실측: 버튼 right 1281 > 1280, 세로로 짜부라진 채). jsdom 은 레이아웃을
-            계산하지 않아 단위 테스트로는 못 본다 — 도그푸딩이 잡았다. */}
-        <div className="flex-1 min-w-0"><SymbolSearch value={picked} onChange={setPicked} /></div>
-        <button type="submit" disabled={addM.isPending || picked === null || duplicate}
-                className="px-3 py-1.5 rounded bg-accent text-bg text-sm font-medium disabled:opacity-40">
-          ＋ 종목 추가
-        </button>
+      {/* **입력과 버튼을 한 줄에 두지 않는다.** 이 폼이 사는 팝오버는 280px 인데,
+          한 줄이면 버튼(≈81px)과 gap 을 뺀 173px 만 검색 입력에 남는다. 검색
+          드롭다운은 그 입력 래퍼에 `left-0 right-0` 으로 붙으므로 함께 173px 이 되고,
+          옵션 행(`grid-cols-[1fr_auto_auto_auto]`)에서 코드·시장·완결 세 컬럼이
+          ≈125px 를 먹은 뒤 종목명 `1fr` 컬럼이 **min-content 까지 붕괴한다**.
+          한글은 글자 단위로 줄바꿈되므로 그 min-content 가 **한 글자(11px)** 다 —
+          "삼/성/화/재" 가 세로로 쌓이고 행 높이가 35px → 91px 로 부푼다.
+          2줄로 두면 드롭다운이 262px 이 되어 종목명 컬럼 92px, 행 높이 35px 로 돌아온다
+          (팝오버 폭은 그대로여도 된다 — 실측). 세로쓰기 자체는 SymbolRow 의
+          `truncate` 가 폭과 무관하게 다시 한 번 막는다. */}
+      <form onSubmit={submit} className="flex flex-col gap-2">
+        <SymbolSearch value={picked} onChange={setPicked} />
+        {/* 우측 정렬 — GroupNameModal·ConfirmModal 의 폼 액션 관용구와 같다. */}
+        <div className="flex justify-end">
+          <button type="submit" disabled={addM.isPending || picked === null || duplicate}
+                  className="px-3 py-1.5 rounded bg-accent text-bg text-sm font-medium disabled:opacity-40">
+            ＋ 종목 추가
+          </button>
+        </div>
       </form>
       {duplicate && <Banner kind="error">{picked.name}은(는) 이미 이 그룹에 있습니다</Banner>}
       {addM.error && <Banner kind="error">{(addM.error as Error).message}</Banner>}
