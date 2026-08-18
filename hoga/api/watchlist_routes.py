@@ -253,7 +253,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         today = now_kst().strftime("%Y%m%d")
         try:
             entry = await add_member(data_dir, code=req.code, name=match.name,
-                                     today_kst_date=today, folder_id=folder_id)
+                                     today_kst_date=today, folder_id=folder_id, at=req.at)
         except FolderNotFoundError as e:
             raise HTTPException(status_code=404, detail={
                 "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e

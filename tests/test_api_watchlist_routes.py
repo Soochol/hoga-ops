@@ -468,3 +468,58 @@ def test_order_change_endpoints_refresh_live_stream(
             r = getattr(client, method)(path, json=payload)
         assert r.status_code in (200, 204)
         ref.assert_awaited_once()
+
+
+# --- POST members 의 `at` (패널 우클릭 "위에 종목 추가") ---------------------
+# **라우트 레벨에서 재는 것이 핵심이다.** store 테스트만 두면 "요청 모델엔 at 이 있고
+# store 도 at 을 받는데 라우트가 안 꿰는" 무증상 결함을 못 본다(#1366 과 같은 계열) —
+# 그 경우 삽입은 조용히 맨 아래로 떨어지고 에러는 나지 않는다.
+
+
+def _display_order(body) -> list[str]:
+    """GET /api/watchlist 응답을 폴더 표시 순서 한 줄로 — 코드와 메모가 같은 축이다."""
+    rows = ([(e["order"], f"c:{e['code']}") for e in body["entries"]]
+            + [(m["order"], f"m:{m['id']}") for m in body["memos"]])
+    return [k for _, k in sorted(rows)]
+
+
+def test_member_add_at_lands_at_the_requested_index(tmp_path: Path):
+    with _folder_client(tmp_path) as client:
+        fid = client.post("/api/watchlist/folders", json={"name": "스윙"}).json()["id"]
+        client.post(f"/api/watchlist/folders/{fid}/members", json={"code": "005930"})
+        client.post(f"/api/watchlist/folders/{fid}/members", json={"code": "000660"})
+        r = client.post(f"/api/watchlist/folders/{fid}/members", json={"code": "003490", "at": 1})
+        body = client.get("/api/watchlist").json()
+    assert r.status_code == 201
+    assert _display_order(body) == ["c:005930", "c:003490", "c:000660"]
+
+
+def test_member_add_at_shares_the_index_axis_with_memos(tmp_path: Path):
+    """메모가 낀 폴더에서도 at 이 **보이는 자리**를 가리킨다 — 두 배열이 한 축이다."""
+    with _folder_client(tmp_path) as client:
+        fid = client.post("/api/watchlist/folders", json={"name": "스윙"}).json()["id"]
+        client.post(f"/api/watchlist/folders/{fid}/members", json={"code": "005930"})
+        mid = client.post(f"/api/watchlist/folders/{fid}/memos", json={"text": "구간"}).json()["id"]
+        client.post(f"/api/watchlist/folders/{fid}/members", json={"code": "000660"})
+        # 화면상 3번째 행(메모 다음, 000660 자리)에 삽입 → 000660 이 아래로 밀린다.
+        client.post(f"/api/watchlist/folders/{fid}/members", json={"code": "003490", "at": 2})
+        body = client.get("/api/watchlist").json()
+    assert _display_order(body) == ["c:005930", f"m:{mid}", "c:003490", "c:000660"]
+
+
+def test_member_add_without_at_still_appends(tmp_path: Path):
+    """at 미전달은 기존 계약 그대로 맨 아래 — 추가 폼·하트 버튼이 이 경로를 쓴다."""
+    with _folder_client(tmp_path) as client:
+        fid = client.post("/api/watchlist/folders", json={"name": "스윙"}).json()["id"]
+        client.post(f"/api/watchlist/folders/{fid}/members", json={"code": "005930"})
+        client.post(f"/api/watchlist/folders/{fid}/members", json={"code": "000660"})
+        body = client.get("/api/watchlist").json()
+    assert _display_order(body) == ["c:005930", "c:000660"]
+
+
+def test_member_add_negative_at_is_422(tmp_path: Path):
+    """음수는 클램프하지 않고 거절한다(ge=0) — 오타·계산 실수를 조용히 0 으로 만들지 않는다."""
+    with _folder_client(tmp_path) as client:
+        fid = client.post("/api/watchlist/folders", json={"name": "스윙"}).json()["id"]
+        r = client.post(f"/api/watchlist/folders/{fid}/members", json={"code": "005930", "at": -1})
+    assert r.status_code == 422
