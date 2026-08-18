@@ -56,7 +56,10 @@ const GROUP_LABEL: Record<GroupId, string> = {
   broker: '거래원 지표',
 };
 
-const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId }> = [
+// 드리프트 테스트(`IndicatorPanel.paneNames.test.ts`)가 pane 을 가진 항목의 라벨을
+// `PANE_DISPLAY_NAME` 과 대조하므로 export 한다 — 같은 pane 을 설정 패널과 차트
+// 레전드가 다르게 부르면 안 된다.
+export const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId }> = [
   { id: 'moving-average',  label: '이동평균선',       group: 'top'  },
   { id: 'daily-moving-average', label: '일봉 이동평균선',  group: 'top'  },
   { id: 'volume',          label: '거래량',           group: 'top'  },

@@ -96,3 +96,27 @@ export function movePaneBeside(
   without.splice(side === 'before' ? ni : ni + 1, 0, pane);
   return without;
 }
+
+/**
+ * pane 의 한글 표시 이름. **exhaustive** — `PaneId` 를 늘리면 tsc 가 여기를 요구한다.
+ *
+ * ⚠ `PaneSpec.legendTitle` 과 혼동하지 말 것. 그건 pane 의 이름이 아니라 **레전드 셀
+ * 앞에 붙는 제목 접두사**이고, 셀 라벨이 이미 pane 을 말해 주는 pane(거래량·호가비·
+ * 프로그램 순매수…)에는 **일부러 없다** — 넣으면 화면에 `거래량 거래량 40,586` 처럼
+ * 두 번 나온다. 그래서 `legendTitle` 을 이름으로 쓰면 정의된 2개(총잔량·체결강도)만
+ * 한글이고 나머지는 영문 paneId 로 샌다(이 표가 생긴 이유).
+ *
+ * 값은 보조지표 패널(`live/indicators/IndicatorPanel.tsx` 의 `CATEGORIES`)과 같은
+ * 이름을 쓴다 — 같은 pane 을 두 화면이 다르게 부르면 안 되므로 그 파일의
+ * 드리프트 테스트가 두 표를 대조한다. 캔들은 패널에 항목이 없다(끌 수 없는 고정 pane).
+ */
+export const PANE_DISPLAY_NAME: Record<PaneId, string> = {
+  candle: '캔들',
+  volume: '거래량',
+  ratio: '호가비',
+  'quote-totals': '총잔량',
+  'fill-strength': '체결강도',
+  'program-trade': '프로그램 순매수',
+  'investor-foreign': '외국인 순매수량',
+  'investor-institution': '기관 순매수량',
+};

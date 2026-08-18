@@ -37,7 +37,7 @@ import { scopeEntries } from './indicators/windowScopedRegistry';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
 import type { BoundPaneSpec } from '../chart/paneSpecs';
 import type { PaneId } from '../chart/drawing/types';
-import { movePaneBeside } from '../chart/paneOrder';
+import { movePaneBeside, PANE_DISPLAY_NAME } from '../chart/paneOrder';
 import {
   buildLegendRows,
   readSeriesValue,
@@ -954,7 +954,10 @@ function PaneLegendOverlay({
             {showMoveControls && (
               <PaneMoveControls
                 paneId={paneId}
-                label={spec.legendTitle ?? paneId}
+                // 이름은 `PANE_DISPLAY_NAME` 에서 온다 — `spec.legendTitle` 은 셀 앞
+                // 제목 접두사라 대부분의 pane 에 일부러 없고, 그걸 쓰면 aria-label 이
+                // `volume pane 위로 이동` 처럼 영문 paneId 로 샜다.
+                label={PANE_DISPLAY_NAME[paneId]}
                 idx={idx}
                 mountedCount={Math.min(specs.length, paneTops.length)}
                 upNeighbor={idx - 1 >= 0 ? specs[idx - 1].name : null}

@@ -329,6 +329,26 @@ describe('PaneLegendOverlay — pane reorder controls (ADR-0114)', () => {
   });
   afterEach(cleanup);
 
+  it('이동 버튼 aria-label 이 한글 pane 이름을 쓴다 (영문 paneId 아님)', () => {
+    render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
+    // `spec.legendTitle` 은 셀 앞 제목 접두사라 대부분의 pane 에 일부러 없다 — 그걸
+    // 이름으로 쓰면 정의된 2개(총잔량·체결강도)만 한글이고 나머지는 `volume pane 위로
+    // 이동` 처럼 영문 paneId 로 샌다.
+    expect(screen.getByTestId('pane-move-up-volume')).toHaveAttribute(
+      'aria-label', '거래량 pane 위로 이동',
+    );
+    expect(screen.getByTestId('pane-move-down-ratio')).toHaveAttribute(
+      'aria-label', '호가비 pane 아래로 이동',
+    );
+    expect(screen.getByTestId('pane-move-up-program-trade')).toHaveAttribute(
+      'aria-label', '프로그램 순매수 pane 위로 이동',
+    );
+    // legendTitle 이 있는 pane 도 같은 출처를 쓴다(값이 우연히 같아도 경로는 하나).
+    expect(screen.getByTestId('pane-move-up-quote-totals')).toHaveAttribute(
+      'aria-label', '총잔량 pane 위로 이동',
+    );
+  });
+
   it('renders ↑/↓ controls on non-candle panes and none on candle', () => {
     render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
     expect(screen.queryByTestId('pane-move-up-candle')).toBeNull();
