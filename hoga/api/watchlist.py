@@ -323,6 +323,29 @@ async def remove_member(data_dir: Path, *, code: str, folder_id: str) -> None:
         save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
 
 
+async def remove_members(data_dir: Path, *, codes: list[str], folder_id: str) -> None:
+    """codes 를 folder_id 에서 **한 번에** 제거(v4). `remove_member` 의 복수형이다.
+
+    **원자성이 존재 이유다.** 클라이언트가 `remove_member` 를 N번 부르면 중간 실패 시
+    앞쪽만 빠진 상태로 끝난다 — 다중 선택 UI 에서 그건 "절반만 지워짐" 이다. 여기서는
+    한 락 안에서 문서를 한 번만 쓴다.
+
+    나머지 계약은 단수형과 같다: 제거 후 어느 폴더에도 없는 코드는 entry 가 prune 되고
+    (Watchlist 탈락), 폴더가 없으면 FolderNotFoundError, 멤버가 아닌 코드는 멱등 no-op.
+    메모 아이템은 `_without_codes` 가 보존한다.
+    """
+    async with _lock:
+        doc = load_document(data_dir)
+        if not any(f.id == folder_id for f in doc.folders):
+            raise FolderNotFoundError(folder_id)
+        drop = set(codes)
+        new_folders = [f.model_copy(update={"items": _without_codes(f.items, drop)})
+                       if f.id == folder_id else f for f in doc.folders]
+        # items 만 손댄다 — 어느 폴더에도 없게 된 코드는 save_document 가 orphan entry
+        # 로 prune 한다(단수형과 같은 경로, ADR-0070 불변식 단일 소유).
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
+
+
 async def remove_entry(data_dir: Path, *, code: str) -> None:
     """code 를 Watchlist 에서 완전 제거(모든 폴더 items 에서 뺀다 → save 가 entry prune)."""
     async with _lock:

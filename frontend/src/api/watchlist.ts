@@ -72,6 +72,16 @@ export function removeMember(folderId: string, code: string): Promise<void> {
   return apiAction(`/api/watchlist/folders/${folderId}/members/${code}`, { method: 'DELETE' });
 }
 
+/** 폴더 멤버십을 **한 번에** 제거(한 락·한 save). 다중 선택이 N번 왕복하다 중간에
+ *  실패해 "절반만 빠지는" 것을 막는다 — 단수형 `removeMember` 의 벌크판이다. */
+export function removeMembers(folderId: string, codes: string[]): Promise<void> {
+  return apiAction(`/api/watchlist/folders/${folderId}/members/remove`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ codes }),
+  });
+}
+
 /** 관심종목에서 코드 전체 제거(모든 폴더에서 빼고 entry 삭제). 드로어 quick-remove. */
 export function removeFromWatchlist(code: string): Promise<void> {
   return apiAction(`/api/watchlist/${code}`, { method: 'DELETE' });

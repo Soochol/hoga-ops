@@ -1462,6 +1462,14 @@ class EntriesRemoveRequest(BaseModel):
     codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
 
 
+class MembersRemoveRequest(BaseModel):
+    """폴더 **멤버십**을 벌크로 뺀다. `EntriesRemoveRequest` 와 shape 는 같지만 의미가
+    다르다 — 저쪽은 모든 폴더에서 빼는 전역 제거이고, 이쪽은 한 폴더에서만 뺀다
+    (다른 폴더에 남아 있으면 Watchlist 에 남는다)."""
+
+    codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+
+
 # --- Heatmap (independent monitoring store, ADR-0068) ----------------------
 # Parallel to the Watchlist but WITHOUT capture fields: the heatmap is a
 # monitoring board, not a capture target. Folders + the folder/entry request
