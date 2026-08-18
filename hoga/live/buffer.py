@@ -110,6 +110,33 @@ class LiveBuffer:
         # Keyed by (code, kind.value) → deque[dict]. deque(maxlen=...) handles
         # FIFO drop automatically when the cap is exceeded.
         self._buf: dict[tuple[str, str], deque[dict]] = {}
+        # ── venue 별 마지막 호가 사이드카 (키: (code, venue)) ──────────────────
+        #
+        # **보존 축이 소비 축과 어긋나 있어서** 필요하다. deque 는 `(code, kind)` 로
+        # 묶이는데 프론트는 그 배열을 **venue 태그 정확 일치**로 거른다
+        # (`liveVenuePolicy.liveVenueAcceptsFrame`). 세 venue 동시 구독(ADR-0140 §2,
+        # PR-F) 이후 한 deque 에 KRX·NXT·UN 이 섞이므로, **틱이 멎은 venue 의 마지막
+        # 프레임이 다른 venue 의 유량에 밀려 축출된다**.
+        #
+        # 실측 2026-08-18 15:42 (005930, NXT 상장): `ob` deque 360건이 전부 NXT 190 ·
+        # UN 170 이고 **KRX 0건**, 시각 범위는 34초(15:42:05~15:42:39)뿐이었다. KRX
+        # `0D` 는 15:30 에 끊기므로(docs/research/2026-08-14-kiwoom-after-hours-
+        # orderbook-sources.md) 그 34초 뒤 KRX 호가는 버퍼에서 사라진다. 결과는
+        # KRX 를 고른 사용자의 **빈 10호가 창**이다 — 같은 시각 NXT 미상장 종목
+        # (322000)은 밀어낼 상대가 없어 15:30 마지막 값이 그대로 남아 정상으로 보인다.
+        #
+        # 그 비대칭이 왜 버그인가: 시간외 총잔량(0E) 설계가 **"사다리는 15:30 정규장
+        # 마지막 값 그대로"** 를 명시적 전제로 깔고 있다(위 연구 문서 §5.1). 즉 동결
+        # 표시는 의도된 동작이고, NXT 상장 종목에서만 그 전제가 깨진 것이다.
+        #
+        # 캡을 올려 고치지 않는 이유: 필요 캡이 ~9,500/deque(15분 × 실측 ~10.6프레임/초)
+        # 로 뛰는데 축 불일치는 그대로다. venue 를 deque 키에 넣지 않는 이유는 메모리가
+        # 3배로 늘고, 그러고도 **프론트의 같은 축출**을 못 막기 때문이다
+        # (`liveSnapshotBuffer.evictOld` 는 kind 배열 전체를 15분으로 훑는다).
+        #
+        # 그래서 사이드카다. venue 당 1건이라 축출 대상이 아니고(전체 상한 =
+        # 종목수 × venue수 × 1), 소비도 "필터 결과가 비었을 때의 폴백" 한 곳뿐이다.
+        self._last_ob: dict[tuple[str, str], dict] = {}
         # SSE push: per-code set of subscriber queues.
         self._subscribers: dict[str, set[asyncio.Queue[dict]]] = {}
         self._total_entries = 0
@@ -160,6 +187,10 @@ class LiveBuffer:
                 entry = {"t_ms": s.t_ms, "kind": s.kind.value, **s.payload}
                 before = len(d)
                 d.append(entry)
+                if s.kind is SnapshotKind.OB:
+                    # 태그 부재는 **KRX 승격** — 프론트 판정(`liveVenueAcceptsFrame`)
+                    # 과 같은 규율이어야 폴백이 필터와 같은 프레임을 가리킨다.
+                    self._last_ob[(code, entry.get("venue") or "KRX")] = entry
                 self._total_entries += len(d) - before
                 self._published_total += 1
                 entries.append(entry)
@@ -247,6 +278,24 @@ class LiveBuffer:
             for key in [k for k in self._buf if k[0] not in keep]:
                 self._total_entries -= len(self._buf[key])
                 del self._buf[key]
+            # 사이드카도 같이 놓는다 — deque 만 지우면 떠난 종목의 마지막 호가가
+            # 프로세스 수명 내내 남는다(작지만 무한 증가하는 누수).
+            for key in [k for k in self._last_ob if k[0] not in keep]:
+                del self._last_ob[key]
+
+    async def get_last_ob(self, code: str, venue: str) -> dict | None:
+        """이 venue 의 **마지막 호가 프레임**(축출 무관). 없으면 None.
+
+        `get_series` 의 `snapshots` 가 그 venue 프레임을 이미 다 잃었을 때 프론트가
+        빈 호가창 대신 쓸 폴백이다. 왜 필요한지는 `_last_ob` 선언부 주석에 있다.
+
+        **`snapshots` 를 대신하지 않는다.** 반환은 항상 1건이라 지표·매물대처럼 계열이
+        필요한 소비자는 그대로 `snapshots` 를 쓴다. 이건 "LATEST 한 장" 만 필요한
+        10호가 창 전용 출구다.
+        """
+        async with self._lock:
+            entry = self._last_ob.get((code, venue))
+            return dict(entry) if entry is not None else None
 
     async def get_series(self, code: str) -> dict:
         """All buffered snapshots for `code` as parallel arrays."""

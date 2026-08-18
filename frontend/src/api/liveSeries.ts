@@ -7,6 +7,7 @@ import type { AskPeakCandidate } from './types';
 import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
 import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
 import { filterByVenueTag, filterObByVenue, filterTradeByVenue } from '../live/liveSidebarAdapters';
+import { liveVenueAcceptsFrame } from '../live/liveVenuePolicy';
 import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { unixMsToKSTDate } from '../util/time';
@@ -53,6 +54,14 @@ export interface LiveSeriesResponse {
   /** 시간외호가(키움 0E) — `snapshots` 와 **다른 배열**이다. 사다리가 없고
    *  총잔량 두 개(`total_ask_qty`/`total_bid_qty`)만 들었다. */
   after_hours: Array<Record<string, unknown>>;
+  /** 이 venue 의 **마지막 호가 프레임** — `snapshots` 가 그 venue 를 다 잃었을 때의
+   *  폴백이다(백엔드 `LiveBuffer._last_ob`). 배열이 아니라 **한 장**인 것이 요점:
+   *  10호가 창은 LATEST 하나면 되고, 계열이 필요한 소비자(매물대·지표)는 그대로
+   *  `snapshots` 를 쓴다.
+   *
+   *  shape 을 좁히지 않는 이유는 위 네 배열과 같다 — 항목 shape 은 스트림이 소유하고,
+   *  여기서 미러를 한 벌 더 만들면 조용한 스트립 위험만 는다. */
+  last_ob?: Record<string, unknown> | null;
   ask_peak_today: LiveTodayAskPeak | null;
   bid_peak_today?: LiveTodayBidPeak | null;
 }
@@ -90,6 +99,32 @@ const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = Object.freeze([]);
 const EMPTY_BROKER_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
 const EMPTY_PROGRAM_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
 const EMPTY_AH_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
+
+/**
+ * 필터 결과가 빈 `ob` 를 대신할 **마지막으로 알려진 호가 한 장**을 고른다.
+ * 후보는 둘이고, `t_ms` 가 큰 쪽이 이긴다.
+ *
+ * - `latched` — 이 세션에서 **실제로 화면에 있었던** 마지막 프레임. 장시간 열어 둔
+ *   탭이 여기 해당한다: 15:30 까지 KRX 프레임을 받다가 클라이언트 축출
+ *   (`liveSnapshotBuffer.evictOld`, 15분)로 잃는 경우, 잃기 직전 값이 정확히 옳다.
+ * - `served` — 백엔드가 실어 준 `last_ob`. **새로 마운트한 탭**의 유일한 출처다
+ *   (그 시점 버퍼엔 그 venue 프레임이 이미 없다).
+ *
+ * **둘 다 필요하고, 큰 쪽을 골라야 한다.** `served` 만 쓰면 09:00 에 연 탭이 15:45 에
+ * 축출을 맞는 순간 **09:00 호가**로 떨어진다 — `initial` 은 마운트 1회 조회이고
+ * (staleTime 60s 여도 재조회 트리거가 없다: focus refetch 는 전역 off, 이 쿼리엔
+ * interval 이 없다) 그 응답의 `last_ob` 는 마운트 시점에 얼어 있기 때문이다. 빈 화면
+ * 보다 나쁜, 몇 시간 낡은 사다리가 현재처럼 뜬다. 반대로 `latched` 만 쓰면 새 탭이
+ * 구제되지 않는다.
+ */
+export function pickLastKnownOb(
+  latched: ObSnapshot | undefined,
+  served: ObSnapshot | undefined,
+): ObSnapshot | undefined {
+  if (latched === undefined) return served;
+  if (served === undefined) return latched;
+  return served.t_ms > latched.t_ms ? served : latched;
+}
 
 /**
  * useLiveSeries — initial REST fetch + WebSocket subscription for live snapshots.
@@ -216,7 +251,40 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
     : EMPTY_TRADE_SNAPSHOTS;
   // venue 필터를 소스에서 강제한다. readKind 는 내용 불변 시 stable-ref 를 주므로
   // (LiveSnapshotBuffer.get) useMemo 가 재계산을 건너뛰어 소비처 memo 도 유지된다.
-  const ob = useMemo(() => filterObByVenue(rawOb, effective), [rawOb, effective]);
+  const filteredOb = useMemo(() => filterObByVenue(rawOb, effective), [rawOb, effective]);
+  // ── 빈 호가창 폴백 (2026-08-18) ───────────────────────────────────────────
+  //
+  // 필터가 **정확 일치**라, 틱이 멎은 venue 는 그 프레임이 버퍼에서 사라지는 순간
+  // 빈 배열이 된다. 15:30 이후의 KRX 가 정확히 그 경우다: 키움 `0D` 는 15:30 에
+  // 끊기는데(docs/research/2026-08-14-…-after-hours-orderbook-sources.md) NXT 상장
+  // 종목은 NXT·UN 프레임이 계속 쏟아져 **같은 deque 에 있던 KRX 프레임을 밀어낸다**
+  // (실측 2026-08-18: 005930 `ob` 360건이 34초치 · KRX 0건). NXT 미상장 종목은
+  // 밀어낼 상대가 없어 15:30 값이 남으므로, 같은 시각 두 종목이 다르게 보였다.
+  //
+  // 고칠 수 있는 것은 **표시의 대칭**뿐이다 — 15:30 이후 KRX 10단 사다리는 벤더도
+  // 제도도 주지 않으므로(위 문서 §4) 새로 받아올 값이 없다. 시간외 총잔량(0E) 설계도
+  // "사다리는 15:30 마지막 값 그대로" 를 전제로 깔고 있다(§5.1). 즉 동결 표시가
+  // 의도된 동작이고, 여기서 복원하는 것이 그 전제다.
+  const latchKey = `${code}|${effective}`;
+  const lastSeenObRef = useRef<{ key: string; frame: ObSnapshot } | null>(null);
+  useEffect(() => {
+    if (filteredOb.length === 0) return;
+    lastSeenObRef.current = { key: latchKey, frame: filteredOb[filteredOb.length - 1] };
+  }, [filteredOb, latchKey]);
+  const servedLastOb = currentInitial?.last_ob;
+  const ob = useMemo(() => {
+    if (filteredOb.length > 0) return filteredOb;
+    const latch = lastSeenObRef.current;
+    const frame = pickLastKnownOb(
+      latch !== null && latch.key === latchKey ? latch.frame : undefined,
+      (servedLastOb ?? undefined) as ObSnapshot | undefined,
+    );
+    // 폴백도 **같은 수용 술어를 탄다**. 백엔드가 요청 venue 로 골라 주지만 그 응답은
+    // 쿼리 키가 갈리기 전 렌더에 이전 venue 것이 잠깐 남을 수 있고, 그때 조용히
+    // 다른 시장 호가를 그리는 것이 빈 화면보다 나쁘다.
+    if (frame === undefined || !liveVenueAcceptsFrame(effective, frame.venue)) return filteredOb;
+    return [frame];
+  }, [filteredOb, latchKey, servedLastOb, effective]);
   const trade = useMemo(() => filterTradeByVenue(rawTrade, effective), [rawTrade, effective]);
   // ⚠ broker·program 도 **같은 필터를 타야 한다.** 여기가 빠져 있어서 거래원·프로그램이
   // 호버(스팟) 중엔 venue 별로 나오는데 벗어나면(LATEST) 마지막 도착 프레임의 venue

@@ -388,3 +388,102 @@ async def test_instance_cap_follows_its_own_retention() -> None:
     buf = LiveBuffer(retention_ms=60_000)
     stats = await buf.stats_snapshot()
     assert stats["max_entries_per_deque"] == cap_for_retention(60_000)
+
+
+# ── venue 별 마지막 호가 사이드카 (2026-08-18) ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_last_ob_survives_eviction_by_another_venue() -> None:
+    """**틱이 멎은 venue 의 마지막 호가가 다른 venue 유량에 밀려도 남는다.**
+
+    실측 재현(2026-08-18 15:42, 005930): KRX `0D` 는 15:30 에 끊기는데 NXT·UN 은
+    계속 흘러, 같은 `(code, "ob")` deque 에 있던 KRX 프레임이 34초 만에 전량
+    축출됐다(360건이 NXT 190 · UN 170 · **KRX 0**). 프론트 필터는 venue **정확
+    일치**라 그 순간 10호가 창이 통째로 빈다.
+
+    아래 두 단언이 짝이다 — 위는 **결함이 여전히 존재함**(deque 에서 KRX 가 사라진다)
+    을 고정하고, 아래는 **사이드카가 그것을 구제함**을 고정한다. 위를 빼면 이 테스트는
+    캡이 바뀌는 날 조용히 무의미해진다(축출이 안 일어나면 아래는 자동으로 통과한다).
+    """
+    buf = LiveBuffer()
+    await buf.publish(
+        "005930",
+        [_snap(1_000, SnapshotKind.OB, {"venue": "KRX", "asks": [{"price": 100}]})],
+        now_ms=1_000,
+    )
+    # NXT·UN 이 캡을 넘겨 쏟아진다 — 15:30 이후 NXT 상장 종목의 실제 모습이다.
+    for i in range(MAX_BUFFER_ENTRIES):
+        venue = "NXT" if i % 2 else "UN"
+        await buf.publish(
+            "005930",
+            [_snap(2_000 + i, SnapshotKind.OB, {"venue": venue, "asks": []})],
+            now_ms=2_000 + i,
+        )
+
+    series = await buf.get_series("005930")
+    assert [f for f in series["snapshots"] if f.get("venue") == "KRX"] == []
+
+    last = await buf.get_last_ob("005930", "KRX")
+    assert last is not None
+    assert last["t_ms"] == 1_000
+    assert last["asks"] == [{"price": 100}]
+
+
+@pytest.mark.asyncio
+async def test_last_ob_is_per_venue_and_tracks_latest() -> None:
+    buf = LiveBuffer()
+    for t, venue in ((1, "KRX"), (2, "NXT"), (3, "KRX")):
+        await buf.publish(
+            "005930", [_snap(t, SnapshotKind.OB, {"venue": venue})], now_ms=t,
+        )
+
+    assert (await buf.get_last_ob("005930", "KRX"))["t_ms"] == 3
+    assert (await buf.get_last_ob("005930", "NXT"))["t_ms"] == 2
+    # 이 venue 로 호가가 온 적 없음 — 폴백 없이 빈 호가창을 그리는 것이 정직하다.
+    assert await buf.get_last_ob("005930", "UN") is None
+    assert await buf.get_last_ob("999999", "KRX") is None
+
+
+@pytest.mark.asyncio
+async def test_last_ob_promotes_untagged_frames_to_krx() -> None:
+    """태그 부재는 KRX 승격 — 프론트 `liveVenueAcceptsFrame` 과 같은 규율.
+
+    두 쪽이 갈리면 폴백이 **필터가 받아 주지 않는 프레임**을 가리켜, 고쳐 놓고도
+    화면은 그대로 비는 형태로 조용히 실패한다.
+    """
+    buf = LiveBuffer()
+    await buf.publish("005930", [_snap(1, SnapshotKind.OB, {})], now_ms=1)
+
+    assert (await buf.get_last_ob("005930", "KRX"))["t_ms"] == 1
+
+
+@pytest.mark.asyncio
+async def test_last_ob_only_tracks_ob_frames() -> None:
+    """체결·거래원은 사다리가 아니다 — 폴백 축에 섞이면 호가창이 엉뚱한 걸 그린다."""
+    buf = LiveBuffer()
+    await buf.publish(
+        "005930",
+        [
+            _snap(1, SnapshotKind.OB, {"venue": "KRX", "asks": []}),
+            _snap(2, SnapshotKind.TRADE, {"venue": "KRX", "trades": []}),
+        ],
+        now_ms=2,
+    )
+
+    assert (await buf.get_last_ob("005930", "KRX"))["t_ms"] == 1
+
+
+@pytest.mark.asyncio
+async def test_drop_codes_except_releases_the_sidecar() -> None:
+    """deque 만 지우면 떠난 종목의 마지막 호가가 프로세스 수명 내내 남는다."""
+    buf = LiveBuffer()
+    for code in ("005930", "000660"):
+        await buf.publish(
+            code, [_snap(1, SnapshotKind.OB, {"venue": "KRX"})], now_ms=1,
+        )
+
+    await buf.drop_codes_except({"005930"})
+
+    assert await buf.get_last_ob("005930", "KRX") is not None
+    assert await buf.get_last_ob("000660", "KRX") is None
