@@ -1,6 +1,7 @@
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { TrashIcon } from '../ui/TrashIcon';
+import { PencilIcon } from '../ui/PencilIcon';
 
 interface Props {
   x: number;            // raw 커서/버튼 viewport 좌표
@@ -24,7 +25,6 @@ function MenuGlyph({ children }: { children: React.ReactNode }) {
   );
 }
 const OpenIcon = () => <MenuGlyph><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></MenuGlyph>;
-const PencilIcon = () => <MenuGlyph><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></MenuGlyph>;
 const MemoIcon = () => <MenuGlyph><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h9" /></MenuGlyph>;
 
 const itemClass =

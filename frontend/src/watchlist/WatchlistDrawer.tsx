@@ -61,6 +61,7 @@ import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailSt
 // 히트맵이 먼저 쓰던 훅(HeatmapDrawer·pages/Heatmap). 드래그 중 입력을 얼려 리렌더를
 // **싸게** 만든다 — 리렌더 자체를 막지는 못한다(WS 틱의 setTick 은 그대로 발생).
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
+import { PencilIcon } from '../ui/PencilIcon';
 
 // v1는 기존 전역 정렬 값 마이그레이션 입력으로만 유지.
 const LEGACY_SORT_MODE_STORAGE_KEY = 'watchlist.sortMode.v1';
@@ -108,7 +109,6 @@ function MenuGlyph({ children }: { children: React.ReactNode }) {
     </svg>
   );
 }
-const PencilIcon = () => <MenuGlyph><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></MenuGlyph>;
 const ArrowUpIcon = () => <MenuGlyph><path d="M12 19V5" /><path d="M6 11l6-6 6 6" /></MenuGlyph>;
 const ArrowDownIcon = () => <MenuGlyph><path d="M12 5v14" /><path d="M6 13l6 6 6-6" /></MenuGlyph>;
 const PlusIcon = () => <MenuGlyph><path d="M12 5v14" /><path d="M5 12h14" /></MenuGlyph>;
