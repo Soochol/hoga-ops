@@ -36,6 +36,8 @@ def stub_refresh_live_stream():
 
 # 저장 계열(스크리너·저장뷰)의 최소 생성 payload. 폴더 CRUD 와 모양이 달라
 # 파라미터를 따로 든다.
+CHART = {"timeframe": "1m", "indicators": {"paneOrder": [], "paneStretch": {}, "byTimeframe": {}}}
+
 _SAVE_CREATE = {
     "screener": (
         "/api/screener/saves",
@@ -43,6 +45,36 @@ _SAVE_CREATE = {
             "name": "저장A",
             "conditions": [],
             "universe": {"markets": ["KOSPI"], "scopes": []},
+        },
+    ),
+    "live-layout-presets": (
+        "/api/live-layout-presets",
+        {
+            "name": "단타용",
+            "payload": {
+                "windows": [
+                    {"id": "w1", "kind": "chart", "group": 1,
+                     "rect": {"x": 0, "y": 0, "w": 442, "h": 531},
+                     "chart": CHART},
+                ],
+                "zOrder": ["w1"],
+                # /live 프리셋만 종목을 담는다(계약 차이 — /study 는 창 배치만).
+                "groupSymbols": {"1": {"code": "005930", "name": "삼성전자"}},
+            },
+        },
+    ),
+    "study-layout-presets": (
+        "/api/study-layout-presets",
+        {
+            "name": "분석용",
+            "payload": {
+                "windows": [
+                    {"id": "w1", "kind": "chart",
+                     "rect": {"x": 0, "y": 0, "w": 0.7, "h": 1},
+                     "chart": CHART},
+                ],
+                "zOrder": ["w1"],
+            },
         },
     ),
     "study-views": (
@@ -83,6 +115,10 @@ def _build_router(kind: str, tmp_path: Path, bus: EventBus | None):
         from hoga.api.heatmap_routes import build_router
     elif kind == "study-views":
         from hoga.api.study_view_routes import build_router
+    elif kind == "live-layout-presets":
+        from hoga.api.live_layout_preset_routes import build_router
+    elif kind == "study-layout-presets":
+        from hoga.api.study_layout_preset_routes import build_router
     else:
         from hoga.api.screener import build_router
     return build_router(data_dir=tmp_path, bus=bus)
@@ -145,7 +181,12 @@ def test_no_bus_still_serves(tmp_path: Path, kind: str):
 
 @pytest.mark.parametrize(
     ("kind", "event_type"),
-    [("screener", "screener_saves_changed"), ("study-views", "study_views_changed")],
+    [
+        ("screener", "screener_saves_changed"),
+        ("study-views", "study_views_changed"),
+        ("live-layout-presets", "live_layout_presets_changed"),
+        ("study-layout-presets", "study_layout_presets_changed"),
+    ],
 )
 def test_save_create_publishes_change_event(tmp_path: Path, kind: str, event_type: str):
     bus = EventBus()
@@ -159,7 +200,9 @@ def test_save_create_publishes_change_event(tmp_path: Path, kind: str, event_typ
     assert _drain(q) == [{"type": event_type}]
 
 
-@pytest.mark.parametrize("kind", ["screener", "study-views"])
+@pytest.mark.parametrize(
+    "kind", ["screener", "study-views", "live-layout-presets", "study-layout-presets"],
+)
 def test_save_list_publishes_nothing(tmp_path: Path, kind: str):
     bus = EventBus()
     q = bus.subscribe()
@@ -220,7 +263,10 @@ def test_screener_broadcast_is_scoped_to_saves(tmp_path: Path):
     assert leaked == [], f"저장 밖인데 브로드캐스트가 걸렸다: {leaked}"
 
 
-@pytest.mark.parametrize("kind", ["watchlist", "heatmap", "study-views"])
+@pytest.mark.parametrize(
+    "kind",
+    ["watchlist", "heatmap", "study-views", "live-layout-presets", "study-layout-presets"],
+)
 def test_every_route_is_wrapped(tmp_path: Path, kind: str):
     """route_class 의 **자동성**을 직접 잰다.
 

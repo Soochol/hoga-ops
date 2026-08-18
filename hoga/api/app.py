@@ -482,8 +482,8 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     # (`kis_api`)와 함께 기능을 접었다. 근거는 `sources.SourceName` 주석: 복구본이
     # 메우던 것은 **캔들뿐**이고 캔들은 벤더가 과거를 다시 준다(우회 OFF 기본 경로).
     app.include_router(build_study_view_router(data_dir=data_dir, bus=bus))
-    app.include_router(build_live_layout_preset_router(data_dir=data_dir))
-    app.include_router(build_study_layout_preset_router(data_dir=data_dir))
+    app.include_router(build_live_layout_preset_router(data_dir=data_dir, bus=bus))
+    app.include_router(build_study_layout_preset_router(data_dir=data_dir, bus=bus))
     app.include_router(
         build_live_router(
             get_status=live_get_status,

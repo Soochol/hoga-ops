@@ -327,6 +327,8 @@ export type PushEvent =
   // 저장 목록 신호가 새어 들어가 판별 유니온을 헛돌게 한다.
   | { type: 'screener_saves_changed' }
   | { type: 'study_views_changed' }
+  | { type: 'live_layout_presets_changed' }
+  | { type: 'study_layout_presets_changed' }
   | { type: 'screener_update_progress'; done: number; total: number }
   | { type: 'screener_update_finished'; updated: number; total: number; reason: string | null }
   // 키움 표시(온디맨드) 슬롯 만석 — 이 탭의 구독이 보류됐다(hoga/api/ws.py).

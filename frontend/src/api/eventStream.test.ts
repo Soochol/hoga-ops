@@ -6,6 +6,7 @@ import { installFakeWebSocket, fakeSockets } from '../test/fakeWebSocket';
 import { __resetForTests as resetWs } from './ws';
 import * as client from './client';
 import {
+  LIST_SYNC_AXES,
   subscribeToCaptureEvents,
   subscribeToScreenerUpdateEvents,
   useEventStream,
@@ -195,6 +196,62 @@ describe('useEventStream 목록 교차 창 동기화', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('레이아웃 프리셋 2종도 각자 목록만 다시 읽는다', async () => {
+    vi.useFakeTimers();
+    try {
+      const spy = mount();
+      await vi.advanceTimersByTimeAsync(0);
+      fakeSockets[0].open();
+      fakeSockets[0].message({ ch: 'event', data: { type: 'live_layout_presets_changed' } });
+      fakeSockets[0].message({ ch: 'event', data: { type: 'study_layout_presets_changed' } });
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(keys(spy)).toContain('live-layout-presets');
+      expect(keys(spy)).toContain('study-layout-presets');
+      expect(keys(spy)).not.toContain('watchlist');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('축 등록부가 기대한 6개 그대로다 (누락·오타 감지)', () => {
+    // 테이블이 단일 출처라 아래 재연결 단언이 자동으로 새 축을 덮는다. 그 자동성이
+    // "축을 조용히 빠뜨려도 초록" 을 뜻하지 않도록, 등록부 자체를 여기서 못박는다.
+    // 축을 늘렸다면 이 목록도 같이 늘리는 것이 의도된 마찰이다.
+    expect(LIST_SYNC_AXES.map((a) => a.event)).toEqual([
+      'watchlist_changed',
+      'heatmap_changed',
+      'screener_saves_changed',
+      'study_views_changed',
+      'live_layout_presets_changed',
+      'study_layout_presets_changed',
+    ]);
+  });
+
+  it('모든 축이 재연결 복구에도 들어 있다 (짝 규칙)', async () => {
+    // 축을 추가하면서 재연결 복구를 빠뜨리는 것이 이 기능에서 가장 놓치기 쉬운
+    // 실수다 — 평상시엔 멀쩡하고 **재연결한 창에서만** 조용히 어긋나기 때문이다.
+    // 축별 무효화 키를 각각 모아, 재연결 한 번이 그 합집합을 덮는지 잰다.
+    const perAxis = new Set<string>();
+    for (const axis of LIST_SYNC_AXES) {
+      const qc = new QueryClient();
+      const spy = vi.spyOn(qc, 'invalidateQueries');
+      axis.invalidate(qc);
+      keys(spy).forEach((k) => perAxis.add(k));
+    }
+    expect(perAxis.size).toBeGreaterThan(0);
+
+    const spy = mount();
+    await new Promise((r) => setTimeout(r, 0));
+    fakeSockets[0].open();
+    fakeSockets[0].serverClose();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const onReconnect = new Set(keys(spy));
+    const missing = [...perAxis].filter((k) => !onReconnect.has(k));
+    expect(missing).toEqual([]);
   });
 
   it('재연결 시 끊겨 있던 동안의 목록 변경을 따라잡는다', async () => {
