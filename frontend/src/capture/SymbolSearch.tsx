@@ -21,11 +21,20 @@ export interface SymbolSearchProps {
   onChange: (hit: SymbolHit | null) => void;
 }
 
-const STATUS_LABEL: Record<SymbolsCacheStatus, string> = {
-  loading: '⏳',
-  fresh: '●',
-  stale: '⏱',
-  unavailable: '!',
+// 상태 뱃지는 **경고일 때만** 뜬다. `fresh`(정상)·`loading`(첫 fetch 동안의 순간 상태)은
+// 사용자가 할 일이 없는 상태라 상시 표시가 정보가 아니라 장식·깜빡임이었다 — 검색창 옆의
+// 정체불명한 초록 점이 그것이다. 종목 목록은 커밋된 시드 스냅샷이 있어 자격증명 없이도
+// 즉시 살아서(`kiwoom_master_seed.json`) loading 은 대개 스쳐 지나간다.
+//
+// 남기는 둘은 **문자 글리프 대신 텍스트**다. `⏱`·`!` 는 무슨 뜻인지 말해 주지 않았고
+// (title 은 hover 해야 보인다), 문자 글리프는 폰트마다 다르게 렌더된다(ui/ SVG 이관과
+// 같은 근거). `stale` 은 이 뱃지가 **유일한 신호**라 특히 그렇다 — `unavailable` 은 아래
+// hint 문단 + 갱신 버튼이 따로 설명한다.
+const STATUS_LABEL: Record<SymbolsCacheStatus, string | null> = {
+  loading: null,
+  fresh: null,
+  stale: '오래됨',
+  unavailable: '사용 불가',
 };
 const STATUS_COLOR: Record<SymbolsCacheStatus, string> = {
   loading: 'var(--fg-dim)',
@@ -135,15 +144,21 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
           // 넓은 컨테이너에선 축소가 일어나지 않아 동작 변화가 없다(히트맵·캡처).
           className="flex-1 min-w-0 bg-bg-input border rounded-lg text-fg py-sm px-sm text-base"
         />
-        <span
-          data-testid="symbol-cache-status"
-          data-status={cacheStatus}
-          title={`종목 마스터 캐시: ${STATUS_TITLE[cacheStatus]}`}
-          style={{ color: STATUS_COLOR[cacheStatus] }}
-          className="text-sm leading-none"
-        >
-          {STATUS_LABEL[cacheStatus]}
-        </span>
+        {/* 자리를 **비워 두지 않는다**(언마운트). 이 span 은 input 과 같은 flex row 라
+            빈 자리를 남기면 정상 상태 내내 input 이 그만큼 좁다. 상태 전환(fresh↔stale)은
+            드물어서 그때 input 폭이 몇 px 움직이는 건 무해하다 — 사용자 조작마다 일어나는
+            전환(예: 선택 개수 0↔N)이라면 반대로 자리를 지켜야 한다. */}
+        {STATUS_LABEL[cacheStatus] && (
+          <span
+            data-testid="symbol-cache-status"
+            data-status={cacheStatus}
+            title={`종목 마스터 캐시: ${STATUS_TITLE[cacheStatus]}`}
+            style={{ color: STATUS_COLOR[cacheStatus] }}
+            className="shrink-0 text-xs leading-none"
+          >
+            {STATUS_LABEL[cacheStatus]}
+          </span>
+        )}
       </div>
       {cacheStatus === 'unavailable' && (
         <div className="mt-1.5 text-xs text-fg-dim">
