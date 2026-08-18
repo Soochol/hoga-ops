@@ -542,4 +542,45 @@ describe('WatchlistEditModal', () => {
     expect(hiddenFromView(screen.getByLabelText('스윙 삭제'))).toBe(true);
     expect(screen.getByLabelText('스윙 삭제').className).toMatch(/group-hover:opacity-100/);
   });
+  // P1-6: 이름 변경 진입이 더블클릭 전용이라 **키보드로는 아예 불가능**했다. hover 액션을
+  // 토글·삭제 둘로 줄인 0.12.17.2 결정은 유지하고(연필 버튼을 되살리지 않는다) 키보드
+  // 경로만 연다 — Enter 는 이 버튼의 click(그룹 선택)에 이미 묶여 있어 쓸 수 없다.
+  it('enters inline rename with F2 as well as double-click', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    const ren = vi.spyOn(api, 'renameFolder').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+    const name = await screen.findByText('스윙');
+    const button = name.closest('button')!;
+
+    // 연필 버튼은 여전히 없다 — 단순화 결정은 그대로다.
+    expect(screen.queryByLabelText('스윙 이름변경')).not.toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-keyshortcuts', 'F2');
+
+    fireEvent.keyDown(button, { key: 'F2' });
+    const input = await screen.findByDisplayValue('스윙');
+    fireEvent.change(input, { target: { value: '단타' } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(ren).toHaveBeenCalledWith('f_a', '단타'));
+  });
+
+  it('F2 로 연 편집도 Escape 로 취소되고 모달은 열려 있다', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    const ren = vi.spyOn(api, 'renameFolder').mockResolvedValue();
+    const onClose = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={onClose} />, { wrapper: wrap(qc) });
+    const name = await screen.findByText('스윙');
+    fireEvent.keyDown(name.closest('button')!, { key: 'F2' });
+    const input = await screen.findByDisplayValue('스윙');
+
+    // input 의 Escape 는 stopPropagation 으로 모달 닫힘을 막는다(기존 계약) — F2 로 연
+    // 편집도 같은 input 이라 그 계약을 그대로 물려받는지 확인한다.
+    fireEvent.change(input, { target: { value: '버릴 이름' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByDisplayValue('버릴 이름')).not.toBeInTheDocument());
+    expect(ren).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('스윙')).toBeInTheDocument();
+  });
 });
