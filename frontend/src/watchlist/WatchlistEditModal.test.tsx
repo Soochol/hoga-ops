@@ -251,6 +251,55 @@ describe('WatchlistEditModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  // pane 이 띄우는 오버레이도 같은 Escape 함정을 탄다 — 그런데 위 `deleteConfirm` 가드는
+  // 모달 자신의 state 만 본다. **pane 을 단독 렌더하는 테스트로는 원리적으로 못 본다**:
+  // 이중 닫힘은 편집 모달의 document 리스너가 있어야 일어나고, 그 리스너가 **먼저 등록돼
+  // 먼저 발화**하는 것이 문제의 본체다. 그래서 이 테스트는 모달 전체를 렌더한다.
+  it('pane 의 확인이 떠 있으면 Escape 가 모달을 닫지 않는다', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    vi.spyOn(api, 'removeEntries').mockResolvedValue();
+    const onClose = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={onClose} />, { wrapper: wrap(qc) });
+    await screen.findByText('삼성전자');
+    fireEvent.click(screen.getByLabelText('005930 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '관심 해제' }));
+    await screen.findByRole('dialog', { name: '관심 해제' });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '관심 해제' })).not.toBeInTheDocument());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: '관심종목 편집' })).toBeInTheDocument();
+
+    // 가드가 눌러붙지 않는다 — 확인이 닫힌 뒤 Escape 는 다시 모달을 닫는다.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('pane 의 이동 메뉴가 열려 있어도 Escape 가 모달을 닫지 않는다', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [
+        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
+        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+      ],
+      entries: [{ code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 }],
+      memos: [],
+      next_run_at_ms: 0,
+    });
+    const onClose = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={onClose} />, { wrapper: wrap(qc) });
+    await screen.findByText('삼성전자');
+    fireEvent.click(screen.getByLabelText('005930 선택'));
+    fireEvent.click(screen.getByRole('button', { name: /이동/ }));
+    await screen.findByRole('menuitem', { name: '장기' });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menuitem', { name: '장기' })).not.toBeInTheDocument());
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('uses the whole folder row as the drag surface and draws one between-row indicator', async () => {
     h.sortableState = {
       f_a: { activeIndex: 0, overIndex: 1, index: 0, isDragging: true },
