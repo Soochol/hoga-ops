@@ -64,44 +64,6 @@ def test_project_entries_preserves_each_valid_membership_row():
     ]
     assert views[0].name == "Samsung"
     assert views[0].last_success_date == "20260610"
-    assert all(v.capture_candidate for v in views)
-
-
-def test_project_entries_mark_every_row_as_capture_candidate():
-    """게이트 제거(ADR-0150) 후 `capture_candidate` 는 전 행에서 true 다.
-
-    상수가 된 이 필드의 정리는 `deriveStorageLabel` 이 이미 write-only 라는 발견과 함께
-    별도로 다룬다(그 값이 **틀리지 않으므로** 급하지 않다).
-    """
-    doc = WatchlistDocument(
-        folders=[
-            WatchlistFolder(
-                id="f_0000000a",
-                name="첫 그룹",
-                order=0,
-                items=code_items(["005930", "000660"]),
-            ),
-            WatchlistFolder(
-                id="f_0000000b",
-                name="둘째 그룹",
-                order=1,
-                items=code_items(["005930"]),
-            ),
-        ],
-        entries=[
-            WatchlistEntry(code="005930", name="삼성전자", registered_at_kst_date="20260601"),
-            WatchlistEntry(code="000660", name="SK하이닉스", registered_at_kst_date="20260601"),
-        ],
-    )
-
-    views = project_entry_views(doc)
-
-    by_row = {(v.folder_id, v.code): v.capture_candidate for v in views}
-    assert by_row == {
-        ("f_0000000a", "005930"): True,
-        ("f_0000000a", "000660"): True,   # 옛 계약이라면 False 였다(그 폴더가 꺼져 있었으므로)
-        ("f_0000000b", "005930"): True,
-    }
 
 
 def test_first_membership_positions_returns_topmost_valid_position():

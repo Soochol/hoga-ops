@@ -63,7 +63,6 @@ export interface CollectionViewInput {
   watchlistCodes: string[];
   viewedCodes: string[];
   kiwoomCodes?: string[];
-  captureCandidate?: boolean;
   liveConnection?: boolean;
 }
 
@@ -71,22 +70,6 @@ export interface CollectionView {
   collectionStatus: CollectionStatus;
   displayStatus: DisplayStatus;
   ariaLabel: string;
-  storageLabel: string;
-}
-
-// KIS REST 30초 저장(rest30)은 제거됨(2026-07-17 정책) — 저장 경로는 KIS WS와
-// 키움 WS 둘뿐이다.
-export function deriveStorageLabel(input: {
-  code: string | null;
-  liveSet: string[];
-  kiwoomCodes?: string[];
-  captureCandidate?: boolean;
-}): string {
-  const { code, liveSet, kiwoomCodes = [], captureCandidate = true } = input;
-  if (!code || !captureCandidate) return '저장 제외';
-  if (liveSet.includes(code)) return 'KIS WS 저장 중';
-  if (kiwoomCodes.includes(code)) return '키움 WS 저장 중';
-  return '대기';
 }
 
 export function deriveCollectionView(input: CollectionViewInput): CollectionView {
@@ -102,11 +85,5 @@ export function deriveCollectionView(input: CollectionViewInput): CollectionView
     collectionStatus,
     displayStatus,
     ariaLabel: DISPLAY_PRESENTATION[displayStatus].ariaLabel,
-    storageLabel: deriveStorageLabel({
-      code: input.code,
-      liveSet: input.liveSet,
-      kiwoomCodes: input.kiwoomCodes,
-      captureCandidate: input.captureCandidate,
-    }),
   };
 }

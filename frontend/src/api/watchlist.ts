@@ -20,7 +20,6 @@ export interface WatchlistEntry {
   order: number;                   // 폴더 items 인덱스(v4) — 메모 행이 차지한 자리를
                                    // 건너뛰므로 이 배열만 보면 띄엄띄엄하다. WatchlistMemo
                                    // 와 합치면 0..N-1 로 조밀하다. **정렬 키로만 쓸 것**
-  capture_candidate?: boolean;     // code-level: any capture-enabled watchlist membership
 }
 
 /** 리스트에 끼워 넣는 "빈칸" 행(v4). 종목명 자리에 `text` 가 보이고, `text: ''` 는
