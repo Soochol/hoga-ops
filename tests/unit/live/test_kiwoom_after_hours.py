@@ -204,3 +204,59 @@ async def test_failure_is_not_cached() -> None:
         f.close()
 
     assert len(calls) == 2
+
+
+# ── 당일 종가 역산 (2026-08-18) ──────────────────────────────────────────────
+#
+# 시간외 단일가(16:00–18:00)는 **당일 종가 ±10%** 안에서 거래되므로 등락률 분모가
+# 종가여야 한다. 벤더는 종가를 필드로 주지 않고 `|현재가| − 종가대비` 로만 알 수 있다.
+
+
+def test_close_price_is_reconstructed_from_the_vendor_delta() -> None:
+    """실측 픽스처(2026-08-18 16:20, 028050 삼성E&A).
+
+    전일 종가는 49,800(ka10007 `flu_rt` −3.82 의 분모)이고 당일 종가는 47,900 이다.
+    벤더 `flu_rt` −0.42 는 −200/47,900 이므로 **종가 기준**이 값으로 증명된다.
+    """
+    book = parse_ka10087("028050", {
+        "ovt_sigpric_cur_prc": "-47700",
+        "ovt_sigpric_pred_pre": "-200",
+        "ovt_sigpric_flu_rt": "-0.42",
+    })
+
+    assert book.cur_price == 47_700
+    assert book.close_price == 47_900
+    # 역산한 종가로 다시 계산한 등락률이 벤더 값과 맞는다(반올림 2자리).
+    assert round((47_700 - 47_900) / 47_900 * 100, 2) == book.change_pct
+
+
+def test_close_price_keeps_the_delta_sign() -> None:
+    """**부호 규칙이 응답 안에서 둘로 갈린다** — 이 테스트가 그 경계를 못박는다.
+
+    `cur_prc` 의 부호는 등락 **방향 표시**(절댓값이 가격)이고 `pred_pre` 의 부호는
+    **값의 일부**다. 둘을 같은 파서로 읽으면 상승·하락이 각각 반대로 틀린다.
+    """
+    up = parse_ka10087("000000", {
+        "ovt_sigpric_cur_prc": "+48100", "ovt_sigpric_pred_pre": "+200",
+    })
+    assert up.close_price == 47_900  # 상승: 48,100 − (+200)
+
+    down = parse_ka10087("000000", {
+        "ovt_sigpric_cur_prc": "-47700", "ovt_sigpric_pred_pre": "-200",
+    })
+    assert down.close_price == 47_900  # 하락: 47,700 − (−200)
+
+
+def test_close_price_is_none_when_either_input_is_missing() -> None:
+    """모름을 0 이나 현재가로 때우지 않는다 — 소비자가 등락률 표시를 생략해야 한다.
+
+    분모를 추측하면 **0.00% 로 박제된 사다리**가 나오고, 그건 빈 칸보다 나쁘다
+    (`hidden_pre_open` 이 같은 이유로 값을 죽인다).
+    """
+    assert parse_ka10087("000000", {"ovt_sigpric_cur_prc": "-47700"}).close_price is None
+    assert parse_ka10087("000000", {"ovt_sigpric_pred_pre": "-200"}).close_price is None
+    assert parse_ka10087("000000", {}).close_price is None
+    # 종가대비가 현재가보다 커서 역산이 0 이하가 되는 병리적 응답도 모름으로 접는다.
+    assert parse_ka10087("000000", {
+        "ovt_sigpric_cur_prc": "-100", "ovt_sigpric_pred_pre": "+500",
+    }).close_price is None

@@ -29,6 +29,7 @@ const _liveSeriesResponse: LiveSeriesResponse = {
   brokers: [],
   programs: [],
   after_hours: [],
+  expected: [],
   ask_peak_today: _todayAskPeakWithoutTradedPeak,
   bid_peak_today: _todayBidPeakWithoutTradedPeak,
 };
@@ -45,6 +46,7 @@ const _legacyLiveSeriesResponseWithoutBidPeak: LiveSeriesResponse = {
   brokers: [],
   programs: [],
   after_hours: [],
+  expected: [],
   ask_peak_today: _todayAskPeakWithoutTradedPeak,
 };
 void _legacyLiveSeriesResponseWithoutBidPeak;

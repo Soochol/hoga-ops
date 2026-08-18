@@ -1668,6 +1668,8 @@ class LiveSeriesResponse(BaseModel):
     trades: list[dict] = Field(default_factory=list)
     brokers: list[dict] = Field(default_factory=list)
     programs: list[dict] = Field(default_factory=list)
+    #: 예상체결(키움 0H). `snapshots` 와 별도 배열 — 사다리가 없다.
+    expected: list[dict] = Field(default_factory=list)
     # 시간외호가(키움 0E) — 위 네 배열과 같은 규약(항목 shape 은 스트림 소유).
     # **`snapshots` 와 합치지 않는다**: 사다리 없는 payload 라 섞이면 호가창이 빈다
     # (`SnapshotKind.AFTER_HOURS` 주석). 15:30 에 0D 가 끊기는 KRX-only 종목의
@@ -1828,6 +1830,14 @@ class AfterHoursBookResponse(BaseModel):
     cur_price: int | None = None
     change_pct: float | None = None
     acc_volume: int = 0
+    #: 당일 **종가** — 이 구간 등락률의 분모다. **전일종가가 아니다**(이름을
+    #: `prev_close` 로 읽으면 화면 전체가 틀린다). 벤더가 따로 주지 않아
+    #: `|현재가| − 종가대비` 로 역산한다 — 근거·실측은 `_close_price` 주석.
+    #:
+    #: 이 필드가 필요한 이유: 시간외 단일가는 **당일 종가 ±10%** 안에서 거래되므로
+    #: 전일종가 기준 등락률은 이 화면에서 의미가 없다. 벤더 자신도 `flu_rt` 를
+    #: 종가 기준으로 준다 — 사다리만 정규장 분모를 쓰고 있었다.
+    close_price: int | None = None
     fetched_at_ms: int = 0
     source: Literal["kiwoom"] = "kiwoom"
 
@@ -3042,6 +3052,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             cur_price=book.cur_price,
             change_pct=book.change_pct,
             acc_volume=book.acc_volume,
+            close_price=book.close_price,
             fetched_at_ms=fetched_at_ms,
         )
 

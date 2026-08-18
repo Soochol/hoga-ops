@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { DataWindow } from './DataWindow';
+import { DataWindow, resolveBookBaseline } from './DataWindow';
 import type { WorkspaceWindow } from '../../state/workspace';
 import {
   __resetGroupChartLinksForTests,
@@ -43,6 +43,7 @@ vi.mock('../../api/liveSeries', () => ({
     // 소비처가 그 키를 읽는 순간 런타임 크래시로만 드러난다(afterHours 추가 때 실제로
     // latest 모드 7건이 통째로 죽었다). 훅 반환에 키를 늘리면 여기도 늘릴 것.
     afterHours: [],
+    expected: [],
   }),
 }));
 
@@ -648,5 +649,45 @@ describe('DataWindow — 형성 중 봉 힌트', () => {
     });
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(screen.queryByTestId('orderbook-forming-hint')).not.toBeInTheDocument();
+  });
+});
+
+// ── 등락률 분모 (2026-08-18) ─────────────────────────────────────────────────
+
+describe('resolveBookBaseline', () => {
+  const base = {
+    isPastDateCursor: false,
+    cursorBaseline: 208_500,
+    singlePriceActive: false,
+    singlePriceClose: 47_900,
+    liveBaseline: 49_800,
+  };
+
+  it('평시엔 전일종가', () => {
+    expect(resolveBookBaseline(base)).toBe(49_800);
+  });
+
+  it('시간외 단일가에선 **당일 종가** — 종가가 0% 여야 한다', () => {
+    // 실측(2026-08-18, 028050): 전일종가 49,800 을 분모로 쓰면 종가 47,900 이
+    // −3.82% 로 찍힌다. 그 구간의 거래는 종가 ±10% 안에서 이뤄지므로 그 숫자는
+    // 화면에서 의미가 없다.
+    const b = resolveBookBaseline({ ...base, singlePriceActive: true });
+    expect(b).toBe(47_900);
+    expect((47_900 - b!) / b!).toBe(0); // 종가 = 0%
+  });
+
+  it('종가를 모르면 **전일종가로 떨어지지 않고** 등락률을 생략한다', () => {
+    // `?? liveBaseline` 로 접으면 모름이 조용히 정규장 분모로 대체돼 원래 버그가
+    // 그대로 돌아온다 — 그 폴백이 없다는 것을 못박는다.
+    expect(
+      resolveBookBaseline({ ...base, singlePriceActive: true, singlePriceClose: null }),
+    ).toBeNull();
+  });
+
+  it('과거 날짜 커서가 시간외보다 우선한다', () => {
+    // 과거 시점을 보고 있는데 "지금 시간외" 분모를 쓰면 분자와 분모의 날짜가 갈린다.
+    expect(
+      resolveBookBaseline({ ...base, isPastDateCursor: true, singlePriceActive: true }),
+    ).toBe(208_500);
   });
 });

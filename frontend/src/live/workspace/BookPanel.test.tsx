@@ -314,6 +314,28 @@ describe('BookPanel', () => {
     expect(screen.getByLabelText('매수총잔량 2,045')).toBeInTheDocument();
   });
 
+  it('시간외 체결량이 오면 라벨과 함께 보여준다', () => {
+    // 시간외 단일가는 10분 주기 **일괄 체결**이라 개별 체결 내역이 없다 — 좌측
+    // 체결창·체결강도가 정규장 마지막 값에 멈춰 있는 것은 결손이 아니고, 이 누적
+    // 체결량이 그 구간에 움직이는 유일한 체결 신호다.
+    renderPanel({
+      afterHoursTotals: { ask: 7_777, bid: 8_888, volume: 2_562 },
+      afterHoursLabel: '시간외 단일가',
+    });
+
+    expect(screen.getByTestId('book-after-hours-volume')).toHaveTextContent('체결 2,562');
+    expect(screen.getByLabelText('시간외 단일가 체결량 2,562')).toBeInTheDocument();
+  });
+
+  it('체결량이 없으면(0E 경로) 그 줄을 그리지 않는다', () => {
+    // 0E 에는 체결량 FID 가 없다. `null` 을 0 으로 때워 "체결 0" 을 그리면
+    // "체결이 없었다" 로 읽히는데, 실제로는 **모른다** 다.
+    renderPanel({ afterHoursTotals: { ask: 7_777, bid: 8_888 } });
+
+    expect(screen.queryByTestId('book-after-hours-volume')).toBeNull();
+    expect(screen.getByTestId('book-total-after-hours')).toHaveTextContent('시간외');
+  });
+
   it('시간외 총잔량은 사다리를 건드리지 않는다 — 위 10단은 정규장 마지막 값', () => {
     // 0E 에는 단계별 호가가 없다. 사다리까지 갈아끼우면 호가창이 비므로,
     // 스트립만 바뀌고 가격 행은 그대로여야 한다(백엔드 SnapshotKind.AFTER_HOURS 주석).
