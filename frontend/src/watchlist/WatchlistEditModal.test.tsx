@@ -98,12 +98,12 @@ describe('WatchlistEditModal', () => {
 
     expect(name).toHaveAttribute('title', '길게 만든 관심 그룹 이름');
     expect(row).toHaveClass('relative');
-    // pr-16(64px) ≥ 액션 묶음 실측 폭(54px). pr-12(48px)이면 액션이 카운트를 5px 덮어
-    // `10` 이 `1` 로 읽힌다 — 픽셀은 jsdom 이 못 재므로 **값을 클래스로 못박는다**.
-    expect(selectButton).toHaveClass('group-hover:pr-16');
-    expect(selectButton).toHaveClass('group-focus-within:pr-16');
-    expect(actions).toHaveClass('absolute');
-    expect(actions).toHaveClass('right-2');
+    // 액션 묶음은 **평범한 flex 아이템**이다 — absolute + hover 패딩(pr-12/pr-16) 조합은
+    // 패딩 값과 액션 실제 폭을 손으로 맞춰야 해서 어긋나면 카운트를 덮었다(pr-12 시절
+    // 5px 겹침 → `10` 이 `1` 로). 자리를 실제로 차지하면 겹침이 원리적으로 불가능하다.
+    expect(actions).not.toHaveClass('absolute');
+    expect(actions).toHaveClass('shrink-0');
+    expect(selectButton?.className).not.toMatch(/pr-(12|16)/);
   });
 
   it('paints the selected folder row with the selection tint token', async () => {
@@ -484,7 +484,7 @@ describe('WatchlistEditModal', () => {
 
     render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
 
-    const toggle = await screen.findByRole('switch', { name: '스윙 저장 대상' });
+    const toggle = await screen.findByRole('switch', { name: '스윙 실시간 저장' });
     expect(toggle).not.toBeChecked();
 
     fireEvent.click(toggle);
@@ -509,11 +509,37 @@ describe('WatchlistEditModal', () => {
 
     render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
 
-    const toggle = await screen.findByRole('switch', { name: '스윙 저장 대상' });
+    const toggle = await screen.findByRole('switch', { name: '스윙 실시간 저장' });
     expect(toggle).toBeChecked();
 
     fireEvent.click(toggle);
 
     await waitFor(() => expect(setCapture).toHaveBeenCalledWith('f_a', false));
+  });
+  // 토글은 이 앱에서 `capture_enabled` 를 보여 주는 **유일한 지점**이다. hover 뒤에 있으면
+  // 상태를 볼 수도, 마우스로 누를 수도 없었다(`pointer-events-none`). 신규 폴더가 기본
+  // 꺼짐이라(ADR-0079) "안 보이는 기본값" 이 정상 경로였다는 점이 이 계약의 근거다.
+  it('keeps the capture toggle visible without hover — only delete hides', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+    await screen.findByText('스윙');
+
+    // jsdom 은 :hover 를 모르므로 **클래스로** 읽는다 — 숨김은 opacity 로 하고 있어
+    // (Tab 도달 계약) 존재 여부로는 구별되지 않는다.
+    //
+    // **자기 className 만 보면 안 된다**: 숨김은 조상(액션 묶음 div)에 걸 수도 있어서,
+    // 버튼만 검사하면 토글을 통째로 hover 뒤로 되돌려도 테스트가 초록으로 통과한다
+    // (red-check 에서 실제로 그랬다). 행까지 거슬러 올라가며 확인한다.
+    const hiddenFromView = (el: HTMLElement | null) => {
+      for (let n = el; n; n = n.parentElement) {
+        if (/(^|\s)(opacity-0|pointer-events-none)(\s|$)/.test(n.className)) return true;
+        if (n.dataset.testid?.startsWith('folder-row-f_')) break;   // 행이 상한
+      }
+      return false;
+    };
+    expect(hiddenFromView(screen.getByRole('switch', { name: '스윙 실시간 저장' }))).toBe(false);
+    expect(hiddenFromView(screen.getByLabelText('스윙 삭제'))).toBe(true);
+    expect(screen.getByLabelText('스윙 삭제').className).toMatch(/group-hover:opacity-100/);
   });
 });

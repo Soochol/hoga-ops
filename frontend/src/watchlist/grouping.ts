@@ -101,3 +101,14 @@ export function countOrphansIfFolderDeleted<TEntry extends EntryWithFolderOrder 
   const all = entries.filter((e) => e.folder_id === folderId).map((e) => e.code);
   return countOrphansIfRemovedFrom(entries, folderId, all);
 }
+
+/** 폴더의 실시간 저장 옵트인(ADR-0079). 필드가 없는 **레거시 폴더는 켜짐**으로 읽는다 —
+ *  ADR-0079 가 "existing folders migrate as capture-enabled" 로 정한 마이그레이션 의미다
+ *  (신규 폴더는 서버가 `False` 로 만든다; 그건 옵트인 설계이고 이 폴백과 무관하다).
+ *
+ *  **두 화면이 같은 폴백을 써야 한다.** 편집 모달은 토글의 on/off 를, 패널은 「저장」 배지의
+ *  유무를 이 값으로 정하는데, 한쪽이 `?? true` 고 다른 쪽이 `?? false` 면 같은 폴더가 두
+ *  화면에서 반대로 보인다. Pure. */
+export function folderCaptureEnabled(folder: { capture_enabled?: boolean }): boolean {
+  return folder.capture_enabled ?? true;
+}
