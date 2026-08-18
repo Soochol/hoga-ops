@@ -6,8 +6,9 @@ import {
   updateLiveLayoutPreset,
   type LiveLayoutPresetWriteRequest,
 } from '../../api/liveLayoutPresets';
+import { LIVE_LAYOUT_PRESETS_QUERY } from './liveLayoutPresetKeys';
 
-export const LIVE_LAYOUT_PRESETS_QUERY = ['live-layout-presets'] as const;
+export { LIVE_LAYOUT_PRESETS_QUERY };
 
 export function useLiveLayoutPresets() {
   return useQuery({ queryKey: LIVE_LAYOUT_PRESETS_QUERY, queryFn: listLiveLayoutPresets });

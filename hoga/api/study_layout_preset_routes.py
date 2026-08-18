@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from hoga.api import study_layout_presets
+from hoga.api.events import EventBus
 from hoga.api.layout_preset_store import PresetConflictError, PresetNotFoundError
 from hoga.api.models import (
     StudyLayoutPreset,
@@ -15,6 +16,7 @@ from hoga.api.models import (
     StudyLayoutPresetsFile,
     StudyLayoutPresetWriteRequest,
 )
+from hoga.api.mutation_broadcast import mutation_broadcast_route_class
 
 log = logging.getLogger(__name__)
 
@@ -45,8 +47,14 @@ def _conflict(e: PresetConflictError) -> HTTPException:
     )
 
 
-def build_router(*, data_dir: Path) -> APIRouter:
-    router = APIRouter(prefix="/api/study-layout-presets", tags=["study-layout-presets"])
+def build_router(*, data_dir: Path, bus: EventBus | None = None) -> APIRouter:
+    router = APIRouter(
+        prefix="/api/study-layout-presets",
+        tags=["study-layout-presets"],
+        # 저장뷰와 같은 전면 브로드캐스트(mutation_broadcast) — 이 라우터는 전부
+        # 프리셋 CRUD 라 스크리너처럼 조회성 변경 메서드가 섞여 있지 않다.
+        route_class=mutation_broadcast_route_class(bus, "study_layout_presets_changed"),
+    )
 
     @router.get("", response_model=StudyLayoutPresetsFile)
     async def list_presets() -> StudyLayoutPresetsFile:

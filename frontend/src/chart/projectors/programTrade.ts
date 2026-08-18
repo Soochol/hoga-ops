@@ -11,9 +11,12 @@ import { formatKoreanWonEok } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 import { LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
+import { addZeroBaselineGuide, includeZeroAutoscale } from '../util/zeroBaseline';
 
 const TOKEN_SPEC = {
   line: ['--accent', '#F0B429'],
+  // 0선은 데이터가 아니라 참조선이므로 중립색 — 호가비 pane 과 동일 토큰.
+  baseline: ['--fg-dimmer', '#63636F'],
 } as const;
 
 // Color is series-level (thunked in the spec below); the data is value-only.
@@ -26,8 +29,15 @@ const lineOptions = () => ({
     minMove: 1,
   },
   priceScaleId: 'right' as const,
+  // net_amount 는 당일 **누적** 순매수라 한쪽으로만 쌓인 구간을 확대하면 0 이
+  // 보이는 범위 밖으로 밀린다 — 정작 부호를 읽어야 할 때 기준선이 사라진다.
+  autoscaleInfoProvider: includeZeroAutoscale,
+  // 라이브러리 기본 수평선 + 가격축 최신값 칩을 둘 다 끈다(DESIGN.md 2026-05-23).
+  // 값은 Pane Legend 로 읽는다 — 커서가 있으면 그 시점, 없으면 최신(2026-08-18 에
+  // `LEGEND_CELL_PANES` 에 이 pane 을 넣었다). 축 칩을 같이 켜 두면 갱신 주기가 달라
+  // 같은 시리즈가 두 숫자로 보인다.
   priceLineVisible: false,
-  lastValueVisible: true,
+  lastValueVisible: false,
 });
 
 export function projectProgramTradeNetAmount(
@@ -115,6 +125,10 @@ export const PROGRAM_TRADE_SPEC = {
         color: () => resolveTokensThemed(TOKEN_SPEC).line,
         format: formatKoreanWonEok, // 억 단위 (라인 축과 동일)
       },
+      // 0 = 프로그램 매수/매도 우위의 경계. 누적값이라 이 선을 언제 되돌아
+      // 넘는지가 그 자체로 신호다.
+      afterAdd: (series) =>
+        addZeroBaselineGuide(series, resolveTokensThemed(TOKEN_SPEC).baseline),
     },
   ],
 } satisfies PaneSpec;

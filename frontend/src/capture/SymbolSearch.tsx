@@ -204,7 +204,14 @@ function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted:
       style={{ background: highlighted ? 'var(--tint-selection)' : 'transparent' }}
       className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-sm px-sm cursor-pointer"
     >
-      <span className="font-normal text-base text-fg">{hit.name}</span>
+      {/* `truncate` + `min-w-0`: 이 행은 grid 이고 종목명만 `1fr` 이라, 좁은
+          컨테이너에서 이 컬럼이 min-content 로 붕괴한다. **한글의 min-content 는 한
+          글자**라(글자 단위 줄바꿈) 이름이 세로로 쌓이고 행 높이가 3배가 된다 —
+          영문에서는 단어가 안 끊겨 min-content 가 단어 폭이므로 **이 실패는
+          한글·CJK 에서만 난다**. `whitespace-nowrap`(truncate 의 일부)이 그 줄바꿈을
+          정의상 불가능하게 만들고, 잘린 이름은 `title` 로 복구한다. 넓은 컨테이너
+          (히트맵 드로어)에서는 자를 것이 없어 동작 변화가 없다. */}
+      <span className="min-w-0 truncate font-normal text-base text-fg" title={hit.name}>{hit.name}</span>
       <span className="font-medium text-sm font-data text-fg-dim tabular-nums">{hit.code}</span>
       <span className="border border-border-strong rounded-md px-xs font-semibold text-badge text-fg-dim">{hit.market}</span>
       <span

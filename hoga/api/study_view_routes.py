@@ -8,12 +8,14 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from hoga.api import study_views
+from hoga.api.events import EventBus
 from hoga.api.models import (
     StudyViewListRow,
     StudyViewMetadataUpdateRequest,
     StudyViewReferenceWriteRequest,
     StudyViewsFile,
 )
+from hoga.api.mutation_broadcast import mutation_broadcast_route_class
 
 log = logging.getLogger(__name__)
 
@@ -32,8 +34,15 @@ def _not_found(save_id: str) -> HTTPException:
     )
 
 
-def build_router(*, data_dir: Path) -> APIRouter:
-    router = APIRouter(prefix="/api/study-views", tags=["study-views"])
+def build_router(*, data_dir: Path, bus: EventBus | None = None) -> APIRouter:
+    router = APIRouter(
+        prefix="/api/study-views",
+        tags=["study-views"],
+        # 관심목록·히트맵과 같은 교차 창 브로드캐스트(mutation_broadcast). 이 라우터는
+        # 전부 저장 CRUD 라 스크리너처럼 서브라우터를 쪼갤 이유가 없다 — 조회성
+        # 변경 메서드가 섞여 있지 않다.
+        route_class=mutation_broadcast_route_class(bus, "study_views_changed"),
+    )
 
     @router.get("/saves", response_model=StudyViewsFile)
     async def list_saves() -> StudyViewsFile:

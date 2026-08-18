@@ -91,11 +91,21 @@ const VALUE_MIN_WIDTH = '12ch';
 const LEGEND_INSET = 'var(--space-xs)';
 
 /** cells 행(pane 레전드의 값 표시)을 노출하는 pane 화이트리스트. 2026-07-22 에 밀집도
- *  때문에 전 pane 을 숨겼다가, 거래량·총잔량만 되살렸다(2026-08-04). 레전드 메타는
- *  projector(`SeriesSpec.legend`)가 계속 전 pane 에 대해 등록하므로, 다른 pane 을
- *  되살리려면 여기에 PaneId 를 추가하기만 하면 된다. `/live` 와 `/study` 가 같은
- *  `LiveChartRoot` 를 쓰므로 두 화면에 동시에 적용된다. */
-const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>(['volume', 'quote-totals']);
+ *  때문에 전 pane 을 숨겼다가, 거래량·총잔량을 되살렸고(2026-08-04) 프로그램 순매수가
+ *  뒤따랐다(2026-08-18). 레전드 메타는 projector(`SeriesSpec.legend`)가 계속 전 pane 에
+ *  대해 등록하므로, 다른 pane 을 되살리려면 여기에 PaneId 를 추가하기만 하면 된다.
+ *  `/live` 와 `/study` 가 같은 `LiveChartRoot` 를 쓰므로 두 화면에 동시에 적용된다.
+ *
+ *  ⚠ 여기에 pane 을 추가하면 그 pane 의 `lastValueVisible`(가격축 최신값 칩)을 **같이
+ *  꺼야 한다**. 두 판독면은 갱신 주기가 다르다 — 축 칩은 SSE 재투영을 따라 거의
+ *  실시간이고 레전드 latest 는 캔들 epoch 주기(아래 `dataEpoch` 주석)라, 둘 다 켜면
+ *  장중에 같은 시리즈가 서로 다른 숫자로 보인다. 프로그램 순매수가 그 경우였다
+ *  (DESIGN.md 2026-08-18). */
+const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>([
+  'volume',
+  'quote-totals',
+  'program-trade',
+]);
 
 // Positioned by the per-pane stack wrapper (flex column), not absolutely —
 // a pane can now hold several rows (candle: MA + daily-MA + flag chips).
@@ -774,13 +784,13 @@ function PaneLegendOverlay({
     indicatorFlags,
     paneCells,
     // 표시 게이트 — 행 생성은 위에서 전부 하고, 무엇을 그릴지는 여기서만 정한다.
-    // 캔들 pane 의 OHLC·이동평균선(현재 타임프레임)에 더해, 거래량·총잔량 pane 의
-    // cells 행을 표시한다(LEGEND_CELL_PANES, 2026-08-04 사용자 요청 — 두 pane 만
-    // 다른 지표처럼 값 레전드를 갖는다).
+    // 캔들 pane 의 OHLC·이동평균선(현재 타임프레임)에 더해, LEGEND_CELL_PANES 의
+    // cells 행을 표시한다(거래량·총잔량 2026-08-04 · 프로그램 순매수 2026-08-18,
+    // 둘 다 사용자 요청 — 이 pane 들은 다른 지표처럼 값 레전드를 갖는다).
     // 계속 숨기는 것: 일봉 이동평균선(daily-ma) 행 — 차트의 일봉 MA 선 자체는
     // dailyMaSeriesRegistry 가 계속 그리고 값 표시 행만 뺀다. flag 행(최대벽·매물대·
-    // 히트맵·단별잔량·신규거래원)과 나머지 cells pane(호가비·체결강도·프로그램·투자자)
-    // 도 숨긴다(2026-07-22, 차트 밀집도). 지표 on/off 는 보조지표 패널이 담당.
+    // 히트맵·단별잔량·신규거래원)과 나머지 cells pane(호가비·체결강도·투자자)도
+    // 숨긴다(2026-07-22, 차트 밀집도). 지표 on/off 는 보조지표 패널이 담당.
   }).filter(
     (r) =>
       r.kind === 'ohlc' ||
