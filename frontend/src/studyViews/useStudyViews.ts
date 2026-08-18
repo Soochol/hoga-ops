@@ -8,8 +8,9 @@ import {
   type StudyViewMetadataUpdateRequest,
   type StudyViewSaveWriteRequest,
 } from '../api/studyViews';
+import { STUDY_VIEW_SAVES_QUERY } from './studyViewKeys';
 
-export const STUDY_VIEW_SAVES_QUERY = ['study-view-saves'] as const;
+export { STUDY_VIEW_SAVES_QUERY };
 
 export function useStudyViews() {
   return useQuery({ queryKey: STUDY_VIEW_SAVES_QUERY, queryFn: listStudyViews });

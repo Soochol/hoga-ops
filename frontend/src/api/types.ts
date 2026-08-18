@@ -321,6 +321,12 @@ export type PushEvent =
   // 서버 상태를 통째로 다시 읽는다(inventory_* 와 같은 형태).
   | { type: 'watchlist_changed' }
   | { type: 'heatmap_changed' }
+  // 저장된 스크리너 조건·저장뷰가 서버에서 바뀌었다 — 위 둘과 같은 브로드캐스트다.
+  // ⚠ 이름을 `screener_update…` 로 짓지 말 것: subscribeToScreenerUpdateEvents 가
+  // `startsWith('screener_update')` 로 거르므로, 갱신 job 진행률 소비처(드로어·칩)에
+  // 저장 목록 신호가 새어 들어가 판별 유니온을 헛돌게 한다.
+  | { type: 'screener_saves_changed' }
+  | { type: 'study_views_changed' }
   | { type: 'screener_update_progress'; done: number; total: number }
   | { type: 'screener_update_finished'; updated: number; total: number; reason: string | null }
   // 키움 표시(온디맨드) 슬롯 만석 — 이 탭의 구독이 보류됐다(hoga/api/ws.py).

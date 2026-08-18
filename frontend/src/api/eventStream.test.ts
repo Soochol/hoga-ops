@@ -5,7 +5,11 @@ import React from 'react';
 import { installFakeWebSocket, fakeSockets } from '../test/fakeWebSocket';
 import { __resetForTests as resetWs } from './ws';
 import * as client from './client';
-import { subscribeToCaptureEvents, useEventStream } from './eventStream';
+import {
+  subscribeToCaptureEvents,
+  subscribeToScreenerUpdateEvents,
+  useEventStream,
+} from './eventStream';
 import { useLivePromotionStore } from '../state/livePromotion';
 import type { PushEvent } from './types';
 
@@ -45,6 +49,20 @@ describe('subscribeToCaptureEvents', () => {
     const sock = await connect();
     sock.message({ ch: 'event', data: { type: 'inventory_added', code: '005930', date: '20260520' } });
     expect(events).toHaveLength(0);
+  });
+});
+
+describe('subscribeToScreenerUpdateEvents 이름 경계', () => {
+  it('screener_saves_changed 는 갱신 job 소비처로 새지 않는다', async () => {
+    // 필터가 `startsWith('screener_update')` 라, 저장 목록 신호를 그 접두사로
+    // 이름 지었다면 드로어·칩의 판별 유니온이 헛돈다. 이름이 경계를 지고 있으므로
+    // 그 사실을 테스트로 고정한다.
+    const events: PushEvent[] = [];
+    subscribeToScreenerUpdateEvents((e) => events.push(e));
+    const sock = await connect();
+    sock.message({ ch: 'event', data: { type: 'screener_saves_changed' } });
+    sock.message({ ch: 'event', data: { type: 'screener_update_progress', done: 1, total: 2 } });
+    expect(events.map((e) => e.type)).toEqual(['screener_update_progress']);
   });
 });
 
@@ -159,6 +177,26 @@ describe('useEventStream 목록 교차 창 동기화', () => {
     }
   });
 
+  it('screener_saves_changed / study_views_changed 를 각자 목록만 다시 읽는다', async () => {
+    vi.useFakeTimers();
+    try {
+      const spy = mount();
+      await vi.advanceTimersByTimeAsync(0);
+      fakeSockets[0].open();
+      fakeSockets[0].message({ ch: 'event', data: { type: 'screener_saves_changed' } });
+      fakeSockets[0].message({ ch: 'event', data: { type: 'study_views_changed' } });
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(keys(spy)).toContain('screener-saves');
+      expect(keys(spy)).toContain('study-view-saves');
+      // 축이 넷이어도 서로를 건드리지 않는다.
+      expect(keys(spy)).not.toContain('watchlist');
+      expect(keys(spy)).not.toContain('heatmap');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('재연결 시 끊겨 있던 동안의 목록 변경을 따라잡는다', async () => {
     // EventBus 는 큐를 연결에 매달아 두므로 끊긴 사이의 신호는 재전송되지 않는다.
     const spy = mount();
@@ -170,6 +208,8 @@ describe('useEventStream 목록 교차 창 동기화', () => {
     expect(keys(spy)).toContain('watchlist');
     expect(keys(spy)).toContain('heatmap');
     expect(keys(spy)).toContain('live,index-sector-rankings');
+    expect(keys(spy)).toContain('screener-saves');
+    expect(keys(spy)).toContain('study-view-saves');
   });
 });
 

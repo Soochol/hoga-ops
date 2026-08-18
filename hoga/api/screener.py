@@ -24,6 +24,7 @@ from hoga.api.models import (
     ScreenerResponse,
     ScreenerSaveWriteRequest,
 )
+from hoga.api.mutation_broadcast import mutation_broadcast_route_class
 from hoga.api.screener_store import DailyBar
 from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import kiwoom_rest_runtime
@@ -418,26 +419,40 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
     async def update() -> ScreenerUpdateResponse:
         return await start_update(data_dir, bus=bus)
 
-    @router.post("/saves", status_code=201, response_model=SavedScreener)
+    # 저장 목록만 **별도 서브라우터**로 묶는다 — 교차 창 브로드캐스트를 여기에만
+    # 걸기 위해서다(mutation_broadcast). 메인 라우터에 걸면 `POST /scan` 이 함께
+    # 발행되는데, 스캔은 사용자가 조건을 만질 때마다 나가는 **조회성 POST** 라
+    # 열려 있는 모든 창이 그 횟수만큼 저장 목록을 다시 읽는다. 관심목록의
+    # `/catchup`(가끔 누르는 버튼)과는 빈도 등급이 다르다 — 거기서 스퓨리어스를
+    # 감수한 논리가 이쪽으로 이식되지 않는다.
+    #
+    # ⚠ **저장 계열 라우트는 이 서브라우터에 추가할 것.** 메인 라우터에
+    # `/saves...` 를 달면 브로드캐스트가 빠진 채 조용히 동작한다(다른 창이
+    # 안 따라오는 무증상 실패). 테스트가 경로 prefix 로 양방향을 다 잰다.
+    saves = APIRouter(
+        route_class=mutation_broadcast_route_class(bus, "screener_saves_changed"),
+    )
+
+    @saves.post("", status_code=201, response_model=SavedScreener)
     async def create_save(req: ScreenerSaveWriteRequest) -> SavedScreener:
         return await screener_saves.create_save(
             data_dir, req=req, id=uuid.uuid4().hex, now_ms=int(time.time() * 1000))
 
-    @router.get("/saves", response_model=SavedScreenersFile)
+    @saves.get("", response_model=SavedScreenersFile)
     async def list_saves() -> SavedScreenersFile:
         # Return the whole file so schema_version comes from the single
         # source of truth (the model default) and can't drift from a
         # hardcoded literal. Response shape stays {schema_version, saves}.
         return screener_saves.load_saves(data_dir)
 
-    @router.get("/saves/{save_id}", response_model=SavedScreener)
+    @saves.get("/{save_id}", response_model=SavedScreener)
     async def get_save(save_id: str) -> SavedScreener:
         try:
             return await screener_saves.get_save(data_dir, id=save_id)
         except screener_saves.ScreenerSaveNotFoundError as e:
             raise _save_not_found(save_id) from e
 
-    @router.put("/saves/{save_id}", response_model=SavedScreener)
+    @saves.put("/{save_id}", response_model=SavedScreener)
     async def update_save(save_id: str, req: ScreenerSaveWriteRequest) -> SavedScreener:
         try:
             return await screener_saves.update_save(
@@ -445,11 +460,12 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         except screener_saves.ScreenerSaveNotFoundError as e:
             raise _save_not_found(save_id) from e
 
-    @router.delete("/saves/{save_id}", status_code=204)
+    @saves.delete("/{save_id}", status_code=204)
     async def delete_save(save_id: str) -> None:
         try:
             await screener_saves.delete_save(data_dir, id=save_id)
         except screener_saves.ScreenerSaveNotFoundError as e:
             raise _save_not_found(save_id) from e
 
+    router.include_router(saves, prefix="/saves")
     return router

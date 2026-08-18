@@ -3,6 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { STOCK_DATES_QUERY_KEY } from './stock-dates';
 import { WATCHLIST_KEY } from '../watchlist/watchlistKeys';
 import { invalidateHeatmapDependents } from '../heatmap/heatmapKeys';
+import { SCREENER_SAVES_KEY } from '../screener/screenerKeys';
+import { STUDY_VIEW_SAVES_QUERY } from '../studyViews/studyViewKeys';
 import { subscribeEvents, lastHeartbeat } from './ws';
 import type { PushEvent } from './types';
 import { markPromotion } from '../state/livePromotion';
@@ -78,15 +80,27 @@ export function useEventStream(): void {
         coalesce('heatmap', LIST_INVALIDATE_COALESCE_MS, () => {
           invalidateHeatmapDependents(qc);
         });
+      } else if (e.type === 'screener_saves_changed') {
+        coalesce('screener-saves', LIST_INVALIDATE_COALESCE_MS, () => {
+          qc.invalidateQueries({ queryKey: SCREENER_SAVES_KEY });
+        });
+      } else if (e.type === 'study_views_changed') {
+        coalesce('study-views', LIST_INVALIDATE_COALESCE_MS, () => {
+          qc.invalidateQueries({ queryKey: STUDY_VIEW_SAVES_QUERY });
+        });
       } else if (e.type === 'disconnected') {
         // Reconnect recovery (once per disconnect transition; ADR-0019).
         qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
         qc.invalidateQueries({ queryKey: ['capture', 'queue'] });
         // 끊겨 있던 동안의 목록 변경 신호는 재전송되지 않는다(EventBus 는 큐를
-        // 연결에 매달아 두고, 끊긴 연결의 큐는 사라진다). 다시 읽지 않으면 그
-        // 사이 다른 창이 바꾼 관심목록·히트맵이 이 창에서만 영영 옛 상태로 남는다.
+        // 연결에 매달아 두고, 끊긴 연결의 큐는 사라진다). 다시 읽지 않으면 그 사이
+        // 다른 창이 바꾼 목록이 이 창에서만 영영 옛 상태로 남는다. **브로드캐스트
+        // 축을 늘리면 여기도 같이 늘린다** — 빠뜨려도 평상시엔 멀쩡해 보이고,
+        // 재연결한 창에서만 조용히 어긋난다.
         qc.invalidateQueries({ queryKey: WATCHLIST_KEY });
         invalidateHeatmapDependents(qc);
+        qc.invalidateQueries({ queryKey: SCREENER_SAVES_KEY });
+        qc.invalidateQueries({ queryKey: STUDY_VIEW_SAVES_QUERY });
         qc.invalidateQueries({
           predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'calendar',
         });
