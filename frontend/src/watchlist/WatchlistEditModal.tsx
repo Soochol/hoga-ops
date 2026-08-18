@@ -181,6 +181,11 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
   // 고아 수는 **확인을 띄우는 시점에 얼려서** state 에 담는다 — 확인이 떠 있는 동안
   // 폴링으로 `data` 가 갱신되면 다시 센 값이 사용자가 읽은 숫자와 어긋난다(패널과 동일).
   const [deleteConfirm, setDeleteConfirm] = useState<{ folderId: string; orphanCount: number } | null>(null);
+  // 우측 pane 이 Escape 로 닫히는 것(이동 메뉴·일괄 제거 확인)을 띄웠는지. 이걸 받아야
+  // 하는 이유는 **리스너 등록 순서**다: 이 모달의 document keydown 이 먼저 등록돼 먼저
+  // 발화하므로, pane 쪽에서 stopPropagation 을 해도 모달은 이미 닫힌 뒤다. setState 를
+  // 그대로 넘긴다 — 참조가 안정적이라 pane 의 effect 가 매 렌더 재실행되지 않는다.
+  const [paneOverlayOpen, setPaneOverlayOpen] = useState(false);
 
   // distance constraint so selecting a group and starting a group drag stay distinct.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -270,7 +275,7 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
         충분하다. 확인 취소 후 포커스는 ModalShell 의 복원 계약이 휴지통으로 돌린다. */}
     <ModalShell ariaLabel="관심종목 편집" title="관심종목 편집"
       width="w-[860px]" height="h-[600px] max-h-[88vh]"
-      onClose={deleteConfirm ? NOOP_CLOSE : onClose}>
+      onClose={deleteConfirm || paneOverlayOpen ? NOOP_CLOSE : onClose}>
       <DndContext sensors={sensors} collisionDetection={modalCollision} onDragEnd={onDragEnd}>
         <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0">
           {/* 좌: 폴더 pane — 보조지표 nav 패턴(섹션 헤더 + 행)과 정렬 */}
@@ -322,7 +327,7 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {/* 우: entry pane (F7) */}
-          <WatchlistEntryPane selected={selectedFolder} />
+          <WatchlistEntryPane selected={selectedFolder} onOverlayOpenChange={setPaneOverlayOpen} />
         </div>
       </DndContext>
 

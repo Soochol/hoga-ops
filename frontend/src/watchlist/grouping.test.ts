@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { groupByFolder, selectVisibleEntries, swapFolderOrder, countOrphansIfFolderDeleted } from './grouping';
+import {
+  groupByFolder, selectVisibleEntries, swapFolderOrder,
+  countOrphansIfFolderDeleted, countOrphansIfRemovedFrom,
+} from './grouping';
 import type { WatchlistFolder, WatchlistEntry } from '../api/watchlist';
 
 const folders: WatchlistFolder[] = [
@@ -90,5 +93,30 @@ describe('countOrphansIfFolderDeleted', () => {
     // Set 기반이라는 계약을 못박는다 — 확인 문구의 숫자가 부풀면 안 된다.
     const entries = [entry('005930', 'f_a'), entry('005930', 'f_a', 1)];
     expect(countOrphansIfFolderDeleted(entries, 'f_a')).toBe(1);
+  });
+});
+
+describe('countOrphansIfRemovedFrom', () => {
+  const entry = (code: string, folder_id: string | null, order = 0) =>
+    ({ code, folder_id, order });
+
+  it('counts only the removed codes that live nowhere else', () => {
+    const entries = [
+      entry('005930', 'f_a'),           // f_a 에만
+      entry('000660', 'f_a', 1),        // f_b 에도 있음
+      entry('000660', 'f_b'),
+      entry('035420', 'f_a', 2),        // f_a 에만 — 하지만 이번엔 안 뺀다
+    ];
+    expect(countOrphansIfRemovedFrom(entries, 'f_a', ['005930'])).toBe(1);
+    expect(countOrphansIfRemovedFrom(entries, 'f_a', ['000660'])).toBe(0);
+    expect(countOrphansIfRemovedFrom(entries, 'f_a', ['005930', '000660'])).toBe(1);
+    // 선택하지 않은 코드는 세지 않는다 — 폴더 전체를 세는 것과 다른 점이다.
+    expect(countOrphansIfFolderDeleted(entries, 'f_a')).toBe(2);
+  });
+
+  it('ignores codes that are not members of the folder', () => {
+    const entries = [entry('005930', 'f_a'), entry('000660', 'f_b')];
+    expect(countOrphansIfRemovedFrom(entries, 'f_a', ['000660'])).toBe(0);
+    expect(countOrphansIfRemovedFrom(entries, 'f_a', [])).toBe(0);
   });
 });
