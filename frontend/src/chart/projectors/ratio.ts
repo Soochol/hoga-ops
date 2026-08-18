@@ -1,6 +1,5 @@
 import {
   BaselineSeries,
-  type AutoscaleInfoProvider,
   type BaselineData,
   type LineWidth,
   type Time,
@@ -17,7 +16,7 @@ import { resolveTokensThemed } from '../../util/tokens';
 import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
-import { addZeroBaselineGuide } from '../util/zeroBaseline';
+import { addZeroBaselineGuide, includeZeroAutoscale } from '../util/zeroBaseline';
 import { isAuctionHidden, isExcludedQuoteBucket, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
 import {
@@ -59,20 +58,6 @@ const priceFormat = {
     return (1 + Math.abs(v)).toFixed(1);
   },
   minMove: 0.01,
-};
-
-const RATIO_AUTOSCALE_EPSILON = 0.01;
-
-const includeZeroAutoscale: AutoscaleInfoProvider = (original) => {
-  const res = original();
-  if (!res?.priceRange) return res;
-  res.priceRange.minValue = Math.min(res.priceRange.minValue, 0);
-  res.priceRange.maxValue = Math.max(res.priceRange.maxValue, 0);
-  if (res.priceRange.minValue === res.priceRange.maxValue) {
-    res.priceRange.minValue -= RATIO_AUTOSCALE_EPSILON;
-    res.priceRange.maxValue += RATIO_AUTOSCALE_EPSILON;
-  }
-  return res;
 };
 
 export type RatioPaneContext = {

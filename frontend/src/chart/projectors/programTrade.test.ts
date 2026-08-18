@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { LineSeries } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { createVirtualAxis } from '../../util/virtualAxis';
@@ -188,5 +188,62 @@ describe('programTrade projector', () => {
       { time: axis.toVirtual(OPEN + 60_000) / 1000, value: 100_000 },
       { time: axis.toVirtual(OPEN + 120_000) / 1000, value: 200_000 },
     ]);
+  });
+});
+
+// 0 기준선 가드. **막는 방향**: 기준선이 사라지는 회귀(afterAdd 삭제 / 오토스케일
+// 프로바이더 제거)를 잡는다. **못 보는 것**: 픽셀 렌더링 — createPriceLine 호출과
+// 프로바이더의 반환 범위만 재고, lwc 가 실제로 그 선을 칠하는지는 확인하지 않는다.
+describe('PROGRAM_TRADE_SPEC zero baseline', () => {
+  function resolvedOptions() {
+    const opts = PROGRAM_TRADE_SPEC.series[0].options;
+    return (typeof opts === 'function' ? opts() : opts) as {
+      autoscaleInfoProvider?: (
+        o: () => unknown,
+      ) => { priceRange: { minValue: number; maxValue: number } } | null;
+      lastValueVisible?: boolean;
+      priceLineVisible?: boolean;
+    };
+  }
+
+  // 값 판독면은 Pane Legend 하나로 유지한다(2026-08-18 에 `LEGEND_CELL_PANES` 에
+  // 이 pane 을 넣으면서 축 칩을 껐다). 축 칩은 SSE 재투영을 따라 거의 실시간이고
+  // 레전드 latest 는 캔들 epoch 주기라, 둘 다 켜면 같은 시리즈가 두 숫자로 보인다.
+  it('가격축 최신값 칩과 기본 수평선을 끈다 (DESIGN.md 2026-05-23)', () => {
+    const o = resolvedOptions();
+    expect(o.lastValueVisible).toBe(false);
+    expect(o.priceLineVisible).toBe(false);
+  });
+
+  it('draws a dotted, unlabelled price line at 0', () => {
+    const createPriceLine = vi.fn();
+    PROGRAM_TRADE_SPEC.series[0].afterAdd?.({ createPriceLine } as never);
+    expect(createPriceLine).toHaveBeenCalledTimes(1);
+    expect(createPriceLine.mock.calls[0][0]).toMatchObject({
+      price: 0,
+      lineWidth: 1,
+      lineStyle: 1,
+      axisLabelVisible: false,
+      title: '',
+    });
+  });
+
+  // net_amount 는 당일 누적이라 순매수만 이어진 구간을 확대하면 lwc 의 보이는-범위
+  // 오토스케일이 0 을 배제한다 → 기준선이 pane 밖으로 나간다.
+  it('keeps 0 inside a one-sided autoscale range', () => {
+    const provider = resolvedOptions().autoscaleInfoProvider;
+    expect(provider).toBeTypeOf('function');
+    const res = provider!(() => ({
+      priceRange: { minValue: 20_000_000_000, maxValue: 30_000_000_000 },
+    }));
+    expect(res?.priceRange).toEqual({ minValue: 0, maxValue: 30_000_000_000 });
+  });
+
+  it('keeps 0 inside a one-sided negative autoscale range', () => {
+    const provider = resolvedOptions().autoscaleInfoProvider;
+    const res = provider!(() => ({
+      priceRange: { minValue: -30_000_000_000, maxValue: -20_000_000_000 },
+    }));
+    expect(res?.priceRange).toEqual({ minValue: -30_000_000_000, maxValue: 0 });
   });
 });
