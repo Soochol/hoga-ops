@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as api from '../api/watchlist';
 
@@ -98,10 +98,38 @@ describe('WatchlistEditModal', () => {
 
     expect(name).toHaveAttribute('title', '길게 만든 관심 그룹 이름');
     expect(row).toHaveClass('relative');
-    expect(selectButton).toHaveClass('group-hover:pr-12');
-    expect(selectButton).toHaveClass('group-focus-within:pr-12');
+    // pr-16(64px) ≥ 액션 묶음 실측 폭(54px). pr-12(48px)이면 액션이 카운트를 5px 덮어
+    // `10` 이 `1` 로 읽힌다 — 픽셀은 jsdom 이 못 재므로 **값을 클래스로 못박는다**.
+    expect(selectButton).toHaveClass('group-hover:pr-16');
+    expect(selectButton).toHaveClass('group-focus-within:pr-16');
     expect(actions).toHaveClass('absolute');
     expect(actions).toHaveClass('right-2');
+  });
+
+  it('paints the selected folder row with the selection tint token', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [
+        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
+        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+      ],
+      entries: [],
+      memos: [],
+      next_run_at_ms: 0,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+    await screen.findByText('스윙');
+
+    // 클래스로 단언하는 이유: jsdom 은 CSS 변수를 풀지 않아 계산색을 못 본다. 그리고
+    // 이전 값(`bg-bg-input`)은 toss-light·ledger 에서 `--bg-card` 와 **같은 값**이라
+    // 계산색을 볼 수 있었더라도 "칠했다" 는 통과했을 것이다 — 토큰 이름을 못박아야
+    // 값이 또 합쳐질 때 이 테스트가 먼저 깨진다.
+    expect(screen.getByTestId('folder-row-f_a')).toHaveClass('bg-tint-selection');
+    expect(screen.getByTestId('folder-row-f_b')).not.toHaveClass('bg-tint-selection');
+
+    fireEvent.click(screen.getByText('장기'));
+    await waitFor(() => expect(screen.getByTestId('folder-row-f_b')).toHaveClass('bg-tint-selection'));
+    expect(screen.getByTestId('folder-row-f_a')).not.toHaveClass('bg-tint-selection');
   });
   it('creates a folder via 그룹 추가', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
@@ -140,8 +168,87 @@ describe('WatchlistEditModal', () => {
     fireEvent.change(input, { target: { value: '단타' } });
     fireEvent.blur(input);
     await waitFor(() => expect(ren).toHaveBeenCalledWith('f_a', '단타'));
+    // DATA 의 005930 은 f_a 에만 있다 → 고아 1 → 확인을 거친다(ADR-0070 P6).
+    fireEvent.click(screen.getByLabelText('스윙 삭제'));
+    fireEvent.click(await screen.findByRole('button', { name: '삭제' }));
+    await waitFor(() => expect(del).toHaveBeenCalledWith('f_a'));
+  });
+
+  // --- 폴더 삭제 확인(ADR-0070 P6) ---------------------------------------
+  // 서버 `delete_folder` docstring 이 "UI 는 고아가 생기는 삭제 전 확인한다" 를 계약으로
+  // 적어 두었는데 이 모달에는 그 확인이 없었다(패널에만 있었다). 아래 셋이 그 계약의
+  // 세 축이다: ① 고아가 있으면 확인 없이는 안 지운다 ② 고아가 없으면 확인 없이 지운다
+  // ③ 확인이 떠 있는 동안 Escape 는 확인만 닫는다.
+  it('does not delete a folder until the confirm is accepted, and names the orphan count', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    const del = vi.spyOn(api, 'deleteFolder').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+    await screen.findByText('스윙');
+
+    fireEvent.click(screen.getByLabelText('스윙 삭제'));
+    // 확인이 뜨는 것만으로는 부족하다 — **아직 안 지워졌는지**가 이 테스트의 본체다.
+    expect(await screen.findByRole('button', { name: '삭제' })).toBeInTheDocument();
+    expect(del).not.toHaveBeenCalled();
+    // 행 카운트도 "1" 이라 확인 모달 안으로 좁혀서 읽는다(ConfirmModal 의
+    // ariaLabel 은 confirmLabel = '삭제').
+    const confirm = screen.getByRole('dialog', { name: '삭제' });
+    expect(within(confirm).getByText('1')).toBeInTheDocument();   // 고아 수
+
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '취소' })).not.toBeInTheDocument());
+    expect(del).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText('스윙 삭제'));
+    fireEvent.click(await screen.findByRole('button', { name: '삭제' }));
+    await waitFor(() => expect(del).toHaveBeenCalledWith('f_a'));
+  });
+
+  it('deletes without a confirm when the folder orphans nothing', async () => {
+    // 005930 이 f_b 에도 있으므로 f_a 를 지워도 관심종목에서 빠지는 코드가 없다.
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [
+        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
+        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+      ],
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_b', order: 0 },
+      ],
+      memos: [],
+      next_run_at_ms: 0,
+    });
+    const del = vi.spyOn(api, 'deleteFolder').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+    await screen.findByText('스윙');
+
     fireEvent.click(screen.getByLabelText('스윙 삭제'));
     await waitFor(() => expect(del).toHaveBeenCalledWith('f_a'));
+    expect(screen.queryByRole('button', { name: '취소' })).not.toBeInTheDocument();
+  });
+
+  it('closes only the confirm on Escape — the edit modal stays open', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    const del = vi.spyOn(api, 'deleteFolder').mockResolvedValue();
+    const onClose = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEditModal onClose={onClose} />, { wrapper: wrap(qc) });
+    await screen.findByText('스윙');
+    fireEvent.click(screen.getByLabelText('스윙 삭제'));
+    await screen.findByRole('button', { name: '삭제' });
+
+    // 두 ModalShell 이 각자 document keydown 을 듣는다 — 가드가 없으면 Escape 한 번에
+    // 확인과 편집 모달이 **같이** 닫힌다(확인을 취소하려다 편집 화면까지 잃는다).
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: '취소' })).not.toBeInTheDocument());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: '관심종목 편집' })).toBeInTheDocument();
+
+    // 확인이 닫힌 뒤에는 Escape 가 다시 편집 모달을 닫는다(가드가 눌러붙지 않는다).
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('uses the whole folder row as the drag surface and draws one between-row indicator', async () => {
@@ -306,6 +413,7 @@ describe('WatchlistEditModal', () => {
     // delete the selected folder → selection moves to the next real group:
     // its member (000660) shows; the deleted folder's member (005930) does not.
     fireEvent.click(screen.getByLabelText('스윙 삭제'));
+    fireEvent.click(await screen.findByRole('button', { name: '삭제' }));
     await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
     expect(screen.queryByText('삼성전자')).not.toBeInTheDocument();
   });

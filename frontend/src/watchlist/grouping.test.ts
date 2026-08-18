@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupByFolder, selectVisibleEntries, swapFolderOrder } from './grouping';
+import { groupByFolder, selectVisibleEntries, swapFolderOrder, countOrphansIfFolderDeleted } from './grouping';
 import type { WatchlistFolder, WatchlistEntry } from '../api/watchlist';
 
 const folders: WatchlistFolder[] = [
@@ -62,5 +62,33 @@ describe('swapFolderOrder (패널 ⋯ 메뉴 + 편집 모달 ▲▼ 공유 계�
     const before = folders.map((f) => f.id);
     swapFolderOrder(folders, 'f_a', +1);
     expect(folders.map((f) => f.id)).toEqual(before);
+  });
+});
+
+describe('countOrphansIfFolderDeleted', () => {
+  const entry = (code: string, folder_id: string | null, order = 0) =>
+    ({ code, folder_id, order });
+
+  it('counts only codes that live nowhere else', () => {
+    const entries = [
+      entry('005930', 'f_a'),          // f_a 에만 → 고아
+      entry('000660', 'f_a', 1),       // f_b 에도 있음 → 살아남는다
+      entry('000660', 'f_b'),
+      entry('035420', 'f_b', 1),       // 대상 폴더 밖
+    ];
+    expect(countOrphansIfFolderDeleted(entries, 'f_a')).toBe(1);
+    expect(countOrphansIfFolderDeleted(entries, 'f_b')).toBe(1);   // 035420
+  });
+
+  it('returns 0 for an empty folder and for an unknown id', () => {
+    expect(countOrphansIfFolderDeleted([], 'f_a')).toBe(0);
+    expect(countOrphansIfFolderDeleted([entry('005930', 'f_a')], 'f_zzz')).toBe(0);
+  });
+
+  it('does not double-count a code listed twice in the same folder', () => {
+    // 같은 폴더에 같은 코드가 두 행으로 들어오는 일은 없어야 하지만, 세는 쪽이
+    // Set 기반이라는 계약을 못박는다 — 확인 문구의 숫자가 부풀면 안 된다.
+    const entries = [entry('005930', 'f_a'), entry('005930', 'f_a', 1)];
+    expect(countOrphansIfFolderDeleted(entries, 'f_a')).toBe(1);
   });
 });

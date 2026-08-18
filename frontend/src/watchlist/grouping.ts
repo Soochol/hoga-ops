@@ -63,3 +63,23 @@ export function swapFolderOrder(
   [ids[idx], ids[j]] = [ids[j], ids[idx]];
   return ids;
 }
+
+/** 폴더를 지웠을 때 **관심종목에서 완전히 빠지는** 코드 수(고아).
+ *  다른 폴더에도 있는 코드는 entry 가 살아남으므로 세지 않는다 — 서버
+ *  `delete_folder` 가 orphan 만 prune 하는 것과 같은 판정(ADR-0070 P6).
+ *
+ *  패널(그룹 ⋯ 메뉴)과 편집 모달(휴지통)이 **같은 하나**를 쓴다. 파괴적 삭제의
+ *  확인 문구에 들어가는 숫자라 두 화면이 다른 값을 말하면 안 된다 — 실제로
+ *  편집 모달은 확인 자체가 없었다. Pure.
+ *
+ *  얼림은 호출자 몫이다: 확인 모달이 떠 있는 동안 폴링이 `entries` 를 갱신하면
+ *  다시 센 값이 사용자가 읽은 숫자와 어긋나므로, 두 소비처 모두 **띄우는 시점의
+ *  결과를 state 에 담는다**. */
+export function countOrphansIfFolderDeleted<TEntry extends EntryWithFolderOrder & { code: string }>(
+  entries: TEntry[],
+  folderId: string,
+): number {
+  const inOthers = new Set(entries.filter((e) => e.folder_id !== folderId).map((e) => e.code));
+  const inThis = new Set(entries.filter((e) => e.folder_id === folderId).map((e) => e.code));
+  return [...inThis].filter((code) => !inOthers.has(code)).length;
+}
