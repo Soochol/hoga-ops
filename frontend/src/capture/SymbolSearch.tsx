@@ -129,7 +129,11 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
           type="text"
           {...combo.inputProps}
           placeholder="종목명 또는 6자리 코드"
-          className="flex-1 bg-bg-input border rounded-lg text-fg py-sm px-sm text-base"
+          // `min-w-0`: input 은 intrinsic width 를 가져서, flex item 의 기본
+          // `min-width:auto` 아래선 **부모보다 좁아지지 않는다**. 좁은 컨테이너
+          // (관심종목 삽입 팝오버 280px)에서 컨테이너를 넘어 옆 버튼을 밀어냈다.
+          // 넓은 컨테이너에선 축소가 일어나지 않아 동작 변화가 없다(히트맵·캡처).
+          className="flex-1 min-w-0 bg-bg-input border rounded-lg text-fg py-sm px-sm text-base"
         />
         <span
           data-testid="symbol-cache-status"

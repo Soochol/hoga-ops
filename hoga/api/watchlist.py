@@ -264,10 +264,19 @@ async def add_member(
     name: str,
     today_kst_date: str,
     folder_id: str,
+    at: int | None = None,
 ) -> WatchlistEntry:
     """code 를 folder_id 의 멤버로 추가(v4, ADR-0070). entry 가 없으면 생성하고
     last_success 를 디스크에서 시드(첫 Watchlist 진입). 이미 멤버면 멱등 no-op.
-    폴더 없으면 FolderNotFoundError. 불변식 {e.code}==⋃code items 유지."""
+    폴더 없으면 FolderNotFoundError. 불변식 {e.code}==⋃code items 유지.
+
+    `at` = 삽입할 items 인덱스(add_memo 와 **같은 축·같은 클램프 시맨틱**). None 이면
+    맨 뒤. 범위를 벗어나면 끝으로 클램프한다 — 동시 편집으로 길이가 줄었을 뿐인 흔한
+    경우라 422 로 거절할 이유가 없다.
+
+    ⚠ **이미 멤버면 `at` 도 무시한다**(no-op). 이 멱등성은 추가 폼·히트맵 팝오버·
+    그룹 피커·하트 버튼이 공유하는 계약이라 "있으면 그 자리로 이동" 으로 바꾸면
+    네 호출처가 함께 흔들린다. 위치 이동은 reorder_items 의 몫이다."""
     # Local import: disk_state -> watchlist would cycle if at module top.
     from hoga.api.disk_state import (  # noqa: PLC0415 — 지연 import(순환/heavy)
         latest_complete_date,
@@ -289,8 +298,12 @@ async def add_member(
             entries.append(entry)
         new_folders = doc.folders
         if code not in folder.code_members():  # idempotent: already a member → no-op
-            # 맨 뒤에 붙인다 — 메모가 섞여 있어도 코드는 items 끝으로 간다(v3 와 동일).
-            new_folders = [f.model_copy(update={"items": [*f.items, WatchlistCodeItem(code=code)]})
+            # at=None 이면 맨 뒤(v3 와 동일). at 이 오면 그 items 인덱스에 끼워 넣어
+            # 뒤쪽 항목(코드·메모 둘 다)을 한 칸씩 민다 — items 는 단일 축이라
+            # 메모 자리도 함께 밀려야 표시 순서가 보존된다.
+            index = len(folder.items) if at is None else min(at, len(folder.items))
+            new_items = [*folder.items[:index], WatchlistCodeItem(code=code), *folder.items[index:]]
+            new_folders = [f.model_copy(update={"items": new_items})
                            if f.id == folder_id else f for f in doc.folders]
         save_document(data_dir, doc.model_copy(update={"folders": new_folders, "entries": entries}))
         return entry
