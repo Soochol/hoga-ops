@@ -21,13 +21,16 @@ import { formatKoreanWonEok } from '../util/koreanNumber';
 // (un)subscribes to crosshair / range — no live chart needed. Latest-fallback
 // value path (cursor absent) reads `series.data()`, stubbed per series.
 const noop = () => {};
-function makeChart(paneHeights: number[]) {
+function makeChart(paneHeights: number[], plotWidth = 500) {
   return {
     subscribeCrosshairMove: noop,
     unsubscribeCrosshairMove: noop,
     timeScale: () => ({
       subscribeVisibleLogicalRangeChange: noop,
       unsubscribeVisibleLogicalRangeChange: noop,
+      // pane 플롯 폭(우측 가격축 거터 제외). 오버레이가 pane 이동 컨트롤을 **플롯**
+      // 우측에 붙일 때 쓴다 — 0 이면 클램프 폴백 경로.
+      width: () => plotWidth,
     }),
     panes: () => paneHeights.map((h) => ({ getHeight: () => h })),
   } as never;
@@ -361,5 +364,78 @@ describe('PaneLegendOverlay — pane reorder controls (ADR-0114)', () => {
     expect(order.indexOf('program-trade')).toBeLessThan(order.indexOf('fill-strength'));
     // investor 두 pane 은 여전히 순서 끝에 canonical 위치.
     expect(order.slice(-2)).toEqual(['investor-foreign', 'investor-institution']);
+  });
+});
+
+describe('PaneLegendOverlay — 이동 컨트롤 배치 (legend 와 같은 줄 · pane 우측)', () => {
+  const CANON: PaneId[] = [
+    'candle', 'volume', 'quote-totals', 'ratio',
+    'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+  ];
+  const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
+  const PLOT_WIDTH = 500;
+
+  beforeEach(() => {
+    resetStore();
+    useLivePageStore.setState({ candleTimeframe: '1m', volumeEnabled: true, paneOrder: [...CANON] });
+  });
+  afterEach(cleanup);
+
+  /** ↑버튼 → 컨트롤 칩(span) → pane 래퍼. */
+  const chipOf = (paneId: string) => screen.getByTestId(`pane-move-up-${paneId}`).parentElement!;
+  const wrapperOf = (paneId: string) => chipOf(paneId).parentElement!;
+
+  function renderPanes(plotWidth = PLOT_WIDTH) {
+    render(
+      <PaneLegendOverlay
+        chart={makeChart([100, 100, 100, 100, 100, 100], plotWidth)}
+        timeframe="1m"
+        paneToggles={toggles}
+      />,
+    );
+  }
+
+  it('컨트롤이 legend 행 스택과 같은 flex row 안의 형제로, 행 뒤에 온다', () => {
+    registerLegend('volume', [{ label: '거래량', value: 5000 }]);
+    renderPanes();
+    const wrapper = wrapperOf('volume');
+    // 'column' 이면 컨트롤이 legend 위 한 줄을 통째로 차지한다(변경 전 동작).
+    expect(wrapper.style.flexDirection).toBe('row');
+    const rows = screen.getByTestId('pane-legend-rows-volume');
+    expect(rows.parentElement).toBe(wrapper);
+    // DOM 순서 = 시각 순서 → 탭 순서도 레전드 → 컨트롤.
+    expect(rows.compareDocumentPosition(chipOf('volume')) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
+    // 긴 레전드가 컨트롤을 pane 밖으로 밀지 않게 하는 두 축. `min-width:auto`(flex 기본)
+    // 면 행 스택이 축소를 거부하고, flexShrink 가 0 이 아니면 버튼이 잘린다.
+    expect(rows.style.minWidth).toBe('0px');
+    expect(chipOf('volume').style.flexShrink).toBe('0');
+  });
+
+  it('legend 행이 없는 pane 도 컨트롤은 우측에 남는다 (auto 마진, space-between 아님)', () => {
+    renderPanes();
+    // ratio 는 LEGEND_CELL_PANES 밖이라 행 스택 자체가 없다 — 자식이 컨트롤 하나뿐이라
+    // justifyContent:'space-between' 였다면 그 하나가 **왼쪽**으로 붙었을 자리.
+    expect(screen.queryByTestId('pane-legend-rows-ratio')).toBeNull();
+    expect(chipOf('ratio').style.marginLeft).toBe('auto');
+    expect(chipOf('volume').style.marginLeft).toBe('auto');
+  });
+
+  it('컨트롤 있는 pane 의 우측 인셋은 플롯 폭으로 클램프된다 (가격축 거터 회피)', () => {
+    renderPanes();
+    // 컨테이너는 거터까지 덮으므로 `right: var(--space-xs)` 면 버튼이 가격 라벨 위에 얹힌다.
+    expect(wrapperOf('volume').style.right).toBe(`calc(100% - ${PLOT_WIDTH}px + var(--space-xs))`);
+  });
+
+  it('캔들 pane 은 클램프하지 않는다 — OHLC 컨테이너 쿼리 기준 폭 보존', () => {
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
+    renderPanes();
+    const candleWrapper = screen.getByTestId('pane-legend-rows-candle').parentElement!;
+    expect(candleWrapper.style.right).toBe('var(--space-xs)');
+  });
+
+  it('플롯 폭을 못 읽으면(첫 프레임·teardown) 기존 인셋으로 폴백한다', () => {
+    renderPanes(0);
+    expect(wrapperOf('volume').style.right).toBe('var(--space-xs)');
   });
 });
