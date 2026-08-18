@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SymbolSearch } from '../capture/SymbolSearch';
 import type { SymbolHit } from '../api/types';
 import { useAddMember, useWatchlist } from './useWatchlist';
@@ -36,6 +36,19 @@ export function WatchlistAddForm({ folderId, resolveAt, onAdded, onDuplicate, la
   const addM = useAddMember();
   const { data } = useWatchlist();
   const [picked, setPicked] = useState<SymbolHit | null>(null);
+
+  // **폴더가 바뀌면 고른 종목을 버린다.** 이 폼은 폴더를 옮겨도 언마운트되지 않아서
+  // (`folderId` prop 만 갈린다) 이전 그룹에서 고른 종목이 입력에 그대로 남아 있었다.
+  //
+  // 그게 실사용에서 이런 모양으로 나타났다: 「A」에서 이미 있는 종목을 골라 "이미 이
+  // 그룹에 있습니다" 를 본 뒤 「B」로 옮기면, 같은 종목이 그대로 남고 B 에는 없으니
+  // **추가 버튼이 다시 활성화**된다 — 무심코 누르면 **의도하지 않은 그룹에 들어간다**.
+  // 사용자가 "중복이라더니 추가됐다" 로 본 것이 이것이다(배너 두 개가 순서대로 뜬다).
+  //
+  // 편집 pane 이 폴더 전환에 다중 선택(`checked`)을 버리는 것과 같은 계열이다 —
+  // 폴더별 뷰의 임시 상태는 폴더를 넘어가지 않는다. `SymbolSearch` 는 `value === null`
+  // 이면 입력 텍스트도 비우므로 화면도 함께 초기화된다.
+  useEffect(() => { setPicked(null); }, [folderId]);
 
   // 이미 이 폴더의 멤버면 **아예 보내지 않는다**. 백엔드 add 는 멱등 no-op 이라
   // 보내 봐야 아무 일도 안 일어나고, 사용자에겐 "지정한 자리에 안 생겼다" 로만 보인다
