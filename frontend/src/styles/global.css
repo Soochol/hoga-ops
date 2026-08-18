@@ -84,16 +84,24 @@ body {
   transition-duration: 200ms;
 }
 
-/* 스크리너 실시간 모니터링 — 재조회로 새로 편입된 종목 행에 accent tint 를 한 번
-   깔았다가 서서히 걷어낸다(신규 진입을 눈에 띄게). inset box-shadow 로 채워 행의
-   inline background·borderLeft(active 표식)와 충돌하지 않게 한다. 2s ease-out 소멸.
-   DESIGN.md tint-selection 과 같은 accent 계열이라 온-브랜드. */
-@keyframes screener-row-flash {
+/* **행 flash 공용 관용구** — 어떤 행을 "여기다" 라고 한 번 가리키고 스스로 사라진다.
+   accent tint 를 깔았다가 2s ease-out 으로 걷어낸다. DESIGN.md tint-selection 과 같은
+   accent 계열이라 온-브랜드다.
+
+   **배경색 클래스가 아니라 inset box-shadow 인 이유**: 행은 이미 자기 배경을 갖는다
+   (hover · 선택 틴트 · inline background · active 표식 borderLeft). 배경을 덮으면 그것들과
+   충돌하고, 무엇보다 **행이 이미 칠해져 있으면 flash 가 안 보인다**. box-shadow 는 그
+   위에 겹친다.
+
+   소비처: 스크리너 실시간 모니터링(재조회로 새로 편입된 행) · 관심종목 편집(추가하려는
+   종목이 이미 그 그룹에 있을 때 그 행을 가리킨다). 새로 쓸 때 **두 번째 메커니즘을 만들지
+   말 것** — 이름이 `screener-` 였을 때 실제로 그럴 뻔했다. */
+@keyframes row-flash {
   from { box-shadow: inset 0 0 0 999px var(--tint-selection); }
   to   { box-shadow: inset 0 0 0 999px transparent; }
 }
-.screener-row-flash {
-  animation: screener-row-flash 2s ease-out forwards;
+.row-flash {
+  animation: row-flash 2s ease-out forwards;
 }
 
 /* 호가창 순간 증감 뱃지의 페이드아웃(1.5s ease-out)은 2026-07-21 사용자 요청으로
@@ -115,7 +123,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .toast-card { transition: none; }
   .toast-progress { display: none; }
-  .screener-row-flash { animation: none; }
+  .row-flash { animation: none; }
 }
 
 /* Chart pane 구분선 강조 — lightweight-charts 는 pane separator 를 상수 1px

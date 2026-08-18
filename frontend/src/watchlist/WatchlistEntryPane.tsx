@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -39,12 +39,35 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
   const [moveMenu, setMoveMenu] = useState(false);
   const [confirmAction, setConfirmAction] =
     useState<{ kind: 'unlink' | 'purge'; codes: string[]; orphanCount: number } | null>(null);
+  // 중복 안내가 가리키는 행 — 잠깐 하이라이트하고 그 자리로 스크롤한다.
+  const [duplicateCode, setDuplicateCode] = useState<string | null>(null);
+  const duplicateTimer = useRef<number | null>(null);
   const moveMenuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(moveMenu, moveMenuRef, () => setMoveMenu(false));
 
   // Multi-select is per-view: clear it when the viewed folder changes, else
   // checkmarks leak across folder switches (stale selection on a never-remounted pane).
-  useEffect(() => { setChecked(new Set()); }, [selected]);
+  // 중복 하이라이트도 같이 끈다 — 다른 그룹으로 옮기면 그 행은 더 이상 보이지 않는다.
+  useEffect(() => { setChecked(new Set()); setDuplicateCode(null); }, [selected]);
+
+  // AddForm 에 넘기므로 **참조가 안정적이어야** 한다(매 렌더 새 함수면 그쪽이 매번 리렌더).
+  const flashDuplicate = useCallback((code: string) => {
+    setDuplicateCode(code);
+    if (duplicateTimer.current !== null) window.clearTimeout(duplicateTimer.current);
+    duplicateTimer.current = window.setTimeout(() => setDuplicateCode(null), DUPLICATE_FLASH_MS);
+  }, []);
+  useEffect(() => () => {
+    if (duplicateTimer.current !== null) window.clearTimeout(duplicateTimer.current);
+  }, []);
+
+  // 하이라이트만으로는 부족하다 — 그 행이 화면 밖이면 아무것도 안 보인다(사용자의
+  // 삼성화재가 40행 중 40번째였다). `'center'` 인 이유: `'nearest'` 면 리스트 끝에
+  // 걸쳐서 "하이라이트가 잘린" 상태가 된다.
+  useEffect(() => {
+    if (duplicateCode === null) return;
+    const row = document.querySelector(`[data-testid="edit-row-${duplicateCode}"]`);
+    row?.scrollIntoView?.({ block: 'center' });
+  }, [duplicateCode]);
 
   // 이동 메뉴·확인 모달 중 하나라도 떠 있으면 부모(편집 모달)의 Escape 닫기를 막는다.
   const overlayOpen = moveMenu || confirmAction !== null;
@@ -214,7 +237,8 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
         <div className="px-3 py-2 border-b border-border">
           {/* 이 pane 은 638px — 검색 입력이 넉넉해 2줄일 이유가 없다(팝오버와 반대). */}
           <WatchlistAddForm folderId={selected} layout="inline"
-            onAdded={(hit) => setRecentAction({ kind: 'added', code: hit.code, name: hit.name })} />
+            onAdded={(hit) => setRecentAction({ kind: 'added', code: hit.code, name: hit.name })}
+            onDuplicate={flashDuplicate} />
         </div>
       )}
 
@@ -257,6 +281,7 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
         <SortableContext items={entries.map((e) => e.code)} strategy={verticalListSortingStrategy}>
           {entries.map((e) => (
             <SortableEntryRow key={e.code} entry={e} checked={checked.has(e.code)} onToggle={() => toggle(e.code)}
+              flash={duplicateCode === e.code}
               onCatchup={() => onCatchup(e.code, e.name)}
               catchingUp={catchupOneM.isPending && catchupOneM.variables === e.code} />
           ))}
@@ -289,8 +314,14 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
   );
 }
 
+const DUPLICATE_FLASH_MS = 2500;
+
 type RowProps = {
   entry: WatchlistEntry; checked: boolean; onToggle: () => void;
+  /** 중복 안내가 가리키는 행 — 공용 `.row-flash`(global.css) 를 쓴다. 배경 클래스가
+   *  아닌 이유가 거기 적혀 있다: 행은 이미 hover·선택 틴트를 갖고 있어 **칠해진 행에서는
+   *  배경 flash 가 안 보인다**(실측으로 그렇게 죽었다). box-shadow 는 그 위에 겹친다. */
+  flash?: boolean;
   onCatchup: () => void; catchingUp: boolean;
 };
 
@@ -329,7 +360,8 @@ function SortableEntryRow(props: RowProps) {
       {...listeners}
       style={style}
       data-testid={`edit-row-${entry.code}`}
-      className={`${ROW_CLASS} ${dropIndicatorClass(dropIndicator)}`}>
+      className={`${ROW_CLASS} ${dropIndicatorClass(dropIndicator)} ${
+        props.flash ? 'row-flash' : ''}`}>
       <button type="button" role="checkbox" aria-checked={props.checked} aria-label={`${entry.code} 선택`}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={props.onToggle} className="flex items-center cursor-pointer">
