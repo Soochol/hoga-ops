@@ -186,7 +186,18 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
           관심 해제
         </button>
         <div className="flex-1" />
-        <span className="text-xs text-fg-dim">직접 설정한 순</span>
+        {/* 「직접 설정한 순」은 **컨트롤처럼 읽혔다** — 툴바 우측 끝이라는 자리가 패널의
+            그룹별 정렬 컨트롤과 같고, "~순" 이라는 어미가 정렬 드롭다운을 연상시킨다.
+            그런데 클릭해도 아무 일도 없다(정적 span).
+
+            **정렬 선택기로 만들지 않는다.** 이 pane 의 드래그 재정렬은 `resolveDrag` 가
+            `selectVisibleEntries` 의 order 인덱스와 맞물려 돌아가는 구조라, 등락률 정렬을
+            허용하면 그 인덱스 계약이 깨진다(패널이 정렬 모드에서 행 드래그를 아예 끄는 것도
+            같은 이유다). 이 화면의 순서는 **항상 직접 설정**이고, 문구가 그것을 말하면 된다.
+
+            상태 서술에 조작 안내를 붙인다 — 드래그로 바꿀 수 있다는 것 자체가 이 화면에서
+            발견하기 어려운 기능이었다. */}
+        <span className="text-xs text-fg-dim">순서: 직접 설정 — 드래그로 변경</span>
       </div>
 
       {/* add form — v3: 실폴더 선택 시에만(미분류 추가 대상 없음) */}
