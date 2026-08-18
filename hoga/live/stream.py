@@ -401,6 +401,11 @@ class LiveStream:
         # 그날 피크가 시간외 총잔량에 오염된다. 명시적으로 끊는 편이 안전하다.
         if tick.kind is SnapshotKind.AFTER_HOURS:
             return
+        # 0H 예상체결도 같은 이유로 저장·집계에서 끊는다. 이쪽은 더 분명하다 —
+        # **예상**값이라 체결이 아니고, 피크 집계에 섞이면 일어나지 않은 거래가
+        # 그날 최대벽에 남는다.
+        if tick.kind is SnapshotKind.EXPECTED:
+            return
         # ── 성역 격리(#524)는 여기서 끝난다 (ADR-0140 §2, PR-F) ────────────────
         #
         # `if tick.venue != "KRX": return` 이 있던 자리다. 그 한 줄이 저장·집계·피크·

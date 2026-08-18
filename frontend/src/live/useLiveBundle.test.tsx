@@ -32,6 +32,7 @@ const liveFixture: LiveSeriesData = {
     brokers: [],
     programs: [],
     after_hours: [],
+    expected: [],
     ask_peak_today: null,
     bid_peak_today: null,
   },
@@ -44,6 +45,7 @@ const liveFixture: LiveSeriesData = {
   broker: [],
   program: [],
   afterHours: [],
+  expected: [],
 };
 
 const DEFAULT_CANDLE = { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 };

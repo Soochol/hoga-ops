@@ -33,10 +33,13 @@ export const MAX_BUFFER_PER_KIND = 60_000;
 
 /** 백엔드 `hoga/live/snapshot.py::SnapshotKind` 의 손 미러(ADR-0004).
  *  `ah` = 주식시간외호가(키움 0E) — **`ob` 와 담는 것이 다르다**: 사다리가 없고
- *  총잔량 두 개뿐이라 별도 kind 다(백엔드 주석 참조). */
-export type SnapshotKind = 'ob' | 'trade' | 'broker' | 'program' | 'ah';
+ *  총잔량 두 개뿐이라 별도 kind 다(백엔드 주석 참조).
+ *  `expected` = 주식예상체결(키움 0H) — 역시 사다리가 없다. 0D FID 23/24 의
+ *  정규장 예상체결과 **공존**한다: 저쪽은 사다리와 함께 와서 `ob` payload 에 실리고,
+ *  이쪽은 0D 가 끊긴 뒤(15:30~)가 존재 이유다. */
+export type SnapshotKind = 'ob' | 'trade' | 'broker' | 'program' | 'ah' | 'expected';
 
-const KINDS: readonly SnapshotKind[] = ['ob', 'trade', 'broker', 'program', 'ah'] as const;
+const KINDS: readonly SnapshotKind[] = ['ob', 'trade', 'broker', 'program', 'ah', 'expected'] as const;
 
 interface RawSnapshot {
   t_ms: number;
@@ -51,6 +54,7 @@ export class LiveSnapshotBuffer {
     broker: [],
     program: [],
     ah: [],
+    expected: [],
   };
   // Snapshot cache — returned by get() until the underlying kind is mutated.
   // Stable references let downstream useMemo(bundle) keep its identity across
@@ -63,6 +67,7 @@ export class LiveSnapshotBuffer {
     broker: Object.freeze([]),
     program: Object.freeze([]),
     ah: Object.freeze([]),
+    expected: Object.freeze([]),
   };
 
   private invalidate(k: SnapshotKind): void {

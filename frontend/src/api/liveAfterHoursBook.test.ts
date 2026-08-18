@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   afterHoursBookToSnapshot,
   isAfterHoursSinglePriceWindow,
+  latestExpectedFill,
   type LiveAfterHoursBookResponse,
 } from './liveAfterHoursBook';
 
@@ -57,6 +58,7 @@ const book = (over: Partial<LiveAfterHoursBookResponse> = {}): LiveAfterHoursBoo
   cur_price: 35_350,
   change_pct: -0.98,
   acc_volume: 12_345,
+  close_price: 35_350,
   fetched_at_ms: 1_700_000_000_000,
   source: 'kiwoom',
   ...over,
@@ -89,5 +91,61 @@ describe('afterHoursBookToSnapshot', () => {
 
   it('응답 자체가 없으면(로딩·503) null', () => {
     expect(afterHoursBookToSnapshot(undefined)).toBeNull();
+  });
+});
+
+// ── 예상체결(키움 0H) (2026-08-18) ──────────────────────────────────────────
+
+const expFrame = (t_ms: number, price: number, qty: number) => ({
+  t_ms, kind: 'expected', code: '028050', venue: 'KRX',
+  expected_price: price, expected_qty: qty,
+});
+
+describe('latestExpectedFill', () => {
+  const inWindow = kst(2026, 5, 27, 16, 30);
+  const closingAuction = kst(2026, 5, 27, 15, 25); // 정규장 종가 동시호가
+
+  it('창 안의 마지막 프레임을 고른다', () => {
+    expect(
+      latestExpectedFill([expFrame(inWindow, 47_800, 100), expFrame(inWindow + 1000, 47_900, 250)]),
+    ).toEqual({ price: 47_900, qty: 250 });
+  });
+
+  it('정규장 동시호가 프레임은 쓰지 않는다 — **이 테스트가 이 함수의 존재 이유다**', () => {
+    // 게이트가 없으면 15:20–15:30 종가 동시호가의 마지막 0H 프레임이 버퍼에 남아
+    // 16:30 화면에 실시간처럼 뜬다. 그건 ka10007 의 `exp_cntr_*` 가 이 구간에
+    // 정규장 잔상을 답하던 것(2026-08-18 실측: 두 체결 주기에 걸쳐 미동)과 똑같은
+    // 버그를 우리 손으로 재생산하는 것이다.
+    expect(latestExpectedFill([expFrame(closingAuction, 47_900, 54_701)])).toBeNull();
+  });
+
+  it('창 안 프레임이 있으면 창 밖 최신 프레임보다 그것을 고른다', () => {
+    // 배열 뒤쪽이 더 최신이지만 창 밖이다 — 순서가 아니라 **창 소속**이 판정한다.
+    expect(
+      latestExpectedFill([
+        expFrame(inWindow, 47_800, 100),
+        expFrame(kst(2026, 5, 27, 18, 30), 47_000, 999),
+      ]),
+    ).toEqual({ price: 47_800, qty: 100 });
+  });
+
+  it('값이 0 이거나 형이 다른 프레임은 건너뛴다', () => {
+    expect(latestExpectedFill([expFrame(inWindow, 0, 100)])).toBeNull();
+    expect(latestExpectedFill([expFrame(inWindow, 47_900, 0)])).toBeNull();
+    expect(latestExpectedFill([{ t_ms: inWindow, kind: 'expected' }])).toBeNull();
+    expect(latestExpectedFill([])).toBeNull();
+  });
+});
+
+describe('afterHoursBookToSnapshot — 예상체결 주입', () => {
+  it('0H 가 있으면 정규장 동시호가와 **같은 배너 필드**를 채운다', () => {
+    // 새 UI 를 만들지 않는다 — ExpectedFillBanner 가 이미 이 두 필드를 읽는다.
+    const snap = afterHoursBookToSnapshot(book(), { price: 47_900, qty: 250 });
+    expect(snap).toMatchObject({ exp_price: 47_900, exp_qty: 250 });
+  });
+
+  it('0H 가 없으면 0 이라 배너가 뜨지 않는다', () => {
+    const snap = afterHoursBookToSnapshot(book());
+    expect(snap).toMatchObject({ exp_price: 0, exp_qty: 0 });
   });
 });

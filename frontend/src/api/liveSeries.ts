@@ -54,6 +54,9 @@ export interface LiveSeriesResponse {
   /** 시간외호가(키움 0E) — `snapshots` 와 **다른 배열**이다. 사다리가 없고
    *  총잔량 두 개(`total_ask_qty`/`total_bid_qty`)만 들었다. */
   after_hours: Array<Record<string, unknown>>;
+  /** 예상체결(키움 0H) — `snapshots` 와 **다른 배열**이다. 사다리가 없고
+   *  `expected_price`/`expected_qty` 두 개만 들었다. */
+  expected: Array<Record<string, unknown>>;
   /** 이 venue 의 **마지막 호가 프레임** — `snapshots` 가 그 venue 를 다 잃었을 때의
    *  폴백이다(백엔드 `LiveBuffer._last_ob`). 배열이 아니라 **한 장**인 것이 요점:
    *  10호가 창은 LATEST 하나면 되고, 계열이 필요한 소비자(매물대·지표)는 그대로
@@ -86,6 +89,7 @@ export interface LiveSeriesData {
   /** 시간외호가(0E). 15:30 에 `ob` 가 끊기는 KRX-only 종목의 총잔량을 시간외에도
    *  잇는 유일한 소스다 — 사다리는 여기 없다. */
   afterHours: ReadonlyArray<Record<string, unknown>>;
+  expected: ReadonlyArray<Record<string, unknown>>;
 }
 
 /** Trailing-throttle window for coalescing live WS pushes into one buffer
@@ -99,6 +103,7 @@ const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = Object.freeze([]);
 const EMPTY_BROKER_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
 const EMPTY_PROGRAM_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
 const EMPTY_AH_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
+const EMPTY_EXPECTED_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
 
 /**
  * 필터 결과가 빈 `ob` 를 대신할 **마지막으로 알려진 호가 한 장**을 고른다.
@@ -196,6 +201,7 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
       broker: initial.data.brokers as Array<{ t_ms: number; kind: string }>,
       program: (initial.data.programs ?? []) as Array<{ t_ms: number; kind: string }>,
       ah: (initial.data.after_hours ?? []) as Array<{ t_ms: number; kind: string }>,
+      expected: (initial.data.expected ?? []) as Array<{ t_ms: number; kind: string }>,
     });
     setTick((t) => t + 1);
   }, [initial.data, code]);
@@ -307,6 +313,15 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
     () => filterByVenueTag(rawAfterHours, effective),
     [rawAfterHours, effective],
   );
+  // 0H 도 **같은 venue 필터를 탄다** — broker·program 이 이 필터를 빠뜨려 "호버 중엔
+  // 정상, 벗어나면 마지막 도착 venue" 로 새던 결함이 위 ⚠ 주석에 남아 있다.
+  const rawExpected = bufferVisible
+    ? readKind(bufferRef.current, 'expected', tick)
+    : EMPTY_EXPECTED_SNAPSHOTS;
+  const expected = useMemo(
+    () => filterByVenueTag(rawExpected, effective),
+    [rawExpected, effective],
+  );
   return {
     initial: currentInitial,
     isLoading: initial.isLoading,
@@ -316,6 +331,7 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
     broker,
     program,
     afterHours,
+    expected,
   };
 }
 

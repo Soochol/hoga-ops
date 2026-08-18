@@ -39,6 +39,15 @@ class SnapshotKind(str, Enum):  # noqa: UP042 — StrEnum 전환은 str() 동작
     # 스냅샷을 0 으로 덮어써 화면에서 호가가 사라진다. 별도 kind 라야 소비자가
     # "사다리는 정규장 마지막 값, 총잔량은 시간외 현재값"을 구분해 그릴 수 있다.
     AFTER_HOURS = "ah"
+    # 주식예상체결(키움 0H). AFTER_HOURS·PROGRAM 과 같은 **표시 전용** 부류.
+    #
+    # OB 와 합치지 않는 이유는 0E 와 같다 — 사다리가 없다. OB 로 위장하면 빈 사다리가
+    # 직전 스냅샷을 0 으로 덮어써 호가가 화면에서 사라진다. 게다가 **별도 kind = 별도
+    # deque** 라, 0H 유량이 `ob` 링버퍼의 venue 축출 경쟁에 합류하지 않는다.
+    #
+    # 0D FID 23/24(정규장 동시호가 예상체결)와 **공존한다**. 저쪽은 사다리와 함께
+    # 오므로 OB payload 에 실리고, 이쪽은 0D 가 끊긴 뒤(15:30~)가 존재 이유다.
+    EXPECTED = "expected"
     # 키움 WS 체결 틱에서 수신 시점에 합성한 1분봉(ADR-0040/0121/0124 개정).
     # trade(10초 집계·매물대용)와 달리 candle은 완성된 OHLCV 봉이며 candles.parquet
     # 으로 승격된다. payload={"open","high","low","close","volume"}(원 단위),

@@ -693,11 +693,26 @@ function TotalQtyStrip({
           {ask.toLocaleString('ko-KR')}
         </span>
         {isAfterHours && (
+          // 라벨 + 체결량을 **두 줄**로 쌓는다. 한 줄에 붙이면 좁은 창에서 좌우
+          // 총잔량 숫자와 셋이 경쟁해 한글 라벨이 글자 단위로 접힌다(한글은
+          // min-content 가 한 글자라 폭이 부족하면 세로로 쌓인다).
           <span
-            className="whitespace-nowrap text-xs text-fg-dim"
+            className="flex flex-col items-center leading-tight"
             data-testid="book-total-after-hours"
           >
-            {afterHoursLabel}
+            <span className="whitespace-nowrap text-xs text-fg-dim">{afterHoursLabel}</span>
+            {afterHoursTotals?.volume != null && (
+              // 시간외 단일가는 10분 주기 일괄 체결이라 **개별 체결 내역이 없다** —
+              // 좌측 체결창이 정규장 마지막 값에 멈춰 있는 것은 결손이 아니고,
+              // 이 누적 체결량이 그 구간에 움직이는 유일한 체결 신호다.
+              <span
+                className="whitespace-nowrap font-data text-badge tabular-nums text-fg-dim"
+                data-testid="book-after-hours-volume"
+                aria-label={`${afterHoursLabel} 체결량 ${afterHoursTotals.volume.toLocaleString('ko-KR')}`}
+              >
+                체결 {afterHoursTotals.volume.toLocaleString('ko-KR')}
+              </span>
+            )}
           </span>
         )}
         <span

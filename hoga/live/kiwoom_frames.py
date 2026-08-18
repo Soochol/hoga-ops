@@ -16,6 +16,7 @@ KIS ws_frames와 짝을 이루는 브로커-대칭 모듈. 서로 import하지 �
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -132,23 +133,18 @@ def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | N
         return None
     code, venue = K.split_venue(item)
     try:
-        if typ == K.TYPE_ORDERBOOK:
-            return _reject_if_not_today(
-                _parse_orderbook(code, values, date=date, venue=venue), now_ms=now_ms,
-            )
-        if typ == K.TYPE_TRADE:
-            return _reject_if_not_today(
-                _parse_trade(code, values, date=date, venue=venue), now_ms=now_ms,
-            )
-        if typ == K.TYPE_AFTER_HOURS:
-            # 0B/0D 와 달리 파서가 None 을 낼 수 있다(잔량 0 게이트) — 그 경우
-            # _reject_if_not_today 에 넘기면 tick.t_ms 에서 터진다.
-            ah = _parse_after_hours(code, values, date=date, venue=venue)
-            return _reject_if_not_today(ah, now_ms=now_ms) if ah is not None else None
-        if typ == K.TYPE_MEMBER:
-            return _parse_member(code, values, now_ms=now_ms, venue=venue)
-        if typ == K.TYPE_PROGRAM:
-            return _parse_program(code, values, now_ms=now_ms, venue=venue)
+        # 디스패치가 **두 갈래**인 것이 요점이다(아래 두 표):
+        #   시각 FID 합성 → 자정 넘김 방어(`_reject_if_not_today`)를 태운다
+        #   수신 시각 사용 → 그 방어가 불필요하다
+        # 파서가 None 을 낼 수 있으므로(잔량·값 0 게이트) 방어 호출 전에 접는다 —
+        # None 을 넘기면 `tick.t_ms` 에서 터진다.
+        date_parser = _DATE_STAMPED_PARSERS.get(typ)
+        if date_parser is not None:
+            tick = date_parser(code, values, date=date, venue=venue)
+            return _reject_if_not_today(tick, now_ms=now_ms) if tick is not None else None
+        now_parser = _NOW_STAMPED_PARSERS.get(typ)
+        if now_parser is not None:
+            return now_parser(code, values, now_ms=now_ms, venue=venue)
     except (ValueError, KeyError):
         # 숫자 불량/필드 부재는 프레임 1건 손실로 격리 — recv 루프까지 전파 금지.
         _log.warning("live.kiwoom.bad_field type=%s code=%s", typ, code)
@@ -271,6 +267,44 @@ def _parse_after_hours(
     }
     return WsTick(
         code=code, t_ms=t_ms, kind=SnapshotKind.AFTER_HOURS, payload=payload, venue=venue,
+    )
+
+
+def _parse_expected(
+    code: str, values: dict[str, str], *, date: str, venue: str
+) -> WsTick | None:
+    """0H 주식예상체결 → SnapshotKind.EXPECTED. 가격·수량 중 하나라도 0이면 None.
+
+    **사다리가 없다** — 예상체결가/량 두 개가 전부다. 키 이름은 0D 의 예상체결
+    (`expected_price`/`expected_qty`)과 **맞춰 둔다**: 소비자가 정규장 동시호가
+    (0D FID 23/24)와 시간외(0H)를 같은 어댑터로 읽어야 화면 코드가 갈리지 않는다.
+
+    **값 게이트를 거는 이유**는 0D 예상체결의 전례 그대로다. NXT 가 접속매매 중에도
+    예상체결값을 흘려 평시에 노출된 적이 있고(2026-07-22 실측), 방어로 값>0 을 걸었다.
+    다만 저쪽이 함께 쓰는 **시계 창(`is_auction_window`)은 여기에 걸지 않는다** —
+    그 표는 venue 별 단일가 시각을 담고 있는데 시간외 단일가(16:00–18:00)를 KRX 창에
+    추가하면 UN(합집합)까지 열려, 그 시각에 실제로 흐르는 `_AL` 스트림의 FID 23/24
+    누수가 화면에 샌다. 표가 존재하는 이유를 정확히 되돌리는 셈이다.
+    대신 **표시 시점의 창 판정은 소비자(프론트)가 프레임 t_ms 로 한다** — 정규장
+    동시호가의 마지막 0H 프레임이 버퍼에 남아 시간외에 실시간처럼 뜨는 것을 막는
+    것이 그 게이트의 목적이고, 그건 수신이 아니라 표시의 문제다.
+
+    ⚠ **16:00–18:00 에 이 타입이 실제로 오는지는 미실측이다**(`kiwoom_fields` 의
+    0H 절). 안 오면 이 파서는 정규장 동시호가에서만 불린다.
+    """
+    t_ms = _hhmmss_to_unix_ms(date, values[K.EXP_TIME])
+    price = _price(values, K.EXP_PRICE)
+    qty = _qty(values, K.EXP_QTY)
+    if price == 0 or qty == 0:
+        return None
+    payload = {
+        "code": code,
+        "t_ms": t_ms,
+        "expected_price": price,
+        "expected_qty": qty,
+    }
+    return WsTick(
+        code=code, t_ms=t_ms, kind=SnapshotKind.EXPECTED, payload=payload, venue=venue,
     )
 
 
@@ -423,3 +457,25 @@ def _prev_close(price: int, delta: int | None) -> int | None:
 def _sign(n: int) -> int:
     """FID 15(체결량) 부호 → side(+1 매수 / -1 매도 / 0). KIS _SIDE_MAP과 동형."""
     return 1 if n > 0 else (-1 if n < 0 else 0)
+
+
+# ── 타입 → 파서 디스패치 표 ──────────────────────────────────────────────────
+#
+# if 체인이던 것을 표로 바꿨다(0H 를 더하며 return 이 9개가 돼 PLR0911 에 걸렸다).
+# 표가 나은 이유는 한도 회피가 아니라 **새 타입 추가가 한 줄**이 되는 것이다 —
+# 체인일 때는 추가할 때마다 `_reject_if_not_today` 를 태울지, None 을 접을지를
+# 매번 다시 판단해야 했고 그 판단이 갈래마다 복제돼 있었다.
+#
+# 어느 표에 넣을지는 **시각의 출처**가 정한다. 시각 FID(HHMMSS)를 date 와 합성하는
+# 타입은 자정 넘김에 취약하므로 위 표에, 수신 시각(now_ms)을 쓰는 타입은 아래 표에
+# 넣는다(`_reject_if_not_today` docstring).
+_DATE_STAMPED_PARSERS: dict[str, Callable[..., WsTick | None]] = {
+    K.TYPE_ORDERBOOK: _parse_orderbook,
+    K.TYPE_TRADE: _parse_trade,
+    K.TYPE_AFTER_HOURS: _parse_after_hours,
+    K.TYPE_EXPECTED: _parse_expected,
+}
+_NOW_STAMPED_PARSERS: dict[str, Callable[..., WsTick | None]] = {
+    K.TYPE_MEMBER: _parse_member,
+    K.TYPE_PROGRAM: _parse_program,
+}

@@ -51,7 +51,7 @@ WS_URL_REAL = "wss://api.kiwoom.com:10000/api/dostk/websocket"
 # 종가매매 체결(0B)은 15:40 부터 계속 온다(2026-08-14 실측 — `kiwoom_fields` 0E 절).
 # 그래서 호가 축만 20분 전 값으로 얼어 있었다. 0E 는 사다리를 되살리지는 못하고
 # (그런 FID 가 없다) 총잔량 두 개만 되살린다.
-DEFAULT_TYPES = ("0B", "0D", "0E", "0F", "0w")
+DEFAULT_TYPES = ("0B", "0D", "0E", "0F", "0w", "0H")
 _REG_BATCH = 50  # item/REG (실측: 배치로 유량 5/s 회피)
 _REG_PACING_S = 0.35  # ~3 REG/s 페이싱 (5/s 상한 여유)
 _BACKOFF_S = (1, 2, 4, 8, 16, 32, 60)

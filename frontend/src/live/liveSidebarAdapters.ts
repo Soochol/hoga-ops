@@ -102,7 +102,17 @@ export function latestOrderbookSnapshot(ob: readonly RawSnapshot[]): OrderbookSn
 }
 
 /** 시간외 매도/매수 총잔량(키움 0E). 정규장 총잔량과 **다른 값**이다. */
-export type AfterHoursTotals = { ask: number; bid: number };
+export type AfterHoursTotals = {
+  ask: number;
+  bid: number;
+  /** 시간외 **누적 체결량**. 시간외 단일가(ka10087 `acc_volume`)에서만 온다 —
+   *  0E(WS)에는 체결량 필드가 없어 그 경로에서는 `null` 이다.
+   *
+   *  개별 체결 내역이 아니라 누적인 것이 요점이다: 시간외 단일가는 10분 주기
+   *  **일괄 체결**이라 체결 목록이라는 것이 존재하지 않는다(그래서 체결창·체결강도는
+   *  이 구간에 정규장 마지막 값에 멈춘다 — 결손이 아니라 없는 개념이다). */
+  volume?: number | null;
+};
 
 /**
  * 시간외호가 버퍼(`ah`)의 마지막 총잔량. 없으면 null.

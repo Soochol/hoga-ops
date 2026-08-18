@@ -59,7 +59,11 @@ import {
   latestTradeSummary,
   orderbookSnapshotAtCursor,
 } from '../liveSidebarAdapters';
-import { afterHoursBookToSnapshot, useAfterHoursBook } from '../../api/liveAfterHoursBook';
+import {
+  afterHoursBookToSnapshot,
+  latestExpectedFill,
+  useAfterHoursBook,
+} from '../../api/liveAfterHoursBook';
 import { useLiveCursorStore } from '../useLiveCursorStore';
 import { useGroupChartLink } from './groupChartLinkSource';
 import {
@@ -208,9 +212,16 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 침묵해 이게 유일한 호가 소스다(`liveAfterHoursBook` 참조). 스팟 커서 중에는
   // 아예 끈다 — 과거 시점 위에 "지금 호가"를 얹으면 거짓 정보다.
   const afterHoursBook = useAfterHoursBook(isSpot ? null : code);
+  // 시간외 단일가 구간의 예상체결(키움 0H). REST(ka10087·ka10004)에는 이 값이 없고
+  // ka10007 의 `exp_cntr_*` 는 정규장 잔상이라(2026-08-18 실측) WS 가 유일 소스다.
+  // ⚠ 이 구간에 0H 가 실제로 흐르는지는 미실측 — 안 오면 배너가 안 뜰 뿐이다.
+  const expectedFill = useMemo(
+    () => (isSpot ? null : latestExpectedFill(live.expected)),
+    [isSpot, live.expected],
+  );
   const singlePriceSnapshot = useMemo(
-    () => afterHoursBookToSnapshot(afterHoursBook.data),
-    [afterHoursBook.data],
+    () => afterHoursBookToSnapshot(afterHoursBook.data, expectedFill),
+    [afterHoursBook.data, expectedFill],
   );
   const regularSnapshot = resolveOrderbookCardSnapshot({
     scope,
@@ -228,10 +239,15 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const afterHoursTotals = useMemo(() => {
     if (isSpot) return null;
     if (singlePriceSnapshot !== null) {
-      return { ask: singlePriceSnapshot.tot_ask, bid: singlePriceSnapshot.tot_bid };
+      return {
+        ask: singlePriceSnapshot.tot_ask,
+        bid: singlePriceSnapshot.tot_bid,
+        // 체결량은 **단일가 경로에만** 있다 — 0E 에는 체결량 FID 가 없다.
+        volume: afterHoursBook.data?.acc_volume ?? null,
+      };
     }
     return latestAfterHoursTotals(live.afterHours);
-  }, [isSpot, singlePriceSnapshot, live.afterHours]);
+  }, [isSpot, singlePriceSnapshot, live.afterHours, afterHoursBook.data]);
   const afterHoursLabel = singlePriceSnapshot !== null ? '시간외 단일가' : '시간외';
   const quote = useQuoteByCode([code], venue).get(code);
   // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.
@@ -273,9 +289,25 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 비대칭이 된다. 여기서 함께 봉인해 대시로 떨어뜨린다.
   const liveBaseline =
     quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null);
+  // 시간외 단일가(16:00–18:00)는 **분모가 다르다** — 그 구간의 거래는 당일 종가
+  // ±10% 안에서 이뤄지므로 전일종가 기준 등락률은 화면에서 의미가 없다. 종가가
+  // 곧 0% 여야 한다. 벤더도 자기 `change_pct` 를 종가 기준으로 주는데, 사다리만
+  // 정규장 분모(`liveBaseline` = 전일종가)를 쓰고 있어 한 창 안에 **두 기준이
+  // 섞여** 있었다(실측 2026-08-18 16:20, 028050: 요약의 −0.42% 는 종가 47,900
+  // 기준인데 같은 화면 사다리의 47,900 은 −3.82% = 전일종가 49,800 기준).
+  //
+  // `close_price` 가 null 이면 **등락률을 생략한다**(분모 추측 금지) — 아래
+  // `??` 가 아니라 조건 분기인 이유가 그것이다. `?? liveBaseline` 로 떨어뜨리면
+  // 모름이 조용히 전일종가로 대체돼 원래 버그가 그대로 돌아온다.
   // 과거 날짜 커서면 일봉에서 뽑은 그날의 기준가. 로딩 중이면 null(등락률 생략) —
   // 틀린 값을 잠깐 보여주느니 비는 편이 옳다.
-  const baselinePrice = isPastDateCursor ? cursorBaseline : liveBaseline;
+  const baselinePrice = resolveBookBaseline({
+    isPastDateCursor,
+    cursorBaseline,
+    singlePriceActive: singlePriceSnapshot !== null,
+    singlePriceClose: afterHoursBook.data?.close_price ?? null,
+    liveBaseline,
+  });
   // 상하한가·250일 최고/최저(ka10001) — **오늘의** 값이다. 당일 안에서는 시각이
   // 달라져도 고정이라 오늘 스팟 커서에서 유효하지만, 과거 날짜 커서에서는 그날의
   // 기준가에서 파생된 상하한가와 다르므로 아래에서 비운다.
@@ -733,4 +765,40 @@ function candleRangeUnbounded(
     if (Number.isFinite(candle.high)) max = Math.max(max, candle.high);
   }
   return Number.isFinite(min) && Number.isFinite(max) && min < max ? { min, max } : null;
+}
+
+/**
+ * 10호가 창 등락률의 **분모**를 고른다. 세 갈래이고 우선순위가 있다.
+ *
+ * 1. **과거 날짜 커서** → 그날의 전일종가. 분자(호가)만 과거로 가고 분모가 오늘에
+ *    남으면 부호까지 뒤집힌다(2026-08-03 실측: −20.00% 로 찍힌 값의 정답이 +0.72%).
+ * 2. **시간외 단일가(16:00–18:00)** → **당일 종가**. 그 구간의 거래는 종가 ±10%
+ *    안에서 이뤄지므로 전일종가 기준 등락률은 화면에서 의미가 없다 — 종가가 곧
+ *    0% 여야 한다. 벤더도 자기 `change_pct` 를 종가 기준으로 주는데 사다리만
+ *    정규장 분모를 써서 **한 창 안에 두 기준이 섞여** 있었다(2026-08-18 실측,
+ *    028050: 요약의 −0.42% 는 종가 47,900 기준인데 같은 화면 사다리의 47,900 은
+ *    −3.82% = 전일종가 49,800 기준).
+ * 3. 그 외 → 전일종가.
+ *
+ * **모름은 전일종가로 떨어지지 않는다.** 2번에서 `singlePriceClose` 가 null 이면
+ * null 을 그대로 돌려준다 — `?? liveBaseline` 로 접으면 모름이 조용히 정규장 분모로
+ * 대체돼 원래 버그가 그대로 돌아온다. 분모를 모르면 등락률을 **생략**하는 것이
+ * 이 코드베이스의 규율이다(`hidden_pre_open` 이 같은 이유로 값을 죽인다).
+ */
+export function resolveBookBaseline({
+  isPastDateCursor,
+  cursorBaseline,
+  singlePriceActive,
+  singlePriceClose,
+  liveBaseline,
+}: {
+  isPastDateCursor: boolean;
+  cursorBaseline: number | null;
+  singlePriceActive: boolean;
+  singlePriceClose: number | null;
+  liveBaseline: number | null;
+}): number | null {
+  if (isPastDateCursor) return cursorBaseline;
+  if (singlePriceActive) return singlePriceClose;
+  return liveBaseline;
 }

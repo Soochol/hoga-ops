@@ -95,6 +95,8 @@ class AfterHoursBook:
     cur_price: int | None
     change_pct: float | None
     acc_volume: int
+    #: 당일 **종가**(전일종가가 아니다). 이 구간 등락률의 분모다 — `_close_price` 주석.
+    close_price: int | None
 
     @property
     def has_quotes(self) -> bool:
@@ -123,6 +125,53 @@ def _abs_int(raw: object) -> int:
 def _opt_price(raw: object) -> int | None:
     v = _abs_int(raw)
     return v if v > 0 else None
+
+
+def _signed_int(raw: object) -> int | None:
+    """부호를 **유지하는** 정수 파서. 빈 값·비숫자는 None.
+
+    `_abs_int` 와 갈라지는 이유는 같은 응답 안에 부호 규칙이 **둘** 이기 때문이다:
+    `ovt_sigpric_cur_prc` 의 부호는 등락 **방향 표시**라 절댓값이 가격이고,
+    `ovt_sigpric_pred_pre` 의 부호는 **값의 일부**다. 둘을 같은 파서로 읽으면
+    종가 역산이 조용히 틀린다(`-47700 − (−200)` = −47,500 같은 값이 나온다).
+    """
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    neg = s.startswith("-")
+    digits = s.lstrip("+-")
+    if not digits.isdigit():
+        return None
+    v = int(digits)
+    return -v if neg else v
+
+
+def _close_price(body: dict) -> int | None:
+    """당일 **종가** 역산 — `|현재가| − 종가대비`. 둘 중 하나라도 없으면 None.
+
+    ⚠ **필드명이 거짓말을 한다.** `ovt_sigpric_pred_pre` 는 이름이 "전일대비" 인데
+    시간외 단일가 맥락에서는 **당일 종가 대비**다. 실측(2026-08-18 16:20, 028050):
+
+        ovt_sigpric_cur_prc   -47700   → 가격 47,700 (부호는 방향)
+        ovt_sigpric_pred_pre    -200
+        ovt_sigpric_flu_rt     -0.42
+        전일 종가              49,800   (ka10007 `flu_rt` -3.82 의 분모)
+        당일 종가              47,900   ← 47,700 − (−200)
+
+    −200/47,900 = −0.42% 로 벤더 `flu_rt` 와 일치한다. 전일종가(49,800)로 읽으면
+    같은 −200 이 −0.40% 가 아니라 등락률 자체가 −3.8% 대여야 하므로, 이 구간의
+    분모가 **종가**라는 것이 값으로 증명된다.
+
+    왜 역산인가: 응답에 종가 필드가 따로 없다. 별도 TR(ka10007 `cur_prc`)로도 얻을
+    수 있지만 콜이 하나 늘고 두 응답의 시점이 갈린다 — 같은 응답 안에서 닫는 것이
+    싸고 일관된다.
+    """
+    cur = _opt_price(body.get("ovt_sigpric_cur_prc"))
+    delta = _signed_int(body.get("ovt_sigpric_pred_pre"))
+    if cur is None or delta is None:
+        return None
+    close = cur - delta
+    return close if close > 0 else None
 
 
 def _opt_rate(raw: object) -> float | None:
@@ -171,6 +220,7 @@ def parse_ka10087(code: str, body: dict) -> AfterHoursBook:
         cur_price=_opt_price(body.get("ovt_sigpric_cur_prc")),
         change_pct=_opt_rate(body.get("ovt_sigpric_flu_rt")),
         acc_volume=_abs_int(body.get("ovt_sigpric_acc_trde_qty")),
+        close_price=_close_price(body),
     )
 
 

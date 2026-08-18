@@ -305,11 +305,13 @@ class LiveBuffer:
             br_buf = self._buf.get((code, SnapshotKind.BROKER.value))
             pr_buf = self._buf.get((code, SnapshotKind.PROGRAM.value))
             ah_buf = self._buf.get((code, SnapshotKind.AFTER_HOURS.value))
+            xp_buf = self._buf.get((code, SnapshotKind.EXPECTED.value))
             snapshots = tuple(ob_buf) if ob_buf else ()
             trades = tuple(tr_buf) if tr_buf else ()
             brokers = tuple(br_buf) if br_buf else ()
             programs = tuple(pr_buf) if pr_buf else ()
             after_hours = tuple(ah_buf) if ah_buf else ()
+            expected = tuple(xp_buf) if xp_buf else ()
 
         return {
             "code": code,
@@ -320,6 +322,9 @@ class LiveBuffer:
             # 시간외호가(0E) — `snapshots` 와 **다른 배열이어야 한다**. 사다리가 없는
             # payload 라 섞으면 소비자가 빈 호가창을 그린다(SnapshotKind.AFTER_HOURS 주석).
             "after_hours": [_strip_t_only(e) for e in after_hours],
+            # 예상체결(0H) — `snapshots` 와 **다른 배열이어야 한다**. 사다리가 없는
+            # payload 라 섞으면 소비자가 빈 호가창을 그린다(0E 와 같은 이유).
+            "expected": [_strip_t_only(e) for e in expected],
         }
 
 

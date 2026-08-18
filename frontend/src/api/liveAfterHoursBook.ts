@@ -43,6 +43,14 @@ export interface LiveAfterHoursBookResponse {
   cur_price: number | null;
   change_pct: number | null;
   acc_volume: number;
+  /** 당일 **종가** — 이 구간 등락률의 분모다. **전일종가가 아니다.**
+   *
+   *  시간외 단일가는 당일 종가 ±10% 안에서 거래되므로 전일종가 기준 등락률은 이
+   *  화면에서 의미가 없다(종가가 곧 0%다). 벤더도 `change_pct` 를 종가 기준으로
+   *  주는데 사다리만 정규장 분모를 쓰고 있었다.
+   *
+   *  `null` 이면 **등락률을 생략한다** — 분모를 추측해 0.00% 로 박제하지 않는다. */
+  close_price: number | null;
   fetched_at_ms: number;
   source: 'kiwoom';
 }
@@ -99,8 +107,42 @@ const EMPTY_LEVEL: OrderbookLevel = { price: 0, qty: 0 };
  *
  * `active=false` 면 **null** 을 준다 — 호출부가 정규장 스냅샷을 유지하도록.
  */
+/** 시간외 단일가 구간의 예상체결(키움 0H) 한 쌍. 둘 다 >0 일 때만 의미가 있다. */
+export interface LiveExpectedFill {
+  price: number;
+  qty: number;
+}
+
+/**
+ * `expected` 버퍼(0H)의 **이 구간에 속하는** 마지막 프레임. 없으면 null.
+ *
+ * ⚠ **시각 게이트가 핵심이다.** 게이트가 없으면 정규장 종가 동시호가(15:20–15:30)의
+ * 마지막 0H 프레임이 버퍼에 남아 16:30 화면에 실시간처럼 뜬다 — 그건 ka10007 의
+ * `exp_cntr_*` 가 이 구간에 정규장 잔상을 그대로 답하던 것(2026-08-18 실측: 두 체결
+ * 주기에 걸쳐 미동)과 **똑같은 버그를 우리 손으로 재생산**하는 것이다.
+ *
+ * 그래서 판정은 프레임 **자기 t_ms** 로 한다(수신 시각이 아니라). 벽시계로 판정하면
+ * 창 안에서 받은 낡은 프레임을 걸러내지 못한다.
+ */
+export function latestExpectedFill(
+  frames: readonly Record<string, unknown>[],
+): LiveExpectedFill | null {
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const f = frames[i];
+    const t = f.t_ms;
+    if (typeof t !== 'number' || !isAfterHoursSinglePriceWindow(t)) continue;
+    const price = f.expected_price;
+    const qty = f.expected_qty;
+    if (typeof price === 'number' && price > 0 && typeof qty === 'number' && qty > 0) {
+      return { price, qty };
+    }
+  }
+  return null;
+}
+
 export function afterHoursBookToSnapshot(
   book: LiveAfterHoursBookResponse | undefined,
+  expected: LiveExpectedFill | null = null,
 ): OrderbookSnapshot | null {
   if (!book || !book.active) return null;
   const pad = (levels: readonly LiveAfterHoursLevel[]): OrderbookLevel[] => {
@@ -118,5 +160,9 @@ export function afterHoursBookToSnapshot(
     bid: pad(book.bid),
     tot_ask: book.total_ask_qty,
     tot_bid: book.total_bid_qty,
+    // 0H 가 있으면 정규장 동시호가와 **같은 배너**(ExpectedFillBanner)가 뜬다 —
+    // 소비 표면을 하나로 둔다. 없으면 0 이라 배너는 높이 0 으로 사라진다.
+    exp_price: expected?.price ?? 0,
+    exp_qty: expected?.qty ?? 0,
   };
 }
