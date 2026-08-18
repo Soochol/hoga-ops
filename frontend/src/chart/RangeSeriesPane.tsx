@@ -338,13 +338,20 @@ function RangeSeriesPaneInner<Ctx>({
   // bundle/axis/ctx changes. Cheap (setData on a held handle), so it's
   // fine to run on every render where any of those changes.
   //
-  // `paneIndex` and `chart` are in the deps because the lifecycle effect
-  // above RE-CREATES the series when either changes (a pane toggled off
-  // above this one shifts its index; /live remounts the chart instance per
-  // (code, timeframe) view — see LiveChartRoot's per-viewKey effect). The
-  // fresh series starts empty, so the data must be re-pushed in the same
-  // commit — otherwise the pane renders blank until the next bundle
-  // identity change (up to a 60s refetch on D/W/M).
+  // ⚠ **위 lifecycle effect 의 dep 은 하나도 빠짐없이 여기에도 있어야 한다.**
+  // 그 effect 가 series 를 **재생성**하면 새 핸들은 비어 있으므로, 같은 커밋에서
+  // 데이터를 다시 밀지 않으면 pane 이 **빈 채로 남는다** — 다음 bundle 식별자 변경
+  // (D/W/M 은 최대 60초 refetch)까지. 에러도 경고도 없고 화면만 비므로 조용하다.
+  //
+  // 한쪽에만 dep 을 추가하는 것이 이 파일의 반복 실패 유형이다. 실제로 두 건:
+  //   · `precedingPaneKey` — 순서 바꾸기에서 **아래쪽** pane(자기 `paneIndex` 는
+  //     그대로라 오직 이 키로만 재생성에 참여한다)이 데이터를 못 받아 빈 pane 이
+  //     됐다. 실측: 이동 1회로 아래 두 pane 이 1776건 → 0건.
+  //   · `candleAlwaysOnTop` — 같은 구멍(캔들 pane 전용).
+  // dep 을 lifecycle 쪽에 추가하면 **여기도 같이** 추가할 것.
+  //
+  // (`chart` 는 /live 가 (code, timeframe) 뷰마다 차트를 다시 만들기 때문에,
+  //  `paneIndex` 는 위쪽 pane 이 꺼지면 인덱스가 밀리기 때문에 각각 dep 이다.)
   useEffect(() => {
     const seriesList = seriesRef.current;
     if (seriesList.length !== spec.series.length) return;
@@ -371,7 +378,7 @@ function RangeSeriesPaneInner<Ctx>({
       if (s.markers) markersRef.current[i]?.setMarkers(s.markers(bundle, axis, ctx));
       if (s.labelMarkers) labelMarkersRef.current[i]?.setMarkers(s.labelMarkers(bundle, axis, ctx));
     });
-  }, [chart, bundle, axis, ctx, spec, paneIndex, forceSetData]);
+  }, [chart, bundle, axis, ctx, spec, paneIndex, precedingPaneKey, candleAlwaysOnTop, forceSetData]);
   return null;
 }
 
