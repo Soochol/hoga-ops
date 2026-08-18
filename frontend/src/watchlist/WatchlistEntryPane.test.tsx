@@ -201,4 +201,65 @@ describe('WatchlistEntryPane', () => {
     // also matches the row name, throwing "multiple elements"). See F7 concerns.
     await waitFor(() => expect(screen.getByText(/수집 대기/)).toBeInTheDocument());
   });
+  // 선택 상태의 두 축: 시각(개수)과 보조기술(tri-state aria). 파괴적 액션이 툴바에 둘이나
+  // 있는데 "몇 개를 지우는지" 가 어디에도 없었고, 부분 선택은 `aria-checked=false` 라
+  // "일부 선택" 이 보조기술에 전달되지 않았다.
+  it('shows the selection count and reports tri-state on 전체 선택', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [{ id: 'f_a', name: '스윙', order: 0 }],
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 1 },
+      ],
+      memos: [],
+      next_run_at_ms: 0,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
+    await screen.findByText('삼성전자');
+    const all = screen.getByLabelText('전체 선택');
+    const count = screen.getByTestId('selection-count');
+
+    // none — 개수는 **자리를 지킨 채** 숨는다(언마운트하면 오른쪽 버튼들이 점프한다).
+    expect(all).toHaveAttribute('aria-checked', 'false');
+    expect(count).toHaveClass('invisible');
+
+    // some → mixed
+    fireEvent.click(screen.getByLabelText('005930 선택'));
+    await waitFor(() => expect(all).toHaveAttribute('aria-checked', 'mixed'));
+    expect(count).not.toHaveClass('invisible');
+    expect(count).toHaveTextContent('1개 선택');
+
+    // all
+    fireEvent.click(screen.getByLabelText('000660 선택'));
+    await waitFor(() => expect(all).toHaveAttribute('aria-checked', 'true'));
+    expect(count).toHaveTextContent('2개 선택');
+  });
+
+  it('전체 선택 클릭은 mixed 에서 전부 선택, all 에서 전부 해제', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [{ id: 'f_a', name: '스윙', order: 0 }],
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 1 },
+      ],
+      memos: [],
+      next_run_at_ms: 0,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
+    await screen.findByText('삼성전자');
+    const all = screen.getByLabelText('전체 선택');
+
+    fireEvent.click(all);                                   // none → all
+    await waitFor(() => expect(all).toHaveAttribute('aria-checked', 'true'));
+
+    fireEvent.click(all);                                   // all → none
+    await waitFor(() => expect(all).toHaveAttribute('aria-checked', 'false'));
+
+    fireEvent.click(screen.getByLabelText('005930 선택'));   // → mixed
+    await waitFor(() => expect(all).toHaveAttribute('aria-checked', 'mixed'));
+    fireEvent.click(all);                                   // mixed → all (표준 관례)
+    await waitFor(() => expect(all).toHaveAttribute('aria-checked', 'true'));
+  });
 });

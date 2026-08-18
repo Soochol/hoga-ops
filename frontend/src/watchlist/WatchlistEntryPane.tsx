@@ -138,10 +138,26 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
     <div className="flex flex-col min-h-0">
       {/* 툴바 */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
-        <button type="button" role="checkbox" aria-checked={allChecked} aria-label="전체 선택"
+        {/* 부분 선택은 `mixed` 다(WAI-ARIA tri-state checkbox). 이전엔 2/10 을 골라도
+            `false` 라 "일부가 선택됐다" 를 보조기술이 알 수 없었다. **시각 쪽은 옆의 개수가
+            담당한다** — CheckIcon 은 보조지표 패널·그룹 피커 등 6곳이 공유하는 glyph 라
+            여기 사정으로 dash 상태를 늘리지 않는다. */}
+        <button type="button" role="checkbox" aria-label="전체 선택"
+          aria-checked={allChecked ? 'true' : selectedCodes.length > 0 ? 'mixed' : 'false'}
           onClick={toggleAll} className="flex items-center cursor-pointer">
           <CheckIcon filled={allChecked} size={16} />
         </button>
+        {/* 선택 개수 — 파괴적 액션(관심 해제) 앞에서 "몇 개를 지우는지" 가 안 보이면 안 된다.
+            0 일 때 **언마운트하지 않고 invisible** 로 자리를 지킨다: 사라지면 오른쪽 버튼들이
+            통째로 왼쪽으로 점프한다. 숫자 자릿수가 늘 때의 미세 이동은 `tabular-nums` +
+            최소 폭(4.5rem = 72px)이 잡는다 — 실측으로 "9999개 선택" 까지 72px 안이라
+            min-w 가 항상 지배하고, 0·1·40개 세 상태에서 오른쪽 버튼 x 좌표가 동일했다
+            (707 / 762 / 857 고정). */}
+        <span data-testid="selection-count"
+          className={`min-w-[4.5rem] font-data tabular-nums text-xs text-fg-dim ${
+            selectedCodes.length === 0 ? 'invisible' : ''}`}>
+          {selectedCodes.length}개 선택
+        </span>
         <div className="relative" ref={moveMenuRef}>
           <button type="button" disabled={selectedCodes.length === 0} onClick={() => setMoveMenu((v) => !v)}
             className="px-2 py-1 rounded border border-border text-xs text-fg-dim hover:text-accent disabled:opacity-40">⇄ 이동</button>
