@@ -86,14 +86,14 @@ describe('RangeSeriesPane', () => {
     // series renders empty until a full remount (investor bars vanished bug).
     const { chart, created } = makeChart();
     const { rerender } = render(
-      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={2} spec={SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={2} precedingPaneKey="" spec={SPEC} />,
     );
     expect(created).toHaveLength(1);
     expect(created[0].setData).toHaveBeenCalledTimes(1); // initial push
 
     // Pane above removed → this pane shifts 2 → 1 → lifecycle re-creates series.
     rerender(
-      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} spec={SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} precedingPaneKey="" spec={SPEC} />,
     );
     expect(created).toHaveLength(2);
     expect(created[1].paneIndex).toBe(1);
@@ -127,7 +127,7 @@ describe('RangeSeriesPane', () => {
         chart={chart}
         bundle={bundle}
         axis={axis}
-        paneIndex={0}
+        paneIndex={0} precedingPaneKey=""
         spec={candlePaneSpec}
         candleAlwaysOnTop
         onPrimarySeriesReady={onPrimarySeriesReady}
@@ -157,7 +157,7 @@ describe('RangeSeriesPane', () => {
         chart={chart}
         bundle={bundle}
         axis={axis}
-        paneIndex={0}
+        paneIndex={0} precedingPaneKey=""
         spec={spec}
         contextOverride={{ value: 'override' }}
       />,
@@ -176,13 +176,13 @@ describe('RangeSeriesPane', () => {
     // the next bundle identity change (up to a 60s refetch on D/W/M).
     const first = makeChart();
     const { rerender } = render(
-      <RangeSeriesPane chart={first.chart} bundle={bundle} axis={axis} paneIndex={1} spec={SPEC} />,
+      <RangeSeriesPane chart={first.chart} bundle={bundle} axis={axis} paneIndex={1} precedingPaneKey="" spec={SPEC} />,
     );
     expect(first.created).toHaveLength(1);
 
     const second = makeChart();
     rerender(
-      <RangeSeriesPane chart={second.chart} bundle={bundle} axis={axis} paneIndex={1} spec={SPEC} />,
+      <RangeSeriesPane chart={second.chart} bundle={bundle} axis={axis} paneIndex={1} precedingPaneKey="" spec={SPEC} />,
     );
     expect(second.created).toHaveLength(1);
     expect(second.created[0].setData).toHaveBeenCalledTimes(1); // data re-pushed into the new chart's series
@@ -192,11 +192,11 @@ describe('RangeSeriesPane', () => {
     // The MA-edit optimization: data churn must not churn series handles.
     const { chart, created } = makeChart();
     const { rerender } = render(
-      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} spec={SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} precedingPaneKey="" spec={SPEC} />,
     );
     expect(created).toHaveLength(1);
     rerender(
-      <RangeSeriesPane chart={chart} bundle={{ candles: [] } as never} axis={axis} paneIndex={1} spec={SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={{ candles: [] } as never} axis={axis} paneIndex={1} precedingPaneKey="" spec={SPEC} />,
     );
     // New bundle ref → data effect re-runs, but series NOT re-created.
     expect(created).toHaveLength(1);
@@ -211,12 +211,12 @@ describe('RangeSeriesPane', () => {
     const { chart, created } = makeChart();
     const rows = [{ time: 1, close: 100 }, { time: 2, close: 110 }];
     const { rerender } = render(
-      <RangeSeriesPane chart={chart} bundle={candleBundle(rows)} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle(rows)} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} />,
     );
     expect(created[0].setData).toHaveBeenCalledTimes(1); // initial push
     // New bundle OBJECT, identical candle CONTENT → setData must be skipped.
     rerender(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([...rows])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle([...rows])} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} />,
     );
     expect(created).toHaveLength(1); // series not re-created
     expect(created[0].setData).toHaveBeenCalledTimes(1); // redundant push SKIPPED
@@ -229,20 +229,20 @@ describe('RangeSeriesPane', () => {
     // lwc doesn't re-ingest + re-autoscale the whole array every 150ms tick.
     const { chart, created } = makeChart();
     const { rerender } = render(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 110 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 110 }])} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} />,
     );
     expect(created[0].setData).toHaveBeenCalledTimes(1); // initial full push
     expect(created[0].update).toHaveBeenCalledTimes(0);
     // Last bar's close changed → update(last), NOT setData.
     rerender(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 112 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 112 }])} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} />,
     );
     expect(created[0].setData).toHaveBeenCalledTimes(1); // no full re-push
     expect(created[0].update).toHaveBeenCalledTimes(1);
     expect(created[0].update).toHaveBeenLastCalledWith({ time: 2, close: 112 });
     // A new bar appended (length +1, prefix identical) → update(appended).
     rerender(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 112 }, { time: 3, close: 108 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 112 }, { time: 3, close: 108 }])} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} />,
     );
     expect(created[0].setData).toHaveBeenCalledTimes(1);
     expect(created[0].update).toHaveBeenCalledTimes(2);
@@ -257,18 +257,18 @@ describe('RangeSeriesPane', () => {
     const { chart, created } = makeChart();
     const rows = [{ time: 1, close: 100 }, { time: 2, close: 110 }];
     const { rerender } = render(
-      <RangeSeriesPane chart={chart} bundle={candleBundle(rows)} axis={axis} paneIndex={1} spec={PROJECT_SPEC} forceSetData />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle(rows)} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} forceSetData />,
     );
     expect(created[0].setData).toHaveBeenCalledTimes(1);
 
     rerender(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([...rows])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} forceSetData />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle([...rows])} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} forceSetData />,
     );
     expect(created[0].setData).toHaveBeenCalledTimes(1);
     expect(created[0].update).not.toHaveBeenCalled();
 
     rerender(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 112 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} forceSetData />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 112 }])} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} forceSetData />,
     );
     expect(created[0].update).not.toHaveBeenCalled();
     expect(created[0].setData).toHaveBeenCalledTimes(2);
@@ -280,12 +280,12 @@ describe('RangeSeriesPane', () => {
     // array must be re-pushed. Earlier-element change → full setData.
     const { chart, created } = makeChart();
     const { rerender } = render(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 110 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 110 }])} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} />,
     );
     expect(created[0].setData).toHaveBeenCalledTimes(1);
     // First (non-tail) bar changed → setData fallback, not update.
     rerender(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 999 }, { time: 2, close: 110 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 999 }, { time: 2, close: 110 }])} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} />,
     );
     expect(created[0].setData).toHaveBeenCalledTimes(2); // full re-push
     expect(created[0].update).toHaveBeenCalledTimes(0);
@@ -307,7 +307,7 @@ describe('RangeSeriesPane', () => {
       ],
     };
     render(
-      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} spec={markerSpec} />,
+      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} precedingPaneKey="" spec={markerSpec} />,
     );
     // primitive가 series에 attach되고, 마커 페이로드(time·price·color)가 전달된다.
     expect(created[0].attachPrimitive).toHaveBeenCalledTimes(1);
@@ -338,7 +338,7 @@ describe('RangeSeriesPane', () => {
         chart={chart}
         bundle={bundle}
         axis={axis}
-        paneIndex={0}
+        paneIndex={0} precedingPaneKey=""
         spec={legendSpec}
         onLegendReady={onLegendReady}
         onLegendGone={onLegendGone}
@@ -366,7 +366,7 @@ describe('RangeSeriesPane', () => {
         chart={chart}
         bundle={bundle}
         axis={axis}
-        paneIndex={0}
+        paneIndex={0} precedingPaneKey=""
         spec={SPEC}
         onLegendReady={onLegendReady}
         onLegendGone={onLegendGone}
@@ -400,12 +400,142 @@ describe('RangeSeriesPane', () => {
       ],
     } as PaneSpec;
     const { unmount } = render(
-      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} spec={labelMarkerSpec} />,
+      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} precedingPaneKey="" spec={labelMarkerSpec} />,
     );
 
     expect(created[0].attachPrimitive).toHaveBeenCalledTimes(1);
 
     unmount();
     expect(created[0].detachPrimitive).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── pane 순서 바꾸기: 재생성 중 인덱스 시프트 ─────────────────────────────────
+//
+// 이 파일의 다른 차트 스텁(`makeChart`)은 `removeSeries` 가 no-op 이고 pane 을 아예
+// 모형화하지 않아서 **이 버그를 원리적으로 못 본다**. 여기서는 lwc 5.2.0 의 실측
+// 동작을 그대로 재현한다 — pane 의 마지막 series 를 지우면 그 pane 이 사라지고
+// 아래 pane 들의 인덱스가 당겨진다.
+function makePaneChart() {
+  const panes: unknown[][] = [];
+  /** `addSeries` 가 현재 pane 수보다 **2 이상 큰** 인덱스를 요구한 횟수. 정상 경로는
+   *  오름차순 append 뿐이라 항상 0 이어야 한다(0 이 아니면 중간에 빈 pane 이 생긴다). */
+  const gapRequests: number[] = [];
+  const chart = {
+    addSeries: vi.fn((_type: unknown, _opts: unknown, paneIndex: number) => {
+      const series = {
+        setData: vi.fn(), update: vi.fn(),
+        attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+      };
+      if (paneIndex > panes.length) gapRequests.push(paneIndex);
+      while (panes.length <= paneIndex) panes.push([]);
+      panes[paneIndex].push(series);
+      return series;
+    }),
+    removeSeries: vi.fn((series: unknown) => {
+      const i = panes.findIndex((p) => p.includes(series));
+      if (i < 0) return;
+      panes[i] = panes[i].filter((x) => x !== series);
+      if (panes[i].length === 0) panes.splice(i, 1);
+    }),
+  } as never;
+  return { chart, panes, gapRequests };
+}
+
+/** series 개수가 서로 다른 pane 스펙 — pane 별 개수만 보고 어느 스펙이 어디 있는지
+ *  식별할 수 있다(합쳐지면 개수가 더해지므로 병합도 그대로 드러난다). */
+function specWithSeriesCount(name: string, count: number): PaneSpec {
+  return {
+    name,
+    stretch: 1,
+    series: Array.from({ length: count }, () => ({
+      type: {} as never,
+      options: {} as never,
+      data: () => [{ time: 1, value: 1 }] as never,
+    })),
+  };
+}
+const REORDER_SPECS: Record<string, PaneSpec> = {
+  a: specWithSeriesCount('a', 3),
+  b: specWithSeriesCount('b', 2),
+  c: specWithSeriesCount('c', 1),
+  d: specWithSeriesCount('d', 4),
+};
+
+/** LiveChartRoot 의 `visiblePaneSpecs.map` 을 그대로 흉내낸다 — key 는 pane 이름,
+ *  `precedingPaneKey` 는 앞 pane 이름 시퀀스. */
+function PaneStack({ chart, names }: { chart: never; names: string[] }) {
+  let acc = '';
+  return (
+    <>
+      {names.map((n, i) => {
+        const preceding = acc;
+        acc = acc === '' ? n : `${acc}|${n}`;
+        return (
+          <RangeSeriesPane
+            key={n}
+            chart={chart}
+            bundle={bundle}
+            axis={axis}
+            paneIndex={i}
+            precedingPaneKey={preceding}
+            spec={REORDER_SPECS[n]}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+describe('RangeSeriesPane — pane 순서 바꾸기 (인덱스 시프트)', () => {
+  afterEach(cleanup);
+
+  it('가운데 두 pane 을 맞바꿔도 아래 pane 이 살아남고 pane 구성이 순열만 바뀐다', () => {
+    const { chart, panes, gapRequests } = makePaneChart();
+    const { rerender } = render(<PaneStack chart={chart} names={['a', 'b', 'c', 'd']} />);
+    expect(panes.map((p) => p.length)).toEqual([3, 2, 1, 4]);
+
+    rerender(<PaneStack chart={chart} names={['a', 'c', 'b', 'd']} />);
+
+    // 버그가 있으면 b·c 만 재생성되고 d 는 참여하지 않는다 → cleanup 이 pane 1·2 를
+    // 지우면서 d 가 인덱스 1 로 밀리고, 뒤이은 addSeries 가 d 의 pane 안으로 합쳐진다
+    // (실측 서명: pane 4개 → 3개, 개수 [3, 5, 2]).
+    expect(panes).toHaveLength(4);
+    expect(panes.map((p) => p.length)).toEqual([3, 1, 2, 4]);
+    // 재구성은 오름차순 append 여야 한다 — 중간에 빈 pane 이 생기면 안 된다.
+    expect(gapRequests).toEqual([]);
+  });
+
+  it('맨 앞 두 pane 을 맞바꿔도 아래 두 pane 이 그대로 남는다', () => {
+    const { chart, panes, gapRequests } = makePaneChart();
+    const { rerender } = render(<PaneStack chart={chart} names={['a', 'b', 'c', 'd']} />);
+
+    rerender(<PaneStack chart={chart} names={['b', 'a', 'c', 'd']} />);
+
+    expect(panes).toHaveLength(4);
+    expect(panes.map((p) => p.length)).toEqual([2, 3, 1, 4]);
+    expect(gapRequests).toEqual([]);
+  });
+
+  it('순서가 그대로면 재생성하지 않는다 (앞 시퀀스 불변)', () => {
+    const { chart, panes } = makePaneChart();
+    const { rerender } = render(<PaneStack chart={chart} names={['a', 'b', 'c', 'd']} />);
+    const firstSeriesOfD = panes[3][0];
+
+    rerender(<PaneStack chart={chart} names={['a', 'b', 'c', 'd']} />);
+
+    // 같은 핸들이 유지돼야 한다 — 순서 dep 이 과민하면 매 렌더 series 가 churn 한다.
+    expect(panes[3][0]).toBe(firstSeriesOfD);
+  });
+
+  it('맨 뒤에 pane 을 추가해도 기존 pane 들은 재생성되지 않는다', () => {
+    const { chart, panes } = makePaneChart();
+    const { rerender } = render(<PaneStack chart={chart} names={['a', 'b', 'c']} />);
+    const firstSeriesOfC = panes[2][0];
+
+    rerender(<PaneStack chart={chart} names={['a', 'b', 'c', 'd']} />);
+
+    expect(panes.map((p) => p.length)).toEqual([3, 2, 1, 4]);
+    expect(panes[2][0]).toBe(firstSeriesOfC);
   });
 });

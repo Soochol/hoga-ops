@@ -47,7 +47,7 @@ describe('RangeSeriesPane', () => {
         },
       ],
     };
-    render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={3} spec={spec} />);
+    render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={3} precedingPaneKey="" spec={spec} />);
     expect(chart.addSeries).toHaveBeenCalledTimes(1);
     expect(chart.addSeries.mock.calls[0][2]).toBe(3);
     expect(seriesList[0].setData).toHaveBeenCalledWith([{ time: 0, value: 100 }]);
@@ -63,7 +63,7 @@ describe('RangeSeriesPane', () => {
         { type: LineSeries, options: { color: '#b' }, data: () => [{ time: 0 as UTCTimestamp, value: 2 }] },
       ],
     };
-    render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={2} spec={spec} />);
+    render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={2} precedingPaneKey="" spec={spec} />);
     expect(chart.addSeries).toHaveBeenCalledTimes(2);
     expect(seriesList[0].setData).toHaveBeenCalledWith([{ time: 0, value: 1 }]);
     expect(seriesList[1].setData).toHaveBeenCalledWith([{ time: 0, value: 2 }]);
@@ -80,7 +80,7 @@ describe('RangeSeriesPane', () => {
       series: [{ type: LineSeries, options: {}, data: dataFn, afterAdd }],
       useContext: useCtx,
     };
-    render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={1} spec={spec} />);
+    render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={1} precedingPaneKey="" spec={spec} />);
     expect(useCtx).toHaveBeenCalled();
     expect(dataFn).toHaveBeenCalledWith(baseBundle, axis, { flag: true });
     expect(afterAdd).toHaveBeenCalledWith(seriesList[0]);
@@ -123,7 +123,7 @@ describe('RangeSeriesPane', () => {
       // RangeSeriesPane (subscription bypasses memo), yielding a fresh ctx.
       useContext: () => ({ period: useSyncExternalStore(store.subscribe, store.get) }),
     };
-    render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={0} spec={spec} />);
+    render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={0} precedingPaneKey="" spec={spec} />);
     expect(chart.addSeries).toHaveBeenCalledTimes(1);
     const pushesBefore =
       seriesList[0].setData.mock.calls.length + seriesList[0].update.mock.calls.length;
@@ -153,7 +153,7 @@ describe('RangeSeriesPane', () => {
         { type: LineSeries, options: {}, data: () => [] },
       ],
     };
-    const { unmount } = render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={0} spec={spec} />);
+    const { unmount } = render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={0} precedingPaneKey="" spec={spec} />);
     unmount();
     expect(chart.removeSeries).toHaveBeenCalledTimes(2);
     expect(chart.removeSeries).toHaveBeenCalledWith(seriesList[0]);

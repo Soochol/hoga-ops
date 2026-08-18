@@ -17,10 +17,11 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // "store toggle → paneToggles → the pane set that reaches RangeSeriesPane" was
 // never asserted end-to-end. RangeSeriesPane renders null in jsdom (imperative
 // lightweight-charts wrapper), so we replace it with a prop-capturing stub.
-const { mounted, paneBundles, paneContexts, candleTooltipProps, askPeakMounts, bidPeakMounts, dockedLabelMounts, chartInstances } = vi.hoisted(() => ({
+const { mounted, paneBundles, paneContexts, paneOrderKeys, candleTooltipProps, askPeakMounts, bidPeakMounts, dockedLabelMounts, chartInstances } = vi.hoisted(() => ({
   mounted: [] as string[],
   paneBundles: [] as Array<{ name: string; bundle: unknown }>,
   paneContexts: [] as Array<{ name: string; contextOverride: unknown }>,
+  paneOrderKeys: [] as Array<{ name: string; precedingPaneKey: string }>,
   candleTooltipProps: [] as Array<{ bundle: unknown; quoteBundle?: unknown }>,
   askPeakMounts: [] as string[],
   bidPeakMounts: [] as string[],
@@ -36,10 +37,16 @@ const { mounted, paneBundles, paneContexts, candleTooltipProps, askPeakMounts, b
   }>,
 }));
 vi.mock('../chart/RangeSeriesPane', () => ({
-  default: (props: { spec: { name: string }; bundle: unknown; contextOverride?: unknown }) => {
+  default: (props: {
+    spec: { name: string };
+    bundle: unknown;
+    contextOverride?: unknown;
+    precedingPaneKey: string;
+  }) => {
     mounted.push(props.spec.name);
     paneBundles.push({ name: props.spec.name, bundle: props.bundle });
     paneContexts.push({ name: props.spec.name, contextOverride: props.contextOverride });
+    paneOrderKeys.push({ name: props.spec.name, precedingPaneKey: props.precedingPaneKey });
     return null;
   },
 }));
@@ -165,6 +172,7 @@ function renderAt(timeframe: '1m' | 'D' | 'W' | 'M', props: Partial<ComponentPro
 describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집합)', () => {
   beforeEach(() => {
     mounted.length = 0;
+    paneOrderKeys.length = 0;
     paneBundles.length = 0;
     paneContexts.length = 0;
     candleTooltipProps.length = 0;
@@ -191,6 +199,37 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
   it('기본(전부 ON) 1m → 6 pane 마운트', () => {
     renderAt('1m');
     expect(mounted).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength', 'program-trade']);
+  });
+
+  it('각 pane 에 자기 앞 pane 이름 시퀀스를 넘긴다 (재생성 참여 범위의 근거)', () => {
+    renderAt('1m');
+    // 캔들은 항상 `''` — 그래서 순서가 바뀌어도 재생성에서 자동으로 빠진다(고정 pane).
+    // 나머지는 누적 시퀀스. 이 값이 `RangeSeriesPane` lifecycle dep 이므로, 순서가
+    // 바뀌면 "밑에서 인덱스가 밀리는" pane 들이 정확히 전부 참여한다.
+    expect(paneOrderKeys).toEqual([
+      { name: 'candle', precedingPaneKey: '' },
+      { name: 'volume', precedingPaneKey: 'candle' },
+      { name: 'quote-totals', precedingPaneKey: 'candle|volume' },
+      { name: 'ratio', precedingPaneKey: 'candle|volume|quote-totals' },
+      { name: 'fill-strength', precedingPaneKey: 'candle|volume|quote-totals|ratio' },
+      { name: 'program-trade', precedingPaneKey: 'candle|volume|quote-totals|ratio|fill-strength' },
+    ]);
+  });
+
+  it('pane 순서를 바꾸면 그 아래 pane 의 앞 시퀀스도 바뀐다', () => {
+    // quote-totals ↔ ratio 를 맞바꾸면, 두 pane 뿐 아니라 **그 아래** pane 들의 앞
+    // 시퀀스도 달라져야 한다. 안 그러면 아래 pane 이 재생성에 참여하지 않아 lwc 가
+    // 인덱스를 당기는 사이 series 가 남의 pane 으로 합쳐진다.
+    useLivePageStore.setState({
+      paneOrder: ['candle', 'volume', 'ratio', 'quote-totals', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution'],
+    });
+    renderAt('1m');
+    const keyOf = (name: string) => paneOrderKeys.find((p) => p.name === name)?.precedingPaneKey;
+    expect(keyOf('ratio')).toBe('candle|volume');
+    expect(keyOf('quote-totals')).toBe('candle|volume|ratio');
+    // 아래 pane 2개 — 인덱스는 그대로지만 앞 시퀀스가 바뀐다.
+    expect(keyOf('fill-strength')).toBe('candle|volume|ratio|quote-totals');
+    expect(keyOf('program-trade')).toBe('candle|volume|ratio|quote-totals|fill-strength');
   });
 
   it('passes the venue-specific candle auction style context from props', () => {

@@ -137,6 +137,23 @@ type Props<Ctx> = {
   bundle: RangeBundle;
   axis: VirtualAxis;
   paneIndex: number;
+  /** 이 pane **앞에** 놓인 pane 이름들의 시퀀스(`'candle|volume'`). lifecycle effect
+   *  의 dep 이며, 값 자체는 본문에서 쓰지 않는다.
+   *
+   *  왜 필요한가 — lightweight-charts 는 pane 의 **마지막 series 를 지우면 그 pane 을
+   *  자동 삭제**하고 아래 pane 들의 인덱스를 당긴다(lwc 5.2.0 실측). React 는 한
+   *  커밋에서 **모든 cleanup 을 먼저** 돌리므로, 재생성되는 pane 들이 전부 비워진
+   *  뒤에야 `addSeries(..., paneIndex)` 가 실행된다. 이때 재생성에 참여하지 **않은**
+   *  아래쪽 pane 은 이미 위로 밀려 있어서, 새 series 가 그 pane 안으로 합쳐진다.
+   *
+   *  순서 바꾸기(#1381 후속)가 정확히 그 경우였다 — 두 pane 을 맞바꾸면 그 **아래**
+   *  pane 은 `paneIndex` 가 그대로라 effect 가 안 돌고, 결과적으로 pane 하나가
+   *  통째로 사라졌다(실측 5→4, 새로고침해야 복구). 앞 시퀀스를 dep 으로 두면 "밑에서
+   *  인덱스가 밀리는" pane 이 **정확히** 전부 참여하고, 그 집합은 항상 연속된
+   *  suffix 라 teardown 후 오름차순 append 로 재구성된다(최초 마운트와 같은 경로).
+   *
+   *  캔들은 앞 시퀀스가 항상 `''` 이라 특수 케이스 없이 재생성에서 빠진다. */
+  precedingPaneKey: string;
   spec: PaneSpec<Ctx>;
   /** Fired after the primary series (spec.series[0]) is added to the chart.
    *  The caller populates its PaneId→ISeriesApi registry that DrawingOverlay
@@ -193,6 +210,7 @@ function RangeSeriesPaneInner<Ctx>({
   bundle,
   axis,
   paneIndex,
+  precedingPaneKey,
   spec,
   onPrimarySeriesReady,
   onPrimarySeriesGone,
@@ -314,7 +332,7 @@ function RangeSeriesPaneInner<Ctx>({
     // intentionally excluded from deps so the effect doesn't churn series on
     // callback re-creation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, paneIndex, spec, candleAlwaysOnTop]);
+  }, [chart, paneIndex, precedingPaneKey, spec, candleAlwaysOnTop]);
 
   // Data effect: push new projected data into existing series whenever
   // bundle/axis/ctx changes. Cheap (setData on a held handle), so it's
