@@ -33,6 +33,12 @@ const lineOptions = () => ({
   // 보이는 범위 밖으로 밀린다 — 정작 부호를 읽어야 할 때 기준선이 사라진다.
   autoscaleInfoProvider: includeZeroAutoscale,
   priceLineVisible: false,
+  // ⚠ 앱에서 이 pane 만 true — DESIGN.md 2026-05-23("전 시리즈 off, 최신값은
+  // 크로스헤어로") 의 **명시적 예외**이고 드리프트가 아니다. 프로그램은
+  // `LEGEND_CELL_PANES`(volume·quote-totals) 밖이라 레전드 값 행이 꺼져 있고,
+  // 그 필터는 크로스헤어 유무와 무관하게 행 자체를 거른다 → 이 라벨을 끄면
+  // 현재 순매수를 읽을 표면이 남지 않는다. 레전드가 켜지면 같이 끌 것
+  // (근거·해소 조건은 DESIGN.md 2026-08-18 항목).
   lastValueVisible: true,
 });
 
