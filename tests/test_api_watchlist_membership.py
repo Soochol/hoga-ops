@@ -90,3 +90,57 @@ async def test_reorder_entries_reorders_member_codes(tmp_path):
     await reorder_entries(tmp_path, folder_id=fid, ordered_codes=["000660", "005930"])
     doc = load_document(tmp_path)
     assert next(f for f in doc.folders if f.id == fid).code_members() == ["000660", "005930"]
+
+
+# --- at: items 인덱스 삽입 (패널 우클릭 "위에 종목 추가") -------------------
+# add_memo 와 **같은 축**이라 코드만 보면 안 된다 — 삽입이 메모 자리를 함께 밀어야
+# 표시 순서가 보존된다. 아래 셋은 그 축을 코드·메모가 섞인 폴더에서 잰다.
+
+
+async def _seed_mixed(tmp_path):
+    """items = [code 005930, memo, code 000660] 인 폴더 하나."""
+    from hoga.api.watchlist import add_member, add_memo
+    fid = await _seed_folder(tmp_path)
+    await add_member(tmp_path, code="005930", name="삼성", today_kst_date="20260611", folder_id=fid)
+    memo, _ = await add_memo(tmp_path, folder_id=fid, text="메모")
+    await add_member(tmp_path, code="000660", name="SK", today_kst_date="20260611", folder_id=fid)
+    return fid, memo.id
+
+
+def _item_keys(doc, fid):
+    """폴더 items 를 표시 순서 그대로 ('c:코드' | 'm:id') 로 — 두 종류를 한 줄에 세운다."""
+    from hoga.api.models import WatchlistMemoItem
+    folder = next(f for f in doc.folders if f.id == fid)
+    return [f"m:{i.id}" if isinstance(i, WatchlistMemoItem) else f"c:{i.code}" for i in folder.items]
+
+
+async def test_add_member_at_inserts_and_pushes_memos_down(tmp_path):
+    """at=1 은 메모 **앞**에 들어가고 메모·뒤 코드가 한 칸씩 밀린다.
+
+    코드만 재배열하고 메모를 놔두면 여기서 순서가 갈린다 — 그게 items 단일 축의 함정.
+    """
+    from hoga.api.watchlist import add_member, load_document
+    fid, mid = await _seed_mixed(tmp_path)
+    await add_member(tmp_path, code="035420", name="네이버", today_kst_date="20260611",
+                     folder_id=fid, at=1)
+    assert _item_keys(load_document(tmp_path), fid) == [
+        "c:005930", "c:035420", f"m:{mid}", "c:000660"]
+
+
+async def test_add_member_at_beyond_length_clamps_to_end(tmp_path):
+    """범위 초과는 422 가 아니라 끝으로 클램프 — 동시 편집으로 길이가 줄었을 뿐이다."""
+    from hoga.api.watchlist import add_member, load_document
+    fid, mid = await _seed_mixed(tmp_path)
+    await add_member(tmp_path, code="035420", name="네이버", today_kst_date="20260611",
+                     folder_id=fid, at=99)
+    assert _item_keys(load_document(tmp_path), fid) == [
+        "c:005930", f"m:{mid}", "c:000660", "c:035420"]
+
+
+async def test_add_member_at_is_ignored_for_existing_member(tmp_path):
+    """이미 멤버면 at 이 와도 자리를 옮기지 않는다 — add 는 멱등이고 이동은 reorder 의 몫."""
+    from hoga.api.watchlist import add_member, load_document
+    fid, mid = await _seed_mixed(tmp_path)
+    await add_member(tmp_path, code="000660", name="SK", today_kst_date="20260611",
+                     folder_id=fid, at=0)
+    assert _item_keys(load_document(tmp_path), fid) == ["c:005930", f"m:{mid}", "c:000660"]
