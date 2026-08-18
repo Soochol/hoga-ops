@@ -72,6 +72,20 @@ describe('QuoteRow', () => {
     expect(screen.getByText('71,500').getAttribute('title')).toBeNull();
   });
 
+  // 좌측 여백 계약 — 우측 레일 네 리스트의 종목명 시작 x(2.5rem)를 결정하는 두 경로.
+  // 여기가 값(pl-10 / pl-md)을 고정하고, 각 드로어 테스트는 "prop 을 넘겼는가"만 잰다.
+  it('indented: 좌측 여백 2.5rem — 관심·히트맵·스크리너가 공유하는 종목명 시작점', () => {
+    row({ indented: true });
+    expect(screen.getByTestId('quote-row-005930')).toHaveClass('pl-10');
+  });
+
+  it('leading 이 있으면 pl-md — 순위 슬롯(w-5 + gap-2 = 1.75rem)이 나머지를 채워 같은 x 가 된다', () => {
+    row({ leading: <span className="w-5 flex-none" data-testid="rank-slot">1</span> });
+    const li = screen.getByTestId('quote-row-005930');
+    expect(li).toHaveClass('pl-md');
+    expect(li).not.toHaveClass('pl-10');
+  });
+
   it('Enter key triggers onClick (keyboard a11y)', () => {
     const { onClick } = row();
     fireEvent.keyDown(screen.getByTestId('quote-row-005930'), { key: 'Enter' });
