@@ -262,4 +262,50 @@ describe('WatchlistEntryPane', () => {
     fireEvent.click(all);                                   // mixed → all (표준 관례)
     await waitFor(() => expect(all).toHaveAttribute('aria-checked', 'true'));
   });
+  // P1-5: 이 pane 은 시세도 등락률도 없는 관리 화면인데 행을 특정할 단서가 이름뿐이었고,
+  // `08/14`·`아직 없음` 이 무슨 날짜인지 화면에 설명이 없었다.
+  it('lists the code column and labels what the date means', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
+    const row = await screen.findByTestId('edit-row-005930');
+
+    // 코드는 **행 안에** 있어야 한다 — aria-label 에만 있으면 화면에서 못 읽는다.
+    expect(within(row).getByText('005930')).toBeInTheDocument();
+
+    const header = screen.getByTestId('entry-column-header');
+    expect(within(header).getByText('종목')).toBeInTheDocument();
+    expect(within(header).getByText('코드')).toBeInTheDocument();
+    // 「저장」이 아니라 「수집」 — 이 날짜는 Daily Scheduler 캐치업의 마지막 성공일이라
+    // 폴더 토글이 가르는 실시간 저장 축과 다르다(↻ 의 aria-label 과 같은 어휘).
+    expect(within(header).getByText('마지막 수집')).toBeInTheDocument();
+
+    // 헤더와 행이 **같은 grid 템플릿**을 써야 컬럼이 어긋나지 않는다. 따로 하드코딩하면
+    // 한쪽만 고쳤을 때 조용히 틀어지므로 클래스로 못박는다.
+    const cols = /grid-cols-\[16px_1fr_7ch_8ch_2\.5ch\]/;
+    expect(header.className).toMatch(cols);
+    expect(row.className).toMatch(cols);
+
+    // ⚠ 같은 템플릿만으로는 부족하다: 컬럼 폭이 `ch` 단위라 **컨테이너 폰트 크기에 비례**
+    // 한다. 헤더 컨테이너에 작은 글씨를 걸면 같은 `7ch` 가 다른 픽셀이 되어 컬럼이 어긋난다
+    // (실측으로 코드 컬럼이 헤더 1114 vs 행 1061 로 벌어졌다). 작은 글씨는 자식 span 몫이다.
+    // jsdom 은 레이아웃을 계산하지 않아 **좌표로는 못 재므로** 그 원인을 클래스로 막는다.
+    expect(header.className).toMatch(/(^|\s)text-sm(\s|$)/);
+    expect(header.className).not.toMatch(/(^|\s)text-2xs(\s|$)/);
+    expect(within(header).getByText('코드').className).toMatch(/text-2xs/);
+  });
+
+  it('hides the column header when the folder is empty', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [{ id: 'f_a', name: '스윙', order: 0 }],
+      entries: [],
+      memos: [],
+      next_run_at_ms: 0,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
+    await screen.findByText('이 그룹에 종목이 없습니다');
+    // 빈 그룹에 컬럼 머리글만 떠 있으면 "표가 있는데 비었다" 가 아니라 노이즈다.
+    expect(screen.queryByTestId('entry-column-header')).not.toBeInTheDocument();
+  });
 });

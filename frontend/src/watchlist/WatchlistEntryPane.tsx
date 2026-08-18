@@ -203,6 +203,30 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
         </div>
       )}
 
+      {/* 컬럼 헤더 — **`<ul>` 밖**에 둔다. 안에 넣으면 리스트가 `overflow-auto` 라 스크롤
+          할 때 같이 밀려 올라간다(sticky 를 얹을 수도 있지만, 형제로 두면 그럴 필요가 없다).
+          행과 **같은 grid 상수**를 쓰므로 컬럼이 어긋나지 않는다.
+
+          「마지막 수집」 라벨이 붙는 순간 `08/14`·`아직 없음` 이 무슨 날짜인지가 닫힌다 —
+          그전까진 화면에 설명이 없었다. **「수집」이 맞는 어휘다**: 이 값은 Daily Scheduler
+          캐치업의 마지막 성공일이라, 폴더 토글이 가르는 「실시간 저장」 축과 다르다(↻ 버튼의
+          aria-label 도 이미 "수집" 이다). 재수집 컬럼은 아이콘만 있어 라벨을 비운다. */}
+      {entries.length > 0 && (
+        // ⚠ **컨테이너 폰트 크기를 행과 같게(`text-sm`) 유지한다.** 컬럼 폭이 `ch` 단위라
+        // 폰트 크기에 비례하는데, 헤더에만 `text-2xs` 를 걸면 같은 `7ch` 가 다른 픽셀이 되어
+        // **같은 클래스를 쓰고도 컬럼이 어긋난다**(실측: 코드 컬럼 헤더 1114 vs 행 1061).
+        // 작은 글씨는 자식 span 이 쓴다. jsdom 은 레이아웃을 계산하지 않아 클래스 비교
+        // 테스트로는 원리적으로 못 잡는 종류다 — 도그푸딩이 잡았다.
+        <div data-testid="entry-column-header"
+          className={`${GRID_COLS} py-1.5 border-b border-border text-sm text-fg-dimmer`}>
+          <span aria-hidden />
+          <span className="text-2xs uppercase">종목</span>
+          <span className="text-2xs uppercase">코드</span>
+          <span className="text-2xs uppercase">마지막 수집</span>
+          <span aria-hidden />
+        </div>
+      )}
+
       {/* list — drag-reorder within the selected folder / 미분류 */}
       <ul className="flex-1 overflow-auto" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         <SortableContext items={entries.map((e) => e.code)} strategy={verticalListSortingStrategy}>
@@ -246,9 +270,20 @@ type RowProps = {
 };
 
 // 1st col 16px = CheckIcon size (보조지표 IndicatorPanel과 같은 glyph; 행 밀도 때문에 18 대신 16).
-// 종목코드는 표시하지 않음 — 체크박스 aria-label(`{code} 선택`)에만 남는다(이름과 달리 유일).
+//
+// **종목코드 컬럼은 v0.6.1.0(#34)의 "표시하지 않음" 결정을 뒤집은 것이다.** 그때는 코드가
+// 체크박스 aria-label 에만 남았는데, 근거 두 가지가 그 판단을 이긴다: (1) 이 pane 은 시세도
+// 등락률도 없는 **관리 화면**이라 행을 특정할 단서가 이름뿐이었고, (2) 우선주·스팩처럼 이름이
+// 겹치는 계열을 화면에서 구별할 방법이 없었다. 코드는 6자리 고정이라 7ch 면 충분하다.
+//
+// **인라인(`이름 코드`)이 아니라 전용 컬럼인 이유**: 인라인이면 truncate 가 이름과 코드를 한
+// 덩어리로 잘라 **긴 이름에서 코드가 먼저 사라진다** — 구별하려고 넣은 것이 구별이 필요한
+// 상황에서 없어진다.
+//
+// 헤더 행과 **같은 상수를 공유한다**. 따로 적으면 컬럼이 조용히 어긋난다.
+const GRID_COLS = 'grid grid-cols-[16px_1fr_7ch_8ch_2.5ch] items-center gap-2 px-3';
 const ROW_CLASS =
-  'relative grid grid-cols-[16px_1fr_8ch_2.5ch] items-center gap-2 px-3 py-2 border-b border-border text-sm hover:bg-bg-input touch-none';
+  `relative ${GRID_COLS} py-2 border-b border-border text-sm hover:bg-bg-input touch-none`;
 
 function SortableEntryRow(props: RowProps) {
   const { entry } = props;
@@ -275,7 +310,8 @@ function SortableEntryRow(props: RowProps) {
         onClick={props.onToggle} className="flex items-center cursor-pointer">
         <CheckIcon filled={props.checked} size={16} />
       </button>
-      <span className="truncate">{entry.name}</span>
+      <span className="truncate" title={entry.name}>{entry.name}</span>
+      <span className="font-data tabular-nums text-xs text-fg-dim">{entry.code}</span>
       <LastSuccessBadge date={entry.last_success_date} />
       <button type="button" aria-label={`${entry.name} 수집`} onClick={props.onCatchup} disabled={props.catchingUp}
         onPointerDown={(e) => e.stopPropagation()}
