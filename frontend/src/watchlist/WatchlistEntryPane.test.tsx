@@ -326,4 +326,18 @@ describe('WatchlistEntryPane', () => {
     await waitFor(() => expect(button.querySelector('svg')).toHaveClass('animate-spin'));
     expect(button.className).not.toMatch(/animate-spin/);
   });
+  // P2-2: 이 문구는 툴바 우측 끝(패널의 정렬 컨트롤과 같은 자리)에 "~순" 어미로 있어
+  // 정렬 드롭다운처럼 읽혔지만 클릭해도 아무 일도 없었다. 이 pane 의 순서는 **항상**
+  // 직접 설정이므로(드래그 재정렬이 order 인덱스와 맞물린 구조) 상태를 서술한다.
+  it('describes the ordering as state, not as a sort control', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
+    await screen.findByText('삼성전자');
+
+    expect(screen.getByText(/순서: 직접 설정/)).toBeInTheDocument();
+    expect(screen.queryByText('직접 설정한 순')).not.toBeInTheDocument();
+    // 컨트롤이 아니다 — 버튼/메뉴로 노출되면 안 된다.
+    expect(screen.queryByRole('button', { name: /직접 설정/ })).not.toBeInTheDocument();
+  });
 });
