@@ -18,7 +18,7 @@ import {
 import { persistJson, readJsonObject } from '../state/persist';
 import { ChevronIcon } from '../ui/ChevronIcon';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
-import { groupByFolder, swapFolderOrder } from './grouping';
+import { groupByFolder, swapFolderOrder, countOrphansIfFolderDeleted } from './grouping';
 import { Countdown } from './Countdown';
 import { Banner } from './Banner';
 import { WatchlistEditModal } from './WatchlistEditModal';
@@ -29,7 +29,7 @@ import { WatchlistAddForm } from './WatchlistAddForm';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { TrashIcon } from '../ui/TrashIcon';
-import { ConfirmModal } from '../ui/ConfirmModal';
+import { FolderDeleteConfirm } from './FolderDeleteConfirm';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
 import { useLiveVenueStore } from '../state/liveVenue';
@@ -800,12 +800,9 @@ export function WatchlistDrawer() {
   // 폴링으로 `data` 가 갱신되면 다시 센 값이 흔들려 사용자가 읽은 숫자와 어긋난다.
   const [deleteConfirm, setDeleteConfirm] = useState<{ folderId: string; orphanCount: number } | null>(null);
   const deleteFolderWithConfirm = (folderId: string) => {
-    const entries = data?.entries ?? [];
-    const inThis = new Set(entries.filter((e) => e.folder_id === folderId).map((e) => e.code));
-    const inOthers = new Set(entries.filter((e) => e.folder_id !== folderId).map((e) => e.code));
-    const orphans = [...inThis].filter((c) => !inOthers.has(c));
-    if (orphans.length > 0) {
-      setDeleteConfirm({ folderId, orphanCount: orphans.length });
+    const orphanCount = countOrphansIfFolderDeleted(data?.entries ?? [], folderId);
+    if (orphanCount > 0) {
+      setDeleteConfirm({ folderId, orphanCount });
       return;
     }
     deleteM.mutate(folderId);
@@ -1203,13 +1200,8 @@ export function WatchlistDrawer() {
           onClose={() => setRenameTarget(null)} />
       )}
       {deleteConfirm && (
-        <ConfirmModal
-          message={<>
-            이 폴더에만 있는 <b className="font-data">{deleteConfirm.orphanCount}</b>종목이
-            관심종목에서 빠집니다(데이터 수집 중단)
-          </>}
-          confirmLabel="삭제"
-          tone="destructive"
+        <FolderDeleteConfirm
+          orphanCount={deleteConfirm.orphanCount}
           onConfirm={() => { deleteM.mutate(deleteConfirm.folderId); setDeleteConfirm(null); }}
           onClose={() => setDeleteConfirm(null)} />
       )}
